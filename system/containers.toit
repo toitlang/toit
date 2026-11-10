@@ -62,12 +62,31 @@ class Container:
 
   start arguments/any=image.default-arguments --policy/any=null -> none:
     if pids_: throw "Already started"
-    validated := validate-policy_ (policy or image.default-policy)
+    validated := policy-for_ policy --image-untrusted=image.untrusted
     kind := validated is Array_ ? validated[0] : validated
     explicitly-untrusted := policy != null and kind == ContainerService.POLICY-UNTRUSTED
     this.policy = validated
     critical = image.run-critical and not explicitly-untrusted
     pids_ = {image.spawn this arguments}
+
+  /**
+  Returns the validated policy of a container that is started with the
+    given $policy (null for the default of the image).
+
+  The $ContainerService.FLAG-UNTRUSTED flag of an image is binding: a
+    container from a flagged image always runs with the untrusted policy,
+    with the quotas of the request. Running a container from an image
+    without the flag untrusted is up to the caller.
+  */
+  static policy-for_ policy/any --image-untrusted/bool -> any:
+    if image-untrusted:
+      if policy == null: return ContainerService.POLICY-UNTRUSTED
+      validated := validate-policy_ policy
+      if validated is Array_:
+        validated[0] = ContainerService.POLICY-UNTRUSTED
+        return validated
+      return ContainerService.POLICY-UNTRUSTED
+    return validate-policy_ (policy or ContainerService.POLICY-TRUSTED)
 
   static validate-policy_ policy/any -> any:
     kind := policy is List ? (policy.is-empty ? null : policy[0]) : policy
@@ -170,9 +189,6 @@ abstract class ContainerImage:
 
   untrusted -> bool:
     return flags & ContainerService.FLAG-UNTRUSTED != 0
-
-  default-policy -> int:
-    return untrusted ? ContainerService.POLICY-UNTRUSTED : ContainerService.POLICY-TRUSTED
 
   default-arguments -> any:
     // TODO(kasper): For now, the default arguments passed

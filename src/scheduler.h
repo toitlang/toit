@@ -105,8 +105,9 @@ class Scheduler {
 
   // Adds [target] to the allowed-target set of the group of the process
   // with id [pid]. Does nothing for groups whose policy doesn't restrict
-  // messaging. Returns false if there is no such process.
-  bool grant_send(int pid, int target);
+  // messaging. Fails if there is no such process or if the set is full.
+  enum GrantResult { GRANT_OK, GRANT_NO_SUCH_PROCESS, GRANT_QUOTA_EXCEEDED };
+  GrantResult grant_send(int pid, int target);
 
   // Returns the policy kind of the process with the given id, or -1 if there
   // is no such process.
@@ -270,6 +271,10 @@ class Scheduler {
 
   // Keep track of the number of ready processes with an active profiler.
   int num_profiled_processes_ = 0;
+
+  // The number of live processes whose policy limits their run time or CPU
+  // time (see PolicyQuotas::limits_run_time).
+  int num_run_time_limited_processes_ = 0;
 
   // Keep track of the boot process if it still alive.
   Process* boot_process_;

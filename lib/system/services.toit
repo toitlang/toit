@@ -10,6 +10,7 @@ import rpc
 import rpc.broker
 import monitor
 
+import system.api.containers show ContainerService
 import system.api.service-discovery
   show
     ServiceDiscoveryService
@@ -24,10 +25,6 @@ RPC-SERVICES-CLOSE-RESOURCE_ /int ::= 303
 // Internal limits.
 RANDOM-ID-LIMIT_       /int ::= 0x3fff_ffff
 RESOURCE-HANDLE-LIMIT_ /int ::= 0x1fff_ffff  // Will be shifted up by one.
-
-// Policy kind of sandboxed processes. Keep in sync with
-// PrimitivePolicy::Kind in src/primitive_policy.h.
-POLICY-UNTRUSTED_ /int ::= 2
 
 /**
 Returns the policy kind of the process with the given $pid, or -1 if
@@ -788,7 +785,7 @@ class ServiceManager_ implements SystemMessageHandler_:
     if not provider: throw "Unknown service:$id"
     service := provider._validate_ uuid major minor
     if not provider.accepts-untrusted-clients and pid != Process.current.id:
-      if (process-policy_ pid) == POLICY-UNTRUSTED_: throw "PERMISSION_DENIED"
+      if (process-policy_ pid) == ContainerService.POLICY-UNTRUSTED: throw "PERMISSION_DENIED"
 
     clients/Set ::= clients-by-pid_.get pid --init=(: {})
     if clients.is-empty and pid != Process.current.id:

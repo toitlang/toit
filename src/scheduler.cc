@@ -314,29 +314,41 @@ message_err_t Scheduler::send_message_from(Process* sender, int process_id, Syst
     delete message;
     return MESSAGE_NO_SUCH_RECEIVER;
   }
-  if (!receiver->_append_message(message)) {
-    delete message;
-    return MESSAGE_QUOTA_EXCEEDED;
-  }
   // A process in a messaging-restricted group that receives an RPC request
-  // may reply to the requester.
+  // may reply to the requester (it may always send to the system process).
+  // If its allowed-target set is full, the request is refused like a
+  // request to a full mailbox.
   ProcessGroup* receiver_group = receiver->group();
   if (receiver_group != sender->group() &&
       receiver_group->policy()->restricts_messaging() &&
-      message->type() == SYSTEM_RPC_REQUEST) {
-    receiver_group->grant_send_to(sender->id());
+      message->type() == SYSTEM_RPC_REQUEST &&
+      sender != boot_process_ &&
+      !receiver_group->grant_send_to(sender->id())) {
+    delete message;
+    return MESSAGE_QUOTA_EXCEEDED;
+  }
+  if (!receiver->_append_message(message)) {
+    delete message;
+    return MESSAGE_QUOTA_EXCEEDED;
   }
   process_ready(locker, receiver);
   return MESSAGE_OK;
 }
 
-bool Scheduler::grant_send(int pid, int target) {
+Scheduler::GrantResult Scheduler::grant_send(int pid, int target) {
   Locker locker(mutex_);
   Process* process = find_process(locker, pid);
-  if (process == null) return false;
+  if (process == null) return GRANT_NO_SUCH_PROCESS;
   ProcessGroup* group = process->group();
-  if (group->policy()->restricts_messaging()) group->grant_send_to(target);
-  return true;
+  if (!group->policy()->restricts_messaging()) return GRANT_OK;
+  // The system process and the own group are always allowed targets, so
+  // they don't take up room in the allowed-target set.
+  Process* target_process = find_process(locker, target);
+  if (target_process != null &&
+      (target_process == boot_process_ || target_process->group() == group)) {
+    return GRANT_OK;
+  }
+  return group->grant_send_to(target) ? GRANT_OK : GRANT_QUOTA_EXCEEDED;
 }
 
 int Scheduler::policy_kind(int pid) {
@@ -626,6 +638,7 @@ void Scheduler::gc(Process* process, bool malloc_failed, bool try_hard) {
 
 void Scheduler::add_process(Locker& locker, Process* process) {
   num_processes_++;
+  if (process->policy()->quotas().limits_run_time()) num_run_time_limited_processes_++;
   process_ready(locker, process);
 }
 
@@ -791,6 +804,7 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
 
       int id = process->id();
       ProcessGroup* group = process->group();
+      if (process->policy()->quotas().limits_run_time()) num_run_time_limited_processes_--;
       bool last_in_group = !group->remove(process);
       ASSERT(group->lookup(id) == null);
       SystemMessage* message = process->take_termination_message(result.value());
@@ -1015,6 +1029,10 @@ void Scheduler::tick(Locker& locker, int64 now) {
 
   bool any_profiling = num_profiled_processes_ > 0;
   bool any_ready = first_non_empty_ready_queue < NUMBER_OF_READY_QUEUES;
+  if (!PROCESS_MAX_RUN_TIME_ENFORCE && !any_profiling && !any_ready &&
+      num_run_time_limited_processes_ == 0) {
+    return;
+  }
 
   for (SchedulerThread* thread : threads_) {
     Process* process = thread->interpreter()->process();
@@ -1028,7 +1046,7 @@ void Scheduler::tick(Locker& locker, int64 now) {
     const PolicyQuotas& quotas = process->policy()->quotas();
     int64 max_run_time_us = quotas.max_run_time_us;
     int64 cpu_budget_us = quotas.cpu_budget_us;
-    if (max_run_time_us > 0 || cpu_budget_us > 0) {
+    if (quotas.limits_run_time()) {
       bool over_run_time = max_run_time_us > 0 && run_time_us > max_run_time_us;
       bool over_budget = cpu_budget_us > 0 && process->cpu_time_us() + run_time_us > cpu_budget_us;
       if (over_run_time || over_budget) {

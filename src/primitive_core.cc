@@ -2201,7 +2201,9 @@ PRIMITIVE(process_send) {
 PRIMITIVE(process_grant_send) {
   PRIVILEGED;
   ARGS(int, pid, int, target);
-  return BOOL(VM::current()->scheduler()->grant_send(pid, target));
+  Scheduler::GrantResult result = VM::current()->scheduler()->grant_send(pid, target);
+  if (result == Scheduler::GRANT_QUOTA_EXCEEDED) FAIL(QUOTA_EXCEEDED);
+  return BOOL(result == Scheduler::GRANT_OK);
 }
 
 PRIMITIVE(process_policy) {
@@ -2402,6 +2404,8 @@ PRIMITIVE(rebuild_hash_index) {
   // The probing below only stays in bounds and terminates for a non-empty
   // power-of-two index array.
   if (new_length == 0 || !Utils::is_power_of_two(new_length)) FAIL(INVALID_ARGUMENT);
+  // Arrays on the program heap are shared and read-only.
+  if (new_array->on_program_heap(process)) FAIL(PERMISSION_DENIED);
   word index_mask = new_length - 1;
   word length = old_array->length();
   for (word i = 0; i < length; i++) {
