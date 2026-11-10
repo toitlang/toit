@@ -25,29 +25,36 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD="${1:-$HERE/../../../build/host}"
 LOG="$(mktemp)"
-trap 'rm -f "$LOG"' EXIT
+ROWS="$(mktemp)"
+trap 'rm -f "$LOG" "$ROWS"' EXIT
 TOIT_VERIFY_TIME=1 ctest --test-dir "$BUILD" -R '^tests/sandbox/' -j "${JOBS:-8}" -V > "$LOG" 2>&1
+# One row per verification: status, methods, bytecodes, objects, infer ms,
+# check ms, total ms (convert + heap + infer + check), peak KB.
 grep -o 'verifier: [a-z]*, [0-9]* methods, [0-9]* bytecodes, [0-9]* objects; convert [0-9.]* ms, heap [0-9.]* ms, infer [0-9.]* ms, check [0-9.]* ms; peak [0-9]* KB' "$LOG" \
-  | python3 -c '
-import re, statistics, sys
-rows = []
-for line in sys.stdin:
-    m = re.search(r"verifier: (\w+), (\d+) methods, (\d+) bytecodes, (\d+) objects; convert ([\d.]+) ms, heap ([\d.]+) ms, infer ([\d.]+) ms, check ([\d.]+) ms; peak (\d+) KB", line)
-    if m:
-        v = m.groups()
-        total = sum(float(x) for x in v[4:8])
-        rows.append((v[0], int(v[1]), int(v[2]), int(v[3]), float(v[6]), float(v[7]), total, int(v[8])))
-if not rows:
-    print("no verifications found"); sys.exit(1)
-def span(xs, fmt):
-    return ("%s-%s (median %s)" % (fmt % min(xs), fmt % max(xs), fmt % statistics.median(xs)))
-print("verifications: %d (%d accepted)" % (len(rows), sum(1 for r in rows if r[0] == "accepted")))
-print("methods: " + span([r[1] for r in rows], "%d"))
-print("bytecodes: " + span([r[2] for r in rows], "%d"))
-print("objects: " + span([r[3] for r in rows], "%d"))
-print("infer ms: " + span([r[4] for r in rows], "%.1f"))
-print("check ms: " + span([r[5] for r in rows], "%.1f"))
-print("total ms: " + span([r[6] for r in rows], "%.1f"))
-print("peak KB: " + span([r[7] for r in rows], "%d"))
-'
+  | sed -E 's/^verifier: ([a-z]*), ([0-9]*) methods, ([0-9]*) bytecodes, ([0-9]*) objects; convert ([0-9.]*) ms, heap ([0-9.]*) ms, infer ([0-9.]*) ms, check ([0-9.]*) ms; peak ([0-9]*) KB$/\1 \2 \3 \4 \5 \6 \7 \8 \9/' \
+  | awk '{ printf "%s %s %s %s %s %s %.17g %s\n", $1, $2, $3, $4, $7, $8, $5 + $6 + $7 + $8, $9 }' > "$ROWS"
+
+# Prints "MIN-MAX (median MEDIAN)" of column $1 of the rows, each value
+# formatted with the printf format $2 (%d truncates a fractional median).
+span() {
+  awk -v c="$1" '{ print $c }' "$ROWS" | sort -g | awk -v fmt="$2" '
+    { v[NR] = $1 }
+    END {
+      median = (NR % 2) ? v[(NR + 1) / 2] : (v[NR / 2] + v[NR / 2 + 1]) / 2
+      printf "%s-%s (median %s)\n", sprintf(fmt, v[1]), sprintf(fmt, v[NR]), sprintf(fmt, median)
+    }'
+}
+
+if [ ! -s "$ROWS" ]; then
+  echo "no verifications found"
+else
+  echo "verifications: $(wc -l < "$ROWS") ($(awk '$1 == "accepted"' "$ROWS" | wc -l) accepted)"
+  echo "methods: $(span 2 %d)"
+  echo "bytecodes: $(span 3 %d)"
+  echo "objects: $(span 4 %d)"
+  echo "infer ms: $(span 5 %.1f)"
+  echo "check ms: $(span 6 %.1f)"
+  echo "total ms: $(span 7 %.1f)"
+  echo "peak KB: $(span 8 %d)"
+fi
 grep -E '^[0-9]+% tests passed|tests failed' "$LOG" | tail -2
