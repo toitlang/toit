@@ -293,3 +293,164 @@ pub unsafe fn convert(p: &ProgramTables, prims: &PrimitiveArities) -> Result<(Lo
     let loaded = Loaded { format: 2, program, heap, globals, names: Names::default() };
     Ok((loaded, arity))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Class 0: an instance class with 2 fields (size 3 words); class 1: an
+    // array class; class 2: a byte-array class.
+    const CLASS_BITS: [u16; 3] = [
+        (3 << CLASS_ID_OFFSET) as u16 | INSTANCE_TAG as u16,
+        ARRAY_TAG as u16,
+        BYTE_ARRAY_TAG as u16,
+    ];
+
+    fn smi(v: i64) -> usize { (v << SMI_TAG_SIZE) as usize }
+    fn header(class_id: usize, tag: usize) -> usize { smi(((class_id << CLASS_ID_OFFSET) | tag) as i64) }
+
+    struct Fixture {
+        image: Vec<usize>,
+        roots: Vec<usize>,
+        builtin: Vec<usize>,
+        invoke: Vec<i32>,
+        entry: Vec<i32>,
+        methods: Vec<V2Method>,
+        globals: Vec<usize>,
+        literals: Vec<usize>,
+    }
+
+    impl Fixture {
+        /// An image with: word 0 an instance of class 0 with fields [smi 7,
+        /// ref to the array]; word 3 an array of length 2 [smi 1, ref to
+        /// the instance]; word 7 a byte array of 3 bytes.
+        fn new() -> Fixture {
+            let mut f = Fixture {
+                image: vec![0; 10],
+                roots: vec![smi(0); ROOT_COUNT],
+                builtin: vec![smi(0); BUILTIN_COUNT],
+                invoke: vec![0; INVOKE_OFFSET_COUNT],
+                entry: vec![0; ENTRY_POINT_COUNT],
+                methods: Vec::new(),
+                globals: Vec::new(),
+                literals: Vec::new(),
+            };
+            let base = f.image.as_ptr() as usize;
+            f.image[0] = header(0, INSTANCE_TAG);
+            f.image[1] = smi(7);
+            f.image[2] = base + 3 * WORD_SIZE + HEAP_TAG;
+            f.image[3] = header(1, ARRAY_TAG);
+            f.image[4] = 2;
+            f.image[5] = smi(1);
+            f.image[6] = base + HEAP_TAG;
+            f.image[7] = header(2, BYTE_ARRAY_TAG);
+            f.image[8] = 3;
+            f.image[9] = usize::from_ne_bytes([1, 2, 3, 0, 0, 0, 0, 0]);
+            f.globals.push(base + HEAP_TAG);
+            f.literals.push(base + 7 * WORD_SIZE + HEAP_TAG);
+            f
+        }
+
+        fn tables(&self) -> ProgramTables {
+            ProgramTables {
+                bytecodes: std::ptr::null(),
+                bytecodes_length: 0,
+                methods: self.methods.as_ptr(),
+                methods_length: self.methods.len(),
+                dispatch: std::ptr::null(),
+                dispatch_length: 0,
+                class_bits: CLASS_BITS.as_ptr(),
+                class_bits_length: CLASS_BITS.len(),
+                class_check_ids: std::ptr::null(),
+                class_check_ids_length: 0,
+                interface_check_offsets: std::ptr::null(),
+                interface_check_offsets_length: 0,
+                invoke_offsets: self.invoke.as_ptr(),
+                entry_points: self.entry.as_ptr(),
+                builtin_class_ids: self.builtin.as_ptr(),
+                roots: self.roots.as_ptr(),
+                roots_length: ROOT_COUNT,
+                literals: self.literals.as_ptr(),
+                literals_length: self.literals.len(),
+                globals: self.globals.as_ptr() as *mut usize,
+                globals_length: self.globals.len(),
+                program_heap_start: self.image.as_ptr() as usize,
+                program_heap_size: self.image.len() * WORD_SIZE,
+                remembered_set_bias: 0,
+                global_max_height: 5,
+                stack_array_word: 0,
+            }
+        }
+
+        fn convert(&self) -> Result<Loaded, Malformed> {
+            let prims = PrimitiveArities { counts: &[], arities: &[] };
+            unsafe { convert(&self.tables(), &prims) }.map(|(l, _)| l)
+        }
+    }
+
+    #[test]
+    fn converts_objects_breadth_first() {
+        let f = Fixture::new();
+        let l = f.convert().unwrap();
+        // Globals first (the roots are smis): the instance is object 0, the
+        // literal byte array 1, the array (reached through the instance) 2.
+        assert_eq!(l.heap.len(), 3);
+        assert!(matches!(l.globals[0], Value::Obj(0)));
+        assert!(matches!(l.program.literals[0], Value::Obj(1)));
+        match &l.heap[0].body {
+            ExecBody::Instance(fields) => {
+                assert!(matches!(fields[..], [Value::Smi(7), Value::Obj(2)]));
+            }
+            _ => panic!("not an instance"),
+        }
+        match &l.heap[1].body {
+            ExecBody::Bytes(b) => assert_eq!(b, &vec![1, 2, 3]),
+            _ => panic!("not bytes"),
+        }
+        match &l.heap[2].body {
+            ExecBody::Array(e) => assert!(matches!(e[..], [Value::Smi(1), Value::Obj(0)])),
+            _ => panic!("not an array"),
+        }
+        assert!(l.heap.iter().all(|o| o.ro));
+    }
+
+    #[test]
+    fn rejects_references_outside_the_image() {
+        let mut f = Fixture::new();
+        f.image[2] = f.image.as_ptr() as usize + 10 * WORD_SIZE + HEAP_TAG;
+        assert!(f.convert().is_err());
+        let mut f = Fixture::new();
+        f.image[2] = f.image.as_ptr() as usize + 4 + HEAP_TAG;  // Not word aligned.
+        assert!(f.convert().is_err());
+        let mut f = Fixture::new();
+        f.globals[0] = 3;  // Neither a smi nor a heap reference.
+        assert!(f.convert().is_err());
+    }
+
+    #[test]
+    fn rejects_objects_past_the_image() {
+        let mut f = Fixture::new();
+        f.image[4] = 1 << 40;  // Array length past the end of the image.
+        assert!(f.convert().is_err());
+        let mut f = Fixture::new();
+        f.image[8] = 100;  // Byte-array content past the end of the image.
+        assert!(f.convert().is_err());
+        let mut f = Fixture::new();
+        f.image[8] = (-1i64 - 3) as usize;  // External, content address 0.
+        f.image[9] = 0;
+        assert!(f.convert().is_err());
+    }
+
+    #[test]
+    fn rejects_headers_that_disagree_with_the_class() {
+        let mut f = Fixture::new();
+        f.image[3] = header(0, ARRAY_TAG);  // Class 0 is an instance class.
+        assert!(f.convert().is_err());
+        let mut f = Fixture::new();
+        f.image[3] = header(9, ARRAY_TAG);  // No class 9.
+        assert!(f.convert().is_err());
+        let mut f = Fixture::new();
+        f.image[3] = header(1, STACK_TAG);  // Not program data.
+        assert!(f.convert().is_err());
+    }
+}
