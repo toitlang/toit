@@ -44,7 +44,7 @@ handles itself):
 | tail calls | INVOKE_STATIC_TAIL, INVOKE_LAMBDA_TAIL, INVOKE_INITIALIZER_TAIL (`replace_frame`; lambda method id, kind, captures and initializer id checked at run time as the spec checks them) | tail.rs | frame height, receiver, handler of the frame |
 | raise | every raised failure (`Outcome2::Raise` completed by `prim::raised`: exception allocation, then the verified unwinding; out of memory: throw of roots[4]) with format 1's message words | raise.rs | the exception class check (from the spec's not-stuck completion) |
 | resources | stack growth (`grow`), stack overflow (raise of roots[28]), out of memory in ALLOCATE and double arithmetic: `prim::resource_throw` | step.rs, unwind.rs, ops.rs | the reload checks after growth |
-| primitives | PRIMITIVE: lookup, arity, call, completion by status (`theorem::completion`) | primitive.rs | the frame-height check |
+| primitives | PRIMITIVE: the policy's core arities, the Rust ports (`prims::call`, no GC point, no save/reload) for 106 core primitives, else lookup, arity, C++ call; completion by status (`theorem::completion`) | primitive.rs, prims/ | the frame-height check |
 
 ## 2. Open obligations
 
@@ -58,14 +58,11 @@ the leaf contracts (TRUSTED.md section 6): the C++ calls on these paths
 
 Open:
 
-- R-prims: wire the Rust primitives of branch core/primitives
-  (`prims::call`, proven against `prim_spec`) into `primitive::op_primitive`
-  before the C++ bridge. Blocked on reconciling the heap models: that
-  branch's `Heap` makes every byte-array-tagged object `Body::Bytes`
-  (proxies included, content inaccessible), this branch makes proxies and
-  mapped files opaque (TRUSTED.md V5) because `spec_helpers::fast_at`
-  would read a proxy's bytes. Both branches add `Heap::double_bits` (same
-  contract). Decide one model (V5 is the one INVOKE_AT can implement).
+- R-prims: done (branch core/prims-integration): the verified PRIMITIVE
+  handler runs `prims::call` where the policy's core arities allow it
+  (`primitive::op_rust_primitive`), proven to be a completion of the step
+  (`lemma_completion`); the heap model is V5 (the primitives return
+  `NotPorted` for opaque byte arrays).
 - R-trace: the C++ exception encoder reads the message words before its
   first GC point (`msg_ok` requires them to be values of the state);
   `toit_v2_allocate_exception` is the leaf contract.
@@ -84,9 +81,9 @@ Open:
 
 - S1 primitives: every allowed primitive satisfies `prim_heap_ok` and has
   the arity of verified/spec/src/v2/prim_arity.rs. 106 of the 154 allowed
-  primitives are ported to Rust and proven against `prim_spec`
-  (`prims::call`, TRUSTED.md section 8); open: the verified PRIMITIVE
-  handler must call `prims::call` (branch core/refinement-2), and the
+  primitives are ported to Rust, proven against `prim_spec` (`prims::call`,
+  TRUSTED.md section 8) and run by the verified PRIMITIVE handler for
+  every program on the verified loop (untrusted programs); the
   remaining 48 (task, message, time, encoding and formatting primitives,
   bitmap) are reviewed C++ (TRUSTED.md section 8).
 - S2 loader: `theorem::loaded` (the tables are an accepted program with

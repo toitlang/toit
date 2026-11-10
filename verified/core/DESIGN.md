@@ -178,14 +178,18 @@ top, the finally-record count and length).
 
 The C++ primitive path is unverified and outside the security boundary
 (TRUSTED.md section 2). Ported primitives: src/prims (TRUSTED.md section
-7, PROGRESS.md "Primitives"), run through a temporary opt-in bridge
-(`TOIT_V2_RUST_PRIMITIVES=1`) until the verified PRIMITIVE handler calls
-`prims::call`; the C++ helpers they use are `toit_v2_try_allocate_*` (no GC),
-`toit_v2_primitive_gc` and `toit_v2_leave_primitive`. For untrusted
-programs the policy resolves only the allowed set of
-docs/sandbox-policy.md; all of them currently run as C++ (open work: port
-them to Rust with `prim_heap_ok`, OBLIGATIONS.md S1). Timer and event glue
-stays C++ (it is reached through primitives and the scheduler).
+8, PROGRESS.md "Primitives"): the verified PRIMITIVE handler runs the
+Rust port (`prims::call`) of a core primitive when
+`toit_v2_context::core_arities[index] == arity + 1` (the policy resolves
+the VM's own primitive with the method's arity; a table lookup, no C++
+call), without saving and reloading the machine (no GC point); their only
+C++ helpers are `toit_v2_try_allocate_*` (no GC). `NotPorted` and
+`NeedsGc` (heap unchanged) fall back to lookup and call above, which
+collect and retry. 106 of the 154 allowed primitives of
+docs/sandbox-policy.md run in Rust for untrusted programs; the other 48
+and everything trusted programs on the checked loop call stay C++. Timer
+and event glue stays C++ (it is reached through primitives and the
+scheduler).
 
 GC-safety discipline: OBLIGATIONS.md, G.
 

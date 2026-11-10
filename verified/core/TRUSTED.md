@@ -16,7 +16,7 @@ Opaque structs holding raw pointers into VM memory. Their ghost content
 | `Table<T>` | an immutable program table `ptr[0..len)` (bytecodes, method table, dispatch table, class tables, roots, literals) | `len() == view.len()`; `at(i)` requires `i < len`, returns `view[i]` |
 | `Globals` | the process' global variables | `at`/`set` require `i < len`; `set` updates `view[i]` |
 | `StackMem` | the array of the current task's `Stack` object | `read`/`write` require `i < len`; `copy_within` is a memmove with an exact contract; `header`/`set_header` access the Stack header words (top, record top, bci with the finally-record count) |
-| `Heap` | process and program heap objects | the heap model (`objs`, `addrs`, `class_bits`; `abs::obj_model_ok`: instances, arrays, doubles, large integers and strings agree with their class tag, field count, length and encodable contents; a byte array of the model has the byte-array tag): `class_id`, `class_tag`, `field`/`set_field`, `array_length`, `element`/`set_element`, `double_bits`, `large_int`, `string_len`/`string_byte`, `bytes_len`/`byte_at`/`set_byte_at` relate memory to it; without ghost content (used only by the checked loop of programs not accepted): `header`, `word`, `byte`, `u32_at`, `set_word`, `set_byte` access the object a tagged word designates; the setters of references apply the write barrier (card mark) |
+| `Heap` | process and program heap objects | the heap model (`objs`, `addrs`, `class_bits`; `abs::obj_model_ok`: instances, arrays, doubles, large integers and strings agree with their class tag, field count, length and encodable contents; a byte array of the model has the byte-array tag): `class_id`, `class_tag`, `field`/`set_field`, `array_length`, `element`/`set_element`, `double_bits`, `large_int`, `string_len`/`string_byte`, `bytes_len`/`byte_at`/`set_byte_at`, and for the primitives `string_content`/`byte_array_content` (a `Content` view), `content_at`/`content_set`/`content_copy`/`content_fill`, `array_copy`, `string_hash_field`/`set_string_hash_field` (section 8) relate memory to it; without ghost content (used only by the checked loop of programs not accepted): `header`, `word`, `byte`, `u32_at`, `set_word`, `set_byte` access the object a tagged word designates; the setters of references apply the write barrier (card mark) |
 | `Preemption` | `Interpreter::watermark_` | `requested`/`clear`/`request`: environment nondeterminism, no contract |
 
 Assumptions behind the views:
@@ -44,7 +44,14 @@ Assumptions behind the views:
   and, outside the program heap, writable memory owned by it). Mapped
   files and resource proxies (other external tags) are opaque objects of
   the model: INVOKE_AT/AT_PUT/SIZE call their methods (format 1 reads
-  mapped files in place; same result through the primitive).
+  mapped files in place; same result through the primitive), and the
+  Rust primitives return `NotPorted` for them (`prims::blob::ByteArg`,
+  `BlobArg::NotPorted`), so the C++ primitive handles them. The program
+  image follows the same rule (verified/vmverify/src/from_vm.rs models an
+  external byte array without raw bytes as an opaque object). A C++
+  primitive that neuters a byte array (`process_send` clears the address)
+  turns a model byte array into an opaque one, which `prim_heap_ok`
+  allows (the class stays).
 
 ## 2. FFI (`src/ffi.rs`, `src/interpreter_v2.cc`)
 
@@ -93,15 +100,26 @@ growth (`toit_v2_grow_stack`, `Stack::v2_copy_to`), the GC and shrinking
 of format-2 stacks (`Stack::roots_do`, `Stack::v2_frames_do`), the
 exception allocation and trace encoding, and the C++ primitives.
 
-The C++ primitive path (`toit_v2_lookup_primitive`,
-`toit_v2_call_primitive`) calls arbitrary `PrimitiveEntry` functions of
-the process' policy with the arguments on the object stack, as the C++
-interpreter does. It is UNVERIFIED and OUTSIDE THE SECURITY BOUNDARY of
-the core: for untrusted programs the policy only resolves the allowed set
-of docs/sandbox-policy.md; trusted format-2 programs (used by the test
-suite) reach every primitive this way. Porting the allowed primitives to
-Rust (with `prim_heap_ok`) removes it for untrusted programs
-(OBLIGATIONS.md S1).
+Primitives. The verified PRIMITIVE handler runs the Rust port of a core
+primitive (`prims::call`, section 8) when the process' policy resolves
+that primitive to the VM's own entry with the method's arity: a table
+lookup in `toit_v2_context::core_arities` (`PrimitivePolicy::core_arities`,
+built once per standard policy from the policy's tables: arity + 1 where
+the policy's entry is the VM's own function, else 0; derived policies share
+their base's). TRUSTED: the table agrees with the policy (a C++ fact like
+the policy itself; the spec does not model policies, so the proof does not
+depend on it, but the sandbox does: a denied primitive must not run as
+Rust). Otherwise, and when the port returns `NotPorted` or `NeedsGc`, the
+C++ primitive path (`toit_v2_lookup_primitive`, `toit_v2_call_primitive`)
+calls the `PrimitiveEntry` of the process' policy with the arguments on
+the object stack, as the C++ interpreter does; it collects garbage and
+retries on allocation failure. That path is UNVERIFIED and OUTSIDE THE
+SECURITY BOUNDARY of the core (its leaf contract `gc_call_primitive`
+states what it must do): for untrusted programs the policy only resolves
+the allowed set of docs/sandbox-policy.md, 106 of whose 154 primitives
+have Rust ports; trusted format-2 programs (used by the test suite) reach
+every primitive, and the checked loop (programs not accepted) calls only
+C++ primitives.
 
 ## 3. Layout constants (`src/layout.rs`)
 
@@ -166,7 +184,7 @@ These are all the assumptions it rests on, besides sections 1 to 5:
 | Allocation | `alloc::gc_allocate_instance`, `alloc::gc_allocate_double` | the views represent the state with exactly the spec's new object appended, or the state itself (out of memory) | `toit_v2_allocate_instance`/`_double` and the GC |
 | Raise | `raise::gc_allocate_exception` | the views represent the state with the heap extended (`prim::heap_extended`: the trace) and `exception_obj2(value, trace)` appended, or only extended (out of memory): `prim::raised` | `toit_v2_allocate_exception` (`ProgramOrientedEncoder`, `allocate_byte_array`, `allocate_instance`) and the GC |
 | Stack growth | `step::gc_grow_stack` | the views represent the same state, with `needed` free words on success | `toit_v2_grow_stack`, `Stack::v2_copy_to`, the GC |
-| Primitives | `primitive::gc_call_primitive` | the status, result and resulting state are one of the spec's completions of the PRIMITIVE step (`theorem::completion`): `prim_default`/`prim_spec` for each C++ primitive the policy resolves (docs/sandbox-policy.md: every allowed primitive), `task_step` for task_new/task_transfer | NOT discharged per primitive: the C++ primitives (S1); the Rust ports of branch core/primitives prove their own `prim_spec` and are not wired in yet (OBLIGATIONS.md) |
+| Primitives | `primitive::gc_call_primitive` | the status, result and resulting state are one of the spec's completions of the PRIMITIVE step (`theorem::completion`): `prim_spec` (the default contract, and for the core module the precise contracts of `prim_core::core_contract` and the three examples of `prim.rs`, for arguments without block references) for each C++ primitive the policy resolves, `task_step` for task_new/task_transfer | NOT discharged per C++ primitive (section 8 lists the reviewed ones; the precise contracts of the ported indices are validated against the C++ by verified/core/tests/prim_diff.sh). The Rust ports (`prims::call`, run by `primitive::op_rust_primitive`) are proven: their outcome is a completion (`primitive::lemma_completion`), no leaf contract |
 | Floating point | spec crate: `x_double_add/sub/mul`, `x_compare_mixed` | host IEEE-754 and the interpreter's `compare_numbers` are the spec's uninterpreted functions | as format 1 (shared code) |
 | Word size | `abs.rs` `global size_of usize == 8` | usize is 64 bits | compile-time assertion in the erased build |
 | Termination | `run_loop` `exec_allows_no_decreases_clause` | none claimed: a program may run forever (the scheduler preempts it) | nothing to discharge |
@@ -197,30 +215,43 @@ of the three header words the core uses (before: any word offset);
 | `alloc::gc_allocate_instance`, `gc_allocate_double` | the GC moves an object without updating a root the abstraction covers, or the new object is not the spec's | `TOIT_V2_VALIDATE=1` around every GC, untrusted suite, fuzzing |
 | `raise::gc_allocate_exception` | the encoder reads a message word as an object after a GC point, or the exception is not `exception_obj2` (value field 0, trace field 1) | negative tests comparing traces with format 1 (untrusted suite), ASan |
 | `step::gc_grow_stack` | records not copied (`Stack::v2_copy_to`) or the header not updated | deep-recursion tests (build/t/deep.toit, tests/sandbox), `TOIT_V2_VALIDATE` |
-| `primitive::gc_call_primitive` | a C++ primitive breaks `prim_heap_ok` (e.g. writes a task's stack field, as before R5) or returns a non-value | fuzzing (found R5), vmverify differential, ported Rust primitives replace them (S1) |
+| `primitive::gc_call_primitive` | a C++ primitive breaks `prim_heap_ok` (e.g. writes a task's stack field, as before R5), returns a non-value, or disagrees with a precise contract of `prim_core` | fuzzing (found R5), vmverify differential, prim_diff.sh (C++ against the proven Rust ports, 10M calls); the Rust ports replace 106 of them for untrusted programs (S1) |
+| `PrimitivePolicy::core_arities` (C++, read through `Env::core_arities`, a `Table<u8>`) | an entry is non-zero for a primitive the policy denies (the Rust port would run although the C++ entry is `primitive_denied`) | tests/sandbox (denied primitives fail with PERMISSION_DENIED), review of `initialize_core_arities` (compares the policy's function pointer with `Primitive::at`) |
+| `ffi::Allocator` (`toit_v2_try_allocate_*`) | an allocation collects garbage (a Content view would dangle) or the object is not the stated builtin class and body | review (`ObjectHeap::allocate_*` without GC, `Process::allocate_string/byte_array`), prim_diff.sh, ASan fuzzing |
+| `view::Content`, `Heap::{string_content, byte_array_content, content_at, content_set, content_copy, content_fill, array_copy, string_hash_field, set_string_hash_field}` | a view's pointer or length differs from the object's bytes (external strings, V5 byte arrays), or a view outlives a GC point | layout check, prim_diff.sh, ASan fuzzing; views never leave `prims::call`, which has no GC point |
+| `prims/fp.rs` | a float operation differs from the C++ (NaN payloads, libm) | prim_diff.sh (bit-exact checksums) |
+| `prims/index.rs` `TABLE` (plain Rust) | a primitive index or arity differs from src/primitive.h | layout check (`toit_vcore_prim_entry` against MODULE_CORE) |
 | `ffi::toit_v2_run` `assume_new` (ap, cert, trusted) | the tables the core runs differ from those vmverify checked | vmverify differential (from_vm on the same `toit_v2_program`), the `Accepted` token ties the loop to the accepted table |
 | `machine::run` `assume_new` (g) | the scheduler resumes a different state | tests/sandbox task tests, untrusted suite (tasks, channels) |
 | `machine.rs` (plain-Rust file), `cold!` | the checked loop runs only programs not accepted; `cold!` (also used by the `*_raw` trampolines of the verified loop's leaf calls) assumes no unwinding panic in the moved-out machine | runtime-hardening-test, the checked loop's run-time checks; review: the `*_raw` bodies only call the FFI |
 | `ffi.rs` plain items (layout tables, `Context`, `ProgramTables`, extern decls) | a C struct field moved | layout check (every offset) |
 | uninterp views (`objs`, `addrs`, `class_bits`, `view`, `hdr`) | none by themselves: they are related to memory only by the accessors' contracts | (the accessors' tests) |
+
 ## 8. Primitives (`src/prims`)
 
-The allowed primitives the core runs in Rust (`prims::call`) are proven
-against the spec's primitive protocol (verified/spec/src/v2/prim.rs:
-`prim_default`, i.e. `prim_heap_ok` and a `good` result or a resource
-error, refined by `prim_refined` and the per-primitive `core_contract` of
-verified/spec/src/v2/prim_core.rs). Status, counts and measurements:
-PROGRESS.md, "Primitives". What the proofs rest on:
+The allowed primitives the core runs in Rust (`prims::call`, from the
+verified PRIMITIVE handler, section 2) are proven against the spec's
+primitive protocol (verified/spec/src/v2/prim.rs: `prim_spec`, i.e.
+`prim_default` (`prim_heap_ok` and a `good` result or a resource error)
+refined by `prim_refined`, whose core-module branch is the per-primitive
+`core_contract` of verified/spec/src/v2/prim_core.rs). The arguments are
+the frame's parameters as the primitive sees them (a block reference as
+the smi that encodes it, `primitive::norm_args`); the precise contracts
+apply to arguments without block references (`prim::plain_args`).
+Status, counts and measurements: PROGRESS.md, "Primitives". The heap
+model is TRUSTED.md V5 (a byte array is `Body::Bytes` only when internal
+or raw external; the primitives return `NotPorted` for the opaque ones).
+What the proofs rest on:
 
 | Item | Where | Assumption |
 |---|---|---|
-| Blob bodies | `Heap::lemma_body_tag` (external_body proof fn) | heap integrity (V2) for the bodies `abs::obj_model_ok` leaves open: an object is a string, byte array, double or large integer exactly if its class has that tag. Consistent with `obj_model_ok` (instances and arrays by tag) |
-| Number and blob accessors | `Heap::large_integer_value`, `double_bits`, `string_content`, `byte_array_content`, `byte_array_is_raw`, `string_hash_field`, `set_string_hash_field` | each reads (writes) the layout-checked words of the object `id` the model says has that body; `string_content`/`byte_array_content` return a `Content` whose length is the model's content length (the C++ `String::Bytes`/`ByteArray::Bytes` rules: inline, or external with the raw-bytes tag; mapped files only for reading; external structs never) |
+| Number and blob accessors | `Heap::double_bits`, `large_int`, `bytes_len` (section 1), `string_content`, `byte_array_content`, `string_hash_field`, `set_string_hash_field` | each reads (writes) the layout-checked words of the object `id` the model says has that body; `string_content`/`byte_array_content` return a `Content` whose length is the model's content length (inline, or the external address: for a byte array only a model byte array, V5); the tag facts come from `abs::obj_model_ok` (proven, no trusted lemma) |
 | Content views | `Content`, `Heap::content_at/set/copy/fill` | a view stays valid for the whole primitive call: primitives never reach a GC point (allocation does not collect, below), so no object moves and no external memory is freed while a view is alive; the views never leave `prims::call`. Every access is bounds-checked by its precondition |
 | Array memmove | `Heap::array_copy` | memmove of elements with the card mark of the destination, as C++ `array_replace` |
 | Allocation without GC | `ffi::Allocator` (`toit_v2_try_allocate_*`) | appends exactly one object of the program's builtin class (`p.ap@.builtin[k]`) with the stated body at a fresh tagged address outside the program heap, keeping the model below 2^30 objects (`view::appended`), or changes nothing and returns 0. The class tag of each builtin class is checked at run time (`prims::builtin_with_tag`), not assumed |
 | Float operations | `prims/fp.rs` (external_body, no contracts) | none: scalar IEEE-754 and libm operations with the C semantics; the contracts do not depend on float values. Compared bit for bit with the C++ by the differential test |
-| The bridge | `prims/bridge.rs` (plain Rust, TEMPORARY) | the preconditions of `prims::call` (`heap_inv`, `args_ok`) hold at the checked PRIMITIVE handler (the machine refines a well-formed state; the arguments are `prim_args`). It runs only where the policy resolves the VM's own primitive (`toit_v2_lookup_primitive` sets `rust`), so denied primitives stay denied. On `NeedsGc` it collects (`toit_v2_primitive_gc`, attempts 1-3 as the C++ protocol) and calls again; a fourth failure throws ALLOCATION_FAILED (the spec's `PrimRet::OutOfMemory`). Replaced by the verified PRIMITIVE handler (branch core/refinement-2) |
+| The policy table | `Env::core_arities` (`PrimitivePolicy::core_arities`) | section 2: non-zero exactly where the policy resolves the VM's own primitive. Not used by the proof (the preconditions of `prims::call`, `heap_inv` and `args_ok`, are proven from `Machine::inv` in `primitive::lemma_rust_args`) |
+| Out of memory | none | `NeedsGc` leaves the heap unchanged (`prims::prim_post`), so the handler calls the C++ primitive on the same state, which collects and retries (the C++ protocol; its result is the leaf contract's completion) |
 
 ### Primitives that stay in C++, and the contract the proof relies on
 

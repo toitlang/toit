@@ -4,6 +4,42 @@ One entry per change of `src/v2/spec.rs`, `src/v2/prim.rs`, `src/v2/types.rs`
 or the verifier's rules (`src/v2/verifier.rs`) that an implementation of
 the spec (the verified core, the VM's loader) must follow. Newest first.
 
+## 2026-11-11: per-primitive contracts in prim_spec; array_at_put order; block arguments
+
+What (`src/v2/prim.rs`, `src/v2/prim_core.rs`, `src/v2/sound_prim_spec.rs`):
+
+* `prim_refined`'s `else` branch for the core module is
+  `prim_core::core_contract` (the per-primitive contracts of the primitives
+  the verified core ports to Rust), so every one of them is part of
+  `prim_spec`: the Rust ports are proven against it, and a C++ primitive
+  the core calls must satisfy it (the core's leaf contract).
+* `array_at_put_spec` follows the C++ decoding order (`ARGS(Array, int,
+  Object)`, then the checks): for a smi index in the 32-bit range a
+  program-heap array fails with PERMISSION_DENIED, then the bounds; an
+  index that is not an `int` is left to the default contract (C++ fails it
+  while decoding, before the program-heap check). Before, the program-heap
+  check came first, which C++ does not do (the primitives proof carried
+  the difference as `at_put_gap`). New satisfiability lemma
+  `lemma_array_at_put_ro_spec`.
+* `prim_spec` applies `prim_refined` only to arguments without block
+  references (`plain_args`). A primitive method may have block parameters
+  (`int.parse`'s `--if-error`; `int_parse` takes it as an ignored `int`),
+  and the verifier allows that; the primitive sees a block reference as
+  the smi that encodes it, so a value-level contract (e.g. `smi_add`'s
+  WRONG_OBJECT_TYPE for a non-smi receiver) was unsatisfiable for such
+  arguments, for C++ as for Rust. The default contract still applies.
+* `byte_array_at_contract` specifies the byte only for a byte array of
+  the model (`Body::Bytes`): C++ also reads mapped files, which the core's
+  heap model treats as opaque objects (verified/core/TRUSTED.md V5).
+
+Why: wiring the Rust primitives into the verified PRIMITIVE handler
+(verified/core, branch core/prims-integration). Implementations: the core
+proves its ported outcomes are `prim_returns` completions
+(`primitive::lemma_completion`); C++ primitives are compared with the
+proven ports by verified/core/tests/prim_diff.sh.
+
+Opcodes: PRIMITIVE.
+
 ## 2026-11-10: the PRIMITIVE protocol and per-primitive contracts (S1)
 
 What: `prim.rs` states the call/return protocol the machine implements

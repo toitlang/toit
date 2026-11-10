@@ -1,5 +1,68 @@
 # Phase 4a progress (verified core, format 2 on x86-64)
 
+## Rust primitives wired in (branch core/prims-integration, 2026-11-11)
+
+Part 1: merge core/primitives (b1d51876) into sandbox-integration
+(b375e252) and run the Rust primitives from the verified loop.
+
+1. Heap model: integration's V5. A byte-array object is `Body::Bytes`
+   only when internal or raw external at a non-null address; mapped files
+   and resource proxies are opaque. The primitives decode byte arrays with
+   `bytes_len` (`prims::blob::ByteArg`: Bytes / Not / Opaque) and return
+   `NotPorted` for opaque ones (C++ handles them); `byte_array_content`
+   requires a model byte array and always returns a view. The trusted
+   `Heap::lemma_body_tag` is gone (the tag facts follow from
+   `abs::obj_model_ok`); one `double_bits`, one `large_int` (the
+   primitives' `large_integer_value` and duplicate `double_bits` removed;
+   identical contracts); `byte_array_is_raw` replaced by `bytes_len`.
+   `prims::tags_ok` carries the obj_model_ok tag facts through the
+   primitives' heap lemmas. `NeedsGc` now leaves the heap unchanged.
+2. Wiring: `primitive::op_primitive` looks the core primitive up in the
+   policy's core arities (`PrimitivePolicy::core_arities`, a table in
+   `toit_v2_context`; arity + 1 where the policy resolves the VM's own
+   entry) and runs `prims::call` (`op_rust_primitive`) without save and
+   reload; `NotPorted`/`NeedsGc` fall back to the C++ lookup and call,
+   which collects and retries. Proven: `lemma_rust_args` (heap_inv and
+   args_ok from `Machine::inv`, block references as their smis),
+   `lemma_refines_heap` (a primitive's heap keeps `refines`),
+   `lemma_completion` (the outcome is a `prim_returns` completion).
+   Removed: `TOIT_V2_RUST_PRIMITIVES`, prims/bridge.rs, the lookup's `rust`
+   flag, `toit_v2_primitive_gc`/`toit_v2_leave_primitive`. The checked
+   loop calls only C++ primitives.
+3. Spec (verified/spec/format/SPEC-CHANGELOG.md, 2026-11-11):
+   `array_at_put_spec` in the C++ decoding order (the `at_put_gap` is gone),
+   `prim_core::core_contract` is the else branch of `prim_refined`,
+   `prim_spec` refines only arguments without block references
+   (`plain_args`: `int_parse` takes a block; without this the precise
+   contracts were unsatisfiable for such calls, also for C++),
+   `byte_array_at_contract` allows mapped files (opaque under V5).
+4. vmverify: `from_vm.rs` models an external byte array without raw bytes
+   at an address as an opaque object (V5); unit test
+   `models_external_byte_arrays_as_the_core`.
+5. prim_diff.sh compares trusted format 2 (checked loop, C++ primitives)
+   with untrusted (verified loop, Rust ports).
+
+Instructions per primitive call (callgrind inside `toit_v2_run`, 100,000
+calls of a primitive method minus the same loop calling a plain method;
+artifacts prims-integration/primcall): before (C++ through the verified
+handler: lookup call, save, call, reload) smi_add 288, string_length 316,
+array_at 293, float_add 360, blob_equals 306; after (Rust, table lookup,
+no save/reload) 122, 114, 117, 213, 148.
+
+Gates: `verified/check.sh --tests` passes (spec 842, core 780 verified, 0
+errors); ctest -j16 1160/1163 (version, reader, udp-reuse-port-test);
+untrusted suite 280 identical, the two known differences; prim_diff.sh 10
+seeds x 1,000,000 calls identical; fuzz: see below.
+
+Trusted items of the core (TRUSTED.toml occurrences): integration 143
+(external_body 55, unsafe 48, plain_rust_item 26, uninterp 7, assume_new
+4, other 3), core/primitives 198, now 198 (external_body 84, unsafe 63,
+plain_rust_item 34, uninterp 10, assume_new 4, other 3): the primitives'
+accessors, `Content`, `Allocator`, fp.rs and the index table; minus
+`lemma_body_tag`, `large_integer_value`, the duplicate `double_bits`,
+`byte_array_is_raw`, the bridge (plain_rust_file, assume_new),
+`PrimitiveRef::rust`, the primitive GC calls.
+
 ## Second proof pass (branch core/refinement-2, 2026-11-10)
 
 Goal: shrink the assumed `step_unverified` (and `grow_bridge`) to leaf
@@ -253,11 +316,9 @@ encode_object/error, main/spawn arguments, SDK info, the formatting and
 parsing primitives (int_parse, float_parse, *_to_string, float_round,
 UTF-16, UTF-8 validation, crc), external byte arrays, bitmap blit/byte_zap.
 
-Wiring: a temporary one-line hook in `machine.rs` (`op_primitive_cold`
-calls `prims::bridge::bridge` instead of `Runtime::call_primitive`),
-opt-in with `TOIT_V2_RUST_PRIMITIVES=1`; the bridge runs the Rust port
-only where the policy resolved the VM's own primitive. The verified
-PRIMITIVE handler (core/refinement-2) is to call `prims::call` directly.
+Wiring (superseded by branch core/prims-integration, above): a temporary
+opt-in hook (`TOIT_V2_RUST_PRIMITIVES=1`, prims/bridge.rs) at the checked
+PRIMITIVE handler; the measurements below are of that bridge.
 
 Results (final build):
 
