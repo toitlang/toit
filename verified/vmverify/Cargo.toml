@@ -30,6 +30,10 @@ crate-type = ["staticlib", "rlib"]
 name = "toit_vmverify_canonical"
 path = "src/bin/toit_vmverify_canonical.rs"
 
+[[bin]]
+name = "toit_vmverify_mem"
+path = "src/bin/toit_vmverify_mem.rs"
+
 [dependencies]
 toit_spec = { path = "../spec" }
 toit_verified_core = { path = "../core" }

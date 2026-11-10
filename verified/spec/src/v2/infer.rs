@@ -479,8 +479,17 @@ fn analyze<F: Facts>(p: &VProgram, f: &mut F, m: usize, trusted: bool) -> Result
                 if j == k_old && o_new == o_old {
                     None
                 } else {
-                    let share = common(&k_old, &o_old, &j, &o_new);
-                    Some(maps.intern(&ids_old, share, &j, &o_new).ok_or((t, String::from("maps too large")))?)
+                    // Share the bottom with the old map or with the incoming
+                    // one (the predecessor's chain), whichever is longer: in
+                    // a loop the incoming map already has the change.
+                    let share_old = common(&k_old, &o_old, &j, &o_new);
+                    let share_in = common(&k, &org, &j, &o_new).min(ids.len());
+                    let top = if share_in > share_old {
+                        maps.intern(&ids, share_in, &j, &o_new)
+                    } else {
+                        maps.intern(&ids_old, share_old, &j, &o_new)
+                    };
+                    Some(top.ok_or((t, String::from("maps too large")))?)
                 }
             };
             if let Some(top) = new_top {

@@ -68,6 +68,11 @@ pub fn start_peak() -> usize {
     now
 }
 
+/// The current level of the Rust heap.
+pub fn current() -> usize {
+    CURRENT.load(Ordering::Relaxed)
+}
+
 /// The peak since `start_peak` returned `base`, above `base`.
 pub fn peak_since(base: usize) -> usize {
     PEAK.load(Ordering::Relaxed).saturating_sub(base)
