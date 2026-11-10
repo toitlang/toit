@@ -149,6 +149,9 @@ impl Machine {
             final(self).g@ == sp::drop(old(self).g@, n as int),
             final(self).top == old(self).top + n,
             final(self).ftop == old(self).ftop,
+            final(self).rtop == old(self).rtop,
+            final(self).mem@ == old(self).mem@,
+            final(self).addr() == old(self).addr(),
             final(self).bci == old(self).bci,
     {
         let ghost m0 = *self;

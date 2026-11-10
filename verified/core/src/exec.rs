@@ -75,7 +75,8 @@ pub struct Program {
 
 /// The state of the running task. The object stack is `mem[top..len]`
 /// (spec index `i` at array index `len - 1 - i`), the frame records are
-/// `mem[0..ftop]`. `base`, `lim` and `method` cache the top frame: its
+/// `mem[0..ftop]`, the finally records `mem[ftop..rtop]` (`FIN_WORDS`
+/// each). `base`, `lim` and `method` cache the top frame: its
 /// base, `len - base` (slot `n` exists iff `top + n < lim`) and its
 /// method. `g` is the abstract state the machine represents
 /// (`refines`).
@@ -86,6 +87,7 @@ pub struct Machine {
     pub len: usize,
     pub top: usize,
     pub ftop: usize,
+    pub rtop: usize,
     pub bci: usize,
     pub base: usize,
     pub lim: usize,
@@ -174,7 +176,7 @@ impl Machine {
 
     pub open spec fn stack_ok(&self) -> bool {
         &&& self.len == self.mem@.len()
-        &&& self.ftop <= self.top <= self.len
+        &&& self.ftop <= self.rtop <= self.top <= self.len
         &&& self.base <= self.len
         &&& self.lim == self.len - self.base
         // The top frame's slots exist (its base is at or below the top).
@@ -202,12 +204,11 @@ impl Machine {
         &&& self.words() == enc_seq(addr, g.stack)
         &&& forall|i: int| 0 <= i < g.stack.len() ==> #[trigger] encodable(addr, g.stack[i])
         &&& g.frames.len() > 0
-        // The finally records (format note 17) are not represented in the
-        // frame records yet: the core still keeps a pending unwinding in a
-        // heap token (machine.rs), whose paths are not verified.
-        &&& g.fins.len() < 0x4000_0000
         &&& self.ftop == FRAME_WORDS * g.frames.len()
         &&& frames_rel(self.mem@, g.frames, g.tries)
+        // The finally records (format note 17) follow the frame records.
+        &&& self.rtop == self.ftop + FIN_WORDS * g.fins.len()
+        &&& fins_rel(self.mem@, self.ftop as int, g.fins)
         &&& self.bci == g.bci
         &&& self.globals@ == enc_seq(addr, g.globals)
         &&& forall|i: int| 0 <= i < g.globals.len() ==> #[trigger] encodable(addr, g.globals[i])
@@ -235,13 +236,14 @@ impl Machine {
         &&& m.stack_ok()
         &&& m.len == self.len
         &&& m.ftop == self.ftop
+        &&& m.rtop == self.rtop
         &&& m.base == self.base
         &&& m.lim == self.lim
         &&& m.method == self.method
         &&& m.heap.addrs() == addr
         &&& m.heap.objs() == self.heap.objs()
         &&& m.heap.class_bits() == self.heap.class_bits()
-        &&& forall|i: int| 0 <= i < self.ftop ==> #[trigger] m.mem@[i] == self.mem@[i]
+        &&& forall|i: int| 0 <= i < self.rtop ==> #[trigger] m.mem@[i] == self.mem@[i]
         &&& g1.heap == g0.heap
         &&& g1.frames == g0.frames
         &&& g1.tries == g0.tries
@@ -260,6 +262,7 @@ impl Machine {
         let g0 = self.g@;
         let g1 = m.g@;
         lemma_frames_rel_same(self.mem@, m.mem@, g0.frames, g0.tries);
+        lemma_fins_rel_same(self.mem@, m.mem@, self.ftop as int, g0.fins);
     }
 
     /// The top frame's height is `lim - top`.
@@ -325,6 +328,7 @@ impl Machine {
     pub open spec fn same(&self, other: &Machine) -> bool {
         &&& self.len == other.len
         &&& self.ftop == other.ftop
+        &&& self.rtop == other.rtop
         &&& self.base == other.base
         &&& self.lim == other.lim
         &&& self.method == other.method
@@ -334,18 +338,18 @@ impl Machine {
         &&& self.heap.class_bits() == other.heap.class_bits()
         &&& self.g == other.g
         &&& self.mem@.len() == other.mem@.len()
-        // The frame records (below ftop) are unchanged.
-        &&& forall|i: int| 0 <= i < self.ftop ==> #[trigger] self.mem@[i] == other.mem@[i]
+        // The frame and finally records (below rtop) are unchanged.
+        &&& forall|i: int| 0 <= i < self.rtop ==> #[trigger] self.mem@[i] == other.mem@[i]
     }
 
     /// Pushes `v`; false (and no change) if the object stack would run into
-    /// the frame records.
+    /// the frame and finally records.
     #[inline(always)]
     pub fn push(&mut self, v: usize) -> (r: bool)
         requires old(self).stack_ok(),
         ensures
             final(self).stack_ok(),
-            r == (old(self).top > old(self).ftop),
+            r == (old(self).top > old(self).rtop),
             r ==> final(self).top == old(self).top - 1
                 && final(self).mem@ == old(self).mem@.update(old(self).top - 1, v),
             !r ==> final(self).mem@ == old(self).mem@ && final(self).top == old(self).top,
@@ -354,7 +358,7 @@ impl Machine {
             r ==> final(self).words() == old(self).words().push(v),
             !r ==> final(self).words() == old(self).words(),
     {
-        if self.top <= self.ftop {
+        if self.top <= self.rtop {
             return false;
         }
         self.top = self.top - 1;
@@ -391,14 +395,16 @@ impl Machine {
             encodable(old(self).addr(), v),
         ensures
             r ==> final(self).refines(p) && final(self).g@ == sp::push(old(self).g@, v),
+            r ==> final(self).top == old(self).top - 1 && final(self).addr() == old(self).addr(),
             !r ==> *final(self) == *old(self),
             final(self).bci == old(self).bci,
             final(self).ftop == old(self).ftop,
+            final(self).rtop == old(self).rtop,
             final(self).base == old(self).base,
             final(self).method == old(self).method,
     {
         let ghost m0 = *self;
-        if self.top <= self.ftop {
+        if self.top <= self.rtop {
             return false;
         }
         self.push(w);
@@ -607,7 +613,7 @@ impl Machine {
     {
         let ghost m0 = *self;
         let ghost g0 = self.g@;
-        if self.top - self.ftop < n {
+        if self.top - self.rtop < n {
             return Ctl::Stuck(stuck::LIMIT);
         }
         proof { lemma_smi_word_nat(0); }
@@ -616,7 +622,7 @@ impl Machine {
             invariant
                 self.stack_ok(),
                 i <= n,
-                self.top >= self.ftop + (n - i),
+                self.top >= self.rtop + (n - i),
                 self.top == m0.top - i,
                 self.bci == m0.bci,
                 self.same(&m0),
@@ -643,24 +649,23 @@ impl Machine {
         Ctl::Next
     }
 
-    /// Stores top, frame top and bci into the Stack object, so that the GC
-    /// and C++ see the task's state.
+    /// Stores top, record top and bci with the number of finally records
+    /// into the Stack object, so that the GC and C++ see the task's state.
     #[inline(always)]
     pub fn save(&mut self)
         ensures
-            final(self).mem.hdr(STACK_TOP_WORD) == old(self).top,
-            final(self).mem.hdr(STACK_FRAME_TOP_WORD) == old(self).ftop,
-            final(self).mem.hdr(STACK_BCI_WORD) == old(self).bci,
+            old(self).ftop <= old(self).rtop ==> crate::alloc::saved(*final(self)),
             final(self).mem@ == old(self).mem@,
             final(self).mem@.len() == old(self).mem@.len(),
             final(self).top == old(self).top,
             final(self).bci == old(self).bci,
             final(self).same(old(self)),
     {
-        let (top, ftop, bci) = (self.top, self.ftop, self.bci);
+        let (top, rtop, bci) = (self.top, self.rtop, self.bci);
+        let fins = if rtop >= self.ftop { (rtop - self.ftop) / FIN_WORDS } else { 0 };
         self.mem.set_header(STACK_TOP_WORD, top);
-        self.mem.set_header(STACK_FRAME_TOP_WORD, ftop);
-        self.mem.set_header(STACK_BCI_WORD, bci);
+        self.mem.set_header(STACK_RECORD_TOP_WORD, rtop);
+        self.mem.set_header(STACK_BCI_WORD, bci | (fins << STACK_FIN_COUNT_SHIFT));
     }
 
     /// LOAD_LITERAL(_WIDE) i.

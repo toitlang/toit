@@ -163,21 +163,20 @@ void Stack::v2_initialize_new_task(Object* code) {
   ASSERT(len >= V2_FRAME_WORDS + 1);
   *reinterpret_cast<Object**>(_array_address(len - 1)) = code;
   _set_top(len - 1);
-  v2_set_frame_top(0);
-  v2_set_bci(0);
+  v2_set_records(0, 0, 0);
   GcMetadata::insert_into_remembered_set(this);
 }
 
 void Stack::v2_copy_to(Stack* other) {
   word used = length() - top();
-  word frames = v2_frame_top();
-  ASSERT(other->length() >= used + frames);
+  // The frame and the finally records.
+  word records = v2_record_top();
+  ASSERT(other->length() >= used + records);
   word displacement = other->length() - length();
-  memcpy(other->_array_address(0), _array_address(0), frames * WORD_SIZE);
+  memcpy(other->_array_address(0), _array_address(0), records * WORD_SIZE);
   memcpy(other->_array_address(top() + displacement), _array_address(top()), used * WORD_SIZE);
   other->_set_top(displacement + top());
-  other->v2_set_frame_top(frames);
-  other->v2_set_bci(v2_bci());
+  other->v2_set_records(v2_frame_top(), v2_fin_count(), v2_bci());
   // See copy_to.
   GcMetadata::insert_into_remembered_set(other);
 }

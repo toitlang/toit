@@ -1003,30 +1003,56 @@ class Stack : public HeapObject {
 
   // Format 2 (the verified core, interpreter_v2.cc and verified/core).
   //
-  // The array holds the frame records at the bottom, in [0, v2_frame_top()),
-  // V2_FRAME_WORDS words per frame, and the object stack at the top, in
-  // [top(), length()), growing towards each other. Frame records hold no
-  // object references (method index, return bci, base, handler), so the GC,
-  // which only visits [top(), length()), never sees them. Object-stack
-  // positions are counted from the bottom (length() - 1 is index 0), so they
-  // survive stack growth and shrinking. The try-top field holds the frame
-  // top and the pending-stack-check field the absolute bci the task is
-  // suspended at. See verified/core/DESIGN.md.
+  // The array holds the records at the bottom, in [0, v2_record_top()): the
+  // frame records, V2_FRAME_WORDS words per frame, in [0, v2_frame_top()),
+  // then the finally records (format note 17), V2_FIN_WORDS words each. The
+  // object stack is at the top, in [top(), length()), growing towards the
+  // records. Records hold no object references (frame: method index, return
+  // bci, base, handler; finally: frame, height, resume, target), so the GC,
+  // which only visits [top(), length()), never sees them, and copying or
+  // shrinking keeps [0, v2_record_top()) as it is. Object-stack positions
+  // are counted from the bottom (length() - 1 is index 0), so they survive
+  // stack growth and shrinking. The try-top field holds the record top, the
+  // pending-stack-check field the absolute bci the task is suspended at in
+  // its low V2_FIN_COUNT_SHIFT bits and the number of finally records above
+  // them. See verified/core/DESIGN.md.
   static const word V2_FRAME_WORDS = 4;
   static const word V2_FRAME_METHOD = 0;
   static const word V2_FRAME_RET = 1;
   static const word V2_FRAME_BASE = 2;
   // 0 for no handler, otherwise (height | bci << 32) of the frame's TRY.
   static const word V2_FRAME_HANDLER = 3;
+  // A finally record: the frame running the finally code, the height of
+  // its slots, the resumed unwinding (kind + 4 * frame) and the branch
+  // target (bci | height << 32). Only the core reads them.
+  static const word V2_FIN_WORDS = 4;
+  static const word V2_FIN_FRAME = 0;
+  static const word V2_FIN_HEIGHT = 1;
+  static const word V2_FIN_RESUME = 2;
+  static const word V2_FIN_TARGET = 3;
+  static const int V2_FIN_COUNT_SHIFT = WORD_BIT_SIZE / 2;
   // Words the core keeps free above a method's max height (for the slots of
   // a finally block entered while unwinding and a primitive's failure value).
   static const word V2_STACK_RESERVE = 8;
   // The word offset of array element 0 from the untagged address.
   static word v2_array_word() { return HEADER_SIZE / WORD_SIZE; }
-  word v2_frame_top() const { return _word_at(TRY_TOP_OFFSET); }
+  // The end of the frame and finally records.
+  word v2_record_top() const { return _word_at(TRY_TOP_OFFSET); }
+  // The bci and the number of finally records, as one word.
+  uword v2_bci_word() const { return _word_at(PENDING_STACK_CHECK_METHOD_OFFSET); }
+  word v2_bci() const { return v2_bci_word() & ((static_cast<uword>(1) << V2_FIN_COUNT_SHIFT) - 1); }
+  word v2_fin_count() const { return v2_bci_word() >> V2_FIN_COUNT_SHIFT; }
+  // The end of the frame records.
+  word v2_frame_top() const { return v2_record_top() - V2_FIN_WORDS * v2_fin_count(); }
+  // Sets the record top, the number of finally records and the bci.
+  void v2_set_records(word frame_top, word fin_count, word bci) {
+    _set_try_top(frame_top + V2_FIN_WORDS * fin_count);
+    _word_at_put(PENDING_STACK_CHECK_METHOD_OFFSET,
+                 static_cast<uword>(bci) | (static_cast<uword>(fin_count) << V2_FIN_COUNT_SHIFT));
+  }
+  // For a stack without finally records (a new task's).
   void v2_set_frame_top(word value) { _set_try_top(value); }
-  word v2_bci() const { return _word_at(PENDING_STACK_CHECK_METHOD_OFFSET); }
-  void v2_set_bci(word value) { _word_at_put(PENDING_STACK_CHECK_METHOD_OFFSET, value); }
+  void v2_set_bci(word value) { v2_set_records(v2_record_top(), 0, value); }
   void v2_set_top(word value) { _set_top(value); }
   uword v2_word_at(word index) { return *_array_address(index); }
   void v2_word_at_put(word index, uword value) { *_array_address(index) = value; }

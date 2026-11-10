@@ -80,6 +80,8 @@ pub open spec fn verified_op(op: u8) -> bool {
     ||| 32 <= op <= 34 || op == 37  // LOAD_GLOBAL_VAR_LAZY(_WIDE), LOAD/STORE_GLOBAL_VAR_DYNAMIC
     ||| op == 42 || op == 43  // ALLOCATE(_WIDE)
     ||| 78 <= op <= 80   // INVOKE_AT, INVOKE_AT_PUT, INVOKE_SIZE (array fast paths)
+    ||| op == 90 || op == 97 || op == 99  // THROW, TRY, UNWIND
+    ||| op == 93 || op == 95  // NON_LOCAL_RETURN, NON_LOCAL_BRANCH
 }
 
 /// The machine continues from a state the spec reaches from `g0`: the same
@@ -173,12 +175,12 @@ pub fn grow_bridge(m: &mut Machine, env: &Env, needed: usize) -> (r: Ctl)
 pub fn ensure_room(m: &mut Machine, env: &Env) -> (r: Option<Ctl>)
     requires old(m).inv(env.p),
     ensures
-        r is None ==> *final(m) == *old(m) && final(m).top - final(m).ftop >= FRAME_WORDS + STACK_RESERVE,
+        r is None ==> *final(m) == *old(m) && final(m).top - final(m).rtop >= FRAME_WORDS + STACK_RESERVE,
         r is Some ==> step_post(env.p, *old(m), *final(m), r->0),
 {
     proof { assert(env.p.max_height < 0x1_0000); }
     let needed = FRAME_WORDS + env.p.max_height + STACK_RESERVE;
-    if m.top - m.ftop >= needed {
+    if m.top - m.rtop >= needed {
         return None;
     }
     Some(grow_bridge(m, env, needed))
@@ -323,6 +325,8 @@ proof fn lemma_back_branch(p: &Program, g: State2)
 /// opcodes of the top frame (locals, constants, globals, pops, branches)
 /// are verified here; the others go through `step_unverified`.
 #[inline(always)]
+#[verifier::spinoff_prover]
+#[verifier::rlimit(200)]
 pub fn step(m: &mut Machine, env: &Env) -> (r: Ctl)
     requires old(m).inv(env.p),
     ensures step_post(env.p, *old(m), *final(m), r),
@@ -754,6 +758,28 @@ pub fn step(m: &mut Machine, env: &Env) -> (r: Ctl)
             let code = p.code.at(bci + 1) as usize;
             proof { assert(sp::step(ap, g) == sp::op_halt(ap, g, code as int)) by { reveal(sp::step); } }
             return crate::halt::op_halt(m, env, bci, opcode, code);
+        },
+        90 | 93 | 95 | 99 => {
+            // One call site: the unwinding loop is inlined once.
+            let (hd, off) = if opcode == 95 { (p.code.at(bci + 1) as usize, code_u32(p, bci + 2)) } else { (0, 0) };
+            proof {
+                if opcode == 90 {
+                    assert(sp::step(ap, g) == (if !sp::has_slot(g, 0) { sp::stuck(toit_spec::types::Stuck::StackRange) }
+                        else { sp::unwind(ap, g, Unwind::Throw(sp::at(g, 0))) })) by { reveal(sp::step); }
+                    assert(outcome_ok(ap, p.cert@, sp::step(ap, g)));
+                } else if opcode == 93 {
+                    assert(sp::step(ap, g) == sp::op_non_local_return(ap, g)) by { reveal(sp::step); }
+                } else if opcode == 95 {
+                    assert(sp::step(ap, g) == sp::op_non_local_branch(ap, g, hd as int, off as int)) by { reveal(sp::step); }
+                } else {
+                    assert(sp::step(ap, g) == sp::op_unwind(ap, g)) by { reveal(sp::step); }
+                }
+            }
+            return crate::unwind::op_unwinding(m, env, bci, opcode, hd, off);
+        },
+        97 => {
+            proof { assert(sp::step(ap, g) == sp::op_try(ap, g)) by { reveal(sp::step); } }
+            return crate::unwind::op_try(m, env, bci, opcode);
         },
         _ => {
             return step_unverified(m, env, bci, opcode, true);

@@ -144,6 +144,7 @@ impl StackMem {
 
     /// Copies `n` words from `from..from+n` to `to..to+n` (memmove).
     #[verifier::external_body]
+    #[inline(always)]
     pub fn copy_within(&mut self, from: usize, to: usize, n: usize)
         requires
             from + n <= old(self)@.len(),

@@ -98,11 +98,14 @@ pub const NEW_SPACE_POINTERS: u8 = 1;
 /// Word offsets of the header fields from the untagged address.
 pub const STACK_LENGTH_WORD: usize = 2;
 pub const STACK_TOP_WORD: usize = 3;
-/// Format 2: the frame top (the format-1 try top).
-pub const STACK_FRAME_TOP_WORD: usize = 4;
-/// Format 2: the bci the task is suspended at (the format-1 pending
-/// stack-check method).
+/// Format 2: the record top, the end of the frame and finally records
+/// (the format-1 try top).
+pub const STACK_RECORD_TOP_WORD: usize = 4;
+/// Format 2: the bci the task is suspended at in the low
+/// `STACK_FIN_COUNT_SHIFT` bits, the number of finally records above them
+/// (the format-1 pending stack-check method).
 pub const STACK_BCI_WORD: usize = 5;
+pub const STACK_FIN_COUNT_SHIFT: usize = 32;
 // The word offset of array element 0 depends on the build (the guard zone
 // is larger in debug builds); C++ passes it in the context.
 pub const FRAME_WORDS: usize = 4;
@@ -110,6 +113,16 @@ pub const FRAME_METHOD: usize = 0;
 pub const FRAME_RET: usize = 1;
 pub const FRAME_BASE: usize = 2;
 pub const FRAME_HANDLER: usize = 3;
+/// Finally records (format note 17) follow the frame records, 4 words
+/// each: the frame running the finally code, the height of its slots, the
+/// resumed unwinding (`kind + 4 * frame`, kind 0 throw, 1 return, 2
+/// branch) and the branch target (`bci | height << 32`, else 0). Only the
+/// core reads them; C++ copies them with the frame records.
+pub const FIN_WORDS: usize = 4;
+pub const FIN_FRAME: usize = 0;
+pub const FIN_HEIGHT: usize = 1;
+pub const FIN_RESUME: usize = 2;
+pub const FIN_TARGET: usize = 3;
 pub const STACK_RESERVE: usize = 8;
 
 // --- Program tables (src/program.h) ---------------------------------------
