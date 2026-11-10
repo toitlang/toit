@@ -34,8 +34,8 @@ namespace compiler {
 // NON_LOCAL_RETURN_WIDE and the four intrinsics, and reuses three of the
 // freed numbers for TRY, LOAD_FIELD_THIS and STORE_FIELD_THIS. Method ids are
 // indices into the method table (the order of the methods in the bytecodes),
-// method headers are 16 bytes and carry the body length, and the bytecodes
-// start with a 4-byte tag.
+// method headers are 2 bytes plus LEB128-encoded fields and carry the body
+// length, and the bytecodes start with a 4-byte tag.
 int bytecode_format();
 void set_bytecode_format(int format);
 inline bool is_format2() { return bytecode_format() == 2; }
@@ -57,16 +57,26 @@ static const Opcode V2_TRY = LINK;
 static const Opcode V2_LOAD_FIELD_THIS = UNLINK;
 static const Opcode V2_STORE_FIELD_THIS = NON_LOCAL_RETURN_WIDE;
 
-// Method header of format 2 (little endian):
-//    0  u8   arity
-//    1  u8   kind (0 method, 1 field accessor, 2 lambda, 3 block)
-//    2  u16  max height
-//    4  u16  selector offset (0xffff: none)
-//    6  u16  aux: captured count (lambda), field index (field accessor)
-//    8  u16  receiver class-id range start (0xffff: no declared receiver)
-//   10  u16  receiver class-id range end (exclusive)
-//   12  u32  length of the body in bytes
-static const int V2_HEADER_SIZE = 16;
+// Method header of format 2 (format note 15): two bytes, then unsigned
+// LEB128 numbers (7 bits per byte, low bits first, the top bit of a byte
+// set when another byte follows; at most 4 bytes, no redundant trailing
+// zero byte):
+//    u8    arity
+//    u8    flags: bits 0-1 kind (0 method, 1 field accessor, 2 lambda,
+//          3 block), bit 2 V2_HAS_SELECTOR, bit 3 V2_HAS_RECEIVER, bits
+//          4-7 zero
+//    leb   length of the body in bytes
+//    leb   selector offset (< 0xffff), if V2_HAS_SELECTOR
+//    leb   receiver class-id range start, if V2_HAS_RECEIVER
+//    leb   receiver class-id range size (>= 1, start + size <= 0xffff),
+//          if V2_HAS_RECEIVER
+//    leb   aux: captured count (lambda), field index (field accessor);
+//          only for these two kinds
+// The max height is not in the header: the program's global max stack
+// height bounds every method.
+static const int V2_HAS_SELECTOR = 1 << 2;
+static const int V2_HAS_RECEIVER = 1 << 3;
+static const int V2_MAX_LEB_BYTES = 4;
 static const int V2_KIND_METHOD = 0;
 static const int V2_KIND_FIELD_ACCESSOR = 1;
 static const int V2_KIND_LAMBDA = 2;

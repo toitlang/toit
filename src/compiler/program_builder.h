@@ -160,8 +160,10 @@ class ProgramBuilder {
   std::vector<Object*> literals_;
 
   std::vector<uint8> all_bytecodes_;
-  // Format 2: offsets of the method headers in all_bytecodes_, by method id.
+  // Format 2: offsets of the method headers and of the first bytecode of
+  // each method in all_bytecodes_, by method id.
   std::vector<int> v2_method_offsets_;
+  std::vector<int> v2_method_entries_;
 
   // The biggest max stack-height of all functions.
   int global_max_stack_height_ = 0;

@@ -159,33 +159,37 @@ int ProgramBuilder::create_method_v2(int kind,
     for (int i = 0; i < V2_TAG_SIZE; i++) all_bytecodes_.push_back(V2_TAG[i]);
   }
   ASSERT(0 <= arity && arity < 0x100);
-  ASSERT(0 <= max_height && max_height <= 0xffff);
-  ASSERT(0 <= selector && selector <= 0xffff);
+  ASSERT(0 <= selector && selector <= V2_NO_VALUE);
   ASSERT(0 <= aux && aux <= 0xffff);
   int offset = all_bytecodes_.size();
   int id = v2_method_offsets_.size();
   v2_method_offsets_.push_back(offset);
-  auto u16 = [&](int value) {
-    all_bytecodes_.push_back(value & 0xff);
-    all_bytecodes_.push_back((value >> 8) & 0xff);
+  auto leb = [&](word value) {
+    ASSERT(0 <= value && value < (static_cast<word>(1) << (7 * V2_MAX_LEB_BYTES)));
+    while (value >= 0x80) {
+      all_bytecodes_.push_back((value & 0x7f) | 0x80);
+      value >>= 7;
+    }
+    all_bytecodes_.push_back(value);
   };
+  int flags = kind;
+  if (selector != V2_NO_VALUE) flags |= V2_HAS_SELECTOR;
+  if (receiver.is_valid()) flags |= V2_HAS_RECEIVER;
   all_bytecodes_.push_back(arity);
-  all_bytecodes_.push_back(kind);
-  u16(max_height);
-  u16(selector);
-  u16(aux);
+  all_bytecodes_.push_back(flags);
+  leb(bytecodes.length());
+  if (selector != V2_NO_VALUE) leb(selector);
   if (receiver.is_valid()) {
-    ASSERT(receiver.start < receiver.end && receiver.end < V2_NO_VALUE);
-    u16(receiver.start);
-    u16(receiver.end);
-  } else {
-    u16(V2_NO_VALUE);
-    u16(V2_NO_VALUE);
+    ASSERT(0 <= receiver.start && receiver.start < receiver.end && receiver.end < V2_NO_VALUE);
+    leb(receiver.start);
+    leb(receiver.end - receiver.start);
   }
-  word length = bytecodes.length();
-  u16(length & 0xffff);
-  u16((length >> 16) & 0xffff);
-  ASSERT(static_cast<int>(all_bytecodes_.size()) == offset + V2_HEADER_SIZE);
+  if (kind == V2_KIND_FIELD_ACCESSOR || kind == V2_KIND_LAMBDA) {
+    leb(aux);
+  } else {
+    ASSERT(aux == 0);
+  }
+  v2_method_entries_.push_back(all_bytecodes_.size());
   for (int i = 0; i < bytecodes.length(); i++) all_bytecodes_.push_back(bytecodes[i]);
   global_max_stack_height_ = Utils::max(global_max_stack_height_, max_height);
   return id;
@@ -245,7 +249,7 @@ int ProgramBuilder::create_block(int arity, List<uint8> bytecodes, int max_heigh
 }
 
 int ProgramBuilder::absolute_bci_for(int method_id) {
-  if (is_format2()) return v2_method_offsets_[method_id] + V2_HEADER_SIZE;
+  if (is_format2()) return v2_method_entries_[method_id];
   Method method(&all_bytecodes_[method_id]);
   return method.bcp_from_bci(0) - &all_bytecodes_[0];
 }

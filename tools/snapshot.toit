@@ -511,8 +511,9 @@ class ToitByteArray extends ToitHeapObject:
 
 class ToitMethod:
   static HEADER-SIZE ::= 4
-  static V2-HEADER-SIZE ::= 16
   static V2-TAG-SIZE ::= 4
+  static V2-HAS-SELECTOR ::= 1 << 2
+  static V2-HAS-RECEIVER ::= 1 << 3
 
   static METHOD ::= 0
   static FIELD-ACCESSOR ::= 1
@@ -522,7 +523,7 @@ class ToitMethod:
   id     ::= 0
   arity  ::= 0
   kind   ::= 0
-  max-height ::= 0
+  max-height ::= 0  // Format 1 only.
   value  ::= 0
   bytecodes / ByteArray := ?
   is-statically-resolved-instance-method / bool := false
@@ -536,19 +537,30 @@ class ToitMethod:
   constructor all-bytecodes/ByteArray at/int bytecode-size/int --.format/int=1:
     id = at
     if format == 2:
-      // See src/compiler/bytecode_format.h.
-      header-size = V2-HEADER-SIZE
+      // See src/compiler/bytecode_format.h and verified/spec/format/15-header.md.
       arity = all-bytecodes[at]
-      kind = all-bytecodes[at + 1]
-      max-height = LITTLE-ENDIAN.uint16 all-bytecodes at + 2
-      value = LITTLE-ENDIAN.uint16 all-bytecodes at + 4
-      aux = LITTLE-ENDIAN.uint16 all-bytecodes at + 6
-      start := LITTLE-ENDIAN.uint16 all-bytecodes at + 8
-      if start != 0xffff:
-        receiver-start = start
-        receiver-end = LITTLE-ENDIAN.uint16 all-bytecodes at + 10
-      assert: (LITTLE-ENDIAN.uint32 all-bytecodes at + 12) == bytecode-size
-      bytecodes = all-bytecodes.copy (at + V2-HEADER-SIZE) (at + V2-HEADER-SIZE + bytecode-size)
+      flags := all-bytecodes[at + 1]
+      kind = flags & 0x3
+      pos := at + 2
+      read-leb := :
+        result := 0
+        shift := 0
+        while true:
+          byte := all-bytecodes[pos++]
+          result |= (byte & 0x7f) << shift
+          shift += 7
+          if byte & 0x80 == 0: break
+        result
+      length := read-leb.call
+      assert: length == bytecode-size
+      value = (flags & V2-HAS-SELECTOR) != 0 ? read-leb.call : 0xffff
+      if (flags & V2-HAS-RECEIVER) != 0:
+        receiver-start = read-leb.call
+        receiver-end = receiver-start + read-leb.call
+      if kind == FIELD-ACCESSOR or kind == LAMBDA:
+        aux = read-leb.call
+      header-size = pos - at
+      bytecodes = all-bytecodes.copy pos (pos + bytecode-size)
     else:
       header-size = HEADER-SIZE
       arity-and-flags := all-bytecodes[at++]
@@ -561,6 +573,16 @@ class ToitMethod:
       at += 2
       assert: at - id == HEADER-SIZE
       bytecodes = all-bytecodes.copy at (at + bytecode-size)
+
+  /// The fields of a format-2 method header, for the disassembly.
+  header-string -> string:
+    kind-name := ["method", "field accessor", "lambda", "block"][kind]
+    result := "$kind-name, arity $arity, $header-size bytes"
+    if value != 0xffff: result += ", selector $value"
+    if receiver-start: result += ", receiver $(receiver-start)..$(receiver-end)"
+    if kind == FIELD-ACCESSOR: result += ", field $aux"
+    if kind == LAMBDA: result += ", captured $aux"
+    return result
 
   is-normal-method -> bool: return kind == METHOD
   is-field-accessor -> bool: return kind == FIELD-ACCESSOR
@@ -788,6 +810,7 @@ class ToitMethod:
     debug-info := program.method-info-for id
     prefix := show-positions ? "$id: " : ""
     print "$prefix$(debug-info.short-stringify program --show-positions=show-positions)"
+    if format == 2: print "$prefix - header: $header-string"
     if arguments:
       arguments.size.repeat: | n |
         print "$prefix - argument $n: $arguments[n]"

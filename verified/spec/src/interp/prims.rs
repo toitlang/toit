@@ -57,7 +57,7 @@ pub fn call(m: &mut Machine, module: u8, index: u16) -> Result<(), End> {
     }
     let name = m.names.primitive(module, index);
     let arity = match m.names.method_at(m.s.bci) {
-        Some((id, _)) => m.method_arity(id),
+        Some((id, _, _)) => m.method_arity(id),
         None => return Err(End::Stuck(Stuck::NotMethod, m.backtrace())),
     };
     if m.s.stack.len() < 2 + arity {
