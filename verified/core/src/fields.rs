@@ -192,6 +192,7 @@ impl Machine {
         &&& self.mem@ == other.mem@
         &&& self.len == other.len
         &&& self.ftop == other.ftop
+        &&& self.rtop == other.rtop
         &&& self.base == other.base
         &&& self.lim == other.lim
         &&& self.method == other.method

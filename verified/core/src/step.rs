@@ -167,12 +167,12 @@ pub fn grow_bridge(m: &mut Machine, env: &Env, needed: usize) -> (r: Ctl)
 pub fn ensure_room(m: &mut Machine, env: &Env) -> (r: Option<Ctl>)
     requires old(m).inv(env.p),
     ensures
-        r is None ==> *final(m) == *old(m) && final(m).top - final(m).ftop >= FRAME_WORDS,
+        r is None ==> *final(m) == *old(m) && final(m).top - final(m).rtop >= FRAME_WORDS,
         r is Some ==> step_post(env.p, *old(m), *final(m), r->0),
 {
     proof { assert(env.p.max_height < 0x1_0000); }
     let needed = FRAME_WORDS + env.p.max_height + STACK_RESERVE;
-    if m.top - m.ftop >= needed {
+    if m.top - m.rtop >= needed {
         return None;
     }
     Some(grow_bridge(m, env, needed))

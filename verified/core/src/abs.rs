@@ -35,7 +35,7 @@ use vstd::prelude::*;
 use crate::layout::*;
 use crate::ffi::V2Method;
 use crate::view::*;
-use toit_spec::types::{Value, Frame, Handler, MethodInfo, HeapObj, Body};
+use toit_spec::types::{Value, Frame, Handler, MethodInfo, HeapObj, Body, Fin, Resume};
 use toit_spec::v2::types::{State2, Program2};
 use toit_spec::v2::verifier::Cert;
 #[cfg(verus_keep_ghost)]
@@ -361,12 +361,108 @@ pub proof fn lemma_frames_rel_same(mem: Seq<usize>, mem2: Seq<usize>, frames: Se
     }
 }
 
-/// Writes above the frame records keep them.
-pub proof fn lemma_frames_rel_write(mem: Seq<usize>, i: int, v: usize, frames: Seq<Frame>, tries: Seq<Handler>)
-    requires frames_rel(mem, frames, tries), FRAME_WORDS * frames.len() <= i < mem.len(),
-    ensures frames_rel(mem.update(i, v), frames, tries),
+// ---------------------------------------------------------------------------
+// Finally records (format note 17).
+
+/// The resume word of a finally record: `kind + 4 * frame` (kind 0 throw,
+/// 1 return, 2 branch).
+pub open spec fn resume_word(r: Resume) -> usize {
+    match r {
+        Resume::Throw => 0,
+        Resume::Return(f) => (1 + 4 * f) as usize,
+        Resume::Branch(f, _, _) => (2 + 4 * f) as usize,
+    }
+}
+
+/// The target word of a finally record: `bci | height << 32` for a branch.
+pub open spec fn target_word(r: Resume) -> usize {
+    match r {
+        Resume::Branch(_, bci, h) => (bci + h * 0x1_0000_0000) as usize,
+        _ => 0,
+    }
+}
+
+/// The parts of a resumed unwinding fit their words.
+pub open spec fn resume_ok(r: Resume) -> bool {
+    match r {
+        Resume::Throw => true,
+        Resume::Return(f) => f < 0x1_0000_0000,
+        Resume::Branch(f, bci, h) => f < 0x1_0000_0000 && bci < 0x1_0000_0000 && h < 0x1_0000_0000,
+    }
+}
+
+/// Word `k` of finally record `x`, the records starting at `ftop`.
+pub open spec fn fin_word(mem: Seq<usize>, ftop: int, x: int, k: usize) -> usize {
+    mem[ftop + FIN_WORDS * x + k]
+}
+
+/// Finally record `x` holds `f`.
+pub open spec fn fin_rel(mem: Seq<usize>, ftop: int, x: int, f: Fin) -> bool {
+    &&& f.frame < 0x1_0000_0000
+    &&& f.height < 0x1_0000_0000
+    &&& resume_ok(f.resume)
+    &&& fin_word(mem, ftop, x, FIN_FRAME) == f.frame
+    &&& fin_word(mem, ftop, x, FIN_HEIGHT) == f.height
+    &&& fin_word(mem, ftop, x, FIN_RESUME) == resume_word(f.resume)
+    &&& fin_word(mem, ftop, x, FIN_TARGET) == target_word(f.resume)
+}
+
+/// The finally records `mem[ftop..ftop + 4 * fins.len()]` hold `fins`.
+pub open spec fn fins_rel(mem: Seq<usize>, ftop: int, fins: Seq<Fin>) -> bool {
+    &&& 0 <= ftop
+    &&& ftop + FIN_WORDS * fins.len() <= mem.len()
+    &&& forall|x: int| 0 <= x < fins.len() ==> #[trigger] fin_rel(mem, ftop, x, fins[x])
+}
+
+/// Record words lie in `[ftop, ftop + 4 * n)`.
+pub proof fn lemma_fin_index(ftop: int, n: int, x: int, k: usize)
+    requires 0 <= x < n, k < FIN_WORDS,
+    ensures ftop <= ftop + FIN_WORDS * x + k < ftop + FIN_WORDS * n,
 {
-    lemma_frames_rel_same(mem, mem.update(i, v), frames, tries);
+    assert(FIN_WORDS * x + k < FIN_WORDS * n) by (nonlinear_arith)
+        requires 0 <= x < n, k < FIN_WORDS;
+    assert(0 <= FIN_WORDS * x) by (nonlinear_arith) requires 0 <= x;
+}
+
+/// The finally records moved from `ftop` to `ftop2` (or stayed) with the
+/// first `n` of them kept.
+pub proof fn lemma_fins_rel_move(mem: Seq<usize>, mem2: Seq<usize>, ftop: int, ftop2: int, fins: Seq<Fin>, n: int)
+    requires
+        fins_rel(mem, ftop, fins),
+        0 <= n <= fins.len(),
+        0 <= ftop2,
+        ftop2 + FIN_WORDS * n <= mem2.len(),
+        forall|i: int| 0 <= i < FIN_WORDS * n ==> #[trigger] mem2[ftop2 + i] == mem[ftop + i],
+    ensures fins_rel(mem2, ftop2, fins.subrange(0, n)),
+{
+    let f2 = fins.subrange(0, n);
+    assert forall|x: int| 0 <= x < f2.len() implies #[trigger] fin_rel(mem2, ftop2, x, f2[x]) by {
+        assert(f2[x] == fins[x]);
+        assert(fin_rel(mem, ftop, x, fins[x]));
+        lemma_fin_index(0, n, x, FIN_FRAME);
+        lemma_fin_index(0, n, x, FIN_HEIGHT);
+        lemma_fin_index(0, n, x, FIN_RESUME);
+        lemma_fin_index(0, n, x, FIN_TARGET);
+        assert(mem2[ftop2 + (FIN_WORDS * x + FIN_FRAME)] == mem[ftop + (FIN_WORDS * x + FIN_FRAME)]);
+        assert(mem2[ftop2 + (FIN_WORDS * x + FIN_HEIGHT)] == mem[ftop + (FIN_WORDS * x + FIN_HEIGHT)]);
+        assert(mem2[ftop2 + (FIN_WORDS * x + FIN_RESUME)] == mem[ftop + (FIN_WORDS * x + FIN_RESUME)]);
+        assert(mem2[ftop2 + (FIN_WORDS * x + FIN_TARGET)] == mem[ftop + (FIN_WORDS * x + FIN_TARGET)]);
+    }
+}
+
+/// The finally records depend only on their words.
+pub proof fn lemma_fins_rel_same(mem: Seq<usize>, mem2: Seq<usize>, ftop: int, fins: Seq<Fin>)
+    requires
+        fins_rel(mem, ftop, fins),
+        ftop + FIN_WORDS * fins.len() <= mem2.len(),
+        forall|i: int| ftop <= i < ftop + FIN_WORDS * fins.len() ==> #[trigger] mem2[i] == mem[i],
+    ensures fins_rel(mem2, ftop, fins),
+{
+    assert forall|i: int| 0 <= i < FIN_WORDS * fins.len() implies #[trigger] mem2[ftop + i] == mem[ftop + i] by {
+        assert(mem2[ftop + i] == mem[ftop + i]);
+    }
+    lemma_fins_rel_move(mem, mem2, ftop, ftop, fins, fins.len() as int);
+    assert(fins.subrange(0, fins.len() as int) =~= fins);
 }
 
 } // verus!

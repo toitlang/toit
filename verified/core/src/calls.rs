@@ -300,13 +300,15 @@ impl Machine {
 
     /// `spec::call`: a frame for `target`, whose arguments are the top
     /// `arity` slots, returning to `ret`; then the preemption point (as
-    /// format 1, at the callee's entry).
+    /// format 1, at the callee's entry). The finally records (rare: only
+    /// during an unwinding's finally code) move up to make room for the
+    /// frame record.
     #[inline(always)]
     pub fn push_call(&mut self, env: &Env, target: usize, ret: usize) -> (r: Ctl)
         requires
             old(self).refines(env.p),
             !(sp::call(env.p.ap@, old(self).g@, target as int, ret as int) is Stuck),
-            old(self).top - old(self).ftop >= FRAME_WORDS,
+            old(self).top - old(self).rtop >= FRAME_WORDS,
         ensures
             r == Ctl::Next || r == Ctl::Exit(RESULT_PREEMPTED as u32, 0),
             final(self).refines(env.p),
@@ -321,11 +323,17 @@ impl Machine {
         let height = self.len - self.top;
         let base = height - arity;
         let f = self.ftop;
+        let e = self.rtop;
+        if e > f {
+            self.mem.copy_within(f, f + FRAME_WORDS, e - f);
+        }
+        let ghost mem1 = self.mem@;
         self.mem.write(f + FRAME_METHOD, target);
         self.mem.write(f + FRAME_RET, ret);
         self.mem.write(f + FRAME_BASE, base);
         self.mem.write(f + FRAME_HANDLER, 0);
         self.ftop = f + FRAME_WORDS;
+        self.rtop = e + FRAME_WORDS;
         self.method = target;
         self.base = base;
         self.lim = self.len - base;
@@ -337,7 +345,23 @@ impl Machine {
             assert(p.ap@.methods[target as int] == method_info(p.methods@[target as int], p.max_height));
             let n = g0.frames.len() as int;
             assert(f == FRAME_WORDS * n);
-            assert forall|i: int| 0 <= i < FRAME_WORDS * n implies #[trigger] self.mem@[i] == m0.mem@[i] by {}
+            // The records moved up by one frame record; the rest is unchanged.
+            assert forall|i: int| 0 <= i < self.mem@.len() && !(f <= i < e + FRAME_WORDS)
+                implies #[trigger] mem1[i] == m0.mem@[i] by {}
+            assert forall|i: int| f + FRAME_WORDS <= i < e + FRAME_WORDS
+                implies #[trigger] mem1[i] == m0.mem@[i - FRAME_WORDS] by {}
+            assert forall|i: int| 0 <= i < FRAME_WORDS * n implies #[trigger] self.mem@[i] == m0.mem@[i] by {
+                assert(mem1[i] == m0.mem@[i]);
+            }
+            assert forall|i: int| 0 <= i < FIN_WORDS * g0.fins.len()
+                implies #[trigger] self.mem@[f + FRAME_WORDS + i] == m0.mem@[f + i] by {
+                assert(mem1[f + FRAME_WORDS + i] == m0.mem@[f + FRAME_WORDS + i - FRAME_WORDS]);
+            }
+            lemma_fins_rel_move(m0.mem@, self.mem@, f as int, (f + FRAME_WORDS) as int, g0.fins, g0.fins.len() as int);
+            assert(g0.fins.subrange(0, g0.fins.len() as int) =~= g0.fins);
+            assert forall|i: int| self.top <= i < self.len implies #[trigger] self.mem@[i] == m0.mem@[i] by {
+                assert(mem1[i] == m0.mem@[i]);
+            }
             assert(rec(self.mem@, n, FRAME_METHOD) == target);
             assert(rec(self.mem@, n, FRAME_RET) == ret);
             assert(rec(self.mem@, n, FRAME_BASE) == base);
@@ -354,8 +378,10 @@ impl Machine {
     }
 
     /// `spec::return_from(g, v)` for the result word `w`: pops the top frame
-    /// and pushes the result; a caller suspended in a TRY enters its
-    /// finally code (`enter_finally` without unwinding).
+    /// and its finally records (the last ones), moves the remaining records
+    /// down over the popped frame record and pushes the result; a caller
+    /// suspended in a TRY enters its finally code (`enter_finally` without
+    /// unwinding).
     #[inline(always)]
     pub fn do_return(&mut self, env: &Env, w: usize, Ghost(v): Ghost<Value>) -> (r: Ctl)
         requires
@@ -387,13 +413,66 @@ impl Machine {
         let method = self.mem.read(c + FRAME_METHOD);
         let base = self.mem.read(c + FRAME_BASE);
         let handler = self.mem.read(c + FRAME_HANDLER);
+        let ghost n = g0.frames.len() as int;
         proof {
-            let n = g0.frames.len() as int;
             assert(rec(m0.mem@, n - 1, FRAME_RET) == g0.frames[n - 1].ret);
             assert(rec(m0.mem@, n - 2, FRAME_METHOD) == g0.frames[n - 2].method);
             assert(rec(m0.mem@, n - 2, FRAME_BASE) == g0.frames[n - 2].base);
             assert(toit_spec::v2::sound::base_step(g0, n - 2));
         }
+        // Drop the popped frame's finally records (`fins_popped`).
+        let ftop = self.ftop;
+        let fi = r / FRAME_WORDS;
+        let mut e = self.rtop;
+        let ghost mut k: int = g0.fins.len() as int;
+        proof {
+            assert(fi == n - 1) by {
+                assert(r == FRAME_WORDS * (n - 1));
+            }
+            assert(g0.fins.subrange(0, k) =~= g0.fins);
+        }
+        while e > ftop && self.mem.read(e - FIN_WORDS + FIN_FRAME) >= fi
+            invariant
+                *self == m0,
+                ftop == m0.ftop,
+                ftop == FRAME_WORDS * n,
+                fi == n - 1,
+                0 <= k <= g0.fins.len(),
+                e == ftop + FIN_WORDS * k,
+                m0.refines(p),
+                g0 == m0.g@,
+                sp::fins_popped(g0) == sp::cut_fins(g0.fins.subrange(0, k), n - 1, 0),
+            decreases e,
+        {
+            proof {
+                assert(fin_rel(m0.mem@, ftop as int, k - 1, g0.fins[k - 1]));
+                let fs = g0.fins.subrange(0, k);
+                assert(fs.last() == g0.fins[k - 1]);
+                assert(fs.drop_last() =~= g0.fins.subrange(0, k - 1));
+            }
+            e = e - FIN_WORDS;
+            proof { k = k - 1; }
+        }
+        proof {
+            let fs = g0.fins.subrange(0, k);
+            if k > 0 {
+                assert(fin_rel(m0.mem@, ftop as int, k - 1, g0.fins[k - 1]));
+                assert(fs.last() == g0.fins[k - 1]);
+            }
+            assert(sp::cut_fins(fs, n - 1, 0) == fs);
+        }
+        if e > ftop {
+            self.mem.copy_within(ftop, r, e - ftop);
+        }
+        let ghost mem1 = self.mem@;
+        proof {
+            assert forall|i: int| 0 <= i < self.mem@.len() && !(r <= i < e - FRAME_WORDS)
+                implies #[trigger] mem1[i] == m0.mem@[i] by {}
+            assert forall|i: int| 0 <= i < FIN_WORDS * k implies #[trigger] mem1[r + i] == m0.mem@[ftop + i] by {
+                assert(mem1[r + i] == m0.mem@[r + i - r + ftop]);
+            }
+        }
+        self.rtop = e - FRAME_WORDS;
         self.top = self.len - self.base;
         self.ftop = r;
         self.method = method;
@@ -404,7 +483,6 @@ impl Machine {
         let t = self.top;
         self.mem.write(t, w);
         self.bci = ret;
-        let ghost n = g0.frames.len() as int;
         let ghost g1 = State2 {
             stack: g0.stack.subrange(0, sp::top(g0).base as int).push(v),
             frames: g0.frames.drop_last(),
@@ -420,8 +498,15 @@ impl Machine {
             assert(sp::base(g1) == g0.frames[n - 2].base);
             assert(toit_spec::v2::sound::base_step(g0, n - 2));
             lemma_frames_pop(m0.mem@, g0.frames, g0.tries);
-            lemma_cut_fins_len(g0.fins, sp::top_index(g0), 0);
-            lemma_frames_rel_write(m0.mem@, t as int, w, g1.frames, g1.tries);
+            assert forall|i: int| 0 <= i < FRAME_WORDS * g1.frames.len() implies #[trigger] self.mem@[i] == m0.mem@[i] by {
+                assert(mem1[i] == m0.mem@[i]);
+            }
+            lemma_frames_rel_same(m0.mem@, self.mem@, g1.frames, g1.tries);
+            assert(g1.fins == g0.fins.subrange(0, k));
+            assert forall|i: int| 0 <= i < FIN_WORDS * k implies #[trigger] self.mem@[r + i] == m0.mem@[ftop + i] by {
+                assert(mem1[r + i] == m0.mem@[ftop + i]);
+            }
+            lemma_fins_rel_move(m0.mem@, self.mem@, ftop as int, r as int, g0.fins, k);
             let b = sp::top(g0).base as int;
             assert(self.words() =~= m0.words().subrange(0, b).push(w));
             assert(enc_seq(m0.addr(), g1.stack) =~= enc_seq(m0.addr(), g0.stack).subrange(0, b).push(w));
@@ -520,6 +605,9 @@ impl Machine {
                 assert(t2[x] == g0.tries[x]);
             }
             assert(frames_rel(m1, g2.frames, g2.tries));
+            assert forall|i: int| self.ftop <= i < self.ftop + FIN_WORDS * g0.fins.len()
+                implies #[trigger] m1[i] == m0.mem@[i] by {}
+            lemma_fins_rel_same(m0.mem@, m1, self.ftop as int, g0.fins);
             assert(height as int == h.height);
             assert(h.height <= g0.stack.len());
             assert forall|i: int| 0 <= i < height implies #[trigger] self.words()[i] == m0.words()[i] by {

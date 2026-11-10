@@ -280,11 +280,11 @@ void Stack::roots_do(Program* program, RootCallback* cb) {
   // we can use that.
   word minimum_space = program->global_max_stack_height() + RESERVED_STACK_FOR_CALLS;
   if (program->is_format2()) {
-    // Format 2: the frame records at the bottom stay where they are; the
-    // object stack moves down. The verified core needs room for a frame
-    // and the reserve above the frames (verified/core/src/layout.rs).
-    word frame_top = v2_frame_top();
-    minimum_space += frame_top + V2_FRAME_WORDS + V2_STACK_RESERVE;
+    // Format 2: the frame and finally records at the bottom stay where they
+    // are; the object stack moves down. The verified core needs room for a
+    // frame and the reserve above the records (verified/core/src/layout.rs).
+    word record_top = v2_record_top();
+    minimum_space += record_top + V2_FRAME_WORDS + V2_STACK_RESERVE;
     if (top > minimum_space && (Flags::shrink_stacks_a_lot || (cb->shrink_stacks() && top > length() >> 1))) {
       word reduction = top - minimum_space;
       if (Flags::shrink_stacks_a_lot || reduction >= 8) {
