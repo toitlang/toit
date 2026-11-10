@@ -42,6 +42,8 @@ pub mod sound_field;
 pub mod sound_block;
 pub mod sound_step;
 pub mod theorem;
+pub mod vprog;
+pub mod split;
 #[allow(unused_variables)]
 pub mod check;
 #[cfg(not(verus_keep_ghost))]
