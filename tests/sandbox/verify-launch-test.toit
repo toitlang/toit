@@ -7,7 +7,7 @@
 // program the VM refuses never runs:
 // - an untrusted snapshot that uses deep sleep (HALT 2) is rejected at launch,
 // - an untrusted snapshot with a corrupted branch is rejected at launch,
-// - a malformed snapshot is reported as INVALID_SNAPSHOT,
+// - a malformed snapshot is reported as INVALID_ARGUMENT,
 // while the unmodified program runs as an untrusted container.
 
 import expect show *
@@ -86,7 +86,7 @@ main args:
     broken-snap := "$dir/broken.snapshot"
     file.write-contents broken --path=broken-snap
     result = run-untrusted run broken-snap
-    expect-refused result "INVALID_SNAPSHOT"
+    expect-refused result "INVALID_ARGUMENT"
 
     print "verify-launch-test OK"
 

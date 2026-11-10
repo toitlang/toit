@@ -81,8 +81,7 @@ PRIMITIVE(launch) {
 
   Snapshot snapshot(bytes.address(), bytes.length());
   auto image = snapshot.read_image(program_id.address());
-  // The snapshot reader rejects malformed snapshots with an invalid image.
-  if (!image.is_valid()) return launch_error(process, "INVALID_SNAPSHOT");
+  if (!image.is_valid()) FAIL(INVALID_ARGUMENT);
   Program* program = image.program();
   // Install-time structural verification of the launched snapshot. Untrusted
   // programs are always verified with the untrusted rules (no HALT 2/3);

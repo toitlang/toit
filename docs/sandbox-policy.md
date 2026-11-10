@@ -208,7 +208,7 @@ before a process group is created for it: `snapshot.launch` (host) and
 `TOIT_VERIFY`; trusted programs are still only verified when one of them
 is set. A rejected program never runs: the verifier prints its errors to
 stderr and the launch fails with the error `VERIFICATION_FAILED`. A
-snapshot the reader rejects as malformed fails with `INVALID_SNAPSHOT`.
+snapshot the reader rejects as malformed fails with `INVALID_ARGUMENT`.
 The container manager forgets a container whose start failed; a refused
 run-critical container ends the system with exit code 1 (so `toit run
 --untrusted` exits with 1), and `boot` keeps booting the other images.
