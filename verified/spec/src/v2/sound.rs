@@ -432,4 +432,19 @@ pub open spec fn completions_ok(p: Program2, c: Cert, s: State2, module: u8, ind
                 s.stack[fbase(s, top_i(s))], s.stack[fbase(s, top_i(s)) + 1])))
 }
 
+/// The opcode at the state's bci.
+pub open spec fn cur_op(p: Program2, s: State2) -> u8 {
+    p.bytecodes[s.bci as int]
+}
+
+/// A step from `s` is not stuck, keeps the invariant, and every completion
+/// of a PRIMITIVE does too.
+pub open spec fn step_ok(p: Program2, c: Cert, s: State2) -> bool {
+    &&& outcome_ok(p, c, step(p, s))
+    &&& match step(p, s) {
+        Outcome2::Primitive(s2, module, index) => completions_ok(p, c, s2, module, index),
+        _ => true,
+    }
+}
+
 } // verus!

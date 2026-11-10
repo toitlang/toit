@@ -28,6 +28,9 @@ pub mod sound_call;
 pub mod sound_upto;
 pub mod sound_unwind;
 pub mod sound_return;
+pub mod sound_instr;
+pub mod sound_raise;
+pub mod sound_heap;
 #[allow(unused_variables)]
 pub mod check;
 #[cfg(not(verus_keep_ghost))]
