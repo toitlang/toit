@@ -33,6 +33,9 @@ use vstd::prelude::*;
 use crate::layout::*;
 use crate::abs::*;
 use crate::exec::*;
+use crate::alloc::reload;
+#[cfg(verus_keep_ghost)]
+use crate::alloc::{reloaded, lemma_saved};
 use toit_spec::types::{Value, HeapObj, Unwind};
 use toit_spec::v2::types::{State2, Program2, Outcome2, Halt2};
 #[cfg(verus_keep_ghost)]
@@ -173,17 +176,67 @@ pub fn step_unverified(m: &mut Machine, env: &Env, bci: usize, opcode: u8, hot: 
     if hot { m.dispatch_checked(env, bci, opcode) } else { m.dispatch_cold(env, bci, opcode) }
 }
 
-/// Grows the stack (a GC point) so that `needed` words are free; the
-/// instruction runs again afterwards. On stack overflow or out of memory
-/// it throws (`resource_throw`). ASSUMED contract: stack growth and the GC
-/// preserve the abstraction (TRUSTED.md, "GC and stack growth").
+/// TRUSTED (TRUSTED.md, "GC and stack growth"): `toit_v2_grow_stack` (may
+/// GC). Before, the views represent `g`; after, they represent `g` again
+/// (the task has a new Stack with the frame and finally records copied to
+/// the bottom and the object stack to the top, the header updated; the GC
+/// moves objects and updates every root), and on success (`V2_OK`) at
+/// least `needed` words are free between the records and the object
+/// stack. On stack overflow or out of memory nothing changed but the GC's
+/// moves.
 #[verifier::external_body]
 #[inline(always)]
-pub fn grow_bridge(m: &mut Machine, env: &Env, needed: usize) -> (r: Ctl)
-    requires old(m).inv(env.p),
+pub fn gc_grow_stack(m: &mut Machine, env: &Env, needed: usize, Ghost(g): Ghost<State2>) -> (r: usize)
+    requires reloaded(*old(m), g).refines(env.p),
+    ensures
+        reloaded(*final(m), g).refines(env.p),
+        r == V2_OK ==> reloaded(*final(m), g).top - reloaded(*final(m), g).rtop >= needed,
+{
+    m.grow_stack_raw(env, needed)
+}
+
+/// Grows the stack (a GC point) so that `needed` words are free; the
+/// instruction runs again afterwards (the state is unchanged). If the stack
+/// cannot grow, the resource throw of the instruction
+/// (`prim::resource_throw`, which every stack-growing instruction has): a
+/// raise of the stack-overflow error, or a throw of the out-of-memory error.
+pub fn grow(m: &mut Machine, env: &Env, needed: usize) -> (r: Ctl)
+    requires
+        old(m).inv(env.p),
+        toit_spec::v2::prim::grows_stack(env.p.ap@.bytecodes[old(m).bci as int]),
+        old(m).bci < 0x1000_0000,
     ensures step_post(env.p, *old(m), *final(m), r),
 {
-    m.grow(env, needed)
+    let p = env.p;
+    let ghost ap = p.ap@;
+    let ghost g = m.g@;
+    let ghost m0 = *m;
+    proof { toit_spec::v2::sound_instr::lemma_instr(ap, p.cert@, p.trusted@, g); }
+    m.save();
+    proof { lemma_saved(p, *m); }
+    let status = gc_grow_stack(m, env, needed, Ghost(g));
+    reload(m, p, Ghost(g));
+    if status == V2_OK {
+        return Ctl::Next;
+    }
+    if status == V2_STACK_OVERFLOW {
+        let ghost v = ap.roots[ROOT_STACK_OVERFLOW as int];
+        proof {
+            assert(toit_spec::v2::prim::resource_throw(ap, g, Outcome2::Raise(g, v)));
+            lemma_source_resource(ap, g, Outcome2::Raise(g, v));
+            m.lemma_root(p, ROOT_STACK_OVERFLOW as int);
+            crate::calls::lemma_shape(p, g);
+        }
+        let value = p.roots.at(ROOT_STACK_OVERFLOW);
+        let ghost m1 = *m;
+        return m.raise_with(env, Ghost(m1), value, Ghost(v), V2_MESSAGE_NONE, [0, 0, 0, 0], 0, Ghost(Seq::empty()));
+    }
+    proof {
+        let o1 = sp::unwind(ap, g, Unwind::Throw(toit_spec::v2::prim::out_of_memory(ap)));
+        assert(toit_spec::v2::prim::resource_throw(ap, g, o1));
+        lemma_source_resource(ap, g, o1);
+    }
+    crate::unwind::throw_oom(m, env)
 }
 
 /// Room for a call: a frame record and the callee's slots. `None`: there is
@@ -191,7 +244,10 @@ pub fn grow_bridge(m: &mut Machine, env: &Env, needed: usize) -> (r: Ctl)
 /// stack grew), or a stack overflow was thrown.
 #[inline(always)]
 pub fn ensure_room(m: &mut Machine, env: &Env) -> (r: Option<Ctl>)
-    requires old(m).inv(env.p),
+    requires
+        old(m).inv(env.p),
+        toit_spec::v2::prim::grows_stack(env.p.ap@.bytecodes[old(m).bci as int]),
+        old(m).bci < 0x1000_0000,
     ensures
         r is None ==> *final(m) == *old(m) && final(m).top - final(m).rtop >= FRAME_WORDS + STACK_RESERVE,
         r is Some ==> step_post(env.p, *old(m), *final(m), r->0),
@@ -201,7 +257,7 @@ pub fn ensure_room(m: &mut Machine, env: &Env) -> (r: Option<Ctl>)
     if m.top - m.rtop >= needed {
         return None;
     }
-    Some(grow_bridge(m, env, needed))
+    Some(grow(m, env, needed))
 }
 
 // ---------------------------------------------------------------------------

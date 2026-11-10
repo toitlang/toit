@@ -784,6 +784,7 @@ pub open spec fn handler_pre(p: &Program, m: Machine, bci: usize, opcode: u8) ->
 pub fn op_invoke_static(m: &mut Machine, env: &Env, bci: usize, opcode: u8, d: usize) -> (r: Ctl)
     requires
         handler_pre(env.p, *old(m), bci, opcode),
+        toit_spec::v2::prim::grows_stack(opcode),
         sp::step(env.p.ap@, old(m).g@) == sp::call_static(env.p.ap@, old(m).g@, sp::dispatch_target(env.p.ap@, d as int), 3),
         bci + 3 < 0x1000_0000,
     ensures step_post(env.p, *old(m), *final(m), r),
@@ -826,6 +827,7 @@ pub fn op_invoke_static(m: &mut Machine, env: &Env, bci: usize, opcode: u8, d: u
 pub fn op_invoke_virtual(m: &mut Machine, env: &Env, bci: usize, opcode: u8, sel: i64, n: usize, len: usize) -> (r: Ctl)
     requires
         handler_pre(env.p, *old(m), bci, opcode),
+        toit_spec::v2::prim::grows_stack(opcode),
         sp::step(env.p.ap@, old(m).g@) == sp::invoke_virtual(env.p.ap@, old(m).g@, sel as int, n as int, len as int),
         -0x8000_0000 <= sel < 0x8000_0000,
         bci + len < 0x1000_0000,
@@ -841,6 +843,7 @@ pub fn op_invoke_virtual(m: &mut Machine, env: &Env, bci: usize, opcode: u8, sel
 pub fn do_invoke_virtual(m: &mut Machine, env: &Env, bci: usize, opcode: u8, sel: i64, n: usize, len: usize) -> (r: Ctl)
     requires
         handler_pre(env.p, *old(m), bci, opcode),
+        toit_spec::v2::prim::grows_stack(opcode),
         source(env.p.ap@, old(m).g@, sp::invoke_virtual(env.p.ap@, old(m).g@, sel as int, n as int, len as int)),
         -0x8000_0000 <= sel < 0x8000_0000,
         bci + len < 0x1000_0000,
@@ -880,6 +883,7 @@ pub fn do_invoke_virtual(m: &mut Machine, env: &Env, bci: usize, opcode: u8, sel
 pub fn op_operator_fallback(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: Ctl)
     requires
         handler_pre(env.p, *old(m), bci, opcode),
+        toit_spec::v2::prim::grows_stack(opcode),
         62 <= opcode <= 79,
         sp::step(env.p.ap@, old(m).g@) == sp::operator_fallback(env.p.ap@, old(m).g@, opcode),
         bci + 1 < 0x1000_0000,
@@ -895,6 +899,7 @@ pub fn op_operator_fallback(m: &mut Machine, env: &Env, bci: usize, opcode: u8) 
 pub fn fallback_src(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: Ctl)
     requires
         handler_pre(env.p, *old(m), bci, opcode),
+        toit_spec::v2::prim::grows_stack(opcode),
         62 <= opcode <= 79,
         source(env.p.ap@, old(m).g@, sp::operator_fallback(env.p.ap@, old(m).g@, opcode)),
         bci + 1 < 0x1000_0000,

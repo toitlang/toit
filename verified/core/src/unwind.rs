@@ -828,6 +828,7 @@ pub fn prep_non_local_branch(m: &mut Machine, env: &Env, bci: usize, opcode: u8,
 pub fn op_try(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: Ctl)
     requires
         handler_pre(env.p, *old(m), bci, opcode),
+        toit_spec::v2::prim::grows_stack(opcode),
         sp::step(env.p.ap@, old(m).g@) == sp::op_try(env.p.ap@, old(m).g@),
         cur_op(env.p.ap@, old(m).g@) == 97,
         bci + 1 < 0x1000_0000,

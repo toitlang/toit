@@ -435,10 +435,10 @@ justification = "ASSUMED: toit_v2_allocate_exception (may GC) keeps the abstract
 [[trusted]]
 crate = "core"
 file = "src/step.rs"
-item = "grow_bridge"
+item = "gc_grow_stack"
 kind = "external_body"
 count = 1
-justification = "ASSUMED: stack growth and the GC it may run preserve the abstraction (the ghost state is unchanged); a failed growth throws (resource_throw, PHASE4-REQUESTS.md R6). TRUSTED.md, GC and stack growth."
+justification = "ASSUMED: toit_v2_grow_stack (may GC) leaves the views representing the same abstract state (records copied, object stack moved, roots updated by the GC) and, on V2_OK, at least `needed` free words; TRUSTED.md, GC and stack growth."
 
 [[trusted]]
 crate = "core"

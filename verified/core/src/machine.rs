@@ -365,6 +365,14 @@ impl Machine {
         cold!(self, |m| env.rt.allocate_instance(&mut m.mem, class_id))
     }
 
+    /// Grows the stack (MAY GC) without saving or reloading the task state
+    /// (`step::gc_grow_stack`).
+    /// Cold path: runs out of line on a copy of the machine (see `cold!`).
+    #[inline(always)]
+    pub fn grow_stack_raw(&mut self, env: &Env, needed: usize) -> usize {
+        cold!(self, |m| env.rt.grow_stack(&mut m.mem, needed))
+    }
+
     /// Allocates an exception (MAY GC) without saving or reloading the task
     /// state (`raise::gc_allocate_exception`). 0 if out of memory.
     /// Cold path: runs out of line on a copy of the machine (see `cold!`).

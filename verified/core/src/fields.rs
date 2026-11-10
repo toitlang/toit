@@ -481,6 +481,7 @@ pub fn op_store_field_this(m: &mut Machine, env: &Env, bci: usize, opcode: u8, f
 pub fn op_invoke_virtual_get(m: &mut Machine, env: &Env, bci: usize, opcode: u8, sel: usize) -> (r: Ctl)
     requires
         handler_pre(env.p, *old(m), bci, opcode),
+        toit_spec::v2::prim::grows_stack(opcode),
         sp::step(env.p.ap@, old(m).g@) == sp::op_invoke_virtual_get(env.p.ap@, old(m).g@, sel as int),
         sel < 0x1_0000,
         bci + 3 < 0x1000_0000,
@@ -542,6 +543,7 @@ pub fn op_invoke_virtual_get(m: &mut Machine, env: &Env, bci: usize, opcode: u8,
 pub fn op_invoke_virtual_set(m: &mut Machine, env: &Env, bci: usize, opcode: u8, sel: usize) -> (r: Ctl)
     requires
         handler_pre(env.p, *old(m), bci, opcode),
+        toit_spec::v2::prim::grows_stack(opcode),
         sp::step(env.p.ap@, old(m).g@) == sp::op_invoke_virtual_set(env.p.ap@, old(m).g@, sel as int),
         sel < 0x1_0000,
         bci + 3 < 0x1000_0000,
