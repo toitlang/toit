@@ -365,6 +365,14 @@ impl Machine {
         cold!(self, |m| env.rt.allocate_instance(&mut m.mem, class_id))
     }
 
+    /// Calls a C++ primitive (MAY GC, may switch the task) without saving
+    /// or reloading the task state (`primitive::gc_call_primitive`).
+    /// Cold path: runs out of line on a copy of the machine (see `cold!`).
+    #[inline(always)]
+    pub fn call_primitive_raw(&mut self, env: &Env, prim: &crate::ffi::PrimitiveRef, arity: usize, first: usize) -> (usize, usize) {
+        cold!(self, |m| env.rt.call_primitive(&mut m.mem, prim, arity, first))
+    }
+
     /// Grows the stack (MAY GC) without saving or reloading the task state
     /// (`step::gc_grow_stack`).
     /// Cold path: runs out of line on a copy of the machine (see `cold!`).
@@ -2409,20 +2417,6 @@ impl Machine {
         let opcode = p.code.at(bci);
         if opcode as usize >= OPCODE_LENGTHS.len() { return false; }
         bci + OPCODE_LENGTHS[opcode as usize] as usize <= end
-    }
-
-    /// `dispatch_checked` out of line (see `cold!`): the bridge of the verified
-    /// handlers to the checked ones (`step::step_unverified`). Out of line so
-    /// that the verified run loop does not inline a copy of the whole checked
-    /// dispatch at every slow path.
-    #[inline(always)]
-    pub fn dispatch_cold(&mut self, env: &Env, bci: usize, opcode: u8) -> Ctl {
-        cold!(self, |m| m.dispatch_checked_out_of_line(env, bci, opcode))
-    }
-
-    #[inline(never)]
-    fn dispatch_checked_out_of_line(&mut self, env: &Env, bci: usize, opcode: u8) -> Ctl {
-        self.dispatch_checked(env, bci, opcode)
     }
 
     /// Executes the instruction at `bci` (inside the method) with every run-time

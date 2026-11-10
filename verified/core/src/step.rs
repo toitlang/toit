@@ -154,28 +154,6 @@ pub open spec fn step_post(p: &Program, m0: Machine, m1: Machine, r: Ctl) -> boo
     }
 }
 
-/// The refinement contract of the checked handlers of machine.rs, which
-/// execute the opcodes not proven yet and the paths of verified opcodes
-/// not proven yet (raising an exception; the verified handler hands the
-/// whole instruction over before changing anything): the same guarantee
-/// as a verified step. ASSUMED (external_body): their run-time checks keep
-/// them memory safe for every program, but that they refine the spec is
-/// tested (untrusted suite, fuzzing), not proven. OBLIGATIONS.md lists the
-/// missing proofs per opcode family.
-#[verifier::external_body]
-#[inline(always)]
-pub fn step_unverified(m: &mut Machine, env: &Env, bci: usize, opcode: u8, hot: bool) -> (r: Ctl)
-    requires
-        old(m).inv(env.p),
-        bci == old(m).bci,
-        opcode == env.p.ap@.bytecodes[bci as int],
-    ensures step_post(env.p, *old(m), *final(m), r),
-{
-    // `hot`: an opcode without a verified handler, dispatched inline; else
-    // a slow path of a verified handler, out of line.
-    if hot { m.dispatch_checked(env, bci, opcode) } else { m.dispatch_cold(env, bci, opcode) }
-}
-
 /// TRUSTED (TRUSTED.md, "GC and stack growth"): `toit_v2_grow_stack` (may
 /// GC). Before, the views represent `g`; after, they represent `g` again
 /// (the task has a new Stack with the frame and finally records copied to
@@ -892,8 +870,14 @@ pub fn step(m: &mut Machine, env: &Env) -> (r: Ctl)
             proof { assert(sp::step(ap, g) == sp::op_try(ap, g)) by { reveal(sp::step); } }
             return crate::unwind::op_try(m, env, bci, opcode);
         },
+        89 => {
+            return crate::primitive::op_primitive(m, env, bci, opcode);
+        },
         _ => {
-            return step_unverified(m, env, bci, opcode, true);
+            // Every opcode of format 2 (below OPCODE_COUNT2, which the
+            // instruction check of the spec requires) has a handler.
+            proof { assert(opcode < 101); assert(false); }
+            return Ctl::Stuck(stuck::LIMIT);
         },
     };
     proof { lemma_local_post(p, m0, *m, r); }

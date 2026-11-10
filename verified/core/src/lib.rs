@@ -52,3 +52,4 @@ pub mod unwind;
 pub mod numbers;
 pub mod tail;
 pub mod raise;
+pub mod primitive;

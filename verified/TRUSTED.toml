@@ -426,6 +426,14 @@ justification = "The ghost state the reloaded machine represents: the inter-run 
 
 [[trusted]]
 crate = "core"
+file = "src/primitive.rs"
+item = "gc_call_primitive"
+kind = "external_body"
+count = 1
+justification = "ASSUMED: toit_v2_call_primitive (may GC, may switch the task) of the primitive the lookup found, with the method's arity, ends in one of the spec's completions of the step (theorem::completion: prim_default/prim_spec for every C++ primitive of the policy, task_step for task_new/task_transfer); TRUSTED.md, Primitives."
+
+[[trusted]]
+crate = "core"
 file = "src/raise.rs"
 item = "gc_allocate_exception"
 kind = "external_body"
@@ -447,14 +455,6 @@ item = "run_loop"
 kind = "exec_allows_no_decreases_clause"
 count = 1
 justification = "A program may run forever (the scheduler preempts it); no termination is claimed, only that every step keeps the invariant."
-
-[[trusted]]
-crate = "core"
-file = "src/step.rs"
-item = "step_unverified"
-kind = "external_body"
-count = 1
-justification = "UNPROVEN: refinement of the opcode families not verified yet is ASSUMED (OBLIGATIONS.md lists them and the missing lemmas); their handlers keep every run-time check."
 
 [[trusted]]
 crate = "core"
