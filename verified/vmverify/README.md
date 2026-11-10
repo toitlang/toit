@@ -158,18 +158,39 @@ run-time check of a stuck state.
 ## Cost
 
 Measured 2026-11-10, release build (build/host), x86-64, 32 cores shared
-with other jobs (load average 25 to 35, so times vary by up to 1.7x
-between runs). `TOIT_VERIFY_TIME=1` prints each verification; the peak is
-the Rust heap high-water mark of the call (counting allocator).
+with other jobs (load average 30 to 33). `TOIT_VERIFY_TIME=1` prints each
+verification; the peak is the Rust heap high-water mark of the call
+(`counting.rs`, a counting global allocator, not RSS). "Before" is the
+build of sandbox-integration 7a69e0b4 (whole certificate, copied tables),
+"after" this branch; 5 alternating runs each with `tests/measure_vm.sh`
+(medians; under this load absolute times vary by up to 2x between
+batches, the ratio less). The sandbox "before" column is the earlier
+measurement of this README (same tests, another time).
 
-| Program | Bytecodes | Methods | Heap objects | Convert | Infer | Check | Total | Peak memory |
-|---|---|---|---|---|---|---|---|---|
-| hello world (`toit run --untrusted`) | 23.9 KB | 758 | 138 | 0.1 ms | 15-16 ms | 1.6-2.5 ms | 17-19 ms | 3.6 MB |
-| sandbox tests (79 untrusted launches of `ctest -R tests/sandbox/`) | 23.8-35.3 KB | 750-1042 | 133-204 | 0.1-0.5 ms | 16-52 ms | 1.9-4.8 ms | 18-57 ms (median 30) | 3.6-4.5 MB |
-| toit CLI (tools/toit.toit, format 2, `toit.run --verify`) | 323 KB | 7161 | 4010 | 1.7-4.7 ms | 224-392 ms | 29-59 ms | 260-450 ms | 24.1 MB |
+| Program | Bytecodes | Methods | Peak before | Peak after | Total before | Total after |
+|---|---|---|---|---|---|---|
+| hello world (`toit.run --verify`) | 23.9 KB | 758 | 3619 KB | 47 KB | 15.4 ms | 19.7 ms |
+| sandbox tests (83 untrusted launches, `JOBS=1 tests/measure_sandbox.sh`) | 23.8-35.3 KB | 750-1042 | 3.6-4.5 MB | 47-59 KB (median 56) | 18-57 ms (median 30) | 20-99 ms (median 26) |
+| toit CLI (tools/toit.toit, format 2) | 323 KB | 7161 | 24749 KB | 431 KB | 191 ms | 247 ms |
 
-The heap check takes under 0.1 ms in every case. The inference (untrusted)
-is 85 to 90 % of the time; the proven checker is about a tenth.
+Time is about 30 % higher: the inference runs once more (the checker asks
+for each method's maps after the global phase; the second pass tracks no
+parameter origins), and the checker builds each instruction's kinds from
+the shared nodes (it compares successor maps in place, `x_chain_is`).
+Split of a CLI run (dump path, best of 3, `MEM_DEBUG=1 toit_vmverify_mem`):
+global phase 168 ms (3 rounds of the block-parameter fixpoint), maps for
+the checker 38 ms, checker 43 ms.
+
+The verifier proper, without the conversion from VM memory, on dumps
+(`toit_vmverify_mem`, same allocator; the tables are the loader's, not
+counted):
+
+| Program | Bytecodes | Methods | Largest method | Global part | Largest maps | Peak |
+|---|---|---|---|---|---|---|
+| hello world | 23.9 KB | 758 | 401 B | 27.0 KB | 3.6 KB | 38 KB |
+| run-image | 54.0 KB | 1600 | 717 B | 56.2 KB | 7.0 KB | 70 KB |
+| toit.run | 63.8 KB | 1755 | 717 B | 59.5 KB | 7.0 KB | 73 KB |
+| toit CLI | 323 KB | 7161 | 6047 B | 274 KB | 57 KB | 338 KB |
 
 Code size: `toit.run` grows by 200 KB stripped (3.92 MB -> 4.12 MB, +5.1 %;
 text +173 KB, data +27 KB), compared with a build of the base commit
@@ -202,28 +223,69 @@ verified/core/fuzz/findings/launch-run-*):
   the format-1 VM with a 10-line program (spec/VM-BUGS.md;
   encoder-cyclic-array.*); upstream fix: https://github.com/toitlang/toit/pull/3374.
 
-## Memory high-water mark
+## Memory
 
-The verifier does not recurse over the program (the conversion and the
-inference use work lists; the checker's loops are Verus exec loops with
-`decreases`). It allocates linearly in the program size, not without
-bound, but it holds the whole certificate at once:
+The verifier keeps no data proportional to the program except small
+per-method tables (about 36 bytes per method):
 
-- the abstract program: a copy of the bytecodes and tables (about 1.1 x
-  the bytecode size) and one `ExecObj` per reachable program-heap object
-  (with string and byte-array contents copied);
-- the certificate (`XCert`): for every method one `Option<Vec<XKind>>`
-  (24 bytes) per *byte* of its body, plus, at every reachable instruction
-  start, a vector of the stack's kinds (12 bytes per slot); block-parameter
-  masks and contexts are small;
-- transient per-method state of the inference (origins per offset).
+- **Program**: borrowed in place (`VProgram` over the VM's tables and its
+  `V2Method` array); only the 23 builtin ids, the roots, literals and
+  globals are converted (16 bytes per value).
+- **Heap**: checked one object at a time as it is converted
+  (`x_loaded_ok_stream`); the conversion keeps a work list and an
+  address-to-id map (about 40 bytes per object), freed before the
+  inference.
+- **Certificate, global part** (`XGlobal`): block-parameter bits with a
+  4-byte offset per method, a 4-byte context index per method plus the
+  contexts of block methods (their kinds, 12 bytes per slot: about half
+  of the global part), selector representatives (4 bytes per selector),
+  and the pins (one map per non-local-branch target).
+- **Certificate, maps**: one method at a time. The inference keeps, for
+  the method it analyzes, a node index per bytecode byte (4 bytes), a
+  work-list flag, the nodes (16 bytes per new slot; maps share their
+  bottoms) and, in the global phase, sparse origin lists; the checker
+  gets the same maps (`XMaps`) and drops them after the method. Budgets
+  (`infer.rs`: 16 nodes and 64 origin words per byte) bound what a
+  malformed method can make it allocate; compiled code needs at most 3
+  and 22.
 
-The high-water mark is therefore about `24 B + 12 * sum of stack heights
-at instruction starts + heap copy`, dominated by the per-offset maps:
-about 75 to 150 bytes per bytecode byte in the measurements above. For
-Phase 5 (devices, verification at install time) this is too much for
-large programs: the maps could be stored only at instruction starts (a
-sparse array instead of one entry per byte), and kinds could be
-interned (most maps share long prefixes). The certificate type is
-`v2/check.rs`'s: PHASE4-REQUESTS.md R8. Until then devices cannot verify
-large programs on the device itself.
+So the peak is roughly `36 B x methods + 16 B x values + 40 B x objects +
+largest method's maps`, about 40 to 80 KB for programs of tens of KB of
+bytecode, against a few hundred KB of free heap on the Phase 5 device.
+Further reductions if needed: the contexts' kinds could share nodes like
+the maps (half of the global part), and the heap's id map could be a
+bitmap over the image.
+
+## Fuzzing the entry point in-process
+
+`src/bin/toit_vmverify_fuzz.rs` calls `toit_vmverify_verify` (the C entry
+point the VM calls) on mutated copies of the exact input the VM hands it:
+`toit.run --verify --emit-canonical=X.tables X.snapshot` saves the
+`toit_v2_program` tables, the program image, the globals and the
+primitive table (`tables.rs`; references are relocated to the copy).
+Mutations: method table fields (bounds, selector, arity, kind, receiver
+range), bytecodes (half of them near a method entry), dispatch entries,
+class tables, invoke offsets and entry points, builtin ids, roots,
+literals and globals, image words, truncated tables, the max height and
+primitive arities; one to four per mutant. A verifier panic (result
+`INTERNAL`) or a call over 2 s is a finding. `tests/fuzz_tables.sh` runs
+it on hello world, lambda-test, exception-test, class-id-test and
+task-test.
+
+FUZZ_RESULTS
+
+## no_std (Phase 5)
+
+Without the `std` feature this crate and verified/spec are `no_std` +
+`alloc`: no panic catching (a panic aborts; the inference is total), no
+phase times, no counting allocator, no test support, `BTreeMap` instead of
+`HashMap`. `tests/nostd_check.sh` builds verified/spec for
+`riscv32imac-unknown-none-elf` and `riscv64imac-unknown-none-elf`, and
+this crate for `riscv64imac-unknown-none-elf`. What still blocks a device
+build, all in verified/core (not changed here): its `lib.rs` lacks
+`#![no_std]` (it uses no std API), its vstd dependency uses the default
+`std` feature, its `staticlib` crate type needs a panic handler and an
+allocator when built as a dependency (the script patches these three in a
+copy), and it is not 32-bit clean (machine.rs shifts `usize` values by 32,
+layout.rs has 64-bit constants), so the 32-bit RISC-V build of this crate
+fails in the core.

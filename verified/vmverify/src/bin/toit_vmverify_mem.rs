@@ -96,7 +96,7 @@ fn main() {
             let peak = peak1.max(base2 - base + peak2);
             if std::env::var("MEM_DEBUG").is_ok() {
                 let g = &global.g;
-                eprintln!("phase 1 peak {} global {} phase 2 peak above global {}", peak1, global_bytes, peak2);
+                eprintln!("phase 1 peak {} global {} phase 2 peak above global {}; global phase {:.1} ms, maps for the checker {:.1} ms", peak1, global_bytes, peak2, (t1 - t0).as_secs_f64() * 1e3, o.ns as f64 / 1e6);
                 eprintln!("  sel_rep {} ctxs {} ctx kinds {} pins {} seeds {} rounds {} errors {:?}", g.sel_rep.len(), g.ctxs.len(),
                     g.ctxs.iter().map(|c| c.kinds.len()).sum::<usize>(), g.pins.len(), global.seeds.len(), global.rounds, global.errors);
             }

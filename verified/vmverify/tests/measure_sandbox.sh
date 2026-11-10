@@ -26,7 +26,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD="${1:-$HERE/../../../build/host}"
 LOG="$(mktemp)"
 trap 'rm -f "$LOG"' EXIT
-TOIT_VERIFY_TIME=1 ctest --test-dir "$BUILD" -R '^tests/sandbox/' -j 8 -V > "$LOG" 2>&1
+TOIT_VERIFY_TIME=1 ctest --test-dir "$BUILD" -R '^tests/sandbox/' -j "${JOBS:-8}" -V > "$LOG" 2>&1
 grep -o 'verifier: [a-z]*, [0-9]* methods, [0-9]* bytecodes, [0-9]* objects; convert [0-9.]* ms, heap [0-9.]* ms, infer [0-9.]* ms, check [0-9.]* ms; peak [0-9]* KB' "$LOG" \
   | python3 -c '
 import re, statistics, sys
