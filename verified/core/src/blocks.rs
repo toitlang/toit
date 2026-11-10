@@ -391,7 +391,7 @@ pub fn op_invoke_block(m: &mut Machine, env: &Env, bci: usize, opcode: u8, n: us
     proof { assert(ap.methods[t as int] == method_info(p.methods@[t as int], p.max_height)); }
     let arity = info.arity as usize;
     if n < arity {
-        return step_unverified(m, env, bci, opcode);
+        return step_unverified(m, env, bci, opcode, false);
     }
     m.drop_vals(p, n - arity);
     let r = m.push_call(env, t, bci + 2);

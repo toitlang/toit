@@ -155,7 +155,7 @@ pub fn op_load_global_dynamic(m: &mut Machine, env: &Env, bci: usize, opcode: u8
     }
     let w = m.at(0);
     let gi = match m.dyn_global_index(p, w, Ghost(sp::at(g, 0))) {
-        None => { return step_unverified(m, env, bci, opcode); },
+        None => { return step_unverified(m, env, bci, opcode, false); },
         Some(gi) => gi,
     };
     proof {
@@ -201,7 +201,7 @@ pub fn op_store_global_dynamic(m: &mut Machine, env: &Env, bci: usize, opcode: u
     }
     let w = m.at(1);
     let gi = match m.dyn_global_index(p, w, Ghost(sp::at(g, 1))) {
-        None => { return step_unverified(m, env, bci, opcode); },
+        None => { return step_unverified(m, env, bci, opcode, false); },
         Some(gi) => gi,
     };
     let v = m.at(0);
@@ -275,7 +275,7 @@ pub fn op_load_global_lazy(m: &mut Machine, env: &Env, bci: usize, opcode: u8, g
     if info.recv_start != NO_VALUE {
         let cid = p.smi_class_id;
         if !((info.recv_start as i64) <= cid && cid < info.recv_end as i64) {
-            return step_unverified(m, env, bci, opcode);
+            return step_unverified(m, env, bci, opcode, false);
         }
     }
     let ghost m1 = *m;

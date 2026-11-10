@@ -436,7 +436,7 @@ pub fn op_invoke_eq(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: C
         proof { lemma_matches(p, m0, *m, r); }
         return r;
     }
-    step_unverified(m, env, bci, opcode)
+    step_unverified(m, env, bci, opcode, false)
 }
 
 /// INVOKE_LT, INVOKE_GT, INVOKE_LTE, INVOKE_GTE
@@ -485,7 +485,7 @@ pub fn op_invoke_relational(m: &mut Machine, env: &Env, bci: usize, opcode: u8) 
         proof { lemma_matches(p, m0, *m, r); }
         return r;
     }
-    step_unverified(m, env, bci, opcode)
+    step_unverified(m, env, bci, opcode, false)
 }
 
 /// INVOKE_BIT_OR .. INVOKE_MOD (`spec::op_invoke_arith`): the smi fast
@@ -533,7 +533,7 @@ pub fn op_invoke_arith(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r
             None => {},
         }
     }
-    step_unverified(m, env, bci, opcode)
+    step_unverified(m, env, bci, opcode, false)
 }
 
 /// IDENTICAL (`spec::identical`): equal words are identical values; a smi
@@ -580,7 +580,7 @@ pub fn op_identical(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: C
         proof { lemma_matches(p, m0, *m, r); }
         return r;
     }
-    step_unverified(m, env, bci, opcode)
+    step_unverified(m, env, bci, opcode, false)
 }
 
 } // verus!

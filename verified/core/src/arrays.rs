@@ -321,10 +321,10 @@ pub fn op_invoke_at(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: C
     let recv = m.at(1);
     let arg = m.at(0);
     if !m.array_id(p, recv, Ghost(rv)) {
-        return step_unverified(m, env, bci, opcode);
+        return step_unverified(m, env, bci, opcode, false);
     }
     let n = match m.array_index(p, recv, Ghost(rv), arg, Ghost(av)) {
-        None => { return step_unverified(m, env, bci, opcode); },
+        None => { return step_unverified(m, env, bci, opcode, false); },
         Some(n) => n,
     };
     let ghost id = rv->Obj_0 as int;
@@ -370,15 +370,15 @@ pub fn op_invoke_at_put(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (
     let arg = m.at(1);
     let value = m.at(0);
     if !m.array_id(p, recv, Ghost(rv)) {
-        return step_unverified(m, env, bci, opcode);
+        return step_unverified(m, env, bci, opcode, false);
     }
     let n = match m.array_index(p, recv, Ghost(rv), arg, Ghost(av)) {
-        None => { return step_unverified(m, env, bci, opcode); },
+        None => { return step_unverified(m, env, bci, opcode, false); },
         Some(n) => n,
     };
     let ghost id = rv->Obj_0 as int;
     if m.is_ro_word(p, recv, Ghost(id)) {
-        return step_unverified(m, env, bci, opcode);
+        return step_unverified(m, env, bci, opcode, false);
     }
     m.set_element_val(p, recv, Ghost(rv), n, value, Ghost(xv));
     let ghost m1 = *m;
@@ -432,7 +432,7 @@ pub fn op_invoke_size(m: &mut Machine, env: &Env, bci: usize, opcode: u8, sel: u
     proof { m.lemma_at(p, 0); }
     let recv = m.at(0);
     if !m.array_id(p, recv, Ghost(rv)) {
-        return step_unverified(m, env, bci, opcode);
+        return step_unverified(m, env, bci, opcode, false);
     }
     let ghost id = rv->Obj_0 as int;
     proof { assert(obj_model_ok(g.heap[id], m.heap.class_bits(), m.addr())); }

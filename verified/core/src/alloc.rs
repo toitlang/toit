@@ -193,7 +193,7 @@ pub fn op_allocate(m: &mut Machine, env: &Env, bci: usize, opcode: u8, c: usize,
     if w == 0 {
         // Out of memory: the checked handler retries and throws.
         reload(m, p, Ghost(g));
-        return step_unverified(m, env, bci, opcode);
+        return step_unverified(m, env, bci, opcode, false);
     }
     let ghost o = new_instance(ap, c as int);
     let ghost g1 = sp::alloc2(g, o);

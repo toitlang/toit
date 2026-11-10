@@ -141,14 +141,16 @@ pub open spec fn step_post(p: &Program, m0: Machine, m1: Machine, r: Ctl) -> boo
 /// missing proofs per opcode family.
 #[verifier::external_body]
 #[inline(always)]
-pub fn step_unverified(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: Ctl)
+pub fn step_unverified(m: &mut Machine, env: &Env, bci: usize, opcode: u8, hot: bool) -> (r: Ctl)
     requires
         old(m).inv(env.p),
         bci == old(m).bci,
         opcode == env.p.ap@.bytecodes[bci as int],
     ensures step_post(env.p, *old(m), *final(m), r),
 {
-    m.dispatch_checked(env, bci, opcode)
+    // `hot`: an opcode without a verified handler, dispatched inline; else
+    // a slow path of a verified handler, out of line.
+    if hot { m.dispatch_checked(env, bci, opcode) } else { m.dispatch_cold(env, bci, opcode) }
 }
 
 /// Grows the stack (a GC point) so that `needed` words are free; the
@@ -754,7 +756,7 @@ pub fn step(m: &mut Machine, env: &Env) -> (r: Ctl)
             return crate::halt::op_halt(m, env, bci, opcode, code);
         },
         _ => {
-            return step_unverified(m, env, bci, opcode);
+            return step_unverified(m, env, bci, opcode, true);
         },
     };
     proof { lemma_local_post(p, m0, *m, r); }

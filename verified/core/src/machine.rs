@@ -2347,6 +2347,20 @@ impl Machine {
         bci + OPCODE_LENGTHS[opcode as usize] as usize <= end
     }
 
+    /// `dispatch_checked` out of line (see `cold!`): the bridge of the verified
+    /// handlers to the checked ones (`step::step_unverified`). Out of line so
+    /// that the verified run loop does not inline a copy of the whole checked
+    /// dispatch at every slow path.
+    #[inline(always)]
+    pub fn dispatch_cold(&mut self, env: &Env, bci: usize, opcode: u8) -> Ctl {
+        cold!(self, |m| m.dispatch_checked_out_of_line(env, bci, opcode))
+    }
+
+    #[inline(never)]
+    fn dispatch_checked_out_of_line(&mut self, env: &Env, bci: usize, opcode: u8) -> Ctl {
+        self.dispatch_checked(env, bci, opcode)
+    }
+
     /// Executes the instruction at `bci` (inside the method) with every run-time
     /// check: the simple families here, the others in `dispatch_unverified`.
     #[inline(always)]
