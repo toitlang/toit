@@ -31,9 +31,10 @@
 //     monotone fixpoint over all methods (required_mask); a compiler-emitted
 //     declaration would make this a single pass.
 //   * The receivers of field accesses are tracked with a small lattice, but
-//     only as diagnostics: the interpreter checks field accesses at run time
-//     when built with TOIT_CHECKED_FIELD_ACCESS. Unproven receivers are
-//     warnings (errors with VerifierOptions::strict).
+//     only as diagnostics: the interpreter checks the field accesses of
+//     untrusted processes at run time (of all processes when built with
+//     TOIT_CHECKED_FIELD_ACCESS). Unproven receivers are warnings (errors
+//     with VerifierOptions::strict).
 
 #include "verifier.h"
 #include "primitive_policy.h"
@@ -1216,7 +1217,7 @@ bool VerifierImpl::check_field_receiver(MethodRun* run, int bci, Slot receiver, 
   }
   warning(run, bci, "%s field %d: receiver kind %s not proven to be an instance with enough fields",
           is_store ? "store" : "load", field_index, kind_name(receiver.kind));
-  return true;  // The interpreter checks field accesses at run time (TOIT_CHECKED_FIELD_ACCESS).
+  return true;  // The interpreter checks field accesses of untrusted processes at run time.
 }
 
 // Checks the arguments of a call against the callee's block requirements.

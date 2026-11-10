@@ -258,10 +258,6 @@ mechanism. `tests/sandbox/cli/` holds programs run directly with
   interpreter hardening (block and method-id validation) and on the
   verifier, which is not proven sound yet; a verifier bug lets a
   malicious snapshot bypass the primitive table.
-- The verifier does not prove the receivers of field accesses. Only
-  builds with `TOIT_CHECKED_FIELD_ACCESS` check them at run time; in
-  other builds a malformed untrusted program can read and write past the
-  end of an object.
 - Untrusted containers in flash are verified on every start, not once at
   install time, and not at all on devices (which refuse them).
 - A sandbox can make the system process print a warning for every

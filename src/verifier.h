@@ -36,7 +36,8 @@ struct VerifierStats {
 
   // Field access sites and how their receiver was justified. These are
   // diagnostics only: the receivers of field accesses are not part of the
-  // structural verification (see TOIT_CHECKED_FIELD_ACCESS).
+  // structural verification (the interpreter checks the field accesses of
+  // untrusted processes at run time).
   int field_sites = 0;
   int field_sites_this = 0;       // Receiver is `this` of a virtual-only method (dispatch witness).
   int field_sites_alloc = 0;      // Receiver is the result of ALLOCATE in the same method.
@@ -85,7 +86,7 @@ struct VerifierOptions {
 // in the shapes the compiler emits, branch targets, table indexes and
 // selectors are in bounds, and the program heap and tables are well-formed.
 // It does not prove the receivers of field accesses (the interpreter checks
-// those at run time with TOIT_CHECKED_FIELD_ACCESS) and it does not check
+// those of untrusted processes at run time) and it does not check
 // method ids read from the heap (the interpreter checks those against its
 // method entry table).
 class Verifier {
