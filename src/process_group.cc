@@ -20,6 +20,7 @@
 #include "process.h"
 #include "interpreter_v2.h"
 #include "verifier_v2.h"
+#include "verifier.h"
 #include "scheduler.h"
 #include "vm.h"
 
@@ -47,8 +48,12 @@ ProcessGroup* ProcessGroup::create(int id, Program* program, AlignedMemoryBase* 
     if (v2_methods == null) {
       v2_methods = V2MethodTable::compute(program);
       // An untrusted program never runs unverified: launches verify the
-      // table they pass in; any other way here verifies now.
-      if (v2_methods != null && policy->is_untrusted() && !V2Verifier::verify(program, v2_methods, false)) {
+      // table they pass in; any other way here verifies now. With
+      // -Xverify / TOIT_VERIFY a trusted program is verified (trusted
+      // rules) on the table it runs, so that it runs on the verified loop.
+      bool untrusted = policy->is_untrusted();
+      if (v2_methods != null && (untrusted || Verifier::is_enabled())
+          && !V2Verifier::verify(program, v2_methods, !untrusted)) {
         delete v2_methods;
         v2_methods = null;
       }

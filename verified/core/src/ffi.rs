@@ -102,6 +102,18 @@ extern "C" {
 
 verus! {
 
+/// Evidence that the launch-time verifier (verified/vmverify, the proven
+/// `check::verify` and `x_loaded_ok`) accepted the program on the tables
+/// the core runs: the verified run loop (`step::run_loop`) takes it. Its
+/// field is private to this module, so the only way to get one is
+/// `toit_v2_run` seeing `TOIT_V2_ACCEPTED`, which `Interpreter::run_v2`
+/// writes only for a `V2MethodTable` that `V2Verifier::verify`'s accept
+/// path marked. It is the runtime fact behind the `Ghost::assume_new` of
+/// the abstract program, certificate and mode there (TRUSTED.md, Loader).
+pub struct Accepted {
+    _private: (),
+}
+
 /// A C++ primitive found in the process' policy.
 #[verifier::external_body]
 pub struct PrimitiveRef {
@@ -256,7 +268,13 @@ pub unsafe extern "C" fn toit_v2_run(context: *mut Context) -> usize {
     let globals = Globals::from_raw(p.globals, p.globals_length);
     let heap = Heap::new(p.remembered_set_bias);
     let preemption = Preemption::from_raw(c.watermark);
-    let (state, value) = crate::machine::run(&program, runtime, globals, heap, preemption, c.accepted != 0);
+    // The verified run loop needs an `Accepted` token, which exists only
+    // here and only for a context whose table the launch-time verifier
+    // accepted (TOIT_V2_ACCEPTED, set by Interpreter::run_v2 from
+    // V2MethodTable::verified, which only V2Verifier::verify's accept path
+    // sets).
+    let accepted = if c.accepted == V2_ACCEPTED { Some(Accepted { _private: () }) } else { None };
+    let (state, value) = crate::machine::run(&program, runtime, globals, heap, preemption, accepted);
     c.result_state = state;
     c.result_value = value;
     state
@@ -299,7 +317,7 @@ layout_table!(
     RESULT_PREEMPTED, RESULT_YIELDED, RESULT_TERMINATED, RESULT_RESET, RESULT_DEEP_SLEEP,
     PREEMPTION_MARKER,
     V2_OK, V2_STACK_OVERFLOW, V2_OUT_OF_MEMORY, V2_PRIMITIVE_SUCCESS, V2_PRIMITIVE_FAILURE,
-    V2_PRIMITIVE_THROW, V2_PRIMITIVE_MISSING, V2_PRIMITIVE_FOUND, V2_REPORT_STUCK,
+    V2_PRIMITIVE_THROW, V2_PRIMITIVE_MISSING, V2_PRIMITIVE_FOUND, V2_ACCEPTED, V2_REPORT_STUCK,
     V2_REPORT_UNCAUGHT, V2_REPORT_TASK_RETURNED,
     V2_MESSAGE_NONE, V2_MESSAGE_WORD, V2_MESSAGE_ARRAY, V2_MESSAGE_PRIMITIVE, V2_MESSAGE_MAX_WORDS,
     KIND_METHOD, KIND_FIELD_ACCESSOR, KIND_LAMBDA, KIND_BLOCK, NO_VALUE, BLOCK_SLOT_BITS,

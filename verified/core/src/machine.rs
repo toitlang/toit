@@ -1375,7 +1375,8 @@ fn compare_num(a: Num, b: Num) -> u8 {
 /// verification, else on the checked handlers (`run_checked`). TRUSTED glue:
 /// the ghost state is the one the run loop's precondition names
 /// (theorem.rs); `reload` checks the stack object.
-pub fn run(p: &Program, rt: Runtime, globals: Globals, heap: Heap, pre: Preemption, accepted: bool) -> (usize, i64) {
+pub fn run(p: &Program, rt: Runtime, globals: Globals, heap: Heap, pre: Preemption,
+           accepted: Option<crate::ffi::Accepted>) -> (usize, i64) {
     let mem = rt.stack();
     let mut m = Machine {
         mem, globals, heap,
@@ -1399,10 +1400,9 @@ pub fn run(p: &Program, rt: Runtime, globals: Globals, heap: Heap, pre: Preempti
         &mut m.lim as *mut usize, &mut m.method as *mut usize,
         &mut m.globals as *mut Globals, &mut m.heap as *mut Heap,
     ));
-    if accepted {
-        crate::step::run_loop(&mut m, &env)
-    } else {
-        run_checked(&mut m, &env)
+    match accepted {
+        Some(token) => crate::step::run_loop(&mut m, &env, &token),
+        None => run_checked(&mut m, &env),
     }
 }
 

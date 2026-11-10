@@ -114,11 +114,20 @@ class V2MethodTable {
   word index_of_entry(word entry) const;
   const V2Method& at(word index) const { return methods_[index]; }
 
+  // The launch-time verifier (V2Verifier::verify, verified/vmverify)
+  // accepted the program on exactly this table: 0 not verified, 1 under
+  // the untrusted rules, 2 under the trusted rules. Set only by the
+  // verifier's accept path; the verified run loop of the core runs only
+  // for a table it accepted (Interpreter::run_v2, TOIT_V2_ACCEPTED).
+  uword verified() const { return verified_; }
+  void mark_verified(bool trusted) { verified_ = trusted ? 2 : 1; }
+
  private:
   V2MethodTable(V2Method* methods, word length) : methods_(methods), length_(length) {}
 
   V2Method* const methods_;
   const word length_;
+  uword verified_ = 0;
 };
 
 }  // namespace toit
@@ -183,6 +192,12 @@ static const uword TOIT_V2_PRIMITIVE_FAILURE = 1;
 static const uword TOIT_V2_PRIMITIVE_THROW = 2;
 static const uword TOIT_V2_PRIMITIVE_MISSING = 0;
 static const uword TOIT_V2_PRIMITIVE_FOUND = 1;
+
+// `toit_v2_context.accepted` for a program the launch-time verifier accepted
+// on the table the process runs (V2MethodTable::verified); any other value
+// runs the checked loop. A distinct word, not a boolean, so that no other
+// nonzero value selects the verified loop.
+static const uword TOIT_V2_ACCEPTED = 0x56455249464945ULL;  // "VERIFIE"
 
 // Messages of the exceptions the core raises (the trace's message, as the
 // format-1 failure entry points of lib/core/exceptions.toit encode it).

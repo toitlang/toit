@@ -320,7 +320,11 @@ Interpreter::Result Interpreter::run_v2() {
   v2_program_tables(program, table, process_->object_heap()->global_variables(), &context.program);
   context.watermark = &watermark_;
   context.preempt_a_lot = Flags::preempt_a_lot ? 1 : 0;
-  context.accepted = (process_->policy()->is_untrusted() || Verifier::is_enabled()) ? 1 : 0;
+  // The verified loop only for a table the launch-time verifier accepted,
+  // under the untrusted rules for an untrusted process.
+  uword verified = table->verified();
+  bool accepted = verified == 1 || (verified == 2 && !process_->policy()->is_untrusted());
+  context.accepted = accepted ? TOIT_V2_ACCEPTED : 0;
 
   v2_validate(process_, "run entry");
   toit_v2_run(&context);

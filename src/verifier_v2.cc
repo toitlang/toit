@@ -82,7 +82,12 @@ bool V2Verifier::verify(Program* program, const V2MethodTable* table, bool trust
             result.convert_ns / 1e6, result.heap_ns / 1e6, result.infer_ns / 1e6,
             result.check_ns / 1e6, result.peak_bytes >> 10);
   }
-  if (result.code == TOIT_VMVERIFY_ACCEPTED) return true;
+  if (result.code == TOIT_VMVERIFY_ACCEPTED) {
+    // The only place that marks a table verified (the core's verified run
+    // loop relies on it: Interpreter::run_v2).
+    const_cast<V2MethodTable*>(table)->mark_verified(trusted);
+    return true;
+  }
   const char* kind = trusted ? "" : "untrusted ";
   if (result.method >= 0 && table->is_valid(result.method)) {
     word bci = table->at(result.method).entry + (result.offset >= 0 ? result.offset : 0);

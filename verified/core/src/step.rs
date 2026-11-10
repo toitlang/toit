@@ -935,7 +935,7 @@ proof fn lemma_reaches_step(ap: Program2, g0: State2, g1: State2, g2: State2)
 /// may loop forever (the scheduler preempts it), so no termination is
 /// claimed.
 #[verifier::exec_allows_no_decreases_clause]
-pub fn run_loop(m: &mut Machine, env: &Env) -> (r: (usize, i64))
+pub fn run_loop(m: &mut Machine, env: &Env, accepted: &crate::ffi::Accepted) -> (r: (usize, i64))
     requires old(m).inv(env.p),
     ensures run_post(env.p, *old(m), *final(m), r),
 {
