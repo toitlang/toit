@@ -70,6 +70,8 @@ return-is-exception tests/type_propagation/finally-test.toit
  26[091] - return S7 0
  29[099] - unwind
  30[041] - pop 1
+ 31[022] - load null
+ 32[090] - throw 0
 
 [block] in return-is-exception tests/type_propagation/finally-test.toit
  - argument 0: [block]
@@ -124,6 +126,8 @@ return-exception tests/type_propagation/finally-test.toit
  26[091] - return S7 0
  29[099] - unwind
  30[041] - pop 1
+ 31[022] - load null
+ 32[090] - throw 0
 
 [block] in return-exception tests/type_propagation/finally-test.toit
  - argument 0: [block]
@@ -152,6 +156,8 @@ catchy tests/type_propagation/finally-test.toit
  26[091] - return S7 0
  29[099] - unwind
  30[041] - pop 1
+ 31[022] - load null
+ 32[090] - throw 0
 
 [block] in catchy tests/type_propagation/finally-test.toit
  - argument 0: [block]
@@ -485,6 +491,8 @@ invoke tests/type_propagation/finally-test.toit
   0[016] - load local 2
   1[055] - invoke block S1 // [[block]] -> {}
   3[041] - pop 1
+  4[022] - load null
+  5[090] - throw 0
 
 invoke-catch tests/type_propagation/finally-test.toit
  - argument 0: [block]
@@ -497,6 +505,8 @@ invoke-catch tests/type_propagation/finally-test.toit
  14[092] - return null S4 1
  17[099] - unwind
  18[041] - pop 1
+ 19[022] - load null
+ 20[090] - throw 0
 
 [block] in invoke-catch tests/type_propagation/finally-test.toit
  - argument 0: [block]
