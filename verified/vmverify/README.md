@@ -167,6 +167,30 @@ symbols of `toit_spec` are 60 KB and of `toit_vmverify` 26 KB; the rest is
 Rust std code the core did not pull in before (hash maps, formatting,
 unwinding) and the unwind tables of `panic = "unwind"`.
 
+## End-to-end fuzzing with the launch path
+
+`verified/core/fuzz/fuzz.py --filter=launch` (the default) launches each
+mutant as an untrusted container on the ASan build; the VM's own
+verifier decides. Runs on 2026-11-10 (16 jobs, logs in
+verified/core/fuzz/findings/launch-run-*):
+
+| Run | Build | Minutes | Mutants | Accepted and run | Crash | Stuck | Verifier panic (rejected) |
+|---|---|---|---|---|---|---|---|
+| seed 7 | before the R5 spec merge | 25 | 81,380 | 11,492 | 0 | 8 | 63 |
+| seed 8 | spec/phase4-requests merged | 21 | 65,238 | 9,227 | 0 | 0 | 61 |
+| seed 9 | sandbox-integration 724e9fc0 merged | 20.5 | 90,663 | 12,942 | 1 | 0 | 84 |
+
+- The 8 stuck states of the first run were all accesses to a task's
+  stack or id field (R5); the core's run-time check stopped them. With
+  the R5 spec the verifier rejects them (reproducers r5-*).
+- The verifier panics are the two inference bugs of PHASE4-REQUESTS.md
+  R6 (infer-panic-*); the panic is caught and the program rejected.
+- The crash is not in the verifier or the core: the C++ object encoder
+  (`encode_error`/`encode_object`) recurses without bound on a cyclic
+  array and overflows the native stack, killing the VM. It reproduces in
+  the format-1 VM with a 10-line program (spec/VM-BUGS.md;
+  encoder-cyclic-array.*); upstream fix PR in progress.
+
 ## Memory high-water mark
 
 The verifier does not recurse over the program (the conversion and the

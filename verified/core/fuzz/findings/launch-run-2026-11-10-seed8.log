@@ -1,0 +1,91 @@
+VERIFIER-PANIC non-local-branch-test: header bci 11604: 0x1b -> 0x93
+VERIFIER-PANIC class-id-test: header bci 15806: 0x36 -> 0x80
+VERIFIER-PANIC block-test: header bci 17953: 0x27 -> 0x80
+VERIFIER-PANIC block-test: header bci 9398: 0x05 -> 0x6c
+VERIFIER-PANIC try-finally-test: header bci 3568: 0x0a -> 0x40
+VERIFIER-PANIC try-finally-test: header bci 9710: 0x03 -> 0x7f
+VERIFIER-PANIC task-test: header bci 11999: 0x1a -> 0xff
+VERIFIER-PANIC string-test: header bci 27254: 0x38 -> 0xc4
+VERIFIER-PANIC map-test: header bci 17148: 0x0b -> 0xb9
+VERIFIER-PANIC exception-test: header bci 612: 0x11 -> 0x7f
+VERIFIER-PANIC class-id-test: header bci 433: 0x00 -> 0x01
+VERIFIER-PANIC block-test: header bci 3262: 0x08 -> 0x01
+VERIFIER-PANIC class-id-test: header bci 12830: 0x1c -> 0xff
+VERIFIER-PANIC lambda-test: header bci 11793: 0x01 -> 0xff
+VERIFIER-PANIC list-test: header bci 26555: 0x12 -> 0xff
+VERIFIER-PANIC task-test: header bci 16573: 0x19 -> 0x01
+VERIFIER-PANIC print-main: header bci 20639: 0x13 -> 0xff
+VERIFIER-PANIC string-test: header bci 18781: 0x15 -> 0xea
+VERIFIER-PANIC list-test: header bci 11137: 0x00 -> 0x01
+VERIFIER-PANIC task-test: header bci 5371: 0x09 -> 0xff
+VERIFIER-PANIC lambda-test: header bci 11812: 0x1b -> 0x80
+VERIFIER-PANIC try-finally-test: header bci 11969: 0xc7 -> 0x2f
+VERIFIER-PANIC block-test: header bci 10030: 0x09 -> 0x01
+VERIFIER-PANIC block-test: header bci 14374: 0x0f -> 0x47
+VERIFIER-PANIC lambda-test: header bci 12878: 0x0a -> 0x05
+VERIFIER-PANIC try-finally-test: header bci 12062: 0x1b -> 0xfa
+VERIFIER-PANIC class-id-test: header bci 9201: 0x96 -> 0x01
+VERIFIER-PANIC string-test: header bci 18315: 0x0f -> 0x80
+VERIFIER-PANIC try-finally-test: header bci 12171: 0x01 -> 0x80
+VERIFIER-PANIC string-test: header bci 8519: 0x06 -> 0x18
+VERIFIER-PANIC lambda-test: header bci 4920: 0x16 -> 0xef
+VERIFIER-PANIC exception-test: header bci 1892: 0x09 -> 0xa1
+VERIFIER-PANIC lambda-test: header bci 9996: 0x13 -> 0x01
+VERIFIER-PANIC print-main: header bci 153: 0x06 -> 0x7f
+VERIFIER-PANIC try-finally-test: header bci 5864: 0x29 -> 0x80
+VERIFIER-PANIC block-test: header bci 13412: 0x1c -> 0x9b
+VERIFIER-PANIC lambda-test: header bci 5871: 0x08 -> 0x0f
+VERIFIER-PANIC class-id-test: header bci 22250: 0x0c -> 0x00
+VERIFIER-PANIC exception-test: header bci 19494: 0x05 -> 0xff
+VERIFIER-PANIC class-id-test: header bci 11566: 0x1b -> 0xb0
+VERIFIER-PANIC lambda-test: header bci 19051: 0x01 -> 0xfb
+VERIFIER-PANIC task-test: header bci 681: 0x1d -> 0xff
+VERIFIER-PANIC lambda-test: header bci 19369: 0x29 -> 0xff
+VERIFIER-PANIC print-main: header bci 162: 0x0a -> 0xc0
+VERIFIER-PANIC block-test: header bci 21019: 0x0c -> 0x00
+VERIFIER-PANIC lambda-test: header bci 11566: 0x02 -> 0x01
+VERIFIER-PANIC lambda-test: header bci 22927: 0x08 -> 0x26
+VERIFIER-PANIC lambda-test: header bci 6120: 0x08 -> 0xff
+VERIFIER-PANIC map-test: header bci 56: 0x16 -> 0x7f
+VERIFIER-PANIC print-main: header bci 2902: 0x1a -> 0x00
+VERIFIER-PANIC list-test: header bci 21021: 0x0c -> 0x51
+VERIFIER-PANIC block-test: header bci 13701: 0x08 -> 0x17
+VERIFIER-PANIC block-test: header bci 14374: 0x0f -> 0x4c
+VERIFIER-PANIC exception-test: header bci 3770: 0x01 -> 0x80
+VERIFIER-PANIC map-test: header bci 23240: 0x14 -> 0x80
+VERIFIER-PANIC list-test: header bci 34273: 0x9d -> 0x01
+VERIFIER-PANIC print-main: header bci 2555: 0x0e -> 0x80
+VERIFIER-PANIC class-id-test: header bci 11158: 0x13 -> 0x80
+VERIFIER-PANIC list-test: header bci 34124: 0x2c -> 0x80
+VERIFIER-PANIC string-test: header bci 42584: 0x0b -> 0x7a
+VERIFIER-PANIC map-test: header bci 16552: 0x15 -> 0x9c
+{
+  "seconds": 1266,
+  "seed": 8,
+  "run": "build/asan/sdk/lib/toit/bin/toit.run",
+  "filter": "the VM's launch-time verification (toit.run --untrusted, verified/vmverify)",
+  "seeds": [
+    "print-main",
+    "block-test",
+    "lambda-test",
+    "try-finally-test",
+    "exception-test",
+    "string-test",
+    "list-test",
+    "map-test",
+    "class-id-test",
+    "non-local-branch-test",
+    "task-test"
+  ],
+  "first": 0,
+  "mutants": 65238,
+  "outcomes": {
+    "rejected": 55950,
+    "exit-0": 7543,
+    "exit-255": 500,
+    "exit-1": 1152,
+    "verifier-panic": 61,
+    "timeout": 32
+  },
+  "crashes": []
+}
