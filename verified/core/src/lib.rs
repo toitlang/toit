@@ -16,13 +16,16 @@
 //! The verified interpreter core for format-2 programs (Phase 4).
 //!
 //! - `layout`:  constants assumed about the C++ VM (checked at build time).
-//! - `view`:    TRUSTED raw-memory views (see TRUSTED.md).
+//! - `view`:    TRUSTED raw-memory views and the heap model (TRUSTED.md).
 //! - `ffi`:     TRUSTED C ABI glue and the C++ functions the core calls.
-//! - `exec`:    the machine state and the verified opcode handlers.
-//! - `machine`: the run loop and the handlers not yet verified
-//!              (OBLIGATIONS.md).
-//! - `obligations`: the end-to-end statement left for the proof half
-//!              (UNPROVEN, stated only).
+//! - `abs`:     the abstraction: value encoding, frame records, program.
+//! - `exec`:    the machine, `refines`/`inv`, the top-frame handlers.
+//! - `step`:    the verified run loop and dispatch; the assumed bridges.
+//! - `calls`, `fields`, `types`, `blocks`, `ops`: verified handler
+//!              families (refinement of `spec::step`).
+//! - `machine`: the checked handlers (unverified; programs not accepted
+//!              and the paths not proven yet, OBLIGATIONS.md).
+//! - `theorem`: the end-to-end statement.
 //!
 //! See DESIGN.md.
 
@@ -40,4 +43,4 @@ pub mod fields;
 pub mod types;
 pub mod blocks;
 pub mod ops;
-pub mod obligations;
+pub mod theorem;

@@ -410,54 +410,6 @@ justification = "The ghost state the reloaded machine represents: the inter-run 
 
 [[trusted]]
 crate = "core"
-file = "src/obligations.rs"
-item = "abstracts"
-kind = "uninterp"
-count = 1
-justification = "Placeholder for the machine-to-State2 abstraction function (OBLIGATIONS.md E2E); only used in the unproven statement."
-
-[[trusted]]
-crate = "core"
-file = "src/obligations.rs"
-item = "accepted"
-kind = "uninterp"
-count = 1
-justification = "Placeholder for toit_spec v2 accepts (the core crate cannot import the spec crate yet); only used in the unproven statement."
-
-[[trusted]]
-crate = "core"
-file = "src/obligations.rs"
-item = "end_to_end_no_fatal"
-kind = "external_body"
-count = 1
-justification = "UNPROVEN obligation E2E (OBLIGATIONS.md): the end-to-end statement written down for the proof half; nothing uses it as an axiom."
-
-[[trusted]]
-crate = "core"
-file = "src/obligations.rs"
-item = "loaded"
-kind = "uninterp"
-count = 1
-justification = "Placeholder for loaded_ok of verified/spec/SOUNDNESS.md; only used in the unproven statement."
-
-[[trusted]]
-crate = "core"
-file = "src/obligations.rs"
-item = "next_step_not_stuck"
-kind = "uninterp"
-count = 1
-justification = "Placeholder for 'the next handler takes no Ctl::Stuck path'; only used in the unproven statement."
-
-[[trusted]]
-crate = "core"
-file = "src/obligations.rs"
-item = "reachable"
-kind = "uninterp"
-count = 1
-justification = "Placeholder for spec-reachability of the abstract state; only used in the unproven statement."
-
-[[trusted]]
-crate = "core"
 file = "src/step.rs"
 item = "grow_bridge"
 kind = "external_body"
@@ -1196,17 +1148,17 @@ justification = "Format-2 opcode names for tracing and the table test; no semant
 crate = "spec"
 file = "src/v2/heap_check.rs"
 item = "check_heap"
-kind = "plain_rust_item"
+kind = "cfg"
 count = 1
-justification = "Message only: toit_spec_verify's early wording of a heap rejection; the verdict comes from the verified x_loaded_ok (proven equal to loaded_ok)."
+justification = "cfg that keeps the message wrapper (it names the unverified loader's Loaded) out of the Verus build."
 
 [[trusted]]
 crate = "spec"
 file = "src/v2/heap_check.rs"
 item = "check_heap"
-kind = "cfg"
+kind = "plain_rust_item"
 count = 1
-justification = "cfg that keeps the message wrapper (it names the unverified loader's Loaded) out of the Verus build."
+justification = "Message only: toit_spec_verify's early wording of a heap rejection; the verdict comes from the verified x_loaded_ok (proven equal to loaded_ok)."
 
 [[trusted]]
 crate = "spec"
