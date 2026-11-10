@@ -691,6 +691,22 @@ justification = "Raw access of Heap::set_byte; in bounds by the external_body pr
 [[trusted]]
 crate = "core"
 file = "src/view.rs"
+item = "Heap::set_field"
+kind = "external_body"
+count = 1
+justification = "Heap accessor: storing a field word updates the model's field (non-ro instance, f < field count); applies the write barrier (TRUSTED.md, heap model)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::set_field"
+kind = "unsafe"
+count = 1
+justification = "Writes field f < field count of a live process-heap instance and marks its card (heap integrity, TRUSTED.md V2)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
 item = "Heap::set_word"
 kind = "external_body"
 count = 1

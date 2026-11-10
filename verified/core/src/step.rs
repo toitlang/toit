@@ -67,6 +67,9 @@ pub open spec fn verified_op(op: u8) -> bool {
     ||| op == 53         // INVOKE_STATIC
     ||| op == 58 || op == 59  // INVOKE_VIRTUAL(_WIDE)
     ||| op == 91 || op == 92  // RETURN, RETURN_NULL
+    ||| 7 <= op <= 13    // LOAD_FIELD*, STORE_FIELD*
+    ||| op == 60 || op == 61  // INVOKE_VIRTUAL_GET/SET
+    ||| op == 94 || op == 98  // STORE_FIELD_THIS, LOAD_FIELD_THIS
 }
 
 /// The machine continues from a state the spec reaches from `g0`: the same
@@ -500,6 +503,61 @@ pub fn step(m: &mut Machine, env: &Env) -> (r: Ctl)
                 assert(const_ok(g.heap, ap.roots[0]));
             }
             return crate::calls::op_return(m, env, p.null, Ghost(sp::null2(ap)));
+        },
+        7 => {
+            let f = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_load_field(ap, g, f as int, 2)) by { reveal(sp::step); } }
+            return crate::fields::op_load_field(m, env, bci, opcode, f, 2);
+        },
+        8 => {
+            let f = code_u16(p, bci + 1);
+            proof { assert(sp::step(ap, g) == sp::op_load_field(ap, g, f as int, 3)) by { reveal(sp::step); } }
+            return crate::fields::op_load_field(m, env, bci, opcode, f, 3);
+        },
+        9 => {
+            let e = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_load_field_local(ap, g, e as int, false)) by { reveal(sp::step); } }
+            return crate::fields::op_load_field_local(m, env, bci, opcode, e, false);
+        },
+        10 => {
+            let e = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_load_field_local(ap, g, e as int, true)) by { reveal(sp::step); } }
+            return crate::fields::op_load_field_local(m, env, bci, opcode, e, true);
+        },
+        11 => {
+            let f = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_store_field(ap, g, f as int, 2, true)) by { reveal(sp::step); } }
+            return crate::fields::op_store_field(m, env, bci, opcode, f, 2, true);
+        },
+        12 => {
+            let f = code_u16(p, bci + 1);
+            proof { assert(sp::step(ap, g) == sp::op_store_field(ap, g, f as int, 3, true)) by { reveal(sp::step); } }
+            return crate::fields::op_store_field(m, env, bci, opcode, f, 3, true);
+        },
+        13 => {
+            let f = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_store_field(ap, g, f as int, 2, false)) by { reveal(sp::step); } }
+            return crate::fields::op_store_field(m, env, bci, opcode, f, 2, false);
+        },
+        60 => {
+            let sel = code_u16(p, bci + 1);
+            proof { assert(sp::step(ap, g) == sp::op_invoke_virtual_get(ap, g, sel as int)) by { reveal(sp::step); } }
+            return crate::fields::op_invoke_virtual_get(m, env, bci, opcode, sel);
+        },
+        61 => {
+            let sel = code_u16(p, bci + 1);
+            proof { assert(sp::step(ap, g) == sp::op_invoke_virtual_set(ap, g, sel as int)) by { reveal(sp::step); } }
+            return crate::fields::op_invoke_virtual_set(m, env, bci, opcode, sel);
+        },
+        94 => {
+            let f = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_store_field_this(ap, g, f as int)) by { reveal(sp::step); } }
+            return crate::fields::op_store_field_this(m, env, bci, opcode, f);
+        },
+        98 => {
+            let f = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_load_field_this(ap, g, f as int)) by { reveal(sp::step); } }
+            return crate::fields::op_load_field_this(m, env, bci, opcode, f);
         },
         _ => {
             return step_unverified(m, env, bci, opcode);

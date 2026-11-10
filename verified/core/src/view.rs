@@ -30,7 +30,7 @@
 use vstd::prelude::*;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use crate::layout::*;
-use toit_spec::types::{HeapObj, Body};
+use toit_spec::types::{HeapObj, Body, Value};
 
 verus! {
 
@@ -241,6 +241,34 @@ impl Heap {
         ensures r == crate::abs::enc(self.addrs(), self.objs()[id].body->Instance_0[f as int]),
     {
         unsafe { *((obj - HEAP_TAG) as *const usize).add(INSTANCE_FIELDS_WORD + f) }
+    }
+
+    /// Stores the encoding `w` of `v` into field `f` of the instance `id`
+    /// (with the write barrier): the model's field becomes `v`.
+    #[verifier::external_body]
+    #[inline(always)]
+    pub fn set_field(&mut self, obj: usize, f: usize, w: usize, Ghost(id): Ghost<int>, Ghost(v): Ghost<Value>)
+        requires
+            0 <= id < old(self).objs().len(),
+            old(self).addrs().len() == old(self).objs().len(),
+            obj == old(self).addrs()[id],
+            old(self).objs()[id].body is Instance,
+            f < old(self).objs()[id].body->Instance_0.len(),
+            !old(self).objs()[id].ro,
+            w == crate::abs::enc(old(self).addrs(), v),
+        ensures
+            final(self).objs() == old(self).objs().update(id, HeapObj {
+                body: Body::Instance(old(self).objs()[id].body->Instance_0.update(f as int, v)),
+                ..old(self).objs()[id]
+            }),
+            final(self).addrs() == old(self).addrs(),
+            final(self).class_bits() == old(self).class_bits(),
+    {
+        unsafe {
+            *((obj - HEAP_TAG) as *mut usize).add(INSTANCE_FIELDS_WORD + f) = w;
+            let card = ((obj - HEAP_TAG) >> CARD_SIZE_LOG_2).wrapping_add(self.remembered_set_bias);
+            *(card as *mut u8) = NEW_SPACE_POINTERS;
+        }
     }
 
     /// The header word of a heap object.

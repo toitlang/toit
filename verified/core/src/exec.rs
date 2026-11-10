@@ -149,6 +149,11 @@ pub fn smi_of(v: i64) -> (r: usize)
     (v + v) as usize
 }
 
+/// `a` lies in the program heap.
+pub open spec fn in_ro(p: &Program, a: usize) -> bool {
+    p.ro_start <= a && a < p.ro_start + p.ro_size
+}
+
 impl Program {
     /// The abstract program.
     pub open spec fn ap(&self) -> Program2 {
@@ -189,6 +194,9 @@ impl Machine {
         &&& self.stack_ok()
         &&& heap_model_ok(self.heap.objs(), addr, self.heap.class_bits())
         &&& self.heap.class_bits() == p.class_bits@
+        // The program heap (read only) is exactly the objects in the
+        // program-heap address range.
+        &&& forall|i: int| 0 <= i < g.heap.len() ==> #[trigger] g.heap[i].ro == in_ro(p, addr[i])
         &&& g.heap == self.heap.objs()
         &&& prog_rel(p, g.heap, addr)
         &&& self.words() == enc_seq(addr, g.stack)
