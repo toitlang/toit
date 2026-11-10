@@ -1,132 +1,109 @@
 # Proof obligations of the verified core
 
-What is proven about the core today, and what is left for the proof half of
-Phase 4. "Proven" means: Verus, zero `assume`/`admit`, with only the
-trusted items of TRUSTED.md and verified/TRUSTED.toml. Run
-`verified/check.sh` (the merge gate) to reproduce.
+What is proven about the core, and what is left. "Proven" means: Verus,
+zero `assume`/`admit`, with only the trusted items of TRUSTED.md and
+verified/TRUSTED.toml. Run `verified/check.sh` (the merge gate) to
+reproduce. Architecture: DESIGN.md section 9.
 
-Current result: `core 282 verified, 0 errors` (Verus 0.2026.11.02, about
-11 s wall). See DESIGN.md for the run loop the obligations refer to.
+Current result: see PROGRESS.md (core verified count and time).
 
-## 1. What is proven now
+## 1. What is proven
 
-The handlers in the `verus!` part of `src/exec.rs` carry functional
-contracts over the object-stack words (`Machine::words()`, bottom first)
-and the machine invariant `stack_ok` (`ftop <= top <= lim <= len`,
-`lim == len - base`, `len < 2^20`). For each handler: the run-time check
-that corresponds to the spec's stuck condition, and the exact new word
-sequence, bci and globals when it continues. They are word-level
-transcriptions of the spec functions of the same name in
-verified/spec/src/v2/spec.rs; memory safety (every index in bounds) follows
-from the view contracts.
+The end-to-end theorem (`src/theorem.rs`): for an accepted, loaded
+program the verified run loop's precondition (`Machine::inv`: the machine
+refines a well-formed state of an accepted program) holds on the first run
+and on every later run; the run loop (`step::run_loop`, verified) never
+fails a view precondition, never reports a stuck state of the spec and
+takes no fatal path. It rests on the contracts of TRUSTED.md section 6,
+among them the assumed refinement of the paths listed in section 2.
 
-| Family | Opcodes | Handler(s) | Status |
+Proven refinement of `spec::step` (the handler's next state is exactly
+the spec's; `step::verified_op` lists the opcodes the verified dispatch
+handles itself):
+
+| Family | Opcodes | File | Run-time checks removed |
 |---|---|---|---|
-| stack | POP, POP_1 | `op_pop` | functional contract proven |
-| locals | LOAD_LOCAL(_WIDE), LOAD_LOCAL_0..5, POP_LOAD_LOCAL, STORE_LOCAL, STORE_LOCAL_POP | `op_load_local`, `op_pop_load_local`, `op_store_local`, `op_store_local_pop` | proven |
-| constants | LOAD_LITERAL(_WIDE), LOAD_NULL, LOAD_SMI_0/1/U8/U16/U32, LOAD_SMIS_0, LOAD_METHOD | `op_load_literal`, `op_load_smis_0`, `push_next` | proven (the smi encoding of the pushed value is computed in `machine.rs`) |
-| globals | LOAD_GLOBAL_VAR(_WIDE), STORE_GLOBAL_VAR(_WIDE) | `op_load_global`, `op_store_global` | proven |
-| branches | BRANCH*, BRANCH_BACK* | `op_branch` | proven (target in the method, condition popped, `branch_taken`) |
-| helpers | | `push`, `put`, `drop`, `at`, `has_slot`, `binary_result` | proven |
-
-Not yet a refinement proof: the contracts talk about words, not about
-`State2`. Closing the gap is obligation R below.
+| locals | LOAD_LOCAL(_WIDE), LOAD_LOCAL_0..5, POP_LOAD_LOCAL, STORE_LOCAL, STORE_LOCAL_POP | exec.rs | slot exists |
+| constants | LOAD_LITERAL(_WIDE), LOAD_NULL, LOAD_SMI_0/1/U8/U16/U32, LOAD_SMIS_0, LOAD_METHOD | exec.rs | literal index, method id |
+| globals | LOAD/STORE_GLOBAL_VAR(_WIDE), LOAD/STORE_GLOBAL_VAR_DYNAMIC, LOAD_GLOBAL_VAR_LAZY(_WIDE) | exec.rs, globals.rs | global index (static), slot, entry method checks |
+| stack | POP, POP_1 | exec.rs | frame height |
+| branches | BRANCH*, BRANCH_BACK* | exec.rs, step.rs | target in method, direction, zero distance |
+| dispatch | every verified opcode | step.rs | instruction inside the method (the `mend`/`mfast` cache is gone) |
+| calls | INVOKE_STATIC, INVOKE_VIRTUAL(_WIDE), RETURN, RETURN_NULL | calls.rs | target valid, arity, frame height, dispatch range, lookup entry, handler of the returning frame, caller frame, push room after return |
+| fields | LOAD_FIELD(_WIDE), LOAD_FIELD_LOCAL, POP_LOAD_FIELD_LOCAL, STORE_FIELD(_WIDE/_POP), LOAD_FIELD_THIS, STORE_FIELD_THIS, INVOKE_VIRTUAL_GET/SET | fields.rs | the `this` variants have none left (receiver, field range, task fields); others keep only `field_readable`/`field_writable` (spec checks) |
+| type checks | IS_CLASS(_WIDE), IS_INTERFACE(_WIDE), AS_CLASS(_WIDE), AS_INTERFACE(_WIDE), AS_LOCAL | types.rs | check-table indices, value has a class |
+| blocks | LOAD_BLOCK, LOAD_OUTER, STORE_OUTER, LOAD_OUTER_BLOCK, INVOKE_BLOCK | blocks.rs | block reference decoding (frame, slot ranges), outer slot bounds, block method checks, LOAD_BLOCK encoding limits |
+| operators | INVOKE_EQ..INVOKE_MOD (smi fast paths), IDENTICAL | ops.rs | operand slots |
+| arrays | INVOKE_AT, INVOKE_AT_PUT, INVOKE_SIZE (plain-array fast paths) | arrays.rs | slots |
+| allocation | ALLOCATE(_WIDE) | alloc.rs | class range, instantiable, the reload checks after the GC |
+| halt | HALT 0..3 | halt.rs | slot |
 
 ## 2. Open obligations
 
-### R. Refinement to `spec::step` (all families)
+### R. Paths still assumed (`step::step_unverified`)
 
-State the abstraction function `abs(p, m, heap) -> State2` and prove, per
-handler, `abs(after) == spec::step(pview(p), abs(before))` (or the matching
-`Outcome2`). Needed pieces:
+The verified handlers hand the whole instruction (before any change) to
+the checked handlers of machine.rs on these paths, whose refinement
+contract is assumed:
 
-- R1 value abstraction: a word is a smi, a program-heap or process-heap
-  object (ghost map address -> heap index), or a block reference. Block
-  references are smis in the implementation (`frame << 20 | slot`) but
-  `Value::Block(h)` in the spec, so the abstraction needs a ghost map from
-  object-stack slots to their kind. The spec's block payload is a height;
-  the implementation's is (frame, slot): the map is `h = slot + 1`.
-- R2 frames: frame records `mem[0..ftop]` (method, ret, base, handler) to
-  `frames` and `tries` (at most one handler per frame in the
-  implementation; the spec allows a stack of handlers but TRY always
-  opens a new frame, so the abstraction is injective).
-- R3 the cached frame fields (`base`, `lim`, `method`, `mend`, `mfast`)
-  equal the decoded top frame (an invariant of `Machine`).
-- R4 instruction decoding: `dispatch` reads the same operands as
-  `spec::step` (the fast-path check `bci < mfast` implies the instruction
-  ends inside the method).
-
-### Per-family status of the handlers in `src/machine.rs` (not verified)
-
-Every stuck state of the spec is a run-time check that terminates the
-process (`Ctl::Stuck`), so these handlers are memory safe by construction
-only to the extent that their checks are right; that is what the
-obligations below would prove.
-
-| Family | Opcodes | Reason not yet verified |
+| Item | Opcodes / paths | Missing |
 |---|---|---|
-| B1 blocks | NON_LOCAL_RETURN, NON_LOCAL_BRANCH; INVOKE_BLOCK's CODE_INVOCATION_FAILED path | unwinding over frames (`spec::unwind`); raising allocates. LOAD_BLOCK, LOAD_OUTER, STORE_OUTER, LOAD_OUTER_BLOCK and INVOKE_BLOCK are verified (src/blocks.rs) |
-| F1 fields | LOAD_FIELD(_WIDE), LOAD_FIELD_LOCAL, POP_LOAD_FIELD_LOCAL, STORE_FIELD(_WIDE/_POP), LOAD_FIELD_THIS, STORE_FIELD_THIS | needs a heap view with a contract (`Heap` is a raw view today): object header, class id, field count, program-heap range, write barrier |
-| C1 calls | INVOKE_STATIC(_TAIL), INVOKE_VIRTUAL(_WIDE/_GET/_SET), INVOKE_LAMBDA_TAIL, INVOKE_INITIALIZER_TAIL, RETURN, RETURN_NULL | needs R2/R3; `call`, `replace_frame`, `return_from` and the preemption point |
-| T1 try/unwind | TRY, UNWIND, THROW | needs R2 and the heap (the token is a 5-element array); `unwind` is a loop over frames, `enter_finally` allocates |
-| Y1 type checks | AS_*, AS_LOCAL raising AS_CHECK_FAILED | the checks and the IS_*/AS_* successes are verified (`src/types.rs`); the failing AS path goes through `step_unverified`: needs `raise` (allocates the exception, then `unwind`, see T1/A1) |
-| O1 operators | INVOKE_EQ..INVOKE_SIZE, IDENTICAL | smi fast paths of INVOKE_EQ..INVOKE_MOD and IDENTICAL proven (src/ops.rs); plain-array fast paths of INVOKE_AT, INVOKE_AT_PUT, INVOKE_SIZE proven (src/arrays.rs); left: their other receivers (lists, byte arrays, slices, large arrays, copy-on-write byte arrays, stores into the program heap), and the other paths (doubles, which allocate; large integers; `compare_numbers`, i.e. `spec_helpers::compare_mixed`, uninterpreted in the spec; IDENTICAL of distinct heap objects; the virtual-call fallback) |
-| A1 allocation | ALLOCATE(_WIDE) out of memory | verified (src/alloc.rs) against the ASSUMED contract of `gc_allocate_instance` (the GC preserves the abstraction, the allocation appends the spec's instance; TRUSTED.md section 2); save and reload are proven. Out of memory goes through `step_unverified` (retry, then the `OUT_OF_MEMORY` throw of `resource_throw`) |
-| P1 primitives | PRIMITIVE | calls C++ (see FFI in DESIGN.md); P2 below |
-| H1 halt | HALT 1 raising INVALID_PROGRAM | HALT 0 (yield), 1 (exit), 2 (deep sleep), 3 (reset) are verified (src/halt.rs); a heap object as exit value goes through `step_unverified`: needs `raise` (see Y1) |
-| G1 globals (lazy, dynamic) | the INVALID_PROGRAM raise of LOAD/STORE_GLOBAL_VAR_DYNAMIC; the AS_CHECK_FAILED raise of LOAD_GLOBAL_VAR_LAZY(_WIDE) | the fast paths and the initializer call are verified (src/globals.rs); the raises need `raise` (see Y1) |
+| R-raise | every raised failure: INVALID_PROGRAM (fields, dynamic globals, HALT 1), AS_CHECK_FAILED (AS_*, receiver checks), LOOKUP_FAILED (virtual calls), CODE_INVOCATION_FAILED (INVOKE_BLOCK) | a verified `raise`: the exception allocation (a GC point, like `alloc::gc_allocate_instance`) and the unwinding loop `spec::unwind`; and spec request R7: the machine's exception carries a trace (the spec's has null), so the allocated object differs from `spec::exception_obj` |
+| R-unwind | TRY, UNWIND, THROW, NON_LOCAL_RETURN, NON_LOCAL_BRANCH | the finally records of format note 17 in the core (branch core/refinement-r1) and a proof of `spec::unwind` (loop over frames, `enter_finally` with an unwinding) |
+| R-tail | INVOKE_STATIC_TAIL, INVOKE_LAMBDA_TAIL, INVOKE_INITIALIZER_TAIL | a verified `replace_frame` (copy_within of the arguments, the records of the replaced frame) |
+| R-prim | PRIMITIVE | the C++ call (`toit_v2_call_primitive`) needs a contract: completion as `prim_success`/`prim_failure`/`prim_missing` with `prim_heap_ok` (S1), and the task primitives `task_new_step`/`task_transfer_step` |
+| R-slow | operators on doubles, large integers, `compare_numbers` (`spec_helpers::compare_mixed`, uninterpreted in the spec), their virtual-call fallback; IDENTICAL of distinct heap objects (strings, doubles, large integers); INVOKE_AT/AT_PUT/SIZE on lists, byte arrays, slices, large arrays (`fast_at` with fuel) | heap-model accessors for doubles, byte arrays and strings; the float operations are uninterpreted in the spec, so their results can only be related by a trusted contract |
+| R-oom | ALLOCATE out of memory | `resource_throw` (spec request R6) |
 
-### G. GC safety
+### G. Trusted contracts to discharge
 
-The rule: no object reference read before a call that may GC is used
-after it. Today it holds by construction for the views and by review for
-the words:
-
-- By construction (type system): every `Runtime` function that may GC
-  takes the only `StackMem` view by `&mut` and replaces it with a fresh
-  view of the (possibly moved) current stack; the `Machine` re-derives its
-  cached fields (`reload`) right after. No raw stack pointer survives.
-- By review: object references held in Rust locals across a GC point.
-  The audited places are `enter_finally` (value and payload are pushed on
-  the object stack before the token allocation and re-read after),
-  `raise_value_msg` (the value is a program-heap string, which does not
-  move; the message words are consumed by C++ before its first GC point),
-  `op_invoke_arith_slow` (no reference is used after `alloc_double`), and
-  `op_primitive` (the result comes back from C++ after the GC).
-- G1 (open): make it a proof: give `Heap` a ghost epoch that every may-GC
-  call increments, tag every word read from the heap or the stack with the
-  epoch it was read in, and require the current epoch for every use.
+- G-grow: `step::grow_bridge` (stack growth) is assumed to preserve the
+  abstraction; prove `reload` after `toit_v2_grow_stack` like the reload
+  after allocation (alloc.rs), with a growth contract stated over the
+  stack model.
+- G-gc: the GC preserves the abstraction (the contracts of
+  `alloc::gc_allocate_instance` and of the bridges); trusted, Phase 4
+  keeps the GC trusted.
+- G-heap: `abs::heap_model_ok` (heap integrity) is maintained by the GC,
+  the allocators and the C++ primitives; trusted.
 
 ### Obligations from Phase 3 (verified/spec/SOUNDNESS.md)
 
 - S1 primitives: every allowed primitive satisfies `prim_heap_ok` and has
   the arity of verified/spec/src/v2/prim_arity.rs. Open: the core calls
-  the C++ primitive table (`toit_v2_call_primitive`); none of the allowed
-  primitives is ported to Rust yet (DESIGN.md, open work). The arity is
-  checked at run time against the C++ `PrimitiveEntry::arity` only.
-- S2 loader: the loader establishes `loaded_ok`. Open: the C++ loader
-  (`V2MethodTable::compute`, src/interpreter_v2.cc) checks the method
-  table, dispatch entries, receiver ranges, this-field indices, branch
-  targets and terminators; the heap part of `loaded_ok` is checked only by
-  the unverified verified/spec/src/interp/heap_check.rs (not run by the
-  VM). Untrusted launches do not yet run `check::verify` in the VM.
-- S3 size bound `small`: enforced at run time as a defined
-  out-of-memory outcome. Partly: heap allocation failures throw
-  `OUT_OF_MEMORY` (C++ heap limits); the object stack is bounded by
-  `Stack::max_length() < 2^20` (stack overflow exception); globals are
-  fixed. Not shown that these bounds imply `small`.
-- E2E (stated, not proven): `obligations::end_to_end_no_fatal` in
-  `src/obligations.rs`: for an accepted and loaded program, every
-  reachable machine state takes a step that is not stuck. It is an
-  `external_body` proof function with uninterpreted placeholders for the
-  spec predicates (the core crate cannot import the spec crate while the
-  gate runs Verus per crate); nothing uses it as an axiom. Proof plan:
-  `theorem_soundness` plus R.
+  the C++ primitive table; none of the allowed primitives is ported to
+  Rust.
+- S2 loader: `theorem::loaded` (the tables are an accepted program with
+  `loaded_ok`, the first task encodes `initial_state`). Discharged for
+  untrusted launches by verified/vmverify (branch vm/verifier-link:
+  `check::verify == accepts`, `heap_check == loaded_ok`) once merged; the
+  core runs the verified loop only for accepted programs
+  (`toit_v2_context.accepted`). `prepare_process_v2` building the
+  initial state stays trusted C++.
+- S3 size bound `small`: implied by `refines` (stack below 2^20 words,
+  heap model below 2^30 objects); exceeding it is a defined stop or a
+  resource throw (R6).
 
 ### Other open items
 
-- P2 the handlers' checks that the verifier makes redundant (for example
-  the receiver check of LOAD_FIELD_THIS) stay as run-time checks until
-  untrusted launches run the verified verifier (S2).
 - The `cold!` trampoline (`ptr::read`/`ptr::write` of the machine) is
-  trusted; it is small and listed in TRUSTED.toml.
+  trusted; listed in TRUSTED.toml.
+- GC safety of words held across a GC point in the checked handlers is by
+  review (the verified handlers hold none: a GC point re-derives every
+  word from the model).
+
+## 3. Spec requests from the refinement proof
+
+For verified/spec/format/PHASE4-REQUESTS.md (not edited here: owned by
+the spec work).
+
+- R6 resource failures: the machine throws STACK_OVERFLOW when the stack
+  cannot grow and OUT_OF_MEMORY when an allocation fails, and the program
+  can catch them; the spec has unbounded memory, so these are not spec
+  transitions. The core's theorem names them (`step::resource_throw`);
+  request: model them as a defined raise (any state, value a root error)
+  and prove it keeps `wf`.
+- R7 traces of raised failures: the machine's `Exception_` carries a stack
+  trace (and the format-1 message, R2); `spec::raise` builds one with a
+  null trace. Request: let `raise` take the trace as an oracle value (any
+  good value) so that the core's raise can refine it.
