@@ -350,6 +350,15 @@ pub open spec fn wf(p: Program2, c: Cert, s: State2) -> bool {
 }
 
 /// Sizes far from the machine word (the machine has finite memory).
+/// Sizes well inside a 32-bit word (states a few steps away from a
+/// `small` one).
+pub open spec fn roomy(s: State2) -> bool {
+    &&& s.heap.len() < 0x8000_0000
+    &&& s.stack.len() < 0x8000_0000
+    &&& s.frames.len() < 0x8000_0000
+    &&& s.tries.len() < 0x8000_0000
+}
+
 pub open spec fn small(s: State2) -> bool {
     &&& s.heap.len() < 0x4000_0000
     &&& s.stack.len() < 0x4000_0000
