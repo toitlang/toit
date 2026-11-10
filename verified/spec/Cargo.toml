@@ -13,6 +13,14 @@ path = "src/lib.rs"
 name = "toit-spec-run"
 path = "src/bin/toit_spec_run.rs"
 
+[[bin]]
+name = "toit_spec_verify"
+path = "src/bin/toit_spec_verify.rs"
+
+[[bin]]
+name = "toit_spec_mutate"
+path = "src/bin/toit_spec_mutate.rs"
+
 [dependencies]
 vstd = "=0.0.0-2026-11-01-0251"
 
