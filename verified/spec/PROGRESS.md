@@ -19,14 +19,21 @@ spec changes for the other agents: format/SPEC-CHANGELOG.md.
   byte content of COW arrays/slices), recorded as VM-BUGS.md 3-5 for an
   upstream PR (src/ is not edited here).
 
+* R1 (unwinding without a heap token): finally records (format note 17),
+  spec, prim, verifier (UNWIND value slot), exec step, reference
+  interpreter, invariant (`fin_ok`, `fins_ok`) and all proofs. Verus: 684
+  verified, 0 errors. New test tests/toit/finally_records.toit (nested
+  try/finally in finally code, break out of finally, value slot) passes
+  against the C++ VM; 433/437 suite programs and the system snapshots
+  accepted; run_tests.sh 15/15.
+
 ## In progress
 
-* R1 design.
+* R4.
 
 ## Next
 
-1. R1: unwinding without a heap token.
-2. R4: verified executable heap check (`loaded_ok_heap`).
+1. R4: verified executable heap check (`loaded_ok_heap`).
 3. Loader/verifier agreement on unreachable code.
 4. Full validation (check.sh --tests, run_suite.py format 2, verify_suite,
    system snapshots, mutation campaign) and SOUNDNESS.md numbers; R2 note.

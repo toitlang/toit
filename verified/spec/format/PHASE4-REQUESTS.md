@@ -30,6 +30,13 @@ Meanwhile: the core follows the spec and allocates; on allocation failure
 it throws `OUT_OF_MEMORY` from the handler's frame (the finally code does
 not run).
 
+Applied 2026-11-10 with a change (format note 17, SPEC-CHANGELOG.md): one
+record per frame is unsound when finally code contains a try/finally
+itself, so the records form a stack next to the handlers (the record
+takes the entered handler's place, so still no allocation); the token is
+the record's index; UNWIND checks frame and token slot; TRY drops the
+frame's stale records, which bounds them by the frame's height.
+
 ## R2. Stack trace and message of raised failures (note 5)
 
 Problem: the spec's raised exception has a null trace, so failure output

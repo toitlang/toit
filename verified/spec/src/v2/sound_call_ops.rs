@@ -637,7 +637,7 @@ pub proof fn lemma_try_call(p: Program2, c: Cert, trusted: bool, s: State2, tt: 
         map_at(c, cur_m(s), cur_off(p, s) + 1) == Some(cur_k(p, c, s).push(Kind::Val).push(Kind::Token).push(Kind::Val)),
     ensures ({
         let hd = Handler { frame: top_index(s) as usize, height: s.stack.len() as usize, bci: (s.bci + 1) as usize };
-        let s1 = State2 { tries: s.tries.push(hd), ..s };
+        let s1 = State2 { tries: s.tries.push(hd), fins: cut_fins(s.fins, top_index(s), s.stack.len() - 1), ..s };
         let slot = s.stack.len() - 1;
         wf(p, c, call_state(p, push(s1, Value::BlockRef(top_index(s) as usize, slot as usize)), tt, s.bci + 1))
     }),
@@ -649,7 +649,7 @@ pub proof fn lemma_try_call(p: Program2, c: Cert, trusted: bool, s: State2, tt: 
     let b = cur_b(s);
     let h = k.len() as int;
     let hd = Handler { frame: top_index(s) as usize, height: s.stack.len() as usize, bci: (s.bci + 1) as usize };
-    let s0 = State2 { tries: s.tries.push(hd), ..s };
+    let s0 = State2 { tries: s.tries.push(hd), fins: cut_fins(s.fins, top_index(s), s.stack.len() - 1), ..s };
     let slot = s.stack.len() - 1;
     let s1 = push(s0, Value::BlockRef(top_index(s) as usize, slot as usize));
     let ret = s.bci + 1;

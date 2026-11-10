@@ -1405,7 +1405,7 @@ fn task_new2(m: &mut Machine, code: Value) -> P {
     let stack_id = m.s.heap.len();
     let task = Value::Obj(stack_id + 1);
     let stack_class = m.builtin(STACK_CLASS);
-    m.alloc(ExecObj { class_id: stack_class, ro: false, body: ExecBody::Stack2(vec![code], Vec::new(), Vec::new(), 0) });
+    m.alloc(ExecObj { class_id: stack_class, ro: false, body: ExecBody::Stack2(vec![code], Vec::new(), Vec::new(), Vec::new(), 0) });
     let null = m.null();
     let mut fields = vec![null; field_count as usize];
     fields[0] = Value::Obj(stack_id);
@@ -1452,7 +1452,7 @@ fn task_transfer(m: &mut Machine, to: Value, detach: Value) -> P {
     };
     if m.format == 2 {
         let resumable = match &m.obj(to_stack).unwrap().body {
-            ExecBody::Stack2(w, f, _, _) => !f.is_empty() || !w.is_empty(),
+            ExecBody::Stack2(w, f, _, _, _) => !f.is_empty() || !w.is_empty(),
             _ => false,
         };
         if !resumable {
@@ -1495,13 +1495,14 @@ fn task_transfer2(m: &mut Machine, from: Value, from_stack: Value, to: Value, to
     let words = std::mem::take(&mut m.s.stack);
     let frames = std::mem::take(&mut m.s.frames);
     let tries = std::mem::take(&mut m.s.tries);
+    let fins = std::mem::take(&mut m.s.fins);
     let bci = m.s.bci;
-    m.obj_mut(from_stack).unwrap().body = ExecBody::Stack2(words, frames, tries, bci);
+    m.obj_mut(from_stack).unwrap().body = ExecBody::Stack2(words, frames, tries, fins, bci);
     if detach == m.true_v() {
         m.set_field_pub(from, 0, Value::Smi(0));
     }
-    let (words, frames, tries, saved_bci) = match &m.obj(to_stack).unwrap().body {
-        ExecBody::Stack2(w, f, t, b) => (w.clone(), f.clone(), t.clone(), *b),
+    let (words, frames, tries, fins, saved_bci) = match &m.obj(to_stack).unwrap().body {
+        ExecBody::Stack2(w, f, t, n, b) => (w.clone(), f.clone(), t.clone(), n.clone(), *b),
         _ => return Err(Stuck::Fatal),
     };
     if frames.is_empty() {
@@ -1516,11 +1517,13 @@ fn task_transfer2(m: &mut Machine, from: Value, from_stack: Value, to: Value, to
             Frame { method: current, ret: entry_bci + 1, base: 1 },
         ];
         m.s.tries = Vec::new();
+        m.s.fins = Vec::new();
         m.s.bci = bci + 4;
     } else {
         m.s.stack = words;
         m.s.frames = frames;
         m.s.tries = tries;
+        m.s.fins = fins;
         m.s.bci = saved_bci + 4;
     }
     m.s.task = match to {

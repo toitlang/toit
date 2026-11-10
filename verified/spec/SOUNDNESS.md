@@ -4,7 +4,7 @@ This document describes the machine-checked soundness proof of the
 structural verifier of the revised bytecode format (format 2). The proof
 is in Verus, in `src/v2/`. It contains no `assume`, `admit`,
 `external_body` or `assume_specification`. The whole crate verifies in
-about 20 s wall time: `verification results:: 667 verified, 0 errors`
+about 20 s wall time: `verification results:: 684 verified, 0 errors`
 (`verus --crate-type=lib src/lib.rs`).
 
 ## The theorem
@@ -92,16 +92,16 @@ Each hypothesis is an obligation on the implementation.
    (its class id is below the class count; objects of classes with
    fields are instances with exactly the class's field count; instance
    fields and array elements are smis or references to existing
-   objects) and is neither a suspended stack (`Stack2`), an unwinding
-   token (`Pending`) nor a task (an object of the builtin task class); `globals0.len() == c.global_count` and every global
-   is a value; every root and literal is a value. Today the dumped
+   objects) and is neither a suspended stack (`Stack2`) nor a task (an
+   object of the builtin task class); `globals0.len() == c.global_count`
+   and every global is a value; every root and literal is a value. Today the dumped
    program heap is checked by `v2/heap_check.rs` (plain Rust, unverified)
    in `toit_spec_verify`; the Phase 4 loader must establish it.
 2. **Primitives: `prim_heap_ok(p, h, h2)`** (`v2/sound.rs`), quantified
    over in `completion`: a primitive may only add objects
    (`h.len() <= h2.len() < 2^30`); it never changes an object's class; it
-   neither changes nor creates suspended stacks (`Stack2`) or unwinding
-   tokens (`Pending`), and does not turn an ordinary object into one; it
+   neither changes nor creates suspended stacks (`Stack2`), and does not
+   turn an ordinary object into one; it
    creates no task and keeps fields 0 and 1 (stack, id) of every task; and
    every object of `h2` is `basic_obj_ok` in `h2` (no dangling
    references, instance field counts preserved). Its result `v` must be
@@ -165,10 +165,14 @@ smi `t`; `Block(0, i)` — a reference to slot `i` of this frame;
 (following each block frame's own reference in slot 0), which holds a
 block method whose context is that frame (`good_ref`), and for a block
 frame's own reference the slot holds exactly the frame's method; `Param` —
-a reference into a frame below with `good_ref`; `Token` — null or an
-unwinding token whose pending unwinding can complete (`pending_ok`:
+a reference into a frame below with `good_ref`; `Token` — null or the smi
+index of a finally record (`fin_ok`, format note 17) of this frame whose
+token slot this is and whose unwinding can complete (`pending_ok`:
 non-local returns and branches target frames at or below, branches to a
 mapped offset whose map is a prefix of the target frame's kinds).
+`fins_ok` (part of `wf_task`): the records belong to live frames, are
+ordered by frame and height, and lie below the height of their frame's
+active handler.
 
 ## Proof structure
 
@@ -248,6 +252,14 @@ machine; each change is listed in `format/SPEC-CHANGELOG.md`:
   so ALLOCATE cannot create a task and the machine's tag test agrees with
   the spec's class test.
 
+* R1 (2026-11-10): unwinding without a heap token. A pending unwinding is
+  a finally record next to the handlers (format note 17); the token is
+  its index. The request's one record per frame was unsound for a
+  try/finally inside finally code (an inner unwinding overwrote the outer
+  record); the record stack with the ordering invariant `fins_ok` is
+  proven instead. `Body::Pending` is gone, and with it the loader's and
+  the primitives' obligations about unwinding tokens.
+
 Before Phase 4 the step function was unchanged by the proof. The verifier (`verifier.rs`, mirrored in `check.rs`; the
 equality proof still holds) was tightened where the proof found
 accepted programs that get stuck:
@@ -289,7 +301,7 @@ contract) or on C++ code outside the spec.
 | Task objects themselves | VM by `TASK_TAG` | only `task_new` creates them: ALLOCATE needs `INSTANCE_TAG`, the task class is the only `TASK_TAG` class (`task_class_ok`), none in the program heap (`loaded_ok`), none from primitives | proven + loader/primitive contract |
 | Stack objects (`Stack2`) | GC, task switch, core (frames, handlers, bci inside) | reachable only through a task's field 0 (unreadable); no opcode writes a non-instance/array body; primitives neither change nor create them | proven + primitive contract (a primitive must not return one) |
 | Frame and handler records | core (inside the stack object) | not addressable: the frame stack is separate, slot access is bounded by the top frame, block references are `(frame, slot)` checked by `ref_ok` | proven (`wf_task`) |
-| Unwinding tokens (`Pending`) | UNWIND | the verifier's `Token` kind cannot be copied, stored, passed or returned; UNWIND checks the body; R1 replaces the object by a smi naming a handler record | proven (`conf`, `pending_ok`) |
+| Unwinding tokens and finally records | UNWIND, TRY, frame pops | the token is a smi naming a record (format note 17, no heap object); the verifier's `Token` kind cannot be copied, stored, passed or returned; UNWIND checks the record's frame and token slot; truncations never drop a record a live token names | proven (`fin_ok`, `fins_ok`) |
 | Block method slots | INVOKE_BLOCK, TRY | referenced slots are not writable (`writable`); the method id is still checked (kind, index) | proven + run time |
 | Lambda fields 0, 1 (method id, captures) | INVOKE_LAMBDA_TAIL | ordinary fields; method index, kind and capture count checked | run time (proven to be the only path) |
 | Lazy initializer field (method id) | LOAD_GLOBAL_VAR_LAZY, `run-global-initializer__`, INVOKE_INITIALIZER_TAIL | class tested; the method id is checked (index, kind, arity 0) | run time |

@@ -43,6 +43,7 @@ pub open spec fn tail_state(p: Program2, s: State2, t: int, args: Seq<Value>) ->
     State2 {
         stack: s.stack.subrange(0, base(s)) + args,
         frames: s.frames.update(top_index(s), Frame { method: t as usize, ..top(s) }),
+        fins: fins_popped(s),
         bci: info(p, t).entry,
         ..s
     }
@@ -85,6 +86,7 @@ pub proof fn lemma_tail_shape(p: Program2, c: Cert, trusted: bool, s: State2, t:
         &&& forall|x: int| 0 <= x < arity(p, t) ==> #[trigger] s2.stack[b + x] == args[x]
         &&& bases_ok(s2)
         &&& (t0 > 0 ==> same_below(s, s2, t0 - 1))
+        &&& fins_ok(s2)
     }),
 {
     let s2 = tail_state(p, s, t, args);
@@ -92,6 +94,10 @@ pub proof fn lemma_tail_shape(p: Program2, c: Cert, trusted: bool, s: State2, t:
     let b = fbase(s, t0);
     lemma_wf_parts(p, c, s);
     lemma_task_basics(p, c, s);
+    assert(fins_ok(s)) by { reveal(wf_task); }
+    lemma_cut_kept(s, s2, t0, 0);
+    assert(s2.tries == s.tries);
+    lemma_cut_ok(s, s2, t0, 0);
     assert(p.methods.len() < 0x1000_0000);
     assert(s2.frames[t0] == Frame { method: t as usize, ..s.frames[t0] });
     assert(forall|g: int| 0 <= g < t0 ==> #[trigger] s2.frames[g] == s.frames[g]);
@@ -105,7 +111,9 @@ pub proof fn lemma_tail_shape(p: Program2, c: Cert, trusted: bool, s: State2, t:
     if t0 > 0 {
         lemma_base_le_len(s, t0);
         assert(same_below(s, s2, t0 - 1)) by {
-            assert forall|g: int| 0 <= g <= t0 - 1 implies #[trigger] try_frame(s2, g) == try_frame(s, g) by {}
+            assert forall|g: int| 0 <= g <= t0 - 1 implies #[trigger] try_frame(s2, g) == try_frame(s, g) by {
+                assert(s2.tries == s.tries);
+            }
             lemma_heap_ext_refl(p, s.heap);
         }
     }

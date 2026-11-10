@@ -59,6 +59,9 @@ pub struct State2 {
     pub frames: Seq<Frame>,
     /// Active try handlers, oldest first; their frames are non-decreasing.
     pub tries: Seq<Handler>,
+    /// Records of the finally codes entered by an unwinding, oldest first
+    /// (format note 17). An unwinding token is the index of its record.
+    pub fins: Seq<Fin>,
     /// Absolute bci of the next instruction, inside the top frame's method.
     pub bci: usize,
     pub task: usize,
@@ -113,6 +116,7 @@ pub open spec fn view2(s: &ExecState) -> State2 {
         stack: s.stack@,
         frames: s.frames@,
         tries: s.tries@,
+        fins: s.fins@,
         bci: s.bci,
         task: s.task,
         next_task_id: s.next_task_id,

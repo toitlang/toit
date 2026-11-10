@@ -124,6 +124,7 @@ pub open spec fn local_step(p: Program2, c: Cert, s: State2, s2: State2, k2: Seq
     let k = kinds_of(p, c, s, t);
     &&& s2.frames == s.frames
     &&& s2.tries == s.tries
+    &&& s2.fins == s.fins
     &&& s2.task == s.task
     &&& info(p, m).entry <= s2.bci
     &&& map_at(c, m, s2.bci - info(p, m).entry) == Some(k2)
@@ -169,6 +170,7 @@ pub proof fn lemma_local_same_below(p: Program2, c: Cert, s: State2, s2: State2,
         wf_task(p, c, s), top_i(s) > 0,
         s2.frames == s.frames,
         s2.tries == s.tries,
+        s2.fins == s.fins,
         s2.stack.len() >= fbase(s, top_i(s)),
         forall|x: int| 0 <= x < fbase(s, top_i(s)) ==> #[trigger] s2.stack[x] == s.stack[x],
         heap_grows(s.heap, s2.heap),
@@ -266,30 +268,24 @@ pub proof fn lemma_conf_top_unchanged(p: Program2, c: Cert, trusted: bool, s: St
         },
         Kind::Token => {
             match v {
-                Value::Obj(id) => {
-                    if v != null2(p) {
-                        assert(s2.heap[id as int].body == s.heap[id as int].body);
-                        match s.heap[id as int].body {
-                            Body::Pending(u) => {
-                                match u {
-                                    Unwind::Branch(f, bci, hb) => {
-                                        if (f as int) < t {
-                                            lemma_kinds_below(p, c, s, s2, f as int, t - 1);
-                                        } else {
-                                            let tt = map_at(c, m, bci as int - info(p, m).entry)->0;
-                                            assert(k2.subrange(0, j) == k.subrange(0, j));
-                                            assert(frame_kinds_from(p, c, s, t, k, f as int) == k);
-                                            assert(frame_kinds_from(p, c, s2, t, k2, f as int) == k2);
-                                            assert(tt == k.subrange(0, tt.len() as int));
-                                            assert(k2.subrange(0, tt.len() as int) =~= k2.subrange(0, j).subrange(0, tt.len() as int));
-                                            assert(k.subrange(0, tt.len() as int) =~= k.subrange(0, j).subrange(0, tt.len() as int));
-                                        }
-                                    },
-                                    _ => {},
-                                }
-                            },
-                            _ => {},
-                        }
+                Value::Smi(kk) => if v != null2(p) {
+                    assert(s2.fins[kk as int] == s.fins[kk as int]);
+                    match s.fins[kk as int].resume {
+                        Resume::Branch(f, bci, hb) => {
+                            if (f as int) < t {
+                                lemma_kinds_below(p, c, s, s2, f as int, t - 1);
+                            } else {
+                                let tt = map_at(c, m, bci as int - info(p, m).entry)->0;
+                                assert(k2.subrange(0, j) == k.subrange(0, j));
+                                assert(frame_kinds_from(p, c, s, t, k, f as int) == k);
+                                assert(frame_kinds_from(p, c, s2, t, k2, f as int) == k2);
+                                assert(tt == k.subrange(0, tt.len() as int));
+                                assert(k2.subrange(0, tt.len() as int) =~= k2.subrange(0, j).subrange(0, tt.len() as int));
+                                assert(k.subrange(0, tt.len() as int) =~= k.subrange(0, j).subrange(0, tt.len() as int));
+                            }
+
+                        },
+                        _ => {},
                     }
                 },
                 _ => {},

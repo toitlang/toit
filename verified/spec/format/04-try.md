@@ -1,5 +1,8 @@
 # 4. One TRY instruction with a handler stack and unwinding tokens
 
+(Since note 17 the token is the smi index of a finally record instead of a
+heap object, and the value slot also holds a non-local return's value.)
+
 ## Problem
 
 A format-1 try/finally is `LINK; LOAD_BLOCK; INVOKE_BLOCK 1; POP_1;

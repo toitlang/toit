@@ -535,7 +535,9 @@ pub open spec fn post(p: Program2, c: Cert, m: int, off: int, k: Seq<Kind>, trus
             Some(k.push(Kind::Val).push(Kind::Token).push(Kind::Val))
         } else { None }
     } else if op == UNWIND {
-        if 3 <= h && top_kind(k, 1) is Token { Some(k.subrange(0, h - 3)) } else { None }
+        // The value slot below the token is the exception or return value
+        // the unwinding resumes with.
+        if 3 <= h && top_kind(k, 1) is Token && is_val(top_kind(k, 2)) { Some(k.subrange(0, h - 3)) } else { None }
     } else if op == HALT {
         // HALT 2 and 3 (deep sleep, reset) only for trusted programs.
         if b1 == 0 { Some(k.push(Kind::Val)) }

@@ -18,7 +18,7 @@
 //! trusted loader): object classes exist, instances of instance classes
 //! have their class's field count, every reference in the heap, the roots,
 //! the literals and the globals is in range, and the heap has no machine
-//! objects (suspended stacks, unwinding tokens, tasks).
+//! objects (suspended stacks, tasks).
 
 use crate::interp::loader::Loaded;
 use crate::types::*;
@@ -57,7 +57,7 @@ pub fn check_heap(l: &Loaded) -> Result<(), String> {
                     return Err(format!("object {} has a bad reference", id));
                 }
             }
-            ExecBody::Stack(..) | ExecBody::Stack2(..) | ExecBody::Pending(_) => {
+            ExecBody::Stack(..) | ExecBody::Stack2(..) => {
                 return Err(format!("object {} is a machine object", id));
             }
             _ => {}

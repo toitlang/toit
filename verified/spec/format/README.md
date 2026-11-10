@@ -30,6 +30,7 @@ on the spec and on the soundness obligations, and the cost.
 | 13 | [encoding](13-encoding.md) | Smaller operand changes, opcode numbering, no silent wrapping. |
 | 14 | [rejected](14-rejected.md) | Candidates rejected or deferred: block masks in headers, unique frame ids, runtime dispatch bounds, shipped stack maps. |
 | 15 | [header](15-header.md) | The method header is two bytes plus LEB128 fields (5.2 bytes on average instead of 16); format 2 is 4.2 % smaller than format 1. |
+| 17 | [finally-records](17-finally-records.md) | A pending unwinding is a record next to the handlers (no heap token, no allocation); the token is its smi index; UNWIND checks it belongs to the frame. Replaces note 4's heap token. |
 | 16 | [hash-find](16-hash-find.md) | Recommendation: bring `HASH_FIND` back in Phase 4 as a non-re-entrant verified built-in; decide a `REPEAT` instruction on the same benchmark; keep HASH_DO and ARRAY_DO out. |
 
 ## Verifier versus run time

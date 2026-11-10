@@ -44,6 +44,7 @@ pub open spec fn lframe0(p: Program2, c: Cert, s: State2, s2: State2, k2: Seq<Ki
     let m = cur_m(s);
     &&& s2.frames == s.frames
     &&& s2.tries == s.tries
+    &&& s2.fins == s.fins
     &&& s2.task == s.task
     &&& info(p, m).entry <= s2.bci
     &&& map_at(c, m, s2.bci - info(p, m).entry) == Some(k2)
@@ -211,6 +212,7 @@ pub proof fn lemma_pop_push(p: Program2, c: Cert, trusted: bool, s: State2, s2: 
         n == 0 || leaves0(p, cur_m(s), cur_k(p, c, s).len() as int, n),
         s2.frames == s.frames,
         s2.tries == s.tries,
+        s2.fins == s.fins,
         s2.task == s.task,
         s2.heap == s.heap,
         s2.globals == s.globals,
@@ -264,6 +266,7 @@ pub proof fn lemma_drop(p: Program2, c: Cert, trusted: bool, s: State2, s2: Stat
         0 <= n <= cur_k(p, c, s).len(),
         s2.frames == s.frames,
         s2.tries == s.tries,
+        s2.fins == s.fins,
         s2.task == s.task,
         s2.heap == s.heap,
         globals_ok(c, s2),
