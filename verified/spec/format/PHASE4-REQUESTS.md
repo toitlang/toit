@@ -91,3 +91,60 @@ Meanwhile: the core refuses to read or write field 0 of a task and to
 write field 1 (LOAD_FIELD/STORE_FIELD raise INVALID_PROGRAM, the `this`
 variants stop the process with a stuck state). The format-1 interpreter
 has the same hole for unverified programs; not changed here.
+
+## R6. The inference must not panic on malformed programs (vm/verifier-link)
+
+Problem (found by the launch-time fuzz mode of verified/core/fuzz, header
+mutations; reproducers in verified/core/fuzz/findings/infer-panic-*):
+`v2::infer::infer` indexes out of bounds on programs that `x_wf_program2`
+accepts:
+
+- infer.rs:130, `origins[0] = ...` for a method with an empty body
+  (`size == 0`): infer-panic-empty-body.snapshot.
+- infer.rs:187, `p.methods[t]` for an INVOKE_STATIC whose dispatch entry
+  is not a method index (the dispatch table is only checked later, by
+  `x_tables_ok`): infer-panic-dispatch-target.snapshot.
+
+The VM runs the inference on untrusted input at every untrusted launch.
+verified/vmverify catches the panic (`panic = "unwind"`, `catch_unwind`)
+and rejects the program, so this is not a soundness problem, but with
+`panic = "abort"` (the core's profile, and likely on devices) it would let
+any untrusted program abort the whole VM.
+
+Request: make `infer` total on every program `x_wf_program2` accepts (no
+indexing without a bounds check; reject instead). A fuzz target that runs
+`infer` + `check::verify` on mutated method tables would keep it so.
+
+Meanwhile: vmverify checks `x_wf_program2` before the inference, catches
+panics and rejects (`INTERNAL`, "verifier failure").
+
+## R7. The heap check and `loaded_ok`'s object bound (vm/verifier-link): done
+
+Resolved by the verified `heap_check::x_loaded_ok` (merged with
+sandbox-integration 724e9fc0): vmverify now accepts only if
+`check::verify` and `x_loaded_ok` both accept. The original request:
+
+`heap_check::check_heap` does not check `heap0.len() < 2^29`, which
+`loaded_ok` requires. vmverify checks it in its verdict glue
+(verified/vmverify/src/verify.rs). Request: include it in the verified
+heap check that replaces heap_check.rs (R4), so that the glue only calls
+proven code. vmverify builds the heap from VM memory with the same
+`Loaded` type, so a verified check with the signature
+`check_heap(&Loaded) -> Result<(), String>` (or a bool) drops in.
+
+## R8. Certificate memory (vm/verifier-link)
+
+Problem: the VM now verifies at every untrusted launch, and Phase 5 must
+verify on the device at install time. `XCert::maps` holds one
+`Option<Vec<XKind>>` (24 bytes) per byte of every method body plus a
+vector of kinds at every reachable instruction start, for the whole
+program at once. Measured high-water marks of the verification
+(verified/vmverify/README.md, "Cost"): 3.6 MB for a 25 KB hello world,
+24 MB for the toit CLI (323 KB of bytecodes), i.e. 75 to 150 bytes per
+bytecode byte. The inference takes 85 to 90 % of the time.
+
+Request: a certificate representation that is linear in the number of
+instruction starts rather than bytes (a sparse map, or offsets sorted per
+method), with interned or shared kind vectors (consecutive maps mostly
+differ in the top slots). Keeping `accepts` unchanged and only changing
+`XCert` and its view should leave the proof's statement intact.

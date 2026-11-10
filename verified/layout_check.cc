@@ -39,6 +39,8 @@
 #include "program.h"
 #include "interpreter.h"
 #include "interpreter_v2.h"
+#include "primitive.h"
+#include "verifier_v2.h"
 #include "tags.h"
 #include "third_party/dartino/gc_metadata.h"
 
@@ -394,10 +396,108 @@ int main() {
     }
   }
 
+  // The verifier's C ABI (verified/vmverify/src/ffi.rs, src/verifier_v2.h).
+#define VFIELD(prefix, type, field) { prefix #field, offsetof(type, field), false },
+  Expected vexpected[] = {
+    { "VMVERIFY_INPUT_SIZE", sizeof(toit_vmverify_input), false },
+    VFIELD("VMVERIFY_INPUT_", toit_vmverify_input, program)
+    VFIELD("VMVERIFY_INPUT_", toit_vmverify_input, prim_counts)
+    VFIELD("VMVERIFY_INPUT_", toit_vmverify_input, prim_module_count)
+    VFIELD("VMVERIFY_INPUT_", toit_vmverify_input, prim_arities)
+    VFIELD("VMVERIFY_INPUT_", toit_vmverify_input, prim_arities_length)
+    VFIELD("VMVERIFY_INPUT_", toit_vmverify_input, trusted)
+    { "VMVERIFY_RESULT_SIZE", sizeof(toit_vmverify_result), false },
+    VFIELD("VMVERIFY_RESULT_", toit_vmverify_result, code)
+    VFIELD("VMVERIFY_RESULT_", toit_vmverify_result, method)
+    VFIELD("VMVERIFY_RESULT_", toit_vmverify_result, offset)
+    VFIELD("VMVERIFY_RESULT_", toit_vmverify_result, objects)
+    VFIELD("VMVERIFY_RESULT_", toit_vmverify_result, convert_ns)
+    VFIELD("VMVERIFY_RESULT_", toit_vmverify_result, heap_ns)
+    VFIELD("VMVERIFY_RESULT_", toit_vmverify_result, infer_ns)
+    VFIELD("VMVERIFY_RESULT_", toit_vmverify_result, check_ns)
+    VFIELD("VMVERIFY_RESULT_", toit_vmverify_result, peak_bytes)
+    VFIELD("VMVERIFY_RESULT_", toit_vmverify_result, message)
+    { "VMVERIFY_MESSAGE_SIZE", static_cast<uword>(TOIT_VMVERIFY_MESSAGE_SIZE), false },
+    { "VMVERIFY_ACCEPTED", TOIT_VMVERIFY_ACCEPTED, false },
+    { "VMVERIFY_MALFORMED", TOIT_VMVERIFY_MALFORMED, false },
+    { "VMVERIFY_HEAP", TOIT_VMVERIFY_HEAP, false },
+    { "VMVERIFY_TABLES", TOIT_VMVERIFY_TABLES, false },
+    { "VMVERIFY_METHOD", TOIT_VMVERIFY_METHOD, false },
+    { "VMVERIFY_INTERNAL", TOIT_VMVERIFY_INTERNAL, false },
+  };
+#undef VFIELD
+  const int vexpected_count = sizeof(vexpected) / sizeof(vexpected[0]);
+  uword vcount = toit_vmverify_layout_count();
+  for (uword i = 0; i < vcount; i++) {
+    const char* name;
+    uword value;
+    if (!toit_vmverify_layout_entry(i, &name, &value)) {
+      printf("FAIL: verifier entry %lu unreadable\n", static_cast<unsigned long>(i));
+      failures++;
+      continue;
+    }
+    bool found = false;
+    for (int j = 0; j < vexpected_count; j++) {
+      if (strcmp(vexpected[j].name, name) != 0) continue;
+      found = true;
+      vexpected[j].seen = true;
+      if (vexpected[j].value != value) fail(name, value, vexpected[j].value);
+    }
+    if (!found) {
+      printf("FAIL: verifier constant %s has no C++ counterpart in the check\n", name);
+      failures++;
+    }
+  }
+  for (int j = 0; j < vexpected_count; j++) {
+    if (!vexpected[j].seen) {
+      printf("FAIL: %s not exported by the verifier\n", vexpected[j].name);
+      failures++;
+    }
+  }
+
+  // The verifier gets the VM's primitive arities at run time (verifier_v2.cc);
+  // the generated table (verified/spec/src/v2/prim_arity.rs), which the dump
+  // path uses, must agree with them.
+  struct Module { const char* name; int count; };
+  static const uint8 arities[] = {
+#define ARITY_ONE(name, arity) arity,
+#define MODULE_ARITIES(name, entries) entries(ARITY_ONE)
+    MODULES(MODULE_ARITIES)
+#undef MODULE_ARITIES
+#undef ARITY_ONE
+  };
+  static const Module modules[] = {
+#define MODULE_INFO(name, entries) { #name, 0 entries(MODULE_PRIMITIVE_COUNT_ONE) },
+    MODULES(MODULE_INFO)
+#undef MODULE_INFO
+  };
+  int at = 0;
+  int module_count = sizeof(modules) / sizeof(modules[0]);
+  for (int m = 0; m < module_count; m++) {
+    for (int i = 0; i < modules[m].count; i++) {
+      word generated = toit_vmverify_generated_arity(m, i);
+      if (generated != arities[at + i]) {
+        printf("FAIL: primitive %s #%d: generated arity %ld, VM %d\n", modules[m].name, i,
+               static_cast<long>(generated), arities[at + i]);
+        failures++;
+      }
+    }
+    if (toit_vmverify_generated_arity(m, modules[m].count) != -1) {
+      printf("FAIL: primitive module %s: the generated table has more primitives\n", modules[m].name);
+      failures++;
+    }
+    at += modules[m].count;
+  }
+  if (toit_vmverify_generated_arity(module_count, 0) != -1) {
+    printf("FAIL: the generated primitive table has more modules\n");
+    failures++;
+  }
+
   if (failures != 0) {
     printf("verified core layout check: %d failure(s)\n", failures);
     return 1;
   }
-  printf("verified core layout check: %lu constants, OK\n", static_cast<unsigned long>(count));
+  printf("verified core layout check: %lu constants, %lu verifier constants, %d primitive modules, OK\n",
+         static_cast<unsigned long>(count), static_cast<unsigned long>(vcount), module_count);
   return 0;
 }

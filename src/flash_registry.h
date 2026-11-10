@@ -60,7 +60,20 @@ class FlashRegistry {
   // Get the size of the allocations area in bytes.
   static int allocations_size();
 
+  // Verdict cache for untrusted launches (programs_registry spawn): whether
+  // the structural verifier accepted the program of [allocation] with the
+  // untrusted rules since its memory was last written or erased. Host only
+  // (the flash is the VM's own memory, written only through write_chunk and
+  // erase_chunk, which clear overlapping entries); always false on devices.
+  // TODO(Phase 5): on devices, verify at install time and record the
+  // verdict with the allocation instead.
+  static bool is_verified(const FlashAllocation* allocation);
+  static void set_verified(const FlashAllocation* allocation);
+
  private:
+  static void clear_verified(word offset, word size);
+  static bool allocation_range(const FlashAllocation* allocation, word* offset, word* size);
+
   static uint8* allocations_memory() { return allocations_memory_; }
   static bool is_allocations_set_up() { return allocations_memory_ != null; }
 

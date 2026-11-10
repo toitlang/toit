@@ -52,6 +52,10 @@ pub proof fn theorem_initial(p: Program2, c: Cert, trusted: bool, heap0: Seq<Hea
         wf(p, c, initial_state(p, heap0, globals0)),
 
 ==============================================================================
+Top-level theorems: crate vmverify (0)
+==============================================================================
+
+==============================================================================
 Verified exec entry points: crate core (11)
 ==============================================================================
 
@@ -235,3 +239,7 @@ pub fn step_verified(p: &ExecProgram, s: &mut ExecState) -> (r: Option<ExecOutco
 pub fn x_loaded_ok(p: &ExecProgram, c: &XCert, heap: &Vec<ExecObj>, globals: &Vec<Value>) -> (r: bool)
     requires wf_program2(pview2(p)),
     ensures r == loaded_ok(pview2(p), c@, hview(heap), globals@),
+
+==============================================================================
+Verified exec entry points: crate vmverify (0)
+==============================================================================

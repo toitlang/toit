@@ -1,0 +1,7 @@
+map-test: header bci 17000: 0x9d -> 0x54
+
+thread '<unnamed>' (3654222) panicked at /home/flo/work/opentoit-sandbox/.claude/worktrees/agent-af2bd3a841c743557/verified/spec/src/v2/infer.rs:187:68:
+index out of bounds: the len is 929 but the index is 933
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+verifier: untrusted program rejected: verifier failure: verifier failed
+Failed to start container e3d23bc9-8172-5dc5-bdbb-f8f9b93e5031: VERIFICATION_FAILED

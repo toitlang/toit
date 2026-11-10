@@ -45,6 +45,9 @@ from dataclasses import dataclass, field
 CRATES = {
     "core": ("core", ["toit_vcore_hosted"]),
     "spec": ("spec", []),
+    # Plain Rust (no Verus): the trusted conversion from VM memory and the
+    # glue around the verifier, linked into the VM. Audited, not verified.
+    "vmverify": ("vmverify", []),
 }
 
 # Markdown files that document the trusted base of each crate. Every
@@ -52,6 +55,7 @@ CRATES = {
 TRUST_DOCS = {
     "core": "core/TRUSTED.md",
     "spec": "spec/DESIGN.md",
+    "vmverify": "vmverify/README.md",
 }
 
 # `#[verifier::X]` attributes, checked against Verus 0.2026.11.02 (by

@@ -1,0 +1,2 @@
+task-test: operand bci 8338: 0x0c -> 0x01
+verified core: stuck state 8 at bci 8337: terminating the process

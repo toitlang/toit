@@ -59,10 +59,9 @@ main args:
   compiler := args[1]
 
   // This test exercises the structural verifier of format 1 (its options,
-  // output and fuzzer). Format-2 programs are checked by the format-2
-  // loader until the verified format-2 verifier is integrated
-  // (verified/core/DESIGN.md), so the programs are compiled in format 1
-  // even when the suite runs with TOIT_BYTECODE_FORMAT=2.
+  // output and fuzzer), so the programs are compiled in format 1 even when
+  // the suite runs with TOIT_BYTECODE_FORMAT=2. The format-2 verifier
+  // (verified/vmverify) is tested by verify-launch-test and the CLI tests.
   os.env["TOIT_BYTECODE_FORMAT"] = "1"
 
   with-tmp-directory: | dir |

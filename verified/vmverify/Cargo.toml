@@ -1,0 +1,49 @@
+# Copyright (C) 2026 Toit contributors.
+#
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation; version
+# 2.1 only.
+#
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# Lesser General Public License for more details.
+#
+# The license can be found in the file `LICENSE` in the top level
+# directory of this repository.
+
+# The format-2 verifier as the VM runs it at untrusted launch, and the one
+# Rust static library the VM links (it contains the verified core too, so
+# that the binary has a single Rust runtime). See README.md.
+
+[package]
+name = "toit_vmverify"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+[[bin]]
+name = "toit_vmverify_canonical"
+path = "src/bin/toit_vmverify_canonical.rs"
+
+[dependencies]
+toit_spec = { path = "../spec" }
+toit_verified_core = { path = "../core" }
+
+# This crate's profiles are the ones used when the VM's static library is
+# built (the core's own profiles only apply to its standalone builds).
+# panic = "unwind" (the core alone uses "abort"): the verifier runs on
+# untrusted input inside the VM, and a panic of the (untrusted) inference
+# must reject the program, not abort the VM (ffi.rs, catch_unwind). The
+# core's handlers do not panic; README.md has the run-loop measurement.
+[profile.dev]
+panic = "unwind"
+
+[profile.release]
+panic = "unwind"
+opt-level = 3
+debug = "line-tables-only"
