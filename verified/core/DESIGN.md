@@ -62,11 +62,14 @@ with the contract of `Interpreter::run`:
   is current afterwards. A new task's first transfer builds its entry
   frames (`v2_start_task`).
 
-Inside, `machine::run` executes `Machine::step` in a loop. `step` checks
-the instruction lies in the method (one comparison `bci < mend - 6` in the
-common case, the exact check otherwise) and dispatches on the opcode; each
-handler follows the spec function of the same name, and every stuck state
-of the spec is a run-time check that ends the process (`Ctl::Stuck`).
+Inside, `machine::run` runs one of two loops (section 9): for a program
+the launch accepted (`toit_v2_context.accepted`: untrusted programs, or
+any program with -Xverify / TOIT_VERIFY=1), the verified loop
+`step::run_loop`, whose handlers are proven to refine `spec::step` and
+rely on the verifier instead of run-time checks (no instruction-in-method
+check, no slot, index, target or arity checks); otherwise
+`machine::run_checked`, where every stuck state of the spec is a run-time
+check that ends the process (`Ctl::Stuck`), as before.
 
 Register allocation: hot handlers are `#[inline(always)]`; every path that
 calls an out-of-line function goes through `cold!`, which moves the
@@ -229,3 +232,68 @@ verified verifier (receiver of LOAD_FIELD_THIS, branch target range, room
 checks that `global_max_height` already covers); cache table pointers in
 the machine; tail-call threading if the toolchain supports it
 (`become`); the REPEAT instruction of note 16.
+
+## 9. Proofs: abstraction, refinement, the end-to-end theorem
+
+The core is proven against the format-2 specification of verified/spec
+(`v2/spec.rs::step`) and the soundness theorem of its verifier
+(`v2/theorem.rs`, SOUNDNESS.md). verified/check.sh verifies the spec crate
+first and exports its Verus metadata; the core crate depends on it
+(Cargo) and imports it, so the core's proofs use the spec's definitions
+and lemmas directly.
+
+Abstraction (`src/abs.rs`, `Machine::refines` in `src/exec.rs`). The
+machine carries a ghost `State2` (`Machine::g`); `refines` relates it to
+memory in the direction abstract to concrete, which is a function:
+`enc(addr, v)` is the word of value `v` (smis `v << 1`, objects their
+address in the heap model, block references the smi `f << 20 | slot`),
+the object-stack words are `enc` of `g.stack`, the frame records
+`mem[4*fi..]` hold `g.frames` and the handler words `g.tries`
+(`frames_rel`), the globals are `enc` of `g.globals`, the heap model is
+`g.heap`, and the cached top-frame fields agree. Reading a state off the
+words is not a function (a block reference and a smi can be the same
+word; addresses change at every GC), which is why the design keeps the
+ghost state instead of a decoding `abs(m)`: `abs(m)` is `m.g@`, constrained
+by `m.refines(p)`. The program tables are related to the abstract program
+`p.ap` by `prog_rel` (the loader's contract). The trusted views
+(TRUSTED.md section 1) state their contracts in these terms: the heap
+view's accessors read and write the model (`Heap::objs`, `addrs`,
+`class_bits`); `heap_model_ok` is the formal form of "heap integrity".
+
+Refinement. Every verified handler takes `handler_pre` (the machine
+refines `g`, `wf(g)`, the program is accepted, `step_ok(g)` from the
+spec's `lemma_step`) and the fact that `step(p, g)` is the spec function
+of its opcode, and ensures `step_post`: on `Next` the new machine refines
+exactly the next state of `step` (or a completion, or the same state when
+the instruction did not run, e.g. stack growth before a call); exits
+preserve it for preemption and yield; the only stuck result is the
+resource stop `LIMIT`. Every run-time check that `step` being not stuck
+implies is gone. Paths not proven yet (raising an exception, doubles and
+other slow paths, and the opcodes not verified) hand the whole
+instruction, before changing anything, to `step_unverified`, whose
+contract is assumed (allowlisted; OBLIGATIONS.md).
+
+Run loop (`src/step.rs`). The loop invariant is `Machine::inv` (refines,
+accepted, `wf`) plus `reaches(start, g)`: the state is reached from the
+run's start by `advances` steps (spec steps, completions, the same state,
+or a resource throw). `wf` is re-established after every step from the
+spec's `step_ok` (preservation is the verifier's soundness proof).
+
+End-to-end theorem (`src/theorem.rs`). The verified run loop has
+`requires inv` and `ensures run_post` (never a stuck state of the spec,
+never a fatal path; preempted/yielded only with `inv` again).
+`theorem_first_run`: for an accepted, loaded program whose first task
+encodes `initial_state`, `inv` holds (from the spec's `theorem_initial`).
+`theorem_next_run`: after a preempted or yielded run, a resumed machine
+satisfies `inv` again. Since Verus checks that every exec function meets
+its precondition (every memory access goes through a view whose
+precondition bounds it), this means: for any number of runs and steps,
+the core never fails a view bounds precondition and never takes a fatal
+path, given the contracts of TRUSTED.md section 6.
+
+Accepted programs. The verified handlers are only correct for accepted
+programs; a format-2 program that the launch did not verify (a trusted
+program without -Xverify) runs on the checked handlers. Found by
+tests/sandbox/runtime-hardening-test, which crashed the core with a
+patched LOAD_METHOD operand of an unverified trusted program before the
+flag existed.

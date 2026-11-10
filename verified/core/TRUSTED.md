@@ -16,7 +16,7 @@ Opaque structs holding raw pointers into VM memory. Their ghost content
 | `Table<T>` | an immutable program table `ptr[0..len)` (bytecodes, method table, dispatch table, class tables, roots, literals) | `len() == view.len()`; `at(i)` requires `i < len`, returns `view[i]` |
 | `Globals` | the process' global variables | `at`/`set` require `i < len`; `set` updates `view[i]` |
 | `StackMem` | the array of the current task's `Stack` object | `read`/`write` require `i < len`; `copy_within` is a memmove with an exact contract; `header`/`set_header` access the Stack header words (top, frame top, bci) |
-| `Heap` | process and program heap objects | no ghost content: `header`, `word`, `byte`, `u32_at`, `set_word`, `set_byte` access the object a tagged word designates; `set_word` applies the write barrier (card mark) |
+| `Heap` | process and program heap objects | a ghost heap model: `objs()` (the abstract heap, `State2::heap`), `addrs()` (each object's tagged address), `class_bits()`. Model accessors for verified code: `class_id`, `class_tag` (the header's class id and tag are the model object's class id and its class' tag), `field` (an instance field word is `enc` of the model's field), `set_field` (storing the encoding of `v` makes the model field `v`; write barrier). Raw accessors without ghost content for the checked handlers: `header`, `word`, `byte`, `u32_at`, `set_word`, `set_byte` |
 | `Preemption` | `Interpreter::watermark_` | `requested`/`clear`/`request`: environment nondeterminism, no contract |
 
 Assumptions behind the views:
@@ -83,7 +83,7 @@ lengths, the failure-literal count, the table limit, the longest
 instruction, and `Stack::max_length() < 2^BLOCK_SLOT_BITS`. 237 constants
 plus behavioral checks.
 
-## 4. Plain Rust (`src/machine.rs`, part of `src/exec.rs`)
+## 4. Plain Rust (`src/machine.rs`)
 
 The run loop and the handlers listed in OBLIGATIONS.md are plain Rust
 outside `verus!`. They follow the spec function of the same name; every
@@ -115,3 +115,22 @@ the core from the spec, all outside the spec's model:
 - Preemption, stack growth and stack overflow (the spec has unbounded
   stacks): a call checks for room first and throws `STACK_OVERFLOW` when
   the stack cannot grow.
+
+## 6. The contracts of the end-to-end theorem
+
+`src/theorem.rs` proves that the verified run loop's precondition
+(`Machine::inv`: refines a well-formed state of an accepted program)
+holds on every run. These are all the assumptions it rests on, besides
+sections 1 to 5:
+
+| Contract | Where | Statement | Discharged by |
+|---|---|---|---|
+| Loader | `theorem::loaded`, `ffi::toit_v2_run` (`Ghost::assume_new` of `ap`, `cert`, `trusted`) | the program tables are an abstract program `ap` the verifier accepts with certificate `cert` (`accepts`), its heap and globals satisfy `loaded_ok`, and the first task encodes `initial_state` | verified/vmverify at untrusted launches (branch vm/verifier-link; `check::verify` proven equal to `accepts`, `heap_check` proven equal to `loaded_ok`); until it is merged, the C++ loader checks (`V2MethodTable::compute`) stand in and the hypothesis is not established; `prepare_process_v2` (C++) builds the initial frames. Programs not accepted run on the checked handlers only (`toit_v2_context.accepted`, DESIGN.md section 9) |
+| Between runs | `theorem::resumed`, `machine::run` (`Ghost::assume_new` of `g`) | the scheduler resumes a preempted or yielded task in the state it saved; GC between runs moves objects but preserves the abstraction | C++ scheduler and GC (trusted) |
+| Heap model integrity | `abs::heap_model_ok`, `Machine::refines` | one distinct tagged address per object; an object is an instance iff its class has the instance or task tag, with its class' field count; fields are encodable; read-only objects are exactly those in the program-heap range | the GC, the allocators and the C++ primitives maintain it (TRUSTED V2) |
+| GC and stack growth | `step::grow_bridge` (external_body) | growing the stack (a GC point) leaves the abstract state unchanged and gives the room; a failed growth throws (`step::resource_throw`) | `toit_v2_grow_stack`, `Stack::v2_copy_to`, the GC |
+| Unproven paths | `step::step_unverified` (external_body) | the checked handlers of machine.rs refine the spec like a verified step (`step_post`) | NOT discharged: OBLIGATIONS.md lists the opcodes and paths; tested by the untrusted suite and the fuzz harness |
+| Primitives | inside `step_unverified` (PRIMITIVE is not verified yet) | every allowed primitive's effect satisfies `prim_heap_ok` and the arity table | NOT discharged (OBLIGATIONS.md S1) |
+| Resource stops | `step::resource_throw`, `stuck::LIMIT` | running out of stack or heap throws STACK_OVERFLOW / OUT_OF_MEMORY or stops the process: not a spec transition (the spec's memory is unbounded) | spec request R6 (PHASE4-REQUESTS.md) |
+| Word size | `abs.rs` `global size_of usize == 8` | usize is 64 bits | compile-time assertion in the erased build |
+| Termination | `run_loop` `exec_allows_no_decreases_clause` | none claimed: a program may run forever (the scheduler preempts it) | nothing to discharge |
