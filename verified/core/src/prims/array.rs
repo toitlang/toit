@@ -218,10 +218,9 @@ pub fn array_length(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Gho
     requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 1,
     ensures
         prim_post(c.p, old(heap), final(heap), r.0, r.1@),
-        array_val(old(heap).objs(), a.vs@[0]) is Some ==> r.0 is Success
-            && r.1@ == Value::Smi(array_val(old(heap).objs(), a.vs@[0])->Some_0.len() as i64),
-        array_val(old(heap).objs(), a.vs@[0]) is None ==> r.0 is Failure
-            && r.1@ == c.p.ap@.roots[ROOT_WRONG_OBJECT_TYPE as int],
+        !(r.0 is NotPorted),
+        toit_spec::v2::prim_core::array_length_contract(c.p.ap@, a.vs@, old(heap).objs(), final(heap).objs(),
+            ret_of(c.p, r.0, r.1@)),
 {
     let w = a.w[0];
     let id = match array_arg(heap, w, Ghost(a.vs@[0])) {
@@ -239,12 +238,9 @@ pub fn array_at(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<V
     requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 2,
     ensures
         prim_post(c.p, old(heap), final(heap), r.0, r.1@),
-        ({
-            let e = array_val(old(heap).objs(), a.vs@[0]);
-            let i = a.vs@[1];
-            (e is Some && i is Smi && 0 <= i->Smi_0 < e->Some_0.len()) ==>
-                r.0 is Success && r.1@ == e->Some_0[i->Smi_0 as int]
-        }),
+        !(r.0 is NotPorted),
+        toit_spec::v2::prim_core::array_at_contract(c.p.ap@, a.vs@, old(heap).objs(), final(heap).objs(),
+            ret_of(c.p, r.0, r.1@)),
 {
     let w = a.w[0];
     let id = match array_arg(heap, w, Ghost(a.vs@[0])) {
@@ -270,13 +266,9 @@ pub fn array_at_put(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Gho
     requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 3,
     ensures
         prim_post(c.p, old(heap), final(heap), r.0, r.1@),
-        ({
-            let e = array_val(old(heap).objs(), a.vs@[0]);
-            let i = a.vs@[1];
-            r.0 is Success ==> e is Some && i is Smi && 0 <= i->Smi_0 < e->Some_0.len()
-                && r.1@ == a.vs@[2]
-                && array_val(final(heap).objs(), a.vs@[0]) == Some(e->Some_0.update(i->Smi_0 as int, a.vs@[2]))
-        }),
+        !(r.0 is NotPorted),
+        toit_spec::v2::prim_core::array_at_put_contract(c.p.ap@, a.vs@, old(heap).objs(), final(heap).objs(),
+            ret_of(c.p, r.0, r.1@)),
 {
     let w = a.w[0];
     let id = match array_arg(heap, w, Ghost(a.vs@[0])) {
@@ -667,7 +659,7 @@ pub fn rebuild_hash_index(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcom
 /// The array family of the dispatch table.
 pub fn dispatch(i: usize, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<Value>))
     requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)),
-    ensures prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+    ensures prim_post(c.p, old(heap), final(heap), r.0, r.1@), contract(c.p, i as int, a, old(heap), final(heap), r.0, r.1@),
 {
     let n = a.n;
     if i == ix::ARRAY_LENGTH && n == 1 { return array_length(a, heap, c); }

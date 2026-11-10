@@ -19,6 +19,7 @@ pub mod bytecodes;
 pub mod types;
 pub mod spec;
 pub mod prim;
+pub mod prim_core;
 pub mod exec;
 pub mod verifier;
 pub mod sound;

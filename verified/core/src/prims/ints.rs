@@ -39,37 +39,11 @@ use crate::prims::index as ix;
 use toit_spec::types::{Value, HeapObj, Body};
 #[cfg(verus_keep_ghost)]
 use toit_spec::v2::sound::good;
+#[cfg(verus_keep_ghost)]
+use toit_spec::v2::prim_core::{int_val, large_val, smi_val, int_op, int_err, int_cmp, popcount, unop_spec,
+    smi_in, int_binop_contract, int_cmp_contract, int_unop_contract, object_class_id_contract};
 
 verus! {
-
-/// The integer a value denotes: a smi or a large integer.
-pub open spec fn int_val(objs: Seq<HeapObj>, v: Value) -> Option<i64> {
-    match v {
-        Value::Smi(i) => Some(i),
-        Value::Obj(id) => if (id as int) < objs.len() && objs[id as int].body is LargeInt {
-            Some(objs[id as int].body->LargeInt_0)
-        } else {
-            None
-        },
-        _ => None,
-    }
-}
-
-/// The large integer a value denotes (the receiver of `large_integer_*`).
-pub open spec fn large_val(objs: Seq<HeapObj>, v: Value) -> Option<i64> {
-    match v {
-        Value::Obj(id) => int_val(objs, v),
-        _ => None,
-    }
-}
-
-/// The smi a value denotes.
-pub open spec fn smi_val(v: Value) -> Option<i64> {
-    match v {
-        Value::Smi(i) => Some(i),
-        _ => None,
-    }
-}
 
 pub const ADD: u8 = 0;
 pub const SUB: u8 = 1;
@@ -89,37 +63,13 @@ pub const GT: u8 = 2;
 pub const GTE: u8 = 3;
 pub const EQ: u8 = 4;
 
-/// The binary operations (`None`: the error the C++ fails with,
-/// `int_err`). Division and modulo are only specified up to the result.
-pub open spec fn int_op(op: u8, x: i64, y: i64) -> Option<i64> {
-    if op == ADD { Some(x.wrapping_add(y)) }
-    else if op == SUB { Some(x.wrapping_sub(y)) }
-    else if op == MUL { Some(x.wrapping_mul(y)) }
-    else if op == AND { Some(x & y) }
-    else if op == OR { Some(x | y) }
-    else if op == XOR { Some(x ^ y) }
-    else if op == SHR { if y < 0 { None } else if y >= 64 { Some(if x < 0 { -1i64 } else { 0i64 }) } else { Some(x >> (y as u64)) } }
-    else if op == USHR { if y < 0 { None } else if y >= 64 { Some(0) } else { Some(((x as u64) >> (y as u64)) as i64) } }
-    else if op == SHL { if y < 0 { None } else if y >= 64 { Some(0) } else { Some(((x as u64) << (y as u64)) as i64) } }
-    else { if y == 0 { None } else { Some(0) } }
-}
-
-/// The error root of a failing `int_op`.
-pub open spec fn int_err(op: u8) -> usize {
-    if op == DIV || op == MOD { ROOT_DIVISION_BY_ZERO } else { ROOT_NEGATIVE_ARGUMENT }
-}
-
-pub open spec fn int_cmp(op: u8, x: i64, y: i64) -> bool {
-    if op == LT { x < y } else if op == LTE { x <= y } else if op == GT { x > y } else if op == GTE { x >= y } else { x == y }
-}
-
 /// `int_op`, computed: `Err(root)` on failure.
 #[inline(always)]
 pub fn int_op_exec(op: u8, x: i64, y: i64) -> (r: Result<i64, usize>)
     requires op <= SHL,
     ensures
         r is Err <==> int_op(op, x, y) is None,
-        r is Err ==> r->Err_0 == int_err(op),
+        r is Err ==> r->Err_0 as int == int_err(op) && r->Err_0 < ROOT_COUNT,
         r is Ok && op != DIV && op != MOD ==> int_op(op, x, y) == Some(r->Ok_0),
 {
     if op == ADD { Ok(x.wrapping_add(y)) }
@@ -210,6 +160,8 @@ pub fn int_res(heap: &mut Heap, c: &Ctx, x: i64) -> (r: (PrimOutcome, Ghost<Valu
         prim_post(c.p, old(heap), final(heap), r.0, r.1@),
         !(r.0 is Failure),
         r.0 is Success ==> int_val(final(heap).objs(), r.1@) == Some(x),
+        r.0 is Success && smi_in(x) ==> *final(heap) == *old(heap) && r.1@ == Value::Smi(x),
+        r.0 is NeedsGc ==> !smi_in(x),
 {
     if MIN_SMI <= x && x <= MAX_SMI {
         let (w, v) = smi_res(heap, x);
@@ -244,15 +196,8 @@ pub fn binop(op: u8, large: bool, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (Pr
     requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 2, op <= SHL,
     ensures
         prim_post(c.p, old(heap), final(heap), r.0, r.1@),
-        ({
-            let x = if large { large_val(old(heap).objs(), a.vs@[0]) } else { smi_val(a.vs@[0]) };
-            let y = int_val(old(heap).objs(), a.vs@[1]);
-            &&& (x is None || y is None) ==> r.0 is Failure && r.1@ == c.p.ap@.roots[ROOT_WRONG_OBJECT_TYPE as int]
-            &&& (x is Some && y is Some && int_op(op, x->Some_0, y->Some_0) is None) ==>
-                    r.0 is Failure && r.1@ == c.p.ap@.roots[int_err(op) as int]
-            &&& (r.0 is Success && op != DIV && op != MOD) ==> x is Some && y is Some
-                    && int_val(final(heap).objs(), r.1@) == int_op(op, x->Some_0, y->Some_0)
-        }),
+        !(r.0 is NotPorted) ==> int_binop_contract(c.p.ap@, op, large, a.vs@, old(heap).objs(),
+            final(heap).objs(), ret_of(c.p, r.0, r.1@)),
 {
     let x = match recv_arg(large, heap, a.w[0], Ghost(a.vs@[0])) {
         Some(x) => x,
@@ -274,13 +219,8 @@ pub fn cmpop(op: u8, large: bool, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (Pr
     requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 2,
     ensures
         prim_post(c.p, old(heap), final(heap), r.0, r.1@),
-        ({
-            let x = if large { large_val(old(heap).objs(), a.vs@[0]) } else { smi_val(a.vs@[0]) };
-            let y = int_val(old(heap).objs(), a.vs@[1]);
-            &&& (x is None || y is None) ==> r.0 is Failure && r.1@ == c.p.ap@.roots[ROOT_WRONG_OBJECT_TYPE as int]
-            &&& (x is Some && y is Some) ==> r.0 is Success && r.1@ ==
-                    (if int_cmp(op, x->Some_0, y->Some_0) { c.p.ap@.roots[1] } else { c.p.ap@.roots[2] })
-        }),
+        !(r.0 is NotPorted),
+        int_cmp_contract(c.p.ap@, op, large, a.vs@, old(heap).objs(), final(heap).objs(), ret_of(c.p, r.0, r.1@)),
 {
     let x = match recv_arg(large, heap, a.w[0], Ghost(a.vs@[0])) {
         Some(x) => x,
@@ -297,19 +237,6 @@ pub const NEG: u8 = 0;
 pub const NOT: u8 = 1;
 pub const CLZ: u8 = 2;
 pub const POPCOUNT: u8 = 3;
-
-pub open spec fn popcount(x: u64, n: nat) -> nat
-    decreases n,
-{
-    if n == 0 { 0 } else { (x % 2) as nat + popcount(x / 2, (n - 1) as nat) }
-}
-
-pub open spec fn unop_spec(op: u8, x: i64) -> i64 {
-    if op == NEG { 0i64.wrapping_sub(x) }
-    else if op == NOT { !x }
-    else if op == POPCOUNT { popcount(x as u64, 64) as i64 }
-    else { 0 }
-}
 
 #[inline(always)]
 fn popcount_exec(x: u64) -> (r: u64)
@@ -338,13 +265,8 @@ pub fn unop(op: u8, large: bool, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (Pri
     requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 1, op <= POPCOUNT,
     ensures
         prim_post(c.p, old(heap), final(heap), r.0, r.1@),
-        ({
-            let x = if op >= CLZ { int_val(old(heap).objs(), a.vs@[0]) }
-                else if large { large_val(old(heap).objs(), a.vs@[0]) } else { smi_val(a.vs@[0]) };
-            &&& x is None ==> r.0 is Failure && r.1@ == c.p.ap@.roots[ROOT_WRONG_OBJECT_TYPE as int]
-            &&& (r.0 is Success && op != CLZ) ==> x is Some
-                    && int_val(final(heap).objs(), r.1@) == Some(unop_spec(op, x->Some_0))
-        }),
+        !(r.0 is NotPorted) ==> int_unop_contract(c.p.ap@, op, large, a.vs@, old(heap).objs(),
+            final(heap).objs(), ret_of(c.p, r.0, r.1@)),
 {
     let x = if op >= CLZ {
         int_arg(heap, a.w[0], Ghost(a.vs@[0]))
@@ -368,8 +290,7 @@ pub fn object_class_id(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, 
     ensures
         prim_post(c.p, old(heap), final(heap), r.0, r.1@),
         r.0 is Success,
-        a.vs@[0] is Obj ==> r.1@ == Value::Smi(old(heap).objs()[a.vs@[0]->Obj_0 as int].class_id as i64),
-        a.vs@[0] is Smi ==> r.1@ == Value::Smi(c.p.ap@.builtin[BUILTIN_SMI as int] as i64),
+        object_class_id_contract(c.p.ap@, a.vs@, old(heap).objs(), final(heap).objs(), ret_of(c.p, r.0, r.1@)),
 {
     let w = a.w[0];
     let ghost v = a.vs@[0];
@@ -387,7 +308,7 @@ pub fn object_class_id(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, 
 /// The integer family of the dispatch table.
 pub fn dispatch(i: usize, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<Value>))
     requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)),
-    ensures prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+    ensures prim_post(c.p, old(heap), final(heap), r.0, r.1@), contract(c.p, i as int, a, old(heap), final(heap), r.0, r.1@),
 {
     let n = a.n;
     if n == 2 {

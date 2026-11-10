@@ -55,6 +55,11 @@ use crate::view::*;
 use crate::ffi::Allocator;
 use toit_spec::types::{Value, HeapObj, Body};
 use toit_spec::v2::types::Program2;
+use toit_spec::v2::prim::PrimRet;
+#[cfg(verus_keep_ghost)]
+use toit_spec::v2::prim::{prim_spec, prim_default, prim_refined, resource_error, array_of};
+#[cfg(verus_keep_ghost)]
+use toit_spec::v2::prim_core::{core_contract, int32_val, array_val};
 #[cfg(verus_keep_ghost)]
 use toit_spec::v2::sound::{prim_heap_ok, basic_obj_ok, good, task_class, task_fields_kept};
 #[cfg(verus_keep_ghost)]
@@ -153,6 +158,38 @@ pub open spec fn prim_post(p: &Program, h0: &Heap, h1: &Heap, r: PrimOutcome, v:
     }
 }
 
+/// The spec's view of an outcome (`prim::PrimRet`). `NeedsGc` is the
+/// protocol's `OutOfMemory` with ALLOCATION_FAILED: the caller collects
+/// garbage and calls again, and after its retries (the C++ protocol, as
+/// the ALLOCATE handler's) completes the PRIMITIVE with that error. The
+/// heap the last attempt leaves is a `prim_heap_ok` extension of the heap
+/// before the first (`lemma_post_trans`, and a GC keeps the abstraction),
+/// so the `OutOfMemory` outcome satisfies `prim_spec`.
+pub open spec fn ret_of(p: &Program, r: PrimOutcome, v: Value) -> PrimRet {
+    match r {
+        PrimOutcome::Success(_) => PrimRet::Success(v),
+        PrimOutcome::Failure(_) => PrimRet::Failure(v),
+        _ => PrimRet::OutOfMemory(p.ap@.roots[ROOT_ALLOCATION_FAILED as int]),
+    }
+}
+
+/// The per-primitive contract (`prim_core::core_contract`) of core
+/// primitive `i`, for a ported outcome.
+pub open spec fn contract(p: &Program, i: int, a: &Args, h0: &Heap, h1: &Heap, r: PrimOutcome, v: Value) -> bool {
+    !(r is NotPorted) ==> core_contract(p.ap@, i, a.vs@, h0.objs(), h1.objs(), ret_of(p, r, v))
+}
+
+/// `prim::array_at_put_spec` fails a program-heap array with
+/// PERMISSION_DENIED before decoding the index; C++ (and the port) decode
+/// the index first (prim_core.rs). Where they differ: a program-heap array
+/// and an index that is not an `int`.
+pub open spec fn at_put_gap(args: Seq<Value>, h: Seq<HeapObj>) -> bool {
+    &&& args.len() == 3
+    &&& array_of(h, args[0]) is Some
+    &&& h[array_of(h, args[0])->Some_0.0].ro
+    &&& int32_val(args[1]) is None
+}
+
 /// The primitive's arguments: the encoded words and their values.
 pub struct Args {
     pub w: [usize; 6],
@@ -182,7 +219,18 @@ pub fn call(module: u8, index: u16, mem: &StackMem, at: usize, n: usize, heap: &
         heap_inv(p, old(heap)),
         args_ok(mem, at as int, old(heap), vs),
         n == vs.len(),
-    ensures prim_post(p, old(heap), final(heap), r.0, r.1@),
+    ensures
+        prim_post(p, old(heap), final(heap), r.0, r.1@),
+        // The protocol of the spec (prim::prim_returns): the default
+        // contract and the per-primitive ones; `prim_refined` except the
+        // array_at_put case where the spec's example differs from C++.
+        !(r.0 is NotPorted) ==> ({
+            let ret = ret_of(p, r.0, r.1@);
+            &&& prim_default(p.ap@, old(heap).objs(), final(heap).objs(), ret)
+            &&& core_contract(p.ap@, index as int, vs, old(heap).objs(), final(heap).objs(), ret)
+            &&& (prim_spec(p.ap@, module, index, vs, old(heap).objs(), final(heap).objs(), ret)
+                 || (index == 15 && at_put_gap(vs, old(heap).objs())))
+        }),
 {
     if module != 0 || n > 6 {
         return (PrimOutcome::NotPorted, Ghost(Value::Smi(0)));
@@ -200,8 +248,109 @@ pub fn call(module: u8, index: u16, mem: &StackMem, at: usize, n: usize, heap: &
         k += 1;
     }
     let a = Args { w, n, vs: Ghost(vs) };
+    proof {
+        assert forall|k: int| 0 <= k < a.n implies a.w@[k] == enc(heap.addrs(), #[trigger] a.vs@[k]) by {
+            assert(mem@[at - k] == enc(heap.addrs(), vs[k]));
+        }
+    }
     let ctx = Ctx { p, al };
-    dispatch(index, &a, heap, &ctx)
+    let ghost h0 = *heap;
+    let r = dispatch(index, &a, heap, &ctx);
+    proof {
+        if !(r.0 is NotPorted) {
+            lemma_default(p, &h0, heap, r.0, r.1@);
+            assert forall|j: int| 0 <= j < h0.objs().len() && (#[trigger] h0.objs()[j]).body is Array
+                implies h0.objs()[j].body->Array_0.len() < 0x4000_0000 by {
+                assert(obj_model_ok(h0.objs()[j], h0.class_bits(), h0.addrs()));
+            }
+            assert(prog_rel(p, h0.objs(), h0.addrs()));
+            lemma_refined(p, index, vs, h0.objs(), heap.objs(), ret_of(p, r.0, r.1@));
+        }
+    }
+    r
+}
+
+/// The contract implies the spec's default contract.
+pub proof fn lemma_default(p: &Program, h0: &Heap, h1: &Heap, r: PrimOutcome, v: Value)
+    requires prim_post(p, h0, h1, r, v), !(r is NotPorted),
+    ensures prim_default(p.ap@, h0.objs(), h1.objs(), ret_of(p, r, v)),
+{
+}
+
+/// The per-primitive contracts imply the spec's examples (`prim_refined`),
+/// except the array_at_put case of `at_put_gap`.
+pub proof fn lemma_refined(p: &Program, index: u16, vs: Seq<Value>, h: Seq<HeapObj>, h2: Seq<HeapObj>, r: PrimRet)
+    requires
+        core_contract(p.ap@, index as int, vs, h, h2, r),
+        prim_default(p.ap@, h, h2, r),
+        p.ap@.word_bits == 64,
+        forall|j: int| 0 <= j < h.len() && (#[trigger] h[j]).body is Array ==> h[j].body->Array_0.len() < 0x4000_0000,
+    ensures
+        prim_spec(p.ap@, 0, index, vs, h, h2, r) || (index == 15 && at_put_gap(vs, h)),
+{
+    let ap = p.ap@;
+    if index == 51 {
+        lemma_smi_add_refined(ap, vs, h, h2, r);
+    } else if index == 14 {
+        lemma_array_at_refined(ap, vs, h, h2, r);
+    } else if index == 15 {
+        lemma_array_at_put_refined(ap, vs, h, h2, r);
+    } else {
+        assert(prim_refined(ap, 0, index, vs, h, h2, r));
+    }
+}
+
+pub proof fn lemma_smi_add_refined(ap: Program2, vs: Seq<Value>, h: Seq<HeapObj>, h2: Seq<HeapObj>, r: PrimRet)
+    requires
+        toit_spec::v2::prim_core::int_binop_contract(ap, 0, false, vs, h, h2, r),
+        ap.word_bits == 64,
+    ensures toit_spec::v2::prim::smi_add_spec(ap, vs, h, h2, r),
+{
+    if vs.len() == 2 {
+        match (vs[0], vs[1]) {
+            (Value::Smi(a), Value::Smi(b)) => {
+                if toit_spec::spec_common::smi_ok(p1(ap), a + b) {
+                    let z = a.wrapping_add(b);
+                    assert(z == a + b);
+                    assert(toit_spec::v2::prim_core::smi_in(z));
+                    assert(toit_spec::v2::prim_core::int_op(0, a, b) == Some(z));
+                }
+            },
+            _ => {},
+        }
+    }
+}
+
+pub proof fn lemma_array_at_refined(ap: Program2, vs: Seq<Value>, h: Seq<HeapObj>, h2: Seq<HeapObj>, r: PrimRet)
+    requires toit_spec::v2::prim_core::array_at_contract(ap, vs, h, h2, r), forall|j: int| 0 <= j < h.len() && (#[trigger] h[j]).body is Array ==> h[j].body->Array_0.len() < 0x4000_0000,
+    ensures toit_spec::v2::prim::array_at_spec(ap, vs, h, h2, r),
+{
+    if vs.len() == 2 {
+        match vs[0] {
+            Value::Obj(id) => {
+                if (id as int) < h.len() {
+                    match h[id as int].body { Body::Array(e) => {}, _ => {} }
+                }
+            },
+            _ => {},
+        }
+    }
+}
+
+pub proof fn lemma_array_at_put_refined(ap: Program2, vs: Seq<Value>, h: Seq<HeapObj>, h2: Seq<HeapObj>, r: PrimRet)
+    requires toit_spec::v2::prim_core::array_at_put_contract(ap, vs, h, h2, r), forall|j: int| 0 <= j < h.len() && (#[trigger] h[j]).body is Array ==> h[j].body->Array_0.len() < 0x4000_0000,
+    ensures toit_spec::v2::prim::array_at_put_spec(ap, vs, h, h2, r) || at_put_gap(vs, h),
+{
+    if vs.len() == 3 {
+        match vs[0] {
+            Value::Obj(id) => {
+                if (id as int) < h.len() {
+                    match h[id as int].body { Body::Array(e) => {}, _ => {} }
+                }
+            },
+            _ => {},
+        }
+    }
 }
 
 /// The dispatch table of the core module.
@@ -209,7 +358,9 @@ pub fn dispatch(index: u16, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutc
     requires
         heap_inv(c.p, old(heap)),
         args_rel(a, old(heap)),
-    ensures prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+    ensures
+        prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+        contract(c.p, index as int, a, old(heap), final(heap), r.0, r.1@),
 {
     let i = index as usize;
     // Each family returns NotPorted (heap unchanged) for the indices it
