@@ -44,4 +44,5 @@ pub mod types;
 pub mod blocks;
 pub mod ops;
 pub mod halt;
+pub mod globals;
 pub mod theorem;

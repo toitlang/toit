@@ -74,7 +74,7 @@ obligations below would prove.
 | A1 allocation | ALLOCATE(_WIDE) | GC point (see G below) |
 | P1 primitives | PRIMITIVE | calls C++ (see FFI in DESIGN.md); P2 below |
 | H1 halt | HALT 1 raising INVALID_PROGRAM | HALT 0 (yield), 1 (exit), 2 (deep sleep), 3 (reset) are verified (src/halt.rs); a heap object as exit value goes through `step_unverified`: needs `raise` (see Y1) |
-| G1 globals (lazy, dynamic) | LOAD_GLOBAL_VAR_LAZY(_WIDE), LOAD_GLOBAL_VAR_DYNAMIC, STORE_GLOBAL_VAR_DYNAMIC | calls the initializer entry point (C1) |
+| G1 globals (lazy, dynamic) | LOAD_GLOBAL_VAR_LAZY(_WIDE); the INVALID_PROGRAM raise of LOAD/STORE_GLOBAL_VAR_DYNAMIC | the dynamic fast paths are verified (src/globals.rs); the raise needs `raise` (see Y1); the lazy load calls the initializer entry point (C1) |
 
 ### G. GC safety
 

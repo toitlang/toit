@@ -77,6 +77,7 @@ pub open spec fn verified_op(op: u8) -> bool {
     ||| 62 <= op <= 77   // INVOKE_EQ, relational, arithmetic and bit operators (smi fast paths)
     ||| op == 96         // IDENTICAL
     ||| op == 100        // HALT
+    ||| op == 34 || op == 37  // LOAD_GLOBAL_VAR_DYNAMIC, STORE_GLOBAL_VAR_DYNAMIC
 }
 
 /// The machine continues from a state the spec reaches from `g0`: the same
@@ -713,6 +714,14 @@ pub fn step(m: &mut Machine, env: &Env) -> (r: Ctl)
             let k = p.code.at(bci + 1) as usize;
             proof { assert(sp::step(ap, g) == sp::op_invoke_block(ap, g, k as int)) by { reveal(sp::step); } }
             return crate::blocks::op_invoke_block(m, env, bci, opcode, k);
+        },
+        34 => {
+            proof { assert(sp::step(ap, g) == sp::op_load_global_dynamic(ap, g)) by { reveal(sp::step); } }
+            return crate::globals::op_load_global_dynamic(m, env, bci, opcode);
+        },
+        37 => {
+            proof { assert(sp::step(ap, g) == sp::op_store_global_dynamic(ap, g)) by { reveal(sp::step); } }
+            return crate::globals::op_store_global_dynamic(m, env, bci, opcode);
         },
         100 => {
             let code = p.code.at(bci + 1) as usize;
