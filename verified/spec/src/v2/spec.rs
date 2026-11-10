@@ -462,26 +462,50 @@ pub open spec fn unwind(p: Program2, s: State2, u: Unwind) -> Outcome2
     }
 }
 
-/// The exception object of a failure: an `Exception_` with the failure
-/// string as value and no trace.
-pub open spec fn exception_obj(p: Program2, k: int) -> HeapObj {
+/// The exception object the machine raises: an `Exception_` with `value`
+/// (field 0), `trace` (field 1) and null in its other fields.
+pub open spec fn exception_obj2(p: Program2, value: Value, trace: Value) -> HeapObj {
     let cid = builtin(p1(p), EXCEPTION_CLASS);
     HeapObj {
         class_id: cid as u16,
         ro: false,
         body: Body::Instance(Seq::new(instance_field_count(p1(p), cid) as nat, |i: int|
-            if i == 0 { p.literals[2 + k] } else { null2(p) })),
+            if i == 0 { value } else if i == 1 { trace } else { null2(p) })),
     }
 }
 
-/// Raises failure `k`.
+/// The exception object of failure `k` without a trace (what the reference
+/// interpreter raises).
+pub open spec fn exception_obj(p: Program2, k: int) -> HeapObj {
+    exception_obj2(p, p.literals[2 + k], null2(p))
+}
+
+/// The value of the exception of failure `k`: the failure string.
+pub open spec fn failure_value(p: Program2, k: int) -> Value {
+    p.literals[2 + k]
+}
+
+/// Raises failure `k`: the machine allocates the exception (an oracle
+/// step: the trace is the machine's, `v2::prim::raised`) and unwinds.
 pub open spec fn raise(p: Program2, s: State2, k: int) -> Outcome2 {
+    Outcome2::Raise(s, failure_value(p, k))
+}
+
+/// Throws a new exception with value `value` and trace `trace`, allocated
+/// at the end of the heap: one completion of `Raise(s, value)`.
+pub open spec fn throw_exception(p: Program2, s: State2, value: Value, trace: Value) -> Outcome2 {
     let cid = builtin(p1(p), EXCEPTION_CLASS);
     if !(0 <= cid < p.class_bits.len()) || instance_field_count(p1(p), cid) < 2 {
         stuck(Stuck::Fatal)
     } else {
-        unwind(p, alloc2(s, exception_obj(p, k)), Unwind::Throw(new_ref2(s)))
+        unwind(p, alloc2(s, exception_obj2(p, value, trace)), Unwind::Throw(new_ref2(s)))
     }
+}
+
+/// The reference interpreter's completion of a raise: no trace, no other
+/// allocation (the step function before raising became an oracle step).
+pub open spec fn raise_null(p: Program2, s: State2, k: int) -> Outcome2 {
+    throw_exception(p, s, failure_value(p, k), null2(p))
 }
 
 /// Replaces the top frame's method by `target`, whose arguments are `args`

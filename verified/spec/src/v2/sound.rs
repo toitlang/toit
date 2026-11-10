@@ -487,16 +487,28 @@ pub open spec fn loaded_ok(p: Program2, c: Cert, heap0: Seq<HeapObj>, globals0: 
 // ---------------------------------------------------------------------------
 // The theorem.
 
+/// A completed outcome (not an oracle step) is good: a next state (or the
+/// state of a yield) is well formed; other halts end the process or the
+/// task.
+pub open spec fn final_ok(p: Program2, c: Cert, o: Outcome2) -> bool {
+    match o {
+        Outcome2::Next(s2) => wf(p, c, s2),
+        Outcome2::Halt(s2, h) => h is Yield ==> wf(p, c, s2),
+        _ => false,
+    }
+}
+
 /// The outcome of a step from a well-formed state: not stuck; a next
 /// state (or the state of a yield) is well formed; a PRIMITIVE leaves the
-/// state for its completion (`completions_ok`); other halts end the
-/// process or the task.
+/// state for its completion (`completions_ok`); every completion of a
+/// raise is good (`final_ok`); other halts end the process or the task.
 pub open spec fn outcome_ok(p: Program2, c: Cert, o: Outcome2) -> bool {
     match o {
         Outcome2::Stuck(_) => false,
         Outcome2::Next(s2) => wf(p, c, s2),
         Outcome2::Halt(s2, h) => h is Yield ==> wf(p, c, s2),
         Outcome2::Primitive(s2, _, _) => wf(p, c, s2),
+        Outcome2::Raise(s2, v) => forall|o2: Outcome2| #[trigger] crate::v2::prim::raised(p, s2, v, o2) ==> final_ok(p, c, o2),
     }
 }
 

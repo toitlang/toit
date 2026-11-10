@@ -4,6 +4,53 @@ One entry per change of `src/v2/spec.rs`, `src/v2/prim.rs`, `src/v2/types.rs`
 or the verifier's rules (`src/v2/verifier.rs`) that an implementation of
 the spec (the verified core, the VM's loader) must follow. Newest first.
 
+## 2026-11-10: raising is an oracle step (core request R7)
+
+What: `types.rs`: `Outcome2` has a new variant `Raise(State2, Value)`.
+`spec.rs`: `raise(p, s, k)` is now `Outcome2::Raise(s, failure_value(p, k))`
+(`failure_value(p, k) == p.literals[2 + k]`); the old deterministic
+outcome is `raise_null(p, s, k)`. New: `exception_obj2(p, value, trace)`
+(an `Exception_` with value, trace, null elsewhere; `exception_obj(p, k)`
+is `exception_obj2(p, literals[2 + k], null)`), `throw_exception(p, s,
+value, trace)` (allocate it at the end of the heap, then unwind; `Fatal`
+if the exception class has fewer than two fields, as before). `prim.rs`:
+`raised(p, s, value, o)` completes a raise:
+
+* `o == throw_exception(p, with_heap2(s, h2), value, trace)` for any heap
+  `h2` with `heap_extended(p, s.heap, h2)` (`prim_heap_ok` plus `s.heap`
+  is a prefix: objects only added, under the primitive's heap contract)
+  and any `trace` with `good(h2, trace)`; or
+* `o == unwind(p, with_heap2(s, h2), Throw(out_of_memory(p)))` for any such
+  `h2` (`out_of_memory(p) == roots[4]`): the exception's allocation failed.
+
+`completes(p, o, o2)`: `raised` for a `Raise`, else `o2 == o`.
+`theorem.rs`: `outcome(p, s, o)` = `completes(p, step(p, s), o)` or a
+completed `completion` of a PRIMITIVE step; `transition` is `small(s2)`
+and some `outcome` continuing in `s2`; the theorem also states that no
+`outcome` of a reachable state is `Stuck` or `Raise`. `exec.rs`:
+`ExecOutcome2::Raise(v)`, `x_raise` returns it without changing the state,
+`x_throw_null` is the verified reference completion (the interpreter
+calls it). Proofs: `lemma_raised`, `lemma_throw`, `lemma_throw_oom`,
+`lemma_raise_value`, `lemma_raise_null` (`raise_null` is a completion).
+
+Why: core request R7 (OBLIGATIONS.md section 3). The VM's exception
+carries an encoded stack trace and the format-1 message (PHASE4-REQUESTS
+R2), allocated by C++ (`toit_v2_allocate_exception`: a GC point that may
+fail), so the machine's raise did not refine the old deterministic one.
+The core's `raise_value_msg_cold` is now an instance: the trace byte array
+(or null) is the extension and the trace, `allocate_instance` failing is
+the out-of-memory completion.
+
+Opcodes: every raised failure: LOAD_FIELD(_WIDE), LOAD_FIELD_LOCAL,
+POP_LOAD_FIELD_LOCAL, STORE_FIELD(_WIDE,_POP), STORE_FIELD_THIS,
+LOAD/STORE_GLOBAL_VAR_DYNAMIC, AS_*, IS/AS checks of INVOKE_STATIC(_TAIL)
+and lazy globals (receiver ranges), INVOKE_VIRTUAL*, the operator
+fallbacks, INVOKE_BLOCK, TRY, INVOKE_LAMBDA_TAIL, INVOKE_INITIALIZER_TAIL,
+HALT 1, PRIMITIVE (missing primitive). The core's proven handlers are
+unaffected (their `step` results are `Next`); a handler proving a raise
+path shows `step(p, g0) == Outcome2::Raise(g, v)` and that its machine
+continues in an outcome `o` with `raised(p, g, v, o)`.
+
 ## 2026-11-10: a verified check of the loader's contract (R4)
 
 What: `sound.rs` splits `loaded_ok` into `loaded_heap_ok` (heap size, every

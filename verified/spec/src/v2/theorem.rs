@@ -71,16 +71,25 @@ pub open spec fn continues(o: Outcome2, s2: State2) -> bool {
     o == Outcome2::Next(s2) || o == Outcome2::Halt(s2, Halt2::Yield)
 }
 
-/// One transition: a step, or a step to a PRIMITIVE followed by any of
-/// its completions. There is no transition to a state beyond the memory
-/// bound `small`: the machine stops with out-of-memory instead.
+/// The outcomes of the machine in state `s`, oracle steps completed: the
+/// step's outcome, a raise completed by `raised` (the machine allocates the
+/// exception and its trace), and every completion of a PRIMITIVE step
+/// (itself completed if it raises).
+pub open spec fn outcome(p: Program2, s: State2, o: Outcome2) -> bool {
+    ||| completes(p, step(p, s), o)
+    ||| match step(p, s) {
+            Outcome2::Primitive(s1, module, index) =>
+                exists|o1: Outcome2| #[trigger] completion(p, s1, module, index, o1) && completes(p, o1, o),
+            _ => false,
+        }
+}
+
+/// One transition: an outcome of `s` that continues in `s2`. There is no
+/// transition to a state beyond the memory bound `small`: the machine
+/// stops with out-of-memory instead.
 pub open spec fn transition(p: Program2, s: State2, s2: State2) -> bool {
     &&& small(s2)
-    &&& (continues(step(p, s), s2) || match step(p, s) {
-            Outcome2::Primitive(s1, module, index) =>
-                exists|o: Outcome2| completion(p, s1, module, index, o) && continues(o, s2),
-            _ => false,
-        })
+    &&& exists|o: Outcome2| #[trigger] outcome(p, s, o) && continues(o, s2)
 }
 
 /// A run of the process with loaded heap `heap0` and globals `globals0`:
@@ -114,16 +123,44 @@ pub proof fn lemma_run_wf(p: Program2, c: Cert, trusted: bool, heap0: Seq<HeapOb
         let s = tr[i];
         assert(transition(p, tr[i - 1], tr[i - 1 + 1]));
         lemma_run_wf(p, c, trusted, heap0, globals0, tr, i - 1);
-        crate::v2::sound_step::lemma_step(p, c, trusted, s0);
-        if !continues(step(p, s0), s) {
-            match step(p, s0) {
-                Outcome2::Primitive(s1, module, index) => {
-                    let o = choose|o: Outcome2| completion(p, s1, module, index, o) && continues(o, s);
-                    assert(completions_ok(p, c, s1, module, index));
-                    lemma_completion_ok(p, c, s1, module, index, o);
-                },
-                _ => {},
-            }
+        let o = choose|o: Outcome2| #[trigger] outcome(p, s0, o) && continues(o, s);
+        lemma_outcome_ok(p, c, trusted, s0, o);
+    }
+}
+
+/// A completion of a good outcome is good, and not an oracle step.
+pub proof fn lemma_completes_ok(p: Program2, c: Cert, o1: Outcome2, o: Outcome2)
+    requires outcome_ok(p, c, o1), completes(p, o1, o),
+    ensures outcome_ok(p, c, o), !(o is Raise), !(o is Stuck),
+        o is Next || o is Halt ==> final_ok(p, c, o),
+{
+    match o1 {
+        Outcome2::Raise(s1, v) => {
+            assert(raised(p, s1, v, o));
+            assert(final_ok(p, c, o));
+        },
+        _ => {},
+    }
+}
+
+/// Every outcome of a well-formed state is good.
+pub proof fn lemma_outcome_ok(p: Program2, c: Cert, trusted: bool, s: State2, o: Outcome2)
+    requires accepts(p, c, trusted), wf(p, c, s), small(s), outcome(p, s, o),
+    ensures outcome_ok(p, c, o), !(o is Raise), !(o is Stuck),
+        o is Next || o is Halt ==> final_ok(p, c, o),
+{
+    crate::v2::sound_step::lemma_step(p, c, trusted, s);
+    if completes(p, step(p, s), o) {
+        lemma_completes_ok(p, c, step(p, s), o);
+    } else {
+        match step(p, s) {
+            Outcome2::Primitive(s1, module, index) => {
+                let o1 = choose|o1: Outcome2| #[trigger] completion(p, s1, module, index, o1) && completes(p, o1, o);
+                assert(completions_ok(p, c, s1, module, index));
+                lemma_completion_ok(p, c, s1, module, index, o1);
+                lemma_completes_ok(p, c, o1, o);
+            },
+            _ => {},
         }
     }
 }
@@ -189,6 +226,7 @@ pub proof fn theorem_soundness(p: Program2, c: Cert, trusted: bool, heap0: Seq<H
         forall|s1: State2, module: u8, index: u16, o: Outcome2|
             step(p, s) == Outcome2::Primitive(s1, module, index) && #[trigger] completion(p, s1, module, index, o)
                 ==> !(o is Stuck),
+        forall|o: Outcome2| #[trigger] outcome(p, s, o) ==> !(o is Stuck) && !(o is Raise),
         machine_objects_ok(p, s),
 {
     lemma_reachable_wf(p, c, trusted, heap0, globals0, s);
@@ -198,6 +236,9 @@ pub proof fn theorem_soundness(p: Program2, c: Cert, trusted: bool, heap0: Seq<H
         step(p, s) == Outcome2::Primitive(s1, module, index) && #[trigger] completion(p, s1, module, index, o)
             implies !(o is Stuck) by {
         lemma_completion_ok(p, c, s1, module, index, o);
+    }
+    assert forall|o: Outcome2| #[trigger] outcome(p, s, o) implies !(o is Stuck) && !(o is Raise) by {
+        lemma_outcome_ok(p, c, trusted, s, o);
     }
 }
 

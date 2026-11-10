@@ -13,8 +13,12 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-//! Format 2: completion of PRIMITIVE steps, the task primitives, and the
-//! initial state.
+//! Format 2: the oracle steps (completion of raised exceptions and of
+//! PRIMITIVE steps), the task primitives, and the initial state.
+//!
+//! A raise (`Outcome2::Raise`) is completed by `raised`: the machine
+//! allocates the exception with a trace of its choosing, or throws the
+//! out-of-memory error when that allocation fails.
 //!
 //! As in format 1 a primitive is an oracle. Its arguments are the
 //! parameters of the top frame (PRIMITIVE requires an otherwise empty
@@ -27,10 +31,62 @@ use crate::types::*;
 use crate::v2::types::*;
 use crate::v2::spec::*;
 #[cfg(verus_only)]
+use crate::v2::sound::{good, prim_heap_ok};
+#[cfg(verus_only)]
 use crate::spec_common::{builtin, instance_field_count, is_instance, fields, set_field,
     STACK_CLASS, TASK_CLASS, ENTRY_MAIN, ENTRY_TASK, class_of_obj, obj_ok, obj, obj_id, smi};
 
 verus! {
+
+// ---------------------------------------------------------------------------
+// Raised exceptions.
+
+/// The root holding the out-of-memory error (`Program::out_of_memory_error`).
+pub spec const ROOT_OUT_OF_MEMORY: int = 4;
+
+pub open spec fn out_of_memory(p: Program2) -> Value {
+    p.roots[ROOT_OUT_OF_MEMORY]
+}
+
+/// `h2` is `h` with objects added (the old ones unchanged) under the
+/// contract of a primitive's heap (`v2::sound::prim_heap_ok`: the new
+/// objects are well formed, neither stacks nor tasks). What the machine's
+/// allocations and its collector (which keeps every live object, as seen
+/// through the abstraction) leave behind.
+pub open spec fn heap_extended(p: Program2, h: Seq<HeapObj>, h2: Seq<HeapObj>) -> bool {
+    &&& prim_heap_ok(p, h, h2)
+    &&& h2.subrange(0, h.len() as int) == h
+}
+
+pub open spec fn with_heap2(s: State2, h2: Seq<HeapObj>) -> State2 {
+    State2 { heap: h2, ..s }
+}
+
+/// The completions of `Outcome2::Raise(s, value)`. The machine allocates
+/// the exception (`throw_exception`) after extending the heap (the trace
+/// and the message, encoded from the stack), with any trace of the grown
+/// heap; or the allocation fails and it throws the out-of-memory error
+/// itself (no exception object). Both are GC points. The reference
+/// interpreter's completion (`raise_null`: no trace, no other allocation)
+/// is one of them (`v2::sound_raise::lemma_raise_null`).
+pub open spec fn raised(p: Program2, s: State2, value: Value, o: Outcome2) -> bool {
+    ||| exists|h2: Seq<HeapObj>, trace: Value| heap_extended(p, s.heap, h2) && good(h2, trace)
+            && o == #[trigger] throw_exception(p, with_heap2(s, h2), value, trace)
+    ||| exists|h2: Seq<HeapObj>| heap_extended(p, s.heap, h2)
+            && o == #[trigger] unwind(p, with_heap2(s, h2), Unwind::Throw(out_of_memory(p)))
+}
+
+/// `o2` completes outcome `o`: a raise by `raised`, any other outcome is
+/// its own completion.
+pub open spec fn completes(p: Program2, o: Outcome2, o2: Outcome2) -> bool {
+    match o {
+        Outcome2::Raise(s, value) => raised(p, s, value, o2),
+        _ => o2 == o,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Primitives.
 
 /// The arguments of a primitive: the top frame's parameters.
 pub open spec fn prim_args(p: Program2, s: State2) -> Seq<Value> {

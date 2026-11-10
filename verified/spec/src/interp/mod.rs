@@ -222,13 +222,21 @@ impl Machine {
     pub fn step(&mut self) -> Result<Step, Stuck> {
         if self.format == 2 {
             if self.use_verified {
-                if let Some(r) = crate::v2::exec::step_verified(&self.p, &mut self.s) {
+                if let Some(mut r) = crate::v2::exec::step_verified(&self.p, &mut self.s) {
                     self.verified_steps += 1;
+                    if let crate::v2::exec::ExecOutcome2::Raise(v) = r {
+                        // The reference completion of a raise: no trace.
+                        if self.trace_throw {
+                            eprintln!("[spec] raise {} at\n  {}", self.describe(v), self.backtrace());
+                        }
+                        r = crate::v2::exec::x_throw_null(&self.p, &mut self.s, v);
+                    }
                     return match r {
                         crate::v2::exec::ExecOutcome2::Next => Ok(Step::Next),
                         crate::v2::exec::ExecOutcome2::Stuck(s) => Err(s),
                         crate::v2::exec::ExecOutcome2::Uncaught(v) => Ok(Step::Halt(Halt::Uncaught(v))),
                         crate::v2::exec::ExecOutcome2::TaskReturned => Ok(Step::Halt(Halt::TaskReturned)),
+                        crate::v2::exec::ExecOutcome2::Raise(_) => Err(Stuck::Fatal),
                     };
                 }
             }
