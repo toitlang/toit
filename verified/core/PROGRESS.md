@@ -1,5 +1,58 @@
 # Phase 4a progress (verified core, format 2 on x86-64)
 
+## Second proof pass (branch core/refinement-2, 2026-11-10)
+
+Goal: shrink the assumed `step_unverified` (and `grow_bridge`) to leaf
+contracts. Done: both are gone; every format-2 opcode has a verified
+handler.
+
+1. Operator slow paths (ops.rs, numbers.rs): doubles, large integers,
+   `compare_numbers` (mixed: the spec crate's trusted `x_compare_mixed`),
+   double arithmetic (a GC point, `gc_allocate_double`), IDENTICAL of
+   doubles/large integers/strings, the virtual-call fallback.
+   `smi_arith_word` made exact (it missed `0 << 63`). Heap model: doubles,
+   large integers, strings, byte arrays (TRUSTED.md V5).
+2. Collections (arrays.rs): `fast_at` (fuel 8) and `fast_size` on arrays,
+   lists, byte arrays, slices, copy-on-write byte arrays, large arrays.
+3. Tail calls (tail.rs): `replace_frame`; the lambda's method id, kind and
+   captures and the initializer id are checked as the spec checks them.
+4. Merged spec/raise-and-resources: `advances` is now `theorem::outcome`
+   (completed outcomes); `step::source` for paths that are spec
+   alternatives. The core's own `resource_throw`/`exception_like` are gone.
+5. Raise (raise.rs): `Outcome2::Raise` completed by `prim::raised`
+   (`gc_allocate_exception` leaf; the verified unwinding; out of memory
+   throws roots[4]); every raise site uses it with format 1's message.
+6. Resources: ALLOCATE and double out of memory, stack growth
+   (`gc_grow_stack` leaf) with stack overflow (raise of roots[28]) and out
+   of memory: `prim::resource_throw`.
+7. PRIMITIVE (primitive.rs): lookup, arity, `gc_call_primitive` leaf (its
+   result is a `theorem::completion`), completion by status.
+8. `ffi::Accepted`: the verified loop is entered only for a table the
+   launch-time verifier accepted (C++ marks the `V2MethodTable`).
+9. Trusted review (TRUSTED.md section 7); `StackMem::header/set_header`
+   tightened.
+
+Gate: core 389 verified, 0 errors; spec 766 (after merging
+sandbox-integration e9a6c08a). Tests: tests/sandbox 94/94 (incl. layout);
+untrusted suite 280 identical, the two known differences
+(program-name-test, set-map-remove-first-test).
+
+Trusted items of the core (TRUSTED.toml, occurrences): before 127
+(external_body 46, unsafe 41, plain_rust_item 26, uninterp 7, assume_new
+4, other 3), after 143 (external_body 55, unsafe 48, plain_rust_item 26,
+uninterp 7, assume_new 4, other 3): +7 heap accessors (+7 unsafe), +5
+leaf contracts (allocate double, allocate exception, grow stack, call
+primitive), -2 assumed bridges (`step_unverified`, `grow_bridge`), which
+stood for the whole checked interpreter's refinement.
+
+Instruction counts inside the interpreter (callgrind, TOIT_VERIFY=1, as
+in DESIGN.md section 8): richards 2,420 M (f1 1,024 M, 2.36x; was 2.44x),
+deltablue 1,782 M (650 M, 2.74x; was 2.92x), pystone 1,772 M (762 M,
+2.33x; was 2.87x).
+
+Open: wiring the Rust primitives of core/primitives (heap-model conflict,
+OBLIGATIONS.md R-prims); the performance pass (DESIGN.md section 8).
+
 ## Proof half (branch core/refinement, 2026-11-10)
 
 Milestones (newest last):
