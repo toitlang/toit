@@ -13,7 +13,7 @@ The run is deterministic for a given seed. To reproduce a crash, rerun with
 the same seed and a trace-from value at or below the last progress line:
 every call from that iteration on is printed before it is made.
 
-The wrappers are generated into primitives.toit by gen-primitive-fuzz.py.
+The wrappers are generated into primitives.toit by gen-primitive-fuzz.toit.
 */
 
 import .primitives

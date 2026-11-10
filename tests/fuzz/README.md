@@ -46,7 +46,7 @@ expects every call to return or throw. The wrappers in `primitives.toit`
 are generated:
 
 ```
-tests/fuzz/gen-primitive-fuzz.py > tests/fuzz/primitives.toit
+toit run tests/fuzz/gen-primitive-fuzz.toit > tests/fuzz/primitives.toit
 toit run tests/fuzz/primitive-fuzz.toit -- <seed> <iterations> [<trace-from>]
 ```
 
