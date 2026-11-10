@@ -1028,6 +1028,9 @@ PRIMITIVE(bytemap_blur) {
   if (height * width != bytes.length()) FAIL(OUT_OF_BOUNDS);
   if (x_blur_radius < 2 && y_blur_radius < 2) return process->null_object();
   if (x_blur_radius < 0 || y_blur_radius < 0) FAIL(INVALID_ARGUMENT);
+  // An empty image has nothing to blur. Without this check an empty byte
+  // array with a huge width loops over every (nonexistent) column.
+  if (height == 0) return process->null_object();
   const int BUFFER_SIZE = 16;  // Power of 2.
   const int BUFFER_MASK = BUFFER_SIZE - 1;
   if (x_blur_radius >= MAX_RADIUS - 1 || x_blur_radius * 2 > BUFFER_SIZE) FAIL(OUT_OF_BOUNDS);

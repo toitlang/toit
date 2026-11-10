@@ -217,6 +217,9 @@ class ConditionVariable {
 
   bool wait_us(int64 us) {
     if (us <= 0LL) return false;
+    // The esp_timer computes an absolute alarm time from the delay, which
+    // must not overflow.
+    if (us > OS::MAX_WAIT_US) us = OS::MAX_WAIT_US;
 
     if (!mutex_->is_locked()) {
       FATAL("wait on unlocked mutex");

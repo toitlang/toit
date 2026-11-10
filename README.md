@@ -262,6 +262,12 @@ build/host/sdk/bin/toit pkg init --project-root=<some-directory>
 build/host/sdk/bin/toit pkg install --project-root=<some-directory> <package-id>
 ```
 
+To build in an additional `git worktree` (where submodules are not checked
+out), run `tools/worktree-setup.sh` in the new worktree: it links the ESP-IDF
+sources from the main checkout and runs the host build. The Verus-verified
+crates in `verified/` have their own merge gate, `verified/check.sh`; see
+`verified/README.md`.
+
 ### Debugging
 See https://github.com/toitlang/toit/wiki/Debugging.
 

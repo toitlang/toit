@@ -78,6 +78,9 @@ void OS::timespec_increment(timespec* ts, int64 ns) {
   if (ts->tv_nsec >= ns_per_second) {
     ts->tv_nsec -= ns_per_second;
     ts->tv_sec++;
+  } else if (ts->tv_nsec < 0) {
+    ts->tv_nsec += ns_per_second;
+    ts->tv_sec--;
   }
   ASSERT(ts->tv_nsec >= 0);
   ASSERT(ts->tv_nsec < ns_per_second);

@@ -32,7 +32,8 @@ Phase 4 refines. It specifies two bytecode formats:
 | `src/v2/spec.rs` | Verus spec | Format 2: `op_*` for all 101 opcodes, calls, returns, unwinding, raised failures, `step`. |
 | `src/v2/prim.rs` | Verus spec | Format 2: primitive completion, task primitives, initial state. |
 | `src/v2/exec.rs` | Verus exec + proof | Format 2: verified implementation of 72 opcodes, proven equal to `v2::spec::step`. |
-| `src/v2/verifier.rs` | Verus spec | Format 2: the structural verifier (certificate checking) and the statement of its soundness theorem. |
+| `src/v2/verifier.rs` | Verus spec | Format 2: the structural verifier (certificate checking). |
+| `src/v2/sound*.rs`, `src/v2/theorem.rs` | Verus proof | Format 2: the verifier's soundness proof and theorem (SOUNDNESS.md). |
 | `src/interp/` | plain Rust | Reference interpreter for both formats; `exec2.rs` is the unverified mirror of `v2/spec.rs`. |
 | `src/bin/toit_spec_run.rs` | plain Rust | CLI: `toit-spec-run [--word-bits 32\|64] [--trace] [--trace-throw] [--trace-bci] [--histogram] [--no-verified] [--stats] [--program-name P] <dump>`. |
 | `tests/run_tests.sh` | | Runs `tests/toit/*.toit` on the C++ VM and on the interpreter (format 1: 64-bit, 32-bit, unverified-only; format 2: 64-bit, 32-bit) and diffs. |
@@ -413,8 +414,8 @@ executed by the test suite run through verified code.
 The structural verifier is specified in `v2/verifier.rs` as a checker of
 a certificate (stack maps of slot kinds, block-parameter masks, block
 contexts) with per-instruction rules, method and table checks, the
-conformance invariant `conforms`, and `soundness()`, the theorem Phase 3
-proves (stated as a spec predicate; nothing assumes it). The
+invariant and the soundness theorem in `v2/theorem.rs`, proven in Phase 3
+without admits (see SOUNDNESS.md). The
 interpreter's loader runs three of its table checks on every format-2
 program (receiver ranges against the dispatch table, fields of
 LOAD_FIELD_THIS/STORE_FIELD_THIS, terminators); they hold for all test

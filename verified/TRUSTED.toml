@@ -1,0 +1,529 @@
+# Copyright (C) 2026 Toit contributors.
+#
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation; version
+# 2.1 only.
+#
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# Lesser General Public License for more details.
+#
+# The license can be found in the file `LICENSE` in the top level
+# directory of this repository.
+
+# Allowlist of Verus escape hatches in verified/core and verified/spec:
+# every place where code is trusted instead of proven. Checked by
+# verified/check.sh (verified/tools/trust_audit.py); unlisted occurrences,
+# count changes and stale entries fail the check. Regenerate the skeleton
+# with `verified/check.sh --update-allowlist` (keeps justifications, new
+# entries get TODO, which fails until replaced). This list must only shrink.
+#
+# Fields: crate, file (relative to the crate), item (qualified name),
+# kind (see verified/README.md), count (occurrences of that kind in that
+# item), justification (one line).
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "*"
+kind = "plain_rust_file"
+count = 1
+justification = "C ABI glue, not processed by Verus: builds the views from toit_vcore_state and copies three words back; TRUSTED.md section 2."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "toit_vcore_layout_entry"
+kind = "unsafe"
+count = 1
+justification = "Writes name/value through caller pointers for the layout check only; TRUSTED.md section 2 (toit_vcore_layout_count/entry)."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "toit_vcore_run"
+kind = "unsafe"
+count = 1
+justification = "FFI entry: dereferences the caller's toit_vcore_state and creates views; entry re-checks every index; TRUSTED.md section 2."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "*"
+kind = "plain_rust_file"
+count = 1
+justification = "Module list plus panic_handler and rust_eh_personality for the no_std staticlib; both unreachable; TRUSTED.md section 2."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "panic"
+kind = "cfg"
+count = 1
+justification = "panic_handler is compiled only for the staticlib (not with toit_vcore_hosted, which the Verus run sets); unreachable, see TRUSTED.md section 2."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "panic"
+kind = "unsafe"
+count = 1
+justification = "Calls libc abort() from the unreachable panic_handler."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "rust_eh_personality"
+kind = "cfg"
+count = 1
+justification = "Empty personality stub for the staticlib only (hidden from the hosted Verus build); never called; TRUSTED.md section 2."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "CodeView"
+kind = "external_body"
+count = 1
+justification = "Opaque view of the immutable bytecodes; TRUSTED.md section 1."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "CodeView::byte"
+kind = "external_body"
+count = 1
+justification = "Assumed contract: requires i < len; ensures r == self@[i]; TRUSTED.md section 1."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "CodeView::byte"
+kind = "unsafe"
+count = 1
+justification = "Raw pointer access inside the trusted body; in bounds by requires i < len."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "CodeView::from_raw"
+kind = "plain_rust_item"
+count = 1
+justification = "Constructor invisible to Verus, called by the FFI glue; creates the ghost view from a raw pointer and length."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "CodeView::from_raw"
+kind = "unsafe"
+count = 1
+justification = "unsafe fn: the caller (FFI glue) guarantees the pointer validity stated in its # Safety comment."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "CodeView::len"
+kind = "external_body"
+count = 1
+justification = "Assumed contract: ensures r == self@.len(); TRUSTED.md section 1."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "CodeView::view"
+kind = "uninterp"
+count = 1
+justification = "Ghost contents of the view; no assumption by itself (the external_body contracts relate it to memory); TRUSTED.md section 1."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "DispatchView"
+kind = "external_body"
+count = 1
+justification = "Opaque view of the immutable dispatch table; TRUSTED.md section 1."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "DispatchView::at"
+kind = "external_body"
+count = 1
+justification = "Assumed contract: requires i < len; ensures r == self@[i]; TRUSTED.md section 1."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "DispatchView::at"
+kind = "unsafe"
+count = 1
+justification = "Raw pointer access inside the trusted body; in bounds by requires i < len."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "DispatchView::from_raw"
+kind = "plain_rust_item"
+count = 1
+justification = "Constructor invisible to Verus, called by the FFI glue; creates the ghost view from a raw pointer and length."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "DispatchView::from_raw"
+kind = "unsafe"
+count = 1
+justification = "unsafe fn: the caller (FFI glue) guarantees the pointer validity stated in its # Safety comment."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "DispatchView::len"
+kind = "external_body"
+count = 1
+justification = "Assumed contract: ensures r == self@.len(); TRUSTED.md section 1."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "DispatchView::view"
+kind = "uninterp"
+count = 1
+justification = "Ghost contents of the view; no assumption by itself (the external_body contracts relate it to memory); TRUSTED.md section 1."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "RoomOracle"
+kind = "external_body"
+count = 1
+justification = "Holds limit_ and &watermark_; TRUSTED.md section 1."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "RoomOracle::from_raw"
+kind = "plain_rust_item"
+count = 1
+justification = "Constructor invisible to Verus, called by the FFI glue; creates the ghost view from a raw pointer and length."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "RoomOracle::from_raw"
+kind = "unsafe"
+count = 1
+justification = "unsafe fn: the caller (FFI glue) guarantees the pointer validity stated in its # Safety comment."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "RoomOracle::has_room"
+kind = "external_body"
+count = 1
+justification = "Assumed contract: none (nondeterministic oracle, modelled as the spec's room input); TRUSTED.md section 1."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "RoomOracle::has_room"
+kind = "unsafe"
+count = 1
+justification = "Relaxed load of the interpreter's watermark atomic through a raw pointer."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "StackView"
+kind = "external_body"
+count = 1
+justification = "Opaque view of the stack word array [limit_, base_); TRUSTED.md section 1."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "StackView::from_raw"
+kind = "plain_rust_item"
+count = 1
+justification = "Constructor invisible to Verus, called by the FFI glue; creates the ghost view from a raw pointer and length."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "StackView::from_raw"
+kind = "unsafe"
+count = 1
+justification = "unsafe fn: the caller (FFI glue) guarantees the pointer validity stated in its # Safety comment."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "StackView::len"
+kind = "external_body"
+count = 1
+justification = "Assumed contract: ensures r == self@.len(); TRUSTED.md section 1."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "StackView::read"
+kind = "external_body"
+count = 1
+justification = "Assumed contract: requires i < len; ensures r == self@[i]; TRUSTED.md section 1."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "StackView::read"
+kind = "unsafe"
+count = 1
+justification = "Raw pointer access inside the trusted body; in bounds by requires i < len."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "StackView::view"
+kind = "uninterp"
+count = 1
+justification = "Ghost contents of the view; no assumption by itself (the external_body contracts relate it to memory); TRUSTED.md section 1."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "StackView::write"
+kind = "external_body"
+count = 1
+justification = "Assumed contract: requires i < len; ensures final(self)@ == old(self)@.update(i, v); TRUSTED.md section 1."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "StackView::write"
+kind = "unsafe"
+count = 1
+justification = "Raw pointer access inside the trusted body; in bounds by requires i < len."
+
+[[trusted]]
+crate = "spec"
+file = "src/bin/toit_spec_mutate.rs"
+item = "*"
+kind = "plain_rust_file"
+count = 1
+justification = "Test tool (mutation campaign driver); not part of any claim."
+
+[[trusted]]
+crate = "spec"
+file = "src/bin/toit_spec_run.rs"
+item = "*"
+kind = "plain_rust_file"
+count = 1
+justification = "CLI driver of the reference interpreter; test tooling, not part of any proof."
+
+[[trusted]]
+crate = "spec"
+file = "src/bin/toit_spec_verify.rs"
+item = "*"
+kind = "plain_rust_file"
+count = 1
+justification = "Command-line driver around the verified check::verify; TRUSTED: it must pass the loaded program unchanged and report the verdict faithfully."
+
+[[trusted]]
+crate = "spec"
+file = "src/bytecodes.rs"
+item = "OPCODE_LENGTHS"
+kind = "plain_rust_item"
+count = 1
+justification = "Plain table for the interpreter; tests/opcode_table.rs checks it against src/bytecodes.h."
+
+[[trusted]]
+crate = "spec"
+file = "src/bytecodes.rs"
+item = "OPCODE_NAMES"
+kind = "plain_rust_item"
+count = 1
+justification = "Opcode names for tracing and the table test; no semantic role."
+
+[[trusted]]
+crate = "spec"
+file = "src/exec_step.rs"
+item = "x_compare_mixed"
+kind = "external_body"
+count = 1
+justification = "Mixed int/double comparison delegated to the unverified interp::exec::compare_mixed; implements the uninterpreted compare_mixed."
+
+[[trusted]]
+crate = "spec"
+file = "src/exec_step.rs"
+item = "x_double_add"
+kind = "external_body"
+count = 1
+justification = "IEEE-754 add via f64; implements the uninterpreted double_add (DESIGN.md, trusted floating point)."
+
+[[trusted]]
+crate = "spec"
+file = "src/exec_step.rs"
+item = "x_double_mul"
+kind = "external_body"
+count = 1
+justification = "IEEE-754 mul via f64; implements the uninterpreted double_mul (DESIGN.md, trusted floating point)."
+
+[[trusted]]
+crate = "spec"
+file = "src/exec_step.rs"
+item = "x_double_sub"
+kind = "external_body"
+count = 1
+justification = "IEEE-754 sub via f64; implements the uninterpreted double_sub (DESIGN.md, trusted floating point)."
+
+[[trusted]]
+crate = "spec"
+file = "src/interp/exec.rs"
+item = "*"
+kind = "plain_rust_file"
+count = 1
+justification = "Unverified mirror of the format-1 spec (DESIGN.md); also implements compare_mixed behind x_compare_mixed."
+
+[[trusted]]
+crate = "spec"
+file = "src/interp/exec2.rs"
+item = "*"
+kind = "plain_rust_file"
+count = 1
+justification = "Unverified mirror of v2/spec.rs in the reference interpreter (DESIGN.md); differential testing only."
+
+[[trusted]]
+crate = "spec"
+file = "src/interp/floatfmt.rs"
+item = "*"
+kind = "plain_rust_file"
+count = 1
+justification = "Reference interpreter (plain Rust, not verified; DESIGN.md); differential testing only, no proof depends on it."
+
+[[trusted]]
+crate = "spec"
+file = "src/interp/intrinsics.rs"
+item = "*"
+kind = "plain_rust_file"
+count = 1
+justification = "Reference interpreter (plain Rust, not verified; DESIGN.md); differential testing only, no proof depends on it."
+
+[[trusted]]
+crate = "spec"
+file = "src/interp/loader.rs"
+item = "*"
+kind = "plain_rust_file"
+count = 1
+justification = "Reference interpreter (plain Rust, not verified; DESIGN.md); differential testing only, no proof depends on it."
+
+[[trusted]]
+crate = "spec"
+file = "src/interp/mod.rs"
+item = "*"
+kind = "plain_rust_file"
+count = 1
+justification = "Reference interpreter (plain Rust, not verified; DESIGN.md); differential testing only, no proof depends on it."
+
+[[trusted]]
+crate = "spec"
+file = "src/interp/prims.rs"
+item = "*"
+kind = "plain_rust_file"
+count = 1
+justification = "Reference interpreter (plain Rust, not verified; DESIGN.md); differential testing only, no proof depends on it."
+
+[[trusted]]
+crate = "spec"
+file = "src/interp/prims_impl.rs"
+item = "*"
+kind = "plain_rust_file"
+count = 1
+justification = "Reference interpreter (plain Rust, not verified; DESIGN.md); differential testing only, no proof depends on it."
+
+[[trusted]]
+crate = "spec"
+file = "src/interp/system.rs"
+item = "*"
+kind = "plain_rust_file"
+count = 1
+justification = "Reference interpreter (plain Rust, not verified; DESIGN.md); differential testing only, no proof depends on it."
+
+[[trusted]]
+crate = "spec"
+file = "src/spec_helpers.rs"
+item = "compare_mixed"
+kind = "uninterp"
+count = 1
+justification = "Mixed int/double comparison left uninterpreted in the spec; no assumption beyond being a function."
+
+[[trusted]]
+crate = "spec"
+file = "src/spec_helpers.rs"
+item = "double_add"
+kind = "uninterp"
+count = 1
+justification = "Floating point left uninterpreted in the spec; no assumption beyond being a function."
+
+[[trusted]]
+crate = "spec"
+file = "src/spec_helpers.rs"
+item = "double_mul"
+kind = "uninterp"
+count = 1
+justification = "Floating point left uninterpreted in the spec; no assumption beyond being a function."
+
+[[trusted]]
+crate = "spec"
+file = "src/spec_helpers.rs"
+item = "double_sub"
+kind = "uninterp"
+count = 1
+justification = "Floating point left uninterpreted in the spec; no assumption beyond being a function."
+
+[[trusted]]
+crate = "spec"
+file = "src/v2/bytecodes.rs"
+item = "OPCODE_LENGTHS2"
+kind = "plain_rust_item"
+count = 1
+justification = "Format-2 length table for the interpreter; tests/opcode_table.rs checks it against tools/snapshot.toit."
+
+[[trusted]]
+crate = "spec"
+file = "src/v2/bytecodes.rs"
+item = "OPCODE_NAMES2"
+kind = "plain_rust_item"
+count = 1
+justification = "Format-2 opcode names for tracing and the table test; no semantic role."
+
+[[trusted]]
+crate = "spec"
+file = "src/v2/heap_check.rs"
+item = "*"
+kind = "plain_rust_file"
+count = 1
+justification = "TRUSTED and to be verified in Phase 4: executable check of the theorem hypothesis loaded_ok (initial heap and globals); an error here voids the soundness theorem."
+
+[[trusted]]
+crate = "spec"
+file = "src/v2/infer.rs"
+item = "*"
+kind = "plain_rust_file"
+count = 1
+justification = "Untrusted by design: computes the certificate; the verified checker check::verify decides acceptance, so a wrong certificate can only cause rejection."
+
+[[trusted]]
+crate = "spec"
+file = "src/v2/mod.rs"
+item = "infer"
+kind = "cfg"
+count = 1
+justification = "cfg that keeps the unverified inference module out of the Verus build; see infer.rs."
+
+[[trusted]]
+crate = "spec"
+file = "src/v2/prim_arity.rs"
+item = "*"
+kind = "plain_rust_file"
+count = 1
+justification = "TRUSTED and to be discharged in Phase 4: table of primitive arities the verifier and the primitive-completion model rely on; must equal the arities of the primitives the core actually links."

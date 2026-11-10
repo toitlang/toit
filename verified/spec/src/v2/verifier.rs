@@ -13,26 +13,34 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-//! The structural verifier of format 2, as spec functions, and the
-//! statement of its soundness theorem (Phase 3 proves it).
+//! The structural verifier of format 2: the decidable predicate
+//! `accepts(p, c, trusted)` over the abstract program and a certificate.
 //!
-//! The verifier checks a *certificate*: for every method, the kinds of the
-//! frame's slots at every instruction (a stack map), the set of block
-//! parameters, and for every block method the context it is created in.
-//! A certificate can be computed by abstract interpretation (the Phase 3
-//! implementation does that, in one pass per method thanks to the block
-//! masks and contexts) or shipped with the program; the checks below are
-//! local to an instruction and its successors.
+//! The certificate is not shipped with the program: the compiler emits no
+//! annotations, and `v2::infer` (untrusted, plain Rust) computes one by
+//! abstract interpretation. `v2::check::verify` (Verus) is proven to
+//! return exactly `accepts(p, c, trusted)`; `v2::theorem` proves that an
+//! accepted program never reaches a stuck state. A wrong certificate can
+//! only lead to a rejection, never to an unsound acceptance.
 //!
-//! What the verifier proves, and what format 2 checks at run time instead,
-//! is listed in `format/README.md`. In short, the verifier proves stack
-//! discipline (heights, frame bounds, no slot below the frame base), block
-//! references (never dangling, never stored in the heap, returned or
-//! compared), the shape of try/finally (tokens), branch targets,
-//! terminators, the unchecked `this` field accesses, and the tables; the
-//! machine checks everything that comes from the heap (method ids of
-//! lambdas and initializers, block slots, field receivers, dynamic global
-//! indices, captured values) and raises an exception when it fails.
+//! The certificate has:
+//!
+//! * `maps[m][off]`: the kinds of the frame's slots (bottom first) at the
+//!   instruction at offset `off` of method `m`, or `None` for offsets that
+//!   are not reachable instruction starts;
+//! * `block_params[m][i]`: parameter `i` of `m` is a block;
+//! * `contexts[t]`: for a block method `t`, the method and the frame slot
+//!   it is created in, and the kinds of that frame's slots up to and
+//!   including the block's slot whenever the slot holds the block;
+//! * `sel_rep[s]`: one method with selector offset `s` (or -1): all methods
+//!   with the same selector agree on arity and block parameters;
+//! * `global_count`: the number of globals of the program;
+//! * `prim_arity`: the VM's primitive table (not inferred: the arities the
+//!   primitives are implemented for, from `src/primitive.h`).
+//!
+//! The rules are local: each mapped instruction is checked against its
+//! map and the maps of its successors. See SOUNDNESS.md for the invariant
+//! they establish.
 
 use vstd::prelude::*;
 use crate::types::*;
@@ -40,7 +48,9 @@ use crate::v2::types::*;
 use crate::v2::spec::*;
 use crate::v2::bytecodes::*;
 #[cfg(verus_only)]
-use crate::spec_common::{instance_field_count, u16_at, u32_at, is_string, class_tag, INSTANCE_TAG};
+use crate::spec_common::{instance_field_count, u16_at, u32_at, class_tag, smi_ok, builtin, INSTANCE_TAG,
+    EXCEPTION_CLASS, STACK_CLASS, TASK_CLASS, DOUBLE_CLASS, SMI_CLASS, ENTRY_MAIN, ENTRY_TASK,
+    RUN_GLOBAL_INITIALIZER};
 
 verus! {
 
@@ -51,26 +61,19 @@ verus! {
 pub enum Kind {
     /// A smi or an object reference.
     Val,
-    /// The method id `m` (a smi), pushed by LOAD_METHOD; the slot of a block.
+    /// The method id `t` (a smi), pushed by LOAD_METHOD.
     Method(int),
     /// A block reference to slot `slot` (frame-relative) of the frame
     /// `depth` contexts out: 0 is the current frame, 1 the frame the
     /// current block was created in, and so on.
     Block(int, int),
-    /// A block reference received as a parameter (not the block's own):
-    /// its frame is below the current one; it can only be invoked, passed
-    /// on as a block argument, or used for a non-local return or branch is
-    /// not allowed (its target is unknown).
+    /// A block reference received as a block parameter: its frame is below
+    /// the current one; it can be invoked or passed on as a block argument.
     Param,
     /// The unwinding token of a finally code.
     Token,
 }
 
-/// Where a block method is created: by LOAD_METHOD (followed by LOAD_BLOCK)
-/// or TRY in method `outer`, in frame slot `slot`; `kinds` are the kinds of
-/// the outer frame's slots `0..=slot` at that point (`kinds[slot]` is
-/// `Method(m)`), with every slot the outer code may still change while the
-/// block is alive demoted to `Val`.
 pub struct Context {
     pub outer: int,
     pub slot: int,
@@ -78,48 +81,79 @@ pub struct Context {
 }
 
 pub struct Cert {
-    /// `maps[m][i]`: the kinds of the frame's slots (bottom first) at the
-    /// instruction at offset `i` of method `m`. Every instruction start
-    /// that can be reached has an entry; no other offset does.
-    pub maps: Seq<Map<int, Seq<Kind>>>,
-    /// The parameters of each method that are blocks (P7's mask).
-    pub block_params: Seq<Set<int>>,
-    /// The creation context of each block method.
+    pub maps: Seq<Seq<Option<Seq<Kind>>>>,
+    pub block_params: Seq<Seq<bool>>,
     pub contexts: Seq<Option<Context>>,
+    pub sel_rep: Seq<int>,
+    pub global_count: int,
+    /// The VM's primitive table: the arity of primitive `index` of module
+    /// `module` (trusted input, `v2::prim_arity`).
+    pub prim_arity: Seq<Seq<int>>,
+}
+
+/// The core primitive module and the task primitives completed by the
+/// machine (`v2::prim::task_new_step`, `task_transfer_step`); checked
+/// against the primitive names of the dump by `toit_spec_verify`.
+pub spec const PRIM_CORE: int = 0;
+pub spec const PRIM_TASK_NEW: int = 115;
+pub spec const PRIM_TASK_TRANSFER: int = 116;
+pub const X_PRIM_TASK_NEW: u16 = 115;
+pub const X_PRIM_TASK_TRANSFER: u16 = 116;
+
+pub open spec fn is_val(k: Kind) -> bool {
+    k is Val || k is Method
+}
+
+pub open spec fn is_ref(k: Kind) -> bool {
+    k is Block || k is Param
+}
+
+pub open spec fn is_local_ref(k: Kind) -> bool {
+    match k { Kind::Block(d, _) => d == 0, _ => false }
 }
 
 pub open spec fn kind_method(k: Kind) -> int {
     match k { Kind::Method(t) => t, _ => -1 }
 }
 
-/// The frame-relative slot of a block reference of the current frame, or -1.
-pub open spec fn local_block(k: Kind) -> int {
-    match k { Kind::Block(d, s) => if d == 0 { s } else { -1 }, _ => -1 }
+pub open spec fn map_at(c: Cert, m: int, off: int) -> Option<Seq<Kind>> {
+    if 0 <= m < c.maps.len() && 0 <= off < c.maps[m].len() { c.maps[m][off] } else { None }
 }
 
-/// A block reference to a frame below the current one (the target of a
-/// non-local return).
-pub open spec fn outer_block(k: Kind) -> bool {
-    match k { Kind::Block(d, s) => d >= 1, _ => false }
+pub open spec fn ctx_of(c: Cert, t: int) -> Option<Context> {
+    if 0 <= t < c.contexts.len() { c.contexts[t] } else { None }
 }
 
-/// The kind is the method id of a block method.
-pub open spec fn block_method_kind(p: Program2, k: Kind) -> bool {
-    k is Method && valid_method(p, kind_method(k)) && info(p, kind_method(k)).kind == KIND_BLOCK
+pub open spec fn is_block_param(c: Cert, m: int, i: int) -> bool {
+    0 <= m < c.block_params.len() && 0 <= i < c.block_params[m].len() && c.block_params[m][i]
 }
 
-pub open spec fn is_value_kind(k: Kind) -> bool {
-    k is Val || k is Method
-}
-
-pub open spec fn is_block_kind(k: Kind) -> bool {
-    k is Block || k is Param
-}
-
-/// Kind `n` slots below the top.
 pub open spec fn top_kind(k: Seq<Kind>, n: int) -> Kind {
     k[k.len() - 1 - n]
 }
+
+pub open spec fn class_count(p: Program2) -> int {
+    p.class_bits.len() as int
+}
+
+pub open spec fn ifc(p: Program2, cl: int) -> int {
+    instance_field_count(p1(p), cl)
+}
+
+pub open spec fn is_instance_class(p: Program2, cl: int) -> bool {
+    0 <= cl < class_count(p) && class_tag(p1(p), cl) == INSTANCE_TAG
+}
+
+/// The VM's `TASK_TAG`: tasks are instances with their own tag.
+pub spec const TASK_TAG: u16 = 8;
+
+/// Objects of the class have instance fields (instances and tasks).
+pub open spec fn is_field_class(p: Program2, cl: int) -> bool {
+    0 <= cl < class_count(p) && (class_tag(p1(p), cl) == INSTANCE_TAG || class_tag(p1(p), cl) == TASK_TAG)
+}
+
+// ---------------------------------------------------------------------------
+// Instruction operands.
 
 pub open spec fn instr_at(p: Program2, m: int, off: int) -> int {
     info(p, m).entry + off
@@ -142,47 +176,59 @@ pub open spec fn w1_of(p: Program2, m: int, off: int) -> int {
 }
 
 // ---------------------------------------------------------------------------
-// Contexts: the frames a block's references reach.
+// Block slots and contexts.
+
+/// Slot `i` of `fk` (the kinds of a frame of method `om`) holds a block
+/// method whose context is that slot of a frame of `om`.
+pub open spec fn block_slot(p: Program2, c: Cert, om: int, fk: Seq<Kind>, i: int) -> bool {
+    &&& 0 <= i < fk.len()
+    &&& match fk[i] {
+        Kind::Method(t) => valid_method(p, t) && info(p, t).kind == KIND_BLOCK && match ctx_of(c, t) {
+            Some(ctx) => ctx.outer == om && ctx.slot == i,
+            None => false,
+        },
+        _ => false,
+    }
+}
 
 /// The kinds of the frame `depth` contexts out from method `m`.
-pub open spec fn context_kinds(c: Cert, m: int, depth: nat) -> Option<Seq<Kind>>
+pub open spec fn ctx_kinds(c: Cert, m: int, depth: nat) -> Option<Seq<Kind>>
     decreases depth,
 {
     if depth == 0 {
         None
-    } else if !(0 <= m < c.contexts.len()) {
-        None
     } else {
-        match c.contexts[m] {
+        match ctx_of(c, m) {
             None => None,
-            Some(ctx) => if depth == 1 { Some(ctx.kinds) } else { context_kinds(c, ctx.outer, (depth - 1) as nat) },
+            Some(ctx) => if depth == 1 { Some(ctx.kinds) } else { ctx_kinds(c, ctx.outer, (depth - 1) as nat) },
         }
     }
 }
 
-/// The method of the frame `depth` contexts out.
-pub open spec fn context_method(c: Cert, m: int, depth: nat) -> int
+/// The method of the frame `depth` contexts out from method `m`.
+pub open spec fn ctx_method(c: Cert, m: int, depth: nat) -> int
     decreases depth,
 {
-    if depth == 0 || !(0 <= m < c.contexts.len()) {
+    if depth == 0 {
         m
     } else {
-        match c.contexts[m] {
+        match ctx_of(c, m) {
             None => -1,
-            Some(ctx) => context_method(c, ctx.outer, (depth - 1) as nat),
+            Some(ctx) => ctx_method(c, ctx.outer, (depth - 1) as nat),
         }
     }
 }
 
-/// The kinds of the slots of the frame a block reference of kind
-/// `Block(depth, _)` points into, seen from method `m` with current kinds
-/// `k`.
-pub open spec fn frame_kinds(c: Cert, m: int, k: Seq<Kind>, depth: int) -> Option<Seq<Kind>> {
-    if depth == 0 { Some(k) } else if depth > 0 { context_kinds(c, m, depth as nat) } else { None }
+/// The kinds of the frame a block reference of depth `d` points into.
+pub open spec fn ref_kinds(c: Cert, m: int, k: Seq<Kind>, d: int) -> Option<Seq<Kind>> {
+    if d == 0 { Some(k) } else if d > 0 { ctx_kinds(c, m, d as nat) } else { None }
 }
 
-/// A slot of an outer frame read through LOAD_OUTER, seen from here: block
-/// references of that frame are `depth` contexts further out.
+pub open spec fn ref_method(c: Cert, m: int, d: int) -> int {
+    if d >= 0 { ctx_method(c, m, d as nat) } else { -1 }
+}
+
+/// A slot of an outer frame read through LOAD_OUTER, seen from here.
 pub open spec fn shift(k: Kind, depth: int) -> Kind {
     match k {
         Kind::Block(d, s) => Kind::Block(d + depth, s),
@@ -191,274 +237,115 @@ pub open spec fn shift(k: Kind, depth: int) -> Kind {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Well-formed abstract frames.
-
-/// Block references of the current frame point to block slots below them;
-/// tokens only appear where a finally code put them.
-pub open spec fn wf_kinds(p: Program2, k: Seq<Kind>) -> bool {
-    forall|j: int| 0 <= j < k.len() ==> match #[trigger] k[j] {
-        Kind::Block(d, i) => d >= 0 && (d == 0 ==> 0 <= i < j && block_method_kind(p, k[i])),
+/// Block references point to block slots: of this frame below them, or
+/// of an outer frame reachable through the contexts.
+pub open spec fn wf_kind(p: Program2, c: Cert, m: int, k: Seq<Kind>, j: int) -> bool {
+    match k[j] {
+        Kind::Block(d, i) => if d == 0 {
+            i < j && block_slot(p, c, m, k, i)
+        } else {
+            d > 0 && match ctx_kinds(c, m, d as nat) {
+                Some(fk) => block_slot(p, c, ctx_method(c, m, d as nat), fk, i),
+                None => false,
+            }
+        },
         _ => true,
     }
 }
 
-/// Slot `i` of the current frame is the target of a live block reference.
+pub open spec fn wf_kinds(p: Program2, c: Cert, m: int, k: Seq<Kind>) -> bool {
+    forall|j: int| 0 <= j < k.len() ==> #[trigger] wf_kind(p, c, m, k, j)
+}
+
+/// Every block slot of the frame has the kinds of its context below it.
+pub open spec fn ctx_ok_at(p: Program2, c: Cert, m: int, k: Seq<Kind>, i: int) -> bool {
+    block_slot(p, c, m, k, i) ==> k.subrange(0, i + 1) == ctx_of(c, kind_method(k[i]))->0.kinds
+}
+
+/// Some block reference of this frame points to slot `i` or above.
+pub open spec fn live_from(k: Seq<Kind>, i: int) -> bool {
+    exists|j: int| 0 <= j < k.len() && match #[trigger] k[j] { Kind::Block(d, s) => d == 0 && s >= i, _ => false }
+}
+
+pub open spec fn ctx_ok_upto(p: Program2, c: Cert, m: int, k: Seq<Kind>, n: int) -> bool {
+    forall|i: int| 0 <= i <= n && i < k.len() ==> #[trigger] ctx_ok_at(p, c, m, k, i)
+}
+
+/// The block slots that references of this frame can reach (directly or
+/// through the contexts of the blocks they point to) have their contexts'
+/// kinds below them.
+pub open spec fn ctx_ok(p: Program2, c: Cert, m: int, k: Seq<Kind>) -> bool {
+    forall|i: int| 0 <= i < k.len() && live_from(k, i) ==> #[trigger] ctx_ok_at(p, c, m, k, i)
+}
+
 pub open spec fn referenced(k: Seq<Kind>, i: int) -> bool {
     exists|j: int| 0 <= j < k.len() && #[trigger] k[j] == Kind::Block(0, i)
 }
 
-/// The kinds at the entry of method `m`.
-pub open spec fn entry_kinds(p: Program2, c: Cert, m: int) -> Seq<Kind> {
-    let a = arity(p, m);
-    if info(p, m).kind == KIND_BLOCK {
-        Seq::new(a as nat, |i: int| if i == 0 {
-            match c.contexts[m] { Some(ctx) => Kind::Block(1, ctx.slot), None => Kind::Param }
-        } else { Kind::Val })
-    } else {
-        Seq::new(a as nat, |i: int| if c.block_params[m].contains(i) { Kind::Param } else { Kind::Val })
-    }
+pub open spec fn below_token(k: Seq<Kind>, i: int) -> bool {
+    exists|j: int| i < j < k.len() && (#[trigger] k[j]) is Token
 }
 
-/// The arguments on top of `k` fit the parameters of `t`.
+/// Methods whose parameter 0 is pinned: `this` of a method with a receiver
+/// range, and the block's own reference of a block.
+pub open spec fn pinned0(p: Program2, m: int) -> bool {
+    has_receiver_range(info(p, m)) || info(p, m).kind == KIND_BLOCK
+}
+
+/// Slot `i` may be overwritten with a value of kind `v`: it is not pinned,
+/// not referenced, not a token; below a token (inside a finally code that
+/// may resume a non-local branch to this frame) only plain value slots are
+/// overwritten, with plain values, so the kinds below a token never change.
+pub open spec fn writable(p: Program2, m: int, k: Seq<Kind>, i: int, v: Kind) -> bool {
+    &&& 0 <= i < k.len()
+    &&& !(i == 0 && pinned0(p, m))
+    &&& !referenced(k, i)
+    &&& !(k[i] is Token)
+    &&& !(v is Token)
+    &&& (below_token(k, i) ==> k[i] is Val && v is Val)
+}
+
+/// A call that takes the top `n` slots as arguments leaves a pinned
+/// parameter 0 in the frame.
+pub open spec fn leaves0(p: Program2, m: int, h: int, n: int) -> bool {
+    pinned0(p, m) && arity(p, m) >= 1 ==> h - n >= 1
+}
+
+/// The arguments on top of `k` fit the parameters of `t`; block arguments
+/// of this frame point below the arguments.
+pub open spec fn arg_ok(c: Cert, t: int, k: Seq<Kind>, n: int, x: int) -> bool {
+    let kd = k[k.len() - n + x];
+    &&& if is_block_param(c, t, x) { is_ref(kd) } else { is_val(kd) }
+    &&& match kd { Kind::Block(d, i) => d == 0 ==> i < k.len() - n, _ => true }
+}
+
 pub open spec fn args_ok(c: Cert, t: int, k: Seq<Kind>, n: int) -> bool {
     &&& 0 <= n <= k.len()
-    &&& forall|i: int| 0 <= i < n ==> {
-        let kind = #[trigger] k[k.len() - n + i];
-        if c.block_params[t].contains(i) { is_block_kind(kind) } else { is_value_kind(kind) }
-    }
+    &&& forall|x: int| 0 <= x < n ==> #[trigger] arg_ok(c, t, k, n, x)
 }
 
-/// The kinds after popping `n` slots and pushing a value: no reference to a
-/// popped block slot may survive.
+pub open spec fn value_operands(k: Seq<Kind>, n: int) -> bool {
+    0 <= n <= k.len() && forall|i: int| 0 <= i < n ==> is_val(#[trigger] top_kind(k, i))
+}
+
 pub open spec fn pop_push(k: Seq<Kind>, n: int, top: Option<Kind>) -> Seq<Kind> {
     let k1 = k.subrange(0, k.len() - n);
     match top { Some(t) => k1.push(t), None => k1 }
 }
 
-pub open spec fn no_dangling(k: Seq<Kind>) -> bool {
-    forall|j: int| 0 <= j < k.len() ==> match #[trigger] k[j] {
-        Kind::Block(d, i) => d == 0 ==> i < k.len(),
-        _ => true,
-    }
-}
-
-/// A slot may be overwritten: it is not `this` of a method that relies on
-/// it, not a referenced block slot, and not a token.
-pub open spec fn writable(p: Program2, m: int, k: Seq<Kind>, i: int) -> bool {
-    &&& 0 <= i < k.len()
-    &&& !(i == 0 && has_receiver_range(info(p, m)))
-    &&& !referenced(k, i)
-    &&& !(k[i] is Token)
-}
-
-// ---------------------------------------------------------------------------
-// The instruction rules. `post` is the kinds at the next instruction (for
-// instructions that continue there); `None` means the instruction is
-// rejected.
-
+/// A virtual call of selector `sel` with `n` arguments: the receiver is a
+/// value, the dispatch row fits the table, and if any method has the
+/// selector the arguments fit it.
 pub open spec fn sel_ok(p: Program2, c: Cert, sel: int, n: int, k: Seq<Kind>) -> bool {
-    // Every method the dispatch table can find for `sel` has arity `n` and
-    // the same block parameters (`tables_ok`), so checking against any one
-    // of them suffices; `selector_arity` names them.
-    &&& selector_arity(p, sel) == n
-    &&& args_ok(c, selector_method(p, sel), k, n)
-}
-
-/// One method with selector offset `sel` (the table check makes them agree).
-pub open spec fn selector_method(p: Program2, sel: int) -> int {
-    if exists|m: int| valid_method(p, m) && info(p, m).selector as int == sel {
-        choose|m: int| valid_method(p, m) && info(p, m).selector as int == sel
-    } else {
-        -1
+    &&& 1 <= n <= k.len()
+    &&& 0 <= sel < 0xffff
+    &&& sel < c.sel_rep.len()
+    &&& class_count(p) + sel <= p.dispatch.len()
+    &&& is_val(top_kind(k, n - 1))
+    &&& {
+        let r = c.sel_rep[sel];
+        r == -1 || (valid_method(p, r) && arity(p, r) == n && args_ok(c, r, k, n))
     }
-}
-
-pub open spec fn selector_arity(p: Program2, sel: int) -> int {
-    let m = selector_method(p, sel);
-    if m < 0 { -1 } else { arity(p, m) }
-}
-
-pub open spec fn value_operands(k: Seq<Kind>, n: int) -> bool {
-    n <= k.len() && forall|i: int| 0 <= i < n ==> is_value_kind(#[trigger] top_kind(k, i))
-}
-
-/// The fall-through successor kinds of a non-branching instruction.
-pub open spec fn post(p: Program2, c: Cert, m: int, off: int, k: Seq<Kind>) -> Option<Seq<Kind>> {
-    let op = op_of(p, m, off);
-    let b1 = b1_of(p, m, off);
-    let w1 = w1_of(p, m, off);
-    let h = k.len() as int;
-    if op == LOAD_LOCAL || op == LOAD_LOCAL_WIDE || (LOAD_LOCAL_0 <= op && op <= LOAD_LOCAL_5) {
-        let n = if op == LOAD_LOCAL { b1 } else if op == LOAD_LOCAL_WIDE { w1 } else { op - LOAD_LOCAL_0 };
-        if n < h && !(top_kind(k, n) is Token) { Some(k.push(top_kind(k, n))) } else { None }
-    } else if op == POP_LOAD_LOCAL {
-        if b1 + 1 < h && !(top_kind(k, b1 + 1) is Token) && writable(p, m, k, h - 1) {
-            Some(k.update(h - 1, top_kind(k, b1 + 1)))
-        } else { None }
-    } else if op == STORE_LOCAL || op == STORE_LOCAL_POP {
-        let i = h - 1 - b1;
-        let pop = op == STORE_LOCAL_POP;
-        if (pop && b1 < 1) || !(0 <= i < h - 1) || !writable(p, m, k, i) || top_kind(k, 0) is Token
-            || (top_kind(k, 0) is Block && !(0 <= local_block(top_kind(k, 0)) < i)) {
-            None
-        } else {
-            let k1 = k.update(i, top_kind(k, 0));
-            Some(if pop { k1.drop_last() } else { k1 })
-        }
-    } else if op == LOAD_OUTER || op == STORE_OUTER || op == LOAD_OUTER_BLOCK {
-        let r = if op == STORE_OUTER { 1int } else { 0int };
-        if r >= h { None } else {
-            match top_kind(k, r) {
-                Kind::Block(d, j) => match frame_kinds(c, m, k, d) {
-                    None => None,
-                    Some(fk) => {
-                        let i = j - b1;
-                        if !(0 <= i <= j < fk.len()) {
-                            None
-                        } else if op == LOAD_OUTER {
-                            if fk[i] is Token { None } else { Some(k.update(h - 1, shift(fk[i], d))) }
-                        } else if op == LOAD_OUTER_BLOCK {
-                            if block_method_kind(p, fk[i]) {
-                                Some(k.update(h - 1, Kind::Block(d, i)))
-                            } else { None }
-                        } else {
-                            // STORE_OUTER: only into a plain value slot of an outer frame.
-                            if d >= 1 && fk[i] is Val && is_value_kind(top_kind(k, 0)) {
-                                Some(pop_push(k, 2, Some(Kind::Val)))
-                            } else { None }
-                        }
-                    },
-                },
-                _ => None,
-            }
-        }
-    } else if op == LOAD_BLOCK {
-        let i = h - 1 - b1;
-        if 0 <= i < h && block_method_kind(p, k[i]) {
-            Some(k.push(Kind::Block(0, i)))
-        } else { None }
-    } else if op == LOAD_FIELD || op == LOAD_FIELD_WIDE {
-        if value_operands(k, 1) { Some(k.update(h - 1, Kind::Val)) } else { None }
-    } else if op == LOAD_FIELD_LOCAL || op == POP_LOAD_FIELD_LOCAL {
-        let slot = if op == POP_LOAD_FIELD_LOCAL { b1 % 16 + 1 } else { b1 % 16 };
-        if slot < h && is_value_kind(top_kind(k, slot)) && (op == LOAD_FIELD_LOCAL || writable(p, m, k, h - 1)) {
-            Some(if op == LOAD_FIELD_LOCAL { k.push(Kind::Val) } else { k.update(h - 1, Kind::Val) })
-        } else { None }
-    } else if op == STORE_FIELD || op == STORE_FIELD_WIDE || op == STORE_FIELD_POP {
-        if value_operands(k, 2) {
-            Some(if op == STORE_FIELD_POP { pop_push(k, 2, None) } else { pop_push(k, 2, Some(Kind::Val)) })
-        } else { None }
-    } else if op == LOAD_FIELD_THIS || op == STORE_FIELD_THIS {
-        // Every class of the receiver range has the field; `this` is never
-        // overwritten (`writable`).
-        if !this_field_ok(p, m, b1) || (op == STORE_FIELD_THIS && !value_operands(k, 1)) {
-            None
-        } else {
-            Some(if op == LOAD_FIELD_THIS { k.push(Kind::Val) } else { k })
-        }
-    } else if op == LOAD_LITERAL || op == LOAD_LITERAL_WIDE {
-        if (if op == LOAD_LITERAL { b1 } else { w1 }) < p.literals.len() { Some(k.push(Kind::Val)) } else { None }
-    } else if op == LOAD_NULL || op == LOAD_SMI_0 || op == LOAD_SMI_1 || op == LOAD_SMI_U8 || op == LOAD_SMI_U16 {
-        Some(k.push(Kind::Val))
-    } else if op == LOAD_SMI_U32 {
-        if u32_at(p1(p), instr_at(p, m, off) + 1) < 0x4000_0000 { Some(k.push(Kind::Val)) } else { None }
-    } else if op == LOAD_SMIS_0 {
-        Some(k + Seq::new(b1 as nat, |i: int| Kind::Val))
-    } else if op == LOAD_METHOD {
-        let t = u32_at(p1(p), instr_at(p, m, off) + 1);
-        if valid_method(p, t) && t < 0x4000_0000 { Some(k.push(Kind::Method(t))) } else { None }
-    } else if op == LOAD_GLOBAL_VAR || op == LOAD_GLOBAL_VAR_WIDE || op == LOAD_GLOBAL_VAR_LAZY || op == LOAD_GLOBAL_VAR_LAZY_WIDE {
-        // The global count is checked against the program's initial globals.
-        Some(k.push(Kind::Val))
-    } else if op == STORE_GLOBAL_VAR || op == STORE_GLOBAL_VAR_WIDE {
-        if value_operands(k, 1) { Some(k) } else { None }
-    } else if op == LOAD_GLOBAL_VAR_DYNAMIC {
-        if value_operands(k, 1) { Some(k.update(h - 1, Kind::Val)) } else { None }
-    } else if op == STORE_GLOBAL_VAR_DYNAMIC {
-        if value_operands(k, 2) { Some(pop_push(k, 2, None)) } else { None }
-    } else if op == POP || op == POP_1 {
-        let n = if op == POP { b1 } else { 1 };
-        if n <= h && no_dangling(k.subrange(0, h - n)) {
-            Some(k.subrange(0, h - n))
-        } else { None }
-    } else if op == ALLOCATE || op == ALLOCATE_WIDE {
-        let cl = if op == ALLOCATE { b1 } else { w1 };
-        if 0 <= cl < p.class_bits.len() && class_tag(p1(p), cl) == INSTANCE_TAG && instance_field_count(p1(p), cl) >= 0 {
-            Some(k.push(Kind::Val))
-        } else { None }
-    } else if IS_CLASS <= op && op <= AS_INTERFACE_WIDE {
-        if value_operands(k, 1) && typecheck_index_ok(p, op, if op % 2 == 0 { b1 } else { w1 }) {
-            Some(if op <= IS_INTERFACE_WIDE { k.update(h - 1, Kind::Val) } else { k })
-        } else { None }
-    } else if op == AS_LOCAL {
-        if b1 / 32 < h && is_value_kind(top_kind(k, b1 / 32)) && 2 * (b1 % 32) + 1 < p.class_check_ids.len() { Some(k) } else { None }
-    } else if op == INVOKE_STATIC {
-        let t = dispatch_target(p, w1);
-        if valid_method(p, t) && arity(p, t) <= h && args_ok(c, t, k, arity(p, t))
-            && no_dangling(k.subrange(0, h - arity(p, t))) {
-            Some(pop_push(k, arity(p, t), Some(Kind::Val)))
-        } else { None }
-    } else if op == INVOKE_BLOCK {
-        if !(1 <= b1 <= h) || !is_block_kind(top_kind(k, b1 - 1)) || !value_operands(k, b1 - 1) {
-            None
-        } else { Some(pop_push(k, b1, Some(Kind::Val))) }
-    } else if op == INVOKE_VIRTUAL || op == INVOKE_VIRTUAL_WIDE {
-        let n = if op == INVOKE_VIRTUAL { b1 + 1 } else { w1 + 1 };
-        let sel = if op == INVOKE_VIRTUAL { u16_at(p1(p), instr_at(p, m, off) + 2) } else { u16_at(p1(p), instr_at(p, m, off) + 3) };
-        if n <= h && is_value_kind(top_kind(k, n - 1)) && sel_ok(p, c, sel, n, k) {
-            Some(pop_push(k, n, Some(Kind::Val)))
-        } else { None }
-    } else if op == INVOKE_VIRTUAL_GET || op == INVOKE_SIZE {
-        if value_operands(k, 1) && sel_ok(p, c, w1, 1, k) { Some(k.update(h - 1, Kind::Val)) } else { None }
-    } else if op == INVOKE_VIRTUAL_SET {
-        if value_operands(k, 2) && sel_ok(p, c, w1, 2, k) { Some(pop_push(k, 2, Some(Kind::Val))) } else { None }
-    } else if INVOKE_EQ <= op && op <= INVOKE_AT_PUT {
-        let n = if op == INVOKE_AT_PUT { 3int } else { 2int };
-        if value_operands(k, n) && sel_ok(p, c, p.invoke_offsets[op - INVOKE_EQ] as int, n, k) || value_operands(k, n) && p.invoke_offsets[op - INVOKE_EQ] < 0 {
-            Some(pop_push(k, n, Some(Kind::Val)))
-        } else { None }
-    } else if op == IDENTICAL {
-        if value_operands(k, 2) { Some(pop_push(k, 2, Some(Kind::Val))) } else { None }
-    } else if BRANCH_IF_TRUE <= op && op <= BRANCH_IF_NOT_NULL || BRANCH_BACK_IF_TRUE <= op && op <= BRANCH_BACK_IF_NOT_NULL {
-        if value_operands(k, 1) { Some(k.drop_last()) } else { None }
-    } else if op == PRIMITIVE {
-        // Only as the first instruction of a method without block
-        // parameters: the arguments are exactly the parameters.
-        if off == 0 && h == arity(p, m) && c.block_params[m].len() == 0 && info(p, m).kind == KIND_METHOD {
-            Some(k.push(Kind::Val))
-        } else { None }
-    } else if op == TRY {
-        // The try block is the top slot; the finally code starts with the
-        // exception, the token and the reason.
-        if 1 <= h && block_method_kind(p, k[h - 1])
-            && arity(p, kind_method(k[h - 1])) == 1
-            && c.contexts[kind_method(k[h - 1])] == Some(Context { outer: m, slot: h - 1, kinds: demote(k) }) {
-            Some(k.push(Kind::Val).push(Kind::Token).push(Kind::Val))
-        } else { None }
-    } else if op == UNWIND {
-        if 3 <= h && top_kind(k, 1) is Token && no_dangling(k.subrange(0, h - 3)) { Some(k.subrange(0, h - 3)) } else { None }
-    } else if op == HALT {
-        // HALT 2 and 3 (deep sleep, reset) are not allowed for untrusted
-        // programs; that is the policy's part of the verifier.
-        if b1 == 0 { Some(k.push(Kind::Val)) }
-        else if b1 == 1 && value_operands(k, 1) { Some(k.drop_last()) }
-        else { None }
-    } else {
-        // Terminators (RETURN, RETURN_NULL, THROW, NON_LOCAL_RETURN,
-        // NON_LOCAL_BRANCH, the tail calls, BRANCH, BRANCH_BACK) have no
-        // fall-through successor.
-        None
-    }
-}
-
-/// The context of a block created here: block references of this frame
-/// are one context out from inside the block, and slots the outer code may
-/// overwrite while the block is alive (the block is invoked from inside a
-/// call, so only slots below the block's slot matter; they are values or
-/// immutable block slots) keep their kinds.
-pub open spec fn demote(k: Seq<Kind>) -> Seq<Kind> {
-    Seq::new(k.len(), |i: int| match k[i] { Kind::Token => Kind::Val, x => x })
 }
 
 pub open spec fn typecheck_index_ok(p: Program2, op: u8, enc: int) -> bool {
@@ -471,70 +358,176 @@ pub open spec fn typecheck_index_ok(p: Program2, op: u8, enc: int) -> bool {
 }
 
 /// LOAD_FIELD_THIS/STORE_FIELD_THIS f in method `m`: `m` declares a
-/// receiver range whose classes all have field `f`.
+/// receiver range of instance classes that all have field `f`.
 pub open spec fn this_field_ok(p: Program2, m: int, f: int) -> bool {
     let i = info(p, m);
     &&& has_receiver_range(i)
     &&& arity(p, m) >= 1
-    &&& info(p, m).kind == KIND_METHOD || info(p, m).kind == KIND_FIELD_ACCESSOR
-    &&& forall|cl: int| i.recv_start <= cl < i.recv_end && cl < p.class_bits.len() ==>
-            f < instance_field_count(p1(p), cl)
+    &&& (i.kind == KIND_METHOD || i.kind == KIND_FIELD_ACCESSOR)
+    &&& i.recv_end as int <= class_count(p)
+    &&& forall|cl: int| i.recv_start <= cl < i.recv_end ==>
+            #[trigger] is_field_class(p, cl) && f < ifc(p, cl)
 }
 
-/// The instruction at offset `off` of `m` with kinds `k` is accepted, and
-/// its successors' maps agree.
-pub open spec fn instr_ok(p: Program2, c: Cert, m: int, off: int, k: Seq<Kind>) -> bool {
+pub open spec fn branch_kind(op: u8) -> int {
+    if BRANCH <= op && op <= BRANCH_IF_NOT_NULL { op - BRANCH } else { op - BRANCH_BACK }
+}
+
+/// The fall-through successor kinds of an instruction, `None` for
+/// terminators and rejected instructions.
+pub open spec fn post(p: Program2, c: Cert, m: int, off: int, k: Seq<Kind>, trusted: bool) -> Option<Seq<Kind>> {
     let op = op_of(p, m, off);
     let b1 = b1_of(p, m, off);
     let w1 = w1_of(p, m, off);
     let h = k.len() as int;
-    let i = info(p, m);
-    let next_off = off + len_of(p, m, off);
-    let at_map = |o: int, ks: Seq<Kind>| c.maps[m].contains_key(o) && c.maps[m][o] == ks;
-    &&& wf_kinds(p, k)
-    &&& i.entry + off + len_of(p, m, off) <= i.end
-    &&& op < OPCODE_COUNT2
-    &&& match post(p, c, m, off, k) {
-        Some(k2) => at_map(next_off, k2) && wf_kinds(p, k2),
-        None => true,
-    }
-    &&& if BRANCH <= op && op <= BRANCH_IF_NOT_NULL {
-        // Forward branches move forward; the target is an instruction.
-        let t = off + w1;
-        w1 > 0 && at_map(t, if op == BRANCH { k } else { k.drop_last() })
-            && (op == BRANCH || post(p, c, m, off, k) is Some)
-    } else if BRANCH_BACK <= op && op <= BRANCH_BACK_IF_NOT_NULL {
-        let t = off - w1;
-        0 <= t && at_map(t, if op == BRANCH_BACK { k } else { k.drop_last() })
-            && (op == BRANCH_BACK || post(p, c, m, off, k) is Some)
-    } else if op == RETURN {
-        1 <= h && is_value_kind(top_kind(k, 0))
-    } else if op == RETURN_NULL {
-        true
-    } else if op == THROW {
-        value_operands(k, 1)
-    } else if op == INVOKE_STATIC_TAIL {
-        let t = dispatch_target(p, w1);
-        valid_method(p, t) && arity(p, t) <= h && args_ok(c, t, k, arity(p, t))
-            // Block arguments of the current frame would dangle.
-            && forall|j: int| h - arity(p, t) <= j < h ==> local_block(#[trigger] k[j]) < 0
-    } else if op == INVOKE_LAMBDA_TAIL {
-        info(p, m).kind == KIND_METHOD && h == arity(p, m) && h >= 1
-    } else if op == INVOKE_INITIALIZER_TAIL {
-        value_operands(k, 1)
-    } else if op == NON_LOCAL_RETURN {
-        2 <= h && is_value_kind(top_kind(k, 1)) && outer_block(top_kind(k, 0))
-    } else if op == NON_LOCAL_BRANCH {
-        1 <= h && match top_kind(k, 0) {
-            Kind::Block(d, j) => d >= 1 && {
-                let om = context_method(c, m, d as nat);
-                let target = u32_at(p1(p), instr_at(p, m, off) + 2);
-                valid_method(p, om) && c.maps[om].contains_key(target) && c.maps[om][target].len() == j + 1 - b1
-            },
-            _ => false,
+    if op == LOAD_LOCAL || op == LOAD_LOCAL_WIDE || (LOAD_LOCAL_0 <= op && op <= LOAD_LOCAL_5) {
+        let n = if op == LOAD_LOCAL { b1 } else if op == LOAD_LOCAL_WIDE { w1 } else { op - LOAD_LOCAL_0 };
+        if n < h && !(top_kind(k, n) is Token) { Some(k.push(top_kind(k, n))) } else { None }
+    } else if op == POP_LOAD_LOCAL {
+        if b1 + 1 < h && !(top_kind(k, b1 + 1) is Token) { Some(k.update(h - 1, top_kind(k, b1 + 1))) } else { None }
+    } else if op == STORE_LOCAL || op == STORE_LOCAL_POP {
+        let i = h - 1 - b1;
+        let v = top_kind(k, 0);
+        if 1 <= b1 && b1 < h && writable(p, m, k, i, v) {
+            let k1 = k.update(i, v);
+            Some(if op == STORE_LOCAL_POP { k1.drop_last() } else { k1 })
+        } else { None }
+    } else if op == LOAD_OUTER || op == STORE_OUTER || op == LOAD_OUTER_BLOCK {
+        let r = if op == STORE_OUTER { 1int } else { 0int };
+        if r >= h { None } else {
+            match top_kind(k, r) {
+                Kind::Block(d, j) => match ref_kinds(c, m, k, d) {
+                    None => None,
+                    Some(fk) => {
+                        let i = j - b1;
+                        let om = ref_method(c, m, d);
+                        if !(0 <= i <= j && j < fk.len()) {
+                            None
+                        } else if op == LOAD_OUTER {
+                            if fk[i] is Token { None } else { Some(k.update(h - 1, shift(fk[i], d))) }
+                        } else if op == LOAD_OUTER_BLOCK {
+                            if block_slot(p, c, om, fk, i) { Some(k.update(h - 1, Kind::Block(d, i))) } else { None }
+                        } else if d >= 1 && fk[i] is Val && is_val(top_kind(k, 0)) && valid_method(p, om)
+                                && !(i == 0 && pinned0(p, om)) {
+                            Some(pop_push(k, 2, Some(Kind::Val)))
+                        } else { None }
+                    },
+                },
+                _ => None,
+            }
         }
+    } else if op == LOAD_BLOCK {
+        let i = h - 1 - b1;
+        if block_slot(p, c, m, k, i) { Some(k.push(Kind::Block(0, i))) } else { None }
+    } else if op == LOAD_FIELD || op == LOAD_FIELD_WIDE {
+        if value_operands(k, 1) && leaves0(p, m, h, 1) { Some(k.update(h - 1, Kind::Val)) } else { None }
+    } else if op == LOAD_FIELD_LOCAL || op == POP_LOAD_FIELD_LOCAL {
+        let slot = if op == POP_LOAD_FIELD_LOCAL { b1 % 16 + 1 } else { b1 % 16 };
+        if slot < h && is_val(top_kind(k, slot)) {
+            Some(if op == LOAD_FIELD_LOCAL { k.push(Kind::Val) } else { k.update(h - 1, Kind::Val) })
+        } else { None }
+    } else if op == STORE_FIELD || op == STORE_FIELD_WIDE || op == STORE_FIELD_POP {
+        if value_operands(k, 2) && leaves0(p, m, h, 2) {
+            Some(if op == STORE_FIELD_POP { pop_push(k, 2, None) } else { pop_push(k, 2, Some(Kind::Val)) })
+        } else { None }
+    } else if op == LOAD_FIELD_THIS {
+        if this_field_ok(p, m, b1) { Some(k.push(Kind::Val)) } else { None }
+    } else if op == STORE_FIELD_THIS {
+        if this_field_ok(p, m, b1) && value_operands(k, 1) { Some(k) } else { None }
+    } else if op == LOAD_LITERAL || op == LOAD_LITERAL_WIDE {
+        if (if op == LOAD_LITERAL { b1 } else { w1 }) < p.literals.len() { Some(k.push(Kind::Val)) } else { None }
+    } else if op == LOAD_NULL || op == LOAD_SMI_0 || op == LOAD_SMI_1 || op == LOAD_SMI_U8 || op == LOAD_SMI_U16 {
+        Some(k.push(Kind::Val))
+    } else if op == LOAD_SMI_U32 {
+        if smi_ok(p1(p), u32_at(p1(p), instr_at(p, m, off) + 1)) { Some(k.push(Kind::Val)) } else { None }
+    } else if op == LOAD_SMIS_0 {
+        Some(k + Seq::new(b1 as nat, |i: int| Kind::Val))
+    } else if op == LOAD_METHOD {
+        let t = u32_at(p1(p), instr_at(p, m, off) + 1);
+        if valid_method(p, t) && smi_ok(p1(p), t) { Some(k.push(Kind::Method(t))) } else { None }
+    } else if op == LOAD_GLOBAL_VAR || op == LOAD_GLOBAL_VAR_LAZY {
+        if b1 < c.global_count { Some(k.push(Kind::Val)) } else { None }
+    } else if op == LOAD_GLOBAL_VAR_WIDE || op == LOAD_GLOBAL_VAR_LAZY_WIDE {
+        if w1 < c.global_count { Some(k.push(Kind::Val)) } else { None }
+    } else if op == STORE_GLOBAL_VAR || op == STORE_GLOBAL_VAR_WIDE {
+        if (if op == STORE_GLOBAL_VAR { b1 } else { w1 }) < c.global_count && value_operands(k, 1) { Some(k) } else { None }
+    } else if op == LOAD_GLOBAL_VAR_DYNAMIC {
+        if value_operands(k, 1) && leaves0(p, m, h, 1) { Some(k.update(h - 1, Kind::Val)) } else { None }
+    } else if op == STORE_GLOBAL_VAR_DYNAMIC {
+        if value_operands(k, 2) { Some(pop_push(k, 2, None)) } else { None }
+    } else if op == POP || op == POP_1 {
+        let n = if op == POP { b1 } else { 1 };
+        if n <= h { Some(k.subrange(0, h - n)) } else { None }
+    } else if op == ALLOCATE || op == ALLOCATE_WIDE {
+        let cl = if op == ALLOCATE { b1 } else { w1 };
+        if is_instance_class(p, cl) && ifc(p, cl) >= 0 { Some(k.push(Kind::Val)) } else { None }
+    } else if IS_CLASS <= op && op <= AS_INTERFACE_WIDE {
+        // IS_* replaces the operand: not a pinned parameter 0.
+        if value_operands(k, 1) && (op > IS_INTERFACE_WIDE || leaves0(p, m, h, 1))
+            && typecheck_index_ok(p, op, if op % 2 == 0 { b1 } else { w1 }) {
+            Some(if op <= IS_INTERFACE_WIDE { k.update(h - 1, Kind::Val) } else { k })
+        } else { None }
+    } else if op == AS_LOCAL {
+        if b1 / 32 < h && is_val(top_kind(k, b1 / 32)) && 2 * (b1 % 32) + 1 < p.class_check_ids.len() { Some(k) } else { None }
+    } else if op == INVOKE_STATIC {
+        let t = dispatch_target(p, w1);
+        if valid_method(p, t) && args_ok(c, t, k, arity(p, t)) && leaves0(p, m, h, arity(p, t)) {
+            Some(pop_push(k, arity(p, t), Some(Kind::Val)))
+        } else { None }
+    } else if op == INVOKE_BLOCK {
+        if 1 <= b1 <= h && is_ref(top_kind(k, b1 - 1)) && value_operands(k, b1 - 1) && leaves0(p, m, h, b1)
+            && match top_kind(k, b1 - 1) { Kind::Block(d, i) => d == 0 ==> i < h - b1, _ => true } {
+            Some(pop_push(k, b1, Some(Kind::Val)))
+        } else { None }
+    } else if op == INVOKE_VIRTUAL || op == INVOKE_VIRTUAL_WIDE {
+        let n = if op == INVOKE_VIRTUAL { b1 + 1 } else { w1 + 1 };
+        let sel = if op == INVOKE_VIRTUAL { u16_at(p1(p), instr_at(p, m, off) + 2) } else { u16_at(p1(p), instr_at(p, m, off) + 3) };
+        if sel_ok(p, c, sel, n, k) && leaves0(p, m, h, n) { Some(pop_push(k, n, Some(Kind::Val))) } else { None }
+    } else if op == INVOKE_VIRTUAL_GET || op == INVOKE_SIZE {
+        if sel_ok(p, c, w1, 1, k) && leaves0(p, m, h, 1) { Some(k.update(h - 1, Kind::Val)) } else { None }
+    } else if op == INVOKE_VIRTUAL_SET {
+        if value_operands(k, 2) && sel_ok(p, c, w1, 2, k) && leaves0(p, m, h, 2) { Some(pop_push(k, 2, Some(Kind::Val))) } else { None }
+    } else if INVOKE_EQ <= op && op <= INVOKE_AT_PUT {
+        let n = if op == INVOKE_AT_PUT { 3int } else { 2int };
+        let sel = p.invoke_offsets[op - INVOKE_EQ] as int;
+        if value_operands(k, n) && (sel < 0 || sel_ok(p, c, sel, n, k)) && leaves0(p, m, h, n) {
+            Some(pop_push(k, n, Some(Kind::Val)))
+        } else { None }
+    } else if op == IDENTICAL {
+        if value_operands(k, 2) && leaves0(p, m, h, 2) { Some(pop_push(k, 2, Some(Kind::Val))) } else { None }
+    } else if (BRANCH_IF_TRUE <= op && op <= BRANCH_IF_NOT_NULL) || (BRANCH_BACK_IF_TRUE <= op && op <= BRANCH_BACK_IF_NOT_NULL) {
+        if value_operands(k, 1) { Some(k.drop_last()) } else { None }
+    } else if op == PRIMITIVE {
+        // On an empty expression stack: the arguments are exactly the
+        // parameters.
+        let module = b1;
+        let index = u16_at(p1(p), instr_at(p, m, off) + 2);
+        if h == arity(p, m) && info(p, m).kind == KIND_METHOD
+            && 0 <= module < c.prim_arity.len() && 0 <= index < c.prim_arity[module].len()
+            && c.prim_arity[module][index] == arity(p, m)
+            && (module == PRIM_CORE && index == PRIM_TASK_NEW ==> arity(p, m) == 1)
+            // A new task resumes the transferring frame with fresh arguments
+            // (`v2::prim::resume`): its parameters must be plain values.
+            && (module == PRIM_CORE && index == PRIM_TASK_TRANSFER ==>
+                    arity(p, m) == 2 && k[0] is Val && k[1] is Val && !has_receiver_range(info(p, m))) {
+            Some(k.push(Kind::Val))
+        } else { None }
+    } else if op == TRY {
+        if 1 <= h && block_slot(p, c, m, k, h - 1) && arity(p, kind_method(k[h - 1])) == 1
+            && ctx_ok_upto(p, c, m, k, h - 1) {
+            Some(k.push(Kind::Val).push(Kind::Token).push(Kind::Val))
+        } else { None }
+    } else if op == UNWIND {
+        if 3 <= h && top_kind(k, 1) is Token { Some(k.subrange(0, h - 3)) } else { None }
+    } else if op == HALT {
+        // HALT 2 and 3 (deep sleep, reset) only for trusted programs.
+        if b1 == 0 { Some(k.push(Kind::Val)) }
+        else if b1 == 1 && value_operands(k, 1) { Some(k.drop_last()) }
+        else if trusted && b1 == 2 && 1 <= h { Some(k.drop_last()) }
+        else if trusted && b1 >= 3 { Some(k) }
+        else { None }
     } else {
-        post(p, c, m, off, k) is Some
+        None
     }
 }
 
@@ -545,198 +538,213 @@ pub open spec fn is_terminator(op: u8) -> bool {
         || op == NON_LOCAL_RETURN || op == NON_LOCAL_BRANCH
 }
 
-/// Method `m` is accepted: its entry has the entry kinds, every mapped
-/// offset is an accepted instruction, and the last instruction is a
-/// terminator (control cannot fall off the end).
-pub open spec fn method_ok(p: Program2, c: Cert, m: int) -> bool {
+pub open spec fn is_branch(op: u8) -> bool {
+    BRANCH <= op && op <= BRANCH_BACK_IF_NOT_NULL
+}
+
+/// The frame shape every map of `m` keeps: a pinned parameter 0 stays,
+/// a block's parameter 0 is its own reference.
+pub open spec fn shape_ok(p: Program2, c: Cert, m: int, k: Seq<Kind>) -> bool {
+    &&& (pinned0(p, m) && arity(p, m) >= 1 ==> k.len() >= 1)
+    &&& (info(p, m).kind == KIND_BLOCK ==> k.len() >= 1 && match ctx_of(c, m) {
+            Some(ctx) => k[0] == Kind::Block(1, ctx.slot),
+            None => false,
+        })
+}
+
+/// The conditions of a terminator (the successor of a branch is its
+/// target).
+pub open spec fn terminator_ok(p: Program2, c: Cert, m: int, off: int, k: Seq<Kind>) -> bool {
+    let op = op_of(p, m, off);
+    let b1 = b1_of(p, m, off);
+    let w1 = w1_of(p, m, off);
+    let h = k.len() as int;
+    if op == RETURN {
+        1 <= h && is_val(top_kind(k, 0))
+    } else if op == RETURN_NULL {
+        true
+    } else if op == THROW {
+        value_operands(k, 1)
+    } else if op == INVOKE_STATIC_TAIL {
+        let t = dispatch_target(p, w1);
+        // Block arguments of the current frame would dangle.
+        &&& valid_method(p, t)
+        &&& args_ok(c, t, k, arity(p, t))
+        &&& forall|j: int| h - arity(p, t) <= j < h ==> !is_local_ref(#[trigger] k[j])
+    } else if op == INVOKE_LAMBDA_TAIL {
+        info(p, m).kind == KIND_METHOD && h == arity(p, m) && h >= 1
+            && forall|i: int| 0 <= i < h ==> is_val(#[trigger] k[i])
+    } else if op == INVOKE_INITIALIZER_TAIL {
+        value_operands(k, 1)
+    } else if op == NON_LOCAL_RETURN {
+        2 <= h && is_val(top_kind(k, 1)) && match top_kind(k, 0) { Kind::Block(d, _) => d >= 1, _ => false }
+    } else if op == NON_LOCAL_BRANCH {
+        1 <= h && match top_kind(k, 0) {
+            Kind::Block(d, j) => d >= 1 && {
+                let om = ctx_method(c, m, d as nat);
+                let target = u32_at(p1(p), instr_at(p, m, off) + 2);
+                match (ctx_kinds(c, m, d as nat), map_at(c, om, target)) {
+                    (Some(fk), Some(t)) => valid_method(p, om) && 0 <= j + 1 - b1 && j < fk.len()
+                        && t == fk.subrange(0, j + 1 - b1),
+                    _ => false,
+                }
+            },
+            _ => false,
+        }
+    } else if op == BRANCH || op == BRANCH_BACK {
+        true
+    } else {
+        false
+    }
+}
+
+/// The instruction at offset `off` of `m` with kinds `k` is accepted, and
+/// its successors' maps agree.
+pub open spec fn instr_ok(p: Program2, c: Cert, m: int, off: int, k: Seq<Kind>, trusted: bool) -> bool {
     let i = info(p, m);
-    &&& i.entry <= i.end <= p.bytecodes.len()
-    &&& i.entry < i.end
-    &&& c.maps[m].contains_key(0) && c.maps[m][0] == entry_kinds(p, c, m)
-    &&& forall|off: int| #[trigger] c.maps[m].contains_key(off) ==>
-            0 <= off < i.end - i.entry && instr_ok(p, c, m, off, c.maps[m][off])
-    &&& exists|last: int| c.maps[m].contains_key(last)
-            && last + len_of(p, m, last) == i.end - i.entry && is_terminator(op_of(p, m, last))
-    &&& (info(p, m).kind == KIND_BLOCK) == (c.contexts[m] is Some)
+    let op = op_of(p, m, off);
+    let w1 = w1_of(p, m, off);
+    let next_off = off + len_of(p, m, off);
+    &&& 0 <= off
+    &&& i.entry + off < i.end
+    &&& op < OPCODE_COUNT2
+    &&& i.entry + off + len_of(p, m, off) <= i.end
+    &&& wf_kinds(p, c, m, k)
+    &&& ctx_ok(p, c, m, k)
+    &&& shape_ok(p, c, m, k)
+    &&& k.len() <= arity(p, m) + i.max_height
+    &&& if is_terminator(op) { terminator_ok(p, c, m, off, k) } else { post(p, c, m, off, k, trusted) is Some }
+    &&& match post(p, c, m, off, k, trusted) {
+            Some(k2) => map_at(c, m, next_off) == Some(k2),
+            None => true,
+        }
+    &&& if is_branch(op) {
+            let t = if op <= BRANCH_IF_NOT_NULL { off + w1 } else { off - w1 };
+            (op <= BRANCH_IF_NOT_NULL ==> w1 > 0)
+                && map_at(c, m, t) == Some(if op == BRANCH || op == BRANCH_BACK { k } else { k.drop_last() })
+        } else { true }
+}
+
+/// The kinds at the entry of method `m`.
+pub open spec fn entry_kinds(p: Program2, c: Cert, m: int) -> Seq<Kind> {
+    let a = arity(p, m);
+    if info(p, m).kind == KIND_BLOCK {
+        Seq::new(a as nat, |i: int| if i == 0 {
+            match ctx_of(c, m) { Some(ctx) => Kind::Block(1, ctx.slot), None => Kind::Param }
+        } else { Kind::Val })
+    } else {
+        Seq::new(a as nat, |i: int| if is_block_param(c, m, i) { Kind::Param } else { Kind::Val })
+    }
+}
+
+/// A block method without a context is never created (LOAD_BLOCK, TRY
+/// and LOAD_OUTER_BLOCK need one), so it never runs and is not checked.
+pub open spec fn dead_block(p: Program2, c: Cert, m: int) -> bool {
+    info(p, m).kind == KIND_BLOCK && c.contexts[m] is None
+}
+
+pub open spec fn method_ok(p: Program2, c: Cert, m: int, trusted: bool) -> bool {
+    let i = info(p, m);
+    &&& i.entry < i.end <= p.bytecodes.len()
+    &&& c.maps[m].len() == i.end - i.entry
+    &&& c.block_params[m].len() == i.arity
+    &&& (c.contexts[m] is Some ==> i.kind == KIND_BLOCK)
+    &&& !dead_block(p, c, m) ==> {
+        &&& c.maps[m][0] == Some(entry_kinds(p, c, m))
+        &&& forall|off: int| 0 <= off < c.maps[m].len() && (#[trigger] c.maps[m][off]) is Some ==>
+                instr_ok(p, c, m, off, c.maps[m][off]->0, trusted)
+    }
 }
 
 // ---------------------------------------------------------------------------
-// Table checks (the verifier's phase 0).
+// Table checks.
 
-pub open spec fn class_count(p: Program2) -> int {
-    p.class_bits.len() as int
+pub open spec fn no_block_params(c: Cert, m: int) -> bool {
+    forall|i: int| 0 <= i < c.block_params[m].len() ==> !(#[trigger] c.block_params[m][i])
+}
+
+/// A builtin class of the machine's own objects (Object for unwinding
+/// tokens, Stack, Double): not an instance class with fields, so the
+/// machine objects never pose as instances.
+pub open spec fn machine_class_ok(p: Program2, k: int) -> bool {
+    let cl = builtin(p1(p), k);
+    0 <= cl < class_count(p) && !(is_field_class(p, cl) && ifc(p, cl) >= 1)
+}
+
+/// The entry method `k` exists, is a plain method of arity `a` without
+/// block parameters.
+pub open spec fn entry_ok(p: Program2, c: Cert, k: int, a: int) -> bool {
+    let e = entry_method(p, k);
+    valid_method(p, e) && info(p, e).kind == KIND_METHOD && arity(p, e) == a && no_block_params(c, e)
+}
+
+pub open spec fn dispatch_entry_ok(p: Program2, d: int) -> bool {
+    let t = p.dispatch[d] as int;
+    t == -1 || (valid_method(p, t) && (info(p, t).kind == KIND_METHOD || info(p, t).kind == KIND_FIELD_ACCESSOR) && {
+        // Virtual dispatch respects declared receiver ranges.
+        let cl = d - info(p, t).selector as int;
+        (info(p, t).selector != 0xffff && 0 <= cl < class_count(p) && has_receiver_range(info(p, t)))
+            ==> info(p, t).recv_start as int <= cl < info(p, t).recv_end as int
+    })
+}
+
+pub open spec fn method_table_ok(p: Program2, c: Cert, m: int) -> bool {
+    let i = info(p, m);
+    let s = i.selector as int;
+    &&& c.block_params[m].len() == i.arity
+    // Methods sharing a selector agree on arity and block parameters.
+    &&& (s != 0xffff ==> s < c.sel_rep.len() && {
+            let r = c.sel_rep[s];
+            valid_method(p, r) && arity(p, r) == arity(p, m) && c.block_params[r] == c.block_params[m]
+                && class_count(p) + s <= p.dispatch.len()
+        })
+    &&& (has_receiver_range(i) ==> arity(p, m) >= 1 && !c.block_params[m][0])
+    &&& (i.kind == KIND_BLOCK ==> arity(p, m) >= 1 && no_block_params(c, m))
+    &&& (i.kind == KIND_LAMBDA ==> no_block_params(c, m))
+    &&& match c.contexts[m] {
+            Some(ctx) => valid_method(p, ctx.outer),
+            None => true,
+        }
+}
+
+pub open spec fn sel_rep_ok(p: Program2, c: Cert, s: int) -> bool {
+    let r = c.sel_rep[s];
+    r == -1 || (valid_method(p, r) && info(p, r).selector as int == s)
 }
 
 pub open spec fn tables_ok(p: Program2, c: Cert) -> bool {
     &&& c.maps.len() == p.methods.len()
     &&& c.block_params.len() == p.methods.len()
     &&& c.contexts.len() == p.methods.len()
-    // Dispatch entries are methods (not blocks or lambdas).
-    &&& forall|d: int| 0 <= d < p.dispatch.len() ==> {
-        let t = #[trigger] p.dispatch[d] as int;
-        t == -1 || (valid_method(p, t) && (info(p, t).kind == KIND_METHOD || info(p, t).kind == KIND_FIELD_ACCESSOR))
-    }
-    // Every selector fits for every class (find_method stays in the table).
-    &&& forall|m: int| valid_method(p, m) && info(p, m).selector != 0xffff ==>
-            class_count(p) + (#[trigger] info(p, m)).selector as int <= p.dispatch.len()
-    &&& forall|k: int| 0 <= k < 19 ==> (#[trigger] p.invoke_offsets[k]) < 0 || class_count(p) + p.invoke_offsets[k] as int <= p.dispatch.len()
+    &&& 0 <= c.global_count
+    &&& c.sel_rep.len() <= 0xffff
+    &&& forall|s: int| 0 <= s < c.sel_rep.len() ==> #[trigger] sel_rep_ok(p, c, s)
+    &&& forall|d: int| 0 <= d < p.dispatch.len() ==> #[trigger] dispatch_entry_ok(p, d)
+    &&& forall|m: int| 0 <= m < p.methods.len() ==> #[trigger] method_table_ok(p, c, m)
     &&& forall|k: int| 0 <= k < p.interface_check_offsets.len() ==>
             class_count(p) + (#[trigger] p.interface_check_offsets[k]) as int <= p.dispatch.len()
-    // Methods reached through the same selector agree on arity and block
-    // parameters.
-    &&& forall|m1: int, m2: int| valid_method(p, m1) && valid_method(p, m2)
-            && #[trigger] info(p, m1).selector == #[trigger] info(p, m2).selector && info(p, m1).selector != 0xffff ==>
-            arity(p, m1) == arity(p, m2) && c.block_params[m1] == c.block_params[m2]
-    // Virtual dispatch respects declared receiver ranges: a method found
-    // for class `cl` declares a range containing `cl`.
-    &&& forall|d: int| 0 <= d < p.dispatch.len() && #[trigger] p.dispatch[d] != -1 ==> {
-            let t = p.dispatch[d] as int;
-            let cl = d - info(p, t).selector as int;
-            (info(p, t).selector != 0xffff && 0 <= cl < class_count(p) && has_receiver_range(info(p, t)))
-                ==> info(p, t).recv_start as int <= cl < info(p, t).recv_end as int
-        }
-    // Entry points: methods of the expected arity without block parameters.
-    &&& forall|k: int| 0 <= k < 9 ==> valid_method(p, #[trigger] entry_method(p, k))
-            && c.block_params[entry_method(p, k)].len() == 0
-    // The failure values are strings (literals 2..6).
-    &&& p.literals.len() >= 7
-    // Block methods are created at exactly one place (their context).
-    &&& forall|m: int| valid_method(p, m) ==> (#[trigger] c.contexts[m] is Some ==> valid_method(p, c.contexts[m]->0.outer))
+    // The builtin classes the machine allocates or dispatches on.
+    &&& machine_class_ok(p, OBJECT_CLASS)
+    &&& machine_class_ok(p, STACK_CLASS)
+    &&& machine_class_ok(p, DOUBLE_CLASS)
+    &&& machine_class_ok(p, SMI_CLASS)
+    &&& is_field_class(p, builtin(p1(p), EXCEPTION_CLASS)) && ifc(p, builtin(p1(p), EXCEPTION_CLASS)) >= 2
+    &&& is_field_class(p, builtin(p1(p), TASK_CLASS)) && ifc(p, builtin(p1(p), TASK_CLASS)) >= 2
+    // The entry points the machine calls: main(task), the task entry
+    // (resumed after its first instruction, LOAD_NULL), and the lazy
+    // global initializer (id, initializer).
+    &&& entry_ok(p, c, ENTRY_MAIN, 1) && !has_receiver_range(info(p, entry_method(p, ENTRY_MAIN)))
+    &&& entry_ok(p, c, ENTRY_TASK, 1) && !has_receiver_range(info(p, entry_method(p, ENTRY_TASK)))
+    &&& map_at(c, entry_method(p, ENTRY_TASK), 1) == Some(seq![Kind::Val, Kind::Val])
+    &&& entry_ok(p, c, RUN_GLOBAL_INITIALIZER, 2)
 }
 
-/// The verifier accepts program `p` with certificate `c`.
-pub open spec fn accepted(p: Program2, c: Cert) -> bool {
+/// The verifier accepts program `p` with certificate `c`. Trusted programs
+/// (the system) may use HALT 2 and 3.
+pub open spec fn accepts(p: Program2, c: Cert, trusted: bool) -> bool {
+    &&& crate::v2::exec::wf_program2(p)
     &&& tables_ok(p, c)
-    &&& forall|m: int| 0 <= m < p.methods.len() ==> #[trigger] method_ok(p, c, m)
-}
-
-// ---------------------------------------------------------------------------
-// The soundness theorem (stated; Phase 3 proves it).
-
-/// Value `v` in frame `fi` of `s` has kind `k` (relative to method `m`).
-pub open spec fn value_conforms(p: Program2, c: Cert, s: State2, fi: int, k: Kind, v: Value) -> bool {
-    match k {
-        Kind::Val => v is Smi || v is Obj,
-        Kind::Method(t) => v == Value::Smi(t as i64),
-        Kind::Block(d, j) => match v {
-            Value::BlockRef(f, slot) => ref_ok(s, f as int, slot as int)
-                && f as int == context_frame(s, fi, d as nat)
-                && slot as int == s.frames[f as int].base + j,
-            _ => false,
-        },
-        Kind::Param => match v {
-            Value::BlockRef(f, slot) => ref_ok(s, f as int, slot as int) && (f as int) < fi,
-            _ => false,
-        },
-        Kind::Token => v == null2(p) || match v {
-            Value::Obj(id) => (id as int) < s.heap.len() && s.heap[id as int].body is Pending,
-            _ => false,
-        },
-    }
-}
-
-/// The frame `depth` contexts out from frame `fi`: following the block's
-/// own reference (parameter 0) of each block frame.
-pub open spec fn context_frame(s: State2, fi: int, depth: nat) -> int
-    decreases depth,
-{
-    if depth == 0 {
-        fi
-    } else if !(0 <= fi < s.frames.len()) || !(0 <= s.frames[fi].base < s.stack.len()) {
-        -1
-    } else {
-        match s.stack[s.frames[fi].base as int] {
-            Value::BlockRef(f, _) => if (f as int) < fi { context_frame(s, f as int, (depth - 1) as nat) } else { -1 },
-            _ => -1,
-        }
-    }
-}
-
-/// The offset at which frame `fi` is suspended (the top frame: `s.bci`;
-/// a lower frame: the return address of the frame above), and whether a
-/// result is still to be pushed.
-pub open spec fn frame_offset(p: Program2, s: State2, fi: int) -> int {
-    let m = s.frames[fi].method as int;
-    let bci = if fi == s.frames.len() - 1 { s.bci as int } else { s.frames[fi + 1].ret as int };
-    bci - info(p, m).entry
-}
-
-/// The abstract maps describe the state: every frame's slots conform to
-/// the map at its offset (lower frames: minus the result their callee
-/// will push), handlers sit at TRY sites, and the program state is well
-/// formed. This is the invariant of the soundness proof.
-pub open spec fn conforms(p: Program2, c: Cert, s: State2) -> bool {
-    &&& s.frames.len() > 0
-    &&& forall|fi: int| 0 <= fi < s.frames.len() ==> {
-        let f = #[trigger] s.frames[fi];
-        let m = f.method as int;
-        let top_frame = fi == s.frames.len() - 1;
-        let limit = if top_frame { s.stack.len() as int } else { s.frames[fi + 1].base as int };
-        let off = frame_offset(p, s, fi);
-        let pending = if top_frame { 0int } else { 1int };
-        &&& valid_method(p, m)
-        &&& c.maps[m].contains_key(off)
-        &&& f.base <= limit
-        &&& c.maps[m][off].len() == limit - f.base + pending
-        &&& forall|j: int| 0 <= j < limit - f.base ==>
-                value_conforms(p, c, s, fi, #[trigger] c.maps[m][off][j], s.stack[f.base + j])
-    }
-    &&& forall|t: int| 0 <= t < s.tries.len() ==> {
-        let h = #[trigger] s.tries[t];
-        &&& (h.frame as int) < s.frames.len() - 1
-        &&& (t > 0 ==> s.tries[t - 1].frame <= h.frame)
-        &&& op_of(p, s.frames[h.frame as int].method as int, h.bci - 1 - info(p, s.frames[h.frame as int].method as int).entry) == TRY
-    }
-}
-
-/// A primitive result: a value (no block reference or token).
-pub open spec fn prim_value(v: Value) -> bool {
-    v is Smi || v is Obj
-}
-
-/// One step, completed: the step itself, and for a PRIMITIVE every
-/// completion the primitive oracle may choose (success with a value,
-/// failure with an error, or a missing primitive), with any new heap that
-/// extends the old one.
-pub open spec fn completions_ok(p: Program2, c: Cert, s: State2) -> bool {
-    match step(p, s) {
-        Outcome2::Stuck(_) => false,
-        Outcome2::Next(s1) => conforms(p, c, s1),
-        Outcome2::Halt(s1, h) => h is Yield ==> conforms(p, c, s1),
-        Outcome2::Primitive(s1, _, _) => forall|heap: Seq<HeapObj>, v: Value|
-            #![trigger crate::v2::prim::prim_success(p, s1, heap, v)]
-            heap.len() >= s1.heap.len() && prim_value(v) ==> {
-                &&& match crate::v2::prim::prim_success(p, s1, heap, v) {
-                    Outcome2::Next(s2) => conforms(p, c, s2),
-                    Outcome2::Stuck(_) => false,
-                    _ => true,
-                }
-                &&& match crate::v2::prim::prim_failure(s1, heap, v) {
-                    Outcome2::Next(s2) => conforms(p, c, s2),
-                    Outcome2::Stuck(_) => false,
-                    _ => true,
-                }
-                &&& !(crate::v2::prim::prim_missing(p, s1) is Stuck)
-            },
-    }
-}
-
-/// Soundness of the structural verifier: for an accepted program, the
-/// initial state conforms, and from a conforming state every step (with
-/// every completion of a primitive) is not stuck and leads to a conforming
-/// state. Hence no execution of an accepted program reaches
-/// `Outcome2::Stuck`. (The task primitives keep conformance too; their
-/// statement follows the same pattern and is left to Phase 3.)
-///
-/// Phase 3 proves `soundness()`; until then it is a statement only: there
-/// is no `admit` and nothing depends on it.
-pub open spec fn soundness() -> bool {
-    forall|p: Program2, c: Cert|
-        crate::v2::exec::wf_program2(p) && #[trigger] accepted(p, c) ==> {
-            &&& forall|heap0: Seq<HeapObj>, globals0: Seq<Value>|
-                    conforms(p, c, #[trigger] crate::v2::prim::initial_state(p, heap0, globals0))
-            &&& forall|s: State2| #[trigger] conforms(p, c, s) ==> completions_ok(p, c, s)
-        }
+    &&& forall|m: int| 0 <= m < p.methods.len() ==> #[trigger] method_ok(p, c, m, trusted)
 }
 
 } // verus!
