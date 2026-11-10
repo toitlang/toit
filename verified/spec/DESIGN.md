@@ -40,7 +40,7 @@ Phase 4 refines. It specifies two bytecode formats:
 | `tests/run_one.sh` | | Same for one file, for debugging. |
 | `../tools/run_suite.toit` | | Differential test on the repository's whole test suite (both formats). |
 | `tests/compare_trace.py` | | Compares the debug VM's `-Xtrace` with the interpreter's instruction trace. |
-| `tests/measure.py` | | Executed-instruction and code-size comparison of the two formats. |
+| `verified/tools/measure.toit` | | Executed-instruction and code-size comparison of the two formats (on the dumps of `run_suite --format both`). |
 | `verified/tools/code_size.toit` | | Code size of the two formats on the system snapshots and ten tests (format note 15). |
 | `verified/tools/method_steps.toit` | | Executed instructions per method in both formats (format note 16). |
 | `format/` | | The format-2 decisions. |
