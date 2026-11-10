@@ -46,8 +46,144 @@ pub proof fn theorem_initial(p: Program2, c: Cert, trusted: bool, heap0: Seq<Hea
         wf(p, c, initial_state(p, heap0, globals0)),
 
 ==============================================================================
-Verified exec entry points: crate core (0)
+Verified exec entry points: crate core (11)
 ==============================================================================
+
+--- Machine::binary_result  (core/src/exec.rs)
+pub fn binary_result(&mut self, v: usize) -> (r: Ctl)
+    requires
+        old(self).stack_ok(), old(self).top + 1 < old(self).lim,
+        old(self).bci + 1 < usize::MAX,
+    ensures
+        final(self).stack_ok(),
+        final(self).same_frame(old(self)),
+        r == Ctl::Next,
+        final(self).words() == old(self).words().subrange(0, old(self).height() - 2).push(v),
+        final(self).bci == old(self).bci + 1,
+
+--- Machine::op_load_local  (core/src/exec.rs)
+pub fn op_load_local(&mut self, n: usize, len: usize) -> (r: Ctl)
+    requires old(self).stack_ok(), old(self).bci + len < usize::MAX,
+    ensures
+        final(self).stack_ok(),
+        final(self).same_frame(old(self)),
+        // `spec::op_load_local`: the slot must belong to the frame.
+        !(old(self).top + n < old(self).lim) ==> r == Ctl::Stuck(1),
+        old(self).top + n < old(self).lim && old(self).top > old(self).ftop ==> r == Ctl::Next
+            && final(self).words() == old(self).words().push(old(self).words()[old(self).height() - 1 - n])
+            && final(self).bci == old(self).bci + len,
+
+--- Machine::op_pop_load_local  (core/src/exec.rs)
+pub fn op_pop_load_local(&mut self, n: usize) -> (r: Ctl)
+    requires old(self).stack_ok(), old(self).bci + 2 < usize::MAX, n < 256,
+    ensures
+        final(self).stack_ok(),
+        final(self).same_frame(old(self)),
+        !(old(self).top + n + 1 < old(self).lim) ==> r == Ctl::Stuck(1),
+        old(self).top + n + 1 < old(self).lim ==> r == Ctl::Next
+            && final(self).words() == old(self).words().update(old(self).height() - 1,
+                old(self).words()[old(self).height() - 2 - n])
+            && final(self).bci == old(self).bci + 2,
+
+--- Machine::op_store_local  (core/src/exec.rs)
+pub fn op_store_local(&mut self, n: usize) -> (r: Ctl)
+    requires old(self).stack_ok(), old(self).bci + 2 < usize::MAX,
+    ensures
+        final(self).stack_ok(),
+        final(self).same_frame(old(self)),
+        !(old(self).top + n < old(self).lim) ==> r == Ctl::Stuck(1),
+        old(self).top + n < old(self).lim ==> r == Ctl::Next
+            && final(self).words() == old(self).words().update(old(self).height() - 1 - n,
+                old(self).words()[old(self).height() - 1])
+            && final(self).bci == old(self).bci + 2,
+
+--- Machine::op_store_local_pop  (core/src/exec.rs)
+pub fn op_store_local_pop(&mut self, n: usize) -> (r: Ctl)
+    requires old(self).stack_ok(), old(self).bci + 2 < usize::MAX,
+    ensures
+        final(self).stack_ok(),
+        final(self).same_frame(old(self)),
+        !(1 <= n && old(self).top + n < old(self).lim) ==> r == Ctl::Stuck(1),
+        1 <= n && old(self).top + n < old(self).lim ==> r == Ctl::Next
+            && final(self).words() == old(self).words().update(old(self).height() - 1 - n,
+                old(self).words()[old(self).height() - 1]).subrange(0, old(self).height() - 1)
+            && final(self).bci == old(self).bci + 2,
+
+--- Machine::op_load_literal  (core/src/exec.rs)
+pub fn op_load_literal(&mut self, p: &Program, i: usize, len: usize) -> (r: Ctl)
+    requires old(self).stack_ok(), old(self).bci + len < usize::MAX,
+    ensures
+        final(self).stack_ok(),
+        final(self).same_frame(old(self)),
+        i >= p.literals@.len() ==> r == Ctl::Stuck(12),
+        i < p.literals@.len() && old(self).top > old(self).ftop ==> r == Ctl::Next
+            && final(self).words() == old(self).words().push(p.literals@[i as int])
+            && final(self).bci == old(self).bci + len,
+
+--- Machine::op_load_smis_0  (core/src/exec.rs)
+pub fn op_load_smis_0(&mut self, n: usize) -> (r: Ctl)
+    requires old(self).stack_ok(), old(self).bci + 2 < usize::MAX,
+    ensures
+        final(self).stack_ok(),
+        final(self).same_frame(old(self)),
+        old(self).top < old(self).ftop + n ==> r == Ctl::Stuck(100),
+        old(self).top >= old(self).ftop + n ==> r == Ctl::Next
+            && final(self).words() == old(self).words() + Seq::new(n as nat, |i: int| 0usize)
+            && final(self).bci == old(self).bci + 2,
+
+--- Machine::op_load_global  (core/src/exec.rs)
+pub fn op_load_global(&mut self, g: usize, len: usize) -> (r: Ctl)
+    requires old(self).stack_ok(), old(self).bci + len < usize::MAX,
+    ensures
+        final(self).stack_ok(),
+        final(self).same_frame(old(self)),
+        g >= old(self).globals@.len() ==> r == Ctl::Stuck(12),
+        g < old(self).globals@.len() && old(self).top > old(self).ftop ==> r == Ctl::Next
+            && final(self).words() == old(self).words().push(old(self).globals@[g as int])
+            && final(self).bci == old(self).bci + len,
+
+--- Machine::op_store_global  (core/src/exec.rs)
+pub fn op_store_global(&mut self, g: usize, len: usize) -> (r: Ctl)
+    requires old(self).stack_ok(), old(self).bci + len < usize::MAX,
+    ensures
+        final(self).stack_ok(),
+        g >= old(self).globals@.len() ==> r == Ctl::Stuck(12),
+        g < old(self).globals@.len() && !(old(self).top < old(self).lim) ==> r == Ctl::Stuck(1),
+        g < old(self).globals@.len() && old(self).top < old(self).lim ==> r == Ctl::Next
+            && final(self).words() == old(self).words()
+            && final(self).globals@ == old(self).globals@.update(g as int, old(self).words()[old(self).height() - 1])
+            && final(self).bci == old(self).bci + len,
+
+--- Machine::op_pop  (core/src/exec.rs)
+pub fn op_pop(&mut self, n: usize, len: usize) -> (r: Ctl)
+    requires old(self).stack_ok(), old(self).bci + len < usize::MAX,
+    ensures
+        final(self).stack_ok(),
+        final(self).same_frame(old(self)),
+        !(old(self).top + n <= old(self).lim) ==> r == Ctl::Stuck(1),
+        old(self).top + n <= old(self).lim ==> r == Ctl::Next
+            && final(self).words() == old(self).words().subrange(0, old(self).height() - n)
+            && final(self).bci == old(self).bci + len,
+
+--- Machine::op_branch  (core/src/exec.rs)
+pub fn op_branch(&mut self, p: &Program, kind: usize, target: usize, len: usize) -> (r: Ctl)
+    requires old(self).stack_ok(), old(self).bci + len < usize::MAX,
+    ensures
+        final(self).stack_ok(),
+        final(self).same_frame(old(self)),
+        // The condition (if any) is popped.
+        kind != 0 && !(old(self).top < old(self).lim) ==> r == Ctl::Stuck(1),
+        kind != 0 && old(self).top < old(self).lim ==>
+            final(self).words() == old(self).words().subrange(0, old(self).height() - 1),
+        kind == 0 ==> final(self).words() == old(self).words(),
+        ({
+            let taken = kind == 0 || branch_taken(p, kind, old(self).words()[old(self).height() - 1]);
+            (kind == 0 || old(self).top < old(self).lim) ==> {
+                &&& !taken ==> r == Ctl::Next && final(self).bci == old(self).bci + len
+                &&& taken && target_ok(p, old(self).method, target) ==> r == Ctl::Next && final(self).bci == target
+                &&& taken && !target_ok(p, old(self).method, target) ==> r == Ctl::Stuck(14)
+            }
+        }),
 
 ==============================================================================
 Verified exec entry points: crate spec (6)

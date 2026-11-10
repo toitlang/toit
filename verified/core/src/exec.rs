@@ -84,6 +84,22 @@ pub enum Ctl {
     Stuck(usize),
 }
 
+/// `spec::branch_taken` on words: kind 0 always, 1 if true, 2 if false, 3
+/// if not null (true is everything but false and null).
+pub open spec fn branch_taken(p: &Program, kind: usize, v: usize) -> bool {
+    if kind == 0 { true }
+    else if kind == 1 { v != p.false_ && v != p.null }
+    else if kind == 2 { !(v != p.false_ && v != p.null) }
+    else { v != p.null }
+}
+
+/// The branch target lies inside the method (`spec::branch_to`).
+pub open spec fn target_ok(p: &Program, method: usize, target: usize) -> bool {
+    &&& method < p.methods@.len()
+    &&& p.methods@[method as int].entry as usize <= target
+    &&& target < p.methods@[method as int].end as usize
+}
+
 pub open spec fn smi_word(v: int) -> usize {
     (v * 2) as usize
 }
@@ -448,6 +464,22 @@ impl Machine {
     #[inline(always)]
     pub fn op_branch(&mut self, p: &Program, kind: usize, target: usize, len: usize) -> (r: Ctl)
         requires old(self).stack_ok(), old(self).bci + len < usize::MAX,
+        ensures
+            final(self).stack_ok(),
+            final(self).same_frame(old(self)),
+            // The condition (if any) is popped.
+            kind != 0 && !(old(self).top < old(self).lim) ==> r == Ctl::Stuck(1),
+            kind != 0 && old(self).top < old(self).lim ==>
+                final(self).words() == old(self).words().subrange(0, old(self).height() - 1),
+            kind == 0 ==> final(self).words() == old(self).words(),
+            ({
+                let taken = kind == 0 || branch_taken(p, kind, old(self).words()[old(self).height() - 1]);
+                (kind == 0 || old(self).top < old(self).lim) ==> {
+                    &&& !taken ==> r == Ctl::Next && final(self).bci == old(self).bci + len
+                    &&& taken && target_ok(p, old(self).method, target) ==> r == Ctl::Next && final(self).bci == target
+                    &&& taken && !target_ok(p, old(self).method, target) ==> r == Ctl::Stuck(14)
+                }
+            }),
     {
         if kind != 0 {
             if !self.has_slot(0) {
@@ -478,12 +510,15 @@ impl Machine {
         Ctl::Next
     }
 
+}
+
+} // verus!
+
+impl Machine {
     // --- Blocks ---------------------------------------------------------------
 
     #[inline(always)]
-    pub fn op_load_block(&mut self, k: usize) -> (r: Ctl)
-        requires old(self).stack_ok(), old(self).bci + 2 < usize::MAX,
-    {
+    pub fn op_load_block(&mut self, k: usize) -> Ctl {
         if !self.has_slot(k) || self.ftop < FRAME_WORDS {
             return Ctl::Stuck(1);
         }
@@ -493,26 +528,10 @@ impl Machine {
         if f >= 0x100_0000_0000 {
             return Ctl::Stuck(100);
         }
-        // (f << BLOCK_SLOT_BITS) | slot, with slot < len < 1 << BLOCK_SLOT_BITS.
-        let v = smi_word_exec((f * 0x10_0000 + slot) as i64);
+        let v = Machine::block_value(f, slot);
         self.push_next(v, 2)
     }
 
-}
-
-#[inline(always)]
-pub fn smi_word_exec(v: i64) -> (r: usize)
-    requires 0 <= v < 0x4000_0000_0000_0000,
-    ensures r == smi_word(v as int),
-{
-    let u = v as usize;
-    assert(u as int == v as int);
-    u * 2
-}
-
-} // verus!
-
-impl Machine {
     // --- Fields -------------------------------------------------------------
 
     #[inline(always)]
