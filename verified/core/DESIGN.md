@@ -218,7 +218,7 @@ Scripts: build/bench/ir.sh (instruction counts), build/bench/hot.sh
   verify-reject-test pins format 1 (it tests the format-1 verifier's
   options and fuzzer).
 - verified/tools/untrusted_suite.toit: every program the reference
-  interpreter can run (run_suite.py status `pass` or `steplimit`) runs
+  interpreter can run (run_suite.toit status `pass` or `steplimit`) runs
   untrusted in format 2 and trusted in format 1; stdout and exit code
   must match.
 - verified/tools/core_fuzz.toit: mutates format-2 snapshots, launches each

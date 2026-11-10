@@ -38,7 +38,7 @@ Phase 4 refines. It specifies two bytecode formats:
 | `src/bin/toit_spec_run.rs` | plain Rust | CLI: `toit-spec-run [--word-bits 32\|64] [--trace] [--trace-throw] [--trace-bci] [--histogram] [--no-verified] [--stats] [--program-name P] <dump>`. |
 | `tests/run_tests.sh` | | Runs `tests/toit/*.toit` on the C++ VM and on the interpreter (format 1: 64-bit, 32-bit, unverified-only; format 2: 64-bit, 32-bit) and diffs. |
 | `tests/run_one.sh` | | Same for one file, for debugging. |
-| `tests/run_suite.py` | | Differential test on the repository's whole test suite (both formats). |
+| `../tools/run_suite.toit` | | Differential test on the repository's whole test suite (both formats). |
 | `tests/compare_trace.py` | | Compares the debug VM's `-Xtrace` with the interpreter's instruction trace. |
 | `tests/measure.py` | | Executed-instruction and code-size comparison of the two formats. |
 | `format/` | | The format-2 decisions. |
@@ -46,7 +46,8 @@ Phase 4 refines. It specifies two bytecode formats:
 
 Commands: `cargo verus verify` (proofs), `cargo build --release`,
 `cargo test --release`, `tests/run_tests.sh` (needs `make sdk`),
-`tests/run_suite.py --format both` (needs `make download-packages`),
+`toit run ../tools/run_suite.toit -- --format both` (needs
+`make download-packages`),
 `tests/compare_trace.py <program>` (needs a debug build in `build/dbg`,
 `make BUILD=build/dbg BUILD_TYPE=Debug sdk`).
 
@@ -257,7 +258,7 @@ same results as the verified mix.
 
 ### Validation at scale (Phase 2)
 
-`tests/run_suite.py` discovers every `tests/*-test.toit`,
+`../tools/run_suite.toit` discovers every `tests/*-test.toit`,
 `tests/regress/*-test.toit`, `-test-slow` and `-test-force` program (418),
 compiles it, dumps it, runs it on the interpreter, and when the
 interpreter does not stop at an unimplemented primitive or a system

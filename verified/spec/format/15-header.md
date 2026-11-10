@@ -111,6 +111,6 @@ small methods of many classes, each with a selector and a receiver range;
 it is +1.1 %.
 
 Over the 272 tests of the suite that run in both formats
-(`run_suite.py --format both`): bytecodes 8.04 MB in format 1, 9.76 MB
+(`run_suite.toit --format both`): bytecodes 8.04 MB in format 1, 9.76 MB
 before (+21.4 %), 7.46 MB after (-7.3 %); headers 0.89 MB, 3.43 MB, 1.12
 MB.

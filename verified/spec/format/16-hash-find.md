@@ -59,7 +59,7 @@ tests at +24.4 %. Everything else gets cheaper in format 2 (no frame
 words to push, `TRY` instead of `LINK`/`UNLINK`, cheaper task switches).
 
 The whole suite (the 272 tests that pass in both formats,
-`run_suite.py --format both`): 259.9 M -> 317.4 M instructions, +22.1 %
+`run_suite.toit --format both`): 259.9 M -> 317.4 M instructions, +22.1 %
 (the +13.9 % of the Phase 2 report was over 268 tests; `list-test`,
 which now finishes within the step limit, adds 143 M -> 182 M):
 
@@ -78,7 +78,7 @@ Over the suite the `repeat` loop dominates: `list-test` alone runs 3.5 M
 load, `INVOKE_LT`, branch, block load, `INVOKE_BLOCK`, pop, `INVOKE_ADD`,
 store, `BRANCH_BACK`) around a block call whose body runs anyway.
 
-Caveat: the format-1 programs of `run_tests.sh` and `run_suite.py` are
+Caveat: the format-1 programs of `run_tests.sh` and `run_suite.toit` are
 compiled by `toit compile`, which keeps asserts, the format-2 programs by
 `toit.compile -Xbytecode_format=2`, which drops them (`maps.toit`: 105 640
 instructions with asserts, 101 283 without, both format 1). The `assert_`

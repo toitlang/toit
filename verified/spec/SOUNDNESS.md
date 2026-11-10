@@ -468,7 +468,7 @@ protocol (core requests R7, R6, S1; 2026-11-10, branch
 spec/raise-and-resources): `verified/check.sh --tests` passed (Verus spec
 718 / core 328 verified, 0 errors; escape-hatch audit passed, no new
 allowlist entries; layout check; run_tests.sh 15/15; vmverify tests;
-sandbox ctests 93/93). `run_suite.py --format 2` over 428 tests: 274 pass
+sandbox ctests 93/93). `run_suite.toit --format 2` over 428 tests: 274 pass
 (the 273 below plus the new byte-content-depth-test), 137 unimplemented
 primitive, 8 step limit, 2 nondeterministic, 4 compile errors, 3
 primitive-oracle differences (events-primitive-group-test, and the new
@@ -485,7 +485,7 @@ Numbers after the Phase 4 changes (R5, R1, R4; 2026-11-10):
 Numbers after the Phase 4 changes (R5, R1, R4; 2026-11-10), updated for
 the streaming checker (R8, branch spec/verifier-memory):
 
-* `verified/tools/verify_suite.toit`: every program found by `run_suite.py` and the
+* `verified/tools/verify_suite.toit`: every program found by `run_suite.toit` and the
   spec test programs (443 sources) compiled with `-Xbytecode_format=2`:
   439 accepted (verdict `verify && x_loaded_ok`), 4 do not compile (the
   `-force` negative compiler tests); the same programs as with the
@@ -513,7 +513,7 @@ the streaming checker (R8, branch spec/verifier-memory):
   `finally_records`, try/finally inside finally code, breaks out of
   finally code, the value slot) produce the C++ VM's output in format 1
   and format 2, 64- and 32-bit.
-* `run_suite.py --format 2` over 423 suite tests: 273 produce the C++
+* `run_suite.toit --format 2` over 423 suite tests: 273 produce the C++
   VM's output on the reference interpreter (64- and 32-bit; the 268 of
   the previous run among them), 135 use an unimplemented primitive, 8 hit
   the step limit, 2 are nondeterministic, 4 do not compile, and 1

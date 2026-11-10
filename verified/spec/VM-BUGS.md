@@ -1,7 +1,7 @@
 # C++ VM findings from the spec validation
 
 Phase 2 validation of the executable spec against the C++ VM
-(`tests/run_suite.py`, `tests/compare_trace.py`, see DESIGN.md
+(`../tools/run_suite.toit`, `tests/compare_trace.py`, see DESIGN.md
 "Validation at scale"). Each entry: where, what, how to reproduce, and a
 suggested fix. Entries are for another agent to turn into upstream PRs.
 

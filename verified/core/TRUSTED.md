@@ -137,7 +137,7 @@ moved-from place is not read in between, and nothing unwinds
 
 verified/spec/src/v2/spec.rs is the definition the handlers follow. That it
 matches the format-1 VM's observable behavior is validated by the
-differential tests of verified/spec (run_suite.py) and by
+differential tests of verified/spec (run_suite.toit) and by
 verified/tools/untrusted_suite.toit, not proven. Known differences of
 the core from the spec, all outside the spec's model:
 

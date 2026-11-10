@@ -88,7 +88,7 @@ no_std readiness, gates. Decisions and results:
   audit passed; layout check passed; spec differential tests 15/15;
   sandbox ctests 90/91, the failure (tests/sandbox/field-access-test)
   is pre-existing: it fails identically on sandbox-integration's src/
-  (no file outside verified/ changed on this branch). run_suite.py
+  (no file outside verified/ changed on this branch). run_suite.toit
   --format 2: 273 pass (all 268 of the previous run among them), 135
   unimplemented, 8 step limit, 2 nondeterministic, 4 compile errors, 1
   primitive-oracle difference (events-primitive-group-test).
