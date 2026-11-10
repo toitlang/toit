@@ -50,3 +50,4 @@ pub mod arrays;
 pub mod theorem;
 pub mod unwind;
 pub mod numbers;
+pub mod tail;

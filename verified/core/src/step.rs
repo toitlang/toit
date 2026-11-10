@@ -541,6 +541,21 @@ pub fn step(m: &mut Machine, env: &Env) -> (r: Ctl)
             }
             return crate::calls::op_invoke_static(m, env, bci, opcode, d);
         },
+        54 => {
+            let d = code_u16(p, bci + 1);
+            proof {
+                assert(sp::step(ap, g) == sp::op_invoke_static_tail(ap, g, d as int)) by { reveal(sp::step); }
+            }
+            return crate::tail::op_invoke_static_tail(m, env, bci, opcode, d);
+        },
+        56 => {
+            proof { assert(sp::step(ap, g) == sp::op_invoke_lambda_tail(ap, g)) by { reveal(sp::step); } }
+            return crate::tail::op_invoke_lambda_tail(m, env, bci, opcode);
+        },
+        57 => {
+            proof { assert(sp::step(ap, g) == sp::op_invoke_initializer_tail(ap, g)) by { reveal(sp::step); } }
+            return crate::tail::op_invoke_initializer_tail(m, env, bci, opcode);
+        },
         58 => {
             let n = p.code.at(bci + 1) as usize;
             let sel = code_u16(p, bci + 2);
