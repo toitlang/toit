@@ -76,6 +76,7 @@ pub mod ints;
 pub mod array;
 pub mod blob;
 pub mod float;
+pub mod fp;
 pub mod bridge;
 
 verus! {

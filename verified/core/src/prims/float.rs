@@ -13,18 +13,282 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-//! STUB
+//! Float primitives (src/primitive_core.cc): arithmetic, comparisons,
+//! sign/NaN/finite tests, sqrt/ceil/floor/trunc, the conversions
+//! number_to_float, number_to_integer, float_to_raw(32), raw(32)_to_float,
+//! and compare_to / min_special_compare_to (`Interpreter::compare_numbers`).
+//!
+//! The float operations themselves are the trusted scalar functions of
+//! `fp`; what is proven is the argument decoding (the double accessor),
+//! the allocation of the result and the heap contract. float_round,
+//! float_to_string and float_parse stay in C++.
 
 use vstd::prelude::*;
+use crate::layout::*;
+use crate::abs::*;
+use crate::exec::*;
+use crate::view::*;
 use crate::prims::*;
-use toit_spec::types::Value;
+use crate::prims::index as ix;
+use crate::prims::fp;
+use toit_spec::types::{Value, HeapObj, Body};
+#[cfg(verus_keep_ghost)]
+use toit_spec::v2::sound::good;
 
 verus! {
 
+/// A `double` argument: its bits.
+#[inline(always)]
+pub fn double_arg(h: &Heap, w: usize, Ghost(v): Ghost<Value>) -> (r: Option<u64>)
+    requires
+        heap_model_ok(h.objs(), h.addrs(), h.class_bits()),
+        w == enc(h.addrs(), v), good(h.objs(), v), encodable(h.addrs(), v),
+    ensures r is Some <==> (v is Obj && h.objs()[v->Obj_0 as int].body is Double),
+        r is Some ==> r->Some_0 == h.objs()[v->Obj_0 as int].body->Double_0,
+{
+    proof { lemma_word(h, w, v); }
+    if w & 1 == 0 { return None; }
+    let ghost id = v->Obj_0 as int;
+    proof {
+        assert(obj_model_ok(h.objs()[id], h.class_bits(), h.addrs()));
+        h.lemma_body_tag(id);
+    }
+    if h.class_tag(w, Ghost(id)) == DOUBLE_TAG { Some(h.double_bits(w, Ghost(id))) } else { None }
+}
+
+/// A number (`compare_numbers`, `to_double`): (is an integer, its value
+/// as i64 bits or its double bits).
+#[inline(always)]
+pub fn num_arg(h: &Heap, w: usize, Ghost(v): Ghost<Value>) -> (r: Option<(bool, u64)>)
+    requires
+        heap_model_ok(h.objs(), h.addrs(), h.class_bits()),
+        w == enc(h.addrs(), v), good(h.objs(), v), encodable(h.addrs(), v),
+{
+    match ints::int_arg(h, w, Ghost(v)) {
+        Some(i) => Some((true, i as u64)),
+        None => match double_arg(h, w, Ghost(v)) {
+            Some(b) => Some((false, b)),
+            None => None,
+        },
+    }
+}
+
+/// A new double with the given bits.
+pub fn double_res(heap: &mut Heap, c: &Ctx, bits: u64) -> (r: (PrimOutcome, Ghost<Value>))
+    requires heap_inv(c.p, old(heap)),
+    ensures
+        prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+        !(r.0 is Failure),
+        r.0 is Success ==> ({
+            let v = r.1@;
+            &&& v is Obj
+            &&& final(heap).objs()[v->Obj_0 as int].body == Body::Double(bits)
+        }),
+{
+    if builtin_with_tag(c.p, heap, BUILTIN_DOUBLE, DOUBLE_TAG).is_none() {
+        return (PrimOutcome::NotPorted, Ghost(Value::Smi(0)));
+    }
+    let ghost h0 = *heap;
+    let w = c.al.double(heap, c.p, bits);
+    if w == 0 {
+        proof { lemma_post_refl(c.p, heap); }
+        return (PrimOutcome::NeedsGc, Ghost(Value::Smi(0)));
+    }
+    let ghost id = h0.objs().len() as int;
+    proof {
+        assert(heap.objs()[id] == heap.objs().last());
+        lemma_post_append(c.p, &h0, heap, w);
+    }
+    (PrimOutcome::Success(w), Ghost(Value::Obj(id as usize)))
+}
+
+/// float_add .. float_mod (`op` 0..4).
+pub fn float_binop(op: u8, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<Value>))
+    requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 2,
+    ensures prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+{
+    let x = match double_arg(heap, a.w[0], Ghost(a.vs@[0])) {
+        Some(x) => x,
+        None => return fail(c.p, heap, ROOT_WRONG_OBJECT_TYPE),
+    };
+    let y = match double_arg(heap, a.w[1], Ghost(a.vs@[1])) {
+        Some(y) => y,
+        None => return fail(c.p, heap, ROOT_WRONG_OBJECT_TYPE),
+    };
+    double_res(heap, c, fp::binop(op, x, y))
+}
+
+/// float_unary_minus, float_sqrt, float_ceil, float_floor, float_trunc
+/// (`op` 0..4).
+pub fn float_unop(op: u8, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<Value>))
+    requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 1,
+    ensures prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+{
+    let x = match double_arg(heap, a.w[0], Ghost(a.vs@[0])) {
+        Some(x) => x,
+        None => return fail(c.p, heap, ROOT_WRONG_OBJECT_TYPE),
+    };
+    double_res(heap, c, fp::unop(op, x))
+}
+
+/// float_less_than .. float_equals (`op` 0..4).
+pub fn float_compare(op: u8, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<Value>))
+    requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 2,
+    ensures prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+{
+    let x = match double_arg(heap, a.w[0], Ghost(a.vs@[0])) {
+        Some(x) => x,
+        None => return fail(c.p, heap, ROOT_WRONG_OBJECT_TYPE),
+    };
+    let y = match double_arg(heap, a.w[1], Ghost(a.vs@[1])) {
+        Some(y) => y,
+        None => return fail(c.p, heap, ROOT_WRONG_OBJECT_TYPE),
+    };
+    ok_bool(c.p, heap, fp::compare(op, x, y))
+}
+
+/// float_sign (0), float_is_nan (1), float_is_finite (2), float_to_raw
+/// (3), float_to_raw32 (4).
+pub fn float_query(op: u8, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<Value>))
+    requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 1,
+    ensures
+        prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+        // float_to_raw: the bits as an integer.
+        (op == 3 && r.0 is Success) ==> a.vs@[0] is Obj
+            && old(heap).objs()[a.vs@[0]->Obj_0 as int].body is Double
+            && toit_spec::v2::prim_core::int_val(final(heap).objs(), r.1@)
+                == Some(old(heap).objs()[a.vs@[0]->Obj_0 as int].body->Double_0 as i64),
+{
+    let x = match double_arg(heap, a.w[0], Ghost(a.vs@[0])) {
+        Some(x) => x,
+        None => return fail(c.p, heap, ROOT_WRONG_OBJECT_TYPE),
+    };
+    if op == 0 {
+        let (rw, rv) = smi_res(heap, fp::sign(x));
+        ok(c.p, heap, rw, rv)
+    } else if op == 1 {
+        ok_bool(c.p, heap, fp::is_nan(x))
+    } else if op == 2 {
+        ok_bool(c.p, heap, fp::is_finite(x))
+    } else if op == 3 {
+        ints::int_res(heap, c, x as i64)
+    } else {
+        let (rw, rv) = smi_res(heap, fp::to_raw32(x) as i64);
+        ok(c.p, heap, rw, rv)
+    }
+}
+
+/// number_to_float (`to_double`: an integer or a double).
+pub fn number_to_float(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<Value>))
+    requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 1,
+    ensures prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+{
+    match num_arg(heap, a.w[0], Ghost(a.vs@[0])) {
+        None => fail(c.p, heap, ROOT_WRONG_OBJECT_TYPE),
+        Some((true, i)) => double_res(heap, c, fp::from_int(i as i64)),
+        Some((false, b)) => double_res(heap, c, b),
+    }
+}
+
+/// number_to_integer: an integer as is, a double truncated.
+pub fn number_to_integer(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<Value>))
+    requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 1,
+    ensures prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+{
+    if ints::int_arg(heap, a.w[0], Ghost(a.vs@[0])).is_some() {
+        return ok(c.p, heap, a.w[0], Ghost(a.vs@[0]));
+    }
+    let x = match double_arg(heap, a.w[0], Ghost(a.vs@[0])) {
+        Some(x) => x,
+        None => return fail(c.p, heap, ROOT_WRONG_OBJECT_TYPE),
+    };
+    match fp::to_int(x) {
+        None => fail(c.p, heap, ROOT_INVALID_ARGUMENT),
+        Some(None) => fail(c.p, heap, ROOT_OUT_OF_RANGE),
+        Some(Some(i)) => ints::int_res(heap, c, i),
+    }
+}
+
+/// raw_to_float (`int64`) and raw32_to_float (fails OUT_OF_RANGE above 32
+/// bits).
+pub fn raw_to_float(raw32: bool, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<Value>))
+    requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 1,
+    ensures
+        prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+        (!raw32 && r.0 is Success) ==> ({
+            let x = toit_spec::v2::prim_core::int_val(old(heap).objs(), a.vs@[0]);
+            &&& x is Some && r.1@ is Obj
+            &&& final(heap).objs()[r.1@->Obj_0 as int].body == Body::Double(x->Some_0 as u64)
+        }),
+{
+    let x = match ints::int_arg(heap, a.w[0], Ghost(a.vs@[0])) {
+        Some(x) => x,
+        None => return fail(c.p, heap, ROOT_WRONG_OBJECT_TYPE),
+    };
+    if !raw32 { return double_res(heap, c, x as u64); }
+    let u = x as u64;
+    if (u >> 32u64) != 0 { return fail(c.p, heap, ROOT_OUT_OF_RANGE); }
+    double_res(heap, c, fp::from_raw32(u as u32))
+}
+
+/// compare_to (the result -1, 0, 1) and min_special_compare_to (the
+/// LESS_FOR_MIN flag); INVALID_ARGUMENT unless both are numbers.
+pub fn compare_to(min_special: bool, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<Value>))
+    requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 2,
+    ensures prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+{
+    let x = num_arg(heap, a.w[0], Ghost(a.vs@[0]));
+    let y = num_arg(heap, a.w[1], Ghost(a.vs@[1]));
+    let (xi, xb, yi, yb) = match (x, y) {
+        (Some((xi, xb)), Some((yi, yb))) => (xi, xb, yi, yb),
+        _ => return fail(c.p, heap, ROOT_INVALID_ARGUMENT),
+    };
+    let result = fp::compare_numbers(xi, xb, yi, yb);
+    if min_special {
+        ok_bool(c.p, heap, result & 4 != 0)
+    } else {
+        let v = (result & 3) as i64 - 2;
+        proof { assert((result & 3) <= 3) by (bit_vector); }
+        let (rw, rv) = smi_res(heap, v);
+        ok(c.p, heap, rw, rv)
+    }
+}
+
+/// The float family of the dispatch table.
 pub fn dispatch(i: usize, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<Value>))
     requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)),
     ensures prim_post(c.p, old(heap), final(heap), r.0, r.1@), contract(c.p, i as int, a, old(heap), final(heap), r.0, r.1@),
 {
+    let n = a.n;
+    if n == 1 {
+        if i == ix::FLOAT_UNARY_MINUS { return float_unop(0, a, heap, c); }
+        if i == ix::FLOAT_SQRT { return float_unop(1, a, heap, c); }
+        if i == ix::FLOAT_CEIL { return float_unop(2, a, heap, c); }
+        if i == ix::FLOAT_FLOOR { return float_unop(3, a, heap, c); }
+        if i == ix::FLOAT_TRUNC { return float_unop(4, a, heap, c); }
+        if i == ix::FLOAT_SIGN { return float_query(0, a, heap, c); }
+        if i == ix::FLOAT_IS_NAN { return float_query(1, a, heap, c); }
+        if i == ix::FLOAT_IS_FINITE { return float_query(2, a, heap, c); }
+        if i == ix::FLOAT_TO_RAW { return float_query(3, a, heap, c); }
+        if i == ix::FLOAT_TO_RAW32 { return float_query(4, a, heap, c); }
+        if i == ix::NUMBER_TO_FLOAT { return number_to_float(a, heap, c); }
+        if i == ix::NUMBER_TO_INTEGER { return number_to_integer(a, heap, c); }
+        if i == ix::RAW_TO_FLOAT { return raw_to_float(false, a, heap, c); }
+        if i == ix::RAW32_TO_FLOAT { return raw_to_float(true, a, heap, c); }
+    } else if n == 2 {
+        if i == ix::FLOAT_ADD { return float_binop(0, a, heap, c); }
+        if i == ix::FLOAT_SUBTRACT { return float_binop(1, a, heap, c); }
+        if i == ix::FLOAT_MULTIPLY { return float_binop(2, a, heap, c); }
+        if i == ix::FLOAT_DIVIDE { return float_binop(3, a, heap, c); }
+        if i == ix::FLOAT_MOD { return float_binop(4, a, heap, c); }
+        if i == ix::FLOAT_LESS_THAN { return float_compare(0, a, heap, c); }
+        if i == ix::FLOAT_LESS_THAN_OR_EQUAL { return float_compare(1, a, heap, c); }
+        if i == ix::FLOAT_GREATER_THAN { return float_compare(2, a, heap, c); }
+        if i == ix::FLOAT_GREATER_THAN_OR_EQUAL { return float_compare(3, a, heap, c); }
+        if i == ix::FLOAT_EQUALS { return float_compare(4, a, heap, c); }
+        if i == ix::COMPARE_TO { return compare_to(false, a, heap, c); }
+        if i == ix::MIN_SPECIAL_COMPARE_TO { return compare_to(true, a, heap, c); }
+    }
     (PrimOutcome::NotPorted, Ghost(Value::Smi(0)))
 }
 
