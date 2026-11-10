@@ -97,6 +97,17 @@ class Scheduler {
   // This only fails if the process id is invalid there are no retryable (allocation related) failures.
   message_err_t send_message(int process_id, Message* message, bool free_on_failure = true);
 
+  // Send a message from a Toit process to the process with the given id,
+  // or to the system process if the id is negative. Enforces the sender's
+  // policy (allowed targets) and the mailbox quotas. Always takes over the
+  // message.
+  message_err_t send_message_from(Process* sender, int process_id, SystemMessage* message);
+
+  // Adds [target] to the allowed-target set of the group of the process
+  // with id [pid]. Does nothing for groups whose policy doesn't restrict
+  // messaging. Returns false if there is no such process.
+  bool grant_send(int pid, int target);
+
   // Returns the policy kind of the process with the given id, or -1 if there
   // is no such process.
   int policy_kind(int pid);
@@ -148,6 +159,8 @@ class Scheduler {
   Object* process_stats(Array* array, int group_id, int process_id, Process* calling_process);
 
   static const int INVALID_PROCESS_ID = -1;
+  // Returned by spawn when the process quota of the group is exhausted.
+  static const int QUOTA_EXCEEDED_PROCESS_ID = -2;
 
   bool is_locked() const { return OS::is_locked(mutex_); }
   bool is_boot_process(Process* process) const { return boot_process_ == process; }

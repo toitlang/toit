@@ -38,11 +38,11 @@ class Container:
   resources/Set ::= {}
 
   /**
-  The policy kind the container runs with (see
-    $ContainerService.POLICY-TRUSTED). Determined when the container is
-    started.
+  The policy the container runs with: a policy kind (see
+    $ContainerService.POLICY-TRUSTED) or a list of a policy kind followed
+    by quotas. Determined when the container is started.
   */
-  policy/int := ContainerService.POLICY-TRUSTED
+  policy/any := ContainerService.POLICY-TRUSTED
 
   /**
   Whether an error in this container terminates the system. Containers
@@ -62,13 +62,22 @@ class Container:
 
   start arguments/any=image.default-arguments --policy/any=null -> none:
     if pids_: throw "Already started"
-    kind := policy or image.default-policy
-    if kind != ContainerService.POLICY-TRUSTED and kind != ContainerService.POLICY-UNTRUSTED:
-      throw "INVALID_ARGUMENT"
+    validated := validate-policy_ (policy or image.default-policy)
+    kind := validated is Array_ ? validated[0] : validated
     explicitly-untrusted := policy != null and kind == ContainerService.POLICY-UNTRUSTED
-    this.policy = kind
+    this.policy = validated
     critical = image.run-critical and not explicitly-untrusted
     pids_ = {image.spawn this arguments}
+
+  static validate-policy_ policy/any -> any:
+    kind := policy is List ? (policy.is-empty ? null : policy[0]) : policy
+    if kind != ContainerService.POLICY-TRUSTED and kind != ContainerService.POLICY-UNTRUSTED:
+      throw "INVALID_ARGUMENT"
+    if policy is List:
+      if policy.size > 9: throw "INVALID_ARGUMENT"
+      policy.do: if it is not int: throw "WRONG_OBJECT_TYPE"
+      return Array_.from policy
+    return policy
 
   stop -> none:
     if not pids_: throw "Not started"

@@ -25,6 +25,17 @@ RPC-SERVICES-CLOSE-RESOURCE_ /int ::= 303
 RANDOM-ID-LIMIT_       /int ::= 0x3fff_ffff
 RESOURCE-HANDLE-LIMIT_ /int ::= 0x1fff_ffff  // Will be shifted up by one.
 
+// Policy kind of sandboxed processes. Keep in sync with
+// PrimitivePolicy::Kind in src/primitive_policy.h.
+POLICY-UNTRUSTED_ /int ::= 2
+
+/**
+Returns the policy kind of the process with the given $pid, or -1 if
+  there is no such process. Not available to sandboxed processes.
+*/
+process-policy_ pid/int -> int:
+  #primitive.core.process-policy
+
 _client_ /ServiceDiscoveryService ::= (ServiceDiscoveryServiceClient).open
 
 /**
@@ -408,6 +419,18 @@ class ServiceProvider:
   on-opened client/int -> none:
     // Override in subclasses.
 
+  /**
+  Whether clients in sandboxed (untrusted) containers may open this
+    provider's services.
+
+  Sandboxed processes can only reach providers they discovered, so
+    providers outside the system process accept them by default.
+    Providers in the system process are reachable by every process, so
+    they reject sandboxed clients unless they override this.
+  */
+  accepts-untrusted-clients -> bool:
+    return Process.current.id != SYSTEM-PROCESS-ID_
+
   on-closed client/int -> none:
     // Override in subclasses.
 
@@ -764,6 +787,8 @@ class ServiceManager_ implements SystemMessageHandler_:
     provider/ServiceProvider? ::= providers_.get id
     if not provider: throw "Unknown service:$id"
     service := provider._validate_ uuid major minor
+    if not provider.accepts-untrusted-clients and pid != Process.current.id:
+      if (process-policy_ pid) == POLICY-UNTRUSTED_: throw "PERMISSION_DENIED"
 
     clients/Set ::= clients-by-pid_.get pid --init=(: {})
     if clients.is-empty and pid != Process.current.id:

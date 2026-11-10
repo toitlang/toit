@@ -338,6 +338,7 @@ TYPE_PRIMITIVE_SMI(firmware_mapping_copy)
 TYPE_PRIMITIVE_BYTE_ARRAY(rtc_user_bytes)
 
 TYPE_PRIMITIVE_STRING(hostname)
+TYPE_PRIMITIVE_BOOL(process_grant_send)
 TYPE_PRIMITIVE_SMI(process_policy)
 
 bool TypePrimitive::uses_entry_task(unsigned module, unsigned index) {

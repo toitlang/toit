@@ -28,6 +28,12 @@ Services with this tag that are provided by the system process are only
 */
 TAG-SANDBOX-ONLY ::= "sandbox-only"
 
+/**
+Tag added to every service provided by a sandboxed process, so clients can
+  deny such providers with a restricted service selector.
+*/
+TAG-UNTRUSTED-PROVIDER ::= "untrusted-provider"
+
 class DiscoverableService:
   pid/int
   id/int
@@ -69,6 +75,10 @@ class SystemServiceManager extends ServiceProvider
     install
     (SandboxPrintServiceProvider).install
 
+  // Every process needs service discovery, sandboxed ones included.
+  accepts-untrusted-clients -> bool:
+    return true
+
   handle index/int arguments/any --gid/int --client/int -> any:
     pid := pid --client=client
     if index == ServiceDiscoveryService.DISCOVER-INDEX:
@@ -87,6 +97,13 @@ class SystemServiceManager extends ServiceProvider
     if services.contains id: throw "Service id $id is already in use"
 
     uuid := arguments[1]
+    service-priority/int := arguments[5]
+    service-tags/List? := arguments[6]
+    if is-untrusted_ pid:
+      // Sandboxed providers can't take over services from trusted
+      // providers, and clients can recognize (and deny) them.
+      service-priority = ServiceProvider.PRIORITY-UNPREFERRED-STRONGLY
+      service-tags = service-tags ? (service-tags + [TAG-UNTRUSTED-PROVIDER]) : [TAG-UNTRUSTED-PROVIDER]
     service := DiscoverableService
         --pid=pid
         --id=id
@@ -94,8 +111,8 @@ class SystemServiceManager extends ServiceProvider
         --name=arguments[2]
         --major=arguments[3]
         --minor=arguments[4]
-        --priority=arguments[5]
-        --tags=arguments[6]
+        --priority=service-priority
+        --tags=service-tags
     services[id] = service
 
     // Register the service based on its uuid and sort the all services
@@ -137,11 +154,18 @@ class SystemServiceManager extends ServiceProvider
       (waiting_.get uuid --init=: []).add resource
       resource-serialized = resource.serialize-for-rpc
     services = services-by-uuid_.get uuid
-    if services and not is-untrusted_ pid:
-      // Hide the system services that only exist for sandboxed clients.
+    if services:
+      untrusted := is-untrusted_ pid
       system-pid := Process.current.id
-      services = services.filter: | service/DiscoverableService |
-        not (service.pid == system-pid and service.tags and service.tags.contains TAG-SANDBOX-ONLY)
+      if not untrusted:
+        // Hide the system services that only exist for sandboxed clients.
+        services = services.filter: | service/DiscoverableService |
+          not (service.pid == system-pid and service.tags and service.tags.contains TAG-SANDBOX-ONLY)
+      else:
+        // Discovery is how a sandboxed process gets the capability to send
+        // messages to a provider: grant it for every discovered provider.
+        services.do: | service/DiscoverableService |
+          process-grant-send_ pid service.pid
       if services.is-empty: services = null
     return [array-of-services_ services, resource-serialized]
 
@@ -220,6 +244,9 @@ class SandboxPrintServiceProvider extends ServiceProvider implements PrintServic
     super "system/print/sandbox" --major=0 --minor=1 --tags=[TAG-SANDBOX-ONLY]
     provides PrintService.SELECTOR --handler=this
 
+  accepts-untrusted-clients -> bool:
+    return true
+
   handle index/int arguments/any --gid/int --client/int -> any:
     if index == PrintService.PRINT-INDEX:
       if arguments is not string: throw "WRONG_OBJECT_TYPE"
@@ -237,3 +264,10 @@ Returns the policy kind of the process with the given $pid, or -1 if
 */
 process-policy_ pid/int -> int:
   #primitive.core.process-policy
+
+/**
+Allows the process with the given $pid to send messages to $target, if the
+  policy of $pid restricts messaging. Only the system process may call this.
+*/
+process-grant-send_ pid/int target/int -> bool:
+  #primitive.core.process-grant-send

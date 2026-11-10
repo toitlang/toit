@@ -96,7 +96,7 @@ class ApplicationContainerImage extends ContainerImageFromSnapshot:
   spawn container/Container arguments/any -> int:
     return launch-snapshot_ snapshot container.id id.to-byte-array arguments container.policy
 
-  static launch-snapshot_ snapshot/ByteArray gid/int id/ByteArray arguments/any policy/int -> int:
+  static launch-snapshot_ snapshot/ByteArray gid/int id/ByteArray arguments/any policy/any -> int:
     #primitive.snapshot.launch
 
 main arguments:

@@ -333,6 +333,7 @@ bool MessageEncoder::encode_byte_array(ByteArray* object) {
   ASSERT(!encoding_tison());
   if (!reserve_external()) return false;
   ByteArray::Bytes bytes(object);
+  external_bytes_ += bytes.length();
   write_uint8(TAG_BYTE_ARRAY);
   write_cardinal(bytes.length());
   write_pointer(bytes.address());
@@ -445,6 +446,7 @@ bool MessageEncoder::encode_copy(Object* object, int tag) {
   // Reserve during the size pass too. Check before malloc so quota failure
   // cannot leak an allocation that has not entered the cleanup table yet.
   if (!reserve_external()) return false;
+  external_bytes_ += length;
   void* data = null;
   if (!encoding_for_size()) {
     // Strings are '\0'-terminated, so we need to make sure the allocated
@@ -940,9 +942,10 @@ message_err_t ExternalSystemMessageHandler::send_(int pid, int type, MessageEnco
     return MESSAGE_OOM;
   }
 
-  // Sending the message can only fail if the pid is invalid.
+  // Sending the message can only fail if the pid is invalid or if the
+  // receiver's mailbox quota is exhausted.
   message_err_t result = vm_->scheduler()->send_message(pid, system_message, free_on_failure);
-  ASSERT(result == MESSAGE_OK || result == MESSAGE_NO_SUCH_RECEIVER);
+  ASSERT(result == MESSAGE_OK || result == MESSAGE_NO_SUCH_RECEIVER || result == MESSAGE_QUOTA_EXCEEDED);
   if (result != MESSAGE_OK && !free_on_failure) {
     system_message->free_data_but_keep_externals();
     delete system_message;
@@ -1178,6 +1181,8 @@ static toit_err_t message_err_to_toit_err(toit::message_err_t err) {
     case toit::MESSAGE_OK: return TOIT_OK;
     case toit::MESSAGE_OOM: return TOIT_ERR_OOM;
     case toit::MESSAGE_NO_SUCH_RECEIVER: return TOIT_ERR_NO_SUCH_RECEIVER;
+    case toit::MESSAGE_PERMISSION_DENIED: return TOIT_ERR_NO_SUCH_RECEIVER;
+    case toit::MESSAGE_QUOTA_EXCEEDED: return TOIT_ERR_OOM;
   }
   UNREACHABLE();
 }

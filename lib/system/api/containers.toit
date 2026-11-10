@@ -32,8 +32,9 @@ interface ContainerService:
   /**
   Starts the container with the given $handle.
 
-  The $policy is null (use the default of the image) or a policy kind
-    (see $POLICY-TRUSTED).
+  The $policy is null (use the default of the image), a policy kind
+    (see $POLICY-TRUSTED), or a list of a policy kind followed by
+    quotas (see `start` in the system.containers library).
   */
   start-container handle/int arguments/any --policy/any=null -> none
   static START-CONTAINER-INDEX /int ::= 7
