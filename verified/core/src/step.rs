@@ -67,6 +67,8 @@ pub open spec fn verified_op(op: u8) -> bool {
     ||| op == 53         // INVOKE_STATIC
     ||| op == 58 || op == 59  // INVOKE_VIRTUAL(_WIDE)
     ||| op == 91 || op == 92  // RETURN, RETURN_NULL
+    ||| 62 <= op <= 77   // INVOKE_EQ, relational, arithmetic and bit operators (smi fast paths)
+    ||| op == 96         // IDENTICAL
 }
 
 /// The machine continues from a state the spec reaches from `g0`: the same
@@ -483,6 +485,75 @@ pub fn step(m: &mut Machine, env: &Env) -> (r: Ctl)
                 assert(sp::step(ap, g) == sp::invoke_virtual(ap, g, sel as int, n + 1, 5)) by { reveal(sp::step); }
             }
             return crate::calls::op_invoke_virtual(m, env, bci, opcode, sel, n + 1, 5);
+        },
+        // Operators: constant opcodes, so that the inlined fast paths fold.
+        62 => {
+            proof { crate::ops::lemma_step_op(p, g); }
+            return crate::ops::op_invoke_eq(m, env, bci, 62);
+        },
+        63 => {
+            proof { crate::ops::lemma_step_op(p, g); }
+            return crate::ops::op_invoke_relational(m, env, bci, 63);
+        },
+        64 => {
+            proof { crate::ops::lemma_step_op(p, g); }
+            return crate::ops::op_invoke_relational(m, env, bci, 64);
+        },
+        65 => {
+            proof { crate::ops::lemma_step_op(p, g); }
+            return crate::ops::op_invoke_relational(m, env, bci, 65);
+        },
+        66 => {
+            proof { crate::ops::lemma_step_op(p, g); }
+            return crate::ops::op_invoke_relational(m, env, bci, 66);
+        },
+        67 => {
+            proof { crate::ops::lemma_step_op(p, g); }
+            return crate::ops::op_invoke_arith(m, env, bci, 67);
+        },
+        68 => {
+            proof { crate::ops::lemma_step_op(p, g); }
+            return crate::ops::op_invoke_arith(m, env, bci, 68);
+        },
+        69 => {
+            proof { crate::ops::lemma_step_op(p, g); }
+            return crate::ops::op_invoke_arith(m, env, bci, 69);
+        },
+        70 => {
+            proof { crate::ops::lemma_step_op(p, g); }
+            return crate::ops::op_invoke_arith(m, env, bci, 70);
+        },
+        71 => {
+            proof { crate::ops::lemma_step_op(p, g); }
+            return crate::ops::op_invoke_arith(m, env, bci, 71);
+        },
+        72 => {
+            proof { crate::ops::lemma_step_op(p, g); }
+            return crate::ops::op_invoke_arith(m, env, bci, 72);
+        },
+        73 => {
+            proof { crate::ops::lemma_step_op(p, g); }
+            return crate::ops::op_invoke_arith(m, env, bci, 73);
+        },
+        74 => {
+            proof { crate::ops::lemma_step_op(p, g); }
+            return crate::ops::op_invoke_arith(m, env, bci, 74);
+        },
+        75 => {
+            proof { crate::ops::lemma_step_op(p, g); }
+            return crate::ops::op_invoke_arith(m, env, bci, 75);
+        },
+        76 => {
+            proof { crate::ops::lemma_step_op(p, g); }
+            return crate::ops::op_invoke_arith(m, env, bci, 76);
+        },
+        77 => {
+            proof { crate::ops::lemma_step_op(p, g); }
+            return crate::ops::op_invoke_arith(m, env, bci, 77);
+        },
+        96 => {
+            proof { crate::ops::lemma_step_op(p, g); }
+            return crate::ops::op_identical(m, env, bci, 96);
         },
         91 => {
             proof {
