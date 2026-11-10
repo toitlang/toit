@@ -230,8 +230,9 @@ V2MethodTable* V2MethodTable::compute(Program* program, bool untrusted) {
         if (V2_FIRST_BRANCH <= op && op <= V2_LAST_BRANCH) {
           // Branch targets stay inside the method (format note 9); the core
           // checks them again at run time.
+          // A backward branch may target itself (an empty loop).
           word offset = bytes[bci + 1] | (bytes[bci + 2] << 8);
-          if (offset == 0) {
+          if (offset == 0 && op < V2_FIRST_BRANCH_BACK) {
             delete table;
             return v2_fail("branch with zero offset", bci);
           }

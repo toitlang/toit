@@ -67,6 +67,9 @@ pub struct Machine {
     pub lim: usize,
     pub method: usize,
     pub mend: usize,
+    /// `mend - MAX_INSTRUCTION_LENGTH` (saturating): an instruction starting
+    /// below it ends inside the method, whatever its opcode.
+    pub mfast: usize,
 }
 
 /// How the run loop continues after a step.
@@ -74,7 +77,8 @@ pub enum Ctl {
     /// Next instruction (at `bci`).
     Next,
     /// Leave the run loop with an `Interpreter::Result` state and value.
-    Exit(usize, i64),
+    /// (The state is a u32 so that `Ctl` fits in two registers.)
+    Exit(u32, i64),
     /// A stuck state of the spec (or an implementation limit): the process
     /// is terminated.
     Stuck(usize),
@@ -197,6 +201,7 @@ impl Machine {
 
     // --- Locals ---------------------------------------------------------
 
+    #[inline(always)]
     pub fn op_load_local(&mut self, n: usize, len: usize) -> (r: Ctl)
         requires old(self).stack_ok(), old(self).bci + len < usize::MAX,
     {
@@ -207,6 +212,7 @@ impl Machine {
         self.push_next(v, len)
     }
 
+    #[inline(always)]
     pub fn op_pop_load_local(&mut self, n: usize) -> (r: Ctl)
         requires old(self).stack_ok(), old(self).bci + 2 < usize::MAX, n < 256,
     {
@@ -219,6 +225,7 @@ impl Machine {
         Ctl::Next
     }
 
+    #[inline(always)]
     pub fn op_store_local(&mut self, n: usize) -> (r: Ctl)
         requires old(self).stack_ok(), old(self).bci + 2 < usize::MAX,
     {
@@ -231,6 +238,7 @@ impl Machine {
         Ctl::Next
     }
 
+    #[inline(always)]
     pub fn op_store_local_pop(&mut self, n: usize) -> (r: Ctl)
         requires old(self).stack_ok(), old(self).bci + 2 < usize::MAX,
     {
@@ -246,6 +254,7 @@ impl Machine {
 
     // --- Constants, globals, pops -------------------------------------------
 
+    #[inline(always)]
     pub fn op_load_literal(&mut self, p: &Program, i: usize, len: usize) -> (r: Ctl)
         requires old(self).stack_ok(), old(self).bci + len < usize::MAX,
     {
@@ -256,6 +265,7 @@ impl Machine {
         self.push_next(v, len)
     }
 
+    #[inline(always)]
     pub fn op_load_smis_0(&mut self, n: usize) -> (r: Ctl)
         requires old(self).stack_ok(), old(self).bci + 2 < usize::MAX,
     {
@@ -277,6 +287,7 @@ impl Machine {
         Ctl::Next
     }
 
+    #[inline(always)]
     pub fn op_load_global(&mut self, g: usize, len: usize) -> (r: Ctl)
         requires old(self).stack_ok(), old(self).bci + len < usize::MAX,
     {
@@ -287,6 +298,7 @@ impl Machine {
         self.push_next(v, len)
     }
 
+    #[inline(always)]
     pub fn op_store_global(&mut self, g: usize, len: usize) -> (r: Ctl)
         requires old(self).stack_ok(), old(self).bci + len < usize::MAX,
     {
@@ -302,6 +314,7 @@ impl Machine {
         Ctl::Next
     }
 
+    #[inline(always)]
     pub fn op_pop(&mut self, n: usize, len: usize) -> (r: Ctl)
         requires old(self).stack_ok(), old(self).bci + len < usize::MAX,
     {
@@ -316,6 +329,7 @@ impl Machine {
     // --- Branches -----------------------------------------------------------
 
     /// kind: 0 always, 1 if true, 2 if false, 3 if not null.
+    #[inline(always)]
     pub fn op_branch(&mut self, p: &Program, kind: usize, target: usize, len: usize) -> (r: Ctl)
         requires old(self).stack_ok(), old(self).bci + len < usize::MAX,
     {
@@ -350,6 +364,7 @@ impl Machine {
 
     // --- Blocks ---------------------------------------------------------------
 
+    #[inline(always)]
     pub fn op_load_block(&mut self, k: usize) -> (r: Ctl)
         requires old(self).stack_ok(), old(self).bci + 2 < usize::MAX,
     {
@@ -368,6 +383,7 @@ impl Machine {
 
     // --- Fields -------------------------------------------------------------
 
+    #[inline(always)]
     pub fn op_load_field_this(&mut self, p: &Program, f: usize) -> (r: Ctl)
         requires old(self).stack_ok(), old(self).bci + 2 < usize::MAX,
     {
@@ -395,6 +411,7 @@ pub fn smi_word_exec(v: i64) -> (r: usize)
 } // verus!
 
 impl Machine {
+    #[inline(always)]
     pub fn op_load_outer(&mut self, k: usize) -> Ctl {
         if !self.has_slot(0) { return Ctl::Stuck(1); }
         let (f, slot) = match self.block_ref(self.at(0)) {
@@ -409,6 +426,7 @@ impl Machine {
         Ctl::Next
     }
 
+    #[inline(always)]
     pub fn op_store_outer(&mut self, k: usize) -> Ctl {
         if !self.has_slot(1) { return Ctl::Stuck(1); }
         let v = self.at(0);
@@ -428,6 +446,7 @@ impl Machine {
         Ctl::Next
     }
 
+    #[inline(always)]
     pub fn op_load_outer_block(&mut self, k: usize) -> Ctl {
         if !self.has_slot(0) { return Ctl::Stuck(1); }
         let (f, slot) = match self.block_ref(self.at(0)) {
@@ -441,6 +460,7 @@ impl Machine {
         Ctl::Next
     }
 
+    #[inline(always)]
     pub fn op_load_field(&mut self, env: &crate::machine::Env, f: usize, len: usize) -> Ctl {
         if !self.has_slot(0) { return Ctl::Stuck(1); }
         let obj = self.at(0);
@@ -453,6 +473,7 @@ impl Machine {
         Ctl::Next
     }
 
+    #[inline(always)]
     pub fn op_load_field_local(&mut self, env: &crate::machine::Env, enc: usize, pop: bool) -> Ctl {
         let local = enc % 16;
         let f = enc / 16;
@@ -472,6 +493,7 @@ impl Machine {
         }
     }
 
+    #[inline(always)]
     pub fn op_store_field(&mut self, env: &crate::machine::Env, f: usize, len: usize, keep: bool) -> Ctl {
         if !self.has_slot(1) { return Ctl::Stuck(1); }
         let v = self.at(0);
@@ -489,6 +511,7 @@ impl Machine {
         }
     }
 
+    #[inline(always)]
     pub fn op_store_field_this(&mut self, env: &crate::machine::Env, f: usize) -> Ctl {
         let p = env.p;
         if !self.has_slot(0) { return Ctl::Stuck(1); }
@@ -519,6 +542,7 @@ impl Program {
     }
 
     /// `entry_method`.
+    #[inline(always)]
     pub fn entry_method(&self, k: usize) -> i64 {
         let d = self.entry_points.at(k);
         if d < 0 { return -1; }

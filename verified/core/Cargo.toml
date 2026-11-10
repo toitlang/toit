@@ -37,7 +37,7 @@ panic = "abort"
 [profile.release]
 panic = "abort"
 opt-level = 3
-debug = false
+debug = "line-tables-only"
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [

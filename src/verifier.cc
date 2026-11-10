@@ -2173,6 +2173,9 @@ void Verifier::set_bytecodes_for_testing(Program* program, uint8* bytes, int len
 bool Verifier::verify(Program* program, VerifierStats* stats, const VerifierOptions& options) {
   VerifierStats local;
   if (stats == null) stats = &local;
+  // Format 2: the loader's table checks stand in for the structural
+  // verifier (see verify_and_report).
+  if (program->is_format2()) return V2MethodTable::verify(program, options.untrusted);
   AllowThrowingNew allow;
   VerifierImpl impl(program, stats, options);
   return impl.run();

@@ -112,6 +112,9 @@ Process* Scheduler::new_boot_process(Locker& locker, Program* program, int group
   }
 
   ProcessGroup* group = ProcessGroup::create(group_id, program, null, PrimitivePolicy::system());
+  // A malformed format-2 program has no method table (the reason is on
+  // stderr).
+  if (group == null) FATAL("cannot create the boot process group");
   SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, group_id);
   manager.global_variables = program->global_variables.copy();
   ASSERT(manager.global_variables);  // Booting system.
