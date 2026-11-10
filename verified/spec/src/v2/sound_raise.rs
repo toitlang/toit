@@ -32,6 +32,29 @@ use crate::spec_common::{class_id_ok, class_id_of, builtin, instance_field_count
 
 verus! {
 
+/// Unwinding never ends in a PRIMITIVE outcome.
+pub proof fn lemma_unwind_not_prim(p: Program2, s: State2, u: Unwind)
+    ensures !(unwind(p, s, u) is Primitive),
+    decreases s.frames.len(),
+{
+    if s.frames.len() == 0 {
+    } else if has_handler(s) {
+    } else if top(s).base as int > s.stack.len() {
+    } else {
+        let s1 = pop_frame(s);
+        assert(s1.frames.len() < s.frames.len());
+        lemma_unwind_not_prim(p, s1, u);
+    }
+}
+
+/// `lemma_raise`, also stating that a raise is not a PRIMITIVE outcome.
+pub proof fn lemma_raise_ok(p: Program2, c: Cert, trusted: bool, s: State2, k: int)
+    requires accepts(p, c, trusted), wf(p, c, s), small(s), 0 <= k < 5,
+    ensures outcome_ok(p, c, raise(p, s, k)), !(raise(p, s, k) is Primitive),
+{
+    lemma_raise(p, c, trusted, s, k);
+}
+
 /// An unwinding state stays one when the heap grows.
 pub proof fn lemma_unw_heap(p: Program2, c: Cert, s: State2, kt: Seq<Kind>, h2: Seq<HeapObj>)
     requires
@@ -163,9 +186,10 @@ pub proof fn lemma_unwind(p: Program2, c: Cert, trusted: bool, s: State2, kt: Se
         unw_ok(p, c, s, kt),
         unw_arg_ok(p, c, s, kt, u),
         s.stack.len() < 0x7000_0000,
-    ensures outcome_ok(p, c, unwind(p, s, u)),
+    ensures outcome_ok(p, c, unwind(p, s, u)), !(unwind(p, s, u) is Primitive),
     decreases s.frames.len(),
 {
+    lemma_unwind_not_prim(p, s, u);
     let t = top_i(s);
     let b = fbase(s, t);
     if has_handler(s) {
@@ -241,7 +265,7 @@ pub proof fn lemma_raise_unw(p: Program2, c: Cert, trusted: bool, s: State2, kt:
         s.stack.len() < 0x7000_0000,
         s.heap.len() < 0x7000_0000,
         0 <= k < 5,
-    ensures outcome_ok(p, c, raise(p, s, k)),
+    ensures outcome_ok(p, c, raise(p, s, k)), !(raise(p, s, k) is Primitive),
 {
     let cid = builtin(p1(p), EXCEPTION_CLASS);
     assert(tables_ok(p, c));
@@ -271,7 +295,7 @@ pub proof fn lemma_raise_unw(p: Program2, c: Cert, trusted: bool, s: State2, kt:
 /// Raising a machine exception from a well-formed state.
 pub proof fn lemma_raise(p: Program2, c: Cert, trusted: bool, s: State2, k: int)
     requires accepts(p, c, trusted), wf(p, c, s), small(s), 0 <= k < 5,
-    ensures outcome_ok(p, c, raise(p, s, k)),
+    ensures outcome_ok(p, c, raise(p, s, k)), !(raise(p, s, k) is Primitive),
 {
     lemma_wf_unw(p, c, trusted, s);
     lemma_raise_unw(p, c, trusted, s, kinds_of(p, c, s, top_i(s)), k);
@@ -282,7 +306,7 @@ pub proof fn lemma_unwind_wf(p: Program2, c: Cert, trusted: bool, s: State2, u: 
     requires
         accepts(p, c, trusted), wf(p, c, s), small(s),
         unw_arg_ok(p, c, s, kinds_of(p, c, s, top_i(s)), u),
-    ensures outcome_ok(p, c, unwind(p, s, u)),
+    ensures outcome_ok(p, c, unwind(p, s, u)), !(unwind(p, s, u) is Primitive),
 {
     lemma_wf_unw(p, c, trusted, s);
     lemma_unwind(p, c, trusted, s, kinds_of(p, c, s, top_i(s)), u);
