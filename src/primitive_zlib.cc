@@ -214,7 +214,9 @@ void Zlib::get_output(uint8* buffer, word length) {
 
 static Object* zlib_error(Process* process, int error) {
   if (error == Z_MEM_ERROR) FAIL(MALLOC_FAILED);
-  printf("Unknown error message %d\n", error);
+  // Corrupt compressed data (Z_DATA_ERROR) or invalid parameters
+  // (Z_STREAM_ERROR).
+  if (error == Z_DATA_ERROR || error == Z_STREAM_ERROR) FAIL(INVALID_ARGUMENT);
   FAIL(ERROR);
 }
 
