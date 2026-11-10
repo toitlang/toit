@@ -47,14 +47,6 @@ pub open spec fn good(heap: Seq<HeapObj>, v: Value) -> bool {
     }
 }
 
-pub open spec fn unwind_vals_ok(heap: Seq<HeapObj>, u: Unwind) -> bool {
-    match u {
-        Unwind::Throw(v) => good(heap, v),
-        Unwind::Return(_, v) => good(heap, v),
-        Unwind::Branch(_, _, _) => true,
-    }
-}
-
 /// The parts of an object's well-formedness that do not involve tasks:
 /// its class exists, objects of classes with fields are instances with
 /// their class's field count, and its contents are values.
@@ -66,15 +58,15 @@ pub open spec fn basic_obj_ok(p: Program2, heap: Seq<HeapObj>, o: HeapObj) -> bo
         Body::Instance(f) => forall|i: int| 0 <= i < f.len() ==> good(heap, #[trigger] f[i]),
         Body::Array(e) => forall|i: int| 0 <= i < e.len() ==> good(heap, #[trigger] e[i]),
         Body::Stack(_, _) => false,
-        Body::Pending(u) => unwind_vals_ok(heap, u),
         _ => true,
     }
 }
 
 /// The state of a suspended task, as a machine state (only the stack,
-/// frames, handlers, bci and heap are used by the task invariant).
-pub open spec fn susp_state(heap: Seq<HeapObj>, w: Seq<Value>, fr: Seq<Frame>, tr: Seq<Handler>, bci: usize) -> State2 {
-    State2 { heap: heap, globals: Seq::empty(), stack: w, frames: fr, tries: tr, bci: bci, task: 0, next_task_id: 0 }
+/// frames, handlers, finally records, bci and heap are used by the task
+/// invariant).
+pub open spec fn susp_state(heap: Seq<HeapObj>, w: Seq<Value>, fr: Seq<Frame>, tr: Seq<Handler>, fins: Seq<Fin>, bci: usize) -> State2 {
+    State2 { heap: heap, globals: Seq::empty(), stack: w, frames: fr, tries: tr, fins: fins, bci: bci, task: 0, next_task_id: 0 }
 }
 
 /// A suspended task is at a task_transfer PRIMITIVE.
@@ -88,11 +80,11 @@ pub open spec fn at_transfer(p: Program2, s: State2) -> bool {
 
 /// A suspended task: never ran (its code is a value), or a well-formed
 /// task stopped at task_transfer.
-pub open spec fn susp_ok(p: Program2, c: Cert, heap: Seq<HeapObj>, w: Seq<Value>, fr: Seq<Frame>, tr: Seq<Handler>, bci: usize) -> bool {
+pub open spec fn susp_ok(p: Program2, c: Cert, heap: Seq<HeapObj>, w: Seq<Value>, fr: Seq<Frame>, tr: Seq<Handler>, fins: Seq<Fin>, bci: usize) -> bool {
     if fr.len() == 0 {
         w.len() >= 1 ==> good(heap, w[0])
     } else {
-        wf_task(p, c, susp_state(heap, w, fr, tr, bci)) && at_transfer(p, susp_state(heap, w, fr, tr, bci))
+        wf_task(p, c, susp_state(heap, w, fr, tr, fins, bci)) && at_transfer(p, susp_state(heap, w, fr, tr, fins, bci))
     }
 }
 
@@ -134,7 +126,7 @@ pub open spec fn obj_ok(p: Program2, c: Cert, heap: Seq<HeapObj>, o: HeapObj) ->
     &&& basic_obj_ok(p, heap, o)
     &&& o.class_id as int == task_class(p) ==> task_obj_ok(heap, o)
     &&& match o.body {
-        Body::Stack2(w, fr, tr, b) => susp_ok(p, c, heap, w, fr, tr, b),
+        Body::Stack2(w, fr, tr, fins, b) => susp_ok(p, c, heap, w, fr, tr, fins, b),
         _ => true,
     }
 }
@@ -248,19 +240,22 @@ pub open spec fn good_ref(p: Program2, c: Cert, s: State2, f: int, slot: int) ->
     &&& ctx_ok_upto(p, c, fmethod(s, f), k, i)
 }
 
-/// An unwinding held by a token in slot `i` of frame `g`.
 /// The kinds of frame `f` as seen from a token of frame `g` whose own
 /// kinds are `kg`.
 pub open spec fn frame_kinds_from(p: Program2, c: Cert, s: State2, g: int, kg: Seq<Kind>, f: int) -> Seq<Kind> {
     if f == g { kg } else { kinds_of(p, c, s, f) }
 }
 
+/// The unwinding a token in slot `i` of frame `g` resumes can complete:
+/// non-local returns and branches target frames at or below `g`, a
+/// branch a mapped offset whose map is a prefix of the target frame's
+/// kinds (below the token for frame `g` itself).
 #[verifier::opaque]
-pub open spec fn pending_ok(p: Program2, c: Cert, s: State2, g: int, kg: Seq<Kind>, i: int, u: Unwind) -> bool {
+pub open spec fn pending_ok(p: Program2, c: Cert, s: State2, g: int, kg: Seq<Kind>, i: int, u: Resume) -> bool {
     match u {
-        Unwind::Throw(v) => good(s.heap, v),
-        Unwind::Return(f, v) => (f as int) <= g && good(s.heap, v),
-        Unwind::Branch(f, bci, hb) => {
+        Resume::Throw => true,
+        Resume::Return(f) => (f as int) <= g,
+        Resume::Branch(f, bci, hb) => {
             let fi = f as int;
             let m = fmethod(s, fi);
             let off = bci as int - info(p, m).entry;
@@ -309,13 +304,20 @@ pub open spec fn conf(p: Program2, c: Cert, s: State2, fi: int, kf: Seq<Kind>, j
             _ => false,
         },
         Kind::Token => v == null2(p) || match v {
-            Value::Obj(id) => (id as int) < s.heap.len() && match s.heap[id as int].body {
-                Body::Pending(u) => pending_ok(p, c, s, fi, kf, j, u),
-                _ => false,
-            },
+            Value::Smi(k) => fin_ok(p, c, s, fi, kf, j, k as int),
             _ => false,
         },
     }
+}
+
+/// The token in slot `j` of frame `fi` names finally record `k`: a record
+/// of the frame whose token slot it is, with an unwinding that can
+/// complete.
+pub open spec fn fin_ok(p: Program2, c: Cert, s: State2, fi: int, kf: Seq<Kind>, j: int, k: int) -> bool {
+    &&& 0 <= k < s.fins.len()
+    &&& s.fins[k].frame as int == fi
+    &&& s.fins[k].height as int + 1 == fbase(s, fi) + j
+    &&& pending_ok(p, c, s, fi, kf, j, s.fins[k].resume)
 }
 
 pub open spec fn frame_conf(p: Program2, c: Cert, s: State2, fi: int) -> bool {
@@ -359,6 +361,22 @@ pub open spec fn try_ok(s: State2, x: int) -> bool {
     &&& (x > 0 ==> s.tries[x - 1].frame < h.frame)
 }
 
+/// Finally record `a` comes before `b`: by frame, then by height.
+pub open spec fn fin_lt(a: Fin, b: Fin) -> bool {
+    a.frame < b.frame || (a.frame == b.frame && a.height < b.height)
+}
+
+/// The finally records belong to live frames and are ordered by frame and
+/// height; the records of a frame suspended in a TRY are below the TRY's
+/// height (so entering its finally code keeps the order).
+pub open spec fn fins_ok(s: State2) -> bool {
+    &&& forall|k: int| 0 <= k < s.fins.len() ==> (#[trigger] s.fins[k]).frame < s.frames.len()
+    &&& forall|a: int, b: int| 0 <= a < b < s.fins.len() ==> fin_lt(#[trigger] s.fins[a], #[trigger] s.fins[b])
+    &&& forall|x: int, k: int| 0 <= x < s.tries.len() && 0 <= k < s.fins.len()
+            && (#[trigger] s.fins[k]).frame == (#[trigger] s.tries[x]).frame ==>
+            s.fins[k].height < s.tries[x].height
+}
+
 /// The task part of the invariant (also for suspended tasks).
 #[verifier::opaque]
 pub open spec fn wf_task(p: Program2, c: Cert, s: State2) -> bool {
@@ -366,6 +384,7 @@ pub open spec fn wf_task(p: Program2, c: Cert, s: State2) -> bool {
     &&& bases_ok(s)
     &&& forall|fi: int| 0 <= fi < s.frames.len() ==> #[trigger] frame_ok(p, c, s, fi)
     &&& forall|x: int| 0 <= x < s.tries.len() ==> #[trigger] try_ok(s, x)
+    &&& fins_ok(s)
 }
 
 pub open spec fn globals_ok(c: Cert, s: State2) -> bool {
@@ -396,6 +415,7 @@ pub open spec fn roomy(s: State2) -> bool {
     &&& s.stack.len() < 0x8000_0000
     &&& s.frames.len() < 0x8000_0000
     &&& s.tries.len() < 0x8000_0000
+    &&& s.fins.len() < 0x8000_0000
 }
 
 pub open spec fn small(s: State2) -> bool {
@@ -403,6 +423,7 @@ pub open spec fn small(s: State2) -> bool {
     &&& s.stack.len() < 0x4000_0000
     &&& s.frames.len() < 0x4000_0000
     &&& s.tries.len() < 0x4000_0000
+    &&& s.fins.len() < 0x4000_0000
 }
 
 /// The program `p` with certificate `c` is accepted.
@@ -424,32 +445,43 @@ pub open spec fn task_fields_kept(o: HeapObj, o2: HeapObj) -> bool {
 
 /// What a primitive may do to the heap (the oracle assumption): objects
 /// are only added, classes do not change, the machine's own objects
-/// (suspended stacks, unwinding tokens, tasks) are not created and their
-/// machine-owned parts are not touched, and every object stays well
-/// formed.
+/// (suspended stacks, tasks) are not created and their machine-owned
+/// parts are not touched, and every object stays well formed.
 pub open spec fn prim_heap_ok(p: Program2, h: Seq<HeapObj>, h2: Seq<HeapObj>) -> bool {
     &&& h.len() <= h2.len()
     &&& h2.len() < 0x4000_0000
     &&& forall|i: int| 0 <= i < h.len() ==> {
         &&& (#[trigger] h2[i]).class_id == h[i].class_id
-        &&& (h[i].body is Stack2 || h[i].body is Pending) ==> h2[i].body == h[i].body
-        &&& !(h[i].body is Stack2 || h[i].body is Pending) ==> !(h2[i].body is Stack2 || h2[i].body is Pending)
+        &&& h[i].body is Stack2 ==> h2[i].body == h[i].body
+        &&& !(h[i].body is Stack2) ==> !(h2[i].body is Stack2)
         &&& h[i].class_id as int == task_class(p) ==> task_fields_kept(h[i], h2[i])
     }
-    &&& forall|i: int| h.len() <= i < h2.len() ==> !((#[trigger] h2[i]).body is Stack2 || h2[i].body is Pending)
+    &&& forall|i: int| h.len() <= i < h2.len() ==> !((#[trigger] h2[i]).body is Stack2)
             && h2[i].class_id as int != task_class(p)
     &&& forall|i: int| 0 <= i < h2.len() ==> basic_obj_ok(p, h2, #[trigger] h2[i])
 }
 
-/// What the loader guarantees about the program heap and globals.
-pub open spec fn loaded_ok(p: Program2, c: Cert, heap0: Seq<HeapObj>, globals0: Seq<Value>) -> bool {
+/// An object of the program heap: well formed, neither a suspended stack
+/// nor a task.
+pub open spec fn loaded_obj_ok(p: Program2, heap0: Seq<HeapObj>, o: HeapObj) -> bool {
+    &&& basic_obj_ok(p, heap0, o)
+    &&& !(o.body is Stack2)
+    &&& o.class_id as int != task_class(p)
+}
+
+/// The heap part of `loaded_ok` (checked by `v2::heap_check::x_loaded_heap_ok`).
+pub open spec fn loaded_heap_ok(p: Program2, heap0: Seq<HeapObj>) -> bool {
     &&& heap0.len() < 0x2000_0000
-    &&& forall|i: int| 0 <= i < heap0.len() ==> basic_obj_ok(p, heap0, #[trigger] heap0[i])
-            && !(heap0[i].body is Stack2 || heap0[i].body is Pending)
-            && heap0[i].class_id as int != task_class(p)
+    &&& forall|i: int| 0 <= i < heap0.len() ==> loaded_obj_ok(p, heap0, #[trigger] heap0[i])
+    &&& consts_ok(p, heap0)
+}
+
+/// What the loader guarantees about the program heap and globals
+/// (checked by `v2::heap_check::x_loaded_ok`).
+pub open spec fn loaded_ok(p: Program2, c: Cert, heap0: Seq<HeapObj>, globals0: Seq<Value>) -> bool {
+    &&& loaded_heap_ok(p, heap0)
     &&& globals0.len() == c.global_count
     &&& forall|g: int| 0 <= g < globals0.len() ==> good(heap0, #[trigger] globals0[g])
-    &&& consts_ok(p, heap0)
 }
 
 // ---------------------------------------------------------------------------

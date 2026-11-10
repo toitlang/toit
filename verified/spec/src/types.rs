@@ -81,8 +81,7 @@ pub struct Handler {
     pub bci: usize,
 }
 
-/// Format 2: an unwinding in progress, kept in a heap object while the
-/// finally code of a handler it passes runs.
+/// Format 2: an unwinding in progress.
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub enum Unwind {
     /// An exception: unwind to the next handler; uncaught at the bottom.
@@ -92,6 +91,32 @@ pub enum Unwind {
     /// A non-local branch into frame `frame`: continue at absolute bci `bci`
     /// with object-stack height `height`.
     Branch(usize, usize, usize),
+}
+
+/// Format 2: what the finally code of an unwinding resumes when it ends.
+/// The exception or return value is not part of it: it is the finally
+/// code's first slot.
+#[derive(PartialEq, Eq, Clone, Copy)]
+pub enum Resume {
+    Throw,
+    /// A non-local return from frame `frame`.
+    Return(usize),
+    /// A non-local branch into frame `frame` to absolute bci `bci` with
+    /// object-stack height `height`.
+    Branch(usize, usize, usize),
+}
+
+/// Format 2: the record of a finally code entered by an unwinding (format
+/// note 17). `frame` runs the finally code, whose three slots (value,
+/// token, reason) start at object-stack height `height`; the token is the
+/// smi index of the record. Records are kept next to the handlers, in
+/// place of the handler they replace: entering a finally code allocates
+/// nothing.
+#[derive(PartialEq, Eq, Clone, Copy)]
+pub struct Fin {
+    pub frame: usize,
+    pub height: usize,
+    pub resume: Resume,
 }
 
 /// Format 2: an entry of the method table, decoded from the method headers
@@ -129,12 +154,10 @@ pub enum Body {
     Oddball,
     /// A suspended task stack: words (bottom first) and try height.
     Stack(Seq<Value>, usize),
-    /// Format 2: a suspended task: object stack, frame stack, handlers, and
-    /// the bci it is suspended at. A task that never ran has no frames and
-    /// the code to run as its only stack slot.
-    Stack2(Seq<Value>, Seq<Frame>, Seq<Handler>, usize),
-    /// Format 2: the unwinding a finally code continues when it ends.
-    Pending(Unwind),
+    /// Format 2: a suspended task: object stack, frame stack, handlers,
+    /// finally records, and the bci it is suspended at. A task that never
+    /// ran has no frames and the code to run as its only stack slot.
+    Stack2(Seq<Value>, Seq<Frame>, Seq<Handler>, Seq<Fin>, usize),
 }
 
 pub struct HeapObj {
@@ -226,7 +249,8 @@ pub enum Stuck {
     OutOfFuel,
     /// Format 2: a call whose target's arity differs from the call site's.
     BadArity,
-    /// Format 2: UNWIND without an unwinding token in its slot.
+    /// Format 2: UNWIND without an unwinding token (null or the index of a
+    /// finally record of the frame) in its slot.
     NotUnwind,
 }
 
@@ -266,8 +290,7 @@ pub enum ExecBody {
     LargeInt(i64),
     Oddball,
     Stack(Vec<Value>, usize),
-    Stack2(Vec<Value>, Vec<Frame>, Vec<Handler>, usize),
-    Pending(Unwind),
+    Stack2(Vec<Value>, Vec<Frame>, Vec<Handler>, Vec<Fin>, usize),
 }
 
 pub struct ExecObj {
@@ -288,8 +311,7 @@ impl View for ExecBody {
             ExecBody::LargeInt(i) => Body::LargeInt(*i),
             ExecBody::Oddball => Body::Oddball,
             ExecBody::Stack(v, h) => Body::Stack(v@, *h),
-            ExecBody::Stack2(v, f, t, b) => Body::Stack2(v@, f@, t@, *b),
-            ExecBody::Pending(u) => Body::Pending(*u),
+            ExecBody::Stack2(v, f, t, n, b) => Body::Stack2(v@, f@, t@, n@, *b),
         }
     }
 }
@@ -351,6 +373,7 @@ pub struct ExecState {
     /// 1). Not part of the format-1 view.
     pub frames: Vec<Frame>,
     pub tries: Vec<Handler>,
+    pub fins: Vec<Fin>,
 }
 
 impl View for ExecState {

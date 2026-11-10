@@ -51,7 +51,7 @@ impl Machine {
         heap.push(ExecObj {
             class_id: program.builtin[STACK_CLASS],
             ro: false,
-            body: ExecBody::Stack2(Vec::new(), Vec::new(), Vec::new(), 0),
+            body: ExecBody::Stack2(Vec::new(), Vec::new(), Vec::new(), Vec::new(), 0),
         });
         let task_class = program.builtin[TASK_CLASS] as usize;
         let field_count = ((program.class_bits[task_class] >> 5) & 0x7ff) as usize - 1;
@@ -66,7 +66,7 @@ impl Machine {
             p: program,
             s: ExecState {
                 heap, globals, stack: Vec::new(), try_h: 0, bci: 0, task, next_task_id: 1,
-                frames: Vec::new(), tries: Vec::new(),
+                frames: Vec::new(), tries: Vec::new(), fins: Vec::new(),
             },
             names,
             world: system::World::new(args),
@@ -193,6 +193,7 @@ impl Machine {
         if self.s.tries.last().map(|h| h.frame == fi).unwrap_or(false) { return Err(BadFrame); }
         if fi == 0 { return Ok(Step::Halt(Halt::TaskReturned)); }
         if f.base > self.s.stack.len() { return Err(StackRange); }
+        self.cut_fins(fi, 0);
         self.s.stack.truncate(f.base);
         self.s.stack.push(result);
         self.s.frames.pop();
@@ -206,8 +207,21 @@ impl Machine {
         Ok(Step::Next)
     }
 
+    /// Drops the trailing finally records of frames above `g` and those
+    /// of frame `g` at height `lim` or above (`v2::spec::cut_fins`).
+    fn cut_fins(&mut self, g: usize, lim: usize) {
+        while let Some(f) = self.s.fins.last() {
+            if f.frame > g || (f.frame == g && f.height >= lim) {
+                self.s.fins.pop();
+            } else {
+                break;
+            }
+        }
+    }
+
     /// Enters the finally code of handler `h` (the last one, of the top
-    /// frame) for a normal completion (`None`) or an unwinding.
+    /// frame) for a normal completion (`None`) or an unwinding, whose
+    /// record takes the handler's place (`v2::spec::enter_finally`).
     fn enter_finally(&mut self, h: Handler, u: Option<Unwind>) -> R {
         if h.height > self.s.stack.len() || h.height < self.base2() { return Err(StackRange); }
         self.s.tries.pop();
@@ -215,11 +229,14 @@ impl Machine {
         let (value, token, reason) = match u {
             None => (self.null(), self.null(), Value::Smi(-1)),
             Some(u) => {
-                let token = self.alloc(ExecObj { class_id: self.builtin(OBJECT_CLASS), ro: false, body: ExecBody::Pending(u) });
-                match u {
-                    Unwind::Throw(v) => (v, token, Value::Smi(-2)),
-                    _ => (self.null(), token, Value::Smi(-1)),
-                }
+                let token = Value::Smi(self.s.fins.len() as i64);
+                let (value, reason, resume) = match u {
+                    Unwind::Throw(v) => (v, -2, Resume::Throw),
+                    Unwind::Return(f, v) => (v, -1, Resume::Return(f)),
+                    Unwind::Branch(f, bci, hb) => (self.null(), -1, Resume::Branch(f, bci, hb)),
+                };
+                self.s.fins.push(Fin { frame: h.frame, height: h.height, resume });
+                (value, token, Value::Smi(reason))
             }
         };
         self.s.stack.push(value);
@@ -256,6 +273,7 @@ impl Machine {
                 }
                 _ => {
                     let base = self.s.frames[fi].base;
+                    self.cut_fins(fi, 0);
                     self.s.stack.truncate(base);
                     self.s.frames.pop();
                 }
@@ -674,12 +692,20 @@ impl Machine {
             }
             UNWIND => {
                 let token = self.at2(1)?;
-                self.at2(2)?;
+                let value = self.at2(2)?;
                 self.drop2(3)?;
                 if token == self.null() { return self.next2(1); }
-                match self.obj(token) {
-                    Some(ExecObj { body: ExecBody::Pending(u), .. }) => {
-                        let u = *u;
+                let fi = self.s.frames.len() - 1;
+                let height = self.s.stack.len();
+                match token {
+                    Value::Smi(k) if 0 <= k && (k as usize) < self.s.fins.len()
+                        && self.s.fins[k as usize].frame == fi && self.s.fins[k as usize].height == height => {
+                        let u = match self.s.fins[k as usize].resume {
+                            Resume::Throw => Unwind::Throw(value),
+                            Resume::Return(f) => Unwind::Return(f, value),
+                            Resume::Branch(f, bci, hb) => Unwind::Branch(f, bci, hb),
+                        };
+                        self.s.fins.truncate(k as usize);
                         self.unwind2(u)
                     }
                     _ => Err(NotUnwind),
@@ -743,6 +769,7 @@ impl Machine {
         let len = self.s.stack.len();
         let base = self.s.frames[fi].base;
         let args: Vec<Value> = self.s.stack[len - nargs..].to_vec();
+        self.cut_fins(fi, 0);
         self.s.stack.truncate(base);
         self.s.stack.extend(args);
         self.s.frames[fi].method = target;
@@ -932,6 +959,7 @@ impl Machine {
         let height = self.s.stack.len();
         let fi = self.s.frames.len() - 1;
         let bci = self.s.bci;
+        self.cut_fins(fi, height - 1);
         self.s.tries.push(Handler { frame: fi, height, bci: bci + 1 });
         let target = match self.block_target(height - 1) {
             Some(t) => t,

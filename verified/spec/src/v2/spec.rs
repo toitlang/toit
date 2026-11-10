@@ -24,7 +24,8 @@
 //! * block references are `(frame, slot)`; a non-local return or branch
 //!   unwinds to that frame;
 //! * TRY installs a `Handler`; unwinding enters the finally code of the
-//!   innermost handler with an unwinding token, which UNWIND resumes;
+//!   innermost handler with an unwinding token (the index of a finally
+//!   record, `Fin`), which UNWIND resumes;
 //! * failures (lookup, as-check, code invocation, invalid program,
 //!   primitive lookup) raise an exception (`raise`), they do not call Toit
 //!   methods;
@@ -309,6 +310,54 @@ pub open spec fn has_handler(s: State2) -> bool {
     s.tries.len() > 0 && s.tries.last().frame as int == top_index(s)
 }
 
+/// Drops the trailing finally records of frames above `g` and those of
+/// frame `g` at height `lim` or above. Records are ordered by frame and
+/// height (`v2::sound::fins_ok`), so `cut_fins(fins, t, 0)` drops exactly
+/// the records of frames `t` and above.
+pub open spec fn cut_fins(fins: Seq<Fin>, g: int, lim: int) -> Seq<Fin>
+    decreases fins.len(),
+{
+    if fins.len() > 0 && (fins.last().frame as int > g || (fins.last().frame as int == g && fins.last().height as int >= lim)) {
+        cut_fins(fins.drop_last(), g, lim)
+    } else {
+        fins
+    }
+}
+
+/// The records after popping the top frame.
+pub open spec fn fins_popped(s: State2) -> Seq<Fin> {
+    cut_fins(s.fins, top_index(s), 0)
+}
+
+/// What the finally code of unwinding `u` resumes.
+pub open spec fn resume_of(u: Unwind) -> Resume {
+    match u {
+        Unwind::Throw(_) => Resume::Throw,
+        Unwind::Return(f, _) => Resume::Return(f),
+        Unwind::Branch(f, bci, h) => Resume::Branch(f, bci, h),
+    }
+}
+
+/// The first slot of the finally code of unwinding `u`: the exception or
+/// the return value (null for a branch).
+pub open spec fn value_of(p: Program2, u: Unwind) -> Value {
+    match u {
+        Unwind::Throw(v) => v,
+        Unwind::Return(_, v) => v,
+        Unwind::Branch(_, _, _) => null2(p),
+    }
+}
+
+/// The unwinding UNWIND resumes: the record's, with the value of the
+/// finally code's first slot.
+pub open spec fn unwind_of(r: Resume, v: Value) -> Unwind {
+    match r {
+        Resume::Throw => Unwind::Throw(v),
+        Resume::Return(f) => Unwind::Return(f, v),
+        Resume::Branch(f, bci, h) => Unwind::Branch(f, bci, h),
+    }
+}
+
 /// Returns `result` from the top frame. If the caller is a TRY whose try
 /// block just returned, its finally code runs.
 pub open spec fn return_from(p: Program2, s: State2, result: Value) -> Outcome2 {
@@ -324,6 +373,7 @@ pub open spec fn return_from(p: Program2, s: State2, result: Value) -> Outcome2 
         let s1 = State2 {
             stack: s.stack.subrange(0, top(s).base as int).push(result),
             frames: s.frames.drop_last(),
+            fins: fins_popped(s),
             bci: top(s).ret,
             ..s
         };
@@ -337,9 +387,11 @@ pub open spec fn return_from(p: Program2, s: State2, result: Value) -> Outcome2 
 
 /// Enters the finally code of handler `h` (the last handler, of the top
 /// frame), normally (`None`) or while unwinding: the object stack is cut
-/// back to the TRY's height, and the exception (or null), the unwinding
-/// token (null for a normal completion) and the reason (-2 for an
-/// exception, -1 otherwise) are pushed.
+/// back to the TRY's height, and the value (the exception or return
+/// value, else null), the unwinding token and the reason (-2 for an
+/// exception, -1 otherwise) are pushed. The token is null for a normal
+/// completion; for an unwinding it is the smi index of a new finally
+/// record that takes the handler's place (no allocation).
 pub open spec fn enter_finally(p: Program2, s: State2, h: Handler, u: Option<Unwind>) -> Outcome2 {
     if !(base(s) <= h.height as int <= s.stack.len()) {
         stuck(Stuck::StackRange)
@@ -353,23 +405,23 @@ pub open spec fn enter_finally(p: Program2, s: State2, h: Handler, u: Option<Unw
         match u {
             None => Outcome2::Next(push(push(push(s1, null2(p)), null2(p)), smi(-1))),
             Some(w) => {
-                let token = new_ref2(s1);
-                let s2 = alloc2(s1, HeapObj { class_id: p.builtin[OBJECT_CLASS], ro: false, body: Body::Pending(w) });
-                let (value, reason) = match w {
-                    Unwind::Throw(v) => (v, -2int),
-                    _ => (null2(p), -1int),
+                let token = smi(s1.fins.len() as int);
+                let s2 = State2 {
+                    fins: s1.fins.push(Fin { frame: h.frame, height: h.height, resume: resume_of(w) }),
+                    ..s1
                 };
-                Outcome2::Next(push(push(push(s2, value), token), smi(reason)))
+                let reason = match w { Unwind::Throw(_) => -2int, _ => -1int };
+                Outcome2::Next(push(push(push(s2, value_of(p, w)), token), smi(reason)))
             },
         }
     }
 }
 
-/// Pops the top frame and its object-stack slots.
+/// Pops the top frame, its object-stack slots and its finally records.
 pub open spec fn pop_frame(s: State2) -> State2
     recommends s.frames.len() > 0,
 {
-    State2 { stack: s.stack.subrange(0, top(s).base as int), frames: s.frames.drop_last(), ..s }
+    State2 { stack: s.stack.subrange(0, top(s).base as int), frames: s.frames.drop_last(), fins: fins_popped(s), ..s }
 }
 
 /// Unwinds: the innermost handler of the top frame gets control (with the
@@ -441,6 +493,7 @@ pub open spec fn replace_frame(p: Program2, s: State2, target: int, args: Seq<Va
         Outcome2::Next(State2 {
             stack: s.stack.subrange(0, base(s)) + args,
             frames: s.frames.update(top_index(s), Frame { method: target as usize, ..top(s) }),
+            fins: fins_popped(s),
             bci: info(p, target).entry,
             ..s
         })
@@ -669,13 +722,16 @@ pub open spec fn op_non_local_branch(p: Program2, s: State2, hd: int, off: int) 
 
 /// TRY: install a handler of the current frame (finally code right after
 /// the TRY), then call the try block, whose method is the top slot, with a
-/// reference to that slot.
+/// reference to that slot. The frame's trailing finally records whose
+/// token slot is at the TRY's height or above (left by a `break` out of
+/// finally code) are dropped first: no live token names them, and the
+/// frame's records stay below the handler's height.
 pub open spec fn op_try(p: Program2, s: State2) -> Outcome2 {
     if !has_slot(s, 0) || s.frames.len() == 0 {
         stuck(Stuck::StackRange)
     } else {
         let h = Handler { frame: top_index(s) as usize, height: s.stack.len() as usize, bci: (s.bci + 1) as usize };
-        let s1 = State2 { tries: s.tries.push(h), ..s };
+        let s1 = State2 { tries: s.tries.push(h), fins: cut_fins(s.fins, top_index(s), s.stack.len() - 1), ..s };
         let slot = s.stack.len() - 1;
         match block_target(p, s, slot) {
             None => raise(p, s1, INVALID_PROGRAM),
@@ -690,8 +746,17 @@ pub open spec fn op_try(p: Program2, s: State2) -> Outcome2 {
     }
 }
 
+/// The token `k` names a finally record of the top frame whose token slot
+/// is the UNWIND's.
+pub open spec fn fin_matches(s: State2, k: int) -> bool {
+    &&& 0 <= k < s.fins.len()
+    &&& s.fins[k].frame as int == top_index(s)
+    &&& s.fins[k].height as int + 1 == s.stack.len() - 2
+}
+
 /// UNWIND: the end of a finally code. Pops reason, token and value; a null
-/// token continues, a token resumes its unwinding.
+/// token continues, a token resumes its record's unwinding with the value
+/// (the records from the token's on are dropped).
 pub open spec fn op_unwind(p: Program2, s: State2) -> Outcome2 {
     if !has_slot(s, 2) {
         stuck(Stuck::StackRange)
@@ -702,12 +767,9 @@ pub open spec fn op_unwind(p: Program2, s: State2) -> Outcome2 {
             next(s1, 1)
         } else {
             match token {
-                Value::Obj(id) => {
-                    if (id as int) < s.heap.len() {
-                        match s.heap[id as int].body {
-                            Body::Pending(u) => unwind(p, s1, u),
-                            _ => stuck(Stuck::NotUnwind),
-                        }
+                Value::Smi(k) => {
+                    if fin_matches(s, k as int) {
+                        unwind(p, State2 { fins: s.fins.subrange(0, k as int), ..s1 }, unwind_of(s.fins[k as int].resume, at(s, 2)))
                     } else {
                         stuck(Stuck::NotUnwind)
                     }

@@ -30,6 +30,13 @@ Meanwhile: the core follows the spec and allocates; on allocation failure
 it throws `OUT_OF_MEMORY` from the handler's frame (the finally code does
 not run).
 
+Applied 2026-11-10 with a change (format note 17, SPEC-CHANGELOG.md): one
+record per frame is unsound when finally code contains a try/finally
+itself, so the records form a stack next to the handlers (the record
+takes the entered handler's place, so still no allocation); the token is
+the record's index; UNWIND checks frame and token slot; TRY drops the
+frame's stale records, which bounds them by the frame's height.
+
 ## R2. Stack trace and message of raised failures (note 5)
 
 Problem: the spec's raised exception has a null trace, so failure output
@@ -56,6 +63,9 @@ performance pass.
 heap_check.rs checks. Request: a verified executable check of the heap
 part, so that the VM can run it on untrusted launches next to
 `check::verify`.
+
+Applied 2026-11-10: `v2::heap_check::x_loaded_ok` (proven equal to
+`loaded_ok`) and `x_loaded_heap_ok` (the heap part).
 
 ## R5. The fields of a task the VM owns
 

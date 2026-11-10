@@ -1195,10 +1195,18 @@ justification = "Format-2 opcode names for tracing and the table test; no semant
 [[trusted]]
 crate = "spec"
 file = "src/v2/heap_check.rs"
-item = "*"
-kind = "plain_rust_file"
+item = "check_heap"
+kind = "plain_rust_item"
 count = 1
-justification = "TRUSTED and to be verified in Phase 4: executable check of the theorem hypothesis loaded_ok (initial heap and globals); an error here voids the soundness theorem."
+justification = "Message only: toit_spec_verify's early wording of a heap rejection; the verdict comes from the verified x_loaded_ok (proven equal to loaded_ok)."
+
+[[trusted]]
+crate = "spec"
+file = "src/v2/heap_check.rs"
+item = "check_heap"
+kind = "cfg"
+count = 1
+justification = "cfg that keeps the message wrapper (it names the unverified loader's Loaded) out of the Verus build."
 
 [[trusted]]
 crate = "spec"

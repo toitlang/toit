@@ -66,6 +66,7 @@ pub open spec fn simple_step(p: Program2, c: Cert, s: State2, s2: State2, k2: Se
     &&& s2.frames == s.frames
     &&& s2.tries == s.tries
     &&& s2.globals == s.globals
+    &&& s2.fins == s.fins
     &&& s2.task == s.task
     &&& 0 <= len
     &&& s2.bci as int == s.bci as int + len

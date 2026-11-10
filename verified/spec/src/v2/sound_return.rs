@@ -57,6 +57,7 @@ pub open spec fn popped(s: State2, s1: State2) -> bool {
     &&& s1.heap == s.heap
     &&& s1.globals == s.globals
     &&& s1.task == s.task
+    &&& s1.fins == fins_popped(s)
     &&& fbase(s, t) <= s1.stack.len()
     &&& forall|x: int| 0 <= x < fbase(s, t) ==> #[trigger] s1.stack[x] == s.stack[x]
 }
@@ -73,10 +74,17 @@ pub proof fn lemma_popped_frames(p: Program2, c: Cert, s: State2, s1: State2, kt
         &&& fbase(s1, g) + slots(s, g) == fbase(s, t)
         &&& (g > 0 ==> same_below(s, s1, g - 1))
         &&& forall|fi: int| 0 <= fi < g ==> #[trigger] frame_ok(p, c, s1, fi)
+        &&& fins_ok(s1)
+        &&& fins_kept(s, s1, t, 0)
+        &&& s1.fins.len() <= s.fins.len()
     }),
 {
     let t = top_i(s);
     let g = t - 1;
+    lemma_cut_kept(s, s1, t, 0);
+    lemma_cut_ok(s, s1, t, 0);
+    lemma_fins_kept_mono(s, s1, t, 0, g, fbase(s, g) + slots(s, g) - 1);
+    if g > 0 { lemma_fins_kept_mono(s, s1, t, 0, g, 0); }
     assert(frame_ok(p, c, s, g));
     assert(base_step(s, g));
     lemma_base_le_len(s, t);
@@ -182,6 +190,7 @@ pub proof fn lemma_return(p: Program2, c: Cert, trusted: bool, s: State2, kt: Se
     let s1 = State2 {
         stack: s.stack.subrange(0, b).push(v),
         frames: s.frames.drop_last(),
+        fins: fins_popped(s),
         bci: s.frames[t].ret,
         ..s
     };
@@ -260,7 +269,7 @@ pub proof fn lemma_unw_extra(p: Program2, c: Cert, s: State2, s1: State2, kt: Se
     requires
         unw_ok(p, c, s, kt),
         s1.frames == s.frames, s1.tries == s.tries, s1.heap == s.heap, s1.globals == s.globals,
-        s1.task == s.task,
+        s1.task == s.task, s1.fins == s.fins,
         s.stack.len() <= s1.stack.len(), s1.stack.len() < 0x8000_0000,
         forall|x: int| 0 <= x < s.stack.len() ==> #[trigger] s1.stack[x] == s.stack[x],
     ensures unw_ok(p, c, s1, kt),
