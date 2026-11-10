@@ -638,6 +638,7 @@ void Scheduler::gc(Process* process, bool malloc_failed, bool try_hard) {
 
 void Scheduler::add_process(Locker& locker, Process* process) {
   num_processes_++;
+  if (process->policy()->quotas().limits_run_time()) num_run_time_limited_processes_++;
   process_ready(locker, process);
 }
 
@@ -803,6 +804,7 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
 
       int id = process->id();
       ProcessGroup* group = process->group();
+      if (process->policy()->quotas().limits_run_time()) num_run_time_limited_processes_--;
       bool last_in_group = !group->remove(process);
       ASSERT(group->lookup(id) == null);
       SystemMessage* message = process->take_termination_message(result.value());
@@ -1027,6 +1029,10 @@ void Scheduler::tick(Locker& locker, int64 now) {
 
   bool any_profiling = num_profiled_processes_ > 0;
   bool any_ready = first_non_empty_ready_queue < NUMBER_OF_READY_QUEUES;
+  if (!PROCESS_MAX_RUN_TIME_ENFORCE && !any_profiling && !any_ready &&
+      num_run_time_limited_processes_ == 0) {
+    return;
+  }
 
   for (SchedulerThread* thread : threads_) {
     Process* process = thread->interpreter()->process();
@@ -1040,7 +1046,7 @@ void Scheduler::tick(Locker& locker, int64 now) {
     const PolicyQuotas& quotas = process->policy()->quotas();
     int64 max_run_time_us = quotas.max_run_time_us;
     int64 cpu_budget_us = quotas.cpu_budget_us;
-    if (max_run_time_us > 0 || cpu_budget_us > 0) {
+    if (quotas.limits_run_time()) {
       bool over_run_time = max_run_time_us > 0 && run_time_us > max_run_time_us;
       bool over_budget = cpu_budget_us > 0 && process->cpu_time_us() + run_time_us > cpu_budget_us;
       if (over_run_time || over_budget) {

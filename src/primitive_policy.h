@@ -42,6 +42,10 @@ struct PolicyQuotas {
   int64 max_run_time_us;      // Uninterrupted run time before the process is killed.
   int64 cpu_budget_us;        // Total CPU time before the process is killed.
   word max_send_grants;       // Size of the allowed-target set of the group.
+
+  // Whether the scheduler tick must check the run time of processes with
+  // these quotas.
+  bool limits_run_time() const { return max_run_time_us > 0 || cpu_budget_us > 0; }
 };
 
 // An immutable policy that decides which primitives a process group may
