@@ -37,4 +37,5 @@ pub mod machine;
 pub mod step;
 pub mod calls;
 pub mod fields;
+pub mod types;
 pub mod obligations;
