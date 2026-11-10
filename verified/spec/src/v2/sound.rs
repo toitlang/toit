@@ -261,6 +261,9 @@ pub open spec fn conf(p: Program2, c: Cert, s: State2, fi: int, kf: Seq<Kind>, j
                     &&& d > 0
                     &&& f as int == context_frame(s, fi, d as nat)
                     &&& good_ref(p, c, s, f as int, slot as int)
+                    // A block frame's own reference: its slot holds the
+                    // frame's method.
+                    &&& (j == 0 && d == 1 ==> kinds_of(p, c, s, f as int)[sl] == Kind::Method(fmethod(s, fi)))
                 }
             },
             _ => false,

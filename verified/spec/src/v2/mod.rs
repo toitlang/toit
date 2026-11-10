@@ -31,6 +31,7 @@ pub mod sound_return;
 pub mod sound_instr;
 pub mod sound_raise;
 pub mod sound_heap;
+pub mod sound_ctx;
 #[allow(unused_variables)]
 pub mod check;
 #[cfg(not(verus_keep_ghost))]
