@@ -12,17 +12,26 @@ path = "src/lib.rs"
 [[bin]]
 name = "toit-spec-run"
 path = "src/bin/toit_spec_run.rs"
+required-features = ["std"]
 
 [[bin]]
 name = "toit_spec_verify"
 path = "src/bin/toit_spec_verify.rs"
+required-features = ["std"]
 
 [[bin]]
 name = "toit_spec_mutate"
 path = "src/bin/toit_spec_mutate.rs"
+required-features = ["std"]
+
+[features]
+# `std`: the reference interpreter (`interp`) and the tools. Without it the
+# crate is `no_std` + `alloc` (the verifier: v2::{check, infer, heap_check}).
+default = ["std"]
+std = ["vstd/std"]
 
 [dependencies]
-vstd = "=0.0.0-2026-11-01-0251"
+vstd = { version = "=0.0.0-2026-11-01-0251", default-features = false, features = ["alloc"] }
 
 [package.metadata.verus]
 verify = true
@@ -35,4 +44,5 @@ debug = 1
 # the `verus_only` cfg is set by Verus during verification.
 unexpected_cfgs = { level = "warn", check-cfg = [
   'cfg(verus_only)',
+  'cfg(verus_keep_ghost)',
 ] }

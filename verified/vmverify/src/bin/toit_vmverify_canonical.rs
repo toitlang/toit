@@ -39,7 +39,14 @@ fn main() {
     let arity: Vec<Vec<u8>> = toit_spec::v2::prim_arity::PRIM_TABLE.iter()
         .map(|(_, prims)| prims.iter().map(|(_, a)| *a).collect())
         .collect();
-    let text = toit_vmverify::canonical::canonical(&loaded, &arity);
+    let e = &loaded.program;
+    let h = toit_spec::v2::vprog::max_height_of(e);
+    let methods = toit_spec::v2::vprog::vmethods_of(e, h).unwrap_or_else(|| {
+        eprintln!("cannot convert the method table of {}", args[0]);
+        std::process::exit(1);
+    });
+    let p = toit_spec::v2::vprog::vprogram_of(e, &methods, h);
+    let text = toit_vmverify::canonical::canonical(&p, &loaded.heap, &loaded.globals, &arity);
     if std::fs::write(&args[1], text).is_err() {
         eprintln!("cannot write {}", args[1]);
         std::process::exit(2);

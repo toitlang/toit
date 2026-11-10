@@ -5,6 +5,7 @@ structural verifier of the revised bytecode format (format 2). The proof
 is in Verus, in `src/v2/`. It contains no `assume`, `admit`,
 `external_body` or `assume_specification`. The whole crate verifies in
 about 20 s wall time: `verification results:: 718 verified, 0 errors`
+about 25 s wall time: `verification results:: 736 verified, 0 errors`
 (`verus --crate-type=lib src/lib.rs`).
 
 ## The theorem
@@ -160,6 +161,36 @@ Each hypothesis is an obligation on the implementation.
    (`spec_helpers.rs`); the theorem holds for every interpretation of
    them, so they add nothing to the trusted base of the proof.
 
+### The theorem for a certificate checked one method at a time
+
+The VM never holds a whole certificate (its maps are 24 bytes and more per
+bytecode byte). `v2/split.rs` restates `accepts` per method:
+
+* `GCert` is a certificate's global part (block-parameter masks,
+  contexts, selector representatives, global count, primitive table)
+  plus `pins`: the maps of other methods that a method's rules look up.
+  Those are only the target map of a NON_LOCAL_BRANCH (in an outer method)
+  and the task entry's map at offset 1 (`tables_ok`); every other rule
+  reads only the method's own maps.
+* `split_ok(p, g, ms, trusted)`: `wf_program2`, `tables_ok` against the
+  pins only (`tables_cert(g)`), every method `m` accepted against its own
+  maps `ms[m]` and the pins elsewhere (`local_cert(g, m, ms[m])`), and
+  every pin equal to the map of its method at its offset (`pins_agree`).
+* `lemma_split_sound`: `split_ok(p, g, ms, t) ==> accepts(p, with_maps(g,
+  ms), t)` (the certificate assembled from the pieces).
+* `lemma_split_complete`: `accepts(p, c, t) ==> split_ok(p, gcert_of(c),
+  c.maps, t)` and `with_maps(gcert_of(c), c.maps) == c`. So
+  `exists c. accepts(p, c, t)` iff `exists g, ms. split_ok(p, g, ms, t)`:
+  nothing accepted is lost by checking piecewise.
+* `theorem_soundness_split`: the theorem with `split_ok(p, g, ms,
+  trusted)` and `loaded_ok(p, with_maps(g, ms), heap0, globals0)` as
+  hypotheses (it applies `lemma_split_sound` and `theorem_soundness`).
+
+Both lemmas rest on monotonicity (`lemma_method_ok_mono`,
+`lemma_tables_ok_mono`): the rules compare other methods' maps with a
+given sequence and never ask for their absence, so a certificate whose
+maps agree wherever another's are present accepts at least as much.
+
 Non-vacuity: `theorem_initial` proves `reachable` and `wf` for the initial
 state of every accepted, loaded program, so the invariant is satisfiable
 whenever the hypotheses are; `accepts` holds for real compiler output
@@ -252,14 +283,37 @@ left unproven, no admits). Outside it:
 
 ## The executable verifier
 
-`v2/check.rs::verify(p, c, trusted)` is proven to return exactly
-`accepts(pview2(p), c@, trusted)`; it uses loops only (no recursion over
-the program size). `toit_spec_verify` (`src/bin/toit_spec_verify.rs`)
-loads a dumped format-2 program, infers a certificate (`infer.rs`,
-untrusted), runs `verify` and `x_loaded_ok` (the loader's contract for
-that certificate), and prints the verdict, rejection reasons and the set
-of referenced primitives (`--time` adds timings). The verdict is
-`verify && x_loaded_ok`; inference can only cause rejections.
+`v2/check.rs::verify(p, g, oracle, trusted)` is the streaming checker. It
+takes the program as borrowed tables (`v2/vprog.rs::VProgram`, viewed as
+`Program2` by `vview`; `vprogram_of` proves `vview` equal to `pview2` for an
+`ExecProgram`), the certificate's global part `g` (`XGlobal`, viewed as a
+`GCert`; pins strictly sorted, looked up by binary search), and a
+`MapOracle` that yields the maps of one method at a time (`XMaps`: maps as
+lists of kinds sharing their bottoms). It checks the tables, then each
+method in order against its maps and the pins, and drops the maps. It is
+proven to return exactly
+
+    pins_sorted(g) && split_ok(vview(p), g@, ms, trusted)
+
+where `ms` (ghost) are the maps the oracle gave it; by `lemma_split_sound`
+the certificate `with_maps(g@, ms)` is accepted. The oracle (the inference)
+is untrusted: whatever it yields is decided. The checker uses loops only
+(no recursion over the program size).
+
+`heap_check::x_loaded_ok_stream(p, objects, global_count, globals)`
+checks the loader's contract one object at a time as an `ObjStream` yields
+them (each with the number of objects found so far); it accepts only if
+the heap the objects form satisfies `loaded_ok` for every certificate with
+that global count (`lemma_loaded_obj_mono`: `loaded_obj_ok` reads the heap
+only through its length). `x_loaded_ok(p, global_count, heap, globals)`
+is the same for a heap in memory (proven equal to `loaded_ok`).
+
+`toit_spec_verify` (`src/bin/toit_spec_verify.rs`) loads a dumped format-2
+program, computes the global part (`infer::infer_global`, untrusted),
+runs `verify` with the inference's oracle and `x_loaded_ok`, and prints the
+verdict, rejection reasons and the referenced primitives (`--time` adds
+timings). The VM (verified/vmverify) does the same on its own memory, with
+`x_loaded_ok_stream`. Inference can only cause rejections.
 
 ## Changes made for the proof
 
@@ -349,11 +403,12 @@ What the VM must still do outside the verifier, and nothing else:
    re-checks every consistency property it needs (`wf_program2`,
    `tables_ok`, `method_ok`, including `entry < end <= len`); what it
    cannot check is that the decoded table is the one the machine uses.
-2. Give the verifier the VM's primitive arities (`c.prim_arity`,
-   `v2/prim_arity.rs` generated from src/primitive.h) and run
-   `check::verify(p, c, trusted)` with `trusted = false` for an untrusted
-   launch.
-3. Run `heap_check::x_loaded_ok` on the loaded program heap and globals.
+2. Give the verifier the VM's primitive arities (`g.prim_arity`,
+   `v2/prim_arity.rs` generated from src/primitive.h) and the program's
+   global count, and run `check::verify(p, g, oracle, trusted)` with
+   `trusted = false` for an untrusted launch.
+3. Run `heap_check::x_loaded_ok_stream` on the loaded program heap (one
+   object at a time) and globals.
 4. Enforce the memory bound (hypothesis 3) and the primitive contract
    (hypothesis 2), as before.
 
@@ -427,28 +482,33 @@ limit, 71 deadlock, 11 uncaught, 6 unimplemented primitive, 1 task
 returned; **0 stuck or interpreter panics**.
 
 Numbers after the Phase 4 changes (R5, R1, R4; 2026-11-10):
+Numbers after the Phase 4 changes (R5, R1, R4; 2026-11-10), updated for
+the streaming checker (R8, branch spec/verifier-memory):
 
 * `tests/verify_suite.py`: every program found by `run_suite.py` and the
-  spec test programs (438 sources) compiled with `-Xbytecode_format=2`:
-  434 accepted (verdict `verify && x_loaded_ok`), 4 do not compile (the
-  `-force` negative compiler tests). Results in `tests/verify-results.txt`.
+  spec test programs (443 sources) compiled with `-Xbytecode_format=2`:
+  439 accepted (verdict `verify && x_loaded_ok`), 4 do not compile (the
+  `-force` negative compiler tests); the same programs as with the
+  whole-certificate checker, plus 5 new tests. Results in
+  `tests/verify-results.txt`.
 * `tests/system_snapshots.sh`: the three system snapshots (toit,
   toit.run, run-image) compiled with `toit.compile -Xbytecode_format=2`
   are accepted (trusted) and satisfy `loaded_ok`, referencing 176, 106
-  and 116 primitives. Verification time of the toit_run snapshot before
+  and 116 primitives (still so with the streaming checker). Verification time of the toit_run snapshot before
   Phase 4: 37.6 ms in total (load 1.6 ms, inference 33.0 ms, check
   4.6 ms); the largest (toit) 198 ms (not remeasured: the machines were
   loaded during this run).
-* `tests/mutation_campaign.py --count 18000 --seed 2` (results in
-  `tests/mutation-results.txt`): 12,300 single-byte and single-operand
-  mutants of 60 programs (6,159 random instruction bytes, 4,931 operands,
-  1,210 method-header bytes), verified with `trusted = false`. 9,850 are
-  rejected (770 of them already by the method-table decoder); the 2,450
-  accepted ones were run on the reference interpreter for at most
-  100,000 steps each: 2,204 exited, 119 hit the step limit, 94
-  deadlocked (all tasks blocked), 8 called an unimplemented primitive,
-  24 ended with an uncaught exception, 1 task returned. **None got stuck
-  or panicked the interpreter.**
+* `tests/mutation_campaign.py --count 18000 --seed 3` (streaming checker;
+  results in `tests/mutation-results.txt`): 18,000 single-byte and
+  single-operand mutants of 60 programs (8,982 random instruction bytes,
+  7,197 operands, 1,821 method-header bytes), verified with `trusted =
+  false`. 14,256 are rejected (1,136 of them already by the method-table
+  decoder); the 3,744 accepted ones were run on the reference interpreter
+  for at most 100,000 steps each: 3,422 exited, 172 hit the step limit,
+  109 deadlocked, 14 called an unimplemented primitive, 26 ended with an
+  uncaught exception, 1 task returned. **None got stuck or panicked the
+  interpreter.** (Before, seed 2: 12,300 mutants, 2,450 accepted, none
+  stuck.)
 * `tests/run_tests.sh`: the 15 spec test programs (new:
   `finally_records`, try/finally inside finally code, breaks out of
   finally code, the value slot) produce the C++ VM's output in format 1

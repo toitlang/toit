@@ -1306,6 +1306,38 @@ justification = "Reference interpreter (plain Rust, not verified; DESIGN.md); di
 
 [[trusted]]
 crate = "spec"
+file = "src/lib.rs"
+item = "*"
+kind = "plain_rust_file"
+count = 1
+justification = "Only `extern crate alloc;` (the inference uses alloc collections so that it also builds without std); no code."
+
+[[trusted]]
+crate = "spec"
+file = "src/lib.rs"
+item = "<module>"
+kind = "cfg"
+count = 1
+justification = "cfg_attr that makes the crate no_std (with alloc) when built without the std feature for devices; Verus and host builds see the whole crate (verus_keep_ghost or std)."
+
+[[trusted]]
+crate = "spec"
+file = "src/lib.rs"
+item = "exec_step"
+kind = "cfg"
+count = 1
+justification = "Keeps the format-1 exec steps (their float helpers call the std-only reference interpreter) out of no_std device builds; Verus always verifies them."
+
+[[trusted]]
+crate = "spec"
+file = "src/lib.rs"
+item = "interp"
+kind = "cfg"
+count = 1
+justification = "Keeps the reference interpreter (plain Rust, std) out of no_std device builds; Verus always sees it."
+
+[[trusted]]
+crate = "spec"
 file = "src/spec_helpers.rs"
 item = "compare_mixed"
 kind = "uninterp"
@@ -1374,7 +1406,15 @@ file = "src/v2/infer.rs"
 item = "*"
 kind = "plain_rust_file"
 count = 1
-justification = "Untrusted by design: computes the certificate; the verified checker check::verify decides acceptance, so a wrong certificate can only cause rejection."
+justification = "Untrusted by design: computes the certificate (global part, then one method's maps at a time); the verified checker check::verify decides acceptance, so a wrong certificate can only cause rejection. Total on any input (R6): bounds-checked, fuzzed with toit_vmverify_fuzz."
+
+[[trusted]]
+crate = "spec"
+file = "src/v2/mod.rs"
+item = "exec"
+kind = "cfg"
+count = 1
+justification = "Keeps the format-2 exec step (it uses exec_step) out of no_std device builds; Verus always verifies it; the verifier does not use it."
 
 [[trusted]]
 crate = "spec"
@@ -1402,59 +1442,43 @@ justification = "Plain Rust crate, not run through Verus: the trusted conversion
 
 [[trusted]]
 crate = "vmverify"
-file = "src/alloc.rs"
-item = "*"
-kind = "plain_rust_file"
-count = 1
-justification = "Counting global allocator for the verifier's memory high-water mark (measurement only); forwards to the system allocator."
-
-[[trusted]]
-crate = "vmverify"
-file = "src/alloc.rs"
-item = "Counting"
-kind = "unsafe"
-count = 1
-justification = "GlobalAlloc is an unsafe trait; the impl forwards every call unchanged to System and only adds relaxed counters."
-
-[[trusted]]
-crate = "vmverify"
-file = "src/alloc.rs"
-item = "Counting::alloc"
-kind = "unsafe"
-count = 1
-justification = "Forwards to System.alloc with the caller's layout (GlobalAlloc contract passed through)."
-
-[[trusted]]
-crate = "vmverify"
-file = "src/alloc.rs"
-item = "Counting::alloc_zeroed"
-kind = "unsafe"
-count = 1
-justification = "Forwards to System.alloc_zeroed with the caller's layout."
-
-[[trusted]]
-crate = "vmverify"
-file = "src/alloc.rs"
-item = "Counting::dealloc"
-kind = "unsafe"
-count = 1
-justification = "Forwards to System.dealloc with the pointer and layout the caller got from this allocator."
-
-[[trusted]]
-crate = "vmverify"
-file = "src/alloc.rs"
-item = "Counting::realloc"
-kind = "unsafe"
-count = 1
-justification = "Forwards to System.realloc with the caller's pointer, layout and size."
-
-[[trusted]]
-crate = "vmverify"
 file = "src/bin/toit_vmverify_canonical.rs"
 item = "*"
 kind = "plain_rust_file"
 count = 1
 justification = "Test tool (dump side of tests/differential.py): canonical form of a dump read with the reference loader; not linked into the VM."
+
+[[trusted]]
+crate = "vmverify"
+file = "src/bin/toit_vmverify_fuzz.rs"
+item = "*"
+kind = "plain_rust_file"
+count = 1
+justification = "Test tool, not linked into the VM: in-process fuzz driver of toit_vmverify_verify on mutated verifier inputs (tables.rs)."
+
+[[trusted]]
+crate = "vmverify"
+file = "src/bin/toit_vmverify_fuzz.rs"
+item = "main"
+kind = "unsafe"
+count = 2
+justification = "Test tool: zero-initializes a ProgramTables (plain integers and pointers) that Tables::input fills, and saves a finding with tables::save over buffers it owns."
+
+[[trusted]]
+crate = "vmverify"
+file = "src/bin/toit_vmverify_fuzz.rs"
+item = "run"
+kind = "unsafe"
+count = 2
+justification = "Test tool: zero-initialized ProgramTables filled by Tables::input; calls the C ABI entry point with pointers into buffers that live across the call."
+
+[[trusted]]
+crate = "vmverify"
+file = "src/bin/toit_vmverify_mem.rs"
+item = "*"
+kind = "plain_rust_file"
+count = 1
+justification = "Test tool, not linked into the VM: measures the verifier's memory (counting allocator) and time on dumped programs."
 
 [[trusted]]
 crate = "vmverify"
@@ -1466,11 +1490,67 @@ justification = "Test support: canonical text of an abstract program for the dif
 
 [[trusted]]
 crate = "vmverify"
+file = "src/clock.rs"
+item = "*"
+kind = "plain_rust_file"
+count = 1
+justification = "Phase times for the verifier's result (diagnostics only); zero without std."
+
+[[trusted]]
+crate = "vmverify"
+file = "src/counting.rs"
+item = "*"
+kind = "plain_rust_file"
+count = 1
+justification = "Counting global allocator for the verifier's memory high-water mark (measurement only, host builds); forwards to the system allocator."
+
+[[trusted]]
+crate = "vmverify"
+file = "src/counting.rs"
+item = "Counting"
+kind = "unsafe"
+count = 1
+justification = "GlobalAlloc is an unsafe trait; the impl forwards every call unchanged to System and only adds relaxed counters."
+
+[[trusted]]
+crate = "vmverify"
+file = "src/counting.rs"
+item = "Counting::alloc"
+kind = "unsafe"
+count = 1
+justification = "Forwards to System.alloc with the caller's layout (GlobalAlloc contract passed through)."
+
+[[trusted]]
+crate = "vmverify"
+file = "src/counting.rs"
+item = "Counting::alloc_zeroed"
+kind = "unsafe"
+count = 1
+justification = "Forwards to System.alloc_zeroed with the caller's layout."
+
+[[trusted]]
+crate = "vmverify"
+file = "src/counting.rs"
+item = "Counting::dealloc"
+kind = "unsafe"
+count = 1
+justification = "Forwards to System.dealloc with the pointer and layout the caller got from this allocator."
+
+[[trusted]]
+crate = "vmverify"
+file = "src/counting.rs"
+item = "Counting::realloc"
+kind = "unsafe"
+count = 1
+justification = "Forwards to System.realloc with the caller's pointer, layout and size."
+
+[[trusted]]
+crate = "vmverify"
 file = "src/ffi.rs"
 item = "*"
 kind = "plain_rust_file"
 count = 1
-justification = "TRUSTED C ABI of the verifier (src/verifier_v2.h): copies the verdict into the C struct, catches panics (reject); struct layout checked by verified/layout_check.cc."
+justification = "TRUSTED C ABI of the verifier (src/verifier_v2.h): copies the verdict into the C struct, catches panics on hosts (reject; no_std builds abort); struct layout checked by verified/layout_check.cc."
 
 [[trusted]]
 crate = "vmverify"
@@ -1479,6 +1559,14 @@ item = "arities"
 kind = "unsafe"
 count = 1
 justification = "Slices over the VM's primitive arity tables (static arrays in src/verifier_v2.cc) with the lengths C++ passes."
+
+[[trusted]]
+crate = "vmverify"
+file = "src/ffi.rs"
+item = "run"
+kind = "unsafe"
+count = 1
+justification = "Converts the program from the input struct's tables (from_vm::convert's contract, passed through from toit_vmverify_verify) and runs the verdict."
 
 [[trusted]]
 crate = "vmverify"
@@ -1510,7 +1598,7 @@ file = "src/from_vm.rs"
 item = "*"
 kind = "plain_rust_file"
 count = 1
-justification = "TRUSTED: builds the abstract program and heap from the tables the core executes (straight-line copy plus a bounds-checked breadth-first walk of the program image); equal to the dump path's on 434/434 suite programs (tests/differential.py)."
+justification = "TRUSTED: builds the abstract program and heap from the tables the core executes (the tables borrowed as slices, plus a bounds-checked breadth-first walk of the program image); equal to the dump path's on every suite program (tests/differential.py)."
 
 [[trusted]]
 crate = "vmverify"
@@ -1534,7 +1622,7 @@ file = "src/from_vm.rs"
 item = "convert"
 kind = "unsafe"
 count = 1
-justification = "Reads the toit_v2_program tables through their pointers and lengths, as the core's Table views do (v2_program_tables fills both)."
+justification = "Borrows the toit_v2_program tables through their pointers and lengths, as the core's Table views do (v2_program_tables fills both); the V2Method array is viewed as VMethod, whose size, alignment and field offsets are asserted equal at compile time."
 
 [[trusted]]
 crate = "vmverify"
@@ -1546,8 +1634,56 @@ justification = "slice::from_raw_parts over a VM table with its length (empty sl
 
 [[trusted]]
 crate = "vmverify"
+file = "src/lib.rs"
+item = "*"
+kind = "plain_rust_file"
+count = 1
+justification = "Module list, the no_std switch (cfg_attr) and `extern crate alloc`; no code."
+
+[[trusted]]
+crate = "vmverify"
+file = "src/tables.rs"
+item = "*"
+kind = "plain_rust_file"
+count = 1
+justification = "Test support, not on the verification path: saves the FFI input (toit.run --emit-canonical=X.tables) and loads it back for the fuzz driver."
+
+[[trusted]]
+crate = "vmverify"
+file = "src/tables.rs"
+item = "Reader::vec"
+kind = "unsafe"
+count = 1
+justification = "Test support: copies file bytes into a Vec of plain-old-data elements (integers, V2Method) after checking the length."
+
+[[trusted]]
+crate = "vmverify"
+file = "src/tables.rs"
+item = "Tables::load"
+kind = "unsafe"
+count = 1
+justification = "Test support: copies the image bytes into a word buffer of at least that size."
+
+[[trusted]]
+crate = "vmverify"
+file = "src/tables.rs"
+item = "bytes"
+kind = "unsafe"
+count = 1
+justification = "Test support: views a VM table as bytes for saving; the caller passes the table's pointer and length from the FFI input."
+
+[[trusted]]
+crate = "vmverify"
+file = "src/tables.rs"
+item = "save"
+kind = "unsafe"
+count = 1
+justification = "Test support: reads the FFI input's tables and image (valid for their lengths, as for toit_vmverify_verify) to write them to a file."
+
+[[trusted]]
+crate = "vmverify"
 file = "src/verify.rs"
 item = "*"
 kind = "plain_rust_file"
 count = 1
-justification = "TRUSTED verdict glue: accept iff the proven check::verify and heap_check::x_loaded_ok both accept the converted program, with global_count and prim_arity set from trusted inputs after the untrusted inference."
+justification = "TRUSTED verdict glue: accept iff the proven check::verify (split_ok, hence accepts of the assembled certificate) and heap_check::x_loaded_ok_stream both accept the converted program and the conversion completed, with global_count and prim_arity set from trusted inputs."
