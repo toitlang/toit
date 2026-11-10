@@ -115,8 +115,15 @@ Grants to the allowed-target set are issued:
 - by the scheduler, when a process of an untrusted group receives an RPC
   request: the requester's pid is granted so the provider can reply.
 
-The set is a ring buffer of `max_send_grants` entries (oldest grant
-evicted). Pids are never reused, so grants for dead processes are inert.
+The set holds at most `max_send_grants` pids, and grants are never
+evicted: evicting an older grant would silently break a capability the
+container uses. The system process and processes of the own group don't
+take up room. When the set is full, a discovery that would grant a new
+provider fails with `QUOTA_EXCEEDED` (the client sees the exception), and
+an RPC request from a new requester to a provider in the container is
+refused like a request to a full mailbox (`process_send` returns false for
+a trusted sender). Pids are never reused, so grants for dead processes are
+inert, but they keep their room.
 
 Services in the system process are reachable by every process, so they
 reject untrusted clients unless the provider opts in
@@ -191,10 +198,13 @@ Quotas can also be given for trusted containers.
 
 Device: containers are started by `system/containers.toit` through
 `programs_registry.spawn`, which takes the policy as its last argument.
-Without an explicit policy a container runs with the default policy of its
-image: trusted, unless the image was installed with
-`ContainerService.FLAG-UNTRUSTED` (for example
-`ContainerImageWriter.commit --untrusted`). Existing images are
+Without an explicit policy a container runs with the trusted policy.
+`ContainerService.FLAG-UNTRUSTED` on an image (for example from
+`ContainerImageWriter.commit --untrusted`, or set by `toit run
+--untrusted`) is binding: a container from a flagged image always runs
+with the untrusted policy, also when the start request asks for the
+trusted policy (only its quotas are used). Running a container from an
+unflagged image untrusted is up to the caller. Existing images are
 unaffected.
 
 ## Tests
