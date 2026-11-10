@@ -192,10 +192,13 @@ Quotas can also be given for trusted containers.
 
 Device: containers are started by `system/containers.toit` through
 `programs_registry.spawn`, which takes the policy as its last argument.
-Without an explicit policy a container runs with the default policy of its
-image: trusted, unless the image was installed with
-`ContainerService.FLAG-UNTRUSTED` (for example
-`ContainerImageWriter.commit --untrusted`). Existing images are
+Without an explicit policy a container runs with the trusted policy.
+`ContainerService.FLAG-UNTRUSTED` on an image (for example from
+`ContainerImageWriter.commit --untrusted`, or set by `toit run
+--untrusted`) is binding: a container from a flagged image always runs
+with the untrusted policy, also when the start request asks for the
+trusted policy (only its quotas are used). Running a container from an
+unflagged image untrusted is up to the caller. Existing images are
 unaffected.
 
 ## Verification at launch
