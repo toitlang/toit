@@ -36,6 +36,7 @@ pub mod sound_unwind_ops;
 pub mod sound_tail;
 pub mod sound_prim;
 pub mod sound_call_ops;
+pub mod sound_virtual;
 #[allow(unused_variables)]
 pub mod check;
 #[cfg(not(verus_keep_ghost))]
