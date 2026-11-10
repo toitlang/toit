@@ -129,6 +129,12 @@ bool Interpreter::fast_at(Process* process, Object* receiver, Object* arg, bool 
     return false;
   }
 
+  // Objects on the program heap are shared and read-only. The slow path
+  // reports an error for stores into them.
+  if (is_put && process->on_program_heap(array != null ? static_cast<HeapObject*>(array) : byte_array)) {
+    return false;
+  }
+
   if (array != null) {
     if (n >= length) return false;
 
@@ -333,7 +339,7 @@ int Interpreter::compare_numbers(Object* lhs, Object* rhs) {
 //     We should return from the entire method with this value.
 //       A positive Smi indicates our progress so far.
 //       A null indicates we are done.
-Object* Interpreter::hash_do(Program* program, Object* current, Object* backing, int step, Object* block_on_stack, Object** entry_return) {
+Object* Interpreter::hash_do(Program* program, Object** sp, Object* current, Object* backing, int step, Object* block_on_stack, Object** entry_return) {
   word c = 0;
   if (!is_smi(current)) {
     // First time.
@@ -359,8 +365,8 @@ Object* Interpreter::hash_do(Program* program, Object* current, Object* backing,
         c = Smi::value(size) + step;
       }
     }
-    Smi* block = Smi::cast(*from_block(Smi::cast(block_on_stack)));
-    Method target = Method(program->bytecodes, Smi::value(block));
+    Method target = checked_block_method(program, block_on_stack, sp);
+    if (!target.is_valid()) return Smi::from(c);  // Bail out at this point.
     if ((step & 1) != 0) {
       ASSERT(step == 1 || step == -1);
       // Block for set should take 1 argument.
