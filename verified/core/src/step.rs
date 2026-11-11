@@ -1381,14 +1381,38 @@ pub fn step_r(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
         89 => {
             return crate::rarrays::op_primitive(m, r, env, cur_bci(p, r.ip), 89);
         },
+        // Non-local control flow (rnonlocal.rs): fast paths without
+        // handlers on the way and without finally records.
+        93 => {
+            proof { assert(sp::step(ap, g) == sp::op_non_local_return(ap, g)) by { reveal(sp::step); } }
+            let (r2, c2) = crate::rnonlocal::op_non_local_return_v(m, *r, env, cur_bci(p, r.ip), opcode);
+            crate::regs::set_regs(r, r2);
+            return c2;
+        },
+        95 => {
+            let hd = r.ip.byte(1, &p.code) as usize;
+            let off = ip_u32(p, r.ip, 2);
+            proof {
+                assert(sp::step(ap, g) == sp::op_non_local_branch(ap, g, hd as int, off as int)) by { reveal(sp::step); }
+            }
+            let (r2, c2) = crate::rnonlocal::op_non_local_branch_v(m, *r, env, cur_bci(p, r.ip), opcode, hd, off);
+            crate::regs::set_regs(r, r2);
+            return c2;
+        },
+        97 => {
+            proof { assert(sp::step(ap, g) == sp::op_try(ap, g)) by { reveal(sp::step); } }
+            let (r2, c2) = crate::rnonlocal::op_try_v(m, *r, env, cur_bci(p, r.ip), opcode);
+            crate::regs::set_regs(r, r2);
+            return c2;
+        },
+        99 => {
+            proof { assert(sp::step(ap, g) == sp::op_unwind(ap, g)) by { reveal(sp::step); } }
+            return crate::rnonlocal::op_unwind(m, r, env, cur_bci(p, r.ip), opcode);
+        },
         // Rare opcodes: the machine's handlers (`Slow::Op`). INVOKE_LAMBDA_TAIL,
-        // THROW, NON_LOCAL_RETURN, NON_LOCAL_BRANCH, TRY, UNWIND, HALT.
+        // THROW, HALT.
         56 => { return slow0(m, r, env, Slow::Op); },
         90 => { return slow0(m, r, env, Slow::Op); },
-        93 => { return slow0(m, r, env, Slow::Op); },
-        95 => { return slow0(m, r, env, Slow::Op); },
-        97 => { return slow0(m, r, env, Slow::Op); },
-        99 => { return slow0(m, r, env, Slow::Op); },
         100 => { return slow0(m, r, env, Slow::Op); },
         // LOOP_REPEAT (proposal, format note 19).
         101 => {

@@ -61,7 +61,7 @@ pub proof fn lemma_or_ge(w: usize, n: usize)
 #[inline(always)]
 pub fn call_fast(m: &Machine, r: &Regs, env: &Env) -> (b: bool)
     requires m_ok(&env.p, *m, *r),
-    ensures b ==> m.fw == 0 && r.sp@ - r.fr@ >= FRAME_WORDS + env.p.max_height + STACK_RESERVE,
+    ensures b ==> m.fw == 0 && r.sp@ - r.fr@ >= FRAME_WORDS + env.p.max_height + STACK_RESERVE + FIN_WORDS,
 {
     let w = env.pre.word();
     let free = r.sp.diff(r.fr);
@@ -254,7 +254,10 @@ pub fn op_return(m: &mut Machine, r: &mut Regs, env: &Env, w: usize, Ghost(v): G
     let handler = crec.read(FRAME_HANDLER, &m.mem);
     if handler != 0 {
         // The caller is suspended in a TRY: its finally code runs.
-        return slow_r(m, r, env, Slow::Return, w, Ghost(v));
+        proof { assert(m.fw == 0); }
+        let (r2, c2) = crate::rnonlocal::ret_try_v(m, *r, env, Ghost(v));
+        set_regs(r, r2);
+        return c2;
     }
     let rec_ = r.fr.offset(-(FRAME_WORDS as isize));
     let ret = rec_.read(FRAME_RET, &m.mem);
