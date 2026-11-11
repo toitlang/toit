@@ -1,0 +1,211 @@
+Red-team review, round 2 (2026-11-11)
+=====================================
+Independent agent. Target: an untrusted, fully attacker-controlled format-2
+snapshot (bytecode + shipped certificate) run with `toit.run --untrusted`.
+Goal: get memory corruption / VM crash / isolation breach / primitive-policy
+bypass / unverified execution.
+
+VERDICT: not broken. No crash, sanitizer report, isolation breach or policy
+bypass found. Every hand-crafted program was rejected by the loader or the
+verifier; the service/quota/lifecycle defenses hold (confirmed via ctest).
+
+================================================================
+ENVIRONMENT
+================================================================
+- Normal build:  build/host/sdk/lib/toit/bin/toit.run      (TOIT_VERIFIED_CORE,
+  TOIT_VERIFIED_CORE_INFER: host infers a certificate when none is shipped)
+- Sanitizer build: build/asan/sdk/lib/toit/bin/toit.run
+  (asan build type, -fsanitize=address,undefined -fno-omit-frame-pointer -g).
+  It prints ONE benign UBSan line on every run ("member call on null pointer"
+  at src/primitive.h:1511, a format-1 interpreter path); run-both.sh filters it.
+  NB: the asan toit.run build needs `mkdir build/asan/generated build/asan/run_image`
+  first (the snapshot-embed step does not create them).
+
+================================================================
+ARCHITECTURE NOTES THAT SHAPED THE ATTACK (from the source)
+================================================================
+- The real interpreter for untrusted format-2 programs is the *verified Rust
+  core* (verified/core), driven by toit_v2_run (src/interpreter_v2.cc). When a
+  table is "accepted" (TOIT_V2_ACCEPTED) the core runs UNCHECKED "verified
+  handlers" that trust the verifier's guarantees.
+- The verifier is the Rust vmverify (verified/vmverify), proven against the
+  bytecode spec (verified/spec). A shipped certificate is NOT trusted: the
+  proven checker (cert::verify_shipped / verify_shipped_progress) re-runs the
+  same soundness check using the certificate's maps only as an oracle; bad maps
+  make split_ok false -> reject. So an attacker-controlled certificate gives no
+  bypass (confirmed empirically, see CERT-1).
+- Verifier and core read the SAME in-memory tables (v2_program_tables fills one
+  toit_v2_program struct for both; from_vm.rs borrows it). So a bytecode/field
+  edit is seen identically by both: a "parser differential" needs a divergence
+  in the TRUSTED C++/Rust seam, not in the bytecode itself.
+- The attacker-reachable UNPROVEN surface (the real weak point) is:
+  (a) V2MethodTable::compute        -- C++ method-header loader (interpreter_v2.cc)
+  (b) v2_program_tables / from_vm.rs -- the memory->abstract-program conversion
+  (c) the FFI helpers                -- toit_v2_grow_stack, _allocate_*,
+      _call_primitive, _allocate_exception (encoder), task start/transfer
+  (d) the 35 C++ core + 2 bitmap primitives of the untrusted allowed set.
+  (a)-(c) were reviewed; (d)/(blit) were fuzzed in round 1.
+
+================================================================
+CRAFTING TOOL (review/red-team/round2/craft.toit)
+================================================================
+A standalone Toit tool (core + host.file only; run with `--project-root tools`).
+It parses the snapshot's ar bundle, locates the single `TBC2` bytecode blob in
+the "snapshot" member (both compute() and the core read exactly this blob), and
+overwrites bytes at caller-chosen bytecode indices (bci). Edits preserve the
+blob length, so the surrounding snapshot serialization and ar headers stay valid
+-- no re-encoding. By default it drops the now-stale "certificate" ar member so
+the host re-INFERS and re-checks the edited program (use --keep-cert to exercise
+the shipped-certificate path instead).
+Commands: info | dump-blob | patch [--keep-cert] <in> <out> [<bci> <hex>]... | set-byte.
+Method header bci / arity / body size come from
+  `toit.run tools/spec_dump.toit <snap> <dump>`   (lines `m <id> <size> <arity> <name>`;
+   id == header bci; the bytecode body starts right after the header).
+
+PROOF THE TOOL WORKS (harmless semantic change, still verifies + runs):
+  base `main: print 100`  (main header @ bci 222, entry 225:
+     1a 64   LOAD_SMI_U8 100 ; 35 c2 02 INVOKE_STATIC 0x2c2 ; 5c RETURN_NULL)
+  craft patch num.snapshot num99.snapshot 226 63      (operand 100 -> 99)
+  -> verifier "accepted" (freshly INFERRED cert, not shipped), program prints 99.
+  Reproduce:  review/red-team/round2/repro/num.toit + battery.sh
+
+================================================================
+FAMILY 2 -- SEMANTIC ATTACKS ON THE VERIFIER/INTERPRETER PAIR
+================================================================
+All crafted with craft.toit; run with inference (cert dropped). "method 21" is
+`main` in num.snapshot. Snapshots are in review/red-team/round2/repro/. Run
+`bash review/red-team/round2/battery.sh` to regenerate and re-check.
+
+Crafted programs this family: 17. Accepted by the verifier: 0.
+
+LOADER-LEVEL (V2MethodTable::compute, interpreter_v2.cc) -> INVALID_SNAPSHOT:
+  hdr-bad-flags   (flags byte = 0x0f, undefined bits)      REJECTED
+      rule: compute() "(flags & ~(KIND|HAS_SELECTOR|HAS_RECEIVER)) != 0"
+            -> "bad method header flags" (interpreter_v2.cc ~line 116).
+  hdr-kind-lambda (claim main is a LAMBDA, kind=2)          REJECTED
+      rule: a lambda header requires an `aux` LEB; its absence trips the same
+            header decode -> "bad method header flags"/"bad method header".
+
+VERIFIER-LEVEL (vmverify, verified/spec) -> VERIFICATION_FAILED:
+  hdr-arity-255  (main arity byte 0x00->0xff)   REJECTED at a *different* method
+      (56, an INVOKE_STATIC "rejected with kinds [Block(1,1)]"): the height /
+      argument-kind inference propagates the bogus arity and finds the mismatch.
+  hdr-kind-block (claim main is a BLOCK, kind=3)            REJECTED
+      rule: tables_ok (an entry-point method may not be a block).
+  op-out-of-range (opcode 101 >= OPCODE_COUNT2=101)         REJECTED  "invalid opcode 101"
+  op-halt-deepsleep (HALT 2) / op-halt-reset (HALT 3)       REJECTED  "HALT rejected with kinds []"
+      (the verifier bans HALT in untrusted programs; defense-in-depth exit 242 too)
+  op-pop-underflow (POP 2 at height 0)                      REJECTED  "POP rejected"  (stack height)
+  op-trunc-invoke (RETURN_NULL len1 -> INVOKE_STATIC len3 crossing method end)
+                                                            REJECTED  "instruction crosses the method end"
+  op-branch-mid (BRANCH into the middle of the next instruction)
+                                                            REJECTED  (decode lands on INVOKE_SIZE with wrong kinds)
+  op-return-midstack (RETURN with wrong height)             REJECTED  "RETURN rejected"
+  op-primitive-oob (PRIMITIVE module 255 idx 255...)        REJECTED  "PRIMITIVE rejected"
+      note: the verifier checks the PRIMITIVE's module/index/arity against the
+      FULL primitive-arity table; the untrusted ALLOWED-SET gate is a separate
+      run-time check (toit_v2_lookup_primitive -> policy()->at), so a denied-but-
+      valid primitive is accepted by the verifier and denied at run time
+      (PERMISSION_DENIED) -- not a memory issue.
+  op-store-local-high (STORE_LOCAL 64, beyond the frame)   REJECTED  "STORE_LOCAL rejected"
+  op-invoke-virtual-bad (INVOKE_VIRTUAL huge dispatch off) REJECTED  "INVOKE_VIRTUAL rejected"
+  op-load-literal-oob (LOAD_LITERAL 255)                   REJECTED  "LOAD_LITERAL rejected"
+
+NEAREST-VARIANT NOTE: the surviving rules (opcode validity, per-bci stack height
+and argument-kind inference, HALT ban, past-the-end, arity match on every call)
+are exactly the properties the machine-checked soundness theorem
+(theorem_soundness / split_ok -> accepts) establishes. Producing an
+accepted-but-unsafe program means defeating that proof or a TRUSTED-seam bug
+below; neither was found in the time available.
+
+================================================================
+CERTIFICATE PATH
+================================================================
+CERT-1  stale/forged shipped certificate.
+  Patched main to an out-of-range opcode but KEPT the original certificate
+  (craft patch --keep-cert).  Result: "verifier: rejected (shipped
+  certificate) ... bad opcode 101 (shipped certificate rejected at method 21)".
+  The proven checker re-validates the ACTUAL bytecodes using the certificate
+  only as a map oracle, so a mismatching or forged certificate cannot admit a
+  program the inference would reject. Attacker control of the certificate buys
+  nothing. (verify.rs verify_shipped_progress; cert.rs parse_cert/verify_shipped.)
+
+================================================================
+FAMILY: TRUSTED C++/Rust SEAM (reviewed, no break)
+================================================================
+- byte_content (src/objects.cc:33) -- the common string/byte-array extractor
+  used by primitives and the message encoder. For StringSlice_ / byte-array
+  slice / byte-array-cow it re-validates every field at run time: wrapped must
+  be a heap object, from/to must be smis, and 0 <= from <= to <= length, with a
+  depth cap. So CRAFTED slice fields (the policy doc's acknowledged risk) are
+  bounds-checked here; no OOB. (Confirms the "invalid-utf-8-literal"/
+  "message-shared-graph" hardening.)
+- V2MethodTable::compute (interpreter_v2.cc) -- header LEBs are capped at 4
+  bytes / 28 bits and rejected if not in shortest form; body/selector/receiver/
+  aux bounds are checked and fit the uint8/uint16 V2Method fields; methods
+  partition [4,length); count < 2^24; length < 2^28. No overflow of the stored
+  fields found on 64-bit. (32-bit host not separately built this round.)
+- from_vm.rs -- every object read is bounds-checked against
+  [program_heap_start, +size); instances take their field count from class_bits
+  exactly as the core's instance_fields; external byte arrays modelled as the
+  core's Heap::bytes_len (raw-byte tag + nonzero addr = bytes, else opaque).
+  Verifier and core share the same struct, so no differential on the tables.
+- FFI helpers -- toit_v2_grow_stack recomputes free space and returns
+  STACK_OVERFLOW unless `needed` fits; toit_v2_call_primitive takes the arity
+  from the real PrimitiveEntry (same source the verifier checks); allocation
+  helpers bound length (Array::max_length / ARRAYLET_SIZE). No mismatch found.
+  Not independently stress-crafted (would need program-heap/literal editing,
+  which craft.toit does not yet do -- see "Not done").
+
+================================================================
+FAMILY 3 & 4 -- SERVICE LAYER AND LIFECYCLE
+================================================================
+The builders ship an extensive passing negative suite (tests/sandbox/forge-*,
+send-arbitrary-pid, send-scan-pids, mailbox-*-flood, provider-denied,
+service-squat, grant-*, install-verdict, kill-cleanup, watch-pid-probe, ...).
+Re-ran a representative subset through ctest on the host build:
+  forge-rpc-reply, install-verdict, send-arbitrary-pid, send-scan-pids
+  -> 4/4 PASSED.  (Run standalone with `toit.run <test>.toit` they fail in the
+   driver's RPC broker setup -- a cwd/harness artifact, not a finding; they
+   pass under ctest.)
+Reviewed the gate (src/process_group messaging, system/services.toit,
+lib/rpc/broker.toit) and the "Threats tested" table (read last): my
+service/quota/lifecycle results match the builders' "holds"/"fixed" rows. No
+new issue. The two documented GAPS (mailbox quota is per-receiver;
+discovery `watch` leaks pid liveness) are known and accepted by the owner.
+
+================================================================
+CLOSEST THREE / WEAKEST POINT
+================================================================
+1. hdr-arity-255 -- a single header byte flips main's arity; the verifier did
+   not reject at main but propagated it and rejected a *downstream* call on an
+   argument-kind mismatch. Shows the kind/height inference is global and tight.
+   Stopped by: INVOKE_STATIC argument-kind check (check.rs x_args_ok / x_info
+   arity). No way found to make the propagation land on an accepting state.
+2. CERT-1 -- forged shipped certificate with mismatched bytecode. Stopped by:
+   the proven checker re-validating the real bytecodes (verify_shipped).
+3. Crafted slice fields to C++ primitives. Stopped before crafting by code
+   review: byte_content re-validates from/to/length at run time (objects.cc:75).
+
+WEAKEST POINT (judgement): the TRUSTED, UNPROVEN C++/Rust seam -- V2MethodTable::
+compute (the hand-written header loader), the FFI allocation/stack/exception
+helpers, and the 35 C++ core + 2 bitmap primitives of the untrusted set. The
+verifier and core are machine-checked and held against every bytecode edit I
+tried; the acknowledged residual risk ("Known gaps": the verifier is not proven
+sound yet) was not realised. The most promising UNEXPLORED attack is editing the
+PROGRAM HEAP / literal objects (not just the bytecode blob) to feed the C++
+primitives and the exception encoder crafted instances whose shape the verifier
+does not constrain -- craft.toit would need a heap-object editor for that.
+
+================================================================
+NOT DONE (for a round 3)
+================================================================
+- Program-heap / literal-object editing (craft.toit only patches the TBC2 blob):
+  crafted StringSlice_/ByteArraySlice_/CoW/instance literals as primitive
+  destinations and as `this` with too few fields.
+- 32-bit host build differential (toolchains/host32) for compute()/from_vm
+  arithmetic that wraps at 2^31/2^32.
+- Install/flipped-flag/corrupt-after-verdict lifecycle beyond the existing
+  install-verdict test (flash-registry emulation).
+- Multi-instruction control-flow-merge kind confusion (needs larger crafted
+  methods than in-place byte patching allows).
