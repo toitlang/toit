@@ -50,7 +50,13 @@ pub mod vprog;
 pub mod split;
 #[allow(unused_variables)]
 pub mod check;
-#[cfg(not(verus_keep_ghost))]
+#[allow(unused_variables)]
+pub mod cert;
+#[cfg(all(not(verus_keep_ghost), feature = "infer"))]
 pub mod infer;
+#[cfg(all(not(verus_keep_ghost), feature = "infer"))]
+pub mod gbuf;
+#[cfg(all(not(verus_keep_ghost), feature = "infer"))]
+pub mod encode;
 pub mod heap_check;
 pub mod prim_arity;

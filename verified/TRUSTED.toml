@@ -1970,6 +1970,22 @@ justification = "Format-2 opcode names for tracing and the table test; no semant
 
 [[trusted]]
 crate = "spec"
+file = "src/v2/encode.rs"
+item = "*"
+kind = "plain_rust_file"
+count = 1
+justification = "Untrusted producer of shipped certificates (host toolchain, feature infer): writes the inferred certificate in the format of format/18-shipped-certificate.md; cert::verify_shipped (proven) checks whatever it writes, so a wrong encoding can only cause rejection, and toit.run --certify checks every certificate before shipping it."
+
+[[trusted]]
+crate = "spec"
+file = "src/v2/gbuf.rs"
+item = "*"
+kind = "plain_rust_file"
+count = 1
+justification = "Untrusted: owned buffers of the certificate's global part (the byte tables check::XGlobal borrows), built and updated by the inference; the verified checker decides whatever they hold."
+
+[[trusted]]
+crate = "spec"
 file = "src/v2/heap_check.rs"
 item = "check_heap"
 kind = "cfg"
@@ -1995,10 +2011,26 @@ justification = "Untrusted by design: computes the certificate (global part, the
 [[trusted]]
 crate = "spec"
 file = "src/v2/mod.rs"
+item = "encode"
+kind = "cfg"
+count = 1
+justification = "The producer of shipped certificates is plain Rust and host-only: compiled with the infer feature and outside Verus, like infer."
+
+[[trusted]]
+crate = "spec"
+file = "src/v2/mod.rs"
 item = "exec"
 kind = "cfg"
 count = 1
 justification = "Keeps the format-2 exec step (it uses exec_step) out of no_std device builds; Verus always verifies it; the verifier does not use it."
+
+[[trusted]]
+crate = "spec"
+file = "src/v2/mod.rs"
+item = "gbuf"
+kind = "cfg"
+count = 1
+justification = "The inference's global buffers are plain Rust and host-only: compiled with the infer feature and outside Verus, like infer."
 
 [[trusted]]
 crate = "spec"
@@ -2039,6 +2071,14 @@ item = "*"
 kind = "plain_rust_file"
 count = 1
 justification = "Test tool, not linked into the VM: in-process fuzz driver of toit_vmverify_verify on mutated verifier inputs (tables.rs)."
+
+[[trusted]]
+crate = "vmverify"
+file = "src/bin/toit_vmverify_fuzz.rs"
+item = "certificate"
+kind = "unsafe"
+count = 4
+justification = "Test tool: FFI calls of toit_vmverify_certify and toit_vmverify_free_certificate on tables loaded by tables.rs, and a slice of the returned buffer with the returned length."
 
 [[trusted]]
 crate = "vmverify"
@@ -2159,6 +2199,22 @@ item = "toit_vmverify_canonical"
 kind = "unsafe"
 count = 1
 justification = "C entry point (test support): dereferences the caller's input struct and NUL-terminated path."
+
+[[trusted]]
+crate = "vmverify"
+file = "src/ffi.rs"
+item = "toit_vmverify_certify"
+kind = "unsafe"
+count = 1
+justification = "FFI: the input as in toit_vmverify_verify; writes the out parameters the caller provides; Box::into_raw hands the certificate to C, which frees it with toit_vmverify_free_certificate."
+
+[[trusted]]
+crate = "vmverify"
+file = "src/ffi.rs"
+item = "toit_vmverify_free_certificate"
+kind = "unsafe"
+count = 1
+justification = "FFI: rebuilds the Box from the pointer and length toit_vmverify_certify returned and drops it."
 
 [[trusted]]
 crate = "vmverify"

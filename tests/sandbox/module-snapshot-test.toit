@@ -7,7 +7,7 @@ import .sandbox
 // Launching programs from bytes is denied (and PRIVILEGED).
 main args:
   sandbox-test args --error="PRIMITIVE_LOOKUP_FAILED": | arguments/Map |
-    launch_ #[] 0 (ByteArray 16) [] 1
+    launch_ #[] 0 (ByteArray 16) [] 1 null
 
-launch_ bytes gid id arguments policy:
+launch_ bytes gid id arguments policy certificate:
   #primitive.snapshot.launch

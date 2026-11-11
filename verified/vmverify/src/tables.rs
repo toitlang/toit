@@ -255,6 +255,8 @@ impl Tables {
             prim_arities: self.prim_arities.as_ptr(),
             prim_arities_length: self.prim_arities.len(),
             trusted: self.trusted as usize,
+            certificate: core::ptr::null(),
+            certificate_length: 0,
         }
     }
 }

@@ -74,9 +74,15 @@ uword toit_vmverify_verify(const toit_vmverify_input* input, toit_vmverify_resul
   with it.
 - `input->trusted`: the rules (untrusted launches pass 0: HALT 2 and 3
   are rejected).
+- `input->certificate/certificate_length`: the shipped certificate
+  (verified/spec/format/18-shipped-certificate.md) or null. With one, the
+  proven `cert::verify_shipped` decides alone; without one, hosts (cargo
+  feature `infer`, the default) infer the certificate, devices (built
+  without `infer`) reject with `NO_CERTIFICATE`.
 - Result: `code` (`ACCEPTED`, `MALFORMED` memory not convertible, `HEAP`
   loader contract, `TABLES` `wf_program2`/`tables_ok`, `METHOD` with
-  `method` and `offset`, `INTERNAL` verifier panic), a message naming the
+  `method` and `offset`, `INTERNAL` verifier panic, `CERTIFICATE` shipped
+  certificate malformed or rejected, `NO_CERTIFICATE`), a message naming the
   reason and the instruction (`BRANCH_IF_FALSE 0 0: ...`), the number of
   program-heap objects, the time of each phase and the Rust heap
   high-water mark.
@@ -84,6 +90,9 @@ uword toit_vmverify_verify(const toit_vmverify_input* input, toit_vmverify_resul
 `V2Verifier::verify` (src/verifier_v2.cc) calls it and prints the reason;
 `TOIT_VERIFY_TIME=1` prints the cost. `toit_vmverify_canonical` writes the
 canonical form of the converted program (test support).
+`toit_vmverify_certify` (hosts, `infer`) is the toolchain's producer:
+it infers the certificate, checks it with `verify_shipped`, and returns
+its bytes (`toit.run --certify`, which toit.compile runs).
 
 ## Where it runs
 
@@ -128,6 +137,12 @@ Every untrusted launch, before any bytecode runs:
   verify such starts every time.
 - `toit.run --verify` uses the same verifier for format 2;
   `--emit-canonical=FILE` writes the canonical form.
+- The shipped certificate: `snapshot.launch` gets the bundle's
+  `certificate` member (system/extensions/host/toit.run.toit); `toit.run
+  --verify` uses it (`--no-certificate`, `--require-certificate`).
+  `programs_registry.spawn` (flash) passes none: hosts infer; on devices
+  the installer verifies with the trailing block of the image (format
+  note 18, "What the installer does").
 
 Trusted format-2 programs are verified only with `-Xverify`/`TOIT_VERIFY`
 (trusted rules).
@@ -137,7 +152,7 @@ Trusted format-2 programs are verified only with `-Xverify`/`TOIT_VERIFY`
 | File | Role |
 |---|---|
 | `src/from_vm.rs` | Views VM memory as the abstract program: the tables are borrowed as slices (`Converted::program()`/`split()` give a `VProgram`; the `V2Method` array is viewed as `VMethod`, whose layout is asserted equal at compile time); the 23 builtin class ids are decoded; roots, globals, literals are converted to values and followed breadth first through the program image (work list, no recursion), one object at a time (`Objects`, a `heap_check::ObjStream`). An object's kind is its header's class tag, which must equal its class's tag; an instance has its class's field count (`class_bits`), as the core's `instance_fields` reads it; strings and byte arrays (internal or external) must lie in the image. Every read is bounds-checked against `[program_heap_start, +program_heap_size)`. |
-| `src/verify.rs` | The verdict, the duties of spec/SOUNDNESS.md "What the VM checks outside the verifier": `x_wf_program2` (the inference and the heap check require it); the proven `heap_check::x_loaded_ok_stream` over the converted objects (accepts only if their heap satisfies `loaded_ok`), and the conversion must complete without error; the untrusted `infer::infer_global`, whose trusted fields (`global_count` = the globals' count, `prim_arity` = the VM's table) are set here; and the proven `check::verify` with the inference's oracle (= `pins_sorted && split_ok`, which implies `accepts` of the assembled certificate, untrusted rules). The rest is diagnostics. |
+| `src/verify.rs` | The verdict, the duties of spec/SOUNDNESS.md "What the VM checks outside the verifier": `x_wf_program2` (the inference and the heap check require it); the proven `heap_check::x_loaded_ok_stream` over the converted objects (accepts only if their heap satisfies `loaded_ok`), and the conversion must complete without error; the untrusted `infer::infer_global`, whose trusted fields (`global_count` = the globals' count, `prim_arity` = the VM's table) are set here; and the proven `check::verify` with the inference's oracle (= `g_ok && split_ok`, which implies `accepts` of the assembled certificate, untrusted rules), or with a shipped certificate the proven `cert::verify_shipped` (true only if a certificate with these trusted fields is accepted). The rest is diagnostics. |
 | `src/ffi.rs` | C ABI; panics reject (hosts). |
 | `src/counting.rs`, `src/clock.rs` | Counting allocator and phase times (measurement; hosts). |
 
@@ -248,6 +263,78 @@ seeds do not reproduce them; the findings' snapshots do):
   the format-1 VM with a 10-line program (spec/VM-BUGS.md;
   encoder-cyclic-array.*); upstream fix: https://github.com/toitlang/toit/pull/3374.
 
+## Shipped certificates
+
+The toolchain ships the certificate with the program and the device only
+checks it (verified/spec/format/18-shipped-certificate.md): the global part
+is read in place from the certificate (flash on a device), the maps are
+decoded one method at a time from a stream that holds only the maps the
+decoder cannot recompute by falling through (about 2 % of them).
+Measured 2026-11-11, release build (build/host), x86-64, 32 cores shared
+with a fuzz run on 8 of them; medians.
+
+VM path (`toit.run --verify`, conversion from VM memory, heap check and
+verifier; peak = Rust heap high-water mark of the call;
+`tests/measure_shipped.sh`): the certificate toit.compile shipped
+(`--require-certificate`, the device's path) against the inference
+(`--no-certificate`).
+
+| Program | Bytecodes | Methods | Certificate | of bytecodes | Shipped: time, peak | Inferred: time, peak |
+|---|---|---|---|---|---|---|
+| hello world | 23.9 KB | 758 | 9.9 KB | 41 % | 28.6 ms, 15 KB | 82.6 ms, 37 KB |
+| sandbox tests (77 programs, tests/sandbox/*.toit) | 25.0-41.0 KB (median 29.8) | 782-1194 | 10.3-15.7 KB (median 12.3) | 38-42 % | 13-93 ms (median 23), 15-22 KB (median 20) | 37-186 ms (median 61), 38-60 KB (median 51) |
+| run-image (application-sized, trusted rules) | 54.0 KB | 1600 | 20.4 KB | 38 % | 51.0 ms, 23 KB | 120.9 ms, 81 KB |
+| toit.run (system program, trusted rules) | 64.4 KB | 1761 | 22.4 KB | 35 % | 31.4 ms, 36 KB | 135.6 ms, 88 KB |
+| toit CLI (tools/toit.toit, trusted rules) | 323.6 KB | 7173 | 96.9 KB | 30 % | 185 ms, 292 KB | 467 ms, 425 KB |
+
+The VM path's peak includes the conversion of the program heap (an
+address-to-id map, about 40 bytes per object: most of the CLI's 292 KB).
+The verifier proper, on dumps (`toit_vmverify_mem`, best of 5; the tables
+are the loader's, not counted):
+
+| Program | Certificate (maps stream; shipped / recomputed maps) | Shipped: peak, time | Inferred: peak, time |
+|---|---|---|---|
+| hello world | 9912 B (1421 B; 214 / 10,941) | 6.0 KB, 12.4 ms | 30.1 KB, 36.0 ms |
+| run-image | 20,380 B (3217 B; 530 / 25,018) | 10.1 KB, 26.7 ms | 72.1 KB, 79.4 ms |
+| toit.run | 22,368 B (3624 B; 610 / 30,089) | 10.1 KB, 34.1 ms | 72.9 KB, 95.4 ms |
+| toit CLI | 96,928 B (15,233 B; 2609 / 147,629) | 65.8 KB, 172 ms | 332 KB, 420 ms |
+
+* **Size.** Hello world's 9.9 KB: method words 3.0 KB (4 bytes per
+  method), contexts 1.7 KB, selectors 1.3 KB, nodes 2.4 KB, maps stream
+  1.4 KB (6.6 bytes per shipped map), header 60 bytes. About 13 bytes per
+  method all told; 30-42 % of the bytecodes. It costs flash only until the
+  installer drops it.
+* **RAM.** The shipped path keeps the maps of one method (4 bytes per
+  bytecode byte plus 16 per node: the CLI's largest method, 6 KB, is
+  57 KB of its 66 KB) and a few words; the global part stays in the
+  certificate. The inference kept the global part in RAM (16.7 KB for hello
+  world, 210 KB for the CLI) plus its working sets.
+* **Time.** 2.4-3.4x faster. The shipped path computes each instruction's
+  successor kinds twice (the decoder places them, the proven checker
+  recomputes and compares them); a fused decoder-checker would remove the
+  second pass (not done: it needs a proof about the decoder's maps).
+* **Code size** (host x86-64, text of the release static library by
+  symbol, `nm`): built without `infer` the library has no `v2::infer`,
+  `v2::gbuf` or `v2::encode` code, and `v2::check` shrinks from 45.5 KB to
+  26.9 KB (the inference instantiated more of it). The checker path is
+  `v2::cert` 10.1 KB + `v2::check` 26.9 KB + `v2::heap_check` 5.3 KB +
+  this crate 30.8 KB; the inference path adds 75.6 KB (`infer`) + 3.7 KB
+  (`gbuf`) + 12.1 KB (`encode`, the producer) + 18.6 KB of checker code,
+  110 KB in all. RISC-V sizes: branch `phase5/portability`.
+
+Checks: `verify_suite.toit` checks every compilable suite program (439)
+three ways: the inference, its certificate encoded and checked alone
+(dump path), and the snapshot with the certificate toit.compile shipped
+(`toit.run --verify --require-certificate`): all accepted.
+`spec/tests/system_snapshots.sh` does the same for the three system
+programs (trusted rules): accepted. The mutation campaign with
+certificates (`mutation_campaign.toit --certificates`: half the mutants
+mutate the certificate of the unchanged program, half mutate the program
+and check it with the original's certificate, mutated or not): 12,000
+mutants, 818 accepted and run, 0 stuck (spec/tests/
+mutation-certificate-results.txt). In-process fuzzing with certificates:
+see "Fuzzing the entry point in-process".
+
 ## Memory
 
 The verifier keeps no data proportional to the program except small
@@ -304,6 +391,16 @@ code 101,454 accepted, 86,197 malformed memory, 242 heap contract,
 over 2 s** (slowest 261 ms; largest peak 485 KB). The inference of the
 previous branch panicked on such inputs (PHASE4-REQUESTS.md R6; 208
 caught panics in one launch-mode run).
+
+With shipped certificates (`tests/fuzz_tables.sh --certificates`: each
+program's certificate from `toit_vmverify_certify`; a third of the mutants
+mutate the tables and keep the certificate, a third mutate the certificate
+(header words, table words, records copied over others, bytes of the maps
+stream, truncation, growth), a third both), 2026-11-11, 8 processes x 15
+minutes, `--seed 501`: 402,987 mutants; 39,475 accepted, 52,160 malformed
+memory, 155 heap contract, 72,617 tables, 54,968 methods, 183,610
+certificate rejected; **0 verifier panics, 0 calls over 2 s** (slowest
+540 ms, under load; largest peak 281 KB).
 
 ## no_std (Phase 5)
 

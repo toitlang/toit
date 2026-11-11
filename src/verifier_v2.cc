@@ -54,7 +54,8 @@ const char* V2Verifier::install_verdict(const void* memory, word program_size, u
 #ifdef TOIT_VERIFIED_CORE
 
 static void v2_input(Program* program, const V2MethodTable* table, bool trusted,
-                     toit_v2_program* tables, toit_vmverify_input* input, word program_size = -1) {
+                     toit_v2_program* tables, toit_vmverify_input* input, word program_size = -1,
+                     const uint8* certificate = null, word certificate_length = 0) {
   // The program's initial global values: the process' globals start as a
   // copy of them.
   v2_program_tables(program, table, program->global_variables.array(), tables);
@@ -67,6 +68,8 @@ static void v2_input(Program* program, const V2MethodTable* table, bool trusted,
   input->prim_arities = v2_prim_arities;
   input->prim_arities_length = ARRAY_SIZE(v2_prim_arities);
   input->trusted = trusted ? 1 : 0;
+  input->certificate = certificate;
+  input->certificate_length = certificate == null ? 0 : certificate_length;
 }
 
 static const char* v2_code_name(uword code) {
@@ -76,6 +79,8 @@ static const char* v2_code_name(uword code) {
     case TOIT_VMVERIFY_TABLES: return "program tables";
     case TOIT_VMVERIFY_METHOD: return "method";
     case TOIT_VMVERIFY_INTERNAL: return "verifier failure";
+    case TOIT_VMVERIFY_CERTIFICATE: return "shipped certificate";
+    case TOIT_VMVERIFY_NO_CERTIFICATE: return "no certificate";
     default: return "unknown";
   }
 }
@@ -89,25 +94,29 @@ extern "C" void toit_vmverify_panic(const uint8* file, uword length) {
   FATAL("Rust panic in %.*s", static_cast<int>(length), reinterpret_cast<const char*>(file));
 }
 
-static bool v2_verify(Program* program, const V2MethodTable* table, bool trusted, word program_size);
+static bool v2_verify(Program* program, const V2MethodTable* table, bool trusted, word program_size,
+                      const uint8* certificate, word certificate_length);
 
-bool V2Verifier::verify(Program* program, const V2MethodTable* table, bool trusted) {
-  return v2_verify(program, table, trusted, -1);
+bool V2Verifier::verify(Program* program, const V2MethodTable* table, bool trusted,
+                        const uint8* certificate, word certificate_length) {
+  return v2_verify(program, table, trusted, -1, certificate, certificate_length);
 }
 
-static bool v2_verify(Program* program, const V2MethodTable* table, bool trusted, word program_size) {
+static bool v2_verify(Program* program, const V2MethodTable* table, bool trusted, word program_size,
+                      const uint8* certificate, word certificate_length) {
   toit_v2_program tables;
   toit_vmverify_input input;
-  v2_input(program, table, trusted, &tables, &input, program_size);
+  v2_input(program, table, trusted, &tables, &input, program_size, certificate, certificate_length);
   toit_vmverify_result result;
   toit_vmverify_verify(&input, &result);
   result.message[TOIT_VMVERIFY_MESSAGE_SIZE - 1] = '\0';
   const char* timing = getenv("TOIT_VERIFY_TIME");
   if (timing != null && strcmp(timing, "1") == 0) {
     fprintf(stderr,
-            "verifier: %s, %" PRIdPTR " methods, %" PRIuPTR " bytecodes, %" PRIuPTR " objects;"
+            "verifier: %s%s, %" PRIdPTR " methods, %" PRIuPTR " bytecodes, %" PRIuPTR " objects;"
             " convert %.2f ms, heap %.2f ms, infer %.2f ms, check %.2f ms; peak %" PRIuPTR " KB\n",
             result.code == TOIT_VMVERIFY_ACCEPTED ? "accepted" : "rejected",
+            certificate != null ? " (shipped certificate)" : "",
             table->length(), static_cast<uword>(program->bytecodes.length()), result.objects,
             result.convert_ns / 1e6, result.heap_ns / 1e6, result.infer_ns / 1e6,
             result.check_ns / 1e6, result.peak_bytes >> 10);
@@ -142,7 +151,7 @@ const char* V2Verifier::verify_installed(Program* program, word program_size, bo
   }
   V2MethodTable* table = V2MethodTable::compute(program);
   if (table == null) return "INVALID_SNAPSHOT";
-  bool accepted = v2_verify(program, table, false, program_size);
+  bool accepted = v2_verify(program, table, false, program_size, null, 0);
   delete table;
   return accepted ? null : "VERIFICATION_FAILED";
 }
@@ -158,11 +167,45 @@ bool V2Verifier::write_canonical(Program* program, const V2MethodTable* table, c
   return toit_vmverify_canonical(&input, path) == 0;
 }
 
+#ifndef TOIT_FREERTOS
+// Hosts only: devices link the verifier without the inference.
+bool V2Verifier::certify(Program* program, const V2MethodTable* table, bool trusted,
+                         uint8** bytes, word* length) {
+  toit_v2_program tables;
+  toit_vmverify_input input;
+  v2_input(program, table, trusted, &tables, &input);
+  uint8* rust_bytes = null;
+  uword rust_length = 0;
+  uword code = toit_vmverify_certify(&input, &rust_bytes, &rust_length);
+  if (code != 0) {
+    fprintf(stderr, "certify: %s\n", code == 1
+        ? "malformed program memory"
+        : "no certificate the verifier accepts (run toit.run --verify for the reason)");
+    return false;
+  }
+  *bytes = unvoid_cast<uint8*>(malloc(rust_length));
+  if (*bytes == null) {
+    toit_vmverify_free_certificate(rust_bytes, rust_length);
+    return false;
+  }
+  memcpy(*bytes, rust_bytes, rust_length);
+  *length = rust_length;
+  toit_vmverify_free_certificate(rust_bytes, rust_length);
+  return true;
+}
+#else
+bool V2Verifier::certify(Program* program, const V2MethodTable* table, bool trusted,
+                         uint8** bytes, word* length) {
+  return false;
+}
+#endif
+
 #else  // !TOIT_VERIFIED_CORE
 
 bool V2Verifier::is_available() { return false; }
 
-bool V2Verifier::verify(Program* program, const V2MethodTable* table, bool trusted) {
+bool V2Verifier::verify(Program* program, const V2MethodTable* table, bool trusted,
+                        const uint8* certificate, word certificate_length) {
   USE(v2_prim_arities);
   USE(v2_prim_counts);
   fprintf(stderr, "verifier: format-2 programs need the verified core (TOIT_VERIFIED_CORE)\n");
@@ -182,6 +225,11 @@ const char* V2Verifier::verify_installed(Program* program, word program_size, bo
 
 void V2Verifier::accept_recorded(const V2MethodTable* table) {
   // Never reached: no allocation gets a verdict without the verifier.
+}
+
+bool V2Verifier::certify(Program* program, const V2MethodTable* table, bool trusted,
+                         uint8** bytes, word* length) {
+  return false;
 }
 
 #endif  // TOIT_VERIFIED_CORE

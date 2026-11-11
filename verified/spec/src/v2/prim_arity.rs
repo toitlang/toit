@@ -623,7 +623,7 @@ pub const PRIM_TABLE: &[(&str, &[(&str, u8)])] = &[
         ("wait_for_lwip_dhcp_on_linux", 0),
     ]),
     ("snapshot", &[
-        ("launch", 5),
+        ("launch", 6),
     ]),
     ("image", &[
         ("current_id", 0),

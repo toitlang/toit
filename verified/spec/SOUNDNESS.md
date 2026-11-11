@@ -287,17 +287,23 @@ left unproven, no admits). Outside it:
 takes the program as borrowed tables (`v2/vprog.rs::VProgram`, viewed as
 `Program2` by `vview`; `vprogram_of` proves `vview` equal to `pview2` for an
 `ExecProgram`), the certificate's global part `g` (`XGlobal`, viewed as a
-`GCert`; pins strictly sorted, looked up by binary search), and a
+`GCert`; byte tables borrowed from the certificate, selector records and
+pins strictly sorted, looked up by binary search), and a
 `MapOracle` that yields the maps of one method at a time (`XMaps`: maps as
 lists of kinds sharing their bottoms). It checks the tables, then each
 method in order against its maps and the pins, and drops the maps. It is
 proven to return exactly
 
-    pins_sorted(g) && split_ok(vview(p), g@, ms, trusted)
+    g_ok(g) && split_ok(vview(p), g@, ms, trusted)
 
 where `ms` (ghost) are the maps the oracle gave it; by `lemma_split_sound`
-the certificate `with_maps(g@, ms)` is accepted. The oracle (the inference)
-is untrusted: whatever it yields is decided. The checker uses loops only
+the certificate `with_maps(g@, ms)` is accepted. The oracle (the inference,
+or the decoder of a shipped certificate) is untrusted: whatever it yields is
+decided. `v2/cert.rs::verify_shipped(p, cert, global_count, prim_arity,
+trusted)` runs it on a shipped certificate (format/18): the global part read
+in place from the certificate bytes, the maps decoded one method at a time
+from its stream; it is proven to return true only if some certificate with
+that global count and primitive table is accepted. The checker uses loops only
 (no recursion over the program size).
 
 `heap_check::x_loaded_ok_stream(p, objects, global_count, globals)`

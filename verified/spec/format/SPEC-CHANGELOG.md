@@ -4,6 +4,28 @@ One entry per change of `src/v2/spec.rs`, `src/v2/prim.rs`, `src/v2/types.rs`
 or the verifier's rules (`src/v2/verifier.rs`) that an implementation of
 the spec (the verified core, the VM's loader) must follow. Newest first.
 
+## 2026-11-11: shipped certificates; the global part as byte tables
+
+What (`src/v2/check.rs`, new `src/v2/cert.rs`; note 18): `accepts`, the
+rules and the theorem are unchanged.
+
+* `check::XGlobal<'a>` borrows byte tables (method words, context,
+  selector and pin records, a node table; format/18) instead of owning
+  vectors; it holds the method table (`methods`) and borrows the
+  primitive table (`prim_arity: &[Vec<u8>]`). Its view is the same
+  `GCert`. `check::verify` returns `g_ok(g) && split_ok(...)` (`g_ok`:
+  selector records and pins sorted; was `pins_sorted`).
+* `MapOracle::method_maps(&mut self, p, g, m)` gets the program and the
+  global part, with `requires wf_program2(vview(p)), g_ok(g), m <
+  p.methods.len(), g.n == p.methods.len()`.
+* `x_post` and `x_sel_ok` require `g_ok(c.g)`; `x_ctx_of` returns an
+  `XCtx` head (the kinds are `x_fchain(g.nodes, top)`), `x_ctx_kinds`
+  an owned list.
+* The VM: `toit_vmverify_input` has `certificate`/`certificate_length`
+  (null: infer on hosts, reject without the `infer` feature); result codes
+  `CERTIFICATE` (6) and `NO_CERTIFICATE` (7); `snapshot.launch` takes a
+  sixth argument (the certificate or null; primitive table regenerated).
+
 ## 2026-11-11: per-primitive contracts in prim_spec; array_at_put order; block arguments
 
 What (`src/v2/prim.rs`, `src/v2/prim_core.rs`, `src/v2/sound_prim_spec.rs`):

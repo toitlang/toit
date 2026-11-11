@@ -39,6 +39,11 @@ pub struct VerifyInput {
     pub prim_arities_length: usize,
     /// Non-zero: the trusted rules (HALT 2 and 3 allowed).
     pub trusted: usize,
+    /// The shipped certificate (format/18-shipped-certificate.md), or null:
+    /// then the inference computes one (hosts, the `infer` feature) or
+    /// the program is rejected.
+    pub certificate: *const u8,
+    pub certificate_length: usize,
 }
 
 pub const MESSAGE_SIZE: usize = 200;
@@ -134,7 +139,10 @@ unsafe fn run(input: &VerifyInput) -> (verify::Verdict, usize, u64) {
             (v, 0, convert_ns)
         }
         Ok(mut converted) => {
-            let v = verify::verify(&mut converted, input.trusted != 0);
+            let cert = if input.certificate.is_null() { None } else {
+                Some(core::slice::from_raw_parts(input.certificate, input.certificate_length))
+            };
+            let v = verify::verify(&mut converted, input.trusted != 0, cert);
             (v, converted.objects.count(), convert_ns)
         }
     }
@@ -193,6 +201,8 @@ layout_entries!(
     b"VMVERIFY_INPUT_prim_arities\0" => core::mem::offset_of!(VerifyInput, prim_arities),
     b"VMVERIFY_INPUT_prim_arities_length\0" => core::mem::offset_of!(VerifyInput, prim_arities_length),
     b"VMVERIFY_INPUT_trusted\0" => core::mem::offset_of!(VerifyInput, trusted),
+    b"VMVERIFY_INPUT_certificate\0" => core::mem::offset_of!(VerifyInput, certificate),
+    b"VMVERIFY_INPUT_certificate_length\0" => core::mem::offset_of!(VerifyInput, certificate_length),
     b"VMVERIFY_RESULT_SIZE\0" => core::mem::size_of::<VerifyResult>(),
     b"VMVERIFY_RESULT_code\0" => core::mem::offset_of!(VerifyResult, code),
     b"VMVERIFY_RESULT_method\0" => core::mem::offset_of!(VerifyResult, method),
@@ -211,6 +221,8 @@ layout_entries!(
     b"VMVERIFY_TABLES\0" => verify::TABLES,
     b"VMVERIFY_METHOD\0" => verify::METHOD,
     b"VMVERIFY_INTERNAL\0" => verify::INTERNAL,
+    b"VMVERIFY_CERTIFICATE\0" => verify::CERTIFICATE,
+    b"VMVERIFY_NO_CERTIFICATE\0" => verify::NO_CERTIFICATE,
 );
 
 /// The number of layout entries (for verified/layout_check.cc).
@@ -245,4 +257,53 @@ pub extern "C" fn toit_vmverify_generated_arity(module: usize, index: usize) -> 
         Some((_, a)) => *a as isize,
         None => -1,
     }
+}
+
+/// Computes the certificate of the program described by `input` (the
+/// inference, `v2::encode`) and checks it with the proven checker of
+/// shipped certificates (`v2::cert::verify_shipped`). On success returns 0
+/// and sets `*bytes`/`*length` to the certificate, which the caller frees
+/// with `toit_vmverify_free_certificate`; returns 1 if the memory could not
+/// be converted, 2 if no accepted certificate was found. Host only (the
+/// `infer` feature): the toolchain's producer of shipped certificates
+/// (format/18-shipped-certificate.md).
+///
+/// # Safety
+/// As `toit_vmverify_verify`; `bytes` and `length` must be writable.
+#[cfg(feature = "infer")]
+#[no_mangle]
+pub unsafe extern "C" fn toit_vmverify_certify(input: *const VerifyInput, bytes: *mut *mut u8, length: *mut usize) -> usize {
+    let input = &*input;
+    *bytes = core::ptr::null_mut();
+    *length = 0;
+    let mut c = match from_vm::convert(&*input.program, &arities(input)) {
+        Err(_) => return 1,
+        Ok(c) => c,
+    };
+    let global_count = c.globals.len() as u64;
+    let prim_arity = c.prim_arity.clone();
+    let (p, _) = c.split();
+    let trusted = input.trusted != 0;
+    match toit_spec::v2::encode::certify(&p, global_count, prim_arity.clone(), trusted) {
+        Err(_) => 2,
+        Ok((cert, _)) => {
+            let (ok, _) = toit_spec::v2::cert::verify_shipped(&p, &cert, global_count, &prim_arity, trusted);
+            if !ok { return 2; }
+            let boxed = cert.into_boxed_slice();
+            *length = boxed.len();
+            *bytes = alloc::boxed::Box::into_raw(boxed) as *mut u8;
+            0
+        }
+    }
+}
+
+/// Frees a certificate returned by `toit_vmverify_certify`.
+///
+/// # Safety
+/// `bytes`/`length` must come from `toit_vmverify_certify`.
+#[cfg(feature = "infer")]
+#[no_mangle]
+pub unsafe extern "C" fn toit_vmverify_free_certificate(bytes: *mut u8, length: usize) {
+    if bytes.is_null() { return; }
+    drop(alloc::boxed::Box::from_raw(core::ptr::slice_from_raw_parts_mut(bytes, length)));
 }

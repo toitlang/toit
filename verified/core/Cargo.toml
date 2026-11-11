@@ -27,7 +27,9 @@ crate-type = ["rlib"]
 # Without vstd's default `std` feature: the core is `no_std` + alloc.
 vstd = { version = "=0.0.0-2026-11-01-0251", default-features = false, features = ["alloc"] }
 # The specification the core is proven against (ghost only: the run loop
-# links none of its code; Verus imports its exported metadata).
+# links none of its code; Verus imports its exported metadata). Without the
+# spec's `std` (the core is `no_std`) and `infer` features: the inference is
+# linked only where a crate asks for it (verified/vmverify's `infer`, hosts).
 toit_spec = { path = "../spec", default-features = false }
 
 [package.metadata.verus]
