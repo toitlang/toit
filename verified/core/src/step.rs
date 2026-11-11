@@ -518,7 +518,11 @@ pub open spec fn machine_op(op: u8) -> bool {
 #[verifier::spinoff_prover]
 pub fn step_machine(m: &mut Machine, env: &Env) -> (r: Ctl)
     requires old(m).inv(&env.p), machine_op(env.p.ap@.bytecodes[old(m).bci as int]),
-    ensures step_post(&env.p, *old(m), *final(m), r),
+    ensures
+        step_post(&env.p, *old(m), *final(m), r),
+        ({ let op = env.p.ap@.bytecodes[old(m).bci as int];
+           (op == 90 || op == 93 || op == 95 || op == 99) && r == Ctl::Next
+           ==> crate::unwind::frames_prefix(old(m).g@, final(m).g@) && final(m).len == old(m).len }),
 {
     let p = &env.p;
     let ghost ap = p.ap@;
@@ -668,6 +672,78 @@ pub fn resume(m: &mut Machine, env: &Env, c: Ctl, Ghost(w0): Ghost<Machine>) -> 
     }
 }
 
+/// `resume` after a path on the machine that kept the frames below the top
+/// and the stack length (a call, a return, an unwinding: `room::top_kept`):
+/// those frames have the room they had, so only the top frame is checked,
+/// with the finally records (`room::top_room`); a rescan of every frame
+/// (`ensure_room_all`) only if that check fails.
+pub fn resume_kept(m: &mut Machine, env: &Env, Ghost(w0): Ghost<Machine>) -> (res: (Option<Regs>, Ctl))
+    requires
+        step_post(&env.p, w0, *old(m), Ctl::Next),
+        room_ok(&env.p, w0),
+        top_kept(w0.g@, old(m).g@),
+        old(m).len >= w0.len,
+    ensures
+        res.1 == Ctl::Next ==> res.0 is Some && final(m).rok(res.0->0)
+            && crate::regs::ipok(&env.p, res.0->0)
+            && crate::regs::gate_ok(&env.p, *final(m))
+            && steps_post(&env.p, w0, final(m).with(res.0->0), res.1)
+            && room_ok(&env.p, final(m).with(res.0->0)),
+        res.1 != Ctl::Next ==> steps_post(&env.p, w0, *final(m), res.1),
+{
+    let p = &env.p;
+    let ghost ap = p.ap@;
+    let ghost g = m.g@;
+    let ghost n = g.frames.len() as int;
+    proof {
+        lemma_steps_post(p, w0, *m, Ctl::Next);
+        m.lemma_frame(p);
+        crate::calls::lemma_shape(p, g);
+        lemma_rec_index(n, n - 1, FRAME_BASE);
+        lemma_rec_index(n, n - 1, FRAME_METHOD);
+        assert(rec(m.mem@, n - 1, FRAME_BASE) == g.frames[n - 1].base);
+        assert(rec(m.mem@, n - 1, FRAME_METHOD) == g.frames[n - 1].method);
+        assert(m.ftop == FRAME_WORDS * n);
+    }
+    let ri = m.ftop - FRAME_WORDS;
+    let base = m.mem.read(ri + FRAME_BASE);
+    let method = m.mem.read(ri + FRAME_METHOD);
+    if base < MAX_STACK_LENGTH {
+        proof {
+            assert(sp::valid_method(ap, g.frames[n - 1].method as int));
+            assert(ap.methods[method as int] == method_info(p.methods@[method as int], p.max_height));
+            assert(p.max_height < 0x1_0000);
+        }
+        let a = p.methods.at(method).arity as usize;
+        let total = base + a + p.max_height + m.rtop + STACK_RESERVE;
+        if total <= m.len {
+            let ghost m1 = *m;
+            proof {
+                assert(frame_need(p, g, n - 1) <= m.len);
+                assert forall|i: int| 0 <= i < g.frames.len() implies #[trigger] frame_room(p, m1, i) by {
+                    if i < n - 1 {
+                        assert(g.frames[i] == w0.g@.frames[i]);
+                        assert(frame_room(p, w0, i));
+                    }
+                }
+                assert(top_room(p, m1));
+            }
+            let r = m.enter(&env.p);
+            proof { assert(m.with(r).g == m1.g); }
+            return (Some(r), Ctl::Next);
+        }
+    }
+    let ghost m1 = *m;
+    let c2 = ensure_room_all(m, env);
+    if let Ctl::Next = c2 {
+        let r = m.enter(&env.p);
+        proof { assert(m.with(r).g == m1.g); }
+        (Some(r), c2)
+    } else {
+        (None, c2)
+    }
+}
+
 /// The run loop's invariant on registers: the registers are cursors of the
 /// machine, which satisfies `inv` with them and has room; the gate for the
 /// finally records is set.
@@ -756,20 +832,32 @@ pub fn slow(m: &mut Machine, r: Regs, env: &Env, k: Slow, w: usize, Ghost(v): Gh
         lemma_source_step(ap, g);
         crate::regs::lemma_bci(p, *m);
     }
-    let c = match k {
-        Slow::Op => step_machine(m, env),
-        Slow::Raise(kk) => m.v_raise_none(env, kk),
-        Slow::Invalid => m.v_raise_invalid(env),
-        Slow::As(len) => m.v_raise_as(env, w, Ghost(v), len),
-        Slow::Lookup(sel) => m.v_raise_lookup(env, w, Ghost(v), sel),
+    // The unwinding opcodes only pop frames (`unwind::lemma_unwind_prefix`).
+    let op = p.code.at(m.bci);
+    let unwinding = op == 90 || op == 93 || op == 95 || op == 99;
+    // `kept`: on `Next` the frames below the top are the ones before
+    // (`room::top_kept`) and the stack length is the same, so `resume_kept`
+    // checks the top frame's room only.
+    let (c, kept) = match k {
+        Slow::Op => (step_machine(m, env), unwinding),
+        Slow::Raise(kk) => (m.v_raise_none(env, kk), false),
+        Slow::Invalid => (m.v_raise_invalid(env), false),
+        Slow::As(len) => (m.v_raise_as(env, w, Ghost(v), len), false),
+        Slow::Lookup(sel) => (m.v_raise_lookup(env, w, Ghost(v), sel), false),
         Slow::Call(t, ret) => {
             match ensure_room(m, env) {
-                Some(c) => c,
+                Some(c) => (c, false),
                 None => {
                     proof { assert(outcome_ok(ap, p.cert@, sp::step(ap, g))); }
                     let c = m.push_call(env, t, ret);
-                    proof { lemma_matches(p, w0, *m, c); }
-                    c
+                    proof {
+                        lemma_matches(p, w0, *m, c);
+                        if c == Ctl::Next {
+                            assert forall|i: int| 0 <= i < m.g@.frames.len() - 1
+                                implies #[trigger] m.g@.frames[i] == w0.g@.frames[i] by {}
+                        }
+                    }
+                    (c, true)
                 },
             }
         },
@@ -779,10 +867,27 @@ pub fn slow(m: &mut Machine, r: Regs, env: &Env, k: Slow, w: usize, Ghost(v): Gh
                 crate::calls::lemma_shape(p, g);
             }
             let c = m.do_return(env, w, Ghost(v));
-            proof { lemma_matches(p, w0, *m, c); }
-            c
+            proof {
+                lemma_matches(p, w0, *m, c);
+                crate::unwind::lemma_return_prefix(ap, g, v);
+            }
+            (c, true)
         },
     };
+    if kept {
+        if let Ctl::Next = c {
+            proof {
+                if unwinding && k is Op {
+                    assert(crate::unwind::frames_prefix(w0.g@, m.g@));
+                }
+                assert(top_kept(w0.g@, m.g@));
+            }
+            return match resume_kept(m, env, Ghost(w0)) {
+                (Some(r2), Ctl::Next) => (r2, Ctl::Next),
+                (_, c2) => (r, c2),
+            };
+        }
+    }
     match resume(m, env, c, Ghost(w0)) {
         (Some(r2), Ctl::Next) => (r2, Ctl::Next),
         (_, c2) => (r, c2),

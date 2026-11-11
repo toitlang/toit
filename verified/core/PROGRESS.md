@@ -1,5 +1,26 @@
 # Phase 4a progress (verified core, format 2 on x86-64)
 
+## Trusted containers on the core, fast (branch experiment/trusted-fast, 2026-11-11)
+
+Experiment, not for merging without the owner's decision. Results:
+EXPERIMENT-trusted.md, "Follow-up". Artifacts:
+/home/flo/work/opentoit-sandbox-artifacts/trusted-fast.
+
+- M0 (ea831741): `experiment/trusted-on-core` + `sandbox-integration`
+  (time_info, provider policy, UTF-8 literal check); no conflicts.
+- M1 (71941878): register fast paths for NON_LOCAL_RETURN/BRANCH, TRY,
+  UNWIND (null token) and the return into a TRY (rnonlocal.rs). RPC 1.81
+  -> 1.41, yaml 1.50 -> 1.26, json 1.34 -> 1.25 times C++.
+- M2 (4b293c42): inline bump allocation (new trusted item) and the mask
+  of unported core primitives. Allocation 258 -> 175, double boxing 215
+  -> 100, C++ primitive call 293 -> 245 instructions; strings 1.11.
+- M3 (814d6db7): unchecked twins instead of the mode flag (format note
+  20). Checked richards/deltablue/pystone 1.139/1.242/1.132, trusted
+  1.053/1.170/1.064.
+- M4: room facts (`room_ok` without the records for every frame,
+  `resume_kept`) and the UNWIND resume of a non-local return or branch.
+  RPC 1.30, json 1.20, yaml 1.20. Gate green at every milestone.
+
 ## Trusted containers on the core (branch experiment/trusted-on-core, 2026-11-11)
 
 Experiment, not for merging without the owner's decision. Results:

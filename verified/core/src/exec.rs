@@ -451,6 +451,7 @@ impl Machine {
             r ==> final(self).refines(p) && final(self).g@ == sp::push(old(self).g@, v),
             r ==> final(self).top == old(self).top - 1 && final(self).addr() == old(self).addr(),
             !r ==> *final(self) == *old(self),
+            final(self).len == old(self).len,
             final(self).bci == old(self).bci,
             final(self).ftop == old(self).ftop,
             final(self).rtop == old(self).rtop,
@@ -516,6 +517,7 @@ impl Machine {
             r == Ctl::Next,
             final(self).refines(p),
             sp::op_pop(old(self).g@, n as int, len as int) == Outcome2::Next(final(self).g@),
+            final(self).len == old(self).len,
     {
         let ghost m0 = *self;
         let ghost g0 = self.g@;

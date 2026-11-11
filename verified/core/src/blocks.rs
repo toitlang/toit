@@ -153,6 +153,7 @@ impl Machine {
             final(self).mem@ == old(self).mem@,
             final(self).addr() == old(self).addr(),
             final(self).bci == old(self).bci,
+            final(self).len == old(self).len,
     {
         let ghost m0 = *self;
         let ghost g0 = self.g@;

@@ -83,7 +83,9 @@ pub proof fn lemma_fins_empty(g: State2)
 #[inline(always)]
 pub fn pop_to(m: &mut Machine, r: &Regs, p: &Program, f: usize, Ghost(u): Ghost<Unwind>) -> (res: Option<Regs>)
     requires
-        rinv(p, *old(m), *r),
+        m_ok(p, *old(m), *r),
+        shape_ok(p, old(m).g@),
+        room_ok(p, old(m).with(*r)),
         r.sp@ >= r.fr@ + old(m).fw + STACK_RESERVE,
         unw_frame(u) == f,
         f < old(m).g@.frames.len(),
@@ -108,7 +110,6 @@ pub fn pop_to(m: &mut Machine, r: &Regs, p: &Program, f: usize, Ghost(u): Ghost<
     let ghost w0 = m.with(*r);
     proof {
         w0.lemma_frame(p);
-        lemma_shape(p, g);
         assert(f < 0x4000) by {
             assert(w0.ftop == FRAME_WORDS * g.frames.len());
             assert(w0.ftop <= w0.len);
@@ -390,7 +391,9 @@ pub fn op_unwind(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode: u
     }
     let token = at(m, r, 1);
     if token != p.null {
-        return slow0(m, r, env, Slow::Op);
+        let (r2, c2) = unwind_resume_v(m, *r, env, bci, opcode);
+        set_regs(r, r2);
+        return c2;
     }
     proof { assert(sp::op_unwind(ap, g) == sp::op_pop(g, 3, 1)); }
     let c = op_pop(m, r, p, 3, 1);
@@ -490,6 +493,181 @@ pub fn op_try(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode: u8) 
     push_call(m, r, p, t, info, bci + 1);
     proof { lemma_matches(p, w0, m.with(*r), Ctl::Next); }
     Ctl::Next
+}
+
+/// UNWIND with a token (`spec::op_unwind`): the end of the finally code of
+/// an unwinding. The fast path: the only finally record (so the token names
+/// it), a non-local return or branch (not a throw), resumed by `pop_to`
+/// to its frame without another handler on the way and completed there;
+/// afterwards there are no finally records. Anything else on the machine.
+#[inline(never)]
+pub fn unwind_resume_v(m: &mut Machine, r0: Regs, env: &Env, bci: usize, opcode: u8) -> (res: (Regs, Ctl))
+    requires
+        rhandler_pre(&env.p, *old(m), r0, bci, opcode),
+        sp::at(old(m).g@, 1) != sp::null2(env.p.ap@),
+        opcode == 99,
+        bci + 1 < 0x1000_0000,
+        sp::step(env.p.ap@, old(m).g@) == sp::op_unwind(env.p.ap@, old(m).g@),
+    ensures rpost(&env.p, *old(m), r0, *final(m), res.0, res.1),
+{
+    let p = &env.p;
+    let ghost ap = p.ap@;
+    let ghost g = m.g@;
+    let ghost m0 = *m;
+    let ghost w0 = m.with(r0);
+    let mut r = r0;
+    if m.fw != FIN_WORDS {
+        let c = slow0(m, &mut r, env, Slow::Op);
+        return (r, c);
+    }
+    proof {
+        assert(outcome_ok(ap, p.cert@, sp::step(ap, g)));
+        w0.lemma_frame(p);
+        w0.lemma_at(p, 1);
+        w0.lemma_at(p, 2);
+        lemma_shape(p, g);
+        assert(const_ok(g.heap, ap.roots[0]));
+        assert(ap.roots[0] == sp::null2(ap));
+        lemma_enc_inj(g.heap, w0.addr(), sp::at(g, 1), sp::null2(ap));
+        assert(g.fins.len() == 1);
+    }
+    // The token names record 0, the only one.
+    let ghost tv = sp::at(g, 1);
+    let ghost k = tv->Smi_0 as int;
+    proof {
+        assert(sp::fin_matches(g, k));
+        assert(k == 0);
+        assert(fin_rel(w0.mem@, w0.ftop as int, 0, g.fins[0]));
+        lemma_fin_index(w0.ftop as int, 1, 0, FIN_RESUME);
+        lemma_fin_index(w0.ftop as int, 1, 0, FIN_TARGET);
+        lemma_fin_index(w0.ftop as int, 1, 0, FIN_TARGET_HEIGHT);
+        crate::unwind::lemma_resume_decode(g.fins[0].resume);
+    }
+    let rw = r.fr.read(FIN_RESUME, &m.mem);
+    let tw = r.fr.read(FIN_TARGET, &m.mem);
+    let th = r.fr.read(FIN_TARGET_HEIGHT, &m.mem);
+    let kind = rw & 3;
+    let f = rw >> 2;
+    let ftop = r.fr.diff(m.mem.slot(0));
+    if kind == 0 || kind == 3 || f >= ftop / FRAME_WORDS {
+        // A throw (or an unwinding to no live frame: stuck, impossible).
+        let c = slow0(m, &mut r, env, Slow::Op);
+        return (r, c);
+    }
+    let x = at(m, &r, 2);
+    let ghost rv = g.fins[0].resume;
+    let ghost gu = sp::unwind_of(rv, sp::at(g, 2));
+    let ghost g2 = State2 { fins: g.fins.subrange(0, 0), ..sp::drop(g, 3) };
+    proof {
+        assert(sp::op_unwind(ap, g) == sp::unwind(ap, g2, gu));
+        assert(unw_frame(gu) == f);
+        assert(w0.ftop == FRAME_WORDS * g.frames.len());
+        assert(f < g.frames.len());
+    }
+    // No finally record any more: the registers without the token's three
+    // slots, the gate for no records.
+    let need0 = m.need;
+    let bot0 = m.bot;
+    proof { assert(p.max_height < 0x1_0000); }
+    let mut r2 = r;
+    r2.sp = r2.sp.offset(3);
+    m.fw = 0;
+    m.need = FRAME_WORDS + p.max_height + STACK_RESERVE + FIN_WORDS;
+    m.bot = m.mem.slot(FRAME_WORDS);
+    m.g = Ghost(g2);
+    proof {
+        let m2 = m.with(r2);
+        assert(m2.words() =~= w0.words().subrange(0, w0.height() - 3));
+        assert(enc_seq(w0.addr(), g2.stack) =~= enc_seq(w0.addr(), g.stack).subrange(0, g.stack.len() - 3));
+        assert forall|i: int| 0 <= i < g2.stack.len() implies #[trigger] encodable(w0.addr(), g2.stack[i]) by {
+            assert(g2.stack[i] == g.stack[i]);
+        }
+        assert(fins_rel(m2.mem@, m2.ftop as int, g2.fins));
+        assert(m2.refines(p));
+        assert forall|fi: int| 0 <= fi && fi + 1 < g2.frames.len() implies #[trigger] base_step(g2, fi) by {
+            assert(base_step(g, fi));
+        }
+        assert(bases_ok(g2));
+        assert(shape_ok(p, g2));
+        assert forall|i: int| 0 <= i < g2.frames.len() implies #[trigger] frame_room(p, m2, i) by {
+            assert(frame_room(p, w0, i));
+        }
+        assert(room_ok(p, m2));
+    }
+    match pop_to(m, &r2, p, f, Ghost(gu)) {
+        None => {
+            m.fw = FIN_WORDS;
+            m.need = need0;
+            m.bot = bot0;
+            m.g = Ghost(g);
+            proof {
+                assert(m.g == Ghost(m.g@));
+                assert(m0.g == Ghost(m0.g@));
+                assert(*m == m0);
+            }
+            let c = slow0(m, &mut r, env, Slow::Op);
+            (r, c)
+        },
+        Some(r3) => {
+            let ghost gi = m.g@;
+            let ghost mi = m.with(r3);
+            proof {
+                mi.lemma_frame(p);
+                assert(sp::top_index(gi) == f);
+                assert(sp::unwind(ap, gi, gu) == sp::unwind(ap, g2, gu));
+            }
+            if kind == 1 {
+                let mut r4 = r3;
+                proof {
+                    assert(gu == Unwind::Return(f, sp::at(g, 2)));
+                    assert(sp::unwind(ap, gi, gu) == sp::return_from(ap, gi, sp::at(g, 2)));
+                    assert(m.addr() == w0.addr());
+                }
+                if crate::rarrays::ret_r(m, &mut r4, p, x, Ghost(sp::at(g, 2))) {
+                    proof { lemma_matches(p, w0, m.with(r4), Ctl::Next); }
+                    return (r4, Ctl::Next);
+                }
+                m.fw = FIN_WORDS;
+                m.need = need0;
+                m.bot = bot0;
+                m.g = Ghost(g);
+                proof {
+                    assert(m.g == Ghost(m.g@));
+                    assert(m0.g == Ghost(m0.g@));
+                    assert(*m == m0);
+                }
+                let c = slow0(m, &mut r, env, Slow::Op);
+                return (r, c);
+            }
+            // A non-local branch: continue in the frame at the target.
+            let ghost g1 = State2 { stack: gi.stack.subrange(0, th as int), bci: tw, ..gi };
+            proof {
+                assert(gu == Unwind::Branch(f, tw, th));
+                assert(sp::unwind(ap, gi, gu) == Outcome2::Next(g1));
+                assert(sp::base(gi) <= th <= gi.stack.len());
+                assert(outcome_ok(ap, p.cert@, Outcome2::Next(g1)));
+                toit_spec::v2::sound_instr::lemma_instr(ap, p.cert@, p.trusted@, g1);
+            }
+            let mut r4 = r3;
+            r4.sp = r4.end.offset(-(th as isize));
+            r4.ip = p.code.cursor(tw);
+            m.g = Ghost(g1);
+            proof {
+                let m1 = m.with(r4);
+                assert(m1.words() =~= mi.words().subrange(0, th as int));
+                assert(enc_seq(mi.addr(), g1.stack) =~= enc_seq(mi.addr(), gi.stack).subrange(0, th as int));
+                assert forall|i: int| 0 <= i < g1.stack.len() implies #[trigger] encodable(mi.addr(), g1.stack[i]) by {
+                    assert(g1.stack[i] == gi.stack[i]);
+                }
+                lemma_frames_rel_same(mi.mem@, m1.mem@, g1.frames, g1.tries);
+                lemma_fins_rel_same(mi.mem@, m1.mem@, m1.ftop as int, g1.fins);
+                assert(m1.refines(p));
+                lemma_matches(p, w0, m1, Ctl::Next);
+                lemma_room_same(p, mi, m1);
+            }
+            (r4, Ctl::Next)
+        },
+    }
 }
 
 // ---------------------------------------------------------------------------

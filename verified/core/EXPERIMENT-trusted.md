@@ -197,3 +197,129 @@ them. A sound version of the rescan fix brings these workloads to
 inline allocation, should close most of the rest; that is about one to
 two weeks with proofs. Then the remaining blockers are the propagator
 decision and Xtensa.
+
+# Follow-up: branch experiment/trusted-fast (2026-11-11)
+
+Branch `experiment/trusted-fast` (`experiment/trusted-on-core` +
+`sandbox-integration`). Scripts and raw numbers:
+/home/flo/work/opentoit-sandbox-artifacts/trusted-fast (`all.sh` runs
+every workload in the three configurations, `ir/results.txt`,
+`callers.sh`/`sites.sh` for the slow-path call sites, `wall.sh`,
+`heavy.sh` for the gates, `devsize/`). The configurations:
+
+- **C++ f1**: build/host, format 1 on the C++ interpreter.
+- **core checked**: build/host-f2, the snapshot compiled without the
+  unchecked twins: exactly the code untrusted programs run.
+- **core trusted**: build/host-f2, the snapshot with the twins
+  (`TOIT_V2_UNCHECKED=1`); the embedded CLI is compiled that way.
+
+The `tison` workload of the predecessor ran out of memory in every
+configuration (`tison.decode` of the 400-entry document); it now encodes
+and decodes 40 entries 100 times. Its old numbers are not comparable.
+
+## What was built
+
+1. **Register fast paths for non-local control flow** (rnonlocal.rs,
+   out of line: inlined, they changed the run loop's register allocation,
+   +6% on richards). NON_LOCAL_RETURN and NON_LOCAL_BRANCH pop frames on a
+   copy of the registers (`pop_to`) while no frame on the way has a
+   handler, then complete in the target frame (`rarrays::ret_r` for the
+   return); TRY under a call's fast-path check; UNWIND after a normal
+   completion; the return of a try block into its finally code
+   (`ret_try_r`); UNWIND with a token that resumes a non-local return or
+   branch (the only finally record, `unwind_resume_v`). INVOKE_BLOCK and
+   the static/initializer tail calls already had fast paths.
+2. **Room facts instead of rescans.** `room_ok` now asks room for every
+   frame without the finally records plus the top frame with them, so the
+   records coming and going need no rescan. After a slow path that kept
+   the frames below the top and the stack length (a call, a return, an
+   unwinding: `room::top_kept`, proven from the machine paths'
+   postconditions and `unwind::lemma_unwind_prefix`) `step::resume_kept`
+   checks the top frame only. `ensure_room_all` (a scan of every frame)
+   remains after a GC that shrank the stack, a task switch, raises and the
+   rare machine paths: in RPC 30,000 scans instead of 495,000.
+3. **Calls into C++ and allocation.** Inline bump allocation of
+   instances and doubles (`alloc::bump_instance`, `bump_double`: the
+   new-space fast path of `SemiSpace::try_allocate` and the initialization
+   of `ObjectHeap::allocate_instance`/`allocate_double`, a new trusted
+   item); the C++ path with its GC only when new space is full. Core
+   primitives without a Rust port are masked out of the policies' core
+   arities (`toit_v2_core_ported`), so their PRIMITIVE skips the Rust
+   dispatch (32 instructions of argument copying per call).
+4. **Unchecked twins instead of the mode flag** (format note 20, opcodes
+   104..113): trusted-only twins of the field accesses, emitted by the
+   compiler with `-Xv2_unchecked` / `TOIT_V2_UNCHECKED=1`, typed as their
+   base by the verifier and accepted only in the unchecked mode (trusted
+   rules); spec, verifier, executable checker, inference, reference
+   interpreter, core, checked loop, compiler, disassembler. The checked
+   handlers no longer test a flag. `TOIT_V2_CHECKED_FIELDS` is gone.
+
+Not done: register paths for an unwinding that enters finally code and for
+calls and returns while finally records exist (they run on the machine,
+now without rescans); a leaner C++ primitive call (below); unchecked
+lambda/initializer tail calls, HASH_DO; the bytes-allocated difference.
+
+## Progression (core trusted; Ir in millions, ratio to C++ f1)
+
+| Step | richards | deltablue | pystone | json | yaml | strings | RPC |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| C++ f1 | 1,023.6 | 650.3 | 761.8 | 1,111.9 | 3,475.7 | 3,010.9 | 342.6 |
+| start (merge) | 1,131.9 (1.106) | 785.6 (1.208) | 839.3 (1.102) | 1,490.0 (1.340) | 5,207.5 (1.498) | 3,750.8 (1.246) | 619.5 (1.808) |
+| 1. fast paths | 1,131.4 | | | 1,386.9 (1.247) | 4,374.9 (1.259) | | 482.2 (1.408) |
+| 3. mask + bump | 1,127.5 | 770.4 | 828.2 | 1,375.5 | 4,280.7 | 3,332.3 (1.107) | 478.3 |
+| 4. twins | 1,078.0 (1.053) | 760.9 (1.170) | 810.3 (1.064) | 1,368.7 | 4,263.1 | 3,333.1 | 469.4 |
+| 2. room facts | | | | 1,345.2 | 4,197.0 | | 454.1 |
+| 1. UNWIND resume | 1,077.9 (1.053) | 760.8 (1.170) | 810.2 (1.064) | 1,331.6 (1.198) | 4,181.2 (1.203) | 3,333.1 (1.107) | 443.6 (1.295) |
+
+Core checked (untrusted code): richards / deltablue / pystone 1,193.9 /
+828.2 / 877.9 at the start (with the mode flag; 1,168.3 / 828.8 / 876.3
+before the flag existed), 1,165.8 / 807.6 / 862.3 now: **1.139 / 1.242 /
+1.132** of C++ (target 1.14 / 1.27 / 1.15).
+
+## Final ratios (Ir)
+
+| Workload | C++ f1 | core checked | core trusted |
+|---|---:|---:|---:|
+| richards | 1,023.6 | 1,165.8 (1.139) | 1,077.9 (1.053) |
+| deltablue | 650.3 | 807.6 (1.242) | 760.8 (1.170) |
+| pystone | 761.8 | 862.3 (1.132) | 810.2 (1.064) |
+| `repeat` | 170.7 | 155.6 (0.912) | 155.6 (0.912) |
+| `List.do` | 226.5 | 198.5 (0.877) | 198.5 (0.876) |
+| map-int | 2,154.6 | 1,961.5 (0.910) | 1,961.4 (0.910) |
+| map-string | 629.6 | 589.3 (0.936) | 589.2 (0.936) |
+| map-set | 2,499.2 | 2,553.0 (1.022) | 2,534.3 (1.014) |
+| json | 1,111.9 | 1,353.7 (1.217) | 1,331.6 (1.198) |
+| yaml | 3,475.7 | 4,203.3 (1.209) | 4,181.2 (1.203) |
+| tison (new size) | 96.8 | 101.5 (1.048) | 101.1 (1.044) |
+| strings/format | 3,010.9 | 3,333.7 (1.107) | 3,333.1 (1.107) |
+| RPC ping-pong | 342.6 | 456.3 (1.332) | 443.6 (1.295) |
+| CLI: container install | 33.1 | | 29.4 (0.888) |
+| CLI: envelope show | 129.8 | | 134.2 (1.034) |
+
+## Per operation (instructions, each with a Toit call; minus the empty loop)
+
+| | C++ f1 | core before | core now |
+|---|---:|---:|---:|
+| C++ primitive call | 68 | 293 | 242 |
+| allocation (instance) | 143 | 258 | 164 (trusted), 186 (checked) |
+| double boxing | 55 | 215 | 100 |
+
+The primitive call: the Rust side (`rarrays::cxx_primitive_v`: writing
+the registers back, saving the header, the epoch compare, the return fast
+path) is 110 instructions with spills (the function keeps the registers
+live for its slow paths), `toit_v2_primitive` 47 plus 5 for an
+out-of-line `leave_primitive`. A lean fast path (only the stack top and
+record top stored, the registers not written back into the machine, a
+separate cold completion) should reach about 150.
+
+## Where the rest goes
+
+RPC: the remaining slow paths are the unwindings that enter finally code
+(a non-local return out of a `try`/`finally`: about 47,000 in the
+workload) and the calls and returns inside that finally code (the records
+move): 62 M of 444 M. Register versions of these two would bring RPC to
+about 1.2. json and yaml: the run loop itself (dispatch, calls and
+returns), not slow paths; 2-3% each are unwindings as above.
+
+<!-- WALL, SIZE, GATES -->
+
