@@ -1766,7 +1766,7 @@ file = "src/view.rs"
 item = "proven_unreachable"
 kind = "external_body"
 count = 1
-justification = "requires false: Verus proves every call site dead (the dispatch's default arm, opcode >= 101 contradicts the verifier's instruction check); lets LLVM drop the jump table's range check (-2.7% instructions on richards); TRUSTED.md section 4."
+justification = "requires false: Verus proves every call site dead (the dispatch's default arm, opcode >= OPCODE_COUNT2 (104) contradicts the verifier's instruction check); lets LLVM drop the jump table's range check (-2.7% instructions on richards); TRUSTED.md section 4."
 
 [[trusted]]
 crate = "core"
