@@ -24,8 +24,12 @@ OBLIGATIONS.md. Trusted base: TRUSTED.md and verified/TRUSTED.toml.
   this section's `toit_v2_program` describes) and hand that table to the
   process group; a rejected program never runs (`VERIFICATION_FAILED`,
   the reason on stderr). Trusted format-2 programs are verified only with
-  `-Xverify`/`TOIT_VERIFY` (trusted rules); unverified, they rely on the
-  core's run-time checks of every stuck state.
+  `-Xverify`/`TOIT_VERIFY` (trusted rules) or in debug builds.
+  Experiment (EXPERIMENT-trusted.md): unverified, they too run on the
+  verified loop, with the trusted token (`TOIT_V2_TRUSTED`) and in the
+  unchecked mode (`Program2::unchecked`). `TOIT_TRUSTED_CHECKED_LOOP=1`
+  puts them back on the checked loop, where the core's run-time checks
+  catch every stuck state.
 - `Interpreter::run` and `prepare_process` hand format-2 processes to
   `run_v2` / `prepare_process_v2`; the scheduler is unchanged (it calls
   `Interpreter::run` as before). `load_stack`/`store_stack` are no-ops for

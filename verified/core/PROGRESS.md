@@ -1,5 +1,34 @@
 # Phase 4a progress (verified core, format 2 on x86-64)
 
+## Trusted containers on the core (branch experiment/trusted-on-core, 2026-11-11)
+
+Experiment, not for merging without the owner's decision. Results:
+EXPERIMENT-trusted.md. Artifacts:
+/home/flo/work/opentoit-sandbox-artifacts/trusted-on-core.
+
+- M0 (248837ae): `proposal/builtins` merged with `sandbox-integration`. In
+  check.rs the built-ins' rules were ported to the fallible, panic-free
+  style. Gate green (spec 917, core 846 at both widths).
+- M1 (67d7003e): trusted format-2 programs run on the verified loop
+  (`TOIT_V2_TRUSTED`, `Accepted::trusted_program`), and
+  `TOIT_SYSTEM_FORMAT2` builds the system snapshots in format 2. Hello
+  world runs with a format-2 system process. The whole suite in format 2
+  passes 1192/1197 (format 1: 1194/1197).
+- M2 (f88ecf1d): cheap C++ calls. `toit_v2_primitive` and the heap epoch
+  complete PRIMITIVE, ALLOCATE and double boxing on the registers when
+  nothing moved. A C++ primitive call costs 293 instructions instead of
+  676 (the C++ interpreter: 68).
+- M2 also adds the unchecked mode of trusted programs
+  (`Program2::unchecked`, `step::trusted_field_accesses`): richards,
+  deltablue and pystone run at 1.11 / 1.21 / 1.10 times C++. Gate green
+  (spec 917, core 850, both widths, audit, sandbox ctests 121/121). Suite
+  again 1192/1197.
+- Open items, measured: the machine slow paths and the room rescan cost
+  13-22% of yaml and RPC; an unsound prototype without the rescan reached
+  1.17-1.43x on system workloads. Also open: inline allocation, and twin
+  opcodes instead of the mode flag (the flag costs +2.2% on richards for
+  checked code). EXPERIMENT-trusted.md has the list for "format 2 only".
+
 ## Panic-free device library, primitive size (branch device/panic-free, 2026-11-11)
 
 Size and robustness work on the device-side Rust code (verified/vmverify/
