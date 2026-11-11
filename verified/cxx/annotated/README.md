@@ -365,6 +365,23 @@ Wave 5:
   drop alone would have introduced the double free above (the dropped
   message frees the blocks the decoded objects' nodes still name): both
   are needed. Upstream master: delivers malformed messages as decoded.
+* **encode_error read a proxy byte array as bytes** (FIXED here,
+  src/encoder.cc EncodeVisitor::visit_byte_array; reported by the
+  coordinator from the core fuzzer on the assertion-enabled sanitizer
+  build: `objects.h:591 external_tag() == RawByteTag || ...` 3 times).
+  The exception and trace encoder (encode_error: any object as the error's
+  message, and the stack) built ByteArray::Bytes over any byte array; for a
+  proxy (an external byte array whose address is a C++ struct: a timer, a
+  resource group, tagged with the struct's type) that calls as_external,
+  whose assertion forbids it. The code is wrong, not the assertion: it
+  treats a struct pointer as bytes. Release builds read the proxy's
+  external length, 0 for every proxy the VM makes, so nothing was read
+  (no memory-safety impact in release; assertion builds stopped). Fix: a
+  non-raw external byte array is encoded as empty. Regression test:
+  tests/encode-error-proxy-test.toit (stops the asan build without the
+  fix). Upstream master: the same visitor. Not in the proved code
+  (encode_error is "Not attempted"; the message encoder's own byte arrays
+  go through the proved byte_content, which refuses proxies).
 * No other bug in the receive path: on every path (no message, a monitor
   notification, a finalizer to run, the result array not allocated, an
   allocation failure, a malformed message, success) the message's buffer
