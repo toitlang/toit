@@ -33,6 +33,8 @@ use toit_spec::v2::types::{State2, Outcome2};
 use toit_spec::v2::spec as sp;
 #[cfg(verus_keep_ghost)]
 use toit_spec::v2::sound::outcome_ok;
+#[cfg(verus_keep_ghost)]
+use toit_spec::v2::verifier::accepts;
 
 verus! {
 
@@ -43,6 +45,7 @@ impl Machine {
     pub fn check_type(&self, p: &Program, w: usize, Ghost(v): Ghost<Value>, index: usize, nullable: bool, interface: bool) -> (r: bool)
         requires
             self.hrefines(p),
+            accepts(p.ap@, p.cert@, p.trusted@),
             w == enc(self.addr(), v),
             encodable(self.addr(), v),
             index < 0x1_0000,

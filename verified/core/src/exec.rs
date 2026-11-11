@@ -212,6 +212,7 @@ impl Program {
             r.1 == rec_entry(r.0) as usize,
             1 <= r.1 <= self.code@.len(),
             hdr_size(kind_byte(self.code@, r.1 as int)) <= r.1,
+            kind_byte(self.code@, r.1 as int) <= 4,
     {
         let r = self.methods.at(i);
         proof {
@@ -249,6 +250,7 @@ impl Program {
         ensures r == self.minfo(i as int).arity as usize,
     {
         let r = self.methods.at(i);
+        proof { assert((r & RECORD_ARITY_MASK) as u8 as usize == (r & RECORD_ARITY_MASK) as usize) by (bit_vector); }
         (r & RECORD_ARITY_MASK) as usize
     }
 
@@ -272,7 +274,7 @@ impl Program {
         let (_, e) = self.record(i);
         let b = self.code.at(e - 1);
         proof {
-            assert(b <= 4);
+            assert(b == kind_byte(self.code@, e as int));
             assert(1 <= k <= 3 && b <= 4 ==> ((b == k) == (b & KIND_MASK == k))) by (bit_vector);
         }
         b == k
@@ -357,7 +359,7 @@ impl Program {
             proof { assert(hs == 3); }
             aux = self.u16_before(e, LAMBDA_AUX_BACK);
         }
-        let body_end: u32 = if i + 1 < self.methods.len() {
+        let body_end: u32 = if i < self.methods.len() - 1 {
             let (_, e2) = self.record(i + 1);
             let b2 = self.code.at(e2 - 1);
             (e2 - x_hdr_size(b2)) as u32
