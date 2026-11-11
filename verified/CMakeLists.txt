@@ -85,7 +85,15 @@ option(TOIT_VERIFIED_CORE_INFER "Link the certificate inference (hosts)" ${TOIT_
 # (ProcessGroup::create refuses the others) and do not link it.
 option(TOIT_VERIFIED_CORE_CHECKED_LOOP "Link the checked run loop of the core (hosts)" ${TOIT_VERIFIED_CORE_INFER_DEFAULT})
 
+# The format-2 verifier for installs of untrusted containers (vmverify's
+# toit_vmverify_verify and verified/spec's checker; about 27 KB of flash on
+# the classic ESP32). Firmware that never installs untrusted containers can
+# leave it out (Kconfig TOIT_VERIFIED_CORE_VERIFIER): every untrusted
+# install is then rejected, and the linker drops the Rust verifier.
+option(TOIT_VERIFIED_CORE_VERIFIER "Link the format-2 verifier (untrusted installs)" ON)
+
 set(TOIT_VERIFIED_CORE_ENABLED OFF CACHE INTERNAL "")
+set(TOIT_VERIFIED_CORE_VERIFIER_ENABLED OFF CACHE INTERNAL "")
 set(TOIT_VERIFIED_CORE_INFER_ENABLED OFF CACHE INTERNAL "")
 set(TOIT_VERIFIED_CORE_CHECKED_LOOP_ENABLED OFF CACHE INTERNAL "")
 if (NOT TOIT_VERIFIED_CORE)
@@ -98,6 +106,7 @@ if (NOT TOIT_CARGO)
   return()
 endif()
 set(TOIT_VERIFIED_CORE_ENABLED ON CACHE INTERNAL "")
+set(TOIT_VERIFIED_CORE_VERIFIER_ENABLED ${TOIT_VERIFIED_CORE_VERIFIER} CACHE INTERNAL "")
 set(TOIT_VERIFIED_CORE_INFER_ENABLED ${TOIT_VERIFIED_CORE_INFER} CACHE INTERNAL "")
 set(TOIT_VERIFIED_CORE_CHECKED_LOOP_ENABLED ${TOIT_VERIFIED_CORE_CHECKED_LOOP} CACHE INTERNAL "")
 
@@ -173,11 +182,26 @@ add_custom_command(
   USES_TERMINAL
   VERBATIM
 )
-add_custom_target(toit_verified_core_build DEPENDS "${VCORE_LIB}")
+set(VCORE_LINKED_LIB "${VCORE_LIB}")
+if (${TOIT_IS_EMBEDDED})
+  # The firmware links newlib's libm, not compiler_builtins' copy of the C
+  # math functions (vmverify/staticlib/localize-libm.cmake).
+  set(VCORE_LINKED_LIB "${VCORE_LIB_DIR}/${CMAKE_STATIC_LIBRARY_PREFIX}toit_rust_device${CMAKE_STATIC_LIBRARY_SUFFIX}")
+  add_custom_command(
+    OUTPUT "${VCORE_LINKED_LIB}"
+    COMMAND ${CMAKE_COMMAND} -DNM=${CMAKE_NM} -DOBJCOPY=${CMAKE_OBJCOPY}
+            -DINPUT=${VCORE_LIB} -DOUTPUT=${VCORE_LINKED_LIB}
+            -P "${VMLIB_DIR}/localize-libm.cmake"
+    DEPENDS "${VCORE_LIB}" "${VMLIB_DIR}/localize-libm.cmake"
+    COMMENT "Localizing the C math functions of the Rust library"
+    VERBATIM
+  )
+endif()
+add_custom_target(toit_verified_core_build DEPENDS "${VCORE_LINKED_LIB}")
 
 add_library(toit_verified_core STATIC IMPORTED GLOBAL)
 set_target_properties(toit_verified_core PROPERTIES
-  IMPORTED_LOCATION "${VCORE_LIB}"
+  IMPORTED_LOCATION "${VCORE_LINKED_LIB}"
   INTERFACE_LINK_LIBRARIES "${VCORE_LINK_LIBRARIES}")
 add_dependencies(toit_verified_core toit_verified_core_build)
 

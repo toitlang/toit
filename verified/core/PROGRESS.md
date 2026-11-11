@@ -1,5 +1,120 @@
 # Phase 4a progress (verified core, format 2 on x86-64)
 
+## Device size (branch device/size, 2026-11-11)
+
+Size reduction of the format-2 firmware (core, no C++ interpreter) for the
+classic ESP32. Nothing was flashed; scripts, logs and builds:
+/home/flo/work/opentoit-sandbox-artifacts/device-size (README.md).
+**Result: the classic ESP32's format-2 firmware with Jaguar still does not
+fit (1,775,744 of 1,703,936 B, 70 KB over; was 108 KB over); the ESP32-C6
+now fits with 29 KB to spare (was 2 KB over). The default was not
+flipped.** Nothing inside verified/core/src or verified/spec changed.
+
+Attribution before (classic ESP32, f2 against f1 at d960ca45; linker map,
+esp_idf_size, `scripts/mapsyms.sh`, `rust-groups.sh`, `img.sh`):
+
+| Part | Bytes |
+|---|---:|
+| toit.bin f2 - f1 | +87,136 |
+| Rust: run loop (`step::run_loop` with its jump table) | +30,887 |
+| Rust: core cold paths (`step::slow`, r* helpers, raise, unwind) | +13,728 |
+| Rust: the 106 primitives (`prims::`) | +14,952 |
+| Rust: verifier (toit_spec 13,582, vmverify glue 12,210, C entry 1,687) | +27,479 |
+| Rust: other (core/alloc, entry points, rodata) | +2,022 |
+| Rust: compiler_builtins (C math 23.5 K, u128 division 2.6 K, rest) | +27,009 |
+| newlib libm (replaced by compiler_builtins' weak math functions) | -20,571 |
+| C++ interpreter (interpreter_run, method_entries) | -14,583 |
+| C++ format-2 glue (interpreter_v2, verifier_v2) and messages | +5,890 |
+| interpreter.cc, interpreter_core.cc, other | -2,677 |
+| system image f2 - f1 (88,704 -> 114,048) | +25,344 |
+| method-table literal (16 B x 1,743 methods, with relocation bits) | +28,776 |
+| bytecodes (61,898 -> 58,883: format 2 is 5 % smaller) | -3,015 |
+| Jaguar image f2 - f1 (101,376 -> 126,720; literal 29,408 B) | +25,344 |
+| DROM extension padding (64 KB pages): with Jaguar 4 pages, f1 3 | +65,536 |
+
+There is no second loop on devices: the checked loop is not linked (393
+B remnant); trusted and verified programs share `run_loop`. The dispatch
+table is dense (no holes worth packing), the trusted images carry no
+certificate, and the C++ side is already -Os (-Oz gives the same code
+with this GCC).
+
+Bytes saved per change, classic ESP32 f2 (format 2 on the core, no C++
+interpreter): toit.bin, and the flashed binary with the system and Jaguar
+(v1.73.0, -O2) against the 1,703,936-byte OTA partition (scripts/
+jag-check.sh, as tests/esp32/check-partition-sizes.sh). Base d960ca45:
+f1 toit.bin 1,462,912 B, with Jaguar 1,659,520 B.
+
+| Change | Commit | toit.bin | saved | with Jaguar | saved |
+|---|---|---:|---:|---:|---:|
+| base (d960ca45) | | 1,550,048 | | 1,812,192 | |
+| S1 newlib's libm instead of compiler_builtins' C math functions | f803b3a8 | 1,543,488 | 6,560 | 1,805,632 | 6,560 |
+| S2 TOIT_V2_VALIDATE, TOIT_VERIFY_TIME on hosts only | ebbdf36a | 1,542,272 | 1,216 | (1,804,416) | 1,216 |
+| S3 the binary laid out around the DROM extension (no 64 KB padding) | 2d51679f | 1,542,272 | 0 | 1,779,840 | 24,576 |
+| S4 Kconfig TOIT_VERIFIED_CORE_VERIFIER (off: no verifier; default on) | d9ac75e8 | (1,512,672) | (29,584) | (1,750,256) | (29,584) |
+| S5 images without unused trailing heap blocks (system 114,048 -> 109,824) | 30f496ed | 1,542,272 | 0 | 1,775,744 | 4,096 |
+| total (default configuration) | | 1,542,256 | 7,792 | 1,775,744 | 36,448 |
+
+(The final builds, with a pinned version string, have toit.bin 1,542,256
+B; parenthesized rows are the non-default configuration.) S3 is a change of
+`toit tool firmware` only: the bootloader, the VM and the envelope format
+are unchanged; QEMU boots the relaid binaries (8 segments of at most 16)
+and runs the suite. S1 also makes the C++ math primitives (math.pow, sin,
+...) newlib's again, as in format 1.
+
+After (QEMU suite: `scripts/suite-all.sh final`, output identical to the
+previous agent's runs for f1 and f2):
+
+| | ESP32 f1 | ESP32 f2 | ESP32 f2, no verifier | C6 f1 | C6 f2 |
+|---|---:|---:|---:|---:|---:|
+| toit.bin | 1,462,864 | 1,542,256 | 1,512,672 | 1,574,544 | 1,637,680 |
+| flashed, system only | 1,548,896 | 1,652,864 | 1,627,376 | 1,660,576 | 1,748,272 |
+| flashed, with Jaguar | 1,647,200 | 1,775,744 | 1,750,256 | 1,758,880 | 1,871,152 |
+| OTA partition, margin | +56,736 | -71,808 | -46,320 | +141,664 | +29,392 |
+| Rust library | 0 | 89,068 | 61,804 | 0 | 78,557 |
+| system image | 84,480 | 109,824 | 109,824 | 84,480 | 109,824 |
+| iram0.text | 129,087 | 116,947 | 116,947 | 156,350 | 139,998 |
+| free heap at boot (QEMU) | 116,904 | 133,712 | | | |
+
+Instructions (QEMU icount, f2/f1): richards 0.720, deltablue 0.968,
+pystone 0.863, json 1.068 (unchanged). Host (callgrind Ir in
+`Interpreter::run`, trusted format 2): richards 1,075.3 M, deltablue
+758.7 M, pystone 811.9 M (EXPERIMENT-trusted.md: 1,077.9 / 760.8 /
+810.2 M).
+
+Gates (30f496ed): verified/check.sh --tests passed (VeriFast 87 checks,
+sandbox ctests 125/125); ctest -j16 1201/1204 (version, reader not run;
+udp-reuse-port-test); nostd, nopanic, xtensa_codegen_check (3, z) pass;
+firmware: classic ESP32 and C6 in f1 and f2 (and ESP32 without the
+verifier); QEMU suite identical for f1 and f2.
+
+What closing the remaining 70 KB would take (not done):
+
+- Both table literals out of the images (`-Xv2_table_literal=false`):
+  -57.5 KB flash (Jaguar alone -28.7 KB measured), but +57 KB of RAM
+  with Jaguar running (16 B per method, 1,743 + 1,837 methods; format 1
+  needs 13 KB of entry bitmaps for the two). Even then about 14.5 KB
+  over; together with the verifier left out about 15 KB to spare.
+- A smaller method record (core: `V2Method`, `exec::Program::methods`,
+  their proofs and the C++ table builder): 12 bytes (24-bit entry with the
+  kind, length, arity, selector, aux and receiver range packed) saves
+  4 B per method, 14.3 KB for system plus Jaguar; 8 bytes (entry, length,
+  arity, kind; selector, aux and receiver range in a side table for the
+  40 % / 62 % of methods that have them) saves 28.6 KB, and as much RAM
+  per installed untrusted program, at the cost of a second lookup on
+  virtual calls and receiver checks. Jaguar's headers hold the same
+  fields in 9.4 KB (5.1 B per method).
+- The C++ copies of the ported primitives (99 in primitive_core.cc,
+  9.6 KB) stay for `NotPorted`; removing those the Rust port never
+  declines needs that shown per primitive: at most 5 KB.
+- Image off-heap rounded to a word instead of a 4 KB page: about 2 KB per
+  image, if no VM code assumes page-aligned program-heap blocks (not
+  checked exhaustively).
+- Core at opt-level 2: -2.8 KB (riscv/Xtensa device_size); speed not
+  measured. Opt s: -9.2 KB at 11-15 % more instructions (rejected).
+- Partition layout (last resort): ota_0/ota_1 0x1a0000 -> 0x1c0000 (the
+  programs partition 640 -> 384 KB) gives +59 KB of margin; the C6's
+  0x1d0000 layout +125 KB. Deployed devices cannot change it over the air.
+
 ## Device builds on format 2 (branch device/format2, 2026-11-11)
 
 The classic ESP32 and the ESP32-C6 firmware can run everything in format

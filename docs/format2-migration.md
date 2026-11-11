@@ -211,6 +211,16 @@ On Xtensa the core executes fewer instructions than the C++ interpreter
 on most programs (on x86-64 it executes 5-20 % more, see above): icount
 counts instructions, not cycles, and the C++ interpreter runs from IRAM.
 
+**Flash, after the size work** (branch `device/size`; verified/core/
+PROGRESS.md "Device size" has the attribution and the per-change table):
+newlib's libm instead of compiler_builtins' math functions, the binary
+laid out around the DROM extension instead of padding it to 64 KB, images
+without unused heap blocks and two debugging aids on hosts only bring the
+classic ESP32 with Jaguar to 1,775,744 B (still 71.8 KB over the OTA
+partition) and the C6 to 1,871,152 B (29.4 KB to spare). Kconfig
+`TOIT_VERIFIED_CORE_VERIFIER=n` leaves the verifier out (-29.6 KB) for
+firmware without untrusted installs. The numbers below are from before.
+
 **Flash.** The flashed firmware (toit.bin with the system image in its
 DROM extension; `extract --format binary`) against the OTA partition
 (classic ESP32 0x1a0000 = 1,703,936 bytes, C6 0x1d0000 = 1,900,544):
@@ -304,9 +314,12 @@ up) when the installer runs, deep sleep.
 
 ### Before the C++ interpreter can be deleted
 
-1. A flash budget for the classic ESP32 with Jaguar (partition layout or
-   about 110 KB of size reduction), then the default flip (4f488c84) and
-   the CI step for the Rust targets; the C6 needs 2 KB (or opt-level s).
+1. A flash budget for the classic ESP32 with Jaguar: still 72 KB over
+   after `device/size` (a partition layout with 0x1c0000 OTA partitions,
+   a smaller method record in the core plus the table literals in RAM,
+   see verified/core/PROGRESS.md "Device size"), then the default flip
+   (4f488c84) and the CI step for the Rust targets. The C6 fits now (29
+   KB to spare) and could flip on its own.
 2. The other device targets on the core (C3, S2, S3, P4, EC618; 5-9 days
    plus hardware) or dropping them; the cross hosts' cargo targets.
 3. Hardware runs of the format-2 firmware (the hw test suite, `make

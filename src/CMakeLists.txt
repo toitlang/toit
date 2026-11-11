@@ -276,6 +276,9 @@ target_include_directories(toit_vm PRIVATE "${TOIT_SDK_SOURCE_DIR}/third_party/d
 # The Verus-verified interpreter core (see verified/CMakeLists.txt).
 if (TOIT_VERIFIED_CORE_ENABLED)
   target_compile_definitions(toit_vm PRIVATE TOIT_VERIFIED_CORE)
+  if (NOT TOIT_VERIFIED_CORE_VERIFIER_ENABLED)
+    target_compile_definitions(toit_vm PRIVATE TOIT_NO_V2_VERIFIER)
+  endif()
   if (TOIT_VERIFIED_CORE_INFER_ENABLED)
     target_compile_definitions(toit_vm PRIVATE TOIT_VERIFIED_CORE_INFER)
   endif()

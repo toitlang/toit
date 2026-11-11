@@ -166,6 +166,9 @@ class Heap extends Memory:
     super --word-size=word-size bytes from to relocation-bits
     expand
 
+  /** The number of blocks the image has room for. */
+  reserved-block-count -> int: return (to_ - from_) / page-size
+
   expand:
     assert: top_ + page-size <= to_
     block-object-size := ToitMemoryBlock.LAYOUT.byte-size --word-size=word-size
@@ -232,12 +235,19 @@ class Image:
   // through every possible function call.
   large-integer-header_ /int? := null
 
-  constructor snapshot-program/snapshot.Program .word-size --.id:
+  /**
+  Allocates the memory of an image of the $snapshot-program.
+
+  The heap gets the snapshot's number of blocks for the word size, or
+    $block-count blocks if given.
+  */
+  constructor snapshot-program/snapshot.Program .word-size --.id --block-count/int?=null:
     header := snapshot-program.header
     assert: word-size == 4 or word-size == 8
     page-size = word-size == 4 ? PAGE-BYTE-SIZE-32 : PAGE-BYTE-SIZE-64
 
-    block-count := word-size == 4 ? header.block-count32 : header.block-count64
+    if not block-count:
+      block-count = word-size == 4 ? header.block-count32 : header.block-count64
     block-byte-size := block-count * page-size
     toit-program-byte-size := ToitProgram.LAYOUT.byte-size --word-size=word-size
     summed-offheap := (round-up toit-program-byte-size word-size)
@@ -1183,6 +1193,18 @@ build-image snapshot/snapshot.Program word-size/int -> Image
   program.write-to image
       --system-uuid=system-uuid
       --snapshot-uuid=snapshot-uuid
+  // The snapshot's block count is the compiler's estimate, which can be
+  //   larger than what the objects need (the ESP32 system snapshot asks for
+  //   three 4 KB blocks and fills two). Unused trailing blocks only cost
+  //   flash: build the image again without them.
+  used := image.heap.blocks_.size
+  reserved := image.heap.reserved-block-count
+  if used < reserved:
+    image = Image snapshot word-size --id=id --block-count=used
+    program = ToitProgram snapshot
+    program.write-to image
+        --system-uuid=system-uuid
+        --snapshot-uuid=snapshot-uuid
   return image
 
 image-id --snapshot-uuid/Uuid --assets/ByteArray? -> Uuid:
