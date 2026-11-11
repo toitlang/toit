@@ -197,6 +197,12 @@ class MessageEncoder {
   // The encoded size plus the size of all out-of-line data.
   word total_size() const { return cursor_ + external_bytes_; }
   bool malloc_failed() const { return malloc_failed_; }
+  // Limits the encoded size plus the size of all out-of-line data (the
+  // message-size quota of a sandboxed sender). The encoder stops as soon as
+  // the limit is exceeded. 0 means no limit.
+  void set_max_total_size(word max) { max_total_size_ = max; }
+  // Whether the encoding failed because of the limit of set_max_total_size.
+  bool over_limit() const { return over_limit_; }
 
   /**
   Some encoders can take over the data pointed to by external
@@ -210,7 +216,10 @@ class MessageEncoder {
   */
   uint8* take_buffer();
 
-  bool encode(Object* object) { ASSERT(!encoding_tison()); return encode_any(object); }
+  bool encode(Object* object) {
+    ASSERT(!encoding_tison());
+    return encode_any(object) && !is_over_limit();
+  }
   bool encode_bytes_external(void* data, word length, bool free_on_failure = true);
   // If 'is_exception' is true, encodes the string.
   // Otherwise the data and length.
@@ -235,6 +244,13 @@ class MessageEncoder {
 
   bool encode_any(Object* object);
 
+  // Checks the size of the encoding so far against the limit of
+  // set_max_total_size, and records whether it is exceeded.
+  bool is_over_limit() {
+    if (max_total_size_ > 0 && cursor_ + external_bytes_ > max_total_size_) over_limit_ = true;
+    return over_limit_;
+  }
+
   void write_uint32(uint32 value);
   void write_cardinal(uword value);
 
@@ -255,6 +271,8 @@ class MessageEncoder {
   int problematic_class_id_ = -1;
   bool nesting_too_deep_ = false;
   bool too_many_externals_ = false;
+  bool over_limit_ = false;
+  word max_total_size_ = 0;
 
   bool malloc_failed_ = false;
 

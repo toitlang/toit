@@ -157,6 +157,9 @@ bool MessageEncoder::encode_any(Object* object) {
     nesting_too_deep_ = true;
     return false;
   }
+  // Stop early: shared objects are encoded for every reference, so the
+  // work isn't bounded by the size of the object graph.
+  if (is_over_limit()) return false;
 
   if (is_smi(object)) {
     word value = Smi::value(object);
