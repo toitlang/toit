@@ -7,6 +7,7 @@
 @expand-typedef uhalf_word
 @overloaded Over::f
 @modular-arguments Tagged::Tagged
+@overloaded Defaults::Defaults
 @verbatim
 #include <stdint.h>
 #include "rules_constants.h"
@@ -23,6 +24,9 @@ struct Over { char unused_; };
 typedef struct Over Over;
 typedef short narrow_t;
 struct plain_c { int a; };
+typedef int RuleMode;
+struct Defaults { word x_; RuleMode mode_; word count_; bool flag_; struct Defaults *next_; };
+typedef struct Defaults Defaults;
 // The implicit default constructor (initializes nothing).
 void plain_c_ctor(struct plain_c *self);
 //@ requires self->a |-> _;
@@ -204,4 +208,29 @@ inline int narrow_unsigned(uword u)
   int n = u;
   if (n < 0) return -1;
   return n;
+}
+
+@render verified/cxx/annotated/tests/rules.cc toit::Defaults::Defaults type=void(word,RuleMode)
+  Defaults(word x, RuleMode mode) : x_(x), mode_(mode)
+  /*@ requires self->x_ |-> _ &*& self->mode_ |-> _ &*& self->count_ |-> _ &*& self->flag_ |-> _ &*&
+               self->next_ |-> _; @*/
+  /*@ ensures self->x_ |-> x &*& self->mode_ |-> mode &*& self->count_ |-> 7 &*& self->flag_ |-> false &*&
+              self->next_ |-> 0; @*/
+  {}
+
+@render verified/cxx/annotated/tests/rules.cc toit::Defaults::Defaults type=void(word)
+  explicit Defaults(word x) : Defaults(x, RULE_MODE_B)
+  /*@ requires self->x_ |-> _ &*& self->mode_ |-> _ &*& self->count_ |-> _ &*& self->flag_ |-> _ &*&
+               self->next_ |-> _; @*/
+  /*@ ensures self->x_ |-> x &*& self->mode_ |-> RULE_MODE_B &*& self->count_ |-> 7 &*& self->flag_ |-> false &*&
+              self->next_ |-> 0; @*/
+  {}
+
+@render verified/cxx/annotated/tests/rules.cc toit::use_defaults
+inline word use_defaults(word x)
+//@ requires 0 <= x &*& x < 100;
+//@ ensures result == x + 7;
+{
+  Defaults d(x);
+  return d.x_ + d.count_;
 }

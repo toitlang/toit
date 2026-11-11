@@ -13,6 +13,7 @@ namespace toit {
 template <typename A, typename B> struct vf_same {
   static const bool value = std::is_same<typename std::decay<A>::type, typename std::decay<B>::type>::value;
 };
+struct vf_probe_0 : Defaults { static_assert((RULE_MODE_B) == (1), "RULE_MODE_B"); };
 static_assert((Outer::K) == (((word)3)), "Outer_K");
 static_assert(vf_same<decltype(Outer::K), decltype(((word)3))>::value, "type of Outer_K");
 }  // namespace toit

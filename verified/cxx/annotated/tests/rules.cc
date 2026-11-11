@@ -164,4 +164,27 @@ inline int use_plain() {
   return p.a;
 }
 
+// Rules (wave 5, the message decoder's constructors): a default member
+// initializer is written out from its value (literals, null, enumerators
+// of the constant table); a delegating constructor calls the target
+// constructor on `self`.
+enum RuleMode { RULE_MODE_A, RULE_MODE_B };
+
+class Defaults {
+ public:
+  explicit Defaults(word x) : Defaults(x, RULE_MODE_B) {}
+  Defaults(word x, RuleMode mode) : x_(x), mode_(mode) {}
+
+  word x_;
+  RuleMode mode_ = RULE_MODE_A;
+  word count_ = 7;
+  bool flag_ = false;
+  Defaults* next_ = null;
+};
+
+inline word use_defaults(word x) {
+  Defaults d(x);
+  return d.x_ + d.count_;
+}
+
 }  // namespace toit

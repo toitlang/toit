@@ -22,6 +22,9 @@ struct Over { char unused_; };
 typedef struct Over Over;
 typedef short narrow_t;
 struct plain_c { int a; };
+typedef int RuleMode;
+struct Defaults { word x_; RuleMode mode_; word count_; bool flag_; struct Defaults *next_; };
+typedef struct Defaults Defaults;
 // The implicit default constructor (initializes nothing).
 void plain_c_ctor(struct plain_c *self);
 //@ requires self->a |-> _;
@@ -125,6 +128,25 @@ int use_plain(void);
 int narrow_unsigned(uword u);
 //@ requires true;
 //@ ensures -1 <= result;
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::Defaults::Defaults
+void Defaults_ctor__word_RuleMode(Defaults *self, word x, RuleMode mode);
+/*@ requires self->x_ |-> _ &*& self->mode_ |-> _ &*& self->count_ |-> _ &*& self->flag_ |-> _ &*&
+               self->next_ |-> _; @*/
+/*@ ensures self->x_ |-> x &*& self->mode_ |-> mode &*& self->count_ |-> 7 &*& self->flag_ |-> false &*&
+              self->next_ |-> 0; @*/
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::Defaults::Defaults
+void Defaults_ctor__word(Defaults *self, word x);
+/*@ requires self->x_ |-> _ &*& self->mode_ |-> _ &*& self->count_ |-> _ &*& self->flag_ |-> _ &*&
+               self->next_ |-> _; @*/
+/*@ ensures self->x_ |-> x &*& self->mode_ |-> RULE_MODE_B &*& self->count_ |-> 7 &*& self->flag_ |-> false &*&
+              self->next_ |-> 0; @*/
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::use_defaults
+word use_defaults(word x);
+//@ requires 0 <= x &*& x < 100;
+//@ ensures result == x + 7;
 
 // C++: verified/cxx/annotated/tests/rules.cc toit::Outer::Inner::Inner
 void Outer_Inner_ctor(Outer_Inner *self, word x)
@@ -329,5 +351,39 @@ int narrow_unsigned(uword u)
     return -1;
   }
   return n;
+}
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::Defaults::Defaults
+void Defaults_ctor__word_RuleMode(Defaults *self, word x, RuleMode mode)
+/*@ requires self->x_ |-> _ &*& self->mode_ |-> _ &*& self->count_ |-> _ &*& self->flag_ |-> _ &*&
+               self->next_ |-> _; @*/
+/*@ ensures self->x_ |-> x &*& self->mode_ |-> mode &*& self->count_ |-> 7 &*& self->flag_ |-> false &*&
+              self->next_ |-> 0; @*/
+{
+  self->x_ = x;
+  self->mode_ = mode;
+  self->count_ = 7;
+  self->flag_ = false;
+  self->next_ = 0;
+}
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::Defaults::Defaults
+void Defaults_ctor__word(Defaults *self, word x)
+/*@ requires self->x_ |-> _ &*& self->mode_ |-> _ &*& self->count_ |-> _ &*& self->flag_ |-> _ &*&
+               self->next_ |-> _; @*/
+/*@ ensures self->x_ |-> x &*& self->mode_ |-> RULE_MODE_B &*& self->count_ |-> 7 &*& self->flag_ |-> false &*&
+              self->next_ |-> 0; @*/
+{
+  Defaults_ctor__word_RuleMode(self, x, RULE_MODE_B);
+}
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::use_defaults
+word use_defaults(word x)
+//@ requires 0 <= x &*& x < 100;
+//@ ensures result == x + 7;
+{
+  Defaults d;
+  Defaults_ctor__word(&d, x);
+  return d.x_ + d.count_;
 }
 
