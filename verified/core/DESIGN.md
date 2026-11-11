@@ -92,16 +92,19 @@ registers (`regs::Regs`), the rest of the machine behind a pointer.
   it by `&mut` (its address never escapes, so LLVM keeps the fields in
   registers), out-of-line paths take and return it by value
   (`regs::set_regs` copies a returned value field by field). Everything
-  else (the views, the length, the top frame's method, the ghost state) is
-  the `Machine` behind `&mut`. Slot `n` is `sp[n]`: one load relative to
-  the top.
-- Abstraction: the machine's fields `top`, `lim`, `base`, `ftop`, `rtop`
-  and `bci` are stale while the loop runs; `m.with(r)` is the machine the
-  registers describe, and the abstraction of the pair is
+  else (the views, the length, the gate below, the ghost state) is the
+  `Machine` behind `&mut`. Slot `n` is `sp[n]`: one load relative to the
+  top.
+- Abstraction: the machine's fields `top`, `lim`, `base`, `ftop`, `rtop`,
+  `bci` and `method` are stale while the loop runs; `m.with(r)` is the
+  machine the registers describe (the record top is `fr + m.fw`, the top
+  frame's method the method word of its frame record, so calls and
+  returns store no method), and the abstraction of the pair is
   `m.with(r).refines(p)`: the refinement relation of section 9 unchanged.
-  `m.sync(r)` writes the registers back, `m.regs()` derives them. Every
-  register handler proves `rpost`: on `Next`, `m1.with(r1)` refines the
-  spec's next state (`step_post` of the machine form), plus the room.
+  `m.sync(r)` writes the registers back, `m.enter(p)` sets the gate and
+  derives them. Every register handler proves `rpost`: on `Next`,
+  `m1.with(r1)` refines the spec's next state (`step_post` of the machine
+  form), plus the room and the gate.
 - Dispatch: `step_r`, one `match` arm with a constant opcode per opcode
   (no range patterns: they cost a second switch) and a default arm proven
   unreachable, so LLVM duplicates the 6-instruction dispatch into the
@@ -109,27 +112,46 @@ registers (`regs::Regs`), the rest of the machine behind a pointer.
   is compiled without the SLP vectorizer (verified/vmverify/.cargo/
   config.toml): it packed pairs of registers into one vector register and
   unpacked them at every dispatch.
-- Fast paths and the bridge: a register handler runs its fast path, or,
-  when it does not apply and before it changes anything, calls
-  `step::bridge`: out of line, it writes the registers back, runs the
-  instruction on the machine's handler (the verified handlers of the
-  previous loop, unchanged) and settles. Bridged: raises, stack growth,
-  preemption at calls, lookup failures, collections the fast paths do not
-  know, C++ primitives, and the rare opcodes INVOKE_LAMBDA_TAIL, THROW,
-  NON_LOCAL_RETURN, NON_LOCAL_BRANCH, TRY, UNWIND and HALT.
-- Lazy finally records: the register loop runs only while there are no
-  finally records, so the frame top is the record top (no register, no
-  record move at calls, no record cut at returns). Finally records exist
-  only during an unwinding's finally code; `step::settle`, after every
-  bridged instruction, runs the machine's handlers on until they are gone
-  (`steps_post`: the spec reaches the state in several steps) and then
-  re-establishes the room and derives the registers. A task resumed in
-  finally code settles at the start of the run.
+- One body per opcode (branch core/size-diet): every opcode has exactly
+  one handler, its register handler. Where its fast path does not apply
+  (before it changes anything), it calls `step::slow` (out of line, one
+  copy for all sites) with what the machine's code needs (`step::Slow`):
+  `slow` writes the registers back, runs the shared machine-form code and
+  derives the registers again (`step::resume`: the room, then
+  `Machine::enter`). The machine-form code is what is cold or rare: the
+  raises (`Raise`, `Invalid`, `As`, `Lookup`: `raise.rs`, one copy of each
+  message), calls with stack growth, preemption or finally records
+  (`Call`: `step::ensure_room`, `Machine::push_call`), returns of the
+  bottom frame, into a TRY or with finally records (`Return`:
+  `Machine::do_return`), the C++ primitives (`Prim`:
+  `primitive::op_primitive_cxx`) and the whole handlers of the opcodes in
+  `step::machine_op` (`Op`: LOAD_GLOBAL_VAR_LAZY(_WIDE), the tail calls,
+  INVOKE_BLOCK, THROW, NON_LOCAL_RETURN, NON_LOCAL_BRANCH, TRY, UNWIND,
+  HALT; their register handlers have fast paths for the common cases where
+  they exist, and `step::step_machine` dispatches the rest). The machine's
+  step over all opcodes (`step_m`, 25 KB on devices) and the machine
+  handlers that duplicated the register handlers are gone.
+- Finally records in the register loop: they exist only during an
+  unwinding's finally code. The registers hold the frame top; the
+  machine's gate (`regs::gate_ok`, set by `Machine::enter`) holds the
+  record words `fw`, the room a call's fast path needs (`need`, all ones
+  while there are records) and the lowest frame top of a return's fast path
+  (`bot`, the end of the array while there are records). So the calls and
+  returns that would move records fail their existing check (`free >=
+  (watermark | need)`, `bot < fr`, `view::Cursor::lt`, which is also the
+  bottom-frame test) and run on the machine; the instructions inside a
+  frame do not look at the records. With records the room is the top
+  frame's only (`room::room_ok`): after a stack overflow, at the maximal
+  stack length, every frame's room with the records counted may not exist
+  while format 1 still runs the finally code; `resume` checks the top
+  frame after every machine path and every frame once the records are
+  gone. A call keeps one finally record of slack (`ensure_room`, the
+  gate's `need`) so that a frame can always enter its finally code.
 - Preemption at calls is merged into the room check, as the C++
   interpreter merges it into its stack-limit check: a call takes the fast
-  path iff `free >= (watermark | needed)`; the watermark is null while the
+  path iff `free >= (watermark | need)`; the watermark is null while the
   core runs and all ones when preemption is requested, so a request sends
-  the call to the bridge, whose handler preempts at the callee's entry as
+  the call to `slow`, whose `push_call` preempts at the callee's entry as
   before. Any other watermark value only makes the check stricter
   (`(w | n) >= n`, `rcalls::lemma_or_ge`), so the room proof does not
   depend on it. Backward branches test the watermark as before.
@@ -196,8 +218,9 @@ array index:  0 ........... ftop ........ rtop        top ............. len-1
   themselves (one per frame: unsound for try/finally inside finally code,
   note 17).
 - Room: before every call the core requires
-  `FRAME_WORDS + global_max_height + STACK_RESERVE` free words between the
-  records and the object stack and otherwise grows the stack
+  `FRAME_WORDS + global_max_height + STACK_RESERVE + FIN_WORDS` free words
+  (the last a finally record of slack, section 2a) between the records and
+  the object stack and otherwise grows the stack
   (`toit_v2_grow_stack`: a new, larger Stack, records copied to the bottom
   and the object stack to the top). Growth past `Stack::max_length()`
   throws `STACK_OVERFLOW`. The verified loop's invariant carries the room
@@ -205,7 +228,8 @@ array index:  0 ........... ftop ........ rtop        top ............. len-1
   the global maximal height (the verifier's bound on every frame's height,
   `instr_ok`) and leave `STACK_RESERVE` words above the frame records up to
   `i` and all finally records:
-  `base_i + arity_i + max_height + 5 (i + 1) + 5 |fins| + 8 <= len`. A call
+  `base_i + arity_i + max_height + 5 (i + 1) + 5 |fins| + 8 <= len` (while
+  there are finally records, for the top frame only: section 2a). A call
   checks once (the line above) and so establishes the new frame's room;
   returns and pops keep it; the top frame then always has at least
   `STACK_RESERVE` free words (`room::lemma_room_top`), so no push is
@@ -214,11 +238,13 @@ array index:  0 ........... ftop ........ rtop        top ............. len-1
   enough. What breaks the room: a GC that shrank the stack (the shrink in
   `Stack::roots_do` keeps room only above the current top), a task switch,
   and an unwinding entering finally code (one more record). After those,
-  `room::ensure_room_all` scans the frame records and grows the stack if
-  needed (a GC point that keeps the state; failing growth stops with
-  `LIMIT`, out of memory); after a GC point a register handler only scans
-  when the length shrank (`room::regain`). The machine's handlers (checked
-  loop and bridge) keep their own run-time checks: entering finally code
+  `room::ensure_room_all` scans the frame records (with finally records,
+  the top frame's) and grows the stack if needed (a GC point that keeps
+  the state; failing growth stops with `LIMIT`, out of memory); after a GC
+  point a register handler only scans when the length shrank
+  (`room::regain`), and `step::resume` checks after every path on the
+  machine. The machine's code (checked loop and slow paths) keeps its own
+  run-time checks: entering finally code
   with an unwinding needs the record and three slots (the run-time check
   stops with `LIMIT` otherwise).
 - Shrinking (GC, `Stack::roots_do`) moves the object stack down and keeps

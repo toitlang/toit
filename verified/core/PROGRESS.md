@@ -1,5 +1,88 @@
 # Phase 4a progress (verified core, format 2 on x86-64)
 
+## Size diet of the interpreter (branch core/size-diet, 2026-11-11)
+
+Size and speed work on the verified run loop, keeping every proof
+(DESIGN.md section 2a, "One body per opcode" and "Finally records in the
+register loop"; section 8, "Size diet"). Nothing was assumed or
+admitted; the allowlist went from 299 groups / 309 occurrences to 298 /
+307 (gone: `settle`'s loop without decreases clause and the two unsafe
+moves of `cold!`; new: `view::Cursor::lt`, a pointer comparison).
+Scripts and raw numbers: /home/flo/work/opentoit-sandbox-artifacts/
+core-size (`devsize.sh`, `ir.sh`, `attr.sh`, `ir/results.txt`,
+`devsize/`).
+
+Steps (callgrind Ir inside `toit_v2_run`, TOIT_VERIFY=1, x86-64; device
+size: "verified loop and cold paths" of verified/vmverify/tests/
+device_size.sh, riscv32imac, opt 3):
+
+| Step | richards | deltablue | pystone | device KB |
+|---|---|---|---|---|
+| before (sandbox-integration 05c1664b) | 1,234 M | 952 M | 940 M | 54.3 |
+| finally records in the register loop (gate in the machine), cold paths take the machine by reference | 1,206 M | 928 M | 909 M | 54.3 |
+| one body per opcode: `step::slow`, the machine's step and the bridge gone; top-frame room with finally records, a record of slack per call | 1,212 M | 939 M | 915 M | 31.5 |
+| field checks instance-first, program-heap test as one compare, `-Xpreempt_a_lot` only in debug builds | 1,167 M | 925 M | 898 M | 31.5 |
+| the top frame's method read from its frame record | 1,158 M (1.13) | 915 M (1.41) | 891 M (1.17) | 31.2 |
+
+(C++ format 1 -O3: 1,023 M / 650 M / 762 M.)
+
+1. Finally records in the register loop (37c75bbb). The register loop
+   ran only without finally records, and `step::settle` ran finally code
+   on the machine's step over all opcodes (`step_m`), which therefore had
+   to stay complete. Now the registers hold the frame top, and the
+   machine holds a gate (`regs::gate_ok`): the record words `fw`, the
+   room a call's fast path needs (`need`, all ones with records: the call
+   fails its existing room check `free >= (watermark | need)`) and the
+   lowest frame top of a return's fast path (`bot`, the end of the array
+   with records: one pointer compare, `view::Cursor::lt`, which is also
+   the bottom-frame test and costs one instruction less than before).
+   Calls and returns that would move records run on the machine; nothing
+   else looks at them. LOAD_SMIS_0 lost its room check (the next state is
+   well formed, `room::lemma_room_next`).
+2. `cold!` (6906bbb7) moved the whole machine by value into the C++
+   trampolines and back (memcpy once the machine grew by three words);
+   it now passes a reference: -2 to -3 percent instructions, and two
+   unsafe blocks fewer.
+3. One body per opcode (79be90bf, deletions in the following commit).
+   Every bridge site calls `step::slow` (out of line, one copy) with a
+   `step::Slow` request: a raise of a given kind (one copy of each message
+   builder), a call (growth, preemption, records), a return (bottom frame,
+   TRY, records), a C++ primitive (`primitive::op_primitive_cxx`, the Rust
+   ports run on the registers only) or the machine handler of a rare
+   opcode (`step::machine_op`: lazy globals, tail calls, INVOKE_BLOCK,
+   unwinding, TRY, HALT). The machine's step (`step_m`, 25 KB) and 45
+   machine handlers that duplicated the register handlers are gone
+   (883 -> 836 verified items). Found by the untrusted suite:
+   tests/regress/issue1027-test.toit (finally code after a stack overflow
+   at the maximal stack length) stopped with LIMIT, because the room of
+   every frame with the new record counted did not exist; with finally
+   records the room is now the top frame's only (`room::room_ok`), and a
+   call keeps one finally record of slack.
+4. Speed items against the prototype: LOAD/STORE_FIELD test the instance
+   tag first (task objects on a cold branch, `Machine::task_field_ok`);
+   the program-heap test is one compare (`w - ro_start < ro_size`
+   wrapping; the range is checked once per run, `exec::ro_ok`); the
+   `-Xpreempt_a_lot` test at POP is compiled only with the `preempt-a-lot`
+   feature (CMake: debug VM builds, as the C++ flag; Verus verifies with
+   it); the top frame's method is read from its frame record
+   (`Machine::with`), so calls, returns and tail calls store no method
+   into the machine.
+5. Shared copies of the machine's cold code: `Machine::do_unwind`,
+   `push_call` and `do_return` out of line (they were inlined into every
+   raise, every slow path and the PRIMITIVE handler): -3.2 KB, no change in
+   speed.
+
+Milestones (gates: verified/check.sh --tests at both widths, ctest -j16
+1161/1164 with the known version/reader/udp-reuse-port-test, untrusted
+suite 280 identical + the two known differences, prim_diff.sh 10 x
+1,000,000 identical, compare_trace.toit --format 2 2,053,625 steps without
+divergence, core_fuzz.toit --filter launch on ASan 30 minutes without a
+crash, 32-bit host tests/sandbox 95/95, device library links):
+
+- M1 (385b9469): items 1-4. Gates as listed (fuzz seed 31: 86,722
+  mutants, 12,466 accepted and run, 0 crashes; check.sh: spec 892, core
+  837 verified at both widths, audit passed).
+
 ## The verified loop on registers (branch core/fast-loop-proven, 2026-11-11)
 
 A performance rewrite of the verified run loop keeping every proof

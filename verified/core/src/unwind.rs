@@ -458,7 +458,7 @@ impl Machine {
     /// `spec::unwind(g, u)`: enters the innermost finally code, completes a
     /// non-local return or branch in its frame, or pops frames; an
     /// exception passing the bottom frame ends the task.
-    #[inline(always)]
+    #[inline(never)]
     pub fn do_unwind(&mut self, env: &Env, u: Unw, Ghost(gu): Ghost<Unwind>) -> (r: Ctl)
         requires
             old(self).refines(&env.p),

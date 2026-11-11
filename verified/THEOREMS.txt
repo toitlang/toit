@@ -163,8 +163,27 @@ Top-level theorems: crate vmverify (0)
 ==============================================================================
 
 ==============================================================================
-Verified exec entry points: crate core (0)
+Verified exec entry points: crate core (1)
 ==============================================================================
+
+--- Machine::set_field_val  (core/src/fields.rs)
+pub fn set_field_val(&mut self, p: &Program, wo: usize, Ghost(o): Ghost<Value>, f: usize, w: usize, Ghost(v): Ghost<Value>)
+    requires
+        old(self).refines(p),
+        wo == enc(old(self).addr(), o),
+        o is Obj,
+        (o->Obj_0 as int) < old(self).g@.heap.len(),
+        old(self).g@.heap[o->Obj_0 as int].body is Instance,
+        f < old(self).g@.heap[o->Obj_0 as int].body->Instance_0.len(),
+        !old(self).g@.heap[o->Obj_0 as int].ro,
+        w == enc(old(self).addr(), v),
+        encodable(old(self).addr(), v),
+    ensures
+        final(self).refines(p),
+        final(self).g@ == sp::set_field2(old(self).g@, o, f as int, v),
+        final(self).top == old(self).top,
+        final(self).bci == old(self).bci,
+        final(self).same_stack(old(self)),
 
 ==============================================================================
 Verified exec entry points: crate spec (10)

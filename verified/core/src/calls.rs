@@ -338,7 +338,7 @@ impl Machine {
     /// format 1, at the callee's entry). The finally records (rare: only
     /// during an unwinding's finally code) move up to make room for the
     /// frame record.
-    #[inline(always)]
+    #[inline(never)]
     pub fn push_call(&mut self, env: &Env, target: usize, ret: usize) -> (r: Ctl)
         requires
             old(self).refines(&env.p),
@@ -555,7 +555,7 @@ impl Machine {
     /// down over the popped frame record and pushes the result; a caller
     /// suspended in a TRY enters its finally code (`enter_finally` without
     /// unwinding).
-    #[inline(always)]
+    #[inline(never)]
     pub fn do_return(&mut self, env: &Env, w: usize, Ghost(v): Ghost<Value>) -> (r: Ctl)
         requires
             old(self).refines(&env.p),
