@@ -92,6 +92,7 @@ tool never guesses):
 | `@expand-typedef T` | the typedef written as the type it stands for on the rendering's target (`uhalf_word`: unsigned int on LP64, unsigned short on ILP32) |
 | a default argument (`CXXDefaultArgExpr`) | its value written out; literals only (the expression is spelled in the callee's file) |
 | a call of an `@overloaded` member | named by the declared parameter types of the member it refers to (in its class or out of line), not by the argument types (which differ per target: a literal is `int` = `word` on ILP32) |
+| `@render ... truncating` | an implicit word-to-int conversion is VeriFast's truncating cast (the modular conversion GCC and Clang define and C++20 standardizes); only for code that checks the round trip (the int arguments of ARGS) |
 
 Each rule added after the pilot has a self-test in `tests/rules.cc` and
 `tests/rules.render` (rendered, compared with the committed
@@ -131,9 +132,9 @@ gives. Not proposed; reporting the front end's missing casts upstream is.
 
 ## Status
 
-`run.sh`: 8 sidecars (one the translator's self-test), 112 rendered functions (17 contract-only), proved
-for LP64 and ILP32; 15 reverted-bug or contract mutants and 2 drift tests;
-21 s wall, 69 checks (16 cores; each proof 0.1-4 s). Lines: `metrics.sh` (C++ = the
+`run.sh`: 9 sidecars (one the translator's self-test), 117 rendered functions (17 contract-only), proved
+for LP64 and ILP32; 16 reverted-bug or contract mutants and 2 drift tests;
+21 s wall unloaded, 73 checks (16 cores; each proof 0.1-4 s). Lines: `metrics.sh` (C++ = the
 rendered functions' lines; annotations among them; then the hand-written C
 and annotations of the verbatim sections: trusted prototypes, predicates,
 lemmas).
@@ -146,6 +147,7 @@ lemmas).
 | Message encoder (`encoder/`) | encode_any (all branches), encode_array, encode_list, encode_map, NestingTracker ctor/dtor | verified: memory safety, no overflow or lossy conversion, heap read-only | buffer writers and `is_too_large` (the two-pass size argument), `encode_copy`, `encode_byte_array`, the program's class-id roots, `bit_cast` | 178 / 50 / 38 / 63 | f708ad5d: count (underflow at `to - from`), read past the backing (loop bound), map past the backing |
 | Stack growth (`grow/`) | toit_v2_grow_stack, v2_process, Stack::v2_copy_to | verified against gc_grow_stack (no precondition on `needed`: the C++ checks it) | v2_gc (preserves the abstraction), allocate_stack, Stack header accessors, Task::stack/set_stack, max_length (contract only) | 93 / 72 / 17 / 86 | the bound check taken out: fails at the cast; with the cast exact: at the sum |
 | Primitive `string_write_to_byte_array` (`prims/`) | the primitive with the ARGS/FAIL expansion (Blob and MutableBlob decoding by the proven byte_content / mutable_byte_content, word arguments), Blob/MutableBlob constructors and accessors | verified: the primitive heap contract in VeriFast terms (the heap only grows, objects keep class, length and external address), the copy inside the two contents (source: a string or byte array; destination: a writable byte array outside the program heap; the source range survives the destination's copy-on-write), legal memmove | none beyond the model and blob units | 21 / 59 / 7 / 22 | af4ba7ab: memcpy fails at its precondition; verifies with the two byte arrays assumed distinct |
+| Primitive bitmap `byte_zap` (`prims/byte_zap.render`) | the primitive with the ARGS expansion (MutableBlob by the proven decoder; the int argument with its round-trip check, `truncating`), MutableBlob ctor and accessors | verified: the primitive heap contract, the memset covers exactly the destination's range in a writable byte array, a smi result | `Primitive::return_not_a_smi` (an error value) | 11 / 18 / 7 / 3 | one byte past the end: the memset fails |
 | UTF-8 (`utf8/`) | Utils::utf_8_to_16, bytes_in_utf_8_sequence, payload_from_prefix | verified (Z3) | none | 57 / 26 / 1 / 84 | 07c24665: UB shift at payload_from_prefix; without the length check: the read past the input |
 | Rust raw memory (`rust/`) | view.rs: string_len, string_byte; trial: field, array_length, element | verified (VeriFast Rust, host) | predicates over the words (bridge `heap`) | — | `i <= len` fails at the read |
 

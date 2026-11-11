@@ -114,6 +114,7 @@
 // src/primitive.h, the error roots of src/program.h, class Error.
 #define STRINGS_OR_BYTE_ARRAYS 0
 #define Program_OUT_OF_BOUNDS_INDEX 20
+#define Program_OUT_OF_RANGE_INDEX 21
 #define Program_WRONG_OBJECT_TYPE_INDEX 30
 #define Program_WRONG_BYTES_TYPE_INDEX 31
 #define Error_ERROR_SHIFT 2

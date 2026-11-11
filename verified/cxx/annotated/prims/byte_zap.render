@@ -1,0 +1,69 @@
+// Copyright (C) 2026 Toit contributors.
+//
+// PRIMITIVE(byte_zap) of src/primitive_bitmap.cc (in the untrusted set,
+// stays C++): the ARGS expansion (MutableBlob decoding by the proven
+// mutable_byte_content, an int argument) and the memset of the whole
+// destination.
+//
+// Proved: the primitive heap contract in VeriFast terms (the heap only
+// grows, objects keep class, length and external address), the memset
+// writes exactly the content range of a writable byte array outside the
+// program heap, the result is a smi.
+@include ../model/model.cfg
+@verbatim
+#include "../model/objects.gen.h"
+#include "../blob/byte_content.gen.h"
+#include "../blob/mutable_byte_content.gen.h"
+
+void *memset(void *array, int value, size_t size);
+//@ requires uchars_(array, size, _);
+//@ ensures uchars(array, size, _) &*& result == array;
+
+// The failure of an int argument that is not a smi (WRONG_OBJECT_TYPE, or
+// OUT_OF_RANGE for a large integer): an error value, reads nothing.
+Object *Primitive_return_not_a_smi(Process *process, Object *value);
+//@ requires true;
+//@ ensures true;
+
+@prototypes
+@render src/objects.h toit::MutableBlob::MutableBlob tu=src/primitive_bitmap.cc params=0
+  MutableBlob() : address_(null), length_(0)
+  //@ requires self->address_ |-> _ &*& self->length_ |-> _;
+  //@ ensures self->address_ |-> 0 &*& self->length_ |-> 0;
+  {}
+
+@render src/objects.h toit::MutableBlob::address tu=src/primitive_bitmap.cc
+  uint8* address()
+  //@ requires [?f]self->address_ |-> ?a;
+  //@ ensures [f]self->address_ |-> a &*& result == a;
+  { return address_; }
+
+@render src/objects.h toit::MutableBlob::length tu=src/primitive_bitmap.cc
+  word length()
+  //@ requires [?f]self->length_ |-> ?l;
+  //@ ensures [f]self->length_ |-> l &*& result == l;
+  { return length_; }
+
+@render src/primitive_bitmap.cc toit::primitive_byte_zap truncating
+PRIMITIVE(byte_zap)
+/*@ requires [?fp]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
+             pointer(__args, ?a0) &*& pointer(__args - 1, ?a1) &*& good(objs, a0) == true; @*/
+/*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+            pointer(__args, a0) &*& pointer(__args - 1, a1); @*/
+{
+  ARGS(MutableBlob, bytes, int, value);
+  //@ assert heap(?objs2, ?H2) &*& [_]mutable_result(objs2, H2, process, ?da, ?dl, ?bd);
+  //@ open [_]mutable_result(objs2, H2, process, da, dl, bd);
+  //@ blob_facts(bd);
+  //@ heap_holes_open();
+  //@ blob_take(bd);
+  //@ uint8 *db = blob_base(H2, bd);
+  //@ uchars_split(db, (uword)da - (uword)db);
+  //@ uchars_split(da, dl);
+  memset(bytes.address(), value, bytes.length());
+  //@ uchars_join(da);
+  //@ uchars_join(db);
+  //@ blob_give(bd);
+  //@ heap_holes_close();
+  return Smi::from(bytes.length());
+}

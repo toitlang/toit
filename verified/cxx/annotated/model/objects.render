@@ -1006,7 +1006,8 @@ inline bool is_heap_object(const Object* o)
 
 @render src/objects.h toit::Smi::from tu=src/objects.cc
   static Smi* from(word value)
-  //@ requires 0 <= value &*& value < 1024;
+  // (Non-negative smis up to MAX_BLOB: class ids, lengths.)
+  //@ requires 0 <= value &*& value <= MAX_BLOB;
   //@ ensures result == smi_ptr(value) &*& (uword)result == 2 * value;
   {
     ASSERT(is_valid(value));

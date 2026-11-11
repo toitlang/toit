@@ -179,7 +179,7 @@ A sidecar: a sequence of sections, each opened by a directive line (a
   one). `@verbatim-c`: copied to the C file only.
 * `@prototypes`: the prototypes, with their contracts, of every function
   the sidecar renders (to the header when there is one).
-* `@render FILE QUALIFIED-NAME [tu=FILE] [params=N] [type=T] [trusted]`:
+* `@render FILE QUALIFIED-NAME [tu=FILE] [params=N] [type=T] [trusted] [truncating]`:
   the section holds the annotated copy of the function. `trusted`: only
   the prototype and contract are emitted (the body is not verified, but
   still compared with the sources). `type=T` picks an overload by its
@@ -503,6 +503,8 @@ BINARY-PREC ::= {
 ELIDED-CASTS ::= {"LValueToRValue", "NoOp", "FunctionToPointerDecay",
                   "ArrayToPointerDecay", "DerivedToBase",
                   "UncheckedDerivedToBase", "BaseToDerived"}
+// The source types of a `truncating` word-to-int conversion (typedefs resolved).
+TRUNCATED ::= {"long", "int", "word", "intptr_t", "long long"}
 WRITTEN-CASTS ::= {"IntegralCast", "IntegralToPointer", "PointerToIntegral",
                    "BitCast", "IntegralToFloating", "FloatingToIntegral",
                    "FloatingCast", "ToVoid"}
@@ -526,6 +528,7 @@ class Renderer:
   cls/string?         // The class of the function (`A_B` for a nested class A::B), or null.
   cxx-cls/string? := null  // Its C++ name (`A::B`).
   class-decl/Lambda? := null  // Qualified class name -> its declaration in the AST, or null.
+  truncating/bool := false  // `@render ... truncating`: word-to-int conversions are modular.
   decls-of/Lambda? := null  // Qualified name -> its declarations (in the class and out of line).
   ghosts/List
   uses/Map            // key -> ConstantUse, shared by the unit.
@@ -763,6 +766,10 @@ class Renderer:
     if kind == "ImplicitCastExpr":
       cast := node["castKind"]
       if (ELIDED-CASTS.contains cast) or (node.get "isPartOfExplicitCast") == true: return expr kids[0]
+      if cast == "IntegralCast" and truncating and (c-type node["type"]["qualType"]) == "int" and (TRUNCATED.contains (resolve (c-type kids[0]["type"]["qualType"]))):
+        // `truncating`: the narrowing conversion of a word to int is the
+        // modular one (GCC, Clang, C++20), for code that checks it.
+        return Expr "/*@truncating@*/(int)$(wrap (expr kids[0]) PREC-UNARY)" PREC-UNARY
       if cast == "IntegralCast" and (strip-parens kids[0])["kind"] == "IntegerLiteral":
         return expr kids[0]
       if cast == "IntegralToBoolean" or cast == "PointerToBoolean":
@@ -1335,11 +1342,13 @@ class Unit:
     params := -1
     type/string? := null
     trusted := false
+    truncating := false
     s.args[2..].do: | a/string |
       if a.starts-with "tu=": tu = a[3..]
       else if a.starts-with "params=": params = int.parse a[7..]
       else if a.starts-with "type=": type = a[5..]
       else if a == "trusted": trusted = true
+      else if a == "truncating": truncating = true
       else: fail "$sidecar.path:$s.line: unknown option $a"
     parts := qname.split "::"
     name := parts.last
@@ -1390,6 +1399,7 @@ class Unit:
     if not pending.is-empty: fail "$sidecar.path:$s.line: annotation after the end of $qname"
     renderer := Renderer sidecar constants source path cls ghosts uses cache.signatures (cache.owners tu target qname)
     renderer.cxx-cls = cxx-cls
+    renderer.truncating = truncating
     renderer.decls-of = :: | q/string | cache.find tu target q
     renderer.class-decl = :: | q/string |
       found := (cache.find tu target q).filter: | d/Map | d["kind"] == "CXXRecordDecl" and not (inner d).is-empty

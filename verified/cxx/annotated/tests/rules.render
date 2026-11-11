@@ -92,3 +92,13 @@ inline word call_over(Over* o)
 {
   return o->f(1);
 }
+
+@render verified/cxx/annotated/tests/rules.cc toit::narrow truncating
+inline int narrow(word x)
+//@ requires true;
+//@ ensures result == -1 || result == x;
+{
+  int n = x;
+  if (n != x) return -1;
+  return n;
+}

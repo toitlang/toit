@@ -386,7 +386,7 @@ bool is_heap_object(Object *o)
 
 // C++: src/objects.h toit::Smi::from
 Smi *Smi_from(word value)
-//@ requires 0 <= value &*& value < 1024;
+//@ requires 0 <= value &*& value <= MAX_BLOB;
 //@ ensures result == smi_ptr(value) &*& (uword)result == 2 * value;
 {
   // ASSERT(Smi_is_valid(value)): release build, not evaluated.

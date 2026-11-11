@@ -626,7 +626,7 @@ word Smi_value__Smip(Smi *smi);
 
 // C++: src/objects.h toit::Smi::from
 Smi *Smi_from(word value);
-//@ requires 0 <= value &*& value < 1024;
+//@ requires 0 <= value &*& value <= MAX_BLOB;
 //@ ensures result == smi_ptr(value) &*& (uword)result == 2 * value;
 
 // C++: src/objects.h toit::Smi::cast

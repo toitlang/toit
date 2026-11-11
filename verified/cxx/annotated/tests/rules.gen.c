@@ -66,6 +66,11 @@ word call_over(Over *o);
 //@ requires true;
 //@ ensures result == 1;
 
+// C++: verified/cxx/annotated/tests/rules.cc toit::narrow
+int narrow(word x);
+//@ requires true;
+//@ ensures result == -1 || result == x;
+
 // C++: verified/cxx/annotated/tests/rules.cc toit::Outer::Inner::Inner
 void Outer_Inner_ctor(Outer_Inner *self, word x)
 //@ requires self->v_ |-> _ &*& x < 100;
@@ -152,5 +157,17 @@ word call_over(Over *o)
 //@ ensures result == 1;
 {
   return Over_f__word(o, 1);
+}
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::narrow
+int narrow(word x)
+//@ requires true;
+//@ ensures result == -1 || result == x;
+{
+  int n = /*@truncating@*/(int)x;
+  if ((word)n != x) {
+    return -1;
+  }
+  return n;
 }
 

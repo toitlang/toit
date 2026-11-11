@@ -115,7 +115,7 @@ mutant drift-utf8 utf8/utf_8_to_16.render src/utils.cc DRIFT "" \
   "    if (c < 0x10000) {" "    if (c <= 0x10000) {"
 
 # 3. The renderings.
-entry translator-rules      pass "" tests/rules.gen.c
+entry translator-rules      pass "" tests/rules.gen.c -allow_dead_code
 entry model                 pass "" model/objects.gen.c
 entry encoder               pass "" encoder/message_encoder.gen.c
 
@@ -175,6 +175,13 @@ mutant string-write-af4ba7ab-disjoint prims/string_write.render src/primitive_co
   "  //@ if (bs != bd) blob_take(bs);" "  //@ assume(bs != bd);\n  //@ blob_take(bs);" \
   "    close mm_pre(mm_two, d, s, to - from);\n" "" \
   "    open mm_post(_, _, _, _);\n    uchars_join(s);" "    uchars_join(s);"
+
+# bitmap byte_zap. `-allow_dead_code`: on ILP32 the int argument's round
+# trip check is dead (int is a word).
+entry byte-zap              pass "" prims/byte_zap.gen.c -allow_dead_code -prover z3v4.5
+# One byte past the destination: the memset fails.
+mutant byte-zap-past-end prims/byte_zap.render src/primitive_bitmap.cc "uchars|No matching" "-allow_dead_code -prover z3v4.5" \
+  "  memset(bytes.address(), value, bytes.length());" "  memset(bytes.address(), value, bytes.length() + 1);"
 
 # The MutableBlob decoding. `-allow_dead_code`: the check `content == null`
 # (README, "Findings") is dead, VeriFast proves it.

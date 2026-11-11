@@ -69,6 +69,14 @@ inline word call_over(Over* o) {
   return o->f(1);
 }
 
+// Rule: `@render ... truncating`: a word-to-int conversion is the modular
+// one (the round trip is checked, as ARGS does for int arguments).
+inline int narrow(word x) {
+  int n = x;
+  if (n != x) return -1;
+  return n;
+}
+
 inline word use_inner(word x) {
   Outer::Inner inner(x);
   return inner.v();
