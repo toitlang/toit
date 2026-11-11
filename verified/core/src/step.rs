@@ -33,6 +33,7 @@ use vstd::prelude::*;
 use crate::layout::*;
 use crate::abs::*;
 use crate::exec::*;
+use crate::regs::Regs;
 use crate::alloc::reload;
 #[cfg(verus_keep_ghost)]
 use crate::alloc::{reloaded, lemma_saved};
@@ -894,6 +895,275 @@ pub fn step(m: &mut Machine, env: &Env) -> (r: Ctl)
 }
 
 // ---------------------------------------------------------------------------
+// The step on registers.
+
+/// What a step on registers guarantees: on `Next` the registers `r1` are
+/// cursors of `m1` and `m1.with(r1)` is the machine of `step_post`; on any
+/// other result the machine `m1` itself (the registers written back).
+pub open spec fn rpost(p: &Program, m0: Machine, r0: Regs, m1: Machine, r1: Regs, c: Ctl) -> bool {
+    if c == Ctl::Next {
+        m1.rok(r1) && step_post(p, m0.with(r0), m1.with(r1), c)
+    } else {
+        step_post(p, m0.with(r0), m1, c)
+    }
+}
+
+/// The old step on the machine, out of line, for the opcodes whose
+/// handlers do not take registers yet: writes the registers back, steps,
+/// reads them again.
+#[inline(never)]
+fn bridge(m: &mut Machine, r: Regs, env: &Env) -> (res: (Regs, Ctl))
+    requires old(m).rok(r), old(m).with(r).inv(&env.p),
+    ensures rpost(&env.p, *old(m), r, *final(m), res.0, res.1),
+{
+    m.sync(r);
+    let c = step(m, env);
+    if let Ctl::Next = c {
+        (m.regs(), c)
+    } else {
+        (r, c)
+    }
+}
+
+/// A register handler's result: on anything but `Next` the registers are
+/// written back (the run loop then saves the machine).
+#[inline(always)]
+fn done(m: &mut Machine, r: &Regs, c: Ctl) -> (c2: Ctl)
+    requires c != Ctl::Next ==> old(m).rok(*r) && old(m).with(*r).stack_ok(),
+    ensures
+        c2 == c,
+        c == Ctl::Next ==> *final(m) == *old(m),
+        c != Ctl::Next ==> *final(m) == old(m).with(*r),
+{
+    if let Ctl::Next = c {
+    } else {
+        m.sync(*r);
+    }
+    c
+}
+
+/// One step on registers: executes the instruction at the bci
+/// (`spec::step`). The opcodes whose handlers take registers are handled
+/// here; the others through `bridge`.
+#[inline(always)]
+#[verifier::spinoff_prover]
+#[verifier::rlimit(200)]
+pub fn step_r(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
+    requires old(m).rok(*old(r)), old(m).with(*old(r)).inv(&env.p),
+    ensures rpost(&env.p, *old(m), *old(r), *final(m), *final(r), c),
+{
+    let p = &env.p;
+    let ghost ap = p.ap@;
+    let ghost g = m.g@;
+    let ghost m0 = *m;
+    let ghost r0 = *r;
+    let ghost w0 = m.with(*r);
+    proof {
+        lemma_small(p, &w0);
+        toit_spec::v2::sound_step::lemma_step(ap, p.cert@, p.trusted@, g);
+        lemma_instr(ap, p.cert@, p.trusted@, g);
+        reveal_with_fuel(opcode_length2, 1);
+    }
+    let bci = r.bci;
+    let opcode = p.code.at(bci);
+    let c = match opcode {
+        0 => {
+            let n = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_load_local(g, n as int, 2)) by { reveal(sp::step); } }
+            crate::regs::op_load_local(m, r, p, n, 2)
+        },
+        1 => {
+            let n = code_u16(p, bci + 1);
+            proof { assert(sp::step(ap, g) == sp::op_load_local(g, n as int, 3)) by { reveal(sp::step); } }
+            crate::regs::op_load_local(m, r, p, n, 3)
+        },
+        2 => {
+            let n = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_pop_load_local(g, n as int)) by { reveal(sp::step); } }
+            crate::regs::op_pop_load_local(m, r, p, n)
+        },
+        3 => {
+            let n = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_store_local(g, n as int)) by { reveal(sp::step); } }
+            crate::regs::op_store_local(m, r, p, n)
+        },
+        4 => {
+            let n = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_store_local_pop(g, n as int)) by { reveal(sp::step); } }
+            crate::regs::op_store_local_pop(m, r, p, n)
+        },
+        14 => {
+            proof { assert(sp::step(ap, g) == sp::op_load_local(g, 0, 1)) by { reveal(sp::step); } }
+            crate::regs::op_load_local(m, r, p, 0, 1)
+        },
+        15 => {
+            proof { assert(sp::step(ap, g) == sp::op_load_local(g, 1, 1)) by { reveal(sp::step); } }
+            crate::regs::op_load_local(m, r, p, 1, 1)
+        },
+        16 => {
+            proof { assert(sp::step(ap, g) == sp::op_load_local(g, 2, 1)) by { reveal(sp::step); } }
+            crate::regs::op_load_local(m, r, p, 2, 1)
+        },
+        17 => {
+            proof { assert(sp::step(ap, g) == sp::op_load_local(g, 3, 1)) by { reveal(sp::step); } }
+            crate::regs::op_load_local(m, r, p, 3, 1)
+        },
+        18 => {
+            proof { assert(sp::step(ap, g) == sp::op_load_local(g, 4, 1)) by { reveal(sp::step); } }
+            crate::regs::op_load_local(m, r, p, 4, 1)
+        },
+        19 => {
+            proof { assert(sp::step(ap, g) == sp::op_load_local(g, 5, 1)) by { reveal(sp::step); } }
+            crate::regs::op_load_local(m, r, p, 5, 1)
+        },
+        20 => {
+            let i = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_load_literal(ap, g, i as int, 2)) by { reveal(sp::step); } }
+            crate::regs::op_load_literal(m, r, p, i, 2)
+        },
+        21 => {
+            let i = code_u16(p, bci + 1);
+            proof { assert(sp::step(ap, g) == sp::op_load_literal(ap, g, i as int, 3)) by { reveal(sp::step); } }
+            crate::regs::op_load_literal(m, r, p, i, 3)
+        },
+        22 => {
+            proof { assert(sp::step(ap, g) == sp::next(sp::push(g, sp::null2(ap)), 1)) by { reveal(sp::step); } }
+            crate::regs::op_load_null(m, r, p, 1)
+        },
+        23 => {
+            proof { assert(sp::step(ap, g) == sp::next(sp::push(g, Value::Smi(0)), 1)) by { reveal(sp::step); } }
+            crate::regs::op_load_smi(m, r, p, 0, 1)
+        },
+        24 => {
+            let n = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_load_smis_0(g, n as int)) by { reveal(sp::step); } }
+            crate::regs::op_load_smis_0(m, r, p, n)
+        },
+        25 => {
+            proof { assert(sp::step(ap, g) == sp::next(sp::push(g, Value::Smi(1)), 1)) by { reveal(sp::step); } }
+            crate::regs::op_load_smi(m, r, p, 1, 1)
+        },
+        26 => {
+            let v = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::next(sp::push(g, Value::Smi(v as i64)), 2)) by { reveal(sp::step); } }
+            crate::regs::op_load_smi(m, r, p, v, 2)
+        },
+        27 => {
+            let v = code_u16(p, bci + 1);
+            proof { assert(sp::step(ap, g) == sp::next(sp::push(g, Value::Smi(v as i64)), 3)) by { reveal(sp::step); } }
+            crate::regs::op_load_smi(m, r, p, v, 3)
+        },
+        28 => {
+            let v = code_u32(p, bci + 1);
+            proof {
+                assert(sp::step(ap, g) == sp::op_load_smi(ap, g, v as int, 5)) by { reveal(sp::step); }
+                assert(toit_spec::spec_common::smi_ok(p1(ap), v as int));
+                assert(sp::step(ap, g) == sp::next(sp::push(g, Value::Smi(v as i64)), 5));
+            }
+            crate::regs::op_load_smi(m, r, p, v, 5)
+        },
+        29 => {
+            let v = code_u32(p, bci + 1);
+            proof {
+                assert(sp::step(ap, g) == sp::op_load_method(ap, g, v as int)) by { reveal(sp::step); }
+                assert(toit_spec::spec_common::smi_ok(p1(ap), v as int));
+                assert(sp::step(ap, g) == sp::next(sp::push(g, Value::Smi(v as i64)), 5));
+            }
+            crate::regs::op_load_smi(m, r, p, v, 5)
+        },
+        30 => {
+            let i = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_load_global(g, i as int, 2)) by { reveal(sp::step); } }
+            crate::regs::op_load_global(m, r, p, i, 2)
+        },
+        31 => {
+            let i = code_u16(p, bci + 1);
+            proof { assert(sp::step(ap, g) == sp::op_load_global(g, i as int, 3)) by { reveal(sp::step); } }
+            crate::regs::op_load_global(m, r, p, i, 3)
+        },
+        35 => {
+            let i = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_store_global(g, i as int, 2)) by { reveal(sp::step); } }
+            crate::regs::op_store_global(m, r, p, i, 2)
+        },
+        36 => {
+            let i = code_u16(p, bci + 1);
+            proof { assert(sp::step(ap, g) == sp::op_store_global(g, i as int, 3)) by { reveal(sp::step); } }
+            crate::regs::op_store_global(m, r, p, i, 3)
+        },
+        40 => {
+            if p.preempt_a_lot { env.pre.request(); }
+            let n = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_pop(g, n as int, 2)) by { reveal(sp::step); } }
+            crate::regs::op_pop(m, r, p, n, 2)
+        },
+        41 => {
+            if p.preempt_a_lot { env.pre.request(); }
+            proof { assert(sp::step(ap, g) == sp::op_pop(g, 1, 1)) by { reveal(sp::step); } }
+            crate::regs::op_pop(m, r, p, 1, 1)
+        },
+        81 => {
+            let d = code_u16(p, bci + 1);
+            proof {
+                assert(sp::step(ap, g) == (if d == 0 { sp::stuck(toit_spec::types::Stuck::BadBranch) }
+                    else { sp::op_branch(ap, g, 0, bci + d, 3) })) by { reveal(sp::step); }
+            }
+            crate::regs::op_branch(m, r, p, 0, bci + d, 3)
+        },
+        82 => {
+            let d = code_u16(p, bci + 1);
+            proof {
+                assert(sp::step(ap, g) == (if d == 0 { sp::stuck(toit_spec::types::Stuck::BadBranch) }
+                    else { sp::op_branch(ap, g, 1, bci + d, 3) })) by { reveal(sp::step); }
+                lemma_branch_cond(p, g);
+            }
+            crate::regs::op_branch(m, r, p, 1, bci + d, 3)
+        },
+        83 => {
+            let d = code_u16(p, bci + 1);
+            proof {
+                assert(sp::step(ap, g) == (if d == 0 { sp::stuck(toit_spec::types::Stuck::BadBranch) }
+                    else { sp::op_branch(ap, g, 2, bci + d, 3) })) by { reveal(sp::step); }
+                lemma_branch_cond(p, g);
+            }
+            crate::regs::op_branch(m, r, p, 2, bci + d, 3)
+        },
+        84 => {
+            let d = code_u16(p, bci + 1);
+            proof {
+                assert(sp::step(ap, g) == (if d == 0 { sp::stuck(toit_spec::types::Stuck::BadBranch) }
+                    else { sp::op_branch(ap, g, 3, bci + d, 3) })) by { reveal(sp::step); }
+                lemma_branch_cond(p, g);
+            }
+            crate::regs::op_branch(m, r, p, 3, bci + d, 3)
+        },
+        85 | 86 | 87 | 88 => {
+            // BRANCH_BACK*: the preemption point of loops.
+            if env.pre.requested() {
+                env.pre.clear();
+                m.sync(*r);
+                return Ctl::Exit(RESULT_PREEMPTED as u32, 0);
+            }
+            let d = code_u16(p, bci + 1);
+            let kind = (opcode - 85) as usize;
+            proof {
+                assert(sp::step(ap, g) == sp::op_branch(ap, g, kind as int, bci - d, 3)) by { reveal(sp::step); }
+                if kind != 0 { lemma_branch_cond(p, g); }
+                lemma_back_branch(p, g);
+            }
+            crate::regs::op_branch(m, r, p, kind, bci - d, 3)
+        },
+        _ => {
+            let (r2, c) = bridge(m, *r, env);
+            *r = r2;
+            return c;
+        },
+    };
+    proof { lemma_local_post(p, w0, m.with(*r), c); }
+    done(m, r, c)
+}
+
+// ---------------------------------------------------------------------------
 // The run loop.
 
 /// What a run guarantees when it returns: if the process continues later
@@ -950,14 +1220,17 @@ pub fn run_loop(m: &mut Machine, env: &Env, accepted: &crate::ffi::Accepted) -> 
 {
     let ghost m0 = *m;
     proof { lemma_reaches_refl(env.p.ap@, m.g@); }
+    // The registers: locals of this function, in machine registers.
+    let mut r = m.regs();
     loop
         invariant
-            m.inv(&env.p),
+            m.rok(r),
+            m.with(r).inv(&env.p),
             m0 == *old(m),
             reaches(env.p.ap@, m0.g@, m.g@),
     {
-        let ghost before = *m;
-        let ctl = step(m, env);
+        let ghost before = m.with(r);
+        let ctl = step_r(m, &mut r, env);
         match ctl {
             Ctl::Next => {
                 proof { lemma_reaches_step(env.p.ap@, m0.g@, before.g@, m.g@); }

@@ -123,6 +123,14 @@ pub struct StackMem {
 impl StackMem {
     pub uninterp spec fn view(&self) -> Seq<usize>;
 
+    /// The identity of this view of the stack array: the cursors (`Slot`)
+    /// derived from it carry it, and only a view with the same identity can
+    /// be read or written through them. The accessors below keep it; a view
+    /// replaced at a GC point (`ffi::Runtime`) has an identity no contract
+    /// relates to the old one, so cursors into the old array are unusable
+    /// (the type-level form of "no pointer survives a GC point").
+    pub uninterp spec fn sid(&self) -> int;
+
     #[verifier::external_body]
     #[inline(always)]
     pub fn len(&self) -> (r: usize)
@@ -131,22 +139,43 @@ impl StackMem {
         self.len
     }
 
+    /// The cursor at array index `i` (`i == len` is the end, not readable).
     #[verifier::external_body]
+    #[inline(always)]
+    pub fn slot(&self, i: usize) -> (r: Slot)
+        requires i <= self@.len(),
+        ensures r@ == i, r.sid() == self.sid(),
+    {
+        Slot { ptr: self.array.wrapping_add(i) }
+    }
+
     #[inline(always)]
     pub fn read(&self, i: usize) -> (r: usize)
         requires i < self@.len(),
         ensures r == self@[i as int],
     {
-        unsafe { *self.array.add(i) }
+        self.slot(0).read(i, self)
     }
 
-    #[verifier::external_body]
     #[inline(always)]
     pub fn write(&mut self, i: usize, v: usize)
         requires i < old(self)@.len(),
-        ensures final(self)@ == old(self)@.update(i as int, v),
+        ensures
+            final(self)@ == old(self)@.update(i as int, v),
+            final(self).sid() == old(self).sid(),
+            forall|w: usize| #[trigger] final(self).hdr(w) == old(self).hdr(w),
     {
-        unsafe { *self.array.add(i) = v }
+        let s = self.slot(0);
+        s.write(i, v, self)
+    }
+
+    /// The array index of a cursor into this view.
+    #[inline(always)]
+    pub fn index(&self, s: Slot) -> (r: usize)
+        requires s.sid() == self.sid(), 0 <= s@ <= self@.len(), self@.len() < MAX_STACK_LENGTH,
+        ensures r == s@,
+    {
+        s.diff(self.slot(0))
     }
 
     /// Copies `n` words from `from..from+n` to `to..to+n` (memmove).
@@ -160,6 +189,8 @@ impl StackMem {
             final(self)@.len() == old(self)@.len(),
             forall|i: int| 0 <= i < final(self)@.len() ==> #[trigger] final(self)@[i] ==
                 (if to <= i < to + n { old(self)@[i - to + from] } else { old(self)@[i] }),
+            final(self).sid() == old(self).sid(),
+            forall|w: usize| #[trigger] final(self).hdr(w) == old(self).hdr(w),
     {
         unsafe { core::ptr::copy(self.array.add(from), self.array.add(to), n) }
     }
@@ -186,10 +217,84 @@ impl StackMem {
         requires word == STACK_TOP_WORD || word == STACK_RECORD_TOP_WORD || word == STACK_BCI_WORD,
         ensures
             final(self)@ == old(self)@,
+            final(self).sid() == old(self).sid(),
             final(self).hdr(word) == v,
             forall|w: usize| w != word ==> #[trigger] final(self).hdr(w) == old(self).hdr(w),
     {
         unsafe { *self.object.add(word) = v }
+    }
+}
+
+/// A cursor into the array of a stack view: a pointer to element `self@`
+/// of the view with identity `sid()`. The run loop keeps the object-stack
+/// top, the top frame's limit and the record tops in cursors (registers),
+/// so that a slot access is one load relative to the top. Arithmetic on a
+/// cursor is plain address arithmetic (wrapping, never dereferenced out of
+/// bounds); reads and writes require the index to lie in the array of the
+/// view the cursor belongs to (`StackMem::slot`).
+#[verifier::external_body]
+pub struct Slot {
+    ptr: *mut usize,
+}
+
+impl Clone for Slot {
+    #[verifier::external_body]
+    #[inline(always)]
+    fn clone(&self) -> (r: Slot)
+        ensures r == *self,
+    {
+        *self
+    }
+}
+
+impl Copy for Slot {}
+
+impl Slot {
+    pub uninterp spec fn view(&self) -> int;
+
+    pub uninterp spec fn sid(&self) -> int;
+
+    /// Element `self@ + n` of the view.
+    #[verifier::external_body]
+    #[inline(always)]
+    pub fn read(self, n: usize, mem: &StackMem) -> (r: usize)
+        requires self.sid() == mem.sid(), 0 <= self@ + n < mem@.len(),
+        ensures r == mem@[self@ + n],
+    {
+        unsafe { *self.ptr.wrapping_add(n) }
+    }
+
+    /// Stores `v` into element `self@ + n` of the view.
+    #[verifier::external_body]
+    #[inline(always)]
+    pub fn write(self, n: usize, v: usize, mem: &mut StackMem)
+        requires self.sid() == old(mem).sid(), 0 <= self@ + n < old(mem)@.len(),
+        ensures
+            final(mem)@ == old(mem)@.update(self@ + n, v),
+            final(mem).sid() == old(mem).sid(),
+            forall|w: usize| #[trigger] final(mem).hdr(w) == old(mem).hdr(w),
+    {
+        unsafe { *self.ptr.wrapping_add(n) = v }
+    }
+
+    /// The cursor `k` elements further (negative: towards index 0).
+    #[verifier::external_body]
+    #[inline(always)]
+    pub fn offset(self, k: isize) -> (r: Slot)
+        ensures r@ == self@ + k, r.sid() == self.sid(),
+    {
+        Slot { ptr: self.ptr.wrapping_offset(k) }
+    }
+
+    /// The number of elements from `o` to `self` (cursors of the same view,
+    /// both inside its index range).
+    #[verifier::external_body]
+    #[inline(always)]
+    pub fn diff(self, o: Slot) -> (r: usize)
+        requires self.sid() == o.sid(), 0 <= o@ <= self@ < MAX_STACK_LENGTH,
+        ensures r == self@ - o@,
+    {
+        ((self.ptr as usize).wrapping_sub(o.ptr as usize)) / WORD_SIZE
     }
 }
 
