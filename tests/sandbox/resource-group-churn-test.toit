@@ -5,12 +5,12 @@
 import .sandbox
 
 // core.get-generic-resource-group and timer.init malloc a resource group
-// that lives until the process exits. They were not charged to the process,
-// so a loop (whose proxies are garbage) took VM memory without bound:
-// 64 bytes per call, beyond the container's heap quota. They are now
-// charged, and the loop runs out of the container's own memory.
+// that lives until the process exits. They were not bounded, so a loop
+// (whose proxies are garbage) took VM memory without bound: 64 bytes per
+// call, beyond the container's heap quota. A sandboxed process now has at
+// most 64 resource groups.
 main args:
-  sandbox-test args --quotas={"heap": 2_000_000}: | arguments/Map |
+  sandbox-test args --error="QUOTA_EXCEEDED": | arguments/Map |
     5_000_000.repeat:
       get-generic-resource-group_
       timer-init_

@@ -308,7 +308,7 @@ metadata. Until then, untrusted containers are a host-only feature.
   the system process' speed).
 - Native allocations made on behalf of a process (message buffers, timers,
   finalizer nodes) are bounded by the quotas but not charged to its heap;
-  resource groups are charged (docs/sandbox-primitive-audit.md).
+  resource groups are bounded (64 per sandboxed process).
 - A kill takes effect only after the running primitive returns. The C++
   primitives of the untrusted set are audited to be bounded by their
   quota-bounded arguments (docs/sandbox-primitive-audit.md); the Rust ports

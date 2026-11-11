@@ -294,13 +294,11 @@ PRIMITIVE(get_generic_resource_group) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
-  // The group lives until the process exits. Charge it to the process, so
-  // a program calling this in a loop runs out of its own memory instead of
-  // the VM's.
-  if (!process->should_allow_external_allocation(sizeof(SimpleResourceGroup))) FAIL(ALLOCATION_FAILED);
+  // The group lives until the process exits, so a sandboxed program calling
+  // this in a loop would take VM memory without bound.
+  if (!process->may_add_permanent_resource_group()) FAIL(QUOTA_EXCEEDED);
   SimpleResourceGroup* resource_group = _new SimpleResourceGroup(process);
   if (!resource_group) FAIL(MALLOC_FAILED);
-  process->register_external_allocation(sizeof(SimpleResourceGroup));
 
   proxy->set_external_address(resource_group);
   return proxy;

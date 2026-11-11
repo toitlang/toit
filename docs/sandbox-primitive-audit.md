@@ -59,7 +59,7 @@ issue left open, see the notes).
 | `process_current_id`, `process_system_id` | none | OK (pids are observable by design) | fuzz |
 | `word_size`, `platform`, `architecture`, `vm_sdk_version`, `vm_sdk_model`, `app_sdk_version`, `app_sdk_info` | none; constants or new strings | OK (they disclose the VM version: by design) | fuzz |
 | `literal_index` | any object; linear scan of the program's literals | OK | fuzz |
-| `get_generic_resource_group` | none; mallocs a group freed only at process exit | **fixed**: not charged; a loop took 64 bytes of VM memory per call beyond any quota. Now charged as external memory | sandbox/resource-group-churn-test |
+| `get_generic_resource_group` | none; mallocs a group freed only at process exit | **fixed**: not charged; a loop took 64 bytes of VM memory per call beyond any quota. Now at most 64 resource groups per sandboxed process (QUOTA_EXCEEDED); charging them as external memory broke tight heaps (max-heap-size-test) | sandbox/resource-group-churn-test |
 
 ## Byte arrays, strings, numbers
 
@@ -83,7 +83,7 @@ issue left open, see the notes).
 |---|---|---|---|
 | `bitmap.byte_zap` | a mutable blob (program-heap objects refused), a value | OK | fuzz, sandbox/bitmap-draw-text-test |
 | `bitmap.blit` | a mutable and a constant blob, strides and pixels per line limited to 23 bits (pixel strides to 7 bits), a lookup table of at least 256 bytes. Index arithmetic: the loop condition bounds every source and destination index (reviewed for negative destination pixel strides and zero pixels per line) | **fixed** (denial of service): with zero pixel strides the pixels per line (up to 2^23) aren't bounded by the blob sizes, and with a zero line stride on one side the lines are bounded by the other side only; a 1-byte source and a 100 KB destination took hours in one call. For processes with a run-time quota the work is now bounded by four passes over both blobs | sandbox/blit-unbounded-work-test |
-| `timer.init` | none; mallocs a group freed at process exit | **fixed**: not charged (as `get_generic_resource_group`) | sandbox/resource-group-churn-test |
+| `timer.init` | none; mallocs a group freed at process exit | **fixed**: unbounded (as `get_generic_resource_group`) | sandbox/resource-group-churn-test |
 | `timer.create` | a timer group (tag-checked proxy) | OK: the timer quota is checked before the malloc | sandbox/quota-timers-test |
 | `timer.arm` | a timer, an int64 deadline | OK (extreme deadlines: #3364) | fuzz |
 | `timer.delete` | a group and a timer (the timer may belong to another group of the same process: the unlink doesn't depend on the list) | OK; a second delete fails (ALREADY_CLOSED) | fuzz |
