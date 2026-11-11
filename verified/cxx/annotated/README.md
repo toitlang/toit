@@ -162,8 +162,15 @@ each becomes a mutant when its unit is done.
   `static_cast<word>(needed)` and at `(length - free) + needed`
   (mutants `grow-stack-unbounded`, `grow-stack-word-range`). The core
   passes small values, so no run is affected; the contract should state
-  it. Recorded in verified/CONTRACTS.toml as a known gap; the fix is for
-  the owner of verified/core (no C++ change).
+  it. Recorded in verified/CONTRACTS.toml as a known gap. Branch
+  `core/trusted-integration` (not merged yet) fixes both sides: the Verus
+  contract requires `needed < GROW_STACK_MAX_NEEDED`, and the C++ returns
+  STACK_OVERFLOW for `needed > Stack::max_length()`. Previewed against that
+  branch (its src/ with these sidecars), the correspondence check flags
+  exactly that function, and with the new line copied into the sidecar the
+  fixed C++ verifies **without** the precondition. On the merge: copy the
+  line into grow/grow_stack.render, drop the precondition (or keep it as
+  the Verus bound), update the clause in CONTRACTS.toml.
 * No bug or missing check in the newly covered code: the real
   `encode_any` (including the byte-array/string class branches, the double
   and large-integer reads and the printf of an unencodable class tag), the
