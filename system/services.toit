@@ -45,11 +45,18 @@ class DiscoverableService:
 class DiscoveryResource extends ServiceResource:
   uuid/string
   manager/SystemServiceManager
+  pid/int
 
-  constructor .uuid .manager client/int:
+  constructor .uuid .manager client/int --.pid:
     super manager client --notifiable
+    manager.waiting-by-pid_.update pid --init=0: it + 1
 
   on-closed -> none:
+    count := manager.waiting-by-pid_.get pid --if-absent=: 0
+    if count <= 1:
+      manager.waiting-by-pid_.remove pid
+    else:
+      manager.waiting-by-pid_[pid] = count - 1
     list := manager.waiting_[uuid]
     if list.size == 1:
       assert: list[0] == this
@@ -65,6 +72,15 @@ class SystemServiceManager extends ServiceProvider
   services-by-uuid_/Map ::= {:}  // Map<string, List<DiscoverableService>>
 
   waiting_/Map ::= {:}  // Map<uuid, List<DiscoveryResource>>
+  waiting-by-pid_/Map ::= {:}  // Map<int, int>
+
+  // Limits for sandboxed (untrusted) processes. Everything they register
+  // here lives in the system process, which has no heap limit, so without
+  // them a sandbox could exhaust the memory of the whole system.
+  static MAX-UNTRUSTED-SERVICES ::= 16     // Registered services per process.
+  static MAX-UNTRUSTED-WAITING ::= 16      // Pending discoveries per process.
+  static MAX-UNTRUSTED-STRING-SIZE ::= 128 // Size of a uuid, name or tag.
+  static MAX-UNTRUSTED-TAGS ::= 8
 
   constructor:
     super "system/service-discovery" --major=0 --minor=1 --patch=1
@@ -89,14 +105,35 @@ class SystemServiceManager extends ServiceProvider
     unreachable
 
   listen pid/int arguments/List -> none:
-    services := services-by-pid_.get pid --init=(: {:})
     id := arguments[0]
+    uuid := arguments[1]
+    service-name := arguments[2]
+    service-priority := arguments[5]
+    service-tags := arguments[6]
+    // Clients look at every discovered entry, so an entry with a value of
+    // the wrong type (for example a tag that isn't a string) would make
+    // the discovery of the service fail for all of them.
+    if id is not int or uuid is not string or service-name is not string
+        or arguments[3] is not int or arguments[4] is not int
+        or service-priority is not int
+        or (service-tags != null and service-tags is not List):
+      throw "WRONG_OBJECT_TYPE"
+    if service-tags and (service-tags.any: it is not string): throw "WRONG_OBJECT_TYPE"
+
+    untrusted := is-untrusted_ pid
+    if untrusted:
+      if uuid.size > MAX-UNTRUSTED-STRING-SIZE or service-name.size > MAX-UNTRUSTED-STRING-SIZE:
+        throw "INVALID_ARGUMENT"
+      if service-tags and (service-tags.size > MAX-UNTRUSTED-TAGS
+          or (service-tags.any: it.size > MAX-UNTRUSTED-STRING-SIZE)):
+        throw "INVALID_ARGUMENT"
+      existing := services-by-pid_.get pid
+      if existing and existing.size >= MAX-UNTRUSTED-SERVICES: throw "QUOTA_EXCEEDED"
+
+    services := services-by-pid_.get pid --init=(: {:})
     if services.contains id: throw "Service id $id is already in use"
 
-    uuid := arguments[1]
-    service-priority/int := arguments[5]
-    service-tags/List? := arguments[6]
-    if is-untrusted_ pid:
+    if untrusted:
       // Sandboxed providers can't take over services from trusted
       // providers, and clients can recognize (and deny) them.
       service-priority = ServiceProvider.PRIORITY-UNPREFERRED-STRONGLY
@@ -105,7 +142,7 @@ class SystemServiceManager extends ServiceProvider
         --pid=pid
         --id=id
         --uuid=uuid
-        --name=arguments[2]
+        --name=service-name
         --major=arguments[3]
         --minor=arguments[4]
         --priority=service-priority
@@ -147,7 +184,11 @@ class SystemServiceManager extends ServiceProvider
     services/List? := null
     resource-serialized := null
     if wait:
-      resource := DiscoveryResource uuid this client
+      if is-untrusted_ pid:
+        if uuid.size > MAX-UNTRUSTED-STRING-SIZE: throw "INVALID_ARGUMENT"
+        if (waiting-by-pid_.get pid --if-absent=: 0) >= MAX-UNTRUSTED-WAITING:
+          throw "QUOTA_EXCEEDED"
+      resource := DiscoveryResource uuid this client --pid=pid
       (waiting_.get uuid --init=: []).add resource
       resource-serialized = resource.serialize-for-rpc
     services = services-by-uuid_.get uuid

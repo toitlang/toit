@@ -153,6 +153,12 @@ class Process : public ProcessListFromProcessGroup::Element,
   void add_resource_group(ResourceGroup* r);
   void remove_resource_group(ResourceGroup* r);
 
+  // Whether the process may create another resource group with a primitive
+  // that has no way to free it before the process exits. Bounded for
+  // processes with restricted messaging (untrusted containers).
+  bool may_add_permanent_resource_group();
+  static const int MAX_RESTRICTED_RESOURCE_GROUPS = 64;
+
   SchedulerThread* scheduler_thread() { return scheduler_thread_; }
   void set_scheduler_thread(SchedulerThread* scheduler_thread) {
     scheduler_thread_ = scheduler_thread;

@@ -158,6 +158,9 @@ bool MessageEncoder::encode_any(Object* object) {
     nesting_too_deep_ = true;
     return false;
   }
+  // Stop early: shared objects are encoded for every reference, so the
+  // work isn't bounded by the size of the object graph.
+  if (is_over_limit()) return false;
 
   if (is_smi(object)) {
     word value = Smi::value(object);
@@ -435,6 +438,13 @@ bool MessageEncoder::encode_copy(Object* object, int tag) {
   word length = 0;
   if (!object->byte_content(program_, &source, &length, STRINGS_OR_BYTE_ARRAYS)) {
     // TODO(kasper): Report meaningful error.
+    return false;
+  }
+  // A sandboxed program can hold strings that aren't valid UTF-8 (crafted
+  // literals, or string slices with crafted bounds), and the receiver
+  // relies on its strings being valid.
+  if (tag == TAG_STRING && process_ != null && process_->policy()->restricts_messaging() &&
+      !Utils::is_valid_utf_8(source, length)) {
     return false;
   }
 

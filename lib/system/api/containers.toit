@@ -15,7 +15,7 @@ interface ContainerService:
   static FLAG-RUN-BOOT     /int ::= 1 << 0
   static FLAG-RUN-CRITICAL /int ::= 1 << 1
   // Containers from images with this flag always run with the untrusted
-  // (sandbox) policy.
+  // (sandbox) policy. A start request can only change their quotas.
   static FLAG-UNTRUSTED    /int ::= 1 << 2
 
   // Policy kinds, as returned by the process-policy primitive. Keep in sync
