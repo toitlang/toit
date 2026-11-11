@@ -156,7 +156,12 @@ Method Program::find_method(Object* receiver, word offset) {
 // the given target method.
 #define CHECK_STACK_OVERFLOW(target)                                  \
   if (sp - target.max_height() < watermark_) {                        \
-    OverflowState state;                                              \
+    HANDLE_STACK_OVERFLOW(target)                                     \
+  }
+
+// The slow path of CHECK_STACK_OVERFLOW.
+#define HANDLE_STACK_OVERFLOW(target)                                 \
+  { OverflowState state;                                              \
     sp = handle_stack_overflow(sp, &state, target);                   \
     switch (state) {                                                  \
       case OVERFLOW_RESUME:                                           \
@@ -174,17 +179,13 @@ Method Program::find_method(Object* receiver, word offset) {
     }                                                                 \
   }
 
-// CHECK_PREEMPT checks for preemption by looking at the watermark.
+// CHECK_PREEMPT checks for preemption by looking at the watermark. The
+// preemption itself is shared by all sites (PREEMPT_AT_BRANCH), which keeps
+// Interpreter::run small (it is in IRAM on the ESP32).
 #define CHECK_PREEMPT(entry)                                          \
-  if (watermark_ == PREEMPTION_MARKER) {                              \
-    watermark_ = null;                                                \
-    preemption_method_header_bcp_ = Method::header_from_entry(entry); \
-    static_assert(FRAME_SIZE == 2, "Unexpected frame size");          \
-    PUSH(reinterpret_cast<Object*>(bcp));                             \
-    PUSH(program->frame_marker());                                    \
-    store_stack(sp);                                                  \
-    if (Flags::trace) printf("[preempted from interpretation]\n");    \
-    return Result(Result::PREEMPTED);                                 \
+  if (__builtin_expect(watermark_ == PREEMPTION_MARKER, 0)) {         \
+    preemption_entry = entry;                                         \
+    goto PREEMPT_AT_BRANCH;                                           \
   }
 
 #ifdef TOIT_CHECK_PROPAGATED_TYPES
@@ -211,11 +212,17 @@ Method Program::find_method(Object* receiver, word offset) {
 #define CHECK_PROPAGATED_TYPES_PRIMITIVE(module, index, arguments, value, is_failure)
 #endif
 
+// The stack overflow handling of calls is shared by all call sites
+// (CALL_STACK_OVERFLOW), which keeps Interpreter::run small (it is in IRAM
+// on the ESP32).
 #define CALL_METHOD_WITH_RETURN_ADDRESS(target, return_address)       \
   static_assert(FRAME_SIZE == 2, "Unexpected frame size");            \
   PUSH(reinterpret_cast<Object*>(return_address));                    \
   PUSH(program->frame_marker());                                      \
-  CHECK_STACK_OVERFLOW(target)                                        \
+  if (__builtin_expect(sp - target.max_height() < watermark_, 0)) {   \
+    call_target = target;                                             \
+    goto CALL_STACK_OVERFLOW;                                         \
+  }                                                                   \
   CHECK_PROPAGATED_TYPES_METHOD_ENTRY(target);                        \
   bcp = target.entry();                                               \
   DISPATCH(0)
@@ -249,6 +256,66 @@ static inline bool field_access_ok(const uint16* class_bits, Object* object, wor
   if (tag != INSTANCE_TAG && tag != TASK_TAG) return false;
   word size_in_words = (class_bits[header >> HeapObject::CLASS_ID_OFFSET] >> HeapObject::CLASS_ID_OFFSET) & Program::INSTANCE_SIZE_MASK;
   return static_cast<uword>(index) + (HeapObject::SIZE / WORD_SIZE) < static_cast<uword>(size_in_words);
+}
+
+// The checks of the checked dispatch table's entries and the failure paths
+// of the run-time checks are out of line (not inlined into
+// Interpreter::run): on the ESP32 the interpreter runs from IRAM, which is
+// small, and only untrusted processes and malformed programs execute them.
+// These functions are not IRAM_ATTR, so they are in flash. (Not 'cold':
+// GCC then lays out Interpreter::run less well on x86-64, about 0.5
+// percent more instructions on pystone.)
+#define INTERPRETER_OUT_OF_LINE __attribute__((noinline))
+
+// Whether the field access of the field bytecode at bcp is legal (see
+// field_access_ok).
+static INTERPRETER_OUT_OF_LINE bool checked_field_access_ok(Program* program, Object** sp, const uint8* bcp) {
+  Object* object;
+  word index;
+  switch (*bcp) {
+    case LOAD_FIELD:
+      object = sp[0];
+      index = bcp[1];
+      break;
+    case LOAD_FIELD_WIDE:
+      object = sp[0];
+      index = Utils::read_unaligned_uint16(bcp + 1);
+      break;
+    case LOAD_FIELD_LOCAL:
+      object = sp[bcp[1] & 0x0f];
+      index = bcp[1] >> 4;
+      break;
+    case POP_LOAD_FIELD_LOCAL:
+      object = sp[(bcp[1] & 0x0f) + 1];
+      index = bcp[1] >> 4;
+      break;
+    case STORE_FIELD:
+    case STORE_FIELD_POP:
+      object = sp[1];
+      index = bcp[1];
+      break;
+    case STORE_FIELD_WIDE:
+      object = sp[1];
+      index = Utils::read_unaligned_uint16(bcp + 1);
+      break;
+    default:
+      return false;
+  }
+  return field_access_ok(program->class_bits.data(), object, index);
+}
+
+// The field accessor that a virtual getter or setter call (or INVOKE_SIZE)
+// of a checked process must call instead of inlining it, or an invalid
+// method if the target is not a field accessor.
+static INTERPRETER_OUT_OF_LINE Method checked_field_accessor(Program* program, Object* receiver, const uint8* bcp) {
+  Method target = program->find_method(receiver, Utils::read_unaligned_uint16(bcp + 1));
+  if (!target.is_valid() || !target.is_field_accessor()) return Method::invalid();
+  return target;
+}
+
+static INTERPRETER_OUT_OF_LINE void print_corrupt_stack(Program* program, uint8* bcp) {
+  fprintf(stderr, "Corrupt stack at bci %d: terminating the process\n",
+          program->absolute_bci_from_bcp(bcp));
 }
 
 // The entry of the checked dispatch table for the given opcode.
@@ -360,7 +427,11 @@ Interpreter::Result Interpreter::run() {
   method_entries_ = process_->group()->method_entries();
   const uword program_heap_start = reinterpret_cast<uword>(program);
   const uword program_heap_size = program->size_no_assets();
-  const uint16* class_bits_data = program->class_bits.data();
+  // The target of a call that takes a shared slow path (CALL_STACK_OVERFLOW,
+  // CALL_FIELD_ACCESSOR).
+  Method call_target = Method::invalid();
+  // The method entry of a branch that is preempted (PREEMPT_AT_BRANCH).
+  uint8* preemption_entry = null;
   // The policy of a process never changes.
   bool check_field_accesses = process_->policy()->is_untrusted();
 #ifdef TOIT_CHECKED_FIELD_ACCESS
@@ -456,35 +527,23 @@ Interpreter::Result Interpreter::run() {
     PUSH(value);
   OPCODE_END();
 
-  // The entries of the checked dispatch table for the field bytecodes check
-  // the access and continue with the bytecode.
-  checked_LOAD_FIELD:
-    if (!field_access_ok(class_bits_data, STACK_AT(0), bcp[1])) goto PROGRAM_FAILURE;
-    goto interpret_LOAD_FIELD;
-
-  checked_LOAD_FIELD_WIDE:
-    if (!field_access_ok(class_bits_data, STACK_AT(0), Utils::read_unaligned_uint16(bcp + 1))) goto PROGRAM_FAILURE;
-    goto interpret_LOAD_FIELD_WIDE;
-
-  checked_LOAD_FIELD_LOCAL:
-    if (!field_access_ok(class_bits_data, STACK_AT(bcp[1] & 0x0f), bcp[1] >> 4)) goto PROGRAM_FAILURE;
-    goto interpret_LOAD_FIELD_LOCAL;
-
-  checked_POP_LOAD_FIELD_LOCAL:
-    if (!field_access_ok(class_bits_data, STACK_AT((bcp[1] & 0x0f) + 1), bcp[1] >> 4)) goto PROGRAM_FAILURE;
-    goto interpret_POP_LOAD_FIELD_LOCAL;
-
-  checked_STORE_FIELD:
-    if (!field_access_ok(class_bits_data, STACK_AT(1), bcp[1])) goto PROGRAM_FAILURE;
-    goto interpret_STORE_FIELD;
-
-  checked_STORE_FIELD_POP:
-    if (!field_access_ok(class_bits_data, STACK_AT(1), bcp[1])) goto PROGRAM_FAILURE;
-    goto interpret_STORE_FIELD_POP;
-
-  checked_STORE_FIELD_WIDE:
-    if (!field_access_ok(class_bits_data, STACK_AT(1), Utils::read_unaligned_uint16(bcp + 1))) goto PROGRAM_FAILURE;
-    goto interpret_STORE_FIELD_WIDE;
+  // The entry of the checked dispatch table for the field bytecodes checks
+  // the access and continues with the bytecode.
+  // (One entry per bytecode, each a call and two jumps, rather than one
+  // shared entry that continues through the unchecked table: that would be
+  // a second computed goto in this function.)
+#define CHECKED_FIELD_ACCESS(opcode)                                       \
+  checked_##opcode:                                                        \
+    if (!checked_field_access_ok(program, sp, bcp)) goto PROGRAM_FAILURE;  \
+    goto interpret_##opcode;
+  CHECKED_FIELD_ACCESS(LOAD_FIELD)
+  CHECKED_FIELD_ACCESS(LOAD_FIELD_WIDE)
+  CHECKED_FIELD_ACCESS(LOAD_FIELD_LOCAL)
+  CHECKED_FIELD_ACCESS(POP_LOAD_FIELD_LOCAL)
+  CHECKED_FIELD_ACCESS(STORE_FIELD)
+  CHECKED_FIELD_ACCESS(STORE_FIELD_WIDE)
+  CHECKED_FIELD_ACCESS(STORE_FIELD_POP)
+#undef CHECKED_FIELD_ACCESS
 
   OPCODE_BEGIN_WITH_WIDE(LOAD_FIELD, field_index);
     Object* object = POP();
@@ -830,16 +889,20 @@ Interpreter::Result Interpreter::run() {
   // setter calls don't inline field accessors: they call them, so that the
   // field bytecode of the accessor checks the access.
   // INVOKE_SIZE continues here, too.
-  checked_INVOKE_VIRTUAL_GET: {
-    Method target = program->find_method(STACK_AT(0), Utils::read_unaligned_uint16(bcp + 1));
-    if (!target.is_valid() || !target.is_field_accessor()) goto interpret_INVOKE_VIRTUAL_GET;
-    CALL_METHOD(target, INVOKE_VIRTUAL_GET_LENGTH);
-  }
+  checked_INVOKE_VIRTUAL_GET:
+    call_target = checked_field_accessor(program, STACK_AT(0), bcp);
+    if (!call_target.is_valid()) goto interpret_INVOKE_VIRTUAL_GET;
+    goto CALL_FIELD_ACCESSOR;
 
-  checked_INVOKE_VIRTUAL_SET: {
-    Method target = program->find_method(STACK_AT(1), Utils::read_unaligned_uint16(bcp + 1));
-    if (!target.is_valid() || !target.is_field_accessor()) goto interpret_INVOKE_VIRTUAL_SET;
-    CALL_METHOD(target, INVOKE_VIRTUAL_SET_LENGTH);
+  checked_INVOKE_VIRTUAL_SET:
+    call_target = checked_field_accessor(program, STACK_AT(1), bcp);
+    if (!call_target.is_valid()) goto interpret_INVOKE_VIRTUAL_SET;
+    // Fall through.
+
+  CALL_FIELD_ACCESSOR: {
+    static_assert(INVOKE_VIRTUAL_GET_LENGTH == INVOKE_VIRTUAL_SET_LENGTH, "Unexpected bytecode length");
+    Method target = call_target;
+    CALL_METHOD(target, INVOKE_VIRTUAL_GET_LENGTH);
   }
 
   OPCODE_BEGIN(INVOKE_VIRTUAL_GET);
@@ -1320,6 +1383,28 @@ Interpreter::Result Interpreter::run() {
     }
   OPCODE_END();
 
+  CALL_STACK_OVERFLOW: {
+    // The slow path of CALL_METHOD: the stack is too small for the target
+    // (or the process is preempted). The call has pushed its frame.
+    Method target = call_target;
+    HANDLE_STACK_OVERFLOW(target)
+    CHECK_PROPAGATED_TYPES_METHOD_ENTRY(target);
+    bcp = target.entry();
+    DISPATCH(0);
+  }
+
+  PREEMPT_AT_BRANCH: {
+    // The slow path of CHECK_PREEMPT.
+    watermark_ = null;
+    preemption_method_header_bcp_ = Method::header_from_entry(preemption_entry);
+    static_assert(FRAME_SIZE == 2, "Unexpected frame size");
+    PUSH(reinterpret_cast<Object*>(bcp));
+    PUSH(program->frame_marker());
+    store_stack(sp);
+    if (Flags::trace) printf("[preempted from interpretation]\n");
+    return Result(Result::PREEMPTED);
+  }
+
   PROGRAM_FAILURE: {
     // The program violated an invariant that the interpreter checks at run
     // time (a malformed block reference, method id, try link, field access
@@ -1337,8 +1422,7 @@ Interpreter::Result Interpreter::run() {
     // unwinding. This can only happen with a malformed program, and the
     // stack cannot be trusted any more, so the process is terminated
     // instead of throwing. 'sp' is still inside the stack.
-    fprintf(stderr, "Corrupt stack at bci %d: terminating the process\n",
-            program->absolute_bci_from_bcp(bcp));
+    print_corrupt_stack(program, bcp);
     store_stack(sp);
     return Result(static_cast<int64>(1));
   }
