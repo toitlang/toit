@@ -28,8 +28,18 @@ The debug VM prints `[<absolute bci>] <bytecode>` for every bytecode it
   process (a different program) are skipped. Within a matching segment
   every bci must agree.
 
+With `--format 2` the program is compiled to format 2 and runs on the
+  verified core's checked run loop, which prints `[<bci>] #<opcode>` for
+  every instruction under -Xtrace and the C++ side prints `[exit core
+  interpretation ...]` when the core returns (the system process stays in
+  format 1). The reference interpreter runs its format-2 semantics
+  (`exec2.rs`). This needs the core's side of the hook: `run_checked`
+  (verified/core/src/machine.rs) reports every instruction with
+  TOIT_V2_REPORT_TRACE while `toit_v2_tracing` is nonzero; without it the
+  VM trace has no program lines and the comparison fails at step 0.
+
 Usage: toit run verified/tools/compare_trace.toit -- <program.toit|snapshot>
-           [--steps N] [--word-bits 64] [--timeout S] [args...]
+           [--format 1|2] [--steps N] [--word-bits 64] [--timeout S] [args...]
 
 The debug VM is TOIT_DEBUG_RUN, by default the toit.run of build/dbg
   (`make BUILD=build/dbg BUILD_TYPE=Debug sdk`).
@@ -46,11 +56,11 @@ import .harness
 
 ONE-CORE ::= "int get_nprocs(void) { return 1; }\nint get_nprocs_conf(void) { return 1; }\n"
 
-
 main arguments:
   command := cli.Command "compare_trace"
       --help="Compares the debug VM's -Xtrace with the reference interpreter's trace."
       --options=[
+        cli.OptionInt "format" --default=1 --help="Bytecode format of the program (1 or 2).",
         cli.OptionInt "steps" --default=20000 --help="Steps of the reference interpreter.",
         cli.OptionInt "word-bits" --default=64 --help="Smi size of the reference interpreter.",
         cli.OptionInt "timeout" --default=600 --help="Time limit of each run in seconds.",
@@ -71,6 +81,10 @@ compare-trace invocation/cli.Invocation -> none:
   steps/int := invocation["steps"]
   bits/int := invocation["word-bits"]
   timeout/int := invocation["timeout"]
+  format/int := invocation["format"]
+  if format != 1 and format != 2:
+    print "--format must be 1 or 2"
+    exit 2
   program-path := absolute program
   enter-repo
   tmp := directory.mkdtemp "/tmp/compare_trace-"
@@ -80,7 +94,8 @@ compare-trace invocation/cli.Invocation -> none:
     snapshot := program-path
     if program.ends-with ".toit":
       snapshot = fs.join tmp "p.snapshot"
-      run-checked [toit-bin, "compile", "--snapshot", "-o", snapshot, program-path]
+      format-flag := format == 2 ? ["-Xbytecode_format=2"] : []
+      run-checked [toit-bin, "compile"] + format-flag + ["--snapshot", "-o", snapshot, program-path]
     dumper := fs.join tmp "spec_dump.snapshot"
     compile-dumper dumper
     dump := fs.join tmp "p.dump"
@@ -89,15 +104,35 @@ compare-trace invocation/cli.Invocation -> none:
     vm = vm-trace snapshot args timeout tmp
   finally:
     directory.rmdir --recursive tmp
-  result := compare spec vm opcode-table
+  table := format == 2 ? opcode-table-v2 : opcode-table
+  result := compare spec vm table --exact=(format == 2) --allow-retries=(format == 2)
   n := result[0]
   switches := result[1]
   div := result[2]
   note := result[3]
+  retries := result[4]
   total-vm := (vm.filter: it != null).size
   suffix := div ? "; DIVERGENCE at $div" : (note ? "; $note" : "")
-  print "$(fs.basename program): compared $n consecutive steps (spec trace $spec.size steps, VM trace $total-vm steps of all processes, $switches process switches)$suffix"
+  retried := retries > 0 ? ", $retries instructions retried after stack growth" : ""
+  print "$(fs.basename program): compared $n consecutive steps (spec trace $spec.size steps, VM trace $total-vm steps of all processes, $switches process switches$retried)$suffix"
   exit (div ? 1 : 0)
+
+/**
+The format-2 opcodes as [name, trace text] entries, like $opcode-table:
+  the names from `OPCODE_NAMES2` of the specification, the text as the
+  core prints it (`#<opcode>`).
+*/
+opcode-table-v2 -> List:
+  text := read-file (fs.join REPO "verified/spec/src/v2/bytecodes.rs")
+  start := text.index-of "OPCODE_NAMES2"
+  if start < 0: throw "OPCODE_NAMES2 not found"
+  start = text.index-of "= [" start
+  end := text.index-of "];" start
+  table := []
+  parts := text[start..end].split "\""
+  for k := 1; k < parts.size; k += 2:
+    table.add [parts[k], "#$table.size"]
+  return table
 
 /** The reference interpreter's trace: a list of [bci, opcode]. */
 spec-trace dump/string args/List bits/int max-steps/int timeout/int -> List:
@@ -156,12 +191,14 @@ Walks the VM trace, attributing lines to the program while they continue
   interpreter continues. Returns [matched steps, switches, divergence or
   null, note or null].
 */
-compare spec/List vm/List table/List -> List:
+compare spec/List vm/List table/List --exact/bool=false --allow-retries/bool=false -> List:
   same := : | line step |
-    line[0] == step[0] and line[1].starts-with table[step[1]][1]
+    text := table[step[1]][1]
+    line[0] == step[0] and (exact ? line[1] == text : line[1].starts-with text)
   i := 0
   in-program := false
   switches := 0
+  retries := 0
   for k := 0; k < vm.size; k++:
     line := vm[k]
     if i >= spec.size: break
@@ -173,6 +210,12 @@ compare spec/List vm/List table/List -> List:
       in-program = true
       i++
       continue
+    if in-program and allow-retries and same.call line spec[i - 1]:
+      // The core runs an instruction again after growing the stack (the
+      // specification has no stack limit, so the instruction is one step
+      // there). The repeated line is the same instruction, not a step.
+      retries++
+      continue
     if in-program:
       // A branch right after a primitive whose result depends on the
       // outside world (task_has_messages: when the system process's reply
@@ -180,12 +223,12 @@ compare spec/List vm/List table/List -> List:
       // semantics.
       recent := spec[(max 0 i - 3)..i].map: table[it[1]][0]
       if (recent.contains "PRIMITIVE") and table[spec[i - 1][1]][0].starts-with "BRANCH":
-        return [i, switches, null, "stopped at an environment-dependent primitive result before step $i"]
+        return [i, switches, null, "stopped at an environment-dependent primitive result before step $i", retries]
       prev := i > 0 ? table[spec[i - 1][1]][0] : null
-      return [i, switches, "step $i: VM $(py-repr-line line), spec bci $spec[i][0] ($table[spec[i][1]][0]) after $(prev or "None")", null]
+      return [i, switches, "step $i: VM $(py-repr-line line), spec bci $spec[i][0] ($table[spec[i][1]][0]) after $(prev or "None")", null, retries]
   if i < spec.size:
-    return [i, switches, "step $i: spec continues at bci $spec[i][0], the VM does not", null]
-  return [i, switches, null, null]
+    return [i, switches, "step $i: spec continues at bci $spec[i][0], the VM does not", null, retries]
+  return [i, switches, null, null, retries]
 
 /** The trace line [bci, text] as Python prints the tuple (`(12, 'text')`). */
 py-repr-line line/List -> string:

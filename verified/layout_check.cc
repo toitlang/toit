@@ -100,6 +100,7 @@ uword toit_v2_grow_stack(void*, uword) { abort(); }
 uword toit_v2_lookup_primitive(void*, uword, uword, const void**, uword*) { abort(); }
 uword toit_v2_call_primitive(void*, const void*, uword, uword, uword*) { abort(); }
 void toit_v2_report(void*, uword, uword, uword) { abort(); }
+uword toit_v2_tracing(void*) { abort(); }
 }
 
 int main() {

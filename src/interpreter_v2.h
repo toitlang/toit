@@ -211,6 +211,9 @@ static const uword TOIT_V2_MESSAGE_MAX_WORDS = 4;
 static const uword TOIT_V2_REPORT_STUCK = 0;
 static const uword TOIT_V2_REPORT_UNCAUGHT = 1;
 static const uword TOIT_V2_REPORT_TASK_RETURNED = 2;
+// Detail: the opcode of the instruction at bci, which is about to run.
+// Only reported while toit_v2_tracing returns nonzero.
+static const uword TOIT_V2_REPORT_TRACE = 3;
 
 // Implemented by the core (verified/core/src/ffi.rs).
 #ifdef TOIT_VERIFIED_CORE
@@ -252,6 +255,9 @@ uword toit_v2_lookup_primitive(void* process, uword module, uword index,
 uword toit_v2_call_primitive(void* process, const void* entry, uword arity,
                                    uword first_argument, uword* result);
 void toit_v2_report(void* process, uword kind, uword bci, uword detail);
+// Nonzero if the core should report every instruction (TOIT_V2_REPORT_TRACE),
+// for -Xtrace of the debug VM.
+uword toit_v2_tracing(void* process);
 
 }  // extern "C"
 
