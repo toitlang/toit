@@ -65,11 +65,22 @@ impl Machine {
     pub fn is_ro_word(&self, p: &Program, w: usize, Ghost(id): Ghost<int>) -> (r: bool)
         requires
             self.hrefines(p),
+            ro_ok(p),
             0 <= id < self.g@.heap.len(),
             w == self.addr()[id],
         ensures r == self.g@.heap[id].ro,
     {
-        w >= p.ro_start && w - p.ro_start < p.ro_size
+        // One compare: below the start the difference wraps to at least
+        // `usize::MAX + 1 - ro_start`, which is above the size (`ro_ok`).
+        let d = w.wrapping_sub(p.ro_start);
+        proof {
+            if w >= p.ro_start {
+                assert(d == w - p.ro_start);
+            } else {
+                assert(d == w - p.ro_start + usize::MAX + 1);
+            }
+        }
+        d < p.ro_size
     }
 
     /// `spec::field_readable` (`write` false) or `spec::field_writable`
@@ -78,6 +89,7 @@ impl Machine {
     pub fn field_access_ok(&self, p: &Program, w: usize, Ghost(v): Ghost<Value>, f: usize, write: bool) -> (r: bool)
         requires
             self.hrefines(p),
+            ro_ok(p),
             accepts(p.ap@, p.cert@, p.trusted@),
             w == enc(self.addr(), v),
             encodable(self.addr(), v),
@@ -105,7 +117,49 @@ impl Machine {
         let ghost id = v->Obj_0 as int;
         proof { assert(obj_model_ok(g.heap[id], self.heap.class_bits(), self.addr())); }
         let tag = self.heap.class_tag(w, Ghost(id));
-        if tag != INSTANCE_TAG && tag != TASK_TAG {
+        if tag == INSTANCE_TAG {
+            // The fast path: an instance whose class has the field.
+            let cid = self.heap.class_id(w, Ghost(id));
+            let bits = p.class_bits.at(cid);
+            let size = ((bits >> 5u16) & 0x7ffu16) as usize;
+            proof {
+                assert(size as int - 1 == ifc_bits(p.class_bits@, cid as int));
+                assert(g.heap[id].body->Instance_0.len() == size - 1);
+                lemma_task_tag(p, cid as int);
+            }
+            return f + 1 < size && !(write && self.is_ro_word(p, w, Ghost(id)));
+        }
+        self.task_field_ok(p, w, Ghost(v), f, write, tag)
+    }
+
+    /// `field_access_ok` for an object that is not an instance: only a task
+    /// has fields, of which the machine's (its stack, and its id) are not
+    /// accessible to the program.
+    #[inline(always)]
+    fn task_field_ok(&self, p: &Program, w: usize, Ghost(v): Ghost<Value>, f: usize, write: bool, tag: usize) -> (r: bool)
+        requires
+            self.hrefines(p),
+            ro_ok(p),
+            accepts(p.ap@, p.cert@, p.trusted@),
+            w == enc(self.addr(), v),
+            encodable(self.addr(), v),
+            f < 0x1_0000,
+            v is Obj,
+            (v->Obj_0 as int) < self.g@.heap.len(),
+            (self.g@.heap[v->Obj_0 as int].class_id as int) < self.heap.class_bits().len(),
+            tag == (self.heap.class_bits()[self.g@.heap[v->Obj_0 as int].class_id as int] & 0xf) as usize,
+            tag != INSTANCE_TAG,
+        ensures
+            r == (if write { sp::field_writable(p.ap@, self.g@, v, f as int) }
+                else { sp::field_readable(p.ap@, self.g@, v, f as int) }),
+            r ==> v is Obj && (v->Obj_0 as int) < self.g@.heap.len()
+                && self.g@.heap[v->Obj_0 as int].body is Instance
+                && f < self.g@.heap[v->Obj_0 as int].body->Instance_0.len(),
+    {
+        let ghost g = self.g@;
+        let ghost id = v->Obj_0 as int;
+        proof { assert(obj_model_ok(g.heap[id], self.heap.class_bits(), self.addr())); }
+        if tag != TASK_TAG {
             return false;
         }
         let cid = self.heap.class_id(w, Ghost(id));
@@ -116,16 +170,10 @@ impl Machine {
             assert(g.heap[id].body->Instance_0.len() == size - 1);
             lemma_task_tag(p, cid as int);
         }
-        if f + 1 >= size {
+        if f + 1 >= size || f <= (if write { 1 } else { 0 }) {
             return false;
         }
-        if tag == TASK_TAG && f <= (if write { 1 } else { 0 }) {
-            return false;
-        }
-        if write && self.is_ro_word(p, w, Ghost(id)) {
-            return false;
-        }
-        true
+        !(write && self.is_ro_word(p, w, Ghost(id)))
     }
 
     /// Stores the value `v` (word `w`) into field `f` of the instance `o`

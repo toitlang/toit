@@ -173,6 +173,12 @@ pub open spec fn in_ro(p: &Program, a: usize) -> bool {
     p.ro_start <= a && a < p.ro_start + p.ro_size
 }
 
+/// The program heap's address range does not wrap around (checked once per
+/// run, `step::run_loop`), so that the program-heap test is one compare.
+pub open spec fn ro_ok(p: &Program) -> bool {
+    p.ro_start + p.ro_size <= usize::MAX
+}
+
 impl Program {
     /// The abstract program.
     pub open spec fn ap(&self) -> Program2 {

@@ -581,6 +581,7 @@ pub fn resume(m: &mut Machine, env: &Env, c: Ctl, Ghost(w0): Ghost<Machine>) -> 
 /// finally records is set.
 pub open spec fn rinv(p: &Program, m: Machine, r: Regs) -> bool {
     &&& m.rok(r)
+    &&& ro_ok(p)
     &&& crate::regs::ipok(p, r)
     &&& crate::regs::gate_ok(p, m)
     &&& m.with(r).inv(p)
@@ -890,13 +891,17 @@ pub fn step_r(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
             crate::regs::op_store_global(m, r, p, i, 3)
         },
         40 => {
-            if p.preempt_a_lot { env.pre.request(); }
+            // -Xpreempt_a_lot (debug VM builds).
+            #[cfg(feature = "preempt-a-lot")]
+            { if p.preempt_a_lot { env.pre.request(); } }
             let n = r.ip.byte(1, &p.code) as usize;
             proof { assert(sp::step(ap, g) == sp::op_pop(g, n as int, 2)) by { reveal(sp::step); } }
             crate::regs::op_pop(m, r, p, n, 2)
         },
         41 => {
-            if p.preempt_a_lot { env.pre.request(); }
+            // -Xpreempt_a_lot (debug VM builds).
+            #[cfg(feature = "preempt-a-lot")]
+            { if p.preempt_a_lot { env.pre.request(); } }
             proof { assert(sp::step(ap, g) == sp::op_pop(g, 1, 1)) by { reveal(sp::step); } }
             crate::regs::op_pop(m, r, p, 1, 1)
         },
@@ -1409,6 +1414,13 @@ pub fn run_loop(m: &mut Machine, env: &Env, accepted: &crate::ffi::Accepted) -> 
 {
     let ghost m0 = *m;
     proof { lemma_reaches_refl(env.p.ap@, m.g@); }
+    // The program heap's range (a C++ allocation) does not wrap around
+    // (`ro_ok`); checked once per run.
+    if env.p.ro_start > usize::MAX - env.p.ro_size {
+        env.rt.report(V2_REPORT_STUCK, m.bci, stuck::FATAL);
+        m.save();
+        return (RESULT_TERMINATED, 1);
+    }
     // The room of every frame (room.rs), checked once per run, and the
     // registers: locals of this function, in machine registers.
     let mut r = match resume(m, env, Ctl::Next, Ghost(m0)) {

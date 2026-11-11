@@ -43,6 +43,10 @@ checked-loop = []
 # `toit_vcore_opcode_length`; verified/layout_check.cc, hosts only). Devices
 # build without them (OBLIGATIONS.md has the cfg request for ffi.rs).
 layout-tables = []
+# `preempt-a-lot`: the debug flag `-Xpreempt_a_lot` (preempt after every POP).
+# Only debug VM builds (TOIT_DEBUG) have it, as the C++ interpreter, whose
+# release builds compile the test away; Verus verifies with it (check.sh).
+preempt-a-lot = []
 
 [package.metadata.verus]
 verify = true

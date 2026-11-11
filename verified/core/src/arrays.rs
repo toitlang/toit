@@ -324,7 +324,7 @@ impl Machine {
     pub fn array_loc(&self, p: &Program, aw: usize, Ghost(av): Ghost<Value>, length: i64, n: usize,
         is_put: bool, Ghost(value): Ghost<Value>) -> (r: Loc)
         requires
-            self.hrefines(p), vals_good(self.g@.heap), val_ok(*self, aw, av),
+            self.hrefines(p), ro_ok(p), vals_good(self.g@.heap), val_ok(*self, aw, av),
             is_array(as1(self.g@), av),
             n as int <= MAX_SMI,
         ensures loc_ok(*self, r, array_at(as1(self.g@), av, length as int, n as int, is_put, value), is_put, value),
@@ -346,7 +346,7 @@ impl Machine {
     pub fn bytes_loc(&self, p: &Program, bw: usize, Ghost(bv): Ghost<Value>, n: usize,
         is_put: bool, vw: usize, Ghost(value): Ghost<Value>) -> (r: Loc)
         requires
-            self.hrefines(p), vals_good(self.g@.heap), val_ok(*self, bw, bv),
+            self.hrefines(p), ro_ok(p), vals_good(self.g@.heap), val_ok(*self, bw, bv),
             is_bytes(as1(self.g@), bv),
             n as int <= MAX_SMI,
             is_put ==> val_ok(*self, vw, value),
@@ -373,7 +373,7 @@ impl Machine {
     pub fn cow_loc(&self, p: &Program, cw: usize, Ghost(cv): Ghost<Value>, n: usize,
         is_put: bool, vw: usize, Ghost(value): Ghost<Value>) -> (r: Loc)
         requires
-            self.hrefines(p), vals_good(self.g@.heap), val_ok(*self, cw, cv),
+            self.hrefines(p), ro_ok(p), vals_good(self.g@.heap), val_ok(*self, cw, cv),
             is_instance(as1(self.g@), cv),
             n as int <= MAX_SMI,
             is_put ==> val_ok(*self, vw, value),
@@ -409,7 +409,7 @@ impl Machine {
     pub fn locate(&self, p: &Program, rw: usize, Ghost(rv): Ghost<Value>, n: usize,
         is_put: bool, vw: usize, Ghost(value): Ghost<Value>, fuel: usize) -> (r: Loc)
         requires
-            self.hrefines(p), vals_good(self.g@.heap), val_ok(*self, rw, rv),
+            self.hrefines(p), ro_ok(p), vals_good(self.g@.heap), val_ok(*self, rw, rv),
             n as int <= MAX_SMI,
             is_put ==> val_ok(*self, vw, value),
         ensures loc_ok(*self, r, fast_at(p1(p.ap@), as1(self.g@), rv, Value::Smi(n as i64), is_put, value, fuel as nat),
@@ -499,7 +499,7 @@ impl Machine {
     pub fn large_loc(&self, p: &Program, rw: usize, Ghost(rv): Ghost<Value>, is_large: bool, n: usize,
         is_put: bool, vw: usize, Ghost(value): Ghost<Value>, fuel: usize) -> (r: Loc)
         requires
-            self.hrefines(p), vals_good(self.g@.heap), val_ok(*self, rw, rv),
+            self.hrefines(p), ro_ok(p), vals_good(self.g@.heap), val_ok(*self, rw, rv),
             n as int <= MAX_SMI,
             is_put ==> val_ok(*self, vw, value),
             is_instance(as1(self.g@), rv),
