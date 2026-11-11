@@ -7,9 +7,13 @@
 # fail, with the expected error.
 #
 # Usage: mutant.sh NAME SIDECAR SOURCE PATTERN "VERIFAST OPTIONS" FROM TO [FROM TO]...
-#   SIDECAR relative to this directory, SOURCE relative to the repository.
+#   SIDECAR relative to this directory, SOURCE relative to the repository
+#   (a .cc file: a changed copy of a header would be included next to the
+#   original through the symlinked third_party tree).
 #   FROM/TO: literal texts (`\n` a newline); each must occur exactly once in
 #   SOURCE and, if it occurs there at all, once in the sidecar. PATTERN
+#   DRIFT: the change is applied to the source only, and the rendering must
+#   fail with a drift error (the correspondence check's self-test). PATTERN
 #   PASS: the mutant must verify (e.g. the reverted fix under an assumption
 #   that excludes the bug).
 # Prints one line `ok` / `FAIL` like run.sh; exit status 0 when the proof
@@ -42,7 +46,7 @@ while [ $# -gt 0 ]; do
   first="$(printf '%s' "$1" | sed 's/\\n.*//')"
   found=0
   if grep -qF -- "$first" "$M/repo/$source"; then src_pairs+=("$1" "$2"); found=1; fi
-  if grep -qF -- "$first" "$M/annotated/$sidecar"; then side_pairs+=("$1" "$2"); found=1; fi
+  if [ "$pattern" != DRIFT ] && grep -qF -- "$first" "$M/annotated/$sidecar"; then side_pairs+=("$1" "$2"); found=1; fi
   if [ $found = 0 ]; then
     printf 'FAIL  %-40s the mutation `%s` applies to neither %s nor the sidecar\n' "$name" "$first" "$source"
     exit 1
@@ -65,11 +69,19 @@ cp -r "$GEN32/model" "$M/gen32/"
 for f in $(ls "$(dirname "$sidecar")"/*.h "$(dirname "$sidecar")"/*.gh 2>/dev/null | grep -v '\.gen\.'); do
   cp "$f" "$M/gen32/$f"
 done
-"$ANNOTATED_DIR/prefetch-ast.sh" "$M/repo" "$M/scratch" "$sidecar"
+"$ANNOTATED_DIR/prefetch-ast.sh" "$M/repo" "$M/scratch" "$sidecar" > "$M/prefetch.log" 2>&1
 if ! "$TOIT_BIN" run "$REPO_ROOT/verified/tools/cxx_render.toit" -- --ast-ready --repo "$M/repo" \
     --scratch "$M/scratch" --target "i686-linux-gnu=$M/gen32" \
     "$sidecar" > "$M/render.log" 2>&1; then
+  if [ "$pattern" = DRIFT ] && grep -q "DRIFT" "$M/render.log"; then
+    printf 'ok    %-40s drift: %s\n' "$name" "$(grep -o "DRIFT: [^;]*" "$M/render.log" | head -1 | cut -c1-160)"
+    exit 0
+  fi
   printf 'FAIL  %-40s rendering failed: %s\n' "$name" "$(grep FAIL "$M/render.log" | head -1)"
+  exit 1
+fi
+if [ "$pattern" = DRIFT ]; then
+  printf 'FAIL  %-40s the changed source rendered without a drift error\n' "$name"
   exit 1
 fi
 gen="${sidecar%.render}.gen.c"

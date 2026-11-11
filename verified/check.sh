@@ -20,7 +20,8 @@
 #      64-bit words (the host) and for 32-bit words (i686 target).
 #   2. Escape-hatch audit against verified/TRUSTED.toml (and a cross-check
 #      with `verus --no-cheating`); writes verified/THEOREMS.txt.
-#   3. With --tests: the audit's regression test, layout check, spec
+#   3. With --tests: the audit's regression test, layout check, the
+#      VeriFast proofs of the residual C++ (verified/cxx/annotated), spec
 #      differential tests, the device library's no-panic check, sandbox
 #      ctests.
 #
@@ -223,6 +224,25 @@ if [ "$RUN_TESTS" = 1 ]; then
     fi
   else
     echo "SKIP: no build in $BUILD_DIR (run tools/worktree-setup.sh or make sdk)"
+  fi
+
+  section "VeriFast proofs of the residual C++ (verified/cxx/annotated/run.sh)"
+  # The renderings must match the sources (drift fails), the constants the
+  # headers, and every proof and reverted-bug self-test its verdict. Skipped
+  # (exit status 3) when VeriFast is not installed.
+  if ! tools_ready; then
+    fail "VeriFast proofs: cannot run verified/tools/cxx_render.toit"
+  else
+    TOIT="$TOIT_BIN" "$VERIFIED/cxx/annotated/run.sh" > "$LOGS/verifast.log" 2>&1
+    vf_status=$?
+    if [ $vf_status -eq 3 ]; then
+      grep '^SKIP' "$LOGS/verifast.log"
+    elif [ $vf_status -ne 0 ]; then
+      grep -v '^ok' "$LOGS/verifast.log" | head -40
+      fail "VeriFast proofs of the residual C++ (a proof failed or a rendering drifted)"
+    else
+      echo "$(grep -c '^ok' "$LOGS/verifast.log") VeriFast checks passed ($(tail -1 "$LOGS/verifast.log"))"
+    fi
   fi
 
   section "Spec differential tests (verified/spec/tests/run_tests.sh)"

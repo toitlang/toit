@@ -106,6 +106,14 @@ mutant() {
   spawn ./mutant.sh "$@"
 }
 
+# The correspondence check's self-tests: a rendered function changed in the
+# source only (an off-by-one in a bound; a strict comparison made non-strict) must
+# fail as drift.
+mutant drift-encoder encoder/message_encoder.render src/messaging.cc DRIFT "" \
+  "to > object->length()) return false;" "to > object->length() + 1) return false;"
+mutant drift-utf8 utf8/utf_8_to_16.render src/utils.cc DRIFT "" \
+  "    if (c < 0x10000) {" "    if (c <= 0x10000) {"
+
 # 3. The renderings.
 entry model                 pass "" model/objects.gen.c
 entry encoder               pass "" encoder/message_encoder.gen.c
