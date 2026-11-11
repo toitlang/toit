@@ -190,7 +190,8 @@ static bool v2_verify(Program* program, const V2MethodTable* table, bool trusted
     fprintf(stderr, "verifier: %sprogram rejected: %s: %s\n",
             kind, v2_code_name(result.code), result.message);
   }
-  if (!trusted && result.message != null && strstr(result.message, "not in the unchecked mode") != null) {
+  // (`message` is an array: devices build with -Werror=address.)
+  if (!trusted && strstr(result.message, "not in the unchecked mode") != null) {
     // The compiler's default is first-party code with the trusted-only
     // twins (docs/format2-migration.md).
     fprintf(stderr, "verifier: the program was compiled for trusted use; compile it with --untrusted\n");
