@@ -448,6 +448,11 @@ uint16 String::_assign_hash_code() {
   return _raw_hash_code();
 }
 
+void String::_assign_unvalidated_hash_code() {
+  _raw_set_hash_code(compute_hash_code());
+  ASSERT(_raw_hash_code() != NO_HASH_CODE);
+}
+
 char* String::cstr_dup() {
   Bytes bytes(this);
   word len = bytes.length();
@@ -566,13 +571,13 @@ void String::read_content(SnapshotReader* st, word len) {
       return;
     }
     _set_external_address(external_bytes.data());
-    _assign_hash_code();
+    _assign_unvalidated_hash_code();
   } else {
     _set_length(len);
     MutableBytes bytes(this);
     for (word index = 0; index < len; index++) bytes._at_put(index, st->read_byte());
     bytes._set_end();
-    _assign_hash_code();
+    _assign_unvalidated_hash_code();
     ASSERT(content_on_heap());
   }
 }
