@@ -105,6 +105,9 @@ main args:
         cli.OptionEnum "control" ["serial", "network"]
             --help="The ESP32 control transport"
             --default="serial",
+        cli.Option "partitions"
+            --help="A partition table (CSV or binary) replacing the envelope's (ESP32 only)"
+            --type="path",
       ]
       --run=:: | invocation/cli.Invocation |
         if invocation["chip"] == CHIP-EC618:
@@ -776,12 +779,17 @@ setup-tester invocation/cli.Invocation:
         }
       }
     """
+    // A firmware that does not fit the envelope's app partitions (format 2
+    // on the classic ESP32 with the tester container) is flashed with a
+    // layout that has larger ones (ESP32_PARTITIONS, tests/hw/README.md).
+    partitions-path := invocation["partitions"]
+    partitions-args := partitions-path ? ["--partitions", partitions-path] : []
     run-toit --ui=ui toit-exe [
       "tool", "firmware", "flash",
       "-e", tester-envelope-path,
       "--config", wifi-config-path,
       "--port", port-path,
-    ]
+    ] + partitions-args
 
 // ----------------------------------------------------------------------------
 // EC618 host driver.
