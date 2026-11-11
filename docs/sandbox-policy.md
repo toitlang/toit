@@ -152,14 +152,54 @@ refused like a request to a full mailbox (`process_send` returns false for
 a trusted sender). Pids are never reused, so grants for dead processes are
 inert, but they keep their room.
 
-Services in the system process are reachable by every process, so they
-reject untrusted clients unless the provider opts in
-(`ServiceProvider.accepts-untrusted-clients`). Service discovery and the
-sandbox print service opt in; the container, storage, network and other
-system services do not, so an untrusted container can't start containers,
-use storage or open sockets. Services provided by an untrusted process
-are registered with the lowest priority and the tag `untrusted-provider`,
-so they can't take over services of trusted providers.
+### Serving sandboxed clients is opt-in
+
+Every service provider rejects untrusted clients unless it opts in
+(`ServiceProvider.accepts-untrusted-clients`, false by default): opening
+a client throws `PERMISSION_DENIED`. The choice is sent with the
+registration, and discovery returns a provider outside the system process
+to an untrusted client only if it opts in, so the client gets no grant for
+a provider that doesn't serve it (and can't send it messages of any type).
+Providers in the system process are reachable anyway; discovery returns
+them, and opening them fails with `PERMISSION_DENIED` unless they opt in.
+Service discovery and the sandbox print service opt in; the container,
+storage, network and other system services do not, so an untrusted
+container can't start containers, use storage or open sockets. A trusted
+container that wants to serve sandboxes overrides
+`accepts-untrusted-clients` (the heat-pump driver of `heat-pump-test`).
+
+Before, providers outside the system process accepted untrusted clients
+unless they opted out; only system services were opt-in.
+
+### Providing services is a privilege
+
+An untrusted container can't register service providers: the system
+process' discovery service refuses `listen` from an untrusted process with
+`SERVICE_REGISTRATION_DENIED`. Otherwise a sandbox could offer a service
+under the uuid a trusted client expects, and the trusted client would use
+it whenever no trusted provider is registered (during boot, or after the
+trusted provider crashed).
+
+The launch policy can grant it (default off):
+
+    containers.start image-id arguments --untrusted --may-provide-services
+
+The grant is entry 9 of the policy list (`ContainerService.POLICY-GRANTS-INDEX`,
+bit `POLICY-GRANT-PROVIDE-SERVICES`); the VM ignores the entry, and the
+system process looks it up by the group id of the registering process.
+The providers of such a container live in their own namespace: they are
+registered with the lowest priority and the tag `untrusted-provider`
+(`TAG-UNTRUSTED-PROVIDER` in `system.services`), whatever the container
+asks for, and discovery returns them only to trusted clients that opt in
+by allowing the tag explicitly:
+
+    selector := MyService.SELECTOR.restrict.allow --tag=TAG-UNTRUSTED-PROVIDER
+
+Plain selectors (and restricted selectors that don't allow the tag) never
+match them, not even when no trusted provider of the service runs; the
+client library filters them as well. Untrusted clients never discover
+them, so sandboxes can't reach each other through services. Trusted
+containers can always provide services.
 
 ## Quotas
 
@@ -194,7 +234,7 @@ limits live in the Toit libraries and apply to sandboxed clients only:
 |---|---|---|
 | unprocessed RPC requests of one sandboxed process in a provider's broker | 8 (half the processing tasks) | `RpcBroker` (`lib/rpc/broker.toit`) |
 | open clients of one sandboxed process at one provider process | 32 | `ServiceManager_.open` (`lib/system/services.toit`) |
-| services registered by one sandboxed process | 16 | `SystemServiceManager.listen` (`system/services.toit`) |
+| services registered by one sandboxed process (only with the grant, see above) | 16 | `SystemServiceManager.listen` (`system/services.toit`) |
 | pending discoveries (`discover --wait`) of one sandboxed process | 16 | `SystemServiceManager.discover` |
 | size of a registered uuid, name or tag; number of tags | 128 bytes; 8 | `SystemServiceManager.listen` |
 
@@ -241,7 +281,9 @@ From a (trusted) Toit program, on host and device:
 
 The quota keys are "heap", "mailbox-messages", "mailbox-bytes",
 "message-bytes", "timers", "processes", "run-time-ms" and "cpu-ms".
-Quotas can also be given for trusted containers.
+Quotas can also be given for trusted containers. `--may-provide-services`
+grants an untrusted container to register service providers (see
+"Providing services is a privilege").
 
 Device: containers are started by `system/containers.toit` through
 `programs_registry.spawn`, which takes the policy as its last argument.
@@ -271,6 +313,21 @@ run-critical container ends the system with exit code 1 (so `toit run
 
 Builds without the verifier (FreeRTOS devices) refuse all untrusted
 programs.
+
+Format-2 programs are verified by the Rust verifier (verified/vmverify),
+which also checks the loader's contract (`loaded_ok`, proven check
+`x_loaded_ok_stream`): among other things, every string literal of the
+program heap must be well-formed UTF-8 (no overlong encodings, surrogates
+or code points above U+10FFFF). A program with such a literal is rejected
+with "a string literal isn't valid UTF-8". The check is one pass over the
+string bytes: 436 bytes of device code, and no measurable time next to
+the rest of the verification (the heap check of the toit CLI, 4024
+objects, takes about 0.25 ms). Format-1 programs, which run untrusted
+only with `-Xuntrusted_format1`, are not checked for it. Strings that
+aren't valid UTF-8 can still arise at run time from string slices with
+crafted bounds (crafted bytecode can store the fields of a `StringSlice_`);
+the primitives and the message encoder cope with them (see "Threats
+tested").
 
 ## Field accesses
 
@@ -371,14 +428,14 @@ and must be updated when the gap is closed.
 | Uncharged native memory: resource groups from `timer.init` in a loop, adding and removing a finalizer in a loop, `remove_finalizer` on an external byte array | charged to the container or bounded | `resource-group-churn`, tests/`finalizer-churn-test`, tests/`remove-finalizer-external-test` | fixed: 64 bytes of VM memory per call; 200 MB per 5M finalizer toggles; the external memory leaked; `get_generic_resource_group` had the same problem and is no longer allowed (`core-get-generic-resource-group`) | |
 | Keep a scheduler thread inside a primitive (a kill only takes effect when it returns): `process_send` of a shared object graph, `bitmap.blit` with zero strides | the primitive stops early | `message-shared-graph`, `blit-unbounded-work` | fixed: days and hours per call; the other C++ primitives of the untrusted set are linear in their quota-bounded arguments (docs/sandbox-primitive-audit.md) | |
 | Read what other processes freed | new memory is cleared | tests/`off-heap-byte-array-cleared-test` | fixed: `create_off_heap_byte_array` returned uninitialized malloc memory (99% of the bytes still held freed data); it is no longer allowed for untrusted programs (`core-external-byte-array`), and large `ByteArray`s are cleared (`cli/large-byte-array`) | |
-| Send strings that aren't valid UTF-8 (crafted literals or string slices) to receivers that rely on valid ones; over-read with them | refused; conversions stay inside the string | `invalid-utf-8-literal` | fixed: delivered to the system process; `string-to-utf-16` read up to 7 bytes past the string | check the literals at launch too? (the Rust ports cope, the C++ consumers are now bounded) |
+| Send strings that aren't valid UTF-8 (crafted literals or string slices) to receivers that rely on valid ones; over-read with them | crafted literals rejected at launch; strings from crafted slices refused when sent, conversions stay inside the string | `invalid-utf-8-literal` | fixed: delivered to the system process; `string-to-utf-16` read up to 7 bytes past the string. The literals of format-2 programs are now checked at launch (`loaded_ok`); the run-time checks use a format-1 program | |
 | Create processes or groups; write flash | denied | `core-spawn`, `quota-processes`, `system-container-service`, `system-storage-service`, `module-flash-registry` | holds; no other path found | |
 | Starve the scheduler: tight loop, the longest primitives on 16 MB objects (15 ms on the host), recursion, 100 yielding tasks | the sibling and the system process answer within a few ms | `scheduler-starvation` | holds (also with the VM pinned to one core); run-time limit and CPU budget: `quota-run-time`, `quota-cpu-budget` | |
 | Raise the own priority | denied | `core-process-set-priority` | holds; no other path found | |
 | Survive the own kill (services, used clients, queued messages, pending discovery, timers, tasks, finalizers) | all gone; clients of its services fail | `kill-cleanup` | holds | |
 | Read process statistics | denied | `core-process-stats` | holds | |
 | Probe pids and observe process lifetimes through the discovery service's `watch` | no information about processes it may not talk to | `watch-pid-probe` | gap: a watch of a missing pid is answered at once with a termination notification, a watch of a live process reports its termination | the system process can't check the watcher's grants (it needs a new primitive, which changes the verified core's primitive table) |
-| Provide a service a trusted client expects before the trusted provider is up | trusted clients don't use sandbox providers | `service-squat` | gap: untrusted providers lose against trusted ones, but without a trusted provider a plain selector opens the sandbox's | should plain selectors deny `untrusted-provider` by default? |
-| Reach a trusted container's service by its uuid | only services meant for sandboxes | `heat-pump` | by design: providers outside the system process accept sandboxed clients unless they override `accepts-untrusted-clients` | opt-in instead of opt-out? |
+| Provide a service a trusted client expects before the trusted provider is up | trusted clients don't use sandbox providers | `provider-denied`, `service-squat`, `provider-grant` | fixed: without a trusted provider a plain selector opened the sandbox's. Registration is now refused unless the launch policy grants it, and granted providers are only discovered by trusted clients that opt in | |
+| Reach a trusted container's service by its uuid | only services meant for sandboxes | `heat-pump` | fixed: providers outside the system process accepted sandboxed clients unless they opted out. Serving sandboxes is now opt-in for every provider, and discovery doesn't return (or grant) providers that don't opt in | |
 | Flood the console through traces and prints | bounded output | | gap, not tested (the host's stdout is fast): every valid trace payload (up to the message size cap) is printed base64-encoded, and every unhandled message type prints a warning; on a device with a UART console this keeps the system process busy | size and rate limits for sandbox traces and prints? |
 | Timing and counting side channels | | | accepted: `Time.monotonic-us` shows the load of the machine; the own pid tells how many processes were created since boot | |
