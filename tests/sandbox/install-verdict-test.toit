@@ -95,6 +95,10 @@ main args:
     expect (result.output.contains "verified: 1")
     expect (result.output.contains "untrusted: 1")
     expect (result.output.contains "verifier: accepted (shipped certificate)")
+    // The verification reported its progress to the scheduler once per
+    // method (Process::note_progress), so a long one is not taken for a
+    // dead-lock on devices.
+    check-progress result.output
     expect (result.output.contains TARGET)
     expect (result.output.contains "sum: 45")
     expect (result.output.contains "exit: 0")
@@ -180,6 +184,19 @@ build-image toit/string compiler/string dir/string name/string source/string bit
   result := run-process command
   if result.exit-code != 0: throw "snapshot-to-image failed: $result.output"
   return image
+
+/**
+Checks that the accepting "verifier:" line of $output (TOIT_VERIFY_TIME=1)
+  reports one progress report to the scheduler per method.
+*/
+check-progress output/string -> none:
+  line := (output.split "\n").filter: it.starts-with "verifier: accepted (shipped certificate)"
+  expect-equals 1 line.size
+  // "..., 1234 methods, ...; progress 1234 (to the scheduler)".
+  methods := int.parse ((line[0].split " methods")[0].split ", ").last
+  progress := (line[0].split "; progress ")[1]
+  expect-equals "$methods (to the scheduler)" progress.trim
+  expect methods > 100
 
 /**
 Checks that the allocation of the image $id in the flash registry file $path

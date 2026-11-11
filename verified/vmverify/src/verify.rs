@@ -55,6 +55,8 @@ use toit_spec::v2::{cert, heap_check};
 #[cfg(feature = "infer")]
 use toit_spec::v2::infer;
 use crate::from_vm::Converted;
+use crate::ffi::VmProgress;
+use toit_spec::progress::verify_shipped_progress;
 
 pub const ACCEPTED: usize = 0;
 /// The VM memory could not be converted (from_vm::Malformed).
@@ -118,10 +120,12 @@ impl<'a> MapOracle for Timed<'a> {
 }
 
 /// The verdict on a converted program. With a shipped certificate `cert`
-/// (format/18-shipped-certificate.md) the proven `cert::verify_shipped`
-/// decides; without one the inference computes the certificate (the
-/// `infer` feature, hosts); without both the program is rejected.
-pub fn verify(c: &mut Converted, trusted: bool, cert: Option<&[u8]>) -> Verdict {
+/// (format/18-shipped-certificate.md) the proven
+/// `progress::verify_shipped_progress` decides (`cert::verify_shipped` with
+/// `progress` told before each method: same postcondition); without one
+/// the inference computes the certificate (the `infer` feature, hosts);
+/// without both the program is rejected.
+pub fn verify(c: &mut Converted, trusted: bool, cert: Option<&[u8]>, progress: VmProgress) -> Verdict {
     let global_count = c.globals.len() as u64;
     // Taken, not copied: the conversion does not need it any more.
     let prim_arity = core::mem::take(&mut c.prim_arity);
@@ -156,7 +160,7 @@ pub fn verify(c: &mut Converted, trusted: bool, cert: Option<&[u8]>) -> Verdict 
             let t = Clock::start();
             // Proven: true only if a certificate with these trusted fields
             // is accepted.
-            let verdict = cert::verify_shipped(p, cert, global_count, &prim_arity, trusted);
+            let verdict = verify_shipped_progress(p, cert, global_count, &prim_arity, trusted, progress);
             mem_trace!("shipped certificate checked");
             let check_ns = t.ns();
             let mut v = match verdict {

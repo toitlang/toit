@@ -1,0 +1,88 @@
+# Copyright (C) 2026 Toit contributors.
+#
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation; version
+# 2.1 only.
+#
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# Lesser General Public License for more details.
+#
+# The license can be found in the file `LICENSE` in the top level
+# directory of this repository.
+
+# The one Rust static library the VM links (libtoit_rust.a): the verified
+# core and the format-2 verifier, i.e. verified/vmverify and everything it
+# depends on (../README.md, "One Rust library").
+#
+# A package of its own with the crate type `staticlib` only: Cargo silently
+# ignores `lto` for a library that is also built as an `rlib` (as
+# toit_vmverify is, for its tools and tests), so the device profile's LTO
+# only applies here. CMake (verified/CMakeLists.txt) and the device scripts
+# (../tests/*.sh) build this package. Its profiles are the ones that count
+# for the VM's library; cargo runs from this directory, so
+# ../.cargo/config.toml applies too.
+
+[package]
+name = "toit_rust"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+path = "lib.rs"
+crate-type = ["staticlib"]
+
+[features]
+# The features of toit_vmverify (../Cargo.toml), forwarded.
+default = ["std", "infer", "checked-loop"]
+std = ["toit_vmverify/std"]
+device-runtime = ["toit_vmverify/device-runtime"]
+infer = ["toit_vmverify/infer"]
+checked-loop = ["toit_vmverify/checked-loop"]
+preempt-a-lot = ["toit_vmverify/preempt-a-lot"]
+
+[dependencies]
+toit_vmverify = { path = "..", default-features = false }
+
+# panic = "unwind" on hosts: the verifier runs on untrusted input inside the
+# VM, and a panic of the (untrusted) inference must reject the program, not
+# abort the VM (../src/ffi.rs, catch_unwind). The core's handlers do not
+# panic; ../README.md has the run-loop measurement.
+[profile.dev]
+panic = "unwind"
+
+[profile.release]
+panic = "unwind"
+opt-level = 3
+debug = "line-tables-only"
+
+# Devices (no_std, `--no-default-features --features device-runtime`):
+# no unwinding without std, so a panic aborts (../src/device.rs). The
+# opt-level is the speed/size choice for the firmware (verified/core/
+# PROGRESS.md, "Phase 5": sizes at 3, "s" and "z"); override with
+# CARGO_PROFILE_DEVICE_OPT_LEVEL. Fat LTO: one object for all Rust code of
+# the firmware (verified/core/PROGRESS.md, "Device builds").
+[profile.device]
+inherits = "release"
+panic = "abort"
+opt-level = 3
+lto = true
+codegen-units = 1
+debug = false
+
+# The verifier (verified/spec: the checker of shipped certificates and the
+# heap check) runs once per install, not per instruction: optimized for size
+# whatever the core's opt-level (../README.md, "Device size"). With LTO the
+# functions keep the size attributes of this level (LLVM's optsize and
+# minsize), which the link-time passes respect.
+[profile.device.package.toit_spec]
+opt-level = "z"
+
+# The glue around the verifier (conversion from VM memory, the C entry
+# points) runs once per install too, and with LTO the checker is inlined
+# into it: at the core's opt-level it would be compiled for speed again.
+[profile.device.package.toit_vmverify]
+opt-level = "z"

@@ -2411,6 +2411,30 @@ justification = "Converts the program from the input struct's tables (from_vm::c
 [[trusted]]
 crate = "vmverify"
 file = "src/ffi.rs"
+item = "VerifyInput"
+kind = "unsafe"
+count = 1
+justification = "The type of the VM's progress callback (an `unsafe extern \"C\" fn` pointer in the C struct, src/verifier_v2.h; layout checked by verified/layout_check.cc)."
+
+[[trusted]]
+crate = "vmverify"
+file = "src/ffi.rs"
+item = "VmProgress"
+kind = "unsafe"
+count = 1
+justification = "Holds the VM's progress callback type (as VerifyInput)."
+
+[[trusted]]
+crate = "vmverify"
+file = "src/ffi.rs"
+item = "VmProgress::method"
+kind = "unsafe"
+count = 1
+justification = "Calls the VM's progress callback with the context the VM passed (src/verifier_v2.cc v2_progress: counts and Process::note_progress). It runs between methods inside the proven toit_spec::progress::verify_shipped_progress and must not touch the program, its tables or the certificate (it only records a time): the verdict does not depend on it (vmverify/README.md, \"Install time on devices\")."
+
+[[trusted]]
+crate = "vmverify"
+file = "src/ffi.rs"
 item = "toit_vmverify_canonical"
 kind = "unsafe"
 count = 1

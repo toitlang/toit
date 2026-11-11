@@ -89,8 +89,9 @@ class V2MethodTable {
   ~V2MethodTable();
 
   // Decodes the method table. Returns null (and prints the reason to
-  // stderr) if the headers are malformed or the allocation fails.
-  static V2MethodTable* compute(Program* program);
+  // stderr) if the headers are malformed or the allocation fails; sets
+  // [*out_of_memory] (if given) in the latter case.
+  static V2MethodTable* compute(Program* program, bool* out_of_memory = null);
 
   // Whether untrusted containers may be in format 1 (and run on the C++
   // interpreter): -Xuntrusted_format1 or TOIT_UNTRUSTED_FORMAT1=1. By

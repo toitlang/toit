@@ -523,6 +523,8 @@ int main() {
     VFIELD("VMVERIFY_INPUT_", toit_vmverify_input, trusted)
     VFIELD("VMVERIFY_INPUT_", toit_vmverify_input, certificate)
     VFIELD("VMVERIFY_INPUT_", toit_vmverify_input, certificate_length)
+    VFIELD("VMVERIFY_INPUT_", toit_vmverify_input, progress)
+    VFIELD("VMVERIFY_INPUT_", toit_vmverify_input, progress_context)
     { "VMVERIFY_RESULT_SIZE", sizeof(toit_vmverify_result), false },
     VFIELD("VMVERIFY_RESULT_", toit_vmverify_result, code)
     VFIELD("VMVERIFY_RESULT_", toit_vmverify_result, method)

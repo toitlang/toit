@@ -45,8 +45,8 @@ for t in "${TARGETS[@]}"; do
   echo "== verified/core, no_std ($t)"
   (cd "$VERIFIED/core" && cargo build --release --lib --target "$t" --target-dir "$WORK/core-target")
   echo "== verified/vmverify, no_std, device runtime ($t)"
-  (cd "$VERIFIED/vmverify" && cargo build --profile device --lib --no-default-features --features device-runtime \
+  (cd "$VERIFIED/vmverify/staticlib" && cargo build --profile device --lib --no-default-features --features device-runtime \
       --target "$t" --target-dir "$WORK/vmverify-target")
-  ls -la "$WORK/vmverify-target/$t/device/libtoit_vmverify.a"
+  ls -la "$WORK/vmverify-target/$t/device/libtoit_rust.a"
 done
 echo "no_std build passed: spec, core and vmverify (device static library) for ${TARGETS[*]}"

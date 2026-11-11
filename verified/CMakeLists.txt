@@ -108,8 +108,12 @@ set(TOIT_VERIFIED_CORE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}" CACHE PATH "The 
 set(VCORE_DIR "${TOIT_VERIFIED_CORE_SOURCE_DIR}/core")
 # The VM links one Rust static library: verified/vmverify, which contains
 # the core and the format-2 structural verifier (verified/spec), so that
-# the binary has a single Rust runtime (vmverify/README.md).
+# the binary has a single Rust runtime (vmverify/README.md). It is built
+# through the staticlib-only package vmverify/staticlib (libtoit_rust.a):
+# Cargo applies the device profile's LTO only to a library that is not also
+# an rlib.
 set(VMVERIFY_DIR "${TOIT_VERIFIED_CORE_SOURCE_DIR}/vmverify")
+set(VMLIB_DIR "${VMVERIFY_DIR}/staticlib")
 set(VCORE_TARGET_DIR "${CMAKE_BINARY_DIR}/verified_core")
 # Devices (embedded builds): no_std, the allocator and panic handler of the
 # VM (vmverify `device-runtime`), Cargo profile `device` (panic = abort, LTO).
@@ -133,7 +137,7 @@ else()
   set(VCORE_CARGO_TARGET_ARGS --target "${TOIT_VERIFIED_CORE_RUST_TARGET}")
   set(VCORE_LIB_DIR "${VCORE_TARGET_DIR}/${TOIT_VERIFIED_CORE_RUST_TARGET}/${VCORE_PROFILE}")
 endif()
-set(VCORE_LIB "${VCORE_LIB_DIR}/${CMAKE_STATIC_LIBRARY_PREFIX}toit_vmverify${CMAKE_STATIC_LIBRARY_SUFFIX}")
+set(VCORE_LIB "${VCORE_LIB_DIR}/${CMAKE_STATIC_LIBRARY_PREFIX}toit_rust${CMAKE_STATIC_LIBRARY_SUFFIX}")
 file(GLOB_RECURSE VCORE_SOURCES CONFIGURE_DEPENDS
   "${VCORE_DIR}/src/*.rs"
   "${VMVERIFY_DIR}/src/*.rs"
@@ -157,13 +161,14 @@ add_custom_command(
   OUTPUT "${VCORE_LIB}"
   COMMAND ${CMAKE_COMMAND} -E env ${VCORE_ENV}
           "${TOIT_CARGO}" ${TOIT_VERIFIED_CORE_CARGO_TOOLCHAIN} build --profile ${VCORE_PROFILE} --quiet --lib
-          --manifest-path "${VMVERIFY_DIR}/Cargo.toml"
+          --manifest-path "${VMLIB_DIR}/Cargo.toml"
           --target-dir "${VCORE_TARGET_DIR}"
           ${VCORE_CARGO_TARGET_ARGS} ${VCORE_FEATURE_ARGS} ${TOIT_VERIFIED_CORE_CARGO_ARGS}
   DEPENDS ${VCORE_SOURCES}
-          "${VCORE_DIR}/Cargo.toml" "${VMVERIFY_DIR}/Cargo.toml" "${VMVERIFY_DIR}/Cargo.lock"
+          "${VCORE_DIR}/Cargo.toml" "${VMVERIFY_DIR}/Cargo.toml" "${VMLIB_DIR}/Cargo.toml"
+          "${VMLIB_DIR}/Cargo.lock" "${VMLIB_DIR}/lib.rs" "${VMVERIFY_DIR}/.cargo/config.toml"
           "${TOIT_VERIFIED_CORE_SOURCE_DIR}/spec/Cargo.toml"
-  WORKING_DIRECTORY "${VMVERIFY_DIR}"
+  WORKING_DIRECTORY "${VMLIB_DIR}"
   COMMENT "Building the verified interpreter core and verifier (cargo)"
   USES_TERMINAL
   VERBATIM

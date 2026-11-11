@@ -56,11 +56,11 @@ for opt in "${LEVELS[@]}"; do
   out="$WORK/opt$opt"
   mkdir -p "$out"
   echo "== device library, opt-level $opt ($TARGET)"
-  (cd "$VERIFIED/vmverify" && CARGO_PROFILE_DEVICE_OPT_LEVEL="$opt" cargo build --quiet --profile device --lib \
+  (cd "$VERIFIED/vmverify/staticlib" && CARGO_PROFILE_DEVICE_OPT_LEVEL="$opt" cargo build --quiet --profile device --lib \
       --no-default-features --features device-runtime --target "$TARGET" --target-dir "$out/target")
   "$GCC" -march=rv32imac_zicsr_zifencei -mabi=ilp32 -Os -ffunction-sections -fdata-sections \
     --specs=nosys.specs -Wl,--gc-sections -o "$out/check.elf" \
-    "$HERE/device_size/main.c" "$out/target/$TARGET/device/libtoit_vmverify.a" -lm > "$out/link.log" 2>&1 \
+    "$HERE/device_size/main.c" "$out/target/$TARGET/device/libtoit_rust.a" -lm > "$out/link.log" 2>&1 \
     || { cat "$out/link.log" >&2; exit 1; }
   "$NM" -C "$out/check.elf" > "$out/symbols.txt"
   if grep -E "$FORBIDDEN" "$out/symbols.txt" > "$out/forbidden.txt"; then

@@ -44,5 +44,8 @@ pub mod spec_prim;
 // The executable step (format 1) and the float helpers the core uses: no_std.
 pub mod exec_step;
 pub mod v2;
+// Install-time verification with progress reports (v2::cert::verify_shipped
+// plus a callback per method).
+pub mod progress;
 #[cfg(any(feature = "std", verus_keep_ghost))]
 pub mod interp;

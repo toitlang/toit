@@ -1,5 +1,154 @@
 # Phase 4a progress (verified core, format 2 on x86-64)
 
+## Device builds (branch device/esp32-build-fixes, 2026-11-11)
+
+Fixes for the findings of verified/XTENSA-RUST-FIXES.md. Nothing was
+flashed; Xtensa code ran only under Espressif's QEMU (esp_develop_9.2.2).
+Scripts, logs and data: /home/flo/work/opentoit-sandbox-artifacts/
+esp32-build/ (`scripts/`; QEMU runs in `fw-qemu/`).
+
+1. LTO for the device library (8cd79b8e). Cargo silently ignores `lto`
+   for a library with the crate types `staticlib` and `rlib`, which
+   verified/vmverify had: the firmware library was never LTO'd, on any
+   target. The VM's library is now its own package,
+   verified/vmverify/staticlib (`libtoit_rust.a`, crate type `staticlib`
+   only, no code; toit_vmverify is an rlib for its tools and tests), with
+   the device profile, and the glue (toit_vmverify) at opt-level z like
+   the verifier: with LTO the checker is inlined into the glue, which
+   would otherwise compile it for speed again (LTO alone: +0.2 % on
+   RISC-V, +1.5 % on Xtensa). Confirmed: rustc gets `-C lto`, the archive
+   has one object for all Rust code (plus `compiler_builtins`), whose
+   bitcode holds the spec's and the core's functions. Linked size at opt 3
+   (`device_size.sh`, which now also measures Xtensa: `DEVICE_SIZE_ARCH=
+   xtensa`, and the old layout: `DEVICE_SIZE_LTO=false`), bytes:
+
+   | Component | riscv32 before | riscv32 after | Xtensa before | Xtensa after |
+   |---|---|---|---|---|
+   | core: verified loop and cold paths | 28,314 | 27,754 | 37,182 | 35,457 |
+   | core: checked-loop remnant | 788 | 790 | 536 | 523 |
+   | core: primitives | 13,558 | 14,224 | 13,791 | 14,628 |
+   | verifier: checker | 17,674 | 10,762 | 17,866 | 10,759 |
+   | verifier: heap check | 2,228 | 266 | 2,336 | 281 |
+   | spec: other | 1,832 | 1,384 | 1,620 | 1,306 |
+   | glue (vmverify; with LTO the inlined checker) | 5,044 | 10,424 | 4,154 | 12,868 |
+   | other core/alloc, compiler builtins | 7,620 | 7,202 | 3,819 | 3,307 |
+   | Rust library total | 77,058 | 72,806 (-5.5 %) | 81,304 | 79,129 (-2.7 %) |
+
+   (Of the saving, LTO gives 3.1 / 2.0 KB and the glue at z 1.2 / 0.2 KB:
+   75,870 / 81,113 without LTO.) Firmware: the classic ESP32 with the core
+   links (toit.bin 1,557,040 B); host builds are unchanged (no LTO there):
+   x86-64 instructions in `toit_v2_run`, format 2, TOIT_VERIFY=1:
+   richards 1,154.15 M, deltablue 910.39 M, pystone 887.07 M (before
+   1,154.15 / 910.39 / 887.08 M). nopanic_check.sh (3, s, z),
+   nostd_check.sh and xtensa_codegen_check.sh (3 and z, with the #139
+   differential against the cached llc builds) pass.
+2. IRAM of the classic ESP32 (f145fb1f). `Interpreter::run` is
+   `IRAM_ATTR`, and the format-1 hardening and the checked dispatch table
+   grew it by 2.9 KB: iram0_0_seg overflowed by 2,720 bytes even without
+   the Rust library. The stack-overflow handling of the 28 call sites and
+   the preemption of the 4 back branches are now one shared slow path each
+   (they were copied into every site), the field-access checks of
+   untrusted processes, the accessor lookup of their virtual getter and
+   setter calls and the corrupt-stack message are out-of-line functions
+   (flash). `Interpreter::run` with its literals: 16,389 -> 12,510 bytes
+   on the ESP32 (master 13,507); iram0.text 129,087 B, 957 B free (was
+   2,720 over). ESP32-C6: iram0.text 161,694 -> 156,350 B,
+   `Interpreter::run` 19,104 -> 13,764 B. Format 1 on x86-64 (callgrind
+   in `Interpreter::run`): richards 1,023.6 -> 1,024.3 M (+0.07 %),
+   deltablue 650.3 -> 652.5 M (+0.35 %), pystone 761.7 -> 767.4 M
+   (+0.74 %): the hot handlers are unchanged in source; the difference is
+   GCC's layout and register allocation of the 12 KB function (two
+   variants with `cold` or with a separate accessor call site were 0.2-1.1
+   % worse; the per-handler profile shows one extra move or jump in
+   INVOKE_AT, LOAD_GLOBAL_VAR, LOAD_LOCAL); wall time, minimum of 7
+   interleaved runs: 10.87 / 6.67 / 7.30 -> 10.34 / 6.63 / 7.45 ms (noise).
+   Ported to the upstream stack: #3365 (sandbox-1, b0696608: the shared
+   slow paths; 14,590 -> 12,462 B, was 964 over) merged up through -2..-5
+   and -6 without rebasing, and #3370 (sandbox-5, 6dd13420: the
+   out-of-line field checks; 13,790 -> 12,394 B). The esp32 CI job passes
+   on #3365, #3366, #3370 and #3371 (cross fails as before:
+   `qemu-user-static` is not installable on the runner).
+3. Install-time verification time (8f5a418e, 4ea27a41). Instructions of
+   one install-time verification with the shipped certificate (conversion,
+   heap check, proven check; `scripts/verify-ir.sh`, x86-64 callgrind):
+   50-74 M for the 25-38 KB suite programs, 112 M for run-image (55 KB of
+   bytecodes), 132 M for toit.run (66 KB), plus 0.25-0.56 M for the C++
+   method table. On the Xtensa core (QEMU `-icount shift=0`, one
+   instruction per virtual ns): 251 M (fold, 25.7 KB), 289 M (format,
+   29.5 KB), 302 M (map, 30.9 KB), 505 M (deque, 32.7 KB), 582 M (list,
+   37.9 KB): 5-8 times the x86-64 count (the verifier and the glue are at
+   opt-level z on devices, every call is `l32r`+`callx8`). Estimate for
+   real hardware (flash-cached code, CPI 1.2-2): 30 KB programs 1.3-2.5 s
+   at 240 MHz and 2-6 s at 160 MHz; 65 KB programs (extrapolated
+   0.65-1.05 G instructions) 3-9 s at 240 MHz and 5-13 s at 160 MHz, so
+   the 10 s dead-lock check (`PROCESS_MAX_RUN_TIME_US`, scheduler.cc) can
+   trip on hardware too. Design: progress reports at method boundaries,
+   which keep the proof statement unchanged. `toit_spec::progress::
+   verify_shipped_progress` (verified/spec/src/progress.rs, verified by
+   Verus, same postcondition as `cert::verify_shipped`, whose body it
+   repeats) wraps the shipped-certificate oracle so that a `Progress`
+   callback runs before each method's maps are read; the VM passes a
+   callback in `toit_vmverify_input` (`progress`, `progress_context`) that
+   calls `Process::note_progress`, and the dead-lock check uses
+   `Process::stalled_us` (time since the slice started or the last
+   report, a 32-bit atomic). Trusted (TRUSTED.toml, three `unsafe`
+   entries): the callback only records a time and touches nothing the
+   verifier reads; CPU time and the run-time limits of policies still
+   count the whole run. Not chosen: verifying a bounded number of methods
+   per primitive call would split the proven loop of `check::verify`
+   (its invariant carries soundness) into a resumable state machine and
+   need a multi-call commit protocol in the container service; the
+   scheduler thread stays busy for the verification's duration (other
+   scheduler threads run; FreeRTOS preempts it as before). Tests: host,
+   install-verdict-test checks one report per method on the install path
+   (TOIT_VERIFY_TIME prints `progress N (to the scheduler)`); QEMU, with
+   `-icount shift=6` (64 ns per instruction, so fold's and list's
+   verifications take 16 and 37 s of virtual time) both install and exit
+   0; the same firmware with the report disabled (control build) stops
+   with "Potential dead-lock" in process 0 at primitive 27:3
+   (`image.writer-commit`) for both (`fw-qemu/wdprog.summary`,
+   `wdnoprog.summary`). The QEMU runs no longer need the 600 s limit of
+   the investigation.
+4. Install-time RAM (ac435fa3). Measured under QEMU (classic ESP32, no
+   PSRAM; temporary trace patch in the artifacts: free heap and largest
+   block before, the table's size, the Rust heap's high-water mark through
+   the device allocator), per install: the C++ method table 16-25 KB (20
+   bytes per method rounded up to pages; 28.7 KB for is-as-many-test), the
+   Rust peak 9-23 KB (conversion 3-5.5 KB, the rest the maps of the
+   largest method in the proven checker; 75 KB for is-as-many-test, whose
+   largest method is large), together 25-44 KB, against 47-63 KB free
+   (largest block 32-49 KB) when the installer runs: list, deque, format
+   (verifier OUT_OF_MEMORY) and is-as-many (table calloc) failed alone.
+   Most of the free heap's shortfall is Toit garbage: an allocation
+   failure of the table or the verifier now returns
+   `V2Verifier::OUT_OF_MEMORY`, both commit primitives fail once with
+   CROSS_PROCESS_GC, and the retry runs with 117 KB free (largest block
+   100 KB); a second failure is the error OUT_OF_MEMORY. Peak use is
+   unchanged; all twelve install and pass alone (was 8) and in one boot
+   (12/12 in the final run without the trace patch; 11/12 in a traced run,
+   where is-as-many-test, which needs 103 KB, met a fragmented heap). The cheapest reduction of the peak
+   itself needs the core: the 16-byte record of OBLIGATIONS.md D3 (-4 B
+   per method, also for every running format-2 program); the table stored
+   with the image in flash would remove it but needs a flash layout
+   change; the checker's maps of a large method are the spec's
+   (`ShippedOracle::decode`: 4 bytes per bytecode byte plus nodes).
+
+Gates (final code): verified/check.sh --tests passed (spec 903, core 830
+verified at both widths, audit passed, nopanic_check.sh, sandbox ctests
+123/123); ctest -j16 1196/1200 (version, reader not run;
+udp-reuse-port-test; tls-global-cert-simple-test timed out once and
+passes alone: network); 32-bit host tests/sandbox and layout 124/124;
+firmware links: classic ESP32 without and with the core (toit.bin
+1,462,336 / 1,557,040 B, 957 B of IRAM left), ESP32-C6 with the core
+(toit.bin 1,651,856 B); QEMU, classic ESP32, the twelve untrusted suite
+tests of the investigation: 12/12 in one boot and 12/12 alone (was 9 and
+8), with the stock 10 s dead-lock limit.
+
+Still needs hardware: install time of 30-65 KB programs at 160 and 240
+MHz (the estimate above), the free heap of a running system when the
+installer runs, the verified core's speed from flash, the IRAM fix's
+effect on format-1 speed (the shared slow paths are cold).
+
 ## Panic-free device library, primitive size (branch device/panic-free, 2026-11-11)
 
 Size and robustness work on the device-side Rust code (verified/vmverify/

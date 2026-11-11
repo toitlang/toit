@@ -1067,7 +1067,9 @@ void Scheduler::tick(Locker& locker, int64 now) {
 
     if (!PROCESS_MAX_RUN_TIME_ENFORCE && !any_profiling && !any_ready) continue;
 
-    if (PROCESS_MAX_RUN_TIME_ENFORCE && run_time_us > PROCESS_MAX_RUN_TIME_US) {
+    // A primitive that runs long but reports progress (Process::note_progress,
+    // install-time verification) is not a dead-lock.
+    if (PROCESS_MAX_RUN_TIME_ENFORCE && process->stalled_us(now) > PROCESS_MAX_RUN_TIME_US) {
       fprintf(stderr, "Potential deadlock detected:\n");
       fprintf(stderr, "  Process: %d\n", process->id());
       uint8* current_bcp = process->current_bcp();

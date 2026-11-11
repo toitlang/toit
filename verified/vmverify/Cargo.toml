@@ -13,9 +13,11 @@
 # The license can be found in the file `LICENSE` in the top level
 # directory of this repository.
 
-# The format-2 verifier as the VM runs it at untrusted launch, and the one
-# Rust static library the VM links (it contains the verified core too, so
-# that the binary has a single Rust runtime). See README.md.
+# The format-2 verifier as the VM runs it at untrusted launch, with its
+# tools and tests. The VM links it (and through it the verified core)
+# through staticlib/, the package of the one Rust static library
+# (libtoit_rust.a), whose profiles the VM's library is built with. See
+# README.md.
 
 [package]
 name = "toit_vmverify"
@@ -23,8 +25,9 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 
-[lib]
-crate-type = ["staticlib", "rlib"]
+# The library is an rlib only (the default crate type): Cargo ignores `lto`
+# for a library that is also an rlib, so the static library is a package of
+# its own (staticlib/Cargo.toml).
 
 [[bin]]
 name = "toit_vmverify_canonical"
@@ -48,7 +51,8 @@ default = ["std", "infer", "checked-loop"]
 std = ["toit_spec/std", "toit_verified_core/layout-tables"]
 # Devices: the global allocator and the panic handler the VM supplies
 # (src/device.rs: malloc/free, toit_vmverify_panic). Use without `std`, for
-# the static library linked into device firmware (profile `device`).
+# the static library linked into device firmware (staticlib/, profile
+# `device`).
 device-runtime = []
 # `infer`: without a shipped certificate, infer one (hosts). Without it
 # (devices) a program without a certificate is rejected and the inference
@@ -65,8 +69,9 @@ preempt-a-lot = ["toit_verified_core/preempt-a-lot"]
 toit_spec = { path = "../spec", default-features = false }
 toit_verified_core = { path = "../core", default-features = false }
 
-# This crate's profiles are the ones used when the VM's static library is
-# built (the core's own profiles only apply to its standalone builds).
+# The profiles of the tools and tests (`cargo test --release`). The VM's
+# library is built with those of staticlib/Cargo.toml (the same for hosts,
+# plus the device profile).
 # panic = "unwind" (the core alone uses "abort"): the verifier runs on
 # untrusted input inside the VM, and a panic of the (untrusted) inference
 # must reject the program, not abort the VM (ffi.rs, catch_unwind). The
@@ -78,23 +83,3 @@ panic = "unwind"
 panic = "unwind"
 opt-level = 3
 debug = "line-tables-only"
-
-# Devices (no_std, `--no-default-features --features device-runtime`):
-# no unwinding without std, so a panic aborts (src/device.rs). The opt-level
-# is the speed/size choice for the firmware (verified/core/PROGRESS.md,
-# "Phase 5": sizes at 3, "s" and "z"); override with
-# CARGO_PROFILE_DEVICE_OPT_LEVEL.
-[profile.device]
-inherits = "release"
-panic = "abort"
-opt-level = 3
-lto = true
-codegen-units = 1
-debug = false
-
-# The verifier (verified/spec: the checker of shipped certificates and the
-# heap check) runs once per install, not per instruction: optimized for size
-# whatever the core's opt-level (at opt 3: checker 26.4 -> 17.7 KB of text;
-# verified/vmverify/README.md, "Device size").
-[profile.device.package.toit_spec]
-opt-level = "z"

@@ -45,10 +45,10 @@ OBJDUMP="$GCC_BIN/xtensa-esp32-elf-objdump"
 LLVM_DIS="${LLVM_DIS:-$(command -v llvm-dis || true)}"
 mkdir -p "$OUT"
 start=$(date +%s)
-(cd "$VMVERIFY" && PATH="$GCC_BIN:$PATH" CARGO_PROFILE_DEVICE_OPT_LEVEL="$OPT" RUSTFLAGS="-C save-temps" \
+(cd "$VMVERIFY/staticlib" && PATH="$GCC_BIN:$PATH" CARGO_PROFILE_DEVICE_OPT_LEVEL="$OPT" RUSTFLAGS="-C save-temps" \
   cargo +esp build --quiet --profile device --no-default-features --features device-runtime \
     -Zbuild-std=core,alloc --target xtensa-esp32-none-elf --target-dir "$OUT/target")
-LIB="$OUT/target/xtensa-esp32-none-elf/device/libtoit_vmverify.a"
+LIB="$OUT/target/xtensa-esp32-none-elf/device/libtoit_rust.a"
 rm -rf "$OUT/obj" "$OUT/bc"
 mkdir -p "$OUT/obj" "$OUT/bc"
 (cd "$OUT/obj" && "$GCC_BIN/xtensa-esp32-elf-ar" x "$LIB")

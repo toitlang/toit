@@ -29,15 +29,26 @@ largest method plus small per-method tables, not by the program (see
 
 ## One Rust library
 
-The VM links one Rust static library: this crate (`toit_vmverify`,
-`crate-type = staticlib`). It depends on the core (`toit_verified_core`,
-as an rlib) and on the spec crate, so the core's C entry points
-(`toit_v2_run`, ...) and the verifier's are in the same archive with one
-copy of Rust's std. Two Rust staticlibs in one binary each bundle std and
-the Rust runtime symbols (duplicate definitions, two allocators, two
-panic runtimes); a combined crate avoids that and leaves the core's own
-crate untouched. verified/CMakeLists.txt builds this crate where it built
-the core before (the CMake target keeps its name, `toit_verified_core`).
+The VM links one Rust static library, `libtoit_rust.a`: the package in
+`staticlib/` (crate type `staticlib` only, no code of its own), which
+links this crate (`toit_vmverify`, an rlib). It depends on the core
+(`toit_verified_core`, as an rlib) and on the spec crate, so the core's C
+entry points (`toit_v2_run`, ...) and the verifier's are in the same
+archive with one copy of Rust's std. Two Rust staticlibs in one binary
+each bundle std and the Rust runtime symbols (duplicate definitions, two
+allocators, two panic runtimes); a combined crate avoids that and leaves
+the core's own crate untouched. verified/CMakeLists.txt builds
+`staticlib/` where it built the core before (the CMake target keeps its
+name, `toit_verified_core`), and so do the device scripts in `tests/`.
+
+The static library is a package of its own because Cargo silently drops
+`lto` for a library with the crate types `staticlib` and `rlib` (as this
+crate had, for its tools and tests): the device profile's fat LTO only
+applies to a staticlib-only crate. With it the archive holds one object
+for all Rust code (plus `compiler_builtins`, which is never LTO'd). The
+profiles that count for the VM are those of `staticlib/Cargo.toml`;
+cargo runs from that directory, so `.cargo/config.toml` here applies.
+Sizes: verified/core/PROGRESS.md, "Device builds".
 
 The profile is `panic = "unwind"` (the core alone uses `abort`): the
 inference runs on untrusted input, and a panic must reject the program,
@@ -420,6 +431,37 @@ install-time verification computes for the verifier and frees after it;
 it is now the largest item (OBLIGATIONS.md D3). The whole transient cost
 of installing a 30-65 KB program is thus about 30-53 KB, against 65-115
 KB with the inference.
+
+### Install time on devices (branch device/esp32-build-fixes)
+
+Install-time verification runs inside one primitive of the system
+process (`image.writer-commit`, `flash_registry.allocate`), which the
+scheduler cannot preempt, and on the classic ESP32 it takes seconds: 250-580
+M Xtensa instructions for 25-38 KB of bytecodes under QEMU `-icount`
+(verified/core/PROGRESS.md, "Device builds"; 5-8 times the x86-64
+count). Two consequences:
+
+- Progress. The checker reports before each method:
+  `toit_spec::progress::verify_shipped_progress` is `cert::verify_shipped`
+  with a `Progress` callback in the oracle, proven by Verus with the same
+  postcondition. The C entry point takes the callback in
+  `toit_vmverify_input` (`progress`, `progress_context`, null when unused);
+  the VM's (src/verifier_v2.cc `v2_progress`) counts the calls and calls
+  `Process::note_progress`, and the scheduler's dead-lock check
+  (`PROCESS_MAX_RUN_TIME_US`, 10 s on the ESP32) measures the time since
+  the last report (`Process::stalled_us`). Trusted: the callback runs
+  between methods and must not touch the program, its tables or the
+  certificate (it records a time; TRUSTED.toml). `TOIT_VERIFY_TIME=1`
+  prints `progress N (to the scheduler)`.
+- Memory. The method table (20 bytes per method) and the verifier's heap
+  (conversion, then the maps of the method being checked) need 25-44 KB
+  for the suite programs, against 47-63 KB free under QEMU without PSRAM,
+  most of the rest Toit garbage. An allocation failure of either is
+  `V2Verifier::OUT_OF_MEMORY`: the commit primitives fail once with
+  CROSS_PROCESS_GC, the interpreter collects every process and retries,
+  and a second failure is the error `OUT_OF_MEMORY`. (A third
+  MALLOC_FAILED in the system process would reboot the device, so there is
+  exactly one retry: `ObjectHeap::retrying_primitive`.)
 
 ## Fuzzing the entry point in-process
 

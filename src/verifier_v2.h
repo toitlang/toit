@@ -25,6 +25,7 @@
 
 namespace toit {
 
+class Process;
 class Program;
 class V2MethodTable;
 
@@ -64,8 +65,13 @@ class V2Verifier {
   // the error to fail with (VERIFICATION_FAILED, INVALID_SNAPSHOT or
   // FORMAT_2_REQUIRED). A format-1 program gets no verdict and is not an
   // error when -Xuntrusted_format1 allows it ([*no_verdict] is set).
+  // The verification runs inside one primitive of [process] (if not null)
+  // and reports its progress to the scheduler before each method
+  // (Process::note_progress), so a long verification is not taken for a
+  // dead-lock (verified/vmverify/README.md, "Install time").
   static const char* verify_installed(Program* program, word program_size, bool* no_verdict,
-                                      const uint8* certificate = null, word certificate_length = 0);
+                                      const uint8* certificate = null, word certificate_length = 0,
+                                      Process* process = null);
 
   // The install-time verdict for the program image at [memory] of
   // [program_size] bytes (written, its header not yet) with its shipped
@@ -74,9 +80,18 @@ class V2Verifier {
   // for an image flagged untrusted verifies the program (verify_installed)
   // and sets the bit if it is accepted. Returns null or the error to fail
   // the commit with. Called by the commit paths (image.writer-commit,
-  // flash_registry.allocate).
+  // flash_registry.allocate) in [process] (see verify_installed).
+  //
+  // An allocation failure of the method table or the verifier returns
+  // OUT_OF_MEMORY (the string "OUT_OF_MEMORY"): the commit primitives then
+  // fail once with CROSS_PROCESS_GC, so the interpreter collects every
+  // process's garbage (returning free heap pages to the system) and retries
+  // the primitive; a second failure is the error (verified/core/PROGRESS.md,
+  // "Device builds").
+  static const char* const OUT_OF_MEMORY;
   static const char* install_verdict(const void* memory, word program_size, uint8* metadata,
-                                     const uint8* certificate = null, word certificate_length = 0);
+                                     const uint8* certificate = null, word certificate_length = 0,
+                                     Process* process = null);
 
   // Marks [table], decoded from the bytes of an allocation with the
   // install-time verdict, as accepted with the untrusted rules (the verdict
@@ -114,6 +129,11 @@ struct toit_vmverify_input {
   uword trusted;
   const uint8* certificate;         // The shipped certificate, or null.
   uword certificate_length;
+  // Called with [progress_context] before each method of a shipped
+  // certificate is checked, or null. Must not touch the program, its tables
+  // or the certificate.
+  void (*progress)(void* context, uword method);
+  void* progress_context;
 };
 
 static const int TOIT_VMVERIFY_MESSAGE_SIZE = 200;
