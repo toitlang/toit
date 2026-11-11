@@ -186,6 +186,14 @@ PRIMITIVE(main_arguments) {
     decoder.remove_disposing_finalizers();
     FAIL(ALLOCATION_FAILED);
   }
+  if (decoder.malformed_input()) {
+    // Not produced by the encoder. Drop the arguments and free all of them
+    // (see task_receive_message).
+    decoder.remove_disposing_finalizers();
+    process->clear_main_arguments();
+    MessageDecoder::deallocate(arguments);
+    FAIL(INVALID_ARGUMENT);
+  }
 
   process->clear_main_arguments();
   free(arguments);
@@ -202,6 +210,14 @@ PRIMITIVE(spawn_arguments) {
   if (decoder.allocation_failed()) {
     decoder.remove_disposing_finalizers();
     FAIL(ALLOCATION_FAILED);
+  }
+  if (decoder.malformed_input()) {
+    // Not produced by the encoder. Drop the arguments and free all of them
+    // (see task_receive_message).
+    decoder.remove_disposing_finalizers();
+    process->clear_spawn_arguments();
+    MessageDecoder::deallocate(arguments);
+    FAIL(INVALID_ARGUMENT);
   }
 
   process->clear_spawn_arguments();
@@ -2226,6 +2242,14 @@ PRIMITIVE(task_receive_message) {
     if (decoder.allocation_failed()) {
       decoder.remove_disposing_finalizers();
       FAIL(ALLOCATION_FAILED);
+    }
+    if (decoder.malformed_input()) {
+      // Not produced by the encoder. Drop the message like a canceled one.
+      // The objects decoded so far give their out-of-line data back to the
+      // message, and deleting the message frees all of it.
+      decoder.remove_disposing_finalizers();
+      process->remove_first_message();
+      return process->null_object();
     }
     decoder.register_external_allocations();
     system_message->free_data_but_keep_externals();
