@@ -212,6 +212,11 @@ run-driver --error/any --exit/int --quotas/Map? --trusted/bool --busy-sibling-ms
   expect-not sibling-stopped
   expect-equals 43 (client.ping 42)
   client.close
+  // The system process still answers: discovery works.
+  client = SiblingClient
+  client.open --timeout=(Duration --s=5)
+  expect-equals 44 (client.ping 43)
+  client.close
   sibling.stop
   print "OK"
 
