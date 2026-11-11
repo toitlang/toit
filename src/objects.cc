@@ -288,8 +288,13 @@ void Stack::roots_do(Program* program, RootCallback* cb) {
     // Format 2: the frame and finally records at the bottom stay where they
     // are; the object stack moves down. The verified core needs room for a
     // frame and the reserve above the records (verified/core/src/layout.rs).
+    // A call needs that room above the caller's top, wherever in its frame
+    // the caller is: the top frame keeps room to reach its maximal height
+    // too. Without it a GC inside a primitive (whose frame holds only its
+    // arguments) shrinks the stack so that the caller's next call grows it
+    // again, an allocation of a new stack each time (bytes-allocated-test).
     word record_top = v2_record_top();
-    minimum_space += record_top + V2_FRAME_WORDS + V2_STACK_RESERVE;
+    minimum_space += record_top + V2_FRAME_WORDS + V2_STACK_RESERVE + program->global_max_stack_height();
     if (top > minimum_space && (Flags::shrink_stacks_a_lot || (cb->shrink_stacks() && top > length() >> 1))) {
       word reduction = top - minimum_space;
       if (Flags::shrink_stacks_a_lot || reduction >= 8) {
