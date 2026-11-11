@@ -141,7 +141,7 @@ impl Machine {
         let ghost g0 = m0.g@;
         let ghost m1 = *self;
         proof { m0.lemma_frame(p); }
-        let info = p.methods.at(t);
+        let info = p.method(t);
         let rr = self.ftop - FRAME_WORDS;
         self.mem.write(rr + FRAME_METHOD, t);
         self.top = new_top;
@@ -158,7 +158,7 @@ impl Machine {
         self.g = Ghost(g1);
         proof {
             let addr = m0.addr();
-            assert(ap.methods[t as int] == method_info(p.methods@[t as int], p.max_height));
+            assert(ap.methods[t as int] == method_info(p.minfo(t as int), p.max_height));
             assert(rr == FRAME_WORDS * (n - 1));
             assert(sp::top(g0) == g0.frames.last());
             // Frame records.
@@ -222,8 +222,8 @@ pub fn op_invoke_static_tail(m: &mut Machine, env: &Env, bci: usize, opcode: u8,
         lemma_shape(p, g);
     }
     let t = p.dispatch.at(d) as usize;
-    let info = p.methods.at(t);
-    proof { assert(ap.methods[t as int] == method_info(p.methods@[t as int], p.max_height)); }
+    let info = p.method(t);
+    proof { assert(ap.methods[t as int] == method_info(p.minfo(t as int), p.max_height)); }
     let arity = info.arity as usize;
     if info.recv_start != NO_VALUE {
         proof { m.lemma_at(p, arity - 1); }
@@ -305,8 +305,8 @@ pub fn op_invoke_lambda_tail(m: &mut Machine, env: &Env, bci: usize, opcode: u8)
         lemma_instr(ap, c0, p.trusted@, g);
         lemma_heap_good(p, g);
     }
-    let info0 = p.methods.at(m.method);
-    proof { assert(ap.methods[m.method as int] == method_info(p.methods@[m.method as int], p.max_height)); }
+    let info0 = p.method(m.method);
+    proof { assert(ap.methods[m.method as int] == method_info(p.minfo(m.method as int), p.max_height)); }
     let a = info0.arity as usize;
     proof {
         let k = cur_k(ap, c0, g);
@@ -342,9 +342,9 @@ pub fn op_invoke_lambda_tail(m: &mut Machine, env: &Env, bci: usize, opcode: u8)
         return m.v_raise_invalid(env);
     }
     let t = mid as usize;
-    let info = p.methods.at(t);
-    proof { assert(ap.methods[t as int] == method_info(p.methods@[t as int], p.max_height)); }
-    if info.kind != KIND_LAMBDA {
+    let info = p.method(t);
+    proof { assert(ap.methods[t as int] == method_info(p.minfo(t as int), p.max_height)); }
+    if !p.is_kind(t, KIND_LAMBDA) {
         proof {
             assert(sp::step(ap, g) == sp::raise(ap, g, sp::INVALID_PROGRAM));
             lemma_source_step(ap, g);
@@ -518,8 +518,8 @@ pub fn op_invoke_initializer_tail(m: &mut Machine, env: &Env, bci: usize, opcode
         return m.v_raise_invalid(env);
     }
     let t = mid as usize;
-    let info = p.methods.at(t);
-    proof { assert(ap.methods[t as int] == method_info(p.methods@[t as int], p.max_height)); }
+    let info = p.method(t);
+    proof { assert(ap.methods[t as int] == method_info(p.minfo(t as int), p.max_height)); }
     if info.kind != KIND_METHOD || info.arity != 0 {
         proof {
             assert(sp::step(ap, g) == sp::raise(ap, g, sp::INVALID_PROGRAM));

@@ -92,6 +92,13 @@ pub const ARRAY_ELEMENTS_WORD: usize = 2;
 /// words on 32-bit targets, aligned to a word only).
 pub const DOUBLE_VALUE_WORD: usize = 1;
 pub const LARGE_INTEGER_VALUE_WORD: usize = 1;
+/// The words of the 64-bit payload of a double or large integer, from
+/// `DOUBLE_VALUE_WORD` / `LARGE_INTEGER_VALUE_WORD`: one word, or two on
+/// 32-bit targets, little endian (the low half first: `view::value_word`).
+#[cfg(target_pointer_width = "64")]
+pub const VALUE_WORDS: usize = 1;
+#[cfg(target_pointer_width = "32")]
+pub const VALUE_WORDS: usize = 2;
 /// ByteArray: raw length (negative: external), inline content, external
 /// address and tag.
 pub const BYTE_ARRAY_LENGTH_WORD: usize = 1;
@@ -274,6 +281,19 @@ pub const KIND_FIELD_ACCESSOR: u8 = 1;
 pub const KIND_LAMBDA: u8 = 2;
 pub const KIND_BLOCK: u8 = 3;
 pub const NO_VALUE: u16 = 0xffff;
+
+// --- Method records and headers (format note 21; toit_spec::v2::vprog) ----
+pub const RECORD_ENTRY_SHIFT: u32 = toit_spec::v2::vprog::RECORD_ENTRY_SHIFT;
+pub const RECORD_ARITY_MASK: u32 = toit_spec::v2::vprog::RECORD_ARITY_MASK;
+pub const KIND_MASK: u8 = toit_spec::v2::vprog::KIND_MASK;
+pub const KIND_SINGLE: u8 = toit_spec::v2::vprog::KIND_SINGLE;
+pub const SELECTOR_BACK: usize = toit_spec::v2::vprog::SELECTOR_BACK;
+pub const RECV_START_BACK: usize = toit_spec::v2::vprog::RECV_START_BACK;
+pub const RECV_END_BACK: usize = toit_spec::v2::vprog::RECV_END_BACK;
+pub const ACCESSOR_AUX_BACK: usize = toit_spec::v2::vprog::ACCESSOR_AUX_BACK;
+pub const LAMBDA_AUX_BACK: usize = toit_spec::v2::vprog::LAMBDA_AUX_BACK;
+/// Format-2 bytecodes are shorter (entries have 24 bits; the loader checks).
+pub const MAX_BYTECODES: usize = 0x100_0000;
 
 // --- Block references -------------------------------------------------------
 /// A block reference `(frame, slot)` is the smi `frame << BLOCK_SLOT_BITS |

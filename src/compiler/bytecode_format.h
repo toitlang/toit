@@ -98,26 +98,25 @@ static const Opcode V2_LOOP_ARRAY = INTRINSIC_ARRAY_DO;
 static const Opcode V2_HASH_FIND = INTRINSIC_HASH_FIND;
 static const int V2_LOOP_STEP_LENGTH = 4;
 
-// Method header of format 2 (format note 15): two bytes, then unsigned
-// LEB128 numbers (7 bits per byte, low bits first, the top bit of a byte
-// set when another byte follows; at most 4 bytes, no redundant trailing
-// zero byte):
-//    u8    arity
-//    u8    flags: bits 0-1 kind (0 method, 1 field accessor, 2 lambda,
-//          3 block), bit 2 V2_HAS_SELECTOR, bit 3 V2_HAS_RECEIVER, bits
-//          4-7 zero
-//    leb   length of the body in bytes
-//    leb   selector offset (< 0xffff), if V2_HAS_SELECTOR
-//    leb   receiver class-id range start, if V2_HAS_RECEIVER
-//    leb   receiver class-id range size (>= 1, start + size <= 0xffff),
-//          if V2_HAS_RECEIVER
-//    leb   aux: captured count (lambda), field index (field accessor);
-//          only for these two kinds
-// The max height is not in the header: the program's global max stack
-// height bounds every method.
-static const int V2_HAS_SELECTOR = 1 << 2;
-static const int V2_HAS_RECEIVER = 1 << 3;
-static const int V2_MAX_LEB_BYTES = 4;
+// Method header of format 2 (format note 21): it ends at the method's
+// entry, every field at a fixed distance from it (u16 little endian), in
+// address order:
+//    method:    [recv_end, unless V2_KIND_SINGLE] recv_start selector kind
+//    accessor:  aux recv_end recv_start selector kind
+//    lambda:    aux kind
+//    block:     kind
+// The kind byte: bits 0-1 the kind (0 method, 1 field accessor, 2 lambda,
+// 3 block), bit 2 V2_KIND_SINGLE (a method whose receiver range is one
+// class, end = start + 1, or none), the other bits zero. The selector
+// offset and the receiver range start are 0xffff for none; aux is the
+// captured count of a lambda, the field index of an accessor. The arity
+// and the entry are the method's record in the method table (the
+// program's last literal, V2MethodTable in interpreter_v2.h); a body ends
+// at the next method's header. The max height is not in the header: the
+// program's global max stack height bounds every method.
+static const int V2_KIND_SINGLE = 1 << 2;
+// Entries have 24 bits.
+static const int V2_MAX_BYTECODES = 0x1000000;
 static const int V2_KIND_METHOD = 0;
 static const int V2_KIND_FIELD_ACCESSOR = 1;
 static const int V2_KIND_LAMBDA = 2;

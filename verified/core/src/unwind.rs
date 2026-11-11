@@ -827,9 +827,9 @@ pub fn prep_non_local_branch(m: &mut Machine, env: &Env, bci: usize, opcode: u8,
     let method = m.mem.read(f * FRAME_WORDS + FRAME_METHOD);
     proof {
         assert(sp::valid_method(ap, method as int));
-        assert(ap.methods[method as int] == method_info(p.methods@[method as int], p.max_height));
+        assert(ap.methods[method as int] == method_info(p.minfo(method as int), p.max_height));
     }
-    let info = p.methods.at(method);
+    let info = p.method(method);
     let target = info.entry as usize + off;
     let h = slot + 1 - hd;
     let ghost gu = Unwind::Branch(f, target, h);

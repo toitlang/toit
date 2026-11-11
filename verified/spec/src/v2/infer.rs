@@ -85,7 +85,7 @@ fn byte_at(p: &VProgram, i: usize) -> Option<usize> {
     p.bytecodes.get(i).map(|b| *b as usize)
 }
 
-fn method<'a>(p: &VProgram<'a>, m: usize) -> Option<&'a VMethod> {
+fn method(p: &VProgram, m: usize) -> Option<VMethod> {
     p.methods.get(m)
 }
 
@@ -353,7 +353,7 @@ type Error = (usize, String);
 /// problem. Calls `x_post` and `x_terminator_ok` only within their
 /// preconditions (the program is `wf_program2`, checked by the caller).
 fn analyze<F: Facts>(p: &VProgram, f: &mut F, m: usize, trusted: bool) -> Result<Maps, Error> {
-    let Some(info) = method(p, m).copied() else { return Err((0, "no such method".into())) };
+    let Some(info) = method(p, m) else { return Err((0, "no such method".into())) };
     let (entry, end) = (info.entry as usize, info.end());
     if !(entry < end && end <= p.bytecodes.len()) {
         return Err((0, "empty method body or body outside the bytecodes".into()));
@@ -697,11 +697,11 @@ pub fn infer_global(p: &VProgram, global_count: u64, prim_arity: Vec<Vec<u8>>, t
         errors.push((0, 0, String::from("malformed program tables (wf_program2)")));
         return Global { g, done: vec![false; n], seeds: Seeds::new(), errors, rounds: 0 };
     }
-    let mut by_sel: Vec<u32> = (0..n as u32).filter(|&m| p.methods[m as usize].selector != 0xffff).collect();
-    by_sel.sort_by_key(|&m| (p.methods[m as usize].selector, m));
+    let mut by_sel: Vec<u32> = (0..n as u32).filter(|&m| p.methods.at(m as usize).selector != 0xffff).collect();
+    by_sel.sort_by_key(|&m| (p.methods.at(m as usize).selector, m));
     let mut reps: Vec<(u32, u32)> = Vec::new();
     for &m in &by_sel {
-        let s = p.methods[m as usize].selector as u32;
+        let s = p.methods.at(m as usize).selector as u32;
         if reps.last().map(|r| r.0) != Some(s) { reps.push((s, m)); }
     }
     g.set_sels(&reps);
@@ -724,7 +724,7 @@ pub fn infer_global(p: &VProgram, global_count: u64, prim_arity: Vec<Vec<u8>>, t
             progress = false;
             for m in 0..n {
                 if done[m] { continue; }
-                if p.methods[m].kind == KIND_BLOCK {
+                if p.methods.at(m).kind == KIND_BLOCK {
                     let ready = match b.g.ctx(m) {
                         Some((outer, _, _)) => done.get(outer as usize).copied().unwrap_or(false),
                         None => false,
@@ -857,7 +857,7 @@ pub fn diagnose(p: &VProgram, global: &Global, m: usize, trusted: bool) -> (Opti
 pub fn verify_exec(e: &crate::types::ExecProgram, global_count: u64, trusted: bool) -> bool {
     let h = max_height_of(e);
     let Some(methods) = vmethods_of(e, h) else { return false };
-    let p = vprogram_of(e, &methods, h);
+    let p = vprogram_of(e, methods, h);
     let prim_arity: Vec<Vec<u8>> = crate::v2::prim_arity::PRIM_TABLE.iter()
         .map(|(_, prims)| prims.iter().map(|(_, a)| *a).collect()).collect();
     let global = infer_global(&p, global_count, prim_arity, trusted);

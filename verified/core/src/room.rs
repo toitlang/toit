@@ -104,7 +104,7 @@ pub proof fn lemma_room_top(p: &Program, m: Machine)
     let mi = cur_m(g);
     let k = cur_k(ap, p.cert@, g);
     assert(instr_ok(ap, p.cert@, mi, toit_spec::v2::sound_instr::cur_off(ap, g), k, p.trusted@));
-    assert(ap.methods[mi] == method_info(p.methods@[mi], p.max_height));
+    assert(ap.methods[mi] == method_info(p.minfo(mi), p.max_height));
     assert(g.frames[n] == g.frames.last());
 }
 
@@ -128,7 +128,7 @@ pub proof fn lemma_room_next(p: &Program, m: Machine, g1: State2)
     let mi = cur_m(g1);
     let k = cur_k(ap, p.cert@, g1);
     assert(instr_ok(ap, p.cert@, mi, toit_spec::v2::sound_instr::cur_off(ap, g1), k, p.trusted@));
-    assert(ap.methods[mi] == method_info(p.methods@[mi], p.max_height));
+    assert(ap.methods[mi] == method_info(p.minfo(mi), p.max_height));
     assert(g1.frames[n] == g1.frames.last());
 }
 
@@ -244,9 +244,9 @@ pub fn ensure_room_all(m: &mut Machine, env: &Env) -> (c: Ctl)
         }
         proof {
             assert(sp::valid_method(ap, g.frames[i as int].method as int));
-            assert(ap.methods[method as int] == method_info(p.methods@[method as int], p.max_height));
+            assert(ap.methods[method as int] == method_info(p.minfo(method as int), p.max_height));
         }
-        let a = p.methods.at(method).arity as usize;
+        let a = p.method(method).arity as usize;
         let v = base + a + ri + FRAME_WORDS;
         if v > need {
             need = v;

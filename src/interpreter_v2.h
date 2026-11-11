@@ -34,13 +34,14 @@ namespace toit {
 class Program;
 class Process;
 
-// One entry of the method table: method `i` is the `i`-th method in the
-// bytecodes. Must match `V2Method` in verified/core/src/ffi.rs (checked by
-// verified/layout_check.cc). 16 bytes: the VM holds the table of every
-// running format-2 program in RAM (verified/core/OBLIGATIONS.md, D3).
+// A decoded entry of the method table: method `i` is the `i`-th method in
+// the bytecodes. The table itself is a 4-byte record per method (format
+// note 21, V2MethodTable): the entry and the arity; the rest is read from
+// the method header, which ends at the entry. This struct is only a value:
+// the core decodes the same way (`VMethod`, verified/spec/src/v2/vprog.rs).
 struct V2Method {
   uint32 entry;       // Absolute bci of the first instruction.
-  uint16 length;      // Length of the body: it ends at entry + length.
+  uint32 end_;        // The body ends here: the next method's header.
   uint16 selector;    // Selector offset, 0xffff for none.
   uint16 aux;         // Captured count (lambda) or field index (accessor).
   uint16 recv_start;  // Receiver class-id range, 0xffff for none.
@@ -48,16 +49,31 @@ struct V2Method {
   uint8 arity;
   uint8 kind;         // 0 method, 1 field accessor, 2 lambda, 3 block.
 
-  word end() const { return static_cast<word>(entry) + length; }
+  word end() const { return static_cast<word>(end_); }
 };
-
-static_assert(sizeof(V2Method) == 16, "V2Method is 16 bytes");
 
 static const int V2_KIND_METHOD = 0;
 static const int V2_KIND_FIELD_ACCESSOR = 1;
 static const int V2_KIND_LAMBDA = 2;
 static const int V2_KIND_BLOCK = 3;
 static const int V2_NO_VALUE = 0xffff;
+// A method record (format note 21): the entry in the high 24 bits, the
+// arity in the low 8.
+static const int V2_RECORD_ENTRY_SHIFT = 8;
+static const uint32 V2_RECORD_ARITY_MASK = 0xff;
+// The kind byte of a method header, the byte before the entry: the kind
+// and, for a method, that its receiver range is one class or none.
+static const int V2_KIND_MASK = 0x3;
+static const int V2_KIND_SINGLE = 1 << 2;
+// How far before the entry the fields of a header start (u16, little
+// endian; format note 21).
+static const int V2_SELECTOR_BACK = 3;
+static const int V2_RECV_START_BACK = 5;
+static const int V2_RECV_END_BACK = 7;
+static const int V2_ACCESSOR_AUX_BACK = 9;
+static const int V2_LAMBDA_AUX_BACK = 3;
+// Format-2 bytecodes are shorter than this (entries have 24 bits).
+static const int V2_MAX_BYTECODES = 0x1000000;
 static const int V2_OPCODE_COUNT = 114;
 static const int V2_PRIMITIVE_LENGTH = 4;
 // Literals 0..7: true, false and the five failure values (format note 5).
@@ -84,38 +100,60 @@ static const uint8 V2_OPCODE_LENGTHS[V2_OPCODE_COUNT] = {
   2, 3, 2, 2, 2, 3, 2, 3, 3, 2,              // 104..113: the unchecked twins of the field accesses (note 20)
 };
 
-// The decoded method table of a format-2 program, owned by its process
-// group. Decoding is the trusted loader of format note 15 (the reference
-// is method_table_v2 in verified/spec/src/interp/loader.rs). It checks
-// only what is needed to build the table; the structural verifier
+// The method table of a format-2 program, owned by its process group
+// (format note 21): one 4-byte record per method, the entry in the high 24
+// bits and the arity in the low 8, in the program's table literal. The
+// rest of a method's description (kind, selector, receiver range, aux) is
+// its header, which ends at the entry, every field at a fixed distance
+// from it (u16 little endian; 0xffff for no selector or no receiver):
+//   method:    [recv_end, unless SINGLE] recv_start selector kind-byte
+//   accessor:  aux recv_end recv_start selector kind-byte
+//   lambda:    aux kind-byte
+//   block:     kind-byte
+// A body ends at the next method's header (the last one at the end of the
+// bytecodes). The decoding is the spec's (`vdecode`,
+// verified/spec/src/v2/vprog.rs), which the core and the verifier use on
+// the same records and headers. The loader (compute) checks that every
+// header lies inside the bytecodes before its entry (`table_ok`, which
+// the core assumes), that the methods follow each other from the tag on,
+// and the canonical form of the headers; the structural verifier
 // (verifier_v2.h) checks the program, on this table, before an untrusted
 // program runs.
 class V2MethodTable {
  public:
   ~V2MethodTable();
 
-  // Decodes the method table. Returns null (and prints the reason to
-  // stderr) if the headers are malformed or the allocation fails; sets
-  // [*out_of_memory] (if given) in the latter case.
+  // The method table of [program], from its table literal. Returns null
+  // (and prints the reason to stderr) if the literal is missing or
+  // malformed or the allocation fails; sets [*out_of_memory] (if given)
+  // in the latter case.
   static V2MethodTable* compute(Program* program, bool* out_of_memory = null);
 
-  // The method table literal (the compiler's -Xv2_table_literal, on by
-  // default): the compiler appends the table as the program's last
-  // literal, a byte array
-  //   u32 marker "TMT1"   u32 count   u32 bytecodes length   u32 0
-  //   count records of V2Method (16 bytes each, little endian)
+  // The method table literal: the compiler appends the table as the
+  // program's last literal, a byte array
+  //   u32 marker "TMT2"   u32 count   u32 bytecodes length   u32 0
+  //   count u32 records (little endian)
   // so that a program in flash (an image on a device) needs no table in
-  // RAM: compute() uses the literal in place after checking that it is
-  // exactly the table it would build (the same decoding, record by
-  // record), and builds one otherwise. The literal is an ordinary byte
-  // array to everything else (no bytecode refers to it).
-  static const uint32 TABLE_LITERAL_MARKER = 0x31544d54;  // "TMT1".
+  // RAM. The literal is an ordinary byte array to everything else (no
+  // bytecode refers to it). There is no table without it: the headers do
+  // not say where a body ends.
+  static const uint32 TABLE_LITERAL_MARKER = 0x32544d54;  // "TMT2".
   static const int TABLE_LITERAL_HEADER_SIZE = 16;
 
-  // Encodes the method table of [program] (whose bytecodes are set) as
-  // the literal's bytes. Returns null if the headers are malformed or the
-  // allocation fails; the caller owns the malloc'ed result.
-  static uint8* encode_table_literal(Program* program, word* length);
+  // The literal's bytes for [count] records and bytecodes of the given
+  // length. Returns null if the allocation fails; the caller owns the
+  // malloc'ed result.
+  static uint8* encode_table_literal(const uint32* records, word count, word bytecodes_length, word* length);
+
+  // The number of header bytes the kind byte announces (itself included).
+  static int header_size(int kind_byte) {
+    switch (kind_byte & V2_KIND_MASK) {
+      case V2_KIND_BLOCK: return 1;
+      case V2_KIND_LAMBDA: return 3;
+      case V2_KIND_FIELD_ACCESSOR: return 9;
+      default: return (kind_byte & V2_KIND_SINGLE) != 0 ? 5 : 7;
+    }
+  }
 
   // Whether the table uses the program's table literal (no RAM copy).
   bool in_literal() const { return !owned_; }
@@ -125,7 +163,7 @@ class V2MethodTable {
   // default untrusted containers must be in format 2.
   static bool untrusted_format1_allowed();
 
-  const V2Method* methods() const { return methods_; }
+  const uint32* records() const { return records_; }
   word length() const { return length_; }
 
   // The method index of the given entry point, or -1.
@@ -133,14 +171,22 @@ class V2MethodTable {
 
   bool is_valid(word index) const { return 0 <= index && index < length_; }
 
+  // The absolute bci of the entry of a valid method.
+  word entry_of(word index) const { return records_[index] >> V2_RECORD_ENTRY_SHIFT; }
+
   // The absolute bci of the header of a valid method (methods follow each
   // other, the first one after the tag). Format-2 method ids in the debug
   // information (tools/snapshot.toit) are header positions.
-  word header_of(word index) const { return index == 0 ? 4 : methods_[index - 1].end(); }
+  word header_of(word index) const {
+    word entry = entry_of(index);
+    return entry - header_size(bytecodes_[entry - 1]);
+  }
 
   // The index of the method whose body starts at [entry], or -1.
   word index_of_entry(word entry) const;
-  const V2Method& at(word index) const { return methods_[index]; }
+
+  // The decoded method (format note 21).
+  V2Method at(word index) const;
 
   // The launch-time verifier (V2Verifier::verify, verified/vmverify)
   // accepted the program on exactly this table: 0 not verified, 1 under
@@ -188,14 +234,16 @@ class V2MethodTable {
   }
 
  private:
-  V2MethodTable(const V2Method* methods, word length, bool owned)
-      : methods_(methods), length_(length), owned_(owned) {}
+  V2MethodTable(const uint32* records, word length, const uint8* bytecodes, word bytecodes_length, bool owned)
+      : records_(records), length_(length), bytecodes_(bytecodes), bytecodes_length_(bytecodes_length),
+        owned_(owned) {}
 
-  static V2MethodTable* from_literal(Program* program);
-
-  const V2Method* const methods_;
+  const uint32* const records_;
   const word length_;
-  // Whether methods_ is malloc'ed (else it is the program's table literal).
+  const uint8* const bytecodes_;
+  const word bytecodes_length_;
+  // Whether records_ is malloc'ed (a copy of a misaligned literal; else it
+  // is the program's table literal).
   const bool owned_;
   uword verified_ = 0;
 };
@@ -209,7 +257,7 @@ extern "C" {
 struct toit_v2_program {
   const uint8* bytecodes;
   uword bytecodes_length;
-  const toit::V2Method* methods;
+  const uint32* methods;            // The method records (format note 21).
   uword methods_length;
   const int32* dispatch;
   uword dispatch_length;

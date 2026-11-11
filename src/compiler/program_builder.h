@@ -164,6 +164,8 @@ class ProgramBuilder {
   // each method in all_bytecodes_, by method id.
   std::vector<int> v2_method_offsets_;
   std::vector<int> v2_method_entries_;
+  // Format 2: the method table's records (entry and arity, format note 21).
+  std::vector<uint32> v2_method_records_;
 
   // The biggest max stack-height of all functions.
   int global_max_stack_height_ = 0;

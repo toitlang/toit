@@ -309,7 +309,9 @@ pub open spec fn prog_rel(p: &crate::exec::Program, objs: Seq<HeapObj>, addr: Se
     &&& p.unchecked == ap.unchecked
     &&& p.methods@.len() == ap.methods.len()
     &&& forall|i: int| 0 <= i < ap.methods.len() ==>
-            #[trigger] ap.methods[i] == method_info(p.methods@[i], p.max_height)
+            #[trigger] ap.methods[i] == method_info(p.minfo(i), p.max_height)
+    // The method headers lie inside the bytecodes (format note 21).
+    &&& toit_spec::v2::vprog::table_ok(p.code@, p.methods@)
     &&& p.max_height < 0x1_0000
     &&& p.dispatch@ == ap.dispatch
     &&& p.class_bits@ == ap.class_bits

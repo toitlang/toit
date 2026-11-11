@@ -543,7 +543,7 @@ impl Machine {
     #[inline(never)]
     fn raise_code_cold(&mut self, env: &Env, is_block: bool, expected: usize, provided: usize, target: usize) -> Ctl {
         let p = &env.p;
-        let entry = if target < p.methods.len() { p.methods.at(target).entry as i64 } else { -1 };
+        let entry = if target < p.methods.len() { p.method(target).entry as i64 } else { -1 };
         let words = [p.boolean(is_block), smi(expected as i64), smi(provided as i64), smi(entry)];
         self.raise_msg(env, CODE_INVOCATION_FAILED, Msg::array(&words))
     }
@@ -749,7 +749,7 @@ impl Machine {
     pub fn call(&mut self, env: &Env, target: usize, ret: usize) -> Ctl {
         let p = &env.p;
         if target >= p.methods.len() { return Ctl::Stuck(stuck::NOT_METHOD); }
-        let info = p.methods.at(target);
+        let info = p.method(target);
         let arity = info.arity as usize;
         if arity > self.lim - self.top { return Ctl::Stuck(stuck::STACK_RANGE); }
         if self.rtop + FRAME_WORDS > self.top { return Ctl::Stuck(stuck::LIMIT); }
@@ -790,7 +790,7 @@ impl Machine {
     pub fn call_static(&mut self, env: &Env, target: i64, len: usize) -> Ctl {
         let p = &env.p;
         if target < 0 || target as usize >= p.methods.len() { return Ctl::Stuck(stuck::NOT_METHOD); }
-        let info = p.methods.at(target as usize);
+        let info = p.method(target as usize);
         let arity = info.arity as usize;
         if arity > self.lim - self.top { return Ctl::Stuck(stuck::STACK_RANGE); }
         if info.recv_start != NO_VALUE {
@@ -825,7 +825,7 @@ impl Machine {
         if new_top < self.rtop { return Ctl::Stuck(stuck::LIMIT); }
         self.mem.copy_within(from, new_top + extra, n);
         self.top = new_top;
-        let info = p.methods.at(target);
+        let info = p.method(target);
         self.mem.write(r + FRAME_METHOD, target);
         self.method = target;
         self.bci = info.entry as usize;
@@ -845,7 +845,7 @@ impl Machine {
         let entry = p.dispatch.at(index as usize);
         if entry == -1 { return Lookup::Missing; }
         if entry < 0 || entry as usize >= p.methods.len() { return Lookup::Stuck(stuck::NOT_METHOD); }
-        if p.methods.at(entry as usize).selector as i64 != sel { return Lookup::Missing; }
+        if p.method(entry as usize).selector as i64 != sel { return Lookup::Missing; }
         Lookup::Found(entry as usize)
     }
 
@@ -858,7 +858,7 @@ impl Machine {
             Lookup::Stuck(r) => Ctl::Stuck(r),
             Lookup::Missing => self.raise_lookup(env, receiver, sel),
             Lookup::Found(t) => {
-                if env.p.methods.at(t).arity as usize != n { return Ctl::Stuck(stuck::BAD_ARITY); }
+                if env.p.method(t).arity as usize != n { return Ctl::Stuck(stuck::BAD_ARITY); }
                 let ret = self.bci + len;
                 self.call(env, t, ret)
             }
@@ -1288,7 +1288,7 @@ impl Machine {
         if !is_smi(v) { return None; }
         let m = smi_value(v);
         if m < 0 || m as usize >= p.methods.len() { return None; }
-        if p.methods.at(m as usize).kind != KIND_BLOCK { return None; }
+        if p.method(m as usize).kind != KIND_BLOCK { return None; }
         Some(m as usize)
     }
 }
@@ -1664,7 +1664,7 @@ impl Machine {
         let p = &env.p;
         let t = p.dispatch_target(d);
         if t < 0 || t as usize >= p.methods.len() { return Ctl::Stuck(stuck::NOT_METHOD); }
-        let info = p.methods.at(t as usize);
+        let info = p.method(t as usize);
         let arity = info.arity as usize;
         if arity > self.lim - self.top { return Ctl::Stuck(stuck::STACK_RANGE); }
         if info.recv_start != NO_VALUE {
@@ -1694,7 +1694,7 @@ impl Machine {
         match self.block_target(p, slot) {
             None => self.raise(env, INVALID_PROGRAM),
             Some(t) => {
-                let arity = p.methods.at(t).arity as usize;
+                let arity = p.method(t).arity as usize;
                 if n < arity { return self.raise_code(env, true, arity, n, t); }
                 self.drop(n - arity);
                 let ret = self.bci + 2;
@@ -1713,7 +1713,7 @@ impl Machine {
     fn op_invoke_lambda_tail_cold(&mut self, env: &Env) -> Ctl {
         let p = &env.p;
         if self.ftop < FRAME_WORDS { return Ctl::Stuck(stuck::BAD_FRAME); }
-        let a = p.methods.at(self.method).arity as usize;
+        let a = p.method(self.method).arity as usize;
         if a < 1 || self.lim - self.top != a { return Ctl::Stuck(stuck::STACK_RANGE); }
         let recv = self.slot(self.base);
         match self.instance_fields(p, recv) {
@@ -1725,7 +1725,7 @@ impl Machine {
         let m = smi_value(mid);
         if m < 0 || m as usize >= p.methods.len() { return self.raise(env, INVALID_PROGRAM); }
         let m = m as usize;
-        let info = p.methods.at(m);
+        let info = p.method(m);
         if info.kind != KIND_LAMBDA { return self.raise(env, INVALID_PROGRAM); }
         let c = info.aux as usize;
         let argument = self.field(recv, 1);
@@ -1773,7 +1773,7 @@ impl Machine {
         if !is_smi(v) { return self.raise(env, INVALID_PROGRAM); }
         let m = smi_value(v);
         if m < 0 || m as usize >= p.methods.len() { return self.raise(env, INVALID_PROGRAM); }
-        let info = p.methods.at(m as usize);
+        let info = p.method(m as usize);
         if info.kind != KIND_METHOD || info.arity != 0 { return self.raise(env, INVALID_PROGRAM); }
         let from = self.top;
         self.replace_frame(env, m as usize, from, 0, 0)
@@ -1788,7 +1788,7 @@ impl Machine {
             Lookup::Stuck(r) => Ctl::Stuck(r),
             Lookup::Missing => self.raise_lookup(env, recv, sel),
             Lookup::Found(t) => {
-                let info = p.methods.at(t);
+                let info = p.method(t);
                 if info.arity != 1 { return Ctl::Stuck(stuck::BAD_ARITY); }
                 let f = info.aux as usize;
                 if info.kind == KIND_FIELD_ACCESSOR && self.field_ok(p, recv, f) {
@@ -1814,7 +1814,7 @@ impl Machine {
             Lookup::Stuck(r) => Ctl::Stuck(r),
             Lookup::Missing => self.raise_lookup(env, recv, sel),
             Lookup::Found(t) => {
-                let info = p.methods.at(t);
+                let info = p.method(t);
                 if info.arity != 2 { return Ctl::Stuck(stuck::BAD_ARITY); }
                 let f = info.aux as usize;
                 if info.kind == KIND_FIELD_ACCESSOR && self.field_store_ok(p, recv, f) && !self.is_ro(p, recv) {
@@ -2003,7 +2003,7 @@ impl Machine {
     fn op_primitive_cold(&mut self, env: &Env) -> Ctl {
         let p = &env.p;
         let bci = self.bci;
-        let arity = p.methods.at(self.method).arity as usize;
+        let arity = p.method(self.method).arity as usize;
         if self.lim - self.top != arity { return Ctl::Stuck(stuck::STACK_RANGE); }
         let module = p.code.at(bci + 1) as usize;
         let index = Self::u16_at(p, bci + 2);
@@ -2043,7 +2043,7 @@ impl Machine {
         match self.block_target(p, slot) {
             None => self.raise(env, INVALID_PROGRAM),
             Some(t) => {
-                let arity = p.methods.at(t).arity as usize;
+                let arity = p.method(t).arity as usize;
                 if arity != 1 { return self.raise_code(env, true, arity, 1, t); }
                 if !self.push(Self::block_value(fi, slot)) { return Ctl::Stuck(stuck::LIMIT); }
                 let ret = self.bci + 1;
@@ -2160,7 +2160,7 @@ impl Machine {
         if slot + 1 < hd || slot + 1 - hd < fbase { return Ctl::Stuck(stuck::STACK_RANGE); }
         let m = self.mem.read(f * FRAME_WORDS + FRAME_METHOD);
         if m >= p.methods.len() { return Ctl::Stuck(stuck::BAD_BRANCH); }
-        let info = p.methods.at(m);
+        let info = p.method(m);
         let target = info.entry as usize + off;
         if !(target < info.end()) { return Ctl::Stuck(stuck::BAD_BRANCH); }
         self.unwind(env, Unwinding::Branch(f, target, slot + 1 - hd))
@@ -2430,7 +2430,7 @@ impl Machine {
     #[inline(always)]
     fn instruction_in_method(&self, p: &Program, bci: usize) -> bool {
         if self.method >= p.methods.len() { return false; }
-        let end = p.methods.at(self.method).end();
+        let end = p.method(self.method).end();
         if bci >= end || end > p.code.len() { return false; }
         let opcode = p.code.at(bci);
         if opcode as usize >= OPCODE_LENGTHS.len() { return false; }
@@ -2569,7 +2569,7 @@ impl Machine {
         if d > bci { return Ctl::Stuck(stuck::BAD_BRANCH); }
         let target = bci - d;
         if self.method >= p.methods.len() { return Ctl::Stuck(stuck::BAD_BRANCH); }
-        let m = p.methods.at(self.method);
+        let m = p.method(self.method);
         if !((m.entry as usize) <= target && target < m.end()) {
             return Ctl::Stuck(stuck::BAD_BRANCH);
         }
@@ -2649,7 +2649,7 @@ impl Machine {
             Err(code) => {
                 let target = bci + Self::u16_at(p, bci + 1);
                 if self.method >= p.methods.len() { return Ctl::Stuck(stuck::BAD_BRANCH); }
-                let mt = p.methods.at(self.method);
+                let mt = p.method(self.method);
                 if !((mt.entry as usize) <= target && target < mt.end()) {
                     return Ctl::Stuck(stuck::BAD_BRANCH);
                 }
@@ -2677,7 +2677,7 @@ impl Machine {
         if d > bci { return Ctl::Stuck(stuck::BAD_BRANCH); }
         let target = bci - d;
         if self.method >= p.methods.len() { return Ctl::Stuck(stuck::BAD_BRANCH); }
-        let m = p.methods.at(self.method);
+        let m = p.method(self.method);
         if !((m.entry as usize) <= target && target < m.end()) {
             return Ctl::Stuck(stuck::BAD_BRANCH);
         }
@@ -2709,7 +2709,7 @@ impl Machine {
             }
         }
         if self.method >= p.methods.len() { return Ctl::Stuck(stuck::BAD_BRANCH); }
-        let m = p.methods.at(self.method);
+        let m = p.method(self.method);
         if !((m.entry as usize) <= target && target < m.end()) {
             return Ctl::Stuck(stuck::BAD_BRANCH);
         }
