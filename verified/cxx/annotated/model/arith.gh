@@ -1,0 +1,62 @@
+// Copyright (C) 2026 Toit contributors.
+//
+// Arithmetic facts about C's shift operators that VeriFast's library
+// (bitops.gh) states only as bit strings. Proved here.
+
+#ifndef TOIT_ARITH_GH
+#define TOIT_ARITH_GH
+
+#include <bitops.gh>
+
+lemma void pow2_pos(nat n)
+  requires true;
+  ensures 0 < pow_nat(2, n);
+{
+  switch (n) {
+    case zero:
+    case succ(n0): pow2_pos(n0);
+  }
+}
+
+lemma void Z_shiftright_div(Z z, nat n)
+  requires 0 <= int_of_Z(z);
+  ensures int_of_Z(Z_shiftright(z, n)) == int_of_Z(z) / pow_nat(2, n);
+{
+  switch (n) {
+    case zero:
+      div_rem_nonneg_unique(int_of_Z(z), 1, int_of_Z(z), 0);
+    case succ(n0):
+      pow2_pos(n0);
+      switch (z) {
+        case Zsign(b):
+          div_rem_nonneg_unique(0, pow_nat(2, n), 0, 0);
+        case Zdigit(z0, b0):
+          int a = int_of_Z(z0);
+          Z_shiftright_div(z0, n0);
+          int p = pow_nat(2, n0);
+          div_rem_nonneg(a, p);
+          int q = a / p;
+          int r = a % p;
+          div_rem_nonneg_unique(2 * a + (b0 ? 1 : 0), 2 * p, q, 2 * r + (b0 ? 1 : 0));
+      }
+  }
+}
+
+// C11 6.5.7p5 for a nonnegative left operand.
+lemma void shiftright_div(int x, nat n)
+  requires 0 <= x &*& x <= UINTPTR_MAX;
+  ensures x >> int_of_nat(n) == x / pow_nat(2, n);
+{
+  Z z = int_of_Z_of_uintN(x, N64);
+  shiftright_def(x, z, n);
+  Z_shiftright_div(z, n);
+}
+
+lemma void shiftright_1(int x)
+  requires 0 <= x &*& x <= UINTPTR_MAX;
+  ensures (x >> 1) == x / 2;
+{
+  shiftright_div(x, N1);
+}
+
+#endif
