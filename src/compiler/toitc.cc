@@ -91,7 +91,10 @@ static void add_certificate(const char* path) {
   fflush(stderr);
   pid_t pid = fork();
   if (pid == 0) {
-    const char* args[] = { toit_run, "--certify", path, null };
+    // The trusted rules (HALT 2 and 3 allowed) give the same certificate
+    // for programs without them, and one for the system programs; the
+    // device checks it with the rules of the program's policy.
+    const char* args[] = { toit_run, "--certify", "--trusted", path, null };
     execv(toit_run, const_cast<char* const*>(args));
     _exit(127);
   }

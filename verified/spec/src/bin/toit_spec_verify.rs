@@ -97,11 +97,25 @@ fn main() {
     let prim_arity: Vec<Vec<u8>> = toit_spec::v2::prim_arity::PRIM_TABLE.iter()
         .map(|(_, prims)| prims.iter().map(|(_, a)| *a).collect()).collect();
     let t1 = Instant::now();
-    let global = infer::infer_global(p, loaded.globals.len() as u64, prim_arity, trusted);
+    let global = infer::infer_global(p, loaded.globals.len() as u64, prim_arity.clone(), trusted);
     let t_infer = t1.elapsed();
     let t2 = Instant::now();
     let (ok, at) = infer::check(p, &global, trusted);
     let t_check = t2.elapsed();
+    // The shipped certificate (format/18-shipped-certificate.md): the
+    // inference's certificate as the toolchain ships it, checked alone by
+    // the proven checker of shipped certificates, as a device checks it.
+    let t3 = Instant::now();
+    let shipped = toit_spec::v2::encode::encode(p, &global, trusted).map(|(bytes, sizes)| {
+        let (ok, at) = toit_spec::v2::cert::verify_shipped(p, &bytes, loaded.globals.len() as u64, &prim_arity, trusted);
+        (ok, at, sizes)
+    });
+    let t_shipped = t3.elapsed();
+    match &shipped {
+        Err(e) if ok => reasons.push(format!("no shipped certificate: {}", e)),
+        Ok((false, at, _)) if ok => reasons.push(format!("the shipped certificate is rejected (method {})", at)),
+        _ => {}
+    }
     for (m, off, msg) in global.errors.iter().take(20) {
         let name = p.methods.get(*m).and_then(|i| loaded.names.method_at(i.entry as usize))
             .map(|(_, _, n)| n.to_string()).unwrap_or_default();
@@ -154,6 +168,10 @@ fn main() {
         println!("time: load {:.1} ms, infer {:.1} ms ({} rounds), check {:.1} ms, verify total {:.1} ms",
             t_load.as_secs_f64() * 1e3, t_infer.as_secs_f64() * 1e3, global.rounds,
             t_check.as_secs_f64() * 1e3, (t_infer + t_check).as_secs_f64() * 1e3);
+        if let Ok((_, _, sizes)) = &shipped {
+            println!("shipped: certificate {} bytes (maps {} bytes, {} shipped maps, {} recomputed), check {:.1} ms",
+                sizes.total, sizes.maps, sizes.shipped_maps, sizes.implicit_maps, t_shipped.as_secs_f64() * 1e3);
+        }
     }
     std::process::exit(if accepted { 0 } else { 1 });
 }
