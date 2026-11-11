@@ -279,7 +279,7 @@ impl Machine {
     #[inline(always)]
     pub fn class_of(&self, p: &Program, w: usize, Ghost(v): Ghost<Value>) -> (r: i64)
         requires
-            self.refines(p),
+            self.hrefines(p),
             w == enc(self.addr(), v),
             encodable(self.addr(), v),
             v is Smi || v is Obj,
@@ -304,7 +304,7 @@ impl Machine {
     #[inline(always)]
     pub fn lookup(&self, p: &Program, w: usize, Ghost(v): Ghost<Value>, sel: i64) -> (r: VLookup)
         requires
-            self.refines(p),
+            self.hrefines(p),
             w == enc(self.addr(), v),
             encodable(self.addr(), v),
             -0x8000_0000 <= sel < 0x8000_0000,

@@ -987,10 +987,19 @@ pub struct Preemption {
 }
 
 impl Preemption {
+    /// The watermark word: `PREEMPTION_MARKER` (all ones) when preemption is
+    /// requested; any other value otherwise (null while the core runs; the
+    /// call's room check is `free < (word | needed)`, which a request makes
+    /// fail and any other value leaves at `free < needed` or stricter).
     #[verifier::external_body]
     #[inline(always)]
+    pub fn word(&self) -> usize {
+        unsafe { (*self.watermark).load(Ordering::Relaxed) }
+    }
+
+    #[inline(always)]
     pub fn requested(&self) -> bool {
-        unsafe { (*self.watermark).load(Ordering::Relaxed) == PREEMPTION_MARKER }
+        self.word() == PREEMPTION_MARKER
     }
 
     #[verifier::external_body]

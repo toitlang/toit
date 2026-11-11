@@ -45,14 +45,16 @@ verus! {
 
 /// The hot part of the machine: cursors at the object-stack top (`sp`,
 /// index `top`), at the top frame's limit (`fp`, index `lim`: slot `n`
-/// exists iff `top + n < lim`), at the frame-record top (`fr`, `ftop`) and
-/// at the record top (`rt`, `rtop`), and the bci.
+/// exists iff `top + n < lim`), at the frame-record top (`fr`, `ftop`), at
+/// the record top (`rt`, `rtop`) and at the end of the array (`end`, index
+/// `len`: object-stack position `i` is `end - 1 - i`), and the bci.
 #[derive(Clone, Copy)]
 pub struct Regs {
     pub sp: Slot,
     pub fp: Slot,
     pub fr: Slot,
     pub rt: Slot,
+    pub end: Slot,
     pub bci: usize,
 }
 
@@ -78,6 +80,8 @@ impl Machine {
         &&& r.fp.sid() == self.mem.sid()
         &&& r.fr.sid() == self.mem.sid()
         &&& r.rt.sid() == self.mem.sid()
+        &&& r.end.sid() == self.mem.sid()
+        &&& r.end@ == self.len
         &&& 0 <= r.sp@ <= self.len
         &&& 0 <= r.fp@ <= self.len
         &&& 0 <= r.fr@ <= self.len
@@ -95,6 +99,7 @@ impl Machine {
             fp: self.mem.slot(self.lim),
             fr: self.mem.slot(self.ftop),
             rt: self.mem.slot(self.rtop),
+            end: self.mem.slot(self.len),
             bci: self.bci,
         };
         proof { assert(self.with(r) =~= *self); }
@@ -120,9 +125,27 @@ impl Machine {
 }
 
 /// The facts the register handlers start from: the registers are cursors
-/// of the machine, which refines its ghost state with them.
+/// of the machine, which refines its ghost state with them, and the top
+/// frame has `STACK_RESERVE` free words (`room::lemma_room_top`), so a
+/// handler pushes up to that many words without a check.
 pub open spec fn rpre(p: &Program, m: Machine, r: Regs) -> bool {
-    m.rok(r) && m.with(r).refines(p)
+    &&& m_ok(p, m, r)
+    &&& r.sp@ >= r.rt@ + STACK_RESERVE
+}
+
+/// The registers are cursors of the machine, which refines its ghost state
+/// with them.
+pub open spec fn m_ok(p: &Program, m: Machine, r: Regs) -> bool {
+    &&& m.rok(r)
+    &&& m.with(r).refines(p)
+}
+
+/// A step inside the top frame: the stack length, the frames and the
+/// finally records are unchanged (so is the room, `room::lemma_room_same`).
+pub open spec fn rsame(m0: Machine, m1: Machine) -> bool {
+    &&& m1.len == m0.len
+    &&& m1.g@.frames == m0.g@.frames
+    &&& m1.g@.fins == m0.g@.fins
 }
 
 /// A register handler's result for the instruction: `Next` with the spec's
@@ -146,24 +169,23 @@ pub fn at(m: &Machine, r: &Regs, n: usize) -> (w: usize)
 }
 
 /// Pushes the encoding `w` of `v` and continues at `bci + len`: refines
-/// `goto(push(g, v), bci + len)`. Fails only for lack of room.
+/// `goto(push(g, v), bci + len)`. No room check: `rpre` has the room.
 #[inline(always)]
 pub fn push_next(m: &mut Machine, r: &mut Regs, p: &Program, w: usize, len: usize, Ghost(v): Ghost<Value>) -> (c: Ctl)
     requires
-        rpre(p, *old(m), *old(r)),
+        m_ok(p, *old(m), *old(r)),
+        old(r).sp@ > old(r).rt@,
         w == enc(old(m).addr(), v),
         encodable(old(m).addr(), v),
         old(r).bci + len < 0x1000_0000,
     ensures
-        c == Ctl::Next || is_limit(c),
-        c != Ctl::Next ==> *final(m) == *old(m) && *final(r) == *old(r),
-        c == Ctl::Next ==> rnext(p, *final(m), *final(r),
-            Outcome2::Next(sp::goto(sp::push(old(m).g@, v), old(r).bci + len))),
+        c == Ctl::Next,
+        rnext(p, *final(m), *final(r), Outcome2::Next(sp::goto(sp::push(old(m).g@, v), old(r).bci + len))),
+        rsame(*old(m), *final(m)),
+        final(r).sp@ == old(r).sp@ - 1,
+        final(r).rt == old(r).rt,
 {
     let ghost m0 = m.with(*r);
-    if r.sp.diff(r.rt) == 0 {
-        return Ctl::Stuck(stuck::LIMIT);
-    }
     let s = r.sp.offset(-1);
     s.write(0, w, &mut m.mem);
     r.sp = s;
@@ -213,9 +235,9 @@ pub fn op_load_local(m: &mut Machine, r: &mut Regs, p: &Program, n: usize, len: 
         !(sp::op_load_local(old(m).g@, n as int, len as int) is Stuck),
         old(r).bci + len < 0x1000_0000,
     ensures
-        c == Ctl::Next || is_limit(c),
-        c != Ctl::Next ==> *final(m) == *old(m) && *final(r) == *old(r),
-        c == Ctl::Next ==> rnext(p, *final(m), *final(r), sp::op_load_local(old(m).g@, n as int, len as int)),
+        c == Ctl::Next,
+        rsame(*old(m), *final(m)),
+        rnext(p, *final(m), *final(r), sp::op_load_local(old(m).g@, n as int, len as int)),
 {
     proof { m.with(*r).lemma_at(p, n as int); }
     let v = at(m, r, n);
@@ -232,6 +254,7 @@ pub fn op_pop_load_local(m: &mut Machine, r: &mut Regs, p: &Program, n: usize) -
         n < 256,
     ensures
         c == Ctl::Next,
+        rsame(*old(m), *final(m)),
         rnext(p, *final(m), *final(r), sp::op_pop_load_local(old(m).g@, n as int)),
 {
     let ghost m0 = m.with(*r);
@@ -263,6 +286,7 @@ pub fn op_store_local(m: &mut Machine, r: &mut Regs, p: &Program, n: usize) -> (
         old(r).bci + 2 < 0x1000_0000,
     ensures
         c == Ctl::Next,
+        rsame(*old(m), *final(m)),
         rnext(p, *final(m), *final(r), sp::op_store_local(old(m).g@, n as int)),
 {
     let ghost m0 = m.with(*r);
@@ -294,6 +318,7 @@ pub fn op_store_local_pop(m: &mut Machine, r: &mut Regs, p: &Program, n: usize) 
         old(r).bci + 2 < 0x1000_0000,
     ensures
         c == Ctl::Next,
+        rsame(*old(m), *final(m)),
         rnext(p, *final(m), *final(r), sp::op_store_local_pop(old(m).g@, n as int)),
 {
     let ghost m0 = m.with(*r);
@@ -334,6 +359,7 @@ pub fn op_pop(m: &mut Machine, r: &mut Regs, p: &Program, n: usize, len: usize) 
         old(r).bci + len < 0x1000_0000,
     ensures
         c == Ctl::Next,
+        rsame(*old(m), *final(m)),
         rnext(p, *final(m), *final(r), sp::op_pop(old(m).g@, n as int, len as int)),
 {
     let ghost m0 = m.with(*r);
@@ -364,7 +390,8 @@ pub fn op_load_smis_0(m: &mut Machine, r: &mut Regs, p: &Program, n: usize) -> (
     ensures
         c == Ctl::Next || is_limit(c),
         c != Ctl::Next ==> *final(m) == *old(m) && *final(r) == *old(r),
-        c == Ctl::Next ==> rnext(p, *final(m), *final(r), sp::op_load_smis_0(old(m).g@, n as int)),
+        c == Ctl::Next ==> rsame(*old(m), *final(m))
+            && rnext(p, *final(m), *final(r), sp::op_load_smis_0(old(m).g@, n as int)),
 {
     let ghost m0 = m.with(*r);
     let ghost g0 = m.g@;
@@ -378,7 +405,7 @@ pub fn op_load_smis_0(m: &mut Machine, r: &mut Regs, p: &Program, n: usize) -> (
             m.rok(*r),
             i <= n,
             r.sp@ == m0.top - i,
-            r.fp == old(r).fp, r.fr == old(r).fr, r.rt == old(r).rt, r.bci == old(r).bci,
+            r.fp == old(r).fp, r.fr == old(r).fr, r.rt == old(r).rt, r.end == old(r).end, r.bci == old(r).bci,
             m.mem.sid() == m0.mem.sid(),
             m.mem@.len() == m0.mem@.len(),
             m.len == m0.len, m.heap == m0.heap, m.globals == m0.globals, m.g == m0.g, m.method == m0.method,
@@ -421,9 +448,9 @@ pub fn op_load_literal(m: &mut Machine, r: &mut Regs, p: &Program, i: usize, len
         !(sp::op_load_literal(p.ap@, old(m).g@, i as int, len as int) is Stuck),
         old(r).bci + len < 0x1000_0000,
     ensures
-        c == Ctl::Next || is_limit(c),
-        c != Ctl::Next ==> *final(m) == *old(m) && *final(r) == *old(r),
-        c == Ctl::Next ==> rnext(p, *final(m), *final(r), sp::op_load_literal(p.ap@, old(m).g@, i as int, len as int)),
+        c == Ctl::Next,
+        rsame(*old(m), *final(m)),
+        rnext(p, *final(m), *final(r), sp::op_load_literal(p.ap@, old(m).g@, i as int, len as int)),
 {
     let ghost v = p.ap@.literals[i as int];
     proof { assert(p.literals@[i as int] == enc(m.addr(), v) && const_ok(m.g@.heap, v)); }
@@ -436,9 +463,9 @@ pub fn op_load_literal(m: &mut Machine, r: &mut Regs, p: &Program, i: usize, len
 pub fn op_load_null(m: &mut Machine, r: &mut Regs, p: &Program, len: usize) -> (c: Ctl)
     requires rpre(p, *old(m), *old(r)), old(r).bci + len < 0x1000_0000,
     ensures
-        c == Ctl::Next || is_limit(c),
-        c != Ctl::Next ==> *final(m) == *old(m) && *final(r) == *old(r),
-        c == Ctl::Next ==> rnext(p, *final(m), *final(r), sp::next(sp::push(old(m).g@, sp::null2(p.ap@)), len as int)),
+        c == Ctl::Next,
+        rsame(*old(m), *final(m)),
+        rnext(p, *final(m), *final(r), sp::next(sp::push(old(m).g@, sp::null2(p.ap@)), len as int)),
 {
     let ghost v = p.ap@.roots[0];
     proof { assert(const_ok(m.g@.heap, v)); }
@@ -452,9 +479,9 @@ pub fn op_load_null(m: &mut Machine, r: &mut Regs, p: &Program, len: usize) -> (
 pub fn op_load_smi(m: &mut Machine, r: &mut Regs, p: &Program, v: usize, len: usize) -> (c: Ctl)
     requires rpre(p, *old(m), *old(r)), old(r).bci + len < 0x1000_0000, v as int <= MAX_SMI,
     ensures
-        c == Ctl::Next || is_limit(c),
-        c != Ctl::Next ==> *final(m) == *old(m) && *final(r) == *old(r),
-        c == Ctl::Next ==> rnext(p, *final(m), *final(r), sp::next(sp::push(old(m).g@, Value::Smi(v as i64)), len as int)),
+        c == Ctl::Next,
+        rsame(*old(m), *final(m)),
+        rnext(p, *final(m), *final(r), sp::next(sp::push(old(m).g@, Value::Smi(v as i64)), len as int)),
 {
     let w = smi_of(v as i64);
     push_next(m, r, p, w, len, Ghost(Value::Smi(v as i64)))
@@ -468,9 +495,9 @@ pub fn op_load_global(m: &mut Machine, r: &mut Regs, p: &Program, gi: usize, len
         !(sp::op_load_global(old(m).g@, gi as int, len as int) is Stuck),
         old(r).bci + len < 0x1000_0000,
     ensures
-        c == Ctl::Next || is_limit(c),
-        c != Ctl::Next ==> *final(m) == *old(m) && *final(r) == *old(r),
-        c == Ctl::Next ==> rnext(p, *final(m), *final(r), sp::op_load_global(old(m).g@, gi as int, len as int)),
+        c == Ctl::Next,
+        rsame(*old(m), *final(m)),
+        rnext(p, *final(m), *final(r), sp::op_load_global(old(m).g@, gi as int, len as int)),
 {
     let ghost g0 = m.g@;
     proof {
@@ -489,6 +516,7 @@ pub fn op_store_global(m: &mut Machine, r: &mut Regs, p: &Program, gi: usize, le
         old(r).bci + len < 0x1000_0000,
     ensures
         c == Ctl::Next,
+        rsame(*old(m), *final(m)),
         rnext(p, *final(m), *final(r), sp::op_store_global(old(m).g@, gi as int, len as int)),
 {
     let ghost m0 = m.with(*r);
@@ -523,6 +551,7 @@ pub fn op_branch(m: &mut Machine, r: &mut Regs, p: &Program, kind: usize, target
         old(r).bci + len < 0x1000_0000,
     ensures
         c == Ctl::Next,
+        rsame(*old(m), *final(m)),
         rnext(p, *final(m), *final(r), sp::op_branch(p.ap@, old(m).g@, kind as int, target as int, len as int)),
 {
     let ghost m0 = m.with(*r);

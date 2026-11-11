@@ -226,6 +226,22 @@ impl Machine {
         &&& self.method < p.methods@.len()
     }
 
+    /// The part of `refines` about the heap model, the globals and the
+    /// program (no register field): what the helpers that look at values
+    /// (class ids, fields, numbers) need. The machine `m.with(r)` of the
+    /// run loop has it iff `m` has.
+    pub open spec fn hrefines(&self, p: &Program) -> bool {
+        let g = self.g@;
+        let addr = self.heap.addrs();
+        &&& heap_model_ok(self.heap.objs(), addr, self.heap.class_bits())
+        &&& self.heap.class_bits() == p.class_bits@
+        &&& forall|i: int| 0 <= i < g.heap.len() ==> #[trigger] g.heap[i].ro == in_ro(p, addr[i])
+        &&& g.heap == self.heap.objs()
+        &&& prog_rel(p, g.heap, addr)
+        &&& self.globals@ == enc_seq(addr, g.globals)
+        &&& forall|i: int| 0 <= i < g.globals.len() ==> #[trigger] encodable(addr, g.globals[i])
+    }
+
     /// The invariant of the run loop: the machine refines a well-formed
     /// state of an accepted program (`wf`, the invariant of the verifier's
     /// soundness proof).

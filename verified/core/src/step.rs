@@ -34,6 +34,7 @@ use crate::layout::*;
 use crate::abs::*;
 use crate::exec::*;
 use crate::regs::Regs;
+use crate::room::*;
 use crate::alloc::reload;
 #[cfg(verus_keep_ghost)]
 use crate::alloc::{reloaded, lemma_saved};
@@ -902,27 +903,64 @@ pub fn step(m: &mut Machine, env: &Env) -> (r: Ctl)
 /// other result the machine `m1` itself (the registers written back).
 pub open spec fn rpost(p: &Program, m0: Machine, r0: Regs, m1: Machine, r1: Regs, c: Ctl) -> bool {
     if c == Ctl::Next {
-        m1.rok(r1) && step_post(p, m0.with(r0), m1.with(r1), c)
+        &&& m1.rok(r1)
+        &&& step_post(p, m0.with(r0), m1.with(r1), c)
+        &&& room_ok(p, m1.with(r1))
     } else {
         step_post(p, m0.with(r0), m1, c)
     }
 }
 
-/// The old step on the machine, out of line, for the opcodes whose
-/// handlers do not take registers yet: writes the registers back, steps,
-/// reads them again.
+/// The run loop's invariant on registers: the registers are cursors of the
+/// machine, which satisfies `inv` with them and has room.
+pub open spec fn rinv(p: &Program, m: Machine, r: Regs) -> bool {
+    &&& m.rok(r)
+    &&& m.with(r).inv(p)
+    &&& room_ok(p, m.with(r))
+}
+
+/// The facts every register handler starts from.
+pub open spec fn rhandler_pre(p: &Program, m: Machine, r: Regs, bci: usize, opcode: u8) -> bool {
+    let ap = p.ap@;
+    &&& rinv(p, m, r)
+    &&& r.sp@ >= r.rt@ + STACK_RESERVE
+    &&& step_ok(ap, p.cert@, m.g@)
+    &&& bci == r.bci
+    &&& opcode == ap.bytecodes[bci as int]
+}
+
+/// The old step on the machine, out of line: for the opcodes and the slow
+/// paths whose handlers do not take registers. Writes the registers back,
+/// steps, re-establishes the room (the old handlers do not track it) and
+/// reads the registers again.
 #[inline(never)]
-fn bridge(m: &mut Machine, r: Regs, env: &Env) -> (res: (Regs, Ctl))
+pub fn bridge(m: &mut Machine, r: Regs, env: &Env) -> (res: (Regs, Ctl))
     requires old(m).rok(r), old(m).with(r).inv(&env.p),
     ensures rpost(&env.p, *old(m), r, *final(m), res.0, res.1),
 {
     m.sync(r);
     let c = step(m, env);
     if let Ctl::Next = c {
-        (m.regs(), c)
+        let c2 = ensure_room_all(m, env);
+        if let Ctl::Next = c2 {
+            (m.regs(), c2)
+        } else {
+            (r, c2)
+        }
     } else {
         (r, c)
     }
+}
+
+/// `bridge` for an inlined handler: the registers in place.
+#[inline(always)]
+pub fn bridge_r(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
+    requires old(m).rok(*old(r)), old(m).with(*old(r)).inv(&env.p),
+    ensures rpost(&env.p, *old(m), *old(r), *final(m), *final(r), c),
+{
+    let (r2, c) = bridge(m, *r, env);
+    *r = r2;
+    c
 }
 
 /// A register handler's result: on anything but `Next` the registers are
@@ -949,7 +987,7 @@ fn done(m: &mut Machine, r: &Regs, c: Ctl) -> (c2: Ctl)
 #[verifier::spinoff_prover]
 #[verifier::rlimit(200)]
 pub fn step_r(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
-    requires old(m).rok(*old(r)), old(m).with(*old(r)).inv(&env.p),
+    requires rinv(&env.p, *old(m), *old(r)),
     ensures rpost(&env.p, *old(m), *old(r), *final(m), *final(r), c),
 {
     let p = &env.p;
@@ -963,6 +1001,7 @@ pub fn step_r(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
         toit_spec::v2::sound_step::lemma_step(ap, p.cert@, p.trusted@, g);
         lemma_instr(ap, p.cert@, p.trusted@, g);
         reveal_with_fuel(opcode_length2, 1);
+        lemma_room_top(p, w0);
     }
     let bci = r.bci;
     let opcode = p.code.at(bci);
@@ -1154,12 +1193,13 @@ pub fn step_r(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
             crate::regs::op_branch(m, r, p, kind, bci - d, 3)
         },
         _ => {
-            let (r2, c) = bridge(m, *r, env);
-            *r = r2;
-            return c;
+            return bridge_r(m, r, env);
         },
     };
-    proof { lemma_local_post(p, w0, m.with(*r), c); }
+    proof {
+        lemma_local_post(p, w0, m.with(*r), c);
+        if c == Ctl::Next { lemma_room_same(p, w0, m.with(*r)); }
+    }
     done(m, r, c)
 }
 
@@ -1220,12 +1260,17 @@ pub fn run_loop(m: &mut Machine, env: &Env, accepted: &crate::ffi::Accepted) -> 
 {
     let ghost m0 = *m;
     proof { lemma_reaches_refl(env.p.ap@, m.g@); }
+    // The room of every frame (room.rs): checked once per run.
+    if let Ctl::Stuck(reason) = ensure_room_all(m, env) {
+        env.rt.report(V2_REPORT_STUCK, m.bci, reason);
+        m.save();
+        return (RESULT_TERMINATED, 1);
+    }
     // The registers: locals of this function, in machine registers.
     let mut r = m.regs();
     loop
         invariant
-            m.rok(r),
-            m.with(r).inv(&env.p),
+            rinv(&env.p, *m, r),
             m0 == *old(m),
             reaches(env.p.ap@, m0.g@, m.g@),
     {
