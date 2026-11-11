@@ -21,7 +21,9 @@ Replaces a literal text in a file, in place, for the mutants of
 Usage: toit run text_replace.toit -- FILE FROM TO [FROM TO]...
 FROM must occur exactly once in FILE (else exit status 1: a mutant that
   no longer applies must not pass silently). `\n` in FROM and TO is a
-  newline.
+  newline. `ANCHOR@@TEXT` as FROM: ANCHOR must occur exactly once, and the
+  first TEXT after it is replaced (for a line that occurs in several
+  functions).
 */
 
 import host.file
@@ -35,6 +37,20 @@ main args:
   for i := 1; i < args.size; i += 2:
     from := args[i].replace --all "\\n" "\n"
     to := args[i + 1].replace --all "\\n" "\n"
+    at := from.index-of "@@"
+    if at >= 0:
+      anchor := from[..at]
+      from = from[at + 2..]
+      start := text.index-of anchor
+      if start < 0 or (text.index-of anchor (start + 1)) >= 0:
+        print "text_replace: the anchor `$anchor` occurs $(start < 0 ? "not" : "more than once") in $path"
+        exit 1
+      first := text.index-of from start
+      if first < 0:
+        print "text_replace: `$from` does not occur after `$anchor` in $path"
+        exit 1
+      text = text[..first] + to + text[first + from.size..]
+      continue
     first := text.index-of from
     if first < 0 or (text.index-of from (first + 1)) >= 0:
       print "text_replace: `$from` occurs $(first < 0 ? "not" : "more than once") in $path"

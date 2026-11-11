@@ -474,16 +474,18 @@ Smi *Program_string_byte_slice_class_id(Program *self);
 Smi *Program_string_slice_class_id(Program *self);
 //@ requires [?f]program(self, ?ids);
 //@ ensures [f]program(self, ids) &*& result == smi_ptr(string_slice_cid(ids));
-// null_object, true_object, false_object: only compared, never read.
+// null_object, true_object, false_object: roots, objects of the heap
+// (compared by the encoder, returned and stored by the decoder; never
+// read).
 HeapObject *Program_null_object(Program *self);
-//@ requires [?f]program(self, ?ids);
-//@ ensures [f]program(self, ids);
+//@ requires [?f]program(self, ?ids) &*& [?g]heap(?objs, ?H);
+//@ ensures [f]program(self, ids) &*& [g]heap(objs, H) &*& mem(result, objs) == true;
 HeapObject *Program_true_object(Program *self);
-//@ requires [?f]program(self, ?ids);
-//@ ensures [f]program(self, ids);
+//@ requires [?f]program(self, ?ids) &*& [?g]heap(?objs, ?H);
+//@ ensures [f]program(self, ids) &*& [g]heap(objs, H) &*& mem(result, objs) == true;
 HeapObject *Program_false_object(Program *self);
-//@ requires [?f]program(self, ?ids);
-//@ ensures [f]program(self, ids);
+//@ requires [?f]program(self, ?ids) &*& [?g]heap(?objs, ?H);
+//@ ensures [f]program(self, ids) &*& [g]heap(objs, H) &*& mem(result, objs) == true;
 
 
 // ---------------------------------------------------------------------------
@@ -601,6 +603,69 @@ Error *Error_from(String *string);
 void GcMetadata_insert_into_remembered_set__Instancep(Instance *address);
 //@ requires true;
 //@ ensures true;
+void GcMetadata_insert_into_remembered_set__Arrayp(Array *address);
+//@ requires true;
+//@ ensures true;
+
+// ---------------------------------------------------------------------------
+// The allocator (src/heap.h, process.h; TRUSTED.md V2): allocation without
+// a GC. Each gives a new object of the stated kind (its header, length and
+// fields as stated; references in it are good), outside the program heap,
+// or null and nothing changed; the other objects are unchanged. Contracts
+// only (CONTRACTS.toml, "allocator").
+
+struct ObjectHeap;
+typedef struct ObjectHeap ObjectHeap;
+
+//@ predicate object_heap(ObjectHeap *h; Process *p);
+
+ObjectHeap *Process_object_heap(Process *self);
+//@ requires true;
+//@ ensures [_]object_heap(result, self);
+
+/*@
+// The postcondition every allocation shares: a new object r, or null.
+predicate allocated(list<void *> objs, fixpoint(void *, oinfo) H, Process *p, void *r, list<void *> objs2, fixpoint(void *, oinfo) H2) =
+  r == 0 ?
+    heap(objs, H) &*& objs2 == objs &*& H2 == H
+  :
+    heap(cons(r, objs), H2) &*& objs2 == cons(r, objs) &*& mem(r, objs) == false &*&
+    forall(objs, (same_obj)(H, H2)) == true &*& in_program_heap(p, r) == false;
+@*/
+
+// A string with a copy of `length` bytes of content.
+String *Process_allocate_string__charp_word(Process *self, char *content, word length);
+/*@ requires [?f]process(self, ?prog, ?ids) &*& heap(?objs, ?H) &*& [?fc]uchars((uint8 *)content, length, ?cs) &*&
+             0 <= length &*& length <= MAX_BLOB; @*/
+/*@ ensures [f]process(self, prog, ids) &*& [fc]uchars((uint8 *)content, length, cs) &*&
+            allocated(objs, H, self, result, ?objs2, ?H2) &*&
+            (result == 0 ? true : has_tag(H2, result, STRING_TAG) == true &*& blob_len(H2, result) == length); @*/
+
+// An array of `length` elements, each `filler` (null for a length outside
+// [0, Array::max_length_in_process()]).
+Array *ObjectHeap_allocate_array(ObjectHeap *self, word length, Object *filler);
+//@ requires [_]object_heap(self, ?p) &*& [?f]process(p, ?prog, ?ids) &*& heap(?objs, ?H) &*& good(objs, filler) == true;
+/*@ ensures [f]process(p, prog, ids) &*& allocated(objs, H, p, result, ?objs2, ?H2) &*&
+            (result == 0 ? true : has_tag(H2, result, ARRAY_TAG) == true &*& o_len(H2(result)) == length); @*/
+
+// An instance of class c, its fields null.
+Instance *ObjectHeap_allocate_instance(ObjectHeap *self, Smi *class_id);
+/*@ requires [_]object_heap(self, ?p) &*& [?f]process(p, ?prog, ?ids) &*& heap(?objs, ?H) &*&
+             (uword)class_id % 2 == 0 &*& (uword)class_id / 2 < 1024 &*& class_tag((uword)class_id / 2) == INSTANCE_TAG; @*/
+/*@ ensures [f]process(p, prog, ids) &*& allocated(objs, H, p, result, ?objs2, ?H2) &*&
+            (result == 0 ? true :
+               has_tag(H2, result, INSTANCE_TAG) == true &*& header_cid(o_hw(H2(result))) == (uword)class_id / 2 &*&
+               o_len(H2(result)) == class_fields((uword)class_id / 2)); @*/
+
+Double *ObjectHeap_allocate_double(ObjectHeap *self, double value);
+//@ requires [_]object_heap(self, ?p) &*& [?f]process(p, ?prog, ?ids) &*& heap(?objs, ?H);
+/*@ ensures [f]process(p, prog, ids) &*& allocated(objs, H, p, result, ?objs2, ?H2) &*&
+            (result == 0 ? true : has_tag(H2, result, DOUBLE_TAG) == true); @*/
+
+LargeInteger *ObjectHeap_allocate_large_integer(ObjectHeap *self, int64 value);
+//@ requires [_]object_heap(self, ?p) &*& [?f]process(p, ?prog, ?ids) &*& heap(?objs, ?H);
+/*@ ensures [f]process(p, prog, ids) &*& allocated(objs, H, p, result, ?objs2, ?H2) &*&
+            (result == 0 ? true : has_tag(H2, result, LARGE_INTEGER_TAG) == true); @*/
 @prototypes
 @verbatim-c
 //@ #include "arith.gh"
@@ -1005,15 +1070,25 @@ inline bool is_heap_object(const Object* o)
     return reinterpret_cast<word>(smi) >> SMI_TAG_SIZE;
   }
 
-@render src/objects.h toit::Smi::from tu=src/objects.cc
+@render src/objects.h toit::Smi::from tu=src/objects.cc trusted
   static Smi* from(word value)
-  // (Non-negative smis up to MAX_BLOB: class ids, lengths.)
-  //@ requires 0 <= value &*& value <= MAX_BLOB;
-  //@ ensures result == smi_ptr(value) &*& (uword)result == 2 * value;
+  // Any smi value (the message decoder's negative smis). The body,
+  // `static_cast<uword>(value) << 1`, is the modular conversion and shift
+  // C++ defines for a negative value, which VeriFast refuses: trusted.
+  // (Verified for 0 <= value <= MAX_BLOB in wave 2.)
+  //@ requires smi_range(value) == true;
+  /*@ ensures is_smi_w((uword)result) == true &*& smi_val((uword)result) == value &*&
+              (0 <= value ? result == smi_ptr(value) &*& (uword)result == 2 * value : true); @*/
   {
     ASSERT(is_valid(value));
     return reinterpret_cast<Smi*>(static_cast<uword>(value) << SMI_TAG_SIZE);
   }
+
+@render src/objects.h toit::Smi::zero tu=src/objects.cc
+  static Smi* zero()
+  //@ requires true;
+  //@ ensures result == smi_ptr(0) &*& (uword)result == 0;
+  { return from(0); }
 
 @render src/objects.h toit::Smi::cast tu=src/objects.cc
   static Smi* cast(Object* object)
@@ -1618,6 +1693,62 @@ inline void Instance::at_put(word index, Object* value)
   //@ fixpoint(void *, oinfo) H2 = put_field(H, self, index, value);
   //@ close instance_body(self, o_len(H(self)), update(index, value, o_words(H(self))));
   //@ close body(self, 2 * INSTANCE_TAG, o_len(H2(self)), o_aux(H2(self)), o_words(H2(self)));
+  //@ open heap_rest(objs, H, self);
+  //@ distinct_mem_remove(self, objs);
+  //@ heap_rest_put(remove(self, objs), objs, H, self, index, value);
+  //@ close heap_rest(objs, H2, self);
+  //@ open header(self, _);
+  //@ close header(self, o_hw(H2(self)));
+  //@ forall_good_update(o_words(H(self)), objs, index, value);
+  //@ grows_put_field(objs, H, self, index, value);
+  //@ heap_close(self);
+}
+
+@render src/objects.h toit::Instance::at_put tu=src/objects.cc type=void(word,Smi*)
+  INLINE void at_put(word index, Smi* value)
+/*@ requires heap(?objs, ?H) &*& mem(self, objs) == true &*& has_tag(H, self, INSTANCE_TAG) == true &*&
+             0 <= index &*& index < o_len(H(self)) &*& good(objs, value) == true; @*/
+//@ ensures heap(objs, put_field(H, self, index, value)) &*& grows(objs, H, objs, put_field(H, self, index, value)) == true;
+  {
+    //@ heap_open(self);
+    //@ open body(self, _, _, _, _);
+    //@ open instance_body(self, _, _);
+    //@ pointers_focus((void **)raw(self) + 1, index);
+    //@ div_rem_nonneg_unique(Instance_HEADER_SIZE + index * WORD_SIZE, WORD_SIZE, 1 + index, 0);
+    _at_put(_offset_from(index), value);
+    //@ pointers_unfocus((void **)raw(self) + 1, index, o_words(H(self)));
+    //@ fixpoint(void *, oinfo) H2 = put_field(H, self, index, value);
+    //@ close instance_body(self, o_len(H(self)), update(index, value, o_words(H(self))));
+    //@ close body(self, 2 * INSTANCE_TAG, o_len(H2(self)), o_aux(H2(self)), o_words(H2(self)));
+    //@ open heap_rest(objs, H, self);
+    //@ distinct_mem_remove(self, objs);
+    //@ heap_rest_put(remove(self, objs), objs, H, self, index, value);
+    //@ close heap_rest(objs, H2, self);
+    //@ open header(self, _);
+    //@ close header(self, o_hw(H2(self)));
+    //@ forall_good_update(o_words(H(self)), objs, index, value);
+    //@ grows_put_field(objs, H, self, index, value);
+    //@ heap_close(self);
+  }
+
+@render src/objects_inline.h toit::Array::at_put tu=src/objects_runtime.cc type=void(word,Object*)
+inline void Array::at_put(word index, Object* value)
+/*@ requires heap(?objs, ?H) &*& mem(self, objs) == true &*& has_tag(H, self, ARRAY_TAG) == true &*&
+             0 <= index &*& index < o_len(H(self)) &*& good(objs, value) == true; @*/
+//@ ensures heap(objs, put_field(H, self, index, value)) &*& grows(objs, H, objs, put_field(H, self, index, value)) == true;
+{
+  ASSERT(index >= 0 && index < length());
+  GcMetadata::insert_into_remembered_set(this);
+  //@ heap_open(self);
+  //@ open body(self, _, _, _, _);
+  //@ open array_body(self, _, _);
+  //@ pointers_focus((void **)raw(self) + 2, index);
+  //@ div_rem_nonneg_unique(Array_HEADER_SIZE + index * WORD_SIZE, WORD_SIZE, 2 + index, 0);
+  _at_put(_offset_from(index), value);
+  //@ pointers_unfocus((void **)raw(self) + 2, index, o_words(H(self)));
+  //@ fixpoint(void *, oinfo) H2 = put_field(H, self, index, value);
+  //@ close array_body(self, o_len(H(self)), update(index, value, o_words(H(self))));
+  //@ close body(self, 2 * ARRAY_TAG, o_len(H2(self)), o_aux(H2(self)), o_words(H2(self)));
   //@ open heap_rest(objs, H, self);
   //@ distinct_mem_remove(self, objs);
   //@ heap_rest_put(remove(self, objs), objs, H, self, index, value);

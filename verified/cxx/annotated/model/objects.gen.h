@@ -478,16 +478,18 @@ Smi *Program_string_byte_slice_class_id(Program *self);
 Smi *Program_string_slice_class_id(Program *self);
 //@ requires [?f]program(self, ?ids);
 //@ ensures [f]program(self, ids) &*& result == smi_ptr(string_slice_cid(ids));
-// null_object, true_object, false_object: only compared, never read.
+// null_object, true_object, false_object: roots, objects of the heap
+// (compared by the encoder, returned and stored by the decoder; never
+// read).
 HeapObject *Program_null_object(Program *self);
-//@ requires [?f]program(self, ?ids);
-//@ ensures [f]program(self, ids);
+//@ requires [?f]program(self, ?ids) &*& [?g]heap(?objs, ?H);
+//@ ensures [f]program(self, ids) &*& [g]heap(objs, H) &*& mem(result, objs) == true;
 HeapObject *Program_true_object(Program *self);
-//@ requires [?f]program(self, ?ids);
-//@ ensures [f]program(self, ids);
+//@ requires [?f]program(self, ?ids) &*& [?g]heap(?objs, ?H);
+//@ ensures [f]program(self, ids) &*& [g]heap(objs, H) &*& mem(result, objs) == true;
 HeapObject *Program_false_object(Program *self);
-//@ requires [?f]program(self, ?ids);
-//@ ensures [f]program(self, ids);
+//@ requires [?f]program(self, ?ids) &*& [?g]heap(?objs, ?H);
+//@ ensures [f]program(self, ids) &*& [g]heap(objs, H) &*& mem(result, objs) == true;
 
 
 // ---------------------------------------------------------------------------
@@ -605,6 +607,69 @@ Error *Error_from(String *string);
 void GcMetadata_insert_into_remembered_set__Instancep(Instance *address);
 //@ requires true;
 //@ ensures true;
+void GcMetadata_insert_into_remembered_set__Arrayp(Array *address);
+//@ requires true;
+//@ ensures true;
+
+// ---------------------------------------------------------------------------
+// The allocator (src/heap.h, process.h; TRUSTED.md V2): allocation without
+// a GC. Each gives a new object of the stated kind (its header, length and
+// fields as stated; references in it are good), outside the program heap,
+// or null and nothing changed; the other objects are unchanged. Contracts
+// only (CONTRACTS.toml, "allocator").
+
+struct ObjectHeap;
+typedef struct ObjectHeap ObjectHeap;
+
+//@ predicate object_heap(ObjectHeap *h; Process *p);
+
+ObjectHeap *Process_object_heap(Process *self);
+//@ requires true;
+//@ ensures [_]object_heap(result, self);
+
+/*@
+// The postcondition every allocation shares: a new object r, or null.
+predicate allocated(list<void *> objs, fixpoint(void *, oinfo) H, Process *p, void *r, list<void *> objs2, fixpoint(void *, oinfo) H2) =
+  r == 0 ?
+    heap(objs, H) &*& objs2 == objs &*& H2 == H
+  :
+    heap(cons(r, objs), H2) &*& objs2 == cons(r, objs) &*& mem(r, objs) == false &*&
+    forall(objs, (same_obj)(H, H2)) == true &*& in_program_heap(p, r) == false;
+@*/
+
+// A string with a copy of `length` bytes of content.
+String *Process_allocate_string__charp_word(Process *self, char *content, word length);
+/*@ requires [?f]process(self, ?prog, ?ids) &*& heap(?objs, ?H) &*& [?fc]uchars((uint8 *)content, length, ?cs) &*&
+             0 <= length &*& length <= MAX_BLOB; @*/
+/*@ ensures [f]process(self, prog, ids) &*& [fc]uchars((uint8 *)content, length, cs) &*&
+            allocated(objs, H, self, result, ?objs2, ?H2) &*&
+            (result == 0 ? true : has_tag(H2, result, STRING_TAG) == true &*& blob_len(H2, result) == length); @*/
+
+// An array of `length` elements, each `filler` (null for a length outside
+// [0, Array::max_length_in_process()]).
+Array *ObjectHeap_allocate_array(ObjectHeap *self, word length, Object *filler);
+//@ requires [_]object_heap(self, ?p) &*& [?f]process(p, ?prog, ?ids) &*& heap(?objs, ?H) &*& good(objs, filler) == true;
+/*@ ensures [f]process(p, prog, ids) &*& allocated(objs, H, p, result, ?objs2, ?H2) &*&
+            (result == 0 ? true : has_tag(H2, result, ARRAY_TAG) == true &*& o_len(H2(result)) == length); @*/
+
+// An instance of class c, its fields null.
+Instance *ObjectHeap_allocate_instance(ObjectHeap *self, Smi *class_id);
+/*@ requires [_]object_heap(self, ?p) &*& [?f]process(p, ?prog, ?ids) &*& heap(?objs, ?H) &*&
+             (uword)class_id % 2 == 0 &*& (uword)class_id / 2 < 1024 &*& class_tag((uword)class_id / 2) == INSTANCE_TAG; @*/
+/*@ ensures [f]process(p, prog, ids) &*& allocated(objs, H, p, result, ?objs2, ?H2) &*&
+            (result == 0 ? true :
+               has_tag(H2, result, INSTANCE_TAG) == true &*& header_cid(o_hw(H2(result))) == (uword)class_id / 2 &*&
+               o_len(H2(result)) == class_fields((uword)class_id / 2)); @*/
+
+Double *ObjectHeap_allocate_double(ObjectHeap *self, double value);
+//@ requires [_]object_heap(self, ?p) &*& [?f]process(p, ?prog, ?ids) &*& heap(?objs, ?H);
+/*@ ensures [f]process(p, prog, ids) &*& allocated(objs, H, p, result, ?objs2, ?H2) &*&
+            (result == 0 ? true : has_tag(H2, result, DOUBLE_TAG) == true); @*/
+
+LargeInteger *ObjectHeap_allocate_large_integer(ObjectHeap *self, int64 value);
+//@ requires [_]object_heap(self, ?p) &*& [?f]process(p, ?prog, ?ids) &*& heap(?objs, ?H);
+/*@ ensures [f]process(p, prog, ids) &*& allocated(objs, H, p, result, ?objs2, ?H2) &*&
+            (result == 0 ? true : has_tag(H2, result, LARGE_INTEGER_TAG) == true); @*/
 // C++: src/objects.h toit::is_smi
 bool is_smi(Object *o);
 //@ requires true;
@@ -625,10 +690,16 @@ word Smi_value__Smip(Smi *smi);
 //@ requires is_smi_w((uword)smi) == true;
 //@ ensures result == smi_val((uword)smi) &*& smi_range(result) == true;
 
-// C++: src/objects.h toit::Smi::from
+// C++: src/objects.h toit::Smi::from (trusted: contract only)
 Smi *Smi_from(word value);
-//@ requires 0 <= value &*& value <= MAX_BLOB;
-//@ ensures result == smi_ptr(value) &*& (uword)result == 2 * value;
+//@ requires smi_range(value) == true;
+/*@ ensures is_smi_w((uword)result) == true &*& smi_val((uword)result) == value &*&
+              (0 <= value ? result == smi_ptr(value) &*& (uword)result == 2 * value : true); @*/
+
+// C++: src/objects.h toit::Smi::zero
+Smi *Smi_zero(void);
+//@ requires true;
+//@ ensures result == smi_ptr(0) &*& (uword)result == 0;
 
 // C++: src/objects.h toit::Smi::cast
 Smi *Smi_cast(Object *object);
@@ -903,6 +974,18 @@ void HeapObject__at_put(HeapObject *self, word offset, Object *value);
 // C++: src/objects_inline.h toit::Instance::at_put
 void Instance_at_put__word_Objectp(Instance *self, word index, Object *value);
 /*@ requires heap(?objs, ?H) &*& mem(self, objs) == true &*& has_tag(H, self, INSTANCE_TAG) == true &*&
+             0 <= index &*& index < o_len(H(self)) &*& good(objs, value) == true; @*/
+//@ ensures heap(objs, put_field(H, self, index, value)) &*& grows(objs, H, objs, put_field(H, self, index, value)) == true;
+
+// C++: src/objects.h toit::Instance::at_put
+void Instance_at_put__word_Smip(Instance *self, word index, Smi *value);
+/*@ requires heap(?objs, ?H) &*& mem(self, objs) == true &*& has_tag(H, self, INSTANCE_TAG) == true &*&
+             0 <= index &*& index < o_len(H(self)) &*& good(objs, value) == true; @*/
+//@ ensures heap(objs, put_field(H, self, index, value)) &*& grows(objs, H, objs, put_field(H, self, index, value)) == true;
+
+// C++: src/objects_inline.h toit::Array::at_put
+void Array_at_put__word_Objectp(Array *self, word index, Object *value);
+/*@ requires heap(?objs, ?H) &*& mem(self, objs) == true &*& has_tag(H, self, ARRAY_TAG) == true &*&
              0 <= index &*& index < o_len(H(self)) &*& good(objs, value) == true; @*/
 //@ ensures heap(objs, put_field(H, self, index, value)) &*& grows(objs, H, objs, put_field(H, self, index, value)) == true;
 

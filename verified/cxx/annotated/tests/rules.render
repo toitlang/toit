@@ -108,6 +108,36 @@ inline int narrow(word x)
   return n;
 }
 
+@render verified/cxx/annotated/tests/rules.cc toit::signed_length truncating
+inline word signed_length(uword u)
+//@ requires true;
+//@ ensures -1 <= result;
+{
+  word length = u;
+  if (length < 0) return -1;
+  return length;
+}
+
+@render verified/cxx/annotated/tests/rules.cc toit::classify
+inline word classify(int tag)
+//@ requires true;
+//@ ensures tag == 1 || tag == 2 ? result == 10 : tag == 3 ? result == 7 : result == 0;
+{
+  switch (tag) {
+    case 1:
+    case 2:
+      return 10;
+    case 3: {
+      word x = 7;
+      //@ assert x == 7;
+      return x;
+    }
+    default:
+      break;
+  }
+  return 0;
+}
+
 @render verified/cxx/annotated/tests/rules.cc toit::advance
 inline word advance(word cursor)
 //@ requires 0 <= cursor &*& cursor < 100;

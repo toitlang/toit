@@ -45,7 +45,8 @@ replace() { "$TOIT_BIN" run "$REPO_ROOT/verified/tools/text_replace.toit" -- "$@
 src_pairs=()
 side_pairs=()
 while [ $# -gt 0 ]; do
-  first="$(printf '%s' "$1" | sed 's/\\n.*//')"
+  # (An `ANCHOR@@TEXT` change, text_replace.toit: TEXT's first line.)
+  first="$(printf '%s' "$1" | sed 's/.*@@//; s/\\n.*//')"
   found=0
   if grep -qF -- "$first" "$M/repo/$source"; then src_pairs+=("$1" "$2"); found=1; fi
   if [ "$pattern" != DRIFT ] && grep -qF -- "$first" "$M/annotated/$sidecar"; then side_pairs+=("$1" "$2"); found=1; fi

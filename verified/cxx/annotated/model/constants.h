@@ -149,6 +149,15 @@
 #define MESSAGING_DECODING_MAX_NESTING 64
 #define MESSAGE_FORMAT_IPC 0
 #define MESSAGE_FORMAT_TISON 1
+// The decoder (src/messaging.h MessageDecoder::Status, Smi limits, top.h).
+#define MessageDecoder_DECODE_SUCCESS 0
+#define MessageDecoder_DECODE_ALLOCATION_FAILED 1
+#define MessageDecoder_DECODE_MALFORMED_INPUT 2
+#define Smi_MAX_SMI_VALUE ((word)(UINTPTR_MAX / 4))
+#define Smi_MIN_SMI_VALUE ((word)(-(word)(UINTPTR_MAX / 4) - 1))
+#define WORD_BIT_SIZE ((int)(sizeof(word) * 8))
+#define Instance_MAP_SPACES_LEFT_INDEX ((word)1)
+#define Instance_MAP_INDEX_INDEX ((word)2)
 #define TISON_MARKER ((uint32)0xa68900f7)
 #define TISON_VERSION 1
 #define TISON_VERSION_SHIFT ((uint32)8)

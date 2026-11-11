@@ -384,13 +384,12 @@ bool is_heap_object(Object *o)
   return ((uword)o & Object_NON_SMI_TAG_MASK) == Object_HEAP_TAG;
 }
 
-// C++: src/objects.h toit::Smi::from
-Smi *Smi_from(word value)
-//@ requires 0 <= value &*& value <= MAX_BLOB;
-//@ ensures result == smi_ptr(value) &*& (uword)result == 2 * value;
+// C++: src/objects.h toit::Smi::zero
+Smi *Smi_zero(void)
+//@ requires true;
+//@ ensures result == smi_ptr(0) &*& (uword)result == 0;
 {
-  // ASSERT(Smi_is_valid(value)): release build, not evaluated.
-  return (Smi *)((uword)value << SMI_TAG_SIZE);
+  return Smi_from(0);
 }
 
 // C++: src/objects.h toit::Smi::cast
@@ -1003,6 +1002,62 @@ void Instance_at_put__word_Objectp(Instance *self, word index, Object *value)
   //@ fixpoint(void *, oinfo) H2 = put_field(H, self, index, value);
   //@ close instance_body(self, o_len(H(self)), update(index, value, o_words(H(self))));
   //@ close body(self, 2 * INSTANCE_TAG, o_len(H2(self)), o_aux(H2(self)), o_words(H2(self)));
+  //@ open heap_rest(objs, H, self);
+  //@ distinct_mem_remove(self, objs);
+  //@ heap_rest_put(remove(self, objs), objs, H, self, index, value);
+  //@ close heap_rest(objs, H2, self);
+  //@ open header(self, _);
+  //@ close header(self, o_hw(H2(self)));
+  //@ forall_good_update(o_words(H(self)), objs, index, value);
+  //@ grows_put_field(objs, H, self, index, value);
+  //@ heap_close(self);
+}
+
+// C++: src/objects.h toit::Instance::at_put
+void Instance_at_put__word_Smip(Instance *self, word index, Smi *value)
+/*@ requires heap(?objs, ?H) &*& mem(self, objs) == true &*& has_tag(H, self, INSTANCE_TAG) == true &*&
+             0 <= index &*& index < o_len(H(self)) &*& good(objs, value) == true; @*/
+//@ ensures heap(objs, put_field(H, self, index, value)) &*& grows(objs, H, objs, put_field(H, self, index, value)) == true;
+{
+  //@ heap_open(self);
+  //@ open body(self, _, _, _, _);
+  //@ open instance_body(self, _, _);
+  //@ pointers_focus((void **)raw(self) + 1, index);
+  //@ div_rem_nonneg_unique(Instance_HEADER_SIZE + index * WORD_SIZE, WORD_SIZE, 1 + index, 0);
+  HeapObject__at_put(self, Instance__offset_from((uword)index), value);
+  //@ pointers_unfocus((void **)raw(self) + 1, index, o_words(H(self)));
+  //@ fixpoint(void *, oinfo) H2 = put_field(H, self, index, value);
+  //@ close instance_body(self, o_len(H(self)), update(index, value, o_words(H(self))));
+  //@ close body(self, 2 * INSTANCE_TAG, o_len(H2(self)), o_aux(H2(self)), o_words(H2(self)));
+  //@ open heap_rest(objs, H, self);
+  //@ distinct_mem_remove(self, objs);
+  //@ heap_rest_put(remove(self, objs), objs, H, self, index, value);
+  //@ close heap_rest(objs, H2, self);
+  //@ open header(self, _);
+  //@ close header(self, o_hw(H2(self)));
+  //@ forall_good_update(o_words(H(self)), objs, index, value);
+  //@ grows_put_field(objs, H, self, index, value);
+  //@ heap_close(self);
+}
+
+// C++: src/objects_inline.h toit::Array::at_put
+void Array_at_put__word_Objectp(Array *self, word index, Object *value)
+/*@ requires heap(?objs, ?H) &*& mem(self, objs) == true &*& has_tag(H, self, ARRAY_TAG) == true &*&
+             0 <= index &*& index < o_len(H(self)) &*& good(objs, value) == true; @*/
+//@ ensures heap(objs, put_field(H, self, index, value)) &*& grows(objs, H, objs, put_field(H, self, index, value)) == true;
+{
+  // ASSERT(index >= 0 && index < Array_length(self)): release build, not evaluated.
+  GcMetadata_insert_into_remembered_set__Arrayp(self);
+  //@ heap_open(self);
+  //@ open body(self, _, _, _, _);
+  //@ open array_body(self, _, _);
+  //@ pointers_focus((void **)raw(self) + 2, index);
+  //@ div_rem_nonneg_unique(Array_HEADER_SIZE + index * WORD_SIZE, WORD_SIZE, 2 + index, 0);
+  HeapObject__at_put(self, Array__offset_from(index), value);
+  //@ pointers_unfocus((void **)raw(self) + 2, index, o_words(H(self)));
+  //@ fixpoint(void *, oinfo) H2 = put_field(H, self, index, value);
+  //@ close array_body(self, o_len(H(self)), update(index, value, o_words(H(self))));
+  //@ close body(self, 2 * ARRAY_TAG, o_len(H2(self)), o_aux(H2(self)), o_words(H2(self)));
   //@ open heap_rest(objs, H, self);
   //@ distinct_mem_remove(self, objs);
   //@ heap_rest_put(remove(self, objs), objs, H, self, index, value);
