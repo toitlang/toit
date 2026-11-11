@@ -306,9 +306,13 @@ metadata. Until then, untrusted containers are a host-only feature.
 - A sandbox can make the system process print a warning for every
   unhandled message it sends (rate bounded only by the mailbox quota and
   the system process' speed).
-- Native allocations made on behalf of a process (message buffers, timers)
-  are bounded by the quotas but not charged to its heap.
-- A kill takes effect only after the running primitive returns.
+- Native allocations made on behalf of a process (message buffers, timers,
+  finalizer nodes) are bounded by the quotas but not charged to its heap;
+  resource groups are charged (docs/sandbox-primitive-audit.md).
+- A kill takes effect only after the running primitive returns. The C++
+  primitives of the untrusted set are audited to be bounded by their
+  quota-bounded arguments (docs/sandbox-primitive-audit.md); the Rust ports
+  are proven safe, not bounded in time.
 
 ## Threats tested
 
@@ -336,8 +340,11 @@ and must be updated when the gap is closed.
 | Register many services, pending discoveries or clients, with large strings | bounded memory in the system process | `discovery-quota` | fixed: the VM grew by 1.5 GB in 6 s | |
 | Register a malformed service (wrong value types) for a trusted service's uuid | refused | `listen-malformed` | fixed: a tag that wasn't a string made every client with a restricted selector (including `deny --tag="untrusted-provider"`) throw | |
 | Malformed calls to discovery and the sandbox print service (wrong types and shapes, bad method indexes, deep nesting, large arguments) | exception reply, the system process keeps working | `system-service-malformed` | holds | |
-| External byte arrays in messages | charged to the mailbox quota like copies (the message size includes externals) | | covered by the primitive audit | |
-| Native resources (resource groups, timers, finalizer nodes, external byte arrays) | charged or bounded | | covered by the primitive audit | |
+| External byte arrays in messages | charged to the mailbox quota like copies (the message size includes externals) | `message-too-large` | holds (primitive audit) | |
+| Uncharged native memory: resource groups from `get_generic_resource_group`/`timer.init` in a loop, adding and removing a finalizer in a loop, `remove_finalizer` on an external byte array | charged to the container or bounded | `resource-group-churn`, tests/`finalizer-churn-test`, tests/`remove-finalizer-external-test` | fixed: 64 bytes of VM memory per call; 200 MB per 5M finalizer toggles; the external memory leaked | |
+| Keep a scheduler thread inside a primitive (a kill only takes effect when it returns): `process_send` of a shared object graph, `bitmap.blit` with zero strides | the primitive stops early | `message-shared-graph`, `blit-unbounded-work` | fixed: days and hours per call; the other C++ primitives of the untrusted set are linear in their quota-bounded arguments (docs/sandbox-primitive-audit.md) | |
+| Read what other processes freed | new memory is cleared | tests/`off-heap-byte-array-cleared-test` | fixed: `create_off_heap_byte_array` returned uninitialized malloc memory (99% of the bytes still held freed data) | |
+| Send strings that aren't valid UTF-8 (crafted literals or string slices) to receivers that rely on valid ones; over-read with them | refused; conversions stay inside the string | `invalid-utf-8-literal` | fixed: delivered to the system process; `string-to-utf-16` read up to 7 bytes past the string | check the literals at launch too? (the Rust ports cope, the C++ consumers are now bounded) |
 | Create processes or groups; write flash | denied | `core-spawn`, `quota-processes`, `system-container-service`, `system-storage-service`, `module-flash-registry` | holds; no other path found | |
 | Starve the scheduler: tight loop, the longest primitives on 16 MB objects (15 ms on the host), recursion, 100 yielding tasks | the sibling and the system process answer within a few ms | `scheduler-starvation` | holds (also with the VM pinned to one core); run-time limit and CPU budget: `quota-run-time`, `quota-cpu-budget` | |
 | Raise the own priority | denied | `core-process-set-priority` | holds; no other path found | |
