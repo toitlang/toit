@@ -1,5 +1,45 @@
 # Phase 4a progress (verified core, format 2 on x86-64)
 
+## Proven accessors (branch core/proven-accessors, 2026-11-11)
+
+The raw-memory accessors of src/view.rs become verified code against an
+explicit memory-ownership model (TRUSTED.md section 1, "Memory model").
+Artifacts: /home/flo/work/opentoit-sandbox-artifacts/proven-accessors
+(tools/: verification, codegen comparison, callgrind benchmark, census).
+
+- P0 (trial, artifacts trial/heap_inv.rs): a field read and a field write
+  through an untagged reference (`with_exposed_provenance(obj - 1)`)
+  verify against a `PointsTo` taken from the heap model, with the model
+  update, for 64-bit and 32-bit words (10 verified, 0 errors each).
+  Design found there: the permissions live inside the view structs as
+  tracked (erased) fields, the views' ghost content is defined from them,
+  and a type invariant ties each permission to the address the accessor
+  computes. Callers are unchanged: the contracts are the same, only
+  `sid()` changed type (a pointer instead of an uninterpreted int).
+  Writes go through a helper that takes a tracked mutable borrow of the
+  permission field (`no_unwind`), so the invariant is checked against the
+  helper's contract; whole-struct replacement (`mem::swap`) verified too
+  but cost +34% code on riscv32 (stores LLVM cannot remove), and passing
+  `&mut` to the field cost the register allocation of the stack view.
+- P1 (stack, tables, globals): `Table` (`len`, `at`, `cursor`), `Globals`
+  (`len`, `at`, `set`), `StackMem` (`len`, `slot`, `read`, `write`,
+  `header`, `set_header`, `copy_within`) and `Cursor` (`offset`, `diff`,
+  `read`, `write`, `byte`, `lt`) are verified. Trusted instead: the three
+  derivation points (`Table::from_raw`, `Globals::from_raw`,
+  `StackMem::from_stack`: `Tracked::assume_new` of the permissions, with
+  their statement), the Rust semantics of `pointer::wrapping_add` and
+  `wrapping_offset` (two `assume_specification`s, used instead of vstd's
+  `with_addr`, which lost scaled addressing and cost 1 percent on the
+  checked handlers), `global size_of u8 == 1` (compile-time checked), and
+  libc memmove for `copy_within` (an FFI leaf on the permissions; the
+  verified word loop, artifacts copy_words_verified_loop.rs, cost 0.9
+  percent on sys:rpc). Core census: external_body 95 -> 76, unsafe 68 ->
+  60 entries, uninterp 14 -> 6; plus 3 assume_new, 2
+  assume_specification. Instructions (callgrind, 36 runs): all within
+  0.01 percent of sandbox-integration; riscv32 opt=s text 59,332 ->
+  59,346 B, run_loop 6,479 -> 6,483 instructions. One proof hint in
+  rloops.rs (`fall_r`, unstable at 32 bits after the change).
+
 ## Trusted containers integrated (branch core/trusted-integration, 2026-11-11)
 
 `experiment/trusted-fast` (0c7b1f6b) merged into `sandbox-integration`
