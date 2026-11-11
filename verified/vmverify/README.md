@@ -507,11 +507,16 @@ the crate supplies the global allocator (the VM's malloc/free/realloc)
 and the panic handler (`toit_vmverify_panic`, FATAL): src/device.rs. The
 device library is built with the Cargo profile `device` (panic = abort,
 LTO). `tests/nostd_check.sh` builds spec, core and the device library for
-`riscv32imac-unknown-none-elf` and `riscv64imac-unknown-none-elf`;
+`riscv32imac-unknown-none-elf`, `riscv64imac-unknown-none-elf` and
+`thumbv7m-none-eabi` (EC618);
 `tests/device_size.sh` measures the linked size by component
-(verified/core/PROGRESS.md, "Phase 5"). ESP32-C6/H2 firmware links it
+(verified/core/PROGRESS.md, "Phase 5"; `DEVICE_SIZE_ARCH=arm` for the
+EC618). ESP32-C6/H2 firmware links it
 with the menuconfig option `TOIT_VERIFIED_CORE`
-(toolchains/idf/components/toit).
+(toolchains/idf/components/toit), the EC618 firmware with `make ec618
+EC618_BYTECODE_FORMAT=2`; `tests/thumb_codegen_check.sh` checks the
+thumbv7m code for what the EC618's slot relocation assumes
+(docs/format2-migration.md, "EC618").
 
 ## No panics on devices (branch device/panic-free)
 

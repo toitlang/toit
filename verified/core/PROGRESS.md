@@ -1,5 +1,38 @@
 # Phase 4a progress (verified core, format 2 on x86-64)
 
+## EC618 on format 2 (branch device/ec618, 2026-11-12)
+
+The EC618 (Cortex-M3) builds and runs format 2 on the core; details,
+tables and the remaining work in docs/format2-migration.md, "EC618".
+Nothing was flashed; scripts, logs and runs:
+/home/flo/work/opentoit-sandbox-artifacts/ec618. Nothing inside
+verified/core/src or verified/spec changed.
+
+- The device library for `thumbv7m-none-eabi` (upstream tier 2) at 3, s,
+  z with LTO: nostd_check.sh (now with thumbv7m), nopanic_check.sh
+  (`NOPANIC_ARCH=arm`), device_size.sh (`DEVICE_SIZE_ARCH=arm`: Rust
+  75,728 / 66,578 / 62,418 B at 3 / s / z, against 72,806 riscv32 and
+  79,129 Xtensa at 3), and the new thumb_codegen_check.sh (v7-M Thumb-2,
+  GCC-compatible ABI attributes, no FPU, no movw/movt, no atomic helpers;
+  check.sh runs it and the arm no-panic check when the tools exist).
+  Atomics are native on v7-M; none are linked.
+- verified/vmverify/.cargo/config.toml: `+no-movt` for thumbv7m (the EC618
+  slot relocator moves words, not movw/movt pairs).
+- Firmware: `make ec618 EC618_BYTECODE_FORMAT=2` (base, both slot links,
+  SRL3 byte-identity check, envelope with `bytecode-formats` [2]); format
+  1 builds as before. VM body 315,408 -> 378,404 B (Rust 74,511, C++
+  interpreter -13,997), system image 90,156 -> 118,828, slot 502,324 of
+  786,432 B.
+- Fixed on the way: `Stack::v2_frames_skip_` is a plain static on the
+  EC618 (emulated TLS broke the slot relocation); the slot's `.bss` lay
+  over the CP's AON backup in the ASMB (a bug of format 1 too).
+- QEMU (mps2-an385, tests/ec618-qemu: the slot's objects with the EC618
+  base's prebuilt FreeRTOS and heap): the ESP32 device suite gives the
+  same results in format 1 and 2; primitive differential f1 against f2 on
+  the Cortex-M3: PRIMDIFF_SHORT; instructions f2/f1 INSN_SHORT.
+
+Gates: GATES_SHORT
+
 ## Device size (branch device/size, 2026-11-11)
 
 Size reduction of the format-2 firmware (core, no C++ interpreter) for the
