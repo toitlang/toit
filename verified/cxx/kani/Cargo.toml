@@ -1,0 +1,18 @@
+# Copyright (C) 2026 Toit contributors.
+# Kani pilot on two trusted accessors of verified/core/src/view.rs
+# (verified/CXX-VERIFICATION-PILOT.md, "Group (1): Kani"). The accessor
+# bodies are copied, not shared: the pilot must not change verified/core.
+
+[package]
+name = "cxxv-kani"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[workspace]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
