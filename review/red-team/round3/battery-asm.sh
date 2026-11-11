@@ -36,7 +36,7 @@ run_asm () {
 echo "# Assembled-method battery $(date)" | tee -a "$RES"
 # --- baseline valid ---
 run_asm good-retnull     'RETURN_NULL'
-run_asm good-print55     'LOAD_SMI_U8 55; INVOKE_STATIC 706; RETURN_NULL'
+run_asm good-print55     'LOAD_SMI_U8 55; INVOKE_STATIC @print; RETURN_NULL'
 run_asm good-return-val  'LOAD_SMI_0; RETURN'
 # --- HALT / trusted-only / out-of-range opcodes ---
 run_asm halt-0           'HALT 0'
@@ -111,7 +111,7 @@ run_asm loadfieldthis    'LOAD_FIELD_THIS 0; RETURN_NULL'
 run_asm loadfieldthis-hi 'LOAD_FIELD_THIS 200; RETURN_NULL'
 # --- global / literal out of range ---
 run_asm loadglobal-oob   'LOAD_GLOBAL_VAR 250; RETURN_NULL'
-run_asm loadlit-oob      'LOAD_LITERAL 250; INVOKE_STATIC 706; RETURN_NULL'
+run_asm loadlit-oob      'LOAD_LITERAL 250; INVOKE_STATIC @print; RETURN_NULL'
 run_asm loadlit-wide-oob 'LOAD_LITERAL_WIDE 65000; RETURN_NULL'
 run_asm allocate-oob     'ALLOCATE 250; RETURN_NULL'
 run_asm invokevirt-oob   'LOAD_SMI_0; INVOKE_VIRTUAL 0 65000; RETURN_NULL'

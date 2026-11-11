@@ -16,7 +16,8 @@
 //   asm dump  <snap> <method-name>         # disassemble a method's body
 //   asm patch [--stale-table] <snap> <out> <method-name> <asm>
 //     <asm> is ';'-separated: "MNEMONIC op...", labels "name:", branch ops take
-//     a label.  Operands: decimal, 0xHEX, or a label (for branch targets).
+//     a label.  Operands: decimal, 0xHEX, a label (for branch targets), or
+//     @NAME, the dispatch-table index of the static method NAME.
 //   Certificate is always dropped so the host re-infers/verifies.
 
 import host.file
@@ -153,6 +154,30 @@ patch-table seg/ByteArray entry/int delta/int bytecodes-size/int -> none:
     e := record >> 8
     if e > entry: LITTLE-ENDIAN.put-uint32 seg p (((e + delta) << 8) | (record & 0xff))
 
+/**
+Replaces every operand "@NAME" with the dispatch-table index of the
+  (static) method NAME, so that a battery does not hard-code an index that
+  changes with every compilation of the library.
+*/
+resolve-names program/Program asm/string -> string:
+  result := ""
+  i := 0
+  while i < asm.size:
+    if asm[i] != '@':
+      result += asm[i..i + 1]
+      i++
+      continue
+    end := i + 1
+    while end < asm.size and asm[end] != ' ' and asm[end] != ';': end++
+    name := asm[i + 1..end]
+    m := find-method program name
+    index := program.methods.index-of m
+    d := program.dispatch-table.index-of index
+    if d < 0: throw "no dispatch entry for $name"
+    result += "$d"
+    i = end
+  return result
+
 find-method program/Program name/string -> ToitMethod:
   program.methods.do: | m/ToitMethod |
     info := program.method-info-for m.id (: null)
@@ -192,7 +217,7 @@ main args/List:
     mname := args[3]
     asm := args[4]
     m := find-method program mname
-    body := assemble asm
+    body := assemble (resolve-names program asm)
     // Format note 21: the header ends at the entry and holds no body
     // length; the body ends at the next method's header. Replace the body
     // and move the entries of the following methods in the table literal.
