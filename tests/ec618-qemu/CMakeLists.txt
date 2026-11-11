@@ -50,6 +50,11 @@ set(HARNESS_LIBRARIES
   mbedtls mbedx509 mbedcrypto
   "${EC618_PLAT_DIR}/libs/libfreertos.a"
 )
+# The toolchain's libraries before the Rust archive: in the slot link the
+# base's copies of libgcc and newlib (the same toolchain) define the memory
+# and soft-float helpers, so compiler_builtins' must not win here either
+# (they differ, for example, in the NaN that a soft-float add returns).
+list(APPEND HARNESS_LIBRARIES -lgcc -lc -lm)
 if (TOIT_VERIFIED_CORE_ENABLED)
   list(APPEND HARNESS_LIBRARIES toit_verified_core)
 endif()
