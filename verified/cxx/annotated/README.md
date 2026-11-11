@@ -155,16 +155,20 @@ Not attempted, in order of exposure, with what blocks each:
 
 | C++ | Blocker | Estimate |
 |---|---|---|
-| toit_v2_allocate_instance/double/array/exception (interpreter_v2.cc) | `v2_allocate` takes a lambda: a rendering rule for closures (a struct of the captures and a function) | 2 days with the rule |
-| toit_v2_call_primitive, toit_v2_lookup_primitive | non-constant globals (`Flags::primitives`), the policy table | 2 days |
-| encode_copy, encode_byte_array, the TISON variant, external byte arrays | the byte_content model above | 3 days after it |
-| MessageDecoder | heap extension (objects allocated and initialized while decoding) in the model | 8-10 days |
-| ProgramOrientedEncoder (encode_error) | the object encoder's buffer and the program model | 5 days |
-| task/message/timer primitives | the scheduler calls get stated contracts, the argument decoding is ARGS | 1 day each |
+| encode_copy, encode_byte_array (transfer, dedup of transfers), the buffer writers, size accounting, TisonEncoder::encode | the buffer: every write of the write pass lies in the buffer only because the size pass on the same heap counted it. Plan: the encoder predicate exposes the cursor and an invariant `cursor <= MAX_SIZE + MAX_BLOB + 32` (no overflow; is_too_large at each encode_any), the write pass holds `uchars(buffer, cap)`, and the two-pass agreement is ONE unproven lemma (`cursor + n <= cap` before a write), or, to prove it, a ghost encoding length (fixpoint over the heap, with byte_content's exact length) shown equal in both passes; the arrays `copied_`/`transferred_` (struct array fields) bounded by reserve_external | 3 days with the lemma, +4 for the ghost length |
+| MessageDecoder (messaging.cc) | heap extension while decoding (the allocator's contract exists now: `Process::allocate_byte_array`; strings, arrays, doubles, large integers, lists and maps to add), every read against `size_`, the external table | 6-8 days |
+| ProgramOrientedEncoder / EncodeVisitor (encode_error, encoder.cc) | the object encoder's buffer (bounded, no two-pass), the program model (class names, method tables) for the trace | 4-5 days |
+| toit_v2_allocate_instance/double/array/exception (interpreter_v2.cc), the epoch | `v2_allocate` takes a lambda: a rendering rule for closures (a struct of the captures and a function); the clauses are in CONTRACTS.toml, Verus side checked | 2-3 days |
+| toit_v2_call_primitive, toit_v2_lookup_primitive (after core/trusted-integration's leaner call) | non-constant globals (`Flags::primitives`), the policy table, the retry loop around the GC | 2-3 days |
+| the other C++ primitives of the untrusted set (35 core + bitmap blit + timers/events; docs/sandbox-primitive-audit.md) | blob-only ones (crc, string_to_utf_16, utf_16_to_string, byte_array_convert_to_string): ARGS is proven, an allocation contract per result kind (strings, byte arrays); task/message/timer ones: the scheduler calls get stated contracts | 0.5-1 day each |
 
-Past bugs of the upstream series #3361-#3381 that fall in these files
-belong to the units not attempted (decoder, byte_content, encode_error);
-each becomes a mutant when its unit is done.
+Past bugs of the upstream series #3361-#3382 in the covered code are
+mutants (byte_content depth 357d1127, the encoder bounds f708ad5d, the
+UTF-8 bounds 07c24665, the string_write memmove af4ba7ab); those in the
+units not attempted (decoder nesting/cardinal bounds of #3362, encoder
+recursion and buffer overflow of #3373/#3374, encoding size truncation of
+#3378, malformed system messages of #3381) become mutants with them.
+
 
 ## Findings
 
