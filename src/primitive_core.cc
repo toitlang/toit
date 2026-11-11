@@ -277,6 +277,9 @@ PRIMITIVE(get_generic_resource_group) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
+  // The group lives until the process exits, so a sandboxed program calling
+  // this in a loop would take VM memory without bound.
+  if (!process->may_add_permanent_resource_group()) FAIL(QUOTA_EXCEEDED);
   SimpleResourceGroup* resource_group = _new SimpleResourceGroup(process);
   if (!resource_group) FAIL(MALLOC_FAILED);
 
@@ -2159,16 +2162,21 @@ PRIMITIVE(process_send) {
     FAIL(PERMISSION_DENIED);
   }
 
+  const PolicyQuotas& quotas = policy->quotas();
   unsigned size = 0;
   word total_size = 0;
   { MessageEncoder size_encoder(process, null);
+    // Stop the size pass at the quota: a shared object is encoded once per
+    // reference, so the work isn't bounded by the size of the object graph,
+    // and a primitive can't be interrupted.
+    size_encoder.set_max_total_size(quotas.max_message_bytes);
     if (!size_encoder.encode(array)) {
+      if (size_encoder.over_limit()) FAIL(QUOTA_EXCEEDED);
       return size_encoder.create_error_object(process);
     }
     size = size_encoder.size();
     total_size = size_encoder.total_size();
   }
-  const PolicyQuotas& quotas = policy->quotas();
   if (quotas.max_message_bytes > 0 && total_size > quotas.max_message_bytes) FAIL(QUOTA_EXCEEDED);
 
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + EXTERNAL_BYTE_ARRAY_MALLOC_TAG);

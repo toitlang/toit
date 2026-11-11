@@ -18,6 +18,11 @@ import rpc show RpcSerializable
 class RpcBroker implements SystemMessageHandler_:
   static MAX-TASKS/int     ::= 16
   static MAX-REQUESTS/int? ::= 64
+  // A single sandboxed (untrusted) process can't take up the whole request
+  // queue, so it can't make the requests of every other client fail, nor
+  // all processing tasks, so its slow requests can't hold up the requests
+  // of every other client.
+  static MAX-REQUESTS-PER-UNTRUSTED-PROCESS/int ::= MAX-TASKS / 2
 
   procedures_/Map ::= {:}
   queue_/RpcRequestQueue_ ::= RpcRequestQueue_ MAX-TASKS
@@ -78,8 +83,26 @@ class RpcBroker implements SystemMessageHandler_:
 
     procedure := procedures_.get name
     if not procedure: send-exception-reply.call "No such procedure registered: $name"
-    request := RpcRequest_ pid gid id arguments procedure
+    request := RpcRequest_ pid gid id arguments procedure --limited=(is-untrusted_ pid)
     if not queue_.add request: send-exception-reply.call "Cannot enqueue more requests"
+
+  // The policy kind of sandboxed processes (ContainerService.POLICY-UNTRUSTED).
+  static POLICY-UNTRUSTED_ ::= 2
+  // Whether this process may query the policy of other processes. Sandboxed
+  // processes may not.
+  static may-query-policy_/bool := true
+
+  static is-untrusted_ pid/int -> bool:
+    if not may-query-policy_ or pid == Process.current.id: return false
+    kind := null
+    exception := catch: kind = process-policy_ pid
+    if exception:
+      may-query-policy_ = false
+      return false
+    return kind == POLICY-UNTRUSTED_
+
+  static process-policy_ pid/int -> int:
+    #primitive.core.process-policy
 
 class RpcRequest_:
   next/RpcRequest_? := null
@@ -89,8 +112,11 @@ class RpcRequest_:
   id/int
   arguments/any
   procedure/Lambda
+  // Whether the request counts towards the per-process limit of untrusted
+  // senders.
+  limited/bool
 
-  constructor .pid .gid .id .arguments .procedure:
+  constructor .pid .gid .id .arguments .procedure --.limited/bool=false:
 
   process -> none:
     result/any := null
@@ -121,13 +147,18 @@ monitor RpcRequestQueue_:
 
   unprocessed_/int := 0
   tasks_/int := 0
+  // The number of unprocessed requests (enqueued or being processed) of
+  // each process that has any.
+  unprocessed-by-pid_/Map ::= {:}  // Map<int, int>
 
   constructor max-tasks/int:
     processing-requests_ = List max-tasks
     processing-tasks_ = List max-tasks
 
   add request/RpcRequest_ -> bool:
-    if unprocessed_ >= RpcBroker.MAX-REQUESTS:
+    if unprocessed_ >= RpcBroker.MAX-REQUESTS
+        or (request.limited and
+            (unprocessed-by-pid_.get request.pid --if-absent=: 0) >= RpcBroker.MAX-REQUESTS-PER-UNTRUSTED-PROCESS):
       // It should not be necessary to ask for more processing tasks here,
       // but we do it (defensively) anyway to guard against issues in the
       // bookkeeping of unprocessed requests and processing tasks.
@@ -142,9 +173,21 @@ monitor RpcRequestQueue_:
     else:
       first_ = last_ = request
     unprocessed_++
+    if request.limited: unprocessed-by-pid_.update request.pid --init=0: it + 1
 
     ensure-processing-task_
     return true
+
+  // Static, so it doesn't take the monitor lock: it is called both with and
+  // without the lock held.
+  static decrement_ unprocessed-by-pid/Map request/RpcRequest_ -> none:
+    if not request.limited: return
+    pid := request.pid
+    count := unprocessed-by-pid.get pid --if-absent=: 0
+    if count <= 1:
+      unprocessed-by-pid.remove pid
+    else:
+      unprocessed-by-pid[pid] = count - 1
 
   remove-first task-index/int -> RpcRequest_?:
     while true:
@@ -184,6 +227,7 @@ monitor RpcRequestQueue_:
         if not next:
           last_ = previous
         unprocessed_--
+        decrement_ unprocessed-by-pid_ current
       else:
         previous = current
       current = next
@@ -218,6 +262,7 @@ monitor RpcRequestQueue_:
               // defensive feels right.
               processing-requests_[task-index] = null
               unprocessed_--
+              decrement_ unprocessed-by-pid_ next
         finally:
           processing-tasks_[task-index] = null
           tasks_--
