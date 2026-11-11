@@ -137,6 +137,14 @@ inline word clamp(word x) {
   return x;
 }
 
+// Rule: `@render ... truncating`: a uword-to-int conversion is the modular
+// one too (an id read as a cardinal).
+inline int narrow_unsigned(uword u) {
+  int n = u;
+  if (n < 0) return -1;
+  return n;
+}
+
 // Rule: `@render ... truncating`: an explicit static_cast narrowing a
 // signed integer (here to a typedef: Clang's NoOp over an IntegralCast) is
 // the modular conversion too (the round trip is checked).

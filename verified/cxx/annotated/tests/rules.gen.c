@@ -121,6 +121,11 @@ int use_plain(void);
 //@ requires true;
 //@ ensures result == 1;
 
+// C++: verified/cxx/annotated/tests/rules.cc toit::narrow_unsigned
+int narrow_unsigned(uword u);
+//@ requires true;
+//@ ensures -1 <= result;
+
 // C++: verified/cxx/annotated/tests/rules.cc toit::Outer::Inner::Inner
 void Outer_Inner_ctor(Outer_Inner *self, word x)
 //@ requires self->v_ |-> _ &*& x < 100;
@@ -312,5 +317,17 @@ int use_plain(void)
   plain_c_ctor(&p);
   p.a = 1;
   return p.a;
+}
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::narrow_unsigned
+int narrow_unsigned(uword u)
+//@ requires true;
+//@ ensures -1 <= result;
+{
+  int n = /*@truncating@*/(int)u;
+  if (n < 0) {
+    return -1;
+  }
+  return n;
 }
 

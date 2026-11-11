@@ -184,7 +184,7 @@ A sidecar: a sequence of sections, each opened by a directive line (a
   the prototype and contract are emitted (the body is not verified, but
   still compared with the sources). `type=T` picks an overload by its
   Clang type with the spaces removed. `truncating`: the implicit
-  conversions of a word to int and of a uword to word are VeriFast's
+  conversions of a word or a uword to int and of a uword to word are VeriFast's
   truncating casts (the modular conversions GCC and Clang define and
   C++20 standardizes), for code that checks the result; so is an
   explicit static_cast narrowing a signed integer (os_localtime's
