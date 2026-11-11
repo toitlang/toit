@@ -49,6 +49,10 @@ interface SiblingService:
   busy ms/int -> none
   static BUSY-INDEX ::= 2
 
+  // Replies with $ms + 1 after $ms milliseconds (keeps a request pending).
+  slow ms/int -> int
+  static SLOW-INDEX ::= 3
+
 class SiblingClient extends ServiceClient implements SiblingService:
   static SELECTOR ::= SiblingService.SELECTOR
   constructor selector/ServiceSelector=SELECTOR:
@@ -64,6 +68,9 @@ class SiblingClient extends ServiceClient implements SiblingService:
   busy ms/int -> none:
     invoke_ SiblingService.BUSY-INDEX ms
 
+  slow ms/int -> int:
+    return invoke_ SiblingService.SLOW-INDEX ms
+
 class SiblingProvider extends ServiceProvider implements SiblingService ServiceHandler:
   constructor:
     super "test/sandbox/sibling" --major=1 --minor=0
@@ -73,7 +80,12 @@ class SiblingProvider extends ServiceProvider implements SiblingService ServiceH
     if index == SiblingService.PING-INDEX: return ping arguments
     if index == SiblingService.PID-INDEX: return pid
     if index == SiblingService.BUSY-INDEX: return busy arguments
+    if index == SiblingService.SLOW-INDEX: return slow arguments
     unreachable
+
+  slow ms/int -> int:
+    sleep --ms=ms
+    return ms + 1
 
   ping value/int -> int:
     return value + 1
