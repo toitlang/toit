@@ -356,7 +356,7 @@ system services, JSON, RPC); if devices are tight on flash, it is the one
 to leave out.
 
 What remains open on this branch: wall-clock times on an idle machine
-(above, measured under load),  a device measurement of the speed effect,
+(above, measured under load), a device measurement of the speed effect,
 HASH_DO (above), and moving the emitted find loop next to `find-body_`
 (e.g. a format-2-only Toit body) if the owner prefers Toit to bytecode
 for it.
