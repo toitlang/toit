@@ -2141,13 +2141,15 @@ Object** Interpreter::hash_find(Object** sp, Program* program, Interpreter::Hash
     }
     increment = true;
     Object* hap;
+    bool hap_found = true;
     if (is_array(index_object)) {
       hap = Array::cast(index_object)->at(slot);
     } else {
-      bool success = fast_at(process_, index_object, Smi::from(slot), false, &hap);
-      if (!success) hap = null;
+      hap_found = fast_at(process_, index_object, Smi::from(slot), false, &hap);
     }
-    if (hap == null || !is_smi(hap)) {
+    // Don't compare 'hap' with null: the smi 0 (a free slot) is the null
+    // pointer.
+    if (!hap_found || !is_smi(hap)) {
       // Only happens if the index was corrupted.
       DROP(NUMBER_OF_BYTECODE_LOCALS - 1);
       *action_return = kBail;
