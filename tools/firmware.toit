@@ -1782,12 +1782,30 @@ extract-binary-content -> ByteArray
   reserved := 1024 - config-encoded.size
   if reserved > 0: extension += ByteArray reserved
 
-  // This is a pretty serious padding up. We do it to guarantee
-  // that segments that follow this one do not change their
-  // alignment within the individual flash pages, which seems
-  // to be a requirement. It might be possible to get away with
-  // less padding somehow.
-  extension = pad extension 64 * 1024
+  // The flash-mapped segments that follow the DROM segment (the
+  // instructions) must keep their position within the 64 KB flash pages.
+  // Padding the extension to whole pages guarantees that, but wastes up to
+  // 64 KB of the app partition. Instead the extension is padded to 4 KB and
+  // the segments loaded into RAM are laid out again around it, filling the
+  // gap in front of the instructions (Esp32Binary.patch-extend-drom). The
+  // whole pages remain the fallback for binaries where that does not work.
+  extended := patch-drom-extension_ binary system-uuid table-address extension used-size
+      --alignment=4 * 1024
+  if not extended:
+    extended = patch-drom-extension_ binary system-uuid table-address extension used-size
+        --alignment=64 * 1024
+  if not extended: throw "cannot extend the DROM segment"
+  return binary.bits
+
+/**
+Pads the DROM $extension to the given $alignment, fills in its header and
+  patches it into the $binary.
+Returns false (and leaves the binary unchanged) if the binary's segments
+  cannot be laid out around an extension of that size.
+*/
+patch-drom-extension_ binary/Esp32Binary system-uuid/Uuid table-address/int extension/ByteArray used-size/int
+    --alignment/int -> bool:
+  extension = pad extension alignment
   free-size := extension.size - used-size
 
   // Update the extension header.
@@ -1797,8 +1815,7 @@ extract-binary-content -> ByteArray
   4.repeat: checksum ^= LITTLE-ENDIAN.uint32 extension (it * 4)
   LITTLE-ENDIAN.put-uint32 extension (4 * 4) checksum
 
-  binary.patch-extend-drom system-uuid table-address extension
-  return binary.bits
+  return binary.patch-extend-drom system-uuid table-address extension
 
 show-cmd -> cli.Command:
   return cli.Command "show"
@@ -2283,7 +2300,7 @@ class Esp32Binary:
   }
 
   header_/ByteArray
-  segments_/List
+  segments_/List := ?
   chip-id_/int
   address-map_/AddressMap
 
@@ -2381,14 +2398,19 @@ class Esp32Binary:
     if not drom: throw "cannot append to non-existing DROM segment"
     return drom.address + drom.size
 
-  patch-extend-drom system-uuid/Uuid table-address/int bits/ByteArray -> none:
-    if (bits.size & 0xffff) != 0: throw "cannot extend with partial flash pages (64KB)"
+  /**
+  Appends the $bits to the last DROM segment.
+  Returns false, leaving the binary unchanged, if the segments that follow
+    cannot be laid out around it (see $transform-drom-segment_).
+  */
+  patch-extend-drom system-uuid/Uuid table-address/int bits/ByteArray -> bool:
+    if (bits.size & 3) != 0: throw "cannot extend with a partial word"
     // We look for the last DROM segment, because it will grow into
     // unused virtual memory, so we can extend that without relocating
     // other segments (which we don't know how to).
     drom := find-last-drom-segment_
     if not drom: throw "cannot append to non-existing DROM segment"
-    transform-drom-segment_ drom: | segment/ByteArray |
+    return transform-drom-segment_ drom: | segment/ByteArray |
       patch-details-esp32 segment system-uuid table-address
       segment + bits
 
@@ -2396,7 +2418,8 @@ class Esp32Binary:
     drom := find-last-drom-segment_
     if not drom: return
     extension-size := compute-drom-extension-size_ drom
-    transform-drom-segment_ drom: it[..extension-size[0]]
+    if not (transform-drom-segment_ drom: it[..extension-size[0]]):
+      throw "cannot remove the DROM extension"
 
   static compute-drom-extension-size_ drom/Esp32BinarySegment -> List:
     details-offset := find-details-offset-esp32 drom.bits
@@ -2414,26 +2437,105 @@ class Esp32Binary:
     free := LITTLE-ENDIAN.uint32 drom.bits unextended-size + 8
     return [unextended-size, used, free]
 
-  transform-drom-segment_ drom/Esp32BinarySegment [block] -> none:
-    // Run through all the segments and transform the DROM one.
-    // All segments following that must be displaced in flash if
-    // the DROM segment changed size.
-    displacement := 0
-    segments_.size.repeat:
-      segment/Esp32BinarySegment := segments_[it]
-      if segment == drom:
-        bits := segment.bits
-        size-before := bits.size
-        transformed := block.call bits
-        size-after := transformed.size
-        segments_[it] = Esp32BinarySegment transformed
-            --offset=segment.offset
-            --address=segment.address
-        displacement = size-after - size-before
-      else if displacement != 0:
-        segments_[it] = Esp32BinarySegment segment.bits
+  /**
+  Transforms the $drom segment with the $block and places the segments that
+    follow it again.
+
+  A displacement by whole 64 KB flash pages keeps every segment's position
+    within its page. Otherwise the segments are laid out again (see
+    $relayout_). Returns false, leaving the binary unchanged, if that is not
+    possible.
+  */
+  transform-drom-segment_ drom/Esp32BinarySegment [block] -> bool:
+    index := segments_.index-of drom
+    bits := drom.bits
+    transformed := block.call bits
+    displacement := transformed.size - bits.size
+    result/List? := List segments_.size: segments_[it]
+    result[index] = Esp32BinarySegment transformed
+        --offset=drom.offset
+        --address=drom.address
+    if (displacement & 0xffff) == 0:
+      for i := index + 1; i < result.size; i++:
+        segment/Esp32BinarySegment := segments_[i]
+        result[i] = Esp32BinarySegment segment.bits
             --offset=segment.offset + displacement
             --address=segment.address
+    else:
+      result = relayout_ result index
+      if not result: return false
+    segments_ = result
+    header_[SEGMENT-COUNT-OFFSET_] = segments_.size
+    return true
+
+  // The ESP-IDF bootloader loads at most 16 segments (ESP_IMAGE_MAX_SEGMENTS).
+  static MAX-SEGMENTS_ ::= 16
+  static FLASH-PAGE-SIZE_ ::= 64 * 1024
+
+  /**
+  Lays out the segments after the one at $index (the DROM segment, which
+    may have changed size) again.
+
+  Segments mapped from flash (the instructions; recognized by their
+    position: an image built by esptool has every mapped segment at the
+    same offset within its 64 KB flash page as its load address) are placed
+    at the first offset with the right position within the page. The gap in
+    front of them is filled with the data of segments that the bootloader
+    copies into RAM, split where needed, as esptool does; their remaining
+    data follows the mapped segments. Returns null if that does not work
+    (too many segments, not enough data to fill a gap).
+  */
+  relayout_ segments/List index/int -> List?:
+    drom/Esp32BinarySegment := segments[index]
+    // The pieces of the segments that are loaded into RAM, in order, as
+    //   [address, bytes] pairs, and the mapped segments.
+    pieces := []
+    mapped := []
+    for i := index + 1; i < segments.size; i++:
+      segment/Esp32BinarySegment := segments[i]
+      data-offset := segment.offset + Esp32BinarySegment.HEADER-SIZE_
+      if ((segment.address - data-offset) & (FLASH-PAGE-SIZE_ - 1)) == 0:
+        mapped.add segment
+      else:
+        if (segment.size & 3) != 0 or (segment.address & 3) != 0: return null
+        pieces.add [segment.address, segment.bits]
+    result := []
+    (index + 1).repeat: result.add segments[it]
+    cursor := drom.end
+    piece-index := 0
+    mapped.do: | segment/Esp32BinarySegment |
+      header-size := Esp32BinarySegment.HEADER-SIZE_
+      // The data offset must be at the load address' position in its page.
+      target := cursor + header-size
+      target += (segment.address - target) & (FLASH-PAGE-SIZE_ - 1)
+      gap := target - header-size - cursor
+      // Fill the gap with pieces; each needs a header and at least a word.
+      while gap > 0:
+        if gap < header-size + 4 or piece-index >= pieces.size: return null
+        piece := pieces[piece-index]
+        address/int := piece[0]
+        bytes/ByteArray := piece[1]
+        take := bytes.size
+        if header-size + take > gap or gap - (header-size + take) < header-size + 4:
+          // Split: fill the gap exactly, or leave room for one more piece.
+          if header-size + take > gap - (header-size + 4):
+            take = gap - header-size
+          if take <= 0 or take > bytes.size: return null
+        if take == bytes.size:
+          piece-index++
+        else:
+          pieces[piece-index] = [address + take, bytes.copy take]
+        result.add (Esp32BinarySegment (bytes.copy 0 take) --offset=cursor --address=address)
+        cursor += header-size + take
+        gap -= header-size + take
+      result.add (Esp32BinarySegment segment.bits --offset=cursor --address=segment.address)
+      cursor = result.last.end
+    for ; piece-index < pieces.size; piece-index++:
+      piece := pieces[piece-index]
+      result.add (Esp32BinarySegment piece[1] --offset=cursor --address=piece[0])
+      cursor = result.last.end
+    if result.size > MAX-SEGMENTS_: return null
+    return result
 
   find-last-drom-segment_ -> Esp32BinarySegment?:
     last := null
