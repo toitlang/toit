@@ -1,5 +1,42 @@
 # Phase 4a progress (verified core, format 2 on x86-64)
 
+## The verified loop on registers (branch core/fast-loop-proven, 2026-11-11)
+
+A performance rewrite of the verified run loop keeping every proof
+(DESIGN.md section 2a, "Room" in section 3): the hot state in registers
+(stack cursors `view::Slot`), the room bound in the loop invariant (no
+check per push), lazy finally records, one constant arm per opcode,
+preemption merged into the calls' room check. The refinement relation is
+unchanged (`m.with(r).refines(p)`); every register handler proves the
+machine handler's postcondition; slow paths run the unchanged machine
+handlers out of line (`step::bridge`). Nothing was assumed or admitted;
+the allowlist grew by 7 groups (the cursor's 6, TRUSTED.md section 1, and
+`settle`'s loop without decreases clause).
+
+Progression (callgrind Ir inside `toit_v2_run`, TOIT_VERIFY=1, x86-64;
+artifacts fast-loop-proven/ir/results.txt; C++ format 1 -O3: 1,023 M /
+650 M / 762 M):
+
+| Step | richards | deltablue | pystone |
+|---|---|---|---|
+| before (sandbox-integration) | 2,105 M (2.06) | 1,520 M (2.34) | 1,451 M (1.91) |
+| locals, constants, branches on registers (rest bridged) | 5,626 M | 3,695 M | 3,056 M |
+| + room invariant, calls and returns (rest bridged, room scan per bridge) | 14,290 M | 9,285 M | 6,958 M |
+| + fields, type tests, operators | 2,141 M | 2,626 M | 2,977 M |
+| + blocks, tail calls, globals, collections, ALLOCATE, PRIMITIVE | 1,678 M | 1,254 M | 1,338 M |
+| + one arm per opcode, default arm unreachable (dispatch tail-duplicated: 120 sites); no SLP vectorizer | 1,353 M | 1,059 M | 1,117 M |
+| + lazy finally records (no record-top register) | 1,286 M (1.26) | 987 M (1.52) | 1,082 M (1.42) |
+
+Milestones (gates: verified/check.sh --tests at both widths, ctest -j16
+1161/1164 with the known version/reader/udp-reuse-port-test, untrusted
+suite 280 identical + the two known differences, prim_diff.sh 10 x
+1,000,000 identical, compare_trace.toit --format 2 2,053,625 steps without
+divergence, core_fuzz.toit --filter launch on ASan 30 minutes without a
+crash, 32-bit host tests/sandbox 95/95):
+
+- M1: the register loop with all families above (see below for the
+  commit).
+
 ## Shipped certificates on devices, size diet (branch device/certificate-and-size, 2026-11-11)
 
 1. Merge of `spec/shipped-certificate` (56ec778b) into integration
