@@ -31,7 +31,7 @@ use crate::v2::sound_instr::*;
 use crate::v2::sound_upto::*;
 use crate::v2::sound_raise::*;
 #[cfg(verus_only)]
-use crate::spec_common::{class_id_ok, class_id_of, u16_at, u32_at, smi, smi_ok, byte, SMI_CLASS};
+use crate::spec_common::{class_id_ok, class_id_of, u16_at, u32_at, smi, smi_ok, byte, SMI_CLASS, elements, is_array};
 #[cfg(verus_only)]
 use crate::spec_helpers::smi_val;
 
@@ -1012,7 +1012,7 @@ pub proof fn lemma_loop_taken(p: Program2, c: Cert, trusted: bool, s: State2, s2
     lemma_lgen(p, c, trusted, s, s2, k2, ic);
 }
 
-/// LOOP_REPEAT.
+/// LOOP_REPEAT and LOOP_ARRAY.
 #[verifier::spinoff_prover]
 pub proof fn lemma_step_loop(p: Program2, c: Cert, trusted: bool, s: State2)
     requires accepts(p, c, trusted), wf(p, c, s), small(s), is_loop(cur_op(p, s)),
@@ -1027,32 +1027,51 @@ pub proof fn lemma_step_loop(p: Program2, c: Cert, trusted: bool, s: State2)
     let len = opcode_length2(op);
     let w1 = w1_of(p, m, off);
     let n = bk_of(p, m, off, 3);
-    assert(loop_operands(p, m, off) == (n, n + 1, n + 2, n + 2));
+    let y = if op == LOOP_ARRAY { n + 3 } else { n + 2 };
+    assert(loop_operands(p, m, off) == (n, n + 1, n + 2, y));
     assert(!is_terminator(op));
     assert(post(p, c, m, off, k, trusted) is Some);
-    assert(loop_ok(p, m, k, n, n + 1, n + 2, n + 2));
+    assert(loop_ok(p, m, k, n, n + 1, n + 2, y));
     assert(post(p, c, m, off, k, trusted) == Some(k.subrange(0, h - 1)));
     let toff = off - w1;
     let target = info(p, m).entry + toff;
     assert(map_at(c, m, toff) == Some(loop_kinds(k, n, n + 1)));
     lemma_map_bound(p, c, trusted, m, toff);
     assert(byte2(p, s.bci + 3) == n);
-    assert(step(p, s) == op_loop_repeat(p, s, s.bci - w1, n, len)) by { reveal(step); }
     assert(s.bci - w1 == target);
     lemma_at_good(p, c, trusted, s, n);
     lemma_at_good(p, c, trusted, s, n + 2);
-    assert(loop_slots_ok(s, n, n + 1, n + 2, n + 2));
+    lemma_at_good(p, c, trusted, s, y);
+    assert(info(p, m).entry <= target < info(p, m).end);
     let vc = at(s, n);
-    if vc is Smi && at(s, n + 2) is Smi && smi_val(vc) < smi_val(at(s, n + 2)) {
-        let i = smi_val(vc);
-        let s1 = push(push(drop(put(s, n, smi(i + 1)), 1), at(s, n + 1)), vc);
-        let s2 = goto(s1, target);
-        assert(info(p, m).entry <= target < info(p, m).end);
-        assert(op_loop_repeat(p, s, target, n, len) == Outcome2::Next(s2));
-        lemma_loop_taken(p, c, trusted, s, s2, n, n + 1, smi(i + 1), vc);
+    if op == LOOP_REPEAT {
+        assert(step(p, s) == op_loop_repeat(p, s, s.bci - w1, n, len)) by { reveal(step); }
+        assert(loop_slots_ok(s, n, n + 1, n + 2, n + 2));
+        if vc is Smi && at(s, n + 2) is Smi && smi_val(vc) < smi_val(at(s, n + 2)) {
+            let i = smi_val(vc);
+            let s2 = goto(push(push(drop(put(s, n, smi(i + 1)), 1), at(s, n + 1)), vc), target);
+            assert(op_loop_repeat(p, s, target, n, len) == Outcome2::Next(s2));
+            lemma_loop_taken(p, c, trusted, s, s2, n, n + 1, smi(i + 1), vc);
+        } else {
+            assert(op_loop_repeat(p, s, target, n, len) == next(drop(s, 1), len));
+            lemma_drop(p, c, trusted, s, goto(drop(s, 1), s.bci + len), 1);
+        }
     } else {
-        assert(op_loop_repeat(p, s, target, n, len) == next(drop(s, 1), len));
-        lemma_drop(p, c, trusted, s, goto(drop(s, 1), s.bci + len), 1);
+        assert(step(p, s) == op_loop_array(p, s, s.bci - w1, n, len)) by { reveal(step); }
+        assert(loop_slots_ok(s, n, n + 1, n + 2, n + 3));
+        if loop_array_go(s, n, n + 2, n + 3) {
+            let i = smi_val(vc);
+            let arr = at(s, n + 3);
+            let v = elements(as1(s), arr)[i];
+            crate::v2::sound_virtual::lemma_array_at(p, c, s, arr, elements(as1(s), arr).len() as int, i, false, smi(0));
+            assert(good(s.heap, v));
+            let s2 = goto(push(push(drop(put(s, n, smi(i + 1)), 1), at(s, n + 1)), v), target);
+            assert(op_loop_array(p, s, target, n, len) == Outcome2::Next(s2));
+            lemma_loop_taken(p, c, trusted, s, s2, n, n + 1, smi(i + 1), v);
+        } else {
+            assert(op_loop_array(p, s, target, n, len) == next(drop(s, 1), len));
+            lemma_drop(p, c, trusted, s, goto(drop(s, 1), s.bci + len), 1);
+        }
     }
 }
 

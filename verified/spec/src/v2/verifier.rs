@@ -399,7 +399,7 @@ pub open spec fn bk_of(p: Program2, m: int, off: int, j: int) -> int {
 
 /// The loop steps (proposal, format note 19).
 pub open spec fn is_loop(op: u8) -> bool {
-    op == LOOP_REPEAT
+    op == LOOP_REPEAT || op == LOOP_ARRAY
 }
 
 /// A loop step's operands: the counter `c` (overwritten), the block `b`
@@ -425,7 +425,7 @@ pub open spec fn loop_kinds(k: Seq<Kind>, c: int, b: int) -> Seq<Kind> {
 /// the limit) and `n + 3` (LOOP_ARRAY) the slots it reads.
 pub open spec fn loop_operands(p: Program2, m: int, off: int) -> (int, int, int, int) {
     let n = bk_of(p, m, off, 3);
-    (n, n + 1, n + 2, n + 2)
+    (n, n + 1, n + 2, if op_of(p, m, off) == LOOP_ARRAY { n + 3 } else { n + 2 })
 }
 
 /// The fall-through successor kinds of an instruction, `None` for

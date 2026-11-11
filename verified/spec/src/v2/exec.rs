@@ -44,7 +44,8 @@ use crate::v2::spec::*;
 use crate::v2::bytecodes::*;
 #[cfg(verus_only)]
 use crate::spec_common::{smi, smi_ok, smi_min, smi_max, u16_at, u32_at, is_instance, fields, obj,
-    obj_id, class_id_ok, class_id_of, builtin, instance_field_count, new_double, EXCEPTION_CLASS};
+    obj_id, class_id_ok, class_id_of, builtin, instance_field_count, new_double, EXCEPTION_CLASS,
+    is_array, elements};
 use crate::spec_helpers::{COMPARE_FLAG_EQUAL, COMPARE_FLAG_STRICTLY_LESS, COMPARE_FLAG_LESS_EQUAL,
     COMPARE_FLAG_STRICTLY_GREATER, COMPARE_FLAG_GREATER_EQUAL};
 #[cfg(verus_only)]
@@ -1921,6 +1922,78 @@ fn x_step_loops(p: &ExecProgram, s: &mut ExecState, op: u8, len: usize, _b1: usi
     x_next(s, len)
 }
 
+proof fn lemma_step_loop_array(p: Program2, s: State2)
+    requires instruction_ok(p, s), op_at(p, s) == LOOP_ARRAY,
+    ensures step(p, s) == op_loop_array(p, s, s.bci - w1_at(p, s), byte2(p, s.bci + 3), 4),
+{
+    reveal(step);
+}
+
+/// The element `i` of `a` if `a` is an array with more than `i` elements.
+fn x_array_elem(s: &ExecState, a: Value, i: i64) -> (r: Option<Value>)
+    ensures
+        match r {
+            Some(v) => is_array(as1(view2(s)), a) && 0 <= i < elements(as1(view2(s)), a).len()
+                && v == elements(as1(view2(s)), a)[i as int],
+            None => !(is_array(as1(view2(s)), a) && 0 <= i < elements(as1(view2(s)), a).len()),
+        },
+{
+    match a {
+        Value::Obj(id) => {
+            if id >= s.heap.len() { return None; }
+            proof { lemma_heap_index(s, id as int); }
+            match &s.heap[id].body {
+                ExecBody::Array(e) => {
+                    if 0 <= i && (i as u64) < (e.len() as u64) { Some(e[i as usize]) } else { None }
+                },
+                _ => None,
+            }
+        },
+        _ => None,
+    }
+}
+
+/// LOOP_ARRAY (proposal, format note 19).
+fn x_step_loop_array(p: &ExecProgram, s: &mut ExecState, op: u8, len: usize, _b1: usize, w1: usize) -> (r: ExecOutcome2)
+    requires
+        decoded(p, old(s), op, len, _b1, w1),
+        op == LOOP_ARRAY,
+    ensures matches2(step(pview2(p), view2(old(s))), r, view2(final(s))),
+{
+    proof { lemma_step_loop_array(pview2(p), view2(s)); }
+    let bci = s.bci;
+    let n = p.bytecodes[bci + 3] as usize;
+    if !(1 <= n && x_has_slot(s, n) && x_has_slot(s, n + 1) && x_has_slot(s, n + 2) && x_has_slot(s, n + 3)) {
+        return ExecOutcome2::Stuck(Stuck::StackRange);
+    }
+    let vc = x_at(s, n);
+    let vb = x_at(s, n + 1);
+    let ve = x_at(s, n + 2);
+    let va = x_at(s, n + 3);
+    match (vc, ve) {
+        (Value::Smi(i), Value::Smi(e)) => {
+            if 0 <= i && i < e {
+                match x_array_elem(s, va, i) {
+                    Some(v) => {
+                        x_put(s, n, Value::Smi(i + 1));
+                        x_drop(s, 1);
+                        x_push(s, vb);
+                        x_push(s, v);
+                        proof {
+                            assert(view2(s) == push(push(drop(put(view2(old(s)), n as int, smi(i + 1)), 1), at(view2(old(s)), n as int + 1)), v));
+                        }
+                        return x_branch_to(p, s, bci as i64 - w1 as i64);
+                    },
+                    None => {},
+                }
+            }
+        },
+        _ => {},
+    }
+    x_drop(s, 1);
+    x_next(s, len)
+}
+
 /// One step of the covered opcodes. `None`: not covered, state unchanged.
 pub fn step_verified(p: &ExecProgram, s: &mut ExecState) -> (r: Option<ExecOutcome2>)
     requires wf_exec_program2(p), wf_exec_state2(old(s)),
@@ -1980,6 +2053,8 @@ pub fn step_verified(p: &ExecProgram, s: &mut ExecState) -> (r: Option<ExecOutco
         Some(x_step_branches(p, s, op, len, b1, w1))
     } else if op == LOOP_REPEAT {
         Some(x_step_loops(p, s, op, len, b1, w1))
+    } else if op == LOOP_ARRAY {
+        Some(x_step_loop_array(p, s, op, len, b1, w1))
     } else {
         None
     }

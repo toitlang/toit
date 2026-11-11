@@ -54,7 +54,7 @@ static const int V2_KIND_FIELD_ACCESSOR = 1;
 static const int V2_KIND_LAMBDA = 2;
 static const int V2_KIND_BLOCK = 3;
 static const int V2_NO_VALUE = 0xffff;
-static const int V2_OPCODE_COUNT = 102;
+static const int V2_OPCODE_COUNT = 103;
 static const int V2_PRIMITIVE_LENGTH = 4;
 // Literals 0..7: true, false and the five failure values (format note 5).
 static const int V2_FAILURE_LITERALS = 7;
@@ -76,7 +76,7 @@ static const uint8 V2_OPCODE_LENGTHS[V2_OPCODE_COUNT] = {
   1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3,  // 62..80
   3, 3, 3, 3, 3, 3, 3, 3,                    // 81..88: BRANCH*, BRANCH_BACK*
   4, 1, 1, 1, 1, 2, 6, 1, 1, 2, 1, 2,        // 89..100
-  4,                                         // 101: LOOP_REPEAT (proposal, note 19)
+  4, 4,                                      // 101, 102: LOOP_REPEAT, LOOP_ARRAY (proposal, note 19)
 };
 
 // The decoded method table of a format-2 program, owned by its process

@@ -28,8 +28,8 @@
 //!   STORE_FIELD_THIS (94, was NON_LOCAL_RETURN_WIDE);
 //! * removed: LINK, UNLINK, NON_LOCAL_RETURN_WIDE, INTRINSIC_SMI_REPEAT,
 //!   INTRINSIC_ARRAY_DO, INTRINSIC_HASH_FIND, INTRINSIC_HASH_DO;
-//! * proposal (branch proposal/builtins, format note 19): LOOP_REPEAT (101),
-//!   the bounded step of a `repeat` loop.
+//! * proposal (branch proposal/builtins, format note 19): LOOP_REPEAT (101)
+//!   and LOOP_ARRAY (102), the bounded steps of `repeat` and `Array.do`.
 
 use vstd::prelude::*;
 pub use crate::bytecodes::{
@@ -68,8 +68,15 @@ pub const LOAD_FIELD_THIS: u8 = 98;
 /// pushes a copy of the block and the old counter and branches back by
 /// `back`; otherwise falls through.
 pub const LOOP_REPEAT: u8 = 101;
+/// LOOP_ARRAY back n (proposal, format note 19): counter slot `n`, block
+/// `n + 1`, end `n + 2`, array `n + 3`. Pops the top; if the counter and
+/// the end are smis with 0 <= counter < end and the array slot holds an
+/// array with more than counter elements, stores counter + 1, pushes a copy
+/// of the block and the element at counter and branches back by `back`;
+/// otherwise falls through.
+pub const LOOP_ARRAY: u8 = 102;
 
-pub const OPCODE_COUNT2: u8 = 102;
+pub const OPCODE_COUNT2: u8 = 103;
 
 /// Instruction length in bytes, including the opcode.
 pub open spec fn opcode_length2(op: u8) -> int {
@@ -80,7 +87,7 @@ pub open spec fn opcode_length2(op: u8) -> int {
         3
     } else if op == 28 || op == 29 || op == 59 {
         5
-    } else if op == 58 || op == 89 || op == 101 {
+    } else if op == 58 || op == 89 || op == 101 || op == 102 {
         4
     } else if op == 95 {
         6
@@ -103,7 +110,7 @@ pub fn exec_opcode_length2(op: u8) -> (r: usize)
         3
     } else if op == 28 || op == 29 || op == 59 {
         5
-    } else if op == 58 || op == 89 || op == 101 {
+    } else if op == 58 || op == 89 || op == 101 || op == 102 {
         4
     } else if op == 95 {
         6
@@ -119,7 +126,7 @@ pub fn exec_opcode_length2(op: u8) -> (r: usize)
 } // verus!
 
 /// Opcode names of format 2, in opcode order.
-pub const OPCODE_NAMES2: [&str; 102] = [
+pub const OPCODE_NAMES2: [&str; 103] = [
     "LOAD_LOCAL", "LOAD_LOCAL_WIDE", "POP_LOAD_LOCAL", "STORE_LOCAL", "STORE_LOCAL_POP",
     "LOAD_OUTER", "STORE_OUTER", "LOAD_FIELD", "LOAD_FIELD_WIDE", "LOAD_FIELD_LOCAL",
     "POP_LOAD_FIELD_LOCAL", "STORE_FIELD", "STORE_FIELD_WIDE", "STORE_FIELD_POP",
@@ -141,11 +148,11 @@ pub const OPCODE_NAMES2: [&str; 102] = [
     "BRANCH_BACK_IF_TRUE", "BRANCH_BACK_IF_FALSE", "BRANCH_BACK_IF_NOT_NULL", "PRIMITIVE",
     "THROW", "RETURN", "RETURN_NULL", "NON_LOCAL_RETURN", "STORE_FIELD_THIS",
     "NON_LOCAL_BRANCH", "IDENTICAL", "TRY", "LOAD_FIELD_THIS", "UNWIND", "HALT",
-    "LOOP_REPEAT",
+    "LOOP_REPEAT", "LOOP_ARRAY",
 ];
 
 /// Lengths of format 2 in opcode order.
-pub const OPCODE_LENGTHS2: [u8; 102] = [
+pub const OPCODE_LENGTHS2: [u8; 103] = [
     2, 3, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 3, 2, // 0..13
     1, 1, 1, 1, 1, 1, // LOAD_LOCAL_0..5
     2, 3, 1, 1, 2, 1, 2, 3, 5, 5, // 20..29
@@ -159,4 +166,5 @@ pub const OPCODE_LENGTHS2: [u8; 102] = [
     3, 3, 3, 3, 3, 3, 3, 3, // 81..88: BRANCH*, BRANCH_BACK*
     4, 1, 1, 1, 1, 2, 6, 1, 1, 2, 1, 2, // 89..100
     4, // 101: LOOP_REPEAT
+    4, // 102: LOOP_ARRAY
 ];

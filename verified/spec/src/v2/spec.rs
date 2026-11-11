@@ -1342,6 +1342,27 @@ pub open spec fn op_loop_repeat(p: Program2, s: State2, target: int, n: int, len
     }
 }
 
+/// The fast condition of LOOP_ARRAY: the counter `i` and the end are smis,
+/// `0 <= i < end`, and the array slot holds an array with an element `i`.
+pub open spec fn loop_array_go(s: State2, c: int, e: int, a: int) -> bool {
+    &&& at(s, c) is Smi && at(s, e) is Smi && is_array(as1(s), at(s, a))
+    &&& 0 <= smi_val(at(s, c)) && smi_val(at(s, c)) < smi_val(at(s, e))
+    &&& smi_val(at(s, c)) < elements(as1(s), at(s, a)).len()
+}
+
+/// LOOP_ARRAY n: counter `c = n`, block `b = n + 1`, end `e = n + 2`,
+/// array `a = n + 3`.
+pub open spec fn op_loop_array(p: Program2, s: State2, target: int, n: int, len: int) -> Outcome2 {
+    let (c, b, e, a) = (n, n + 1, n + 2, n + 3);
+    if !loop_slots_ok(s, c, b, e, a) {
+        stuck(Stuck::StackRange)
+    } else if loop_array_go(s, c, e, a) {
+        loop_taken(p, s, c, b, smi_val(at(s, c)), elements(as1(s), at(s, a))[smi_val(at(s, c))], target)
+    } else {
+        next(drop(s, 1), len)
+    }
+}
+
 pub open spec fn op_halt(p: Program2, s: State2, code: int) -> Outcome2 {
     if code == 0 {
         Outcome2::Halt(goto(push(s, smi(91)), s.bci + 2), Halt2::Yield)
@@ -1491,6 +1512,9 @@ pub open spec fn step(p: Program2, s: State2) -> Outcome2 {
         else if op == UNWIND { op_unwind(p, s) }
         else if op == LOOP_REPEAT {
             op_loop_repeat(p, s, bci - w1, byte2(p, bci + 3), len)
+        }
+        else if op == LOOP_ARRAY {
+            op_loop_array(p, s, bci - w1, byte2(p, bci + 3), len)
         }
         else { op_halt(p, s, b1) }  // HALT
     }

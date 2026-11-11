@@ -74,6 +74,7 @@ namespace toit {
   FLAG_INT(deploy,   max_recursion_depth,   2000,  "Max recursion depth in the parser") \
   FLAG_INT(deploy,   bytecode_format,       1,     "Bytecode format the compiler generates (1 or 2)") \
   FLAG_BOOL(deploy,  certificate,           true,  "Format 2: ship a certificate with written snapshots (toit.run --certify)") \
+  FLAG_INT(deploy,   v2_builtins,           7,     "Format 2, proposal (format note 19): built-ins to emit, bit 0 LOOP_REPEAT, 1 LOOP_ARRAY, 2 HASH_FIND (also TOIT_V2_BUILTINS)") \
   FLAG_STRING(deploy, lib_path,             null,  "The library path")              \
   FLAG_STRING(deploy, archive_entry_path,   null,  "The entry path in an archive")  \
   FLAG_STRING(deploy, sandbox,              null,  "syscall-sandbox: compiler or sandbox")  \

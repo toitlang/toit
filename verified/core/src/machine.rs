@@ -132,10 +132,11 @@ pub mod op {
     pub const HALT: u8 = 100;
     /// Proposal (verified/spec/format/19-builtins-proposal.md).
     pub const LOOP_REPEAT: u8 = 101;
+    pub const LOOP_ARRAY: u8 = 102;
 }
 
 /// Instruction lengths in opcode order (OPCODE_LENGTHS2).
-pub const OPCODE_LENGTHS: [u8; 102] = [
+pub const OPCODE_LENGTHS: [u8; 103] = [
     2, 3, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 3, 2,
     1, 1, 1, 1, 1, 1,
     2, 3, 1, 1, 2, 1, 2, 3, 5, 5,
@@ -148,7 +149,7 @@ pub const OPCODE_LENGTHS: [u8; 102] = [
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3,
     3, 3, 3, 3, 3, 3, 3, 3,
     4, 1, 1, 1, 1, 2, 6, 1, 1, 2, 1, 2,
-    4,
+    4, 4,
 ];
 
 pub fn opcode_length(op: u8) -> usize {
@@ -1544,7 +1545,8 @@ impl Machine {
             op::UNWIND => self.op_unwind(env),
             op::HALT => self.op_halt(env, b1!()),
             op::LOOP_REPEAT => self.c_loop_repeat(p, bci),
-            // Opcodes 102..255 (the length table covers only 0..101).
+            op::LOOP_ARRAY => self.c_loop_array(p, bci),
+            // Opcodes 103..255 (the length table covers only 0..102).
             _ => Ctl::Stuck(stuck::BAD_INSTRUCTION),
         }
     }
@@ -2574,6 +2576,36 @@ impl Machine {
         self.put(n, c + 2);
         self.drop(1);
         if !self.push(b) || !self.push(c) { return Ctl::Stuck(stuck::LIMIT); }
+        self.bci = target;
+        Ctl::Next
+    }
+
+    /// LOOP_ARRAY (proposal, format note 19): `spec::op_loop_array` with
+    /// every stuck state checked.
+    fn c_loop_array(&mut self, p: &Program, bci: usize) -> Ctl {
+        let n = p.code.at(bci + 3) as usize;
+        if n < 1 || !self.has_slot(n + 3) { return Ctl::Stuck(stuck::STACK_RANGE); }
+        let (c, b, e, a) = (self.at(n), self.at(n + 1), self.at(n + 2), self.at(n + 3));
+        let go = is_smi(c) && is_smi(e) && (c as isize) >= 0 && (c as isize) < (e as isize)
+            && match self.array_length(a) { Some(len) => (smi_value(c) as usize) < len, None => false };
+        if !go {
+            self.drop(1);
+            self.bci += OPCODE_LENGTHS[op::LOOP_ARRAY as usize] as usize;
+            return Ctl::Next;
+        }
+        let d = Self::u16_at(p, bci + 1);
+        if d > bci { return Ctl::Stuck(stuck::BAD_BRANCH); }
+        let target = bci - d;
+        if self.method >= p.methods.len() { return Ctl::Stuck(stuck::BAD_BRANCH); }
+        let m = p.methods.at(self.method);
+        if !((m.entry as usize) <= target && target < (m.end as usize)) {
+            return Ctl::Stuck(stuck::BAD_BRANCH);
+        }
+        let x = self.heap.word(a, ARRAY_ELEMENTS_WORD + smi_value(c) as usize);
+        // 0 <= c < e, so c + 1 is a smi: its word is c's plus 2.
+        self.put(n, c + 2);
+        self.drop(1);
+        if !self.push(b) || !self.push(x) { return Ctl::Stuck(stuck::LIMIT); }
         self.bci = target;
         Ctl::Next
     }

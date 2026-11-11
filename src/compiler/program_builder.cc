@@ -23,6 +23,7 @@
 #include "../process.h"
 #include "../interpreter.h"
 #include "../utils.h"
+#include <stdlib.h>
 
 namespace toit {
 namespace compiler {
@@ -30,6 +31,13 @@ namespace compiler {
 static int current_bytecode_format = 1;
 
 int bytecode_format() { return current_bytecode_format; }
+
+bool v2_builtin_enabled(int builtin) {
+  int mask = Flags::v2_builtins;
+  const char* override = getenv("TOIT_V2_BUILTINS");
+  if (override != null) mask = atoi(override);
+  return (mask & builtin) != 0;
+}
 
 void set_bytecode_format(int format) {
   ASSERT(format == 1 || format == 2);

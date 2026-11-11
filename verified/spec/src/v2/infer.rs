@@ -512,7 +512,7 @@ fn analyze<F: Facts>(p: &VProgram, f: &mut F, m: usize, trusted: bool) -> Result
             let ot = if cond { org[..h - 1].to_vec() } else { org.clone() };
             succ.push((t, kt, ot));
         }
-        if op == LOOP_REPEAT {
+        if op == LOOP_REPEAT || op == LOOP_ARRAY {
             // The taken loop step (`loop_kinds`); `post` accepted the
             // operands, so the counter and the block are below the top.
             let w = u16_at(p, bci + 1).unwrap_or(0);

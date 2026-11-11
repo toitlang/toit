@@ -1772,9 +1772,10 @@ pub fn x_post_misc(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>
         else if trusted && b1 == 2 && 1 <= h { Some(x_prefix(k, h - 1)) }
         else if trusted && b1 >= 3 { Some(x_copy(k)) }
         else { None }
-    } else if op == LOOP_REPEAT {
+    } else if op == LOOP_REPEAT || op == LOOP_ARRAY {
         let lc = p.bytecodes[bci + 3] as usize;
-        if x_loop_ok(p, m, k, lc, lc + 1, lc + 2, lc + 2) { Some(x_prefix(k, h - 1)) } else { None }
+        let ly = if op == LOOP_ARRAY { lc + 3 } else { lc + 2 };
+        if x_loop_ok(p, m, k, lc, lc + 1, lc + 2, ly) { Some(x_prefix(k, h - 1)) } else { None }
     } else {
         None
     }
@@ -2245,7 +2246,7 @@ pub fn x_instr_ok(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>,
             if !x_map_is(c, m as i64, t, &k1) { return false; }
         }
     }
-    if op == LOOP_REPEAT {
+    if op == LOOP_REPEAT || op == LOOP_ARRAY {
         // `post` accepted the operands (`loop_ok`).
         let w1 = x_u16(p, bci + 1);
         let lc = p.bytecodes[bci + 3] as usize;
@@ -2308,6 +2309,8 @@ pub fn x_method_body_ok(p: &VProgram, c: &XCert, m: usize, trusted: bool) -> (r:
     ensures r == forall|o: int| 0 <= o < c@.maps[m as int].len() && (#[trigger] c@.maps[m as int][o]) is Some ==>
         instr_ok(vview(p), c@, m as int, o, c@.maps[m as int][o]->0, trusted),
 {
+    // Only the name matters here (x_instr_ok decides it).
+    hide(instr_ok);
     let ghost cm = c@.maps[m as int];
     assert(cm == mapsv(c.maps));
     let mut off = 0;

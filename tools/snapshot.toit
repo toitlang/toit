@@ -1141,6 +1141,7 @@ BYTE-CODES-V2 ::= [
   Bytecode "HALT"                       2 OP-BU "halt",
   // Proposal (verified/spec/format/19-builtins-proposal.md).
   Bytecode "LOOP_REPEAT"                4 OP-SB-BS "loop repeat",
+  Bytecode "LOOP_ARRAY"                 4 OP-SB-BS "loop array",
 ]
 
 

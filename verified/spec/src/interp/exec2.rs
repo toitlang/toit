@@ -733,6 +733,37 @@ impl Machine {
                     }
                 }
             }
+            LOOP_ARRAY => {
+                // `v2::spec::op_loop_array`: counter b1, block b1 + 1, end
+                // b1 + 2, array b1 + 3.
+                let n = self.byte(bci + 3);
+                if n < 1 { return Err(StackRange); }
+                let (vc, vb, ve, va) = (self.at2(n)?, self.at2(n + 1)?, self.at2(n + 2)?, self.at2(n + 3)?);
+                let element = match (vc, ve, va) {
+                    (Value::Smi(i), Value::Smi(e), Value::Obj(id)) if 0 <= i && i < e && id < self.s.heap.len() => {
+                        match &self.s.heap[id].body {
+                            ExecBody::Array(elems) if (i as u64) < elems.len() as u64 => Some((i, elems[i as usize])),
+                            _ => None,
+                        }
+                    }
+                    _ => None,
+                };
+                match element {
+                    Some((i, v)) => {
+                        let target = self.branch_target(bci as i64 - w1 as i64)?;
+                        self.put(n, Value::Smi(i + 1));
+                        self.drop2(1)?;
+                        self.s.stack.push(vb);
+                        self.s.stack.push(v);
+                        self.s.bci = target;
+                        Ok(Step::Next)
+                    }
+                    None => {
+                        self.drop2(1)?;
+                        self.next2(len)
+                    }
+                }
+            }
             _ => Err(BadInstruction),
         }
     }

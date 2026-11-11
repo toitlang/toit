@@ -414,11 +414,12 @@ proof fn lemma_back_branch(p: &Program, g: State2)
 proof fn lemma_loop_cond(p: &Program, g: State2)
     requires
         accepts(p.ap@, p.cert@, p.trusted@), wf(p.ap@, p.cert@, g),
-        cur_op(p.ap@, g) == 101,
+        cur_op(p.ap@, g) == 101 || cur_op(p.ap@, g) == 102,
     ensures ({
         let n = p.ap@.bytecodes[g.bci + 3] as int;
         &&& sp::at(g, n) is Smi || sp::at(g, n) is Obj
         &&& sp::at(g, n + 2) is Smi || sp::at(g, n + 2) is Obj
+        &&& cur_op(p.ap@, g) == 102 ==> (sp::at(g, n + 3) is Smi || sp::at(g, n + 3) is Obj)
         &&& u16_at(p1(p.ap@), g.bci + 1) <= g.bci
     }),
 {
@@ -429,13 +430,15 @@ proof fn lemma_loop_cond(p: &Program, g: State2)
     let off = cur_off(ap, g);
     let k = cur_k(ap, c, g);
     let n = bk_of(ap, mi, off, 3);
+    let y = if cur_op(ap, g) == 102 { n + 3 } else { n + 2 };
     assert(instr_ok(ap, c, mi, off, k, p.trusted@));
     assert(is_loop(cur_op(ap, g)));
-    assert(loop_operands(ap, mi, off) == (n, n + 1, n + 2, n + 2));
+    assert(loop_operands(ap, mi, off) == (n, n + 1, n + 2, y));
     assert(post(ap, c, mi, off, k, p.trusted@) is Some);
-    assert(loop_ok(ap, mi, k, n, n + 1, n + 2, n + 2));
+    assert(loop_ok(ap, mi, k, n, n + 1, n + 2, y));
     lemma_at_good(ap, c, p.trusted@, g, n);
     lemma_at_good(ap, c, p.trusted@, g, n + 2);
+    lemma_at_good(ap, c, p.trusted@, g, y);
     assert(map_at(c, mi, off - w1_of(ap, mi, off)) is Some);
 }
 
@@ -1340,12 +1343,23 @@ pub fn step_r(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
                 assert(sp::step(ap, g) == sp::op_loop_repeat(ap, g, bci - d, n as int, 4)) by { reveal(sp::step); }
                 lemma_loop_cond(p, g);
             }
-            crate::regs::op_loop_repeat(m, r, p, n, d, Ghost((bci - d) as usize))
+            crate::rloops::op_loop_repeat(m, r, p, n, d, Ghost((bci - d) as usize))
+        },
+        // LOOP_ARRAY (proposal, format note 19).
+        102 => {
+            let d = ip_u16(p, r.ip, 1);
+            let n = r.ip.byte(3, &p.code) as usize;
+            proof {
+                assert(sp::step(ap, g) == sp::op_loop_array(ap, g, bci - d, n as int, 4)) by { reveal(sp::step); }
+                lemma_loop_cond(p, g);
+                crate::arrays::lemma_heap_good(p, g);
+            }
+            crate::rloops::op_loop_array(m, r, p, n, d, Ghost((bci - d) as usize))
         },
         _ => {
             // Every opcode of format 2 (below OPCODE_COUNT2, which the
             // instruction check of the spec requires) has an arm.
-            proof { assert(opcode < 102); assert(false); }
+            proof { assert(opcode < 103); assert(false); }
             return crate::view::proven_unreachable();
         },
     };

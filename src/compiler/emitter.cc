@@ -597,8 +597,9 @@ void Emitter::load_field_this(int n) {
   stack_.push(ExpressionStack::OBJECT);
 }
 
-void Emitter::loop_repeat(Label* body, int counter) {
+void Emitter::loop_step(Opcode opcode, Label* body, int counter) {
   ASSERT(is_format2());
+  ASSERT(opcode == V2_LOOP_REPEAT || opcode == V2_LOOP_ARRAY);
   ASSERT(body->is_bound());
   // The counter is a local or temporary; the block and limit may be
   // parameters.
@@ -608,7 +609,7 @@ void Emitter::loop_repeat(Label* body, int counter) {
   int position = this->position();
   int offset = position - body->position();
   ASSERT(0 < offset && offset <= MAX_USHORT_VALUE);
-  emit_opcode(V2_LOOP_REPEAT);
+  emit_opcode(opcode);
   emit_uint16(offset);
   emit_uint8(counter);
   // Falling through pops the top.
