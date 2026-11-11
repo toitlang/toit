@@ -10,14 +10,14 @@
 # class table: 51 classes (cid 0..50). size2: LazyInit(20)/MapStringify(37)/
 #   Tombstone(40). size3: Exception(36)/List_(44)/LargeArray(46)/Cow(41)/Rpc(3).
 set -u
-WT=/home/flo/work/opentoit-sandbox/.claude/worktrees/agent-a34c2fa11930f607a
-cd "$WT"
-HOSTRUN="build/host/sdk/lib/toit/bin/toit.run"
-ASANRUN="build/asan/sdk/lib/toit/bin/toit.run"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$HERE/battery-env.sh"
 CRAFT="$HOSTRUN --project-root tools tools/heapcraft.toit"
-BASE=/tmp/rt3/victim.snapshot
-OUT=review/red-team/round3/repro/heap
-RES=review/red-team/round3/repro/heap-results.txt
+BASE="$WORK/victim.snapshot"
+battery_compile "$HERE/repro/victim.toit" "$BASE" || exit 2
+OUT="$WORK/heap"
+RES="${RES:-$WORK/heap-results.txt}"
+EXPECTED="$HERE/repro/heap-results.txt"
 mkdir -p "$OUT"
 : > "$RES"
 FILTER='primitive\.h'
@@ -125,4 +125,4 @@ run_heap str-raw-header-huge   header 33 raw:16777215
 run_heap exc-raw-header-huge   header 122 raw:16777215
 run_heap lazy-raw-header-neg-tag header 0 raw:1       # tag1(string) on an instance -> loader
 
-echo "# done $(date)" | tee -a "$RES"
+battery_finish heap

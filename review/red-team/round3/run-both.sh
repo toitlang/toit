@@ -3,9 +3,9 @@
 # Filters the one benign UBSan line (primitive.h null member call).
 # Usage: run-both.sh <snapshot> [extra toit.run args...]
 set -u
-WT=/home/flo/work/opentoit-sandbox/.claude/worktrees/agent-a34c2fa11930f607a
-HOST="$WT/build/host/sdk/lib/toit/bin/toit.run"
-ASAN="$WT/build/asan/sdk/lib/toit/bin/toit.run"
+WT="${WT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}"
+HOST="${HOSTRUN:-$WT/build/host/sdk/lib/toit/bin/toit.run}"
+ASAN="${ASANRUN:-$WT/build/asan/sdk/lib/toit/bin/toit.run}"
 SNAP="$1"; shift || true
 FILTER='primitive\.h'
 echo "=== NORMAL build ==="

@@ -22,7 +22,8 @@
 #      with `verus --no-cheating`); writes verified/THEOREMS.txt.
 #   3. With --tests: the audit's regression test, layout check, spec
 #      differential tests, the device library's no-panic check, sandbox
-#      ctests.
+#      ctests, and (optional, when a second build exists) the red-team
+#      batteries.
 #
 # Usage: verified/check.sh [--tests] [--update-allowlist] [--build DIR]
 # Exit code is non-zero on any failure.
@@ -282,6 +283,36 @@ if [ "$RUN_TESTS" = 1 ]; then
     fi
   else
     echo "SKIP: no configured build with an SDK in $BUILD_DIR"
+  fi
+
+  # Optional: the red team's crafted heaps and assembled methods (round 3),
+  # on the normal build against each second build present: ASan/UBSan
+  # (build/asan) and Debug with assertions (build/dbg/host, `make
+  # BUILD=build/dbg BUILD_TYPE=Debug sdk`). Every case must be rejected or
+  # run safely, with the recorded verdict (review/red-team/round3/repro).
+  section "Red-team batteries (review/red-team/round3/battery-{heap,asm}.sh)"
+  RT3="$REPO/review/red-team/round3"
+  SECONDS_BUILDS=()
+  for b in "$REPO/build/asan/sdk/lib/toit/bin/toit.run" "$REPO/build/dbg/host/sdk/lib/toit/bin/toit.run"; do
+    [ -x "$b" ] && SECONDS_BUILDS+=("$b")
+  done
+  if [ ! -x "$RT3/battery-heap.sh" ] || [ ! -x "$BUILD_DIR/sdk/lib/toit/bin/toit.run" ]; then
+    echo "SKIP: no batteries or no toit.run in $BUILD_DIR"
+  elif [ ${#SECONDS_BUILDS[@]} -eq 0 ]; then
+    echo "SKIP: no second build (build/asan or build/dbg/host)"
+  else
+    for b in "${SECONDS_BUILDS[@]}"; do
+      case "$b" in */build/asan/*) tag=asan ;; *) tag=debug ;; esac
+      for battery in heap asm; do
+        if HOSTRUN="$BUILD_DIR/sdk/lib/toit/bin/toit.run" ASANRUN="$b" WORK="$LOGS/rt3-$tag" \
+            "$RT3/battery-$battery.sh" > "$LOGS/battery-$battery-$tag.log" 2>&1; then
+          echo "$tag: $(tail -1 "$LOGS/battery-$battery-$tag.log")"
+        else
+          tail -20 "$LOGS/battery-$battery-$tag.log"
+          fail "red-team battery $battery ($tag)"
+        fi
+      done
+    done
   fi
 fi
 
