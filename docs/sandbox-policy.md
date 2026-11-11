@@ -156,7 +156,26 @@ The per-sender mailbox quotas protect every receiver, including the
 system process and trusted providers, from being flooded by a sandbox. An
 untrusted sender gets `QUOTA_EXCEEDED`; for a trusted sender a message to a
 full sandboxed mailbox is dropped (`process_send` returns false), so a
-sandbox can't make the system process throw.
+sandbox can't make the system process throw. The per-sender quotas are
+enforced per receiver on the messages of all sandboxed senders together
+(see "Threats tested" below).
+
+Service providers bound what a sandboxed client can make them hold. These
+limits live in the Toit libraries and apply to sandboxed clients only:
+
+| Limit | Value | Enforced in |
+|---|---|---|
+| unprocessed RPC requests of one sandboxed process in a provider's broker | 8 (half the processing tasks) | `RpcBroker` (`lib/rpc/broker.toit`) |
+| open clients of one sandboxed process at one provider process | 32 | `ServiceManager_.open` (`lib/system/services.toit`) |
+| services registered by one sandboxed process | 16 | `SystemServiceManager.listen` (`system/services.toit`) |
+| pending discoveries (`discover --wait`) of one sandboxed process | 16 | `SystemServiceManager.discover` |
+| size of a registered uuid, name or tag; number of tags | 128 bytes; 8 | `SystemServiceManager.listen` |
+
+Exceeding a count throws `QUOTA_EXCEEDED` in the sandbox (a full broker
+replies "Cannot enqueue more requests"), a size `INVALID_ARGUMENT`.
+Registrations with values of the wrong type are refused for every
+provider, and every receiver drops RPC and trace messages with a
+malformed payload instead of throwing.
 
 A process with a run-time limit is preempted after half the limit; if it
 is still running at the next scheduler tick after the full limit (for
@@ -290,3 +309,42 @@ metadata. Until then, untrusted containers are a host-only feature.
 - Native allocations made on behalf of a process (message buffers, timers)
   are bounded by the quotas but not charged to its heap.
 - A kill takes effect only after the running primitive returns.
+
+## Threats tested
+
+Adversarial tests of the message gate and the quotas. Each test is in
+`tests/sandbox/`; "holds" means the test asserts the expected outcome,
+"fixed" that the test found a bug that was fixed with it, and "gap" that
+the test asserts the current (unwanted) behavior of an open design gap
+and must be updated when the gap is closed.
+
+| Threat | Expected outcome | Test | Result | Open decision |
+|---|---|---|---|---|
+| Send to guessed or scanned pids | `PERMISSION_DENIED` for live and missing pids alike | `send-scan-pids`, `send-arbitrary-pid` | holds | |
+| Send to a provider before its discovery returns (race the grant) | denied until the system process issues the grant, which it does before it replies | `grant-lifecycle` | holds | |
+| Reuse the pid of a dead provider | the old grant is inert (send returns false); a new provider gets a new, larger pid that the old grant doesn't cover | `grant-lifecycle` | holds; pids are a 32-bit counter (`Scheduler::next_process_id`) that would only wrap after 2^31 process creations | |
+| Send to an exited pid of the own group | | | not applicable: a sandbox can't spawn (`core-spawn`, `quota-processes`) | |
+| Forge system message types (terminated, spawned, notify-terminated, external notifications, reserved types) | `PERMISSION_DENIED` | `forge-*` | holds | |
+| Forge RPC replies and resource notifications for another process' pending requests; cancel them | no effect (replies and cancels are matched on id and sender pid) | `forge-rpc-reply` | holds | |
+| Use, close, or close resources of another process' service clients (known client ids, guessed handles) | `SERVICE_CLIENT_NOT_OWNED` | `forge-client-id` | holds | |
+| Malformed `SYSTEM_RPC_REQUEST`, `_CANCEL` or `SYSTEM_TRACE` payload (null, byte array, empty list, non-integer id or name) to the system process or a provider | dropped | `forge-rpc-request-malformed` | fixed: a single message killed the receiver (the system process and with it the VM, exit code 1) | |
+| Flood one mailbox | `QUOTA_EXCEEDED` at the per-sender quota | `flood-system`, `mailbox-flood-provider`, `mailbox-*-flood-self`, `message-too-large` | holds per receiver | |
+| Flood every receiver it may send to | memory bounded per sandbox | `mailbox-quota-scope` | gap: the quota is per receiver, so a sandbox fills the system process and its 64 granted providers: 65 x 1 MB (host) or 65 x 32 KB = 2 MB (device) of malloced buffers held by slow receivers | a per-sender (or per-group) budget over all mailboxes? |
+| Lock other sandboxes out of a receiver | each sandbox has its own quota at a receiver | `mailbox-quota-scope` | gap: the quota counts the messages of all sandboxed senders together, so one sandbox that fills a slow receiver's mailbox locks every other sandbox out of it | per-sender accounting (memory per receiver and sender) or keep the shared bound? |
+| Fill the system process' RPC queue (requests without waiting for replies) | other containers' requests to the system process succeed | `rpc-queue-flood-system` | fixed: about 2% of a trusted client's requests failed with "Cannot enqueue more requests" | |
+| Take all processing tasks of a provider with slow requests | other clients are served | `rpc-slow-requests` | fixed: a trusted ping waited 2.5 s | |
+| Register many services, pending discoveries or clients, with large strings | bounded memory in the system process | `discovery-quota` | fixed: the VM grew by 1.5 GB in 6 s | |
+| Register a malformed service (wrong value types) for a trusted service's uuid | refused | `listen-malformed` | fixed: a tag that wasn't a string made every client with a restricted selector (including `deny --tag="untrusted-provider"`) throw | |
+| Malformed calls to discovery and the sandbox print service (wrong types and shapes, bad method indexes, deep nesting, large arguments) | exception reply, the system process keeps working | `system-service-malformed` | holds | |
+| External byte arrays in messages | charged to the mailbox quota like copies (the message size includes externals) | | covered by the primitive audit | |
+| Native resources (resource groups, timers, finalizer nodes, external byte arrays) | charged or bounded | | covered by the primitive audit | |
+| Create processes or groups; write flash | denied | `core-spawn`, `quota-processes`, `system-container-service`, `system-storage-service`, `module-flash-registry` | holds; no other path found | |
+| Starve the scheduler: tight loop, the longest primitives on 16 MB objects (15 ms on the host), recursion, 100 yielding tasks | the sibling and the system process answer within a few ms | `scheduler-starvation` | holds (also with the VM pinned to one core); run-time limit and CPU budget: `quota-run-time`, `quota-cpu-budget` | |
+| Raise the own priority | denied | `core-process-set-priority` | holds; no other path found | |
+| Survive the own kill (services, used clients, queued messages, pending discovery, timers, tasks, finalizers) | all gone; clients of its services fail | `kill-cleanup` | holds | |
+| Read process statistics | denied | `core-process-stats` | holds | |
+| Probe pids and observe process lifetimes through the discovery service's `watch` | no information about processes it may not talk to | `watch-pid-probe` | gap: a watch of a missing pid is answered at once with a termination notification, a watch of a live process reports its termination | the system process can't check the watcher's grants (it needs a new primitive, which changes the verified core's primitive table) |
+| Provide a service a trusted client expects before the trusted provider is up | trusted clients don't use sandbox providers | `service-squat` | gap: untrusted providers lose against trusted ones, but without a trusted provider a plain selector opens the sandbox's | should plain selectors deny `untrusted-provider` by default? |
+| Reach a trusted container's service by its uuid | only services meant for sandboxes | `heat-pump` | by design: providers outside the system process accept sandboxed clients unless they override `accepts-untrusted-clients` | opt-in instead of opt-out? |
+| Flood the console through traces and prints | bounded output | | gap, not tested (the host's stdout is fast): every valid trace payload (up to the message size cap) is printed base64-encoded, and every unhandled message type prints a warning; on a device with a UART console this keeps the system process busy | size and rate limits for sandbox traces and prints? |
+| Timing and counting side channels | | | accepted: `Time.monotonic-us` shows the load of the machine; the own pid tells how many processes were created since boot | |
