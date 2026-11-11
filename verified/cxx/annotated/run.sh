@@ -154,12 +154,14 @@ mutant utf8-overread utf8/utf_8_to_16.render src/utils.cc "No matching array chu
   "count > 4 || count > length - i)" "count > 4)"
 
 entry grow-stack            pass "" grow/grow_stack.gen.c -prover z3v4.5
-# The Verus contract of gc_grow_stack as it is (no bound on `needed`): the
-# cast to word fails; with only the cast made exact, the sum.
+# The bound on `needed` (core/trusted-integration) taken out again: the
+# cast to word overflows; with only the cast made exact by a precondition,
+# the sum.
 mutant grow-stack-unbounded grow/grow_stack.render src/interpreter_v2.cc "overflow|underflow" "-prover z3v4.5" \
-  "stack_ok(len, top, rtop, bs) == true &*& needed <= STACK_MAX_BOUND; @*/" "stack_ok(len, top, rtop, bs) == true; @*/"
+  "  if (needed > static_cast<uword>(Stack::max_length())) return TOIT_V2_STACK_OVERFLOW;\n" ""
 mutant grow-stack-word-range grow/grow_stack.render src/interpreter_v2.cc "overflow" "-prover z3v4.5" \
-  "stack_ok(len, top, rtop, bs) == true &*& needed <= STACK_MAX_BOUND; @*/" "stack_ok(len, top, rtop, bs) == true &*& needed <= UINTPTR_MAX / 2; @*/"
+  "  if (needed > static_cast<uword>(Stack::max_length())) return TOIT_V2_STACK_OVERFLOW;\n" "" \
+  "stack_ok(len, top, rtop, bs) == true; @*/\n/*@ ensures current_stack" "stack_ok(len, top, rtop, bs) == true &*& needed <= UINTPTR_MAX / 2; @*/\n/*@ ensures current_stack"
 
 entry string-write          pass "" prims/string_write.gen.c
 # af4ba7ab (memcpy for a copy within one byte array) reverted: no proof...

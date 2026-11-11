@@ -141,7 +141,7 @@ lemmas).
 | Object model (`model/objects.render`) | is_smi, is_heap_object, Smi::from/cast, HeapObject::cast/_raw/_raw_at (2)/_at/_word_at/_half_word_at/header/class_id/class_tag/has_class_tag, Instance::_offset_from/at/cast, Array::_offset_from/length/at/cast, String::_internal_length/content_on_heap/_external_length/_external_address/as_external/_as_utf8bytes/cast, String::Bytes (ctor, address, length), ByteArray::has_external_address/external_tag/_offset_from/content (2)/_external_address/as_external (2)/cast (2), ByteArray::Bytes and ConstBytes (ctor, address, length), Double/LargeInteger::cast, is_instance/array/byte_array/double/string/large_integer | verified | `Smi::value` (2 overloads) and `ByteArray::raw_length` (implementation-defined uword-to-word conversion, contract only); `Double::value`, `LargeInteger::value` (contract only); `unsigned_cast` (a template: identity on `uint8*`); the heap predicate is the allocator/GC invariant (bridge `heap`): strings and byte arrays with internal or external content, an external byte array owning its bytes only when tagged RawByteTag | 263 / 225 / 47 / 551 | drift tests; the encoder's and byte_content's mutants exercise it |
 | Blob decoding (`blob/byte_content.render`) | Object::byte_content (the recursive 5-argument one, the 4-argument one, the Blob one), Blob ctor | verified: a successful result lies in the content of ONE live string or byte array (internal, or raw external: never a proxy's struct), a string for STRINGS_ONLY; recursion depth bounded by MAX_BYTE_CONTENT_DEPTH; heap read-only | the program's class-id roots (contract only) | 65 / 30 / 1 / 0 | 357d1127 (#3373): without the depth limit the recursive call fails at `depth + 1 <= 8`; without the slice's `to <= length`: the pointer leaves the blob |
 | Message encoder (`encoder/`) | encode_any (all branches), encode_array, encode_list, encode_map, NestingTracker ctor/dtor | verified: memory safety, no overflow or lossy conversion, heap read-only | buffer writers and `is_too_large` (the two-pass size argument), `encode_copy`, `encode_byte_array`, the program's class-id roots, `bit_cast` | 178 / 50 / 38 / 63 | f708ad5d: count (underflow at `to - from`), read past the backing (loop bound), map past the backing |
-| Stack growth (`grow/`) | toit_v2_grow_stack, v2_process, Stack::v2_copy_to | verified against gc_grow_stack, with a bound on `needed` | v2_gc (preserves the abstraction), allocate_stack, Stack header accessors, Task::stack/set_stack, max_length (contract only) | 93 / 72 / 17 / 86 | Verus contract as is: fails at the cast; with the cast exact: at the sum |
+| Stack growth (`grow/`) | toit_v2_grow_stack, v2_process, Stack::v2_copy_to | verified against gc_grow_stack (no precondition on `needed`: the C++ checks it) | v2_gc (preserves the abstraction), allocate_stack, Stack header accessors, Task::stack/set_stack, max_length (contract only) | 93 / 72 / 17 / 86 | the bound check taken out: fails at the cast; with the cast exact: at the sum |
 | Primitive `string_write_to_byte_array` (`prims/`) | the primitive with the ARGS/FAIL expansion, Blob/MutableBlob constructors and accessors | verified: copy inside the regions, legal memmove | byte_content, mutable_byte_content (region contracts), Process::program | 21 / 54 / 19 / 71 | af4ba7ab: memcpy fails at its precondition; verifies with the ranges in different regions |
 | UTF-8 (`utf8/`) | Utils::utf_8_to_16, bytes_in_utf_8_sequence, payload_from_prefix | verified (Z3) | none | 57 / 26 / 1 / 84 | 07c24665: UB shift at payload_from_prefix; without the length check: the read past the input |
 | Rust raw memory (`rust/`) | view.rs: string_len, string_byte; trial: field, array_length, element | verified (VeriFast Rust, host) | predicates over the words (bridge `heap`) | — | `i <= len` fails at the read |
@@ -164,21 +164,15 @@ each becomes a mutant when its unit is done.
 
 ## Findings
 
-* **The Verus contract of `gc_grow_stack` lacks a bound on `needed`**
-  (the first pilot found it by reading, the second by proof; still open).
-  Without `needed <= Stack::max_length()` the C++ overflows at
-  `static_cast<word>(needed)` and at `(length - free) + needed`
-  (mutants `grow-stack-unbounded`, `grow-stack-word-range`). The core
-  passes small values, so no run is affected; the contract should state
-  it. Recorded in verified/CONTRACTS.toml as a known gap. Branch
-  `core/trusted-integration` (not merged yet) fixes both sides: the Verus
-  contract requires `needed < GROW_STACK_MAX_NEEDED`, and the C++ returns
-  STACK_OVERFLOW for `needed > Stack::max_length()`. Previewed against that
-  branch (its src/ with these sidecars), the correspondence check flags
-  exactly that function, and with the new line copied into the sidecar the
-  fixed C++ verifies **without** the precondition. On the merge: copy the
-  line into grow/grow_stack.render, drop the precondition (or keep it as
-  the Verus bound), update the clause in CONTRACTS.toml.
+* **The Verus contract of `gc_grow_stack` lacked a bound on `needed`**
+  (found by both pilots; FIXED by `core/trusted-integration`, merged).
+  Without a bound the C++ overflowed at `static_cast<word>(needed)` and at
+  `(length - free) + needed`. Now the C++ returns STACK_OVERFLOW for
+  `needed > Stack::max_length()` and verifies without any precondition on
+  `needed`; the Verus contract requires `needed < GROW_STACK_MAX_NEEDED`
+  (CONTRACTS.toml: a Verus-only clause, sound because the C++ precondition
+  is weaker). The mutants `grow-stack-unbounded`, `grow-stack-word-range`
+  take the new check out again and fail at the cast and at the sum.
 * No bug or missing check in the newly covered code: the real
   `encode_any` (including the byte-array/string class branches, the double
   and large-integer reads and the printf of an unencodable class tag), the

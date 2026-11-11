@@ -69,7 +69,7 @@ verus_file = "core/src/step.rs"
 verus_fn = "gc_grow_stack"
 cxx_fn = "toit_v2_grow_stack"
 rendering = "cxx/annotated/grow/grow_stack.gen.c"
-status = "verified (VeriFast, LP64 and ILP32), with a bound on needed the Verus contract lacks"
+status = "verified (VeriFast, LP64 and ILP32); the C++ checks the bound on needed itself"
 
 [[clause]]
 contract = "gc_grow_stack"
@@ -83,9 +83,8 @@ verifast = "current_stack((Process *)raw_process, ?s) &*& stack(s, ?len, ?top, ?
 contract = "gc_grow_stack"
 side = "requires"
 name = "needed bound"
-verus = "MISSING"
-verifast = "needed <= STACK_MAX_BOUND"
-note = "Without it the C++ converts needed to word (overflow) and adds it to the used length (overflow): mutants grow-stack-unbounded, grow-stack-word-range. The core passes FRAME_WORDS + max_height + STACK_RESERVE + FIN_WORDS, far below; the Verus contract should state the bound."
+verus = "needed < GROW_STACK_MAX_NEEDED"
+note = "Not in the VeriFast contract, and not needed there: the C++ returns STACK_OVERFLOW for needed > Stack::max_length() before converting needed to word (a weaker precondition on the C++ side is sound). Without that check the cast to word and the sum overflow: mutants grow-stack-unbounded, grow-stack-word-range."
 
 [[clause]]
 contract = "gc_grow_stack"
@@ -140,14 +139,21 @@ contract = "gc_allocate_instance"
 side = "ensures"
 name = "out of memory"
 bridge = "stack"
-verus = "r == 0 ==> reloaded(*final(m), g).refines(&env.p)"
+verus = "r.0 == 0 ==> reloaded(*final(m), g).refines(&env.p)"
 
 [[clause]]
 contract = "gc_allocate_instance"
 side = "ensures"
 name = "appended"
 bridge = "heap"
-verus = "r != 0 ==> reloaded(*final(m), sp::alloc2(g, new_instance(env.p.ap@, c as int))).refines(&env.p) && r == enc(final(m).addr(), sp::new_ref2(g))"
+verus = "r.0 != 0 ==> reloaded(*final(m), sp::alloc2(g, new_instance(env.p.ap@, c as int))).refines(&env.p) && r.0 == enc(final(m).addr(), sp::new_ref2(g))"
+
+[[clause]]
+contract = "gc_allocate_instance"
+side = "ensures"
+name = "epoch"
+verus = "!r.1 ==> crate::primitive::unmoved(*final(m), *old(m))"
+note = "The epoch contract (TRUSTED.md, Epoch): when the C++ reports no GC, nothing moved."
 
 [[contract]]
 name = "gc_allocate_double"
@@ -169,14 +175,21 @@ contract = "gc_allocate_double"
 side = "ensures"
 name = "out of memory"
 bridge = "stack"
-verus = "r == 0 ==> reloaded(*final(m), g).refines(&env.p)"
+verus = "r.0 == 0 ==> reloaded(*final(m), g).refines(&env.p)"
 
 [[clause]]
 contract = "gc_allocate_double"
 side = "ensures"
 name = "appended"
 bridge = "heap"
-verus = "r != 0 ==> reloaded(*final(m), sp::alloc2(g, new_double(as1(g), p1(env.p.ap@), bits))).refines(&env.p) && r == enc(final(m).addr(), sp::new_ref2(g))"
+verus = "r.0 != 0 ==> reloaded(*final(m), sp::alloc2(g, new_double(as1(g), p1(env.p.ap@), bits))).refines(&env.p) && r.0 == enc(final(m).addr(), sp::new_ref2(g))"
+
+[[clause]]
+contract = "gc_allocate_double"
+side = "ensures"
+name = "epoch"
+verus = "!r.1 ==> crate::primitive::unmoved(*final(m), *old(m))"
+note = "The epoch contract (TRUSTED.md, Epoch)."
 
 [[contract]]
 name = "gc_allocate_exception"
@@ -260,6 +273,19 @@ verus = "arity == sp::frame_height(g)"
 [[clause]]
 contract = "gc_call_primitive"
 side = "ensures"
+name = "absent"
+verus = "r.0 == V2_PRIMITIVE_ABSENT ==> *final(m) == *old(m)"
+
+[[clause]]
+contract = "gc_call_primitive"
+side = "ensures"
 name = "completion"
 bridge = "heap"
-verus = "exists|gx: State2, v: Value| #[trigger] prim_call_post(&env.p, *final(m), g, module, index, r.0, r.1, gx, v)"
+verus = "r.0 != V2_PRIMITIVE_ABSENT ==> exists|gx: State2, v: Value| #[trigger] prim_call_post(&env.p, *final(m), g, module, index, r.0, r.1, gx, v) && (!r.2 ==> gx == with_heap2(g, gx.heap))"
+
+[[clause]]
+contract = "gc_call_primitive"
+side = "ensures"
+name = "epoch"
+verus = "r.0 != V2_PRIMITIVE_ABSENT && !r.2 ==> unmoved(*final(m), *old(m))"
+note = "The epoch contract (TRUSTED.md, Epoch): no GC, nothing moved."
