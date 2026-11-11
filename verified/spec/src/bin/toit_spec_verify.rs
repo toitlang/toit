@@ -90,7 +90,7 @@ fn main() {
         println!("rejected (load): methods with different max heights or bounds past 32 bits");
         std::process::exit(2);
     });
-    let p = &vprog::vprogram_of(ep, &methods, h);
+    let p = &vprog::vprogram_of(ep, methods, h);
     if let Err(e) = toit_spec::v2::heap_check::check_heap(p, &loaded.heap) {
         reasons.push(format!("program heap: {}", e));
     }
@@ -148,7 +148,7 @@ fn main() {
     }
     if !quiet {
         let mut prims: Vec<(u8, u16)> = Vec::new();
-        for info in p.methods {
+        for info in (0..p.methods.len()).map(|m| p.methods.at(m)) {
             let (entry, end) = (info.entry as usize, info.end());
             if entry < end && p.bytecodes[entry] == toit_spec::v2::bytecodes::PRIMITIVE
                 && entry + 4 <= end {

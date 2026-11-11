@@ -113,7 +113,7 @@ fn prim_arity() -> Vec<Vec<u8>> {
 fn shipped_certificate(e: &ExecProgram, global_count: u64) -> Option<Vec<u8>> {
     let h = vprog::max_height_of(e);
     let methods = vprog::vmethods_of(e, h)?;
-    let p = vprog::vprogram_of(e, &methods, h);
+    let p = vprog::vprogram_of(e, methods, h);
     let (bytes, _) = encode::certify(&p, global_count, prim_arity(), false).ok()?;
     if cert::verify_shipped(&p, &bytes, global_count, &prim_arity(), false).is_ok_and(|r| r.0) { Some(bytes) } else { None }
 }
@@ -124,7 +124,7 @@ fn shipped_certificate(e: &ExecProgram, global_count: u64) -> Option<Vec<u8>> {
 fn verify_shipped_exec(e: &ExecProgram, global_count: u64, c: &[u8]) -> bool {
     let h = vprog::max_height_of(e);
     let Some(methods) = vprog::vmethods_of(e, h) else { return false };
-    let p = vprog::vprogram_of(e, &methods, h);
+    let p = vprog::vprogram_of(e, methods, h);
     cert::verify_shipped(&p, c, global_count, &prim_arity(), false).is_ok_and(|r| r.0)
 }
 
@@ -314,7 +314,7 @@ fn main() {
             let kind = if mutant_cert.is_some() && !cert_only { format!("{}+certificate", kind) } else { kind.to_string() };
             *totals.entry(format!("{} mutants", kind)).or_default() += 1;
             let mut loaded = loader::load(&text, 64).unwrap();
-            let table = match loader::method_table_v2(&bytes, global_max_height) {
+            let table = match loader::method_table_v2(&bytes, &base.program.recs, global_max_height) {
                 Ok(t) => t,
                 Err(_) => {
                     *totals.entry("rejected (method table)".into()).or_default() += 1;

@@ -415,10 +415,10 @@ pub fn op_invoke_virtual_get(m: &mut Machine, r: &mut Regs, env: &Env, bci: usiz
             slow_r(m, r, env, Slow::Lookup(sel as i64), w, Ghost(recv))
         },
         VLookup::Found(t) => {
-            let info = p.methods.at(t);
-            proof { assert(ap.methods[t as int] == method_info(p.methods@[t as int], p.max_height)); }
+            let info = p.method(t);
+            proof { assert(ap.methods[t as int] == method_info(p.minfo(t as int), p.max_height)); }
             let f = info.aux as usize;
-            if info.kind == KIND_FIELD_ACCESSOR && (u || m.field_access_ok(p, w, Ghost(recv), f, false)) {
+            if p.is_kind(t, KIND_FIELD_ACCESSOR) && (u || m.field_access_ok(p, w, Ghost(recv), f, false)) {
                 let ghost id = recv->Obj_0 as int;
                 proof { lemma_field_val(p, &w0, recv, f as int); }
                 let v = m.heap.field(w, f, Ghost(id));
@@ -472,10 +472,10 @@ pub fn op_invoke_virtual_set(m: &mut Machine, r: &mut Regs, env: &Env, bci: usiz
             slow_r(m, r, env, Slow::Lookup(sel as i64), w, Ghost(recv))
         },
         VLookup::Found(t) => {
-            let info = p.methods.at(t);
-            proof { assert(ap.methods[t as int] == method_info(p.methods@[t as int], p.max_height)); }
+            let info = p.method(t);
+            proof { assert(ap.methods[t as int] == method_info(p.minfo(t as int), p.max_height)); }
             let f = info.aux as usize;
-            if info.kind == KIND_FIELD_ACCESSOR && (u || m.field_access_ok(p, w, Ghost(recv), f, true)) {
+            if p.is_kind(t, KIND_FIELD_ACCESSOR) && (u || m.field_access_ok(p, w, Ghost(recv), f, true)) {
                 set_field_r(m, r, p, w, Ghost(recv), f, v, Ghost(val));
                 let ghost m1 = m.with(*r);
                 let ghost g1 = m.g@;

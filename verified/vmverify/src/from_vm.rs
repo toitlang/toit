@@ -20,8 +20,8 @@
 //! (filled by the same C++ function, `v2_program_tables`), with the
 //! program's initial global values. The tables are borrowed, not copied
 //! (`Converted::program` is a `VProgram` of slices into the VM's memory;
-//! the method table is the VM's `V2Method` array, whose layout `VMethod`
-//! repeats, checked below); only the 23 builtin class ids are decoded.
+//! the method table is the VM's records and the bytecodes holding the
+//! method headers, `MTable`); only the 23 builtin class ids are decoded.
 //! Object references in the roots, globals and literals are followed
 //! through the program image, breadth first (a work list, no recursion),
 //! and every reachable object becomes one `ExecObj`, one at a time
@@ -51,35 +51,19 @@ use alloc::vec::Vec;
 use toit_spec::xvec::{try_copy, try_filled, try_push, try_with_capacity, Oom};
 use toit_spec::types::{ExecBody, ExecObj, Value};
 use toit_spec::v2::heap_check::ObjStream;
-use toit_spec::v2::vprog::{VMethod, VProgram};
-use toit_verified_core::ffi::{ProgramTables, V2Method};
+use toit_spec::v2::vprog::{MTable, VProgram};
+use toit_verified_core::ffi::ProgramTables;
 use toit_verified_core::layout::*;
 
 /// `HALF_WORD_SIZE`: string lengths are half words.
 const HALF: usize = core::mem::size_of::<toit_verified_core::view::HalfWord>();
-
-// `VMethod` (the verifier's view of the method table) has the layout of
-// `V2Method` (the core's, and `toit::V2Method`): the table is borrowed as is.
-const _: () = {
-    use core::mem::{align_of, offset_of, size_of};
-    assert!(size_of::<VMethod>() == size_of::<V2Method>());
-    assert!(align_of::<VMethod>() == align_of::<V2Method>());
-    assert!(offset_of!(VMethod, entry) == offset_of!(V2Method, entry));
-    assert!(offset_of!(VMethod, length) == offset_of!(V2Method, length));
-    assert!(offset_of!(VMethod, selector) == offset_of!(V2Method, selector));
-    assert!(offset_of!(VMethod, aux) == offset_of!(V2Method, aux));
-    assert!(offset_of!(VMethod, recv_start) == offset_of!(V2Method, recv_start));
-    assert!(offset_of!(VMethod, recv_end) == offset_of!(V2Method, recv_end));
-    assert!(offset_of!(VMethod, arity) == offset_of!(V2Method, arity));
-    assert!(offset_of!(VMethod, kind) == offset_of!(V2Method, kind));
-};
 
 /// The program as converted from VM memory: borrowed tables, the decoded
 /// builtin class ids, roots, literals, globals, and the program heap as a
 /// stream of objects.
 pub struct Converted<'a> {
     pub bytecodes: &'a [u8],
-    pub methods: &'a [VMethod],
+    pub methods: MTable<'a>,
     pub max_height: u16,
     pub dispatch: &'a [i32],
     pub class_bits: &'a [u16],
@@ -492,9 +476,8 @@ pub unsafe fn convert<'a>(p: &ProgramTables, prims: &PrimitiveArities) -> Result
     if p.global_max_height > 0xffff {
         return bad("global max stack height too large", p.global_max_height);
     }
-    let methods: &[V2Method] = table(p.methods, p.methods_length);
-    // SAFETY: same layout (checked above).
-    let methods: &'a [VMethod] = core::slice::from_raw_parts(methods.as_ptr() as *const VMethod, methods.len());
+    let bytecodes: &'a [u8] = table(p.bytecodes, p.bytecodes_length);
+    let methods = MTable { code: bytecodes, recs: table(p.methods, p.methods_length) };
     let builtin_words: &[usize] = table(p.builtin_class_ids, BUILTIN_COUNT);
     let mut builtin = try_with_capacity(BUILTIN_COUNT)?;
     for (i, &w) in builtin_words.iter().enumerate() {
@@ -533,7 +516,7 @@ pub unsafe fn convert<'a>(p: &ProgramTables, prims: &PrimitiveArities) -> Result
         at += n;
     }
     Ok(Converted {
-        bytecodes: table(p.bytecodes, p.bytecodes_length),
+        bytecodes,
         methods,
         max_height: p.global_max_height as u16,
         dispatch: table(p.dispatch, p.dispatch_length),
@@ -574,7 +557,7 @@ mod tests {
         builtin: Vec<usize>,
         invoke: Vec<i32>,
         entry: Vec<i32>,
-        methods: Vec<V2Method>,
+        methods: Vec<u32>,
         globals: Vec<usize>,
         literals: Vec<usize>,
     }

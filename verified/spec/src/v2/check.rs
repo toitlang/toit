@@ -90,7 +90,7 @@ pub struct XGlobal<'a> {
     pub n: usize,
     /// The method table: the length of method `m`'s block-parameter mask
     /// is its arity.
-    pub methods: &'a [VMethod],
+    pub methods: MTable<'a>,
     /// A word per method: for a block method (kind 3) its context (0 is
     /// none, `j + 1` is record `j` of `crec`; blocks have no block
     /// parameters); for other methods the block-parameter mask (bit `i`,
@@ -289,7 +289,7 @@ pub open spec fn bp_mask(g: &XGlobal, m: int) -> u32 {
 pub fn x_bp_mask(g: &XGlobal, m: usize) -> (r: u32)
     ensures r == bp_mask(g, m as int),
 {
-    if m < g.methods.len() && ix(g.methods, m).kind == 3 { 0 } else { x_fld(g.mw, 4, m, 0) }
+    if m < g.methods.len() && g.methods.at(m).kind == 3 { 0 } else { x_fld(g.mw, 4, m, 0) }
 }
 
 pub open spec fn bp_view(g: &XGlobal, m: int) -> Seq<bool> {
@@ -676,7 +676,7 @@ pub fn x_is_ref(k: XKind) -> (r: bool)
 pub fn x_bp_arity(g: &XGlobal, m: usize) -> (r: usize)
     ensures r == bp_view(g, m as int).len(),
 {
-    if m < g.methods.len() { ix(g.methods, m).arity as usize } else { 0 }
+    if m < g.methods.len() { g.methods.at(m).arity as usize } else { 0 }
 }
 
 /// `c@.block_params[m].len()` for a method `m < g.n`.
@@ -761,7 +761,7 @@ pub fn x_ctx_of(c: &XCert, t: usize) -> (r: Option<XCtx>)
 {
     let g = c.g;
     if t >= g.n { return None; }
-    if !(t < g.methods.len() && ix(g.methods, t).kind == 3) { return None; }
+    if !(t < g.methods.len() && g.methods.at(t).kind == 3) { return None; }
     let w = x_fld(g.mw, 4, t, 0);
     if w == 0 || ((w - 1) as usize) >= g.crec.len() / 12 { return None; }
     let j = (w - 1) as usize;

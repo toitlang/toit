@@ -30,6 +30,9 @@ use crate::abs::*;
 use toit_spec::types::{Value, Frame, Handler, HeapObj};
 use toit_spec::v2::types::{State2, Program2, Outcome2};
 use toit_spec::v2::verifier::Cert;
+use toit_spec::v2::vprog::x_hdr_size;
+#[cfg(verus_keep_ghost)]
+use toit_spec::v2::vprog::{vdecode, u16_at, table_ok, rec_ok, rec_entry, hdr_size, kind_byte};
 #[cfg(verus_keep_ghost)]
 use toit_spec::v2::spec as sp;
 #[cfg(verus_keep_ghost)]
@@ -45,7 +48,7 @@ verus! {
 /// mode it was accepted in.
 pub struct Program {
     pub code: Table<u8>,
-    pub methods: Table<V2Method>,
+    pub methods: Table<u32>,
     pub dispatch: Table<i32>,
     pub class_bits: Table<u16>,
     pub class_check_ids: Table<u16>,
@@ -186,6 +189,191 @@ impl Program {
     /// The abstract program.
     pub open spec fn ap(&self) -> Program2 {
         self.ap@
+    }
+
+    /// Method `i`, decoded from its record and header (format note 21).
+    pub open spec fn minfo(&self, i: int) -> V2Method {
+        vdecode(self.code@, self.methods@, i)
+    }
+
+    /// The method tables the loader checked (`table_ok`, `prog_rel`).
+    pub open spec fn mt_ok(&self) -> bool {
+        &&& table_ok(self.code@, self.methods@)
+        &&& self.code@.len() < MAX_TABLE
+    }
+
+    /// The record of method `i` and its entry, whose header lies inside
+    /// the bytecodes before it.
+    #[inline(always)]
+    fn record(&self, i: usize) -> (r: (u32, usize))
+        requires i < self.methods@.len(), self.mt_ok(),
+        ensures
+            r.0 == self.methods@[i as int],
+            r.1 == rec_entry(r.0) as usize,
+            1 <= r.1 <= self.code@.len(),
+            hdr_size(kind_byte(self.code@, r.1 as int)) <= r.1,
+    {
+        let r = self.methods.at(i);
+        proof {
+            assert(r >> RECORD_ENTRY_SHIFT < 0x100_0000) by (bit_vector);
+            assert(rec_ok(self.code@, self.methods@[i as int]));
+        }
+        (r, (r >> RECORD_ENTRY_SHIFT) as usize)
+    }
+
+    /// The little-endian u16 at `e - d` (a field of a header that ends at
+    /// `e`, inside the bytecodes).
+    #[inline(always)]
+    fn u16_before(&self, e: usize, d: usize) -> (r: u16)
+        requires 2 <= d <= e, e <= self.code@.len(),
+        ensures r == u16_at(self.code@, e - d),
+    {
+        let lo = self.code.at(e - d);
+        let hi = self.code.at(e - d + 1);
+        (lo as u16) | ((hi as u16) << 8)
+    }
+
+    /// The entry of method `i`.
+    #[inline(always)]
+    pub fn entry_of(&self, i: usize) -> (r: usize)
+        requires i < self.methods@.len(), self.mt_ok(),
+        ensures r == self.minfo(i as int).entry as usize,
+    {
+        self.record(i).1
+    }
+
+    /// The arity of method `i`.
+    #[inline(always)]
+    pub fn arity_of(&self, i: usize) -> (r: usize)
+        requires i < self.methods@.len(), self.mt_ok(),
+        ensures r == self.minfo(i as int).arity as usize,
+    {
+        let r = self.methods.at(i);
+        (r & RECORD_ARITY_MASK) as usize
+    }
+
+    /// The kind byte of method `i` (its kind in the low two bits).
+    #[inline(always)]
+    pub fn kind_byte_of(&self, i: usize) -> (r: u8)
+        requires i < self.methods@.len(), self.mt_ok(),
+        ensures r & KIND_MASK == self.minfo(i as int).kind,
+    {
+        let (_, e) = self.record(i);
+        self.code.at(e - 1)
+    }
+
+    /// Whether method `i` has kind `k` (accessor, lambda or block): one
+    /// compare of the kind byte, which is canonical (`rec_ok`).
+    #[inline(always)]
+    pub fn is_kind(&self, i: usize, k: u8) -> (r: bool)
+        requires i < self.methods@.len(), self.mt_ok(), 1 <= k <= 3,
+        ensures r == (self.minfo(i as int).kind == k),
+    {
+        let (_, e) = self.record(i);
+        let b = self.code.at(e - 1);
+        proof {
+            assert(b <= 4);
+            assert(1 <= k <= 3 && b <= 4 ==> ((b == k) == (b & KIND_MASK == k))) by (bit_vector);
+        }
+        b == k
+    }
+
+    /// The selector of method `i`, a method or an accessor (a dispatch
+    /// target of an accepted program: no kind test).
+    #[inline(always)]
+    pub fn dispatch_selector(&self, i: usize) -> (r: u16)
+        requires i < self.methods@.len(), self.mt_ok(), self.minfo(i as int).kind < 2,
+        ensures r == self.minfo(i as int).selector,
+    {
+        let (_, e) = self.record(i);
+        proof { assert(hdr_size(kind_byte(self.code@, e as int)) >= 5); }
+        self.u16_before(e, SELECTOR_BACK)
+    }
+
+    /// The receiver range start of method `i`, a method or an accessor.
+    #[inline(always)]
+    pub fn dispatch_recv_start(&self, i: usize) -> (r: u16)
+        requires i < self.methods@.len(), self.mt_ok(), self.minfo(i as int).kind < 2,
+        ensures r == self.minfo(i as int).recv_start,
+    {
+        let (_, e) = self.record(i);
+        proof { assert(hdr_size(kind_byte(self.code@, e as int)) >= 5); }
+        self.u16_before(e, RECV_START_BACK)
+    }
+
+    /// Whether class `cid` is in the receiver range of method `i`, a method
+    /// or an accessor whose range starts at `rs` (not none): `cid == rs`
+    /// for one class.
+    #[inline(always)]
+    pub fn dispatch_recv_contains(&self, i: usize, rs: u16, cid: i64) -> (r: bool)
+        requires
+            i < self.methods@.len(), self.mt_ok(), self.minfo(i as int).kind < 2,
+            rs == self.minfo(i as int).recv_start, rs != NO_VALUE,
+        ensures r == ((rs as i64) <= cid && cid < self.minfo(i as int).recv_end as i64),
+    {
+        let (_, e) = self.record(i);
+        let b = self.code.at(e - 1);
+        if b & KIND_SINGLE != 0 {
+            cid == rs as i64
+        } else {
+            proof { assert(hdr_size(b) >= 7); }
+            (rs as i64) <= cid && cid < self.u16_before(e, RECV_END_BACK) as i64
+        }
+    }
+
+    /// Method `i` (`minfo`): its record and header, read without bounds
+    /// checks (the loader's `table_ok`). Inlined: only the fields a caller
+    /// uses are read (the body end, which needs the next record, only on
+    /// the paths that check branches).
+    #[inline(always)]
+    pub fn method(&self, i: usize) -> (r: V2Method)
+        requires i < self.methods@.len(), self.mt_ok(),
+        ensures r == self.minfo(i as int),
+    {
+        let (r, e) = self.record(i);
+        let ghost code = self.code@;
+        let b = self.code.at(e - 1);
+        let k = b & KIND_MASK;
+        let ghost hs = hdr_size(b);
+        let mut selector = NO_VALUE;
+        let mut aux: u16 = 0;
+        let mut recv_start = NO_VALUE;
+        let mut recv_end = NO_VALUE;
+        if k < 2 {
+            proof { assert(hs >= 5); }
+            selector = self.u16_before(e, SELECTOR_BACK);
+            recv_start = self.u16_before(e, RECV_START_BACK);
+            if b & KIND_SINGLE == 0 {
+                proof { assert(hs >= 7); }
+                recv_end = self.u16_before(e, RECV_END_BACK);
+            } else if recv_start < NO_VALUE {
+                recv_end = recv_start + 1;
+            }
+            if k == 1 {
+                proof { assert(hs == 9); }
+                aux = self.u16_before(e, ACCESSOR_AUX_BACK);
+            }
+        } else if k == 2 {
+            proof { assert(hs == 3); }
+            aux = self.u16_before(e, LAMBDA_AUX_BACK);
+        }
+        let body_end: u32 = if i + 1 < self.methods.len() {
+            let (_, e2) = self.record(i + 1);
+            let b2 = self.code.at(e2 - 1);
+            (e2 - x_hdr_size(b2)) as u32
+        } else {
+            self.code.len() as u32
+        };
+        V2Method {
+            entry: r >> RECORD_ENTRY_SHIFT,
+            body_end,
+            selector,
+            aux,
+            recv_start,
+            recv_end,
+            arity: (r & RECORD_ARITY_MASK) as u8,
+            kind: k,
+        }
     }
 }
 

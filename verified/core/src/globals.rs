@@ -171,11 +171,11 @@ pub fn op_load_global_lazy(m: &mut Machine, env: &Env, bci: usize, opcode: u8, g
     }
     let d = p.entry_points.at(ENTRY_RUN_GLOBAL_INITIALIZER);
     let t = p.dispatch.at(d as usize) as usize;
-    let info = p.methods.at(t);
+    let info = p.method(t);
     let ghost g2 = sp::push(sp::push(g, smi(gi as int)), v);
     proof {
         assert(t as int == sp::entry_method(ap, RUN_GLOBAL_INITIALIZER));
-        assert(ap.methods[t as int] == method_info(p.methods@[t as int], p.max_height));
+        assert(ap.methods[t as int] == method_info(p.minfo(t as int), p.max_height));
         assert(sp::at(g2, 1) == smi(gi as int));
         assert(toit_spec::spec_common::class_id_of(p1(ap), as1(g2), smi(gi as int)) == p.smi_class_id);
     }

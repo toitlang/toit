@@ -99,8 +99,8 @@ fn mutate(r: &mut Rng, t: &mut Tables) -> String {
             // A bytecode, often near a method entry.
             if t.bytecodes.is_empty() { return "none".into(); }
             let i = if n > 0 && r.chance(50) {
-                let m = &t.methods[r.below(n)];
-                (m.entry as usize + r.below(8)).min(t.bytecodes.len() - 1)
+                let e = (t.methods[r.below(n)] >> 8) as usize;
+                (e + r.below(8)).min(t.bytecodes.len() - 1)
             } else {
                 r.below(t.bytecodes.len())
             };
@@ -109,21 +109,28 @@ fn mutate(r: &mut Rng, t: &mut Tables) -> String {
             format!("bytecode {}: {} -> {}", i, old, t.bytecodes[i])
         }
         3 | 4 | 5 => {
+            // A method record (entry and arity, format note 21) or a byte of
+            // the header before its entry.
             if n == 0 { return "none".into(); }
             let i = r.below(n);
             let other = t.methods[r.below(n)];
-            let m = &mut t.methods[i];
             let scale = t.bytecodes.len() as u64;
-            let f = r.below(8);
+            let rec = t.methods[i];
+            let entry = rec >> 8;
+            let f = r.below(4);
             match f {
-                0 => m.entry = if r.chance(30) { other.entry } else { value(r, m.entry as u64, 32, scale) as u32 },
-                1 => m.length = if r.chance(30) { other.length } else { value(r, m.length as u64, 16, 0xffff) as u16 },
-                2 => m.selector = if r.chance(30) { other.selector } else { value(r, m.selector as u64, 16, 0xffff) as u16 },
-                3 => m.aux = value(r, m.aux as u64, 16, 256) as u16,
-                4 => m.recv_start = value(r, m.recv_start as u64, 16, t.class_bits.len() as u64) as u16,
-                5 => m.recv_end = value(r, m.recv_end as u64, 16, t.class_bits.len() as u64) as u16,
-                6 => m.arity = value(r, m.arity as u64, 8, 8) as u8,
-                _ => m.kind = value(r, m.kind as u64, 8, 4) as u8,
+                0 => {
+                    let e = if r.chance(30) { other >> 8 } else { value(r, entry as u64, 24, scale) as u32 & 0xff_ffff };
+                    t.methods[i] = (rec & 0xff) | e << 8;
+                }
+                1 => t.methods[i] = (rec & !0xff) | value(r, (rec & 0xff) as u64, 8, 8) as u32 & 0xff,
+                _ => {
+                    let back = 1 + r.below(9);
+                    if (entry as usize) < back || entry as usize - back >= t.bytecodes.len() { return "none".into(); }
+                    let at = entry as usize - back;
+                    let old = t.bytecodes[at];
+                    t.bytecodes[at] = value(r, old as u64, 8, 0x20) as u8;
+                }
             }
             format!("method {} field {}", i, f)
         }
