@@ -15,12 +15,12 @@ cd "$ANNOTATED_DIR"
 [ $# -eq 0 ] && set -- $(ls */*.gen.constants.cc)
 CLANG="${CLANGXX:-clang++}"
 vm_cxx_flags "$REPO_ROOT"
-mkdir -p "$ACXX_HOME/logs"
+mkdir -p "$ACXX_WORK/logs"
 pids=()
 logs=()
 for f in "$@"; do
   for target in x86_64-linux-gnu i686-linux-gnu; do
-    log="$ACXX_HOME/logs/constants-$(basename "$f")-$target.log"
+    log="$ACXX_WORK/logs/constants-$(basename "$f")-$target.log"
     "$CLANG" --target="$target" -fsyntax-only -fno-access-control "${VM_CXX_FLAGS[@]}" "$f" > "$log" 2>&1 &
     pids+=($!)
     logs+=("$f|$target|$log")

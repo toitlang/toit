@@ -10,7 +10,7 @@
 set -uo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/env.sh"
 file="$1"; shift
-out="$ACXX_HOME/logs/$(basename "$file").ast"
+out="$ACXX_WORK/logs/$(basename "$file").ast"
 "$VERIFAST_DIR/bin/vf-cxx-ast-exporter" "$file" -- -I "$VERIFAST_DIR/bin" -nostdinc "$@" > "$out" 2> "$out.err"
 status=$?
 echo "exit $status; AST $(wc -c < "$out") bytes; diagnostics: $out.err"

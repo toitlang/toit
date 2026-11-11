@@ -12,6 +12,14 @@ Run: `run.sh` (the whole matrix, about 30 s; also part of
 `verified/check.sh --tests`, which skips it with a message when VeriFast is
 not installed). Tools: `install-tools.sh` (VeriFast 26.10 and its Rust
 front end, under /home/flo/work/opentoit-sandbox-artifacts/annotated-cxx).
+What a run writes (Clang's AST dumps, the 32-bit renderings, logs, the
+mutants' copies) goes to a directory per checkout under `work/` there
+(`ACXX_WORK`, env.sh), and a lock serializes the runs of one checkout:
+the scratch directory was shared, and two checkouts rendering at once
+wrote the same AST dump twice ("2 definitions of toit::Instance::at_put").
+The checks run as parallel jobs: the LP64 proofs together with
+`render.sh --check`, the ILP32 proofs and the mutants after it (about 40 s
+wall on 16 cores).
 
 ## The rendering: generated, not hand-written
 

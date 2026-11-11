@@ -315,6 +315,20 @@ if [ "$RUN_TESTS" = 1 ]; then
 
   section "Sandbox ctests"
   if [ -f "$BUILD_DIR/CTestTestfile.cmake" ] && [ -x "$BUILD_DIR/sdk/bin/toit" ]; then
+    # tests/sandbox/CMakeLists.txt finds the tests with file(GLOB) at
+    # configure time: a test file added since the last configuration would
+    # silently not run. Reconfigure, then require one registered test per
+    # tests/sandbox/*-test.toit (none of them is in TOIT_SKIP_TESTS).
+    if ! (cd "$BUILD_DIR" && cmake . > "$LOGS/sandbox-cmake.log" 2>&1); then
+      tail -20 "$LOGS/sandbox-cmake.log"
+      fail "sandbox ctests: reconfiguring $BUILD_DIR"
+    fi
+    on_disk=$(ls "$REPO"/tests/sandbox/*-test.toit | wc -l)
+    registered=$(ctest --test-dir "$BUILD_DIR" -N -R '^tests/sandbox/[^ /]*-test\.toit$' \
+      | sed -n 's/^Total Tests: //p')
+    if [ "$on_disk" != "$registered" ]; then
+      fail "sandbox ctests: $registered registered, $on_disk tests/sandbox/*-test.toit files"
+    fi
     if ! ctest --test-dir "$BUILD_DIR" -R '^tests/sandbox/' -j "$(nproc)" --output-on-failure; then
       fail "sandbox ctests"
     fi
