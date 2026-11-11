@@ -44,6 +44,10 @@ if (NOT TOIT_BYTECODE_FORMAT MATCHES "^[12]$")
   message(FATAL_ERROR "TOIT_BYTECODE_FORMAT must be 1 or 2, not '${TOIT_BYTECODE_FORMAT}'")
 endif()
 if (TOIT_BYTECODE_FORMAT EQUAL 2 AND NOT TOIT_VERIFIED_CORE_ENABLED)
+  if (${TOIT_IS_EMBEDDED})
+    # A device firmware whose system snapshot is format 2 would not boot.
+    message(FATAL_ERROR "TOIT_BYTECODE_FORMAT=2 needs the verified core (cargo and the Rust target, see verified/README.md)")
+  endif()
   message(WARNING "TOIT_BYTECODE_FORMAT=2 without the verified core: this VM cannot run the programs its compiler generates")
 endif()
 
