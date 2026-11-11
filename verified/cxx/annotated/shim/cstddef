@@ -1,0 +1,3 @@
+// Copyright (C) 2026 Toit contributors. Stand-in for <cstddef> (probe only).
+#include <stdint.h>
+#include <stddef.h>
