@@ -56,6 +56,13 @@ set(PLAT_FREERTOS "${EC618_PLAT_DIR}/os/freertos")
 set(PLAT_MIDDLEWARE "${EC618_PLAT_DIR}/middleware")
 set(PLAT_PREBUILD "${EC618_PLAT_DIR}/prebuild")
 
+# --- The verified core (verified/CMakeLists.txt; off unless TOIT_VERIFIED_CORE,
+# Makefile EC618_BYTECODE_FORMAT=2) ---
+# The upstream Rust target for the Cortex-M3 (rustup target add
+# thumbv7m-none-eabi). verified/vmverify/.cargo/config.toml keeps movw/movt
+# out of it for the slot relocator.
+set(TOIT_VERIFIED_CORE_RUST_TARGET "thumbv7m-none-eabi" CACHE STRING "Rust target triple of the verified core")
+
 # --- Compiler flags ---
 set(EC618_CPU_FLAGS "-mcpu=cortex-m3 -mthumb")
 

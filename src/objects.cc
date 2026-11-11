@@ -343,7 +343,11 @@ void Stack::roots_do(Program* program, RootCallback* cb) {
   }
 }
 
+#ifdef TOIT_EC618
+int Stack::v2_frames_skip_ = 2;
+#else
 thread_local int Stack::v2_frames_skip_ = 2;
+#endif
 
 int Stack::v2_frames_do(Program* program, FrameCallback* cb) {
   // The locations, top frame first: the bci the task is suspended at, then

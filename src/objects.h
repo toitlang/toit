@@ -1076,8 +1076,13 @@ class Stack : public HeapObject {
   int v2_frames_do(Program* program, FrameCallback* cb);
   // The number of top locations v2_frames_do does not report.
   // ESP-IDF supports only the local-exec TLS model (its linker script
-  // discards the GOT that the default initial-exec model needs).
-#ifdef TOIT_FREERTOS
+  // discards the GOT that the default initial-exec model needs). The
+  // EC618's toolchain has no native TLS: emulated TLS calls a weak TLS
+  // wrapper that the slot relocator cannot move, and the EC618 runs a single
+  // scheduler thread (OS::num_cores), so a plain static is enough there.
+#if defined(TOIT_EC618)
+  static int v2_frames_skip_;
+#elif defined(TOIT_FREERTOS)
   static thread_local int v2_frames_skip_ __attribute__((tls_model("local-exec")));
 #else
   static thread_local int v2_frames_skip_;
