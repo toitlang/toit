@@ -423,6 +423,16 @@ void Process::add_resource_group(ResourceGroup* r) {
   resource_groups_.prepend(r);
 }
 
+bool Process::may_add_permanent_resource_group() {
+  if (!policy()->restricts_messaging()) return true;
+  int count = 0;
+  for (auto it : resource_groups_) {
+    USE(it);
+    if (++count >= MAX_RESTRICTED_RESOURCE_GROUPS) return false;
+  }
+  return true;
+}
+
 void Process::remove_resource_group(ResourceGroup* group) {
   ResourceGroup* g = resource_groups_.remove(group);
   ASSERT(g == group);
