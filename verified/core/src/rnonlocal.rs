@@ -555,7 +555,7 @@ pub fn op_try(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode: u8) 
         assert(sp::op_try(ap, g) == sp::call(ap, s2, tt, g.bci + 1));
         assert(t == tt);
     }
-    push_call(m, r, p, t, info, bci + 1);
+    push_call(m, r, p, t, info.entry as usize, info.arity as usize, bci + 1);
     proof { lemma_matches(p, w0, m.with(*r), Ctl::Next); }
     Ctl::Next
 }

@@ -118,7 +118,8 @@ bool V2MethodTable::trusted_on_verified_loop() {
 // The table literal (format note 21), checked: every header lies inside
 // the bytecodes before its entry (the core reads headers without bounds
 // checks: `table_ok` in verified/spec/src/v2/vprog.rs, part of the
-// loader's contract `prog_rel`), the methods follow each other from the
+// loader's contract `prog_rel`), every entry but a block's is odd and the
+// bytecodes are 2-byte aligned (aligned u16 loads), the methods follow each other from the
 // tag to the end of the bytecodes with nonempty bodies, and every header
 // is in its canonical form (no unknown kind-byte bits, SINGLE only for a
 // method, a range of at least two classes in the long form, no empty
@@ -137,6 +138,10 @@ V2MethodTable* V2MethodTable::compute(Program* program, bool* out_of_memory) {
   word length = program->bytecodes.length();
   if (!program->is_format2()) return v2_fail("missing tag");
   if (length >= V2_MAX_BYTECODES) return v2_fail("bytecodes too large");
+  // 2-byte aligned bytecodes (program heap and off-heap allocations are
+  // word aligned): with the odd entries, every u16 header field is aligned
+  // (`prog_rel` in verified/core/src/abs.rs).
+  if ((reinterpret_cast<uword>(bytes) & 1) != 0) return v2_fail("unaligned bytecodes");
   // Not yet created (-1) while the compiler builds the program.
   word literals = program->literals.length();
   if (literals <= 0) return v2_fail("no method table");
@@ -166,6 +171,9 @@ V2MethodTable* V2MethodTable::compute(Program* program, bool* out_of_memory) {
       return v2_fail("bad method kind byte", entry - 1);
     }
     if (entry - header_size(kind_byte) != expected) return v2_fail("methods do not follow each other", i);
+    // Odd entries but for blocks: the u16 fields are 2-byte aligned (the
+    // core reads them with aligned 16-bit loads, `rec_ok`).
+    if (kind != V2_KIND_BLOCK && (entry & 1) == 0) return v2_fail("even method entry", i);
     if (kind == V2_KIND_METHOD || kind == V2_KIND_FIELD_ACCESSOR) {
       uint16 start = v2_read_u16_le(bytes + entry - V2_RECV_START_BACK);
       bool ok = true;

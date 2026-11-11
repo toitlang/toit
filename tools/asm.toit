@@ -218,6 +218,12 @@ main args/List:
     asm := args[4]
     m := find-method program mname
     body := assemble (resolve-names program asm)
+    // The entries of all but blocks are odd (format note 21): a body that
+    // changes by an odd number of bytes gets a pad byte at its end, so that
+    // the following entries keep their parity. 0xff is no opcode: a body
+    // that does not end in a terminator still runs into an invalid
+    // instruction (the compiler pads with RETURN_NULL after a terminator).
+    if (body.size - m.bytecodes.size) & 1 != 0: body += #[0xff]
     // Format note 21: the header ends at the entry and holds no body
     // length; the body ends at the next method's header. Replace the body
     // and move the entries of the following methods in the table literal.

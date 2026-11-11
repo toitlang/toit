@@ -114,7 +114,13 @@ static const int V2_LOOP_STEP_LENGTH = 4;
 // program's last literal, V2MethodTable in interpreter_v2.h); a body ends
 // at the next method's header. The max height is not in the header: the
 // program's global max stack height bounds every method.
+// The entries of methods, accessors and lambdas are odd (their headers
+// start at even offsets), so that every u16 field is 2-byte aligned in the
+// 2-byte aligned bytecodes: a pad byte (V2_PAD, never executed: a
+// terminator, so that linear decoders see a well-formed body) ends the
+// previous body where needed. Blocks have no u16 fields.
 static const int V2_KIND_SINGLE = 1 << 2;
+static const uint8 V2_PAD = RETURN_NULL;
 // Entries have 24 bits.
 static const int V2_MAX_BYTECODES = 0x1000000;
 static const int V2_KIND_METHOD = 0;
