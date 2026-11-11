@@ -38,6 +38,7 @@ M64-FLAG         ::= "machine-64-bit"
 OUTPUT-OPTION    ::= "output"
 FORMAT-OPTION    ::= "format"
 ASSETS-OPTION    ::= "assets"
+CERTIFICATE-FLAG ::= "certificate"
 SNAPSHOT-FILE    ::= "snapshot-file"
 
 abstract class RelocatedOutput:
@@ -115,6 +116,13 @@ build-command -> cli.Command:
             - 'bytes': The image bytes as a byte array.
 
         If an assets file is provided, it will be included in the image.
+
+        A format-2 snapshot's shipped certificate (verified/spec/format/
+        18-shipped-certificate.md) is appended after the program and the
+        assets as a trailing block that is not part of the installed
+        allocation (the installer verifies the program with it and may then
+        drop it); --no-certificate leaves it out. It is not part of the
+        image ID.
         """
       --rest=[cli.Option SNAPSHOT-FILE]
       --options=[
@@ -123,6 +131,7 @@ build-command -> cli.Command:
           cli.OptionEnum FORMAT-OPTION ["binary", "ubjson"] --required --help="Output format.",
           cli.Option OUTPUT-OPTION --short-name="o" --required --help="Output file.",
           cli.Option ASSETS-OPTION --help="Path to assets file.",
+          cli.Flag CERTIFICATE-FLAG --default=true --help="Include the shipped certificate of a format-2 snapshot.",
         ]
       --run=:: snapshot-to-image it
   return cmd
@@ -156,6 +165,9 @@ snapshot-to-image invocation/cli.Invocation:
   assets-path := invocation[ASSETS-OPTION]
   assets := assets-path ? file.read-contents assets-path : null
   id := image-id --snapshot-uuid=snapshot-uuid --assets=assets
+  certificate := (invocation[CERTIFICATE-FLAG] and snapshot-bundle.certificate)
+      ? snapshot-bundle.certificate.bytes
+      : null
 
   output := { "id": id.stringify }
   machine-word-sizes.do: | word-size/int |
@@ -180,6 +192,8 @@ snapshot-to-image invocation/cli.Invocation:
       List.chunk-up 0 assets.size chunk-size: | from to |
         buffer.write no-relocation
         buffer.write assets[from..to]
+    if certificate:
+      write-unrelocated buffer (certificate-block certificate) --word-size=word-size
     images := output.get "images" --init=: []
     machine := "-m$(word-size * 8)"
     images.add { "flags": [machine], "bytes": buffer.bytes }
@@ -191,6 +205,31 @@ snapshot-to-image invocation/cli.Invocation:
   else:
     writer.write (ubjson.encode output)
   out.close
+
+/**
+The marker of the trailing certificate block of an image ("TCB1"): larger
+  than any assets length, so the block is told apart from assets
+  (src/resources/image.cc, writer_commit).
+*/
+CERTIFICATE-BLOCK-MARKER ::= 0x3142_4354
+
+/**
+The trailing certificate block: the marker, the length, the certificate,
+  padded to full flash pages.
+*/
+certificate-block certificate/ByteArray -> ByteArray:
+  header := ByteArray 8
+  LITTLE-ENDIAN.put-uint32 header 0 CERTIFICATE-BLOCK-MARKER
+  LITTLE-ENDIAN.put-uint32 header 4 certificate.size
+  return pad (header + certificate) 4096
+
+/** Writes  in the relocatable image format without relocations. */
+write-unrelocated buffer/io.Buffer bytes/ByteArray --word-size/int -> none:
+  chunk-size := word-size * 8 * word-size
+  no-relocation := ByteArray word-size
+  List.chunk-up 0 bytes.size chunk-size: | from to |
+    buffer.write no-relocation
+    buffer.write bytes[from..to]
 
 sdk-version-uuid --sdk-version/string -> Uuid:
   return sdk-version.is-empty

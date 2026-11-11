@@ -106,6 +106,17 @@ PRIMITIVE(writer_commit) {
   // bounds and mark the metadata to indicate the presence of the assets.
   uword program_size = output->program_size();
   uword assets_extra = image.byte_size() - program_size;
+  // A shipped certificate (verified/spec/format/18-shipped-certificate.md)
+  // may follow the program (and the assets) as a trailing block that starts
+  // with CERTIFICATE_BLOCK_MARKER. It is not part of the allocation: the
+  // installer finds it at the end of the allocation (FlashAllocation::size)
+  // and may drop it once the program is verified. The marker is larger than
+  // any assets length, so a block right after the program means no assets.
+  static const uint32 CERTIFICATE_BLOCK_MARKER = 0x31424354;  // "TCB1".
+  if (assets_extra >= 2 * sizeof(uint32) &&
+      *reinterpret_cast<uint32*>(reinterpret_cast<uword>(image.begin()) + program_size) == CERTIFICATE_BLOCK_MARKER) {
+    assets_extra = 0;
+  }
   if (assets_extra > 0) {
     uword assets_address = reinterpret_cast<uword>(image.begin()) + program_size;
     uword assets_length = *reinterpret_cast<uint32*>(assets_address);
