@@ -163,11 +163,12 @@ fn disassemble(p: &VProgram, global: &infer::Global, m: usize, trusted: bool) {
     use toit_spec::v2::bytecodes::{OPCODE_LENGTHS2, OPCODE_NAMES2};
     let Some(info) = p.methods.get(m) else { return };
     let g = &global.g;
-    let bp = g.bp_off.get(m).zip(g.bp_off.get(m + 1)).and_then(|(a, b)| g.bp.get(*a as usize..*b as usize));
-    let ctx = g.ctx_idx.get(m).and_then(|i| g.ctxs.get(*i as usize)).map(|x| (x.outer, x.slot, x.kinds.clone()));
-    println!("method {}: arity {} kind {} max_height {} selector {} recv {}..{} block params {:?} ctx {:?}", m, info.arity, info.kind,
+    let bp = if info.kind == 3 { 0 } else { g.word(m) };
+    let ctx = if info.kind == 3 { g.ctx(m).map(|(o, s, top)| (o, s, g.list(top))) } else { None };
+    println!("method {}: arity {} kind {} max_height {} selector {} recv {}..{} block params {:#x} ctx {:?}", m, info.arity, info.kind,
         p.max_height, info.selector, info.recv_start, info.recv_end, bp, ctx);
-    let maps = infer::Oracle::new(p, global, trusted).method_maps(m);
+    let gv = g.view(p.methods);
+    let maps = infer::Oracle::new(p, global, trusted).method_maps(p, &gv, m);
     let (entry, end) = (info.entry as usize, info.end as usize);
     let mut bci = entry;
     while bci < end {

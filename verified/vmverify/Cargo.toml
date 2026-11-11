@@ -29,23 +29,27 @@ crate-type = ["staticlib", "rlib"]
 [[bin]]
 name = "toit_vmverify_canonical"
 path = "src/bin/toit_vmverify_canonical.rs"
-required-features = ["std"]
+required-features = ["std", "infer"]
 
 [[bin]]
 name = "toit_vmverify_mem"
 path = "src/bin/toit_vmverify_mem.rs"
-required-features = ["std"]
+required-features = ["std", "infer"]
 
 [[bin]]
 name = "toit_vmverify_fuzz"
 path = "src/bin/toit_vmverify_fuzz.rs"
-required-features = ["std"]
+required-features = ["std", "infer"]
 
 [features]
 # `std`: hosts (panics are caught and reject, phase times, counting
 # allocator, test support). Without it: `no_std` + `alloc` for devices.
-default = ["std"]
+default = ["std", "infer"]
 std = ["toit_spec/std"]
+# `infer`: without a shipped certificate, infer one (hosts). Without it
+# (devices) a program without a certificate is rejected and the inference
+# is not linked.
+infer = ["toit_spec/infer"]
 
 [dependencies]
 toit_spec = { path = "../spec", default-features = false }

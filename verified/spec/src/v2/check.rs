@@ -73,38 +73,44 @@ impl View for XKind {
     }
 }
 
-pub struct XContext {
-    pub outer: u32,
-    pub slot: u32,
-    pub kinds: Vec<XKind>,
-}
-
-/// A pinned map: the kinds of method `m` at offset `off`, which another
-/// method's rules look up (`v2::split`).
-pub struct XPin {
-    pub m: u32,
-    pub off: u32,
-    pub kinds: Vec<XKind>,
-}
-
-/// The global part of the certificate (`v2::split::GCert`): small tables,
-/// linear in the number of methods.
-pub struct XGlobal {
+/// The global part of the certificate (`v2::split::GCert`) as byte tables
+/// (format/18-shipped-certificate.md): borrowed, so that a shipped
+/// certificate is read in place (memory-mapped flash) and the inference
+/// can hand its own buffers. Numbers are 32-bit little endian; every read
+/// is total (`rd`: 0 outside the table), so any bytes have a meaning.
+pub struct XGlobal<'a> {
     /// The number of methods.
     pub n: usize,
-    /// The block-parameter mask of method `m` is `bp[bp_off[m]..bp_off[m + 1]]`.
-    pub bp_off: Vec<u32>,
-    pub bp: Vec<bool>,
-    /// The context of block method `t` is `ctxs[ctx_idx[t]]` (none if out
-    /// of range).
-    pub ctx_idx: Vec<u32>,
-    pub ctxs: Vec<XContext>,
-    /// Selector representatives; selectors past the end have none (-1).
-    pub sel_rep: Vec<i32>,
+    /// The method table: the length of method `m`'s block-parameter mask
+    /// is its arity.
+    pub methods: &'a [VMethod],
+    /// A word per method: for a block method (kind 3) its context (0 is
+    /// none, `j + 1` is record `j` of `crec`; blocks have no block
+    /// parameters); for other methods the block-parameter mask (bit `i`,
+    /// below 32, is parameter `i`; they have no context).
+    pub mw: &'a [u8],
+    /// Context records (12 bytes): outer method, slot, top node of the kinds.
+    pub crec: &'a [u8],
+    /// Selector representatives (8 bytes): selector, method; strictly
+    /// sorted by selector. Selectors without a record have none (-1).
+    pub sel: &'a [u8],
+    /// Pinned maps (12 bytes): method, offset, top node of the kinds;
+    /// strictly sorted by (method, offset).
+    pub pins: &'a [u8],
+    /// Kind nodes (12 bytes): parent, kind word, operand (`dk`); lists of
+    /// kinds share their bottoms like the maps (`chain`).
+    pub nodes: &'a [u8],
+    /// Trusted: the number of globals and the VM's primitive table.
     pub global_count: u64,
-    pub prim_arity: Vec<Vec<u8>>,
-    /// Pinned maps, strictly sorted by (method, offset).
-    pub pins: Vec<XPin>,
+    pub prim_arity: &'a [Vec<u8>],
+}
+
+/// The head of a context: the kinds are the list of node `top`.
+#[derive(Clone, Copy)]
+pub struct XCtx {
+    pub outer: u32,
+    pub slot: u32,
+    pub top: u32,
 }
 
 /// A node of the maps of one method: maps are lists of kinds that share
@@ -130,7 +136,7 @@ pub struct XMaps {
 /// The certificate a method is checked against: the global part, and the
 /// maps of method `cur` (`cur >= g.n`: the tables, pins only).
 pub struct XCert<'a> {
-    pub g: &'a XGlobal,
+    pub g: &'a XGlobal<'a>,
     pub cur: usize,
     pub maps: &'a XMaps,
 }
@@ -141,14 +147,6 @@ pub open spec fn kv(k: Vec<XKind>) -> Seq<Kind> {
 
 pub open spec fn okv(o: Option<Vec<XKind>>) -> Option<Seq<Kind>> {
     match o { Some(k) => Some(kv(k)), None => None }
-}
-
-pub open spec fn ctx1(x: XContext) -> Context {
-    Context { outer: x.outer as int, slot: x.slot as int, kinds: kv(x.kinds) }
-}
-
-pub open spec fn ctxv(o: Option<XContext>) -> Option<Context> {
-    match o { Some(x) => Some(ctx1(x)), None => None }
 }
 
 /// The kinds of the list whose top node is `i`, bottom first.
@@ -171,38 +169,218 @@ pub open spec fn mapsv(x: &XMaps) -> Maps {
     Seq::new(x.idx@.len(), |o: int| map_view(x, o))
 }
 
+// ---------------------------------------------------------------------------
+// Byte tables.
+
+/// The 32-bit little-endian word at byte `i` of `s`, 0 if out of range.
+pub open spec fn rd(s: Seq<u8>, i: int) -> u32 {
+    if 0 <= i && i + 4 <= s.len() {
+        (s[i] as u32) | ((s[i + 1] as u32) << 8u32) | ((s[i + 2] as u32) << 16u32) | ((s[i + 3] as u32) << 24u32)
+    } else {
+        0
+    }
+}
+
+pub fn x_rd(s: &[u8], i: usize) -> (r: u32)
+    ensures r == rd(s@, i as int),
+{
+    let l = s.len();
+    if i <= l && l - i >= 4 {
+        (s[i] as u32) | ((s[i + 1] as u32) << 8u32) | ((s[i + 2] as u32) << 16u32) | ((s[i + 3] as u32) << 24u32)
+    } else {
+        0
+    }
+}
+
+/// The word at byte `f` of record `i` of a table of `w`-byte records.
+pub open spec fn fld(s: Seq<u8>, w: int, i: int, f: int) -> u32 {
+    rd(s, i * w + f)
+}
+
+pub fn x_fld(s: &[u8], w: usize, i: usize, f: usize) -> (r: u32)
+    ensures r == fld(s@, w as int, i as int, f as int),
+{
+    let l = s.len();
+    match i.checked_mul(w) {
+        Some(b) => match b.checked_add(f) {
+            Some(o) => x_rd(s, o),
+            None => 0,
+        },
+        None => {
+            assert(i as int * w as int + f as int > l) by (nonlinear_arith)
+                requires i as int * w as int > usize::MAX, l <= usize::MAX, f >= 0;
+            0
+        },
+    }
+}
+
+/// The kind a node holds: the kind word's low 3 bits are the tag (0 value,
+/// 1 block parameter, 2 token, 3 method `b`, 4 block of depth `a >> 3` and
+/// slot `b`; others: value).
+pub open spec fn dk(a: u32, b: u32) -> XKind {
+    let t = a & 7u32;
+    if t == 1 { XKind::Param }
+    else if t == 2 { XKind::Token }
+    else if t == 3 { XKind::Method(b) }
+    else if t == 4 { XKind::Block(a >> 3u32, b) }
+    else { XKind::Val }
+}
+
+pub fn x_dk(a: u32, b: u32) -> (r: XKind)
+    ensures r == dk(a, b),
+{
+    let t = a & 7u32;
+    if t == 1 { XKind::Param }
+    else if t == 2 { XKind::Token }
+    else if t == 3 { XKind::Method(b) }
+    else if t == 4 { XKind::Block(a >> 3u32, b) }
+    else { XKind::Val }
+}
+
+pub open spec fn fnode(s: Seq<u8>, i: int) -> XNode {
+    XNode { parent: fld(s, 12, i, 0), kind: dk(fld(s, 12, i, 4), fld(s, 12, i, 8)) }
+}
+
+/// The nodes of a node table.
+pub open spec fn fnodes(s: Seq<u8>) -> Seq<XNode> {
+    Seq::new((s.len() / 12) as nat, |i: int| fnode(s, i))
+}
+
+/// The kinds of the list with top node `i` of a node table.
+pub open spec fn fchain(s: Seq<u8>, i: int) -> Seq<Kind> {
+    chain(fnodes(s), i)
+}
+
+pub fn x_fnode(s: &[u8], i: usize) -> (r: XNode)
+    ensures i < s@.len() / 12 ==> r == fnodes(s@)[i as int],
+{
+    XNode { parent: x_fld(s, 12, i, 0), kind: x_dk(x_fld(s, 12, i, 4), x_fld(s, 12, i, 8)) }
+}
+
+// ---------------------------------------------------------------------------
+// Views of the global part.
+
+pub open spec fn bit(x: u32, i: int) -> bool {
+    0 <= i < 32 && ((x >> (i as u32)) & 1u32) == 1u32
+}
+
+pub fn x_bit(x: u32, i: usize) -> (r: bool)
+    ensures r == bit(x, i as int),
+{
+    i < 32 && ((x >> (i as u32)) & 1u32) == 1u32
+}
+
+pub open spec fn is_block_m(g: &XGlobal, m: int) -> bool {
+    0 <= m < g.methods@.len() && g.methods@[m].kind == 3
+}
+
+/// The block-parameter mask of method `m`.
+pub open spec fn bp_mask(g: &XGlobal, m: int) -> u32 {
+    if is_block_m(g, m) { 0 } else { fld(g.mw@, 4, m, 0) }
+}
+
+pub fn x_bp_mask(g: &XGlobal, m: usize) -> (r: u32)
+    ensures r == bp_mask(g, m as int),
+{
+    if m < g.methods.len() && g.methods[m].kind == 3 { 0 } else { x_fld(g.mw, 4, m, 0) }
+}
+
 pub open spec fn bp_view(g: &XGlobal, m: int) -> Seq<bool> {
-    if 0 <= m && m + 1 < g.bp_off@.len() && g.bp_off@[m] <= g.bp_off@[m + 1] && (g.bp_off@[m + 1] as int) <= g.bp@.len() {
-        g.bp@.subrange(g.bp_off@[m] as int, g.bp_off@[m + 1] as int)
+    if 0 <= m < g.methods@.len() {
+        Seq::new(g.methods@[m].arity as nat, |i: int| bit(bp_mask(g, m), i))
     } else {
         Seq::empty()
     }
 }
 
+pub open spec fn ncrec(g: &XGlobal) -> int {
+    (g.crec@.len() / 12) as int
+}
+
+/// The context record of method `t` plus one (0: none).
+pub open spec fn ctx_word(g: &XGlobal, t: int) -> u32 {
+    fld(g.mw@, 4, t, 0)
+}
+
+pub open spec fn has_ctx(g: &XGlobal, t: int) -> bool {
+    is_block_m(g, t) && 1 <= ctx_word(g, t) && ctx_word(g, t) - 1 < ncrec(g)
+}
+
+pub open spec fn xctx_view(g: &XGlobal, h: XCtx) -> Context {
+    Context { outer: h.outer as int, slot: h.slot as int, kinds: fchain(g.nodes@, h.top as int) }
+}
+
+pub open spec fn ctx_head(g: &XGlobal, t: int) -> XCtx {
+    let j = ctx_word(g, t) - 1;
+    XCtx { outer: fld(g.crec@, 12, j, 0), slot: fld(g.crec@, 12, j, 4), top: fld(g.crec@, 12, j, 8) }
+}
+
 pub open spec fn ctx_view(g: &XGlobal, t: int) -> Option<Context> {
-    if 0 <= t < g.ctx_idx@.len() && (g.ctx_idx@[t] as int) < g.ctxs@.len() {
-        Some(ctx1(g.ctxs@[g.ctx_idx@[t] as int]))
-    } else {
-        None
-    }
+    if has_ctx(g, t) { Some(xctx_view(g, ctx_head(g, t))) } else { None }
+}
+
+pub open spec fn nsel(g: &XGlobal) -> int {
+    (g.sel@.len() / 8) as int
+}
+
+pub open spec fn sel_key(g: &XGlobal, j: int) -> u32 {
+    fld(g.sel@, 8, j, 0)
+}
+
+pub open spec fn sel_val(g: &XGlobal, j: int) -> u32 {
+    fld(g.sel@, 8, j, 4)
+}
+
+pub open spec fn has_sel(g: &XGlobal, s: int) -> bool {
+    exists|j: int| 0 <= j < nsel(g) && #[trigger] sel_key(g, j) == s
 }
 
 pub open spec fn sel_view(g: &XGlobal, s: int) -> int {
-    if 0 <= s < g.sel_rep@.len() { g.sel_rep@[s] as int } else { -1 }
+    if has_sel(g, s) {
+        let j = choose|j: int| 0 <= j < nsel(g) && #[trigger] sel_key(g, j) == s;
+        sel_val(g, j) as int
+    } else {
+        -1
+    }
 }
 
-pub open spec fn pin_key(x: XPin) -> int {
-    x.m as int * 0x1_0000_0000 + x.off as int
+/// The selector records are strictly sorted.
+pub open spec fn sel_sorted(g: &XGlobal) -> bool {
+    forall|i: int, j: int| 0 <= i < j < nsel(g) ==> #[trigger] sel_key(g, i) < #[trigger] sel_key(g, j)
+}
+
+pub open spec fn npins(g: &XGlobal) -> int {
+    (g.pins@.len() / 12) as int
+}
+
+pub open spec fn pin_m(g: &XGlobal, i: int) -> u32 {
+    fld(g.pins@, 12, i, 0)
+}
+
+pub open spec fn pin_off(g: &XGlobal, i: int) -> u32 {
+    fld(g.pins@, 12, i, 4)
+}
+
+pub open spec fn pin_top(g: &XGlobal, i: int) -> u32 {
+    fld(g.pins@, 12, i, 8)
+}
+
+pub open spec fn pin_kinds(g: &XGlobal, i: int) -> Seq<Kind> {
+    fchain(g.nodes@, pin_top(g, i) as int)
+}
+
+pub open spec fn pin_key(g: &XGlobal, i: int) -> int {
+    pin_m(g, i) as int * 0x1_0000_0000 + pin_off(g, i) as int
 }
 
 pub open spec fn has_pin(g: &XGlobal, m: int, o: int) -> bool {
-    exists|i: int| 0 <= i < g.pins@.len() && (#[trigger] g.pins@[i]).m == m && g.pins@[i].off == o
+    exists|i: int| 0 <= i < npins(g) && #[trigger] pin_m(g, i) == m && pin_off(g, i) == o
 }
 
 pub open spec fn pin_view(g: &XGlobal, m: int, o: int) -> Option<Seq<Kind>> {
     if has_pin(g, m, o) {
-        let i = choose|i: int| 0 <= i < g.pins@.len() && (#[trigger] g.pins@[i]).m == m && g.pins@[i].off == o;
-        Some(kv(g.pins@[i].kinds))
+        let i = choose|i: int| 0 <= i < npins(g) && #[trigger] pin_m(g, i) == m && pin_off(g, i) == o;
+        Some(pin_kinds(g, i))
     } else {
         None
     }
@@ -210,10 +388,15 @@ pub open spec fn pin_view(g: &XGlobal, m: int, o: int) -> Option<Seq<Kind>> {
 
 /// The pins are strictly sorted by (method, offset).
 pub open spec fn pins_sorted(g: &XGlobal) -> bool {
-    forall|i: int, j: int| 0 <= i < j < g.pins@.len() ==> pin_key(#[trigger] g.pins@[i]) < pin_key(#[trigger] g.pins@[j])
+    forall|i: int, j: int| 0 <= i < j < npins(g) ==> #[trigger] pin_key(g, i) < #[trigger] pin_key(g, j)
 }
 
-impl View for XGlobal {
+/// The sorted tables are sorted (the lookups need it).
+pub open spec fn g_ok(g: &XGlobal) -> bool {
+    sel_sorted(g) && pins_sorted(g)
+}
+
+impl<'a> View for XGlobal<'a> {
     type V = GCert;
     open spec fn view(&self) -> GCert {
         GCert {
@@ -284,8 +467,8 @@ pub proof fn lemma_map_repr(c: &XCert, m: int, o: int)
             lemma_chain_repr(c.maps.nodes@, c.maps.idx@[o] as int);
         } else {
             let g = c.g;
-            let i = choose|i: int| 0 <= i < g.pins@.len() && (#[trigger] g.pins@[i]).m == m && g.pins@[i].off == o;
-            lemma_representable(g.pins@[i].kinds);
+            let i = choose|i: int| 0 <= i < npins(g) && #[trigger] pin_m(g, i) == m && pin_off(g, i) == o;
+            lemma_chain_repr(fnodes(g.nodes@), pin_top(g, i) as int);
         }
     }
 }
@@ -489,22 +672,11 @@ pub fn x_is_ref(k: XKind) -> (r: bool)
     match k { XKind::Block(_, _) => true, XKind::Param => true, _ => false }
 }
 
-/// The bounds of method `m`'s block-parameter mask in `g.bp`, if valid.
-pub fn x_bp_range(g: &XGlobal, m: usize) -> (r: Option<(usize, usize)>)
-    ensures
-        match r {
-            Some((a, b)) => a <= b <= g.bp@.len() && bp_view(g, m as int) == g.bp@.subrange(a as int, b as int),
-            None => bp_view(g, m as int) == Seq::<bool>::empty(),
-        },
+/// The arity of `g.methods[m]` (the length of its mask), 0 past the table.
+pub fn x_bp_arity(g: &XGlobal, m: usize) -> (r: usize)
+    ensures r == bp_view(g, m as int).len(),
 {
-    if m < g.bp_off.len() && m + 1 < g.bp_off.len() {
-        let a = g.bp_off[m] as usize;
-        let b = g.bp_off[m + 1] as usize;
-        if a <= b && b <= g.bp.len() {
-            return Some((a, b));
-        }
-    }
-    None
+    if m < g.methods.len() { g.methods[m].arity as usize } else { 0 }
 }
 
 /// `c@.block_params[m].len()` for a method `m < g.n`.
@@ -512,20 +684,17 @@ pub fn x_bp_len(c: &XCert, m: usize) -> (r: usize)
     requires m < c.g.n,
     ensures r == c@.block_params[m as int].len(),
 {
-    match x_bp_range(c.g, m) {
-        Some((a, b)) => b - a,
-        None => 0,
-    }
+    x_bp_arity(c.g, m)
 }
 
 pub fn x_is_block_param(c: &XCert, m: usize, i: usize) -> (r: bool)
     ensures r == is_block_param(c@, m as int, i as int),
 {
     if m >= c.g.n { return false; }
-    match x_bp_range(c.g, m) {
-        Some((a, b)) => i < b - a && c.g.bp[a + i],
-        None => false,
-    }
+    let a = x_bp_arity(c.g, m);
+    if i >= a { return false; }
+    let mask = x_bp_mask(c.g, m);
+    x_bit(mask, i)
 }
 
 /// `c@.block_params[r] == c@.block_params[m]`.
@@ -535,23 +704,20 @@ pub fn x_bp_eq(c: &XCert, r: usize, m: usize) -> (res: bool)
 {
     let ghost br = c@.block_params[r as int];
     let ghost bm = c@.block_params[m as int];
-    let (ra, rb) = match x_bp_range(c.g, r) { Some(x) => x, None => (0, 0) };
-    let (ma, mb) = match x_bp_range(c.g, m) { Some(x) => x, None => (0, 0) };
-    assert(br =~= c.g.bp@.subrange(ra as int, rb as int));
-    assert(bm =~= c.g.bp@.subrange(ma as int, mb as int));
-    if rb - ra != mb - ma { return false; }
+    let a = x_bp_arity(c.g, r);
+    if a != x_bp_arity(c.g, m) { return false; }
+    let mr = x_bp_mask(c.g, r);
+    let mm = x_bp_mask(c.g, m);
     let mut i = 0;
-    while i < rb - ra
+    while i < a
         invariant
-            ra <= rb <= c.g.bp@.len(), ma <= mb <= c.g.bp@.len(), rb - ra == mb - ma, 0 <= i <= rb - ra,
-            br == c.g.bp@.subrange(ra as int, rb as int), bm == c.g.bp@.subrange(ma as int, mb as int),
+            0 <= i <= a, br.len() == a, bm.len() == a,
             br == c@.block_params[r as int], bm == c@.block_params[m as int],
+            forall|j: int| 0 <= j < a ==> br[j] == bit(mr, j) && bm[j] == bit(mm, j),
             forall|j: int| 0 <= j < i ==> br[j] == bm[j],
-        decreases rb - ra - i,
+        decreases a - i,
     {
-        if c.g.bp[ra + i] != c.g.bp[ma + i] {
-            assert(br[i as int] == c.g.bp@[ra + i]);
-            assert(bm[i as int] == c.g.bp@[ma + i]);
+        if x_bit(mr, i) != x_bit(mm, i) {
             assert(br[i as int] != bm[i as int]);
             return false;
         }
@@ -566,17 +732,17 @@ pub fn x_no_block_params(c: &XCert, m: usize) -> (r: bool)
     ensures r == no_block_params(c@, m as int),
 {
     let ghost b = c@.block_params[m as int];
-    let (a, e) = match x_bp_range(c.g, m) { Some(x) => x, None => (0, 0) };
-    assert(b =~= c.g.bp@.subrange(a as int, e as int));
-    let mut i = a;
-    while i < e
-        invariant a <= i <= e <= c.g.bp@.len(), b == c.g.bp@.subrange(a as int, e as int), b == c@.block_params[m as int],
-            forall|j: int| 0 <= j < i - a ==> !b[j],
-        decreases e - i,
+    let a = x_bp_arity(c.g, m);
+    let mask = x_bp_mask(c.g, m);
+    let mut i = 0;
+    while i < a
+        invariant 0 <= i <= a, b.len() == a, b == c@.block_params[m as int],
+            forall|j: int| 0 <= j < a ==> b[j] == bit(mask, j),
+            forall|j: int| 0 <= j < i ==> !b[j],
+        decreases a - i,
     {
-        if c.g.bp[i] {
-            assert(b[i - a] == c.g.bp@[i as int]);
-            assert(b[i - a]);
+        if x_bit(mask, i) {
+            assert(b[i as int]);
             return false;
         }
         i += 1;
@@ -584,23 +750,132 @@ pub fn x_no_block_params(c: &XCert, m: usize) -> (r: bool)
     true
 }
 
-pub fn x_ctx_of<'a>(c: &XCert<'a>, t: usize) -> (r: Option<&'a XContext>)
-    ensures ctxv(match r { Some(x) => Some(*x), None => None }) == ctx_of(c@, t as int),
+/// The context of method `t`: its head (the kinds are the list of
+/// `top`).
+pub fn x_ctx_of(c: &XCert, t: usize) -> (r: Option<XCtx>)
+    ensures
+        match r {
+            Some(h) => ctx_of(c@, t as int) == Some(xctx_view(c.g, h)),
+            None => ctx_of(c@, t as int) is None,
+        },
 {
     let g = c.g;
-    if t < g.n && t < g.ctx_idx.len() && (g.ctx_idx[t] as usize) < g.ctxs.len() {
-        Some(&g.ctxs[g.ctx_idx[t] as usize])
-    } else {
-        None
+    if t >= g.n { return None; }
+    if !(t < g.methods.len() && g.methods[t].kind == 3) { return None; }
+    let w = x_fld(g.mw, 4, t, 0);
+    if w == 0 || ((w - 1) as usize) >= g.crec.len() / 12 { return None; }
+    let j = (w - 1) as usize;
+    let h = XCtx { outer: x_fld(g.crec, 12, j, 0), slot: x_fld(g.crec, 12, j, 4), top: x_fld(g.crec, 12, j, 8) };
+    assert(h == ctx_head(g, t as int));
+    Some(h)
+}
+
+/// The kinds of a node table's list with top `i` (`fchain`), bottom first.
+pub fn x_fchain(s: &[u8], i: u32) -> (r: Vec<XKind>)
+    ensures kv(r) == fchain(s@, i as int),
+{
+    let ghost nodes = fnodes(s@);
+    let n = s.len() / 12;
+    assert(nodes.len() == n);
+    let mut rev: Vec<XKind> = Vec::new();
+    let mut cur = i as usize;
+    let mut done = cur >= n;
+    while !done
+        invariant
+            nodes == fnodes(s@), nodes.len() == n,
+            done ==> chain(nodes, i as int) == rev_kinds(rev@),
+            !done ==> cur < n && chain(nodes, i as int) == chain(nodes, cur as int) + rev_kinds(rev@),
+        decreases (if done { 0int } else { cur as int + 1 }),
+    {
+        let nd = x_fnode(s, cur);
+        let ghost before = rev@;
+        let ghost par = nd.parent as int;
+        let ghost base = if par < cur { chain(nodes, par) } else { Seq::<Kind>::empty() };
+        assert(chain(nodes, cur as int) == base.push(nd.kind@));
+        rev.push(nd.kind);
+        assert(base.push(nd.kind@) + rev_kinds(before) =~= base + rev_kinds(rev@));
+        if (nd.parent as usize) < cur {
+            cur = nd.parent as usize;
+        } else {
+            assert(base + rev_kinds(rev@) =~= rev_kinds(rev@));
+            done = true;
+        }
     }
+    proof { if i as int >= n { assert(chain(nodes, i as int) =~= rev_kinds(rev@)); } }
+    let mut r: Vec<XKind> = Vec::new();
+    let mut j = rev.len();
+    while j > 0
+        invariant 0 <= j <= rev@.len(), kv(r) =~= rev_kinds(rev@).subrange(0, (rev@.len() - j) as int),
+        decreases j,
+    {
+        j -= 1;
+        let ghost old = kv(r);
+        r.push(rev[j]);
+        assert(kv(r) =~= old.push(rev@[j as int]@));
+        assert(rev_kinds(rev@)[rev@.len() - 1 - j] == rev@[j as int]@);
+        assert(kv(r) =~= rev_kinds(rev@).subrange(0, (rev@.len() - j) as int));
+    }
+    assert(kv(r) =~= rev_kinds(rev@));
+    r
+}
+
+/// The selector record with key `s`.
+pub fn x_sel_find(g: &XGlobal, s: u32) -> (r: Option<usize>)
+    requires sel_sorted(g),
+    ensures
+        match r {
+            Some(j) => j < nsel(g) && sel_key(g, j as int) == s && sel_view(g, s as int) == sel_val(g, j as int) as int,
+            None => !has_sel(g, s as int) && sel_view(g, s as int) == -1,
+        },
+{
+    let mut lo: usize = 0;
+    let mut hi: usize = g.sel.len() / 8;
+    while lo < hi
+        invariant
+            0 <= lo <= hi <= nsel(g), sel_sorted(g),
+            forall|i: int| 0 <= i < lo ==> #[trigger] sel_key(g, i) < s,
+            forall|i: int| hi <= i < nsel(g) ==> #[trigger] sel_key(g, i) > s,
+        decreases hi - lo,
+    {
+        let mid = lo + (hi - lo) / 2;
+        let k = x_fld(g.sel, 8, mid, 0);
+        if k == s {
+            proof {
+                assert(sel_key(g, mid as int) == s);
+                assert(has_sel(g, s as int));
+                let j = choose|j: int| 0 <= j < nsel(g) && #[trigger] sel_key(g, j) == s;
+                if j < mid { assert(sel_key(g, j) < sel_key(g, mid as int)); }
+                if j > mid { assert(sel_key(g, mid as int) < sel_key(g, j)); }
+            }
+            return Some(mid);
+        } else if k < s {
+            proof {
+                assert forall|i: int| 0 <= i < mid + 1 implies #[trigger] sel_key(g, i) < s by {
+                    if i < mid { assert(sel_key(g, i) < sel_key(g, mid as int)); }
+                }
+            }
+            lo = mid + 1;
+        } else {
+            proof {
+                assert forall|i: int| mid <= i < nsel(g) implies #[trigger] sel_key(g, i) > s by {
+                    if i > mid { assert(sel_key(g, mid as int) < sel_key(g, i)); }
+                }
+            }
+            hi = mid;
+        }
+    }
+    None
 }
 
 /// `c@.sel_rep[s]` for `s < 0xffff`.
 pub fn x_sel_rep(c: &XCert, s: usize) -> (r: i64)
-    requires s < 0xffff,
+    requires s < 0xffff, g_ok(c.g),
     ensures r as int == c@.sel_rep[s as int],
 {
-    if s < c.g.sel_rep.len() { c.g.sel_rep[s] as i64 } else { -1 }
+    match x_sel_find(c.g, s as u32) {
+        Some(j) => x_fld(c.g.sel, 8, j, 4) as i64,
+        None => -1,
+    }
 }
 
 pub fn x_dispatch_target(p: &VProgram, d: i64) -> (r: i64)
@@ -655,10 +930,10 @@ pub fn x_block_slot_u(p: &VProgram, c: &XCert, om: i64, fk: &Vec<XKind>, i: usiz
 }
 
 /// The context `depth` levels out: its kinds and method.
-pub fn x_ctx_kinds<'a>(c: &XCert<'a>, m: i64, depth: u32) -> (r: (Option<&'a Vec<XKind>>, i64))
+pub fn x_ctx_kinds(c: &XCert, m: i64, depth: u32) -> (r: (Option<Vec<XKind>>, i64))
     requires depth >= 1,
     ensures
-        okv(match r.0 { Some(k) => Some(*k), None => None }) == ctx_kinds(c@, m as int, depth as nat),
+        okv(r.0) == ctx_kinds(c@, m as int, depth as nat),
         r.1 as int == ctx_method(c@, m as int, depth as nat),
 {
     let mut cur = m;
@@ -678,7 +953,7 @@ pub fn x_ctx_kinds<'a>(c: &XCert<'a>, m: i64, depth: u32) -> (r: (Option<&'a Vec
             Some(ctx) => {
                 if d == 1 {
                     proof { assert(ctx_method(c@, ctx.outer as int, 0) == ctx.outer as int); }
-                    return (Some(&ctx.kinds), ctx.outer as i64);
+                    return (Some(x_fchain(c.g.nodes, ctx.top)), ctx.outer as i64);
                 }
                 cur = ctx.outer as i64;
                 d = d - 1;
@@ -710,7 +985,7 @@ pub fn x_wf_kinds(p: &VProgram, c: &XCert, m: i64, k: &Vec<XKind>) -> (r: bool)
                             proof { assert(!wf_kind(vview(p), c@, m as int, kv(*k), j as int)); }
                             return false;
                         },
-                        Some(fk) => if !x_block_slot(p, c, om, fk, i as i64) {
+                        Some(fk) => if !x_block_slot(p, c, om, &fk, i as i64) {
                             proof { assert(!wf_kind(vview(p), c@, m as int, kv(*k), j as int)); }
                             return false;
                         },
@@ -737,7 +1012,7 @@ pub fn x_ctx_ok_at(p: &VProgram, c: &XCert, m: i64, k: &Vec<XKind>, i: usize) ->
     proof { assert(kv(*k)[i as int] == k@[i as int]@); assert(kind_method(kv(*k)[i as int]) == t as int); }
     match x_ctx_of(c, t as usize) {
         Some(ctx) => {
-            let ck = &ctx.kinds;
+            let ck = &x_fchain(c.g.nodes, ctx.top);
             if ck.len() != i + 1 {
                 proof { assert(kv(*k).subrange(0, i + 1).len() != kv(*ck).len()); }
                 return false;
@@ -976,6 +1251,7 @@ pub fn x_value_operands(k: &Vec<XKind>, n: usize) -> (r: bool)
 }
 
 pub fn x_sel_ok(p: &VProgram, c: &XCert, sel: i64, n: usize, k: &Vec<XKind>) -> (r: bool)
+    requires g_ok(c.g),
     ensures r == sel_ok(vview(p), c@, sel as int, n as int, kv(*k)),
 {
     if !(1 <= n && n <= k.len()) { return false; }
@@ -1202,7 +1478,8 @@ pub fn x_post_outer(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind
         proof { assert(kk[h - 1 - r] == k@[h - 1 - r]@); }
         match k[h - 1 - r] {
             XKind::Block(d, j) => {
-                let (fk, om): (Option<&Vec<XKind>>, i64) = if d == 0 { (Some(k), m as i64) } else { x_ctx_kinds(c, m as i64, d) };
+                let (fko, om): (Option<Vec<XKind>>, i64) = if d == 0 { (None, m as i64) } else { x_ctx_kinds(c, m as i64, d) };
+                let fk: Option<&Vec<XKind>> = if d == 0 { Some(k) } else { match &fko { Some(v) => Some(v), None => None } };
                 proof {
                     assert(okv(match fk { Some(x) => Some(*x), None => None }) == ref_kinds(c@, m as int, kk, d as int));
                     assert(om as int == ref_method(c@, m as int, d as int));
@@ -1364,6 +1641,7 @@ pub fn x_post_consts(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKin
 
 pub fn x_post_calls(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>, trusted: bool) -> (r: Option<Vec<XKind>>)
     requires
+        g_ok(c.g),
         post_pre(p, m, off, k),
         ({ let op = op_of(vview(p), m as int, off as int);
            op == INVOKE_STATIC || op == INVOKE_BLOCK || (INVOKE_VIRTUAL <= op && op <= INVOKE_SIZE) || op == IDENTICAL }),
@@ -1477,7 +1755,7 @@ pub fn x_post_misc(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>
 
 /// `post`: the fall-through successor kinds.
 pub fn x_post(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>, trusted: bool) -> (r: Option<Vec<XKind>>)
-    requires post_pre(p, m, off, k),
+    requires post_pre(p, m, off, k), g_ok(c.g),
     ensures post_rel(r, post(vview(p), c@, m as int, off as int, kv(*k), trusted)),
 {
     let op = p.bytecodes[x_info(p, m).entry + off];
@@ -1570,11 +1848,13 @@ pub proof fn lemma_key(m1: int, o1: int, m2: int, o2: int)
     }
 }
 
-pub fn x_pin_key(x: &XPin) -> (r: u64)
-    ensures r as int == pin_key(*x),
+pub fn x_pin_key(g: &XGlobal, i: usize) -> (r: u64)
+    ensures r as int == pin_key(g, i as int),
 {
-    assert(x.m as int * 0x1_0000_0000 <= 0xffff_ffff * 0x1_0000_0000) by (nonlinear_arith) requires x.m <= 0xffff_ffff;
-    (x.m as u64) * 0x1_0000_0000 + x.off as u64
+    let pm = x_fld(g.pins, 12, i, 0);
+    let po = x_fld(g.pins, 12, i, 4);
+    assert(pm as int * 0x1_0000_0000 <= 0xffff_ffff * 0x1_0000_0000) by (nonlinear_arith) requires pm <= 0xffff_ffff;
+    (pm as u64) * 0x1_0000_0000 + po as u64
 }
 
 /// The pin of method `m` at offset `off`.
@@ -1582,46 +1862,45 @@ pub fn x_pin_find(g: &XGlobal, m: u32, off: u32) -> (r: Option<usize>)
     requires pins_sorted(g),
     ensures
         match r {
-            Some(i) => i < g.pins@.len() && g.pins@[i as int].m == m && g.pins@[i as int].off == off
-                && pin_view(g, m as int, off as int) == Some(kv(g.pins@[i as int].kinds)),
+            Some(i) => i < npins(g) && pin_m(g, i as int) == m && pin_off(g, i as int) == off
+                && pin_view(g, m as int, off as int) == Some(pin_kinds(g, i as int)),
             None => pin_view(g, m as int, off as int) is None,
         },
 {
     assert(m as int * 0x1_0000_0000 <= 0xffff_ffff * 0x1_0000_0000) by (nonlinear_arith) requires m <= 0xffff_ffff;
     let key: u64 = (m as u64) * 0x1_0000_0000 + off as u64;
     let mut lo: usize = 0;
-    let mut hi: usize = g.pins.len();
+    let mut hi: usize = g.pins.len() / 12;
     while lo < hi
         invariant
-            0 <= lo <= hi <= g.pins@.len(), pins_sorted(g), key as int == m as int * 0x1_0000_0000 + off as int,
-            forall|i: int| 0 <= i < lo ==> pin_key(#[trigger] g.pins@[i]) < key,
-            forall|i: int| hi <= i < g.pins@.len() ==> pin_key(#[trigger] g.pins@[i]) > key,
+            0 <= lo <= hi <= npins(g), pins_sorted(g), key as int == m as int * 0x1_0000_0000 + off as int,
+            forall|i: int| 0 <= i < lo ==> #[trigger] pin_key(g, i) < key,
+            forall|i: int| hi <= i < npins(g) ==> #[trigger] pin_key(g, i) > key,
         decreases hi - lo,
     {
         let mid = lo + (hi - lo) / 2;
-        let k = x_pin_key(&g.pins[mid]);
+        let k = x_pin_key(g, mid);
         if k == key {
             proof {
-                let x = g.pins@[mid as int];
-                lemma_key(x.m as int, x.off as int, m as int, off as int);
+                lemma_key(pin_m(g, mid as int) as int, pin_off(g, mid as int) as int, m as int, off as int);
                 assert(has_pin(g, m as int, off as int));
-                let j = choose|j: int| 0 <= j < g.pins@.len() && (#[trigger] g.pins@[j]).m == m && g.pins@[j].off == off;
-                lemma_key(g.pins@[j].m as int, g.pins@[j].off as int, m as int, off as int);
-                if j < mid { assert(pin_key(g.pins@[j]) < pin_key(g.pins@[mid as int])); }
-                if j > mid { assert(pin_key(g.pins@[mid as int]) < pin_key(g.pins@[j])); }
+                let j = choose|j: int| 0 <= j < npins(g) && #[trigger] pin_m(g, j) == m && pin_off(g, j) == off;
+                lemma_key(pin_m(g, j) as int, pin_off(g, j) as int, m as int, off as int);
+                if j < mid { assert(pin_key(g, j) < pin_key(g, mid as int)); }
+                if j > mid { assert(pin_key(g, mid as int) < pin_key(g, j)); }
             }
             return Some(mid);
         } else if k < key {
             proof {
-                assert forall|i: int| 0 <= i < mid + 1 implies pin_key(#[trigger] g.pins@[i]) < key by {
-                    if i < mid { assert(pin_key(g.pins@[i]) < pin_key(g.pins@[mid as int])); }
+                assert forall|i: int| 0 <= i < mid + 1 implies #[trigger] pin_key(g, i) < key by {
+                    if i < mid { assert(pin_key(g, i) < pin_key(g, mid as int)); }
                 }
             }
             lo = mid + 1;
         } else {
             proof {
-                assert forall|i: int| mid <= i < g.pins@.len() implies pin_key(#[trigger] g.pins@[i]) > key by {
-                    if i > mid { assert(pin_key(g.pins@[mid as int]) < pin_key(g.pins@[i])); }
+                assert forall|i: int| mid <= i < npins(g) implies #[trigger] pin_key(g, i) > key by {
+                    if i > mid { assert(pin_key(g, mid as int) < pin_key(g, i)); }
                 }
             }
             hi = mid;
@@ -1629,15 +1908,16 @@ pub fn x_pin_find(g: &XGlobal, m: u32, off: u32) -> (r: Option<usize>)
     }
     proof {
         if has_pin(g, m as int, off as int) {
-            let j = choose|j: int| 0 <= j < g.pins@.len() && (#[trigger] g.pins@[j]).m == m && g.pins@[j].off == off;
-            lemma_key(g.pins@[j].m as int, g.pins@[j].off as int, m as int, off as int);
+            let j = choose|j: int| 0 <= j < npins(g) && #[trigger] pin_m(g, j) == m && pin_off(g, j) == off;
+            lemma_key(pin_m(g, j) as int, pin_off(g, j) as int, m as int, off as int);
+            assert(pin_key(g, j) == key);
         }
     }
     None
 }
 
 pub fn x_map_at(c: &XCert, m: i64, off: i64) -> (r: Option<Vec<XKind>>)
-    requires pins_sorted(c.g),
+    requires g_ok(c.g),
     ensures okv(r) == map_at(c@, m as int, off as int),
 {
     let ghost cc = c@;
@@ -1674,7 +1954,7 @@ pub fn x_map_at(c: &XCert, m: i64, off: i64) -> (r: Option<Vec<XKind>>)
         assert(pin_at(c.g@, m as int, off as int) == pin_view(c.g, m as int, off as int));
         match x_pin_find(c.g, m as u32, off as u32) {
             Some(i) => {
-                let k = x_copy(&c.g.pins[i].kinds);
+                let k = x_fchain(c.g.nodes, x_fld(c.g.pins, 12, i, 8));
                 assert(pin_view(c.g, m as int, off as int) == Some(kv(k)));
                 assert(cc.maps[m as int][off as int] == Some(kv(k)));
                 assert(0 <= off < cc.maps[m as int].len());
@@ -1756,7 +2036,7 @@ pub fn x_chain_is(nodes: &Vec<XNode>, i: u32, k: &Vec<XKind>) -> (r: bool)
 }
 
 pub fn x_map_is(c: &XCert, m: i64, off: i64, k: &Vec<XKind>) -> (r: bool)
-    requires pins_sorted(c.g),
+    requires g_ok(c.g),
     ensures r == (map_at(c@, m as int, off as int) == Some(kv(*k))),
 {
     let ghost cc = c@;
@@ -1781,7 +2061,7 @@ pub fn x_map_is(c: &XCert, m: i64, off: i64, k: &Vec<XKind>) -> (r: bool)
 #[verifier::loop_isolation(false)]
 pub fn x_terminator_ok(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>) -> (r: bool)
     requires
-        pins_sorted(c.g),
+        g_ok(c.g),
         wf_program2(vview(p)),
         m < p.methods.len(),
         vinfo(p, m as int).entry + off + opcode_length2(p.bytecodes[vinfo(p, m as int).entry + off]) <= vinfo(p, m as int).end,
@@ -1853,7 +2133,7 @@ pub fn x_terminator_ok(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XK
                         if !(x_valid(p, om) && b1 <= j as i64 + 1 && (j as usize) < fk.len()) { return false; }
                         let n = (j as i64 + 1 - b1) as usize;
                         if t.len() != n {
-                            proof { assert(kv(t).len() != kv(*fk).subrange(0, n as int).len()); }
+                            proof { assert(kv(t).len() != kv(fk).subrange(0, n as int).len()); }
                             return false;
                         }
                         let mut i = 0;
@@ -1863,12 +2143,12 @@ pub fn x_terminator_ok(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XK
                             decreases n - i,
                         {
                             if !x_kind_eq(t[i], fk[i]) {
-                                proof { assert(kv(t)[i as int] != kv(*fk).subrange(0, n as int)[i as int]); }
+                                proof { assert(kv(t)[i as int] != kv(fk).subrange(0, n as int)[i as int]); }
                                 return false;
                             }
                             i += 1;
                         }
-                        proof { assert(kv(t) =~= kv(*fk).subrange(0, n as int)); }
+                        proof { assert(kv(t) =~= kv(fk).subrange(0, n as int)); }
                         true
                     },
                     _ => false,
@@ -1901,7 +2181,7 @@ pub fn x_shape_ok(p: &VProgram, c: &XCert, m: usize, k: &Vec<XKind>) -> (r: bool
 }
 
 pub fn x_instr_ok(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>, trusted: bool) -> (r: bool)
-    requires wf_program2(vview(p)), m < p.methods.len(), pins_sorted(c.g),
+    requires wf_program2(vview(p)), m < p.methods.len(), g_ok(c.g),
     ensures r == instr_ok(vview(p), c@, m as int, off as int, kv(*k), trusted),
 {
     let i = x_info(p, m);
@@ -1990,7 +2270,7 @@ pub fn x_entry_kinds(p: &VProgram, c: &XCert, m: usize) -> (r: Vec<XKind>)
 
 /// Every mapped instruction of `m` is accepted.
 pub fn x_method_body_ok(p: &VProgram, c: &XCert, m: usize, trusted: bool) -> (r: bool)
-    requires wf_program2(vview(p)), m < p.methods.len(), m == c.cur, c.cur < c.g.n, pins_sorted(c.g),
+    requires wf_program2(vview(p)), m < p.methods.len(), m == c.cur, c.cur < c.g.n, g_ok(c.g),
     ensures r == forall|o: int| 0 <= o < c@.maps[m as int].len() && (#[trigger] c@.maps[m as int][o]) is Some ==>
         instr_ok(vview(p), c@, m as int, o, c@.maps[m as int][o]->0, trusted),
 {
@@ -1999,7 +2279,7 @@ pub fn x_method_body_ok(p: &VProgram, c: &XCert, m: usize, trusted: bool) -> (r:
     let mut off = 0;
     while off < c.maps.idx.len()
         invariant
-            wf_program2(vview(p)), m < p.methods.len(), m == c.cur, c.cur < c.g.n, pins_sorted(c.g),
+            wf_program2(vview(p)), m < p.methods.len(), m == c.cur, c.cur < c.g.n, g_ok(c.g),
             cm == c@.maps[m as int], cm == mapsv(c.maps),
             0 <= off <= c.maps.idx@.len(),
             forall|o: int| 0 <= o < off && (#[trigger] c@.maps[m as int][o]) is Some ==>
@@ -2021,7 +2301,7 @@ pub fn x_method_body_ok(p: &VProgram, c: &XCert, m: usize, trusted: bool) -> (r:
 
 pub fn x_method_ok(p: &VProgram, c: &XCert, m: usize, trusted: bool) -> (r: bool)
     requires
-        wf_program2(vview(p)), m < p.methods.len(), c.g.n == p.methods.len(), m == c.cur, pins_sorted(c.g),
+        wf_program2(vview(p)), m < p.methods.len(), c.g.n == p.methods.len(), m == c.cur, g_ok(c.g),
     ensures r == method_ok(vview(p), c@, m as int, trusted),
 {
     let ghost cc = c@;
@@ -2085,7 +2365,7 @@ pub fn x_dispatch_entry_ok(p: &VProgram, d: usize) -> (r: bool)
 }
 
 pub fn x_method_table_ok(p: &VProgram, c: &XCert, m: usize) -> (r: bool)
-    requires m < p.methods.len(), c.g.n == p.methods.len(),
+    requires m < p.methods.len(), c.g.n == p.methods.len(), g_ok(c.g),
     ensures r == method_table_ok(vview(p), c@, m as int),
 {
     let ghost cc = c@;
@@ -2111,31 +2391,39 @@ pub fn x_method_table_ok(p: &VProgram, c: &XCert, m: usize) -> (r: bool)
 }
 
 pub fn x_tables_ok(p: &VProgram, c: &XCert) -> (r: bool)
-    requires wf_program2(vview(p)), c.cur >= c.g.n, pins_sorted(c.g),
+    requires wf_program2(vview(p)), c.cur >= c.g.n, g_ok(c.g),
     ensures r == tables_ok(vview(p), c@),
 {
     let ghost pv = vview(p);
     let ghost cc = c@;
     let n = p.methods.len();
     if c.g.n != n { return false; }
-    let lim = if c.g.sel_rep.len() < 0xffff { c.g.sel_rep.len() } else { 0xffff };
-    let mut s = 0;
-    while s < lim
-        invariant 0 <= s <= lim, lim <= 0xffff, lim <= c.g.sel_rep@.len(), cc == c@, pv == vview(p),
-            lim == 0xffff || lim == c.g.sel_rep@.len(),
-            forall|ss: int| 0 <= ss < s ==> #[trigger] sel_rep_ok(pv, cc, ss),
-        decreases lim - s,
+    let ns = c.g.sel.len() / 8;
+    let mut j = 0;
+    while j < ns
+        invariant 0 <= j <= ns, ns == nsel(c.g), g_ok(c.g), cc == c@, pv == vview(p),
+            forall|jj: int| 0 <= jj < j && sel_key(c.g, jj) < 0xffff ==> #[trigger] sel_rep_ok(pv, cc, sel_key(c.g, jj) as int),
+        decreases ns - j,
     {
-        let r = c.g.sel_rep[s] as i64;
-        if !(r == -1 || (x_valid(p, r) && x_info(p, r as usize).selector as usize == s)) {
-            proof { assert(!sel_rep_ok(pv, cc, s as int)); }
-            return false;
+        let s = x_fld(c.g.sel, 8, j, 0);
+        if s < 0xffff {
+            let r = x_fld(c.g.sel, 8, j, 4) as i64;
+            proof { lemma_sel_unique(c.g, j as int); assert(cc.sel_rep[s as int] == r as int); }
+            if !(x_valid(p, r) && x_info(p, r as usize).selector as u64 == s as u64) {
+                proof { assert(!sel_rep_ok(pv, cc, s as int)); }
+                return false;
+            }
         }
-        s += 1;
+        j += 1;
     }
     proof {
         assert forall|ss: int| 0 <= ss < cc.sel_rep.len() implies #[trigger] sel_rep_ok(pv, cc, ss) by {
-            if ss >= lim { assert(cc.sel_rep[ss] == -1); }
+            if has_sel(c.g, ss) {
+                let jj = choose|jj: int| 0 <= jj < nsel(c.g) && #[trigger] sel_key(c.g, jj) == ss;
+                assert(sel_rep_ok(pv, cc, sel_key(c.g, jj) as int));
+            } else {
+                assert(cc.sel_rep[ss] == -1);
+            }
         }
     }
     let mut d = 0;
@@ -2150,6 +2438,7 @@ pub fn x_tables_ok(p: &VProgram, c: &XCert) -> (r: bool)
     let mut m = 0;
     while m < n
         invariant n == p.methods.len(), c.g.n == n, 0 <= m <= n, pv == vview(p), cc == c@,
+            g_ok(c.g),
             forall|mm: int| 0 <= mm < m ==> #[trigger] method_table_ok(pv, cc, mm),
         decreases n - m,
     {
@@ -2214,20 +2503,21 @@ pub fn x_wf_program2(p: &VProgram) -> (r: bool)
 pub fn x_pins_sorted(g: &XGlobal) -> (r: bool)
     ensures r == pins_sorted(g),
 {
+    let n = g.pins.len() / 12;
     let mut i = 1;
-    if g.pins.len() == 0 { return true; }
-    while i < g.pins.len()
-        invariant 1 <= i <= g.pins@.len(),
-            forall|a: int, b: int| 0 <= a < b < i ==> pin_key(#[trigger] g.pins@[a]) < pin_key(#[trigger] g.pins@[b]),
-        decreases g.pins@.len() - i,
+    if n == 0 { return true; }
+    while i < n
+        invariant 1 <= i <= n, n == npins(g),
+            forall|a: int, b: int| 0 <= a < b < i ==> #[trigger] pin_key(g, a) < #[trigger] pin_key(g, b),
+        decreases n - i,
     {
-        if x_pin_key(&g.pins[i - 1]) >= x_pin_key(&g.pins[i]) {
+        if x_pin_key(g, i - 1) >= x_pin_key(g, i) {
             return false;
         }
         proof {
-            assert forall|a: int, b: int| 0 <= a < b < i + 1 implies pin_key(#[trigger] g.pins@[a]) < pin_key(#[trigger] g.pins@[b]) by {
+            assert forall|a: int, b: int| 0 <= a < b < i + 1 implies #[trigger] pin_key(g, a) < #[trigger] pin_key(g, b) by {
                 if b == i && a < i - 1 {
-                    assert(pin_key(g.pins@[a]) < pin_key(g.pins@[i - 1]));
+                    assert(pin_key(g, a) < pin_key(g, i - 1));
                 }
             }
         }
@@ -2236,10 +2526,52 @@ pub fn x_pins_sorted(g: &XGlobal) -> (r: bool)
     true
 }
 
-/// Computes the maps of a method for the checker (`v2::infer`, untrusted:
-/// the checker decides whatever it returns).
+/// The selector records are strictly sorted.
+pub fn x_sel_sorted(g: &XGlobal) -> (r: bool)
+    ensures r == sel_sorted(g),
+{
+    let n = g.sel.len() / 8;
+    let mut i = 1;
+    if n == 0 { return true; }
+    while i < n
+        invariant 1 <= i <= n, n == nsel(g),
+            forall|a: int, b: int| 0 <= a < b < i ==> #[trigger] sel_key(g, a) < #[trigger] sel_key(g, b),
+        decreases n - i,
+    {
+        if x_fld(g.sel, 8, i - 1, 0) >= x_fld(g.sel, 8, i, 0) {
+            proof { assert(sel_key(g, i - 1) >= sel_key(g, i as int)); }
+            return false;
+        }
+        proof {
+            assert forall|a: int, b: int| 0 <= a < b < i + 1 implies #[trigger] sel_key(g, a) < #[trigger] sel_key(g, b) by {
+                if b == i && a < i - 1 {
+                    assert(sel_key(g, a) < sel_key(g, i - 1));
+                }
+            }
+        }
+        i += 1;
+    }
+    true
+}
+
+/// `g_ok(g)`.
+pub fn x_g_ok(g: &XGlobal) -> (r: bool)
+    ensures r == g_ok(g),
+{
+    x_sel_sorted(g) && x_pins_sorted(g)
+}
+
+/// Computes the maps of a method for the checker (untrusted: `v2::infer`
+/// or the decoder of a shipped certificate, `v2::cert`; the checker
+/// decides whatever it returns).
 pub trait MapOracle {
-    fn method_maps(&mut self, m: usize) -> XMaps;
+    fn method_maps(&mut self, p: &VProgram, g: &XGlobal, m: usize) -> XMaps
+        requires wf_program2(vview(p)), g_ok(g), m < p.methods.len(), g.n == p.methods.len();
+}
+
+/// Pin `i` agrees with the maps `mm`.
+pub open spec fn pin_agrees(g: &XGlobal, i: int, mm: Maps) -> bool {
+    (pin_off(g, i) as int) < mm.len() && mm[pin_off(g, i) as int] == Some(pin_kinds(g, i))
 }
 
 /// The pins of method `m` (from `pins[at]` on, where the pins of the
@@ -2247,46 +2579,52 @@ pub trait MapOracle {
 /// `m` end, or `None` if one disagrees.
 pub fn x_pins_agree(g: &XGlobal, m: usize, maps: &XMaps, at: usize) -> (r: Option<usize>)
     requires
-        pins_sorted(g), at <= g.pins@.len(),
-        forall|i: int| at <= i < g.pins@.len() ==> (#[trigger] g.pins@[i]).m >= m,
+        pins_sorted(g), at <= npins(g),
+        forall|i: int| at <= i < npins(g) ==> #[trigger] pin_m(g, i) >= m,
     ensures
         match r {
-            Some(e) => at <= e <= g.pins@.len()
-                && (forall|i: int| e <= i < g.pins@.len() ==> (#[trigger] g.pins@[i]).m > m)
-                && (forall|i: int| at <= i < e ==> (#[trigger] g.pins@[i]).m == m && (g.pins@[i].off as int) < maps.idx@.len()
-                        && mapsv(maps)[g.pins@[i].off as int] == Some(kv(g.pins@[i].kinds))),
-            None => exists|i: int| 0 <= i < g.pins@.len() && (#[trigger] g.pins@[i]).m == m
-                && !((g.pins@[i].off as int) < maps.idx@.len() && mapsv(maps)[g.pins@[i].off as int] == Some(kv(g.pins@[i].kinds))),
+            Some(e) => at <= e <= npins(g)
+                && (forall|i: int| e <= i < npins(g) ==> #[trigger] pin_m(g, i) > m)
+                && (forall|i: int| at <= i < e ==> #[trigger] pin_m(g, i) == m && pin_agrees(g, i, mapsv(maps))),
+            None => exists|i: int| 0 <= i < npins(g) && #[trigger] pin_m(g, i) == m && !pin_agrees(g, i, mapsv(maps)),
         },
 {
+    let n = g.pins.len() / 12;
     let mut i = at;
-    while i < g.pins.len() && g.pins[i].m as usize == m
+    while i < n && x_fld(g.pins, 12, i, 0) as usize == m
         invariant
-            pins_sorted(g), at <= i <= g.pins@.len(),
-            forall|j: int| at <= j < g.pins@.len() ==> (#[trigger] g.pins@[j]).m >= m,
-            forall|j: int| at <= j < i ==> (#[trigger] g.pins@[j]).m == m && (g.pins@[j].off as int) < maps.idx@.len()
-                && mapsv(maps)[g.pins@[j].off as int] == Some(kv(g.pins@[j].kinds)),
-        decreases g.pins@.len() - i,
+            pins_sorted(g), at <= i <= n, n == npins(g),
+            forall|j: int| at <= j < npins(g) ==> #[trigger] pin_m(g, j) >= m,
+            forall|j: int| at <= j < i ==> #[trigger] pin_m(g, j) == m && pin_agrees(g, j, mapsv(maps)),
+        decreases n - i,
     {
-        let x = &g.pins[i];
-        if (x.off as usize) >= maps.idx.len() {
+        let off = x_fld(g.pins, 12, i, 4);
+        proof { assert(pin_m(g, i as int) == m); assert(pin_off(g, i as int) == off); }
+        if (off as usize) >= maps.idx.len() {
+            proof { assert(!pin_agrees(g, i as int, mapsv(maps))); }
             return None;
         }
-        let top = maps.idx[x.off as usize];
+        let top = maps.idx[off as usize];
+        proof { assert(mapsv(maps)[off as int] == map_view(maps, off as int)); }
         if top == NO_MAP {
+            proof { assert(!pin_agrees(g, i as int, mapsv(maps))); }
             return None;
         }
         let k = x_chain(&maps.nodes, top);
-        if !x_kinds_eq(&k, &x.kinds) {
+        let pk = x_fchain(g.nodes, x_fld(g.pins, 12, i, 8));
+        proof { assert(kv(pk) == pin_kinds(g, i as int)); assert(mapsv(maps)[off as int] == Some(kv(k))); }
+        if !x_kinds_eq(&k, &pk) {
+            proof { assert(!pin_agrees(g, i as int, mapsv(maps))); }
             return None;
         }
         i += 1;
     }
     proof {
-        assert forall|j: int| i <= j < g.pins@.len() implies (#[trigger] g.pins@[j]).m > m by {
+        if i < n { assert(pin_m(g, i as int) >= m); assert(pin_m(g, i as int) as usize != m); assert(pin_m(g, i as int) > m); }
+        assert forall|j: int| i <= j < npins(g) implies #[trigger] pin_m(g, j) > m by {
             if j > i {
-                lemma_key(g.pins@[i as int].m as int, g.pins@[i as int].off as int, g.pins@[j].m as int, g.pins@[j].off as int);
-                assert(pin_key(g.pins@[i as int]) < pin_key(g.pins@[j]));
+                lemma_key(pin_m(g, i as int) as int, pin_off(g, i as int) as int, pin_m(g, j) as int, pin_off(g, j) as int);
+                assert(pin_key(g, i as int) < pin_key(g, j));
             }
         }
     }
@@ -2295,37 +2633,38 @@ pub fn x_pins_agree(g: &XGlobal, m: usize, maps: &XMaps, at: usize) -> (r: Optio
 
 /// The structural verifier, one method at a time: the global part of the
 /// certificate is `g`, the maps of each method come from `o` and are
-/// dropped after the method is checked. Returns exactly whether the pins
-/// are sorted and `split_ok` holds for the maps it was given (`ms`); by
-/// `v2::split`, `split_ok` implies `accepts` of the assembled certificate,
-/// and an accepted certificate always splits.
+/// dropped after the method is checked. Returns exactly whether the sorted
+/// tables are sorted and `split_ok` holds for the maps it was given (`ms`);
+/// by `v2::split`, `split_ok` implies `accepts` of the assembled
+/// certificate, and an accepted certificate always splits.
 pub fn verify<O: MapOracle>(p: &VProgram, g: &XGlobal, o: &mut O, trusted: bool) -> (r: (bool, Ghost<Seq<Maps>>))
-    ensures r.0 == (pins_sorted(g) && split_ok(vview(p), g@, r.1@, trusted)),
+    ensures r.0 == (g_ok(g) && split_ok(vview(p), g@, r.1@, trusted)),
 {
     let ghost pv = vview(p);
     let ghost pad = Seq::new(g.n as nat, |m: int| Seq::<Option<Seq<Kind>>>::empty());
     if !x_wf_program2(p) { return (false, Ghost(pad)); }
     if g.n != p.methods.len() { return (false, Ghost(pad)); }
-    if !x_pins_sorted(g) { return (false, Ghost(pad)); }
+    if !x_g_ok(g) { return (false, Ghost(pad)); }
     let empty = XMaps { idx: Vec::new(), nodes: Vec::new() };
     let tc = XCert { g, cur: g.n, maps: &empty };
     if !x_tables_ok(p, &tc) { return (false, Ghost(pad)); }
     let n = p.methods.len();
+    let np = g.pins.len() / 12;
     let ghost mut ms: Seq<Maps> = Seq::empty();
     let mut at: usize = 0;
     let mut m: usize = 0;
     while m < n
         invariant
-            pv == vview(p), wf_program2(pv), n == p.methods.len(), g.n == n, n < 0x1000_0000, pins_sorted(g),
+            pv == vview(p), wf_program2(pv), n == p.methods.len(), g.n == n, n < 0x1000_0000, g_ok(g),
+            np == npins(g),
             tables_ok(pv, tables_cert(g@)),
-            0 <= m <= n, ms.len() == m, at <= g.pins@.len(),
+            0 <= m <= n, ms.len() == m, at <= np,
             forall|mm: int| 0 <= mm < m ==> #[trigger] method_ok(pv, local_cert(g@, mm, ms[mm]), mm, trusted),
-            forall|i: int| 0 <= i < at ==> (#[trigger] g.pins@[i]).m < m && (g.pins@[i].off as int) < ms[g.pins@[i].m as int].len()
-                && ms[g.pins@[i].m as int][g.pins@[i].off as int] == Some(kv(g.pins@[i].kinds)),
-            forall|i: int| at <= i < g.pins@.len() ==> (#[trigger] g.pins@[i]).m >= m,
+            forall|i: int| 0 <= i < at ==> #[trigger] pin_m(g, i) < m && pin_agrees(g, i, ms[pin_m(g, i) as int]),
+            forall|i: int| at <= i < np ==> #[trigger] pin_m(g, i) >= m,
         decreases n - m,
     {
-        let maps = o.method_maps(m);
+        let maps = o.method_maps(p, g, m);
         let c = XCert { g, cur: m, maps: &maps };
         let ghost mm = mapsv(&maps);
         let ghost ms2 = ms.push(mm) + Seq::new((n - m - 1) as nat, |i: int| Seq::<Option<Seq<Kind>>>::empty());
@@ -2338,8 +2677,7 @@ pub fn verify<O: MapOracle>(p: &VProgram, g: &XGlobal, o: &mut O, trusted: bool)
         match x_pins_agree(g, m, &maps, at) {
             None => {
                 proof {
-                    let i = choose|i: int| 0 <= i < g.pins@.len() && (#[trigger] g.pins@[i]).m == m
-                        && !((g.pins@[i].off as int) < maps.idx@.len() && mapsv(&maps)[g.pins@[i].off as int] == Some(kv(g.pins@[i].kinds)));
+                    let i = choose|i: int| 0 <= i < npins(g) && #[trigger] pin_m(g, i) == m && !pin_agrees(g, i, mapsv(&maps));
                     lemma_pin_agree_witness(g, i, ms2);
                 }
                 return (false, Ghost(ms2));
@@ -2347,9 +2685,8 @@ pub fn verify<O: MapOracle>(p: &VProgram, g: &XGlobal, o: &mut O, trusted: bool)
             Some(e) => {
                 proof {
                     ms = ms.push(mm);
-                    assert forall|i: int| 0 <= i < e implies (#[trigger] g.pins@[i]).m < m + 1 && (g.pins@[i].off as int) < ms[g.pins@[i].m as int].len()
-                        && ms[g.pins@[i].m as int][g.pins@[i].off as int] == Some(kv(g.pins@[i].kinds)) by {
-                        if i >= at { assert(g.pins@[i].m == m); }
+                    assert forall|i: int| 0 <= i < e implies #[trigger] pin_m(g, i) < m + 1 && pin_agrees(g, i, ms[pin_m(g, i) as int]) by {
+                        if i >= at { assert(pin_m(g, i) == m); }
                     }
                 }
                 at = e;
@@ -2357,12 +2694,11 @@ pub fn verify<O: MapOracle>(p: &VProgram, g: &XGlobal, o: &mut O, trusted: bool)
         }
         m += 1;
     }
-    if at < g.pins.len() {
+    if at < np {
         // A pin of a method that does not exist.
         proof {
             lemma_pin_unique(g, at as int);
-            let x = g.pins@[at as int];
-            assert(pin_at(g@, x.m as int, x.off as int) is Some);
+            assert(pin_at(g@, pin_m(g, at as int) as int, pin_off(g, at as int) as int) is Some);
         }
         return (false, Ghost(ms));
     }
@@ -2370,9 +2706,10 @@ pub fn verify<O: MapOracle>(p: &VProgram, g: &XGlobal, o: &mut O, trusted: bool)
         let gv = g@;
         assert forall|m2: int, o2: int| #[trigger] pin_at(gv, m2, o2) is Some implies
             0 <= m2 < ms.len() && 0 <= o2 < ms[m2].len() && ms[m2][o2] == pin_at(gv, m2, o2) by {
-            let i = choose|i: int| 0 <= i < g.pins@.len() && (#[trigger] g.pins@[i]).m == m2 && g.pins@[i].off == o2;
+            let i = choose|i: int| 0 <= i < npins(g) && #[trigger] pin_m(g, i) == m2 && pin_off(g, i) == o2;
             lemma_pin_unique(g, i);
-            if i >= at { assert(g.pins@[i].m >= n); }
+            if i >= at { assert(pin_m(g, i) >= n); }
+            assert(pin_agrees(g, i, ms[pin_m(g, i) as int]));
         }
     }
     (true, Ghost(ms))
@@ -2380,28 +2717,37 @@ pub fn verify<O: MapOracle>(p: &VProgram, g: &XGlobal, o: &mut O, trusted: bool)
 
 /// With sorted pins, the pin view at a pin's key is that pin.
 pub proof fn lemma_pin_unique(g: &XGlobal, i: int)
-    requires pins_sorted(g), 0 <= i < g.pins@.len(),
-    ensures pin_view(g, g.pins@[i].m as int, g.pins@[i].off as int) == Some(kv(g.pins@[i].kinds)),
+    requires pins_sorted(g), 0 <= i < npins(g),
+    ensures pin_view(g, pin_m(g, i) as int, pin_off(g, i) as int) == Some(pin_kinds(g, i)),
 {
-    let x = g.pins@[i];
-    assert(has_pin(g, x.m as int, x.off as int));
-    let j = choose|j: int| 0 <= j < g.pins@.len() && (#[trigger] g.pins@[j]).m == x.m && g.pins@[j].off == x.off;
-    lemma_key(g.pins@[j].m as int, g.pins@[j].off as int, x.m as int, x.off as int);
-    if j < i { assert(pin_key(g.pins@[j]) < pin_key(g.pins@[i])); }
-    if j > i { assert(pin_key(g.pins@[i]) < pin_key(g.pins@[j])); }
+    assert(has_pin(g, pin_m(g, i) as int, pin_off(g, i) as int));
+    let j = choose|j: int| 0 <= j < npins(g) && #[trigger] pin_m(g, j) == pin_m(g, i) && pin_off(g, j) == pin_off(g, i);
+    lemma_key(pin_m(g, j) as int, pin_off(g, j) as int, pin_m(g, i) as int, pin_off(g, i) as int);
+    if j < i { assert(pin_key(g, j) < pin_key(g, i)); }
+    if j > i { assert(pin_key(g, i) < pin_key(g, j)); }
+}
+
+/// With sorted selector records, the representative of a record's
+/// selector is that record's.
+pub proof fn lemma_sel_unique(g: &XGlobal, i: int)
+    requires sel_sorted(g), 0 <= i < nsel(g),
+    ensures sel_view(g, sel_key(g, i) as int) == sel_val(g, i) as int,
+{
+    assert(has_sel(g, sel_key(g, i) as int));
+    let j = choose|j: int| 0 <= j < nsel(g) && #[trigger] sel_key(g, j) == sel_key(g, i);
+    if j < i { assert(sel_key(g, j) < sel_key(g, i)); }
+    if j > i { assert(sel_key(g, i) < sel_key(g, j)); }
 }
 
 /// A pin of method `m` that disagrees with `ms[m]` breaks `pins_agree`.
 pub proof fn lemma_pin_agree_witness(g: &XGlobal, i: int, ms: Seq<Maps>)
     requires
-        pins_sorted(g), 0 <= i < g.pins@.len(), (g.pins@[i].m as int) < ms.len(),
-        !((g.pins@[i].off as int) < ms[g.pins@[i].m as int].len()
-            && ms[g.pins@[i].m as int][g.pins@[i].off as int] == Some(kv(g.pins@[i].kinds))),
+        pins_sorted(g), 0 <= i < npins(g), (pin_m(g, i) as int) < ms.len(),
+        !pin_agrees(g, i, ms[pin_m(g, i) as int]),
     ensures !pins_agree(g@, ms),
 {
     lemma_pin_unique(g, i);
-    let x = g.pins@[i];
-    assert(pin_at(g@, x.m as int, x.off as int) == Some(kv(x.kinds)));
+    assert(pin_at(g@, pin_m(g, i) as int, pin_off(g, i) as int) == Some(pin_kinds(g, i)));
 }
 
 

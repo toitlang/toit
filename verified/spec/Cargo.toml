@@ -17,18 +17,22 @@ required-features = ["std"]
 [[bin]]
 name = "toit_spec_verify"
 path = "src/bin/toit_spec_verify.rs"
-required-features = ["std"]
+required-features = ["std", "infer"]
 
 [[bin]]
 name = "toit_spec_mutate"
 path = "src/bin/toit_spec_mutate.rs"
-required-features = ["std"]
+required-features = ["std", "infer"]
 
 [features]
 # `std`: the reference interpreter (`interp`) and the tools. Without it the
 # crate is `no_std` + `alloc` (the verifier: v2::{check, infer, heap_check}).
-default = ["std"]
+default = ["std", "infer"]
 std = ["vstd/std"]
+# `infer`: the certificate inference (v2::infer) and the producer of
+# shipped certificates (v2::gbuf, v2::encode). Devices build without it:
+# they only check shipped certificates (v2::cert).
+infer = []
 
 [dependencies]
 vstd = { version = "=0.0.0-2026-11-01-0251", default-features = false, features = ["alloc"] }

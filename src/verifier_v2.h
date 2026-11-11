@@ -65,6 +65,8 @@ struct toit_vmverify_input {
   const uint8* prim_arities;        // All arities, module by module.
   uword prim_arities_length;
   uword trusted;
+  const uint8* certificate;         // The shipped certificate, or null.
+  uword certificate_length;
 };
 
 static const int TOIT_VMVERIFY_MESSAGE_SIZE = 200;
@@ -89,6 +91,8 @@ static const uword TOIT_VMVERIFY_HEAP = 2;       // Loader contract (heap).
 static const uword TOIT_VMVERIFY_TABLES = 3;     // wf_program2, tables_ok.
 static const uword TOIT_VMVERIFY_METHOD = 4;     // method_ok.
 static const uword TOIT_VMVERIFY_INTERNAL = 5;   // The verifier failed.
+static const uword TOIT_VMVERIFY_CERTIFICATE = 6;  // Shipped certificate rejected.
+static const uword TOIT_VMVERIFY_NO_CERTIFICATE = 7;  // None shipped, none inferred.
 
 #ifdef TOIT_VERIFIED_CORE
 uword toit_vmverify_verify(const toit_vmverify_input* input, toit_vmverify_result* result);

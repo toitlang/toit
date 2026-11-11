@@ -50,6 +50,8 @@ static void v2_input(Program* program, const V2MethodTable* table, bool trusted,
   input->prim_arities = v2_prim_arities;
   input->prim_arities_length = ARRAY_SIZE(v2_prim_arities);
   input->trusted = trusted ? 1 : 0;
+  input->certificate = null;
+  input->certificate_length = 0;
 }
 
 static const char* v2_code_name(uword code) {
