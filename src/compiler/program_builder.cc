@@ -41,9 +41,29 @@ bool v2_builtin_enabled(int builtin) {
 }
 
 bool v2_unchecked_enabled() {
+  // Code for untrusted containers never gets the trusted-only twins: the
+  // verifier would reject the program at launch or install.
+  if (Flags::untrusted) return false;
   const char* override = getenv("TOIT_V2_UNCHECKED");
   if (override != null) return atoi(override) != 0;
   return Flags::v2_unchecked;
+}
+
+#ifndef TOIT_DEFAULT_BYTECODE_FORMAT
+#define TOIT_DEFAULT_BYTECODE_FORMAT 2
+#endif
+
+int requested_bytecode_format() {
+  int format = Flags::bytecode_format;
+  if (format == 0) {
+    const char* override = getenv("TOIT_BYTECODE_FORMAT");
+    if (override != null && override[0] != '\0') format = atoi(override);
+  }
+  if (format == 0) format = TOIT_DEFAULT_BYTECODE_FORMAT;
+  if (format != 1 && format != 2) {
+    FATAL("Unsupported bytecode format %d", format);
+  }
+  return format;
 }
 
 void set_bytecode_format(int format) {

@@ -114,6 +114,7 @@ main args:
     expect (rejected.output.contains "VERIFICATION_FAILED")
     expect-not (rejected.output.contains "utf-16 units")
 
+    // FORMAT-1-ONLY from here (docs/format2-migration.md).
     // Format 1: the strings reach the primitives.
     environment = {"TOIT_BYTECODE_FORMAT": "1", "TOIT_UNTRUSTED_FORMAT1": "1"}
     patched = compile-patched run compiler dir --format=1 --environment=environment

@@ -177,7 +177,9 @@ build-image toit/string compiler/string dir/string name/string source/string bit
     --certificate/bool=true -> string:
   write-file "$dir/$(name).toit" source
   snapshot := "$dir/$(name).snapshot"
-  compile-snapshot compiler "$dir/$(name).toit" snapshot
+  // Images for untrusted containers: compiled with --untrusted, which ships
+  // the certificate.
+  compile-snapshot compiler "$dir/$(name).toit" snapshot --untrusted
   image := "$dir/$(name).image"
   command := [toit, "tool", "snapshot-to-image", "--format=binary", "-m$bits", "-o", image, snapshot]
   if not certificate: command.add "--no-certificate"

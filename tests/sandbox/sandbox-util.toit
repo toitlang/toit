@@ -59,9 +59,15 @@ run-process args/List --timeout-ms/int?=null --environment/Map?=null -> RunResul
   if stderr-bytes: output += stderr-bytes.to-string-non-throwing
   return RunResult output exit-value
 
-/** Compiles $source to a snapshot at $out using the compiler at $compiler. */
-compile-snapshot compiler/string source/string out/string -> none:
-  result := run-process [compiler, "-w", out, source]
+/**
+Compiles $source to a snapshot at $out using the compiler at $compiler.
+
+If $untrusted, compiles for an untrusted container (toit.compile
+  --untrusted: format 2, no trusted-only opcodes, a shipped certificate).
+*/
+compile-snapshot compiler/string source/string out/string --untrusted/bool=false -> none:
+  flags := untrusted ? ["--untrusted"] : []
+  result := run-process [compiler] + flags + ["-w", out, source]
   if result.exit-code != 0:
     throw "compilation failed: $result.output"
 

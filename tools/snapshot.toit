@@ -158,18 +158,34 @@ class Program:
   do --method-infos/True [block]:
     method-table_.do --values block
 
+  /**
+  The method that contains the $absolute-bci: its header or its body.
+
+  The id of a method (the offset of its header, $MethodInfo.id) finds the
+    method in both formats; format 2 headers have no fixed size.
+  */
   method-from-absolute-bci absolute-bci/int -> ToitMethod:
-    if absolute-bci >= methods.last.absolute-entry-bci: return methods.last
+    if absolute-bci >= methods.last.id: return methods.last
     index := methods.index-of
         absolute-bci
-        --binary-compare=: | a/ToitMethod b/int | a.absolute-entry-bci.compare-to b
+        --binary-compare=: | a/ToitMethod b/int | a.id.compare-to b
         --if-absent=: | insertion-index |
           // $insertion_index is the place where absolute_bci would need to be
           //   inserted. As such, the previous index contains the method
           //   that contains the absolute_bci.
           insertion-index - 1
-    assert: methods[index].absolute-entry-bci <= absolute-bci <= methods[index + 1].id;
+    assert: methods[index].id <= absolute-bci < methods[index + 1].id
     return methods[index]
+
+  /**
+  The dispatch table with method ids ($MethodInfo.id) as entries, and -1
+    for empty entries.
+
+  The entries of $dispatch-table are method ids in format 1 and indices
+    into the method table in format 2 (see $method-id-for-target).
+  */
+  dispatch-table-method-ids -> List:
+    return dispatch-table.map: it == -1 ? -1 : method-id-for-target it
 
   primitive-name module-index/int primitive-index/int -> string:
     module := primitive-table[module-index];
@@ -1500,6 +1516,12 @@ class MethodInfo:
   static BLOCK-TYPE         ::= 3
   static TOP-LEVEL-TYPE     ::= 4
 
+  /**
+  The absolute bci of the method's first bytecode in format 1.
+
+  Format 2 headers have no fixed size: use $ToitMethod.absolute-entry-bci of
+    `program.method-from-absolute-bci id` instead.
+  */
   absolute-entry-bci -> int:
     return id + ToitMethod.HEADER-SIZE
 

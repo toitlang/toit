@@ -19,6 +19,7 @@
 #include "../top.h"
 #include "../flags.h"
 #include "../main_utf_8_helper.h"
+#include "bytecode_format.h"
 #include "compiler.h"
 #include "executable.h"
 #include "../os.h"
@@ -48,6 +49,8 @@ static void print_usage(int exit_code) {
   printf("  [--show-package-warnings]                // Show warnings from packages.\n");
   printf("  [--os <system>]                          // Cross-compilation system target.\n");
   printf("  [--arch <architecture>]                  // Cross-compilation architecture target.\n");
+  printf("  [--untrusted]                            // Compile for an untrusted (sandboxed) container:\n");
+  printf("                                            //   checked opcodes only, with a certificate.\n");
   printf("  [--strip]                                // Strip the output of debug information.\n");
   printf("  [--verbose]                              // Print compiler phase timings.\n");
   printf("  [--verbosity-level {debug|info|verbose|quiet|silent}]\n");
@@ -60,12 +63,10 @@ static void print_usage(int exit_code) {
   exit(exit_code);
 }
 
-// Whether the compiler generates bytecode format 2 (see Pipeline::run in
-// compiler.cc: -Xbytecode_format=2 or TOIT_BYTECODE_FORMAT=2).
+// Whether the compiler generates bytecode format 2 (see bytecode_format.h:
+// -Xbytecode_format, TOIT_BYTECODE_FORMAT, or the build's default).
 static bool generates_format2() {
-  if (Flags::bytecode_format == 2) return true;
-  const char* format_override = getenv("TOIT_BYTECODE_FORMAT");
-  return Flags::bytecode_format == 1 && format_override != null && strcmp(format_override, "2") == 0;
+  return compiler::requested_bytecode_format() == 2;
 }
 
 // Adds the shipped certificate (verified/spec/format/18-shipped-certificate.md)
@@ -304,6 +305,12 @@ int main(int argc, char **argv) {
       for_dependencies = true;
       processed_args++;
       ways_to_run++;
+    } else if (strcmp(argv[processed_args], "--untrusted") == 0) {
+      // Code that may run as an untrusted container: format 2 without the
+      // trusted-only opcodes, with a shipped certificate
+      // (docs/format2-migration.md). Equivalent to -Xuntrusted.
+      Flags::untrusted = true;
+      processed_args++;
     } else if (strcmp(argv[processed_args], "--strip") == 0) {
       should_strip = true;
       processed_args++;
@@ -378,6 +385,19 @@ int main(int argc, char **argv) {
   if (exe_filename == null && cross_os != null) {
     fprintf(stderr, "The --os/--arch flags can only be used when compiling executables\n");
     print_usage(1);
+  }
+  if (Flags::untrusted) {
+    if (Flags::bytecode_format == 1) {
+      fprintf(stderr, "--untrusted needs bytecode format 2\n");
+      print_usage(1);
+    }
+    Flags::bytecode_format = 2;
+  }
+  // Only the native host VM has the verified core that runs format 2 (the
+  // VMs of the cross builds do not): executables for other targets default
+  // to format 1 unless a format was asked for.
+  if (cross_os != null && Flags::bytecode_format == 0 && getenv("TOIT_BYTECODE_FORMAT") == null) {
+    Flags::bytecode_format = 1;
   }
 
   args = &argv[processed_args];
@@ -463,7 +483,9 @@ int main(int argc, char **argv) {
       if (!compiled.write_to_file(bundle_filename)) {
         print_usage(1);
       }
-      if (generates_format2() && Flags::certificate) add_certificate(bundle_filename);
+      // Only code for untrusted containers needs the certificate: trusted
+      // (first-party) programs are not verified on the device.
+      if (generates_format2() && Flags::untrusted && Flags::certificate) add_certificate(bundle_filename);
     } else {
       exit_state = create_executable(exe_filename, compiled, vessels_root, cross_os, cross_arch);
     }

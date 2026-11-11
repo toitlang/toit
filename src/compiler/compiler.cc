@@ -2423,24 +2423,18 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
   TypeOracle oracle(source_mapper);
   MethodSelectorOffsets method_selector_offsets;
   statistics.switch_phase(PipelineStatistics::CODE_GENERATION);
-  int requested_format = Flags::bytecode_format;
-  // TOIT_BYTECODE_FORMAT=2 replaces the default format 1 by format 2 (for
-  // running the test suite on the verified core). Type propagation, which
-  // needs format 1, keeps format 1.
-  const char* format_override = getenv("TOIT_BYTECODE_FORMAT");
-  if (requested_format == 1 && format_override != null && strcmp(format_override, "2") == 0 &&
-      !propagate) {
-    requested_format = 2;
-  }
-  if (requested_format != 1 && requested_format != 2) {
-    FATAL("Unsupported bytecode format %d", requested_format);
-  }
-  if (requested_format == 2 && propagate) {
-    FATAL("Type propagation needs bytecode format 1");
-  }
+  // See bytecode_format.h: -Xbytecode_format, TOIT_BYTECODE_FORMAT, or the
+  // build's default.
+  int requested_format = requested_bytecode_format();
+  // The type propagator interprets format 1: --propagate (which prints the
+  // propagated types of the program it compiles, for the type-propagation
+  // tests) compiles in format 1. The snapshot it writes is format 1 too.
+  if (propagate) requested_format = 1;
   bool second_pass = run_optimizations && configuration_.optimization_level >= 2;
   // The type propagator of the second pass interprets the program of the
-  // first pass, so that one is always generated in format 1.
+  // first pass, so that one is always generated in format 1. It is a
+  // compiler-internal intermediate: only the second pass, in the requested
+  // format, is written (docs/format2-migration.md, "-O2").
   set_bytecode_format(second_pass ? 1 : requested_format);
   auto program = construct_program(ir_program,
                                    source_mapper,

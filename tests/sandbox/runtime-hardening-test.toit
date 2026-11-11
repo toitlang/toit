@@ -2,6 +2,8 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+// FORMAT-1-ONLY (docs/format2-migration.md): delete with the C++ interpreter.
+
 // Tests the interpreter hardening at run time. It patches the operands of the
 // bytecodes whose value becomes a code address (LOAD_METHOD's method id and
 // the block invoked by INVOKE_BLOCK) to out-of-range values, runs the patched

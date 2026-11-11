@@ -33,6 +33,10 @@ add_library(
   ${toit_compiler_SRC}
   )
 
+# The compiler's default bytecode format (src/CMakeLists.txt,
+# bytecode_format.h).
+target_compile_definitions(toit_compiler PRIVATE TOIT_DEFAULT_BYTECODE_FORMAT=${TOIT_BYTECODE_FORMAT})
+
 set_source_files_properties(propagation/type_database.cc PROPERTIES COMPILE_OPTIONS "-O3")
 set_source_files_properties(propagation/type_propagator.cc PROPERTIES COMPILE_OPTIONS "-O3")
 set_source_files_properties(propagation/type_set.cc PROPERTIES COMPILE_OPTIONS "-O3")

@@ -477,6 +477,14 @@ container-install invocation/cli.Invocation -> none:
       bundle := SnapshotBundle name image-data
       if bundle.sdk-version != envelope.sdk-version:
         ui.abort "Snapshot was built by SDK $bundle.sdk-version, but envelope is for SDK $envelope.sdk-version."
+      // Format 2 is the compiler's default on hosts with the verified core,
+      // but most device firmware only runs format 1 (docs/format2-migration.md).
+      system-entry := envelope.entries.get SYSTEM-CONTAINER-NAME
+      if system-entry and (snapshot-format_ image-data) == 2
+          and (snapshot-format_ system-entry) == 1:
+        ui.emit --warning """
+            The snapshot '$image-path' is in bytecode format 2, but the envelope's system is in format 1.
+            Unless the firmware has the verified core, compile it with '-Xbytecode_format=1'."""
     else:
       header := null
       catch: header = decode-image image-data --word-size=envelope.word-size
@@ -500,6 +508,13 @@ container-install invocation/cli.Invocation -> none:
       flags := properties.get PROPERTY-CONTAINER-FLAGS --init=: {:}
       flags[name] = flag-bits
       properties
+
+/** The bytecode format of the snapshot bundle $bytes, or null if it isn't one. */
+snapshot-format_ bytes/ByteArray -> int?:
+  catch:
+    if not SnapshotBundle.is-bundle-content bytes: return null
+    return (SnapshotBundle "snapshot" bytes).decode.format
+  return null
 
 container-extract invocation/cli.Invocation -> none:
   input-path := invocation[OPTION-ENVELOPE]

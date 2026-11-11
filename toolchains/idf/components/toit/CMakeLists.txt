@@ -107,6 +107,11 @@ function(toit_postprocess)
 
     idf_build_get_property(EXECUTABLE_NAME EXECUTABLE_NAME)
 
+    # Devices keep bytecode format 1 (the C++ interpreter) for the system
+    # snapshot and the entry program, also when the host compiler defaults
+    # to format 2 (docs/format2-migration.md, "Devices").
+    set(DEVICE_COMPILE_ENV ${CMAKE_COMMAND} -E env TOIT_BYTECODE_FORMAT=1)
+
     add_custom_target(firmware ALL DEPENDS bootloader partition_table_bin gen_project_binary)
     # The envelope packaging below reads ota_data_initial.bin.
     if(TARGET blank_ota_data)
@@ -125,7 +130,7 @@ function(toit_postprocess)
     add_custom_command(
             TARGET firmware
             POST_BUILD
-            COMMAND ${TOIT} compile --snapshot -O2 -o ${CMAKE_BINARY_DIR}/system.snapshot ${BOOT_PROJECT_ROOT_ARGS} ${BOOT}
+            COMMAND ${DEVICE_COMPILE_ENV} ${TOIT} compile --snapshot -O2 -o ${CMAKE_BINARY_DIR}/system.snapshot ${BOOT_PROJECT_ROOT_ARGS} ${BOOT}
             VERBATIM)
 
     add_custom_command(
@@ -182,7 +187,7 @@ function(toit_postprocess)
         add_custom_command(
                 TARGET firmware
                 POST_BUILD
-                COMMAND "${TOIT}" compile --snapshot -o "${CMAKE_BINARY_DIR}/program.snapshot" ${ENTRY_PROJECT_ROOT_ARGS} ${RUN_PROGRAM}
+                COMMAND ${DEVICE_COMPILE_ENV} "${TOIT}" compile --snapshot -o "${CMAKE_BINARY_DIR}/program.snapshot" ${ENTRY_PROJECT_ROOT_ARGS} ${RUN_PROGRAM}
                 COMMAND "${TOIT}" tool firmware "--envelope=firmware.envelope"
                         "container" "install" ${ENTRY_ASSETS_ARGS} "program" ${CMAKE_BINARY_DIR}/program.snapshot
                 COMMAND echo envelope: program added

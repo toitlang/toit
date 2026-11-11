@@ -2,6 +2,8 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+// FORMAT-1-ONLY (docs/format2-migration.md): delete with the C++ verifier.
+
 // Tests the structural bytecode verifier: it accepts valid programs, prints
 // the referenced primitives, rejects corrupted bytecodes, rejects HALT 2/3
 // and zero-offset branches in untrusted programs, and never crashes on

@@ -68,8 +68,8 @@ main args:
   // Do some spot checks.
   method-bs := found-methods["ClassA.method-b"]
   expect-equals 2 method-bs.size
-  method1 := program.method-from-absolute-bci method-bs[0].absolute-entry-bci
-  method2 := program.method-from-absolute-bci method-bs[1].absolute-entry-bci
+  method1 := program.method-from-absolute-bci method-bs[0].id
+  method2 := program.method-from-absolute-bci method-bs[1].id
   // Arities include the implicit `this` parameter.
   expect (method1.arity == 2 and method2.arity == 3 or
       method1.arity == 3 and method2.arity == 2)
@@ -79,22 +79,22 @@ main args:
   info1 := lazy-fields[0]
   expect-equals MethodInfo.GLOBAL-TYPE info1.type
 
-  field-getter-entry := found-methods["ClassA.field-a"].first.absolute-entry-bci
+  field-getter-entry := found-methods["ClassA.field-a"].first.id
   field-getter := program.method-from-absolute-bci field-getter-entry
   expect field-getter.is-field-accessor
-  field-setter-entry := found-methods["ClassA.field-a="].first.absolute-entry-bci
+  field-setter-entry := found-methods["ClassA.field-a="].first.id
   field-setter := program.method-from-absolute-bci field-setter-entry
   expect field-setter.is-field-accessor
 
-  final-field-getter-entry := found-methods["ClassA.final-field"].first.absolute-entry-bci
+  final-field-getter-entry := found-methods["ClassA.final-field"].first.id
   final-field-getter := program.method-from-absolute-bci final-field-getter-entry
   expect final-field-getter.is-field-accessor
-  final-field-setter-entry := found-methods["ClassA.final-field="].first.absolute-entry-bci
+  final-field-setter-entry := found-methods["ClassA.final-field="].first.id
   final-field-setter := program.method-from-absolute-bci final-field-setter-entry
   // The final field setter is not considered an accessor.
   expect-not final-field-setter.is-field-accessor
 
-  method-a-entry := found-methods["ClassA.method-a"].first.absolute-entry-bci
+  method-a-entry := found-methods["ClassA.method-a"].first.id
   method-a := program.method-from-absolute-bci method-a-entry
   expect-not method-a.is-field-accessor
   expect method-a.is-normal-method
@@ -112,7 +112,7 @@ main args:
   expect-not-null block-info
   expect-not-null lambda-info
 
-  block-method := program.method-from-absolute-bci block-info.absolute-entry-bci
+  block-method := program.method-from-absolute-bci block-info.id
   expect block-method.is-block
-  lambda-method := program.method-from-absolute-bci lambda-info.absolute-entry-bci
+  lambda-method := program.method-from-absolute-bci lambda-info.id
   expect lambda-method.is-lambda

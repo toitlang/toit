@@ -267,6 +267,16 @@ Host:
     toit run --untrusted program.toit          # or a snapshot
     toit.run --untrusted program.toit          # or -Xuntrusted
 
+A snapshot for an untrusted container must be compiled for it:
+
+    toit compile --untrusted --snapshot -o program.snapshot program.toit
+
+Format 2 is the compiler's default (docs/format2-migration.md), and by
+default it compiles first-party code, with trusted-only opcodes that the
+verifier rejects in untrusted programs. `--untrusted` emits only checked
+opcodes and ships the certificate. `toit run --untrusted` compiles that way
+by itself.
+
 `toit.run` passes the flag to the boot program
 (`system/extensions/host/toit.run.toit`) as a third entry of the spawn
 arguments; the boot program marks the application image with
