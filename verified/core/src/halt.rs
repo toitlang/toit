@@ -65,7 +65,7 @@ pub proof fn lemma_value_operand(p: &Program, g: State2, n: int, i: int)
 /// a smi word is the smi shifted left.
 pub proof fn lemma_word_tag(m: &Machine, p: &Program, w: usize, v: Value)
     requires
-        m.refines(p),
+        m.hrefines(p),
         w == enc(m.addr(), v),
         encodable(m.addr(), v),
     ensures

@@ -43,6 +43,8 @@ pub mod exec;
 pub mod regs;
 pub mod room;
 pub mod rcalls;
+pub mod rfields;
+pub mod rops;
 pub mod machine;
 pub mod step;
 pub mod calls;

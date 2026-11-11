@@ -42,7 +42,7 @@ impl Machine {
     #[inline(always)]
     pub fn check_type(&self, p: &Program, w: usize, Ghost(v): Ghost<Value>, index: usize, nullable: bool, interface: bool) -> (r: bool)
         requires
-            self.refines(p),
+            self.hrefines(p),
             w == enc(self.addr(), v),
             encodable(self.addr(), v),
             index < 0x1_0000,
@@ -80,7 +80,7 @@ impl Machine {
 
 /// The slots of the stack (other than `n`) are those of `g`, and slot `n`
 /// is the encoding of `v`: the stack of `put(g, n, v)`.
-proof fn lemma_put_rel(p: &Program, m0: Machine, m1: Machine, n: int, w: usize, v: Value)
+pub proof fn lemma_put_rel(p: &Program, m0: Machine, m1: Machine, n: int, w: usize, v: Value)
     requires
         m0.refines(p),
         sp::has_slot(m0.g@, n),

@@ -48,7 +48,7 @@ impl Machine {
     #[inline(always)]
     pub fn tag_of(&self, p: &Program, w: usize, Ghost(v): Ghost<Value>) -> (r: Option<usize>)
         requires
-            self.refines(p),
+            self.hrefines(p),
             w == enc(self.addr(), v),
             encodable(self.addr(), v),
             v is Smi || v is Obj,
@@ -71,7 +71,7 @@ impl Machine {
     #[inline(always)]
     pub fn num_x(&self, p: &Program, w: usize, Ghost(v): Ghost<Value>) -> (r: Option<XNum>)
         requires
-            self.refines(p),
+            self.hrefines(p),
             w == enc(self.addr(), v),
             encodable(self.addr(), v),
             v is Smi || v is Obj,
@@ -100,7 +100,7 @@ impl Machine {
     #[inline(always)]
     pub fn double_x(&self, p: &Program, w: usize, Ghost(v): Ghost<Value>) -> (r: Option<u64>)
         requires
-            self.refines(p),
+            self.hrefines(p),
             w == enc(self.addr(), v),
             encodable(self.addr(), v),
             v is Smi || v is Obj,
@@ -125,7 +125,7 @@ impl Machine {
     #[inline(always)]
     pub fn compare_x(&self, p: &Program, w0: usize, Ghost(v0): Ghost<Value>, w1: usize, Ghost(v1): Ghost<Value>) -> (r: u8)
         requires
-            self.refines(p),
+            self.hrefines(p),
             w0 == enc(self.addr(), v0), encodable(self.addr(), v0), v0 is Smi || v0 is Obj,
             w1 == enc(self.addr(), v1), encodable(self.addr(), v1), v1 is Smi || v1 is Obj,
         ensures r == compare_numbers(as1(self.g@), v0, v1),
@@ -185,7 +185,7 @@ impl Machine {
     #[inline(always)]
     pub fn identical_slow(&self, p: &Program, w0: usize, Ghost(v0): Ghost<Value>, w1: usize, Ghost(v1): Ghost<Value>) -> (r: bool)
         requires
-            self.refines(p),
+            self.hrefines(p),
             w0 == enc(self.addr(), v0), encodable(self.addr(), v0), v0 is Smi || v0 is Obj,
             w1 == enc(self.addr(), v1), encodable(self.addr(), v1), v1 is Smi || v1 is Obj,
             w0 != w1,

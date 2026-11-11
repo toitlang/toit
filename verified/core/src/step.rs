@@ -1234,6 +1234,184 @@ pub fn step_r(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
             }
             return crate::rcalls::op_return(m, r, env, p.null, Ghost(sp::null2(ap)));
         },
+        7 => {
+            let f = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_load_field(ap, g, f as int, 2)) by { reveal(sp::step); } }
+            return crate::rfields::op_load_field(m, r, env, bci, opcode, f, 2);
+        },
+        8 => {
+            let f = code_u16(p, bci + 1);
+            proof { assert(sp::step(ap, g) == sp::op_load_field(ap, g, f as int, 3)) by { reveal(sp::step); } }
+            return crate::rfields::op_load_field(m, r, env, bci, opcode, f, 3);
+        },
+        9 => {
+            let e = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_load_field_local(ap, g, e as int, false)) by { reveal(sp::step); } }
+            return crate::rfields::op_load_field_local(m, r, env, bci, opcode, e, false);
+        },
+        10 => {
+            let e = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_load_field_local(ap, g, e as int, true)) by { reveal(sp::step); } }
+            return crate::rfields::op_load_field_local(m, r, env, bci, opcode, e, true);
+        },
+        11 => {
+            let f = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_store_field(ap, g, f as int, 2, true)) by { reveal(sp::step); } }
+            return crate::rfields::op_store_field(m, r, env, bci, opcode, f, 2, true);
+        },
+        12 => {
+            let f = code_u16(p, bci + 1);
+            proof { assert(sp::step(ap, g) == sp::op_store_field(ap, g, f as int, 3, true)) by { reveal(sp::step); } }
+            return crate::rfields::op_store_field(m, r, env, bci, opcode, f, 3, true);
+        },
+        13 => {
+            let f = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_store_field(ap, g, f as int, 2, false)) by { reveal(sp::step); } }
+            return crate::rfields::op_store_field(m, r, env, bci, opcode, f, 2, false);
+        },
+        60 => {
+            let sel = code_u16(p, bci + 1);
+            proof { assert(sp::step(ap, g) == sp::op_invoke_virtual_get(ap, g, sel as int)) by { reveal(sp::step); } }
+            return crate::rfields::op_invoke_virtual_get(m, r, env, bci, opcode, sel);
+        },
+        61 => {
+            let sel = code_u16(p, bci + 1);
+            proof { assert(sp::step(ap, g) == sp::op_invoke_virtual_set(ap, g, sel as int)) by { reveal(sp::step); } }
+            return crate::rfields::op_invoke_virtual_set(m, r, env, bci, opcode, sel);
+        },
+        94 => {
+            let f = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_store_field_this(ap, g, f as int)) by { reveal(sp::step); } }
+            return crate::rfields::op_store_field_this(m, r, env, bci, opcode, f);
+        },
+        98 => {
+            let f = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_load_field_this(ap, g, f as int)) by { reveal(sp::step); } }
+            return crate::rfields::op_load_field_this(m, r, env, bci, opcode, f);
+        },
+        44 => {
+            // IS_CLASS.
+            let enc = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_is(ap, g, enc as int, false, 2)) by { reveal(sp::step); } }
+            return crate::rfields::op_is(m, r, env, bci, opcode, enc, false, 2);
+        },
+        45 => {
+            // IS_CLASS_WIDE.
+            let enc = code_u16(p, bci + 1);
+            proof { assert(sp::step(ap, g) == sp::op_is(ap, g, enc as int, false, 3)) by { reveal(sp::step); } }
+            return crate::rfields::op_is(m, r, env, bci, opcode, enc, false, 3);
+        },
+        46 => {
+            // IS_INTERFACE.
+            let enc = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_is(ap, g, enc as int, true, 2)) by { reveal(sp::step); } }
+            return crate::rfields::op_is(m, r, env, bci, opcode, enc, true, 2);
+        },
+        47 => {
+            // IS_INTERFACE_WIDE.
+            let enc = code_u16(p, bci + 1);
+            proof { assert(sp::step(ap, g) == sp::op_is(ap, g, enc as int, true, 3)) by { reveal(sp::step); } }
+            return crate::rfields::op_is(m, r, env, bci, opcode, enc, true, 3);
+        },
+        48 => {
+            // AS_CLASS.
+            let enc = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_as(ap, g, enc as int, false, 2)) by { reveal(sp::step); } }
+            return crate::rfields::op_as(m, r, env, bci, opcode, enc, false, 2);
+        },
+        49 => {
+            // AS_CLASS_WIDE.
+            let enc = code_u16(p, bci + 1);
+            proof { assert(sp::step(ap, g) == sp::op_as(ap, g, enc as int, false, 3)) by { reveal(sp::step); } }
+            return crate::rfields::op_as(m, r, env, bci, opcode, enc, false, 3);
+        },
+        50 => {
+            // AS_INTERFACE.
+            let enc = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_as(ap, g, enc as int, true, 2)) by { reveal(sp::step); } }
+            return crate::rfields::op_as(m, r, env, bci, opcode, enc, true, 2);
+        },
+        51 => {
+            // AS_INTERFACE_WIDE.
+            let enc = code_u16(p, bci + 1);
+            proof { assert(sp::step(ap, g) == sp::op_as(ap, g, enc as int, true, 3)) by { reveal(sp::step); } }
+            return crate::rfields::op_as(m, r, env, bci, opcode, enc, true, 3);
+        },
+        52 => {
+            // AS_LOCAL.
+            let enc = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_as_local(ap, g, enc as int)) by { reveal(sp::step); } }
+            return crate::rfields::op_as_local(m, r, env, bci, opcode, enc);
+        },
+        // Operators: constant opcodes, so that the inlined fast paths fold.
+        62 => {
+            proof { crate::ops::lemma_step_op(p, g); }
+            return crate::rops::op_invoke_eq(m, r, env, bci, 62);
+        },
+        63 => {
+            proof { crate::ops::lemma_step_op(p, g); }
+            return crate::rops::op_invoke_relational(m, r, env, bci, 63);
+        },
+        64 => {
+            proof { crate::ops::lemma_step_op(p, g); }
+            return crate::rops::op_invoke_relational(m, r, env, bci, 64);
+        },
+        65 => {
+            proof { crate::ops::lemma_step_op(p, g); }
+            return crate::rops::op_invoke_relational(m, r, env, bci, 65);
+        },
+        66 => {
+            proof { crate::ops::lemma_step_op(p, g); }
+            return crate::rops::op_invoke_relational(m, r, env, bci, 66);
+        },
+        67 => {
+            proof { crate::ops::lemma_step_op(p, g); }
+            return crate::rops::op_invoke_arith(m, r, env, bci, 67);
+        },
+        68 => {
+            proof { crate::ops::lemma_step_op(p, g); }
+            return crate::rops::op_invoke_arith(m, r, env, bci, 68);
+        },
+        69 => {
+            proof { crate::ops::lemma_step_op(p, g); }
+            return crate::rops::op_invoke_arith(m, r, env, bci, 69);
+        },
+        70 => {
+            proof { crate::ops::lemma_step_op(p, g); }
+            return crate::rops::op_invoke_arith(m, r, env, bci, 70);
+        },
+        71 => {
+            proof { crate::ops::lemma_step_op(p, g); }
+            return crate::rops::op_invoke_arith(m, r, env, bci, 71);
+        },
+        72 => {
+            proof { crate::ops::lemma_step_op(p, g); }
+            return crate::rops::op_invoke_arith(m, r, env, bci, 72);
+        },
+        73 => {
+            proof { crate::ops::lemma_step_op(p, g); }
+            return crate::rops::op_invoke_arith(m, r, env, bci, 73);
+        },
+        74 => {
+            proof { crate::ops::lemma_step_op(p, g); }
+            return crate::rops::op_invoke_arith(m, r, env, bci, 74);
+        },
+        75 => {
+            proof { crate::ops::lemma_step_op(p, g); }
+            return crate::rops::op_invoke_arith(m, r, env, bci, 75);
+        },
+        76 => {
+            proof { crate::ops::lemma_step_op(p, g); }
+            return crate::rops::op_invoke_arith(m, r, env, bci, 76);
+        },
+        77 => {
+            proof { crate::ops::lemma_step_op(p, g); }
+            return crate::rops::op_invoke_arith(m, r, env, bci, 77);
+        },
+        96 => {
+            proof { crate::ops::lemma_step_op(p, g); }
+            return crate::rops::op_identical(m, r, env, bci, 96);
+        },
         _ => {
             return bridge_r(m, r, env);
         },

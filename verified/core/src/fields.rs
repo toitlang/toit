@@ -64,7 +64,7 @@ impl Machine {
     #[inline(always)]
     pub fn is_ro_word(&self, p: &Program, w: usize, Ghost(id): Ghost<int>) -> (r: bool)
         requires
-            self.refines(p),
+            self.hrefines(p),
             0 <= id < self.g@.heap.len(),
             w == self.addr()[id],
         ensures r == self.g@.heap[id].ro,
@@ -77,7 +77,7 @@ impl Machine {
     #[inline(always)]
     pub fn field_access_ok(&self, p: &Program, w: usize, Ghost(v): Ghost<Value>, f: usize, write: bool) -> (r: bool)
         requires
-            self.refines(p),
+            self.hrefines(p),
             accepts(p.ap@, p.cert@, p.trusted@),
             w == enc(self.addr(), v),
             encodable(self.addr(), v),
@@ -202,7 +202,7 @@ verus! {
 
 /// The value of field `f` of the instance `v` (word `w`) is encodable and
 /// its word is what the heap accessor returns.
-proof fn lemma_field_val(p: &Program, m: &Machine, v: Value, f: int)
+pub proof fn lemma_field_val(p: &Program, m: &Machine, v: Value, f: int)
     requires
         m.refines(p),
         v is Obj,
@@ -382,7 +382,7 @@ pub fn op_store_field(m: &mut Machine, env: &Env, bci: usize, opcode: u8, f: usi
 }
 
 /// `this` (slot 0 of the top frame) of a step whose `this_ok` holds.
-proof fn lemma_this(p: &Program, m: &Machine, f: int)
+pub proof fn lemma_this(p: &Program, m: &Machine, f: int)
     requires m.refines(p), sp::this_ok(p.ap@, m.g@, f),
     ensures
         m.base < m.len,
