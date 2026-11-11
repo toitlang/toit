@@ -16,10 +16,12 @@
 //! The structural verifier of format 2: the decidable predicate
 //! `accepts(p, c, trusted)` over the abstract program and a certificate.
 //!
-//! The certificate is not shipped with the program: the compiler emits no
-//! annotations, and `v2::infer` (untrusted, plain Rust) computes one by
-//! abstract interpretation. `v2::check::verify` (Verus) is proven to
-//! return exactly `accepts(p, c, trusted)`; `v2::theorem` proves that an
+//! The certificate is computed by `v2::infer` (untrusted, plain Rust,
+//! abstract interpretation): on the host, where the toolchain ships it
+//! with the program (`v2::encode`, `v2::cert`; format/18), or on a host VM
+//! for a program without one. `v2::check::verify` (Verus) is proven to
+//! decide `split_ok`, the per-method form of `accepts(p, c, trusted)`
+//! (`v2::split`); `v2::theorem` proves that an
 //! accepted program never reaches a stuck state. A wrong certificate can
 //! only lead to a rejection, never to an unsound acceptance.
 //!

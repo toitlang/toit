@@ -4,6 +4,47 @@ Plan: /home/flo/work/opentoit-sandboxing-reports/07-verified-sandbox-plan.md
 (with the 2026-11-10 addendum); requests: format/PHASE4-REQUESTS.md;
 spec changes for the other agents: format/SPEC-CHANGELOG.md.
 
+## PROGRESS: shipped certificates (branch spec/shipped-certificate)
+
+Brief: the compiler ships the certificate, the device only checks it and
+may drop it. Design: format/18-shipped-certificate.md. Status (2026-11-11):
+
+* Checker: the global part (`check::XGlobal`) is byte tables borrowed from
+  the certificate (a word per method, context/selector/pin records, a
+  shared node table; total reads, `rd`/`fld`); `check::verify` keeps its
+  statement with `g_ok` (sorted tables) for `pins_sorted`.
+  `cert::verify_shipped` (Verus) parses the header, decodes one method's
+  maps at a time from the stream (`ShippedOracle`, recomputing the
+  fall-through maps with `x_post`) and is proven: true ==> exists c.
+  accepts(p, c, trusted) with the caller's global count and primitive
+  table. Zero assume/admit; spec 892 verified, core 781, audit clean.
+* Producer: the inference on the host (`toit.run --certify --trusted`,
+  run by toit.compile for format-2 snapshots; `-Xcertificate=false`);
+  `v2::gbuf` (owned tables), `v2::encode`. No second implementation of
+  the kind rules.
+* Carriers: bundle member `certificate` (kept by `stripped`), the sixth
+  argument of `snapshot.launch`, `toit.run --verify
+  [--no-certificate|--require-certificate]`, `toitp --certificate`,
+  `tools/snapshot.toit` `Certificate`; images get a trailing page-padded
+  block (marker "TCB1") that `writer_commit` keeps outside the allocation.
+* Device configuration: cargo feature `infer` (default on in toit_spec and
+  toit_vmverify; the core depends on the spec without it). Without it the
+  inference, gbuf and encode are not compiled, and a program without a
+  certificate is rejected (`NO_CERTIFICATE`).
+* Gates: verify_suite 439/439 accepted three ways (inference, re-encoded
+  shipped, VM with the compiler-shipped certificate); 3 system snapshots;
+  mutation campaign with certificates 12,000 mutants, 0 stuck
+  (tests/mutation-certificate-results.txt); fuzz with certificate
+  mutation (vmverify README).
+* Measurements (vmverify README, "Shipped certificates"): certificate
+  30-42 % of the bytecodes (hello 9.9 KB); verifier RAM 6 KB instead of
+  30 KB (hello, dump path), 66 KB instead of 332 KB (CLI); 2.4-3.4x faster.
+* Not done: a fused decoder-checker (each successor computed once; needs
+  a proof about the decoder's maps); sparse method words (about 1 KB less
+  for hello world); hosts do not look for the trailing block when spawning
+  from flash (they infer); install-time verification on devices is
+  `phase5/portability`'s.
+
 ## PROGRESS: verifier memory and robustness (branch spec/verifier-memory)
 
 Brief: R6 (total inference), R8 (memory bounded by the largest method),
