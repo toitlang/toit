@@ -14,6 +14,8 @@ struct Outer_Inner { word v_; };
 typedef struct Outer_Inner Outer_Inner;
 struct Pair { word a_; word b_; };
 typedef struct Pair Pair;
+struct Over { char unused_; };
+typedef struct Over Over;
 // C++: verified/cxx/annotated/tests/rules.cc toit::Outer::Inner::Inner
 void Outer_Inner_ctor(Outer_Inner *self, word x);
 //@ requires self->v_ |-> _ &*& x < 100;
@@ -43,6 +45,26 @@ unsigned int low_half(unsigned int h);
 word use_inner(word x);
 //@ requires x < 100;
 //@ ensures result == x + 3;
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::with_default
+word with_default(word x, bool flag);
+//@ requires x < 100;
+//@ ensures result == (flag ? x : x + 1);
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::call_default
+word call_default(word x);
+//@ requires x < 100;
+//@ ensures result == x + 1;
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::Over::f
+word Over_f__word(Over *self, word x);
+//@ requires true;
+//@ ensures result == x;
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::call_over
+word call_over(Over *o);
+//@ requires true;
+//@ ensures result == 1;
 
 // C++: verified/cxx/annotated/tests/rules.cc toit::Outer::Inner::Inner
 void Outer_Inner_ctor(Outer_Inner *self, word x)
@@ -98,5 +120,37 @@ word use_inner(word x)
   Outer_Inner inner;
   Outer_Inner_ctor(&inner, x);
   return Outer_Inner_v(&inner);
+}
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::with_default
+word with_default(word x, bool flag)
+//@ requires x < 100;
+//@ ensures result == (flag ? x : x + 1);
+{
+  return flag ? x : x + 1;
+}
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::call_default
+word call_default(word x)
+//@ requires x < 100;
+//@ ensures result == x + 1;
+{
+  return with_default(x, false);
+}
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::Over::f
+word Over_f__word(Over *self, word x)
+//@ requires true;
+//@ ensures result == x;
+{
+  return x;
+}
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::call_over
+word call_over(Over *o)
+//@ requires true;
+//@ ensures result == 1;
+{
+  return Over_f__word(o, 1);
 }
 

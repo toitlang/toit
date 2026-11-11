@@ -90,6 +90,8 @@ tool never guesses):
 | nested class `A::B` | struct `A_B`, members `A_B_m`, constructor `A_B_ctor`; an unqualified constant of an enclosing class is `A_N` (checked as `A::N`) |
 | `a = C(x)` with the implicit assignment operator (Clang's `isImplicit`) | `{ C tmp; C_ctor(&tmp, x); (a).f = tmp.f; ... }`: member-wise, what the implicit copy and move assignments do |
 | `@expand-typedef T` | the typedef written as the type it stands for on the rendering's target (`uhalf_word`: unsigned int on LP64, unsigned short on ILP32) |
+| a default argument (`CXXDefaultArgExpr`) | its value written out; literals only (the expression is spelled in the callee's file) |
+| a call of an `@overloaded` member | named by the declared parameter types of the member it refers to (in its class or out of line), not by the argument types (which differ per target: a literal is `int` = `word` on ILP32) |
 
 Each rule added after the pilot has a self-test in `tests/rules.cc` and
 `tests/rules.render` (rendered, compared with the committed
@@ -129,9 +131,9 @@ gives. Not proposed; reporting the front end's missing casts upstream is.
 
 ## Status
 
-`run.sh`: 7 sidecars (one the translator's self-test), 98 rendered functions (18 contract-only), proved
-for LP64 and ILP32; 11 reverted-bug or contract mutants and 2 drift tests;
-30 s wall (16 cores; each proof 0.4-2 s). Lines: `metrics.sh` (C++ = the
+`run.sh`: 8 sidecars (one the translator's self-test), 112 rendered functions (17 contract-only), proved
+for LP64 and ILP32; 15 reverted-bug or contract mutants and 2 drift tests;
+21 s wall, 69 checks (16 cores; each proof 0.1-4 s). Lines: `metrics.sh` (C++ = the
 rendered functions' lines; annotations among them; then the hand-written C
 and annotations of the verbatim sections: trusted prototypes, predicates,
 lemmas).
@@ -140,9 +142,10 @@ lemmas).
 |---|---|---|---|---|---|
 | Object model (`model/objects.render`) | is_smi, is_heap_object, Smi::from/cast, HeapObject::cast/_raw/_raw_at (2)/_at/_word_at/_half_word_at/header/class_id/class_tag/has_class_tag, Instance::_offset_from/at/cast, Array::_offset_from/length/at/cast, String::_internal_length/content_on_heap/_external_length/_external_address/as_external/_as_utf8bytes/cast, String::Bytes (ctor, address, length), ByteArray::has_external_address/external_tag/_offset_from/content (2)/_external_address/as_external (2)/cast (2), ByteArray::Bytes and ConstBytes (ctor, address, length), Double/LargeInteger::cast, is_instance/array/byte_array/double/string/large_integer | verified | `Smi::value` (2 overloads) and `ByteArray::raw_length` (implementation-defined uword-to-word conversion, contract only); `Double::value`, `LargeInteger::value` (contract only); `unsigned_cast` (a template: identity on `uint8*`); the heap predicate is the allocator/GC invariant (bridge `heap`): strings and byte arrays with internal or external content, an external byte array owning its bytes only when tagged RawByteTag | 263 / 225 / 47 / 551 | drift tests; the encoder's and byte_content's mutants exercise it |
 | Blob decoding (`blob/byte_content.render`) | Object::byte_content (the recursive 5-argument one, the 4-argument one, the Blob one), Blob ctor | verified: a successful result lies in the content of ONE live string or byte array (internal, or raw external: never a proxy's struct), a string for STRINGS_ONLY; recursion depth bounded by MAX_BYTE_CONTENT_DEPTH; heap read-only | the program's class-id roots (contract only) | 65 / 30 / 1 / 0 | 357d1127 (#3373): without the depth limit the recursive call fails at `depth + 1 <= 8`; without the slice's `to <= length`: the pointer leaves the blob |
+| MutableBlob decoding (`blob/mutable_byte_content.render`) | Object::mutable_byte_content (5-argument, 4-argument, MutableBlob), MutableBlob ctor; model: Instance::at_put (with the heap update), HeapObject::_at_put, on_program_heap, heap growth and blob hole lemmas | verified: a successful result lies in the content of ONE live byte array (internal or raw external) outside the program heap; the heap only grows (the copy-on-write branch allocates, copies the immutable content with a legal memcpy and stores the new backing and `true`); recursion bounded | the allocator (`Process::allocate_byte_array`: a fresh byte array of the asked length outside the program heap, nothing else changed), `Process::on_program_heap` (an address range: `in_program_heap`), the true object is a heap object, the write barrier (card table outside the model), Error::from and the error roots | 76 / 54 / 4 / 2 | 357d1127 reverted here too: the recursive call; without the program-heap check: `in_program_heap == false`; without the external tag check (both decoders): `blob_ok` |
 | Message encoder (`encoder/`) | encode_any (all branches), encode_array, encode_list, encode_map, NestingTracker ctor/dtor | verified: memory safety, no overflow or lossy conversion, heap read-only | buffer writers and `is_too_large` (the two-pass size argument), `encode_copy`, `encode_byte_array`, the program's class-id roots, `bit_cast` | 178 / 50 / 38 / 63 | f708ad5d: count (underflow at `to - from`), read past the backing (loop bound), map past the backing |
 | Stack growth (`grow/`) | toit_v2_grow_stack, v2_process, Stack::v2_copy_to | verified against gc_grow_stack (no precondition on `needed`: the C++ checks it) | v2_gc (preserves the abstraction), allocate_stack, Stack header accessors, Task::stack/set_stack, max_length (contract only) | 93 / 72 / 17 / 86 | the bound check taken out: fails at the cast; with the cast exact: at the sum |
-| Primitive `string_write_to_byte_array` (`prims/`) | the primitive with the ARGS/FAIL expansion, Blob/MutableBlob constructors and accessors | verified: copy inside the regions, legal memmove | byte_content, mutable_byte_content (region contracts), Process::program | 21 / 54 / 19 / 71 | af4ba7ab: memcpy fails at its precondition; verifies with the ranges in different regions |
+| Primitive `string_write_to_byte_array` (`prims/`) | the primitive with the ARGS/FAIL expansion (Blob and MutableBlob decoding by the proven byte_content / mutable_byte_content, word arguments), Blob/MutableBlob constructors and accessors | verified: the primitive heap contract in VeriFast terms (the heap only grows, objects keep class, length and external address), the copy inside the two contents (source: a string or byte array; destination: a writable byte array outside the program heap; the source range survives the destination's copy-on-write), legal memmove | none beyond the model and blob units | 21 / 59 / 7 / 22 | af4ba7ab: memcpy fails at its precondition; verifies with the two byte arrays assumed distinct |
 | UTF-8 (`utf8/`) | Utils::utf_8_to_16, bytes_in_utf_8_sequence, payload_from_prefix | verified (Z3) | none | 57 / 26 / 1 / 84 | 07c24665: UB shift at payload_from_prefix; without the length check: the read past the input |
 | Rust raw memory (`rust/`) | view.rs: string_len, string_byte; trial: field, array_length, element | verified (VeriFast Rust, host) | predicates over the words (bridge `heap`) | — | `i <= len` fails at the read |
 
@@ -152,7 +155,6 @@ Not attempted, in order of exposure, with what blocks each:
 |---|---|---|
 | toit_v2_allocate_instance/double/array/exception (interpreter_v2.cc) | `v2_allocate` takes a lambda: a rendering rule for closures (a struct of the captures and a function) | 2 days with the rule |
 | toit_v2_call_primitive, toit_v2_lookup_primitive | non-constant globals (`Flags::primitives`), the policy table | 2 days |
-| Object::mutable_byte_content (objects_runtime.cc) | heap mutation (the copy-on-write branch allocates and writes two fields) | in progress |
 | encode_copy, encode_byte_array, the TISON variant, external byte arrays | the byte_content model above | 3 days after it |
 | MessageDecoder | heap extension (objects allocated and initialized while decoding) in the model | 8-10 days |
 | ProgramOrientedEncoder (encode_error) | the object encoder's buffer and the program model | 5 days |
@@ -181,6 +183,17 @@ each becomes a mutant when its unit is done.
 * The pilot's hand copy of the encoder had the message tags off by one
   (`TAG_POSITIVE_SMI` is 1); the constant table, checked against the C++,
   has the real ones. Hand renderings do drift; generated ones cannot.
+* **byte_content / mutable_byte_content: no bug** in the decoding of
+  attacker-controlled slices and copy-on-write byte arrays (bounds, depth,
+  the external tag, the program heap; a source range stays valid when the
+  destination's copy-on-write replaces a backing in the same primitive).
+  One dead check: `if (content == null) return inner_success;` in the
+  slice branch of `mutable_byte_content` compares the out-parameter
+  (the address of a local of the wrapper, never null) instead of
+  `*content`; VeriFast proves it dead (run with `-allow_dead_code`). It
+  has no effect; were it live, it would return the whole backing instead
+  of the slice, still inside one writable byte array. Not changed (no
+  behaviour difference); a cleanup for upstream.
 * VeriFast 26.10's Rust front end does not support `>>` ("Todo:
   BinOp::Shr"): six external_body bodies of view.rs use it.
 
@@ -236,12 +249,15 @@ model is revised.
   applicable).
 * The bridges `stack` and `heap` (CONTRACTS.toml): that the predicates are
   what the allocator and GC establish (TRUSTED.md V2).
-* The contract-only functions: `Smi::value`, the Stack header and Task
-  accessors, `v2_gc`, the allocator, the buffer writers of the encoder,
-  `byte_content`/`mutable_byte_content`, `encode_copy`/`encode_byte_array`,
-  the program roots. Each is still compared with its source when it is a
-  `@render ... trusted`; the program roots, writers and allocator are plain
-  prototypes.
+* The contract-only functions: `Smi::value` and `ByteArray::raw_length`
+  (implementation-defined conversions), `Double::value`,
+  `LargeInteger::value`, `unsigned_cast`, the Stack header and Task
+  accessors, `v2_gc`, the allocator (`allocate_stack`,
+  `allocate_byte_array`), `Process::on_program_heap`/`true_object`, the
+  write barrier, `Error::from` and the error roots, the buffer writers of
+  the encoder, `encode_copy`/`encode_byte_array`, the program roots. Each
+  is still compared with its source when it is a `@render ... trusted`;
+  the others are plain prototypes.
 * Everything not attempted (table above).
 
 ## Files

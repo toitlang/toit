@@ -526,6 +526,7 @@ class Renderer:
   cls/string?         // The class of the function (`A_B` for a nested class A::B), or null.
   cxx-cls/string? := null  // Its C++ name (`A::B`).
   class-decl/Lambda? := null  // Qualified class name -> its declaration in the AST, or null.
+  decls-of/Lambda? := null  // Qualified name -> its declarations (in the class and out of line).
   ghosts/List
   uses/Map            // key -> ConstantUse, shared by the unit.
   signatures/Map      // C name -> parameter types, shared by all units.
@@ -773,6 +774,16 @@ class Renderer:
       fail "$(where node): implicit conversion $cast not supported"
     if kind == "CStyleCastExpr" or kind == "CXXStaticCastExpr" or kind == "CXXReinterpretCastExpr" or kind == "CXXFunctionalCastExpr" or kind == "CXXConstCastExpr":
       return Expr "($(c-type node["type"]["qualType"]))$(wrap (expr kids[0]) PREC-UNARY)" PREC-UNARY
+    if kind == "CXXDefaultArgExpr":
+      // A default argument: its value, written out. It is spelled in the
+      // callee's declaration (another file), so only literals, rendered
+      // from their values, are supported.
+      value := strip-parens kids[0]
+      while value["kind"] == "ImplicitCastExpr": value = strip-parens (inner value)[0]
+      if value["kind"] == "CXXBoolLiteralExpr": return Expr (value["value"] ? "true" : "false") PREC-PRIMARY
+      if value["kind"] == "IntegerLiteral": return Expr "$value["value"]" PREC-PRIMARY
+      if value["kind"] == "CXXNullPtrLiteralExpr": return Expr "0" PREC-PRIMARY
+      fail "$(where node): default argument $value["kind"] not supported"
     if kind == "IntegerLiteral" or kind == "CharacterLiteral" or kind == "FloatingLiteral":
       s := spelling node
       if s: return Expr s PREC-PRIMARY
@@ -818,6 +829,12 @@ class Renderer:
         class-name = c-type base["type"]["qualType"]
         base-text = "&$(wrap (expr base) PREC-UNARY)"
       types := arg-types args
+      // An overloaded member is named by its declared parameter types (as
+      // its definition is), not by the argument types, which differ between
+      // targets where a typedef is the type of a literal (word on ILP32).
+      if sidecar.overloaded.contains "$class-name::$member["name"]" and class-decl:
+        declared := declared-param-types class-name member
+        if declared: types = declared
       name := mangle-member class-name member["name"] types
       note-signature name (args.map: c-type (canonical it["type"])) node
       all := [base-text]
@@ -1091,6 +1108,18 @@ class Renderer:
     fields.do: | f | emit (indent + 1) "($target).$f = $source-text.$f;"
     emit indent "}"
 
+  // The C parameter types of the member a MemberExpr refers to, from its
+  // declaration in the class (null when not found).
+  declared-param-types class-name/string member/Map -> List?:
+    id := member.get "referencedMemberDecl"
+    if not id: return null
+    // The member in its class, or its out-of-line definition (a call can
+    // refer to either).
+    found := null
+    (decls-of.call "toit::$(class-name.replace --all "_" "::")::$member["name"]").do: | m/Map |
+      if m["id"] == id and m.contains "type": found = fn-param-types m["type"]["qualType"]
+    return found
+
   is-assign-call node/Map -> bool:
     if node["kind"] != "CXXOperatorCallExpr": return false
     callee := (inner node)[0]
@@ -1361,6 +1390,7 @@ class Unit:
     if not pending.is-empty: fail "$sidecar.path:$s.line: annotation after the end of $qname"
     renderer := Renderer sidecar constants source path cls ghosts uses cache.signatures (cache.owners tu target qname)
     renderer.cxx-cls = cxx-cls
+    renderer.decls-of = :: | q/string | cache.find tu target q
     renderer.class-decl = :: | q/string |
       found := (cache.find tu target q).filter: | d/Map | d["kind"] == "CXXRecordDecl" and not (inner d).is-empty
       found.is-empty ? null : found[0]

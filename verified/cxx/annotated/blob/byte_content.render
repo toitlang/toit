@@ -17,6 +17,7 @@
 // Self-test (run.sh): the depth limit of 1db9d6ea (#3373) taken out: the
 // recursive call's precondition fails.
 @include ../model/model.cfg
+@header byte_content.gen.h
 @verbatim
 #include "../model/objects.gen.h"
 
@@ -31,11 +32,11 @@
 @render src/objects.cc toit::Object::byte_content params=5
 bool Object::byte_content(Program* program, const uint8** content, word* length, BlobKind strings_only, int depth) const
 /*@ requires [_]program(program, ?ids) &*& prog_ok(ids) == true &*& [?f]heap(?objs, ?H) &*& good(objs, self) == true &*&
-             *content |-> ?c0 &*& *length |-> ?l0 &*&
+             pointer_((void **)content, ?oc0) &*& intptr_(length, ?ol0) &*&
              (strings_only == STRINGS_OR_BYTE_ARRAYS || strings_only == STRINGS_ONLY) &*&
              0 <= depth &*& depth <= Object_MAX_BYTE_CONTENT_DEPTH; @*/
-/*@ ensures [f]heap(objs, H) &*& *content |-> ?a &*& *length |-> ?l &*&
-            result ? blob_result(objs, H, strings_only, a, l, _) : true; @*/
+/*@ ensures [f]heap(objs, H) &*& result ? *content |-> ?a &*& *length |-> ?l &*& [_]blob_result(objs, H, strings_only, a, l, _) :
+            pointer_((void **)content, ?oc) &*& intptr_(length, ?ol) &*& (oc0 == none || oc != none) &*& (ol0 == none || ol != none); @*/
 {
   if (is_string(this)) {
     //@ good_heap(objs, self);
@@ -44,6 +45,7 @@ bool Object::byte_content(Program* program, const uint8** content, word* length,
     *content = bytes.address();
     //@ blob_facts(self);
     //@ close blob_result(objs, H, strings_only, blob_base(H, self), blob_len(H, self), self);
+    //@ leak blob_result(objs, H, strings_only, blob_base(H, self), blob_len(H, self), self);
     return true;
   }
   if (strings_only == STRINGS_OR_BYTE_ARRAYS && is_byte_array(this)) {
@@ -57,6 +59,7 @@ bool Object::byte_content(Program* program, const uint8** content, word* length,
     *content = bytes.address();
     //@ blob_facts(self);
     //@ close blob_result(objs, H, strings_only, blob_base(H, self), blob_len(H, self), self);
+    //@ leak blob_result(objs, H, strings_only, blob_base(H, self), blob_len(H, self), self);
     return true;
   }
   if (is_instance(this)) {
@@ -87,14 +90,14 @@ bool Object::byte_content(Program* program, const uint8** content, word* length,
       bool inner_success = wrapped->byte_content(program, content, length, strings_only, depth + 1);
       if (!inner_success) return false;
       if (0 <= from_value && from_value <= to_value && to_value <= *length) {
-        //@ open blob_result(objs, H, strings_only, ?a1, ?l1, ?b);
+        //@ open [_]blob_result(objs, H, strings_only, ?a1, ?l1, ?b);
         //@ blob_facts(b);
         *content += from_value;
         *length = to_value - from_value;
         //@ close blob_result(objs, H, strings_only, a1 + from_value, to_value - from_value, b);
+        //@ leak blob_result(objs, H, strings_only, a1 + from_value, to_value - from_value, b);
         return true;
       }
-      //@ leak blob_result(_, _, _, _, _, _);
       return false;
     }
   }
@@ -104,10 +107,10 @@ bool Object::byte_content(Program* program, const uint8** content, word* length,
 @render src/objects.cc toit::Object::byte_content params=4
 bool Object::byte_content(Program* program, const uint8** content, word* length, BlobKind strings_only) const
 /*@ requires [_]program(program, ?ids) &*& prog_ok(ids) == true &*& [?f]heap(?objs, ?H) &*& good(objs, self) == true &*&
-             *content |-> ?c0 &*& *length |-> ?l0 &*&
+             pointer_((void **)content, ?oc0) &*& intptr_(length, ?ol0) &*&
              (strings_only == STRINGS_OR_BYTE_ARRAYS || strings_only == STRINGS_ONLY); @*/
-/*@ ensures [f]heap(objs, H) &*& *content |-> ?a &*& *length |-> ?l &*&
-            result ? blob_result(objs, H, strings_only, a, l, _) : true; @*/
+/*@ ensures [f]heap(objs, H) &*& result ? *content |-> ?a &*& *length |-> ?l &*& [_]blob_result(objs, H, strings_only, a, l, _) :
+            pointer_((void **)content, ?oc) &*& intptr_(length, ?ol) &*& (oc0 == none || oc != none) &*& (ol0 == none || ol != none); @*/
 {
   return byte_content(program, content, length, strings_only, 0);
 }
@@ -115,10 +118,10 @@ bool Object::byte_content(Program* program, const uint8** content, word* length,
 @render src/objects.cc toit::Object::byte_content type=bool(Program*,Blob*,BlobKind)const
 bool Object::byte_content(Program* program, Blob* blob, BlobKind strings_only) const
 /*@ requires [_]program(program, ?ids) &*& prog_ok(ids) == true &*& [?f]heap(?objs, ?H) &*& good(objs, self) == true &*&
-             blob->address_ |-> ?b0 &*& blob->length_ |-> ?bl0 &*&
+             blob->address_ |-> _ &*& blob->length_ |-> _ &*&
              (strings_only == STRINGS_OR_BYTE_ARRAYS || strings_only == STRINGS_ONLY); @*/
 /*@ ensures [f]heap(objs, H) &*& blob->address_ |-> ?a &*& blob->length_ |-> ?l &*&
-            result ? blob_result(objs, H, strings_only, a, l, _) : true; @*/
+            result ? [_]blob_result(objs, H, strings_only, a, l, _) : true; @*/
 {
   const uint8* content = null;
   word length = 0;

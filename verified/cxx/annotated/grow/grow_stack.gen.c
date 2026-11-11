@@ -27,8 +27,6 @@
 #include "../model/objects.gen.h"
 //@ #include "../model/arith.gh"
 
-struct Process;
-typedef struct Process Process;
 struct ObjectHeap;
 typedef struct ObjectHeap ObjectHeap;
 typedef struct Object Stack;
@@ -125,7 +123,7 @@ void ObjectHeap_leave_primitive(ObjectHeap *self);
 //@ requires true;
 //@ ensures true;
 // The write barrier (src/third_party/dartino/gc_metadata.h, a template).
-void GcMetadata_insert_into_remembered_set(Stack *address);
+void GcMetadata_insert_into_remembered_set__Stackp(Stack *address);
 //@ requires true;
 //@ ensures true;
 // Utils::max, Utils::min (src/utils.h, templates; the instance for word).
@@ -270,7 +268,7 @@ void Stack_v2_copy_to(Stack *self, Stack *other)
   //@ uchars_join(sa);
   Stack__set_top(other, displacement + Stack_top(self));
   Stack_v2_set_records(other, Stack_v2_frame_top(self), Stack_v2_fin_count(self), Stack_v2_bci(self));
-  GcMetadata_insert_into_remembered_set(other);
+  GcMetadata_insert_into_remembered_set__Stackp(other);
   //@ append_assoc(o1, o2, o3);
   //@ take_append_bytes(o1, o2, o3, records * W);
   //@ take_take_le(records * W, top * W, bs);
@@ -293,7 +291,7 @@ uword toit_v2_grow_stack(void *raw_process, uword needed)
     return TOIT_V2_STACK_OVERFLOW;
   }
   Stack *stack = Task_stack(Process_task(process));
-  GcMetadata_insert_into_remembered_set(stack);
+  GcMetadata_insert_into_remembered_set__Stackp(stack);
   //@ open stack(s, len, top, rtop, ft, fin, bci, bs);
   word length = Stack_length(stack);
   word free = Stack_top(stack) - Stack_v2_record_top(stack);

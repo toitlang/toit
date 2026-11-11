@@ -2,54 +2,7 @@
 // The C++ functions are rendered from their current sources, the
 // annotations come from the sidecar: verified/cxx/annotated/README.md.
 
-// Copyright (C) 2026 Toit contributors.
-//
-// Object::byte_content of src/objects.cc: the decoding of a blob argument
-// (a string, a byte array, a copy-on-write byte array, a byte-array slice,
-// a string slice) into a pointer and a length, for nearly every primitive
-// that takes bytes (the Blob argument of the ARGS macros).
-//
-// Property: for any heap of the object model (instance fields arbitrary:
-// a program can store anything in a slice's backing, from and to), a
-// successful result is a range inside the content of ONE live string or
-// byte array of the heap (`blob_result`: internal content, or the external
-// bytes of a string or of a byte array tagged RawByteTag; never a proxy's
-// struct), and a string when STRINGS_ONLY is asked for. The recursion is
-// bounded: every recursive call is at depth + 1 <= MAX_BYTE_CONTENT_DEPTH.
-// The heap is only read (a fraction, given back unchanged).
-//
-// Self-test (run.sh): the depth limit of 1db9d6ea (#3373) taken out: the
-// recursive call's precondition fails.
-#include "../model/objects.gen.h"
-// C++: src/objects.h toit::Blob::Blob
-void Blob_ctor__uint8p_word(Blob *self, uint8 *address, word length);
-//@ requires self->address_ |-> _ &*& self->length_ |-> _;
-//@ ensures self->address_ |-> address &*& self->length_ |-> length;
-
-// C++: src/objects.cc toit::Object::byte_content
-bool Object_byte_content__Programp_uint8pp_wordp_BlobKind_int(Object *self, Program *program, uint8 **content, word *length, BlobKind strings_only, int depth);
-/*@ requires [_]program(program, ?ids) &*& prog_ok(ids) == true &*& [?f]heap(?objs, ?H) &*& good(objs, self) == true &*&
-             *content |-> ?c0 &*& *length |-> ?l0 &*&
-             (strings_only == STRINGS_OR_BYTE_ARRAYS || strings_only == STRINGS_ONLY) &*&
-             0 <= depth &*& depth <= Object_MAX_BYTE_CONTENT_DEPTH; @*/
-/*@ ensures [f]heap(objs, H) &*& *content |-> ?a &*& *length |-> ?l &*&
-            result ? blob_result(objs, H, strings_only, a, l, _) : true; @*/
-
-// C++: src/objects.cc toit::Object::byte_content
-bool Object_byte_content__Programp_uint8pp_wordp_BlobKind(Object *self, Program *program, uint8 **content, word *length, BlobKind strings_only);
-/*@ requires [_]program(program, ?ids) &*& prog_ok(ids) == true &*& [?f]heap(?objs, ?H) &*& good(objs, self) == true &*&
-             *content |-> ?c0 &*& *length |-> ?l0 &*&
-             (strings_only == STRINGS_OR_BYTE_ARRAYS || strings_only == STRINGS_ONLY); @*/
-/*@ ensures [f]heap(objs, H) &*& *content |-> ?a &*& *length |-> ?l &*&
-            result ? blob_result(objs, H, strings_only, a, l, _) : true; @*/
-
-// C++: src/objects.cc toit::Object::byte_content
-bool Object_byte_content__Programp_Blobp_BlobKind(Object *self, Program *program, Blob *blob, BlobKind strings_only);
-/*@ requires [_]program(program, ?ids) &*& prog_ok(ids) == true &*& [?f]heap(?objs, ?H) &*& good(objs, self) == true &*&
-             blob->address_ |-> ?b0 &*& blob->length_ |-> ?bl0 &*&
-             (strings_only == STRINGS_OR_BYTE_ARRAYS || strings_only == STRINGS_ONLY); @*/
-/*@ ensures [f]heap(objs, H) &*& blob->address_ |-> ?a &*& blob->length_ |-> ?l &*&
-            result ? blob_result(objs, H, strings_only, a, l, _) : true; @*/
+#include "byte_content.gen.h"
 
 // C++: src/objects.h toit::Blob::Blob
 void Blob_ctor__uint8p_word(Blob *self, uint8 *address, word length)
@@ -63,11 +16,11 @@ void Blob_ctor__uint8p_word(Blob *self, uint8 *address, word length)
 // C++: src/objects.cc toit::Object::byte_content
 bool Object_byte_content__Programp_uint8pp_wordp_BlobKind_int(Object *self, Program *program, uint8 **content, word *length, BlobKind strings_only, int depth)
 /*@ requires [_]program(program, ?ids) &*& prog_ok(ids) == true &*& [?f]heap(?objs, ?H) &*& good(objs, self) == true &*&
-             *content |-> ?c0 &*& *length |-> ?l0 &*&
+             pointer_((void **)content, ?oc0) &*& intptr_(length, ?ol0) &*&
              (strings_only == STRINGS_OR_BYTE_ARRAYS || strings_only == STRINGS_ONLY) &*&
              0 <= depth &*& depth <= Object_MAX_BYTE_CONTENT_DEPTH; @*/
-/*@ ensures [f]heap(objs, H) &*& *content |-> ?a &*& *length |-> ?l &*&
-            result ? blob_result(objs, H, strings_only, a, l, _) : true; @*/
+/*@ ensures [f]heap(objs, H) &*& result ? *content |-> ?a &*& *length |-> ?l &*& [_]blob_result(objs, H, strings_only, a, l, _) :
+            pointer_((void **)content, ?oc) &*& intptr_(length, ?ol) &*& (oc0 == none || oc != none) &*& (ol0 == none || ol != none); @*/
 {
   if (is_string(self)) {
     String_Bytes bytes;
@@ -77,6 +30,7 @@ bool Object_byte_content__Programp_uint8pp_wordp_BlobKind_int(Object *self, Prog
     *content = String_Bytes_address(&bytes);
     //@ blob_facts(self);
     //@ close blob_result(objs, H, strings_only, blob_base(H, self), blob_len(H, self), self);
+    //@ leak blob_result(objs, H, strings_only, blob_base(H, self), blob_len(H, self), self);
     return true;
   }
   if ((int)strings_only == (int)STRINGS_OR_BYTE_ARRAYS && is_byte_array(self)) {
@@ -91,6 +45,7 @@ bool Object_byte_content__Programp_uint8pp_wordp_BlobKind_int(Object *self, Prog
     *content = ByteArray_ConstBytes_address(&bytes);
     //@ blob_facts(self);
     //@ close blob_result(objs, H, strings_only, blob_base(H, self), blob_len(H, self), self);
+    //@ leak blob_result(objs, H, strings_only, blob_base(H, self), blob_len(H, self), self);
     return true;
   }
   if (is_instance(self)) {
@@ -128,14 +83,14 @@ bool Object_byte_content__Programp_uint8pp_wordp_BlobKind_int(Object *self, Prog
         return false;
       }
       if (0 <= from_value && from_value <= to_value && to_value <= *length) {
-        //@ open blob_result(objs, H, strings_only, ?a1, ?l1, ?b);
+        //@ open [_]blob_result(objs, H, strings_only, ?a1, ?l1, ?b);
         //@ blob_facts(b);
         *content += from_value;
         *length = to_value - from_value;
         //@ close blob_result(objs, H, strings_only, a1 + from_value, to_value - from_value, b);
+        //@ leak blob_result(objs, H, strings_only, a1 + from_value, to_value - from_value, b);
         return true;
       }
-      //@ leak blob_result(_, _, _, _, _, _);
       return false;
     }
   }
@@ -145,10 +100,10 @@ bool Object_byte_content__Programp_uint8pp_wordp_BlobKind_int(Object *self, Prog
 // C++: src/objects.cc toit::Object::byte_content
 bool Object_byte_content__Programp_uint8pp_wordp_BlobKind(Object *self, Program *program, uint8 **content, word *length, BlobKind strings_only)
 /*@ requires [_]program(program, ?ids) &*& prog_ok(ids) == true &*& [?f]heap(?objs, ?H) &*& good(objs, self) == true &*&
-             *content |-> ?c0 &*& *length |-> ?l0 &*&
+             pointer_((void **)content, ?oc0) &*& intptr_(length, ?ol0) &*&
              (strings_only == STRINGS_OR_BYTE_ARRAYS || strings_only == STRINGS_ONLY); @*/
-/*@ ensures [f]heap(objs, H) &*& *content |-> ?a &*& *length |-> ?l &*&
-            result ? blob_result(objs, H, strings_only, a, l, _) : true; @*/
+/*@ ensures [f]heap(objs, H) &*& result ? *content |-> ?a &*& *length |-> ?l &*& [_]blob_result(objs, H, strings_only, a, l, _) :
+            pointer_((void **)content, ?oc) &*& intptr_(length, ?ol) &*& (oc0 == none || oc != none) &*& (ol0 == none || ol != none); @*/
 {
   return Object_byte_content__Programp_uint8pp_wordp_BlobKind_int(self, program, content, length, strings_only, 0);
 }
@@ -156,10 +111,10 @@ bool Object_byte_content__Programp_uint8pp_wordp_BlobKind(Object *self, Program 
 // C++: src/objects.cc toit::Object::byte_content
 bool Object_byte_content__Programp_Blobp_BlobKind(Object *self, Program *program, Blob *blob, BlobKind strings_only)
 /*@ requires [_]program(program, ?ids) &*& prog_ok(ids) == true &*& [?f]heap(?objs, ?H) &*& good(objs, self) == true &*&
-             blob->address_ |-> ?b0 &*& blob->length_ |-> ?bl0 &*&
+             blob->address_ |-> _ &*& blob->length_ |-> _ &*&
              (strings_only == STRINGS_OR_BYTE_ARRAYS || strings_only == STRINGS_ONLY); @*/
 /*@ ensures [f]heap(objs, H) &*& blob->address_ |-> ?a &*& blob->length_ |-> ?l &*&
-            result ? blob_result(objs, H, strings_only, a, l, _) : true; @*/
+            result ? [_]blob_result(objs, H, strings_only, a, l, _) : true; @*/
 {
   uint8 *content;
   word length;

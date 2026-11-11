@@ -163,17 +163,34 @@ mutant grow-stack-word-range grow/grow_stack.render src/interpreter_v2.cc "overf
   "  if (needed > static_cast<uword>(Stack::max_length())) return TOIT_V2_STACK_OVERFLOW;\n" "" \
   "stack_ok(len, top, rtop, bs) == true; @*/\n/*@ ensures current_stack" "stack_ok(len, top, rtop, bs) == true &*& needed <= UINTPTR_MAX / 2; @*/\n/*@ ensures current_stack"
 
-entry string-write          pass "" prims/string_write.gen.c
+entry string-write          pass "" prims/string_write.gen.c -prover z3v4.5
 # af4ba7ab (memcpy for a copy within one byte array) reverted: no proof...
-mutant string-write-af4ba7ab prims/string_write.render src/primitive_core.cc "No matching heap chunks: uchars_" "" \
+mutant string-write-af4ba7ab prims/string_write.render src/primitive_core.cc "No matching heap chunks: uchars_" "-prover z3v4.5" \
   "  memmove(&dest.address()[dest_index]" "  memcpy(&dest.address()[dest_index]"
-# ... and with the two ranges assumed to be in different regions (separate
-# chunks for memcpy), the same memcpy verifies: the failure is the overlap.
-mutant string-write-af4ba7ab-disjoint prims/string_write.render src/primitive_core.cc PASS "-allow_assume -allow_dead_code" \
+# ... and with the two ranges assumed to be in different byte arrays
+# (separate chunks for memcpy), the same memcpy verifies: the failure is
+# the overlap.
+mutant string-write-af4ba7ab-disjoint prims/string_write.render src/primitive_core.cc PASS "-allow_assume -allow_dead_code -prover z3v4.5" \
   "  memmove(&dest.address()[dest_index]" "  memcpy(&dest.address()[dest_index]" \
-  "  //@ regions_take(rs2, r_dst);" "  //@ assume(r_src != r_dst);\n  //@ regions_take(rs2, r_dst);" \
+  "  //@ if (bs != bd) blob_take(bs);" "  //@ assume(bs != bd);\n  //@ blob_take(bs);" \
   "    close mm_pre(mm_two, d, s, to - from);\n" "" \
-  "    open mm_post(_, _, _, _);\n    uint8 *sb = r_base(r_src);" "    uint8 *sb = r_base(r_src);"
+  "    open mm_post(_, _, _, _);\n    uchars_join(s);" "    uchars_join(s);"
+
+# The MutableBlob decoding. `-allow_dead_code`: the check `content == null`
+# (README, "Findings") is dead, VeriFast proves it.
+entry mutable-byte-content  pass "" blob/mutable_byte_content.gen.c -allow_dead_code -prover z3v4.5
+# 357d1127 reverted in mutable_byte_content: the recursive call fails.
+mutant mutable-byte-content-357d1127 blob/mutable_byte_content.render src/objects_runtime.cc "depth" "-allow_dead_code -prover z3v4.5" \
+  "  if (depth >= MAX_BYTE_CONTENT_DEPTH) return false;\n" ""
+# Without the program-heap check a read-only object is written.
+mutant mutable-byte-content-program-heap blob/mutable_byte_content.render src/objects_runtime.cc "in_program_heap|mutable_result" "-allow_dead_code -prover z3v4.5" \
+  "  if (is_heap_object(this) && HeapObject::cast(this)->on_program_heap(process)) {" "  if (false) {"
+# Without the external tag check a proxy's struct is handed out as bytes
+# (both decoders).
+mutant mutable-byte-content-external-tag blob/mutable_byte_content.render src/objects_runtime.cc "blob_ok|mutable_result|external_bytes|uchars" "-allow_dead_code -prover z3v4.5" \
+  "    if (byte_array->has_external_address() && byte_array->external_tag() != RawByteTag) return false;\n    ByteArray::Bytes bytes" "    ByteArray::Bytes bytes"
+mutant byte-content-external-tag blob/byte_content.render src/objects.cc "blob_ok|blob_result|external_bytes|uchars" "" \
+  "    if (byte_array->has_external_address() && byte_array->external_tag() != RawByteTag) return false;\n    ByteArray::ConstBytes bytes" "    ByteArray::ConstBytes bytes"
 
 # 5. The Rust side (VeriFast's Rust front end, host target only).
 

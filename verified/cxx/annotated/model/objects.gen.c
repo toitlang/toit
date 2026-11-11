@@ -169,6 +169,171 @@ lemma void blob_facts(void *b)
   }
 }
 
+lemma void heap_holes_open()
+  requires [?f]heap(?objs, ?H);
+  ensures [f]heap_holes(objs, H, nil);
+{
+  open [f]heap(objs, H);
+  close [f]heap_holes(objs, H, nil);
+}
+
+lemma void heap_holes_close()
+  requires [?f]heap_holes(?objs, ?H, nil);
+  ensures [f]heap(objs, H);
+{
+  open [f]heap_holes(objs, H, nil);
+  close [f]heap(objs, H);
+}
+
+lemma void blob_take(void *b)
+  requires [?f]heap_holes(?objs, ?H, ?hs) &*& mem(b, objs) == true &*& mem(b, hs) == false &*&
+           blob_ok(H, b, STRINGS_OR_BYTE_ARRAYS) == true;
+  ensures [f]heap_holes(objs, H, cons(b, hs)) &*& [f]blob_hole(objs, H, b) &*&
+          [f]uchars(blob_base(H, b), blob_len(H, b), _);
+{
+  open [f]heap_holes(objs, H, hs);
+  mem_remove_all(b, hs, objs);
+  foreach_remove_frac(b, remove_all(hs, objs));
+  open [f]heap_obj(objs, H)(b);
+  open [f]body(b, _, _, _, _);
+  if (has_tag(H, b, BYTE_ARRAY_TAG)) {
+    open [f]byte_array_body(b, _, _);
+    if (o_len(H(b)) < 0) open [f]external_bytes(_, _);
+  } else {
+    open [f]string_body(b, _, _);
+    if (is_external(H, b)) open [f]external_bytes(_, _);
+  }
+  close [f]blob_shell(b, header_tag2(o_hw(H(b))), o_len(H(b)), o_aux(H(b)));
+  close [f]blob_hole(objs, H, b);
+  close [f]heap_holes(objs, H, cons(b, hs));
+}
+
+lemma void blob_give(void *b)
+  requires [?f]heap_holes(?objs, ?H, cons(b, ?hs)) &*& mem(b, hs) == false &*& [f]blob_hole(objs, H, b) &*&
+           [f]uchars(blob_base(H, b), blob_len(H, b), _);
+  ensures [f]heap_holes(objs, H, hs);
+{
+  open [f]heap_holes(objs, H, cons(b, hs));
+  open [f]blob_hole(objs, H, b);
+  open [f]blob_shell(b, _, _, _);
+  if (has_tag(H, b, BYTE_ARRAY_TAG)) {
+    if (o_len(H(b)) < 0) close [f]external_bytes(head(o_aux(H(b))), -1 - o_len(H(b)));
+    close [f]byte_array_body(b, o_len(H(b)), o_aux(H(b)));
+  } else {
+    if (is_external(H, b)) close [f]external_bytes(nth(1, o_aux(H(b))), o_len(H(b)));
+    close [f]string_body(b, o_len(H(b)), o_aux(H(b)));
+  }
+  close [f]body(b, header_tag2(o_hw(H(b))), o_len(H(b)), o_aux(H(b)), nil);
+  close [f]heap_obj(objs, H)(b);
+  mem_remove_all(b, hs, objs);
+  foreach_unremove_frac(b, remove_all(hs, objs));
+  close [f]heap_holes(objs, H, hs);
+}
+
+lemma void forall_kept_refl(list<void *> xs, fixpoint(void *, oinfo) H)
+  requires true;
+  ensures forall(xs, (kept)(H, H)) == true;
+{
+  switch (xs) { case nil: case cons(x, xs0): forall_kept_refl(xs0, H); }
+}
+
+lemma void grows_refl(list<void *> objs, fixpoint(void *, oinfo) H)
+  requires true;
+  ensures grows(objs, H, objs, H) == true;
+{
+  forall_kept_refl(objs, H);
+}
+
+lemma void forall_kept_trans(list<void *> xs, fixpoint(void *, oinfo) H, list<void *> objs2, fixpoint(void *, oinfo) H2, fixpoint(void *, oinfo) H3)
+  requires forall(xs, (kept)(H, H2)) == true &*& subset(xs, objs2) == true &*& forall(objs2, (kept)(H2, H3)) == true;
+  ensures forall(xs, (kept)(H, H3)) == true;
+{
+  switch (xs) {
+    case nil:
+    case cons(x, xs0):
+      forall_mem(x, objs2, (kept)(H2, H3));
+      forall_kept_trans(xs0, H, objs2, H2, H3);
+  }
+}
+
+lemma void grows_trans(list<void *> objs, fixpoint(void *, oinfo) H, list<void *> objs2, fixpoint(void *, oinfo) H2, list<void *> objs3, fixpoint(void *, oinfo) H3)
+  requires grows(objs, H, objs2, H2) == true &*& grows(objs2, H2, objs3, H3) == true;
+  ensures grows(objs, H, objs3, H3) == true;
+{
+  subset_trans(objs, objs2, objs3);
+  forall_kept_trans(objs, H, objs2, H2, H3);
+}
+
+lemma void forall_kept_put(list<void *> xs, fixpoint(void *, oinfo) H, void *o, int index, void *v)
+  requires true;
+  ensures forall(xs, (kept)(H, put_field(H, o, index, v))) == true;
+{
+  switch (xs) { case nil: case cons(x, xs0): forall_kept_put(xs0, H, o, index, v); }
+}
+
+lemma void grows_put_field(list<void *> objs, fixpoint(void *, oinfo) H, void *o, int index, void *v)
+  requires true;
+  ensures grows(objs, H, objs, put_field(H, o, index, v)) == true;
+{
+  forall_kept_put(objs, H, o, index, v);
+}
+
+lemma void forall_same_kept(list<void *> xs, fixpoint(void *, oinfo) H, fixpoint(void *, oinfo) H2)
+  requires forall(xs, (same_obj)(H, H2)) == true;
+  ensures forall(xs, (kept)(H, H2)) == true;
+{
+  switch (xs) { case nil: case cons(x, xs0): forall_same_kept(xs0, H, H2); }
+}
+
+lemma void grows_alloc(list<void *> objs, fixpoint(void *, oinfo) H, void *r, fixpoint(void *, oinfo) H2)
+  requires forall(objs, (same_obj)(H, H2)) == true;
+  ensures grows(objs, H, cons(r, objs), H2) == true;
+{
+  forall_same_kept(objs, H, H2);
+  subset_cons(r, objs);
+}
+
+lemma void blob_result_grows(list<void *> objs, fixpoint(void *, oinfo) H, list<void *> objs2, fixpoint(void *, oinfo) H2, int kind, uint8 *a, int l, void *b)
+  requires [_]blob_result(objs, H, kind, a, l, b) &*& grows(objs, H, objs2, H2) == true;
+  ensures [_]blob_result(objs2, H2, kind, a, l, b);
+{
+  open [_]blob_result(objs, H, kind, a, l, b);
+  forall_mem(b, objs, (kept)(H, H2));
+  mem_subset(b, objs, objs2);
+  close blob_result(objs2, H2, kind, a, l, b); leak blob_result(objs2, H2, kind, a, l, b);
+}
+
+lemma void same_obj_kept(list<void *> objs, fixpoint(void *, oinfo) H, fixpoint(void *, oinfo) H2, void *o)
+  requires forall(objs, (same_obj)(H, H2)) == true &*& mem(o, objs) == true;
+  ensures H2(o) == H(o);
+{
+  forall_mem(o, objs, (same_obj)(H, H2));
+}
+
+// The other objects after a field write: unchanged.
+lemma void heap_rest_put(list<void *> xs, list<void *> objs, fixpoint(void *, oinfo) H, void *o, int index, void *v)
+  requires foreach(xs, heap_obj(objs, H)) &*& mem(o, xs) == false;
+  ensures foreach(xs, heap_obj(objs, put_field(H, o, index, v)));
+{
+  open foreach(xs, _);
+  switch (xs) {
+    case nil:
+      close foreach(nil, heap_obj(objs, put_field(H, o, index, v)));
+    case cons(x, xs0):
+      open heap_obj(objs, H)(x);
+      close heap_obj(objs, put_field(H, o, index, v))(x);
+      heap_rest_put(xs0, objs, H, o, index, v);
+      close foreach(xs, heap_obj(objs, put_field(H, o, index, v)));
+  }
+}
+
+lemma void forall_good_update(list<void *> ws, list<void *> objs, int i, void *v)
+  requires forall(ws, (good)(objs)) == true &*& good(objs, v) == true;
+  ensures forall(update(i, v, ws), (good)(objs)) == true;
+{
+  switch (ws) { case nil: case cons(w, ws0): if (i != 0) forall_good_update(ws0, objs, i - 1, v); }
+}
+
 lemma void update_take_drop<t>(list<t> ps, int i, t v)
   requires 0 <= i &*& i < length(ps);
   ensures append(take(i, ps), cons(v, drop(i + 1, ps))) == update(i, v, ps);
@@ -811,5 +976,49 @@ word ByteArray_Bytes_length(ByteArray_Bytes *self)
 //@ ensures [f]self->length_ |-> l &*& result == l;
 {
   return self->length_;
+}
+
+// C++: src/objects.h toit::HeapObject::_at_put
+void HeapObject__at_put(HeapObject *self, word offset, Object *value)
+//@ requires 1 <= (uword)self &*& 0 <= offset &*& offset % WORD_SIZE == 0 &*& pointer((void **)raw(self) + offset / WORD_SIZE, _);
+//@ ensures pointer((void **)raw(self) + offset / WORD_SIZE, value);
+{
+  ((Object **)HeapObject__raw_at__(self))[offset / (word)WORD_SIZE] = value;
+}
+
+// C++: src/objects_inline.h toit::Instance::at_put
+void Instance_at_put__word_Objectp(Instance *self, word index, Object *value)
+/*@ requires heap(?objs, ?H) &*& mem(self, objs) == true &*& has_tag(H, self, INSTANCE_TAG) == true &*&
+             0 <= index &*& index < o_len(H(self)) &*& good(objs, value) == true; @*/
+//@ ensures heap(objs, put_field(H, self, index, value)) &*& grows(objs, H, objs, put_field(H, self, index, value)) == true;
+{
+  GcMetadata_insert_into_remembered_set__Instancep(self);
+  //@ heap_open(self);
+  //@ open body(self, _, _, _, _);
+  //@ open instance_body(self, _, _);
+  //@ pointers_focus((void **)raw(self) + 1, index);
+  //@ div_rem_nonneg_unique(Instance_HEADER_SIZE + index * WORD_SIZE, WORD_SIZE, 1 + index, 0);
+  HeapObject__at_put(self, Instance__offset_from((uword)index), value);
+  //@ pointers_unfocus((void **)raw(self) + 1, index, o_words(H(self)));
+  //@ fixpoint(void *, oinfo) H2 = put_field(H, self, index, value);
+  //@ close instance_body(self, o_len(H(self)), update(index, value, o_words(H(self))));
+  //@ close body(self, 2 * INSTANCE_TAG, o_len(H2(self)), o_aux(H2(self)), o_words(H2(self)));
+  //@ open heap_rest(objs, H, self);
+  //@ distinct_mem_remove(self, objs);
+  //@ heap_rest_put(remove(self, objs), objs, H, self, index, value);
+  //@ close heap_rest(objs, H2, self);
+  //@ open header(self, _);
+  //@ close header(self, o_hw(H2(self)));
+  //@ forall_good_update(o_words(H(self)), objs, index, value);
+  //@ grows_put_field(objs, H, self, index, value);
+  //@ heap_close(self);
+}
+
+// C++: src/objects_inline.h toit::HeapObject::on_program_heap
+bool HeapObject_on_program_heap(HeapObject *self, Process *process)
+//@ requires [?f]process(process, ?prog, ?ids);
+//@ ensures [f]process(process, prog, ids) &*& result == in_program_heap(process, self);
+{
+  return Process_on_program_heap(process, self);
 }
 

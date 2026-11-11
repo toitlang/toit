@@ -5,6 +5,7 @@
 // `render.sh --check` reports.
 @constants rules_constants.h
 @expand-typedef uhalf_word
+@overloaded Over::f
 @verbatim
 #include <stdint.h>
 #include "rules_constants.h"
@@ -13,6 +14,8 @@ struct Outer_Inner { word v_; };
 typedef struct Outer_Inner Outer_Inner;
 struct Pair { word a_; word b_; };
 typedef struct Pair Pair;
+struct Over { char unused_; };
+typedef struct Over Over;
 
 @prototypes
 @render verified/cxx/annotated/tests/rules.cc toit::Outer::Inner::Inner
@@ -56,4 +59,36 @@ inline word use_inner(word x)
 {
   Outer::Inner inner(x);
   return inner.v();
+}
+
+@render verified/cxx/annotated/tests/rules.cc toit::with_default
+inline word with_default(word x, bool flag = false)
+//@ requires x < 100;
+//@ ensures result == (flag ? x : x + 1);
+{
+  return flag ? x : x + 1;
+}
+
+@render verified/cxx/annotated/tests/rules.cc toit::call_default
+inline word call_default(word x)
+//@ requires x < 100;
+//@ ensures result == x + 1;
+{
+  return with_default(x);
+}
+
+@render verified/cxx/annotated/tests/rules.cc toit::Over::f type=word(word)
+inline word Over::f(word x)
+//@ requires true;
+//@ ensures result == x;
+{
+  return x;
+}
+
+@render verified/cxx/annotated/tests/rules.cc toit::call_over
+inline word call_over(Over* o)
+//@ requires true;
+//@ ensures result == 1;
+{
+  return o->f(1);
 }

@@ -43,6 +43,32 @@ inline uhalf_word low_half(uhalf_word h) {
   return h;
 }
 
+// Rule: a default argument is written out (literals only).
+inline word with_default(word x, bool flag = false) {
+  return flag ? x : x + 1;
+}
+
+inline word call_default(word x) {
+  return with_default(x);
+}
+
+// Rule: an overloaded member is named by its declared parameter types,
+// also at a call that refers to its out-of-line definition.
+class Over {
+ public:
+  word f(word x);
+  word f(Pair* p) { return p->a_; }
+  char unused_;
+};
+
+inline word Over::f(word x) {
+  return x;
+}
+
+inline word call_over(Over* o) {
+  return o->f(1);
+}
+
 inline word use_inner(word x) {
   Outer::Inner inner(x);
   return inner.v();

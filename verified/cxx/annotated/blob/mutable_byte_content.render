@@ -1,0 +1,180 @@
+// Copyright (C) 2026 Toit contributors.
+//
+// Object::mutable_byte_content of src/objects_runtime.cc: the decoding of a
+// MutableBlob argument (a byte array, a copy-on-write byte array, a
+// byte-array slice) into a writable pointer and length.
+//
+// Property: for any heap of the object model, a successful result is a
+// range inside the content of ONE live byte array of the (possibly grown)
+// heap that is not in the program heap (`mutable_result`: internal content
+// or raw external bytes; never a proxy's struct, never a string). The heap
+// only grows (`grows`: objects are added, every object keeps its class and
+// length): the copy-on-write branch allocates a byte array, copies the
+// immutable content into it and stores it and `true` into the instance.
+// The recursion is bounded (depth + 1 <= MAX_BYTE_CONTENT_DEPTH; the
+// final call of the copy-on-write branch is on the new byte array, which
+// does not recurse).
+//
+// Self-tests (run.sh): the depth limit of 357d1127 taken out; the program
+// heap check taken out (a read-only object would be written).
+@include ../model/model.cfg
+@header mutable_byte_content.gen.h
+@verbatim
+#include "../model/objects.gen.h"
+#include "byte_content.gen.h"
+
+// From VeriFast's bin/string.h (there: chars; uchars here).
+typedef unsigned long size_t;
+void *memcpy(void *array, void *array0, size_t count);
+//@ requires uchars_(array, count, _) &*& [?f]uchars(array0, count, ?cs0);
+//@ ensures uchars(array, count, cs0) &*& [f]uchars(array0, count, cs0) &*& result == array;
+
+@prototypes
+@render src/objects.h toit::MutableBlob::MutableBlob tu=src/objects_runtime.cc params=2
+  MutableBlob(uint8* address, word length)
+      : address_(address), length_(length)
+  //@ requires self->address_ |-> _ &*& self->length_ |-> _;
+  //@ ensures self->address_ |-> address &*& self->length_ |-> length;
+  {}
+
+@render src/objects_runtime.cc toit::Object::mutable_byte_content params=5
+bool Object::mutable_byte_content(Process* process, uint8** content, word* length, Error** error, int depth)
+/*@ requires [?fp]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*& good(objs, self) == true &*&
+             pointer_((void **)content, ?oc0) &*& intptr_(length, ?ol0) &*& pointer_((void **)error, _) &*&
+             0 <= depth &*& depth <= Object_MAX_BYTE_CONTENT_DEPTH; @*/
+/*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+            pointer((void **)error, _) &*&
+            result ? *content |-> ?a &*& *length |-> ?l &*& [_]mutable_result(objs2, H2, process, a, l, _) :
+              pointer_((void **)content, ?oc) &*& intptr_(length, ?ol) &*& (oc0 == none || oc != none) &*& (ol0 == none || ol != none); @*/
+{
+  //@ grows_refl(objs, H);
+  *error = Error::from(process->program()->wrong_object_type());  // Default error if we return false.
+  // Objects on the program heap are shared and read-only.
+  if (is_heap_object(this) && HeapObject::cast(this)->on_program_heap(process)) {
+    *error = Error::from(process->program()->permission_denied());
+    return false;
+  }
+  if (is_byte_array(this)) {
+    //@ good_heap(objs, self);
+    auto byte_array = ByteArray::cast(this);
+    // External byte arrays can have structs in them. This is captured in the external tag.
+    // We only allow extracting the byte content from an external byte arrays iff it is tagged with RawByteType.
+    if (byte_array->has_external_address() && byte_array->external_tag() != RawByteTag) return false;
+    ByteArray::Bytes bytes(byte_array);
+    *length = bytes.length();
+    *content = bytes.address();
+    //@ blob_facts(self);
+    //@ close mutable_result(objs, H, process, blob_base(H, self), blob_len(H, self), self);
+    //@ leak mutable_result(objs, H, process, blob_base(H, self), blob_len(H, self), self);
+    return true;
+  }
+  if (!is_instance(this)) return false;
+  if (depth >= MAX_BYTE_CONTENT_DEPTH) return false;
+  //@ good_heap(objs, self);
+
+  auto program = process->program();
+  auto instance = Instance::cast(this);
+  //@ heap_facts(instance);
+  if (instance->class_id() == program->byte_array_cow_class_id()) {
+    Object* backing = instance->at(Instance::BYTE_ARRAY_COW_BACKING_INDEX);
+    auto is_mutable = instance->at(Instance::BYTE_ARRAY_COW_IS_MUTABLE_INDEX);
+    if (is_mutable == process->true_object()) {
+      return backing->mutable_byte_content(process, content, length, error, depth + 1);
+    }
+    ASSERT(is_mutable == process->false_object());
+
+    const uint8* immutable_content;
+    word immutable_length;
+    if (!backing->byte_content(program, &immutable_content, &immutable_length, STRINGS_OR_BYTE_ARRAYS, depth + 1)) {
+      return false;
+    }
+    //@ open [_]blob_result(objs, H, STRINGS_OR_BYTE_ARRAYS, ?ic, ?il, ?b);
+    //@ blob_facts(b);
+
+    Object* new_backing = process->allocate_byte_array(immutable_length);
+    if (new_backing == null) {
+      *error = Error::from(program->allocation_failed());
+      return false;
+    }
+    //@ assert heap(?objs2, ?H2);
+    //@ grows_alloc(objs, H, new_backing, H2);
+    //@ same_obj_kept(objs, H, H2, b);
+    //@ same_obj_kept(objs, H, H2, instance);
+
+    ByteArray::Bytes bytes(ByteArray::cast(new_backing));
+    //@ heap_holes_open();
+    //@ blob_take(new_backing);
+    //@ blob_take(b);
+    //@ uint8 *bb = blob_base(H2, b);
+    //@ uchars_split(bb, (uword)ic - (uword)bb);
+    //@ uchars_split(ic, il);
+    memcpy(bytes.address(), immutable_content, immutable_length);
+    //@ uchars_join(ic);
+    //@ uchars_join(bb);
+    //@ blob_give(b);
+    //@ blob_give(new_backing);
+    //@ heap_holes_close();
+
+    instance->at_put(0, new_backing);
+    //@ fixpoint(void *, oinfo) H3 = put_field(H2, instance, 0, new_backing);
+    instance->at_put(1, process->true_object());
+    //@ assert heap(objs2, ?H4);
+    //@ grows_trans(objs, H, objs2, H2, objs2, H3);
+    //@ grows_trans(objs, H, objs2, H3, objs2, H4);
+    return new_backing->mutable_byte_content(process, content, length, error);
+    //@ assert heap(?objs5, ?H5);
+    //@ grows_trans(objs, H, objs2, H4, objs5, H5);
+  } else if (instance->class_id() == program->byte_array_slice_class_id()) {
+    auto byte_array = instance->at(Instance::BYTE_ARRAY_SLICE_BYTE_ARRAY_INDEX);
+    auto from = instance->at(Instance::BYTE_ARRAY_SLICE_FROM_INDEX);
+    auto to = instance->at(Instance::BYTE_ARRAY_SLICE_TO_INDEX);
+    if (!is_heap_object(byte_array)) return false;
+    // TODO(florian): we could eventually accept larger integers here.
+    if (!is_smi(from)) return false;
+    if (!is_smi(to)) return false;
+    word from_value = Smi::value(from);
+    word to_value = Smi::value(to);
+    bool inner_success = byte_array->mutable_byte_content(process, content, length, error, depth + 1);
+    if (!inner_success) return false;
+    // If the content is null, then we probably failed allocating the object.
+    // Might work after a GC.
+    if (content == null) return inner_success;
+    if (0 <= from_value && from_value <= to_value && to_value <= *length) {
+      //@ open [_]mutable_result(?objs2, ?H2, process, ?a1, ?l1, ?b);
+      //@ blob_facts(b);
+      *content += from_value;
+      *length = to_value - from_value;
+      //@ close mutable_result(objs2, H2, process, a1 + from_value, to_value - from_value, b);
+      //@ leak mutable_result(objs2, H2, process, a1 + from_value, to_value - from_value, b);
+      return true;
+    }
+  }
+  return false;
+}
+
+@render src/objects_runtime.cc toit::Object::mutable_byte_content params=4
+bool Object::mutable_byte_content(Process* process, uint8** content, word* length, Error** error)
+/*@ requires [?fp]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*& good(objs, self) == true &*&
+             pointer_((void **)content, ?oc0) &*& intptr_(length, ?ol0) &*& pointer_((void **)error, _); @*/
+/*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+            pointer((void **)error, _) &*&
+            result ? *content |-> ?a &*& *length |-> ?l &*& [_]mutable_result(objs2, H2, process, a, l, _) :
+              pointer_((void **)content, ?oc) &*& intptr_(length, ?ol) &*& (oc0 == none || oc != none) &*& (ol0 == none || ol != none); @*/
+{
+  return mutable_byte_content(process, content, length, error, 0);
+}
+
+@render src/objects_runtime.cc toit::Object::mutable_byte_content type=bool(Process*,MutableBlob*,Error**)
+bool Object::mutable_byte_content(Process* process, MutableBlob* blob, Error** error)
+/*@ requires [?fp]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*& good(objs, self) == true &*&
+             blob->address_ |-> _ &*& blob->length_ |-> _ &*& pointer_((void **)error, _); @*/
+/*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+            pointer((void **)error, _) &*& blob->address_ |-> ?a &*& blob->length_ |-> ?l &*&
+            result ? [_]mutable_result(objs2, H2, process, a, l, _) : true; @*/
+{
+  uint8* content = null;
+  word length = 0;
+  auto result = mutable_byte_content(process, &content, &length, error);
+  *blob = MutableBlob(content, length);
+  return result;
+}
