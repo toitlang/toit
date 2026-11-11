@@ -432,6 +432,37 @@ it is now the largest item (OBLIGATIONS.md D3). The whole transient cost
 of installing a 30-65 KB program is thus about 30-53 KB, against 65-115
 KB with the inference.
 
+### Install time on devices (branch device/esp32-build-fixes)
+
+Install-time verification runs inside one primitive of the system
+process (`image.writer-commit`, `flash_registry.allocate`), which the
+scheduler cannot preempt, and on the classic ESP32 it takes seconds: 250-580
+M Xtensa instructions for 25-38 KB of bytecodes under QEMU `-icount`
+(verified/core/PROGRESS.md, "Device builds"; 5-8 times the x86-64
+count). Two consequences:
+
+- Progress. The checker reports before each method:
+  `toit_spec::progress::verify_shipped_progress` is `cert::verify_shipped`
+  with a `Progress` callback in the oracle, proven by Verus with the same
+  postcondition. The C entry point takes the callback in
+  `toit_vmverify_input` (`progress`, `progress_context`, null when unused);
+  the VM's (src/verifier_v2.cc `v2_progress`) counts the calls and calls
+  `Process::note_progress`, and the scheduler's dead-lock check
+  (`PROCESS_MAX_RUN_TIME_US`, 10 s on the ESP32) measures the time since
+  the last report (`Process::stalled_us`). Trusted: the callback runs
+  between methods and must not touch the program, its tables or the
+  certificate (it records a time; TRUSTED.toml). `TOIT_VERIFY_TIME=1`
+  prints `progress N (to the scheduler)`.
+- Memory. The method table (20 bytes per method) and the verifier's heap
+  (conversion, then the maps of the method being checked) need 25-44 KB
+  for the suite programs, against 47-63 KB free under QEMU without PSRAM,
+  most of the rest Toit garbage. An allocation failure of either is
+  `V2Verifier::OUT_OF_MEMORY`: the commit primitives fail once with
+  CROSS_PROCESS_GC, the interpreter collects every process and retries,
+  and a second failure is the error `OUT_OF_MEMORY`. (A third
+  MALLOC_FAILED in the system process would reboot the device, so there is
+  exactly one retry: `ObjectHeap::retrying_primitive`.)
+
 ## Fuzzing the entry point in-process
 
 `src/bin/toit_vmverify_fuzz.rs` calls `toit_vmverify_verify` (the C entry

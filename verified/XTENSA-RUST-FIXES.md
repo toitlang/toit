@@ -378,6 +378,37 @@ Realistically more than a year away.
    (time and heap) on hardware, and decide whether the classic ESP32
    without PSRAM is a target for untrusted containers.
 
+## Follow-up: the product findings fixed (branch device/esp32-build-fixes)
+
+2026-11-11; details and numbers in verified/core/PROGRESS.md, "Device
+builds"; artifacts `/home/flo/work/opentoit-sandbox-artifacts/esp32-build/`.
+
+- LTO now applies (the side finding of section 1): the VM's library is the
+  staticlib-only package verified/vmverify/staticlib (`libtoit_rust.a`).
+  One object for all Rust code; at opt 3 the Xtensa library is 79,129
+  instead of 81,304 bytes (with the glue at opt z). The CI check
+  (`xtensa_codegen_check.sh`, now on the LTO'd module) passes at opt 3 and
+  z, including the #139 differential against the cached `llc` builds
+  (`A/llvm-build-stock`, `A/llc-bin/fix-139`): no known wrong-code
+  pattern. `device_size.sh` measures Xtensa too (`DEVICE_SIZE_ARCH=xtensa`).
+- IRAM: the firmware links without moving heap or ring-buffer functions to
+  flash (`Interpreter::run`'s slow paths are shared, the untrusted
+  processes' field checks out of line): 957 bytes of iram0_0_seg left, with
+  or without the Rust core.
+- The 10 s dead-lock check: install-time verification reports progress
+  before each method (proven wrapper of `verify_shipped`), and the check
+  measures the time since the last report. Under QEMU with the real limit
+  and `-icount shift=6` (verification of 16-37 s of virtual time) the
+  installs succeed; a control build without the reports stops with
+  "Potential dead-lock". Measured on the Xtensa core: 250-580 M
+  instructions per verification of 25-38 KB of bytecodes, so seconds on
+  hardware.
+- Heap without PSRAM: an out-of-memory verification now retries once after
+  a cross-process GC (117 KB free instead of 47-63 KB). All twelve suite
+  tests install and pass under QEMU, alone and in one boot (8 alone before;
+  in one traced run 11 of 12 in one boot: is-as-many-test needs 103 KB, a
+  28.7 KB method table and 75 KB for the maps of its largest method).
+
 ## Disk use (to delete when done)
 
 | Path | Size |
