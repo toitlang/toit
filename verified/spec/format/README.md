@@ -33,7 +33,7 @@ on the spec and on the soundness obligations, and the cost.
 | 17 | [finally-records](17-finally-records.md) | A pending unwinding is a record next to the handlers (no heap token, no allocation); the token is its smi index; UNWIND checks it belongs to the frame. Replaces note 4's heap token. |
 | 16 | [hash-find](16-hash-find.md) | Recommendation: bring `HASH_FIND` back in Phase 4 as a non-re-entrant verified built-in; decide a `REPEAT` instruction on the same benchmark; keep HASH_DO and ARRAY_DO out. |
 | 18 | [shipped-certificate](18-shipped-certificate.md) | The toolchain ships the verifier's certificate (bundle member, trailing image block); the device reads its tables in place, decodes one method's maps at a time and only checks (`cert::verify_shipped`, proven); the installer may drop it. Decides note 14's "shipped stack maps". |
-| 19 | [builtins-proposal](19-builtins-proposal.md) | **Proposal, not decided** (branch proposal/builtins): LOOP_REPEAT, LOOP_ARRAY and HASH_FIND as bounded, non-reentrant, write-free steps whose loops stay in the bytecode; specified, verified, proven (no new trusted item) and measured per built-in for the owner's decision. |
+| 19 | [builtins-proposal](19-builtins-proposal.md) | **Proposal, not decided** (branch proposal/builtins): LOOP_REPEAT, LOOP_ARRAY and HASH_FIND as bounded, non-reentrant steps that never write the heap, whose loops stay in the bytecode; specified, verified, proven (no new trusted item) and measured per built-in for the owner's decision. |
 
 ## Verifier versus run time
 

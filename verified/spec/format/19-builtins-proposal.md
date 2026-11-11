@@ -2,7 +2,8 @@
 
 Branch `proposal/builtins` (from `sandbox-integration` a3aa3a78). Not to
 be merged without the owner's decision; each built-in can be taken or
-left on its own (they share only the opcode numbering). Raw numbers,
+left on its own (the two loop steps share their verifier rule and proofs;
+HASH_FIND is independent of them). Raw numbers,
 scripts and test programs: /home/flo/work/opentoit-sandbox-artifacts/
 builtins/ (`ir.sh`, `snaps.sh`, `wall.sh`, `devsize.sh`, `t/`).
 
@@ -14,7 +15,7 @@ back as a non-reentrant built-in and deciding a `REPEAT` instruction by
 measurement. With the register loop the verified core is at 1.13 / 1.40 /
 1.17 times the C++ interpreter's instructions on richards / deltablue /
 pystone, but a `repeat` loop costs 1.4x C++, `List.do` 1.4x and map
-lookups 1.1-1.3x (and 2x before the register loop). Should format 2 get
+lookups 1.06-1.34x (and 1.5-2x before the register loop). Should format 2 get
 built-ins for them, and in which shape, given the proof cost?
 
 ## Design rule
@@ -109,7 +110,8 @@ the next probe (format 1's intrinsic re-reads it too).
 All three are total spec functions of the frame and the heap; no new
 stuck state is reachable from an accepted program (the soundness theorem
 is unchanged, its proof extended). **No new trusted item**: TRUSTED.toml
-is unchanged and the audit passes; the core uses only the existing heap
+has the same entries and counts (one justification's text names the new
+opcode count) and the audit passes; the core uses only the existing heap
 view accessors (`class_id`, `element`, `array_length`, `byte_at`, through
 `locate`, `size_x`, `array_x`).
 
@@ -175,10 +177,10 @@ Per built-in, against format 2 without it:
   paths); what is left is `Map.[]`, `find_` and the compare block call,
   which format 1 makes too.
 
-The whole differential suite (`run_suite.toit --format both`, the 277
-runnable tests): format 2 executes 314.1 M instructions against format 1's
-306.8 M (+2.4 %; note 16 measured +22 % for format 2 without built-ins on
-a slightly different test set).
+The whole differential suite (`run_suite.toit`, the 277 runnable tests,
+bytecodes executed by the reference interpreter): format 2 without the
+built-ins 373.2 M, with them 314.1 M (-15.8 %), format 1 306.8 M. The
+excess of format 2 over format 1 goes from +21.6 % to +2.4 %.
 
 Cost of having the built-ins in the run loop at all (same programs,
 mask 0, against the VM of `sandbox-integration`, which measured 1,157.7 M /
@@ -189,7 +191,27 @@ handler cost +2.7 / +2.6 / +4.0 %; it is now out of line with the
 registers by value (`rhash::op_hash_find_v`), which map lookups pay with a
 call (+0.7 % on map-int).
 
-WALL-PLACEHOLDER
+Wall time (x86-64, 32 cores shared, load 17-22 during the runs: noisy;
+`wall.sh 7`, minimum of 7 interleaved runs, `wall.txt`). Benchmarks: the
+printed time per iteration. Workloads: the whole run minus the `empty`
+workload's fastest run in the same format (4.4 ms; format 2 33.5 ms:
+startup and the launch-time verification).
+
+| ms | C++ f1 | f2, none | REPEAT | ARRAY_DO | HASH_FIND | all three |
+|---|---:|---:|---:|---:|---:|---:|
+| richards | 10.54 | 10.56 | 10.24 | 10.41 | | 10.19 |
+| deltablue | 6.56 | 7.57 | 7.74 | 6.67 | | 6.66 |
+| pystone | 7.44 | 6.87 | 6.68 | 6.72 | | 6.65 |
+| `repeat` | 12.4 | 17.9 | 14.0 | 18.3 | 17.7 | 13.0 |
+| `List.do` | 14.2 | 26.4 | 24.0 | 15.7 | 26.1 | 14.9 |
+| map-int | 132.0 | 161.1 | 158.6 | 172.2 | 140.0 | 132.4 |
+| map-string | 41.3 | 65.4 | 69.8 | 66.2 | 43.0 | 41.2 |
+| map-set | 177.2 | 232.0 | 217.7 | 225.6 | 202.3 | 184.2 |
+
+With all three, format 2 is within 5 % of C++'s wall time on every row
+(deltablue 1.02, `repeat` 1.05, `List.do` 1.05, map-set 1.04), against
+1.22-1.86 without them on the loop and map rows.
+
 
 ## Size
 
@@ -219,7 +241,58 @@ bytes (+0.2 %).
 
 ## Validation
 
-VALIDATION-PLACEHOLDER
+All on this branch's head, artifacts `builtins/*.log`:
+
+* `verified/check.sh --tests`: passed (Verus spec 914 / core 853 items,
+  0 errors, 64 and 32 bits; audit; layout check; spec differential tests
+  15/15; vmverify tests; sandbox ctests 121/121).
+* Full ctest (build/host): 1194/1197, the three known environmental
+  failures (version, reader, udp-reuse-port-test).
+  The whole suite compiled in format 2 (`TOIT_BYTECODE_FORMAT=2 ctest`,
+  trusted programs on the core's checked loop): 1193/1197, the three
+  environmental failures and the known library race of
+  services-network-test (PROGRESS.md; under load it failed 25 of 30 runs
+  with the built-ins off and 22 of 30 with them on, `race.sh`).
+* `verify_suite.toit`: 445 of 449 programs accepted, the 4 compile-error
+  tests as before (the baseline's 439 plus 6 tests added since).
+* `run_suite.toit --format both`: 274/277 runnable tests identical
+  between the reference interpreter and the VM in each format, the three
+  known failures of `suite-status.txt`.
+* `untrusted_suite.toit`: 280/281 identical (format 1 trusted on C++
+  against format 2 untrusted on the verified core); the one difference is
+  the known `program-name-test` (PERMISSION_DENIED untrusted). The other
+  known difference, `set-map-remove-first-test`, is identical now.
+* `compare_trace.toit --format 2` (debug VM, the core's checked loop
+  against the reference interpreter): the trace programs control 234,864,
+  maps 213,197, numbers 24,333, sort 1,052,213 consecutive steps, and
+  `t/trace_builtins.toit` (all three built-ins: large and small arrays,
+  colliding keys, removals, a `compare_` override) 422,026, each up to the
+  first environment-dependent primitive.
+* Mutation campaign (`mutation_campaign.toit`, 12,000 mutants, seed 1,
+  60 programs): 2,365 accepted, 0 stuck instructions. One finding, not
+  in the built-ins: a mutant of `CowByteArray_`'s constructor (LOAD_LITERAL
+  false at bci 1790 of byte-content-depth-test) makes a copy-on-write
+  byte array mutable over a program-heap byte array, and the reference
+  interpreter's model of `byte_array_replace` stops with ReadOnly
+  (`interp/prims_impl.rs` `write_bytes`) instead of failing like the VM's
+  verified Rust primitive (`blob_arg(.., MUTABLE)`). A fidelity gap of
+  the reference interpreter's primitives, independent of this proposal
+  (reproduce: `toit_spec_mutate --count 200 --seed 41 --max-steps 100000
+  target/verify-suite/tests_byte-content-depth-test.dump`).
+* `core_fuzz.toit`, ASan build, launch filter (the VM's own launch-time
+  verifier), 20 minutes, seed 19, seeds map-test,
+  set-map-middle-gap-test, rebuild-hash-index-test (maps of every size,
+  removals, rebuilds, `repeat` and `do` loops): 95,357 mutants, 13,128
+  accepted and run (11,710 exit 0, 1,065 exit 1, 323 exit 255, 1 exit
+  95, 29 timeouts), 0 crashes, 0 stuck, 0 refusals. A second run, 10 minutes, seed 23, seeds
+  `t/rep.toit`, `t/arr.toit`, `t/trace_builtins.toit`: 60,774 mutants,
+  8,292 accepted and run, 0 crashes, 0 stuck, 0 refusals.
+* 32-bit host (build/host32): sandbox ctests and layout check 122/122;
+  the three built-in test programs untrusted, identical output.
+* Shipped certificates: programs using all three built-ins verify with
+  `TOIT_REQUIRE_CERTIFICATE=1` (the device path, `cert::verify_shipped`).
+* Format 1 unchanged: 12 programs compile to identical program dumps
+  with the reference compiler (`f1-identity.sh`).
 
 ## Risks
 
@@ -279,7 +352,9 @@ system services, JSON, RPC); if devices are tight on flash, it is the one
 to leave out.
 
 What remains open on this branch: wall-clock times on an idle machine
-(above, measured under load), a device measurement of the speed effect,
+(above, measured under load), the instruction totals of the whole
+untrusted suite under callgrind (`suite-ir.sh`, written, not run; the
+step totals above stand in for them), a device measurement of the speed effect,
 HASH_DO (above), and moving the emitted find loop next to `find-body_`
 (e.g. a format-2-only Toit body) if the owner prefers Toit to bytecode
 for it.
