@@ -18,6 +18,7 @@
 //! allocation and free; the verified core does not allocate on its paths.
 
 use std::alloc::{GlobalAlloc, Layout, System};
+use std::cell::Cell;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 struct Counting;
@@ -27,12 +28,14 @@ static PEAK: AtomicUsize = AtomicUsize::new(0);
 
 unsafe impl GlobalAlloc for Counting {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        if inject_failure() { return std::ptr::null_mut(); }
         let p = System.alloc(layout);
         if !p.is_null() { grow(layout.size()); }
         p
     }
 
     unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
+        if inject_failure() { return std::ptr::null_mut(); }
         let p = System.alloc_zeroed(layout);
         if !p.is_null() { grow(layout.size()); }
         p
@@ -44,6 +47,7 @@ unsafe impl GlobalAlloc for Counting {
     }
 
     unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
+        if inject_failure() { return std::ptr::null_mut(); }
         let p = System.realloc(ptr, layout, new_size);
         if !p.is_null() {
             CURRENT.fetch_sub(layout.size(), Ordering::Relaxed);
@@ -51,6 +55,53 @@ unsafe impl GlobalAlloc for Counting {
         }
         p
     }
+}
+
+// Failure injection (the fuzz driver, toit_vmverify_fuzz --oom): on the
+// calling thread, the allocations after the next `FAIL_AFTER` ones fail
+// (null), as a device's allocator fails when its heap is exhausted. The
+// verifier must then reject (OUT_OF_MEMORY), not abort. The diagnostics
+// and the inference (hosts only, infallible allocation) stop the failures
+// first (`stop_failing`).
+thread_local! {
+    static FAIL_AFTER: Cell<usize> = const { Cell::new(usize::MAX) };
+    static FAILED: Cell<usize> = const { Cell::new(0) };
+}
+
+/// Allocation calls (alloc, alloc_zeroed, realloc) so far, all threads.
+static ALLOCS: AtomicUsize = AtomicUsize::new(0);
+
+/// The number of allocation calls so far (all threads).
+pub fn allocations() -> usize {
+    ALLOCS.load(Ordering::Relaxed)
+}
+
+fn inject_failure() -> bool {
+    ALLOCS.fetch_add(1, Ordering::Relaxed);
+    FAIL_AFTER.with(|f| {
+        let n = f.get();
+        if n == usize::MAX { return false; }
+        if n == 0 {
+            FAILED.with(|c| c.set(c.get() + 1));
+            return true;
+        }
+        f.set(n - 1);
+        false
+    })
+}
+
+/// Lets the next `n` allocations of this thread succeed and fails the ones
+/// after them, until `stop_failing`.
+pub fn fail_after(n: usize) {
+    FAILED.with(|c| c.set(0));
+    FAIL_AFTER.with(|f| f.set(n.min(usize::MAX - 1)));
+}
+
+/// Ends failure injection on this thread; returns the number of
+/// allocations that failed since `fail_after`.
+pub fn stop_failing() -> usize {
+    FAIL_AFTER.with(|f| f.set(usize::MAX));
+    FAILED.with(|c| c.get())
 }
 
 fn grow(n: usize) {

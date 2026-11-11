@@ -306,6 +306,16 @@ from its stream; it is proven to return true only if some certificate with
 that global count and primitive table is accepted. The checker uses loops only
 (no recursion over the program size).
 
+Out of memory: the checker and the decoder allocate fallibly
+(`xvec::try_push` and friends) and return `Err(Oom)` when an allocation
+fails; every result above holds for `Ok` (`res matches Ok(r) ==> ...`), and
+the verdict rejects on `Err` (vmverify's OUT_OF_MEMORY). So the exactness of
+`verify` is "exact unless it ran out of memory"; soundness only needs the
+`Ok(true)` direction and is unaffected. Element accesses go through
+`xvec`'s unchecked accessors, whose index preconditions Verus proves: the
+device library has no panic path (verified/vmverify/README.md, "No panics
+on devices").
+
 `heap_check::x_loaded_ok_stream(p, objects, global_count, globals)`
 checks the loader's contract one object at a time as an `ObjStream` yields
 them (each with the number of objects found so far); it accepts only if

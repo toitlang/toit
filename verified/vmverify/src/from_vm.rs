@@ -41,8 +41,14 @@
 //! toit_spec::interp::loader) is tested by
 //! verified/tools/vmverify_differential.toit on every suite program
 //! (canonical.rs).
+//!
+//! No panic paths (README.md, "No panics on devices"): no indexing without
+//! `get`, and every allocation is fallible (`toit_spec::xvec`); a failed
+//! one ends the conversion with `Malformed::oom` (the verdict
+//! OUT_OF_MEMORY).
 
 use alloc::vec::Vec;
+use toit_spec::xvec::{try_copy, try_filled, try_push, try_with_capacity, Oom};
 use toit_spec::types::{ExecBody, ExecObj, Value};
 use toit_spec::v2::heap_check::ObjStream;
 use toit_spec::v2::vprog::{VMethod, VProgram};
@@ -118,7 +124,7 @@ impl<'a> Converted<'a> {
     pub fn collect_heap(&mut self) -> Result<Vec<ExecObj>, Malformed> {
         let mut heap = Vec::new();
         while let Some((o, _)) = self.objects.next_obj() {
-            heap.push(o);
+            try_push(&mut heap, o)?;
         }
         match self.objects.error.take() {
             Some(e) => Err(e),
@@ -146,15 +152,29 @@ impl<'a> Converted<'a> {
 }
 
 /// Why the memory could not be converted. `detail` is a table index or an
-/// offset into the program image.
+/// offset into the program image. `oom`: not the memory but an allocation
+/// of the conversion failed.
 #[derive(Debug)]
 pub struct Malformed {
     pub what: &'static str,
     pub detail: usize,
+    pub oom: bool,
+}
+
+impl Malformed {
+    pub const fn oom() -> Malformed {
+        Malformed { what: "out of memory", detail: 0, oom: true }
+    }
+}
+
+impl From<Oom> for Malformed {
+    fn from(_: Oom) -> Malformed {
+        Malformed::oom()
+    }
 }
 
 fn bad<T>(what: &'static str, detail: usize) -> Result<T, Malformed> {
-    Err(Malformed { what, detail })
+    Err(Malformed { what, detail, oom: false })
 }
 
 /// The VM's primitive table: the arity of every primitive, by module.
@@ -216,7 +236,7 @@ impl Image {
 
     fn bytes(&self, addr: usize, len: usize) -> Result<Vec<u8>, Malformed> {
         match self.range(addr, len) {
-            Some(b) => Ok(b.to_vec()),
+            Some(b) => Ok(try_copy(b)?),
             None => bad("object content outside the program image", addr.wrapping_sub(self.start)),
         }
     }
@@ -241,40 +261,47 @@ impl IdTable {
         ((addr / WORD_SIZE).wrapping_mul(0x9E37_79B9) >> 7) & mask
     }
 
-    /// The id of the object at `addr`, if it has one.
+    /// The id of the object at `addr`, if it has one. (The table's size is
+    /// a power of two and every id is below `queue.len()`; the `get`s only
+    /// avoid panic paths.)
     fn get(&self, addr: usize, queue: &[usize]) -> Option<usize> {
         if self.slots.is_empty() { return None; }
         let mask = self.slots.len() - 1;
         let mut i = Self::start(addr, mask);
         loop {
-            let s = self.slots[i] as usize;
+            let s = *self.slots.get(i)? as usize;
             if s == 0 { return None; }
-            if queue[s - 1] == addr { return Some(s - 1); }
+            if *queue.get(s - 1)? == addr { return Some(s - 1); }
             i = (i + 1) & mask;
         }
     }
 
-    /// Records `id` (not present yet) for the address `queue[id]`. False if
-    /// the id does not fit.
-    fn insert(&mut self, id: usize, queue: &[usize]) -> bool {
-        if id >= u32::MAX as usize { return false; }
+    /// Records `id` (not present yet) for the address `queue[id]`.
+    fn insert(&mut self, id: usize, queue: &[usize]) -> Result<(), Malformed> {
+        if id >= u32::MAX as usize { return bad("too many objects", id); }
         if (self.count + 1) * 4 > self.slots.len() * 3 {
             let size = if self.slots.is_empty() { 64 } else { self.slots.len() * 2 };
-            let old = core::mem::replace(&mut self.slots, alloc::vec![0; size]);
+            let old = core::mem::replace(&mut self.slots, try_filled(0, size)?);
             for s in old {
                 if s != 0 { self.place(s, queue); }
             }
         }
         self.place(id as u32 + 1, queue);
         self.count += 1;
-        true
+        Ok(())
     }
 
     fn place(&mut self, slot: u32, queue: &[usize]) {
-        let mask = self.slots.len() - 1;
-        let mut i = Self::start(queue[slot as usize - 1], mask);
-        while self.slots[i] != 0 { i = (i + 1) & mask; }
-        self.slots[i] = slot;
+        let mask = self.slots.len().wrapping_sub(1);
+        let Some(&addr) = queue.get((slot as usize).wrapping_sub(1)) else { return };
+        let mut i = Self::start(addr, mask);
+        loop {
+            match self.slots.get_mut(i) {
+                Some(s) if *s == 0 => { *s = slot; return; }
+                Some(_) => i = (i + 1) & mask,
+                None => return,
+            }
+        }
     }
 }
 
@@ -345,15 +372,17 @@ impl<'a> Objects<'a> {
             return Ok(Value::Obj(id));
         }
         let id = self.queue.len();
-        self.queue.push(addr);
-        if !self.ids.insert(id, &self.queue) {
-            return bad("too many objects", id);
-        }
+        try_push(&mut self.queue, addr)?;
+        self.ids.insert(id, &self.queue)?;
         Ok(Value::Obj(id))
     }
 
     fn values(&mut self, words: &[usize]) -> Result<Vec<Value>, Malformed> {
-        words.iter().map(|&w| self.value(w)).collect()
+        let mut r = try_with_capacity(words.len())?;
+        for &w in words {
+            try_push(&mut r, self.value(w)?)?;
+        }
+        Ok(r)
     }
 
     /// The object at untagged address `addr`.
@@ -366,10 +395,9 @@ impl<'a> Objects<'a> {
         let header = ((header as isize) >> SMI_TAG_SIZE) as i64;
         let tag = ((header >> CLASS_TAG_OFFSET) as usize) & CLASS_TAG_MASK;
         let class_id = header >> CLASS_ID_OFFSET;
-        if class_id < 0 || class_id as usize >= self.class_bits.len() {
+        let Some(&bits) = usize::try_from(class_id).ok().and_then(|c| self.class_bits.get(c)) else {
             return bad("object class id outside the class table", offset);
-        }
-        let bits = self.class_bits[class_id as usize];
+        };
         if (bits as usize) & CLASS_TAG_MASK != tag {
             return bad("object tag differs from its class's tag", offset);
         }
@@ -379,10 +407,10 @@ impl<'a> Objects<'a> {
                 if fields == 0 {
                     return bad("instance class without a header word", offset);
                 }
-                let mut f = Vec::with_capacity(fields - 1);
+                let mut f = try_with_capacity(fields - 1)?;
                 for k in 0..fields - 1 {
                     let w = self.image.word(addr, INSTANCE_FIELDS_WORD + k)?;
-                    f.push(self.value(w)?);
+                    try_push(&mut f, self.value(w)?)?;
                 }
                 ExecBody::Instance(f)
             }
@@ -390,10 +418,10 @@ impl<'a> Objects<'a> {
                 let length = self.image.word(addr, ARRAY_LENGTH_WORD)?;
                 // The elements must be in the image before any is read.
                 self.image.word(addr, ARRAY_ELEMENTS_WORD.saturating_add(length).saturating_sub(1))?;
-                let mut e = Vec::with_capacity(length);
+                let mut e = try_with_capacity(length)?;
                 for k in 0..length {
                     let w = self.image.word(addr, ARRAY_ELEMENTS_WORD + k)?;
-                    e.push(self.value(w)?);
+                    try_push(&mut e, self.value(w)?)?;
                 }
                 ExecBody::Array(e)
             }
@@ -420,8 +448,9 @@ impl<'a> Objects<'a> {
             }
             STRING_TAG => {
                 // A half word: 32 bits on 64-bit targets, 16 on 32-bit ones.
-                let at = self.image.range(addr + STRING_INTERNAL_LENGTH_BYTE, HALF)
-                    .ok_or(Malformed { what: "string header outside the program image", detail: offset })?;
+                let Some(at) = self.image.range(addr + STRING_INTERNAL_LENGTH_BYTE, HALF) else {
+                    return bad("string header outside the program image", offset);
+                };
                 let internal = match (at.len(), at) {
                     (4, &[a, b, c, d]) => u32::from_ne_bytes([a, b, c, d]) as usize,
                     (2, &[a, b]) => u16::from_ne_bytes([a, b]) as usize,
@@ -463,19 +492,21 @@ pub unsafe fn convert<'a>(p: &ProgramTables, prims: &PrimitiveArities) -> Result
     // SAFETY: same layout (checked above).
     let methods: &'a [VMethod] = core::slice::from_raw_parts(methods.as_ptr() as *const VMethod, methods.len());
     let builtin_words: &[usize] = table(p.builtin_class_ids, BUILTIN_COUNT);
-    let mut builtin = Vec::with_capacity(BUILTIN_COUNT);
+    let mut builtin = try_with_capacity(BUILTIN_COUNT)?;
     for (i, &w) in builtin_words.iter().enumerate() {
         let v = ((w as isize) >> SMI_TAG_SIZE) as i64;
         if w & SMI_TAG_MASK != SMI_TAG || !(0..=0xffff).contains(&v) {
             return bad("builtin class id is not a class id", i);
         }
-        builtin.push(v as u16);
+        try_push(&mut builtin, v as u16)?;
     }
+    let Some(end) = p.program_heap_start.checked_add(p.program_heap_size) else {
+        return bad("program image wraps around", 0);
+    };
     let mut c = Objects {
         image: Image {
             start: p.program_heap_start,
-            end: p.program_heap_start.checked_add(p.program_heap_size)
-                .ok_or(Malformed { what: "program image wraps around", detail: 0 })?,
+            end,
         },
         class_bits: table(p.class_bits, p.class_bits_length),
         ids: IdTable::new(),
@@ -487,12 +518,12 @@ pub unsafe fn convert<'a>(p: &ProgramTables, prims: &PrimitiveArities) -> Result
     let roots = c.values(table(p.roots, ROOT_COUNT))?;
     let globals = c.values(table(p.globals, p.globals_length))?;
     let literals = c.values(table(p.literals, p.literals_length))?;
-    let mut arity = Vec::with_capacity(prims.counts.len());
+    let mut arity = try_with_capacity(prims.counts.len())?;
     let mut at = 0usize;
     for (module, &n) in prims.counts.iter().enumerate() {
         let n = n as usize;
-        match prims.arities.get(at..at + n) {
-            Some(a) => arity.push(a.to_vec()),
+        match at.checked_add(n).and_then(|e| prims.arities.get(at..e)) {
+            Some(a) => try_push(&mut arity, try_copy(a)?)?,
             None => return bad("primitive table shorter than its counts", module),
         }
         at += n;

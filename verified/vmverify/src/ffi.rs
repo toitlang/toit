@@ -17,7 +17,6 @@
 //! `toit_vmverify_input` and `toit_vmverify_result` (checked by
 //! verified/layout_check.cc).
 
-use alloc::string::String;
 #[cfg(feature = "std")]
 use core::ffi::c_char;
 use toit_verified_core::ffi::ProgramTables;
@@ -70,9 +69,13 @@ pub struct VerifyResult {
 }
 
 fn set_message(r: &mut VerifyResult, text: &str) {
-    let n = text.len().min(MESSAGE_SIZE - 1);
-    r.message[..n].copy_from_slice(&text.as_bytes()[..n]);
-    r.message[n] = 0;
+    // Truncated to the buffer, NUL-terminated (no slicing: no panic path).
+    let mut n = 0;
+    for (d, s) in r.message.iter_mut().take(MESSAGE_SIZE - 1).zip(text.bytes()) {
+        *d = s;
+        n += 1;
+    }
+    if let Some(d) = r.message.get_mut(n) { *d = 0; }
 }
 
 unsafe fn arities<'a>(i: &VerifyInput) -> PrimitiveArities<'a> {
@@ -132,11 +135,9 @@ unsafe fn run(input: &VerifyInput) -> (verify::Verdict, usize, u64) {
     mem_trace!("converted (roots, globals, literals, primitive table)");
     let convert_ns = t.ns();
     match converted {
+        Err(e) if e.oom => (verify::Verdict::out_of_memory(), 0, convert_ns),
         Err(e) => {
-            let mut message: String = text!("malformed program memory", "{} ({})", e.what, e.detail);
-            message.truncate(MESSAGE_SIZE - 1);
-            let v = verify::Verdict { code: verify::MALFORMED, method: -1, offset: -1,
-                message, heap_ns: 0, infer_ns: 0, check_ns: 0 };
+            let v = verify::Verdict::new(verify::MALFORMED, text!("malformed program memory", "{} ({})", e.what, e.detail));
             (v, 0, convert_ns)
         }
         Ok(mut converted) => {
@@ -229,6 +230,7 @@ layout_entries!(
     b"VMVERIFY_INTERNAL\0" => verify::INTERNAL,
     b"VMVERIFY_CERTIFICATE\0" => verify::CERTIFICATE,
     b"VMVERIFY_NO_CERTIFICATE\0" => verify::NO_CERTIFICATE,
+    b"VMVERIFY_OUT_OF_MEMORY\0" => verify::OUT_OF_MEMORY,
 );
 
 /// The number of layout entries (for verified/layout_check.cc).
@@ -296,7 +298,7 @@ pub unsafe extern "C" fn toit_vmverify_certify(input: *const VerifyInput, bytes:
     match toit_spec::v2::encode::certify(&p, global_count, prim_arity.clone(), trusted) {
         Err(_) => 2,
         Ok((cert, _)) => {
-            let (ok, _) = toit_spec::v2::cert::verify_shipped(&p, &cert, global_count, &prim_arity, trusted);
+            let ok = matches!(toit_spec::v2::cert::verify_shipped(&p, &cert, global_count, &prim_arity, trusted), Ok((true, _)));
             if !ok { return 2; }
             let boxed = cert.into_boxed_slice();
             *length = boxed.len();

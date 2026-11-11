@@ -115,7 +115,7 @@ impl Interner {
 
 fn kinds_at(maps: &XMaps, off: usize) -> Option<Vec<XKind>> {
     match maps.idx.get(off) {
-        Some(&top) if top != NO_MAP => Some(x_chain(&maps.nodes, top)),
+        Some(&top) if top != NO_MAP => Some(infer::ok(x_chain(&maps.nodes, top))),
         _ => None,
     }
 }
@@ -137,7 +137,7 @@ fn method_entries(p: &VProgram, g: &XGlobal, m: usize, maps: &XMaps, trusted: bo
     let empty = XMaps { idx: Vec::new(), nodes: Vec::new() };
     let c = XCert { g, cur: m, maps: &empty };
     if info.kind == 3 && x_ctx_of(&c, m).is_none() { return out; }
-    let mut cur: Option<Vec<XKind>> = Some(x_entry_kinds(p, &c, m));
+    let mut cur: Option<Vec<XKind>> = Some(infer::ok(x_entry_kinds(p, &c, m)));
     let mut prev: Vec<XKind> = Vec::new();
     let mut off = 0;
     while off < size {
@@ -167,7 +167,7 @@ fn method_entries(p: &VProgram, g: &XGlobal, m: usize, maps: &XMaps, trusted: bo
         }
         let len = OPCODE_LENGTHS2[op as usize] as usize;
         if !is_terminator(op) && placed.len() <= 0x10_0000 {
-            cur = x_post(p, &c, m, off, &placed, trusted);
+            cur = infer::ok(x_post(p, &c, m, off, &placed, trusted));
         }
         prev = placed;
         off += len;
@@ -206,7 +206,7 @@ pub fn encode(p: &VProgram, global: &Global, trusted: bool) -> Result<(Vec<u8>, 
     let mut oracle = infer::Oracle::new(p, global, trusted);
     let mut stream = Vec::new();
     for m in 0..n {
-        let maps = <infer::Oracle as MapOracle>::method_maps(&mut oracle, p, &view, m);
+        let maps = infer::ok(<infer::Oracle as MapOracle>::method_maps(&mut oracle, p, &view, m));
         let entries = method_entries(p, &view, m, &maps, trusted, &mut sizes);
         put_varint(&mut stream, entries.len() as u64);
         let mut last: Option<usize> = None;

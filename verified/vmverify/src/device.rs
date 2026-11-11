@@ -23,8 +23,11 @@
 //!   device). The library is built with `panic = "abort"` for devices
 //!   (Cargo profile `device`): there is no unwinding without std. Hosts
 //!   keep std and the verifier's `catch_unwind` (a panic of the inference
-//!   rejects the program, ffi.rs). On devices the verifier relies on the
-//!   inference being total (fuzzed: README.md, "Fuzzing the entry point").
+//!   rejects the program, ffi.rs). The device library has no panic path
+//!   at all (README.md, "No panics on devices"; tests/nopanic_check.sh
+//!   fails if this handler is linked): it exists because `no_std` requires
+//!   one. A failed allocation returns null and the verifier rejects the
+//!   program (OUT_OF_MEMORY).
 
 use core::alloc::{GlobalAlloc, Layout};
 use core::ffi::c_void;

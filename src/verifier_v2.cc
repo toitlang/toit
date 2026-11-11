@@ -93,6 +93,7 @@ static const char* v2_code_name(uword code) {
     case TOIT_VMVERIFY_INTERNAL: return "verifier failure";
     case TOIT_VMVERIFY_CERTIFICATE: return "shipped certificate";
     case TOIT_VMVERIFY_NO_CERTIFICATE: return "no certificate";
+    case TOIT_VMVERIFY_OUT_OF_MEMORY: return "out of memory";
     default: return "unknown";
   }
 }

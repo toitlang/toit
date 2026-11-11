@@ -115,7 +115,7 @@ fn shipped_certificate(e: &ExecProgram, global_count: u64) -> Option<Vec<u8>> {
     let methods = vprog::vmethods_of(e, h)?;
     let p = vprog::vprogram_of(e, &methods, h);
     let (bytes, _) = encode::certify(&p, global_count, prim_arity(), false).ok()?;
-    if cert::verify_shipped(&p, &bytes, global_count, &prim_arity(), false).0 { Some(bytes) } else { None }
+    if cert::verify_shipped(&p, &bytes, global_count, &prim_arity(), false).is_ok_and(|r| r.0) { Some(bytes) } else { None }
 }
 
 /// The verdict of the checker of shipped certificates on `e` with
@@ -125,7 +125,7 @@ fn verify_shipped_exec(e: &ExecProgram, global_count: u64, c: &[u8]) -> bool {
     let h = vprog::max_height_of(e);
     let Some(methods) = vprog::vmethods_of(e, h) else { return false };
     let p = vprog::vprogram_of(e, &methods, h);
-    cert::verify_shipped(&p, c, global_count, &prim_arity(), false).0
+    cert::verify_shipped(&p, c, global_count, &prim_arity(), false).is_ok_and(|r| r.0)
 }
 
 fn rd32(s: &[u8], i: usize) -> usize {

@@ -40,16 +40,16 @@ struct Sized<'a> {
 }
 
 impl<'a> MapOracle for Sized<'a> {
-    fn method_maps(&mut self, p: &VProgram, g: &XGlobal, m: usize) -> XMaps {
+    fn method_maps(&mut self, p: &VProgram, g: &XGlobal, m: usize) -> Result<XMaps, toit_spec::xvec::Oom> {
         let t = Instant::now();
-        let r = self.inner.method_maps(p, g, m);
+        let r = self.inner.method_maps(p, g, m)?;
         self.ns += t.elapsed().as_nanos() as u64;
         let bytes = r.idx.capacity() * 4 + r.nodes.capacity() * std::mem::size_of::<check::XNode>();
         if bytes > self.max_maps {
             self.max_maps = bytes;
             self.max_method = m;
         }
-        r
+        Ok(r)
     }
 }
 
@@ -91,7 +91,7 @@ fn main() {
             let t1 = Instant::now();
             let mut o = Sized { inner: infer::Oracle::new(p, &global, trusted), max_maps: 0, max_method: 0, ns: 0 };
             let gv = global.g.view(p.methods);
-            let (ok, _) = check::verify(p, &gv, &mut o, trusted);
+            let (ok, _) = infer::ok(check::verify(p, &gv, &mut o, trusted));
             let loaded_ok = heap_check::x_loaded_ok(p, global.g.global_count, &loaded.heap, &loaded.globals);
             let t2 = Instant::now();
             let peak2 = counting::peak_since(base2);
@@ -125,7 +125,7 @@ fn main() {
                 for _ in 0..runs {
                     let base = counting::start_peak();
                     let t0 = Instant::now();
-                    let (ok, _) = cert::verify_shipped(p, &bytes, loaded.globals.len() as u64, &prim_arity, trusted);
+                    let (ok, _) = infer::ok(cert::verify_shipped(p, &bytes, loaded.globals.len() as u64, &prim_arity, trusted));
                     let ms = t0.elapsed().as_secs_f64() * 1e3;
                     let peak = counting::peak_since(base);
                     if best.map_or(true, |b| ms < b.0) { best = Some((ms, peak, ok)); }

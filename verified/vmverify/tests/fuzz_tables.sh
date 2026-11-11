@@ -19,10 +19,12 @@
 # compiles them in format 2, saves the VM's verifier input
 # (`toit.run --verify --emit-canonical=X.tables`), then runs JOBS fuzz
 # processes with different seeds for SECONDS each.
-# Usage: fuzz_tables.sh [--seconds N] [--jobs J] [--seed S] [--out DIR] [--certificates] [PROGRAM.toit...]
+# Usage: fuzz_tables.sh [--seconds N] [--jobs J] [--seed S] [--out DIR] [--certificates [--oom]] [PROGRAM.toit...]
 # --certificates: the processes check the mutants with the shipped certificate
 # (format/18-shipped-certificate.md), mutating the tables, the certificate or
-# both.
+# both. --oom (with --certificates): each mutant is verified again with
+# failing allocations (as on a device with an exhausted heap): it must be
+# rejected with OUT_OF_MEMORY, never abort.
 # Usage: fuzz_tables.sh [--seconds N] [--jobs J] [--seed S] [--out DIR] [PROGRAM.toit...]
 # Programs default to a hello world and a few suite tests. Exit code 1 if
 # any process reports a finding (a verifier panic or a slow call).
@@ -45,6 +47,7 @@ while [ $# -gt 0 ]; do
     --seed) shift; SEED="$1" ;;
     --out) shift; OUT="$1" ;;
     --certificates) EXTRA+=(--certificates) ;;
+    --oom) EXTRA+=(--oom) ;;
     *) PROGRAMS+=("$1") ;;
   esac
   shift

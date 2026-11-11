@@ -33,16 +33,22 @@
 //! which are set here from the program's globals and the VM's table.
 //! `x_wf_program2` runs first (the inference needs it). Everything after
 //! the verdict is diagnostics.
+//!
+//! A failed allocation anywhere in the conversion, the heap check or the
+//! checker rejects the program (OUT_OF_MEMORY); nothing here panics or
+//! allocates infallibly on devices (README.md, "No panics on devices").
 
+use alloc::borrow::Cow;
 #[cfg(feature = "infer")]
 use alloc::format;
-use alloc::string::String;
 #[cfg(feature = "infer")]
-use alloc::string::ToString;
+use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use toit_spec::v2::check;
 #[cfg(feature = "infer")]
 use toit_spec::v2::check::{MapOracle, XGlobal, XMaps};
+#[cfg(feature = "infer")]
+use toit_spec::xvec::Oom;
 use toit_spec::v2::vprog::VProgram;
 use crate::clock::Clock;
 use toit_spec::v2::{cert, heap_check};
@@ -65,12 +71,17 @@ pub const INTERNAL: usize = 5;
 pub const CERTIFICATE: usize = 6;
 /// No certificate was shipped and this VM does not infer one.
 pub const NO_CERTIFICATE: usize = 7;
+/// An allocation of the verifier failed; the program is rejected.
+pub const OUT_OF_MEMORY: usize = 8;
+
+/// A diagnostic text: fixed (devices) or formatted (hosts, `text!`).
+pub type Text = Cow<'static, str>;
 
 pub struct Verdict {
     pub code: usize,
     pub method: isize,
     pub offset: isize,
-    pub message: String,
+    pub message: Text,
     pub heap_ns: u64,
     /// The inference: the global phase and the per-method maps the checker
     /// asked for.
@@ -80,8 +91,12 @@ pub struct Verdict {
 }
 
 impl Verdict {
-    fn new(code: usize, message: String) -> Verdict {
+    pub fn new(code: usize, message: Text) -> Verdict {
         Verdict { code, method: -1, offset: -1, message, heap_ns: 0, infer_ns: 0, check_ns: 0 }
+    }
+
+    pub fn out_of_memory() -> Verdict {
+        Verdict::new(OUT_OF_MEMORY, Cow::Borrowed("out of memory"))
     }
 }
 
@@ -94,7 +109,7 @@ struct Timed<'a> {
 
 #[cfg(feature = "infer")]
 impl<'a> MapOracle for Timed<'a> {
-    fn method_maps(&mut self, p: &VProgram, g: &XGlobal, m: usize) -> XMaps {
+    fn method_maps(&mut self, p: &VProgram, g: &XGlobal, m: usize) -> Result<XMaps, Oom> {
         let t = Clock::start();
         let r = self.inner.method_maps(p, g, m);
         self.ns += t.ns();
@@ -124,11 +139,11 @@ pub fn verify(c: &mut Converted, trusted: bool, cert: Option<&[u8]>) -> Verdict 
     mem_trace!("heap checked");
     let heap_ns = t.ns();
     if !heap_ok || !complete {
-        let message = match &objects.error {
-            Some(e) => text!("malformed program memory", "{} ({})", e.what, e.detail),
-            None => text!("loader contract (loaded_ok)", "loader contract (loaded_ok); {} objects converted", objects.count()),
+        let mut v = match &objects.error {
+            Some(e) if e.oom => Verdict::out_of_memory(),
+            Some(e) => Verdict::new(MALFORMED, text!("malformed program memory", "{} ({})", e.what, e.detail)),
+            None => Verdict::new(HEAP, text!("loader contract (loaded_ok)", "loader contract (loaded_ok); {} objects converted", objects.count())),
         };
-        let mut v = Verdict::new(if objects.error.is_some() { MALFORMED } else { HEAP }, message);
         v.heap_ns = heap_ns;
         return v;
     }
@@ -140,13 +155,13 @@ pub fn verify(c: &mut Converted, trusted: bool, cert: Option<&[u8]>) -> Verdict 
             let t = Clock::start();
             // Proven: true only if a certificate with these trusted fields
             // is accepted.
-            let (ok, at) = cert::verify_shipped(p, cert, global_count, &prim_arity, trusted);
+            let verdict = cert::verify_shipped(p, cert, global_count, &prim_arity, trusted);
             mem_trace!("shipped certificate checked");
             let check_ns = t.ns();
-            let mut v = if ok {
-                Verdict::new(ACCEPTED, String::new())
-            } else {
-                diagnose_shipped(p, cert, at, global_count, prim_arity, trusted)
+            let mut v = match verdict {
+                Ok((true, _)) => Verdict::new(ACCEPTED, Cow::Borrowed("")),
+                Ok((false, at)) => diagnose_shipped(p, cert, at, global_count, prim_arity, trusted),
+                Err(_) => Verdict::out_of_memory(),
             };
             v.check_ns = check_ns;
             v
@@ -164,6 +179,8 @@ fn verify_inferred(_p: &VProgram, _global_count: u64, _prim_arity: Vec<Vec<u8>>,
 
 #[cfg(feature = "infer")]
 fn verify_inferred(p: &VProgram, global_count: u64, prim_arity: Vec<Vec<u8>>, trusted: bool) -> Verdict {
+    // The inference allocates infallibly (hosts).
+    crate::counting::stop_failing();
     let t = Clock::start();
     // The trusted fields of the certificate (x_loaded_ok_stream checked the
     // globals against this count) are the inference's inputs.
@@ -172,14 +189,14 @@ fn verify_inferred(p: &VProgram, global_count: u64, prim_arity: Vec<Vec<u8>>, tr
     let t = Clock::start();
     let mut oracle = Timed { inner: infer::Oracle::new(p, &global, trusted), ns: 0 };
     let g = global.g.view(p.methods);
-    let (ok, _) = check::verify(p, &g, &mut oracle, trusted);
+    let verdict = check::verify(p, &g, &mut oracle, trusted);
     let at = oracle.inner.last;
     let check_ns = t.ns().saturating_sub(oracle.ns);
     infer_ns += oracle.ns;
-    let mut v = if !ok {
-        diagnose(p, &global, at, trusted)
-    } else {
-        Verdict::new(ACCEPTED, String::new())
+    let mut v = match verdict {
+        Ok((true, _)) => Verdict::new(ACCEPTED, Cow::Borrowed("")),
+        Ok((false, _)) => diagnose(p, &global, at, trusted),
+        Err(_) => Verdict::out_of_memory(),
     };
     v.infer_ns = infer_ns;
     v.check_ns = check_ns;
@@ -195,10 +212,11 @@ fn diagnose_shipped(p: &VProgram, cert: &[u8], at: usize, global_count: u64, pri
     }
     #[cfg(feature = "infer")]
     {
+        crate::counting::stop_failing();
         let global = infer::infer_global(p, global_count, prim_arity, trusted);
         if !infer::check(p, &global, trusted).0 {
             let mut v = diagnose(p, &global, infer::check(p, &global, trusted).1, trusted);
-            v.message = format!("{} (shipped certificate rejected at method {})", v.message, at);
+            v.message = format!("{} (shipped certificate rejected at method {})", v.message, at).into();
             return v;
         }
     }
@@ -216,19 +234,19 @@ fn diagnose(p: &VProgram, global: &infer::Global, at: Option<usize>, trusted: bo
     let Some(m) = at else {
         let mut v = Verdict::new(TABLES, "program tables (tables_ok)".into());
         if let Some((m, off, msg)) = global.errors.first() {
-            v.message = format!("program tables (tables_ok); inference: method {} +{}: {}", m, off, msg);
+            v.message = format!("program tables (tables_ok); inference: method {} +{}: {}", m, off, msg).into();
         }
         return v;
     };
-    let mut v = Verdict::new(METHOD, String::new());
+    let mut v = Verdict::new(METHOD, Cow::Borrowed(""));
     v.method = m as isize;
     let (off, why) = infer::diagnose(p, global, m, trusted);
     match off {
         Some(off) => {
             v.offset = off as isize;
-            v.message = format!("{}: {}", instruction(p, m, off), why);
+            v.message = format!("{}: {}", instruction(p, m, off), why).into();
         }
-        None => v.message = why,
+        None => v.message = why.into(),
     }
     v
 }

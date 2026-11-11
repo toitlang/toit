@@ -107,7 +107,7 @@ pub fn x_info(p: &VProgram, m: usize) -> (r: MethodInfo)
     requires m < p.methods@.len(),
     ensures r == vview(p).methods[m as int], r == vinfo(p, m as int),
 {
-    let v = p.methods[m];
+    let v = crate::xvec::ix(p.methods, m);
     MethodInfo {
         arity: v.arity,
         kind: v.kind,

@@ -25,12 +25,20 @@
 //! with the seed and the mutation, and the mutant is saved with
 //! `--save DIR`. The goal is none.
 //!
-//! Usage: toit_vmverify_fuzz [--seconds N] [--seed S] [--max-ms M] [--save DIR] TABLES...
+//! With `--oom` (and `--certificates`: the device path) every mutant is
+//! verified a second time with all allocations after a random one failing
+//! (counting.rs, `fail_after`): the verdict must be OUT_OF_MEMORY if an
+//! allocation failed and unchanged otherwise; an allocation that is not
+//! fallible aborts the process.
+//!
+//! Usage: toit_vmverify_fuzz [--seconds N] [--seed S] [--max-ms M] [--save DIR]
+//!   [--certificates] [--oom] TABLES...
 
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use toit_verified_core::ffi::ProgramTables;
 use toit_vmverify::ffi::{toit_vmverify_verify, VerifyResult, MESSAGE_SIZE};
+use toit_vmverify::counting;
 use toit_vmverify::tables::Tables;
 use toit_vmverify::verify;
 
@@ -296,6 +304,18 @@ fn mutate_certificate(r: &mut Rng, c: &mut Vec<u8>) -> String {
 }
 
 fn run(t: &mut Tables, cert: Option<&[u8]>) -> (usize, Duration, String, usize) {
+    let (code, d, message, peak) = run_raw(t, cert);
+    (code, d, text(&message), peak)
+}
+
+fn text(message: &[u8; MESSAGE_SIZE]) -> String {
+    let len = message.iter().position(|b| *b == 0).unwrap_or(MESSAGE_SIZE);
+    String::from_utf8_lossy(&message[..len]).into_owned()
+}
+
+/// The verdict without allocating after the call (`--oom`: the failures
+/// are still injected when it returns).
+fn run_raw(t: &mut Tables, cert: Option<&[u8]>) -> (usize, Duration, [u8; MESSAGE_SIZE], usize) {
     let mut pt: ProgramTables = unsafe { std::mem::zeroed() };
     let mut input = t.input(&mut pt);
     if let Some(c) = cert {
@@ -309,8 +329,7 @@ fn run(t: &mut Tables, cert: Option<&[u8]>) -> (usize, Duration, String, usize) 
     let t0 = Instant::now();
     unsafe { toit_vmverify_verify(&input, &mut result) };
     let d = t0.elapsed();
-    let len = result.message.iter().position(|b| *b == 0).unwrap_or(MESSAGE_SIZE);
-    (result.code, d, String::from_utf8_lossy(&result.message[..len]).into_owned(), result.peak_bytes)
+    (result.code, d, result.message, result.peak_bytes)
 }
 
 fn main() {
@@ -319,6 +338,7 @@ fn main() {
     let mut max_ms = 2000u128;
     let mut save: Option<String> = None;
     let mut certificates = false;
+    let mut oom = false;
     let mut paths = Vec::new();
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
@@ -328,6 +348,7 @@ fn main() {
             "--max-ms" => max_ms = it.next().and_then(|v| v.parse().ok()).expect("--max-ms M"),
             "--save" => save = it.next(),
             "--certificates" => certificates = true,
+            "--oom" => oom = true,
             _ => paths.push(a),
         }
     }
@@ -354,7 +375,9 @@ fn main() {
     }
     let mut r = Rng(seed.max(1).wrapping_mul(0x9e37_79b9_7f4a_7c15) | 1);
     let start = Instant::now();
-    let mut counts = [0usize; 8];
+    let mut counts = [0usize; 9];
+    let mut oom_runs = 0usize;
+    let mut oom_failed = 0usize;
     let mut findings = 0usize;
     let mut iterations = 0usize;
     let mut slowest = Duration::ZERO;
@@ -376,16 +399,38 @@ fn main() {
             }
         }
         panics.lock().unwrap().clear();
+        let allocs_before = counting::allocations();
         let (code, d, msg, peak) = run(&mut t, cert.as_deref());
-        counts[code.min(7)] += 1;
+        let allocs = counting::allocations() - allocs_before;
+        counts[code.min(8)] += 1;
         slowest = slowest.max(d);
         peak_max = peak_max.max(peak);
         let slow = d.as_millis() > max_ms;
-        if code == verify::INTERNAL || slow {
+        let mut bad_oom: Option<String> = None;
+        if oom && cert.is_some() {
+            // The same mutant again with the allocations after the first
+            // `n` failing (as a device's exhausted heap): it must reject
+            // with OUT_OF_MEMORY if one failed, and give the same verdict
+            // if none did; a remaining infallible allocation aborts the
+            // process (the finding is its exit status).
+            let n = r.below(allocs + 1);
+            counting::fail_after(n);
+            let (code2, _, msg2, _) = run_raw(&mut t, cert.as_deref());
+            let failed = counting::stop_failing();
+            let msg2 = text(&msg2);
+            oom_runs += 1;
+            if failed > 0 { oom_failed += 1; }
+            let ok = if failed > 0 { code2 == verify::OUT_OF_MEMORY } else { code2 == code };
+            if !ok {
+                bad_oom = Some(format!("allocation {} of {} failing ({} failed): code {} [{}], without failures {}", n, allocs, failed, code2, msg2, code));
+            }
+        }
+        if code == verify::INTERNAL || slow || bad_oom.is_some() {
             findings += 1;
             let p = panics.lock().unwrap().join(" | ");
+            let kind = if slow { "slow".to_string() } else if let Some(b) = &bad_oom { format!("out of memory: {}", b) } else { "panic".to_string() };
             println!("FINDING seed {} iteration {} program {}: {} ({:.0} ms): {} [{}] {}", seed, iterations, paths[pi],
-                if slow { "slow" } else { "panic" }, d.as_secs_f64() * 1e3, what.join("; "), msg, p);
+                kind, d.as_secs_f64() * 1e3, what.join("; "), msg, p);
             if let Some(dir) = &save {
                 let _ = std::fs::create_dir_all(dir);
                 let mut pt: ProgramTables = unsafe { std::mem::zeroed() };
@@ -395,8 +440,12 @@ fn main() {
             }
         }
     }
-    println!("seed {}: {} mutants in {} s: accepted {}, malformed {}, heap {}, tables {}, method {}, internal {}, certificate {}, no certificate {}; findings {}; slowest {:.1} ms; peak {} KB",
-        seed, iterations, seconds, counts[0], counts[1], counts[2], counts[3], counts[4], counts[5], counts[6], counts[7], findings,
+    println!("seed {}: {} mutants in {} s: accepted {}, malformed {}, heap {}, tables {}, method {}, internal {}, certificate {}, no certificate {}, out of memory {}; findings {}; slowest {:.1} ms; peak {} KB",
+        seed, iterations, seconds, counts[0], counts[1], counts[2], counts[3], counts[4], counts[5], counts[6], counts[7], counts[8], findings,
         slowest.as_secs_f64() * 1e3, peak_max >> 10);
+    if oom {
+        println!("seed {}: {} runs with failing allocations, {} of them with an allocation failed (all rejected with OUT_OF_MEMORY)",
+            seed, oom_runs, oom_failed);
+    }
     std::process::exit(if findings == 0 { 0 } else { 1 });
 }

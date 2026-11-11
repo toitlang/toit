@@ -34,10 +34,14 @@
 //! entry, places the successor kinds of each instruction (`x_post`) at the
 //! next instruction, and takes a shipped map wherever one is given (branch
 //! targets, code after a terminator, non-local branch targets).
+//!
+//! The decoder fails with `Dec::Bad` (a malformed certificate: rejected)
+//! or `Dec::Oom` (an allocation failed: the checker returns `Err(Oom)`, the
+//! verdict rejects); it has no panic paths (`crate::xvec`).
 
 use vstd::prelude::*;
-use vstd::slice::slice_subrange;
 use alloc::vec::Vec;
+use crate::xvec::*;
 use crate::types::*;
 use crate::v2::check::*;
 use crate::v2::verifier::*;
@@ -72,7 +76,7 @@ pub fn x_section<'a>(s: &'a [u8], i: usize) -> (r: Option<&'a [u8]>)
     let off = x_rd(s, 12 + 8 * i) as usize;
     let len = x_rd(s, 16 + 8 * i) as usize;
     if off <= s.len() && len <= s.len() - off {
-        Some(slice_subrange(s, off, off + len))
+        Some(subslice(s, off, off + len))
     } else {
         None
     }
@@ -137,7 +141,7 @@ pub fn x_varint(s: &[u8], pos: usize) -> (r: Option<(u32, usize)>)
         decreases 5 - i,
     {
         if q >= s.len() { return None; }
-        let b = s[q];
+        let b = ix(s, q);
         let d = (b % 128) as u64;
         assert(d * mult <= 127 * mult) by (nonlinear_arith) requires d <= 127, mult >= 1;
         v = v + d * mult;
@@ -180,6 +184,28 @@ pub fn x_read_kind(s: &[u8], pos: usize) -> (r: Option<(XKind, usize)>)
     }
 }
 
+/// Why decoding stopped: a malformed certificate (rejected) or a failed
+/// allocation.
+#[derive(Clone, Copy)]
+pub enum Dec {
+    Bad,
+    Oom,
+}
+
+/// `o`'s value, or `Dec::Bad`.
+pub fn dec_some<T>(o: Option<T>) -> (r: Result<T, Dec>)
+    ensures r matches Ok(x) ==> o == Some(x),
+{
+    match o { Some(x) => Ok(x), None => Err(Dec::Bad) }
+}
+
+/// `try_push` for the decoder.
+pub fn dec_push<T>(v: &mut Vec<T>, x: T) -> (r: Result<(), Dec>)
+    ensures r is Ok ==> final(v)@ == old(v)@.push(x),
+{
+    match try_push(v, x) { Ok(()) => Ok(()), Err(_) => Err(Dec::Oom) }
+}
+
 /// A list of kinds being decoded, with the node of each slot.
 pub struct XList {
     pub kinds: Vec<XKind>,
@@ -194,13 +220,13 @@ pub open spec fn list_ok(l: &XList) -> bool {
 pub fn x_top(l: &XList) -> (r: u32)
     requires list_ok(l),
 {
-    if l.ids.len() == 0 { EMPTY_MAP } else { l.ids[l.ids.len() - 1] }
+    if l.ids.len() == 0 { EMPTY_MAP } else { vix(&l.ids, l.ids.len() - 1) }
 }
 
 /// The first `n` slots of `l` (sharing its nodes).
-pub fn x_list_prefix(l: &XList, n: usize) -> (r: XList)
+pub fn x_list_prefix(l: &XList, n: usize) -> (res: Result<XList, Dec>)
     requires list_ok(l), n <= l.kinds@.len(),
-    ensures list_ok(&r), r.kinds@.len() == n,
+    ensures res matches Ok(r) ==> list_ok(&r) && r.kinds@.len() == n,
 {
     let mut kinds: Vec<XKind> = Vec::new();
     let mut ids: Vec<u32> = Vec::new();
@@ -209,51 +235,51 @@ pub fn x_list_prefix(l: &XList, n: usize) -> (r: XList)
         invariant list_ok(l), n <= l.kinds@.len(), 0 <= i <= n, kinds@.len() == i, ids@.len() == i,
         decreases n - i,
     {
-        kinds.push(l.kinds[i]);
-        ids.push(l.ids[i]);
+        dec_push(&mut kinds, vix(&l.kinds, i))?;
+        dec_push(&mut ids, vix(&l.ids, i))?;
         i += 1;
     }
-    XList { kinds, ids }
+    Ok(XList { kinds, ids })
 }
 
-/// Pushes kind `k` on `l` as a new node of `nodes`; false if `nodes` is
-/// full (`limit`).
-pub fn x_list_push(l: &mut XList, nodes: &mut Vec<XNode>, k: XKind, limit: usize) -> (r: bool)
+/// Pushes kind `k` on `l` as a new node of `nodes`; `Dec::Bad` if `nodes`
+/// is full (`limit`).
+pub fn x_list_push(l: &mut XList, nodes: &mut Vec<XNode>, k: XKind, limit: usize) -> (r: Result<(), Dec>)
     requires list_ok(&*old(l)), old(l).kinds@.len() < MAX_KINDS, limit < EMPTY_MAP as usize,
-    ensures list_ok(&*final(l)), r ==> final(l).kinds@.len() == old(l).kinds@.len() + 1, !r ==> final(l).kinds@.len() == old(l).kinds@.len(),
+    ensures r is Ok ==> list_ok(&*final(l)) && final(l).kinds@.len() == old(l).kinds@.len() + 1,
 {
     let id = nodes.len();
-    if id >= limit { return false; }
-    let parent = if l.ids.len() == 0 { id as u32 } else { l.ids[l.ids.len() - 1] };
-    nodes.push(XNode { parent, kind: k });
-    l.kinds.push(k);
-    l.ids.push(id as u32);
-    true
+    if id >= limit { return Err(Dec::Bad); }
+    let parent = if l.ids.len() == 0 { id as u32 } else { vix(&l.ids, l.ids.len() - 1) };
+    dec_push(nodes, XNode { parent, kind: k })?;
+    dec_push(&mut l.kinds, k)?;
+    dec_push(&mut l.ids, id as u32)?;
+    Ok(())
 }
 
 /// The list of kinds `k2`, sharing the longest common prefix with `l`.
-pub fn x_intern(l: &XList, k2: &Vec<XKind>, nodes: &mut Vec<XNode>, limit: usize) -> (r: Option<XList>)
+pub fn x_intern(l: &XList, k2: &Vec<XKind>, nodes: &mut Vec<XNode>, limit: usize) -> (res: Result<XList, Dec>)
     requires list_ok(l), limit < EMPTY_MAP as usize,
-    ensures match r { Some(r) => list_ok(&r), None => true },
+    ensures res matches Ok(r) ==> list_ok(&r),
 {
-    if k2.len() > MAX_KINDS { return None; }
+    if k2.len() > MAX_KINDS { return Err(Dec::Bad); }
     let mut c = 0;
-    while c < l.kinds.len() && c < k2.len() && x_kind_eq(l.kinds[c], k2[c])
+    while c < l.kinds.len() && c < k2.len() && x_kind_eq(vix(&l.kinds, c), vix(k2, c))
         invariant list_ok(l), 0 <= c <= l.kinds@.len(), c <= k2@.len(),
         decreases k2@.len() - c,
     {
         c += 1;
     }
-    let mut r = x_list_prefix(l, c);
+    let mut r = x_list_prefix(l, c)?;
     let mut i = c;
     while i < k2.len()
         invariant list_ok(&r), c <= i <= k2@.len(), k2@.len() <= MAX_KINDS, r.kinds@.len() == i, limit < EMPTY_MAP as usize,
         decreases k2@.len() - i,
     {
-        if !x_list_push(&mut r, nodes, k2[i], limit) { return None; }
+        x_list_push(&mut r, nodes, vix(k2, i), limit)?;
         i += 1;
     }
-    Some(r)
+    Ok(r)
 }
 
 /// The maps of the methods, decoded from the stream one method at a time
@@ -276,16 +302,16 @@ pub fn x_bad_maps() -> (r: XMaps) {
 
 /// Reads the next shipped map: drop `d` slots of `prev`, push the kinds
 /// that follow. Returns the list and the position after it.
-pub fn x_read_map(s: &[u8], pos: usize, prev: &XList, nodes: &mut Vec<XNode>, limit: usize) -> (r: Option<(XList, usize)>)
+pub fn x_read_map(s: &[u8], pos: usize, prev: &XList, nodes: &mut Vec<XNode>, limit: usize) -> (r: Result<(XList, usize), Dec>)
     requires list_ok(prev), limit < EMPTY_MAP as usize,
-    ensures match r { Some((l, q)) => list_ok(&l) && pos < q <= s@.len(), None => true },
+    ensures r matches Ok((l, q)) ==> list_ok(&l) && pos < q <= s@.len(),
 {
-    let (d, q) = x_varint(s, pos)?;
-    let (n, q) = x_varint(s, q)?;
-    if d as usize > prev.kinds.len() { return None; }
+    let (d, q) = dec_some(x_varint(s, pos))?;
+    let (n, q) = dec_some(x_varint(s, q))?;
+    if d as usize > prev.kinds.len() { return Err(Dec::Bad); }
     let keep = prev.kinds.len() - d as usize;
-    if n as usize > MAX_KINDS - keep { return None; }
-    let mut l = x_list_prefix(prev, keep);
+    if n as usize > MAX_KINDS - keep { return Err(Dec::Bad); }
+    let mut l = x_list_prefix(prev, keep)?;
     let mut q = q;
     let mut i: usize = 0;
     while i < n as usize
@@ -294,22 +320,22 @@ pub fn x_read_map(s: &[u8], pos: usize, prev: &XList, nodes: &mut Vec<XNode>, li
             pos < q <= s@.len(), limit < EMPTY_MAP as usize,
         decreases n as usize - i,
     {
-        let (k, q2) = x_read_kind(s, q)?;
-        if !x_list_push(&mut l, nodes, k, limit) { return None; }
+        let (k, q2) = dec_some(x_read_kind(s, q))?;
+        x_list_push(&mut l, nodes, k, limit)?;
         q = q2;
         i += 1;
     }
-    Some((l, q))
+    Ok((l, q))
 }
 
 /// The kinds at the entry of method `m` as a list.
-pub fn x_entry_list(p: &VProgram, g: &XGlobal, m: usize, nodes: &mut Vec<XNode>, limit: usize) -> (r: Option<XList>)
+pub fn x_entry_list(p: &VProgram, g: &XGlobal, m: usize, nodes: &mut Vec<XNode>, limit: usize) -> (r: Result<XList, Dec>)
     requires m < p.methods@.len(), limit < EMPTY_MAP as usize,
-    ensures match r { Some(r) => list_ok(&r), None => true },
+    ensures r matches Ok(r) ==> list_ok(&r),
 {
     let empty = XMaps { idx: Vec::new(), nodes: Vec::new() };
     let c = XCert { g, cur: m, maps: &empty };
-    let e = x_entry_kinds(p, &c, m);
+    let e = match x_entry_kinds(p, &c, m) { Ok(e) => e, Err(_) => return Err(Dec::Oom) };
     let l = XList { kinds: Vec::new(), ids: Vec::new() };
     x_intern(&l, &e, nodes, limit)
 }
@@ -319,35 +345,27 @@ impl<'a> ShippedOracle<'a> {
         ShippedOracle { s, pos: 0, next: 0, trusted, failed: false, last: 0 }
     }
 
-    /// Decodes method `m`'s maps (`None`: malformed stream).
-    fn decode(&mut self, p: &VProgram, g: &XGlobal, m: usize) -> (r: Option<XMaps>)
+    /// Decodes method `m`'s maps.
+    fn decode(&mut self, p: &VProgram, g: &XGlobal, m: usize) -> (r: Result<XMaps, Dec>)
         requires wf_program2(vview(p)), g_ok(g), m < p.methods.len(), g.n == p.methods.len(),
     {
         let info = x_info(p, m);
-        if !(info.entry < info.end && info.end <= p.bytecodes.len()) { return None; }
+        if !(info.entry < info.end && info.end <= p.bytecodes.len()) { return Err(Dec::Bad); }
         let entry = info.entry;
         let end = info.end;
         let size = end - entry;
         let s = self.s;
-        let (count, q) = x_varint(s, self.pos)?;
+        let (count, q) = dec_some(x_varint(s, self.pos))?;
         let mut pos = q;
-        let mut idx: Vec<u32> = Vec::new();
-        let mut i = 0;
-        while i < size
-            invariant idx@.len() == i, i <= size,
-            decreases size - i,
-        {
-            idx.push(NO_MAP);
-            i += 1;
-        }
+        let mut idx: Vec<u32> = match try_filled(NO_MAP, size) { Ok(v) => v, Err(_) => return Err(Dec::Oom) };
         let mut nodes: Vec<XNode> = Vec::new();
         // A block that is never created is not checked: no maps.
         let empty = XMaps { idx: Vec::new(), nodes: Vec::new() };
         let c = XCert { g, cur: m, maps: &empty };
         if info.kind == 3 && x_ctx_of(&c, m).is_none() {
-            if count != 0 { return None; }
+            if count != 0 { return Err(Dec::Bad); }
             self.pos = pos;
-            return Some(XMaps { idx, nodes });
+            return Ok(XMaps { idx, nodes });
         }
         // The node budget: well above what compiled code needs (infer.rs).
         let limit: usize = if size < 0x0100_0000 { size * 16 + 4096 } else { 0x1000_0000 };
@@ -356,15 +374,14 @@ impl<'a> ShippedOracle<'a> {
         let mut have = false;
         let mut e: usize = 0;
         if left > 0 {
-            let (d, q) = x_varint(s, pos)?;
+            let (d, q) = dec_some(x_varint(s, pos))?;
             pos = q;
             e = d as usize;
             have = true;
             left = left - 1;
         }
         let mut prev = XList { kinds: Vec::new(), ids: Vec::new() };
-        let mut cur: Option<XList> = x_entry_list(p, g, m, &mut nodes, limit);
-        if cur.is_none() { return None; }
+        let mut cur: Option<XList> = Some(x_entry_list(p, g, m, &mut nodes, limit)?);
         let mut off: usize = 0;
         while off < size
             invariant
@@ -380,11 +397,11 @@ impl<'a> ShippedOracle<'a> {
                 let (_, q) = x_read_map(s, pos, &prev, &mut nodes, limit)?;
                 pos = q;
                 if left > 0 {
-                    let (d, q) = x_varint(s, pos)?;
+                    let (d, q) = dec_some(x_varint(s, pos))?;
                     pos = q;
-                    if d as usize >= u32::MAX as usize - e { return None; }
+                    if d as usize >= u32::MAX as usize - e { return Err(Dec::Bad); }
                     e = e + 1 + d as usize;
-                    if e > u32::MAX as usize { return None; }
+                    if e > u32::MAX as usize { return Err(Dec::Bad); }
                     left = left - 1;
                 } else {
                     have = false;
@@ -397,9 +414,9 @@ impl<'a> ShippedOracle<'a> {
                 pos = q;
                 placed = l;
                 if left > 0 {
-                    let (d, q) = x_varint(s, pos)?;
+                    let (d, q) = dec_some(x_varint(s, pos))?;
                     pos = q;
-                    if d as usize >= u32::MAX as usize - e { return None; }
+                    if d as usize >= u32::MAX as usize - e { return Err(Dec::Bad); }
                     e = e + 1 + d as usize;
                     left = left - 1;
                 } else {
@@ -418,9 +435,9 @@ impl<'a> ShippedOracle<'a> {
                 }
             }
             cur = None;
-            idx.set(off, x_top(&placed));
+            vput(&mut idx, off, x_top(&placed));
             let bci = entry + off;
-            let op = p.bytecodes[bci];
+            let op = ix(p.bytecodes, bci);
             if op >= OPCODE_COUNT2 {
                 prev = placed;
                 off = off + 1;
@@ -435,11 +452,11 @@ impl<'a> ShippedOracle<'a> {
             if !x_is_terminator(op) && placed.kinds.len() <= 0x10_0000 {
                 let c = XCert { g, cur: m, maps: &empty };
                 match x_post(p, &c, m, off, &placed.kinds, self.trusted) {
-                    Some(k2) => {
-                        cur = x_intern(&placed, &k2, &mut nodes, limit);
-                        if cur.is_none() { return None; }
+                    Ok(Some(k2)) => {
+                        cur = Some(x_intern(&placed, &k2, &mut nodes, limit)?);
                     },
-                    None => {},
+                    Ok(None) => {},
+                    Err(_) => return Err(Dec::Oom),
                 }
             }
             prev = placed;
@@ -453,7 +470,7 @@ impl<'a> ShippedOracle<'a> {
             let (_, q) = x_read_map(s, pos, &prev, &mut nodes, limit)?;
             pos = q;
             if left > 0 {
-                let (_, q) = x_varint(s, pos)?;
+                let (_, q) = dec_some(x_varint(s, pos))?;
                 pos = q;
                 left = left - 1;
             } else {
@@ -461,24 +478,25 @@ impl<'a> ShippedOracle<'a> {
             }
         }
         self.pos = pos;
-        Some(XMaps { idx, nodes })
+        Ok(XMaps { idx, nodes })
     }
 }
 
 impl<'a> MapOracle for ShippedOracle<'a> {
-    fn method_maps(&mut self, p: &VProgram, g: &XGlobal, m: usize) -> XMaps {
+    fn method_maps(&mut self, p: &VProgram, g: &XGlobal, m: usize) -> Result<XMaps, Oom> {
         self.last = m;
         if self.failed || m != self.next {
             self.failed = true;
-            return x_bad_maps();
+            return Ok(x_bad_maps());
         }
         self.next = m + 1;
         match self.decode(p, g, m) {
-            Some(maps) => maps,
-            None => {
+            Ok(maps) => Ok(maps),
+            Err(Dec::Bad) => {
                 self.failed = true;
-                x_bad_maps()
+                Ok(x_bad_maps())
             },
+            Err(Dec::Oom) => Err(Oom),
         }
     }
 }
@@ -490,19 +508,19 @@ pub open spec fn prim_view(prim_arity: Seq<Vec<u8>>) -> Seq<Seq<int>> {
 /// The verdict on program `p` with the shipped certificate `cert`: true
 /// only if some certificate with the trusted fields `global_count` and
 /// `prim_arity` is accepted. Also returns the method the checker stopped
-/// at (diagnostics).
+/// at (diagnostics). `Err(Oom)`: an allocation failed (rejected).
 pub fn verify_shipped(p: &VProgram, cert: &[u8], global_count: u64, prim_arity: &[Vec<u8>], trusted: bool)
-    -> (r: (bool, usize))
+    -> (res: Result<(bool, usize), Oom>)
     ensures
-        r.0 ==> exists|c: Cert| accepts(vview(p), c, trusted) && #[trigger] c.global_count == global_count as int
-            && c.prim_arity == prim_view(prim_arity@),
+        res matches Ok(r) ==> (r.0 ==> exists|c: Cert| accepts(vview(p), c, trusted) && #[trigger] c.global_count == global_count as int
+            && c.prim_arity == prim_view(prim_arity@)),
 {
     let (g, maps) = match parse_cert(p, cert, global_count, prim_arity) {
         Some(x) => x,
-        None => return (false, 0),
+        None => return Ok((false, 0)),
     };
     let mut o = ShippedOracle::new(maps, trusted);
-    let (ok, Ghost(ms)) = verify(p, &g, &mut o, trusted);
+    let (ok, Ghost(ms)) = verify(p, &g, &mut o, trusted)?;
     if ok {
         proof {
             lemma_split_sound(vview(p), g@, ms, trusted);
@@ -511,7 +529,7 @@ pub fn verify_shipped(p: &VProgram, cert: &[u8], global_count: u64, prim_arity: 
             assert(c.prim_arity == prim_view(prim_arity@));
         }
     }
-    (ok, o.last)
+    Ok((ok, o.last))
 }
 
 } // verus!
