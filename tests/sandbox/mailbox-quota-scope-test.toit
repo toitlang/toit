@@ -94,10 +94,12 @@ fill pid/int -> int:
   return sent
 
 run-a:
-  // Each receiver takes QUOTA messages from us: the quota is not a budget
-  // over all receivers.
+  // Each receiver takes (at least) QUOTA messages from us: the quota is not
+  // a budget over all receivers. A provider that is discoverable may still
+  // be finishing its installation, and then processes a few of our
+  // messages before it gets stuck.
   counts := provider-pids.map: fill it
-  expect-equals [QUOTA, QUOTA] counts
+  counts.do: expect it >= QUOTA
 
 run-b:
   // Sandbox A's messages take up our quota at the providers.
