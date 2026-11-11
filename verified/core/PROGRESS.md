@@ -53,8 +53,17 @@ suite 280 identical + the two known differences, prim_diff.sh 10 x
 divergence, core_fuzz.toit --filter launch on ASan 30 minutes without a
 crash, 32-bit host tests/sandbox 95/95):
 
-- M1: the register loop with all families above (see below for the
-  commit).
+- M1 (76448f09): the register loop with every family, room invariant,
+  lazy finally records, D1/D2. Gates as listed (fuzz: 112,441 mutants,
+  15,917 run, 0 crashes).
+- M2 (this commit's parent, 17efcdd4 plus documentation): the instruction
+  pointer as a cursor, the INVOKE_AT/AT_PUT fallback on registers. Gates
+  as listed (fuzz seed 22: 102,811 mutants, 14,632 run, 0 crashes).
+
+Wall time per iteration (minimum of 5, interleaved, load about 28 on 32
+cores): C++ format 1 11.67 / 7.24 / 8.14 ms; before 20.08 / 14.57 / 13.61
+ms; M2 11.62 / 8.77 / 8.05 ms, ratio 1.00 / 1.21 / 0.99 (prototype 0.94 /
+1.22 / 0.96).
 
 ## Shipped certificates on devices, size diet (branch device/certificate-and-size, 2026-11-11)
 
