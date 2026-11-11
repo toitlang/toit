@@ -34,6 +34,8 @@ class FinalizerNode : public FinalizerNodeFifo::Element {
   FinalizerNode(HeapObject* key, ObjectHeap* heap) : key_(key), heap_(heap) {}
   virtual ~FinalizerNode();
 
+  HeapObject* key() const { return key_; }
+
   // Called at the end of compaction and at other times where all pointers
   // should be visited with no weakness/finalization processing.
   virtual void roots_do(RootCallback* cb) = 0;
