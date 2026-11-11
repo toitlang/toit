@@ -64,33 +64,6 @@ verus! {
 // ---------------------------------------------------------------------------
 // What a step guarantees.
 
-/// The opcodes whose handlers are proven to refine the spec.
-pub open spec fn verified_op(op: u8) -> bool {
-    ||| op <= 4          // LOAD_LOCAL, LOAD_LOCAL_WIDE, POP_LOAD_LOCAL, STORE_LOCAL(_POP)
-    ||| 14 <= op <= 31   // LOAD_LOCAL_0..5, literals, smis, LOAD_METHOD, LOAD_GLOBAL_VAR(_WIDE)
-    ||| op == 35 || op == 36  // STORE_GLOBAL_VAR(_WIDE)
-    ||| op == 40 || op == 41  // POP, POP_1
-    ||| 44 <= op <= 52   // IS_CLASS*, IS_INTERFACE*, AS_CLASS*, AS_INTERFACE*, AS_LOCAL
-    ||| 81 <= op <= 88   // BRANCH*, BRANCH_BACK*
-    ||| op == 53         // INVOKE_STATIC
-    ||| op == 58 || op == 59  // INVOKE_VIRTUAL(_WIDE)
-    ||| op == 91 || op == 92  // RETURN, RETURN_NULL
-    ||| 7 <= op <= 13    // LOAD_FIELD*, STORE_FIELD*
-    ||| op == 60 || op == 61  // INVOKE_VIRTUAL_GET/SET
-    ||| op == 94 || op == 98  // STORE_FIELD_THIS, LOAD_FIELD_THIS
-    ||| op == 5 || op == 6    // LOAD_OUTER, STORE_OUTER
-    ||| op == 38 || op == 39  // LOAD_BLOCK, LOAD_OUTER_BLOCK
-    ||| op == 55         // INVOKE_BLOCK
-    ||| 62 <= op <= 77   // INVOKE_EQ, relational, arithmetic and bit operators (smi fast paths)
-    ||| op == 96         // IDENTICAL
-    ||| op == 100        // HALT
-    ||| 32 <= op <= 34 || op == 37  // LOAD_GLOBAL_VAR_LAZY(_WIDE), LOAD/STORE_GLOBAL_VAR_DYNAMIC
-    ||| op == 42 || op == 43  // ALLOCATE(_WIDE)
-    ||| 78 <= op <= 80   // INVOKE_AT, INVOKE_AT_PUT, INVOKE_SIZE (array fast paths)
-    ||| op == 90 || op == 97 || op == 99  // THROW, TRY, UNWIND
-    ||| op == 93 || op == 95  // NON_LOCAL_RETURN, NON_LOCAL_BRANCH
-}
-
 /// The machine continues from a state the spec reaches from `g0`: the same
 /// state (the instruction has not run: preemption before a backward
 /// branch, stack growth before a call), or a state an outcome of `g0`

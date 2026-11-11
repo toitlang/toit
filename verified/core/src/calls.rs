@@ -767,65 +767,6 @@ pub open spec fn handler_pre(p: &Program, m: Machine, bci: usize, opcode: u8) ->
     &&& opcode == ap.bytecodes[bci as int]
 }
 
-/// INVOKE_STATIC d (`spec::call_static`). Raising AS_CHECK_FAILED (a
-/// receiver outside the target's range) is not proven yet.
-#[inline(always)]
-pub fn op_invoke_static(m: &mut Machine, env: &Env, bci: usize, opcode: u8, d: usize) -> (r: Ctl)
-    requires
-        handler_pre(&env.p, *old(m), bci, opcode),
-        toit_spec::v2::prim::grows_stack(opcode),
-        sp::step(env.p.ap@, old(m).g@) == sp::call_static(env.p.ap@, old(m).g@, sp::dispatch_target(env.p.ap@, d as int), 3),
-        bci + 3 < 0x1000_0000,
-    ensures step_post(&env.p, *old(m), *final(m), r),
-{
-    if let Some(c) = ensure_room(m, env) {
-        return c;
-    }
-    let p = &env.p;
-    let ghost ap = p.ap@;
-    let ghost g = m.g@;
-    let ghost m0 = *m;
-    proof {
-        assert(outcome_ok(ap, p.cert@, sp::step(ap, g)));
-        m.lemma_frame(p);
-    }
-    let t = p.dispatch.at(d) as usize;
-    let info = p.methods.at(t);
-    proof { assert(ap.methods[t as int] == method_info(p.methods@[t as int], p.max_height)); }
-    let arity = info.arity as usize;
-    if info.recv_start != NO_VALUE {
-        proof { m.lemma_at(p, arity - 1); }
-        let receiver = m.at(arity - 1);
-        let cid = m.class_of(p, receiver, Ghost(sp::at(g, arity - 1)));
-        if !((info.recv_start as i64) <= cid && cid < info.recv_end as i64) {
-            proof {
-                assert(sp::step(ap, g) == sp::raise(ap, g, sp::AS_CHECK_FAILED));
-                lemma_source_step(ap, g);
-            }
-            return m.v_raise_none(env, 1);
-        }
-    }
-    let r = m.push_call(env, t, bci + 3);
-    proof { lemma_matches(p, m0, *m, r); }
-    r
-}
-
-/// INVOKE_VIRTUAL(_WIDE) (`spec::invoke_virtual`) with `n` arguments,
-/// receiver included. Raising LOOKUP_FAILED is not proven yet.
-#[inline(always)]
-pub fn op_invoke_virtual(m: &mut Machine, env: &Env, bci: usize, opcode: u8, sel: i64, n: usize, len: usize) -> (r: Ctl)
-    requires
-        handler_pre(&env.p, *old(m), bci, opcode),
-        toit_spec::v2::prim::grows_stack(opcode),
-        sp::step(env.p.ap@, old(m).g@) == sp::invoke_virtual(env.p.ap@, old(m).g@, sel as int, n as int, len as int),
-        -0x8000_0000 <= sel < 0x8000_0000,
-        bci + len < 0x1000_0000,
-    ensures step_post(&env.p, *old(m), *final(m), r),
-{
-    proof { lemma_source_step(env.p.ap@, m.g@); }
-    do_invoke_virtual(m, env, bci, opcode, sel, n, len)
-}
-
 /// `spec::invoke_virtual(g, sel, n, len)` where it is a source of outcomes
 /// of the state (the step, or a resource throw's fallback).
 #[inline(always)]
@@ -866,22 +807,6 @@ pub fn do_invoke_virtual(m: &mut Machine, env: &Env, bci: usize, opcode: u8, sel
     }
 }
 
-/// The virtual call of an operator's selector (`spec::operator_fallback`):
-/// opcodes INVOKE_EQ .. INVOKE_AT_PUT when the fast path does not apply.
-#[inline(always)]
-pub fn op_operator_fallback(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: Ctl)
-    requires
-        handler_pre(&env.p, *old(m), bci, opcode),
-        toit_spec::v2::prim::grows_stack(opcode),
-        62 <= opcode <= 79,
-        sp::step(env.p.ap@, old(m).g@) == sp::operator_fallback(env.p.ap@, old(m).g@, opcode),
-        bci + 1 < 0x1000_0000,
-    ensures step_post(&env.p, *old(m), *final(m), r),
-{
-    proof { lemma_source_step(env.p.ap@, m.g@); }
-    fallback_src(m, env, bci, opcode)
-}
-
 /// `spec::operator_fallback` where it is a source of outcomes (the step,
 /// or the resource throw of a failed double allocation).
 #[inline(always)]
@@ -898,27 +823,6 @@ pub fn fallback_src(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: C
     let sel = env.p.invoke_offsets.at((opcode - 62) as usize) as i64;
     let n = if opcode == 79 { 3 } else { 2 };
     do_invoke_virtual(m, env, bci, opcode, sel, n, 1)
-}
-
-/// RETURN and RETURN_NULL (`spec::return_from`) with the result `w`.
-#[inline(always)]
-pub fn op_return(m: &mut Machine, env: &Env, w: usize, Ghost(v): Ghost<Value>) -> (r: Ctl)
-    requires
-        old(m).inv(&env.p),
-        step_ok(env.p.ap@, env.p.cert@, old(m).g@),
-        sp::step(env.p.ap@, old(m).g@) == sp::return_from(env.p.ap@, old(m).g@, v),
-        w == enc(old(m).addr(), v),
-        encodable(old(m).addr(), v),
-    ensures step_post(&env.p, *old(m), *final(m), r),
-{
-    let ghost m0 = *m;
-    proof {
-        assert(outcome_ok(env.p.ap@, env.p.cert@, sp::step(env.p.ap@, m.g@)));
-        lemma_shape(&env.p, m.g@);
-    }
-    let r = m.do_return(env, w, Ghost(v));
-    proof { lemma_matches(&env.p, m0, *m, r); }
-    r
 }
 
 } // verus!
