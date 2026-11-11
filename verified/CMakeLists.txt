@@ -85,7 +85,15 @@ option(TOIT_VERIFIED_CORE_INFER "Link the certificate inference (hosts)" ${TOIT_
 # (ProcessGroup::create refuses the others) and do not link it.
 option(TOIT_VERIFIED_CORE_CHECKED_LOOP "Link the checked run loop of the core (hosts)" ${TOIT_VERIFIED_CORE_INFER_DEFAULT})
 
+# The format-2 verifier for installs of untrusted containers (vmverify's
+# toit_vmverify_verify and verified/spec's checker; about 27 KB of flash on
+# the classic ESP32). Firmware that never installs untrusted containers can
+# leave it out (Kconfig TOIT_VERIFIED_CORE_VERIFIER): every untrusted
+# install is then rejected, and the linker drops the Rust verifier.
+option(TOIT_VERIFIED_CORE_VERIFIER "Link the format-2 verifier (untrusted installs)" ON)
+
 set(TOIT_VERIFIED_CORE_ENABLED OFF CACHE INTERNAL "")
+set(TOIT_VERIFIED_CORE_VERIFIER_ENABLED OFF CACHE INTERNAL "")
 set(TOIT_VERIFIED_CORE_INFER_ENABLED OFF CACHE INTERNAL "")
 set(TOIT_VERIFIED_CORE_CHECKED_LOOP_ENABLED OFF CACHE INTERNAL "")
 if (NOT TOIT_VERIFIED_CORE)
@@ -98,6 +106,7 @@ if (NOT TOIT_CARGO)
   return()
 endif()
 set(TOIT_VERIFIED_CORE_ENABLED ON CACHE INTERNAL "")
+set(TOIT_VERIFIED_CORE_VERIFIER_ENABLED ${TOIT_VERIFIED_CORE_VERIFIER} CACHE INTERNAL "")
 set(TOIT_VERIFIED_CORE_INFER_ENABLED ${TOIT_VERIFIED_CORE_INFER} CACHE INTERNAL "")
 set(TOIT_VERIFIED_CORE_CHECKED_LOOP_ENABLED ${TOIT_VERIFIED_CORE_CHECKED_LOOP} CACHE INTERNAL "")
 

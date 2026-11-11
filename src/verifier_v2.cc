@@ -167,6 +167,15 @@ bool V2Verifier::verify(Program* program, const V2MethodTable* table, bool trust
 static bool v2_verify(Program* program, const V2MethodTable* table, bool trusted, word program_size,
                       const uint8* certificate, word certificate_length, Process* process,
                       bool* out_of_memory) {
+#ifdef TOIT_NO_V2_VERIFIER
+  // Firmware that never installs untrusted containers (Kconfig
+  // TOIT_VERIFIED_CORE_VERIFIER): the verifier is not linked, so every
+  // untrusted program is rejected.
+  USE(v2_progress);
+  USE(v2_code_name);
+  fprintf(stderr, "verifier: %sprogram rejected: the firmware has no verifier\n", trusted ? "" : "untrusted ");
+  return false;
+#else
   if (certificate == null && !V2Verifier::infers()) {
     // Devices (and hosts with -Xrequire_certificate): no inference, so no
     // verdict without a shipped certificate. Rejected before the program is
@@ -224,6 +233,7 @@ static bool v2_verify(Program* program, const V2MethodTable* table, bool trusted
     fprintf(stderr, "verifier: the program was compiled for trusted use; compile it with --untrusted\n");
   }
   return false;
+#endif  // TOIT_NO_V2_VERIFIER
 }
 
 const char* V2Verifier::verify_installed(Program* program, word program_size, bool* no_verdict,
