@@ -506,9 +506,11 @@ pub fn op_invoke_at_put(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, op
 /// INVOKE_SIZE (`spec::op_invoke_size`): `spec_helpers::fast_size`, else
 /// the virtual getter (on the machine).
 #[inline(always)]
-pub fn op_invoke_size(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode: u8) -> (c: Ctl)
+pub fn op_invoke_size(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode: u8, sel_: usize) -> (c: Ctl)
     requires
         rhandler_pre(&env.p, *old(m), *old(r), bci, opcode),
+        sel_ as int == u16_at(p1(env.p.ap@), bci + 1),
+        sel_ < 0x1_0000,
         opcode == 80,
         bci + 3 < 0x1000_0000,
     ensures rpost(&env.p, *old(m), *old(r), *final(m), *final(r), c),
@@ -541,7 +543,11 @@ pub fn op_invoke_size(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opco
             }
             Ctl::Next
         },
-        None => bridge_r(m, r, env),
+        None => {
+            // The virtual getter (`spec::op_invoke_virtual_get`), on registers.
+            proof { assert(sp::op_invoke_size(ap, g, sel) == sp::op_invoke_virtual_get(ap, g, sel)); }
+            crate::rfields::op_invoke_virtual_get(m, r, env, bci, opcode, sel_)
+        },
     }
 }
 
@@ -765,7 +771,7 @@ pub fn op_primitive(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode
     }
     // A C++ primitive (a GC point that may switch the task), a missing one,
     // or a Rust primitive that needs a GC.
-    bridge_r(m, r, env)
+    slow0(m, r, env, Slow::Prim(module, index, arity))
 }
 
 /// Runs the Rust port of core primitive `index` (`prims::call`) on the

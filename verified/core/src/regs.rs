@@ -116,7 +116,7 @@ impl Machine {
         let fw = self.rtop - self.ftop;
         self.fw = fw;
         if fw == 0 {
-            self.need = FRAME_WORDS + p.max_height + STACK_RESERVE;
+            self.need = FRAME_WORDS + p.max_height + STACK_RESERVE + FIN_WORDS;
             self.bot = self.mem.slot(FRAME_WORDS);
         } else {
             self.need = usize::MAX;
@@ -134,8 +134,12 @@ impl Machine {
             assert(self.with(r) =~= m1);
             assert(m1.refines(p));
             if room_ok(p, m0) {
-                assert forall|i: int| 0 <= i < m1.g@.frames.len() implies #[trigger] frame_room(p, m1, i) by {
-                    assert(frame_room(p, m0, i));
+                if m0.g@.fins.len() == 0 {
+                    assert forall|i: int| 0 <= i < m1.g@.frames.len() implies #[trigger] frame_room(p, m1, i) by {
+                        assert(frame_room(p, m0, i));
+                    }
+                } else {
+                    assert(frame_room(p, m0, m0.g@.frames.len() - 1));
                 }
             }
         }
@@ -193,7 +197,7 @@ impl Machine {
 pub open spec fn gate_ok(p: &Program, m: Machine) -> bool {
     &&& m.bot.sid() == m.mem.sid()
     &&& if m.fw == 0 {
-            m.need == FRAME_WORDS + p.max_height + STACK_RESERVE && m.bot@ == FRAME_WORDS
+            m.need == FRAME_WORDS + p.max_height + STACK_RESERVE + FIN_WORDS && m.bot@ == FRAME_WORDS
         } else {
             m.need == usize::MAX && m.bot@ == m.len
         }

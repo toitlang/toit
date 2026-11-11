@@ -243,13 +243,14 @@ pub fn op_load_outer_block(m: &mut Machine, r: &mut Regs, p: &Program, k: usize)
 pub fn op_invoke_block(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode: u8, n: usize) -> (c: Ctl)
     requires
         rhandler_pre(&env.p, *old(m), *old(r), bci, opcode),
+        opcode == 55,
         sp::step(env.p.ap@, old(m).g@) == sp::op_invoke_block(env.p.ap@, old(m).g@, n as int),
         bci + 2 < 0x1000_0000,
     ensures rpost(&env.p, *old(m), *old(r), *final(m), *final(r), c),
 {
     let p = &env.p;
     if !call_fast(m, r, env) {
-        return bridge_r(m, r, env);
+        return slow0(m, r, env, Slow::Op);
     }
     let ghost ap = p.ap@;
     let ghost g = m.g@;
@@ -281,7 +282,7 @@ pub fn op_invoke_block(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opc
     proof { assert(ap.methods[t as int] == method_info(p.methods@[t as int], p.max_height)); }
     let arity = info.arity as usize;
     if n < arity {
-        return bridge_r(m, r, env);
+        return slow0(m, r, env, Slow::Op);
     }
     let d = n - arity;
     r.sp = r.sp.offset(d as isize);
@@ -416,13 +417,14 @@ proof fn lemma_no_fins(g: State2)
 pub fn op_invoke_static_tail(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode: u8, d: usize) -> (c: Ctl)
     requires
         rhandler_pre(&env.p, *old(m), *old(r), bci, opcode),
+        opcode == 54,
         sp::step(env.p.ap@, old(m).g@) == sp::op_invoke_static_tail(env.p.ap@, old(m).g@, d as int),
         bci + 3 < 0x1000_0000,
     ensures rpost(&env.p, *old(m), *old(r), *final(m), *final(r), c),
 {
     let p = &env.p;
     if !call_fast(m, r, env) {
-        return bridge_r(m, r, env);
+        return slow0(m, r, env, Slow::Op);
     }
     let ghost ap = p.ap@;
     let ghost g = m.g@;
@@ -441,7 +443,7 @@ pub fn op_invoke_static_tail(m: &mut Machine, r: &mut Regs, env: &Env, bci: usiz
         let receiver = at(m, r, arity - 1);
         let cid = m.class_of(p, receiver, Ghost(sp::at(g, arity - 1)));
         if !((info.recv_start as i64) <= cid && cid < info.recv_end as i64) {
-            return bridge_r(m, r, env);
+            return slow0(m, r, env, Slow::Op);
         }
     }
     let ghost args = g.stack.subrange(g.stack.len() - arity, g.stack.len() as int);
@@ -489,7 +491,7 @@ pub fn op_invoke_initializer_tail(m: &mut Machine, r: &mut Regs, env: &Env, bci:
 {
     let p = &env.p;
     if !call_fast(m, r, env) {
-        return bridge_r(m, r, env);
+        return slow0(m, r, env, Slow::Op);
     }
     let ghost ap = p.ap@;
     let ghost g = m.g@;
@@ -506,17 +508,17 @@ pub fn op_invoke_initializer_tail(m: &mut Machine, r: &mut Regs, env: &Env, bci:
     }
     let w = at(m, r, 0);
     if w & 1 != 0 {
-        return bridge_r(m, r, env);
+        return slow0(m, r, env, Slow::Op);
     }
     let mid = smi_value(w);
     if mid < 0 || mid as usize >= p.methods.len() {
-        return bridge_r(m, r, env);
+        return slow0(m, r, env, Slow::Op);
     }
     let t = mid as usize;
     let info = p.methods.at(t);
     proof { assert(ap.methods[t as int] == method_info(p.methods@[t as int], p.max_height)); }
     if info.kind != KIND_METHOD || info.arity != 0 {
-        return bridge_r(m, r, env);
+        return slow0(m, r, env, Slow::Op);
     }
     proof {
         assert(sp::op_invoke_initializer_tail(ap, g) == sp::replace_frame(ap, g, t as int, Seq::<Value>::empty()));
@@ -541,6 +543,7 @@ pub fn op_invoke_initializer_tail(m: &mut Machine, r: &mut Regs, env: &Env, bci:
 pub fn op_load_global_lazy(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode: u8, gi: usize, len: usize) -> (c: Ctl)
     requires
         rhandler_pre(&env.p, *old(m), *old(r), bci, opcode),
+        opcode == 32 || opcode == 33,
         sp::step(env.p.ap@, old(m).g@) == sp::op_load_global_lazy(env.p.ap@, old(m).g@, gi as int, len as int),
         bci + len < 0x1000_0000,
     ensures rpost(&env.p, *old(m), *old(r), *final(m), *final(r), c),
@@ -557,7 +560,7 @@ pub fn op_load_global_lazy(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize,
     let ghost v = g.globals[gi as int];
     let w = m.globals.at(gi);
     if m.is_lazy_word(p, w, Ghost(v)) {
-        return bridge_r(m, r, env);
+        return slow0(m, r, env, Slow::Op);
     }
     let c = push_next(m, r, p, w, len, Ghost(v));
     proof {
@@ -589,7 +592,10 @@ pub fn op_load_global_dynamic(m: &mut Machine, r: &mut Regs, env: &Env, bci: usi
     }
     let w = at(m, r, 0);
     let gi = match m.dyn_global_index(p, w, Ghost(sp::at(g, 0))) {
-        None => { return bridge_r(m, r, env); },
+        None => {
+            proof { assert(sp::step(ap, g) == sp::raise(ap, g, sp::INVALID_PROGRAM)); }
+            return slow0(m, r, env, Slow::Invalid);
+        },
         Some(gi) => gi,
     };
     proof {
@@ -638,7 +644,10 @@ pub fn op_store_global_dynamic(m: &mut Machine, r: &mut Regs, env: &Env, bci: us
     }
     let w = at(m, r, 1);
     let gi = match m.dyn_global_index(p, w, Ghost(sp::at(g, 1))) {
-        None => { return bridge_r(m, r, env); },
+        None => {
+            proof { assert(sp::step(ap, g) == sp::raise(ap, g, sp::INVALID_PROGRAM)); }
+            return slow0(m, r, env, Slow::Invalid);
+        },
         Some(gi) => gi,
     };
     let v = at(m, r, 0);

@@ -64,9 +64,20 @@ pub open spec fn frame_room(p: &Program, m: Machine, i: int) -> bool {
     frame_need(p, m.g@, i) <= m.len
 }
 
-/// Every frame has room for its maximal height.
+/// The frames that can grow have room for their maximal height: without
+/// finally records every frame (each becomes the top frame again after
+/// returns, which are fast then); with finally records (only during an
+/// unwinding's finally code) the top frame: calls and returns run on the
+/// machine then, and `step::resume` re-establishes the room after each of
+/// them, for every frame once the records are gone. (Room for every frame
+/// with the records counted may not exist after a stack overflow, at the
+/// maximal length, where format 1 still runs the finally code.)
 pub open spec fn room_ok(p: &Program, m: Machine) -> bool {
-    forall|i: int| 0 <= i < m.g@.frames.len() ==> #[trigger] frame_room(p, m, i)
+    if m.g@.fins.len() == 0 {
+        forall|i: int| 0 <= i < m.g@.frames.len() ==> #[trigger] frame_room(p, m, i)
+    } else {
+        frame_room(p, m, m.g@.frames.len() - 1)
+    }
 }
 
 /// With room, the top frame has `STACK_RESERVE` free words: the verifier
@@ -119,11 +130,15 @@ pub proof fn lemma_room_same(p: &Program, m0: Machine, m1: Machine)
         room_ok(p, m0),
         m1.len >= m0.len,
         m1.g@.frames == m0.g@.frames,
-        m1.g@.fins.len() <= m0.g@.fins.len(),
+        m1.g@.fins.len() == m0.g@.fins.len(),
     ensures room_ok(p, m1),
 {
-    assert forall|i: int| 0 <= i < m1.g@.frames.len() implies #[trigger] frame_room(p, m1, i) by {
-        assert(frame_room(p, m0, i));
+    if m0.g@.fins.len() == 0 {
+        assert forall|i: int| 0 <= i < m1.g@.frames.len() implies #[trigger] frame_room(p, m1, i) by {
+            assert(frame_room(p, m0, i));
+        }
+    } else {
+        assert(frame_room(p, m0, m0.g@.frames.len() - 1));
     }
 }
 
@@ -140,7 +155,7 @@ pub fn regain(m: &mut Machine, env: &Env, len0: usize, Ghost(m0): Ghost<Machine>
         room_ok(&env.p, m0),
         old(m).g@.frames == m0.g@.frames,
         m0.refines(&env.p),
-        old(m).g@.fins.len() <= m0.g@.fins.len(),
+        old(m).g@.fins.len() == m0.g@.fins.len(),
     ensures
         res matches Some(r) ==> final(m).rok(r) && crate::regs::ipok(&env.p, r)
             && crate::regs::gate_ok(&env.p, *final(m))
@@ -158,8 +173,9 @@ pub fn regain(m: &mut Machine, env: &Env, len0: usize, Ghost(m0): Ghost<Machine>
 }
 
 /// Re-establishes `room_ok` (cold: after a GC that shrank the stack, a task
-/// switch, an unwinding into finally code, and at the start of a run): the
-/// largest need of the frames, from their records; if the stack is too
+/// switch, a path on the machine, and at the start of a run): the largest
+/// need of the frames, from their records (with finally records the top
+/// frame's only); if the stack is too
 /// short, it grows (a GC point; the state is unchanged). If it cannot grow,
 /// the run stops with `LIMIT` (out of memory).
 #[inline(never)]
@@ -180,7 +196,9 @@ pub fn ensure_room_all(m: &mut Machine, env: &Env) -> (c: Ctl)
     let n = m.ftop / FRAME_WORDS;
     proof { assert(n == g.frames.len()); }
     let mut need: usize = 0;
-    let mut i: usize = 0;
+    // With finally records only the top frame needs room (`room_ok`).
+    let mut i: usize = if m.rtop == m.ftop { 0 } else { n - 1 };
+    let ghost i0 = i as int;
     while i < n
         invariant
             m.inv(p),
@@ -188,10 +206,12 @@ pub fn ensure_room_all(m: &mut Machine, env: &Env) -> (c: Ctl)
             m.g@ == g,
             n == g.frames.len(),
             m.ftop == FRAME_WORDS * n,
-            i <= n,
+            i0 <= i <= n,
+            i0 == 0 || (g.fins.len() > 0 && i0 == n - 1),
+            g.fins.len() == 0 ==> i0 == 0,
             need < 0x4_0000,
             forall|fi: int| 0 <= fi < g.frames.len() ==> sp::valid_method(ap, (#[trigger] g.frames[fi]).method as int),
-            forall|j: int| 0 <= j < i ==> frame_need(p, g, j) - p.max_height - FIN_WORDS * g.fins.len() - STACK_RESERVE <= need,
+            forall|j: int| i0 <= j < i ==> frame_need(p, g, j) - p.max_height - FIN_WORDS * g.fins.len() - STACK_RESERVE <= need,
         decreases n - i,
     {
         let ri = FRAME_WORDS * i;
@@ -221,7 +241,8 @@ pub fn ensure_room_all(m: &mut Machine, env: &Env) -> (c: Ctl)
     let total = need + p.max_height + (m.rtop - m.ftop) + STACK_RESERVE;
     if total <= m.len {
         proof {
-            assert forall|j: int| 0 <= j < g.frames.len() implies #[trigger] frame_room(p, *m, j) by {}
+            assert forall|j: int| i0 <= j < g.frames.len() implies #[trigger] frame_room(p, *m, j) by {}
+            if g.fins.len() > 0 { assert(frame_room(p, *m, n - 1)); }
         }
         return Ctl::Next;
     }
@@ -237,7 +258,8 @@ pub fn ensure_room_all(m: &mut Machine, env: &Env) -> (c: Ctl)
     proof {
         m.lemma_frame(p);
         m1.lemma_frame(p);
-        assert forall|j: int| 0 <= j < g.frames.len() implies #[trigger] frame_room(p, *m, j) by {}
+        assert forall|j: int| i0 <= j < g.frames.len() implies #[trigger] frame_room(p, *m, j) by {}
+        if g.fins.len() > 0 { assert(frame_room(p, *m, n - 1)); }
     }
     Ctl::Next
 }

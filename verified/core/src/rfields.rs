@@ -194,7 +194,8 @@ pub fn op_load_field(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcod
     }
     let w = at(m, r, 0);
     if !m.field_access_ok(p, w, Ghost(sp::at(g, 0)), f, false) {
-        return bridge_r(m, r, env);
+        proof { assert(sp::step(ap, g) == sp::raise(ap, g, sp::INVALID_PROGRAM)); }
+        return slow0(m, r, env, Slow::Invalid);
     }
     let ghost o = sp::at(g, 0);
     let ghost id = o->Obj_0 as int;
@@ -230,7 +231,8 @@ pub fn op_load_field_local(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize,
     }
     let w = at(m, r, slot);
     if !m.field_access_ok(p, w, Ghost(sp::at(g, slot as int)), f, false) {
-        return bridge_r(m, r, env);
+        proof { assert(sp::step(ap, g) == sp::raise(ap, g, sp::INVALID_PROGRAM)); }
+        return slow0(m, r, env, Slow::Invalid);
     }
     let ghost o = sp::at(g, slot as int);
     let ghost id = o->Obj_0 as int;
@@ -272,7 +274,8 @@ pub fn op_store_field(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opco
     let ghost val = sp::at(g, 0);
     let ghost o = sp::at(g, 1);
     if !m.field_access_ok(p, wo, Ghost(o), f, true) {
-        return bridge_r(m, r, env);
+        proof { assert(sp::step(ap, g) == sp::raise(ap, g, sp::INVALID_PROGRAM)); }
+        return slow0(m, r, env, Slow::Invalid);
     }
     set_field_r(m, r, p, wo, Ghost(o), f, v, Ghost(val));
     let ghost m1 = m.with(*r);
@@ -365,7 +368,8 @@ pub fn op_store_field_this(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize,
     let ghost id = o->Obj_0 as int;
     let this = r.fp.offset(-1).read(0, &m.mem);
     if m.is_ro_word(p, this, Ghost(id)) {
-        return bridge_r(m, r, env);
+        proof { assert(sp::step(ap, g) == sp::raise(ap, g, sp::INVALID_PROGRAM)); }
+        return slow0(m, r, env, Slow::Invalid);
     }
     let v = at(m, r, 0);
     set_field_r(m, r, p, this, Ghost(o), f, v, Ghost(sp::at(g, 0)));
@@ -400,7 +404,8 @@ pub fn op_invoke_virtual_get(m: &mut Machine, r: &mut Regs, env: &Env, bci: usiz
     let ghost recv = sp::at(g, 0);
     match m.lookup(p, w, Ghost(recv), sel as i64) {
         VLookup::Missing => {
-            bridge_r(m, r, env)
+            proof { assert(sp::step(ap, g) == sp::raise(ap, g, sp::LOOKUP_FAILED)); }
+            slow_r(m, r, env, Slow::Lookup(sel as i64), w, Ghost(recv))
         },
         VLookup::Found(t) => {
             let info = p.methods.at(t);
@@ -415,7 +420,8 @@ pub fn op_invoke_virtual_get(m: &mut Machine, r: &mut Regs, env: &Env, bci: usiz
                 return Ctl::Next;
             }
             if !call_fast(m, r, env) {
-                return bridge_r(m, r, env);
+                proof { assert(sp::step(ap, g) == sp::call(ap, g, t as int, bci + 3)); }
+                return slow0(m, r, env, Slow::Call(t, bci + 3));
             }
             proof { w0.lemma_frame(p); }
             push_call(m, r, p, t, info, bci + 3);
@@ -454,7 +460,8 @@ pub fn op_invoke_virtual_set(m: &mut Machine, r: &mut Regs, env: &Env, bci: usiz
     let ghost recv = sp::at(g, 1);
     match m.lookup(p, w, Ghost(recv), sel as i64) {
         VLookup::Missing => {
-            bridge_r(m, r, env)
+            proof { assert(sp::step(ap, g) == sp::raise(ap, g, sp::LOOKUP_FAILED)); }
+            slow_r(m, r, env, Slow::Lookup(sel as i64), w, Ghost(recv))
         },
         VLookup::Found(t) => {
             let info = p.methods.at(t);
@@ -486,7 +493,8 @@ pub fn op_invoke_virtual_set(m: &mut Machine, r: &mut Regs, env: &Env, bci: usiz
                 return Ctl::Next;
             }
             if !call_fast(m, r, env) {
-                return bridge_r(m, r, env);
+                proof { assert(sp::step(ap, g) == sp::call(ap, g, t as int, bci + 3)); }
+                return slow0(m, r, env, Slow::Call(t, bci + 3));
             }
             proof { w0.lemma_frame(p); }
             push_call(m, r, p, t, info, bci + 3);
@@ -556,7 +564,8 @@ pub fn op_as(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode: u8, e
     }
     let w = at(m, r, 0);
     if !m.check_type(p, w, Ghost(sp::at(g, 0)), enc / 2, enc % 2 == 1, interface) {
-        return bridge_r(m, r, env);
+        proof { assert(sp::step(ap, g) == sp::raise(ap, g, sp::AS_CHECK_FAILED)); }
+        return slow_r(m, r, env, Slow::As(len), w, Ghost(sp::at(g, 0)));
     }
     goto_next(m, r, p, len);
     proof { lemma_rpost_next(p, m0, r0, *m, *r); }
@@ -587,7 +596,8 @@ pub fn op_as_local(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode:
     }
     let w = at(m, r, n);
     if !m.check_type(p, w, Ghost(sp::at(g, n as int)), enc % 32, false, false) {
-        return bridge_r(m, r, env);
+        proof { assert(sp::step(ap, g) == sp::raise(ap, g, sp::AS_CHECK_FAILED)); }
+        return slow_r(m, r, env, Slow::As(2), w, Ghost(sp::at(g, n as int)));
     }
     goto_next(m, r, p, 2);
     proof { lemma_rpost_next(p, m0, r0, *m, *r); }

@@ -145,9 +145,6 @@ pub fn op_invoke_static(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, op
     ensures rpost(&env.p, *old(m), *old(r), *final(m), *final(r), c),
 {
     let p = &env.p;
-    if !call_fast(m, r, env) {
-        return bridge_r(m, r, env);
-    }
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost w0 = m.with(*r);
@@ -164,8 +161,13 @@ pub fn op_invoke_static(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, op
         let receiver = at(m, r, arity - 1);
         let cid = m.class_of(p, receiver, Ghost(sp::at(g, arity - 1)));
         if !((info.recv_start as i64) <= cid && cid < info.recv_end as i64) {
-            return bridge_r(m, r, env);
+            proof { assert(sp::step(ap, g) == sp::raise(ap, g, sp::AS_CHECK_FAILED)); }
+            return slow0(m, r, env, Slow::Raise(1));
         }
+    }
+    if !call_fast(m, r, env) {
+        proof { assert(sp::step(ap, g) == sp::call(ap, g, t as int, bci + 3)); }
+        return slow0(m, r, env, Slow::Call(t, bci + 3));
     }
     push_call(m, r, p, t, info, bci + 3);
     proof { lemma_matches(p, w0, m.with(*r), Ctl::Next); }
@@ -185,9 +187,6 @@ pub fn op_invoke_virtual(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, o
     ensures rpost(&env.p, *old(m), *old(r), *final(m), *final(r), c),
 {
     let p = &env.p;
-    if !call_fast(m, r, env) {
-        return bridge_r(m, r, env);
-    }
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost w0 = m.with(*r);
@@ -200,9 +199,14 @@ pub fn op_invoke_virtual(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, o
     let receiver = at(m, r, n - 1);
     match m.lookup(p, receiver, Ghost(sp::at(g, n - 1)), sel) {
         VLookup::Missing => {
-            bridge_r(m, r, env)
+            proof { assert(vo == sp::raise(ap, g, sp::LOOKUP_FAILED)); }
+            slow_r(m, r, env, Slow::Lookup(sel), receiver, Ghost(sp::at(g, n - 1)))
         },
         VLookup::Found(t) => {
+            if !call_fast(m, r, env) {
+                proof { assert(vo == sp::call(ap, g, t as int, bci + len)); }
+                return slow0(m, r, env, Slow::Call(t, bci + len));
+            }
             let info = p.methods.at(t);
             push_call(m, r, p, t, info, bci + len);
             proof { lemma_matches(p, w0, m.with(*r), Ctl::Next); }
@@ -236,7 +240,7 @@ pub fn op_return(m: &mut Machine, r: &mut Regs, env: &Env, w: usize, Ghost(v): G
     }
     if !m.bot.lt(r.fr, &m.mem) {
         // The task's bottom frame returns, or there are finally records.
-        return bridge_r(m, r, env);
+        return slow_r(m, r, env, Slow::Return, w, Ghost(v));
     }
     let ghost n = g0.frames.len() as int;
     proof {
@@ -251,7 +255,7 @@ pub fn op_return(m: &mut Machine, r: &mut Regs, env: &Env, w: usize, Ghost(v): G
     let handler = crec.read(FRAME_HANDLER, &m.mem);
     if handler != 0 {
         // The caller is suspended in a TRY: its finally code runs.
-        return bridge_r(m, r, env);
+        return slow_r(m, r, env, Slow::Return, w, Ghost(v));
     }
     let rec_ = r.fr.offset(-(FRAME_WORDS as isize));
     let ret = rec_.read(FRAME_RET, &m.mem);
