@@ -172,7 +172,9 @@ run root/string:
       if b and not bridges.contains b: problems.add "clause `$cl["name"]`: no bridge `$b`"
       if cl["verus"] == "MISSING" or (cl.get "verifast") == "MISSING":
         gaps.add "$name, $cl["side"] `$cl["name"]`: $(cl["verus"] == "MISSING" ? "not in the Verus contract" : "not in the VeriFast contract") ($(cl.get "verifast" --if-absent=: "") $(cl.get "note" --if-absent=: ""))"
-    e1 := catch --trace:
+    // A contract between two pieces of C++ (the allocator's, for the
+    // renderings) has no Verus side.
+    e1 := c["verus_fn"] == "" ? null : catch --trace:
       verus := verus-clauses "$root/$c["verus_file"]" c["verus_fn"]
       ["requires", "ensures"].do: | side |
         want := ((mine.filter: it["side"] == side and it["verus"] != "MISSING").map: normalize it["verus"])

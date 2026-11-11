@@ -27,8 +27,6 @@
 #include "../model/objects.gen.h"
 //@ #include "../model/arith.gh"
 
-struct ObjectHeap;
-typedef struct ObjectHeap ObjectHeap;
 typedef struct Object Stack;
 typedef struct Object Task;
 typedef unsigned long size_t;
@@ -108,13 +106,11 @@ lemma void take_append_bytes(list<uint8> a, list<uint8> b, list<uint8> c, int n)
 }
 @*/
 
-// The process accessors (src/process.h) and the allocator (src/heap.h).
+// The process accessors (src/process.h) and the allocator (src/heap.h;
+// Process::object_heap and ObjectHeap are the model's).
 Task *Process_task(Process *self);
 //@ requires true;
 //@ ensures result == task_of(self);
-ObjectHeap *Process_object_heap(Process *self);
-//@ requires true;
-//@ ensures true;
 // ObjectHeap::allocate_stack: null, or a fresh stack of the asked length.
 Stack *ObjectHeap_allocate_stack(ObjectHeap *self, word length);
 //@ requires 0 <= length &*& length <= STACK_MAX_BOUND;

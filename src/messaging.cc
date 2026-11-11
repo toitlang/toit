@@ -252,6 +252,9 @@ bool MessageEncoder::encode_array(Array* object, word from, word to) {
   // The range comes from the fields of lists and list slices, which Toit
   // code can set to anything.
   if (from < 0 || from > to || to > object->length()) return false;
+  // The receiver can't decode an array longer than a process heap holds (a
+  // crafted program can have one in its program heap).
+  if (to - from > Array::max_length_in_process()) return false;
   write_uint8(TAG_ARRAY);
   write_cardinal(to - from);
   for (word i = from; i < to; i++) {
@@ -291,6 +294,8 @@ bool MessageEncoder::encode_map(Instance* instance) {
   if (!is_smi(object)) return false;
   word size = Smi::value(object);
   if (size < 0) return false;
+  // Nor a map whose backing is longer than that.
+  if (size > Array::max_length_in_process() / 2) return false;
 
   write_cardinal(size);
   if (size == 0) return true;  // Do this before looking at the backing, which may be null.
@@ -894,18 +899,20 @@ uword MessageDecoder::read_cardinal() {
   uint8 byte = read_uint8();
   int shift = 0;
   while (byte >= 128) {
-    // A cardinal never has more bits than a word. Longer encodings are
-    // malformed (and shifting by the word size or more is undefined).
-    if (shift >= WORD_BIT_SIZE) {
+    // A cardinal never has more bits than a word. Longer encodings, and
+    // digits with bits beyond the word, are malformed (and shifting by the
+    // word size or more is undefined).
+    uword digit = byte - 128;
+    if (shift >= WORD_BIT_SIZE || digit > (UINTPTR_MAX >> shift)) {
       mark_malformed();
       return 0;
     }
-    result += (((uword) byte) - 128) << shift;
+    result += digit << shift;
     shift += 7;
     byte = read_uint8();
   }
   if (byte == 0 && overflown()) return 0;
-  if (shift >= WORD_BIT_SIZE) {
+  if (shift >= WORD_BIT_SIZE || byte > (UINTPTR_MAX >> shift)) {
     mark_malformed();
     return 0;
   }

@@ -305,3 +305,192 @@ side = "ensures"
 name = "epoch"
 verus = "r.0 != V2_PRIMITIVE_ABSENT && !r.2 ==> unmoved(*final(m), *old(m))"
 note = "The epoch contract (TRUSTED.md, Epoch): no GC, nothing moved."
+
+# The decoder's assumptions (verified/cxx/annotated/decoder): the
+# inter-process path only (TISON, the untrusted input, needs neither).
+[[assumption]]
+name = "ipc_room"
+rendering = "cxx/annotated/decoder/message_decoder.gen.c"
+requires = "[_]ipc_msg(d, ?b, ?cap) &*& [?f]d->cursor_ |-> ?c &*& 0 <= n"
+ensures = "[f]d->cursor_ |-> c &*& c + n <= cap"
+note = "An inter-process message is the encoder's output, decoded once in the process it was sent to: every read of the decoder lies in the message (the decoder decides as the encoder did). README, 'The decoder's assumptions'."
+
+[[assumption]]
+name = "ipc_external"
+rendering = "cxx/annotated/decoder/message_decoder.gen.c"
+requires = "[_]ipc_msg(d, ?b, ?cap) &*& [?f]d->cursor_ |-> ?c"
+ensures = "[f]d->cursor_ |-> c &*& msg_block(data, length) &*& 0 <= length &*& length < MAX_BLOB"
+note = "An out-of-line pointer of a message is a block the message owns, of the length written before it, read once: the decoded object takes it (or, when the allocation fails, the message keeps it). README, 'The decoder's assumptions'."
+
+# The allocator and the field writes the renderings use (C++ calling C++:
+# no Verus side). The allocations are contracts only (TRUSTED.md V2, the
+# `heap` bridge): a new object of the stated kind outside the program heap,
+# the other objects unchanged, or null and nothing changed. The writes are
+# rendered and verified (model/objects.render).
+[[contract]]
+name = "allocate_string"
+verus_file = ""
+verus_fn = ""
+cxx_fn = "Process_allocate_string__charp_word"
+rendering = "cxx/annotated/model/objects.gen.h"
+status = "contract only (the allocator); used by the message decoder"
+
+[[clause]]
+contract = "allocate_string"
+side = "requires"
+name = "views"
+bridge = "heap"
+verus = ""
+verifast = "[?f]process(self, ?prog, ?ids) &*& heap(?objs, ?H)"
+
+[[clause]]
+contract = "allocate_string"
+side = "requires"
+name = "content"
+verus = ""
+verifast = "[?fc]uchars((uint8 *)content, length, ?cs) &*& 0 <= length &*& length <= MAX_BLOB"
+
+[[clause]]
+contract = "allocate_string"
+side = "ensures"
+name = "allocated"
+bridge = "heap"
+verus = ""
+verifast = "[f]process(self, prog, ids) &*& [fc]uchars((uint8 *)content, length, cs) &*& allocated(objs, H, self, result, ?objs2, ?H2) &*& (result == 0 ? true : has_tag(H2, result, STRING_TAG) == true &*& blob_len(H2, result) == length)"
+
+[[contract]]
+name = "allocate_array"
+verus_file = ""
+verus_fn = ""
+cxx_fn = "ObjectHeap_allocate_array"
+rendering = "cxx/annotated/model/objects.gen.h"
+status = "contract only (the allocator); used by the message decoder"
+
+[[clause]]
+contract = "allocate_array"
+side = "requires"
+name = "views"
+bridge = "heap"
+verus = ""
+verifast = "[_]object_heap(self, ?p) &*& [?f]process(p, ?prog, ?ids) &*& heap(?objs, ?H)"
+
+[[clause]]
+contract = "allocate_array"
+side = "requires"
+name = "filler"
+verus = ""
+verifast = "good(objs, filler) == true"
+
+[[clause]]
+contract = "allocate_array"
+side = "ensures"
+name = "allocated"
+bridge = "heap"
+verus = ""
+verifast = "[f]process(p, prog, ids) &*& allocated(objs, H, p, result, ?objs2, ?H2) &*& (result == 0 ? true : has_tag(H2, result, ARRAY_TAG) == true &*& o_len(H2(result)) == length)"
+note = "Null also for a length outside [0, Array::max_length_in_process()] (src/heap.cc checks it)."
+
+[[contract]]
+name = "allocate_instance"
+verus_file = ""
+verus_fn = ""
+cxx_fn = "ObjectHeap_allocate_instance"
+rendering = "cxx/annotated/model/objects.gen.h"
+status = "contract only (the allocator); used by the message decoder (maps)"
+
+[[clause]]
+contract = "allocate_instance"
+side = "requires"
+name = "views"
+bridge = "heap"
+verus = ""
+verifast = "[_]object_heap(self, ?p) &*& [?f]process(p, ?prog, ?ids) &*& heap(?objs, ?H)"
+
+[[clause]]
+contract = "allocate_instance"
+side = "requires"
+name = "class"
+verus = ""
+verifast = "(uword)class_id % 2 == 0 &*& (uword)class_id / 2 < 1024 &*& class_tag((uword)class_id / 2) == INSTANCE_TAG"
+
+[[clause]]
+contract = "allocate_instance"
+side = "ensures"
+name = "allocated"
+bridge = "heap"
+verus = ""
+verifast = "[f]process(p, prog, ids) &*& allocated(objs, H, p, result, ?objs2, ?H2) &*& (result == 0 ? true : has_tag(H2, result, INSTANCE_TAG) == true &*& header_cid(o_hw(H2(result))) == (uword)class_id / 2 &*& o_len(H2(result)) == class_fields((uword)class_id / 2))"
+note = "The fields are null (src/heap.cc), a root: good references."
+
+[[contract]]
+name = "allocate_double"
+verus_file = ""
+verus_fn = ""
+cxx_fn = "ObjectHeap_allocate_double"
+rendering = "cxx/annotated/model/objects.gen.h"
+status = "contract only (the allocator); used by the message decoder"
+
+[[clause]]
+contract = "allocate_double"
+side = "requires"
+name = "views"
+bridge = "heap"
+verus = ""
+verifast = "[_]object_heap(self, ?p) &*& [?f]process(p, ?prog, ?ids) &*& heap(?objs, ?H)"
+
+[[clause]]
+contract = "allocate_double"
+side = "ensures"
+name = "allocated"
+bridge = "heap"
+verus = ""
+verifast = "[f]process(p, prog, ids) &*& allocated(objs, H, p, result, ?objs2, ?H2) &*& (result == 0 ? true : has_tag(H2, result, DOUBLE_TAG) == true)"
+
+[[contract]]
+name = "allocate_large_integer"
+verus_file = ""
+verus_fn = ""
+cxx_fn = "ObjectHeap_allocate_large_integer"
+rendering = "cxx/annotated/model/objects.gen.h"
+status = "contract only (the allocator); used by the message decoder"
+
+[[clause]]
+contract = "allocate_large_integer"
+side = "requires"
+name = "views"
+bridge = "heap"
+verus = ""
+verifast = "[_]object_heap(self, ?p) &*& [?f]process(p, ?prog, ?ids) &*& heap(?objs, ?H)"
+
+[[clause]]
+contract = "allocate_large_integer"
+side = "ensures"
+name = "allocated"
+bridge = "heap"
+verus = ""
+verifast = "[f]process(p, prog, ids) &*& allocated(objs, H, p, result, ?objs2, ?H2) &*& (result == 0 ? true : has_tag(H2, result, LARGE_INTEGER_TAG) == true)"
+note = "Any int64 value, also one in the smi range (a TISON large integer: README, 'Findings')."
+
+[[contract]]
+name = "array_at_put"
+verus_file = ""
+verus_fn = ""
+cxx_fn = "Array_at_put__word_Objectp"
+rendering = "cxx/annotated/model/objects.gen.h"
+status = "verified (VeriFast, LP64 and ILP32; src/objects_inline.h Array::at_put with its write barrier)"
+
+[[clause]]
+contract = "array_at_put"
+side = "requires"
+name = "element"
+bridge = "heap"
+verus = ""
+verifast = "heap(?objs, ?H) &*& mem(self, objs) == true &*& has_tag(H, self, ARRAY_TAG) == true &*& 0 <= index &*& index < o_len(H(self)) &*& good(objs, value) == true"
+
+[[clause]]
+contract = "array_at_put"
+side = "ensures"
+name = "written"
+bridge = "heap"
+verus = ""
+verifast = "heap(objs, put_field(H, self, index, value)) &*& grows(objs, H, objs, put_field(H, self, index, value)) == true"
