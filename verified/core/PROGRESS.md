@@ -65,6 +65,46 @@ free); ASan fuzz with the launch filter, 20 minutes: 72,745 mutants,
 - M7 (99b74080): a non-local return or branch that meets a handler enters
   its finally code on the registers (`pop_to` stops at the handler,
   `enter_fin_r`): RPC 425.5 -> 412.7 M (1.200 of C++), json 1.177.
+- M8 (c1b81bc7): red
+  team round 3, F1. `String::read_content` assigned a literal's hash with
+  `_assign_hash_code`, which asserts valid UTF-8, before the loader's
+  rejection (`loaded_ok`): debug and assert-enabled ASan builds stopped
+  with an assertion. Now `_assign_unvalidated_hash_code`. The reproducer
+  and tests/sandbox/invalid-utf-8-literal-test.toit pass on the Debug SDK
+  (build/dbg); release unchanged.
+- M9 (7903b94e): `sandbox-integration` merged again (red-team rounds 1-3,
+  the integer-overflow fixes, the annotated C++ pilot); no conflicts.
+- M10 (ca2f56f6): the red team's batteries (66 crafted heaps, 69
+  assembled methods) are parameterized (battery-env.sh: HOSTRUN, ASANRUN,
+  WORK) and an optional step of `verified/check.sh --tests` against
+  build/asan and build/dbg/host: 61 heap cases and 68 method cases with
+  the recorded verdicts, no crash, no sanitizer report, no assertion
+  (opcode 101 is LOOP_REPEAT here: rejected for crossing the method end
+  instead of as a bad opcode).
+- Gates on ca2f56f6 (and on 5e1411ac before the second merge, with the
+  same results): verified/check.sh --tests (spec 940, core 878 at both
+  widths, audit, no-panic check, sandbox ctests 123/123, batteries);
+  ctest format 1 1196/1200 (version, reader, udp-reuse-port-test, and
+  tls-ubuntu-test: a network timeout, marked flaky); everything in format
+  2 1195/1200 (the same plus services-network-test; bytes-allocated-test
+  passes); untrusted suite 280 identical plus the two known differences;
+  primitive differential 10 x 1M identical; compare_trace clean; 32-bit
+  sandbox 123/123; nostd, nopanic (3, s, z), xtensa_codegen_check (3, z)
+  pass; ESP32-C6 (toit.bin 1,661,152 B) and classic ESP32 (1,565,936 B,
+  iram0.text 129,087 B) link; ASan fuzz 20 minutes, 0 crashes: on
+  ca2f56f6 120,486 mutants (103,697 rejected at launch), on 5e1411ac
+  92,797 (79,822).
+- Speed at the end (x86-64 instructions, ratio to the C++ interpreter;
+  before -> after this branch's items): trusted richards 1.052 -> 1.050,
+  deltablue 1.162 -> 1.163, pystone 1.056 -> 1.058, json 1.192 -> 1.177,
+  yaml 1.200 -> 1.197, RPC 1.290 -> 1.200, strings 1.105 -> 1.107; checked
+  richards 1.138 -> 1.136, json 1.212 -> 1.197, RPC 1.327 -> 1.237.
+  Per operation (with the Toit call, minus the loop): C++ primitive 242 ->
+  219 (C++ 68); static call and return 89 (C++ 60), virtual call 159
+  (118), block call 115 (111). json/yaml are in the run loop's calls and
+  returns: INVOKE_STATIC reloads spilled table bases, computes the return
+  bci from the ip and loads the preemption watermark through a pointer;
+  the 1.15 target was not reached.
 - Install-time verifier opt level (item c; measurements in
   trusted-integration/verifier-opt/): verifier and glue at z / s / 2 / 3:
   riscv32 library 80,478 / 82,872 / 90,130 / 90,548 B, Xtensa 86,047 /
