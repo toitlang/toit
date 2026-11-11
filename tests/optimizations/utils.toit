@@ -52,4 +52,5 @@ target-of-invoke-static program/Program method/ToitMethod bci/int -> MethodInfo:
   assert: BYTE-CODES[method.bytecodes[bci]].name == "INVOKE_STATIC"
   dispatch-index := method.uint16 bci + 1
   target := program.dispatch-table[dispatch-index]
-  return program.method-info-for target
+  // In format 2 the dispatch table holds method indices.
+  return program.method-info-for (program.method-id-for-target target)
