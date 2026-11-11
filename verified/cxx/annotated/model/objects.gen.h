@@ -40,6 +40,25 @@ typedef struct Object ByteArray;
 typedef struct Object Double;
 typedef struct Object LargeInteger;
 typedef struct Object String;
+typedef int BlobKind;
+
+// The views of blob content (src/objects.h): plain structs.
+struct String_Bytes { uint8 *address_; word length_; };
+typedef struct String_Bytes String_Bytes;
+struct ByteArray_Bytes { uint8 *address_; word length_; };
+typedef struct ByteArray_Bytes ByteArray_Bytes;
+struct ByteArray_ConstBytes { uint8 *address_; word length_; };
+typedef struct ByteArray_ConstBytes ByteArray_ConstBytes;
+struct Blob { uint8 *address_; word length_; };
+typedef struct Blob Blob;
+struct MutableBlob { uint8 *address_; word length_; };
+typedef struct MutableBlob MutableBlob;
+
+// src/utils.h unsigned_cast: a template (no rendering rule): the
+// reinterpret_cast to the unsigned pointee type, here the identity.
+uint8 *unsigned_cast(uint8 *t);
+//@ requires true;
+//@ ensures result == t;
 
 
 /*@
@@ -86,14 +105,34 @@ fixpoint int class_fields(int cid);
 
 inductive prog_ids = prog_ids(
     int array_cid, int list_cid, int list_slice_cid, int map_cid,
-    int large_array_cid, int tombstone_cid);
+    int large_array_cid, int tombstone_cid,
+    int byte_array_cow_cid, int byte_array_slice_cid, int string_slice_cid,
+    int string_byte_slice_cid);
 
-fixpoint int array_cid(prog_ids ids) { switch (ids) { case prog_ids(a, l, s, m, la, t): return a; } }
-fixpoint int list_cid(prog_ids ids) { switch (ids) { case prog_ids(a, l, s, m, la, t): return l; } }
-fixpoint int list_slice_cid(prog_ids ids) { switch (ids) { case prog_ids(a, l, s, m, la, t): return s; } }
-fixpoint int map_cid(prog_ids ids) { switch (ids) { case prog_ids(a, l, s, m, la, t): return m; } }
-fixpoint int large_array_cid(prog_ids ids) { switch (ids) { case prog_ids(a, l, s, m, la, t): return la; } }
-fixpoint int tombstone_cid(prog_ids ids) { switch (ids) { case prog_ids(a, l, s, m, la, t): return t; } }
+fixpoint int array_cid(prog_ids ids) { switch (ids) { case prog_ids(a, l, s, m, la, t, c, bs, ss, sbs): return a; } }
+fixpoint int list_cid(prog_ids ids) { switch (ids) { case prog_ids(a, l, s, m, la, t, c, bs, ss, sbs): return l; } }
+fixpoint int list_slice_cid(prog_ids ids) { switch (ids) { case prog_ids(a, l, s, m, la, t, c, bs, ss, sbs): return s; } }
+fixpoint int map_cid(prog_ids ids) { switch (ids) { case prog_ids(a, l, s, m, la, t, c, bs, ss, sbs): return m; } }
+fixpoint int large_array_cid(prog_ids ids) { switch (ids) { case prog_ids(a, l, s, m, la, t, c, bs, ss, sbs): return la; } }
+fixpoint int tombstone_cid(prog_ids ids) { switch (ids) { case prog_ids(a, l, s, m, la, t, c, bs, ss, sbs): return t; } }
+fixpoint int byte_array_cow_cid(prog_ids ids) { switch (ids) { case prog_ids(a, l, s, m, la, t, c, bs, ss, sbs): return c; } }
+fixpoint int byte_array_slice_cid(prog_ids ids) { switch (ids) { case prog_ids(a, l, s, m, la, t, c, bs, ss, sbs): return bs; } }
+fixpoint int string_slice_cid(prog_ids ids) { switch (ids) { case prog_ids(a, l, s, m, la, t, c, bs, ss, sbs): return ss; } }
+fixpoint int string_byte_slice_cid(prog_ids ids) { switch (ids) { case prog_ids(a, l, s, m, la, t, c, bs, ss, sbs): return sbs; } }
+
+// The blob classes (byte_content): instances with at least the fields the
+// VM reads (the copy-on-write byte array: backing, is_mutable; the slices:
+// backing, from, to).
+fixpoint bool blob_classes_ok(prog_ids ids) {
+  return 0 <= byte_array_cow_cid(ids) && byte_array_cow_cid(ids) < 1024 &&
+         0 <= byte_array_slice_cid(ids) && byte_array_slice_cid(ids) < 1024 &&
+         0 <= string_slice_cid(ids) && string_slice_cid(ids) < 1024 &&
+         0 <= string_byte_slice_cid(ids) && string_byte_slice_cid(ids) < 1024 &&
+         class_tag(byte_array_cow_cid(ids)) == INSTANCE_TAG && class_fields(byte_array_cow_cid(ids)) >= 2 &&
+         class_tag(byte_array_slice_cid(ids)) == INSTANCE_TAG && class_fields(byte_array_slice_cid(ids)) >= 3 &&
+         class_tag(string_slice_cid(ids)) == INSTANCE_TAG && class_fields(string_slice_cid(ids)) >= 3 &&
+         class_tag(string_byte_slice_cid(ids)) == INSTANCE_TAG && class_fields(string_byte_slice_cid(ids)) >= 3;
+}
 
 // What VerifierImpl::check_builtin_classes (src/verifier.cc) establishes
 // for an accepted program, and the class tags of the builtin classes.
@@ -107,28 +146,37 @@ fixpoint bool prog_ok(prog_ids ids) {
          class_tag(array_cid(ids)) == ARRAY_TAG &&
          class_tag(list_cid(ids)) == INSTANCE_TAG && class_fields(list_cid(ids)) >= 2 &&
          class_tag(list_slice_cid(ids)) == INSTANCE_TAG && class_fields(list_slice_cid(ids)) >= 3 &&
-         class_tag(map_cid(ids)) == INSTANCE_TAG && class_fields(map_cid(ids)) >= 4;
+         class_tag(map_cid(ids)) == INSTANCE_TAG && class_fields(map_cid(ids)) >= 4 &&
+         blob_classes_ok(ids);
 }
 
 // ---------------------------------------------------------------------------
 // Objects. The abstract heap `H` maps each object to its ghost content:
-// the header word, a length (fields of an instance, length of an array or
-// a byte array) and the words of its body (fields, elements; nil for byte
-// arrays). The heap is a list of distinct tagged addresses `objs`; every
-// reference word in an object is a smi or one of `objs` (heap integrity,
-// TRUSTED.md V2). The values of fields are otherwise arbitrary: a size field
-// can be any smi, a backing field anything (the code must not trust them).
+// the header word, a length (fields of an instance, length of an array, the
+// raw length word of a byte array, the content length of a string), the
+// words of its body (fields, elements; nil for blobs) and the auxiliary
+// words of a blob (`aux`: for a string the internal length half-word and,
+// when external, the address; for an external byte array the address and
+// the external tag). The heap is a list of distinct tagged addresses `objs`;
+// every reference word in an object is a smi or one of `objs` (heap
+// integrity, TRUSTED.md V2). The values of fields are otherwise arbitrary: a
+// size field can be any smi, a backing field anything (the code must not
+// trust them).
 
-inductive oinfo = oinfo(uword hw, int len, list<void *> words);
-fixpoint uword o_hw(oinfo i) { switch (i) { case oinfo(hw, l, ws): return hw; } }
-fixpoint int o_len(oinfo i) { switch (i) { case oinfo(hw, l, ws): return l; } }
-fixpoint list<void *> o_words(oinfo i) { switch (i) { case oinfo(hw, l, ws): return ws; } }
+inductive oinfo = oinfo(uword hw, int len, list<void *> words, list<uword> aux);
+fixpoint uword o_hw(oinfo i) { switch (i) { case oinfo(hw, l, ws, ax): return hw; } }
+fixpoint int o_len(oinfo i) { switch (i) { case oinfo(hw, l, ws, ax): return l; } }
+fixpoint list<void *> o_words(oinfo i) { switch (i) { case oinfo(hw, l, ws, ax): return ws; } }
+fixpoint list<uword> o_aux(oinfo i) { switch (i) { case oinfo(hw, l, ws, ax): return ax; } }
 
 fixpoint bool good(list<void *> objs, void *w) { return is_smi_w((uword)w) || mem(w, objs); }
 
 // The upper bound of an object's size: objects are in pages far below the
 // top of the address space (pages are at most a few hundred KB).
 #define MAX_OBJECT_WORDS 0x100000
+// The upper bound of an external blob (TRUSTED.md, "Word size": byte
+// lengths of the heap model are below 2^30).
+#define MAX_BLOB 0x3fffffff
 
 fixpoint bool addr_ok(void *o) {
   return is_heap_w((uword)o) && 1 < (uword)o &&
@@ -148,27 +196,57 @@ predicate array_body(void *o; int len, list<void *> elems) =
   uintptr(raw(o) + 1, len) &*& len <= MAX_OBJECT_WORDS &*&
   pointers((void **)raw(o) + 2, len, elems) &*& length(elems) == len;
 
-// A byte array (internal content, or external with the length and address
-// word: the bytes themselves are a separate region, see primitives).
-predicate byte_array_body(void *o; int raw_length) =
-  addr_ok(o) == true &*&
-  intptr((intptr_t *)raw(o) + 1, raw_length) &*&
-  raw_length >= 0 ?
-    uchars((uint8 *)raw(o) + 2 * WORD_SIZE, raw_length, _) &*& raw_length <= WORD_SIZE * MAX_OBJECT_WORDS
-  :
-    uintptrs(raw(o) + 2, 2, _);
+// External memory: the bytes at an address word (VeriFast's integer to
+// pointer cast, as the code makes it), owned by the object that points to
+// them (malloced and freed by its finalizer, or memory the VM maps for it:
+// TRUSTED.md V2, V5).
+predicate external_bytes(uword address, int length;) =
+  uchars((uint8 *)address, length, _) &*& address + length <= UINTPTR_MAX;
 
-predicate body(void *o, int tag2, int len; list<void *> words) =
-  tag2 == 2 * INSTANCE_TAG ? instance_body(o, len, words) :
-  tag2 == 2 * ARRAY_TAG ? array_body(o, len, words) :
-  tag2 == 2 * BYTE_ARRAY_TAG ? byte_array_body(o, len) &*& words == nil :
-  len == 0 &*& words == nil;  // Other objects: only the header is used here.
+// A byte array: [header][raw length][content] or, external, [header]
+// [-1 - length][address][tag]. Only an external byte array tagged
+// RawByteTag holds bytes; others point to a C struct (proxies, V5: opaque).
+predicate byte_array_body(void *o, int raw_length, list<uword> aux;) =
+  addr_ok(o) == true &*&
+  uintptr(raw(o) + 1, ?rw) &*& signed_of(rw) == raw_length &*&
+  raw_length >= 0 ?
+    uchars((uint8 *)raw(o) + 2 * WORD_SIZE, raw_length, _) &*& raw_length <= WORD_SIZE * MAX_OBJECT_WORDS &*& aux == nil
+  :
+    -1 - raw_length <= MAX_BLOB &*&
+    uintptr(raw(o) + 2, ?ea) &*& uintptr(raw(o) + 3, ?et) &*& et <= 0xffff &*&
+    aux == cons(ea, cons(et, nil)) &*&
+    (et == RawByteTag ? external_bytes(ea, -1 - raw_length) : true);
+
+// A half word at a byte address: `uhalf_word` is unsigned int on LP64 and
+// unsigned short on ILP32.
+predicate half_word(void *p; int v) =
+  sizeof(word) == 8 ? u_integer((unsigned int *)p, v) : u_short_integer((unsigned short *)p, v);
+
+// A string: [header][hash:h][length:h][content][0] or, external, [header]
+// [hash:h][SENTINEL:h][length][address]. `len` is the content length.
+predicate string_body(void *o, int len, list<uword> aux;) =
+  addr_ok(o) == true &*&
+  half_word((uint8 *)raw(o) + WORD_SIZE, _) &*&
+  half_word((uint8 *)raw(o) + WORD_SIZE + HALF_WORD_SIZE, ?il) &*&
+  il != String_SENTINEL ?
+    aux == cons(il, nil) &*& len == il &*& il <= WORD_SIZE * MAX_OBJECT_WORDS &*&
+    uchars((uint8 *)raw(o) + 2 * WORD_SIZE, il, _)
+  :
+    uintptr(raw(o) + 2, len) &*& uintptr(raw(o) + 3, ?ea) &*& len <= MAX_BLOB &*&
+    aux == cons(il, cons(ea, nil)) &*& external_bytes(ea, len);
+
+predicate body(void *o, int tag2, int len, list<uword> aux; list<void *> words) =
+  tag2 == 2 * INSTANCE_TAG ? instance_body(o, len, words) &*& aux == nil :
+  tag2 == 2 * ARRAY_TAG ? array_body(o, len, words) &*& aux == nil :
+  tag2 == 2 * BYTE_ARRAY_TAG ? byte_array_body(o, len, aux) &*& words == nil :
+  tag2 == 2 * STRING_TAG ? string_body(o, len, aux) &*& words == nil :
+  len == 0 &*& words == nil &*& aux == nil;  // Other objects: only the header is used here.
 
 predicate_ctor heap_obj(list<void *> objs, fixpoint(void *, oinfo) H)(void *o) =
   header(o, o_hw(H(o))) &*&
   header_tag2(o_hw(H(o))) == 2 * class_tag(header_cid(o_hw(H(o)))) &*&
   (class_tag(header_cid(o_hw(H(o)))) == INSTANCE_TAG ? o_len(H(o)) == class_fields(header_cid(o_hw(H(o)))) : true) &*&
-  body(o, header_tag2(o_hw(H(o))), o_len(H(o)), o_words(H(o))) &*&
+  body(o, header_tag2(o_hw(H(o))), o_len(H(o)), o_aux(H(o)), o_words(H(o))) &*&
   forall(o_words(H(o)), (good)(objs)) == true;
 
 predicate heap(list<void *> objs, fixpoint(void *, oinfo) H) =
@@ -188,7 +266,77 @@ fixpoint bool has_tag(fixpoint(void *, oinfo) H, void *o, int tag) {
   return is_heap_w((uword)o) && header_tag2(o_hw(H(o))) == 2 * tag;
 }
 
+// ---------------------------------------------------------------------------
+// Blobs: the content of a string or a byte array.
+
+fixpoint bool is_external(fixpoint(void *, oinfo) H, void *o) {
+  return has_tag(H, o, BYTE_ARRAY_TAG) ? o_len(H(o)) < 0 : head(o_aux(H(o))) == String_SENTINEL;
+}
+
+// Where the content starts: inside the object after two words, or at the
+// external address.
+fixpoint uint8 *blob_base(fixpoint(void *, oinfo) H, void *o) {
+  return !is_external(H, o) ? (uint8 *)raw(o) + 2 * WORD_SIZE :
+         has_tag(H, o, BYTE_ARRAY_TAG) ? (uint8 *)head(o_aux(H(o))) : (uint8 *)nth(1, o_aux(H(o)));
+}
+
+fixpoint int blob_len(fixpoint(void *, oinfo) H, void *o) {
+  return has_tag(H, o, BYTE_ARRAY_TAG) && o_len(H(o)) < 0 ? -1 - o_len(H(o)) : o_len(H(o));
+}
+
+// The objects whose content byte_content returns for `kind`: strings, and
+// (STRINGS_OR_BYTE_ARRAYS) byte arrays with internal or raw external bytes.
+fixpoint bool blob_ok(fixpoint(void *, oinfo) H, void *o, int kind) {
+  return has_tag(H, o, STRING_TAG) ||
+         (kind == STRINGS_OR_BYTE_ARRAYS && has_tag(H, o, BYTE_ARRAY_TAG) &&
+          (o_len(H(o)) >= 0 || nth(1, o_aux(H(o))) == RawByteTag));
+}
+
+// [a, a + l) lies in the content of o (and has its provenance).
+fixpoint bool blob_in(fixpoint(void *, oinfo) H, void *o, uint8 *a, int l) {
+  return 0 <= l && blob_base(H, o) <= a && a + l <= blob_base(H, o) + blob_len(H, o) &&
+         a == blob_base(H, o) + ((uword)a - (uword)blob_base(H, o));
+}
+
+// The postcondition of byte_content: the range is in the content of a
+// live blob of the kind asked for.
+predicate blob_result(list<void *> objs, fixpoint(void *, oinfo) H, int kind, uint8 *a, int l, void *b) =
+  mem(b, objs) == true &*& blob_ok(H, b, kind) == true &*& blob_in(H, b, a, l) == true;
+
 // Lemmas about the model (proved in objects.gen.c).
+
+// A string or byte array taken out of the heap with its body, and back.
+lemma void string_open(void *s);
+  requires [?f]heap(?objs, ?H) &*& mem(s, objs) == true &*& has_tag(H, s, STRING_TAG) == true;
+  ensures [f]heap_rest(objs, H, s) &*& [f]header(s, o_hw(H(s))) &*&
+          [f]string_body(s, o_len(H(s)), o_aux(H(s))) &*& obj_facts(objs, H, s) == true &*&
+          o_words(H(s)) == nil &*& addr_ok(s) == true;
+
+lemma void string_close(void *s);
+  requires [?f]heap_rest(?objs, ?H, s) &*& [f]header(s, o_hw(H(s))) &*&
+           [f]string_body(s, o_len(H(s)), o_aux(H(s))) &*& obj_facts(objs, H, s) == true &*&
+           o_words(H(s)) == nil &*& mem(s, objs) == true &*& has_tag(H, s, STRING_TAG) == true;
+  ensures [f]heap(objs, H);
+
+lemma void byte_array_open(void *s);
+  requires [?f]heap(?objs, ?H) &*& mem(s, objs) == true &*& has_tag(H, s, BYTE_ARRAY_TAG) == true;
+  ensures [f]heap_rest(objs, H, s) &*& [f]header(s, o_hw(H(s))) &*&
+          [f]byte_array_body(s, o_len(H(s)), o_aux(H(s))) &*& obj_facts(objs, H, s) == true &*&
+          o_words(H(s)) == nil &*& addr_ok(s) == true;
+
+lemma void byte_array_close(void *s);
+  requires [?f]heap_rest(?objs, ?H, s) &*& [f]header(s, o_hw(H(s))) &*&
+           [f]byte_array_body(s, o_len(H(s)), o_aux(H(s))) &*& obj_facts(objs, H, s) == true &*&
+           o_words(H(s)) == nil &*& mem(s, objs) == true &*& has_tag(H, s, BYTE_ARRAY_TAG) == true;
+  ensures [f]heap(objs, H);
+
+// The content of a readable blob is a range of the address space below
+// MAX_BLOB bytes.
+lemma void blob_facts(void *b);
+  requires [?f]heap(?objs, ?H) &*& mem(b, objs) == true &*& blob_ok(H, b, STRINGS_OR_BYTE_ARRAYS) == true;
+  ensures [f]heap(objs, H) &*& 0 <= blob_len(H, b) &*& blob_len(H, b) <= MAX_BLOB &*&
+          (uword)blob_base(H, b) + blob_len(H, b) <= UINTPTR_MAX &*&
+          (is_external(H, b) ? true : blob_base(H, b) == (uint8 *)raw(b) + 2 * WORD_SIZE);
 
 lemma void good_nth(list<void *> objs, list<void *> ws, int i);
   requires forall(ws, (good)(objs)) == true &*& 0 <= i &*& i < length(ws);
@@ -198,12 +346,12 @@ lemma void good_nth(list<void *> objs, list<void *> ws, int i);
 lemma void heap_open(void *o);
   requires [?f]heap(?objs, ?H) &*& mem(o, objs) == true;
   ensures [f]heap_rest(objs, H, o) &*& [f]header(o, o_hw(H(o))) &*&
-          [f]body(o, header_tag2(o_hw(H(o))), o_len(H(o)), o_words(H(o))) &*&
+          [f]body(o, header_tag2(o_hw(H(o))), o_len(H(o)), o_aux(H(o)), o_words(H(o))) &*&
           obj_facts(objs, H, o) == true &*& addr_ok(o) == true;
 
 lemma void heap_close(void *o);
   requires [?f]heap_rest(?objs, ?H, o) &*& [f]header(o, o_hw(H(o))) &*&
-           [f]body(o, header_tag2(o_hw(H(o))), o_len(H(o)), o_words(H(o))) &*&
+           [f]body(o, header_tag2(o_hw(H(o))), o_len(H(o)), o_aux(H(o)), o_words(H(o))) &*&
            obj_facts(objs, H, o) == true &*& mem(o, objs) == true;
   ensures [f]heap(objs, H);
 
@@ -237,6 +385,56 @@ lemma void pointers_unfocus(void **base, int i, list<void *> ps);
   ensures [f]pointers(base, i + 1 + m, update(i, v, ps));
 
 @*/
+
+// ---------------------------------------------------------------------------
+// The program's roots (src/program.h, generated by macros there): trusted
+// accessors.
+
+struct Program;
+typedef struct Program Program;
+
+//@ predicate program(Program *p; prog_ids ids);
+
+Smi *Program_array_class_id(Program *self);
+//@ requires [?f]program(self, ?ids);
+//@ ensures [f]program(self, ids) &*& result == smi_ptr(array_cid(ids));
+Smi *Program_list_class_id(Program *self);
+//@ requires [?f]program(self, ?ids);
+//@ ensures [f]program(self, ids) &*& result == smi_ptr(list_cid(ids));
+Smi *Program_list_slice_class_id(Program *self);
+//@ requires [?f]program(self, ?ids);
+//@ ensures [f]program(self, ids) &*& result == smi_ptr(list_slice_cid(ids));
+Smi *Program_map_class_id(Program *self);
+//@ requires [?f]program(self, ?ids);
+//@ ensures [f]program(self, ids) &*& result == smi_ptr(map_cid(ids));
+Smi *Program_large_array_class_id(Program *self);
+//@ requires [?f]program(self, ?ids);
+//@ ensures [f]program(self, ids) &*& result == smi_ptr(large_array_cid(ids));
+Smi *Program_tombstone_class_id(Program *self);
+//@ requires [?f]program(self, ?ids);
+//@ ensures [f]program(self, ids) &*& result == smi_ptr(tombstone_cid(ids));
+Smi *Program_byte_array_cow_class_id(Program *self);
+//@ requires [?f]program(self, ?ids);
+//@ ensures [f]program(self, ids) &*& result == smi_ptr(byte_array_cow_cid(ids));
+Smi *Program_byte_array_slice_class_id(Program *self);
+//@ requires [?f]program(self, ?ids);
+//@ ensures [f]program(self, ids) &*& result == smi_ptr(byte_array_slice_cid(ids));
+Smi *Program_string_byte_slice_class_id(Program *self);
+//@ requires [?f]program(self, ?ids);
+//@ ensures [f]program(self, ids) &*& result == smi_ptr(string_byte_slice_cid(ids));
+Smi *Program_string_slice_class_id(Program *self);
+//@ requires [?f]program(self, ?ids);
+//@ ensures [f]program(self, ids) &*& result == smi_ptr(string_slice_cid(ids));
+// null_object, true_object, false_object: only compared, never read.
+HeapObject *Program_null_object(Program *self);
+//@ requires [?f]program(self, ?ids);
+//@ ensures [f]program(self, ids);
+HeapObject *Program_true_object(Program *self);
+//@ requires [?f]program(self, ?ids);
+//@ ensures [f]program(self, ids);
+HeapObject *Program_false_object(Program *self);
+//@ requires [?f]program(self, ?ids);
+//@ ensures [f]program(self, ids);
 // C++: src/objects.h toit::is_smi
 bool is_smi(Object *o);
 //@ requires true;
@@ -396,5 +594,135 @@ double Double_value(Double *self);
 int64 LargeInteger_value(LargeInteger *self);
 //@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true &*& header_tag2(o_hw(H(self))) == 2 * LARGE_INTEGER_TAG;
 //@ ensures [f]heap(objs, H);
+
+// C++: src/objects.h toit::HeapObject::_raw
+uword HeapObject__raw(HeapObject *self);
+//@ requires 1 <= (uword)self;
+//@ ensures result == (uword)self - 1;
+
+// C++: src/objects.h toit::HeapObject::_raw_at
+uword *HeapObject__raw_at__word(HeapObject *self, word offset);
+//@ requires addr_ok(self) == true &*& 0 <= offset &*& offset <= 4 * WORD_SIZE;
+//@ ensures result == (uword *)((uword)self - 1 + offset);
+
+// C++: src/objects.h toit::HeapObject::_half_word_at
+unsigned int HeapObject__half_word_at(HeapObject *self, word offset);
+//@ requires addr_ok(self) == true &*& 0 <= offset &*& offset <= 4 * WORD_SIZE &*& [?f]half_word((uint8 *)raw(self) + offset, ?v);
+//@ ensures [f]half_word((uint8 *)raw(self) + offset, v) &*& result == v;
+
+// C++: src/objects.h toit::String::_internal_length
+word String__internal_length(String *self);
+//@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true &*& has_tag(H, self, STRING_TAG) == true;
+//@ ensures [f]heap(objs, H) &*& result == head(o_aux(H(self))) &*& 0 <= result;
+
+// C++: src/objects.h toit::String::content_on_heap
+bool String_content_on_heap(String *self);
+//@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true &*& has_tag(H, self, STRING_TAG) == true;
+//@ ensures [f]heap(objs, H) &*& result == !is_external(H, self);
+
+// C++: src/objects.h toit::String::_external_length
+word String__external_length(String *self);
+//@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true &*& has_tag(H, self, STRING_TAG) == true &*& is_external(H, self) == true;
+//@ ensures [f]heap(objs, H) &*& result == blob_len(H, self);
+
+// C++: src/objects.h toit::String::_external_address
+uint8 *String__external_address(String *self);
+//@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true &*& has_tag(H, self, STRING_TAG) == true &*& is_external(H, self) == true;
+//@ ensures [f]heap(objs, H) &*& result == blob_base(H, self);
+
+// C++: src/objects.h toit::String::as_external
+uint8 *String_as_external(String *self);
+//@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true &*& has_tag(H, self, STRING_TAG) == true;
+//@ ensures [f]heap(objs, H) &*& result == (is_external(H, self) ? blob_base(H, self) : 0);
+
+// C++: src/objects.h toit::String::_as_utf8bytes
+uint8 *String__as_utf8bytes(String *self);
+//@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true &*& has_tag(H, self, STRING_TAG) == true;
+//@ ensures [f]heap(objs, H) &*& result == blob_base(H, self);
+
+// C++: src/objects.h toit::String::cast
+String *String_cast(Object *object);
+//@ requires true;
+//@ ensures result == object;
+
+// C++: src/objects.h toit::String::Bytes::Bytes
+void String_Bytes_ctor(String_Bytes *self, String *string);
+//@ requires self->address_ |-> _ &*& self->length_ |-> _ &*& [?f]heap(?objs, ?H) &*& mem(string, objs) == true &*& has_tag(H, string, STRING_TAG) == true;
+//@ ensures self->address_ |-> blob_base(H, string) &*& self->length_ |-> blob_len(H, string) &*& [f]heap(objs, H);
+
+// C++: src/objects.h toit::String::Bytes::address
+uint8 *String_Bytes_address(String_Bytes *self);
+//@ requires [?f]self->address_ |-> ?a;
+//@ ensures [f]self->address_ |-> a &*& result == a;
+
+// C++: src/objects.h toit::String::Bytes::length
+word String_Bytes_length(String_Bytes *self);
+//@ requires [?f]self->length_ |-> ?l;
+//@ ensures [f]self->length_ |-> l &*& result == l;
+
+// C++: src/objects.h toit::ByteArray::raw_length (trusted: contract only)
+word ByteArray_raw_length(ByteArray *self);
+//@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true &*& has_tag(H, self, BYTE_ARRAY_TAG) == true;
+//@ ensures [f]heap(objs, H) &*& result == o_len(H(self));
+
+// C++: src/objects.h toit::ByteArray::has_external_address
+bool ByteArray_has_external_address(ByteArray *self);
+//@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true &*& has_tag(H, self, BYTE_ARRAY_TAG) == true;
+//@ ensures [f]heap(objs, H) &*& result == is_external(H, self);
+
+// C++: src/objects.h toit::ByteArray::external_tag
+word ByteArray_external_tag(ByteArray *self);
+//@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true &*& has_tag(H, self, BYTE_ARRAY_TAG) == true &*& is_external(H, self) == true;
+//@ ensures [f]heap(objs, H) &*& result == nth(1, o_aux(H(self)));
+
+// C++: src/objects.h toit::ByteArray::_offset_from
+word ByteArray__offset_from(word index);
+//@ requires 0 <= index &*& index <= WORD_SIZE * MAX_OBJECT_WORDS;
+//@ ensures result == ByteArray_HEADER_SIZE + index;
+
+// C++: src/objects.h toit::ByteArray::content
+uint8 *ByteArray_content(ByteArray *self);
+//@ requires addr_ok(self) == true;
+//@ ensures result == (uint8 *)((uword)self - 1 + 2 * WORD_SIZE);
+
+// C++: src/objects.h toit::ByteArray::_external_address
+uint8 *ByteArray__external_address(ByteArray *self);
+//@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true &*& has_tag(H, self, BYTE_ARRAY_TAG) == true &*& is_external(H, self) == true;
+//@ ensures [f]heap(objs, H) &*& result == blob_base(H, self);
+
+// C++: src/objects.h toit::ByteArray::as_external
+uint8 *ByteArray_as_external(ByteArray *self);
+//@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true &*& has_tag(H, self, BYTE_ARRAY_TAG) == true;
+//@ ensures [f]heap(objs, H) &*& result == (is_external(H, self) ? blob_base(H, self) : 0);
+
+// C++: src/objects.h toit::ByteArray::ConstBytes::ConstBytes
+void ByteArray_ConstBytes_ctor(ByteArray_ConstBytes *self, ByteArray *array);
+//@ requires self->address_ |-> _ &*& self->length_ |-> _ &*& [?f]heap(?objs, ?H) &*& mem(array, objs) == true &*& has_tag(H, array, BYTE_ARRAY_TAG) == true;
+//@ ensures self->address_ |-> blob_base(H, array) &*& self->length_ |-> blob_len(H, array) &*& [f]heap(objs, H);
+
+// C++: src/objects.h toit::ByteArray::ConstBytes::address
+uint8 *ByteArray_ConstBytes_address(ByteArray_ConstBytes *self);
+//@ requires [?f]self->address_ |-> ?a;
+//@ ensures [f]self->address_ |-> a &*& result == a;
+
+// C++: src/objects.h toit::ByteArray::ConstBytes::length
+word ByteArray_ConstBytes_length(ByteArray_ConstBytes *self);
+//@ requires [?f]self->length_ |-> ?l;
+//@ ensures [f]self->length_ |-> l &*& result == l;
+
+// C++: src/objects.h toit::ByteArray::Bytes::Bytes
+void ByteArray_Bytes_ctor(ByteArray_Bytes *self, ByteArray *array);
+//@ requires self->address_ |-> _ &*& self->length_ |-> _ &*& [?f]heap(?objs, ?H) &*& mem(array, objs) == true &*& has_tag(H, array, BYTE_ARRAY_TAG) == true;
+//@ ensures self->address_ |-> blob_base(H, array) &*& self->length_ |-> blob_len(H, array) &*& [f]heap(objs, H);
+
+// C++: src/objects.h toit::ByteArray::Bytes::address
+uint8 *ByteArray_Bytes_address(ByteArray_Bytes *self);
+//@ requires [?f]self->address_ |-> ?a;
+//@ ensures [f]self->address_ |-> a &*& result == a;
+
+// C++: src/objects.h toit::ByteArray::Bytes::length
+word ByteArray_Bytes_length(ByteArray_Bytes *self);
+//@ requires [?f]self->length_ |-> ?l;
+//@ ensures [f]self->length_ |-> l &*& result == l;
 
 #endif

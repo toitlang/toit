@@ -20,8 +20,10 @@
 // the write barrier. Verified: v2_process, the arithmetic of the new
 // length, the retry loop, the two copies (memcpy) and their bounds.
 //
-// The precondition `needed <= STACK_MAX_BOUND` is one the Verus contract
-// does not have (README, "Findings"); the self-tests (run.sh) drop it.
+// `needed` is not bounded by the precondition: the C++ rejects more than
+// Stack::max_length() (STACK_OVERFLOW). The self-tests (run.sh) take that
+// check out again: the cast to word overflows, or, with only the cast made
+// exact by a precondition, the sum.
 #include "../model/objects.gen.h"
 //@ #include "../model/arith.gh"
 
@@ -220,7 +222,7 @@ void Stack_v2_copy_to(Stack *self, Stack *other);
 // C++: src/interpreter_v2.cc toit_v2_grow_stack
 uword toit_v2_grow_stack(void *raw_process, uword needed);
 /*@ requires current_stack((Process *)raw_process, ?s) &*& stack(s, ?len, ?top, ?rtop, ?ft, ?fin, ?bci, ?bs) &*&
-             stack_ok(len, top, rtop, bs) == true &*& needed <= STACK_MAX_BOUND; @*/
+             stack_ok(len, top, rtop, bs) == true; @*/
 /*@ ensures current_stack((Process *)raw_process, ?s2) &*& stack(s2, ?len2, ?top2, rtop, ft, fin, bci, ?bs2) &*&
             stack_ok(len2, top2, rtop, bs2) == true &*&
             same_abstraction(len, top, rtop, bs, len2, top2, rtop, bs2) == true &*&
@@ -279,7 +281,7 @@ void Stack_v2_copy_to(Stack *self, Stack *other)
 // C++: src/interpreter_v2.cc toit_v2_grow_stack
 uword toit_v2_grow_stack(void *raw_process, uword needed)
 /*@ requires current_stack((Process *)raw_process, ?s) &*& stack(s, ?len, ?top, ?rtop, ?ft, ?fin, ?bci, ?bs) &*&
-             stack_ok(len, top, rtop, bs) == true &*& needed <= STACK_MAX_BOUND; @*/
+             stack_ok(len, top, rtop, bs) == true; @*/
 /*@ ensures current_stack((Process *)raw_process, ?s2) &*& stack(s2, ?len2, ?top2, rtop, ft, fin, bci, ?bs2) &*&
             stack_ok(len2, top2, rtop, bs2) == true &*&
             same_abstraction(len, top, rtop, bs, len2, top2, rtop, bs2) == true &*&
@@ -287,6 +289,9 @@ uword toit_v2_grow_stack(void *raw_process, uword needed)
              result == TOIT_V2_STACK_OVERFLOW || result == TOIT_V2_OUT_OF_MEMORY); @*/
 {
   Process *process = v2_process(raw_process);
+  if (needed > (uword)Stack_max_length()) {
+    return TOIT_V2_STACK_OVERFLOW;
+  }
   Stack *stack = Task_stack(Process_task(process));
   GcMetadata_insert_into_remembered_set(stack);
   //@ open stack(s, len, top, rtop, ft, fin, bci, bs);

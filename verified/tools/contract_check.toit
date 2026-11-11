@@ -85,7 +85,10 @@ verus-clauses path/string name/string -> Map:
     if c == '{' and depth == 0:
       end = i
       break
-  header := text[at..end]
+  // Line comments between the clauses are not part of them.
+  header := ((text[at..end].split "\n").map: | line/string |
+    c := line.index-of "//"
+    c >= 0 ? line[..c] : line).join "\n"
   req := header.index-of "\n    requires"
   ens := header.index-of "\n    ensures"
   // `requires X,` on the signature line itself.

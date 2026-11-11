@@ -184,7 +184,9 @@ A sidecar: a sequence of sections, each opened by a directive line (a
   the prototype and contract are emitted (the body is not verified, but
   still compared with the sources). `type=T` picks an overload by its
   Clang type with the spaces removed.
-Configuration: `@raii CLASS`, `@overloaded CLASS::NAME`, `@constants FILE`
+Configuration: `@raii CLASS`, `@overloaded CLASS::NAME`, `@expand-typedef NAME`
+  (the typedef is written as the type it stands for on the rendering's
+  target, e.g. `uhalf_word`), `@constants FILE`
   (the constant table), `@header FILE` (also write a header), `@include
   FILE` (read the configuration directives of another file).
 */
@@ -193,6 +195,7 @@ class Sidecar:
   sections/List := []
   raii/Set := {}
   overloaded/Set := {}
+  expanded/Set := {}
   constants-path/string? := null
   header/string? := null
 
@@ -224,6 +227,8 @@ class Sidecar:
   configure directive/string words/List dir/string -> bool:
     if directive == "raii":
       raii.add words[1]
+    else if directive == "expand-typedef":
+      expanded.add words[1]
     else if directive == "overloaded":
       overloaded.add words[1]
     else if directive == "constants":
@@ -425,6 +430,8 @@ Normalizes a C++ type spelling to C: drops `toit::`, `const`, `volatile`,
 */
 c-type t/string -> string:
   t = t.replace --all "toit::" ""
+  // A nested class `A::B` is the C struct `A_B`.
+  t = t.replace --all "::" "_"
   // A const reference is passed by value (the rendering rule for
   // parameters such as bit_cast's `const From&`); another reference is a
   // pointer (`T&` is `T *`; the argument is passed by address, a use of
@@ -516,7 +523,9 @@ class Renderer:
   constants/Constants
   source/string       // The text of the file the function is in.
   source-path/string
-  cls/string?         // The class of the function, or null.
+  cls/string?         // The class of the function (`A_B` for a nested class A::B), or null.
+  cxx-cls/string? := null  // Its C++ name (`A::B`).
+  class-decl/Lambda? := null  // Qualified class name -> its declaration in the AST, or null.
   ghosts/List
   uses/Map            // key -> ConstantUse, shared by the unit.
   signatures/Map      // C name -> parameter types, shared by all units.
@@ -573,7 +582,7 @@ class Renderer:
   mangle-member class-name/string name/string param-types/List -> string:
     base/string := ?
     if name.starts-with "~": base = "$(class-name)_dtor"
-    else if name == class-name: base = "$(class-name)_ctor"
+    else if name == class-name or class-name.ends-with "_$name": base = "$(class-name)_ctor"
     else: base = "$(class-name)_$name"
     if sidecar.overloaded.contains "$class-name::$name":
       suffix := (param-types.map: (it.replace --all " " "").replace --all "*" "p").join "_"
@@ -680,13 +689,19 @@ class Renderer:
       // Spelled inside a macro: named by the class that declares it.
       spelled = "$owner::$name"
       rendered = "$(owner)_$name"
+    else if not (cls and constants.values.contains "$(cls)_$name") and not (constants.values.contains name)
+        and owner and owner != name and constants.values.contains "$(owner)_$name":
+      // A member of an enclosing class (used inside a nested class): named
+      // and checked by the class that declares it.
+      spelled = "$owner::$name"
+      rendered = "$(owner)_$name"
     else:
       spelled = name
       if cls and constants.values.contains "$(cls)_$name":
         rendered = "$(cls)_$name"
       else:
         rendered = name
-      context = cls
+      context = cxx-cls
     if not constants.values.contains rendered:
       uses["missing:$rendered"] = "$(where node): $spelled ($rendered)"
       return rendered
@@ -951,6 +966,8 @@ class Renderer:
       emit indent "continue;"
     else if kind == "NullStmt":
       null  // An empty statement: nothing to render.
+    else if is-assign-call (strip-cleanups node):
+      class-assignment (strip-cleanups node) indent
     else if kind.ends-with "Expr" or kind.ends-with "Operator" or kind == "ExprWithCleanups":
       emit indent "$((expr node).text);"
     else:
@@ -1015,16 +1032,7 @@ class Renderer:
       locals.add name
       type := c-type decl["type"]["qualType"]
       if not hoisted.contains decl["id"]: emit indent "$(declarator type name);"
-      // A non-const reference parameter of the constructor is a pointer.
-      ctor-params := fn-param-types-raw init["ctorType"]["qualType"]
-      args := []
-      (inner init).size.repeat: | i |
-        a := (inner init)[i]
-        by-ref := i < ctor-params.size and (is-reference ctor-params[i])
-        args.add (by-ref ? "&$(wrap (expr a) PREC-UNARY)" : (wrap (expr a) PREC-ASSIGN))
-      ctor-name := mangle-member type type (ctor-params.map: c-type it)
-      note-signature ctor-name (ctor-params.map: c-type it) init
-      emit indent "$ctor-name($((["&$name"] + args).join ", "));"
+      construct name type init indent
       if sidecar.raii.contains type: raii-scopes.last.add [type, name]
       return
     if hoisted.contains decl["id"]:
@@ -1032,6 +1040,62 @@ class Renderer:
       if init: emit indent "$decl["name"] = $(wrap (expr init) PREC-ASSIGN);"
       return
     emit indent "$(var-decl-text decl);"
+
+  // The constructor call of $init (a CXXConstructExpr or a
+  // CXXTemporaryObjectExpr) for the object $name of C type $type.
+  construct name/string type/string init/Map indent/int:
+    // A non-const reference parameter of the constructor is a pointer.
+    ctor-params := fn-param-types-raw init["ctorType"]["qualType"]
+    args := []
+    (inner init).size.repeat: | i |
+      a := (inner init)[i]
+      by-ref := i < ctor-params.size and (is-reference ctor-params[i])
+      args.add (by-ref ? "&$(wrap (expr a) PREC-UNARY)" : (wrap (expr a) PREC-ASSIGN))
+    ctor-name := mangle-member type type (ctor-params.map: c-type it)
+    note-signature ctor-name (ctor-params.map: c-type it) init
+    emit indent "$ctor-name($((["&$name"] + args).join ", "));"
+
+  /**
+  `a = b` for objects of a class whose assignment operator is the implicit
+    one (checked in Clang's AST): member-wise assignment, which is what the
+    implicit copy and move assignments do. A temporary on the right
+    (`a = C(x)`) is constructed first, into a local.
+  */
+  class-assignment node/Map indent/int:
+    kids := inner node
+    callee := kids[0]
+    while callee["kind"] == "ImplicitCastExpr": callee = (inner callee)[0]
+    ref := callee["referencedDecl"]
+    lhs := kids[1]
+    rhs := kids[2]
+    cls-name := c-type lhs["type"]["qualType"]
+    decl := class-decl.call "toit::$(cls-name.replace --all "_" "::")"
+    if not decl: fail "$(where node): no class $cls-name in the AST"
+    implicit := false
+    fields := []
+    (inner decl).do: | m/Map |
+      if m["kind"] == "CXXMethodDecl" and m["id"] == ref["id"] and (m.get "isImplicit") == true: implicit = true
+      if m["kind"] == "FieldDecl": fields.add m["name"]
+    if not implicit: fail "$(where node): $cls-name::operator= is not the implicit one"
+    target := wrap (expr lhs) PREC-PRIMARY
+    while rhs["kind"] == "MaterializeTemporaryExpr" or rhs["kind"] == "ExprWithCleanups" or rhs["kind"] == "CXXBindTemporaryExpr":
+      rhs = (inner rhs)[0]
+    emit indent "{"
+    source-text/string := ?
+    if rhs["kind"] == "CXXTemporaryObjectExpr" or rhs["kind"] == "CXXConstructExpr":
+      source-text = "tmp$(temp-count++)"
+      emit (indent + 1) "$(declarator cls-name source-text);"
+      construct source-text cls-name rhs (indent + 1)
+    else:
+      source-text = wrap (expr rhs) PREC-PRIMARY
+    fields.do: | f | emit (indent + 1) "($target).$f = $source-text.$f;"
+    emit indent "}"
+
+  is-assign-call node/Map -> bool:
+    if node["kind"] != "CXXOperatorCallExpr": return false
+    callee := (inner node)[0]
+    while callee["kind"] == "ImplicitCastExpr": callee = (inner callee)[0]
+    return callee["kind"] == "DeclRefExpr" and callee["referencedDecl"]["name"] == "operator="
 
   strip-cleanups node/Map -> Map:
     while node["kind"] == "ExprWithCleanups": node = (inner node)[0]
@@ -1080,6 +1144,22 @@ class Renderer:
         emit 1 "self->$field = $(wrap (expr value[0]) PREC-ASSIGN);"
     block-contents body-node 1
     lines.add "}"
+
+/** Replaces the identifier $name (whole words only) in $text. */
+replace-word text/string name/string by/string -> string:
+  out := []
+  i := 0
+  while true:
+    j := text.index-of name i
+    if j < 0: break
+    before-ok := j == 0 or not (is-ident-char (text.at --raw j - 1))
+    after := j + name.size
+    after-ok := after >= text.size or not (is-ident-char (text.at --raw after))
+    out.add text[i..j]
+    out.add ((before-ok and after-ok) ? by : name)
+    i = after
+  out.add text[i..]
+  return out.join ""
 
 /** `T name`, without a space after a `*`. */
 declarator type/string name/string -> string:
@@ -1133,13 +1213,24 @@ class Unit:
   ghost-text r/Prepared lines/List -> string:
     return lines.join "\n"
 
+  // The typedefs named by `@expand-typedef`, as the type they stand for on
+  // the target of this rendering (from Clang's AST: a typedef that differs
+  // between targets, like `uhalf_word`, cannot be one C typedef).
+  expand-typedefs text/string -> string:
+    sidecar.expanded.do: | name/string |
+      if (replace-word text name "") == text: continue.do  // Not used.
+      target-type := cache.signatures.get "typedef:$name"
+      if not target-type: fail "@expand-typedef $name: no use of the typedef in the AST resolves it"
+      text = replace-word text name target-type
+    return text
+
   prototype r/Prepared -> string:
     ren := r.renderer
     ren.lines = []
     ren.locals = {}
     ren.ghosts.do: | g/Ghost | g.emitted = false
     ren.function r.decl r.body --prototype
-    text := ren.lines.join "\n"
+    text := expand-typedefs (ren.lines.join "\n")
     ren.ghosts.do: | g/Ghost | g.emitted = false
     ren.locals = {}
     return text
@@ -1151,7 +1242,7 @@ class Unit:
     leftover := ren.ghosts.filter: not it.emitted
     if not leftover.is-empty:
       fail "$sidecar.path:$r.section.line: annotation not at a statement boundary: $((leftover[0] as Ghost).text)"
-    return ren.lines.join "\n"
+    return expand-typedefs (ren.lines.join "\n")
 
   /**
   Renders the unit for one target. Returns [C text, header text or null].
@@ -1223,7 +1314,9 @@ class Unit:
       else: fail "$sidecar.path:$s.line: unknown option $a"
     parts := qname.split "::"
     name := parts.last
-    cls := parts.size >= 3 ? parts[parts.size - 2] : null
+    // The class, for a nested one `A::B` the C name `A_B`.
+    cls := parts.size >= 3 ? (parts[1..parts.size - 1].join "_") : null
+    cxx-cls := parts.size >= 3 ? (parts[1..parts.size - 1].join "::") : null
     tus.add tu
     decls := cache.find tu target qname
     source := (file.read-contents "$repo/$path").to-string
@@ -1233,7 +1326,7 @@ class Unit:
         // An out-of-line definition: `C::name` must be how it is spelled.
         db := begin-offset d
         de := end-offset d
-        if cls and not (db and de and de <= source.size and source[db..de].contains "$cls::$name"):
+        if cls and not (db and de and de <= source.size and source[db..de].contains "$(parts[parts.size - 2])::$name"):
           continue.do
       if (d.get "name") == name:
         bodies := (inner d).filter: it["kind"] == "CompoundStmt"
@@ -1267,6 +1360,10 @@ class Unit:
     if k != real.size: report-drift s path source b real annotated k
     if not pending.is-empty: fail "$sidecar.path:$s.line: annotation after the end of $qname"
     renderer := Renderer sidecar constants source path cls ghosts uses cache.signatures (cache.owners tu target qname)
+    renderer.cxx-cls = cxx-cls
+    renderer.class-decl = :: | q/string |
+      found := (cache.find tu target q).filter: | d/Map | d["kind"] == "CXXRecordDecl" and not (inner d).is-empty
+      found.is-empty ? null : found[0]
     return Prepared s renderer decl body-node path source trusted (renderer.c-name decl)
 
   report-drift s/Section path/string source/string base/int real/List annotated/List k/int:
@@ -1290,7 +1387,8 @@ class Unit:
     out.add "#include <objects.h>"
     // The translation units of the rendered functions: constants such as
     // the message tags are defined in them.
-    tus.do: out.add "#include <$(it[4..])>"
+    // (A unit outside src/, the translator's self-test, is next to its sidecar.)
+    tus.do: out.add ((it.starts-with "src/") ? "#include <$(it[4..])>" : "#include \"$(fs.basename it)\"")
     out.add "namespace toit {"
     out.add "template <typename A, typename B> struct vf_same {"
     out.add "  static const bool value = std::is_same<typename std::decay<A>::type, typename std::decay<B>::type>::value;"

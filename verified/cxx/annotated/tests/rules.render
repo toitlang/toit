@@ -1,0 +1,59 @@
+// Copyright (C) 2026 Toit contributors.
+//
+// The translator's self-test: the rules of rules.cc, rendered and
+// verified (run.sh). A changed rule changes rules.gen.c, which
+// `render.sh --check` reports.
+@constants rules_constants.h
+@expand-typedef uhalf_word
+@verbatim
+#include <stdint.h>
+#include "rules_constants.h"
+typedef intptr_t word;
+struct Outer_Inner { word v_; };
+typedef struct Outer_Inner Outer_Inner;
+struct Pair { word a_; word b_; };
+typedef struct Pair Pair;
+
+@prototypes
+@render verified/cxx/annotated/tests/rules.cc toit::Outer::Inner::Inner
+    explicit Inner(word x) : v_(x + K)
+    //@ requires self->v_ |-> _ &*& x < 100;
+    //@ ensures self->v_ |-> x + 3;
+    {}
+
+@render verified/cxx/annotated/tests/rules.cc toit::Outer::Inner::v
+    word v()
+    //@ requires self->v_ |-> ?v;
+    //@ ensures self->v_ |-> v &*& result == v;
+    { return v_; }
+
+@render verified/cxx/annotated/tests/rules.cc toit::Pair::Pair
+  Pair(word x, word y) : a_(x), b_(y)
+  //@ requires self->a_ |-> _ &*& self->b_ |-> _;
+  //@ ensures self->a_ |-> x &*& self->b_ |-> y;
+  {}
+
+@render verified/cxx/annotated/tests/rules.cc toit::assign_pair
+inline void assign_pair(Pair* p, word x)
+//@ requires p->a_ |-> _ &*& p->b_ |-> _ &*& x < 100;
+//@ ensures p->a_ |-> x &*& p->b_ |-> x + 1;
+{
+  *p = Pair(x, x + 1);
+}
+
+@render verified/cxx/annotated/tests/rules.cc toit::low_half
+inline uhalf_word low_half(uhalf_word h)
+//@ requires true;
+//@ ensures result == h;
+{
+  return h;
+}
+
+@render verified/cxx/annotated/tests/rules.cc toit::use_inner
+inline word use_inner(word x)
+//@ requires x < 100;
+//@ ensures result == x + 3;
+{
+  Outer::Inner inner(x);
+  return inner.v();
+}

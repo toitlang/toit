@@ -40,8 +40,44 @@
 #define Instance_LIST_SLICE_TO_INDEX ((word)2)
 #define Instance_MAP_SIZE_INDEX ((word)0)
 #define Instance_MAP_BACKING_INDEX ((word)3)
+#define Instance_BYTE_ARRAY_COW_BACKING_INDEX ((word)0)
+#define Instance_BYTE_ARRAY_COW_IS_MUTABLE_INDEX ((word)1)
+#define Instance_BYTE_ARRAY_SLICE_BYTE_ARRAY_INDEX ((word)0)
+#define Instance_BYTE_ARRAY_SLICE_FROM_INDEX ((word)1)
+#define Instance_BYTE_ARRAY_SLICE_TO_INDEX ((word)2)
+#define Instance_STRING_SLICE_STRING_INDEX ((word)0)
+#define Instance_STRING_SLICE_FROM_INDEX ((word)1)
+#define Instance_STRING_SLICE_TO_INDEX ((word)2)
+#define Instance_STRING_BYTE_SLICE_STRING_INDEX ((word)0)
+#define Instance_STRING_BYTE_SLICE_FROM_INDEX ((word)1)
+#define Instance_STRING_BYTE_SLICE_TO_INDEX ((word)2)
 #define Array_LENGTH_OFFSET ((word)sizeof(word))
 #define Array_HEADER_SIZE ((word)(2 * sizeof(word)))
+
+// class String (src/objects.h): [header][hash:h][length:h][content] or
+// [header][hash:h][SENTINEL:h][length][address].
+#define HALF_WORD_SIZE ((int)(sizeof(word) / 2))
+#define String_SENTINEL ((word)65535)
+#define String_HASH_CODE_OFFSET ((word)sizeof(word))
+#define String_INTERNAL_LENGTH_OFFSET ((word)(sizeof(word) + sizeof(word) / 2))
+#define String_INTERNAL_HEADER_SIZE ((word)(2 * sizeof(word)))
+#define String_EXTERNAL_LENGTH_OFFSET ((word)(2 * sizeof(word)))
+#define String_EXTERNAL_ADDRESS_OFFSET ((word)(3 * sizeof(word)))
+
+// class ByteArray: [header][raw length][content] or [header][-1 - length]
+// [address][tag].
+#define ByteArray_LENGTH_OFFSET ((word)sizeof(word))
+#define ByteArray_HEADER_SIZE ((word)(2 * sizeof(word)))
+#define ByteArray_EXTERNAL_ADDRESS_OFFSET ((word)(2 * sizeof(word)))
+#define ByteArray_EXTERNAL_TAG_OFFSET ((word)(3 * sizeof(word)))
+
+// enum StructTag (src/tags.h).
+#define RawByteTag 0
+#define NullStructTag 1
+
+// class Object (byte_content), enum BlobKind.
+#define Object_MAX_BYTE_CONTENT_DEPTH 8
+#define STRINGS_ONLY 1
 
 // enum TypeTag.
 #define ARRAY_TAG 0

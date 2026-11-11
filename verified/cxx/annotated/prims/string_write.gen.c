@@ -26,17 +26,11 @@
 typedef struct Object Error;
 struct Process;
 typedef struct Process Process;
-struct Program;
-typedef struct Program Program;
 typedef unsigned long size_t;
 
 // An empty C++ struct; C needs a member.
 struct uninitialized_t { char unused; };
 typedef struct uninitialized_t uninitialized_t;
-struct Blob { uint8 *address_; word length_; };
-typedef struct Blob Blob;
-struct MutableBlob { uint8 *address_; word length_; };
-typedef struct MutableBlob MutableBlob;
 
 /*@
 inductive region = region(uint8 *base, int len);
@@ -103,11 +97,11 @@ void uninitialized_t_ctor(uninitialized_t *self);
 
 // Object::byte_content, Object::mutable_byte_content (objects_runtime.cc):
 // trusted; the natural next target of the object model.
-bool Object_byte_content(Object *self, Program *program, Blob *blob, int kind);
+bool Object_byte_content__Programp_Blobp_BlobKind(Object *self, Program *program, Blob *blob, BlobKind kind);
 //@ requires blob->address_ |-> _ &*& blob->length_ |-> _ &*& [?f]regions(?rs);
 /*@ ensures blob->address_ |-> ?a &*& blob->length_ |-> ?l &*& [f]regions(rs) &*&
             result ? [_]blob_in(rs, a, l, _) : true; @*/
-bool Object_mutable_byte_content(Object *self, Process *process, MutableBlob *blob, Error **error);
+bool Object_mutable_byte_content__Processp_MutableBlobp_Errorpp(Object *self, Process *process, MutableBlob *blob, Error **error);
 //@ requires blob->address_ |-> _ &*& blob->length_ |-> _ &*& *error |-> _ &*& regions(?rs);
 /*@ ensures blob->address_ |-> ?a &*& blob->length_ |-> ?l &*& *error |-> ?e &*& regions(?rs2) &*&
             forall(rs, (contains_r)(rs2)) == true &*&
@@ -136,7 +130,7 @@ word Blob_length(Blob *self);
 //@ ensures [f]self->length_ |-> l &*& result == l;
 
 // C++: src/objects.h toit::MutableBlob::MutableBlob
-void MutableBlob_ctor(MutableBlob *self);
+void MutableBlob_ctor__(MutableBlob *self);
 //@ requires self->address_ |-> _ &*& self->length_ |-> _;
 //@ ensures self->address_ |-> 0 &*& self->length_ |-> 0;
 
@@ -181,7 +175,7 @@ word Blob_length(Blob *self)
 }
 
 // C++: src/objects.h toit::MutableBlob::MutableBlob
-void MutableBlob_ctor(MutableBlob *self)
+void MutableBlob_ctor__(MutableBlob *self)
 //@ requires self->address_ |-> _ &*& self->length_ |-> _;
 //@ ensures self->address_ |-> 0 &*& self->length_ |-> 0;
 {
@@ -219,12 +213,12 @@ Object *primitive_string_write_to_byte_array(Process *process, Object **__args)
   Object *_raw_source_bytes = __args[-(0)];
   uninitialized_t_ctor(&_u_source_bytes);
   Blob_ctor__uninitialized_tp(&source_bytes, &_u_source_bytes);
-  if (!Object_byte_content(_raw_source_bytes, Process_program(process), &source_bytes, STRINGS_OR_BYTE_ARRAYS)) {
+  if (!Object_byte_content__Programp_Blobp_BlobKind(_raw_source_bytes, Process_program(process), &source_bytes, STRINGS_OR_BYTE_ARRAYS)) {
     return (Object *)((uword)((int)(Program_WRONG_BYTES_TYPE_INDEX) << Error_ERROR_SHIFT) | Error_ERROR_TAG);
   }
   Object *_raw_dest = __args[-(1)];
-  MutableBlob_ctor(&dest);
-  if (!Object_mutable_byte_content(_raw_dest, process, &dest, &_mutable_blob_error_dest)) {
+  MutableBlob_ctor__(&dest);
+  if (!Object_mutable_byte_content__Processp_MutableBlobp_Errorpp(_raw_dest, process, &dest, &_mutable_blob_error_dest)) {
     return _mutable_blob_error_dest;
   }
   Object *_raw_from = __args[-(2)];

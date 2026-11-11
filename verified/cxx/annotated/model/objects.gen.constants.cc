@@ -16,13 +16,23 @@ template <typename A, typename B> struct vf_same {
 struct vf_probe_0 : Array { static_assert((HEADER_SIZE) == (((word)(2 * sizeof(word)))), "Array_HEADER_SIZE"); static_assert(vf_same<decltype(HEADER_SIZE), decltype(((word)(2 * sizeof(word))))>::value, "type of Array_HEADER_SIZE"); };
 struct vf_probe_1 : Array { static_assert((LENGTH_OFFSET) == (((word)sizeof(word))), "Array_LENGTH_OFFSET"); static_assert(vf_same<decltype(LENGTH_OFFSET), decltype(((word)sizeof(word)))>::value, "type of Array_LENGTH_OFFSET"); };
 struct vf_probe_2 : Array { static_assert((WORD_SIZE) == (((int)sizeof(word))), "WORD_SIZE"); static_assert(vf_same<decltype(WORD_SIZE), decltype(((int)sizeof(word)))>::value, "type of WORD_SIZE"); };
-struct vf_probe_3 : HeapObject { static_assert((HEADER_OFFSET) == (((word)0)), "HEADER_OFFSET"); static_assert(vf_same<decltype(HEADER_OFFSET), decltype(((word)0))>::value, "type of HEADER_OFFSET"); };
-struct vf_probe_4 : HeapObject { static_assert((HEAP_TAG) == (((uword)1)), "HEAP_TAG"); static_assert(vf_same<decltype(HEAP_TAG), decltype(((uword)1))>::value, "type of HEAP_TAG"); };
-struct vf_probe_5 : HeapObject { static_assert((SMI_TAG_SIZE) == (1), "SMI_TAG_SIZE"); static_assert(vf_same<decltype(SMI_TAG_SIZE), decltype(1)>::value, "type of SMI_TAG_SIZE"); };
-struct vf_probe_6 : HeapObject { static_assert((WORD_SIZE) == (((int)sizeof(word))), "WORD_SIZE"); static_assert(vf_same<decltype(WORD_SIZE), decltype(((int)sizeof(word)))>::value, "type of WORD_SIZE"); };
-struct vf_probe_7 : Instance { static_assert((HEADER_SIZE) == (((word)sizeof(word))), "Instance_HEADER_SIZE"); static_assert(vf_same<decltype(HEADER_SIZE), decltype(((word)sizeof(word)))>::value, "type of Instance_HEADER_SIZE"); };
-struct vf_probe_8 : Instance { static_assert((WORD_SIZE) == (((int)sizeof(word))), "WORD_SIZE"); static_assert(vf_same<decltype(WORD_SIZE), decltype(((int)sizeof(word)))>::value, "type of WORD_SIZE"); };
-struct vf_probe_9 : Smi { static_assert((SMI_TAG_SIZE) == (1), "SMI_TAG_SIZE"); static_assert(vf_same<decltype(SMI_TAG_SIZE), decltype(1)>::value, "type of SMI_TAG_SIZE"); };
+struct vf_probe_3 : ByteArray { static_assert((EXTERNAL_ADDRESS_OFFSET) == (((word)(2 * sizeof(word)))), "ByteArray_EXTERNAL_ADDRESS_OFFSET"); static_assert(vf_same<decltype(EXTERNAL_ADDRESS_OFFSET), decltype(((word)(2 * sizeof(word))))>::value, "type of ByteArray_EXTERNAL_ADDRESS_OFFSET"); };
+struct vf_probe_4 : ByteArray { static_assert((EXTERNAL_TAG_OFFSET) == (((word)(3 * sizeof(word)))), "ByteArray_EXTERNAL_TAG_OFFSET"); static_assert(vf_same<decltype(EXTERNAL_TAG_OFFSET), decltype(((word)(3 * sizeof(word))))>::value, "type of ByteArray_EXTERNAL_TAG_OFFSET"); };
+struct vf_probe_5 : ByteArray { static_assert((HEADER_SIZE) == (((word)(2 * sizeof(word)))), "ByteArray_HEADER_SIZE"); static_assert(vf_same<decltype(HEADER_SIZE), decltype(((word)(2 * sizeof(word))))>::value, "type of ByteArray_HEADER_SIZE"); };
+struct vf_probe_6 : ByteArray { static_assert((NullStructTag) == (1), "NullStructTag"); };
+struct vf_probe_7 : ByteArray { static_assert((RawByteTag) == (0), "RawByteTag"); };
+struct vf_probe_8 : HeapObject { static_assert((HEADER_OFFSET) == (((word)0)), "HEADER_OFFSET"); static_assert(vf_same<decltype(HEADER_OFFSET), decltype(((word)0))>::value, "type of HEADER_OFFSET"); };
+struct vf_probe_9 : HeapObject { static_assert((HEAP_TAG) == (((uword)1)), "HEAP_TAG"); static_assert(vf_same<decltype(HEAP_TAG), decltype(((uword)1))>::value, "type of HEAP_TAG"); };
+struct vf_probe_10 : HeapObject { static_assert((SMI_TAG_SIZE) == (1), "SMI_TAG_SIZE"); static_assert(vf_same<decltype(SMI_TAG_SIZE), decltype(1)>::value, "type of SMI_TAG_SIZE"); };
+struct vf_probe_11 : HeapObject { static_assert((WORD_SIZE) == (((int)sizeof(word))), "WORD_SIZE"); static_assert(vf_same<decltype(WORD_SIZE), decltype(((int)sizeof(word)))>::value, "type of WORD_SIZE"); };
+struct vf_probe_12 : Instance { static_assert((HEADER_SIZE) == (((word)sizeof(word))), "Instance_HEADER_SIZE"); static_assert(vf_same<decltype(HEADER_SIZE), decltype(((word)sizeof(word)))>::value, "type of Instance_HEADER_SIZE"); };
+struct vf_probe_13 : Instance { static_assert((WORD_SIZE) == (((int)sizeof(word))), "WORD_SIZE"); static_assert(vf_same<decltype(WORD_SIZE), decltype(((int)sizeof(word)))>::value, "type of WORD_SIZE"); };
+struct vf_probe_14 : Smi { static_assert((SMI_TAG_SIZE) == (1), "SMI_TAG_SIZE"); static_assert(vf_same<decltype(SMI_TAG_SIZE), decltype(1)>::value, "type of SMI_TAG_SIZE"); };
+struct vf_probe_15 : String { static_assert((EXTERNAL_ADDRESS_OFFSET) == (((word)(3 * sizeof(word)))), "String_EXTERNAL_ADDRESS_OFFSET"); static_assert(vf_same<decltype(EXTERNAL_ADDRESS_OFFSET), decltype(((word)(3 * sizeof(word))))>::value, "type of String_EXTERNAL_ADDRESS_OFFSET"); };
+struct vf_probe_16 : String { static_assert((EXTERNAL_LENGTH_OFFSET) == (((word)(2 * sizeof(word)))), "String_EXTERNAL_LENGTH_OFFSET"); static_assert(vf_same<decltype(EXTERNAL_LENGTH_OFFSET), decltype(((word)(2 * sizeof(word))))>::value, "type of String_EXTERNAL_LENGTH_OFFSET"); };
+struct vf_probe_17 : String { static_assert((INTERNAL_HEADER_SIZE) == (((word)(2 * sizeof(word)))), "String_INTERNAL_HEADER_SIZE"); static_assert(vf_same<decltype(INTERNAL_HEADER_SIZE), decltype(((word)(2 * sizeof(word))))>::value, "type of String_INTERNAL_HEADER_SIZE"); };
+struct vf_probe_18 : String { static_assert((INTERNAL_LENGTH_OFFSET) == (((word)(sizeof(word) + sizeof(word) / 2))), "String_INTERNAL_LENGTH_OFFSET"); static_assert(vf_same<decltype(INTERNAL_LENGTH_OFFSET), decltype(((word)(sizeof(word) + sizeof(word) / 2)))>::value, "type of String_INTERNAL_LENGTH_OFFSET"); };
+struct vf_probe_19 : String { static_assert((SENTINEL) == (((word)65535)), "String_SENTINEL"); static_assert(vf_same<decltype(SENTINEL), decltype(((word)65535))>::value, "type of String_SENTINEL"); };
 static_assert((ARRAY_TAG) == (0), "ARRAY_TAG");
 static_assert((BYTE_ARRAY_TAG) == (5), "BYTE_ARRAY_TAG");
 static_assert((DOUBLE_TAG) == (4), "DOUBLE_TAG");
@@ -45,4 +55,6 @@ static_assert(vf_same<decltype(Object::SMI_TAG), decltype(((uword)0))>::value, "
 static_assert((Object::SMI_TAG_MASK) == (((uword)1)), "Object_SMI_TAG_MASK");
 static_assert(vf_same<decltype(Object::SMI_TAG_MASK), decltype(((uword)1))>::value, "type of Object_SMI_TAG_MASK");
 static_assert((STRING_TAG) == (1), "STRING_TAG");
+static_assert((String::SENTINEL) == (((word)65535)), "String_SENTINEL");
+static_assert(vf_same<decltype(String::SENTINEL), decltype(((word)65535))>::value, "type of String_SENTINEL");
 }  // namespace toit

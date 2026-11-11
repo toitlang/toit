@@ -17,7 +17,6 @@
 // Self-test (run.sh): af4ba7ab reverted (memcpy for the same byte array):
 // no proof for overlapping ranges; with non-overlap assumed, it verifies.
 @include ../model/model.cfg
-@overloaded Blob::Blob
 @verbatim
 #include "../model/objects.gen.h"
 //@ #include <listex.gh>
@@ -25,17 +24,11 @@
 typedef struct Object Error;
 struct Process;
 typedef struct Process Process;
-struct Program;
-typedef struct Program Program;
 typedef unsigned long size_t;
 
 // An empty C++ struct; C needs a member.
 struct uninitialized_t { char unused; };
 typedef struct uninitialized_t uninitialized_t;
-struct Blob { uint8 *address_; word length_; };
-typedef struct Blob Blob;
-struct MutableBlob { uint8 *address_; word length_; };
-typedef struct MutableBlob MutableBlob;
 
 /*@
 inductive region = region(uint8 *base, int len);
@@ -102,11 +95,11 @@ void uninitialized_t_ctor(uninitialized_t *self);
 
 // Object::byte_content, Object::mutable_byte_content (objects_runtime.cc):
 // trusted; the natural next target of the object model.
-bool Object_byte_content(Object *self, Program *program, Blob *blob, int kind);
+bool Object_byte_content__Programp_Blobp_BlobKind(Object *self, Program *program, Blob *blob, BlobKind kind);
 //@ requires blob->address_ |-> _ &*& blob->length_ |-> _ &*& [?f]regions(?rs);
 /*@ ensures blob->address_ |-> ?a &*& blob->length_ |-> ?l &*& [f]regions(rs) &*&
             result ? [_]blob_in(rs, a, l, _) : true; @*/
-bool Object_mutable_byte_content(Object *self, Process *process, MutableBlob *blob, Error **error);
+bool Object_mutable_byte_content__Processp_MutableBlobp_Errorpp(Object *self, Process *process, MutableBlob *blob, Error **error);
 //@ requires blob->address_ |-> _ &*& blob->length_ |-> _ &*& *error |-> _ &*& regions(?rs);
 /*@ ensures blob->address_ |-> ?a &*& blob->length_ |-> ?l &*& *error |-> ?e &*& regions(?rs2) &*&
             forall(rs, (contains_r)(rs2)) == true &*&
