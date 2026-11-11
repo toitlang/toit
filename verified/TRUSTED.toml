@@ -786,6 +786,14 @@ justification = "A program may run forever (the scheduler preempts it); no termi
 
 [[trusted]]
 crate = "core"
+file = "src/step.rs"
+item = "settle"
+kind = "exec_allows_no_decreases_clause"
+count = 1
+justification = "The machine's handlers run the finally code of an unwinding until its finally records are gone; finally code may loop forever (the scheduler preempts it, an exit ends the loop), as in run_loop: no termination is claimed (step::settle)."
+
+[[trusted]]
+crate = "core"
 file = "src/view.rs"
 item = "Content"
 kind = "external_body"
