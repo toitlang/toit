@@ -1,0 +1,250 @@
+# VeriFast for the C++ that stays C++
+
+The C++ inside the sandbox's security boundary that is not ported to
+Rust/Verus (the interpreter glue to the allocator and GC, the message
+encoder and decoder, blob argument decoding, a few helpers) is verified
+with VeriFast 26.10, unbounded, on 64-bit and 32-bit. The pilot
+(verified/CXX-ANNOTATED-PILOT.md) proved this works on hand-written C
+renderings of the C++; this directory makes the rendering mechanical, so
+that it cannot drift from the sources.
+
+Run: `run.sh` (the whole matrix, about 30 s; also part of
+`verified/check.sh --tests`, which skips it with a message when VeriFast is
+not installed). Tools: `install-tools.sh` (VeriFast 26.10 and its Rust
+front end, under /home/flo/work/opentoit-sandbox-artifacts/annotated-cxx).
+
+## The rendering: generated, not hand-written
+
+Decision: **a mechanical translator**, `verified/tools/cxx_render.toit`. For
+every function a sidecar (`*.render`) names, it reads Clang's JSON AST of
+the real source (`clang-ast.sh`, the build's standard and defines), prints
+it as C by the fixed rules below, and weaves in the annotations of the
+sidecar. A sidecar holds, per function, a copy of its C++ text with the
+VeriFast annotations (`//@ ...`, `/*@ ... @*/`) inserted between
+statements, exactly as they would be written in place:
+
+```cpp
+@render src/messaging.cc toit::MessageEncoder::encode_array
+bool MessageEncoder::encode_array(Array* object, word from, word to)
+//@ requires encoder(self, ?ids) &*& self->nesting_ |-> ?n &*& ... &*& [?f]heap(?objs, ?H) &*& ...;
+//@ ensures encoder(self, ids) &*& self->nesting_ |-> n &*& [f]heap(objs, H);
+{
+  if (from < 0 || from > to || to > object->length()) return false;
+  write_uint8(TAG_ARRAY);
+  write_cardinal(to - from);
+  for (word i = from; i < to; i++)
+  //@ invariant encoder(self, ids) &*& self->nesting_ |-> n &*& [f]heap(objs, H) &*& from <= i &*& to <= o_len(H(object));
+  {
+    if (!encode_any(object->at(i))) return false;
+  }
+  return true;
+}
+```
+
+The copy is compared **token by token** (comments and whitespace aside) with
+the function in the current sources; any difference is a drift error that
+names the file, line and token. An annotation is anchored at the token that
+follows it. The generated C (`*.gen.c`, committed for review, and the
+32-bit one under the artifacts directory) is what VeriFast verifies;
+`render.sh --check` fails when it is not what the sources and sidecars give.
+
+What else is checked mechanically, so that the C means what the C++ means:
+
+* **Constants.** Every constant a rendering uses is in one table,
+  `model/constants.h`. For every place of use the translator writes a
+  `static_assert` that the C++ constant, looked up where the code uses it
+  (a struct derived from the class, for an unqualified name), has the
+  table's value and type (`*.gen.constants.cc`); `constants-check.sh`
+  compiles them for x86_64 and i686 (80 checks today). The same headers
+  are the reference of verified/layout_check.cc for the Rust side, so the
+  two models' layouts are tied to one source. A wrong value fails (the
+  error indices of `FAIL` were found that way).
+* **Overloads.** One C name is one C++ function: the translator records the
+  canonical parameter types of every call and definition of a C name
+  across all units and fails on two (`@overloaded` puts the types into the
+  name).
+* **Both widths.** The rendering is made again from the i686 AST (the
+  implicit conversions differ: `int` is a word there) and verified with
+  `-target ILP32`.
+* **Drift self-tests.** `run.sh` changes a rendered function in a copy of
+  the source only (a bound off by one, a strict comparison made non-strict)
+  and requires the drift error.
+
+The rules (all in the translator's header; anything else is an error, the
+tool never guesses):
+
+| C++ | C rendering |
+|---|---|
+| `T C::m(args)`, `this` | `T C_m(C *self, args)`, `self`; field `f` of `this` is `self->f` |
+| static member, constructor, destructor | `C_m(args)`, `C_ctor(C *self, ...)`, `C_dtor(C *self)` |
+| `obj->m(a)` on static class C | `C_m(obj, a)`; `obj.m(a)` is `C_m(&obj, a)` |
+| `C::N`; unqualified `N` in class C | `C_N`; `C_N` if in the table, else `N` (checked at the place of use) |
+| implicit conversion | a cast, except lvalue-to-rvalue, no-op, decay, derived-to-base (all classes are one opaque struct) and an integer literal's conversion; to bool is `!= 0`; nullptr is `0` |
+| `T&` parameter / `const T&` | `T *` (argument by address, use `(*p)`) / `T` |
+| local of a `@raii` class | destructor call at every exit from its scope |
+| `return e;` followed by annotations | `{ T r = e; annotations; destructors; return r; }` |
+| local whose address is taken | declared at the start of its block, initialized in place |
+| release `ASSERT(c)` (`while (false && (c)) {}`) | a comment (never evaluated) |
+| a reference spelled in a macro | named by its declaring class (Clang's declaration ids) |
+| `@render ... trusted` | the prototype and contract only; the body is still compared with the source |
+
+### The other route: VeriFast's C++ front end in place
+
+Tried (probes `probes/cxx_shim.cpp`, `cxx_shim2.cpp`). Routing the
+integer-pointer conversions of `objects.h` through two functions is not
+enough:
+
+* the front end rejects **every pointer cast**, not only
+  `reinterpret_cast`: `static_cast<uword*>(void*)` and C casts too ("Expression
+  of kind 'CXXStaticCastExpr' / 'CStyleCastExpr' is not supported"); only
+  integral `static_cast` passes. So one shim function per target pointer
+  type (`uword*`, `Object**`, `uint8*`, `HeapObject*`, ...), and objects.h
+  has 50 `reinterpret_cast`s and 12 pointer `static_cast`s to replace;
+* a **template** shim (`template <T> T* vm_word_to_ptr(uword)`) does not
+  parse: a contract cannot mention `T`;
+* `static const` members (132 in objects.h) are **globals**, not constants
+  ("No matching points-to chunk: ulong_integer(Object::HEAP_TAG, _)"); so are
+  `static constexpr` ones;
+* every member function needs `[_]C_bases_constructed(this)`: VeriFast
+  models construction, and VM objects are never constructed;
+* ghost casts to typedef'd pointer types do not parse (`(uword *)p`; only
+  `(unsigned long *)p`).
+
+In place, `objects.h` would need: `vm_ptr_to_word(const void*)` and one
+`vm_word_to_X(uword)` per pointer type, used by every accessor instead of
+the casts (bodies hidden from VeriFast under `#ifdef __VERIFAST__`); every
+`static const` turned into an enumerator or a macro, or given a ghost
+points-to fact; contracts carrying `[_]X_bases_constructed(this)` (from the
+heap predicate); and the standard headers replaced (the pilot's `shim/`).
+That is a rewrite of the header's idiom, with the risk in the C++ that
+behaviour changes, for no more assurance than the generated rendering
+gives. Not proposed; reporting the front end's missing casts upstream is.
+
+## Status
+
+`run.sh`: 5 sidecars, 65 rendered functions (17 contract-only), proved
+for LP64 and ILP32; 9 reverted-bug or contract mutants and 2 drift tests;
+30 s wall (16 cores; each proof 0.4-2 s). Lines: `metrics.sh` (C++ = the
+rendered functions' lines; annotations among them; then the hand-written C
+and annotations of the verbatim sections: trusted prototypes, predicates,
+lemmas).
+
+| Unit (sidecar) | Functions | Status | Assumptions | C++ / annot. / trusted C / annot. | Self-test |
+|---|---|---|---|---|---|
+| Object model (`model/objects.render`) | is_smi, is_heap_object, Smi::from/cast, HeapObject::cast/_raw_at/_at/_word_at/header/class_id/class_tag/has_class_tag, Instance::_offset_from/at/cast, Array::_offset_from/length/at/cast, ByteArray/Double/LargeInteger::cast, is_instance/array/byte_array/double/string/large_integer | verified | `Smi::value` (2 overloads: implementation-defined conversion and shift, contract only); `Double::value`, `LargeInteger::value` (contract only); the heap predicate is the allocator/GC invariant (bridge `heap`) | 135 / 130 / 20 / 326 | drift tests; the encoder's mutants exercise it |
+| Message encoder (`encoder/`) | encode_any (all branches), encode_array, encode_list, encode_map, NestingTracker ctor/dtor | verified: memory safety, no overflow or lossy conversion, heap read-only | buffer writers and `is_too_large` (the two-pass size argument), `encode_copy`, `encode_byte_array`, the program's class-id roots, `bit_cast` | 178 / 50 / 38 / 63 | f708ad5d: count (underflow at `to - from`), read past the backing (loop bound), map past the backing |
+| Stack growth (`grow/`) | toit_v2_grow_stack, v2_process, Stack::v2_copy_to | verified against gc_grow_stack, with a bound on `needed` | v2_gc (preserves the abstraction), allocate_stack, Stack header accessors, Task::stack/set_stack, max_length (contract only) | 93 / 72 / 17 / 86 | Verus contract as is: fails at the cast; with the cast exact: at the sum |
+| Primitive `string_write_to_byte_array` (`prims/`) | the primitive with the ARGS/FAIL expansion, Blob/MutableBlob constructors and accessors | verified: copy inside the regions, legal memmove | byte_content, mutable_byte_content (region contracts), Process::program | 21 / 54 / 19 / 71 | af4ba7ab: memcpy fails at its precondition; verifies with the ranges in different regions |
+| UTF-8 (`utf8/`) | Utils::utf_8_to_16, bytes_in_utf_8_sequence, payload_from_prefix | verified (Z3) | none | 57 / 26 / 1 / 84 | 07c24665: UB shift at payload_from_prefix; without the length check: the read past the input |
+| Rust raw memory (`rust/`) | view.rs: string_len, string_byte; trial: field, array_length, element | verified (VeriFast Rust, host) | predicates over the words (bridge `heap`) | — | `i <= len` fails at the read |
+
+Not attempted, in order of exposure, with what blocks each:
+
+| C++ | Blocker | Estimate |
+|---|---|---|
+| toit_v2_allocate_instance/double/array/exception (interpreter_v2.cc) | `v2_allocate` takes a lambda: a rendering rule for closures (a struct of the captures and a function) | 2 days with the rule |
+| toit_v2_call_primitive, toit_v2_lookup_primitive | non-constant globals (`Flags::primitives`), the policy table | 2 days |
+| Object::byte_content, mutable_byte_content (objects_runtime.cc) | strings (internal/external), slices and copy-on-write byte arrays in the model | 5 days |
+| encode_copy, encode_byte_array, the TISON variant, external byte arrays | the byte_content model above | 3 days after it |
+| MessageDecoder | heap extension (objects allocated and initialized while decoding) in the model | 8-10 days |
+| ProgramOrientedEncoder (encode_error) | the object encoder's buffer and the program model | 5 days |
+| task/message/timer primitives | the scheduler calls get stated contracts, the argument decoding is ARGS | 1 day each |
+
+Past bugs of the upstream series #3361-#3381 that fall in these files
+belong to the units not attempted (decoder, byte_content, encode_error);
+each becomes a mutant when its unit is done.
+
+## Findings
+
+* **The Verus contract of `gc_grow_stack` lacks a bound on `needed`**
+  (the first pilot found it by reading, the second by proof; still open).
+  Without `needed <= Stack::max_length()` the C++ overflows at
+  `static_cast<word>(needed)` and at `(length - free) + needed`
+  (mutants `grow-stack-unbounded`, `grow-stack-word-range`). The core
+  passes small values, so no run is affected; the contract should state
+  it. Recorded in verified/CONTRACTS.toml as a known gap; the fix is for
+  the owner of verified/core (no C++ change).
+* No bug or missing check in the newly covered code: the real
+  `encode_any` (including the byte-array/string class branches, the double
+  and large-integer reads and the printf of an unencodable class tag), the
+  write barrier added to `toit_v2_grow_stack`, the ARGS expansion of the
+  primitive, and the NestingTracker verify as they are.
+* The pilot's hand copy of the encoder had the message tags off by one
+  (`TAG_POSITIVE_SMI` is 1); the constant table, checked against the C++,
+  has the real ones. Hand renderings do drift; generated ones cannot.
+* VeriFast 26.10's Rust front end does not support `>>` ("Todo:
+  BinOp::Shr"): six external_body bodies of view.rs use it.
+
+## One contract, two renderings
+
+verified/CONTRACTS.toml writes each leaf contract (gc_grow_stack,
+gc_allocate_instance, gc_allocate_double, gc_allocate_exception,
+gc_call_primitive) once, clause by clause: name, Verus text, VeriFast
+text, bridge, note. verified/tools/contract_check.toit (in check.sh)
+compares the clauses with the Verus external_body function and the
+conjuncts with the contract of the generated rendering; a change on either
+side fails until the table, and the other side, follow. "MISSING" marks a
+clause one side lacks and is reported. The bridges between the views,
+`stack` (the machine's reloaded views against the Stack words and
+`same_abstraction`) and `heap` (the abstract heap against VeriFast's
+`heap(objs, H)` at `(uword)o - 1`), are written there once: **the
+remaining reviewed assumption** of the seam. The allocation and primitive
+contracts have their Verus side checked; their C++ is not rendered yet.
+
+## The Rust raw-memory layer
+
+Trusted items of crate core (verified/TRUSTED.toml, `rust/census.sh`): 93
+external_body, 66 unsafe (159), of which 58 are view.rs accessor bodies (27
+with integer-to-pointer casts, 6 with `>>`) and 19 the FFI wrappers of
+ffi.rs (15 call C++: contracts, not bodies).
+
+Like for like, on the same five accessors (class_id, class_tag, field,
+array_length, element):
+
+| | VeriFast (Rust front end) | Verus with vstd::raw_ptr |
+|---|---|---|
+| bodies | verbatim (copy-out is textual: the sidecar mechanism without a translation) | rewritten: no integer-to-pointer cast in Verus; `with_exposed_provenance` + `ptr_ref` |
+| result | 3 of 5 (class_id, class_tag: `>>` unsupported) | 5 of 5, 11 obligations, < 1 s |
+| annotations | 3 predicates + 2-6 ghost lines per accessor | a permission map per object + one assert per accessor; callers must thread `Tracked` permissions |
+| what stays trusted | VeriFast, the copy (tool-checked), the bridge from words to the abstract heap (`heap`) | vstd's raw_ptr axioms, and an external_body that hands out fresh permissions after every GC point (the same bridge, but stated in Verus) |
+
+Verdict: VeriFast is cheaper now (no change to verified/core, bodies
+verbatim; with the shift supported about 90% of the view.rs bodies would
+go through as they are). Verus with permissions leaves less trusted in the
+end: the accessors' abstract meaning (`r == objs()[id].class_id`) becomes
+provable inside the one proof, and the trusted part shrinks to the
+permission hand-out at the FFI returns. But it changes every accessor and
+its callers (a `Tracked` heap-permission invariant through the machine),
+an estimated 3-4 weeks against 1 week for VeriFast on all view.rs bodies.
+Recommended: VeriFast now for the bodies (automating the copy-out with the
+sidecar check), Verus permissions as the long-term step when the heap
+model is revised.
+
+## What remains trusted in the C++
+
+* VeriFast itself; Clang's AST (the translator prints what Clang parsed);
+  the translator's rules (small, documented, each an error when not
+  applicable).
+* The bridges `stack` and `heap` (CONTRACTS.toml): that the predicates are
+  what the allocator and GC establish (TRUSTED.md V2).
+* The contract-only functions: `Smi::value`, the Stack header and Task
+  accessors, `v2_gc`, the allocator, the buffer writers of the encoder,
+  `byte_content`/`mutable_byte_content`, `encode_copy`/`encode_byte_array`,
+  the program roots. Each is still compared with its source when it is a
+  `@render ... trusted`; the program roots, writers and allocator are plain
+  prototypes.
+* Everything not attempted (table above).
+
+## Files
+
+* `model/`: the object model (`objects.render`, generated `objects.gen.h/.c`),
+  the constant table, `arith.gh` (shift and mask lemmas), `model.cfg`.
+* `encoder/`, `grow/`, `prims/`, `utf8/`: the targets (sidecar and
+  generated files).
+* `rust/`: the Rust accessors (VeriFast), the Verus permission trial, the
+  census.
+* `render.sh` (translator, both widths), `prefetch-ast.sh` (Clang dumps in
+  parallel), `clang-ast.sh`, `constants-check.sh`, `mutant.sh`, `run.sh`,
+  `metrics.sh`, `vf.sh`.
+* `probes/`, `shim/`, `fcshim/`, `framac.sh`, `cn.sh`, `cxx-ast.sh`: the
+  pilot's probes of other tools and of the C++ front end.
