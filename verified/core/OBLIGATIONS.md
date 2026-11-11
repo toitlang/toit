@@ -124,7 +124,19 @@ Status (branch core/fast-loop-proven, 2026-11-11): D1 and D2 are applied
 as proposed (`machine::run`: the `None` arm is `run_checked` with
 `checked-loop`, else a FATAL stuck report and `TERMINATED` without running
 an instruction, TRUSTED.md section 4; ffi.rs: the five layout exports
-behind `layout-tables`). D3 is open.
+behind `layout-tables`). D3: the 16-byte record is applied (branch
+core/trusted-integration, 920fb95d, a6f2abd5): `entry` and a 16-bit
+`length`, `unused` dropped, in the core (ffi.rs `V2Method`, `end()` and
+`end_spec`: `entry + length` modulo the word size, so a wrapped end lies
+below `entry` and the verifier rejects the method), the spec's view
+(vprog.rs `VMethod`; encode.rs, infer.rs and the tools only read
+`end()`), C++ (`V2Method`, `V2MethodTable::compute` rejects bodies of
+64 KB or more) and the layout check. 20 -> 16 bytes per method at install
+and per running format-2 program (-3.6 to -7.2 KB for 0.9-1.8 K methods;
+is-as-many-test 28.7 -> 23 KB); richards -0.2 %, deltablue/pystone +0.1
+/ +0.2 % (x86-64 instructions, trusted). The headers read in place from
+flash were not tried: every call reads the callee's entry, arity and
+receiver range, which a LEB128 decode (format note 15) would add to.
 
 The device library is built without the cargo features `checked-loop` and
 `layout-tables` (verified/core/Cargo.toml; both default on, forwarded by

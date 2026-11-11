@@ -142,14 +142,21 @@ registers (`regs::Regs`), the rest of the machine behind a pointer.
   while there are records) and the lowest frame top of a return's fast path
   (`bot`, the end of the array while there are records). So the calls and
   returns that would move records fail their existing check (`free >=
+  (watermark |  (`free >=
   (watermark | need)`, `bot < fr`, `view::Cursor::lt`, which is also the
-  bottom-frame test) and run on the machine; the instructions inside a
-  frame do not look at the records. The room (`room::room_ok`) is every
+  bottom-frame test) and go to `step::slow`, which runs a call with room
+  and a return that cuts no record on the registers (rfins.rs: the records
+  move up or down by one frame record) before it falls back to the
+  machine; the instructions inside a frame do not look at the records. A
+  non-local return or branch that meets a handler on the way enters its
+  finally code on the registers too (`rnonlocal::pop_to` stops there,
+  `enter_fin_r` writes the first record; branch core/trusted-integration).
+  The room (`room::room_ok`) is every
   frame's without the records and the top frame's with them: after a stack
   overflow, at the maximal stack length, every frame's room with the
   records counted may not exist while format 1 still runs the finally
   code. After a machine path that kept the frames below the top (a call, a
-  return, an unwinding) `step::resume_kept` checks the top frame only;
+  return, an unwinding) `step::top_room_kept` checks the top frame only;
   `resume` scans every frame after the others (branch
   experiment/trusted-fast). A call keeps one finally record of slack (`ensure_room`, the
   gate's `need`) so that a frame can always enter its finally code.

@@ -152,7 +152,7 @@ pub proof fn lemma_room_same(p: &Program, m0: Machine, m1: Machine)
 }
 
 /// The frames below the top of `g1` are those of `g0` (a call pushed one, a
-/// return or an unwinding popped some: `step::resume_kept`).
+/// return or an unwinding popped some: `step::top_room_kept`).
 pub open spec fn top_kept(g0: State2, g1: State2) -> bool {
     &&& g1.frames.len() <= g0.frames.len() + 1
     &&& forall|i: int| 0 <= i < g1.frames.len() - 1 ==> #[trigger] g1.frames[i] == g0.frames[i]

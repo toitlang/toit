@@ -35,8 +35,45 @@ free); ASan fuzz with the launch filter, 20 minutes: 72,745 mutants,
   needs less room per call and fits. The format-2 shrink now keeps room
   for the top frame to reach the maximal height as well: 40,168 B as in
   format 1, 15/15 runs pass.
-- M3 (920fb95d): request D3, the 16-byte method record (`entry`, a 16-bit
-  `length`; `unused` dropped).
+- M3 (920fb95d, a6f2abd5, 5e1411ac): request D3, the 16-byte method
+  record (`entry`, a 16-bit `length`; `unused` dropped): 20 -> 16 bytes
+  of RAM per method at install and per running format-2 program
+  (OBLIGATIONS.md D3 has the details). richards -0.2 %, deltablue +0.1 %,
+  pystone +0.2 % (trusted). Spec files touched (item e): vprog.rs
+  (`VMethod`, `end_spec`/`end`), encode.rs and infer.rs (read `end()`),
+  the bins toit_spec_verify, toit_vmverify_fuzz and toit_vmverify_mem.
+- M4 (698017e9): size. With integration's LTO packaging the device library
+  (riscv32, opt 3, Rust without libc) is 77,072 B before the fast paths
+  (ea831741 + sandbox-integration) and 80,656 B at 84cddeab (+3,584).
+  `step::slow` has one resume tail (`top_room_kept` is a predicate,
+  `resume_with` skips the rescan): -302 B. Tried and dropped: `pop_to` and
+  `ret_r` out of line (+152 B under LTO: the callers' spills grow more
+  than the bodies shrink), the unchecked twins merged into their base arms
+  (-376 B, but richards +7.5 % checked / +9 % trusted: the run loop's
+  register allocation). After M5-M7: 81,220 B (+1,000 for the new fast
+  paths), target 79,072 not reached.
+- M5 (00524eb5, 9f2420df): a leaner C++ primitive call: the Stack header
+  from the registers (`Machine::save_r`) instead of writing them back,
+  everything but the unmoved success in `cxx_primitive_rest`,
+  `leave_primitive` inline. A trivial C++ primitive with its Toit call and
+  return: 242 -> 219 instructions (C++ interpreter 68). Inlining the lean
+  path into the run loop reaches 180 but costs richards +1.6 %,
+  deltablue +2.4 %, json +1.2 %: not taken.
+- M6 (cde5ae34): calls and returns while finally records exist, on the
+  registers (rfins.rs, run from `step::slow` before it syncs): RPC
+  440.7 -> 425.5 M.
+- M7 (99b74080): a non-local return or branch that meets a handler enters
+  its finally code on the registers (`pop_to` stops at the handler,
+  `enter_fin_r`): RPC 425.5 -> 412.7 M (1.200 of C++), json 1.177.
+- Install-time verifier opt level (item c; measurements in
+  trusted-integration/verifier-opt/): verifier and glue at z / s / 2 / 3:
+  riscv32 library 80,478 / 82,872 / 90,130 / 90,548 B, Xtensa 86,047 /
+  87,775 / 94,804 / 94,437 B; Xtensa QEMU instructions of one install
+  (fold, format, map, deque, list) 249/284/299/339/575 M at z, -4.0 % at
+  s, -9.5 % at 2 and 3 (x86-64: z -> 3 is 1.58x fewer). Kept at z.
+  Estimate (CPI 1.2-2): 30 KB programs 1.4-3.8 s at 240 MHz, 2.2-5.7 s at
+  160 MHz; 65 KB 3.1-8.2 s and 4.7-12.3 s (the progress reports keep the
+  dead-lock check quiet).
 
 ## Device builds (branch device/esp32-build-fixes, 2026-11-11)
 
