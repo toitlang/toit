@@ -370,6 +370,16 @@ over 2 s** (slowest 261 ms; largest peak 485 KB). The inference of the
 previous branch panicked on such inputs (PHASE4-REQUESTS.md R6; 208
 caught panics in one launch-mode run).
 
+With shipped certificates (`tests/fuzz_tables.sh --certificates`: each
+program's certificate from `toit_vmverify_certify`; a third of the mutants
+mutate the tables and keep the certificate, a third mutate the certificate
+(header words, table words, records copied over others, bytes of the maps
+stream, truncation, growth), a third both), 2026-11-11, 8 processes x 15
+minutes, `--seed 501`: 402,987 mutants; 39,475 accepted, 52,160 malformed
+memory, 155 heap contract, 72,617 tables, 54,968 methods, 183,610
+certificate rejected; **0 verifier panics, 0 calls over 2 s** (slowest
+540 ms, under load; largest peak 281 KB).
+
 ## no_std (Phase 5)
 
 Without the `std` feature this crate and verified/spec are `no_std` +
