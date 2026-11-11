@@ -116,14 +116,16 @@ pub proof fn lemma_rnext_post(p: &Program, m0: Machine, r0: Regs, m1: Machine, r
 pub fn rfallback(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode: u8) -> (c: Ctl)
     requires
         rhandler_pre(&env.p, *old(m), *old(r), bci, opcode),
-        62 <= opcode <= 77,
+        62 <= opcode <= 79,
+        toit_spec::v2::prim::grows_stack(opcode),
         sp::step(env.p.ap@, old(m).g@) == sp::operator_fallback(env.p.ap@, old(m).g@, opcode),
         bci + 1 < 0x1000_0000,
     ensures rpost(&env.p, *old(m), *old(r), *final(m), *final(r), c),
 {
     proof { assert(env.p.ap@.invoke_offsets.len() == 19); }
     let sel = env.p.invoke_offsets.at((opcode - 62) as usize) as i64;
-    crate::rcalls::op_invoke_virtual(m, r, env, bci, opcode, sel, 2, 1)
+    let n = if opcode == 79 { 3 } else { 2 };
+    crate::rcalls::op_invoke_virtual(m, r, env, bci, opcode, sel, n, 1)
 }
 
 // ---------------------------------------------------------------------------

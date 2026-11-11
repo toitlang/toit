@@ -411,9 +411,13 @@ pub fn op_invoke_at(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode
             },
             Loc::Fail => {},
         }
+    } else {
+        proof { reveal_with_fuel(toit_spec::spec_helpers::fast_at, 1); }
     }
-    // The operator's virtual call (or a receiver `locate` does not take).
-    bridge_r(m, r, env)
+    // The operator's virtual call (on registers; lookup failures, stack
+    // growth and preemption via the bridge).
+    proof { assert(sp::op_invoke_at(ap, g) == sp::operator_fallback(ap, g, opcode)); }
+    crate::rops::rfallback(m, r, env, bci, opcode)
 }
 
 /// INVOKE_AT_PUT (`spec::op_invoke_at_put`): stores the value and leaves it
@@ -491,8 +495,11 @@ pub fn op_invoke_at_put(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, op
             },
             Loc::Fail => {},
         }
+    } else {
+        proof { reveal_with_fuel(toit_spec::spec_helpers::fast_at, 1); }
     }
-    bridge_r(m, r, env)
+    proof { assert(sp::op_invoke_at_put(ap, g) == sp::operator_fallback(ap, g, opcode)); }
+    crate::rops::rfallback(m, r, env, bci, opcode)
 }
 
 /// INVOKE_SIZE (`spec::op_invoke_size`): `spec_helpers::fast_size`, else
