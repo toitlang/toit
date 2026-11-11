@@ -80,11 +80,11 @@ Open:
 ### Obligations from Phase 3 (verified/spec/SOUNDNESS.md)
 
 - S1 primitives: every allowed primitive satisfies `prim_heap_ok` and has
-  the arity of verified/spec/src/v2/prim_arity.rs. 106 of the 154 allowed
+  the arity of verified/spec/src/v2/prim_arity.rs. 106 of the 143 allowed
   primitives are ported to Rust, proven against `prim_spec` (`prims::call`,
   TRUSTED.md section 8) and run by the verified PRIMITIVE handler for
   every program on the verified loop (untrusted programs); the
-  remaining 48 (task, message, time, encoding and formatting primitives,
+  remaining 37 (task, message, time, encoding and formatting primitives,
   bitmap) are reviewed C++ (TRUSTED.md section 8).
 - S2 loader: `theorem::loaded` (the tables are an accepted program with
   `loaded_ok`, the first task encodes `initial_state`). Discharged for

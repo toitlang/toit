@@ -118,7 +118,7 @@ the object stack, as the C++ interpreter does; it collects garbage and
 retries on allocation failure. That path is UNVERIFIED and OUTSIDE THE
 SECURITY BOUNDARY of the core (its leaf contract `gc_call_primitive`
 states what it must do): for untrusted programs the policy only resolves
-the allowed set of docs/sandbox-policy.md, 106 of whose 154 primitives
+the allowed set of docs/sandbox-policy.md, 106 of whose 143 primitives
 have Rust ports; trusted format-2 programs (used by the test suite) reach
 every primitive, and the checked loop (programs not accepted) calls only
 C++ primitives.
@@ -286,9 +286,8 @@ proven) as follows (src/primitive_core.cc unless noted):
 | `task_has_messages`, `task_receive_message` | `prim_default`; the received value is a good value | the result is null, a finalizer lambda (an existing object), a notifier's object (an existing object) or a new 4-element array of smis and the decoded message; `MessageDecoder` only allocates strings, byte arrays (raw external bytes), arrays, lists, maps, doubles and large integers of the program's builtin classes, each fully initialized before it is reachable; it never creates a Stack or a Task |
 | `process_send` | `prim_default`; the heap is unchanged | encodes the argument into malloced memory (`MessageEncoder` reads, never writes, the heap; neutering of external byte arrays only clears their address and length: a byte array stays a byte array); the result is true, false or a failure root |
 | `add_finalizer`, `remove_finalizer` | `prim_default`; the model is unchanged | they set or clear the finalizer bit in the object header (not modeled) and register the finalizer in a C++ list (a GC root); program-heap objects are left alone |
-| `time`, `time_info`, `seconds_since_epoch_local`, `get_real_time_clock`, `random`, `random_seed`, `gc_count`, `bytes_allocated_delta`, `process_current_id`, `process_system_id`, `word_size`, `platform`, `architecture`, `vm_sdk_*`, `app_sdk_*`, `literal_index`, `spawn_method`, `get_generic_resource_group` | `prim_default` (environment nondeterminism: any good result) | they read the clock, the PRNG, counters or constants and return smis, booleans, program roots, new strings or a new array of smis (`time_info`); `random_seed` only changes the C++ PRNG state |
+| `time`, `time_info`, `seconds_since_epoch_local`, `get_real_time_clock`, `random`, `gc_count`, `process_current_id`, `process_system_id`, `word_size`, `platform`, `architecture`, `spawn_method` | `prim_default` (environment nondeterminism: any good result) | they read the clock, the PRNG, counters or constants and return smis, booleans, program roots, new strings or a new array of smis (`time_info`) |
 | `main_arguments`, `spawn_arguments` | `prim_default` | decode the launch arguments with `MessageDecoder` (as `task_receive_message`) |
-| `encode_object`, `encode_error` | `prim_default` | encode into a malloced buffer (bounded since PR 3373/3374) and return a new byte array; read-only on the heap |
-| `byte_array_new_external`, `create_off_heap_byte_array` | `prim_default` | allocate one byte array with raw external bytes (a proxy of malloced memory), cleared (`create_off_heap_byte_array` did not clear it before 2026-11-11: docs/sandbox-primitive-audit.md) |
+| `encode_error` | `prim_default` | encode into a malloced buffer (bounded since PR 3373/3374) and return a new byte array; read-only on the heap |
 | `int_parse`, `float_parse`, `float_to_string`, `float_round`, `int64_to_string`, `uint64_to_string`, `printf_style_int64_to_string`, `smi_to_string_base_10`, `string_to_utf_16`, `utf_16_to_string`, `byte_array_convert_to_string`, `byte_array_is_valid_string_content`, `crc` | `prim_default` | read blobs through `Blob` (bounds-checked by the `ARGS` macros) and return smis, large integers, doubles, booleans, new strings or new byte arrays; never write existing objects |
 | bitmap `blit`, `byte_zap` (src/primitive_bitmap.cc) | `prim_default`; only the bytes of the destination byte array change | write inside `MutableBlob` bounds; a byte array stays a byte array |

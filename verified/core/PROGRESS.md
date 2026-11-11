@@ -663,13 +663,13 @@ protocol's retries completes with `PrimRet::OutOfMemory(ALLOCATION_FAILED)`.
 | arrays (prims/array.rs) | 8: array_length/at/at_put/new/expand/replace, list_add (small backing; large backing -> C++), rebuild_hash_index | array_length, array_at, array_at_put |
 | blobs (prims/blob.rs) | 33: byte_array_is_raw_bytes/length/at/at_put/new/replace, string_length/at/raw_at/hash_code/compare/slice/add/rune_count/write_to_byte_array/from_rune, concat_strings, blob_equals/hash_code/index_of, 4 JSON helpers, 8 byte-order read/put, int_vector_equals | byte_array_at, byte_array_at_put, string_length |
 | floats (prims/float.rs) | 26: arithmetic, comparisons, sign/is_nan/is_finite, sqrt/ceil/floor/trunc, raw conversions, number_to_float/integer, compare_to, min_special_compare_to | none (float ops are trusted scalars, prims/fp.rs) |
-| total | 106 of the 154 allowed (152 core + 2 bitmap) | 45 |
+| total | 106 of the 143 allowed (141 core + 2 bitmap) | 45 |
 
-Stays in C++ (48, contracts written down in TRUSTED.md section 8): task
+Stays in C++ (37, contracts written down in TRUSTED.md section 8): task
 and message plumbing, process_send, time/clock/random, finalizers,
-encode_object/error, main/spawn arguments, SDK info, the formatting and
+encode_error, main/spawn arguments, platform queries, the formatting and
 parsing primitives (int_parse, float_parse, *_to_string, float_round,
-UTF-16, UTF-8 validation, crc), external byte arrays, bitmap blit/byte_zap.
+UTF-16, UTF-8 validation, crc), bitmap blit/byte_zap.
 
 Wiring (superseded by branch core/prims-integration, above): a temporary
 opt-in hook (`TOIT_V2_RUST_PRIMITIVES=1`, prims/bridge.rs) at the checked

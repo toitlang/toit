@@ -1,12 +1,14 @@
 # Audit of the C++ primitives of the untrusted set
 
-The untrusted policy (`src/primitive_policy.cc`, docs/sandbox-policy.md)
-allows 152 core primitives, `bitmap.blit` and `bitmap.byte_zap`, and the
-timer and events modules. 106 of the core primitives run as proven Rust
-ports for untrusted (format-2) programs (verified/core/src/prims). This
-audit covers the rest: 46 core and 2 bitmap primitives (the 48 of
-verified/core/TRUSTED.md section 8) and the 7 timer and events primitives,
-all C++. The proofs assume each of them satisfies the primitive contract
+When audited, the untrusted policy (`src/primitive_policy.cc`,
+docs/sandbox-policy.md) allowed 152 core primitives, `bitmap.blit` and
+`bitmap.byte_zap`, and the timer and events modules. 106 of the core
+primitives run as proven Rust ports for untrusted (format-2) programs
+(verified/core/src/prims). This audit covers the rest: 46 core and 2 bitmap
+primitives (then the 48 of verified/core/TRUSTED.md section 8) and the 7
+timer and events primitives, all C++. 11 of the 46 core primitives have
+since been dropped from the untrusted set (marked *dropped* below; see "A
+smaller untrusted set"), leaving 141 core primitives, 35 of them C++. The proofs assume each of them satisfies the primitive contract
 (`prim_heap_ok`: the heap stays well formed, only new objects are added,
 machine-owned objects are untouched, the result is a value) and say nothing
 about isolation or denial of service, so the audit looks at both.
@@ -44,7 +46,7 @@ issue left open, see the notes).
 | `remove_finalizer` | any heap object | **fixed** (2 bugs): it cleared the finalizer bit of any object, including the VM finalizer that frees an external byte array's memory (a leak); and it left the node on the list until the next GC: add/remove in a loop without allocating grew the malloced list without bound (5M iterations: 200 MB), and when the object got a new finalizer before the GC, the old nodes stayed as long as the object lived | remove-finalizer-external-test, finalizer-churn-test |
 | `main_arguments`, `spawn_arguments` | none; decode the buffer the (trusted) launcher encoded, once | OK | fuzz |
 | `spawn_method` | none | OK | fuzz |
-| `encode_object`, `encode_error` | any objects; `EncodeVisitor` reads list size and backing, strings, byte arrays (proxies have length 0), the stack's frames (format 2: machine records) | **fixed**: for a string of continuation bytes longer than 255 bytes the visitor walked backwards past the string's start. List bounds and nesting were fixed in #3373/#3374; the 1 KB / 16 KB buffers bound output and work | sandbox/invalid-utf-8-literal-test, fuzz |
+| `encode_object` (*dropped*), `encode_error` | any objects; `EncodeVisitor` reads list size and backing, strings, byte arrays (proxies have length 0), the stack's frames (format 2: machine records) | **fixed**: for a string of continuation bytes longer than 255 bytes the visitor walked backwards past the string's start. List bounds and nesting were fixed in #3373/#3374; the 1 KB / 16 KB buffers bound output and work | sandbox/invalid-utf-8-literal-test, fuzz |
 
 ## Time, randomness, information
 
@@ -54,19 +56,19 @@ issue left open, see the notes).
 | `time_info` | an int64 timestamp, a bool | **fixed**: `gmtime_r`/`localtime_r` fail for years beyond an int; the fields of the struct were then returned uninitialized (stack contents) | time-info-range-test |
 | `seconds_since_epoch_local` | six int32 and a bool-or-null | OK, with a note: `year - 1900` overflows for years near INT32_MIN (signed overflow, benign); `mktime` reads the global time zone, which only privileged code sets | fuzz |
 | `get_real_time_clock` | none | OK | fuzz |
-| `random`, `random_seed` | a blob (seed) | OK: per-process PRNG, linear in the seed | fuzz |
-| `gc_count`, `bytes_allocated_delta` | none; own heap counters | OK | fuzz |
+| `random`, `random_seed` (*dropped*) | a blob (seed) | OK: per-process PRNG, linear in the seed | fuzz |
+| `gc_count`, `bytes_allocated_delta` (*dropped*) | none; own heap counters | OK | fuzz |
 | `process_current_id`, `process_system_id` | none | OK (pids are observable by design) | fuzz |
-| `word_size`, `platform`, `architecture`, `vm_sdk_version`, `vm_sdk_model`, `app_sdk_version`, `app_sdk_info` | none; constants or new strings | OK (they disclose the VM version: by design) | fuzz |
-| `literal_index` | any object; linear scan of the program's literals | OK | fuzz |
-| `get_generic_resource_group` | none; mallocs a group freed only at process exit | **fixed**: not charged; a loop took 64 bytes of VM memory per call beyond any quota. Now at most 64 resource groups per sandboxed process (QUOTA_EXCEEDED); charging them as external memory broke tight heaps (max-heap-size-test) | sandbox/resource-group-churn-test |
+| `word_size`, `platform`, `architecture`, `vm_sdk_version`, `vm_sdk_model`, `app_sdk_version`, `app_sdk_info` (the four SDK queries *dropped*) | none; constants or new strings | OK (they disclose the VM version: by design) | fuzz |
+| `literal_index` (*dropped*) | any object; linear scan of the program's literals | OK | fuzz |
+| `get_generic_resource_group` (*dropped*) | none; mallocs a group freed only at process exit | **fixed**: not charged; a loop took 64 bytes of VM memory per call beyond any quota. Now at most 64 resource groups per sandboxed process (QUOTA_EXCEEDED); charging them as external memory broke tight heaps (max-heap-size-test) | sandbox/resource-group-churn-test |
 
 ## Byte arrays, strings, numbers
 
 | Primitive | Reads / trusts | Verdict | Test |
 |---|---|---|---|
-| `byte_array_new_external` | a length (negative refused, charged) | OK (cleared) | fuzz |
-| `create_off_heap_byte_array` | a length (negative refused, charged) | **fixed**: the malloced memory was not cleared; 99% of the bytes of a new array held what other processes and the VM had freed (cross-container disclosure). TRUSTED.md section 8 claimed "zeroed" | off-heap-byte-array-cleared-test |
+| `byte_array_new_external` (*dropped*) | a length (negative refused, charged) | OK (cleared) | fuzz |
+| `create_off_heap_byte_array` (*dropped*) | a length (negative refused, charged) | **fixed**: the malloced memory was not cleared; 99% of the bytes of a new array held what other processes and the VM had freed (cross-container disclosure). TRUSTED.md section 8 claimed "zeroed" | off-heap-byte-array-cleared-test |
 | `byte_array_convert_to_string`, `byte_array_is_valid_string_content` | a blob (string, byte array, slice, COW; external raw only) and a range, checked | OK | fuzz |
 | `int_parse` | a blob and range (checked), at most 18 characters | OK | fuzz |
 | `float_parse` | a blob and range (checked); `strtod` on a NUL-terminated copy (or on a whole string, which is NUL-terminated) | OK. An embedded NUL ends the parse early (semantic, not safety) | fuzz (with 1 MB digit strings) |
@@ -107,7 +109,7 @@ external memory isn't raw bytes, so they don't cross processes.
   list of 100 references to a 50 MB string overflowed the result's buffer
   (fixed with process_send).
 
-## A smaller untrusted set (proposal, not applied)
+## A smaller untrusted set (applied, see the end of this section)
 
 Measured 2026-11-11: the primitives four programs reference after tree
 shaking (`toit.run --verify --primitives` on their snapshots; programs and
@@ -160,6 +162,40 @@ That removes 10 to 15 of the 48. Keep `crc`, `string_to_utf_16`,
 `seconds_since_epoch_local` and `main_arguments`: unused by these programs
 but behind ordinary APIs (`crc`, `string.to-utf-16`,
 `ByteArray.to-string-non-throwing`, `Time.local`, `main args`).
+
+### Applied (2026-11-11)
+
+Checked on a broader set: the 282 programs the untrusted suite runs
+(verified/tools/untrusted_suite.toit) and the 98 sandbox tests (whose
+images include the trusted driver), each compiled to a snapshot and listed
+with `toit.run --verify --primitives` (script and lists in
+/home/flo/work/opentoit-sandbox-artifacts/policy-smaller-primitive-set).
+"Suite" and "sandbox" count the programs that reference the primitive
+after tree shaking.
+
+| Primitive | Suite | Sandbox | Library entry points | Verdict |
+|---|---|---|---|---|
+| `get_generic_resource_group` | 0 | 8 | `resource-freeing-module_`: crypto (sha, adler32, siphash), zlib, flash regions (storage), rmt, pulse counter, esp32 (the 8: trusted tool drivers, module-crypto, resource-group-churn) | drop: every user is a denied module, whose library calls now throw `PERMISSION_DENIED` instead of `PRIMITIVE_LOOKUP_FAILED` |
+| `create_off_heap_byte_array` | 0 | 6 | `create-off-heap-byte-array` (the 6: trusted tool drivers, through the host package) | drop |
+| `byte_array_new_external` | 1 | 0 | `ByteArray.external`; `bytes.Buffer` for backing stores above 128 bytes (bytes-deprecated-test references it, never above 128 bytes); TLS (denied) | drop; `bytes.Buffer` falls back to an ordinary byte array on `PERMISSION_DENIED`. `ByteArray n` doesn't use it: large arrays get their external backing store inside `byte_array_new` (sandbox/cli/large-byte-array) |
+| `encode_object` | 0 | 0 | `encode_` (core, no callers) | drop |
+| `literal_index` | 0 | 0 | `literal-index_` (core, no callers) | drop |
+| `bytes_allocated_delta` | 0 | 0 | `system.bytes-allocated-delta` (deprecated) | drop (heap statistics, as `process_stats`) |
+| `random_seed` | 0 | 0 | `set-random-seed` (tests/random-test, not in the suite) | drop |
+| `vm_sdk_version`, `vm_sdk_model`, `app_sdk_version`, `app_sdk_info` | 0 | 0 | `system.vm-sdk-version` etc. and their deprecated core aliases | drop (as `vm_sdk_info`) |
+| `gc_count` | 1 | 0 | `system.gc-count`, deprecated `gc-count` | keep: finalizer-test waits for a GC with it to see finalizers run; with `gc_count` denied it fails untrusted (tried) |
+| `platform` | 3 | 6 | `system.platform`, `system.LINE-TERMINATOR`; ble, dns (denied) | keep: platform-test, regress/issue2856-test and set-map-remove-first-test size their work by platform |
+| `architecture` | 1 | 0 | `system.architecture`; spi, rmt, touch (denied) | keep: platform-test |
+| `word_size` | 0 | 1 | `system.BYTES-PER-WORD`, `system.BITS-PER-WORD` and the deprecated core aliases | keep: bitness checks are ordinary, and the smi range tells the word size anyway, so denying it hides nothing |
+| `crc`, `string_to_utf_16`, `utf_16_to_string`, `seconds_since_epoch_local` | 0 | 0-1 | `crc`, `string.to-utf-16`, `Time.local` | keep (ordinary APIs, as above) |
+| `byte_array_is_valid_string_content`, `main_arguments` | 5, 2 | 6, 97 | `ByteArray.to-string-non-throwing`, `main args` | keep |
+
+Dropped: 11 (the untrusted set is now 141 core primitives, 106 Rust and
+35 C++, plus the 2 bitmap and the 7 timer and events primitives). The
+untrusted suite still reports 280 identical and the same two known
+differences. Denial tests: tests/sandbox/core-external-byte-array,
+core-get-generic-resource-group, core-encode-object, core-literal-index,
+core-bytes-allocated-delta, core-random-seed and core-sdk-version.
 
 Cheap to move to Rust (pure, need only blobs, integers and the existing
 string and byte-array allocation of `prims`): `byte_array_convert_to_string`

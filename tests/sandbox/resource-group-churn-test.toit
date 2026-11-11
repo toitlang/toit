@@ -4,19 +4,16 @@
 
 import .sandbox
 
-// core.get-generic-resource-group and timer.init malloc a resource group
-// that lives until the process exits. They were not bounded, so a loop
-// (whose proxies are garbage) took VM memory without bound: 64 bytes per
-// call, beyond the container's heap quota. A sandboxed process now has at
-// most 64 resource groups.
+// timer.init mallocs a resource group that lives until the process exits.
+// It was not bounded, so a loop (whose proxies are garbage) took VM memory
+// without bound: 64 bytes per call, beyond the container's heap quota. A
+// sandboxed process now has at most 64 resource groups.
+// core.get-generic-resource-group had the same problem; it is no longer in
+// the untrusted set (core-get-generic-resource-group-test).
 main args:
   sandbox-test args --error="QUOTA_EXCEEDED": | arguments/Map |
     5_000_000.repeat:
-      get-generic-resource-group_
       timer-init_
-
-get-generic-resource-group_:
-  #primitive.core.get-generic-resource-group
 
 timer-init_:
   #primitive.timer.init

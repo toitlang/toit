@@ -8,7 +8,9 @@
 // compiled snapshot and runs it as an untrusted container:
 // - string-to-utf-16 must not read past a string whose last byte announces
 //   more bytes (0xff: seven),
-// - encode-object must not walk before a string of continuation bytes,
+// - the object encoder must not walk before a string of continuation bytes
+//   (reached through encode-error; encode-object is denied for untrusted
+//   programs),
 // - such strings can't be sent to another process (the receivers rely on
 //   valid strings), in particular not to the system process.
 
@@ -26,6 +28,9 @@ to-utf-16 s:
 encode-object o:
   #primitive.core.encode-object
 
+encode-error type message:
+  #primitive.core.encode-error
+
 process-send pid type message:
   #primitive.core.process-send
 
@@ -35,8 +40,9 @@ main:
   utf-16 := to-utf-16 truncated
   last := utf-16[utf-16.size - 2] | utf-16[utf-16.size - 1] << 8
   print-safe "utf-16 units: \$(utf-16.size / 2) last: \$(last.stringify 16)"
-  encoded := encode-object continuation
+  encoded := encode-error continuation continuation
   print-safe "encoded: \$encoded.size"
+  print-safe "encode-object: \$(catch: encode-object continuation)"
   exception := catch: process-send -1 100 truncated
   print-safe "send to system: \$exception"
   exception = catch: process-send -1 100 [1, [continuation]]
@@ -86,6 +92,7 @@ main args:
     // followed the string in memory.
     expect (result.output.contains "utf-16 units: 16 last: fffd")
     expect (result.output.contains "encoded: ")
+    expect (result.output.contains "encode-object: PERMISSION_DENIED")
     expect (result.output.contains "send to system: WRONG_OBJECT_TYPE")
     expect (result.output.contains "send nested: WRONG_OBJECT_TYPE")
     expect (result.output.contains "done")

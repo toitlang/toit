@@ -292,8 +292,8 @@ the VM's own primitive with the method's arity; a table lookup, no C++
 call), without saving and reloading the machine (no GC point); their only
 C++ helpers are `toit_v2_try_allocate_*` (no GC). `NotPorted` and
 `NeedsGc` (heap unchanged) fall back to lookup and call above, which
-collect and retry. 106 of the 154 allowed primitives of
-docs/sandbox-policy.md run in Rust for untrusted programs; the other 48
+collect and retry. 106 of the 143 allowed primitives of
+docs/sandbox-policy.md run in Rust for untrusted programs; the other 37
 and everything trusted programs on the checked loop call stay C++. Timer
 and event glue stays C++ (it is reached through primitives and the
 scheduler).

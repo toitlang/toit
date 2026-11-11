@@ -61,16 +61,43 @@ module and the index. For the untrusted policy:
 - core, remaining pure and process-local primitives: `raw_to_float`,
   `raw32_to_float`, `uint64_to_string`, `printf_style_int64_to_string`,
   `popcount`, `int_vector_equals`, `string_from_rune`, `string_to_utf_16`,
-  `utf_16_to_string`, `byte_array_new_external` and
-  `create_off_heap_byte_array` (charged to the process heap),
-  `byte_array_is_valid_string_content`, `crc`, `random_seed` (per-process
-  PRNG), `literal_index`, `encode_object`, `word_size`, `platform`,
-  `architecture`, `vm_sdk_version`, `vm_sdk_model`, `app_sdk_version`,
-  `app_sdk_info`, `gc_count`, `bytes_allocated_delta`,
-  `get_generic_resource_group`, `main_arguments`, `spawn_method`,
-  `spawn_arguments`.
+  `utf_16_to_string`, `byte_array_is_valid_string_content`, `crc`,
+  `word_size`, `platform`, `architecture` (`system.BITS-PER-WORD`,
+  `system.platform`, `system.LINE-TERMINATOR`, `system.architecture`:
+  portable programs check them), `gc_count` (`system.gc-count`: waiting for
+  a GC, for example to see finalizers run), `main_arguments`,
+  `spawn_method`, `spawn_arguments`.
 - timer: the whole module. events: the whole module.
 - bitmap: `blit` and `byte_zap`.
+
+That is 143 primitives of the core and bitmap modules (141 core, 2
+bitmap), plus the 7 of timer and events. 106 of the core primitives run as
+proven Rust ports for untrusted (format-2) programs (verified/core); the
+other 35 core and the 2 bitmap primitives are C++
+(docs/sandbox-primitive-audit.md).
+
+Process-local primitives that no ordinary program needs are left out as
+well (measured on the untrusted suite, docs/sandbox-primitive-audit.md, "A
+smaller untrusted set"); their documented APIs throw `PERMISSION_DENIED`:
+
+- `byte_array_new_external`, `create_off_heap_byte_array`
+  (`ByteArray.external`, `create-off-heap-byte-array`): explicit external
+  memory. `ByteArray n` works for every `n`: a byte array larger than the
+  largest heap allocation (about a heap page) gets an external (malloced, cleared) backing store inside
+  `byte_array_new`, charged to the process heap. The deprecated
+  `bytes.Buffer`, which uses `ByteArray.external` for backing stores above
+  128 bytes, falls back to an ordinary byte array.
+- `get_generic_resource_group` (`resource-freeing-module_`): only used by
+  modules that are denied anyway (crypto, zlib, flash, rmt, pulse counter,
+  esp32); their library calls now fail with `PERMISSION_DENIED` before
+  reaching the module's own primitive.
+- `encode_object` (the object encoder; `encode_error` stays for uncaught
+  exceptions), `literal_index` (debugging tools).
+- `bytes_allocated_delta` (`system.bytes-allocated-delta`): heap
+  statistics, like `process_stats`.
+- `random_seed` (`set-random-seed`): `random` works, reseeding doesn't.
+- `vm_sdk_version`, `vm_sdk_model`, `app_sdk_version`, `app_sdk_info`
+  (`system.vm-sdk-version` and friends), like `vm_sdk_info`.
 
 Everything else is denied, in particular: `spawn`, `write_on_stdout`,
 `write_on_stderr`, `get_env`, `set_env`, `hostname`, `program_name`,
@@ -341,9 +368,9 @@ and must be updated when the gap is closed.
 | Register a malformed service (wrong value types) for a trusted service's uuid | refused | `listen-malformed` | fixed: a tag that wasn't a string made every client with a restricted selector (including `deny --tag="untrusted-provider"`) throw | |
 | Malformed calls to discovery and the sandbox print service (wrong types and shapes, bad method indexes, deep nesting, large arguments) | exception reply, the system process keeps working | `system-service-malformed` | holds | |
 | External byte arrays in messages | charged to the mailbox quota like copies (the message size includes externals) | `message-too-large` | holds (primitive audit) | |
-| Uncharged native memory: resource groups from `get_generic_resource_group`/`timer.init` in a loop, adding and removing a finalizer in a loop, `remove_finalizer` on an external byte array | charged to the container or bounded | `resource-group-churn`, tests/`finalizer-churn-test`, tests/`remove-finalizer-external-test` | fixed: 64 bytes of VM memory per call; 200 MB per 5M finalizer toggles; the external memory leaked | |
+| Uncharged native memory: resource groups from `timer.init` in a loop, adding and removing a finalizer in a loop, `remove_finalizer` on an external byte array | charged to the container or bounded | `resource-group-churn`, tests/`finalizer-churn-test`, tests/`remove-finalizer-external-test` | fixed: 64 bytes of VM memory per call; 200 MB per 5M finalizer toggles; the external memory leaked; `get_generic_resource_group` had the same problem and is no longer allowed (`core-get-generic-resource-group`) | |
 | Keep a scheduler thread inside a primitive (a kill only takes effect when it returns): `process_send` of a shared object graph, `bitmap.blit` with zero strides | the primitive stops early | `message-shared-graph`, `blit-unbounded-work` | fixed: days and hours per call; the other C++ primitives of the untrusted set are linear in their quota-bounded arguments (docs/sandbox-primitive-audit.md) | |
-| Read what other processes freed | new memory is cleared | tests/`off-heap-byte-array-cleared-test` | fixed: `create_off_heap_byte_array` returned uninitialized malloc memory (99% of the bytes still held freed data) | |
+| Read what other processes freed | new memory is cleared | tests/`off-heap-byte-array-cleared-test` | fixed: `create_off_heap_byte_array` returned uninitialized malloc memory (99% of the bytes still held freed data); it is no longer allowed for untrusted programs (`core-external-byte-array`), and large `ByteArray`s are cleared (`cli/large-byte-array`) | |
 | Send strings that aren't valid UTF-8 (crafted literals or string slices) to receivers that rely on valid ones; over-read with them | refused; conversions stay inside the string | `invalid-utf-8-literal` | fixed: delivered to the system process; `string-to-utf-16` read up to 7 bytes past the string | check the literals at launch too? (the Rust ports cope, the C++ consumers are now bounded) |
 | Create processes or groups; write flash | denied | `core-spawn`, `quota-processes`, `system-container-service`, `system-storage-service`, `module-flash-registry` | holds; no other path found | |
 | Starve the scheduler: tight loop, the longest primitives on 16 MB objects (15 ms on the host), recursion, 100 yielding tasks | the sibling and the system process answer within a few ms | `scheduler-starvation` | holds (also with the VM pinned to one core); run-time limit and CPU budget: `quota-run-time`, `quota-cpu-budget` | |
