@@ -50,23 +50,17 @@ pub struct VMethod {
 }
 
 impl VMethod {
-    /// The bci after the body (0, which `verifier::accepts` rejects, where
-    /// it does not fit a word).
+    /// The bci after the body, modulo the word size (where it wraps, it
+    /// is below `entry`, which `verifier::accepts` rejects).
     pub open spec fn end_spec(self) -> usize {
-        if self.entry as int + self.length as int <= usize::MAX as int {
-            (self.entry as int + self.length as int) as usize
-        } else {
-            0
-        }
+        vstd::wrapping::usize_specs::wrapping_add(self.entry as usize, self.length as usize)
     }
 
     #[inline(always)]
     pub fn end(&self) -> (r: usize)
         ensures r == self.end_spec(),
     {
-        let e = self.entry as usize;
-        let l = self.length as usize;
-        if e <= usize::MAX - l { e + l } else { 0 }
+        (self.entry as usize).wrapping_add(self.length as usize)
     }
 }
 
