@@ -19,6 +19,7 @@
 # they take both as arguments.
 set(TOOL_TESTS
   "tests/sandbox/runtime-hardening-test.toit"
+  "tests/sandbox/invalid-utf-8-literal-test.toit"
 )
 file(GLOB SANDBOX_TESTS RELATIVE "${TOIT_SDK_SOURCE_DIR}" "*-test.toit")
 
@@ -50,6 +51,9 @@ set(UNTRUSTED_RUN_TESTS
   # Long messages are truncated at a character boundary.
   "print-long|print-long-main.toit|0|é[.][.][.].*done printing"
   "denied|denied-main.toit|0|hostname: PERMISSION_DENIED.*file: PRIMITIVE_LOOKUP_FAILED"
+  # Large byte arrays work (external backing store, charged to the heap); the
+  # explicit external and off-heap constructors are denied.
+  "large-byte-array|large-byte-array-main.toit|0|100: size=100 zero=true last=42 filled=7.*10000: size=10000 zero=true last=42 filled=7.*1000000: size=1000000 zero=true last=42 filled=7.*buffer: hello.*external: PERMISSION_DENIED.*off-heap: PERMISSION_DENIED"
   "uncaught|uncaught-main.toit|1|PERMISSION_DENIED"
   "deep-sleep|deep-sleep-main.toit|242|before deep sleep"
 )
