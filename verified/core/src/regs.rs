@@ -55,7 +55,7 @@ pub struct Regs {
     pub fp: Slot,
     pub fr: Slot,
     pub end: Slot,
-    pub bci: usize,
+    pub ip: Ip,
 }
 
 impl Machine {
@@ -68,7 +68,7 @@ impl Machine {
             base: (self.len - r.fp@) as usize,
             ftop: r.fr@ as usize,
             rtop: r.fr@ as usize,
-            bci: r.bci,
+            bci: r.ip@ as usize,
             ..*self
         }
     }
@@ -88,16 +88,17 @@ impl Machine {
 
     /// The registers of this machine (`self.with(r) == self`).
     #[inline(always)]
-    pub fn regs(&self) -> (r: Regs)
-        requires self.stack_ok(), self.rtop == self.ftop,
-        ensures self.rok(r), self.with(r) == *self,
+    pub fn regs(&self, p: &Program) -> (r: Regs)
+        requires self.inv(p), self.rtop == self.ftop,
+        ensures self.rok(r), self.with(r) == *self, ipok(p, r),
     {
+        proof { lemma_bci(p, *self); }
         let r = Regs {
             sp: self.mem.slot(self.top),
             fp: self.mem.slot(self.lim),
             fr: self.mem.slot(self.ftop),
             end: self.mem.slot(self.len),
-            bci: self.bci,
+            ip: p.code.cursor(self.bci),
         };
         proof { assert(self.with(r) =~= *self); }
         r
@@ -105,8 +106,31 @@ impl Machine {
 
     /// Writes the registers back into the machine.
     #[inline(always)]
-    pub fn sync(&mut self, r: Regs)
-        requires old(self).rok(r), old(self).with(r).stack_ok(),
+    pub fn sync(&mut self, r: Regs, p: &Program)
+        requires old(self).rok(r), old(self).with(r).inv(p), ipok(p, r),
+        ensures *final(self) == old(self).with(r),
+    {
+        let ghost m0 = *self;
+        proof { lemma_bci(p, m0.with(r)); }
+        let lim = self.mem.index(r.fp);
+        self.top = self.mem.index(r.sp);
+        self.lim = lim;
+        self.base = self.len - lim;
+        self.ftop = self.mem.index(r.fr);
+        self.rtop = self.ftop;
+        self.bci = r.ip.diff(p.code.cursor(0));
+        proof { assert(*self =~= m0.with(r)); }
+    }
+}
+
+impl Machine {
+    /// `sync` for a machine between states (e.g. after a primitive changed
+    /// the heap): the bci bound explicit instead of from `inv`.
+    #[inline(always)]
+    pub fn sync_b(&mut self, r: Regs, p: &Program)
+        requires
+            old(self).rok(r), old(self).with(r).stack_ok(), ipok(p, r),
+            r.ip@ < p.code@.len(), p.code@.len() < 0x1000_0000,
         ensures *final(self) == old(self).with(r),
     {
         let ghost m0 = *self;
@@ -116,9 +140,23 @@ impl Machine {
         self.base = self.len - lim;
         self.ftop = self.mem.index(r.fr);
         self.rtop = self.ftop;
-        self.bci = r.bci;
+        self.bci = r.ip.diff(p.code.cursor(0));
         proof { assert(*self =~= m0.with(r)); }
     }
+}
+
+/// The instruction pointer is a cursor into the program's bytecodes.
+pub open spec fn ipok(p: &Program, r: Regs) -> bool {
+    &&& r.ip.sid() == p.code.sid()
+    &&& 0 <= r.ip@ <= usize::MAX
+}
+
+/// In a well-formed state the bci is inside the bytecodes (and below 2^28).
+pub proof fn lemma_bci(p: &Program, m: Machine)
+    requires m.inv(p),
+    ensures m.bci < p.code@.len(), p.code@.len() < 0x1000_0000,
+{
+    toit_spec::v2::sound_instr::lemma_instr(p.ap@, p.cert@, p.trusted@, m.g@);
 }
 
 /// Copies registers returned by an out-of-line path field by field (a
@@ -131,7 +169,7 @@ pub fn set_regs(r: &mut Regs, r2: Regs)
     r.fp = r2.fp;
     r.fr = r2.fr;
     r.end = r2.end;
-    r.bci = r2.bci;
+    r.ip = r2.ip;
 }
 
 /// The facts the register handlers start from: the registers are cursors
@@ -148,6 +186,7 @@ pub open spec fn rpre(p: &Program, m: Machine, r: Regs) -> bool {
 pub open spec fn m_ok(p: &Program, m: Machine, r: Regs) -> bool {
     &&& m.rok(r)
     &&& m.with(r).refines(p)
+    &&& ipok(p, r)
 }
 
 /// A step inside the top frame: the stack length, the frames and the
@@ -162,6 +201,7 @@ pub open spec fn rsame(m0: Machine, m1: Machine) -> bool {
 /// next state `o` (as `exec.rs`'s handlers state it for the machine).
 pub open spec fn rnext(p: &Program, m1: Machine, r1: Regs, o: Outcome2) -> bool {
     &&& m1.rok(r1)
+    &&& ipok(p, r1)
     &&& m1.with(r1).refines(p)
     &&& o == Outcome2::Next(m1.g@)
 }
@@ -187,10 +227,10 @@ pub fn push_next(m: &mut Machine, r: &mut Regs, p: &Program, w: usize, len: usiz
         old(r).sp@ > old(r).fr@,
         w == enc(old(m).addr(), v),
         encodable(old(m).addr(), v),
-        old(r).bci + len < 0x1000_0000,
+        old(r).ip@ + len < 0x1000_0000,
     ensures
         c == Ctl::Next,
-        rnext(p, *final(m), *final(r), Outcome2::Next(sp::goto(sp::push(old(m).g@, v), old(r).bci + len))),
+        rnext(p, *final(m), *final(r), Outcome2::Next(sp::goto(sp::push(old(m).g@, v), old(r).ip@ + len))),
         rsame(*old(m), *final(m)),
         final(r).sp@ == old(r).sp@ - 1,
         final(r).fr == old(r).fr,
@@ -199,7 +239,7 @@ pub fn push_next(m: &mut Machine, r: &mut Regs, p: &Program, w: usize, len: usiz
     let s = r.sp.offset(-1);
     s.write(0, w, &mut m.mem);
     r.sp = s;
-    r.bci = r.bci + len;
+    r.ip = r.ip.offset(len as isize);
     let ghost g1 = sp::goto(sp::push(m0.g@, v), m0.bci + len);
     m.g = Ghost(g1);
     proof {
@@ -243,7 +283,7 @@ pub fn op_load_local(m: &mut Machine, r: &mut Regs, p: &Program, n: usize, len: 
     requires
         rpre(p, *old(m), *old(r)),
         !(sp::op_load_local(old(m).g@, n as int, len as int) is Stuck),
-        old(r).bci + len < 0x1000_0000,
+        old(r).ip@ + len < 0x1000_0000,
     ensures
         c == Ctl::Next,
         rsame(*old(m), *final(m)),
@@ -260,7 +300,7 @@ pub fn op_pop_load_local(m: &mut Machine, r: &mut Regs, p: &Program, n: usize) -
     requires
         rpre(p, *old(m), *old(r)),
         !(sp::op_pop_load_local(old(m).g@, n as int) is Stuck),
-        old(r).bci + 2 < 0x1000_0000,
+        old(r).ip@ + 2 < 0x1000_0000,
         n < 256,
     ensures
         c == Ctl::Next,
@@ -272,7 +312,7 @@ pub fn op_pop_load_local(m: &mut Machine, r: &mut Regs, p: &Program, n: usize) -
     proof { m0.lemma_at(p, n + 1); m0.lemma_at(p, 0); }
     let v = at(m, r, n + 1);
     r.sp.write(0, v, &mut m.mem);
-    r.bci = r.bci + 2;
+    r.ip = r.ip.offset(2 as isize);
     let ghost g1 = sp::goto(sp::put(g0, 0, sp::at(g0, n + 1)), g0.bci + 2);
     m.g = Ghost(g1);
     proof {
@@ -293,7 +333,7 @@ pub fn op_store_local(m: &mut Machine, r: &mut Regs, p: &Program, n: usize) -> (
     requires
         rpre(p, *old(m), *old(r)),
         !(sp::op_store_local(old(m).g@, n as int) is Stuck),
-        old(r).bci + 2 < 0x1000_0000,
+        old(r).ip@ + 2 < 0x1000_0000,
     ensures
         c == Ctl::Next,
         rsame(*old(m), *final(m)),
@@ -304,7 +344,7 @@ pub fn op_store_local(m: &mut Machine, r: &mut Regs, p: &Program, n: usize) -> (
     proof { m0.lemma_at(p, n as int); m0.lemma_at(p, 0); }
     let v = at(m, r, 0);
     r.sp.write(n, v, &mut m.mem);
-    r.bci = r.bci + 2;
+    r.ip = r.ip.offset(2 as isize);
     let ghost g1 = sp::goto(sp::put(g0, n as int, sp::at(g0, 0)), g0.bci + 2);
     m.g = Ghost(g1);
     proof {
@@ -325,7 +365,7 @@ pub fn op_store_local_pop(m: &mut Machine, r: &mut Regs, p: &Program, n: usize) 
     requires
         rpre(p, *old(m), *old(r)),
         !(sp::op_store_local_pop(old(m).g@, n as int) is Stuck),
-        old(r).bci + 2 < 0x1000_0000,
+        old(r).ip@ + 2 < 0x1000_0000,
     ensures
         c == Ctl::Next,
         rsame(*old(m), *final(m)),
@@ -337,7 +377,7 @@ pub fn op_store_local_pop(m: &mut Machine, r: &mut Regs, p: &Program, n: usize) 
     let v = at(m, r, 0);
     r.sp.write(n, v, &mut m.mem);
     r.sp = r.sp.offset(1);
-    r.bci = r.bci + 2;
+    r.ip = r.ip.offset(2 as isize);
     let ghost g1 = sp::goto(sp::put(sp::drop(g0, 1), n - 1, sp::at(g0, 0)), g0.bci + 2);
     m.g = Ghost(g1);
     proof {
@@ -366,7 +406,7 @@ pub fn op_pop(m: &mut Machine, r: &mut Regs, p: &Program, n: usize, len: usize) 
     requires
         rpre(p, *old(m), *old(r)),
         !(sp::op_pop(old(m).g@, n as int, len as int) is Stuck),
-        old(r).bci + len < 0x1000_0000,
+        old(r).ip@ + len < 0x1000_0000,
     ensures
         c == Ctl::Next,
         rsame(*old(m), *final(m)),
@@ -376,7 +416,7 @@ pub fn op_pop(m: &mut Machine, r: &mut Regs, p: &Program, n: usize, len: usize) 
     let ghost g0 = m.g@;
     proof { m0.lemma_frame(p); }
     r.sp = r.sp.offset(n as isize);
-    r.bci = r.bci + len;
+    r.ip = r.ip.offset(len as isize);
     let ghost g1 = sp::goto(sp::drop(g0, n as int), g0.bci + len);
     m.g = Ghost(g1);
     proof {
@@ -396,7 +436,7 @@ pub fn op_pop(m: &mut Machine, r: &mut Regs, p: &Program, n: usize, len: usize) 
 pub fn op_load_smis_0(m: &mut Machine, r: &mut Regs, p: &Program, n: usize) -> (c: Ctl)
     requires
         rpre(p, *old(m), *old(r)),
-        old(r).bci + 2 < 0x1000_0000,
+        old(r).ip@ + 2 < 0x1000_0000,
     ensures
         c == Ctl::Next || is_limit(c),
         c != Ctl::Next ==> *final(m) == *old(m) && *final(r) == *old(r),
@@ -415,7 +455,7 @@ pub fn op_load_smis_0(m: &mut Machine, r: &mut Regs, p: &Program, n: usize) -> (
             m.rok(*r),
             i <= n,
             r.sp@ == m0.top - i,
-            r.fp == old(r).fp, r.fr == old(r).fr, r.end == old(r).end, r.bci == old(r).bci,
+            r.fp == old(r).fp, r.fr == old(r).fr, r.end == old(r).end, r.ip == old(r).ip,
             m.mem.sid() == m0.mem.sid(),
             m.mem@.len() == m0.mem@.len(),
             m.len == m0.len, m.heap == m0.heap, m.globals == m0.globals, m.g == m0.g, m.method == m0.method,
@@ -433,7 +473,7 @@ pub fn op_load_smis_0(m: &mut Machine, r: &mut Regs, p: &Program, n: usize) -> (
         assert(m.with(*r).words() =~= w0.push(0usize));
         assert(m.with(*r).words() =~= m0.words() + Seq::new(i as nat, |j: int| 0usize));
     }
-    r.bci = r.bci + 2;
+    r.ip = r.ip.offset(2 as isize);
     let ghost g1 = sp::goto(State2 { stack: g0.stack + Seq::new(n as nat, |j: int| Value::Smi(0)), ..g0 }, g0.bci + 2);
     m.g = Ghost(g1);
     proof {
@@ -456,7 +496,7 @@ pub fn op_load_literal(m: &mut Machine, r: &mut Regs, p: &Program, i: usize, len
     requires
         rpre(p, *old(m), *old(r)),
         !(sp::op_load_literal(p.ap@, old(m).g@, i as int, len as int) is Stuck),
-        old(r).bci + len < 0x1000_0000,
+        old(r).ip@ + len < 0x1000_0000,
     ensures
         c == Ctl::Next,
         rsame(*old(m), *final(m)),
@@ -471,7 +511,7 @@ pub fn op_load_literal(m: &mut Machine, r: &mut Regs, p: &Program, i: usize, len
 /// LOAD_NULL.
 #[inline(always)]
 pub fn op_load_null(m: &mut Machine, r: &mut Regs, p: &Program, len: usize) -> (c: Ctl)
-    requires rpre(p, *old(m), *old(r)), old(r).bci + len < 0x1000_0000,
+    requires rpre(p, *old(m), *old(r)), old(r).ip@ + len < 0x1000_0000,
     ensures
         c == Ctl::Next,
         rsame(*old(m), *final(m)),
@@ -487,7 +527,7 @@ pub fn op_load_null(m: &mut Machine, r: &mut Regs, p: &Program, len: usize) -> (
 /// LOAD_METHOD: push the smi `v`.
 #[inline(always)]
 pub fn op_load_smi(m: &mut Machine, r: &mut Regs, p: &Program, v: usize, len: usize) -> (c: Ctl)
-    requires rpre(p, *old(m), *old(r)), old(r).bci + len < 0x1000_0000, v as int <= MAX_SMI,
+    requires rpre(p, *old(m), *old(r)), old(r).ip@ + len < 0x1000_0000, v as int <= MAX_SMI,
     ensures
         c == Ctl::Next,
         rsame(*old(m), *final(m)),
@@ -503,7 +543,7 @@ pub fn op_load_global(m: &mut Machine, r: &mut Regs, p: &Program, gi: usize, len
     requires
         rpre(p, *old(m), *old(r)),
         !(sp::op_load_global(old(m).g@, gi as int, len as int) is Stuck),
-        old(r).bci + len < 0x1000_0000,
+        old(r).ip@ + len < 0x1000_0000,
     ensures
         c == Ctl::Next,
         rsame(*old(m), *final(m)),
@@ -523,7 +563,7 @@ pub fn op_store_global(m: &mut Machine, r: &mut Regs, p: &Program, gi: usize, le
     requires
         rpre(p, *old(m), *old(r)),
         !(sp::op_store_global(old(m).g@, gi as int, len as int) is Stuck),
-        old(r).bci + len < 0x1000_0000,
+        old(r).ip@ + len < 0x1000_0000,
     ensures
         c == Ctl::Next,
         rsame(*old(m), *final(m)),
@@ -534,7 +574,7 @@ pub fn op_store_global(m: &mut Machine, r: &mut Regs, p: &Program, gi: usize, le
     proof { m0.lemma_at(p, 0); }
     let v = at(m, r, 0);
     m.globals.set(gi, v);
-    r.bci = r.bci + len;
+    r.ip = r.ip.offset(len as isize);
     let ghost g1 = sp::goto(State2 { globals: g0.globals.update(gi as int, sp::at(g0, 0)), ..g0 }, g0.bci + len);
     m.g = Ghost(g1);
     proof {
@@ -552,13 +592,14 @@ pub fn op_store_global(m: &mut Machine, r: &mut Regs, p: &Program, gi: usize, le
 /// BRANCH*, BRANCH_BACK*: `kind` 0 always, 1 if true, 2 if false, 3 if
 /// not null. The target is inside the method (from the spec).
 #[inline(always)]
-pub fn op_branch(m: &mut Machine, r: &mut Regs, p: &Program, kind: usize, target: usize, len: usize) -> (c: Ctl)
+pub fn op_branch(m: &mut Machine, r: &mut Regs, p: &Program, kind: usize, delta: isize, Ghost(target): Ghost<usize>, len: usize) -> (c: Ctl)
     requires
         rpre(p, *old(m), *old(r)),
         kind <= 3,
         !(sp::op_branch(p.ap@, old(m).g@, kind as int, target as int, len as int) is Stuck),
         kind != 0 ==> !(sp::at(old(m).g@, 0) is BlockRef),
-        old(r).bci + len < 0x1000_0000,
+        old(r).ip@ + len < 0x1000_0000,
+        target as int == old(r).ip@ + delta,
     ensures
         c == Ctl::Next,
         rsame(*old(m), *final(m)),
@@ -585,9 +626,9 @@ pub fn op_branch(m: &mut Machine, r: &mut Regs, p: &Program, kind: usize, target
         let taken = Machine::taken(p, kind, v);
         let ghost t = if taken { target as int } else { g0.bci + len };
         if !taken {
-            r.bci = r.bci + len;
+            r.ip = r.ip.offset(len as isize);
         } else {
-            r.bci = target;
+            r.ip = r.ip.offset(delta);
         }
         let ghost g1 = sp::goto(sp::drop(g0, 1), t);
         m.g = Ghost(g1);
@@ -604,7 +645,7 @@ pub fn op_branch(m: &mut Machine, r: &mut Regs, p: &Program, kind: usize, target
         }
         Ctl::Next
     } else {
-        r.bci = target;
+        r.ip = r.ip.offset(delta);
         let ghost g1 = sp::goto(g0, target as int);
         m.g = Ghost(g1);
         proof {

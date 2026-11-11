@@ -73,16 +73,16 @@ pub fn put0_next(m: &mut Machine, r: &mut Regs, p: &Program, w: usize, len: usiz
         sp::has_slot(old(m).g@, 0),
         w == enc(old(m).addr(), v),
         encodable(old(m).addr(), v),
-        old(r).bci + len < 0x1000_0000,
+        old(r).ip@ + len < 0x1000_0000,
     ensures
-        rnext(p, *final(m), *final(r), Outcome2::Next(sp::goto(sp::put(old(m).g@, 0, v), old(r).bci + len))),
+        rnext(p, *final(m), *final(r), Outcome2::Next(sp::goto(sp::put(old(m).g@, 0, v), old(r).ip@ + len))),
         rsame(*old(m), *final(m)),
 {
     let ghost m0 = m.with(*r);
     let ghost g0 = m.g@;
     proof { m0.lemma_at(p, 0); }
     r.sp.write(0, w, &mut m.mem);
-    r.bci = r.bci + len;
+    r.ip = r.ip.offset(len as isize);
     let ghost g1 = sp::goto(sp::put(g0, 0, v), g0.bci + len);
     m.g = Ghost(g1);
     proof {
@@ -98,14 +98,14 @@ pub fn put0_next(m: &mut Machine, r: &mut Regs, p: &Program, w: usize, len: usiz
 pub fn goto_next(m: &mut Machine, r: &mut Regs, p: &Program, len: usize)
     requires
         m_ok(p, *old(m), *old(r)),
-        old(r).bci + len < 0x1000_0000,
+        old(r).ip@ + len < 0x1000_0000,
     ensures
-        rnext(p, *final(m), *final(r), Outcome2::Next(sp::goto(old(m).g@, old(r).bci + len))),
+        rnext(p, *final(m), *final(r), Outcome2::Next(sp::goto(old(m).g@, old(r).ip@ + len))),
         rsame(*old(m), *final(m)),
 {
     let ghost m0 = m.with(*r);
     let ghost g0 = m.g@;
-    r.bci = r.bci + len;
+    r.ip = r.ip.offset(len as isize);
     let ghost g1 = sp::goto(g0, g0.bci + len);
     m.g = Ghost(g1);
     proof {
@@ -285,7 +285,7 @@ pub fn op_store_field(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opco
     } else {
         r.sp = r.sp.offset(2);
     }
-    r.bci = bci + len;
+    r.ip = r.ip.offset(len as isize);
     let ghost g2 = if keep { sp::goto(sp::push(sp::drop(g1, 2), val), bci + len) } else { sp::goto(sp::drop(g1, 2), bci + len) };
     m.g = Ghost(g2);
     proof {
@@ -468,7 +468,7 @@ pub fn op_invoke_virtual_set(m: &mut Machine, r: &mut Regs, env: &Env, bci: usiz
                 let s = r.sp.offset(1);
                 s.write(0, v, &mut m.mem);
                 r.sp = s;
-                r.bci = bci + 3;
+                r.ip = r.ip.offset(3);
                 let ghost g2 = sp::goto(sp::push(sp::drop(g1, 2), val), bci + 3);
                 m.g = Ghost(g2);
                 proof {

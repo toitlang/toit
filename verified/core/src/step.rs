@@ -268,6 +268,43 @@ pub fn code_u32(p: &Program, i: usize) -> (r: usize)
     lo + hi * 65536
 }
 
+/// The bci of the instruction pointer (computed only in the arms that need
+/// it as a value: before the dispatch it would cost every instruction).
+#[inline(always)]
+pub fn cur_bci(p: &Program, ip: crate::view::Ip) -> (r: usize)
+    requires ip.sid() == p.code.sid(), 0 <= ip@ < p.code@.len() < 0x1000_0000,
+    ensures r == ip@,
+{
+    ip.diff(p.code.cursor(0))
+}
+
+/// The little-endian u16 at offset `k` from the instruction pointer.
+#[inline(always)]
+pub fn ip_u16(p: &Program, ip: crate::view::Ip, k: usize) -> (r: usize)
+    requires ip.sid() == p.code.sid(), 0 <= ip@, ip@ + k + 1 < p.code@.len() < 0x1000_0000,
+    ensures
+        r == p.code@[ip@ + k] as int + 256 * p.code@[ip@ + k + 1] as int,
+        r < 0x1_0000,
+{
+    let a = ip.byte(k, &p.code);
+    let b = ip.byte(k + 1, &p.code);
+    (a as usize) + (b as usize) * 256
+}
+
+/// The little-endian u32 at offset `k` from the instruction pointer.
+#[inline(always)]
+pub fn ip_u32(p: &Program, ip: crate::view::Ip, k: usize) -> (r: usize)
+    requires ip.sid() == p.code.sid(), 0 <= ip@, ip@ + k + 3 < p.code@.len() < 0x1000_0000,
+    ensures
+        r == p.code@[ip@ + k] as int + 256 * p.code@[ip@ + k + 1] as int
+            + 65536 * (p.code@[ip@ + k + 2] as int + 256 * p.code@[ip@ + k + 3] as int),
+        r < 0x1_0000_0000,
+{
+    let lo = ip_u16(p, ip, k);
+    let hi = ip_u16(p, ip, k + 2);
+    lo + hi * 65536
+}
+
 // ---------------------------------------------------------------------------
 // The step.
 
@@ -906,6 +943,7 @@ pub fn step(m: &mut Machine, env: &Env) -> (r: Ctl)
 pub open spec fn rpost(p: &Program, m0: Machine, r0: Regs, m1: Machine, r1: Regs, c: Ctl) -> bool {
     if c == Ctl::Next {
         &&& m1.rok(r1)
+        &&& crate::regs::ipok(p, r1)
         &&& step_post(p, m0.with(r0), m1.with(r1), c) || steps_post(p, m0.with(r0), m1.with(r1), c)
         &&& room_ok(p, m1.with(r1))
     } else {
@@ -953,6 +991,7 @@ pub fn settle(m: &mut Machine, env: &Env, c: Ctl, Ghost(w0): Ghost<Machine>) -> 
     requires step_post(&env.p, w0, *old(m), c) || steps_post(&env.p, w0, *old(m), c),
     ensures
         res.1 == Ctl::Next ==> res.0 is Some && final(m).rok(res.0->0)
+            && crate::regs::ipok(&env.p, res.0->0)
             && steps_post(&env.p, w0, final(m).with(res.0->0), res.1)
             && room_ok(&env.p, final(m).with(res.0->0)),
         res.1 != Ctl::Next ==> steps_post(&env.p, w0, *final(m), res.1),
@@ -984,7 +1023,7 @@ pub fn settle(m: &mut Machine, env: &Env, c: Ctl, Ghost(w0): Ghost<Machine>) -> 
     let ghost m1 = *m;
     let c2 = ensure_room_all(m, env);
     if let Ctl::Next = c2 {
-        let r = m.regs();
+        let r = m.regs(&env.p);
         proof { assert(m.g == m1.g); }
         (Some(r), c2)
     } else {
@@ -997,6 +1036,7 @@ pub fn settle(m: &mut Machine, env: &Env, c: Ctl, Ghost(w0): Ghost<Machine>) -> 
 /// registers' record top is the frame top) and has room.
 pub open spec fn rinv(p: &Program, m: Machine, r: Regs) -> bool {
     &&& m.rok(r)
+    &&& crate::regs::ipok(p, r)
     &&& m.with(r).inv(p)
     &&& room_ok(p, m.with(r))
 }
@@ -1007,7 +1047,7 @@ pub open spec fn rhandler_pre(p: &Program, m: Machine, r: Regs, bci: usize, opco
     &&& rinv(p, m, r)
     &&& r.sp@ >= r.fr@ + STACK_RESERVE
     &&& step_ok(ap, p.cert@, m.g@)
-    &&& bci == r.bci
+    &&& bci == r.ip@
     &&& opcode == ap.bytecodes[bci as int]
 }
 
@@ -1016,11 +1056,11 @@ pub open spec fn rhandler_pre(p: &Program, m: Machine, r: Regs, bci: usize, opco
 /// steps, and settles (`settle`: finally records, room, registers).
 #[inline(never)]
 pub fn bridge(m: &mut Machine, r: Regs, env: &Env) -> (res: (Regs, Ctl))
-    requires old(m).rok(r), old(m).with(r).inv(&env.p),
+    requires old(m).rok(r), old(m).with(r).inv(&env.p), crate::regs::ipok(&env.p, r),
     ensures rpost(&env.p, *old(m), r, *final(m), res.0, res.1),
 {
     let ghost w0 = m.with(r);
-    m.sync(r);
+    m.sync(r, &env.p);
     let c = step_m(m, env);
     match settle(m, env, c, Ghost(w0)) {
         (Some(r2), Ctl::Next) => (r2, Ctl::Next),
@@ -1031,7 +1071,7 @@ pub fn bridge(m: &mut Machine, r: Regs, env: &Env) -> (res: (Regs, Ctl))
 /// `bridge` for an inlined handler: the registers in place.
 #[inline(always)]
 pub fn bridge_r(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
-    requires old(m).rok(*old(r)), old(m).with(*old(r)).inv(&env.p),
+    requires old(m).rok(*old(r)), old(m).with(*old(r)).inv(&env.p), crate::regs::ipok(&env.p, *old(r)),
     ensures rpost(&env.p, *old(m), *old(r), *final(m), *final(r), c),
 {
     let (r2, c) = bridge(m, *r, env);
@@ -1042,8 +1082,8 @@ pub fn bridge_r(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
 /// A register handler's result: on anything but `Next` the registers are
 /// written back (the run loop then saves the machine).
 #[inline(always)]
-fn done(m: &mut Machine, r: &Regs, c: Ctl) -> (c2: Ctl)
-    requires c != Ctl::Next ==> old(m).rok(*r) && old(m).with(*r).stack_ok(),
+fn done(m: &mut Machine, r: &Regs, c: Ctl, p: &Program) -> (c2: Ctl)
+    requires c != Ctl::Next ==> old(m).rok(*r) && old(m).with(*r).inv(p) && crate::regs::ipok(p, *r),
     ensures
         c2 == c,
         c == Ctl::Next ==> *final(m) == *old(m),
@@ -1051,7 +1091,7 @@ fn done(m: &mut Machine, r: &Regs, c: Ctl) -> (c2: Ctl)
 {
     if let Ctl::Next = c {
     } else {
-        m.sync(*r);
+        m.sync(*r, p);
     }
     c
 }
@@ -1079,31 +1119,32 @@ pub fn step_r(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
         reveal_with_fuel(opcode_length2, 1);
         lemma_room_top(p, w0);
     }
-    let bci = r.bci;
-    let opcode = p.code.at(bci);
+    let ghost bci: usize = r.ip@ as usize;
+    proof { crate::regs::lemma_bci(p, w0); }
+    let opcode = r.ip.byte(0, &p.code);
     let c = match opcode {
         0 => {
-            let n = p.code.at(bci + 1) as usize;
+            let n = r.ip.byte(1, &p.code) as usize;
             proof { assert(sp::step(ap, g) == sp::op_load_local(g, n as int, 2)) by { reveal(sp::step); } }
             crate::regs::op_load_local(m, r, p, n, 2)
         },
         1 => {
-            let n = code_u16(p, bci + 1);
+            let n = ip_u16(p, r.ip, 1);
             proof { assert(sp::step(ap, g) == sp::op_load_local(g, n as int, 3)) by { reveal(sp::step); } }
             crate::regs::op_load_local(m, r, p, n, 3)
         },
         2 => {
-            let n = p.code.at(bci + 1) as usize;
+            let n = r.ip.byte(1, &p.code) as usize;
             proof { assert(sp::step(ap, g) == sp::op_pop_load_local(g, n as int)) by { reveal(sp::step); } }
             crate::regs::op_pop_load_local(m, r, p, n)
         },
         3 => {
-            let n = p.code.at(bci + 1) as usize;
+            let n = r.ip.byte(1, &p.code) as usize;
             proof { assert(sp::step(ap, g) == sp::op_store_local(g, n as int)) by { reveal(sp::step); } }
             crate::regs::op_store_local(m, r, p, n)
         },
         4 => {
-            let n = p.code.at(bci + 1) as usize;
+            let n = r.ip.byte(1, &p.code) as usize;
             proof { assert(sp::step(ap, g) == sp::op_store_local_pop(g, n as int)) by { reveal(sp::step); } }
             crate::regs::op_store_local_pop(m, r, p, n)
         },
@@ -1132,12 +1173,12 @@ pub fn step_r(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
             crate::regs::op_load_local(m, r, p, 5, 1)
         },
         20 => {
-            let i = p.code.at(bci + 1) as usize;
+            let i = r.ip.byte(1, &p.code) as usize;
             proof { assert(sp::step(ap, g) == sp::op_load_literal(ap, g, i as int, 2)) by { reveal(sp::step); } }
             crate::regs::op_load_literal(m, r, p, i, 2)
         },
         21 => {
-            let i = code_u16(p, bci + 1);
+            let i = ip_u16(p, r.ip, 1);
             proof { assert(sp::step(ap, g) == sp::op_load_literal(ap, g, i as int, 3)) by { reveal(sp::step); } }
             crate::regs::op_load_literal(m, r, p, i, 3)
         },
@@ -1150,7 +1191,7 @@ pub fn step_r(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
             crate::regs::op_load_smi(m, r, p, 0, 1)
         },
         24 => {
-            let n = p.code.at(bci + 1) as usize;
+            let n = r.ip.byte(1, &p.code) as usize;
             proof { assert(sp::step(ap, g) == sp::op_load_smis_0(g, n as int)) by { reveal(sp::step); } }
             crate::regs::op_load_smis_0(m, r, p, n)
         },
@@ -1159,17 +1200,17 @@ pub fn step_r(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
             crate::regs::op_load_smi(m, r, p, 1, 1)
         },
         26 => {
-            let v = p.code.at(bci + 1) as usize;
+            let v = r.ip.byte(1, &p.code) as usize;
             proof { assert(sp::step(ap, g) == sp::next(sp::push(g, Value::Smi(v as i64)), 2)) by { reveal(sp::step); } }
             crate::regs::op_load_smi(m, r, p, v, 2)
         },
         27 => {
-            let v = code_u16(p, bci + 1);
+            let v = ip_u16(p, r.ip, 1);
             proof { assert(sp::step(ap, g) == sp::next(sp::push(g, Value::Smi(v as i64)), 3)) by { reveal(sp::step); } }
             crate::regs::op_load_smi(m, r, p, v, 3)
         },
         28 => {
-            let v = code_u32(p, bci + 1);
+            let v = ip_u32(p, r.ip, 1);
             proof {
                 assert(sp::step(ap, g) == sp::op_load_smi(ap, g, v as int, 5)) by { reveal(sp::step); }
                 assert(toit_spec::spec_common::smi_ok(p1(ap), v as int));
@@ -1178,7 +1219,7 @@ pub fn step_r(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
             crate::regs::op_load_smi(m, r, p, v, 5)
         },
         29 => {
-            let v = code_u32(p, bci + 1);
+            let v = ip_u32(p, r.ip, 1);
             proof {
                 assert(sp::step(ap, g) == sp::op_load_method(ap, g, v as int)) by { reveal(sp::step); }
                 assert(toit_spec::spec_common::smi_ok(p1(ap), v as int));
@@ -1187,28 +1228,28 @@ pub fn step_r(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
             crate::regs::op_load_smi(m, r, p, v, 5)
         },
         30 => {
-            let i = p.code.at(bci + 1) as usize;
+            let i = r.ip.byte(1, &p.code) as usize;
             proof { assert(sp::step(ap, g) == sp::op_load_global(g, i as int, 2)) by { reveal(sp::step); } }
             crate::regs::op_load_global(m, r, p, i, 2)
         },
         31 => {
-            let i = code_u16(p, bci + 1);
+            let i = ip_u16(p, r.ip, 1);
             proof { assert(sp::step(ap, g) == sp::op_load_global(g, i as int, 3)) by { reveal(sp::step); } }
             crate::regs::op_load_global(m, r, p, i, 3)
         },
         35 => {
-            let i = p.code.at(bci + 1) as usize;
+            let i = r.ip.byte(1, &p.code) as usize;
             proof { assert(sp::step(ap, g) == sp::op_store_global(g, i as int, 2)) by { reveal(sp::step); } }
             crate::regs::op_store_global(m, r, p, i, 2)
         },
         36 => {
-            let i = code_u16(p, bci + 1);
+            let i = ip_u16(p, r.ip, 1);
             proof { assert(sp::step(ap, g) == sp::op_store_global(g, i as int, 3)) by { reveal(sp::step); } }
             crate::regs::op_store_global(m, r, p, i, 3)
         },
         40 => {
             if p.preempt_a_lot { env.pre.request(); }
-            let n = p.code.at(bci + 1) as usize;
+            let n = r.ip.byte(1, &p.code) as usize;
             proof { assert(sp::step(ap, g) == sp::op_pop(g, n as int, 2)) by { reveal(sp::step); } }
             crate::regs::op_pop(m, r, p, n, 2)
         },
@@ -1218,120 +1259,120 @@ pub fn step_r(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
             crate::regs::op_pop(m, r, p, 1, 1)
         },
         81 => {
-            let d = code_u16(p, bci + 1);
+            let d = ip_u16(p, r.ip, 1);
             proof {
                 assert(sp::step(ap, g) == (if d == 0 { sp::stuck(toit_spec::types::Stuck::BadBranch) }
                     else { sp::op_branch(ap, g, 0, bci + d, 3) })) by { reveal(sp::step); }
             }
-            crate::regs::op_branch(m, r, p, 0, bci + d, 3)
+            crate::regs::op_branch(m, r, p, 0, d as isize, Ghost((bci + d) as usize), 3)
         },
         82 => {
-            let d = code_u16(p, bci + 1);
+            let d = ip_u16(p, r.ip, 1);
             proof {
                 assert(sp::step(ap, g) == (if d == 0 { sp::stuck(toit_spec::types::Stuck::BadBranch) }
                     else { sp::op_branch(ap, g, 1, bci + d, 3) })) by { reveal(sp::step); }
                 lemma_branch_cond(p, g);
             }
-            crate::regs::op_branch(m, r, p, 1, bci + d, 3)
+            crate::regs::op_branch(m, r, p, 1, d as isize, Ghost((bci + d) as usize), 3)
         },
         83 => {
-            let d = code_u16(p, bci + 1);
+            let d = ip_u16(p, r.ip, 1);
             proof {
                 assert(sp::step(ap, g) == (if d == 0 { sp::stuck(toit_spec::types::Stuck::BadBranch) }
                     else { sp::op_branch(ap, g, 2, bci + d, 3) })) by { reveal(sp::step); }
                 lemma_branch_cond(p, g);
             }
-            crate::regs::op_branch(m, r, p, 2, bci + d, 3)
+            crate::regs::op_branch(m, r, p, 2, d as isize, Ghost((bci + d) as usize), 3)
         },
         84 => {
-            let d = code_u16(p, bci + 1);
+            let d = ip_u16(p, r.ip, 1);
             proof {
                 assert(sp::step(ap, g) == (if d == 0 { sp::stuck(toit_spec::types::Stuck::BadBranch) }
                     else { sp::op_branch(ap, g, 3, bci + d, 3) })) by { reveal(sp::step); }
                 lemma_branch_cond(p, g);
             }
-            crate::regs::op_branch(m, r, p, 3, bci + d, 3)
+            crate::regs::op_branch(m, r, p, 3, d as isize, Ghost((bci + d) as usize), 3)
         },
         // BRANCH_BACK*: the preemption points of loops (one arm per opcode).
         85 => {
             if env.pre.requested() {
                 env.pre.clear();
-                m.sync(*r);
+                m.sync(*r, &env.p);
                 return Ctl::Exit(RESULT_PREEMPTED as u32, 0);
             }
-            let d = code_u16(p, bci + 1);
+            let d = ip_u16(p, r.ip, 1);
             proof {
                 assert(sp::step(ap, g) == sp::op_branch(ap, g, 0, bci - d, 3)) by { reveal(sp::step); }
                 lemma_back_branch(p, g);
             }
-            crate::regs::op_branch(m, r, p, 0, bci - d, 3)
+            crate::regs::op_branch(m, r, p, 0, -(d as isize), Ghost((bci - d) as usize), 3)
         },
         86 => {
             if env.pre.requested() {
                 env.pre.clear();
-                m.sync(*r);
+                m.sync(*r, &env.p);
                 return Ctl::Exit(RESULT_PREEMPTED as u32, 0);
             }
-            let d = code_u16(p, bci + 1);
+            let d = ip_u16(p, r.ip, 1);
             proof {
                 assert(sp::step(ap, g) == sp::op_branch(ap, g, 1, bci - d, 3)) by { reveal(sp::step); }
                 lemma_branch_cond(p, g);
                 lemma_back_branch(p, g);
             }
-            crate::regs::op_branch(m, r, p, 1, bci - d, 3)
+            crate::regs::op_branch(m, r, p, 1, -(d as isize), Ghost((bci - d) as usize), 3)
         },
         87 => {
             if env.pre.requested() {
                 env.pre.clear();
-                m.sync(*r);
+                m.sync(*r, &env.p);
                 return Ctl::Exit(RESULT_PREEMPTED as u32, 0);
             }
-            let d = code_u16(p, bci + 1);
+            let d = ip_u16(p, r.ip, 1);
             proof {
                 assert(sp::step(ap, g) == sp::op_branch(ap, g, 2, bci - d, 3)) by { reveal(sp::step); }
                 lemma_branch_cond(p, g);
                 lemma_back_branch(p, g);
             }
-            crate::regs::op_branch(m, r, p, 2, bci - d, 3)
+            crate::regs::op_branch(m, r, p, 2, -(d as isize), Ghost((bci - d) as usize), 3)
         },
         88 => {
             if env.pre.requested() {
                 env.pre.clear();
-                m.sync(*r);
+                m.sync(*r, &env.p);
                 return Ctl::Exit(RESULT_PREEMPTED as u32, 0);
             }
-            let d = code_u16(p, bci + 1);
+            let d = ip_u16(p, r.ip, 1);
             proof {
                 assert(sp::step(ap, g) == sp::op_branch(ap, g, 3, bci - d, 3)) by { reveal(sp::step); }
                 lemma_branch_cond(p, g);
                 lemma_back_branch(p, g);
             }
-            crate::regs::op_branch(m, r, p, 3, bci - d, 3)
+            crate::regs::op_branch(m, r, p, 3, -(d as isize), Ghost((bci - d) as usize), 3)
         },
         53 => {
-            let d = code_u16(p, bci + 1);
+            let d = ip_u16(p, r.ip, 1);
             proof {
                 assert(sp::step(ap, g) == sp::call_static(ap, g, sp::dispatch_target(ap, d as int), 3)) by {
                     reveal(sp::step);
                 }
             }
-            return crate::rcalls::op_invoke_static(m, r, env, bci, opcode, d);
+            return crate::rcalls::op_invoke_static(m, r, env, cur_bci(p, r.ip), opcode, d);
         },
         58 => {
-            let n = p.code.at(bci + 1) as usize;
-            let sel = code_u16(p, bci + 2);
+            let n = r.ip.byte(1, &p.code) as usize;
+            let sel = ip_u16(p, r.ip, 2);
             proof {
                 assert(sp::step(ap, g) == sp::invoke_virtual(ap, g, sel as int, n + 1, 4)) by { reveal(sp::step); }
             }
-            return crate::rcalls::op_invoke_virtual(m, r, env, bci, opcode, sel as i64, n + 1, 4);
+            return crate::rcalls::op_invoke_virtual(m, r, env, cur_bci(p, r.ip), opcode, sel as i64, n + 1, 4);
         },
         59 => {
-            let n = code_u16(p, bci + 1);
-            let sel = code_u16(p, bci + 3);
+            let n = ip_u16(p, r.ip, 1);
+            let sel = ip_u16(p, r.ip, 3);
             proof {
                 assert(sp::step(ap, g) == sp::invoke_virtual(ap, g, sel as int, n + 1, 5)) by { reveal(sp::step); }
             }
-            return crate::rcalls::op_invoke_virtual(m, r, env, bci, opcode, sel as i64, n + 1, 5);
+            return crate::rcalls::op_invoke_virtual(m, r, env, cur_bci(p, r.ip), opcode, sel as i64, n + 1, 5);
         },
         91 => {
             proof {
@@ -1351,258 +1392,258 @@ pub fn step_r(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
             return crate::rcalls::op_return(m, r, env, p.null, Ghost(sp::null2(ap)));
         },
         7 => {
-            let f = p.code.at(bci + 1) as usize;
+            let f = r.ip.byte(1, &p.code) as usize;
             proof { assert(sp::step(ap, g) == sp::op_load_field(ap, g, f as int, 2)) by { reveal(sp::step); } }
-            return crate::rfields::op_load_field(m, r, env, bci, opcode, f, 2);
+            return crate::rfields::op_load_field(m, r, env, cur_bci(p, r.ip), opcode, f, 2);
         },
         8 => {
-            let f = code_u16(p, bci + 1);
+            let f = ip_u16(p, r.ip, 1);
             proof { assert(sp::step(ap, g) == sp::op_load_field(ap, g, f as int, 3)) by { reveal(sp::step); } }
-            return crate::rfields::op_load_field(m, r, env, bci, opcode, f, 3);
+            return crate::rfields::op_load_field(m, r, env, cur_bci(p, r.ip), opcode, f, 3);
         },
         9 => {
-            let e = p.code.at(bci + 1) as usize;
+            let e = r.ip.byte(1, &p.code) as usize;
             proof { assert(sp::step(ap, g) == sp::op_load_field_local(ap, g, e as int, false)) by { reveal(sp::step); } }
-            return crate::rfields::op_load_field_local(m, r, env, bci, opcode, e, false);
+            return crate::rfields::op_load_field_local(m, r, env, cur_bci(p, r.ip), opcode, e, false);
         },
         10 => {
-            let e = p.code.at(bci + 1) as usize;
+            let e = r.ip.byte(1, &p.code) as usize;
             proof { assert(sp::step(ap, g) == sp::op_load_field_local(ap, g, e as int, true)) by { reveal(sp::step); } }
-            return crate::rfields::op_load_field_local(m, r, env, bci, opcode, e, true);
+            return crate::rfields::op_load_field_local(m, r, env, cur_bci(p, r.ip), opcode, e, true);
         },
         11 => {
-            let f = p.code.at(bci + 1) as usize;
+            let f = r.ip.byte(1, &p.code) as usize;
             proof { assert(sp::step(ap, g) == sp::op_store_field(ap, g, f as int, 2, true)) by { reveal(sp::step); } }
-            return crate::rfields::op_store_field(m, r, env, bci, opcode, f, 2, true);
+            return crate::rfields::op_store_field(m, r, env, cur_bci(p, r.ip), opcode, f, 2, true);
         },
         12 => {
-            let f = code_u16(p, bci + 1);
+            let f = ip_u16(p, r.ip, 1);
             proof { assert(sp::step(ap, g) == sp::op_store_field(ap, g, f as int, 3, true)) by { reveal(sp::step); } }
-            return crate::rfields::op_store_field(m, r, env, bci, opcode, f, 3, true);
+            return crate::rfields::op_store_field(m, r, env, cur_bci(p, r.ip), opcode, f, 3, true);
         },
         13 => {
-            let f = p.code.at(bci + 1) as usize;
+            let f = r.ip.byte(1, &p.code) as usize;
             proof { assert(sp::step(ap, g) == sp::op_store_field(ap, g, f as int, 2, false)) by { reveal(sp::step); } }
-            return crate::rfields::op_store_field(m, r, env, bci, opcode, f, 2, false);
+            return crate::rfields::op_store_field(m, r, env, cur_bci(p, r.ip), opcode, f, 2, false);
         },
         60 => {
-            let sel = code_u16(p, bci + 1);
+            let sel = ip_u16(p, r.ip, 1);
             proof { assert(sp::step(ap, g) == sp::op_invoke_virtual_get(ap, g, sel as int)) by { reveal(sp::step); } }
-            return crate::rfields::op_invoke_virtual_get(m, r, env, bci, opcode, sel);
+            return crate::rfields::op_invoke_virtual_get(m, r, env, cur_bci(p, r.ip), opcode, sel);
         },
         61 => {
-            let sel = code_u16(p, bci + 1);
+            let sel = ip_u16(p, r.ip, 1);
             proof { assert(sp::step(ap, g) == sp::op_invoke_virtual_set(ap, g, sel as int)) by { reveal(sp::step); } }
-            return crate::rfields::op_invoke_virtual_set(m, r, env, bci, opcode, sel);
+            return crate::rfields::op_invoke_virtual_set(m, r, env, cur_bci(p, r.ip), opcode, sel);
         },
         94 => {
-            let f = p.code.at(bci + 1) as usize;
+            let f = r.ip.byte(1, &p.code) as usize;
             proof { assert(sp::step(ap, g) == sp::op_store_field_this(ap, g, f as int)) by { reveal(sp::step); } }
-            return crate::rfields::op_store_field_this(m, r, env, bci, opcode, f);
+            return crate::rfields::op_store_field_this(m, r, env, cur_bci(p, r.ip), opcode, f);
         },
         98 => {
-            let f = p.code.at(bci + 1) as usize;
+            let f = r.ip.byte(1, &p.code) as usize;
             proof { assert(sp::step(ap, g) == sp::op_load_field_this(ap, g, f as int)) by { reveal(sp::step); } }
-            return crate::rfields::op_load_field_this(m, r, env, bci, opcode, f);
+            return crate::rfields::op_load_field_this(m, r, env, cur_bci(p, r.ip), opcode, f);
         },
         44 => {
             // IS_CLASS.
-            let enc = p.code.at(bci + 1) as usize;
+            let enc = r.ip.byte(1, &p.code) as usize;
             proof { assert(sp::step(ap, g) == sp::op_is(ap, g, enc as int, false, 2)) by { reveal(sp::step); } }
-            return crate::rfields::op_is(m, r, env, bci, opcode, enc, false, 2);
+            return crate::rfields::op_is(m, r, env, cur_bci(p, r.ip), opcode, enc, false, 2);
         },
         45 => {
             // IS_CLASS_WIDE.
-            let enc = code_u16(p, bci + 1);
+            let enc = ip_u16(p, r.ip, 1);
             proof { assert(sp::step(ap, g) == sp::op_is(ap, g, enc as int, false, 3)) by { reveal(sp::step); } }
-            return crate::rfields::op_is(m, r, env, bci, opcode, enc, false, 3);
+            return crate::rfields::op_is(m, r, env, cur_bci(p, r.ip), opcode, enc, false, 3);
         },
         46 => {
             // IS_INTERFACE.
-            let enc = p.code.at(bci + 1) as usize;
+            let enc = r.ip.byte(1, &p.code) as usize;
             proof { assert(sp::step(ap, g) == sp::op_is(ap, g, enc as int, true, 2)) by { reveal(sp::step); } }
-            return crate::rfields::op_is(m, r, env, bci, opcode, enc, true, 2);
+            return crate::rfields::op_is(m, r, env, cur_bci(p, r.ip), opcode, enc, true, 2);
         },
         47 => {
             // IS_INTERFACE_WIDE.
-            let enc = code_u16(p, bci + 1);
+            let enc = ip_u16(p, r.ip, 1);
             proof { assert(sp::step(ap, g) == sp::op_is(ap, g, enc as int, true, 3)) by { reveal(sp::step); } }
-            return crate::rfields::op_is(m, r, env, bci, opcode, enc, true, 3);
+            return crate::rfields::op_is(m, r, env, cur_bci(p, r.ip), opcode, enc, true, 3);
         },
         48 => {
             // AS_CLASS.
-            let enc = p.code.at(bci + 1) as usize;
+            let enc = r.ip.byte(1, &p.code) as usize;
             proof { assert(sp::step(ap, g) == sp::op_as(ap, g, enc as int, false, 2)) by { reveal(sp::step); } }
-            return crate::rfields::op_as(m, r, env, bci, opcode, enc, false, 2);
+            return crate::rfields::op_as(m, r, env, cur_bci(p, r.ip), opcode, enc, false, 2);
         },
         49 => {
             // AS_CLASS_WIDE.
-            let enc = code_u16(p, bci + 1);
+            let enc = ip_u16(p, r.ip, 1);
             proof { assert(sp::step(ap, g) == sp::op_as(ap, g, enc as int, false, 3)) by { reveal(sp::step); } }
-            return crate::rfields::op_as(m, r, env, bci, opcode, enc, false, 3);
+            return crate::rfields::op_as(m, r, env, cur_bci(p, r.ip), opcode, enc, false, 3);
         },
         50 => {
             // AS_INTERFACE.
-            let enc = p.code.at(bci + 1) as usize;
+            let enc = r.ip.byte(1, &p.code) as usize;
             proof { assert(sp::step(ap, g) == sp::op_as(ap, g, enc as int, true, 2)) by { reveal(sp::step); } }
-            return crate::rfields::op_as(m, r, env, bci, opcode, enc, true, 2);
+            return crate::rfields::op_as(m, r, env, cur_bci(p, r.ip), opcode, enc, true, 2);
         },
         51 => {
             // AS_INTERFACE_WIDE.
-            let enc = code_u16(p, bci + 1);
+            let enc = ip_u16(p, r.ip, 1);
             proof { assert(sp::step(ap, g) == sp::op_as(ap, g, enc as int, true, 3)) by { reveal(sp::step); } }
-            return crate::rfields::op_as(m, r, env, bci, opcode, enc, true, 3);
+            return crate::rfields::op_as(m, r, env, cur_bci(p, r.ip), opcode, enc, true, 3);
         },
         52 => {
             // AS_LOCAL.
-            let enc = p.code.at(bci + 1) as usize;
+            let enc = r.ip.byte(1, &p.code) as usize;
             proof { assert(sp::step(ap, g) == sp::op_as_local(ap, g, enc as int)) by { reveal(sp::step); } }
-            return crate::rfields::op_as_local(m, r, env, bci, opcode, enc);
+            return crate::rfields::op_as_local(m, r, env, cur_bci(p, r.ip), opcode, enc);
         },
         // Operators: constant opcodes, so that the inlined fast paths fold.
         62 => {
             proof { crate::ops::lemma_step_op(p, g); }
-            return crate::rops::op_invoke_eq(m, r, env, bci, 62);
+            return crate::rops::op_invoke_eq(m, r, env, cur_bci(p, r.ip), 62);
         },
         63 => {
             proof { crate::ops::lemma_step_op(p, g); }
-            return crate::rops::op_invoke_relational(m, r, env, bci, 63);
+            return crate::rops::op_invoke_relational(m, r, env, cur_bci(p, r.ip), 63);
         },
         64 => {
             proof { crate::ops::lemma_step_op(p, g); }
-            return crate::rops::op_invoke_relational(m, r, env, bci, 64);
+            return crate::rops::op_invoke_relational(m, r, env, cur_bci(p, r.ip), 64);
         },
         65 => {
             proof { crate::ops::lemma_step_op(p, g); }
-            return crate::rops::op_invoke_relational(m, r, env, bci, 65);
+            return crate::rops::op_invoke_relational(m, r, env, cur_bci(p, r.ip), 65);
         },
         66 => {
             proof { crate::ops::lemma_step_op(p, g); }
-            return crate::rops::op_invoke_relational(m, r, env, bci, 66);
+            return crate::rops::op_invoke_relational(m, r, env, cur_bci(p, r.ip), 66);
         },
         67 => {
             proof { crate::ops::lemma_step_op(p, g); }
-            return crate::rops::op_invoke_arith(m, r, env, bci, 67);
+            return crate::rops::op_invoke_arith(m, r, env, cur_bci(p, r.ip), 67);
         },
         68 => {
             proof { crate::ops::lemma_step_op(p, g); }
-            return crate::rops::op_invoke_arith(m, r, env, bci, 68);
+            return crate::rops::op_invoke_arith(m, r, env, cur_bci(p, r.ip), 68);
         },
         69 => {
             proof { crate::ops::lemma_step_op(p, g); }
-            return crate::rops::op_invoke_arith(m, r, env, bci, 69);
+            return crate::rops::op_invoke_arith(m, r, env, cur_bci(p, r.ip), 69);
         },
         70 => {
             proof { crate::ops::lemma_step_op(p, g); }
-            return crate::rops::op_invoke_arith(m, r, env, bci, 70);
+            return crate::rops::op_invoke_arith(m, r, env, cur_bci(p, r.ip), 70);
         },
         71 => {
             proof { crate::ops::lemma_step_op(p, g); }
-            return crate::rops::op_invoke_arith(m, r, env, bci, 71);
+            return crate::rops::op_invoke_arith(m, r, env, cur_bci(p, r.ip), 71);
         },
         72 => {
             proof { crate::ops::lemma_step_op(p, g); }
-            return crate::rops::op_invoke_arith(m, r, env, bci, 72);
+            return crate::rops::op_invoke_arith(m, r, env, cur_bci(p, r.ip), 72);
         },
         73 => {
             proof { crate::ops::lemma_step_op(p, g); }
-            return crate::rops::op_invoke_arith(m, r, env, bci, 73);
+            return crate::rops::op_invoke_arith(m, r, env, cur_bci(p, r.ip), 73);
         },
         74 => {
             proof { crate::ops::lemma_step_op(p, g); }
-            return crate::rops::op_invoke_arith(m, r, env, bci, 74);
+            return crate::rops::op_invoke_arith(m, r, env, cur_bci(p, r.ip), 74);
         },
         75 => {
             proof { crate::ops::lemma_step_op(p, g); }
-            return crate::rops::op_invoke_arith(m, r, env, bci, 75);
+            return crate::rops::op_invoke_arith(m, r, env, cur_bci(p, r.ip), 75);
         },
         76 => {
             proof { crate::ops::lemma_step_op(p, g); }
-            return crate::rops::op_invoke_arith(m, r, env, bci, 76);
+            return crate::rops::op_invoke_arith(m, r, env, cur_bci(p, r.ip), 76);
         },
         77 => {
             proof { crate::ops::lemma_step_op(p, g); }
-            return crate::rops::op_invoke_arith(m, r, env, bci, 77);
+            return crate::rops::op_invoke_arith(m, r, env, cur_bci(p, r.ip), 77);
         },
         96 => {
             proof { crate::ops::lemma_step_op(p, g); }
-            return crate::rops::op_identical(m, r, env, bci, 96);
+            return crate::rops::op_identical(m, r, env, cur_bci(p, r.ip), 96);
         },
         5 => {
-            let k = p.code.at(bci + 1) as usize;
+            let k = r.ip.byte(1, &p.code) as usize;
             proof { assert(sp::step(ap, g) == sp::op_load_outer(g, k as int)) by { reveal(sp::step); } }
             crate::rblocks::op_load_outer(m, r, p, k)
         },
         6 => {
-            let k = p.code.at(bci + 1) as usize;
+            let k = r.ip.byte(1, &p.code) as usize;
             proof { assert(sp::step(ap, g) == sp::op_store_outer(g, k as int)) by { reveal(sp::step); } }
             crate::rblocks::op_store_outer(m, r, p, k)
         },
         38 => {
-            let k = p.code.at(bci + 1) as usize;
+            let k = r.ip.byte(1, &p.code) as usize;
             proof { assert(sp::step(ap, g) == sp::op_load_block(g, k as int)) by { reveal(sp::step); } }
             crate::rblocks::op_load_block(m, r, p, k)
         },
         39 => {
-            let k = p.code.at(bci + 1) as usize;
+            let k = r.ip.byte(1, &p.code) as usize;
             proof { assert(sp::step(ap, g) == sp::op_load_outer_block(g, k as int)) by { reveal(sp::step); } }
             crate::rblocks::op_load_outer_block(m, r, p, k)
         },
         55 => {
-            let k = p.code.at(bci + 1) as usize;
+            let k = r.ip.byte(1, &p.code) as usize;
             proof { assert(sp::step(ap, g) == sp::op_invoke_block(ap, g, k as int)) by { reveal(sp::step); } }
-            return crate::rblocks::op_invoke_block(m, r, env, bci, opcode, k);
+            return crate::rblocks::op_invoke_block(m, r, env, cur_bci(p, r.ip), opcode, k);
         },
         54 => {
-            let d = code_u16(p, bci + 1);
+            let d = ip_u16(p, r.ip, 1);
             proof {
                 assert(sp::step(ap, g) == sp::op_invoke_static_tail(ap, g, d as int)) by { reveal(sp::step); }
             }
-            return crate::rblocks::op_invoke_static_tail(m, r, env, bci, opcode, d);
+            return crate::rblocks::op_invoke_static_tail(m, r, env, cur_bci(p, r.ip), opcode, d);
         },
         57 => {
             proof { assert(sp::step(ap, g) == sp::op_invoke_initializer_tail(ap, g)) by { reveal(sp::step); } }
-            return crate::rblocks::op_invoke_initializer_tail(m, r, env, bci, opcode);
+            return crate::rblocks::op_invoke_initializer_tail(m, r, env, cur_bci(p, r.ip), opcode);
         },
         32 => {
-            let i = p.code.at(bci + 1) as usize;
+            let i = r.ip.byte(1, &p.code) as usize;
             proof { assert(sp::step(ap, g) == sp::op_load_global_lazy(ap, g, i as int, 2)) by { reveal(sp::step); } }
-            return crate::rblocks::op_load_global_lazy(m, r, env, bci, opcode, i, 2);
+            return crate::rblocks::op_load_global_lazy(m, r, env, cur_bci(p, r.ip), opcode, i, 2);
         },
         33 => {
-            let i = code_u16(p, bci + 1);
+            let i = ip_u16(p, r.ip, 1);
             proof { assert(sp::step(ap, g) == sp::op_load_global_lazy(ap, g, i as int, 3)) by { reveal(sp::step); } }
-            return crate::rblocks::op_load_global_lazy(m, r, env, bci, opcode, i, 3);
+            return crate::rblocks::op_load_global_lazy(m, r, env, cur_bci(p, r.ip), opcode, i, 3);
         },
         34 => {
             proof { assert(sp::step(ap, g) == sp::op_load_global_dynamic(ap, g)) by { reveal(sp::step); } }
-            return crate::rblocks::op_load_global_dynamic(m, r, env, bci, opcode);
+            return crate::rblocks::op_load_global_dynamic(m, r, env, cur_bci(p, r.ip), opcode);
         },
         37 => {
             proof { assert(sp::step(ap, g) == sp::op_store_global_dynamic(ap, g)) by { reveal(sp::step); } }
-            return crate::rblocks::op_store_global_dynamic(m, r, env, bci, opcode);
+            return crate::rblocks::op_store_global_dynamic(m, r, env, cur_bci(p, r.ip), opcode);
         },
         78 => {
-            return crate::rarrays::op_invoke_at(m, r, env, bci, 78);
+            return crate::rarrays::op_invoke_at(m, r, env, cur_bci(p, r.ip), 78);
         },
         79 => {
-            return crate::rarrays::op_invoke_at_put(m, r, env, bci, 79);
+            return crate::rarrays::op_invoke_at_put(m, r, env, cur_bci(p, r.ip), 79);
         },
         80 => {
-            return crate::rarrays::op_invoke_size(m, r, env, bci, 80);
+            return crate::rarrays::op_invoke_size(m, r, env, cur_bci(p, r.ip), 80);
         },
         42 => {
-            let c = p.code.at(bci + 1) as usize;
+            let c = r.ip.byte(1, &p.code) as usize;
             proof { assert(sp::step(ap, g) == sp::op_allocate(ap, g, c as int, 2)) by { reveal(sp::step); } }
-            return crate::rarrays::op_allocate(m, r, env, bci, 42, c, 2);
+            return crate::rarrays::op_allocate(m, r, env, cur_bci(p, r.ip), 42, c, 2);
         },
         43 => {
-            let c = code_u16(p, bci + 1);
+            let c = ip_u16(p, r.ip, 1);
             proof { assert(sp::step(ap, g) == sp::op_allocate(ap, g, c as int, 3)) by { reveal(sp::step); } }
-            return crate::rarrays::op_allocate(m, r, env, bci, 43, c, 3);
+            return crate::rarrays::op_allocate(m, r, env, cur_bci(p, r.ip), 43, c, 3);
         },
         89 => {
-            return crate::rarrays::op_primitive(m, r, env, bci, 89);
+            return crate::rarrays::op_primitive(m, r, env, cur_bci(p, r.ip), 89);
         },
         // Rare opcodes: the machine's handlers (`bridge`). INVOKE_LAMBDA_TAIL,
         // THROW, NON_LOCAL_RETURN, NON_LOCAL_BRANCH, TRY, UNWIND, HALT.
@@ -1624,7 +1665,7 @@ pub fn step_r(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
         lemma_local_post(p, w0, m.with(*r), c);
         if c == Ctl::Next { lemma_room_same(p, w0, m.with(*r)); }
     }
-    done(m, r, c)
+    done(m, r, c, p)
 }
 
 // ---------------------------------------------------------------------------

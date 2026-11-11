@@ -835,6 +835,86 @@ justification = "Ghost: the bytes may be written (a string or raw byte array out
 [[trusted]]
 crate = "core"
 file = "src/view.rs"
+item = "Cursor::byte"
+kind = "external_body"
+count = 1
+justification = "Reads byte ip@ + k of the bytecode table the instruction pointer belongs to (same sid), inside the table: the register form of Table::at on the bytecodes (TRUSTED.md section 1, Cursor)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Cursor::byte"
+kind = "unsafe"
+count = 1
+justification = "Dereference of a pointer into the immutable bytecodes, in bounds by the precondition (the cursor derived from the table by Table::cursor and offset)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Cursor::diff"
+kind = "external_body"
+count = 1
+justification = "Element distance of two cursors of the same view less than 2^28 elements apart: the pointer difference divided by the element size (exact: both point into one array or table)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Cursor::offset"
+kind = "external_body"
+count = 1
+justification = "Cursor arithmetic (wrapping pointer offset, never dereferenced by itself): the index moves by k; the view identity is kept."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Cursor::read"
+kind = "external_body"
+count = 1
+justification = "Reads element self@ + n of the stack view the cursor belongs to (same sid), inside the array: the register form of the old StackMem::read (TRUSTED.md section 1, Cursor)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Cursor::read"
+kind = "unsafe"
+count = 1
+justification = "Dereference of a pointer into the stack array, in bounds by the precondition (index inside the view's array, the cursor derived from that view by StackMem::slot and offset)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Cursor::sid"
+kind = "uninterp"
+count = 1
+justification = "Identity of the view a cursor was derived from: only StackMem::slot, Table::cursor (equal to the view's sid) and Cursor::offset (kept) produce cursors, so a cursor is usable only with the view it points into."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Cursor::view"
+kind = "uninterp"
+count = 1
+justification = "The element index a cursor points at (relative to its view): related to the pointer only by StackMem::slot, Table::cursor and Cursor::offset."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Cursor::write"
+kind = "external_body"
+count = 1
+justification = "Stores v into element self@ + n of the cursor's stack view (same sid), inside the array; the view's identity and header words are unchanged: the register form of the old StackMem::write."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Cursor::write"
+kind = "unsafe"
+count = 1
+justification = "Store through a pointer into the stack array, in bounds by the precondition (as Cursor::read)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
 item = "Globals"
 kind = "external_body"
 count = 1
@@ -1507,70 +1587,6 @@ justification = "Atomic relaxed load through the context's pointer to Interprete
 [[trusted]]
 crate = "core"
 file = "src/view.rs"
-item = "Slot::diff"
-kind = "external_body"
-count = 1
-justification = "Element distance of two cursors of the same stack view inside its index range: the pointer difference divided by the word size (exact: both point into one array, 0 <= o <= self < 2^16 elements)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Slot::offset"
-kind = "external_body"
-count = 1
-justification = "Cursor arithmetic (wrapping pointer offset, never dereferenced by itself): the index moves by k; the view identity is kept."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Slot::read"
-kind = "external_body"
-count = 1
-justification = "Reads element self@ + n of the stack view the cursor belongs to (same sid), inside the array: the register form of the old StackMem::read (TRUSTED.md section 1, Slot)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Slot::read"
-kind = "unsafe"
-count = 1
-justification = "Dereference of a pointer into the stack array, in bounds by the precondition (index inside the view's array, the cursor derived from that view by StackMem::slot and offset)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Slot::sid"
-kind = "uninterp"
-count = 1
-justification = "Identity of the stack view a cursor was derived from: only StackMem::slot (equal to the view's sid) and Slot::offset (kept) produce cursors, so a cursor is usable only with the view it points into."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Slot::view"
-kind = "uninterp"
-count = 1
-justification = "The array index a cursor points at (relative to its view): related to the pointer only by StackMem::slot and Slot::offset."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Slot::write"
-kind = "external_body"
-count = 1
-justification = "Stores v into element self@ + n of the cursor's stack view (same sid), inside the array; the view's identity and header words are unchanged: the register form of the old StackMem::write."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Slot::write"
-kind = "unsafe"
-count = 1
-justification = "Store through a pointer into the stack array, in bounds by the precondition (as Slot::read)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
 item = "StackMem"
 kind = "external_body"
 count = 1
@@ -1707,6 +1723,14 @@ justification = "Raw access of Table::at; in bounds by the external_body precond
 [[trusted]]
 crate = "core"
 file = "src/view.rs"
+item = "Table::cursor"
+kind = "external_body"
+count = 1
+justification = "The cursor at index i of a byte table (the bytecodes: the run loop's instruction pointer); wrapping address arithmetic, reads go through Cursor::byte, which requires the index in the table."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
 item = "Table::from_raw"
 kind = "plain_rust_item"
 count = 1
@@ -1727,6 +1751,14 @@ item = "Table::len"
 kind = "external_body"
 count = 1
 justification = "Trusted contract of Table::len (TRUSTED.md section 1)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Table::sid"
+kind = "uninterp"
+count = 1
+justification = "Identity of a table view (immutable while the program runs): the cursors into it carry it, so the instruction pointer is usable only with the bytecode table it was created from."
 
 [[trusted]]
 crate = "core"

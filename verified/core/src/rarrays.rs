@@ -219,7 +219,7 @@ pub fn binary_next_r(m: &mut Machine, r: &mut Regs, p: &Program, w: usize, Ghost
         sp::has_slot(old(m).g@, 1),
         w == enc(old(m).addr(), v),
         encodable(old(m).addr(), v),
-        old(r).bci + 1 < 0x1000_0000,
+        old(r).ip@ + 1 < 0x1000_0000,
     ensures
         rsame(*old(m), *final(m)),
         rnext(p, *final(m), *final(r), sp::binary_result(old(m).g@, v)),
@@ -229,7 +229,7 @@ pub fn binary_next_r(m: &mut Machine, r: &mut Regs, p: &Program, w: usize, Ghost
     proof { m0.lemma_at(p, 1); m0.lemma_frame(p); }
     r.sp.write(1, w, &mut m.mem);
     r.sp = r.sp.offset(1);
-    r.bci = r.bci + 1;
+    r.ip = r.ip.offset(1 as isize);
     let ghost g1 = sp::goto(sp::push(sp::drop(g0, 2), v), g0.bci + 1);
     m.g = Ghost(g1);
     proof {
@@ -259,7 +259,7 @@ pub fn put_result_r(m: &mut Machine, r: &mut Regs, p: &Program, w: usize, Ghost(
         sp::has_slot(old(m).g@, 2),
         w == enc(old(m).addr(), v),
         encodable(old(m).addr(), v),
-        old(r).bci + 1 < 0x1000_0000,
+        old(r).ip@ + 1 < 0x1000_0000,
     ensures
         rsame(*old(m), *final(m)),
         rnext(p, *final(m), *final(r), sp::next(sp::push(sp::drop(old(m).g@, 3), v), 1)),
@@ -269,7 +269,7 @@ pub fn put_result_r(m: &mut Machine, r: &mut Regs, p: &Program, w: usize, Ghost(
     proof { m0.lemma_at(p, 2); m0.lemma_frame(p); }
     r.sp.write(2, w, &mut m.mem);
     r.sp = r.sp.offset(2);
-    r.bci = r.bci + 1;
+    r.ip = r.ip.offset(1 as isize);
     let ghost g1 = sp::goto(sp::push(sp::drop(g0, 3), v), g0.bci + 1);
     m.g = Ghost(g1);
     proof {
@@ -299,7 +299,7 @@ pub fn put0_next_r(m: &mut Machine, r: &mut Regs, p: &Program, w: usize, Ghost(x
         sp::has_slot(old(m).g@, 0),
         w == enc(old(m).addr(), x),
         encodable(old(m).addr(), x),
-        old(r).bci + len < 0x1000_0000,
+        old(r).ip@ + len < 0x1000_0000,
     ensures
         rsame(*old(m), *final(m)),
         rnext(p, *final(m), *final(r), sp::next(sp::put(old(m).g@, 0, x), len as int)),
@@ -308,7 +308,7 @@ pub fn put0_next_r(m: &mut Machine, r: &mut Regs, p: &Program, w: usize, Ghost(x
     let ghost g0 = m.g@;
     proof { m0.lemma_at(p, 0); }
     r.sp.write(0, w, &mut m.mem);
-    r.bci = r.bci + len;
+    r.ip = r.ip.offset(len as isize);
     let ghost g1 = sp::goto(sp::put(g0, 0, x), g0.bci + len);
     m.g = Ghost(g1);
     proof {
@@ -332,7 +332,7 @@ pub fn put0_next_r(m: &mut Machine, r: &mut Regs, p: &Program, w: usize, Ghost(x
 pub fn settle(m: &mut Machine, r: Regs, env: &Env, c: Ctl, Ghost(w0): Ghost<Machine>) -> (res: (Regs, Ctl))
     requires step_post(&env.p, w0, *old(m), c),
     ensures
-        res.1 == Ctl::Next ==> final(m).rok(res.0) && steps_post(&env.p, w0, final(m).with(res.0), res.1)
+        res.1 == Ctl::Next ==> final(m).rok(res.0) && crate::regs::ipok(&env.p, res.0) && steps_post(&env.p, w0, final(m).with(res.0), res.1)
             && room_ok(&env.p, final(m).with(res.0)),
         res.1 != Ctl::Next ==> steps_post(&env.p, w0, *final(m), res.1),
 {
@@ -557,7 +557,7 @@ pub fn op_allocate(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode:
     let ghost w0 = m.with(*r);
     proof { assert(outcome_ok(ap, p.cert@, sp::step(ap, g))); }
     let len0 = m.len;
-    m.sync(*r);
+    m.sync(*r, &env.p);
     m.save();
     proof { lemma_saved(p, *m); }
     let w = gc_allocate_instance(m, env, c, Ghost(g));
@@ -603,7 +603,7 @@ fn alloc_oom(m: &mut Machine, r: Regs, env: &Env, Ghost(g): Ghost<State2>, Ghost
         w0.g@ == g,
         source(env.p.ap@, g, sp::unwind(env.p.ap@, g, Unwind::Throw(toit_spec::v2::prim::out_of_memory(env.p.ap@)))),
     ensures
-        res.1 == Ctl::Next ==> final(m).rok(res.0) && steps_post(&env.p, w0, final(m).with(res.0), res.1)
+        res.1 == Ctl::Next ==> final(m).rok(res.0) && crate::regs::ipok(&env.p, res.0) && steps_post(&env.p, w0, final(m).with(res.0), res.1)
             && room_ok(&env.p, final(m).with(res.0)),
         res.1 != Ctl::Next ==> steps_post(&env.p, w0, *final(m), res.1),
 {
@@ -631,7 +631,7 @@ pub fn ret_r(m: &mut Machine, r: &mut Regs, p: &Program, w: usize, Ghost(v): Gho
         !(sp::return_from(p.ap@, old(m).g@, v) is Stuck),
     ensures
         !b ==> *final(m) == *old(m) && *final(r) == *old(r),
-        b ==> final(m).rok(*final(r)) && final(m).with(*final(r)).refines(p)
+        b ==> final(m).rok(*final(r)) && ipok(p, *final(r)) && final(m).with(*final(r)).refines(p)
             && sp::return_from(p.ap@, old(m).g@, v) == Outcome2::Next(final(m).g@)
             && room_ok(p, final(m).with(*final(r))),
 {
@@ -681,7 +681,7 @@ pub fn ret_r(m: &mut Machine, r: &mut Regs, p: &Program, w: usize, Ghost(v): Gho
     r.sp = s;
     r.fp = r.end.offset(-(base as isize));
     r.fr = rec_;
-    r.bci = ret;
+    r.ip = p.code.cursor(ret);
     m.method = method;
     let ghost g1 = State2 {
         stack: g0.stack.subrange(0, sp::top(g0).base as int).push(v),
@@ -774,7 +774,7 @@ fn rust_primitive_r(m: &mut Machine, r: &mut Regs, env: &Env, index: u16, arity:
         cur_op(env.p.ap@, old(m).g@) == 89,
         sp::step(env.p.ap@, old(m).g@) == Outcome2::Primitive(old(m).g@, 0, index),
         arity == sp::frame_height(old(m).g@),
-        old(r).bci + 4 < 0x1000_0000,
+        old(r).ip@ + 4 < 0x1000_0000,
     ensures
         res is None ==> *final(m) == *old(m) && *final(r) == *old(r),
         res matches Some(c) ==> rpost(&env.p, *old(m), *old(r), *final(m), *final(r), c),
@@ -786,6 +786,7 @@ fn rust_primitive_r(m: &mut Machine, r: &mut Regs, env: &Env, index: u16, arity:
     let ghost vs = prim_args(ap, g);
     proof {
         w0.lemma_frame(p);
+        crate::regs::lemma_bci(p, w0);
         lemma_rust_args(p, w0, arity);
         lemma_shape(p, g);
     }
@@ -813,7 +814,7 @@ fn rust_primitive_r(m: &mut Machine, r: &mut Regs, env: &Env, index: u16, arity:
             }
             // A return in a TRY, with finally records, or of the bottom
             // frame: on the machine.
-            m.sync(*r);
+            m.sync_b(*r, p);
             let c = m.do_return(env, w, Ghost(v@));
             proof { lemma_outcome_matches(p, w0, *m, c, o); }
             let (r2, c2) = settle(m, *r, env, c, Ghost(w0));

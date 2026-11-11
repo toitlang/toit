@@ -53,6 +53,9 @@ pub struct Table<T> {
 impl<T: Copy> Table<T> {
     pub uninterp spec fn view(&self) -> Seq<T>;
 
+    /// The identity of this view (the cursors into it carry it).
+    pub uninterp spec fn sid(&self) -> int;
+
     #[verifier::external_body]
     #[inline(always)]
     pub fn len(&self) -> (r: usize)
@@ -68,6 +71,18 @@ impl<T: Copy> Table<T> {
         ensures r == self@[i as int],
     {
         unsafe { *self.ptr.add(i) }
+    }
+}
+
+impl Table<u8> {
+    /// The cursor at index `i` (wrapping address arithmetic; reading
+    /// through it requires the index to lie in the table, `Ip::byte`).
+    #[verifier::external_body]
+    #[inline(always)]
+    pub fn cursor(&self, i: usize) -> (r: Ip)
+        ensures r@ == i, r.sid() == self.sid(),
+    {
+        Cursor { ptr: self.ptr.wrapping_add(i) as *mut u8 }
     }
 }
 
@@ -146,7 +161,7 @@ impl StackMem {
         requires i <= self@.len(),
         ensures r@ == i, r.sid() == self.sid(),
     {
-        Slot { ptr: self.array.wrapping_add(i) }
+        Cursor { ptr: self.array.wrapping_add(i) }
     }
 
     #[inline(always)]
@@ -225,23 +240,65 @@ impl StackMem {
     }
 }
 
-/// A cursor into the array of a stack view: a pointer to element `self@`
-/// of the view with identity `sid()`. The run loop keeps the object-stack
-/// top, the top frame's limit and the record tops in cursors (registers),
-/// so that a slot access is one load relative to the top. Arithmetic on a
-/// cursor is plain address arithmetic (wrapping, never dereferenced out of
-/// bounds); reads and writes require the index to lie in the array of the
-/// view the cursor belongs to (`StackMem::slot`).
+/// A cursor into the elements of a view: a pointer to element `self@` of
+/// the view with identity `sid()`. The run loop keeps the object-stack top,
+/// the top frame's limit, the frame top and the array end (`Slot`, into a
+/// `StackMem`) and the instruction pointer (`Ip`, into the bytecodes) in
+/// cursors (registers), so that a slot access or an operand fetch is one
+/// load relative to a register. Arithmetic on a cursor is plain address
+/// arithmetic (wrapping, never dereferenced by itself); reads and writes
+/// require the index to lie in the view the cursor belongs to (cursors are
+/// created only by `StackMem::slot` and `Table::<u8>::cursor`).
 #[derive(Clone, Copy)]
-pub struct Slot {
-    ptr: *mut usize,
+pub struct Cursor<T> {
+    ptr: *mut T,
 }
 
-impl Slot {
+/// A cursor into the stack array.
+pub type Slot = Cursor<usize>;
+
+/// A cursor into the bytecodes: the instruction pointer.
+pub type Ip = Cursor<u8>;
+
+impl<T> Cursor<T> {
     pub uninterp spec fn view(&self) -> int;
 
     pub uninterp spec fn sid(&self) -> int;
 
+    /// The cursor `k` elements further (negative: towards index 0).
+    #[verifier::external_body]
+    #[inline(always)]
+    pub fn offset(self, k: isize) -> (r: Cursor<T>)
+        ensures r@ == self@ + k, r.sid() == self.sid(),
+    {
+        Cursor { ptr: self.ptr.wrapping_offset(k) }
+    }
+
+    /// The number of elements from `o` to `self` (cursors of the same view,
+    /// less than 2^28 elements apart).
+    #[verifier::external_body]
+    #[inline(always)]
+    pub fn diff(self, o: Cursor<T>) -> (r: usize)
+        requires self.sid() == o.sid(), 0 <= o@ <= self@, self@ - o@ < 0x1000_0000,
+        ensures r == self@ - o@,
+    {
+        ((self.ptr as usize).wrapping_sub(o.ptr as usize)) / core::mem::size_of::<T>()
+    }
+}
+
+impl Cursor<u8> {
+    /// Byte `self@ + k` of the table (the bytecodes).
+    #[verifier::external_body]
+    #[inline(always)]
+    pub fn byte(self, k: usize, t: &Table<u8>) -> (r: u8)
+        requires self.sid() == t.sid(), 0 <= self@ + k < t@.len(),
+        ensures r == t@[self@ + k],
+    {
+        unsafe { *self.ptr.wrapping_add(k) }
+    }
+}
+
+impl Cursor<usize> {
     /// Element `self@ + n` of the view.
     #[verifier::external_body]
     #[inline(always)]
@@ -263,26 +320,6 @@ impl Slot {
             forall|w: usize| #[trigger] final(mem).hdr(w) == old(mem).hdr(w),
     {
         unsafe { *self.ptr.wrapping_add(n) = v }
-    }
-
-    /// The cursor `k` elements further (negative: towards index 0).
-    #[verifier::external_body]
-    #[inline(always)]
-    pub fn offset(self, k: isize) -> (r: Slot)
-        ensures r@ == self@ + k, r.sid() == self.sid(),
-    {
-        Slot { ptr: self.ptr.wrapping_offset(k) }
-    }
-
-    /// The number of elements from `o` to `self` (cursors of the same view,
-    /// both inside its index range).
-    #[verifier::external_body]
-    #[inline(always)]
-    pub fn diff(self, o: Slot) -> (r: usize)
-        requires self.sid() == o.sid(), 0 <= o@ <= self@ < MAX_STACK_LENGTH,
-        ensures r == self@ - o@,
-    {
-        ((self.ptr as usize).wrapping_sub(o.ptr as usize)) / WORD_SIZE
     }
 }
 

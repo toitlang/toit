@@ -102,7 +102,7 @@ pub fn push_call(m: &mut Machine, r: &mut Regs, p: &Program, target: usize, info
     let nf = f.offset(FRAME_WORDS as isize);
     r.fr = nf;
     r.fp = fp;
-    r.bci = info.entry as usize;
+    r.ip = p.code.cursor(info.entry as usize);
     m.method = target;
     let ghost fr = Frame { method: target, ret: ret, base: base };
     let ghost g1 = State2 { frames: g0.frames.push(fr), bci: info.entry as usize, ..g0 };
@@ -272,7 +272,7 @@ pub fn op_return(m: &mut Machine, r: &mut Regs, env: &Env, w: usize, Ghost(v): G
     r.sp = s;
     r.fp = r.end.offset(-(base as isize));
     r.fr = rec_;
-    r.bci = ret;
+    r.ip = p.code.cursor(ret);
     m.method = method;
     let ghost g1 = State2 {
         stack: g0.stack.subrange(0, sp::top(g0).base as int).push(v),

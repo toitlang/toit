@@ -120,7 +120,7 @@ pub fn regain(m: &mut Machine, env: &Env, len0: usize, Ghost(m0): Ghost<Machine>
         m0.rtop == m0.ftop,
         old(m).g@.fins.len() <= m0.g@.fins.len(),
     ensures
-        res matches Some(r) ==> final(m).rok(r) && final(m).with(r) == *final(m)
+        res matches Some(r) ==> final(m).rok(r) && crate::regs::ipok(&env.p, r) && final(m).with(r) == *final(m)
             && final(m).inv(&env.p) && room_ok(&env.p, *final(m)) && final(m).g == old(m).g,
 {
     if m.len < len0 {
@@ -132,7 +132,7 @@ pub fn regain(m: &mut Machine, env: &Env, len0: usize, Ghost(m0): Ghost<Machine>
         proof { lemma_room_same(&env.p, m0, *m); }
     }
     proof { assert(m0.g@.fins.len() == 0); assert(m.g@.fins.len() == 0); }
-    Some(m.regs())
+    Some(m.regs(&env.p))
 }
 
 /// Re-establishes `room_ok` (cold: after a GC that shrank the stack, a task

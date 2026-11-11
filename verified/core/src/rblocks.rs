@@ -72,7 +72,7 @@ pub fn op_load_block(m: &mut Machine, r: &mut Regs, p: &Program, k: usize) -> (c
     requires
         rpre(p, *old(m), *old(r)),
         !(sp::op_load_block(old(m).g@, k as int) is Stuck),
-        old(r).bci + 2 < 0x1000_0000,
+        old(r).ip@ + 2 < 0x1000_0000,
     ensures
         c == Ctl::Next,
         rsame(*old(m), *final(m)),
@@ -102,7 +102,7 @@ pub fn op_load_outer(m: &mut Machine, r: &mut Regs, p: &Program, k: usize) -> (c
     requires
         rpre(p, *old(m), *old(r)),
         !(sp::op_load_outer(old(m).g@, k as int) is Stuck),
-        old(r).bci + 2 < 0x1000_0000,
+        old(r).ip@ + 2 < 0x1000_0000,
     ensures
         c == Ctl::Next,
         rsame(*old(m), *final(m)),
@@ -118,7 +118,7 @@ pub fn op_load_outer(m: &mut Machine, r: &mut Regs, p: &Program, k: usize) -> (c
     proof { lemma_slot(&m0, p, i as int); }
     let x = r.end.offset(-((i + 1) as isize)).read(0, &m.mem);
     r.sp.write(0, x, &mut m.mem);
-    r.bci = r.bci + 2;
+    r.ip = r.ip.offset(2 as isize);
     let ghost g1 = sp::goto(sp::put(g, 0, g.stack[i as int]), g.bci + 2);
     m.g = Ghost(g1);
     proof {
@@ -140,7 +140,7 @@ pub fn op_store_outer(m: &mut Machine, r: &mut Regs, p: &Program, k: usize) -> (
     requires
         rpre(p, *old(m), *old(r)),
         !(sp::op_store_outer(old(m).g@, k as int) is Stuck),
-        old(r).bci + 2 < 0x1000_0000,
+        old(r).ip@ + 2 < 0x1000_0000,
     ensures
         c == Ctl::Next,
         rsame(*old(m), *final(m)),
@@ -163,7 +163,7 @@ pub fn op_store_outer(m: &mut Machine, r: &mut Regs, p: &Program, k: usize) -> (
     let s = r.sp.offset(1);
     s.write(0, x, &mut m.mem);
     r.sp = s;
-    r.bci = r.bci + 2;
+    r.ip = r.ip.offset(2 as isize);
     let ghost s1 = sp::drop(g, 2);
     let ghost g1 = sp::goto(sp::push(State2 { stack: s1.stack.update(i as int, sp::at(g, 0)), ..s1 }, sp::at(g, 0)), g.bci + 2);
     m.g = Ghost(g1);
@@ -201,7 +201,7 @@ pub fn op_load_outer_block(m: &mut Machine, r: &mut Regs, p: &Program, k: usize)
     requires
         rpre(p, *old(m), *old(r)),
         !(sp::op_load_outer_block(old(m).g@, k as int) is Stuck),
-        old(r).bci + 2 < 0x1000_0000,
+        old(r).ip@ + 2 < 0x1000_0000,
     ensures
         c == Ctl::Next,
         rsame(*old(m), *final(m)),
@@ -221,7 +221,7 @@ pub fn op_load_outer_block(m: &mut Machine, r: &mut Regs, p: &Program, k: usize)
     }
     let w2 = w - 2 * k;
     r.sp.write(0, w2, &mut m.mem);
-    r.bci = r.bci + 2;
+    r.ip = r.ip.offset(2 as isize);
     let ghost g1 = sp::goto(sp::put(g, 0, nv), g.bci + 2);
     m.g = Ghost(g1);
     proof {
@@ -338,7 +338,7 @@ pub fn replace_r(m: &mut Machine, r: &mut Regs, p: &Program, t: usize, info: V2M
     rr.write(FRAME_METHOD, t, &mut m.mem);
     r.sp = r.fp.offset(-(n as isize));
     m.method = t;
-    r.bci = info.entry as usize;
+    r.ip = p.code.cursor(info.entry as usize);
     let ghost nf = g0.frames.len() as int;
     let ghost g1 = State2 {
         stack: g0.stack.subrange(0, sp::base(g0)) + args,
@@ -596,7 +596,7 @@ pub fn op_load_global_dynamic(m: &mut Machine, r: &mut Regs, env: &Env, bci: usi
     }
     let v = m.globals.at(gi);
     r.sp.write(0, v, &mut m.mem);
-    r.bci = bci + 1;
+    r.ip = r.ip.offset(1);
     let ghost g1 = sp::goto(sp::put(g, 0, g.globals[gi as int]), bci + 1);
     m.g = Ghost(g1);
     proof {
@@ -643,7 +643,7 @@ pub fn op_store_global_dynamic(m: &mut Machine, r: &mut Regs, env: &Env, bci: us
     let v = at(m, r, 0);
     r.sp = r.sp.offset(2);
     m.globals.set(gi, v);
-    r.bci = bci + 1;
+    r.ip = r.ip.offset(1);
     let ghost s1 = sp::drop(g, 2);
     let ghost g1 = sp::goto(State2 { globals: s1.globals.update(gi as int, sp::at(g, 0)), ..s1 }, bci + 1);
     m.g = Ghost(g1);

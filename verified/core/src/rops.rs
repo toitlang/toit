@@ -67,7 +67,7 @@ pub fn rbinary_next(m: &mut Machine, r: &mut Regs, p: &Program, w: usize, Ghost(
         sp::has_slot(old(m).g@, 1),
         w == enc(old(m).addr(), v),
         encodable(old(m).addr(), v),
-        old(r).bci + 1 < 0x1000_0000,
+        old(r).ip@ + 1 < 0x1000_0000,
     ensures
         rnext(p, *final(m), *final(r), sp::binary_result(old(m).g@, v)),
         rsame(*old(m), *final(m)),
@@ -77,7 +77,7 @@ pub fn rbinary_next(m: &mut Machine, r: &mut Regs, p: &Program, w: usize, Ghost(
     proof { m0.lemma_at(p, 1); m0.lemma_frame(p); }
     r.sp.write(1, w, &mut m.mem);
     r.sp = r.sp.offset(1);
-    r.bci = r.bci + 1;
+    r.ip = r.ip.offset(1 as isize);
     let ghost g1 = sp::goto(sp::push(sp::drop(g0, 2), v), g0.bci + 1);
     m.g = Ghost(g1);
     proof {
@@ -368,7 +368,7 @@ pub fn arith_double(m: &mut Machine, r: Regs, env: &Env, bci: usize, opcode: u8,
     let ghost w0 = m.with(r);
     proof { assert(0 <= bci < ap.bytecodes.len()) by { lemma_instr(ap, p.cert@, p.trusted@, g); } }
     let len0 = m.len;
-    m.sync(r);
+    m.sync(r, &env.p);
     m.save();
     proof { crate::alloc::lemma_saved(p, *m); }
     let w = crate::alloc::gc_allocate_double(m, env, bits, Ghost(g));

@@ -85,7 +85,10 @@ registers (`regs::Regs`), the rest of the machine behind a pointer.
 - `Regs` holds stack cursors (`view::Slot`, a pointer into the Stack's
   array whose ghost index is `s@`) at the object-stack top (`sp`), the top
   frame's limit (`fp`), the frame-record top (`fr`) and the array end
-  (`end`), and the bci. It is a local of `run_loop`; inlined handlers take
+  (`end`), and the instruction pointer (`Ip`, a cursor into the bytecodes:
+  an operand is one load relative to it; the bci, an index, is computed
+  only where it is stored, for the return address of a call). It is a
+  local of `run_loop`; inlined handlers take
   it by `&mut` (its address never escapes, so LLVM keeps the fields in
   registers), out-of-line paths take and return it by value
   (`regs::set_regs` copies a returned value field by field). Everything
