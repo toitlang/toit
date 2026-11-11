@@ -286,14 +286,49 @@ the spec following the VM fixes of c5d7adec. No VM bug (see `VM-BUGS.md`).
 `-Xtrace` (on one scheduler thread) and on the interpreter with
 `--trace-bci`, and
 compares bci and opcode of every instruction of the program's process,
-skipping the system process's instructions in between (the program may
-only switch processes after a call, backward branch, primitive or yield,
-and must resume where the interpreter continues). It stops at the first
+skipping the system process's instructions in between (the VM prints a
+marker whenever a process leaves the interpreter, including on
+preemption; the program must resume where the interpreter continues, and
+any other mismatch is a divergence). It stops at the first
 branch on a primitive result that depends on the outside world
-(`task_has_messages` when the first system reply arrives). Compared:
-1,037,023 consecutive instructions of `tests/trace/sort.toit`, 159,856 of
-`maps.toit`, 230,449 of `control.toit`, 22,764 of `numbers.toit`
-(1,450,092 in total), no divergence.
+(`task_has_messages` when the first system reply arrives).
+
+Measured 2026-11-11 (debug build of `sandbox-integration` plus the fixes
+of `fixes/trace-and-debug`), steps compared up to that stop, no
+divergence:
+
+| Program (`tests/trace/`) | Format 1 (C++ interpreter) | Format 2 (core, checked loop) |
+|---|---|---|
+| `sort.toit` | 1,037,023 | 1,147,644 |
+| `control.toit` | 220,249 | 397,559 |
+| `maps.toit` | 159,856 | 467,701 |
+| `numbers.toit` | 22,764 | 40,721 |
+| total | 1,439,892 | 2,053,625 |
+
+The earlier figure (1,450,092, same numbers except `control.toit` with
+230,449) predates two changes. The hardened interpreter's hash-find
+intrinsic had stopped matching: it rejected the smi 0 of a free index slot
+as "null" and fell back to the Toit code at every insertion and miss (VM
+bug, fixed; `maps.toit` diverged in `rebuild-index_`, which the old
+switch-point heuristic misreported 28 steps later at step 563). And
+`control.toit`'s catch block used `it`, so it was a one-parameter block
+and every `catch` raised CODE_INVOCATION_FAILED instead of running
+`protected`; it now runs the intended throws and finally blocks.
+
+Format 2 (`--format 2`): the program runs on the verified core's checked
+run loop (no `-Xverify`), which prints `[<bci>] #<opcode>` per instruction
+under `-Xtrace` (the hook is `toit_v2_tracing`/`TOIT_V2_REPORT_TRACE`, see
+`src/interpreter_v2.h`; the core's half, a report per instruction in
+`run_checked`, is not in the core yet and the figures were measured with
+it applied), against `exec2.rs`. Two known differences are
+outside the spec's model: the core runs an instruction again after
+growing the stack (the tool skips the repeated line, 2-4 per program),
+and an exception the core raises (a failure, not a `throw`) carries an
+encoded stack trace where the spec's is null (format note 5,
+`format/PHASE4-REQUESTS.md` R2), so code that tests the trace of a caught
+failure (`catch`'s `if stack`) branches differently; the old
+`control.toit` diverged there. Format 2 executes more instructions on
+`maps.toit` because it has no hash-find instruction (R3).
 
 ### Spec test programs
 

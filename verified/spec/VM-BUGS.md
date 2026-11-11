@@ -8,7 +8,8 @@ suggested fix. Entries are for another agent to turn into upstream PRs.
 ## Summary
 
 The differential runs (269 runnable tests of the suite in two smi sizes,
-1.45 M consecutive bytecodes compared against the debug VM's trace) found
+1.45 M consecutive bytecodes compared against the debug VM's trace; see
+DESIGN.md for the 2026-11-11 figures) found
 **no new VM bug**: every discrepancy was in the reference interpreter's
 primitives or world emulation, and was fixed there. The two bugs the
 Phase 0 spec found (MIN_SMI / -1 in INVOKE_DIV and `smi_divide`, the
@@ -140,6 +141,18 @@ encoder-cyclic-array.toit` segfaults `toit run` (reproducer snapshot:
 encoder-cyclic-array-stack-overflow.snapshot). Fix: bound the nesting
 depth: https://github.com/toitlang/toit/pull/3374 (also fixes an
 over-read in `core.encode_object` when its 1 KB buffer overflows).
+
+## The hardened hash-find intrinsic bails out at every free slot (trace comparison)
+
+Found 2026-11-11 by `compare_trace.toit` on `tests/trace/maps.toit`.
+The interpreter hardening (6e7c3559, upstream draft #3365) checked an
+index entry with `hap == null || !is_smi(hap)` in `Interpreter::hash_find`
+(`src/interpreter_run.cc`). The smi 0 that marks a free index slot is
+the null pointer, so every probe that reached a free slot (every
+insertion, every miss) took the `kBail` path and ran the Toit fallback
+of `find-body_`. Results were unchanged, only slower: `maps.toit` ran
+447k bytecodes instead of 230k. Fixed on `fixes/trace-and-debug`
+(checks the `fast_at` result instead) and ported to #3365. Not on master.
 
 ## Observations (not bugs today)
 
