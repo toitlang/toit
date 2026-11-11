@@ -313,6 +313,27 @@ if [ "$RUN_TESTS" = 1 ]; then
     echo "SKIP: no riscv32-esp-elf-gcc (ESP-IDF toolchain)"
   fi
 
+  section "EC618 (thumbv7m): no panic paths, code generation (nopanic_check.sh, thumb_codegen_check.sh)"
+  if rustup target list --installed 2> /dev/null | grep -q '^thumbv7m-none-eabi$' \
+      && { [ -x "${EC618_GCC_PATH:-/nonexistent}/bin/arm-none-eabi-gcc" ] \
+           || ls "$HOME"/.xmake/packages/g/gnu_rm/*/*/bin/arm-none-eabi-gcc > /dev/null 2>&1 \
+           || command -v arm-none-eabi-gcc > /dev/null; }; then
+    if ! NOPANIC_ARCH=arm "$VERIFIED/vmverify/tests/nopanic_check.sh" > "$LOGS/nopanic-arm.log" 2>&1; then
+      cat "$LOGS/nopanic-arm.log"
+      fail "device library links panic machinery on thumbv7m (nopanic_check.sh)"
+    else
+      grep -E '^no panic paths' "$LOGS/nopanic-arm.log"
+    fi
+    if ! "$VERIFIED/vmverify/tests/thumb_codegen_check.sh" > "$LOGS/thumb-codegen.log" 2>&1; then
+      cat "$LOGS/thumb-codegen.log"
+      fail "thumbv7m code generation (thumb_codegen_check.sh)"
+    else
+      grep -E '^thumb codegen ok' "$LOGS/thumb-codegen.log"
+    fi
+  else
+    echo "SKIP: no thumbv7m-none-eabi Rust target or no arm-none-eabi-gcc"
+  fi
+
   section "Sandbox ctests"
   if [ -f "$BUILD_DIR/CTestTestfile.cmake" ] && [ -x "$BUILD_DIR/sdk/bin/toit" ]; then
     # tests/sandbox/CMakeLists.txt finds the tests with file(GLOB) at
