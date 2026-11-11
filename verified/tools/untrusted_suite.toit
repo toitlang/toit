@@ -21,7 +21,8 @@ run_suite.toit classifies every test of the suite
   `pass` or `steplimit` uses only primitives the reference interpreter
   implements (the allowed set). Each of them runs
 
-- in format 1, trusted, on the C++ interpreter (`toit.run test`), and
+- in format 1, trusted, on the C++ interpreter (`toit.run
+  -Xbytecode_format=1 test`), and
 - in format 2, as an untrusted container on the verified core
   (`toit.run --untrusted test`, which compiles to format 2),
 
@@ -82,7 +83,8 @@ untrusted-suite invocation/cli.Invocation -> int:
   if filter: selected = selected.filter: it.contains filter
   make-dirs out
   outcomes := parallel-map selected --jobs=invocation["jobs"]:: | test |
-    r1 := run ([toit-run, test] + TEST-ARGS) --timeout-s=300 --environment=ENVIRONMENT
+    // Format 1 explicitly: format 2 is the default since docs/format2-migration.md.
+    r1 := run ([toit-run, "-Xbytecode_format=1", test] + TEST-ARGS) --timeout-s=300 --environment=ENVIRONMENT
     r2 := run ([toit-run, "--untrusted", test] + TEST-ARGS) --timeout-s=300 --environment=ENVIRONMENT
     [r1, r2]
   results := []
