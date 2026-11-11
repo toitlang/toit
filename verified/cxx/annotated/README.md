@@ -100,11 +100,14 @@ tool never guesses):
 | `@expand-typedef T` | the typedef written as the type it stands for on the rendering's target (`uhalf_word`: unsigned int on LP64, unsigned short on ILP32) |
 | a default argument (`CXXDefaultArgExpr`) | its value written out; literals only (the expression is spelled in the callee's file) |
 | a call of an `@overloaded` member | named by the declared parameter types of the member it refers to (in its class or out of line), not by the argument types (which differ per target: a literal is `int` = `word` on ILP32) |
-| `@render ... truncating` | an implicit word-to-int conversion is VeriFast's truncating cast (the modular conversion GCC and Clang define and C++20 standardizes); only for code that checks the round trip (the int arguments of ARGS). Also uword-to-word and uint64-to-int64 (the decoder's cardinals: `word length = read_cardinal()`, checked for the sign and against what is left). VeriFast knows nothing of the value of such a cast (not even `0` to `0`: `truncate_zero` in the decoder), so the code must check it |
+| `@render ... truncating` | an implicit word-to-int conversion is VeriFast's truncating cast (the modular conversion GCC and Clang define and C++20 standardizes); only for code that checks the round trip (the int arguments of ARGS). Also uword-to-word and uint64-to-int64 (the decoder's cardinals: `word length = read_cardinal()`, checked for the sign and against what is left), and uword-to-int (wave 4: decode_rpc_request_external's `*id = read_cardinal()`). VeriFast knows nothing of the value of such a cast by itself; `truncate_signed_id` (model/truncate.gh, wave 4, proved with Z3) gives it for a value in the target's range |
 | `switch (c) { case V: ... default: ... }` | written as is: the labels (values from the constant table), a label's statement and the statements up to the next label, fall-through, `break` |
 | `a op= b` whose computation type is not a's (`cursor_ += sizeof(uint32)`: an unsigned long sum for a word) | `a = (A)((C)a op b)`: the conversions C++ makes, written; `a` must be a variable or a field chain (evaluated twice) |
 | `@modular-arguments C::C` | the implicit integral conversion of a constructor argument to an unsigned parameter is VeriFast's truncating cast (the modular conversion C++ defines; HeapTagScope's custom tags are negative numbers in a uword) |
 | Clang's `__size_t` (the type of sizeof) | `size_t` |
+| `do S while (false)` (a macro's statement wrapper: INT64_VALUE_OR_WRONG_TYPE of ARGS) | `{ S }`; an error when a break or continue of S would leave the do |
+| `@render ... truncating`, an explicit `static_cast` narrowing a signed integer (`static_cast<time_t>(int64)` on a 32-bit time_t; Clang's NoOp over an IntegralCast for a typedef) | VeriFast's truncating cast (for code that checks the round trip) |
+| an object of a struct spelled with its tag (`struct tm tm;`, a C header's struct) | `struct tm tm; tm_ctor(&tm);` (the constructor named by the tag) |
 
 Each rule added after the pilot has a self-test in `tests/rules.cc` and
 `tests/rules.render` (rendered, compared with the committed
@@ -144,10 +147,11 @@ gives. Not proposed; reporting the front end's missing casts upstream is.
 
 ## Status
 
-`run.sh`: 10 sidecars (one the translator's self-test), 169 rendered functions (19 contract-only), proved
-for LP64 and ILP32; 29 reverted-bug or contract mutants and 2 drift tests;
-111 checks, about 570 CPU-seconds (65 s wall on 16 loaded cores; each
-proof 0.1-4 s, the encoder 8 s, the decoder 9-17 s). Lines: `metrics.sh` (C++ = the
+`run.sh`: 11 sidecars (one the translator's self-test), 189 rendered functions (24 contract-only), proved
+for LP64 and ILP32; 41 reverted-bug or contract mutants (one of them
+ILP32 only, its check dead on LP64) and 2 drift tests; about 140 checks
+(each proof 0.1-4 s, the encoder 8 s, the decoder 10-40 s and time_info
+25-45 s on loaded cores). Lines: `metrics.sh` (C++ = the
 rendered functions' lines; annotations among them; then the hand-written C
 and annotations of the verbatim sections: trusted prototypes, predicates,
 lemmas).
@@ -158,9 +162,10 @@ lemmas).
 | Blob decoding (`blob/byte_content.render`) | Object::byte_content (the recursive 5-argument one, the 4-argument one, the Blob one), Blob ctor | verified: a successful result lies in the content of ONE live string or byte array (internal, or raw external: never a proxy's struct), a string for STRINGS_ONLY; recursion depth bounded by MAX_BYTE_CONTENT_DEPTH; heap read-only | the program's class-id roots (contract only) | 65 / 30 / 1 / 0 | 357d1127 (#3373): without the depth limit the recursive call fails at `depth + 1 <= 8`; without the slice's `to <= length`: the pointer leaves the blob |
 | MutableBlob decoding (`blob/mutable_byte_content.render`) | Object::mutable_byte_content (5-argument, 4-argument, MutableBlob), MutableBlob ctor; model: Instance::at_put (with the heap update), HeapObject::_at_put, on_program_heap, heap growth and blob hole lemmas | verified: a successful result lies in the content of ONE live byte array (internal or raw external) outside the program heap; the heap only grows (the copy-on-write branch allocates, copies the immutable content with a legal memcpy and stores the new backing and `true`); recursion bounded | the allocator (`Process::allocate_byte_array`: a fresh byte array of the asked length outside the program heap, nothing else changed), `Process::on_program_heap` (an address range: `in_program_heap`), the true object is a heap object, the write barrier (card table outside the model), Error::from and the error roots | 76 / 54 / 4 / 2 | 357d1127 reverted here too: the recursive call; without the program-heap check: `in_program_heap == false`; without the external tag check (both decoders): `blob_ok` |
 | Message encoder (`encoder/`) | encode_any (all branches), encode_array, encode_list, encode_map, encode_copy (inline, out-of-line copy with its malloc and terminator), encode_byte_array (transfer, deduplication), reserve_external, is_too_large, size, total_size, encoding_for_size, encoding_tison, the writers write_uint8/cardinal/pointer/uint32/uint64, TisonEncoder::encode and payload_size, NestingTracker ctor/dtor; the cardinal's byte bound (`cardinal.c`, Z3) | verified: memory safety (reads inside objects, blob copies inside the blob found by the proven byte_content, writes inside the buffer, the tables copied_/transferred_ written below MESSAGING_ENCODING_MAX_EXTERNALS), no overflow or lossy conversion on either width (cursor_ + external_bytes_ stays below the limit plus ENC_SLACK = 32), heap read-only | **ONE assumption: `two_pass_room`** (below); contract only: `Utils::is_valid_utf_8` (reads the bytes given), `Process::policy`, `PrimitivePolicy::restricts_messaging`, HeapTagScope, `ByteArray::has_owned_external_memory` (trusted rendering), the program's class-id roots, `bit_cast`; the malloced copies are leaked into the table (ownership not modelled) | 334 / 230 / 51 / 116 | f708ad5d: count (underflow at `to - from`), read past the backing (loop bound), map past the backing; the 32-bit size fix weakened in encode_copy and in the transfer (the size bound fails; on ILP32 the sum overflows); one reservation too many (the table bound fails); the terminator read from the content (memcpy past the blob) |
-| Message decoder (`decoder/`) | TisonDecoder::decode (tison_decode's untrusted input), MessageDecoder::decode (IPC), decode_any (the switch, every tag), decode_string, decode_byte_array (both inline: copies; out of line: IPC blocks), decode_array, decode_map, decode_double, decode_large_integer, read_uint8/cardinal/uint32/uint64/pointer, register_external, success, decoding_tison, overflown, remaining, externals_count, mark_malformed, mark_allocation_failed, NestingTracker; the digits' bound (`radix.c`, Z3); model: Array::at_put, Instance::at_put(Smi*), Smi::zero, the allocator's contracts | verified: for any input bytes (TISON) every read is inside the input (past the end the readers return 0), the cursor stays below the length + 16 on both widths, every length is checked against what is left before the copy or the allocation of that size (`length <= cap - c`, asserted), the recursion is bounded (64), a cardinal fits the word, the externals table is written below its bound (the FATAL), the heap only grows (new objects; the new array's elements and the map's fields written), a success is a good reference and TISON consumed its input exactly; a failure leaves a well-formed heap | TISON: none beyond the model and the allocator; IPC: **two named assumptions, `ipc_room` and `ipc_external`** (below); contract only: the allocator (CONTRACTS.toml, C++-only contracts), `Utils::is_valid_utf_8`, `bit_cast`, `fail`, `Array::max_length_in_process`, `Smi::from` (now trusted: the modular shift of a negative value) | 281 / 274 / 31 / 133 | ten checks taken out, each rejected on both widths: the length checks before the inline string and byte-array copies, before the array and map allocations, the nesting limit (#3362), the fixed-size readers' bound, read_cardinal's word-size check (#3362) and digit check (new), the externals table bound |
+| Message decoder (`decoder/`) | TisonDecoder::decode (tison_decode's untrusted input), MessageDecoder::decode (IPC), decode_any (the switch, every tag), decode_string, decode_byte_array (both inline: copies; out of line: IPC blocks), decode_array, decode_map, decode_double, decode_large_integer, decode_integer (wave 4: canonical integers), decode_external_data and decode_rpc_request_external (wave 4: the external message handlers; the data handed out is an out-of-line block of the message or a malloced copy, `ext_data`), read_uint8/cardinal/cardinal_64/uint32/uint64/pointer, register_external, success, decoding_tison, overflown, remaining, externals_count, mark_malformed, mark_allocation_failed, NestingTracker; the digits' bound (`radix.c`, Z3); model: Array::at_put, Instance::at_put(Smi*), Smi::zero, the allocator's contracts | verified: for any input bytes (TISON) every read is inside the input (past the end the readers return 0), the cursor stays below the length + 16 on both widths, every length is checked against what is left before the copy or the allocation of that size (`length <= cap - c`, asserted), the recursion is bounded (64), a cardinal fits 64 bits and a length the word, integers are canonical (a large integer only outside the smi range: the allocator contract requires it), the externals table is written below its bound (the FATAL), the heap only grows (new objects; the new array's elements and the map's fields written), a success is a good reference and TISON consumed its input exactly; a failure leaves a well-formed heap | TISON: none beyond the model and the allocator; IPC: **two named assumptions, `ipc_room` and `ipc_external`** (below); contract only: the allocator (CONTRACTS.toml, C++-only contracts), `Utils::is_valid_utf_8`, `bit_cast`, `fail`, `Array::max_length_in_process`, `Smi::from` (now trusted: the modular shift of a negative value), `Smi::is_valid` (a template: contract only) | 360 / 322 / 35 / 149 | seventeen checks taken out, each rejected on both widths unless noted: the length checks before the inline string and byte-array copies, before the array and map allocations, the nesting limit (#3362), the fixed-size readers' bound (read_uint64; read_uint8 in the header), read_cardinal_64's size check (#3362) and digit check (wave 3), read_cardinal's word check (ILP32 only: dead on LP64), the two smi magnitude checks and decode_integer's smi range check, decode_external_data's two inline length checks (wave 4), the externals table bound |
 | Stack growth (`grow/`) | toit_v2_grow_stack, v2_process, Stack::v2_copy_to | verified against gc_grow_stack (no precondition on `needed`: the C++ checks it) | v2_gc (preserves the abstraction), allocate_stack, Stack header accessors, Task::stack/set_stack, max_length (contract only) | 93 / 72 / 17 / 86 | the bound check taken out: fails at the cast; with the cast exact: at the sum |
 | Primitive `string_write_to_byte_array` (`prims/`) | the primitive with the ARGS/FAIL expansion (Blob and MutableBlob decoding by the proven byte_content / mutable_byte_content, word arguments), Blob/MutableBlob constructors and accessors | verified: the primitive heap contract in VeriFast terms (the heap only grows, objects keep class, length and external address), the copy inside the two contents (source: a string or byte array; destination: a writable byte array outside the program heap; the source range survives the destination's copy-on-write), legal memmove | none beyond the model and blob units | 21 / 59 / 7 / 22 | af4ba7ab: memcpy fails at its precondition; verifies with the two byte arrays assumed distinct |
+| Primitive `time_info` (`prims/time_info.render`, wave 4) | the primitive with the ARGS expansion (int64 and bool), floor_div, floor_mod, is_leap_year, days_from_civil, weekday_from_days, utc_fields, os_localtime, equivalent_year, local_fields, Smi::is_valid32; model: Array::at_put(Smi*) | verified: for every int64 timestamp no signed overflow and no lossy conversion (coarse bounds of every step, lemmas per step so that the proof sees bounds, not division equations), every stored field a smi, the primitive heap contract; not the correctness of the dates | the C library's `localtime_r` (fields in their C11 ranges), memset of the struct, the implicit constructors (do nothing), `Process::false_object`, `fail` (UNREACHABLE) | 135 / 72 / 32 / 109 | the red-team round 4 overflow reverted (`days * SECONDS_PER_DAY` underflows); local_fields without its year check (the shift overflows); the primitive without its year check (not a smi; on ILP32 the conversion to word) |
 | Primitive bitmap `byte_zap` (`prims/byte_zap.render`) | the primitive with the ARGS expansion (MutableBlob by the proven decoder; the int argument with its round-trip check, `truncating`), MutableBlob ctor and accessors | verified: the primitive heap contract, the memset covers exactly the destination's range in a writable byte array, a smi result | `Primitive::return_not_a_smi` (an error value) | 11 / 18 / 7 / 3 | one byte past the end: the memset fails |
 | UTF-8 (`utf8/`) | Utils::utf_8_to_16, bytes_in_utf_8_sequence, payload_from_prefix | verified (Z3) | none | 57 / 26 / 1 / 84 | 07c24665: UB shift at payload_from_prefix; without the length check: the read past the input |
 | Rust raw memory (`rust/`) | view.rs: string_len, string_byte; trial: field, array_length, element | verified (VeriFast Rust, host) | predicates over the words (bridge `heap`) | — | `i <= len` fails at the read |
@@ -171,12 +176,37 @@ Not attempted, in order of exposure, with what blocks each:
 |---|---|---|
 | the two-pass assumption of the encoder, proved | a ghost encoding function (fixpoint over the heap and the encoder state: cursor, externals, transfers, the early stops) shown to be what both passes compute, the write pass ahead by TISON's payload cardinal | 5-7 days |
 | take_buffer, the destructor, encode_bytes_external, encode_rpc_reply_external, encode_arguments, encode_bundles | trusted callers (C or the boot), not reachable with untrusted data; the copied_ table would need its ownership modelled (the malloced copies) | 1-2 days |
-| the decoder's callers: tison_decode (the Blob argument is the content of a heap object, which the allocations must not touch: the allocator's contracts over `heap_holes`), task_receive_message, main_arguments, spawn_arguments (the externals' ownership when an allocation fails: remove_disposing_finalizers clears the finalizer bits, a header change the model's `grows` excludes; a malformed message is treated as decoded, "Findings"), decode_external_data/decode_rpc_request_external (ExternalSystemMessageHandler: `int` truncations of cardinals, the inline copy's length unchecked against the message), deallocate | the holes form of the allocator's contracts; the finalizer bit in the model; the message's blocks as a ghost list shared with the encoder | 2-3 days |
+| the decoder's callers: tison_decode (the Blob argument is the content of a heap object, which the allocations must not touch: the allocator's contracts over `heap_holes`), task_receive_message, main_arguments, spawn_arguments (the externals' ownership, below), deallocate, ExternalSystemMessageHandler::run (decode_external_data and decode_rpc_request_external are proved, wave 4) | the holes form of the allocator's contracts; the ownership model (below); the decoder's constructors (a delegating constructor and default member initializers: a translator rule) | 2-3 days |
 | the IPC assumptions (`ipc_room`, `ipc_external`), proved | the encoder's ghost encoding (the two-pass assumption's) as the decoder's input: decoding it reads what the encoding wrote | with the two-pass proof, 3-4 days more |
 | ProgramOrientedEncoder / EncodeVisitor (encode_error, encoder.cc) | the object encoder's buffer (bounded, no two-pass), the program model (class names, method tables) for the trace | 4-5 days |
 | toit_v2_allocate_instance/double/array/exception (interpreter_v2.cc), the epoch | `v2_allocate` takes a lambda: a rendering rule for closures (a struct of the captures and a function); the clauses are in CONTRACTS.toml, Verus side checked | 2-3 days |
 | toit_v2_call_primitive, toit_v2_lookup_primitive (after core/trusted-integration's leaner call) | non-constant globals (`Flags::primitives`), the policy table, the retry loop around the GC | 2-3 days |
+| Utils::is_valid_utf_8 (contract only in the encoder and the decoder; reads the bytes given) | per-target code (`#ifdef BUILD_64`: a 64-bit state machine over a 2 KB table, else two tables and an int32 state): constants with per-target types in the one constant table; the tables are mutable globals (VeriFast global array chunks); the word-at-a-time load from a byte range (`*reinterpret_cast<const uword*>`: uchars to an integer chunk) and the pointer alignment (`is_aligned`, a template on a pointer) | 1 day |
 | the other C++ primitives of the untrusted set (35 core + bitmap blit + timers/events; docs/sandbox-primitive-audit.md) | blob-only ones (crc, string_to_utf_16, utf_16_to_string, byte_array_convert_to_string): ARGS is proven, an allocation contract per result kind (strings, byte arrays); task/message/timer ones: the scheduler calls get stated contracts | 0.5-1 day each |
+
+### The externals' ownership (design; not done)
+
+The callers of the IPC decoder (task_receive_message, main_arguments,
+spawn_arguments) hand the out-of-line blocks of a message to the decoded
+objects (their finalizer frees the block), take them back on an
+allocation failure (remove_disposing_finalizers: the message is retried
+and still owns everything), and on success free only the buffer
+(free_data_but_keep_externals). The leak of wave 3 was the malformed
+path, delivered as decoded. A proof needs: (1) a message predicate
+`msg(b, cap, lent)` (the buffer, and the blocks not lent to objects),
+opened by an assumption at the decoder's construction (the buffer is an
+encoder message: `ipc_msg`); (2) `lent(o)` tokens from
+allocate_external_* (instead of `leak msg_block`) recorded with the
+externals table in `dec`; (3) clear_has_active_finalizer giving a token
+back (a header change: the finalizer bit outside `o_hw`, or a weaker
+`grows`); (4) free_data_but_keep_externals requiring every block lent
+(on success: an assumption `ipc_complete`, the encoder/decoder agreement
+again) and remove_first_message/deallocate requiring none lent. The
+malformed path then fails the proof as it is; the fix (drop the message
+after remove_disposing_finalizers, deallocating all of it) is a draft
+(Upstream candidates) and was not applied unproved. Estimate 1-2 days,
+plus the decoder's constructors (a translator rule for a delegating
+constructor and default member initializers).
 
 ### The two-pass assumption
 
@@ -249,6 +279,67 @@ of #3378, malformed system messages of #3381) become mutants with them.
 
 ## Findings
 
+Wave 4:
+
+* **TISON integers were not portable between 64 and 32 bits** (wave 3's
+  finding 3, FIXED here, src/messaging.cc; 1d19379a). A 64-bit VM writes
+  smi tags up to 2^62, which a 32-bit VM rejected above 2^30
+  (WRONG_OBJECT_TYPE: a millisecond timestamp in an asset), and a 32-bit
+  VM writes large integers that a 64-bit VM decoded as non-canonical large
+  integers in its smi range (equal, not identical, encoded again as large
+  integers). Fix: the smi tags' magnitude is read with 64 bits on both
+  widths (read_cardinal_64; read_cardinal checks that a length fits the
+  word) and decode_integer makes every integer canonical: a smi whenever
+  the value is in this VM's smi range, else a large integer (int.MIN only
+  with the large-integer tag). Proof: the allocator's large-integer
+  contract now requires a value outside the smi range (clause `canonical`,
+  CONTRACTS.toml), mutant decoder-integer-canonical. Tests:
+  tests/tison-integer-width-test.toit (host and host32: fails without the
+  fix on both), tests/tison-test.toit updated (2^62 with a smi tag is now
+  an integer). Upstream master: the same decoder (smi tags read as words,
+  large integers allocated as they are).
+* **decode_process_message decoded any message without a process** (wave
+  3's finding 4, made SAFE here; 1d19379a). Not provably unreachable (any
+  unrestricted process can send a TERMINATED system message with any
+  content; the window, no boot process, is empty in practice), so it now
+  reads only an integer in the range of `int` and refuses everything else
+  before decoding it. Reproducer and regression test:
+  tests/ctest/message-process-message-test.cc (crashes without the fix:
+  null, strings, arrays and large integers dereferenced the missing process
+  or program). Upstream master: the same code (`decoder.decode()` with a
+  null process, "TODO(kasper): Make this more robust").
+* **time_info: signed overflow near INT64_MIN** (red-team round 4, FIXED
+  and PROVED here, src/primitive_core.cc utc_fields). The seconds of the
+  day were `timestamp - days * SECONDS_PER_DAY` with `days` rounded down:
+  for the timestamps of the last partial day above INT64_MIN the product is
+  below INT64_MIN (undefined behaviour, UBSan flags it; release builds
+  wrapped and then threw OUT_OF_RANGE for the year). Reachable by an
+  untrusted program calling the primitive directly. Fix: floor_mod. The
+  primitive and its whole calendar are now proved free of overflow and
+  lossy conversion for every int64 on both widths (`prims/time_info`); the
+  proof found no other overflow (local_fields' year check is what keeps its
+  shift in range: mutant time-info-local-year). Regression test:
+  tests/time-info-range-test.toit (the window's timestamps; meaningful
+  under UBSan, the proof is the guard in release builds). Upstream master:
+  not affected (utc_fields is this branch's, 431ceaf8; upstream's time_info
+  calls gmtime_r/localtime_r and returns uninitialized fields when they fail,
+  fixed here by 637498d3). If 431ceaf8 goes upstream, the fix goes with it.
+* **decode_external_data: the inline length was unchecked** (hardened here,
+  src/messaging.cc; latent). The external message handlers' decoder read
+  the length of inline byte arrays and strings into an `int` without a
+  check: a cardinal above INT_MAX became a negative int, `malloc(max(1,
+  n))` one byte and `memcpy(copy, ..., n)` a copy of almost SIZE_MAX bytes
+  (heap overflow), and a length of INT_MAX overflowed `encoded_length + 1`
+  (undefined behaviour). Unreachable from the encoder (it writes inline
+  only small contents; the proof's `ipc_room` assumption covers it), so not
+  a reachable bug; the check (`length < 0 || length > remaining()`, as in
+  decode_byte_array) makes the proof independent of the assumption for
+  these two values. Mutants decoder-external-inline-length and
+  -string-length. Also: an RPC request's id and name are cardinals
+  converted to `int` (modular: an id above INT_MAX is truncated; the reply
+  goes to the truncated id; functional only). Upstream master: the same
+  code.
+
 Wave 3 (the decoder):
 
 * **The encoders sent arrays the receiver cannot decode, and the receiver
@@ -288,7 +379,7 @@ Wave 3 (the decoder):
   Regression test: tests/tison-cardinal-overflow-test.toit (both widths).
   Upstream master: worse, no bound at all (`result += ... << shift` with a
   shift up to the input's length: undefined behaviour), as before #3362.
-* **TISON smis are not portable from 64 to 32 bits** (NOT FIXED; a
+* **TISON smis are not portable from 64 to 32 bits** (FIXED in wave 4, above; a
   functional bug, not a memory-safety one). The encoder writes every smi
   as TAG_POSITIVE_SMI/TAG_NEGATIVE_SMI; on a 64-bit VM that is any value
   below 2^62. A 32-bit VM rejects one above its smi range (2^30) as
@@ -299,14 +390,14 @@ Wave 3 (the decoder):
   large integer (a 64-bit cardinal reader for the two smi tags), or encode
   values outside the 32-bit smi range as TAG_LARGE_INTEGER. Upstream
   master has it too (with the undefined shift).
-* **TISON large integers in the smi range are not canonical** (NOT FIXED,
+* **TISON large integers in the smi range are not canonical** (FIXED in wave 4, above;
   minor). TAG_LARGE_INTEGER with the value 5 decodes to a LargeInteger 5:
   `==`, hashing and maps treat it as 5, `identical x 5` is false (reproducer
   /home/flo/work/opentoit-sandbox-artifacts/annotated-cxx/repro/tison-large-
   integer-small.toit). The encoder never writes one; a fix would return a
   smi when the value fits.
 * **MessageDecoder::decode_process_message decodes without a process**
-  (latent, NOT FIXED). The scheduler decodes a TERMINATED system message
+  (latent; made safe in wave 4, above). The scheduler decodes a TERMINATED system message
   itself when there is no boot process, with `MessageDecoder(null,
   buffer)`: for anything but a smi the decoder dereferences the missing
   process or program (the proof's contracts require both). Any
@@ -433,14 +524,27 @@ Wave 3 (the decoder; upstream master's messaging.cc has all of them):
   malformed message (delivered as decoded, the externals after the error
   leaked) is unreachable; a defensive fix would drop such a message with
   `remove_disposing_finalizers()` and the message's own deallocation.
+  Wave 4 draft (not applied: unproved, see "The externals' ownership";
+  the patch is /home/flo/work/opentoit-sandbox-artifacts/annotated-cxx/
+  callers-malformed-drop.diff): in task_receive_message, after the
+  allocation-failure branch, `if (decoder.malformed_input()) {
+  decoder.remove_disposing_finalizers(); process->remove_first_message();
+  return process->null_object(); }` (the library skips a null message);
+  in main_arguments and spawn_arguments the same with
+  `clear_main_arguments()` / `clear_spawn_arguments()`,
+  `MessageDecoder::deallocate(arguments)` and `FAIL(INVALID_ARGUMENT)`.
+* decode_external_data's inline lengths (wave 4, "Findings"): the two
+  checks.
 * read_cardinal (965bff66 here): upstream shifts by any amount (undefined
   behaviour for long cardinals) and drops high bits; #3362's digit count
   check plus this branch's digit check.
 * TISON smis between 2^30 and 2^62 written on 64-bit fail to decode on
   32-bit (and 32-bit large integers in the 64-bit smi range decode as
-  non-canonical large integers on 64-bit): "Findings", not fixed here.
-* decode_process_message without a process: check for a smi tag first
-  (latent).
+  non-canonical large integers on 64-bit): fixed in wave 4 (1d19379a:
+  read_cardinal_64, decode_integer, and the tests); the fix to propose.
+* decode_process_message without a process: fixed in wave 4 (1d19379a:
+  reads only an int-sized integer; tests/ctest/message-process-message-
+  test.cc); upstream has the same code and the same TODO.
 
 ## One contract, two renderings
 

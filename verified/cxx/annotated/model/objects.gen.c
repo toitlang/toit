@@ -1069,6 +1069,34 @@ void Array_at_put__word_Objectp(Array *self, word index, Object *value)
   //@ heap_close(self);
 }
 
+// C++: src/objects.h toit::Array::at_put
+void Array_at_put__word_Smip(Array *self, word index, Smi *value)
+/*@ requires heap(?objs, ?H) &*& mem(self, objs) == true &*& has_tag(H, self, ARRAY_TAG) == true &*&
+             0 <= index &*& index < o_len(H(self)) &*& good(objs, value) == true; @*/
+//@ ensures heap(objs, put_field(H, self, index, value)) &*& grows(objs, H, objs, put_field(H, self, index, value)) == true;
+{
+  // ASSERT(index >= 0 && index < Array_length(self)): release build, not evaluated.
+  //@ heap_open(self);
+  //@ open body(self, _, _, _, _);
+  //@ open array_body(self, _, _);
+  //@ pointers_focus((void **)raw(self) + 2, index);
+  //@ div_rem_nonneg_unique(Array_HEADER_SIZE + index * WORD_SIZE, WORD_SIZE, 2 + index, 0);
+  HeapObject__at_put(self, Array__offset_from(index), value);
+  //@ pointers_unfocus((void **)raw(self) + 2, index, o_words(H(self)));
+  //@ fixpoint(void *, oinfo) H2 = put_field(H, self, index, value);
+  //@ close array_body(self, o_len(H(self)), update(index, value, o_words(H(self))));
+  //@ close body(self, 2 * ARRAY_TAG, o_len(H2(self)), o_aux(H2(self)), o_words(H2(self)));
+  //@ open heap_rest(objs, H, self);
+  //@ distinct_mem_remove(self, objs);
+  //@ heap_rest_put(remove(self, objs), objs, H, self, index, value);
+  //@ close heap_rest(objs, H2, self);
+  //@ open header(self, _);
+  //@ close header(self, o_hw(H2(self)));
+  //@ forall_good_update(o_words(H(self)), objs, index, value);
+  //@ grows_put_field(objs, H, self, index, value);
+  //@ heap_close(self);
+}
+
 // C++: src/objects_inline.h toit::HeapObject::on_program_heap
 bool HeapObject_on_program_heap(HeapObject *self, Process *process)
 //@ requires [?f]process(process, ?prog, ?ids);

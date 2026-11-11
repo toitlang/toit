@@ -672,8 +672,11 @@ Double *ObjectHeap_allocate_double(ObjectHeap *self, double value);
 /*@ ensures [f]process(p, prog, ids) &*& allocated(objs, H, p, result, ?objs2, ?H2) &*&
             (result == 0 ? true : has_tag(H2, result, DOUBLE_TAG) == true); @*/
 
+// A large integer of the given value. Required outside the smi range:
+// the callers keep integers canonical (the allocator itself takes any
+// value, a weaker precondition).
 LargeInteger *ObjectHeap_allocate_large_integer(ObjectHeap *self, int64 value);
-//@ requires [_]object_heap(self, ?p) &*& [?f]process(p, ?prog, ?ids) &*& heap(?objs, ?H);
+//@ requires [_]object_heap(self, ?p) &*& [?f]process(p, ?prog, ?ids) &*& heap(?objs, ?H) &*& smi_range(value) == false;
 /*@ ensures [f]process(p, prog, ids) &*& allocated(objs, H, p, result, ?objs2, ?H2) &*&
             (result == 0 ? true : has_tag(H2, result, LARGE_INTEGER_TAG) == true); @*/
 // C++: src/objects.h toit::is_smi
@@ -991,6 +994,12 @@ void Instance_at_put__word_Smip(Instance *self, word index, Smi *value);
 
 // C++: src/objects_inline.h toit::Array::at_put
 void Array_at_put__word_Objectp(Array *self, word index, Object *value);
+/*@ requires heap(?objs, ?H) &*& mem(self, objs) == true &*& has_tag(H, self, ARRAY_TAG) == true &*&
+             0 <= index &*& index < o_len(H(self)) &*& good(objs, value) == true; @*/
+//@ ensures heap(objs, put_field(H, self, index, value)) &*& grows(objs, H, objs, put_field(H, self, index, value)) == true;
+
+// C++: src/objects.h toit::Array::at_put
+void Array_at_put__word_Smip(Array *self, word index, Smi *value);
 /*@ requires heap(?objs, ?H) &*& mem(self, objs) == true &*& has_tag(H, self, ARRAY_TAG) == true &*&
              0 <= index &*& index < o_len(H(self)) &*& good(objs, value) == true; @*/
 //@ ensures heap(objs, put_field(H, self, index, value)) &*& grows(objs, H, objs, put_field(H, self, index, value)) == true;

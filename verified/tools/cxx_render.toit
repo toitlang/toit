@@ -184,9 +184,13 @@ A sidecar: a sequence of sections, each opened by a directive line (a
   the prototype and contract are emitted (the body is not verified, but
   still compared with the sources). `type=T` picks an overload by its
   Clang type with the spaces removed. `truncating`: the implicit
-  conversions of a word to int and of a uword to word are VeriFast's
+  conversions of a word or a uword to int and of a uword to word are VeriFast's
   truncating casts (the modular conversions GCC and Clang define and
-  C++20 standardizes), for code that checks the result.
+  C++20 standardizes), for code that checks the result; so is an
+  explicit static_cast narrowing a signed integer (os_localtime's
+  `static_cast<time_t>`). A `do S while (false)` (a macro's wrapper) is S
+  as a block (no break or continue may leave it); an object of a struct
+  spelled with its tag (`struct tm`) is constructed by `tm_ctor`.
 Configuration: `@raii CLASS`, `@overloaded CLASS::NAME`,
   `@modular-arguments CLASS::CLASS` (the implicit integral conversions of
   the constructor's arguments to an unsigned parameter are the modular
@@ -520,6 +524,9 @@ TRUNCATED ::= {"long", "int", "word", "intptr_t", "long long"}
 // `truncating` unsigned-to-signed conversion.
 UNSIGNED-WORDS ::= {"uword", "unsigned long", "unsigned int", "uintptr_t", "uint64", "unsigned long long"}
 SIGNED-TARGETS ::= {"word", "int64"}
+// The target types (typedefs resolved) of a `truncating` explicit signed
+// narrowing.
+SIGNED-INTEGERS ::= {"short", "int", "long", "long long", "word", "intptr_t", "int64"}
 WRITTEN-CASTS ::= {"IntegralCast", "IntegralToPointer", "PointerToIntegral",
                    "BitCast", "IntegralToFloating", "FloatingToIntegral",
                    "FloatingCast", "ToVoid"}
@@ -793,8 +800,9 @@ class Renderer:
     if kind == "ImplicitCastExpr":
       cast := node["castKind"]
       if (ELIDED-CASTS.contains cast) or (node.get "isPartOfExplicitCast") == true: return expr kids[0]
-      if cast == "IntegralCast" and truncating and (c-type node["type"]["qualType"]) == "int" and (TRUNCATED.contains (resolve (c-type kids[0]["type"]["qualType"]))):
-        // `truncating`: the narrowing conversion of a word to int is the
+      if cast == "IntegralCast" and truncating and (c-type node["type"]["qualType"]) == "int" and ((TRUNCATED.contains (resolve (c-type kids[0]["type"]["qualType"]))) or (UNSIGNED-WORDS.contains (resolve (c-type kids[0]["type"]["qualType"])))):
+        // `truncating`: the narrowing conversion of a word (or an unsigned
+        // word: an id read as a cardinal) to int is the
         // modular one (GCC, Clang, C++20), for code that checks it.
         return Expr "/*@truncating@*/(int)$(wrap (expr kids[0]) PREC-UNARY)" PREC-UNARY
       target-type := c-type node["type"]["qualType"]
@@ -813,6 +821,20 @@ class Renderer:
         return Expr "($(c-type node["type"]["qualType"]))$(wrap (expr kids[0]) PREC-UNARY)" PREC-UNARY
       fail "$(where node): implicit conversion $cast not supported"
     if kind == "CStyleCastExpr" or kind == "CXXStaticCastExpr" or kind == "CXXReinterpretCastExpr" or kind == "CXXFunctionalCastExpr" or kind == "CXXConstCastExpr":
+      // (Clang puts the conversion of a static_cast to a typedef into an
+      // implicit IntegralCast under a NoOp.)
+      operand := kids[0]
+      if node["castKind"] == "NoOp" and operand["kind"] == "ImplicitCastExpr" and operand["castKind"] == "IntegralCast":
+        operand = (inner operand)[0]
+      else if node["castKind"] != "IntegralCast":
+        operand = null
+      if kind == "CXXStaticCastExpr" and truncating and operand
+          and (SIGNED-INTEGERS.contains (resolve (c-type (node["type"].get "desugaredQualType" --if-absent=: node["type"]["qualType"]))))
+          and (TRUNCATED.contains (resolve (c-type (operand["type"].get "desugaredQualType" --if-absent=: operand["type"]["qualType"])))):
+        // `truncating`: an explicit narrowing of a signed integer is the
+        // modular conversion too (os_localtime's `static_cast<time_t>` on a
+        // 32-bit time_t, the round trip checked).
+        return Expr "/*@truncating@*/($(c-type node["type"]["qualType"]))$(wrap (expr operand) PREC-UNARY)" PREC-UNARY
       return Expr "($(c-type node["type"]["qualType"]))$(wrap (expr kids[0]) PREC-UNARY)" PREC-UNARY
     if kind == "CXXDefaultArgExpr":
       // A default argument: its value, written out. It is spelled in the
@@ -1031,6 +1053,20 @@ class Renderer:
         return
       emit indent "while ($((expr kids[0]).text))"
       loop-body kids[1] indent
+    else if kind == "DoStmt":
+      // `do S while (false)` (a macro's statement wrapper): S once, as a
+      // block, when no break or continue of S leaves the do.
+      cond := strip-parens kids[1]
+      while cond["kind"] == "ImplicitCastExpr": cond = strip-parens (inner cond)[0]
+      if cond["kind"] != "CXXBoolLiteralExpr" or cond["value"] != false:
+        fail "$(where node): do-while loop with a condition other than false"
+      if has-loop-exit kids[0] false: fail "$(where node): break or continue in a do-while (false)"
+      if kids[0]["kind"] == "CompoundStmt":
+        stmt kids[0] indent next
+      else:
+        emit indent "{"
+        body kids[0] (indent + 1)
+        emit indent "}"
     else if kind == "SwitchStmt":
       // `switch (c) { case V: ... default: ... }`: the labels as written
       // (a label's statement and the statements after it, up to the next
@@ -1077,6 +1113,20 @@ class Renderer:
       switch-item sub indent next
     else:
       stmt node (indent + 1) next
+
+  // Whether $node has a break or continue that leaves the statement it is
+  // in (not one of a nested loop; a break of a nested switch neither, when
+  // $in-switch).
+  has-loop-exit node in-switch/bool -> bool:
+    if node is List:
+      (node as List).do: if has-loop-exit it in-switch: return true
+      return false
+    if node is not Map: return false
+    kind := (node as Map).get "kind"
+    if kind == "ContinueStmt": return true
+    if kind == "BreakStmt": return not in-switch
+    if kind == "ForStmt" or kind == "WhileStmt" or kind == "DoStmt": return false
+    return has-loop-exit (inner node) (in-switch or kind == "SwitchStmt")
 
   is-release-assert cond/Map -> bool:
     if cond["kind"] != "BinaryOperator" or cond["opcode"] != "&&": return false
@@ -1163,7 +1213,9 @@ class Renderer:
         args.add "/*@truncating@*/($(c-type a["type"]["qualType"]))$(wrap (expr (inner a)[0]) PREC-UNARY)"
       else:
         args.add (by-ref ? "&$(wrap (expr a) PREC-UNARY)" : (wrap (expr a) PREC-ASSIGN))
-    ctor-name := mangle-member type type (ctor-params.map: c-type it)
+    // A struct of a C header (`struct tm`): named by its tag.
+    ctor-cls := type.starts-with "struct " ? type[7..] : type
+    ctor-name := mangle-member ctor-cls ctor-cls (ctor-params.map: c-type it)
     note-signature ctor-name (ctor-params.map: c-type it) init
     emit indent "$ctor-name($((["&$name"] + args).join ", "));"
 

@@ -1,0 +1,429 @@
+// Copyright (C) 2026 Toit contributors.
+//
+// PRIMITIVE(time_info) of src/primitive_core.cc (in the untrusted set,
+// stays C++) and its calendar: floor_div, floor_mod, is_leap_year,
+// days_from_civil, weekday_from_days, utc_fields, os_localtime,
+// equivalent_year, local_fields, with the ARGS expansion (an int64 and a
+// bool argument).
+//
+// Proved, for every int64 timestamp, on both widths: no signed overflow
+// and no lossy conversion anywhere in the calendar arithmetic (red-team
+// round 4: utc_fields computed the seconds of the day as `timestamp - days
+// * SECONDS_PER_DAY`, which overflows near INT64_MIN), every field stored
+// in the result is a smi, and the primitive heap contract (the heap only
+// grows). Not proved: that the fields are the right date (functional
+// correctness of the calendar); the ranges proved are coarse bounds.
+//
+// Assumptions: the C library's localtime_r (its fields in their ranges of
+// C11 7.27.1, a leap second allowed), memset of the struct; Smi::value
+// and LargeInteger::value (model); FATAL (UNREACHABLE) does not return.
+//
+// Self-tests (run.sh): the overflow reverted (the product `days *
+// SECONDS_PER_DAY` fails); local_fields without its year check (the shift
+// overflows).
+@include ../model/model.cfg
+@verbatim
+#include "../model/objects.gen.h"
+
+typedef long time_t;
+typedef unsigned long size_t;
+
+// The fields of struct tm that src/primitive_core.cc reads (C11 7.27.1).
+struct tm {
+  int tm_sec;
+  int tm_min;
+  int tm_hour;
+  int tm_mday;
+  int tm_mon;
+  int tm_year;
+  int tm_wday;
+  int tm_yday;
+  int tm_isdst;
+};
+
+struct TimeFields {
+  int64 year;
+  int month;
+  int day;
+  int hour;
+  int minute;
+  int second;
+  int weekday;
+  int yearday;
+  bool is_dst;
+};
+typedef struct TimeFields TimeFields;
+
+/*@
+// The fields of a struct tm, possibly uninitialized.
+predicate tm_fields(struct tm *t;) =
+  t->tm_sec |-> _ &*& t->tm_min |-> _ &*& t->tm_hour |-> _ &*& t->tm_mday |-> _ &*&
+  t->tm_mon |-> _ &*& t->tm_year |-> _ &*& t->tm_wday |-> _ &*& t->tm_yday |-> _ &*&
+  t->tm_isdst |-> _;
+
+// A converted time: the fields in their ranges (C11 7.27.1; tm_sec up to
+// 60 for a leap second).
+predicate tm_ok(struct tm *t; int year) =
+  t->tm_sec |-> ?sec &*& 0 <= sec &*& sec <= 60 &*&
+  t->tm_min |-> ?min &*& 0 <= min &*& min <= 59 &*&
+  t->tm_hour |-> ?hour &*& 0 <= hour &*& hour <= 23 &*&
+  t->tm_mday |-> ?mday &*& 1 <= mday &*& mday <= 31 &*&
+  t->tm_mon |-> ?mon &*& 0 <= mon &*& mon <= 11 &*&
+  t->tm_year |-> year &*&
+  t->tm_wday |-> ?wday &*& 0 <= wday &*& wday <= 6 &*&
+  t->tm_yday |-> ?yday &*& 0 <= yday &*& yday <= 365 &*&
+  t->tm_isdst |-> ?isdst;
+
+// The fields of a TimeFields the primitive stores: smis on both widths
+// (coarse bounds: the calendar is not proved correct).
+predicate fields_ok(TimeFields *f; int64 year) =
+  f->year |-> year &*& f->month |-> ?month &*& 0 <= month &*& month <= 11 &*&
+  f->day |-> ?day &*& -1000000 <= day &*& day <= 1000000 &*&
+  f->hour |-> ?hour &*& 0 <= hour &*& hour <= 1000000 &*&
+  f->minute |-> ?minute &*& -1000000 <= minute &*& minute <= 1000000 &*&
+  f->second |-> ?second &*& -1000000 <= second &*& second <= 1000000 &*&
+  f->weekday |-> ?weekday &*& -1000000 <= weekday &*& weekday <= 1000000 &*&
+  f->yearday |-> ?yearday &*& -1000000 <= yearday &*& yearday <= 1000000 &*&
+  f->is_dst |-> ?is_dst;
+
+// The heap only grows, also through a cast of the facts of one object
+// (as in ../decoder).
+lemma void grows_keeps(list<void *> objs, fixpoint(void *, oinfo) H, list<void *> objs2, fixpoint(void *, oinfo) H2, void *o)
+  requires grows(objs, H, objs2, H2) == true &*& mem(o, objs) == true;
+  ensures mem(o, objs2) == true &*& o_hw(H2(o)) == o_hw(H(o)) &*& o_len(H2(o)) == o_len(H(o));
+{
+  forall_mem(o, objs, (kept)(H, H2));
+  mem_subset(o, objs, objs2);
+}
+
+// A field write after the heap grew from (objs, H): it still grows from
+// there, and the object o keeps its class and length.
+lemma void put_step(list<void *> objs, fixpoint(void *, oinfo) H, list<void *> objs1, fixpoint(void *, oinfo) H1, fixpoint(void *, oinfo) H2, void *o)
+  requires grows(objs, H, objs1, H1) == true &*& grows(objs1, H1, objs1, H2) == true &*& mem(o, objs1) == true;
+  ensures grows(objs, H, objs1, H2) == true &*& o_hw(H2(o)) == o_hw(H1(o)) &*& o_len(H2(o)) == o_len(H1(o));
+{
+  grows_trans(objs, H, objs1, H1, objs1, H2);
+  grows_keeps(objs1, H1, objs1, H2, o);
+}
+
+// C's truncating division by a positive divisor, either sign: the
+// product is within the divisor of the dividend.
+lemma void div_near(int D, int d)
+  requires 0 < d;
+  ensures D - d < D / d * d &*& D / d * d < D + d;
+{
+  div_rem(D, d);
+}
+
+// Coarse bounds of the steps of utc_fields (civil_from_days), each proved
+// on its own so that the function's proof sees bounds, not the division
+// equations.
+lemma void year_of_era_bounds(int doe, int yoe)
+  requires 0 <= doe &*& doe <= 146096 &*& yoe == (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+  ensures 0 <= yoe &*& yoe <= 401 &*& 0 <= yoe / 4 &*& yoe / 4 <= 101 &*& 0 <= yoe / 100 &*& yoe / 100 <= 5;
+{
+  div_rem_nonneg(doe, 1460);
+  div_rem_nonneg(doe, 36524);
+  div_rem_nonneg(doe, 146096);
+  div_rem_nonneg(doe - doe / 1460 + doe / 36524 - doe / 146096, 365);
+  div_rem_nonneg(yoe, 4);
+  div_rem_nonneg(yoe, 100);
+}
+
+lemma void month_bounds(int doy, int sm)
+  requires -146500 <= doy &*& doy <= 146500 &*& sm == (5 * doy + 2) / 153;
+  ensures -5000 <= sm &*& sm <= 5000 &*& -160000 <= (153 * sm + 2) / 5 &*& (153 * sm + 2) / 5 <= 160000;
+{
+  div_near(5 * doy + 2, 153);
+  div_near(153 * sm + 2, 5);
+}
+
+lemma void seconds_bounds(int s)
+  requires 0 <= s &*& s < 86400;
+  ensures 0 <= s / 3600 &*& s / 3600 <= 23 &*& 0 <= s / 60 % 60 &*& s / 60 % 60 < 60 &*& 0 <= s % 60 &*& s % 60 < 60;
+{
+  div_rem_nonneg(s, 3600);
+  div_rem_nonneg(s, 60);
+  div_rem_nonneg(s / 60, 60);
+}
+
+predicate fields_(TimeFields *f;) =
+  f->year |-> _ &*& f->month |-> _ &*& f->day |-> _ &*& f->hour |-> _ &*& f->minute |-> _ &*&
+  f->second |-> _ &*& f->weekday |-> _ &*& f->yearday |-> _ &*& f->is_dst |-> _;
+@*/
+
+// memset of the struct tm (the only use here).
+void *memset(void *array, int value, size_t size);
+//@ requires tm_fields(array) &*& size == sizeof(struct tm);
+//@ ensures tm_fields(array) &*& result == array;
+
+// The C library: null, or the fields of the time in their ranges.
+struct tm *localtime_r(time_t *timer, struct tm *buf);
+//@ requires [?f]long_integer(timer, ?t) &*& tm_fields(buf);
+//@ ensures [f]long_integer(timer, t) &*& result == 0 ? tm_fields(buf) : result == buf &*& tm_ok(buf, _);
+
+// The implicit default constructors of TimeFields and struct tm (structs
+// of scalars: they initialize nothing).
+void TimeFields_ctor(TimeFields *self);
+//@ requires fields_(self);
+//@ ensures fields_(self);
+void tm_ctor(struct tm *self);
+//@ requires tm_fields(self);
+//@ ensures tm_fields(self);
+
+// src/top.h: the VM's fatal error (does not return).
+void fail(const char *format, ...);
+//@ requires true;
+//@ ensures false;
+
+// src/objects.h Process::false_object (a root of the program).
+HeapObject *Process_false_object(Process *self);
+//@ requires [?f]process(self, ?prog, ?ids) &*& [?g]heap(?objs, ?H);
+//@ ensures [f]process(self, prog, ids) &*& [g]heap(objs, H) &*& mem(result, objs) == true;
+
+@prototypes
+@render src/primitive_core.cc toit::floor_div
+static int64 floor_div(int64 a, int64 b)
+//@ requires 1 < b &*& b <= 146097;
+//@ ensures b * result <= a &*& a - b * result < b;
+{
+  ASSERT(b > 0);
+  int64 q = a / b;
+  return (a % b < 0) ? q - 1 : q;
+}
+
+@render src/primitive_core.cc toit::floor_mod
+static int64 floor_mod(int64 a, int64 b)
+//@ requires 1 < b &*& b <= 146097;
+//@ ensures 0 <= result &*& result < b;
+{
+  ASSERT(b > 0);
+  int64 r = a % b;
+  return (r < 0) ? r + b : r;
+}
+
+@render src/primitive_core.cc toit::is_leap_year
+static bool is_leap_year(int64 year)
+//@ requires true;
+//@ ensures true;
+{
+  return (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
+}
+
+@render src/primitive_core.cc toit::days_from_civil
+static int64 days_from_civil(int64 year, int month, int day)
+//@ requires -1000000000000000 <= year &*& year <= 1000000000000000 &*& 1 <= month &*& month <= 12 &*& 1 <= day &*& day <= 31;
+/*@ ensures 146097 * (year - (month <= 2 ? 1 : 0) - 399) <= 400 * (result + 719468) &*&
+            400 * (result + 719468) <= 146097 * (year - (month <= 2 ? 1 : 0)) + 400 * 146500; @*/
+{
+  year -= month <= 2;
+  int64 era = floor_div(year, 400);
+  // In [0, 399].
+  int64 year_of_era = year - era * 400;
+  //@ div_rem_nonneg(153 * (month > 2 ? month - 3 : month + 9) + 2, 5);
+  // In [0, 365], counted from March 1st.
+  int64 day_of_year = (153 * (month > 2 ? month - 3 : month + 9) + 2) / 5 + day - 1;
+  //@ div_rem_nonneg(year_of_era, 4);
+  //@ div_rem_nonneg(year_of_era, 100);
+  // In [0, 146096].
+  int64 day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+  // 719468 is the number of days from 0000-03-01 to 1970-01-01.
+  return era * 146097 + day_of_era - 719468;
+}
+
+@render src/primitive_core.cc toit::weekday_from_days
+static int weekday_from_days(int64 days)
+//@ requires -400000000000000000 <= days &*& days <= 400000000000000000;
+//@ ensures 0 <= result &*& result <= 6;
+{
+  return static_cast<int>(days - floor_div(days + 4, 7) * 7 + 4);
+}
+
+@render src/primitive_core.cc toit::utc_fields
+static void utc_fields(int64 timestamp, TimeFields* fields)
+//@ requires fields_(fields);
+/*@ ensures fields_ok(fields, ?year) &*&
+            86400 * (146097 * (year - 401) - 400 * 719468) <= 400 * timestamp &*&
+            400 * timestamp < 86400 * (146097 * (year + 400) - 400 * 719468) + 400 * 86400; @*/
+{
+  //@ open fields_(fields);
+  int64 days = floor_div(timestamp, SECONDS_PER_DAY);
+  //@ assert -106751991167301 <= days &*& days <= 106751991167300;
+  // Not `timestamp - days * SECONDS_PER_DAY`: near INT64_MIN the start of
+  // the day is below INT64_MIN, and the product overflows.
+  int seconds_of_day = static_cast<int>(floor_mod(timestamp, SECONDS_PER_DAY));
+  // Days since 0000-03-01.
+  int64 z = days + 719468;
+  int64 era = floor_div(z, 146097);
+  //@ assert -730700000 <= era &*& era <= 730700000;
+  // In [0, 146096].
+  int64 day_of_era = z - era * 146097;
+  // In [0, 399].
+  int64 year_of_era =
+      (day_of_era - day_of_era / 1460 + day_of_era / 36524 - day_of_era / 146096) / 365;
+  //@ year_of_era_bounds(day_of_era, year_of_era);
+  // In [0, 365], counted from March 1st.
+  int64 day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+  // In [0, 11], 0 is March.
+  int64 shifted_month = (5 * day_of_year + 2) / 153;
+  //@ month_bounds(day_of_year, shifted_month);
+  // In [0, 11], 0 is January.
+  int month = static_cast<int>(shifted_month < 10 ? shifted_month + 2 : shifted_month - 10);
+  //@ assert 0 <= year_of_era &*& year_of_era <= 401 &*& -292280000000 <= era * 400 &*& era * 400 <= 292280000000;
+  int64 year = year_of_era + era * 400 + (month <= 1);
+  fields->year = year;
+  fields->month = month;
+  fields->day = static_cast<int>(day_of_year - (153 * shifted_month + 2) / 5 + 1);
+  //@ seconds_bounds(seconds_of_day);
+  fields->hour = seconds_of_day / 3600;
+  fields->minute = (seconds_of_day / 60) % 60;
+  fields->second = seconds_of_day % 60;
+  fields->weekday = weekday_from_days(days);
+  fields->yearday = static_cast<int>(days - days_from_civil(year, 1, 1));
+  fields->is_dst = false;
+  //@ close fields_ok(fields, year);
+}
+
+@render src/primitive_core.cc toit::os_localtime truncating
+static bool os_localtime(int64 timestamp, struct tm* result)
+//@ requires tm_fields(?buf) &*& buf == result;
+//@ ensures result ? tm_ok(buf, _) : tm_fields(buf);
+{
+  memset(result, 0, sizeof(*result));
+  time_t t = static_cast<time_t>(timestamp);
+  if (static_cast<int64>(t) != timestamp) return false;  // A 32-bit time_t.
+#ifdef TOIT_WINDOWS
+  // The CRT's localtime_s fails with EINVAL for times before 1970 and after
+  // 3000-12-31T23:59:59Z (_MAX__TIME64_T). Don't hand them to it.
+  const int64 MAX_WINDOWS_TIME = 32535215999LL;
+  if (timestamp < 0 || timestamp > MAX_WINDOWS_TIME) return false;
+  return localtime_s(result, &t) == 0;
+#else
+  return localtime_r(&t, result) != null;
+#endif
+}
+
+@render src/primitive_core.cc toit::equivalent_year
+static int equivalent_year(int64 year, int first)
+//@ requires -1000000000000000 <= year &*& year <= 1000000000000000 &*& 0 <= first &*& first <= 3000;
+//@ ensures 0 <= result &*& result <= 3100;
+{
+  bool is_leap = is_leap_year(year);
+  int weekday = weekday_from_days(days_from_civil(year, 1, 1));
+  for (int candidate = first; candidate < first + 28; candidate++)
+  //@ invariant first <= candidate &*& candidate <= first + 28;
+  {
+    if (is_leap_year(candidate) == is_leap &&
+        weekday_from_days(days_from_civil(candidate, 1, 1)) == weekday) {
+      return candidate;
+    }
+  }
+  UNREACHABLE();
+}
+
+@render src/primitive_core.cc toit::local_fields
+static bool local_fields(int64 timestamp, TimeFields* fields)
+//@ requires fields_(fields);
+//@ ensures result ? fields_ok(fields, _) : fields_(fields);
+{
+  //@ close tm_fields(&tm);
+  struct tm tm;
+  if (os_localtime(timestamp, &tm)) {
+    //@ open fields_(fields);
+    fields->year = static_cast<int64>(tm.tm_year) + 1900;
+    fields->month = tm.tm_mon;
+    fields->day = tm.tm_mday;
+    fields->hour = tm.tm_hour;
+    fields->minute = tm.tm_min;
+    fields->second = tm.tm_sec;
+    fields->weekday = tm.tm_wday;
+    fields->yearday = tm.tm_yday;
+    // When the information isn't available we just say false for daylight saving.
+    fields->is_dst = tm.tm_isdst > 0;
+    //@ close fields_ok(fields, _);
+    //@ open tm_ok(&tm, _);
+    return true;
+  }
+  //@ close fields_(&utc);
+  TimeFields utc;
+  utc_fields(timestamp, &utc);
+  //@ open fields_ok(&utc, ?utc_year);
+  // Avoid overflows in the shift below. The caller rejects these years anyway.
+  if (!Smi::is_valid32(utc.year)) /*@ open tm_fields(&tm); @*/ return false;
+  int equivalent = equivalent_year(utc.year, utc.year < 2000 ? 1971 : 2010);
+  int64 shift_days = days_from_civil(equivalent, 1, 1) - days_from_civil(utc.year, 1, 1);
+  int64 moved = timestamp + shift_days * SECONDS_PER_DAY;
+  if (!os_localtime(moved, &tm)) /*@ open tm_fields(&tm); @*/ return false;
+  //@ open tm_ok(&tm, ?local_year);
+  int64 local_moved_days = days_from_civil(static_cast<int64>(tm.tm_year) + 1900, tm.tm_mon + 1, tm.tm_mday);
+  int64 local_moved =
+      local_moved_days * SECONDS_PER_DAY + tm.tm_hour * 3600 + tm.tm_min * 60 + tm.tm_sec;
+  int64 offset = local_moved - moved;
+  utc_fields(timestamp + offset, fields);
+  //@ open fields_ok(fields, ?year);
+  fields->is_dst = tm.tm_isdst > 0;
+  //@ close fields_ok(fields, year);
+  return true;
+}
+
+@render src/objects.h toit::Smi::is_valid32 tu=src/primitive_core.cc
+  static bool is_valid32(int64 value)
+  //@ requires true;
+  //@ ensures result == (Smi_MIN_SMI32_VALUE <= value && value <= Smi_MAX_SMI32_VALUE);
+  {
+    return (value >= MIN_SMI32_VALUE) && (value <= MAX_SMI32_VALUE);
+  }
+
+@render src/primitive_core.cc toit::primitive_time_info
+PRIMITIVE(time_info)
+/*@ requires [?fp]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
+             pointer(__args, ?a0) &*& pointer(__args - 1, ?a1) &*& good(objs, a0) == true; @*/
+/*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+            pointer(__args, a0) &*& pointer(__args - 1, a1); @*/
+{
+  //@ grows_refl(objs, H);
+  ARGS(int64, timestamp, bool, is_utc)
+  //@ close fields_(&fields);
+  TimeFields fields;
+  if (is_utc) {
+    utc_fields(timestamp, &fields);
+  } else if (!local_fields(timestamp, &fields)) {
+    //@ open fields_(&fields);
+    FAIL(OUT_OF_RANGE);
+  }
+  //@ open fields_ok(&fields, ?year);
+  // Keep the year a small integer on all platforms.
+  if (!Smi::is_valid32(fields.year)) FAIL(OUT_OF_RANGE);
+  Array* result = process->object_heap()->allocate_array(9, Smi::zero());
+  //@ open allocated(objs, H, process, result, ?objs1, ?H1);
+  //@ if (result != 0) grows_alloc(objs, H, result, H1);
+  if (result == null) FAIL(ALLOCATION_FAILED);
+  result->at_put(0, Smi::from(fields.second));
+  //@ assert heap(objs1, ?Ha);
+  //@ put_step(objs, H, objs1, H1, Ha, result);
+  result->at_put(1, Smi::from(fields.minute));
+  //@ assert heap(objs1, ?Hb);
+  //@ put_step(objs, H, objs1, Ha, Hb, result);
+  result->at_put(2, Smi::from(fields.hour));
+  //@ assert heap(objs1, ?Hc);
+  //@ put_step(objs, H, objs1, Hb, Hc, result);
+  result->at_put(3, Smi::from(fields.day));
+  //@ assert heap(objs1, ?Hd);
+  //@ put_step(objs, H, objs1, Hc, Hd, result);
+  result->at_put(4, Smi::from(fields.month));
+  //@ assert heap(objs1, ?He);
+  //@ put_step(objs, H, objs1, Hd, He, result);
+  result->at_put(5, Smi::from(static_cast<word>(fields.year)));
+  //@ assert heap(objs1, ?Hf);
+  //@ put_step(objs, H, objs1, He, Hf, result);
+  result->at_put(6, Smi::from(fields.weekday));
+  //@ assert heap(objs1, ?Hg);
+  //@ put_step(objs, H, objs1, Hf, Hg, result);
+  result->at_put(7, Smi::from(fields.yearday));
+  //@ assert heap(objs1, ?Hh);
+  //@ put_step(objs, H, objs1, Hg, Hh, result);
+  result->at_put(8, BOOL(fields.is_dst));
+  //@ assert heap(objs1, ?Hi);
+  //@ put_step(objs, H, objs1, Hh, Hi, result);
+  return result;
+}

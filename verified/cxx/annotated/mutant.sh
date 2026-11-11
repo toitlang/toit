@@ -7,17 +7,21 @@
 # fail, with the expected error.
 #
 # Usage: mutant.sh NAME SIDECAR SOURCE PATTERN "VERIFAST OPTIONS" FROM TO [FROM TO]...
-#   SIDECAR relative to this directory, SOURCE relative to the repository
-#   (a .cc file: a changed copy of a header would be included next to the
-#   original through the symlinked third_party tree).
+#   SIDECAR relative to this directory, SOURCE relative to the repository:
+#   a .cc file or a header of src/ (the copy replaces the link to the
+#   original in the mutant's src/, which is first on the include path and
+#   the directory of every translation unit's quoted includes; the
+#   self-test decoder-uint8-bound mutates src/messaging.h).
 #   FROM/TO: literal texts (`\n` a newline); each must occur exactly once in
 #   SOURCE and, if it occurs there at all, once in the sidecar. PATTERN
 #   DRIFT: the change is applied to the source only, and the rendering must
 #   fail with a drift error (the correspondence check's self-test). PATTERN
 #   PASS: the mutant must verify (e.g. the reverted fix under an assumption
-#   that excludes the bug).
+#   that excludes the bug). PATTERN `LP64:REGEX` or `ILP32:REGEX`: the
+#   proof must fail with REGEX for that target only and verify for the
+#   other (a check that is dead on one width).
 # Prints one line `ok` / `FAIL` like run.sh; exit status 0 when the proof
-# failed with PATTERN on both LP64 and ILP32.
+# failed with PATTERN on both LP64 and ILP32 (or as a target prefix says).
 
 set -uo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/env.sh"
@@ -89,19 +93,30 @@ if [ "$pattern" = DRIFT ]; then
 fi
 gen="${sidecar%.render}.gen.c"
 status=0
+# A `TARGET:` prefix: only that target must fail, the other must verify.
+only=""
+if [[ "$pattern" =~ ^(LP64|ILP32):(.*)$ ]]; then
+  only="${BASH_REMATCH[1]}"
+  pattern="${BASH_REMATCH[2]}"
+fi
 for target in LP64 ILP32; do
+  expect="$pattern"
+  [ -n "$only" ] && [ "$target" != "$only" ] && expect=PASS
   dir="$M/annotated"
   [ "$target" = ILP32 ] && dir="$M/gen32"
   # shellcheck disable=SC2086
   out=$(cd "$dir" && "$VERIFAST" -c -target "$target" -fno-strict-aliasing -assume_left_to_right_evaluation $vfopts "$gen" 2>&1)
   vstatus=$?
   first=$(echo "$out" | grep -m1 -E "error|errors found" || true)
-  if [ "$pattern" = PASS ] && [ $vstatus -eq 0 ]; then
+  if [ "$expect" = PASS ] && [ $vstatus -eq 0 ]; then
     printf 'ok    %-40s pass: %s\n' "$name/$target" "$first"
-  elif [ "$pattern" != PASS ] && [ $vstatus -ne 0 ] && echo "$first" | grep -qE "$pattern"; then
+  elif [ "$expect" != PASS ] && [ $vstatus -ne 0 ] && echo "$first" | grep -qE "$expect"; then
     printf 'ok    %-40s fail: %s\n' "$name/$target" "$first"
+  elif [ "$expect" = PASS ]; then
+    printf 'FAIL  %-40s (expected it to verify): %s\n' "$name/$target" "$first"
+    status=1
   else
-    printf 'FAIL  %-40s (expected a failure matching %s): %s\n' "$name/$target" "$pattern" "$first"
+    printf 'FAIL  %-40s (expected a failure matching %s): %s\n' "$name/$target" "$expect" "$first"
     status=1
   fi
 done

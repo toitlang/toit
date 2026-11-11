@@ -113,6 +113,7 @@
 
 // src/primitive.h, the error roots of src/program.h, class Error.
 #define STRINGS_OR_BYTE_ARRAYS 0
+#define Program_ALLOCATION_FAILED_INDEX 7
 #define Program_OUT_OF_BOUNDS_INDEX 20
 #define Program_OUT_OF_RANGE_INDEX 21
 #define Program_WRONG_OBJECT_TYPE_INDEX 30
@@ -165,5 +166,10 @@
 #define ITERATE_CUSTOM_TAGS ((word)-100)
 #define EXTERNAL_BYTE_ARRAY_MALLOC_TAG ((uint8)1)
 #define EXTERNAL_STRING_MALLOC_TAG ((uint8)3)
+// The calendar of time_info (src/primitive_core.cc) and the 32-bit smi
+// range (src/objects.h).
+#define SECONDS_PER_DAY ((int64)86400)
+#define Smi_MIN_SMI32_VALUE ((word)-1073741824)
+#define Smi_MAX_SMI32_VALUE ((word)1073741823)
 
 #endif

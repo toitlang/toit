@@ -35,9 +35,9 @@ lemma void digit_pow(int k)
 }
 
 lemma void digit_step(int r, int d, int k)
-  requires 0 <= k &*& 7 * k < 8 * sizeof(void *) &*& 0 <= r &*& r < pow128(k) &*&
-           0 <= d &*& d < 128 &*& d <= UINTPTR_MAX / pow128(k);
-  ensures r + d * pow128(k) <= UINTPTR_MAX &*& (k < 9 ? r + d * pow128(k) < pow128(k + 1) : true);
+  requires 0 <= k &*& 7 * k < 64 &*& 0 <= r &*& r < pow128(k) &*&
+           0 <= d &*& d < 128 &*& d <= 18446744073709551615 / pow128(k);
+  ensures r + d * pow128(k) <= 18446744073709551615 &*& (k < 9 ? r + d * pow128(k) < pow128(k + 1) : true);
 {
   if (k == 0) {} else if (k == 1) {} else if (k == 2) {} else if (k == 3) {} else if (k == 4) {}
   else if (k == 5) {} else if (k == 6) {} else if (k == 7) {} else if (k == 8) {} else {}

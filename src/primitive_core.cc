@@ -1199,6 +1199,13 @@ static int64 floor_div(int64 a, int64 b) {
   return (a % b < 0) ? q - 1 : q;
 }
 
+// The remainder of floor_div, in [0, b).
+static int64 floor_mod(int64 a, int64 b) {
+  ASSERT(b > 0);
+  int64 r = a % b;
+  return (r < 0) ? r + b : r;
+}
+
 static bool is_leap_year(int64 year) {
   return (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
 }
@@ -1244,7 +1251,9 @@ struct TimeFields {
 // This is 'civil_from_days' of Howard Hinnant's algorithms.
 static void utc_fields(int64 timestamp, TimeFields* fields) {
   int64 days = floor_div(timestamp, SECONDS_PER_DAY);
-  int seconds_of_day = static_cast<int>(timestamp - days * SECONDS_PER_DAY);
+  // Not `timestamp - days * SECONDS_PER_DAY`: near INT64_MIN the start of
+  // the day is below INT64_MIN, and the product overflows.
+  int seconds_of_day = static_cast<int>(floor_mod(timestamp, SECONDS_PER_DAY));
   // Days since 0000-03-01.
   int64 z = days + 719468;
   int64 era = floor_div(z, 146097);

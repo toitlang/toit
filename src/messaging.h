@@ -380,6 +380,7 @@ class MessageDecoder {
   Object* mark_allocation_failed() { status_ = DECODE_ALLOCATION_FAILED; return null; }
 
   uword read_cardinal();
+  uint64 read_cardinal_64();
   uint32 read_uint32();
 
  private:
@@ -411,6 +412,7 @@ class MessageDecoder {
   Object* decode_byte_array(bool inlined);
   Object* decode_double();
   Object* decode_large_integer();
+  Object* decode_integer(int64 value);
 
   void deallocate();
 

@@ -194,16 +194,40 @@ mutant decoder-map-length decoder/message_decoder.render src/messaging.cc "\(\* 
 # The nesting limit (#3362) taken out: the recursion is unbounded.
 mutant decoder-nesting decoder/message_decoder.render src/messaging.cc "n 1\) 64" "$DEC_OPTS" \
   "  if (nesting_ > MESSAGING_DECODING_MAX_NESTING) return mark_malformed();\n" ""
-# The fixed-size readers' bound: a read past the input. (read_uint8 is in
-# messaging.h: a mutant changes a .cc only.)
+# The fixed-size readers' bound: a read past the input.
 mutant decoder-uint64-bound decoder/message_decoder.render src/messaging.cc "8 \(- cap c\)" "$DEC_OPTS" \
   "MessageDecoder::read_uint64()@@if (next <= size_) {" "if (next <= size_ + 1) {"
-# read_cardinal: without the word-size check (#3362) the shift is
-# undefined; without the digit check (this branch) the sum wraps.
+# read_uint8, in the header (mutant.sh copies the changed header into the
+# mutant's src/): the byte at the end of the input is read.
+mutant decoder-uint8-bound decoder/message_decoder.render src/messaging.h "No matching|uchars|cap" "$DEC_OPTS" \
+  "return (cursor < size_) ? buffer_[cursor] : 0;" "return (cursor <= size_) ? buffer_[cursor] : 0;"
+# read_cardinal_64: without the size check (#3362) the shift is
+# undefined; without the digit check (wave 3) the sum wraps.
 mutant decoder-cardinal-shift decoder/message_decoder.render src/messaging.cc "shift|7 \* k|digit|overflow" "$DEC_OPTS" \
-  "if (shift >= WORD_BIT_SIZE || digit > (UINTPTR_MAX >> shift)) {" "if (digit > (UINTPTR_MAX >> shift)) {"
-mutant decoder-cardinal-digit decoder/message_decoder.render src/messaging.cc "UINTPTR_MAX|overflow|digit" "$DEC_OPTS" \
-  "if (shift >= WORD_BIT_SIZE || digit > (UINTPTR_MAX >> shift)) {" "if (shift >= WORD_BIT_SIZE) {"
+  "if (shift >= 64 || digit > (UINT64_MAX >> shift)) {" "if (digit > (UINT64_MAX >> shift)) {"
+mutant decoder-cardinal-digit decoder/message_decoder.render src/messaging.cc "18446744073709551615|overflow|digit" "$DEC_OPTS" \
+  "if (shift >= 64 || digit > (UINT64_MAX >> shift)) {" "if (shift >= 64) {"
+# read_cardinal: a 64-bit cardinal is not a word on ILP32 (on LP64 the
+# check is dead): without the check the conversion to uword overflows.
+mutant decoder-cardinal-word decoder/message_decoder.render src/messaging.cc "ILP32:overflow|truncat|uword" "$DEC_OPTS" \
+  "  if (result > UINTPTR_MAX) {\n    mark_malformed();\n    return 0;\n  }\n  return static_cast<uword>(result);" "  return static_cast<uword>(result);"
+# Finding 3 (wave 4): the smi tags' magnitude above INT64_MAX (the
+# conversion to int64 overflows); without the smi range check in
+# decode_integer a value in the smi range is allocated as a large integer
+# (not canonical: the allocator contract's `canonical` clause fails).
+mutant decoder-smi-magnitude decoder/message_decoder.render src/messaging.cc "overflow|int64|9223372036854775807" "$DEC_OPTS" \
+  "case TAG_POSITIVE_SMI: {\n      uint64 value = read_cardinal_64();\n      if (value > static_cast<uint64>(INT64_MAX)) return mark_malformed();\n" "case TAG_POSITIVE_SMI: {\n      uint64 value = read_cardinal_64();\n"
+mutant decoder-negative-smi-magnitude decoder/message_decoder.render src/messaging.cc "overflow|int64|9223372036854775807" "$DEC_OPTS" \
+  "case TAG_NEGATIVE_SMI: {\n      uint64 value = read_cardinal_64();\n      if (value > static_cast<uint64>(INT64_MAX)) return mark_malformed();\n" "case TAG_NEGATIVE_SMI: {\n      uint64 value = read_cardinal_64();\n"
+mutant decoder-integer-canonical decoder/message_decoder.render src/messaging.cc "smi_range" "$DEC_OPTS" \
+  "  if (Smi::is_valid(value)) return Smi::from(static_cast<word>(value));\n" ""
+# decode_external_data (the external message handlers, wave 4): without
+# the inline length check the int conversion and the copy's length are
+# unbounded (a negative int was a huge memcpy).
+mutant decoder-external-inline-length decoder/message_decoder.render src/messaging.cc "pow_nat|truncate|<= 0 n|overflow|underflow" "$DEC_OPTS" \
+  "    // As in decode_byte_array: the inline content is in the message.\n    word cardinal = read_cardinal();\n    if (cardinal < 0 || cardinal > remaining()) {\n      mark_malformed();\n      return false;\n    }\n" "    // As in decode_byte_array: the inline content is in the message.\n    word cardinal = read_cardinal();\n"
+mutant decoder-external-string-length decoder/message_decoder.render src/messaging.cc "pow_nat|truncate|<= 0 n|overflow|underflow" "$DEC_OPTS" \
+  "  } else if (tag == TAG_STRING_INLINE) {\n    word cardinal = read_cardinal();\n    if (cardinal < 0 || cardinal > remaining()) {\n      mark_malformed();\n      return false;\n    }\n" "  } else if (tag == TAG_STRING_INLINE) {\n    word cardinal = read_cardinal();\n"
 # The externals table: one entry too many is written past it.
 mutant decoder-externals-bound decoder/message_decoder.render src/messaging.cc "pointers|intptrs|No matching|<= 8|index" "$DEC_OPTS" \
   "if (index >= ARRAY_SIZE(externals_)) {" "if (index > ARRAY_SIZE(externals_)) {"
@@ -258,6 +282,23 @@ entry byte-zap              pass "" prims/byte_zap.gen.c -allow_dead_code -prove
 # One byte past the destination: the memset fails.
 mutant byte-zap-past-end prims/byte_zap.render src/primitive_bitmap.cc "uchars|No matching" "-allow_dead_code -prover z3v4.5" \
   "  memset(bytes.address(), value, bytes.length());" "  memset(bytes.address(), value, bytes.length() + 1);"
+
+# time_info and its calendar (red-team round 4). `-allow_dead_code`: the
+# time_t round trip check of os_localtime is dead on LP64; UNREACHABLE.
+TI_OPTS="-allow_dead_code -prover z3v4.5"
+entry time-info             pass "" prims/time_info.gen.c -allow_dead_code -prover z3v4.5
+# The fix reverted: `days * SECONDS_PER_DAY` overflows near INT64_MIN.
+mutant time-info-seconds-of-day prims/time_info.render src/primitive_core.cc "overflow|underflow" "$TI_OPTS" \
+  "int seconds_of_day = static_cast<int>(floor_mod(timestamp, SECONDS_PER_DAY));" "int seconds_of_day = static_cast<int>(timestamp - days * SECONDS_PER_DAY);"
+# local_fields without its year check: the shift into the equivalent year
+# overflows (the year is unbounded).
+mutant time-info-local-year prims/time_info.render src/primitive_core.cc "overflow|underflow|1000000000000000" "$TI_OPTS" \
+  "  if (!Smi::is_valid32(utc.year)) return false;\n" "" \
+  "  if (!Smi::is_valid32(utc.year)) /*@ open tm_fields(&tm); @*/ return false;\n" ""
+# The primitive without its year check: the year is not a smi (on ILP32
+# not even a word: the conversion fails first).
+mutant time-info-year-smi prims/time_info.render src/primitive_core.cc "smi_range|overflow|underflow" "$TI_OPTS" \
+  "  if (!Smi::is_valid32(fields.year)) FAIL(OUT_OF_RANGE);\n" ""
 
 # The MutableBlob decoding. `-allow_dead_code`: the check `content == null`
 # (README, "Findings") is dead, VeriFast proves it.

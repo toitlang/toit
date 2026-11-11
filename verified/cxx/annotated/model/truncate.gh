@@ -1,0 +1,45 @@
+// Copyright (C) 2026 Toit contributors.
+//
+// A truncating conversion of a value in the target's range is the value
+// (C++ [conv.integral]: unchanged when representable). VeriFast's
+// truncate_signed is defined bit by bit (bitops.gh); this connects it to
+// the value. Proved here (with Z3: the targets that include this file run
+// with -prover z3v4.5).
+
+#ifndef TOIT_TRUNCATE_GH
+#define TOIT_TRUNCATE_GH
+
+#include <bitops.gh>
+#include "arith.gh"
+
+lemma void Z_truncate_signed_id(Z z, nat n)
+  requires -pow_nat(2, n) <= int_of_Z(z) &*& int_of_Z(z) < pow_nat(2, n);
+  ensures int_of_Z(Z_truncate_signed(z, n)) == int_of_Z(z);
+{
+  switch (n) {
+    case zero:
+      switch (z) {
+        case Zsign(b):
+        case Zdigit(z0, b0):
+      }
+    case succ(n0):
+      pow2_pos(n0);
+      switch (z) {
+        case Zsign(b):
+          Z_truncate_signed_id(z, n0);
+        case Zdigit(z0, b0):
+          Z_truncate_signed_id(z0, n0);
+      }
+  }
+}
+
+lemma void truncate_signed_id(int x, nat n)
+  requires 0 <= x &*& x < pow_nat(2, n);
+  ensures truncate_signed(x, int_of_nat(n)) == x;
+{
+  Z z = int_of_Z_of_uintN(x, n);
+  truncate_signed_def(x, z, n);
+  Z_truncate_signed_id(z, n);
+}
+
+#endif

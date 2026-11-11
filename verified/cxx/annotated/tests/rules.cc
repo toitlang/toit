@@ -128,4 +128,40 @@ inline uword negative_tag(word offset) {
   return t.tag_;
 }
 
+// Rule: `do S while (false)` (the wrapper of a macro's statements) is S as
+// a block.
+#define CLAMP_TO_ZERO(x) do { if ((x) < 0) (x) = 0; } while (false)
+
+inline word clamp(word x) {
+  CLAMP_TO_ZERO(x);
+  return x;
+}
+
+// Rule: `@render ... truncating`: a uword-to-int conversion is the modular
+// one too (an id read as a cardinal).
+inline int narrow_unsigned(uword u) {
+  int n = u;
+  if (n < 0) return -1;
+  return n;
+}
+
+// Rule: `@render ... truncating`: an explicit static_cast narrowing a
+// signed integer (here to a typedef: Clang's NoOp over an IntegralCast) is
+// the modular conversion too (the round trip is checked).
+typedef short narrow_t;
+inline bool fits_narrow(int x) {
+  narrow_t n = static_cast<narrow_t>(x);
+  return static_cast<int>(n) == x;
+}
+
+// Rule: an object of a struct spelled with its tag (a C header's struct)
+// is constructed by `tag_ctor`.
+struct plain_c { int a; };
+
+inline int use_plain() {
+  struct plain_c p;
+  p.a = 1;
+  return p.a;
+}
+
 }  // namespace toit

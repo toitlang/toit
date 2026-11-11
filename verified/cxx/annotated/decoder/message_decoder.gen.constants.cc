@@ -32,10 +32,9 @@ struct vf_probe_15 : MessageDecoder { static_assert((TAG_POSITIVE_SMI) == (1), "
 struct vf_probe_16 : MessageDecoder { static_assert((TAG_STRING) == (10), "TAG_STRING"); };
 struct vf_probe_17 : MessageDecoder { static_assert((TAG_STRING_INLINE) == (11), "TAG_STRING_INLINE"); };
 struct vf_probe_18 : MessageDecoder { static_assert((TAG_TRUE) == (4), "TAG_TRUE"); };
-struct vf_probe_19 : MessageDecoder { static_assert((WORD_BIT_SIZE) == (((int)(sizeof(word) * 8))), "WORD_BIT_SIZE"); static_assert(vf_same<decltype(WORD_BIT_SIZE), decltype(((int)(sizeof(word) * 8)))>::value, "type of WORD_BIT_SIZE"); };
-struct vf_probe_20 : TisonDecoder { static_assert((TISON_MARKER) == (((uint32)0xa68900f7)), "TISON_MARKER"); static_assert(vf_same<decltype(TISON_MARKER), decltype(((uint32)0xa68900f7))>::value, "type of TISON_MARKER"); };
-struct vf_probe_21 : TisonDecoder { static_assert((TISON_VERSION) == (1), "TISON_VERSION"); static_assert(vf_same<decltype(TISON_VERSION), decltype(1)>::value, "type of TISON_VERSION"); };
-struct vf_probe_22 : TisonDecoder { static_assert((TISON_VERSION_SHIFT) == (((uint32)8)), "TISON_VERSION_SHIFT"); static_assert(vf_same<decltype(TISON_VERSION_SHIFT), decltype(((uint32)8))>::value, "type of TISON_VERSION_SHIFT"); };
+struct vf_probe_19 : TisonDecoder { static_assert((TISON_MARKER) == (((uint32)0xa68900f7)), "TISON_MARKER"); static_assert(vf_same<decltype(TISON_MARKER), decltype(((uint32)0xa68900f7))>::value, "type of TISON_MARKER"); };
+struct vf_probe_20 : TisonDecoder { static_assert((TISON_VERSION) == (1), "TISON_VERSION"); static_assert(vf_same<decltype(TISON_VERSION), decltype(1)>::value, "type of TISON_VERSION"); };
+struct vf_probe_21 : TisonDecoder { static_assert((TISON_VERSION_SHIFT) == (((uint32)8)), "TISON_VERSION_SHIFT"); static_assert(vf_same<decltype(TISON_VERSION_SHIFT), decltype(((uint32)8))>::value, "type of TISON_VERSION_SHIFT"); };
 static_assert((Instance::MAP_BACKING_INDEX) == (((word)3)), "Instance_MAP_BACKING_INDEX");
 static_assert(vf_same<decltype(Instance::MAP_BACKING_INDEX), decltype(((word)3))>::value, "type of Instance_MAP_BACKING_INDEX");
 static_assert((Instance::MAP_INDEX_INDEX) == (((word)2)), "Instance_MAP_INDEX_INDEX");
@@ -44,8 +43,4 @@ static_assert((Instance::MAP_SIZE_INDEX) == (((word)0)), "Instance_MAP_SIZE_INDE
 static_assert(vf_same<decltype(Instance::MAP_SIZE_INDEX), decltype(((word)0))>::value, "type of Instance_MAP_SIZE_INDEX");
 static_assert((Instance::MAP_SPACES_LEFT_INDEX) == (((word)1)), "Instance_MAP_SPACES_LEFT_INDEX");
 static_assert(vf_same<decltype(Instance::MAP_SPACES_LEFT_INDEX), decltype(((word)1))>::value, "type of Instance_MAP_SPACES_LEFT_INDEX");
-static_assert((Smi::MAX_SMI_VALUE) == (((word)(UINTPTR_MAX / 4))), "Smi_MAX_SMI_VALUE");
-static_assert(vf_same<decltype(Smi::MAX_SMI_VALUE), decltype(((word)(UINTPTR_MAX / 4)))>::value, "type of Smi_MAX_SMI_VALUE");
-static_assert((Smi::MIN_SMI_VALUE) == (((word)(-(word)(UINTPTR_MAX / 4) - 1))), "Smi_MIN_SMI_VALUE");
-static_assert(vf_same<decltype(Smi::MIN_SMI_VALUE), decltype(((word)(-(word)(UINTPTR_MAX / 4) - 1)))>::value, "type of Smi_MIN_SMI_VALUE");
 }  // namespace toit

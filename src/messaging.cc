@@ -560,14 +560,18 @@ MessageDecoder::MessageDecoder(Process* process,
     , format_(format) {}
 
 bool MessageDecoder::decode_process_message(const uint8* buffer, int* value) {
+  // There is no process to allocate in or to take the null object from, so
+  // only an integer in the range of 'int' is read; anything else (any
+  // unrestricted process can send any message as a system message) is
+  // refused without decoding it.
   MessageDecoder decoder(null, buffer);
-  // TODO(kasper): Make this more robust. We don't know the content.
-  Object* object = decoder.decode();
-  if (is_smi(object)) {
-    *value = Smi::value(object);
-    return true;
-  }
-  return false;
+  int tag = decoder.read_uint8();
+  if (tag != TAG_POSITIVE_SMI && tag != TAG_NEGATIVE_SMI) return false;
+  uword magnitude = decoder.read_cardinal();
+  if (!decoder.success() || magnitude > INT_MAX) return false;
+  int result = static_cast<int>(magnitude);
+  *value = (tag == TAG_POSITIVE_SMI) ? result : -result;
+  return true;
 }
 
 void MessageDecoder::register_external_allocations() {
@@ -622,16 +626,18 @@ Object* MessageDecoder::decode_any() {
   switch (tag) {
     case TAG_OVERFLOWN:
       return mark_malformed();
+    // A smi of the encoder may be outside the smi range of this VM (TISON
+    // written by a 64-bit VM, read by a 32-bit one): its magnitude is read
+    // with 64 bits and the value is made canonical by decode_integer.
     case TAG_POSITIVE_SMI: {
-      uword value = read_cardinal();
-      if (value > static_cast<uword>(Smi::MAX_SMI_VALUE)) return mark_malformed();
-      return Smi::from(static_cast<word>(value));
+      uint64 value = read_cardinal_64();
+      if (value > static_cast<uint64>(INT64_MAX)) return mark_malformed();
+      return decode_integer(static_cast<int64>(value));
     }
     case TAG_NEGATIVE_SMI: {
-      uword value = read_cardinal();
-      // The negation of MIN_SMI_VALUE is MAX_SMI_VALUE + 1 and doesn't overflow.
-      if (value > static_cast<uword>(-Smi::MIN_SMI_VALUE)) return mark_malformed();
-      return Smi::from(-static_cast<word>(value));
+      uint64 value = read_cardinal_64();
+      if (value > static_cast<uint64>(INT64_MAX)) return mark_malformed();
+      return decode_integer(-static_cast<int64>(value));
     }
     case TAG_NULL:
       return program_->null_object();
@@ -816,7 +822,13 @@ bool MessageDecoder::decode_external_data(void** data, word* length) {
     *data = read_pointer();
     return true;
   } else if (tag == TAG_BYTE_ARRAY_INLINE) {
-    int encoded_length = *length = read_cardinal();
+    // As in decode_byte_array: the inline content is in the message.
+    word cardinal = read_cardinal();
+    if (cardinal < 0 || cardinal > remaining()) {
+      mark_malformed();
+      return false;
+    }
+    int encoded_length = *length = cardinal;
     // 'malloc' is allowed to return 'null' if the length is zero.
     // We always want to have a valid pointer, so we allocate at least one byte.
     int malloc_length = Utils::max(1, encoded_length);
@@ -833,7 +845,12 @@ bool MessageDecoder::decode_external_data(void** data, word* length) {
     *data = read_pointer();
     return true;
   } else if (tag == TAG_STRING_INLINE) {
-    int encoded_length = *length = read_cardinal();
+    word cardinal = read_cardinal();
+    if (cardinal < 0 || cardinal > remaining()) {
+      mark_malformed();
+      return false;
+    }
+    int encoded_length = *length = cardinal;
     char* copy = unvoid_cast<char*>(malloc(encoded_length + 1));
     if (copy == null) {
       mark_allocation_failed();
@@ -878,6 +895,14 @@ Object* MessageDecoder::decode_double() {
 Object* MessageDecoder::decode_large_integer() {
   int64 value = read_uint64();
   if (value == 0 && overflown()) return mark_malformed();
+  return decode_integer(value);
+}
+
+// Integers are canonical: a smi whenever the value is in the smi range of
+// this VM, which need not be the encoder's (a large integer of a 32-bit VM
+// can be a smi of a 64-bit one).
+Object* MessageDecoder::decode_integer(int64 value) {
+  if (Smi::is_valid(value)) return Smi::from(static_cast<word>(value));
   LargeInteger* result = process_->object_heap()->allocate_large_integer(value);
   if (result == null) return mark_allocation_failed();
   return result;
@@ -895,15 +920,25 @@ uint8* MessageDecoder::read_pointer() {
 }
 
 uword MessageDecoder::read_cardinal() {
-  uword result = 0;
+  uint64 result = read_cardinal_64();
+  // A length or a size never has more bits than a word.
+  if (result > UINTPTR_MAX) {
+    mark_malformed();
+    return 0;
+  }
+  return static_cast<uword>(result);
+}
+
+uint64 MessageDecoder::read_cardinal_64() {
+  uint64 result = 0;
   uint8 byte = read_uint8();
   int shift = 0;
   while (byte >= 128) {
-    // A cardinal never has more bits than a word. Longer encodings, and
-    // digits with bits beyond the word, are malformed (and shifting by the
-    // word size or more is undefined).
-    uword digit = byte - 128;
-    if (shift >= WORD_BIT_SIZE || digit > (UINTPTR_MAX >> shift)) {
+    // A cardinal never has more than 64 bits. Longer encodings, and digits
+    // with bits beyond them, are malformed (and shifting by 64 or more is
+    // undefined).
+    uint64 digit = byte - 128;
+    if (shift >= 64 || digit > (UINT64_MAX >> shift)) {
       mark_malformed();
       return 0;
     }
@@ -912,11 +947,11 @@ uword MessageDecoder::read_cardinal() {
     byte = read_uint8();
   }
   if (byte == 0 && overflown()) return 0;
-  if (shift >= WORD_BIT_SIZE || byte > (UINTPTR_MAX >> shift)) {
+  if (shift >= 64 || byte > (UINT64_MAX >> shift)) {
     mark_malformed();
     return 0;
   }
-  result += ((uword) byte) << shift;
+  result += static_cast<uint64>(byte) << shift;
   return result;
 }
 

@@ -34,14 +34,23 @@
 // allocation fails). The externals table is written below its bound (the
 // FATAL is the check).
 //
+// Integers are canonical (wave 4): a smi tag's magnitude is read with 64
+// bits on both widths and every integer in this VM's smi range is a smi
+// (decode_integer; the allocator's contract requires a large integer's
+// value outside the smi range).
+//
 // Self-tests (run.sh): the length checks before the inline copies and
 // before the array and map allocations taken out; the nesting limit taken
-// out; the bound checks of the fixed-size readers; the digit check of
-// read_cardinal; the externals table bound.
+// out; the bound checks of the fixed-size readers (read_uint8 in the
+// header too); the size and digit checks of read_cardinal_64, the word
+// check of read_cardinal (ILP32); the smi magnitude checks; the smi range
+// check of decode_integer; the externals table bound.
 #include <stdio.h>
+#include <stdlib.h>
 #include "../model/objects.gen.h"
 #include "radix.h"
 //@ #include "../model/arith.gh"
+//@ #include "../model/truncate.gh"
 
 typedef unsigned long size_t;
 void *memcpy(void *array, void *array0, size_t count);
@@ -91,7 +100,7 @@ predicate msg_block(uint8 *data, int length);
 // blob's bytes; IPC: size == INT_MAX and the message), the cursor (below
 // cap + 16), the status and the externals table (k entries).
 predicate dec(MessageDecoder *d, real fb, Process *proc, prog_ids ids, int fmt, uint8 *b, int size, int cap; int c, int st, int k) =
-  d->process_ |-> proc &*& d->program_ |-> ?prog &*& [_]program(prog, ids) &*& prog_ok(ids) == true &*&
+  d->process_ |-> proc &*& d->program_ |-> ?prog &*& (proc == 0 ? true : [_]program(prog, ids) &*& prog_ok(ids) == true) &*&
   d->format_ |-> fmt &*& d->buffer_ |-> b &*& d->size_ |-> size &*& d->cursor_ |-> c &*& d->status_ |-> st &*&
   [fb]uchars(b, cap, _) &*& 0 <= cap &*& cap <= MAX_BLOB &*&
   (fmt == MESSAGE_FORMAT_TISON ? size == cap : fmt == MESSAGE_FORMAT_IPC &*& size == INT_MAX &*& [_]ipc_msg(d, b, cap)) &*&
@@ -116,6 +125,15 @@ lemma void ipc_room(MessageDecoder *d, int n);
 lemma void ipc_external(MessageDecoder *d, uint8 *data, int length);
   requires [_]ipc_msg(d, ?b, ?cap) &*& [?f]d->cursor_ |-> ?c;
   ensures [f]d->cursor_ |-> c &*& msg_block(data, length) &*& 0 <= length &*& length < MAX_BLOB;
+
+// The data decode_external_data hands out: an out-of-line block of the
+// message, or a malloced copy of inline content (`length` bytes, followed
+// by room for a terminator or by nothing).
+predicate ext_data(bool copied, void *data, int length) =
+  copied ?
+    malloc_block(data, ?n) &*& 0 <= length &*& length <= n &*& uchars(data, length, _) &*& chars_((char *)data + length, n - length, _)
+  :
+    msg_block(data, length);
 
 // A byte of the input is a byte (as in ../utf8).
 lemma void uchars_nth_limits(uint8 *p, int i)
@@ -208,6 +226,22 @@ double bit_cast_double__unsignedlonglong(uint64 src);
 //@ requires true;
 //@ ensures true;
 
+// src/objects.h Smi::is_valid (a template: no rendering rule), the
+// instance for int64: `MIN_SMI_VALUE <= value && value <= MAX_SMI_VALUE`
+// (contract only).
+bool Smi_is_valid(int64 value);
+//@ requires true;
+//@ ensures result == smi_range(value);
+
+// src/utils.h Utils::max (a template, @overloaded: the instance for int) and
+// unvoid_cast (the instance for char*: the pointer, typed).
+int Utils_max__int_int(int x, int y);
+//@ requires true;
+//@ ensures result == (x < y ? y : x);
+char *unvoid_cast_charp(void *p);
+//@ requires true;
+//@ ensures result == p;
+
 // src/top.h: the VM's fatal error (does not return).
 void fail(const char *format, ...);
 //@ requires true;
@@ -297,6 +331,13 @@ uword MessageDecoder_read_cardinal(MessageDecoder *self);
             (c2 <= cap || result == 0) &*& (st2 == st || st2 == MessageDecoder_DECODE_MALFORMED_INPUT) &*&
             (fmt == MESSAGE_FORMAT_TISON || c2 <= cap); @*/
 
+// C++: src/messaging.cc toit::MessageDecoder::read_cardinal_64
+uint64 MessageDecoder_read_cardinal_64(MessageDecoder *self);
+//@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st, ?k) &*& c <= cap + 8;
+/*@ ensures dec(self, fb, proc, ids, fmt, b, size, cap, ?c2, ?st2, k) &*& c < c2 &*& c2 <= (c < cap ? cap + 1 : c + 1) &*&
+            (c2 <= cap || result == 0) &*& (st2 == st || st2 == MessageDecoder_DECODE_MALFORMED_INPUT) &*&
+            (fmt == MESSAGE_FORMAT_TISON || c2 <= cap); @*/
+
 // C++: src/messaging.cc toit::MessageDecoder::register_external
 void MessageDecoder_register_external(MessageDecoder *self, HeapObject *object, word length);
 //@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st, ?k);
@@ -334,9 +375,18 @@ Object *MessageDecoder_decode_large_integer(MessageDecoder *self);
             heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*& good(objs2, result) == true &*&
             (st == MessageDecoder_DECODE_SUCCESS ? c2 <= cap : true); @*/
 
+// C++: src/messaging.cc toit::MessageDecoder::decode_integer
+Object *MessageDecoder_decode_integer(MessageDecoder *self, int64 value);
+/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st0, ?k) &*&
+             [?fp]process(proc, ?prog, ids) &*& heap(?objs, ?H); @*/
+/*@ ensures dec(self, fb, proc, ids, fmt, b, size, cap, c, ?st, k) &*& [fp]process(proc, prog, ids) &*&
+            heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*& good(objs2, result) == true &*&
+            (st == st0 || st == MessageDecoder_DECODE_ALLOCATION_FAILED) &*&
+            (smi_range(value) ? is_smi_w((uword)result) == true &*& smi_val((uword)result) == value : true); @*/
+
 // C++: src/messaging.cc toit::MessageDecoder::decode_array
 Object *MessageDecoder_decode_array(MessageDecoder *self);
-/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st0, ?k) &*& c <= cap &*&
+/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st0, ?k) &*& c <= cap &*& proc != 0 &*&
              [?fp]process(proc, ?prog, ids) &*& self->nesting_ |-> ?n &*& 0 <= n &*& n <= MESSAGING_DECODING_MAX_NESTING &*&
              heap(?objs, ?H); @*/
 /*@ ensures dec(self, fb, proc, ids, fmt, b, size, cap, ?c2, ?st, ?k2) &*& [fp]process(proc, prog, ids) &*&
@@ -345,7 +395,7 @@ Object *MessageDecoder_decode_array(MessageDecoder *self);
 
 // C++: src/messaging.cc toit::MessageDecoder::decode_map
 Object *MessageDecoder_decode_map(MessageDecoder *self);
-/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?sz, ?cap, ?c, ?st0, ?k) &*& c <= cap &*&
+/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?sz, ?cap, ?c, ?st0, ?k) &*& c <= cap &*& proc != 0 &*&
              [?fp]process(proc, ?prog, ids) &*& self->nesting_ |-> ?n &*& 0 <= n &*& n <= MESSAGING_DECODING_MAX_NESTING &*&
              heap(?objs, ?H); @*/
 /*@ ensures dec(self, fb, proc, ids, fmt, b, sz, cap, ?c2, ?st, ?k2) &*& [fp]process(proc, prog, ids) &*&
@@ -354,7 +404,7 @@ Object *MessageDecoder_decode_map(MessageDecoder *self);
 
 // C++: src/messaging.cc toit::MessageDecoder::decode_any
 Object *MessageDecoder_decode_any(MessageDecoder *self);
-/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st0, ?k) &*& c <= cap + 8 &*&
+/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st0, ?k) &*& c <= cap + 8 &*& proc != 0 &*&
              [?fp]process(proc, ?prog, ids) &*& self->nesting_ |-> ?n &*& 0 <= n &*& n <= MESSAGING_DECODING_MAX_NESTING &*&
              heap(?objs, ?H); @*/
 /*@ ensures dec(self, fb, proc, ids, fmt, b, size, cap, ?c2, ?st, ?k2) &*& [fp]process(proc, prog, ids) &*&
@@ -363,7 +413,7 @@ Object *MessageDecoder_decode_any(MessageDecoder *self);
 
 // C++: src/messaging.cc toit::TisonDecoder::decode
 Object *TisonDecoder_decode(TisonDecoder *self);
-/*@ requires dec(self, ?fb, ?proc, ?ids, MESSAGE_FORMAT_TISON, ?b, ?size, ?cap, 0, MessageDecoder_DECODE_SUCCESS, ?k) &*&
+/*@ requires dec(self, ?fb, ?proc, ?ids, MESSAGE_FORMAT_TISON, ?b, ?size, ?cap, 0, MessageDecoder_DECODE_SUCCESS, ?k) &*& proc != 0 &*&
              [?fp]process(proc, ?prog, ids) &*& self->nesting_ |-> 0 &*& heap(?objs, ?H); @*/
 /*@ ensures dec(self, fb, proc, ids, MESSAGE_FORMAT_TISON, b, size, cap, ?c2, ?st, ?k2) &*& [fp]process(proc, prog, ids) &*&
             self->nesting_ |-> 0 &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*& good(objs2, result) == true &*&
@@ -371,10 +421,23 @@ Object *TisonDecoder_decode(TisonDecoder *self);
 
 // C++: src/messaging.h toit::MessageDecoder::decode
 Object *MessageDecoder_decode(MessageDecoder *self);
-/*@ requires dec(self, ?fb, ?proc, ?ids, MESSAGE_FORMAT_IPC, ?b, ?size, ?cap, 0, MessageDecoder_DECODE_SUCCESS, ?k) &*&
+/*@ requires dec(self, ?fb, ?proc, ?ids, MESSAGE_FORMAT_IPC, ?b, ?size, ?cap, 0, MessageDecoder_DECODE_SUCCESS, ?k) &*& proc != 0 &*&
              [?fp]process(proc, ?prog, ids) &*& self->nesting_ |-> 0 &*& heap(?objs, ?H); @*/
 /*@ ensures dec(self, fb, proc, ids, MESSAGE_FORMAT_IPC, b, size, cap, ?c2, ?st, ?k2) &*& [fp]process(proc, prog, ids) &*&
             self->nesting_ |-> 0 &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*& good(objs2, result) == true; @*/
+
+// C++: src/messaging.cc toit::MessageDecoder::decode_external_data
+bool MessageDecoder_decode_external_data(MessageDecoder *self, void **data, word *length);
+//@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st0, ?k) &*& c <= cap &*& *data |-> _ &*& *length |-> _;
+/*@ ensures dec(self, fb, proc, ids, fmt, b, size, cap, ?c2, ?st, k) &*&
+            (result ? *data |-> ?d &*& *length |-> ?l &*& fmt == MESSAGE_FORMAT_IPC &*& ext_data(?copied, d, l) : *data |-> _ &*& *length |-> _); @*/
+
+// C++: src/messaging.cc toit::MessageDecoder::decode_rpc_request_external
+bool MessageDecoder_decode_rpc_request_external(MessageDecoder *self, int *id, int *name, void **data, word *length);
+/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st0, ?k) &*& c <= cap &*&
+             *id |-> _ &*& *name |-> _ &*& *data |-> _ &*& *length |-> _; @*/
+/*@ ensures dec(self, fb, proc, ids, fmt, b, size, cap, ?c2, ?st, k) &*& *id |-> _ &*& *name |-> _ &*&
+            (result ? *data |-> ?d &*& *length |-> ?l &*& fmt == MESSAGE_FORMAT_IPC &*& ext_data(?copied, d, l) : *data |-> _ &*& *length |-> _); @*/
 
 // C++: src/messaging.cc toit::NestingTracker::NestingTracker
 void NestingTracker_ctor(NestingTracker *self, int *nesting)
@@ -594,23 +657,38 @@ uword MessageDecoder_read_cardinal(MessageDecoder *self)
             (c2 <= cap || result == 0) &*& (st2 == st || st2 == MessageDecoder_DECODE_MALFORMED_INPUT) &*&
             (fmt == MESSAGE_FORMAT_TISON || c2 <= cap); @*/
 {
-  uword result = 0;
+  uint64 result = MessageDecoder_read_cardinal_64(self);
+  if (result > (18446744073709551615)) {
+    MessageDecoder_mark_malformed(self);
+    return 0;
+  }
+  return (uword)result;
+}
+
+// C++: src/messaging.cc toit::MessageDecoder::read_cardinal_64
+uint64 MessageDecoder_read_cardinal_64(MessageDecoder *self)
+//@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st, ?k) &*& c <= cap + 8;
+/*@ ensures dec(self, fb, proc, ids, fmt, b, size, cap, ?c2, ?st2, k) &*& c < c2 &*& c2 <= (c < cap ? cap + 1 : c + 1) &*&
+            (c2 <= cap || result == 0) &*& (st2 == st || st2 == MessageDecoder_DECODE_MALFORMED_INPUT) &*&
+            (fmt == MESSAGE_FORMAT_TISON || c2 <= cap); @*/
+{
+  uint64 result = 0;
   uint8 byte = MessageDecoder_read_uint8(self);
   int shift = 0;
   //@ int kk = 0;
   while ((int)byte >= 128)
   /*@ invariant dec(self, fb, proc, ids, fmt, b, size, cap, ?ci, st, k) &*& c < ci &*& (fmt == MESSAGE_FORMAT_TISON || ci <= cap) &*&
                 (byte >= 128 ? ci <= cap : ci <= (c < cap ? cap + 1 : c + 1) &*& (ci <= cap || byte == 0)) &*&
-                shift == 7 * kk &*& 0 <= kk &*& kk <= 10 &*& 0 <= result &*& result <= UINTPTR_MAX &*&
+                shift == 7 * kk &*& 0 <= kk &*& kk <= 10 &*& 0 <= result &*& result <= 18446744073709551615 &*&
                 (kk <= 9 ? result < pow128(kk) : true); @*/
   {
-    uword digit = (uword)((int)byte - 128);
-    if (shift >= WORD_BIT_SIZE || digit > ((18446744073709551615) >> shift)) {
+    uint64 digit = (uint64)((int)byte - 128);
+    if (shift >= 64 || digit > ((18446744073709551615) >> shift)) {
       MessageDecoder_mark_malformed(self);
       return 0;
     }
     //@ digit_pow(kk);
-    //@ shiftright_div(UINTPTR_MAX, nat_of_int(shift));
+    //@ shiftright_div(18446744073709551615, nat_of_int(shift));
     //@ shiftleft_def(digit, nat_of_int(shift));
     //@ digit_step(result, digit, kk);
     result += digit << shift;
@@ -621,15 +699,15 @@ uword MessageDecoder_read_cardinal(MessageDecoder *self)
   if ((int)byte == 0 && MessageDecoder_overflown(self)) {
     return 0;
   }
-  if (shift >= WORD_BIT_SIZE || (unsigned long)byte > ((18446744073709551615) >> shift)) {
+  if (shift >= 64 || (unsigned long)byte > ((18446744073709551615) >> shift)) {
     MessageDecoder_mark_malformed(self);
     return 0;
   }
   //@ digit_pow(kk);
-  //@ shiftright_div(UINTPTR_MAX, nat_of_int(shift));
+  //@ shiftright_div(18446744073709551615, nat_of_int(shift));
   //@ shiftleft_def(byte, nat_of_int(shift));
   //@ digit_step(result, byte, kk);
-  result += ((uword)byte) << shift;
+  result += (uint64)byte << shift;
   return result;
 }
 
@@ -805,9 +883,25 @@ Object *MessageDecoder_decode_large_integer(MessageDecoder *self)
   if (value == 0 && MessageDecoder_overflown(self)) {
     return MessageDecoder_mark_malformed(self);
   }
-  //@ open dec(self, fb, proc, ids, fmt, b, size, cap, ?c1, ?st1, k);
+  return MessageDecoder_decode_integer(self, value);
+}
+
+// C++: src/messaging.cc toit::MessageDecoder::decode_integer
+Object *MessageDecoder_decode_integer(MessageDecoder *self, int64 value)
+/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st0, ?k) &*&
+             [?fp]process(proc, ?prog, ids) &*& heap(?objs, ?H); @*/
+/*@ ensures dec(self, fb, proc, ids, fmt, b, size, cap, c, ?st, k) &*& [fp]process(proc, prog, ids) &*&
+            heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*& good(objs2, result) == true &*&
+            (st == st0 || st == MessageDecoder_DECODE_ALLOCATION_FAILED) &*&
+            (smi_range(value) ? is_smi_w((uword)result) == true &*& smi_val((uword)result) == value : true); @*/
+{
+  //@ grows_refl(objs, H);
+  if (Smi_is_valid(value)) {
+    return Smi_from((word)value);
+  }
+  //@ open dec(self, fb, proc, ids, fmt, b, size, cap, c, st0, k);
   LargeInteger *result = ObjectHeap_allocate_large_integer(Process_object_heap(self->process_), value);
-  //@ close dec(self, fb, proc, ids, fmt, b, size, cap, c1, st1, k);
+  //@ close dec(self, fb, proc, ids, fmt, b, size, cap, c, st0, k);
   //@ open allocated(objs, H, proc, result, ?objs1, ?H1);
   //@ if (result != 0) grows_alloc(objs, H, result, H1);
   if (result == 0) {
@@ -818,7 +912,7 @@ Object *MessageDecoder_decode_large_integer(MessageDecoder *self)
 
 // C++: src/messaging.cc toit::MessageDecoder::decode_array
 Object *MessageDecoder_decode_array(MessageDecoder *self)
-/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st0, ?k) &*& c <= cap &*&
+/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st0, ?k) &*& c <= cap &*& proc != 0 &*&
              [?fp]process(proc, ?prog, ids) &*& self->nesting_ |-> ?n &*& 0 <= n &*& n <= MESSAGING_DECODING_MAX_NESTING &*&
              heap(?objs, ?H); @*/
 /*@ ensures dec(self, fb, proc, ids, fmt, b, size, cap, ?c2, ?st, ?k2) &*& [fp]process(proc, prog, ids) &*&
@@ -864,7 +958,7 @@ Object *MessageDecoder_decode_array(MessageDecoder *self)
 
 // C++: src/messaging.cc toit::MessageDecoder::decode_map
 Object *MessageDecoder_decode_map(MessageDecoder *self)
-/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?sz, ?cap, ?c, ?st0, ?k) &*& c <= cap &*&
+/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?sz, ?cap, ?c, ?st0, ?k) &*& c <= cap &*& proc != 0 &*&
              [?fp]process(proc, ?prog, ids) &*& self->nesting_ |-> ?n &*& 0 <= n &*& n <= MESSAGING_DECODING_MAX_NESTING &*&
              heap(?objs, ?H); @*/
 /*@ ensures dec(self, fb, proc, ids, fmt, b, sz, cap, ?c2, ?st, ?k2) &*& [fp]process(proc, prog, ids) &*&
@@ -954,7 +1048,7 @@ Object *MessageDecoder_decode_map(MessageDecoder *self)
 
 // C++: src/messaging.cc toit::MessageDecoder::decode_any
 Object *MessageDecoder_decode_any(MessageDecoder *self)
-/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st0, ?k) &*& c <= cap + 8 &*&
+/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st0, ?k) &*& c <= cap + 8 &*& proc != 0 &*&
              [?fp]process(proc, ?prog, ids) &*& self->nesting_ |-> ?n &*& 0 <= n &*& n <= MESSAGING_DECODING_MAX_NESTING &*&
              heap(?objs, ?H); @*/
 /*@ ensures dec(self, fb, proc, ids, fmt, b, size, cap, ?c2, ?st, ?k2) &*& [fp]process(proc, prog, ids) &*&
@@ -981,8 +1075,8 @@ Object *MessageDecoder_decode_any(MessageDecoder *self)
       }
     case (int)TAG_POSITIVE_SMI:
       {
-        uword value = MessageDecoder_read_cardinal(self);
-        if (value > (uword)Smi_MAX_SMI_VALUE) {
+        uint64 value = MessageDecoder_read_cardinal_64(self);
+        if (value > (uint64)(9223372036854775807)) {
           {
             Object * result2 = MessageDecoder_mark_malformed(self);
             NestingTracker_dtor(&tracking);
@@ -990,15 +1084,15 @@ Object *MessageDecoder_decode_any(MessageDecoder *self)
           }
         }
         {
-          Object * result3 = Smi_from((word)value);
+          Object * result3 = MessageDecoder_decode_integer(self, (int64)value);
           NestingTracker_dtor(&tracking);
           return result3;
         }
       }
     case (int)TAG_NEGATIVE_SMI:
       {
-        uword value = MessageDecoder_read_cardinal(self);
-        if (value > (uword)-Smi_MIN_SMI_VALUE) {
+        uint64 value = MessageDecoder_read_cardinal_64(self);
+        if (value > (uint64)(9223372036854775807)) {
           {
             Object * result4 = MessageDecoder_mark_malformed(self);
             NestingTracker_dtor(&tracking);
@@ -1006,7 +1100,7 @@ Object *MessageDecoder_decode_any(MessageDecoder *self)
           }
         }
         {
-          Object * result5 = Smi_from(-(word)value);
+          Object * result5 = MessageDecoder_decode_integer(self, -(int64)value);
           NestingTracker_dtor(&tracking);
           return result5;
         }
@@ -1104,7 +1198,7 @@ Object *MessageDecoder_decode_any(MessageDecoder *self)
 
 // C++: src/messaging.cc toit::TisonDecoder::decode
 Object *TisonDecoder_decode(TisonDecoder *self)
-/*@ requires dec(self, ?fb, ?proc, ?ids, MESSAGE_FORMAT_TISON, ?b, ?size, ?cap, 0, MessageDecoder_DECODE_SUCCESS, ?k) &*&
+/*@ requires dec(self, ?fb, ?proc, ?ids, MESSAGE_FORMAT_TISON, ?b, ?size, ?cap, 0, MessageDecoder_DECODE_SUCCESS, ?k) &*& proc != 0 &*&
              [?fp]process(proc, ?prog, ids) &*& self->nesting_ |-> 0 &*& heap(?objs, ?H); @*/
 /*@ ensures dec(self, fb, proc, ids, MESSAGE_FORMAT_TISON, b, size, cap, ?c2, ?st, ?k2) &*& [fp]process(proc, prog, ids) &*&
             self->nesting_ |-> 0 &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*& good(objs2, result) == true &*&
@@ -1135,7 +1229,7 @@ Object *TisonDecoder_decode(TisonDecoder *self)
 
 // C++: src/messaging.h toit::MessageDecoder::decode
 Object *MessageDecoder_decode(MessageDecoder *self)
-/*@ requires dec(self, ?fb, ?proc, ?ids, MESSAGE_FORMAT_IPC, ?b, ?size, ?cap, 0, MessageDecoder_DECODE_SUCCESS, ?k) &*&
+/*@ requires dec(self, ?fb, ?proc, ?ids, MESSAGE_FORMAT_IPC, ?b, ?size, ?cap, 0, MessageDecoder_DECODE_SUCCESS, ?k) &*& proc != 0 &*&
              [?fp]process(proc, ?prog, ids) &*& self->nesting_ |-> 0 &*& heap(?objs, ?H); @*/
 /*@ ensures dec(self, fb, proc, ids, MESSAGE_FORMAT_IPC, b, size, cap, ?c2, ?st, ?k2) &*& [fp]process(proc, prog, ids) &*&
             self->nesting_ |-> 0 &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*& good(objs2, result) == true; @*/
@@ -1143,5 +1237,129 @@ Object *MessageDecoder_decode(MessageDecoder *self)
   //@ dec_facts(self);
   // ASSERT(!MessageDecoder_decoding_tison(self)): release build, not evaluated.
   return MessageDecoder_decode_any(self);
+}
+
+// C++: src/messaging.cc toit::MessageDecoder::decode_external_data
+bool MessageDecoder_decode_external_data(MessageDecoder *self, void **data, word *length)
+//@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st0, ?k) &*& c <= cap &*& *data |-> _ &*& *length |-> _;
+/*@ ensures dec(self, fb, proc, ids, fmt, b, size, cap, ?c2, ?st, k) &*&
+            (result ? *data |-> ?d &*& *length |-> ?l &*& fmt == MESSAGE_FORMAT_IPC &*& ext_data(?copied, d, l) : *data |-> _ &*& *length |-> _); @*/
+{
+  //@ open dec(self, fb, proc, ids, fmt, b, size, cap, c, st0, k);
+  if (MessageDecoder_decoding_tison(self)) {
+    /*@ close dec(self, fb, proc, ids, fmt, b, size, cap, c, st0, k); @*/
+    return false;
+  }
+  //@ close dec(self, fb, proc, ids, fmt, b, size, cap, c, st0, k);
+  int tag = (int)MessageDecoder_read_uint8(self);
+  if (tag == (int)TAG_BYTE_ARRAY) {
+    *length = /*@truncating@*/(word)MessageDecoder_read_cardinal(self);
+    *data = (void *)MessageDecoder_read_pointer(self);
+    //@ assert *data |-> ?d0 &*& *length |-> ?l0;
+    //@ open dec(self, fb, proc, ids, fmt, b, size, cap, ?c3, ?st3, k);
+    //@ ipc_external(self, d0, l0);
+    //@ close dec(self, fb, proc, ids, fmt, b, size, cap, c3, st3, k);
+    //@ close ext_data(false, d0, l0);
+    return true;
+  } else if (tag == (int)TAG_BYTE_ARRAY_INLINE) {
+    word cardinal = /*@truncating@*/(word)MessageDecoder_read_cardinal(self);
+    if (cardinal < 0 || cardinal > MessageDecoder_remaining(self)) {
+      MessageDecoder_mark_malformed(self);
+      return false;
+    }
+    //@ if (0 <= cardinal && cardinal <= INT_MAX) truncate_signed_id(cardinal, N31);
+    int encoded_length = /*@truncating@*/(int)(*length = cardinal);
+    int malloc_length = Utils_max__int_int(1, encoded_length);
+    void *copy = malloc((size_t)malloc_length);
+    if (copy == 0) {
+      MessageDecoder_mark_allocation_failed(self);
+      return false;
+    }
+    //@ open dec(self, fb, proc, ids, fmt, b, size, cap, ?c4, ?st4, k);
+    //@ ipc_room(self, encoded_length);
+    //@ buf_focus(b, c4, encoded_length);
+    //@ chars__split(copy, encoded_length);
+    memcpy(copy, (void *)&self->buffer_[self->cursor_], (size_t)encoded_length);
+    //@ buf_unfocus(b, c4, encoded_length);
+    //@ close dec(self, fb, proc, ids, fmt, b, size, cap, c4, st4, k);
+    *data = copy;
+    //@ close ext_data(true, copy, encoded_length);
+    return true;
+  } else if (tag == (int)TAG_STRING) {
+    *length = /*@truncating@*/(word)MessageDecoder_read_cardinal(self);
+    *data = (void *)MessageDecoder_read_pointer(self);
+    //@ assert *data |-> ?d1 &*& *length |-> ?l1;
+    //@ open dec(self, fb, proc, ids, fmt, b, size, cap, ?c5, ?st5, k);
+    //@ ipc_external(self, d1, l1);
+    //@ close dec(self, fb, proc, ids, fmt, b, size, cap, c5, st5, k);
+    //@ close ext_data(false, d1, l1);
+    return true;
+  } else if (tag == (int)TAG_STRING_INLINE) {
+    word cardinal = /*@truncating@*/(word)MessageDecoder_read_cardinal(self);
+    if (cardinal < 0 || cardinal > MessageDecoder_remaining(self)) {
+      MessageDecoder_mark_malformed(self);
+      return false;
+    }
+    //@ if (0 <= cardinal && cardinal <= INT_MAX) truncate_signed_id(cardinal, N31);
+    int encoded_length = /*@truncating@*/(int)(*length = cardinal);
+    char *copy = unvoid_cast_charp(malloc((size_t)(encoded_length + 1)));
+    if (copy == 0) {
+      MessageDecoder_mark_allocation_failed(self);
+      return false;
+    }
+    //@ open dec(self, fb, proc, ids, fmt, b, size, cap, ?c6, ?st6, k);
+    //@ ipc_room(self, encoded_length);
+    //@ buf_focus(b, c6, encoded_length);
+    //@ chars__split(copy, encoded_length);
+    memcpy((void *)copy, (void *)&self->buffer_[self->cursor_], (size_t)encoded_length);
+    //@ buf_unfocus(b, c6, encoded_length);
+    //@ close dec(self, fb, proc, ids, fmt, b, size, cap, c6, st6, k);
+    copy[encoded_length] = '\0';
+    *length = (word)encoded_length;
+    *data = (void *)copy;
+    //@ close ext_data(true, copy, encoded_length);
+    return true;
+  }
+  return false;
+}
+
+// C++: src/messaging.cc toit::MessageDecoder::decode_rpc_request_external
+bool MessageDecoder_decode_rpc_request_external(MessageDecoder *self, int *id, int *name, void **data, word *length)
+/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st0, ?k) &*& c <= cap &*&
+             *id |-> _ &*& *name |-> _ &*& *data |-> _ &*& *length |-> _; @*/
+/*@ ensures dec(self, fb, proc, ids, fmt, b, size, cap, ?c2, ?st, k) &*& *id |-> _ &*& *name |-> _ &*&
+            (result ? *data |-> ?d &*& *length |-> ?l &*& fmt == MESSAGE_FORMAT_IPC &*& ext_data(?copied, d, l) : *data |-> _ &*& *length |-> _); @*/
+{
+  //@ open dec(self, fb, proc, ids, fmt, b, size, cap, c, st0, k);
+  if (MessageDecoder_decoding_tison(self)) {
+    /*@ close dec(self, fb, proc, ids, fmt, b, size, cap, c, st0, k); @*/
+    return false;
+  }
+  //@ close dec(self, fb, proc, ids, fmt, b, size, cap, c, st0, k);
+  int tag = (int)MessageDecoder_read_uint8(self);
+  if (tag != (int)TAG_ARRAY) {
+    return false;
+  }
+  word array_length = /*@truncating@*/(word)MessageDecoder_read_cardinal(self);
+  if (array_length != 3) {
+    return false;
+  }
+  tag = (int)MessageDecoder_read_uint8(self);
+  if (tag != (int)TAG_POSITIVE_SMI) {
+    return false;
+  }
+  *id = /*@truncating@*/(int)MessageDecoder_read_cardinal(self);
+  if (MessageDecoder_overflown(self)) {
+    return false;
+  }
+  tag = (int)MessageDecoder_read_uint8(self);
+  if (tag != (int)TAG_POSITIVE_SMI) {
+    return false;
+  }
+  *name = /*@truncating@*/(int)MessageDecoder_read_cardinal(self);
+  if (MessageDecoder_overflown(self)) {
+    return false;
+  }
+  return MessageDecoder_decode_external_data(self, data, length);
 }
 

@@ -121,7 +121,13 @@ void GcMetadata_insert_into_remembered_set__Stackp(Stack *address);
 //@ requires true;
 //@ ensures true;
 // Utils::max, Utils::min (src/utils.h, templates; the instance for word).
-word Utils_max(word a, word b);
+// Utils::max is @overloaded (model.cfg: the decoder uses the instance for
+// int): named by the parameter types, which are long on LP64 and int on
+// ILP32; each rendering uses one of the two.
+word Utils_max__long_long(word a, word b);
+//@ requires true;
+//@ ensures result == (a >= b ? a : b);
+word Utils_max__int_int(word a, word b);
 //@ requires true;
 //@ ensures result == (a >= b ? a : b);
 word Utils_min(word a, word b);

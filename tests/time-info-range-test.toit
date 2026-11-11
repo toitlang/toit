@@ -20,3 +20,13 @@ main:
   expect-equals 1970 utc[5]
   expect-equals 0 utc[4]
   expect-equals 1 utc[3]
+
+  // The last partial day before int.MIN's day boundary: the start of that
+  // day is below int.MIN, and the seconds of the day were computed as
+  // `timestamp - days * 86400`, a signed overflow (undefined behaviour,
+  // flagged by UBSan; release builds wrapped and then threw OUT_OF_RANGE for
+  // the year). Found by red-team round 4, the arithmetic of the primitive is
+  // now proved free of overflow (verified/cxx/annotated/prims/time_info).
+  [int.MIN, int.MIN + 1, int.MIN + 86_399, int.MIN + 86_400, int.MAX - 86_400].do: | timestamp |
+    [true, false].do: | is-utc |
+      expect-throw "OUT_OF_RANGE": time-info timestamp is-utc
