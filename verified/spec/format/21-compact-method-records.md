@@ -92,6 +92,17 @@ last at the end of the bytecodes): the header has no length. The table
 cannot be rebuilt from the bytecodes, so it is mandatory (`compute()`
 refuses a program without it; `-Xv2_table_literal` is gone).
 
+The entries of methods, accessors and lambdas are odd (amendment, branch
+core/call-speed-size; blocks have no u16 field and are exempt). Every
+header has an odd size, so it starts at an even offset; where the previous
+body ends at an odd offset the compiler appends one pad byte to it
+(RETURN_NULL: never executed, a terminator for linear decoders). With
+2-byte aligned bytecodes (program heap and off-heap blocks are word
+aligned) every u16 field is then 2-byte aligned. `rec_ok` (so `table_ok`,
+`x_table_ok`, `V2MethodTable::compute`, the dump loader) requires the odd
+entries, `compute()` and `toit_v2_run` the aligned bytecodes
+(`prog_rel`: `Table::even`).
+
 The decoding is one spec function, `vprog::vdecode(code, recs, i)`, total
 (a byte outside the bytecodes reads as 0), shared by the verifier
 (`MTable`, whose view is the decoded table, so the verifier's statements
@@ -142,3 +153,45 @@ offsets and a flags load and test on every lookup.
 
 Verification: the launch verifier decodes a method on every access
 (`MTable::at`) instead of reading a 16-byte record; no table in RAM.
+
+## Xtensa (amendment, branch core/call-speed-size)
+
+The host numbers above hid a regression on the classic ESP32 (QEMU
+`-icount`, f2/f1 instructions; the benchmark-only suite): the first K2
+version cost richards +7.5 %, deltablue +7 %, pystone +6 %, json +3 %
+against the 16-byte records. Xtensa has no unaligned 16-bit load and
+only unsigned load offsets, so each u16 field before the entry was `addi,
+l8ui, addi, l8ui, slli, or` (RISC-V `lbu, lbu, slli, or`), and the
+selector check of a virtual call grew from 5 to 10 instructions.
+
+Layouts considered (per hot field read, Xtensa):
+
+| Layout | Read | Cost | Kept |
+|---|---|---|---|
+| K2 as first merged | 2 byte loads, shift, or, 2 addi | 6 | no |
+| fields after the entry (header after a jump) | | a dispatch per call | no |
+| fields at positive offsets from a header pointer | 1 load | the entry needs the header size: a kind load per call | no |
+| byte fields with an escape | 1 load, compare | selectors and receiver ids exceed a byte: an escape test per read | no |
+| hot field in the record's spare bits | | no spare bits (24-bit entry, 8-bit arity; the selector is 16 bits) | no |
+| odd entries, aligned u16 fields (chosen) | `l16ui` with the distance folded into its offset | 1 | yes |
+
+The chosen layout reads a field with one aligned 16-bit load (trusted
+leaf `Table::u16_at_even`: two bytes the table's permissions cover, read
+as `u16::from_le` of an aligned load) at `pre + entry + (PRE - d)`, where
+the table's `pre` pointer lies `PRE` = 15 elements before its start (odd,
+so that the offset is even and encodable). The padding costs 784 bytes in
+Jaguar's bytecodes and 710 in the system image's (one byte for 43 % of the
+non-block methods; 1.5 KB of the 44.6 KB saved).
+
+The rest of the regression was code generation of the call paths:
+virtual calls take the callee's arity from the call's operand (the spec is
+stuck otherwise) instead of decoding it from the record, class ids are
+words (64-bit compares on a 32-bit target were 6 to 12 instructions per
+receiver-range or class check) and the header's class id is one logical
+shift. Result (QEMU, benchmark-only suite, f2/f1; pre-compact 16-byte
+records in parentheses): richards 0.696 (0.708), deltablue 0.947 (0.994),
+pystone 0.867 (0.857), json 1.031 (1.076). Host (callgrind, trusted):
+richards 1,066 M, deltablue 754 M, pystone 810 M, json 1,314 M, RPC 417 M
+(EXPERIMENT-trusted.md: 1,078 / 761 / 810 / 1,332 / 444). RISC-V (C6):
+the selector check is `lw, add, lhu` instead of `lbu, lbu, slli, or`; the
+run loop shrank by 600 bytes.
