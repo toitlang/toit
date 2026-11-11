@@ -5,7 +5,7 @@
 import expect show *
 
 // The time-info primitive must not return the uninitialized fields of a
-// failed conversion (timestamps whose year doesn't fit an int).
+// failed conversion (timestamps whose year is out of range).
 
 time-info timestamp/int is-utc/bool -> List:
   #primitive.core.time-info
