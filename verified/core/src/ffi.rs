@@ -394,6 +394,7 @@ pub unsafe extern "C" fn toit_v2_run(context: *mut Context) -> usize {
 }
 
 /// Instruction length of a format-2 opcode (for the layout check).
+#[cfg(feature = "layout-tables")]
 #[no_mangle]
 pub extern "C" fn toit_vcore_opcode_length(opcode: usize) -> usize {
     if opcode < 101 { crate::machine::opcode_length(opcode as u8) } else { 0 }
@@ -517,6 +518,7 @@ const OPCODES: &[(&[u8], usize)] = {
 };
 
 /// Number of layout entries.
+#[cfg(feature = "layout-tables")]
 #[no_mangle]
 pub extern "C" fn toit_vcore_layout_count() -> usize {
     LAYOUT.len() + STRUCT_LAYOUT.len() + OPCODES.len()
@@ -527,6 +529,7 @@ pub extern "C" fn toit_vcore_layout_count() -> usize {
 ///
 /// # Safety
 /// `name` and `value` must be valid for writes.
+#[cfg(feature = "layout-tables")]
 #[no_mangle]
 pub unsafe extern "C" fn toit_vcore_layout_entry(i: usize, name: *mut *const u8, value: *mut usize) -> bool {
     let entry = if i < LAYOUT.len() {
@@ -548,6 +551,7 @@ pub unsafe extern "C" fn toit_vcore_layout_entry(i: usize, name: *mut *const u8,
 
 /// Number of entries of the core module's primitive table the Rust
 /// primitives use (src/prims/index.rs), for the layout check.
+#[cfg(feature = "layout-tables")]
 #[no_mangle]
 pub extern "C" fn toit_vcore_prim_count() -> usize {
     crate::prims::index::TABLE.len()
@@ -557,6 +561,7 @@ pub extern "C" fn toit_vcore_prim_count() -> usize {
 ///
 /// # Safety
 /// `name`, `index` and `arity` must be valid for writes.
+#[cfg(feature = "layout-tables")]
 #[no_mangle]
 pub unsafe extern "C" fn toit_vcore_prim_entry(i: usize, name: *mut *const u8, index: *mut usize, arity: *mut usize) -> bool {
     match crate::prims::index::TABLE.get(i) {

@@ -1403,7 +1403,17 @@ pub fn run(p: Program, rt: Runtime, globals: Globals, heap: Heap, pre: Preemptio
     ));
     match accepted {
         Some(token) => crate::step::run_loop(&mut m, &env, &token),
+        #[cfg(feature = "checked-loop")]
         None => run_checked(&mut m, &env),
+        // Without the checked loop (devices) a program the launch did not
+        // verify never runs: the VM refuses it before (ProcessGroup::create,
+        // V2MethodTable::checked_loop_linked); should one get here anyway,
+        // it is terminated without executing an instruction.
+        #[cfg(not(feature = "checked-loop"))]
+        None => {
+            env.rt.report(V2_REPORT_STUCK, m.bci, stuck::FATAL);
+            (RESULT_TERMINATED, 1)
+        }
     }
 }
 
