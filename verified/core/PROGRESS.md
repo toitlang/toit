@@ -17,9 +17,15 @@ EXPERIMENT-trusted.md, "Follow-up". Artifacts:
 - M3 (814d6db7): unchecked twins instead of the mode flag (format note
   20). Checked richards/deltablue/pystone 1.139/1.242/1.132, trusted
   1.053/1.170/1.064.
-- M4: room facts (`room_ok` without the records for every frame,
-  `resume_kept`) and the UNWIND resume of a non-local return or branch.
-  RPC 1.30, json 1.20, yaml 1.20. Gate green at every milestone.
+- M4 (76231ced): room facts (`room_ok` without the records for every
+  frame, `resume_kept`) and the UNWIND resume of a non-local return or
+  branch. RPC 1.30, json 1.20, yaml 1.20.
+- M5 (10ae6b02): the range of `needed` in the stack-growth contract on both
+  sides (review finding); two proofs stabilized for `cargo verus`. Gate
+  green at every milestone; final heavy gates in EXPERIMENT-trusted.md
+  (f1 1197/1200, format 2 1196/1200, untrusted suite 280 + 2 known,
+  primitive differential 10M identical, compare_trace clean, 32-bit
+  sandbox 123/123, ASan fuzz 30 min 0 crashes).
 
 ## Trusted containers on the core (branch experiment/trusted-on-core, 2026-11-11)
 

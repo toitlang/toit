@@ -321,5 +321,88 @@ move): 62 M of 444 M. Register versions of these two would bring RPC to
 about 1.2. json and yaml: the run loop itself (dispatch, calls and
 returns), not slow paths; 2-3% each are unwindings as above.
 
-<!-- WALL, SIZE, GATES -->
+## Size
+
+Device library (riscv32imac, opt 3, `device_size.sh`, Rust without
+libc): 81,230 bytes before, **85,632** now (+4,402, +5.4%): verified loop
+and cold paths +3,792 (the register paths of rnonlocal.rs, `resume_kept`,
+the twin arms, inline allocation), verifier +512 (348 of it the UTF-8
+literal check of the merge), glue +90. `pop_to` and `ret_r` are inlined
+into three callers each; taking them out of line would save about 1 KB.
+
+## Trusted items (TRUSTED.md section 9, "Branch experiment/trusted-fast")
+
+- **Inline allocation** (`alloc::bump_instance`, `bump_double`,
+  `Runtime::bump`, the new-space words in `toit_v2_context`): applies to
+  untrusted programs too (every ALLOCATE and double boxing on the verified
+  loop).
+- **Ported core primitives** (`toit_v2_core_ported`): performance only,
+  no correctness assumption; untrusted policy included.
+- **Unchecked twins**: the existing item `step::trusted_field_accesses`,
+  now about the twins; never reachable by an untrusted program (the
+  launch verifier rejects twins under the untrusted rules).
+- **Range of `needed`** in `gc_grow_stack`/`toit_v2_grow_stack`: a
+  strengthened precondition and an explicit C++ check (review finding).
+  Checked the other leaf contracts that pass sizes or counts to C++ for
+  unstated ranges: `gc_allocate_instance` (class id bounded by the class
+  table; size and tag from the class bits), `gc_allocate_double` (no
+  size), `toit_v2_allocate_array` (C++ rejects lengths above
+  `Array::max_length_in_process`), `toit_v2_allocate_exception` (C++
+  clamps the word count), `gc_call_primitive` (module and index
+  bounds-checked by the policy, arity compared, the first argument a
+  position below the stack length: for arity 0 C++ forms the address one
+  below the array, which an arity-0 primitive never reads), the epoch
+  (a word compare), the `Allocator` helpers (C++ checks negative lengths,
+  arrays at most `ARRAYLET_SIZE` on both sides) and the bump allocation
+  (size at most 0x7ff words from the class bits; `limit - top` relies on
+  `top <= limit`, the semispace invariant `try_allocate` relies on too).
+
+## Gates (final state, commit 10ae6b02)
+
+- `verified/check.sh --tests`: spec 937, core 870 items at both widths,
+  0 errors, audit exact (7 new entries with justifications), no-panic
+  check, sandbox ctests 123/123; `cargo verus verify` (the
+  verified_core_verify ctest) passes after two proofs were stabilized.
+- ctest format 1: 1197/1200 (version, reader, udp-reuse-port-test).
+  An earlier run under load also failed rpc-test's timing expectation
+  (test-timeouts); it passed 3 of 3 times alone and in the final run.
+- Everything in format 2: 1196/1200 (version, reader, udp-reuse-port-test,
+  services-network-test); bytes-allocated-test passed this run (it failed
+  in the previous run: the known accounting difference, not investigated).
+- Untrusted suite: 280 identical, the two known differences
+  (program-name-test, set-map-remove-first-test).
+- Primitive differential: 10 seeds x 1,000,000 calls identical.
+- compare_trace --format 2 on the four trace programs: no divergence (it
+  needs `TOIT_TRUSTED_CHECKED_LOOP=1` since trusted programs run on the
+  verified loop, which does not trace).
+- 32-bit host: sandbox ctests 123/123.
+- ASan fuzz, launch filter, 30 minutes (seed 23, 16 jobs): 120,350
+  mutants, 103,584 rejected at launch, **0 crashes**.
+
+## Wall time (secondary; minimum of 5, machine load 24-34)
+
+| | richards | deltablue | pystone | json | yaml | strings | RPC | map-set |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| C++ f1, ms | 11.09 | 7.17 | 8.29 | 152.8 | 716.8 | 343.6 | 81.5 | 201.9 |
+| core trusted / C++ | 0.95 | 1.01 | 0.86 | 1.16 | 1.09 | 0.98 | 1.19 | 0.95 |
+| core checked / C++ | 1.02 | 1.04 | 0.89 | 1.18 | 1.06 | 0.95 | 1.17 | 0.99 |
+
+(Predecessor, trusted / C++: json 1.28, yaml 1.16, strings 1.15, RPC
+1.42.)
+
+## Verdict
+
+**For compute-bound, loop, map, string and CLI code: yes.** The core runs
+trusted code at 0.88-1.17x the C++ instructions (richards 1.05, pystone
+1.06, deltablue 1.17, strings 1.11, tison 1.04, CLI 0.89/1.03) and the
+untrusted (checked) code at the targets.
+
+**Not yet for system code at the 1.1-1.2 target in every case:** json
+1.20 and yaml 1.20 are at the upper end, RPC is 1.30. What remains:
+register paths for an unwinding entering finally code and for calls and
+returns inside finally code (RPC's remaining slow paths, about 1.2 after
+them), a lean C++ primitive call (242 -> about 150 instructions per call,
+RPC and strings), and for json/yaml the general cost of calls and
+returns in the run loop. Then the blockers of the predecessor's list
+(propagator decision, Xtensa) remain.
 
