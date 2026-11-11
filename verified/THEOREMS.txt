@@ -186,7 +186,7 @@ pub fn set_field_val(&mut self, p: &Program, wo: usize, Ghost(o): Ghost<Value>, 
         final(self).same_stack(old(self)),
 
 ==============================================================================
-Verified exec entry points: crate spec (10)
+Verified exec entry points: crate spec (11)
 ==============================================================================
 
 --- step_verified  (spec/src/exec_step.rs)
@@ -197,6 +197,14 @@ pub fn step_verified(p: &ExecProgram, s: &mut ExecState) -> (r: Option<ExecOutco
             Some(o) => matches(step(p@, old(s)@), o, final(s)@),
             None => final(s)@ == old(s)@,
         },
+
+--- verify_shipped_progress  (spec/src/progress.rs)
+pub fn verify_shipped_progress<P: Progress>(p: &VProgram, cert: &[u8], global_count: u64, prim_arity: &[Vec<u8>],
+                                            trusted: bool, progress: P)
+    -> (res: Result<(bool, usize), Oom>)
+    ensures
+        res matches Ok(r) ==> (r.0 ==> exists|c: Cert| accepts(vview(p), c, trusted) && #[trigger] c.global_count == global_count as int
+            && c.prim_arity == prim_view(prim_arity@)),
 
 --- verify_shipped  (spec/src/v2/cert.rs)
 pub fn verify_shipped(p: &VProgram, cert: &[u8], global_count: u64, prim_arity: &[Vec<u8>], trusted: bool)
