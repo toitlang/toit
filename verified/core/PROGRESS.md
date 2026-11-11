@@ -42,6 +42,14 @@
    table (20 B per method, 19-35 KB), now the largest item (OBLIGATIONS.md
    D3); README "Memory".
 
+Gates at d655dba6: verified/check.sh --tests (spec 892, core 781 verified
+at both widths, audit passed), ctest -j16 1161/1164 (version, reader not
+run; udp-reuse-port-test), 32-bit host tests/sandbox 95/95,
+nostd_check.sh (artifacts device-cert/gate-summary.txt, scripts/gate.sh).
+Still needs hardware: install with a certificate on the ESP32-C6 (flash
+erase of the block, install time, free heap during verification), the
+speed of the core at opt 3 from flash, everything listed under Phase 5.
+
 ## Phase 5 (branch phase5/portability, 2026-11-11)
 
 Portability: 32-bit words, no_std, device build, install-time
