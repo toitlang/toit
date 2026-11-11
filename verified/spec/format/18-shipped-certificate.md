@@ -180,6 +180,11 @@ compiler output is tested (below), not proven.
 
 ### What the installer does (coordination with `phase5/portability`)
 
+Implemented (branch device/certificate-and-size): both commit paths
+(`image.writer-commit`, `flash_registry.allocate`) follow the steps below,
+erasing the block before the header is written; verified/vmverify/README.md
+"Where it runs" has the details and the test.
+
 1. Locate: `end = allocation + allocation->size()` (after the assets if the
    allocation has them). If `end + 8` is inside the flash registry
    (`FlashRegistry::allocations_size()`) and the word at `end` is the
@@ -207,8 +212,10 @@ compiler output is tested (below), not proven.
    (outside this note): erase holes before trusting a header in them, or
    keep verdicts with the allocation.
 
-Hosts do not look for the block when spawning from flash: they verify on
-spawn with the inference (`FlashRegistry::is_verified` caches the verdict).
+Spawning from flash never looks for the block (it is gone): images flagged
+untrusted carry the install-time verdict; others started untrusted are
+verified on spawn, which on hosts infers (`FlashRegistry::is_verified`
+caches the verdict) and on devices rejects.
 
 ## Versioning
 

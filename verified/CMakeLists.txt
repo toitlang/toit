@@ -31,6 +31,10 @@
 #                              also registered as a ctest when cargo-verus
 #                              is available).
 
+#   TOIT_VERIFIED_CORE_INFER   (default ON for hosts, OFF for embedded builds)
+#                              links the certificate inference (vmverify
+#                              `infer`); without it a format-2 program needs
+#                              a shipped certificate.
 #   TOIT_VERIFIED_CORE_RUST_TARGET  the Rust target triple the library is
 #                              built for (empty: cargo's host target). Set
 #                              automatically for 32-bit host builds
@@ -53,8 +57,21 @@ endif()
 option(TOIT_VERIFIED_CORE "Run format-2 programs on the Verus-verified Rust core" ${TOIT_VERIFIED_CORE_DEFAULT})
 set(TOIT_VERIFIED_CORE_RUST_TARGET "${TOIT_VERIFIED_CORE_RUST_TARGET_DEFAULT}" CACHE STRING
     "Rust target triple of the verified core (empty: the host)")
+# The certificate inference (vmverify `infer`, verified/spec/format/
+# 18-shipped-certificate.md): hosts infer a certificate for a format-2 program
+# without a shipped one (and produce shipped certificates: toit.run
+# --certify). Devices only check shipped certificates: without the option the
+# inference is not linked and an untrusted program without a certificate is
+# rejected.
+if (${TOIT_IS_EMBEDDED})
+  set(TOIT_VERIFIED_CORE_INFER_DEFAULT OFF)
+else()
+  set(TOIT_VERIFIED_CORE_INFER_DEFAULT ON)
+endif()
+option(TOIT_VERIFIED_CORE_INFER "Link the certificate inference (hosts)" ${TOIT_VERIFIED_CORE_INFER_DEFAULT})
 
 set(TOIT_VERIFIED_CORE_ENABLED OFF CACHE INTERNAL "")
+set(TOIT_VERIFIED_CORE_INFER_ENABLED OFF CACHE INTERNAL "")
 if (NOT TOIT_VERIFIED_CORE)
   return()
 endif()
@@ -65,6 +82,7 @@ if (NOT TOIT_CARGO)
   return()
 endif()
 set(TOIT_VERIFIED_CORE_ENABLED ON CACHE INTERNAL "")
+set(TOIT_VERIFIED_CORE_INFER_ENABLED ${TOIT_VERIFIED_CORE_INFER} CACHE INTERNAL "")
 
 set(VCORE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/core")
 # The VM links one Rust static library: verified/vmverify, which contains
@@ -76,13 +94,13 @@ set(VCORE_TARGET_DIR "${CMAKE_BINARY_DIR}/verified_core")
 # VM (vmverify `device-runtime`), Cargo profile `device` (panic = abort, LTO).
 if (${TOIT_IS_EMBEDDED})
   set(VCORE_PROFILE device)
-  set(VCORE_FEATURE_ARGS --no-default-features --features device-runtime)
+  set(VCORE_FEATURES device-runtime)
   set(TOIT_VERIFIED_CORE_OPT_LEVEL "3" CACHE STRING "Rust opt-level of the device library (3, s, z)")
   set(VCORE_ENV CARGO_PROFILE_DEVICE_OPT_LEVEL=${TOIT_VERIFIED_CORE_OPT_LEVEL})
   set(VCORE_LINK_LIBRARIES "m")
 else()
   set(VCORE_PROFILE release)
-  set(VCORE_FEATURE_ARGS)
+  set(VCORE_FEATURES std)
   set(VCORE_ENV)
   # Hosts link Rust's std (panics of the verifier are caught: ffi.rs).
   set(VCORE_LINK_LIBRARIES "${CMAKE_DL_LIBS};pthread;m")
@@ -99,6 +117,12 @@ file(GLOB_RECURSE VCORE_SOURCES CONFIGURE_DEPENDS
   "${VCORE_DIR}/src/*.rs"
   "${VMVERIFY_DIR}/src/*.rs"
   "${CMAKE_CURRENT_SOURCE_DIR}/spec/src/*.rs")
+
+if (TOIT_VERIFIED_CORE_INFER)
+  list(APPEND VCORE_FEATURES infer)
+endif()
+list(JOIN VCORE_FEATURES "," VCORE_FEATURES_JOINED)
+set(VCORE_FEATURE_ARGS --no-default-features --features "${VCORE_FEATURES_JOINED}")
 
 add_custom_command(
   OUTPUT "${VCORE_LIB}"

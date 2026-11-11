@@ -855,6 +855,9 @@ extract-host invocation/cli.Invocation envelope/Envelope --config-encoded/ByteAr
         --attach-assets
     // The image needs to be padded to page-size.
     relocated = pad relocated (1 << 12)
+    // Bundled images are installed through the containers service (run-image):
+    // the shipped certificate goes along as the trailing block.
+    if container.certificate: relocated += certificate-block container.certificate
     relocatable := container.relocation-information.apply-to relocated
     if container.flags & IMAGE-FLAG-RUN-BOOT != 0 or container.flags & IMAGE-FLAG-RUN-CRITICAL != 0:
       startup-images[name] = relocatable
@@ -1623,6 +1626,7 @@ extract-container -> ContainerEntry
     name/string flags/Map? content/ByteArray --word-size/int --assets/ByteArray?:
   header/ImageHeader := ?
   relocatable/ByteArray := ?
+  certificate/ByteArray? := null
   if is-snapshot-bundle content:
     snapshot-bundle := SnapshotBundle name content
     snapshot-uuid ::= snapshot-bundle.uuid
@@ -1634,12 +1638,14 @@ extract-container -> ContainerEntry
     header = ImageHeader image.all-memory --word-size=word-size
     if header.snapshot-uuid != snapshot-uuid: throw "corrupt snapshot uuid encoding"
     relocatable = image.build-relocatable
+    if snapshot-bundle.certificate: certificate = snapshot-bundle.certificate.bytes
   else:
     header = decode-image content --word-size=word-size
     relocatable = content
   flag-bits := flags and flags.get name
   flag-bits = flag-bits or 0
   return ContainerEntry header.id name relocatable --flags=flag-bits --assets=assets --word-size=word-size
+      --certificate=certificate
 
 update-envelope invocation/cli.Invocation [block] -> none:
   input-path := invocation[OPTION-ENVELOPE]
@@ -2012,8 +2018,13 @@ class ContainerEntry implements firmware-ec618.Container:
   relocatable/ByteArray
   assets/ByteArray?
   word-size/int
+  // The shipped certificate of a format-2 snapshot, or null
+  // (verified/spec/format/18-shipped-certificate.md). Images installed
+  // through the containers service carry it as a trailing block; the
+  // installer verifies the program with it and drops it.
+  certificate/ByteArray?
 
-  constructor .id .name .relocatable --.flags --.assets --.word-size:
+  constructor .id .name .relocatable --.flags --.assets --.word-size --.certificate=null:
 
   relocated-size -> int:
     return relocatable.size - (RelocationInformation.relocated-size relocatable.size --word-size=word-size)

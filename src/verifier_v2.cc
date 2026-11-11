@@ -24,6 +24,7 @@
 #include "program.h"
 #include "flash_allocation.h"
 #include "flash_registry.h"
+#include "flags.h"
 
 namespace toit {
 
@@ -39,16 +40,27 @@ static const uint32 v2_prim_counts[] = { MODULES(V2_MODULE_COUNT) };
 #undef V2_MODULE_ARITIES
 #undef V2_MODULE_COUNT
 
-const char* V2Verifier::install_verdict(const void* memory, word program_size, uint8* metadata) {
+const char* V2Verifier::install_verdict(const void* memory, word program_size, uint8* metadata,
+                                        const uint8* certificate, word certificate_length) {
   metadata[0] &= ~FlashAllocation::Header::FLAGS_PROGRAM_VERIFIED_MASK;
   if ((metadata[0] & FlashAllocation::Header::FLAGS_PROGRAM_UNTRUSTED_MASK) == 0) return null;
   FlashRegistry::flush();
   Program* program = reinterpret_cast<Program*>(const_cast<void*>(memory));
   bool no_verdict = false;
-  const char* error = verify_installed(program, program_size, &no_verdict);
+  const char* error = verify_installed(program, program_size, &no_verdict, certificate, certificate_length);
   if (error != null) return error;
   if (!no_verdict) metadata[0] |= FlashAllocation::Header::FLAGS_PROGRAM_VERIFIED_MASK;
   return null;
+}
+
+bool V2Verifier::infers() {
+#ifdef TOIT_VERIFIED_CORE_INFER
+  if (Flags::require_certificate) return false;
+  const char* env = getenv("TOIT_REQUIRE_CERTIFICATE");
+  return env == null || strcmp(env, "1") != 0;
+#else
+  return false;
+#endif
 }
 
 #ifdef TOIT_VERIFIED_CORE
@@ -104,6 +116,14 @@ bool V2Verifier::verify(Program* program, const V2MethodTable* table, bool trust
 
 static bool v2_verify(Program* program, const V2MethodTable* table, bool trusted, word program_size,
                       const uint8* certificate, word certificate_length) {
+  if (certificate == null && !V2Verifier::infers()) {
+    // Devices (and hosts with -Xrequire_certificate): no inference, so no
+    // verdict without a shipped certificate. Rejected before the program is
+    // converted.
+    fprintf(stderr, "verifier: %sprogram rejected: %s\n", trusted ? "" : "untrusted ",
+            v2_code_name(TOIT_VMVERIFY_NO_CERTIFICATE));
+    return false;
+  }
   toit_v2_program tables;
   toit_vmverify_input input;
   v2_input(program, table, trusted, &tables, &input, program_size, certificate, certificate_length);
@@ -139,7 +159,8 @@ static bool v2_verify(Program* program, const V2MethodTable* table, bool trusted
   return false;
 }
 
-const char* V2Verifier::verify_installed(Program* program, word program_size, bool* no_verdict) {
+const char* V2Verifier::verify_installed(Program* program, word program_size, bool* no_verdict,
+                                         const uint8* certificate, word certificate_length) {
   *no_verdict = false;
   if (!program->is_format2()) {
     if (V2MethodTable::untrusted_format1_allowed()) {
@@ -151,7 +172,7 @@ const char* V2Verifier::verify_installed(Program* program, word program_size, bo
   }
   V2MethodTable* table = V2MethodTable::compute(program);
   if (table == null) return "INVALID_SNAPSHOT";
-  bool accepted = v2_verify(program, table, false, program_size, null, 0);
+  bool accepted = v2_verify(program, table, false, program_size, certificate, certificate_length);
   delete table;
   return accepted ? null : "VERIFICATION_FAILED";
 }
@@ -167,8 +188,9 @@ bool V2Verifier::write_canonical(Program* program, const V2MethodTable* table, c
   return toit_vmverify_canonical(&input, path) == 0;
 }
 
-#ifndef TOIT_FREERTOS
-// Hosts only: devices link the verifier without the inference.
+#ifdef TOIT_VERIFIED_CORE_INFER
+// Builds with the inference only (hosts): devices link the verifier without
+// it.
 bool V2Verifier::certify(Program* program, const V2MethodTable* table, bool trusted,
                          uint8** bytes, word* length) {
   toit_v2_program tables;
@@ -216,7 +238,8 @@ bool V2Verifier::write_canonical(Program* program, const V2MethodTable* table, c
   return false;
 }
 
-const char* V2Verifier::verify_installed(Program* program, word program_size, bool* no_verdict) {
+const char* V2Verifier::verify_installed(Program* program, word program_size, bool* no_verdict,
+                                         const uint8* certificate, word certificate_length) {
   *no_verdict = !program->is_format2() && V2MethodTable::untrusted_format1_allowed();
   if (*no_verdict) return null;
   // Without the verifier no untrusted program can be admitted.

@@ -41,34 +41,42 @@ class V2Verifier {
   // stderr too.
   // [certificate] is the shipped certificate of the program (format 2
   // note 18, verified/spec/format/18-shipped-certificate.md), or null:
-  // then the verifier infers one (hosts) or rejects the program (builds
-  // without the inference).
+  // then the verifier infers one (infers()) or rejects the program.
   static bool verify(Program* program, const V2MethodTable* table, bool trusted,
                      const uint8* certificate = null, word certificate_length = 0);
 
   // As above, with a method table decoded for the call.
   static bool verify(Program* program, bool trusted);
 
+  // Whether a program without a shipped certificate can be verified: the
+  // inference is linked (TOIT_VERIFIED_CORE_INFER, hosts) and not switched
+  // off with -Xrequire_certificate or TOIT_REQUIRE_CERTIFICATE=1 (which
+  // makes a host behave as a device). Devices link no inference: every
+  // untrusted format-2 program needs a certificate.
+  static bool infers();
+
   // Install-time verification (Phase 5) of the program (of [program_size]
-  // bytes, without assets) of an image flagged
-  // untrusted, before its flash allocation is committed
-  // (primitive flash_registry.allocate). Returns null if the verifier
+  // bytes, without assets) of an image flagged untrusted, before its flash
+  // allocation is committed, with the image's shipped [certificate] (the
+  // trailing block, FlashAllocation::find_certificate_block) or null. Returns null if the verifier
   // accepted the program with the untrusted rules (the caller records the
   // verdict in the allocation: FlashAllocation::program_verified), else
   // the error to fail with (VERIFICATION_FAILED, INVALID_SNAPSHOT or
   // FORMAT_2_REQUIRED). A format-1 program gets no verdict and is not an
   // error when -Xuntrusted_format1 allows it ([*no_verdict] is set).
-  static const char* verify_installed(Program* program, word program_size, bool* no_verdict);
+  static const char* verify_installed(Program* program, word program_size, bool* no_verdict,
+                                      const uint8* certificate = null, word certificate_length = 0);
 
   // The install-time verdict for the program image at [memory] of
-  // [program_size] bytes (written,
-  // its header not yet), with the [metadata] its header will get: clears
+  // [program_size] bytes (written, its header not yet) with its shipped
+  // [certificate] (or null), with the [metadata] its header will get: clears
   // the verdict bit the installer may have set (only the VM sets it), and
   // for an image flagged untrusted verifies the program (verify_installed)
   // and sets the bit if it is accepted. Returns null or the error to fail
   // the commit with. Called by the commit paths (image.writer-commit,
   // flash_registry.allocate).
-  static const char* install_verdict(const void* memory, word program_size, uint8* metadata);
+  static const char* install_verdict(const void* memory, word program_size, uint8* metadata,
+                                     const uint8* certificate = null, word certificate_length = 0);
 
   // Marks [table], decoded from the bytes of an allocation with the
   // install-time verdict, as accepted with the untrusted rules (the verdict

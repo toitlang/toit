@@ -80,6 +80,7 @@ namespace toit {
   FLAG_STRING(deploy, compiler_sandbox,     null,  "syscall-sandbox for the forked compiler: compiler or sandbox")  \
   FLAG_BOOL(deploy,  untrusted,             false, "Run the application as an untrusted (sandboxed) container") \
   FLAG_BOOL(deploy,  untrusted_format1,     false, "Allow untrusted containers in bytecode format 1 (also TOIT_UNTRUSTED_FORMAT1=1)") \
+  FLAG_BOOL(deploy,  require_certificate,   false, "Verify format-2 programs only with a shipped certificate, as devices do (also TOIT_REQUIRE_CERTIFICATE=1)") \
 
 #ifdef TOIT_DEBUG
 #define DECLARE_DEBUG_FLAG(type, prefix, name, value, doc) static type name;

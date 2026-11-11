@@ -105,38 +105,47 @@ PRIMITIVE(writer_commit) {
   // If there are extra bytes after the program, they represent assets associated
   // with the program image. Check that the size of the encoded assets is within
   // bounds and mark the metadata to indicate the presence of the assets.
-  uword program_size = output->program_size();
-  uword assets_extra = image.byte_size() - program_size;
-  // A shipped certificate (verified/spec/format/18-shipped-certificate.md)
-  // may follow the program (and the assets) as a trailing block that starts
-  // with CERTIFICATE_BLOCK_MARKER. It is not part of the allocation: the
-  // installer finds it at the end of the allocation (FlashAllocation::size)
-  // and may drop it once the program is verified. The marker is larger than
-  // any assets length, so a block right after the program means no assets.
-  static const uint32 CERTIFICATE_BLOCK_MARKER = 0x31424354;  // "TCB1".
-  if (assets_extra >= 2 * sizeof(uint32) &&
-      *reinterpret_cast<uint32*>(reinterpret_cast<uword>(image.begin()) + program_size) == CERTIFICATE_BLOCK_MARKER) {
-    assets_extra = 0;
-  }
-  if (assets_extra > 0) {
-    uword assets_address = reinterpret_cast<uword>(image.begin()) + program_size;
-    uword assets_length = *reinterpret_cast<uint32*>(assets_address);
-    if (assets_length + sizeof(uint32) > assets_extra) FAIL(OUT_OF_BOUNDS);
+  word program_size = output->program_size();
+  bool has_assets = false;
+  word allocation_size = FlashAllocation::image_allocation_size(
+      image.begin(), program_size, image.end(), &has_assets);
+  if (allocation_size < 0) FAIL(OUT_OF_BOUNDS);
+  if (has_assets) {
     // TODO(kasper): Can we get the metadata to already contain the right bits
     // from the get go? Right now, we ignore the bits put in there when
     // converting from snapshot to image, but that seems fishy.
     metadata[0] |= FlashAllocation::Header::FLAGS_PROGRAM_HAS_ASSETS_MASK;
   }
 
+  // A shipped certificate (format 2 note 18) may follow the allocation as a
+  // trailing block. It is not part of the allocation.
+  uword allocation_end = reinterpret_cast<uword>(image.begin()) + allocation_size;
+  const uint8* certificate = null;
+  word certificate_length = 0;
+  FlashAllocation::find_certificate_block(reinterpret_cast<void*>(allocation_end), image.end(),
+                                          &certificate, &certificate_length);
+
   // Install-time verification of images flagged untrusted (Phase 5): every
   // byte of the program is written; the verdict goes into the metadata and
   // the header's checksum binds it to the bytes (flash_allocation.h). A
   // rejected image is not committed.
-  const char* error = V2Verifier::install_verdict(image.begin(), program_size, metadata);
+  const char* error = V2Verifier::install_verdict(image.begin(), program_size, metadata,
+                                                  certificate, certificate_length);
   if (error != null) {
     String* message = process->allocate_string(error);
     if (message == null) FAIL(ALLOCATION_FAILED);
     return Error::from(message);
+  }
+
+  // Drop the pages after the allocation (the certificate block): it has
+  // served its purpose, and the pages become a hole once the reservation
+  // is closed (system/flash/image_writer.toit gives them back to the
+  // registry). Erased before the header is written, so a valid allocation
+  // never has a certificate behind it.
+  word tail = image.byte_size() - allocation_size;
+  if (tail > 0) {
+    word tail_offset = FlashRegistry::offset(reinterpret_cast<void*>(allocation_end));
+    if (!FlashRegistry::erase_chunk(tail_offset, tail)) FAIL(HARDWARE_ERROR);
   }
 
   // Write program header as the last thing. Only a complete flash write

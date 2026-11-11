@@ -130,6 +130,31 @@ Every untrusted launch, before any bytecode runs:
   without verification, corrupts a string of the program in the flash
   file, checks it no longer starts, and checks that a rejected program is
   not installed; 64-bit and 32-bit hosts).
+- Shipped certificates at install (format note 18): both commit paths
+  find the image's trailing certificate block right after the allocation
+  (program and padded assets; `FlashAllocation::image_allocation_size`,
+  `find_certificate_block`), pass it to `install_verdict`, which verifies
+  with it before the header is written, then erase the pages after the
+  allocation (the block) before writing the header, so a valid allocation
+  never has a certificate behind it. The Toit side gives those pages back
+  as a hole (`FlashRegistry.release-tail`, called by
+  `ContainerServiceProvider.image-writer-commit` and
+  `FlashRegistry.allocate`; `flash_registry.allocate` accepts a program
+  smaller than its reservation for this). Without a block a host infers;
+  a device (built without `infer`: CMake `TOIT_VERIFIED_CORE_INFER` OFF,
+  the default for embedded builds) rejects the image before converting
+  anything (`V2Verifier::infers`). Hosts behave as devices with
+  `-Xrequire_certificate` or `TOIT_REQUIRE_CERTIFICATE=1`. A shipped
+  certificate is never replaced by the inference: a wrong one rejects.
+  The test above also checks: install with the block (accepted with the
+  shipped certificate, the block's pages erased and no block left in the
+  flash file), install without it (host: inferred; device configuration:
+  rejected), install with the block of another program (rejected in both
+  configurations), with the device configuration accepting the image
+  with its block; 64-bit and 32-bit hosts. Images: `toit tool
+  snapshot-to-image` and the host envelope's bundled images (`toit tool
+  firmware`, `extract-host`) carry the block; images embedded in device
+  firmware (DROM) are trusted and do not.
 - Verdict cache (host only, images without the flag started untrusted):
   `programs_registry.spawn` remembers accepted flash allocations
   (`FlashRegistry::is_verified`, 32 entries); every
@@ -140,9 +165,9 @@ Every untrusted launch, before any bytecode runs:
 - The shipped certificate: `snapshot.launch` gets the bundle's
   `certificate` member (system/extensions/host/toit.run.toit); `toit.run
   --verify` uses it (`--no-certificate`, `--require-certificate`).
-  `programs_registry.spawn` (flash) passes none: hosts infer; on devices
-  the installer verifies with the trailing block of the image (format
-  note 18, "What the installer does").
+  `programs_registry.spawn` (flash) passes none: hosts infer; devices
+  reject, so on devices an untrusted container comes from an image
+  flagged untrusted (verified at install with its block).
 
 Trusted format-2 programs are verified only with `-Xverify`/`TOIT_VERIFY`
 (trusted rules).

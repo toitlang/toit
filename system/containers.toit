@@ -346,6 +346,9 @@ abstract class ContainerServiceProvider extends ServiceProvider
 
   image-writer-commit writer/ContainerImageWriter flags/int data/int -> uuid.Uuid:
     allocation := writer.commit --flags=flags --data=data
+    // The commit verified an untrusted image with its shipped certificate
+    // and erased the certificate block: its pages are free again.
+    image-registry.release-tail allocation writer.reserved-size
     image := add-flash-image allocation
     return image.id
 

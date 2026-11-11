@@ -55,20 +55,44 @@ class FlashRegistry:
     slot.size -= size
     return FlashReservation result size
 
+  /**
+  Allocates the $reservation.
+
+  A program ($type FLASH-ALLOCATION-TYPE-PROGRAM) may be smaller than the
+    reservation ($size): the rest of the reservation may hold the program's
+    shipped certificate (after its assets), which the VM verifies the program
+    with and then erases. The rest becomes a hole.
+  */
   allocate reservation/FlashReservation -> FlashAllocation
       --type/int
       --id/uuid.Uuid
       --metadata/ByteArray
-      --content/ByteArray=#[]:
+      --content/ByteArray=#[]
+      --size/int=reservation.size:
     try:
       offset := reservation.offset
-      size := reservation.size
       flash-registry-allocate_ offset size type id.to-byte-array metadata content
-      allocation := FlashAllocation offset size
+      allocation := size == reservation.size
+          ? FlashAllocation offset size
+          : FlashAllocation offset
       allocations_[offset] = allocation
+      release-tail allocation reservation.size
       return allocation
     finally:
       reservation.close
+
+  /**
+  Gives the pages of a reservation of $reserved-size bytes that follow the
+    $allocation made at its start back as a hole. The VM erased them when it
+    committed the allocation (the installer drops an image's shipped
+    certificate block, verified/spec/format/18-shipped-certificate.md).
+  */
+  release-tail allocation/FlashAllocation reserved-size/int -> none:
+    end := allocation.offset + allocation.size
+    tail := allocation.offset + reserved-size - end
+    if tail <= 0: return
+    holes_.add (FlashHole_ end tail)
+    holes_ = coalesce_ holes_
 
   // Frees a previously allocated region in the flash.
   free allocation/FlashAllocation -> none:
