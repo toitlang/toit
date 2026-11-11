@@ -98,6 +98,7 @@ foreach(entry ${UNTRUSTED_RUN_TESTS})
   endforeach()
 endforeach()
 
+# FORMAT-1-ONLY (docs/format2-migration.md): delete with format 1.
 # A format-1 snapshot is refused as an untrusted container by default, and
 # runs (on the C++ interpreter) when format 1 is allowed.
 foreach(variant refused allowed)

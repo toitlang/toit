@@ -2,6 +2,8 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+// FORMAT-1-ONLY (docs/format2-migration.md): delete with the C++ interpreter.
+
 // Tests that the interpreter checks the field accesses of untrusted programs
 // at run time, in every build. It patches the field index of the LOAD_FIELD
 // and STORE_FIELD instructions of a method to a value past the end of the

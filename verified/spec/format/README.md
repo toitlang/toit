@@ -2,11 +2,11 @@
 
 Phase 2 of `07-verified-sandbox-plan.md`. Format 2 is the bytecode format
 of the verified core. It is specified in `src/v2` (Verus), produced by the
-compiler with `-Xbytecode_format=2` (`src/compiler/bytecode_format.h`),
-decoded by `tools/snapshot.toit`, and run by the reference interpreter
-(`src/interp/exec2.rs`, with 72 opcodes running through the verified
-`src/v2/exec.rs`). The C++ interpreter does not run it; format 1 stays the
-compiler's default until the verified core replaces the interpreter.
+compiler (`src/compiler/bytecode_format.h`; the default on builds with the
+verified core since docs/format2-migration.md, `-Xbytecode_format=1` for
+format 1), decoded by `tools/snapshot.toit`, and run by the reference
+interpreter (`src/interp/exec2.rs`, with 72 opcodes running through the
+verified `src/v2/exec.rs`). The C++ interpreter does not run it.
 
 ## Decisions
 

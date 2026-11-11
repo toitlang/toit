@@ -10,9 +10,10 @@ OBLIGATIONS.md. Trusted base: TRUSTED.md and verified/TRUSTED.toml.
 ## 1. Format dispatch
 
 - A program is format 2 iff its bytecodes start with the tag `TBC2`
-  (`Program::is_format2`). The compiler emits format 2 with
-  `-Xbytecode_format=2`, with `TOIT_BYTECODE_FORMAT=2` in the environment
-  (test runs), and always for `toit.run --untrusted` (source programs).
+  (`Program::is_format2`). The compiler emits format 2 by default on
+  builds with the core (docs/format2-migration.md; format 1 with
+  `-Xbytecode_format=1`, `TOIT_BYTECODE_FORMAT=1` or a build configured
+  with `-DTOIT_BYTECODE_FORMAT=1`), and always for `--untrusted`.
 - `V2MethodTable::compute` (src/interpreter_v2.cc) decodes the method
   headers (note 15) into a table of `V2Method`; it checks only the header
   encoding and that every body lies inside the bytecodes

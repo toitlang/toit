@@ -54,6 +54,8 @@ add_custom_command(
   DEPENDS $<TARGET_FILE:bytecode_lister>
 )
 
+# FORMAT-1-ONLY (docs/format2-migration.md): compares src/bytecodes.h with
+# the format-1 table of tools/snapshot.toit.
 set(BYTECODE_MATCH_TEST ${CMAKE_CURRENT_SOURCE_DIR}/bytecode-match-test.toit)
 file(RELATIVE_PATH BYTECODE_MATCH_TEST_NAME ${TOIT_SDK_SOURCE_DIR} ${BYTECODE_MATCH_TEST})
 set(BYTECODE_MATCH_TEST_NAME tests-toitp-bytecode-match-test)
