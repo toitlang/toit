@@ -99,12 +99,36 @@ class Program:
 
     format = Program.format-of all-bytecodes
     // Create the methods list.
-    current-offset := format == 2 ? ToitMethod.V2-TAG-SIZE : 0
-    methods = List method-table_.size:
-      method-info := method-table_[current-offset]
-      method := ToitMethod all-bytecodes current-offset method-info.bytecode-size --format=format
-      current-offset += method.allocation-size
-      method
+    if format == 2:
+      // Format note 21: the records of the method table literal (the last
+      //   literal) hold the entries and arities; a header ends at its
+      //   entry, a body at the next method's header.
+      records := Program.v2-method-records_ snapshot.program-snapshot.program-segment.literals_
+      entries := records.map: it >> 8
+      bytes := snapshot.program-snapshot.program-segment.bytecodes_
+      header-starts := entries.map: | entry/int | entry - (ToitMethod.v2-header-size bytes[entry - 1])
+      methods = List records.size: | i/int |
+        end := i + 1 < records.size ? header-starts[i + 1] : bytes.size
+        ToitMethod.v2 bytes header-starts[i] entries[i] end (records[i] & 0xff)
+    else:
+      current-offset := 0
+      methods = List method-table_.size:
+        method-info := method-table_[current-offset]
+        method := ToitMethod all-bytecodes current-offset method-info.bytecode-size --format=format
+        current-offset += method.allocation-size
+        method
+
+  /**
+  The records of a format-2 program's method table (format note 21): the
+    content of its last literal, after the 16-byte header (marker "TMT2",
+    count, bytecodes length, 0).
+  */
+  static v2-method-records_ literals/List -> List:
+    table := (literals.last as ToitByteArray).content
+    if table.size < 16 or (LITTLE-ENDIAN.uint32 table 0) != ToitMethod.V2-TABLE-MARKER:
+      throw "format-2 program without a method table literal"
+    count := LITTLE-ENDIAN.uint32 table 4
+    return List count: LITTLE-ENDIAN.uint32 table (16 + 4 * it)
 
   static format-of bytecodes/ByteArray -> int:
     if bytecodes.size >= 4 and bytecodes[0] == 'T' and bytecodes[1] == 'B'
@@ -567,8 +591,10 @@ class ToitByteArray extends ToitHeapObject:
 class ToitMethod:
   static HEADER-SIZE ::= 4
   static V2-TAG-SIZE ::= 4
-  static V2-HAS-SELECTOR ::= 1 << 2
-  static V2-HAS-RECEIVER ::= 1 << 3
+  // The kind byte of a format-2 header (format note 21): a method whose
+  //   receiver range is one class or none.
+  static V2-KIND-SINGLE ::= 1 << 2
+  static V2-TABLE-MARKER ::= 0x3254_4d54  // "TMT2", the method table literal.
 
   static METHOD ::= 0
   static FIELD-ACCESSOR ::= 1
@@ -589,45 +615,54 @@ class ToitMethod:
   receiver-start / int? := null
   receiver-end / int? := null
 
-  constructor all-bytecodes/ByteArray at/int bytecode-size/int --.format/int=1:
+  /**
+  A format-2 method (format note 21) whose header starts at $at, whose body
+    is $entry..$end, and whose record holds $arity. The header is read
+    backwards from the entry: the kind byte, then every field at a fixed
+    distance from the entry (u16; 0xffff for no selector or receiver).
+  */
+  constructor.v2 all-bytecodes/ByteArray at/int entry/int end/int .arity:
+    format = 2
     id = at
-    if format == 2:
-      // See src/compiler/bytecode_format.h and verified/spec/format/15-header.md.
-      arity = all-bytecodes[at]
-      flags := all-bytecodes[at + 1]
-      kind = flags & 0x3
-      pos := at + 2
-      read-leb := :
-        result := 0
-        shift := 0
-        while true:
-          byte := all-bytecodes[pos++]
-          result |= (byte & 0x7f) << shift
-          shift += 7
-          if byte & 0x80 == 0: break
-        result
-      length := read-leb.call
-      assert: length == bytecode-size
-      value = (flags & V2-HAS-SELECTOR) != 0 ? read-leb.call : 0xffff
-      if (flags & V2-HAS-RECEIVER) != 0:
-        receiver-start = read-leb.call
-        receiver-end = receiver-start + read-leb.call
-      if kind == FIELD-ACCESSOR or kind == LAMBDA:
-        aux = read-leb.call
-      header-size = pos - at
-      bytecodes = all-bytecodes.copy pos (pos + bytecode-size)
-    else:
-      header-size = HEADER-SIZE
-      arity-and-flags := all-bytecodes[at++]
-      kind-height := all-bytecodes[at++]
-      kind       = kind-height & 0x3
-      max-height = (kind-height >> 2) * 4
-      value = LITTLE-ENDIAN.uint16 all-bytecodes at
-      is-statically-resolved-instance-method = (arity-and-flags & 0x80) != 0
-      arity = arity-and-flags & 0x7f
-      at += 2
-      assert: at - id == HEADER-SIZE
-      bytecodes = all-bytecodes.copy at (at + bytecode-size)
+    kind-byte := all-bytecodes[entry - 1]
+    kind = kind-byte & 0x3
+    value = 0xffff
+    u16 := : | back/int | LITTLE-ENDIAN.uint16 all-bytecodes (entry - back)
+    if kind == METHOD or kind == FIELD-ACCESSOR:
+      value = u16.call 3
+      start := u16.call 5
+      if start != 0xffff:
+        receiver-start = start
+        receiver-end = (kind-byte & V2-KIND-SINGLE) != 0 ? start + 1 : (u16.call 7)
+      if kind == FIELD-ACCESSOR: aux = u16.call 9
+    else if kind == LAMBDA:
+      aux = u16.call 3
+    header-size = entry - at
+    assert: header-size == (v2-header-size kind-byte)
+    bytecodes = all-bytecodes.copy entry end
+
+  /// The size of a format-2 header with the given kind byte (format note 21).
+  static v2-header-size kind-byte/int -> int:
+    kind := kind-byte & 0x3
+    if kind == BLOCK: return 1
+    if kind == LAMBDA: return 3
+    if kind == FIELD-ACCESSOR: return 9
+    return (kind-byte & V2-KIND-SINGLE) != 0 ? 5 : 7
+
+  constructor all-bytecodes/ByteArray at/int bytecode-size/int --.format/int=1:
+    assert: format == 1
+    id = at
+    header-size = HEADER-SIZE
+    arity-and-flags := all-bytecodes[at++]
+    kind-height := all-bytecodes[at++]
+    kind       = kind-height & 0x3
+    max-height = (kind-height >> 2) * 4
+    value = LITTLE-ENDIAN.uint16 all-bytecodes at
+    is-statically-resolved-instance-method = (arity-and-flags & 0x80) != 0
+    arity = arity-and-flags & 0x7f
+    at += 2
+    assert: at - id == HEADER-SIZE
+    bytecodes = all-bytecodes.copy at (at + bytecode-size)
 
   /// The fields of a format-2 method header, for the disassembly.
   header-string -> string:

@@ -728,10 +728,10 @@ pub fn top_room_kept(m: &Machine, env: &Env, Ghost(w0): Ghost<Machine>) -> (b: b
     }
     proof {
         assert(sp::valid_method(ap, g.frames[n - 1].method as int));
-        assert(ap.methods[method as int] == method_info(p.methods@[method as int], p.max_height));
+        assert(ap.methods[method as int] == method_info(p.minfo(method as int), p.max_height));
         assert(p.max_height < 0x1_0000);
     }
-    let a = p.methods.at(method).arity as usize;
+    let a = p.method(method).arity as usize;
     let total = base + a + p.max_height + m.rtop + STACK_RESERVE;
     if total > m.len {
         return false;
@@ -842,7 +842,7 @@ pub fn slow(m: &mut Machine, r: Regs, env: &Env, k: Slow, w: usize, Ghost(v): Gh
                     toit_spec::v2::sound_step::lemma_step(ap, p.cert@, p.trusted@, g);
                     assert(outcome_ok(ap, p.cert@, sp::step(ap, g)));
                 }
-                let info = p.methods.at(t);
+                let info = p.method(t);
                 let mut r2 = r;
                 crate::rfins::push_call_fins(m, &mut r2, p, t, info, ret);
                 proof { lemma_matches(p, w0, m.with(r2), Ctl::Next); }

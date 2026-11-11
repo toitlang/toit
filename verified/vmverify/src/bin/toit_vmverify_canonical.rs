@@ -45,7 +45,7 @@ fn main() {
         eprintln!("cannot convert the method table of {}", args[0]);
         std::process::exit(1);
     });
-    let p = toit_spec::v2::vprog::vprogram_of(e, &methods, h);
+    let p = toit_spec::v2::vprog::vprogram_of(e, methods, h);
     let text = toit_vmverify::canonical::canonical(&p, &loaded.heap, &loaded.globals, &arity);
     if std::fs::write(&args[1], text).is_err() {
         eprintln!("cannot write {}", args[1]);

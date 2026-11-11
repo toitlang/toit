@@ -1,5 +1,162 @@
 # Phase 4a progress (verified core, format 2 on x86-64)
 
+## Compact method records (branch core/compact-methods, 2026-11-11)
+
+The method table of format 2 shrinks from 16 to 4 bytes per method
+(format note 21, verified/spec/format/21-compact-method-records.md: the
+design comparison, the decision and the costs). Base: sandbox-integration
+(88a3fe30, later 655e860d merged) plus device/size (040bfdac). Nothing
+was flashed. Artifacts: /home/flo/work/opentoit-sandbox-artifacts/
+compact-methods (tools/: bench, verification, batteries, gates; dev/:
+firmware, Jaguar and QEMU scripts and results; toolsrc/methstats.toit:
+the size model of the layouts).
+
+Chosen (K2): a record `entry << 8 | arity`; the header ends at the entry,
+a kind byte (the kind, or 4 for a method of one class or none) and every
+field at a fixed distance before the entry (selector e-3, receiver start
+e-5, end e-7, accessor field e-9, lambda captured count e-3; 0xffff for
+none); a body ends at the next header, so the table literal ("TMT2") is
+mandatory. Why this one: the layouts whose field offsets depend on flag
+bits (E1/E2, 3.6 KB smaller) cost 6 to 11 % on the call paths (measured,
+`k2a`..`k2c` in tools/bench); K2 keeps every hot read at a constant
+offset, and a dispatch target of an accepted program needs no kind test.
+
+- C1 (126811f0, 59c3e113): compiler emission and the literal
+  (program_builder.cc), `V2MethodTable` (records, `at` decodes,
+  `compute` checks the literal: headers inside the bytecodes before
+  their entries, back to back from the tag, canonical kind bytes and
+  ranges), tools/snapshot.toit, the dump loader (loader.rs), vmverify,
+  the fuzz driver. Spec: `vprog::{vdecode, table_ok, MTable, x_table_ok}`
+  (MTable's view is the decoded table, so the verifier's proofs did not
+  change beyond `ix` -> `at`); core: `Program::{minfo, method, entry_of,
+  arity_of, is_kind, dispatch_selector, dispatch_recv_start,
+  dispatch_recv_contains}`, `calls::lemma_dispatch_kind` (from
+  `accepts`: a dispatch target is a method or an accessor),
+  `prog_rel` relates `ap.methods` to `minfo` and states `table_ok`
+  (with a canonical kind byte, so a kind is one compare); `lookup` and
+  `check_type` require `accepts`. Verus: spec 962, core 976 verified at
+  64 and 32 bits (core 41-109 s wall), zero admits; THEOREMS unchanged
+  but for `vmethods_of`/`vprogram_of` (an `MTable` instead of a `Vec`).
+- C2 (85abc751): red-team batteries pass again (item of the
+  coordinator, below); gc_metadata.h's unaligned mark-bit access through
+  memcpy (UBSan reported it on every GC of the ASan build).
+- C3 (93ae138f): LAYOUT.toml rows for the Stack header words
+  (`STACK_LENGTH/TOP/RECORD_TOP/BCI_WORD`, `STACK_FRAME_TOP_SHIFT`) and
+  the payload split of doubles and large integers (`VALUE_WORDS`, moved
+  from view.rs to layout.rs), checked against the C++; MTable::len
+  without `when_used_as_spec` (the audit counts it as an escape hatch);
+  the verifier's decoder through `xvec::ix` (no panic paths).
+
+Sizes (classic ESP32 unless noted; firmware builds dev/bins, dev/jag-all.txt):
+
+| | before (device/size) | after | saved |
+|---|---:|---:|---:|
+| system image (-m32 binary) | 109,824 | 88,704 | 21,120 |
+| Jaguar image (-m32) | 126,720 | 101,376 | 25,344 (= format 1's) |
+| toit.bin ESP32 f2 | 1,542,256 | 1,544,032 | -1,776 |
+| flashed, system only | 1,652,864 | 1,634,144 | 18,720 |
+| flashed with Jaguar, ESP32 | 1,775,744 (-71,808) | 1,732,448 (-28,512) | 43,296 |
+| flashed with Jaguar, C6 | 1,871,152 (+29,392) | 1,825,920 (+74,624) | 45,232 |
+
+Table plus headers of system and Jaguar (methstats): 75.3 KB -> 30.7 KB.
+toit.bin grows by 1.8 KB (the decoders and the stricter loader). The
+classic ESP32 with Jaguar is still 28.5 KB over its OTA partition; with
+the verifier left out (Kconfig, S4 of device/size, -29.6 KB) it would fit
+by about 1 KB.
+
+Speed (callgrind Ir in `Interpreter::run`, trusted format 2, against the
+starting point built in this worktree, build/host-f2-base):
+
+| | base | after | | EXPERIMENT-trusted.md |
+|---|---:|---:|---:|---:|
+| richards | 1,072.9 M | 1,080.1 M | +0.67 % | 1,077.9 (+0.21 %) |
+| deltablue | 755.8 M | 759.8 M | +0.52 % | 760.8 (-0.13 %) |
+| pystone | 811.5 M | 812.7 M | +0.16 % | 810.2 (+0.31 %) |
+| json | 1,311.6 M | 1,311.4 M | -0.01 % | 1,331.6 (-1.5 %) |
+| RPC | 418.2 M | 417.9 M | -0.06 % | 443.6 (-5.8 %) |
+| static call loop | 245.5 M | 245.4 M | -0.04 % | |
+| virtual call loop | 314.5 M | 314.4 M | -0.04 % | |
+
+QEMU (ESP32, icount; dev/qemu/run-{f1,f2}-cm): the suite output is
+identical to device/size's final runs for f1 and f2, but **f2 is slower
+on Xtensa** (us, before -> after; f2/f1): richards 128,565 -> 138,186
+(0.720 -> 0.774, +7.5 %), deltablue 10,086 -> 10,786 (0.968 -> 1.032),
+pystone 20,986 -> 22,186 (0.863 -> 0.912), json 28,559 -> 29,426 (1.068
+-> 1.100), strings +3.7 %, map-set +1.7 %, RPC +1.8 %, gc-stress 0. Not
+within the 2 % bound. Cause (dev/scripts/runloop-dis.sh): Xtensa has no
+unaligned 16-bit load and only positive load offsets, so each header u16
+is `addi, l8ui, addi, l8ui, slli, or` (a virtual lookup's selector
+compare is about 10 instructions instead of an l16ui and a compare), and
+the record's entry and arity cost a shift and a mask. x86 hides this
+(`cmpw -3(%rbp,%rcx)`). Fix (not done): 2-byte aligned entries with the
+u16 fields at even distances (one l16ui each; about 0.5 B of padding per
+method, 1.8 KB), or the hot fields loaded from one base with positive
+offsets; then re-measure.
+
+Gates (artifacts gates/, logs/): verified/check.sh --tests passed (spec
+962, core 976 at both widths; audit exact, 262 occurrences: -1, the
+`when_used_as_spec` of a first version removed; VeriFast 111; sandbox
+ctests 125/125; round-3 and round-4 batteries on build/asan and the
+debug build); ctest -j16 format 2 1205/1206 (udp-reuse-port-test; 16
+toitp/image tests needed `ninja build_test_assets` after the format
+change), format 1 (build/host-f1) 1203/1206 (version, reader,
+udp-reuse-port-test); untrusted suite 280 identical plus the two known
+differences; primitive differential 10/10 seeds identical; compare_trace
+--format 2 clean on the four programs; 32-bit host sandbox 125/125;
+nostd, nopanic (3, s, z), Xtensa codegen (3, z); firmware ESP32 and C6 in
+f1 and f2; QEMU suite output identical (f1, f2). Fuzz with the launch
+filter, 30 minutes: on Release+ASan (the earlier gates' build) 115,465
+mutants, 0 crashes; on build/asan (CMAKE_BUILD_TYPE=asan: assertions and
+UBSan) 31,010 mutants, 3 hits of one debug assertion (`objects.h:591`:
+`EncodeVisitor::visit_byte_array` takes the bytes of an external byte
+array with a non-raw tag while encoding an exception; release throws
+LOOKUP_FAILED; not related to the table; gates/fuzz-cm2). The fuzz seeds
+had all been skipped since the trusted default compiles twins
+(core_fuzz.toit now compiles them --untrusted, c41084fd).
+
+### The red-team batteries (coordinator's item)
+
+Cause: not the table check. tools/asm.toit overwrote the program
+header's off-heap byte count with the bytecodes' size alone; since
+device/format2 the method table literal is an external byte array that
+the count also covers, so every patched snapshot (even the unchanged
+`good-retnull`) failed to install with INVALID_ARGUMENT (the flash
+allocation's size check), on both builds. Fixed (the count moves by the
+bytecodes' share), and asm.toit now moves the table records of the
+following methods (`--stale-table` leaves them stale on purpose), and
+takes `@NAME` operands (the dispatch index of a static method). An
+inconsistent table is refused at load with INVALID_SNAPSHOT ("format-2
+program rejected: bad method kind byte"), untrusted and trusted, no
+sanitizer report: four new cases in round-4 battery A
+(`table-stale-shorter/longer/by-one`, `table-same-size`). The heap
+battery's hard-coded object indices and class ids had drifted with the
+library (the table literal and new failure strings moved the objects,
+new classes the class ids): `heapcraft find` names them now; its bases
+are compiled `--untrusted` (a trusted compile has the unchecked twins,
+which an untrusted run rejects before any case). Expectations updated:
+round-3 asm and round-4 A (method index and bci only: library drift and
+the header layout), `good-print` (prints 55 now: the hard-coded dispatch
+index pointed to another method). With build/asan (address,undefined)
+and build/host32 in the worktree, round 3 (heap 61, asm 68) and round 4
+(A 38, A-cert 9, B 32, C 31, D 31, E 31, F 22) pass.
+
+### Not done
+
+- Second item (inline bump allocation on the permission model): not
+  started; the steps in "Proven accessors" below stand. The LAYOUT.toml
+  rows it asked for are in (C3).
+- Further size in the core (Xtensa; estimates, not measured here): the
+  verifier (27.5 KB) is the one item that alone closes the remaining 28.5
+  KB (Kconfig off: -29.6 KB, device/size S4) for products that install no
+  untrusted containers; the checker without the inference could shed its
+  cold diagnostics (`diagnose_shipped`, verdict texts: 2-3 KB). Run loop
+  (28.3 KB now): the ten unchecked twins duplicate their checked handlers
+  (2-3 KB if they share a body with a flag known at the call site), the
+  _WIDE operand variants another 1-2 KB. Cold paths (13.7 KB): one
+  generic slow call path instead of per-opcode slow arms, 3-5 KB. The 106
+  primitives (15 KB) plus their 99 C++ copies (9.6 KB) kept for
+  `NotPorted`: up to 5 KB where the port provably never declines.
+
 ## Device size (branch device/size, 2026-11-11)
 
 Size reduction of the format-2 firmware (core, no C++ interpreter) for the

@@ -378,12 +378,17 @@ int main() {
     { "MAX_TABLE", V2_MAX_TABLE, false },
     { "TASK_STACK_FIELD", static_cast<uword>(Task::STACK_INDEX), false },
     { "TASK_ID_FIELD", static_cast<uword>(Task::ID_INDEX), false },
-    { "V2METHOD_SIZE", sizeof(V2Method), false },
+    { "RECORD_ENTRY_SHIFT", V2_RECORD_ENTRY_SHIFT, false },
+    { "RECORD_ARITY_MASK", V2_RECORD_ARITY_MASK, false },
+    { "KIND_MASK", V2_KIND_MASK, false },
+    { "KIND_SINGLE", V2_KIND_SINGLE, false },
+    { "SELECTOR_BACK", V2_SELECTOR_BACK, false },
+    { "RECV_START_BACK", V2_RECV_START_BACK, false },
+    { "RECV_END_BACK", V2_RECV_END_BACK, false },
+    { "ACCESSOR_AUX_BACK", V2_ACCESSOR_AUX_BACK, false },
+    { "LAMBDA_AUX_BACK", V2_LAMBDA_AUX_BACK, false },
+    { "MAX_BYTECODES", V2_MAX_BYTECODES, false },
 #define FIELD(prefix, type, name) { prefix #name, offsetof(type, name), false },
-    FIELD("V2METHOD_", V2Method, entry) FIELD("V2METHOD_", V2Method, length)
-    FIELD("V2METHOD_", V2Method, selector) FIELD("V2METHOD_", V2Method, aux)
-    FIELD("V2METHOD_", V2Method, recv_start) FIELD("V2METHOD_", V2Method, recv_end)
-    FIELD("V2METHOD_", V2Method, arity) FIELD("V2METHOD_", V2Method, kind)
     { "PROGRAM_SIZE", sizeof(toit_v2_program), false },
     FIELD("PROGRAM_", toit_v2_program, bytecodes) FIELD("PROGRAM_", toit_v2_program, methods)
     FIELD("PROGRAM_", toit_v2_program, dispatch) FIELD("PROGRAM_", toit_v2_program, class_bits)

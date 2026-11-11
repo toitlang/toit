@@ -216,8 +216,8 @@ pub fn op_invoke_block(m: &mut Machine, env: &Env, bci: usize, opcode: u8, n: us
         assert(mw >> 1 == mw / 2) by (bit_vector);
     }
     let t = mw >> 1;
-    let info = p.methods.at(t);
-    proof { assert(ap.methods[t as int] == method_info(p.methods@[t as int], p.max_height)); }
+    let info = p.method(t);
+    proof { assert(ap.methods[t as int] == method_info(p.minfo(t as int), p.max_height)); }
     let arity = info.arity as usize;
     if n < arity {
         proof {

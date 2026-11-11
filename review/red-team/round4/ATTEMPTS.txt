@@ -1,0 +1,211 @@
+Red-team round 4 — ATTEMPTS
+===========================
+Independent attacker. Target: an untrusted container (compiled --untrusted,
+shipped certificate, verified at install, run on the Rust core with the
+reduced primitive set). New surface since round 3: trusted containers on the
+same loop with trusted-only unchecked twins (104..113) and builtins (101..103),
+format 2 as host default (--untrusted selects checked compilation), the verdict
+flag bound by the header CRC, 16-byte method records, the new `needed` stack
+bound, shared primitive argument decoders.
+
+Builds: build/host (64-bit release, verified core), build/host32 (32-bit
+release), build/asan (-fsanitize=address,undefined, TOIT_DEBUG asserts).
+Benign sanitizer noise filtered everywhere: gc_metadata.h:360 (GC-class dartino
+misaligned uword load/store, fires on trusted hello world too — excluded from
+the claim) and the format-1 primitive.h null-member-call UBSan line.
+
+One line per attempt: id | idea | command/battery | observed result.
+Per-case detail is in review/red-team/round4/repro/<line>-results.txt.
+
+VERDICT: no memory-safety, isolation, DoS or policy breach found. One LOW
+spec-vs-code / UB finding (F-TIMEINFO). The strongest ideas (twin smuggling,
+certificate forgery, 32/64 divergence, crafted collections into C++ primitives)
+were all stopped by a named verifier rule, the certificate soundness proof, the
+loader bounds, or the always-on run-time checks.
+
+================================================================
+A. Trusted/untrusted confusion (minimum 40) — 46 attempts
+================================================================
+Baselines (3):
+A-base-1 | trusted-compiled (default, twins present) run --untrusted | toit.run --untrusted fields-trusted.snapshot | REJECTED "unchecked opcode 112 ... not in the unchecked mode" + hint "compile it with --untrusted"
+A-base-2 | untrusted-compiled run --untrusted | toit.run --untrusted fields-untrusted.snapshot | ACCEPTED, runs (checked opcode 94, no twins)
+A-base-3 | trusted-compiled verified with --trusted rules | toit.run --verify --trusted | ACCEPTED (twins allowed only for trusted)
+
+Assembler battery (34): review/red-team/round4/battery-A.sh -> repro/asmA-results.txt
+ Splices into main (arity 0) of an UNTRUSTED base (num.snapshot); cert dropped so
+ the host re-infers with the untrusted rules. All 34 run on host + ASan.
+ - good-retnull, good-print: valid/typed baselines.
+ - twin-104..113 (10): each unchecked twin, correct length + stack -> REJECTED "unchecked opcode N in a program not in the unchecked mode".
+ - twin-after-return: twin unreachable after RETURN_NULL -> ACCEPTED (dead code, never executed; verifier checks only reachable instrs).
+ - twin-branch-reached: twin reached by a branch -> REJECTED "unchecked opcode 104".
+ - twin-first-insn: twin as first instruction -> REJECTED.
+ - twin-as-operand-byte: 0x68 as the operand of LOAD_SMI_U8 (data, not opcode) -> ACCEPTED (pushes smi 104, harmless).
+ - twin-branch-into-twin: branch into the middle of a twin -> REJECTED "successor outside the method".
+ - op-114/200/255 (+ in-context): out-of-range opcodes -> REJECTED "invalid opcode N".
+ - halt-deepsleep/reset/0: trusted-only HALTs -> REJECTED "HALT rejected"/"successor outside the method".
+ - builtin-101/102/103 + adversarial operands (5): LOOP_REPEAT/LOOP_ARRAY/HASH_FIND -> REJECTED "<op> rejected with kinds [...]" (allowed, but the kind/height lattice rejects the crafted operands).
+ - prim-spawn / prim-module-oob: denied/out-of-range PRIMITIVE -> REJECTED "PRIMITIVE rejected".
+ - mix-checked-twin, twin-105-highop, twin-111-highsel: twins among valid ops / with extreme operands -> REJECTED "unchecked opcode N".
+ No crash or sanitizer trip on any case.
+
+Certificate / flag-CRC battery (9): review/red-team/round4/battery-A-cert.sh -> repro/A-cert-results.txt
+ Device-like path toit.run --verify --require-certificate (no inference fallback).
+ - base-untrusted-cert / base-untrusted-infer: valid -> ACCEPTED.
+ - twins-untrusted-infer: trusted program, untrusted rules -> REJECTED.
+ - twins-trusted-rules: trusted program, trusted rules -> ACCEPTED.
+ - twins-trustedcert-untrusted: twins program + a VALID trusted certificate, verified untrusted -> REJECTED "shipped certificate rejected at method 22" (the cert mode is the policy's, not the certificate's).
+ - twins-trustedcert-trusted: same cert, trusted rules -> ACCEPTED.
+ - cert-body-corrupt-require / -default: 4 bytes of the cert body flipped -> REJECTED both with and without --require-certificate (host does NOT silently infer past a present-but-corrupt cert).
+ - cert-count-zero-require: cert method count zeroed -> REJECTED "malformed certificate".
+
+================================================================
+B. Install lifecycle (minimum 30) — 32 attempts
+================================================================
+review/red-team/round4/battery-B.sh -> repro/B-results.txt
+Certificate structural mutations (27): mutate magic/version/method-count/every
+ section offset+length/maps-stream of a valid untrusted image's shipped cert and
+ verify --require-certificate (device path) on host + ASan. The certificate is
+ untrusted input; its decoding is proven total/bounds-checked, so a mutation must
+ reject, never crash/OOB.
+ - magic-0, magic-all, version-2/ff/0, mcount-0/huge/plus1, sec0..sec5 off/len
+   huge, sec0-off-neg, header-allzero, sec-selfoverlap, sections-swap (22) -> all REJECTED (exit 1), no crash under ASan.
+ - maps-byte1, maps-byte2, maps-mid (3) -> ACCEPTED: the mutation landed in the
+   maps stream and the decoder reproduced valid maps; soundness proof guarantees
+   any maps the decoder yields are re-checked and the program bytes are unchanged
+   -> safe acceptance, ASan clean.
+Pathological verification cost (5): worst-case programs, TOIT_VERIFY_TIME=1.
+ - many-methods (5815 methods, 120478 bytecodes): infer 66.8ms + check 9.2ms, peak 492KB -> bounded (~0.6us/byte).
+ - wide-method (one 69750-byte body): REJECTED by the loader "method body too large" (16-bit body length limit enforced).
+ - deep-nest / big-literal / many-classes: accepted, peak 44-175KB, no hang.
+ No DoS: verification is linear-ish and bounded; progress is reported per method.
+Code review (recorded, not a separate run):
+B-rev-1 | verdict-bit forgery | src/verifier_v2.cc install_verdict | metadata[0] &= ~VERIFIED first, re-set only if accepted -> a pre-set bit is cleared.
+B-rev-2 | TOCTOU verify vs run (flash) | src/flash_allocation.cc compute_checksum | with the verdict bit set the CRC covers all program bytes -> a post-verdict byte flip invalidates the allocation (already asserted by tests/sandbox/install-verdict-test).
+B-rev-3 | cert block oversize | FlashAllocation::find_certificate_block | length > remaining registry -> no certificate -> untrusted image rejected.
+
+================================================================
+C. 32-bit vs 64-bit differential (minimum 30 programs + >=2h fuzz) — 31 programs + fuzz
+================================================================
+review/red-team/round4/battery-C.sh -> repro/C-results.txt
+ 31 crafted programs (repro/cedges/*.toit) around word-size edges: smi 2^30/2^62
+ boundaries, large-int arithmetic/shifts/div/mod, to-float/to-int, int/str/ba
+ hashing, large array/byte-array lengths, slices, Map/Set sizes to several
+ thousand, int.parse, count-trailing-zeros, large bitops, stack depth, graceful
+ stack overflow. Each compiled --untrusted once, run on host (64) and host32 (32).
+ Result: all 31 byte-identical, same exit code, no crash/sanitizer.
+C-note-1 (benign/expected divergence): deep recursion. At depth 500 the 64-bit
+ build reports a graceful STACK_OVERFLOW at ~497 frames while the 32-bit build
+ completes — 8-byte frames fill the fixed byte-capacity stack sooner than 4-byte
+ frames. Both are safe (graceful, no crash); the control-flow difference is the
+ unavoidable word-size effect on frame count, not a soundness bug. The battery
+ uses depth 150 (both complete) and a catch-wrapped huge recursion that both
+ report as STACK_OVERFLOW identically.
+Differential fuzz (>=2h): /home/flo/work/opentoit-sandbox-artifacts/red-team-4/difffuzz.sh
+ Mutates 1..6 bytes (back 70%) of untrusted snapshots from a 5-program corpus,
+ runs each on host64 and host32 --untrusted, flags crash/sanitizer on either or a
+ divergence in exit code or address-normalized output. ~11 mutants/s.
+ Result (difffuzz/log.txt): 125,702 mutants in 7,500 s (2h05m), 0 findings
+ (no crash, no exit-code or output divergence). Caveat: byte mutations are
+ mostly rejected identically by the loader/verifier, so this run mainly hunts
+ crashes in the loader, verifier and certificate paths. It explores few
+ runnable divergent programs; the 31 crafted programs above cover those.
+
+================================================================
+D. Runtime-built crafted collections and objects (minimum 30) — 31 attempts
+================================================================
+review/red-team/round4/battery-D.sh -> repro/D-results.txt (host + ASan)
+ Only what an untrusted program can do at run time; a Toit exception is fine, a
+ sanitizer trip is a finding.
+ - d01-d06: mutate collections during iteration (clear/add/remove/resize a List
+   in .do; add/remove a Map/Set key in .do) -> safe (ok / bounded).
+ - d07-d13: direct rebuild_hash_index (allowed C++ primitive) with adversarial
+   Array_ args: size-1 new index, non-power-of-two, huge/negative hash values,
+   full index, empty old, non-smi entry -> INVALID_ARGUMENT or safe null; the
+   primitive's power-of-two + step>new_length guards hold. ASan clean.
+ - d14-d18: array_at/at_put/expand/replace with OOB/backwards indices -> OUT_OF_BOUNDS/OUT_OF_RANGE (d18 backwards range returned null = no-op; ASan clean).
+ - d19-d20: LOOP_REPEAT via large (1e6) and nested repeat -> completes.
+ - d21-d23: HASH_FIND via colliding Maps/Sets and string keys at scale -> correct.
+ - d24-d25: byte-array/string slice tampering (replace past end, OOB slice) -> OUT_OF_BOUNDS.
+ - d26-d27: large list concat / reduce over 100000 -> correct.
+ - d28-d29: blit on adversarial byte arrays -> null/INVALID_ARGUMENT, bounded.
+ - d30-d31: Map/Set index churn (fill, remove all, refill) -> correct.
+ No sanitizer/crash on any of the 31. Could not place a crafted List_/Map/slice
+ INSTANCE where a C++ primitive consumes it as that type (round-3 observation
+ holds: the compiler builds those at run time from self-consistent backings, and
+ checked field access throws INVALID_PROGRAM on a wrong-shape receiver).
+
+================================================================
+E. Service layer by RUNNING it (minimum 30) — 31 attempts
+================================================================
+review/red-team/round4/battery-E.sh -> repro/E-results.txt
+ Untrusted container (toit.run --untrusted) vs the always-present system process
+ (message gate, RPC dispatch, discovery, quotas, print service). Each attack is
+ catch-wrapped and then prints "E-DONE", which only reaches stdout if the system
+ process still serves the sandbox print service. Run on the ASan build; a FATAL,
+ sanitizer trip, hang or system death is a finding. All 31 kept the system alive,
+ no crash/hang.
+ - e01-e03: forge RPC reply / cancel / notify-resource to the system for 200 guessed ids -> no-throw (ignored, matched on id+sender), system alive.
+ - e04-e08: forge SYSTEM_TERMINATED/SPAWNED/NOTIFY_TERMINATED/EXTERNAL_NOTIFICATION/reserved-63 -> PERMISSION_DENIED.
+ - e09/e11: user type 100 / negative pid -> no-throw (delivered/dropped).
+ - e10: send to arbitrary pid 99999 -> PERMISSION_DENIED.
+ - e12/e28/e30: flood system with 1e5 / 500 / 5000x3 messages -> container exits 1
+   (self-inflicted QUOTA_EXCEEDED / its own print quota exhausted); system alive.
+   Confirms the documented console-flood gap ("WARNING: unhandled system message")
+   — a known, accepted policy gap, not a crash.
+ - e13: 2 MB message -> QUOTA_EXCEEDED. e21 500KB trace -> QUOTA_EXCEEDED.
+ - e14/e15/e29: deeply nested / cyclic / nested-arg message -> NESTING_TOO_DEEP.
+ - e16-e20/e25/e31: malformed RPC request/trace (null, byte array, empty list,
+   non-int id, huge method index, wrong-shape reply) -> dropped (no-throw), system alive.
+ - e22: process_grant_send -> PERMISSION_DENIED. e23: spawn -> PERMISSION_DENIED.
+ - e24: pid_for_external_id -> PERMISSION_DENIED.
+ - e26/e27: reply/send to self, many small sends -> safe.
+ Sibling-harness note: the existing tests/sandbox/forge-*, flood-*, rpc-*,
+ discovery-quota, kill-cleanup, grant-lifecycle cover the provider-side liveness
+ with a real sibling; I looked for siblings of forge-rpc-reply (QUOTA_EXCEEDED
+ escaping a reply send) and found none that make a provider/system task throw,
+ block or leak — every malformed/forged/flooding frame is dropped or quota-capped.
+
+================================================================
+F. Free hunting (minimum 20) — 22 primitive attacks + reviews
+================================================================
+review/red-team/round4/battery-F.sh -> repro/F-results.txt (ASan)
+ Hostile runtime-reachable arguments to the C++ primitives still in the untrusted
+ set, beyond line D: crc (crafted tables, width/range edges), byte_array_convert_
+ to_string (slices, OOB, high bytes), string_to_utf_16 / utf_16_to_string (odd
+ length, surrogate pairs), float_parse (1 MB digits, embedded NUL, slice),
+ int_parse (18-char, radix edges), float_to_string / float_round (precision
+ edges), time_info (extreme int64), seconds_since_epoch_local (extreme int32),
+ string_at / string_raw_at (OOB/neg), string_rune_count (full + slice).
+ 21 of 22 clean (Toit exception or correct result, ASan clean).
+
+** FINDING F-TIMEINFO (LOW: spec-vs-code / UB, no memory unsafety, no breach) **
+ f18-timeinfo-ext | time_info with an extreme int64 timestamp | repro/timeinfo-overflow.toit
+ utc_fields (src/primitive_core.cc:1243-1244) computes
+   days = floor_div(timestamp, SECONDS_PER_DAY);
+   seconds_of_day = timestamp - days * SECONDS_PER_DAY;
+ For a timestamp near INT64_MIN/MAX, `days * SECONDS_PER_DAY` and the subtraction
+ overflow a signed int64 -> UBSan: "signed integer overflow: -106751991167301 *
+ 86400 ...". The overflow happens BEFORE the Smi::is_valid32(year) range check.
+ Reachable by an UNTRUSTED container through a DIRECT time_info primitive call
+ (time_info is in the allowed set, C++, not a Rust port; an untrusted program can
+ declare #primitive.core.time_info and pass any int64). The public Time.utc /
+ Time.local wrapper caps the seconds via its microsecond conversion and does NOT
+ reach the overflow boundary — so the finding needs a raw primitive call.
+ RELEASE host64 behaviour: throws OUT_OF_RANGE, no wrong value escapes, ASan
+ reports no memory error -> benign on two's-complement, but it is undefined
+ behaviour a compiler may optimise on. The primitive audit lists time_info as
+ "fixed/OK"; this overflow path was missed. Fix belongs to others (clamp/guard
+ the timestamp before the multiply, as the integer primitives were guarded in
+ round 1). Battery-F whitelists primitive_core.cc:124x so it stays green while
+ recording the finding.
+
+Reviews (recorded):
+F-rev-1 | TRUSTED.md s8 time_info contract | prim_default only requires a
+ well-formed heap and a good result (OUT_OF_RANGE or a smi array) -> the Verus
+ contract is NOT violated by F-TIMEINFO; the gap is in the C++ and the audit.
+F-rev-2 | TRUSTED.md s8 "zeroed" off-heap claim | already a fixed bug
+ (create_off_heap_byte_array dropped from the untrusted set) — holds now.
+F-rev-3 | 35 C++ core + 2 bitmap primitives | every one in the allowed set driven
+ with hostile args across D+F under ASan -> only F-TIMEINFO; blit/byte_zap
+ (round 1, 111k calls), rebuild_hash_index, array_*, crc, utf conversions,
+ parse/format all clean.

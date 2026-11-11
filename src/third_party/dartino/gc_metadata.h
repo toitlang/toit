@@ -357,7 +357,14 @@ class GcMetadata {
       const int mask_mask = BYTE_BIT_SIZE - 1;  // Get position within one byte of mark bits.
       int mask_shift = (reinterpret_cast<uword>(object) >> WORD_SHIFT) & mask_mask;
       mask <<= mask_shift;  // Shift up by 0-7 bits.
-      *reinterpret_cast<uword*>(bits) |= mask;
+      // The mark bits of an object need not start at a word boundary: an
+      // unaligned read-modify-write through memcpy (a plain load and store
+      // on hosts; a cast pointer is undefined behavior, which UBSan
+      // reports).
+      uword word_bits;
+      memcpy(&word_bits, reinterpret_cast<void*>(bits), sizeof(word_bits));
+      word_bits |= mask;
+      memcpy(reinterpret_cast<void*>(bits), &word_bits, sizeof(word_bits));
     }
 #else
     const int mask_mask = 31;

@@ -76,7 +76,6 @@ namespace toit {
   FLAG_BOOL(deploy,  certificate,           true,  "Format 2: ship a certificate with snapshots compiled with --untrusted (toit.run --certify)") \
   FLAG_INT(deploy,   v2_builtins,           7,     "Format 2, proposal (format note 19): built-ins to emit, bit 0 LOOP_REPEAT, 1 LOOP_ARRAY, 2 HASH_FIND (also TOIT_V2_BUILTINS)") \
   FLAG_BOOL(deploy,  v2_unchecked,          true,  "Format 2: emit the trusted-only unchecked twins of the field accesses (format note 20; also TOIT_V2_UNCHECKED); never with --untrusted") \
-  FLAG_BOOL(deploy,  v2_table_literal,      true,  "Format 2: append the method table as the program's last literal, so that a VM running the program from flash does not build it in RAM (interpreter_v2.h)") \
   FLAG_STRING(deploy, lib_path,             null,  "The library path")              \
   FLAG_STRING(deploy, archive_entry_path,   null,  "The entry path in an archive")  \
   FLAG_STRING(deploy, sandbox,              null,  "syscall-sandbox: compiler or sandbox")  \

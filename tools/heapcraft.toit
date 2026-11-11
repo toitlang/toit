@@ -36,6 +36,7 @@
 //   content <obj> <hex>               replace string/byte-array content bytes (any length)
 
 import host.file
+import .snapshot show Program SnapshotBundle
 
 // ---------------- ar bundle helpers (compatible with the producer) --------
 
@@ -369,6 +370,72 @@ cmd-list seg/Segment:
       o.fields.size.repeat: | f |
         print "       .$f = $(describe-node o.fields[f] seg.reader)"
 
+/**
+Prints, space separated, the answer to each query, so that a battery
+  names objects and classes instead of hard-coding indices that change with
+  every compilation of the library:
+  str:TEXT        index of the first string object with that content
+  ref-str:TEXT    its back-table index (for `ref:`)
+  bytes:HEX       index of the first byte array with that content
+  ref-inst:NAME   back-table index of the first instance of class NAME
+  float           index of the first float
+  cls:NAME        class id of the class NAME (from the source map)
+  inst:NAME       index of the first instance (or oddball) of class NAME
+  root:NAME       index of the first root of class NAME
+  classes         the number of classes
+*/
+cmd-find path/string seg/Segment queries/List:
+  program := Program (SnapshotBundle.from-file path)
+  class-count := program.class-tags.size
+  class-id := : | name/string |
+    found := -1
+    class-count.repeat: | id |
+      if found < 0 and (program.class-info-for id: null) and (program.class-name-for id) == name: found = id
+    if found < 0: throw "no class $name"
+    found
+  first := : | pred/Lambda what/string |
+    found/ObjNode? := null
+    seg.reader.all-objs.do: | o/ObjNode | if not found and (pred.call o): found = o
+    if not found: throw "no $what"
+    found
+  root := : | cid/int name/string |
+    found/ObjNode? := null
+    seg.roots.do: | n | if not found and n is ObjNode and (n as ObjNode).class-id == cid: found = n
+    if not found: throw "no root of class $name"
+    found
+  answers := queries.map: | q/string |
+    if q.starts-with "str:":
+      text := q[4..]
+      (first.call (:: it.heap-tag == TAG-STRING and it.str-bytes.to-string-non-throwing == text) q).obj-index
+    else if q.starts-with "ref-str:":
+      text := q[8..]
+      o := first.call (:: it.heap-tag == TAG-STRING and it.str-bytes.to-string-non-throwing == text) q
+      if not o.in-table: throw "$q is not in the back-table"
+      o.table-index
+    else if q.starts-with "bytes:":
+      want := hex-to-bytes q[6..]
+      content := :: | o/ObjNode | o.ba-external ? o.ba-bytes : (ByteArray o.ba-vals.size: o.ba-vals[it])
+      (first.call (:: it.heap-tag == TAG-BYTEARRAY and (content.call it) == want) q).obj-index
+    else if q.starts-with "ref-inst:":
+      cid := class-id.call q[9..]
+      o := first.call (:: it.heap-tag != TAG-STRING and it.heap-tag != TAG-BYTEARRAY and it.class-id == cid) q
+      if not o.in-table: throw "$q is not in the back-table"
+      o.table-index
+    else if q == "float":
+      (first.call (:: it.heap-tag == TAG-FLOAT) q).obj-index
+    else if q.starts-with "cls:":
+      class-id.call q[4..]
+    else if q.starts-with "inst:":
+      cid := class-id.call q[5..]
+      (first.call (:: it.heap-tag != TAG-STRING and it.heap-tag != TAG-BYTEARRAY and it.class-id == cid) q).obj-index
+    else if q.starts-with "root:":
+      (root.call (class-id.call q[5..]) q[5..]).obj-index
+    else if q == "classes":
+      class-count
+    else:
+      throw "bad query: $q"
+  print (answers.join " ")
+
 parse-spec spec/string owner/ObjNode -> Node:
   if spec.starts-with "smi:":
     v := int.parse spec[4..]
@@ -413,6 +480,10 @@ main args/List:
   if cmd == "list":
     r := load-segment args[1]
     cmd-list r[2]
+    return
+  if cmd == "find":
+    r := load-segment args[1]
+    cmd-find args[1] r[2] args[2..]
     return
   if cmd == "edit":
     a := 1

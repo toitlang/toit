@@ -199,32 +199,45 @@ int ProgramBuilder::create_method_v2(int kind,
   int offset = all_bytecodes_.size();
   int id = v2_method_offsets_.size();
   v2_method_offsets_.push_back(offset);
-  auto leb = [&](word value) {
-    ASSERT(0 <= value && value < (static_cast<word>(1) << (7 * V2_MAX_LEB_BYTES)));
-    while (value >= 0x80) {
-      all_bytecodes_.push_back((value & 0x7f) | 0x80);
-      value >>= 7;
-    }
-    all_bytecodes_.push_back(value);
+  // The header ends at the entry (format note 21): every field at a fixed
+  // distance from the entry, then the kind byte.
+  auto u16 = [&](int value) {
+    ASSERT(0 <= value && value <= 0xffff);
+    all_bytecodes_.push_back(value & 0xff);
+    all_bytecodes_.push_back(value >> 8);
   };
-  int flags = kind;
-  if (selector != V2_NO_VALUE) flags |= V2_HAS_SELECTOR;
-  if (receiver.is_valid()) flags |= V2_HAS_RECEIVER;
-  all_bytecodes_.push_back(arity);
-  all_bytecodes_.push_back(flags);
-  leb(bytecodes.length());
-  if (selector != V2_NO_VALUE) leb(selector);
-  if (receiver.is_valid()) {
-    ASSERT(0 <= receiver.start && receiver.start < receiver.end && receiver.end < V2_NO_VALUE);
-    leb(receiver.start);
-    leb(receiver.end - receiver.start);
-  }
-  if (kind == V2_KIND_FIELD_ACCESSOR || kind == V2_KIND_LAMBDA) {
-    leb(aux);
+  int kind_byte = kind;
+  if (kind == V2_KIND_METHOD || kind == V2_KIND_FIELD_ACCESSOR) {
+    int start = V2_NO_VALUE;
+    int end = V2_NO_VALUE;
+    if (receiver.is_valid()) {
+      ASSERT(0 <= receiver.start && receiver.start < receiver.end && receiver.end < V2_NO_VALUE);
+      start = receiver.start;
+      end = receiver.end;
+    }
+    if (kind == V2_KIND_FIELD_ACCESSOR) {
+      u16(aux);
+      u16(end);
+    } else if (start != V2_NO_VALUE && end > start + 1) {
+      u16(end);
+    } else {
+      kind_byte |= V2_KIND_SINGLE;  // One class or none.
+    }
+    u16(start);
+    u16(selector);
   } else {
-    ASSERT(aux == 0);
+    ASSERT(selector == V2_NO_VALUE && !receiver.is_valid());
+    if (kind == V2_KIND_LAMBDA) {
+      u16(aux);
+    } else {
+      ASSERT(aux == 0);
+    }
   }
-  v2_method_entries_.push_back(all_bytecodes_.size());
+  all_bytecodes_.push_back(kind_byte);
+  int entry = all_bytecodes_.size();
+  if (entry >= V2_MAX_BYTECODES) FATAL("format-2 bytecodes too large");
+  v2_method_entries_.push_back(entry);
+  v2_method_records_.push_back((static_cast<uint32>(entry) << 8) | static_cast<uint32>(arity));
   int body = all_bytecodes_.size();
   for (int i = 0; i < bytecodes.length(); i++) all_bytecodes_.push_back(bytecodes[i]);
   if (v2_unchecked_enabled()) {
@@ -446,14 +459,16 @@ void ProgramBuilder::set_interface_check_offsets(const List<uint16>& interface_c
 
 Program* ProgramBuilder::cook() {
   program_->set_bytecodes(ListBuilder<uint8>::build_from_vector(all_bytecodes_));
-  if (is_format2() && Flags::v2_table_literal) {
-    // The method table as the last literal (V2MethodTable::TABLE_LITERAL_MARKER):
-    // a device runs the program from flash without building the table in
-    // RAM. The bytes stay alive with the compiler (external byte arrays
-    // keep the pointer).
+  if (is_format2()) {
+    // The method table as the last literal (V2MethodTable::TABLE_LITERAL_MARKER,
+    // format note 21): its records are the methods' entries and arities; a
+    // device runs the program from flash without a table in RAM. The bytes
+    // stay alive with the compiler (external byte arrays keep the pointer).
     word table_length = 0;
-    uint8* table = V2MethodTable::encode_table_literal(program_, &table_length);
-    if (table != null) add_byte_array(List<uint8>(table, table_length));
+    uint8* table = V2MethodTable::encode_table_literal(v2_method_records_.data(), v2_method_records_.size(),
+                                                       all_bytecodes_.size(), &table_length);
+    if (table == null) FATAL("out of memory");
+    add_byte_array(List<uint8>(table, table_length));
   }
   create_literals();
   program_->set_global_max_stack_height(global_max_stack_height_);

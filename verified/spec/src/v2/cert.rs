@@ -347,7 +347,7 @@ impl<'a> ShippedOracle<'a> {
 
     /// Decodes method `m`'s maps.
     fn decode(&mut self, p: &VProgram, g: &XGlobal, m: usize) -> (r: Result<XMaps, Dec>)
-        requires wf_program2(vview(p)), g_ok(g), m < p.methods.len(), g.n == p.methods.len(),
+        requires wf_program2(vview(p)), g_ok(g), m < p.methods@.len(), g.n == p.methods@.len(),
     {
         let info = x_info(p, m);
         if !(info.entry < info.end && info.end <= p.bytecodes.len()) { return Err(Dec::Bad); }
@@ -385,7 +385,7 @@ impl<'a> ShippedOracle<'a> {
         let mut off: usize = 0;
         while off < size
             invariant
-                wf_program2(vview(p)), g_ok(g), m < p.methods.len(), g.n == p.methods.len(),
+                wf_program2(vview(p)), g_ok(g), m < p.methods@.len(), g.n == p.methods@.len(),
                 entry == vinfo(p, m as int).entry, end == vinfo(p, m as int).end, entry < end <= p.bytecodes@.len(),
                 size == end - entry, idx@.len() == size, pos <= s@.len(),
                 list_ok(&prev), match cur { Some(l) => list_ok(&l), None => true },

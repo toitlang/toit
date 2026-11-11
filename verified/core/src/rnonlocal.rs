@@ -357,9 +357,9 @@ pub fn op_non_local_branch(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize,
     let method = m.mem.read(f * FRAME_WORDS + FRAME_METHOD);
     proof {
         assert(sp::valid_method(ap, method as int));
-        assert(ap.methods[method as int] == method_info(p.methods@[method as int], p.max_height));
+        assert(ap.methods[method as int] == method_info(p.minfo(method as int), p.max_height));
     }
-    let info = p.methods.at(method);
+    let info = p.method(method);
     let target = info.entry as usize + off;
     let h = slot + 1 - hd;
     let ghost gu = Unwind::Branch(f, target, h);
@@ -511,7 +511,7 @@ pub fn op_try(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode: u8) 
         assert(mw >> 1 == mw / 2) by (bit_vector);
     }
     let t = mw >> 1;
-    let info = p.methods.at(t);
+    let info = p.method(t);
     let height = r.end.diff(r.sp);
     let fi = r.fr.diff(m.mem.slot(0)) / FRAME_WORDS - 1;
     let rr = r.fr.offset(-(FRAME_WORDS as isize));
@@ -1013,12 +1013,12 @@ pub fn enter_fin_r(m: &mut Machine, r: &mut Regs, p: &Program, x: usize, rw: usi
         assert(hbci == h.bci);
         assert(base == g0.frames[n - 1].base);
         assert(method == g0.frames[n - 1].method);
-        assert(ap.methods[method as int] == method_info(p.methods@[method as int], p.max_height));
+        assert(ap.methods[method as int] == method_info(p.minfo(method as int), p.max_height));
         assert(sp::base(g0) <= h.height <= g0.stack.len());
         assert(fo == FRAME_WORDS * n);
     }
     // The top frame's room with the new record.
-    let a = p.methods.at(method).arity as usize;
+    let a = p.method(method).arity as usize;
     if base + a + p.max_height + fo + FIN_WORDS + STACK_RESERVE > m.len {
         return false;
     }

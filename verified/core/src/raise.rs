@@ -349,7 +349,7 @@ impl Machine {
         let ghost addr = self.addr();
         let ghost m0 = *self;
         let bw = crate::ops::bool_word(p, is_block, Ghost(m0));
-        let entry = p.methods.at(target).entry as i64;
+        let entry = p.method(target).entry as i64;
         let entry = if entry <= MAX_SMI { entry } else { -1 };
         let ew = smi_value_word(entry, Ghost(addr));
         let xw = smi_value_word(expected as i64, Ghost(addr));

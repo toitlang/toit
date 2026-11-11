@@ -52,7 +52,7 @@ pub fn push_call_fins(m: &mut Machine, r: &mut Regs, p: &Program, target: usize,
         old(r).sp@ - old(r).fr@ >= FRAME_WORDS + p.max_height + STACK_RESERVE + FIN_WORDS + old(m).fw,
         room_ok(p, old(m).with(*old(r))),
         target < p.methods@.len(),
-        info == p.methods@[target as int],
+        info == p.minfo(target as int),
         !(sp::call(p.ap@, old(m).g@, target as int, ret as int) is Stuck),
     ensures
         rnext(p, *final(m), *final(r), sp::call(p.ap@, old(m).g@, target as int, ret as int)),
@@ -63,7 +63,7 @@ pub fn push_call_fins(m: &mut Machine, r: &mut Regs, p: &Program, target: usize,
     let ghost g0 = m.g@;
     proof {
         m0.lemma_frame(p);
-        assert(p.ap@.methods[target as int] == method_info(p.methods@[target as int], p.max_height));
+        assert(p.ap@.methods[target as int] == method_info(p.minfo(target as int), p.max_height));
     }
     let arity = info.arity as usize;
     let f = r.fr;
@@ -217,13 +217,13 @@ pub fn ret_fins_r(m: &mut Machine, r: &mut Regs, p: &Program, w: usize, Ghost(v)
         assert(rec(m0.mem@, n - 2, FRAME_BASE) == g0.frames[n - 2].base);
         assert(rec(m0.mem@, n - 2, FRAME_HANDLER) == handler);
         assert(sp::valid_method(ap, g0.frames[n - 2].method as int));
-        assert(ap.methods[method as int] == method_info(p.methods@[method as int], p.max_height));
+        assert(ap.methods[method as int] == method_info(p.minfo(method as int), p.max_height));
         assert(p.max_height < 0x1_0000);
         assert(toit_spec::v2::sound::base_step(g0, n - 2));
         assert(base <= g0.frames[n - 1].base);
     }
     // The caller's room with the records.
-    let a = p.methods.at(method).arity as usize;
+    let a = p.method(method).arity as usize;
     if base + a + p.max_height + fo + fw + STACK_RESERVE > m.len {
         return false;
     }

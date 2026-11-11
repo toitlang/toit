@@ -72,10 +72,10 @@ fn main() {
         let e = &loaded.program;
         let h = vprog::max_height_of(e);
         let methods = vprog::vmethods_of(e, h).expect("methods");
-        let p = &vprog::vprogram_of(e, &methods, h);
+        let p = &vprog::vprogram_of(e, methods, h);
         let prim_arity: Vec<Vec<u8>> = toit_spec::v2::prim_arity::PRIM_TABLE.iter()
             .map(|(_, prims)| prims.iter().map(|(_, a)| *a).collect()).collect();
-        let largest = p.methods.iter().map(|m| m.length as usize).max().unwrap_or(0);
+        let largest = (0..p.methods.len()).map(|i| { let m = p.methods.at(i); m.end() - m.entry as usize }).max().unwrap_or(0);
         let mut best: Option<(f64, f64, f64)> = None;
         let mut line = String::new();
         for _ in 0..runs {

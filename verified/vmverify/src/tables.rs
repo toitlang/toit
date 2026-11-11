@@ -25,7 +25,7 @@
 //! and the image are relocated to the loaded image.
 
 use crate::ffi::VerifyInput;
-use toit_verified_core::ffi::{ProgramTables, V2Method};
+use toit_verified_core::ffi::ProgramTables;
 use toit_verified_core::layout::*;
 
 const MAGIC: &[u8; 8] = b"TVMTBL01";
@@ -72,7 +72,7 @@ pub unsafe fn save(input: &VerifyInput, path: &str) -> std::io::Result<()> {
 /// Owned copies of the verifier's input; `input()` points into them.
 pub struct Tables {
     pub bytecodes: Vec<u8>,
-    pub methods: Vec<V2Method>,
+    pub methods: Vec<u32>,
     pub dispatch: Vec<i32>,
     pub class_bits: Vec<u16>,
     pub class_check_ids: Vec<u16>,
@@ -113,7 +113,7 @@ impl<'a> Reader<'a> {
         let size = std::mem::size_of::<T>();
         let raw = self.take(n.checked_mul(size).ok_or("bad length")?)?;
         let mut v: Vec<T> = Vec::with_capacity(n);
-        // SAFETY: T is plain old data (integers, V2Method) of `size` bytes.
+        // SAFETY: T is plain old data (integers) of `size` bytes.
         unsafe {
             std::ptr::copy_nonoverlapping(raw.as_ptr(), v.as_mut_ptr() as *mut u8, raw.len());
             v.set_len(n);

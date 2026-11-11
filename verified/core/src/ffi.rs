@@ -24,46 +24,17 @@ use crate::layout::*;
 use crate::view::*;
 use toit_spec::types::{HeapObj, Body, Value};
 
-verus! {
-
-/// An entry of the method table (`toit::V2Method`): 16 bytes, the body at
-/// `entry..entry + length` (OBLIGATIONS.md D3).
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub struct V2Method {
-    pub entry: u32,
-    pub length: u16,
-    pub selector: u16,
-    pub aux: u16,
-    pub recv_start: u16,
-    pub recv_end: u16,
-    pub arity: u8,
-    pub kind: u8,
-}
-
-impl V2Method {
-    /// The bci after the body, modulo the word size (where it wraps, it
-    /// is below `entry`, which the verifier rejects: `verifier::accepts`).
-    pub open spec fn end_spec(self) -> usize {
-        vstd::wrapping::usize_specs::wrapping_add(self.entry as usize, self.length as usize)
-    }
-
-    #[inline(always)]
-    pub fn end(&self) -> (r: usize)
-        ensures r == self.end_spec(),
-    {
-        (self.entry as usize).wrapping_add(self.length as usize)
-    }
-}
-
-} // verus!
+/// A decoded method (`toit::V2Method`): the spec's `VMethod`. The method
+/// table is a 4-byte record per method plus the method headers in the
+/// bytecodes (format note 21; `exec::Program::method` decodes).
+pub use toit_spec::v2::vprog::VMethod as V2Method;
 
 /// `toit_v2_program`.
 #[repr(C)]
 pub struct ProgramTables {
     pub bytecodes: *const u8,
     pub bytecodes_length: usize,
-    pub methods: *const V2Method,
+    pub methods: *const u32,      // The method records (format note 21).
     pub methods_length: usize,
     pub dispatch: *const i32,
     pub dispatch_length: usize,
@@ -532,19 +503,12 @@ layout_table!(
     V2_MESSAGE_NONE, V2_MESSAGE_WORD, V2_MESSAGE_ARRAY, V2_MESSAGE_PRIMITIVE, V2_MESSAGE_MAX_WORDS,
     KIND_METHOD, KIND_FIELD_ACCESSOR, KIND_LAMBDA, KIND_BLOCK, NO_VALUE, BLOCK_SLOT_BITS,
     FAILURE_LITERALS, MAX_INSTRUCTION_LENGTH, MAX_TABLE, TASK_STACK_FIELD, TASK_ID_FIELD,
+    RECORD_ENTRY_SHIFT, RECORD_ARITY_MASK, KIND_MASK, KIND_SINGLE, SELECTOR_BACK, RECV_START_BACK,
+    RECV_END_BACK, ACCESSOR_AUX_BACK, LAMBDA_AUX_BACK, MAX_BYTECODES,
 );
 
 /// The C ABI of the FFI structs.
 const STRUCT_LAYOUT: &[(&[u8], usize)] = &[
-    (b"V2METHOD_SIZE\0", core::mem::size_of::<V2Method>()),
-    (b"V2METHOD_entry\0", core::mem::offset_of!(V2Method, entry)),
-    (b"V2METHOD_length\0", core::mem::offset_of!(V2Method, length)),
-    (b"V2METHOD_selector\0", core::mem::offset_of!(V2Method, selector)),
-    (b"V2METHOD_aux\0", core::mem::offset_of!(V2Method, aux)),
-    (b"V2METHOD_recv_start\0", core::mem::offset_of!(V2Method, recv_start)),
-    (b"V2METHOD_recv_end\0", core::mem::offset_of!(V2Method, recv_end)),
-    (b"V2METHOD_arity\0", core::mem::offset_of!(V2Method, arity)),
-    (b"V2METHOD_kind\0", core::mem::offset_of!(V2Method, kind)),
     (b"PROGRAM_SIZE\0", core::mem::size_of::<ProgramTables>()),
     (b"PROGRAM_bytecodes\0", core::mem::offset_of!(ProgramTables, bytecodes)),
     (b"PROGRAM_methods\0", core::mem::offset_of!(ProgramTables, methods)),

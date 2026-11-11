@@ -1,0 +1,33 @@
+# Line-E service-layer attacks (toit.run) Wed Nov 11 18:47:44 CET 2026
+[e01-reply-system] x=0 alive attack reply-sys: no-throw 
+[e02-cancel-system] x=0 alive attack cancel-sys: no-throw 
+[e03-notify-res] x=0 alive attack notify-res: no-throw 
+[e04-forge-term] x=0 alive attack forge-term: threw PERMISSION_DENIED 
+[e05-forge-spawned] x=0 alive attack forge-spawned: threw PERMISSION_DENIED 
+[e06-forge-notterm] x=0 alive attack forge-notterm: threw PERMISSION_DENIED 
+[e07-forge-extnotif] x=0 alive attack ext-notif: threw PERMISSION_DENIED 
+[e08-reserved-63] x=0 alive attack reserved-63: threw PERMISSION_DENIED 
+[e09-usertype-100] x=0 alive attack usertype-100: no-throw 
+[e10-arb-pid] x=0 alive attack arb-pid: threw PERMISSION_DENIED 
+[e11-neg-pid] x=0 alive attack neg-pid: no-throw 
+[e12-flood-system] x=1 no-E-DONE  
+[e13-oversize-msg] x=0 alive attack oversize: threw QUOTA_EXCEEDED 
+[e14-deep-nest] x=0 alive attack deep-nest: threw NESTING_TOO_DEEP 
+[e15-cyclic] x=0 alive attack cyclic: threw NESTING_TOO_DEEP 
+[e16-rpc-null] x=0 alive attack rpc-null: no-throw 
+[e17-rpc-bytes] x=0 alive attack rpc-bytes: no-throw 
+[e18-rpc-emptylist] x=0 alive attack rpc-empty: no-throw 
+[e19-rpc-badid] x=0 alive attack rpc-badid: no-throw 
+[e20-trace-bad] x=0 alive attack trace-bad: no-throw 
+[e21-trace-huge] x=0 alive attack trace-huge: threw QUOTA_EXCEEDED 
+[e22-grant-priv] x=0 alive attack grant: threw PERMISSION_DENIED 
+[e23-spawn] x=0 alive attack spawn: threw PERMISSION_DENIED 
+[e24-pid-ext] x=0 alive attack pid-ext: threw PERMISSION_DENIED 
+[e25-rpc-hugeidx] x=0 alive attack rpc-hugeidx: no-throw 
+[e26-reply-selfpid] x=0 alive attack reply-self: no-throw 
+[e27-many-small] x=0 alive attack many-small: no-throw 
+[e28-notify-guess] x=1 no-E-DONE  
+[e29-rpc-nested-arg] x=0 alive attack rpc-nested: threw NESTING_TOO_DEEP 
+[e30-mixed-flood] x=1 no-E-DONE  
+[e31-reply-wrongshape] x=0 alive attack reply-wrongshape: no-throw 
+# done Wed Nov 11 18:49:14 CET 2026: 31 programs

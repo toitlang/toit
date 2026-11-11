@@ -178,21 +178,6 @@ pub fn load(text: &str, word_bits: u8) -> Result<Loaded, String> {
     let literals_raw = raws(&r.line("literals")?[1..])?;
     let gm = r.line("global_max_stack_height")?;
     let global_max_height: u16 = gm.get(1).and_then(|h| h.parse().ok()).ok_or("bad global max stack height")?;
-    let method_table = if format == 2 { method_table_v2(&bytecodes, global_max_height)? } else { Vec::new() };
-    if format == 2 {
-        if method_table.len() != names.methods.len() {
-            return err("the method table and the debug names disagree");
-        }
-        let mut header = V2_TAG.len();
-        for (info, (id, (entry, end, _))) in method_table.iter().zip(names.methods.iter_mut()) {
-            if *id != header {
-                return err("a debug name is not at a method header");
-            }
-            *entry = info.entry;
-            *end = info.end;
-            header = info.end;
-        }
-    }
     let pm = r.line("primitive_modules")?;
     let module_count: usize = pm[1].parse().map_err(|_| "bad module count")?;
     for _ in 0..module_count {
@@ -289,6 +274,35 @@ pub fn load(text: &str, word_bits: u8) -> Result<Loaded, String> {
     if roots.len() != 35 || invoke_offsets.len() != 19 || entry_points.len() != 9 {
         return err("unexpected table sizes");
     }
+    // Format 2: the method table is the records of the last literal and the
+    // headers they point at (format note 21).
+    let (method_table, recs) = if format == 2 {
+        let literal = match literals.last() {
+            Some(Value::Obj(id)) => match &heap[*id].body {
+                ExecBody::Bytes(b) => b.clone(),
+                _ => return err("no method table literal"),
+            },
+            _ => return err("no method table literal"),
+        };
+        let recs = table_literal_records(&literal, bytecodes.len())?;
+        (method_table_v2(&bytecodes, &recs, global_max_height)?, recs)
+    } else {
+        (Vec::new(), Vec::new())
+    };
+    if format == 2 {
+        if method_table.len() != names.methods.len() {
+            return err("the method table and the debug names disagree");
+        }
+        let mut header = V2_TAG.len();
+        for (info, (id, (entry, end, _))) in method_table.iter().zip(names.methods.iter_mut()) {
+            if *id != header {
+                return err("a debug name is not at a method header");
+            }
+            *entry = info.entry;
+            *end = info.end;
+            header = info.end;
+        }
+    }
 
     let program = ExecProgram {
         word_bits,
@@ -304,6 +318,7 @@ pub fn load(text: &str, word_bits: u8) -> Result<Loaded, String> {
         roots,
         literals,
         methods: method_table,
+        recs,
     };
     if format == 2 {
         check_tables_v2(&program)?;
@@ -312,98 +327,85 @@ pub fn load(text: &str, word_bits: u8) -> Result<Loaded, String> {
 }
 
 pub const V2_TAG: &[u8; 4] = b"TBC2";
-/// The flags byte of a format-2 method header (src/compiler/bytecode_format.h,
-/// format note 15).
-pub const V2_KIND_MASK: u8 = 0x3;
-pub const V2_HAS_SELECTOR: u8 = 1 << 2;
-pub const V2_HAS_RECEIVER: u8 = 1 << 3;
-/// A LEB128 number in a method header has at most this many bytes.
-pub const V2_MAX_LEB_BYTES: usize = 4;
+/// The method table literal (format note 21, `V2MethodTable` in
+/// src/interpreter_v2.h): marker, count, bytecodes length, 0, then the
+/// records.
+pub const V2_TABLE_MARKER: u32 = 0x3254_4d54; // "TMT2".
 
-/// Reads the unsigned LEB128 number at `*at`: at most `V2_MAX_LEB_BYTES`
-/// bytes, in its shortest form (every number has exactly one encoding).
-fn read_leb(bytecodes: &[u8], at: &mut usize) -> Result<u32, String> {
-    let mut value: u32 = 0;
-    for i in 0..V2_MAX_LEB_BYTES {
-        let Some(&byte) = bytecodes.get(*at) else { return err("truncated method header") };
-        *at += 1;
-        value |= ((byte & 0x7f) as u32) << (7 * i);
-        if byte & 0x80 == 0 {
-            if byte == 0 && i > 0 {
-                return err("method header number not in its shortest form");
-            }
-            return Ok(value);
-        }
+/// The records of a format-2 program's method table, from the bytes of its
+/// last literal.
+pub fn table_literal_records(literal: &[u8], bytecodes_length: usize) -> Result<Vec<u32>, String> {
+    let word = |i: usize| u32::from_le_bytes([literal[i], literal[i + 1], literal[i + 2], literal[i + 3]]);
+    if literal.len() < 16 || word(0) != V2_TABLE_MARKER {
+        return err("no method table literal");
     }
-    err("method header number too long")
+    let count = word(4) as usize;
+    if word(8) as usize != bytecodes_length || literal.len() != 16 + 4 * count {
+        return err("malformed method table literal");
+    }
+    Ok((0..count).map(|i| word(16 + 4 * i)).collect())
 }
 
-/// Decodes the method table of a format-2 program from its method headers.
-/// Method `i` is the `i`-th method in the bytecodes. The headers carry no
-/// max height: every method gets the program's `global_max_height`, which
-/// bounds them all.
-pub fn method_table_v2(bytecodes: &[u8], global_max_height: u16) -> Result<Vec<MethodInfo>, String> {
-    use crate::interp::exec2::{KIND_FIELD_ACCESSOR, KIND_LAMBDA};
+/// Decodes the method table of a format-2 program from its records and
+/// the method headers (format note 21), with the loader's checks of
+/// `V2MethodTable::compute` (src/v2_method_table.cc): every header inside
+/// the bytecodes before its entry, the methods back to back from the tag
+/// on with nonempty bodies, every header in its canonical form. The
+/// decoding is the verified `vprog::MTable::at`. Every method gets the
+/// program's `global_max_height`, which bounds them all.
+pub fn method_table_v2(bytecodes: &[u8], recs: &[u32], global_max_height: u16) -> Result<Vec<MethodInfo>, String> {
+    use crate::v2::vprog::*;
     if bytecodes.len() < 4 || &bytecodes[0..4] != V2_TAG {
         return err("format-2 bytecodes must start with the tag TBC2");
     }
+    if bytecodes.len() >= 0x100_0000 {
+        return err("bytecodes too large");
+    }
+    if recs.is_empty() || recs.len() >= 0x100_0000 {
+        return err("bad method count");
+    }
+    let table = MTable { code: bytecodes, recs };
+    let mut header = V2_TAG.len();
     let mut methods = Vec::new();
-    let mut at = 4;
-    while at < bytecodes.len() {
-        if at + 2 > bytecodes.len() {
-            return err("truncated method header");
+    for (i, &r) in recs.iter().enumerate() {
+        let entry = (r >> RECORD_ENTRY_SHIFT) as usize;
+        if entry <= header || entry >= bytecodes.len() {
+            return err(format!("bad method entry {}", i));
         }
-        let arity = bytecodes[at];
-        let flags = bytecodes[at + 1];
-        if flags & !(V2_KIND_MASK | V2_HAS_SELECTOR | V2_HAS_RECEIVER) != 0 {
-            return err("bad method header flags");
+        let b = bytecodes[entry - 1];
+        if b & !(KIND_MASK | KIND_SINGLE) != 0 || (b & KIND_SINGLE != 0 && b & KIND_MASK != 0) {
+            return err("bad method kind byte");
         }
-        let kind = flags & V2_KIND_MASK;
-        at += 2;
-        let length = read_leb(bytecodes, &mut at)? as usize;
-        let mut selector = 0xffff;
-        if flags & V2_HAS_SELECTOR != 0 {
-            let s = read_leb(bytecodes, &mut at)?;
-            if s >= 0xffff {
-                return err("bad selector offset");
-            }
-            selector = s as u16;
+        if entry < x_hdr_size(b) || entry - x_hdr_size(b) != header {
+            return err(format!("method {} does not follow the previous one", i));
         }
-        let (mut recv_start, mut recv_end) = (0xffff, 0xffff);
-        if flags & V2_HAS_RECEIVER != 0 {
-            let start = read_leb(bytecodes, &mut at)?;
-            let size = read_leb(bytecodes, &mut at)?;
-            if size == 0 || start + size > 0xffff {
-                return err("bad receiver range");
-            }
-            recv_start = start as u16;
-            recv_end = (start + size) as u16;
+        let m = table.at(i);
+        let (rs, re) = (m.recv_start as u32, m.recv_end as u32);
+        let range_ok = match b & KIND_MASK {
+            // A method: one class or none, or a range of at least two.
+            0 => b & KIND_SINGLE != 0 || (rs < 0xffff && rs + 1 < re),
+            // An accessor: a range, or none.
+            1 => if rs == 0xffff { re == 0xffff } else { rs < re },
+            _ => true,
+        };
+        if !range_ok {
+            return err("bad receiver range");
         }
-        let mut aux = 0;
-        if kind == KIND_FIELD_ACCESSOR || kind == KIND_LAMBDA {
-            let a = read_leb(bytecodes, &mut at)?;
-            if a > 0xffff {
-                return err("bad captured count or field index");
-            }
-            aux = a as u16;
+        if m.end() <= entry || m.end() > bytecodes.len() {
+            return err(format!("empty or truncated body of method {}", i));
         }
-        let entry = at;
-        let end = entry + length;
-        if end > bytecodes.len() {
-            return err("truncated method body");
-        }
+        header = m.end();
         methods.push(MethodInfo {
-            arity,
-            kind,
+            arity: m.arity,
+            kind: m.kind,
             max_height: global_max_height,
-            selector,
-            aux,
-            recv_start,
-            recv_end,
+            selector: m.selector,
+            aux: m.aux,
+            recv_start: m.recv_start,
+            recv_end: m.recv_end,
             entry,
-            end,
+            end: m.end(),
         });
-        at = end;
     }
     Ok(methods)
 }
@@ -477,50 +479,65 @@ fn check_tables_v2(p: &ExecProgram) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::v2::vprog::*;
 
-    fn program(methods: &[&[u8]]) -> Vec<u8> {
+    /// The bytecodes and records of methods given as (header bytes in
+    /// address order, arity, body length).
+    fn program(methods: &[(&[u8], u8, usize)]) -> (Vec<u8>, Vec<u32>) {
         let mut b = V2_TAG.to_vec();
-        for m in methods {
-            b.extend_from_slice(m);
+        let mut recs = Vec::new();
+        for (header, arity, body) in methods {
+            b.extend_from_slice(header);
+            recs.push((b.len() as u32) << 8 | *arity as u32);
+            b.extend(std::iter::repeat(91).take(*body));
         }
-        b
+        (b, recs)
     }
 
     #[test]
     fn decodes_every_field() {
         // A method of arity 2 with selector 300, receiver range [129, 131)
         // and a 1-byte body; a lambda capturing 3 with a 130-byte body; a
-        // field accessor for field 5 with receiver range [7, 8).
-        let mut lambda = vec![1, 2, 0x82, 0x01, 3];
-        lambda.extend(std::iter::repeat(0).take(130));
-        let b = program(&[
-            &[2, V2_HAS_SELECTOR | V2_HAS_RECEIVER, 1, 0xac, 0x02, 0x81, 0x01, 2, 91],
-            &lambda,
-            &[1, 1 | V2_HAS_RECEIVER, 1, 7, 1, 5, 91],
+        // field accessor for field 5 with receiver range [7, 8); a static
+        // method (no selector, no receiver); a block of arity 1.
+        let (b, recs) = program(&[
+            (&[131, 0, 129, 0, 0x2c, 0x01, 0], 2, 1),
+            (&[3, 0, 2], 1, 130),
+            (&[5, 0, 8, 0, 7, 0, 0xff, 0xff, 1], 1, 1),
+            (&[0xff, 0xff, 0xff, 0xff, KIND_SINGLE], 0, 2),
+            (&[3], 1, 1),
         ]);
-        let t = method_table_v2(&b, 9).unwrap();
-        assert_eq!(t.len(), 3);
+        let t = method_table_v2(&b, &recs, 9).unwrap();
+        assert_eq!(t.len(), 5);
         assert_eq!((t[0].arity, t[0].kind, t[0].selector, t[0].recv_start, t[0].recv_end), (2, 0, 300, 129, 131));
-        assert_eq!((t[0].entry, t[0].end, t[0].max_height), (12, 13, 9));
+        assert_eq!((t[0].entry, t[0].end, t[0].max_height), (11, 12, 9));
         assert_eq!((t[1].kind, t[1].aux, t[1].selector, t[1].recv_start, t[1].end - t[1].entry), (2, 3, 0xffff, 0xffff, 130));
-        assert_eq!((t[2].kind, t[2].aux, t[2].recv_start, t[2].recv_end), (1, 5, 7, 8));
+        assert_eq!((t[2].kind, t[2].aux, t[2].recv_start, t[2].recv_end, t[2].arity, t[2].selector), (1, 5, 7, 8, 1, 0xffff));
+        assert_eq!((t[3].kind, t[3].selector, t[3].recv_start, t[3].recv_end, t[3].end - t[3].entry), (0, 0xffff, 0xffff, 0xffff, 2));
+        assert_eq!((t[4].kind, t[4].arity, t[4].selector, t[4].recv_start, t[4].end), (3, 1, 0xffff, 0xffff, b.len()));
     }
 
     #[test]
     fn rejects_malformed_headers() {
-        let bad: &[&[u8]] = &[
-            &[0, 0x10, 1, 91],                                 // Unknown flag.
-            &[0, 0, 0x81, 0x00, 91],                           // Length not in its shortest form.
-            &[0, 0, 0x81, 0x80, 0x80, 0x80, 0],                // Length longer than 4 bytes.
-            &[0, V2_HAS_RECEIVER, 1, 3, 0, 91],                // Empty receiver range.
-            &[0, V2_HAS_RECEIVER, 1, 0xfe, 0xff, 0x03, 2, 91], // Range past 0xffff.
-            &[0, V2_HAS_SELECTOR, 1, 0xff, 0xff, 0x03, 91],    // Selector 0xffff.
-            &[0, 0, 2, 91],                                    // Body past the end.
-            &[0, 2, 1],                                        // Lambda without its captured count.
-            &[0],                                              // Truncated header.
+        let bad: &[(&[u8], u8, usize)] = &[
+            (&[0x8], 0, 1),                                  // Unknown kind byte bit.
+            (&[0, 0, 3 | KIND_SINGLE], 0, 1),                // A block with the single bit.
+            (&[4, 0, 3, 0, 0xff, 0xff, 0], 0, 1),            // Range of one class in the long form.
+            (&[4, 0, 0xff, 0xff, 0xff, 0xff, 0], 0, 1),      // Range from 0xffff.
+            (&[0, 0, 3, 0, 3, 0, 0xff, 0xff, 1], 0, 1),      // An accessor with an empty range.
+            (&[2], 0, 0),                                    // Lambda without its captured count.
         ];
         for m in bad {
-            assert!(method_table_v2(&program(&[m]), 0).is_err(), "{:?}", m);
+            let (b, recs) = program(&[*m]);
+            assert!(method_table_v2(&b, &recs, 0).is_err(), "{:?}", m.0);
         }
+        // Not back to back: a gap after the tag.
+        let (mut b, mut recs) = program(&[(&[3], 1, 1)]);
+        b.insert(4, 0);
+        recs[0] += 1;
+        assert!(method_table_v2(&b, &recs, 0).is_err());
+        // An entry past the bytecodes.
+        let (b, _) = program(&[(&[3], 1, 1)]);
+        assert!(method_table_v2(&b, &[0x10000], 0).is_err());
     }
 }

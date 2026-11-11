@@ -80,7 +80,7 @@ pub fn push_call(m: &mut Machine, r: &mut Regs, p: &Program, target: usize, info
         old(r).sp@ - old(r).fr@ >= FRAME_WORDS + p.max_height + STACK_RESERVE,
         room_ok(p, old(m).with(*old(r))),
         target < p.methods@.len(),
-        info == p.methods@[target as int],
+        info == p.minfo(target as int),
         !(sp::call(p.ap@, old(m).g@, target as int, ret as int) is Stuck),
     ensures
         rnext(p, *final(m), *final(r), sp::call(p.ap@, old(m).g@, target as int, ret as int)),
@@ -90,7 +90,7 @@ pub fn push_call(m: &mut Machine, r: &mut Regs, p: &Program, target: usize, info
     let ghost g0 = m.g@;
     proof {
         m0.lemma_frame(p);
-        assert(p.ap@.methods[target as int] == method_info(p.methods@[target as int], p.max_height));
+        assert(p.ap@.methods[target as int] == method_info(p.minfo(target as int), p.max_height));
     }
     let arity = info.arity as usize;
     let f = r.fr;
@@ -152,14 +152,20 @@ pub fn op_invoke_static(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, op
         w0.lemma_frame(p);
     }
     let t = p.dispatch.at(d) as usize;
-    let info = p.methods.at(t);
-    proof { assert(ap.methods[t as int] == method_info(p.methods@[t as int], p.max_height)); }
+    let info = p.method(t);
+    proof {
+        assert(ap.methods[t as int] == method_info(p.minfo(t as int), p.max_height));
+        crate::calls::lemma_dispatch_kind(p, g.heap, w0.addr(), d as int);
+    }
     let arity = info.arity as usize;
-    if info.recv_start != NO_VALUE {
+    // The receiver range (format note 21: a dispatch target's header has
+    // one, at a fixed place).
+    let rs = p.dispatch_recv_start(t);
+    if rs != NO_VALUE {
         proof { w0.lemma_at(p, arity - 1); }
         let receiver = at(m, r, arity - 1);
         let cid = m.class_of(p, receiver, Ghost(sp::at(g, arity - 1)));
-        if !((info.recv_start as i64) <= cid && cid < info.recv_end as i64) {
+        if !p.dispatch_recv_contains(t, rs, cid) {
             proof { assert(sp::step(ap, g) == sp::raise(ap, g, sp::AS_CHECK_FAILED)); }
             return slow0(m, r, env, Slow::Raise(1));
         }
@@ -206,7 +212,7 @@ pub fn op_invoke_virtual(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, o
                 proof { assert(vo == sp::call(ap, g, t as int, bci + len)); }
                 return slow0(m, r, env, Slow::Call(t, bci + len));
             }
-            let info = p.methods.at(t);
+            let info = p.method(t);
             push_call(m, r, p, t, info, bci + len);
             proof { lemma_matches(p, w0, m.with(*r), Ctl::Next); }
             Ctl::Next
