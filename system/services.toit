@@ -89,13 +89,24 @@ class SystemServiceManager extends ServiceProvider
     unreachable
 
   listen pid/int arguments/List -> none:
-    services := services-by-pid_.get pid --init=(: {:})
     id := arguments[0]
+    uuid := arguments[1]
+    service-name := arguments[2]
+    service-priority := arguments[5]
+    service-tags := arguments[6]
+    // Clients look at every discovered entry, so an entry with a value of
+    // the wrong type (for example a tag that isn't a string) would make
+    // the discovery of the service fail for all of them.
+    if id is not int or uuid is not string or service-name is not string
+        or arguments[3] is not int or arguments[4] is not int
+        or service-priority is not int
+        or (service-tags != null and service-tags is not List):
+      throw "WRONG_OBJECT_TYPE"
+    if service-tags and (service-tags.any: it is not string): throw "WRONG_OBJECT_TYPE"
+
+    services := services-by-pid_.get pid --init=(: {:})
     if services.contains id: throw "Service id $id is already in use"
 
-    uuid := arguments[1]
-    service-priority/int := arguments[5]
-    service-tags/List? := arguments[6]
     if is-untrusted_ pid:
       // Sandboxed providers can't take over services from trusted
       // providers, and clients can recognize (and deny) them.
@@ -105,7 +116,7 @@ class SystemServiceManager extends ServiceProvider
         --pid=pid
         --id=id
         --uuid=uuid
-        --name=arguments[2]
+        --name=service-name
         --major=arguments[3]
         --minor=arguments[4]
         --priority=service-priority
