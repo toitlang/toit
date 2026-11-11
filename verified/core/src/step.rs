@@ -933,6 +933,15 @@ pub proof fn lemma_steps_post(p: &Program, m0: Machine, m1: Machine, r: Ctl)
     }
 }
 
+/// The machine's step, out of line: one copy for `bridge` and `settle`.
+#[inline(never)]
+pub fn step_m(m: &mut Machine, env: &Env) -> (r: Ctl)
+    requires old(m).inv(&env.p),
+    ensures step_post(&env.p, *old(m), *final(m), r),
+{
+    step(m, env)
+}
+
 /// After the machine's handlers ran from `w0` with result `c`: while there
 /// are finally records (only during an unwinding's finally code, rare),
 /// the machine's handlers run the following instructions too (lazy finally
@@ -960,7 +969,7 @@ pub fn settle(m: &mut Machine, env: &Env, c: Ctl, Ghost(w0): Ghost<Machine>) -> 
                     break;
                 }
                 let ghost before = *m;
-                c = step(m, env);
+                c = step_m(m, env);
                 proof {
                     if c is Next || (c is Exit && (c->Exit_0 == RESULT_PREEMPTED || c->Exit_0 == RESULT_YIELDED)) {
                         lemma_reaches_step(env.p.ap@, w0.g@, before.g@, m.g@);
@@ -1012,7 +1021,7 @@ pub fn bridge(m: &mut Machine, r: Regs, env: &Env) -> (res: (Regs, Ctl))
 {
     let ghost w0 = m.with(r);
     m.sync(r);
-    let c = step(m, env);
+    let c = step_m(m, env);
     match settle(m, env, c, Ghost(w0)) {
         (Some(r2), Ctl::Next) => (r2, Ctl::Next),
         (_, c2) => (r, c2),

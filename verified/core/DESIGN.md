@@ -77,14 +77,62 @@ check, no slot, index, target or arity checks); otherwise
 `machine::run_checked`, where every stuck state of the spec is a run-time
 check that ends the process (`Ctl::Stuck`), as before.
 
-Register allocation: hot handlers are `#[inline(always)]`; every path that
-calls an out-of-line function goes through `cold!`, which moves the
-`Machine` into the callee by value and back, so the machine's address
-never escapes and LLVM can keep fields in registers. The frame cache and
-the program/globals views are deliberately kept in memory (`black_box` of
-their addresses in `run`): promoting all fifteen fields made LLVM shuffle
-them through vector registers at the loop head, which cost more than the
-loads.
+Register allocation (section 2a): the verified loop keeps the hot state in
+registers (`regs::Regs`), the rest of the machine behind a pointer.
+
+## 2a. The run loop on registers (`step::run_loop`, `regs.rs`)
+
+- `Regs` holds stack cursors (`view::Slot`, a pointer into the Stack's
+  array whose ghost index is `s@`) at the object-stack top (`sp`), the top
+  frame's limit (`fp`), the frame-record top (`fr`) and the array end
+  (`end`), and the bci. It is a local of `run_loop`; inlined handlers take
+  it by `&mut` (its address never escapes, so LLVM keeps the fields in
+  registers), out-of-line paths take and return it by value
+  (`regs::set_regs` copies a returned value field by field). Everything
+  else (the views, the length, the top frame's method, the ghost state) is
+  the `Machine` behind `&mut`. Slot `n` is `sp[n]`: one load relative to
+  the top.
+- Abstraction: the machine's fields `top`, `lim`, `base`, `ftop`, `rtop`
+  and `bci` are stale while the loop runs; `m.with(r)` is the machine the
+  registers describe, and the abstraction of the pair is
+  `m.with(r).refines(p)`: the refinement relation of section 9 unchanged.
+  `m.sync(r)` writes the registers back, `m.regs()` derives them. Every
+  register handler proves `rpost`: on `Next`, `m1.with(r1)` refines the
+  spec's next state (`step_post` of the machine form), plus the room.
+- Dispatch: `step_r`, one `match` arm with a constant opcode per opcode
+  (no range patterns: they cost a second switch) and a default arm proven
+  unreachable, so LLVM duplicates the 6-instruction dispatch into the
+  handlers (`-tail-dup-size=12`; 120 dispatch sites). The VM's Rust library
+  is compiled without the SLP vectorizer (verified/vmverify/.cargo/
+  config.toml): it packed pairs of registers into one vector register and
+  unpacked them at every dispatch.
+- Fast paths and the bridge: a register handler runs its fast path, or,
+  when it does not apply and before it changes anything, calls
+  `step::bridge`: out of line, it writes the registers back, runs the
+  instruction on the machine's handler (the verified handlers of the
+  previous loop, unchanged) and settles. Bridged: raises, stack growth,
+  preemption at calls, lookup failures, collections the fast paths do not
+  know, C++ primitives, and the rare opcodes INVOKE_LAMBDA_TAIL, THROW,
+  NON_LOCAL_RETURN, NON_LOCAL_BRANCH, TRY, UNWIND and HALT.
+- Lazy finally records: the register loop runs only while there are no
+  finally records, so the frame top is the record top (no register, no
+  record move at calls, no record cut at returns). Finally records exist
+  only during an unwinding's finally code; `step::settle`, after every
+  bridged instruction, runs the machine's handlers on until they are gone
+  (`steps_post`: the spec reaches the state in several steps) and then
+  re-establishes the room and derives the registers. A task resumed in
+  finally code settles at the start of the run.
+- Preemption at calls is merged into the room check, as the C++
+  interpreter merges it into its stack-limit check: a call takes the fast
+  path iff `free >= (watermark | needed)`; the watermark is null while the
+  core runs and all ones when preemption is requested, so a request sends
+  the call to the bridge, whose handler preempts at the callee's entry as
+  before. Any other watermark value only makes the check stricter
+  (`(w | n) >= n`, `rcalls::lemma_or_ge`), so the room proof does not
+  depend on it. Backward branches test the watermark as before.
+- GC points inside register handlers (ALLOCATE, double arithmetic) write
+  the registers back, run the machine-form code and re-derive them with
+  `room::regain`.
 
 ## 3. Stack layout
 
@@ -149,9 +197,26 @@ array index:  0 ........... ftop ........ rtop        top ............. len-1
   records and the object stack and otherwise grows the stack
   (`toit_v2_grow_stack`: a new, larger Stack, records copied to the bottom
   and the object stack to the top). Growth past `Stack::max_length()`
-  throws `STACK_OVERFLOW`. Entering finally code with an unwinding needs
-  the record and three slots; the popped try-block frame freed its frame
-  record and argument, and the reserve covers the rest (the run-time check
+  throws `STACK_OVERFLOW`. The verified loop's invariant carries the room
+  (`room::room_ok`): every frame `i` can grow to its method's arity plus
+  the global maximal height (the verifier's bound on every frame's height,
+  `instr_ok`) and leave `STACK_RESERVE` words above the frame records up to
+  `i` and all finally records:
+  `base_i + arity_i + max_height + 5 (i + 1) + 5 |fins| + 8 <= len`. A call
+  checks once (the line above) and so establishes the new frame's room;
+  returns and pops keep it; the top frame then always has at least
+  `STACK_RESERVE` free words (`room::lemma_room_top`), so no push is
+  checked. Per-method maximal heights would make the bound tighter (less
+  stack memory), not the check cheaper; the format's global height is
+  enough. What breaks the room: a GC that shrank the stack (the shrink in
+  `Stack::roots_do` keeps room only above the current top), a task switch,
+  and an unwinding entering finally code (one more record). After those,
+  `room::ensure_room_all` scans the frame records and grows the stack if
+  needed (a GC point that keeps the state; failing growth stops with
+  `LIMIT`, out of memory); after a GC point a register handler only scans
+  when the length shrank (`room::regain`). The machine's handlers (checked
+  loop and bridge) keep their own run-time checks: entering finally code
+  with an unwinding needs the record and three slots (the run-time check
   stops with `LIMIT` otherwise).
 - Shrinking (GC, `Stack::roots_do`) moves the object stack down and keeps
   the records and the reserve.

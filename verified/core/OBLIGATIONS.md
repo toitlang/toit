@@ -124,6 +124,12 @@ Open:
 
 ### Device size requests (branch device/certificate-and-size)
 
+Status (branch core/fast-loop-proven, 2026-11-11): D1 and D2 are applied
+as proposed (`machine::run`: the `None` arm is `run_checked` with
+`checked-loop`, else a FATAL stuck report and `TERMINATED` without running
+an instruction, TRUSTED.md section 4; ffi.rs: the five layout exports
+behind `layout-tables`). D3 is open.
+
 The device library is built without the cargo features `checked-loop` and
 `layout-tables` (verified/core/Cargo.toml; both default on, forwarded by
 verified/vmverify; CMake `TOIT_VERIFIED_CORE_CHECKED_LOOP`, off for

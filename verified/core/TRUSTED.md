@@ -15,9 +15,10 @@ Opaque structs holding raw pointers into VM memory. Their ghost content
 |---|---|---|
 | `Table<T>` | an immutable program table `ptr[0..len)` (bytecodes, method table, dispatch table, class tables, roots, literals) | `len() == view.len()`; `at(i)` requires `i < len`, returns `view[i]` |
 | `Globals` | the process' global variables | `at`/`set` require `i < len`; `set` updates `view[i]` |
-| `StackMem` | the array of the current task's `Stack` object | `read`/`write` require `i < len`; `copy_within` is a memmove with an exact contract; `header`/`set_header` access the Stack header words (top, record top, bci with the finally-record count) |
+| `StackMem` | the array of the current task's `Stack` object | `slot(i)` (`i <= len`) is the cursor at index `i`, carrying the view's identity `sid` (uninterpreted); `read`/`write` (verified: through `slot(0)`) require `i < len`; `copy_within` is a memmove with an exact contract; `header`/`set_header` access the Stack header words (top, record top, bci with the finally-record count); `write`, `copy_within` and `set_header` keep `sid` |
+| `Slot` | a pointer into the array of one `StackMem` (the run loop's registers: object-stack top, frame limit, frame top, array end) | ghost index `s@` and identity `sid` (uninterpreted); `read(n, mem)`/`write(n, v, mem)` require `s.sid() == mem.sid()` and `0 <= s@ + n < len` and access element `s@ + n`; `offset(k)` moves the index by `k` (wrapping pointer arithmetic, never dereferenced itself); `diff(o)` is the element distance of two cursors of the same view (`0 <= o@ <= s@ < 2^16`). Sound because cursors are created only by `StackMem::slot`, and a view replaced at a GC point (section 2) has an identity no contract relates to the old one, so a cursor into an old array cannot be used (the type-level form of "no pointer survives a GC point"). Added by the register loop (2026-11-11): 6 more allowlist groups than the index-based `read`/`write` it replaces in the hot path |
 | `Heap` | process and program heap objects | the heap model (`objs`, `addrs`, `class_bits`; `abs::obj_model_ok`: instances, arrays, doubles, large integers and strings agree with their class tag, field count, length and encodable contents; a byte array of the model has the byte-array tag): `class_id`, `class_tag`, `field`/`set_field`, `array_length`, `element`/`set_element`, `double_bits`, `large_int`, `string_len`/`string_byte`, `bytes_len`/`byte_at`/`set_byte_at`, and for the primitives `string_content`/`byte_array_content` (a `Content` view), `content_at`/`content_set`/`content_copy`/`content_fill`, `array_copy`, `string_hash_field`/`set_string_hash_field` (section 8) relate memory to it; without ghost content (used only by the checked loop of programs not accepted): `header`, `word`, `word64` (a 64-bit payload, two words on 32-bit), `byte`, `half_word_at`, `set_word`, `set_byte` access the object a tagged word designates; the setters of references apply the write barrier (card mark) |
-| `Preemption` | `Interpreter::watermark_` | `requested`/`clear`/`request`: environment nondeterminism, no contract |
+| `Preemption` | `Interpreter::watermark_` | `word` (the raw watermark), `clear`, `request`: environment nondeterminism, no contract; `requested` (verified) is `word() == PREEMPTION_MARKER`. The call's room check is `free >= (word | needed)`, proven for every word value |
 
 Assumptions behind the views:
 
@@ -144,7 +145,12 @@ a run-time check, so a wrong program terminates the process ("verified
 core: stuck state ..."), it does not crash the VM. That this is true is
 tested (sandbox tests, the untrusted suite), not proven. The verified loop
 uses none of them: its only plain-Rust callees are the `*_raw` FFI
-trampolines of the leaf contracts and the `cold!` trampoline.
+trampolines of the leaf contracts and the `cold!` trampoline. Without the
+Cargo feature `checked-loop` (devices) the checked loop is not compiled:
+`machine::run` then terminates a program without an `Accepted` token
+(stuck report `FATAL`, `TERMINATED`) without executing an instruction;
+the VM refuses such programs before (`ProcessGroup::create`,
+`V2MethodTable::checked_loop_linked`), so the arm is a second line.
 
 `cold!` (src/machine.rs) moves the `Machine` into an out-of-line function
 by value and back with `ptr::read`/`ptr::write` so that the hot loop keeps
@@ -212,7 +218,8 @@ of the three header words the core uses (before: any word offset);
 |---|---|---|
 | `Table::{len, at}`, `Table::from_raw` | `toit_v2_run` passes a wrong length for a table (e.g. a short invoke-offsets table) | layout check (struct offsets), vmverify differential (the verifier reads the same tables), ASan fuzzing |
 | `Globals::{len, at, set}`, `from_raw` | the globals pointer or length differs from the process' globals | ASan fuzzing, untrusted suite (globals tests) |
-| `StackMem::{len, read, write, copy_within}`, `from_stack` | the Stack object's length word differs from the array the core indexes | `TOIT_V2_VALIDATE=1` (slot checks around GCs), ASan fuzzing |
+| `StackMem::{len, slot, copy_within}`, `from_stack` | the Stack object's length word differs from the array the core indexes | `TOIT_V2_VALIDATE=1` (slot checks around GCs), ASan fuzzing |
+| `Slot::{read, write, offset, diff}`, `StackMem::sid`, `Slot::{view, sid}` | a cursor outlives its view (a pointer into a moved Stack): only if a contract equated the identities of views across a GC point, which none does; `diff` inexact for cursors of different arrays (excluded by `sid`) | ASan fuzzing (core_fuzz.toit, launch filter), untrusted suite, `TOIT_V2_VALIDATE=1` |
 | `StackMem::{header, set_header}` | a header word offset collides with the array | layout check (`STACK_*_WORD`), tests/sandbox |
 | `Heap::{class_id, class_tag}` | header decoding (smi shift, tag mask) differs from the C++ `HeapObject` layout | layout check (behavioral, fake objects) |
 | `Heap::{field, set_field, array_length, element, set_element}` | an object's field count or length disagrees with its class bits (heap integrity) | layout check, `TOIT_V2_VALIDATE`, ASan fuzzing |
