@@ -13,11 +13,17 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-//! TRUSTED: the only module that touches raw memory.
+//! The only module that touches raw memory, verified against an explicit
+//! memory-ownership model (TRUSTED.md section 1).
 //!
 //! Each view wraps memory owned by the C++ VM and exposes it to verified
-//! code as a ghost sequence with small contracts. Every `external_body`
-//! item is listed with its contract in `TRUSTED.md`.
+//! code as a ghost sequence with small contracts. The views own the
+//! `vstd::raw_ptr` permissions of that memory (tracked, erased fields);
+//! a type invariant per view ties them to the addresses and, for the heap,
+//! to the heap model, so the accessors are verified. Trusted: the
+//! derivation points that create the permissions (the constructors at the
+//! end of this file) and the FFI leaves (memmove, memset, the write
+//! barrier); every `external_body` item is listed in `TRUSTED.md`.
 //!
 //! Views of process memory (`StackMem`) are invalidated by every call that
 //! may garbage collect: those calls (`Runtime`) take the view by value and

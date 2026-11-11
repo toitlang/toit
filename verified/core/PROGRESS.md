@@ -101,6 +101,72 @@ Artifacts: /home/flo/work/opentoit-sandbox-artifacts/proven-accessors
   changes). Census: external_body 67 -> 53, unsafe 54 -> 40 entries,
   uninterp 3 -> 0. Instructions 0 to -0.5 percent (strings -0.25);
   riscv32 text 57,608 B.
+- Totals (TRUSTED.toml, crate core, entries): 224 -> 146; external_body
+  95 -> 53, unsafe 68 -> 40 (occurrences 74 -> 46), uninterp 14 -> 0,
+  plain_rust_item 42 -> 42, assume_new 2 -> 6 (the four derivation
+  points), assume_specification 0 -> 2 (wrapping pointer arithmetic),
+  global_layout occurrences 2 -> 3 (`size_of u8`). view.rs: 125 -> 47
+  entries. TRUSTED.md section 0 lists the whole residual base.
+- Device library (device_size.sh, Rust library without libc, linked):
+  riscv32 opt 3 81,220 -> 79,716 B, opt s 75,354 -> 73,418 B; Xtensa
+  (classic ESP32) opt s 80,095 -> 77,667 B. Host instructions (callgrind,
+  18 workloads x 2 configurations against sandbox-integration): between
+  -0.52 and +0.01 percent.
+- Gates (on 64d2812b, artifacts gates/final-*.log): verified/check.sh
+  --tests: spec 940 and core 954 verified at both widths, audit exact,
+  layout check, spec differential 15/15, nopanic, sandbox ctests
+  123/123, red-team batteries no crash; it fails on two drifts that
+  predate the branch and that sandbox-integration has since fixed in
+  files this branch does not touch: CONTRACTS.toml's table of the leaf
+  contracts (epoch and `needed` clauses from core/trusted-integration)
+  and VeriFast's grow/grow_stack.render. ctest format 1 1198/1201
+  (version, reader, udp-reuse-port-test); everything in format 2
+  1197/1201 (the same and services-network-test); untrusted suite 280
+  identical plus the two known differences; primitive differential 10 x
+  1M identical; compare_trace --format 2 clean on the four programs;
+  32-bit host sandbox 123/123; nostd, nopanic (3, s, z), xtensa codegen
+  (3, z) pass; riscv32 and Xtensa device libraries link
+  (device_size.sh); ASan fuzz with the launch filter, 30 minutes:
+  131,438 mutants, 113,244 rejected at launch, 0 crashes.
+- Shared layout facts: every layout.rs constant the heap invariant uses
+  (`word_val`, `str_ok`, `ba_ok`: 21 constants) is a row of
+  verified/LAYOUT.toml on branch cxx/verifast-coverage (acece1a5, the
+  table both the Verus and the VeriFast models consume; checked with
+  artifacts tools/layoutcheck.sh). Not in that table yet: the Stack
+  header words (`STACK_*_WORD`, layout-checked by layout_check.cc), the
+  card-table constants of the write barrier, and the 32-bit split of a
+  double's or large integer's payload into two little-endian words
+  (`view::VALUE_WORDS`, `value_word`): rows to add on the merge.
+
+Not migrated, with the exact steps:
+
+- Inline allocation (`alloc::bump_instance`, `bump_double`, about a
+  day): make `Runtime::bump` a Verus external_body (inside `verus!`)
+  that returns the address with a tracked `Map<int, PointsTo<usize>>` of
+  the `size / WORD_SIZE` fresh words and ensures the allocator facts
+  (word aligned, `a + size <= usize::MAX`, `a | HEAP_TAG` is no address
+  of the model, outside the program heap): the trusted part shrinks to
+  that statement of `SemiSpace::try_allocate`. Then a verified
+  `Heap::append(&mut self, a, Tracked(words), Ghost(o))` that pushes the
+  object (model, address, a dummy content pointer) and moves the
+  permissions to keys `(n, k)`, proving `heap_ok` (`word_val` of the
+  header needs one bit-vector lemma for `smi(c << 5 | tag)`); the
+  bodies of `bump_instance`/`bump_double` write through the permissions
+  (a verified loop for the null fields). Their machine-level ensures
+  (`with(r).refines` of `alloc2(g, new)`) need a new lemma like
+  `primitive::lemma_refines_heap` for an appended instance or double:
+  `heap_model_ok` of the appended heap (fresh address, `obj_model_ok` of
+  the new object), the ro facts and `prog_rel` under the address
+  extension (`lemma_post_append` does this for the primitives'
+  allocations but excludes instances).
+- The checked loop's raw accessors (`Heap::{header, word, word64,
+  set_word, byte, set_byte, half_word_at}`): they have no ghost content
+  on purpose (the checked loop is plain Rust and runs only programs the
+  launch did not accept; devices do not build it). Proving them means
+  verifying the checked loop; until then they stay with it in section 4.
+- `Preemption` (the scheduler's watermark, written by another thread:
+  an atomic with no model) and `proven_unreachable` are not memory
+  accessors.
 
 ## Trusted containers integrated (branch core/trusted-integration, 2026-11-11)
 
