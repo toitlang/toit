@@ -90,7 +90,7 @@ pub fn canonical(p: &VProgram, heap: &[ExecObj], globals: &[Value], prim_arity: 
     hex(&mut out, &p.bytecodes);
     out.push('\n');
     let _ = writeln!(out, "methods {}", p.methods.len());
-    for m in p.methods {
+    for m in (0..p.methods.len()).map(|i| p.methods.at(i)) {
         let _ = writeln!(out, "m {} {} {} {} {} {} {} {} {}", m.arity, m.kind, p.max_height, m.selector, m.aux,
                          m.recv_start, m.recv_end, m.entry, m.end());
     }

@@ -50,7 +50,7 @@ void v2_program_tables(Program* program, const V2MethodTable* table, Object** gl
   memset(p, 0, sizeof(*p));
   p->bytecodes = program->bytecodes.data();
   p->bytecodes_length = program->bytecodes.length();
-  p->methods = table->methods();
+  p->methods = table->records();
   p->methods_length = table->length();
   p->dispatch = program->dispatch_table.data();
   p->dispatch_length = program->dispatch_table.length();

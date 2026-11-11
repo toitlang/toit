@@ -340,6 +340,9 @@ pub struct ExecProgram {
     /// Format 2: the method table (empty for format 1). Not part of the
     /// format-1 view.
     pub methods: Vec<MethodInfo>,
+    /// Format 2: the method records (format note 21), which `methods`
+    /// decodes with the headers in `bytecodes` (empty for format 1).
+    pub recs: Vec<u32>,
 }
 
 impl View for ExecProgram {

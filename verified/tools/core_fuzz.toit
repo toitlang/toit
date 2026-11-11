@@ -284,7 +284,9 @@ fuzz-in config/Config invocation/cli.Invocation -> int:
 prepare seed/string config/Config -> Prepared?:
   name := (fs.basename seed).replace --all ".toit" ""
   snap := fs.join config.work "$(name).snapshot"
-  r := run [config.check-run, "-w", snap, seed] --timeout-s=300 --environment=ENVIRONMENT
+  // Untrusted: the checked field accesses (a trusted compilation has the
+  // unchecked twins of format note 20, which the untrusted rules reject).
+  r := run [config.check-run, "--untrusted", "-w", snap, seed] --timeout-s=300 --environment=ENVIRONMENT
   if r.code != 0:
     pipe.stderr.out.write "skip $seed: compilation failed ($r.code)\n"
     return null

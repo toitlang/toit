@@ -158,8 +158,23 @@ Top-level theorems: crate vmverify (0)
 ==============================================================================
 
 ==============================================================================
-Verified exec entry points: crate core (2)
+Verified exec entry points: crate core (5)
 ==============================================================================
+
+--- Program::entry_of  (core/src/exec.rs)
+pub fn entry_of(&self, i: usize) -> (r: usize)
+    requires i < self.methods@.len(), self.mt_ok(),
+    ensures r == self.minfo(i as int).entry as usize,
+
+--- Program::arity_of  (core/src/exec.rs)
+pub fn arity_of(&self, i: usize) -> (r: usize)
+    requires i < self.methods@.len(), self.mt_ok(),
+    ensures r == self.minfo(i as int).arity as usize,
+
+--- Program::kind_byte_of  (core/src/exec.rs)
+pub fn kind_byte_of(&self, i: usize) -> (r: u8)
+    requires i < self.methods@.len(), self.mt_ok(),
+    ensures r & KIND_MASK == self.minfo(i as int).kind,
 
 --- Machine::set_field_val  (core/src/fields.rs)
 pub fn set_field_val(&mut self, p: &Program, wo: usize, Ghost(o): Ghost<Value>, f: usize, w: usize, Ghost(v): Ghost<Value>)
@@ -185,7 +200,7 @@ fn clone(&self) -> (r: Self)
     ensures r == *self,
 
 ==============================================================================
-Verified exec entry points: crate spec (11)
+Verified exec entry points: crate spec (13)
 ==============================================================================
 
 --- step_verified  (spec/src/exec_step.rs)
@@ -245,14 +260,22 @@ pub fn x_loaded_ok_stream<S: ObjStream>(p: &VProgram, s: &mut S, global_count: u
     requires wf_program2(vview(p)),
     ensures r.0 ==> forall|c: Cert| c.global_count == global_count as int ==> #[trigger] loaded_ok(vview(p), c, r.1@, globals@),
 
+--- MTable::get  (spec/src/v2/vprog.rs)
+pub fn get(&self, i: usize) -> (r: Option<VMethod>)
+    ensures r is Some <==> i < self@.len(), r is Some ==> r->0 == self@[i as int],
+
+--- x_table_ok  (spec/src/v2/vprog.rs)
+pub fn x_table_ok(code: &[u8], recs: &[u32]) -> (r: bool)
+    ensures r == table_ok(code@, recs@),
+
 --- vmethods_of  (spec/src/v2/vprog.rs)
-pub fn vmethods_of(e: &ExecProgram, h: u16) -> (r: Option<Vec<VMethod>>)
+pub fn vmethods_of<'a>(e: &'a ExecProgram, h: u16) -> (r: Option<MTable<'a>>)
     ensures
         r is Some ==> r->0@.len() == e.methods@.len()
             && forall|i: int| 0 <= i < e.methods@.len() ==> #[trigger] minfo(r->0@[i], h) == e.methods@[i],
 
 --- vprogram_of  (spec/src/v2/vprog.rs)
-pub fn vprogram_of<'a>(e: &'a ExecProgram, methods: &'a Vec<VMethod>, h: u16) -> (r: VProgram<'a>)
+pub fn vprogram_of<'a>(e: &'a ExecProgram, methods: MTable<'a>, h: u16) -> (r: VProgram<'a>)
     requires
         methods@.len() == e.methods@.len(),
         forall|i: int| 0 <= i < e.methods@.len() ==> #[trigger] minfo(methods@[i], h) == e.methods@[i],

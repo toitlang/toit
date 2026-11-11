@@ -792,9 +792,9 @@ pub fn op_primitive(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode
     let method = r.fr.offset(-(FRAME_WORDS as isize)).read(FRAME_METHOD, &m.mem);
     proof {
         assert(method == w0.method);
-        assert(ap.methods[method as int] == method_info(p.methods@[method as int], p.max_height));
+        assert(ap.methods[method as int] == method_info(p.minfo(method as int), p.max_height));
     }
-    let arity = p.methods.at(method).arity as usize;
+    let arity = p.method(method).arity as usize;
     // A core primitive the policy resolves to the VM's own entry with the
     // method's arity: its Rust port, if there is one.
     if module == 0 && (index as usize) < env.core_arities.len()

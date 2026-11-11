@@ -139,6 +139,12 @@ pub fn verify(c: &mut Converted, trusted: bool, cert: Option<&[u8]>, progress: V
     if !check::x_wf_program2(p) {
         return Verdict::new(TABLES, "table sizes or method bounds (wf_program2)".into());
     }
+    // The method headers lie inside the bytecodes (format note 21): the
+    // core reads them without bounds checks (`table_ok`, part of the
+    // loader's contract, which the loader checks too).
+    if !toit_spec::v2::vprog::x_table_ok(p.methods.code, p.methods.recs) {
+        return Verdict::new(TABLES, "method headers outside the bytecodes (table_ok)".into());
+    }
     // The loader's contract, one object at a time.
     let t = Clock::start();
     let (heap_ok, _, bad_string) = heap_check::x_loaded_ok_stream(p, objects, global_count, &globals);

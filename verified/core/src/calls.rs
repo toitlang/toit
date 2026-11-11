@@ -23,7 +23,7 @@ use crate::layout::*;
 use crate::abs::*;
 use crate::exec::*;
 use crate::step::*;
-use toit_spec::types::{Value, Frame, Handler, Fin};
+use toit_spec::types::{Value, Frame, Handler, Fin, HeapObj};
 use toit_spec::v2::types::{State2, Program2, Outcome2, Halt2};
 #[cfg(verus_keep_ghost)]
 use toit_spec::v2::spec as sp;
@@ -189,6 +189,25 @@ pub proof fn lemma_no_handler(g: State2)
     }
 }
 
+/// A dispatch-table entry of an accepted program is -1 or a method or an
+/// accessor (`verifier::dispatch_entry_ok`), whose header has a selector
+/// and a receiver range (format note 21).
+pub proof fn lemma_dispatch_kind(p: &Program, objs: Seq<HeapObj>, addr: Seq<usize>, d: int)
+    requires
+        accepts(p.ap@, p.cert@, p.trusted@),
+        prog_rel(p, objs, addr),
+        0 <= d < p.dispatch@.len(),
+        p.dispatch@[d] != -1,
+    ensures
+        0 <= p.dispatch@[d] < p.methods@.len(),
+        p.minfo(p.dispatch@[d] as int).kind < 2,
+{
+    let ap = p.ap@;
+    assert(toit_spec::v2::verifier::dispatch_entry_ok(ap, d));
+    let t = p.dispatch@[d] as int;
+    assert(ap.methods[t] == method_info(p.minfo(t), p.max_height));
+}
+
 /// A well-formed state has the shape.
 pub proof fn lemma_shape(p: &Program, g: State2)
     requires accepts(p.ap@, p.cert@, p.trusted@), wf(p.ap@, p.cert@, g),
@@ -300,11 +319,14 @@ impl Machine {
         }
     }
 
-    /// `spec::find_method`, when it is not stuck.
+    /// `spec::find_method`, when it is not stuck. The program is accepted:
+    /// a dispatch target is a method or an accessor, whose selector is read
+    /// without a kind test (`lemma_dispatch_kind`).
     #[inline(always)]
     pub fn lookup(&self, p: &Program, w: usize, Ghost(v): Ghost<Value>, sel: i64) -> (r: VLookup)
         requires
             self.hrefines(p),
+            accepts(p.ap@, p.cert@, p.trusted@),
             w == enc(self.addr(), v),
             encodable(self.addr(), v),
             -0x8000_0000 <= sel < 0x8000_0000,
@@ -324,7 +346,8 @@ impl Machine {
         if entry == -1 {
             return VLookup::Missing;
         }
-        if p.methods.at(entry as usize).selector as i64 != sel {
+        proof { lemma_dispatch_kind(p, self.g@.heap, self.addr(), index as int); }
+        if p.dispatch_selector(entry as usize) as i64 != sel {
             return VLookup::Missing;
         }
         VLookup::Found(entry as usize)
@@ -354,7 +377,7 @@ impl Machine {
         let ghost m0 = *self;
         let ghost g0 = self.g@;
         proof { self.lemma_frame(p); }
-        let info = p.methods.at(target);
+        let info = p.method(target);
         let arity = info.arity as usize;
         let height = self.len - self.top;
         let base = height - arity;
@@ -378,7 +401,7 @@ impl Machine {
         let ghost g1 = State2 { frames: g0.frames.push(fr), bci: info.entry as usize, ..g0 };
         self.g = Ghost(g1);
         proof {
-            assert(p.ap@.methods[target as int] == method_info(p.methods@[target as int], p.max_height));
+            assert(p.ap@.methods[target as int] == method_info(p.minfo(target as int), p.max_height));
             let n = g0.frames.len() as int;
             assert(f == FRAME_WORDS * n);
             // The records moved up by one frame record; the rest is unchanged.

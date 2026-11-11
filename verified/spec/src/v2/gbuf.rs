@@ -85,7 +85,7 @@ impl GBuf {
     }
 
     /// The checker's view, with the method table `methods`.
-    pub fn view<'a>(&'a self, methods: &'a [VMethod]) -> XGlobal<'a> {
+    pub fn view<'a>(&'a self, methods: MTable<'a>) -> XGlobal<'a> {
         XGlobal {
             n: self.n,
             methods,
@@ -168,9 +168,9 @@ impl GBuf {
     }
 
     /// Removes every context (block methods' words, records, nodes).
-    pub fn clear_ctxs(&mut self, methods: &[VMethod]) {
-        for (m, info) in methods.iter().enumerate() {
-            if info.kind == KIND_BLOCK { self.set_word(m, 0); }
+    pub fn clear_ctxs(&mut self, methods: MTable) {
+        for m in 0..methods.len() {
+            if methods.at(m).kind == KIND_BLOCK { self.set_word(m, 0); }
         }
         self.crec.clear();
         self.nodes.clear();

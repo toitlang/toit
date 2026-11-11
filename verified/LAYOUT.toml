@@ -378,3 +378,52 @@ value32 = 3
 cxx = "String::EXTERNAL_ADDRESS_OFFSET / WORD_SIZE"
 verus = "STRING_EXTERNAL_ADDRESS_WORD"
 verifast = "LAYOUT_STRING_EXTERNAL_ADDRESS_WORD"
+
+[[fact]]
+kind = "double"
+name = "payload words, from the value word (little endian: the low half first, view::value_word)"
+value64 = 1
+value32 = 2
+cxx = "static_cast<int>(sizeof(int64) / WORD_SIZE)"
+verus = "VALUE_WORDS"
+note = "Double and LargeInteger: the 64-bit payload from DOUBLE_VALUE_WORD / LARGE_INTEGER_VALUE_WORD, aligned to a word only."
+
+[[fact]]
+kind = "stack"
+name = "length word"
+value64 = 2
+value32 = 2
+cxx = "Stack::LENGTH_OFFSET / WORD_SIZE"
+verus = "STACK_LENGTH_WORD"
+
+[[fact]]
+kind = "stack"
+name = "top word"
+value64 = 3
+value32 = 3
+cxx = "Stack::TOP_OFFSET / WORD_SIZE"
+verus = "STACK_TOP_WORD"
+
+[[fact]]
+kind = "stack"
+name = "record top word (format 2: the record top, the frame top above STACK_FRAME_TOP_SHIFT)"
+value64 = 4
+value32 = 4
+cxx = "Stack::TRY_TOP_OFFSET / WORD_SIZE"
+verus = "STACK_RECORD_TOP_WORD"
+
+[[fact]]
+kind = "stack"
+name = "frame top shift in the record top word"
+value64 = 16
+value32 = 16
+cxx = "Stack::V2_FRAME_TOP_SHIFT"
+verus = "STACK_FRAME_TOP_SHIFT"
+
+[[fact]]
+kind = "stack"
+name = "bci word (format 2: the bci a suspended task resumes at)"
+value64 = 5
+value32 = 5
+cxx = "Stack::PENDING_STACK_CHECK_METHOD_OFFSET / WORD_SIZE"
+verus = "STACK_BCI_WORD"

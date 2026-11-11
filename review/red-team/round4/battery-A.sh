@@ -8,7 +8,7 @@
 # the normal and the ASan/UBSan build; the verifier must reject every twin /
 # trusted-only / malformed construct with a named rule, and no case may crash
 # or trip a sanitizer. Based on round 3's battery-asm.sh.
-#  num.snapshot (untrusted): main id=222 (arity 0), print_ id=3037.
+#  num.snapshot (untrusted): main (arity 0); print is named (@print).
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$HERE/battery-env.sh"
@@ -25,7 +25,7 @@ EXPECTED="$HERE/repro/asmA-results.txt"
 mkdir -p "$OUT"; : > "$RES"
 FILT='primitive\.h\|gc_metadata\|always evaluates'
 
-reason () { echo "$1" | grep -oiE "untrusted program rejected: [^;]*|unchecked opcode [0-9]+[^;]*|invalid opcode [0-9]+|VERIFICATION_FAILED|INVALID_SNAPSHOT|PERMISSION_DENIED|AddressSanitizer|runtime error:|SUMMARY: (Address|Undefined)|FATAL|assertion|\bstuck\b|Segmentation|SIGSEGV|STACK_OVERFLOW|Out of memory" | grep -vE 'gc_metadata|primitive.h' | head -1; }
+reason () { echo "$1" | grep -oiE "format-2 program rejected: [^;]*|untrusted program rejected: [^;]*|unchecked opcode [0-9]+[^;]*|invalid opcode [0-9]+|VERIFICATION_FAILED|INVALID_SNAPSHOT|PERMISSION_DENIED|AddressSanitizer|runtime error:|SUMMARY: (Address|Undefined)|FATAL|assertion|\bstuck\b|Segmentation|SIGSEGV|STACK_OVERFLOW|Out of memory" | grep -vE 'gc_metadata|primitive.h' | head -1; }
 
 run_asm () {
   local name="$1"; local asm="$2"
@@ -46,7 +46,7 @@ run_asm () {
 echo "# Line-A assembled-method battery $(date)" | tee -a "$RES"
 # --- baseline valid untrusted body ---
 run_asm good-retnull     'RETURN_NULL'
-run_asm good-print       'LOAD_SMI_U8 55; INVOKE_STATIC 3037; RETURN_NULL'
+run_asm good-print       'LOAD_SMI_U8 55; INVOKE_STATIC @print; RETURN_NULL'
 # --- the ten unchecked twins, direct (expect "unchecked opcode N") ---
 run_asm twin-104-loadf        'LOAD_SMI_0; RAW 68; RETURN_NULL'
 run_asm twin-105-loadfwide    'LOAD_SMI_0; RAW 690000; RETURN_NULL'
@@ -86,4 +86,32 @@ run_asm prim-module-oob      'PRIMITIVE 255 65535; RETURN_NULL'
 run_asm mix-checked-twin     'LOAD_SMI_0; RAW 7100; LOAD_SMI_0; RAW 6800; RETURN_NULL'
 run_asm twin-105-highop      'LOAD_SMI_0; RAW 69ffff; RETURN_NULL'
 run_asm twin-111-highsel     'LOAD_SMI_0; RAW 6fffff; RETURN_NULL'
+# --- an inconsistent method table (format note 21): the body changes size
+# but the records of the following methods are not moved (asm
+# --stale-table), so they point into other methods' code; the loader must
+# refuse the program cleanly, untrusted and trusted (no verification), on
+# both builds. The same-size body keeps the table consistent.
+run_table () {
+  local name="$1"; local asm="$2"
+  local snap="$OUT/$name.snapshot"
+  if ! $ASM patch --stale-table "$BASE" "$snap" main "$asm" >/dev/null 2>"$OUT/$name.err"; then
+    echo "[$name] ASM-ERROR: $(grep -v 'always evaluates' "$OUT/$name.err" | head -1)" | tee -a "$RES"; return
+  fi
+  local hu au ht at hx ax tx atx
+  hu=$("$HOSTRUN" --untrusted "$snap" 2>&1 | grep -v "$FILT"); hx=${PIPESTATUS[0]}
+  ht=$("$HOSTRUN" "$snap" 2>&1 | grep -v "$FILT"); tx=${PIPESTATUS[0]}
+  au=$(ASAN_OPTIONS=detect_leaks=false:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=0 "$ASANRUN" --untrusted "$snap" 2>&1 | grep -v "$FILT"); ax=${PIPESTATUS[0]}
+  at=$(ASAN_OPTIONS=detect_leaks=false:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=0 "$ASANRUN" "$snap" 2>&1 | grep -v "$FILT"); atx=${PIPESTATUS[0]}
+  local ur tr
+  ur=$(reason "$hu"); [ -z "$ur" ] && ur="ACCEPTED->ran: $(echo "$hu" | tr '\n' ' ' | cut -c1-40)"
+  tr=$(reason "$ht"); [ -z "$tr" ] && tr="ran: $(echo "$ht" | tr '\n' ' ' | cut -c1-40)"
+  local r="untrusted: $ur; trusted: $tr"
+  local flag=""
+  echo "$au$at" | grep -qiE "AddressSanitizer|runtime error:|SUMMARY: (Address|Undef)|assertion|FATAL|SIGSEGV|Segmentation" && flag="  <<< SANITIZER/CRASH"
+  printf '[%s] x{%s/%s/%s/%s} %s %s\n' "$name" "$hx" "$tx" "$ax" "$atx" "$r" "$flag" | tee -a "$RES"
+}
+run_table table-stale-shorter  'RETURN_NULL'
+run_table table-stale-longer   'LOAD_SMI_0; POP 1; LOAD_SMI_0; POP 1; LOAD_SMI_0; POP 1; RETURN_NULL'
+run_table table-stale-by-one   'LOAD_SMI_0; POP 1; LOAD_SMI_0; POP 1; LOAD_SMI_0; RETURN_NULL'
+run_table table-same-size      'LOAD_SMI_U8 55; INVOKE_STATIC @print; RETURN_NULL'
 battery_finish asm

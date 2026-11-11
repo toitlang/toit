@@ -24,9 +24,12 @@ mkdir -p "$WORK"
 if [ ! -x "$HOSTRUN" ]; then echo "no $HOSTRUN" >&2; exit 2; fi
 if [ ! -x "$ASANRUN" ]; then echo "no $ASANRUN (set ASANRUN)" >&2; exit 2; fi
 
-# battery_compile SOURCE SNAPSHOT: compiles SOURCE in format 2.
+# battery_compile SOURCE SNAPSHOT: compiles SOURCE in format 2 for untrusted
+# use (checked field accesses: a trusted compilation now has the unchecked
+# twins of format note 20, which an untrusted run rejects before any case
+# is reached).
 battery_compile () {
-  TOIT_BYTECODE_FORMAT=2 "$(dirname "$HOSTRUN")/toit.compile" -w "$2" "$1"
+  TOIT_BYTECODE_FORMAT=2 "$(dirname "$HOSTRUN")/toit.compile" --untrusted -w "$2" "$1"
 }
 
 # battery_finish heap|asm: the verdict of the run in $RES against $EXPECTED.

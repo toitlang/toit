@@ -278,8 +278,8 @@ pub fn op_invoke_block(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opc
         assert(mw >> 1 == mw / 2) by (bit_vector);
     }
     let t = mw >> 1;
-    let info = p.methods.at(t);
-    proof { assert(ap.methods[t as int] == method_info(p.methods@[t as int], p.max_height)); }
+    let info = p.method(t);
+    proof { assert(ap.methods[t as int] == method_info(p.minfo(t as int), p.max_height)); }
     let arity = info.arity as usize;
     if n < arity {
         return slow0(m, r, env, Slow::Op);
@@ -323,7 +323,7 @@ pub fn replace_r(m: &mut Machine, r: &mut Regs, p: &Program, t: usize, info: V2M
         replace_ready(p, w0, old(m).with(*old(r)), (old(r).fp@ - n) as usize, args),
         w0.g@.fins.len() == 0,
         t < p.methods@.len(),
-        info == p.methods@[t as int],
+        info == p.minfo(t as int),
         info.arity as int == n,
         room_ok(p, w0),
         w0.top >= w0.rtop + FRAME_WORDS + p.max_height + STACK_RESERVE,
@@ -352,7 +352,7 @@ pub fn replace_r(m: &mut Machine, r: &mut Regs, p: &Program, t: usize, info: V2M
     proof {
         let m2 = m.with(*r);
         let addr = w0.addr();
-        assert(ap.methods[t as int] == method_info(p.methods@[t as int], p.max_height));
+        assert(ap.methods[t as int] == method_info(p.minfo(t as int), p.max_height));
         assert(rr@ == FRAME_WORDS * (nf - 1));
         assert(sp::top(g0) == g0.frames.last());
         // Frame records.
@@ -434,14 +434,18 @@ pub fn op_invoke_static_tail(m: &mut Machine, r: &mut Regs, env: &Env, bci: usiz
         lemma_shape(p, g);
     }
     let t = p.dispatch.at(d) as usize;
-    let info = p.methods.at(t);
-    proof { assert(ap.methods[t as int] == method_info(p.methods@[t as int], p.max_height)); }
+    let info = p.method(t);
+    proof {
+        assert(ap.methods[t as int] == method_info(p.minfo(t as int), p.max_height));
+        crate::calls::lemma_dispatch_kind(p, g.heap, w0.addr(), d as int);
+    }
     let arity = info.arity as usize;
-    if info.recv_start != NO_VALUE {
+    let rs = p.dispatch_recv_start(t);
+    if rs != NO_VALUE {
         proof { w0.lemma_at(p, arity - 1); }
         let receiver = at(m, r, arity - 1);
         let cid = m.class_of(p, receiver, Ghost(sp::at(g, arity - 1)));
-        if !((info.recv_start as i64) <= cid && cid < info.recv_end as i64) {
+        if !p.dispatch_recv_contains(t, rs, cid) {
             return slow0(m, r, env, Slow::Op);
         }
     }
@@ -514,8 +518,8 @@ pub fn op_invoke_initializer_tail(m: &mut Machine, r: &mut Regs, env: &Env, bci:
         return slow0(m, r, env, Slow::Op);
     }
     let t = mid as usize;
-    let info = p.methods.at(t);
-    proof { assert(ap.methods[t as int] == method_info(p.methods@[t as int], p.max_height)); }
+    let info = p.method(t);
+    proof { assert(ap.methods[t as int] == method_info(p.minfo(t as int), p.max_height)); }
     if info.kind != KIND_METHOD || info.arity != 0 {
         return slow0(m, r, env, Slow::Op);
     }
