@@ -97,6 +97,29 @@ void test_utf_8_to_16() {
   }
 }
 
+// Strings are valid UTF-8, but the conversion must not read past the input
+// if one isn't (for example a string from a crafted program).
+void test_invalid_utf_8() {
+  const uint8 cases[][3] = {
+    { 'x', 'y', 0xff },  // A first byte announcing 7 more bytes.
+    { 'x', 'y', 0xf0 },  // Announcing 3 more bytes.
+    { 'x', 0xe2, 0x82 }, // Announcing 2 more bytes, one there.
+    { 'x', 'y', 0x80 },  // A continuation byte.
+  };
+  for (unsigned c = 0; c < ARRAY_SIZE(cases); c++) {
+    // An exact-size heap block, so AddressSanitizer catches over-reads.
+    uint8* input = unvoid_cast<uint8*>(malloc(3));
+    memcpy(input, cases[c], 3);
+    word expected = 3;
+    if (Utils::utf_8_to_16(input, 3) != expected) fatal(__LINE__);
+    uint16 out[8];
+    if (Utils::utf_8_to_16(input, 3, out, 8) != expected) fatal(__LINE__);
+    if (out[0] != 'x') fatal(__LINE__);
+    if (out[expected - 1] != 0xfffd) fatal(__LINE__);
+    free(input);
+  }
+}
+
 void test_equals() {
   const uint8* str_8 = reinterpret_cast<const uint8*>("xæ€😹y");
   const uint16 str_16[6] = {'x', AELIG, EURO, CAT_WITH_TEARS_OF_JOY_1, CAT_WITH_TEARS_OF_JOY_2, 'y'};
@@ -114,6 +137,7 @@ void test_equals() {
 int main(int argc, char **argv) {
   test_utf_16_to_8();
   test_utf_8_to_16();
+  test_invalid_utf_8();
   test_equals();
   return 0;
 }
