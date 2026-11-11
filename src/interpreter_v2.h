@@ -54,7 +54,7 @@ static const int V2_KIND_FIELD_ACCESSOR = 1;
 static const int V2_KIND_LAMBDA = 2;
 static const int V2_KIND_BLOCK = 3;
 static const int V2_NO_VALUE = 0xffff;
-static const int V2_OPCODE_COUNT = 104;
+static const int V2_OPCODE_COUNT = 114;
 static const int V2_PRIMITIVE_LENGTH = 4;
 // Literals 0..7: true, false and the five failure values (format note 5).
 static const int V2_FAILURE_LITERALS = 7;
@@ -77,6 +77,7 @@ static const uint8 V2_OPCODE_LENGTHS[V2_OPCODE_COUNT] = {
   3, 3, 3, 3, 3, 3, 3, 3,                    // 81..88: BRANCH*, BRANCH_BACK*
   4, 1, 1, 1, 1, 2, 6, 1, 1, 2, 1, 2,        // 89..100
   4, 4, 5,                                   // 101..103: LOOP_REPEAT, LOOP_ARRAY, HASH_FIND (proposal, note 19)
+  2, 3, 2, 2, 2, 3, 2, 3, 3, 2,              // 104..113: the unchecked twins of the field accesses (note 20)
 };
 
 // The decoded method table of a format-2 program, owned by its process
@@ -148,10 +149,6 @@ class V2MethodTable {
   // TOIT_TRUSTED_CHECKED_LOOP=1 keeps such programs on the checked loop
   // (hosts only, for comparisons).
   static bool trusted_on_verified_loop();
-
-  // TOIT_V2_CHECKED_FIELDS=1: trusted programs keep the field-access checks
-  // (comparisons; the default is the unchecked mode for trusted programs).
-  static bool checked_fields_forced();
 
   // Whether launches verify trusted format-2 programs although
   // -Xverify/TOIT_VERIFY is off: debug builds do, as a check on the

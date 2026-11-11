@@ -22,6 +22,7 @@
 #include "../printing.h"
 #include "../process.h"
 #include "../interpreter.h"
+#include "../interpreter_v2.h"
 #include "../utils.h"
 #include <stdlib.h>
 
@@ -37,6 +38,12 @@ bool v2_builtin_enabled(int builtin) {
   const char* override = getenv("TOIT_V2_BUILTINS");
   if (override != null) mask = atoi(override);
   return (mask & builtin) != 0;
+}
+
+bool v2_unchecked_enabled() {
+  const char* override = getenv("TOIT_V2_UNCHECKED");
+  if (override != null) return atoi(override) != 0;
+  return Flags::v2_unchecked;
 }
 
 void set_bytecode_format(int format) {
@@ -198,7 +205,19 @@ int ProgramBuilder::create_method_v2(int kind,
     ASSERT(aux == 0);
   }
   v2_method_entries_.push_back(all_bytecodes_.size());
+  int body = all_bytecodes_.size();
   for (int i = 0; i < bytecodes.length(); i++) all_bytecodes_.push_back(bytecodes[i]);
+  if (v2_unchecked_enabled()) {
+    // Format note 20: the field accesses become their unchecked twins (the
+    // same operands; trusted programs only).
+    for (int i = 0; i < bytecodes.length();) {
+      int opcode = bytecodes[i];
+      ASSERT(opcode < V2_OPCODE_COUNT);
+      int twin = v2_twin_of(opcode);
+      if (twin >= 0) all_bytecodes_[body + i] = twin;
+      i += V2_OPCODE_LENGTHS[opcode];
+    }
+  }
   global_max_stack_height_ = Utils::max(global_max_stack_height_, max_height);
   return id;
 }

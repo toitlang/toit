@@ -89,15 +89,6 @@ V2MethodTable::~V2MethodTable() {
 // -Xverify/TOIT_VERIFY: the core checks every stuck state of the
 // specification at run time, so an unverified program cannot make it
 // access memory outside the tables.
-bool V2MethodTable::checked_fields_forced() {
-  static int forced = -1;
-  if (forced < 0) {
-    const char* env = getenv("TOIT_V2_CHECKED_FIELDS");
-    forced = (env != null && env[0] != '0' && env[0] != '\0') ? 1 : 0;
-  }
-  return forced == 1;
-}
-
 bool V2MethodTable::trusted_on_verified_loop() {
   if (!checked_loop_linked()) return true;
   static int enabled = -1;
@@ -359,10 +350,10 @@ Interpreter::Result Interpreter::run_v2() {
   context.new_space_top = process_->object_heap()->v2_new_space_top_address();
   context.new_space_limit = process_->object_heap()->v2_new_space_limit_address();
   context.new_space_sentinel = reinterpret_cast<uword>(chunk_end_sentinel());
-  // Trusted programs skip the field-access checks (the compiler is trusted);
-  // TOIT_V2_CHECKED_FIELDS=1 keeps them (comparisons). Never for an
-  // untrusted process.
-  context.unchecked = (!untrusted && !V2MethodTable::checked_fields_forced()) ? 1 : 0;
+  // Trusted programs may use the unchecked twins of the field accesses
+  // (format note 20; the compiler emits them with -Xv2_unchecked). Never an
+  // untrusted process: its launch verification rejects them.
+  context.unchecked = !untrusted ? 1 : 0;
 
   v2_validate(process_, "run entry");
   toit_v2_run(&context);

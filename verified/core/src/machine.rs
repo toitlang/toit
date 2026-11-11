@@ -137,7 +137,7 @@ pub mod op {
 }
 
 /// Instruction lengths in opcode order (OPCODE_LENGTHS2).
-pub const OPCODE_LENGTHS: [u8; 104] = [
+pub const OPCODE_LENGTHS: [u8; 114] = [
     2, 3, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 3, 2,
     1, 1, 1, 1, 1, 1,
     2, 3, 1, 1, 2, 1, 2, 3, 5, 5,
@@ -151,6 +151,7 @@ pub const OPCODE_LENGTHS: [u8; 104] = [
     3, 3, 3, 3, 3, 3, 3, 3,
     4, 1, 1, 1, 1, 2, 6, 1, 1, 2, 1, 2,
     4, 4, 5,
+    2, 3, 2, 2, 2, 3, 2, 3, 3, 2,
 ];
 
 pub fn opcode_length(op: u8) -> usize {
@@ -2402,8 +2403,10 @@ fn run_checked(m: &mut Machine, env: &Env) -> (usize, i64) {
         let ctl = if !m.instruction_in_method(&env.p, bci) {
             Ctl::Stuck(stuck::BAD_INSTRUCTION)
         } else {
-            let opcode = env.p.code.at(bci);
-            if tracing { env.rt.report(V2_REPORT_TRACE, bci, opcode as usize); }
+            let raw = env.p.code.at(bci);
+            if tracing { env.rt.report(V2_REPORT_TRACE, bci, raw as usize); }
+            // An unchecked twin (format note 20) runs as its checked base here.
+            let opcode = toit_spec::v2::bytecodes::exec_base_op(raw);
             m.dispatch_checked(env, bci, opcode)
         };
         match ctl {

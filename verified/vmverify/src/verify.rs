@@ -126,7 +126,10 @@ pub fn verify(c: &mut Converted, trusted: bool, cert: Option<&[u8]>) -> Verdict 
     // Taken, not copied: the conversion does not need it any more.
     let prim_arity = core::mem::take(&mut c.prim_arity);
     let globals = core::mem::take(&mut c.globals);
-    let (p, objects) = c.split();
+    let (mut p, objects) = c.split();
+    // The unchecked twins of the field accesses (format note 20) are for
+    // trusted programs only.
+    p.unchecked = trusted;
     let p = &p;
     // The inference and the heap check require well-formed tables.
     if !check::x_wf_program2(p) {

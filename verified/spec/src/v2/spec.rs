@@ -810,14 +810,21 @@ pub open spec fn op_unwind(p: Program2, s: State2) -> Outcome2 {
 
 /// A field access whose run-time check failed (a receiver other than `this`
 /// that is not an instance with the field, a machine-owned task field, a
-/// store into the program heap): INVALID_PROGRAM. In the unchecked mode of
-/// trusted programs (`Program2::unchecked`, verified/core/EXPERIMENT-trusted.md)
-/// the machine does not check: the access is assumed to succeed, and its
-/// failure is a stuck state (`Stuck::FieldRange`, used for nothing else in
-/// format 2). The verifier accepts the unchecked mode only for trusted
-/// programs (`accepts`); the soundness theorem is stated without it.
+/// store into the program heap): INVALID_PROGRAM. For the unchecked twins
+/// of the field accesses (`bytecodes::is_twin`, format note 20; trusted
+/// programs in the unchecked mode `Program2::unchecked` only) the machine
+/// does not check: the access is assumed to succeed, and its failure is a
+/// stuck state (`Stuck::FieldRange`, used for nothing else in format 2).
+/// The verifier accepts twins only in the unchecked mode, and the mode only
+/// for trusted programs (`accepts`); the soundness theorem is stated
+/// without it.
 pub open spec fn unchecked_fail(p: Program2, s: State2) -> Outcome2 {
-    if p.unchecked { stuck(Stuck::FieldRange) } else { raise(p, s, INVALID_PROGRAM) }
+    if twin_at(p, s) { stuck(Stuck::FieldRange) } else { raise(p, s, INVALID_PROGRAM) }
+}
+
+/// The instruction at the bci is an unchecked twin.
+pub open spec fn twin_at(p: Program2, s: State2) -> bool {
+    is_twin(p.bytecodes[s.bci as int])
 }
 
 pub open spec fn op_load_field(p: Program2, s: State2, f: int, len: int) -> Outcome2 {
@@ -1176,8 +1183,8 @@ pub open spec fn op_invoke_virtual_get(p: Program2, s: State2, sel: int) -> Outc
                     stuck(Stuck::BadArity)
                 } else if info(p, t).kind == KIND_FIELD_ACCESSOR && field_readable(p, s, recv, f) {
                     next(put(s, 0, field(s, recv, f)), 3)
-                } else if info(p, t).kind == KIND_FIELD_ACCESSOR && p.unchecked {
-                    // The unchecked mode (`unchecked_fail`): an accessor's field
+                } else if info(p, t).kind == KIND_FIELD_ACCESSOR && twin_at(p, s) {
+                    // The unchecked twin (`unchecked_fail`): an accessor's field
                     // is assumed to exist.
                     stuck(Stuck::FieldRange)
                 } else {
@@ -1203,7 +1210,7 @@ pub open spec fn op_invoke_virtual_set(p: Program2, s: State2, sel: int) -> Outc
                     stuck(Stuck::BadArity)
                 } else if info(p, t).kind == KIND_FIELD_ACCESSOR && field_writable(p, s, recv, f) {
                     next(push(set_field2(drop(s, 2), recv, f, v), v), 3)
-                } else if info(p, t).kind == KIND_FIELD_ACCESSOR && p.unchecked {
+                } else if info(p, t).kind == KIND_FIELD_ACCESSOR && twin_at(p, s) {
                     stuck(Stuck::FieldRange)
                 } else {
                     call(p, s, t, s.bci + 3)
@@ -1559,7 +1566,9 @@ pub open spec fn step(p: Program2, s: State2) -> Outcome2 {
         stuck(Stuck::BadInstruction)
     } else {
         let bci = s.bci as int;
-        let op = p.bytecodes[bci];
+        // An unchecked twin (format note 20) runs as its base instruction;
+        // only `unchecked_fail` tells them apart.
+        let op = base_op(p.bytecodes[bci]);
         let len = opcode_length2(op);
         let b1 = if len >= 2 { byte2(p, bci + 1) } else { 0 };
         let w1 = if len >= 3 { u16_at(p1(p), bci + 1) } else { 0 };

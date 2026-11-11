@@ -93,7 +93,7 @@ pub open spec fn fam_prim(op: u8) -> bool {
 }
 
 pub proof fn lemma_families(op: u8)
-    requires op < OPCODE_COUNT2,
+    requires op < OPCODE_COUNT2, !is_twin(op),
     ensures fam_local(op) || fam_field(op) || fam_block(op) || fam_call(op) || fam_virtual(op)
         || fam_tail(op) || fam_unwind(op) || fam_prim(op),
 {}
@@ -118,6 +118,9 @@ pub proof fn lemma_instr(p: Program2, c: Cert, trusted: bool, s: State2)
         &&& s.bci as int == instr_at(p, m, off)
         &&& 0 <= off
         &&& cur_op(p, s) == op_of(p, m, off)
+        &&& !is_twin(cur_op(p, s))
+        &&& (is_twin(p.bytecodes[s.bci as int]) ==> p.unchecked)
+        &&& opcode_length2(p.bytecodes[s.bci as int]) == opcode_length2(cur_op(p, s))
         &&& map_at(c, m, off) == Some(k)
         &&& instr_ok(p, c, m, off, k, trusted)
         &&& wf_kinds(p, c, m, k)
@@ -149,6 +152,7 @@ pub proof fn lemma_instr(p: Program2, c: Cert, trusted: bool, s: State2)
     lemma_map_bound(p, c, trusted, m, off);
     assert(method_ok(p, c, m, trusted));
     assert(frame_ok(p, c, s, t)) by { reveal(wf_task); }
+    lemma_base_op(p.bytecodes[s.bci as int]);
     let op = cur_op(p, s);
     assert(op < OPCODE_COUNT2);
     assert(1 <= opcode_length2(op) <= 6) by {

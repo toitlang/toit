@@ -48,6 +48,21 @@ static const int V2_BUILTIN_ARRAY_DO = 1 << 1;
 static const int V2_BUILTIN_HASH_FIND = 1 << 2;
 bool v2_builtin_enabled(int builtin);
 
+// Format note 20: the compiler emits the unchecked twins of the field
+// accesses (opcodes V2_FIRST_TWIN..), for trusted programs only
+// (-Xv2_unchecked, or TOIT_V2_UNCHECKED=1). The verifier rejects them in
+// untrusted programs.
+bool v2_unchecked_enabled();
+static const int V2_FIRST_TWIN = 104;
+// The twin of a field access, or -1.
+inline int v2_twin_of(int opcode) {
+  if (7 <= opcode && opcode <= 13) return V2_FIRST_TWIN + opcode - 7;  // LOAD_FIELD .. STORE_FIELD_POP.
+  if (opcode == 60) return V2_FIRST_TWIN + 7;                         // INVOKE_VIRTUAL_GET.
+  if (opcode == 61) return V2_FIRST_TWIN + 8;                         // INVOKE_VIRTUAL_SET.
+  if (opcode == 94) return V2_FIRST_TWIN + 9;                         // STORE_FIELD_THIS.
+  return -1;
+}
+
 // Sets the format for a scope and restores the previous one.
 class BytecodeFormatScope {
  public:

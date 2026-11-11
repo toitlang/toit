@@ -161,7 +161,14 @@ pub open spec fn instr_at(p: Program2, m: int, off: int) -> int {
     info(p, m).entry + off
 }
 
+/// The opcode at offset `off` of method `m` as the verifier types it: an
+/// unchecked twin (format note 20) as its base instruction.
 pub open spec fn op_of(p: Program2, m: int, off: int) -> u8 {
+    base_op(raw_op_of(p, m, off))
+}
+
+/// The opcode byte at offset `off` of method `m`.
+pub open spec fn raw_op_of(p: Program2, m: int, off: int) -> u8 {
     p.bytecodes[instr_at(p, m, off)]
 }
 
@@ -692,6 +699,9 @@ pub open spec fn instr_ok(p: Program2, c: Cert, m: int, off: int, k: Seq<Kind>, 
     &&& 0 <= off
     &&& i.entry + off < i.end
     &&& op < OPCODE_COUNT2
+    &&& raw_op_of(p, m, off) < OPCODE_COUNT2
+    // The unchecked twins only in the unchecked mode (trusted programs).
+    &&& (is_twin(raw_op_of(p, m, off)) ==> p.unchecked)
     &&& i.entry + off + len_of(p, m, off) <= i.end
     &&& wf_kinds(p, c, m, k)
     &&& ctx_ok(p, c, m, k)

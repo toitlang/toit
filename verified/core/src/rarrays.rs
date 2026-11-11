@@ -546,7 +546,7 @@ pub fn op_invoke_size(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opco
         None => {
             // The virtual getter (`spec::op_invoke_virtual_get`), on registers.
             proof { assert(sp::op_invoke_size(ap, g, sel) == sp::op_invoke_virtual_get(ap, g, sel)); }
-            crate::rfields::op_invoke_virtual_get(m, r, env, bci, opcode, sel_)
+            crate::rfields::op_invoke_virtual_get(m, r, env, bci, opcode, sel_, false)
         },
     }
 }

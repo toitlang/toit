@@ -584,9 +584,10 @@ pub open spec fn unchecked_ok(p: Program2, s: State2) -> bool {
     !p.unchecked || step(p, s) != Outcome2::Stuck(Stuck::FieldRange)
 }
 
-/// The opcode at the state's bci.
+/// The opcode at the state's bci, an unchecked twin as its base (as the
+/// step and the verifier see it).
 pub open spec fn cur_op(p: Program2, s: State2) -> u8 {
-    p.bytecodes[s.bci as int]
+    base_op(p.bytecodes[s.bci as int])
 }
 
 /// A step from `s` is not stuck, keeps the invariant, and every completion

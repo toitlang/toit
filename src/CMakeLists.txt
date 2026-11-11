@@ -163,8 +163,12 @@ set(GEN_DIR "${PROJECT_BINARY_DIR}/generated")
 option(TOIT_SYSTEM_FORMAT2 "Compile the embedded system programs in bytecode format 2" OFF)
 if (TOIT_SYSTEM_FORMAT2)
   set(EMBEDDED_PROGRAM_FORMAT_ENV "TOIT_BYTECODE_FORMAT=2")
+  # First-party code: the unchecked twins of the field accesses (format
+  # note 20).
+  set(EMBEDDED_PROGRAM_UNCHECKED_ENV "TOIT_V2_UNCHECKED=1")
 else()
   set(EMBEDDED_PROGRAM_FORMAT_ENV "TOIT_EMBEDDED_FORMAT=1")
+  set(EMBEDDED_PROGRAM_UNCHECKED_ENV "TOIT_V2_UNCHECKED=0")
 endif()
 
 set(EMBEDDED_TOIT_PROGRAMS toit toit_run run_image)
@@ -474,6 +478,7 @@ if (NOT ${TOIT_IS_EMBEDDED})
             ASAN_OPTIONS=detect_leaks=false
             TOIT_PACKAGE_CACHE_PATHS="${embedded_packages_dir}"
             "${EMBEDDED_PROGRAM_FORMAT_ENV}"
+            "${EMBEDDED_PROGRAM_UNCHECKED_ENV}"
           $<TARGET_FILE:toit.compile>
           --dependency-file "${embedded_dep}"
           --dependency-format ninja

@@ -1411,7 +1411,9 @@ pub fn x_decode(p: &VProgram, m: usize, off: usize) -> (r: (usize, u8, usize, i6
     }),
 {
     let bci = x_info(p, m).entry + off;
-    let op = ix(p.bytecodes, bci);
+    let raw = ix(p.bytecodes, bci);
+    proof { lemma_base_op(raw); }
+    let op = exec_base_op(raw);
     let len = exec_opcode_length2(op);
     let b1: i64 = if len >= 2 { ix(p.bytecodes, bci + 1) as i64 } else { 0 };
     let w1: i64 = if len >= 3 { x_u16(p, bci + 1) } else { 0 };
@@ -1848,7 +1850,9 @@ pub fn x_post(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>, tru
     requires post_pre(p, m, off, k), g_ok(c.g),
     ensures res matches Ok(r) ==> post_rel(r, post(vview(p), c@, m as int, off as int, kv(*k), trusted)),
 {
-    let op = ix(p.bytecodes, x_info(p, m).entry + off);
+    let raw = ix(p.bytecodes, x_info(p, m).entry + off);
+    proof { lemma_base_op(raw); }
+    let op = exec_base_op(raw);
     if op == LOAD_LOCAL || op == LOAD_LOCAL_WIDE || (LOAD_LOCAL_0 <= op && op <= LOAD_LOCAL_5)
         || op == POP_LOAD_LOCAL || op == STORE_LOCAL || op == STORE_LOCAL_POP {
         x_post_locals(p, c, m, off, k, trusted)
@@ -2263,8 +2267,12 @@ pub fn x_instr_ok(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>,
     let i = x_info(p, m);
     if !(off < i.end - i.entry) { return Ok(false); }
     let bci = i.entry + off;
-    let op = ix(p.bytecodes, bci);
-    if op >= OPCODE_COUNT2 { return Ok(false); }
+    let raw = ix(p.bytecodes, bci);
+    if raw >= OPCODE_COUNT2 { return Ok(false); }
+    // The unchecked twins only in the unchecked mode (format note 20).
+    if exec_is_twin(raw) && !p.unchecked { return Ok(false); }
+    proof { lemma_base_op(raw); }
+    let op = exec_base_op(raw);
     let len = exec_opcode_length2(op);
     if bci + len > i.end { return Ok(false); }
     if k.len() > i.arity as usize + i.max_height as usize { return Ok(false); }
@@ -2743,6 +2751,7 @@ pub fn verify<O: MapOracle>(p: &VProgram, g: &XGlobal, o: &mut O, trusted: bool)
     let ghost pv = vview(p);
     let ghost pad = Seq::new(g.n as nat, |m: int| Seq::<Option<Seq<Kind>>>::empty());
     if !x_wf_program2(p) { return Ok((false, Ghost(pad))); }
+    if p.unchecked && !trusted { return Ok((false, Ghost(pad))); }
     if g.n != p.methods.len() { return Ok((false, Ghost(pad))); }
     if !x_g_ok(g) { return Ok((false, Ghost(pad))); }
     let empty = XMaps { idx: Vec::new(), nodes: Vec::new() };

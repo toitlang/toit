@@ -115,6 +115,7 @@ impl<'a> Converted<'a> {
             builtin: &self.builtin,
             roots: &self.roots,
             literals: &self.literals,
+            unchecked: false,
         };
         (p, &mut self.objects)
     }
@@ -147,6 +148,7 @@ impl<'a> Converted<'a> {
             builtin: &self.builtin,
             roots: &self.roots,
             literals: &self.literals,
+            unchecked: false,
         }
     }
 }

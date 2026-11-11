@@ -447,8 +447,11 @@ impl Machine {
         let frame = self.top_frame()?;
         let info = self.info(frame.method)?;
         if !(info.entry <= bci && bci < info.end) { return Err(BadInstruction); }
-        let op = self.p.bytecodes[bci];
-        if op >= OPCODE_COUNT2 { return Err(BadInstruction); }
+        let raw = self.p.bytecodes[bci];
+        if raw >= OPCODE_COUNT2 { return Err(BadInstruction); }
+        // An unchecked twin (format note 20) runs as its base instruction,
+        // with the check (where the spec is stuck, this interpreter raises).
+        let op = crate::v2::bytecodes::exec_base_op(raw);
         let len = OPCODE_LENGTHS2[op as usize] as usize;
         if bci + len > info.end { return Err(BadInstruction); }
         let b1 = if len >= 2 { self.byte(bci + 1) } else { 0 };

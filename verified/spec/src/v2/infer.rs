@@ -407,10 +407,15 @@ fn analyze<F: Facts>(p: &VProgram, f: &mut F, m: usize, trusted: bool) -> Result
         maps.read(off, &mut k, &mut ids);
         maps.read_origins(off, k.len(), &mut org, &mut oids);
         let bci = entry + off;
-        let op = p.bytecodes[bci];
-        if op >= OPCODE_COUNT2 {
-            return Err((off, format!("invalid opcode {}", op)));
+        let raw = p.bytecodes[bci];
+        if raw >= OPCODE_COUNT2 {
+            return Err((off, format!("invalid opcode {}", raw)));
         }
+        if exec_is_twin(raw) && !p.unchecked {
+            return Err((off, format!("unchecked opcode {} in a program not in the unchecked mode", raw)));
+        }
+        // An unchecked twin is typed as its base (format note 20).
+        let op = exec_base_op(raw);
         let len = OPCODE_LENGTHS2[op as usize] as usize;
         if bci + len > end {
             return Err((off, "instruction crosses the method end".into()));

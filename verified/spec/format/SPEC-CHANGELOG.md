@@ -4,6 +4,21 @@ One entry per change of `src/v2/spec.rs`, `src/v2/prim.rs`, `src/v2/types.rs`
 or the verifier's rules (`src/v2/verifier.rs`) that an implementation of
 the spec (the verified core, the VM's loader) must follow. Newest first.
 
+## 2026-11-11 (branch experiment/trusted-fast only, not decided): unchecked twins
+
+What (note 20): opcodes 104..113, the unchecked twins of the field
+accesses; `OPCODE_COUNT2` is 114.
+
+* `bytecodes.rs`: `is_twin`, `base_op`, the lengths and names.
+* `spec.rs`: `step` dispatches on `base_op`; `unchecked_fail` and the
+  accessor fast paths test `twin_at` (the opcode) instead of
+  `Program2::unchecked` (the mode now only allows the twins).
+* `verifier.rs`: `op_of` is `base_op` of the byte; `instr_ok` requires a
+  twin only in the unchecked mode. `prim.rs`: `grows_stack` and
+  `resource_throw` of a twin are its base's. `sound.rs`: `cur_op` is
+  `base_op` of the byte. Programs without twins are accepted exactly as
+  before; the theorem is unchanged.
+
 ## 2026-11-11 (branch proposal/builtins only, not decided): three built-ins
 
 What (note 19): opcodes LOOP_REPEAT (101, 4 bytes), LOOP_ARRAY (102, 4

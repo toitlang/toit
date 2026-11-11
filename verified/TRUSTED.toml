@@ -758,7 +758,7 @@ file = "src/step.rs"
 item = "trusted_field_accesses"
 kind = "external_body"
 count = 1
-justification = "EXPERIMENT (verified/core/EXPERIMENT-trusted.md): in the unchecked mode of a trusted program (Program2::unchecked; accepts allows it only with trusted == true, and Interpreter::run_v2 never sets it for an untrusted process) no step reaches a failed unchecked field access: we trust the compiler for first-party code. The soundness theorem is stated without the mode; TRUSTED.md section 6."
+justification = "EXPERIMENT (verified/core/EXPERIMENT-trusted.md): in the unchecked mode of a trusted program (Program2::unchecked, which allows the unchecked twins of the field accesses, format note 20; accepts allows it only with trusted == true, the launch verifier sets it only for the trusted rules, and Interpreter::run_v2 never sets it for an untrusted process) no step reaches a failed unchecked field access (a twin whose check would fail): we trust the compiler for first-party code. The soundness theorem is stated without the mode; TRUSTED.md section 6."
 
 [[trusted]]
 crate = "core"
@@ -1750,7 +1750,7 @@ file = "src/view.rs"
 item = "proven_unreachable"
 kind = "external_body"
 count = 1
-justification = "requires false: Verus proves every call site dead (the dispatch's default arm, opcode >= OPCODE_COUNT2 (104) contradicts the verifier's instruction check); lets LLVM drop the jump table's range check (-2.7% instructions on richards); TRUSTED.md section 4."
+justification = "requires false: Verus proves every call site dead (the dispatch's default arm, opcode >= OPCODE_COUNT2 (114) contradicts the verifier's instruction check); lets LLVM drop the jump table's range check (-2.7% instructions on richards); TRUSTED.md section 4."
 
 [[trusted]]
 crate = "core"

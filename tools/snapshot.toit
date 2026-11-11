@@ -1146,6 +1146,18 @@ BYTE-CODES-V2 ::= [
   Bytecode "LOOP_REPEAT"                4 OP-SB-BS "loop repeat",
   Bytecode "LOOP_ARRAY"                 4 OP-SB-BS "loop array",
   Bytecode "HASH_FIND"                  5 OP-SF-BS-BS "hash find",
+  // The unchecked twins of the field accesses, trusted programs only
+  // (verified/spec/format/20-unchecked-twins.md).
+  Bytecode "LOAD_FIELD_U"               2 OP-BU "load field (unchecked)",
+  Bytecode "LOAD_FIELD_WIDE_U"          3 OP-SU "load field wide (unchecked)",
+  Bytecode "LOAD_FIELD_LOCAL_U"         2 OP-BU "load field local (unchecked)",
+  Bytecode "POP_LOAD_FIELD_LOCAL_U"     2 OP-BU "pop, load field local (unchecked)",
+  Bytecode "STORE_FIELD_U"              2 OP-BU "store field (unchecked)",
+  Bytecode "STORE_FIELD_WIDE_U"         3 OP-SU "store field wide (unchecked)",
+  Bytecode "STORE_FIELD_POP_U"          2 OP-BU "store field, pop (unchecked)",
+  Bytecode "INVOKE_VIRTUAL_GET_U"       3 OP-SO "invoke virtual get (unchecked)",
+  Bytecode "INVOKE_VIRTUAL_SET_U"       3 OP-SO "invoke virtual set (unchecked)",
+  Bytecode "STORE_FIELD_THIS_U"         2 OP-BU "store field this (unchecked)",
 ]
 
 

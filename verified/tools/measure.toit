@@ -40,6 +40,7 @@ GROUPS ::= [
   ["unchecked field loads (this)", ["LOAD_FIELD_THIS"]],
   ["checked field stores", ["STORE_FIELD", "STORE_FIELD_WIDE", "STORE_FIELD_POP"]],
   ["unchecked field stores (this)", ["STORE_FIELD_THIS"]],
+  ["unchecked twins (trusted, note 20)", ["LOAD_FIELD_U", "LOAD_FIELD_WIDE_U", "LOAD_FIELD_LOCAL_U", "POP_LOAD_FIELD_LOCAL_U", "STORE_FIELD_U", "STORE_FIELD_WIDE_U", "STORE_FIELD_POP_U", "INVOKE_VIRTUAL_GET_U", "INVOKE_VIRTUAL_SET_U", "STORE_FIELD_THIS_U"]],
   ["try/finally setup", ["LINK", "UNLINK", "TRY"]],
   ["intrinsics", ["INTRINSIC_SMI_REPEAT", "INTRINSIC_ARRAY_DO", "INTRINSIC_HASH_FIND", "INTRINSIC_HASH_DO"]],
   ["block calls", ["INVOKE_BLOCK"]],

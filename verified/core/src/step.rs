@@ -1129,52 +1129,104 @@ pub fn step_r(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
         7 => {
             let f = r.ip.byte(1, &p.code) as usize;
             proof { assert(sp::step(ap, g) == sp::op_load_field(ap, g, f as int, 2)) by { reveal(sp::step); } }
-            return crate::rfields::op_load_field(m, r, env, cur_bci(p, r.ip), opcode, f, 2);
+            return crate::rfields::op_load_field(m, r, env, cur_bci(p, r.ip), opcode, f, 2, false);
         },
         8 => {
             let f = ip_u16(p, r.ip, 1);
             proof { assert(sp::step(ap, g) == sp::op_load_field(ap, g, f as int, 3)) by { reveal(sp::step); } }
-            return crate::rfields::op_load_field(m, r, env, cur_bci(p, r.ip), opcode, f, 3);
+            return crate::rfields::op_load_field(m, r, env, cur_bci(p, r.ip), opcode, f, 3, false);
         },
         9 => {
             let e = r.ip.byte(1, &p.code) as usize;
             proof { assert(sp::step(ap, g) == sp::op_load_field_local(ap, g, e as int, false)) by { reveal(sp::step); } }
-            return crate::rfields::op_load_field_local(m, r, env, cur_bci(p, r.ip), opcode, e, false);
+            return crate::rfields::op_load_field_local(m, r, env, cur_bci(p, r.ip), opcode, e, false, false);
         },
         10 => {
             let e = r.ip.byte(1, &p.code) as usize;
             proof { assert(sp::step(ap, g) == sp::op_load_field_local(ap, g, e as int, true)) by { reveal(sp::step); } }
-            return crate::rfields::op_load_field_local(m, r, env, cur_bci(p, r.ip), opcode, e, true);
+            return crate::rfields::op_load_field_local(m, r, env, cur_bci(p, r.ip), opcode, e, true, false);
         },
         11 => {
             let f = r.ip.byte(1, &p.code) as usize;
             proof { assert(sp::step(ap, g) == sp::op_store_field(ap, g, f as int, 2, true)) by { reveal(sp::step); } }
-            return crate::rfields::op_store_field(m, r, env, cur_bci(p, r.ip), opcode, f, 2, true);
+            return crate::rfields::op_store_field(m, r, env, cur_bci(p, r.ip), opcode, f, 2, true, false);
         },
         12 => {
             let f = ip_u16(p, r.ip, 1);
             proof { assert(sp::step(ap, g) == sp::op_store_field(ap, g, f as int, 3, true)) by { reveal(sp::step); } }
-            return crate::rfields::op_store_field(m, r, env, cur_bci(p, r.ip), opcode, f, 3, true);
+            return crate::rfields::op_store_field(m, r, env, cur_bci(p, r.ip), opcode, f, 3, true, false);
         },
         13 => {
             let f = r.ip.byte(1, &p.code) as usize;
             proof { assert(sp::step(ap, g) == sp::op_store_field(ap, g, f as int, 2, false)) by { reveal(sp::step); } }
-            return crate::rfields::op_store_field(m, r, env, cur_bci(p, r.ip), opcode, f, 2, false);
+            return crate::rfields::op_store_field(m, r, env, cur_bci(p, r.ip), opcode, f, 2, false, false);
         },
         60 => {
             let sel = ip_u16(p, r.ip, 1);
             proof { assert(sp::step(ap, g) == sp::op_invoke_virtual_get(ap, g, sel as int)) by { reveal(sp::step); } }
-            return crate::rfields::op_invoke_virtual_get(m, r, env, cur_bci(p, r.ip), opcode, sel);
+            return crate::rfields::op_invoke_virtual_get(m, r, env, cur_bci(p, r.ip), opcode, sel, false);
         },
         61 => {
             let sel = ip_u16(p, r.ip, 1);
             proof { assert(sp::step(ap, g) == sp::op_invoke_virtual_set(ap, g, sel as int)) by { reveal(sp::step); } }
-            return crate::rfields::op_invoke_virtual_set(m, r, env, cur_bci(p, r.ip), opcode, sel);
+            return crate::rfields::op_invoke_virtual_set(m, r, env, cur_bci(p, r.ip), opcode, sel, false);
         },
         94 => {
             let f = r.ip.byte(1, &p.code) as usize;
             proof { assert(sp::step(ap, g) == sp::op_store_field_this(ap, g, f as int)) by { reveal(sp::step); } }
-            return crate::rfields::op_store_field_this(m, r, env, cur_bci(p, r.ip), opcode, f);
+            return crate::rfields::op_store_field_this(m, r, env, cur_bci(p, r.ip), opcode, f, false);
+        },
+        // The unchecked twins of the field accesses (format note 20; trusted
+        // programs only): the handlers above without the field check.
+        104 => {
+            let f = r.ip.byte(1, &p.code) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_load_field(ap, g, f as int, 2)) by { reveal(sp::step); } }
+            return crate::rfields::op_load_field(m, r, env, cur_bci(p, r.ip), opcode, f, 2, true);
+        },
+        105 => {
+            let f = ip_u16(p, r.ip, 1);
+            proof { assert(sp::step(ap, g) == sp::op_load_field(ap, g, f as int, 3)) by { reveal(sp::step); } }
+            return crate::rfields::op_load_field(m, r, env, cur_bci(p, r.ip), opcode, f, 3, true);
+        },
+        106 => {
+            let e = r.ip.byte(1, &p.code) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_load_field_local(ap, g, e as int, false)) by { reveal(sp::step); } }
+            return crate::rfields::op_load_field_local(m, r, env, cur_bci(p, r.ip), opcode, e, false, true);
+        },
+        107 => {
+            let e = r.ip.byte(1, &p.code) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_load_field_local(ap, g, e as int, true)) by { reveal(sp::step); } }
+            return crate::rfields::op_load_field_local(m, r, env, cur_bci(p, r.ip), opcode, e, true, true);
+        },
+        108 => {
+            let f = r.ip.byte(1, &p.code) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_store_field(ap, g, f as int, 2, true)) by { reveal(sp::step); } }
+            return crate::rfields::op_store_field(m, r, env, cur_bci(p, r.ip), opcode, f, 2, true, true);
+        },
+        109 => {
+            let f = ip_u16(p, r.ip, 1);
+            proof { assert(sp::step(ap, g) == sp::op_store_field(ap, g, f as int, 3, true)) by { reveal(sp::step); } }
+            return crate::rfields::op_store_field(m, r, env, cur_bci(p, r.ip), opcode, f, 3, true, true);
+        },
+        110 => {
+            let f = r.ip.byte(1, &p.code) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_store_field(ap, g, f as int, 2, false)) by { reveal(sp::step); } }
+            return crate::rfields::op_store_field(m, r, env, cur_bci(p, r.ip), opcode, f, 2, false, true);
+        },
+        111 => {
+            let sel = ip_u16(p, r.ip, 1);
+            proof { assert(sp::step(ap, g) == sp::op_invoke_virtual_get(ap, g, sel as int)) by { reveal(sp::step); } }
+            return crate::rfields::op_invoke_virtual_get(m, r, env, cur_bci(p, r.ip), opcode, sel, true);
+        },
+        112 => {
+            let sel = ip_u16(p, r.ip, 1);
+            proof { assert(sp::step(ap, g) == sp::op_invoke_virtual_set(ap, g, sel as int)) by { reveal(sp::step); } }
+            return crate::rfields::op_invoke_virtual_set(m, r, env, cur_bci(p, r.ip), opcode, sel, true);
+        },
+        113 => {
+            let f = r.ip.byte(1, &p.code) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_store_field_this(ap, g, f as int)) by { reveal(sp::step); } }
+            return crate::rfields::op_store_field_this(m, r, env, cur_bci(p, r.ip), opcode, f, true);
         },
         98 => {
             let f = r.ip.byte(1, &p.code) as usize;
@@ -1452,7 +1504,7 @@ pub fn step_r(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
         _ => {
             // Every opcode of format 2 (below OPCODE_COUNT2, which the
             // instruction check of the spec requires) has an arm.
-            proof { assert(opcode < 104); assert(false); }
+            proof { assert(opcode < 114); assert(false); }
             return crate::view::proven_unreachable();
         },
     };

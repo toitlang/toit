@@ -34,6 +34,7 @@ on the spec and on the soundness obligations, and the cost.
 | 16 | [hash-find](16-hash-find.md) | Recommendation: bring `HASH_FIND` back in Phase 4 as a non-re-entrant verified built-in; decide a `REPEAT` instruction on the same benchmark; keep HASH_DO and ARRAY_DO out. |
 | 18 | [shipped-certificate](18-shipped-certificate.md) | The toolchain ships the verifier's certificate (bundle member, trailing image block); the device reads its tables in place, decodes one method's maps at a time and only checks (`cert::verify_shipped`, proven); the installer may drop it. Decides note 14's "shipped stack maps". |
 | 19 | [builtins-proposal](19-builtins-proposal.md) | **Proposal, not decided** (branch proposal/builtins): LOOP_REPEAT, LOOP_ARRAY and HASH_FIND as bounded, non-reentrant steps that never write the heap, whose loops stay in the bytecode; specified, verified, proven (no new trusted item) and measured per built-in for the owner's decision. |
+| 20 | [unchecked-twins](20-unchecked-twins.md) | **Experiment, not decided** (branch experiment/trusted-fast): the unchecked twins of the field accesses (opcodes 104..113) for trusted programs, replacing the unchecked mode flag; untrusted programs keep the checked opcodes and cannot use the twins. |
 
 ## Verifier versus run time
 

@@ -1085,7 +1085,7 @@ pub fn x_invoke_arith(p: &ExecProgram, s: &mut ExecState, op: u8) -> (r: ExecOut
 // Fields.
 
 pub fn x_load_field(p: &ExecProgram, s: &mut ExecState, f: usize, len: usize) -> (r: ExecOutcome2)
-    requires wf_program2(pview2(p)), wf_state2(view2(old(s))), len <= 6,
+    requires wf_program2(pview2(p)), wf_state2(view2(old(s))), len <= 6, !twin_at(pview2(p), view2(old(s))),
     ensures matches2(op_load_field(pview2(p), view2(old(s)), f as int, len as int), r, view2(final(s))),
 {
     if !x_has_slot(s, 0) {
@@ -1101,7 +1101,7 @@ pub fn x_load_field(p: &ExecProgram, s: &mut ExecState, f: usize, len: usize) ->
 }
 
 pub fn x_load_field_local(p: &ExecProgram, s: &mut ExecState, enc: usize, pop: bool) -> (r: ExecOutcome2)
-    requires wf_program2(pview2(p)), wf_state2(view2(old(s))), enc < 256,
+    requires wf_program2(pview2(p)), wf_state2(view2(old(s))), enc < 256, !twin_at(pview2(p), view2(old(s))),
     ensures matches2(op_load_field_local(pview2(p), view2(old(s)), enc as int, pop), r, view2(final(s))),
 {
     let local = enc % 16;
@@ -1120,7 +1120,7 @@ pub fn x_load_field_local(p: &ExecProgram, s: &mut ExecState, enc: usize, pop: b
 }
 
 pub fn x_store_field(p: &ExecProgram, s: &mut ExecState, f: usize, len: usize, keep: bool) -> (r: ExecOutcome2)
-    requires wf_program2(pview2(p)), wf_state2(view2(old(s))), len <= 6,
+    requires wf_program2(pview2(p)), wf_state2(view2(old(s))), len <= 6, !twin_at(pview2(p), view2(old(s))),
     ensures matches2(op_store_field(pview2(p), view2(old(s)), f as int, len as int, keep), r, view2(final(s))),
 {
     if !x_has_slot(s, 1) {
@@ -1181,7 +1181,7 @@ pub fn x_load_field_this(p: &ExecProgram, s: &mut ExecState, f: usize) -> (r: Ex
 }
 
 pub fn x_store_field_this(p: &ExecProgram, s: &mut ExecState, f: usize) -> (r: ExecOutcome2)
-    requires wf_program2(pview2(p)), wf_state2(view2(old(s))),
+    requires wf_program2(pview2(p)), wf_state2(view2(old(s))), !twin_at(pview2(p), view2(old(s))),
     ensures matches2(op_store_field_this(pview2(p), view2(old(s)), f as int), r, view2(final(s))),
 {
     if !x_has_slot(s, 0) {
