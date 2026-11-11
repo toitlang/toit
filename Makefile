@@ -262,9 +262,12 @@ EC618_BYTECODE_FORMAT ?= 1
 EC618_BUILD_DIR ?= $(BUILD)/ec618
 EC618_RUST_OPT_LEVEL ?= 3
 EC618_CXX_INTERPRETER ?= OFF
+# OFF leaves the format-2 verifier out (no untrusted installs).
+EC618_VERIFIER ?= ON
 ifeq ($(EC618_BYTECODE_FORMAT),2)
 EC618_CMAKE_FORMAT_FLAGS = -DTOIT_VERIFIED_CORE=ON -DTOIT_BYTECODE_FORMAT=2 \
-	-DTOIT_CXX_INTERPRETER=$(EC618_CXX_INTERPRETER) -DTOIT_VERIFIED_CORE_OPT_LEVEL=$(EC618_RUST_OPT_LEVEL)
+	-DTOIT_CXX_INTERPRETER=$(EC618_CXX_INTERPRETER) -DTOIT_VERIFIED_CORE_OPT_LEVEL=$(EC618_RUST_OPT_LEVEL) \
+	-DTOIT_VERIFIED_CORE_VERIFIER=$(EC618_VERIFIER)
 EC618_NINJA_TARGETS = toit_verified_core_build
 # Outside --whole-archive: compiler_builtins must only fill what libgcc and
 # the base leave open.
@@ -347,7 +350,7 @@ ec618-link: check-env host-tools
 		$(EC618_GCC_PATH)/bin/arm-none-eabi-g++ -mcpu=cortex-m3 -mthumb -nostartfiles --specs=nano.specs \
 			-T $(EC618_BUILD_DIR)/slot-$$s.ld \
 			-Wl,--just-symbols=$(EC618_BASE_DIR)/base.elf \
-			-Wl,--emit-relocs -Wl,--gc-sections -Wl,-e,toit_start \
+			-Wl,--emit-relocs -Wl,--gc-sections -Wl,-e,toit_start -Wl,-Map=$(EC618_BUILD_DIR)/toit-slot-$$s.map \
 			-Wl,--wrap=time -Wl,--wrap=clock -Wl,--wrap=localtime -Wl,--wrap=gmtime \
 			-Wl,--whole-archive -Wl,--start-group \
 				$(EC618_BUILD_DIR)/src/libtoit_vm.a \
@@ -372,7 +375,7 @@ ec618-link: check-env host-tools
 		$(EC618_GCC_PATH)/bin/arm-none-eabi-g++ -mcpu=cortex-m3 -mthumb -nostartfiles --specs=nano.specs \
 			-T $(EC618_BUILD_DIR)/slot-$$s.ld \
 			-Wl,--just-symbols=$(EC618_BASE_DIR)/base.elf \
-			-Wl,--emit-relocs -Wl,--gc-sections -Wl,-e,toit_start \
+			-Wl,--emit-relocs -Wl,--gc-sections -Wl,-e,toit_start -Wl,-Map=$(EC618_BUILD_DIR)/toit-slot-$$s.map \
 			-Wl,--wrap=time -Wl,--wrap=clock -Wl,--wrap=localtime -Wl,--wrap=gmtime \
 			-Wl,--whole-archive -Wl,--start-group \
 				$(EC618_BUILD_DIR)/src/libtoit_vm.a \
