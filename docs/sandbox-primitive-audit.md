@@ -53,7 +53,7 @@ issue left open, see the notes).
 | Primitive | Reads / trusts | Verdict | Test |
 |---|---|---|---|
 | `time` | a bool | OK (microsecond clocks: a timing channel, see the threat table) | fuzz |
-| `time_info` | an int64 timestamp, a bool | **fixed**: `gmtime_r`/`localtime_r` fail for years beyond an int; the fields of the struct were then returned uninitialized (stack contents) | time-info-range-test |
+| `time_info` | an int64 timestamp, a bool | **fixed**: `gmtime_r`/`localtime_r` fail for years beyond an int (and on Windows for every time before 1970); the fields of the struct were then returned uninitialized (stack contents). UTC fields are now computed without the C library; local times that the C library rejects use the zone offset of an equivalent year; years outside ±2^30 throw `OUT_OF_RANGE` | time-info-range-test, time-info-before-1970-test |
 | `seconds_since_epoch_local` | six int32 and a bool-or-null | OK, with a note: `year - 1900` overflows for years near INT32_MIN (signed overflow, benign); `mktime` reads the global time zone, which only privileged code sets | fuzz |
 | `get_real_time_clock` | none | OK | fuzz |
 | `random`, `random_seed` (*dropped*) | a blob (seed) | OK: per-process PRNG, linear in the seed | fuzz |
