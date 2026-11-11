@@ -1,9 +1,0 @@
-/home/flo/work/opentoit-sandbox/.claude/worktrees/agent-a11f10728217c321a/verified/vmverify/staticlib/devsize/xtensa-opt3-lto-gluez/target/device/build/convert_case/1e14a24be89e16cf/out/convert_case-1e14a24be89e16cf.d: /home/flo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/convert_case-0.4.0/src/lib.rs /home/flo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/convert_case-0.4.0/src/case.rs /home/flo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/convert_case-0.4.0/src/words.rs
-
-/home/flo/work/opentoit-sandbox/.claude/worktrees/agent-a11f10728217c321a/verified/vmverify/staticlib/devsize/xtensa-opt3-lto-gluez/target/device/build/convert_case/1e14a24be89e16cf/out/libconvert_case-1e14a24be89e16cf.rlib: /home/flo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/convert_case-0.4.0/src/lib.rs /home/flo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/convert_case-0.4.0/src/case.rs /home/flo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/convert_case-0.4.0/src/words.rs
-
-/home/flo/work/opentoit-sandbox/.claude/worktrees/agent-a11f10728217c321a/verified/vmverify/staticlib/devsize/xtensa-opt3-lto-gluez/target/device/build/convert_case/1e14a24be89e16cf/out/libconvert_case-1e14a24be89e16cf.rmeta: /home/flo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/convert_case-0.4.0/src/lib.rs /home/flo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/convert_case-0.4.0/src/case.rs /home/flo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/convert_case-0.4.0/src/words.rs
-
-/home/flo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/convert_case-0.4.0/src/lib.rs:
-/home/flo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/convert_case-0.4.0/src/case.rs:
-/home/flo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/convert_case-0.4.0/src/words.rs:
