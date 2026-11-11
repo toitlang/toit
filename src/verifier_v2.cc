@@ -184,6 +184,9 @@ static bool v2_verify(Program* program, const V2MethodTable* table, bool trusted
   toit_vmverify_result result;
   toit_vmverify_verify(&input, &result);
   result.message[TOIT_VMVERIFY_MESSAGE_SIZE - 1] = '\0';
+#ifndef TOIT_FREERTOS
+  // Hosts only (devices have no environment; Kconfig TOIT_TRACE_INSTALL
+  // traces their installs).
   const char* timing = getenv("TOIT_VERIFY_TIME");
   if (timing != null && strcmp(timing, "1") == 0) {
     fprintf(stderr,
@@ -197,6 +200,7 @@ static bool v2_verify(Program* program, const V2MethodTable* table, bool trusted
             result.check_ns / 1e6, result.peak_bytes >> 10,
             progress.calls, process != null ? " (to the scheduler)" : "");
   }
+#endif
   if (result.code == TOIT_VMVERIFY_ACCEPTED) {
     // The only place that marks a table verified (the core's verified run
     // loop relies on it: Interpreter::run_v2).
