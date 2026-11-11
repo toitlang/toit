@@ -715,7 +715,7 @@ namespace toit {
   PRIMITIVE(unregister_monitor_notifier, 2)  \
 
 #define MODULE_SNAPSHOT(PRIMITIVE)           \
-  PRIMITIVE(launch, 5)                       \
+  PRIMITIVE(launch, 6)                       \
 
 #define MODULE_IMAGE(PRIMITIVE)              \
   PRIMITIVE(current_id, 0)                   \

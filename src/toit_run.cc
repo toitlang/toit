@@ -110,7 +110,9 @@ static void print_verify_usage() {
       "  --dump=<method id>     Disassemble a method.\n"
       "  --emit-bytecodes=<f>   Write the raw program bytecodes to the file and exit.\n"
       "  --emit-coverage=<f>    Write per-byte reachability (1=opcode, 2=operand) and exit.\n"
-      "  --emit-canonical=<f>   Format 2: write the verifier's abstract program (canonical form) and exit.\n");
+      "  --emit-canonical=<f>   Format 2: write the verifier's abstract program (canonical form) and exit.\n"
+      "  --no-certificate       Format 2: ignore a shipped certificate (infer one).\n"
+      "  --require-certificate  Format 2: reject without a shipped certificate (as devices do).\n");
 }
 
 // Loads the snapshot, optionally corrupts bytecodes, and runs the verifier.
@@ -128,6 +130,8 @@ static int verify_snapshot(int argc, char** argv) {
   const char* emit_coverage = null;
   const char* emit_canonical = null;
   const char* path = null;
+  bool use_certificate = true;
+  bool require_certificate = false;
   for (int i = 0; i < argc; i++) {
     if (strcmp(argv[i], "-q") == 0) options.verbosity = 0;
     else if (strcmp(argv[i], "-v") == 0) options.verbosity = 1;
@@ -148,6 +152,8 @@ static int verify_snapshot(int argc, char** argv) {
     else if (strncmp(argv[i], "--emit-bytecodes=", 17) == 0) emit_bytecodes = argv[i] + 17;
     else if (strncmp(argv[i], "--emit-coverage=", 16) == 0) emit_coverage = argv[i] + 16;
     else if (strncmp(argv[i], "--emit-canonical=", 17) == 0) emit_canonical = argv[i] + 17;
+    else if (strcmp(argv[i], "--no-certificate") == 0) use_certificate = false;
+    else if (strcmp(argv[i], "--require-certificate") == 0) require_certificate = true;
     else if (argv[i][0] == '-') {
       print_verify_usage();
       return 2;
@@ -348,7 +354,23 @@ static int verify_snapshot(int argc, char** argv) {
   }
 
   VerifierStats stats;
-  bool ok = Verifier::verify(program, &stats, options);
+  bool ok;
+  if (program->is_format2()) {
+    // The shipped certificate (format 2 note 18), if any.
+    const uint8* certificate = null;
+    int certificate_length = 0;
+    if (use_certificate) bundle.certificate(&certificate, &certificate_length);
+    if (certificate == null && require_certificate) {
+      fprintf(stderr, "verifier: no shipped certificate\n");
+      ok = false;
+    } else {
+      V2MethodTable* table = V2MethodTable::compute(program);
+      ok = table != null && V2Verifier::verify(program, table, !options.untrusted, certificate, certificate_length);
+      delete table;
+    }
+  } else {
+    ok = Verifier::verify(program, &stats, options);
+  }
   printf("%s methods=%d blocks=%d lambdas=%d instructions=%d bytes=%d passes=%d "
          "heap_objects=%d method_entries=%d primitive_sites=%d primitives=%d "
          "errors=%d warnings=%d time_us=%" PRId64 "\n",
@@ -356,6 +378,64 @@ static int verify_snapshot(int argc, char** argv) {
          stats.methods, stats.blocks, stats.lambdas, stats.instructions, stats.bytes, stats.passes,
          stats.heap_objects, stats.method_entries, stats.primitive_sites, stats.distinct_primitives,
          stats.errors, stats.warnings, stats.time_us);
+  return ok ? 0 : 1;
+}
+
+// The toolchain's producer of shipped certificates (format 2 note 18,
+// verified/spec/format/18-shipped-certificate.md):
+//   toit.run --certify [--trusted] <snapshot> [-o <out>]
+// infers the certificate of the format-2 program in the snapshot bundle,
+// checks it as a device will, and writes the bundle with the certificate
+// member to <out> (default: in place). Returns 0 on success, 1 if the program
+// has no accepted certificate, 2 for usage errors. Called by toit.compile
+// for format-2 snapshots.
+static int certify_snapshot(int argc, char** argv) {
+  bool trusted = false;
+  const char* path = null;
+  const char* out = null;
+  for (int i = 0; i < argc; i++) {
+    if (strcmp(argv[i], "--trusted") == 0) {
+      trusted = true;
+    } else if (strcmp(argv[i], "-o") == 0 && i + 1 < argc) {
+      out = argv[++i];
+    } else if (argv[i][0] != '-' && path == null) {
+      path = argv[i];
+    } else {
+      fprintf(stderr, "Usage: toit.run --certify [--trusted] <snapshot> [-o <out>]\n");
+      return 2;
+    }
+  }
+  if (path == null) {
+    fprintf(stderr, "Usage: toit.run --certify [--trusted] <snapshot> [-o <out>]\n");
+    return 2;
+  }
+  if (out == null) out = path;
+  SnapshotBundle bundle = SnapshotBundle::read_from_file(path);
+  if (!bundle.is_valid()) return 2;
+  uint8 uuid[UUID_SIZE];
+  uint8* id = bundle.uuid(uuid) ? uuid : null;
+  ProgramImage image = bundle.snapshot().read_image(id);
+  if (!image.is_valid()) {
+    fprintf(stderr, "certify: could not read the snapshot %s\n", path);
+    return 1;
+  }
+  Program* program = image.program();
+  // Format 1 has no certificate: nothing to do.
+  if (!program->is_format2()) return 0;
+  V2MethodTable* table = V2MethodTable::compute(program);
+  if (table == null) {
+    fprintf(stderr, "certify: malformed format-2 method headers in %s\n", path);
+    return 1;
+  }
+  uint8* certificate = null;
+  word length = 0;
+  bool ok = V2Verifier::certify(program, table, trusted, &certificate, &length);
+  delete table;
+  if (!ok) return 1;
+  SnapshotBundle result = bundle.with_certificate(List<uint8>(certificate, length));
+  free(certificate);
+  ok = result.write_to_file(out);
+  free(result.buffer());
   return ok ? 0 : 1;
 }
 
@@ -385,6 +465,11 @@ int main(int argc, char **argv) {
   // Verify a snapshot without running it. Used by 'toit tool verify'.
   if (strcmp(argv[1], "--verify") == 0) {
     exit(verify_snapshot(argc - 2, &argv[2]));
+  }
+
+  // Add a shipped certificate to a format-2 snapshot (toit.compile calls it).
+  if (strcmp(argv[1], "--certify") == 0) {
+    exit(certify_snapshot(argc - 2, &argv[2]));
   }
 
   // Run the application as an untrusted (sandboxed) container. Equivalent

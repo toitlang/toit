@@ -258,3 +258,52 @@ pub extern "C" fn toit_vmverify_generated_arity(module: usize, index: usize) -> 
         None => -1,
     }
 }
+
+/// Computes the certificate of the program described by `input` (the
+/// inference, `v2::encode`) and checks it with the proven checker of
+/// shipped certificates (`v2::cert::verify_shipped`). On success returns 0
+/// and sets `*bytes`/`*length` to the certificate, which the caller frees
+/// with `toit_vmverify_free_certificate`; returns 1 if the memory could not
+/// be converted, 2 if no accepted certificate was found. Host only (the
+/// `infer` feature): the toolchain's producer of shipped certificates
+/// (format/18-shipped-certificate.md).
+///
+/// # Safety
+/// As `toit_vmverify_verify`; `bytes` and `length` must be writable.
+#[cfg(feature = "infer")]
+#[no_mangle]
+pub unsafe extern "C" fn toit_vmverify_certify(input: *const VerifyInput, bytes: *mut *mut u8, length: *mut usize) -> usize {
+    let input = &*input;
+    *bytes = core::ptr::null_mut();
+    *length = 0;
+    let mut c = match from_vm::convert(&*input.program, &arities(input)) {
+        Err(_) => return 1,
+        Ok(c) => c,
+    };
+    let global_count = c.globals.len() as u64;
+    let prim_arity = c.prim_arity.clone();
+    let (p, _) = c.split();
+    let trusted = input.trusted != 0;
+    match toit_spec::v2::encode::certify(&p, global_count, prim_arity.clone(), trusted) {
+        Err(_) => 2,
+        Ok((cert, _)) => {
+            let (ok, _) = toit_spec::v2::cert::verify_shipped(&p, &cert, global_count, &prim_arity, trusted);
+            if !ok { return 2; }
+            let boxed = cert.into_boxed_slice();
+            *length = boxed.len();
+            *bytes = alloc::boxed::Box::into_raw(boxed) as *mut u8;
+            0
+        }
+    }
+}
+
+/// Frees a certificate returned by `toit_vmverify_certify`.
+///
+/// # Safety
+/// `bytes`/`length` must come from `toit_vmverify_certify`.
+#[cfg(feature = "infer")]
+#[no_mangle]
+pub unsafe extern "C" fn toit_vmverify_free_certificate(bytes: *mut u8, length: usize) {
+    if bytes.is_null() { return; }
+    drop(alloc::boxed::Box::from_raw(core::ptr::slice_from_raw_parts_mut(bytes, length)));
+}

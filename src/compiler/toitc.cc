@@ -21,6 +21,12 @@
 #include "../main_utf_8_helper.h"
 #include "compiler.h"
 #include "executable.h"
+#include "../os.h"
+
+#ifdef TOIT_POSIX
+#include <sys/wait.h>
+#include <unistd.h>
+#endif
 
 namespace toit {
 namespace compiler {
@@ -52,6 +58,48 @@ static void print_usage(int exit_code) {
   printf("    --dependencies <toitfiles>...          // List dependencies.\n");
   printf("  }\n");
   exit(exit_code);
+}
+
+// Whether the compiler generates bytecode format 2 (see Pipeline::run in
+// compiler.cc: -Xbytecode_format=2 or TOIT_BYTECODE_FORMAT=2).
+static bool generates_format2() {
+  if (Flags::bytecode_format == 2) return true;
+  const char* format_override = getenv("TOIT_BYTECODE_FORMAT");
+  return Flags::bytecode_format == 1 && format_override != null && strcmp(format_override, "2") == 0;
+}
+
+// Adds the shipped certificate (verified/spec/format/18-shipped-certificate.md)
+// to the format-2 snapshot bundle at [path]: runs `toit.run --certify` (next
+// to this executable), which infers the certificate from the program as
+// the VM loads it and checks it as a device will. A program without an
+// accepted certificate keeps its snapshot without one (a warning).
+static void add_certificate(const char* path) {
+#ifdef TOIT_POSIX
+  char* executable = OS::get_executable_path();
+  if (executable == null) return;
+  const char* dir = dirname(executable);
+  int length = strlen(dir) + strlen("/toit.run") + 1;
+  char* toit_run = unvoid_cast<char*>(malloc(length));
+  snprintf(toit_run, length, "%s/toit.run", dir);
+  free(executable);
+  if (access(toit_run, X_OK) != 0) {
+    fprintf(stderr, "Warning: %s not found; the snapshot has no certificate\n", toit_run);
+    free(toit_run);
+    return;
+  }
+  fflush(stdout);
+  fflush(stderr);
+  pid_t pid = fork();
+  if (pid == 0) {
+    const char* args[] = { toit_run, "--certify", path, null };
+    execv(toit_run, const_cast<char* const*>(args));
+    _exit(127);
+  }
+  int status = 0;
+  bool ok = pid > 0 && waitpid(pid, &status, 0) == pid && WIFEXITED(status) && WEXITSTATUS(status) == 0;
+  if (!ok) fprintf(stderr, "Warning: no certificate for %s (toit.run --certify failed)\n", path);
+  free(toit_run);
+#endif
 }
 
 // Prints the version and exits.
@@ -412,6 +460,7 @@ int main(int argc, char **argv) {
       if (!compiled.write_to_file(bundle_filename)) {
         print_usage(1);
       }
+      if (generates_format2() && Flags::certificate) add_certificate(bundle_filename);
     } else {
       exit_state = create_executable(exe_filename, compiled, vessels_root, cross_os, cross_arch);
     }

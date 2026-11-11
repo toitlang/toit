@@ -115,9 +115,11 @@ class Verifier {
   // verifier (devices) refuse every untrusted program.
   // For a format-2 program, [v2_methods] is the method table its process
   // group will run (the verifier checks the program as described by that
-  // table); null decodes one for the call.
+  // table); null decodes one for the call. [certificate] is the program's
+  // shipped certificate (format 2), or null.
   static bool verify_for_policy(Program* program, const PrimitivePolicy* policy,
-                                const V2MethodTable* v2_methods = null);
+                                const V2MethodTable* v2_methods = null,
+                                const uint8* certificate = null, word certificate_length = 0);
 
   // Testing hook: replaces the program's bytecodes with a writable copy.
   static void set_bytecodes_for_testing(Program* program, uint8* bytes, int length);

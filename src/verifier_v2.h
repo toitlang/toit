@@ -39,7 +39,12 @@ class V2Verifier {
   // trusted programs (HALT 2 and 3 allowed). On rejection the reason is
   // printed to stderr. With TOIT_VERIFY_TIME=1 the cost is printed to
   // stderr too.
-  static bool verify(Program* program, const V2MethodTable* table, bool trusted);
+  // [certificate] is the shipped certificate of the program (format 2
+  // note 18, verified/spec/format/18-shipped-certificate.md), or null:
+  // then the verifier infers one (hosts) or rejects the program (builds
+  // without the inference).
+  static bool verify(Program* program, const V2MethodTable* table, bool trusted,
+                     const uint8* certificate = null, word certificate_length = 0);
 
   // As above, with a method table decoded for the call.
   static bool verify(Program* program, bool trusted);
@@ -48,6 +53,13 @@ class V2Verifier {
   // canonical form of the abstract program the verifier builds from VM
   // memory to [path].
   static bool write_canonical(Program* program, const V2MethodTable* table, const char* path);
+
+  // The toolchain's producer of shipped certificates (hosts): infers the
+  // certificate of [program], checks it as the device will, and returns it
+  // in [bytes] (malloced; the caller frees it). False if the program has no
+  // accepted certificate (the reason is printed).
+  static bool certify(Program* program, const V2MethodTable* table, bool trusted,
+                      uint8** bytes, word* length);
 };
 
 }  // namespace toit
@@ -97,6 +109,8 @@ static const uword TOIT_VMVERIFY_NO_CERTIFICATE = 7;  // None shipped, none infe
 #ifdef TOIT_VERIFIED_CORE
 uword toit_vmverify_verify(const toit_vmverify_input* input, toit_vmverify_result* result);
 uword toit_vmverify_canonical(const toit_vmverify_input* input, const char* path);
+uword toit_vmverify_certify(const toit_vmverify_input* input, uint8** bytes, uword* length);
+void toit_vmverify_free_certificate(uint8* bytes, uword length);
 uword toit_vmverify_layout_count();
 bool toit_vmverify_layout_entry(uword i, const char** name, uword* value);
 word toit_vmverify_generated_arity(uword module, uword index);
