@@ -19,6 +19,7 @@
 #include "../process.h"
 #include "../os.h"
 #include "../flash_registry.h"
+#include "../verifier_v2.h"
 
 namespace toit {
 
@@ -114,6 +115,17 @@ PRIMITIVE(writer_commit) {
     // from the get go? Right now, we ignore the bits put in there when
     // converting from snapshot to image, but that seems fishy.
     metadata[0] |= FlashAllocation::Header::FLAGS_PROGRAM_HAS_ASSETS_MASK;
+  }
+
+  // Install-time verification of images flagged untrusted (Phase 5): every
+  // byte of the program is written; the verdict goes into the metadata and
+  // the header's checksum binds it to the bytes (flash_allocation.h). A
+  // rejected image is not committed.
+  const char* error = V2Verifier::install_verdict(image.begin(), program_size, metadata);
+  if (error != null) {
+    String* message = process->allocate_string(error);
+    if (message == null) FAIL(ALLOCATION_FAILED);
+    return Error::from(message);
   }
 
   // Write program header as the last thing. Only a complete flash write

@@ -281,4 +281,23 @@ menu "Toit"
                 section does not increase more than this padding.
 
     endmenu
+
+    config TOIT_VERIFIED_CORE
+        bool "Verified format-2 core and verifier (Rust) for untrusted containers"
+        default n
+        depends on IDF_TARGET_ESP32C6 || IDF_TARGET_ESP32H2
+        help
+            Links the Verus-verified interpreter core and the format-2 verifier
+            (verified/vmverify, a no_std Rust static library built with cargo for
+            riscv32imac-unknown-none-elf) into the firmware, so that untrusted
+            containers can be verified at install time and run on the core.
+            Needs cargo and `rustup target add riscv32imac-unknown-none-elf`.
+            Only for RISC-V parts with the A extension: Rust has no upstream
+            Xtensa backend, and the ESP32-C3 (rv32imc) lacks the atomics the
+            Rust alloc library needs (verified/core/PROGRESS.md, "Phase 5").
+
+    config TOIT_VERIFIED_CORE_OPT_LEVEL
+        string "Rust opt-level of the verified core (3, s or z)"
+        default "3"
+        depends on TOIT_VERIFIED_CORE
 endmenu

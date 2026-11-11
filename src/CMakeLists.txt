@@ -218,7 +218,9 @@ target_include_directories(toit_vm PRIVATE "${TOIT_SDK_SOURCE_DIR}/third_party/d
 if (TOIT_VERIFIED_CORE_ENABLED)
   target_compile_definitions(toit_vm PRIVATE TOIT_VERIFIED_CORE)
   target_link_libraries(toit_vm PRIVATE toit_verified_core)
-  add_dependencies(toit_vm toit_verified_core_layout)
+  if (TARGET toit_verified_core_layout)
+    add_dependencies(toit_vm toit_verified_core_layout)
+  endif()
 endif()
 
 # On linux, we need to link statically against libgcc as well.

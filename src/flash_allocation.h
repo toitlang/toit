@@ -37,6 +37,17 @@ class FlashAllocation {
     static const uint32 FORMAT_MARKER  = 0xdeadface;
 
     static const int FLAGS_PROGRAM_HAS_ASSETS_MASK = 1 << 7;
+    // Containers from images with this flag always run untrusted
+    // (ContainerService.FLAG-UNTRUSTED in lib/system/api/containers.toit).
+    static const int FLAGS_PROGRAM_UNTRUSTED_MASK = 1 << 2;
+    // The install-time verdict (Phase 5), set only by the VM: the program
+    // of an image flagged untrusted was accepted by the format-2 verifier
+    // with the untrusted rules when it was committed to flash
+    // (primitive flash_registry.allocate). The header checksum of such an
+    // allocation also covers the program's bytes (compute_checksum), so the
+    // verdict holds exactly for the bytes it was computed on: if they
+    // change, the allocation is no longer valid.
+    static const int FLAGS_PROGRAM_VERIFIED_MASK = 1 << 6;
     static const unsigned ID_SIZE = UUID_SIZE;
     static const unsigned METADATA_SIZE = 5;  // Picked for 16 byte alignment.
 
@@ -92,6 +103,18 @@ class FlashAllocation {
   // Returns whether the program has appended assets.
   bool program_has_assets() const {
     return (program_flags() & Header::FLAGS_PROGRAM_HAS_ASSETS_MASK) != 0;
+  }
+
+  // Whether containers from this image always run untrusted.
+  bool program_untrusted() const {
+    return (program_flags() & Header::FLAGS_PROGRAM_UNTRUSTED_MASK) != 0;
+  }
+
+  // Whether the program carries the install-time verdict (see
+  // Header::FLAGS_PROGRAM_VERIFIED_MASK). Meaningful for a valid allocation
+  // only: validity checks the bytes the verdict is bound to.
+  bool program_verified() const {
+    return (program_flags() & Header::FLAGS_PROGRAM_VERIFIED_MASK) != 0;
   }
 
   // Get the total size of the appended program assets if any.

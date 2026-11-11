@@ -72,10 +72,8 @@ PRIMITIVE(spawn) {
   if (policy == null) return policy_error;
 
   // Programs started as untrusted containers are always verified with the
-  // untrusted rules before they run. The program is already in flash; on
-  // the host the verdict is remembered until the allocation is written
-  // again (FlashRegistry::is_verified), devices verify on every start
-  // (TODO(Phase 5): verify at install time on devices).
+  // untrusted rules before they run: at install time for images flagged
+  // untrusted (the verdict is in the allocation, see below), else here.
   // Trusted containers from flash keep running unverified.
   // Untrusted containers run on the verified core, which runs format-2
   // programs only. -Xuntrusted_format1 (or TOIT_UNTRUSTED_FORMAT1=1) keeps
@@ -100,7 +98,23 @@ PRIMITIVE(spawn) {
     }
   }
   if (policy->is_untrusted()) {
-    bool cached = program->is_format2() && FlashRegistry::is_verified(allocation);
+    // The install-time verdict (flash_allocation.h): the allocation is
+    // valid, so its checksum still covers exactly the bytes that were
+    // verified. An image flagged untrusted without a verdict never starts
+    // (unless it is format 1 and -Xuntrusted_format1 allows that). Images
+    // without the flag that are started untrusted (the caller's choice)
+    // are verified now; the host remembers that verdict until the
+    // allocation is written again (FlashRegistry::is_verified).
+    bool recorded = program->is_format2() && allocation->program_verified();
+    if (!recorded && allocation->program_untrusted() && program->is_format2()) {
+      delete v2_methods;
+      PrimitivePolicy::release(policy);
+      fprintf(stderr, "untrusted image without an install-time verdict\n");
+      String* error = process->allocate_string("VERIFICATION_FAILED");
+      if (error == null) FAIL(ALLOCATION_FAILED);
+      return Error::from(error);
+    }
+    bool cached = recorded || (program->is_format2() && FlashRegistry::is_verified(allocation));
     if (!cached && !Verifier::verify_for_policy(program, policy, v2_methods)) {
       delete v2_methods;
       PrimitivePolicy::release(policy);
@@ -108,6 +122,7 @@ PRIMITIVE(spawn) {
       if (error == null) FAIL(ALLOCATION_FAILED);
       return Error::from(error);
     }
+    if (cached) V2Verifier::accept_recorded(v2_methods);
     if (!cached && program->is_format2()) FlashRegistry::set_verified(allocation);
   }
 

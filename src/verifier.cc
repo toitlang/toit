@@ -38,6 +38,8 @@
 
 #include "verifier.h"
 #include "primitive_policy.h"
+#include "program.h"
+#include "verifier_v2.h"
 
 #if !defined(TOIT_FREERTOS)
 
@@ -2210,10 +2212,16 @@ bool Verifier::verify_if_enabled(Program* program, bool untrusted) {
   return true;
 }
 
-// Without the verifier, untrusted programs can not be admitted.
+// Format 2: the verified structural verifier (verifier_v2.h; with the
+// verified core linked, TOIT_VERIFIED_CORE). Format 1: without the C++
+// verifier, untrusted programs can not be admitted.
 bool Verifier::verify_for_policy(Program* program, const PrimitivePolicy* policy,
                                  const V2MethodTable* v2_methods) {
-  return !policy->is_untrusted();
+  bool untrusted = policy->is_untrusted();
+  if (untrusted && program->is_format2() && v2_methods != null) {
+    return V2Verifier::verify(program, v2_methods, false);
+  }
+  return !untrusted;
 }
 
 void Verifier::set_bytecodes_for_testing(Program* program, uint8* bytes, int length) {}

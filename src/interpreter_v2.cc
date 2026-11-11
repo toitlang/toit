@@ -390,7 +390,7 @@ static void v2_validate(Process* process, const char* where) {
     uword header = *reinterpret_cast<uword*>(w - 1);
     word tag = (header >> 1) & 15;
     if ((header & 1) != 0 || (w & 3) != 1 || tag > 9) {
-      fprintf(stderr, "v2_validate(%s, %s stack %p): bad slot %ld (position %ld) = %p header %p; top %ld length %ld frame top %ld bci %ld\n",
+      fprintf(stderr, "v2_validate(%s, %s stack %p): bad slot %" PRIdPTR " (position %" PRIdPTR ") = %p header %p; top %" PRIdPTR " length %" PRIdPTR " frame top %" PRIdPTR " bci %" PRIdPTR "\n",
               where, which, reinterpret_cast<void*>(stack), i, length - 1 - i, reinterpret_cast<void*>(w), reinterpret_cast<void*>(header),
               top, length, stack->v2_frame_top(), stack->v2_bci());
       abort();

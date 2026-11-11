@@ -44,6 +44,33 @@ class V2Verifier {
   // As above, with a method table decoded for the call.
   static bool verify(Program* program, bool trusted);
 
+  // Install-time verification (Phase 5) of the program (of [program_size]
+  // bytes, without assets) of an image flagged
+  // untrusted, before its flash allocation is committed
+  // (primitive flash_registry.allocate). Returns null if the verifier
+  // accepted the program with the untrusted rules (the caller records the
+  // verdict in the allocation: FlashAllocation::program_verified), else
+  // the error to fail with (VERIFICATION_FAILED, INVALID_SNAPSHOT or
+  // FORMAT_2_REQUIRED). A format-1 program gets no verdict and is not an
+  // error when -Xuntrusted_format1 allows it ([*no_verdict] is set).
+  static const char* verify_installed(Program* program, word program_size, bool* no_verdict);
+
+  // The install-time verdict for the program image at [memory] of
+  // [program_size] bytes (written,
+  // its header not yet), with the [metadata] its header will get: clears
+  // the verdict bit the installer may have set (only the VM sets it), and
+  // for an image flagged untrusted verifies the program (verify_installed)
+  // and sets the bit if it is accepted. Returns null or the error to fail
+  // the commit with. Called by the commit paths (image.writer-commit,
+  // flash_registry.allocate).
+  static const char* install_verdict(const void* memory, word program_size, uint8* metadata);
+
+  // Marks [table], decoded from the bytes of an allocation with the
+  // install-time verdict, as accepted with the untrusted rules (the verdict
+  // and the bytes are bound by the allocation's checksum). Also for the
+  // host's verdict cache (FlashRegistry::is_verified).
+  static void accept_recorded(const V2MethodTable* table);
+
   // Test support (verified/tools/vmverify_differential.toit): writes the
   // canonical form of the abstract program the verifier builds from VM
   // memory to [path].

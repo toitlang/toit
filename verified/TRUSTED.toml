@@ -1810,11 +1810,107 @@ justification = "cfg_attr that makes the crate no_std (with alloc) when built wi
 
 [[trusted]]
 crate = "spec"
-file = "src/lib.rs"
-item = "exec_step"
-kind = "cfg"
+file = "src/exec_step.rs"
+item = "compare_mixed_impl"
+kind = "plain_rust_item"
 count = 1
-justification = "Keeps the format-1 exec steps (their float helpers call the std-only reference interpreter) out of no_std device builds; Verus always verifies them."
+justification = "The trusted implementation of the uninterpreted compare_mixed (Interpreter::compare_numbers), moved out of the std-only reference interpreter so that x_compare_mixed builds no_std (Phase 5); unchanged code; checked by the spec differential tests and prim_diff.sh."
+
+[[trusted]]
+crate = "core"
+file = "src/prims/fp.rs"
+item = "unop"
+kind = "unsafe"
+count = 1
+justification = "Calls the C library's sqrt/ceil/floor/trunc (no_std core, Phase 5): the functions the C++ primitives call; validated against them by verified/core/tests/prim_diff.sh (64-bit and 32-bit hosts)."
+
+[[trusted]]
+crate = "core"
+file = "src/prims/fp.rs"
+item = "libm::extern"
+kind = "plain_rust_item"
+count = 1
+justification = "Declarations of the C library's sqrt, ceil, floor, trunc (no_std core, Phase 5)."
+
+[[trusted]]
+crate = "core"
+file = "src/prims/fp.rs"
+item = "libm::sqrt"
+kind = "plain_rust_item"
+count = 1
+justification = "Declaration of the C library's sqrt (no_std core)."
+
+[[trusted]]
+crate = "core"
+file = "src/prims/fp.rs"
+item = "libm::ceil"
+kind = "plain_rust_item"
+count = 1
+justification = "Declaration of the C library's ceil (no_std core)."
+
+[[trusted]]
+crate = "core"
+file = "src/prims/fp.rs"
+item = "libm::floor"
+kind = "plain_rust_item"
+count = 1
+justification = "Declaration of the C library's floor (no_std core)."
+
+[[trusted]]
+crate = "core"
+file = "src/prims/fp.rs"
+item = "libm::trunc"
+kind = "plain_rust_item"
+count = 1
+justification = "Declaration of the C library's trunc (no_std core)."
+
+[[trusted]]
+crate = "vmverify"
+file = "src/device.rs"
+item = "*"
+kind = "plain_rust_file"
+count = 1
+justification = "Devices only (feature device-runtime, no_std): the global allocator on the VM's malloc/free/realloc and the panic handler calling the VM's toit_vmverify_panic (FATAL); TRUSTED like any allocator (TRUSTED.md)."
+
+[[trusted]]
+crate = "vmverify"
+file = "src/device.rs"
+item = "VmAllocator"
+kind = "unsafe"
+count = 1
+justification = "unsafe impl GlobalAlloc: malloc returns 8-byte aligned memory; larger alignments fail (null)."
+
+[[trusted]]
+crate = "vmverify"
+file = "src/device.rs"
+item = "VmAllocator::alloc"
+kind = "unsafe"
+count = 1
+justification = "Calls the VM's malloc (devices)."
+
+[[trusted]]
+crate = "vmverify"
+file = "src/device.rs"
+item = "VmAllocator::dealloc"
+kind = "unsafe"
+count = 1
+justification = "Calls the VM's free (devices)."
+
+[[trusted]]
+crate = "vmverify"
+file = "src/device.rs"
+item = "VmAllocator::realloc"
+kind = "unsafe"
+count = 1
+justification = "Calls the VM's realloc (devices); alignment checked as in alloc."
+
+[[trusted]]
+crate = "vmverify"
+file = "src/device.rs"
+item = "panic"
+kind = "unsafe"
+count = 1
+justification = "Calls the VM's toit_vmverify_panic (FATAL, does not return) with the panic location."
 
 [[trusted]]
 crate = "spec"

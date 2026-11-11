@@ -46,6 +46,10 @@ required-features = ["std"]
 # allocator, test support). Without it: `no_std` + `alloc` for devices.
 default = ["std"]
 std = ["toit_spec/std"]
+# Devices: the global allocator and the panic handler the VM supplies
+# (src/device.rs: malloc/free, toit_vmverify_panic). Use without `std`, for
+# the static library linked into device firmware (profile `device`).
+device-runtime = []
 
 [dependencies]
 toit_spec = { path = "../spec", default-features = false }
@@ -64,3 +68,16 @@ panic = "unwind"
 panic = "unwind"
 opt-level = 3
 debug = "line-tables-only"
+
+# Devices (no_std, `--no-default-features --features device-runtime`):
+# no unwinding without std, so a panic aborts (src/device.rs). The opt-level
+# is the speed/size choice for the firmware (verified/core/PROGRESS.md,
+# "Phase 5": sizes at 3, "s" and "z"); override with
+# CARGO_PROFILE_DEVICE_OPT_LEVEL.
+[profile.device]
+inherits = "release"
+panic = "abort"
+opt-level = 3
+lto = true
+codegen-units = 1
+debug = false

@@ -20,6 +20,8 @@
 
 #include "process.h"
 #include "objects_inline.h"
+#include "program.h"
+#include "verifier_v2.h"
 
 #ifdef TOIT_ESP32
 #include "esp_flash.h"
@@ -230,7 +232,18 @@ PRIMITIVE(allocate) {
     }
 
     const void* memory = FlashRegistry::region(offset, size);
-    const FlashAllocation::Header header(memory, type, id.address(), size, metadata.address());
+    uint8 meta[FlashAllocation::Header::METADATA_SIZE];
+    memcpy(meta, metadata.address(), sizeof(meta));
+    if (type == FLASH_ALLOCATION_TYPE_PROGRAM) {
+      // Every byte of the program is written (the first page above).
+      const char* error = V2Verifier::install_verdict(memory, size, meta);
+      if (error != null) {
+        String* message = process->allocate_string(error);
+        if (message == null) FAIL(ALLOCATION_FAILED);
+        return Error::from(message);
+      }
+    }
+    const FlashAllocation::Header header(memory, type, id.address(), size, meta);
     if (!FlashAllocation::commit(memory, size, &header)) FAIL(HARDWARE_ERROR);
     return process->null_object();
   }

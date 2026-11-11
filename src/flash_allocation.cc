@@ -51,7 +51,16 @@ uint32 FlashAllocation::Header::compute_checksum(const void* memory) const {
   // The rest of the header is also covered. This gives a much
   // stronger header validation check and reduces the risk of
   // accidentally treating garbage in the flash as allocations.
-  return Utils::crc32(initial, id_, sizeof(Header) - offsetof(Header, id_));
+  uint32 crc = Utils::crc32(initial, id_, sizeof(Header) - offsetof(Header, id_));
+  // A program with the install-time verdict: the program's bytes after the
+  // header (the whole allocation without the appended assets) are covered
+  // too, which binds the verdict to the bytes that were verified.
+  if (type_ == FLASH_ALLOCATION_TYPE_PROGRAM &&
+      (metadata_[0] & FLAGS_PROGRAM_VERIFIED_MASK) != 0) {
+    word size = size_in_pages_ << FLASH_PAGE_SIZE_LOG2;
+    crc = Utils::crc32(crc, reinterpret_cast<const uint8*>(memory) + sizeof(Header), size - sizeof(Header));
+  }
+  return crc;
 }
 
 FlashAllocation::Header::Header(const void* memory,

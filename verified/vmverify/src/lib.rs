@@ -25,6 +25,8 @@
 //! - `clock`:     phase times (std; zero without).
 //! - `canonical`: test support: canonical text of an abstract program.
 //! - `tables`:    test support: the FFI input saved and loaded (fuzzing).
+//! - `device`:    TRUSTED. Devices (`device-runtime`): allocator and panic
+//!                handler supplied by the VM.
 
 // Without the `std` feature (devices): `no_std` + `alloc`, no panic
 // catching, no timing, no counting allocator, no test support.
@@ -42,6 +44,8 @@ pub mod from_vm;
 #[cfg(feature = "std")]
 pub mod tables;
 pub mod verify;
+#[cfg(all(not(feature = "std"), not(test), feature = "device-runtime"))]
+mod device;
 
 // The core's C entry points are part of this library.
 pub use toit_verified_core;

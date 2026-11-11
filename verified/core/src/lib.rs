@@ -29,7 +29,11 @@
 //!
 //! See DESIGN.md.
 
-#![allow(unused_parens, unused_variables, dead_code, unused_imports)]
+// no_std + alloc on every target (it uses no std API): the VM links it
+// through verified/vmverify, which brings std on hosts and the VM's
+// allocator and panic handler on devices (vmverify/src/device.rs).
+#![no_std]
+#![allow(unused_parens, unused_variables, dead_code, unused_imports, unused_braces)]
 
 pub mod layout;
 pub mod view;

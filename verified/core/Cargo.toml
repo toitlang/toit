@@ -20,13 +20,15 @@ edition = "2021"
 publish = false
 
 [lib]
-crate-type = ["staticlib", "rlib"]
+# Linked into the VM through verified/vmverify (one Rust static library).
+crate-type = ["rlib"]
 
 [dependencies]
-vstd = "=0.0.0-2026-11-01-0251"
+# Without vstd's default `std` feature: the core is `no_std` + alloc.
+vstd = { version = "=0.0.0-2026-11-01-0251", default-features = false, features = ["alloc"] }
 # The specification the core is proven against (ghost only: the run loop
 # links none of its code; Verus imports its exported metadata).
-toit_spec = { path = "../spec" }
+toit_spec = { path = "../spec", default-features = false }
 
 [package.metadata.verus]
 verify = true

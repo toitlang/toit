@@ -1075,7 +1075,13 @@ class Stack : public HeapObject {
   void v2_copy_to(Stack* other);
   int v2_frames_do(Program* program, FrameCallback* cb);
   // The number of top locations v2_frames_do does not report.
+  // ESP-IDF supports only the local-exec TLS model (its linker script
+  // discards the GOT that the default initial-exec model needs).
+#ifdef TOIT_FREERTOS
+  static thread_local int v2_frames_skip_ __attribute__((tls_model("local-exec")));
+#else
   static thread_local int v2_frames_skip_;
+#endif
 
   static Stack* cast(Object* stack) {
     ASSERT(is_stack(stack));

@@ -40,7 +40,7 @@ pub mod spec_step;
 pub mod spec_prim;
 // Format 1 exec steps and the format-2 exec step use the reference
 // interpreter's float helpers: std only.
-#[cfg(any(feature = "std", verus_keep_ghost))]
+// The executable step (format 1) and the float helpers the core uses: no_std.
 pub mod exec_step;
 pub mod v2;
 #[cfg(any(feature = "std", verus_keep_ghost))]

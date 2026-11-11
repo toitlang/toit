@@ -72,12 +72,27 @@ set(VCORE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/core")
 # the binary has a single Rust runtime (vmverify/README.md).
 set(VMVERIFY_DIR "${CMAKE_CURRENT_SOURCE_DIR}/vmverify")
 set(VCORE_TARGET_DIR "${CMAKE_BINARY_DIR}/verified_core")
+# Devices (embedded builds): no_std, the allocator and panic handler of the
+# VM (vmverify `device-runtime`), Cargo profile `device` (panic = abort, LTO).
+if (${TOIT_IS_EMBEDDED})
+  set(VCORE_PROFILE device)
+  set(VCORE_FEATURE_ARGS --no-default-features --features device-runtime)
+  set(TOIT_VERIFIED_CORE_OPT_LEVEL "3" CACHE STRING "Rust opt-level of the device library (3, s, z)")
+  set(VCORE_ENV CARGO_PROFILE_DEVICE_OPT_LEVEL=${TOIT_VERIFIED_CORE_OPT_LEVEL})
+  set(VCORE_LINK_LIBRARIES "m")
+else()
+  set(VCORE_PROFILE release)
+  set(VCORE_FEATURE_ARGS)
+  set(VCORE_ENV)
+  # Hosts link Rust's std (panics of the verifier are caught: ffi.rs).
+  set(VCORE_LINK_LIBRARIES "${CMAKE_DL_LIBS};pthread;m")
+endif()
 if ("${TOIT_VERIFIED_CORE_RUST_TARGET}" STREQUAL "")
   set(VCORE_CARGO_TARGET_ARGS)
-  set(VCORE_LIB_DIR "${VCORE_TARGET_DIR}/release")
+  set(VCORE_LIB_DIR "${VCORE_TARGET_DIR}/${VCORE_PROFILE}")
 else()
   set(VCORE_CARGO_TARGET_ARGS --target "${TOIT_VERIFIED_CORE_RUST_TARGET}")
-  set(VCORE_LIB_DIR "${VCORE_TARGET_DIR}/${TOIT_VERIFIED_CORE_RUST_TARGET}/release")
+  set(VCORE_LIB_DIR "${VCORE_TARGET_DIR}/${TOIT_VERIFIED_CORE_RUST_TARGET}/${VCORE_PROFILE}")
 endif()
 set(VCORE_LIB "${VCORE_LIB_DIR}/${CMAKE_STATIC_LIBRARY_PREFIX}toit_vmverify${CMAKE_STATIC_LIBRARY_SUFFIX}")
 file(GLOB_RECURSE VCORE_SOURCES CONFIGURE_DEPENDS
@@ -87,10 +102,11 @@ file(GLOB_RECURSE VCORE_SOURCES CONFIGURE_DEPENDS
 
 add_custom_command(
   OUTPUT "${VCORE_LIB}"
-  COMMAND "${TOIT_CARGO}" build --release --quiet --lib
+  COMMAND ${CMAKE_COMMAND} -E env ${VCORE_ENV}
+          "${TOIT_CARGO}" build --profile ${VCORE_PROFILE} --quiet --lib
           --manifest-path "${VMVERIFY_DIR}/Cargo.toml"
           --target-dir "${VCORE_TARGET_DIR}"
-          ${VCORE_CARGO_TARGET_ARGS}
+          ${VCORE_CARGO_TARGET_ARGS} ${VCORE_FEATURE_ARGS}
   DEPENDS ${VCORE_SOURCES}
           "${VCORE_DIR}/Cargo.toml" "${VMVERIFY_DIR}/Cargo.toml" "${VMVERIFY_DIR}/Cargo.lock"
           "${CMAKE_CURRENT_SOURCE_DIR}/spec/Cargo.toml"
@@ -102,14 +118,20 @@ add_custom_command(
 add_custom_target(toit_verified_core_build DEPENDS "${VCORE_LIB}")
 
 add_library(toit_verified_core STATIC IMPORTED GLOBAL)
-# The core links Rust's std (the spec crate it is proven against uses it).
 set_target_properties(toit_verified_core PROPERTIES
   IMPORTED_LOCATION "${VCORE_LIB}"
-  INTERFACE_LINK_LIBRARIES "${CMAKE_DL_LIBS};pthread;m")
+  INTERFACE_LINK_LIBRARIES "${VCORE_LINK_LIBRARIES}")
 add_dependencies(toit_verified_core toit_verified_core_build)
 
 # Layout contract: compares every constant the Rust side assumes against the
 # C++ headers. Runs at build time (toit_vm depends on it) and as a ctest.
+# Not for embedded builds (the check cannot run on the build host): there
+# the constants are those of the 32-bit host build, whose check covers
+# them, and the FFI structs follow the target's C ABI on both sides
+# (verified/core/PROGRESS.md, "Phase 5").
+if (${TOIT_IS_EMBEDDED})
+  return()
+endif()
 add_executable(toit_verified_core_layout_check layout_check.cc)
 target_include_directories(toit_verified_core_layout_check PRIVATE "${TOIT_SDK_SOURCE_DIR}/src")
 # The check uses only inline accessors of the headers; built as in a release

@@ -1111,34 +1111,8 @@ pub fn compare_ints(a: i64, b: i64) -> u8 {
 /// `Interpreter::compare_numbers` for at least one double (trusted mirror of
 /// the uninterpreted `compare_mixed`).
 pub fn compare_mixed(a: Num, b: Num) -> u8 {
-    let (lhs_is_int, lhs_int, lhs) = match a { Num::Int(i) => (true, i, i as f64), Num::Dbl(d) => (false, 0, f64::from_bits(d)) };
-    let (rhs_is_int, rhs_int, rhs) = match b { Num::Int(i) => (true, i, i as f64), Num::Dbl(d) => (false, 0, f64::from_bits(d)) };
-    if lhs < rhs { return 29; }
-    if lhs > rhs { return 195; }
-    if lhs != rhs {
-        if lhs.is_nan() {
-            if rhs.is_nan() { return 2 | 4; }
-            return 3 | 4;
-        }
-        return 1;
-    }
-    if lhs == 0.0 {
-        if lhs.is_sign_negative() == rhs.is_sign_negative() {
-            return 114;
-        } else if lhs.is_sign_negative() {
-            return 1 | 16 | 32 | 64 | 4;
-        } else {
-            return 3 | 16 | 32 | 64;
-        }
-    }
-    if !lhs_is_int && !rhs_is_int { return 114; }
-    let the_int = if lhs_is_int { lhs_int } else { rhs_int };
-    const SHORTCUT_LIMIT: i64 = 0x20000000000000;
-    if -SHORTCUT_LIMIT <= the_int && the_int <= SHORTCUT_LIMIT { return 114; }
-    let the_double = if lhs_is_int { rhs } else { lhs };
-    if the_double <= -9223372036854778e3 { return if lhs_is_int { 195 } else { 29 }; }
-    if the_double >= 9223372036854776e3 { return if lhs_is_int { 29 } else { 195 }; }
-    if lhs_is_int { compare_ints(lhs_int, rhs as i64) } else { compare_ints(lhs as i64, rhs_int) }
+    let conv = |n: Num| match n { Num::Int(i) => crate::exec_step::XNum::Int(i), Num::Dbl(d) => crate::exec_step::XNum::Dbl(d) };
+    crate::exec_step::compare_mixed_impl(conv(a), conv(b))
 }
 
 /// Trusted implementation of the uninterpreted `double_add/sub/mul`.

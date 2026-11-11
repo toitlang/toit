@@ -11,6 +11,7 @@ set(TOOL_TESTS
   "tests/sandbox/runtime-hardening-test.toit"
   "tests/sandbox/verify-reject-test.toit"
   "tests/sandbox/verify-launch-test.toit"
+  "tests/sandbox/install-verdict-test.toit"
 )
 file(GLOB SANDBOX_TESTS RELATIVE ${TOIT_SDK_SOURCE_DIR} "*-test.toit")
 

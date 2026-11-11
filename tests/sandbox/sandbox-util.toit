@@ -29,11 +29,12 @@ class RunResult:
 Runs $args, capturing merged stdout+stderr. If $timeout-ms is given and the
   process does not exit in time, it is killed (and the result signal is set).
 */
-run-process args/List --timeout-ms/int?=null -> RunResult:
+run-process args/List --timeout-ms/int?=null --environment/Map?=null -> RunResult:
   process := pipe.fork
       --use-path
       --create-stdout
       --create-stderr
+      --environment=environment
       args[0]
       args
   stdout-bytes/ByteArray? := null

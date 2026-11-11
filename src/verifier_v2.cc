@@ -22,6 +22,8 @@
 #include "interpreter_v2.h"
 #include "primitive.h"
 #include "program.h"
+#include "flash_allocation.h"
+#include "flash_registry.h"
 
 namespace toit {
 
@@ -37,13 +39,28 @@ static const uint32 v2_prim_counts[] = { MODULES(V2_MODULE_COUNT) };
 #undef V2_MODULE_ARITIES
 #undef V2_MODULE_COUNT
 
+const char* V2Verifier::install_verdict(const void* memory, word program_size, uint8* metadata) {
+  metadata[0] &= ~FlashAllocation::Header::FLAGS_PROGRAM_VERIFIED_MASK;
+  if ((metadata[0] & FlashAllocation::Header::FLAGS_PROGRAM_UNTRUSTED_MASK) == 0) return null;
+  FlashRegistry::flush();
+  Program* program = reinterpret_cast<Program*>(const_cast<void*>(memory));
+  bool no_verdict = false;
+  const char* error = verify_installed(program, program_size, &no_verdict);
+  if (error != null) return error;
+  if (!no_verdict) metadata[0] |= FlashAllocation::Header::FLAGS_PROGRAM_VERIFIED_MASK;
+  return null;
+}
+
 #ifdef TOIT_VERIFIED_CORE
 
 static void v2_input(Program* program, const V2MethodTable* table, bool trusted,
-                     toit_v2_program* tables, toit_vmverify_input* input) {
+                     toit_v2_program* tables, toit_vmverify_input* input, word program_size = -1) {
   // The program's initial global values: the process' globals start as a
   // copy of them.
   v2_program_tables(program, table, program->global_variables.array(), tables);
+  // At install time the allocation header (which holds the size) is not
+  // written yet.
+  if (program_size >= 0) tables->program_heap_size = program_size;
   input->program = tables;
   input->prim_counts = v2_prim_counts;
   input->prim_module_count = ARRAY_SIZE(v2_prim_counts);
@@ -65,10 +82,23 @@ static const char* v2_code_name(uword code) {
 
 bool V2Verifier::is_available() { return true; }
 
+// The panic handler of the Rust library on devices (no_std, panic = abort:
+// verified/vmverify/src/device.rs). Hosts catch the verifier's panics in
+// Rust instead and never call this.
+extern "C" void toit_vmverify_panic(const uint8* file, uword length) {
+  FATAL("Rust panic in %.*s", static_cast<int>(length), reinterpret_cast<const char*>(file));
+}
+
+static bool v2_verify(Program* program, const V2MethodTable* table, bool trusted, word program_size);
+
 bool V2Verifier::verify(Program* program, const V2MethodTable* table, bool trusted) {
+  return v2_verify(program, table, trusted, -1);
+}
+
+static bool v2_verify(Program* program, const V2MethodTable* table, bool trusted, word program_size) {
   toit_v2_program tables;
   toit_vmverify_input input;
-  v2_input(program, table, trusted, &tables, &input);
+  v2_input(program, table, trusted, &tables, &input, program_size);
   toit_vmverify_result result;
   toit_vmverify_verify(&input, &result);
   result.message[TOIT_VMVERIFY_MESSAGE_SIZE - 1] = '\0';
@@ -100,6 +130,27 @@ bool V2Verifier::verify(Program* program, const V2MethodTable* table, bool trust
   return false;
 }
 
+const char* V2Verifier::verify_installed(Program* program, word program_size, bool* no_verdict) {
+  *no_verdict = false;
+  if (!program->is_format2()) {
+    if (V2MethodTable::untrusted_format1_allowed()) {
+      *no_verdict = true;
+      return null;
+    }
+    fprintf(stderr, "untrusted images must be in bytecode format 2 (use -Xuntrusted_format1 to allow format 1)\n");
+    return "FORMAT_2_REQUIRED";
+  }
+  V2MethodTable* table = V2MethodTable::compute(program);
+  if (table == null) return "INVALID_SNAPSHOT";
+  bool accepted = v2_verify(program, table, false, program_size);
+  delete table;
+  return accepted ? null : "VERIFICATION_FAILED";
+}
+
+void V2Verifier::accept_recorded(const V2MethodTable* table) {
+  const_cast<V2MethodTable*>(table)->mark_verified(false);
+}
+
 bool V2Verifier::write_canonical(Program* program, const V2MethodTable* table, const char* path) {
   toit_v2_program tables;
   toit_vmverify_input input;
@@ -120,6 +171,17 @@ bool V2Verifier::verify(Program* program, const V2MethodTable* table, bool trust
 
 bool V2Verifier::write_canonical(Program* program, const V2MethodTable* table, const char* path) {
   return false;
+}
+
+const char* V2Verifier::verify_installed(Program* program, word program_size, bool* no_verdict) {
+  *no_verdict = !program->is_format2() && V2MethodTable::untrusted_format1_allowed();
+  if (*no_verdict) return null;
+  // Without the verifier no untrusted program can be admitted.
+  return program->is_format2() ? "VERIFICATION_FAILED" : "FORMAT_2_REQUIRED";
+}
+
+void V2Verifier::accept_recorded(const V2MethodTable* table) {
+  // Never reached: no allocation gets a verdict without the verifier.
 }
 
 #endif  // TOIT_VERIFIED_CORE

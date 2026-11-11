@@ -29,6 +29,16 @@ set(TOIT_SDK_DIR ${TOIT_SDK_DIR} PARENT_SCOPE)
 set(TOIT ${TOIT_SDK_DIR}/bin/toit)
 set(CMAKE_BUILD_TYPE Release)
 
+# The verified core (verified/CMakeLists.txt): off unless selected in
+# menuconfig; only RISC-V parts with atomics (see Kconfig).
+if (CONFIG_TOIT_VERIFIED_CORE)
+    set(TOIT_VERIFIED_CORE ON CACHE BOOL "" FORCE)
+    set(TOIT_VERIFIED_CORE_RUST_TARGET "riscv32imac-unknown-none-elf" CACHE STRING "" FORCE)
+    set(TOIT_VERIFIED_CORE_OPT_LEVEL "${CONFIG_TOIT_VERIFIED_CORE_OPT_LEVEL}" CACHE STRING "" FORCE)
+else()
+    set(TOIT_VERIFIED_CORE OFF CACHE BOOL "" FORCE)
+endif()
+
 add_subdirectory(${TOIT_BASE_DIR} toit EXCLUDE_FROM_ALL)
 
 # Add the include directories from the required components to the imported toit_vm target.

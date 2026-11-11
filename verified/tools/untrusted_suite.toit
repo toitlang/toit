@@ -29,7 +29,7 @@ like ctest runs them (from the repository root, arguments `foo bar gee`,
   TOIT_TEST_ENV_ENTRY set). Stdout and the exit code must be identical.
 
 Usage: toit run verified/tools/untrusted_suite.toit -- [--jobs N]
-  [--status FILE] [--filter S] [--out DIR]
+  [--status FILE] [--filter S] [--build DIR] [--out DIR]
 */
 
 import cli
@@ -37,7 +37,9 @@ import fs
 
 import .harness
 
-RUN ::= fs.join REPO "build/host/sdk/lib/toit/bin/toit.run"
+/** toit.run of a build directory (`--build`, default build/host). */
+run-binary build/string -> string:
+  return fs.join build "sdk/lib/toit/bin/toit.run"
 STATUS ::= fs.join SPEC-CRATE "tests/suite-status.txt"
 /** The test environment, without a format override. */
 ENVIRONMENT ::= {"TOIT_TEST_ENV_ENTRY": "TOIT_TEST_ENV_VALUE", "TOIT_BYTECODE_FORMAT": null}
@@ -55,6 +57,8 @@ main args:
             --help="The status file of run_suite.toit.",
         cli.Option "filter"
             --help="Only tests whose path contains this string.",
+        cli.Option "build" --default=(fs.join REPO "build/host")
+            --help="The build directory whose toit.run runs the tests (build/host32: the 32-bit VM).",
         cli.Option "out" --default=(fs.join REPO "build/untrusted-suite")
             --help="The output directory.",
       ]
@@ -66,6 +70,7 @@ untrusted-suite invocation/cli.Invocation -> int:
   status-path := absolute invocation["status"]
   out := absolute invocation["out"]
   filter := invocation["filter"]
+  toit-run := run-binary (absolute invocation["build"])
   enter-repo
   tests := {:}
   (split-lines (read-file status-path)).do: | line/string |
@@ -77,8 +82,8 @@ untrusted-suite invocation/cli.Invocation -> int:
   if filter: selected = selected.filter: it.contains filter
   make-dirs out
   outcomes := parallel-map selected --jobs=invocation["jobs"]:: | test |
-    r1 := run ([RUN, test] + TEST-ARGS) --timeout-s=300 --environment=ENVIRONMENT
-    r2 := run ([RUN, "--untrusted", test] + TEST-ARGS) --timeout-s=300 --environment=ENVIRONMENT
+    r1 := run ([toit-run, test] + TEST-ARGS) --timeout-s=300 --environment=ENVIRONMENT
+    r2 := run ([toit-run, "--untrusted", test] + TEST-ARGS) --timeout-s=300 --environment=ENVIRONMENT
     [r1, r2]
   results := []
   different := []

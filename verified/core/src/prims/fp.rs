@@ -53,15 +53,32 @@ pub fn binop(op: u8, x: u64, y: u64) -> u64 {
 #[inline(always)]
 pub fn unop(op: u8, x: u64) -> u64 {
     let a = f64::from_bits(x);
-    let r = match op {
-        0 => -a,
-        1 => a.sqrt(),
-        2 => a.ceil(),
-        3 => a.floor(),
-        _ => a.trunc(),
+    // The C library's functions (the core is no_std; the C++ primitives
+    // call the same ones).
+    let r = unsafe {
+        match op {
+            0 => -a,
+            1 => libm::sqrt(a),
+            2 => libm::ceil(a),
+            3 => libm::floor(a),
+            _ => libm::trunc(a),
+        }
     };
     r.to_bits()
 }
+
+}  // verus!
+
+mod libm {
+    extern "C" {
+        pub fn sqrt(x: f64) -> f64;
+        pub fn ceil(x: f64) -> f64;
+        pub fn floor(x: f64) -> f64;
+        pub fn trunc(x: f64) -> f64;
+    }
+}
+
+verus! {
 
 /// The comparisons `<`, `<=`, `>`, `>=`, `==` (ops 0..4).
 #[verifier::external_body]

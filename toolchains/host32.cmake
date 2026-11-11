@@ -16,8 +16,12 @@
 set(TOIT_SYSTEM_NAME "${CMAKE_SYSTEM_NAME}" CACHE STRING "The system name for the toolchain")
 
 set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -m32 -x assembler-with-cpp" CACHE STRING "asm flags")
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -m32" CACHE STRING "c flags")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -m32" CACHE STRING "c++ flags")
+# SSE2 doubles: x87 code rounds intermediate results to 80 bits (double
+# rounding), so 32-bit hosts computed different doubles than 64-bit hosts,
+# devices and the Rust code of the verified core (verified/core/PROGRESS.md,
+# "Phase 5").
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -m32 -msse2 -mfpmath=sse" CACHE STRING "c flags")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -m32 -msse2 -mfpmath=sse" CACHE STRING "c++ flags")
 
 set(CMAKE_C_FLAGS_DEBUG "-Og -g -rdynamic -fdiagnostics-color" CACHE STRING "c Debug flags")
 set(CMAKE_C_FLAGS_RELEASE "-Os" CACHE STRING "c Release flags")

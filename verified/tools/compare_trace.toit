@@ -49,6 +49,7 @@ Prints the number of consecutive steps compared and the first divergence.
 import cli
 import fs
 import host.directory
+import host.file
 import host.os
 
 import .dump_file
@@ -158,7 +159,11 @@ vm-trace snapshot/string args/List timeout/int tmp/string -> List:
   src := fs.join tmp "onecore.c"
   lib := fs.join tmp "onecore.so"
   write-file src ONE-CORE
-  run-checked ["cc", "-shared", "-fPIC", "-o", lib, src]
+  // The preloaded library must match the VM's word size (a 32-bit host
+  // VM: ELF class 1 in byte 4 of the executable).
+  elf := file.read-contents debug-run
+  m32 := elf.size > 4 and elf[4] == 1 ? ["-m32"] : []
+  run-checked ["cc"] + m32 + ["-shared", "-fPIC", "-o", lib, src]
   result := run [debug-run, "-Xtrace", snapshot] + args
       --timeout-s=timeout
       --environment={"LD_PRELOAD": lib}

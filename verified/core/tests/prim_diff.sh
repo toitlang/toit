@@ -24,13 +24,14 @@
 # 10,000 calls). On a difference it reruns the first differing window with
 # a trace and prints the first differing call.
 #
-# Usage: prim_diff.sh [SEEDS [ITERATIONS [JOBS [FIRST-SEED]]]]
+# Usage: [BUILD=DIR] prim_diff.sh [SEEDS [ITERATIONS [JOBS [FIRST-SEED]]]]
 #   defaults: 10 seeds, 1,000,000 calls each, 8 jobs, first seed 1.
 
 set -u
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
-RUN="$REPO/build/host/sdk/lib/toit/bin/toit.run"
+# BUILD=build/host32 runs the 32-bit VM.
+RUN="${BUILD:-$REPO/build/host}/sdk/lib/toit/bin/toit.run"
 DRIVER="$REPO/tests/fuzz/primitive-diff.toit"
 SEEDS="${1:-10}"
 ITERATIONS="${2:-1000000}"
@@ -60,8 +61,8 @@ one() {  # seed
   local window
   window=$(paste -d'|' "$OUT/$seed.cxx" "$OUT/$seed.rust" \
     | awk -F'|' '$1 != $2 { exit } $1 ~ /^checksum / { split($1, a, " "); w = a[2] } END { print w + 0 }')
-  run "$seed" 0 "$ITERATIONS" "$window" "$((window + 10000))" 2>&1 | grep -v '^checksum' > "$OUT/$seed.cxx.trace"
-  run "$seed" 1 "$ITERATIONS" "$window" "$((window + 10000))" 2>&1 | grep -v '^checksum' > "$OUT/$seed.rust.trace"
+  run "$seed" 0 "$ITERATIONS" "$window" "$((window + 10000))" 2>&1 | grep -av '^checksum' > "$OUT/$seed.cxx.trace"
+  run "$seed" 1 "$ITERATIONS" "$window" "$((window + 10000))" 2>&1 | grep -av '^checksum' > "$OUT/$seed.rust.trace"
   echo "seed $seed: DIFFERENT (exit $rc1 vs $rc2)"
   diff "$OUT/$seed.cxx.trace" "$OUT/$seed.rust.trace" | head -4 | cut -c1-400
 }
