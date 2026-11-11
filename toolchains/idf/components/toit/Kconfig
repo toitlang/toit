@@ -165,6 +165,8 @@ menu "Toit"
                 increase the performance dramatically, but reduce the amount of
                 free IRAM by about 13k.  Set to "n" if you cannot link because
                 of exhausted IRAM.
+                Only the C++ interpreter of format 1 (TOIT_CXX_INTERPRETER):
+                the verified core of format 2 runs from flash.
 
         config TOIT_INTERPRETER_HELPERS_IN_IRAM
             bool "Run interpreter helper code from IRAM"
@@ -331,6 +333,7 @@ menu "Toit"
         bool "Trace install-time verifications (for measurements)"
         default n
         depends on TOIT_VERIFIED_CORE
+        select HEAP_USE_HOOKS
         help
             Prints the time, the free heap and the peak heap use of every
             install-time verification of an untrusted container

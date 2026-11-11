@@ -171,6 +171,18 @@ runs:
         # Install the MbedTLS dependencies in the sourced Python environment.
         pip install jsonschema jinja2
 
+    # The verified core (Kconfig TOIT_VERIFIED_CORE, on for the classic
+    # ESP32 and the ESP32-C6): RISC-V parts use the upstream target, the
+    # classic ESP32 the esp-rs toolchain (`cargo +esp`, verified/
+    # XTENSA-RUST-FIXES.md; the version the codegen check was run with).
+    - name: Install Rust device targets - Linux, macOS
+      if: inputs.esp32 == 'true' && runner.os != 'Windows'
+      shell: bash
+      run: |
+        rustup target add riscv32imac-unknown-none-elf
+        cargo install espup --locked
+        espup install --targets esp32 --toolchain-version 1.99.0.0
+
     - name: Install ESP32 tools - Windows
       if: inputs.esp32 == 'true' && runner.os == 'Windows'
       shell: pwsh
