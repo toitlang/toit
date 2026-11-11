@@ -50,7 +50,9 @@ test-wide-return args:
   expect block >= 0
   // The method starts by checking the condition.
   wide := block
-  while not lines[wide].contains "non-local return wide": wide++
+  // Format 1 has a wide variant ("non-local return wide"); format 2 has
+  // one non-local return with a block-reference operand.
+  while not lines[wide].contains "non-local return": wide++
   expect (lines[wide + 1].contains "invoke static after-wide-return")
 
 main args:

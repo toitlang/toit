@@ -52,7 +52,7 @@ print-literal program/Program index/int:
 
 print-dispatch-table program/Program:
   // The dispatch entry contains either an integer or a method.
-  print-collection "Dispatch Table" program.dispatch-table program
+  print-collection "Dispatch Table" program.dispatch-table-method-ids program
     : filter == "" or (it != -1 and matching (program.method-name-for it))
     : it == -1 ? "<empty>" : (program.method-info-for it).stringify program
 

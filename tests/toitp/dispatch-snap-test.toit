@@ -10,7 +10,8 @@ main args:
   snapshot := SnapshotBundle.from-file snapshot-path
   program := snapshot.decode
 
-  dispatch := program.dispatch-table
+  // Method ids in both formats (format 2's entries are method indices).
+  dispatch := program.dispatch-table-method-ids
 
   a-foo-info := null
   a-bar-info := null

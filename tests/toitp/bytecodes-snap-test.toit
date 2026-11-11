@@ -17,7 +17,7 @@ main args:
   program := snapshot.decode
 
   test-info := find-bytecode-test-method program
-  test-method := program.method-from-absolute-bci test-info.absolute-entry-bci
+  test-method := program.method-from-absolute-bci test-info.id
 
   allocate-count := 0
   static-call-count := 0
