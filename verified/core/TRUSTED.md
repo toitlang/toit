@@ -35,9 +35,10 @@ Assumptions behind the views:
 - V3 Method table: every `V2Method` has `entry <= end <= bytecodes.len()`
   (checked by the C++ loader, `V2MethodTable::compute`). The fast dispatch
   path reads up to `MAX_INSTRUCTION_LENGTH` bytes from `bci < end - 6`.
-- V4 Word size: `usize` is 64 bits and `Object*`, `uword` and
+- V4 Word size: `usize` is the target's word (64 or 32 bits, Verus
+  verifies both: section 6 "Word size") and `Object*`, `uword` and
   `std::atomic<Object**>` are word-sized (the layout check tests the
-  latter; the CMake option is only on for 64-bit hosts).
+  latter on 64-bit and 32-bit hosts).
 - V5 Byte arrays of the model (`Heap::bytes_len`): an object with the
   byte-array tag is `Body::Bytes` exactly when it is internal or external
   with `RAW_BYTE_TAG` and a non-null address (its bytes are then readable
@@ -187,7 +188,7 @@ These are all the assumptions it rests on, besides sections 1 to 5:
 
 | Contract | Where | Statement | Discharged by |
 |---|---|---|---|
-| Loader | `theorem::loaded`, `ffi::toit_v2_run` (`Ghost::assume_new` of `ap`, `cert`, `trusted`), `ffi::Accepted` | the program tables are an abstract program `ap` the verifier accepts with certificate `cert` (`accepts`), its heap and globals satisfy `loaded_ok`, and the first task encodes `initial_state` | the runtime fact: verified/vmverify accepted (`check::verify == accepts`, `x_loaded_ok == loaded_ok`) the program on exactly the `V2MethodTable` the process runs (`V2MethodTable::verified`, set only by `V2Verifier::verify`'s accept path); `Interpreter::run_v2` then writes `TOIT_V2_ACCEPTED` and `toit_v2_run` builds the `Accepted` token (private field), which `step::run_loop` requires, so the verified loop cannot be entered otherwise. TRUSTED: the conversion verified/vmverify/src/from_vm.rs, `prepare_process_v2` (initial frames) and `toit_v2_run` filling `Program` from the same tables |
+| Loader | `theorem::loaded`, `ffi::toit_v2_run` (`Ghost::assume_new` of `ap`, `cert`, `trusted`), `ffi::Accepted` | the program tables are an abstract program `ap` the verifier accepts with certificate `cert` (`accepts`), its heap and globals satisfy `loaded_ok`, and the first task encodes `initial_state` | the runtime fact: verified/vmverify accepted (`check::verify == accepts`, `x_loaded_ok == loaded_ok`) the program on exactly the `V2MethodTable` the process runs (`V2MethodTable::verified`, set only by `V2Verifier::verify`'s accept path, or by `V2Verifier::accept_recorded` for the table spawn decodes from a flash allocation with the install-time verdict or a host verdict-cache entry: the allocation's header checksum covers the verified bytes, verified/vmverify/README.md "Where it runs"; TRUSTED: that binding, `V2MethodTable::compute` being deterministic in the bytes); `Interpreter::run_v2` then writes `TOIT_V2_ACCEPTED` and `toit_v2_run` builds the `Accepted` token (private field), which `step::run_loop` requires, so the verified loop cannot be entered otherwise. TRUSTED: the conversion verified/vmverify/src/from_vm.rs, `prepare_process_v2` (initial frames) and `toit_v2_run` filling `Program` from the same tables |
 | Between runs | `theorem::resumed`, `machine::run` (`Ghost::assume_new` of `g`) | the scheduler resumes a preempted or yielded task in the state it saved; GC between runs moves objects but preserves the abstraction | C++ scheduler and GC (trusted); `reload` re-checks the Stack header's shape |
 | Heap model integrity | `abs::heap_model_ok`, `Machine::refines`, TRUSTED V2, V5 | one distinct tagged address per object; class tag and body agree; read-only objects are exactly those in the program-heap range | the GC, the allocators and the C++ primitives maintain it |
 | Allocation | `alloc::gc_allocate_instance`, `alloc::gc_allocate_double` | the views represent the state with exactly the spec's new object appended, or the state itself (out of memory) | `toit_v2_allocate_instance`/`_double` and the GC |

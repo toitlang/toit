@@ -37,7 +37,11 @@ OBLIGATIONS.md. Trusted base: TRUSTED.md and verified/TRUSTED.toml.
   C++ interpreter). **Default: format 2 required.**
 - With the CMake option `TOIT_VERIFIED_CORE` off (default off for
   embedded and cross builds, or without cargo) the VM builds without the
-  core and refuses to run format-2 programs.
+  core and refuses to run format-2 programs. It is on by default for
+  64-bit hosts and for 32-bit x86 Linux hosts (toolchains/host32.cmake:
+  Rust target `i686-unknown-linux-gnu`); ESP32-C6/H2 firmware gets it with
+  the menuconfig option `TOIT_VERIFIED_CORE` (Rust target
+  `riscv32imac-unknown-none-elf`, no_std, PROGRESS.md "Phase 5").
 
 ## 2. Run-loop contract (`toit_v2_run`)
 

@@ -99,11 +99,33 @@ Every untrusted launch, before any bytecode runs:
 - `ProcessGroup::create` verifies an untrusted format-2 program itself if
   it gets no table (no other path creates untrusted groups today; this
   keeps it so).
-- Verdict cache (host only): `programs_registry.spawn` remembers accepted
-  flash allocations (`FlashRegistry::is_verified`, 32 entries); every
-  `write_chunk`/`erase_chunk` overlapping an entry clears it. Devices verify
-  on every start. TODO(Phase 5): verify at install time on devices and
-  keep the verdict with the allocation.
+- Install-time verification (Phase 5, every platform): an image flagged
+  untrusted (`ContainerService.FLAG-UNTRUSTED`, metadata byte 0 bit 2) is
+  verified with the untrusted rules when it is committed to the flash
+  registry (`image.writer-commit` and `flash_registry.allocate` call
+  `V2Verifier::install_verdict` after the last byte is written, before the
+  header). A rejected image is not committed (`VERIFICATION_FAILED`). An
+  accepted one gets the verdict, metadata byte 0 bit 6
+  (`FlashAllocation::Header::FLAGS_PROGRAM_VERIFIED_MASK`, only the VM
+  sets it), and the header checksum of such an allocation covers the
+  program's bytes too (the whole allocation without assets), so the
+  verdict is bound to the bytes it was computed on: any change makes the
+  allocation invalid (it is no longer listed and cannot start). Spawn
+  takes the verdict instead of verifying (`V2Verifier::accept_recorded`
+  marks the table it decodes from those bytes) and refuses a flagged
+  format-2 image without one. Cost of the binding: a CRC-32 of the image
+  on each lookup of the allocation (`FlashAllocation::is_valid`; Utils'
+  nibble-table CRC, about 1 ms per 60 KB on the host, estimated several
+  ms on an ESP32-C6). Test: tests/sandbox/install-verdict-test.toit
+  (installs, checks the verdict, starts it from flash in a second VM
+  without verification, corrupts a string of the program in the flash
+  file, checks it no longer starts, and checks that a rejected program is
+  not installed; 64-bit and 32-bit hosts).
+- Verdict cache (host only, images without the flag started untrusted):
+  `programs_registry.spawn` remembers accepted flash allocations
+  (`FlashRegistry::is_verified`, 32 entries); every
+  `write_chunk`/`erase_chunk` overlapping an entry clears it. Devices
+  verify such starts every time.
 - `toit.run --verify` uses the same verifier for format 2;
   `--emit-canonical=FILE` writes the canonical form.
 
@@ -286,15 +308,15 @@ caught panics in one launch-mode run).
 ## no_std (Phase 5)
 
 Without the `std` feature this crate and verified/spec are `no_std` +
-`alloc`: no panic catching (a panic aborts; the inference is total), no
-phase times, no counting allocator, no test support, `BTreeMap` instead of
-`HashMap`. `tests/nostd_check.sh` builds verified/spec for
-`riscv32imac-unknown-none-elf` and `riscv64imac-unknown-none-elf`, and
-this crate for `riscv64imac-unknown-none-elf`. What still blocks a device
-build, all in verified/core (not changed here): its `lib.rs` lacks
-`#![no_std]` (it uses no std API), its vstd dependency uses the default
-`std` feature, its `staticlib` crate type needs a panic handler and an
-allocator when built as a dependency (the script patches these three in a
-copy), and it is not 32-bit clean (machine.rs shifts `usize` values by 32,
-layout.rs has 64-bit constants), so the 32-bit RISC-V build of this crate
-fails in the core.
+`alloc` (verified/core always is): no panic catching (a panic aborts; the
+inference is total), no phase times, no counting allocator, no test
+support, `BTreeMap` instead of `HashMap`. With `device-runtime` (devices)
+the crate supplies the global allocator (the VM's malloc/free/realloc)
+and the panic handler (`toit_vmverify_panic`, FATAL): src/device.rs. The
+device library is built with the Cargo profile `device` (panic = abort,
+LTO). `tests/nostd_check.sh` builds spec, core and the device library for
+`riscv32imac-unknown-none-elf` and `riscv64imac-unknown-none-elf`;
+`tests/device_size.sh` measures the linked size by component
+(verified/core/PROGRESS.md, "Phase 5"). ESP32-C6/H2 firmware links it
+with the menuconfig option `TOIT_VERIFIED_CORE`
+(toolchains/idf/components/toit).

@@ -105,9 +105,9 @@ Open:
   `i686-unknown-linux-gnu`). The handler and the finally-record target
   are two words each (5-word records), the Stack header packs `rtop |
   ftop << 16`, block references are `frame << 16 | slot`.
-- The core is not `no_std`: no `#![no_std]`, vstd with std, `staticlib`
-  crate type with the hosted panic handler. Both block the riscv32 build
-  (the verifier crates already build `no_std` + alloc).
+- Done (Phase 5): the core is `no_std` + alloc (vstd without std, rlib
+  only); the device library (vmverify `device-runtime`) supplies allocator
+  and panic handler; it builds for riscv32imac (PROGRESS.md "Phase 5").
 
 ### Other open items
 

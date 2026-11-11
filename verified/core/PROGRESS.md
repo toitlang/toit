@@ -20,9 +20,142 @@ verification (07-verified-sandbox-plan.md, Phase 5).
    messages (selector, class id, entry) can exceed a smi, the spec's
    primitive contracts had the 64-bit smi range (`prim_core::smi_in`, now
    per target), byte-slice bounds compared through a truncating cast.
-2. 32-bit host (in progress): build/host32 (toolchains/host32.cmake,
-   CMake picks the Rust target i686-unknown-linux-gnu) builds the VM with
-   the core; tests/sandbox 94/94 pass.
+   64-bit cost of the uniform layout: Ir inside the interpreters
+   (TOIT_VERIFY=1, artifacts phase5/ir.sh) richards 2,105 M (before
+   2,097 M), deltablue 1,520 M (1,513 M), pystone 1,451 M (1,446 M): +0.4 %.
+2. 32-bit host (done): build/host32 (toolchains/host32.cmake; CMake picks
+   the Rust target i686-unknown-linux-gnu, rustup installs it without
+   root; lib32 glibc/gcc multilib were already installed). Results
+   (artifacts phase5/): tests/sandbox 95/95; untrusted suite 280/282
+   identical, the two known differences (program-name-test,
+   set-map-remove-first-test, as on 64-bit); prim_diff.sh 10 x 1,000,000
+   calls identical; format-2 trace comparison on the debug 32-bit VM
+   (`--word-bits 32`) 2,061,523 consecutive steps without divergence
+   (sort 1,152,900, control 397,559, maps 467,701, numbers 43,363);
+   core_fuzz.toit 20 min on an ASan 32-bit build, launch filter, seed 32:
+   41,845 mutants, 5,721 accepted and run, 0 crashes. Found: the 32-bit
+   host compiled doubles with x87 code (80-bit intermediates: double
+   rounding), so `float_divide` differed by one ulp from the Rust port
+   (and from 64-bit hosts and devices); toolchains/host32.cmake now uses
+   `-msse2 -mfpmath=sse`. ASan 32-bit builds need
+   `-DCMAKE_EXE_LINKER_FLAGS_ASAN=-fsanitize=address,undefined` (mbedtls
+   adds UBSan to its ASan flags).
+3. no_std (done): verified/core is `#![no_std]` (vstd without `std`; the
+   float primitives call the C library's sqrt/ceil/floor/trunc, which the
+   C++ ones use too); verified/spec's `exec_step` builds no_std (the
+   `compare_mixed` implementation moved out of the std-only interpreter);
+   verified/vmverify without `std` and with `device-runtime` supplies the
+   global allocator (the VM's malloc/free/realloc) and the panic handler
+   (`toit_vmverify_panic`, FATAL) and is built with Cargo profile `device`
+   (panic = abort, LTO, codegen-units 1). Hosts keep std and
+   `catch_unwind` (a verifier panic rejects the program).
+   verified/vmverify/tests/nostd_check.sh builds spec, core and the device
+   library for riscv32imac-unknown-none-elf (ESP32-C6, H2) and
+   riscv64imac, unpatched. ESP32-C3 (rv32imc) is not possible as is: vstd's
+   `alloc` feature uses `alloc::sync::Arc` and atomic swaps, which
+   riscv32imc-unknown-none-elf (no A extension) lacks.
+4. Device build (done up to flashing): see "Device sizes" below.
+5. Install-time verification (done): verified/vmverify/README.md "Where it
+   runs"; test tests/sandbox/install-verdict-test.toit (64-bit and 32-bit
+   hosts).
+
+Gates (2026-11-11): verified/check.sh --tests (Verus 64-bit and 32-bit,
+audit, layout, spec differential, vmverify tests, sandbox ctests);
+ctest -j16 on the 64-bit host 1161/1164 (version, reader not run;
+udp-reuse-port-test: no multicast); tests/sandbox 95/95 on 64-bit and
+32-bit hosts.
+
+Still needs hardware: flashing the ESP32-C6 firmware and running the
+device test subset and the heat-pump demo with an untrusted container;
+the free heap of a running system and the verifier's peak there; install
+time and boot time (CRC of verified images) on the device; the speed of
+the core from flash vs IRAM (the IRAM proposal below); the layout check
+run on the device (struct offsets of the riscv32 C ABI); the 72-hour soak
+with a fuzzing container.
+
+### Device sizes
+
+Rust library alone, riscv32imac, linked into a minimal executable with
+--gc-sections (verified/vmverify/tests/device_size.sh, split by
+verified/tools/device_size.toit; text by component, rodata is anonymous
+in Rust and only totalled; artifacts phase5/device-sizes.txt):
+
+| Component (text, bytes) | opt 3 | opt 3, no tail-dup | s | z |
+|---|---|---|---|---|
+| core: verified loop and cold paths | 41,420 | 39,500 | 37,978 | 35,054 |
+| core: checked loop | 20,788 | 20,336 | 22,738 | 20,588 |
+| core: primitives | 15,458 | 15,378 | 13,376 | 12,404 |
+| verifier: checker | 19,800 | 19,770 | 20,420 | 19,816 |
+| verifier: heap check | 1,888 | 1,792 | 1,894 | 1,530 |
+| verifier: inference | 40,138 | 39,984 | 30,502 | 23,422 |
+| glue (vmverify, spec other) | 8,222 | 8,164 | 6,308 | 5,976 |
+| Rust formatting | 5,776 | 5,766 | 5,756 | 5,732 |
+| Rust panics | 190 | 190 | 190 | 190 |
+| other core/alloc | 7,440 | 7,396 | 9,542 | 10,888 |
+| compiler builtins (soft float, i64) | 3,258 | 3,258 | 3,258 | 3,352 |
+| text total (Rust) | 164,378 | 161,534 | 151,962 | 138,952 |
+| rodata (all, linked) | 24,370 | 24,370 | 30,362 | 31,722 |
+
+The tail-duplication flag only matters at opt 3 (+2.9 KB). Without std
+the 711 KB of std/alloc/core of the host build shrink to about 13 KB
+(formatting, panics, other core/alloc). What a device could drop: the
+checked loop (about 21 KB; only unverified trusted format-2 programs use
+it, and devices run trusted code in format 1), the inference if
+certificates were shipped with the image (24-40 KB, plus part of the
+rodata), formatting (about 6 KB: only diagnostics use it; messages could
+become codes).
+
+ESP32-C6 firmware (ESP-IDF 5.4.2 from the main checkout, toolchain
+esp-14.2.0_20241119; `idf.py build` of toolchains/esp32c6 with a copy of
+its sdkconfig plus `CONFIG_TOIT_VERIFIED_CORE=y`; never flashed;
+artifacts phase5/firmware-sizes.txt). Deltas against the same build
+without the option (which also leaves out the C++ format-2 glue):
+
+| Rust opt-level | toit.bin | .flash.text | .flash.rodata | DRAM data+bss | IRAM | run_loop (flash) |
+|---|---|---|---|---|---|---|
+| 3 | +187,040 B (1,575,904 -> 1,762,944) | +165,318 | +21,704 | +8 B | 0 | 23,244 B |
+| s | +179,280 B | +151,580 | +27,696 | +8 B | 0 | 21,458 B |
+| z | +172,880 B | +143,900 | +28,968 | +8 B | 0 | 19,670 B |
+
+Static RAM is unchanged (the Rust code has no statics besides the
+allocator handle); the verifier and the core allocate from the heap. The
+hot loop lands in flash (`step::run_loop` at 0x4212..., executed through
+the instruction cache), while the C++ interpreter (`Interpreter::run`,
+19 KB) is in IRAM (INTERPRETER_CORE, 0x4080...). Proposal: put
+`run_loop` (the dispatch with the inlined verified handlers; cold paths
+stay out of line) in IRAM with `#[link_section = ".iram1.toit_run_loop"]`
+under a `device-iram` feature (ESP-IDF's linker script maps `.iram1.*`
+to IRAM), 19-23 KB of the 512 KB SRAM; not done, as it needs a speed
+measurement on hardware to be worth the SRAM. Two fixes were needed to
+link: `Stack::v2_frames_skip_` is `thread_local`, which the
+initial-exec TLS model reaches through a GOT that ESP-IDF's linker script
+discards (now local-exec on FreeRTOS), and a `%ld` format for `word`.
+The layout check does not run for embedded builds (it cannot run on the
+build host); the object layout constants are those of the 32-bit host
+(checked there), and the FFI structs follow the C ABI on both sides.
+
+### Verifier memory (30-60 KB programs)
+
+Rust heap high-water mark of one verification (counting allocator,
+`toit_vmverify_mem` on dumps; per-method maps and global part split by
+MEM_DEBUG; artifacts phase5/vmem.log), 32-bit build (64-bit in brackets):
+
+| Program | Bytecodes | Methods | Global part (per-method tables) | Largest method's maps | Peak |
+|---|---|---|---|---|---|
+| heat-pump-test | 23.4 KB | 764 | 23.6 KB (27.1) | 3.0 KB | 31.9 KB (35.4) |
+| run-image | 48.3 KB | 1,447 | 46.5 KB (53.0) | 6.9 KB | 56.8 KB (63.4) |
+| toit.run | 56.0 KB | 1,597 | 49.3 KB (55.8) | 6.9 KB | 60.4 KB (67.0) |
+
+The phase-2 peak above the global part (maps of the method being checked,
+checker state) is 5-9.5 KB. The heap check itself keeps almost nothing
+(the dump path counts below 1 KB); in the VM the conversion from VM memory
+adds the object work list and id map: the in-VM peak (TOIT_VERIFY_TIME=1,
+64-bit) is 45 / 75 / 84 KB for the three programs, so conversion plus
+heap-check state is about 10-17 KB. A 30-60 KB program thus needs about
+50-80 KB of transient heap at install time on a 32-bit device; the
+ESP32-C6 has 512 KB of SRAM, of which a running Toit system typically
+leaves a few hundred KB free, so it fits while the system runs, but not
+next to a large application (no hardware here to measure the free heap).
 
 ## Performance pass (branch core/prims-integration, 2026-11-11)
 
