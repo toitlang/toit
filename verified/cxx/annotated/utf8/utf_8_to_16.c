@@ -1,0 +1,221 @@
+// Copyright (C) 2026 Toit contributors.
+//
+// Utils::utf_8_to_16 and its two helpers (src/utils.cc, src/utils.h),
+// rendered in C, with VeriFast annotations. The same function the first
+// pilot (verified/CXX-VERIFICATION-PILOT.md, (d)) checked with ESBMC for
+// inputs of at most 8 bytes and with Frama-C/WP (89 of 96 goals).
+//
+// Contract: reads only input[0, length), writes only output[0,
+// output_length) (when output is not null), no signed overflow, no UB
+// shift, no out-of-range conversion; returns -1 or a size in [0, length].
+// Unbounded (any length).
+//
+// With -DUTF8_OVERREAD_REVERTED, the fix of 07c24665 is taken out (the
+// old code read as many continuation bytes as the first byte announced).
+// Verified with -prover z3v4.5 (the bit-blasting lemmas need Z3).
+
+#include <stdint.h>
+#include <stdbool.h>
+//@ #include "../model/arith.gh"
+
+typedef intptr_t word;
+typedef unsigned char uint8;
+typedef unsigned short uint16;
+
+#define MAX_ASCII 127
+#define UTF_8_BITS_PER_BYTE 6
+#define UTF_8_MASK 0x3f
+
+/*@
+
+// The number of leading one bits of a byte (8 for 0xff); 1 for ASCII, as
+// bytes_in_utf_8_sequence returns.
+fixpoint int lead_floor(int c) {
+  return c == 0 ? 0 : c == 1 ? 128 : c == 2 ? 192 : c == 3 ? 224 : c == 4 ? 240 :
+         c == 5 ? 248 : c == 6 ? 252 : c == 7 ? 254 : 255;
+}
+fixpoint int mask_of(int c) {
+  return c == 0 ? 128 : c == 1 ? 64 : c == 2 ? 32 : c == 3 ? 16 : c == 4 ? 8 :
+         c == 5 ? 4 : c == 6 ? 2 : c == 7 ? 1 : 0;
+}
+fixpoint int utf8_count(int p) {
+  return p <= MAX_ASCII ? 1 : p < 192 ? 1 : p < 224 ? 2 : p < 240 ? 3 : p < 248 ? 4 :
+         p < 252 ? 5 : p < 254 ? 6 : p < 255 ? 7 : 8;
+}
+
+// A bit test on a byte, by bit-blasting (bitops.gh, Z_of_uint8).
+lemma void byte_and(int p, int m)
+  requires 0 <= p &*& p < 256 &*& (m == 128 || m == 64 || m == 32 || m == 16 || m == 8 || m == 4 || m == 2 || m == 1 || m == 0);
+  ensures (p & m) == ((p / (m == 0 ? 1 : m)) % 2 == 1 && m != 0 ? m : 0);
+{
+  Z z = Z_of_uint8(p);
+  Z zm = Z_of_uint8(m);
+  bitand_def(p, z, m, zm);
+}
+
+// One step of the loop of bytes_in_utf_8_sequence: with the top c bits of
+// p set, bit 7 - c is set exactly when p has another leading one.
+lemma void lead_step(int p, int c)
+  requires 0 <= c &*& c <= 8 &*& lead_floor(c) <= p &*& p < 256;
+  ensures ((p & mask_of(c)) != 0) == (c < 8 && p >= lead_floor(c + 1));
+{
+  byte_and(p, mask_of(c));
+  if (c == 8) {} else {
+    div_rem_nonneg(p, mask_of(c));
+    div_rem_nonneg(p / mask_of(c), 2);
+  }
+}
+
+lemma void uchars_nth_limits(uint8 *p, int i)
+  requires [?f]uchars(p, ?n, ?cs) &*& 0 <= i &*& i < n;
+  ensures [f]uchars(p, n, cs) &*& 0 <= nth(i, cs) &*& nth(i, cs) <= 255;
+{
+  open [f]uchars(p, n, cs);
+  if (i == 0) {
+    u_character_limits(p);
+  } else {
+    uchars_nth_limits(p + 1, i - 1);
+  }
+  close [f]uchars(p, n, cs);
+}
+
+@*/
+
+/*@
+lemma void shiftright_div_small(int m)
+  requires 0 <= m &*& m <= 128;
+  ensures (m >> 1) == m / 2;
+{
+  shiftright_div(m, N1);
+}
+@*/
+
+// static word bytes_in_utf_8_sequence(unsigned char prefix) {
+word bytes_in_utf_8_sequence(uint8 prefix)
+//@ requires true;
+//@ ensures result == utf8_count(prefix);
+{
+  if (prefix <= MAX_ASCII) return 1;
+  word count = 0;
+  word mask = 0x80;
+  while ((prefix & mask) != 0)
+  //@ invariant 0 <= count &*& count <= 8 &*& mask == mask_of(count) &*& lead_floor(count) <= prefix;
+  {
+    //@ lead_step(prefix, count);
+    count++;
+    //@ shiftright_div_small(mask);
+    mask >>= 1;
+  }
+  //@ lead_step(prefix, count);
+  return count;
+}
+
+
+// static word payload_from_prefix(unsigned char prefix) {
+//   word n_byte_sequence = bytes_in_utf_8_sequence(prefix);
+//   return prefix & ((1 << (7 - n_byte_sequence)) - 1);
+// }
+word payload_from_prefix(uint8 prefix)
+//@ requires 2 <= utf8_count(prefix) &*& utf8_count(prefix) <= 4;
+//@ ensures 0 <= result &*& result < mask_of(utf8_count(prefix));
+{
+  word n_byte_sequence = bytes_in_utf_8_sequence(prefix);
+  //@ nat k = n_byte_sequence == 2 ? N5 : n_byte_sequence == 3 ? N4 : N3;
+  //@ shiftleft_def(1, k);
+  //@ bitand_pow_nat(prefix, k);
+  //@ div_rem_nonneg(prefix, pow_nat(2, k));
+  // C++: `prefix & int` (uint8 promoted to int); the result converted to word.
+  return (word)(prefix & ((1 << (7 - n_byte_sequence)) - 1));
+}
+
+/*@
+// Bounds of the decoded value after j bytes of a count-byte sequence.
+fixpoint int c_bound(int count, int j) {
+  return count == 2 ? (j == 1 ? 32 : 2048) :
+         count == 3 ? (j == 1 ? 16 : j == 2 ? 1024 : 65536) :
+         (j == 1 ? 8 : j == 2 ? 512 : j == 3 ? 32768 : 2097152);
+}
+
+lemma void accumulate(int c, int b, int count, int j)
+  requires 2 <= count &*& count <= 4 &*& 1 <= j &*& j < count &*&
+           0 <= c &*& c < c_bound(count, j);
+  ensures 0 <= ((c * 64) | (b & 63)) &*& ((c * 64) | (b & 63)) < c_bound(count, j + 1);
+{
+  bitand_limits(b, 63, N6);
+  nat n = count == 2 ? N11 :
+          count == 3 ? (j == 1 ? N10 : N16) :
+          (j == 1 ? N9 : j == 2 ? N15 : nat_of_int(21));
+  if (count == 4 && j == 3) {
+    assert pow_nat(2, n) == 2097152;
+  }
+  bitor_limits(c * 64, b & 63, n);
+}
+@*/
+
+// word Utils::utf_8_to_16(const uint8* input, word length, uint16* output, word output_length) {
+word utf_8_to_16(const uint8 *input, word length, uint16 *output, word output_length)
+/*@ requires [?f]uchars((uint8 *)input, length, ?bs) &*& 0 <= length &*& length <= 0x10000000 &*&
+             output == 0 ? true : ushorts_(output, output_length, _) &*& 0 <= output_length; @*/
+/*@ ensures [f]uchars((uint8 *)input, length, bs) &*&
+            (output == 0 ? true : ushorts_(output, output_length, _)) &*&
+            -1 <= result &*& result <= length; @*/
+{
+  word size = 0;
+  for (word i = 0; i < length; )
+  /*@ invariant [f]uchars((uint8 *)input, length, bs) &*&
+                (output == 0 ? true : ushorts_(output, output_length, _)) &*&
+                0 <= i &*& i <= length &*& 0 <= size &*& size <= i; @*/
+  {
+    uint8 prefix = input[i];
+    //@ uchars_nth_limits((uint8 *)input, i);
+    word count = bytes_in_utf_8_sequence(prefix);
+    int c;
+#if defined(UTF8_OVERREAD_REVERTED)
+    // Before 07c24665.
+    if (prefix > MAX_ASCII) {
+#elif defined(UTF8_LENGTH_CHECK_REMOVED)
+    // Only the sequence-length part of the fix: the read past the end.
+    if (prefix > MAX_ASCII && (count < 2 || count > 4)) {
+      c = 0xfffd;
+      count = 1;
+    } else if (prefix > MAX_ASCII) {
+#else
+    if (prefix > MAX_ASCII && (count < 2 || count > 4 || count > length - i)) {
+      c = 0xfffd;
+      count = 1;
+    } else if (prefix > MAX_ASCII) {
+#endif
+      c = (int)payload_from_prefix(prefix);   // C++: implicit word -> int
+      for (word j = 1; j < count; j++)
+      /*@ invariant [f]uchars((uint8 *)input, length, bs) &*& 1 <= j &*& j <= count &*&
+                    0 <= c &*& c < c_bound(count, j); @*/
+      {
+        //@ accumulate(c, nth(i + j, bs), count, j);
+        c <<= UTF_8_BITS_PER_BYTE;
+        c |= input[i + j] & UTF_8_MASK;
+      }
+    } else {
+      c = prefix;
+    }
+    if (c < 0x10000) {
+      if (output) {
+        if (size >= output_length) return -1;
+        output[size] = (uint16)c;   // C++: implicit int -> uint16
+      }
+      size++;
+    } else {
+      // Surrogate pair.
+      if (output) {
+        c -= 0x10000;
+        if (size + 1 >= output_length) return -1;
+        //@ shiftright_div(c, N10);
+        //@ bitand_pow_nat(c, N10);
+        output[size] = (uint16)(0xd800 + (c >> 10));
+        output[size + 1] = (uint16)(0xdc00 + (c & 0x3ff));
+      }
+      size += 2;
+    }
+    i += count;
+  }
+  return size;
+}

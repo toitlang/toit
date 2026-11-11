@@ -1,0 +1,63 @@
+# Crafted-heap battery Wed Nov 11 15:58:48 CET 2026
+[base-noop] host:{(ran, exit 0) x0} asan:{(ran, exit 0) x0}
+[str-embedded-nul] host:{(ran, exit 0) x0} asan:{(ran, exit 0) x0}
+[str-high-bytes] host:{rejected x0} asan:{fatal x0}  <<< CRASH/INTERNAL
+[str-all-ff] host:{rejected x0} asan:{fatal x0}  <<< CRASH/INTERNAL
+[str-all-zero] host:{(ran, exit 0) x0} asan:{(ran, exit 0) x0}
+[str-invalid-utf8-lead] host:{rejected x0} asan:{fatal x0}  <<< CRASH/INTERNAL
+[str-utf8-truncated] host:{rejected x0} asan:{fatal x0}  <<< CRASH/INTERNAL
+[ba-content-ff] host:{(ran, exit 0) x0} asan:{(ran, exit 0) x0}
+[ba-content-mixed] host:{(ran, exit 0) x0} asan:{(ran, exit 0) x0}
+[str-finalizer-bit] host:{(ran, exit 0) x0} asan:{(ran, exit 0) x0}
+[str-class-edge-max] host:{Failed to start x0} asan:{Failed to start x0}
+[str-class-0] host:{Failed to start x0} asan:{Failed to start x0}
+[str-class-oob] host:{Failed to start x0} asan:{Failed to start x0}
+[str-class-50] host:{Failed to start x0} asan:{Failed to start x0}
+[ba-class-oob] host:{Failed to start x0} asan:{Failed to start x0}
+[ba-class-0] host:{Failed to start x0} asan:{Failed to start x0}
+[float-class-oob] host:{Failed to start x0} asan:{Failed to start x0}
+[float-class-largeint] host:{Failed to start x0} asan:{Failed to start x0}
+[float-finalizer] host:{Failed to start x0} asan:{Failed to start x0}
+[lazy-optlen-2] host:{Failed to start x0} asan:{Failed to start x0}
+[lazy-optlen-0] host:{Failed to start x0} asan:{Failed to start x0}
+[lazy-fieldcount-5] host:{Failed to start x0} asan:{Failed to start x0}
+[lazy-fieldcount-0] host:{Failed to start x0} asan:{Failed to start x0}
+[exc-optlen-5] host:{Failed to start x0} asan:{Failed to start x0}
+[exc-fieldcount-0] host:{Failed to start x0} asan:{Failed to start x0}
+[exc-fieldcount-9] host:{Failed to start x0} asan:{Failed to start x0}
+[str-optlen-huge] host:{Failed to start x0} asan:{Failed to start x0}
+[ba-optlen-big] host:{Failed to start x0} asan:{Failed to start x0}
+[lazy-as-mapstringify] host:{(ran, exit 0) x0} asan:{(ran, exit 0) x0}
+[lazy-as-tombstone] host:{(ran, exit 0) x0} asan:{(ran, exit 0) x0}
+[lazy-as-list] host:{Failed to start x0} asan:{Failed to start x0}
+[exc-as-list] host:{(ran, exit 0) x0} asan:{(ran, exit 0) x0}
+[exc-as-largearray] host:{(ran, exit 0) x0} asan:{(ran, exit 0) x0}
+[exc-as-cowbytearray] host:{(ran, exit 0) x0} asan:{(ran, exit 0) x0}
+[exc-as-rpcexception] host:{(ran, exit 0) x0} asan:{(ran, exit 0) x0}
+[exc-as-map] host:{Failed to start x0} asan:{Failed to start x0}
+[exc-as-task] host:{Failed to start x0} asan:{Failed to start x0}
+[exc-as-stack] host:{Failed to start x0} asan:{Failed to start x0}
+[str-as-instance] host:{Failed to start x0} asan:{Failed to start x0}
+[ba-as-list] host:{Failed to start x0} asan:{Failed to start x0}
+[lazy-field0-smi-huge] host:{INVALID x0} asan:{INVALID x0}
+[lazy-field0-smi-neg] host:{INVALID x0} asan:{INVALID x0}
+[lazy-field0-ref-str] host:{Failed to start x0} asan:{Failed to start x0}
+[lazy-field0-ref-odd] host:{Failed to start x0} asan:{Failed to start x0}
+[exc-field0-smi] host:{(ran, exit 0) x0} asan:{(ran, exit 0) x0}
+[exc-field0-ref-odd] host:{(ran, exit 0) x0} asan:{(ran, exit 0) x0}
+[exc-field0-ref-exc] host:{(ran, exit 0) x0} asan:{(ran, exit 0) x0}
+[exc-field1-smi] host:{(ran, exit 0) x0} asan:{(ran, exit 0) x0}
+[exc-field1-ref-str] host:{(ran, exit 0) x0} asan:{(ran, exit 0) x0}
+[exc-both-wrong] host:{(ran, exit 0) x0} asan:{(ran, exit 0) x0}
+[exc-field0-ref-self-msg] host:{(ran, exit 0) x0} asan:{(ran, exit 0) x0}
+[exc-share-oddballs] host:{(ran, exit 0) x0} asan:{(ran, exit 0) x0}
+[exc-field0-ref-str-oob] host:{(ran, exit 0) x0} asan:{(ran, exit 0) x0}
+[null-as-true] host:{(ran, exit 0) x0} asan:{(ran, exit 0) x0}
+[null-class-oob] host:{Failed to start x0} asan:{Failed to start x0}
+[null-as-instance] host:{Failed to start x0} asan:{Failed to start x0}
+[true-class-0] host:{Failed to start x0} asan:{Failed to start x0}
+[str-raw-header-0] host:{Failed to start x0} asan:{Failed to start x0}
+[str-raw-header-huge] host:{Failed to start x0} asan:{Failed to start x0}
+[exc-raw-header-huge] host:{Failed to start x0} asan:{Failed to start x0}
+[lazy-raw-header-neg-tag] host:{Failed to start x0} asan:{Failed to start x0}
+# done Wed Nov 11 15:59:03 CET 2026
