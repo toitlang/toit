@@ -2262,6 +2262,10 @@ PRIMITIVE(remove_finalizer) {
   // Objects on the program heap never get a finalizer (see add_finalizer),
   // and they must not be modified.
   if (object->on_program_heap(process)) return BOOL(false);
+  // Only instances get Toit finalizers (see add_finalizer). The same header
+  // bit marks the VM finalizer of an external byte array or string, which
+  // frees its memory: clearing it would leak the memory.
+  if (!is_instance(object)) return BOOL(false);
   bool result = object->has_active_finalizer();
   // We don't remove it from the finalizer list, so that must happen at the
   // next GC.
