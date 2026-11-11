@@ -9,7 +9,24 @@ dispatch through one jump table without a range check, `Env` owning the
 pystone 2.26 -> 1.90. One new trusted item, `view::proven_unreachable`
 (`requires false`).
 
-WALL_TABLE
+| Benchmark | f1 Ir | f2 Ir part 1 | f2 Ir now | Ir ratio part 1 -> now | f1 wall ms | f2 wall part 1 | f2 wall now | wall ratio part 1 -> now |
+|---|---|---|---|---|---|---|---|---|
+| richards | 1,024 M | 2,420 M | 2,097 M | 2.36 -> 2.05 | 10.99 | 21.02 | 18.58 | 1.91 -> 1.69 |
+| deltablue | 650 M | 1,751 M | 1,513 M | 2.69 -> 2.33 | 7.11 | 15.25 | 13.70 | 2.14 -> 1.93 |
+| pystone | 762 M | 1,724 M | 1,446 M | 2.26 -> 1.90 | 7.69 | 13.52 | 12.93 | 1.76 -> 1.68 |
+
+Ir: callgrind inside the interpreters (format 2 with TOIT_VERIFY=1, the
+verified loop untrusted programs get). Wall: time per iteration, minimum
+of 10 runs, both format-2 binaries in the same session (load 13 on 32
+cores, so about +-5 %); artifacts prims-integration/wall1.txt, bins/.
+Gates after part 2 (merged sandbox-integration f31fdca2): `verified/check.sh --tests` passes (spec 842, core 781 verified);
+ctest -j16 1160/1163 (version, reader, udp-reuse-port-test); untrusted suite
+(verified/tools/untrusted_suite.toit) 280 identical, the two known
+differences; prim_diff.sh 10 x 1,000,000 calls identical; fuzz
+(core_fuzz.toit, ASan build of 983886e2, launch filter, seed 13, 20 min):
+75,925 mutants, 10,925 accepted and run, no crash (prims-integration/fuzz2);
+compare_trace.toit --format 2 on the four trace programs: 2,053,625
+consecutive steps, each stopping at the environment-dependent primitive.
 
 Superinstruction candidates (most frequent opcode pairs, reference
 interpreter traces of the benchmarks with a harness without
