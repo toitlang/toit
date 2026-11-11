@@ -62,7 +62,8 @@ pub struct Regs {
 
 impl Machine {
     /// The machine the registers `r` describe: `self` with its register
-    /// fields replaced.
+    /// fields replaced, and the top frame's method the one in its frame
+    /// record (calls and returns do not store it into the machine).
     pub open spec fn with(&self, r: Regs) -> Machine {
         Machine {
             top: r.sp@ as usize,
@@ -71,6 +72,7 @@ impl Machine {
             ftop: r.fr@ as usize,
             rtop: (r.fr@ + self.fw) as usize,
             bci: r.ip@ as usize,
+            method: self.mem@[r.fr@ - FRAME_WORDS + FRAME_METHOD],
             ..*self
         }
     }
@@ -112,7 +114,7 @@ impl Machine {
             final(self).heap == old(self).heap,
     {
         let ghost m0 = *self;
-        proof { lemma_bci(p, *self); assert(p.max_height < 0x1_0000); }
+        proof { lemma_bci(p, *self); lemma_method(p, *self); assert(p.max_height < 0x1_0000); }
         let fw = self.rtop - self.ftop;
         self.fw = fw;
         if fw == 0 {
@@ -160,6 +162,7 @@ impl Machine {
         self.base = self.len - lim;
         self.ftop = self.mem.index(r.fr);
         self.rtop = self.ftop + self.fw;
+        self.method = self.mem.read(self.ftop - FRAME_WORDS + FRAME_METHOD);
         self.bci = r.ip.diff(p.code.cursor(0));
         proof { assert(*self =~= m0.with(r)); }
     }
@@ -171,7 +174,7 @@ impl Machine {
     #[inline(always)]
     pub fn sync_b(&mut self, r: Regs, p: &Program)
         requires
-            old(self).rok(r), old(self).with(r).stack_ok(), ipok(p, r),
+            old(self).rok(r), old(self).with(r).stack_ok(), ipok(p, r), FRAME_WORDS <= r.fr@,
             r.ip@ < p.code@.len(), p.code@.len() < 0x1000_0000,
         ensures *final(self) == old(self).with(r),
     {
@@ -182,6 +185,7 @@ impl Machine {
         self.base = self.len - lim;
         self.ftop = self.mem.index(r.fr);
         self.rtop = self.ftop + self.fw;
+        self.method = self.mem.read(self.ftop - FRAME_WORDS + FRAME_METHOD);
         self.bci = r.ip.diff(p.code.cursor(0));
         proof { assert(*self =~= m0.with(r)); }
     }
@@ -207,6 +211,18 @@ pub open spec fn gate_ok(p: &Program, m: Machine) -> bool {
 pub open spec fn ipok(p: &Program, r: Regs) -> bool {
     &&& r.ip.sid() == p.code.sid()
     &&& 0 <= r.ip@ <= usize::MAX
+}
+
+/// The top frame's method is the method word of its frame record (what
+/// `Machine::with` reads).
+pub proof fn lemma_method(p: &Program, m: Machine)
+    requires m.refines(p),
+    ensures m.ftop >= FRAME_WORDS, m.method == m.mem@[m.ftop - FRAME_WORDS + FRAME_METHOD],
+{
+    let n = m.g@.frames.len() as int;
+    lemma_rec_index(n, n - 1, FRAME_METHOD);
+    assert(rec(m.mem@, n - 1, FRAME_METHOD) == m.g@.frames[n - 1].method);
+    assert(FRAME_WORDS * (n - 1) + FRAME_METHOD == m.ftop - FRAME_WORDS + FRAME_METHOD);
 }
 
 /// In a well-formed state the bci is inside the bytecodes (and below 2^28).
@@ -525,7 +541,7 @@ pub fn op_load_smis_0(m: &mut Machine, r: &mut Regs, p: &Program, n: usize) -> (
             r.fp == old(r).fp, r.fr == old(r).fr, r.end == old(r).end, r.ip == old(r).ip,
             m.mem.sid() == m0.mem.sid(),
             m.mem@.len() == m0.mem@.len(),
-            m.len == m0.len, m.heap == m0.heap, m.globals == m0.globals, m.g == m0.g, m.method == m0.method,
+            m.len == m0.len, m.heap == m0.heap, m.globals == m0.globals, m.g == m0.g, m.method == old(m).method,
             m0.stack_ok(),
             m0.top >= m0.rtop + n,
             forall|j: int| 0 <= j < m0.rtop ==> #[trigger] m.mem@[j] == m0.mem@[j],

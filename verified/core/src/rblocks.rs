@@ -339,7 +339,6 @@ pub fn replace_r(m: &mut Machine, r: &mut Regs, p: &Program, t: usize, info: V2M
     let rr = r.fr.offset(-(FRAME_WORDS as isize));
     rr.write(FRAME_METHOD, t, &mut m.mem);
     r.sp = r.fp.offset(-(n as isize));
-    m.method = t;
     r.ip = p.code.cursor(info.entry as usize);
     let ghost nf = g0.frames.len() as int;
     let ghost g1 = State2 {

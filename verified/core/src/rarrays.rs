@@ -677,7 +677,6 @@ pub fn ret_r(m: &mut Machine, r: &mut Regs, p: &Program, w: usize, Ghost(v): Gho
     }
     let rec_ = r.fr.offset(-(FRAME_WORDS as isize));
     let ret = rec_.read(FRAME_RET, &m.mem);
-    let method = crec.read(FRAME_METHOD, &m.mem);
     let base = crec.read(FRAME_BASE, &m.mem);
     proof {
         assert(rec(m0.mem@, n - 1, FRAME_RET) == g0.frames[n - 1].ret);
@@ -696,7 +695,6 @@ pub fn ret_r(m: &mut Machine, r: &mut Regs, p: &Program, w: usize, Ghost(v): Gho
     r.fp = r.end.offset(-(base as isize));
     r.fr = rec_;
     r.ip = p.code.cursor(ret);
-    m.method = method;
     let ghost g1 = State2 {
         stack: g0.stack.subrange(0, sp::top(g0).base as int).push(v),
         frames: g0.frames.drop_last(),
@@ -758,9 +756,15 @@ pub fn op_primitive(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode
     let index = code_u16(p, bci + 2) as u16;
     proof {
         assert(sp::step(ap, g) == Outcome2::Primitive(g, module, index)) by { reveal(sp::step); }
-        assert(ap.methods[m.method as int] == method_info(p.methods@[m.method as int], p.max_height));
+        crate::regs::lemma_method(p, w0);
     }
-    let arity = p.methods.at(m.method).arity as usize;
+    // The method of the top frame: its frame record's.
+    let method = r.fr.offset(-(FRAME_WORDS as isize)).read(FRAME_METHOD, &m.mem);
+    proof {
+        assert(method == w0.method);
+        assert(ap.methods[method as int] == method_info(p.methods@[method as int], p.max_height));
+    }
+    let arity = p.methods.at(method).arity as usize;
     // A core primitive the policy resolves to the VM's own entry with the
     // method's arity: its Rust port, if there is one.
     if module == 0 && (index as usize) < env.core_arities.len()
