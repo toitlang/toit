@@ -18,6 +18,7 @@
 //! verified/layout_check.cc).
 
 use alloc::string::String;
+#[cfg(feature = "std")]
 use core::ffi::c_char;
 use toit_verified_core::ffi::ProgramTables;
 use crate::clock::Clock;
@@ -128,6 +129,7 @@ pub unsafe extern "C" fn toit_vmverify_verify(input: *const VerifyInput, result:
 unsafe fn run(input: &VerifyInput) -> (verify::Verdict, usize, u64) {
     let t = Clock::start();
     let converted = from_vm::convert(&*input.program, &arities(input));
+    mem_trace!("converted (roots, globals, literals, primitive table)");
     let convert_ns = t.ns();
     match converted {
         Err(e) => {
@@ -186,8 +188,13 @@ pub unsafe extern "C" fn toit_vmverify_canonical(input: *const VerifyInput, path
     }
 }
 
+// The layout check's tables (verified/layout_check.cc) exist on hosts only
+// (`std`): the check does not run for devices, and as exports of the static
+// library their names would stay in the firmware's merged string section,
+// which the linker cannot garbage-collect.
 macro_rules! layout_entries {
     ($($name:expr => $value:expr),* $(,)?) => {
+        #[cfg(feature = "std")]
         const LAYOUT: &[(&[u8], usize)] = &[$(($name, $value),)*];
     };
 }
@@ -225,6 +232,7 @@ layout_entries!(
 );
 
 /// The number of layout entries (for verified/layout_check.cc).
+#[cfg(feature = "std")]
 #[no_mangle]
 pub extern "C" fn toit_vmverify_layout_count() -> usize {
     LAYOUT.len()
@@ -234,6 +242,7 @@ pub extern "C" fn toit_vmverify_layout_count() -> usize {
 ///
 /// # Safety
 /// `name` and `value` must be valid for writes.
+#[cfg(feature = "std")]
 #[no_mangle]
 pub unsafe extern "C" fn toit_vmverify_layout_entry(i: usize, name: *mut *const c_char, value: *mut usize) -> bool {
     match LAYOUT.get(i) {
@@ -249,6 +258,7 @@ pub unsafe extern "C" fn toit_vmverify_layout_entry(i: usize, name: *mut *const 
 /// The arity of primitive `index` of `module` in the verifier's generated
 /// table (v2::prim_arity::PRIM_TABLE), or -1: compared against the VM's
 /// table by the layout check.
+#[cfg(feature = "std")]
 #[no_mangle]
 pub extern "C" fn toit_vmverify_generated_arity(module: usize, index: usize) -> isize {
     let table = toit_spec::v2::prim_arity::PRIM_TABLE;

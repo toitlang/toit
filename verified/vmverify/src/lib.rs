@@ -48,6 +48,14 @@ macro_rules! text {
     }};
 }
 
+/// Memory trace point (hosts: TOIT_VERIFY_MEM=1, counting.rs).
+macro_rules! mem_trace {
+    ($phase:literal) => {
+        #[cfg(feature = "std")]
+        crate::counting::trace($phase);
+    };
+}
+
 pub mod clock;
 #[cfg(feature = "std")]
 pub mod counting;

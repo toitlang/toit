@@ -94,11 +94,15 @@ set(TOIT_VERIFIED_CORE_ENABLED ON CACHE INTERNAL "")
 set(TOIT_VERIFIED_CORE_INFER_ENABLED ${TOIT_VERIFIED_CORE_INFER} CACHE INTERNAL "")
 set(TOIT_VERIFIED_CORE_CHECKED_LOOP_ENABLED ${TOIT_VERIFIED_CORE_CHECKED_LOOP} CACHE INTERNAL "")
 
-set(VCORE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/core")
+# The verified/ sources the Rust library is built from: this directory, or
+# a patched copy for measurements (verified/vmverify/README.md, "Device
+# size").
+set(TOIT_VERIFIED_CORE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}" CACHE PATH "The verified/ sources of the Rust library")
+set(VCORE_DIR "${TOIT_VERIFIED_CORE_SOURCE_DIR}/core")
 # The VM links one Rust static library: verified/vmverify, which contains
 # the core and the format-2 structural verifier (verified/spec), so that
 # the binary has a single Rust runtime (vmverify/README.md).
-set(VMVERIFY_DIR "${CMAKE_CURRENT_SOURCE_DIR}/vmverify")
+set(VMVERIFY_DIR "${TOIT_VERIFIED_CORE_SOURCE_DIR}/vmverify")
 set(VCORE_TARGET_DIR "${CMAKE_BINARY_DIR}/verified_core")
 # Devices (embedded builds): no_std, the allocator and panic handler of the
 # VM (vmverify `device-runtime`), Cargo profile `device` (panic = abort, LTO).
@@ -126,7 +130,7 @@ set(VCORE_LIB "${VCORE_LIB_DIR}/${CMAKE_STATIC_LIBRARY_PREFIX}toit_vmverify${CMA
 file(GLOB_RECURSE VCORE_SOURCES CONFIGURE_DEPENDS
   "${VCORE_DIR}/src/*.rs"
   "${VMVERIFY_DIR}/src/*.rs"
-  "${CMAKE_CURRENT_SOURCE_DIR}/spec/src/*.rs")
+  "${TOIT_VERIFIED_CORE_SOURCE_DIR}/spec/src/*.rs")
 
 if (TOIT_VERIFIED_CORE_INFER)
   list(APPEND VCORE_FEATURES infer)
@@ -146,7 +150,7 @@ add_custom_command(
           ${VCORE_CARGO_TARGET_ARGS} ${VCORE_FEATURE_ARGS}
   DEPENDS ${VCORE_SOURCES}
           "${VCORE_DIR}/Cargo.toml" "${VMVERIFY_DIR}/Cargo.toml" "${VMVERIFY_DIR}/Cargo.lock"
-          "${CMAKE_CURRENT_SOURCE_DIR}/spec/Cargo.toml"
+          "${TOIT_VERIFIED_CORE_SOURCE_DIR}/spec/Cargo.toml"
   WORKING_DIRECTORY "${VMVERIFY_DIR}"
   COMMENT "Building the verified interpreter core and verifier (cargo)"
   USES_TERMINAL

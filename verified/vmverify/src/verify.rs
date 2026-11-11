@@ -108,7 +108,8 @@ impl<'a> MapOracle for Timed<'a> {
 /// `infer` feature, hosts); without both the program is rejected.
 pub fn verify(c: &mut Converted, trusted: bool, cert: Option<&[u8]>) -> Verdict {
     let global_count = c.globals.len() as u64;
-    let prim_arity = c.prim_arity.clone();
+    // Taken, not copied: the conversion does not need it any more.
+    let prim_arity = core::mem::take(&mut c.prim_arity);
     let globals = core::mem::take(&mut c.globals);
     let (p, objects) = c.split();
     let p = &p;
@@ -120,6 +121,7 @@ pub fn verify(c: &mut Converted, trusted: bool, cert: Option<&[u8]>) -> Verdict 
     let t = Clock::start();
     let (heap_ok, _) = heap_check::x_loaded_ok_stream(p, objects, global_count, &globals);
     let complete = objects.complete();
+    mem_trace!("heap checked");
     let heap_ns = t.ns();
     if !heap_ok || !complete {
         let message = match &objects.error {
@@ -132,12 +134,14 @@ pub fn verify(c: &mut Converted, trusted: bool, cert: Option<&[u8]>) -> Verdict 
     }
     objects.release();
     drop(globals);
+    mem_trace!("work list released");
     let mut v = match cert {
         Some(cert) => {
             let t = Clock::start();
             // Proven: true only if a certificate with these trusted fields
             // is accepted.
             let (ok, at) = cert::verify_shipped(p, cert, global_count, &prim_arity, trusted);
+            mem_trace!("shipped certificate checked");
             let check_ns = t.ns();
             let mut v = if ok {
                 Verdict::new(ACCEPTED, String::new())
