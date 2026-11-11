@@ -25,6 +25,9 @@ RPC-SERVICES-CLOSE-RESOURCE_ /int ::= 303
 // Internal limits.
 RANDOM-ID-LIMIT_       /int ::= 0x3fff_ffff
 RESOURCE-HANDLE-LIMIT_ /int ::= 0x1fff_ffff  // Will be shifted up by one.
+// Open clients a sandboxed (untrusted) process may have with a provider
+// process.
+MAX-UNTRUSTED-CLIENTS_ /int ::= 32
 
 /**
 Returns the policy kind of the process with the given $pid, or -1 if
@@ -786,6 +789,13 @@ class ServiceManager_ implements SystemMessageHandler_:
     service := provider._validate_ uuid major minor
     if not provider.accepts-untrusted-clients and pid != Process.current.id:
       if (process-policy_ pid) == ContainerService.POLICY-UNTRUSTED: throw "PERMISSION_DENIED"
+
+    // Every open client takes memory in this process until the client
+    // closes it, so a sandbox may only have a bounded number of them.
+    existing/Set? ::= clients-by-pid_.get pid
+    if existing and existing.size >= MAX-UNTRUSTED-CLIENTS_
+        and broker.RpcBroker.is-untrusted_ pid:
+      throw "QUOTA_EXCEEDED"
 
     clients/Set ::= clients-by-pid_.get pid --init=(: {})
     if clients.is-empty and pid != Process.current.id:
