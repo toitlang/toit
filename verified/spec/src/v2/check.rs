@@ -435,14 +435,6 @@ pub open spec fn kind_repr(k: Kind) -> bool {
     }
 }
 
-pub proof fn lemma_representable(k: Vec<XKind>)
-    ensures representable(kv(k)),
-{
-    assert forall|i: int| 0 <= i < kv(k).len() implies kind_repr(#[trigger] kv(k)[i]) by {
-        assert(kv(k)[i] == k@[i]@);
-    }
-}
-
 pub proof fn lemma_chain_repr(nodes: Seq<XNode>, i: int)
     ensures representable(chain(nodes, i)),
     decreases i,
