@@ -100,7 +100,8 @@ tool never guesses):
 | `@expand-typedef T` | the typedef written as the type it stands for on the rendering's target (`uhalf_word`: unsigned int on LP64, unsigned short on ILP32) |
 | a default argument (`CXXDefaultArgExpr`) | its value written out; literals only (the expression is spelled in the callee's file) |
 | a call of an `@overloaded` member | named by the declared parameter types of the member it refers to (in its class or out of line), not by the argument types (which differ per target: a literal is `int` = `word` on ILP32) |
-| `@render ... truncating` | an implicit word-to-int conversion is VeriFast's truncating cast (the modular conversion GCC and Clang define and C++20 standardizes); only for code that checks the round trip (the int arguments of ARGS) |
+| `@render ... truncating` | an implicit word-to-int conversion is VeriFast's truncating cast (the modular conversion GCC and Clang define and C++20 standardizes); only for code that checks the round trip (the int arguments of ARGS). Also uword-to-word and uint64-to-int64 (the decoder's cardinals: `word length = read_cardinal()`, checked for the sign and against what is left). VeriFast knows nothing of the value of such a cast (not even `0` to `0`: `truncate_zero` in the decoder), so the code must check it |
+| `switch (c) { case V: ... default: ... }` | written as is: the labels (values from the constant table), a label's statement and the statements up to the next label, fall-through, `break` |
 | `a op= b` whose computation type is not a's (`cursor_ += sizeof(uint32)`: an unsigned long sum for a word) | `a = (A)((C)a op b)`: the conversions C++ makes, written; `a` must be a variable or a field chain (evaluated twice) |
 | `@modular-arguments C::C` | the implicit integral conversion of a constructor argument to an unsigned parameter is VeriFast's truncating cast (the modular conversion C++ defines; HeapTagScope's custom tags are negative numbers in a uword) |
 | Clang's `__size_t` (the type of sizeof) | `size_t` |
@@ -143,10 +144,10 @@ gives. Not proposed; reporting the front end's missing casts upstream is.
 
 ## Status
 
-`run.sh`: 9 sidecars (one the translator's self-test), 140 rendered functions (18 contract-only), proved
-for LP64 and ILP32; 20 reverted-bug or contract mutants and 2 drift tests;
-87 checks, about 350 CPU-seconds (30 s wall on 16 idle cores, 80 s on the
-loaded machine; each proof 0.1-4 s, the encoder 10 s). Lines: `metrics.sh` (C++ = the
+`run.sh`: 10 sidecars (one the translator's self-test), 169 rendered functions (19 contract-only), proved
+for LP64 and ILP32; 29 reverted-bug or contract mutants and 2 drift tests;
+111 checks, about 570 CPU-seconds (65 s wall on 16 loaded cores; each
+proof 0.1-4 s, the encoder 8 s, the decoder 9-17 s). Lines: `metrics.sh` (C++ = the
 rendered functions' lines; annotations among them; then the hand-written C
 and annotations of the verbatim sections: trusted prototypes, predicates,
 lemmas).
@@ -157,6 +158,7 @@ lemmas).
 | Blob decoding (`blob/byte_content.render`) | Object::byte_content (the recursive 5-argument one, the 4-argument one, the Blob one), Blob ctor | verified: a successful result lies in the content of ONE live string or byte array (internal, or raw external: never a proxy's struct), a string for STRINGS_ONLY; recursion depth bounded by MAX_BYTE_CONTENT_DEPTH; heap read-only | the program's class-id roots (contract only) | 65 / 30 / 1 / 0 | 357d1127 (#3373): without the depth limit the recursive call fails at `depth + 1 <= 8`; without the slice's `to <= length`: the pointer leaves the blob |
 | MutableBlob decoding (`blob/mutable_byte_content.render`) | Object::mutable_byte_content (5-argument, 4-argument, MutableBlob), MutableBlob ctor; model: Instance::at_put (with the heap update), HeapObject::_at_put, on_program_heap, heap growth and blob hole lemmas | verified: a successful result lies in the content of ONE live byte array (internal or raw external) outside the program heap; the heap only grows (the copy-on-write branch allocates, copies the immutable content with a legal memcpy and stores the new backing and `true`); recursion bounded | the allocator (`Process::allocate_byte_array`: a fresh byte array of the asked length outside the program heap, nothing else changed), `Process::on_program_heap` (an address range: `in_program_heap`), the true object is a heap object, the write barrier (card table outside the model), Error::from and the error roots | 76 / 54 / 4 / 2 | 357d1127 reverted here too: the recursive call; without the program-heap check: `in_program_heap == false`; without the external tag check (both decoders): `blob_ok` |
 | Message encoder (`encoder/`) | encode_any (all branches), encode_array, encode_list, encode_map, encode_copy (inline, out-of-line copy with its malloc and terminator), encode_byte_array (transfer, deduplication), reserve_external, is_too_large, size, total_size, encoding_for_size, encoding_tison, the writers write_uint8/cardinal/pointer/uint32/uint64, TisonEncoder::encode and payload_size, NestingTracker ctor/dtor; the cardinal's byte bound (`cardinal.c`, Z3) | verified: memory safety (reads inside objects, blob copies inside the blob found by the proven byte_content, writes inside the buffer, the tables copied_/transferred_ written below MESSAGING_ENCODING_MAX_EXTERNALS), no overflow or lossy conversion on either width (cursor_ + external_bytes_ stays below the limit plus ENC_SLACK = 32), heap read-only | **ONE assumption: `two_pass_room`** (below); contract only: `Utils::is_valid_utf_8` (reads the bytes given), `Process::policy`, `PrimitivePolicy::restricts_messaging`, HeapTagScope, `ByteArray::has_owned_external_memory` (trusted rendering), the program's class-id roots, `bit_cast`; the malloced copies are leaked into the table (ownership not modelled) | 334 / 230 / 51 / 116 | f708ad5d: count (underflow at `to - from`), read past the backing (loop bound), map past the backing; the 32-bit size fix weakened in encode_copy and in the transfer (the size bound fails; on ILP32 the sum overflows); one reservation too many (the table bound fails); the terminator read from the content (memcpy past the blob) |
+| Message decoder (`decoder/`) | TisonDecoder::decode (tison_decode's untrusted input), MessageDecoder::decode (IPC), decode_any (the switch, every tag), decode_string, decode_byte_array (both inline: copies; out of line: IPC blocks), decode_array, decode_map, decode_double, decode_large_integer, read_uint8/cardinal/uint32/uint64/pointer, register_external, success, decoding_tison, overflown, remaining, externals_count, mark_malformed, mark_allocation_failed, NestingTracker; the digits' bound (`radix.c`, Z3); model: Array::at_put, Instance::at_put(Smi*), Smi::zero, the allocator's contracts | verified: for any input bytes (TISON) every read is inside the input (past the end the readers return 0), the cursor stays below the length + 16 on both widths, every length is checked against what is left before the copy or the allocation of that size (`length <= cap - c`, asserted), the recursion is bounded (64), a cardinal fits the word, the externals table is written below its bound (the FATAL), the heap only grows (new objects; the new array's elements and the map's fields written), a success is a good reference and TISON consumed its input exactly; a failure leaves a well-formed heap | TISON: none beyond the model and the allocator; IPC: **two named assumptions, `ipc_room` and `ipc_external`** (below); contract only: the allocator (CONTRACTS.toml, C++-only contracts), `Utils::is_valid_utf_8`, `bit_cast`, `fail`, `Array::max_length_in_process`, `Smi::from` (now trusted: the modular shift of a negative value) | 281 / 274 / 31 / 133 | ten checks taken out, each rejected on both widths: the length checks before the inline string and byte-array copies, before the array and map allocations, the nesting limit (#3362), the fixed-size readers' bound, read_cardinal's word-size check (#3362) and digit check (new), the externals table bound |
 | Stack growth (`grow/`) | toit_v2_grow_stack, v2_process, Stack::v2_copy_to | verified against gc_grow_stack (no precondition on `needed`: the C++ checks it) | v2_gc (preserves the abstraction), allocate_stack, Stack header accessors, Task::stack/set_stack, max_length (contract only) | 93 / 72 / 17 / 86 | the bound check taken out: fails at the cast; with the cast exact: at the sum |
 | Primitive `string_write_to_byte_array` (`prims/`) | the primitive with the ARGS/FAIL expansion (Blob and MutableBlob decoding by the proven byte_content / mutable_byte_content, word arguments), Blob/MutableBlob constructors and accessors | verified: the primitive heap contract in VeriFast terms (the heap only grows, objects keep class, length and external address), the copy inside the two contents (source: a string or byte array; destination: a writable byte array outside the program heap; the source range survives the destination's copy-on-write), legal memmove | none beyond the model and blob units | 21 / 59 / 7 / 22 | af4ba7ab: memcpy fails at its precondition; verifies with the two byte arrays assumed distinct |
 | Primitive bitmap `byte_zap` (`prims/byte_zap.render`) | the primitive with the ARGS expansion (MutableBlob by the proven decoder; the int argument with its round-trip check, `truncating`), MutableBlob ctor and accessors | verified: the primitive heap contract, the memset covers exactly the destination's range in a writable byte array, a smi result | `Primitive::return_not_a_smi` (an error value) | 11 / 18 / 7 / 3 | one byte past the end: the memset fails |
@@ -169,7 +171,8 @@ Not attempted, in order of exposure, with what blocks each:
 |---|---|---|
 | the two-pass assumption of the encoder, proved | a ghost encoding function (fixpoint over the heap and the encoder state: cursor, externals, transfers, the early stops) shown to be what both passes compute, the write pass ahead by TISON's payload cardinal | 5-7 days |
 | take_buffer, the destructor, encode_bytes_external, encode_rpc_reply_external, encode_arguments, encode_bundles | trusted callers (C or the boot), not reachable with untrusted data; the copied_ table would need its ownership modelled (the malloced copies) | 1-2 days |
-| MessageDecoder (messaging.cc) | Next. The untrusted input is TISON (tison_decode: a blob of at most MAX_BLOB bytes); the IPC format is the encoder's output (decoding it relies on the encoder's well-formedness, a second assumption). Plan: the TISON path (decode, decode_any, decode_string/array/map/byte_array/double/large_integer inline, read_uint8/cardinal/uint32/uint64, remaining, overflown) with `-allow_dead_code` for the IPC branches; a predicate over `[f]uchars(buffer_, size_)` and the cursor (it passes size_ only by the reads after a failure: each failure stops the decoding, so `cursor_ <= size_ + 16`); allocation contracts to add to the model (Process::allocate_string, ObjectHeap::allocate_array/instance/double/large_integer, Array::at_put with the heap update; allocate_byte_array exists), all `grows(...)`; the postcondition: the heap grows, a success is a good reference. Reviewed by hand meanwhile: every TISON read is checked against size_ (remaining() before each inline copy, `next <= size_` in the fixed-size reads, the shift bound of read_cardinal), every count against remaining() before the allocation, nesting at 64, the half-built map's fields are null (allocate_instance) so a failure leaves the heap well-formed: no bug found | 5-7 days |
+| the decoder's callers: tison_decode (the Blob argument is the content of a heap object, which the allocations must not touch: the allocator's contracts over `heap_holes`), task_receive_message, main_arguments, spawn_arguments (the externals' ownership when an allocation fails: remove_disposing_finalizers clears the finalizer bits, a header change the model's `grows` excludes; a malformed message is treated as decoded, "Findings"), decode_external_data/decode_rpc_request_external (ExternalSystemMessageHandler: `int` truncations of cardinals, the inline copy's length unchecked against the message), deallocate | the holes form of the allocator's contracts; the finalizer bit in the model; the message's blocks as a ghost list shared with the encoder | 2-3 days |
+| the IPC assumptions (`ipc_room`, `ipc_external`), proved | the encoder's ghost encoding (the two-pass assumption's) as the decoder's input: decoding it reads what the encoding wrote | with the two-pass proof, 3-4 days more |
 | ProgramOrientedEncoder / EncodeVisitor (encode_error, encoder.cc) | the object encoder's buffer (bounded, no two-pass), the program model (class names, method tables) for the trace | 4-5 days |
 | toit_v2_allocate_instance/double/array/exception (interpreter_v2.cc), the epoch | `v2_allocate` takes a lambda: a rendering rule for closures (a struct of the captures and a function); the clauses are in CONTRACTS.toml, Verus side checked | 2-3 days |
 | toit_v2_call_primitive, toit_v2_lookup_primitive (after core/trusted-integration's leaner call) | non-constant globals (`Flags::primitives`), the policy table, the retry loop around the GC | 2-3 days |
@@ -200,15 +203,125 @@ is proved: the writers keep `cursor_ + external_bytes_` below the limit
 plus ENC_SLACK on both widths (the predicate `enc_out`), and every write
 goes to `uchars_(buffer, cap)` at the cursor.
 
+### The decoder's assumptions
+
+The untrusted path, TISON (`tison_decode`: the bytes of a blob, `size_` its
+length), needs none: every reader checks the cursor against `size_`. The
+inter-process path decodes a message the encoder wrote, with `size_` set
+to INT_MAX: the readers' checks do not bound the reads by the message. Two
+bodiless lemmas (CONTRACTS.toml `[[assumption]]`, checked by
+contract_check.toit like `two_pass_room`) state what that path relies on:
+
+* `ipc_room(d, n)`: a read of n bytes at the cursor lies in the message
+  (`[_]ipc_msg(d, b, cap)`, an abstract predicate of the decoder and its
+  message). Used at each read of the IPC path, with the read's size.
+* `ipc_external(d, data, length)`: the pointer just read is a block the
+  message owns (`msg_block`), of the length before it, below MAX_BLOB; the
+  new external string or byte array takes it, or the message keeps it when
+  the allocation fails (the contracts of allocate_external_string and
+  allocate_external_byte_array).
+
+Why they hold: the encoder writes the message, the decoder reads it in the
+same VM with the same tags and limits (nesting 8 against 64, the smi
+range, array and map lengths: since this branch the encoder refuses arrays
+and maps longer than a process heap holds, "Findings"), so it reads
+exactly what was written; each out-of-line block is written once, after
+reserve_external (at most 8). Proving them takes the encoder's ghost
+encoding (the two-pass assumption's) as the decoder's input. Like
+`two_pass_room`, each is used only at the reads it describes (an
+assumption with a large `n` would give false: review the calls, they are
+in the reader functions and the two out-of-line branches).
+
+The proof's model of the input is a chunk separate from the heap. For
+tison_decode the bytes are the content of a heap object (Blob): the
+allocations must leave it alone, which the allocator does (it only adds
+objects) but which the contracts state over `heap(objs, H)` as a whole;
+the primitive's glue is not rendered yet ("Not attempted").
+
 Past bugs of the upstream series #3361-#3382 in the covered code are
 mutants (byte_content depth 357d1127, the encoder bounds f708ad5d, the
-UTF-8 bounds 07c24665, the string_write memmove af4ba7ab); those in the
-units not attempted (decoder nesting/cardinal bounds of #3362, encoder
-recursion and buffer overflow of #3373/#3374, encoding size truncation of
-#3378, malformed system messages of #3381) become mutants with them.
+UTF-8 bounds 07c24665, the string_write memmove af4ba7ab, the decoder's
+nesting and cardinal shift of #3362); those in the units not attempted
+(encoder recursion and buffer overflow of #3373/#3374 are in the encoder
+proof's checks but have no mutant of their own, encoding size truncation
+of #3378, malformed system messages of #3381) become mutants with them.
 
 
 ## Findings
+
+Wave 3 (the decoder):
+
+* **The encoders sent arrays the receiver cannot decode, and the receiver
+  then leaked the message's out-of-line data** (FIXED here, src/messaging.cc
+  encode_array, encode_map; b609da9f). An array of a program heap can be
+  longer than a process heap holds (format-2 images bound an array only by
+  the image; the format-1 snapshot reader by the program heap's blocks,
+  4092 against 4082 elements on 64-bit, 1020 against 998 on 32-bit). The
+  IPC decoder rejects such an array (`length > max_length_in_process()`)
+  as malformed, and task_receive_message (likewise main_arguments,
+  spawn_arguments) only distinguishes allocation failures: a malformed
+  message is delivered as decoded, its value 0 (the decoder's null is the
+  smi 0), and free_data_but_keep_externals frees the buffer but not the
+  out-of-line blocks after the array (malloced copies, transferred
+  external byte arrays: up to 8 per message, within the sender's message
+  quota). So a crafted sandboxed program could make the system process
+  leak memory with every message. Fix: the encoders refuse an array (list,
+  slice) longer than `Array::max_length_in_process()` and a map of more
+  than half that, so everything they produce decodes (which the decoder's
+  IPC assumption needs). Reproducer: tests/ctest/message-oversized-array-
+  test.cc (an over-long array built outside the heap; fails without the
+  fix). Not reproduced end to end: making such a literal needs an image
+  editor that grows program-heap blocks (tools/heapcraft.toit keeps block
+  counts). Upstream master: the same encoder, the same decoder check and
+  the same primitive (reachable there only with a crafted snapshot, as
+  upstream runs no untrusted programs). The primitive's treatment of a
+  malformed message stays (now unreachable from the encoder): a draft below.
+* **read_cardinal dropped the bits of a digit beyond the word** (FIXED
+  here, src/messaging.cc; 965bff66). #3362 bounded the number of digits
+  (shift < WORD_BIT_SIZE) but not their bits: the last digit at shift 63
+  (28 on 32-bit) was shifted out, so the TISON cardinal 2^64 + 5 decoded
+  as 5 and 2^64 as an array length of 0 (silently, as a valid message).
+  VeriFast refuses the unsigned overflow of `digit << shift`; the fix
+  checks `digit > (UINTPTR_MAX >> shift)` (malformed), and the proof shows
+  the sum then stays in the word (`radix.c`). Not memory-unsafe (every
+  length is checked afterwards) but a second encoding of every value.
+  Regression test: tests/tison-cardinal-overflow-test.toit (both widths).
+  Upstream master: worse, no bound at all (`result += ... << shift` with a
+  shift up to the input's length: undefined behaviour), as before #3362.
+* **TISON smis are not portable from 64 to 32 bits** (NOT FIXED; a
+  functional bug, not a memory-safety one). The encoder writes every smi
+  as TAG_POSITIVE_SMI/TAG_NEGATIVE_SMI; on a 64-bit VM that is any value
+  below 2^62. A 32-bit VM rejects one above its smi range (2^30) as
+  malformed, and read_cardinal cannot even read one above 2^32. So TISON
+  made on a 64-bit host (assets of host tools) with an integer such as a
+  millisecond timestamp (1.7 * 10^12) fails to decode on an ESP32 with
+  WRONG_OBJECT_TYPE. Fix proposal: decode an out-of-range smi tag as a
+  large integer (a 64-bit cardinal reader for the two smi tags), or encode
+  values outside the 32-bit smi range as TAG_LARGE_INTEGER. Upstream
+  master has it too (with the undefined shift).
+* **TISON large integers in the smi range are not canonical** (NOT FIXED,
+  minor). TAG_LARGE_INTEGER with the value 5 decodes to a LargeInteger 5:
+  `==`, hashing and maps treat it as 5, `identical x 5` is false (reproducer
+  /home/flo/work/opentoit-sandbox-artifacts/annotated-cxx/repro/tison-large-
+  integer-small.toit). The encoder never writes one; a fix would return a
+  smi when the value fits.
+* **MessageDecoder::decode_process_message decodes without a process**
+  (latent, NOT FIXED). The scheduler decodes a TERMINATED system message
+  itself when there is no boot process, with `MessageDecoder(null,
+  buffer)`: for anything but a smi the decoder dereferences the missing
+  process or program (the proof's contracts require both). Any
+  unrestricted process can send TERMINATED to -1 with any content, but the
+  window is empty in practice: when the boot process terminates, its own
+  TERMINATED message makes the scheduler terminate the VM (tried: a child
+  outliving the boot program never runs again). Fix proposal (draft): check
+  the first byte for a smi tag before decoding.
+* No other bug in the decoder: every TISON read is bounded, every length
+  is checked before the copy or allocation of that size, the half-built
+  map's fields are null so a failure leaves the heap well-formed, the
+  externals table is bounded (FATAL beyond 8, as the encoder reserves at
+  most 8).
+
+Waves 1-2:
 
 * **The Verus contract of `gc_grow_stack` lacked a bound on `needed`**
   (found by both pilots; FIXED by `core/trusted-integration`, merged).
@@ -303,6 +416,31 @@ Drafts, not filed (no issue or PR has been opened).
   chunk before its first `&` in the code is impossible; the prelude has no
   `u_llong_integer`-to-`chars` auto lemma (encoder/llong.gh adds it);
   `lemma_auto` with a body is a parse error in a .c file (fine in a .gh).
+  Wave 3: with the default prover (Redux) `is_smi_w(0)` (a fixpoint
+  `w % 2 == 0`) is not provable, with Z3 it is (the decoder runs with
+  Z3); a truncating cast has no known value even in range
+  (`/*@truncating@*/(word)u` with `u <= INTPTR_MAX` is not known to be
+  `u`; `truncate_signed_def` with a Z gives single values, e.g. 0); the
+  elements of a `uchars` chunk are not known to be bytes (a lemma per
+  read, `uchars_nth_limits`).
+
+Wave 3 (the decoder; upstream master's messaging.cc has all of them):
+
+* The encoders' arrays and maps longer than a process heap holds
+  (b609da9f): the two checks in encode_array and encode_map ("Findings");
+  upstream reaches it only with a crafted snapshot. With them, the
+  task_receive_message/main_arguments/spawn_arguments handling of a
+  malformed message (delivered as decoded, the externals after the error
+  leaked) is unreachable; a defensive fix would drop such a message with
+  `remove_disposing_finalizers()` and the message's own deallocation.
+* read_cardinal (965bff66 here): upstream shifts by any amount (undefined
+  behaviour for long cardinals) and drops high bits; #3362's digit count
+  check plus this branch's digit check.
+* TISON smis between 2^30 and 2^62 written on 64-bit fail to decode on
+  32-bit (and 32-bit large integers in the 64-bit smi range decode as
+  non-canonical large integers on 64-bit): "Findings", not fixed here.
+* decode_process_message without a process: check for a smi tag first
+  (latent).
 
 ## One contract, two renderings
 
@@ -319,6 +457,9 @@ clause one side lacks and is reported. The bridges between the views,
 `heap(objs, H)` at `(uword)o - 1`), are written there once: **the
 remaining reviewed assumption** of the seam. The allocation and primitive
 contracts have their Verus side checked; their C++ is not rendered yet.
+Contracts between two pieces of C++ (the allocator's, Array::at_put, used
+by the decoder) are in the table too, with an empty Verus side: only the
+VeriFast prototype (model/objects.gen.h) is compared.
 
 ## One layout table
 
@@ -379,23 +520,29 @@ model is revised.
   (implementation-defined conversions), `Double::value`,
   `LargeInteger::value`, `unsigned_cast`, the Stack header and Task
   accessors, `v2_gc`, the allocator (`allocate_stack`,
-  `allocate_byte_array`), `Process::on_program_heap`/`true_object`, the
-  write barrier, `Error::from` and the error roots, the encoder's
-  `two_pass_room` (the one named assumption, CONTRACTS.toml),
-  `Utils::is_valid_utf_8`, the policy reads, HeapTagScope,
-  `ByteArray::has_owned_external_memory`, the program roots. Each
-  is still compared with its source when it is a `@render ... trusted`;
-  the others are plain prototypes.
+  `allocate_byte_array`, and for the decoder `allocate_string`,
+  `allocate_array`, `allocate_instance`, `allocate_double`,
+  `allocate_large_integer`, the external string and byte array over a
+  message's block: CONTRACTS.toml), `Smi::from` (the modular shift),
+  `Array::max_length_in_process`, `Process::on_program_heap`/`true_object`,
+  the write barrier, `Error::from` and the error roots, the named
+  assumptions (CONTRACTS.toml `[[assumption]]`: the encoder's
+  `two_pass_room`, the decoder's `ipc_room` and `ipc_external`, the latter
+  two for inter-process messages only), `Utils::is_valid_utf_8`, the
+  policy reads, HeapTagScope, `ByteArray::has_owned_external_memory`, the
+  program roots, `fail`. Each is still compared with its source when it is
+  a `@render ... trusted`; the others are plain prototypes.
 * Everything not attempted (table above).
 
 ## Files
 
 * `model/`: the object model (`objects.render`, generated `objects.gen.h/.c`),
   the constant table, `arith.gh` (shift and mask lemmas), `model.cfg`.
-* `encoder/`, `grow/`, `prims/`, `utf8/`: the targets (sidecar and
-  generated files); `encoder/cardinal.h`/`.c` (the cardinal's byte bound,
-  proved with Z3 so that the encoder verifies with the default prover),
-  `encoder/llong.gh` (a prelude conversion VeriFast lacks).
+* `encoder/`, `decoder/`, `grow/`, `prims/`, `utf8/`: the targets (sidecar
+  and generated files); `encoder/cardinal.h`/`.c` (the cardinal's byte
+  bound, proved with Z3 so that the encoder verifies with the default
+  prover), `encoder/llong.gh` (a prelude conversion VeriFast lacks),
+  `decoder/radix.h`/`.c` (read_cardinal's digit bound, Z3).
 * `rust/`: the Rust accessors (VeriFast), the Verus permission trial, the
   census.
 * `render.sh` (translator, both widths), `prefetch-ast.sh` (Clang dumps in
