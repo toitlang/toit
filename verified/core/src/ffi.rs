@@ -123,6 +123,24 @@ pub struct Accepted {
     _private: (),
 }
 
+impl Accepted {
+    /// TRUSTED (verified/core/EXPERIMENT-trusted.md, TRUSTED.md section 6,
+    /// Loader): the token for a trusted program (the system process,
+    /// first-party code) that the launch did not verify:
+    /// `Interpreter::run_v2` writes `TOIT_V2_TRUSTED` only for a process
+    /// whose policy is not untrusted. The loader's `assume_new` of the
+    /// abstract program, certificate and mode (`trusted == true`) then
+    /// rests on the compiler: we trust it for first-party code, so its
+    /// output would be accepted by the verifier under the trusted rules
+    /// (which debug builds and -Xverify check at launch). A wrong program
+    /// can crash the VM, it cannot reach an untrusted process: untrusted
+    /// processes never get this token.
+    #[verifier::external_body]
+    pub fn trusted_program() -> (r: Accepted) {
+        Accepted { _private: () }
+    }
+}
+
 /// A C++ primitive found in the process' policy.
 #[verifier::external_body]
 pub struct PrimitiveRef {
@@ -386,7 +404,15 @@ pub unsafe extern "C" fn toit_v2_run(context: *mut Context) -> usize {
     // accepted (TOIT_V2_ACCEPTED, set by Interpreter::run_v2 from
     // V2MethodTable::verified, which only V2Verifier::verify's accept path
     // sets).
-    let accepted = if c.accepted == V2_ACCEPTED { Some(Accepted { _private: () }) } else { None };
+    // A trusted program the launch did not verify (TOIT_V2_TRUSTED) gets
+    // the token on trust (`Accepted::trusted_program`).
+    let accepted = if c.accepted == V2_ACCEPTED {
+        Some(Accepted { _private: () })
+    } else if c.accepted == V2_TRUSTED {
+        Some(Accepted::trusted_program())
+    } else {
+        None
+    };
     let (state, value) = crate::machine::run(program, runtime, globals, heap, preemption, core_arities, accepted);
     c.result_state = state;
     c.result_value = value;
@@ -438,7 +464,7 @@ layout_table!(
     RESULT_PREEMPTED, RESULT_YIELDED, RESULT_TERMINATED, RESULT_RESET, RESULT_DEEP_SLEEP,
     PREEMPTION_MARKER,
     V2_OK, V2_STACK_OVERFLOW, V2_OUT_OF_MEMORY, V2_PRIMITIVE_SUCCESS, V2_PRIMITIVE_FAILURE,
-    V2_PRIMITIVE_THROW, V2_PRIMITIVE_MISSING, V2_PRIMITIVE_FOUND, V2_ACCEPTED, V2_REPORT_STUCK,
+    V2_PRIMITIVE_THROW, V2_PRIMITIVE_MISSING, V2_PRIMITIVE_FOUND, V2_ACCEPTED, V2_TRUSTED, V2_REPORT_STUCK,
     V2_REPORT_UNCAUGHT, V2_REPORT_TASK_RETURNED, V2_REPORT_TRACE,
     V2_MESSAGE_NONE, V2_MESSAGE_WORD, V2_MESSAGE_ARRAY, V2_MESSAGE_PRIMITIVE, V2_MESSAGE_MAX_WORDS,
     KIND_METHOD, KIND_FIELD_ACCESSOR, KIND_LAMBDA, KIND_BLOCK, NO_VALUE, BLOCK_SLOT_BITS,

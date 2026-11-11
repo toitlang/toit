@@ -141,6 +141,25 @@ class V2MethodTable {
 #endif
   }
 
+  // Whether a trusted process whose table the launch did not verify runs on
+  // the verified loop (TOIT_V2_TRUSTED), on the assumption that the
+  // verifier would accept the compiler's output: we trust the compiler for
+  // first-party code (verified/core/EXPERIMENT-trusted.md). On by default;
+  // TOIT_TRUSTED_CHECKED_LOOP=1 keeps such programs on the checked loop
+  // (hosts only, for comparisons).
+  static bool trusted_on_verified_loop();
+
+  // Whether launches verify trusted format-2 programs although
+  // -Xverify/TOIT_VERIFY is off: debug builds do, as a check on the
+  // compiler (a rejected trusted program does not run).
+  static bool verify_trusted_by_default() {
+#ifdef TOIT_DEBUG
+    return true;
+#else
+    return false;
+#endif
+  }
+
  private:
   V2MethodTable(V2Method* methods, word length) : methods_(methods), length_(length) {}
 
@@ -222,6 +241,12 @@ static const uword TOIT_V2_PRIMITIVE_FOUND = 1;
 // runs the checked loop. A distinct word, not a boolean, so that no other
 // nonzero value selects the verified loop.
 static const uword TOIT_V2_ACCEPTED = 0x56455249;  // "VERI"
+
+// `toit_v2_context.accepted` for a trusted program (system process,
+// first-party code) the launch did not verify: it runs on the verified loop
+// on the assumption that the compiler's output would be accepted (we trust
+// the compiler for first-party code; verified/core/EXPERIMENT-trusted.md).
+static const uword TOIT_V2_TRUSTED = 0x54525354;  // "TRST"
 
 // Messages of the exceptions the core raises (the trace's message, as the
 // format-1 failure entry points of lib/core/exceptions.toit encode it).

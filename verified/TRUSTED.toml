@@ -51,6 +51,14 @@ justification = "ASSUMED: toit_v2_allocate_instance (may GC) keeps the abstract 
 [[trusted]]
 crate = "core"
 file = "src/ffi.rs"
+item = "Accepted::trusted_program"
+kind = "external_body"
+count = 1
+justification = "EXPERIMENT (verified/core/EXPERIMENT-trusted.md): the verified-loop token for a trusted program the launch did not verify (TOIT_V2_TRUSTED, written by Interpreter::run_v2 only for a process whose policy is not untrusted); the loader's assume_new then rests on the compiler for first-party code (its output would be accepted under the trusted rules: debug builds and -Xverify check it). Untrusted processes never get it; TRUSTED.md section 6, Loader."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
 item = "Allocator"
 kind = "external_body"
 count = 1

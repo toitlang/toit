@@ -2708,7 +2708,14 @@ pub fn x_pins_agree(g: &XGlobal, m: usize, maps: &XMaps, at: usize) -> (res: Res
             proof { assert(!pin_agrees(g, i as int, mapsv(maps))); }
             return Ok(None);
         }
-        proof { assert(pin_agrees(g, i as int, mapsv(maps))); }
+        proof {
+            assert(pin_agrees(g, i as int, mapsv(maps)));
+            // The invariant for i + 1 (stated explicitly: without it the
+            // proof was unstable under `cargo verus verify`).
+            assert forall|j: int| at <= j < i + 1 implies #[trigger] pin_m(g, j) == m && pin_agrees(g, j, mapsv(maps)) by {
+                if j == i as int { assert(pin_m(g, i as int) == m); }
+            }
+        }
         i += 1;
     }
     proof {

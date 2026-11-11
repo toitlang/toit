@@ -89,6 +89,16 @@ V2MethodTable::~V2MethodTable() {
 // -Xverify/TOIT_VERIFY: the core checks every stuck state of the
 // specification at run time, so an unverified program cannot make it
 // access memory outside the tables.
+bool V2MethodTable::trusted_on_verified_loop() {
+  if (!checked_loop_linked()) return true;
+  static int enabled = -1;
+  if (enabled < 0) {
+    const char* env = getenv("TOIT_TRUSTED_CHECKED_LOOP");
+    enabled = (env != null && env[0] != '\0' && env[0] != '0') ? 0 : 1;
+  }
+  return enabled == 1;
+}
+
 V2MethodTable* V2MethodTable::compute(Program* program) {
   const uint8* bytes = program->bytecodes.data();
   word length = program->bytecodes.length();
@@ -320,15 +330,18 @@ Interpreter::Result Interpreter::run_v2() {
   v2_program_tables(program, table, process_->object_heap()->global_variables(), &context.program);
   context.watermark = &watermark_;
   context.preempt_a_lot = Flags::preempt_a_lot ? 1 : 0;
-  // The verified loop only for a table the launch-time verifier accepted,
-  // under the untrusted rules for an untrusted process.
-  bool accepted = table->runs_verified(process_->policy()->is_untrusted());
+  // The verified loop for a table the launch-time verifier accepted, under
+  // the untrusted rules for an untrusted process; and for any trusted
+  // process (TOIT_V2_TRUSTED: we trust the compiler for first-party code).
+  bool untrusted = process_->policy()->is_untrusted();
+  bool accepted = table->runs_verified(untrusted);
+  bool trusted = !accepted && !untrusted && V2MethodTable::trusted_on_verified_loop();
   // Without the checked loop (devices) ProcessGroup::create admits only
-  // accepted programs.
-  if (!accepted && !V2MethodTable::checked_loop_linked()) {
+  // programs that run on the verified loop.
+  if (!accepted && !trusted && !V2MethodTable::checked_loop_linked()) {
     FATAL("format-2 program not verified and no checked loop");
   }
-  context.accepted = accepted ? TOIT_V2_ACCEPTED : 0;
+  context.accepted = accepted ? TOIT_V2_ACCEPTED : (trusted ? TOIT_V2_TRUSTED : 0);
   // The core runs the Rust port of a core primitive only where the policy
   // resolves it to the VM's own primitive (never a denying stub).
   context.core_arities = process_->policy()->core_arities();

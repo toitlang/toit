@@ -156,6 +156,17 @@ set_source_files_properties(utils.cc PROPERTIES COMPILE_FLAGS "-DTOIT_MODEL=\"\\
 
 set(GEN_DIR "${PROJECT_BINARY_DIR}/generated")
 
+# Experiment (verified/core/EXPERIMENT-trusted.md): compile the embedded
+# programs (the toit CLI, the boot snapshot of toit.run with the system
+# process, the run image) in bytecode format 2, so that the system process
+# and the first-party tools run on the verified core as trusted programs.
+option(TOIT_SYSTEM_FORMAT2 "Compile the embedded system programs in bytecode format 2" OFF)
+if (TOIT_SYSTEM_FORMAT2)
+  set(EMBEDDED_PROGRAM_FORMAT_ENV "TOIT_BYTECODE_FORMAT=2")
+else()
+  set(EMBEDDED_PROGRAM_FORMAT_ENV "TOIT_EMBEDDED_FORMAT=1")
+endif()
+
 set(EMBEDDED_TOIT_PROGRAMS toit toit_run run_image)
 
 set(EMBEDDED_PROGRAM_SOURCE_toit "${CMAKE_SOURCE_DIR}/tools/toit.toit")
@@ -462,6 +473,7 @@ if (NOT ${TOIT_IS_EMBEDDED})
         COMMAND ${CMAKE_COMMAND} -E env
             ASAN_OPTIONS=detect_leaks=false
             TOIT_PACKAGE_CACHE_PATHS="${embedded_packages_dir}"
+            "${EMBEDDED_PROGRAM_FORMAT_ENV}"
           $<TARGET_FILE:toit.compile>
           --dependency-file "${embedded_dep}"
           --dependency-format ninja

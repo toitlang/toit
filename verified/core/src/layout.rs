@@ -246,6 +246,11 @@ pub const V2_PRIMITIVE_FOUND: usize = 1;
 /// `TOIT_V2_ACCEPTED`: the launch-time verifier accepted the program on the
 /// table the process runs (`ffi::Accepted`).
 pub const V2_ACCEPTED: usize = 0x56455249;
+/// `TOIT_V2_TRUSTED`: a trusted program (system or first-party code) that
+/// the launch did not verify; it runs on the verified loop on the
+/// assumption that the verifier would accept it (`ffi::Accepted::trusted`,
+/// verified/core/EXPERIMENT-trusted.md).
+pub const V2_TRUSTED: usize = 0x54525354;
 pub const V2_REPORT_STUCK: usize = 0;
 pub const V2_REPORT_UNCAUGHT: usize = 1;
 pub const V2_REPORT_TASK_RETURNED: usize = 2;
