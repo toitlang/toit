@@ -380,13 +380,18 @@ metadata. Until then, untrusted containers are a host-only feature.
 
 ## Known gaps
 
-- The untrusted policy is a dispatch-time gate only. It relies on the
-  interpreter hardening (block and method-id validation) and on the
-  verifier, which is not proven sound yet; a verifier bug lets a
-  malicious snapshot bypass the primitive table.
-- Untrusted containers in flash are verified on every start, not once at
-  install time, and not at all on devices (which refuse them; see "Open
-  for devices").
+- Format 2 (the default for untrusted containers): the verifier is proven
+  sound against the bytecode specification and the interpreter is proven
+  to follow it (verified/spec/SOUNDNESS.md, verified/core/TRUSTED.md);
+  what remains unproven is the trusted list in verified/TRUSTED.toml and
+  the C++ the sandbox can reach (primitives that stay in C++, the glue to
+  the allocator, GC and scheduler, the program loader).
+- Format 1 untrusted containers (`-Xuntrusted_format1`, host only) rely on
+  the C++ interpreter hardening and the unproven C++ verifier; a bug there
+  lets a malicious snapshot bypass the primitive table.
+- Untrusted images are verified once at install with the shipped
+  certificate and the verdict is recorded; nothing has run on real
+  hardware yet (see "Open for devices").
 - A sandbox can make the system process print a warning for every
   unhandled message it sends, and print and trace as fast as the system
   process writes (rate bounded only by the mailbox quota and the system
