@@ -287,7 +287,7 @@ menu "Toit"
     config TOIT_VERIFIED_CORE
         bool "Verified format-2 core and verifier (Rust) for untrusted containers"
         default n
-        depends on IDF_TARGET_ESP32C6 || IDF_TARGET_ESP32H2 || IDF_TARGET_ESP32
+        depends on IDF_TARGET_ESP32C6 || IDF_TARGET_ESP32H2 || IDF_TARGET_ESP32 || IDF_TARGET_ESP32S3
         help
             Links the Verus-verified interpreter core and the format-2 verifier
             (verified/vmverify, a no_std Rust static library built with cargo)
@@ -297,9 +297,9 @@ menu "Toit"
             `rustup target add riscv32imac-unknown-none-elf`; the classic
             ESP32 (Xtensa) needs the esp-rs toolchain (`espup install`,
             cargo +esp; verified/XTENSA-RUST-FIXES.md). The ESP32-C3
-            (rv32imc) lacks the atomics the Rust alloc library needs, and
-            the S2 and S3 are not brought up (docs/format2-migration.md,
-            "Devices").
+            (rv32imc) lacks the atomics the Rust alloc library needs; the
+            S3 uses the same fork (xtensa-esp32s3-none-elf); the S2 is not
+            brought up (docs/format2-migration.md, "Devices").
 
     config TOIT_BYTECODE_FORMAT_2
         bool "Bytecode format 2 for the system and the bundled containers"
