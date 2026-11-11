@@ -388,8 +388,11 @@ metadata. Until then, untrusted containers are a host-only feature.
   install time, and not at all on devices (which refuse them; see "Open
   for devices").
 - A sandbox can make the system process print a warning for every
-  unhandled message it sends (rate bounded only by the mailbox quota and
-  the system process' speed).
+  unhandled message it sends, and print and trace as fast as the system
+  process writes (rate bounded only by the mailbox quota and the system
+  process' speed). The plan is a general per-client budget for service
+  calls, from which print, trace and log limits follow
+  (docs/sandbox-service-limits.md).
 - Native allocations made on behalf of a process (message buffers, timers,
   finalizer nodes) are bounded by the quotas but not charged to its heap;
   resource groups are bounded (64 per sandboxed process).
@@ -397,6 +400,32 @@ metadata. Until then, untrusted containers are a host-only feature.
   primitives of the untrusted set are audited to be bounded by their
   quota-bounded arguments (docs/sandbox-primitive-audit.md); the Rust ports
   are proven safe, not bounded in time.
+
+## Open questions
+
+Questions the owner has looked at and left open on purpose; the tests
+named assert the current behavior and must change with a decision.
+
+- **Mailbox quotas are per receiver** (`mailbox-quota-scope`). The
+  per-sender mailbox quotas are enforced per receiver, on the messages of
+  all sandboxed senders together. So one sandbox can occupy the mailboxes
+  of several receivers at once (the system process and up to 64 granted
+  providers: 65 x 1 MB on hosts, 65 x 32 KB = 2 MB on devices, held while
+  the receivers are slow), and one sandbox that fills a slow receiver's
+  mailbox locks every other sandbox out of it. Owner's position:
+  per-sender (per-group) accounting across receivers is to be
+  investigated; until then the shared per-receiver bound stays. A
+  per-client budget for service calls doesn't solve it (the messages are
+  queued before a provider sees them; docs/sandbox-service-limits.md).
+- **Discovery's `watch` reveals pid liveness** (`watch-pid-probe`). A
+  sandbox can watch any pid: a missing pid is answered at once with a
+  termination notification, a live one reports its termination later, so
+  the sandbox learns which processes exist and when they die, also for
+  processes it may not talk to. Closing it needs the system process to
+  check the watcher's grants, which needs a new primitive (and changes the
+  verified core's primitive table). Owner's position: accepted for now,
+  on the list. A budget for service calls would bound the rate of such
+  probes, not the leak.
 
 ## Threats tested
 
@@ -417,8 +446,8 @@ and must be updated when the gap is closed.
 | Use, close, or close resources of another process' service clients (known client ids, guessed handles) | `SERVICE_CLIENT_NOT_OWNED` | `forge-client-id` | holds | |
 | Malformed `SYSTEM_RPC_REQUEST`, `_CANCEL` or `SYSTEM_TRACE` payload (null, byte array, empty list, non-integer id or name) to the system process or a provider | dropped | `forge-rpc-request-malformed` | fixed: a single message killed the receiver (the system process and with it the VM, exit code 1) | |
 | Flood one mailbox | `QUOTA_EXCEEDED` at the per-sender quota | `flood-system`, `mailbox-flood-provider`, `mailbox-*-flood-self`, `message-too-large` | holds per receiver | |
-| Flood every receiver it may send to | memory bounded per sandbox | `mailbox-quota-scope` | gap: the quota is per receiver, so a sandbox fills the system process and its 64 granted providers: 65 x 1 MB (host) or 65 x 32 KB = 2 MB (device) of malloced buffers held by slow receivers | a per-sender (or per-group) budget over all mailboxes? |
-| Lock other sandboxes out of a receiver | each sandbox has its own quota at a receiver | `mailbox-quota-scope` | gap: the quota counts the messages of all sandboxed senders together, so one sandbox that fills a slow receiver's mailbox locks every other sandbox out of it | per-sender accounting (memory per receiver and sender) or keep the shared bound? |
+| Flood every receiver it may send to | memory bounded per sandbox | `mailbox-quota-scope` | gap: the quota is per receiver, so a sandbox fills the system process and its 64 granted providers: 65 x 1 MB (host) or 65 x 32 KB = 2 MB (device) of malloced buffers held by slow receivers | open: see "Open questions", mailbox quotas per receiver |
+| Lock other sandboxes out of a receiver | each sandbox has its own quota at a receiver | `mailbox-quota-scope` | gap: the quota counts the messages of all sandboxed senders together, so one sandbox that fills a slow receiver's mailbox locks every other sandbox out of it | open: see "Open questions", mailbox quotas per receiver |
 | Fill the system process' RPC queue (requests without waiting for replies) | other containers' requests to the system process succeed | `rpc-queue-flood-system` | fixed: about 2% of a trusted client's requests failed with "Cannot enqueue more requests" | |
 | Take all processing tasks of a provider with slow requests | other clients are served | `rpc-slow-requests` | fixed: a trusted ping waited 2.5 s | |
 | Register many services, pending discoveries or clients, with large strings | bounded memory in the system process | `discovery-quota` | fixed: the VM grew by 1.5 GB in 6 s | |
@@ -434,8 +463,8 @@ and must be updated when the gap is closed.
 | Raise the own priority | denied | `core-process-set-priority` | holds; no other path found | |
 | Survive the own kill (services, used clients, queued messages, pending discovery, timers, tasks, finalizers) | all gone; clients of its services fail | `kill-cleanup` | holds | |
 | Read process statistics | denied | `core-process-stats` | holds | |
-| Probe pids and observe process lifetimes through the discovery service's `watch` | no information about processes it may not talk to | `watch-pid-probe` | gap: a watch of a missing pid is answered at once with a termination notification, a watch of a live process reports its termination | the system process can't check the watcher's grants (it needs a new primitive, which changes the verified core's primitive table) |
+| Probe pids and observe process lifetimes through the discovery service's `watch` | no information about processes it may not talk to | `watch-pid-probe` | gap: a watch of a missing pid is answered at once with a termination notification, a watch of a live process reports its termination | accepted for now: see "Open questions", `watch` reveals pid liveness |
 | Provide a service a trusted client expects before the trusted provider is up | trusted clients don't use sandbox providers | `provider-denied`, `service-squat`, `provider-grant` | fixed: without a trusted provider a plain selector opened the sandbox's. Registration is now refused unless the launch policy grants it, and granted providers are only discovered by trusted clients that opt in | |
 | Reach a trusted container's service by its uuid | only services meant for sandboxes | `heat-pump` | fixed: providers outside the system process accepted sandboxed clients unless they opted out. Serving sandboxes is now opt-in for every provider, and discovery doesn't return (or grant) providers that don't opt in | |
-| Flood the console through traces and prints | bounded output | | gap, not tested (the host's stdout is fast): every valid trace payload (up to the message size cap) is printed base64-encoded, and every unhandled message type prints a warning; on a device with a UART console this keeps the system process busy | size and rate limits for sandbox traces and prints? |
+| Flood the console through traces and prints | bounded output | | gap, not tested (the host's stdout is fast): every valid trace payload (up to the message size cap) is printed base64-encoded, and every unhandled message type prints a warning; on a device with a UART console this keeps the system process busy | a per-client budget for service calls: docs/sandbox-service-limits.md |
 | Timing and counting side channels | | | accepted: `Time.monotonic-us` shows the load of the machine; the own pid tells how many processes were created since boot | |
