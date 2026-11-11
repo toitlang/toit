@@ -835,46 +835,6 @@ justification = "Rust semantics of pointer::wrapping_offset (signed count), as w
 [[trusted]]
 crate = "core"
 file = "src/view.rs"
-item = "Content"
-kind = "external_body"
-count = 1
-justification = "Opaque view (pointer, length) of the bytes of a string or byte array; valid only within one primitive call (no GC point inside one); TRUSTED.md section 8."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Content::id"
-kind = "uninterp"
-count = 1
-justification = "Ghost: the heap-model object the view belongs to, fixed by the creating accessor's contract."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Content::len"
-kind = "external_body"
-count = 1
-justification = "Returns the length the creating accessor read (== slen)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Content::slen"
-kind = "uninterp"
-count = 1
-justification = "Ghost: the view's length, equal to the object's content length by the creating accessor's contract."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Content::writable"
-kind = "uninterp"
-count = 1
-justification = "Ghost: the bytes may be written (a string or raw byte array outside the program heap), by the creating accessor's contract."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
 item = "Globals::from_raw"
 kind = "assume_new"
 count = 1
@@ -919,118 +879,6 @@ item = "Heap::byte"
 kind = "unsafe"
 count = 1
 justification = "Raw access of Heap::byte; in bounds by the external_body precondition (index < len) or, for heap words, by heap integrity (TRUSTED.md)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::byte_array_content"
-kind = "external_body"
-count = 1
-justification = "TRUSTED layout: inline bytes, or external raw (or mapped) bytes, as ByteArray::Bytes; None for external structs; ensures the length is the model content's (heap integrity V2)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::byte_array_content"
-kind = "unsafe"
-count = 1
-justification = "Reads the length, tag and address words of a byte array (layout-checked offsets)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::byte_at"
-kind = "external_body"
-count = 1
-justification = "Heap accessor: byte i < length of a model byte array is the model's byte (TRUSTED.md, heap model)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::byte_at"
-kind = "unsafe"
-count = 1
-justification = "Reads byte i < length of the content of a model byte array (internal, or raw external memory owned by it)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::bytes_len"
-kind = "external_body"
-count = 1
-justification = "Heap accessor and modeling assumption: a byte array is Body::Bytes exactly when it is internal or external with RAW_BYTE_TAG and a non-null address, with that length (TRUSTED.md, heap model)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::bytes_len"
-kind = "unsafe"
-count = 1
-justification = "Reads the length, tag and address words of a live byte array (heap integrity, TRUSTED.md V2)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::content_at"
-kind = "external_body"
-count = 1
-justification = "Reads byte i < length of a content view: the model's byte (heap integrity V2 for blobs)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::content_at"
-kind = "unsafe"
-count = 1
-justification = "Raw byte read inside the view (bound from the precondition)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::content_copy"
-kind = "external_body"
-count = 1
-justification = "memmove inside two content views (bounds required); the model's destination bytes become the source's."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::content_copy"
-kind = "unsafe"
-count = 1
-justification = "Raw memmove inside the views (bounds from the precondition)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::content_fill"
-kind = "external_body"
-count = 1
-justification = "memset inside a writable content view (bounds required); the model's bytes become the value."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::content_fill"
-kind = "unsafe"
-count = 1
-justification = "Raw memset inside the view (bounds from the precondition)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::content_set"
-kind = "external_body"
-count = 1
-justification = "Writes byte i < length of a writable content view; the model's byte changes."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::content_set"
-kind = "unsafe"
-count = 1
-justification = "Raw byte write inside the view (bound from the precondition)."
 
 [[trusted]]
 crate = "core"
@@ -1099,38 +947,6 @@ justification = "Raw access of Heap::set_byte; in bounds by the external_body pr
 [[trusted]]
 crate = "core"
 file = "src/view.rs"
-item = "Heap::set_byte_at"
-kind = "external_body"
-count = 1
-justification = "Heap accessor: storing byte i < length of a byte array outside the program heap updates exactly the model's byte; bytes hold no references, so no write barrier (TRUSTED.md, heap model)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::set_byte_at"
-kind = "unsafe"
-count = 1
-justification = "Writes byte i < length of the content of a model byte array outside the program heap (writable memory)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::set_string_hash_field"
-kind = "external_body"
-count = 1
-justification = "Caches a string's hash code in its header (String::_raw_set_hash_code); not in the model, which stays unchanged; only for strings outside the program heap."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::set_string_hash_field"
-kind = "unsafe"
-count = 1
-justification = "Writes the 32-bit hash field of a string (layout-checked offset)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
 item = "Heap::set_word"
 kind = "external_body"
 count = 1
@@ -1143,70 +959,6 @@ item = "Heap::set_word"
 kind = "unsafe"
 count = 1
 justification = "Raw access of Heap::set_word; in bounds by the external_body precondition (index < len) or, for heap words, by heap integrity (TRUSTED.md)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::string_byte"
-kind = "external_body"
-count = 1
-justification = "Heap accessor: byte i < length of the inline or external content is the model's byte (TRUSTED.md, heap model)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::string_byte"
-kind = "unsafe"
-count = 1
-justification = "Reads byte i < length of a live string's content (heap integrity, TRUSTED.md V2)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::string_content"
-kind = "external_body"
-count = 1
-justification = "TRUSTED layout: inline or external string bytes, as String::Bytes; ensures the length is the model content's (heap integrity V2)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::string_content"
-kind = "unsafe"
-count = 1
-justification = "Reads the length and address fields of a string (layout-checked offsets)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::string_hash_field"
-kind = "external_body"
-count = 1
-justification = "Reads a string's cached hash code (String::_raw_hash_code); no model content."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::string_hash_field"
-kind = "unsafe"
-count = 1
-justification = "Reads the 32-bit hash field of a string (layout-checked offset)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::string_len"
-kind = "external_body"
-count = 1
-justification = "Heap accessor: the internal length field, or the external length word, is the model's string length (TRUSTED.md, heap model)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::string_len"
-kind = "unsafe"
-count = 1
-justification = "Reads the length fields of a live string (heap integrity, TRUSTED.md V2)."
 
 [[trusted]]
 crate = "core"
@@ -1395,18 +1147,34 @@ justification = "core::ptr::copy (memmove) of n words inside array[0..len): both
 [[trusted]]
 crate = "core"
 file = "src/view.rs"
-item = "heap_memmove"
+item = "perm_memmove"
 kind = "external_body"
 count = 1
-justification = "FFI LEAF: the C library's memmove for Heap::array_copy, stated on the heap permissions (the destination elements get the source elements' old values, every other permission keeps its value); the model update and the heap invariant after it are verified (copy_elements); TRUSTED.md section 1."
+justification = "FFI LEAF: the C library's memmove (Heap::array_copy on heap words, Heap::content_copy on content bytes), stated on the permissions: the destination elements get the source elements' old values, every other permission keeps its value; the model updates and the heap invariant after them are verified (copy_elements, copy_content); TRUSTED.md section 1."
 
 [[trusted]]
 crate = "core"
 file = "src/view.rs"
-item = "heap_memmove"
+item = "perm_memmove"
 kind = "unsafe"
 count = 1
-justification = "core::ptr::copy (memmove) of n words between two arrays' element ranges, in bounds by the precondition (the permissions of both ranges, at the pointers passed)."
+justification = "core::ptr::copy (memmove) of n elements between two permission ranges, in bounds by the precondition (the permissions of both ranges, at the pointers passed)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "perm_memset"
+kind = "external_body"
+count = 1
+justification = "FFI LEAF: the C library's memset (Heap::content_fill), stated on the permissions: the bytes of the range become v, every other permission keeps its value; the model update is verified (fill_content); TRUSTED.md section 1."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "perm_memset"
+kind = "unsafe"
+count = 1
+justification = "core::ptr::write_bytes (memset) of n bytes of a permission range, in bounds by the precondition."
 
 [[trusted]]
 crate = "core"

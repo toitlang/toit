@@ -808,10 +808,20 @@ pub open spec fn word_val(o: HeapObj, cb: Seq<u16>, addrs: Seq<usize>, k: int, v
 /// The memory of the heap model's objects: one permission per word the
 /// verified accessors read or write (key: object id and word index), the
 /// exposed provenance of the heap (addresses are computed from tagged
-/// words), and the model itself (ghost).
+/// words), and the model itself (ghost). Strings and byte arrays add the
+/// half words of a string (length, hash code; key: object id and byte
+/// offset), their header words (`bwords`: the external length and address
+/// of a string, the length, tag and address of a byte array), their
+/// content bytes (key: object id and index) and, per object, the pointer
+/// to its content (`cptrs`: inline in the object, or the external
+/// address).
 pub tracked struct HeapMem {
     pub tracked exposed: IsExposed,
     pub tracked words: Map<(int, int), PointsTo<usize>>,
+    pub tracked halves: Map<(int, int), PointsTo<HalfWord>>,
+    pub tracked bwords: Map<(int, int), PointsTo<usize>>,
+    pub tracked bytes: Map<(int, int), PointsTo<u8>>,
+    pub ghost cptrs: Seq<*mut u8>,
     pub ghost objs: Seq<HeapObj>,
     pub ghost addrs: Seq<usize>,
     pub ghost class_bits: Seq<u16>,
@@ -822,6 +832,17 @@ pub tracked struct HeapMem {
 pub open spec fn obj_ptr(m: HeapMem, id: int) -> *mut usize {
     ptr_mut_from_data::<usize>(PtrData::<usize> {
         addr: (m.addrs[id] - HEAP_TAG) as usize, provenance: m.exposed@, metadata: () })
+}
+
+/// The byte address `a` as a pointer with the heap's exposed provenance.
+pub open spec fn addr_ptr(m: HeapMem, a: int) -> *mut u8 {
+    ptr_mut_from_data::<u8>(PtrData::<u8> { addr: a as usize, provenance: m.exposed@, metadata: () })
+}
+
+/// The half word at byte offset `off` of object `id`.
+pub open spec fn half_ptr(m: HeapMem, id: int, off: int) -> *mut HalfWord {
+    ptr_mut_from_data::<HalfWord>(PtrData::<HalfWord> {
+        addr: (m.addrs[id] - HEAP_TAG + off) as usize, provenance: m.exposed@, metadata: () })
 }
 
 /// Object `id` lies in the address space.
@@ -839,17 +860,160 @@ pub open spec fn word_ok(m: HeapMem, id: int, k: int) -> bool {
     &&& word_val(m.objs[id], m.class_bits, m.addrs, k, m.words[(id, k)].value())
 }
 
+/// The half word at byte offset `off` of object `id`.
+pub open spec fn half_ok(m: HeapMem, id: int, off: int) -> bool {
+    &&& m.halves.contains_key((id, off))
+    &&& m.halves[(id, off)].ptr() == half_ptr(m, id, off)
+    &&& m.halves[(id, off)].is_init()
+}
+
+/// Header word `k` of the string or byte array `id`, and its value.
+pub open spec fn bword_ok(m: HeapMem, id: int, k: int) -> bool {
+    &&& m.bwords.contains_key((id, k))
+    &&& m.bwords[(id, k)].ptr() == at_index(obj_ptr(m, id), k)
+    &&& m.bwords[(id, k)].is_init()
+}
+
+pub open spec fn bword(m: HeapMem, id: int, k: int) -> usize {
+    m.bwords[(id, k)].value()
+}
+
+/// Content byte `i` of object `id`: at its content pointer, the model's.
+pub open spec fn byte_ok(m: HeapMem, id: int, i: int) -> bool {
+    &&& m.bytes.contains_key((id, i))
+    &&& m.bytes[(id, i)].ptr() == at_index(m.cptrs[id], i)
+    &&& m.bytes[(id, i)].is_init()
+    &&& m.bytes[(id, i)].value() == content(m.objs[id])[i]
+}
+
+/// The content of object `id` lies in the address space, byte by byte.
+pub open spec fn bytes_ok(m: HeapMem, id: int) -> bool {
+    &&& m.cptrs[id]@.addr + content(m.objs[id]).len() <= usize::MAX
+    &&& forall|i: int| 0 <= i < content(m.objs[id]).len() ==> #[trigger] byte_ok(m, id, i)
+}
+
+/// TRUSTED (the layout of strings, TRUSTED.md section 1 "Memory model",
+/// V2): the string `id` has its length and hash code half words; an
+/// internal string (length half word not `STRING_SENTINEL`) has that
+/// length and its bytes inline from `STRING_CONTENT_BYTE`; an external one
+/// has its length and the address of its bytes in the words
+/// `STRING_EXTERNAL_LENGTH_WORD` and `STRING_EXTERNAL_ADDRESS_WORD`.
+pub open spec fn str_ok(m: HeapMem, id: int) -> bool {
+    let base = m.addrs[id] - HEAP_TAG;
+    let l = m.halves[(id, STRING_INTERNAL_LENGTH_BYTE as int)].value() as usize;
+    &&& m.addrs[id] >= HEAP_TAG
+    &&& base + (STRING_EXTERNAL_ADDRESS_WORD + 1) * WORD_SIZE <= usize::MAX
+    &&& base + STRING_CONTENT_BYTE <= usize::MAX
+    &&& half_ok(m, id, STRING_INTERNAL_LENGTH_BYTE as int)
+    &&& half_ok(m, id, STRING_HASH_CODE_BYTE as int)
+    &&& if l != STRING_SENTINEL {
+            &&& l == content(m.objs[id]).len()
+            &&& m.cptrs[id] == addr_ptr(m, base + STRING_CONTENT_BYTE)
+        } else {
+            &&& bword_ok(m, id, STRING_EXTERNAL_LENGTH_WORD as int)
+            &&& bword_ok(m, id, STRING_EXTERNAL_ADDRESS_WORD as int)
+            &&& bword(m, id, STRING_EXTERNAL_LENGTH_WORD as int) == content(m.objs[id]).len()
+            &&& m.cptrs[id] == addr_ptr(m, bword(m, id, STRING_EXTERNAL_ADDRESS_WORD as int) as int)
+        }
+    &&& bytes_ok(m, id)
+}
+
+/// The class of object `id` has the byte-array tag.
+pub open spec fn is_ba_class(m: HeapMem, id: int) -> bool {
+    let cid = m.objs[id].class_id as int;
+    &&& cid < m.class_bits.len()
+    &&& (m.class_bits[cid] & 0xf) as usize == BYTE_ARRAY_TAG
+}
+
+/// TRUSTED (the layout of byte arrays, TRUSTED.md section 1 "Memory
+/// model", V2 and V5): an object with the byte-array tag (or a byte array
+/// of the model) has its length word; a negative one is `-1 - length` of
+/// an external byte array, which has its tag and address words. The model
+/// has it as a byte array (`Body::Bytes`) exactly when it is internal or
+/// external with raw bytes (`RAW_BYTE_TAG`) at a non-null address; then
+/// its bytes are inline from `BYTE_ARRAY_CONTENT_BYTE` or at the address.
+pub open spec fn ba_ok(m: HeapMem, id: int) -> bool {
+    let base = m.addrs[id] - HEAP_TAG;
+    let raw = bword(m, id, BYTE_ARRAY_LENGTH_WORD as int) as isize;
+    let o = m.objs[id];
+    &&& m.addrs[id] >= HEAP_TAG
+    &&& base + (BYTE_ARRAY_EXTERNAL_TAG_WORD + 1) * WORD_SIZE <= usize::MAX
+    &&& base + BYTE_ARRAY_CONTENT_BYTE <= usize::MAX
+    &&& bword_ok(m, id, BYTE_ARRAY_LENGTH_WORD as int)
+    &&& raw < 0 ==> bword_ok(m, id, BYTE_ARRAY_EXTERNAL_TAG_WORD as int)
+        && bword_ok(m, id, BYTE_ARRAY_EXTERNAL_ADDRESS_WORD as int)
+    &&& (o.body is Bytes) == (raw >= 0 || (bword(m, id, BYTE_ARRAY_EXTERNAL_TAG_WORD as int) == RAW_BYTE_TAG
+        && bword(m, id, BYTE_ARRAY_EXTERNAL_ADDRESS_WORD as int) != 0))
+    &&& o.body is Bytes ==> {
+        &&& if raw >= 0 {
+                &&& content(o).len() == raw
+                &&& m.cptrs[id] == addr_ptr(m, base + BYTE_ARRAY_CONTENT_BYTE)
+            } else {
+                &&& content(o).len() == -1 - raw
+                &&& m.cptrs[id] == addr_ptr(m, bword(m, id, BYTE_ARRAY_EXTERNAL_ADDRESS_WORD as int) as int)
+            }
+        &&& bytes_ok(m, id)
+    }
+}
+
+/// The strings and byte arrays of the heap.
+pub open spec fn blob_mem_ok(m: HeapMem) -> bool {
+    &&& m.cptrs.len() == m.objs.len()
+    &&& forall|id: int| 0 <= id < m.objs.len() && m.objs[id].body is Str ==> #[trigger] str_ok(m, id)
+    &&& forall|id: int| 0 <= id < m.objs.len() && (m.objs[id].body is Bytes || is_ba_class(m, id))
+            ==> #[trigger] ba_ok(m, id)
+}
+
 /// The heap invariant: the permissions of every word of every object.
 pub open spec fn heap_ok(m: HeapMem) -> bool {
     &&& m.addrs.len() == m.objs.len()
     &&& forall|id: int| 0 <= id < m.objs.len() ==> #[trigger] obj_fits(m, id)
     &&& forall|id: int, k: int| 0 <= id < m.objs.len() && is_word(m.objs[id], k) ==> #[trigger] word_ok(m, id, k)
+    &&& blob_mem_ok(m)
+}
+
+/// The blobs are unchanged by a change of object `id` that is no blob
+/// before or after and keeps its class (only `words` and `objs` change).
+pub proof fn lemma_blob_frame(m0: HeapMem, m1: HeapMem, id: int)
+    requires
+        blob_mem_ok(m0),
+        m1.halves == m0.halves, m1.bwords == m0.bwords, m1.bytes == m0.bytes, m1.cptrs == m0.cptrs,
+        m1.exposed == m0.exposed, m1.addrs == m0.addrs, m1.class_bits == m0.class_bits,
+        m1.objs.len() == m0.objs.len(),
+        0 <= id < m0.objs.len(),
+        forall|j: int| 0 <= j < m0.objs.len() && j != id ==> #[trigger] m1.objs[j] == m0.objs[j],
+        !is_blob(m0.objs[id]), !is_blob(m1.objs[id]),
+        m1.objs[id].class_id == m0.objs[id].class_id,
+    ensures blob_mem_ok(m1),
+{
+    assert forall|j: int| 0 <= j < m1.objs.len() && m1.objs[j].body is Str implies #[trigger] str_ok(m1, j) by {
+        assert(j != id);
+        assert(str_ok(m0, j));
+        assert forall|i: int| 0 <= i < content(m1.objs[j]).len() implies #[trigger] byte_ok(m1, j, i) by {
+            assert(byte_ok(m0, j, i));
+        }
+    }
+    assert forall|j: int| 0 <= j < m1.objs.len() && (m1.objs[j].body is Bytes || is_ba_class(m1, j))
+        implies #[trigger] ba_ok(m1, j) by {
+        if j == id {
+            assert(is_ba_class(m0, j));
+            assert(ba_ok(m0, j));
+        } else {
+            assert(m1.objs[j] == m0.objs[j]);
+            assert(ba_ok(m0, j));
+            if m1.objs[j].body is Bytes {
+                assert forall|i: int| 0 <= i < content(m1.objs[j]).len() implies #[trigger] byte_ok(m1, j, i) by {
+                    assert(byte_ok(m0, j, i));
+                }
+            }
+        }
+    }
 }
 
 /// Stores `w` into word `k` of object `id` through `p` and makes `o2` the
 /// model's object `id`: `o2` has the same words, word `k` agrees with `w`,
-/// the others with their values as before. (A tracked borrow of the
-/// heap's permission field, as `write_elem`.)
+/// the others with their values as before; neither is a blob. (A tracked
+/// borrow of the heap's permission field, as `write_elem`.)
 #[inline(always)]
 fn write_heap_word(Tracked(m): Tracked<&mut HeapMem>, Ghost(id): Ghost<int>, k: usize, p: *mut usize, w: usize,
                    Ghost(o2): Ghost<HeapObj>)
@@ -864,12 +1028,15 @@ fn write_heap_word(Tracked(m): Tracked<&mut HeapMem>, Ghost(id): Ghost<int>, k: 
         forall|j: int, x: usize| j != k && is_word(o2, j) ==>
             #[trigger] word_val(o2, old(m).class_bits, old(m).addrs, j, x)
                 == word_val(old(m).objs[id], old(m).class_bits, old(m).addrs, j, x),
+        !is_blob(o2), !is_blob(old(m).objs[id]),
+        o2.class_id == old(m).objs[id].class_id,
     ensures
         heap_ok(*final(m)),
         final(m).objs == old(m).objs.update(id, o2),
         final(m).addrs == old(m).addrs,
         final(m).class_bits == old(m).class_bits,
         final(m).exposed == old(m).exposed,
+        final(m).cptrs == old(m).cptrs,
     no_unwind
 {
     let ghost m0 = *m;
@@ -891,6 +1058,112 @@ fn write_heap_word(Tracked(m): Tracked<&mut HeapMem>, Ghost(id): Ghost<int>, k: 
                 }
             } else {
                 assert(word_ok(m0, j, kk));
+            }
+        }
+        lemma_blob_frame(m0, *m, id);
+    }
+}
+
+/// The words are unchanged by a change of the blob `id`'s bytes (only
+/// `bytes` and `objs` change; the new object has the old class and kind).
+pub proof fn lemma_word_frame(m0: HeapMem, m1: HeapMem, id: int)
+    requires
+        heap_ok(m0),
+        m1.words == m0.words, m1.exposed == m0.exposed, m1.addrs == m0.addrs, m1.class_bits == m0.class_bits,
+        m1.objs.len() == m0.objs.len(),
+        0 <= id < m0.objs.len(),
+        forall|j: int| 0 <= j < m0.objs.len() && j != id ==> #[trigger] m1.objs[j] == m0.objs[j],
+        is_blob(m0.objs[id]), is_blob(m1.objs[id]),
+        m1.objs[id].class_id == m0.objs[id].class_id,
+    ensures
+        forall|j: int| 0 <= j < m1.objs.len() ==> #[trigger] obj_fits(m1, j),
+        forall|j: int, k: int| 0 <= j < m1.objs.len() && is_word(m1.objs[j], k) ==> #[trigger] word_ok(m1, j, k),
+{
+    assert forall|j: int| 0 <= j < m1.objs.len() implies #[trigger] obj_fits(m1, j) by {
+        assert(obj_fits(m0, j));
+    }
+    assert forall|j: int, k: int| 0 <= j < m1.objs.len() && is_word(m1.objs[j], k) implies #[trigger] word_ok(m1, j, k) by {
+        if j == id {
+            assert(k == 0);
+        }
+        assert(word_ok(m0, j, k));
+    }
+}
+
+/// Stores `v` into content byte `i` of the blob `id` through `p` (its
+/// pointer): the model's content of `id` gets `v` at `i`.
+#[inline(always)]
+fn write_content_byte(Tracked(m): Tracked<&mut HeapMem>, Ghost(id): Ghost<int>, Ghost(i): Ghost<int>, p: *mut u8, v: u8)
+    requires
+        heap_ok(*old(m)),
+        0 <= id < old(m).objs.len(),
+        is_blob(old(m).objs[id]),
+        0 <= i < content(old(m).objs[id]).len(),
+        p == at_index(old(m).cptrs[id], i),
+    ensures
+        heap_ok(*final(m)),
+        final(m).objs == old(m).objs.update(id,
+            with_content(old(m).objs[id], content(old(m).objs[id]).update(i, v))),
+        final(m).addrs == old(m).addrs,
+        final(m).class_bits == old(m).class_bits,
+        final(m).exposed == old(m).exposed,
+        final(m).cptrs == old(m).cptrs,
+    no_unwind
+{
+    let ghost m0 = *m;
+    let ghost o = m0.objs[id];
+    proof {
+        if o.body is Str { assert(str_ok(m0, id)); } else { assert(ba_ok(m0, id)); }
+        assert(byte_ok(m0, id, i));
+    }
+    ptr_mut_write(p, Tracked(m.bytes.tracked_borrow_mut((id, i))), v);
+    proof {
+        let o2 = with_content(o, content(o).update(i, v));
+        m.objs = m0.objs.update(id, o2);
+        assert(m.bytes.dom() =~= m0.bytes.dom());
+        lemma_bytes_written(m0, *m, id, i, i + 1);
+    }
+}
+
+/// After the bytes `ks` of the blob `id` are written (the permissions of
+/// the other bytes unchanged, those in `ks` with the new content's
+/// values), the heap invariant holds again.
+pub proof fn lemma_bytes_written(m0: HeapMem, m1: HeapMem, id: int, lo: int, hi: int)
+    requires
+        heap_ok(m0),
+        0 <= id < m0.objs.len(),
+        is_blob(m0.objs[id]),
+        m1.words == m0.words, m1.halves == m0.halves, m1.bwords == m0.bwords, m1.cptrs == m0.cptrs,
+        m1.exposed == m0.exposed, m1.addrs == m0.addrs, m1.class_bits == m0.class_bits,
+        m1.objs.len() == m0.objs.len(),
+        forall|j: int| 0 <= j < m0.objs.len() && j != id ==> #[trigger] m1.objs[j] == m0.objs[j],
+        m1.objs[id] == with_content(m0.objs[id], content(m1.objs[id])),
+        content(m1.objs[id]).len() == content(m0.objs[id]).len(),
+        m1.bytes.dom() == m0.bytes.dom(),
+        forall|key: (int, int)| !(key.0 == id && lo <= key.1 < hi) ==> #[trigger] m1.bytes[key] == m0.bytes[key],
+        forall|k: int| lo <= k < hi ==> 0 <= k < content(m0.objs[id]).len()
+            && #[trigger] m1.bytes[(id, k)].ptr() == m0.bytes[(id, k)].ptr()
+            && m1.bytes[(id, k)].is_init()
+            && m1.bytes[(id, k)].value() == content(m1.objs[id])[k],
+        forall|k: int| 0 <= k < content(m0.objs[id]).len() && !(lo <= k < hi) ==>
+            #[trigger] content(m1.objs[id])[k] == content(m0.objs[id])[k],
+    ensures heap_ok(m1),
+{
+    let o = m0.objs[id];
+    lemma_word_frame(m0, m1, id);
+    assert forall|j: int| 0 <= j < m1.objs.len() && m1.objs[j].body is Str implies #[trigger] str_ok(m1, j) by {
+        assert(str_ok(m0, j));
+        assert forall|k: int| 0 <= k < content(m1.objs[j]).len() implies #[trigger] byte_ok(m1, j, k) by {
+            assert(byte_ok(m0, j, k));
+        }
+    }
+    assert forall|j: int| 0 <= j < m1.objs.len() && (m1.objs[j].body is Bytes || is_ba_class(m1, j))
+        implies #[trigger] ba_ok(m1, j) by {
+        assert(is_ba_class(m1, j) == is_ba_class(m0, j));
+        assert(ba_ok(m0, j));
+        if m1.objs[j].body is Bytes {
+            assert forall|k: int| 0 <= k < content(m1.objs[j]).len() implies #[trigger] byte_ok(m1, j, k) by {
+                assert(byte_ok(m0, j, k));
             }
         }
     }
@@ -930,6 +1203,13 @@ impl Heap {
     /// which the objects' headers follow.
     pub closed spec fn class_bits(&self) -> Seq<u16> {
         self.mem@.class_bits
+    }
+
+    /// The content pointers of the strings and byte arrays (`Content`
+    /// views carry them; the accessors keep them, the calls that may GC do
+    /// not promise anything about them).
+    pub closed spec fn cptrs(&self) -> Seq<*mut u8> {
+        self.mem@.cptrs
     }
 
     /// Word `k` of object `id` (`obj` is its address).
@@ -984,10 +1264,13 @@ impl Heap {
             forall|j: int, x: usize| j != k && is_word(o2, j) ==>
                 #[trigger] word_val(o2, old(self).class_bits(), old(self).addrs(), j, x)
                     == word_val(old(self).objs()[id], old(self).class_bits(), old(self).addrs(), j, x),
+            !is_blob(o2), !is_blob(old(self).objs()[id]),
+            o2.class_id == old(self).objs()[id].class_id,
         ensures
             final(self).objs() == old(self).objs().update(id, o2),
             final(self).addrs() == old(self).addrs(),
             final(self).class_bits() == old(self).class_bits(),
+            final(self).cptrs() == old(self).cptrs(),
     {
         proof {
             use_type_invariant(&*self);
@@ -1077,6 +1360,7 @@ impl Heap {
             }),
             final(self).addrs() == old(self).addrs(),
             final(self).class_bits() == old(self).class_bits(),
+            final(self).cptrs() == old(self).cptrs(),
     {
         proof {
             use_type_invariant(&*self);
@@ -1147,6 +1431,7 @@ impl Heap {
             }),
             final(self).addrs() == old(self).addrs(),
             final(self).class_bits() == old(self).class_bits(),
+            final(self).cptrs() == old(self).cptrs(),
     {
         proof {
             use_type_invariant(&*self);
@@ -1232,9 +1517,46 @@ impl Heap {
         b as i64
     }
 
+    /// The length half word of the string `id`.
+    #[inline(always)]
+    fn string_half(&self, obj: usize, Ghost(id): Ghost<int>) -> (r: usize)
+        requires
+            0 <= id < self.objs().len(),
+            obj == self.addrs()[id],
+            self.objs()[id].body is Str,
+        ensures
+            r == self.mem@.halves[(id, STRING_INTERNAL_LENGTH_BYTE as int)].value() as usize,
+            str_ok(self.mem@, id),
+    {
+        proof {
+            use_type_invariant(self);
+            assert(str_ok(self.mem@, id));
+        }
+        let p: *mut HalfWord = with_exposed_provenance(obj - HEAP_TAG + STRING_INTERNAL_LENGTH_BYTE,
+            Tracked(self.mem.borrow().exposed));
+        *ptr_ref(p, Tracked(self.mem.borrow().halves.tracked_borrow((id, STRING_INTERNAL_LENGTH_BYTE as int)))) as usize
+    }
+
+    /// Header word `k` of the string or byte array `id`.
+    #[inline(always)]
+    fn read_bword(&self, obj: usize, k: usize, Ghost(id): Ghost<int>) -> (r: usize)
+        requires
+            0 <= id < self.objs().len(),
+            obj == self.addrs()[id],
+            bword_ok(self.mem@, id, k as int),
+            self.addrs()[id] >= HEAP_TAG,
+            self.addrs()[id] - HEAP_TAG + (k + 1) * WORD_SIZE <= usize::MAX,
+        ensures r == bword(self.mem@, id, k as int),
+    {
+        proof {
+            lemma_at_index_exact(obj_ptr(self.mem@, id), k as int, (k + 1) as int);
+        }
+        let p: *mut usize = with_exposed_provenance(obj - HEAP_TAG, Tracked(self.mem.borrow().exposed));
+        *ptr_ref(p.wrapping_add(k), Tracked(self.mem.borrow().bwords.tracked_borrow((id, k as int))))
+    }
+
     /// The length of the string `id` (internal: the 32-bit length field;
     /// external: the length word).
-    #[verifier::external_body]
     #[inline(always)]
     pub fn string_len(&self, obj: usize, Ghost(id): Ghost<int>) -> (r: usize)
         requires
@@ -1244,15 +1566,39 @@ impl Heap {
             self.objs()[id].body is Str,
         ensures r == self.objs()[id].body->Str_0.len(),
     {
-        let base = obj - HEAP_TAG;
-        unsafe {
-            let internal = *((base + STRING_INTERNAL_LENGTH_BYTE) as *const HalfWord) as usize;
-            if internal != STRING_SENTINEL { internal } else { *(base as *const usize).add(STRING_EXTERNAL_LENGTH_WORD) }
+        let internal = self.string_half(obj, Ghost(id));
+        if internal != STRING_SENTINEL {
+            internal
+        } else {
+            self.read_bword(obj, STRING_EXTERNAL_LENGTH_WORD, Ghost(id))
+        }
+    }
+
+    /// The content pointer of the string `id` and its length.
+    #[inline(always)]
+    fn string_ptr(&self, obj: usize, Ghost(id): Ghost<int>) -> (r: (*mut u8, usize))
+        requires
+            0 <= id < self.objs().len(),
+            obj == self.addrs()[id],
+            self.objs()[id].body is Str,
+        ensures
+            r.0 == self.mem@.cptrs[id],
+            r.1 == content(self.objs()[id]).len(),
+            bytes_ok(self.mem@, id),
+    {
+        let internal = self.string_half(obj, Ghost(id));
+        if internal != STRING_SENTINEL {
+            let p: *mut u8 = with_exposed_provenance(obj - HEAP_TAG + STRING_CONTENT_BYTE, Tracked(self.mem.borrow().exposed));
+            (p, internal)
+        } else {
+            let a = self.read_bword(obj, STRING_EXTERNAL_ADDRESS_WORD, Ghost(id));
+            let n = self.read_bword(obj, STRING_EXTERNAL_LENGTH_WORD, Ghost(id));
+            let p: *mut u8 = with_exposed_provenance(a, Tracked(self.mem.borrow().exposed));
+            (p, n)
         }
     }
 
     /// Byte `i` of the string `id` (inline content or external memory).
-    #[verifier::external_body]
     #[inline(always)]
     pub fn string_byte(&self, obj: usize, i: usize, Ghost(id): Ghost<int>) -> (r: u8)
         requires
@@ -1263,16 +1609,9 @@ impl Heap {
             i < self.objs()[id].body->Str_0.len(),
         ensures r == self.objs()[id].body->Str_0[i as int],
     {
-        let base = obj - HEAP_TAG;
-        unsafe {
-            let internal = *((base + STRING_INTERNAL_LENGTH_BYTE) as *const HalfWord) as usize;
-            if internal != STRING_SENTINEL {
-                *((base + STRING_CONTENT_BYTE + i) as *const u8)
-            } else {
-                let address = *(base as *const usize).add(STRING_EXTERNAL_ADDRESS_WORD);
-                *(address as *const u8).add(i)
-            }
-        }
+        let (p, n) = self.string_ptr(obj, Ghost(id));
+        proof { assert(byte_ok(self.mem@, id, i as int)); }
+        *ptr_ref(p.wrapping_add(i), Tracked(self.mem.borrow().bytes.tracked_borrow((id, i as int))))
     }
 
     /// Whether the object `id`, whose class has the byte-array tag, is a
@@ -1282,7 +1621,6 @@ impl Heap {
     /// external byte arrays (mapped files, proxies of resources, whose
     /// address is not program-accessible memory) are opaque objects of the
     /// model (TRUSTED.md, "Heap model").
-    #[verifier::external_body]
     #[inline(always)]
     pub fn bytes_len(&self, obj: usize, Ghost(id): Ghost<int>) -> (r: Option<usize>)
         requires
@@ -1295,18 +1633,47 @@ impl Heap {
             r is Some == self.objs()[id].body is Bytes,
             r is Some ==> r->0 == self.objs()[id].body->Bytes_0.len(),
     {
-        let base = (obj - HEAP_TAG) as *const usize;
-        unsafe {
-            let raw = *base.add(BYTE_ARRAY_LENGTH_WORD) as isize;
-            if raw >= 0 { return Some(raw as usize); }
-            let tag = *base.add(BYTE_ARRAY_EXTERNAL_TAG_WORD);
-            let address = *base.add(BYTE_ARRAY_EXTERNAL_ADDRESS_WORD);
-            if tag == RAW_BYTE_TAG && address != 0 { Some((-1 - raw) as usize) } else { None }
+        proof {
+            use_type_invariant(self);
+            assert(is_ba_class(self.mem@, id));
+            assert(ba_ok(self.mem@, id));
+        }
+        let raw = self.read_bword(obj, BYTE_ARRAY_LENGTH_WORD, Ghost(id)) as isize;
+        if raw >= 0 { return Some(raw as usize); }
+        let tag = self.read_bword(obj, BYTE_ARRAY_EXTERNAL_TAG_WORD, Ghost(id));
+        let address = self.read_bword(obj, BYTE_ARRAY_EXTERNAL_ADDRESS_WORD, Ghost(id));
+        if tag == RAW_BYTE_TAG && address != 0 { Some((-1 - raw) as usize) } else { None }
+    }
+
+    /// The content pointer of the byte array `id` (of the model) and its
+    /// length.
+    #[inline(always)]
+    fn bytes_ptr(&self, obj: usize, Ghost(id): Ghost<int>) -> (r: (*mut u8, usize))
+        requires
+            0 <= id < self.objs().len(),
+            obj == self.addrs()[id],
+            self.objs()[id].body is Bytes,
+        ensures
+            r.0 == self.mem@.cptrs[id],
+            r.1 == content(self.objs()[id]).len(),
+            bytes_ok(self.mem@, id),
+    {
+        proof {
+            use_type_invariant(self);
+            assert(ba_ok(self.mem@, id));
+        }
+        let raw = self.read_bword(obj, BYTE_ARRAY_LENGTH_WORD, Ghost(id)) as isize;
+        if raw >= 0 {
+            let p: *mut u8 = with_exposed_provenance(obj - HEAP_TAG + BYTE_ARRAY_CONTENT_BYTE, Tracked(self.mem.borrow().exposed));
+            (p, raw as usize)
+        } else {
+            let a = self.read_bword(obj, BYTE_ARRAY_EXTERNAL_ADDRESS_WORD, Ghost(id));
+            let p: *mut u8 = with_exposed_provenance(a, Tracked(self.mem.borrow().exposed));
+            (p, (-1 - raw) as usize)
         }
     }
 
     /// Byte `i` of the byte array `id`.
-    #[verifier::external_body]
     #[inline(always)]
     pub fn byte_at(&self, obj: usize, i: usize, Ghost(id): Ghost<int>) -> (r: u8)
         requires
@@ -1317,20 +1684,13 @@ impl Heap {
             i < self.objs()[id].body->Bytes_0.len(),
         ensures r == self.objs()[id].body->Bytes_0[i as int],
     {
-        unsafe {
-            let base = (obj - HEAP_TAG) as *const usize;
-            let address = if (*base.add(BYTE_ARRAY_LENGTH_WORD) as isize) >= 0 {
-                (obj - HEAP_TAG + BYTE_ARRAY_CONTENT_BYTE) as *const u8
-            } else {
-                *base.add(BYTE_ARRAY_EXTERNAL_ADDRESS_WORD) as *const u8
-            };
-            *address.add(i)
-        }
+        let (p, n) = self.bytes_ptr(obj, Ghost(id));
+        proof { assert(byte_ok(self.mem@, id, i as int)); }
+        *ptr_ref(p.wrapping_add(i), Tracked(self.mem.borrow().bytes.tracked_borrow((id, i as int))))
     }
 
     /// Stores `b` into byte `i` of the byte array `id`, outside the program
     /// heap (bytes hold no references: no write barrier).
-    #[verifier::external_body]
     #[inline(always)]
     pub fn set_byte_at(&mut self, obj: usize, i: usize, b: u8, Ghost(id): Ghost<int>)
         requires
@@ -1347,16 +1707,11 @@ impl Heap {
             }),
             final(self).addrs() == old(self).addrs(),
             final(self).class_bits() == old(self).class_bits(),
+            final(self).cptrs() == old(self).cptrs(),
     {
-        unsafe {
-            let base = (obj - HEAP_TAG) as *const usize;
-            let address = if (*base.add(BYTE_ARRAY_LENGTH_WORD) as isize) >= 0 {
-                (obj - HEAP_TAG + BYTE_ARRAY_CONTENT_BYTE) as *mut u8
-            } else {
-                *base.add(BYTE_ARRAY_EXTERNAL_ADDRESS_WORD) as *mut u8
-            };
-            *address.add(i) = b
-        }
+        proof { use_type_invariant(&*self); }
+        let (p, n) = self.bytes_ptr(obj, Ghost(id));
+        write_content_byte(Tracked(self.mem.borrow_mut()), Ghost(id), Ghost(i as int), p.wrapping_add(i), b);
     }
 
     /// The header word of a heap object.
@@ -1472,25 +1827,38 @@ pub open spec fn class_tag_of(cb: Seq<u16>, cid: int) -> int {
 
 /// The bytes of a string or byte array (`Heap::string_content`,
 /// `Heap::byte_array_content`): the object `id()` of the heap model,
-/// `slen()` bytes. Valid until the next GC point: primitives never reach
-/// one (they report an allocation failure instead, `prims::PrimOutcome`),
-/// so a `Content` never outlives the primitive call that created it.
-#[verifier::external_body]
+/// `slen()` bytes at its content pointer. Valid until the next GC point:
+/// primitives never reach one (they report an allocation failure instead,
+/// `prims::PrimOutcome`), so a `Content` never outlives the primitive call
+/// that created it (a heap after a GC point relates no content pointer to
+/// the old ones: `content_ok` cannot hold for an old view).
 pub struct Content {
     ptr: *mut u8,
     len: usize,
+    id: Ghost<int>,
+    writable: Ghost<bool>,
 }
 
 impl Content {
-    pub uninterp spec fn id(&self) -> int;
+    pub closed spec fn id(&self) -> int {
+        self.id@
+    }
 
-    pub uninterp spec fn slen(&self) -> nat;
+    pub closed spec fn slen(&self) -> nat {
+        self.len as nat
+    }
 
     /// The bytes may be written: a string or a byte array with inline or
     /// raw external bytes, outside the program heap.
-    pub uninterp spec fn writable(&self) -> bool;
+    pub closed spec fn writable(&self) -> bool {
+        self.writable@
+    }
 
-    #[verifier::external_body]
+    /// The pointer to the bytes.
+    pub closed spec fn cptr(&self) -> *mut u8 {
+        self.ptr
+    }
+
     #[inline(always)]
     pub fn len(&self) -> (r: usize)
         ensures r == self.slen(),
@@ -1500,16 +1868,19 @@ impl Content {
 }
 
 /// A content view of object `c.id()` of the heap: its bytes are `c.slen()`
-/// long.
+/// long, at the object's content pointer.
 pub open spec fn content_ok(h: &Heap, c: &Content) -> bool {
     &&& 0 <= c.id() < h.objs().len()
     &&& is_blob(h.objs()[c.id()])
     &&& content(h.objs()[c.id()]).len() == c.slen()
+    &&& h.cptrs().len() == h.objs().len()
+    &&& h.cptrs()[c.id()] == c.cptr()
 }
 
 /// `new` is `old` with one object appended at the tagged address `r`, which
 /// is new and outside the program heap (`ro_start..ro_start+ro_size`); the
-/// model stays below 2^30 objects.
+/// model stays below 2^30 objects; the content pointers of the old objects
+/// stay (nothing moves).
 pub open spec fn appended(old: &Heap, new: &Heap, r: usize, ro_start: usize, ro_size: usize) -> bool {
     let n = old.objs().len();
     &&& new.objs().len() == n + 1
@@ -1524,12 +1895,233 @@ pub open spec fn appended(old: &Heap, new: &Heap, r: usize, ro_start: usize, ro_
     &&& !(ro_start <= r && r < ro_start + ro_size)
     &&& !new.objs()[n as int].ro
     &&& n + 1 < 0x4000_0000
+    &&& old.cptrs().len() == n
+    &&& new.cptrs().len() == n + 1
+    &&& new.cptrs().subrange(0, n as int) == old.cptrs()
+}
+
+/// The facts behind a content view of object `id`: its bytes.
+pub proof fn lemma_blob_bytes(m: HeapMem, id: int)
+    requires heap_ok(m), 0 <= id < m.objs.len(), is_blob(m.objs[id]),
+    ensures bytes_ok(m, id),
+{
+    if m.objs[id].body is Str { assert(str_ok(m, id)); } else { assert(ba_ok(m, id)); }
+}
+
+/// TRUSTED (FFI leaf: the C library's memmove, `core::ptr::copy`, stated
+/// on the permissions): moves the values of the elements `(s, sk..sk+n)`
+/// to the elements `(d, dk..dk+n)` through their pointers `src` and `dst`;
+/// every other permission is unchanged. (Heap words for `array_copy`,
+/// content bytes for `content_copy`.)
+#[verifier::external_body]
+#[inline(always)]
+fn perm_memmove<T>(Tracked(perms): Tracked<&mut Map<(int, int), PointsTo<T>>>, dst: *mut T, src: *mut T,
+                   n: usize, Ghost(d): Ghost<int>, Ghost(dk): Ghost<int>, Ghost(s): Ghost<int>, Ghost(sk): Ghost<int>)
+    requires
+        forall|k: int| 0 <= k < n ==> #[trigger] old(perms).contains_key((d, dk + k))
+            && old(perms)[(d, dk + k)].ptr() == at_index(dst, k) && old(perms)[(d, dk + k)].is_init(),
+        forall|k: int| 0 <= k < n ==> #[trigger] old(perms).contains_key((s, sk + k))
+            && old(perms)[(s, sk + k)].ptr() == at_index(src, k) && old(perms)[(s, sk + k)].is_init(),
+    ensures
+        final(perms).dom() == old(perms).dom(),
+        forall|key: (int, int)| old(perms).contains_key(key) ==>
+            #[trigger] final(perms)[key].ptr() == old(perms)[key].ptr()
+            && final(perms)[key].is_init() == old(perms)[key].is_init(),
+        forall|key: (int, int)| !(key.0 == d && dk <= key.1 < dk + n) ==>
+            #[trigger] final(perms)[key] == old(perms)[key],
+        forall|k: int| 0 <= k < n ==>
+            #[trigger] final(perms)[(d, dk + k)].value() == old(perms)[(s, sk + k)].value(),
+    no_unwind
+{
+    // SAFETY: both ranges are permissions' elements (inside their objects).
+    unsafe { core::ptr::copy(src, dst, n) }
+}
+
+/// TRUSTED (FFI leaf: the C library's memset, `core::ptr::write_bytes`,
+/// stated on the permissions): the bytes `(d, dk..dk+n)` through `dst`
+/// become `v`; every other permission is unchanged.
+#[verifier::external_body]
+#[inline(always)]
+fn perm_memset(Tracked(perms): Tracked<&mut Map<(int, int), PointsTo<u8>>>, dst: *mut u8, v: u8, n: usize,
+               Ghost(d): Ghost<int>, Ghost(dk): Ghost<int>)
+    requires
+        forall|k: int| 0 <= k < n ==> #[trigger] old(perms).contains_key((d, dk + k))
+            && old(perms)[(d, dk + k)].ptr() == at_index(dst, k) && old(perms)[(d, dk + k)].is_init(),
+    ensures
+        final(perms).dom() == old(perms).dom(),
+        forall|key: (int, int)| old(perms).contains_key(key) ==>
+            #[trigger] final(perms)[key].ptr() == old(perms)[key].ptr()
+            && final(perms)[key].is_init() == old(perms)[key].is_init(),
+        forall|key: (int, int)| !(key.0 == d && dk <= key.1 < dk + n) ==>
+            #[trigger] final(perms)[key] == old(perms)[key],
+        forall|k: int| 0 <= k < n ==> #[trigger] final(perms)[(d, dk + k)].value() == v,
+    no_unwind
+{
+    // SAFETY: the range is the permissions' bytes (inside the object).
+    unsafe { core::ptr::write_bytes(dst, v, n) }
+}
+
+/// The permissions of the content bytes `to..to+n` of blob `id` are at
+/// `at_index(p, k)` for `p` the pointer to byte `to`.
+pub proof fn lemma_content_range(m: HeapMem, id: int, p: *mut u8, to: int, n: int)
+    requires
+        heap_ok(m), 0 <= id < m.objs.len(), is_blob(m.objs[id]),
+        0 <= to, to + n <= content(m.objs[id]).len(),
+        p == at_index(m.cptrs[id], to),
+    ensures
+        forall|k: int| 0 <= k < n ==> #[trigger] m.bytes.contains_key((id, to + k))
+            && m.bytes[(id, to + k)].ptr() == at_index(p, k) && m.bytes[(id, to + k)].is_init(),
+{
+    lemma_blob_bytes(m, id);
+    assert forall|k: int| 0 <= k < n implies #[trigger] m.bytes.contains_key((id, to + k))
+        && m.bytes[(id, to + k)].ptr() == at_index(p, k) && m.bytes[(id, to + k)].is_init() by {
+        assert(byte_ok(m, id, to + k));
+        lemma_at_index_move(m.cptrs[id], to, k);
+    }
+}
+
+/// memmove of the content bytes `src[from..from+n]` to `dst[to..to+n]`
+/// (`content_copy`), with the model update.
+#[inline(always)]
+fn copy_content(Tracked(m): Tracked<&mut HeapMem>, pd: *mut u8, ps: *mut u8, n: usize,
+                Ghost(d): Ghost<int>, Ghost(to): Ghost<int>, Ghost(s): Ghost<int>, Ghost(from): Ghost<int>)
+    requires
+        heap_ok(*old(m)),
+        0 <= d < old(m).objs.len(), 0 <= s < old(m).objs.len(),
+        is_blob(old(m).objs[d]), is_blob(old(m).objs[s]),
+        0 <= to, to + n <= content(old(m).objs[d]).len(),
+        0 <= from, from + n <= content(old(m).objs[s]).len(),
+        pd == at_index(old(m).cptrs[d], to),
+        ps == at_index(old(m).cptrs[s], from),
+    ensures
+        heap_ok(*final(m)),
+        final(m).objs == old(m).objs.update(d,
+            with_content(old(m).objs[d], Seq::new(content(old(m).objs[d]).len(), |k: int|
+                if to <= k < to + n { content(old(m).objs[s])[k - to + from] }
+                else { content(old(m).objs[d])[k] }))),
+        final(m).addrs == old(m).addrs,
+        final(m).class_bits == old(m).class_bits,
+        final(m).exposed == old(m).exposed,
+        final(m).cptrs == old(m).cptrs,
+    no_unwind
+{
+    let ghost m0 = *m;
+    proof {
+        lemma_content_range(m0, d, pd, to, n as int);
+        lemma_content_range(m0, s, ps, from, n as int);
+        lemma_blob_bytes(m0, s);
+    }
+    perm_memmove(Tracked(&mut m.bytes), pd, ps, n, Ghost(d), Ghost(to), Ghost(s), Ghost(from));
+    proof {
+        let od = m0.objs[d];
+        let cs = content(m0.objs[s]);
+        let cd = content(od);
+        let c1 = Seq::new(cd.len(), |k: int| if to <= k < to + n { cs[k - to + from] } else { cd[k] });
+        m.objs = m0.objs.update(d, with_content(od, c1));
+        assert forall|k: int| to <= k < to + n implies 0 <= k < content(m0.objs[d]).len()
+            && #[trigger] m.bytes[(d, k)].ptr() == m0.bytes[(d, k)].ptr()
+            && m.bytes[(d, k)].is_init()
+            && m.bytes[(d, k)].value() == content(m.objs[d])[k] by {
+            assert(m.bytes[(d, to + (k - to))].value() == m0.bytes[(s, from + (k - to))].value());
+            assert(byte_ok(m0, s, from + (k - to)));
+            assert(m0.bytes.contains_key((d, k)));
+        }
+        assert(content(m.objs[d]) == c1);
+        lemma_bytes_written(m0, *m, d, to, to + n);
+    }
+}
+
+/// memset of the content bytes `dst[to..to+n]` (`content_fill`), with
+/// the model update.
+#[inline(always)]
+fn fill_content(Tracked(m): Tracked<&mut HeapMem>, pd: *mut u8, v: u8, n: usize, Ghost(d): Ghost<int>, Ghost(to): Ghost<int>)
+    requires
+        heap_ok(*old(m)),
+        0 <= d < old(m).objs.len(),
+        is_blob(old(m).objs[d]),
+        0 <= to, to + n <= content(old(m).objs[d]).len(),
+        pd == at_index(old(m).cptrs[d], to),
+    ensures
+        heap_ok(*final(m)),
+        final(m).objs == old(m).objs.update(d,
+            with_content(old(m).objs[d], Seq::new(content(old(m).objs[d]).len(), |k: int|
+                if to <= k < to + n { v } else { content(old(m).objs[d])[k] }))),
+        final(m).addrs == old(m).addrs,
+        final(m).class_bits == old(m).class_bits,
+        final(m).exposed == old(m).exposed,
+        final(m).cptrs == old(m).cptrs,
+    no_unwind
+{
+    let ghost m0 = *m;
+    proof { lemma_content_range(m0, d, pd, to, n as int); }
+    perm_memset(Tracked(&mut m.bytes), pd, v, n, Ghost(d), Ghost(to));
+    proof {
+        let od = m0.objs[d];
+        let cd = content(od);
+        let c1 = Seq::new(cd.len(), |k: int| if to <= k < to + n { v } else { cd[k] });
+        m.objs = m0.objs.update(d, with_content(od, c1));
+        assert forall|k: int| to <= k < to + n implies 0 <= k < content(m0.objs[d]).len()
+            && #[trigger] m.bytes[(d, k)].ptr() == m0.bytes[(d, k)].ptr()
+            && m.bytes[(d, k)].is_init()
+            && m.bytes[(d, k)].value() == content(m.objs[d])[k] by {
+            assert(m.bytes[(d, to + (k - to))].value() == v);
+            assert(m0.bytes.contains_key((d, k)));
+        }
+        assert(content(m.objs[d]) == c1);
+        lemma_bytes_written(m0, *m, d, to, to + n);
+    }
+}
+
+/// Stores `v` into the hash-code half word of the string `id` (not in the
+/// model).
+#[inline(always)]
+fn write_hash(Tracked(m): Tracked<&mut HeapMem>, Ghost(id): Ghost<int>, p: *mut HalfWord, v: HalfWord)
+    requires
+        heap_ok(*old(m)),
+        0 <= id < old(m).objs.len(),
+        old(m).objs[id].body is Str,
+        p == half_ptr(*old(m), id, STRING_HASH_CODE_BYTE as int),
+    ensures
+        heap_ok(*final(m)),
+        final(m).objs == old(m).objs,
+        final(m).addrs == old(m).addrs,
+        final(m).class_bits == old(m).class_bits,
+        final(m).exposed == old(m).exposed,
+        final(m).cptrs == old(m).cptrs,
+    no_unwind
+{
+    let ghost m0 = *m;
+    proof { assert(str_ok(m0, id)); }
+    ptr_mut_write(p, Tracked(m.halves.tracked_borrow_mut((id, STRING_HASH_CODE_BYTE as int))), v);
+    proof {
+        assert forall|j: int| 0 <= j < m.objs.len() implies #[trigger] obj_fits(*m, j) by {
+            assert(obj_fits(m0, j));
+        }
+        assert forall|j: int, k: int| 0 <= j < m.objs.len() && is_word(m.objs[j], k) implies #[trigger] word_ok(*m, j, k) by {
+            assert(word_ok(m0, j, k));
+        }
+        assert forall|j: int| 0 <= j < m.objs.len() && m.objs[j].body is Str implies #[trigger] str_ok(*m, j) by {
+            assert(str_ok(m0, j));
+            assert(m.halves[(j, STRING_INTERNAL_LENGTH_BYTE as int)] == m0.halves[(j, STRING_INTERNAL_LENGTH_BYTE as int)]);
+            assert forall|k: int| 0 <= k < content(m.objs[j]).len() implies #[trigger] byte_ok(*m, j, k) by {
+                assert(byte_ok(m0, j, k));
+            }
+        }
+        assert forall|j: int| 0 <= j < m.objs.len() && (m.objs[j].body is Bytes || is_ba_class(*m, j))
+            implies #[trigger] ba_ok(*m, j) by {
+            assert(ba_ok(m0, j));
+            if m.objs[j].body is Bytes {
+                assert forall|k: int| 0 <= k < content(m.objs[j]).len() implies #[trigger] byte_ok(*m, j, k) by {
+                    assert(byte_ok(m0, j, k));
+                }
+            }
+        }
+    }
 }
 
 impl Heap {
     /// The bytes of the string `id` (inline or external). Writable exactly
     /// when the string is not in the program heap.
-    #[verifier::external_body]
     #[inline(always)]
     pub fn string_content(&self, obj: usize, Ghost(id): Ghost<int>) -> (r: Content)
         requires
@@ -1541,27 +2133,17 @@ impl Heap {
             r.id() == id,
             r.slen() == content(self.objs()[id]).len(),
             r.writable() == !self.objs()[id].ro,
+            content_ok(self, &r),
     {
-        unsafe {
-            let base = (obj - HEAP_TAG) as *mut u8;
-            let internal = *(base.add(STRING_INTERNAL_LENGTH_BYTE) as *const HalfWord) as usize;
-            if internal != STRING_SENTINEL {
-                Content { ptr: base.add(STRING_CONTENT_BYTE), len: internal }
-            } else {
-                let words = base as *const usize;
-                Content {
-                    ptr: *words.add(STRING_EXTERNAL_ADDRESS_WORD) as *mut u8,
-                    len: *words.add(STRING_EXTERNAL_LENGTH_WORD),
-                }
-            }
-        }
+        proof { use_type_invariant(self); }
+        let (p, n) = self.string_ptr(obj, Ghost(id));
+        Content { ptr: p, len: n, id: Ghost(id), writable: Ghost(!self.objs()[id].ro) }
     }
 
     /// The bytes of the byte array `id` of the model (`Body::Bytes`: by V5
     /// internal, or external with the raw-bytes tag at a non-null address;
     /// `bytes_len` tells a model byte array from an opaque one). Writable
     /// when `for_write` and not in the program heap.
-    #[verifier::external_body]
     #[inline(always)]
     pub fn byte_array_content(&self, obj: usize, Ghost(id): Ghost<int>, for_write: bool) -> (r: Content)
         requires
@@ -1573,23 +2155,17 @@ impl Heap {
             r.id() == id,
             r.slen() == content(self.objs()[id]).len(),
             r.writable() == (for_write && !self.objs()[id].ro),
+            content_ok(self, &r),
     {
-        unsafe {
-            let base = (obj - HEAP_TAG) as *mut u8;
-            let words = base as *const usize;
-            let raw = *words.add(BYTE_ARRAY_LENGTH_WORD) as isize;
-            if raw >= 0 {
-                Content { ptr: base.add(BYTE_ARRAY_CONTENT_BYTE), len: raw as usize }
-            } else {
-                Content { ptr: *words.add(BYTE_ARRAY_EXTERNAL_ADDRESS_WORD) as *mut u8, len: (-1 - raw) as usize }
-            }
-        }
+        proof { use_type_invariant(self); }
+        let (p, n) = self.bytes_ptr(obj, Ghost(id));
+        let ghost wr = for_write && !self.objs()[id].ro;
+        Content { ptr: p, len: n, id: Ghost(id), writable: Ghost(wr) }
     }
 
     /// The hash code cached in the string `id` (`String::NO_HASH_CODE` if
     /// not computed yet; a 32-bit field holding 16 bits, as
     /// `String::_raw_hash_code`). Not in the model: any value.
-    #[verifier::external_body]
     #[inline(always)]
     pub fn string_hash_field(&self, obj: usize, Ghost(id): Ghost<int>) -> u16
         requires
@@ -1598,12 +2174,17 @@ impl Heap {
             obj == self.addrs()[id],
             self.objs()[id].body is Str,
     {
-        unsafe { *(((obj - HEAP_TAG) as *const u8).add(STRING_HASH_CODE_BYTE) as *const HalfWord) as u16 }
+        proof {
+            use_type_invariant(self);
+            assert(str_ok(self.mem@, id));
+        }
+        let p: *mut HalfWord = with_exposed_provenance(obj - HEAP_TAG + STRING_HASH_CODE_BYTE,
+            Tracked(self.mem.borrow().exposed));
+        *ptr_ref(p, Tracked(self.mem.borrow().halves.tracked_borrow((id, STRING_HASH_CODE_BYTE as int)))) as u16
     }
 
     /// Caches the hash code of the string `id` (not in the program heap).
     /// The model does not include it, so it is unchanged.
-    #[verifier::external_body]
     #[inline(always)]
     pub fn set_string_hash_field(&mut self, obj: usize, Ghost(id): Ghost<int>, v: u16)
         requires
@@ -1612,23 +2193,36 @@ impl Heap {
             obj == old(self).addrs()[id],
             old(self).objs()[id].body is Str,
             !old(self).objs()[id].ro,
-        ensures *final(self) == *old(self),
+        ensures
+            final(self).objs() == old(self).objs(),
+            final(self).addrs() == old(self).addrs(),
+            final(self).class_bits() == old(self).class_bits(),
+            final(self).cptrs() == old(self).cptrs(),
     {
-        unsafe { *(((obj - HEAP_TAG) as *mut u8).add(STRING_HASH_CODE_BYTE) as *mut HalfWord) = v as HalfWord }
+        proof {
+            use_type_invariant(&*self);
+            assert(str_ok(self.mem@, id));
+        }
+        let p: *mut HalfWord = with_exposed_provenance(obj - HEAP_TAG + STRING_HASH_CODE_BYTE,
+            Tracked(self.mem.borrow().exposed));
+        write_hash(Tracked(self.mem.borrow_mut()), Ghost(id), p, v as HalfWord);
     }
 
     /// Byte `i` of a content view.
-    #[verifier::external_body]
     #[inline(always)]
     pub fn content_at(&self, c: &Content, i: usize) -> (r: u8)
         requires content_ok(self, c), i < c.slen(),
         ensures r == content(self.objs()[c.id()])[i as int],
     {
-        unsafe { *c.ptr.add(i) }
+        proof {
+            use_type_invariant(self);
+            lemma_blob_bytes(self.mem@, c.id());
+            assert(byte_ok(self.mem@, c.id(), i as int));
+        }
+        *ptr_ref(c.ptr.wrapping_add(i), Tracked(self.mem.borrow().bytes.tracked_borrow((c.id(), i as int))))
     }
 
     /// Stores byte `i` of a writable content view.
-    #[verifier::external_body]
     #[inline(always)]
     pub fn content_set(&mut self, c: &Content, i: usize, v: u8)
         requires content_ok(old(self), c), i < c.slen(), c.writable(),
@@ -1637,13 +2231,14 @@ impl Heap {
                 with_content(old(self).objs()[c.id()], content(old(self).objs()[c.id()]).update(i as int, v))),
             final(self).addrs() == old(self).addrs(),
             final(self).class_bits() == old(self).class_bits(),
+            final(self).cptrs() == old(self).cptrs(),
     {
-        unsafe { *c.ptr.add(i) = v }
+        proof { use_type_invariant(&*self); }
+        write_content_byte(Tracked(self.mem.borrow_mut()), Ghost(c.id()), Ghost(i as int), c.ptr.wrapping_add(i), v);
     }
 
     /// memmove of `n` bytes from `src[from..]` to `dst[to..]` (`dst`
     /// writable; the views may be of the same object).
-    #[verifier::external_body]
     #[inline(always)]
     pub fn content_copy(&mut self, dst: &Content, to: usize, src: &Content, from: usize, n: usize)
         requires
@@ -1656,12 +2251,14 @@ impl Heap {
                     else { content(old(self).objs()[dst.id()])[k] }))),
             final(self).addrs() == old(self).addrs(),
             final(self).class_bits() == old(self).class_bits(),
+            final(self).cptrs() == old(self).cptrs(),
     {
-        unsafe { core::ptr::copy(src.ptr.add(from), dst.ptr.add(to), n) }
+        proof { use_type_invariant(&*self); }
+        copy_content(Tracked(self.mem.borrow_mut()), dst.ptr.wrapping_add(to), src.ptr.wrapping_add(from), n,
+            Ghost(dst.id()), Ghost(to as int), Ghost(src.id()), Ghost(from as int));
     }
 
     /// memset of `n` bytes at `dst[to..]`.
-    #[verifier::external_body]
     #[inline(always)]
     pub fn content_fill(&mut self, dst: &Content, to: usize, n: usize, v: u8)
         requires content_ok(old(self), dst), dst.writable(), to + n <= dst.slen(),
@@ -1671,8 +2268,10 @@ impl Heap {
                     if to <= k < to + n { v } else { content(old(self).objs()[dst.id()])[k] }))),
             final(self).addrs() == old(self).addrs(),
             final(self).class_bits() == old(self).class_bits(),
+            final(self).cptrs() == old(self).cptrs(),
     {
-        unsafe { core::ptr::write_bytes(dst.ptr.add(to), v, n) }
+        proof { use_type_invariant(&*self); }
+        fill_content(Tracked(self.mem.borrow_mut()), dst.ptr.wrapping_add(to), v, n, Ghost(dst.id()), Ghost(to as int));
     }
 
     /// memmove of `n` elements from `src[from..]` to `dst[to..]` of two
@@ -1700,6 +2299,7 @@ impl Heap {
             }),
             final(self).addrs() == old(self).addrs(),
             final(self).class_bits() == old(self).class_bits(),
+            final(self).cptrs() == old(self).cptrs(),
     {
         proof {
             use_type_invariant(&*self);
@@ -1715,34 +2315,6 @@ impl Heap {
             self.write_barrier(dst);
         }
     }
-}
-
-/// TRUSTED (FFI leaf: the C library's memmove, `core::ptr::copy`, stated
-/// on the permissions): moves the values of the words `(s, sk..sk+n)` to
-/// the words `(d, dk..dk+n)` through their pointers `src` and `dst`; every
-/// other permission is unchanged.
-#[verifier::external_body]
-#[inline(always)]
-fn heap_memmove(Tracked(words): Tracked<&mut Map<(int, int), PointsTo<usize>>>, dst: *mut usize, src: *mut usize,
-                n: usize, Ghost(d): Ghost<int>, Ghost(dk): Ghost<int>, Ghost(s): Ghost<int>, Ghost(sk): Ghost<int>)
-    requires
-        forall|k: int| 0 <= k < n ==> #[trigger] old(words).contains_key((d, dk + k))
-            && old(words)[(d, dk + k)].ptr() == at_index(dst, k) && old(words)[(d, dk + k)].is_init(),
-        forall|k: int| 0 <= k < n ==> #[trigger] old(words).contains_key((s, sk + k))
-            && old(words)[(s, sk + k)].ptr() == at_index(src, k) && old(words)[(s, sk + k)].is_init(),
-    ensures
-        final(words).dom() == old(words).dom(),
-        forall|key: (int, int)| old(words).contains_key(key) ==>
-            #[trigger] final(words)[key].ptr() == old(words)[key].ptr()
-            && final(words)[key].is_init() == old(words)[key].is_init(),
-        forall|key: (int, int)| !(key.0 == d && dk <= key.1 < dk + n) ==>
-            #[trigger] final(words)[key] == old(words)[key],
-        forall|k: int| 0 <= k < n ==>
-            #[trigger] final(words)[(d, dk + k)].value() == old(words)[(s, sk + k)].value(),
-    no_unwind
-{
-    // SAFETY: both ranges are permissions' words (inside their objects).
-    unsafe { core::ptr::copy(src, dst, n) }
 }
 
 /// The elements of `array_copy`: the memmove and the model's new array.
@@ -1770,6 +2342,7 @@ fn copy_elements(Tracked(m): Tracked<&mut HeapMem>, pd: *mut usize, ps: *mut usi
         final(m).addrs == old(m).addrs,
         final(m).class_bits == old(m).class_bits,
         final(m).exposed == old(m).exposed,
+        final(m).cptrs == old(m).cptrs,
     no_unwind
 {
     let ghost m0 = *m;
@@ -1787,7 +2360,7 @@ fn copy_elements(Tracked(m): Tracked<&mut HeapMem>, pd: *mut usize, ps: *mut usi
             lemma_at_index_move(obj_ptr(m0, s), sk, k);
         }
     }
-    heap_memmove(Tracked(&mut m.words), pd, ps, n, Ghost(d), Ghost(dk), Ghost(s), Ghost(sk));
+    perm_memmove(Tracked(&mut m.words), pd, ps, n, Ghost(d), Ghost(dk), Ghost(s), Ghost(sk));
     proof {
         let od = m0.objs[d];
         let e0 = od.body->Array_0;
@@ -1822,6 +2395,7 @@ fn copy_elements(Tracked(m): Tracked<&mut HeapMem>, pd: *mut usize, ps: *mut usi
                 }
             }
         }
+        lemma_blob_frame(m0, *m, d);
     }
 }
 

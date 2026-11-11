@@ -76,6 +76,31 @@ Artifacts: /home/flo/work/opentoit-sandbox-artifacts/proven-accessors
   heap invariant after the move are verified (`copy_elements`), as is
   the write barrier's condition. With P2 this completes the instance and
   array group. Instructions unchanged.
+- P5 (strings, byte arrays, content views): `HeapMem` gains the half
+  words of strings (length, hash code), the blob header words (external
+  length and address of a string; length, tag, address of a byte array),
+  the content bytes and, per object, its content pointer (`cptrs`). The
+  layouts are two spec functions, `str_ok` and `ba_ok` (V5 included: an
+  object with the byte-array tag is a model byte array exactly when it is
+  internal or raw external at a non-null address). Verified:
+  `string_len`, `string_byte`, `bytes_len`, `byte_at`, `set_byte_at`,
+  `string_content`, `byte_array_content`, `string_hash_field`,
+  `set_string_hash_field`, `content_at`, `content_set`, `content_copy`,
+  `content_fill`, `Content::len`; `Content` carries its pointer, length,
+  object and writability as (ghost) fields, and `content_ok` now also
+  says that the view's pointer is the object's content pointer, which
+  every accessor keeps (`cptrs()` unchanged) and allocation appends to
+  (`appended`); a heap after a GC point promises nothing about it, so a
+  view cannot outlive a GC point by proof, not by review. Two prims
+  lemmas take the new fact (`lemma_blob_mono`, `lemma_blob_update`) and
+  `new_string` ensures it: no other change in the 106 primitives. The
+  memmove of `array_copy` and `content_copy` is one generic FFI leaf on
+  permissions (`perm_memmove`), memset another (`perm_memset`).
+  `set_string_hash_field` now ensures the model, addresses, class bits and
+  content pointers unchanged instead of the whole view (its permission
+  changes). Census: external_body 67 -> 53, unsafe 54 -> 40 entries,
+  uninterp 3 -> 0. Instructions 0 to -0.5 percent (strings -0.25);
+  riscv32 text 57,608 B.
 
 ## Trusted containers integrated (branch core/trusted-integration, 2026-11-11)
 
