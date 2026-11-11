@@ -76,6 +76,10 @@ class SiblingProvider extends ServiceProvider implements SiblingService ServiceH
     super "test/sandbox/sibling" --major=1 --minor=0
     provides SiblingService.SELECTOR --handler=this
 
+  // The untrusted containers of the tests use the sibling.
+  accepts-untrusted-clients -> bool:
+    return true
+
   handle index/int arguments/any --gid/int --client/int -> any:
     if index == SiblingService.PING-INDEX: return ping arguments
     if index == SiblingService.PID-INDEX: return pid
@@ -134,7 +138,8 @@ If $busy-sibling-ms is not null, the sibling is made busy (it doesn't
 The untrusted container runs with the untrusted policy and the given
   $quotas. If $trusted is true, it runs with the trusted policy and the
   given $quotas instead (for the quotas that only apply to code that has
-  the corresponding primitives).
+  the corresponding primitives). If $provide-services is true, its launch
+  policy grants it to register service providers.
 
 If $prepare is not null, it is called in the driver (with the client of
   the sibling) before the untrusted container is started, and the map it
@@ -151,6 +156,7 @@ sandbox-test arguments/any -> none
     --refused/string?=null
     --quotas/Map?=null
     --trusted/bool=false
+    --provide-services/bool=false
     --busy-sibling-ms/int?=null
     --prepare/Lambda?=null
     --during/Lambda?=null
@@ -164,7 +170,7 @@ sandbox-test arguments/any -> none
       run-attack arguments attack
       return
     throw "Unknown role: $role"
-  run-driver --error=error --exit=exit --refused=refused --quotas=quotas --trusted=trusted --busy-sibling-ms=busy-sibling-ms --prepare=prepare --during=during
+  run-driver --error=error --exit=exit --refused=refused --quotas=quotas --trusted=trusted --provide-services=provide-services --busy-sibling-ms=busy-sibling-ms --prepare=prepare --during=during
 
 run-attack arguments/Map [attack] -> none:
   exception := catch: attack.call arguments
@@ -181,7 +187,7 @@ run-attack arguments/Map [attack] -> none:
   print "attack failed as expected: $exception"
   exit EXIT-ATTACK-FAILED
 
-run-driver --error/any --exit/int --refused/string? --quotas/Map? --trusted/bool --busy-sibling-ms/int? --prepare/Lambda? --during/Lambda? -> none:
+run-driver --error/any --exit/int --refused/string? --quotas/Map? --trusted/bool --provide-services/bool --busy-sibling-ms/int? --prepare/Lambda? --during/Lambda? -> none:
   sibling-stopped := false
   sibling := containers.start containers.current {ROLE-KEY: ROLE-SIBLING}
       --on-stopped=:: sibling-stopped = true
@@ -203,12 +209,14 @@ run-driver --error/any --exit/int --refused/string? --quotas/Map? --trusted/bool
       containers.start containers.current untrusted-arguments
           --untrusted=(not trusted)
           --quotas=quotas
+          --may-provide-services=provide-services
           --on-stopped=:: throw "refused container stopped"
     expect-equals refused exception
   else:
     sandboxed := containers.start containers.current untrusted-arguments
         --untrusted=(not trusted)
         --quotas=quotas
+        --may-provide-services=provide-services
     during-done := monitor.Latch
     if during:
       task::

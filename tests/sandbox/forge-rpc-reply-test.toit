@@ -3,14 +3,15 @@
 // be found in the tests/LICENSE file.
 
 import expect show *
-import system.services show ServiceSelector ServiceProvider ServiceHandler ServiceClient
+import system.services show ServiceSelector ServiceProvider ServiceHandler ServiceClient TAG-UNTRUSTED-PROVIDER
 import .sandbox
 
 /**
 A sandbox that may talk to a trusted process can't forge the replies to
   that process' pending requests to other processes, nor cancel them.
 
-The untrusted container provides a service. The driver calls it, which
+The untrusted container provides a service (its launch policy grants it).
+  The driver calls it, which
   grants the sandbox the capability to send to the driver (so it can
   reply). The sandbox then floods the driver with SYSTEM_RPC_REPLY
   messages for every plausible request id (ids are sequential) and with
@@ -33,7 +34,8 @@ interface ForgeService:
 
 class ForgeClient extends ServiceClient implements ForgeService:
   constructor:
-    super ForgeService.SELECTOR
+    // The provider is in a sandbox, so the client must opt in.
+    super (ForgeService.SELECTOR.restrict.allow --tag=TAG-UNTRUSTED-PROVIDER)
 
   start -> none:
     invoke_ ForgeService.START-INDEX null
@@ -87,7 +89,7 @@ probe client/SiblingClient -> none:
   forge.close
 
 main args:
-  sandbox-test args --error="DONE" --during=(:: probe it): | arguments/Map |
+  sandbox-test args --provide-services --error="DONE" --during=(:: probe it): | arguments/Map |
     sibling := discover-pid SiblingService.SELECTOR.uuid
     provider := ForgeProvider sibling
     provider.install

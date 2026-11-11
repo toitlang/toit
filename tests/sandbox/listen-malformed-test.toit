@@ -13,9 +13,9 @@ The untrusted container registers providers for the sibling's uuid with
   a name, versions or tags of the wrong type (bypassing the typed client
   API); the system process must refuse all of them. While the untrusted
   container runs, the driver opens a new client of the sibling's service
-  with a selector that denies untrusted providers, as the sandbox policy
-  recommends. Clients look at every discovered entry: a tag that isn't a
-  string was accepted and made every such client throw.
+  with a restricted selector (one that denies untrusted providers).
+  Clients look at every discovered entry: a tag that isn't a string was
+  accepted and made every such client throw.
 */
 
 MALFORMED ::= [
@@ -40,7 +40,9 @@ open-restricted client/SiblingClient -> none:
   fresh.close
 
 main args:
-  sandbox-test args --error="DONE" --during=(:: open-restricted it): | arguments/Map |
+  // A sandbox that may provide services: the refusal must come from the
+  // type checks (without the grant, every registration is refused).
+  sandbox-test args --provide-services --error="DONE" --during=(:: open-restricted it): | arguments/Map |
     discovery := ServiceDiscoveryServiceClient
     discovery.open
     accepted := 0

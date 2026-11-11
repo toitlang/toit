@@ -134,7 +134,7 @@ pub fn verify(c: &mut Converted, trusted: bool, cert: Option<&[u8]>) -> Verdict 
     }
     // The loader's contract, one object at a time.
     let t = Clock::start();
-    let (heap_ok, _) = heap_check::x_loaded_ok_stream(p, objects, global_count, &globals);
+    let (heap_ok, _, bad_string) = heap_check::x_loaded_ok_stream(p, objects, global_count, &globals);
     let complete = objects.complete();
     mem_trace!("heap checked");
     let heap_ns = t.ns();
@@ -142,6 +142,7 @@ pub fn verify(c: &mut Converted, trusted: bool, cert: Option<&[u8]>) -> Verdict 
         let mut v = match &objects.error {
             Some(e) if e.oom => Verdict::out_of_memory(),
             Some(e) => Verdict::new(MALFORMED, text!("malformed program memory", "{} ({})", e.what, e.detail)),
+            None if bad_string => Verdict::new(HEAP, text!("a string literal isn't valid UTF-8 (loaded_ok)", "a string literal isn't valid UTF-8 (loaded_ok); object {}", objects.count().saturating_sub(1))),
             None => Verdict::new(HEAP, text!("loader contract (loaded_ok)", "loader contract (loaded_ok); {} objects converted", objects.count())),
         };
         v.heap_ns = heap_ns;

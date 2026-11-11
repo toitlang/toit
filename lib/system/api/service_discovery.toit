@@ -11,18 +11,31 @@ interface ServiceDiscoveryService:
       --major=0
       --minor=3
 
-  discover uuid/string --wait/bool -> List?
+  /**
+  Discovers the providers of the service with the given $uuid.
+
+  Providers in sandboxes (tagged "untrusted-provider") are only returned
+    if $untrusted-providers is true and the caller is trusted.
+  */
+  discover uuid/string --wait/bool --untrusted-providers/bool=false -> List?
   static DISCOVER-INDEX /int ::= 0
 
   watch pid/int -> none
   static WATCH-INDEX /int ::= 3
 
+  /**
+  Registers the service with the given $uuid.
+
+  If $accepts-untrusted is true, the provider serves sandboxed (untrusted)
+    clients, and the service is discovered by them.
+  */
   listen id/int uuid/string -> none
       --name/string
       --major/int
       --minor/int
       --priority/int
       --tags/List?
+      --accepts-untrusted/bool=false
   static LISTEN-INDEX /int ::= 1
 
   unlisten id/int -> none
@@ -38,8 +51,8 @@ class ServiceDiscoveryServiceClient extends ServiceClient implements ServiceDisc
     client := _open_ selector --pid=-1 --id=0  // Hardcoded in system process.
     return client and this
 
-  discover uuid/string --wait/bool -> List?:
-    return invoke_ ServiceDiscoveryService.DISCOVER-INDEX [uuid, wait]
+  discover uuid/string --wait/bool --untrusted-providers/bool=false -> List?:
+    return invoke_ ServiceDiscoveryService.DISCOVER-INDEX [uuid, wait, untrusted-providers]
 
   watch pid/int -> none:
     invoke_ ServiceDiscoveryService.WATCH-INDEX pid
@@ -49,9 +62,10 @@ class ServiceDiscoveryServiceClient extends ServiceClient implements ServiceDisc
       --major/int
       --minor/int
       --priority/int
-      --tags/List?:
+      --tags/List?
+      --accepts-untrusted/bool=false:
     invoke_ ServiceDiscoveryService.LISTEN-INDEX [
-      id, uuid, name, major, minor, priority, tags
+      id, uuid, name, major, minor, priority, tags, accepts-untrusted
     ]
 
   unlisten id/int -> none:

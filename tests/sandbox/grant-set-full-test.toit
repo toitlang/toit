@@ -47,6 +47,10 @@ class PidProvider extends ServiceProvider implements PidService ServiceHandler:
     super "test/pid" --major=1 --minor=0
     provides selector --handler=this
 
+  // Only providers that serve sandboxed clients are discovered by them.
+  accepts-untrusted-clients -> bool:
+    return true
+
   handle index/int arguments/any --gid/int --client/int -> any:
     if index == PidService.PID-INDEX: return pid
     unreachable

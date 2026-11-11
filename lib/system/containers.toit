@@ -52,16 +52,26 @@ The $quotas map can override the default quotas of the policy. The keys
   are "heap", "mailbox-messages", "mailbox-bytes", "message-bytes",
   "timers", "processes", "run-time-ms", and "cpu-ms". A value of 0 means
   unlimited.
+
+A sandboxed container can't register service providers, unless
+  $may-provide-services is true. Its providers are then only discovered
+  by trusted clients whose selector explicitly allows the
+  `TAG-UNTRUSTED-PROVIDER` tag (see the system.services library); plain
+  selectors never match them,
+  and other sandboxes never discover them. Trusted containers can always
+  register providers.
 */
 start id/uuid.Uuid arguments/any=[] -> Container
     --on-event/Lambda?=null
     --on-stopped/Lambda?=null
     --untrusted/bool=false
-    --quotas/Map?=null:
+    --quotas/Map?=null
+    --may-provide-services/bool=false:
   policy/any := null
-  if untrusted or quotas:
+  if untrusted or quotas or may-provide-services:
     kind := untrusted ? ContainerService.POLICY-UNTRUSTED : ContainerService.POLICY-TRUSTED
-    if quotas:
+    if quotas or may-provide-services:
+      quotas = quotas or {:}
       policy = [
         kind,
         quotas.get "heap" --if-absent=: -1,
@@ -72,6 +82,7 @@ start id/uuid.Uuid arguments/any=[] -> Container
         quotas.get "processes" --if-absent=: -1,
         quotas.get "run-time-ms" --if-absent=: -1,
         quotas.get "cpu-ms" --if-absent=: -1,
+        may-provide-services ? ContainerService.POLICY-GRANT-PROVIDE-SERVICES : 0,
       ]
     else:
       policy = kind
