@@ -26,6 +26,25 @@ artifacts fast-loop-proven/ir/results.txt; C++ format 1 -O3: 1,023 M /
 | + blocks, tail calls, globals, collections, ALLOCATE, PRIMITIVE | 1,678 M | 1,254 M | 1,338 M |
 | + one arm per opcode, default arm unreachable (dispatch tail-duplicated: 120 sites); no SLP vectorizer | 1,353 M | 1,059 M | 1,117 M |
 | + lazy finally records (no record-top register) | 1,286 M (1.26) | 987 M (1.52) | 1,082 M (1.42) |
+| + instruction pointer as a code cursor (bci computed only where stored) | 1,231 M | 951 M | 1,040 M |
+| + INVOKE_AT/AT_PUT fallback call on registers (pystone bridged 200 K times) | 1,234 M (1.21) | 952 M (1.46) | 940 M (1.23) |
+| prototype (experiment/fast-loop, unproven, same checks) | 1,112 M (1.09) | 936 M (1.44) | 934 M (1.23) |
+
+Per bytecode: 17.2 / 21.0 / 19.1 machine instructions (prototype 15.5 /
+20.6 / 19.0, C++ about 14 per format-1 bytecode). What is left between
+the verified loop and the prototype (richards; deltablue and pystone are
+within 2 percent), from the profile (callgrind lines, richards): the full
+field-access check of the machine's helper on LOAD/STORE_FIELD (tag,
+task fields, field count: the fields.rs lines are 70 M with the loads; the prototype tested the instance
+tag only), the program-heap test of field stores as two compares (31 M),
+the store of the top frame's method into the machine at every call and
+return (`refines` caches it, 12.5 M), the return's bottom-frame test
+(8.3 M), and the `preempt_a_lot` test at POP (10 M; a debug flag the C++
+release build compiles away). Each is a small proof change (a cheaper
+helper, or the method read from the frame record in `Machine::with`),
+not done for lack of time. Deltablue's remaining 1.46 is the format and the glue, as for
+the prototype: C++ primitives (`smi_to_string`, 4 percent) and ALLOCATE
+through C++ (2.4 percent), no ARRAY_DO/HASH_FIND.
 
 Milestones (gates: verified/check.sh --tests at both widths, ctest -j16
 1161/1164 with the known version/reader/udp-reuse-port-test, untrusted

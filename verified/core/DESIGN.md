@@ -527,6 +527,34 @@ experiments above show that promoting all of it is worse.
 Superinstruction candidates and the REPEAT / HASH_FIND estimate:
 PROGRESS.md, "Performance pass".
 
+### The loop on registers (2026-11-11, branch core/fast-loop-proven)
+
+Section 2a; progression and what is left: PROGRESS.md. Same method as the
+performance pass (scripts and raw numbers:
+/home/flo/work/opentoit-sandbox-artifacts/fast-loop-proven, `ir.sh`,
+`ir/results.txt`).
+
+| Benchmark | C++ f1 -O3 Ir | before | after | ratio before | ratio after | prototype |
+|---|---|---|---|---|---|---|
+| richards | 1,023 M | 2,105 M | 1,234 M | 2.06 | 1.21 | 1.09 |
+| deltablue | 650 M | 1,520 M | 952 M | 2.34 | 1.46 | 1.44 |
+| pystone | 762 M | 1,451 M | 940 M | 1.91 | 1.23 | 1.23 |
+
+Code size of `step::run_loop` alone (the loop with its inlined handlers;
+`size.sh`, the core crate at the given opt-level with tail duplication):
+x86-64 25.2 KB text + 2.3 KB tables at opt 3 (before 29.0 KB + 0.4 KB),
+21.6 + 1.7 KB at opt s (before 25.2 + 0.4); riscv32imac 19.6 KB at opt 3
+(before 23.2), 17.5 KB at opt s (before 21.5). Linked into the device
+library (riscv32imac, device features: no checked loop, no inference;
+verified/vmverify/tests/device_size.sh), "verified loop and cold paths":
+54.3 KB at opt 3, 49.5 KB at opt s (before: 41.4 / 38.0 KB, plus the
+checked loop 20.8 / 22.7 KB which devices now leave out); the Rust
+library in total 107.1 / 99.9 KB (before 114.0 / 110.2). The increase of
+the verified part is the machine's step (`step::step_m`, 25 KB, one
+out-of-line copy for the bridge and for finally code): the register
+handlers duplicate the fast paths of the machine handlers, which stay for
+the slow paths and for finally code.
+
 ## 9. Proofs: abstraction, refinement, the end-to-end theorem
 
 The core is proven against the format-2 specification of verified/spec
