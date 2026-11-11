@@ -47,7 +47,10 @@ use toit_spec::v2::verifier::accepts;
 
 verus! {
 
+#[cfg(target_pointer_width = "64")]
 global size_of usize == 8;
+#[cfg(target_pointer_width = "32")]
+global size_of usize == 4;
 
 // ---------------------------------------------------------------------------
 // Words.
@@ -57,13 +60,27 @@ pub open spec fn smi_word(v: i64) -> usize {
     (v + v) as usize
 }
 
+/// The value of the smi word `w` (`Smi::value`): an arithmetic shift of
+/// the word as a signed word.
+pub open spec fn word_smi(w: usize) -> i64 {
+    ((w as isize) >> 1usize) as i64
+}
+
 pub open spec fn smi_range(v: int) -> bool {
     MIN_SMI <= v <= MAX_SMI
 }
 
+/// The largest byte length of a string or byte array of the heap model
+/// (TRUSTED, part of the heap model: lengths are non-negative words and
+/// the bytes lie in the address space).
+#[cfg(target_pointer_width = "64")]
+pub const MAX_BLOB_LENGTH: usize = 0x4000_0000_0000_0000;
+#[cfg(target_pointer_width = "32")]
+pub const MAX_BLOB_LENGTH: usize = 0x4000_0000;
+
 /// A block reference `(f, s)` is the smi `f << BLOCK_SLOT_BITS | s`.
 pub open spec fn block_word(f: usize, s: usize) -> usize {
-    smi_word((f * 0x10_0000 + s) as i64)
+    smi_word((f * 0x1_0000 + s) as i64)
 }
 
 /// The machine word of an abstract value. Objects are their address in the
@@ -123,7 +140,7 @@ pub open spec fn obj_model_ok(o: HeapObj, cb: Seq<u16>, addr: Seq<usize>) -> boo
             && forall|i: int| 0 <= i < f.len() ==> #[trigger] encodable(addr, f[i]),
         Body::Array(e) => e.len() < 0x4000_0000
             && forall|i: int| 0 <= i < e.len() ==> #[trigger] encodable(addr, e[i]),
-        Body::Bytes(b) => b.len() < 0x4000_0000_0000_0000,
+        Body::Bytes(b) => b.len() < MAX_BLOB_LENGTH,
         _ => true,
     }
 }
@@ -138,7 +155,7 @@ pub open spec fn encodable(addr: Seq<usize>, v: Value) -> bool {
     match v {
         Value::Smi(i) => smi_range(i as int),
         Value::Obj(id) => id < addr.len(),
-        Value::BlockRef(f, s) => f < 0x100_0000_0000 && s < 0x10_0000,
+        Value::BlockRef(f, s) => f < 0x4000 && s < MAX_STACK_LENGTH,
         _ => false,
     }
 }
@@ -150,12 +167,32 @@ pub proof fn lemma_smi_word(v: i64)
     requires smi_range(v as int),
     ensures
         smi_word(v) & 1 == 0,
-        (smi_word(v) as i64) >> 1u64 == v,
-        smi_word(v) as i64 == v + v,
+        word_smi(smi_word(v)) == v,
+        smi_word(v) as isize == v + v,
 {
-    assert(((v + v) as usize) & 1 == 0 && (((v + v) as usize) as i64) >> 1u64 == v
-        && ((v + v) as usize) as i64 == v + v) by (bit_vector)
-        requires -0x4000_0000_0000_0000i64 <= v <= 0x3fff_ffff_ffff_ffffi64;
+    assert(((v + v) as usize) & 1 == 0 && ((((v + v) as usize) as isize) >> 1usize) as i64 == v
+        && ((v + v) as usize) as isize == v + v) by (bit_vector)
+        requires MIN_SMI <= v <= MAX_SMI;
+}
+
+/// Decoding a smi word (`smi_val`) inverts `smi_word`.
+pub proof fn lemma_word_smi(w: usize)
+    requires w & 1 == 0,
+    ensures smi_range(word_smi(w) as int), smi_word(word_smi(w)) == w,
+        word_smi(w) + word_smi(w) == w as isize,
+{
+    assert(MIN_SMI <= (((w as isize) >> 1usize) as i64) <= MAX_SMI
+        && (((((w as isize) >> 1usize) as i64) + (((w as isize) >> 1usize) as i64)) as usize) == w
+        && (((w as isize) >> 1usize) as i64) + (((w as isize) >> 1usize) as i64) == w as isize) by (bit_vector)
+        requires w & 1 == 0;
+}
+
+/// `Smi::value` of a word: the arithmetic shift of the signed word.
+#[inline(always)]
+pub fn smi_value(w: usize) -> (r: i64)
+    ensures r == word_smi(w),
+{
+    ((w as isize) >> 1usize) as i64
 }
 
 pub proof fn lemma_smi_word_inj(a: i64, b: i64)
@@ -176,11 +213,11 @@ pub proof fn lemma_heap_tag(a: usize)
 
 /// A small non-negative smi is twice its value.
 pub proof fn lemma_smi_word_nat(v: i64)
-    requires 0 <= v <= 0x3fff_ffff_ffff_ffff,
+    requires 0 <= v <= MAX_SMI,
     ensures smi_word(v) == 2 * v,
 {
     assert(((v + v) as usize) as int == 2 * v) by (bit_vector)
-        requires 0 <= v <= 0x3fff_ffff_ffff_ffffi64;
+        requires 0 <= v <= MAX_SMI;
 }
 
 /// Encodings of distinct encodable values differ, except a block
@@ -264,7 +301,7 @@ pub open spec fn const_ok(objs: Seq<HeapObj>, v: Value) -> bool {
 /// contract, assumed by the run loop: see `theorem.rs`).
 pub open spec fn prog_rel(p: &crate::exec::Program, objs: Seq<HeapObj>, addr: Seq<usize>) -> bool {
     let ap = p.ap@;
-    &&& ap.word_bits == 64
+    &&& ap.word_bits == WORD_BITS
     &&& p.code@ == ap.bytecodes
     &&& p.methods@.len() == ap.methods.len()
     &&& forall|i: int| 0 <= i < ap.methods.len() ==>
@@ -304,10 +341,11 @@ pub open spec fn prog_rel(p: &crate::exec::Program, objs: Seq<HeapObj>, addr: Se
 // ---------------------------------------------------------------------------
 // Frames.
 
-/// The handler word of a frame record: 0, or `height | bci << 32` of the
-/// frame's TRY.
+/// The handler word of a frame record: 0, or the height of the frame's
+/// TRY (heights of handlers are positive); its bci is the next word
+/// (`FRAME_HANDLER_BCI`).
 pub open spec fn handler_word(h: Handler) -> usize {
-    (h.height + h.bci * 0x1_0000_0000) as usize
+    h.height
 }
 
 /// Word `k` of frame record `fi`.
@@ -315,8 +353,9 @@ pub open spec fn rec(mem: Seq<usize>, fi: int, k: usize) -> usize {
     mem[FRAME_WORDS * fi + k]
 }
 
-/// The frame records `mem[0..4 * frames.len()]` hold the frames, and the
-/// handler words the handlers (one per frame at most).
+/// The frame records `mem[0..FRAME_WORDS * frames.len()]` hold the frames,
+/// and the handler words the handlers (one per frame at most): the
+/// height of the frame's TRY (0: no handler) and its bci.
 pub open spec fn frames_rel(mem: Seq<usize>, frames: Seq<Frame>, tries: Seq<Handler>) -> bool {
     &&& FRAME_WORDS * frames.len() <= mem.len()
     &&& forall|fi: int| 0 <= fi < frames.len() ==> #[trigger] rec(mem, fi, FRAME_METHOD) == frames[fi].method
@@ -328,6 +367,7 @@ pub open spec fn frames_rel(mem: Seq<usize>, frames: Seq<Frame>, tries: Seq<Hand
         &&& 0 < tries[x].height < 0x1_0000_0000
         &&& tries[x].bci < 0x1_0000_0000
         &&& rec(mem, tries[x].frame as int, FRAME_HANDLER) == handler_word(tries[x])
+        &&& rec(mem, tries[x].frame as int, FRAME_HANDLER_BCI) == tries[x].bci
     }
     &&& forall|fi: int| 0 <= fi < frames.len() && #[trigger] rec(mem, fi, FRAME_HANDLER) != 0
             ==> exists|x: int| 0 <= x < tries.len() && tries[x].frame == fi
@@ -364,8 +404,10 @@ pub proof fn lemma_frames_rel_same(mem: Seq<usize>, mem2: Seq<usize>, frames: Se
         assert(rec(mem, fi, FRAME_BASE) == frames[fi].base);
     }
     assert forall|x: int| 0 <= x < tries.len() implies
-        rec(mem2, (#[trigger] tries[x]).frame as int, FRAME_HANDLER) == handler_word(tries[x]) by {
+        rec(mem2, (#[trigger] tries[x]).frame as int, FRAME_HANDLER) == handler_word(tries[x])
+        && rec(mem2, tries[x].frame as int, FRAME_HANDLER_BCI) == tries[x].bci by {
         lemma_rec_index(n, tries[x].frame as int, FRAME_HANDLER);
+        lemma_rec_index(n, tries[x].frame as int, FRAME_HANDLER_BCI);
     }
     assert forall|fi: int| 0 <= fi < n && #[trigger] rec(mem2, fi, FRAME_HANDLER) != 0
             implies exists|x: int| 0 <= x < tries.len() && tries[x].frame == fi by {
@@ -387,10 +429,18 @@ pub open spec fn resume_word(r: Resume) -> usize {
     }
 }
 
-/// The target word of a finally record: `bci | height << 32` for a branch.
+/// The target words of a finally record: the bci and the height of a
+/// branch, else 0.
 pub open spec fn target_word(r: Resume) -> usize {
     match r {
-        Resume::Branch(_, bci, h) => (bci + h * 0x1_0000_0000) as usize,
+        Resume::Branch(_, bci, h) => bci,
+        _ => 0,
+    }
+}
+
+pub open spec fn target_height_word(r: Resume) -> usize {
+    match r {
+        Resume::Branch(_, bci, h) => h,
         _ => 0,
     }
 }
@@ -399,8 +449,8 @@ pub open spec fn target_word(r: Resume) -> usize {
 pub open spec fn resume_ok(r: Resume) -> bool {
     match r {
         Resume::Throw => true,
-        Resume::Return(f) => f < 0x1_0000_0000,
-        Resume::Branch(f, bci, h) => f < 0x1_0000_0000 && bci < 0x1_0000_0000 && h < 0x1_0000_0000,
+        Resume::Return(f) => f < 0x1000_0000,
+        Resume::Branch(f, bci, h) => f < 0x1000_0000,
     }
 }
 
@@ -418,6 +468,7 @@ pub open spec fn fin_rel(mem: Seq<usize>, ftop: int, x: int, f: Fin) -> bool {
     &&& fin_word(mem, ftop, x, FIN_HEIGHT) == f.height
     &&& fin_word(mem, ftop, x, FIN_RESUME) == resume_word(f.resume)
     &&& fin_word(mem, ftop, x, FIN_TARGET) == target_word(f.resume)
+    &&& fin_word(mem, ftop, x, FIN_TARGET_HEIGHT) == target_height_word(f.resume)
 }
 
 /// The finally records `mem[ftop..ftop + 4 * fins.len()]` hold `fins`.
@@ -456,10 +507,12 @@ pub proof fn lemma_fins_rel_move(mem: Seq<usize>, mem2: Seq<usize>, ftop: int, f
         lemma_fin_index(0, n, x, FIN_HEIGHT);
         lemma_fin_index(0, n, x, FIN_RESUME);
         lemma_fin_index(0, n, x, FIN_TARGET);
+        lemma_fin_index(0, n, x, FIN_TARGET_HEIGHT);
         assert(mem2[ftop2 + (FIN_WORDS * x + FIN_FRAME)] == mem[ftop + (FIN_WORDS * x + FIN_FRAME)]);
         assert(mem2[ftop2 + (FIN_WORDS * x + FIN_HEIGHT)] == mem[ftop + (FIN_WORDS * x + FIN_HEIGHT)]);
         assert(mem2[ftop2 + (FIN_WORDS * x + FIN_RESUME)] == mem[ftop + (FIN_WORDS * x + FIN_RESUME)]);
         assert(mem2[ftop2 + (FIN_WORDS * x + FIN_TARGET)] == mem[ftop + (FIN_WORDS * x + FIN_TARGET)]);
+        assert(mem2[ftop2 + (FIN_WORDS * x + FIN_TARGET_HEIGHT)] == mem[ftop + (FIN_WORDS * x + FIN_TARGET_HEIGHT)]);
     }
 }
 

@@ -189,8 +189,9 @@ impl Machine {
         &&& self.lim == self.len - self.base
         // The top frame's slots exist (its base is at or below the top).
         &&& self.top <= self.lim
-        // Block references encode slots in BLOCK_SLOT_BITS (reload checks).
-        &&& self.len < 0x10_0000
+        // Block references encode slots in BLOCK_SLOT_BITS, and the Stack
+        // header packs the record and frame tops (reload checks).
+        &&& self.len < MAX_STACK_LENGTH
     }
 
     pub open spec fn addr(&self) -> Seq<usize> {
@@ -668,23 +669,22 @@ impl Machine {
         Ctl::Next
     }
 
-    /// Stores top, record top and bci with the number of finally records
-    /// into the Stack object, so that the GC and C++ see the task's state.
+    /// Stores top, record and frame tops and bci into the Stack object, so
+    /// that the GC and C++ see the task's state.
     #[inline(always)]
     pub fn save(&mut self)
         ensures
-            old(self).ftop <= old(self).rtop ==> crate::alloc::saved(*final(self)),
+            crate::alloc::saved(*final(self)),
             final(self).mem@ == old(self).mem@,
             final(self).mem@.len() == old(self).mem@.len(),
             final(self).top == old(self).top,
             final(self).bci == old(self).bci,
             final(self).same(old(self)),
     {
-        let (top, rtop, bci) = (self.top, self.rtop, self.bci);
-        let fins = if rtop >= self.ftop { (rtop - self.ftop) / FIN_WORDS } else { 0 };
+        let (top, rtop, ftop, bci) = (self.top, self.rtop, self.ftop, self.bci);
         self.mem.set_header(STACK_TOP_WORD, top);
-        self.mem.set_header(STACK_RECORD_TOP_WORD, rtop);
-        self.mem.set_header(STACK_BCI_WORD, bci | (fins << STACK_FIN_COUNT_SHIFT));
+        self.mem.set_header(STACK_RECORD_TOP_WORD, rtop | (ftop << STACK_FRAME_TOP_SHIFT));
+        self.mem.set_header(STACK_BCI_WORD, bci);
     }
 
     /// LOAD_LITERAL(_WIDE) i.
@@ -724,7 +724,7 @@ impl Machine {
     /// LOAD_METHOD: push the smi `v`.
     #[inline(always)]
     pub fn op_load_smi(&mut self, p: &Program, v: usize, len: usize) -> (r: Ctl)
-        requires old(self).refines(p), old(self).bci + len < 0x1000_0000, v < 0x1_0000_0000,
+        requires old(self).refines(p), old(self).bci + len < 0x1000_0000, v as int <= MAX_SMI,
         ensures
             r == Ctl::Next || is_limit(r),
             r == Ctl::Next ==> final(self).refines(p)

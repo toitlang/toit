@@ -509,7 +509,7 @@ pub fn op_invoke_initializer_tail(m: &mut Machine, env: &Env, bci: usize, opcode
         return m.v_raise_invalid(env);
     }
     // A smi (the verifier types the operand as a value, not a block).
-    let mid = (w as i64) >> 1u64;
+    let mid = smi_value(w);
     if mid < 0 || mid as usize >= p.methods.len() {
         proof {
             assert(sp::step(ap, g) == sp::raise(ap, g, sp::INVALID_PROGRAM));

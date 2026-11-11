@@ -217,7 +217,7 @@ pub fn op_primitive(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: C
 /// encodes it (`abs::block_word`), other values are themselves.
 pub open spec fn norm_val(v: Value) -> Value {
     match v {
-        Value::BlockRef(f, s) => Value::Smi((f * 0x10_0000 + s) as i64),
+        Value::BlockRef(f, s) => Value::Smi((f * 0x1_0000 + s) as i64),
         _ => v,
     }
 }
@@ -301,7 +301,7 @@ proof fn lemma_rust_args(p: &Program, m: Machine, arity: usize)
         assert(encodable(h.addrs(), g.stack[sp::base(g) + j]));
         match vs[j] {
             Value::BlockRef(f, s) => {
-                assert(nv[j] == Value::Smi((f * 0x10_0000 + s) as i64));
+                assert(nv[j] == Value::Smi((f * 0x1_0000 + s) as i64));
             },
             _ => {},
         }

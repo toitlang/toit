@@ -66,6 +66,17 @@ uword smi_bits(word value) {
   return reinterpret_cast<uword>(Smi::from(value));
 }
 
+// Stores a half word (32 bits on 64-bit targets, 16 on 32-bit ones).
+void put_half(uint8* at, uword value) {
+  if (HALF_WORD_SIZE == 4) {
+    uint32 v = static_cast<uint32>(value);
+    memcpy(at, &v, 4);
+  } else {
+    uint16 v = static_cast<uint16>(value);
+    memcpy(at, &v, 2);
+  }
+}
+
 // A fake heap object: 64 words, word k holds `marker(k)`.
 struct Fake {
   alignas(16) uword words[64];
@@ -164,10 +175,10 @@ int main() {
   { Fake f;
     memset(f.words, 0, sizeof(f.words));
     uint8* bytes = reinterpret_cast<uint8*>(f.words);
-    // Find the internal length: try each 4-byte-aligned offset.
-    for (int offset = 8; offset < 32; offset += 4) {
+    // Find the internal length (a half word): try each half-word offset.
+    for (int offset = WORD_SIZE; offset < 4 * WORD_SIZE; offset += HALF_WORD_SIZE) {
       memset(f.words, 0, sizeof(f.words));
-      *reinterpret_cast<uint32*>(bytes + offset) = 5;
+      put_half(bytes + offset, 5);
       String::Bytes s(static_cast<String*>(f.object()));
       if (s.length() == 5) {
         string_internal_length_byte = offset;
@@ -178,27 +189,27 @@ int main() {
     Fake g;
     for (int k = 0; k < 64; k++) g.words[k] = reinterpret_cast<uword>(&g.words[k]);
     memset(&g.words[1], 0, 8);
-    *reinterpret_cast<uint32*>(reinterpret_cast<uint8*>(g.words) + string_internal_length_byte) = 65535;
+    put_half(reinterpret_cast<uint8*>(g.words) + string_internal_length_byte, 65535);
     for (int k = 2; k < 8; k++) g.words[k] = reinterpret_cast<uword>(&g.words[k]);
     String::Bytes s(static_cast<String*>(g.object()));
     string_external_address_word = g.word_of(s.address());
     string_external_length_word = g.word_of(reinterpret_cast<void*>(s.length()));
   }
-  // The cached hash code: a 32-bit field holding 16 bits; find it by
+  // The cached hash code: a half-word field holding 16 bits; find it by
   // planting a value. A string whose field holds NO_HASH_CODE computes its
   // hash instead (the stub below).
   int string_hash_code_byte = -1;
   uword string_no_hash_code = 0;
-  for (int offset = 8; offset < 16 && string_hash_code_byte < 0; offset += 4) {
+  for (int offset = WORD_SIZE; offset < 2 * WORD_SIZE && string_hash_code_byte < 0; offset += HALF_WORD_SIZE) {
     Fake f;
     memset(f.words, 0, sizeof(f.words));
-    *reinterpret_cast<uint32*>(reinterpret_cast<uint8*>(f.words) + offset) = 0x1234;
+    put_half(reinterpret_cast<uint8*>(f.words) + offset, 0x1234);
     if (static_cast<String*>(f.object())->hash_code() == 0x1234) string_hash_code_byte = offset;
   }
   if (string_hash_code_byte >= 0) {
     Fake f;
     memset(f.words, 0, sizeof(f.words));
-    *reinterpret_cast<uint32*>(reinterpret_cast<uint8*>(f.words) + string_hash_code_byte) = 0xFFFF;
+    put_half(reinterpret_cast<uint8*>(f.words) + string_hash_code_byte, 0xFFFF);
     if (static_cast<String*>(f.object())->hash_code() == ASSIGNED_HASH_MARKER) string_no_hash_code = 0xFFFF;
   }
   int stack_length_word, stack_top_word, stack_record_top_word, stack_bci_word;
@@ -209,17 +220,19 @@ int main() {
     stack_top_word = marker_index(s->top());
     stack_record_top_word = marker_index(s->v2_record_top());
     stack_bci_word = marker_index(s->v2_bci_word());
-    // The core writes the record top and `bci | fins << STACK_FIN_COUNT_SHIFT`
+    // The core writes `rtop | ftop << STACK_FRAME_TOP_SHIFT` and the bci
     // (Machine::save); C++ must read them back the same way.
-    f.words[stack_record_top_word] = 13 * Stack::V2_FRAME_WORDS + 3 * Stack::V2_FIN_WORDS;
-    f.words[stack_bci_word] = 0x7654321 | (static_cast<uword>(3) << 32);
+    uword ftop = 13 * Stack::V2_FRAME_WORDS;
+    uword rtop = ftop + 3 * Stack::V2_FIN_WORDS;
+    f.words[stack_record_top_word] = rtop | (ftop << 16);
+    f.words[stack_bci_word] = 0x7654321;
     stack_records_ok = s->v2_bci() == 0x7654321 && s->v2_fin_count() == 3 &&
-        s->v2_frame_top() == 13 * Stack::V2_FRAME_WORDS &&
-        s->v2_record_top() == 13 * Stack::V2_FRAME_WORDS + 3 * Stack::V2_FIN_WORDS;
+        s->v2_frame_top() == static_cast<word>(ftop) && s->v2_record_top() == static_cast<word>(rtop);
     s->v2_set_records(5 * Stack::V2_FRAME_WORDS, 2, 77);
     stack_records_ok = stack_records_ok &&
-        f.words[stack_record_top_word] == 5 * Stack::V2_FRAME_WORDS + 2 * Stack::V2_FIN_WORDS &&
-        f.words[stack_bci_word] == (77 | (static_cast<uword>(2) << 32));
+        f.words[stack_record_top_word] ==
+            ((5 * Stack::V2_FRAME_WORDS + 2 * Stack::V2_FIN_WORDS) | ((5 * Stack::V2_FRAME_WORDS) << 16)) &&
+        f.words[stack_bci_word] == 77;
   }
 
   Expected expected[] = {
@@ -270,18 +283,22 @@ int main() {
     { "STACK_TOP_WORD", static_cast<uword>(stack_top_word), false },
     { "STACK_RECORD_TOP_WORD", static_cast<uword>(stack_record_top_word), false },
     { "STACK_BCI_WORD", static_cast<uword>(stack_bci_word), false },
-    { "STACK_FIN_COUNT_SHIFT", static_cast<uword>(Stack::V2_FIN_COUNT_SHIFT), false },
+    { "STACK_FRAME_TOP_SHIFT", static_cast<uword>(Stack::V2_FRAME_TOP_SHIFT), false },
+    { "MAX_STACK_LENGTH", static_cast<uword>(Stack::V2_MAX_LENGTH), false },
+    { "WORD_BITS", static_cast<uword>(WORD_BIT_SIZE), false },
     { "FRAME_WORDS", static_cast<uword>(Stack::V2_FRAME_WORDS), false },
     { "FRAME_METHOD", static_cast<uword>(Stack::V2_FRAME_METHOD), false },
     { "FRAME_RET", static_cast<uword>(Stack::V2_FRAME_RET), false },
     { "FRAME_BASE", static_cast<uword>(Stack::V2_FRAME_BASE), false },
     { "FRAME_HANDLER", static_cast<uword>(Stack::V2_FRAME_HANDLER), false },
+    { "FRAME_HANDLER_BCI", static_cast<uword>(Stack::V2_FRAME_HANDLER_BCI), false },
     { "STACK_RESERVE", static_cast<uword>(Stack::V2_STACK_RESERVE), false },
     { "FIN_WORDS", static_cast<uword>(Stack::V2_FIN_WORDS), false },
     { "FIN_FRAME", static_cast<uword>(Stack::V2_FIN_FRAME), false },
     { "FIN_HEIGHT", static_cast<uword>(Stack::V2_FIN_HEIGHT), false },
     { "FIN_RESUME", static_cast<uword>(Stack::V2_FIN_RESUME), false },
     { "FIN_TARGET", static_cast<uword>(Stack::V2_FIN_TARGET), false },
+    { "FIN_TARGET_HEIGHT", static_cast<uword>(Stack::V2_FIN_TARGET_HEIGHT), false },
     { "ROOT_NULL", Program::null_object_INDEX, false },
     { "ROOT_TRUE", Program::true_object_INDEX, false },
     { "ROOT_FALSE", Program::false_object_INDEX, false },
@@ -354,7 +371,7 @@ int main() {
     { "KIND_LAMBDA", V2_KIND_LAMBDA, false },
     { "KIND_BLOCK", V2_KIND_BLOCK, false },
     { "NO_VALUE", V2_NO_VALUE, false },
-    { "BLOCK_SLOT_BITS", 20, false },
+    { "BLOCK_SLOT_BITS", Stack::V2_FRAME_TOP_SHIFT, false },
     { "FAILURE_LITERALS", V2_FAILURE_LITERALS, false },
     { "MAX_INSTRUCTION_LENGTH", max_instruction_length, false },
     { "MAX_TABLE", V2_MAX_TABLE, false },
@@ -400,12 +417,15 @@ int main() {
   };
 
   // Facts without a named constant.
-  if (sizeof(uword) != sizeof(void*) || sizeof(Object*) != sizeof(uword) || WORD_SIZE != 8) {
-    printf("FAIL: the core assumes 64-bit words\n");
+  if (sizeof(uword) != sizeof(void*) || sizeof(Object*) != sizeof(uword) ||
+      !(WORD_SIZE == 8 || WORD_SIZE == 4) || sizeof(uword) != WORD_SIZE) {
+    printf("FAIL: the core assumes 32-bit or 64-bit words the size of pointers\n");
     failures++;
   }
-  if (Stack::max_length() >= (static_cast<word>(1) << 20)) {
-    printf("FAIL: Stack::max_length() does not fit the block-reference slot bits\n");
+  // Block references (slot bits) and the Stack header's packed record and
+  // frame tops need stack positions below 2^16.
+  if (Stack::max_length() >= Stack::V2_MAX_LENGTH) {
+    printf("FAIL: Stack::max_length() does not fit 16 bits\n");
     failures++;
   }
   if (!stack_records_ok) {

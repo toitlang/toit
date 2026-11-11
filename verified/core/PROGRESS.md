@@ -1,5 +1,29 @@
 # Phase 4a progress (verified core, format 2 on x86-64)
 
+## Phase 5 (branch phase5/portability, 2026-11-11)
+
+Portability: 32-bit words, no_std, device build, install-time
+verification (07-verified-sandbox-plan.md, Phase 5).
+
+1. 32-bit words, with proofs (done). One source for both widths
+   (DESIGN.md section 3a); verified/check.sh verifies spec and core for
+   the host and for `i686-unknown-linux-gnu` (Verus with vstd built and
+   verified for the target by verified/tools/verus_target.sh: vstd 2159
+   verified; spec 842, core 781 verified, 0 errors, at both widths).
+   Layout changes for both widths: 5-word frame records (handler height
+   and bci), 5-word finally records (target bci and height), Stack header
+   try-top `rtop | ftop << 16` and a plain bci word, block references
+   `frame << 16 | slot`, `TOIT_V2_ACCEPTED` 32 bits. Genuine 32-bit
+   findings of the proof: LOAD_SMI_U32/LOAD_METHOD operands need the smi
+   check the verifier makes (the handler now takes it from the step not
+   being stuck), float_to_raw32 can need a large integer, the raise
+   messages (selector, class id, entry) can exceed a smi, the spec's
+   primitive contracts had the 64-bit smi range (`prim_core::smi_in`, now
+   per target), byte-slice bounds compared through a truncating cast.
+2. 32-bit host (in progress): build/host32 (toolchains/host32.cmake,
+   CMake picks the Rust target i686-unknown-linux-gnu) builds the VM with
+   the core; tests/sandbox 94/94 pass.
+
 ## Performance pass (branch core/prims-integration, 2026-11-11)
 
 Part 2. Three kept steps (DESIGN.md section 8, "Performance pass"):

@@ -60,8 +60,9 @@ pub proof fn lemma_frames_push(mem: Seq<usize>, mem2: Seq<usize>, frames: Seq<Fr
         #[trigger] rec(mem2, fi, FRAME_METHOD) == rec(mem, fi, FRAME_METHOD)
         && rec(mem2, fi, FRAME_RET) == rec(mem, fi, FRAME_RET)
         && rec(mem2, fi, FRAME_BASE) == rec(mem, fi, FRAME_BASE)
-        && rec(mem2, fi, FRAME_HANDLER) == rec(mem, fi, FRAME_HANDLER) by {
-        assert(FRAME_WORDS * fi + FRAME_HANDLER < FRAME_WORDS * n) by (nonlinear_arith)
+        && rec(mem2, fi, FRAME_HANDLER) == rec(mem, fi, FRAME_HANDLER)
+        && rec(mem2, fi, FRAME_HANDLER_BCI) == rec(mem, fi, FRAME_HANDLER_BCI) by {
+        assert(FRAME_WORDS * fi + FRAME_HANDLER_BCI < FRAME_WORDS * n) by (nonlinear_arith)
             requires 0 <= fi < n;
     }
     assert forall|fi: int| 0 <= fi < f2.len() implies #[trigger] rec(mem2, fi, FRAME_METHOD) == f2[fi].method by {
@@ -74,8 +75,10 @@ pub proof fn lemma_frames_push(mem: Seq<usize>, mem2: Seq<usize>, frames: Seq<Fr
         if fi < n { assert(f2[fi] == frames[fi]); assert(rec(mem2, fi, FRAME_METHOD) == rec(mem, fi, FRAME_METHOD)); }
     }
     assert forall|x: int| 0 <= x < tries.len() implies
-        rec(mem2, (#[trigger] tries[x]).frame as int, FRAME_HANDLER) == handler_word(tries[x]) by {
+        rec(mem2, (#[trigger] tries[x]).frame as int, FRAME_HANDLER) == handler_word(tries[x])
+        && rec(mem2, tries[x].frame as int, FRAME_HANDLER_BCI) == tries[x].bci by {
         assert(rec(mem2, tries[x].frame as int, FRAME_HANDLER) == rec(mem, tries[x].frame as int, FRAME_HANDLER));
+        assert(rec(mem2, tries[x].frame as int, FRAME_HANDLER_BCI) == rec(mem, tries[x].frame as int, FRAME_HANDLER_BCI));
     }
     assert forall|fi: int| 0 <= fi < f2.len() && #[trigger] rec(mem2, fi, FRAME_HANDLER) != 0
             implies exists|x: int| 0 <= x < tries.len() && tries[x].frame == fi by {
@@ -112,6 +115,7 @@ pub proof fn lemma_frames_pop(mem: Seq<usize>, frames: Seq<Frame>, tries: Seq<Ha
         &&& 0 < tries[x].height < 0x1_0000_0000
         &&& tries[x].bci < 0x1_0000_0000
         &&& rec(mem, tries[x].frame as int, FRAME_HANDLER) == handler_word(tries[x])
+        &&& rec(mem, tries[x].frame as int, FRAME_HANDLER_BCI) == tries[x].bci
     } by {}
     assert forall|fi: int| 0 <= fi < n && #[trigger] rec(mem, fi, FRAME_HANDLER) != 0
             implies exists|x: int| 0 <= x < tries.len() && tries[x].frame == fi by {}
@@ -246,7 +250,8 @@ pub proof fn lemma_handler_word(mem: Seq<usize>, frames: Seq<Frame>, tries: Seq<
         (rec(mem, frames.len() - 1, FRAME_HANDLER) != 0)
             == (tries.len() > 0 && tries.last().frame == frames.len() - 1),
         tries.len() > 0 && tries.last().frame == frames.len() - 1 ==>
-            rec(mem, frames.len() - 1, FRAME_HANDLER) == handler_word(tries.last()),
+            rec(mem, frames.len() - 1, FRAME_HANDLER) == handler_word(tries.last())
+            && rec(mem, frames.len() - 1, FRAME_HANDLER_BCI) == tries.last().bci,
 {
     let fi = frames.len() - 1;
     if rec(mem, fi, FRAME_HANDLER) != 0 {
@@ -258,23 +263,7 @@ pub proof fn lemma_handler_word(mem: Seq<usize>, frames: Seq<Frame>, tries: Seq<
     if tries.len() > 0 && tries.last().frame == fi {
         let h = tries.last();
         assert(tries[tries.len() - 1] == h);
-        lemma_handler_decode(h.height, h.bci);
     }
-}
-
-/// A handler word is not 0 and holds the height and the bci.
-pub proof fn lemma_handler_decode(height: usize, bci: usize)
-    requires 0 < height < 0x1_0000_0000, bci < 0x1_0000_0000,
-    ensures
-        handler_word(Handler { frame: 0, height: height, bci: bci }) != 0,
-        handler_word(Handler { frame: 0, height: height, bci: bci }) & 0xffff_ffff == height,
-        handler_word(Handler { frame: 0, height: height, bci: bci }) >> 32 == bci,
-{
-    let w = handler_word(Handler { frame: 0, height: height, bci: bci });
-    assert(w == height + bci * 0x1_0000_0000) by (nonlinear_arith)
-        requires w == (height + bci * 0x1_0000_0000) as usize, height < 0x1_0000_0000, bci < 0x1_0000_0000;
-    assert(w != 0 && w & 0xffff_ffff == height && w >> 32 == bci) by (bit_vector)
-        requires w == height + bci * 0x1_0000_0000, 0 < height < 0x1_0000_0000, bci < 0x1_0000_0000;
 }
 
 // ---------------------------------------------------------------------------
@@ -688,13 +677,12 @@ impl Machine {
         proof {
             self.lemma_frame(p);
             assert(g0.tries[g0.tries.len() - 1] == h);
-            lemma_handler_decode(h.height, h.bci);
-            assert(handler_word(Handler { frame: 0, height: h.height, bci: h.bci }) == handler_word(h));
+            assert(FRAME_WORDS * (g0.frames.len() - 1) + FRAME_HANDLER_BCI == self.ftop - FRAME_WORDS + FRAME_HANDLER_BCI);
         }
-        let height = handler & 0xffff_ffff;
-        let hbci = handler >> 32;
-        self.top = self.len - height;
+        let height = handler;
         let rr = self.ftop - FRAME_WORDS;
+        let hbci = self.mem.read(rr + FRAME_HANDLER_BCI);
+        self.top = self.len - height;
         self.mem.write(rr + FRAME_HANDLER, 0);
         self.bci = hbci;
         let ghost g2 = State2 { stack: g0.stack.subrange(0, height as int), tries: g0.tries.drop_last(), bci: hbci, ..g0 };
@@ -718,10 +706,12 @@ impl Machine {
                 &&& 0 < t2[x].height < 0x1_0000_0000
                 &&& t2[x].bci < 0x1_0000_0000
                 &&& rec(m1, t2[x].frame as int, FRAME_HANDLER) == handler_word(t2[x])
+                &&& rec(m1, t2[x].frame as int, FRAME_HANDLER_BCI) == t2[x].bci
             } by {
                 assert(t2[x] == g0.tries[x]);
                 assert(g0.tries[x].frame < h.frame);
                 assert(rec(m1, t2[x].frame as int, FRAME_HANDLER) == rec(m0.mem@, t2[x].frame as int, FRAME_HANDLER));
+                assert(rec(m1, t2[x].frame as int, FRAME_HANDLER_BCI) == rec(m0.mem@, t2[x].frame as int, FRAME_HANDLER_BCI));
             }
             assert forall|fi: int| 0 <= fi < n && #[trigger] rec(m1, fi, FRAME_HANDLER) != 0
                     implies exists|x: int| 0 <= x < t2.len() && t2[x].frame == fi by {

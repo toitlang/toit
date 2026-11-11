@@ -273,7 +273,7 @@ pub proof fn lemma_refined(p: &Program, index: u16, vs: Seq<Value>, h: Seq<HeapO
     requires
         core_contract(p.ap@, index as int, vs, h, h2, r),
         prim_default(p.ap@, h, h2, r),
-        p.ap@.word_bits == 64,
+        p.ap@.word_bits == WORD_BITS,
         forall|j: int| 0 <= j < h.len() && (#[trigger] h[j]).body is Array ==> h[j].body->Array_0.len() < 0x4000_0000,
     ensures
         prim_spec(p.ap@, 0, index, vs, h, h2, r),
@@ -293,7 +293,7 @@ pub proof fn lemma_refined(p: &Program, index: u16, vs: Seq<Value>, h: Seq<HeapO
 pub proof fn lemma_smi_add_refined(ap: Program2, vs: Seq<Value>, h: Seq<HeapObj>, h2: Seq<HeapObj>, r: PrimRet)
     requires
         toit_spec::v2::prim_core::int_binop_contract(ap, 0, false, vs, h, h2, r),
-        ap.word_bits == 64,
+        ap.word_bits == WORD_BITS,
     ensures toit_spec::v2::prim::smi_add_spec(ap, vs, h, h2, r),
 {
     if vs.len() == 2 {
@@ -480,7 +480,7 @@ pub proof fn lemma_word(h: &Heap, w: usize, v: Value)
         (w & 1 == 0) == (v is Smi),
         v is Obj ==> w & 3 == 1 && (v->Obj_0 as int) < h.objs().len() && w == h.addrs()[v->Obj_0 as int],
         v is Smi ==> w == smi_word(v->Smi_0) && smi_range(v->Smi_0 as int)
-            && (w as i64) >> 1u64 == v->Smi_0,
+            && word_smi(w) == v->Smi_0,
 {
     match v {
         Value::Smi(i) => { lemma_smi_word(i); },
@@ -492,9 +492,9 @@ pub proof fn lemma_word(h: &Heap, w: usize, v: Value)
 /// The value of a smi word.
 #[inline(always)]
 pub fn smi_of_word(w: usize) -> (r: i64)
-    ensures r == (w as i64) >> 1u64,
+    ensures r == word_smi(w),
 {
-    (w as i64) >> 1u64
+    smi_value(w)
 }
 
 /// The smi value `v` (in range) as a result.
@@ -760,7 +760,7 @@ pub open spec fn tags_ok(o: HeapObj, cb: Seq<u16>) -> bool {
     &&& (o.body is LargeInt) == (t == LARGE_INTEGER_TAG as int)
     &&& (o.body is Str) == (t == STRING_TAG as int)
     &&& (o.body is Bytes) ==> t == BYTE_ARRAY_TAG as int
-    &&& (o.body is Bytes) ==> o.body->Bytes_0.len() < 0x4000_0000_0000_0000
+    &&& (o.body is Bytes) ==> o.body->Bytes_0.len() < MAX_BLOB_LENGTH
 }
 
 /// A new or replaced object that is not an instance of a class with

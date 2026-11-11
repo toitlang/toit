@@ -120,7 +120,7 @@ fn apply_ranges(base: Content, froms: &[i64; 8], tos: &[i64; 8], has: &[bool; 8]
         if has[d] {
             let f = froms[d];
             let t = tos[d];
-            if !(0 <= f && f <= t && t as usize <= len) { return None; }
+            if !(0 <= f && f <= t && (t as u64) <= (len as u64)) { return None; }
             start = start + f as usize;
             len = (t - f) as usize;
         }
@@ -939,7 +939,7 @@ pub fn string_add(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost
         Ok(b) => b,
         Err(r) => return r,
     };
-    if x.len > 0x4000_0000_0000_0000 || y.len > 0x4000_0000_0000_0000 {
+    if x.len > MAX_BLOB_LENGTH || y.len > MAX_BLOB_LENGTH {
         return (PrimOutcome::NotPorted, Ghost(Value::Smi(0)));
     }
     let n = x.len + y.len;
@@ -1041,7 +1041,7 @@ pub fn concat_strings(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, G
             0 <= aid@ < heap.objs().len(), heap.addrs().len() == heap.objs().len(),
             aw == heap.addrs()[aid@], heap.objs()[aid@].body is Array,
             heap.objs()[aid@].body->Array_0.len() == n, i <= n,
-            total <= 0x4000_0000_0000_0000,
+            total <= MAX_BLOB_LENGTH,
         decreases n - i,
     {
         proof { lemma_element_good(p, heap, aid@, i as int); }
@@ -1052,7 +1052,7 @@ pub fn concat_strings(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, G
             BlobArg::Ok(b) => b,
             _ => return (PrimOutcome::NotPorted, Ghost(Value::Smi(0))),
         };
-        if b.len > 0x4000_0000_0000_0000 - total { return (PrimOutcome::NotPorted, Ghost(Value::Smi(0))); }
+        if b.len > MAX_BLOB_LENGTH - total { return (PrimOutcome::NotPorted, Ghost(Value::Smi(0))); }
         total = total + b.len;
         i += 1;
     }

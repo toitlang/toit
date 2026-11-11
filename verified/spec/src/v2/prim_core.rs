@@ -146,8 +146,18 @@ pub open spec fn bytes_of(o: HeapObj) -> Seq<u8> {
 }
 
 /// A 64-bit smi.
+/// The smi range of the VM the primitive contracts are stated for: the
+/// target the spec is compiled (and verified) for, whose `word_bits` the
+/// programs it runs have (`smi_ok` with `word_bits` 64 resp. 32; the core
+/// requires `word_bits == WORD_BITS`).
+#[cfg(not(target_pointer_width = "32"))]
 pub open spec fn smi_in(z: i64) -> bool {
     -0x4000_0000_0000_0000 <= z <= 0x3fff_ffff_ffff_ffff
+}
+
+#[cfg(target_pointer_width = "32")]
+pub open spec fn smi_in(z: i64) -> bool {
+    -0x4000_0000 <= z <= 0x3fff_ffff
 }
 
 pub open spec fn bool_val(p: Program2, b: bool) -> Value {

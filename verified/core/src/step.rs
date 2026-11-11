@@ -487,12 +487,21 @@ pub fn step(m: &mut Machine, env: &Env) -> (r: Ctl)
         },
         28 => {
             let v = code_u32(p, bci + 1);
-            proof { assert(sp::step(ap, g) == sp::next(sp::push(g, Value::Smi(v as i64)), 5)) by { reveal(sp::step); } }
+            proof {
+                assert(sp::step(ap, g) == sp::op_load_smi(ap, g, v as int, 5)) by { reveal(sp::step); }
+                // Not stuck: the operand is a smi (on 32-bit targets too).
+                assert(toit_spec::spec_common::smi_ok(p1(ap), v as int));
+                assert(sp::step(ap, g) == sp::next(sp::push(g, Value::Smi(v as i64)), 5));
+            }
             m.op_load_smi(p, v, 5)
         },
         29 => {
             let v = code_u32(p, bci + 1);
-            proof { assert(sp::step(ap, g) == sp::next(sp::push(g, Value::Smi(v as i64)), 5)) by { reveal(sp::step); } }
+            proof {
+                assert(sp::step(ap, g) == sp::op_load_method(ap, g, v as int)) by { reveal(sp::step); }
+                assert(toit_spec::spec_common::smi_ok(p1(ap), v as int));
+                assert(sp::step(ap, g) == sp::next(sp::push(g, Value::Smi(v as i64)), 5));
+            }
             m.op_load_smi(p, v, 5)
         },
         30 => {

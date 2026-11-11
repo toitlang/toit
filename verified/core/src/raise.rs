@@ -320,7 +320,9 @@ impl Machine {
         let p = &env.p;
         let ghost addr = self.addr();
         let cid = self.class_of(p, rw, Ghost(rv));
-        let cid = if -0x8000_0000 <= cid && cid < 0x8000_0000 { cid } else { -1 };
+        let cid = if -0x8000_0000 <= cid && cid < 0x8000_0000 && MIN_SMI <= cid && cid <= MAX_SMI { cid } else { -1 };
+        // 32-bit targets: message words that are no smi are reported as -1.
+        let sel = if MIN_SMI <= sel && sel <= MAX_SMI { sel } else { -1 };
         let sw = smi_value_word(sel, Ghost(addr));
         let cw = smi_value_word(cid, Ghost(addr));
         let ghost vs = seq![Value::Smi(sel), Value::Smi(cid), rv];
@@ -346,6 +348,7 @@ impl Machine {
         let ghost m0 = *self;
         let bw = crate::ops::bool_word(p, is_block, Ghost(m0));
         let entry = p.methods.at(target).entry as i64;
+        let entry = if entry <= MAX_SMI { entry } else { -1 };
         let ew = smi_value_word(entry, Ghost(addr));
         let xw = smi_value_word(expected as i64, Ghost(addr));
         let pw = smi_value_word(provided as i64, Ghost(addr));

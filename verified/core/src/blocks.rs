@@ -51,34 +51,35 @@ verus! {
 // ---------------------------------------------------------------------------
 // Block reference words.
 
-/// A block reference word is twice `f << 20 | s`; shifting and masking
-/// recovers the slot.
+/// A block reference word is twice `f << 16 | s` (below 2^31); shifting
+/// and masking recovers the slot.
 pub proof fn lemma_block_decode(f: usize, s: usize)
-    requires f < 0x100_0000_0000, s < 0x10_0000,
+    requires f < 0x4000, s < MAX_STACK_LENGTH,
     ensures
-        block_word(f, s) as int == 2 * (f * 0x10_0000 + s),
-        (block_word(f, s) >> 1) & 0xf_ffff == s,
+        block_word(f, s) as int == 2 * (f * 0x1_0000 + s),
+        (block_word(f, s) >> 1) & 0xffff == s,
+        f * 0x1_0000 + s <= MAX_SMI,
 {
-    let v = f * 0x10_0000 + s;
-    assert(0 <= v < 0x1000_0000_0000_0000);
+    let v = f * 0x1_0000 + s;
+    assert(0 <= v < 0x4000_0000);
     let vi = v as i64;
     assert(vi as int == v);
     lemma_smi_word_nat(vi);
     let w = block_word(f, s);
     assert(w as int == 2 * v);
-    assert(w == (f * 0x10_0000 + s) * 2);
-    assert((w >> 1) & 0xf_ffff == s) by (bit_vector)
-        requires w == (f * 0x10_0000 + s) * 2, f < 0x100_0000_0000, s < 0x10_0000;
+    assert(w == (f * 0x1_0000 + s) * 2);
+    assert((w >> 1) & 0xffff == s) by (bit_vector)
+        requires w == (f * 0x1_0000 + s) * 2, f < 0x4000, s < 0x1_0000;
 }
 
 /// The slot of the block reference word `w` of `BlockRef(f, s)`.
 #[inline(always)]
 pub fn ref_slot(w: usize, Ghost(f): Ghost<usize>, Ghost(s): Ghost<usize>) -> (r: usize)
-    requires w == block_word(f, s), f < 0x100_0000_0000, s < 0x10_0000,
+    requires w == block_word(f, s), f < 0x4000, s < MAX_STACK_LENGTH,
     ensures r == s,
 {
     proof { lemma_block_decode(f, s); }
-    (w >> 1) & 0xf_ffff
+    (w >> 1) & 0xffff
 }
 
 // ---------------------------------------------------------------------------
@@ -194,7 +195,7 @@ pub fn op_load_block(m: &mut Machine, env: &Env, bci: usize, opcode: u8, k: usiz
     let slot = m.len - m.top - 1 - k;
     let f = m.ftop / FRAME_WORDS - 1;
     let ghost v = Value::BlockRef(f, slot);
-    let w = smi_of((f * 0x10_0000 + slot) as i64);
+    let w = smi_of((f * 0x1_0000 + slot) as i64);
     proof {
         assert(sp::top_index(g) as usize == f);
         assert((g.stack.len() - 1 - k) as usize == slot);

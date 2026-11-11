@@ -150,17 +150,17 @@ pub proof fn lemma_smi_bitops(x: i64, y: i64)
         smi_word(x) & smi_word(y) == smi_word(x & y), smi_range((x & y) as int),
 {
     assert(((x + x) as usize) | ((y + y) as usize) == (((x | y) + (x | y)) as usize)
-        && -0x4000_0000_0000_0000i64 <= (x | y) <= 0x3fff_ffff_ffff_ffffi64) by (bit_vector)
-        requires -0x4000_0000_0000_0000i64 <= x <= 0x3fff_ffff_ffff_ffffi64,
-            -0x4000_0000_0000_0000i64 <= y <= 0x3fff_ffff_ffff_ffffi64;
+        && MIN_SMI <= (x | y) <= MAX_SMI) by (bit_vector)
+        requires MIN_SMI <= x <= MAX_SMI,
+            MIN_SMI <= y <= MAX_SMI;
     assert(((x + x) as usize) ^ ((y + y) as usize) == (((x ^ y) + (x ^ y)) as usize)
-        && -0x4000_0000_0000_0000i64 <= (x ^ y) <= 0x3fff_ffff_ffff_ffffi64) by (bit_vector)
-        requires -0x4000_0000_0000_0000i64 <= x <= 0x3fff_ffff_ffff_ffffi64,
-            -0x4000_0000_0000_0000i64 <= y <= 0x3fff_ffff_ffff_ffffi64;
+        && MIN_SMI <= (x ^ y) <= MAX_SMI) by (bit_vector)
+        requires MIN_SMI <= x <= MAX_SMI,
+            MIN_SMI <= y <= MAX_SMI;
     assert(((x + x) as usize) & ((y + y) as usize) == (((x & y) + (x & y)) as usize)
-        && -0x4000_0000_0000_0000i64 <= (x & y) <= 0x3fff_ffff_ffff_ffffi64) by (bit_vector)
-        requires -0x4000_0000_0000_0000i64 <= x <= 0x3fff_ffff_ffff_ffffi64,
-            -0x4000_0000_0000_0000i64 <= y <= 0x3fff_ffff_ffff_ffffi64;
+        && MIN_SMI <= (x & y) <= MAX_SMI) by (bit_vector)
+        requires MIN_SMI <= x <= MAX_SMI,
+            MIN_SMI <= y <= MAX_SMI;
 }
 
 /// An arithmetic shift right keeps a smi in the smi range.
@@ -168,8 +168,8 @@ pub proof fn lemma_smi_shr(x: i64, s: u64)
     requires smi_range(x as int), s < 64,
     ensures smi_range((x >> s) as int),
 {
-    assert(-0x4000_0000_0000_0000i64 <= (x >> s) <= 0x3fff_ffff_ffff_ffffi64) by (bit_vector)
-        requires -0x4000_0000_0000_0000i64 <= x <= 0x3fff_ffff_ffff_ffffi64, s < 64;
+    assert(MIN_SMI <= (x >> s) <= MAX_SMI) by (bit_vector)
+        requires MIN_SMI <= x <= MAX_SMI, s < 64;
 }
 
 /// For a positive dividend, Euclidean division by a negative divisor
@@ -228,7 +228,7 @@ pub fn smi_arith_word(op: u8, a: usize, b: usize, Ghost(x): Ghost<i64>, Ghost(y)
         67 <= op <= 77,
         smi_range(x as int), smi_range(y as int),
         a == smi_word(x), b == smi_word(y),
-        pp.word_bits == 64,
+        pp.word_bits == WORD_BITS,
     ensures
         r is Some ==> ({
             let o = smi_arith(pp, op, x as int, y as int);
@@ -239,8 +239,13 @@ pub fn smi_arith_word(op: u8, a: usize, b: usize, Ghost(x): Ghost<i64>, Ghost(y)
         r is None ==> smi_arith(pp, op, x as int, y as int) is None,
 {
     proof { lemma_smi_word(x); lemma_smi_word(y); }
-    let ai = a as i64;
-    let bi = b as i64;
+    // The tagged words as signed words (2x and 2y: ADD, SUB and MUL check
+    // the overflow of the word) and the smi values.
+    let ai = a as isize;
+    let bi = b as isize;
+    let xv = smi_value(a);
+    let yv = smi_value(b);
+    proof { assert(xv == x && yv == y); }
     if op == 67 {
         proof { lemma_smi_bitops(x, y); }
         Some(a | b)
@@ -263,7 +268,7 @@ pub fn smi_arith_word(op: u8, a: usize, b: usize, Ghost(x): Ghost<i64>, Ghost(y)
         }
     } else if op == 75 {
         // 2x * y overflows a word exactly if x * y is not a smi.
-        let ys = bi >> 1;
+        let ys = yv as isize;
         proof {
             assert(ai * ys == 2 * (x * y)) by (nonlinear_arith) requires ai == x + x, ys == y;
         }
@@ -272,8 +277,8 @@ pub fn smi_arith_word(op: u8, a: usize, b: usize, Ghost(x): Ghost<i64>, Ghost(y)
             None => None,
         }
     } else if op == 76 {
-        let xs = ai >> 1;
-        let ys = bi >> 1;
+        let xs = xv;
+        let ys = yv;
         match xs.checked_div(ys) {
             Some(q) => {
                 proof { lemma_rust_div(x as int, y as int); }
@@ -282,8 +287,8 @@ pub fn smi_arith_word(op: u8, a: usize, b: usize, Ghost(x): Ghost<i64>, Ghost(y)
             None => None,
         }
     } else if op == 77 {
-        let xs = ai >> 1;
-        let ys = bi >> 1;
+        let xs = xv;
+        let ys = yv;
         match xs.checked_rem(ys) {
             Some(q) => {
                 proof { lemma_rust_div(x as int, y as int); }
@@ -292,9 +297,11 @@ pub fn smi_arith_word(op: u8, a: usize, b: usize, Ghost(x): Ghost<i64>, Ghost(y)
             None => None,
         }
     } else if op == 70 {
-        // x << s as 2x * 2^s, with the overflow check of MUL.
-        let ys = bi >> 1;
-        if 0 <= ys && ys < 63 {
+        // x << s as the exact product x * 2^s in i64 (s < WORD_BITS - 1 <=
+        // 63; an overflow of i64 is not a smi either), then the range check.
+        let xs = xv;
+        let ys = yv;
+        if 0 <= ys && ys < WORD_BITS as i64 - 1 {
             let pw = 1u64 << (ys as u64);
             proof {
                 vstd::bits::lemma_u64_pow2_no_overflow(ys as nat);
@@ -302,36 +309,43 @@ pub fn smi_arith_word(op: u8, a: usize, b: usize, Ghost(x): Ghost<i64>, Ghost(y)
                 assert(ys < 63);
                 vstd::arithmetic::power2::lemma_pow2_strictly_increases(ys as nat, 63);
                 vstd::arithmetic::power2::lemma2_to64_rest();
-                let pp2 = pow2(ys as nat) as int;
-                assert(ai * pp2 == 2 * (x * pp2)) by (nonlinear_arith) requires ai == x + x;
             }
             let pwi = pw as i64;
-            match ai.checked_mul(pwi) {
-                Some(s) => Some(s as usize),
-                None => None,
+            match xs.checked_mul(pwi) {
+                Some(s) => {
+                    if MIN_SMI <= s && s <= MAX_SMI { Some(smi_of(s)) } else { None }
+                },
+                None => {
+                    proof {
+                        let pp2 = pow2(ys as nat) as int;
+                        assert(x * pp2 > MAX_SMI || x * pp2 < MIN_SMI);
+                    }
+                    None
+                },
             }
-        } else if ys == 63 && ai == 0 {
-            // 0 << 63 is the only shift by 63 whose result is a smi.
+        } else if ys == WORD_BITS as i64 - 1 && xs == 0 {
+            // 0 << (WORD_BITS - 1) is the only such shift whose result is a
+            // smi.
             proof {
-                vstd::arithmetic::power2::lemma2_to64_rest();
-                assert(x * pow2(63) == 0) by (nonlinear_arith) requires x == 0;
+                assert(x * pow2(ys as nat) == 0) by (nonlinear_arith) requires x == 0;
             }
             Some(0)
         } else {
             proof {
-                if ys == 63 {
+                if 0 <= ys && ys == WORD_BITS as i64 - 1 {
+                    vstd::arithmetic::power2::lemma2_to64();
                     vstd::arithmetic::power2::lemma2_to64_rest();
-                    let q = pow2(63) as int;
-                    assert(q == 0x8000_0000_0000_0000);
+                    let q = pow2(ys as nat) as int;
+                    assert(q == 2 * (MAX_SMI + 1));
                     assert(x * q >= q || x * q <= -q) by (nonlinear_arith) requires x != 0, q > 0;
                 }
             }
             None
         }
     } else if op == 71 {
-        let xs = ai >> 1;
-        let ys = bi >> 1;
-        if 0 <= ys && ys < 64 {
+        let xs = xv;
+        let ys = yv;
+        if 0 <= ys && ys < WORD_BITS as i64 {
             let q = xs >> (ys as u64);
             proof { lemma_smi_shr(x, ys as u64); }
             Some(smi_of(q))
@@ -339,9 +353,9 @@ pub fn smi_arith_word(op: u8, a: usize, b: usize, Ghost(x): Ghost<i64>, Ghost(y)
             None
         }
     } else {
-        let xs = ai >> 1;
-        let ys = bi >> 1;
-        if 0 <= ys && ys < 64 && xs >= 0 {
+        let xs = xv;
+        let ys = yv;
+        if 0 <= ys && ys < WORD_BITS as i64 && xs >= 0 {
             let q = xs >> (ys as u64);
             proof { lemma_smi_shr(x, ys as u64); }
             Some(smi_of(q))
@@ -553,8 +567,8 @@ pub fn op_invoke_relational(m: &mut Machine, env: &Env, bci: usize, opcode: u8) 
         lemma_or_tag(a0, a1);
     }
     if (a0 | a1) & 1 == 0 {
-        let x = a0 as i64;
-        let y = a1 as i64;
+        let x = a0 as isize;
+        let y = a1 as isize;
         let b = if opcode == 63 { x < y } else if opcode == 64 { x > y } else if opcode == 65 { x <= y } else { x >= y };
         let ghost bv = relational_smi(opcode, smi_val(v0), smi_val(v1));
         proof {

@@ -95,7 +95,7 @@ impl Machine {
             match v {
                 Value::Smi(i) => { lemma_smi_word(i); },
                 Value::Obj(id) => { lemma_obj_not_smi(self.heap.objs(), self.addr(), id); },
-                Value::BlockRef(fr, sl) => { lemma_smi_word((fr * 0x10_0000 + sl) as i64); },
+                Value::BlockRef(fr, sl) => { lemma_smi_word((fr * 0x1_0000 + sl) as i64); },
                 _ => {},
             }
         }

@@ -202,7 +202,7 @@ static const uword TOIT_V2_PRIMITIVE_FOUND = 1;
 // on the table the process runs (V2MethodTable::verified); any other value
 // runs the checked loop. A distinct word, not a boolean, so that no other
 // nonzero value selects the verified loop.
-static const uword TOIT_V2_ACCEPTED = 0x56455249464945ULL;  // "VERIFIE"
+static const uword TOIT_V2_ACCEPTED = 0x56455249;  // "VERI"
 
 // Messages of the exceptions the core raises (the trace's message, as the
 // format-1 failure entry points of lib/core/exceptions.toit encode it).

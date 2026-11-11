@@ -100,11 +100,11 @@ Open:
 
 ### Phase 5 (from the verifier-memory work)
 
-- The core is not 32-bit clean: machine.rs (and the verified handlers)
-  shift a `usize` by 32 for the handler word (`height | bci << 32`) and the
-  finally-record target (`bci | height << 32`), and `abs::handler_word`,
-  `target_word` assume 64-bit words. A 32-bit layout needs two words or
-  16-bit halves.
+- Done (Phase 5): the core is 32-bit clean and verified for both widths
+  (DESIGN.md section 3a; verified/check.sh runs Verus for the host and for
+  `i686-unknown-linux-gnu`). The handler and the finally-record target
+  are two words each (5-word records), the Stack header packs `rtop |
+  ftop << 16`, block references are `frame << 16 | slot`.
 - The core is not `no_std`: no `#![no_std]`, vstd with std, `staticlib`
   crate type with the hosted panic handler. Both block the riscv32 build
   (the verifier crates already build `no_std` + alloc).

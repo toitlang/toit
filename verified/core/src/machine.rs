@@ -244,7 +244,7 @@ pub fn is_smi(w: usize) -> bool {
 
 #[inline(always)]
 pub fn smi_value(w: usize) -> i64 {
-    (w as i64) >> 1
+    ((w as isize) >> 1) as i64
 }
 
 #[inline(always)]
@@ -273,18 +273,18 @@ impl Machine {
     fn reload_cold(&mut self, p: &Program) -> bool {
         let len = self.mem.len();
         let top = self.mem.header(STACK_TOP_WORD);
-        let rtop = self.mem.header(STACK_RECORD_TOP_WORD);
-        let word = self.mem.header(STACK_BCI_WORD);
-        let bci = word & ((1 << STACK_FIN_COUNT_SHIFT) - 1);
-        let fins = word >> STACK_FIN_COUNT_SHIFT;
-        if top > len || rtop > top || rtop % FRAME_WORDS != 0 || len >= (1 << BLOCK_SLOT_BITS)
-            || fins > rtop / FIN_WORDS {
+        let word = self.mem.header(STACK_RECORD_TOP_WORD);
+        let rtop = word & (MAX_STACK_LENGTH - 1);
+        let ftop = word >> STACK_FRAME_TOP_SHIFT;
+        let bci = self.mem.header(STACK_BCI_WORD);
+        if top > len || rtop > top || rtop % FRAME_WORDS != 0 || len >= MAX_STACK_LENGTH
+            || ftop > rtop || ftop % FRAME_WORDS != 0 {
             return false;
         }
         self.len = len;
         self.top = top;
         self.rtop = rtop;
-        self.ftop = rtop - fins * FIN_WORDS;
+        self.ftop = ftop;
         self.bci = bci;
         self.refresh_frame(p)
     }
@@ -600,13 +600,13 @@ impl Machine {
     #[inline(never)]
     fn enter_finally_cold(&mut self, env: &Env, handler: usize, u: Option<Unwinding>) -> Ctl {
         let p = &env.p;
-        let height = handler & 0xffff_ffff;
-        let hbci = handler >> 32;
+        let height = handler;
         if !(self.base <= height && height <= self.len - self.top) {
             return Ctl::Stuck(stuck::STACK_RANGE);
         }
         self.top = self.len - height;
         let r = self.ftop - FRAME_WORDS;
+        let hbci = self.mem.read(r + FRAME_HANDLER_BCI);
         self.mem.write(r + FRAME_HANDLER, 0);
         self.bci = hbci;
         let null = p.null;
@@ -620,10 +620,10 @@ impl Machine {
             Some(w) => {
                 // A finally record takes the handler's place (format note
                 // 17); the token is its index.
-                let (value, reason, resume, target) = match w {
-                    Unwinding::Throw(v) => (v, -2, UNWIND_THROW, 0),
-                    Unwinding::Return(f, v) => (v, -1, UNWIND_RETURN + f * 4, 0),
-                    Unwinding::Branch(f, bci, h) => (null, -1, UNWIND_BRANCH + f * 4, bci | (h << 32)),
+                let (value, reason, resume, target, target_height) = match w {
+                    Unwinding::Throw(v) => (v, -2, UNWIND_THROW, 0, 0),
+                    Unwinding::Return(f, v) => (v, -1, UNWIND_RETURN + f * 4, 0, 0),
+                    Unwinding::Branch(f, bci, h) => (null, -1, UNWIND_BRANCH + f * 4, bci, h),
                 };
                 if self.top - self.rtop < FIN_WORDS + 3 { return Ctl::Stuck(stuck::LIMIT); }
                 let k = (self.rtop - self.ftop) / FIN_WORDS;
@@ -632,6 +632,7 @@ impl Machine {
                 self.mem.write(e + FIN_HEIGHT, height);
                 self.mem.write(e + FIN_RESUME, resume);
                 self.mem.write(e + FIN_TARGET, target);
+                self.mem.write(e + FIN_TARGET_HEIGHT, target_height);
                 self.rtop = e + FIN_WORDS;
                 self.push(value);
                 self.push(smi(k as i64));
@@ -946,7 +947,7 @@ impl Machine {
 
     #[inline(always)]
     pub fn double_bits(&self, v: usize) -> u64 {
-        self.heap.word(v, DOUBLE_VALUE_WORD) as u64
+        self.heap.word64(v, DOUBLE_VALUE_WORD)
     }
 
     #[inline(always)]
@@ -959,7 +960,7 @@ impl Machine {
     #[inline(always)]
     pub fn byte_array(&self, v: usize, is_put: bool) -> Option<(usize, usize)> {
         if !is_heap(v) || self.tag(v) != BYTE_ARRAY_TAG { return None; }
-        let raw = self.heap.word(v, BYTE_ARRAY_LENGTH_WORD) as i64;
+        let raw = self.heap.word(v, BYTE_ARRAY_LENGTH_WORD) as isize as i64;
         if raw >= 0 { return Some((0, raw as usize)); }
         let tag = self.heap.word(v, BYTE_ARRAY_EXTERNAL_TAG_WORD);
         if tag == RAW_BYTE_TAG || (!is_put && tag == MAPPED_FILE_TAG) {
@@ -975,7 +976,7 @@ impl Machine {
     #[inline(always)]
     pub fn string_bytes(&self, v: usize) -> Option<(usize, usize)> {
         if !is_heap(v) || self.tag(v) != STRING_TAG { return None; }
-        let internal = self.heap.u32_at(v, STRING_INTERNAL_LENGTH_BYTE) as usize;
+        let internal = self.heap.half_word_at(v, STRING_INTERNAL_LENGTH_BYTE);
         if internal != STRING_SENTINEL { return Some((0, internal)); }
         let length = self.heap.word(v, STRING_EXTERNAL_LENGTH_WORD);
         let address = self.heap.word(v, STRING_EXTERNAL_ADDRESS_WORD);
@@ -988,7 +989,7 @@ impl Machine {
         if is_smi(v) {
             Some(Num::Int(smi_value(v)))
         } else if self.is_large_int(v) {
-            Some(Num::Int(self.heap.word(v, LARGE_INTEGER_VALUE_WORD) as i64))
+            Some(Num::Int(self.heap.word64(v, LARGE_INTEGER_VALUE_WORD) as i64))
         } else if self.is_double(v) {
             Some(Num::Dbl(f64::from_bits(self.double_bits(v))))
         } else {
@@ -1013,7 +1014,7 @@ impl Machine {
             return self.double_bits(a) == self.double_bits(b);
         }
         if self.is_large_int(a) && self.is_large_int(b) {
-            return self.heap.word(a, LARGE_INTEGER_VALUE_WORD) == self.heap.word(b, LARGE_INTEGER_VALUE_WORD);
+            return self.heap.word64(a, LARGE_INTEGER_VALUE_WORD) == self.heap.word64(b, LARGE_INTEGER_VALUE_WORD);
         }
         match (self.string_bytes(a), self.string_bytes(b)) {
             (Some((aa, al)), Some((ba, bl))) => {
@@ -1851,7 +1852,7 @@ impl Machine {
         let a0 = self.at(1);
         let a1 = self.at(0);
         if is_smi(a0) && is_smi(a1) {
-            let (x, y) = (a0 as i64, a1 as i64);  // Same order as the values.
+            let (x, y) = (a0 as isize, a1 as isize);  // Same order as the values.
             let r = match opcode {
                 op::INVOKE_LT => x < y,
                 op::INVOKE_LTE => x <= y,
@@ -2018,14 +2019,15 @@ impl Machine {
         if !self.has_slot(0) || self.ftop < FRAME_WORDS { return Ctl::Stuck(stuck::STACK_RANGE); }
         let height = self.len - self.top;
         let r = self.ftop - FRAME_WORDS;
-        if self.mem.read(r + FRAME_HANDLER) != 0 || height > 0xffff_ffff || self.bci + 1 > 0xffff_ffff {
+        if self.mem.read(r + FRAME_HANDLER) != 0 {
             return Ctl::Stuck(stuck::LIMIT);
         }
         let fi = self.ftop / FRAME_WORDS - 1;
         // Stale finally records of the frame (left by a `break` out of
         // finally code) go first.
         self.cut_fins(fi, height - 1);
-        self.mem.write(r + FRAME_HANDLER, height | ((self.bci + 1) << 32));
+        self.mem.write(r + FRAME_HANDLER, height);
+        self.mem.write(r + FRAME_HANDLER_BCI, self.bci + 1);
         let slot = height - 1;
         match self.block_target(p, slot) {
             None => self.raise(env, INVALID_PROGRAM),
@@ -2068,11 +2070,12 @@ impl Machine {
         }
         let resume = self.mem.read(e + FIN_RESUME);
         let target = self.mem.read(e + FIN_TARGET);
+        let target_height = self.mem.read(e + FIN_TARGET_HEIGHT);
         let f = resume >> 2;
         let u = match resume & 3 {
             UNWIND_THROW => Unwinding::Throw(value),
             UNWIND_RETURN => Unwinding::Return(f, value),
-            UNWIND_BRANCH => Unwinding::Branch(f, target & 0xffff_ffff, target >> 32),
+            UNWIND_BRANCH => Unwinding::Branch(f, target, target_height),
             _ => return Ctl::Stuck(stuck::FATAL),
         };
         self.drop(3);
@@ -2107,7 +2110,7 @@ impl Machine {
             let duration = if is_smi(v) {
                 smi_value(v)
             } else if self.is_large_int(v) {
-                self.heap.word(v, LARGE_INTEGER_VALUE_WORD) as i64
+                self.heap.word64(v, LARGE_INTEGER_VALUE_WORD) as i64
             } else {
                 0
             };
@@ -2153,7 +2156,7 @@ impl Machine {
     }
 }
 
-/// `spec_step::smi_arith` on 64-bit words.
+/// `spec_step::smi_arith` on the target's words.
 #[inline(always)]
 pub fn smi_arith(opcode: u8, a: i64, b: i64) -> Option<i64> {
     let r: i64 = match opcode {
@@ -2177,17 +2180,17 @@ pub fn smi_arith(opcode: u8, a: i64, b: i64) -> Option<i64> {
             a % b
         }
         op::INVOKE_BIT_SHL => {
-            if b < 0 || b >= 64 { return None; }
+            if b < 0 || b >= WORD_BITS as i64 { return None; }
             let r = (a as i128) << b;
             if r < MIN_SMI as i128 || r > MAX_SMI as i128 { return None; }
             r as i64
         }
         op::INVOKE_BIT_SHR => {
-            if b < 0 || b >= 64 { return None; }
+            if b < 0 || b >= WORD_BITS as i64 { return None; }
             a >> b
         }
         _ => {
-            if b < 0 || b >= 64 || a < 0 { return None; }
+            if b < 0 || b >= WORD_BITS as i64 || a < 0 { return None; }
             a >> b
         }
     };
@@ -2205,7 +2208,7 @@ impl Machine {
         let height = self.len - self.top;
         let slot = height - 1 - k;
         let f = self.ftop / FRAME_WORDS - 1;
-        if f >= 0x100_0000_0000 {
+        if f >= 0x4000 {
             return Ctl::Stuck(100);
         }
         let v = Machine::block_value(f, slot);
@@ -2469,7 +2472,11 @@ impl Machine {
             op::LOAD_SMI_1 => self.push_next_u(smi(1), len!()),
             op::LOAD_SMI_U8 => self.push_next_u(smi(b1!() as i64), len!()),
             op::LOAD_SMI_U16 => self.push_next_u(smi(w1!() as i64), len!()),
-            op::LOAD_SMI_U32 => self.push_next_u(smi(Self::u32_at(p, bci + 1) as i64), len!()),
+            op::LOAD_SMI_U32 => {
+                let v = Self::u32_at(p, bci + 1) as i64;
+                if !smi_ok(v) { return Ctl::Stuck(stuck::SMI_RANGE); }
+                self.push_next_u(smi(v), len!())
+            }
             op::LOAD_SMIS_0 => {
                 let n = b1!();
                 if self.top - self.rtop < n { return Ctl::Stuck(stuck::LIMIT); }

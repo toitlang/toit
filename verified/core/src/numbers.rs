@@ -81,7 +81,7 @@ impl Machine {
     {
         proof { crate::halt::lemma_word_tag(self, p, w, v); }
         match self.tag_of(p, w, Ghost(v)) {
-            None => Some(XNum::Int((w as i64) >> 1u64)),
+            None => Some(XNum::Int(smi_value(w))),
             Some(tag) => {
                 let ghost id = v->Obj_0 as int;
                 if tag == LARGE_INTEGER_TAG {

@@ -16,7 +16,8 @@
 
 # The gate for verified/: run before every merge. See verified/README.md.
 #
-#   1. Verus on verified/core and verified/spec: 0 errors required.
+#   1. Verus on verified/core and verified/spec: 0 errors required, for
+#      64-bit words (the host) and for 32-bit words (i686 target).
 #   2. Escape-hatch audit against verified/TRUSTED.toml (and a cross-check
 #      with `verus --no-cheating`); writes verified/THEOREMS.txt.
 #   3. With --tests: the audit's regression test, layout check, spec
@@ -129,6 +130,54 @@ section "Verus ($(verus --version 2>/dev/null | sed -n 's/^ *Version: //p'))"
 for c in "${CRATES[@]}"; do
   verify_crate "$c"
 done
+
+# The same crates for 32-bit words: Verus with `--target
+# i686-unknown-linux-gnu` and its support libraries built for that target
+# (verified/tools/verus_target.sh), so that `usize` is 32 bits wide in every
+# proof (the core's `global size_of usize` is per target_pointer_width; the
+# crates' code is the same except for the cfg'd constants of layout.rs).
+# This is the proof for the 32-bit host and the riscv32 devices.
+verify_crate_word32() {
+  local name="$1"
+  local dir="$VERIFIED/$name"
+  local log="$LOGS/$name.word32.log"
+  local args=()
+  case "$name" in
+    spec) args=(--crate-name toit_spec --export "$LOGS/w32/toit_spec.vir" --compile -o "$LOGS/w32/libtoit_spec.rlib") ;;
+    core) args=(--crate-name toit_verified_core --cfg toit_vcore_hosted
+                --extern "toit_spec=$LOGS/w32/libtoit_spec.rlib" --import "toit_spec=$LOGS/w32/toit_spec.vir") ;;
+  esac
+  local start end rc
+  start=$(date +%s.%N)
+  (cd "$dir" && "$VERUS32" --crate-type=lib --target "$WORD32_TARGET" "${args[@]}" src/lib.rs --time) > "$log" 2>&1
+  rc=$?
+  end=$(date +%s.%N)
+  local result verified errors total smt wall
+  result=$(grep -E '^verification results:: ' "$log" | tail -1)
+  verified=$(sed -nE 's/^verification results:: ([0-9]+) verified, ([0-9]+) errors.*/\1/p' <<< "$result")
+  errors=$(sed -nE 's/^verification results:: ([0-9]+) verified, ([0-9]+) errors.*/\2/p' <<< "$result")
+  total=$(grep -E '^total-time:' "$log" | tail -1 | awk '{print $2}')
+  smt=$(grep -E 'total smt-time:' "$log" | tail -1 | awk '{print $3}')
+  wall=$(awk -v s="$start" -v e="$end" 'BEGIN { printf "%.1f", e - s }')
+  printf '%-5s %5s verified, %s errors; verus total %s ms (SMT %s ms), wall %s s (32-bit words)\n' \
+    "$name" "${verified:-?}" "${errors:-?}" "${total:-?}" "${smt:-?}" "$wall"
+  if [ "$rc" -ne 0 ] || [ -z "$result" ] || [ "${errors:-1}" != "0" ]; then
+    grep -E '^(error|warning: unused)|^ *--> ' "$log" | head -40
+    fail "$name (32-bit words): Verus did not report 0 errors (exit code $rc; full log follows)"
+    cat "$log"
+  fi
+}
+
+WORD32_TARGET=i686-unknown-linux-gnu
+section "Verus, 32-bit words ($WORD32_TARGET)"
+mkdir -p "$LOGS/w32"
+if VERUS32="$("$VERIFIED/tools/verus_target.sh" "$WORD32_TARGET" "$REPO/build/verus-$WORD32_TARGET")"; then
+  for c in "${CRATES[@]}"; do
+    verify_crate_word32 "$c"
+  done
+else
+  fail "32-bit words: cannot set up Verus for $WORD32_TARGET (verified/tools/verus_target.sh; rustup target add $WORD32_TARGET)"
+fi
 
 # The tools in verified/tools are Toit programs: they need a toit executable
 # (the build's SDK, else one on the PATH) and the packages of the

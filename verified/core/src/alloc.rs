@@ -62,39 +62,38 @@ verus! {
 // ---------------------------------------------------------------------------
 // Reloading the machine from the stack view.
 
-/// The Stack header's bci word: the bci and, above `STACK_FIN_COUNT_SHIFT`
-/// bits, the number of finally records.
-pub open spec fn bci_word(bci: usize, fins: usize) -> usize {
-    bci | (fins << 32usize)
+/// The Stack header's record-top word: the record top and, above
+/// `STACK_FRAME_TOP_SHIFT` bits, the frame top (both below
+/// `MAX_STACK_LENGTH`).
+pub open spec fn records_word(rtop: usize, ftop: usize) -> usize {
+    rtop | (ftop << 16usize)
 }
 
-pub proof fn lemma_bci_word(bci: usize, fins: usize)
-    requires bci < 0x1_0000_0000, fins < 0x1_0000_0000,
+pub proof fn lemma_records_word(rtop: usize, ftop: usize)
+    requires rtop < MAX_STACK_LENGTH, ftop < MAX_STACK_LENGTH,
     ensures
-        bci_word(bci, fins) & 0xffff_ffff == bci,
-        bci_word(bci, fins) >> 32usize == fins,
+        records_word(rtop, ftop) & 0xffff == rtop,
+        records_word(rtop, ftop) >> 16usize == ftop,
 {
-    assert((bci | (fins << 32usize)) & 0xffff_ffff == bci && (bci | (fins << 32usize)) >> 32usize == fins)
+    assert((rtop | (ftop << 16usize)) & 0xffff == rtop && (rtop | (ftop << 16usize)) >> 16usize == ftop)
         by (bit_vector)
-        requires bci < 0x1_0000_0000, fins < 0x1_0000_0000;
+        requires rtop < 0x1_0000, ftop < 0x1_0000;
 }
 
 /// The machine with its cached fields re-derived from the stack view and
 /// the Stack header (what `reload` computes), and ghost state `g`.
 pub open spec fn reloaded(m: Machine, g: State2) -> Machine {
     let len = m.mem@.len();
-    let rtop = m.mem.hdr(STACK_RECORD_TOP_WORD);
-    let word = m.mem.hdr(STACK_BCI_WORD);
-    let fins = word >> 32usize;
-    let ftop = if rtop >= FIN_WORDS * fins { (rtop - FIN_WORDS * fins) as usize } else { 0 };
+    let word = m.mem.hdr(STACK_RECORD_TOP_WORD);
+    let ftop = word >> 16usize;
     let r = ftop - FRAME_WORDS;
     let base = m.mem@[r + FRAME_BASE];
     Machine {
         len: len as usize,
         top: m.mem.hdr(STACK_TOP_WORD),
-        rtop: rtop,
+        rtop: word & 0xffff,
         ftop: ftop,
-        bci: word & 0xffff_ffff,
+        bci: m.mem.hdr(STACK_BCI_WORD),
         base: base,
         lim: (len - base) as usize,
         method: m.mem@[r + FRAME_METHOD],
@@ -106,20 +105,18 @@ pub open spec fn reloaded(m: Machine, g: State2) -> Machine {
 /// The task state is saved in the Stack header (`Machine::save`).
 pub open spec fn saved(m: Machine) -> bool {
     &&& m.mem.hdr(STACK_TOP_WORD) == m.top
-    &&& m.mem.hdr(STACK_RECORD_TOP_WORD) == m.rtop
-    &&& m.mem.hdr(STACK_BCI_WORD) == bci_word(m.bci, ((m.rtop - m.ftop) / FIN_WORDS as int) as usize)
+    &&& m.mem.hdr(STACK_RECORD_TOP_WORD) == records_word(m.rtop, m.ftop)
+    &&& m.mem.hdr(STACK_BCI_WORD) == m.bci
 }
 
 /// A machine whose state is saved is its own reload.
 pub proof fn lemma_saved(p: &Program, m: Machine)
-    requires m.refines(p), saved(m), m.bci < 0x1_0000_0000,
+    requires m.refines(p), saved(m),
     ensures reloaded(m, m.g@) == m,
 {
     let g = m.g@;
     let n = g.frames.len() as int;
-    let f = ((m.rtop - m.ftop) / FIN_WORDS as int) as usize;
-    assert(f == g.fins.len());
-    lemma_bci_word(m.bci, f);
+    lemma_records_word(m.rtop, m.ftop);
     assert(rec(m.mem@, n - 1, FRAME_METHOD) == g.frames[n - 1].method);
     assert(rec(m.mem@, n - 1, FRAME_BASE) == g.frames[n - 1].base);
     assert(FRAME_WORDS * (n - 1) == m.ftop - FRAME_WORDS);
@@ -143,18 +140,16 @@ pub fn reload(m: &mut Machine, p: &Program, Ghost(g): Ghost<State2>)
     }
     let len = m.mem.len();
     let top = m.mem.header(STACK_TOP_WORD);
-    let rtop = m.mem.header(STACK_RECORD_TOP_WORD);
-    let word = m.mem.header(STACK_BCI_WORD);
-    let fins = word >> 32usize;
-    let ftop = if rtop >= FIN_WORDS * fins { rtop - FIN_WORDS * fins } else { 0 };
+    let word = m.mem.header(STACK_RECORD_TOP_WORD);
+    let ftop = word >> 16usize;
     let r = ftop - FRAME_WORDS;
     let method = m.mem.read(r + FRAME_METHOD);
     let base = m.mem.read(r + FRAME_BASE);
     m.len = len;
     m.top = top;
-    m.rtop = rtop;
+    m.rtop = word & 0xffff;
     m.ftop = ftop;
-    m.bci = word & 0xffff_ffff;
+    m.bci = m.mem.header(STACK_BCI_WORD);
     m.method = method;
     m.base = base;
     m.lim = len - base;

@@ -29,8 +29,8 @@ crate = "core"
 file = "src/abs.rs"
 item = "size_of"
 kind = "global_layout"
-count = 1
-justification = "usize is 64 bits (TRUSTED.md V4): Verus assumes it for the bit-vector smi lemmas; the erased build checks it with a compile-time assertion."
+count = 2
+justification = "usize is the target's word, 8 bytes for target_pointer_width 64 and 4 for 32 (one declaration each, TRUSTED.md section 6 'Word size'): Verus fixes the width of every word proof from it; the erased build and Verus' own build for the target check it with a compile-time assertion (check.sh verifies both widths)."
 
 [[trusted]]
 crate = "core"
@@ -1323,18 +1323,42 @@ justification = "Reads the length fields of a live string (heap integrity, TRUST
 [[trusted]]
 crate = "core"
 file = "src/view.rs"
-item = "Heap::u32_at"
+item = "Heap::half_word_at"
 kind = "external_body"
 count = 1
-justification = "Trusted contract of Heap::u32_at (TRUSTED.md section 1)."
+justification = "Trusted contract of Heap::half_word_at (TRUSTED.md section 1); no postcondition (used only by the checked loop)."
 
 [[trusted]]
 crate = "core"
 file = "src/view.rs"
-item = "Heap::u32_at"
+item = "Heap::half_word_at"
 kind = "unsafe"
 count = 1
-justification = "Raw access of Heap::u32_at; in bounds by the external_body precondition (index < len) or, for heap words, by heap integrity (TRUSTED.md)."
+justification = "Raw access of Heap::half_word_at: the string length half word of a heap object (heap integrity, TRUSTED.md)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::word64"
+kind = "external_body"
+count = 1
+justification = "Trusted contract of Heap::word64 (TRUSTED.md section 1); no postcondition (used only by the checked loop)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::word64"
+kind = "unsafe"
+count = 1
+justification = "Unaligned 8-byte read of the payload of a double or large integer (two words on 32-bit targets) inside the object (heap integrity, TRUSTED.md)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "HalfWord"
+kind = "plain_rust_item"
+count = 2
+justification = "Type alias for the VM's half word (u32 on 64-bit, u16 on 32-bit targets, HALF_WORD_SIZE); the string offsets that use it are machine-checked by verified/layout_check.cc."
 
 [[trusted]]
 crate = "core"

@@ -73,13 +73,13 @@ pub proof fn lemma_word_tag(m: &Machine, p: &Program, w: usize, v: Value)
         (w & 1 == 0) == !(v is Obj),
         v is Obj ==> w & 3 == 1 && (v->Obj_0 as int) < m.g@.heap.len(),
         v is Smi ==> w == smi_word(v->Smi_0) && smi_range(v->Smi_0 as int)
-            && (w as i64) >> 1u64 == v->Smi_0,
+            && word_smi(w) == v->Smi_0,
 {
     match v {
         Value::Smi(i) => { lemma_smi_word(i); },
         Value::Obj(id) => { lemma_obj_not_smi(m.heap.objs(), m.addr(), id); },
         Value::BlockRef(f, s) => {
-            lemma_smi_word((f * 0x10_0000 + s) as i64);
+            lemma_smi_word((f * 0x1_0000 + s) as i64);
         },
         _ => {},
     }
@@ -146,7 +146,7 @@ pub fn op_halt(m: &mut Machine, env: &Env, bci: usize, opcode: u8, code: usize) 
             }
             return m.v_raise_invalid(env);
         }
-        let v = (w as i64) >> 1u64;
+        let v = smi_value(w);
         m.drop(1);
         m.bci = bci + 2;
         let r = Ctl::Exit(RESULT_TERMINATED as u32, v);
@@ -159,12 +159,12 @@ pub fn op_halt(m: &mut Machine, env: &Env, bci: usize, opcode: u8, code: usize) 
         }
         let w = m.at(0);
         let duration = if w & 1 == 0 {
-            (w as i64) >> 1u64
+            smi_value(w)
         } else {
             let ghost id = sp::at(g, 0)->Obj_0 as int;
             proof { assert(obj_model_ok(m.g@.heap[id], m.heap.class_bits(), m.addr())); }
             if m.heap.class_tag(w, Ghost(id)) == LARGE_INTEGER_TAG {
-                m.heap.word(w, LARGE_INTEGER_VALUE_WORD) as i64
+                m.heap.large_int(w, Ghost(id))
             } else {
                 0
             }

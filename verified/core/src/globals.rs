@@ -125,7 +125,7 @@ impl Machine {
         if w & 1 != 0 {
             return None;
         }
-        let i = (w as i64) >> 1u64;
+        let i = smi_value(w);
         if i < 0 || i as usize >= self.globals.len() {
             return None;
         }

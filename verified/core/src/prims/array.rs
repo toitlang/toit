@@ -614,12 +614,12 @@ pub fn rebuild_hash_index(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcom
                 return r;
             },
         };
-        // `Smi::from` of the word: the low 63 bits, sign-extended.
-        let low = x & 0x3fff_ffff_ffff_ffffi64;
-        let hp = if x & 0x4000_0000_0000_0000i64 != 0 { low | -0x4000_0000_0000_0000i64 } else { low };
+        // `Smi::from` of the word: the low `WORD_BITS - 1` bits, sign-extended.
+        let low = x & MAX_SMI;
+        let hp = if x & (MAX_SMI + 1) != 0 { low | MIN_SMI } else { low };
         proof {
-            assert(MIN_SMI <= (x & 0x3fff_ffff_ffff_ffffi64) | -0x4000_0000_0000_0000i64 <= MAX_SMI) by (bit_vector);
-            assert(MIN_SMI <= x & 0x3fff_ffff_ffff_ffffi64 <= MAX_SMI) by (bit_vector);
+            assert(MIN_SMI <= (x & MAX_SMI) | MIN_SMI <= MAX_SMI) by (bit_vector);
+            assert(MIN_SMI <= x & MAX_SMI <= MAX_SMI) by (bit_vector);
         }
         let mut slot = ((x as u64) & (mask as u64)) as usize;
         let mut step: usize = 1;

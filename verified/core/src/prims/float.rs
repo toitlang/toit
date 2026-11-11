@@ -172,8 +172,9 @@ pub fn float_query(op: u8, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutco
     } else if op == 3 {
         ints::int_res(heap, c, x as i64)
     } else {
-        let (rw, rv) = smi_res(heap, fp::to_raw32(x) as i64);
-        ok(c.p, heap, rw, rv)
+        // `Primitive::integer`: a large integer on 32-bit targets when the
+        // bits do not fit a smi.
+        ints::int_res(heap, c, fp::to_raw32(x) as i64)
     }
 }
 

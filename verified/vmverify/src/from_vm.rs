@@ -50,6 +50,9 @@ use toit_spec::v2::vprog::{VMethod, VProgram};
 use toit_verified_core::ffi::{ProgramTables, V2Method};
 use toit_verified_core::layout::*;
 
+/// `HALF_WORD_SIZE`: string lengths are half words.
+const HALF: usize = core::mem::size_of::<toit_verified_core::view::HalfWord>();
+
 // `VMethod` (the verifier's view of the method table) has the layout of
 // `V2Method` (the core's, and `toit::V2Method`): the table is borrowed as is.
 const _: () = {
@@ -194,6 +197,16 @@ impl Image {
         }
     }
 
+    /// The 64-bit payload (a double's bits, a large integer) starting at
+    /// word `k` of the object at `addr` (two words on 32-bit targets).
+    fn word64(&self, addr: usize, k: usize) -> Result<u64, Malformed> {
+        let at = k.checked_mul(WORD_SIZE).and_then(|o| addr.checked_add(o));
+        match at.and_then(|a| self.range(a, 8)) {
+            Some(b) => Ok(u64::from_ne_bytes(b.try_into().unwrap())),
+            None => bad("object extends past the program image", addr.wrapping_sub(self.start)),
+        }
+    }
+
     fn bytes(&self, addr: usize, len: usize) -> Result<Vec<u8>, Malformed> {
         match self.range(addr, len) {
             Some(b) => Ok(b.to_vec()),
@@ -256,7 +269,7 @@ impl<'a> Objects<'a> {
     /// of the program image (which gets an id).
     fn value(&mut self, w: usize) -> Result<Value, Malformed> {
         if w & SMI_TAG_MASK == SMI_TAG {
-            return Ok(Value::Smi((w as i64) >> SMI_TAG_SIZE));
+            return Ok(Value::Smi(((w as isize) >> SMI_TAG_SIZE) as i64));
         }
         if w & NON_SMI_TAG_MASK != HEAP_TAG {
             return bad("a word is neither a smi nor an object reference", w);
@@ -285,7 +298,7 @@ impl<'a> Objects<'a> {
         if header & SMI_TAG_MASK != SMI_TAG {
             return bad("object header is not a smi", offset);
         }
-        let header = (header as i64) >> SMI_TAG_SIZE;
+        let header = ((header as isize) >> SMI_TAG_SIZE) as i64;
         let tag = ((header >> CLASS_TAG_OFFSET) as usize) & CLASS_TAG_MASK;
         let class_id = header >> CLASS_ID_OFFSET;
         if class_id < 0 || class_id as usize >= self.class_bits.len() {
@@ -341,9 +354,14 @@ impl<'a> Objects<'a> {
                 }
             }
             STRING_TAG => {
-                let at = self.image.range(addr + STRING_INTERNAL_LENGTH_BYTE, 4)
+                // A half word: 32 bits on 64-bit targets, 16 on 32-bit ones.
+                let at = self.image.range(addr + STRING_INTERNAL_LENGTH_BYTE, HALF)
                     .ok_or(Malformed { what: "string header outside the program image", detail: offset })?;
-                let internal = u32::from_ne_bytes(at.try_into().unwrap()) as usize;
+                let internal = if HALF == 4 {
+                    u32::from_ne_bytes(at.try_into().unwrap()) as usize
+                } else {
+                    u16::from_ne_bytes(at.try_into().unwrap()) as usize
+                };
                 if internal != STRING_SENTINEL {
                     ExecBody::Str(self.image.bytes(addr + STRING_CONTENT_BYTE, internal)?)
                 } else {
@@ -352,8 +370,8 @@ impl<'a> Objects<'a> {
                     ExecBody::Str(self.image.bytes(content, length)?)
                 }
             }
-            DOUBLE_TAG => ExecBody::Double(self.image.word(addr, DOUBLE_VALUE_WORD)? as u64),
-            LARGE_INTEGER_TAG => ExecBody::LargeInt(self.image.word(addr, LARGE_INTEGER_VALUE_WORD)? as i64),
+            DOUBLE_TAG => ExecBody::Double(self.image.word64(addr, DOUBLE_VALUE_WORD)?),
+            LARGE_INTEGER_TAG => ExecBody::LargeInt(self.image.word64(addr, LARGE_INTEGER_VALUE_WORD)? as i64),
             ODDBALL_TAG => ExecBody::Oddball,
             // Stacks (and anything else) are not program data.
             _ => return bad("object of a machine class in the program image", offset),
@@ -382,7 +400,7 @@ pub unsafe fn convert<'a>(p: &ProgramTables, prims: &PrimitiveArities) -> Result
     let builtin_words: &[usize] = table(p.builtin_class_ids, BUILTIN_COUNT);
     let mut builtin = Vec::with_capacity(BUILTIN_COUNT);
     for (i, &w) in builtin_words.iter().enumerate() {
-        let v = (w as i64) >> SMI_TAG_SIZE;
+        let v = ((w as isize) >> SMI_TAG_SIZE) as i64;
         if w & SMI_TAG_MASK != SMI_TAG || !(0..=0xffff).contains(&v) {
             return bad("builtin class id is not a class id", i);
         }
@@ -433,7 +451,9 @@ pub unsafe fn convert<'a>(p: &ProgramTables, prims: &PrimitiveArities) -> Result
     })
 }
 
-#[cfg(test)]
+// The fixtures are laid out for 64-bit words (32-bit targets are covered by
+// the 32-bit host runs of the VM, verified/core/PROGRESS.md "Phase 5").
+#[cfg(all(test, target_pointer_width = "64"))]
 mod tests {
     use super::*;
 

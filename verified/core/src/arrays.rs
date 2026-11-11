@@ -228,7 +228,7 @@ pub proof fn lemma_val(p: &Program, m: Machine, w: usize, v: Value)
         (w & 1 == 0) == !(v is Obj),
         (w & 1 != 0) == (v is Obj),
         v is Obj ==> (v->Obj_0 as int) < m.g@.heap.len(),
-        v is Smi ==> w == smi_word(v->Smi_0) && smi_range(v->Smi_0 as int) && (w as i64) >> 1u64 == v->Smi_0,
+        v is Smi ==> w == smi_word(v->Smi_0) && smi_range(v->Smi_0 as int) && word_smi(w) == v->Smi_0,
 {
     match v {
         Value::Smi(i) => {},
@@ -316,7 +316,7 @@ impl Machine {
         requires self.refines(p), vals_good(self.g@.heap), val_ok(*self, w, v),
         ensures
             r is Some == is_bytes(as1(self.g@), v),
-            r is Some ==> r->0 == bytes(as1(self.g@), v).len() && r->0 < 0x4000_0000_0000_0000,
+            r is Some ==> r->0 == bytes(as1(self.g@), v).len() && r->0 < MAX_BLOB_LENGTH,
     {
         proof { lemma_val(p, *self, w, v); }
         if w & 1 == 0 {
@@ -342,7 +342,7 @@ impl Machine {
         if w & 1 != 0 {
             return None;
         }
-        Some((w as i64) >> 1u64)
+        Some(smi_value(w))
     }
 
     /// `array_at(av, length, n)`.
@@ -352,7 +352,7 @@ impl Machine {
         requires
             self.refines(p), vals_good(self.g@.heap), val_ok(*self, aw, av),
             is_array(as1(self.g@), av),
-            n < 0x4000_0000_0000_0000,
+            n as int <= MAX_SMI,
         ensures loc_ok(*self, r, array_at(as1(self.g@), av, length as int, n as int, is_put, value), is_put, value),
     {
         proof { lemma_val(p, *self, aw, av); }
@@ -374,7 +374,7 @@ impl Machine {
         requires
             self.refines(p), vals_good(self.g@.heap), val_ok(*self, bw, bv),
             is_bytes(as1(self.g@), bv),
-            n < 0x8000_0000_0000_0000,
+            n as int <= MAX_SMI,
             is_put ==> val_ok(*self, vw, value),
         ensures loc_ok(*self, r, bytes_at(as1(self.g@), bv, n as int, is_put, value), is_put, value),
     {
@@ -401,7 +401,7 @@ impl Machine {
         requires
             self.refines(p), vals_good(self.g@.heap), val_ok(*self, cw, cv),
             is_instance(as1(self.g@), cv),
-            n < 0x8000_0000_0000_0000,
+            n as int <= MAX_SMI,
             is_put ==> val_ok(*self, vw, value),
         ensures loc_ok(*self, r, cow_at(p1(p.ap@), as1(self.g@), cv, n as int, is_put, value), is_put, value),
     {
@@ -436,7 +436,7 @@ impl Machine {
         is_put: bool, vw: usize, Ghost(value): Ghost<Value>, fuel: usize) -> (r: Loc)
         requires
             self.refines(p), vals_good(self.g@.heap), val_ok(*self, rw, rv),
-            n < 0x4000_0000_0000_0000,
+            n as int <= MAX_SMI,
             is_put ==> val_ok(*self, vw, value),
         ensures loc_ok(*self, r, fast_at(p1(p.ap@), as1(self.g@), rv, Value::Smi(n as i64), is_put, value, fuel as nat),
             is_put, value),
@@ -526,7 +526,7 @@ impl Machine {
         is_put: bool, vw: usize, Ghost(value): Ghost<Value>, fuel: usize) -> (r: Loc)
         requires
             self.refines(p), vals_good(self.g@.heap), val_ok(*self, rw, rv),
-            n < 0x4000_0000_0000_0000,
+            n as int <= MAX_SMI,
             is_put ==> val_ok(*self, vw, value),
             is_instance(as1(self.g@), rv),
             fields(as1(self.g@), rv).len() >= 2,
@@ -799,14 +799,14 @@ pub proof fn lemma_prog_rel_update(p: &Program, objs: Seq<HeapObj>, a: Seq<usize
 pub fn index_x(m: &Machine, p: &Program, wa: usize, Ghost(a): Ghost<Value>) -> (r: Option<usize>)
     requires m.refines(p), wa == enc(m.addr(), a), encodable(m.addr(), a), a is Smi || a is Obj,
     ensures
-        r is Some ==> a == Value::Smi(r->0 as i64) && r->0 < 0x4000_0000_0000_0000,
+        r is Some ==> a == Value::Smi(r->0 as i64) && r->0 as int <= MAX_SMI,
         r is None ==> !(a is Smi) || a->Smi_0 < 0,
 {
     proof { lemma_word_tag(m, p, wa, a); }
     if wa & 1 != 0 {
         return None;
     }
-    let n = (wa as i64) >> 1u64;
+    let n = smi_value(wa);
     if n < 0 {
         return None;
     }
@@ -929,7 +929,7 @@ pub fn op_invoke_at_put(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (
             Loc::Byte(bw, gba, i) => {
                 let ghost ba = gba@;
                 proof { lemma_val(p, *m, bw, ba); lemma_word_tag(m, p, value, xv); }
-                let b = ((value as i64) >> 1u64) as u8;
+                let b = smi_value(value) as u8;
                 proof {
                     let v = xv->Smi_0;
                     assert(b as int == (v as int) % 256) by (bit_vector)

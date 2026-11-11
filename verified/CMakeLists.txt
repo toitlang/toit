@@ -31,11 +31,28 @@
 #                              also registered as a ctest when cargo-verus
 #                              is available).
 
+#   TOIT_VERIFIED_CORE_RUST_TARGET  the Rust target triple the library is
+#                              built for (empty: cargo's host target). Set
+#                              automatically for 32-bit host builds
+#                              (toolchains/host32.cmake: i686-unknown-linux-gnu);
+#                              embedded targets set it in their toolchain
+#                              (verified/core/PROGRESS.md, "Phase 5").
+
 set(TOIT_VERIFIED_CORE_DEFAULT OFF)
-if (NOT ${TOIT_IS_EMBEDDED} AND NOT ${TOIT_IS_CROSS} AND CMAKE_SIZEOF_VOID_P EQUAL 8)
-  set(TOIT_VERIFIED_CORE_DEFAULT ON)
+set(TOIT_VERIFIED_CORE_RUST_TARGET_DEFAULT "")
+if (NOT ${TOIT_IS_EMBEDDED} AND NOT ${TOIT_IS_CROSS})
+  if (CMAKE_SIZEOF_VOID_P EQUAL 8)
+    set(TOIT_VERIFIED_CORE_DEFAULT ON)
+  elseif (CMAKE_SIZEOF_VOID_P EQUAL 4 AND "${CMAKE_SYSTEM_NAME}" STREQUAL "Linux"
+          AND "${CMAKE_SYSTEM_PROCESSOR}" MATCHES "^(x86_64|AMD64|i[3-6]86)$")
+    # -m32 builds on an x86 Linux host (toolchains/host32.cmake).
+    set(TOIT_VERIFIED_CORE_DEFAULT ON)
+    set(TOIT_VERIFIED_CORE_RUST_TARGET_DEFAULT "i686-unknown-linux-gnu")
+  endif()
 endif()
 option(TOIT_VERIFIED_CORE "Run format-2 programs on the Verus-verified Rust core" ${TOIT_VERIFIED_CORE_DEFAULT})
+set(TOIT_VERIFIED_CORE_RUST_TARGET "${TOIT_VERIFIED_CORE_RUST_TARGET_DEFAULT}" CACHE STRING
+    "Rust target triple of the verified core (empty: the host)")
 
 set(TOIT_VERIFIED_CORE_ENABLED OFF CACHE INTERNAL "")
 if (NOT TOIT_VERIFIED_CORE)
@@ -55,7 +72,14 @@ set(VCORE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/core")
 # the binary has a single Rust runtime (vmverify/README.md).
 set(VMVERIFY_DIR "${CMAKE_CURRENT_SOURCE_DIR}/vmverify")
 set(VCORE_TARGET_DIR "${CMAKE_BINARY_DIR}/verified_core")
-set(VCORE_LIB "${VCORE_TARGET_DIR}/release/${CMAKE_STATIC_LIBRARY_PREFIX}toit_vmverify${CMAKE_STATIC_LIBRARY_SUFFIX}")
+if ("${TOIT_VERIFIED_CORE_RUST_TARGET}" STREQUAL "")
+  set(VCORE_CARGO_TARGET_ARGS)
+  set(VCORE_LIB_DIR "${VCORE_TARGET_DIR}/release")
+else()
+  set(VCORE_CARGO_TARGET_ARGS --target "${TOIT_VERIFIED_CORE_RUST_TARGET}")
+  set(VCORE_LIB_DIR "${VCORE_TARGET_DIR}/${TOIT_VERIFIED_CORE_RUST_TARGET}/release")
+endif()
+set(VCORE_LIB "${VCORE_LIB_DIR}/${CMAKE_STATIC_LIBRARY_PREFIX}toit_vmverify${CMAKE_STATIC_LIBRARY_SUFFIX}")
 file(GLOB_RECURSE VCORE_SOURCES CONFIGURE_DEPENDS
   "${VCORE_DIR}/src/*.rs"
   "${VMVERIFY_DIR}/src/*.rs"
@@ -66,6 +90,7 @@ add_custom_command(
   COMMAND "${TOIT_CARGO}" build --release --quiet --lib
           --manifest-path "${VMVERIFY_DIR}/Cargo.toml"
           --target-dir "${VCORE_TARGET_DIR}"
+          ${VCORE_CARGO_TARGET_ARGS}
   DEPENDS ${VCORE_SOURCES}
           "${VCORE_DIR}/Cargo.toml" "${VMVERIFY_DIR}/Cargo.toml" "${VMVERIFY_DIR}/Cargo.lock"
           "${CMAKE_CURRENT_SOURCE_DIR}/spec/Cargo.toml"

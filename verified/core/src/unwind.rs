@@ -65,22 +65,20 @@ pub open spec fn unw_rel(addr: Seq<usize>, w: Unw, u: Unwind) -> bool {
     }
 }
 
-/// The resume and target words of the finally record of unwinding `u`.
+/// The resume and target words (bci, height) of the finally record of
+/// unwinding `u`.
 #[inline(always)]
-pub fn fin_words(u: &Unw, Ghost(addr): Ghost<Seq<usize>>, Ghost(gu): Ghost<Unwind>) -> (r: (usize, usize))
+pub fn fin_words(u: &Unw, Ghost(addr): Ghost<Seq<usize>>, Ghost(gu): Ghost<Unwind>) -> (r: (usize, usize, usize))
     requires unw_rel(addr, *u, gu), resume_ok(sp::resume_of(gu)),
-    ensures r.0 == resume_word(sp::resume_of(gu)), r.1 == target_word(sp::resume_of(gu)),
+    ensures
+        r.0 == resume_word(sp::resume_of(gu)),
+        r.1 == target_word(sp::resume_of(gu)),
+        r.2 == target_height_word(sp::resume_of(gu)),
 {
     match u {
-        Unw::Throw(_) => (0, 0),
-        Unw::Return(f, _) => (1 + 4 * *f, 0),
-        Unw::Branch(f, b, h) => {
-            proof {
-                assert(*h * 0x1_0000_0000 <= 0xffff_ffff_0000_0000) by (nonlinear_arith)
-                    requires *h < 0x1_0000_0000;
-            }
-            (2 + 4 * *f, *b + *h * 0x1_0000_0000)
-        },
+        Unw::Throw(_) => (0, 0, 0),
+        Unw::Return(f, _) => (1 + 4 * *f, 0, 0),
+        Unw::Branch(f, b, h) => (2 + 4 * *f, *b, *h),
     }
 }
 
@@ -91,7 +89,7 @@ pub proof fn lemma_resume_decode(r: Resume)
         r is Throw ==> resume_word(r) & 3 == 0,
         r is Return ==> resume_word(r) & 3 == 1 && resume_word(r) >> 2 == r->Return_0,
         r is Branch ==> resume_word(r) & 3 == 2 && resume_word(r) >> 2 == r->Branch_0
-            && target_word(r) & 0xffff_ffff == r->Branch_1 && target_word(r) >> 32 == r->Branch_2,
+            && target_word(r) == r->Branch_1 && target_height_word(r) == r->Branch_2,
 {
     match r {
         Resume::Throw => {
@@ -101,18 +99,13 @@ pub proof fn lemma_resume_decode(r: Resume)
             let w = resume_word(r);
             assert(w == 1 + 4 * f);
             assert((w & 3) == 1 && (w >> 2) == f) by (bit_vector)
-                requires w == 1 + 4 * f, f < 0x1_0000_0000;
+                requires w == 1 + 4 * f, f < 0x1000_0000;
         },
         Resume::Branch(f, b, h) => {
             let w = resume_word(r);
             assert(w == 2 + 4 * f);
             assert((w & 3) == 2 && (w >> 2) == f) by (bit_vector)
-                requires w == 2 + 4 * f, f < 0x1_0000_0000;
-            let t = target_word(r);
-            assert(t == b + h * 0x1_0000_0000) by (nonlinear_arith)
-                requires t == (b + h * 0x1_0000_0000) as usize, b < 0x1_0000_0000, h < 0x1_0000_0000;
-            assert((t & 0xffff_ffff) == b && (t >> 32) == h) by (bit_vector)
-                requires t == b + h * 0x1_0000_0000, b < 0x1_0000_0000, h < 0x1_0000_0000;
+                requires w == 2 + 4 * f, f < 0x1000_0000;
         },
     }
 }
@@ -167,11 +160,14 @@ pub proof fn lemma_frames_clear(mem: Seq<usize>, mem2: Seq<usize>, frames: Seq<F
         &&& 0 < t2[x].height < 0x1_0000_0000
         &&& t2[x].bci < 0x1_0000_0000
         &&& rec(mem2, t2[x].frame as int, FRAME_HANDLER) == handler_word(t2[x])
+        &&& rec(mem2, t2[x].frame as int, FRAME_HANDLER_BCI) == t2[x].bci
     } by {
         assert(t2[x] == tries[x]);
         assert(tries[x].frame < tries[tries.len() - 1].frame);
         lemma_rec_index(n, tries[x].frame as int, FRAME_HANDLER);
+        lemma_rec_index(n, tries[x].frame as int, FRAME_HANDLER_BCI);
         assert(rec(mem2, t2[x].frame as int, FRAME_HANDLER) == rec(mem, t2[x].frame as int, FRAME_HANDLER));
+        assert(rec(mem2, t2[x].frame as int, FRAME_HANDLER_BCI) == rec(mem, t2[x].frame as int, FRAME_HANDLER_BCI));
     }
     assert forall|fi: int| 0 <= fi < n && #[trigger] rec(mem2, fi, FRAME_HANDLER) != 0
             implies exists|x: int| 0 <= x < t2.len() && t2[x].frame == fi by {
@@ -197,8 +193,10 @@ pub proof fn lemma_frames_set(mem: Seq<usize>, mem2: Seq<usize>, frames: Seq<Fra
         h.bci < 0x1_0000_0000,
         mem2.len() == mem.len(),
         forall|i: int| 0 <= i < FRAME_WORDS * frames.len() && i != FRAME_WORDS * (frames.len() - 1) + FRAME_HANDLER
+                && i != FRAME_WORDS * (frames.len() - 1) + FRAME_HANDLER_BCI
             ==> #[trigger] mem2[i] == mem[i],
         rec(mem2, frames.len() - 1, FRAME_HANDLER) == handler_word(h),
+        rec(mem2, frames.len() - 1, FRAME_HANDLER_BCI) == h.bci,
     ensures frames_rel(mem2, frames, tries.push(h)),
 {
     let n = frames.len() as int;
@@ -221,11 +219,14 @@ pub proof fn lemma_frames_set(mem: Seq<usize>, mem2: Seq<usize>, frames: Seq<Fra
         &&& 0 < t2[x].height < 0x1_0000_0000
         &&& t2[x].bci < 0x1_0000_0000
         &&& rec(mem2, t2[x].frame as int, FRAME_HANDLER) == handler_word(t2[x])
+        &&& rec(mem2, t2[x].frame as int, FRAME_HANDLER_BCI) == t2[x].bci
     } by {
         if x < tries.len() {
             assert(t2[x] == tries[x]);
             lemma_rec_index(n, tries[x].frame as int, FRAME_HANDLER);
+            lemma_rec_index(n, tries[x].frame as int, FRAME_HANDLER_BCI);
             assert(rec(mem2, t2[x].frame as int, FRAME_HANDLER) == rec(mem, t2[x].frame as int, FRAME_HANDLER));
+            assert(rec(mem2, t2[x].frame as int, FRAME_HANDLER_BCI) == rec(mem, t2[x].frame as int, FRAME_HANDLER_BCI));
         }
     }
     assert forall|fi: int| 0 <= fi < n && #[trigger] rec(mem2, fi, FRAME_HANDLER) != 0
@@ -301,16 +302,15 @@ impl Machine {
         proof {
             self.lemma_frame(p);
             assert(g0.tries[g0.tries.len() - 1] == h);
-            lemma_handler_decode(h.height, h.bci);
-            assert(handler_word(Handler { frame: 0, height: h.height, bci: h.bci }) == handler_word(h));
+            assert(FRAME_WORDS * (n - 1) + FRAME_HANDLER_BCI == self.ftop - FRAME_WORDS + FRAME_HANDLER_BCI);
         }
-        let height = handler & 0xffff_ffff;
-        let hbci = handler >> 32;
+        let height = handler;
+        let hbci = self.mem.read(self.ftop - FRAME_WORDS + FRAME_HANDLER_BCI);
         // Room for the record and the three slots.
         if self.len - height - self.rtop < FIN_WORDS + 3 {
             return Ctl::Stuck(stuck::LIMIT);
         }
-        let (resume, target) = fin_words(&u, Ghost(addr), Ghost(gu));
+        let (resume, target, target_height) = fin_words(&u, Ghost(addr), Ghost(gu));
         let null = p.null;
         let value = match u {
             Unw::Throw(x) => x,
@@ -326,7 +326,7 @@ impl Machine {
         proof {
             assert(e - self.ftop == FIN_WORDS * g0.fins.len());
             let nf = g0.fins.len() as int;
-            assert((4 * nf) / 4 == nf) by (nonlinear_arith) requires nf >= 0;
+            assert((FIN_WORDS as int * nf) / FIN_WORDS as int == nf) by (nonlinear_arith) requires nf >= 0;
             assert(rr == FRAME_WORDS * (n - 1));
             assert(rr / FRAME_WORDS == n - 1);
         }
@@ -337,6 +337,7 @@ impl Machine {
         self.mem.write(e + FIN_HEIGHT, height);
         self.mem.write(e + FIN_RESUME, resume);
         self.mem.write(e + FIN_TARGET, target);
+        self.mem.write(e + FIN_TARGET_HEIGHT, target_height);
         self.rtop = e + FIN_WORDS;
         self.bci = hbci;
         let ghost fin = Fin { frame: h.frame, height: h.height, resume: sp::resume_of(gu) };
@@ -680,12 +681,14 @@ pub fn prep_unwind(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: (P
         assert(token >> 1 == token / 2) by (bit_vector);
         assert(fin_rel(m.mem@, m.ftop as int, k, g.fins[k]));
         lemma_fin_index(m.ftop as int, g.fins.len() as int, k, FIN_TARGET);
+        lemma_fin_index(m.ftop as int, g.fins.len() as int, k, FIN_TARGET_HEIGHT);
         lemma_resume_decode(g.fins[k].resume);
     }
     let ki = token >> 1;
     let e = m.ftop + ki * FIN_WORDS;
     let rw = m.mem.read(e + FIN_RESUME);
     let tw = m.mem.read(e + FIN_TARGET);
+    let th = m.mem.read(e + FIN_TARGET_HEIGHT);
     let x = m.at(2);
     let ghost rv = g.fins[k].resume;
     let ghost gu = sp::unwind_of(rv, sp::at(g, 2));
@@ -696,7 +699,7 @@ pub fn prep_unwind(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: (P
     } else if kind == 1 {
         Unw::Return(f, x)
     } else {
-        Unw::Branch(f, tw & 0xffff_ffff, tw >> 32)
+        Unw::Branch(f, tw, th)
     };
     proof {
         assert(unw_rel(addr, u, gu));
@@ -730,16 +733,16 @@ pub fn prep_unwind(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: (P
 /// The frame of the block reference word `w` of `BlockRef(f, s)`.
 #[inline(always)]
 pub fn ref_frame(w: usize, Ghost(f): Ghost<usize>, Ghost(s): Ghost<usize>) -> (r: usize)
-    requires w == block_word(f, s), f < 0x100_0000_0000, s < 0x10_0000,
+    requires w == block_word(f, s), f < 0x4000, s < MAX_STACK_LENGTH,
     ensures r == f,
 {
     proof {
         crate::blocks::lemma_block_decode(f, s);
-        assert(w == (f * 0x10_0000 + s) * 2);
-        assert(w >> 21 == f) by (bit_vector)
-            requires w == (f * 0x10_0000 + s) * 2, f < 0x100_0000_0000, s < 0x10_0000;
+        assert(w == (f * 0x1_0000 + s) * 2);
+        assert(w >> 17 == f) by (bit_vector)
+            requires w == (f * 0x1_0000 + s) * 2, f < 0x4000, s < 0x1_0000;
     }
-    w >> 21
+    w >> 17
 }
 
 /// NON_LOCAL_RETURN: returns the value below the block reference from the
@@ -873,18 +876,15 @@ pub fn op_try(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: Ctl)
     let ghost cut = sp::cut_fins(g.fins, n - 1, g.stack.len() - 1);
     let ghost mem1 = m.mem@;
     // The handler.
-    proof {
-        assert(handler_word(Handler { frame: fi, height: height, bci: (bci + 1) as usize })
-            == height + (bci + 1) * 0x1_0000_0000) by (nonlinear_arith)
-            requires height < 0x10_0000, bci + 1 < 0x1000_0000;
-    }
-    m.mem.write(rr + FRAME_HANDLER, height + (bci + 1) * 0x1_0000_0000);
+    m.mem.write(rr + FRAME_HANDLER, height);
+    m.mem.write(rr + FRAME_HANDLER_BCI, bci + 1);
     let ghost hd = Handler { frame: fi, height: height, bci: (bci + 1) as usize };
     let ghost s1 = State2 { tries: g.tries.push(hd), fins: cut, ..g };
     m.g = Ghost(s1);
     proof {
         let m1 = m.mem@;
         assert forall|i: int| 0 <= i < FRAME_WORDS * n && i != FRAME_WORDS * (n - 1) + FRAME_HANDLER
+                && i != FRAME_WORDS * (n - 1) + FRAME_HANDLER_BCI
             implies #[trigger] m1[i] == m0.mem@[i] by {}
         lemma_frames_set(m0.mem@, m1, g.frames, g.tries, hd);
         assert forall|i: int| m.ftop <= i < m.ftop + FIN_WORDS * cut.len()
@@ -896,8 +896,8 @@ pub fn op_try(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: Ctl)
     // The reference to the block's slot.
     let slot = height - 1;
     let ghost br = Value::BlockRef(fi, slot);
-    proof { assert(fi < 0x100_0000_0000 && slot < 0x10_0000); }
-    let w = smi_of((fi * 0x10_0000 + slot) as i64);
+    proof { assert(fi < 0x4000 && slot < MAX_STACK_LENGTH); }
+    let w = smi_of((fi * 0x1_0000 + slot) as i64);
     if !m.push_val(p, w, Ghost(br)) {
         return Ctl::Stuck(stuck::LIMIT);
     }

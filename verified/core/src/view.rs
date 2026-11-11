@@ -32,6 +32,13 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 use crate::layout::*;
 use toit_spec::types::{HeapObj, Body, Value};
 
+/// `HALF_WORD_SIZE` (src/top.h): string lengths and hash codes are half
+/// words.
+#[cfg(target_pointer_width = "64")]
+pub type HalfWord = u32;
+#[cfg(target_pointer_width = "32")]
+pub type HalfWord = u16;
+
 verus! {
 
 /// A read-only table of `T` (program data: immutable while the program
@@ -353,7 +360,8 @@ impl Heap {
             self.objs()[id].body is Double,
         ensures r == self.objs()[id].body->Double_0,
     {
-        unsafe { *((obj - HEAP_TAG) as *const u64).add(DOUBLE_VALUE_WORD) }
+        // Word aligned only (two words on 32-bit targets).
+        unsafe { core::ptr::read_unaligned((obj - HEAP_TAG + DOUBLE_VALUE_WORD * WORD_SIZE) as *const u64) }
     }
 
     /// The value of the large integer `id` (its value word).
@@ -367,7 +375,7 @@ impl Heap {
             self.objs()[id].body is LargeInt,
         ensures r == self.objs()[id].body->LargeInt_0,
     {
-        unsafe { *((obj - HEAP_TAG) as *const i64).add(LARGE_INTEGER_VALUE_WORD) }
+        unsafe { core::ptr::read_unaligned((obj - HEAP_TAG + LARGE_INTEGER_VALUE_WORD * WORD_SIZE) as *const i64) }
     }
 
     /// The length of the string `id` (internal: the 32-bit length field;
@@ -384,7 +392,7 @@ impl Heap {
     {
         let base = obj - HEAP_TAG;
         unsafe {
-            let internal = *((base + STRING_INTERNAL_LENGTH_BYTE) as *const u32) as usize;
+            let internal = *((base + STRING_INTERNAL_LENGTH_BYTE) as *const HalfWord) as usize;
             if internal != STRING_SENTINEL { internal } else { *(base as *const usize).add(STRING_EXTERNAL_LENGTH_WORD) }
         }
     }
@@ -403,7 +411,7 @@ impl Heap {
     {
         let base = obj - HEAP_TAG;
         unsafe {
-            let internal = *((base + STRING_INTERNAL_LENGTH_BYTE) as *const u32) as usize;
+            let internal = *((base + STRING_INTERNAL_LENGTH_BYTE) as *const HalfWord) as usize;
             if internal != STRING_SENTINEL {
                 *((base + STRING_CONTENT_BYTE + i) as *const u8)
             } else {
@@ -515,6 +523,16 @@ impl Heap {
         unsafe { *((obj - HEAP_TAG) as *const usize).add(k) }
     }
 
+    /// The 64-bit payload starting at word `k` of a heap object (word
+    /// aligned only: two words on 32-bit targets).
+    #[verifier::external_body]
+    #[inline(always)]
+    pub fn word64(&self, obj: usize, k: usize) -> (r: u64)
+        requires obj & 3 == 1,
+    {
+        unsafe { core::ptr::read_unaligned((obj - HEAP_TAG + k * WORD_SIZE) as *const u64) }
+    }
+
     /// Stores into word `k` of an object of the process heap, with the
     /// write barrier.
     #[verifier::external_body]
@@ -555,11 +573,11 @@ impl Heap {
         }
     }
 
-    /// The 32-bit word at byte offset `offset` of a heap object.
+    /// The half word (`HalfWord`) at byte offset `offset` of a heap object.
     #[verifier::external_body]
     #[inline(always)]
-    pub fn u32_at(&self, obj: usize, offset: usize) -> (r: u32) {
-        unsafe { *(((obj - HEAP_TAG) as *const u8).add(offset) as *const u32) }
+    pub fn half_word_at(&self, obj: usize, offset: usize) -> (r: usize) {
+        unsafe { *(((obj - HEAP_TAG) as *const u8).add(offset) as *const HalfWord) as usize }
     }
 }
 
@@ -672,7 +690,7 @@ impl Heap {
     {
         unsafe {
             let base = (obj - HEAP_TAG) as *mut u8;
-            let internal = *(base.add(STRING_INTERNAL_LENGTH_BYTE) as *const u32) as usize;
+            let internal = *(base.add(STRING_INTERNAL_LENGTH_BYTE) as *const HalfWord) as usize;
             if internal != STRING_SENTINEL {
                 Content { ptr: base.add(STRING_CONTENT_BYTE), len: internal }
             } else {
@@ -726,7 +744,7 @@ impl Heap {
             obj == self.addrs()[id],
             self.objs()[id].body is Str,
     {
-        unsafe { *(((obj - HEAP_TAG) as *const u8).add(STRING_HASH_CODE_BYTE) as *const u32) as u16 }
+        unsafe { *(((obj - HEAP_TAG) as *const u8).add(STRING_HASH_CODE_BYTE) as *const HalfWord) as u16 }
     }
 
     /// Caches the hash code of the string `id` (not in the program heap).
@@ -742,7 +760,7 @@ impl Heap {
             !old(self).objs()[id].ro,
         ensures *final(self) == *old(self),
     {
-        unsafe { *(((obj - HEAP_TAG) as *mut u8).add(STRING_HASH_CODE_BYTE) as *mut u32) = v as u32 }
+        unsafe { *(((obj - HEAP_TAG) as *mut u8).add(STRING_HASH_CODE_BYTE) as *mut HalfWord) = v as HalfWord }
     }
 
     /// Byte `i` of a content view.

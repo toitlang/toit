@@ -96,15 +96,26 @@ array index:  0 ........... ftop ........ rtop        top ............. len-1
   `i` (counted from the bottom) is `array[len - 1 - i]`, so positions
   survive growth and shrinking. Holds only smis and heap references; the
   GC visits exactly `[top, len)` (`Stack::roots_do`).
-- Frame records: `array[0..ftop)`, growing up, 4 words each (method
-  index, return bci, base = object-stack position of the first argument,
-  handler = 0 or `height | bci << 32` of the frame's TRY), frame `fi` at
-  `4 * fi` (block references and C++ rely on that).
+- The layout is the same for 32-bit and 64-bit words (Phase 5): every
+  value packed into a word fits 32 bits. Stacks are shorter than
+  `MAX_STACK_LENGTH` = 2^16 words (`Stack::max_length()` is about 4,000
+  words on 64-bit hosts, 8,000 on 32-bit hosts and 1,000 on devices;
+  checked by the layout check, re-checked by `reload`), so stack
+  positions, heights and record indices fit 16 bits; bcis need 28 bits and
+  get a word of their own.
+- Frame records: `array[0..ftop)`, growing up, `FRAME_WORDS` = 5 words
+  each (method index, return bci, base = object-stack position of the
+  first argument, and the frame's TRY handler: its height, 0 for none,
+  and its bci), frame `fi` at `5 * fi` (block references and C++ rely on
+  that). Until Phase 5 the handler was one word `height | bci << 32`
+  (4-word records), which does not fit a 32-bit word; the fifth word
+  costs nothing measurable (a call still writes 4 words, a TRY 2) and
+  lowers the maximum recursion depth of small frames by about 11 percent.
 - Finally records (format note 17, `State2.fins`): `array[ftop..rtop)`,
-  right after the frame records, 4 words each: the frame running the
-  finally code, the height of its three slots, the resumed unwinding
-  (`kind + 4 * frame`: kind 0 throw, 1 return, 2 branch) and the branch
-  target (`bci | height << 32`, else 0). The token slot of the finally code
+  right after the frame records, `FIN_WORDS` = 5 words each: the frame
+  running the finally code, the height of its three slots, the resumed
+  unwinding (`kind + 4 * frame`: kind 0 throw, 1 return, 2 branch) and the
+  branch target's bci and height (else 0, 0). The token slot of the finally code
   holds the smi index of its record. Entering finally code with an
   unwinding writes a record at `rtop` (the handler word is cleared as for a
   normal completion); UNWIND checks record `k` (`fin_matches`) and sets
@@ -113,22 +124,22 @@ array index:  0 ........... ftop ........ rtop        top ............. len-1
   records: during an unwinding's finally code); a return, an unwinding
   that pops a frame and a tail call drop the popped frame's records (they
   are last, `fins_popped`) and a return or pop moves the rest down by one
-  frame record. Records are 4 words although three would do (frame and
-  height fit one word): the same size as a frame record keeps a call's
-  move and every index computation a shift, and the records are rare.
+  frame record. Finally records have the size of a frame record, so that
+  a call moves them by one record and the counts stay simple; they are
+  rare.
 - Records hold no object references (the value of a pending exception or
   non-local return is the finally code's first slot), so the GC never
-  looks at them. The Stack header's try-top word holds the record top
-  `rtop`, the pending-stack-check word `bci | fins << 32` (`fins`: the
-  number of finally records, `ftop = rtop - 4 * fins`). Holding the record
-  top (not the frame top) in the header lets every C++ path that copies or
-  shrinks a stack keep `[0, try-top)` without knowing about finally
-  records; C++ reads the frame top through `Stack::v2_frame_top()`.
-  Alternatives: a separate header word (changes format 1's Stack layout
-  and every stack's size), the count in the high half of the try-top word
-  (same packing, but `try_top()` is shared with format 1's code), records
-  in the frame records themselves (one per frame: unsound for try/finally
-  inside finally code, note 17).
+  looks at them. The Stack header's try-top word holds `rtop | ftop << 16`
+  (record top and frame top, `STACK_FRAME_TOP_SHIFT`), the
+  pending-stack-check word the bci (until Phase 5: try-top `rtop` and
+  `bci | fins << 32`, which needs 64-bit words). C++ reads them through
+  `Stack::v2_record_top()`, `v2_frame_top()`, `v2_fin_count()` and
+  `v2_bci()`; the format-1 paths that use `try_top()` directly never see a
+  format-2 stack (the GC's shrinking and `v2_copy_to` keep `[0,
+  v2_record_top())`). Alternatives: a separate header word (changes format
+  1's Stack layout and every stack's size), records in the frame records
+  themselves (one per frame: unsound for try/finally inside finally code,
+  note 17).
 - Room: before every call the core requires
   `FRAME_WORDS + global_max_height + STACK_RESERVE` free words between the
   records and the object stack and otherwise grows the stack
@@ -151,8 +162,32 @@ array index:  0 ........... ftop ........ rtop        top ............. len-1
   them) is verified; machine.rs keeps checked copies for
   programs not accepted at launch (the checked loop), which must stay in
   step with the verified ones.
-- Block references are smis `frame << 20 | slot` (slot = object-stack
-  position); `Stack::max_length() < 2^20` is checked by the layout check.
+- Block references are smis `frame << 16 | slot` (slot = object-stack
+  position below 2^16, frame below 2^16 / 5 < 2^14: the smi is below 2^30
+  and fits 31-bit smis); `Stack::max_length() < 2^16` is checked by the
+  layout check.
+
+## 3a. Word size (Phase 5)
+
+The core builds for 64-bit and 32-bit targets from the same source and
+Verus verifies it for both (verified/check.sh: the host, and
+`--target i686-unknown-linux-gnu` with Verus' support libraries built for
+that target by verified/tools/verus_target.sh). Verus fixes the width of
+`usize`/`isize` from `global size_of usize` (abs.rs, one per
+`target_pointer_width`), so every proof about words, overflow and casts is
+checked at the width the code runs with. What differs per width is only
+in layout.rs (`WORD_SIZE`, `WORD_BITS`, `MIN_SMI`/`MAX_SMI`, the string
+and byte-array offsets, `CARD_SIZE_LOG_2`) and `abs::MAX_BLOB_LENGTH`;
+`prog_rel` requires the abstract program's `word_bits == WORD_BITS`, so the
+spec's smi range (`smi_ok` with `word_bits`) is the machine's. Smi values
+stay `i64` on both widths (decoding is the arithmetic shift of the word as
+an `isize`, `abs::smi_value`); the smi fast paths of ADD, SUB and MUL check
+the overflow of the tagged word as an `isize`; shifts compute in `i64`.
+Doubles and large integers keep their 64-bit payload (two words on 32-bit,
+read unaligned: `view::Heap::double_bits`, `large_int`, `word64`). The
+spec's primitive contracts state `Primitive::integer`'s smi range per
+target (`prim_core::smi_in`). The format-1 VM's half-word string fields
+are `view::HalfWord`.
 
 ## 4. FFI contract
 
@@ -433,7 +468,7 @@ Abstraction (`src/abs.rs`, `Machine::refines` in `src/exec.rs`). The
 machine carries a ghost `State2` (`Machine::g`); `refines` relates it to
 memory in the direction abstract to concrete, which is a function:
 `enc(addr, v)` is the word of value `v` (smis `v << 1`, objects their
-address in the heap model, block references the smi `f << 20 | slot`),
+address in the heap model, block references the smi `f << 16 | slot`),
 the object-stack words are `enc` of `g.stack`, the frame records
 `mem[4*fi..]` hold `g.frames` and the handler words `g.tries`
 (`frames_rel`), the globals are `enc` of `g.globals`, the heap model is
