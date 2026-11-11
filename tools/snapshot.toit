@@ -695,6 +695,8 @@ class ToitMethod:
       line += " T$(bci - (method.uint16 bci + 1))"
     else if format == OP-SB-BS:
       line += " T$(bci - (method.uint16 bci + 1)) S$(method.bytecodes[bci + 3])"
+    else if format == OP-SF-BS-BS:
+      line += " T$(bci + (method.uint16 bci + 1)) S$(method.bytecodes[bci + 3]) S$(method.bytecodes[bci + 4])"
     else if format == OP-BCI:
       is-nullable := (index & 1) != 0
       class-index := index >> 1
@@ -918,6 +920,7 @@ OP-SU-SU ::= 30
 OP-SB    ::= 31  // Format 2.
 OP-BU-WR ::= 32  // Format 2.
 OP-SB-BS ::= 33  // Format 2 (proposal, note 19): branch back, then a slot.
+OP-SF-BS-BS ::= 34  // Format 2 (proposal, note 19): branch forward, then two slots.
 
 class Bytecode:
   name        ::= ""
@@ -1142,6 +1145,7 @@ BYTE-CODES-V2 ::= [
   // Proposal (verified/spec/format/19-builtins-proposal.md).
   Bytecode "LOOP_REPEAT"                4 OP-SB-BS "loop repeat",
   Bytecode "LOOP_ARRAY"                 4 OP-SB-BS "loop array",
+  Bytecode "HASH_FIND"                  5 OP-SF-BS-BS "hash find",
 ]
 
 

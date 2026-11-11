@@ -29,7 +29,8 @@
 //! * removed: LINK, UNLINK, NON_LOCAL_RETURN_WIDE, INTRINSIC_SMI_REPEAT,
 //!   INTRINSIC_ARRAY_DO, INTRINSIC_HASH_FIND, INTRINSIC_HASH_DO;
 //! * proposal (branch proposal/builtins, format note 19): LOOP_REPEAT (101)
-//!   and LOOP_ARRAY (102), the bounded steps of `repeat` and `Array.do`.
+//!   and LOOP_ARRAY (102), the bounded steps of `repeat` and `Array.do`,
+//!   and HASH_FIND (103), one probe of a hashed collection's index.
 
 use vstd::prelude::*;
 pub use crate::bytecodes::{
@@ -75,8 +76,17 @@ pub const LOOP_REPEAT: u8 = 101;
 /// of the block and the element at counter and branches back by `back`;
 /// otherwise falls through.
 pub const LOOP_ARRAY: u8 = 102;
+/// HASH_FIND miss n m (proposal, format note 19): one probe of the index of
+/// a hashed collection (`find-body_` in lib/core/collections.toit) with
+/// the probe state in slots `n` (slot), `n + 1` (step, 0: start) and
+/// `n + 2` (first deleted slot + 1, 0: none), the hash in slot `m` and the
+/// collection in slot `m + 2`. A key whose stored hash bits match: stores
+/// the state, pushes the key and its backing position, falls through.
+/// Otherwise pushes a code (`spec::op_hash_find`) and branches forward by
+/// `miss`. Reads only; no calls.
+pub const HASH_FIND: u8 = 103;
 
-pub const OPCODE_COUNT2: u8 = 103;
+pub const OPCODE_COUNT2: u8 = 104;
 
 /// Instruction length in bytes, including the opcode.
 pub open spec fn opcode_length2(op: u8) -> int {
@@ -85,7 +95,7 @@ pub open spec fn opcode_length2(op: u8) -> int {
         || op == 53 || op == 54 || op == 60 || op == 61 || op == 80
         || (81 <= op && op <= 88) {
         3
-    } else if op == 28 || op == 29 || op == 59 {
+    } else if op == 28 || op == 29 || op == 59 || op == 103 {
         5
     } else if op == 58 || op == 89 || op == 101 || op == 102 {
         4
@@ -108,7 +118,7 @@ pub fn exec_opcode_length2(op: u8) -> (r: usize)
         || op == 53 || op == 54 || op == 60 || op == 61 || op == 80
         || (81 <= op && op <= 88) {
         3
-    } else if op == 28 || op == 29 || op == 59 {
+    } else if op == 28 || op == 29 || op == 59 || op == 103 {
         5
     } else if op == 58 || op == 89 || op == 101 || op == 102 {
         4
@@ -126,7 +136,7 @@ pub fn exec_opcode_length2(op: u8) -> (r: usize)
 } // verus!
 
 /// Opcode names of format 2, in opcode order.
-pub const OPCODE_NAMES2: [&str; 103] = [
+pub const OPCODE_NAMES2: [&str; 104] = [
     "LOAD_LOCAL", "LOAD_LOCAL_WIDE", "POP_LOAD_LOCAL", "STORE_LOCAL", "STORE_LOCAL_POP",
     "LOAD_OUTER", "STORE_OUTER", "LOAD_FIELD", "LOAD_FIELD_WIDE", "LOAD_FIELD_LOCAL",
     "POP_LOAD_FIELD_LOCAL", "STORE_FIELD", "STORE_FIELD_WIDE", "STORE_FIELD_POP",
@@ -148,11 +158,11 @@ pub const OPCODE_NAMES2: [&str; 103] = [
     "BRANCH_BACK_IF_TRUE", "BRANCH_BACK_IF_FALSE", "BRANCH_BACK_IF_NOT_NULL", "PRIMITIVE",
     "THROW", "RETURN", "RETURN_NULL", "NON_LOCAL_RETURN", "STORE_FIELD_THIS",
     "NON_LOCAL_BRANCH", "IDENTICAL", "TRY", "LOAD_FIELD_THIS", "UNWIND", "HALT",
-    "LOOP_REPEAT", "LOOP_ARRAY",
+    "LOOP_REPEAT", "LOOP_ARRAY", "HASH_FIND",
 ];
 
 /// Lengths of format 2 in opcode order.
-pub const OPCODE_LENGTHS2: [u8; 103] = [
+pub const OPCODE_LENGTHS2: [u8; 104] = [
     2, 3, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 3, 2, // 0..13
     1, 1, 1, 1, 1, 1, // LOAD_LOCAL_0..5
     2, 3, 1, 1, 2, 1, 2, 3, 5, 5, // 20..29
@@ -167,4 +177,5 @@ pub const OPCODE_LENGTHS2: [u8; 103] = [
     4, 1, 1, 1, 1, 2, 6, 1, 1, 2, 1, 2, // 89..100
     4, // 101: LOOP_REPEAT
     4, // 102: LOOP_ARRAY
+    5, // 103: HASH_FIND
 ];

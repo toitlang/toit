@@ -179,6 +179,11 @@ class Emitter {
   // LOOP_ARRAY the array) the ones above that; [body] is the bound
   // INVOKE_BLOCK the taken step branches back to.
   void loop_step(Opcode opcode, Label* body, int counter);
+  // Format 2, proposal (format note 19): HASH_FIND with the probe state in
+  // slots [state] .. [state] + 2 from the top, the hash in slot [hash] and
+  // the collection in [hash] + 2. Falls through with the candidate key and
+  // its position pushed; branches to [miss] with the code pushed.
+  void hash_find(Label* miss, int state, int hash);
   void store_field_this(int n);
   // Whether the code ends with an instruction that does not continue with
   // the next one, and no label is bound after it.

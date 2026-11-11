@@ -1120,6 +1120,8 @@ pub proof fn lemma_step_local(p: Program2, c: Cert, trusted: bool, s: State2)
         lemma_step_identical(p, c, trusted, s);
     } else if is_loop(op) {
         lemma_step_loop(p, c, trusted, s);
+    } else if op == HASH_FIND {
+        crate::v2::sound_hash::lemma_step_hash_find(p, c, trusted, s);
     } else {
         assert(op == HALT);
         lemma_step_halt(p, c, trusted, s);

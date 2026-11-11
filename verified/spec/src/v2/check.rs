@@ -1712,6 +1712,42 @@ pub fn x_loop_kinds(k: &Vec<XKind>, c: usize, b: usize) -> (r: Vec<XKind>)
     x_push(&k3, XKind::Val)
 }
 
+/// `hf_ok` (proposal, format note 19).
+pub fn x_hf_ok(p: &VProgram, m: usize, k: &Vec<XKind>, n: usize, mm: usize) -> (r: bool)
+    requires m < p.methods.len(), n < 256, mm < 256,
+    ensures r == hf_ok(vview(p), m as int, kv(*k), n as int, mm as int),
+{
+    let h = k.len();
+    if !(n + 2 < h && mm + 2 < h) { return false; }
+    proof {
+        assert(kv(*k)[h - 1 - n] == k@[h - 1 - n]@);
+        assert(kv(*k)[h - 2 - n] == k@[h - 2 - n]@);
+        assert(kv(*k)[h - 3 - n] == k@[h - 3 - n]@);
+        assert(kv(*k)[h - 1 - mm] == k@[h - 1 - mm]@);
+        assert(kv(*k)[h - 3 - mm] == k@[h - 3 - mm]@);
+    }
+    x_is_val(k[h - 1 - n]) && x_is_val(k[h - 2 - n]) && x_is_val(k[h - 3 - n])
+        && x_is_val(k[h - 1 - mm]) && x_is_val(k[h - 3 - mm])
+        && x_writable(p, m, k, h - 1 - n, XKind::Val)
+        && x_writable(p, m, k, h - 2 - n, XKind::Val)
+        && x_writable(p, m, k, h - 3 - n, XKind::Val)
+}
+
+/// `hf_kinds`.
+pub fn x_hf_kinds(k: &Vec<XKind>, n: usize) -> (r: Vec<XKind>)
+    requires n + 2 < k.len(),
+    ensures kv(r) == hf_kinds(kv(*k), n as int),
+{
+    let h = k.len();
+    let k1 = x_update(k, h - 1 - n, XKind::Val);
+    assert(kv(k1).len() == h);
+    let k2 = x_update(&k1, h - 2 - n, XKind::Val);
+    assert(kv(k2).len() == h);
+    let k3 = x_update(&k2, h - 3 - n, XKind::Val);
+    let k4 = x_push(&k3, XKind::Val);
+    x_push(&k4, XKind::Val)
+}
+
 pub fn x_post_misc(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>, trusted: bool) -> (r: Option<Vec<XKind>>)
     requires
         post_pre(p, m, off, k),
@@ -1776,6 +1812,10 @@ pub fn x_post_misc(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>
         let lc = p.bytecodes[bci + 3] as usize;
         let ly = if op == LOOP_ARRAY { lc + 3 } else { lc + 2 };
         if x_loop_ok(p, m, k, lc, lc + 1, lc + 2, ly) { Some(x_prefix(k, h - 1)) } else { None }
+    } else if op == HASH_FIND {
+        let n = p.bytecodes[bci + 3] as usize;
+        let mm = p.bytecodes[bci + 4] as usize;
+        if x_hf_ok(p, m, k, n, mm) { Some(x_hf_kinds(k, n)) } else { None }
     } else {
         None
     }
@@ -2252,6 +2292,12 @@ pub fn x_instr_ok(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>,
         let lc = p.bytecodes[bci + 3] as usize;
         let kt = x_loop_kinds(k, lc, lc + 1);
         if !x_map_is(c, m as i64, off as i64 - w1, &kt) { return false; }
+    }
+    if op == HASH_FIND {
+        let w1 = x_u16(p, bci + 1);
+        if w1 <= 0 { return false; }
+        let kt = x_push(k, XKind::Val);
+        if !x_map_is(c, m as i64, off as i64 + w1, &kt) { return false; }
     }
     true
 }

@@ -68,6 +68,7 @@ static const Opcode V2_STORE_FIELD_THIS = NON_LOCAL_RETURN_WIDE;
 // numbered like the format-1 intrinsics they replace.
 static const Opcode V2_LOOP_REPEAT = INTRINSIC_SMI_REPEAT;
 static const Opcode V2_LOOP_ARRAY = INTRINSIC_ARRAY_DO;
+static const Opcode V2_HASH_FIND = INTRINSIC_HASH_FIND;
 static const int V2_LOOP_STEP_LENGTH = 4;
 
 // Method header of format 2 (format note 15): two bytes, then unsigned

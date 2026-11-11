@@ -54,7 +54,7 @@ pub open spec fn cur_b(s: State2) -> int {
 /// IDENTICAL, branches, HALT.
 pub open spec fn fam_local(op: u8) -> bool {
     op <= 4 || (14 <= op && op <= 31) || (34 <= op && op <= 37) || (40 <= op && op <= 52)
-        || (81 <= op && op <= 88) || op == 96 || op == 100 || op == 101 || op == 102
+        || (81 <= op && op <= 88) || op == 96 || op == 100 || op == 101 || op == 102 || op == 103
 }
 
 /// Field access.

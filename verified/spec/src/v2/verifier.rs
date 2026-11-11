@@ -428,6 +428,27 @@ pub open spec fn loop_operands(p: Program2, m: int, off: int) -> (int, int, int,
     (n, n + 1, n + 2, if op_of(p, m, off) == LOOP_ARRAY { n + 3 } else { n + 2 })
 }
 
+/// HASH_FIND n m (proposal, format note 19): the probe state (slots `n`,
+/// `n + 1`, `n + 2`, overwritten), the hash (`m`) and the collection
+/// (`m + 2`) hold values.
+pub open spec fn hf_ok(p: Program2, m: int, k: Seq<Kind>, n: int, mm: int) -> bool {
+    let h = k.len() as int;
+    &&& 0 <= n && n + 2 < h && 0 <= mm && mm + 2 < h
+    &&& is_val(top_kind(k, n)) && is_val(top_kind(k, n + 1)) && is_val(top_kind(k, n + 2))
+    &&& is_val(top_kind(k, mm)) && is_val(top_kind(k, mm + 2))
+    &&& writable(p, m, k, h - 1 - n, Kind::Val)
+    &&& writable(p, m, k, h - 2 - n, Kind::Val)
+    &&& writable(p, m, k, h - 3 - n, Kind::Val)
+}
+
+/// The kinds after a candidate: the probe state holds values, the key and
+/// its position are pushed. (A miss pushes a value and branches.)
+pub open spec fn hf_kinds(k: Seq<Kind>, n: int) -> Seq<Kind> {
+    let h = k.len() as int;
+    k.update(h - 1 - n, Kind::Val).update(h - 2 - n, Kind::Val).update(h - 3 - n, Kind::Val)
+        .push(Kind::Val).push(Kind::Val)
+}
+
 /// The fall-through successor kinds of an instruction, `None` for
 /// terminators and rejected instructions.
 pub open spec fn post(p: Program2, c: Cert, m: int, off: int, k: Seq<Kind>, trusted: bool) -> Option<Seq<Kind>> {
@@ -579,6 +600,9 @@ pub open spec fn post(p: Program2, c: Cert, m: int, off: int, k: Seq<Kind>, trus
     } else if is_loop(op) {
         let (lc, lb, lx, ly) = loop_operands(p, m, off);
         if loop_ok(p, m, k, lc, lb, lx, ly) { Some(k.subrange(0, h - 1)) } else { None }
+    } else if op == HASH_FIND {
+        let (n, mm) = (bk_of(p, m, off, 3), bk_of(p, m, off, 4));
+        if hf_ok(p, m, k, n, mm) { Some(hf_kinds(k, n)) } else { None }
     } else if op == HALT {
         // HALT 2 and 3 (deep sleep, reset) only for trusted programs.
         if b1 == 0 { Some(k.push(Kind::Val)) }
@@ -687,6 +711,7 @@ pub open spec fn instr_ok(p: Program2, c: Cert, m: int, off: int, k: Seq<Kind>, 
             let (lc, lb, lx, ly) = loop_operands(p, m, off);
             map_at(c, m, off - w1) == Some(loop_kinds(k, lc, lb))
         } else { true }
+    &&& if op == HASH_FIND { w1 > 0 && map_at(c, m, off + w1) == Some(k.push(Kind::Val)) } else { true }
 }
 
 /// The kinds at the entry of method `m`.

@@ -47,7 +47,7 @@ use toit_spec::v2::sound::{wf, small, step_ok, outcome_ok, cur_op};
 #[cfg(verus_keep_ghost)]
 use toit_spec::v2::sound_instr::{lemma_instr, lemma_at_good, cur_k, cur_m, cur_off};
 #[cfg(verus_keep_ghost)]
-use toit_spec::v2::verifier::{accepts, value_operands, instr_ok, is_branch, map_at, w1_of, bk_of, is_loop, loop_operands, loop_ok, post};
+use toit_spec::v2::verifier::{accepts, value_operands, instr_ok, is_branch, map_at, w1_of, bk_of, is_loop, loop_operands, loop_ok, post, hf_ok};
 #[cfg(verus_keep_ghost)]
 use toit_spec::v2::types::p1;
 #[cfg(verus_keep_ghost)]
@@ -440,6 +440,41 @@ proof fn lemma_loop_cond(p: &Program, g: State2)
     lemma_at_good(ap, c, p.trusted@, g, n + 2);
     lemma_at_good(ap, c, p.trusted@, g, y);
     assert(map_at(c, mi, off - w1_of(ap, mi, off)) is Some);
+}
+
+/// HASH_FIND's operands are values; its forward branch stays inside the
+/// method (the verifier's `hf_ok` and the target's map).
+proof fn lemma_hash_find_cond(p: &Program, g: State2)
+    requires
+        accepts(p.ap@, p.cert@, p.trusted@), wf(p.ap@, p.cert@, g),
+        cur_op(p.ap@, g) == 103,
+    ensures ({
+        let n = p.ap@.bytecodes[g.bci + 3] as int;
+        let mm = p.ap@.bytecodes[g.bci + 4] as int;
+        &&& forall|j: int| (j == n || j == n + 1 || j == n + 2 || j == mm || j == mm + 2) ==>
+            (#[trigger] sp::at(g, j) is Smi || sp::at(g, j) is Obj)
+        &&& g.bci + u16_at(p1(p.ap@), g.bci + 1) < p.ap@.bytecodes.len()
+        &&& p.ap@.builtin.len() == 23
+    }),
+{
+    let ap = p.ap@;
+    let c = p.cert@;
+    lemma_instr(ap, c, p.trusted@, g);
+    let mi = cur_m(g);
+    let off = cur_off(ap, g);
+    let k = cur_k(ap, c, g);
+    let n = bk_of(ap, mi, off, 3);
+    let mm = bk_of(ap, mi, off, 4);
+    assert(instr_ok(ap, c, mi, off, k, p.trusted@));
+    assert(post(ap, c, mi, off, k, p.trusted@) is Some);
+    assert(hf_ok(ap, mi, k, n, mm));
+    lemma_at_good(ap, c, p.trusted@, g, n);
+    lemma_at_good(ap, c, p.trusted@, g, n + 1);
+    lemma_at_good(ap, c, p.trusted@, g, n + 2);
+    lemma_at_good(ap, c, p.trusted@, g, mm);
+    lemma_at_good(ap, c, p.trusted@, g, mm + 2);
+    assert(map_at(c, mi, off + w1_of(ap, mi, off)) is Some);
+    toit_spec::v2::sound_local::lemma_map_bound(ap, c, p.trusted@, mi, off + w1_of(ap, mi, off));
 }
 
 /// The opcodes whose handlers (or whose slow paths) run on the machine
@@ -1356,10 +1391,22 @@ pub fn step_r(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
             }
             crate::rloops::op_loop_array(m, r, p, n, d, Ghost((bci - d) as usize))
         },
+        // HASH_FIND (proposal, format note 19).
+        103 => {
+            let d = ip_u16(p, r.ip, 1);
+            let n = r.ip.byte(3, &p.code) as usize;
+            let mm = r.ip.byte(4, &p.code) as usize;
+            proof {
+                assert(sp::step(ap, g) == sp::op_hash_find(ap, g, bci + d, n as int, mm as int, 5)) by { reveal(sp::step); }
+                lemma_hash_find_cond(p, g);
+                crate::arrays::lemma_heap_good(p, g);
+            }
+            crate::rhash::op_hash_find(m, r, p, n, mm, d, Ghost((bci + d) as usize))
+        },
         _ => {
             // Every opcode of format 2 (below OPCODE_COUNT2, which the
             // instruction check of the spec requires) has an arm.
-            proof { assert(opcode < 103); assert(false); }
+            proof { assert(opcode < 104); assert(false); }
             return crate::view::proven_unreachable();
         },
     };

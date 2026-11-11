@@ -133,10 +133,11 @@ pub mod op {
     /// Proposal (verified/spec/format/19-builtins-proposal.md).
     pub const LOOP_REPEAT: u8 = 101;
     pub const LOOP_ARRAY: u8 = 102;
+    pub const HASH_FIND: u8 = 103;
 }
 
 /// Instruction lengths in opcode order (OPCODE_LENGTHS2).
-pub const OPCODE_LENGTHS: [u8; 103] = [
+pub const OPCODE_LENGTHS: [u8; 104] = [
     2, 3, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 3, 2,
     1, 1, 1, 1, 1, 1,
     2, 3, 1, 1, 2, 1, 2, 3, 5, 5,
@@ -149,7 +150,7 @@ pub const OPCODE_LENGTHS: [u8; 103] = [
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3,
     3, 3, 3, 3, 3, 3, 3, 3,
     4, 1, 1, 1, 1, 2, 6, 1, 1, 2, 1, 2,
-    4, 4,
+    4, 4, 5,
 ];
 
 pub fn opcode_length(op: u8) -> usize {
@@ -1546,7 +1547,8 @@ impl Machine {
             op::HALT => self.op_halt(env, b1!()),
             op::LOOP_REPEAT => self.c_loop_repeat(p, bci),
             op::LOOP_ARRAY => self.c_loop_array(p, bci),
-            // Opcodes 103..255 (the length table covers only 0..102).
+            op::HASH_FIND => self.c_hash_find(p, bci),
+            // Opcodes 104..255 (the length table covers only 0..103).
             _ => Ctl::Stuck(stuck::BAD_INSTRUCTION),
         }
     }
@@ -2578,6 +2580,85 @@ impl Machine {
         if !self.push(b) || !self.push(c) { return Ctl::Stuck(stuck::LIMIT); }
         self.bci = target;
         Ctl::Next
+    }
+
+    /// HASH_FIND's probe (`spec::hf_find`): `Ok((key, position, slot, step,
+    /// deleted))` for a candidate, `Err(code)` otherwise.
+    fn c_hf_find(&mut self, p: &Program, coll: usize, hash: usize, slot: usize, step: usize, d: usize)
+            -> Result<(usize, i64, i64, i64, i64), i64> {
+        match self.instance_fields(p, coll) {
+            Some(f) if f >= 4 => {}
+            _ => return Err(-2),
+        }
+        if !(is_smi(hash) && is_smi(slot) && is_smi(step) && is_smi(d)) { return Err(-2); }
+        let (hash, slot, step, d) = (smi_value(hash), smi_value(slot), smi_value(step), smi_value(d));
+        let (index, backing) = (self.field(coll, 2), self.field(coll, 3));
+        let size = match self.fast_size(p, index) { Some(n) => n, None => return Err(-2) };
+        if !(1 <= size && size <= 0x100_0000 && size & (size - 1) == 0
+            && 0 <= slot && slot < size && 0 <= step && step <= 2 * size && 0 <= d && d <= size) {
+            return Err(-2);
+        }
+        let mask = size - 1;
+        let start = hash & mask;
+        let (mut slot, mut step, mut d) = if step == 0 {
+            (start, 1, d)
+        } else {
+            let slot2 = (slot + step) & mask;
+            if slot2 == start { return Err(-1); }
+            (slot2, step + 1, d)
+        };
+        let tombstone = smi_value(p.builtin.at(10));
+        let null = p.null;
+        let mut fuel = 2 * size;
+        loop {
+            if fuel == 0 { return Err(-2); }
+            let hw = match self.fast_at(p, index, smi(slot), false, null, 8) { FastAt::Done(w) => w, _ => return Err(-2) };
+            if !is_smi(hw) { return Err(-2); }
+            let hap = smi_value(hw);
+            if hap == 0 { return Err(if d > 0 { 2 * (d - 1) } else { 2 * slot + 1 }); }
+            if hap < 0 { return Err(-2); }
+            let pos = hap / 4096 - 1;
+            if pos < 0 { return Err(-2); }
+            let k = match self.fast_at(p, backing, smi(pos), false, null, 8) { FastAt::Done(w) => w, _ => return Err(-2) };
+            let tomb = is_heap(k) && (smi_value(self.heap.header(k)) >> CLASS_ID_OFFSET) == tombstone;
+            if d == 0 && tomb { d = slot + 1; }
+            if (hap & 0xfff) == (hash & 0xfff) && !tomb { return Ok((k, pos, slot, step, d)); }
+            let slot2 = (slot + step) & mask;
+            if slot2 == start { return Err(-1); }
+            slot = slot2;
+            step += 1;
+            fuel -= 1;
+        }
+    }
+
+    /// HASH_FIND (proposal, format note 19): `spec::op_hash_find` with every
+    /// stuck state checked.
+    fn c_hash_find(&mut self, p: &Program, bci: usize) -> Ctl {
+        let n = p.code.at(bci + 3) as usize;
+        let m = p.code.at(bci + 4) as usize;
+        if !self.has_slot(n + 2) || !self.has_slot(m + 2) { return Ctl::Stuck(stuck::STACK_RANGE); }
+        let r = self.c_hf_find(p, self.at(m + 2), self.at(m), self.at(n), self.at(n + 1), self.at(n + 2));
+        match r {
+            Ok((k, pos, slot, step, d)) => {
+                self.put(n, smi(slot));
+                self.put(n + 1, smi(step));
+                self.put(n + 2, smi(d));
+                if !self.push(k) || !self.push(smi(pos)) { return Ctl::Stuck(stuck::LIMIT); }
+                self.bci += OPCODE_LENGTHS[op::HASH_FIND as usize] as usize;
+                Ctl::Next
+            }
+            Err(code) => {
+                let target = bci + Self::u16_at(p, bci + 1);
+                if self.method >= p.methods.len() { return Ctl::Stuck(stuck::BAD_BRANCH); }
+                let mt = p.methods.at(self.method);
+                if !((mt.entry as usize) <= target && target < (mt.end as usize)) {
+                    return Ctl::Stuck(stuck::BAD_BRANCH);
+                }
+                if !self.push(smi(code)) { return Ctl::Stuck(stuck::LIMIT); }
+                self.bci = target;
+                Ctl::Next
+            }
+        }
     }
 
     /// LOOP_ARRAY (proposal, format note 19): `spec::op_loop_array` with

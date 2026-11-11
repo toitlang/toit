@@ -48,6 +48,7 @@ pub mod rops;
 pub mod rblocks;
 pub mod rarrays;
 pub mod rloops;
+pub mod rhash;
 pub mod machine;
 pub mod step;
 pub mod calls;
