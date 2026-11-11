@@ -1,0 +1,11 @@
+--- a/src/primitive_core.cc	2026-11-11 11:37:50.790412489 +0100
++++ b/src/primitive_core.cc	2026-11-11 11:37:50.798297234 +0100
+@@ -558,7 +558,7 @@
+   if (from < 0 || to > source_bytes.length() || from > to) FAIL(OUT_OF_BOUNDS);
+   if (dest_index < 0 || to - from > dest.length() - dest_index) FAIL(OUT_OF_BOUNDS);
+   // The source and the destination may be the same byte array.
+-  memmove(&dest.address()[dest_index], &source_bytes.address()[from], to - from);
++  memcpy(&dest.address()[dest_index], &source_bytes.address()[from], to - from);
+   return _raw_dest;
+ }
+ 
