@@ -144,8 +144,10 @@ static void run_vm() {
     int group_id = vm.scheduler()->next_group_id();
     exit_state = vm.scheduler()->run_boot_program(const_cast<Program*>(program), group_id);
   }
-  printf("[harness] VM exited (reason=%d, value=%d)\n",
-         static_cast<int>(exit_state.reason), static_cast<int>(exit_state.value));
+  // With QEMU's -icount shift=0 a tick (1 ms) is a million instructions.
+  printf("[harness] VM exited (reason=%d, value=%d) after %u ticks\n",
+         static_cast<int>(exit_state.reason), static_cast<int>(exit_state.value),
+         static_cast<unsigned>(xTaskGetTickCount()));
   fflush(stdout);
   harness_exit(exit_state.reason == Scheduler::EXIT_DONE ? 0 : 10 + exit_state.reason);
 }

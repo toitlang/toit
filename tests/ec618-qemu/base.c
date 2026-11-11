@@ -56,6 +56,11 @@ void am_power_time_update(void) {}
 void* UsartPrintHandle = 0;
 void swLogPrintf(uint32_t id, uint8_t level, ...) { (void)id; (void)level; }
 
+// The AON watchdog (OS::feed_watchdog) and the RAM copy of the UTC time
+// (OS::get_real_time: none, as before the first network time).
+void slpManAonWdtFeed(void) {}
+void* OsaSystemTimeReadRamUtc(void) { return 0; }
+
 // Tickless idle: sleep until the next interrupt (the SysTick keeps running).
 void xpmuEnterTickless(uint32_t expected_idle_ticks) {
   (void)expected_idle_ticks;
