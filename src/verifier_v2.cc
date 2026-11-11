@@ -34,6 +34,21 @@
 #ifdef CONFIG_TOIT_TRACE_INSTALL
 #include <esp_heap_caps.h>
 #include <esp_timer.h>
+
+// The lowest free heap seen by an allocation while an install-time
+// verification runs (Kconfig TOIT_TRACE_INSTALL selects HEAP_USE_HOOKS; the
+// heap of the Toit IDF fork keeps no minimum of its own). Every allocation
+// of the system counts, not only the verifier's.
+static volatile bool trace_install_active = false;
+static volatile size_t trace_install_min_free = 0;
+
+extern "C" void esp_heap_trace_alloc_hook(void* ptr, size_t size, uint32_t caps) {
+  if (!trace_install_active) return;
+  size_t now = heap_caps_get_free_size(MALLOC_CAP_8BIT);
+  if (now < trace_install_min_free) trace_install_min_free = now;
+}
+
+extern "C" void esp_heap_trace_free_hook(void* ptr) {}
 #endif
 
 namespace toit {
@@ -225,21 +240,22 @@ const char* V2Verifier::verify_installed(Program* program, word program_size, bo
   // install-time verification (for measurements on a device or in QEMU).
   size_t trace_free = heap_caps_get_free_size(MALLOC_CAP_8BIT);
   size_t trace_largest = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
-  heap_caps_monitor_local_minimum_free_size_start();
+  trace_install_min_free = trace_free;
+  trace_install_active = true;
   int64 trace_start = esp_timer_get_time();
 #endif
   V2MethodTable* table = V2MethodTable::compute(program, &out_of_memory);
 #ifdef CONFIG_TOIT_TRACE_INSTALL
   size_t trace_after_table = heap_caps_get_free_size(MALLOC_CAP_8BIT);
-  if (table == null) heap_caps_monitor_local_minimum_free_size_stop();
+  if (table == null) trace_install_active = false;
 #endif
   if (table == null) return out_of_memory ? OUT_OF_MEMORY : "INVALID_SNAPSHOT";
   bool accepted = v2_verify(program, table, false, program_size, certificate, certificate_length, process,
                             &out_of_memory);
 #ifdef CONFIG_TOIT_TRACE_INSTALL
   int64 trace_end = esp_timer_get_time();
-  size_t trace_min = heap_caps_get_minimum_free_size(MALLOC_CAP_8BIT);
-  heap_caps_monitor_local_minimum_free_size_stop();
+  trace_install_active = false;
+  size_t trace_min = trace_install_min_free;
   printf("[install-trace] %s: %d methods, %d bytecodes; free %u largest %u; table %u B (%s);"
          " peak use %u B (min free %u); %lld us\n",
          accepted ? "accepted" : "rejected", static_cast<int>(table->length()),
