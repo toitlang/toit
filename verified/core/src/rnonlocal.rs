@@ -76,12 +76,15 @@ pub proof fn lemma_fins_empty(g: State2)
 }
 
 /// Pops the frames above frame `f` for the unwinding `u` of a non-local
-/// return or branch to frame `f`, on a copy of the registers: `Some(r2)`
-/// when there are no finally records and neither these frames nor frame
-/// `f` has a handler; then `m.with(r2)` refines the state with top frame
-/// `f` that `spec::unwind` reaches (`popped`). `None`: nothing changed.
+/// return or branch to frame `f`, on a copy of the registers, while there
+/// are no finally records: up to frame `f` or to the first frame with a
+/// handler on the way (`f` included). `Some((r2, hd))`: then `m.with(r2)`
+/// refines the state `spec::unwind` reaches by popping (`popped`), whose
+/// top frame is `f` without a handler (`!hd`) or has a handler (`hd`:
+/// `spec::unwind` enters its finally code). `None` (finally records):
+/// nothing changed.
 #[inline(always)]
-pub fn pop_to(m: &mut Machine, r: &Regs, p: &Program, f: usize, Ghost(u): Ghost<Unwind>) -> (res: Option<Regs>)
+pub fn pop_to(m: &mut Machine, r: &Regs, p: &Program, f: usize, Ghost(u): Ghost<Unwind>) -> (res: Option<(Regs, bool)>)
     requires
         m_ok(p, *old(m), *r),
         shape_ok(p, old(m).g@),
@@ -91,16 +94,17 @@ pub fn pop_to(m: &mut Machine, r: &Regs, p: &Program, f: usize, Ghost(u): Ghost<
         f < old(m).g@.frames.len(),
     ensures
         res is None ==> *final(m) == *old(m),
-        res matches Some(r2) ==> m_ok(p, *final(m), r2),
-        res matches Some(r2) ==> *final(m) == (Machine { g: final(m).g, ..*old(m) }),
-        res matches Some(r2) ==> final(m).fw == 0,
-        res matches Some(r2) ==> r2.sp@ >= r2.fr@ + STACK_RESERVE,
-        res matches Some(r2) ==> room_ok(p, final(m).with(r2)),
-        res matches Some(r2) ==> final(m).g@.frames.len() == f + 1,
-        res matches Some(r2) ==> !sp::has_handler(final(m).g@),
-        res matches Some(r2) ==> popped(p, old(m).g@, final(m).g@, u),
-        res matches Some(r2) ==> r2.end == r.end,
-        res matches Some(r2) ==> final(m).g@.bci == old(m).g@.bci,
+        res matches Some((r2, _)) ==> m_ok(p, *final(m), r2),
+        res matches Some((r2, _)) ==> *final(m) == (Machine { g: final(m).g, ..*old(m) }),
+        res matches Some((r2, _)) ==> final(m).fw == 0,
+        res matches Some((r2, _)) ==> r2.sp@ >= r2.fr@ + STACK_RESERVE,
+        res matches Some((r2, _)) ==> room_ok(p, final(m).with(r2)),
+        res matches Some((r2, hd)) ==> !hd ==> final(m).g@.frames.len() == f + 1,
+        res matches Some((r2, hd)) ==> final(m).g@.frames.len() >= f + 1,
+        res matches Some((r2, hd)) ==> hd == sp::has_handler(final(m).g@),
+        res matches Some((r2, _)) ==> popped(p, old(m).g@, final(m).g@, u),
+        res matches Some((r2, _)) ==> r2.end == r.end,
+        res matches Some((r2, _)) ==> final(m).g@.bci == old(m).g@.bci,
 {
     if m.fw != 0 {
         return None;
@@ -117,8 +121,11 @@ pub fn pop_to(m: &mut Machine, r: &Regs, p: &Program, f: usize, Ghost(u): Ghost<
         assert forall|i: int| 0 <= i < g.frames.len() implies #[trigger] g.frames[i] == g.frames[i] by {}
     }
     let mut r2 = *r;
+    let mut hd = false;
     let tr = m.mem.slot(FRAME_WORDS * f);
     loop
+        invariant_except_break
+            !hd,
         invariant
             *m == (Machine { g: m.g, ..m0 }),
             m0.fw == 0,
@@ -135,8 +142,16 @@ pub fn pop_to(m: &mut Machine, r: &Regs, p: &Program, f: usize, Ghost(u): Ghost<
             tr.sid() == m.mem.sid(),
             unw_frame(u) == f,
         ensures
-            m.g@.frames.len() == f + 1,
-            !sp::has_handler(m.g@),
+            m_ok(p, *m, r2),
+            *m == (Machine { g: m.g, ..m0 }),
+            r2.end == r.end,
+            r2.sp@ >= r2.fr@ + STACK_RESERVE,
+            room_ok(p, m.with(r2)),
+            popped(p, g, m.g@, u),
+            m.g@.frames.len() >= f + 1,
+            m.g@.bci == g.bci,
+            hd == sp::has_handler(m.g@),
+            !hd ==> m.g@.frames.len() == f + 1,
         decreases m.g@.frames.len(),
     {
         let ghost gi = m.g@;
@@ -152,16 +167,13 @@ pub fn pop_to(m: &mut Machine, r: &Regs, p: &Program, f: usize, Ghost(u): Ghost<
         let rc = r2.fr.offset(-(FRAME_WORDS as isize));
         let h = rc.read(FRAME_HANDLER, &m.mem);
         if h != 0 {
-            m.g = Ghost(g);
             proof {
-                assert(m.g@ == g);
-                assert(m0.g@ == g);
-                assert(m.g == Ghost(m.g@));
-                assert(m0.g == Ghost(m0.g@));
-                assert(m.g == m0.g);
-                assert(*m == m0);
+                assert(rc@ == FRAME_WORDS * k);
+                assert(rec(mi.mem@, k, FRAME_HANDLER) == h);
+                assert(sp::has_handler(gi));
             }
-            return None;
+            hd = true;
+            break;
         }
         proof {
             assert(rc@ == FRAME_WORDS * k);
@@ -229,7 +241,7 @@ pub fn pop_to(m: &mut Machine, r: &Regs, p: &Program, f: usize, Ghost(u): Ghost<
             assert(room_ok(p, m1));
         }
     }
-    Some(r2)
+    Some((r2, hd))
 }
 
 /// NON_LOCAL_RETURN (`spec::op_non_local_return`): the fast path returns
@@ -264,7 +276,33 @@ pub fn op_non_local_return(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize,
     proof { assert(sp::op_non_local_return(ap, g) == sp::unwind(ap, g, gu)); }
     match pop_to(m, r, p, f, Ghost(gu)) {
         None => slow0(m, r, env, Slow::Op),
-        Some(r2) => {
+        Some((r2, true)) => {
+            // A handler on the way: its finally code runs (rare for a
+            // throw, common for a return out of a try/finally).
+            let ghost gi = m.g@;
+            proof {
+                assert(sp::unwind(ap, gi, gu) == sp::enter_finally(ap, gi, gi.tries.last(), Some(gu)));
+                assert(m.addr() == w0.addr());
+                assert(f < 0x4000) by {
+                    assert(w0.ftop == FRAME_WORDS * g.frames.len());
+                    assert(w0.ftop <= w0.len);
+                }
+            }
+            let mut r3 = r2;
+            if enter_fin_r(m, &mut r3, p, x, 1 + 4 * f, 0, 0, Ghost(gu)) {
+                proof { lemma_matches(p, w0, m.with(r3), Ctl::Next); }
+                set_regs(r, r3);
+                return Ctl::Next;
+            }
+            m.g = Ghost(g);
+            proof {
+                assert(m.g == Ghost(m.g@));
+                assert(m0.g == Ghost(m0.g@));
+                assert(*m == m0);
+            }
+            slow0(m, r, env, Slow::Op)
+        },
+        Some((r2, false)) => {
             let mut r3 = r2;
             let ghost gi = m.g@;
             proof {
@@ -328,7 +366,34 @@ pub fn op_non_local_branch(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize,
     proof { assert(sp::op_non_local_branch(ap, g, hd as int, off as int) == sp::unwind(ap, g, gu)); }
     match pop_to(m, r, p, f, Ghost(gu)) {
         None => slow0(m, r, env, Slow::Op),
-        Some(r2) => {
+        Some((r2, true)) => {
+            // A handler on the way: its finally code runs.
+            let ghost gi = m.g@;
+            proof {
+                assert(sp::unwind(ap, gi, gu) == sp::enter_finally(ap, gi, gi.tries.last(), Some(gu)));
+                assert(m.addr() == w0.addr());
+                assert(const_ok(g.heap, ap.roots[0]));
+                assert(ap.roots[0] == sp::null2(ap));
+                assert(f < 0x4000) by {
+                    assert(w0.ftop == FRAME_WORDS * g.frames.len());
+                    assert(w0.ftop <= w0.len);
+                }
+            }
+            let mut r3 = r2;
+            if enter_fin_r(m, &mut r3, p, p.null, 2 + 4 * f, target, h, Ghost(gu)) {
+                proof { lemma_matches(p, w0, m.with(r3), Ctl::Next); }
+                set_regs(r, r3);
+                return Ctl::Next;
+            }
+            m.g = Ghost(g);
+            proof {
+                assert(m.g == Ghost(m.g@));
+                assert(m0.g == Ghost(m0.g@));
+                assert(*m == m0);
+            }
+            slow0(m, r, env, Slow::Op)
+        },
+        Some((r2, false)) => {
             let ghost gi = m.g@;
             let ghost mi = m.with(r2);
             let ghost g1 = State2 { stack: gi.stack.subrange(0, h as int), bci: target, ..gi };
@@ -595,7 +660,7 @@ pub fn unwind_resume_v(m: &mut Machine, r0: Regs, env: &Env, bci: usize, opcode:
         assert(room_ok(p, m2));
     }
     match pop_to(m, &r2, p, f, Ghost(gu)) {
-        None => {
+        None | Some((_, true)) => {
             m.fw = FIN_WORDS;
             m.need = need0;
             m.bot = bot0;
@@ -608,7 +673,7 @@ pub fn unwind_resume_v(m: &mut Machine, r0: Regs, env: &Env, bci: usize, opcode:
             let c = slow0(m, &mut r, env, Slow::Op);
             (r, c)
         },
-        Some(r3) => {
+        Some((r3, false)) => {
             let ghost gi = m.g@;
             let ghost mi = m.with(r3);
             proof {
@@ -879,6 +944,175 @@ pub fn ret_try_r(m: &mut Machine, r: &mut Regs, env: &Env, Ghost(v): Ghost<Value
         }
     }
     Ctl::Next
+}
+
+
+/// `spec::enter_finally(g, g.tries.last(), Some(u))` on the registers, for
+/// a non-local return or branch `u` that `pop_to` stopped at a frame with a
+/// handler (no finally records before): the handler's finally code runs
+/// with the first finally record (the resume words `rw`, `tw`, `th`), the
+/// object stack cut to the TRY's height and the value `x`, the token (the
+/// smi 0) and the reason (the smi -1) pushed; the gate is the one for
+/// records. `false` (nothing changed) when the top frame lacks room for its
+/// maximal height with the record (`room::top_room`).
+pub fn enter_fin_r(m: &mut Machine, r: &mut Regs, p: &Program, x: usize, rw: usize, tw: usize, th: usize,
+    Ghost(gu): Ghost<Unwind>) -> (b: bool)
+    requires
+        m_ok(p, *old(m), *old(r)),
+        old(m).fw == 0,
+        old(r).sp@ >= old(r).fr@ + STACK_RESERVE,
+        room_ok(p, old(m).with(*old(r))),
+        shape_ok(p, old(m).g@),
+        sp::has_handler(old(m).g@),
+        !(gu is Throw),
+        resume_ok(sp::resume_of(gu)),
+        rw == resume_word(sp::resume_of(gu)),
+        tw == target_word(sp::resume_of(gu)),
+        th == target_height_word(sp::resume_of(gu)),
+        x == enc(old(m).addr(), sp::value_of(p.ap@, gu)),
+        encodable(old(m).addr(), sp::value_of(p.ap@, gu)),
+        !(sp::enter_finally(p.ap@, old(m).g@, old(m).g@.tries.last(), Some(gu)) is Stuck),
+        outcome_ok(p.ap@, p.cert@, sp::enter_finally(p.ap@, old(m).g@, old(m).g@.tries.last(), Some(gu))),
+        accepts(p.ap@, p.cert@, p.trusted@),
+    ensures
+        !b ==> *final(m) == *old(m) && *final(r) == *old(r),
+        b ==> final(m).rok(*final(r)) && ipok(p, *final(r)) && final(m).with(*final(r)).refines(p) && gate_ok(p, *final(m))
+            && sp::enter_finally(p.ap@, old(m).g@, old(m).g@.tries.last(), Some(gu)) == Outcome2::Next(final(m).g@)
+            && room_ok(p, final(m).with(*final(r))),
+{
+    let ghost ap = p.ap@;
+    let ghost g0 = m.g@;
+    let ghost m0 = m.with(*r);
+    let ghost n = g0.frames.len() as int;
+    let ghost h = g0.tries.last();
+    let ghost addr = m0.addr();
+    proof {
+        m0.lemma_frame(p);
+        assert(m0.ftop == FRAME_WORDS * n);
+        assert(g0.fins.len() == 0);
+        lemma_rec_index(n, n - 1, FRAME_HANDLER);
+        lemma_rec_index(n, n - 1, FRAME_HANDLER_BCI);
+        lemma_rec_index(n, n - 1, FRAME_METHOD);
+        lemma_rec_index(n, n - 1, FRAME_BASE);
+        lemma_handler_word(m0.mem@, g0.frames, g0.tries);
+        assert(rec(m0.mem@, n - 1, FRAME_BASE) == g0.frames[n - 1].base);
+        assert(rec(m0.mem@, n - 1, FRAME_METHOD) == g0.frames[n - 1].method);
+        assert(g0.tries[g0.tries.len() - 1] == h);
+        assert(h.frame == n - 1);
+        assert(sp::valid_method(ap, g0.frames[n - 1].method as int));
+        assert(p.max_height < 0x1_0000);
+    }
+    let rr = r.fr.offset(-(FRAME_WORDS as isize));
+    let height = rr.read(FRAME_HANDLER, &m.mem);
+    let hbci = rr.read(FRAME_HANDLER_BCI, &m.mem);
+    let base = rr.read(FRAME_BASE, &m.mem);
+    let method = rr.read(FRAME_METHOD, &m.mem);
+    let fo = m.mem.index(r.fr);
+    proof {
+        assert(height == h.height);
+        assert(hbci == h.bci);
+        assert(base == g0.frames[n - 1].base);
+        assert(method == g0.frames[n - 1].method);
+        assert(ap.methods[method as int] == method_info(p.methods@[method as int], p.max_height));
+        assert(sp::base(g0) <= h.height <= g0.stack.len());
+        assert(fo == FRAME_WORDS * n);
+    }
+    // The top frame's room with the new record.
+    let a = p.methods.at(method).arity as usize;
+    if base + a + p.max_height + fo + FIN_WORDS + STACK_RESERVE > m.len {
+        return false;
+    }
+    let null = p.null;
+    let minus1 = smi_of(-1);
+    let zero = smi_of(0);
+    proof {
+        lemma_smi_word(-1i64);
+        lemma_smi_word(0i64);
+        assert(const_ok(g0.heap, ap.roots[0]));
+    }
+    // The record, after the frame records.
+    let fr0 = r.fr;
+    fr0.write(FIN_FRAME, fo / FRAME_WORDS - 1, &mut m.mem);
+    fr0.write(FIN_HEIGHT, height, &mut m.mem);
+    fr0.write(FIN_RESUME, rw, &mut m.mem);
+    fr0.write(FIN_TARGET, tw, &mut m.mem);
+    fr0.write(FIN_TARGET_HEIGHT, th, &mut m.mem);
+    rr.write(FRAME_HANDLER, 0, &mut m.mem);
+    let ghost mem1 = m.mem@;
+    // The object stack: cut to the TRY's height, the three slots pushed.
+    let s = r.end.offset(-((height + 3) as isize));
+    s.write(2, x, &mut m.mem);
+    s.write(1, zero, &mut m.mem);
+    s.write(0, minus1, &mut m.mem);
+    r.sp = s;
+    r.ip = p.code.cursor(hbci);
+    m.fw = FIN_WORDS;
+    m.need = usize::MAX;
+    m.bot = m.mem.slot(m.len);
+    let ghost fin = Fin { frame: h.frame, height: h.height, resume: sp::resume_of(gu) };
+    let ghost s1 = State2 {
+        stack: g0.stack.subrange(0, h.height as int),
+        tries: g0.tries.drop_last(),
+        bci: h.bci,
+        ..g0
+    };
+    let ghost s2 = State2 { fins: s1.fins.push(fin), ..s1 };
+    let ghost g2 = sp::push(sp::push(sp::push(s2, sp::value_of(ap, gu)), toit_spec::spec_common::smi(0)),
+        toit_spec::spec_common::smi(-1));
+    proof {
+        assert(s1.fins.len() == 0);
+        assert(sp::enter_finally(ap, g0, h, Some(gu)) == Outcome2::Next(g2));
+        toit_spec::v2::sound_instr::lemma_instr(ap, p.cert@, p.trusted@, g2);
+    }
+    m.g = Ghost(g2);
+    proof {
+        let m1 = m.with(*r);
+        let fo2 = fo as int;
+        assert(m1.ftop == fo);
+        assert(m1.rtop == fo + FIN_WORDS);
+        // Frame records: the top frame's handler is cleared.
+        assert forall|i: int| 0 <= i < FRAME_WORDS * n && i != FRAME_WORDS * (n - 1) + FRAME_HANDLER
+            implies #[trigger] m1.mem@[i] == m0.mem@[i] by {}
+        crate::unwind::lemma_frames_clear(m0.mem@, m1.mem@, g0.frames, g0.tries);
+        assert(g2.frames == g0.frames && g2.tries == g0.tries.drop_last());
+        // The finally record.
+        lemma_fin_index(fo2, 1, 0, FIN_FRAME);
+        assert(fin_rel(m1.mem@, fo2, 0, fin));
+        assert(fins_rel(m1.mem@, fo2, Seq::<Fin>::empty()));
+        crate::unwind::lemma_fins_rel_push(m1.mem@, fo2, Seq::<Fin>::empty(), fin);
+        assert(Seq::<Fin>::empty().push(fin) =~= g2.fins);
+        // The object stack.
+        let hh = height as int;
+        assert(g2.stack.len() == hh + 3);
+        assert forall|j: int| 0 <= j < hh + 3 implies #[trigger] m1.words()[j] == enc(addr, g2.stack[j]) by {
+            assert(m1.words()[j] == m1.mem@[m1.len - 1 - j]);
+            if j < hh {
+                assert(m1.mem@[m1.len - 1 - j] == m0.mem@[m0.len - 1 - j]);
+                assert(m0.words()[j] == m0.mem@[m0.len - 1 - j]);
+                assert(m0.words()[j] == enc_seq(addr, g0.stack)[j]);
+                assert(g2.stack[j] == g0.stack[j]);
+            } else if j == hh {
+                assert(g2.stack[j] == sp::value_of(ap, gu));
+            } else if j == hh + 1 {
+                assert(g2.stack[j] == toit_spec::spec_common::smi(0));
+            } else {
+                assert(g2.stack[j] == toit_spec::spec_common::smi(-1));
+            }
+        }
+        assert(m1.words() =~= enc_seq(addr, g2.stack));
+        assert forall|j: int| 0 <= j < g2.stack.len() implies #[trigger] encodable(addr, g2.stack[j]) by {
+            if j < hh { assert(g2.stack[j] == g0.stack[j]); }
+        }
+        assert(m1.method == m0.method);
+        assert(m1.refines(p));
+        assert forall|i: int| 0 <= i < g2.frames.len() implies #[trigger] frame_room(p, m1, i) by {
+            assert(g2.frames[i] == g0.frames[i]);
+            assert(frame_room(p, m0, i));
+        }
+        assert(frame_need(p, g2, n - 1) <= m1.len);
+        assert(top_room(p, m1));
+    }
+    true
 }
 
 } // verus!
