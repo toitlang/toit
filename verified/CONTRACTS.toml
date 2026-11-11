@@ -1,0 +1,265 @@
+# Copyright (C) 2026 Toit contributors.
+#
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation; version
+# 2.1 only.
+#
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# Lesser General Public License for more details.
+#
+# The license can be found in the file `LICENSE` in the top level
+# directory of this repository.
+
+# The leaf contracts between the Verus proof (verified/core) and the C++
+# it calls, written once, with both renderings: the clauses of the Verus
+# external_body function and the conjuncts of the VeriFast contract of the
+# C++ function (verified/cxx/annotated). verified/tools/contract_check.toit
+# (run by verified/check.sh) compares each side with its source: the
+# requires/ensures clauses of the Verus function, in order, and the
+# requires/ensures of the generated rendering's prototype, conjunct by
+# conjunct. A change on either side fails until this table, and with it the
+# other side, is updated.
+#
+# Fields of a contract: the Verus function (file relative to verified/,
+# name), the C++ function, its rendering (empty: not rendered; then only
+# the Verus side is checked) and the status. Each clause (in order, per
+# contract and side): a name, the Verus text, the VeriFast text (several
+# conjuncts joined by &*& when the views differ in granularity), the bridge
+# that relates them, and a note. "MISSING" marks a clause one side does not
+# have: a known disagreement, reported by the checker (README "Findings").
+#
+# The two sides state the clauses over different views of the same state:
+# Verus over the abstract heap of the spec (`reloaded(m, g).refines(p)`),
+# VeriFast over separation-logic predicates of the words (`stack`,
+# `current_stack`, `heap`). The bridges between them are written once,
+# below. They are THE REMAINING REVIEWED ASSUMPTION of the seam: neither
+# tool checks them.
+
+[bridge]
+stack = [
+  "REVIEWED ASSUMPTION. For the current task's stack s with the Stack header",
+  "words (length len, top top, record top rtop, frame top ft, finally count",
+  "fin, bci) and the array bytes bs (VeriFast: current_stack(p, s) &*&",
+  "stack(s, len, top, rtop, ft, fin, bci, bs) &*& stack_ok(len, top, rtop, bs)):",
+  "reloaded(m, g) re-derives the machine's cached fields (length, top, frame",
+  "top, bci, the top frame's base and method) from exactly these words, so",
+  "reloaded(m, g).refines(p) depends on the stack only through (len - top,",
+  "rtop, ft, fin, bci, take(rtop * W, bs), drop(top * W, bs)): the observables",
+  "same_abstraction keeps. Hence a VeriFast post-state with",
+  "same_abstraction(old, new) refines g whenever the pre-state did. The rest",
+  "of the machine state (heap, globals) is not touched by the rendered code;",
+  "the GC's contract (v2_gc) states that it preserves the abstraction.",
+]
+heap = [
+  "REVIEWED ASSUMPTION. VeriFast's heap(objs, H) (verified/cxx/annotated/model)",
+  "is the C side of TRUSTED.md V2: every object of the Verus abstract heap is",
+  "a member of objs, with header, length and body words as H says, at the",
+  "address (uword)o - 1; every reference word in a body is a smi or a member.",
+  "The layout constants of both are checked against the same C++ headers",
+  "(verified/layout_check.cc for Rust, the *.gen.constants.cc of the",
+  "renderings for VeriFast), 64- and 32-bit.",
+]
+
+[[contract]]
+name = "gc_grow_stack"
+verus_file = "core/src/step.rs"
+verus_fn = "gc_grow_stack"
+cxx_fn = "toit_v2_grow_stack"
+rendering = "cxx/annotated/grow/grow_stack.gen.c"
+status = "verified (VeriFast, LP64 and ILP32), with a bound on needed the Verus contract lacks"
+
+[[clause]]
+contract = "gc_grow_stack"
+side = "requires"
+name = "views"
+bridge = "stack"
+verus = "reloaded(*old(m), g).refines(&env.p)"
+verifast = "current_stack((Process *)raw_process, ?s) &*& stack(s, ?len, ?top, ?rtop, ?ft, ?fin, ?bci, ?bs) &*& stack_ok(len, top, rtop, bs) == true"
+
+[[clause]]
+contract = "gc_grow_stack"
+side = "requires"
+name = "needed bound"
+verus = "MISSING"
+verifast = "needed <= STACK_MAX_BOUND"
+note = "Without it the C++ converts needed to word (overflow) and adds it to the used length (overflow): mutants grow-stack-unbounded, grow-stack-word-range. The core passes FRAME_WORDS + max_height + STACK_RESERVE + FIN_WORDS, far below; the Verus contract should state the bound."
+
+[[clause]]
+contract = "gc_grow_stack"
+side = "ensures"
+name = "views"
+bridge = "stack"
+verus = "reloaded(*final(m), g).refines(&env.p)"
+verifast = "current_stack((Process *)raw_process, ?s2) &*& stack(s2, ?len2, ?top2, rtop, ft, fin, bci, ?bs2) &*& stack_ok(len2, top2, rtop, bs2) == true &*& same_abstraction(len, top, rtop, bs, len2, top2, rtop, bs2) == true"
+
+[[clause]]
+contract = "gc_grow_stack"
+side = "ensures"
+name = "room"
+verus = "r == V2_OK ==> reloaded(*final(m), g).top - reloaded(*final(m), g).rtop >= needed"
+verifast = "(result == TOIT_V2_OK ? top2 - rtop >= needed : result == TOIT_V2_STACK_OVERFLOW || result == TOIT_V2_OUT_OF_MEMORY)"
+
+[[contract]]
+name = "gc_allocate_instance"
+verus_file = "core/src/alloc.rs"
+verus_fn = "gc_allocate_instance"
+cxx_fn = "toit_v2_allocate_instance"
+rendering = ""
+status = "not rendered: v2_allocate takes a lambda (the translator has no rule for closures yet)"
+
+[[clause]]
+contract = "gc_allocate_instance"
+side = "requires"
+name = "views"
+bridge = "stack"
+verus = "reloaded(*old(m), g).refines(&env.p)"
+
+[[clause]]
+contract = "gc_allocate_instance"
+side = "requires"
+name = "class"
+verus = "c < env.p.ap@.class_bits.len()"
+
+[[clause]]
+contract = "gc_allocate_instance"
+side = "requires"
+name = "instance class"
+verus = "class_tag(p1(env.p.ap@), c as int) == INSTANCE_TAG"
+
+[[clause]]
+contract = "gc_allocate_instance"
+side = "requires"
+name = "field count"
+verus = "instance_field_count(p1(env.p.ap@), c as int) >= 0"
+
+[[clause]]
+contract = "gc_allocate_instance"
+side = "ensures"
+name = "out of memory"
+bridge = "stack"
+verus = "r == 0 ==> reloaded(*final(m), g).refines(&env.p)"
+
+[[clause]]
+contract = "gc_allocate_instance"
+side = "ensures"
+name = "appended"
+bridge = "heap"
+verus = "r != 0 ==> reloaded(*final(m), sp::alloc2(g, new_instance(env.p.ap@, c as int))).refines(&env.p) && r == enc(final(m).addr(), sp::new_ref2(g))"
+
+[[contract]]
+name = "gc_allocate_double"
+verus_file = "core/src/alloc.rs"
+verus_fn = "gc_allocate_double"
+cxx_fn = "toit_v2_allocate_double"
+rendering = ""
+status = "not rendered: v2_allocate takes a lambda"
+
+[[clause]]
+contract = "gc_allocate_double"
+side = "requires"
+name = "views"
+bridge = "stack"
+verus = "reloaded(*old(m), g).refines(&env.p)"
+
+[[clause]]
+contract = "gc_allocate_double"
+side = "ensures"
+name = "out of memory"
+bridge = "stack"
+verus = "r == 0 ==> reloaded(*final(m), g).refines(&env.p)"
+
+[[clause]]
+contract = "gc_allocate_double"
+side = "ensures"
+name = "appended"
+bridge = "heap"
+verus = "r != 0 ==> reloaded(*final(m), sp::alloc2(g, new_double(as1(g), p1(env.p.ap@), bits))).refines(&env.p) && r == enc(final(m).addr(), sp::new_ref2(g))"
+
+[[contract]]
+name = "gc_allocate_exception"
+verus_file = "core/src/raise.rs"
+verus_fn = "gc_allocate_exception"
+cxx_fn = "toit_v2_allocate_exception"
+rendering = ""
+status = "not rendered: allocation through v2_allocate and the trace encoder (encode_error)"
+
+[[clause]]
+contract = "gc_allocate_exception"
+side = "requires"
+name = "views"
+bridge = "stack"
+verus = "reloaded(*old(m), g).refines(&env.p)"
+
+[[clause]]
+contract = "gc_allocate_exception"
+side = "requires"
+name = "value"
+verus = "value == enc(old(m).addr(), v)"
+
+[[clause]]
+contract = "gc_allocate_exception"
+side = "requires"
+name = "constant"
+verus = "const_ok(g.heap, v)"
+
+[[clause]]
+contract = "gc_allocate_exception"
+side = "requires"
+name = "count"
+verus = "count == vs.len()"
+
+[[clause]]
+contract = "gc_allocate_exception"
+side = "requires"
+name = "message"
+verus = "msg_ok(old(m).addr(), kind, ws@, vs)"
+
+[[clause]]
+contract = "gc_allocate_exception"
+side = "ensures"
+name = "raised"
+bridge = "heap"
+verus = "exists|h2: Seq<HeapObj>, trace: Value| #[trigger] exception_post(&env.p, *final(m), g, v, r, h2, trace)"
+
+[[contract]]
+name = "gc_call_primitive"
+verus_file = "core/src/primitive.rs"
+verus_fn = "gc_call_primitive"
+cxx_fn = "toit_v2_call_primitive"
+rendering = ""
+status = "not rendered: the retry loop around the primitive entry and the GC; the primitives are per-primitive contracts (TRUSTED.md section 8)"
+
+[[clause]]
+contract = "gc_call_primitive"
+side = "requires"
+name = "views"
+bridge = "stack"
+verus = "reloaded(*old(m), g).refines(&env.p)"
+
+[[clause]]
+contract = "gc_call_primitive"
+side = "requires"
+name = "primitive step"
+verus = "sp::step(env.p.ap@, g) == Outcome2::Primitive(g, module, index)"
+
+[[clause]]
+contract = "gc_call_primitive"
+side = "requires"
+name = "first"
+verus = "first == sp::base(g)"
+
+[[clause]]
+contract = "gc_call_primitive"
+side = "requires"
+name = "arity"
+verus = "arity == sp::frame_height(g)"
+
+[[clause]]
+contract = "gc_call_primitive"
+side = "ensures"
+name = "completion"
+bridge = "heap"
+verus = "exists|gx: State2, v: Value| #[trigger] prim_call_post(&env.p, *final(m), g, module, index, r.0, r.1, gx, v)"

@@ -19,7 +19,8 @@
 #   1. Verus on verified/core and verified/spec: 0 errors required, for
 #      64-bit words (the host) and for 32-bit words (i686 target).
 #   2. Escape-hatch audit against verified/TRUSTED.toml (and a cross-check
-#      with `verus --no-cheating`); writes verified/THEOREMS.txt.
+#      with `verus --no-cheating`); writes verified/THEOREMS.txt. The leaf
+#      contracts of verified/CONTRACTS.toml against both of their sides.
 #   3. With --tests: the audit's regression test, layout check, the
 #      VeriFast proofs of the residual C++ (verified/cxx/annotated), spec
 #      differential tests, the device library's no-panic check, sandbox
@@ -205,6 +206,13 @@ if ! tools_ready; then
   fail "escape-hatch audit: cannot run verified/tools/trust_audit.toit"
 elif ! "$TOIT_BIN" run "$VERIFIED/tools/trust_audit.toit" -- --root "$VERIFIED" "${AUDIT_ARGS[@]}"; then
   fail "escape-hatch audit (see above)"
+fi
+
+section "Leaf contracts, Verus and VeriFast (verified/CONTRACTS.toml)"
+if ! tools_ready; then
+  fail "contract table: cannot run verified/tools/contract_check.toit"
+elif ! "$TOIT_BIN" run "$VERIFIED/tools/contract_check.toit" -- --root "$VERIFIED"; then
+  fail "contract table: a Verus or VeriFast contract differs from verified/CONTRACTS.toml (see above)"
 fi
 
 if [ "$RUN_TESTS" = 1 ]; then
