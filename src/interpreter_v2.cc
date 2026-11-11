@@ -559,6 +559,11 @@ uword toit_v2_allocate_array(void* raw_process, uword length, uword filler) {
 
 uword toit_v2_grow_stack(void* raw_process, uword needed) {
   Process* process = v2_process(raw_process);
+  // More free words than the longest stack has: an overflow (checked here, so
+  // that the casts to `word` below never see a value of 2^(WORD_BITS-1) or
+  // more; the core passes less than 2^20, GROW_STACK_MAX_NEEDED in
+  // verified/core/src/layout.rs).
+  if (needed > static_cast<uword>(Stack::max_length())) return TOIT_V2_STACK_OVERFLOW;
   Stack* stack = process->task()->stack();
   // The core has written into the stack since it was last remembered. The
   // old stack becomes garbage, but the collector still scans it whenever

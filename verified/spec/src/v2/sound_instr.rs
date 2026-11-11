@@ -118,9 +118,6 @@ pub proof fn lemma_instr(p: Program2, c: Cert, trusted: bool, s: State2)
         &&& s.bci as int == instr_at(p, m, off)
         &&& 0 <= off
         &&& cur_op(p, s) == op_of(p, m, off)
-        &&& !is_twin(cur_op(p, s))
-        &&& (is_twin(p.bytecodes[s.bci as int]) ==> p.unchecked)
-        &&& opcode_length2(p.bytecodes[s.bci as int]) == opcode_length2(cur_op(p, s))
         &&& map_at(c, m, off) == Some(k)
         &&& instr_ok(p, c, m, off, k, trusted)
         &&& wf_kinds(p, c, m, k)
@@ -150,7 +147,6 @@ pub proof fn lemma_instr(p: Program2, c: Cert, trusted: bool, s: State2)
     lemma_top_kinds(p, c, s);
     lemma_map_instr(p, c, trusted, m, off);
     lemma_map_bound(p, c, trusted, m, off);
-    assert(method_ok(p, c, m, trusted));
     assert(frame_ok(p, c, s, t)) by { reveal(wf_task); }
     lemma_base_op(p.bytecodes[s.bci as int]);
     let op = cur_op(p, s);
@@ -158,6 +154,20 @@ pub proof fn lemma_instr(p: Program2, c: Cert, trusted: bool, s: State2)
     assert(1 <= opcode_length2(op) <= 6) by {
         reveal_with_fuel(opcode_length2, 1);
     }
+}
+
+/// The unchecked twins at the bci of a well-formed state (format note 20):
+/// `cur_op` is a base opcode, a twin's byte occurs only in the unchecked
+/// mode, and has its base's length.
+pub proof fn lemma_instr_twin(p: Program2, c: Cert, trusted: bool, s: State2)
+    requires accepts(p, c, trusted), wf(p, c, s),
+    ensures
+        !is_twin(cur_op(p, s)),
+        is_twin(p.bytecodes[s.bci as int]) ==> p.unchecked,
+        opcode_length2(p.bytecodes[s.bci as int]) == opcode_length2(cur_op(p, s)),
+{
+    lemma_instr(p, c, trusted, s);
+    lemma_base_op(p.bytecodes[s.bci as int]);
 }
 
 /// The value in slot `n` from the top of the top frame conforms to its

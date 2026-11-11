@@ -33,6 +33,7 @@ pub proof fn lemma_step(p: Program2, c: Cert, trusted: bool, s: State2)
     ensures step_ok(p, c, s),
 {
     lemma_instr(p, c, trusted, s);
+    lemma_instr_twin(p, c, trusted, s);
     let op = cur_op(p, s);
     lemma_families(op);
     if fam_local(op) {

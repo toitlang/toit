@@ -867,6 +867,7 @@ pub proof fn lemma_step_as_local(p: Program2, c: Cert, trusted: bool, s: State2)
 // Branches and HALT.
 
 #[verifier::spinoff_prover]
+#[verifier::rlimit(30)]
 pub proof fn lemma_step_branch(p: Program2, c: Cert, trusted: bool, s: State2)
     requires
         accepts(p, c, trusted), wf(p, c, s), small(s),

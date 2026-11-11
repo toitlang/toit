@@ -162,7 +162,11 @@ pub open spec fn step_post(p: &Program, m0: Machine, m1: Machine, r: Ctl) -> boo
 #[verifier::external_body]
 #[inline(always)]
 pub fn gc_grow_stack(m: &mut Machine, env: &Env, needed: usize, Ghost(g): Ghost<State2>) -> (r: usize)
-    requires reloaded(*old(m), g).refines(&env.p),
+    requires
+        reloaded(*old(m), g).refines(&env.p),
+        // The C++ side rejects more than `Stack::max_length()` (an overflow);
+        // this bound keeps every value far below 2^31 (TRUSTED.md 9).
+        needed < GROW_STACK_MAX_NEEDED,
     ensures
         reloaded(*final(m), g).refines(&env.p),
         r == V2_OK ==> reloaded(*final(m), g).top - reloaded(*final(m), g).rtop >= needed,
@@ -178,6 +182,7 @@ pub fn gc_grow_stack(m: &mut Machine, env: &Env, needed: usize, Ghost(g): Ghost<
 pub fn grow(m: &mut Machine, env: &Env, needed: usize) -> (r: Ctl)
     requires
         old(m).inv(&env.p),
+        needed < GROW_STACK_MAX_NEEDED,
         toit_spec::v2::prim::grows_stack(env.p.ap@.bytecodes[old(m).bci as int]),
         old(m).bci < 0x1000_0000,
     ensures step_post(&env.p, *old(m), *final(m), r),
@@ -954,6 +959,7 @@ pub fn step_r(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
         lemma_instr(ap, p.cert@, p.trusted@, g);
         reveal_with_fuel(opcode_length2, 1);
         lemma_room_top(p, w0);
+        toit_spec::v2::sound_instr::lemma_instr_twin(ap, p.cert@, p.trusted@, g);
     }
     let ghost bci: usize = r.ip@ as usize;
     proof { crate::regs::lemma_bci(p, w0); }

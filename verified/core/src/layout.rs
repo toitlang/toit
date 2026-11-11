@@ -175,6 +175,10 @@ pub const FIN_RESUME: usize = 2;
 pub const FIN_TARGET: usize = 3;
 pub const FIN_TARGET_HEIGHT: usize = 4;
 pub const STACK_RESERVE: usize = 8;
+/// Bound on the `needed` of `step::gc_grow_stack` (`toit_v2_grow_stack`,
+/// which rejects more than `Stack::max_length()`): far below 2^31, so
+/// the C++ side's casts to `word` stay non-negative on both widths.
+pub const GROW_STACK_MAX_NEEDED: usize = 0x10_0000;
 
 // --- Program tables (src/program.h) ---------------------------------------
 pub const ROOT_NULL: usize = 0;
