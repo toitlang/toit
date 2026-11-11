@@ -28,6 +28,14 @@
 #include "os.h"
 #include "process.h"
 
+#ifdef TOIT_ESP32
+#include <sdkconfig.h>
+#endif
+#ifdef CONFIG_TOIT_TRACE_INSTALL
+#include <esp_heap_caps.h>
+#include <esp_timer.h>
+#endif
+
 namespace toit {
 
 const char* const V2Verifier::OUT_OF_MEMORY = "OUT_OF_MEMORY";
@@ -212,10 +220,35 @@ const char* V2Verifier::verify_installed(Program* program, word program_size, bo
     return "FORMAT_2_REQUIRED";
   }
   bool out_of_memory = false;
+#ifdef CONFIG_TOIT_TRACE_INSTALL
+  // Kconfig TOIT_TRACE_INSTALL: the time and the heap use of each
+  // install-time verification (for measurements on a device or in QEMU).
+  size_t trace_free = heap_caps_get_free_size(MALLOC_CAP_8BIT);
+  size_t trace_largest = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
+  heap_caps_monitor_local_minimum_free_size_start();
+  int64 trace_start = esp_timer_get_time();
+#endif
   V2MethodTable* table = V2MethodTable::compute(program, &out_of_memory);
+#ifdef CONFIG_TOIT_TRACE_INSTALL
+  size_t trace_after_table = heap_caps_get_free_size(MALLOC_CAP_8BIT);
+  if (table == null) heap_caps_monitor_local_minimum_free_size_stop();
+#endif
   if (table == null) return out_of_memory ? OUT_OF_MEMORY : "INVALID_SNAPSHOT";
   bool accepted = v2_verify(program, table, false, program_size, certificate, certificate_length, process,
                             &out_of_memory);
+#ifdef CONFIG_TOIT_TRACE_INSTALL
+  int64 trace_end = esp_timer_get_time();
+  size_t trace_min = heap_caps_get_minimum_free_size(MALLOC_CAP_8BIT);
+  heap_caps_monitor_local_minimum_free_size_stop();
+  printf("[install-trace] %s: %d methods, %d bytecodes; free %u largest %u; table %u B (%s);"
+         " peak use %u B (min free %u); %lld us\n",
+         accepted ? "accepted" : "rejected", static_cast<int>(table->length()),
+         static_cast<int>(program->bytecodes.length()),
+         static_cast<unsigned>(trace_free), static_cast<unsigned>(trace_largest),
+         static_cast<unsigned>(trace_free - trace_after_table), table->in_literal() ? "literal" : "RAM",
+         static_cast<unsigned>(trace_free - trace_min), static_cast<unsigned>(trace_min),
+         static_cast<long long>(trace_end - trace_start));
+#endif
   delete table;
   if (accepted) return null;
   return out_of_memory ? OUT_OF_MEMORY : "VERIFICATION_FAILED";
