@@ -944,6 +944,7 @@ pub open spec fn rpost(p: &Program, m0: Machine, r0: Regs, m1: Machine, r1: Regs
     if c == Ctl::Next {
         &&& m1.rok(r1)
         &&& crate::regs::ipok(p, r1)
+        &&& crate::regs::gate_ok(p, m1)
         &&& step_post(p, m0.with(r0), m1.with(r1), c) || steps_post(p, m0.with(r0), m1.with(r1), c)
         &&& room_ok(p, m1.with(r1))
     } else {
@@ -971,7 +972,7 @@ pub proof fn lemma_steps_post(p: &Program, m0: Machine, m1: Machine, r: Ctl)
     }
 }
 
-/// The machine's step, out of line: one copy for `bridge` and `settle`.
+/// The machine's step, out of line (`bridge`).
 #[inline(never)]
 pub fn step_m(m: &mut Machine, env: &Env) -> (r: Ctl)
     requires old(m).inv(&env.p),
@@ -980,51 +981,31 @@ pub fn step_m(m: &mut Machine, env: &Env) -> (r: Ctl)
     step(m, env)
 }
 
-/// After the machine's handlers ran from `w0` with result `c`: while there
-/// are finally records (only during an unwinding's finally code, rare),
-/// the machine's handlers run the following instructions too (lazy finally
-/// records: the register handlers assume there are none); then the room is
-/// re-established (the machine's handlers do not track it) and the
-/// registers are derived.
-#[verifier::exec_allows_no_decreases_clause]
-pub fn settle(m: &mut Machine, env: &Env, c: Ctl, Ghost(w0): Ghost<Machine>) -> (res: (Option<Regs>, Ctl))
+/// Back to the registers after a path that ran on the machine from `w0`
+/// with result `c`: on `Next` the room is re-established (the machine's
+/// handlers do not track it; an unwinding into finally code adds a record)
+/// and the registers derived with the gate for the finally records
+/// (`Machine::enter`).
+pub fn resume(m: &mut Machine, env: &Env, c: Ctl, Ghost(w0): Ghost<Machine>) -> (res: (Option<Regs>, Ctl))
     requires step_post(&env.p, w0, *old(m), c) || steps_post(&env.p, w0, *old(m), c),
     ensures
         res.1 == Ctl::Next ==> res.0 is Some && final(m).rok(res.0->0)
             && crate::regs::ipok(&env.p, res.0->0)
+            && crate::regs::gate_ok(&env.p, *final(m))
             && steps_post(&env.p, w0, final(m).with(res.0->0), res.1)
             && room_ok(&env.p, final(m).with(res.0->0)),
         res.1 != Ctl::Next ==> steps_post(&env.p, w0, *final(m), res.1),
 {
-    let mut c = c;
     proof { if step_post(&env.p, w0, *m, c) { lemma_steps_post(&env.p, w0, *m, c); } }
-    loop
-        invariant steps_post(&env.p, w0, *m, c),
-        ensures steps_post(&env.p, w0, *m, c), c == Ctl::Next, m.rtop == m.ftop,
-    {
-        match c {
-            Ctl::Next => {
-                if m.rtop == m.ftop {
-                    break;
-                }
-                let ghost before = *m;
-                c = step_m(m, env);
-                proof {
-                    if c is Next || (c is Exit && (c->Exit_0 == RESULT_PREEMPTED || c->Exit_0 == RESULT_YIELDED)) {
-                        lemma_reaches_step(env.p.ap@, w0.g@, before.g@, m.g@);
-                    }
-                }
-            },
-            _ => {
-                return (None, c);
-            },
-        }
+    if let Ctl::Next = c {
+    } else {
+        return (None, c);
     }
     let ghost m1 = *m;
     let c2 = ensure_room_all(m, env);
     if let Ctl::Next = c2 {
-        let r = m.regs(&env.p);
-        proof { assert(m.g == m1.g); }
+        let r = m.enter(&env.p);
+        proof { assert(m.with(r).g == m1.g); }
         (Some(r), c2)
     } else {
         (None, c2)
@@ -1032,11 +1013,12 @@ pub fn settle(m: &mut Machine, env: &Env, c: Ctl, Ghost(w0): Ghost<Machine>) -> 
 }
 
 /// The run loop's invariant on registers: the registers are cursors of the
-/// machine, which satisfies `inv` with them (no finally records: the
-/// registers' record top is the frame top) and has room.
+/// machine, which satisfies `inv` with them and has room; the gate for the
+/// finally records is set.
 pub open spec fn rinv(p: &Program, m: Machine, r: Regs) -> bool {
     &&& m.rok(r)
     &&& crate::regs::ipok(p, r)
+    &&& crate::regs::gate_ok(p, m)
     &&& m.with(r).inv(p)
     &&& room_ok(p, m.with(r))
 }
@@ -1045,7 +1027,7 @@ pub open spec fn rinv(p: &Program, m: Machine, r: Regs) -> bool {
 pub open spec fn rhandler_pre(p: &Program, m: Machine, r: Regs, bci: usize, opcode: u8) -> bool {
     let ap = p.ap@;
     &&& rinv(p, m, r)
-    &&& r.sp@ >= r.fr@ + STACK_RESERVE
+    &&& r.sp@ >= r.fr@ + m.fw + STACK_RESERVE
     &&& step_ok(ap, p.cert@, m.g@)
     &&& bci == r.ip@
     &&& opcode == ap.bytecodes[bci as int]
@@ -1062,7 +1044,7 @@ pub fn bridge(m: &mut Machine, r: Regs, env: &Env) -> (res: (Regs, Ctl))
     let ghost w0 = m.with(r);
     m.sync(r, &env.p);
     let c = step_m(m, env);
-    match settle(m, env, c, Ghost(w0)) {
+    match resume(m, env, c, Ghost(w0)) {
         (Some(r2), Ctl::Next) => (r2, Ctl::Next),
         (_, c2) => (r, c2),
     }
@@ -1766,11 +1748,9 @@ pub fn run_loop(m: &mut Machine, env: &Env, accepted: &crate::ffi::Accepted) -> 
 {
     let ghost m0 = *m;
     proof { lemma_reaches_refl(env.p.ap@, m.g@); }
-    // A task resumed in finally code runs on the machine's handlers until
-    // its finally records are gone; then the room of every frame (room.rs),
-    // checked once per run, and the registers: locals of this function, in
-    // machine registers.
-    let mut r = match settle(m, env, Ctl::Next, Ghost(m0)) {
+    // The room of every frame (room.rs), checked once per run, and the
+    // registers: locals of this function, in machine registers.
+    let mut r = match resume(m, env, Ctl::Next, Ghost(m0)) {
         (Some(r), Ctl::Next) => r,
         (_, Ctl::Exit(state, value)) => {
             m.save();

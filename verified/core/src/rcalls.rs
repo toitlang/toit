@@ -55,18 +55,18 @@ pub proof fn lemma_or_ge(w: usize, n: usize)
 }
 
 /// The fast path of a call applies: room for a frame record, the maximal
-/// height and the reserve, no finally records, no preemption request.
+/// height and the reserve, no finally records, no preemption request (the
+/// gate's `need` is all ones while there are finally records, the
+/// watermark while preemption is requested).
 #[inline(always)]
 pub fn call_fast(m: &Machine, r: &Regs, env: &Env) -> (b: bool)
     requires m_ok(&env.p, *m, *r),
-    ensures b ==> r.sp@ - r.fr@ >= FRAME_WORDS + env.p.max_height + STACK_RESERVE,
+    ensures b ==> m.fw == 0 && r.sp@ - r.fr@ >= FRAME_WORDS + env.p.max_height + STACK_RESERVE,
 {
-    proof { assert(env.p.max_height < 0x1_0000); }
-    let need = FRAME_WORDS + env.p.max_height + STACK_RESERVE;
     let w = env.pre.word();
     let free = r.sp.diff(r.fr);
-    proof { lemma_or_ge(w, need); }
-    free >= (w | need)
+    proof { lemma_or_ge(w, m.need); }
+    free >= (w | m.need)
 }
 
 /// `spec::call` without finally records: a frame for `target` (its method
@@ -76,6 +76,7 @@ pub fn call_fast(m: &Machine, r: &Regs, env: &Env) -> (b: bool)
 pub fn push_call(m: &mut Machine, r: &mut Regs, p: &Program, target: usize, info: V2Method, ret: usize)
     requires
         m_ok(p, *old(m), *old(r)),
+        old(m).fw == 0,
         old(r).sp@ - old(r).fr@ >= FRAME_WORDS + p.max_height + STACK_RESERVE,
         room_ok(p, old(m).with(*old(r))),
         target < p.methods@.len(),
@@ -216,7 +217,7 @@ pub fn op_invoke_virtual(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, o
 pub fn op_return(m: &mut Machine, r: &mut Regs, env: &Env, w: usize, Ghost(v): Ghost<Value>) -> (c: Ctl)
     requires
         rinv(&env.p, *old(m), *old(r)),
-        old(r).sp@ >= old(r).fr@ + STACK_RESERVE,
+        old(r).sp@ >= old(r).fr@ + old(m).fw + STACK_RESERVE,
         step_ok(env.p.ap@, env.p.cert@, old(m).g@),
         sp::step(env.p.ap@, old(m).g@) == sp::return_from(env.p.ap@, old(m).g@, v),
         w == enc(old(m).addr(), v),
@@ -233,8 +234,8 @@ pub fn op_return(m: &mut Machine, r: &mut Regs, env: &Env, w: usize, Ghost(v): G
         m0.lemma_frame(p);
         lemma_no_handler(g0);
     }
-    if r.fr.diff(m.mem.slot(0)) <= FRAME_WORDS {
-        // The task's bottom frame returns.
+    if !m.bot.lt(r.fr, &m.mem) {
+        // The task's bottom frame returns, or there are finally records.
         return bridge_r(m, r, env);
     }
     let ghost n = g0.frames.len() as int;

@@ -92,6 +92,15 @@ pub struct Machine {
     pub base: usize,
     pub lim: usize,
     pub method: usize,
+    /// The run loop's gate for finally records (`regs::gate_ok`, set by
+    /// `Machine::enter`): `fw` is the number of finally-record words while
+    /// the registers run (the registers hold the frame top only); a call's
+    /// fast path needs `need` free words (all ones while there are finally
+    /// records, so that it fails), a return's fast path a frame top above
+    /// `bot` (the end of the array while there are finally records).
+    pub fw: usize,
+    pub need: usize,
+    pub bot: Slot,
     pub g: Ghost<State2>,
 }
 

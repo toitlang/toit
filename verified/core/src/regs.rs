@@ -36,6 +36,8 @@ use crate::layout::*;
 use crate::view::*;
 use crate::abs::*;
 use crate::exec::*;
+#[cfg(verus_keep_ghost)]
+use crate::room::{room_ok, frame_room};
 use toit_spec::types::{Value, HeapObj};
 use toit_spec::v2::types::{State2, Program2, Outcome2};
 #[cfg(verus_keep_ghost)]
@@ -45,10 +47,10 @@ verus! {
 
 /// The hot part of the machine: cursors at the object-stack top (`sp`,
 /// index `top`), at the top frame's limit (`fp`, index `lim`: slot `n`
-/// exists iff `top + n < lim`), at the frame-record top (`fr`, `ftop`; the run
-/// loop runs only without finally records, so it is also the record top
-/// `rtop`, see `step::settle`) and at the end of the array (`end`, index
-/// `len`: object-stack position `i` is `end - 1 - i`), and the bci.
+/// exists iff `top + n < lim`), at the frame-record top (`fr`, `ftop`; the
+/// finally records, rare, follow it: `rtop` is `ftop + m.fw`, see
+/// `gate_ok`) and at the end of the array (`end`, index `len`:
+/// object-stack position `i` is `end - 1 - i`), and the bci.
 #[derive(Clone, Copy)]
 pub struct Regs {
     pub sp: Slot,
@@ -67,10 +69,16 @@ impl Machine {
             lim: r.fp@ as usize,
             base: (self.len - r.fp@) as usize,
             ftop: r.fr@ as usize,
-            rtop: r.fr@ as usize,
+            rtop: (r.fr@ + self.fw) as usize,
             bci: r.ip@ as usize,
             ..*self
         }
+    }
+
+    /// `self` with the gate fields replaced (they are not part of the
+    /// abstraction: `refines`, `inv` and the room do not look at them).
+    pub open spec fn gated(&self, fw: usize, need: usize, bot: Slot) -> Machine {
+        Machine { fw: fw, need: need, bot: bot, ..*self }
     }
 
     /// The registers are cursors into this machine's stack view, inside
@@ -83,16 +91,37 @@ impl Machine {
         &&& r.end@ == self.len
         &&& 0 <= r.sp@ <= self.len
         &&& 0 <= r.fp@ <= self.len
-        &&& 0 <= r.fr@ <= self.len
+        &&& 0 <= r.fr@
+        &&& r.fr@ + self.fw <= self.len
     }
 
-    /// The registers of this machine (`self.with(r) == self`).
+    /// Enters the register loop: sets the gate (`gate_ok`) from the finally
+    /// records and derives the registers; the machine the registers
+    /// describe is `self` with the gate set.
     #[inline(always)]
-    pub fn regs(&self, p: &Program) -> (r: Regs)
-        requires self.inv(p), self.rtop == self.ftop,
-        ensures self.rok(r), self.with(r) == *self, ipok(p, r),
+    pub fn enter(&mut self, p: &Program) -> (r: Regs)
+        requires old(self).inv(p),
+        ensures
+            final(self).rok(r), ipok(p, r), gate_ok(p, *final(self)),
+            final(self).with(r) == old(self).gated(final(self).fw, final(self).need, final(self).bot),
+            final(self).with(r).inv(p),
+            room_ok(p, *old(self)) ==> room_ok(p, final(self).with(r)),
+            final(self).g == old(self).g,
+            final(self).len == old(self).len,
+            final(self).mem == old(self).mem,
+            final(self).heap == old(self).heap,
     {
-        proof { lemma_bci(p, *self); }
+        let ghost m0 = *self;
+        proof { lemma_bci(p, *self); assert(p.max_height < 0x1_0000); }
+        let fw = self.rtop - self.ftop;
+        self.fw = fw;
+        if fw == 0 {
+            self.need = FRAME_WORDS + p.max_height + STACK_RESERVE;
+            self.bot = self.mem.slot(FRAME_WORDS);
+        } else {
+            self.need = usize::MAX;
+            self.bot = self.mem.slot(self.len);
+        }
         let r = Regs {
             sp: self.mem.slot(self.top),
             fp: self.mem.slot(self.lim),
@@ -100,7 +129,16 @@ impl Machine {
             end: self.mem.slot(self.len),
             ip: p.code.cursor(self.bci),
         };
-        proof { assert(self.with(r) =~= *self); }
+        proof {
+            let m1 = m0.gated(self.fw, self.need, self.bot);
+            assert(self.with(r) =~= m1);
+            assert(m1.refines(p));
+            if room_ok(p, m0) {
+                assert forall|i: int| 0 <= i < m1.g@.frames.len() implies #[trigger] frame_room(p, m1, i) by {
+                    assert(frame_room(p, m0, i));
+                }
+            }
+        }
         r
     }
 
@@ -117,7 +155,7 @@ impl Machine {
         self.lim = lim;
         self.base = self.len - lim;
         self.ftop = self.mem.index(r.fr);
-        self.rtop = self.ftop;
+        self.rtop = self.ftop + self.fw;
         self.bci = r.ip.diff(p.code.cursor(0));
         proof { assert(*self =~= m0.with(r)); }
     }
@@ -139,10 +177,26 @@ impl Machine {
         self.lim = lim;
         self.base = self.len - lim;
         self.ftop = self.mem.index(r.fr);
-        self.rtop = self.ftop;
+        self.rtop = self.ftop + self.fw;
         self.bci = r.ip.diff(p.code.cursor(0));
         proof { assert(*self =~= m0.with(r)); }
     }
+}
+
+/// The gate of the register loop's fast paths: without finally records a
+/// call's fast path needs room for a frame record, the maximal height and
+/// the reserve, and a return's the caller's frame record (a frame top above
+/// the bottom frame's); with finally records (only during an unwinding's
+/// finally code) both fail, so the calls and returns that move the records
+/// run on the machine (`step::bridge`). Instructions inside the top frame
+/// do not look at the records.
+pub open spec fn gate_ok(p: &Program, m: Machine) -> bool {
+    &&& m.bot.sid() == m.mem.sid()
+    &&& if m.fw == 0 {
+            m.need == FRAME_WORDS + p.max_height + STACK_RESERVE && m.bot@ == FRAME_WORDS
+        } else {
+            m.need == usize::MAX && m.bot@ == m.len
+        }
 }
 
 /// The instruction pointer is a cursor into the program's bytecodes.
@@ -178,15 +232,16 @@ pub fn set_regs(r: &mut Regs, r2: Regs)
 /// handler pushes up to that many words without a check.
 pub open spec fn rpre(p: &Program, m: Machine, r: Regs) -> bool {
     &&& m_ok(p, m, r)
-    &&& r.sp@ >= r.fr@ + STACK_RESERVE
+    &&& r.sp@ >= r.fr@ + m.fw + STACK_RESERVE
 }
 
 /// The registers are cursors of the machine, which refines its ghost state
-/// with them.
+/// with them; the gate is set.
 pub open spec fn m_ok(p: &Program, m: Machine, r: Regs) -> bool {
     &&& m.rok(r)
     &&& m.with(r).refines(p)
     &&& ipok(p, r)
+    &&& gate_ok(p, m)
 }
 
 /// A step inside the top frame: the stack length, the frames and the
@@ -203,6 +258,7 @@ pub open spec fn rnext(p: &Program, m1: Machine, r1: Regs, o: Outcome2) -> bool 
     &&& m1.rok(r1)
     &&& ipok(p, r1)
     &&& m1.with(r1).refines(p)
+    &&& gate_ok(p, m1)
     &&& o == Outcome2::Next(m1.g@)
 }
 
@@ -224,7 +280,7 @@ pub fn at(m: &Machine, r: &Regs, n: usize) -> (w: usize)
 pub fn push_next(m: &mut Machine, r: &mut Regs, p: &Program, w: usize, len: usize, Ghost(v): Ghost<Value>) -> (c: Ctl)
     requires
         m_ok(p, *old(m), *old(r)),
-        old(r).sp@ > old(r).fr@,
+        old(r).sp@ > old(r).fr@ + old(m).fw,
         w == enc(old(m).addr(), v),
         encodable(old(m).addr(), v),
         old(r).ip@ + len < 0x1000_0000,
@@ -431,22 +487,29 @@ pub fn op_pop(m: &mut Machine, r: &mut Regs, p: &Program, n: usize, len: usize) 
     Ctl::Next
 }
 
-/// LOAD_SMIS_0 n: pushes n zeros.
+/// LOAD_SMIS_0 n: pushes n zeros. No room check: the next state is well
+/// formed, so the verifier bounds the frame's height (`room::lemma_room_next`).
 #[inline(always)]
 pub fn op_load_smis_0(m: &mut Machine, r: &mut Regs, p: &Program, n: usize) -> (c: Ctl)
     requires
         rpre(p, *old(m), *old(r)),
+        old(m).with(*old(r)).inv(p),
+        crate::room::room_ok(p, old(m).with(*old(r))),
+        toit_spec::v2::sound::step_ok(p.ap@, p.cert@, old(m).g@),
+        sp::step(p.ap@, old(m).g@) == sp::op_load_smis_0(old(m).g@, n as int),
         old(r).ip@ + 2 < 0x1000_0000,
     ensures
-        c == Ctl::Next || is_limit(c),
-        c != Ctl::Next ==> *final(m) == *old(m) && *final(r) == *old(r),
-        c == Ctl::Next ==> rsame(*old(m), *final(m))
-            && rnext(p, *final(m), *final(r), sp::op_load_smis_0(old(m).g@, n as int)),
+        c == Ctl::Next,
+        rsame(*old(m), *final(m)),
+        rnext(p, *final(m), *final(r), sp::op_load_smis_0(old(m).g@, n as int)),
 {
     let ghost m0 = m.with(*r);
     let ghost g0 = m.g@;
-    if r.sp.diff(r.fr) < n {
-        return Ctl::Stuck(stuck::LIMIT);
+    proof {
+        let g1 = State2 { stack: g0.stack + Seq::new(n as nat, |i: int| Value::Smi(0)), ..g0 };
+        assert(sp::op_load_smis_0(g0, n as int) == sp::next(g1, 2));
+        crate::room::lemma_room_next(p, m0, sp::goto(g1, g0.bci + 2));
+        m0.lemma_frame(p);
     }
     proof { lemma_smi_word_nat(0); }
     let mut i: usize = 0;

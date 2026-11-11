@@ -88,6 +88,29 @@ pub proof fn lemma_room_top(p: &Program, m: Machine)
     assert(g.frames[n] == g.frames.last());
 }
 
+/// With room, a well-formed state `g1` with the machine's frames and
+/// finally records (the next state of a step inside the top frame) leaves
+/// the reserve above the records: the verifier bounds its top frame's
+/// height as well.
+pub proof fn lemma_room_next(p: &Program, m: Machine, g1: State2)
+    requires
+        m.inv(p), room_ok(p, m),
+        wf(p.ap@, p.cert@, g1),
+        g1.frames == m.g@.frames, g1.fins == m.g@.fins,
+    ensures m.len - g1.stack.len() >= m.rtop + STACK_RESERVE,
+{
+    let ap = p.ap@;
+    lemma_instr(ap, p.cert@, p.trusted@, g1);
+    m.lemma_frame(p);
+    let n = g1.frames.len() - 1;
+    assert(frame_room(p, m, n));
+    let mi = cur_m(g1);
+    let k = cur_k(ap, p.cert@, g1);
+    assert(instr_ok(ap, p.cert@, mi, toit_spec::v2::sound_instr::cur_off(ap, g1), k, p.trusted@));
+    assert(ap.methods[mi] == method_info(p.methods@[mi], p.max_height));
+    assert(g1.frames[n] == g1.frames.last());
+}
+
 /// Room depends only on the length, the frames and the number of finally
 /// records: a step that keeps those (and does not shorten the stack)
 /// keeps it.
@@ -117,11 +140,11 @@ pub fn regain(m: &mut Machine, env: &Env, len0: usize, Ghost(m0): Ghost<Machine>
         room_ok(&env.p, m0),
         old(m).g@.frames == m0.g@.frames,
         m0.refines(&env.p),
-        m0.rtop == m0.ftop,
         old(m).g@.fins.len() <= m0.g@.fins.len(),
     ensures
-        res matches Some(r) ==> final(m).rok(r) && crate::regs::ipok(&env.p, r) && final(m).with(r) == *final(m)
-            && final(m).inv(&env.p) && room_ok(&env.p, *final(m)) && final(m).g == old(m).g,
+        res matches Some(r) ==> final(m).rok(r) && crate::regs::ipok(&env.p, r)
+            && crate::regs::gate_ok(&env.p, *final(m))
+            && final(m).with(r).inv(&env.p) && room_ok(&env.p, final(m).with(r)) && final(m).g == old(m).g,
 {
     if m.len < len0 {
         let c = ensure_room_all(m, env);
@@ -131,8 +154,7 @@ pub fn regain(m: &mut Machine, env: &Env, len0: usize, Ghost(m0): Ghost<Machine>
     } else {
         proof { lemma_room_same(&env.p, m0, *m); }
     }
-    proof { assert(m0.g@.fins.len() == 0); assert(m.g@.fins.len() == 0); }
-    Some(m.regs(&env.p))
+    Some(m.enter(&env.p))
 }
 
 /// Re-establishes `room_ok` (cold: after a GC that shrank the stack, a task

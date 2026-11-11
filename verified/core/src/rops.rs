@@ -385,7 +385,7 @@ pub fn arith_double(m: &mut Machine, r: Regs, env: &Env, bci: usize, opcode: u8,
         let ghost m1 = *m;
         let c = crate::calls::fallback_src(m, env, bci, opcode);
         proof { assert(m1.g@ == w0.g@); }
-        match crate::step::settle(m, env, c, Ghost(w0)) {
+        match crate::step::resume(m, env, c, Ghost(w0)) {
             (Some(r2), Ctl::Next) => { return (r2, Ctl::Next); },
             (_, c2) => { return (r, c2); },
         }

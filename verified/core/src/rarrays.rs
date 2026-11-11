@@ -83,6 +83,7 @@ pub open spec fn heap_only(m0: Machine, m1: Machine) -> bool {
     &&& m1.globals == m0.globals
     &&& m1.len == m0.len && m1.top == m0.top && m1.ftop == m0.ftop && m1.rtop == m0.rtop
     &&& m1.bci == m0.bci && m1.base == m0.base && m1.lim == m0.lim && m1.method == m0.method
+    &&& m1.fw == m0.fw && m1.need == m0.need && m1.bot == m0.bot
     &&& m1.heap.addrs() == m0.heap.addrs()
     &&& m1.g@ == (State2 { heap: m1.g@.heap, ..m0.g@ })
 }
@@ -329,14 +330,14 @@ pub fn put0_next_r(m: &mut Machine, r: &mut Regs, p: &Program, w: usize, Ghost(x
 /// the room is re-established (`ensure_room_all`) and the registers
 /// derived; otherwise the machine is the result.
 #[inline(never)]
-pub fn settle(m: &mut Machine, r: Regs, env: &Env, c: Ctl, Ghost(w0): Ghost<Machine>) -> (res: (Regs, Ctl))
+pub fn resume_r(m: &mut Machine, r: Regs, env: &Env, c: Ctl, Ghost(w0): Ghost<Machine>) -> (res: (Regs, Ctl))
     requires step_post(&env.p, w0, *old(m), c),
     ensures
         res.1 == Ctl::Next ==> final(m).rok(res.0) && crate::regs::ipok(&env.p, res.0) && steps_post(&env.p, w0, final(m).with(res.0), res.1)
-            && room_ok(&env.p, final(m).with(res.0)),
+            && room_ok(&env.p, final(m).with(res.0)) && crate::regs::gate_ok(&env.p, *final(m)),
         res.1 != Ctl::Next ==> steps_post(&env.p, w0, *final(m), res.1),
 {
-    match crate::step::settle(m, env, c, Ghost(w0)) {
+    match crate::step::resume(m, env, c, Ghost(w0)) {
         (Some(r2), Ctl::Next) => (r2, Ctl::Next),
         (_, c2) => (r, c2),
     }
@@ -611,12 +612,12 @@ fn alloc_oom(m: &mut Machine, r: Regs, env: &Env, Ghost(g): Ghost<State2>, Ghost
         source(env.p.ap@, g, sp::unwind(env.p.ap@, g, Unwind::Throw(toit_spec::v2::prim::out_of_memory(env.p.ap@)))),
     ensures
         res.1 == Ctl::Next ==> final(m).rok(res.0) && crate::regs::ipok(&env.p, res.0) && steps_post(&env.p, w0, final(m).with(res.0), res.1)
-            && room_ok(&env.p, final(m).with(res.0)),
+            && room_ok(&env.p, final(m).with(res.0)) && crate::regs::gate_ok(&env.p, *final(m)),
         res.1 != Ctl::Next ==> steps_post(&env.p, w0, *final(m), res.1),
 {
     reload(m, &env.p, Ghost(g));
     let c = crate::unwind::throw_oom(m, env);
-    settle(m, r, env, c, Ghost(w0))
+    resume_r(m, r, env, c, Ghost(w0))
 }
 
 // ---------------------------------------------------------------------------
@@ -630,7 +631,7 @@ fn alloc_oom(m: &mut Machine, r: Regs, env: &Env, Ghost(g): Ghost<State2>, Ghost
 pub fn ret_r(m: &mut Machine, r: &mut Regs, p: &Program, w: usize, Ghost(v): Ghost<Value>) -> (b: bool)
     requires
         m_ok(p, *old(m), *old(r)),
-        old(r).sp@ >= old(r).fr@ + STACK_RESERVE,
+        old(r).sp@ >= old(r).fr@ + old(m).fw + STACK_RESERVE,
         room_ok(p, old(m).with(*old(r))),
         shape_ok(p, old(m).g@),
         w == enc(old(m).addr(), v),
@@ -638,7 +639,7 @@ pub fn ret_r(m: &mut Machine, r: &mut Regs, p: &Program, w: usize, Ghost(v): Gho
         !(sp::return_from(p.ap@, old(m).g@, v) is Stuck),
     ensures
         !b ==> *final(m) == *old(m) && *final(r) == *old(r),
-        b ==> final(m).rok(*final(r)) && ipok(p, *final(r)) && final(m).with(*final(r)).refines(p)
+        b ==> final(m).rok(*final(r)) && ipok(p, *final(r)) && final(m).with(*final(r)).refines(p) && gate_ok(p, *final(m))
             && sp::return_from(p.ap@, old(m).g@, v) == Outcome2::Next(final(m).g@)
             && room_ok(p, final(m).with(*final(r))),
 {
@@ -649,8 +650,8 @@ pub fn ret_r(m: &mut Machine, r: &mut Regs, p: &Program, w: usize, Ghost(v): Gho
         m0.lemma_frame(p);
         lemma_no_handler(g0);
     }
-    if r.fr.diff(m.mem.slot(0)) <= FRAME_WORDS {
-        // The task's bottom frame returns.
+    if !m.bot.lt(r.fr, &m.mem) {
+        // The task's bottom frame returns, or there are finally records.
         return false;
     }
     let ghost n = g0.frames.len() as int;
@@ -776,7 +777,7 @@ pub fn op_primitive(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode
 fn rust_primitive_r(m: &mut Machine, r: &mut Regs, env: &Env, index: u16, arity: usize) -> (res: Option<Ctl>)
     requires
         rinv(&env.p, *old(m), *old(r)),
-        old(r).sp@ >= old(r).fr@ + STACK_RESERVE,
+        old(r).sp@ >= old(r).fr@ + old(m).fw + STACK_RESERVE,
         step_ok(env.p.ap@, env.p.cert@, old(m).g@),
         cur_op(env.p.ap@, old(m).g@) == 89,
         sp::step(env.p.ap@, old(m).g@) == Outcome2::Primitive(old(m).g@, 0, index),
@@ -824,7 +825,7 @@ fn rust_primitive_r(m: &mut Machine, r: &mut Regs, env: &Env, index: u16, arity:
             m.sync_b(*r, p);
             let c = m.do_return(env, w, Ghost(v@));
             proof { lemma_outcome_matches(p, w0, *m, c, o); }
-            let (r2, c2) = settle(m, *r, env, c, Ghost(w0));
+            let (r2, c2) = resume_r(m, *r, env, c, Ghost(w0));
             *r = r2;
             Some(c2)
         },

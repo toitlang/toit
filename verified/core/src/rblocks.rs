@@ -317,6 +317,7 @@ pub fn replace_r(m: &mut Machine, r: &mut Regs, p: &Program, t: usize, info: V2M
     Ghost(w0): Ghost<Machine>, Ghost(args): Ghost<Seq<Value>>)
     requires
         old(m).rok(*old(r)),
+        gate_ok(p, *old(m)),
         old(r).fp@ >= n,
         replace_ready(p, w0, old(m).with(*old(r)), (old(r).fp@ - n) as usize, args),
         w0.g@.fins.len() == 0,

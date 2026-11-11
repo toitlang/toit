@@ -1379,9 +1379,11 @@ fn compare_num(a: Num, b: Num) -> u8 {
 pub fn run(p: Program, rt: Runtime, globals: Globals, heap: Heap, pre: Preemption, core_arities: Table<u8>,
            accepted: Option<crate::ffi::Accepted>) -> (usize, i64) {
     let mem = rt.stack();
+    let bot = mem.slot(0);
     let mut m = Machine {
         mem, globals, heap,
         len: 0, top: 0, ftop: 0, rtop: 0, bci: 0, base: 0, lim: 0, method: 0,
+        fw: 0, need: usize::MAX, bot,
         g: Ghost::assume_new(),
     };
     let env = Env { p, rt, pre, core_arities };
