@@ -524,6 +524,14 @@ pub open spec fn completions_ok(p: Program2, c: Cert, s: State2, module: u8, ind
             outcome_ok(p, c, crate::v2::prim::task_step(p, s, index)))
 }
 
+/// In the unchecked mode of trusted programs (`spec::unchecked_fail`) the
+/// step from `s` does not reach a failed unchecked field access: the
+/// assumption that lets a trusted program skip those checks. Always true
+/// without the mode (untrusted programs: `accepts`).
+pub open spec fn unchecked_ok(p: Program2, s: State2) -> bool {
+    !p.unchecked || step(p, s) != Outcome2::Stuck(Stuck::FieldRange)
+}
+
 /// The opcode at the state's bci.
 pub open spec fn cur_op(p: Program2, s: State2) -> u8 {
     p.bytecodes[s.bci as int]

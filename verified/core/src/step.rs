@@ -98,12 +98,34 @@ pub proof fn lemma_source_resource(ap: Program2, g: State2, o1: Outcome2)
     }
 }
 
+/// TRUSTED (verified/core/EXPERIMENT-trusted.md, TRUSTED.md section 6,
+/// "Unchecked field accesses"): in the unchecked mode of a trusted program
+/// (`Program2::unchecked`, which `accepts` allows only for trusted
+/// programs) no step reaches a failed unchecked field access: we trust the
+/// compiler for first-party code to emit field accesses only on instances
+/// that have the field (and stores only outside the program heap). A wrong
+/// program can crash the VM; an untrusted program never runs in this mode.
+#[verifier::external_body]
+pub proof fn trusted_field_accesses(ap: Program2, g: State2)
+    requires ap.unchecked,
+    ensures toit_spec::v2::sound::unchecked_ok(ap, g),
+{
+}
+
+/// `unchecked_ok` of any state: trivial without the unchecked mode.
+pub proof fn lemma_unchecked_ok(p: &Program, g: State2)
+    ensures toit_spec::v2::sound::unchecked_ok(p.ap@, g),
+{
+    if p.ap@.unchecked { trusted_field_accesses(p.ap@, g); }
+}
+
 /// A source that is not a raise is an outcome itself.
 pub proof fn lemma_source_outcome(p: &Program, m: Machine, o: Outcome2)
     requires m.inv(p), source(p.ap@, m.g@, o), !(o is Raise),
     ensures outcome(p.ap@, m.g@, o), toit_spec::v2::sound::outcome_ok(p.ap@, p.cert@, o), !(o is Stuck),
 {
     assert(completes(p.ap@, o, o));
+    lemma_unchecked_ok(p, m.g@);
     lemma_small(p, &m);
     toit_spec::v2::theorem::lemma_outcome_ok(p.ap@, p.cert@, p.trusted@, m.g@, o);
 }
@@ -339,6 +361,7 @@ pub proof fn lemma_outcome_matches(p: &Program, m0: Machine, m1: Machine, r: Ctl
         matches(p, o, m1, r),
     ensures step_post(p, m0, m1, r),
 {
+    lemma_unchecked_ok(p, m0.g@);
     lemma_small(p, &m0);
     toit_spec::v2::theorem::lemma_outcome_ok(p.ap@, p.cert@, p.trusted@, m0.g@, o);
     match r {
@@ -502,6 +525,7 @@ pub fn step_machine(m: &mut Machine, env: &Env) -> (r: Ctl)
     let ghost g = m.g@;
     proof {
         lemma_small(p, m);
+        lemma_unchecked_ok(p, g);
         toit_spec::v2::sound_step::lemma_step(ap, p.cert@, p.trusted@, g);
         lemma_instr(ap, p.cert@, p.trusted@, g);
         reveal_with_fuel(opcode_length2, 1);
@@ -672,9 +696,6 @@ pub open spec fn rhandler_pre(p: &Program, m: Machine, r: Regs, bci: usize, opco
 pub enum Slow {
     /// The machine's handler of the instruction (`machine_op`).
     Op,
-    /// The C++ primitive `index` of `module` for a method of arity `arity`
-    /// (or the raise of a missing one): PRIMITIVE without a Rust port.
-    Prim(u8, u16, usize),
     /// Failure `k` without a message.
     Raise(usize),
     /// INVALID_PROGRAM with the bci.
@@ -700,8 +721,6 @@ pub open spec fn slow_pre(p: &Program, m: Machine, r: Regs, k: Slow, w: usize, v
     &&& rinv(p, m, r)
     &&& match k {
         Slow::Op => machine_op(ap.bytecodes[r.ip@]),
-        Slow::Prim(module, index, arity) =>
-            sp::step(ap, g) == Outcome2::Primitive(g, module, index) && arity == sp::frame_height(g),
         Slow::Raise(kk) => kk < 5 && sp::step(ap, g) == sp::raise(ap, g, kk as int),
         Slow::Invalid => sp::step(ap, g) == sp::raise(ap, g, sp::INVALID_PROGRAM),
         Slow::As(len) => sp::step(ap, g) == sp::raise(ap, g, sp::AS_CHECK_FAILED)
@@ -732,13 +751,13 @@ pub fn slow(m: &mut Machine, r: Regs, env: &Env, k: Slow, w: usize, Ghost(v): Gh
     proof {
         assert(*m == w0);
         lemma_small(p, m);
+        lemma_unchecked_ok(p, g);
         toit_spec::v2::sound_step::lemma_step(ap, p.cert@, p.trusted@, g);
         lemma_source_step(ap, g);
         crate::regs::lemma_bci(p, *m);
     }
     let c = match k {
         Slow::Op => step_machine(m, env),
-        Slow::Prim(module, index, arity) => crate::primitive::op_primitive_cxx(m, env, module, index, arity),
         Slow::Raise(kk) => m.v_raise_none(env, kk),
         Slow::Invalid => m.v_raise_invalid(env),
         Slow::As(len) => m.v_raise_as(env, w, Ghost(v), len),
@@ -825,6 +844,7 @@ pub fn step_r(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
     let ghost w0 = m.with(*r);
     proof {
         lemma_small(p, &w0);
+        lemma_unchecked_ok(p, g);
         toit_spec::v2::sound_step::lemma_step(ap, p.cert@, p.trusted@, g);
         lemma_instr(ap, p.cert@, p.trusted@, g);
         reveal_with_fuel(opcode_length2, 1);

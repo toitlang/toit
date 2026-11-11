@@ -48,6 +48,10 @@ pub struct Program2 {
     /// `literals[0..2]` are true and false, `literals[2..7]` the values of
     /// the exceptions the machine raises (see `RaiseKind`).
     pub literals: Seq<Value>,
+    /// The unchecked mode of trusted programs (`spec::unchecked_fail`): field
+    /// accesses are not checked at run time. Only trusted programs may use
+    /// it (`verifier::accepts`); the executable views have it off.
+    pub unchecked: bool,
 }
 
 pub struct State2 {
@@ -111,6 +115,7 @@ pub open spec fn pview2(p: &ExecProgram) -> Program2 {
         builtin: p.builtin@,
         roots: p.roots@,
         literals: p.literals@,
+        unchecked: false,
     }
 }
 

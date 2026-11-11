@@ -59,6 +59,9 @@ pub struct Program {
     pub ro_size: usize,
     pub max_height: usize,
     pub preempt_a_lot: bool,
+    /// The unchecked mode of a trusted program (`Program2::unchecked`): field
+    /// accesses are not checked (verified/core/EXPERIMENT-trusted.md).
+    pub unchecked: bool,
     pub null: usize,
     pub true_: usize,
     pub false_: usize,
@@ -542,6 +545,12 @@ impl Machine {
             final(self).top == old(self).top,
             final(self).bci == old(self).bci,
             final(self).same(old(self)),
+            final(self).mem.sid() == old(self).mem.sid(),
+            final(self).globals == old(self).globals,
+            final(self).heap == old(self).heap,
+            final(self).fw == old(self).fw,
+            final(self).need == old(self).need,
+            final(self).bot == old(self).bot,
     {
         let (top, rtop, ftop, bci) = (self.top, self.rtop, self.ftop, self.bci);
         self.mem.set_header(STACK_TOP_WORD, top);

@@ -808,11 +808,23 @@ pub open spec fn op_unwind(p: Program2, s: State2) -> Outcome2 {
 // ---------------------------------------------------------------------------
 // Fields.
 
+/// A field access whose run-time check failed (a receiver other than `this`
+/// that is not an instance with the field, a machine-owned task field, a
+/// store into the program heap): INVALID_PROGRAM. In the unchecked mode of
+/// trusted programs (`Program2::unchecked`, verified/core/EXPERIMENT-trusted.md)
+/// the machine does not check: the access is assumed to succeed, and its
+/// failure is a stuck state (`Stuck::FieldRange`, used for nothing else in
+/// format 2). The verifier accepts the unchecked mode only for trusted
+/// programs (`accepts`); the soundness theorem is stated without it.
+pub open spec fn unchecked_fail(p: Program2, s: State2) -> Outcome2 {
+    if p.unchecked { stuck(Stuck::FieldRange) } else { raise(p, s, INVALID_PROGRAM) }
+}
+
 pub open spec fn op_load_field(p: Program2, s: State2, f: int, len: int) -> Outcome2 {
     if !has_slot(s, 0) {
         stuck(Stuck::StackRange)
     } else if !field_readable(p, s, at(s, 0), f) {
-        raise(p, s, INVALID_PROGRAM)
+        unchecked_fail(p, s)
     } else {
         next(put(s, 0, field(s, at(s, 0), f)), len)
     }
@@ -827,7 +839,7 @@ pub open spec fn op_load_field_local(p: Program2, s: State2, enc: int, pop: bool
     if !has_slot(s, slot) {
         stuck(Stuck::StackRange)
     } else if !field_readable(p, s, at(s, slot), f) {
-        raise(p, s, INVALID_PROGRAM)
+        unchecked_fail(p, s)
     } else {
         let v = field(s, at(s, slot), f);
         if pop { next(put(s, 0, v), 2) } else { next(push(s, v), 2) }
@@ -841,7 +853,7 @@ pub open spec fn op_store_field(p: Program2, s: State2, f: int, len: int, keep: 
         let v = at(s, 0);
         let inst = at(s, 1);
         if !field_writable(p, s, inst, f) {
-            raise(p, s, INVALID_PROGRAM)
+            unchecked_fail(p, s)
         } else {
             let s1 = set_field2(drop(s, 2), inst, f, v);
             if keep { next(push(s1, v), len) } else { next(s1, len) }
@@ -880,7 +892,7 @@ pub open spec fn op_store_field_this(p: Program2, s: State2, f: int) -> Outcome2
     } else {
         let this = s.stack[top(s).base as int];
         if is_ro(s, this) {
-            raise(p, s, INVALID_PROGRAM)
+            unchecked_fail(p, s)
         } else {
             next(set_field2(s, this, f, at(s, 0)), 2)
         }
@@ -1164,6 +1176,10 @@ pub open spec fn op_invoke_virtual_get(p: Program2, s: State2, sel: int) -> Outc
                     stuck(Stuck::BadArity)
                 } else if info(p, t).kind == KIND_FIELD_ACCESSOR && field_readable(p, s, recv, f) {
                     next(put(s, 0, field(s, recv, f)), 3)
+                } else if info(p, t).kind == KIND_FIELD_ACCESSOR && p.unchecked {
+                    // The unchecked mode (`unchecked_fail`): an accessor's field
+                    // is assumed to exist.
+                    stuck(Stuck::FieldRange)
                 } else {
                     call(p, s, t, s.bci + 3)
                 }
@@ -1187,6 +1203,8 @@ pub open spec fn op_invoke_virtual_set(p: Program2, s: State2, sel: int) -> Outc
                     stuck(Stuck::BadArity)
                 } else if info(p, t).kind == KIND_FIELD_ACCESSOR && field_writable(p, s, recv, f) {
                     next(push(set_field2(drop(s, 2), recv, f, v), v), 3)
+                } else if info(p, t).kind == KIND_FIELD_ACCESSOR && p.unchecked {
+                    stuck(Stuck::FieldRange)
                 } else {
                     call(p, s, t, s.bci + 3)
                 }

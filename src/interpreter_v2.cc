@@ -89,6 +89,15 @@ V2MethodTable::~V2MethodTable() {
 // -Xverify/TOIT_VERIFY: the core checks every stuck state of the
 // specification at run time, so an unverified program cannot make it
 // access memory outside the tables.
+bool V2MethodTable::checked_fields_forced() {
+  static int forced = -1;
+  if (forced < 0) {
+    const char* env = getenv("TOIT_V2_CHECKED_FIELDS");
+    forced = (env != null && env[0] != '0' && env[0] != '\0') ? 1 : 0;
+  }
+  return forced == 1;
+}
+
 bool V2MethodTable::trusted_on_verified_loop() {
   if (!checked_loop_linked()) return true;
   static int enabled = -1;
@@ -346,6 +355,11 @@ Interpreter::Result Interpreter::run_v2() {
   // resolves it to the VM's own primitive (never a denying stub).
   context.core_arities = process_->policy()->core_arities();
   context.core_arities_length = context.core_arities == null ? 0 : process_->policy()->core_arities_length();
+  context.epoch = process_->object_heap()->v2_epoch_address();
+  // Trusted programs skip the field-access checks (the compiler is trusted);
+  // TOIT_V2_CHECKED_FIELDS=1 keeps them (comparisons). Never for an
+  // untrusted process.
+  context.unchecked = (!untrusted && !V2MethodTable::checked_fields_forced()) ? 1 : 0;
 
   v2_validate(process_, "run entry");
   toit_v2_run(&context);
@@ -581,17 +595,6 @@ uword toit_v2_grow_stack(void* raw_process, uword needed) {
   return TOIT_V2_OK;
 }
 
-uword toit_v2_lookup_primitive(void* raw_process, uword module, uword index,
-                               const void** entry, uword* arity) {
-  Process* process = v2_process(raw_process);
-  const PrimitiveEntry* primitive = process->policy()->at(module, index);
-  if (Flags::primitives) printf("[invoking primitive %d::%d]\n", static_cast<int>(module), static_cast<int>(index));
-  if (primitive == null) return TOIT_V2_PRIMITIVE_MISSING;
-  *entry = primitive;
-  *arity = primitive->arity;
-  return TOIT_V2_PRIMITIVE_FOUND;
-}
-
 uword toit_v2_try_allocate_large_integer(void* raw_process, int64 value) {
   return reinterpret_cast<uword>(v2_process(raw_process)->object_heap()->allocate_large_integer(value));
 }
@@ -617,16 +620,13 @@ uword toit_v2_try_allocate_byte_array(void* raw_process, uword length) {
   return reinterpret_cast<uword>(v2_process(raw_process)->allocate_byte_array(length));
 }
 
-uword toit_v2_call_primitive(void* raw_process, const void* raw_entry, uword arity,
-                             uword first_argument, uword* result_out) {
-  Process* process = v2_process(raw_process);
+// The GC-and-retry protocol of a C++ primitive whose first call returned the
+// error [result] (the C++ interpreter's loop after its first call). Out of
+// line: the common call returns a value or a failure without collecting.
+static __attribute__((noinline)) uword v2_primitive_failed(
+    Process* process, Primitive::Entry* entry, uword first_argument, Object* result, uword* result_out) {
   Program* program = process->program();
-  const PrimitiveEntry* primitive = static_cast<const PrimitiveEntry*>(raw_entry);
-  Primitive::Entry* entry = reinterpret_cast<Primitive::Entry*>(primitive->function);
-  GcMetadata::insert_into_remembered_set(process->task()->stack());
-  v2_validate(process, "primitive entry");
-  Stack* stack = process->task()->stack();
-  Object* result = entry(process, stack->v2_slot_address(first_argument));
+  v2_validate(process, "primitive failure");
   for (int attempts = 1; true; attempts++) {
     if (!Primitive::is_error(result)) {
       process->object_heap()->leave_primitive();
@@ -648,13 +648,34 @@ uword toit_v2_call_primitive(void* raw_process, const void* raw_entry, uword ari
       *result_out = reinterpret_cast<uword>(result);
       return TOIT_V2_PRIMITIVE_THROW;
     }
+    GcMetadata::insert_into_remembered_set(process->task()->stack());
     v2_gc(process, malloc_failed, attempts, force_cross_process, "primitive");
-    stack = process->task()->stack();
+    Stack* stack = process->task()->stack();
     result = entry(process, stack->v2_slot_address(first_argument));
   }
   process->object_heap()->leave_primitive();
   *result_out = reinterpret_cast<uword>(result);
   return TOIT_V2_PRIMITIVE_FAILURE;
+}
+
+uword toit_v2_primitive(void* raw_process, uword module, uword index, uword arity,
+                        uword first_argument, uword* result_out) {
+  Process* process = v2_process(raw_process);
+  const PrimitiveEntry* primitive = process->policy()->at(module, index);
+  if (Flags::primitives) printf("[invoking primitive %d::%d]\n", static_cast<int>(module), static_cast<int>(index));
+  if (primitive == null || static_cast<uword>(primitive->arity) != arity) return TOIT_V2_PRIMITIVE_ABSENT;
+  Primitive::Entry* entry = reinterpret_cast<Primitive::Entry*>(primitive->function);
+  // The core stores into the stack without the write barrier: a GC during
+  // the primitive must find the stack in the remembered set.
+  Stack* stack = process->task()->stack();
+  GcMetadata::insert_into_remembered_set(stack);
+  Object* result = entry(process, stack->v2_slot_address(first_argument));
+  if (Primitive::is_error(result)) {
+    return v2_primitive_failed(process, entry, first_argument, result, result_out);
+  }
+  process->object_heap()->leave_primitive();
+  *result_out = reinterpret_cast<uword>(result);
+  return TOIT_V2_PRIMITIVE_SUCCESS;
 }
 
 void toit_v2_report(void* raw_process, uword kind, uword bci, uword detail) {

@@ -193,7 +193,9 @@ pub fn op_load_field(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcod
         w0.lemma_at(p, 0);
     }
     let w = at(m, r, 0);
-    if !m.field_access_ok(p, w, Ghost(sp::at(g, 0)), f, false) {
+    // Trusted programs in the unchecked mode skip the check: the step is not
+    // stuck (`step_ok`), so the access is valid (`spec::unchecked_fail`).
+    if !p.unchecked && !m.field_access_ok(p, w, Ghost(sp::at(g, 0)), f, false) {
         proof { assert(sp::step(ap, g) == sp::raise(ap, g, sp::INVALID_PROGRAM)); }
         return slow0(m, r, env, Slow::Invalid);
     }
@@ -230,7 +232,7 @@ pub fn op_load_field_local(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize,
         w0.lemma_at(p, slot as int);
     }
     let w = at(m, r, slot);
-    if !m.field_access_ok(p, w, Ghost(sp::at(g, slot as int)), f, false) {
+    if !p.unchecked && !m.field_access_ok(p, w, Ghost(sp::at(g, slot as int)), f, false) {
         proof { assert(sp::step(ap, g) == sp::raise(ap, g, sp::INVALID_PROGRAM)); }
         return slow0(m, r, env, Slow::Invalid);
     }
@@ -273,7 +275,7 @@ pub fn op_store_field(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opco
     let wo = at(m, r, 1);
     let ghost val = sp::at(g, 0);
     let ghost o = sp::at(g, 1);
-    if !m.field_access_ok(p, wo, Ghost(o), f, true) {
+    if !p.unchecked && !m.field_access_ok(p, wo, Ghost(o), f, true) {
         proof { assert(sp::step(ap, g) == sp::raise(ap, g, sp::INVALID_PROGRAM)); }
         return slow0(m, r, env, Slow::Invalid);
     }
@@ -367,7 +369,7 @@ pub fn op_store_field_this(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize,
     let ghost o = g.stack[w0.base as int];
     let ghost id = o->Obj_0 as int;
     let this = r.fp.offset(-1).read(0, &m.mem);
-    if m.is_ro_word(p, this, Ghost(id)) {
+    if !p.unchecked && m.is_ro_word(p, this, Ghost(id)) {
         proof { assert(sp::step(ap, g) == sp::raise(ap, g, sp::INVALID_PROGRAM)); }
         return slow0(m, r, env, Slow::Invalid);
     }
@@ -411,7 +413,7 @@ pub fn op_invoke_virtual_get(m: &mut Machine, r: &mut Regs, env: &Env, bci: usiz
             let info = p.methods.at(t);
             proof { assert(ap.methods[t as int] == method_info(p.methods@[t as int], p.max_height)); }
             let f = info.aux as usize;
-            if info.kind == KIND_FIELD_ACCESSOR && m.field_access_ok(p, w, Ghost(recv), f, false) {
+            if info.kind == KIND_FIELD_ACCESSOR && (p.unchecked || m.field_access_ok(p, w, Ghost(recv), f, false)) {
                 let ghost id = recv->Obj_0 as int;
                 proof { lemma_field_val(p, &w0, recv, f as int); }
                 let v = m.heap.field(w, f, Ghost(id));
@@ -467,7 +469,7 @@ pub fn op_invoke_virtual_set(m: &mut Machine, r: &mut Regs, env: &Env, bci: usiz
             let info = p.methods.at(t);
             proof { assert(ap.methods[t as int] == method_info(p.methods@[t as int], p.max_height)); }
             let f = info.aux as usize;
-            if info.kind == KIND_FIELD_ACCESSOR && m.field_access_ok(p, w, Ghost(recv), f, true) {
+            if info.kind == KIND_FIELD_ACCESSOR && (p.unchecked || m.field_access_ok(p, w, Ghost(recv), f, true)) {
                 set_field_r(m, r, p, w, Ghost(recv), f, v, Ghost(val));
                 let ghost m1 = m.with(*r);
                 let ghost g1 = m.g@;

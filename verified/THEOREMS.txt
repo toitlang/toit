@@ -139,6 +139,7 @@ pub proof fn theorem_soundness_split(p: Program2, g: GCert, ms: Seq<Maps>, trust
         split_ok(p, g, ms, trusted),
         loaded_ok(p, with_maps(g, ms), heap0, globals0),
         reachable(p, heap0, globals0, s),
+        !p.unchecked,
     ensures
         !(step(p, s) is Stuck),
         forall|s1: State2, module: u8, index: u16, o: Outcome2|

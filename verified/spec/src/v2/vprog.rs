@@ -94,6 +94,7 @@ pub open spec fn vview(p: &VProgram) -> Program2 {
         builtin: p.builtin@,
         roots: p.roots@,
         literals: p.literals@,
+        unchecked: false,
     }
 }
 

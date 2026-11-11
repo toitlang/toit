@@ -84,6 +84,8 @@ pub struct Context {
     pub accepted: usize,
     pub core_arities: *const u8,
     pub core_arities_length: usize,
+    pub epoch: *const usize,
+    pub unchecked: usize,
     pub result_state: usize,
     pub result_value: i64,
 }
@@ -96,15 +98,13 @@ extern "C" {
                                   words: *const usize, count: usize) -> usize;
     fn toit_v2_allocate_array(process: *mut c_void, length: usize, filler: usize) -> usize;
     fn toit_v2_grow_stack(process: *mut c_void, needed: usize) -> usize;
-    fn toit_v2_lookup_primitive(process: *mut c_void, module: usize, index: usize,
-                                entry: *mut *const c_void, arity: *mut usize) -> usize;
     fn toit_v2_try_allocate_large_integer(process: *mut c_void, value: i64) -> usize;
     fn toit_v2_try_allocate_double(process: *mut c_void, bits: u64) -> usize;
     fn toit_v2_try_allocate_array(process: *mut c_void, length: usize, filler: usize) -> usize;
     fn toit_v2_try_allocate_string(process: *mut c_void, length: usize) -> usize;
     fn toit_v2_try_allocate_byte_array(process: *mut c_void, length: usize) -> usize;
-    fn toit_v2_call_primitive(process: *mut c_void, entry: *const c_void, arity: usize,
-                              first_argument: usize, result: *mut usize) -> usize;
+    fn toit_v2_primitive(process: *mut c_void, module: usize, index: usize, arity: usize,
+                         first_argument: usize, result: *mut usize) -> usize;
     fn toit_v2_report(process: *mut c_void, kind: usize, bci: usize, detail: usize);
     fn toit_v2_tracing(process: *mut c_void) -> usize;
 }
@@ -141,12 +141,6 @@ impl Accepted {
     }
 }
 
-/// A C++ primitive found in the process' policy.
-#[verifier::external_body]
-pub struct PrimitiveRef {
-    entry: *const c_void,
-}
-
 /// The C++ functions the core calls (src/interpreter_v2.h). Each that may
 /// GC takes the (only) stack view by mutable reference and replaces it by a
 /// fresh one derived from the process after the call: the old view, whose
@@ -156,6 +150,7 @@ pub struct PrimitiveRef {
 pub struct Runtime {
     process: *mut c_void,
     array_word: usize,
+    epoch: *const usize,
 }
 
 impl Runtime {
@@ -165,12 +160,18 @@ impl Runtime {
         unsafe { StackMem::from_stack(toit_v2_current_stack(self.process), self.array_word) }
     }
 
-    /// MAY GC. An instance of the class with null fields, or 0.
+    /// MAY GC. An instance of the class with null fields, or 0; whether the
+    /// heap's epoch changed (a GC: the stack view is replaced; otherwise it
+    /// stays, TRUSTED.md "Epoch").
     #[verifier::external_body]
-    pub fn allocate_instance(&self, stack: &mut StackMem, class_id: usize) -> usize {
+    #[inline(always)]
+    pub fn allocate_instance(&self, stack: &mut StackMem, class_id: usize) -> (usize, bool) {
+        // SAFETY: as `call_primitive`.
+        let before = unsafe { *self.epoch };
         let r = unsafe { toit_v2_allocate_instance(self.process, class_id) };
-        *stack = self.stack();
-        r
+        let moved = unsafe { *self.epoch } != before;
+        if moved { *stack = self.stack(); }
+        (r, moved)
     }
 
     /// MAY GC. An `Exception_` with the given value (a program-heap object)
@@ -186,12 +187,17 @@ impl Runtime {
         r
     }
 
-    /// MAY GC. A double with the given bits, or 0.
+    /// MAY GC. A double with the given bits, or 0; whether the heap's epoch
+    /// changed (as `allocate_instance`).
     #[verifier::external_body]
-    pub fn allocate_double(&self, stack: &mut StackMem, bits: u64) -> usize {
+    #[inline(always)]
+    pub fn allocate_double(&self, stack: &mut StackMem, bits: u64) -> (usize, bool) {
+        // SAFETY: as `call_primitive`.
+        let before = unsafe { *self.epoch };
         let r = unsafe { toit_v2_allocate_double(self.process, bits) };
-        *stack = self.stack();
-        r
+        let moved = unsafe { *self.epoch } != before;
+        if moved { *stack = self.stack(); }
+        (r, moved)
     }
 
     /// MAY GC. An array of `length` elements, all `filler`, or 0.
@@ -211,28 +217,30 @@ impl Runtime {
         r
     }
 
-    #[verifier::external_body]
-    pub fn lookup_primitive(&self, module: usize, index: usize) -> (r: Option<(PrimitiveRef, usize)>) {
-        let mut entry: *const c_void = core::ptr::null();
-        let mut arity: usize = 0;
-        let found = unsafe { toit_v2_lookup_primitive(self.process, module, index, &mut entry, &mut arity) };
-        if found == V2_PRIMITIVE_FOUND { Some((PrimitiveRef { entry }, arity)) } else { None }
-    }
-
     /// The allocator of the Rust primitives (allocation without GC).
     #[verifier::external_body]
     pub fn allocator(&self) -> Allocator {
         Allocator { process: self.process }
     }
 
-    /// MAY GC, may switch the current task. Calls the primitive with its
-    /// arguments at object-stack positions `first..first+arity`.
+    /// MAY GC, may switch the current task. Calls the C++ primitive
+    /// `(module, index)` of the process' policy with its arguments at
+    /// object-stack positions `first..first+arity` (`toit_v2_primitive`):
+    /// status (`V2_PRIMITIVE_ABSENT` if the policy has no such primitive of
+    /// that arity: nothing ran), result word, and whether the heap's epoch
+    /// changed (a GC or a task switch: then the stack view is replaced by a
+    /// fresh one; otherwise it stays, TRUSTED.md "Epoch").
     #[verifier::external_body]
-    pub fn call_primitive(&self, stack: &mut StackMem, primitive: &PrimitiveRef, arity: usize, first: usize) -> (usize, usize) {
+    #[inline(always)]
+    pub fn call_primitive(&self, stack: &mut StackMem, module: usize, index: usize, arity: usize, first: usize) -> (usize, usize, bool) {
         let mut result: usize = 0;
-        let status = unsafe { toit_v2_call_primitive(self.process, primitive.entry, arity, first, &mut result) };
-        *stack = self.stack();
-        (status, result)
+        // SAFETY: `epoch` is `ObjectHeap::v2_epoch_address` of the running
+        // process (toit_v2_context::epoch), read on the thread that owns it.
+        let before = unsafe { *self.epoch };
+        let status = unsafe { toit_v2_primitive(self.process, module, index, arity, first, &mut result) };
+        let moved = unsafe { *self.epoch } != before;
+        if moved { *stack = self.stack(); }
+        (status, result, moved)
     }
 
     #[verifier::external_body]
@@ -339,8 +347,8 @@ impl Allocator {
 } // verus!
 
 impl Runtime {
-    pub fn new(process: *mut c_void, array_word: usize) -> Self {
-        Runtime { process, array_word }
+    pub fn new(process: *mut c_void, array_word: usize, epoch: *const usize) -> Self {
+        Runtime { process, array_word, epoch }
     }
 }
 
@@ -377,6 +385,7 @@ pub unsafe extern "C" fn toit_v2_run(context: *mut Context) -> usize {
         ro_size: p.program_heap_size,
         max_height: p.global_max_height,
         preempt_a_lot: c.preempt_a_lot != 0,
+        unchecked: c.unchecked != 0,
         null: *p.roots.add(ROOT_NULL),
         true_: *p.roots.add(ROOT_TRUE),
         false_: *p.roots.add(ROOT_FALSE),
@@ -392,7 +401,7 @@ pub unsafe extern "C" fn toit_v2_run(context: *mut Context) -> usize {
         cert: Ghost::assume_new(),
         trusted: Ghost::assume_new(),
     };
-    let runtime = Runtime::new(c.process, p.stack_array_word);
+    let runtime = Runtime::new(c.process, p.stack_array_word, c.epoch);
     let globals = Globals::from_raw(p.globals, p.globals_length);
     let heap = Heap::new(p.remembered_set_bias);
     let preemption = Preemption::from_raw(c.watermark);
@@ -464,7 +473,7 @@ layout_table!(
     RESULT_PREEMPTED, RESULT_YIELDED, RESULT_TERMINATED, RESULT_RESET, RESULT_DEEP_SLEEP,
     PREEMPTION_MARKER,
     V2_OK, V2_STACK_OVERFLOW, V2_OUT_OF_MEMORY, V2_PRIMITIVE_SUCCESS, V2_PRIMITIVE_FAILURE,
-    V2_PRIMITIVE_THROW, V2_PRIMITIVE_MISSING, V2_PRIMITIVE_FOUND, V2_ACCEPTED, V2_TRUSTED, V2_REPORT_STUCK,
+    V2_PRIMITIVE_THROW, V2_PRIMITIVE_MISSING, V2_PRIMITIVE_FOUND, V2_PRIMITIVE_ABSENT, V2_ACCEPTED, V2_TRUSTED, V2_REPORT_STUCK,
     V2_REPORT_UNCAUGHT, V2_REPORT_TASK_RETURNED, V2_REPORT_TRACE,
     V2_MESSAGE_NONE, V2_MESSAGE_WORD, V2_MESSAGE_ARRAY, V2_MESSAGE_PRIMITIVE, V2_MESSAGE_MAX_WORDS,
     KIND_METHOD, KIND_FIELD_ACCESSOR, KIND_LAMBDA, KIND_BLOCK, NO_VALUE, BLOCK_SLOT_BITS,
@@ -507,6 +516,8 @@ const STRUCT_LAYOUT: &[(&[u8], usize)] = &[
     (b"CONTEXT_accepted\0", core::mem::offset_of!(Context, accepted)),
     (b"CONTEXT_core_arities\0", core::mem::offset_of!(Context, core_arities)),
     (b"CONTEXT_core_arities_length\0", core::mem::offset_of!(Context, core_arities_length)),
+    (b"CONTEXT_epoch\0", core::mem::offset_of!(Context, epoch)),
+    (b"CONTEXT_unchecked\0", core::mem::offset_of!(Context, unchecked)),
     (b"CONTEXT_result_state\0", core::mem::offset_of!(Context, result_state)),
     (b"CONTEXT_result_value\0", core::mem::offset_of!(Context, result_value)),
 ];

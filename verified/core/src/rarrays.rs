@@ -574,7 +574,23 @@ pub fn op_allocate(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode:
     m.sync(*r, &env.p);
     m.save();
     proof { lemma_saved(p, *m); }
-    let w = gc_allocate_instance(m, env, c, Ghost(g));
+    let ghost m00 = *old(m);
+    let ghost r00 = *old(r);
+    let (w, moved) = gc_allocate_instance(m, env, c, Ghost(g));
+    if w != 0 && !moved {
+        // Nothing moved (the heap's epoch is unchanged): the registers stay.
+        let ghost g1 = sp::alloc2(g, new_instance(ap, c as int));
+        proof { assert(reloaded(*m, g1) == (Machine { g: Ghost(g1), ..*m })); }
+        m.g = Ghost(g1);
+        proof {
+            assert(m.with(*r) == *m);
+            assert(m.rok(*r));
+            assert(m.addr().len() == g1.heap.len());
+        }
+        let ctl = push_next(m, r, p, w, len, Ghost(sp::new_ref2(g)));
+        proof { crate::rops::lemma_rnext_post(p, m00, r00, *m, *r); }
+        return ctl;
+    }
     if w == 0 {
         // Out of memory: the resource throw of ALLOCATE
         // (`prim::resource_throw`), the out-of-memory error.
@@ -773,9 +789,97 @@ pub fn op_primitive(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode
             return c;
         }
     }
-    // A C++ primitive (a GC point that may switch the task), a missing one,
-    // or a Rust primitive that needs a GC.
-    slow0(m, r, env, Slow::Prim(module, index, arity))
+    // A C++ primitive (a GC point that may switch the task) or a missing
+    // one; a Rust primitive that needs a GC calls its C++ primitive too.
+    let (r2, c) = cxx_primitive_v(m, *r, env, module, index, arity);
+    set_regs(r, r2);
+    c
+}
+
+/// Calls the C++ primitive `(module, index)` of the process' policy
+/// (`primitive::gc_call_primitive`) and completes the step: when the heap's
+/// epoch is unchanged (nothing moved, the usual case) on the registers, as
+/// for a Rust primitive; otherwise (a GC or a task switch), or for a
+/// missing primitive or a throw, on the machine (reload, then `resume_r`).
+/// Out of line, the registers by value.
+#[inline(never)]
+pub fn cxx_primitive_v(m: &mut Machine, r: Regs, env: &Env, module: u8, index: u16, arity: usize) -> (res: (Regs, Ctl))
+    requires
+        rinv(&env.p, *old(m), r),
+        r.sp@ >= r.fr@ + old(m).fw + STACK_RESERVE,
+        step_ok(env.p.ap@, env.p.cert@, old(m).g@),
+        sp::step(env.p.ap@, old(m).g@) == Outcome2::Primitive(old(m).g@, module, index),
+        arity == sp::frame_height(old(m).g@),
+        r.ip@ + 4 < 0x1000_0000,
+    ensures rpost(&env.p, *old(m), r, *final(m), res.0, res.1),
+{
+    let p = &env.p;
+    let ghost ap = p.ap@;
+    let ghost g = m.g@;
+    let ghost w0 = m.with(r);
+    proof {
+        w0.lemma_frame(p);
+        crate::regs::lemma_bci(p, w0);
+        lemma_shape(p, g);
+    }
+    m.sync(r, p);
+    m.save();
+    proof { lemma_saved(p, *m); }
+    let ghost ms = *m;
+    let base = m.base;
+    let (st, w, moved) = crate::primitive::gc_call_primitive(m, env, module, index, arity, base, Ghost(g));
+    if st == V2_PRIMITIVE_ABSENT {
+        proof { assert(m.inv(p)); }
+        let c = crate::primitive::op_prim_missing(m, env, module, index);
+        return resume_r(m, r, env, c, Ghost(w0));
+    }
+    if !moved && (st == V2_PRIMITIVE_SUCCESS || st == V2_PRIMITIVE_FAILURE) {
+        let ghost (gx, v) = choose|gx: State2, v: Value| #[trigger] crate::primitive::prim_call_post(p, *m, g, module, index, st, w, gx, v)
+            && (!moved ==> gx == with_heap2(g, gx.heap));
+        proof {
+            // Nothing moved: the reload would derive the same fields.
+            assert(reloaded(*m, gx) == (Machine { g: Ghost(gx), ..*m }));
+        }
+        m.g = Ghost(gx);
+        proof {
+            assert(m.with(r) == *m);
+            assert(m.rok(r));
+            lemma_room_same(p, w0, m.with(r));
+        }
+        if st == V2_PRIMITIVE_SUCCESS {
+            let ghost o = prim_success(ap, g, gx.heap, v);
+            proof {
+                lemma_source_completion(ap, g, module, index, o);
+                lemma_source_outcome(p, w0, o);
+                crate::raise::lemma_shape_same(p, g, gx);
+            }
+            let mut r2 = r;
+            if ret_r(m, &mut r2, p, w, Ghost(v)) {
+                proof { lemma_outcome_matches(p, w0, m.with(r2), Ctl::Next, o); }
+                return (r2, Ctl::Next);
+            }
+            // A return in a TRY, with finally records, or of the bottom
+            // frame: on the machine.
+            m.sync_b(r2, p);
+            let c = m.do_return(env, w, Ghost(v));
+            proof { lemma_outcome_matches(p, w0, *m, c, o); }
+            return resume_r(m, r2, env, c, Ghost(w0));
+        }
+        let ghost o = sp::next(sp::push(gx, v), 4);
+        proof {
+            lemma_source_completion(ap, g, module, index, o);
+            lemma_source_outcome(p, w0, o);
+        }
+        let mut r2 = r;
+        let ctl = push_next(m, &mut r2, p, w, 4, Ghost(v));
+        proof {
+            lemma_outcome_matches(p, w0, m.with(r2), Ctl::Next, o);
+            lemma_room_same(p, w0, m.with(r2));
+        }
+        return (r2, ctl);
+    }
+    let c = crate::primitive::prim_cxx_complete(m, env, st, w, Ghost(g), Ghost(w0), Ghost(module), Ghost(index));
+    resume_r(m, r, env, c, Ghost(w0))
 }
 
 /// Runs the Rust port of core primitive `index` (`prims::call`) on the

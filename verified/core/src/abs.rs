@@ -303,6 +303,7 @@ pub open spec fn prog_rel(p: &crate::exec::Program, objs: Seq<HeapObj>, addr: Se
     let ap = p.ap@;
     &&& ap.word_bits == WORD_BITS
     &&& p.code@ == ap.bytecodes
+    &&& p.unchecked == ap.unchecked
     &&& p.methods@.len() == ap.methods.len()
     &&& forall|i: int| 0 <= i < ap.methods.len() ==>
             #[trigger] ap.methods[i] == method_info(p.methods@[i], p.max_height)

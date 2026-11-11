@@ -243,6 +243,9 @@ pub const V2_PRIMITIVE_FAILURE: usize = 1;
 pub const V2_PRIMITIVE_THROW: usize = 2;
 pub const V2_PRIMITIVE_MISSING: usize = 0;
 pub const V2_PRIMITIVE_FOUND: usize = 1;
+/// `TOIT_V2_PRIMITIVE_ABSENT`: the policy has no such primitive with the
+/// method's arity; nothing ran (`toit_v2_primitive`).
+pub const V2_PRIMITIVE_ABSENT: usize = 3;
 /// `TOIT_V2_ACCEPTED`: the launch-time verifier accepted the program on the
 /// table the process runs (`ffi::Accepted`).
 pub const V2_ACCEPTED: usize = 0x56455249;

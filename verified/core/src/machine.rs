@@ -350,7 +350,7 @@ impl Machine {
     #[inline(never)]
     fn alloc_instance_cold(&mut self, env: &Env, class_id: usize) -> Option<usize> {
         self.save();
-        let r = env.rt.allocate_instance(&mut self.mem, class_id);
+        let (r, _) = env.rt.allocate_instance(&mut self.mem, class_id);
         if !self.reload(&env.p) { return None; }
         if r == 0 { None } else { Some(r) }
     }
@@ -360,16 +360,16 @@ impl Machine {
     /// (`alloc::gc_allocate_instance`). 0 if out of memory.
     /// Cold path: runs out of line on a copy of the machine (see `cold!`).
     #[inline(always)]
-    pub fn allocate_instance_raw(&mut self, env: &Env, class_id: usize) -> usize {
-        cold!(self, |m| env.rt.allocate_instance(&mut m.mem, class_id))
+    pub fn allocate_instance_raw(&mut self, env: &Env, class_id: usize) -> (usize, bool) {
+        env.rt.allocate_instance(&mut self.mem, class_id)
     }
 
     /// Calls a C++ primitive (MAY GC, may switch the task) without saving
-    /// or reloading the task state (`primitive::gc_call_primitive`).
-    /// Cold path: runs out of line on a copy of the machine (see `cold!`).
+    /// or reloading the task state (`primitive::gc_call_primitive`); the
+    /// stack view is replaced only if the heap's epoch changed.
     #[inline(always)]
-    pub fn call_primitive_raw(&mut self, env: &Env, prim: &crate::ffi::PrimitiveRef, arity: usize, first: usize) -> (usize, usize) {
-        cold!(self, |m| env.rt.call_primitive(&mut m.mem, prim, arity, first))
+    pub fn call_primitive_raw(&mut self, env: &Env, module: u8, index: u16, arity: usize, first: usize) -> (usize, usize, bool) {
+        env.rt.call_primitive(&mut self.mem, module as usize, index as usize, arity, first)
     }
 
     /// Grows the stack (MAY GC) without saving or reloading the task state
@@ -393,8 +393,8 @@ impl Machine {
     /// state (`alloc::gc_allocate_double`). 0 if out of memory.
     /// Cold path: runs out of line on a copy of the machine (see `cold!`).
     #[inline(always)]
-    pub fn allocate_double_raw(&mut self, env: &Env, bits: u64) -> usize {
-        cold!(self, |m| env.rt.allocate_double(&mut m.mem, bits))
+    pub fn allocate_double_raw(&mut self, env: &Env, bits: u64) -> (usize, bool) {
+        env.rt.allocate_double(&mut self.mem, bits)
     }
 
     /// Cold path: runs out of line on a copy of the machine (see `cold!`).
@@ -406,7 +406,7 @@ impl Machine {
     #[inline(never)]
     fn alloc_double_cold(&mut self, env: &Env, bits: u64) -> Option<usize> {
         self.save();
-        let r = env.rt.allocate_double(&mut self.mem, bits);
+        let (r, _) = env.rt.allocate_double(&mut self.mem, bits);
         if !self.reload(&env.p) { return None; }
         if r == 0 { None } else { Some(r) }
     }
@@ -2006,15 +2006,11 @@ impl Machine {
         if self.lim - self.top != arity { return Ctl::Stuck(stuck::STACK_RANGE); }
         let module = p.code.at(bci + 1) as usize;
         let index = Self::u16_at(p, bci + 2);
-        let (primitive, primitive_arity) = match env.rt.lookup_primitive(module, index) {
-            None => return self.raise_msg(env, PRIMITIVE_LOOKUP_FAILED, Msg::primitive(module, index)),
-            Some(x) => x,
-        };
-        if primitive_arity != arity {
+        self.save();
+        let (status, result, _) = env.rt.call_primitive(&mut self.mem, module, index, arity, self.base);
+        if status == V2_PRIMITIVE_ABSENT {
             return self.raise_msg(env, PRIMITIVE_LOOKUP_FAILED, Msg::primitive(module, index));
         }
-        self.save();
-        let (status, result) = env.rt.call_primitive(&mut self.mem, &primitive, arity, self.base);
         if !self.reload(p) { return Ctl::Stuck(stuck::FATAL); }
         if status == V2_PRIMITIVE_SUCCESS {
             self.return_from(env, result)

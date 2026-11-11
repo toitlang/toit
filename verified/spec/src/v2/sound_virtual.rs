@@ -622,7 +622,8 @@ pub proof fn lemma_step_invoke_virtual(p: Program2, c: Cert, trusted: bool, s: S
 pub proof fn lemma_vget(p: Program2, c: Cert, trusted: bool, s: State2, sel: int)
     requires accepts(p, c, trusted), wf(p, c, s), small(s),
         sel_ok(p, c, sel, 1, cur_k(p, c, s)), pp_map(p, c, s, 1, 3),
-    ensures ok_np(p, c, op_invoke_virtual_get(p, s, sel)),
+    ensures ok_np(p, c, op_invoke_virtual_get(p, s, sel))
+        || (p.unchecked && op_invoke_virtual_get(p, s, sel) == Outcome2::Stuck(Stuck::FieldRange)),
 {
     lemma_instr(p, c, trusted, s);
     lemma_vcall(p, c, trusted, s, sel, 1, 3);
@@ -645,7 +646,7 @@ pub proof fn lemma_vget(p: Program2, c: Cert, trusted: bool, s: State2, sel: int
 
 #[verifier::spinoff_prover]
 pub proof fn lemma_step_invoke_virtual_get(p: Program2, c: Cert, trusted: bool, s: State2)
-    requires accepts(p, c, trusted), wf(p, c, s), small(s), cur_op(p, s) == INVOKE_VIRTUAL_GET,
+    requires accepts(p, c, trusted), wf(p, c, s), small(s), unchecked_ok(p, s), cur_op(p, s) == INVOKE_VIRTUAL_GET,
     ensures step_ok(p, c, s),
 {
     lemma_instr(p, c, trusted, s);
@@ -662,7 +663,7 @@ pub proof fn lemma_step_invoke_virtual_get(p: Program2, c: Cert, trusted: bool, 
 
 #[verifier::spinoff_prover]
 pub proof fn lemma_step_invoke_virtual_set(p: Program2, c: Cert, trusted: bool, s: State2)
-    requires accepts(p, c, trusted), wf(p, c, s), small(s), cur_op(p, s) == INVOKE_VIRTUAL_SET,
+    requires accepts(p, c, trusted), wf(p, c, s), small(s), unchecked_ok(p, s), cur_op(p, s) == INVOKE_VIRTUAL_SET,
     ensures step_ok(p, c, s),
 {
     lemma_instr(p, c, trusted, s);
@@ -799,7 +800,7 @@ pub proof fn lemma_step_invoke_at_put(p: Program2, c: Cert, trusted: bool, s: St
 
 #[verifier::spinoff_prover]
 pub proof fn lemma_step_invoke_size(p: Program2, c: Cert, trusted: bool, s: State2)
-    requires accepts(p, c, trusted), wf(p, c, s), small(s), cur_op(p, s) == INVOKE_SIZE,
+    requires accepts(p, c, trusted), wf(p, c, s), small(s), unchecked_ok(p, s), cur_op(p, s) == INVOKE_SIZE,
     ensures step_ok(p, c, s),
 {
     lemma_instr(p, c, trusted, s);
@@ -822,13 +823,15 @@ pub proof fn lemma_step_invoke_size(p: Program2, c: Cert, trusted: bool, s: Stat
         },
         None => {},
     }
-    assert(ok_np(p, c, op_invoke_size(p, s, sel)));
     assert(step(p, s) == op_invoke_size(p, s, sel)) by { reveal(step); }
+    // In the unchecked mode the getter's failed accessor is excluded by
+    // `unchecked_ok` (the fallback is the whole step).
+    assert(ok_np(p, c, op_invoke_size(p, s, sel)));
 }
 
 /// The virtual calls and operators.
 pub proof fn lemma_step_virtual(p: Program2, c: Cert, trusted: bool, s: State2)
-    requires accepts(p, c, trusted), wf(p, c, s), small(s), fam_virtual(cur_op(p, s)),
+    requires accepts(p, c, trusted), wf(p, c, s), small(s), unchecked_ok(p, s), fam_virtual(cur_op(p, s)),
     ensures step_ok(p, c, s),
 {
     let op = cur_op(p, s);

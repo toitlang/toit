@@ -297,6 +297,7 @@ GcType ObjectHeap::gc(bool try_hard) {
   Locker locker(mutex_);
   GcType type = two_space_heap_.collect_new_space(try_hard);
   gc_count_++;
+  v2_epoch_++;
   if (type != NEW_SPACE_GC) {
     full_gc_count_++;
     if (type == COMPACTING_GC) full_compacting_gc_count_++;

@@ -181,16 +181,18 @@ pub open spec fn new_instance(ap: Program2, c: int) -> HeapObj {
 /// machine are stale afterwards (`reload`).
 #[verifier::external_body]
 #[inline(always)]
-pub fn gc_allocate_instance(m: &mut Machine, env: &Env, c: usize, Ghost(g): Ghost<State2>) -> (r: usize)
+pub fn gc_allocate_instance(m: &mut Machine, env: &Env, c: usize, Ghost(g): Ghost<State2>) -> (r: (usize, bool))
     requires
         reloaded(*old(m), g).refines(&env.p),
         c < env.p.ap@.class_bits.len(),
         class_tag(p1(env.p.ap@), c as int) == INSTANCE_TAG,
         instance_field_count(p1(env.p.ap@), c as int) >= 0,
     ensures
-        r == 0 ==> reloaded(*final(m), g).refines(&env.p),
-        r != 0 ==> reloaded(*final(m), sp::alloc2(g, new_instance(env.p.ap@, c as int))).refines(&env.p)
-            && r == enc(final(m).addr(), sp::new_ref2(g)),
+        r.0 == 0 ==> reloaded(*final(m), g).refines(&env.p),
+        r.0 != 0 ==> reloaded(*final(m), sp::alloc2(g, new_instance(env.p.ap@, c as int))).refines(&env.p)
+            && r.0 == enc(final(m).addr(), sp::new_ref2(g)),
+        // The epoch contract (TRUSTED.md, "Epoch"): nothing moved.
+        !r.1 ==> crate::primitive::unmoved(*final(m), *old(m)),
 {
     m.allocate_instance_raw(env, c)
 }
@@ -201,12 +203,13 @@ pub fn gc_allocate_instance(m: &mut Machine, env: &Env, c: usize, Ghost(g): Ghos
 /// (`spec_common::new_double`) as the new object.
 #[verifier::external_body]
 #[inline(always)]
-pub fn gc_allocate_double(m: &mut Machine, env: &Env, bits: u64, Ghost(g): Ghost<State2>) -> (r: usize)
+pub fn gc_allocate_double(m: &mut Machine, env: &Env, bits: u64, Ghost(g): Ghost<State2>) -> (r: (usize, bool))
     requires reloaded(*old(m), g).refines(&env.p),
     ensures
-        r == 0 ==> reloaded(*final(m), g).refines(&env.p),
-        r != 0 ==> reloaded(*final(m), sp::alloc2(g, new_double(as1(g), p1(env.p.ap@), bits))).refines(&env.p)
-            && r == enc(final(m).addr(), sp::new_ref2(g)),
+        r.0 == 0 ==> reloaded(*final(m), g).refines(&env.p),
+        r.0 != 0 ==> reloaded(*final(m), sp::alloc2(g, new_double(as1(g), p1(env.p.ap@), bits))).refines(&env.p)
+            && r.0 == enc(final(m).addr(), sp::new_ref2(g)),
+        !r.1 ==> crate::primitive::unmoved(*final(m), *old(m)),
 {
     m.allocate_double_raw(env, bits)
 }

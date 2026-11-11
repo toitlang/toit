@@ -29,7 +29,7 @@ verus! {
 /// Every step from a well-formed state of an accepted program is not
 /// stuck, keeps the invariant, and so do the completions of a PRIMITIVE.
 pub proof fn lemma_step(p: Program2, c: Cert, trusted: bool, s: State2)
-    requires accepts(p, c, trusted), wf(p, c, s), small(s),
+    requires accepts(p, c, trusted), wf(p, c, s), small(s), unchecked_ok(p, s),
     ensures step_ok(p, c, s),
 {
     lemma_instr(p, c, trusted, s);

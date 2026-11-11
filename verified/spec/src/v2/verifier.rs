@@ -844,6 +844,9 @@ pub open spec fn tables_ok(p: Program2, c: Cert) -> bool {
 /// (the system) may use HALT 2 and 3.
 pub open spec fn accepts(p: Program2, c: Cert, trusted: bool) -> bool {
     &&& crate::v2::exec::wf_program2(p)
+    // The unchecked mode (field accesses not checked) is for trusted
+    // programs only (verified/core/EXPERIMENT-trusted.md).
+    &&& (p.unchecked ==> trusted)
     &&& tables_ok(p, c)
     &&& forall|m: int| 0 <= m < p.methods.len() ==> #[trigger] method_ok(p, c, m, trusted)
 }
