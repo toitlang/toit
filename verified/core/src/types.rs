@@ -68,8 +68,8 @@ impl Machine {
         }
         if !interface {
             let cid = self.class_of(p, w, Ghost(v));
-            let start = p.class_check_ids.at(2 * index) as i64;
-            let end = p.class_check_ids.at(2 * index + 1) as i64;
+            let start = p.class_check_ids.at(2 * index) as usize;
+            let end = p.class_check_ids.at(2 * index + 1) as usize;
             start <= cid && cid < end
         } else {
             let sel = p.interface_check_offsets.at(index) as usize;

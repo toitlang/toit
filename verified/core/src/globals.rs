@@ -98,7 +98,7 @@ impl Machine {
         let ghost id = v->Obj_0 as int;
         proof { assert(obj_model_ok(self.g@.heap[id], self.heap.class_bits(), self.addr())); }
         let cid = self.heap.class_id(w, Ghost(id));
-        if cid as i64 != p.lazy_initializer_class_id {
+        if cid != p.lazy_initializer_class_id {
             return false;
         }
         let tag = self.heap.class_tag(w, Ghost(id));
@@ -195,7 +195,7 @@ pub fn op_load_global_lazy(m: &mut Machine, env: &Env, bci: usize, opcode: u8, g
     // The receiver (the index smi) is in the entry method's receiver range.
     if info.recv_start != NO_VALUE {
         let cid = p.smi_class_id;
-        if !((info.recv_start as i64) <= cid && cid < info.recv_end as i64) {
+        if !((info.recv_start as usize) <= cid && cid < info.recv_end as usize) {
             proof {
                 assert(sp::step(ap, g) == sp::raise(ap, g2, sp::AS_CHECK_FAILED));
                 lemma_source_step(ap, g);

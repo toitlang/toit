@@ -773,6 +773,16 @@ pub open spec fn hdr_class_id(h: usize) -> usize {
     (((h as isize) >> 1usize) as usize) >> CLASS_ID_OFFSET
 }
 
+/// A header whose class id is below 2^16 is no negative smi: its class id
+/// is one logical shift (on 32-bit targets the arithmetic shift of the smi
+/// tag and the shift of the class id are two instructions).
+pub proof fn lemma_class_id_shift(h: usize)
+    ensures hdr_class_id(h) < 0x1_0000 ==> h >> 6usize == hdr_class_id(h),
+{
+    assert(CLASS_ID_OFFSET == 5);
+    assert((((((h as isize) >> 1usize) as usize) >> 5usize) < 0x1_0000) ==> h >> 6usize == ((((h as isize) >> 1usize) as usize) >> 5usize)) by (bit_vector);
+}
+
 pub open spec fn hdr_class_tag(h: usize) -> usize {
     (((h as isize) >> 1usize) as usize) & CLASS_TAG_MASK
 }
@@ -1344,7 +1354,10 @@ impl Heap {
         ensures r == self.objs()[id].class_id,
     {
         let header = self.read_header(obj, Ghost(id));
-        (((header as isize) >> 1) as usize) >> CLASS_ID_OFFSET
+        // One logical shift (a class id is below 2^16, so the header is no
+        // negative smi: `lemma_class_id_shift`).
+        proof { lemma_class_id_shift(header); }
+        header >> (CLASS_ID_OFFSET + 1)
     }
 
     /// The class tag of object `id`: the header's tag, which is its class'

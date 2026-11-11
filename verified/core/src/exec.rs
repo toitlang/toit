@@ -68,12 +68,12 @@ pub struct Program {
     pub null: usize,
     pub true_: usize,
     pub false_: usize,
-    pub smi_class_id: i64,
-    pub list_class_id: i64,
-    pub byte_array_slice_class_id: i64,
-    pub byte_array_cow_class_id: i64,
-    pub large_array_class_id: i64,
-    pub lazy_initializer_class_id: i64,
+    pub smi_class_id: usize,
+    pub list_class_id: usize,
+    pub byte_array_slice_class_id: usize,
+    pub byte_array_cow_class_id: usize,
+    pub large_array_class_id: usize,
+    pub lazy_initializer_class_id: usize,
     pub ap: Ghost<Program2>,
     pub cert: Ghost<Cert>,
     pub trusted: Ghost<bool>,
@@ -316,19 +316,19 @@ impl Program {
     /// or an accessor whose range starts at `rs` (not none): `cid == rs`
     /// for one class.
     #[inline(always)]
-    pub fn dispatch_recv_contains(&self, i: usize, rs: u16, cid: i64) -> (r: bool)
+    pub fn dispatch_recv_contains(&self, i: usize, rs: u16, cid: usize) -> (r: bool)
         requires
             i < self.methods@.len(), self.mt_ok(), self.minfo(i as int).kind < 2,
             rs == self.minfo(i as int).recv_start, rs != NO_VALUE,
-        ensures r == ((rs as i64) <= cid && cid < self.minfo(i as int).recv_end as i64),
+        ensures r == ((rs as int) <= cid && cid < self.minfo(i as int).recv_end as int),
     {
         let (_, e) = self.record(i);
         let b = self.code.at(e - 1);
         if b & KIND_SINGLE != 0 {
-            cid == rs as i64
+            cid == rs as usize
         } else {
             proof { assert(hdr_size(b) >= 7); lemma_not_block(b); }
-            (rs as i64) <= cid && cid < self.u16_before(e, RECV_END_BACK) as i64
+            (rs as usize) <= cid && cid < self.u16_before(e, RECV_END_BACK) as usize
         }
     }
 

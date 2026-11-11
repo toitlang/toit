@@ -214,7 +214,7 @@ pub proof fn lemma_val(p: &Program, m: Machine, w: usize, v: Value)
 impl Machine {
     /// `is_instance` of the value `v` (word `w`): its field count and class.
     #[inline(always)]
-    pub fn inst_x(&self, p: &Program, w: usize, Ghost(v): Ghost<Value>) -> (r: Option<(usize, i64)>)
+    pub fn inst_x(&self, p: &Program, w: usize, Ghost(v): Ghost<Value>) -> (r: Option<(usize, usize)>)
         requires self.hrefines(p), vals_good(self.g@.heap), val_ok(*self, w, v),
         ensures
             r is Some == is_instance(as1(self.g@), v),
@@ -241,7 +241,7 @@ impl Machine {
             assert(class_of_obj(as1(self.g@), v) == cid as int);
             assert(size <= 0x7ff) by (bit_vector) requires size == ((bits >> 5u16) & 0x7ffu16) as usize;
         }
-        Some((size - 1, cid as i64))
+        Some((size - 1, cid))
     }
 
     /// Field `f` of the instance `v` (word `w`): its word and value.

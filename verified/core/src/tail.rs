@@ -229,7 +229,7 @@ pub fn op_invoke_static_tail(m: &mut Machine, env: &Env, bci: usize, opcode: u8,
         proof { m.lemma_at(p, arity - 1); }
         let receiver = m.at(arity - 1);
         let cid = m.class_of(p, receiver, Ghost(sp::at(g, arity - 1)));
-        if !((info.recv_start as i64) <= cid && cid < info.recv_end as i64) {
+        if !((info.recv_start as usize) <= cid && cid < info.recv_end as usize) {
             proof {
                 assert(sp::step(ap, g) == sp::raise(ap, g, sp::AS_CHECK_FAILED));
                 lemma_source_step(ap, g);

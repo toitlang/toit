@@ -386,7 +386,7 @@ pub extern "C" fn toit_v2_core_ported(index: usize) -> usize {
 pub unsafe extern "C" fn toit_v2_run(context: *mut Context) -> usize {
     let c = &mut *context;
     let p = &c.program;
-    let builtin = |k: usize| -> i64 { (*p.builtin_class_ids.add(k) as i64) >> 1 };
+    let builtin = |k: usize| -> usize { *p.builtin_class_ids.add(k) >> 1 };
     // The bytecodes are 2-byte aligned (`prog_rel`: the header fields are
     // read with aligned 16-bit loads; V2MethodTable::compute checks it too).
     if p.roots_length < ROOT_COUNT || p.literals_length < FAILURE_LITERALS || p.methods_length == 0
