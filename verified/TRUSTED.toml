@@ -2527,3 +2527,59 @@ item = "*"
 kind = "plain_rust_file"
 count = 1
 justification = "TRUSTED verdict glue: accept iff the proven check::verify (split_ok, hence accepts of the assembled certificate) and heap_check::x_loaded_ok_stream both accept the converted program and the conversion completed, with global_count and prim_arity set from trusted inputs."
+
+[[trusted]]
+crate = "core"
+file = "src/alloc.rs"
+item = "bump_instance"
+kind = "external_body"
+count = 1
+justification = "ASSUMED (TRUSTED.md 9, Inline allocation): the new-space fast path of SemiSpace::try_allocate inline, the instance initialized as ObjectHeap::allocate_instance does; contract of gc_allocate_instance without a GC (nothing moves); 0 and no change if new space is full."
+
+[[trusted]]
+crate = "core"
+file = "src/alloc.rs"
+item = "bump_instance"
+kind = "unsafe"
+count = 1
+justification = "Writes the header and null fields of the fresh new-space bytes Runtime::bump returned (TRUSTED.md 9, Inline allocation)."
+
+[[trusted]]
+crate = "core"
+file = "src/alloc.rs"
+item = "bump_double"
+kind = "external_body"
+count = 1
+justification = "ASSUMED (TRUSTED.md 9, Inline allocation): as bump_instance, for ObjectHeap::allocate_double; contract of gc_allocate_double without a GC."
+
+[[trusted]]
+crate = "core"
+file = "src/alloc.rs"
+item = "bump_double"
+kind = "unsafe"
+count = 1
+justification = "Writes the header and the 64-bit value of the fresh new-space bytes Runtime::bump returned (TRUSTED.md 9, Inline allocation)."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "Runtime::bump"
+kind = "plain_rust_item"
+count = 1
+justification = "SemiSpace::try_allocate's fast path on the process' new-space top and limit (toit_v2_context); only bump_instance and bump_double call it (TRUSTED.md 9, Inline allocation)."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "Runtime::bump"
+kind = "unsafe"
+count = 1
+justification = "Reads and writes the new-space top and limit words of the running process and the sentinel word after the allocation (inside the space: limit - top > size)."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "toit_v2_core_ported"
+kind = "plain_rust_item"
+count = 1
+justification = "Performance only: whether a core primitive has a Rust port (prims::family), for the policies' core arities; either path is a completion of PRIMITIVE (TRUSTED.md 9)."

@@ -232,6 +232,14 @@ struct toit_v2_context {
   // accesses (verified/core/EXPERIMENT-trusted.md). TRUSTED: never set for
   // an untrusted process.
   uword unchecked;
+  // ObjectHeap::v2_new_space_top_address and v2_new_space_limit_address of
+  // the process, and the chunk-end sentinel word: the core allocates
+  // instances and doubles inline with the new-space fast path
+  // (SemiSpace::try_allocate) and calls the allocation helpers below only
+  // when it fails (verified/core/TRUSTED.md, "Inline allocation").
+  uword* new_space_top;
+  const uword* new_space_limit;
+  uword new_space_sentinel;
   // Out.
   uword result_state;               // Interpreter::Result::State.
   int64 result_value;
@@ -279,6 +287,8 @@ static const uword TOIT_V2_REPORT_TRACE = 3;
 // Implemented by the core (verified/core/src/ffi.rs).
 #ifdef TOIT_VERIFIED_CORE
 uword toit_v2_run(toit_v2_context* context);
+// Whether core primitive `index` has a Rust port in the core.
+uword toit_v2_core_ported(uword index);
 uword toit_vcore_layout_count();
 bool toit_vcore_layout_entry(uword i, const char** name, uword* value);
 uword toit_vcore_opcode_length(uword opcode);

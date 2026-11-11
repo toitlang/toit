@@ -356,6 +356,9 @@ Interpreter::Result Interpreter::run_v2() {
   context.core_arities = process_->policy()->core_arities();
   context.core_arities_length = context.core_arities == null ? 0 : process_->policy()->core_arities_length();
   context.epoch = process_->object_heap()->v2_epoch_address();
+  context.new_space_top = process_->object_heap()->v2_new_space_top_address();
+  context.new_space_limit = process_->object_heap()->v2_new_space_limit_address();
+  context.new_space_sentinel = reinterpret_cast<uword>(chunk_end_sentinel());
   // Trusted programs skip the field-access checks (the compiler is trusted);
   // TOIT_V2_CHECKED_FIELDS=1 keeps them (comparisons). Never for an
   // untrusted process.

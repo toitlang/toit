@@ -369,11 +369,27 @@ pub fn arith_double(m: &mut Machine, r: Regs, env: &Env, bci: usize, opcode: u8,
     let ghost g = m.g@;
     let ghost w0 = m.with(r);
     proof { assert(0 <= bci < ap.bytecodes.len()) by { lemma_instr(ap, p.cert@, p.trusted@, g); } }
+    let ghost m00 = *old(m);
+    // Inline in new space (no GC point): the registers stay.
+    let wb = crate::alloc::bump_double(m, env, bits, Ghost(r), Ghost(g));
+    if wb != 0 {
+        let ghost g1 = sp::alloc2(g, new_double(as1(g), p1(ap), bits));
+        m.g = Ghost(g1);
+        proof {
+            assert(m.with(r).refines(p));
+            assert(m.rok(r));
+            assert(m.addr().len() == g1.heap.len());
+            assert(sp::has_slot(g1, 1));
+        }
+        let mut r2 = r;
+        rbinary_next(m, &mut r2, p, wb, Ghost(sp::new_ref2(g)));
+        proof { lemma_rnext_post(p, m00, r, *m, r2); }
+        return (r2, Ctl::Next);
+    }
     let len0 = m.len;
     m.sync(r, &env.p);
     m.save();
     proof { crate::alloc::lemma_saved(p, *m); }
-    let ghost m00 = *old(m);
     let (w, moved) = crate::alloc::gc_allocate_double(m, env, bits, Ghost(g));
     if w != 0 && !moved {
         // Nothing moved (the heap's epoch is unchanged): the registers stay.

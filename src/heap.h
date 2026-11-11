@@ -139,6 +139,10 @@ class ObjectHeap {
   // the same (verified/core/TRUSTED.md, "Epoch"; the core compares it
   // around C++ primitive calls).
   const uword* v2_epoch_address() const { return &v2_epoch_; }
+  // The allocation top and limit of new space, for the core's inline bump
+  // allocation (the fast path of SemiSpace::try_allocate).
+  uword* v2_new_space_top_address() { return two_space_heap_.new_space()->v2_top_address(); }
+  const uword* v2_new_space_limit_address() { return two_space_heap_.new_space()->v2_limit_address(); }
 
   // Garbage collection operation for runtime objects.
   GcType gc(bool try_hard);

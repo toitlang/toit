@@ -86,6 +86,9 @@ pub struct Context {
     pub core_arities_length: usize,
     pub epoch: *const usize,
     pub unchecked: usize,
+    pub new_space_top: *mut usize,
+    pub new_space_limit: *const usize,
+    pub new_space_sentinel: usize,
     pub result_state: usize,
     pub result_value: i64,
 }
@@ -151,6 +154,9 @@ pub struct Runtime {
     process: *mut c_void,
     array_word: usize,
     epoch: *const usize,
+    ns_top: *mut usize,
+    ns_limit: *const usize,
+    ns_sentinel: usize,
 }
 
 impl Runtime {
@@ -347,9 +353,41 @@ impl Allocator {
 } // verus!
 
 impl Runtime {
-    pub fn new(process: *mut c_void, array_word: usize, epoch: *const usize) -> Self {
-        Runtime { process, array_word, epoch }
+    pub fn new(process: *mut c_void, array_word: usize, epoch: *const usize,
+               ns_top: *mut usize, ns_limit: *const usize, ns_sentinel: usize) -> Self {
+        Runtime { process, array_word, epoch, ns_top, ns_limit, ns_sentinel }
     }
+
+    /// New-space allocation without GC, inline: the fast path of
+    /// `SemiSpace::try_allocate` (src/third_party/dartino/object_memory.h):
+    /// `size` bytes at the allocation top, the chunk-end sentinel after
+    /// them; the untagged address, or 0 if new space is full (then nothing
+    /// changed). Only the trusted allocation functions of alloc.rs call it
+    /// (TRUSTED.md, "Inline allocation").
+    #[inline(always)]
+    pub fn bump(&self, size: usize) -> usize {
+        // SAFETY: `ns_top` and `ns_limit` are the new space of the running
+        // process (`toit_v2_context`), used on the thread that owns it; no
+        // GC runs during the run loop except inside the C++ calls.
+        unsafe {
+            let top = *self.ns_top;
+            if (*self.ns_limit).wrapping_sub(top) <= size { return 0; }
+            let new_top = top + size;
+            *self.ns_top = new_top;
+            *(new_top as *mut usize) = self.ns_sentinel;
+            top
+        }
+    }
+}
+
+/// Whether core primitive `index` has a Rust port (`prims::family`). The
+/// policies leave the primitives without one out of their core arities
+/// (PrimitivePolicy::initialize_core_arities), so that their PRIMITIVE goes
+/// to C++ without trying the Rust dispatch first. Performance only: either
+/// way the primitive's step is a completion of the spec's PRIMITIVE.
+#[no_mangle]
+pub extern "C" fn toit_v2_core_ported(index: usize) -> usize {
+    (crate::prims::family(index) != 0) as usize
 }
 
 /// Runs the current format-2 process until it is preempted, yields,
@@ -401,7 +439,8 @@ pub unsafe extern "C" fn toit_v2_run(context: *mut Context) -> usize {
         cert: Ghost::assume_new(),
         trusted: Ghost::assume_new(),
     };
-    let runtime = Runtime::new(c.process, p.stack_array_word, c.epoch);
+    let runtime = Runtime::new(c.process, p.stack_array_word, c.epoch,
+        c.new_space_top, c.new_space_limit, c.new_space_sentinel);
     let globals = Globals::from_raw(p.globals, p.globals_length);
     let heap = Heap::new(p.remembered_set_bias);
     let preemption = Preemption::from_raw(c.watermark);
@@ -518,6 +557,9 @@ const STRUCT_LAYOUT: &[(&[u8], usize)] = &[
     (b"CONTEXT_core_arities_length\0", core::mem::offset_of!(Context, core_arities_length)),
     (b"CONTEXT_epoch\0", core::mem::offset_of!(Context, epoch)),
     (b"CONTEXT_unchecked\0", core::mem::offset_of!(Context, unchecked)),
+    (b"CONTEXT_new_space_top\0", core::mem::offset_of!(Context, new_space_top)),
+    (b"CONTEXT_new_space_limit\0", core::mem::offset_of!(Context, new_space_limit)),
+    (b"CONTEXT_new_space_sentinel\0", core::mem::offset_of!(Context, new_space_sentinel)),
     (b"CONTEXT_result_state\0", core::mem::offset_of!(Context, result_state)),
     (b"CONTEXT_result_value\0", core::mem::offset_of!(Context, result_value)),
 ];

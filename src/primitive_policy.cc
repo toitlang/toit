@@ -14,6 +14,7 @@
 // directory of this repository.
 
 #include "primitive_policy.h"
+#include "interpreter_v2.h"
 
 #include "messaging.h"
 #include "objects_inline.h"
@@ -289,6 +290,9 @@ void PrimitivePolicy::initialize_core_arities(uint8* table) {
     const PrimitiveEntry* original = Primitive::at(MODULE_INDEX_core, i);
     bool own = i < length && original != null && original->function != null &&
         tables_[MODULE_INDEX_core][i].function == original->function;
+#ifdef TOIT_VERIFIED_CORE
+    own = own && toit_v2_core_ported(i) != 0;
+#endif
     ASSERT(original == null || (0 <= original->arity && original->arity < 255));
     table[i] = own ? static_cast<uint8>(original->arity + 1) : 0;
   }

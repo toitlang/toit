@@ -403,6 +403,8 @@ int main() {
     FIELD("CONTEXT_", toit_v2_context, core_arities) FIELD("CONTEXT_", toit_v2_context, core_arities_length)
     FIELD("CONTEXT_", toit_v2_context, epoch)
     FIELD("CONTEXT_", toit_v2_context, unchecked)
+    FIELD("CONTEXT_", toit_v2_context, new_space_top) FIELD("CONTEXT_", toit_v2_context, new_space_limit)
+    FIELD("CONTEXT_", toit_v2_context, new_space_sentinel)
     FIELD("CONTEXT_", toit_v2_context, result_state) FIELD("CONTEXT_", toit_v2_context, result_value)
 #undef FIELD
   };

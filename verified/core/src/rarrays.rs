@@ -570,12 +570,26 @@ pub fn op_allocate(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode:
     let ghost g = m.g@;
     let ghost w0 = m.with(*r);
     proof { assert(outcome_ok(ap, p.cert@, sp::step(ap, g))); }
+    let ghost m00 = *old(m);
+    let ghost r00 = *old(r);
+    // Inline in new space (no GC point): the registers stay.
+    let wb = crate::alloc::bump_instance(m, env, c, Ghost(*r), Ghost(g));
+    if wb != 0 {
+        let ghost g1 = sp::alloc2(g, new_instance(ap, c as int));
+        m.g = Ghost(g1);
+        proof {
+            assert(m.with(*r).refines(p));
+            assert(m.rok(*r));
+            assert(m.addr().len() == g1.heap.len());
+        }
+        let ctl = push_next(m, r, p, wb, len, Ghost(sp::new_ref2(g)));
+        proof { crate::rops::lemma_rnext_post(p, m00, r00, *m, *r); }
+        return ctl;
+    }
     let len0 = m.len;
     m.sync(*r, &env.p);
     m.save();
     proof { lemma_saved(p, *m); }
-    let ghost m00 = *old(m);
-    let ghost r00 = *old(r);
     let (w, moved) = gc_allocate_instance(m, env, c, Ghost(g));
     if w != 0 && !moved {
         // Nothing moved (the heap's epoch is unchanged): the registers stay.
