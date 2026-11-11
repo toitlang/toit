@@ -230,7 +230,7 @@ PRIMITIVE(spawn) {
   InitialMemoryManager initial_memory_manager;
   if (!initial_memory_manager.allocate()) FAIL(ALLOCATION_FAILED);
 
-  unsigned size = 0;
+  word size = 0;
   { MessageEncoder size_encoder(process, null);
     if (!size_encoder.encode(arguments)) {
       return size_encoder.create_error_object(process);
@@ -2132,7 +2132,7 @@ PRIMITIVE(task_transfer) {
 PRIMITIVE(process_send) {
   ARGS(int, process_id, int, type, Object, array);
 
-  unsigned size = 0;
+  word size = 0;
   { MessageEncoder size_encoder(process, null);
     if (!size_encoder.encode(array)) {
       return size_encoder.create_error_object(process);
@@ -2169,6 +2169,8 @@ Object* MessageEncoder::create_error_object(Process* process) {
   Object* result = null;
   if (malloc_failed_) {
     FAIL(MALLOC_FAILED);
+  } else if (too_large_) {
+    FAIL(OUT_OF_RANGE);
   } else if (nesting_too_deep_) {
     result = process->allocate_string_or_error("NESTING_TOO_DEEP");
   } else if (problematic_class_id_ >= 0) {
