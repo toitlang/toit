@@ -207,6 +207,12 @@ class MessageEncoder {
   // Whether the encoding failed because it is larger than
   // MESSAGING_ENCODING_MAX_SIZE.
   bool too_large() const { return too_large_; }
+  // Limits the encoded size plus the size of all out-of-line data (the
+  // message-size quota of a sandboxed sender). The encoder stops as soon as
+  // the limit is exceeded. 0 means no limit.
+  void set_max_total_size(word max) { max_total_size_ = max; }
+  // Whether the encoding failed because of the limit of set_max_total_size.
+  bool over_limit() const { return over_limit_; }
 
   /**
   Some encoders can take over the data pointed to by external
@@ -252,7 +258,8 @@ class MessageEncoder {
   // large.
   bool is_too_large() {
     if (cursor_ > MESSAGING_ENCODING_MAX_SIZE) too_large_ = true;
-    return too_large_;
+    if (max_total_size_ > 0 && cursor_ + external_bytes_ > max_total_size_) over_limit_ = true;
+    return too_large_ || over_limit_;
   }
 
   void write_uint32(uint32 value);
@@ -276,6 +283,8 @@ class MessageEncoder {
   bool nesting_too_deep_ = false;
   bool too_many_externals_ = false;
   bool too_large_ = false;
+  bool over_limit_ = false;
+  word max_total_size_ = 0;
 
   bool malloc_failed_ = false;
 
