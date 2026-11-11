@@ -1,0 +1,2 @@
+// Copyright (C) 2026 Toit contributors. Stand-in for <cstring> (probe only).
+#include <string.h>
