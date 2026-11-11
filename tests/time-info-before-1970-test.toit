@@ -3,6 +3,7 @@
 // be found in the tests/LICENSE file.
 
 import expect show *
+import system
 
 // The time-info primitive must handle times before 1970 (negative
 // timestamps) on all platforms, in UTC and in local time. The C library of
@@ -159,15 +160,17 @@ test-local-fixed-offset:
 
 test-local-daylight-saving:
   set-timezone "ABC5XYZ,M3.2.0,M11.1.0"  // UTC-5, UTC-4 in summer.
-  // After 1970 all C libraries apply the rules.
-  check-local 300_000_000 [1979, 7, 5, 1, 20, 0, 4, 185] --is-dst
-  check-local 285_253_200 [1979, 1, 15, 8, 0, 0, 1, 14]
   // No C library has daylight saving in January.
+  check-local 285_253_200 [1979, 1, 15, 8, 0, 0, 1, 14]
   check-local -30_283_200 [1969, 1, 15, 7, 0, 0, 3, 14]
-  // Whether the rules apply before 1970 depends on the C library (glibc
-  //   doesn't apply them). The fields must match the reported state.
-  info := time-info -14_182_980 false
-  if info[8]:
-    check-local -14_182_980 [1969, 7, 20, 16, 17, 0, 0, 200] --is-dst
-  else:
-    check-local -14_182_980 [1969, 7, 20, 15, 17, 0, 0, 200]
+  // The POSIX C libraries apply the rules after 1970. The Windows C library
+  //   has its own TZ syntax and doesn't apply them.
+  if system.platform != system.PLATFORM-WINDOWS:
+    check-local 300_000_000 [1979, 7, 5, 1, 20, 0, 4, 185] --is-dst
+  // Whether the rules apply in summer depends on the C library (glibc
+  //   doesn't apply them before 1970). The fields must match the reported
+  //   state.
+  [300_000_000, -14_182_980].do: | timestamp |
+    local := time-info timestamp false
+    utc := time-info (timestamp - (local[8] ? 4 : 5) * 3600) true
+    expect-equals utc[..8] local[..8]

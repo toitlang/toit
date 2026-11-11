@@ -1274,8 +1274,7 @@ static int equivalent_year(int64 year, int first) {
 // timestamp.
 // The Windows C library has no historical zone data: it applies the rules of
 // the zone (from the TZ variable or the system settings) to every year, so
-// the result is what it would compute if it accepted the timestamp. For
-// example, with TZ=EST5EDT, 1969-07-20T20:17Z is 16:17 daylight-saving time.
+// the result is what it would compute if it accepted the timestamp.
 // A C library with historical data (only used here with a 32-bit time_t)
 // applies the rules of the equivalent year instead of the historical ones.
 // The equivalent years are the closest to the range of the C library, which
