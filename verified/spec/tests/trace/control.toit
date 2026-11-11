@@ -44,7 +44,9 @@ main:
   lambdas.do: it.call
   caught := 0
   sum := 0
-  300.repeat:
-    e := catch: sum += protected it
+  300.repeat: | i |
+    // Not 'it' in the catch block: that would make it a block with one
+    // parameter, which 'catch' calls with none.
+    e := catch: sum += protected i
     if e: caught++
   print "$hits $counter.count $(nested-break) $caught $sum $finally-count"
