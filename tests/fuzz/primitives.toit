@@ -427,6 +427,9 @@ prim-core-process-current-id:
 prim-core-process-system-id:
   #primitive.core.process-system-id
 
+prim-core-process-send a0 a1 a2:
+  #primitive.core.process-send
+
 prim-core-task-has-messages:
   #primitive.core.task-has-messages
 
@@ -749,7 +752,7 @@ prim-font-contains a0 a1:
   #primitive.font.contains
 
 /// Number of fuzzed primitives.
-PRIMITIVE-COUNT ::= 248
+PRIMITIVE-COUNT ::= 249
 
 /// Names of the fuzzed primitives (module.name).
 PRIMITIVE-NAMES ::= [
@@ -894,6 +897,7 @@ PRIMITIVE-NAMES ::= [
   "core.program_name",
   "core.process_current_id",
   "core.process_system_id",
+  "core.process_send",
   "core.task_has_messages",
   "core.gc_count",
   "core.bytes_allocated_delta",
@@ -1146,6 +1150,7 @@ PRIMITIVE-ARITIES ::= [
   0,
   0,
   0,
+  3,
   0,
   0,
   0,
@@ -1398,111 +1403,112 @@ call-primitive index/int args/List -> any:
   if index == 138: return prim-core-program-name
   if index == 139: return prim-core-process-current-id
   if index == 140: return prim-core-process-system-id
-  if index == 141: return prim-core-task-has-messages
-  if index == 142: return prim-core-gc-count
-  if index == 143: return prim-core-bytes-allocated-delta
-  if index == 144: return prim-core-add-finalizer args[0] args[1]
-  if index == 145: return prim-core-remove-finalizer args[0]
-  if index == 146: return prim-core-get-generic-resource-group
-  if index == 147: return prim-core-main-arguments
-  if index == 148: return prim-core-spawn-method
-  if index == 149: return prim-core-spawn-arguments
-  if index == 150: return prim-timer-init
-  if index == 151: return prim-timer-create args[0]
-  if index == 152: return prim-timer-arm args[0] args[1]
-  if index == 153: return prim-timer-delete args[0] args[1]
-  if index == 154: return prim-events-read-state args[0] args[1]
-  if index == 155: return prim-events-register-monitor-notifier args[0] args[1] args[2]
-  if index == 156: return prim-events-unregister-monitor-notifier args[0] args[1]
-  if index == 157: return prim-encoding-base64-encode args[0] args[1]
-  if index == 158: return prim-encoding-base64-decode args[0] args[1]
-  if index == 159: return prim-encoding-tison-encode args[0]
-  if index == 160: return prim-encoding-tison-decode args[0]
-  if index == 161: return prim-math-sin args[0]
-  if index == 162: return prim-math-cos args[0]
-  if index == 163: return prim-math-tan args[0]
-  if index == 164: return prim-math-sinh args[0]
-  if index == 165: return prim-math-cosh args[0]
-  if index == 166: return prim-math-tanh args[0]
-  if index == 167: return prim-math-asin args[0]
-  if index == 168: return prim-math-acos args[0]
-  if index == 169: return prim-math-atan args[0]
-  if index == 170: return prim-math-atan2 args[0] args[1]
-  if index == 171: return prim-math-sqrt args[0]
-  if index == 172: return prim-math-pow args[0] args[1]
-  if index == 173: return prim-math-exp args[0]
-  if index == 174: return prim-math-log args[0]
-  if index == 175: return prim-bignum-binary-operator args[0] args[1] args[2] args[3] args[4]
-  if index == 176: return prim-bignum-exp-mod args[0] args[1] args[2] args[3] args[4] args[5]
-  if index == 177: return prim-crypto-sha1-start args[0]
-  if index == 178: return prim-crypto-sha1-clone args[0]
-  if index == 179: return prim-crypto-sha1-add args[0] args[1] args[2] args[3]
-  if index == 180: return prim-crypto-sha1-get args[0]
-  if index == 181: return prim-crypto-sha-start args[0] args[1]
-  if index == 182: return prim-crypto-sha-clone args[0]
-  if index == 183: return prim-crypto-sha-add args[0] args[1] args[2] args[3]
-  if index == 184: return prim-crypto-sha-get args[0]
-  if index == 185: return prim-crypto-blake2s-start args[0] args[1] args[2]
-  if index == 186: return prim-crypto-blake2s-clone args[0]
-  if index == 187: return prim-crypto-blake2s-add args[0] args[1] args[2] args[3]
-  if index == 188: return prim-crypto-blake2s-get args[0] args[1]
-  if index == 189: return prim-crypto-siphash-start args[0] args[1] args[2] args[3] args[4]
-  if index == 190: return prim-crypto-siphash-clone args[0]
-  if index == 191: return prim-crypto-siphash-add args[0] args[1] args[2] args[3]
-  if index == 192: return prim-crypto-siphash-get args[0]
-  if index == 193: return prim-crypto-aes-init args[0] args[1] args[2] args[3]
-  if index == 194: return prim-crypto-aes-cbc-crypt args[0] args[1] args[2]
-  if index == 195: return prim-crypto-aes-ecb-crypt args[0] args[1] args[2]
-  if index == 196: return prim-crypto-aes-cbc-close args[0]
-  if index == 197: return prim-crypto-aes-ecb-close args[0]
-  if index == 198: return prim-crypto-aead-init args[0] args[1] args[2] args[3]
-  if index == 199: return prim-crypto-aead-close args[0]
-  if index == 200: return prim-crypto-aead-start-message args[0] args[1] args[2]
-  if index == 201: return prim-crypto-aead-add args[0] args[1] args[2]
-  if index == 202: return prim-crypto-aead-get-tag-size args[0]
-  if index == 203: return prim-crypto-aead-finish args[0]
-  if index == 204: return prim-crypto-aead-verify args[0] args[1] args[2]
-  if index == 205: return prim-crypto-rsa-sign args[0] args[1] args[2]
-  if index == 206: return prim-crypto-rsa-verify args[0] args[1] args[2] args[3]
-  if index == 207: return prim-crypto-rsa-get-private-key-der args[0] args[1]
-  if index == 208: return prim-crypto-rsa-get-public-key-der args[0]
-  if index == 209: return prim-crypto-rsa-encrypt args[0] args[1] args[2] args[3]
-  if index == 210: return prim-crypto-rsa-decrypt args[0] args[1] args[2] args[3]
-  if index == 211: return prim-crypto-ec-sign args[0] args[1] args[2]
-  if index == 212: return prim-crypto-ec-verify args[0] args[1] args[2] args[3]
-  if index == 213: return prim-crypto-ec-get-private-key-der args[0] args[1]
-  if index == 214: return prim-crypto-ec-get-public-key-der args[0]
-  if index == 215: return prim-crypto-random-random args[0]
-  if index == 216: return prim-zlib-adler32-start args[0]
-  if index == 217: return prim-zlib-adler32-add args[0] args[1] args[2] args[3] args[4]
-  if index == 218: return prim-zlib-adler32-get args[0] args[1]
-  if index == 219: return prim-zlib-adler32-clone args[0]
-  if index == 220: return prim-zlib-rle-start args[0]
-  if index == 221: return prim-zlib-rle-add args[0] args[1] args[2] args[3] args[4] args[5]
-  if index == 222: return prim-zlib-rle-finish args[0] args[1] args[2]
-  if index == 223: return prim-zlib-zlib-init-deflate args[0] args[1]
-  if index == 224: return prim-zlib-zlib-init-inflate args[0]
-  if index == 225: return prim-zlib-zlib-write args[0] args[1]
-  if index == 226: return prim-zlib-zlib-read args[0]
-  if index == 227: return prim-zlib-zlib-close args[0]
-  if index == 228: return prim-zlib-zlib-uninit args[0]
-  if index == 229: return prim-x509-init
-  if index == 230: return prim-x509-parse args[0] args[1]
-  if index == 231: return prim-x509-get-common-name args[0]
-  if index == 232: return prim-x509-close args[0]
-  if index == 233: return prim-bitmap-draw-text args[0] args[1] args[2] args[3] args[4] args[5] args[6] args[7]
-  if index == 234: return prim-bitmap-byte-draw-text args[0] args[1] args[2] args[3] args[4] args[5] args[6] args[7]
-  if index == 235: return prim-bitmap-draw-bitmap args[0] args[1] args[2] args[3] args[4] args[5] args[6] args[7] args[8] args[9] args[10]
-  if index == 236: return prim-bitmap-draw-bytemap args[0] args[1] args[2] args[3] args[4] args[5] args[6] args[7] args[8] args[9]
-  if index == 237: return prim-bitmap-byte-zap args[0] args[1]
-  if index == 238: return prim-bitmap-blit args[0] args[1] args[2] args[3] args[4] args[5] args[6] args[7] args[8] args[9] args[10]
-  if index == 239: return prim-bitmap-rectangle args[0] args[1] args[2] args[3] args[4] args[5] args[6]
-  if index == 240: return prim-bitmap-byte-rectangle args[0] args[1] args[2] args[3] args[4] args[5] args[6]
-  if index == 241: return prim-bitmap-composit args[0] args[1] args[2] args[3] args[4] args[5]
-  if index == 242: return prim-bitmap-bytemap-blur args[0] args[1] args[2] args[3]
-  if index == 243: return prim-font-get-font args[0] args[1]
-  if index == 244: return prim-font-get-text-size args[0] args[1] args[2]
-  if index == 245: return prim-font-get-nonbuiltin args[0] args[1]
-  if index == 246: return prim-font-delete-font args[0]
-  if index == 247: return prim-font-contains args[0] args[1]
+  if index == 141: return prim-core-process-send args[0] args[1] args[2]
+  if index == 142: return prim-core-task-has-messages
+  if index == 143: return prim-core-gc-count
+  if index == 144: return prim-core-bytes-allocated-delta
+  if index == 145: return prim-core-add-finalizer args[0] args[1]
+  if index == 146: return prim-core-remove-finalizer args[0]
+  if index == 147: return prim-core-get-generic-resource-group
+  if index == 148: return prim-core-main-arguments
+  if index == 149: return prim-core-spawn-method
+  if index == 150: return prim-core-spawn-arguments
+  if index == 151: return prim-timer-init
+  if index == 152: return prim-timer-create args[0]
+  if index == 153: return prim-timer-arm args[0] args[1]
+  if index == 154: return prim-timer-delete args[0] args[1]
+  if index == 155: return prim-events-read-state args[0] args[1]
+  if index == 156: return prim-events-register-monitor-notifier args[0] args[1] args[2]
+  if index == 157: return prim-events-unregister-monitor-notifier args[0] args[1]
+  if index == 158: return prim-encoding-base64-encode args[0] args[1]
+  if index == 159: return prim-encoding-base64-decode args[0] args[1]
+  if index == 160: return prim-encoding-tison-encode args[0]
+  if index == 161: return prim-encoding-tison-decode args[0]
+  if index == 162: return prim-math-sin args[0]
+  if index == 163: return prim-math-cos args[0]
+  if index == 164: return prim-math-tan args[0]
+  if index == 165: return prim-math-sinh args[0]
+  if index == 166: return prim-math-cosh args[0]
+  if index == 167: return prim-math-tanh args[0]
+  if index == 168: return prim-math-asin args[0]
+  if index == 169: return prim-math-acos args[0]
+  if index == 170: return prim-math-atan args[0]
+  if index == 171: return prim-math-atan2 args[0] args[1]
+  if index == 172: return prim-math-sqrt args[0]
+  if index == 173: return prim-math-pow args[0] args[1]
+  if index == 174: return prim-math-exp args[0]
+  if index == 175: return prim-math-log args[0]
+  if index == 176: return prim-bignum-binary-operator args[0] args[1] args[2] args[3] args[4]
+  if index == 177: return prim-bignum-exp-mod args[0] args[1] args[2] args[3] args[4] args[5]
+  if index == 178: return prim-crypto-sha1-start args[0]
+  if index == 179: return prim-crypto-sha1-clone args[0]
+  if index == 180: return prim-crypto-sha1-add args[0] args[1] args[2] args[3]
+  if index == 181: return prim-crypto-sha1-get args[0]
+  if index == 182: return prim-crypto-sha-start args[0] args[1]
+  if index == 183: return prim-crypto-sha-clone args[0]
+  if index == 184: return prim-crypto-sha-add args[0] args[1] args[2] args[3]
+  if index == 185: return prim-crypto-sha-get args[0]
+  if index == 186: return prim-crypto-blake2s-start args[0] args[1] args[2]
+  if index == 187: return prim-crypto-blake2s-clone args[0]
+  if index == 188: return prim-crypto-blake2s-add args[0] args[1] args[2] args[3]
+  if index == 189: return prim-crypto-blake2s-get args[0] args[1]
+  if index == 190: return prim-crypto-siphash-start args[0] args[1] args[2] args[3] args[4]
+  if index == 191: return prim-crypto-siphash-clone args[0]
+  if index == 192: return prim-crypto-siphash-add args[0] args[1] args[2] args[3]
+  if index == 193: return prim-crypto-siphash-get args[0]
+  if index == 194: return prim-crypto-aes-init args[0] args[1] args[2] args[3]
+  if index == 195: return prim-crypto-aes-cbc-crypt args[0] args[1] args[2]
+  if index == 196: return prim-crypto-aes-ecb-crypt args[0] args[1] args[2]
+  if index == 197: return prim-crypto-aes-cbc-close args[0]
+  if index == 198: return prim-crypto-aes-ecb-close args[0]
+  if index == 199: return prim-crypto-aead-init args[0] args[1] args[2] args[3]
+  if index == 200: return prim-crypto-aead-close args[0]
+  if index == 201: return prim-crypto-aead-start-message args[0] args[1] args[2]
+  if index == 202: return prim-crypto-aead-add args[0] args[1] args[2]
+  if index == 203: return prim-crypto-aead-get-tag-size args[0]
+  if index == 204: return prim-crypto-aead-finish args[0]
+  if index == 205: return prim-crypto-aead-verify args[0] args[1] args[2]
+  if index == 206: return prim-crypto-rsa-sign args[0] args[1] args[2]
+  if index == 207: return prim-crypto-rsa-verify args[0] args[1] args[2] args[3]
+  if index == 208: return prim-crypto-rsa-get-private-key-der args[0] args[1]
+  if index == 209: return prim-crypto-rsa-get-public-key-der args[0]
+  if index == 210: return prim-crypto-rsa-encrypt args[0] args[1] args[2] args[3]
+  if index == 211: return prim-crypto-rsa-decrypt args[0] args[1] args[2] args[3]
+  if index == 212: return prim-crypto-ec-sign args[0] args[1] args[2]
+  if index == 213: return prim-crypto-ec-verify args[0] args[1] args[2] args[3]
+  if index == 214: return prim-crypto-ec-get-private-key-der args[0] args[1]
+  if index == 215: return prim-crypto-ec-get-public-key-der args[0]
+  if index == 216: return prim-crypto-random-random args[0]
+  if index == 217: return prim-zlib-adler32-start args[0]
+  if index == 218: return prim-zlib-adler32-add args[0] args[1] args[2] args[3] args[4]
+  if index == 219: return prim-zlib-adler32-get args[0] args[1]
+  if index == 220: return prim-zlib-adler32-clone args[0]
+  if index == 221: return prim-zlib-rle-start args[0]
+  if index == 222: return prim-zlib-rle-add args[0] args[1] args[2] args[3] args[4] args[5]
+  if index == 223: return prim-zlib-rle-finish args[0] args[1] args[2]
+  if index == 224: return prim-zlib-zlib-init-deflate args[0] args[1]
+  if index == 225: return prim-zlib-zlib-init-inflate args[0]
+  if index == 226: return prim-zlib-zlib-write args[0] args[1]
+  if index == 227: return prim-zlib-zlib-read args[0]
+  if index == 228: return prim-zlib-zlib-close args[0]
+  if index == 229: return prim-zlib-zlib-uninit args[0]
+  if index == 230: return prim-x509-init
+  if index == 231: return prim-x509-parse args[0] args[1]
+  if index == 232: return prim-x509-get-common-name args[0]
+  if index == 233: return prim-x509-close args[0]
+  if index == 234: return prim-bitmap-draw-text args[0] args[1] args[2] args[3] args[4] args[5] args[6] args[7]
+  if index == 235: return prim-bitmap-byte-draw-text args[0] args[1] args[2] args[3] args[4] args[5] args[6] args[7]
+  if index == 236: return prim-bitmap-draw-bitmap args[0] args[1] args[2] args[3] args[4] args[5] args[6] args[7] args[8] args[9] args[10]
+  if index == 237: return prim-bitmap-draw-bytemap args[0] args[1] args[2] args[3] args[4] args[5] args[6] args[7] args[8] args[9]
+  if index == 238: return prim-bitmap-byte-zap args[0] args[1]
+  if index == 239: return prim-bitmap-blit args[0] args[1] args[2] args[3] args[4] args[5] args[6] args[7] args[8] args[9] args[10]
+  if index == 240: return prim-bitmap-rectangle args[0] args[1] args[2] args[3] args[4] args[5] args[6]
+  if index == 241: return prim-bitmap-byte-rectangle args[0] args[1] args[2] args[3] args[4] args[5] args[6]
+  if index == 242: return prim-bitmap-composit args[0] args[1] args[2] args[3] args[4] args[5]
+  if index == 243: return prim-bitmap-bytemap-blur args[0] args[1] args[2] args[3]
+  if index == 244: return prim-font-get-font args[0] args[1]
+  if index == 245: return prim-font-get-text-size args[0] args[1] args[2]
+  if index == 246: return prim-font-get-nonbuiltin args[0] args[1]
+  if index == 247: return prim-font-delete-font args[0]
+  if index == 248: return prim-font-contains args[0] args[1]
   unreachable
