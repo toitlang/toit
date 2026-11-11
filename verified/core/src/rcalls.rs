@@ -59,14 +59,14 @@ pub proof fn lemma_or_ge(w: usize, n: usize)
 #[inline(always)]
 pub fn call_fast(m: &Machine, r: &Regs, env: &Env) -> (b: bool)
     requires m_ok(&env.p, *m, *r),
-    ensures b ==> r.sp@ - r.rt@ >= FRAME_WORDS + env.p.max_height + STACK_RESERVE && r.rt@ == r.fr@,
+    ensures b ==> r.sp@ - r.fr@ >= FRAME_WORDS + env.p.max_height + STACK_RESERVE,
 {
     proof { assert(env.p.max_height < 0x1_0000); }
     let need = FRAME_WORDS + env.p.max_height + STACK_RESERVE;
     let w = env.pre.word();
-    let free = r.sp.diff(r.rt);
+    let free = r.sp.diff(r.fr);
     proof { lemma_or_ge(w, need); }
-    free >= (w | need) && r.rt.diff(r.fr) == 0
+    free >= (w | need)
 }
 
 /// `spec::call` without finally records: a frame for `target` (its method
@@ -76,8 +76,7 @@ pub fn call_fast(m: &Machine, r: &Regs, env: &Env) -> (b: bool)
 pub fn push_call(m: &mut Machine, r: &mut Regs, p: &Program, target: usize, info: V2Method, ret: usize)
     requires
         m_ok(p, *old(m), *old(r)),
-        old(r).rt@ == old(r).fr@,
-        old(r).sp@ - old(r).rt@ >= FRAME_WORDS + p.max_height + STACK_RESERVE,
+        old(r).sp@ - old(r).fr@ >= FRAME_WORDS + p.max_height + STACK_RESERVE,
         room_ok(p, old(m).with(*old(r))),
         target < p.methods@.len(),
         info == p.methods@[target as int],
@@ -102,7 +101,6 @@ pub fn push_call(m: &mut Machine, r: &mut Regs, p: &Program, target: usize, info
     f.write(FRAME_HANDLER, 0, &mut m.mem);
     let nf = f.offset(FRAME_WORDS as isize);
     r.fr = nf;
-    r.rt = nf;
     r.fp = fp;
     r.bci = info.entry as usize;
     m.method = target;
@@ -218,7 +216,7 @@ pub fn op_invoke_virtual(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, o
 pub fn op_return(m: &mut Machine, r: &mut Regs, env: &Env, w: usize, Ghost(v): Ghost<Value>) -> (c: Ctl)
     requires
         rinv(&env.p, *old(m), *old(r)),
-        old(r).sp@ >= old(r).rt@ + STACK_RESERVE,
+        old(r).sp@ >= old(r).fr@ + STACK_RESERVE,
         step_ok(env.p.ap@, env.p.cert@, old(m).g@),
         sp::step(env.p.ap@, old(m).g@) == sp::return_from(env.p.ap@, old(m).g@, v),
         w == enc(old(m).addr(), v),
@@ -234,9 +232,6 @@ pub fn op_return(m: &mut Machine, r: &mut Regs, env: &Env, w: usize, Ghost(v): G
         lemma_shape(p, g0);
         m0.lemma_frame(p);
         lemma_no_handler(g0);
-    }
-    if r.rt.diff(r.fr) != 0 {
-        return bridge_r(m, r, env);
     }
     if r.fr.diff(m.mem.slot(0)) <= FRAME_WORDS {
         // The task's bottom frame returns.
@@ -277,7 +272,6 @@ pub fn op_return(m: &mut Machine, r: &mut Regs, env: &Env, w: usize, Ghost(v): G
     r.sp = s;
     r.fp = r.end.offset(-(base as isize));
     r.fr = rec_;
-    r.rt = rec_;
     r.bci = ret;
     m.method = method;
     let ghost g1 = State2 {

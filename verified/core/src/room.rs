@@ -116,6 +116,8 @@ pub fn regain(m: &mut Machine, env: &Env, len0: usize, Ghost(m0): Ghost<Machine>
         old(m).inv(&env.p),
         room_ok(&env.p, m0),
         old(m).g@.frames == m0.g@.frames,
+        m0.refines(&env.p),
+        m0.rtop == m0.ftop,
         old(m).g@.fins.len() <= m0.g@.fins.len(),
     ensures
         res matches Some(r) ==> final(m).rok(r) && final(m).with(r) == *final(m)
@@ -129,6 +131,7 @@ pub fn regain(m: &mut Machine, env: &Env, len0: usize, Ghost(m0): Ghost<Machine>
     } else {
         proof { lemma_room_same(&env.p, m0, *m); }
     }
+    proof { assert(m0.g@.fins.len() == 0); assert(m.g@.fins.len() == 0); }
     Some(m.regs())
 }
 

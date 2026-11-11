@@ -45,15 +45,15 @@ verus! {
 
 /// The hot part of the machine: cursors at the object-stack top (`sp`,
 /// index `top`), at the top frame's limit (`fp`, index `lim`: slot `n`
-/// exists iff `top + n < lim`), at the frame-record top (`fr`, `ftop`), at
-/// the record top (`rt`, `rtop`) and at the end of the array (`end`, index
+/// exists iff `top + n < lim`), at the frame-record top (`fr`, `ftop`; the run
+/// loop runs only without finally records, so it is also the record top
+/// `rtop`, see `step::settle`) and at the end of the array (`end`, index
 /// `len`: object-stack position `i` is `end - 1 - i`), and the bci.
 #[derive(Clone, Copy)]
 pub struct Regs {
     pub sp: Slot,
     pub fp: Slot,
     pub fr: Slot,
-    pub rt: Slot,
     pub end: Slot,
     pub bci: usize,
 }
@@ -67,7 +67,7 @@ impl Machine {
             lim: r.fp@ as usize,
             base: (self.len - r.fp@) as usize,
             ftop: r.fr@ as usize,
-            rtop: r.rt@ as usize,
+            rtop: r.fr@ as usize,
             bci: r.bci,
             ..*self
         }
@@ -79,26 +79,23 @@ impl Machine {
         &&& r.sp.sid() == self.mem.sid()
         &&& r.fp.sid() == self.mem.sid()
         &&& r.fr.sid() == self.mem.sid()
-        &&& r.rt.sid() == self.mem.sid()
         &&& r.end.sid() == self.mem.sid()
         &&& r.end@ == self.len
         &&& 0 <= r.sp@ <= self.len
         &&& 0 <= r.fp@ <= self.len
         &&& 0 <= r.fr@ <= self.len
-        &&& 0 <= r.rt@ <= self.len
     }
 
     /// The registers of this machine (`self.with(r) == self`).
     #[inline(always)]
     pub fn regs(&self) -> (r: Regs)
-        requires self.stack_ok(),
+        requires self.stack_ok(), self.rtop == self.ftop,
         ensures self.rok(r), self.with(r) == *self,
     {
         let r = Regs {
             sp: self.mem.slot(self.top),
             fp: self.mem.slot(self.lim),
             fr: self.mem.slot(self.ftop),
-            rt: self.mem.slot(self.rtop),
             end: self.mem.slot(self.len),
             bci: self.bci,
         };
@@ -118,7 +115,7 @@ impl Machine {
         self.lim = lim;
         self.base = self.len - lim;
         self.ftop = self.mem.index(r.fr);
-        self.rtop = self.mem.index(r.rt);
+        self.rtop = self.ftop;
         self.bci = r.bci;
         proof { assert(*self =~= m0.with(r)); }
     }
@@ -133,7 +130,6 @@ pub fn set_regs(r: &mut Regs, r2: Regs)
     r.sp = r2.sp;
     r.fp = r2.fp;
     r.fr = r2.fr;
-    r.rt = r2.rt;
     r.end = r2.end;
     r.bci = r2.bci;
 }
@@ -144,7 +140,7 @@ pub fn set_regs(r: &mut Regs, r2: Regs)
 /// handler pushes up to that many words without a check.
 pub open spec fn rpre(p: &Program, m: Machine, r: Regs) -> bool {
     &&& m_ok(p, m, r)
-    &&& r.sp@ >= r.rt@ + STACK_RESERVE
+    &&& r.sp@ >= r.fr@ + STACK_RESERVE
 }
 
 /// The registers are cursors of the machine, which refines its ghost state
@@ -188,7 +184,7 @@ pub fn at(m: &Machine, r: &Regs, n: usize) -> (w: usize)
 pub fn push_next(m: &mut Machine, r: &mut Regs, p: &Program, w: usize, len: usize, Ghost(v): Ghost<Value>) -> (c: Ctl)
     requires
         m_ok(p, *old(m), *old(r)),
-        old(r).sp@ > old(r).rt@,
+        old(r).sp@ > old(r).fr@,
         w == enc(old(m).addr(), v),
         encodable(old(m).addr(), v),
         old(r).bci + len < 0x1000_0000,
@@ -197,7 +193,7 @@ pub fn push_next(m: &mut Machine, r: &mut Regs, p: &Program, w: usize, len: usiz
         rnext(p, *final(m), *final(r), Outcome2::Next(sp::goto(sp::push(old(m).g@, v), old(r).bci + len))),
         rsame(*old(m), *final(m)),
         final(r).sp@ == old(r).sp@ - 1,
-        final(r).rt == old(r).rt,
+        final(r).fr == old(r).fr,
 {
     let ghost m0 = m.with(*r);
     let s = r.sp.offset(-1);
@@ -409,7 +405,7 @@ pub fn op_load_smis_0(m: &mut Machine, r: &mut Regs, p: &Program, n: usize) -> (
 {
     let ghost m0 = m.with(*r);
     let ghost g0 = m.g@;
-    if r.sp.diff(r.rt) < n {
+    if r.sp.diff(r.fr) < n {
         return Ctl::Stuck(stuck::LIMIT);
     }
     proof { lemma_smi_word_nat(0); }
@@ -419,7 +415,7 @@ pub fn op_load_smis_0(m: &mut Machine, r: &mut Regs, p: &Program, n: usize) -> (
             m.rok(*r),
             i <= n,
             r.sp@ == m0.top - i,
-            r.fp == old(r).fp, r.fr == old(r).fr, r.rt == old(r).rt, r.end == old(r).end, r.bci == old(r).bci,
+            r.fp == old(r).fp, r.fr == old(r).fr, r.end == old(r).end, r.bci == old(r).bci,
             m.mem.sid() == m0.mem.sid(),
             m.mem@.len() == m0.mem@.len(),
             m.len == m0.len, m.heap == m0.heap, m.globals == m0.globals, m.g == m0.g, m.method == m0.method,

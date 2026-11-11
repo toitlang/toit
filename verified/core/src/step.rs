@@ -899,20 +899,93 @@ pub fn step(m: &mut Machine, env: &Env) -> (r: Ctl)
 // The step on registers.
 
 /// What a step on registers guarantees: on `Next` the registers `r1` are
-/// cursors of `m1` and `m1.with(r1)` is the machine of `step_post`; on any
-/// other result the machine `m1` itself (the registers written back).
+/// cursors of `m1` and `m1.with(r1)` is the machine of `step_post` (one
+/// step) or of `steps_post` (the machine's handlers ran several steps until
+/// no finally records were left, `settle`); on any other result the
+/// machine `m1` itself (the registers written back).
 pub open spec fn rpost(p: &Program, m0: Machine, r0: Regs, m1: Machine, r1: Regs, c: Ctl) -> bool {
     if c == Ctl::Next {
         &&& m1.rok(r1)
-        &&& step_post(p, m0.with(r0), m1.with(r1), c)
+        &&& step_post(p, m0.with(r0), m1.with(r1), c) || steps_post(p, m0.with(r0), m1.with(r1), c)
         &&& room_ok(p, m1.with(r1))
     } else {
-        step_post(p, m0.with(r0), m1, c)
+        step_post(p, m0.with(r0), m1, c) || steps_post(p, m0.with(r0), m1, c)
+    }
+}
+
+/// `step_post` for a run of steps: `reaches` for `advances`.
+pub open spec fn steps_post(p: &Program, m0: Machine, m1: Machine, r: Ctl) -> bool {
+    match r {
+        Ctl::Next => m1.inv(p) && reaches(p.ap@, m0.g@, m1.g@),
+        Ctl::Exit(st, _) => (st == RESULT_PREEMPTED || st == RESULT_YIELDED) ==>
+            m1.inv(p) && reaches(p.ap@, m0.g@, m1.g@),
+        Ctl::Stuck(reason) => reason == stuck::LIMIT,
+    }
+}
+
+pub proof fn lemma_steps_post(p: &Program, m0: Machine, m1: Machine, r: Ctl)
+    requires step_post(p, m0, m1, r),
+    ensures steps_post(p, m0, m1, r),
+{
+    if r is Next || (r is Exit && (r->Exit_0 == RESULT_PREEMPTED || r->Exit_0 == RESULT_YIELDED)) {
+        lemma_reaches_refl(p.ap@, m0.g@);
+        lemma_reaches_step(p.ap@, m0.g@, m0.g@, m1.g@);
+    }
+}
+
+/// After the machine's handlers ran from `w0` with result `c`: while there
+/// are finally records (only during an unwinding's finally code, rare),
+/// the machine's handlers run the following instructions too (lazy finally
+/// records: the register handlers assume there are none); then the room is
+/// re-established (the machine's handlers do not track it) and the
+/// registers are derived.
+#[verifier::exec_allows_no_decreases_clause]
+pub fn settle(m: &mut Machine, env: &Env, c: Ctl, Ghost(w0): Ghost<Machine>) -> (res: (Option<Regs>, Ctl))
+    requires step_post(&env.p, w0, *old(m), c) || steps_post(&env.p, w0, *old(m), c),
+    ensures
+        res.1 == Ctl::Next ==> res.0 is Some && final(m).rok(res.0->0)
+            && steps_post(&env.p, w0, final(m).with(res.0->0), res.1)
+            && room_ok(&env.p, final(m).with(res.0->0)),
+        res.1 != Ctl::Next ==> steps_post(&env.p, w0, *final(m), res.1),
+{
+    let mut c = c;
+    proof { if step_post(&env.p, w0, *m, c) { lemma_steps_post(&env.p, w0, *m, c); } }
+    loop
+        invariant steps_post(&env.p, w0, *m, c),
+        ensures steps_post(&env.p, w0, *m, c), c == Ctl::Next, m.rtop == m.ftop,
+    {
+        match c {
+            Ctl::Next => {
+                if m.rtop == m.ftop {
+                    break;
+                }
+                let ghost before = *m;
+                c = step(m, env);
+                proof {
+                    if c is Next || (c is Exit && (c->Exit_0 == RESULT_PREEMPTED || c->Exit_0 == RESULT_YIELDED)) {
+                        lemma_reaches_step(env.p.ap@, w0.g@, before.g@, m.g@);
+                    }
+                }
+            },
+            _ => {
+                return (None, c);
+            },
+        }
+    }
+    let ghost m1 = *m;
+    let c2 = ensure_room_all(m, env);
+    if let Ctl::Next = c2 {
+        let r = m.regs();
+        proof { assert(m.g == m1.g); }
+        (Some(r), c2)
+    } else {
+        (None, c2)
     }
 }
 
 /// The run loop's invariant on registers: the registers are cursors of the
-/// machine, which satisfies `inv` with them and has room.
+/// machine, which satisfies `inv` with them (no finally records: the
+/// registers' record top is the frame top) and has room.
 pub open spec fn rinv(p: &Program, m: Machine, r: Regs) -> bool {
     &&& m.rok(r)
     &&& m.with(r).inv(p)
@@ -923,7 +996,7 @@ pub open spec fn rinv(p: &Program, m: Machine, r: Regs) -> bool {
 pub open spec fn rhandler_pre(p: &Program, m: Machine, r: Regs, bci: usize, opcode: u8) -> bool {
     let ap = p.ap@;
     &&& rinv(p, m, r)
-    &&& r.sp@ >= r.rt@ + STACK_RESERVE
+    &&& r.sp@ >= r.fr@ + STACK_RESERVE
     &&& step_ok(ap, p.cert@, m.g@)
     &&& bci == r.bci
     &&& opcode == ap.bytecodes[bci as int]
@@ -931,24 +1004,18 @@ pub open spec fn rhandler_pre(p: &Program, m: Machine, r: Regs, bci: usize, opco
 
 /// The old step on the machine, out of line: for the opcodes and the slow
 /// paths whose handlers do not take registers. Writes the registers back,
-/// steps, re-establishes the room (the old handlers do not track it) and
-/// reads the registers again.
+/// steps, and settles (`settle`: finally records, room, registers).
 #[inline(never)]
 pub fn bridge(m: &mut Machine, r: Regs, env: &Env) -> (res: (Regs, Ctl))
     requires old(m).rok(r), old(m).with(r).inv(&env.p),
     ensures rpost(&env.p, *old(m), r, *final(m), res.0, res.1),
 {
+    let ghost w0 = m.with(r);
     m.sync(r);
     let c = step(m, env);
-    if let Ctl::Next = c {
-        let c2 = ensure_room_all(m, env);
-        if let Ctl::Next = c2 {
-            (m.regs(), c2)
-        } else {
-            (r, c2)
-        }
-    } else {
-        (r, c)
+    match settle(m, env, c, Ghost(w0)) {
+        (Some(r2), Ctl::Next) => (r2, Ctl::Next),
+        (_, c2) => (r, c2),
     }
 }
 
@@ -1598,6 +1665,47 @@ proof fn lemma_reaches_step(ap: Program2, g0: State2, g1: State2, g2: State2)
     assert(tr2.last() == g2);
 }
 
+proof fn lemma_reaches_trans(ap: Program2, g0: State2, g1: State2, g2: State2)
+    requires reaches(ap, g0, g1), reaches(ap, g1, g2),
+    ensures reaches(ap, g0, g2),
+{
+    let t1 = choose|tr: Seq<State2>| #[trigger] chain(ap, tr) && tr.len() >= 1 && tr[0] == g0 && tr.last() == g1;
+    let t2 = choose|tr: Seq<State2>| #[trigger] chain(ap, tr) && tr.len() >= 1 && tr[0] == g1 && tr.last() == g2;
+    let tr = t1 + t2.subrange(1, t2.len() as int);
+    assert forall|i: int| 0 <= i < tr.len() - 1 implies #[trigger] advances(ap, tr[i], tr[i + 1]) by {
+        if i < t1.len() - 1 {
+            assert(tr[i] == t1[i] && tr[i + 1] == t1[i + 1]);
+        } else if i == t1.len() - 1 {
+            assert(tr[i] == t1.last() && tr[i] == t2[0] && tr[i + 1] == t2[1]);
+        } else {
+            let k = i - t1.len() + 1;
+            assert(tr[i] == t2[k] && tr[i + 1] == t2[k + 1]);
+        }
+    }
+    assert(chain(ap, tr));
+    if t2.len() == 1 {
+        assert(tr =~= t1);
+    } else {
+        assert(tr.last() == t2.last());
+    }
+}
+
+/// After a step on registers that continues (`Next`, preempted, yielded),
+/// the state is reached from the run's start.
+proof fn lemma_rstep_reaches(p: &Program, g0: State2, m0: Machine, m1: Machine, c: Ctl)
+    requires
+        reaches(p.ap@, g0, m0.g@),
+        step_post(p, m0, m1, c) || steps_post(p, m0, m1, c),
+        c is Next || (c is Exit && (c->Exit_0 == RESULT_PREEMPTED || c->Exit_0 == RESULT_YIELDED)),
+    ensures m1.inv(p), reaches(p.ap@, g0, m1.g@),
+{
+    if step_post(p, m0, m1, c) {
+        lemma_reaches_step(p.ap@, g0, m0.g@, m1.g@);
+    } else {
+        lemma_reaches_trans(p.ap@, g0, m0.g@, m1.g@);
+    }
+}
+
 /// Runs the current task until it is preempted, yields or ends. A program
 /// may loop forever (the scheduler preempts it), so no termination is
 /// claimed.
@@ -1608,14 +1716,28 @@ pub fn run_loop(m: &mut Machine, env: &Env, accepted: &crate::ffi::Accepted) -> 
 {
     let ghost m0 = *m;
     proof { lemma_reaches_refl(env.p.ap@, m.g@); }
-    // The room of every frame (room.rs): checked once per run.
-    if let Ctl::Stuck(reason) = ensure_room_all(m, env) {
-        env.rt.report(V2_REPORT_STUCK, m.bci, reason);
-        m.save();
-        return (RESULT_TERMINATED, 1);
-    }
-    // The registers: locals of this function, in machine registers.
-    let mut r = m.regs();
+    // A task resumed in finally code runs on the machine's handlers until
+    // its finally records are gone; then the room of every frame (room.rs),
+    // checked once per run, and the registers: locals of this function, in
+    // machine registers.
+    let mut r = match settle(m, env, Ctl::Next, Ghost(m0)) {
+        (Some(r), Ctl::Next) => r,
+        (_, Ctl::Exit(state, value)) => {
+            m.save();
+            proof {
+                if state == RESULT_PREEMPTED || state == RESULT_YIELDED {
+                    lemma_rstep_reaches(&env.p, m0.g@, m0, *m, Ctl::Exit(state, value));
+                }
+            }
+            return (state as usize, value);
+        },
+        (_, c) => {
+            env.rt.report(V2_REPORT_STUCK, m.bci, stuck::LIMIT);
+            m.save();
+            return (RESULT_TERMINATED, 1);
+        },
+    };
+
     loop
         invariant
             rinv(&env.p, *m, r),
@@ -1626,12 +1748,12 @@ pub fn run_loop(m: &mut Machine, env: &Env, accepted: &crate::ffi::Accepted) -> 
         let ctl = step_r(m, &mut r, env);
         match ctl {
             Ctl::Next => {
-                proof { lemma_reaches_step(env.p.ap@, m0.g@, before.g@, m.g@); }
+                proof { lemma_rstep_reaches(&env.p, m0.g@, before, m.with(r), ctl); }
             },
             Ctl::Exit(state, value) => {
                 proof {
                     if state == RESULT_PREEMPTED || state == RESULT_YIELDED {
-                        lemma_reaches_step(env.p.ap@, m0.g@, before.g@, m.g@);
+                        lemma_rstep_reaches(&env.p, m0.g@, before, *m, ctl);
                     }
                 }
                 m.save();
