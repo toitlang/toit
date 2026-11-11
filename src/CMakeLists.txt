@@ -24,6 +24,29 @@ if ("${CMAKE_SYSTEM_NAME}" MATCHES "Windows" OR "${CMAKE_SYSTEM_NAME}" MATCHES "
   set(UTF_8_MANIFEST_LIB utf8_manifest)
 endif()
 
+# The bytecode format of the build (docs/format2-migration.md): the default
+# of the compiler (toit.compile, toit.run; -Xbytecode_format and
+# TOIT_BYTECODE_FORMAT override it) and the format of the embedded programs
+# (the toit CLI, the boot snapshot of toit.run with the system process, the
+# run image). Format 2 runs on the verified core, so it is the default
+# whenever the VM has the core; -DTOIT_BYTECODE_FORMAT=1 selects the C++
+# interpreter and format 1 for everything.
+# Must be before the add_subdirectory(compiler) below, which passes it to
+# the compiler as TOIT_DEFAULT_BYTECODE_FORMAT.
+if (TOIT_VERIFIED_CORE_ENABLED)
+  set(TOIT_BYTECODE_FORMAT_DEFAULT 2)
+else()
+  set(TOIT_BYTECODE_FORMAT_DEFAULT 1)
+endif()
+set(TOIT_BYTECODE_FORMAT "${TOIT_BYTECODE_FORMAT_DEFAULT}" CACHE STRING "Bytecode format of the compiler's default and the embedded programs (1 or 2)")
+set_property(CACHE TOIT_BYTECODE_FORMAT PROPERTY STRINGS 1 2)
+if (NOT TOIT_BYTECODE_FORMAT MATCHES "^[12]$")
+  message(FATAL_ERROR "TOIT_BYTECODE_FORMAT must be 1 or 2, not '${TOIT_BYTECODE_FORMAT}'")
+endif()
+if (TOIT_BYTECODE_FORMAT EQUAL 2 AND NOT TOIT_VERIFIED_CORE_ENABLED)
+  message(WARNING "TOIT_BYTECODE_FORMAT=2 without the verified core: this VM cannot run the programs its compiler generates")
+endif()
+
 if (NOT ${TOIT_IS_EMBEDDED})
   add_custom_target(build_tools)
   add_subdirectory(compiler)
@@ -156,20 +179,10 @@ set_source_files_properties(utils.cc PROPERTIES COMPILE_FLAGS "-DTOIT_MODEL=\"\\
 
 set(GEN_DIR "${PROJECT_BINARY_DIR}/generated")
 
-# Experiment (verified/core/EXPERIMENT-trusted.md): compile the embedded
-# programs (the toit CLI, the boot snapshot of toit.run with the system
-# process, the run image) in bytecode format 2, so that the system process
-# and the first-party tools run on the verified core as trusted programs.
-option(TOIT_SYSTEM_FORMAT2 "Compile the embedded system programs in bytecode format 2" OFF)
-if (TOIT_SYSTEM_FORMAT2)
-  set(EMBEDDED_PROGRAM_FORMAT_ENV "TOIT_BYTECODE_FORMAT=2")
-  # First-party code: the unchecked twins of the field accesses (format
-  # note 20).
-  set(EMBEDDED_PROGRAM_UNCHECKED_ENV "TOIT_V2_UNCHECKED=1")
-else()
-  set(EMBEDDED_PROGRAM_FORMAT_ENV "TOIT_EMBEDDED_FORMAT=1")
-  set(EMBEDDED_PROGRAM_UNCHECKED_ENV "TOIT_V2_UNCHECKED=0")
-endif()
+# The embedded programs are first-party (trusted) code: in format 2 they get
+# the unchecked twins of the field accesses (format note 20), which is the
+# compiler's default.
+set(EMBEDDED_PROGRAM_FORMAT_FLAG "-Xbytecode_format=${TOIT_BYTECODE_FORMAT}")
 
 set(EMBEDDED_TOIT_PROGRAMS toit toit_run run_image)
 
@@ -465,7 +478,8 @@ if (NOT ${TOIT_IS_EMBEDDED})
         ${embedded_source}
         ${embedded_snapshot}
         ${embedded_dep}
-        ""
+        # The host compiler's default may differ from this build's format.
+        "TOIT_BYTECODE_FORMAT=${TOIT_BYTECODE_FORMAT}"
       )
     else()
       # We can't use the 'ADD_TOIT_SNAPSHOT' here, as that one uses the 'toit'
@@ -477,9 +491,8 @@ if (NOT ${TOIT_IS_EMBEDDED})
         COMMAND ${CMAKE_COMMAND} -E env
             ASAN_OPTIONS=detect_leaks=false
             TOIT_PACKAGE_CACHE_PATHS="${embedded_packages_dir}"
-            "${EMBEDDED_PROGRAM_FORMAT_ENV}"
-            "${EMBEDDED_PROGRAM_UNCHECKED_ENV}"
           $<TARGET_FILE:toit.compile>
+          "${EMBEDDED_PROGRAM_FORMAT_FLAG}"
           --dependency-file "${embedded_dep}"
           --dependency-format ninja
           -O2

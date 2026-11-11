@@ -26,20 +26,25 @@ foreach(file ${SANDBOX_TESTS})
       COMMAND $<TARGET_FILE:toit.run> ${file} $<TARGET_FILE:toit.run> $<TARGET_FILE:toit.compile>
       WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
       )
-    set_tests_properties(${file} PROPERTIES TIMEOUT 120 ENVIRONMENT "TOIT_BYTECODE_FORMAT=2")
+    set_tests_properties(${file} PROPERTIES TIMEOUT 120 ENVIRONMENT "TOIT_BYTECODE_FORMAT=2;TOIT_V2_UNCHECKED=0")
   else()
     add_test(
       NAME ${file}
       COMMAND $<TARGET_FILE:toit.run> ${file}
       WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
       )
-    set_tests_properties(${file} PROPERTIES TIMEOUT 40 ENVIRONMENT "TOIT_BYTECODE_FORMAT=2")
+    set_tests_properties(${file} PROPERTIES TIMEOUT 40 ENVIRONMENT "TOIT_BYTECODE_FORMAT=2;TOIT_V2_UNCHECKED=0")
   endif()
 endforeach()
 
 # The sandbox tests start their untrusted containers from their own image,
 # so the whole test is compiled in format 2 (TOIT_BYTECODE_FORMAT=2): the
 # untrusted containers (and the trusted drivers) run on the verified core.
+# The image must pass the untrusted rules, so it is compiled without the
+# trusted-only opcodes (TOIT_V2_UNCHECKED=0) although the driver is trusted;
+# the tool tests' child compilers inherit that. A program that is only run
+# untrusted uses the user-facing switch instead (toit.run --untrusted, also
+# for writing the snapshot: run-untrusted.cmake).
 # Untrusted containers must be in format 2 unless -Xuntrusted_format1 or
 # TOIT_UNTRUSTED_FORMAT1=1 is given (verified/core/DESIGN.md).
 
@@ -82,6 +87,7 @@ foreach(entry ${UNTRUSTED_RUN_TESTS})
           -DTOIT_RUN=$<TARGET_FILE:toit.run>
           -DPROGRAM=${CMAKE_CURRENT_SOURCE_DIR}/cli/${program}
           -DMODE=${mode}
+          -DCOMPILE_FLAGS=--untrusted
           -DEXPECTED_EXIT=${exit_code}
           "-DEXPECTED_OUTPUT=${output}"
           "-DUNEXPECTED_OUTPUT=${unexpected}"

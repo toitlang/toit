@@ -422,7 +422,8 @@ ec618: ec618-relocations
 		0x$$($(EC618_GCC_PATH)/bin/arm-none-eabi-nm $(BUILD)/ec618/toit-slot-a.elf | awk '$$3=="__vm_a_start"{print $$1}') \
 		0x$$($(EC618_GCC_PATH)/bin/arm-none-eabi-nm $(BUILD)/ec618/toit-slot-a.elf | awk '$$3=="__vm_b_start"{print $$1}')
 	# Compile the system snapshot.
-	$(TOIT_BIN) compile --snapshot -o $(BUILD)/ec618/system.snapshot $(EC618_SYSTEM_ENTRY)
+	# Devices keep bytecode format 1 (docs/format2-migration.md, "Devices").
+	TOIT_BYTECODE_FORMAT=1 $(TOIT_BIN) compile --snapshot -o $(BUILD)/ec618/system.snapshot $(EC618_SYSTEM_ENTRY)
 	# Create the firmware envelope from the slot-A AP image + matching CP + the
 	# reloc table (which moves the bundled extension inside the VM slot).
 	rm -f $(EC618_ENVELOPE)

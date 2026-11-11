@@ -23,10 +23,15 @@ namespace compiler {
 
 // The bytecode format the backend generates.
 //
-//   1: the format the C++ interpreter runs (src/bytecodes.h). The default.
+//   1: the format the C++ interpreter runs (src/bytecodes.h). Selected with
+//      -Xbytecode_format=1, TOIT_BYTECODE_FORMAT=1 or a build configured
+//      with -DTOIT_BYTECODE_FORMAT=1. The type propagator interprets it, so
+//      the first pass of -O2 and --propagate always generate format 1 in
+//      memory (it is never written to a snapshot unless requested).
 //   2: the revised format of the verified core, specified in
-//      verified/spec/src/v2 and documented in verified/spec/format.
-//      Selected with -Xbytecode_format=2. The C++ interpreter cannot run it.
+//      verified/spec/src/v2 and documented in verified/spec/format. The
+//      default of builds with the verified core (docs/format2-migration.md).
+//      The C++ interpreter cannot run it.
 //
 // Format 2 keeps the opcode numbers of format 1 for the instructions it
 // shares, changes the operands of the frame instructions (returns, tail
@@ -38,6 +43,12 @@ namespace compiler {
 // length, and the bytecodes start with a 4-byte tag.
 int bytecode_format();
 void set_bytecode_format(int format);
+
+// The format the user asked for: -Xbytecode_format=N if given, else
+// TOIT_BYTECODE_FORMAT from the environment, else the build's default
+// (TOIT_DEFAULT_BYTECODE_FORMAT, set by the CMake option
+// TOIT_BYTECODE_FORMAT).
+int requested_bytecode_format();
 inline bool is_format2() { return bytecode_format() == 2; }
 
 // Proposal (verified/spec/format/19-builtins-proposal.md): the format-2
@@ -49,9 +60,10 @@ static const int V2_BUILTIN_HASH_FIND = 1 << 2;
 bool v2_builtin_enabled(int builtin);
 
 // Format note 20: the compiler emits the unchecked twins of the field
-// accesses (opcodes V2_FIRST_TWIN..), for trusted programs only
-// (-Xv2_unchecked, or TOIT_V2_UNCHECKED=1). The verifier rejects them in
-// untrusted programs.
+// accesses (opcodes V2_FIRST_TWIN..), for trusted (first-party) programs
+// only. On by default; off with -Xuntrusted (toit.compile --untrusted,
+// toit.run --untrusted), -Xv2_unchecked=false or TOIT_V2_UNCHECKED=0. The
+// verifier rejects them in untrusted programs.
 bool v2_unchecked_enabled();
 static const int V2_FIRST_TWIN = 104;
 // The twin of a field access, or -1.

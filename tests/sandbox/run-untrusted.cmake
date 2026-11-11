@@ -9,8 +9,10 @@
 if(MODE STREQUAL "snapshot")
   file(MAKE_DIRECTORY "${TMP}")
   set(SNAPSHOT "${TMP}/program.snapshot")
+  # COMPILE_FLAGS: '--untrusted' compiles for an untrusted container (format
+  # 2 without the trusted-only opcodes); empty for the format-1 variants.
   execute_process(
-    COMMAND "${TOIT_RUN}" -w "${SNAPSHOT}" "${PROGRAM}"
+    COMMAND "${TOIT_RUN}" ${COMPILE_FLAGS} -w "${SNAPSHOT}" "${PROGRAM}"
     RESULT_VARIABLE result
     )
   if(NOT result EQUAL 0)

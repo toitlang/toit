@@ -72,15 +72,15 @@ namespace toit {
   FLAG_BOOL(deploy,  enable_asserts,        _ASSERT_DEFAULT, "Enables asserts")     \
   FLAG_BOOL(deploy,  migrate_dash_ids,      false, "Prints migration information for dash identifiers")  \
   FLAG_INT(deploy,   max_recursion_depth,   2000,  "Max recursion depth in the parser") \
-  FLAG_INT(deploy,   bytecode_format,       1,     "Bytecode format the compiler generates (1 or 2)") \
-  FLAG_BOOL(deploy,  certificate,           true,  "Format 2: ship a certificate with written snapshots (toit.run --certify)") \
+  FLAG_INT(deploy,   bytecode_format,       0,     "Bytecode format the compiler generates (1 or 2; 0: TOIT_BYTECODE_FORMAT, else the build's default, see docs/format2-migration.md)") \
+  FLAG_BOOL(deploy,  certificate,           true,  "Format 2: ship a certificate with snapshots compiled with --untrusted (toit.run --certify)") \
   FLAG_INT(deploy,   v2_builtins,           7,     "Format 2, proposal (format note 19): built-ins to emit, bit 0 LOOP_REPEAT, 1 LOOP_ARRAY, 2 HASH_FIND (also TOIT_V2_BUILTINS)") \
-  FLAG_BOOL(deploy,  v2_unchecked,          false, "Format 2: emit the unchecked twins of the field accesses, for trusted programs (format note 20; also TOIT_V2_UNCHECKED=1)") \
+  FLAG_BOOL(deploy,  v2_unchecked,          true,  "Format 2: emit the trusted-only unchecked twins of the field accesses (format note 20; also TOIT_V2_UNCHECKED); never with --untrusted") \
   FLAG_STRING(deploy, lib_path,             null,  "The library path")              \
   FLAG_STRING(deploy, archive_entry_path,   null,  "The entry path in an archive")  \
   FLAG_STRING(deploy, sandbox,              null,  "syscall-sandbox: compiler or sandbox")  \
   FLAG_STRING(deploy, compiler_sandbox,     null,  "syscall-sandbox for the forked compiler: compiler or sandbox")  \
-  FLAG_BOOL(deploy,  untrusted,             false, "Run the application as an untrusted (sandboxed) container") \
+  FLAG_BOOL(deploy,  untrusted,             false, "Compile for (and, in toit.run, run as) an untrusted (sandboxed) container: format 2, checked opcodes only") \
   FLAG_BOOL(deploy,  untrusted_format1,     false, "Allow untrusted containers in bytecode format 1 (also TOIT_UNTRUSTED_FORMAT1=1)") \
   FLAG_BOOL(deploy,  require_certificate,   false, "Verify format-2 programs only with a shipped certificate, as devices do (also TOIT_REQUIRE_CERTIFICATE=1)") \
 

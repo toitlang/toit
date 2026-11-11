@@ -215,6 +215,12 @@ main args/List:
             --help="Compile to a snapshot instead of a binary.",
         cli.Flag "strip"
             --help="Strip the output of debug information.",
+        cli.Flag "untrusted"
+            --help="""
+              Compile for an untrusted (sandboxed) container.
+
+              The output has only checked bytecodes and, for snapshots, the
+                certificate the device's verifier checks at install.""",
         cli.Option "os"
             --help="Set the target OS for cross compilation."
             --completion=:: | context/cli.CompletionContext | complete-cross-os context,
@@ -481,6 +487,9 @@ compile-or-analyze-or-run --command/string invocation/cli.Invocation:
     if command == "compile":
       if invocation["strip"]:
         args.add "--strip"
+
+      if invocation["untrusted"]:
+        args.add "--untrusted"
 
       if invocation["os"]:
         args.add "--os"
