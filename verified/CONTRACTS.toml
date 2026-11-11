@@ -464,12 +464,19 @@ verifast = "[_]object_heap(self, ?p) &*& [?f]process(p, ?prog, ?ids) &*& heap(?o
 
 [[clause]]
 contract = "allocate_large_integer"
+side = "requires"
+name = "canonical"
+verus = ""
+verifast = "smi_range(value) == false"
+note = "Not required by the allocator (it takes any int64): a requirement on its callers, which keep integers canonical (the decoder: decode_integer; README, 'Findings', wave 4). The mutant decoder-integer-canonical takes the decoder's smi check out."
+
+[[clause]]
+contract = "allocate_large_integer"
 side = "ensures"
 name = "allocated"
 bridge = "heap"
 verus = ""
 verifast = "[f]process(p, prog, ids) &*& allocated(objs, H, p, result, ?objs2, ?H2) &*& (result == 0 ? true : has_tag(H2, result, LARGE_INTEGER_TAG) == true)"
-note = "Any int64 value, also one in the smi range (a TISON large integer: README, 'Findings')."
 
 [[contract]]
 name = "array_at_put"

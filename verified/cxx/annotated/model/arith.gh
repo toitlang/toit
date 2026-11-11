@@ -42,9 +42,10 @@ lemma void Z_shiftright_div(Z z, nat n)
   }
 }
 
-// C11 6.5.7p5 for a nonnegative left operand.
+// C11 6.5.7p5 for a nonnegative left operand (of up to 64 bits, also on
+// ILP32: uint64).
 lemma void shiftright_div(int x, nat n)
-  requires 0 <= x &*& x <= UINTPTR_MAX;
+  requires 0 <= x &*& x <= 18446744073709551615;
   ensures x >> int_of_nat(n) == x / pow_nat(2, n);
 {
   Z z = int_of_Z_of_uintN(x, N64);

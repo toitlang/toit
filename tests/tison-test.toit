@@ -202,16 +202,18 @@ test-crafted-input:
       payload := #[tag] + (encode-cardinal length) + #[TAG-NULL, TAG-NULL]
       expect-throw "WRONG_OBJECT_TYPE": tison.decode (make-tison payload)
 
-  // Smis that are outside the Smi range.
+  // Smis that are outside the Smi range of this VM are integers (a 64-bit
+  // VM writes smis that are large integers on a 32-bit one:
+  // tests/tison-integer-width-test.toit).
   // 2^62 is too big for a positive Smi on all platforms.
   two-62 := #[0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x40]
   // 2^62 + 1 is too big for a negative Smi on all platforms.
   two-62-plus-1 := #[0x81, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x40]
-  // 2^63 is too big for any Smi.
+  // 2^63 is too big for an int64.
   two-63 := #[0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x01]
-  expect-throw "WRONG_OBJECT_TYPE": tison.decode (make-tison #[TAG-POSITIVE-SMI] + two-62)
+  expect-equals (1 << 62) (tison.decode (make-tison #[TAG-POSITIVE-SMI] + two-62))
   expect-throw "WRONG_OBJECT_TYPE": tison.decode (make-tison #[TAG-POSITIVE-SMI] + two-63)
-  expect-throw "WRONG_OBJECT_TYPE": tison.decode (make-tison #[TAG-NEGATIVE-SMI] + two-62-plus-1)
+  expect-equals -(1 << 62) - 1 (tison.decode (make-tison #[TAG-NEGATIVE-SMI] + two-62-plus-1))
   expect-throw "WRONG_OBJECT_TYPE": tison.decode (make-tison #[TAG-NEGATIVE-SMI] + two-63)
 
   // Cardinals that are longer than a word (used to shift past 64 bits).

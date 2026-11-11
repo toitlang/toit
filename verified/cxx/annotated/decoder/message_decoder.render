@@ -30,10 +30,17 @@
 // allocation fails). The externals table is written below its bound (the
 // FATAL is the check).
 //
+// Integers are canonical (wave 4): a smi tag's magnitude is read with 64
+// bits on both widths and every integer in this VM's smi range is a smi
+// (decode_integer; the allocator's contract requires a large integer's
+// value outside the smi range).
+//
 // Self-tests (run.sh): the length checks before the inline copies and
 // before the array and map allocations taken out; the nesting limit taken
-// out; the bound checks of the fixed-size readers; the digit check of
-// read_cardinal; the externals table bound.
+// out; the bound checks of the fixed-size readers (read_uint8 in the
+// header too); the size and digit checks of read_cardinal_64, the word
+// check of read_cardinal (ILP32); the smi magnitude checks; the smi range
+// check of decode_integer; the externals table bound.
 @include ../model/model.cfg
 @raii NestingTracker
 @verbatim
@@ -206,6 +213,13 @@ double bit_cast_double__unsignedlong(uint64 src);
 double bit_cast_double__unsignedlonglong(uint64 src);
 //@ requires true;
 //@ ensures true;
+
+// src/objects.h Smi::is_valid (a template: no rendering rule), the
+// instance for int64: `MIN_SMI_VALUE <= value && value <= MAX_SMI_VALUE`
+// (contract only).
+bool Smi_is_valid(int64 value);
+//@ requires true;
+//@ ensures result == smi_range(value);
 
 // src/top.h: the VM's fatal error (does not return).
 void fail(const char *format, ...);
@@ -413,26 +427,42 @@ uword MessageDecoder::read_cardinal()
             (c2 <= cap || result == 0) &*& (st2 == st || st2 == MessageDecoder_DECODE_MALFORMED_INPUT) &*&
             (fmt == MESSAGE_FORMAT_TISON || c2 <= cap); @*/
 {
-  uword result = 0;
+  uint64 result = read_cardinal_64();
+  // A length or a size never has more bits than a word.
+  if (result > UINTPTR_MAX) {
+    mark_malformed();
+    return 0;
+  }
+  return static_cast<uword>(result);
+}
+
+@render src/messaging.cc toit::MessageDecoder::read_cardinal_64
+uint64 MessageDecoder::read_cardinal_64()
+//@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st, ?k) &*& c <= cap + 8;
+/*@ ensures dec(self, fb, proc, ids, fmt, b, size, cap, ?c2, ?st2, k) &*& c < c2 &*& c2 <= (c < cap ? cap + 1 : c + 1) &*&
+            (c2 <= cap || result == 0) &*& (st2 == st || st2 == MessageDecoder_DECODE_MALFORMED_INPUT) &*&
+            (fmt == MESSAGE_FORMAT_TISON || c2 <= cap); @*/
+{
+  uint64 result = 0;
   uint8 byte = read_uint8();
   int shift = 0;
   //@ int kk = 0;
   while (byte >= 128)
   /*@ invariant dec(self, fb, proc, ids, fmt, b, size, cap, ?ci, st, k) &*& c < ci &*& (fmt == MESSAGE_FORMAT_TISON || ci <= cap) &*&
                 (byte >= 128 ? ci <= cap : ci <= (c < cap ? cap + 1 : c + 1) &*& (ci <= cap || byte == 0)) &*&
-                shift == 7 * kk &*& 0 <= kk &*& kk <= 10 &*& 0 <= result &*& result <= UINTPTR_MAX &*&
+                shift == 7 * kk &*& 0 <= kk &*& kk <= 10 &*& 0 <= result &*& result <= 18446744073709551615 &*&
                 (kk <= 9 ? result < pow128(kk) : true); @*/
   {
-    // A cardinal never has more bits than a word. Longer encodings, and
-    // digits with bits beyond the word, are malformed (and shifting by the
-    // word size or more is undefined).
-    uword digit = byte - 128;
-    if (shift >= WORD_BIT_SIZE || digit > (UINTPTR_MAX >> shift)) {
+    // A cardinal never has more than 64 bits. Longer encodings, and digits
+    // with bits beyond them, are malformed (and shifting by 64 or more is
+    // undefined).
+    uint64 digit = byte - 128;
+    if (shift >= 64 || digit > (UINT64_MAX >> shift)) {
       mark_malformed();
       return 0;
     }
     //@ digit_pow(kk);
-    //@ shiftright_div(UINTPTR_MAX, nat_of_int(shift));
+    //@ shiftright_div(18446744073709551615, nat_of_int(shift));
     //@ shiftleft_def(digit, nat_of_int(shift));
     //@ digit_step(result, digit, kk);
     result += digit << shift;
@@ -441,15 +471,15 @@ uword MessageDecoder::read_cardinal()
     byte = read_uint8();
   }
   if (byte == 0 && overflown()) return 0;
-  if (shift >= WORD_BIT_SIZE || byte > (UINTPTR_MAX >> shift)) {
+  if (shift >= 64 || byte > (UINT64_MAX >> shift)) {
     mark_malformed();
     return 0;
   }
   //@ digit_pow(kk);
-  //@ shiftright_div(UINTPTR_MAX, nat_of_int(shift));
+  //@ shiftright_div(18446744073709551615, nat_of_int(shift));
   //@ shiftleft_def(byte, nat_of_int(shift));
   //@ digit_step(result, byte, kk);
-  result += ((uword) byte) << shift;
+  result += static_cast<uint64>(byte) << shift;
   return result;
 }
 
@@ -605,9 +635,23 @@ Object* MessageDecoder::decode_large_integer()
   //@ truncate_zero();
   int64 value = read_uint64();
   if (value == 0 && overflown()) return mark_malformed();
-  //@ open dec(self, fb, proc, ids, fmt, b, size, cap, ?c1, ?st1, k);
+  return decode_integer(value);
+}
+
+@render src/messaging.cc toit::MessageDecoder::decode_integer
+Object* MessageDecoder::decode_integer(int64 value)
+/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st0, ?k) &*&
+             [?fp]process(proc, ?prog, ids) &*& heap(?objs, ?H); @*/
+/*@ ensures dec(self, fb, proc, ids, fmt, b, size, cap, c, ?st, k) &*& [fp]process(proc, prog, ids) &*&
+            heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*& good(objs2, result) == true &*&
+            (st == st0 || st == MessageDecoder_DECODE_ALLOCATION_FAILED) &*&
+            (smi_range(value) ? is_smi_w((uword)result) == true &*& smi_val((uword)result) == value : true); @*/
+{
+  //@ grows_refl(objs, H);
+  if (Smi::is_valid(value)) return Smi::from(static_cast<word>(value));
+  //@ open dec(self, fb, proc, ids, fmt, b, size, cap, c, st0, k);
   LargeInteger* result = process_->object_heap()->allocate_large_integer(value);
-  //@ close dec(self, fb, proc, ids, fmt, b, size, cap, c1, st1, k);
+  //@ close dec(self, fb, proc, ids, fmt, b, size, cap, c, st0, k);
   //@ open allocated(objs, H, proc, result, ?objs1, ?H1);
   //@ if (result != 0) grows_alloc(objs, H, result, H1);
   if (result == null) return mark_allocation_failed();
@@ -757,16 +801,18 @@ Object* MessageDecoder::decode_any()
   switch (tag) {
     case TAG_OVERFLOWN:
       return mark_malformed();
+    // A smi of the encoder may be outside the smi range of this VM (TISON
+    // written by a 64-bit VM, read by a 32-bit one): its magnitude is read
+    // with 64 bits and the value is made canonical by decode_integer.
     case TAG_POSITIVE_SMI: {
-      uword value = read_cardinal();
-      if (value > static_cast<uword>(Smi::MAX_SMI_VALUE)) return mark_malformed();
-      return Smi::from(static_cast<word>(value));
+      uint64 value = read_cardinal_64();
+      if (value > static_cast<uint64>(INT64_MAX)) return mark_malformed();
+      return decode_integer(static_cast<int64>(value));
     }
     case TAG_NEGATIVE_SMI: {
-      uword value = read_cardinal();
-      // The negation of MIN_SMI_VALUE is MAX_SMI_VALUE + 1 and doesn't overflow.
-      if (value > static_cast<uword>(-Smi::MIN_SMI_VALUE)) return mark_malformed();
-      return Smi::from(-static_cast<word>(value));
+      uint64 value = read_cardinal_64();
+      if (value > static_cast<uint64>(INT64_MAX)) return mark_malformed();
+      return decode_integer(-static_cast<int64>(value));
     }
     case TAG_NULL:
       //@ open dec(self, fb, proc, ids, fmt, b, size, cap, c + 1, st0, k);

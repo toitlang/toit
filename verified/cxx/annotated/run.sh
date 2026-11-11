@@ -194,16 +194,33 @@ mutant decoder-map-length decoder/message_decoder.render src/messaging.cc "\(\* 
 # The nesting limit (#3362) taken out: the recursion is unbounded.
 mutant decoder-nesting decoder/message_decoder.render src/messaging.cc "n 1\) 64" "$DEC_OPTS" \
   "  if (nesting_ > MESSAGING_DECODING_MAX_NESTING) return mark_malformed();\n" ""
-# The fixed-size readers' bound: a read past the input. (read_uint8 is in
-# messaging.h: a mutant changes a .cc only.)
+# The fixed-size readers' bound: a read past the input.
 mutant decoder-uint64-bound decoder/message_decoder.render src/messaging.cc "8 \(- cap c\)" "$DEC_OPTS" \
   "MessageDecoder::read_uint64()@@if (next <= size_) {" "if (next <= size_ + 1) {"
-# read_cardinal: without the word-size check (#3362) the shift is
-# undefined; without the digit check (this branch) the sum wraps.
+# read_uint8, in the header (mutant.sh copies the changed header into the
+# mutant's src/): the byte at the end of the input is read.
+mutant decoder-uint8-bound decoder/message_decoder.render src/messaging.h "No matching|uchars|cap" "$DEC_OPTS" \
+  "return (cursor < size_) ? buffer_[cursor] : 0;" "return (cursor <= size_) ? buffer_[cursor] : 0;"
+# read_cardinal_64: without the size check (#3362) the shift is
+# undefined; without the digit check (wave 3) the sum wraps.
 mutant decoder-cardinal-shift decoder/message_decoder.render src/messaging.cc "shift|7 \* k|digit|overflow" "$DEC_OPTS" \
-  "if (shift >= WORD_BIT_SIZE || digit > (UINTPTR_MAX >> shift)) {" "if (digit > (UINTPTR_MAX >> shift)) {"
-mutant decoder-cardinal-digit decoder/message_decoder.render src/messaging.cc "UINTPTR_MAX|overflow|digit" "$DEC_OPTS" \
-  "if (shift >= WORD_BIT_SIZE || digit > (UINTPTR_MAX >> shift)) {" "if (shift >= WORD_BIT_SIZE) {"
+  "if (shift >= 64 || digit > (UINT64_MAX >> shift)) {" "if (digit > (UINT64_MAX >> shift)) {"
+mutant decoder-cardinal-digit decoder/message_decoder.render src/messaging.cc "18446744073709551615|overflow|digit" "$DEC_OPTS" \
+  "if (shift >= 64 || digit > (UINT64_MAX >> shift)) {" "if (shift >= 64) {"
+# read_cardinal: a 64-bit cardinal is not a word on ILP32 (on LP64 the
+# check is dead): without the check the conversion to uword overflows.
+mutant decoder-cardinal-word decoder/message_decoder.render src/messaging.cc "ILP32:overflow|truncat|uword" "$DEC_OPTS" \
+  "  if (result > UINTPTR_MAX) {\n    mark_malformed();\n    return 0;\n  }\n  return static_cast<uword>(result);" "  return static_cast<uword>(result);"
+# Finding 3 (wave 4): the smi tags' magnitude above INT64_MAX (the
+# conversion to int64 overflows); without the smi range check in
+# decode_integer a value in the smi range is allocated as a large integer
+# (not canonical: the allocator contract's `canonical` clause fails).
+mutant decoder-smi-magnitude decoder/message_decoder.render src/messaging.cc "overflow|int64|9223372036854775807" "$DEC_OPTS" \
+  "case TAG_POSITIVE_SMI: {\n      uint64 value = read_cardinal_64();\n      if (value > static_cast<uint64>(INT64_MAX)) return mark_malformed();\n" "case TAG_POSITIVE_SMI: {\n      uint64 value = read_cardinal_64();\n"
+mutant decoder-negative-smi-magnitude decoder/message_decoder.render src/messaging.cc "overflow|int64|9223372036854775807" "$DEC_OPTS" \
+  "case TAG_NEGATIVE_SMI: {\n      uint64 value = read_cardinal_64();\n      if (value > static_cast<uint64>(INT64_MAX)) return mark_malformed();\n" "case TAG_NEGATIVE_SMI: {\n      uint64 value = read_cardinal_64();\n"
+mutant decoder-integer-canonical decoder/message_decoder.render src/messaging.cc "smi_range" "$DEC_OPTS" \
+  "  if (Smi::is_valid(value)) return Smi::from(static_cast<word>(value));\n" ""
 # The externals table: one entry too many is written past it.
 mutant decoder-externals-bound decoder/message_decoder.render src/messaging.cc "pointers|intptrs|No matching|<= 8|index" "$DEC_OPTS" \
   "if (index >= ARRAY_SIZE(externals_)) {" "if (index > ARRAY_SIZE(externals_)) {"
