@@ -39,31 +39,44 @@ class V2Verifier {
   // trusted programs (HALT 2 and 3 allowed). On rejection the reason is
   // printed to stderr. With TOIT_VERIFY_TIME=1 the cost is printed to
   // stderr too.
-  static bool verify(Program* program, const V2MethodTable* table, bool trusted);
+  // [certificate] is the shipped certificate of the program (format 2
+  // note 18, verified/spec/format/18-shipped-certificate.md), or null:
+  // then the verifier infers one (infers()) or rejects the program.
+  static bool verify(Program* program, const V2MethodTable* table, bool trusted,
+                     const uint8* certificate = null, word certificate_length = 0);
 
   // As above, with a method table decoded for the call.
   static bool verify(Program* program, bool trusted);
 
+  // Whether a program without a shipped certificate can be verified: the
+  // inference is linked (TOIT_VERIFIED_CORE_INFER, hosts) and not switched
+  // off with -Xrequire_certificate or TOIT_REQUIRE_CERTIFICATE=1 (which
+  // makes a host behave as a device). Devices link no inference: every
+  // untrusted format-2 program needs a certificate.
+  static bool infers();
+
   // Install-time verification (Phase 5) of the program (of [program_size]
-  // bytes, without assets) of an image flagged
-  // untrusted, before its flash allocation is committed
-  // (primitive flash_registry.allocate). Returns null if the verifier
+  // bytes, without assets) of an image flagged untrusted, before its flash
+  // allocation is committed, with the image's shipped [certificate] (the
+  // trailing block, FlashAllocation::find_certificate_block) or null. Returns null if the verifier
   // accepted the program with the untrusted rules (the caller records the
   // verdict in the allocation: FlashAllocation::program_verified), else
   // the error to fail with (VERIFICATION_FAILED, INVALID_SNAPSHOT or
   // FORMAT_2_REQUIRED). A format-1 program gets no verdict and is not an
   // error when -Xuntrusted_format1 allows it ([*no_verdict] is set).
-  static const char* verify_installed(Program* program, word program_size, bool* no_verdict);
+  static const char* verify_installed(Program* program, word program_size, bool* no_verdict,
+                                      const uint8* certificate = null, word certificate_length = 0);
 
   // The install-time verdict for the program image at [memory] of
-  // [program_size] bytes (written,
-  // its header not yet), with the [metadata] its header will get: clears
+  // [program_size] bytes (written, its header not yet) with its shipped
+  // [certificate] (or null), with the [metadata] its header will get: clears
   // the verdict bit the installer may have set (only the VM sets it), and
   // for an image flagged untrusted verifies the program (verify_installed)
   // and sets the bit if it is accepted. Returns null or the error to fail
   // the commit with. Called by the commit paths (image.writer-commit,
   // flash_registry.allocate).
-  static const char* install_verdict(const void* memory, word program_size, uint8* metadata);
+  static const char* install_verdict(const void* memory, word program_size, uint8* metadata,
+                                     const uint8* certificate = null, word certificate_length = 0);
 
   // Marks [table], decoded from the bytes of an allocation with the
   // install-time verdict, as accepted with the untrusted rules (the verdict
@@ -75,6 +88,13 @@ class V2Verifier {
   // canonical form of the abstract program the verifier builds from VM
   // memory to [path].
   static bool write_canonical(Program* program, const V2MethodTable* table, const char* path);
+
+  // The toolchain's producer of shipped certificates (hosts): infers the
+  // certificate of [program], checks it as the device will, and returns it
+  // in [bytes] (malloced; the caller frees it). False if the program has no
+  // accepted certificate (the reason is printed).
+  static bool certify(Program* program, const V2MethodTable* table, bool trusted,
+                      uint8** bytes, word* length);
 };
 
 }  // namespace toit
@@ -92,6 +112,8 @@ struct toit_vmverify_input {
   const uint8* prim_arities;        // All arities, module by module.
   uword prim_arities_length;
   uword trusted;
+  const uint8* certificate;         // The shipped certificate, or null.
+  uword certificate_length;
 };
 
 static const int TOIT_VMVERIFY_MESSAGE_SIZE = 200;
@@ -116,10 +138,14 @@ static const uword TOIT_VMVERIFY_HEAP = 2;       // Loader contract (heap).
 static const uword TOIT_VMVERIFY_TABLES = 3;     // wf_program2, tables_ok.
 static const uword TOIT_VMVERIFY_METHOD = 4;     // method_ok.
 static const uword TOIT_VMVERIFY_INTERNAL = 5;   // The verifier failed.
+static const uword TOIT_VMVERIFY_CERTIFICATE = 6;  // Shipped certificate rejected.
+static const uword TOIT_VMVERIFY_NO_CERTIFICATE = 7;  // None shipped, none inferred.
 
 #ifdef TOIT_VERIFIED_CORE
 uword toit_vmverify_verify(const toit_vmverify_input* input, toit_vmverify_result* result);
 uword toit_vmverify_canonical(const toit_vmverify_input* input, const char* path);
+uword toit_vmverify_certify(const toit_vmverify_input* input, uint8** bytes, uword* length);
+void toit_vmverify_free_certificate(uint8* bytes, uword length);
 uword toit_vmverify_layout_count();
 bool toit_vmverify_layout_entry(uword i, const char** name, uword* value);
 word toit_vmverify_generated_arity(uword module, uword index);

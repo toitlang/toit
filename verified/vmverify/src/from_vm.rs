@@ -42,7 +42,6 @@
 //! verified/tools/vmverify_differential.toit on every suite program
 //! (canonical.rs).
 
-use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
 use toit_spec::types::{ExecBody, ExecObj, Value};
 use toit_spec::v2::heap_check::ObjStream;
@@ -192,7 +191,12 @@ impl Image {
     fn word(&self, addr: usize, k: usize) -> Result<usize, Malformed> {
         let at = k.checked_mul(WORD_SIZE).and_then(|o| addr.checked_add(o));
         match at.and_then(|a| self.range(a, WORD_SIZE)) {
-            Some(b) => Ok(usize::from_ne_bytes(b.try_into().unwrap())),
+            // No `unwrap`: its panic message would link the formatting
+            // machinery on devices (the length is right by construction).
+            Some(b) => match b.try_into() {
+                Ok(a) => Ok(usize::from_ne_bytes(a)),
+                Err(_) => bad("object extends past the program image", addr.wrapping_sub(self.start)),
+            },
             None => bad("object extends past the program image", addr.wrapping_sub(self.start)),
         }
     }
@@ -202,7 +206,10 @@ impl Image {
     fn word64(&self, addr: usize, k: usize) -> Result<u64, Malformed> {
         let at = k.checked_mul(WORD_SIZE).and_then(|o| addr.checked_add(o));
         match at.and_then(|a| self.range(a, 8)) {
-            Some(b) => Ok(u64::from_ne_bytes(b.try_into().unwrap())),
+            Some(b) => match b.try_into() {
+                Ok(a) => Ok(u64::from_ne_bytes(a)),
+                Err(_) => bad("object extends past the program image", addr.wrapping_sub(self.start)),
+            },
             None => bad("object extends past the program image", addr.wrapping_sub(self.start)),
         }
     }
@@ -215,12 +222,68 @@ impl Image {
     }
 }
 
+/// Untagged address -> object id: an open-addressing hash table of ids
+/// (`id + 1`, 0 = free) whose addresses are `queue[id]`, at most 3/4 full:
+/// 5.3-10.7 bytes per object on 32-bit targets, about half of a `BTreeMap`
+/// (the in-VM peak of the verifier, README.md "Memory").
+struct IdTable {
+    slots: Vec<u32>,
+    count: usize,
+}
+
+impl IdTable {
+    const fn new() -> IdTable {
+        IdTable { slots: Vec::new(), count: 0 }
+    }
+
+    fn start(addr: usize, mask: usize) -> usize {
+        // Fibonacci hashing of the word index.
+        ((addr / WORD_SIZE).wrapping_mul(0x9E37_79B9) >> 7) & mask
+    }
+
+    /// The id of the object at `addr`, if it has one.
+    fn get(&self, addr: usize, queue: &[usize]) -> Option<usize> {
+        if self.slots.is_empty() { return None; }
+        let mask = self.slots.len() - 1;
+        let mut i = Self::start(addr, mask);
+        loop {
+            let s = self.slots[i] as usize;
+            if s == 0 { return None; }
+            if queue[s - 1] == addr { return Some(s - 1); }
+            i = (i + 1) & mask;
+        }
+    }
+
+    /// Records `id` (not present yet) for the address `queue[id]`. False if
+    /// the id does not fit.
+    fn insert(&mut self, id: usize, queue: &[usize]) -> bool {
+        if id >= u32::MAX as usize { return false; }
+        if (self.count + 1) * 4 > self.slots.len() * 3 {
+            let size = if self.slots.is_empty() { 64 } else { self.slots.len() * 2 };
+            let old = core::mem::replace(&mut self.slots, alloc::vec![0; size]);
+            for s in old {
+                if s != 0 { self.place(s, queue); }
+            }
+        }
+        self.place(id as u32 + 1, queue);
+        self.count += 1;
+        true
+    }
+
+    fn place(&mut self, slot: u32, queue: &[usize]) {
+        let mask = self.slots.len() - 1;
+        let mut i = Self::start(queue[slot as usize - 1], mask);
+        while self.slots[i] != 0 { i = (i + 1) & mask; }
+        self.slots[i] = slot;
+    }
+}
+
 /// The program heap, breadth first from the roots, globals and literals.
 pub struct Objects<'a> {
     image: Image,
     class_bits: &'a [u16],
     /// Untagged address -> object id (index into `queue`).
-    ids: BTreeMap<usize, usize>,
+    ids: IdTable,
     /// Untagged addresses, in id order.
     queue: Vec<usize>,
     /// The next object to convert.
@@ -261,7 +324,7 @@ impl<'a> Objects<'a> {
 
     /// Frees the work list (after the stream).
     pub fn release(&mut self) {
-        self.ids = BTreeMap::new();
+        self.ids = IdTable::new();
         self.queue = Vec::new();
     }
 
@@ -278,12 +341,14 @@ impl<'a> Objects<'a> {
         if addr < self.image.start || addr >= self.image.end || (addr - self.image.start) % WORD_SIZE != 0 {
             return bad("an object reference is not a word in the program image", w);
         }
-        if let Some(&id) = self.ids.get(&addr) {
+        if let Some(id) = self.ids.get(addr, &self.queue) {
             return Ok(Value::Obj(id));
         }
         let id = self.queue.len();
-        self.ids.insert(addr, id);
         self.queue.push(addr);
+        if !self.ids.insert(id, &self.queue) {
+            return bad("too many objects", id);
+        }
         Ok(Value::Obj(id))
     }
 
@@ -357,10 +422,10 @@ impl<'a> Objects<'a> {
                 // A half word: 32 bits on 64-bit targets, 16 on 32-bit ones.
                 let at = self.image.range(addr + STRING_INTERNAL_LENGTH_BYTE, HALF)
                     .ok_or(Malformed { what: "string header outside the program image", detail: offset })?;
-                let internal = if HALF == 4 {
-                    u32::from_ne_bytes(at.try_into().unwrap()) as usize
-                } else {
-                    u16::from_ne_bytes(at.try_into().unwrap()) as usize
+                let internal = match (at.len(), at) {
+                    (4, &[a, b, c, d]) => u32::from_ne_bytes([a, b, c, d]) as usize,
+                    (2, &[a, b]) => u16::from_ne_bytes([a, b]) as usize,
+                    _ => return bad("string header outside the program image", offset),
                 };
                 if internal != STRING_SENTINEL {
                     ExecBody::Str(self.image.bytes(addr + STRING_CONTENT_BYTE, internal)?)
@@ -413,7 +478,7 @@ pub unsafe fn convert<'a>(p: &ProgramTables, prims: &PrimitiveArities) -> Result
                 .ok_or(Malformed { what: "program image wraps around", detail: 0 })?,
         },
         class_bits: table(p.class_bits, p.class_bits_length),
-        ids: BTreeMap::new(),
+        ids: IdTable::new(),
         queue: Vec::new(),
         next: 0,
         error: None,

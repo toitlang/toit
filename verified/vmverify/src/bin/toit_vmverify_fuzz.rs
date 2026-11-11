@@ -200,9 +200,108 @@ fn mutate(r: &mut Rng, t: &mut Tables) -> String {
     }
 }
 
-fn run(t: &mut Tables) -> (usize, Duration, String, usize) {
+/// The program's shipped certificate (`toit_vmverify_certify`).
+fn certificate(t: &mut Tables) -> Option<Vec<u8>> {
     let mut pt: ProgramTables = unsafe { std::mem::zeroed() };
     let input = t.input(&mut pt);
+    let mut bytes: *mut u8 = std::ptr::null_mut();
+    let mut length = 0usize;
+    if unsafe { toit_vmverify::ffi::toit_vmverify_certify(&input, &mut bytes, &mut length) } != 0 { return None; }
+    let v = unsafe { std::slice::from_raw_parts(bytes, length) }.to_vec();
+    unsafe { toit_vmverify::ffi::toit_vmverify_free_certificate(bytes, length) };
+    Some(v)
+}
+
+fn rd32(s: &[u8], i: usize) -> usize {
+    match s.get(i..i.wrapping_add(4)) {
+        Some(b) => u32::from_le_bytes([b[0], b[1], b[2], b[3]]) as usize,
+        None => 0,
+    }
+}
+
+/// One mutation of a certificate (format/18-shipped-certificate.md): a
+/// header word, a table word, a record copied over another, bytes of the
+/// maps stream, truncation or growth. Returns what it did.
+fn mutate_certificate(r: &mut Rng, c: &mut Vec<u8>) -> String {
+    if c.is_empty() {
+        c.push(r.next() as u8);
+        return "certificate: one byte".into();
+    }
+    let section = |c: &[u8], i: usize| -> (usize, usize) {
+        let off = rd32(c, 12 + 8 * i).min(c.len());
+        (off, rd32(c, 16 + 8 * i).min(c.len() - off))
+    };
+    let put = |c: &mut Vec<u8>, at: usize, v: u32| {
+        if at + 4 <= c.len() { c[at..at + 4].copy_from_slice(&v.to_le_bytes()); }
+    };
+    match r.below(10) {
+        0 => {
+            // A header word: magic, version, method count, a section bound.
+            let i = r.below(15);
+            let old = rd32(c, 4 * i) as u64;
+            let v = value(r, old, 32, c.len() as u64) as u32;
+            put(c, 4 * i, v);
+            format!("certificate: header word {} = {:#x}", i, v)
+        }
+        1 | 2 => {
+            let s = r.below(5);
+            let (off, len) = section(c, s);
+            if len < 4 { return "certificate: none".into(); }
+            let at = off + 4 * r.below(len / 4);
+            let old = rd32(c, at) as u64;
+            let v = value(r, old, 32, 1 << 16) as u32;
+            put(c, at, v);
+            format!("certificate: section {} word at {} = {:#x}", s, at, v)
+        }
+        3 => {
+            let s = 1 + r.below(4);
+            let (off, len) = section(c, s);
+            let w = if s == 2 { 8 } else { 12 };
+            if len < 2 * w { return "certificate: none".into(); }
+            let a = off + w * r.below(len / w);
+            let b = off + w * r.below(len / w);
+            let rec = c[a..a + w].to_vec();
+            c[b..b + w].copy_from_slice(&rec);
+            format!("certificate: section {} record {} over {}", s, a, b)
+        }
+        4..=6 => {
+            let (off, len) = section(c, 5);
+            if len == 0 { return "certificate: none".into(); }
+            let at = off + r.below(len);
+            let v = match r.below(4) {
+                0 => c[at].wrapping_add(1),
+                1 => c[at].wrapping_sub(1),
+                2 => c[at] ^ 0x80,
+                _ => r.next() as u8,
+            };
+            c[at] = v;
+            format!("certificate: maps byte {} = {}", at, v)
+        }
+        7 => {
+            let at = r.below(c.len());
+            c[at] = r.next() as u8;
+            format!("certificate: byte {}", at)
+        }
+        8 => {
+            let n = r.below(c.len());
+            c.truncate(n);
+            format!("certificate: truncated to {}", n)
+        }
+        _ => {
+            let n = 1 + r.below(64);
+            for _ in 0..n { c.push(r.next() as u8); }
+            format!("certificate: {} bytes appended", n)
+        }
+    }
+}
+
+fn run(t: &mut Tables, cert: Option<&[u8]>) -> (usize, Duration, String, usize) {
+    let mut pt: ProgramTables = unsafe { std::mem::zeroed() };
+    let mut input = t.input(&mut pt);
+    if let Some(c) = cert {
+        input.certificate = c.as_ptr();
+        input.certificate_length = c.len();
+    }
     let mut result = VerifyResult {
         code: 0, method: 0, offset: 0, objects: 0, convert_ns: 0, heap_ns: 0, infer_ns: 0,
         check_ns: 0, peak_bytes: 0, message: [0; MESSAGE_SIZE],
@@ -219,6 +318,7 @@ fn main() {
     let mut seed = 1u64;
     let mut max_ms = 2000u128;
     let mut save: Option<String> = None;
+    let mut certificates = false;
     let mut paths = Vec::new();
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
@@ -227,6 +327,7 @@ fn main() {
             "--seed" => seed = it.next().and_then(|v| v.parse().ok()).expect("--seed S"),
             "--max-ms" => max_ms = it.next().and_then(|v| v.parse().ok()).expect("--max-ms M"),
             "--save" => save = it.next(),
+            "--certificates" => certificates = true,
             _ => paths.push(a),
         }
     }
@@ -238,16 +339,22 @@ fn main() {
         }));
     }
     let mut programs = Vec::new();
+    let mut certs: Vec<Option<Vec<u8>>> = Vec::new();
     for p in &paths {
         let mut t = Tables::load(p).unwrap_or_else(|e| panic!("{}", e));
-        let (code, d, msg, peak) = run(&mut t);
+        // With --certificates: the program's shipped certificate, as
+        // toit.run --certify computes it.
+        let cert = if certificates { certificate(&mut t) } else { None };
+        if certificates && cert.is_none() { println!("{}: no certificate", p); }
+        let (code, d, msg, peak) = run(&mut t, cert.as_deref());
+        certs.push(cert);
         println!("baseline {}: code {} ({}) {:.1} ms peak {} KB {}", p, code, if code == verify::ACCEPTED { "accepted" } else { "rejected" },
             d.as_secs_f64() * 1e3, peak >> 10, msg);
         programs.push(t);
     }
     let mut r = Rng(seed.max(1).wrapping_mul(0x9e37_79b9_7f4a_7c15) | 1);
     let start = Instant::now();
-    let mut counts = [0usize; 6];
+    let mut counts = [0usize; 8];
     let mut findings = 0usize;
     let mut iterations = 0usize;
     let mut slowest = Duration::ZERO;
@@ -257,10 +364,20 @@ fn main() {
         let pi = r.below(programs.len());
         let mut t = programs[pi].duplicate();
         let k = 1 + r.below(4);
-        let what: Vec<String> = (0..k).map(|_| mutate(&mut r, &mut t)).collect();
+        // With a certificate: a third of the mutants mutate the tables,
+        // a third the certificate, a third both.
+        let mut cert = certs[pi].clone();
+        let mode = if cert.is_some() { r.below(3) } else { 0 };
+        let mut what: Vec<String> = if mode != 1 { (0..k).map(|_| mutate(&mut r, &mut t)).collect() } else { Vec::new() };
+        if mode != 0 {
+            if let Some(c) = cert.as_mut() {
+                let kc = 1 + r.below(4);
+                for _ in 0..kc { what.push(mutate_certificate(&mut r, c)); }
+            }
+        }
         panics.lock().unwrap().clear();
-        let (code, d, msg, peak) = run(&mut t);
-        counts[code.min(5)] += 1;
+        let (code, d, msg, peak) = run(&mut t, cert.as_deref());
+        counts[code.min(7)] += 1;
         slowest = slowest.max(d);
         peak_max = peak_max.max(peak);
         let slow = d.as_millis() > max_ms;
@@ -278,8 +395,8 @@ fn main() {
             }
         }
     }
-    println!("seed {}: {} mutants in {} s: accepted {}, malformed {}, heap {}, tables {}, method {}, internal {}; findings {}; slowest {:.1} ms; peak {} KB",
-        seed, iterations, seconds, counts[0], counts[1], counts[2], counts[3], counts[4], counts[5], findings,
+    println!("seed {}: {} mutants in {} s: accepted {}, malformed {}, heap {}, tables {}, method {}, internal {}, certificate {}, no certificate {}; findings {}; slowest {:.1} ms; peak {} KB",
+        seed, iterations, seconds, counts[0], counts[1], counts[2], counts[3], counts[4], counts[5], counts[6], counts[7], findings,
         slowest.as_secs_f64() * 1e3, peak_max >> 10);
     std::process::exit(if findings == 0 { 0 } else { 1 });
 }

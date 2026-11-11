@@ -112,6 +112,44 @@ bool FlashAllocation::commit(const void* memory, word size, const Header* header
   return success && static_cast<const FlashAllocation*>(memory)->is_valid();
 }
 
+bool FlashAllocation::find_certificate_block(const void* block, const void* limit,
+                                             const uint8** certificate, word* length) {
+  *certificate = null;
+  *length = 0;
+  uword start = reinterpret_cast<uword>(block);
+  uword end = reinterpret_cast<uword>(limit);
+  if (start > end || end - start < 2 * sizeof(uint32)) return false;
+  const uint32* words = reinterpret_cast<const uint32*>(block);
+  if (words[0] != CERTIFICATE_BLOCK_MARKER) return false;
+  uword certificate_length = words[1];
+  if (certificate_length > end - start - 2 * sizeof(uint32)) return false;
+  *certificate = reinterpret_cast<const uint8*>(start + 2 * sizeof(uint32));
+  *length = static_cast<word>(certificate_length);
+  return true;
+}
+
+word FlashAllocation::image_allocation_size(const void* memory, word program_size, const void* limit,
+                                            bool* has_assets) {
+  *has_assets = false;
+  uword program_end = reinterpret_cast<uword>(memory) + program_size;
+  uword end = reinterpret_cast<uword>(limit);
+  if (program_size < 0 || program_end > end) return -1;
+  uword extra = end - program_end;
+  if (extra == 0) return program_size;
+  if (extra < sizeof(uint32)) return -1;
+  // A certificate block right after the program: no assets.
+  if (extra >= 2 * sizeof(uint32) &&
+      *reinterpret_cast<const uint32*>(program_end) == CERTIFICATE_BLOCK_MARKER) {
+    return program_size;
+  }
+  uword assets_length = *reinterpret_cast<const uint32*>(program_end);
+  if (assets_length > extra - sizeof(uint32)) return -1;
+  uword padded = Utils::round_up(assets_length + sizeof(uint32), FLASH_PAGE_SIZE);
+  if (padded > extra) return -1;
+  *has_assets = true;
+  return program_size + padded;
+}
+
 int FlashAllocation::program_assets_size(uint8** bytes, word* length) const {
   if (!program_has_assets()) return 0;
   uword allocation_address = reinterpret_cast<uword>(this);

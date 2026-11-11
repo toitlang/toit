@@ -73,12 +73,14 @@ namespace toit {
   FLAG_BOOL(deploy,  migrate_dash_ids,      false, "Prints migration information for dash identifiers")  \
   FLAG_INT(deploy,   max_recursion_depth,   2000,  "Max recursion depth in the parser") \
   FLAG_INT(deploy,   bytecode_format,       1,     "Bytecode format the compiler generates (1 or 2)") \
+  FLAG_BOOL(deploy,  certificate,           true,  "Format 2: ship a certificate with written snapshots (toit.run --certify)") \
   FLAG_STRING(deploy, lib_path,             null,  "The library path")              \
   FLAG_STRING(deploy, archive_entry_path,   null,  "The entry path in an archive")  \
   FLAG_STRING(deploy, sandbox,              null,  "syscall-sandbox: compiler or sandbox")  \
   FLAG_STRING(deploy, compiler_sandbox,     null,  "syscall-sandbox for the forked compiler: compiler or sandbox")  \
   FLAG_BOOL(deploy,  untrusted,             false, "Run the application as an untrusted (sandboxed) container") \
   FLAG_BOOL(deploy,  untrusted_format1,     false, "Allow untrusted containers in bytecode format 1 (also TOIT_UNTRUSTED_FORMAT1=1)") \
+  FLAG_BOOL(deploy,  require_certificate,   false, "Verify format-2 programs only with a shipped certificate, as devices do (also TOIT_REQUIRE_CERTIFICATE=1)") \
 
 #ifdef TOIT_DEBUG
 #define DECLARE_DEBUG_FLAG(type, prefix, name, value, doc) static type name;

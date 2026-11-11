@@ -36,6 +36,7 @@ static const char* const UUID_NAME = "uuid";
 static const char* const SDK_VERSION_NAME = "sdk-version";
 static const char* const SNAPSHOT_NAME = "snapshot";
 static const char* const SOURCE_MAP_NAME = "source-map";
+static const char* const CERTIFICATE_NAME = "certificate";
 
 static void update_sha256(mbedtls_sha256_context* context, const uint8* bytes, size_t length) {
   uint8 length_bytes[sizeof(uint32)];
@@ -50,7 +51,8 @@ SnapshotBundle::SnapshotBundle(List<uint8> snapshot,
 
 SnapshotBundle::SnapshotBundle(List<uint8> snapshot,
                                List<uint8>* source_map_data,
-                               const char* sdk_version) {
+                               const char* sdk_version,
+                               List<uint8>* certificate) {
   ar::MemoryBuilder builder;
   int status = builder.open();
   if (status != 0) FATAL("Couldn't create snapshot");
@@ -107,6 +109,9 @@ SnapshotBundle::SnapshotBundle(List<uint8> snapshot,
   add(SNAPSHOT_NAME, snapshot);
   add(UUID_NAME, List<uint8>(sum, UUID_SIZE));
   if (source_map_data != null) add(SOURCE_MAP_NAME, *source_map_data);
+  // The shipped certificate comes last: readers that look for the members
+  // above (forward only) are not affected by it.
+  if (certificate != null) add(CERTIFICATE_NAME, *certificate);
 
   builder.close(&buffer_, &size_);
 }
@@ -154,6 +159,8 @@ bool SnapshotBundle::uuid(uint8* buffer_16) const {
 
 SnapshotBundle SnapshotBundle::stripped() const {
   List<uint8> snapshot_bytes;
+  List<uint8> certificate_bytes;
+  bool has_certificate = false;
   const char* sdk_version = null;
   Defer free_sdk_version { [&] { free(const_cast<char*>(sdk_version)); } };
   ar::MemoryReader reader(buffer_, size_);
@@ -171,9 +178,49 @@ SnapshotBundle SnapshotBundle::stripped() const {
       buffer[sdk_len] = '\0';
       free(const_cast<char*>(sdk_version));
       sdk_version = buffer;
+    } else if (strcmp(file.name(), CERTIFICATE_NAME) == 0) {
+      certificate_bytes = List<uint8>(const_cast<uint8*>(file.content()), file.byte_size);
+      has_certificate = true;
     }
   }
-  return SnapshotBundle(snapshot_bytes, null, sdk_version);
+  return SnapshotBundle(snapshot_bytes, null, sdk_version, has_certificate ? &certificate_bytes : null);
+}
+
+bool SnapshotBundle::certificate(const uint8** bytes, int* length) const {
+  ar::MemoryReader reader(buffer_, size_);
+  ar::File file;
+  int status = reader.find(CERTIFICATE_NAME, &file);
+  if (status != 0) return false;
+  *bytes = file.content();
+  *length = file.byte_size;
+  return true;
+}
+
+SnapshotBundle SnapshotBundle::with_certificate(List<uint8> certificate) const {
+  List<uint8> snapshot_bytes;
+  List<uint8> source_map;
+  bool has_source_map = false;
+  const char* sdk_version = null;
+  Defer free_sdk_version { [&] { free(const_cast<char*>(sdk_version)); } };
+  ar::MemoryReader reader(buffer_, size_);
+  ar::File file;
+  while (reader.next(&file) == 0) {
+    if (strcmp(file.name(), SNAPSHOT_NAME) == 0) {
+      snapshot_bytes = List<uint8>(const_cast<uint8*>(file.content()), file.byte_size);
+    } else if (strcmp(file.name(), SOURCE_MAP_NAME) == 0) {
+      source_map = List<uint8>(const_cast<uint8*>(file.content()), file.byte_size);
+      has_source_map = true;
+    } else if (strcmp(file.name(), SDK_VERSION_NAME) == 0) {
+      int sdk_len = file.byte_size;
+      char* buffer = unvoid_cast<char*>(malloc(sdk_len + 1));
+      memcpy(buffer, file.content(), sdk_len);
+      buffer[sdk_len] = '\0';
+      free(const_cast<char*>(sdk_version));
+      sdk_version = buffer;
+    }
+  }
+  return SnapshotBundle(snapshot_bytes, has_source_map ? &source_map : null,
+                        sdk_version == null ? vm_git_version() : sdk_version, &certificate);
 }
 
 SnapshotBundle SnapshotBundle::read_from_file(const char* bundle_filename, bool silent) {

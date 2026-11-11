@@ -65,6 +65,7 @@ static GLOBAL: Counting = Counting;
 pub fn start_peak() -> usize {
     let now = CURRENT.load(Ordering::Relaxed);
     PEAK.store(now, Ordering::Relaxed);
+    BASE.store(now, Ordering::Relaxed);
     now
 }
 
@@ -76,4 +77,17 @@ pub fn current() -> usize {
 /// The peak since `start_peak` returned `base`, above `base`.
 pub fn peak_since(base: usize) -> usize {
     PEAK.load(Ordering::Relaxed).saturating_sub(base)
+}
+
+static BASE: AtomicUsize = AtomicUsize::new(0);
+
+/// With TOIT_VERIFY_MEM=1: prints the heap level and the high-water mark
+/// at a `phase` of the verification to stderr, relative to the level at
+/// `start_peak` (README.md, "Memory").
+pub fn trace(phase: &str) {
+    if std::env::var_os("TOIT_VERIFY_MEM").map_or(false, |v| v == "1") {
+        let base = BASE.load(Ordering::Relaxed);
+        eprintln!("vmverify mem {}: level {} B, peak {} B", phase,
+                  current().saturating_sub(base), PEAK.load(Ordering::Relaxed).saturating_sub(base));
+    }
 }

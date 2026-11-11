@@ -32,6 +32,9 @@ check (report 02, section 4.1). The spec's verifier is stated as checking
 a certificate of stack maps, so either a shipped or a computed
 certificate fits; Phase 3 decides whether the device computes it.
 
+Decided in note 18: the toolchain ships the certificate, the device only
+checks it.
+
 ## Keeping the frame words with a defensive unwinder (P5) — superseded
 
 Note 2's frame stack removes the frame words that P5 protects.

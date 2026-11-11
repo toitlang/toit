@@ -62,6 +62,16 @@ ProcessGroup* ProcessGroup::create(int id, Program* program, AlignedMemoryBase* 
       PrimitivePolicy::release(policy);
       return null;
     }
+    // Without the core's checked loop (devices) a format-2 program runs
+    // only if the verifier accepted it: untrusted programs always are,
+    // trusted ones only with -Xverify. Devices run trusted code in format 1.
+    if (!V2MethodTable::checked_loop_linked()
+        && !v2_methods->runs_verified(policy->is_untrusted())) {
+      fprintf(stderr, "format-2 program refused: not verified (this VM has no checked loop)\n");
+      delete v2_methods;
+      PrimitivePolicy::release(policy);
+      return null;
+    }
   } else if (program != null) {
     ASSERT(v2_methods == null);
     entries = MethodEntryTable::compute(program);

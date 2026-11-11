@@ -122,6 +122,24 @@ class V2MethodTable {
   uword verified() const { return verified_; }
   void mark_verified(bool trusted) { verified_ = trusted ? 2 : 1; }
 
+  // Whether a process with this table runs on the verified loop: accepted
+  // under the untrusted rules, or under the trusted rules for a trusted
+  // process.
+  bool runs_verified(bool untrusted) const {
+    return verified_ == 1 || (verified_ == 2 && !untrusted);
+  }
+
+  // Whether the core's checked loop is linked (TOIT_VERIFIED_CORE_CHECKED_LOOP,
+  // hosts). Without it (devices) only programs the verifier accepted run in
+  // format 2: ProcessGroup::create refuses the others.
+  static bool checked_loop_linked() {
+#ifdef TOIT_VERIFIED_CORE_CHECKED_LOOP
+    return true;
+#else
+    return false;
+#endif
+  }
+
  private:
   V2MethodTable(V2Method* methods, word length) : methods_(methods), length_(length) {}
 

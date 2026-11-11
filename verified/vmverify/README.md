@@ -74,9 +74,15 @@ uword toit_vmverify_verify(const toit_vmverify_input* input, toit_vmverify_resul
   with it.
 - `input->trusted`: the rules (untrusted launches pass 0: HALT 2 and 3
   are rejected).
+- `input->certificate/certificate_length`: the shipped certificate
+  (verified/spec/format/18-shipped-certificate.md) or null. With one, the
+  proven `cert::verify_shipped` decides alone; without one, hosts (cargo
+  feature `infer`, the default) infer the certificate, devices (built
+  without `infer`) reject with `NO_CERTIFICATE`.
 - Result: `code` (`ACCEPTED`, `MALFORMED` memory not convertible, `HEAP`
   loader contract, `TABLES` `wf_program2`/`tables_ok`, `METHOD` with
-  `method` and `offset`, `INTERNAL` verifier panic), a message naming the
+  `method` and `offset`, `INTERNAL` verifier panic, `CERTIFICATE` shipped
+  certificate malformed or rejected, `NO_CERTIFICATE`), a message naming the
   reason and the instruction (`BRANCH_IF_FALSE 0 0: ...`), the number of
   program-heap objects, the time of each phase and the Rust heap
   high-water mark.
@@ -84,6 +90,9 @@ uword toit_vmverify_verify(const toit_vmverify_input* input, toit_vmverify_resul
 `V2Verifier::verify` (src/verifier_v2.cc) calls it and prints the reason;
 `TOIT_VERIFY_TIME=1` prints the cost. `toit_vmverify_canonical` writes the
 canonical form of the converted program (test support).
+`toit_vmverify_certify` (hosts, `infer`) is the toolchain's producer:
+it infers the certificate, checks it with `verify_shipped`, and returns
+its bytes (`toit.run --certify`, which toit.compile runs).
 
 ## Where it runs
 
@@ -121,6 +130,31 @@ Every untrusted launch, before any bytecode runs:
   without verification, corrupts a string of the program in the flash
   file, checks it no longer starts, and checks that a rejected program is
   not installed; 64-bit and 32-bit hosts).
+- Shipped certificates at install (format note 18): both commit paths
+  find the image's trailing certificate block right after the allocation
+  (program and padded assets; `FlashAllocation::image_allocation_size`,
+  `find_certificate_block`), pass it to `install_verdict`, which verifies
+  with it before the header is written, then erase the pages after the
+  allocation (the block) before writing the header, so a valid allocation
+  never has a certificate behind it. The Toit side gives those pages back
+  as a hole (`FlashRegistry.release-tail`, called by
+  `ContainerServiceProvider.image-writer-commit` and
+  `FlashRegistry.allocate`; `flash_registry.allocate` accepts a program
+  smaller than its reservation for this). Without a block a host infers;
+  a device (built without `infer`: CMake `TOIT_VERIFIED_CORE_INFER` OFF,
+  the default for embedded builds) rejects the image before converting
+  anything (`V2Verifier::infers`). Hosts behave as devices with
+  `-Xrequire_certificate` or `TOIT_REQUIRE_CERTIFICATE=1`. A shipped
+  certificate is never replaced by the inference: a wrong one rejects.
+  The test above also checks: install with the block (accepted with the
+  shipped certificate, the block's pages erased and no block left in the
+  flash file), install without it (host: inferred; device configuration:
+  rejected), install with the block of another program (rejected in both
+  configurations), with the device configuration accepting the image
+  with its block; 64-bit and 32-bit hosts. Images: `toit tool
+  snapshot-to-image` and the host envelope's bundled images (`toit tool
+  firmware`, `extract-host`) carry the block; images embedded in device
+  firmware (DROM) are trusted and do not.
 - Verdict cache (host only, images without the flag started untrusted):
   `programs_registry.spawn` remembers accepted flash allocations
   (`FlashRegistry::is_verified`, 32 entries); every
@@ -128,6 +162,12 @@ Every untrusted launch, before any bytecode runs:
   verify such starts every time.
 - `toit.run --verify` uses the same verifier for format 2;
   `--emit-canonical=FILE` writes the canonical form.
+- The shipped certificate: `snapshot.launch` gets the bundle's
+  `certificate` member (system/extensions/host/toit.run.toit); `toit.run
+  --verify` uses it (`--no-certificate`, `--require-certificate`).
+  `programs_registry.spawn` (flash) passes none: hosts infer; devices
+  reject, so on devices an untrusted container comes from an image
+  flagged untrusted (verified at install with its block).
 
 Trusted format-2 programs are verified only with `-Xverify`/`TOIT_VERIFY`
 (trusted rules).
@@ -137,7 +177,7 @@ Trusted format-2 programs are verified only with `-Xverify`/`TOIT_VERIFY`
 | File | Role |
 |---|---|
 | `src/from_vm.rs` | Views VM memory as the abstract program: the tables are borrowed as slices (`Converted::program()`/`split()` give a `VProgram`; the `V2Method` array is viewed as `VMethod`, whose layout is asserted equal at compile time); the 23 builtin class ids are decoded; roots, globals, literals are converted to values and followed breadth first through the program image (work list, no recursion), one object at a time (`Objects`, a `heap_check::ObjStream`). An object's kind is its header's class tag, which must equal its class's tag; an instance has its class's field count (`class_bits`), as the core's `instance_fields` reads it; strings and byte arrays (internal or external) must lie in the image. Every read is bounds-checked against `[program_heap_start, +program_heap_size)`. |
-| `src/verify.rs` | The verdict, the duties of spec/SOUNDNESS.md "What the VM checks outside the verifier": `x_wf_program2` (the inference and the heap check require it); the proven `heap_check::x_loaded_ok_stream` over the converted objects (accepts only if their heap satisfies `loaded_ok`), and the conversion must complete without error; the untrusted `infer::infer_global`, whose trusted fields (`global_count` = the globals' count, `prim_arity` = the VM's table) are set here; and the proven `check::verify` with the inference's oracle (= `pins_sorted && split_ok`, which implies `accepts` of the assembled certificate, untrusted rules). The rest is diagnostics. |
+| `src/verify.rs` | The verdict, the duties of spec/SOUNDNESS.md "What the VM checks outside the verifier": `x_wf_program2` (the inference and the heap check require it); the proven `heap_check::x_loaded_ok_stream` over the converted objects (accepts only if their heap satisfies `loaded_ok`), and the conversion must complete without error; the untrusted `infer::infer_global`, whose trusted fields (`global_count` = the globals' count, `prim_arity` = the VM's table) are set here; and the proven `check::verify` with the inference's oracle (= `g_ok && split_ok`, which implies `accepts` of the assembled certificate, untrusted rules), or with a shipped certificate the proven `cert::verify_shipped` (true only if a certificate with these trusted fields is accepted). The rest is diagnostics. |
 | `src/ffi.rs` | C ABI; panics reject (hosts). |
 | `src/counting.rs`, `src/clock.rs` | Counting allocator and phase times (measurement; hosts). |
 
@@ -248,6 +288,78 @@ seeds do not reproduce them; the findings' snapshots do):
   the format-1 VM with a 10-line program (spec/VM-BUGS.md;
   encoder-cyclic-array.*); upstream fix: https://github.com/toitlang/toit/pull/3374.
 
+## Shipped certificates
+
+The toolchain ships the certificate with the program and the device only
+checks it (verified/spec/format/18-shipped-certificate.md): the global part
+is read in place from the certificate (flash on a device), the maps are
+decoded one method at a time from a stream that holds only the maps the
+decoder cannot recompute by falling through (about 2 % of them).
+Measured 2026-11-11, release build (build/host), x86-64, 32 cores shared
+with a fuzz run on 8 of them; medians.
+
+VM path (`toit.run --verify`, conversion from VM memory, heap check and
+verifier; peak = Rust heap high-water mark of the call;
+`tests/measure_shipped.sh`): the certificate toit.compile shipped
+(`--require-certificate`, the device's path) against the inference
+(`--no-certificate`).
+
+| Program | Bytecodes | Methods | Certificate | of bytecodes | Shipped: time, peak | Inferred: time, peak |
+|---|---|---|---|---|---|---|
+| hello world | 23.9 KB | 758 | 9.9 KB | 41 % | 28.6 ms, 15 KB | 82.6 ms, 37 KB |
+| sandbox tests (77 programs, tests/sandbox/*.toit) | 25.0-41.0 KB (median 29.8) | 782-1194 | 10.3-15.7 KB (median 12.3) | 38-42 % | 13-93 ms (median 23), 15-22 KB (median 20) | 37-186 ms (median 61), 38-60 KB (median 51) |
+| run-image (application-sized, trusted rules) | 54.0 KB | 1600 | 20.4 KB | 38 % | 51.0 ms, 23 KB | 120.9 ms, 81 KB |
+| toit.run (system program, trusted rules) | 64.4 KB | 1761 | 22.4 KB | 35 % | 31.4 ms, 36 KB | 135.6 ms, 88 KB |
+| toit CLI (tools/toit.toit, trusted rules) | 323.6 KB | 7173 | 96.9 KB | 30 % | 185 ms, 292 KB | 467 ms, 425 KB |
+
+The VM path's peak includes the conversion of the program heap (an
+address-to-id map, about 40 bytes per object: most of the CLI's 292 KB).
+The verifier proper, on dumps (`toit_vmverify_mem`, best of 5; the tables
+are the loader's, not counted):
+
+| Program | Certificate (maps stream; shipped / recomputed maps) | Shipped: peak, time | Inferred: peak, time |
+|---|---|---|---|
+| hello world | 9912 B (1421 B; 214 / 10,941) | 6.0 KB, 12.4 ms | 30.1 KB, 36.0 ms |
+| run-image | 20,380 B (3217 B; 530 / 25,018) | 10.1 KB, 26.7 ms | 72.1 KB, 79.4 ms |
+| toit.run | 22,368 B (3624 B; 610 / 30,089) | 10.1 KB, 34.1 ms | 72.9 KB, 95.4 ms |
+| toit CLI | 96,928 B (15,233 B; 2609 / 147,629) | 65.8 KB, 172 ms | 332 KB, 420 ms |
+
+* **Size.** Hello world's 9.9 KB: method words 3.0 KB (4 bytes per
+  method), contexts 1.7 KB, selectors 1.3 KB, nodes 2.4 KB, maps stream
+  1.4 KB (6.6 bytes per shipped map), header 60 bytes. About 13 bytes per
+  method all told; 30-42 % of the bytecodes. It costs flash only until the
+  installer drops it.
+* **RAM.** The shipped path keeps the maps of one method (4 bytes per
+  bytecode byte plus 16 per node: the CLI's largest method, 6 KB, is
+  57 KB of its 66 KB) and a few words; the global part stays in the
+  certificate. The inference kept the global part in RAM (16.7 KB for hello
+  world, 210 KB for the CLI) plus its working sets.
+* **Time.** 2.4-3.4x faster. The shipped path computes each instruction's
+  successor kinds twice (the decoder places them, the proven checker
+  recomputes and compares them); a fused decoder-checker would remove the
+  second pass (not done: it needs a proof about the decoder's maps).
+* **Code size** (host x86-64, text of the release static library by
+  symbol, `nm`): built without `infer` the library has no `v2::infer`,
+  `v2::gbuf` or `v2::encode` code, and `v2::check` shrinks from 45.5 KB to
+  26.9 KB (the inference instantiated more of it). The checker path is
+  `v2::cert` 10.1 KB + `v2::check` 26.9 KB + `v2::heap_check` 5.3 KB +
+  this crate 30.8 KB; the inference path adds 75.6 KB (`infer`) + 3.7 KB
+  (`gbuf`) + 12.1 KB (`encode`, the producer) + 18.6 KB of checker code,
+  110 KB in all. RISC-V sizes: branch `phase5/portability`.
+
+Checks: `verify_suite.toit` checks every compilable suite program (439)
+three ways: the inference, its certificate encoded and checked alone
+(dump path), and the snapshot with the certificate toit.compile shipped
+(`toit.run --verify --require-certificate`): all accepted.
+`spec/tests/system_snapshots.sh` does the same for the three system
+programs (trusted rules): accepted. The mutation campaign with
+certificates (`mutation_campaign.toit --certificates`: half the mutants
+mutate the certificate of the unchanged program, half mutate the program
+and check it with the original's certificate, mutated or not): 12,000
+mutants, 818 accepted and run, 0 stuck (spec/tests/
+mutation-certificate-results.txt). In-process fuzzing with certificates:
+see "Fuzzing the entry point in-process".
+
 ## Memory
 
 The verifier keeps no data proportional to the program except small
@@ -281,6 +393,34 @@ Further reductions if needed: the contexts' kinds could share nodes like
 the maps (half of the global part), and the heap's id map could be a
 bitmap over the image.
 
+### Install time with a shipped certificate (devices)
+
+With a shipped certificate the global part is read in place from the
+certificate (flash) and no inference runs. In-VM Rust heap high-water mark
+of one verification, 32-bit host, `toit.run --verify --require-certificate`
+(the install path runs the same code), TOIT_VERIFY_MEM=1 phases
+(artifacts device-cert/scripts/ram.sh):
+
+| Program | Bytecodes | Methods | Objects | Inferred | Shipped, before | Shipped, now | C++ method table |
+|---|---|---|---|---|---|---|---|
+| heat-pump-test | 29.6 KB | 937 | 183 | 46 KB | 12.4 KB | 11.0 KB | 18.7 KB |
+| run-image | 54.2 KB | 1,602 | 243 | 76 KB | 16.4 KB | 15.0 KB | 32.0 KB |
+| toit.run | 64.5 KB | 1,763 | 419 | 80 KB | 19.4 KB | 18.0 KB | 35.3 KB |
+
+"Now": object ids in an open-addressing table instead of a `BTreeMap`
+(the conversion's work list for toit.run: 8.4 -> 6.9 KB), the primitive
+table taken instead of copied. What remains at the peak (during the
+certificate check, toit.run): the converted roots and literals and the
+primitive table (8.3 KB; 12 bytes per `Value` on i686, 16 on riscv32,
+where `i64` is 8-byte aligned, so about 2 KB more on the device) and the
+maps of the method being checked plus the checker's state (up to 10 KB,
+the largest method has 699 bytes of bytecode). Not in the Rust figure:
+the VM's decoded method table (`V2Method`, 20 bytes per method), which
+install-time verification computes for the verifier and frees after it;
+it is now the largest item (OBLIGATIONS.md D3). The whole transient cost
+of installing a 30-65 KB program is thus about 30-53 KB, against 65-115
+KB with the inference.
+
 ## Fuzzing the entry point in-process
 
 `src/bin/toit_vmverify_fuzz.rs` calls `toit_vmverify_verify` (the C entry
@@ -305,6 +445,16 @@ over 2 s** (slowest 261 ms; largest peak 485 KB). The inference of the
 previous branch panicked on such inputs (PHASE4-REQUESTS.md R6; 208
 caught panics in one launch-mode run).
 
+With shipped certificates (`tests/fuzz_tables.sh --certificates`: each
+program's certificate from `toit_vmverify_certify`; a third of the mutants
+mutate the tables and keep the certificate, a third mutate the certificate
+(header words, table words, records copied over others, bytes of the maps
+stream, truncation, growth), a third both), 2026-11-11, 8 processes x 15
+minutes, `--seed 501`: 402,987 mutants; 39,475 accepted, 52,160 malformed
+memory, 155 heap contract, 72,617 tables, 54,968 methods, 183,610
+certificate rejected; **0 verifier panics, 0 calls over 2 s** (slowest
+540 ms, under load; largest peak 281 KB).
+
 ## no_std (Phase 5)
 
 Without the `std` feature this crate and verified/spec are `no_std` +
@@ -320,3 +470,73 @@ LTO). `tests/nostd_check.sh` builds spec, core and the device library for
 (verified/core/PROGRESS.md, "Phase 5"). ESP32-C6/H2 firmware links it
 with the menuconfig option `TOIT_VERIFIED_CORE`
 (toolchains/idf/components/toit).
+
+## Device size (branch device/certificate-and-size)
+
+The Rust library as a device links it (riscv32imac, `tests/device_size.sh`
+with `DEVICE_SIZE_FEATURES`; artifacts device-cert/libsizes-*.txt,
+scripts/libsizes.sh and scripts/sizetable.sh), text by component and all
+rodata, KB, at the core's opt-level 3 / s / z. Columns are cumulative:
+
+1. before: the certificate merge with the inference and the checked loop;
+2. no inference (vmverify `infer` off, the device default; CMake
+   `TOIT_VERIFIED_CORE_INFER`);
+3. no formatting (diagnostic texts only on hosts: `text!`; no `unwrap`
+   in from_vm), no `BTreeMap` (id table), vmverify's layout tables only
+   on hosts;
+4. the verifier (verified/spec) at opt-level z whatever the core's
+   (`[profile.device.package.toit_spec]`): committed state;
+5. with the requested core cfgs D1 (no checked loop) and D2 (no layout
+   tables) of verified/core/OBLIGATIONS.md applied to a copy;
+6. candidate: as 5, built with nightly `-Zbuild-std=core,alloc
+   -Cpanic=immediate-abort -Zlocation-detail=none`.
+
+| Component | 1 | 2 | 3 | 4 | 5 | 6 |
+|---|---|---|---|---|---|---|
+| core: verified loop and cold paths | 41.4 / 38.0 / 35.1 | same | same | same | 30.2 / 27.7 / 25.7 | 30.3 / 27.3 / 25.5 |
+| core: checked loop | 20.8 / 22.7 / 20.6 | same | same | same | 1.0 / 0.9 / 0.6 | same |
+| core: primitives | 15.5 / 13.4 / 12.4 | same | same | same | same | same |
+| verifier: checker | 29.9 / 29.0 / 25.6 | 26.4 / 20.3 / 17.7 | same | 17.7 / 17.7 / 17.7 | same | 16.4 / 16.5 / 16.5 |
+| verifier: heap check | 1.9 / 1.9 / 1.5 | same | same | same | same | same |
+| verifier: inference | 42.8 / 32.0 / 23.9 | 0 | 0 | 0 | 0 | 0 |
+| glue (vmverify, spec other) | 8.2 / 6.6 / 6.3 | 6.5 / 5.5 / 5.2 | 6.5 / 5.8 / 5.5 | 5.8 / 5.7 / 5.5 | same | 5.6 / 5.3 / 5.3 |
+| Rust formatting and panics | 6.0 / 6.0 / 5.9 | 3.4 / 3.4 / 4.3 | 1.6 / 1.6 / 1.7 | same | same | 0 |
+| other core/alloc, compiler builtins | 10.9 / 12.6 / 14.4 | 9.6 / 10.8 / 11.6 | 7.4 / 7.4 / 7.9 | 7.7 / 7.6 / 7.9 | same | 4.3 / 2.6 / 3.2 |
+| text | 177.2 / 162.1 / 145.5 | 125.4 / 115.8 / 108.3 | 121.4 / 111.1 / 102.3 | 112.3 / 108.5 / 102.3 | 81.3 / 76.4 / 72.9 | 74.9 / 67.7 / 64.9 |
+| rodata | 25.2 / 31.0 / 32.4 | 15.9 / 22.2 / 23.5 | 13.8 / 19.9 / 20.9 | 13.4 / 20.6 / 20.9 | 12.6 / 12.1 / 12.4 | 3.8 / 3.4 / 3.4 |
+| **total** | **202.4 / 193.1 / 177.9** | 141.3 / 138.0 / 131.7 | 135.2 / 131.0 / 123.1 | **125.7 / 129.1 / 123.1** | **93.9 / 88.6 / 85.3** | 78.7 / 71.1 / 68.3 |
+
+ESP32-C6 firmware (ESP-IDF 5.4.2, artifacts device-cert/scripts/fw-all.sh
+and firmware-*.txt; never flashed), toit.bin against the same build without
+the core (1,576,448 B; the delta includes the C++ format-2 glue):
+
+| | opt 3 | opt s | opt z |
+|---|---|---|---|
+| Phase 5 (before the certificate merge) | +187.0 KB | +179.3 KB | +172.9 KB |
+| 1: certificate merge, inference, checked loop | +200.8 KB | +187.6 KB | +176.7 KB |
+| 4: committed (device configuration) | +126.6 KB | +130.0 KB | +127.4 KB |
+| 5: with the requested core cfgs D1, D2 | +94.4 KB | +89.1 KB | +87.8 KB |
+
+What a device needs (column 5, opt 3): the verified loop with its cold
+paths 30.2 KB, the primitives 15.5 KB, the checker of shipped certificates
+17.7 KB, the heap check 1.9 KB, the glue (conversion, C ABI, device
+runtime) 5.8 KB, Rust runtime and builtins 9.3 KB, rodata 12.6 KB (jump
+tables of `op_primitive` 1.9 KB and the run loop 0.4 KB, the opcode length
+table 0.5 KB, string constants, mostly the panic locations of the
+precompiled core library, 6.4 KB). Removed: the inference 24-43 KB (and
+about 9 KB of its rodata), the checked loop 20-23 KB plus 10-11 KB of cold
+paths only it reaches (D1), the formatting machinery 4.3 KB, `BTreeMap`
+2-3 KB, the layout tables' names 1.4 KB (vmverify) and 7.6 KB (core, D2,
+opt s/z only: at s/z LLVM puts the names in the merged `.rodata.str1.1`,
+which the linker cannot garbage-collect), the checker shrinks by 8.7 KB at
+opt 3 when compiled for size. With the verifier at z, opt 3 for the core
+costs only 5-7 KB over s/z, so opt 3 (speed of the run loop) is the
+recommended setting.
+
+Next candidates: nightly build-std with `-Cpanic=immediate-abort` and
+`-Zlocation-detail=none` (column 6: -15 to -17 KB, a toolchain decision:
+Verus and the host build use stable 1.99); the run loop's cold paths at
+opt-level z (an attribute on the cold functions: part of the core); the
+primitives' jump table and the checker at z on a per-function basis; the
+`V2Method` table (RAM, OBLIGATIONS.md D3). Remaining rodata worth a look:
+the merged strings (6.4 KB at opt 3, 4 KB of it library panic locations).

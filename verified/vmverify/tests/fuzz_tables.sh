@@ -19,7 +19,10 @@
 # compiles them in format 2, saves the VM's verifier input
 # (`toit.run --verify --emit-canonical=X.tables`), then runs JOBS fuzz
 # processes with different seeds for SECONDS each.
-#
+# Usage: fuzz_tables.sh [--seconds N] [--jobs J] [--seed S] [--out DIR] [--certificates] [PROGRAM.toit...]
+# --certificates: the processes check the mutants with the shipped certificate
+# (format/18-shipped-certificate.md), mutating the tables, the certificate or
+# both.
 # Usage: fuzz_tables.sh [--seconds N] [--jobs J] [--seed S] [--out DIR] [PROGRAM.toit...]
 # Programs default to a hello world and a few suite tests. Exit code 1 if
 # any process reports a finding (a verifier panic or a slow call).
@@ -33,6 +36,7 @@ SECONDS_EACH=60
 JOBS=4
 SEED=1
 OUT="$REPO/build/vmverify-fuzz"
+EXTRA=()
 PROGRAMS=()
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -40,6 +44,7 @@ while [ $# -gt 0 ]; do
     --jobs) shift; JOBS="$1" ;;
     --seed) shift; SEED="$1" ;;
     --out) shift; OUT="$1" ;;
+    --certificates) EXTRA+=(--certificates) ;;
     *) PROGRAMS+=("$1") ;;
   esac
   shift
@@ -61,7 +66,7 @@ done
 pids=()
 for j in $(seq "$JOBS"); do
   "$HERE/../target/release/toit_vmverify_fuzz" --seconds "$SECONDS_EACH" --seed $((SEED + j - 1)) \
-      --save "$OUT/findings" "${TABLES[@]}" > "$OUT/fuzz-$((SEED + j - 1)).log" 2>&1 &
+      --save "$OUT/findings" ${EXTRA[@]+"${EXTRA[@]}"} "${TABLES[@]}" > "$OUT/fuzz-$((SEED + j - 1)).log" 2>&1 &
   pids+=($!)
 done
 status=0

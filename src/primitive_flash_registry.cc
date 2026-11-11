@@ -213,7 +213,12 @@ PRIMITIVE(allocate) {
     if (reserved_offset > offset) break;
     ASSERT(reserved_offset == offset);
 
-    if (reservation->size() != size
+    // A program may be smaller than its reservation: the rest holds its
+    // shipped certificate (see below).
+    bool smaller = type == FLASH_ALLOCATION_TYPE_PROGRAM && size < reservation->size();
+    if ((reservation->size() != size && !smaller)
+        || size <= 0
+        || !Utils::is_aligned(size, FLASH_PAGE_SIZE)
         || id.length() != FlashAllocation::Header::ID_SIZE
         || metadata.length() != FlashAllocation::Header::METADATA_SIZE) {
       FAIL(INVALID_ARGUMENT);
@@ -235,13 +240,40 @@ PRIMITIVE(allocate) {
     uint8 meta[FlashAllocation::Header::METADATA_SIZE];
     memcpy(meta, metadata.address(), sizeof(meta));
     if (type == FLASH_ALLOCATION_TYPE_PROGRAM) {
+      // A program smaller than its reservation: after it (and its assets,
+      // if the metadata says it has some) the rest of the reservation may
+      // hold the shipped certificate block (flash_allocation.h, format 2
+      // note 18), which is verified with and then erased, as in
+      // image.writer-commit.
+      uword reservation_end = reinterpret_cast<uword>(memory) + reservation->size();
+      word allocation_size = size;
+      if (smaller && (meta[0] & FlashAllocation::Header::FLAGS_PROGRAM_HAS_ASSETS_MASK) != 0) {
+        uword assets = reinterpret_cast<uword>(memory) + size;
+        if (reservation_end - assets < sizeof(uint32)) FAIL(OUT_OF_BOUNDS);
+        uword assets_length = *reinterpret_cast<const uint32*>(assets);
+        if (assets_length > reservation_end - assets - sizeof(uint32)) FAIL(OUT_OF_BOUNDS);
+        allocation_size += Utils::round_up(assets_length + sizeof(uint32), FLASH_PAGE_SIZE);
+        if (static_cast<uword>(allocation_size) > reservation->size()) FAIL(OUT_OF_BOUNDS);
+      }
+      const uint8* certificate = null;
+      word certificate_length = 0;
+      if (smaller) {
+        FlashAllocation::find_certificate_block(
+            reinterpret_cast<const uint8*>(memory) + allocation_size,
+            reinterpret_cast<const void*>(reservation_end),
+            &certificate, &certificate_length);
+      }
       // Every byte of the program is written (the first page above).
-      const char* error = V2Verifier::install_verdict(memory, size, meta);
+      const char* error = V2Verifier::install_verdict(memory, size, meta, certificate, certificate_length);
       if (error != null) {
         String* message = process->allocate_string(error);
         if (message == null) FAIL(ALLOCATION_FAILED);
         return Error::from(message);
       }
+      // Drop the rest of the reservation; system/flash/registry.toit gives
+      // the pages back as a hole.
+      word tail = reservation->size() - allocation_size;
+      if (tail > 0 && !FlashRegistry::erase_chunk(offset + allocation_size, tail)) FAIL(HARDWARE_ERROR);
     }
     const FlashAllocation::Header header(memory, type, id.address(), size, meta);
     if (!FlashAllocation::commit(memory, size, &header)) FAIL(HARDWARE_ERROR);

@@ -179,13 +179,16 @@ pub fn step_verified(p: &ExecProgram, s: &mut ExecState) -> (r: Option<ExecOutco
             None => final(s)@ == old(s)@,
         },
 
+--- verify_shipped  (spec/src/v2/cert.rs)
+pub fn verify_shipped(p: &VProgram, cert: &[u8], global_count: u64, prim_arity: &[Vec<u8>], trusted: bool)
+    -> (r: (bool, usize))
+    ensures
+        r.0 ==> exists|c: Cert| accepts(vview(p), c, trusted) && #[trigger] c.global_count == global_count as int
+            && c.prim_arity == prim_view(prim_arity@),
+
 --- x_class_count  (spec/src/v2/check.rs)
 pub fn x_class_count(p: &VProgram) -> (r: usize)
     ensures r as int == class_count(vview(p)),
-
---- verify  (spec/src/v2/check.rs)
-pub fn verify<O: MapOracle>(p: &VProgram, g: &XGlobal, o: &mut O, trusted: bool) -> (r: (bool, Ghost<Seq<Maps>>))
-    ensures r.0 == (pins_sorted(g) && split_ok(vview(p), g@, r.1@, trusted)),
 
 --- x_frame_height  (spec/src/v2/exec.rs)
 pub fn x_frame_height(s: &ExecState) -> (r: i64)

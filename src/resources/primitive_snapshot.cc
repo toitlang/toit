@@ -45,8 +45,17 @@ PRIMITIVE(launch) {
   // Launching a program from bytes is reserved for the system process. The
   // system process decides the policy of the launched program group.
   PRIVILEGED;
-  ARGS(Blob, bytes, int, gid, Blob, program_id, Object, arguments, Object, policy_description);
+  ARGS(Blob, bytes, int, gid, Blob, program_id, Object, arguments, Object, policy_description,
+       Object, certificate_object);
   if (program_id.length() != 16) FAIL(OUT_OF_BOUNDS);
+  // The shipped certificate of a format-2 program (verified/spec/format/
+  // 18-shipped-certificate.md), or null. Only read during verification.
+  Blob certificate;
+  bool has_certificate = false;
+  if (certificate_object != process->null_object()) {
+    if (!certificate_object->byte_content(process->program(), &certificate, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_OBJECT_TYPE);
+    has_certificate = true;
+  }
 
   Object* policy_error = null;
   const PrimitivePolicy* policy = PrimitivePolicy::from_description(policy_description, process, &policy_error);
@@ -104,7 +113,9 @@ PRIMITIVE(launch) {
       return launch_error(process, "INVALID_SNAPSHOT");
     }
   }
-  if (!Verifier::verify_for_policy(program, policy, v2_methods)) {
+  if (!Verifier::verify_for_policy(program, policy, v2_methods,
+                                   has_certificate ? certificate.address() : null,
+                                   has_certificate ? certificate.length() : 0)) {
     delete v2_methods;
     image.release();
     return launch_error(process, "VERIFICATION_FAILED");

@@ -122,6 +122,57 @@ Open:
   review (the verified handlers hold none: a GC point re-derives every
   word from the model).
 
+### Device size requests (branch device/certificate-and-size)
+
+The device library is built without the cargo features `checked-loop` and
+`layout-tables` (verified/core/Cargo.toml; both default on, forwarded by
+verified/vmverify; CMake `TOIT_VERIFIED_CORE_CHECKED_LOOP`, off for
+embedded builds). The features exist and the C++ side already refuses
+unverified format-2 programs without the checked loop
+(`ProcessGroup::create`, `V2MethodTable::checked_loop_linked`); the core
+code does not use the cfgs yet. verified/check.sh runs Verus with both
+features, so the verified code is unchanged; the device build only leaves
+code out. Measured with the patch below applied to a copy
+(artifacts device-cert/requested-core-patch.diff, scripts/libsizes.sh,
+verified/vmverify/README.md "Device size").
+
+- D1 (checked loop, -29 to -32 KB of text at opt 3/s/z, of which 10-11 KB
+  are cold paths only the checked loop reaches). In `machine::run`:
+
+  ```rust
+  match accepted {
+      Some(token) => crate::step::run_loop(&mut m, &env, &token),
+      #[cfg(feature = "checked-loop")]
+      None => run_checked(&mut m, &env),
+      #[cfg(not(feature = "checked-loop"))]
+      None => {
+          env.rt.report(V2_REPORT_STUCK, m.bci, stuck::FATAL);
+          (RESULT_TERMINATED, 1)
+      }
+  }
+  ```
+
+  Optionally the same cfg on `run_checked`, `dispatch_checked` and the
+  handlers only they use (the linker drops them anyway; the crate allows
+  dead code). Keep the arm wherever the rewritten run loop chooses between
+  the verified and the checked loop.
+- D2 (layout tables, -7.6 KB of rodata at opt s and z, 0 at opt 3). In
+  ffi.rs, `#[cfg(feature = "layout-tables")]` on `toit_vcore_opcode_length`,
+  `toit_vcore_layout_count`, `toit_vcore_layout_entry`,
+  `toit_vcore_prim_count` and `toit_vcore_prim_entry` (and their tables).
+  Only verified/layout_check.cc calls them (hosts). As `#[no_mangle]`
+  exports of the static library LTO keeps them, and at opt s/z their name
+  strings land in the merged `.rodata.str1.1` section, which the firmware
+  link cannot garbage-collect even when the functions are dropped
+  (vmverify's own tables are cfg'd the same way, on `std`).
+- D3 (RAM, for discussion): `V2Method` is 20 bytes per method and the VM
+  holds one table per running format-2 program and one during install-time
+  verification: 19-35 KB for 0.9-1.8 K methods, more than the verifier's
+  own peak with a shipped certificate (11-18 KB). A 16-byte record (e.g.
+  `end` as a u16 length, `unused` dropped) or the decoded table stored in
+  the image (borrowed from flash, as the certificate is) would cut it;
+  both change the core's and the verifier's `VMethod` view.
+
 ## 3. Spec requests from the refinement proof
 
 For verified/spec/format/PHASE4-REQUESTS.md (not edited here: owned by

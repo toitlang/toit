@@ -120,6 +120,30 @@ class FlashAllocation {
   // Get the total size of the appended program assets if any.
   int program_assets_size(uint8** bytes, word* length) const;
 
+  // The trailing certificate block of a program image (format 2 note 18,
+  // verified/spec/format/18-shipped-certificate.md): right after the
+  // allocation (program and padded assets), page aligned,
+  //   u32 marker "TCB1"   u32 length   certificate   padding to a page.
+  // The marker is larger than any assets length, so a block right after the
+  // program is told apart from assets. The block is not part of the
+  // allocation: the installer verifies the program with it before the
+  // header is written and then erases its pages.
+  static const uint32 CERTIFICATE_BLOCK_MARKER = 0x31424354;  // "TCB1".
+
+  // Finds the certificate block at [block] if the bytes up to [limit] hold
+  // one: sets [certificate] and [length] to the certificate's bytes and
+  // returns true. Every read stays below [limit].
+  static bool find_certificate_block(const void* block, const void* limit,
+                                     const uint8** certificate, word* length);
+
+  // The size of a program image's allocation with its assets, from the
+  // program's size (page aligned, the header's size) and the image bytes
+  // at [memory] up to [limit] (the reservation): the assets, if the image
+  // has some, follow the program as a u32 length and the bytes, padded to
+  // a page. Sets [has_assets]. Returns -1 if the assets do not fit.
+  static word image_allocation_size(const void* memory, word program_size, const void* limit,
+                                    bool* has_assets);
+
  protected:
   FlashAllocation(const uint8* id, word size) : header_(0, FLASH_ALLOCATION_TYPE_PROGRAM, id, size, null) {}
 

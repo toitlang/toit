@@ -77,6 +77,8 @@ class SystemContainerImage extends ContainerImageFromSnapshot:
 
 class ApplicationContainerImage extends ContainerImageFromSnapshot:
   snapshot/ByteArray? := null
+  // The shipped certificate of a format-2 program, or null.
+  certificate/ByteArray? := null
   flags/int
 
   // Arguments passed to main in the system process are automatically
@@ -94,11 +96,15 @@ class ApplicationContainerImage extends ContainerImageFromSnapshot:
     // We must read the $id last because it comes after the snapshot in
     // the archive.
     super reader
+    // The shipped certificate (format 2) comes after the uuid and the
+    // source map.
+    certificate-offsets := reader.find --offsets SnapshotBundle.CERTIFICATE-NAME
+    if certificate-offsets: certificate = bundle-bytes_[certificate-offsets.from..certificate-offsets.to]
 
   spawn container/Container arguments/any -> int:
-    return launch-snapshot_ snapshot container.id id.to-byte-array arguments container.policy
+    return launch-snapshot_ snapshot container.id id.to-byte-array arguments container.policy certificate
 
-  static launch-snapshot_ snapshot/ByteArray gid/int id/ByteArray arguments/any policy/any -> int:
+  static launch-snapshot_ snapshot/ByteArray gid/int id/ByteArray arguments/any policy/any certificate/ByteArray? -> int:
     #primitive.snapshot.launch
 
 main arguments:

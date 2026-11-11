@@ -521,6 +521,8 @@ int main() {
     VFIELD("VMVERIFY_INPUT_", toit_vmverify_input, prim_arities)
     VFIELD("VMVERIFY_INPUT_", toit_vmverify_input, prim_arities_length)
     VFIELD("VMVERIFY_INPUT_", toit_vmverify_input, trusted)
+    VFIELD("VMVERIFY_INPUT_", toit_vmverify_input, certificate)
+    VFIELD("VMVERIFY_INPUT_", toit_vmverify_input, certificate_length)
     { "VMVERIFY_RESULT_SIZE", sizeof(toit_vmverify_result), false },
     VFIELD("VMVERIFY_RESULT_", toit_vmverify_result, code)
     VFIELD("VMVERIFY_RESULT_", toit_vmverify_result, method)
@@ -538,6 +540,8 @@ int main() {
     { "VMVERIFY_HEAP", TOIT_VMVERIFY_HEAP, false },
     { "VMVERIFY_TABLES", TOIT_VMVERIFY_TABLES, false },
     { "VMVERIFY_METHOD", TOIT_VMVERIFY_METHOD, false },
+    { "VMVERIFY_CERTIFICATE", TOIT_VMVERIFY_CERTIFICATE, false },
+    { "VMVERIFY_NO_CERTIFICATE", TOIT_VMVERIFY_NO_CERTIFICATE, false },
     { "VMVERIFY_INTERNAL", TOIT_VMVERIFY_INTERNAL, false },
   };
 #undef VFIELD

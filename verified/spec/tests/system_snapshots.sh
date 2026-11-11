@@ -36,4 +36,7 @@ for src in tools/toit.toit system/extensions/host/toit.run.toit system/extension
   "$TOIT" run "$DUMPER" -- "$OUT/$name.snapshot" "$OUT/$name.dump"
   echo "=== $name"
   "$CRATE/target/release/toit_spec_verify" --trusted --time "$OUT/$name.dump"
+  # The certificate toit.compile shipped, checked by the VM alone (no
+  # inference), as a device would.
+  "$(dirname "$TOIT_COMPILE")/toit.run" --verify --trusted --require-certificate -q "$OUT/$name.snapshot"
 done

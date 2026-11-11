@@ -62,10 +62,21 @@ class SnapshotBundle {
   // UUID was not in the snapshot file.
   bool uuid(uint8* buffer_16) const;
 
-  // Builds a snapshot bundle without debugging information.
+  // Builds a snapshot bundle without debugging information. The shipped
+  // certificate (format 2) is kept.
   // The old and new bundle don't share any code, and this instance's
   // buffer can be safely freed.
   SnapshotBundle stripped() const;
+
+  // The shipped certificate of a format-2 program (the "certificate"
+  // member; verified/spec/format/18-shipped-certificate.md), pointing into
+  // this bundle's buffer. False if there is none.
+  bool certificate(const uint8** bytes, int* length) const;
+
+  // A copy of this bundle with [certificate] as its certificate (replacing
+  // any). The snapshot, its uuid, the source map and the sdk version are
+  // kept: the uuid does not depend on the certificate.
+  SnapshotBundle with_certificate(List<uint8> certificate) const;
 
   /// Whether the given [file] is likely a bundle file.
   /// This function is applying a heuristic to determine whether
@@ -82,7 +93,8 @@ class SnapshotBundle {
   /// The source-maps are optional in this constructor.
   SnapshotBundle(List<uint8> main_snapshot,
                  List<uint8>* main_source_map_data,
-                 const char* sdk_version);
+                 const char* sdk_version,
+                 List<uint8>* certificate = null);
 
 
 };

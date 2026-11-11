@@ -54,6 +54,7 @@ use alloc::vec::Vec;
 use crate::v2::bytecodes::*;
 use crate::v2::check::*;
 use crate::v2::vprog::*;
+use crate::v2::gbuf::GBuf;
 
 const KIND_BLOCK: u8 = 3;
 /// At most this many inference errors are kept (diagnostics only).
@@ -101,7 +102,7 @@ pub type Seeds = BTreeMap<(u32, u32), Vec<Vec<XKind>>>;
 
 /// The result of the global phase.
 pub struct Global {
-    pub g: XGlobal,
+    pub g: GBuf,
     /// Methods analyzed in the last round (blocks nobody creates are not).
     pub done: Vec<bool>,
     pub seeds: Seeds,
@@ -114,7 +115,7 @@ pub struct Global {
 
 /// What the analysis of one method does to the global facts.
 trait Facts {
-    fn g(&self) -> &XGlobal;
+    fn g(&self) -> &GBuf;
     /// Block method `t` is created at slot `slot` of `m` with `kinds`.
     fn context(&mut self, t: usize, m: usize, slot: usize, kinds: &[XKind]);
     /// Parameter `x` of `t` (and its selector group) is a block parameter.
@@ -136,7 +137,7 @@ fn seeds_in(seeds: &Seeds, m: usize) -> Vec<(usize, Vec<XKind>)> {
 /// The global phase: mutates the facts.
 struct Building<'a> {
     p: &'a VProgram<'a>,
-    g: XGlobal,
+    g: GBuf,
     /// Methods with a selector, sorted by (selector, method).
     by_sel: Vec<u32>,
     seeds: Seeds,
@@ -145,23 +146,13 @@ struct Building<'a> {
 }
 
 impl<'a> Facts for Building<'a> {
-    fn g(&self) -> &XGlobal {
+    fn g(&self) -> &GBuf {
         &self.g
     }
 
     fn context(&mut self, t: usize, m: usize, slot: usize, kinds: &[XKind]) {
-        let g = &mut self.g;
-        let Some(&i) = g.ctx_idx.get(t) else { return };
-        if (i as usize) < g.ctxs.len() {
-            let ctx = &mut g.ctxs[i as usize];
-            if ctx.outer as usize == m && ctx.slot as usize == slot {
-                ctx.kinds.clear();
-                ctx.kinds.extend_from_slice(kinds);
-            }
-        } else if g.ctxs.len() < u32::MAX as usize && m <= u32::MAX as usize && slot <= u32::MAX as usize {
-            g.ctx_idx[t] = g.ctxs.len() as u32;
-            g.ctxs.push(XContext { outer: m as u32, slot: slot as u32, kinds: kinds.to_vec() });
-        }
+        if t >= self.g.n || m > u32::MAX as usize || slot > u32::MAX as usize { return; }
+        self.g.set_ctx(t, m as u32, slot as u32, kinds);
     }
 
     fn mark(&mut self, t: usize, x: usize) {
@@ -187,16 +178,8 @@ impl<'a> Facts for Building<'a> {
                 }
                 continue;
             }
-            let g = &mut self.g;
-            let (Some(&a), Some(&b)) = (g.bp_off.get(t), g.bp_off.get(t + 1)) else { continue };
-            let (a, b) = (a as usize, b as usize);
-            if x < b.saturating_sub(a) {
-                if let Some(bit) = g.bp.get_mut(a + x) {
-                    if !*bit {
-                        *bit = true;
-                        self.changed = true;
-                    }
-                }
+            if x < info.arity as usize && self.g.set_bit(t, x) {
+                self.changed = true;
             }
         }
     }
@@ -223,12 +206,12 @@ impl<'a> Facts for Building<'a> {
 
 /// The checking phase: the facts are frozen.
 struct Frozen<'a> {
-    g: &'a XGlobal,
+    g: &'a GBuf,
     seeds: &'a Seeds,
 }
 
 impl<'a> Facts for Frozen<'a> {
-    fn g(&self) -> &XGlobal {
+    fn g(&self) -> &GBuf {
         self.g
     }
     fn context(&mut self, _t: usize, _m: usize, _slot: usize, _kinds: &[XKind]) {}
@@ -383,7 +366,7 @@ fn analyze<F: Facts>(p: &VProgram, f: &mut F, m: usize, trusted: bool) -> Result
     let mut lo = 0usize;
     // The entry map.
     let e = {
-        let c = XCert { g: f.g(), cur: m, maps: &empty };
+        let c = XCert { g: &f.g().view(p.methods), cur: m, maps: &empty };
         x_entry_kinds(p, &c, m)
     };
     if e.len() > limit {
@@ -445,7 +428,7 @@ fn analyze<F: Facts>(p: &VProgram, f: &mut F, m: usize, trusted: bool) -> Result
                         if let Some(&t) = p.dispatch.get(d) {
                             if t >= 0 {
                                 if let Some(ti) = method(p, t as usize) {
-                                    mark_args(f, m, t as usize, &k, &org, ti.arity as usize);
+                                    mark_args(p, f, m, t as usize, &k, &org, ti.arity as usize);
                                 }
                             }
                         }
@@ -459,11 +442,11 @@ fn analyze<F: Facts>(p: &VProgram, f: &mut F, m: usize, trusted: bool) -> Result
                     };
                     if let Some((n, sel)) = ns {
                         if sel < 0xffff {
-                            let r = x_sel_rep(&XCert { g: f.g(), cur: m, maps: &empty }, sel);
+                            let r = x_sel_rep(&XCert { g: &f.g().view(p.methods), cur: m, maps: &empty }, sel);
                             if r >= 0 {
                                 if let Some(ri) = method(p, r as usize) {
                                     if ri.arity as usize == n {
-                                        mark_args(f, m, r as usize, &k, &org, n);
+                                        mark_args(p, f, m, r as usize, &k, &org, n);
                                     }
                                 }
                             }
@@ -476,7 +459,7 @@ fn analyze<F: Facts>(p: &VProgram, f: &mut F, m: usize, trusted: bool) -> Result
         if op == NON_LOCAL_BRANCH && h >= 1 {
             if let XKind::Block(d, j) = k[h - 1] {
                 if d >= 1 {
-                    let c = XCert { g: f.g(), cur: m, maps: &empty };
+                    let c = XCert { g: &f.g().view(p.methods), cur: m, maps: &empty };
                     let (fk, om) = x_ctx_kinds(&c, m as i64, d);
                     let hd = byte_at(p, bci + 1).unwrap_or(usize::MAX);
                     let target = u16_at(p, bci + 2).zip(u16_at(p, bci + 4)).map(|(lo, hi)| lo | hi << 16);
@@ -496,7 +479,7 @@ fn analyze<F: Facts>(p: &VProgram, f: &mut F, m: usize, trusted: bool) -> Result
             return Err((off, "frame too high".into()));
         }
         let (post, term_ok) = {
-            let c = XCert { g: f.g(), cur: m, maps: &empty };
+            let c = XCert { g: &f.g().view(p.methods), cur: m, maps: &empty };
             let post = x_post(p, &c, m, off, &k, trusted);
             let term = matches!(op, RETURN | RETURN_NULL | THROW | BRANCH | BRANCH_BACK | INVOKE_STATIC_TAIL
                 | INVOKE_LAMBDA_TAIL | INVOKE_INITIALIZER_TAIL | NON_LOCAL_RETURN | NON_LOCAL_BRANCH);
@@ -589,7 +572,7 @@ fn analyze<F: Facts>(p: &VProgram, f: &mut F, m: usize, trusted: bool) -> Result
 
 /// Marks the parameters of `t` that receive blocks, and the parameters of
 /// `m` that are passed on unchanged for block parameters.
-fn mark_args<F: Facts>(f: &mut F, m: usize, t: usize, k: &[XKind], org: &[u8], n: usize) {
+fn mark_args<F: Facts>(p: &VProgram, f: &mut F, m: usize, t: usize, k: &[XKind], org: &[u8], n: usize) {
     if n > k.len() { return; }
     let empty = XMaps { idx: Vec::new(), nodes: Vec::new() };
     for x in 0..n {
@@ -597,7 +580,7 @@ fn mark_args<F: Facts>(f: &mut F, m: usize, t: usize, k: &[XKind], org: &[u8], n
         if matches!(k[i], XKind::Block(..) | XKind::Param) {
             f.mark(t, x);
         } else if k[i] == XKind::Val && org.get(i).is_some_and(|o| *o != NO_ORIGIN)
-            && x_is_block_param(&XCert { g: f.g(), cur: m, maps: &empty }, t, x) {
+            && x_is_block_param(&XCert { g: &f.g().view(p.methods), cur: m, maps: &empty }, t, x) {
             f.mark(m, org[i] as usize);
         }
     }
@@ -658,17 +641,7 @@ fn push_error(errors: &mut Vec<(usize, usize, String)>, m: usize, off: usize, ms
 /// primitive table).
 pub fn infer_global(p: &VProgram, global_count: u64, prim_arity: Vec<Vec<u8>>, trusted: bool) -> Global {
     let n = p.methods.len();
-    let mut g = XGlobal {
-        n,
-        bp_off: Vec::new(),
-        bp: Vec::new(),
-        ctx_idx: Vec::new(),
-        ctxs: Vec::new(),
-        sel_rep: Vec::new(),
-        global_count,
-        prim_arity,
-        pins: Vec::new(),
-    };
+    let mut g = GBuf::new(n, global_count, prim_arity);
     let mut errors = Vec::new();
     // The analysis needs well-formed tables (and so does the checker,
     // which rejects without them).
@@ -676,39 +649,25 @@ pub fn infer_global(p: &VProgram, global_count: u64, prim_arity: Vec<Vec<u8>>, t
         errors.push((0, 0, String::from("malformed program tables (wf_program2)")));
         return Global { g, done: vec![false; n], seeds: Seeds::new(), errors, rounds: 0 };
     }
-    let mut total = 0usize;
-    g.bp_off.reserve_exact(n + 1);
-    for info in p.methods {
-        g.bp_off.push(total as u32);
-        total += info.arity as usize;
-    }
-    if total > u32::MAX as usize {
-        errors.push((0, 0, String::from("too many parameters")));
-        return Global { g, done: vec![false; n], seeds: Seeds::new(), errors, rounds: 0 };
-    }
-    g.bp_off.push(total as u32);
-    g.bp = vec![false; total];
-    g.ctx_idx = vec![NO_MAP; n];
     let mut by_sel: Vec<u32> = (0..n as u32).filter(|&m| p.methods[m as usize].selector != 0xffff).collect();
     by_sel.sort_by_key(|&m| (p.methods[m as usize].selector, m));
-    if let Some(&last) = by_sel.last() {
-        g.sel_rep = vec![-1; p.methods[last as usize].selector as usize + 1];
-        for &m in by_sel.iter().rev() {
-            g.sel_rep[p.methods[m as usize].selector as usize] = m as i32;
-        }
+    let mut reps: Vec<(u32, u32)> = Vec::new();
+    for &m in &by_sel {
+        let s = p.methods[m as usize].selector as u32;
+        if reps.last().map(|r| r.0) != Some(s) { reps.push((s, m)); }
     }
+    g.set_sels(&reps);
     let task_entry = p.entry_points.get(2).and_then(|&d| usize::try_from(d).ok())
         .and_then(|d| p.dispatch.get(d)).and_then(|&t| usize::try_from(t).ok());
     let mut b = Building { p, g, by_sel, seeds: Seeds::new(), block_marks: Vec::new(), changed: false };
     let mut rounds = 0;
     let mut done = vec![false; n];
-    let mut pins: Vec<XPin> = Vec::new();
+    let mut pins: Vec<(u32, u32, Vec<XKind>)> = Vec::new();
     loop {
         rounds += 1;
         b.changed = false;
         errors.clear();
-        b.g.ctxs.clear();
-        b.g.ctx_idx.iter_mut().for_each(|i| *i = NO_MAP);
+        b.g.clear_ctxs(p.methods);
         pins.clear();
         done.iter_mut().for_each(|d| *d = false);
         // Methods first, then blocks once their creator is done.
@@ -718,8 +677,8 @@ pub fn infer_global(p: &VProgram, global_count: u64, prim_arity: Vec<Vec<u8>>, t
             for m in 0..n {
                 if done[m] { continue; }
                 if p.methods[m].kind == KIND_BLOCK {
-                    let ready = match b.g.ctx_idx.get(m).and_then(|&i| b.g.ctxs.get(i as usize)) {
-                        Some(ctx) => done.get(ctx.outer as usize).copied().unwrap_or(false),
+                    let ready = match b.g.ctx(m) {
+                        Some((outer, _, _)) => done.get(outer as usize).copied().unwrap_or(false),
                         None => false,
                     };
                     if !ready { continue; }
@@ -735,7 +694,7 @@ pub fn infer_global(p: &VProgram, global_count: u64, prim_arity: Vec<Vec<u8>>, t
                         for t in want {
                             if let Some(&top) = maps.idx.get(t) {
                                 if top != NO_MAP && t <= u32::MAX as usize {
-                                    pins.push(XPin { m: m as u32, off: t as u32, kinds: x_chain(&maps.nodes, top) });
+                                    pins.push((m as u32, t as u32, x_chain(&maps.nodes, top)));
                                 }
                             }
                         }
@@ -753,9 +712,9 @@ pub fn infer_global(p: &VProgram, global_count: u64, prim_arity: Vec<Vec<u8>>, t
     for &(t, x) in &b.block_marks {
         push_error(&mut errors, t, 0, format!("block method with a block parameter {}", x));
     }
-    pins.sort_by_key(|x| (x.m, x.off));
-    pins.dedup_by_key(|x| (x.m, x.off));
-    b.g.pins = pins;
+    pins.sort_by_key(|x| (x.0, x.1));
+    pins.dedup_by_key(|x| (x.0, x.1));
+    b.g.set_pins(&pins);
     Global { g: b.g, done, seeds: b.seeds, errors, rounds }
 }
 
@@ -793,7 +752,7 @@ impl<'a> Oracle<'a> {
 }
 
 impl<'a> MapOracle for Oracle<'a> {
-    fn method_maps(&mut self, m: usize) -> XMaps {
+    fn method_maps(&mut self, _p: &VProgram, _g: &XGlobal, m: usize) -> XMaps {
         self.last = Some(m);
         match self.maps(m) {
             Ok(maps) => XMaps { idx: maps.idx, nodes: maps.nodes },
@@ -809,7 +768,8 @@ impl<'a> MapOracle for Oracle<'a> {
 /// of `global`, and the method it stopped at when it rejected one.
 pub fn check(p: &VProgram, global: &Global, trusted: bool) -> (bool, Option<usize>) {
     let mut o = Oracle::new(p, global, trusted);
-    let (ok, _) = crate::v2::check::verify(p, &global.g, &mut o, trusted);
+    let g = global.g.view(p.methods);
+    let (ok, _) = crate::v2::check::verify(p, &g, &mut o, trusted);
     (ok, if ok { None } else { o.last })
 }
 
@@ -824,10 +784,11 @@ pub fn diagnose(p: &VProgram, global: &Global, m: usize, trusted: bool) -> (Opti
         Err((off, msg)) => return (Some(off), msg),
         Ok(maps) => XMaps { idx: maps.idx, nodes: maps.nodes },
     };
-    if !o.wf || m >= p.methods.len() || !x_pins_sorted(&global.g) || global.g.n != p.methods.len() {
+    let g = global.g.view(p.methods);
+    if !o.wf || m >= p.methods.len() || !x_g_ok(&g) || global.g.n != p.methods.len() {
         return (None, String::from("malformed tables or certificate"));
     }
-    let c = XCert { g: &global.g, cur: m, maps: &maps };
+    let c = XCert { g: &g, cur: m, maps: &maps };
     for (off, &top) in maps.idx.iter().enumerate() {
         if top == NO_MAP { continue; }
         let k = x_chain(&maps.nodes, top);
@@ -835,8 +796,8 @@ pub fn diagnose(p: &VProgram, global: &Global, m: usize, trusted: bool) -> (Opti
             return (Some(off), format!("rejected by the checker with kinds {:?}", k));
         }
     }
-    let at = global.g.pins.partition_point(|x| (x.m as usize) < m);
-    match x_pins_agree(&global.g, m, &maps, at) {
+    let at = global.g.pin_list().iter().filter(|x| (x.0 as usize) < m).count();
+    match x_pins_agree(&g, m, &maps, at) {
         None => (None, String::from("a pinned map differs from the method's map")),
         Some(_) => (None, String::from("entry kinds or certificate shape rejected by the checker")),
     }

@@ -29,31 +29,39 @@ crate-type = ["staticlib", "rlib"]
 [[bin]]
 name = "toit_vmverify_canonical"
 path = "src/bin/toit_vmverify_canonical.rs"
-required-features = ["std"]
+required-features = ["std", "infer"]
 
 [[bin]]
 name = "toit_vmverify_mem"
 path = "src/bin/toit_vmverify_mem.rs"
-required-features = ["std"]
+required-features = ["std", "infer"]
 
 [[bin]]
 name = "toit_vmverify_fuzz"
 path = "src/bin/toit_vmverify_fuzz.rs"
-required-features = ["std"]
+required-features = ["std", "infer"]
 
 [features]
 # `std`: hosts (panics are caught and reject, phase times, counting
 # allocator, test support). Without it: `no_std` + `alloc` for devices.
-default = ["std"]
-std = ["toit_spec/std"]
+default = ["std", "infer", "checked-loop"]
+std = ["toit_spec/std", "toit_verified_core/layout-tables"]
 # Devices: the global allocator and the panic handler the VM supplies
 # (src/device.rs: malloc/free, toit_vmverify_panic). Use without `std`, for
 # the static library linked into device firmware (profile `device`).
 device-runtime = []
+# `infer`: without a shipped certificate, infer one (hosts). Without it
+# (devices) a program without a certificate is rejected and the inference
+# is not linked.
+infer = ["toit_spec/infer"]
+# `checked-loop`: the core's checked run loop (hosts: unverified trusted
+# format-2 programs). Devices build without it and run format 2 only for
+# programs the verifier accepted.
+checked-loop = ["toit_verified_core/checked-loop"]
 
 [dependencies]
 toit_spec = { path = "../spec", default-features = false }
-toit_verified_core = { path = "../core" }
+toit_verified_core = { path = "../core", default-features = false }
 
 # This crate's profiles are the ones used when the VM's static library is
 # built (the core's own profiles only apply to its standalone builds).
@@ -81,3 +89,10 @@ opt-level = 3
 lto = true
 codegen-units = 1
 debug = false
+
+# The verifier (verified/spec: the checker of shipped certificates and the
+# heap check) runs once per install, not per instruction: optimized for size
+# whatever the core's opt-level (at opt 3: checker 26.4 -> 17.7 KB of text;
+# verified/vmverify/README.md, "Device size").
+[profile.device.package.toit_spec]
+opt-level = "z"

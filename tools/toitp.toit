@@ -118,7 +118,8 @@ print-sizes snapshot/SnapshotBundle:
     uuid: $snapshot.uuid
     size: $snapshot.bytes.size bytes
      - $snapshot.program-snapshot
-    $(snapshot.source-map ? " - $snapshot.source-map" : "")"""
+    $(snapshot.source-map ? " - $snapshot.source-map" : "")
+    $(snapshot.certificate ? " - $snapshot.certificate" : "")"""
 
 filter := ""
 
@@ -381,6 +382,7 @@ main args:
           cli.Flag "senders"         --short-name="s",
           cli.Flag "primitive_table" --short-name="p",
           cli.Flag "uuid",
+          cli.Flag "certificate",
       ]
       --run=:: parameters = it.parameters
   parser.run args
@@ -388,6 +390,9 @@ main args:
 
   if parameters["filter"]: filter = parameters["filter"]
   snapshot := SnapshotBundle.from-file parameters["snapshot"]
+  if parameters["certificate"]:
+    print (snapshot.certificate ? snapshot.certificate.stringify : "no certificate")
+    return
   program := snapshot.decode
 
   if parameters["classes"]:         print-classes program; return

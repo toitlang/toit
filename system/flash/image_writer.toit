@@ -27,6 +27,10 @@ IMAGE-CHUNK-SIZE ::= (system.BITS-PER-WORD + 1) * IMAGE-WORD-SIZE
 
 class ContainerImageWriter extends ServiceResource:
   reservation_/FlashReservation? := ?
+  // The size of the reservation: the pages after the committed allocation
+  // (an image's shipped certificate block) are erased by the commit and go
+  // back to the registry (FlashRegistry.release-tail).
+  reserved-size/int
   image_/ByteArray ::= ?
 
   // We buffer the partial last chunk, because we have to write
@@ -35,6 +39,7 @@ class ContainerImageWriter extends ServiceResource:
   partial-chunk-fill_/int := 0
 
   constructor provider/ServiceProvider client/int .reservation_:
+    reserved-size = reservation_.size
     image_ = image-writer-create_ reservation_.offset reservation_.size
     super provider client
 

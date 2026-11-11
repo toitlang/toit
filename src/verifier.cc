@@ -2169,11 +2169,12 @@ bool Verifier::verify_if_enabled(Program* program, bool untrusted) {
 }
 
 bool Verifier::verify_for_policy(Program* program, const PrimitivePolicy* policy,
-                                 const V2MethodTable* v2_methods) {
+                                 const V2MethodTable* v2_methods,
+                                 const uint8* certificate, word certificate_length) {
   bool untrusted = policy->is_untrusted();
   if (!untrusted && !is_enabled()) return true;
   if (program->is_format2() && v2_methods != null) {
-    return V2Verifier::verify(program, v2_methods, !untrusted);
+    return V2Verifier::verify(program, v2_methods, !untrusted, certificate, certificate_length);
   }
   return verify_and_report(program, untrusted);
 }
@@ -2216,10 +2217,11 @@ bool Verifier::verify_if_enabled(Program* program, bool untrusted) {
 // verified core linked, TOIT_VERIFIED_CORE). Format 1: without the C++
 // verifier, untrusted programs can not be admitted.
 bool Verifier::verify_for_policy(Program* program, const PrimitivePolicy* policy,
-                                 const V2MethodTable* v2_methods) {
+                                 const V2MethodTable* v2_methods,
+                                 const uint8* certificate, word certificate_length) {
   bool untrusted = policy->is_untrusted();
   if (untrusted && program->is_format2() && v2_methods != null) {
-    return V2Verifier::verify(program, v2_methods, false);
+    return V2Verifier::verify(program, v2_methods, false, certificate, certificate_length);
   }
   return !untrusted;
 }

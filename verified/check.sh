@@ -64,10 +64,13 @@ section() {
 # verified/spec/DESIGN.md. The spec crate is verified first and exports its
 # Verus metadata and an rlib; the core imports both (it is proven against
 # the spec's definitions, verified/core/DESIGN.md section 9).
+# The core is verified with its `checked-loop` and `layout-tables` features
+# (the defaults; devices build without them, which only leaves code out:
+# verified/core/Cargo.toml).
 CRATES=(spec core)
 crate_args() {
   case "$1" in
-    core) echo "--crate-name toit_verified_core --cfg toit_vcore_hosted --extern toit_spec=$LOGS/libtoit_spec.rlib --import toit_spec=$LOGS/toit_spec.vir" ;;
+    core) echo "--crate-name toit_verified_core --cfg toit_vcore_hosted --cfg feature=\"checked-loop\" --cfg feature=\"layout-tables\" --extern toit_spec=$LOGS/libtoit_spec.rlib --import toit_spec=$LOGS/toit_spec.vir" ;;
     spec) echo "--crate-name toit_spec" ;;
   esac
 }
@@ -144,7 +147,7 @@ verify_crate_word32() {
   local args=()
   case "$name" in
     spec) args=(--crate-name toit_spec --export "$LOGS/w32/toit_spec.vir" --compile -o "$LOGS/w32/libtoit_spec.rlib") ;;
-    core) args=(--crate-name toit_verified_core --cfg toit_vcore_hosted
+    core) args=(--crate-name toit_verified_core --cfg toit_vcore_hosted --cfg 'feature="checked-loop"' --cfg 'feature="layout-tables"'
                 --extern "toit_spec=$LOGS/w32/libtoit_spec.rlib" --import "toit_spec=$LOGS/w32/toit_spec.vir") ;;
   esac
   local start end rc

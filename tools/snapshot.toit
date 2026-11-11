@@ -183,6 +183,7 @@ class SnapshotBundle:
   static SOURCE-MAP-NAME   / string ::= "source-map"
   static UUID-NAME         / string ::= "uuid"
   static SDK-VERSION-NAME  / string ::= "sdk-version"
+  static CERTIFICATE-NAME  / string ::= "certificate"
 
   bytes            / ByteArray
   file-name        / string?
@@ -190,6 +191,9 @@ class SnapshotBundle:
   source-map       / SourceMap?
   uuid             / Uuid
   sdk-version      / string
+  // The shipped certificate of a format-2 program, or null
+  // (verified/spec/format/18-shipped-certificate.md).
+  certificate      / Certificate?
 
   constructor.from-file name/string:
     return SnapshotBundle name (file.read-contents name)
@@ -211,6 +215,10 @@ class SnapshotBundle:
     sdk-version = sdk-version-offsets
         ? bytes[sdk-version-offsets.from..sdk-version-offsets.to].to-string-non-throwing
         : ""
+    certificate-offsets := extract-ar-offsets_ --silent bytes CERTIFICATE-NAME
+    certificate = certificate-offsets
+        ? Certificate bytes[certificate-offsets.from..certificate-offsets.to]
+        : null
 
   static is-bundle-content buffer/ByteArray -> bool:
     catch:
@@ -234,7 +242,8 @@ class SnapshotBundle:
   stringify -> string:
     postfix := file-name ? " ($file-name)" : ""
     source-map-suffix := source-map ? " - $source-map\n" : ""
-    return "snapshot: $bytes.size bytes$postfix\n - $program-snapshot\n$source-map-suffix"
+    certificate-suffix := certificate ? " - $certificate\n" : ""
+    return "snapshot: $bytes.size bytes$postfix\n - $program-snapshot\n$source-map-suffix$certificate-suffix"
 
   static extract-ar-offsets_ --silent/bool=false bytes/ByteArray name/string -> ArFileOffsets?:
     ar-reader := ArReader.from-bytes bytes
@@ -243,6 +252,36 @@ class SnapshotBundle:
       if silent: return null
       throw "Invalid snapshot bundle"
     return offsets
+
+/**
+The shipped certificate of a format-2 program: what the device's verifier
+  checks instead of inferring it (verified/spec/format/18-shipped-certificate.md).
+  The tool only decodes its header; the bytes are untrusted.
+*/
+class Certificate:
+  static MAGIC / int ::= 0x5452_4354  // "TCRT".
+  static HEADER-SIZE / int ::= 60
+  static SECTION-NAMES / List ::= ["method words", "contexts", "selectors", "pins", "nodes", "maps"]
+
+  bytes / ByteArray
+  version / int := -1
+  method-count / int := -1
+  // Per section: [offset, length].
+  sections / List := []
+
+  constructor .bytes:
+    if bytes.size >= HEADER-SIZE and (LITTLE-ENDIAN.uint32 bytes 0) == MAGIC:
+      version = LITTLE-ENDIAN.uint32 bytes 4
+      method-count = LITTLE-ENDIAN.uint32 bytes 8
+      sections = List SECTION-NAMES.size: [LITTLE-ENDIAN.uint32 bytes (12 + 8 * it), LITTLE-ENDIAN.uint32 bytes (16 + 8 * it)]
+
+  is-valid -> bool:
+    return version >= 0
+
+  stringify -> string:
+    if not is-valid: return "certificate: $bytes.size bytes (malformed header)"
+    parts := List SECTION-NAMES.size: "$SECTION-NAMES[it] $sections[it][1]"
+    return "certificate: $bytes.size bytes, version $version, $method-count methods ($(parts.join ", "))"
 
 class ProgramHeader:
   block-count32 /int
