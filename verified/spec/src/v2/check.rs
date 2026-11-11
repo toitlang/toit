@@ -1411,7 +1411,9 @@ pub fn x_decode(p: &VProgram, m: usize, off: usize) -> (r: (usize, u8, usize, i6
     }),
 {
     let bci = x_info(p, m).entry + off;
-    let op = ix(p.bytecodes, bci);
+    let raw = ix(p.bytecodes, bci);
+    proof { lemma_base_op(raw); }
+    let op = exec_base_op(raw);
     let len = exec_opcode_length2(op);
     let b1: i64 = if len >= 2 { ix(p.bytecodes, bci + 1) as i64 } else { 0 };
     let w1: i64 = if len >= 3 { x_u16(p, bci + 1) } else { 0 };
@@ -1696,6 +1698,74 @@ pub fn x_post_calls(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind
     }
 }
 
+/// `loop_ok` (proposal, format note 19).
+pub fn x_loop_ok(p: &VProgram, m: usize, k: &Vec<XKind>, c: usize, b: usize, x: usize, y: usize) -> (r: bool)
+    requires m < p.methods.len(),
+    ensures r == loop_ok(vview(p), m as int, kv(*k), c as int, b as int, x as int, y as int),
+{
+    let h = k.len();
+    if !(1 <= c && c < h && 1 <= b && b < h && 1 <= x && x < h && 1 <= y && y < h) { return false; }
+    proof {
+        assert(kv(*k)[h - 1 - c] == k@[h - 1 - c]@);
+        assert(kv(*k)[h - 1 - b] == k@[h - 1 - b]@);
+        assert(kv(*k)[h - 1 - x] == k@[h - 1 - x]@);
+        assert(kv(*k)[h - 1 - y] == k@[h - 1 - y]@);
+    }
+    x_is_val(vix(k, h - 1 - c)) && x_is_val(vix(k, h - 1 - x)) && x_is_val(vix(k, h - 1 - y))
+        && !x_is_token(vix(k, h - 1 - b)) && x_writable(p, m, k, h - 1 - c, XKind::Val)
+}
+
+/// `loop_kinds`.
+pub fn x_loop_kinds(k: &Vec<XKind>, c: usize, b: usize) -> (res: Result<Vec<XKind>, Oom>)
+    requires 1 <= c < k.len(), b < k.len(),
+    ensures res matches Ok(r) ==> kv(r) == loop_kinds(kv(*k), c as int, b as int),
+{
+    let h = k.len();
+    let kb = vix(k, h - 1 - b);
+    proof { assert(kv(*k)[h - 1 - b] == kb@); }
+    let k1 = x_update(k, h - 1 - c, XKind::Val)?;
+    assert(kv(k1).len() == h);
+    let k2 = x_prefix(&k1, h - 1)?;
+    let k3 = x_push(&k2, kb)?;
+    x_push(&k3, XKind::Val)
+}
+
+/// `hf_ok` (proposal, format note 19).
+pub fn x_hf_ok(p: &VProgram, m: usize, k: &Vec<XKind>, n: usize, mm: usize) -> (r: bool)
+    requires m < p.methods.len(), n < 256, mm < 256,
+    ensures r == hf_ok(vview(p), m as int, kv(*k), n as int, mm as int),
+{
+    let h = k.len();
+    if !(n + 2 < h && mm + 2 < h) { return false; }
+    proof {
+        assert(kv(*k)[h - 1 - n] == k@[h - 1 - n]@);
+        assert(kv(*k)[h - 2 - n] == k@[h - 2 - n]@);
+        assert(kv(*k)[h - 3 - n] == k@[h - 3 - n]@);
+        assert(kv(*k)[h - 1 - mm] == k@[h - 1 - mm]@);
+        assert(kv(*k)[h - 3 - mm] == k@[h - 3 - mm]@);
+    }
+    x_is_val(vix(k, h - 1 - n)) && x_is_val(vix(k, h - 2 - n)) && x_is_val(vix(k, h - 3 - n))
+        && x_is_val(vix(k, h - 1 - mm)) && x_is_val(vix(k, h - 3 - mm))
+        && x_writable(p, m, k, h - 1 - n, XKind::Val)
+        && x_writable(p, m, k, h - 2 - n, XKind::Val)
+        && x_writable(p, m, k, h - 3 - n, XKind::Val)
+}
+
+/// `hf_kinds`.
+pub fn x_hf_kinds(k: &Vec<XKind>, n: usize) -> (res: Result<Vec<XKind>, Oom>)
+    requires n + 2 < k.len(),
+    ensures res matches Ok(r) ==> kv(r) == hf_kinds(kv(*k), n as int),
+{
+    let h = k.len();
+    let k1 = x_update(k, h - 1 - n, XKind::Val)?;
+    assert(kv(k1).len() == h);
+    let k2 = x_update(&k1, h - 2 - n, XKind::Val)?;
+    assert(kv(k2).len() == h);
+    let k3 = x_update(&k2, h - 3 - n, XKind::Val)?;
+    let k4 = x_push(&k3, XKind::Val)?;
+    x_push(&k4, XKind::Val)
+}
+
 pub fn x_post_misc(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>, trusted: bool) -> (res: Result<Option<Vec<XKind>>, Oom>)
     requires
         post_pre(p, m, off, k),
@@ -1762,6 +1832,14 @@ pub fn x_post_misc(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>
         else if trusted && b1 == 2 && 1 <= h { Ok(Some(x_prefix(k, h - 1)?)) }
         else if trusted && b1 >= 3 { Ok(Some(x_copy(k)?)) }
         else { Ok(None) }
+    } else if op == LOOP_REPEAT || op == LOOP_ARRAY {
+        let lc = ix(p.bytecodes, bci + 3) as usize;
+        let ly = if op == LOOP_ARRAY { lc + 3 } else { lc + 2 };
+        if x_loop_ok(p, m, k, lc, lc + 1, lc + 2, ly) { Ok(Some(x_prefix(k, h - 1)?)) } else { Ok(None) }
+    } else if op == HASH_FIND {
+        let n = ix(p.bytecodes, bci + 3) as usize;
+        let mm = ix(p.bytecodes, bci + 4) as usize;
+        if x_hf_ok(p, m, k, n, mm) { Ok(Some(x_hf_kinds(k, n)?)) } else { Ok(None) }
     } else {
         Ok(None)
     }
@@ -1772,7 +1850,9 @@ pub fn x_post(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>, tru
     requires post_pre(p, m, off, k), g_ok(c.g),
     ensures res matches Ok(r) ==> post_rel(r, post(vview(p), c@, m as int, off as int, kv(*k), trusted)),
 {
-    let op = ix(p.bytecodes, x_info(p, m).entry + off);
+    let raw = ix(p.bytecodes, x_info(p, m).entry + off);
+    proof { lemma_base_op(raw); }
+    let op = exec_base_op(raw);
     if op == LOAD_LOCAL || op == LOAD_LOCAL_WIDE || (LOAD_LOCAL_0 <= op && op <= LOAD_LOCAL_5)
         || op == POP_LOAD_LOCAL || op == STORE_LOCAL || op == STORE_LOCAL_POP {
         x_post_locals(p, c, m, off, k, trusted)
@@ -2187,8 +2267,12 @@ pub fn x_instr_ok(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>,
     let i = x_info(p, m);
     if !(off < i.end - i.entry) { return Ok(false); }
     let bci = i.entry + off;
-    let op = ix(p.bytecodes, bci);
-    if op >= OPCODE_COUNT2 { return Ok(false); }
+    let raw = ix(p.bytecodes, bci);
+    if raw >= OPCODE_COUNT2 { return Ok(false); }
+    // The unchecked twins only in the unchecked mode (format note 20).
+    if exec_is_twin(raw) && !p.unchecked { return Ok(false); }
+    proof { lemma_base_op(raw); }
+    let op = exec_base_op(raw);
     let len = exec_opcode_length2(op);
     if bci + len > i.end { return Ok(false); }
     if k.len() > i.arity as usize + i.max_height as usize { return Ok(false); }
@@ -2217,6 +2301,19 @@ pub fn x_instr_ok(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>,
             let k1 = x_prefix(k, k.len() - 1)?;
             if !x_map_is(c, m as i64, t, &k1)? { return Ok(false); }
         }
+    }
+    if op == LOOP_REPEAT || op == LOOP_ARRAY {
+        // `post` accepted the operands (`loop_ok`).
+        let w1 = x_u16(p, bci + 1);
+        let lc = ix(p.bytecodes, bci + 3) as usize;
+        let kt = x_loop_kinds(k, lc, lc + 1)?;
+        if !x_map_is(c, m as i64, off as i64 - w1, &kt)? { return Ok(false); }
+    }
+    if op == HASH_FIND {
+        let w1 = x_u16(p, bci + 1);
+        if w1 <= 0 { return Ok(false); }
+        let kt = x_push(k, XKind::Val)?;
+        if !x_map_is(c, m as i64, off as i64 + w1, &kt)? { return Ok(false); }
     }
     Ok(true)
 }
@@ -2274,6 +2371,8 @@ pub fn x_method_body_ok(p: &VProgram, c: &XCert, m: usize, trusted: bool) -> (re
     ensures res matches Ok(r) ==> r == forall|o: int| 0 <= o < c@.maps[m as int].len() && (#[trigger] c@.maps[m as int][o]) is Some ==>
         instr_ok(vview(p), c@, m as int, o, c@.maps[m as int][o]->0, trusted),
 {
+    // Only the name matters here (x_instr_ok decides it).
+    hide(instr_ok);
     let ghost cm = c@.maps[m as int];
     assert(cm == mapsv(c.maps));
     let mut off = 0;
@@ -2617,6 +2716,14 @@ pub fn x_pins_agree(g: &XGlobal, m: usize, maps: &XMaps, at: usize) -> (res: Res
             proof { assert(!pin_agrees(g, i as int, mapsv(maps))); }
             return Ok(None);
         }
+        proof {
+            assert(pin_agrees(g, i as int, mapsv(maps)));
+            // The invariant for i + 1 (stated explicitly: without it the
+            // proof was unstable under `cargo verus verify`).
+            assert forall|j: int| at <= j < i + 1 implies #[trigger] pin_m(g, j) == m && pin_agrees(g, j, mapsv(maps)) by {
+                if j == i as int { assert(pin_m(g, i as int) == m); }
+            }
+        }
         i += 1;
     }
     proof {
@@ -2644,6 +2751,7 @@ pub fn verify<O: MapOracle>(p: &VProgram, g: &XGlobal, o: &mut O, trusted: bool)
     let ghost pv = vview(p);
     let ghost pad = Seq::new(g.n as nat, |m: int| Seq::<Option<Seq<Kind>>>::empty());
     if !x_wf_program2(p) { return Ok((false, Ghost(pad))); }
+    if p.unchecked && !trusted { return Ok((false, Ghost(pad))); }
     if g.n != p.methods.len() { return Ok((false, Ghost(pad))); }
     if !x_g_ok(g) { return Ok((false, Ghost(pad))); }
     let empty = XMaps { idx: Vec::new(), nodes: Vec::new() };

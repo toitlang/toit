@@ -1,11 +1,11 @@
-# Crafted-heap battery Wed Nov 11 15:58:48 CET 2026
+# Crafted-heap battery Wed Nov 11 16:42:41 CET 2026
 [base-noop] host:{(ran, exit 0) x0} asan:{(ran, exit 0) x0}
 [str-embedded-nul] host:{(ran, exit 0) x0} asan:{(ran, exit 0) x0}
-[str-high-bytes] host:{rejected x0} asan:{fatal x0}  <<< CRASH/INTERNAL
-[str-all-ff] host:{rejected x0} asan:{fatal x0}  <<< CRASH/INTERNAL
+[str-high-bytes] host:{rejected x0} asan:{rejected x0}
+[str-all-ff] host:{rejected x0} asan:{rejected x0}
 [str-all-zero] host:{(ran, exit 0) x0} asan:{(ran, exit 0) x0}
-[str-invalid-utf8-lead] host:{rejected x0} asan:{fatal x0}  <<< CRASH/INTERNAL
-[str-utf8-truncated] host:{rejected x0} asan:{fatal x0}  <<< CRASH/INTERNAL
+[str-invalid-utf8-lead] host:{rejected x0} asan:{rejected x0}
+[str-utf8-truncated] host:{rejected x0} asan:{rejected x0}
 [ba-content-ff] host:{(ran, exit 0) x0} asan:{(ran, exit 0) x0}
 [ba-content-mixed] host:{(ran, exit 0) x0} asan:{(ran, exit 0) x0}
 [str-finalizer-bit] host:{(ran, exit 0) x0} asan:{(ran, exit 0) x0}
@@ -60,4 +60,4 @@
 [str-raw-header-huge] host:{Failed to start x0} asan:{Failed to start x0}
 [exc-raw-header-huge] host:{Failed to start x0} asan:{Failed to start x0}
 [lazy-raw-header-neg-tag] host:{Failed to start x0} asan:{Failed to start x0}
-# done Wed Nov 11 15:59:03 CET 2026
+# done Wed Nov 11 16:42:52 CET 2026

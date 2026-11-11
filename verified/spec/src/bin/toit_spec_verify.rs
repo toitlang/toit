@@ -149,7 +149,7 @@ fn main() {
     if !quiet {
         let mut prims: Vec<(u8, u16)> = Vec::new();
         for info in p.methods {
-            let (entry, end) = (info.entry as usize, info.end as usize);
+            let (entry, end) = (info.entry as usize, info.end());
             if entry < end && p.bytecodes[entry] == toit_spec::v2::bytecodes::PRIMITIVE
                 && entry + 4 <= end {
                 let module = p.bytecodes[entry + 1];
@@ -187,7 +187,7 @@ fn disassemble(p: &VProgram, global: &infer::Global, m: usize, trusted: bool) {
         p.max_height, info.selector, info.recv_start, info.recv_end, bp, ctx);
     let gv = g.view(p.methods);
     let maps = infer::ok(infer::Oracle::new(p, global, trusted).method_maps(p, &gv, m));
-    let (entry, end) = (info.entry as usize, info.end as usize);
+    let (entry, end) = (info.entry as usize, info.end());
     let mut bci = entry;
     while bci < end {
         let op = p.bytecodes[bci];

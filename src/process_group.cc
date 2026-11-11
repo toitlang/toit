@@ -51,8 +51,11 @@ ProcessGroup* ProcessGroup::create(int id, Program* program, AlignedMemoryBase* 
       // table they pass in; any other way here verifies now. With
       // -Xverify / TOIT_VERIFY a trusted program is verified (trusted
       // rules) on the table it runs, so that it runs on the verified loop.
+      // Debug builds verify trusted programs too, as a check on the
+      // compiler (V2MethodTable::verify_trusted_by_default).
       bool untrusted = policy->is_untrusted();
-      if (v2_methods != null && (untrusted || Verifier::is_enabled())
+      if (v2_methods != null
+          && (untrusted || Verifier::is_enabled() || V2MethodTable::verify_trusted_by_default())
           && !V2Verifier::verify(program, v2_methods, !untrusted)) {
         delete v2_methods;
         v2_methods = null;
@@ -63,10 +66,11 @@ ProcessGroup* ProcessGroup::create(int id, Program* program, AlignedMemoryBase* 
       return null;
     }
     // Without the core's checked loop (devices) a format-2 program runs
-    // only if the verifier accepted it: untrusted programs always are,
-    // trusted ones only with -Xverify. Devices run trusted code in format 1.
+    // only on the verified loop: untrusted programs if the verifier
+    // accepted them, trusted ones always (V2MethodTable::trusted_on_verified_loop).
     if (!V2MethodTable::checked_loop_linked()
-        && !v2_methods->runs_verified(policy->is_untrusted())) {
+        && !v2_methods->runs_verified(policy->is_untrusted())
+        && (policy->is_untrusted() || !V2MethodTable::trusted_on_verified_loop())) {
       fprintf(stderr, "format-2 program refused: not verified (this VM has no checked loop)\n");
       delete v2_methods;
       PrimitivePolicy::release(policy);

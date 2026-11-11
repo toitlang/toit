@@ -1,5 +1,120 @@
 # Phase 4a progress (verified core, format 2 on x86-64)
 
+## Trusted containers integrated (branch core/trusted-integration, 2026-11-11)
+
+`experiment/trusted-fast` (0c7b1f6b) merged into `sandbox-integration`
+(09a8a644): **trusted integration complete at 84cddeab** (the merge
+commit; mergeable on its own). Conflicts: `V2MethodTable::compute` keeps
+the out-of-memory flag of the install retry and gains
+`trusted_on_verified_loop`; this file keeps both sections. Artifacts:
+/home/flo/work/opentoit-sandbox-artifacts/trusted-integration.
+
+Gates on 84cddeab: verified/check.sh --tests (spec 939, core 870 at both
+widths, audit exact, no-panic check, sandbox ctests 123/123),
+`cargo verus verify` (verified_core_verify); ctest format 1 1197/1200
+(version, reader, udp-reuse-port-test); everything in format 2 1195/1200
+(the same three, services-network-test, and bytes-allocated-test: item
+M2 below); untrusted suite 280 identical plus the two known differences;
+primitive differential 10 x 1M identical; compare_trace --format 2 on the
+four trace programs clean; 32-bit host sandbox 123/123; nostd and
+nopanic (3, s, z); xtensa_codegen_check (3 and z, with the llvm#139
+differential); ESP32-C6 firmware with the core links (toit.bin 1,660,352
+B), classic ESP32 too (toit.bin 1,565,120 B, iram0.text 129,087 B, 957
+free); ASan fuzz with the launch filter, 20 minutes: 72,745 mutants,
+62,571 rejected at launch, 0 crashes.
+
+- M1 (13c3063e): the build output committed by mistake under
+  verified/vmverify/staticlib/devsize (289 MB, 415 files) removed and
+  ignored.
+- M2 (07c691ee): bytes-allocated-test in format 2. Not nondeterminism: a
+  real allocation, a new stack. A GC inside the external byte array's
+  primitive (two GCs: the external-memory limit) shrank the task's stack
+  to the room of a call at the primitive's height (`Stack::roots_do`);
+  the caller's next call, from a higher point of its frame, grew it again
+  (116 -> 174 words, 1,472 B), counted against the byte array. Format 1
+  needs less room per call and fits. The format-2 shrink now keeps room
+  for the top frame to reach the maximal height as well: 40,168 B as in
+  format 1, 15/15 runs pass.
+- M3 (920fb95d, a6f2abd5, 5e1411ac): request D3, the 16-byte method
+  record (`entry`, a 16-bit `length`; `unused` dropped): 20 -> 16 bytes
+  of RAM per method at install and per running format-2 program
+  (OBLIGATIONS.md D3 has the details). richards -0.2 %, deltablue +0.1 %,
+  pystone +0.2 % (trusted). Spec files touched (item e): vprog.rs
+  (`VMethod`, `end_spec`/`end`), encode.rs and infer.rs (read `end()`),
+  the bins toit_spec_verify, toit_vmverify_fuzz and toit_vmverify_mem.
+- M4 (698017e9): size. With integration's LTO packaging the device library
+  (riscv32, opt 3, Rust without libc) is 77,072 B before the fast paths
+  (ea831741 + sandbox-integration) and 80,656 B at 84cddeab (+3,584).
+  `step::slow` has one resume tail (`top_room_kept` is a predicate,
+  `resume_with` skips the rescan): -302 B. Tried and dropped: `pop_to` and
+  `ret_r` out of line (+152 B under LTO: the callers' spills grow more
+  than the bodies shrink), the unchecked twins merged into their base arms
+  (-376 B, but richards +7.5 % checked / +9 % trusted: the run loop's
+  register allocation). After M5-M7: 81,220 B (+1,000 for the new fast
+  paths), target 79,072 not reached.
+- M5 (00524eb5, 9f2420df): a leaner C++ primitive call: the Stack header
+  from the registers (`Machine::save_r`) instead of writing them back,
+  everything but the unmoved success in `cxx_primitive_rest`,
+  `leave_primitive` inline. A trivial C++ primitive with its Toit call and
+  return: 242 -> 219 instructions (C++ interpreter 68). Inlining the lean
+  path into the run loop reaches 180 but costs richards +1.6 %,
+  deltablue +2.4 %, json +1.2 %: not taken.
+- M6 (cde5ae34): calls and returns while finally records exist, on the
+  registers (rfins.rs, run from `step::slow` before it syncs): RPC
+  440.7 -> 425.5 M.
+- M7 (99b74080): a non-local return or branch that meets a handler enters
+  its finally code on the registers (`pop_to` stops at the handler,
+  `enter_fin_r`): RPC 425.5 -> 412.7 M (1.200 of C++), json 1.177.
+- M8 (c1b81bc7): red
+  team round 3, F1. `String::read_content` assigned a literal's hash with
+  `_assign_hash_code`, which asserts valid UTF-8, before the loader's
+  rejection (`loaded_ok`): debug and assert-enabled ASan builds stopped
+  with an assertion. Now `_assign_unvalidated_hash_code`. The reproducer
+  and tests/sandbox/invalid-utf-8-literal-test.toit pass on the Debug SDK
+  (build/dbg); release unchanged.
+- M9 (7903b94e): `sandbox-integration` merged again (red-team rounds 1-3,
+  the integer-overflow fixes, the annotated C++ pilot); no conflicts.
+- M10 (ca2f56f6): the red team's batteries (66 crafted heaps, 69
+  assembled methods) are parameterized (battery-env.sh: HOSTRUN, ASANRUN,
+  WORK) and an optional step of `verified/check.sh --tests` against
+  build/asan and build/dbg/host: 61 heap cases and 68 method cases with
+  the recorded verdicts, no crash, no sanitizer report, no assertion
+  (opcode 101 is LOOP_REPEAT here: rejected for crossing the method end
+  instead of as a bad opcode).
+- Gates on ca2f56f6 (and on 5e1411ac before the second merge, with the
+  same results): verified/check.sh --tests (spec 940, core 878 at both
+  widths, audit, no-panic check, sandbox ctests 123/123, batteries);
+  ctest format 1 1196/1200 (version, reader, udp-reuse-port-test, and
+  tls-ubuntu-test: a network timeout, marked flaky); everything in format
+  2 1195/1200 (the same plus services-network-test; bytes-allocated-test
+  passes); untrusted suite 280 identical plus the two known differences;
+  primitive differential 10 x 1M identical; compare_trace clean; 32-bit
+  sandbox 123/123; nostd, nopanic (3, s, z), xtensa_codegen_check (3, z)
+  pass; ESP32-C6 (toit.bin 1,661,152 B) and classic ESP32 (1,565,936 B,
+  iram0.text 129,087 B) link; ASan fuzz 20 minutes, 0 crashes: on
+  ca2f56f6 120,486 mutants (103,697 rejected at launch), on 5e1411ac
+  92,797 (79,822).
+- Speed at the end (x86-64 instructions, ratio to the C++ interpreter;
+  before -> after this branch's items): trusted richards 1.052 -> 1.050,
+  deltablue 1.162 -> 1.163, pystone 1.056 -> 1.058, json 1.192 -> 1.177,
+  yaml 1.200 -> 1.197, RPC 1.290 -> 1.200, strings 1.105 -> 1.107; checked
+  richards 1.138 -> 1.136, json 1.212 -> 1.197, RPC 1.327 -> 1.237.
+  Per operation (with the Toit call, minus the loop): C++ primitive 242 ->
+  219 (C++ 68); static call and return 89 (C++ 60), virtual call 159
+  (118), block call 115 (111). json/yaml are in the run loop's calls and
+  returns: INVOKE_STATIC reloads spilled table bases, computes the return
+  bci from the ip and loads the preemption watermark through a pointer;
+  the 1.15 target was not reached.
+- Install-time verifier opt level (item c; measurements in
+  trusted-integration/verifier-opt/): verifier and glue at z / s / 2 / 3:
+  riscv32 library 80,478 / 82,872 / 90,130 / 90,548 B, Xtensa 86,047 /
+  87,775 / 94,804 / 94,437 B; Xtensa QEMU instructions of one install
+  (fold, format, map, deque, list) 249/284/299/339/575 M at z, -4.0 % at
+  s, -9.5 % at 2 and 3 (x86-64: z -> 3 is 1.58x fewer). Kept at z.
+  Estimate (CPI 1.2-2): 30 KB programs 1.4-3.8 s at 240 MHz, 2.2-5.7 s at
+  160 MHz; 65 KB 3.1-8.2 s and 4.7-12.3 s (the progress reports keep the
+  dead-lock check quiet).
+
 ## Device builds (branch device/esp32-build-fixes, 2026-11-11)
 
 Fixes for the findings of verified/XTENSA-RUST-FIXES.md. Nothing was
@@ -148,6 +263,62 @@ Still needs hardware: install time of 30-65 KB programs at 160 and 240
 MHz (the estimate above), the free heap of a running system when the
 installer runs, the verified core's speed from flash, the IRAM fix's
 effect on format-1 speed (the shared slow paths are cold).
+
+## Trusted containers on the core, fast (branch experiment/trusted-fast, 2026-11-11)
+
+Experiment, not for merging without the owner's decision. Results:
+EXPERIMENT-trusted.md, "Follow-up". Artifacts:
+/home/flo/work/opentoit-sandbox-artifacts/trusted-fast.
+
+- M0 (ea831741): `experiment/trusted-on-core` + `sandbox-integration`
+  (time_info, provider policy, UTF-8 literal check); no conflicts.
+- M1 (71941878): register fast paths for NON_LOCAL_RETURN/BRANCH, TRY,
+  UNWIND (null token) and the return into a TRY (rnonlocal.rs). RPC 1.81
+  -> 1.41, yaml 1.50 -> 1.26, json 1.34 -> 1.25 times C++.
+- M2 (4b293c42): inline bump allocation (new trusted item) and the mask
+  of unported core primitives. Allocation 258 -> 175, double boxing 215
+  -> 100, C++ primitive call 293 -> 245 instructions; strings 1.11.
+- M3 (814d6db7): unchecked twins instead of the mode flag (format note
+  20). Checked richards/deltablue/pystone 1.139/1.242/1.132, trusted
+  1.053/1.170/1.064.
+- M4 (76231ced): room facts (`room_ok` without the records for every
+  frame, `resume_kept`) and the UNWIND resume of a non-local return or
+  branch. RPC 1.30, json 1.20, yaml 1.20.
+- M5 (10ae6b02): the range of `needed` in the stack-growth contract on both
+  sides (review finding); two proofs stabilized for `cargo verus`. Gate
+  green at every milestone; final heavy gates in EXPERIMENT-trusted.md
+  (f1 1197/1200, format 2 1196/1200, untrusted suite 280 + 2 known,
+  primitive differential 10M identical, compare_trace clean, 32-bit
+  sandbox 123/123, ASan fuzz 30 min 0 crashes).
+
+## Trusted containers on the core (branch experiment/trusted-on-core, 2026-11-11)
+
+Experiment, not for merging without the owner's decision. Results:
+EXPERIMENT-trusted.md. Artifacts:
+/home/flo/work/opentoit-sandbox-artifacts/trusted-on-core.
+
+- M0 (248837ae): `proposal/builtins` merged with `sandbox-integration`. In
+  check.rs the built-ins' rules were ported to the fallible, panic-free
+  style. Gate green (spec 917, core 846 at both widths).
+- M1 (67d7003e): trusted format-2 programs run on the verified loop
+  (`TOIT_V2_TRUSTED`, `Accepted::trusted_program`), and
+  `TOIT_SYSTEM_FORMAT2` builds the system snapshots in format 2. Hello
+  world runs with a format-2 system process. The whole suite in format 2
+  passes 1192/1197 (format 1: 1194/1197).
+- M2 (f88ecf1d): cheap C++ calls. `toit_v2_primitive` and the heap epoch
+  complete PRIMITIVE, ALLOCATE and double boxing on the registers when
+  nothing moved. A C++ primitive call costs 293 instructions instead of
+  676 (the C++ interpreter: 68).
+- M2 also adds the unchecked mode of trusted programs
+  (`Program2::unchecked`, `step::trusted_field_accesses`): richards,
+  deltablue and pystone run at 1.11 / 1.21 / 1.10 times C++. Gate green
+  (spec 917, core 850, both widths, audit, sandbox ctests 121/121). Suite
+  again 1192/1197.
+- Open items, measured: the machine slow paths and the room rescan cost
+  13-22% of yaml and RPC; an unsound prototype without the rescan reached
+  1.17-1.43x on system workloads. Also open: inline allocation, and twin
+  opcodes instead of the mode flag (the flag costs +2.2% on richards for
+  checked code). EXPERIMENT-trusted.md has the list for "format 2 only".
 
 ## Panic-free device library, primitive size (branch device/panic-free, 2026-11-11)
 

@@ -136,13 +136,10 @@ impl Machine {
             assert(self.with(r) =~= m1);
             assert(m1.refines(p));
             if room_ok(p, m0) {
-                if m0.g@.fins.len() == 0 {
-                    assert forall|i: int| 0 <= i < m1.g@.frames.len() implies #[trigger] frame_room(p, m1, i) by {
-                        assert(frame_room(p, m0, i));
-                    }
-                } else {
-                    assert(frame_room(p, m0, m0.g@.frames.len() - 1));
+                assert forall|i: int| 0 <= i < m1.g@.frames.len() implies #[trigger] frame_room(p, m1, i) by {
+                    assert(frame_room(p, m0, i));
                 }
+                assert(crate::room::top_room(p, m1));
             }
         }
         r
@@ -169,6 +166,30 @@ impl Machine {
 }
 
 impl Machine {
+    /// `save` of the machine the registers describe, without writing the
+    /// registers back (`sync`): only the Stack header changes, so a reload
+    /// (C++ primitives, a GC) derives `self.with(r)`.
+    #[inline(always)]
+    pub fn save_r(&mut self, r: &Regs, p: &Program)
+        requires old(self).rok(*r), old(self).with(*r).inv(p), ipok(p, *r),
+        ensures
+            crate::alloc::saved(final(self).with(*r)),
+            *final(self) == (Machine { mem: final(self).mem, ..*old(self) }),
+            final(self).mem@ == old(self).mem@,
+            final(self).mem.sid() == old(self).mem.sid(),
+    {
+        let ghost m0 = *self;
+        proof { lemma_bci(p, m0.with(*r)); }
+        let top = self.mem.index(r.sp);
+        let ftop = self.mem.index(r.fr);
+        let rtop = ftop + self.fw;
+        let bci = r.ip.diff(p.code.cursor(0));
+        self.mem.set_header(STACK_TOP_WORD, top);
+        self.mem.set_header(STACK_RECORD_TOP_WORD, rtop | (ftop << STACK_FRAME_TOP_SHIFT));
+        self.mem.set_header(STACK_BCI_WORD, bci);
+        proof { assert(*self == (Machine { mem: self.mem, ..m0 })); }
+    }
+
     /// `sync` for a machine between states (e.g. after a primitive changed
     /// the heap): the bci bound explicit instead of from `inv`.
     #[inline(always)]

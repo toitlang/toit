@@ -288,8 +288,13 @@ void Stack::roots_do(Program* program, RootCallback* cb) {
     // Format 2: the frame and finally records at the bottom stay where they
     // are; the object stack moves down. The verified core needs room for a
     // frame and the reserve above the records (verified/core/src/layout.rs).
+    // A call needs that room above the caller's top, wherever in its frame
+    // the caller is: the top frame keeps room to reach its maximal height
+    // too. Without it a GC inside a primitive (whose frame holds only its
+    // arguments) shrinks the stack so that the caller's next call grows it
+    // again, an allocation of a new stack each time (bytes-allocated-test).
     word record_top = v2_record_top();
-    minimum_space += record_top + V2_FRAME_WORDS + V2_STACK_RESERVE;
+    minimum_space += record_top + V2_FRAME_WORDS + V2_STACK_RESERVE + program->global_max_stack_height();
     if (top > minimum_space && (Flags::shrink_stacks_a_lot || (cb->shrink_stacks() && top > length() >> 1))) {
       word reduction = top - minimum_space;
       if (Flags::shrink_stacks_a_lot || reduction >= 8) {
@@ -443,6 +448,11 @@ uint16 String::_assign_hash_code() {
   return _raw_hash_code();
 }
 
+void String::_assign_unvalidated_hash_code() {
+  _raw_set_hash_code(compute_hash_code());
+  ASSERT(_raw_hash_code() != NO_HASH_CODE);
+}
+
 char* String::cstr_dup() {
   Bytes bytes(this);
   word len = bytes.length();
@@ -561,13 +571,13 @@ void String::read_content(SnapshotReader* st, word len) {
       return;
     }
     _set_external_address(external_bytes.data());
-    _assign_hash_code();
+    _assign_unvalidated_hash_code();
   } else {
     _set_length(len);
     MutableBytes bytes(this);
     for (word index = 0; index < len; index++) bytes._at_put(index, st->read_byte());
     bytes._set_end();
-    _assign_hash_code();
+    _assign_unvalidated_hash_code();
     ASSERT(content_on_heap());
   }
 }

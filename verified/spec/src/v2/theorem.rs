@@ -116,6 +116,7 @@ pub open spec fn reachable(p: Program2, heap0: Seq<HeapObj>, globals0: Seq<Value
 pub proof fn lemma_run_wf(p: Program2, c: Cert, trusted: bool, heap0: Seq<HeapObj>, globals0: Seq<Value>, tr: Seq<State2>, i: int)
     requires
         accepts(p, c, trusted),
+        !p.unchecked,
         loaded_ok(p, c, heap0, globals0),
         run(p, heap0, globals0, tr),
         0 <= i < tr.len(),
@@ -151,7 +152,7 @@ pub proof fn lemma_completes_ok(p: Program2, c: Cert, o1: Outcome2, o: Outcome2)
 
 /// Every outcome of a well-formed state is good.
 pub proof fn lemma_outcome_ok(p: Program2, c: Cert, trusted: bool, s: State2, o: Outcome2)
-    requires accepts(p, c, trusted), wf(p, c, s), small(s), outcome(p, s, o),
+    requires accepts(p, c, trusted), wf(p, c, s), small(s), outcome(p, s, o), unchecked_ok(p, s),
     ensures outcome_ok(p, c, o), !(o is Raise), !(o is Stuck),
         o is Next || o is Halt ==> final_ok(p, c, o),
 {
@@ -179,6 +180,7 @@ pub proof fn lemma_outcome_ok(p: Program2, c: Cert, trusted: bool, s: State2, o:
 pub proof fn lemma_reachable_wf(p: Program2, c: Cert, trusted: bool, heap0: Seq<HeapObj>, globals0: Seq<Value>, s: State2)
     requires
         accepts(p, c, trusted),
+        !p.unchecked,
         loaded_ok(p, c, heap0, globals0),
         reachable(p, heap0, globals0, s),
     ensures wf(p, c, s), small(s),
@@ -227,9 +229,15 @@ pub proof fn lemma_machine_objects(p: Program2, c: Cert, s: State2)
 }
 
 /// The soundness theorem.
+/// Stated for programs without the unchecked mode of trusted programs
+/// (`spec::unchecked_fail`): every untrusted program (`accepts` with
+/// `trusted == false` excludes the mode), and trusted programs verified as
+/// such. A trusted program in the unchecked mode relies on the compiler for
+/// its field accesses instead (verified/core/EXPERIMENT-trusted.md).
 pub proof fn theorem_soundness(p: Program2, c: Cert, trusted: bool, heap0: Seq<HeapObj>, globals0: Seq<Value>, s: State2)
     requires
         accepts(p, c, trusted),
+        !p.unchecked,
         loaded_ok(p, c, heap0, globals0),
         reachable(p, heap0, globals0, s),
     ensures

@@ -27,7 +27,10 @@
 //! * new: TRY (97, was LINK), LOAD_FIELD_THIS (98, was UNLINK),
 //!   STORE_FIELD_THIS (94, was NON_LOCAL_RETURN_WIDE);
 //! * removed: LINK, UNLINK, NON_LOCAL_RETURN_WIDE, INTRINSIC_SMI_REPEAT,
-//!   INTRINSIC_ARRAY_DO, INTRINSIC_HASH_FIND, INTRINSIC_HASH_DO.
+//!   INTRINSIC_ARRAY_DO, INTRINSIC_HASH_FIND, INTRINSIC_HASH_DO;
+//! * proposal (branch proposal/builtins, format note 19): LOOP_REPEAT (101)
+//!   and LOOP_ARRAY (102), the bounded steps of `repeat` and `Array.do`,
+//!   and HASH_FIND (103), one probe of a hashed collection's index.
 
 use vstd::prelude::*;
 pub use crate::bytecodes::{
@@ -59,18 +62,107 @@ pub const TRY: u8 = 97;
 /// LOAD_FIELD_THIS f: push `this.f`.
 pub const LOAD_FIELD_THIS: u8 = 98;
 
-pub const OPCODE_COUNT2: u8 = 101;
+/// LOOP_REPEAT back n (proposal, format note 19): the counter is slot `n`,
+/// the block slot `n + 1`, the limit slot `n + 2` (counted from the top
+/// before the pop). Pops the top (the previous block result); if the
+/// counter and the limit are smis with counter < limit, stores counter + 1,
+/// pushes a copy of the block and the old counter and branches back by
+/// `back`; otherwise falls through.
+pub const LOOP_REPEAT: u8 = 101;
+/// LOOP_ARRAY back n (proposal, format note 19): counter slot `n`, block
+/// `n + 1`, end `n + 2`, array `n + 3`. Pops the top; if the counter and
+/// the end are smis with 0 <= counter < end and the array slot holds an
+/// array with more than counter elements, stores counter + 1, pushes a copy
+/// of the block and the element at counter and branches back by `back`;
+/// otherwise falls through.
+pub const LOOP_ARRAY: u8 = 102;
+/// HASH_FIND miss n m (proposal, format note 19): one probe of the index of
+/// a hashed collection (`find-body_` in lib/core/collections.toit) with
+/// the probe state in slots `n` (slot), `n + 1` (step, 0: start) and
+/// `n + 2` (first deleted slot + 1, 0: none), the hash in slot `m` and the
+/// collection in slot `m + 2`. A key whose stored hash bits match: stores
+/// the state, pushes the key and its backing position, falls through.
+/// Otherwise pushes a code (`spec::op_hash_find`) and branches forward by
+/// `miss`. Reads only; no calls.
+pub const HASH_FIND: u8 = 103;
+
+/// The unchecked twins of the field accesses (trusted programs only, format
+/// note 20): LOAD_FIELD_U .. STORE_FIELD_THIS_U, opcodes 104..113, the
+/// instruction of `base_op` with the same operands, except that a failed
+/// field check is a stuck state instead of INVALID_PROGRAM
+/// (`spec::unchecked_fail`): the machine does not check. The verifier
+/// accepts them only for a program in the unchecked mode
+/// (`Program2::unchecked`), which only trusted programs may be in.
+pub const LOAD_FIELD_U: u8 = 104;
+pub const LOAD_FIELD_WIDE_U: u8 = 105;
+pub const LOAD_FIELD_LOCAL_U: u8 = 106;
+pub const POP_LOAD_FIELD_LOCAL_U: u8 = 107;
+pub const STORE_FIELD_U: u8 = 108;
+pub const STORE_FIELD_WIDE_U: u8 = 109;
+pub const STORE_FIELD_POP_U: u8 = 110;
+pub const INVOKE_VIRTUAL_GET_U: u8 = 111;
+pub const INVOKE_VIRTUAL_SET_U: u8 = 112;
+pub const STORE_FIELD_THIS_U: u8 = 113;
+
+pub const OPCODE_COUNT2: u8 = 114;
+
+/// An unchecked twin (format note 20).
+pub open spec fn is_twin(op: u8) -> bool {
+    LOAD_FIELD_U <= op && op <= STORE_FIELD_THIS_U
+}
+
+/// The instruction a twin is the unchecked form of; every other opcode is
+/// its own.
+pub open spec fn base_op(op: u8) -> u8 {
+    if LOAD_FIELD_U <= op && op <= STORE_FIELD_POP_U { (op - LOAD_FIELD_U + LOAD_FIELD) as u8 }
+    else if op == INVOKE_VIRTUAL_GET_U { INVOKE_VIRTUAL_GET }
+    else if op == INVOKE_VIRTUAL_SET_U { INVOKE_VIRTUAL_SET }
+    else if op == STORE_FIELD_THIS_U { STORE_FIELD_THIS }
+    else { op }
+}
+
+pub fn exec_is_twin(op: u8) -> (r: bool)
+    ensures r == is_twin(op),
+{
+    LOAD_FIELD_U <= op && op <= STORE_FIELD_THIS_U
+}
+
+pub fn exec_base_op(op: u8) -> (r: u8)
+    ensures r == base_op(op),
+{
+    if LOAD_FIELD_U <= op && op <= STORE_FIELD_POP_U { op - LOAD_FIELD_U + LOAD_FIELD }
+    else if op == INVOKE_VIRTUAL_GET_U { INVOKE_VIRTUAL_GET }
+    else if op == INVOKE_VIRTUAL_SET_U { INVOKE_VIRTUAL_SET }
+    else if op == STORE_FIELD_THIS_U { STORE_FIELD_THIS }
+    else { op }
+}
+
+/// A twin has the length and the operands of its base.
+pub proof fn lemma_base_op(op: u8)
+    ensures
+        opcode_length2(base_op(op)) == opcode_length2(op),
+        base_op(op) < OPCODE_COUNT2 <==> op < OPCODE_COUNT2,
+        !is_twin(base_op(op)),
+        base_op(base_op(op)) == base_op(op),
+        !is_twin(op) ==> base_op(op) == op,
+        is_twin(op) ==> (base_op(op) == LOAD_FIELD || base_op(op) == LOAD_FIELD_WIDE
+            || base_op(op) == LOAD_FIELD_LOCAL || base_op(op) == POP_LOAD_FIELD_LOCAL
+            || base_op(op) == STORE_FIELD || base_op(op) == STORE_FIELD_WIDE || base_op(op) == STORE_FIELD_POP
+            || base_op(op) == INVOKE_VIRTUAL_GET || base_op(op) == INVOKE_VIRTUAL_SET
+            || base_op(op) == STORE_FIELD_THIS),
+{
+}
 
 /// Instruction length in bytes, including the opcode.
 pub open spec fn opcode_length2(op: u8) -> int {
     if op == 1 || op == 8 || op == 12 || op == 21 || op == 27 || op == 31 || op == 33
         || op == 36 || op == 43 || op == 45 || op == 47 || op == 49 || op == 51
         || op == 53 || op == 54 || op == 60 || op == 61 || op == 80
-        || (81 <= op && op <= 88) {
+        || (81 <= op && op <= 88) || op == 105 || op == 109 || op == 111 || op == 112 {
         3
-    } else if op == 28 || op == 29 || op == 59 {
+    } else if op == 28 || op == 29 || op == 59 || op == 103 {
         5
-    } else if op == 58 || op == 89 {
+    } else if op == 58 || op == 89 || op == 101 || op == 102 {
         4
     } else if op == 95 {
         6
@@ -89,11 +181,11 @@ pub fn exec_opcode_length2(op: u8) -> (r: usize)
     if op == 1 || op == 8 || op == 12 || op == 21 || op == 27 || op == 31 || op == 33
         || op == 36 || op == 43 || op == 45 || op == 47 || op == 49 || op == 51
         || op == 53 || op == 54 || op == 60 || op == 61 || op == 80
-        || (81 <= op && op <= 88) {
+        || (81 <= op && op <= 88) || op == 105 || op == 109 || op == 111 || op == 112 {
         3
-    } else if op == 28 || op == 29 || op == 59 {
+    } else if op == 28 || op == 29 || op == 59 || op == 103 {
         5
-    } else if op == 58 || op == 89 {
+    } else if op == 58 || op == 89 || op == 101 || op == 102 {
         4
     } else if op == 95 {
         6
@@ -109,7 +201,7 @@ pub fn exec_opcode_length2(op: u8) -> (r: usize)
 } // verus!
 
 /// Opcode names of format 2, in opcode order.
-pub const OPCODE_NAMES2: [&str; 101] = [
+pub const OPCODE_NAMES2: [&str; 114] = [
     "LOAD_LOCAL", "LOAD_LOCAL_WIDE", "POP_LOAD_LOCAL", "STORE_LOCAL", "STORE_LOCAL_POP",
     "LOAD_OUTER", "STORE_OUTER", "LOAD_FIELD", "LOAD_FIELD_WIDE", "LOAD_FIELD_LOCAL",
     "POP_LOAD_FIELD_LOCAL", "STORE_FIELD", "STORE_FIELD_WIDE", "STORE_FIELD_POP",
@@ -131,10 +223,14 @@ pub const OPCODE_NAMES2: [&str; 101] = [
     "BRANCH_BACK_IF_TRUE", "BRANCH_BACK_IF_FALSE", "BRANCH_BACK_IF_NOT_NULL", "PRIMITIVE",
     "THROW", "RETURN", "RETURN_NULL", "NON_LOCAL_RETURN", "STORE_FIELD_THIS",
     "NON_LOCAL_BRANCH", "IDENTICAL", "TRY", "LOAD_FIELD_THIS", "UNWIND", "HALT",
+    "LOOP_REPEAT", "LOOP_ARRAY", "HASH_FIND",
+    "LOAD_FIELD_U", "LOAD_FIELD_WIDE_U", "LOAD_FIELD_LOCAL_U", "POP_LOAD_FIELD_LOCAL_U",
+    "STORE_FIELD_U", "STORE_FIELD_WIDE_U", "STORE_FIELD_POP_U", "INVOKE_VIRTUAL_GET_U",
+    "INVOKE_VIRTUAL_SET_U", "STORE_FIELD_THIS_U",
 ];
 
 /// Lengths of format 2 in opcode order.
-pub const OPCODE_LENGTHS2: [u8; 101] = [
+pub const OPCODE_LENGTHS2: [u8; 114] = [
     2, 3, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 3, 2, // 0..13
     1, 1, 1, 1, 1, 1, // LOAD_LOCAL_0..5
     2, 3, 1, 1, 2, 1, 2, 3, 5, 5, // 20..29
@@ -147,4 +243,8 @@ pub const OPCODE_LENGTHS2: [u8; 101] = [
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, // 62..80
     3, 3, 3, 3, 3, 3, 3, 3, // 81..88: BRANCH*, BRANCH_BACK*
     4, 1, 1, 1, 1, 2, 6, 1, 1, 2, 1, 2, // 89..100
+    4, // 101: LOOP_REPEAT
+    4, // 102: LOOP_ARRAY
+    5, // 103: HASH_FIND
+    2, 3, 2, 2, 2, 3, 2, 3, 3, 2, // 104..113: the unchecked twins (note 20)
 ];

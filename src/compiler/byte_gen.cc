@@ -1175,6 +1175,160 @@ void ByteGen::visit_PrimitiveInvocation(PrimitiveInvocation* node) {
   if (is_for_effect()) __ pop(1);
 }
 
+// Proposal (verified/spec/format/19-builtins-proposal.md): the body of
+// `find-body_ key hash append-position [not-found] [rebuild] [compare]`
+// (lib/core/collections.toit) on the HASH_FIND instruction, which walks the
+// index; the Toit code of that method follows as the failure block and runs
+// only when HASH_FIND reports an irregular state. This is the same loop:
+//
+//   while true:                                   // restart
+//     slot, step, deleted := (start), 0, none
+//     while true:                                 // probe
+//       HASH_FIND
+//         candidate k at position: if compare.call key k:
+//                                    return append-position ? APPEND_ : position
+//                                  else continue probing
+//         free slot (or the first deleted one): enter the key as Toit does
+//         full: old-size := size_; ensure append-position; rebuild.call old-size;
+//               restart
+//         irregular: fall into the Toit loop
+//
+// "ensure append-position" is `if not append-position: append-position =
+// not-found.call`. Leaves nothing on the stack when it falls through.
+void ByteGen::generate_hash_find_v2() {
+  ASSERT(emitter()->height() == 0);
+  ASSERT(emitter()->arity() == 7);
+  const int THIS = 0, KEY = 1, HASH = 2, APPEND = 3, NOT_FOUND = 4, REBUILD = 5, COMPARE = 6;
+  // Fields of HashedInsertionOrderedCollection_ (also Instance::MAP_*).
+  const int SIZE = 0, SPACES_LEFT = 1, INDEX = 2;
+  const int HASH_SHIFT = 12, HASH_MASK = 0xfff;
+  bool declared = receiver_range(method_).is_valid();
+  auto load_this_field = [&](int field) {
+    if (declared) {
+      __ load_field_this(field);
+    } else {
+      __ load_parameter(THIS, ExpressionStack::OBJECT);
+      __ load_field(field);
+    }
+  };
+  auto ensure_append = [&]() {
+    Label have;
+    __ load_parameter(APPEND, ExpressionStack::OBJECT);
+    __ branch(Emitter::IF_TRUE, &have);
+    __ load_parameter(NOT_FOUND, ExpressionStack::BLOCK);
+    __ invoke_block(1);
+    __ store_parameter(APPEND);
+    __ pop(1);
+    __ bind(&have);
+  };
+  int minus_one = register_integer64_literal(-1);  // APPEND_.
+  auto return_append = [&]() {
+    __ load_literal(minus_one);
+    __ ret();
+    __ forget(1);
+  };
+  Label restart, probe, miss, nomatch, ret_append, empty, rebuild_old, fallback, fresh_done;
+  // The probe state, locals 0..2: deleted slot + 1, step (0: start), slot.
+  __ bind(&restart);
+  __ load_integer(0);
+  __ load_integer(0);
+  __ load_integer(0);
+  __ bind(&probe);
+  // Slot is local 2 (top 0), the hash parameter 2 is at top 7, this at 9.
+  __ hash_find(&miss, 0, 7);
+  // Candidate: [deleted, step, slot, k, position].
+  __ load_parameter(COMPARE, ExpressionStack::BLOCK);
+  __ load_parameter(KEY, ExpressionStack::OBJECT);
+  __ load_local(3);
+  __ invoke_block(3);
+  __ branch(Emitter::IF_FALSE, &nomatch);
+  __ load_parameter(APPEND, ExpressionStack::OBJECT);
+  __ branch(Emitter::IF_TRUE, &ret_append);
+  __ ret();  // The position.
+  __ bind(&ret_append);
+  return_append();
+  __ bind(&nomatch);
+  __ pop(2);
+  __ branch(Emitter::UNCONDITIONAL, &probe);
+  // Miss: [deleted, step, slot, code].
+  __ remember(1);
+  __ bind(&miss);
+  __ load_local(3);
+  __ load_integer(0);
+  __ invoke_virtual(INVOKE_GTE, 0, 2);
+  __ branch(Emitter::IF_TRUE, &empty);
+  __ load_local(3);
+  __ load_literal(minus_one);
+  __ invoke_virtual(INVOKE_LT, 0, 2);
+  __ branch(Emitter::IF_TRUE, &fallback);
+  // Full: [deleted, step, slot, code, old-size].
+  load_this_field(SIZE);
+  ensure_append();
+  __ load_parameter(REBUILD, ExpressionStack::BLOCK);
+  __ load_local(4);
+  __ invoke_block(2);
+  __ pop(6);
+  __ branch(Emitter::UNCONDITIONAL, &restart);
+  // A free slot (code = 2 * slot + 1) or the first deleted one (2 * slot).
+  __ remember(4);
+  __ bind(&empty);
+  load_this_field(SIZE);  // old-size.
+  ensure_append();
+  load_this_field(SPACES_LEFT);
+  __ load_integer(0);
+  __ invoke_virtual(INVOKE_EQ, 0, 2);
+  __ branch(Emitter::IF_TRUE, &rebuild_old);
+  // index_[code >> 1] = ((append-position + 1) << HASH_SHIFT) | (hash & HASH_MASK)
+  load_this_field(INDEX);
+  __ load_local(3);
+  __ load_integer(1);
+  __ invoke_virtual(INVOKE_BIT_SHR, 0, 2);
+  __ load_parameter(APPEND, ExpressionStack::OBJECT);
+  __ load_integer(1);
+  __ invoke_virtual(INVOKE_ADD, 0, 2);
+  __ load_integer(HASH_SHIFT);
+  __ invoke_virtual(INVOKE_BIT_SHL, 0, 2);
+  __ load_parameter(HASH, ExpressionStack::OBJECT);
+  __ load_integer(HASH_MASK);
+  __ invoke_virtual(INVOKE_BIT_AND, 0, 2);
+  __ invoke_virtual(INVOKE_BIT_OR, 0, 2);
+  __ invoke_virtual(INVOKE_AT_PUT, 0, 3);
+  __ pop(1);
+  // A free slot: index-spaces-left_--.
+  __ load_local(3);
+  __ load_integer(1);
+  __ invoke_virtual(INVOKE_BIT_AND, 0, 2);
+  __ load_integer(0);
+  __ invoke_virtual(INVOKE_EQ, 0, 2);
+  __ branch(Emitter::IF_TRUE, &fresh_done);
+  if (declared) {
+    load_this_field(SPACES_LEFT);
+    __ load_integer(1);
+    __ invoke_virtual(INVOKE_SUB, 0, 2);
+    __ store_field_this(SPACES_LEFT);
+  } else {
+    __ load_parameter(THIS, ExpressionStack::OBJECT);
+    load_this_field(SPACES_LEFT);
+    __ load_integer(1);
+    __ invoke_virtual(INVOKE_SUB, 0, 2);
+    __ store_field(SPACES_LEFT);
+  }
+  __ pop(1);
+  __ bind(&fresh_done);
+  return_append();
+  // No space left: [deleted, step, slot, code, old-size].
+  __ bind(&rebuild_old);
+  __ load_parameter(REBUILD, ExpressionStack::BLOCK);
+  __ load_local(4);
+  __ invoke_block(2);
+  __ pop(6);
+  __ branch(Emitter::UNCONDITIONAL, &restart);
+  // Irregular: [deleted, step, slot, code]; the Toit loop follows.
+  __ remember(4);
+  __ bind(&fallback);
+  __ pop(4);
+}
+
 void ByteGen::generate_intrinsic_v2(PrimitiveInvocation* node) {
   ASSERT(emitter()->height() == 0);
   // Format 2 has no intrinsic instructions. `smi-repeat` and `array-do`
@@ -1184,6 +1338,9 @@ void ByteGen::generate_intrinsic_v2(PrimitiveInvocation* node) {
   bool is_do = node->primitive() == Symbols::array_do;
   if (!is_repeat && !is_do) {
     ASSERT(node->primitive() == Symbols::hash_find || node->primitive() == Symbols::hash_do);
+    if (node->primitive() == Symbols::hash_find && v2_builtin_enabled(V2_BUILTIN_HASH_FIND)) {
+      generate_hash_find_v2();
+    }
     __ load_null();
     return;
   }
@@ -1194,6 +1351,30 @@ void ByteGen::generate_intrinsic_v2(PrimitiveInvocation* node) {
   int block_parameter = is_repeat ? 1 : 2;
   Label loop, done;
   __ load_integer(0);  // The index, local 0.
+  bool fast = is_repeat
+      ? v2_builtin_enabled(V2_BUILTIN_REPEAT)
+      : v2_builtin_enabled(V2_BUILTIN_ARRAY_DO);
+  if (fast) {
+    // Proposal (format note 19): the fast loop with the LOOP_REPEAT or
+    // LOOP_ARRAY step. The frame is [this, block | i, result] (repeat) or
+    // [this, end, block | i, result] (do_): the step's counter is slot 1,
+    // the block slot 2, the limit or end slot 3, the array (this) slot 4.
+    // The step pops the previous result and either branches back to the
+    // INVOKE_BLOCK with the block and the index (repeat) or element (do_)
+    // pushed, or falls through to the ordinary loop below, which re-checks
+    // everything (and returns at once when the end is reached).
+    Label body, test;
+    __ load_null();  // The "previous block result" of the first step.
+    __ branch(Emitter::UNCONDITIONAL, &test);
+    __ forget(1);
+    __ remember(1, ExpressionStack::BLOCK);
+    __ remember(1);
+    __ bind(&body);
+    // A block that takes no argument ignores the extra one.
+    __ invoke_block(2);
+    __ bind(&test);
+    __ loop_step(is_repeat ? V2_LOOP_REPEAT : V2_LOOP_ARRAY, &body, 1);
+  }
   __ bind(&loop);
   __ load_local(0);
   __ load_parameter(end_parameter, ExpressionStack::OBJECT);

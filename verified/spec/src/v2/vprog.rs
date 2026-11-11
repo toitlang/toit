@@ -34,19 +34,34 @@ use crate::v2::types::*;
 
 verus! {
 
-/// An entry of the method table in the VM's layout (`toit::V2Method`).
+/// An entry of the method table in the VM's layout (`toit::V2Method`): 16
+/// bytes, the body at `entry..entry + length`.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct VMethod {
     pub entry: u32,
-    pub end: u32,
+    pub length: u16,
     pub selector: u16,
     pub aux: u16,
     pub recv_start: u16,
     pub recv_end: u16,
     pub arity: u8,
     pub kind: u8,
-    pub unused: u16,
+}
+
+impl VMethod {
+    /// The bci after the body, modulo the word size (where it wraps, it
+    /// is below `entry`, which `verifier::accepts` rejects).
+    pub open spec fn end_spec(self) -> usize {
+        vstd::wrapping::usize_specs::wrapping_add(self.entry as usize, self.length as usize)
+    }
+
+    #[inline(always)]
+    pub fn end(&self) -> (r: usize)
+        ensures r == self.end_spec(),
+    {
+        (self.entry as usize).wrapping_add(self.length as usize)
+    }
 }
 
 pub open spec fn minfo(m: VMethod, max_height: u16) -> MethodInfo {
@@ -59,7 +74,7 @@ pub open spec fn minfo(m: VMethod, max_height: u16) -> MethodInfo {
         recv_start: m.recv_start,
         recv_end: m.recv_end,
         entry: m.entry as usize,
-        end: m.end as usize,
+        end: m.end_spec(),
     }
 }
 
@@ -78,6 +93,10 @@ pub struct VProgram<'a> {
     pub builtin: &'a [u16],
     pub roots: &'a [Value],
     pub literals: &'a [Value],
+    /// The unchecked mode (`Program2::unchecked`): the unchecked twins of
+    /// the field accesses are allowed (trusted programs only, format note
+    /// 20).
+    pub unchecked: bool,
 }
 
 pub open spec fn vview(p: &VProgram) -> Program2 {
@@ -94,6 +113,7 @@ pub open spec fn vview(p: &VProgram) -> Program2 {
         builtin: p.builtin@,
         roots: p.roots@,
         literals: p.literals@,
+        unchecked: p.unchecked,
     }
 }
 
@@ -117,12 +137,12 @@ pub fn x_info(p: &VProgram, m: usize) -> (r: MethodInfo)
         recv_start: v.recv_start,
         recv_end: v.recv_end,
         entry: v.entry as usize,
-        end: v.end as usize,
+        end: v.end(),
     }
 }
 
 /// The method table of an `ExecProgram` in the VM's layout, if every
-/// method has the max height `h` and its bounds fit 32 bits.
+/// method has the max height `h`, its entry fits 32 bits and its length 16.
 pub fn vmethods_of(e: &ExecProgram, h: u16) -> (r: Option<Vec<VMethod>>)
     ensures
         r is Some ==> r->0@.len() == e.methods@.len()
@@ -137,19 +157,18 @@ pub fn vmethods_of(e: &ExecProgram, h: u16) -> (r: Option<Vec<VMethod>>)
         decreases e.methods@.len() - i,
     {
         let m = e.methods[i];
-        if m.max_height != h || m.entry > 0xffff_ffff || m.end > 0xffff_ffff {
+        if m.max_height != h || m.entry > 0xffff_ffff || m.end < m.entry || m.end - m.entry > 0xffff {
             return None;
         }
         r.push(VMethod {
             entry: m.entry as u32,
-            end: m.end as u32,
+            length: (m.end - m.entry) as u16,
             selector: m.selector,
             aux: m.aux,
             recv_start: m.recv_start,
             recv_end: m.recv_end,
             arity: m.arity,
             kind: m.kind,
-            unused: 0,
         });
         proof { assert(minfo(r@[i as int], h) == e.methods@[i as int]); }
         i += 1;
@@ -179,6 +198,7 @@ pub fn vprogram_of<'a>(e: &'a ExecProgram, methods: &'a Vec<VMethod>, h: u16) ->
         builtin: e.builtin.as_slice(),
         roots: e.roots.as_slice(),
         literals: e.literals.as_slice(),
+        unchecked: false,
     };
     proof { assert(vview(&r).methods =~= pview2(e).methods); }
     r

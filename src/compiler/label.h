@@ -49,6 +49,8 @@ class Label {
     ASSERT(height_ >= 0);
   }
 
+  int height() const { return height_; }
+
   int uses() const {
     ASSERT(!_has_position());
     return _decode_use_count(position_or_use_count_);

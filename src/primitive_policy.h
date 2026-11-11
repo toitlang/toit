@@ -122,8 +122,9 @@ class PrimitivePolicy {
   // The core primitives (module 0) this policy resolves to the VM's own
   // entries, for the verified core, which runs their Rust ports
   // (verified/core/src/prims) instead: entry [i] is the arity of core
-  // primitive i plus one, or 0 if the policy denies it (or does not resolve
-  // it to the VM's entry). [core_arities_length] entries.
+  // primitive i plus one, or 0 if the policy denies it, does not resolve it
+  // to the VM's entry, or the core has no Rust port of it (then its
+  // PRIMITIVE goes to C++ directly). [core_arities_length] entries.
   const uint8* core_arities() const { return core_arities_; }
   unsigned core_arities_length() const { return core_arities_length_; }
 

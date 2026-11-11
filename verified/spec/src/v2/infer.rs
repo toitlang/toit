@@ -354,7 +354,7 @@ type Error = (usize, String);
 /// preconditions (the program is `wf_program2`, checked by the caller).
 fn analyze<F: Facts>(p: &VProgram, f: &mut F, m: usize, trusted: bool) -> Result<Maps, Error> {
     let Some(info) = method(p, m).copied() else { return Err((0, "no such method".into())) };
-    let (entry, end) = (info.entry as usize, info.end as usize);
+    let (entry, end) = (info.entry as usize, info.end());
     if !(entry < end && end <= p.bytecodes.len()) {
         return Err((0, "empty method body or body outside the bytecodes".into()));
     }
@@ -407,10 +407,15 @@ fn analyze<F: Facts>(p: &VProgram, f: &mut F, m: usize, trusted: bool) -> Result
         maps.read(off, &mut k, &mut ids);
         maps.read_origins(off, k.len(), &mut org, &mut oids);
         let bci = entry + off;
-        let op = p.bytecodes[bci];
-        if op >= OPCODE_COUNT2 {
-            return Err((off, format!("invalid opcode {}", op)));
+        let raw = p.bytecodes[bci];
+        if raw >= OPCODE_COUNT2 {
+            return Err((off, format!("invalid opcode {}", raw)));
         }
+        if exec_is_twin(raw) && !p.unchecked {
+            return Err((off, format!("unchecked opcode {} in a program not in the unchecked mode", raw)));
+        }
+        // An unchecked twin is typed as its base (format note 20).
+        let op = exec_base_op(raw);
         let len = OPCODE_LENGTHS2[op as usize] as usize;
         if bci + len > end {
             return Err((off, "instruction crosses the method end".into()));
@@ -522,6 +527,37 @@ fn analyze<F: Facts>(p: &VProgram, f: &mut F, m: usize, trusted: bool) -> Result
             let Some(t) = t else { return Err((off, "branch before the method".into())) };
             let kt = if cond { k[..h - 1].to_vec() } else { k.clone() };
             let ot = if cond { org[..h - 1].to_vec() } else { org.clone() };
+            succ.push((t, kt, ot));
+        }
+        if op == HASH_FIND {
+            // The miss branch pushes a value (`post` accepted the operands).
+            let w = u16_at(p, bci + 1).unwrap_or(0);
+            let Some(t) = off.checked_add(w) else { return Err((off, "branch outside the method".into())) };
+            let mut kt = k.clone();
+            kt.push(XKind::Val);
+            let mut ot: Vec<u8> = if origins { org.clone() } else { vec![NO_ORIGIN; h] };
+            ot.push(NO_ORIGIN);
+            succ.push((t, kt, ot));
+        }
+        if op == LOOP_REPEAT || op == LOOP_ARRAY {
+            // The taken loop step (`loop_kinds`); `post` accepted the
+            // operands, so the counter and the block are below the top.
+            let w = u16_at(p, bci + 1).unwrap_or(0);
+            let n = byte_at(p, bci + 3).unwrap_or(usize::MAX);
+            let Some(t) = off.checked_sub(w) else { return Err((off, "branch before the method".into())) };
+            if !(1 <= n && n + 1 < h) {
+                return Err((off, "loop operands outside the frame".into()));
+            }
+            let kt = ok(x_loop_kinds(&k, n, n + 1));
+            let mut ot: Vec<u8> = Vec::with_capacity(h + 1);
+            if origins {
+                ot.extend_from_slice(&org[..h - 1]);
+                ot[h - 1 - n] = NO_ORIGIN;
+                ot.push(org[h - 2 - n]);
+                ot.push(NO_ORIGIN);
+            } else {
+                ot.resize(h + 1, NO_ORIGIN);
+            }
             succ.push((t, kt, ot));
         }
         for (t, k2, o2) in succ {
@@ -769,7 +805,7 @@ impl<'a> MapOracle for Oracle<'a> {
         Ok(match self.maps(m) {
             Ok(maps) => XMaps { idx: maps.idx, nodes: maps.nodes },
             Err(_) => {
-                let size = method(self.p, m).map(|i| (i.end as usize).saturating_sub(i.entry as usize)).unwrap_or(0);
+                let size = method(self.p, m).map(|i| i.end().saturating_sub(i.entry as usize)).unwrap_or(0);
                 XMaps { idx: vec![NO_MAP; size.min(self.p.bytecodes.len())], nodes: Vec::new() }
             }
         })

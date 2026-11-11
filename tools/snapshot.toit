@@ -693,6 +693,10 @@ class ToitMethod:
       line += " T$(bci + (method.uint16 bci + 1))"
     else if format == OP-SB-SB or format == OP-SB:
       line += " T$(bci - (method.uint16 bci + 1))"
+    else if format == OP-SB-BS:
+      line += " T$(bci - (method.uint16 bci + 1)) S$(method.bytecodes[bci + 3])"
+    else if format == OP-SF-BS-BS:
+      line += " T$(bci + (method.uint16 bci + 1)) S$(method.bytecodes[bci + 3]) S$(method.bytecodes[bci + 4])"
     else if format == OP-BCI:
       is-nullable := (index & 1) != 0
       class-index := index >> 1
@@ -915,6 +919,8 @@ OP-SB-SB ::= 29
 OP-SU-SU ::= 30
 OP-SB    ::= 31  // Format 2.
 OP-BU-WR ::= 32  // Format 2.
+OP-SB-BS ::= 33  // Format 2 (proposal, note 19): branch back, then a slot.
+OP-SF-BS-BS ::= 34  // Format 2 (proposal, note 19): branch forward, then two slots.
 
 class Bytecode:
   name        ::= ""
@@ -1136,6 +1142,22 @@ BYTE-CODES-V2 ::= [
   Bytecode "LOAD_FIELD_THIS"            2 OP-BU "load field this",
   Bytecode "UNWIND"                     1 OP "unwind",
   Bytecode "HALT"                       2 OP-BU "halt",
+  // Proposal (verified/spec/format/19-builtins-proposal.md).
+  Bytecode "LOOP_REPEAT"                4 OP-SB-BS "loop repeat",
+  Bytecode "LOOP_ARRAY"                 4 OP-SB-BS "loop array",
+  Bytecode "HASH_FIND"                  5 OP-SF-BS-BS "hash find",
+  // The unchecked twins of the field accesses, trusted programs only
+  // (verified/spec/format/20-unchecked-twins.md).
+  Bytecode "LOAD_FIELD_U"               2 OP-BU "load field (unchecked)",
+  Bytecode "LOAD_FIELD_WIDE_U"          3 OP-SU "load field wide (unchecked)",
+  Bytecode "LOAD_FIELD_LOCAL_U"         2 OP-BU "load field local (unchecked)",
+  Bytecode "POP_LOAD_FIELD_LOCAL_U"     2 OP-BU "pop, load field local (unchecked)",
+  Bytecode "STORE_FIELD_U"              2 OP-BU "store field (unchecked)",
+  Bytecode "STORE_FIELD_WIDE_U"         3 OP-SU "store field wide (unchecked)",
+  Bytecode "STORE_FIELD_POP_U"          2 OP-BU "store field, pop (unchecked)",
+  Bytecode "INVOKE_VIRTUAL_GET_U"       3 OP-SO "invoke virtual get (unchecked)",
+  Bytecode "INVOKE_VIRTUAL_SET_U"       3 OP-SO "invoke virtual set (unchecked)",
+  Bytecode "STORE_FIELD_THIS_U"         2 OP-BU "store field this (unchecked)",
 ]
 
 

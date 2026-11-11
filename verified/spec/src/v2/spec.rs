@@ -50,12 +50,13 @@ use crate::spec_common::{
     smi, smi_ok, u16_at, u32_at, builtin, class_tag, instance_field_count, is_instance, fields,
     obj, obj_id, is_array, elements, class_id_ok, class_id_of, class_of_obj, new_double,
     LAZY_INITIALIZER_CLASS, EXCEPTION_CLASS, TASK_CLASS, ENTRY_MAIN, ENTRY_TASK, RUN_GLOBAL_INITIALIZER,
+    TOMBSTONE_CLASS,
 };
 use crate::spec_helpers::{Check, FastAt, COMPARE_FLAG_EQUAL};
 #[cfg(verus_only)]
 use crate::spec_helpers::{
     compare_numbers, are_smis, smi_val, are_floats, identical, typecheck_class, fast_at,
-    FAST_AT_FUEL, fast_size, is_nan_bits,
+    FAST_AT_FUEL, fast_size, is_nan_bits, band,
 };
 #[cfg(verus_only)]
 use crate::spec_step::{smi_arith, float_arith, relational_flag, relational_smi};
@@ -807,11 +808,30 @@ pub open spec fn op_unwind(p: Program2, s: State2) -> Outcome2 {
 // ---------------------------------------------------------------------------
 // Fields.
 
+/// A field access whose run-time check failed (a receiver other than `this`
+/// that is not an instance with the field, a machine-owned task field, a
+/// store into the program heap): INVALID_PROGRAM. For the unchecked twins
+/// of the field accesses (`bytecodes::is_twin`, format note 20; trusted
+/// programs in the unchecked mode `Program2::unchecked` only) the machine
+/// does not check: the access is assumed to succeed, and its failure is a
+/// stuck state (`Stuck::FieldRange`, used for nothing else in format 2).
+/// The verifier accepts twins only in the unchecked mode, and the mode only
+/// for trusted programs (`accepts`); the soundness theorem is stated
+/// without it.
+pub open spec fn unchecked_fail(p: Program2, s: State2) -> Outcome2 {
+    if twin_at(p, s) { stuck(Stuck::FieldRange) } else { raise(p, s, INVALID_PROGRAM) }
+}
+
+/// The instruction at the bci is an unchecked twin.
+pub open spec fn twin_at(p: Program2, s: State2) -> bool {
+    is_twin(p.bytecodes[s.bci as int])
+}
+
 pub open spec fn op_load_field(p: Program2, s: State2, f: int, len: int) -> Outcome2 {
     if !has_slot(s, 0) {
         stuck(Stuck::StackRange)
     } else if !field_readable(p, s, at(s, 0), f) {
-        raise(p, s, INVALID_PROGRAM)
+        unchecked_fail(p, s)
     } else {
         next(put(s, 0, field(s, at(s, 0), f)), len)
     }
@@ -826,7 +846,7 @@ pub open spec fn op_load_field_local(p: Program2, s: State2, enc: int, pop: bool
     if !has_slot(s, slot) {
         stuck(Stuck::StackRange)
     } else if !field_readable(p, s, at(s, slot), f) {
-        raise(p, s, INVALID_PROGRAM)
+        unchecked_fail(p, s)
     } else {
         let v = field(s, at(s, slot), f);
         if pop { next(put(s, 0, v), 2) } else { next(push(s, v), 2) }
@@ -840,7 +860,7 @@ pub open spec fn op_store_field(p: Program2, s: State2, f: int, len: int, keep: 
         let v = at(s, 0);
         let inst = at(s, 1);
         if !field_writable(p, s, inst, f) {
-            raise(p, s, INVALID_PROGRAM)
+            unchecked_fail(p, s)
         } else {
             let s1 = set_field2(drop(s, 2), inst, f, v);
             if keep { next(push(s1, v), len) } else { next(s1, len) }
@@ -879,7 +899,7 @@ pub open spec fn op_store_field_this(p: Program2, s: State2, f: int) -> Outcome2
     } else {
         let this = s.stack[top(s).base as int];
         if is_ro(s, this) {
-            raise(p, s, INVALID_PROGRAM)
+            unchecked_fail(p, s)
         } else {
             next(set_field2(s, this, f, at(s, 0)), 2)
         }
@@ -1163,6 +1183,10 @@ pub open spec fn op_invoke_virtual_get(p: Program2, s: State2, sel: int) -> Outc
                     stuck(Stuck::BadArity)
                 } else if info(p, t).kind == KIND_FIELD_ACCESSOR && field_readable(p, s, recv, f) {
                     next(put(s, 0, field(s, recv, f)), 3)
+                } else if info(p, t).kind == KIND_FIELD_ACCESSOR && twin_at(p, s) {
+                    // The unchecked twin (`unchecked_fail`): an accessor's field
+                    // is assumed to exist.
+                    stuck(Stuck::FieldRange)
                 } else {
                     call(p, s, t, s.bci + 3)
                 }
@@ -1186,6 +1210,8 @@ pub open spec fn op_invoke_virtual_set(p: Program2, s: State2, sel: int) -> Outc
                     stuck(Stuck::BadArity)
                 } else if info(p, t).kind == KIND_FIELD_ACCESSOR && field_writable(p, s, recv, f) {
                     next(push(set_field2(drop(s, 2), recv, f, v), v), 3)
+                } else if info(p, t).kind == KIND_FIELD_ACCESSOR && twin_at(p, s) {
+                    stuck(Stuck::FieldRange)
                 } else {
                     call(p, s, t, s.bci + 3)
                 }
@@ -1309,6 +1335,186 @@ pub open spec fn op_branch(p: Program2, s: State2, kind: int, target: int, len: 
     }
 }
 
+// ---------------------------------------------------------------------------
+// Loop steps (proposal, format note 19): one bounded step of a counted
+// loop whose structure stays in the bytecode. The step pops the previous
+// block result; when its fast condition holds it stores the incremented
+// counter, pushes a copy of the block slot and the block argument, and
+// branches back to the INVOKE_BLOCK; otherwise it falls through to the
+// method's ordinary loop, which re-checks everything. No calls, no heap
+// writes. Slots are counted from the top before the pop.
+
+/// The operand slots exist, above the popped result.
+pub open spec fn loop_slots_ok(s: State2, c: int, b: int, x: int, y: int) -> bool {
+    &&& 1 <= c && 1 <= b && 1 <= x && 1 <= y
+    &&& has_slot(s, c) && has_slot(s, b) && has_slot(s, x) && has_slot(s, y)
+}
+
+/// The taken branch: counter `c` becomes `i + 1`, the result is popped, the
+/// block (slot `b`) and `v` are pushed.
+pub open spec fn loop_taken(p: Program2, s: State2, c: int, b: int, i: int, v: Value, target: int) -> Outcome2 {
+    branch_to(p, push(push(drop(put(s, c, smi(i + 1)), 1), at(s, b)), v), target)
+}
+
+/// LOOP_REPEAT n: counter `c = n`, block `b = n + 1`, limit `l = n + 2`.
+pub open spec fn op_loop_repeat(p: Program2, s: State2, target: int, n: int, len: int) -> Outcome2 {
+    let (c, b, l) = (n, n + 1, n + 2);
+    if !loop_slots_ok(s, c, b, l, l) {
+        stuck(Stuck::StackRange)
+    } else if at(s, c) is Smi && at(s, l) is Smi && smi_val(at(s, c)) < smi_val(at(s, l)) {
+        loop_taken(p, s, c, b, smi_val(at(s, c)), at(s, c), target)
+    } else {
+        next(drop(s, 1), len)
+    }
+}
+
+/// The fast condition of LOOP_ARRAY: the counter `i` and the end are smis,
+/// `0 <= i < end`, and the array slot holds an array with an element `i`.
+pub open spec fn loop_array_go(s: State2, c: int, e: int, a: int) -> bool {
+    &&& at(s, c) is Smi && at(s, e) is Smi && is_array(as1(s), at(s, a))
+    &&& 0 <= smi_val(at(s, c)) && smi_val(at(s, c)) < smi_val(at(s, e))
+    &&& smi_val(at(s, c)) < elements(as1(s), at(s, a)).len()
+}
+
+/// LOOP_ARRAY n: counter `c = n`, block `b = n + 1`, end `e = n + 2`,
+/// array `a = n + 3`.
+pub open spec fn op_loop_array(p: Program2, s: State2, target: int, n: int, len: int) -> Outcome2 {
+    let (c, b, e, a) = (n, n + 1, n + 2, n + 3);
+    if !loop_slots_ok(s, c, b, e, a) {
+        stuck(Stuck::StackRange)
+    } else if loop_array_go(s, c, e, a) {
+        loop_taken(p, s, c, b, smi_val(at(s, c)), elements(as1(s), at(s, a))[smi_val(at(s, c))], target)
+    } else {
+        next(drop(s, 1), len)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// HASH_FIND (proposal, format note 19): one probe of the index of a hashed
+// collection, the loop of `find-body_` in lib/core/collections.toit up to
+// the first point where Toit code must run (comparing a candidate key,
+// entering a new key, rebuilding). Total for any heap: every irregular
+// state is the code HF_IRREGULAR, after which the Toit loop runs. Reads
+// only, through the same fast paths as INVOKE_SIZE and INVOKE_AT.
+
+/// The result of a probe.
+pub enum Probe {
+    /// A key whose stored hash bits match the hash: the key, its position in
+    /// the backing, and the probe state (slot, step, deleted slot + 1) to
+    /// continue from if it is not equal.
+    Cand(Value, int, int, int, int),
+    /// No candidate: `2 * slot + 1` (a free slot, no deleted one before it),
+    /// `2 * slot` (the first deleted slot, to reuse), HF_FULL or HF_IRREGULAR.
+    Miss(int),
+}
+
+pub spec const HF_FULL: int = -1;
+pub spec const HF_IRREGULAR: int = -2;
+/// Larger indexes are left to the Toit loop (keeps every code a smi).
+pub spec const HF_MAX_INDEX: int = 0x100_0000;
+
+/// Element `i` of an index or a backing, as INVOKE_AT's fast path reads it.
+pub open spec fn hf_at(p: Program2, s: State2, a: Value, i: int) -> Option<Value> {
+    match fast_at(p1(p), as1(s), a, smi(i), false, null2(p), FAST_AT_FUEL) {
+        FastAt::Get(v) => Some(v),
+        _ => None,
+    }
+}
+
+pub open spec fn is_tombstone(p: Program2, s: State2, k: Value) -> bool {
+    k is Obj && class_of_obj(as1(s), k) == builtin(p1(p), TOMBSTONE_CLASS)
+}
+
+/// The probe loop from `slot` with triangular step `step` and `d` the
+/// first deleted slot plus one (0: none), `start` the first slot.
+pub open spec fn hf_probe(p: Program2, s: State2, index: Value, backing: Value, hash: int, mask: int,
+    start: int, slot: int, step: int, d: int, fuel: nat) -> Probe
+    decreases fuel,
+{
+    if fuel == 0 {
+        Probe::Miss(HF_IRREGULAR)
+    } else {
+        match hf_at(p, s, index, slot) {
+            Some(Value::Smi(hap)) => {
+                if hap == 0 {
+                    Probe::Miss(if d > 0 { 2 * (d - 1) } else { 2 * slot + 1 })
+                } else {
+                    let pos = hap / 4096 - 1;
+                    match hf_at(p, s, backing, pos) {
+                        Some(k) => {
+                            let tomb = is_tombstone(p, s, k);
+                            let d1 = if d == 0 && tomb { slot + 1 } else { d };
+                            if band(hap as int, 0xfff) == band(hash, 0xfff) && !tomb {
+                                Probe::Cand(k, pos, slot, step, d1)
+                            } else {
+                                let slot2 = band(slot + step, mask);
+                                if slot2 == start {
+                                    Probe::Miss(HF_FULL)
+                                } else {
+                                    hf_probe(p, s, index, backing, hash, mask, start, slot2, step + 1, d1, (fuel - 1) as nat)
+                                }
+                            }
+                        },
+                        None => Probe::Miss(HF_IRREGULAR),
+                    }
+                }
+            },
+            _ => Probe::Miss(HF_IRREGULAR),
+        }
+    }
+}
+
+/// The probe of collection `coll` for `hashv` from the state `slotv`,
+/// `stepv` (0: from the start) and `dv`.
+pub open spec fn hf_find(p: Program2, s: State2, coll: Value, hashv: Value, slotv: Value, stepv: Value, dv: Value) -> Probe {
+    if !(is_instance(as1(s), coll) && fields(as1(s), coll).len() >= 4
+        && hashv is Smi && slotv is Smi && stepv is Smi && dv is Smi) {
+        Probe::Miss(HF_IRREGULAR)
+    } else {
+        let index = fields(as1(s), coll)[2];
+        let backing = fields(as1(s), coll)[3];
+        match fast_size(p1(p), as1(s), index) {
+            Some(size) => {
+                let (hash, slot, step, d) = (smi_val(hashv), smi_val(slotv), smi_val(stepv), smi_val(dv));
+                if !(1 <= size <= HF_MAX_INDEX && band(size, size - 1) == 0
+                    && 0 <= slot < size && 0 <= step <= 2 * size && 0 <= d <= size) {
+                    Probe::Miss(HF_IRREGULAR)
+                } else {
+                    let mask = size - 1;
+                    let start = band(hash, mask);
+                    if step == 0 {
+                        hf_probe(p, s, index, backing, hash, mask, start, start, 1, d, (2 * size) as nat)
+                    } else {
+                        // Continue after a candidate that was not equal.
+                        let slot2 = band(slot + step, mask);
+                        if slot2 == start {
+                            Probe::Miss(HF_FULL)
+                        } else {
+                            hf_probe(p, s, index, backing, hash, mask, start, slot2, step + 1, d, (2 * size) as nat)
+                        }
+                    }
+                }
+            },
+            None => Probe::Miss(HF_IRREGULAR),
+        }
+    }
+}
+
+/// HASH_FIND n m: on a candidate, the state slots `n`, `n + 1`, `n + 2` get
+/// its probe state and the key and position are pushed; otherwise the code
+/// is pushed and the branch to `target` taken.
+pub open spec fn op_hash_find(p: Program2, s: State2, target: int, n: int, m: int, len: int) -> Outcome2 {
+    if !(0 <= n && 0 <= m && has_slot(s, n + 2) && has_slot(s, m + 2)) {
+        stuck(Stuck::StackRange)
+    } else {
+        match hf_find(p, s, at(s, m + 2), at(s, m), at(s, n), at(s, n + 1), at(s, n + 2)) {
+            Probe::Cand(k, pos, slot, step, d) =>
+                next(push(push(put(put(put(s, n, smi(slot)), n + 1, smi(step)), n + 2, smi(d)), k), smi(pos)), len),
+            Probe::Miss(code) => branch_to(p, push(s, smi(code)), target),
+        }
+    }
+}
+
 pub open spec fn op_halt(p: Program2, s: State2, code: int) -> Outcome2 {
     if code == 0 {
         Outcome2::Halt(goto(push(s, smi(91)), s.bci + 2), Halt2::Yield)
@@ -1360,7 +1566,9 @@ pub open spec fn step(p: Program2, s: State2) -> Outcome2 {
         stuck(Stuck::BadInstruction)
     } else {
         let bci = s.bci as int;
-        let op = p.bytecodes[bci];
+        // An unchecked twin (format note 20) runs as its base instruction;
+        // only `unchecked_fail` tells them apart.
+        let op = base_op(p.bytecodes[bci]);
         let len = opcode_length2(op);
         let b1 = if len >= 2 { byte2(p, bci + 1) } else { 0 };
         let w1 = if len >= 3 { u16_at(p1(p), bci + 1) } else { 0 };
@@ -1456,6 +1664,15 @@ pub open spec fn step(p: Program2, s: State2) -> Outcome2 {
         else if op == TRY { op_try(p, s) }
         else if op == LOAD_FIELD_THIS { op_load_field_this(p, s, b1) }
         else if op == UNWIND { op_unwind(p, s) }
+        else if op == LOOP_REPEAT {
+            op_loop_repeat(p, s, bci - w1, byte2(p, bci + 3), len)
+        }
+        else if op == LOOP_ARRAY {
+            op_loop_array(p, s, bci - w1, byte2(p, bci + 3), len)
+        }
+        else if op == HASH_FIND {
+            op_hash_find(p, s, bci + w1, byte2(p, bci + 3), byte2(p, bci + 4), len)
+        }
         else { op_halt(p, s, b1) }  // HALT
     }
 }

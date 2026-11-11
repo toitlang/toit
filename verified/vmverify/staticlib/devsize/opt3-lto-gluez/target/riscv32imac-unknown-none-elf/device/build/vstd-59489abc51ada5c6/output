@@ -1,2 +1,0 @@
-cargo:rustc-env=RUST_MIN_STACK=10485760
-cargo:rerun-if-env-changed=RUST_MIN_STACK
