@@ -29,15 +29,26 @@ largest method plus small per-method tables, not by the program (see
 
 ## One Rust library
 
-The VM links one Rust static library: this crate (`toit_vmverify`,
-`crate-type = staticlib`). It depends on the core (`toit_verified_core`,
-as an rlib) and on the spec crate, so the core's C entry points
-(`toit_v2_run`, ...) and the verifier's are in the same archive with one
-copy of Rust's std. Two Rust staticlibs in one binary each bundle std and
-the Rust runtime symbols (duplicate definitions, two allocators, two
-panic runtimes); a combined crate avoids that and leaves the core's own
-crate untouched. verified/CMakeLists.txt builds this crate where it built
-the core before (the CMake target keeps its name, `toit_verified_core`).
+The VM links one Rust static library, `libtoit_rust.a`: the package in
+`staticlib/` (crate type `staticlib` only, no code of its own), which
+links this crate (`toit_vmverify`, an rlib). It depends on the core
+(`toit_verified_core`, as an rlib) and on the spec crate, so the core's C
+entry points (`toit_v2_run`, ...) and the verifier's are in the same
+archive with one copy of Rust's std. Two Rust staticlibs in one binary
+each bundle std and the Rust runtime symbols (duplicate definitions, two
+allocators, two panic runtimes); a combined crate avoids that and leaves
+the core's own crate untouched. verified/CMakeLists.txt builds
+`staticlib/` where it built the core before (the CMake target keeps its
+name, `toit_verified_core`), and so do the device scripts in `tests/`.
+
+The static library is a package of its own because Cargo silently drops
+`lto` for a library with the crate types `staticlib` and `rlib` (as this
+crate had, for its tools and tests): the device profile's fat LTO only
+applies to a staticlib-only crate. With it the archive holds one object
+for all Rust code (plus `compiler_builtins`, which is never LTO'd). The
+profiles that count for the VM are those of `staticlib/Cargo.toml`;
+cargo runs from that directory, so `.cargo/config.toml` here applies.
+Sizes: verified/core/PROGRESS.md, "Device builds".
 
 The profile is `panic = "unwind"` (the core alone uses `abort`): the
 inference runs on untrusted input, and a panic must reject the program,

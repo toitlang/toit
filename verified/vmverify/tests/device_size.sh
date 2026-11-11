@@ -15,8 +15,9 @@
 # directory of this repository.
 
 # Size of the device Rust library (verified core, primitives, verifier) as
-# linked into firmware: builds verified/vmverify for riscv32imac (no_std,
-# device runtime, Cargo profile `device`: LTO, panic = abort) at the given
+# linked into firmware: builds the VM's static library (verified/vmverify/
+# staticlib: no_std, device runtime, Cargo profile `device`: fat LTO,
+# panic = abort) for riscv32imac (or the classic ESP32) at the given
 # opt-level, links it into a minimal executable (device_size/main.c: the
 # core's run loop and the verifier's entry point, the C++ helpers stubbed)
 # with --gc-sections, and reports text + rodata by component
@@ -25,8 +26,13 @@
 # Usage: device_size.sh OPT-LEVEL [notaildup] [OUT-DIR]
 #   OPT-LEVEL: 3, s or z. notaildup: without the -tail-dup-size flag of
 #   verified/vmverify/.cargo/config.toml.
+#   DEVICE_SIZE_ARCH=xtensa: the classic ESP32 (xtensa-esp32-none-elf with
+#   the esp-rs fork, `cargo +esp -Zbuild-std`, ESP-IDF's xtensa GCC;
+#   verified/XTENSA-RUST-FIXES.md). DEVICE_SIZE_LTO=false: without LTO (one
+#   object per crate, as before the staticlib package).
 # Needs the ESP-IDF RISC-V toolchain (riscv32-esp-elf-gcc, found in
-# ~/.espressif/tools or on the PATH) and the riscv32imac Rust target.
+# ~/.espressif/tools or on the PATH) and the riscv32imac Rust target (or,
+# for Xtensa, the esp toolchain and ESP-IDF's xtensa-esp32-elf-gcc).
 
 set -euo pipefail
 trap 'echo "device_size.sh: failed at line $LINENO" >&2' ERR
@@ -41,41 +47,57 @@ if [ "${2:-}" = notaildup ]; then TAILDUP=0; shift; fi
 # inference and the checked loop), e.g. DEVICE_SIZE_FEATURES=device-runtime,infer;
 # DEVICE_SIZE_SUFFIX is appended to the output directory's name.
 FEATURES="${DEVICE_SIZE_FEATURES:-device-runtime}"
-NAME="opt$OPT$([ "$TAILDUP" = 0 ] && echo -notaildup || true)${DEVICE_SIZE_SUFFIX:-}"
+ARCH="${DEVICE_SIZE_ARCH:-riscv}"
+NAME="$([ "$ARCH" = xtensa ] && echo xtensa- || true)opt$OPT$([ "$TAILDUP" = 0 ] && echo -notaildup || true)${DEVICE_SIZE_SUFFIX:-}"
 OUT="${2:-$REPO/build/device-size}/$NAME"
-TARGET=riscv32imac-unknown-none-elf
 mkdir -p "$OUT"
 
-GCC="$(command -v riscv32-esp-elf-gcc || true)"
+case "$ARCH" in
+  riscv)
+    TARGET=riscv32imac-unknown-none-elf
+    PREFIX=riscv32-esp-elf
+    CFLAGS=(-march=rv32imac_zicsr_zifencei -mabi=ilp32)
+    DEFAULT_CARGO_ARGS=""
+    ;;
+  xtensa)
+    TARGET=xtensa-esp32-none-elf
+    PREFIX=xtensa-esp32-elf
+    CFLAGS=(-mlongcalls)
+    DEFAULT_CARGO_ARGS="+esp -Zbuild-std=core,alloc"
+    ;;
+  *) echo "unknown DEVICE_SIZE_ARCH: $ARCH" >&2; exit 2 ;;
+esac
+GCC="$(command -v $PREFIX-gcc || true)"
 if [ -z "$GCC" ]; then
-  GCC="$(ls -d "$HOME"/.espressif/tools/riscv32-esp-elf/esp-1[0-9]*/riscv32-esp-elf/bin/riscv32-esp-elf-gcc 2>/dev/null | sort -V | tail -1)"
+  GCC="$(ls -d "$HOME"/.espressif/tools/*-esp-elf/esp-1[0-9]*/*-esp-elf/bin/$PREFIX-gcc 2>/dev/null | sort -V | tail -1)"
 fi
-[ -x "$GCC" ] || { echo "riscv32-esp-elf-gcc not found" >&2; exit 1; }
+[ -x "$GCC" ] || { echo "$PREFIX-gcc not found" >&2; exit 1; }
 BIN="$(dirname "$GCC")"
 
 ENVS=(CARGO_PROFILE_DEVICE_OPT_LEVEL="$OPT")
 if [ "$TAILDUP" = 0 ]; then ENVS+=(RUSTFLAGS=""); fi
+if [ -n "${DEVICE_SIZE_LTO:-}" ]; then ENVS+=(CARGO_PROFILE_DEVICE_LTO="$DEVICE_SIZE_LTO"); fi
 # Experiments: DEVICE_SIZE_TOOLCHAIN (e.g. +nightly) and DEVICE_SIZE_CARGO_ARGS
 # (e.g. -Zbuild-std=core,alloc) are passed to cargo, DEVICE_SIZE_RUSTFLAGS
 # replaces the rustflags of .cargo/config.toml.
-read -r -a CARGO_ARGS <<< "${DEVICE_SIZE_TOOLCHAIN:-} ${DEVICE_SIZE_CARGO_ARGS:-}"
+read -r -a CARGO_ARGS <<< "${DEVICE_SIZE_TOOLCHAIN:-} ${DEVICE_SIZE_CARGO_ARGS:-$DEFAULT_CARGO_ARGS}"
 if [ -n "${DEVICE_SIZE_RUSTFLAGS:-}" ]; then ENVS+=(RUSTFLAGS="$DEVICE_SIZE_RUSTFLAGS"); fi
-(cd "$VERIFIED/vmverify" && env "${ENVS[@]}" cargo ${CARGO_ARGS[@]+"${CARGO_ARGS[@]}"} build --quiet --profile device --lib \
+(cd "$VERIFIED/vmverify/staticlib" && env "${ENVS[@]}" PATH="$BIN:$PATH" cargo ${CARGO_ARGS[@]+"${CARGO_ARGS[@]}"} build --quiet --profile device --lib \
     --no-default-features --features "$FEATURES" --target "$TARGET" --target-dir "$OUT/target")
-LIB="$OUT/target/$TARGET/device/libtoit_vmverify.a"
+LIB="$OUT/target/$TARGET/device/libtoit_rust.a"
 
-"$GCC" -march=rv32imac_zicsr_zifencei -mabi=ilp32 -Os -ffunction-sections -fdata-sections \
+"$GCC" "${CFLAGS[@]}" -Os -ffunction-sections -fdata-sections \
   --specs=nosys.specs -Wl,--gc-sections -Wl,-Map="$OUT/size.map" -o "$OUT/size.elf" \
   "$HERE/device_size/main.c" "$LIB" -lm
-"$BIN/riscv32-esp-elf-size" -A "$OUT/size.elf" > "$OUT/sections.txt"
-"$BIN/riscv32-esp-elf-nm" -S -C --size-sort "$OUT/size.elf" > "$OUT/symbols.txt"
+"$BIN/$PREFIX-size" -A "$OUT/size.elf" > "$OUT/sections.txt"
+"$BIN/$PREFIX-nm" -S -C --size-sort "$OUT/size.elf" > "$OUT/symbols.txt"
 # The C side alone (stubs, newlib): subtracted from the totals.
-"$GCC" -march=rv32imac_zicsr_zifencei -mabi=ilp32 -Os -ffunction-sections -fdata-sections \
+"$GCC" "${CFLAGS[@]}" -Os -ffunction-sections -fdata-sections \
   --specs=nosys.specs -Wl,--gc-sections -o "$OUT/empty.elf" \
   -x c - <<'EOF'
 volatile int sink;
 int main(void) { sink = 0; return 0; }
 EOF
-"$BIN/riscv32-esp-elf-size" -A "$OUT/empty.elf" > "$OUT/empty-sections.txt"
+"$BIN/$PREFIX-size" -A "$OUT/empty.elf" > "$OUT/empty-sections.txt"
 TOIT="${TOIT:-$REPO/build/host/sdk/bin/toit}"
 "$TOIT" run "$VERIFIED/tools/device_size.toit" -- --name "$NAME" "$OUT/symbols.txt" "$OUT/sections.txt" "$OUT/empty-sections.txt"
