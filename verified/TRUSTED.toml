@@ -1051,22 +1051,6 @@ justification = "Raw byte write inside the view (bound from the precondition)."
 [[trusted]]
 crate = "core"
 file = "src/view.rs"
-item = "Heap::double_bits"
-kind = "external_body"
-count = 1
-justification = "Heap accessor: the value word of a double is the model's bits (TRUSTED.md, heap model)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::double_bits"
-kind = "unsafe"
-count = 1
-justification = "Reads the value word of a live double (heap integrity, TRUSTED.md V2)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
 item = "Heap::half_word_at"
 kind = "external_body"
 count = 1
@@ -1095,22 +1079,6 @@ item = "Heap::header"
 kind = "unsafe"
 count = 1
 justification = "Raw access of Heap::header; in bounds by the external_body precondition (index < len) or, for heap words, by heap integrity (TRUSTED.md)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::large_int"
-kind = "external_body"
-count = 1
-justification = "Heap accessor: the value word of a large integer is the model's value (TRUSTED.md, heap model)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::large_int"
-kind = "unsafe"
-count = 1
-justification = "Reads the value word of a live large integer (heap integrity, TRUSTED.md V2)."
 
 [[trusted]]
 crate = "core"

@@ -64,6 +64,13 @@ Artifacts: /home/flo/work/opentoit-sandbox-artifacts/proven-accessors
   across handlers); a header read without the offset is exact. Census:
   external_body 76 -> 69, unsafe 60 -> 54, uninterp 6 -> 3.
   Instructions: all 36 runs within 0.01 percent; riscv32 text 59,348 B.
+- P3 (doubles, large integers): the payload is the words from
+  `DOUBLE_VALUE_WORD` (one, or two little-endian words on 32-bit
+  targets: `value_word`), read as words instead of an unaligned u64
+  (`read_value64`, bit-vector proofs per width). `double_bits` and
+  `large_int` verified. riscv32 opt=s: run_loop 6,479 -> 5,960
+  instructions, text 59,332 -> 57,498 B (the unaligned read was eight
+  byte loads there); host instructions 0 to -0.4 percent.
 
 ## Trusted containers integrated (branch core/trusted-integration, 2026-11-11)
 

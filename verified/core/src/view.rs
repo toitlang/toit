@@ -736,6 +736,7 @@ pub open spec fn is_word(o: HeapObj, k: int) -> bool {
     k == 0 || match o.body {
         Body::Instance(f) => 1 <= k < 1 + f.len(),
         Body::Array(e) => 1 <= k < 2 + e.len(),
+        Body::Double(_) | Body::LargeInt(_) => 1 <= k < 1 + VALUE_WORDS,
         _ => false,
     }
 }
@@ -745,8 +746,37 @@ pub open spec fn obj_words(o: HeapObj) -> int {
     match o.body {
         Body::Instance(f) => 1 + f.len() as int,
         Body::Array(e) => 2 + e.len() as int,
+        Body::Double(_) | Body::LargeInt(_) => 1 + VALUE_WORDS,
         _ => 1,
     }
+}
+
+/// The words of the 64-bit payload of a double or large integer (one
+/// word, or two on 32-bit targets, little endian).
+#[cfg(target_pointer_width = "64")]
+pub const VALUE_WORDS: usize = 1;
+#[cfg(target_pointer_width = "32")]
+pub const VALUE_WORDS: usize = 2;
+
+/// The payload of a double (its bits) or large integer (its two's
+/// complement).
+pub open spec fn value64(o: HeapObj) -> u64 {
+    match o.body {
+        Body::Double(b) => b,
+        Body::LargeInt(x) => x as u64,
+        _ => 0,
+    }
+}
+
+/// Word `j` of a 64-bit payload `b` (little endian).
+#[cfg(target_pointer_width = "64")]
+pub open spec fn value_word(b: u64, j: int) -> usize {
+    b as usize
+}
+
+#[cfg(target_pointer_width = "32")]
+pub open spec fn value_word(b: u64, j: int) -> usize {
+    if j == 0 { (b & 0xffff_ffffu64) as usize } else { (b >> 32u64) as usize }
 }
 
 /// TRUSTED (the layout of the heap model, TRUSTED.md section 1 "Memory
@@ -756,7 +786,9 @@ pub open spec fn obj_words(o: HeapObj) -> int {
 /// fields of an instance are words `INSTANCE_FIELDS_WORD..`; an array has
 /// its length at `ARRAY_LENGTH_WORD` and its elements from
 /// `ARRAY_ELEMENTS_WORD`; references are encoded by `abs::enc` (smis and
-/// tagged addresses). Checked against the C++ by the layout check.
+/// tagged addresses); a double's bits and a large integer's value are the
+/// words from `DOUBLE_VALUE_WORD` resp. `LARGE_INTEGER_VALUE_WORD`
+/// (`value_word`). Checked against the C++ by the layout check.
 pub open spec fn word_val(o: HeapObj, cb: Seq<u16>, addrs: Seq<usize>, k: int, v: usize) -> bool {
     if k == 0 {
         &&& hdr_class_id(v) == o.class_id
@@ -766,6 +798,8 @@ pub open spec fn word_val(o: HeapObj, cb: Seq<u16>, addrs: Seq<usize>, k: int, v
             Body::Instance(f) => v == crate::abs::enc(addrs, f[k - INSTANCE_FIELDS_WORD]),
             Body::Array(e) =>
                 if k == ARRAY_LENGTH_WORD { v == e.len() } else { v == crate::abs::enc(addrs, e[k - ARRAY_ELEMENTS_WORD]) },
+            Body::Double(_) => v == value_word(value64(o), k - DOUBLE_VALUE_WORD),
+            Body::LargeInt(_) => v == value_word(value64(o), k - LARGE_INTEGER_VALUE_WORD),
             _ => true,
         }
     }
@@ -1133,8 +1167,43 @@ impl Heap {
         self.write_barrier(obj);
     }
 
+    /// The 64-bit payload of the double or large integer `id`: its value
+    /// word (two words on 32-bit targets).
+    #[cfg(target_pointer_width = "64")]
+    #[inline(always)]
+    fn read_value64(&self, obj: usize, Ghost(id): Ghost<int>) -> (r: u64)
+        requires
+            0 <= id < self.objs().len(),
+            obj == self.addrs()[id],
+            self.objs()[id].body is Double || self.objs()[id].body is LargeInt,
+        ensures r == value64(self.objs()[id]),
+    {
+        let w = self.read_word(obj, DOUBLE_VALUE_WORD, Ghost(id));
+        let ghost b = value64(self.objs()[id]);
+        proof { assert(w == b as usize ==> w as u64 == b) by (bit_vector); }
+        w as u64
+    }
+
+    #[cfg(target_pointer_width = "32")]
+    #[inline(always)]
+    fn read_value64(&self, obj: usize, Ghost(id): Ghost<int>) -> (r: u64)
+        requires
+            0 <= id < self.objs().len(),
+            obj == self.addrs()[id],
+            self.objs()[id].body is Double || self.objs()[id].body is LargeInt,
+        ensures r == value64(self.objs()[id]),
+    {
+        let lo = self.read_word(obj, DOUBLE_VALUE_WORD, Ghost(id));
+        let hi = self.read_word(obj, DOUBLE_VALUE_WORD + 1, Ghost(id));
+        let ghost b = value64(self.objs()[id]);
+        proof {
+            assert(lo == (b & 0xffff_ffffu64) as usize && hi == (b >> 32u64) as usize
+                ==> ((lo as u64) | ((hi as u64) << 32u64)) == b) by (bit_vector);
+        }
+        (lo as u64) | ((hi as u64) << 32)
+    }
+
     /// The bits of the double `id` (its value word).
-    #[verifier::external_body]
     #[inline(always)]
     pub fn double_bits(&self, obj: usize, Ghost(id): Ghost<int>) -> (r: u64)
         requires
@@ -1144,12 +1213,10 @@ impl Heap {
             self.objs()[id].body is Double,
         ensures r == self.objs()[id].body->Double_0,
     {
-        // Word aligned only (two words on 32-bit targets).
-        unsafe { core::ptr::read_unaligned((obj - HEAP_TAG + DOUBLE_VALUE_WORD * WORD_SIZE) as *const u64) }
+        self.read_value64(obj, Ghost(id))
     }
 
     /// The value of the large integer `id` (its value word).
-    #[verifier::external_body]
     #[inline(always)]
     pub fn large_int(&self, obj: usize, Ghost(id): Ghost<int>) -> (r: i64)
         requires
@@ -1159,7 +1226,10 @@ impl Heap {
             self.objs()[id].body is LargeInt,
         ensures r == self.objs()[id].body->LargeInt_0,
     {
-        unsafe { core::ptr::read_unaligned((obj - HEAP_TAG + LARGE_INTEGER_VALUE_WORD * WORD_SIZE) as *const i64) }
+        let b = self.read_value64(obj, Ghost(id));
+        let ghost x = self.objs()[id].body->LargeInt_0;
+        proof { assert(b == x as u64 ==> b as i64 == x) by (bit_vector); }
+        b as i64
     }
 
     /// The length of the string `id` (internal: the 32-bit length field;
