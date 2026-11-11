@@ -219,6 +219,16 @@ test-crafted-input:
   expect-throw "WRONG_OBJECT_TYPE": tison.decode (make-tison #[TAG-POSITIVE-SMI] + overlong)
   expect-throw "WRONG_OBJECT_TYPE": tison.decode (make-tison #[TAG-STRING-INLINE] + overlong)
 
+  // Cardinals whose last digit has bits beyond the word (the bits used to be
+  // dropped, so that 2^64 + 5 decoded as 5).
+  two-64 := #[0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x02]
+  two-64-plus-5 := #[0x85, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x02]
+  // 2^32 is beyond the word of a 32-bit VM.
+  two-32 := #[0x80, 0x80, 0x80, 0x80, 0x10]
+  expect-throw "WRONG_OBJECT_TYPE": tison.decode (make-tison #[TAG-POSITIVE-SMI] + two-64-plus-5)
+  expect-throw "WRONG_OBJECT_TYPE": tison.decode (make-tison #[TAG-ARRAY] + two-64)
+  expect-throw "WRONG_OBJECT_TYPE": tison.decode (make-tison #[TAG-ARRAY] + two-32)
+
   // Deeply nested arrays and maps must not exhaust the native stack.
   [TAG-ARRAY, TAG-MAP].do: | tag/int |
     depth := 1_000_000

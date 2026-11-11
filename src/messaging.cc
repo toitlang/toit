@@ -836,18 +836,20 @@ uword MessageDecoder::read_cardinal() {
   uint8 byte = read_uint8();
   int shift = 0;
   while (byte >= 128) {
-    // A cardinal never has more bits than a word. Longer encodings are
-    // malformed (and shifting by the word size or more is undefined).
-    if (shift >= WORD_BIT_SIZE) {
+    // A cardinal never has more bits than a word. Longer encodings, and
+    // digits with bits beyond the word, are malformed (and shifting by the
+    // word size or more is undefined).
+    uword digit = byte - 128;
+    if (shift >= WORD_BIT_SIZE || digit > (UINTPTR_MAX >> shift)) {
       mark_malformed();
       return 0;
     }
-    result += (((uword) byte) - 128) << shift;
+    result += digit << shift;
     shift += 7;
     byte = read_uint8();
   }
   if (byte == 0 && overflown()) return 0;
-  if (shift >= WORD_BIT_SIZE) {
+  if (shift >= WORD_BIT_SIZE || byte > (UINTPTR_MAX >> shift)) {
     mark_malformed();
     return 0;
   }
