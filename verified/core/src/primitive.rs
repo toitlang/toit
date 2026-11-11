@@ -247,7 +247,7 @@ pub open spec fn args_at(m: Machine) -> int {
 /// At a PRIMITIVE the Rust primitives' preconditions hold: the heap is the
 /// one the abstraction describes (`prims::heap_inv`) and the frame's
 /// parameters, block references as their smis, are at `args_at(m)`.
-proof fn lemma_rust_args(p: &Program, m: Machine, arity: usize)
+pub proof fn lemma_rust_args(p: &Program, m: Machine, arity: usize)
     requires
         m.inv(p),
         cur_op(p.ap@, m.g@) == 89,
@@ -311,7 +311,7 @@ proof fn lemma_rust_args(p: &Program, m: Machine, arity: usize)
 /// `m1` is `m0` with a heap the primitive left (`prims::heap_post`: only
 /// as `prim_heap_ok` allows, no object moved) and the ghost state with that
 /// heap: it refines it.
-proof fn lemma_refines_heap(p: &Program, m0: Machine, m1: Machine)
+pub proof fn lemma_refines_heap(p: &Program, m0: Machine, m1: Machine)
     requires
         m0.refines(p),
         prims::heap_post(p, &m0.heap, &m1.heap),
@@ -427,7 +427,7 @@ fn op_rust_primitive(m: &mut Machine, env: &Env, index: u16, arity: usize) -> (r
 /// arguments themselves (`prim_returns`): the precise contracts apply to
 /// plain arguments, where the views agree; otherwise only the default
 /// contract, which does not depend on the arguments.
-proof fn lemma_completion(p: &Program, g: State2, index: u16, h2: Seq<HeapObj>, r: PrimRet, vs: Seq<Value>)
+pub proof fn lemma_completion(p: &Program, g: State2, index: u16, h2: Seq<HeapObj>, r: PrimRet, vs: Seq<Value>)
     requires
         vs == prim_args(p.ap@, g),
         prim_spec(p.ap@, 0, index, norm_args(vs), g.heap, h2, r),

@@ -9,4 +9,4 @@
 # section 8, performance pass). No effect on the proofs (Verus does not use
 # this file).
 [build]
-rustflags = ["-C", "llvm-args=-tail-dup-size=12"]
+rustflags = ["-C", "llvm-args=-tail-dup-size=12", "-C", "llvm-args=-vectorize-slp=false"]

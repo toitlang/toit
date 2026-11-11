@@ -959,7 +959,7 @@ pub fn bridge_r(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
     ensures rpost(&env.p, *old(m), *old(r), *final(m), *final(r), c),
 {
     let (r2, c) = bridge(m, *r, env);
-    *r = r2;
+    crate::regs::set_regs(r, r2);
     c
 }
 
@@ -1465,6 +1465,28 @@ pub fn step_r(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
         37 => {
             proof { assert(sp::step(ap, g) == sp::op_store_global_dynamic(ap, g)) by { reveal(sp::step); } }
             return crate::rblocks::op_store_global_dynamic(m, r, env, bci, opcode);
+        },
+        78 => {
+            return crate::rarrays::op_invoke_at(m, r, env, bci, 78);
+        },
+        79 => {
+            return crate::rarrays::op_invoke_at_put(m, r, env, bci, 79);
+        },
+        80 => {
+            return crate::rarrays::op_invoke_size(m, r, env, bci, 80);
+        },
+        42 => {
+            let c = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_allocate(ap, g, c as int, 2)) by { reveal(sp::step); } }
+            return crate::rarrays::op_allocate(m, r, env, bci, 42, c, 2);
+        },
+        43 => {
+            let c = code_u16(p, bci + 1);
+            proof { assert(sp::step(ap, g) == sp::op_allocate(ap, g, c as int, 3)) by { reveal(sp::step); } }
+            return crate::rarrays::op_allocate(m, r, env, bci, 43, c, 3);
+        },
+        89 => {
+            return crate::rarrays::op_primitive(m, r, env, bci, 89);
         },
         _ => {
             return bridge_r(m, r, env);

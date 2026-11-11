@@ -46,6 +46,7 @@ pub mod rcalls;
 pub mod rfields;
 pub mod rops;
 pub mod rblocks;
+pub mod rarrays;
 pub mod machine;
 pub mod step;
 pub mod calls;

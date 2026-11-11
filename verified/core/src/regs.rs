@@ -124,6 +124,20 @@ impl Machine {
     }
 }
 
+/// Copies registers returned by an out-of-line path field by field (a
+/// whole-struct copy makes LLVM keep pairs of them in vector registers).
+#[inline(always)]
+pub fn set_regs(r: &mut Regs, r2: Regs)
+    ensures *final(r) == r2,
+{
+    r.sp = r2.sp;
+    r.fp = r2.fp;
+    r.fr = r2.fr;
+    r.rt = r2.rt;
+    r.end = r2.end;
+    r.bci = r2.bci;
+}
+
 /// The facts the register handlers start from: the registers are cursors
 /// of the machine, which refines its ghost state with them, and the top
 /// frame has `STACK_RESERVE` free words (`room::lemma_room_top`), so a

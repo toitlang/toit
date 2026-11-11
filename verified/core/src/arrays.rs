@@ -221,7 +221,7 @@ pub open spec fn val_ok(m: Machine, w: usize, v: Value) -> bool {
 }
 
 pub proof fn lemma_val(p: &Program, m: Machine, w: usize, v: Value)
-    requires m.refines(p), val_ok(m, w, v),
+    requires m.hrefines(p), val_ok(m, w, v),
     ensures
         encodable(m.addr(), v),
         (w & 1 == 1) == (v is Obj),
@@ -241,7 +241,7 @@ impl Machine {
     /// `is_instance` of the value `v` (word `w`): its field count and class.
     #[inline(always)]
     pub fn inst_x(&self, p: &Program, w: usize, Ghost(v): Ghost<Value>) -> (r: Option<(usize, i64)>)
-        requires self.refines(p), vals_good(self.g@.heap), val_ok(*self, w, v),
+        requires self.hrefines(p), vals_good(self.g@.heap), val_ok(*self, w, v),
         ensures
             r is Some == is_instance(as1(self.g@), v),
             r is Some ==> (r->0).0 == fields(as1(self.g@), v).len()
@@ -274,7 +274,7 @@ impl Machine {
     #[inline(always)]
     pub fn field_x(&self, p: &Program, w: usize, Ghost(v): Ghost<Value>, f: usize) -> (r: (usize, Ghost<Value>))
         requires
-            self.refines(p), vals_good(self.g@.heap), val_ok(*self, w, v),
+            self.hrefines(p), vals_good(self.g@.heap), val_ok(*self, w, v),
             is_instance(as1(self.g@), v),
             f < fields(as1(self.g@), v).len(),
         ensures
@@ -293,7 +293,7 @@ impl Machine {
     /// `is_array` of the value `v` (word `w`): its length.
     #[inline(always)]
     pub fn array_x(&self, p: &Program, w: usize, Ghost(v): Ghost<Value>) -> (r: Option<usize>)
-        requires self.refines(p), vals_good(self.g@.heap), val_ok(*self, w, v),
+        requires self.hrefines(p), vals_good(self.g@.heap), val_ok(*self, w, v),
         ensures
             r is Some == is_array(as1(self.g@), v),
             r is Some ==> r->0 == elements(as1(self.g@), v).len() && r->0 < 0x4000_0000,
@@ -313,7 +313,7 @@ impl Machine {
     /// `is_bytes` of the value `v` (word `w`): its length.
     #[inline(always)]
     pub fn bytes_x(&self, p: &Program, w: usize, Ghost(v): Ghost<Value>) -> (r: Option<usize>)
-        requires self.refines(p), vals_good(self.g@.heap), val_ok(*self, w, v),
+        requires self.hrefines(p), vals_good(self.g@.heap), val_ok(*self, w, v),
         ensures
             r is Some == is_bytes(as1(self.g@), v),
             r is Some ==> r->0 == bytes(as1(self.g@), v).len() && r->0 < MAX_BLOB_LENGTH,
@@ -333,7 +333,7 @@ impl Machine {
     /// The value `v` (word `w`) is a smi: its value.
     #[inline(always)]
     pub fn smi_x(&self, p: &Program, w: usize, Ghost(v): Ghost<Value>) -> (r: Option<i64>)
-        requires self.refines(p), val_ok(*self, w, v),
+        requires self.hrefines(p), val_ok(*self, w, v),
         ensures
             r is Some == v is Smi,
             r is Some ==> r->0 == v->Smi_0 && smi_range(r->0 as int),
@@ -350,7 +350,7 @@ impl Machine {
     pub fn array_loc(&self, p: &Program, aw: usize, Ghost(av): Ghost<Value>, length: i64, n: usize,
         is_put: bool, Ghost(value): Ghost<Value>) -> (r: Loc)
         requires
-            self.refines(p), vals_good(self.g@.heap), val_ok(*self, aw, av),
+            self.hrefines(p), vals_good(self.g@.heap), val_ok(*self, aw, av),
             is_array(as1(self.g@), av),
             n as int <= MAX_SMI,
         ensures loc_ok(*self, r, array_at(as1(self.g@), av, length as int, n as int, is_put, value), is_put, value),
@@ -372,7 +372,7 @@ impl Machine {
     pub fn bytes_loc(&self, p: &Program, bw: usize, Ghost(bv): Ghost<Value>, n: usize,
         is_put: bool, vw: usize, Ghost(value): Ghost<Value>) -> (r: Loc)
         requires
-            self.refines(p), vals_good(self.g@.heap), val_ok(*self, bw, bv),
+            self.hrefines(p), vals_good(self.g@.heap), val_ok(*self, bw, bv),
             is_bytes(as1(self.g@), bv),
             n as int <= MAX_SMI,
             is_put ==> val_ok(*self, vw, value),
@@ -399,7 +399,7 @@ impl Machine {
     pub fn cow_loc(&self, p: &Program, cw: usize, Ghost(cv): Ghost<Value>, n: usize,
         is_put: bool, vw: usize, Ghost(value): Ghost<Value>) -> (r: Loc)
         requires
-            self.refines(p), vals_good(self.g@.heap), val_ok(*self, cw, cv),
+            self.hrefines(p), vals_good(self.g@.heap), val_ok(*self, cw, cv),
             is_instance(as1(self.g@), cv),
             n as int <= MAX_SMI,
             is_put ==> val_ok(*self, vw, value),
@@ -435,7 +435,7 @@ impl Machine {
     pub fn locate(&self, p: &Program, rw: usize, Ghost(rv): Ghost<Value>, n: usize,
         is_put: bool, vw: usize, Ghost(value): Ghost<Value>, fuel: usize) -> (r: Loc)
         requires
-            self.refines(p), vals_good(self.g@.heap), val_ok(*self, rw, rv),
+            self.hrefines(p), vals_good(self.g@.heap), val_ok(*self, rw, rv),
             n as int <= MAX_SMI,
             is_put ==> val_ok(*self, vw, value),
         ensures loc_ok(*self, r, fast_at(p1(p.ap@), as1(self.g@), rv, Value::Smi(n as i64), is_put, value, fuel as nat),
@@ -525,7 +525,7 @@ impl Machine {
     pub fn large_loc(&self, p: &Program, rw: usize, Ghost(rv): Ghost<Value>, is_large: bool, n: usize,
         is_put: bool, vw: usize, Ghost(value): Ghost<Value>, fuel: usize) -> (r: Loc)
         requires
-            self.refines(p), vals_good(self.g@.heap), val_ok(*self, rw, rv),
+            self.hrefines(p), vals_good(self.g@.heap), val_ok(*self, rw, rv),
             n as int <= MAX_SMI,
             is_put ==> val_ok(*self, vw, value),
             is_instance(as1(self.g@), rv),
@@ -797,7 +797,7 @@ pub proof fn lemma_prog_rel_update(p: &Program, objs: Seq<HeapObj>, a: Seq<usize
 /// smi, else `fast_at` fails.
 #[inline(always)]
 pub fn index_x(m: &Machine, p: &Program, wa: usize, Ghost(a): Ghost<Value>) -> (r: Option<usize>)
-    requires m.refines(p), wa == enc(m.addr(), a), encodable(m.addr(), a), a is Smi || a is Obj,
+    requires m.hrefines(p), wa == enc(m.addr(), a), encodable(m.addr(), a), a is Smi || a is Obj,
     ensures
         r is Some ==> a == Value::Smi(r->0 as i64) && r->0 as int <= MAX_SMI,
         r is None ==> !(a is Smi) || a->Smi_0 < 0,
@@ -1010,7 +1010,7 @@ impl Machine {
     /// `spec_helpers::fast_size` of the value `v` (word `w`).
     #[inline(always)]
     pub fn size_x(&self, p: &Program, w: usize, Ghost(v): Ghost<Value>) -> (r: Option<i64>)
-        requires self.refines(p), vals_good(self.g@.heap), val_ok(*self, w, v),
+        requires self.hrefines(p), vals_good(self.g@.heap), val_ok(*self, w, v),
         ensures
             r is Some == fast_size(p1(p.ap@), as1(self.g@), v) is Some,
             r is Some ==> r->0 as int == fast_size(p1(p.ap@), as1(self.g@), v)->0 && smi_range(r->0 as int),

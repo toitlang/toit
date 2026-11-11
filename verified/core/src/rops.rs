@@ -337,7 +337,7 @@ pub fn op_invoke_arith(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opc
                 };
                 proof { assert(bits == float_arith(opcode, x, y)); }
                 let (r2, c) = arith_double(m, *r, env, bci, opcode, bits);
-                *r = r2;
+                crate::regs::set_regs(r, r2);
                 return c;
             }
         }
