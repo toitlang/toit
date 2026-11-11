@@ -4,6 +4,24 @@ One entry per change of `src/v2/spec.rs`, `src/v2/prim.rs`, `src/v2/types.rs`
 or the verifier's rules (`src/v2/verifier.rs`) that an implementation of
 the spec (the verified core, the VM's loader) must follow. Newest first.
 
+## 2026-11-11 (branch proposal/builtins only, not decided): three built-ins
+
+What (note 19): opcodes LOOP_REPEAT (101, 4 bytes), LOOP_ARRAY (102, 4
+bytes) and HASH_FIND (103, 5 bytes); `OPCODE_COUNT2` is 104.
+
+* `spec.rs`: `op_loop_repeat`, `op_loop_array` (with `loop_slots_ok`,
+  `loop_taken`, `loop_array_go`), `op_hash_find` (with `Probe`,
+  `hf_at`, `is_tombstone`, `hf_probe`, `hf_find`, `HF_FULL`,
+  `HF_IRREGULAR`, `HF_MAX_INDEX`); `step` dispatches them.
+* `verifier.rs`: `post` and `instr_ok` learn `is_loop`/`loop_ok`/
+  `loop_kinds`/`loop_operands` (fall-through: the top popped; target of
+  the backward branch: `loop_kinds`) and `hf_ok`/`hf_kinds` (fall-through:
+  `hf_kinds`; forward miss target: the kinds plus a value). `accepts` is
+  otherwise unchanged; programs without the opcodes are accepted exactly
+  as before.
+* An implementation must handle the three opcodes (the core does, verified;
+  the VM's loader tables `V2_OPCODE_LENGTHS`; the disassembler).
+
 ## 2026-11-11: shipped certificates; the global part as byte tables
 
 What (`src/v2/check.rs`, new `src/v2/cert.rs`; note 18): `accepts`, the
