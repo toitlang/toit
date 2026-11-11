@@ -1,0 +1,4 @@
+heap/
+asm/
+*.blob
+*.list

@@ -1,0 +1,245 @@
+Red-team review, round 3 (2026-11-11)
+=====================================
+Independent agent. Target: a fully attacker-controlled format-2 snapshot
+(bytecode + program heap + optional certificate) run `toit.run --untrusted`.
+Goal: memory corruption / VM crash / isolation breach / primitive-policy
+bypass / unverified execution. This round builds the two tools round 2 said
+were missing (a program-heap editor and a method assembler) and runs the
+batteries the brief requires.
+
+VERDICT: not broken (one LOW, debug-build-only assertion; see F1). No memory
+corruption, no release-build crash, no isolation breach, no policy bypass, no
+unverified execution was found. 66 crafted heaps and 69 assembled methods were
+run on the normal and the ASan/UBSan build; every malformed bytecode was
+rejected by the verifier with a named rule, every structurally invalid heap was
+rejected by the loader with a named check, and the verified runtime re-checks
+object fields at use (confirmed empirically).
+
+================================================================
+ENVIRONMENT
+================================================================
+- Worktree: review/red-team-3 = review/red-team-2 + merge sandbox-integration.
+  The merge pulled fixes/integer-overflow-ub into the C++ (interpreter_run.cc,
+  primitive_core.cc, primitive_encoding.cc, snapshot.cc, utils.*), so this
+  worktree was built fresh (round-2's build could not be reused).
+- Normal build:  build/host/sdk/lib/toit/bin/toit.run   (TOIT_VERIFIED_CORE,
+  _INFER: host infers+verifies a certificate when none is shipped).
+- Sanitizer build: build/asan/sdk/lib/toit/bin/toit.run
+  (CMAKE_BUILD_TYPE=asan, -fsanitize=address,undefined; needs
+  `mkdir build/asan/generated build/asan/run_image` before linking toit.run).
+  One benign UBSan line prints on every run (primitive.h, format-1 path);
+  run-both.sh / the batteries filter it.
+- 32-bit host differential: NOT DONE (time). Left for a future round.
+
+================================================================
+TOOLS BUILT (committed in tools/)
+================================================================
+tools/heapinfo.toit  -- decodes a snapshot with the snapshot library and prints
+  literal/global/root heap objects (class id, class name, kind, fields) and,
+  with --classes, the class table (id/tag/instance-size). Used to pick targets.
+
+tools/heapcraft.toit -- DELIVERABLE 1, the PROGRAM-HEAP EDITOR. Parses the
+  "snapshot" ar member's program segment (src/snapshot.cc SnapshotReader /
+  src/program.cc Program::write) into an editable node tree that reproduces the
+  serialization exactly, mutates heap objects, and writes back a loadable
+  snapshot (certificate dropped so the host re-infers/verifies, or --keep-cert).
+    * `verify` round-trips with no edits and asserts BYTE-IDENTITY with the
+      original segment (passes on every snapshot tried) -- the parser/emitter is
+      proven faithful.
+    * edits: change any instance field / array element to a smi, a back-ref
+      (to any heap object, incl. the object itself => cycles/sharing) ; change
+      class-id and header bits (tag, finalizer, raw) ; change an object's
+      optional-length (allocation length) and an instance's separately-encoded
+      field count independently (size/field desync) ; change string / byte-array
+      content.
+    * Width-free: because allocation sizes are unchanged for field/header/
+      content edits, only the segment content-size (and ar member size) are
+      recomputed; block / off-heap / back-table counts stay valid. (The off-heap
+      byte count and block counts come only from objects/lists this tool does
+      not resize, so they are untouched.) Large integers are encoded inline as
+      SMIs in the stream (they only become heap objects at load), so they are
+      not separately listable -- a documented limitation.
+  PROOF IT WORKS: heapcraft edit lits.snapshot ... content 31 <hex>  rewrites the
+  "hello-literal" string literal; the program then prints the new text
+  ("HELLO-EDITED!") and still verifies. (review/red-team/round3/repro/lits*.)
+
+tools/asm.toit       -- DELIVERABLE 2, the METHOD ASSEMBLER. Replaces the whole
+  body of a chosen method with a symbolic instruction sequence (mnemonics from
+  BYTE-CODES-V2, labels for forward/back branches, a RAW <hex> escape for
+  truncated/mid-instruction/out-of-range bytes). It rebuilds the method-header
+  length LEB, splices the TBC2 blob, and fixes the blob length prefix, the
+  segment content-size and the program header's off-heap byte count. Format-2
+  calls use method *indices* (not bcis), so no other method needs relocating.
+    * `list` / `dump` enumerate and disassemble methods.
+  PROOF IT WORKS: asm patch num.snapshot ... main '<sum loop>' assembles a
+  for-loop that sums 1..10; it reproduces the compiler's bytecode byte-for-byte
+  while growing main from 6 to 30 bytes, re-verifies, and prints 55 on both
+  builds. (review/red-team/round3/repro/asm-loop.snapshot; loop.toit is the
+  source whose bytes it reproduces.)
+
+================================================================
+DELIVERABLE 1 -- CRAFTED HEAPS (review/red-team/round3/battery-heap.sh)
+================================================================
+Base victim.toit routes string / byte-array / float / large-int literals
+straight through the untrusted C++ primitives (string_slice, string_at,
+string_length, byte_array_at/length, slices) and the object encoder
+(print, process_send to the system process). 64 distinct crafted heaps, each
+run on both builds. Object indices from `heapcraft list` (#33 STR, #29 BA,
+#34 float, #0 LazyInitializer_, #122 Exception_ root).
+
+Counts by family (accepted = loaded + verified + ran; not a weakness by itself):
+  H5 string/byte-array content (8)         -- 4 accepted, 4 rejected (see F1)
+  H3 header bits / class-id edge (10)      -- 2 accepted, 8 loader-rejected
+  H4 optlen / fieldcount desync (9)        -- 0 accepted, 9 loader-rejected
+  H2/H8 instance class-id confusion (12)   -- 4 accepted, 8 loader-rejected
+  H1 instance field kind confusion (10)    -- 6 accepted, 2 rejected, 2 INVALID
+  H6 shared/wrong-kind graphs, encoder (3) -- 3 accepted
+  H2 oddball class-id (4)                   -- 1 accepted, 3 loader-rejected
+  H4b raw-header extremes (4)               -- 0 accepted, 4 loader-rejected
+  +1 no-op pipeline baseline.
+  Totals: 64 crafted; 20 accepted-and-benign; 40 loader-rejected; 2 verified-
+  runtime INVALID_PROGRAM; 2 => F1.
+
+Named loader checks observed (src/snapshot.cc SnapshotReader::read_object):
+  - class-id out of range / tag mismatch / variable-sized-object-of-fixed-class
+    => "Failed to start ... INVALID_ARGUMENT / VERIFICATION_FAILED".
+  - instance optional-length must equal the class's declared size
+    ("instance size does not match its class"): defeats every optlen/fieldcount
+    desync (lazy-optlen-2, exc-fieldcount-9, ...) and every same-tag-but-wrong-
+    size confusion (exc-as-map, lazy-as-list).
+  - class-tag(header) == raw heap-tag == class_tag_from_class_bits[class_id]
+    (triple agreement): defeats every cross-tag confusion (exc-as-task/-stack,
+    str-as-instance, ba-as-list, null-as-instance).
+  Same-size, same-tag instance confusions ARE loader-accepted (exc-as-list,
+  exc-as-largearray, exc-as-cowbytearray, lazy-as-mapstringify, ...), but the
+  confused root is not reached by the victim with the confused operation, and
+  the verified runtime re-checks field receivers at use in every build
+  (docs confirm: "the interpreter checks every field access of an untrusted
+  process at run time, in every build"; a bad access throws INVALID_PROGRAM),
+  so no confusion turned into a memory access. The initializer field is the one
+  such field the victim DOES use: lazy-field0-smi-huge/-neg are accepted by the
+  loader but raise INVALID_PROGRAM at use (see "closest misses").
+
+================================================================
+DELIVERABLE 2 -- ASSEMBLED METHODS (review/red-team/round3/battery-asm.sh)
+================================================================
+67 distinct bodies assembled into main (arity 0) of num.snapshot, each run on
+both builds. 6 families, all aimed at verifier-vs-machine disagreement.
+
+  opcode / trusted-only (7): HALT 0/2/3, opcode 101/200/255, in-context 101.
+     -> all rejected: "invalid opcode N" / "HALT rejected" / "successor
+        outside the method".
+  stack underflow / height (8): POP_1/POP 5 at height 0, INVOKE_ADD with 0/1
+     operands, LOAD_LOCAL_5 / STORE_LOCAL 64 with no locals, RETURN with a tall
+     stack. -> underflows rejected "<op> rejected with kinds []"; RETURN with
+     extra stack is ACCEPTED (safe: the frame is popped) -- nearest variant of
+     the height rule it does not cover, confirmed harmless.
+  fall-off / truncation / mid-instruction (8): empty body, fall-off-end,
+     RAW 35 / 1a / 59ff (truncated), branch into the middle / past the end.
+     -> "instruction crosses the method end" / "successor outside the method".
+  primitives (3): module/index out of range, valid-but-denied. -> "PRIMITIVE
+     rejected with kinds []" (the arity/validity gate; the allowed-set gate is
+     separate at run time, as round 2 noted).
+  control-flow merges (4): height mismatch at a merge, stack-growing loop,
+     block-ref-vs-value and method-id-vs-value and value-vs-initializer in the
+     same slot then used. -> "incompatible kinds at merge: [..] and [..]" or
+     "<op> rejected" -- the kind/height lattice rejects every one.
+  blocks (5): LOAD_BLOCK of an out-of-range / non-block method id, INVOKE_BLOCK
+     on a value / wrong arity, LOAD_OUTER_BLOCK at top level. -> "LOAD_BLOCK
+     rejected" / "INVOKE_BLOCK rejected".
+  non-local return/branch (4): NON_LOCAL_RETURN / NON_LOCAL_BRANCH at top level,
+     crafted height/target. -> "NON_LOCAL_* rejected" / "rejected by the checker".
+  TRY / UNWIND (6): UNWIND without TRY, TRY alone / TRY+RETURN / TRY+UNWIND with
+     and without stacked values. -> "TRY rejected" / "UNWIND rejected" (the
+     handler-stack model requires the compiler's exact shape).
+  tail calls (6): INVOKE_STATIC_TAIL ok/oob, INVOKE_LAMBDA_TAIL on value/empty,
+     INVOKE_INITIALIZER_TAIL on value / out-of-range id. -> mostly rejected;
+     two accepted-and-safe (see closest misses).
+  throw / field-this / global / literal / allocate / virtual oob (10):
+     THROW empty (rejected) / THROW smi (accepted => uncaught, safe);
+     LOAD/STORE_FIELD_THIS with no receiver, LOAD_GLOBAL_VAR / LOAD_LITERAL(_WIDE)
+     / ALLOCATE / INVOKE_VIRTUAL with out-of-range operands -> all "<op>
+     rejected with kinds [..]".
+  Totals: 67 assembled; 63 rejected by the verifier (named rule each); 4
+     accepted and safe. + loop proof + deep-recursion test (69 total).
+
+Additional: a real deeply-recursive program (deep.toit) run untrusted yields a
+graceful STACK_OVERFLOW on both builds, no sanitizer trip (toit_v2_grow_stack).
+
+================================================================
+FINDINGS
+================================================================
+F1 (LOW, debug/ASan-build only, no release impact).
+  A crafted invalid-UTF-8 string literal trips a C++ assertion in the
+  debug/sanitizer build:
+      ../../src/objects.cc:442: fatal: assertion failure, _is_valid_utf8()
+  from String::_assign_hash_code, during program load -- BEFORE the loader's
+  graceful rejection runs. In the RELEASE/shipped build the assertion is a
+  no-op and the program is cleanly rejected (host: "Failed to start ...
+  INVALID_ARGUMENT" / "a string literal isn't valid UTF-8 (loaded_ok)",
+  VERIFICATION_FAILED) with no execution, no memory access.
+  Reduce + confirm (clean builds): review/red-team/round3/repro/utf8-assert.snapshot
+    heapcraft edit lits.snapshot utf8-assert.snapshot content 31 48656c6c6f80576f726c6421212121
+    (one 0x80 byte in a string literal) -> host rejects, asan asserts. Also
+    str-high-bytes / str-all-ff / str-invalid-utf8-lead / str-utf8-truncated.
+  Assessment: the hash of the literal is assigned (debug-asserting UTF-8
+  validity) before the loaded_ok check rejects the program; the two run in the
+  wrong order for a debug build. The release VM is unaffected. Not a memory
+  safety bug. Adjacent to the builders' known, "fixed" invalid-utf-8-literal
+  item (Threats-tested, "Send strings that aren't valid UTF-8"): they list the
+  RELEASE rejection as fixed; the debug-build assertion ordering is not called
+  out there. Reported for completeness; recommend reordering or downgrading the
+  assert so debug builds also reject gracefully.
+
+================================================================
+CLOSEST MISSES (accepted by the verifier/loader, then stopped)
+================================================================
+1. INVOKE_INITIALIZER_TAIL with an out-of-range method id (asm init-tail-oob)
+   and a LazyInitializer_ literal whose field-0 method id is corrupted to a
+   huge/negative smi (heap lazy-field0-smi-huge/-neg): BOTH are accepted by the
+   verifier/loader (the verifier types the operand as a plain value and the
+   loader does not constrain a smi field's value). Stopped by the VERIFIED
+   runtime: verified/core/src/tail.rs op_invoke_initializer_tail bounds-checks
+   `mid < 0 || mid >= methods.len()` and `kind==METHOD && arity==0`, else raises
+   INVALID_PROGRAM -- which is delivered as a normal uncaught error. The abstract
+   model <-> real-VM correspondence holds exactly here.
+2. Same-size/same-tag instance class-id confusion (exc-as-list, exc-as-
+   largearray, exc-as-cowbytearray, lazy-as-mapstringify): loader-accepted
+   (field count and tag agree). Stopped by (a) the victim not invoking the
+   confused operation on the (VM-root) object, and (b) the always-on run-time
+   field-access check (every build) that throws INVALID_PROGRAM on a receiver
+   with the wrong shape. No path found to feed a loader-accepted confused
+   instance to a C++ primitive as the confused type: Toit builds List_/Map/slice
+   objects at run time (never as literals), and their backings are either
+   runtime objects or self-consistent literal strings/byte-arrays.
+3. RETURN with a tall stack / THROW of a smi (asm return-highstack, throw-smi):
+   accepted and safe -- RETURN discards the frame; THROW of an unhandled value
+   becomes a normal uncaught error.
+
+================================================================
+WHAT COULD NOT BE ATTACKED, AND WHY
+================================================================
+- A crafted List_ / Map / slice / CoW INSTANCE fed to a C++ collection/slice
+  primitive as that type: these are never literals (the compiler builds them at
+  run time from self-consistent backings), so the heap editor cannot place a
+  crafted one where a primitive consumes it. Corrupting the backing literal does
+  not help: string/byte-array literal length is self-consistent (optional-length
+  drives both allocation and length), and the run-time slice bounds are computed
+  from valid arguments. round 2 already reviewed that byte_content re-validates
+  from/to/length.
+- Large integers are inline SMIs in the snapshot stream (heap objects only at
+  load), so the heap editor cannot target a large-int object directly.
+- Off-heap / external byte arrays, encode_object, and the other denied
+  primitives are outside the untrusted set (primitive_policy.cc), so not
+  reachable to craft against.
+- 32-bit (host32) differential and install/flip-after-verdict lifecycle: not
+  done this round (time).
+
+================================================================
+REPRODUCE
+================================================================
+- Heap editor round-trip:  toit.run --project-root tools tools/heapcraft.toit verify <snap>
+- Crafted-heap battery:     bash review/red-team/round3/battery-heap.sh
+- Assembler loop proof + battery: bash review/red-team/round3/battery-asm.sh
+- Any one snapshot on both builds: bash review/red-team/round3/run-both.sh <snap>
+- Results logs: review/red-team/round3/repro/heap-results.txt, asm-results.txt
