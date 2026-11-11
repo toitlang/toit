@@ -173,11 +173,26 @@ add_custom_command(
   USES_TERMINAL
   VERBATIM
 )
-add_custom_target(toit_verified_core_build DEPENDS "${VCORE_LIB}")
+set(VCORE_LINKED_LIB "${VCORE_LIB}")
+if (${TOIT_IS_EMBEDDED})
+  # The firmware links newlib's libm, not compiler_builtins' copy of the C
+  # math functions (vmverify/staticlib/localize-libm.cmake).
+  set(VCORE_LINKED_LIB "${VCORE_LIB_DIR}/${CMAKE_STATIC_LIBRARY_PREFIX}toit_rust_device${CMAKE_STATIC_LIBRARY_SUFFIX}")
+  add_custom_command(
+    OUTPUT "${VCORE_LINKED_LIB}"
+    COMMAND ${CMAKE_COMMAND} -DNM=${CMAKE_NM} -DOBJCOPY=${CMAKE_OBJCOPY}
+            -DINPUT=${VCORE_LIB} -DOUTPUT=${VCORE_LINKED_LIB}
+            -P "${VMLIB_DIR}/localize-libm.cmake"
+    DEPENDS "${VCORE_LIB}" "${VMLIB_DIR}/localize-libm.cmake"
+    COMMENT "Localizing the C math functions of the Rust library"
+    VERBATIM
+  )
+endif()
+add_custom_target(toit_verified_core_build DEPENDS "${VCORE_LINKED_LIB}")
 
 add_library(toit_verified_core STATIC IMPORTED GLOBAL)
 set_target_properties(toit_verified_core PROPERTIES
-  IMPORTED_LOCATION "${VCORE_LIB}"
+  IMPORTED_LOCATION "${VCORE_LINKED_LIB}"
   INTERFACE_LINK_LIBRARIES "${VCORE_LINK_LIBRARIES}")
 add_dependencies(toit_verified_core toit_verified_core_build)
 

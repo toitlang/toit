@@ -1,5 +1,19 @@
 # Phase 4a progress (verified core, format 2 on x86-64)
 
+## Device size (branch device/size, 2026-11-11)
+
+Size reduction of the format-2 firmware (core, no C++ interpreter) for the
+classic ESP32. Nothing was flashed; scripts, logs and builds:
+/home/flo/work/opentoit-sandbox-artifacts/device-size.
+
+Bytes saved per change (classic ESP32 f2 toit.bin; base 1,550,048 B at
+d960ca45, f1 1,462,912 B):
+
+| Change | Commit | toit.bin | saved |
+|---|---|---:|---:|
+| base (d960ca45) | | 1,550,048 | |
+| newlib's libm instead of compiler_builtins' C math functions | S1 | 1,543,488 | 6,560 |
+
 ## Device builds on format 2 (branch device/format2, 2026-11-11)
 
 The classic ESP32 and the ESP32-C6 firmware can run everything in format
