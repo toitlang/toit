@@ -2292,7 +2292,9 @@ PRIMITIVE(create_off_heap_byte_array) {
   uint8* buffer = allocation.alloc(length);
   if (buffer == null) FAIL(ALLOCATION_FAILED);
 
-  ByteArray* result = process->object_heap()->allocate_proxy(length, buffer, true);
+  // The memory comes from malloc. Clear it, so the program doesn't see what
+  // the VM or other processes freed.
+  ByteArray* result = process->object_heap()->allocate_external_byte_array(length, buffer, true, true);
   if (result == null) FAIL(ALLOCATION_FAILED);
   allocation.keep_result();
   return result;
