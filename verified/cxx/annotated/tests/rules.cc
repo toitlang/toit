@@ -205,4 +205,22 @@ inline word count_up(word n) {
   return total;
 }
 
+// The closure rules (wave 6, the allocation entry points of
+// interpreter_v2.cc): a lambda is a struct of its captures and a function
+// of it; a function template instance taking it is one C function per
+// instance, named after the lambda, which calls the lambda's function.
+template <typename F>
+static word retry_once(word n, F produce) {
+  word result = produce();
+  if (result < 0) result = produce();
+  return result + n;
+}
+
+inline word use_lambdas(word a, word b) {
+  word base = a;
+  word first = retry_once(1, [&]() -> word { return base + b; });
+  base = first;
+  return retry_once(2, [&]() -> word { return base; });
+}
+
 }  // namespace toit

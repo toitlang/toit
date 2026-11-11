@@ -254,3 +254,41 @@ inline word count_up(word n)
     total++;
   return total;
 }
+
+@render verified/cxx/annotated/tests/rules.cc toit::use_lambdas
+inline word use_lambdas(word a, word b)
+//@ requires 0 <= a &*& a < 100 &*& 0 <= b &*& b < 100;
+//@ ensures result == a + b + 3;
+{
+  word base = a;
+  word first = retry_once(1, [&]() -> word
+  //@ requires [?f]closure->base |-> ?x &*& [f]closure->b |-> ?y &*& 0 <= x &*& x < 100 &*& 0 <= y &*& y < 100;
+  //@ ensures [f]closure->base |-> x &*& [f]closure->b |-> y &*& result == x + y;
+  { return base + b; });
+  base = first;
+  return retry_once(2, [&]() -> word
+  //@ requires [?f]closure->base |-> ?x &*& 0 <= x &*& x < 1000;
+  //@ ensures [f]closure->base |-> x &*& result == x;
+  { return base; });
+}
+
+@render verified/cxx/annotated/tests/rules.cc toit::retry_once lambda=toit::use_lambdas#1
+static word retry_once(word n, F produce)
+/*@ requires [?f]produce->base |-> ?x &*& [f]produce->b |-> ?y &*& 0 <= x &*& x < 100 &*& 0 <= y &*& y < 100 &*&
+             0 <= n &*& n < 10; @*/
+//@ ensures [f]produce->base |-> x &*& [f]produce->b |-> y &*& result == x + y + n;
+{
+  word result = produce();
+  if (result < 0) result = produce();
+  return result + n;
+}
+
+@render verified/cxx/annotated/tests/rules.cc toit::retry_once lambda=toit::use_lambdas#2
+static word retry_once(word n, F produce)
+//@ requires [?f]produce->base |-> ?x &*& 0 <= x &*& x < 1000 &*& 0 <= n &*& n < 10;
+//@ ensures [f]produce->base |-> x &*& result == x + n;
+{
+  word result = produce();
+  if (result < 0) result = produce();
+  return result + n;
+}

@@ -137,6 +137,24 @@ mutant drift-utf8 utf8/utf_8_to_16.render src/utils.cc DRIFT "" \
 
 # 3. The renderings.
 entry translator-rules      pass "" tests/rules.gen.c -allow_dead_code
+# The closure rules' checks (a captured reference is rendered as a copy of
+# the value): each change makes the copy differ from the reference and must
+# stop the translator. The lambda writes its capture; the enclosing
+# function takes a captured variable's address; the statement that creates
+# the lambda assigns a captured variable; the template instance keeps a
+# copy of the closure.
+RULES_CC=verified/cxx/annotated/tests/rules.cc
+mutant closure-lambda-writes tests/rules.render $RULES_CC "RENDER:the lambda .* uses the captured base" "" \
+  "{ return base; });" "{ return base = 0; });"
+mutant closure-address-taken tests/rules.render $RULES_CC "RENDER:the enclosing function uses the captured base" "" \
+  "  base = first;\n" "  word* alias = &base;\n  *alias = first;\n"
+mutant closure-statement-assigns tests/rules.render $RULES_CC "RENDER:the statement creating .* uses the captured b" "" \
+  "word first = retry_once(1, [&]() -> word" "word first = retry_once(b = 1, [&]() -> word"
+mutant closure-escapes tests/rules.render $RULES_CC "RENDER:closure parameter produce is used other than called" "" \
+  "static word retry_once(word n, F produce) {\n  word result = produce();" \
+  "static word retry_once(word n, F produce) {\n  F copy = produce;\n  word result = copy();" \
+  "SIDECAR::use_lambdas#1@@  word result = produce();" "  F copy = produce;\n  word result = copy();" \
+  "SIDECAR::use_lambdas#2@@  word result = produce();" "  F copy = produce;\n  word result = copy();"
 entry model                 pass "" model/objects.gen.c
 entry encoder               pass "" encoder/message_encoder.gen.c
 # The bound of write_cardinal's bytes (encoder/cardinal.h), with Z3.
