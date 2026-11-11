@@ -212,11 +212,6 @@ void fail(const char *format, ...);
 //@ requires true;
 //@ ensures false;
 
-// src/objects_inline.h (the page size less the allocator's overhead).
-word Array_max_length_in_process(void);
-//@ requires true;
-//@ ensures 0 < result &*& result <= MAX_OBJECT_WORDS;
-
 // src/heap.h: an external string or byte array over a block of a message
 // (IPC only), which takes the block; or null and the block stays with the
 // message.

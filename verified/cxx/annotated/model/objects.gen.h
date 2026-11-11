@@ -637,6 +637,12 @@ predicate allocated(list<void *> objs, fixpoint(void *, oinfo) H, Process *p, vo
     forall(objs, (same_obj)(H, H2)) == true &*& in_program_heap(p, r) == false;
 @*/
 
+// src/objects_inline.h: the longest array a process heap holds (the page
+// size less the allocator's overhead).
+word Array_max_length_in_process(void);
+//@ requires true;
+//@ ensures 0 < result &*& result <= MAX_OBJECT_WORDS;
+
 // A string with a copy of `length` bytes of content.
 String *Process_allocate_string__charp_word(Process *self, char *content, word length);
 /*@ requires [?f]process(self, ?prog, ?ids) &*& heap(?objs, ?H) &*& [?fc]uchars((uint8 *)content, length, ?cs) &*&
