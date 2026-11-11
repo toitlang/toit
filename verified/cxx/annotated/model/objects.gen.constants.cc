@@ -8,11 +8,7 @@
 #include <type_traits>
 #include <top.h>
 #include <objects.h>
-#include <messaging.h>
-#include <interpreter.h>
-#include <primitive.h>
-#include <process.h>
-#include <utils.h>
+#include <objects.cc>
 namespace toit {
 template <typename A, typename B> struct vf_same {
   static const bool value = std::is_same<typename std::decay<A>::type, typename std::decay<B>::type>::value;

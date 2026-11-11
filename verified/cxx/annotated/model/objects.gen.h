@@ -24,6 +24,8 @@ typedef intptr_t word;
 typedef uintptr_t uword;
 typedef unsigned char uint8;
 typedef unsigned short uint16;
+typedef long long int64;
+typedef unsigned long long uint64;
 typedef int TypeTag;
 
 // Every class is one opaque struct: the C++ classes have no data members,
@@ -354,5 +356,45 @@ bool is_string(Object *o);
 bool is_large_integer(Object *o);
 //@ requires [?f]heap(?objs, ?H) &*& good(objs, o) == true;
 //@ ensures [f]heap(objs, H) &*& result == has_tag(H, o, LARGE_INTEGER_TAG);
+
+// C++: src/objects.h:241 toit::HeapObject::class_tag
+TypeTag HeapObject_class_tag(HeapObject *self);
+//@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true;
+//@ ensures [f]heap(objs, H) &*& 0 <= result &*& result < 16;
+
+// C++: src/objects.h:1559 toit::Instance::cast
+Instance *Instance_cast(Object *value);
+//@ requires true;
+//@ ensures result == value;
+
+// C++: src/objects.h:468 toit::Array::cast
+Array *Array_cast(Object *array);
+//@ requires true;
+//@ ensures result == array;
+
+// C++: src/objects.h:640 toit::ByteArray::cast
+ByteArray *ByteArray_cast(Object *byte_array);
+//@ requires true;
+//@ ensures result == byte_array;
+
+// C++: src/objects.h:774 toit::LargeInteger::cast
+LargeInteger *LargeInteger_cast(Object *value);
+//@ requires true;
+//@ ensures result == value;
+
+// C++: src/objects.h:1190 toit::Double::cast
+Double *Double_cast(Object *value);
+//@ requires true;
+//@ ensures result == value;
+
+// C++: src/objects.h:1187 toit::Double::value (trusted: contract only)
+double Double_value(Double *self);
+//@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true &*& header_tag2(o_hw(H(self))) == 2 * DOUBLE_TAG;
+//@ ensures [f]heap(objs, H);
+
+// C++: src/objects.h:772 toit::LargeInteger::value (trusted: contract only)
+int64 LargeInteger_value(LargeInteger *self);
+//@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true &*& header_tag2(o_hw(H(self))) == 2 * LARGE_INTEGER_TAG;
+//@ ensures [f]heap(objs, H);
 
 #endif

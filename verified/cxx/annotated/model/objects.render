@@ -20,6 +20,8 @@ typedef intptr_t word;
 typedef uintptr_t uword;
 typedef unsigned char uint8;
 typedef unsigned short uint16;
+typedef long long int64;
+typedef unsigned long long uint64;
 typedef int TypeTag;
 
 // Every class is one opaque struct: the C++ classes have no data members,
@@ -625,3 +627,79 @@ inline bool is_large_integer(const Object* o)
   //@ if (is_heap_w((uword)o)) good_heap(objs, o);
   return is_heap_object(o) && HeapObject::cast(o)->has_class_tag(LARGE_INTEGER_TAG);
 }
+
+@render src/objects.h toit::HeapObject::class_tag tu=src/objects.cc
+  INLINE TypeTag class_tag() const
+  //@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true;
+  //@ ensures [f]heap(objs, H) &*& 0 <= result &*& result < 16;
+  {
+    //@ heap_open(self);
+    //@ uword hw = o_hw(H(self));
+    //@ open [f]header(self, hw);
+    //@ close [f]header(self, hw);
+    //@ div_rem_nonneg(hw, 2);
+    //@ shiftright_div(smi_val(hw), zero);
+    //@ div_rem_nonneg_unique(smi_val(hw), 1, smi_val(hw), 0);
+    //@ bitand_limits(hw / 2, 15, N4);
+    return static_cast<TypeTag>((Smi::value(header()) >> HeapObject::CLASS_TAG_OFFSET) & HeapObject::CLASS_TAG_MASK);
+    //@ heap_close(self);
+  }
+
+@render src/objects.h toit::Instance::cast tu=src/objects.cc type=Instance*(Object*)
+  static Instance* cast(Object* value)
+  //@ requires true;
+  //@ ensures result == value;
+  {
+    ASSERT(is_instance(value) || is_task(value));
+    return static_cast<Instance*>(value);
+  }
+
+@render src/objects.h toit::Array::cast tu=src/objects.cc type=Array*(Object*)
+  static Array* cast(Object* array)
+  //@ requires true;
+  //@ ensures result == array;
+  {
+     ASSERT(is_array(array));
+     return static_cast<Array*>(array);
+  }
+
+@render src/objects.h toit::ByteArray::cast tu=src/objects.cc type=ByteArray*(Object*)
+  static ByteArray* cast(Object* byte_array)
+  //@ requires true;
+  //@ ensures result == byte_array;
+  {
+     ASSERT(is_byte_array(byte_array));
+     return static_cast<ByteArray*>(byte_array);
+  }
+
+@render src/objects.h toit::LargeInteger::cast tu=src/objects.cc type=LargeInteger*(Object*)
+  static LargeInteger* cast(Object* value)
+  //@ requires true;
+  //@ ensures result == value;
+  {
+     ASSERT(is_large_integer(value));
+     return static_cast<LargeInteger*>(value);
+  }
+
+@render src/objects.h toit::Double::cast tu=src/objects.cc type=Double*(Object*)
+  static Double* cast(Object* value)
+  //@ requires true;
+  //@ ensures result == value;
+  {
+     ASSERT(is_double(value));
+     return static_cast<Double*>(value);
+  }
+
+@render src/objects.h toit::Double::value tu=src/objects.cc trusted
+  double value()
+  // The value word of a double (not modelled: the heap model has no body
+  // for doubles; reading it is reading inside the object).
+  //@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true &*& header_tag2(o_hw(H(self))) == 2 * DOUBLE_TAG;
+  //@ ensures [f]heap(objs, H);
+  { return _double_at(VALUE_OFFSET); }
+
+@render src/objects.h toit::LargeInteger::value tu=src/objects.cc trusted
+  int64 value()
+  //@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true &*& header_tag2(o_hw(H(self))) == 2 * LARGE_INTEGER_TAG;
+  //@ ensures [f]heap(objs, H);
+  { return _int64_at(VALUE_OFFSET); }

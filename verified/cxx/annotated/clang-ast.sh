@@ -6,7 +6,7 @@
 # flags of src/CMakeLists.txt that change what the code means: the
 # language standard and the defines; the include paths of the build).
 #
-# Usage: clang-ast.sh [--target TRIPLE] FILE FILTER OUT
+# Usage: clang-ast.sh [--target TRIPLE] [--repo DIR] FILE FILTER OUT
 #   FILE is relative to the repository root. Without --target, the host.
 # The cxx_render.toit translator calls this; it can also be run by hand.
 
@@ -14,10 +14,14 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/env.sh"
 
 TARGET=()
-if [ "${1:-}" = --target ]; then
-  TARGET=(--target="$2")
-  shift 2
-fi
+while [ $# -gt 3 ]; do
+  case "$1" in
+    --target) TARGET=(--target="$2"); shift 2 ;;
+    # Another source tree (a mutant: mutant.sh).
+    --repo) REPO_ROOT="$(cd "$2" && pwd)"; shift 2 ;;
+    *) echo "clang-ast.sh: unknown option $1" >&2; exit 2 ;;
+  esac
+done
 file="$1"
 filter="$2"
 out="$3"
@@ -31,3 +35,13 @@ cd "$REPO_ROOT"
   "-DMBEDTLS_CONFIG_FILE=\"$REPO_ROOT/mbedtls/include/toit_config.h\"" \
   -Xclang -ast-dump=json -Xclang "-ast-dump-filter=$filter" \
   "$file" > "$out"
+
+# An index of the top-level declarations (Clang prints them one after the
+# other, a class with its members): name, first byte, end byte. Their keys
+# are indented by two spaces, a child's by more.
+LC_ALL=C awk 'BEGIN { pos = 0 }
+  /^{$/ { start = pos; name = "" }
+  /^  "name": "/ && name == "" { name = $0; sub(/^  "name": "/, "", name); sub(/".*$/, "", name) }
+  { pos += length($0) + 1 }
+  /^}$/ { print (name == "" ? "-" : name), start, pos }
+' "$out" > "$out.index"

@@ -276,24 +276,94 @@ class ConstantUse:
 // ---------------------------------------------------------------------------
 // Clang's AST.
 
-/** Runs clang-ast.sh and returns the top-level declarations it dumped. */
-load-ast annotated-dir/string tu/string filter/string target/string? scratch/string -> List:
-  out := "$scratch/ast-$(filter.replace --all "::" "_")-$(fs.basename tu)-$(target or "host").json"
-  args := ["bash", "$annotated-dir/clang-ast.sh"]
-  if target: args += ["--target", target]
-  args += [tu, filter, out]
-  status := pipe.run-program args
-  if status != 0: fail "clang-ast.sh failed ($status) for $filter in $tu"
-  text := (file.read-contents out).to-string
-  // Clang prints the matching declarations one after the other.
-  result := []
-  pieces := text.split "\n}\n{"
-  pieces.size.repeat: | i |
-    piece := pieces[i]
-    if i > 0: piece = "{" + piece
-    if i < pieces.size - 1: piece = piece + "\n}"
-    if piece.trim != "": result.add (json.parse piece)
-  return result
+/**
+The ASTs of the translation units, one Clang run per unit and target: the
+  declarations of namespace toit, as Clang prints them one after the other
+  (a class with its members). Only the pieces a lookup needs are parsed.
+*/
+class AstCache:
+  repo/string
+  annotated-dir/string
+  scratch/string
+  signatures/Map
+  units_ := {:}    // "tu|target" -> List of [top-level name, text].
+  parsed_ := {:}   // "tu|target|index" -> Map.
+
+  constructor .repo .annotated-dir .scratch .signatures:
+
+  pieces_ tu/string target/string? -> List:
+    key := "$tu|$target"
+    return units_.get key --init=:
+      out := "$scratch/ast-$(fs.basename tu)-$(target or "host").json"
+      args := ["bash", "$annotated-dir/clang-ast.sh", "--repo", repo]
+      if target: args += ["--target", target]
+      args += [tu, "toit::", out]
+      status := pipe.run-program args
+      if status != 0: fail "clang-ast.sh failed ($status) for $tu"
+      texts_["$tu|$target"] = file.read-contents out
+      // clang-ast.sh's index: name, first byte, end byte of each top-level
+      // declaration.
+      result := []
+      ((file.read-contents "$(out).index").to-string.split "\n").do: | line/string |
+        words := line.split " "
+        if words.size == 3:
+          result.add [words[0], int.parse words[1], int.parse words[2]]
+      result
+
+  texts_ := {:}
+
+  parse_ tu/string target/string? index/int -> Map:
+    key := "$tu|$target|$index"
+    return parsed_.get key --init=:
+      piece := (pieces_ tu target)[index]
+      decl := json.decode (texts_["$tu|$target"] as ByteArray)[piece[1]..piece[2]]
+      collect-typedefs decl signatures
+      decl
+
+  /**
+  The declarations of $qname (`toit::A::m`, `toit::f`) in $tu: members found
+    in their class, and out-of-line definitions (returned with
+    `out-of-line` set; the caller checks their spelling).
+  */
+  find tu/string target/string? qname/string -> List:
+    path := qname.split "::"
+    if path[0] == "toit": path = path[1..]
+    name := path.last
+    result := []
+    pieces := pieces_ tu target
+    pieces.size.repeat: | i |
+      top := pieces[i][0]
+      if path.size == 1 and top == name:
+        result.add (parse_ tu target i)
+      else if path.size > 1 and top == path[0]:
+        node := parse_ tu target i
+        level := [node]
+        path[1..].do: | component |
+          next := []
+          level.do: | n/Map |
+            (inner n).do: | k |
+              if k is Map and (k.get "name") == component: next.add k
+          level = next
+        result.add-all level
+      else if path.size > 1 and top == name:
+        decl := parse_ tu target i
+        decl["out-of-line"] = true
+        result.add decl
+    return result
+
+/**
+Records every typedef Clang resolved (`qualType` -> `desugaredQualType`)
+  in $table under "typedef:NAME", so that the parameter types of function
+  types, which Clang does not desugar, can be compared canonically.
+*/
+collect-typedefs node table/Map -> none:
+  if node is Map:
+    t := node.get "type"
+    if t is Map and t.contains "desugaredQualType" and not (t["qualType"].contains "<") and not (t["qualType"].contains "&"):
+      table["typedef:$(c-type t["qualType"])"] = c-type t["desugaredQualType"]
+    node.do --values: collect-typedefs it table
+  else if node is List:
+    node.do: collect-typedefs it table
 
 begin-offset node/Map -> int?:
   range := node.get "range"
@@ -334,7 +404,13 @@ Normalizes a C++ type spelling to C: drops `toit::`, `const`, `volatile`,
 */
 c-type t/string -> string:
   t = t.replace --all "toit::" ""
-  if t.contains "&": fail "reference type not supported: $t"
+  // A const reference is passed by value (the rendering rule for
+  // parameters such as bit_cast's `const From&`); other references are not
+  // supported.
+  if t.contains "&":
+    if not (t.starts-with "const " and t.ends-with "&") or t.contains "&&":
+      fail "reference type not supported: $t"
+    t = t[..t.size - 1]
   words := []
   current := ""
   t.size.repeat: | i |
@@ -476,23 +552,56 @@ class Renderer:
   // Records that C function $c-name is called (or defined) with parameters
   // of these C++ types: one C name must always be one C++ function.
   note-signature c-name/string param-types/List node/Map:
-    sig := param-types.join ", "
+    sig := (param-types.map: resolve it).join ", "
     old := signatures.get c-name
     if old == null:
       signatures[c-name] = sig
     else if old != sig:
       fail "$(where node): $c-name is used with parameters ($sig) and ($old): an overload; add @overloaded"
 
+  // The canonical spelling of a type (typedefs resolved), for comparing
+  // signatures: C++ overloads by canonical types.
+  canonical t/Map -> string:
+    return t.get "desugaredQualType" --if-absent=: t["qualType"]
+
+  // A C type with the typedefs Clang resolved elsewhere replaced.
+  resolve c/string -> string:
+    stars := ""
+    while c.ends-with "*":
+      stars += "*"
+      c = c[..c.size - 1].trim
+    c = signatures.get "typedef:$c" --if-absent=: c
+    return stars == "" ? c : "$c $stars"
+
+  // The type of an expression as written, unless that is a template
+  // expression (e.g. `enable_if<...>::type`): then the desugared one.
+  expr-type node/Map -> string:
+    t := node["type"]
+    q := t["qualType"]
+    if q.contains "<" and t.contains "desugaredQualType": return t["desugaredQualType"]
+    return q
+
   // The parameter types of a call, from its arguments (after the implicit
   // conversions Clang inserts, an argument has its parameter's type).
   arg-types args/List -> List:
     return args.map: | a/Map |
-      a.contains "type" ? (c-type a["type"]["qualType"]) : "?"
+      a.contains "type" ? (c-type (expr-type a)) : "?"
 
   // The parameter types of a function type spelling `R (P1, P2) const`.
   fn-param-types fn-type/string -> List:
-    open := fn-type.index-of "("
+    // The parameter list is the last parenthesized group (the return type
+    // can contain parentheses, e.g. an enable_if condition).
     close := fn-type.index-of --last ")"
+    open := close
+    level := 0
+    for j := close; j >= 0; j--:
+      c := fn-type.at --raw j
+      if c == ')': level++
+      if c == '(':
+        level--
+        if level == 0:
+          open = j
+          break
     inside := fn-type[open + 1..close].trim
     if inside == "" or inside == "void": return []
     result := []
@@ -570,10 +679,12 @@ class Renderer:
         c-name = mangle-member cls name params
     else if ref["kind"] == "FunctionDecl":
       c-name = s ? (mangle-spelling s) : name
+      if sidecar.overloaded.contains name:
+        c-name = "$(c-name)__$((params.map: (it.replace --all " " "").replace --all "*" "p").join "_")"
     else:
       fail "$(where node): call of a $ref["kind"]"
       unreachable
-    note-signature c-name params node
+    note-signature c-name (fn-param-types (canonical ref["type"])) node
     return c-name
 
   args-of nodes/List -> string:
@@ -648,7 +759,7 @@ class Renderer:
         base-text = "&$(wrap (expr base) PREC-UNARY)"
       types := arg-types args
       name := mangle-member class-name member["name"] types
-      note-signature name types node
+      note-signature name (args.map: c-type (canonical it["type"])) node
       all := [base-text]
       args.do: all.add (wrap (expr it) PREC-ASSIGN)
       return Expr "$name($(all.join ", "))" PREC-PRIMARY
@@ -861,7 +972,7 @@ class Renderer:
       ps.add (declarator t pname)
     if ps.is-empty: ps.add "void"
     fname := cls ? (mangle-member cls name types) : name
-    note-signature fname types decl
+    note-signature fname (params.map: c-type (canonical it["type"])) decl
     result-type = (kind == "CXXConstructorDecl" or kind == "CXXDestructorDecl") ? "void" : (return-type decl["type"]["qualType"])
     return declarator result-type "$fname($(ps.join ", "))"
 
@@ -907,13 +1018,12 @@ class Prepared:
 class Unit:
   sidecar/Sidecar
   repo/string
-  annotated-dir/string
-  scratch/string
+  cache/AstCache
   constants/Constants
-  signatures/Map
   uses := {:}
+  tus := {}  // The translation units the rendered functions come from.
 
-  constructor .sidecar .repo .annotated-dir .scratch .signatures:
+  constructor .sidecar .repo .cache:
     constants = Constants sidecar.constants-path
 
   base-path -> string:
@@ -1026,9 +1136,17 @@ class Unit:
     parts := qname.split "::"
     name := parts.last
     cls := parts.size >= 3 ? parts[parts.size - 2] : null
-    decls := load-ast annotated-dir tu qname target scratch
+    tus.add tu
+    decls := cache.find tu target qname
+    source := (file.read-contents "$repo/$path").to-string
     candidates := []
     decls.do: | d/Map |
+      if (d.get "out-of-line") == true:
+        // An out-of-line definition: `C::name` must be how it is spelled.
+        db := begin-offset d
+        de := end-offset d
+        if cls and not (db and de and de <= source.size and source[db..de].contains "$cls::$name"):
+          continue.do
       if (d.get "name") == name:
         bodies := (inner d).filter: it["kind"] == "CompoundStmt"
         nparams := ((inner d).filter: it["kind"] == "ParmVarDecl").size
@@ -1039,7 +1157,6 @@ class Unit:
       fail "$sidecar.path:$s.line: $(candidates.size) definitions of $qname in $tu (pick one with params=N or type=T)"
     decl := candidates[0][0]
     body-node := candidates[0][1]
-    source := (file.read-contents "$repo/$path").to-string
     b := begin-offset decl
     e := (end-offset decl) + (end-token-length decl)
     if b == null or e == null or e > source.size:
@@ -1061,7 +1178,7 @@ class Unit:
         k++
     if k != real.size: report-drift s path source b real annotated k
     if not pending.is-empty: fail "$sidecar.path:$s.line: annotation after the end of $qname"
-    renderer := Renderer sidecar constants source path cls ghosts uses signatures
+    renderer := Renderer sidecar constants source path cls ghosts uses cache.signatures
     return Prepared s renderer decl body-node path source trusted (renderer.c-name decl)
 
   report-drift s/Section path/string source/string base/int real/List annotated/List k/int:
@@ -1083,11 +1200,9 @@ class Unit:
     out.add "#include <type_traits>"
     out.add "#include <top.h>"
     out.add "#include <objects.h>"
-    out.add "#include <messaging.h>"
-    out.add "#include <interpreter.h>"
-    out.add "#include <primitive.h>"
-    out.add "#include <process.h>"
-    out.add "#include <utils.h>"
+    // The translation units of the rendered functions: constants such as
+    // the message tags are defined in them.
+    tus.do: out.add "#include <$(it[4..])>"
     out.add "namespace toit {"
     out.add "template <typename A, typename B> struct vf_same {"
     out.add "  static const bool value = std::is_same<typename std::decay<A>::type, typename std::decay<B>::type>::value;"
@@ -1131,11 +1246,12 @@ run invocation/cli.Invocation:
   failures := 0
   // All units share one signature table: a C name is one C++ function
   // across the model and every target.
-  signatures := {:}
+  cache := AstCache repo annotated-dir scratch {:}
+  target-caches := {:}
   invocation["sidecar"].do: | path/string |
     exception := catch --trace=(: it is not RenderError) --unwind=(: it is not RenderError):
       sidecar := Sidecar path
-      unit := Unit sidecar repo annotated-dir scratch signatures
+      unit := Unit sidecar repo cache
       texts := unit.render null
       // Other targets: the implicit conversions differ (on a 32-bit target
       // an int is a word), so each target gets its own rendering, written
@@ -1145,7 +1261,8 @@ run invocation/cli.Invocation:
         if eq < 0: fail "--target wants TRIPLE=DIR, not $spec"
         t := spec[..eq]
         dir := spec[eq + 1..]
-        other-unit := Unit sidecar repo annotated-dir scratch {:}
+        target-cache := target-caches.get t --init=: AstCache repo annotated-dir scratch {:}
+        other-unit := Unit sidecar repo target-cache
         other := other-unit.render t
         out-c := "$dir/$other-unit.c-path"
         directory.mkdir --recursive (fs.dirname out-c)

@@ -387,3 +387,68 @@ bool is_large_integer(Object *o)
   return is_heap_object(o) && HeapObject_has_class_tag(HeapObject_cast__Objectp(o), LARGE_INTEGER_TAG);
 }
 
+// C++: src/objects.h:241 toit::HeapObject::class_tag
+TypeTag HeapObject_class_tag(HeapObject *self)
+//@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true;
+//@ ensures [f]heap(objs, H) &*& 0 <= result &*& result < 16;
+{
+  //@ heap_open(self);
+  //@ uword hw = o_hw(H(self));
+  //@ open [f]header(self, hw);
+  //@ close [f]header(self, hw);
+  //@ div_rem_nonneg(hw, 2);
+  //@ shiftright_div(smi_val(hw), zero);
+  //@ div_rem_nonneg_unique(smi_val(hw), 1, smi_val(hw), 0);
+  //@ bitand_limits(hw / 2, 15, N4);
+  {
+    TypeTag result0 = (TypeTag)((uword)(Smi_value__Smip(HeapObject_header(self)) >> HeapObject_CLASS_TAG_OFFSET) & HeapObject_CLASS_TAG_MASK);
+    //@ heap_close(self);
+    return result0;
+  }
+}
+
+// C++: src/objects.h:1559 toit::Instance::cast
+Instance *Instance_cast(Object *value)
+//@ requires true;
+//@ ensures result == value;
+{
+  // ASSERT(is_instance(value) || is_task(value)): release build, not evaluated.
+  return (Instance *)value;
+}
+
+// C++: src/objects.h:468 toit::Array::cast
+Array *Array_cast(Object *array)
+//@ requires true;
+//@ ensures result == array;
+{
+  // ASSERT(is_array(array)): release build, not evaluated.
+  return (Array *)array;
+}
+
+// C++: src/objects.h:640 toit::ByteArray::cast
+ByteArray *ByteArray_cast(Object *byte_array)
+//@ requires true;
+//@ ensures result == byte_array;
+{
+  // ASSERT(is_byte_array(byte_array)): release build, not evaluated.
+  return (ByteArray *)byte_array;
+}
+
+// C++: src/objects.h:774 toit::LargeInteger::cast
+LargeInteger *LargeInteger_cast(Object *value)
+//@ requires true;
+//@ ensures result == value;
+{
+  // ASSERT(is_large_integer(value)): release build, not evaluated.
+  return (LargeInteger *)value;
+}
+
+// C++: src/objects.h:1190 toit::Double::cast
+Double *Double_cast(Object *value)
+//@ requires true;
+//@ ensures result == value;
+{
+  // ASSERT(is_double(value)): release build, not evaluated.
+  return (Double *)value;
+}
+
