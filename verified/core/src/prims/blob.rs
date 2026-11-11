@@ -341,6 +341,8 @@ pub fn new_string(heap: &mut Heap, c: &Ctx, n: usize) -> (r: Option<(usize, Ghos
             &&& final(heap).objs().subrange(0, id@) == old(heap).objs()
             &&& final(heap).addrs().subrange(0, id@) == old(heap).addrs()
             &&& final(heap).addrs().len() == id@ + 1
+            &&& final(heap).cptrs().len() == id@ + 1
+            &&& final(heap).cptrs().subrange(0, id@) == old(heap).cptrs()
             &&& w == final(heap).addrs()[id@]
             &&& final(heap).objs()[id@].body is Str
             &&& !final(heap).objs()[id@].ro
@@ -365,9 +367,12 @@ pub proof fn lemma_blob_mono(h0: &Heap, h1: &Heap, b: &Blob)
         blob_ok(h0, b),
         h0.objs().len() <= h1.objs().len(),
         h1.objs().subrange(0, h0.objs().len() as int) == h0.objs(),
+        h1.cptrs().len() == h1.objs().len(),
+        h1.cptrs().subrange(0, h0.objs().len() as int) == h0.cptrs(),
     ensures blob_ok(h1, b), h1.objs()[b.c.id()] == h0.objs()[b.c.id()],
 {
     assert(h1.objs().subrange(0, h0.objs().len() as int)[b.c.id()] == h0.objs()[b.c.id()]);
+    assert(h1.cptrs().subrange(0, h0.objs().len() as int)[b.c.id()] == h0.cptrs()[b.c.id()]);
 }
 
 /// Content views of other objects stay valid when one object's bytes
@@ -377,6 +382,7 @@ pub proof fn lemma_blob_update(h0: &Heap, h1: &Heap, b: &Blob, id: int, s: Seq<u
         blob_ok(h0, b), 0 <= id < h0.objs().len(), is_blob(h0.objs()[id]),
         h1.objs() == h0.objs().update(id, with_content(h0.objs()[id], s)),
         b.c.id() != id || s.len() == content(h0.objs()[id]).len(),
+        h1.cptrs() == h0.cptrs(),
     ensures blob_ok(h1, b),
 {
 }

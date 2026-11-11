@@ -123,6 +123,11 @@ fn fall_r(m: &mut Machine, r: &mut Regs, p: &Program)
         let m1 = m.with(*r);
         assert(g1.stack =~= g0.stack.subrange(0, g0.stack.len() - 1));
         assert(m1.words() =~= m0.words().subrange(0, m0.height() - 1));
+        assert(m0.words() == enc_seq(m0.addr(), g0.stack));
+        assert(m0.words().len() == enc_seq(m0.addr(), g0.stack).len());
+        assert(g0.stack.len() == m0.height());
+        assert(g1.stack.len() == m0.height() - 1);
+        assert(enc_seq(m0.addr(), g1.stack) =~= enc_seq(m0.addr(), g0.stack).subrange(0, m0.height() - 1));
         assert(m1.words() =~= enc_seq(m0.addr(), g1.stack));
         assert forall|j: int| 0 <= j < g1.stack.len() implies #[trigger] encodable(m0.addr(), g1.stack[j]) by {
             assert(g1.stack[j] == g0.stack[j]);

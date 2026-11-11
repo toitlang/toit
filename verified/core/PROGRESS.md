@@ -68,6 +68,174 @@ richards 0.720, deltablue 0.969, pystone 0.863, json 1.068, map/set
 simulation of the trace, does not need to (one miss per 16,000
 instructions). Install: see below.
 
+## Proven accessors (branch core/proven-accessors, 2026-11-11)
+
+The raw-memory accessors of src/view.rs become verified code against an
+explicit memory-ownership model (TRUSTED.md section 1, "Memory model").
+Artifacts: /home/flo/work/opentoit-sandbox-artifacts/proven-accessors
+(tools/: verification, codegen comparison, callgrind benchmark, census).
+
+- P0 (trial, artifacts trial/heap_inv.rs): a field read and a field write
+  through an untagged reference (`with_exposed_provenance(obj - 1)`)
+  verify against a `PointsTo` taken from the heap model, with the model
+  update, for 64-bit and 32-bit words (10 verified, 0 errors each).
+  Design found there: the permissions live inside the view structs as
+  tracked (erased) fields, the views' ghost content is defined from them,
+  and a type invariant ties each permission to the address the accessor
+  computes. Callers are unchanged: the contracts are the same, only
+  `sid()` changed type (a pointer instead of an uninterpreted int).
+  Writes go through a helper that takes a tracked mutable borrow of the
+  permission field (`no_unwind`), so the invariant is checked against the
+  helper's contract; whole-struct replacement (`mem::swap`) verified too
+  but cost +34% code on riscv32 (stores LLVM cannot remove), and passing
+  `&mut` to the field cost the register allocation of the stack view.
+- P1 (stack, tables, globals): `Table` (`len`, `at`, `cursor`), `Globals`
+  (`len`, `at`, `set`), `StackMem` (`len`, `slot`, `read`, `write`,
+  `header`, `set_header`, `copy_within`) and `Cursor` (`offset`, `diff`,
+  `read`, `write`, `byte`, `lt`) are verified. Trusted instead: the three
+  derivation points (`Table::from_raw`, `Globals::from_raw`,
+  `StackMem::from_stack`: `Tracked::assume_new` of the permissions, with
+  their statement), the Rust semantics of `pointer::wrapping_add` and
+  `wrapping_offset` (two `assume_specification`s, used instead of vstd's
+  `with_addr`, which lost scaled addressing and cost 1 percent on the
+  checked handlers), `global size_of u8 == 1` (compile-time checked), and
+  libc memmove for `copy_within` (an FFI leaf on the permissions; the
+  verified word loop, artifacts copy_words_verified_loop.rs, cost 0.9
+  percent on sys:rpc). Core census: external_body 95 -> 76, unsafe 68 ->
+  60 entries, uninterp 14 -> 6; plus 3 assume_new, 2
+  assume_specification. Instructions (callgrind, 36 runs): all within
+  0.01 percent of sandbox-integration; riscv32 opt=s text 59,332 ->
+  59,346 B, run_loop 6,479 -> 6,483 instructions. One proof hint in
+  rloops.rs (`fall_r`, unstable at 32 bits after the change).
+- P2 (object headers, fields, elements): `Heap` owns `HeapMem`, the
+  permissions of every object's header and of the fields of instances
+  and the length and elements of arrays, keyed by (object id, word
+  index), with the heap's exposed provenance and the model (`objs`,
+  `addrs`, `class_bits`) as ghost fields. The layout is one spec
+  function, `view::word_val` (header: class id and class tag; fields at
+  `INSTANCE_FIELDS_WORD`; length and elements at `ARRAY_LENGTH_WORD`,
+  `ARRAY_ELEMENTS_WORD`; references by `abs::enc`), the Rust side of
+  CONTRACTS.toml's bridge `heap`. Tagged references: the accessor
+  computes `obj - HEAP_TAG` and gets the pointer with
+  `with_exposed_provenance` (the heap's `IsExposed` token), then
+  `wrapping_add(k)`; the permission of word k of object id is the one at
+  that pointer (`obj_ptr`), so the recomputed pointer matches by the
+  invariant. Verified: `class_id`, `class_tag`, `field`, `set_field`,
+  `array_length`, `element`, `set_element` (the writes update the
+  permission and the model in one helper, `write_heap_word`, and call
+  the write barrier, a trusted leaf without contract: the card table is
+  outside every view). Trusted instead: `Heap::new` (the derivation
+  point at entry; after a GC point the heap is the one the GC contract
+  states) and `Heap::write_barrier`. Measured trap: reading the header
+  through the generic `read_word` (`wrapping_add(0)`) cost 5 percent on
+  every smi loop (the run loop's stack pointer moved between registers
+  across handlers); a header read without the offset is exact. Census:
+  external_body 76 -> 69, unsafe 60 -> 54, uninterp 6 -> 3.
+  Instructions: all 36 runs within 0.01 percent; riscv32 text 59,348 B.
+- P3 (doubles, large integers): the payload is the words from
+  `DOUBLE_VALUE_WORD` (one, or two little-endian words on 32-bit
+  targets: `value_word`), read as words instead of an unaligned u64
+  (`read_value64`, bit-vector proofs per width). `double_bits` and
+  `large_int` verified. riscv32 opt=s: run_loop 6,479 -> 5,960
+  instructions, text 59,332 -> 57,498 B (the unaligned read was eight
+  byte loads there); host instructions 0 to -0.4 percent.
+- P4 (`array_copy`): the elements are moved by a memmove leaf stated on
+  the heap permissions (`heap_memmove`); the model's new array and the
+  heap invariant after the move are verified (`copy_elements`), as is
+  the write barrier's condition. With P2 this completes the instance and
+  array group. Instructions unchanged.
+- P5 (strings, byte arrays, content views): `HeapMem` gains the half
+  words of strings (length, hash code), the blob header words (external
+  length and address of a string; length, tag, address of a byte array),
+  the content bytes and, per object, its content pointer (`cptrs`). The
+  layouts are two spec functions, `str_ok` and `ba_ok` (V5 included: an
+  object with the byte-array tag is a model byte array exactly when it is
+  internal or raw external at a non-null address). Verified:
+  `string_len`, `string_byte`, `bytes_len`, `byte_at`, `set_byte_at`,
+  `string_content`, `byte_array_content`, `string_hash_field`,
+  `set_string_hash_field`, `content_at`, `content_set`, `content_copy`,
+  `content_fill`, `Content::len`; `Content` carries its pointer, length,
+  object and writability as (ghost) fields, and `content_ok` now also
+  says that the view's pointer is the object's content pointer, which
+  every accessor keeps (`cptrs()` unchanged) and allocation appends to
+  (`appended`); a heap after a GC point promises nothing about it, so a
+  view cannot outlive a GC point by proof, not by review. Two prims
+  lemmas take the new fact (`lemma_blob_mono`, `lemma_blob_update`) and
+  `new_string` ensures it: no other change in the 106 primitives. The
+  memmove of `array_copy` and `content_copy` is one generic FFI leaf on
+  permissions (`perm_memmove`), memset another (`perm_memset`).
+  `set_string_hash_field` now ensures the model, addresses, class bits and
+  content pointers unchanged instead of the whole view (its permission
+  changes). Census: external_body 67 -> 53, unsafe 54 -> 40 entries,
+  uninterp 3 -> 0. Instructions 0 to -0.5 percent (strings -0.25);
+  riscv32 text 57,608 B.
+- Totals (TRUSTED.toml, crate core, entries): 224 -> 146; external_body
+  95 -> 53, unsafe 68 -> 40 (occurrences 74 -> 46), uninterp 14 -> 0,
+  plain_rust_item 42 -> 42, assume_new 2 -> 6 (the four derivation
+  points), assume_specification 0 -> 2 (wrapping pointer arithmetic),
+  global_layout occurrences 2 -> 3 (`size_of u8`). view.rs: 125 -> 47
+  entries. TRUSTED.md section 0 lists the whole residual base.
+- Device library (device_size.sh, Rust library without libc, linked):
+  riscv32 opt 3 81,220 -> 79,716 B, opt s 75,354 -> 73,418 B; Xtensa
+  (classic ESP32) opt s 80,095 -> 77,667 B. Host instructions (callgrind,
+  18 workloads x 2 configurations against sandbox-integration): between
+  -0.52 and +0.01 percent.
+- Gates (on 64d2812b, artifacts gates/final-*.log): verified/check.sh
+  --tests: spec 940 and core 954 verified at both widths, audit exact,
+  layout check, spec differential 15/15, nopanic, sandbox ctests
+  123/123, red-team batteries no crash; it fails on two drifts that
+  predate the branch and that sandbox-integration has since fixed in
+  files this branch does not touch: CONTRACTS.toml's table of the leaf
+  contracts (epoch and `needed` clauses from core/trusted-integration)
+  and VeriFast's grow/grow_stack.render. ctest format 1 1198/1201
+  (version, reader, udp-reuse-port-test); everything in format 2
+  1197/1201 (the same and services-network-test); untrusted suite 280
+  identical plus the two known differences; primitive differential 10 x
+  1M identical; compare_trace --format 2 clean on the four programs;
+  32-bit host sandbox 123/123; nostd, nopanic (3, s, z), xtensa codegen
+  (3, z) pass; riscv32 and Xtensa device libraries link
+  (device_size.sh); ASan fuzz with the launch filter, 30 minutes:
+  131,438 mutants, 113,244 rejected at launch, 0 crashes.
+- Shared layout facts: every layout.rs constant the heap invariant uses
+  (`word_val`, `str_ok`, `ba_ok`: 21 constants) is a row of
+  verified/LAYOUT.toml on branch cxx/verifast-coverage (acece1a5, the
+  table both the Verus and the VeriFast models consume; checked with
+  artifacts tools/layoutcheck.sh). Not in that table yet: the Stack
+  header words (`STACK_*_WORD`, layout-checked by layout_check.cc), the
+  card-table constants of the write barrier, and the 32-bit split of a
+  double's or large integer's payload into two little-endian words
+  (`view::VALUE_WORDS`, `value_word`): rows to add on the merge.
+
+Not migrated, with the exact steps:
+
+- Inline allocation (`alloc::bump_instance`, `bump_double`, about a
+  day): make `Runtime::bump` a Verus external_body (inside `verus!`)
+  that returns the address with a tracked `Map<int, PointsTo<usize>>` of
+  the `size / WORD_SIZE` fresh words and ensures the allocator facts
+  (word aligned, `a + size <= usize::MAX`, `a | HEAP_TAG` is no address
+  of the model, outside the program heap): the trusted part shrinks to
+  that statement of `SemiSpace::try_allocate`. Then a verified
+  `Heap::append(&mut self, a, Tracked(words), Ghost(o))` that pushes the
+  object (model, address, a dummy content pointer) and moves the
+  permissions to keys `(n, k)`, proving `heap_ok` (`word_val` of the
+  header needs one bit-vector lemma for `smi(c << 5 | tag)`); the
+  bodies of `bump_instance`/`bump_double` write through the permissions
+  (a verified loop for the null fields). Their machine-level ensures
+  (`with(r).refines` of `alloc2(g, new)`) need a new lemma like
+  `primitive::lemma_refines_heap` for an appended instance or double:
+  `heap_model_ok` of the appended heap (fresh address, `obj_model_ok` of
+  the new object), the ro facts and `prog_rel` under the address
+  extension (`lemma_post_append` does this for the primitives'
+  allocations but excludes instances).
+- The checked loop's raw accessors (`Heap::{header, word, word64,
+  set_word, byte, set_byte, half_word_at}`): they have no ghost content
+  on purpose (the checked loop is plain Rust and runs only programs the
+  launch did not accept; devices do not build it). Proving them means
+  verifying the checked loop; until then they stay with it in section 4.
+- `Preemption` (the scheduler's watermark, written by another thread:
+  an atomic with no model) and `proven_unreachable` are not memory
+  accessors.
+
 ## Trusted containers integrated (branch core/trusted-integration, 2026-11-11)
 
 `experiment/trusted-fast` (0c7b1f6b) merged into `sandbox-integration`
