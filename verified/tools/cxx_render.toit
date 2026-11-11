@@ -291,16 +291,16 @@ class AstCache:
 
   constructor .repo .annotated-dir .scratch .signatures:
 
-  pieces_ tu/string target/string? -> List:
-    key := "$tu|$target"
+  pieces_ tu/string target/string? filter/string -> List:
+    key := "$tu|$target|$filter"
     return units_.get key --init=:
-      out := "$scratch/ast-$(fs.basename tu)-$(target or "host").json"
+      out := "$scratch/ast-$(fs.basename tu)-$(target or "host")-$((filter.replace --all "::" "").replace --all "/" "_").json"
       args := ["bash", "$annotated-dir/clang-ast.sh", "--repo", repo]
       if target: args += ["--target", target]
-      args += [tu, "toit::", out]
+      args += [tu, filter, out]
       status := pipe.run-program args
       if status != 0: fail "clang-ast.sh failed ($status) for $tu"
-      texts_["$tu|$target"] = file.read-contents out
+      texts_[key] = file.read-contents out
       // clang-ast.sh's index: name, first byte, end byte of each top-level
       // declaration.
       result := []
@@ -312,11 +312,11 @@ class AstCache:
 
   texts_ := {:}
 
-  parse_ tu/string target/string? index/int -> Map:
-    key := "$tu|$target|$index"
+  parse_ tu/string target/string? filter/string index/int -> Map:
+    key := "$tu|$target|$filter|$index"
     return parsed_.get key --init=:
-      piece := (pieces_ tu target)[index]
-      decl := json.decode (texts_["$tu|$target"] as ByteArray)[piece[1]..piece[2]]
+      piece := (pieces_ tu target filter)[index]
+      decl := json.decode (texts_["$tu|$target|$filter"] as ByteArray)[piece[1]..piece[2]]
       collect-typedefs decl signatures
       decl
 
@@ -330,13 +330,14 @@ class AstCache:
     if path[0] == "toit": path = path[1..]
     name := path.last
     result := []
-    pieces := pieces_ tu target
+    filter := (qname.starts-with "toit::") ? "toit::" : qname
+    pieces := pieces_ tu target filter
     pieces.size.repeat: | i |
       top := pieces[i][0]
       if path.size == 1 and top == name:
-        result.add (parse_ tu target i)
+        result.add (parse_ tu target filter i)
       else if path.size > 1 and top == path[0]:
-        node := parse_ tu target i
+        node := parse_ tu target filter i
         level := [node]
         path[1..].do: | component |
           next := []
@@ -346,7 +347,7 @@ class AstCache:
           level = next
         result.add-all level
       else if path.size > 1 and top == name:
-        decl := parse_ tu target i
+        decl := parse_ tu target filter i
         decl["out-of-line"] = true
         result.add decl
     // An out-of-line definition does not repeat `static`: take it from the

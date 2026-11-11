@@ -54,6 +54,11 @@
 #define STACK_TAG 7
 #define TASK_TAG 8
 
+// src/interpreter_v2.h (the FFI result codes).
+#define TOIT_V2_OK ((uword)0)
+#define TOIT_V2_STACK_OVERFLOW ((uword)1)
+#define TOIT_V2_OUT_OF_MEMORY ((uword)2)
+
 // class Utils.
 #define Utils_MAX_ASCII 0x7f
 #define Utils_UTF_8_BITS_PER_BYTE 6

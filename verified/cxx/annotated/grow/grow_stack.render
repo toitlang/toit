@@ -1,0 +1,342 @@
+// Copyright (C) 2026 Toit contributors.
+//
+// toit_v2_grow_stack (src/interpreter_v2.cc) and Stack::v2_copy_to
+// (src/objects_runtime.cc), rendered from the sources, with VeriFast
+// annotations, against the leaf contract the Verus proof assumes
+// (verified/core/src/step.rs, `gc_grow_stack`, and verified/cxx/
+// contracts.toml): on V2_OK the current task's stack has at least `needed`
+// free words, and the abstract state is unchanged (the frame and finally
+// records, the header fields, and the used object-stack slots by position
+// from the end); otherwise the state is unchanged too.
+//
+// Trusted (contracts below, not bodies; each is still compared with the
+// sources): the GC (v2_gc: preserves that abstraction, may move and shrink
+// the stack), the allocator (null or a fresh stack of the asked length),
+// the Stack header accessors (bit-packed words), the task's stack field,
+// the write barrier. Verified: v2_process, the arithmetic of the new
+// length, the retry loop, the two copies (memcpy) and their bounds.
+//
+// The precondition `needed <= STACK_MAX_BOUND` is one the Verus contract
+// does not have (README, "Findings"); the self-tests (run.sh) drop it.
+@include ../model/model.cfg
+@verbatim
+#include "../model/objects.gen.h"
+//@ #include "../model/arith.gh"
+
+struct Process;
+typedef struct Process Process;
+struct ObjectHeap;
+typedef struct ObjectHeap ObjectHeap;
+typedef struct Object Stack;
+typedef struct Object Task;
+typedef unsigned long size_t;
+
+// Stack::max_length() = (ObjectHeap::max_allocation_size() - HEADER_SIZE) /
+// WORD_SIZE: a few thousand words (pages of 32 KB on the host, 4 KB on
+// devices); a generous upper bound here.
+#define STACK_MAX_BOUND 0x100000
+
+/*@
+// A Stack object: length, top, record top, the header fields the core
+// keeps (frame top, finally count, bci), and the array as bytes.
+predicate stack_hdr(Stack *s; int len, int top, int rtop, int ftop, int fin, int bci);
+fixpoint uint8 *stack_array(Stack *s);
+predicate records_of(int ftop, int fin; int rtop);
+predicate stack(Stack *s; int len, int top, int rtop, int ftop, int fin, int bci, list<uint8> bs) =
+  stack_hdr(s, len, top, rtop, ftop, fin, bci) &*& uchars(stack_array(s), len * sizeof(word), bs) &*&
+  [_]records_of(ftop, fin, rtop);
+
+// The current task's stack, and the process's task (an Instance).
+predicate current_stack(Process *p; Stack *s);
+fixpoint Task *task_of(Process *p);
+
+// The abstraction the core relies on: same records, header fields and used
+// slots (by position from the end).
+fixpoint bool same_abstraction(int len, int top, int rtop, list<uint8> bs,
+                               int len2, int top2, int rtop2, list<uint8> bs2) {
+  return rtop2 == rtop && len2 - top2 == len - top &&
+         take(rtop * sizeof(word), bs2) == take(rtop * sizeof(word), bs) &&
+         drop(top2 * sizeof(word), bs2) == drop(top * sizeof(word), bs);
+}
+
+fixpoint bool stack_ok(int len, int top, int rtop, list<uint8> bs) {
+  return 0 <= rtop && rtop <= top && top <= len && len <= STACK_MAX_BOUND &&
+         length(bs) == len * sizeof(word);
+}
+
+lemma void take_take_le(int i, int j, list<uint8> xs)
+  requires 0 <= i &*& i <= j;
+  ensures take(i, take(j, xs)) == take(i, xs);
+{
+  switch (xs) {
+    case nil:
+    case cons(x, xs0):
+      if (i > 0) take_take_le(i - 1, j - 1, xs0);
+  }
+}
+
+lemma void drop_append_one(list<uint8> b, list<uint8> c, int n)
+  requires n == length(b);
+  ensures drop(n, append(b, c)) == c;
+{
+  switch (b) {
+    case nil:
+    case cons(y, b0): drop_append_one(b0, c, n - 1);
+  }
+}
+
+lemma void drop_append_bytes(list<uint8> a, list<uint8> b, list<uint8> c, int n)
+  requires n == length(a) + length(b);
+  ensures drop(n, append(a, append(b, c))) == c;
+{
+  switch (a) {
+    case nil: drop_append_one(b, c, n);
+    case cons(x, a0): drop_append_bytes(a0, b, c, n - 1);
+  }
+}
+
+lemma void take_append_bytes(list<uint8> a, list<uint8> b, list<uint8> c, int n)
+  requires n == length(a);
+  ensures take(n, append(a, append(b, c))) == a;
+{
+  switch (a) {
+    case nil:
+    case cons(x, a0): take_append_bytes(a0, b, c, n - 1);
+  }
+}
+@*/
+
+// The process accessors (src/process.h) and the allocator (src/heap.h).
+Task *Process_task(Process *self);
+//@ requires true;
+//@ ensures result == task_of(self);
+ObjectHeap *Process_object_heap(Process *self);
+//@ requires true;
+//@ ensures true;
+// ObjectHeap::allocate_stack: null, or a fresh stack of the asked length.
+Stack *ObjectHeap_allocate_stack(ObjectHeap *self, word length);
+//@ requires 0 <= length &*& length <= STACK_MAX_BOUND;
+//@ ensures result == 0 ? true : stack(result, length, length, 0, 0, 0, 0, ?bs) &*& length(bs) == length * sizeof(word);
+void ObjectHeap_leave_primitive(ObjectHeap *self);
+//@ requires true;
+//@ ensures true;
+// The write barrier (src/third_party/dartino/gc_metadata.h, a template).
+void GcMetadata_insert_into_remembered_set(Stack *address);
+//@ requires true;
+//@ ensures true;
+// Utils::max, Utils::min (src/utils.h, templates; the instance for word).
+word Utils_max(word a, word b);
+//@ requires true;
+//@ ensures result == (a >= b ? a : b);
+word Utils_min(word a, word b);
+//@ requires true;
+//@ ensures result == (a <= b ? a : b);
+// From VeriFast's bin/string.h (there: chars; uchars here).
+void *memcpy(void *array, void *array0, size_t count);
+//@ requires uchars_(array, count, _) &*& [?f]uchars(array0, count, ?cs0);
+//@ ensures uchars(array, count, cs0) &*& [f]uchars(array0, count, cs0) &*& result == array;
+
+@prototypes
+@render src/objects.h toit::Stack::length tu=src/objects_runtime.cc trusted
+  word length() const
+  //@ requires [?f]stack_hdr(self, ?len, ?top, ?rtop, ?ft, ?fin, ?bci);
+  //@ ensures [f]stack_hdr(self, len, top, rtop, ft, fin, bci) &*& result == len;
+  { return _word_at(LENGTH_OFFSET); }
+
+@render src/objects.h toit::Stack::top tu=src/objects_runtime.cc trusted
+  word top() const
+  //@ requires [?f]stack_hdr(self, ?len, ?top, ?rtop, ?ft, ?fin, ?bci);
+  //@ ensures [f]stack_hdr(self, len, top, rtop, ft, fin, bci) &*& result == top;
+  { return _word_at(TOP_OFFSET); }
+
+@render src/objects.h toit::Stack::v2_record_top tu=src/objects_runtime.cc trusted
+  word v2_record_top() const
+  //@ requires [?f]stack_hdr(self, ?len, ?top, ?rtop, ?ft, ?fin, ?bci);
+  //@ ensures [f]stack_hdr(self, len, top, rtop, ft, fin, bci) &*& result == rtop;
+  { return v2_records_word() & (V2_MAX_LENGTH - 1); }
+
+@render src/objects.h toit::Stack::v2_frame_top tu=src/objects_runtime.cc trusted
+  word v2_frame_top() const
+  //@ requires [?f]stack_hdr(self, ?len, ?top, ?rtop, ?ft, ?fin, ?bci);
+  //@ ensures [f]stack_hdr(self, len, top, rtop, ft, fin, bci) &*& result == ft;
+  { return v2_records_word() >> V2_FRAME_TOP_SHIFT; }
+
+@render src/objects.h toit::Stack::v2_fin_count tu=src/objects_runtime.cc trusted
+  word v2_fin_count() const
+  //@ requires [?f]stack_hdr(self, ?len, ?top, ?rtop, ?ft, ?fin, ?bci);
+  //@ ensures [f]stack_hdr(self, len, top, rtop, ft, fin, bci) &*& result == fin;
+  { return (v2_record_top() - v2_frame_top()) / V2_FIN_WORDS; }
+
+@render src/objects.h toit::Stack::v2_bci tu=src/objects_runtime.cc trusted
+  word v2_bci() const
+  //@ requires [?f]stack_hdr(self, ?len, ?top, ?rtop, ?ft, ?fin, ?bci);
+  //@ ensures [f]stack_hdr(self, len, top, rtop, ft, fin, bci) &*& result == bci;
+  { return v2_bci_word(); }
+
+@render src/objects.h toit::Stack::_set_top tu=src/objects_runtime.cc trusted
+  void _set_top(word value)
+  //@ requires stack_hdr(self, ?len, _, ?rtop, ?ft, ?fin, ?bci);
+  //@ ensures stack_hdr(self, len, value, rtop, ft, fin, bci);
+  { _word_at_put(TOP_OFFSET, value); }
+
+@render src/objects.h toit::Stack::v2_set_records tu=src/objects_runtime.cc trusted
+  void v2_set_records(word frame_top, word fin_count, word bci)
+  // The record top is frame_top + fin_count * V2_FIN_WORDS: taken as the
+  // source stack's (records_of).
+  //@ requires stack_hdr(self, ?len, ?top, _, _, _, _) &*& [_]records_of(frame_top, fin_count, ?rtop);
+  //@ ensures stack_hdr(self, len, top, rtop, frame_top, fin_count, bci);
+  {
+    word record_top = frame_top + V2_FIN_WORDS * fin_count;
+    _set_try_top(record_top | (frame_top << V2_FRAME_TOP_SHIFT));
+    _word_at_put(PENDING_STACK_CHECK_METHOD_OFFSET, bci);
+  }
+
+@render src/objects.h toit::Stack::_array_address tu=src/objects_runtime.cc trusted
+  uword* _array_address(word index)
+  // (VeriFast does not simplify p + 0 to p: the index-0 case separately.)
+  //@ requires [?f]stack_hdr(self, ?len, ?top, ?rtop, ?ft, ?fin, ?bci) &*& 0 <= index &*& index <= len;
+  //@ ensures [f]stack_hdr(self, len, top, rtop, ft, fin, bci) &*& (void *)result == (index == 0 ? stack_array(self) : stack_array(self) + index * sizeof(word));
+  { return _raw_at(_array_offset_from(index)); }
+
+@render src/objects_inline.h toit::Stack::max_length tu=src/objects_runtime.cc trusted
+word Stack::max_length()
+//@ requires true;
+//@ ensures 0 < result &*& result <= STACK_MAX_BOUND;
+{
+  return (ObjectHeap::max_allocation_size() - HEADER_SIZE) / WORD_SIZE;
+}
+
+@render src/objects.h toit::Task::stack tu=src/objects_runtime.cc trusted
+  Stack* stack()
+  //@ requires [?f]current_stack(?p, ?s) &*& self == task_of(p);
+  //@ ensures [f]current_stack(p, s) &*& result == s;
+  { return Stack::cast(at(STACK_INDEX)); }
+
+@render src/objects.h toit::Task::set_stack tu=src/objects_runtime.cc trusted
+  void set_stack(Stack* value)
+  // The old stack becomes garbage (given back to the heap).
+  //@ requires current_stack(?p, ?s) &*& self == task_of(p) &*& stack(s, _, _, _, _, _, _, _);
+  //@ ensures current_stack(p, value);
+  { at_put(STACK_INDEX, value); }
+
+@render src/interpreter_v2.cc v2_process
+static Process* v2_process(void* process)
+//@ requires true;
+//@ ensures result == (Process *)process;
+{
+  return static_cast<Process*>(process);
+}
+
+@render src/interpreter_v2.cc v2_gc trusted
+static void v2_gc(Process* process, bool malloc_failed, int attempts, bool force_cross_process,
+                  const char* reason, word parameter1 = 0, word parameter2 = 0)
+// TRUSTED, "the GC preserves the abstraction": the current task's stack
+// may be another (moved) object, possibly shrunk, with the same records,
+// header fields and used slots.
+//@ requires current_stack(process, ?s) &*& stack(s, ?len, ?top, ?rtop, ?ft, ?fin, ?bci, ?bs) &*& stack_ok(len, top, rtop, bs) == true;
+/*@ ensures current_stack(process, ?s2) &*& stack(s2, ?len2, ?top2, rtop, ft, fin, bci, ?bs2) &*&
+            stack_ok(len2, top2, rtop, bs2) == true &*& same_abstraction(len, top, rtop, bs, len2, top2, rtop, bs2) == true; @*/
+{
+  if (attempts == 3) {
+    static const int BUFFER_SIZE = 50;
+    char buffer[BUFFER_SIZE];
+    snprintf(buffer, BUFFER_SIZE, "out of memory in %s %" PRIdPTR ":%" PRIdPTR,
+             reason, parameter1, parameter2);
+    buffer[BUFFER_SIZE - 1] = '\0';
+    OS::heap_summary_report(0, buffer, process);
+    if (VM::current()->scheduler()->is_boot_process(process)) {
+      OS::out_of_memory("Out of memory in system process");
+    }
+    return;
+  }
+  GcMetadata::insert_into_remembered_set(process->task()->stack());
+  v2_validate(process, "gc");
+  VM::current()->scheduler()->gc(process, malloc_failed, attempts > 1 || force_cross_process);
+  v2_validate(process, "after gc");
+}
+
+@render src/objects_runtime.cc toit::Stack::v2_copy_to
+void Stack::v2_copy_to(Stack* other)
+/*@ requires stack(self, ?len, ?top, ?rtop, ?ft, ?fin, ?bci, ?bs) &*& stack_ok(len, top, rtop, bs) == true &*&
+             stack(other, ?olen, _, _, _, _, _, ?obs) &*& length(obs) == olen * sizeof(word) &*&
+             olen <= STACK_MAX_BOUND &*& olen >= (len - top) + rtop; @*/
+/*@ ensures stack(self, len, top, rtop, ft, fin, bci, bs) &*&
+            stack(other, olen, ?otop, rtop, ft, fin, bci, ?obs2) &*& stack_ok(olen, otop, rtop, obs2) == true &*&
+            same_abstraction(len, top, rtop, bs, olen, otop, rtop, obs2) == true; @*/
+{
+  //@ open stack(self, len, top, rtop, ft, fin, bci, bs);
+  //@ open stack(other, olen, _, _, _, _, _, obs);
+  word used = length() - top();
+  word records = v2_record_top();
+  ASSERT(other->length() >= used + records);
+  word displacement = other->length() - length();
+  //@ int W = sizeof(word);
+  //@ uint8 *sa = stack_array(self);
+  //@ uint8 *oa = stack_array(other);
+  //@ uchars_split(sa, top * W);
+  //@ uchars_split(sa, records * W);
+  //@ uchars_split(oa, (top + displacement) * W);
+  //@ uchars_split(oa, records * W);
+  memcpy(other->_array_address(0), _array_address(0), records * WORD_SIZE);
+  memcpy(other->_array_address(top() + displacement), _array_address(top()), used * WORD_SIZE);
+  //@ list<uint8> o1 = take(records * W, take(top * W, bs));
+  //@ list<uint8> o3 = drop(top * W, bs);
+  //@ assert uchars(oa + records * W, (top + displacement - records) * W, ?o2);
+  //@ uchars_join(oa);
+  //@ uchars_join(oa);
+  //@ uchars_join(sa);
+  //@ uchars_join(sa);
+  other->_set_top(displacement + top());
+  other->v2_set_records(v2_frame_top(), v2_fin_count(), v2_bci());
+  GcMetadata::insert_into_remembered_set(other);
+  //@ append_assoc(o1, o2, o3);
+  //@ take_append_bytes(o1, o2, o3, records * W);
+  //@ take_take_le(records * W, top * W, bs);
+  //@ drop_append_bytes(o1, o2, o3, (top + displacement) * W);
+  //@ close stack(self, len, top, rtop, ft, fin, bci, bs);
+}
+
+@render src/interpreter_v2.cc toit_v2_grow_stack
+uword toit_v2_grow_stack(void* raw_process, uword needed)
+/*@ requires current_stack((Process *)raw_process, ?s) &*& stack(s, ?len, ?top, ?rtop, ?ft, ?fin, ?bci, ?bs) &*&
+             stack_ok(len, top, rtop, bs) == true &*& needed <= STACK_MAX_BOUND; @*/
+/*@ ensures current_stack((Process *)raw_process, ?s2) &*& stack(s2, ?len2, ?top2, rtop, ft, fin, bci, ?bs2) &*&
+            stack_ok(len2, top2, rtop, bs2) == true &*&
+            same_abstraction(len, top, rtop, bs, len2, top2, rtop, bs2) == true &*&
+            (result == TOIT_V2_OK ? top2 - rtop >= needed :
+             result == TOIT_V2_STACK_OVERFLOW || result == TOIT_V2_OUT_OF_MEMORY); @*/
+{
+  Process* process = v2_process(raw_process);
+  Stack* stack = process->task()->stack();
+  GcMetadata::insert_into_remembered_set(stack);
+  //@ open stack(s, len, top, rtop, ft, fin, bci, bs);
+  word length = stack->length();
+  word free = stack->top() - stack->v2_record_top();
+  //@ close stack(s, len, top, rtop, ft, fin, bci, bs);
+  word new_length = -1;
+  if (length < Stack::max_length()) {
+    //@ shiftright_1(length);
+    //@ div_rem_nonneg(length, 2);
+    new_length = Utils::max(length + (length >> 1), (length - free) + static_cast<word>(needed));
+    new_length = Utils::min(Stack::max_length(), new_length);
+    if (free + (new_length - length) < static_cast<word>(needed)) new_length = -1;
+  }
+  if (new_length < 0) return TOIT_V2_STACK_OVERFLOW;
+  Stack* new_stack = process->object_heap()->allocate_stack(new_length);
+  for (int attempts = 1; new_stack == null && attempts < 4; attempts++)
+  /*@ invariant current_stack(process, ?sc) &*& stack(sc, ?lenc, ?topc, rtop, ft, fin, bci, ?bsc) &*&
+                stack_ok(lenc, topc, rtop, bsc) == true &*&
+                same_abstraction(len, top, rtop, bs, lenc, topc, rtop, bsc) == true &*&
+                (new_stack == 0 ? true : stack(new_stack, new_length, new_length, 0, 0, 0, 0, ?nbs) &*& length(nbs) == new_length * sizeof(word)) &*&
+                1 <= attempts; @*/
+  {
+    v2_gc(process, false, attempts, false, "'stack grow'", length, new_length);
+    new_stack = process->object_heap()->allocate_stack(new_length);
+  }
+  process->object_heap()->leave_primitive();
+  if (new_stack == null) return TOIT_V2_OUT_OF_MEMORY;
+  stack = process->task()->stack();
+  stack->v2_copy_to(new_stack);
+  process->task()->set_stack(new_stack);
+  return TOIT_V2_OK;
+}

@@ -31,19 +31,27 @@ cp "$REPO_ROOT/$source" "$M/repo/$source"
 mkdir -p "$M/annotated"
 (cd "$ANNOTATED_DIR" && cp -r model "$(dirname "$sidecar")" "$M/annotated/")
 replace() { "$TOIT_BIN" run "$REPO_ROOT/verified/tools/text_replace.toit" -- "$@"; }
-if ! replace "$M/repo/$source" "$@" > "$M/replace.log"; then
-  printf 'FAIL  %-40s the mutation does not apply to %s: %s\n' "$name" "$source" "$(cat "$M/replace.log")"
-  exit 1
-fi
-# The sidecar's copy of the changed functions changes alike.
-pairs=()
+# A change applies to the source and the sidecar's copy of the changed
+# function alike; a change of an annotation only (a weaker contract) to the
+# sidecar. Each must apply somewhere.
+src_pairs=()
+side_pairs=()
 while [ $# -gt 0 ]; do
-  if grep -qF -- "$(printf '%b' "${1//\\n/\\n}" | head -1)" "$M/annotated/$sidecar"; then
-    pairs+=("$1" "$2")
+  first="$(printf '%s' "$1" | sed 's/\\n.*//')"
+  found=0
+  if grep -qF -- "$first" "$M/repo/$source"; then src_pairs+=("$1" "$2"); found=1; fi
+  if grep -qF -- "$first" "$M/annotated/$sidecar"; then side_pairs+=("$1" "$2"); found=1; fi
+  if [ $found = 0 ]; then
+    printf 'FAIL  %-40s the mutation `%s` applies to neither %s nor the sidecar\n' "$name" "$first" "$source"
+    exit 1
   fi
   shift 2
 done
-if [ ${#pairs[@]} -gt 0 ] && ! replace "$M/annotated/$sidecar" "${pairs[@]}" > "$M/replace.log"; then
+if [ ${#src_pairs[@]} -gt 0 ] && ! replace "$M/repo/$source" "${src_pairs[@]}" > "$M/replace.log"; then
+  printf 'FAIL  %-40s the mutation does not apply to %s: %s\n' "$name" "$source" "$(cat "$M/replace.log")"
+  exit 1
+fi
+if [ ${#side_pairs[@]} -gt 0 ] && ! replace "$M/annotated/$sidecar" "${side_pairs[@]}" > "$M/replace.log"; then
   printf 'FAIL  %-40s the mutation does not apply to the sidecar: %s\n' "$name" "$(cat "$M/replace.log")"
   exit 1
 fi

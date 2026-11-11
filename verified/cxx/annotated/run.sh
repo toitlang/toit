@@ -118,13 +118,18 @@ mutant utf8-07c24665 utf8/utf_8_to_16.render src/utils.cc "utf8_count" "-prover 
 mutant utf8-overread utf8/utf_8_to_16.render src/utils.cc "No matching array chunk|i \+ j" "-prover z3v4.5" \
   "count > 4 || count > length - i)" "count > 4)"
 
+entry grow-stack            pass "" grow/grow_stack.gen.c -prover z3v4.5
+# The Verus contract of gc_grow_stack as it is (no bound on `needed`): the
+# cast to word fails; with only the cast made exact, the sum.
+mutant grow-stack-unbounded grow/grow_stack.render src/interpreter_v2.cc "overflow|underflow" "-prover z3v4.5" \
+  "stack_ok(len, top, rtop, bs) == true &*& needed <= STACK_MAX_BOUND; @*/" "stack_ok(len, top, rtop, bs) == true; @*/"
+mutant grow-stack-word-range grow/grow_stack.render src/interpreter_v2.cc "overflow" "-prover z3v4.5" \
+  "stack_ok(len, top, rtop, bs) == true &*& needed <= STACK_MAX_BOUND; @*/" "stack_ok(len, top, rtop, bs) == true &*& needed <= UINTPTR_MAX / 2; @*/"
+
 # Hand renderings of the pilot (not yet generated, not drift-checked).
 entry string-write          pass "" prims/string_write.c
 entry string-write-af4ba7ab fail "No matching heap chunks: uchars_" prims/string_write.c -allow_assume -allow_dead_code -D AF4BA7AB_REVERTED
 entry string-write-af4ba7ab-disjoint pass "" prims/string_write.c -allow_assume -allow_dead_code -D AF4BA7AB_REVERTED -D AF4BA7AB_DISJOINT
-entry grow-stack            pass "" grow/grow_stack.c -prover z3v4.5
-entry grow-stack-unbounded  fail "grow_stack.c.*(overflow|underflow)" grow/grow_stack.c -prover z3v4.5 -D NEEDED_UNBOUNDED
-entry grow-stack-word-range fail "grow_stack.c.*overflow" grow/grow_stack.c -prover z3v4.5 -D NEEDED_WORD_RANGE
 
 # 5. The Rust side (VeriFast's Rust front end, host target only).
 rust_entry() {
