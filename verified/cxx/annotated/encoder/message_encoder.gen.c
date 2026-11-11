@@ -974,6 +974,9 @@ bool MessageEncoder_encode_array(MessageEncoder *self, Array *object, word from,
   if (from < 0 || from > to || to > Array_length(object)) {
     return false;
   }
+  if (to - from > Array_max_length_in_process()) {
+    return false;
+  }
   MessageEncoder_write_uint8(self, (uint8)TAG_ARRAY);
   MessageEncoder_write_cardinal(self, (uword)(to - from));
   for (word i = from; i < to; i++)
@@ -1040,6 +1043,9 @@ bool MessageEncoder_encode_map(MessageEncoder *self, Instance *instance)
   }
   word size = Smi_value__Objectp(object);
   if (size < 0) {
+    return false;
+  }
+  if (size > Array_max_length_in_process() / 2) {
     return false;
   }
   MessageEncoder_write_cardinal(self, (uword)size);

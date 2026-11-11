@@ -183,7 +183,10 @@ A sidecar: a sequence of sections, each opened by a directive line (a
   the section holds the annotated copy of the function. `trusted`: only
   the prototype and contract are emitted (the body is not verified, but
   still compared with the sources). `type=T` picks an overload by its
-  Clang type with the spaces removed.
+  Clang type with the spaces removed. `truncating`: the implicit
+  conversions of a word to int and of a uword to word are VeriFast's
+  truncating casts (the modular conversions GCC and Clang define and
+  C++20 standardizes), for code that checks the result.
 Configuration: `@raii CLASS`, `@overloaded CLASS::NAME`,
   `@modular-arguments CLASS::CLASS` (the implicit integral conversions of
   the constructor's arguments to an unsigned parameter are the modular
@@ -513,6 +516,10 @@ ELIDED-CASTS ::= {"LValueToRValue", "NoOp", "FunctionToPointerDecay",
                   "UncheckedDerivedToBase", "BaseToDerived"}
 // The source types of a `truncating` word-to-int conversion (typedefs resolved).
 TRUNCATED ::= {"long", "int", "word", "intptr_t", "long long"}
+// The source types (typedefs resolved) and target types (as written) of a
+// `truncating` unsigned-to-signed conversion.
+UNSIGNED-WORDS ::= {"uword", "unsigned long", "unsigned int", "uintptr_t", "uint64", "unsigned long long"}
+SIGNED-TARGETS ::= {"word", "int64"}
 WRITTEN-CASTS ::= {"IntegralCast", "IntegralToPointer", "PointerToIntegral",
                    "BitCast", "IntegralToFloating", "FloatingToIntegral",
                    "FloatingCast", "ToVoid"}
@@ -790,6 +797,12 @@ class Renderer:
         // `truncating`: the narrowing conversion of a word to int is the
         // modular one (GCC, Clang, C++20), for code that checks it.
         return Expr "/*@truncating@*/(int)$(wrap (expr kids[0]) PREC-UNARY)" PREC-UNARY
+      target-type := c-type node["type"]["qualType"]
+      if cast == "IntegralCast" and truncating and (SIGNED-TARGETS.contains target-type) and (UNSIGNED-WORDS.contains (resolve (c-type kids[0]["type"]["qualType"]))):
+        // `truncating`: so is the conversion of an unsigned word or 64-bit
+        // integer to word or int64 (a value above the signed range becomes
+        // negative), for code that checks the value afterwards.
+        return Expr "/*@truncating@*/($target-type)$(wrap (expr kids[0]) PREC-UNARY)" PREC-UNARY
       if cast == "IntegralCast" and (strip-parens kids[0])["kind"] == "IntegerLiteral":
         return expr kids[0]
       if cast == "IntegralToBoolean" or cast == "PointerToBoolean":
@@ -1018,6 +1031,22 @@ class Renderer:
         return
       emit indent "while ($((expr kids[0]).text))"
       loop-body kids[1] indent
+    else if kind == "SwitchStmt":
+      // `switch (c) { case V: ... default: ... }`: the labels as written
+      // (a label's statement and the statements after it, up to the next
+      // label, follow it), the values from the constant table.
+      if node.get "hasInit" or node.get "hasVar": fail "$(where node): switch with an initializer"
+      sw-body := kids.last
+      if sw-body["kind"] != "CompoundStmt": fail "$(where node): switch without a block"
+      emit indent "switch ($((expr kids[0]).text)) {"
+      items := inner sw-body
+      end := end-offset sw-body
+      items.size.repeat: | i |
+        item-next := i + 1 < items.size ? (begin-offset items[i + 1]) : end
+        ghosts-up-to (begin-offset items[i]) (indent + 1)
+        switch-item items[i] (indent + 1) item-next
+      ghosts-up-to end (indent + 1)
+      emit indent "}"
     else if kind == "BreakStmt":
       emit indent "break;"
     else if kind == "ContinueStmt":
@@ -1030,6 +1059,24 @@ class Renderer:
       emit indent "$((expr node).text);"
     else:
       fail "$(where node): statement kind $kind not supported"
+
+  // A statement of a switch's block: a label (with its statement, which
+  // may be another label) or a statement under the last label.
+  switch-item node/Map indent/int next/int:
+    kind := node["kind"]
+    if kind == "CaseStmt":
+      kids := inner node
+      if kids.size != 2: fail "$(where node): case range or empty case"
+      emit indent "case $((expr kids[0]).text):"
+      ghosts-up-to (begin-offset kids[1]) (indent + 1)
+      switch-item kids[1] indent next
+    else if kind == "DefaultStmt":
+      emit indent "default:"
+      sub := (inner node)[0]
+      ghosts-up-to (begin-offset sub) (indent + 1)
+      switch-item sub indent next
+    else:
+      stmt node (indent + 1) next
 
   is-release-assert cond/Map -> bool:
     if cond["kind"] != "BinaryOperator" or cond["opcode"] != "&&": return false

@@ -75,6 +75,16 @@ int narrow(word x);
 //@ requires true;
 //@ ensures result == -1 || result == x;
 
+// C++: verified/cxx/annotated/tests/rules.cc toit::signed_length
+word signed_length(uword u);
+//@ requires true;
+//@ ensures -1 <= result;
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::classify
+word classify(int tag);
+//@ requires true;
+//@ ensures tag == 1 || tag == 2 ? result == 10 : tag == 3 ? result == 7 : result == 0;
+
 // C++: verified/cxx/annotated/tests/rules.cc toit::advance
 word advance(word cursor);
 //@ requires 0 <= cursor &*& cursor < 100;
@@ -188,6 +198,39 @@ int narrow(word x)
     return -1;
   }
   return n;
+}
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::signed_length
+word signed_length(uword u)
+//@ requires true;
+//@ ensures -1 <= result;
+{
+  word length = /*@truncating@*/(word)u;
+  if (length < 0) {
+    return (word)-1;
+  }
+  return length;
+}
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::classify
+word classify(int tag)
+//@ requires true;
+//@ ensures tag == 1 || tag == 2 ? result == 10 : tag == 3 ? result == 7 : result == 0;
+{
+  switch (tag) {
+    case 1:
+    case 2:
+      return 10;
+    case 3:
+      {
+        word x = 7;
+        //@ assert x == 7;
+        return x;
+      }
+    default:
+      break;
+  }
+  return 0;
 }
 
 // C++: verified/cxx/annotated/tests/rules.cc toit::advance

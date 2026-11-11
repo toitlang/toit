@@ -172,6 +172,42 @@ mutant encoder-externals-bound encoder/message_encoder.render src/messaging.cc "
 mutant encoder-copy-terminator encoder/message_encoder.render src/messaging.cc "No matching heap chunks: \[_\]chars" "" \
   "memcpy(data, source, length);" "memcpy(data, source, length + extra);"
 
+# The message decoder (TISON from untrusted bytes; IPC under the two named
+# assumptions). `-allow_dead_code`: the `return null` after decode_any's
+# switch (every case returns).
+DEC_OPTS="-allow_dead_code -prover z3v4.5"
+entry decoder               pass "" decoder/message_decoder.gen.c -allow_dead_code -prover z3v4.5
+# The bound of read_cardinal's digits (decoder/radix.h), with Z3.
+# `-allow_dead_code`: on ILP32 the cases of the shifts above 28.
+entry radix                 pass "" decoder/radix.c -allow_dead_code -prover z3v4.5
+# The length checks before the inline copies: the copy leaves the input.
+mutant decoder-string-length decoder/message_decoder.render src/messaging.cc "result (63|31)\)\) cap" "$DEC_OPTS" \
+  "MessageDecoder::decode_string(bool inlined)@@if (length < 0 || length > remaining()) return mark_malformed();" "if (length < 0) return mark_malformed();"
+mutant decoder-byte-array-length decoder/message_decoder.render src/messaging.cc "1073741823" "$DEC_OPTS" \
+  "MessageDecoder::decode_byte_array(bool inlined)@@if (length < 0 || length > remaining()) return mark_malformed();" "if (length < 0) return mark_malformed();"
+# The length checks before the array and map allocations: an allocation
+# larger than the input left.
+mutant decoder-array-length decoder/message_decoder.render src/messaging.cc "result (63|31)\) \(- cap" "$DEC_OPTS" \
+  "if (length < 0 || length > remaining() || length > Array::max_length_in_process()) {" "if (length < 0 || length > Array::max_length_in_process()) {"
+mutant decoder-map-length decoder/message_decoder.render src/messaging.cc "\(\* 2 \(truncate_signed result (63|31)\)\) \(- cap" "$DEC_OPTS" \
+  "if (size < 0 || size > remaining() / 2 || size > Array::max_length_in_process() / 2) {" "if (size < 0 || size > Array::max_length_in_process() / 2) {"
+# The nesting limit (#3362) taken out: the recursion is unbounded.
+mutant decoder-nesting decoder/message_decoder.render src/messaging.cc "n 1\) 64" "$DEC_OPTS" \
+  "  if (nesting_ > MESSAGING_DECODING_MAX_NESTING) return mark_malformed();\n" ""
+# The fixed-size readers' bound: a read past the input. (read_uint8 is in
+# messaging.h: a mutant changes a .cc only.)
+mutant decoder-uint64-bound decoder/message_decoder.render src/messaging.cc "8 \(- cap c\)" "$DEC_OPTS" \
+  "MessageDecoder::read_uint64()@@if (next <= size_) {" "if (next <= size_ + 1) {"
+# read_cardinal: without the word-size check (#3362) the shift is
+# undefined; without the digit check (this branch) the sum wraps.
+mutant decoder-cardinal-shift decoder/message_decoder.render src/messaging.cc "shift|7 \* k|digit|overflow" "$DEC_OPTS" \
+  "if (shift >= WORD_BIT_SIZE || digit > (UINTPTR_MAX >> shift)) {" "if (digit > (UINTPTR_MAX >> shift)) {"
+mutant decoder-cardinal-digit decoder/message_decoder.render src/messaging.cc "UINTPTR_MAX|overflow|digit" "$DEC_OPTS" \
+  "if (shift >= WORD_BIT_SIZE || digit > (UINTPTR_MAX >> shift)) {" "if (shift >= WORD_BIT_SIZE) {"
+# The externals table: one entry too many is written past it.
+mutant decoder-externals-bound decoder/message_decoder.render src/messaging.cc "pointers|intptrs|No matching|<= 8|index" "$DEC_OPTS" \
+  "if (index >= ARRAY_SIZE(externals_)) {" "if (index > ARRAY_SIZE(externals_)) {"
+
 entry byte-content          pass "" blob/byte_content.gen.c
 # 357d1127 (#3373, byte_content nesting) reverted: without the depth limit
 # the recursive call's precondition (depth + 1 <= MAX) fails.

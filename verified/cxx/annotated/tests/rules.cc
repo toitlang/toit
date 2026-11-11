@@ -77,6 +77,31 @@ inline int narrow(word x) {
   return n;
 }
 
+// Rule: `@render ... truncating`: a uword-to-word conversion is the
+// modular one too (the decoder's cardinals: the sign is checked).
+inline word signed_length(uword u) {
+  word length = u;
+  if (length < 0) return -1;
+  return length;
+}
+
+// Rule: a switch is rendered as written (labels, a label's statement and
+// the statements after it, fall-through, default).
+inline word classify(int tag) {
+  switch (tag) {
+    case 1:
+    case 2:
+      return 10;
+    case 3: {
+      word x = 7;
+      return x;
+    }
+    default:
+      break;
+  }
+  return 0;
+}
+
 inline word use_inner(word x) {
   Outer::Inner inner(x);
   return inner.v();
