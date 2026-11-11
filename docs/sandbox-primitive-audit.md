@@ -188,4 +188,14 @@ byte slices cutting UTF-8 sequences or out of range, program-heap literals,
 1 MB blobs and strings, external byte arrays and tasks. It also fuzzes
 `process_send` (to a pid that never exists, so only the encoder runs) and,
 in an untrusted container (`toit run --untrusted`), skips primitives that
-only throw permission errors. Results: see "Fuzz runs".
+only throw permission errors.
+
+### Fuzz runs (2026-11-11, ASan host build, logs in /home/flo/work/opentoit-sandbox-artifacts/assurance/fuzz)
+
+| Batch | Build | Mode | Seeds x time | Calls | Result |
+|---|---|---|---|---|---|
+| b1 | before the fixes | both | 6 x 2 min | - | every trusted run stopped on the `string_rune_count` ASan report; every untrusted run died of a lambda finalizer taking an argument (driver bug) |
+| b2 | ASan fix | trusted | 6 x 25 min (2.5 CPU-h) | 47.7M | clean |
+| b2 | ASan fix | untrusted | 6 x 2-3 min | 5.0M | every run ran out of its 64 MB heap: the `remove_finalizer` leak of external byte arrays (fixed) |
+| b3 | all fixes | trusted | 8 x 29 min (3.9 CPU-h) | 30.3M | clean; 2 `slow:` (base64 of 1 MB under ASan, 1.3 s; denied for untrusted programs) |
+| b3 | all fixes | untrusted | 8 x 29 min (3.9 CPU-h) | 68.2M | clean; one transient out-of-memory in one run, which went on |
