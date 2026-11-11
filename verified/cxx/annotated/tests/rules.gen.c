@@ -20,6 +20,12 @@ struct Pair { word a_; word b_; };
 typedef struct Pair Pair;
 struct Over { char unused_; };
 typedef struct Over Over;
+typedef short narrow_t;
+struct plain_c { int a; };
+// The implicit default constructor (initializes nothing).
+void plain_c_ctor(struct plain_c *self);
+//@ requires self->a |-> _;
+//@ ensures self->a |-> _;
 // C++: verified/cxx/annotated/tests/rules.cc toit::Outer::Inner::Inner
 void Outer_Inner_ctor(Outer_Inner *self, word x);
 //@ requires self->v_ |-> _ &*& x < 100;
@@ -99,6 +105,21 @@ void Tagged_ctor(Tagged *self, uword tag);
 uword negative_tag(word offset);
 //@ requires 0 <= offset &*& offset < 100;
 //@ ensures true;
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::clamp
+word clamp(word x);
+//@ requires true;
+//@ ensures result == (x < 0 ? 0 : x);
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::fits_narrow
+bool fits_narrow(int x);
+//@ requires true;
+//@ ensures true;
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::use_plain
+int use_plain(void);
+//@ requires true;
+//@ ensures result == 1;
 
 // C++: verified/cxx/annotated/tests/rules.cc toit::Outer::Inner::Inner
 void Outer_Inner_ctor(Outer_Inner *self, word x)
@@ -258,5 +279,38 @@ uword negative_tag(word offset)
   Tagged t;
   Tagged_ctor(&t, /*@truncating@*/(uword)((word)-100 + offset));
   return t.tag_;
+}
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::clamp
+word clamp(word x)
+//@ requires true;
+//@ ensures result == (x < 0 ? 0 : x);
+{
+  {
+    if ((x) < 0) {
+      (x) = 0;
+    }
+  }
+  return x;
+}
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::fits_narrow
+bool fits_narrow(int x)
+//@ requires true;
+//@ ensures true;
+{
+  narrow_t n = /*@truncating@*/(narrow_t)x;
+  return (int)n == x;
+}
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::use_plain
+int use_plain(void)
+//@ requires true;
+//@ ensures result == 1;
+{
+  struct plain_c p;
+  plain_c_ctor(&p);
+  p.a = 1;
+  return p.a;
 }
 

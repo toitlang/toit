@@ -21,6 +21,12 @@ struct Pair { word a_; word b_; };
 typedef struct Pair Pair;
 struct Over { char unused_; };
 typedef struct Over Over;
+typedef short narrow_t;
+struct plain_c { int a; };
+// The implicit default constructor (initializes nothing).
+void plain_c_ctor(struct plain_c *self);
+//@ requires self->a |-> _;
+//@ ensures self->a |-> _;
 
 @prototypes
 @render verified/cxx/annotated/tests/rules.cc toit::Outer::Inner::Inner
@@ -160,4 +166,32 @@ inline uword negative_tag(word offset)
 {
   Tagged t(-100 + offset);
   return t.tag_;
+}
+
+@render verified/cxx/annotated/tests/rules.cc toit::clamp
+inline word clamp(word x)
+//@ requires true;
+//@ ensures result == (x < 0 ? 0 : x);
+{
+  CLAMP_TO_ZERO(x);
+  return x;
+}
+
+@render verified/cxx/annotated/tests/rules.cc toit::fits_narrow truncating
+inline bool fits_narrow(int x)
+//@ requires true;
+//@ ensures true;
+{
+  narrow_t n = static_cast<narrow_t>(x);
+  return static_cast<int>(n) == x;
+}
+
+@render verified/cxx/annotated/tests/rules.cc toit::use_plain
+inline int use_plain()
+//@ requires true;
+//@ ensures result == 1;
+{
+  struct plain_c p;
+  p.a = 1;
+  return p.a;
 }

@@ -998,6 +998,12 @@ void Array_at_put__word_Objectp(Array *self, word index, Object *value);
              0 <= index &*& index < o_len(H(self)) &*& good(objs, value) == true; @*/
 //@ ensures heap(objs, put_field(H, self, index, value)) &*& grows(objs, H, objs, put_field(H, self, index, value)) == true;
 
+// C++: src/objects.h toit::Array::at_put
+void Array_at_put__word_Smip(Array *self, word index, Smi *value);
+/*@ requires heap(?objs, ?H) &*& mem(self, objs) == true &*& has_tag(H, self, ARRAY_TAG) == true &*&
+             0 <= index &*& index < o_len(H(self)) &*& good(objs, value) == true; @*/
+//@ ensures heap(objs, put_field(H, self, index, value)) &*& grows(objs, H, objs, put_field(H, self, index, value)) == true;
+
 // C++: src/objects_inline.h toit::HeapObject::on_program_heap
 bool HeapObject_on_program_heap(HeapObject *self, Process *process);
 //@ requires [?f]process(process, ?prog, ?ids);

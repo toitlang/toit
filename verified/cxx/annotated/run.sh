@@ -276,6 +276,23 @@ entry byte-zap              pass "" prims/byte_zap.gen.c -allow_dead_code -prove
 mutant byte-zap-past-end prims/byte_zap.render src/primitive_bitmap.cc "uchars|No matching" "-allow_dead_code -prover z3v4.5" \
   "  memset(bytes.address(), value, bytes.length());" "  memset(bytes.address(), value, bytes.length() + 1);"
 
+# time_info and its calendar (red-team round 4). `-allow_dead_code`: the
+# time_t round trip check of os_localtime is dead on LP64; UNREACHABLE.
+TI_OPTS="-allow_dead_code -prover z3v4.5"
+entry time-info             pass "" prims/time_info.gen.c -allow_dead_code -prover z3v4.5
+# The fix reverted: `days * SECONDS_PER_DAY` overflows near INT64_MIN.
+mutant time-info-seconds-of-day prims/time_info.render src/primitive_core.cc "overflow|underflow" "$TI_OPTS" \
+  "int seconds_of_day = static_cast<int>(floor_mod(timestamp, SECONDS_PER_DAY));" "int seconds_of_day = static_cast<int>(timestamp - days * SECONDS_PER_DAY);"
+# local_fields without its year check: the shift into the equivalent year
+# overflows (the year is unbounded).
+mutant time-info-local-year prims/time_info.render src/primitive_core.cc "overflow|underflow|1000000000000000" "$TI_OPTS" \
+  "  if (!Smi::is_valid32(utc.year)) return false;\n" "" \
+  "  if (!Smi::is_valid32(utc.year)) /*@ open tm_fields(&tm); @*/ return false;\n" ""
+# The primitive without its year check: the year is not a smi (on ILP32
+# not even a word: the conversion fails first).
+mutant time-info-year-smi prims/time_info.render src/primitive_core.cc "smi_range|overflow|underflow" "$TI_OPTS" \
+  "  if (!Smi::is_valid32(fields.year)) FAIL(OUT_OF_RANGE);\n" ""
+
 # The MutableBlob decoding. `-allow_dead_code`: the check `content == null`
 # (README, "Findings") is dead, VeriFast proves it.
 entry mutable-byte-content  pass "" blob/mutable_byte_content.gen.c -allow_dead_code -prover z3v4.5
