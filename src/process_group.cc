@@ -33,7 +33,9 @@ ProcessGroup::ProcessGroup(int id, Program* program, AlignedMemoryBase* memory, 
     , policy_(policy) {}
 
 ProcessGroup::~ProcessGroup() {
+#ifndef TOIT_NO_CXX_INTERPRETER
   delete method_entries_;
+#endif
   delete v2_methods_;
   delete memory_;
   free(grants_);
@@ -78,15 +80,24 @@ ProcessGroup* ProcessGroup::create(int id, Program* program, AlignedMemoryBase* 
     }
   } else if (program != null) {
     ASSERT(v2_methods == null);
+#ifdef TOIT_NO_CXX_INTERPRETER
+    // No C++ interpreter (CMake TOIT_CXX_INTERPRETER=OFF): format 2 only.
+    fprintf(stderr, "format-1 program refused: this VM runs only format 2\n");
+    PrimitivePolicy::release(policy);
+    return null;
+#else
     entries = MethodEntryTable::compute(program);
     if (entries == null) {
       PrimitivePolicy::release(policy);
       return null;
     }
+#endif
   }
   ProcessGroup* result = _new ProcessGroup(id, program, memory, policy);
   if (result == null) {
+#ifndef TOIT_NO_CXX_INTERPRETER
     delete entries;
+#endif
     delete v2_methods;
     PrimitivePolicy::release(policy);
     return null;

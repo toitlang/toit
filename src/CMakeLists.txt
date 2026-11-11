@@ -47,6 +47,22 @@ if (TOIT_BYTECODE_FORMAT EQUAL 2 AND NOT TOIT_VERIFIED_CORE_ENABLED)
   message(WARNING "TOIT_BYTECODE_FORMAT=2 without the verified core: this VM cannot run the programs its compiler generates")
 endif()
 
+# The C++ interpreter for format-1 programs (interpreter_run.cc and the
+# method entry table that checks method ids read from the heap). A VM whose
+# programs are all format 2 (a device firmware with the verified core,
+# Kconfig TOIT_CXX_INTERPRETER) can leave it out; it then refuses format-1
+# programs. Hosts keep it: the compiler interprets format 1 for -O2 and the
+# test suite still runs format 1 (docs/format2-migration.md).
+option(TOIT_CXX_INTERPRETER "Link the C++ interpreter for format-1 programs into the VM" ON)
+if (NOT TOIT_CXX_INTERPRETER)
+  if (NOT TOIT_VERIFIED_CORE_ENABLED)
+    message(FATAL_ERROR "TOIT_CXX_INTERPRETER=OFF needs the verified core (TOIT_VERIFIED_CORE)")
+  endif()
+  if (NOT TOIT_BYTECODE_FORMAT EQUAL 2)
+    message(FATAL_ERROR "TOIT_CXX_INTERPRETER=OFF needs TOIT_BYTECODE_FORMAT=2")
+  endif()
+endif()
+
 if (NOT ${TOIT_IS_EMBEDDED})
   add_custom_target(build_tools)
   add_subdirectory(compiler)
@@ -150,11 +166,22 @@ if (NOT ${TOIT_IS_EMBEDDED})
     )
 endif()
 
+set(toit_vm_core_SRC ${toit_core_SRC})
+if (NOT TOIT_CXX_INTERPRETER)
+  # printing.cc stays: its contents are compiled only with TOIT_DEBUG (the
+  # C++ interpreter's bytecode tracing, but also the heap and object
+  # printers of debug builds), so it is empty in device builds.
+  list(FILTER toit_vm_core_SRC EXCLUDE REGEX "/(interpreter_run|method_entries).cc$")
+endif()
+
 add_library(
   toit_vm
   ${toit_vm_SRC}
-  ${toit_core_SRC}
+  ${toit_vm_core_SRC}
   )
+if (NOT TOIT_CXX_INTERPRETER)
+  target_compile_definitions(toit_vm PRIVATE TOIT_NO_CXX_INTERPRETER)
+endif()
 
 add_library(
   toit_porting

@@ -59,6 +59,10 @@ AR-ENTRY-PROPERTIES ::= "\$properties"
 META-SDK-VERSION ::= "sdk-version"
 META-WORD-SIZE   ::= "word-size"
 META-KIND        ::= "kind"
+// The bytecode formats the firmware runs (a list of ints: 1 is the C++
+// interpreter, 2 the verified core), or absent for envelopes that predate
+// it. See docs/format2-migration.md, "Devices".
+META-BYTECODE-FORMATS ::= "bytecode-formats"
 
 // ESP32 AR entries.
 AR-ENTRY-ESP32-FIRMWARE-BIN   ::= "\$firmware.bin"
@@ -210,8 +214,32 @@ create-esp32-cmd --name/string -> cli.Command:
         cli.OptionPath "system.snapshot"
             --extensions=[".snapshot"]
             --required,
+        OPTION-BYTECODE-FORMATS,
       ]
       --run=:: create-envelope-esp32 it
+
+OPTION-BYTECODE-FORMATS ::= cli.OptionInt "bytecode-formats"
+    --help="""
+      Set the bytecode formats the firmware runs (1: the C++ interpreter, 2: the verified core).
+      'container install' refuses snapshots in other formats.
+      Without it, the envelope does not record the formats, and 'container install' only warns
+      about a format-2 snapshot in an envelope whose system snapshot is format 1."""
+    --multi
+    --split-commas
+
+/**
+The bytecode formats given with $OPTION-BYTECODE-FORMATS, or null if none
+  were given.
+*/
+bytecode-formats-option_ invocation/cli.Invocation --system-snapshot/ByteArray --ui/cli.Ui -> List?:
+  formats/List := invocation[OPTION-BYTECODE-FORMATS.name]
+  if formats.is-empty: return null
+  formats.do:
+    if it != 1 and it != 2: ui.abort "Unknown bytecode format: $it."
+  system-format := snapshot-format_ system-snapshot
+  if system-format and not formats.contains system-format:
+    ui.abort "The system snapshot is in bytecode format $system-format, which the firmware does not run ($(formats.join ","))."
+  return formats.sort
 
 create-envelope-esp32 invocation/cli.Invocation -> none:
   output-path := invocation[OPTION-ENVELOPE]
@@ -245,6 +273,7 @@ create-envelope-esp32 invocation/cli.Invocation -> none:
       --sdk-version=system-snapshot.sdk-version
       --kind=Envelope.KIND-ESP32
       --word-size=WORD-SIZE-ESP32
+      --bytecode-formats=(bytecode-formats-option_ invocation --system-snapshot=system-snapshot-content --ui=ui)
   envelope.store output-path --ui=ui
 
 create-ec618-cmd --name/string="ec618" -> cli.Command:
@@ -268,6 +297,7 @@ create-ec618-cmd --name/string="ec618" -> cli.Command:
             --help="Set the per-slot VM .data init image (slot-data.bin) carried inside each slot.",
         cli.OptionPath "system.snapshot"
             --required,
+        OPTION-BYTECODE-FORMATS,
       ]
       --run=:: create-envelope-ec618 it
 
@@ -315,6 +345,7 @@ create-envelope-ec618 invocation/cli.Invocation -> none:
       --sdk-version=system-snapshot.sdk-version
       --kind=Envelope.KIND-EC618
       --word-size=WORD-SIZE-EC618
+      --bytecode-formats=(bytecode-formats-option_ invocation --system-snapshot=system-snapshot-content --ui=ui)
   envelope.store output-path --ui=ui
 
 create-host-cmd -> cli.Command:
@@ -477,14 +508,7 @@ container-install invocation/cli.Invocation -> none:
       bundle := SnapshotBundle name image-data
       if bundle.sdk-version != envelope.sdk-version:
         ui.abort "Snapshot was built by SDK $bundle.sdk-version, but envelope is for SDK $envelope.sdk-version."
-      // Format 2 is the compiler's default on hosts with the verified core,
-      // but most device firmware only runs format 1 (docs/format2-migration.md).
-      system-entry := envelope.entries.get SYSTEM-CONTAINER-NAME
-      if system-entry and (snapshot-format_ image-data) == 2
-          and (snapshot-format_ system-entry) == 1:
-        ui.emit --warning """
-            The snapshot '$image-path' is in bytecode format 2, but the envelope's system is in format 1.
-            Unless the firmware has the verified core, compile it with '-Xbytecode_format=1'."""
+      check-bytecode-format_ envelope image-data --image-path=image-path --ui=ui
     else:
       header := null
       catch: header = decode-image image-data --word-size=envelope.word-size
@@ -508,6 +532,32 @@ container-install invocation/cli.Invocation -> none:
       flags := properties.get PROPERTY-CONTAINER-FLAGS --init=: {:}
       flags[name] = flag-bits
       properties
+
+/**
+Checks that the firmware of the $envelope runs the bytecode format of the
+  snapshot bundle $image-data.
+
+The envelope records the formats its firmware runs ($META-BYTECODE-FORMATS).
+  Envelopes that predate the record only get a warning, based on the format
+  of their system snapshot.
+*/
+check-bytecode-format_ envelope/Envelope image-data/ByteArray --image-path/string --ui/cli.Ui -> none:
+  format := snapshot-format_ image-data
+  if not format: return
+  formats := envelope.bytecode-formats
+  if formats:
+    if formats.contains format: return
+    hint := format == 2
+        ? "Compile it with '-Xbytecode_format=1', or use a firmware with the verified core."
+        : "Compile it in format 2 (the default)."
+    ui.abort """
+        The snapshot '$image-path' is in bytecode format $format, but the firmware runs only format $(formats.join " and ").
+        $hint"""
+  system-entry := envelope.entries.get SYSTEM-CONTAINER-NAME
+  if system-entry and format == 2 and (snapshot-format_ system-entry) == 1:
+    ui.emit --warning """
+        The snapshot '$image-path' is in bytecode format 2, but the envelope's system is in format 1.
+        Unless the firmware has the verified core, compile it with '-Xbytecode_format=1'."""
 
 /** The bytecode format of the snapshot bundle $bytes, or null if it isn't one. */
 snapshot-format_ bytes/ByteArray -> int?:
@@ -1676,6 +1726,7 @@ update-envelope invocation/cli.Invocation [block] -> none:
       --sdk-version=existing.sdk-version
       --kind=existing.kind
       --word-size=existing.word-size
+      --bytecode-formats=existing.bytecode-formats
   envelope.store output-path --ui=ui
 
 extract-binary-content -> ByteArray
@@ -1788,6 +1839,8 @@ show invocation/cli.Invocation -> none:
     "kind": kind-string,
     "sdk-version": envelope.sdk-version,
   }
+  if envelope.bytecode-formats:
+    result["bytecode-formats"] = envelope.bytecode-formats
 
   if envelope.kind == Envelope.KIND-ESP32:
     firmware-bin := extract-binary-esp32 envelope --config-encoded=#[]
@@ -1884,6 +1937,8 @@ class Envelope:
   sdk-version/string
   kind/int
   word-size/int
+  /** The bytecode formats the firmware runs, or null if the envelope doesn't say. */
+  bytecode-formats/List? := null
   entries/Map ::= {:}
 
   constructor.load .path/string --ui/cli.Ui:
@@ -1909,12 +1964,13 @@ class Envelope:
           else:
             throw "unsupported kind: $kind-string"
           word-size = metadata[META-WORD-SIZE]
+          bytecode-formats = metadata.get META-BYTECODE-FORMATS
         else:
           entries[file.name] = file.content
     if version_ == -1: throw "cannot open envelope - missing info entry"
     if sdk-version == "": throw "cannot open envelope - missing or corrupt metadata entry"
 
-  constructor.create .entries --.sdk-version --.kind --.word-size:
+  constructor.create .entries --.sdk-version --.kind --.word-size --.bytecode-formats=null:
     version_ = kind == KIND-EC618
         ? ENVELOPE-FORMAT-VERSION-EC618
         : ENVELOPE-FORMAT-VERSION-ESP32-HOST
@@ -1939,12 +1995,13 @@ class Envelope:
       else:
         throw "unsupported kind: $(kind)"
 
-      metadata := json.encode {
+      metadata-map := {
         META-SDK-VERSION: sdk-version,
         META-KIND: kind-string,
         META-WORD-SIZE: word-size,
       }
-      ar.add AR-ENTRY-METADATA metadata
+      if bytecode-formats: metadata-map[META-BYTECODE-FORMATS] = bytecode-formats
+      ar.add AR-ENTRY-METADATA (json.encode metadata-map)
 
       // Add all other entries.
       entries.do: | name/string content/ByteArray |

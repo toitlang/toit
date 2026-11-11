@@ -394,6 +394,15 @@ Interpreter::Result Interpreter::run_v2() {
 #endif
 }
 
+#ifdef TOIT_NO_CXX_INTERPRETER
+// Without the C++ interpreter (interpreter_run.cc is not linked) every
+// program is format 2: ProcessGroup::create refuses format-1 programs.
+Interpreter::Result Interpreter::run() {
+  if (!process_->program()->is_format2()) FATAL("format-1 program and no C++ interpreter");
+  return run_v2();
+}
+#endif
+
 }  // namespace toit
 
 // --------------------------------------------------------------------------

@@ -136,7 +136,13 @@ class Interpreter {
 
   // Run the interpreter. Returns a result that indicates if the process was
   // terminated or stopped for other reasons.
+#ifndef TOIT_NO_CXX_INTERPRETER
   Result run() INTERPRETER_CORE;
+#else
+  // Without the C++ interpreter (CMake TOIT_CXX_INTERPRETER=OFF) every
+  // program is format 2 and run() only hands over to the core (run_v2).
+  Result run();
+#endif
 
   // Fast helpers for indexing and number comparisons.
   static bool fast_at(Process* process, Object* receiver, Object* args, bool is_put, Object** value) INTERPRETER_HELPER;

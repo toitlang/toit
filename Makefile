@@ -432,7 +432,8 @@ ec618: ec618-relocations
 		--cp.bin $(EC618_SDK)/PLAT/prebuild/FW/lib/cp-demo-flash.bin \
 		--reloc.bin $(BUILD)/ec618/slot-reloc.bin \
 		--data.bin $(BUILD)/ec618/slot-data.bin \
-		--system.snapshot $(BUILD)/ec618/system.snapshot
+		--system.snapshot $(BUILD)/ec618/system.snapshot \
+		--bytecode-formats 1
 	# Extract the binpkg (the extension now lives inside slot A).
 	$(TOIT_BIN) tool firmware -e $(EC618_ENVELOPE) extract -o $(EC618_BINPKG) --format image
 	# Retargeting has one canonical output size, including when its input is
