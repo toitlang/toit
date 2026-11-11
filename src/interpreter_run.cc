@@ -155,7 +155,12 @@ Method Program::find_method(Object* receiver, word offset) {
 // the given target method.
 #define CHECK_STACK_OVERFLOW(target)                                  \
   if (sp - target.max_height() < watermark_) {                        \
-    OverflowState state;                                              \
+    HANDLE_STACK_OVERFLOW(target)                                     \
+  }
+
+// The slow path of CHECK_STACK_OVERFLOW.
+#define HANDLE_STACK_OVERFLOW(target)                                 \
+  { OverflowState state;                                              \
     sp = handle_stack_overflow(sp, &state, target);                   \
     switch (state) {                                                  \
       case OVERFLOW_RESUME:                                           \
@@ -172,16 +177,13 @@ Method Program::find_method(Object* receiver, word offset) {
     }                                                                 \
   }
 
-// CHECK_PREEMPT checks for preemption by looking at the watermark.
+// CHECK_PREEMPT checks for preemption by looking at the watermark. The
+// preemption itself is shared by all sites (PREEMPT_AT_BRANCH), which keeps
+// Interpreter::run small (it is in IRAM on the ESP32).
 #define CHECK_PREEMPT(entry)                                          \
-  if (watermark_ == PREEMPTION_MARKER) {                              \
-    watermark_ = null;                                                \
-    preemption_method_header_bcp_ = Method::header_from_entry(entry); \
-    static_assert(FRAME_SIZE == 2, "Unexpected frame size");          \
-    PUSH(reinterpret_cast<Object*>(bcp));                             \
-    PUSH(program->frame_marker());                                    \
-    store_stack(sp);                                                  \
-    return Result(Result::PREEMPTED);                                 \
+  if (__builtin_expect(watermark_ == PREEMPTION_MARKER, 0)) {         \
+    preemption_entry = entry;                                         \
+    goto PREEMPT_AT_BRANCH;                                           \
   }
 
 #ifdef TOIT_CHECK_PROPAGATED_TYPES
@@ -208,11 +210,17 @@ Method Program::find_method(Object* receiver, word offset) {
 #define CHECK_PROPAGATED_TYPES_PRIMITIVE(module, index, arguments, value, is_failure)
 #endif
 
+// The stack overflow handling of calls is shared by all call sites
+// (CALL_STACK_OVERFLOW), which keeps Interpreter::run small (it is in IRAM
+// on the ESP32).
 #define CALL_METHOD_WITH_RETURN_ADDRESS(target, return_address)       \
   static_assert(FRAME_SIZE == 2, "Unexpected frame size");            \
   PUSH(reinterpret_cast<Object*>(return_address));                    \
   PUSH(program->frame_marker());                                      \
-  CHECK_STACK_OVERFLOW(target)                                        \
+  if (__builtin_expect(sp - target.max_height() < watermark_, 0)) {   \
+    call_target = target;                                             \
+    goto CALL_STACK_OVERFLOW;                                         \
+  }                                                                   \
   CHECK_PROPAGATED_TYPES_METHOD_ENTRY(target);                        \
   bcp = target.entry();                                               \
   DISPATCH(0)
@@ -223,6 +231,13 @@ Method Program::find_method(Object* receiver, word offset) {
 // Whether the given object is part of the (read-only) program heap.
 #define ON_PROGRAM_HEAP(object) \
   (reinterpret_cast<uword>(object) - program_heap_start < program_heap_size)
+
+// Out of line (not IRAM_ATTR, so in flash on the ESP32): only malformed
+// programs reach it.
+static __attribute__((noinline)) void print_corrupt_stack(Program* program, uint8* bcp) {
+  fprintf(stderr, "Corrupt stack at bci %d: terminating the process\n",
+          program->absolute_bci_from_bcp(bcp));
+}
 
 inline word bit_or(word a, word b) { return a | b; }
 inline word bit_xor(word a, word b) { return a ^ b; }
@@ -311,6 +326,11 @@ Interpreter::Result Interpreter::run() {
   method_entries_ = process_->group()->method_entries();
   const uword program_heap_start = reinterpret_cast<uword>(program);
   const uword program_heap_size = program->size_no_assets();
+  // The target of a call that takes the shared slow path
+  // (CALL_STACK_OVERFLOW).
+  Method call_target = Method::invalid();
+  // The method entry of a branch that is preempted (PREEMPT_AT_BRANCH).
+  uint8* preemption_entry = null;
 #ifdef TOIT_CHECK_PROPAGATED_TYPES
   compiler::TypeDatabase* propagated_types = compiler::TypeDatabase::compute(program);
 #endif
@@ -1215,6 +1235,27 @@ Interpreter::Result Interpreter::run() {
     }
   OPCODE_END();
 
+  CALL_STACK_OVERFLOW: {
+    // The slow path of CALL_METHOD: the stack is too small for the target
+    // (or the process is preempted). The call has pushed its frame.
+    Method target = call_target;
+    HANDLE_STACK_OVERFLOW(target)
+    CHECK_PROPAGATED_TYPES_METHOD_ENTRY(target);
+    bcp = target.entry();
+    DISPATCH(0);
+  }
+
+  PREEMPT_AT_BRANCH: {
+    // The slow path of CHECK_PREEMPT.
+    watermark_ = null;
+    preemption_method_header_bcp_ = Method::header_from_entry(preemption_entry);
+    static_assert(FRAME_SIZE == 2, "Unexpected frame size");
+    PUSH(reinterpret_cast<Object*>(bcp));
+    PUSH(program->frame_marker());
+    store_stack(sp);
+    return Result(Result::PREEMPTED);
+  }
+
   PROGRAM_FAILURE: {
     // The program violated an invariant that the interpreter checks at run
     // time (a malformed block reference, method id, try link or a store
@@ -1231,8 +1272,7 @@ Interpreter::Result Interpreter::run() {
     // unwinding. This can only happen with a malformed program, and the
     // stack cannot be trusted any more, so the process is terminated
     // instead of throwing. 'sp' is still inside the stack.
-    fprintf(stderr, "Corrupt stack at bci %d: terminating the process\n",
-            program->absolute_bci_from_bcp(bcp));
+    print_corrupt_stack(program, bcp);
     store_stack(sp);
     return Result(static_cast<int64>(1));
   }
