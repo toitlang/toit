@@ -19,6 +19,15 @@ INITIAL-BUFFER-LENGTH_ ::= 64
 MIN-BUFFER-GROWTH_ ::= 64
 MAX-INTERNAL-SIZE_ ::= 128
 
+// The backing store of a $Buffer: external above $MAX-INTERNAL-SIZE_ bytes.
+// Untrusted containers may not allocate external byte arrays
+//   (PERMISSION_DENIED); they get an ordinary one.
+new-backing_ size/int -> ByteArray:
+  if size <= MAX-INTERNAL-SIZE_: return ByteArray size
+  catch --unwind=(: it != "PERMISSION_DENIED"):
+    return ByteArray.external size
+  return ByteArray size
+
 /**
 A reader to make byte arrays readable.
 
@@ -334,14 +343,14 @@ class Buffer extends BufferConsumer:
     // We copy the code of the 'with-initial-size' constructor, so we don't get
     // a deprecation warning.
     init-size_ = INITIAL-BUFFER-LENGTH_
-    buffer_ = init-size_ > MAX-INTERNAL-SIZE_ ? (ByteArray.external init-size_) : (ByteArray init-size_)
+    buffer_ = new-backing_ init-size_
 
   /**
   Constructs a new buffer with the given $init-size_.
   If the $init-size_ isn't big enough, the buffer grows when necessary.
   */
   constructor.with-initial-size .init-size_/int:  // @no-warn
-    buffer_ = init-size_ > MAX-INTERNAL-SIZE_ ? (ByteArray.external init-size_) : (ByteArray init-size_)
+    buffer_ = new-backing_ init-size_
 
   /** See $BufferConsumer.size. */
   size -> int:

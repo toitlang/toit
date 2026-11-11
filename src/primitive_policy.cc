@@ -57,6 +57,13 @@ static const unsigned BITMAP_COUNT = 0 MODULE_BITMAP(PRIMITIVE_COUNT);
 // process-local primitives and read-only clock access. Anything that reaches
 // the host, flash, the environment, other processes (beyond process_send),
 // writes the clock, or changes VM-global settings is not in this list.
+//
+// Deliberately left out although process-local, because no ordinary program
+// needs them: external and off-heap byte arrays (byte_array_new_external,
+// create_off_heap_byte_array: `ByteArray n` still works for every n),
+// get_generic_resource_group (only used by denied modules), encode_object,
+// literal_index, bytes_allocated_delta, random_seed, and the SDK version
+// queries (vm_sdk_version, vm_sdk_model, app_sdk_version, app_sdk_info).
 static const uint16 UNTRUSTED_CORE[] = {
   // Measured set.
   CoreIndex::add_finalizer,
@@ -196,23 +203,12 @@ static const uint16 UNTRUSTED_CORE[] = {
   CoreIndex::string_from_rune,
   CoreIndex::string_to_utf_16,
   CoreIndex::utf_16_to_string,
-  CoreIndex::byte_array_new_external,        // Charged to the process heap.
   CoreIndex::byte_array_is_valid_string_content,
-  CoreIndex::create_off_heap_byte_array,     // Charged to the process heap.
   CoreIndex::crc,
-  CoreIndex::random_seed,                    // Seeds the per-process PRNG.
-  CoreIndex::literal_index,
-  CoreIndex::encode_object,
-  CoreIndex::word_size,
-  CoreIndex::platform,
+  CoreIndex::word_size,       // BITS-PER-WORD; derivable from the smi range anyway.
+  CoreIndex::platform,        // system.platform, LINE-TERMINATOR.
   CoreIndex::architecture,
-  CoreIndex::vm_sdk_version,
-  CoreIndex::vm_sdk_model,
-  CoreIndex::app_sdk_version,
-  CoreIndex::app_sdk_info,
-  CoreIndex::gc_count,
-  CoreIndex::bytes_allocated_delta,
-  CoreIndex::get_generic_resource_group,
+  CoreIndex::gc_count,        // system.gc-count: waiting for a GC (finalizers).
   CoreIndex::main_arguments,
   CoreIndex::spawn_method,
   CoreIndex::spawn_arguments,
