@@ -216,6 +216,15 @@ elif ! "$TOIT_BIN" run "$VERIFIED/tools/contract_check.toit" -- --root "$VERIFIE
   fail "contract table: a Verus or VeriFast contract differs from verified/CONTRACTS.toml (see above)"
 fi
 
+section "Layout facts, Verus and VeriFast (verified/LAYOUT.toml)"
+# Against layout.rs here; against the C++ and the VeriFast model by the
+# generated static assertions, compiled in the VeriFast section.
+if ! tools_ready; then
+  fail "layout table: cannot run verified/tools/layout_table.toit"
+elif ! "$TOIT_BIN" run "$VERIFIED/tools/layout_table.toit" -- --check --root "$VERIFIED"; then
+  fail "layout table: verified/LAYOUT.toml differs from layout.rs or its generated checks (see above)"
+fi
+
 if [ "$RUN_TESTS" = 1 ]; then
   section "Escape-hatch audit regression test (verified/tools/tests/trust_audit_test.sh)"
   if ! tools_ready || ! TOIT="$TOIT_BIN" "$VERIFIED/tools/tests/trust_audit_test.sh"; then

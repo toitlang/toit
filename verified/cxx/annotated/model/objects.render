@@ -182,16 +182,16 @@ fixpoint bool addr_ok(void *o) {
 
 predicate header(void *o; uword hw) =
   addr_ok(o) == true &*&
-  pointer((void **)raw(o) + 0, ?hp) &*& hw == (uword)hp &*& header_ok(hw) == true;
+  pointer((void **)raw(o) + LAYOUT_HEADER_WORD, ?hp) &*& hw == (uword)hp &*& header_ok(hw) == true;
 
 predicate instance_body(void *o, int n; list<void *> fields) =
   addr_ok(o) == true &*&
-  pointers((void **)raw(o) + 1, n, fields) &*& 0 <= n &*& n <= MAX_OBJECT_WORDS &*& length(fields) == n;
+  pointers((void **)raw(o) + LAYOUT_INSTANCE_FIELDS_WORD, n, fields) &*& 0 <= n &*& n <= MAX_OBJECT_WORDS &*& length(fields) == n;
 
 predicate array_body(void *o; int len, list<void *> elems) =
   addr_ok(o) == true &*&
-  uintptr(raw(o) + 1, len) &*& len <= MAX_OBJECT_WORDS &*&
-  pointers((void **)raw(o) + 2, len, elems) &*& length(elems) == len;
+  uintptr(raw(o) + LAYOUT_ARRAY_LENGTH_WORD, len) &*& len <= MAX_OBJECT_WORDS &*&
+  pointers((void **)raw(o) + LAYOUT_ARRAY_ELEMENTS_WORD, len, elems) &*& length(elems) == len;
 
 // External memory: the bytes at an address word (VeriFast's integer to
 // pointer cast, as the code makes it), owned by the object that points to
@@ -205,12 +205,12 @@ predicate external_bytes(uword address, int length;) =
 // RawByteTag holds bytes; others point to a C struct (proxies, V5: opaque).
 predicate byte_array_body(void *o, int raw_length, list<uword> aux;) =
   addr_ok(o) == true &*&
-  uintptr(raw(o) + 1, ?rw) &*& signed_of(rw) == raw_length &*&
+  uintptr(raw(o) + LAYOUT_BYTE_ARRAY_LENGTH_WORD, ?rw) &*& signed_of(rw) == raw_length &*&
   raw_length >= 0 ?
-    uchars((uint8 *)raw(o) + 2 * WORD_SIZE, raw_length, _) &*& raw_length <= WORD_SIZE * MAX_OBJECT_WORDS &*& aux == nil
+    uchars((uint8 *)raw(o) + LAYOUT_BYTE_ARRAY_CONTENT_BYTE, raw_length, _) &*& raw_length <= WORD_SIZE * MAX_OBJECT_WORDS &*& aux == nil
   :
     -1 - raw_length <= MAX_BLOB &*&
-    uintptr(raw(o) + 2, ?ea) &*& uintptr(raw(o) + 3, ?et) &*& et <= 0xffff &*&
+    uintptr(raw(o) + LAYOUT_BYTE_ARRAY_EXTERNAL_ADDRESS_WORD, ?ea) &*& uintptr(raw(o) + LAYOUT_BYTE_ARRAY_EXTERNAL_TAG_WORD, ?et) &*& et <= 0xffff &*&
     aux == cons(ea, cons(et, nil)) &*&
     (et == RawByteTag ? external_bytes(ea, -1 - raw_length) : true);
 
@@ -223,13 +223,13 @@ predicate half_word(void *p; int v) =
 // [hash:h][SENTINEL:h][length][address]. `len` is the content length.
 predicate string_body(void *o, int len, list<uword> aux;) =
   addr_ok(o) == true &*&
-  half_word((uint8 *)raw(o) + WORD_SIZE, _) &*&
-  half_word((uint8 *)raw(o) + WORD_SIZE + HALF_WORD_SIZE, ?il) &*&
+  half_word((uint8 *)raw(o) + LAYOUT_STRING_HASH_CODE_BYTE, _) &*&
+  half_word((uint8 *)raw(o) + LAYOUT_STRING_INTERNAL_LENGTH_BYTE, ?il) &*&
   il != String_SENTINEL ?
     aux == cons(il, nil) &*& len == il &*& il <= WORD_SIZE * MAX_OBJECT_WORDS &*&
-    uchars((uint8 *)raw(o) + 2 * WORD_SIZE, il, _)
+    uchars((uint8 *)raw(o) + LAYOUT_STRING_CONTENT_BYTE, il, _)
   :
-    uintptr(raw(o) + 2, len) &*& uintptr(raw(o) + 3, ?ea) &*& len <= MAX_BLOB &*&
+    uintptr(raw(o) + LAYOUT_STRING_EXTERNAL_LENGTH_WORD, len) &*& uintptr(raw(o) + LAYOUT_STRING_EXTERNAL_ADDRESS_WORD, ?ea) &*& len <= MAX_BLOB &*&
     aux == cons(il, cons(ea, nil)) &*& external_bytes(ea, len);
 
 predicate body(void *o, int tag2, int len, list<uword> aux; list<void *> words) =
@@ -346,20 +346,20 @@ predicate heap_holes(list<void *> objs, fixpoint(void *, oinfo) H, list<void *> 
 
 predicate blob_shell(void *b, int tag2, int len, list<uword> aux) =
   tag2 == 2 * BYTE_ARRAY_TAG ?
-    addr_ok(b) == true &*& uintptr(raw(b) + 1, ?rw) &*& signed_of(rw) == len &*&
+    addr_ok(b) == true &*& uintptr(raw(b) + LAYOUT_BYTE_ARRAY_LENGTH_WORD, ?rw) &*& signed_of(rw) == len &*&
     (len >= 0 ?
        len <= WORD_SIZE * MAX_OBJECT_WORDS &*& aux == nil
      :
-       -1 - len <= MAX_BLOB &*& uintptr(raw(b) + 2, ?ea) &*& uintptr(raw(b) + 3, ?et) &*& et <= 0xffff &*&
+       -1 - len <= MAX_BLOB &*& uintptr(raw(b) + LAYOUT_BYTE_ARRAY_EXTERNAL_ADDRESS_WORD, ?ea) &*& uintptr(raw(b) + LAYOUT_BYTE_ARRAY_EXTERNAL_TAG_WORD, ?et) &*& et <= 0xffff &*&
        aux == cons(ea, cons(et, nil)) &*& et == RawByteTag &*& ea + (-1 - len) <= UINTPTR_MAX)
   :
     addr_ok(b) == true &*&
-    half_word((uint8 *)raw(b) + WORD_SIZE, _) &*&
-    half_word((uint8 *)raw(b) + WORD_SIZE + HALF_WORD_SIZE, ?il) &*&
+    half_word((uint8 *)raw(b) + LAYOUT_STRING_HASH_CODE_BYTE, _) &*&
+    half_word((uint8 *)raw(b) + LAYOUT_STRING_INTERNAL_LENGTH_BYTE, ?il) &*&
     (il != String_SENTINEL ?
        aux == cons(il, nil) &*& len == il &*& il <= WORD_SIZE * MAX_OBJECT_WORDS
      :
-       uintptr(raw(b) + 2, len) &*& uintptr(raw(b) + 3, ?ea) &*& len <= MAX_BLOB &*&
+       uintptr(raw(b) + LAYOUT_STRING_EXTERNAL_LENGTH_WORD, len) &*& uintptr(raw(b) + LAYOUT_STRING_EXTERNAL_ADDRESS_WORD, ?ea) &*& len <= MAX_BLOB &*&
        aux == cons(il, cons(ea, nil)) &*& ea + len <= UINTPTR_MAX);
 
 predicate blob_hole(list<void *> objs, fixpoint(void *, oinfo) H, void *b) =

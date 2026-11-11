@@ -213,6 +213,25 @@ clause one side lacks and is reported. The bridges between the views,
 remaining reviewed assumption** of the seam. The allocation and primitive
 contracts have their Verus side checked; their C++ is not rendered yet.
 
+## One layout table
+
+verified/LAYOUT.toml lists the layout facts both heap models rely on, once,
+per object kind (tagging, header bits, class tags, instance, task, array,
+double, large integer, byte array internal/external with the RawByteTag,
+string internal/external with the sentinel and half words): value on
+64-bit and on 32-bit, the C++ expression, the Verus constant of
+verified/core/src/layout.rs and the VeriFast macro of `model/constants.h`.
+verified/tools/layout_table.toit (in check.sh) compares every Verus name
+with layout.rs on both widths and generates
+`model/layout.gen.constants.cc`, static assertions of every C++ expression
+and every VeriFast macro against the table, compiled for x86_64 and i686 by
+`constants-check.sh` (74 checks). The model's predicates use the
+`LAYOUT_*` macros (word indices of the length, element, external address
+and tag words, byte offsets of the half words and of the content), so a
+fact changed on either side fails until the table and the other side
+follow. The later Verus raw-pointer work can import the same rows (the
+names are layout.rs's).
+
 ## The Rust raw-memory layer
 
 Trusted items of crate core (verified/TRUSTED.toml, `rust/census.sh`): 93

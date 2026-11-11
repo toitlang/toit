@@ -1,0 +1,380 @@
+# Copyright (C) 2026 Toit contributors.
+#
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation; version
+# 2.1 only.
+#
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# Lesser General Public License for more details.
+#
+# The license can be found in the file `LICENSE` in the top level
+# directory of this repository.
+
+# The layout facts of the VM's objects, written once, per object kind:
+# the facts both proofs rely on, the Verus heap model (verified/core/src/
+# layout.rs, read through view.rs) and the VeriFast object model
+# (verified/cxx/annotated/model: its predicates and renderings use the
+# names of constants.h). verified/tools/layout_table.toit checks
+#   * every `verus` name against the constant of layout.rs (both widths),
+#   * every `verifast` name against the macro of constants.h and every
+#     `cxx` expression against the C++ headers, by generating static
+#     assertions (verified/cxx/annotated/model/layout.gen.constants.cc),
+#     compiled for x86_64 and i686 by verified/cxx/annotated/constants-check.sh.
+# So a fact changed in the C++, in layout.rs or in constants.h fails until
+# this table, and the other side, follow.
+#
+# Fields: kind (the object kind), name (the fact), value64, value32 (the
+# value on a 64-bit and a 32-bit target), cxx (a C++ expression inside
+# namespace toit, access control off), verus (a layout.rs constant, or
+# absent), verifast (a constants.h macro, or absent), note.
+
+[[fact]]
+kind = "word"
+name = "word size in bytes"
+value64 = 8
+value32 = 4
+cxx = "WORD_SIZE"
+verus = "WORD_SIZE"
+verifast = "WORD_SIZE"
+
+[[fact]]
+kind = "tagging"
+name = "smi tag size (bits)"
+value64 = 1
+value32 = 1
+cxx = "Object::SMI_TAG_SIZE"
+verus = "SMI_TAG_SIZE"
+verifast = "SMI_TAG_SIZE"
+
+[[fact]]
+kind = "tagging"
+name = "smi tag mask"
+value64 = 1
+value32 = 1
+cxx = "Object::SMI_TAG_MASK"
+verus = "SMI_TAG_MASK"
+verifast = "Object_SMI_TAG_MASK"
+
+[[fact]]
+kind = "tagging"
+name = "smi tag"
+value64 = 0
+value32 = 0
+cxx = "Object::SMI_TAG"
+verus = "SMI_TAG"
+verifast = "Object_SMI_TAG"
+
+[[fact]]
+kind = "tagging"
+name = "non-smi tag mask"
+value64 = 3
+value32 = 3
+cxx = "Object::NON_SMI_TAG_MASK"
+verus = "NON_SMI_TAG_MASK"
+verifast = "Object_NON_SMI_TAG_MASK"
+
+[[fact]]
+kind = "tagging"
+name = "heap object tag"
+value64 = 1
+value32 = 1
+cxx = "Object::HEAP_TAG"
+verus = "HEAP_TAG"
+verifast = "Object_HEAP_TAG"
+
+[[fact]]
+kind = "tagging"
+name = "primitive error tag"
+value64 = 3
+value32 = 3
+cxx = "Error::ERROR_TAG"
+verus = "ERROR_TAG"
+verifast = "Error_ERROR_TAG"
+
+[[fact]]
+kind = "header"
+name = "header word"
+value64 = 0
+value32 = 0
+cxx = "HeapObject::HEADER_OFFSET / WORD_SIZE"
+verus = "HEADER_WORD"
+verifast = "LAYOUT_HEADER_WORD"
+
+[[fact]]
+kind = "header"
+name = "class tag shift (in the header's smi value)"
+value64 = 0
+value32 = 0
+cxx = "HeapObject::CLASS_TAG_OFFSET"
+verus = "CLASS_TAG_OFFSET"
+verifast = "HeapObject_CLASS_TAG_OFFSET"
+
+[[fact]]
+kind = "header"
+name = "class tag mask"
+value64 = 15
+value32 = 15
+cxx = "HeapObject::CLASS_TAG_MASK"
+verus = "CLASS_TAG_MASK"
+verifast = "HeapObject_CLASS_TAG_MASK"
+
+[[fact]]
+kind = "header"
+name = "class id shift (in the header's smi value)"
+value64 = 5
+value32 = 5
+cxx = "HeapObject::CLASS_ID_OFFSET"
+verus = "CLASS_ID_OFFSET"
+verifast = "HeapObject_CLASS_ID_OFFSET"
+note = "The model's header_cid(hw) = hw / 64 and header_tag2(hw) = hw & 30 are these shifts and the mask applied to the header word (smi tag included)."
+
+[[fact]]
+kind = "class tag"
+name = "array"
+value64 = 0
+value32 = 0
+cxx = "ARRAY_TAG"
+verus = "ARRAY_TAG"
+verifast = "ARRAY_TAG"
+
+[[fact]]
+kind = "class tag"
+name = "string"
+value64 = 1
+value32 = 1
+cxx = "STRING_TAG"
+verus = "STRING_TAG"
+verifast = "STRING_TAG"
+
+[[fact]]
+kind = "class tag"
+name = "instance"
+value64 = 2
+value32 = 2
+cxx = "INSTANCE_TAG"
+verus = "INSTANCE_TAG"
+verifast = "INSTANCE_TAG"
+
+[[fact]]
+kind = "class tag"
+name = "oddball"
+value64 = 3
+value32 = 3
+cxx = "ODDBALL_TAG"
+verus = "ODDBALL_TAG"
+verifast = "ODDBALL_TAG"
+
+[[fact]]
+kind = "class tag"
+name = "double"
+value64 = 4
+value32 = 4
+cxx = "DOUBLE_TAG"
+verus = "DOUBLE_TAG"
+verifast = "DOUBLE_TAG"
+
+[[fact]]
+kind = "class tag"
+name = "byte array"
+value64 = 5
+value32 = 5
+cxx = "BYTE_ARRAY_TAG"
+verus = "BYTE_ARRAY_TAG"
+verifast = "BYTE_ARRAY_TAG"
+
+[[fact]]
+kind = "class tag"
+name = "large integer"
+value64 = 6
+value32 = 6
+cxx = "LARGE_INTEGER_TAG"
+verus = "LARGE_INTEGER_TAG"
+verifast = "LARGE_INTEGER_TAG"
+
+[[fact]]
+kind = "class tag"
+name = "stack"
+value64 = 7
+value32 = 7
+cxx = "STACK_TAG"
+verus = "STACK_TAG"
+verifast = "STACK_TAG"
+
+[[fact]]
+kind = "class tag"
+name = "task"
+value64 = 8
+value32 = 8
+cxx = "TASK_TAG"
+verus = "TASK_TAG"
+verifast = "TASK_TAG"
+
+[[fact]]
+kind = "instance"
+name = "first field word"
+value64 = 1
+value32 = 1
+cxx = "Instance::HEADER_SIZE / WORD_SIZE"
+verus = "INSTANCE_FIELDS_WORD"
+verifast = "LAYOUT_INSTANCE_FIELDS_WORD"
+
+[[fact]]
+kind = "task"
+name = "stack field"
+value64 = 0
+value32 = 0
+cxx = "Task::STACK_INDEX"
+verus = "TASK_STACK_FIELD"
+
+[[fact]]
+kind = "task"
+name = "id field"
+value64 = 1
+value32 = 1
+cxx = "Task::ID_INDEX"
+verus = "TASK_ID_FIELD"
+
+[[fact]]
+kind = "array"
+name = "length word"
+value64 = 1
+value32 = 1
+cxx = "Array::LENGTH_OFFSET / WORD_SIZE"
+verus = "ARRAY_LENGTH_WORD"
+verifast = "LAYOUT_ARRAY_LENGTH_WORD"
+
+[[fact]]
+kind = "array"
+name = "first element word"
+value64 = 2
+value32 = 2
+cxx = "Array::HEADER_SIZE / WORD_SIZE"
+verus = "ARRAY_ELEMENTS_WORD"
+verifast = "LAYOUT_ARRAY_ELEMENTS_WORD"
+
+[[fact]]
+kind = "double"
+name = "value word"
+value64 = 1
+value32 = 1
+cxx = "Double::VALUE_OFFSET / WORD_SIZE"
+verus = "DOUBLE_VALUE_WORD"
+
+[[fact]]
+kind = "large integer"
+name = "value word"
+value64 = 1
+value32 = 1
+cxx = "LargeInteger::VALUE_OFFSET / WORD_SIZE"
+verus = "LARGE_INTEGER_VALUE_WORD"
+
+[[fact]]
+kind = "byte array"
+name = "raw length word (negative: external, -1 - length)"
+value64 = 1
+value32 = 1
+cxx = "ByteArray::LENGTH_OFFSET / WORD_SIZE"
+verus = "BYTE_ARRAY_LENGTH_WORD"
+verifast = "LAYOUT_BYTE_ARRAY_LENGTH_WORD"
+
+[[fact]]
+kind = "byte array"
+name = "internal content byte offset"
+value64 = 16
+value32 = 8
+cxx = "ByteArray::HEADER_SIZE"
+verus = "BYTE_ARRAY_CONTENT_BYTE"
+verifast = "LAYOUT_BYTE_ARRAY_CONTENT_BYTE"
+
+[[fact]]
+kind = "byte array"
+name = "external address word"
+value64 = 2
+value32 = 2
+cxx = "ByteArray::EXTERNAL_ADDRESS_OFFSET / WORD_SIZE"
+verus = "BYTE_ARRAY_EXTERNAL_ADDRESS_WORD"
+verifast = "LAYOUT_BYTE_ARRAY_EXTERNAL_ADDRESS_WORD"
+
+[[fact]]
+kind = "byte array"
+name = "external tag word"
+value64 = 3
+value32 = 3
+cxx = "ByteArray::EXTERNAL_TAG_OFFSET / WORD_SIZE"
+verus = "BYTE_ARRAY_EXTERNAL_TAG_WORD"
+verifast = "LAYOUT_BYTE_ARRAY_EXTERNAL_TAG_WORD"
+
+[[fact]]
+kind = "byte array"
+name = "external tag of raw bytes (RawByteTag)"
+value64 = 0
+value32 = 0
+cxx = "RawByteTag"
+verus = "RAW_BYTE_TAG"
+verifast = "RawByteTag"
+note = "Both models give bytes only to an external byte array with this tag (TRUSTED.md V5: other tags are opaque proxies)."
+
+[[fact]]
+kind = "string"
+name = "hash code byte offset (half word)"
+value64 = 8
+value32 = 4
+cxx = "String::HASH_CODE_OFFSET"
+verus = "STRING_HASH_CODE_BYTE"
+verifast = "LAYOUT_STRING_HASH_CODE_BYTE"
+
+[[fact]]
+kind = "string"
+name = "internal length byte offset (half word)"
+value64 = 12
+value32 = 6
+cxx = "String::INTERNAL_LENGTH_OFFSET"
+verus = "STRING_INTERNAL_LENGTH_BYTE"
+verifast = "LAYOUT_STRING_INTERNAL_LENGTH_BYTE"
+
+[[fact]]
+kind = "string"
+name = "half word size in bytes"
+value64 = 4
+value32 = 2
+cxx = "HALF_WORD_SIZE"
+verifast = "HALF_WORD_SIZE"
+
+[[fact]]
+kind = "string"
+name = "internal content byte offset"
+value64 = 16
+value32 = 8
+cxx = "String::INTERNAL_HEADER_SIZE"
+verus = "STRING_CONTENT_BYTE"
+verifast = "LAYOUT_STRING_CONTENT_BYTE"
+
+[[fact]]
+kind = "string"
+name = "internal length sentinel (external)"
+value64 = 65535
+value32 = 65535
+cxx = "String::SENTINEL"
+verus = "STRING_SENTINEL"
+verifast = "String_SENTINEL"
+
+[[fact]]
+kind = "string"
+name = "external length word"
+value64 = 2
+value32 = 2
+cxx = "String::EXTERNAL_LENGTH_OFFSET / WORD_SIZE"
+verus = "STRING_EXTERNAL_LENGTH_WORD"
+verifast = "LAYOUT_STRING_EXTERNAL_LENGTH_WORD"
+
+[[fact]]
+kind = "string"
+name = "external address word"
+value64 = 3
+value32 = 3
+cxx = "String::EXTERNAL_ADDRESS_OFFSET / WORD_SIZE"
+verus = "STRING_EXTERNAL_ADDRESS_WORD"
+verifast = "LAYOUT_STRING_EXTERNAL_ADDRESS_WORD"
