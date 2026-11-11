@@ -76,6 +76,10 @@ class SiblingProvider extends ServiceProvider implements SiblingService ServiceH
     super "test/sandbox/sibling" --major=1 --minor=0
     provides SiblingService.SELECTOR --handler=this
 
+  // The untrusted containers of the tests use the sibling.
+  accepts-untrusted-clients -> bool:
+    return true
+
   handle index/int arguments/any --gid/int --client/int -> any:
     if index == SiblingService.PING-INDEX: return ping arguments
     if index == SiblingService.PID-INDEX: return pid

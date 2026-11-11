@@ -17,12 +17,19 @@ interface ServiceDiscoveryService:
   watch pid/int -> none
   static WATCH-INDEX /int ::= 3
 
+  /**
+  Registers the service with the given $uuid.
+
+  If $accepts-untrusted is true, the provider serves sandboxed (untrusted)
+    clients, and the service is discovered by them.
+  */
   listen id/int uuid/string -> none
       --name/string
       --major/int
       --minor/int
       --priority/int
       --tags/List?
+      --accepts-untrusted/bool=false
   static LISTEN-INDEX /int ::= 1
 
   unlisten id/int -> none
@@ -49,9 +56,10 @@ class ServiceDiscoveryServiceClient extends ServiceClient implements ServiceDisc
       --major/int
       --minor/int
       --priority/int
-      --tags/List?:
+      --tags/List?
+      --accepts-untrusted/bool=false:
     invoke_ ServiceDiscoveryService.LISTEN-INDEX [
-      id, uuid, name, major, minor, priority, tags
+      id, uuid, name, major, minor, priority, tags, accepts-untrusted
     ]
 
   unlisten id/int -> none:

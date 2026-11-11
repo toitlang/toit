@@ -10,7 +10,6 @@ import rpc
 import rpc.broker
 import monitor
 
-import system.api.containers show ContainerService
 import system.api.service-discovery
   show
     ServiceDiscoveryService
@@ -28,13 +27,6 @@ RESOURCE-HANDLE-LIMIT_ /int ::= 0x1fff_ffff  // Will be shifted up by one.
 // Open clients a sandboxed (untrusted) process may have with a provider
 // process.
 MAX-UNTRUSTED-CLIENTS_ /int ::= 32
-
-/**
-Returns the policy kind of the process with the given $pid, or -1 if
-  there is no such process. Not available to sandboxed processes.
-*/
-process-policy_ pid/int -> int:
-  #primitive.core.process-policy
 
 _client_ /ServiceDiscoveryService ::= (ServiceDiscoveryServiceClient).open
 
@@ -423,13 +415,14 @@ class ServiceProvider:
   Whether clients in sandboxed (untrusted) containers may open this
     provider's services.
 
-  Sandboxed processes can only reach providers they discovered, so
-    providers outside the system process accept them by default.
-    Providers in the system process are reachable by every process, so
-    they reject sandboxed clients unless they override this.
+  Serving sandboxed clients is opt-in for every provider: by default a
+    provider rejects them (opening a client throws PERMISSION_DENIED), and
+    sandboxed processes don't discover its services, so they don't get the
+    capability to send messages to its process either. Providers that are
+    meant to be used by sandboxes override this to return true.
   */
   accepts-untrusted-clients -> bool:
-    return Process.current.id != SYSTEM-PROCESS-ID_
+    return false
 
   on-closed client/int -> none:
     // Override in subclasses.
@@ -777,6 +770,7 @@ class ServiceManager_ implements SystemMessageHandler_:
         --minor=provider.minor
         --priority=service.priority
         --tags=service.tags
+        --accepts-untrusted=provider.accepts-untrusted-clients
     return id
 
   unlisten id/int -> none:
@@ -787,8 +781,10 @@ class ServiceManager_ implements SystemMessageHandler_:
     provider/ServiceProvider? ::= providers_.get id
     if not provider: throw "Unknown service:$id"
     service := provider._validate_ uuid major minor
-    if not provider.accepts-untrusted-clients and pid != Process.current.id:
-      if (process-policy_ pid) == ContainerService.POLICY-UNTRUSTED: throw "PERMISSION_DENIED"
+    // A sandboxed provider can't query policies; its clients are trusted
+    // (sandboxes don't discover other sandboxes' services).
+    if not provider.accepts-untrusted-clients and broker.RpcBroker.is-untrusted_ pid:
+      throw "PERMISSION_DENIED"
 
     // Every open client takes memory in this process until the client
     // closes it, so a sandbox may only have a bounded number of them.
