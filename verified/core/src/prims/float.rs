@@ -37,8 +37,10 @@ use toit_spec::v2::sound::good;
 
 verus! {
 
-/// A `double` argument: its bits.
-#[inline(always)]
+/// A `double` argument: its bits. Out of line, as `num_arg` and
+/// `ints::int_arg`: one copy for every primitive that decodes one (size
+/// diet).
+#[inline(never)]
 pub fn double_arg(h: &Heap, w: usize, Ghost(v): Ghost<Value>) -> (r: Option<u64>)
     requires
         heap_model_ok(h.objs(), h.addrs(), h.class_bits()),
@@ -57,7 +59,7 @@ pub fn double_arg(h: &Heap, w: usize, Ghost(v): Ghost<Value>) -> (r: Option<u64>
 
 /// A number (`compare_numbers`, `to_double`): (is an integer, its value
 /// as i64 bits or its double bits).
-#[inline(always)]
+#[inline(never)]
 pub fn num_arg(h: &Heap, w: usize, Ghost(v): Ghost<Value>) -> (r: Option<(bool, u64)>)
     requires
         heap_model_ok(h.objs(), h.addrs(), h.class_bits()),

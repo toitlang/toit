@@ -31,6 +31,7 @@ use crate::v2::sound::*;
 use crate::v2::verifier::*;
 use crate::v2::check::{x_is_field_class, x_ifc};
 use crate::v2::vprog::*;
+use crate::xvec::*;
 #[cfg(verus_only)]
 use crate::v2::exec::wf_program2;
 
@@ -63,7 +64,7 @@ pub fn x_all_good(Ghost(h): Ghost<Seq<HeapObj>>, n: usize, vs: &[Value]) -> (r: 
         invariant h.len() == n, 0 <= i <= vs.len(), forall|j: int| 0 <= j < i ==> good(h, #[trigger] vs@[j]),
         decreases vs.len() - i,
     {
-        if !x_good(Ghost(h), n, vs[i]) {
+        if !x_good(Ghost(h), n, ix(vs, i)) {
             return false;
         }
         i += 1;
@@ -81,7 +82,7 @@ pub fn x_loaded_obj_ok(p: &VProgram, Ghost(h): Ghost<Seq<HeapObj>>, n: usize, o:
     if cl >= p.class_bits.len() {
         return false;
     }
-    if o.class_id == p.builtin[19] {
+    if o.class_id == ix(p.builtin, 19) {
         return false;
     }
     let fc = x_is_field_class(p, cl as i64) && x_ifc(p, cl) >= 1;

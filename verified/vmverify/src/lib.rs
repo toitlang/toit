@@ -29,21 +29,24 @@
 //!                handler supplied by the VM.
 
 // Without the `std` feature (devices): `no_std` + `alloc`, no panic
-// catching, no timing, no counting allocator, no test support.
+// catching, no timing, no counting allocator, no test support. The device
+// library has no panic paths at all (README.md, "No panics on devices";
+// tests/nopanic_check.sh).
 #![cfg_attr(not(feature = "std"), no_std)]
 
 extern crate alloc;
 
-/// A diagnostic text: `text!(FIXED, FORMAT, ARGS...)`. Hosts (`std`) format
-/// it; devices keep the fixed part only, so that the formatting machinery
-/// (3-4 KB of flash) is not linked. A device reports the reason code, the
-/// method and the offset (in `toit_vmverify_result`), not the details.
+/// A diagnostic text (`verify::Text`): `text!(FIXED, FORMAT, ARGS...)`.
+/// Hosts (`std`) format it; devices keep the fixed part only, borrowed, so
+/// that neither the formatting machinery (3-4 KB of flash) nor an
+/// allocation that could fail is needed. A device reports the reason code,
+/// the method and the offset (in `toit_vmverify_result`), not the details.
 macro_rules! text {
     ($fixed:literal, $fmt:literal $(, $arg:expr)* $(,)?) => {{
         #[cfg(feature = "std")]
-        let t = alloc::format!($fmt $(, $arg)*);
+        let t = { crate::counting::stop_failing(); alloc::borrow::Cow::Owned(alloc::format!($fmt $(, $arg)*)) };
         #[cfg(not(feature = "std"))]
-        let t = { $(let _ = &$arg;)* alloc::string::String::from($fixed) };
+        let t = { $(let _ = &$arg;)* alloc::borrow::Cow::Borrowed($fixed) };
         t
     }};
 }

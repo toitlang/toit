@@ -117,9 +117,13 @@ fn apply_ranges(base: Content, froms: &[i64; 8], tos: &[i64; 8], has: &[bool; 8]
         decreases d,
     {
         d -= 1;
-        if has[d] {
-            let f = froms[d];
-            let t = tos[d];
+        // `d & 7` is `d`: the mask lets LLVM drop the bounds checks at
+        // opt-levels s and z too (no panic path, vmverify's nopanic_check.sh).
+        let i = d & 7;
+        assert(i == d) by (bit_vector) requires i == d & 7, d < 8;
+        if has[i] {
+            let f = froms[i];
+            let t = tos[i];
             if !(0 <= f && f <= t && (t as u64) <= (len as u64)) { return None; }
             start = start + f as usize;
             len = (t - f) as usize;

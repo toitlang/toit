@@ -1,5 +1,98 @@
 # Phase 4a progress (verified core, format 2 on x86-64)
 
+## Panic-free device library, primitive size (branch device/panic-free, 2026-11-11)
+
+Size and robustness work on the device-side Rust code (verified/vmverify/
+README.md, "No panics on devices" and "Device size"; artifacts
+/home/flo/work/opentoit-sandbox-artifacts/panic-free: `devsize.sh`,
+`callers.sh` (callers of the panic machinery in the linked map),
+`ir.sh`, `fw.sh`).
+
+1. No panic paths (fd9be491). The device library linked core::panicking
+   and core::fmt only through the verifier: bounds checks of exec indexing
+   in the checker, the heap check and `x_info` (and the opt-z checker's
+   out-of-line `Vec::index`, which no call site can elide), vstd's
+   `Vec::set` and `slice_subrange`, and infallible allocation
+   (`handle_alloc_error` aborted the VM). Now `toit_spec::xvec` holds the
+   trusted accessors (`ix`, `ix_ref`, `vix`, `vput`, `subslice`:
+   `get_unchecked` under a precondition Verus proves at every call site)
+   and fallible growth (`try_push`, `try_with_capacity`, `try_copy`,
+   `try_filled`); the checker's allocating functions return
+   `Result<_, Oom>` (exact for `Ok`, spec/SOUNDNESS.md), the decoder
+   `Dec::Bad`/`Dec::Oom`, the conversion `Malformed::oom`; the verdict is
+   OUT_OF_MEMORY (code 8). In the core only `prims::blob::apply_ranges`
+   had a check, at opt s/z (index masked). `vmverify/tests/nopanic_check.sh`
+   (in check.sh --tests) fails if any panic or formatting symbol is linked;
+   it passes at opt 3, s and z. 17 new TRUSTED.toml entries (the 9 xvec
+   functions and their unsafe blocks).
+2. Primitives: `int_arg`, `double_arg` and `num_arg` out of line (one copy
+   each instead of one per primitive: -1.0 KB; the other argument
+   decoders are smaller inline), and `fp::compare_numbers` delegates the
+   mixed int/double case to the spec's `compare_mixed_impl`, which the run
+   loop's comparisons already link (the two were the same code: -0.6 KB).
+   Not kept: a table-driven integer dispatch (one call site for the 22
+   binary, 10 comparison and 6 unary integer primitives, the operation
+   from a byte table: proven, -1.0 KB more) changed the register
+   allocation of the run loop: +1.2 / +1.1 / +2.2 percent instructions
+   (richards, deltablue, pystone), also with the family dispatch out of
+   line; the float and blob families gained nothing (LLVM already merges
+   their arms). The split into a crate compiled at opt-level s (stable
+   Rust has no per-function `optimize`) is not done: the primitives use
+   the core's views, heap model and allocator, and the run loop's
+   PRIMITIVE handler calls them, so the split means three crates (base:
+   layout, abs, view, exec, ffi; prims; loop) in the Verus import chain,
+   the TRUSTED.toml paths of view.rs and ffi.rs moved, and a conflict with
+   every branch that touches the core (about 2-3 KB: the primitives are
+   13.4 KB at s, 12.4 KB at z). Policy check: all 106 Rust primitives are
+   in the reduced untrusted policy (src/primitive_policy.cc); none removed.
+3. Other candidates: the double-arithmetic out-of-memory fallback
+   (`rops::arith_double`, about 0.6 KB) needs a new `step::Slow` request
+   and its proof (not done); jump tables stay 32-bit (LLVM has no
+   compressed jump tables on RISC-V; the run loop's opcode and primitive
+   dispatch tables are its 2.3 KB of rodata, and a byte-table dispatch of
+   the primitives is the change rejected in 2 for speed), and
+   `exec_opcode_length2` as a match became a 4-byte table (+0.2 KB,
+   reverted).
+
+Device library (riscv32imac, core opt 3, verifier opt z; device_size.sh),
+bytes:
+
+| Component | before (sandbox-integration) | after |
+|---|---|---|
+| core: verified loop and cold paths | 28,056 | 28,314 |
+| core: checked-loop remnant | 788 | 788 |
+| core: primitives | 15,458 | 13,558 |
+| verifier: checker | 17,674 | 17,662 |
+| verifier: heap check | 1,894 | 1,982 |
+| spec: other (float helpers, xvec) | 1,076 | 1,832 |
+| glue (vmverify) | 4,670 | 4,958 |
+| Rust formatting and panics | 1,596 | 0 |
+| other core/alloc, compiler builtins | 9,404 | 7,620 |
+| attributed Rust total | 80,616 | 76,612 |
+| linked .text / .rodata / .eh_frame | 90,630 / 11,260 / 1,720 | 87,654 / 3,524 / 1,168 |
+| linked total (with 12.4 KB newlib and the C stubs) | 103,610 | 92,346 (-11.0 KB) |
+
+(.rodata: the panic locations and the formatting tables, 7.2 KB, were
+not attributed to a component; the conversion's error texts, 0.6 KB, are
+now hosts only.) ESP32-C6 firmware (built, never flashed): toit.bin
+1,669,344 -> 1,658,656 B (-10.4 KB: flash.text -3.0 KB, flash.rodata
+-7.7 KB).
+
+x86-64 instructions inside `toit_v2_run` (callgrind, TOIT_VERIFY=1, the
+core-size snapshots): richards 1,154 M (was 1,158 M), deltablue 910 M
+(913 M), pystone 887 M (889 M).
+
+Gates (final code): verified/check.sh --tests (spec 895, core 830
+verified at both widths, audit passed, nopanic_check.sh, sandbox ctests
+121/121), ctest -j16 1194/1197 (version, reader not run;
+udp-reuse-port-test), untrusted suite 280 identical + the two known
+differences, prim_diff.sh 10 x 1,000,000 identical, vmverify certificate
+fuzz with failing allocations 8 x 15 minutes (README.md, "No panics on
+devices": 0 panics, 0 aborts), core_fuzz.toit --filter launch on ASan 20
+minutes (seed 51: 69,897 mutants, 9,799 accepted and run, 0 crashes;
+under load from the other gates), 32-bit host tests/sandbox
+and layout 122/122, nostd_check.sh.
+
 ## Size diet of the interpreter (branch core/size-diet, 2026-11-11)
 
 Size and speed work on the verified run loop, keeping every proof

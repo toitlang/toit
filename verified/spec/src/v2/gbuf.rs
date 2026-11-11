@@ -140,7 +140,7 @@ impl GBuf {
 
     /// The list of node `top`, bottom first.
     pub fn list(&self, top: u32) -> Vec<XKind> {
-        x_fchain(&self.nodes, top)
+        crate::v2::infer::ok(x_fchain(&self.nodes, top))
     }
 
     /// Sets the context of block method `t`; an existing one with another

@@ -630,7 +630,7 @@ file = "src/prims/fp.rs"
 item = "compare_numbers"
 kind = "external_body"
 count = 1
-justification = "Interpreter::compare_numbers (copy of machine::compare_num) on integer or double bit patterns; ensures only a non-zero result field; differentially tested."
+justification = "Interpreter::compare_numbers on integer or double bit patterns: two integers compare directly, otherwise the spec's trusted compare_mixed_impl (the run loop's mixed comparison, one copy); ensures only a non-zero result field; differentially tested (prim_diff.sh)."
 
 [[trusted]]
 crate = "core"
@@ -2081,6 +2081,142 @@ count = 1
 justification = "TRUSTED and to be discharged in Phase 4: table of primitive arities the verifier and the primitive-completion model rely on; must equal the arities of the primitives the core actually links."
 
 [[trusted]]
+crate = "spec"
+file = "src/xvec.rs"
+item = "ix"
+kind = "external_body"
+count = 1
+justification = "Slice element read without the bounds check (no panic path on devices); contract of vstd's slice index: requires i < s@.len(), ensures r == s@[i]; Verus discharges the precondition at every call site."
+
+[[trusted]]
+crate = "spec"
+file = "src/xvec.rs"
+item = "ix"
+kind = "unsafe"
+count = 1
+justification = "get_unchecked(i) under the precondition i < s.len() (proven at every call site)."
+
+[[trusted]]
+crate = "spec"
+file = "src/xvec.rs"
+item = "ix_ref"
+kind = "external_body"
+count = 1
+justification = "Slice element reference without the bounds check (no panic path on devices); contract of vstd's slice index: requires i < s@.len(), ensures *r == s@[i]; Verus discharges the precondition at every call site."
+
+[[trusted]]
+crate = "spec"
+file = "src/xvec.rs"
+item = "ix_ref"
+kind = "unsafe"
+count = 1
+justification = "get_unchecked(i) under the precondition i < s.len() (proven at every call site)."
+
+[[trusted]]
+crate = "spec"
+file = "src/xvec.rs"
+item = "subslice"
+kind = "external_body"
+count = 1
+justification = "Subslice without the bounds check (no panic path on devices); contract of vstd's slice_subrange: requires i <= j <= s@.len(), ensures r@ == s@.subrange(i, j); Verus discharges the precondition at every call site."
+
+[[trusted]]
+crate = "spec"
+file = "src/xvec.rs"
+item = "subslice"
+kind = "unsafe"
+count = 1
+justification = "get_unchecked(i..j) under the precondition i <= j <= s.len() (proven at every call site)."
+
+[[trusted]]
+crate = "spec"
+file = "src/xvec.rs"
+item = "try_copy"
+kind = "external_body"
+count = 1
+justification = "s.to_vec() with a fallible reservation: Err(Oom) if the allocation fails (devices reject instead of aborting), else ensures v@ == s@."
+
+[[trusted]]
+crate = "spec"
+file = "src/xvec.rs"
+item = "try_copy"
+kind = "unsafe"
+count = 1
+justification = "copy_nonoverlapping of s.len() Copy elements into a fresh allocation of at least that capacity, then set_len(s.len())."
+
+[[trusted]]
+crate = "spec"
+file = "src/xvec.rs"
+item = "try_filled"
+kind = "external_body"
+count = 1
+justification = "vec![x; n] with a fallible reservation: Err(Oom) if the allocation fails (devices reject instead of aborting), else ensures v@ == Seq::new(n, |i| x)."
+
+[[trusted]]
+crate = "spec"
+file = "src/xvec.rs"
+item = "try_filled"
+kind = "unsafe"
+count = 1
+justification = "Writes x (Copy) to the n slots of a fresh allocation of at least n elements, then set_len(n)."
+
+[[trusted]]
+crate = "spec"
+file = "src/xvec.rs"
+item = "try_push"
+kind = "external_body"
+count = 1
+justification = "Vec::push with a fallible reservation (try_reserve(1), the same amortized growth): Err(Oom) and the vector unchanged if the allocation fails (devices reject instead of aborting), else the contract of vstd's Vec::push."
+
+[[trusted]]
+crate = "spec"
+file = "src/xvec.rs"
+item = "try_push"
+kind = "unsafe"
+count = 1
+justification = "Writes the element to slot len < capacity (checked, after the reservation) and increments the length: the standard library's unstable push_within_capacity."
+
+[[trusted]]
+crate = "spec"
+file = "src/xvec.rs"
+item = "try_with_capacity"
+kind = "external_body"
+count = 1
+justification = "Vec::with_capacity with a fallible reservation (try_reserve_exact): Err(Oom) if the allocation fails (devices reject instead of aborting), else an empty vector as vstd's Vec::with_capacity."
+
+[[trusted]]
+crate = "spec"
+file = "src/xvec.rs"
+item = "vix"
+kind = "external_body"
+count = 1
+justification = "Vec element read without the bounds check (no panic path on devices); contract of vstd's Vec::index: requires i < v@.len(), ensures r == v@[i]; Verus discharges the precondition at every call site."
+
+[[trusted]]
+crate = "spec"
+file = "src/xvec.rs"
+item = "vix"
+kind = "unsafe"
+count = 1
+justification = "get_unchecked(i) under the precondition i < v.len() (proven at every call site)."
+
+[[trusted]]
+crate = "spec"
+file = "src/xvec.rs"
+item = "vput"
+kind = "external_body"
+count = 1
+justification = "Vec element write without the bounds check (no panic path on devices); contract of vstd's Vec::set: requires i < old(v)@.len(), ensures v@ == old(v)@.update(i, x); Verus discharges the precondition at every call site."
+
+[[trusted]]
+crate = "spec"
+file = "src/xvec.rs"
+item = "vput"
+kind = "unsafe"
+count = 1
+justification = "get_unchecked_mut(i) under the precondition i < v.len() (proven at every call site)."
+
+[[trusted]]
 crate = "vmverify"
 file = "Cargo.toml"
 item = "metadata.verus.verify"
@@ -2123,7 +2259,7 @@ justification = "Test tool: zero-initializes a ProgramTables (plain integers and
 [[trusted]]
 crate = "vmverify"
 file = "src/bin/toit_vmverify_fuzz.rs"
-item = "run"
+item = "run_raw"
 kind = "unsafe"
 count = 2
 justification = "Test tool: zero-initialized ProgramTables filled by Tables::input; calls the C ABI entry point with pointers into buffers that live across the call."

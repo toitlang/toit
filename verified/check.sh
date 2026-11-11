@@ -21,7 +21,8 @@
 #   2. Escape-hatch audit against verified/TRUSTED.toml (and a cross-check
 #      with `verus --no-cheating`); writes verified/THEOREMS.txt.
 #   3. With --tests: the audit's regression test, layout check, spec
-#      differential tests, sandbox ctests.
+#      differential tests, the device library's no-panic check, sandbox
+#      ctests.
 #
 # Usage: verified/check.sh [--tests] [--update-allowlist] [--build DIR]
 # Exit code is non-zero on any failure.
@@ -259,6 +260,19 @@ if [ "$RUN_TESTS" = 1 ]; then
     fi
   else
     echo "SKIP: $BUILD_DIR/sdk/bin/toit missing (make sdk)"
+  fi
+
+  section "No panic paths in the device library (verified/vmverify/tests/nopanic_check.sh)"
+  if command -v riscv32-esp-elf-gcc > /dev/null \
+      || ls "$HOME"/.espressif/tools/riscv32-esp-elf/esp-1[0-9]*/riscv32-esp-elf/bin/riscv32-esp-elf-gcc > /dev/null 2>&1; then
+    if ! "$VERIFIED/vmverify/tests/nopanic_check.sh" > "$LOGS/nopanic.log" 2>&1; then
+      cat "$LOGS/nopanic.log"
+      fail "device library links panic machinery (nopanic_check.sh)"
+    else
+      grep -E '^no panic paths' "$LOGS/nopanic.log"
+    fi
+  else
+    echo "SKIP: no riscv32-esp-elf-gcc (ESP-IDF toolchain)"
   fi
 
   section "Sandbox ctests"

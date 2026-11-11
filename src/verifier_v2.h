@@ -140,6 +140,7 @@ static const uword TOIT_VMVERIFY_METHOD = 4;     // method_ok.
 static const uword TOIT_VMVERIFY_INTERNAL = 5;   // The verifier failed.
 static const uword TOIT_VMVERIFY_CERTIFICATE = 6;  // Shipped certificate rejected.
 static const uword TOIT_VMVERIFY_NO_CERTIFICATE = 7;  // None shipped, none inferred.
+static const uword TOIT_VMVERIFY_OUT_OF_MEMORY = 8;   // An allocation of the verifier failed.
 
 #ifdef TOIT_VERIFIED_CORE
 uword toit_vmverify_verify(const toit_vmverify_input* input, toit_vmverify_result* result);

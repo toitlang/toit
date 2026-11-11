@@ -55,6 +55,18 @@ use crate::v2::bytecodes::*;
 use crate::v2::check::*;
 use crate::v2::vprog::*;
 use crate::v2::gbuf::GBuf;
+use crate::xvec::Oom;
+
+/// The value of a checker function, which reports a failed allocation as
+/// `Err(Oom)`. The inference runs on hosts only, where the verifier's
+/// panics are caught and reject the program (vmverify's ffi.rs), like the
+/// standard library's own allocation failures.
+pub fn ok<T>(r: Result<T, Oom>) -> T {
+    match r {
+        Ok(x) => x,
+        Err(_) => panic!("out of memory"),
+    }
+}
 
 const KIND_BLOCK: u8 = 3;
 /// At most this many inference errors are kept (diagnostics only).
@@ -367,7 +379,7 @@ fn analyze<F: Facts>(p: &VProgram, f: &mut F, m: usize, trusted: bool) -> Result
     // The entry map.
     let e = {
         let c = XCert { g: &f.g().view(p.methods), cur: m, maps: &empty };
-        x_entry_kinds(p, &c, m)
+        ok(x_entry_kinds(p, &c, m))
     };
     if e.len() > limit {
         return Err((0, "too many parameters".into()));
@@ -460,7 +472,7 @@ fn analyze<F: Facts>(p: &VProgram, f: &mut F, m: usize, trusted: bool) -> Result
             if let XKind::Block(d, j) = k[h - 1] {
                 if d >= 1 {
                     let c = XCert { g: &f.g().view(p.methods), cur: m, maps: &empty };
-                    let (fk, om) = x_ctx_kinds(&c, m as i64, d);
+                    let (fk, om) = ok(x_ctx_kinds(&c, m as i64, d));
                     let hd = byte_at(p, bci + 1).unwrap_or(usize::MAX);
                     let target = u16_at(p, bci + 2).zip(u16_at(p, bci + 4)).map(|(lo, hi)| lo | hi << 16);
                     if let (Some(fk), Some(target)) = (fk, target) {
@@ -480,11 +492,11 @@ fn analyze<F: Facts>(p: &VProgram, f: &mut F, m: usize, trusted: bool) -> Result
         }
         let (post, term_ok) = {
             let c = XCert { g: &f.g().view(p.methods), cur: m, maps: &empty };
-            let post = x_post(p, &c, m, off, &k, trusted);
+            let post = ok(x_post(p, &c, m, off, &k, trusted));
             let term = matches!(op, RETURN | RETURN_NULL | THROW | BRANCH | BRANCH_BACK | INVOKE_STATIC_TAIL
                 | INVOKE_LAMBDA_TAIL | INVOKE_INITIALIZER_TAIL | NON_LOCAL_RETURN | NON_LOCAL_BRANCH);
             let term_ok = if term {
-                Some(matches!(op, BRANCH | BRANCH_BACK | NON_LOCAL_BRANCH) || x_terminator_ok(p, &c, m, off, &k))
+                Some(matches!(op, BRANCH | BRANCH_BACK | NON_LOCAL_BRANCH) || ok(x_terminator_ok(p, &c, m, off, &k)))
             } else {
                 None
             };
@@ -531,7 +543,7 @@ fn analyze<F: Facts>(p: &VProgram, f: &mut F, m: usize, trusted: bool) -> Result
             if !(1 <= n && n + 1 < h) {
                 return Err((off, "loop operands outside the frame".into()));
             }
-            let kt = x_loop_kinds(&k, n, n + 1);
+            let kt = ok(x_loop_kinds(&k, n, n + 1));
             let mut ot: Vec<u8> = Vec::with_capacity(h + 1);
             if origins {
                 ot.extend_from_slice(&org[..h - 1]);
@@ -725,7 +737,7 @@ pub fn infer_global(p: &VProgram, global_count: u64, prim_arity: Vec<Vec<u8>>, t
                         for t in want {
                             if let Some(&top) = maps.idx.get(t) {
                                 if top != NO_MAP && t <= u32::MAX as usize {
-                                    pins.push((m as u32, t as u32, x_chain(&maps.nodes, top)));
+                                    pins.push((m as u32, t as u32, ok(x_chain(&maps.nodes, top))));
                                 }
                             }
                         }
@@ -783,15 +795,15 @@ impl<'a> Oracle<'a> {
 }
 
 impl<'a> MapOracle for Oracle<'a> {
-    fn method_maps(&mut self, _p: &VProgram, _g: &XGlobal, m: usize) -> XMaps {
+    fn method_maps(&mut self, _p: &VProgram, _g: &XGlobal, m: usize) -> Result<XMaps, Oom> {
         self.last = Some(m);
-        match self.maps(m) {
+        Ok(match self.maps(m) {
             Ok(maps) => XMaps { idx: maps.idx, nodes: maps.nodes },
             Err(_) => {
                 let size = method(self.p, m).map(|i| (i.end as usize).saturating_sub(i.entry as usize)).unwrap_or(0);
                 XMaps { idx: vec![NO_MAP; size.min(self.p.bytecodes.len())], nodes: Vec::new() }
             }
-        }
+        })
     }
 }
 
@@ -800,7 +812,7 @@ impl<'a> MapOracle for Oracle<'a> {
 pub fn check(p: &VProgram, global: &Global, trusted: bool) -> (bool, Option<usize>) {
     let mut o = Oracle::new(p, global, trusted);
     let g = global.g.view(p.methods);
-    let (ok, _) = crate::v2::check::verify(p, &g, &mut o, trusted);
+    let (ok, _) = ok(crate::v2::check::verify(p, &g, &mut o, trusted));
     (ok, if ok { None } else { o.last })
 }
 
@@ -822,13 +834,13 @@ pub fn diagnose(p: &VProgram, global: &Global, m: usize, trusted: bool) -> (Opti
     let c = XCert { g: &g, cur: m, maps: &maps };
     for (off, &top) in maps.idx.iter().enumerate() {
         if top == NO_MAP { continue; }
-        let k = x_chain(&maps.nodes, top);
-        if !x_instr_ok(p, &c, m, off, &k, trusted) {
+        let k = ok(x_chain(&maps.nodes, top));
+        if !ok(x_instr_ok(p, &c, m, off, &k, trusted)) {
             return (Some(off), format!("rejected by the checker with kinds {:?}", k));
         }
     }
     let at = global.g.pin_list().iter().filter(|x| (x.0 as usize) < m).count();
-    match x_pins_agree(&g, m, &maps, at) {
+    match ok(x_pins_agree(&g, m, &maps, at)) {
         None => (None, String::from("a pinned map differs from the method's map")),
         Some(_) => (None, String::from("entry kinds or certificate shape rejected by the checker")),
     }

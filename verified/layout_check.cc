@@ -543,6 +543,7 @@ int main() {
     { "VMVERIFY_CERTIFICATE", TOIT_VMVERIFY_CERTIFICATE, false },
     { "VMVERIFY_NO_CERTIFICATE", TOIT_VMVERIFY_NO_CERTIFICATE, false },
     { "VMVERIFY_INTERNAL", TOIT_VMVERIFY_INTERNAL, false },
+    { "VMVERIFY_OUT_OF_MEMORY", TOIT_VMVERIFY_OUT_OF_MEMORY, false },
   };
 #undef VFIELD
   const int vexpected_count = sizeof(vexpected) / sizeof(vexpected[0]);

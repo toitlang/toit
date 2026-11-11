@@ -471,6 +471,68 @@ LTO). `tests/nostd_check.sh` builds spec, core and the device library for
 with the menuconfig option `TOIT_VERIFIED_CORE`
 (toolchains/idf/components/toit).
 
+## No panics on devices (branch device/panic-free)
+
+The device library (core, verifier, glue) links no panic machinery:
+`tests/nopanic_check.sh` (part of `verified/check.sh --tests`) builds it
+as devices do, links it into the minimal executable of `device_size.sh`
+and fails if any symbol of `core::panicking`, `core::fmt`, the panic
+handler, slice index failures, unwrap/expect failures or the infallible
+allocation's error paths survives the linker's garbage collection (at the
+configured opt-level 3; levels s and z pass as well). Before, the panic
+paths were (linker map, `callers` of `core::panicking::*`):
+
+- bounds checks of `Vec`/slice indexing in the checker (`x_rd`, `x_u16`,
+  `x_decode`, `x_post*`, `x_tables_ok`, ...), the heap check, `x_info`,
+  vstd's `Vec::set` and `slice_subrange`, and the out-of-line
+  `Vec::index` of the opt-level-z verifier, which no call site can elide:
+  every exec index of the device path now goes through
+  `toit_spec::xvec` (`ix`, `ix_ref`, `vix`, `vput`, `subslice`), trusted
+  one-line wrappers of `get_unchecked` whose index precondition Verus
+  proves at each call site (verified/TRUSTED.toml);
+- infallible allocation (`Vec::push`, `with_capacity`, `to_vec`, `vec!`,
+  `collect`, `String::from`): `handle_alloc_error` and
+  `capacity_overflow` aborted the VM on a failed allocation. The checker,
+  the certificate decoder and the conversion now allocate fallibly
+  (`try_push`, `try_with_capacity`, `try_copy`, `try_filled`); the
+  checker's functions return `Result<_, Oom>` (exact for `Ok`), the
+  decoder fails with `Dec::Oom`, the conversion with `Malformed::oom`,
+  and the verdict is OUT_OF_MEMORY (code 8, a rejection). Diagnostic
+  texts are `Cow<'static, str>`, borrowed on devices;
+- `from_vm.rs` and `ffi.rs` (unverified glue): indexing replaced by
+  `get` with an error (or the impossible case ignored, `IdTable`), the
+  message copy by an iterator;
+- the core at opt-levels s/z only: `prims::blob::apply_ranges` (an index
+  below 8 masked with `& 7`, proven equal).
+
+Fuzzing with failing allocations: `tests/fuzz_tables.sh --certificates
+--oom` verifies each mutant a second time with all allocations after a
+random one failing (counting.rs, `fail_after`, the calling thread only);
+the verdict must be OUT_OF_MEMORY if one failed and unchanged otherwise,
+and an infallible allocation left on the device path aborts the process.
+Run (2026-11-11, 8 processes x 15 minutes, `--seed 901`, hello world,
+lambda-test, exception-test, class-id-test, task-test): 331,770 mutants
+(32,392 accepted, 42,706 malformed memory, 123 heap contract, 60,037
+tables, 45,861 methods, 150,651 certificate rejected), each verified again
+with failing allocations: 147,729 runs had an allocation fail, all
+rejected with OUT_OF_MEMORY, the others gave the unchanged verdict; **0
+verifier panics, 0 aborts, 0 calls over 2 s** (slowest 197 ms; largest
+peak 285 KB).
+
+Size (riscv32imac, core opt 3, verifier opt z, `tests/device_size.sh`;
+verified/core/PROGRESS.md, "Panic-free device library", has the table
+by component): the Rust formatting and panic machinery (1.6 KB of text)
+and the panic locations and formatting tables (7.2 KB of rodata) are
+gone; the fallible allocation and the OUT_OF_MEMORY paths cost about 1.2
+KB (the `xvec` instantiations, the glue). With the primitives' shared
+argument decoding (-1.6 KB) and the conversion's error texts on hosts
+only (-0.6 KB) the linked library went from 103.6 to 92.3 KB (-11.0 KB,
+newlib's 12.4 KB included in both). That is most of column 6 below
+(nightly `-Cpanic=immediate-abort -Zlocation-detail=none`) on the stable
+toolchain. ESP32-C6 firmware (ESP-IDF, core opt 3, built, never flashed;
+artifacts panic-free/fw.sh): toit.bin 1,669,344 -> 1,658,656 B (-10.4
+KB: flash.text -3.0 KB, flash.rodata -7.7 KB).
+
 ## Device size (branch device/certificate-and-size)
 
 The Rust library as a device links it (riscv32imac, `tests/device_size.sh`

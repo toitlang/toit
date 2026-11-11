@@ -242,6 +242,14 @@ cached; 224 verified items).
 Trusted base of the proof: the four `external_body` functions for
 IEEE-754 arithmetic and `compare_mixed`; the loader establishing
 `wf_program` (also asserted at run time in `Machine::new`); Rust/Verus.
+The checker of shipped certificates and the heap check (the code devices
+run) also rely on `xvec.rs`: element access without the bounds check
+(`ix`, `ix_ref`, `vix`, `vput`, `subslice`: the index is a precondition
+Verus proves at every call site) and fallible growth (`try_push`,
+`try_with_capacity`, `try_copy`, `try_filled`: `Err(Oom)` instead of an
+abort), each a few lines with the contract of the vstd operation it
+replaces, so that the device library has no panic path
+(verified/vmverify/README.md, "No panics on devices").
 
 **Open obligations** (spec written, interpreter mirrors it, not yet
 proven): the other 58 opcodes — LOAD_OUTER, STORE_OUTER, the field
