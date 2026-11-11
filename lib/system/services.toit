@@ -446,7 +446,7 @@ class ServiceProvider:
       _clients-closed-signal_.wait:
         _clients-closed_ > 0 and _clients_.is-empty
     if not _manager_: return
-    _clients_.do: _manager_.close it
+    _clients_.to-list.do: _manager_.close it  // A copy: $_close_ removes from the set.
     if _manager_: _uninstall_
 
   pid --client/int -> int?:
