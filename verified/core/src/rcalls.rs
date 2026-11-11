@@ -55,18 +55,18 @@ pub proof fn lemma_or_ge(w: usize, n: usize)
 }
 
 /// The fast path of a call applies: room for a frame record, the maximal
-/// height and the reserve, no finally records, no preemption request.
+/// height and the reserve, no finally records, no preemption request (the
+/// gate's `need` is all ones while there are finally records, the
+/// watermark while preemption is requested).
 #[inline(always)]
 pub fn call_fast(m: &Machine, r: &Regs, env: &Env) -> (b: bool)
     requires m_ok(&env.p, *m, *r),
-    ensures b ==> r.sp@ - r.fr@ >= FRAME_WORDS + env.p.max_height + STACK_RESERVE,
+    ensures b ==> m.fw == 0 && r.sp@ - r.fr@ >= FRAME_WORDS + env.p.max_height + STACK_RESERVE,
 {
-    proof { assert(env.p.max_height < 0x1_0000); }
-    let need = FRAME_WORDS + env.p.max_height + STACK_RESERVE;
     let w = env.pre.word();
     let free = r.sp.diff(r.fr);
-    proof { lemma_or_ge(w, need); }
-    free >= (w | need)
+    proof { lemma_or_ge(w, m.need); }
+    free >= (w | m.need)
 }
 
 /// `spec::call` without finally records: a frame for `target` (its method
@@ -76,6 +76,7 @@ pub fn call_fast(m: &Machine, r: &Regs, env: &Env) -> (b: bool)
 pub fn push_call(m: &mut Machine, r: &mut Regs, p: &Program, target: usize, info: V2Method, ret: usize)
     requires
         m_ok(p, *old(m), *old(r)),
+        old(m).fw == 0,
         old(r).sp@ - old(r).fr@ >= FRAME_WORDS + p.max_height + STACK_RESERVE,
         room_ok(p, old(m).with(*old(r))),
         target < p.methods@.len(),
@@ -103,7 +104,6 @@ pub fn push_call(m: &mut Machine, r: &mut Regs, p: &Program, target: usize, info
     r.fr = nf;
     r.fp = fp;
     r.ip = p.code.cursor(info.entry as usize);
-    m.method = target;
     let ghost fr = Frame { method: target, ret: ret, base: base };
     let ghost g1 = State2 { frames: g0.frames.push(fr), bci: info.entry as usize, ..g0 };
     m.g = Ghost(g1);
@@ -144,9 +144,6 @@ pub fn op_invoke_static(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, op
     ensures rpost(&env.p, *old(m), *old(r), *final(m), *final(r), c),
 {
     let p = &env.p;
-    if !call_fast(m, r, env) {
-        return bridge_r(m, r, env);
-    }
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost w0 = m.with(*r);
@@ -163,8 +160,13 @@ pub fn op_invoke_static(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, op
         let receiver = at(m, r, arity - 1);
         let cid = m.class_of(p, receiver, Ghost(sp::at(g, arity - 1)));
         if !((info.recv_start as i64) <= cid && cid < info.recv_end as i64) {
-            return bridge_r(m, r, env);
+            proof { assert(sp::step(ap, g) == sp::raise(ap, g, sp::AS_CHECK_FAILED)); }
+            return slow0(m, r, env, Slow::Raise(1));
         }
+    }
+    if !call_fast(m, r, env) {
+        proof { assert(sp::step(ap, g) == sp::call(ap, g, t as int, bci + 3)); }
+        return slow0(m, r, env, Slow::Call(t, bci + 3));
     }
     push_call(m, r, p, t, info, bci + 3);
     proof { lemma_matches(p, w0, m.with(*r), Ctl::Next); }
@@ -184,9 +186,6 @@ pub fn op_invoke_virtual(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, o
     ensures rpost(&env.p, *old(m), *old(r), *final(m), *final(r), c),
 {
     let p = &env.p;
-    if !call_fast(m, r, env) {
-        return bridge_r(m, r, env);
-    }
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost w0 = m.with(*r);
@@ -199,9 +198,14 @@ pub fn op_invoke_virtual(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, o
     let receiver = at(m, r, n - 1);
     match m.lookup(p, receiver, Ghost(sp::at(g, n - 1)), sel) {
         VLookup::Missing => {
-            bridge_r(m, r, env)
+            proof { assert(vo == sp::raise(ap, g, sp::LOOKUP_FAILED)); }
+            slow_r(m, r, env, Slow::Lookup(sel), receiver, Ghost(sp::at(g, n - 1)))
         },
         VLookup::Found(t) => {
+            if !call_fast(m, r, env) {
+                proof { assert(vo == sp::call(ap, g, t as int, bci + len)); }
+                return slow0(m, r, env, Slow::Call(t, bci + len));
+            }
             let info = p.methods.at(t);
             push_call(m, r, p, t, info, bci + len);
             proof { lemma_matches(p, w0, m.with(*r), Ctl::Next); }
@@ -216,7 +220,7 @@ pub fn op_invoke_virtual(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, o
 pub fn op_return(m: &mut Machine, r: &mut Regs, env: &Env, w: usize, Ghost(v): Ghost<Value>) -> (c: Ctl)
     requires
         rinv(&env.p, *old(m), *old(r)),
-        old(r).sp@ >= old(r).fr@ + STACK_RESERVE,
+        old(r).sp@ >= old(r).fr@ + old(m).fw + STACK_RESERVE,
         step_ok(env.p.ap@, env.p.cert@, old(m).g@),
         sp::step(env.p.ap@, old(m).g@) == sp::return_from(env.p.ap@, old(m).g@, v),
         w == enc(old(m).addr(), v),
@@ -233,9 +237,9 @@ pub fn op_return(m: &mut Machine, r: &mut Regs, env: &Env, w: usize, Ghost(v): G
         m0.lemma_frame(p);
         lemma_no_handler(g0);
     }
-    if r.fr.diff(m.mem.slot(0)) <= FRAME_WORDS {
-        // The task's bottom frame returns.
-        return bridge_r(m, r, env);
+    if !m.bot.lt(r.fr, &m.mem) {
+        // The task's bottom frame returns, or there are finally records.
+        return slow_r(m, r, env, Slow::Return, w, Ghost(v));
     }
     let ghost n = g0.frames.len() as int;
     proof {
@@ -250,11 +254,10 @@ pub fn op_return(m: &mut Machine, r: &mut Regs, env: &Env, w: usize, Ghost(v): G
     let handler = crec.read(FRAME_HANDLER, &m.mem);
     if handler != 0 {
         // The caller is suspended in a TRY: its finally code runs.
-        return bridge_r(m, r, env);
+        return slow_r(m, r, env, Slow::Return, w, Ghost(v));
     }
     let rec_ = r.fr.offset(-(FRAME_WORDS as isize));
     let ret = rec_.read(FRAME_RET, &m.mem);
-    let method = crec.read(FRAME_METHOD, &m.mem);
     let base = crec.read(FRAME_BASE, &m.mem);
     proof {
         assert(rec(m0.mem@, n - 1, FRAME_RET) == g0.frames[n - 1].ret);
@@ -273,7 +276,6 @@ pub fn op_return(m: &mut Machine, r: &mut Regs, env: &Env, w: usize, Ghost(v): G
     r.fp = r.end.offset(-(base as isize));
     r.fr = rec_;
     r.ip = p.code.cursor(ret);
-    m.method = method;
     let ghost g1 = State2 {
         stack: g0.stack.subrange(0, sp::top(g0).base as int).push(v),
         frames: g0.frames.drop_last(),

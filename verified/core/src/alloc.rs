@@ -211,45 +211,4 @@ pub fn gc_allocate_double(m: &mut Machine, env: &Env, bits: u64, Ghost(g): Ghost
     m.allocate_double_raw(env, bits)
 }
 
-/// ALLOCATE(_WIDE) c (`spec::op_allocate`).
-#[inline(always)]
-pub fn op_allocate(m: &mut Machine, env: &Env, bci: usize, opcode: u8, c: usize, len: usize) -> (r: Ctl)
-    requires
-        handler_pre(&env.p, *old(m), bci, opcode),
-        sp::step(env.p.ap@, old(m).g@) == sp::op_allocate(env.p.ap@, old(m).g@, c as int, len as int),
-        opcode == 42 || opcode == 43,
-        bci + len < 0x1000_0000,
-    ensures step_post(&env.p, *old(m), *final(m), r),
-{
-    let p = &env.p;
-    let ghost ap = p.ap@;
-    let ghost g = m.g@;
-    let ghost m0 = *m;
-    proof { assert(outcome_ok(ap, p.cert@, sp::step(ap, g))); }
-    m.save();
-    proof { lemma_saved(p, *m); }
-    let w = gc_allocate_instance(m, env, c, Ghost(g));
-    if w == 0 {
-        // Out of memory: the resource throw of ALLOCATE
-        // (`prim::resource_throw`), the out-of-memory error.
-        reload(m, p, Ghost(g));
-        proof {
-            toit_spec::v2::sound_instr::lemma_instr(ap, p.cert@, p.trusted@, g);
-            let o1 = sp::unwind(ap, g, Unwind::Throw(toit_spec::v2::prim::out_of_memory(ap)));
-            assert(toit_spec::v2::prim::resource_throw(ap, g, o1));
-            lemma_source_resource(ap, g, o1);
-        }
-        return crate::unwind::throw_oom(m, env);
-    }
-    let ghost o = new_instance(ap, c as int);
-    let ghost g1 = sp::alloc2(g, o);
-    reload(m, p, Ghost(g1));
-    proof {
-        assert(m.addr().len() == g1.heap.len());
-    }
-    let r = m.push_next(p, w, len, Ghost(sp::new_ref2(g)));
-    proof { lemma_matches(p, m0, *m, r); }
-    r
-}
-
 } // verus!

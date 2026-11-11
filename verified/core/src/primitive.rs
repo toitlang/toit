@@ -132,12 +132,16 @@ pub proof fn lemma_source_completion(ap: Program2, g: State2, module: u8, index:
 }
 
 /// PRIMITIVE module index (`spec::step`'s `Outcome2::Primitive`, completed
-/// by the protocol).
-pub fn op_primitive(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: Ctl)
+/// by the protocol) through the C++ primitive of the process' policy (a GC
+/// point that may switch the task), or the raise of a missing one: the
+/// slow path of the register handler (`rarrays::op_primitive`), which runs
+/// the Rust ports itself.
+pub fn op_primitive_cxx(m: &mut Machine, env: &Env, module: u8, index: u16, arity: usize) -> (r: Ctl)
     requires
-        handler_pre(&env.p, *old(m), bci, opcode),
-        opcode == 89,
-        bci + 4 < 0x1000_0000,
+        old(m).inv(&env.p),
+        sp::step(env.p.ap@, old(m).g@) == Outcome2::Primitive(old(m).g@, module, index),
+        arity == sp::frame_height(old(m).g@),
+        old(m).bci < 0x1000_0000,
     ensures step_post(&env.p, *old(m), *final(m), r),
 {
     let p = &env.p;
@@ -145,27 +149,8 @@ pub fn op_primitive(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: C
     let ghost g = m.g@;
     let ghost m0 = *m;
     proof {
-        toit_spec::v2::sound_instr::lemma_instr(ap, p.cert@, p.trusted@, g);
-        reveal_with_fuel(toit_spec::v2::bytecodes::opcode_length2, 1);
-        assert(outcome_ok(ap, p.cert@, sp::step(ap, g)));
         m.lemma_frame(p);
         lemma_shape(p, g);
-    }
-    let module = p.code.at(bci + 1);
-    let index = code_u16(p, bci + 2) as u16;
-    proof {
-        assert(sp::step(ap, g) == Outcome2::Primitive(g, module, index)) by { reveal(sp::step); }
-        assert(ap.methods[m.method as int] == method_info(p.methods@[m.method as int], p.max_height));
-    }
-    let arity = p.methods.at(m.method).arity as usize;
-    // A core primitive the policy resolves to the VM's own entry with the
-    // method's arity: its Rust port, if there is one (no GC point, no save
-    // and reload).
-    if module == 0 && (index as usize) < env.core_arities.len()
-        && env.core_arities.at(index as usize) as usize == arity + 1 {
-        if let Some(r) = op_rust_primitive(m, env, index, arity) {
-            return r;
-        }
     }
     let found = env.rt.lookup_primitive(module as usize, index as usize);
     let prim = match found {
@@ -348,78 +333,6 @@ pub proof fn lemma_refines_heap(p: &Program, m0: Machine, m1: Machine)
         }
     }
     assert(m1.globals@ =~= enc_seq(a1, m1.g@.globals));
-}
-
-/// Runs the Rust port of core primitive `index` (`prims::call`) on the
-/// frame's parameters and completes the step as the protocol says:
-/// success returns the result from the frame, failure pushes it. No GC
-/// point: the machine's cached state stays valid (no save, no reload).
-/// `None` when there is no port for these arguments (`NotPorted`) or an
-/// allocation did not fit (`NeedsGc`): the machine is unchanged and the
-/// caller calls the C++ primitive, which collects garbage and retries as
-/// the C++ protocol does.
-#[inline(always)]
-fn op_rust_primitive(m: &mut Machine, env: &Env, index: u16, arity: usize) -> (r: Option<Ctl>)
-    requires
-        old(m).inv(&env.p),
-        cur_op(env.p.ap@, old(m).g@) == 89,
-        sp::step(env.p.ap@, old(m).g@) == Outcome2::Primitive(old(m).g@, 0, index),
-        arity == sp::frame_height(old(m).g@),
-        old(m).base == sp::base(old(m).g@),
-        old(m).bci + 4 < 0x1000_0000,
-    ensures
-        r is None ==> *final(m) == *old(m),
-        r is Some ==> step_post(&env.p, *old(m), *final(m), r->Some_0),
-{
-    let p = &env.p;
-    let ghost ap = p.ap@;
-    let ghost g = m.g@;
-    let ghost m0 = *m;
-    let ghost vs = prim_args(ap, g);
-    proof {
-        lemma_rust_args(p, *m, arity);
-        m.lemma_frame(p);
-        lemma_shape(p, g);
-    }
-    let at = if m.base < m.len { m.len - 1 - m.base } else { 0 };
-    let al = env.rt.allocator();
-    let (r, v) = prims::call(0, index, &m.mem, at, arity, &mut m.heap, p, &al, Ghost(norm_args(vs)));
-    match r {
-        PrimOutcome::Success(w) => {
-            let ghost h2 = m.heap.objs();
-            m.g = Ghost(with_heap2(g, h2));
-            proof {
-                lemma_refines_heap(p, m0, *m);
-                lemma_completion(p, g, index, h2, PrimRet::Success(v@), vs);
-                crate::raise::lemma_shape_same(p, g, m.g@);
-            }
-            let ghost o = prim_success(ap, g, h2, v@);
-            proof {
-                lemma_source_completion(ap, g, 0, index, o);
-                lemma_source_outcome(p, m0, o);
-            }
-            let ctl = m.do_return(env, w, Ghost(v@));
-            proof { lemma_outcome_matches(p, m0, *m, ctl, o); }
-            Some(ctl)
-        },
-        PrimOutcome::Failure(w) => {
-            let ghost h2 = m.heap.objs();
-            m.g = Ghost(with_heap2(g, h2));
-            proof {
-                lemma_refines_heap(p, m0, *m);
-                lemma_completion(p, g, index, h2, PrimRet::Failure(v@), vs);
-            }
-            let ghost o = sp::next(sp::push(with_heap2(g, h2), v@), 4);
-            proof {
-                lemma_source_completion(ap, g, 0, index, o);
-                lemma_source_outcome(p, m0, o);
-            }
-            let ctl = m.push_next(p, w, 4, Ghost(v@));
-            proof { lemma_outcome_matches(p, m0, *m, ctl, o); }
-            Some(ctl)
-        },
-        _ => None,
-    }
 }
 
 /// A ported outcome of core primitive `index` (`prims::call` on the

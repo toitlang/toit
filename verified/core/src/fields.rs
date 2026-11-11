@@ -65,11 +65,22 @@ impl Machine {
     pub fn is_ro_word(&self, p: &Program, w: usize, Ghost(id): Ghost<int>) -> (r: bool)
         requires
             self.hrefines(p),
+            ro_ok(p),
             0 <= id < self.g@.heap.len(),
             w == self.addr()[id],
         ensures r == self.g@.heap[id].ro,
     {
-        w >= p.ro_start && w - p.ro_start < p.ro_size
+        // One compare: below the start the difference wraps to at least
+        // `usize::MAX + 1 - ro_start`, which is above the size (`ro_ok`).
+        let d = w.wrapping_sub(p.ro_start);
+        proof {
+            if w >= p.ro_start {
+                assert(d == w - p.ro_start);
+            } else {
+                assert(d == w - p.ro_start + usize::MAX + 1);
+            }
+        }
+        d < p.ro_size
     }
 
     /// `spec::field_readable` (`write` false) or `spec::field_writable`
@@ -78,6 +89,7 @@ impl Machine {
     pub fn field_access_ok(&self, p: &Program, w: usize, Ghost(v): Ghost<Value>, f: usize, write: bool) -> (r: bool)
         requires
             self.hrefines(p),
+            ro_ok(p),
             accepts(p.ap@, p.cert@, p.trusted@),
             w == enc(self.addr(), v),
             encodable(self.addr(), v),
@@ -105,7 +117,49 @@ impl Machine {
         let ghost id = v->Obj_0 as int;
         proof { assert(obj_model_ok(g.heap[id], self.heap.class_bits(), self.addr())); }
         let tag = self.heap.class_tag(w, Ghost(id));
-        if tag != INSTANCE_TAG && tag != TASK_TAG {
+        if tag == INSTANCE_TAG {
+            // The fast path: an instance whose class has the field.
+            let cid = self.heap.class_id(w, Ghost(id));
+            let bits = p.class_bits.at(cid);
+            let size = ((bits >> 5u16) & 0x7ffu16) as usize;
+            proof {
+                assert(size as int - 1 == ifc_bits(p.class_bits@, cid as int));
+                assert(g.heap[id].body->Instance_0.len() == size - 1);
+                lemma_task_tag(p, cid as int);
+            }
+            return f + 1 < size && !(write && self.is_ro_word(p, w, Ghost(id)));
+        }
+        self.task_field_ok(p, w, Ghost(v), f, write, tag)
+    }
+
+    /// `field_access_ok` for an object that is not an instance: only a task
+    /// has fields, of which the machine's (its stack, and its id) are not
+    /// accessible to the program.
+    #[inline(always)]
+    fn task_field_ok(&self, p: &Program, w: usize, Ghost(v): Ghost<Value>, f: usize, write: bool, tag: usize) -> (r: bool)
+        requires
+            self.hrefines(p),
+            ro_ok(p),
+            accepts(p.ap@, p.cert@, p.trusted@),
+            w == enc(self.addr(), v),
+            encodable(self.addr(), v),
+            f < 0x1_0000,
+            v is Obj,
+            (v->Obj_0 as int) < self.g@.heap.len(),
+            (self.g@.heap[v->Obj_0 as int].class_id as int) < self.heap.class_bits().len(),
+            tag == (self.heap.class_bits()[self.g@.heap[v->Obj_0 as int].class_id as int] & 0xf) as usize,
+            tag != INSTANCE_TAG,
+        ensures
+            r == (if write { sp::field_writable(p.ap@, self.g@, v, f as int) }
+                else { sp::field_readable(p.ap@, self.g@, v, f as int) }),
+            r ==> v is Obj && (v->Obj_0 as int) < self.g@.heap.len()
+                && self.g@.heap[v->Obj_0 as int].body is Instance
+                && f < self.g@.heap[v->Obj_0 as int].body->Instance_0.len(),
+    {
+        let ghost g = self.g@;
+        let ghost id = v->Obj_0 as int;
+        proof { assert(obj_model_ok(g.heap[id], self.heap.class_bits(), self.addr())); }
+        if tag != TASK_TAG {
             return false;
         }
         let cid = self.heap.class_id(w, Ghost(id));
@@ -116,16 +170,10 @@ impl Machine {
             assert(g.heap[id].body->Instance_0.len() == size - 1);
             lemma_task_tag(p, cid as int);
         }
-        if f + 1 >= size {
+        if f + 1 >= size || f <= (if write { 1 } else { 0 }) {
             return false;
         }
-        if tag == TASK_TAG && f <= (if write { 1 } else { 0 }) {
-            return false;
-        }
-        if write && self.is_ro_word(p, w, Ghost(id)) {
-            return false;
-        }
-        true
+        !(write && self.is_ro_word(p, w, Ghost(id)))
     }
 
     /// Stores the value `v` (word `w`) into field `f` of the instance `o`
@@ -217,170 +265,6 @@ pub proof fn lemma_field_val(p: &Program, m: &Machine, v: Value, f: int)
     assert(obj_model_ok(m.g@.heap[id], m.heap.class_bits(), m.addr()));
 }
 
-/// LOAD_FIELD(_WIDE) f (`spec::op_load_field`).
-#[inline(always)]
-pub fn op_load_field(m: &mut Machine, env: &Env, bci: usize, opcode: u8, f: usize, len: usize) -> (r: Ctl)
-    requires
-        handler_pre(&env.p, *old(m), bci, opcode),
-        sp::step(env.p.ap@, old(m).g@) == sp::op_load_field(env.p.ap@, old(m).g@, f as int, len as int),
-        f < 0x1_0000,
-        bci + len < 0x1000_0000,
-    ensures step_post(&env.p, *old(m), *final(m), r),
-{
-    let p = &env.p;
-    let ghost ap = p.ap@;
-    let ghost g = m.g@;
-    let ghost m0 = *m;
-    proof {
-        assert(outcome_ok(ap, p.cert@, sp::step(ap, g)));
-        m.lemma_at(p, 0);
-    }
-    let w = m.at(0);
-    if !m.field_access_ok(p, w, Ghost(sp::at(g, 0)), f, false) {
-        proof {
-            assert(sp::step(ap, g) == sp::raise(ap, g, sp::INVALID_PROGRAM));
-            lemma_source_step(ap, g);
-        }
-        return m.v_raise_invalid(env);
-    }
-    let ghost o = sp::at(g, 0);
-    let ghost id = o->Obj_0 as int;
-    proof { lemma_field_val(p, m, o, f as int); }
-    let v = m.heap.field(w, f, Ghost(id));
-    m.put(0, v);
-    m.bci = bci + len;
-    let ghost g1 = sp::goto(sp::put(g, 0, sp::field(g, o, f as int)), bci + len);
-    m.g = Ghost(g1);
-    proof {
-        assert(m.words() =~= enc_seq(m0.addr(), g1.stack));
-        assert forall|i: int| 0 <= i < g1.stack.len() implies #[trigger] encodable(m0.addr(), g1.stack[i]) by {
-            if i != g.stack.len() - 1 { assert(g1.stack[i] == g.stack[i]); }
-        }
-        m0.lemma_local_step(p, m);
-        lemma_matches(p, m0, *m, Ctl::Next);
-    }
-    Ctl::Next
-}
-
-/// LOAD_FIELD_LOCAL / POP_LOAD_FIELD_LOCAL enc (`spec::op_load_field_local`).
-#[inline(always)]
-pub fn op_load_field_local(m: &mut Machine, env: &Env, bci: usize, opcode: u8, enc: usize, pop: bool) -> (r: Ctl)
-    requires
-        handler_pre(&env.p, *old(m), bci, opcode),
-        sp::step(env.p.ap@, old(m).g@) == sp::op_load_field_local(env.p.ap@, old(m).g@, enc as int, pop),
-        enc < 256,
-        bci + 2 < 0x1000_0000,
-    ensures step_post(&env.p, *old(m), *final(m), r),
-{
-    let p = &env.p;
-    let ghost ap = p.ap@;
-    let ghost g = m.g@;
-    let ghost m0 = *m;
-    let local = enc % 16;
-    let f = enc / 16;
-    let slot = if pop { local + 1 } else { local };
-    proof {
-        assert(outcome_ok(ap, p.cert@, sp::step(ap, g)));
-        m.lemma_at(p, slot as int);
-    }
-    let w = m.at(slot);
-    if !m.field_access_ok(p, w, Ghost(sp::at(g, slot as int)), f, false) {
-        proof {
-            assert(sp::step(ap, g) == sp::raise(ap, g, sp::INVALID_PROGRAM));
-            lemma_source_step(ap, g);
-        }
-        return m.v_raise_invalid(env);
-    }
-    let ghost o = sp::at(g, slot as int);
-    let ghost id = o->Obj_0 as int;
-    proof { lemma_field_val(p, m, o, f as int); }
-    let v = m.heap.field(w, f, Ghost(id));
-    let ghost fv = sp::field(g, o, f as int);
-    if pop {
-        proof { m.lemma_at(p, 0); }
-        m.put(0, v);
-        m.bci = bci + 2;
-        let ghost g1 = sp::goto(sp::put(g, 0, fv), bci + 2);
-        m.g = Ghost(g1);
-        proof {
-            assert(m.words() =~= enc_seq(m0.addr(), g1.stack));
-            assert forall|i: int| 0 <= i < g1.stack.len() implies #[trigger] encodable(m0.addr(), g1.stack[i]) by {
-                if i != g.stack.len() - 1 { assert(g1.stack[i] == g.stack[i]); }
-            }
-            m0.lemma_local_step(p, m);
-            lemma_matches(p, m0, *m, Ctl::Next);
-        }
-        Ctl::Next
-    } else {
-        let r = m.push_next(p, v, 2, Ghost(fv));
-        proof { lemma_matches(p, m0, *m, r); }
-        r
-    }
-}
-
-/// STORE_FIELD(_WIDE, _POP) f (`spec::op_store_field`).
-#[inline(always)]
-pub fn op_store_field(m: &mut Machine, env: &Env, bci: usize, opcode: u8, f: usize, len: usize, keep: bool) -> (r: Ctl)
-    requires
-        handler_pre(&env.p, *old(m), bci, opcode),
-        sp::step(env.p.ap@, old(m).g@) == sp::op_store_field(env.p.ap@, old(m).g@, f as int, len as int, keep),
-        f < 0x1_0000,
-        bci + len < 0x1000_0000,
-    ensures step_post(&env.p, *old(m), *final(m), r),
-{
-    let p = &env.p;
-    let ghost ap = p.ap@;
-    let ghost g = m.g@;
-    let ghost m0 = *m;
-    proof {
-        assert(outcome_ok(ap, p.cert@, sp::step(ap, g)));
-        m.lemma_at(p, 0);
-        m.lemma_at(p, 1);
-    }
-    let v = m.at(0);
-    let wo = m.at(1);
-    let ghost val = sp::at(g, 0);
-    let ghost o = sp::at(g, 1);
-    if !m.field_access_ok(p, wo, Ghost(o), f, true) {
-        proof {
-            assert(sp::step(ap, g) == sp::raise(ap, g, sp::INVALID_PROGRAM));
-            lemma_source_step(ap, g);
-        }
-        return m.v_raise_invalid(env);
-    }
-    m.set_field_val(p, wo, Ghost(o), f, v, Ghost(val));
-    let ghost m1 = *m;
-    let ghost g1 = m.g@;
-    proof { m.lemma_frame(p); }
-    m.drop(2);
-    let ghost g2 = sp::drop(g1, 2);
-    m.g = Ghost(g2);
-    proof {
-        assert(m.words() =~= enc_seq(m1.addr(), g2.stack));
-        assert forall|i: int| 0 <= i < g2.stack.len() implies #[trigger] encodable(m1.addr(), g2.stack[i]) by {
-            assert(g2.stack[i] == g1.stack[i]);
-        }
-        m1.lemma_local_step(p, m);
-        assert(sp::set_field2(sp::drop(g, 2), o, f as int, val) == g2);
-    }
-    if keep {
-        let r = m.push_next(p, v, len, Ghost(val));
-        proof { lemma_matches(p, m0, *m, r); }
-        r
-    } else {
-        let ghost m2 = *m;
-        m.bci = bci + len;
-        let ghost g3 = sp::goto(g2, bci + len);
-        m.g = Ghost(g3);
-        proof {
-            assert(m.words() =~= enc_seq(m2.addr(), g3.stack));
-            m2.lemma_local_step(p, m);
-            lemma_matches(p, m0, *m, Ctl::Next);
-        }
-        Ctl::Next
-    }
-}
-
 /// `this` (slot 0 of the top frame) of a step whose `this_ok` holds.
 pub proof fn lemma_this(p: &Program, m: &Machine, f: int)
     requires m.refines(p), sp::this_ok(p.ap@, m.g@, f),
@@ -398,211 +282,6 @@ pub proof fn lemma_this(p: &Program, m: &Machine, f: int)
     let i = m.base as int;
     assert(m.words()[i] == m.mem@[m.len - 1 - i]);
     assert(enc_seq(m.addr(), g.stack)[i] == enc(m.addr(), g.stack[i]));
-}
-
-/// LOAD_FIELD_THIS f (`spec::op_load_field_this`): no checks (the
-/// verifier proves `this` has the field).
-#[inline(always)]
-pub fn op_load_field_this(m: &mut Machine, env: &Env, bci: usize, opcode: u8, f: usize) -> (r: Ctl)
-    requires
-        handler_pre(&env.p, *old(m), bci, opcode),
-        sp::step(env.p.ap@, old(m).g@) == sp::op_load_field_this(env.p.ap@, old(m).g@, f as int),
-        f < 256,
-        bci + 2 < 0x1000_0000,
-    ensures step_post(&env.p, *old(m), *final(m), r),
-{
-    let p = &env.p;
-    let ghost ap = p.ap@;
-    let ghost g = m.g@;
-    let ghost m0 = *m;
-    proof {
-        assert(outcome_ok(ap, p.cert@, sp::step(ap, g)));
-        lemma_this(p, m, f as int);
-    }
-    let ghost o = g.stack[m.base as int];
-    let ghost id = o->Obj_0 as int;
-    let this = m.mem.read(m.len - 1 - m.base);
-    proof { lemma_field_val(p, m, o, f as int); }
-    let v = m.heap.field(this, f, Ghost(id));
-    let r = m.push_next(p, v, 2, Ghost(sp::field(g, o, f as int)));
-    proof { lemma_matches(p, m0, *m, r); }
-    r
-}
-
-/// STORE_FIELD_THIS f (`spec::op_store_field_this`): the value stays.
-/// Storing into a program-heap object raises INVALID_PROGRAM (not proven
-/// yet).
-#[inline(always)]
-pub fn op_store_field_this(m: &mut Machine, env: &Env, bci: usize, opcode: u8, f: usize) -> (r: Ctl)
-    requires
-        handler_pre(&env.p, *old(m), bci, opcode),
-        sp::step(env.p.ap@, old(m).g@) == sp::op_store_field_this(env.p.ap@, old(m).g@, f as int),
-        f < 256,
-        bci + 2 < 0x1000_0000,
-    ensures step_post(&env.p, *old(m), *final(m), r),
-{
-    let p = &env.p;
-    let ghost ap = p.ap@;
-    let ghost g = m.g@;
-    let ghost m0 = *m;
-    proof {
-        assert(outcome_ok(ap, p.cert@, sp::step(ap, g)));
-        lemma_this(p, m, f as int);
-        m.lemma_at(p, 0);
-    }
-    let ghost o = g.stack[m.base as int];
-    let ghost id = o->Obj_0 as int;
-    let this = m.mem.read(m.len - 1 - m.base);
-    if m.is_ro_word(p, this, Ghost(id)) {
-        proof {
-            assert(sp::step(ap, g) == sp::raise(ap, g, sp::INVALID_PROGRAM));
-            lemma_source_step(ap, g);
-        }
-        return m.v_raise_invalid(env);
-    }
-    let v = m.at(0);
-    m.set_field_val(p, this, Ghost(o), f, v, Ghost(sp::at(g, 0)));
-    let ghost m1 = *m;
-    let ghost g1 = m.g@;
-    m.bci = bci + 2;
-    let ghost g2 = sp::goto(g1, bci + 2);
-    m.g = Ghost(g2);
-    proof {
-        assert(m.words() =~= enc_seq(m1.addr(), g2.stack));
-        m1.lemma_local_step(p, m);
-        lemma_matches(p, m0, *m, Ctl::Next);
-    }
-    Ctl::Next
-}
-
-/// INVOKE_VIRTUAL_GET sel (`spec::op_invoke_virtual_get`): a field
-/// accessor reads the field in place; anything else is a call.
-#[inline(always)]
-pub fn op_invoke_virtual_get(m: &mut Machine, env: &Env, bci: usize, opcode: u8, sel: usize) -> (r: Ctl)
-    requires
-        handler_pre(&env.p, *old(m), bci, opcode),
-        toit_spec::v2::prim::grows_stack(opcode),
-        sp::step(env.p.ap@, old(m).g@) == sp::op_invoke_virtual_get(env.p.ap@, old(m).g@, sel as int),
-        sel < 0x1_0000,
-        bci + 3 < 0x1000_0000,
-    ensures step_post(&env.p, *old(m), *final(m), r),
-{
-    let p = &env.p;
-    let ghost ap = p.ap@;
-    let ghost g = m.g@;
-    let ghost m0 = *m;
-    proof {
-        assert(outcome_ok(ap, p.cert@, sp::step(ap, g)));
-        m.lemma_at(p, 0);
-    }
-    let w = m.at(0);
-    let ghost recv = sp::at(g, 0);
-    match m.lookup(p, w, Ghost(recv), sel as i64) {
-        VLookup::Missing => {
-            proof {
-                assert(sp::step(ap, g) == sp::raise(ap, g, sp::LOOKUP_FAILED));
-                lemma_source_step(ap, g);
-            }
-            m.v_raise_lookup(env, w, Ghost(recv), sel as i64)
-        },
-        VLookup::Found(t) => {
-            let info = p.methods.at(t);
-            proof { assert(ap.methods[t as int] == method_info(p.methods@[t as int], p.max_height)); }
-            let f = info.aux as usize;
-            if info.kind == KIND_FIELD_ACCESSOR && m.field_access_ok(p, w, Ghost(recv), f, false) {
-                let ghost id = recv->Obj_0 as int;
-                proof { lemma_field_val(p, m, recv, f as int); }
-                let v = m.heap.field(w, f, Ghost(id));
-                m.put(0, v);
-                m.bci = bci + 3;
-                let ghost g1 = sp::goto(sp::put(g, 0, sp::field(g, recv, f as int)), bci + 3);
-                m.g = Ghost(g1);
-                proof {
-                    assert(m.words() =~= enc_seq(m0.addr(), g1.stack));
-                    assert forall|i: int| 0 <= i < g1.stack.len() implies #[trigger] encodable(m0.addr(), g1.stack[i]) by {
-                        if i != g.stack.len() - 1 { assert(g1.stack[i] == g.stack[i]); }
-                    }
-                    m0.lemma_local_step(p, m);
-                    lemma_matches(p, m0, *m, Ctl::Next);
-                }
-                return Ctl::Next;
-            }
-            if let Some(c) = ensure_room(m, env) {
-                return c;
-            }
-            let r = m.push_call(env, t, bci + 3);
-            proof { lemma_matches(p, m0, *m, r); }
-            r
-        },
-    }
-}
-
-/// INVOKE_VIRTUAL_SET sel (`spec::op_invoke_virtual_set`): a field
-/// accessor writes the field in place; anything else is a call.
-#[inline(always)]
-pub fn op_invoke_virtual_set(m: &mut Machine, env: &Env, bci: usize, opcode: u8, sel: usize) -> (r: Ctl)
-    requires
-        handler_pre(&env.p, *old(m), bci, opcode),
-        toit_spec::v2::prim::grows_stack(opcode),
-        sp::step(env.p.ap@, old(m).g@) == sp::op_invoke_virtual_set(env.p.ap@, old(m).g@, sel as int),
-        sel < 0x1_0000,
-        bci + 3 < 0x1000_0000,
-    ensures step_post(&env.p, *old(m), *final(m), r),
-{
-    let p = &env.p;
-    let ghost ap = p.ap@;
-    let ghost g = m.g@;
-    let ghost m0 = *m;
-    proof {
-        assert(outcome_ok(ap, p.cert@, sp::step(ap, g)));
-        m.lemma_at(p, 0);
-        m.lemma_at(p, 1);
-    }
-    let v = m.at(0);
-    let w = m.at(1);
-    let ghost val = sp::at(g, 0);
-    let ghost recv = sp::at(g, 1);
-    match m.lookup(p, w, Ghost(recv), sel as i64) {
-        VLookup::Missing => {
-            proof {
-                assert(sp::step(ap, g) == sp::raise(ap, g, sp::LOOKUP_FAILED));
-                lemma_source_step(ap, g);
-            }
-            m.v_raise_lookup(env, w, Ghost(recv), sel as i64)
-        },
-        VLookup::Found(t) => {
-            let info = p.methods.at(t);
-            proof { assert(ap.methods[t as int] == method_info(p.methods@[t as int], p.max_height)); }
-            let f = info.aux as usize;
-            if info.kind == KIND_FIELD_ACCESSOR && m.field_access_ok(p, w, Ghost(recv), f, true) {
-                m.set_field_val(p, w, Ghost(recv), f, v, Ghost(val));
-                let ghost m1 = *m;
-                let ghost g1 = m.g@;
-                proof { m.lemma_frame(p); }
-                m.drop(1);
-                m.put(0, v);
-                m.bci = bci + 3;
-                let ghost g2 = sp::goto(sp::push(sp::drop(g1, 2), val), bci + 3);
-                m.g = Ghost(g2);
-                proof {
-                    assert(m.words() =~= enc_seq(m1.addr(), g2.stack));
-                    assert forall|i: int| 0 <= i < g2.stack.len() implies #[trigger] encodable(m1.addr(), g2.stack[i]) by {
-                        if i < g2.stack.len() - 1 { assert(g2.stack[i] == g1.stack[i]); }
-                    }
-                    m1.lemma_local_step(p, m);
-                    assert(sp::push(sp::set_field2(sp::drop(g, 2), recv, f as int, val), val) == sp::push(sp::drop(g1, 2), val));
-                    lemma_matches(p, m0, *m, Ctl::Next);
-                }
-                return Ctl::Next;
-            }
-            if let Some(c) = ensure_room(m, env) {
-                return c;
-            }
-            let r = m.push_call(env, t, bci + 3);
-            proof { lemma_matches(p, m0, *m, r); }
-            r
-        },
-    }
 }
 
 } // verus!

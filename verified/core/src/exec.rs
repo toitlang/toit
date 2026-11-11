@@ -92,6 +92,15 @@ pub struct Machine {
     pub base: usize,
     pub lim: usize,
     pub method: usize,
+    /// The run loop's gate for finally records (`regs::gate_ok`, set by
+    /// `Machine::enter`): `fw` is the number of finally-record words while
+    /// the registers run (the registers hold the frame top only); a call's
+    /// fast path needs `need` free words (all ones while there are finally
+    /// records, so that it fails), a return's fast path a frame top above
+    /// `bot` (the end of the array while there are finally records).
+    pub fw: usize,
+    pub need: usize,
+    pub bot: Slot,
     pub g: Ghost<State2>,
 }
 
@@ -162,6 +171,12 @@ pub fn smi_of(v: i64) -> (r: usize)
 /// `a` lies in the program heap.
 pub open spec fn in_ro(p: &Program, a: usize) -> bool {
     p.ro_start <= a && a < p.ro_start + p.ro_size
+}
+
+/// The program heap's address range does not wrap around (checked once per
+/// run, `step::run_loop`), so that the program-heap test is one compare.
+pub open spec fn ro_ok(p: &Program) -> bool {
+    p.ro_start + p.ro_size <= usize::MAX
 }
 
 impl Program {
@@ -487,126 +502,6 @@ impl Machine {
         Ctl::Next
     }
 
-    /// LOAD_LOCAL, LOAD_LOCAL_WIDE, LOAD_LOCAL_0..5.
-    #[inline(always)]
-    pub fn op_load_local(&mut self, p: &Program, n: usize, len: usize) -> (r: Ctl)
-        requires
-            old(self).refines(p),
-            !(sp::op_load_local(old(self).g@, n as int, len as int) is Stuck),
-            old(self).bci + len < 0x1000_0000,
-        ensures
-            r == Ctl::Next || is_limit(r),
-            r == Ctl::Next ==> final(self).refines(p)
-                && sp::op_load_local(old(self).g@, n as int, len as int) == Outcome2::Next(final(self).g@),
-    {
-        proof { self.lemma_at(p, n as int); }
-        let v = self.at(n);
-        self.push_next(p, v, len, Ghost(sp::at(self.g@, n as int)))
-    }
-
-    /// POP_LOAD_LOCAL n.
-    #[inline(always)]
-    pub fn op_pop_load_local(&mut self, p: &Program, n: usize) -> (r: Ctl)
-        requires
-            old(self).refines(p),
-            !(sp::op_pop_load_local(old(self).g@, n as int) is Stuck),
-            old(self).bci + 2 < 0x1000_0000,
-            n < 256,
-        ensures
-            r == Ctl::Next,
-            final(self).refines(p),
-            sp::op_pop_load_local(old(self).g@, n as int) == Outcome2::Next(final(self).g@),
-    {
-        let ghost m0 = *self;
-        let ghost g0 = self.g@;
-        proof { self.lemma_at(p, n + 1); self.lemma_at(p, 0); }
-        let v = self.at(n + 1);
-        self.put(0, v);
-        self.bci = self.bci + 2;
-        let ghost g1 = sp::goto(sp::put(g0, 0, sp::at(g0, n + 1)), g0.bci + 2);
-        self.g = Ghost(g1);
-        proof {
-            assert(self.words() =~= enc_seq(m0.addr(), g1.stack));
-            assert forall|i: int| 0 <= i < g1.stack.len() implies #[trigger] encodable(m0.addr(), g1.stack[i]) by {
-                if i != g0.stack.len() - 1 { assert(g1.stack[i] == g0.stack[i]); }
-            }
-            m0.lemma_local_step(p, self);
-        }
-        Ctl::Next
-    }
-
-    /// STORE_LOCAL n.
-    #[inline(always)]
-    pub fn op_store_local(&mut self, p: &Program, n: usize) -> (r: Ctl)
-        requires
-            old(self).refines(p),
-            !(sp::op_store_local(old(self).g@, n as int) is Stuck),
-            old(self).bci + 2 < 0x1000_0000,
-        ensures
-            r == Ctl::Next,
-            final(self).refines(p),
-            sp::op_store_local(old(self).g@, n as int) == Outcome2::Next(final(self).g@),
-    {
-        let ghost m0 = *self;
-        let ghost g0 = self.g@;
-        proof { self.lemma_at(p, n as int); self.lemma_at(p, 0); }
-        let v = self.at(0);
-        self.put(n, v);
-        self.bci = self.bci + 2;
-        let ghost g1 = sp::goto(sp::put(g0, n as int, sp::at(g0, 0)), g0.bci + 2);
-        self.g = Ghost(g1);
-        proof {
-            assert(self.words() =~= enc_seq(m0.addr(), g1.stack));
-            assert forall|i: int| 0 <= i < g1.stack.len() implies #[trigger] encodable(m0.addr(), g1.stack[i]) by {
-                if i != g0.stack.len() - 1 - n { assert(g1.stack[i] == g0.stack[i]); }
-            }
-            m0.lemma_local_step(p, self);
-        }
-        Ctl::Next
-    }
-
-    /// STORE_LOCAL_POP n.
-    #[inline(always)]
-    pub fn op_store_local_pop(&mut self, p: &Program, n: usize) -> (r: Ctl)
-        requires
-            old(self).refines(p),
-            !(sp::op_store_local_pop(old(self).g@, n as int) is Stuck),
-            old(self).bci + 2 < 0x1000_0000,
-        ensures
-            r == Ctl::Next,
-            final(self).refines(p),
-            sp::op_store_local_pop(old(self).g@, n as int) == Outcome2::Next(final(self).g@),
-    {
-        let ghost m0 = *self;
-        let ghost g0 = self.g@;
-        proof { self.lemma_at(p, n as int); self.lemma_at(p, 0); }
-        let v = self.at(0);
-        self.drop(1);
-        let ghost w1 = self.words();
-        self.put(n - 1, v);
-        self.bci = self.bci + 2;
-        let ghost g1 = sp::goto(sp::put(sp::drop(g0, 1), n - 1, sp::at(g0, 0)), g0.bci + 2);
-        self.g = Ghost(g1);
-        proof {
-            let h = g0.stack.len();
-            assert(w1 == m0.words().subrange(0, h - 1));
-            assert(self.words() == w1.update(h - 1 - n, v));
-            assert(g1.stack == g0.stack.subrange(0, h - 1).update(h - 1 - n, sp::at(g0, 0)));
-            assert forall|i: int| 0 <= i < h - 1 implies #[trigger] self.words()[i] == enc(m0.addr(), g1.stack[i]) by {
-                if i != h - 1 - n {
-                    assert(self.words()[i] == m0.words()[i]);
-                    assert(m0.words()[i] == enc_seq(m0.addr(), g0.stack)[i]);
-                }
-            }
-            assert(self.words() =~= enc_seq(m0.addr(), g1.stack));
-            assert forall|i: int| 0 <= i < g1.stack.len() implies #[trigger] encodable(m0.addr(), g1.stack[i]) by {
-                if i != g0.stack.len() - 1 - n { assert(g1.stack[i] == g0.stack[i]); }
-            }
-            m0.lemma_local_step(p, self);
-        }
-        Ctl::Next
-    }
-
     /// POP n, POP_1.
     #[inline(always)]
     pub fn op_pop(&mut self, p: &Program, n: usize, len: usize) -> (r: Ctl)
@@ -636,55 +531,6 @@ impl Machine {
         Ctl::Next
     }
 
-    /// LOAD_SMIS_0 n: pushes n zeros.
-    #[inline(always)]
-    pub fn op_load_smis_0(&mut self, p: &Program, n: usize) -> (r: Ctl)
-        requires
-            old(self).refines(p),
-            old(self).bci + 2 < 0x1000_0000,
-        ensures
-            r == Ctl::Next || is_limit(r),
-            r == Ctl::Next ==> final(self).refines(p)
-                && sp::op_load_smis_0(old(self).g@, n as int) == Outcome2::Next(final(self).g@),
-    {
-        let ghost m0 = *self;
-        let ghost g0 = self.g@;
-        if self.top - self.rtop < n {
-            return Ctl::Stuck(stuck::LIMIT);
-        }
-        proof { lemma_smi_word_nat(0); }
-        let mut i: usize = 0;
-        while i < n
-            invariant
-                self.stack_ok(),
-                i <= n,
-                self.top >= self.rtop + (n - i),
-                self.top == m0.top - i,
-                self.bci == m0.bci,
-                self.same(&m0),
-                self.words() == m0.words() + Seq::new(i as nat, |j: int| 0usize),
-            decreases n - i,
-        {
-            let ok = self.push(0);
-            i = i + 1;
-            assert(self.words() =~= m0.words() + Seq::new(i as nat, |j: int| 0usize));
-        }
-        self.bci = self.bci + 2;
-        let ghost g1 = sp::goto(State2 { stack: g0.stack + Seq::new(n as nat, |j: int| Value::Smi(0)), ..g0 }, g0.bci + 2);
-        self.g = Ghost(g1);
-        proof {
-            assert(self.words() =~= enc_seq(m0.addr(), g1.stack));
-            assert forall|i: int| 0 <= i < g1.stack.len() implies #[trigger] encodable(m0.addr(), g1.stack[i]) by {
-                if i < g0.stack.len() { assert(g1.stack[i] == g0.stack[i]); }
-            }
-            assert(sp::op_load_smis_0(g0, n as int) == Outcome2::Next(g1)) by {
-                assert(g1 == sp::goto(State2 { stack: g0.stack + Seq::new(n as nat, |j: int| Value::Smi(0)), ..g0 }, g0.bci + 2));
-            }
-            m0.lemma_local_step(p, self);
-        }
-        Ctl::Next
-    }
-
     /// Stores top, record and frame tops and bci into the Stack object, so
     /// that the GC and C++ see the task's state.
     #[inline(always)]
@@ -701,104 +547,6 @@ impl Machine {
         self.mem.set_header(STACK_TOP_WORD, top);
         self.mem.set_header(STACK_RECORD_TOP_WORD, rtop | (ftop << STACK_FRAME_TOP_SHIFT));
         self.mem.set_header(STACK_BCI_WORD, bci);
-    }
-
-    /// LOAD_LITERAL(_WIDE) i.
-    #[inline(always)]
-    pub fn op_load_literal(&mut self, p: &Program, i: usize, len: usize) -> (r: Ctl)
-        requires
-            old(self).refines(p),
-            !(sp::op_load_literal(p.ap@, old(self).g@, i as int, len as int) is Stuck),
-            old(self).bci + len < 0x1000_0000,
-        ensures
-            r == Ctl::Next || is_limit(r),
-            r == Ctl::Next ==> final(self).refines(p)
-                && sp::op_load_literal(p.ap@, old(self).g@, i as int, len as int) == Outcome2::Next(final(self).g@),
-    {
-        let ghost v = p.ap@.literals[i as int];
-        proof { assert(p.literals@[i as int] == enc(self.addr(), v) && const_ok(self.g@.heap, v)); }
-        let w = p.literals.at(i);
-        self.push_next(p, w, len, Ghost(v))
-    }
-
-    /// LOAD_NULL.
-    #[inline(always)]
-    pub fn op_load_null(&mut self, p: &Program, len: usize) -> (r: Ctl)
-        requires old(self).refines(p), old(self).bci + len < 0x1000_0000,
-        ensures
-            r == Ctl::Next || is_limit(r),
-            r == Ctl::Next ==> final(self).refines(p)
-                && sp::next(sp::push(old(self).g@, sp::null2(p.ap@)), len as int) == Outcome2::Next(final(self).g@),
-    {
-        let ghost v = p.ap@.roots[0];
-        proof { assert(const_ok(self.g@.heap, v)); }
-        let w = p.null;
-        self.push_next(p, w, len, Ghost(v))
-    }
-
-    /// LOAD_SMI_0, LOAD_SMI_1, LOAD_SMI_U8, LOAD_SMI_U16, LOAD_SMI_U32 and
-    /// LOAD_METHOD: push the smi `v`.
-    #[inline(always)]
-    pub fn op_load_smi(&mut self, p: &Program, v: usize, len: usize) -> (r: Ctl)
-        requires old(self).refines(p), old(self).bci + len < 0x1000_0000, v as int <= MAX_SMI,
-        ensures
-            r == Ctl::Next || is_limit(r),
-            r == Ctl::Next ==> final(self).refines(p)
-                && sp::next(sp::push(old(self).g@, Value::Smi(v as i64)), len as int) == Outcome2::Next(final(self).g@),
-    {
-        let w = smi_of(v as i64);
-        self.push_next(p, w, len, Ghost(Value::Smi(v as i64)))
-    }
-
-    /// LOAD_GLOBAL_VAR(_WIDE) g.
-    #[inline(always)]
-    pub fn op_load_global(&mut self, p: &Program, gi: usize, len: usize) -> (r: Ctl)
-        requires
-            old(self).refines(p),
-            !(sp::op_load_global(old(self).g@, gi as int, len as int) is Stuck),
-            old(self).bci + len < 0x1000_0000,
-        ensures
-            r == Ctl::Next || is_limit(r),
-            r == Ctl::Next ==> final(self).refines(p)
-                && sp::op_load_global(old(self).g@, gi as int, len as int) == Outcome2::Next(final(self).g@),
-    {
-        let ghost g0 = self.g@;
-        proof {
-            assert(enc_seq(self.addr(), g0.globals)[gi as int] == enc(self.addr(), g0.globals[gi as int]));
-        }
-        let v = self.globals.at(gi);
-        self.push_next(p, v, len, Ghost(g0.globals[gi as int]))
-    }
-
-    /// STORE_GLOBAL_VAR(_WIDE) g.
-    #[inline(always)]
-    pub fn op_store_global(&mut self, p: &Program, gi: usize, len: usize) -> (r: Ctl)
-        requires
-            old(self).refines(p),
-            !(sp::op_store_global(old(self).g@, gi as int, len as int) is Stuck),
-            old(self).bci + len < 0x1000_0000,
-        ensures
-            r == Ctl::Next,
-            final(self).refines(p),
-            sp::op_store_global(old(self).g@, gi as int, len as int) == Outcome2::Next(final(self).g@),
-    {
-        let ghost m0 = *self;
-        let ghost g0 = self.g@;
-        proof { self.lemma_at(p, 0); }
-        let v = self.at(0);
-        self.globals.set(gi, v);
-        self.bci = self.bci + len;
-        let ghost g1 = sp::goto(State2 { globals: g0.globals.update(gi as int, sp::at(g0, 0)), ..g0 }, g0.bci + len);
-        self.g = Ghost(g1);
-        proof {
-            assert(enc_seq(m0.addr(), g1.globals) =~= enc_seq(m0.addr(), g0.globals).update(gi as int, v));
-            assert(self.words() =~= enc_seq(m0.addr(), g1.stack));
-            assert forall|i: int| 0 <= i < g1.globals.len() implies #[trigger] encodable(m0.addr(), g1.globals[i]) by {
-                if i != gi { assert(g1.globals[i] == g0.globals[i]); }
-            }
-            m0.lemma_local_step(p, self);
-        }
-        Ctl::Next
     }
 
     /// The branch condition of `kind` on a word (`spec::branch_taken`):
@@ -818,75 +566,6 @@ impl Machine {
         }
     }
 
-    /// BRANCH*, BRANCH_BACK*: `kind` 0 always, 1 if true, 2 if false, 3 if
-    /// not null. The target is inside the method (from the spec).
-    #[inline(always)]
-    pub fn op_branch(&mut self, p: &Program, kind: usize, target: usize, len: usize) -> (r: Ctl)
-        requires
-            old(self).refines(p),
-            kind <= 3,
-            !(sp::op_branch(p.ap@, old(self).g@, kind as int, target as int, len as int) is Stuck),
-            kind != 0 ==> !(sp::at(old(self).g@, 0) is BlockRef),
-            old(self).bci + len < 0x1000_0000,
-        ensures
-            r == Ctl::Next,
-            final(self).refines(p),
-            sp::op_branch(p.ap@, old(self).g@, kind as int, target as int, len as int) == Outcome2::Next(final(self).g@),
-    {
-        let ghost m0 = *self;
-        let ghost g0 = self.g@;
-        let ghost ap = p.ap@;
-        if kind != 0 {
-            proof { self.lemma_at(p, 0); }
-            let v = self.at(0);
-            self.drop(1);
-            proof {
-                let a = sp::at(g0, 0);
-                let addr = m0.addr();
-                assert(ap.roots[0] == sp::null2(ap) && ap.roots[2] == sp::false2(ap));
-                assert(encodable(addr, ap.roots[0])) by { assert(const_ok(g0.heap, ap.roots[0])); }
-                assert(encodable(addr, ap.roots[2])) by { assert(const_ok(g0.heap, ap.roots[2])); }
-                lemma_enc_inj(g0.heap, addr, a, sp::null2(ap));
-                lemma_enc_inj(g0.heap, addr, a, sp::false2(ap));
-                assert((v == p.null) == (a == sp::null2(ap)));
-                assert((v == p.false_) == (a == sp::false2(ap)));
-            }
-            let taken = Self::taken(p, kind, v);
-            if !taken {
-                self.bci = self.bci + len;
-                let ghost g1 = sp::goto(sp::drop(g0, 1), g0.bci + len);
-                self.g = Ghost(g1);
-                proof {
-                    assert(self.words() =~= enc_seq(m0.addr(), g1.stack));
-                    assert forall|i: int| 0 <= i < g1.stack.len() implies #[trigger] encodable(m0.addr(), g1.stack[i]) by {
-                        assert(g1.stack[i] == g0.stack[i]);
-                    }
-                    m0.lemma_local_step(p, self);
-                }
-                return Ctl::Next;
-            }
-            self.bci = target;
-            let ghost g1 = sp::goto(sp::drop(g0, 1), target as int);
-            self.g = Ghost(g1);
-            proof {
-                assert(self.words() =~= enc_seq(m0.addr(), g1.stack));
-                assert forall|i: int| 0 <= i < g1.stack.len() implies #[trigger] encodable(m0.addr(), g1.stack[i]) by {
-                    assert(g1.stack[i] == g0.stack[i]);
-                }
-                m0.lemma_local_step(p, self);
-            }
-            Ctl::Next
-        } else {
-            self.bci = target;
-            let ghost g1 = sp::goto(g0, target as int);
-            self.g = Ghost(g1);
-            proof {
-                assert(self.words() =~= enc_seq(m0.addr(), g1.stack));
-                m0.lemma_local_step(p, self);
-            }
-            Ctl::Next
-        }
-    }
 }
 
 } // verus!

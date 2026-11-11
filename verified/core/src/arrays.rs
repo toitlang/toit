@@ -39,7 +39,6 @@ use crate::step::*;
 use crate::halt::{lemma_value_operand, lemma_word_tag};
 #[cfg(verus_keep_ghost)]
 use crate::calls::handler_pre;
-use crate::calls::op_operator_fallback;
 use toit_spec::types::{Value, HeapObj, Body};
 use toit_spec::v2::types::{State2, Program2, Outcome2};
 #[cfg(verus_keep_ghost)]
@@ -127,31 +126,6 @@ pub proof fn lemma_step_at(p: &Program, g: State2)
     }
     assert(outcome_ok(ap, c, sp::step(ap, g)));
     reveal(sp::step);
-}
-
-/// INVOKE_AT, INVOKE_AT_PUT, INVOKE_SIZE.
-#[inline(always)]
-pub fn op_array(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: Ctl)
-    requires
-        handler_pre(&env.p, *old(m), bci, opcode),
-        78 <= opcode <= 80,
-    ensures step_post(&env.p, *old(m), *final(m), r),
-{
-    let p = &env.p;
-    proof {
-        lemma_step_at(p, m.g@);
-        lemma_instr(p.ap@, p.cert@, p.trusted@, m.g@);
-        lemma_heap_good(p, m.g@);
-        reveal_with_fuel(toit_spec::v2::bytecodes::opcode_length2, 1);
-    }
-    if opcode == 78 {
-        op_invoke_at(m, env, bci, opcode)
-    } else if opcode == 79 {
-        op_invoke_at_put(m, env, bci, opcode)
-    } else {
-        let sel = code_u16(p, bci + 1);
-        op_invoke_size(m, env, bci, opcode, sel)
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -350,7 +324,7 @@ impl Machine {
     pub fn array_loc(&self, p: &Program, aw: usize, Ghost(av): Ghost<Value>, length: i64, n: usize,
         is_put: bool, Ghost(value): Ghost<Value>) -> (r: Loc)
         requires
-            self.hrefines(p), vals_good(self.g@.heap), val_ok(*self, aw, av),
+            self.hrefines(p), ro_ok(p), vals_good(self.g@.heap), val_ok(*self, aw, av),
             is_array(as1(self.g@), av),
             n as int <= MAX_SMI,
         ensures loc_ok(*self, r, array_at(as1(self.g@), av, length as int, n as int, is_put, value), is_put, value),
@@ -372,7 +346,7 @@ impl Machine {
     pub fn bytes_loc(&self, p: &Program, bw: usize, Ghost(bv): Ghost<Value>, n: usize,
         is_put: bool, vw: usize, Ghost(value): Ghost<Value>) -> (r: Loc)
         requires
-            self.hrefines(p), vals_good(self.g@.heap), val_ok(*self, bw, bv),
+            self.hrefines(p), ro_ok(p), vals_good(self.g@.heap), val_ok(*self, bw, bv),
             is_bytes(as1(self.g@), bv),
             n as int <= MAX_SMI,
             is_put ==> val_ok(*self, vw, value),
@@ -399,7 +373,7 @@ impl Machine {
     pub fn cow_loc(&self, p: &Program, cw: usize, Ghost(cv): Ghost<Value>, n: usize,
         is_put: bool, vw: usize, Ghost(value): Ghost<Value>) -> (r: Loc)
         requires
-            self.hrefines(p), vals_good(self.g@.heap), val_ok(*self, cw, cv),
+            self.hrefines(p), ro_ok(p), vals_good(self.g@.heap), val_ok(*self, cw, cv),
             is_instance(as1(self.g@), cv),
             n as int <= MAX_SMI,
             is_put ==> val_ok(*self, vw, value),
@@ -435,7 +409,7 @@ impl Machine {
     pub fn locate(&self, p: &Program, rw: usize, Ghost(rv): Ghost<Value>, n: usize,
         is_put: bool, vw: usize, Ghost(value): Ghost<Value>, fuel: usize) -> (r: Loc)
         requires
-            self.hrefines(p), vals_good(self.g@.heap), val_ok(*self, rw, rv),
+            self.hrefines(p), ro_ok(p), vals_good(self.g@.heap), val_ok(*self, rw, rv),
             n as int <= MAX_SMI,
             is_put ==> val_ok(*self, vw, value),
         ensures loc_ok(*self, r, fast_at(p1(p.ap@), as1(self.g@), rv, Value::Smi(n as i64), is_put, value, fuel as nat),
@@ -525,7 +499,7 @@ impl Machine {
     pub fn large_loc(&self, p: &Program, rw: usize, Ghost(rv): Ghost<Value>, is_large: bool, n: usize,
         is_put: bool, vw: usize, Ghost(value): Ghost<Value>, fuel: usize) -> (r: Loc)
         requires
-            self.hrefines(p), vals_good(self.g@.heap), val_ok(*self, rw, rv),
+            self.hrefines(p), ro_ok(p), vals_good(self.g@.heap), val_ok(*self, rw, rv),
             n as int <= MAX_SMI,
             is_put ==> val_ok(*self, vw, value),
             is_instance(as1(self.g@), rv),
@@ -616,161 +590,6 @@ impl Machine {
 // Handlers.
 
 impl Machine {
-    /// Stores the value `x` (word `wx`) into element `n` of the array `v`
-    /// (word `w`), not in the program heap: `set_obj` of `spec_helpers::array_at`.
-    #[inline(always)]
-    pub fn set_element_val(&mut self, p: &Program, w: usize, Ghost(v): Ghost<Value>, n: usize, wx: usize, Ghost(x): Ghost<Value>)
-        requires
-            old(self).refines(p),
-            w == enc(old(self).addr(), v),
-            v is Obj,
-            (v->Obj_0 as int) < old(self).g@.heap.len(),
-            old(self).g@.heap[v->Obj_0 as int].body is Array,
-            n < old(self).g@.heap[v->Obj_0 as int].body->Array_0.len(),
-            !old(self).g@.heap[v->Obj_0 as int].ro,
-            wx == enc(old(self).addr(), x),
-            encodable(old(self).addr(), x),
-        ensures
-            final(self).refines(p),
-            final(self).g@ == (State2 {
-                heap: old(self).g@.heap.update(v->Obj_0 as int, HeapObj {
-                    body: Body::Array(old(self).g@.heap[v->Obj_0 as int].body->Array_0.update(n as int, x)),
-                    ..old(self).g@.heap[v->Obj_0 as int]
-                }),
-                ..old(self).g@
-            }),
-            final(self).top == old(self).top,
-            final(self).bci == old(self).bci,
-            final(self).same_stack(old(self)),
-    {
-        let ghost m0 = *self;
-        let ghost g0 = self.g@;
-        let ghost id = v->Obj_0 as int;
-        self.heap.set_element(w, n, wx, Ghost(id), Ghost(x));
-        let ghost g1 = State2 {
-            heap: g0.heap.update(id, HeapObj {
-                body: Body::Array(g0.heap[id].body->Array_0.update(n as int, x)),
-                ..g0.heap[id]
-            }),
-            ..g0
-        };
-        self.g = Ghost(g1);
-        proof {
-            let objs = self.heap.objs();
-            let cb = self.heap.class_bits();
-            let a = self.addr();
-            assert(objs == g1.heap);
-            assert forall|i: int| 0 <= i < objs.len() implies #[trigger] obj_model_ok(objs[i], cb, a) by {
-                assert(obj_model_ok(g0.heap[i], cb, a));
-                if i == id {
-                    let es = g0.heap[id].body->Array_0.update(n as int, x);
-                    assert forall|j: int| 0 <= j < es.len() implies #[trigger] encodable(a, es[j]) by {
-                        if j != n { assert(es[j] == g0.heap[id].body->Array_0[j]); }
-                    }
-                }
-            }
-            assert(heap_model_ok(objs, a, cb));
-            assert forall|i: int| 0 <= i < g1.heap.len() implies #[trigger] g1.heap[i].ro == in_ro(p, a[i]) by {
-                assert(g0.heap[i].ro == in_ro(p, a[i]));
-            }
-            lemma_prog_rel_update(p, g0.heap, a, id, g1.heap[id]);
-            assert(g1.heap == g0.heap.update(id, g1.heap[id]));
-            assert(self.refines(p));
-        }
-    }
-
-    /// Stores the byte `b` into byte `n` of the byte array `v` (word `w`),
-    /// not in the program heap.
-    #[inline(always)]
-    pub fn set_byte_val(&mut self, p: &Program, w: usize, Ghost(v): Ghost<Value>, n: usize, b: u8)
-        requires
-            old(self).refines(p),
-            w == enc(old(self).addr(), v),
-            v is Obj,
-            (v->Obj_0 as int) < old(self).g@.heap.len(),
-            old(self).g@.heap[v->Obj_0 as int].body is Bytes,
-            n < old(self).g@.heap[v->Obj_0 as int].body->Bytes_0.len(),
-            !old(self).g@.heap[v->Obj_0 as int].ro,
-        ensures
-            final(self).refines(p),
-            final(self).g@ == (State2 {
-                heap: old(self).g@.heap.update(v->Obj_0 as int, HeapObj {
-                    body: Body::Bytes(old(self).g@.heap[v->Obj_0 as int].body->Bytes_0.update(n as int, b)),
-                    ..old(self).g@.heap[v->Obj_0 as int]
-                }),
-                ..old(self).g@
-            }),
-            final(self).top == old(self).top,
-            final(self).bci == old(self).bci,
-            final(self).same_stack(old(self)),
-    {
-        let ghost m0 = *self;
-        let ghost g0 = self.g@;
-        let ghost id = v->Obj_0 as int;
-        self.heap.set_byte_at(w, n, b, Ghost(id));
-        let ghost g1 = State2 {
-            heap: g0.heap.update(id, HeapObj {
-                body: Body::Bytes(g0.heap[id].body->Bytes_0.update(n as int, b)),
-                ..g0.heap[id]
-            }),
-            ..g0
-        };
-        self.g = Ghost(g1);
-        proof {
-            let objs = self.heap.objs();
-            let cb = self.heap.class_bits();
-            let a = self.addr();
-            assert(objs == g1.heap);
-            assert forall|i: int| 0 <= i < objs.len() implies #[trigger] obj_model_ok(objs[i], cb, a) by {
-                assert(obj_model_ok(g0.heap[i], cb, a));
-            }
-            assert(heap_model_ok(objs, a, cb));
-            assert forall|i: int| 0 <= i < g1.heap.len() implies #[trigger] g1.heap[i].ro == in_ro(p, a[i]) by {
-                assert(g0.heap[i].ro == in_ro(p, a[i]));
-            }
-            lemma_prog_rel_update(p, g0.heap, a, id, g1.heap[id]);
-            assert(g1.heap == g0.heap.update(id, g1.heap[id]));
-            assert(self.refines(p));
-        }
-    }
-
-    /// Replaces the three operands of INVOKE_AT_PUT by the value `v` (word
-    /// `w`) and continues after the instruction.
-    #[inline(always)]
-    pub fn put_result(&mut self, p: &Program, w: usize, Ghost(v): Ghost<Value>) -> (r: Ctl)
-        requires
-            old(self).refines(p),
-            sp::has_slot(old(self).g@, 2),
-            w == enc(old(self).addr(), v),
-            encodable(old(self).addr(), v),
-            old(self).bci + 1 < 0x1000_0000,
-        ensures
-            r == Ctl::Next,
-            final(self).refines(p),
-            final(self).g@ == sp::goto(sp::push(sp::drop(old(self).g@, 3), v), old(self).bci + 1),
-    {
-        let ghost m1 = *self;
-        let ghost g1 = self.g@;
-        proof { self.lemma_frame(p); self.lemma_at(p, 2); }
-        self.drop(2);
-        self.put(0, w);
-        self.bci = self.bci + 1;
-        let ghost g2 = sp::goto(sp::push(sp::drop(g1, 3), v), m1.bci + 1);
-        self.g = Ghost(g2);
-        proof {
-            let h = g1.stack.len();
-            assert forall|i: int| 0 <= i < h - 3 implies #[trigger] self.words()[i] == enc(m1.addr(), g2.stack[i]) by {
-                assert(self.words()[i] == m1.words()[i]);
-                assert(m1.words()[i] == enc_seq(m1.addr(), g1.stack)[i]);
-            }
-            assert(self.words() =~= enc_seq(m1.addr(), g2.stack));
-            assert forall|i: int| 0 <= i < g2.stack.len() implies #[trigger] encodable(m1.addr(), g2.stack[i]) by {
-                if i < h - 3 { assert(g2.stack[i] == g1.stack[i]); }
-            }
-            m1.lemma_local_step(p, self);
-        }
-        Ctl::Next
-    }
 }
 
 /// Replacing an object by one with the same `ro` keeps the constants.
@@ -811,199 +630,6 @@ pub fn index_x(m: &Machine, p: &Program, wa: usize, Ghost(a): Ghost<Value>) -> (
         return None;
     }
     Some(n as usize)
-}
-
-/// INVOKE_AT (`spec::op_invoke_at`).
-#[inline(always)]
-pub fn op_invoke_at(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: Ctl)
-    requires
-        handler_pre(&env.p, *old(m), bci, opcode),
-        opcode == 78,
-        sp::step(env.p.ap@, old(m).g@) == sp::op_invoke_at(env.p.ap@, old(m).g@),
-        sp::has_slot(old(m).g@, 0), sp::at(old(m).g@, 0) is Smi || sp::at(old(m).g@, 0) is Obj,
-        sp::has_slot(old(m).g@, 1), sp::at(old(m).g@, 1) is Smi || sp::at(old(m).g@, 1) is Obj,
-        vals_good(old(m).g@.heap),
-        bci + 1 < 0x1000_0000,
-    ensures step_post(&env.p, *old(m), *final(m), r),
-{
-    let p = &env.p;
-    let ghost ap = p.ap@;
-    let ghost g = m.g@;
-    let ghost s = as1(g);
-    let ghost m0 = *m;
-    let ghost rv = sp::at(g, 1);
-    let ghost av = sp::at(g, 0);
-    proof {
-        m.lemma_at(p, 0);
-        m.lemma_at(p, 1);
-        assert(const_ok(g.heap, ap.roots[0]));
-    }
-    let recv = m.at(1);
-    let arg = m.at(0);
-    if let Some(n) = index_x(m, p, arg, Ghost(av)) {
-        let null = p.null;
-        match m.locate(p, recv, Ghost(rv), n, false, null, Ghost(sp::null2(ap)), 8) {
-            Loc::Elem(aw, garr, i) => {
-                let ghost arr = garr@;
-                let ghost id = arr->Obj_0 as int;
-                let ghost x = elements(s, arr)[i as int];
-                proof {
-                    lemma_val(p, *m, aw, arr);
-                    assert(obj_model_ok(g.heap[id], m.heap.class_bits(), m.addr()));
-                }
-                let w = m.heap.element(aw, i, Ghost(id));
-                proof { assert(sp::op_invoke_at(ap, g) == sp::binary_result(g, x)); }
-                let r = m.binary_next(p, w, Ghost(x));
-                proof { lemma_matches(p, m0, *m, r); }
-                return r;
-            },
-            Loc::Byte(bw, gba, i) => {
-                let ghost ba = gba@;
-                let ghost id = ba->Obj_0 as int;
-                proof { lemma_val(p, *m, bw, ba); }
-                let b = m.heap.byte_at(bw, i, Ghost(id));
-                let ghost x = smi(b as int);
-                proof {
-                    lemma_smi_word_nat(b as i64);
-                    assert(sp::op_invoke_at(ap, g) == sp::binary_result(g, x));
-                }
-                let w = smi_of(b as i64);
-                let r = m.binary_next(p, w, Ghost(x));
-                proof { lemma_matches(p, m0, *m, r); }
-                return r;
-            },
-            Loc::Fail => {},
-        }
-    } else {
-        proof { reveal_with_fuel(fast_at, 1); }
-    }
-    proof { assert(sp::op_invoke_at(ap, g) == sp::operator_fallback(ap, g, opcode)); }
-    op_operator_fallback(m, env, bci, opcode)
-}
-
-/// INVOKE_AT_PUT (`spec::op_invoke_at_put`): stores the value and leaves it
-/// (a byte array stores and leaves the value modulo 256).
-#[inline(always)]
-pub fn op_invoke_at_put(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: Ctl)
-    requires
-        handler_pre(&env.p, *old(m), bci, opcode),
-        opcode == 79,
-        sp::step(env.p.ap@, old(m).g@) == sp::op_invoke_at_put(env.p.ap@, old(m).g@),
-        sp::has_slot(old(m).g@, 0), sp::at(old(m).g@, 0) is Smi || sp::at(old(m).g@, 0) is Obj,
-        sp::has_slot(old(m).g@, 1), sp::at(old(m).g@, 1) is Smi || sp::at(old(m).g@, 1) is Obj,
-        sp::has_slot(old(m).g@, 2), sp::at(old(m).g@, 2) is Smi || sp::at(old(m).g@, 2) is Obj,
-        vals_good(old(m).g@.heap),
-        bci + 1 < 0x1000_0000,
-    ensures step_post(&env.p, *old(m), *final(m), r),
-{
-    let p = &env.p;
-    let ghost ap = p.ap@;
-    let ghost g = m.g@;
-    let ghost s = as1(g);
-    let ghost m0 = *m;
-    let ghost rv = sp::at(g, 2);
-    let ghost av = sp::at(g, 1);
-    let ghost xv = sp::at(g, 0);
-    proof {
-        m.lemma_at(p, 0);
-        m.lemma_at(p, 1);
-        m.lemma_at(p, 2);
-    }
-    let recv = m.at(2);
-    let arg = m.at(1);
-    let value = m.at(0);
-    if let Some(n) = index_x(m, p, arg, Ghost(av)) {
-        match m.locate(p, recv, Ghost(rv), n, true, value, Ghost(xv), 8) {
-            Loc::Elem(aw, garr, i) => {
-                let ghost arr = garr@;
-                proof { lemma_val(p, *m, aw, arr); }
-                m.set_element_val(p, aw, Ghost(arr), i, value, Ghost(xv));
-                proof {
-                    let g1 = m.g@;
-                    assert(sp::op_invoke_at_put(ap, g) == sp::next(sp::push(sp::drop(g1, 3), xv), 1));
-                }
-                let r = m.put_result(p, value, Ghost(xv));
-                proof { lemma_matches(p, m0, *m, r); }
-                return r;
-            },
-            Loc::Byte(bw, gba, i) => {
-                let ghost ba = gba@;
-                proof { lemma_val(p, *m, bw, ba); lemma_word_tag(m, p, value, xv); }
-                let b = smi_value(value) as u8;
-                proof {
-                    let v = xv->Smi_0;
-                    assert(b as int == (v as int) % 256) by (bit_vector)
-                        requires b == ((v as i64) as u8);
-                }
-                m.set_byte_val(p, bw, Ghost(ba), i, b);
-                let ghost x = smi(b as int);
-                proof {
-                    let g1 = m.g@;
-                    lemma_smi_word_nat(b as i64);
-                    assert(sp::op_invoke_at_put(ap, g) == sp::next(sp::push(sp::drop(g1, 3), x), 1));
-                }
-                let w = smi_of(b as i64);
-                let r = m.put_result(p, w, Ghost(x));
-                proof { lemma_matches(p, m0, *m, r); }
-                return r;
-            },
-            Loc::Fail => {},
-        }
-    } else {
-        proof { reveal_with_fuel(fast_at, 1); }
-    }
-    proof { assert(sp::op_invoke_at_put(ap, g) == sp::operator_fallback(ap, g, opcode)); }
-    op_operator_fallback(m, env, bci, opcode)
-}
-
-/// INVOKE_SIZE (`spec::op_invoke_size`): `spec_helpers::fast_size`, else
-/// the virtual getter.
-#[inline(always)]
-pub fn op_invoke_size(m: &mut Machine, env: &Env, bci: usize, opcode: u8, sel: usize) -> (r: Ctl)
-    requires
-        handler_pre(&env.p, *old(m), bci, opcode),
-        opcode == 80,
-        sp::step(env.p.ap@, old(m).g@) == sp::op_invoke_size(env.p.ap@, old(m).g@, sel as int),
-        sp::has_slot(old(m).g@, 0), sp::at(old(m).g@, 0) is Smi || sp::at(old(m).g@, 0) is Obj,
-        vals_good(old(m).g@.heap),
-        sel < 0x1_0000,
-        bci + 3 < 0x1000_0000,
-    ensures step_post(&env.p, *old(m), *final(m), r),
-{
-    let p = &env.p;
-    let ghost ap = p.ap@;
-    let ghost g = m.g@;
-    let ghost m0 = *m;
-    let ghost rv = sp::at(g, 0);
-    proof { m.lemma_at(p, 0); }
-    let recv = m.at(0);
-    match m.size_x(p, recv, Ghost(rv)) {
-        Some(n) => {
-            let ghost x = smi(n as int);
-            proof {
-                lemma_smi_word(n);
-                assert(sp::op_invoke_size(ap, g, sel as int) == sp::next(sp::put(g, 0, x), 3));
-            }
-            let w = smi_of(n);
-            m.put(0, w);
-            m.bci = bci + 3;
-            let ghost g1 = sp::goto(sp::put(g, 0, x), bci + 3);
-            m.g = Ghost(g1);
-            proof {
-                assert(m.words() =~= enc_seq(m0.addr(), g1.stack));
-                assert forall|i: int| 0 <= i < g1.stack.len() implies #[trigger] encodable(m0.addr(), g1.stack[i]) by {
-                    if i != g.stack.len() - 1 { assert(g1.stack[i] == g.stack[i]); }
-                }
-                m0.lemma_local_step(p, m);
-                lemma_matches(p, m0, *m, Ctl::Next);
-            }
-            Ctl::Next
-        },
-        None => {
-            proof { assert(sp::op_invoke_size(ap, g, sel as int) == sp::op_invoke_virtual_get(ap, g, sel as int)); }
-            crate::fields::op_invoke_virtual_get(m, env, bci, opcode, sel)
-        },
-    }
 }
 
 impl Machine {

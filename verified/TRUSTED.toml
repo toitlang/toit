@@ -595,14 +595,6 @@ justification = "Run loop and handlers not yet verified (calls, operators, type 
 [[trusted]]
 crate = "core"
 file = "src/machine.rs"
-item = "macro_rules!"
-kind = "unsafe"
-count = 2
-justification = "cold! moves the Machine into cold_run by value and back (ptr::read/write, no destructor, panic=abort) so LLVM keeps the hot state in registers; DESIGN.md run loop."
-
-[[trusted]]
-crate = "core"
-file = "src/machine.rs"
 item = "run"
 kind = "assume_new"
 count = 1
@@ -786,14 +778,6 @@ justification = "A program may run forever (the scheduler preempts it); no termi
 
 [[trusted]]
 crate = "core"
-file = "src/step.rs"
-item = "settle"
-kind = "exec_allows_no_decreases_clause"
-count = 1
-justification = "The machine's handlers run the finally code of an unwinding until its finally records are gone; finally code may loop forever (the scheduler preempts it, an exit ends the loop), as in run_loop: no termination is claimed (step::settle)."
-
-[[trusted]]
-crate = "core"
 file = "src/view.rs"
 item = "Content"
 kind = "external_body"
@@ -855,6 +839,14 @@ item = "Cursor::diff"
 kind = "external_body"
 count = 1
 justification = "Element distance of two cursors of the same view less than 2^28 elements apart: the pointer difference divided by the element size (exact: both point into one array or table)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Cursor::lt"
+kind = "external_body"
+count = 1
+justification = "Order of two cursors into the same stack array (end included): a pointer comparison, exact since both point into one allocation (the run loop's gate for returns, regs::gate_ok)."
 
 [[trusted]]
 crate = "core"

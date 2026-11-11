@@ -83,6 +83,7 @@ pub open spec fn heap_only(m0: Machine, m1: Machine) -> bool {
     &&& m1.globals == m0.globals
     &&& m1.len == m0.len && m1.top == m0.top && m1.ftop == m0.ftop && m1.rtop == m0.rtop
     &&& m1.bci == m0.bci && m1.base == m0.base && m1.lim == m0.lim && m1.method == m0.method
+    &&& m1.fw == m0.fw && m1.need == m0.need && m1.bot == m0.bot
     &&& m1.heap.addrs() == m0.heap.addrs()
     &&& m1.g@ == (State2 { heap: m1.g@.heap, ..m0.g@ })
 }
@@ -329,14 +330,14 @@ pub fn put0_next_r(m: &mut Machine, r: &mut Regs, p: &Program, w: usize, Ghost(x
 /// the room is re-established (`ensure_room_all`) and the registers
 /// derived; otherwise the machine is the result.
 #[inline(never)]
-pub fn settle(m: &mut Machine, r: Regs, env: &Env, c: Ctl, Ghost(w0): Ghost<Machine>) -> (res: (Regs, Ctl))
+pub fn resume_r(m: &mut Machine, r: Regs, env: &Env, c: Ctl, Ghost(w0): Ghost<Machine>) -> (res: (Regs, Ctl))
     requires step_post(&env.p, w0, *old(m), c),
     ensures
         res.1 == Ctl::Next ==> final(m).rok(res.0) && crate::regs::ipok(&env.p, res.0) && steps_post(&env.p, w0, final(m).with(res.0), res.1)
-            && room_ok(&env.p, final(m).with(res.0)),
+            && room_ok(&env.p, final(m).with(res.0)) && crate::regs::gate_ok(&env.p, *final(m)),
         res.1 != Ctl::Next ==> steps_post(&env.p, w0, *final(m), res.1),
 {
-    match crate::step::settle(m, env, c, Ghost(w0)) {
+    match crate::step::resume(m, env, c, Ghost(w0)) {
         (Some(r2), Ctl::Next) => (r2, Ctl::Next),
         (_, c2) => (r, c2),
     }
@@ -505,9 +506,11 @@ pub fn op_invoke_at_put(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, op
 /// INVOKE_SIZE (`spec::op_invoke_size`): `spec_helpers::fast_size`, else
 /// the virtual getter (on the machine).
 #[inline(always)]
-pub fn op_invoke_size(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode: u8) -> (c: Ctl)
+pub fn op_invoke_size(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode: u8, sel_: usize) -> (c: Ctl)
     requires
         rhandler_pre(&env.p, *old(m), *old(r), bci, opcode),
+        sel_ as int == u16_at(p1(env.p.ap@), bci + 1),
+        sel_ < 0x1_0000,
         opcode == 80,
         bci + 3 < 0x1000_0000,
     ensures rpost(&env.p, *old(m), *old(r), *final(m), *final(r), c),
@@ -540,7 +543,11 @@ pub fn op_invoke_size(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opco
             }
             Ctl::Next
         },
-        None => bridge_r(m, r, env),
+        None => {
+            // The virtual getter (`spec::op_invoke_virtual_get`), on registers.
+            proof { assert(sp::op_invoke_size(ap, g, sel) == sp::op_invoke_virtual_get(ap, g, sel)); }
+            crate::rfields::op_invoke_virtual_get(m, r, env, bci, opcode, sel_)
+        },
     }
 }
 
@@ -611,12 +618,12 @@ fn alloc_oom(m: &mut Machine, r: Regs, env: &Env, Ghost(g): Ghost<State2>, Ghost
         source(env.p.ap@, g, sp::unwind(env.p.ap@, g, Unwind::Throw(toit_spec::v2::prim::out_of_memory(env.p.ap@)))),
     ensures
         res.1 == Ctl::Next ==> final(m).rok(res.0) && crate::regs::ipok(&env.p, res.0) && steps_post(&env.p, w0, final(m).with(res.0), res.1)
-            && room_ok(&env.p, final(m).with(res.0)),
+            && room_ok(&env.p, final(m).with(res.0)) && crate::regs::gate_ok(&env.p, *final(m)),
         res.1 != Ctl::Next ==> steps_post(&env.p, w0, *final(m), res.1),
 {
     reload(m, &env.p, Ghost(g));
     let c = crate::unwind::throw_oom(m, env);
-    settle(m, r, env, c, Ghost(w0))
+    resume_r(m, r, env, c, Ghost(w0))
 }
 
 // ---------------------------------------------------------------------------
@@ -630,7 +637,7 @@ fn alloc_oom(m: &mut Machine, r: Regs, env: &Env, Ghost(g): Ghost<State2>, Ghost
 pub fn ret_r(m: &mut Machine, r: &mut Regs, p: &Program, w: usize, Ghost(v): Ghost<Value>) -> (b: bool)
     requires
         m_ok(p, *old(m), *old(r)),
-        old(r).sp@ >= old(r).fr@ + STACK_RESERVE,
+        old(r).sp@ >= old(r).fr@ + old(m).fw + STACK_RESERVE,
         room_ok(p, old(m).with(*old(r))),
         shape_ok(p, old(m).g@),
         w == enc(old(m).addr(), v),
@@ -638,7 +645,7 @@ pub fn ret_r(m: &mut Machine, r: &mut Regs, p: &Program, w: usize, Ghost(v): Gho
         !(sp::return_from(p.ap@, old(m).g@, v) is Stuck),
     ensures
         !b ==> *final(m) == *old(m) && *final(r) == *old(r),
-        b ==> final(m).rok(*final(r)) && ipok(p, *final(r)) && final(m).with(*final(r)).refines(p)
+        b ==> final(m).rok(*final(r)) && ipok(p, *final(r)) && final(m).with(*final(r)).refines(p) && gate_ok(p, *final(m))
             && sp::return_from(p.ap@, old(m).g@, v) == Outcome2::Next(final(m).g@)
             && room_ok(p, final(m).with(*final(r))),
 {
@@ -649,8 +656,8 @@ pub fn ret_r(m: &mut Machine, r: &mut Regs, p: &Program, w: usize, Ghost(v): Gho
         m0.lemma_frame(p);
         lemma_no_handler(g0);
     }
-    if r.fr.diff(m.mem.slot(0)) <= FRAME_WORDS {
-        // The task's bottom frame returns.
+    if !m.bot.lt(r.fr, &m.mem) {
+        // The task's bottom frame returns, or there are finally records.
         return false;
     }
     let ghost n = g0.frames.len() as int;
@@ -670,7 +677,6 @@ pub fn ret_r(m: &mut Machine, r: &mut Regs, p: &Program, w: usize, Ghost(v): Gho
     }
     let rec_ = r.fr.offset(-(FRAME_WORDS as isize));
     let ret = rec_.read(FRAME_RET, &m.mem);
-    let method = crec.read(FRAME_METHOD, &m.mem);
     let base = crec.read(FRAME_BASE, &m.mem);
     proof {
         assert(rec(m0.mem@, n - 1, FRAME_RET) == g0.frames[n - 1].ret);
@@ -689,7 +695,6 @@ pub fn ret_r(m: &mut Machine, r: &mut Regs, p: &Program, w: usize, Ghost(v): Gho
     r.fp = r.end.offset(-(base as isize));
     r.fr = rec_;
     r.ip = p.code.cursor(ret);
-    m.method = method;
     let ghost g1 = State2 {
         stack: g0.stack.subrange(0, sp::top(g0).base as int).push(v),
         frames: g0.frames.drop_last(),
@@ -751,9 +756,15 @@ pub fn op_primitive(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode
     let index = code_u16(p, bci + 2) as u16;
     proof {
         assert(sp::step(ap, g) == Outcome2::Primitive(g, module, index)) by { reveal(sp::step); }
-        assert(ap.methods[m.method as int] == method_info(p.methods@[m.method as int], p.max_height));
+        crate::regs::lemma_method(p, w0);
     }
-    let arity = p.methods.at(m.method).arity as usize;
+    // The method of the top frame: its frame record's.
+    let method = r.fr.offset(-(FRAME_WORDS as isize)).read(FRAME_METHOD, &m.mem);
+    proof {
+        assert(method == w0.method);
+        assert(ap.methods[method as int] == method_info(p.methods@[method as int], p.max_height));
+    }
+    let arity = p.methods.at(method).arity as usize;
     // A core primitive the policy resolves to the VM's own entry with the
     // method's arity: its Rust port, if there is one.
     if module == 0 && (index as usize) < env.core_arities.len()
@@ -764,7 +775,7 @@ pub fn op_primitive(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode
     }
     // A C++ primitive (a GC point that may switch the task), a missing one,
     // or a Rust primitive that needs a GC.
-    bridge_r(m, r, env)
+    slow0(m, r, env, Slow::Prim(module, index, arity))
 }
 
 /// Runs the Rust port of core primitive `index` (`prims::call`) on the
@@ -776,7 +787,7 @@ pub fn op_primitive(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode
 fn rust_primitive_r(m: &mut Machine, r: &mut Regs, env: &Env, index: u16, arity: usize) -> (res: Option<Ctl>)
     requires
         rinv(&env.p, *old(m), *old(r)),
-        old(r).sp@ >= old(r).fr@ + STACK_RESERVE,
+        old(r).sp@ >= old(r).fr@ + old(m).fw + STACK_RESERVE,
         step_ok(env.p.ap@, env.p.cert@, old(m).g@),
         cur_op(env.p.ap@, old(m).g@) == 89,
         sp::step(env.p.ap@, old(m).g@) == Outcome2::Primitive(old(m).g@, 0, index),
@@ -824,7 +835,7 @@ fn rust_primitive_r(m: &mut Machine, r: &mut Regs, env: &Env, index: u16, arity:
             m.sync_b(*r, p);
             let c = m.do_return(env, w, Ghost(v@));
             proof { lemma_outcome_matches(p, w0, *m, c, o); }
-            let (r2, c2) = settle(m, *r, env, c, Ghost(w0));
+            let (r2, c2) = resume_r(m, *r, env, c, Ghost(w0));
             *r = r2;
             Some(c2)
         },

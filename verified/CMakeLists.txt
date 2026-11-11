@@ -138,6 +138,11 @@ endif()
 if (TOIT_VERIFIED_CORE_CHECKED_LOOP)
   list(APPEND VCORE_FEATURES checked-loop)
 endif()
+# -Xpreempt_a_lot exists in debug VM builds only (TOIT_DEBUG, src/flags.h);
+# release builds leave the test out, as the C++ interpreter's.
+if (CMAKE_BUILD_TYPE MATCHES "^(Debug|Asan|ASan|ASAN)$")
+  list(APPEND VCORE_FEATURES preempt-a-lot)
+endif()
 list(JOIN VCORE_FEATURES "," VCORE_FEATURES_JOINED)
 set(VCORE_FEATURE_ARGS --no-default-features --features "${VCORE_FEATURES_JOINED}")
 

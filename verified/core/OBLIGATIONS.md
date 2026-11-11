@@ -22,29 +22,30 @@ format 2 has a verified handler; `step_unverified` and `grow_bridge` are
 gone (branch core/refinement-2).
 
 Proven refinement of `spec::step` (the handler's next state is exactly
-the spec's; `step::verified_op` lists the opcodes the verified dispatch
-handles itself):
+the spec's). Since branch core/size-diet every opcode has one handler, on
+the registers (`step::step_r`; the files below hold its helpers and the
+shared machine-form code of the slow paths, `step::slow`):
 
 | Family | Opcodes | File | Run-time checks removed |
 |---|---|---|---|
-| locals | LOAD_LOCAL(_WIDE), LOAD_LOCAL_0..5, POP_LOAD_LOCAL, STORE_LOCAL, STORE_LOCAL_POP | exec.rs | slot exists |
-| constants | LOAD_LITERAL(_WIDE), LOAD_NULL, LOAD_SMI_0/1/U8/U16/U32, LOAD_SMIS_0, LOAD_METHOD | exec.rs | literal index, method id |
-| globals | LOAD/STORE_GLOBAL_VAR(_WIDE), LOAD/STORE_GLOBAL_VAR_DYNAMIC, LOAD_GLOBAL_VAR_LAZY(_WIDE) | exec.rs, globals.rs | global index (static), slot, entry method checks |
-| stack | POP, POP_1 | exec.rs | frame height |
-| branches | BRANCH*, BRANCH_BACK* | exec.rs, step.rs | target in method, direction, zero distance |
+| locals | LOAD_LOCAL(_WIDE), LOAD_LOCAL_0..5, POP_LOAD_LOCAL, STORE_LOCAL, STORE_LOCAL_POP | regs.rs | slot exists |
+| constants | LOAD_LITERAL(_WIDE), LOAD_NULL, LOAD_SMI_0/1/U8/U16/U32, LOAD_SMIS_0, LOAD_METHOD | regs.rs | literal index, method id |
+| globals | LOAD/STORE_GLOBAL_VAR(_WIDE), LOAD/STORE_GLOBAL_VAR_DYNAMIC, LOAD_GLOBAL_VAR_LAZY(_WIDE) | regs.rs, rblocks.rs, globals.rs | global index (static), slot, entry method checks |
+| stack | POP, POP_1 | regs.rs | frame height |
+| branches | BRANCH*, BRANCH_BACK* | regs.rs, step.rs | target in method, direction, zero distance |
 | dispatch | every verified opcode | step.rs | instruction inside the method (the `mend`/`mfast` cache is gone) |
-| calls | INVOKE_STATIC, INVOKE_VIRTUAL(_WIDE), RETURN, RETURN_NULL | calls.rs | target valid, arity, frame height, dispatch range, lookup entry, handler of the returning frame, caller frame, push room after return |
-| fields | LOAD_FIELD(_WIDE), LOAD_FIELD_LOCAL, POP_LOAD_FIELD_LOCAL, STORE_FIELD(_WIDE/_POP), LOAD_FIELD_THIS, STORE_FIELD_THIS, INVOKE_VIRTUAL_GET/SET | fields.rs | the `this` variants have none left (receiver, field range, task fields); others keep only `field_readable`/`field_writable` (spec checks) |
-| type checks | IS_CLASS(_WIDE), IS_INTERFACE(_WIDE), AS_CLASS(_WIDE), AS_INTERFACE(_WIDE), AS_LOCAL | types.rs | check-table indices, value has a class |
-| blocks | LOAD_BLOCK, LOAD_OUTER, STORE_OUTER, LOAD_OUTER_BLOCK, INVOKE_BLOCK | blocks.rs | block reference decoding (frame, slot ranges), outer slot bounds, block method checks, LOAD_BLOCK encoding limits |
-| operators | INVOKE_EQ..INVOKE_MOD, IDENTICAL: smis, doubles, large integers, `compare_numbers`, double arithmetic (a GC point), contents of strings/doubles/large integers, the virtual-call fallback | ops.rs, numbers.rs | operand slots |
-| collections | INVOKE_AT, INVOKE_AT_PUT, INVOKE_SIZE on arrays, lists (array- and large-array-backed), byte arrays, slices, copy-on-write byte arrays, large arrays (`fast_at` with fuel, `fast_size`), else the virtual call | arrays.rs | slots |
-| allocation | ALLOCATE(_WIDE), out of memory (resource throw) | alloc.rs, unwind.rs | class range, instantiable, the reload checks after the GC |
+| calls | INVOKE_STATIC, INVOKE_VIRTUAL(_WIDE), RETURN, RETURN_NULL | rcalls.rs, calls.rs | target valid, arity, frame height, dispatch range, lookup entry, handler of the returning frame, caller frame, push room after return |
+| fields | LOAD_FIELD(_WIDE), LOAD_FIELD_LOCAL, POP_LOAD_FIELD_LOCAL, STORE_FIELD(_WIDE/_POP), LOAD_FIELD_THIS, STORE_FIELD_THIS, INVOKE_VIRTUAL_GET/SET | rfields.rs, fields.rs | the `this` variants have none left (receiver, field range, task fields); others keep only `field_readable`/`field_writable` (spec checks) |
+| type checks | IS_CLASS(_WIDE), IS_INTERFACE(_WIDE), AS_CLASS(_WIDE), AS_INTERFACE(_WIDE), AS_LOCAL | rfields.rs, types.rs | check-table indices, value has a class |
+| blocks | LOAD_BLOCK, LOAD_OUTER, STORE_OUTER, LOAD_OUTER_BLOCK, INVOKE_BLOCK | rblocks.rs, blocks.rs | block reference decoding (frame, slot ranges), outer slot bounds, block method checks, LOAD_BLOCK encoding limits |
+| operators | INVOKE_EQ..INVOKE_MOD, IDENTICAL: smis, doubles, large integers, `compare_numbers`, double arithmetic (a GC point), contents of strings/doubles/large integers, the virtual-call fallback | rops.rs, ops.rs, numbers.rs | operand slots |
+| collections | INVOKE_AT, INVOKE_AT_PUT, INVOKE_SIZE on arrays, lists (array- and large-array-backed), byte arrays, slices, copy-on-write byte arrays, large arrays (`fast_at` with fuel, `fast_size`), else the virtual call | rarrays.rs, arrays.rs | slots |
+| allocation | ALLOCATE(_WIDE), out of memory (resource throw) | rarrays.rs, alloc.rs, unwind.rs | class range, instantiable, the reload checks after the GC |
 | halt | HALT 0..3 | halt.rs | slot |
-| tail calls | INVOKE_STATIC_TAIL, INVOKE_LAMBDA_TAIL, INVOKE_INITIALIZER_TAIL (`replace_frame`; lambda method id, kind, captures and initializer id checked at run time as the spec checks them) | tail.rs | frame height, receiver, handler of the frame |
+| tail calls | INVOKE_STATIC_TAIL, INVOKE_LAMBDA_TAIL, INVOKE_INITIALIZER_TAIL (`replace_frame`; lambda method id, kind, captures and initializer id checked at run time as the spec checks them) | rblocks.rs, tail.rs | frame height, receiver, handler of the frame |
 | raise | every raised failure (`Outcome2::Raise` completed by `prim::raised`: exception allocation, then the verified unwinding; out of memory: throw of roots[4]) with format 1's message words | raise.rs | the exception class check (from the spec's not-stuck completion) |
 | resources | stack growth (`grow`), stack overflow (raise of roots[28]), out of memory in ALLOCATE and double arithmetic: `prim::resource_throw` | step.rs, unwind.rs, ops.rs | the reload checks after growth |
-| primitives | PRIMITIVE: the policy's core arities, the Rust ports (`prims::call`, no GC point, no save/reload) for 106 core primitives, else lookup, arity, C++ call; completion by status (`theorem::completion`) | primitive.rs, prims/ | the frame-height check |
+| primitives | PRIMITIVE: the policy's core arities, the Rust ports (`prims::call`, no GC point, no save/reload) for 106 core primitives, else lookup, arity, C++ call; completion by status (`theorem::completion`) | rarrays.rs, primitive.rs, prims/ | the frame-height check |
 
 ## 2. Open obligations
 
@@ -111,13 +112,8 @@ Open:
 
 ### Other open items
 
-- The `cold!` trampoline (`ptr::read`/`ptr::write` of the machine) is
-  trusted; listed in TRUSTED.toml. Its comment assumes panic = abort; the
-  VM's library (verified/vmverify) is built with panic = unwind. The
-  machine has no destructor, so an unwinding panic inside a cold path
-  leaves a stale but valid copy; the core's own code does not panic
-  (verified code cannot; the checked handlers index only checked arrays).
-  Review or switch the core's paths to abort.
+- Done (branch core/size-diet): the `cold!` trampoline passes the machine
+  by reference (no `ptr::read`/`ptr::write`, no unsafe left in it).
 - GC safety of words held across a GC point in the checked handlers is by
   review (the verified handlers hold none: a GC point re-derives every
   word from the model).

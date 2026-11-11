@@ -321,6 +321,19 @@ impl Cursor<usize> {
     {
         unsafe { *self.ptr.wrapping_add(n) = v }
     }
+
+    /// `self` lies before `o` (two cursors into the array of `mem`, the end
+    /// included): a pointer comparison.
+    #[verifier::external_body]
+    #[inline(always)]
+    pub fn lt(self, o: Cursor<usize>, mem: &StackMem) -> (r: bool)
+        requires
+            self.sid() == mem.sid(), o.sid() == mem.sid(),
+            0 <= self@ <= mem@.len(), 0 <= o@ <= mem@.len(),
+        ensures r == (self@ < o@),
+    {
+        (self.ptr as usize) < (o.ptr as usize)
+    }
 }
 
 /// Access to heap objects. A word with the heap tag that the core reads

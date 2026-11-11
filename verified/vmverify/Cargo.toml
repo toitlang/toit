@@ -58,6 +58,8 @@ infer = ["toit_spec/infer"]
 # format-2 programs). Devices build without it and run format 2 only for
 # programs the verifier accepted.
 checked-loop = ["toit_verified_core/checked-loop"]
+# `preempt-a-lot`: debug VM builds (CMake, TOIT_DEBUG).
+preempt-a-lot = ["toit_verified_core/preempt-a-lot"]
 
 [dependencies]
 toit_spec = { path = "../spec", default-features = false }
