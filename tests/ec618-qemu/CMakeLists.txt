@@ -97,3 +97,10 @@ add_custom_command(
   VERBATIM
 )
 harness_target(toit_ec618_qemu ${HARNESS_SOURCES} "${HARNESS_STUBS}")
+
+# The same with a 3 MB heap (the RAM of mps2-an385 allows it): for runs whose
+# results must not depend on when the heap runs out, such as the primitive
+# differential (an allocation that fails in one interpreter and succeeds
+# after the other's garbage collection makes the runs diverge).
+harness_target(toit_ec618_qemu_bigheap ${HARNESS_SOURCES} "${HARNESS_STUBS}")
+target_link_options(toit_ec618_qemu_bigheap PRIVATE -Wl,--defsym=HEAP_SIZE=0x300000)
