@@ -200,6 +200,7 @@ pub const V2_ACCEPTED: usize = 0x56455249464945;
 pub const V2_REPORT_STUCK: usize = 0;
 pub const V2_REPORT_UNCAUGHT: usize = 1;
 pub const V2_REPORT_TASK_RETURNED: usize = 2;
+pub const V2_REPORT_TRACE: usize = 3;
 pub const V2_MESSAGE_NONE: usize = 0;
 pub const V2_MESSAGE_WORD: usize = 1;
 pub const V2_MESSAGE_ARRAY: usize = 2;

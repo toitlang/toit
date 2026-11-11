@@ -339,6 +339,22 @@ justification = "FFI call to toit_v2_stack (src/interpreter_v2.cc); arguments ar
 [[trusted]]
 crate = "core"
 file = "src/ffi.rs"
+item = "Runtime::tracing"
+kind = "external_body"
+count = 1
+justification = "No ghost content, no contract: whether the VM traces every instruction (toit_v2_tracing, Flags::trace, debug builds); read once per run by the checked loop (programs not accepted), never by the verified loop."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "Runtime::tracing"
+kind = "unsafe"
+count = 1
+justification = "FFI call of toit_v2_tracing with the process the runtime was created for; it reads a flag, allocates nothing and cannot GC."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
 item = "STRUCT_LAYOUT"
 kind = "plain_rust_item"
 count = 1
@@ -463,6 +479,14 @@ item = "toit_v2_run"
 kind = "unsafe"
 count = 1
 justification = "C entry point: builds Program, views and Runtime from the context Interpreter::run_v2 filled; checks table sizes; DESIGN.md run-loop contract."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "toit_v2_tracing"
+kind = "plain_rust_item"
+count = 1
+justification = "Rust declaration of the C++ toit_v2_tracing (src/interpreter_v2.h, uword toit_v2_tracing(void*)), same convention as the other FFI declarations; the report kind it enables, V2_REPORT_TRACE, is layout-checked."
 
 [[trusted]]
 crate = "core"

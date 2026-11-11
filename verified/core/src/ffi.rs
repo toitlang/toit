@@ -106,6 +106,7 @@ extern "C" {
     fn toit_v2_call_primitive(process: *mut c_void, entry: *const c_void, arity: usize,
                               first_argument: usize, result: *mut usize) -> usize;
     fn toit_v2_report(process: *mut c_void, kind: usize, bci: usize, detail: usize);
+    fn toit_v2_tracing(process: *mut c_void) -> usize;
 }
 
 verus! {
@@ -219,6 +220,14 @@ impl Runtime {
     #[verifier::external_body]
     pub fn report(&self, kind: usize, bci: usize, detail: usize) {
         unsafe { toit_v2_report(self.process, kind, bci, detail) }
+    }
+
+    /// Whether the VM traces every instruction (`-Xtrace`, debug builds); the
+    /// checked loop then reports each one (`V2_REPORT_TRACE`). Read once per
+    /// run; the verified loop does not trace.
+    #[verifier::external_body]
+    pub fn tracing(&self) -> bool {
+        unsafe { toit_v2_tracing(self.process) != 0 }
     }
 }
 
@@ -428,7 +437,7 @@ layout_table!(
     PREEMPTION_MARKER,
     V2_OK, V2_STACK_OVERFLOW, V2_OUT_OF_MEMORY, V2_PRIMITIVE_SUCCESS, V2_PRIMITIVE_FAILURE,
     V2_PRIMITIVE_THROW, V2_PRIMITIVE_MISSING, V2_PRIMITIVE_FOUND, V2_ACCEPTED, V2_REPORT_STUCK,
-    V2_REPORT_UNCAUGHT, V2_REPORT_TASK_RETURNED,
+    V2_REPORT_UNCAUGHT, V2_REPORT_TASK_RETURNED, V2_REPORT_TRACE,
     V2_MESSAGE_NONE, V2_MESSAGE_WORD, V2_MESSAGE_ARRAY, V2_MESSAGE_PRIMITIVE, V2_MESSAGE_MAX_WORDS,
     KIND_METHOD, KIND_FIELD_ACCESSOR, KIND_LAMBDA, KIND_BLOCK, NO_VALUE, BLOCK_SLOT_BITS,
     FAILURE_LITERALS, MAX_INSTRUCTION_LENGTH, MAX_TABLE, TASK_STACK_FIELD, TASK_ID_FIELD,

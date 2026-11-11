@@ -2383,12 +2383,14 @@ impl Program {
 
 /// The run loop for programs that were not accepted.
 fn run_checked(m: &mut Machine, env: &Env) -> (usize, i64) {
+    let tracing = env.rt.tracing();
     loop {
         let bci = m.bci;
         let ctl = if !m.instruction_in_method(&env.p, bci) {
             Ctl::Stuck(stuck::BAD_INSTRUCTION)
         } else {
             let opcode = env.p.code.at(bci);
+            if tracing { env.rt.report(V2_REPORT_TRACE, bci, opcode as usize); }
             m.dispatch_checked(env, bci, opcode)
         };
         match ctl {
