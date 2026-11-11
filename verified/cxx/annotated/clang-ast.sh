@@ -33,6 +33,7 @@ cd "$REPO_ROOT"
   -Iinclude -Ithird_party/dragonbox/include \
   -Ithird_party/esp-idf/components/mbedtls/mbedtls/include \
   "-DMBEDTLS_CONFIG_FILE=\"$REPO_ROOT/mbedtls/include/toit_config.h\"" \
+  -DTOIT_MODEL='"render"' -DVM_GIT_INFO='"render"' -DVM_GIT_VERSION='"render"' \
   -Xclang -ast-dump=json -Xclang "-ast-dump-filter=$filter" \
   "$file" > "$out"
 

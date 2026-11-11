@@ -54,6 +54,11 @@
 #define STACK_TAG 7
 #define TASK_TAG 8
 
+// class Utils.
+#define Utils_MAX_ASCII 0x7f
+#define Utils_UTF_8_BITS_PER_BYTE 6
+#define Utils_UTF_8_MASK 0x3f
+
 // src/messaging.h, src/messaging.cc.
 #define MESSAGING_ENCODING_MAX_NESTING 8
 #define TAG_POSITIVE_SMI 1

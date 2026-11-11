@@ -106,10 +106,19 @@ mutant f708ad5d-read encoder/message_encoder.render src/messaging.cc "to <= o_le
 mutant f708ad5d-map encoder/message_encoder.render src/messaging.cc "i < o_len" "" \
   "count < size && i + 1 < limit; i += 2)" "count < size; i += 2)"
 
+entry utf8                  pass "" utf8/utf_8_to_16.gen.c -prover z3v4.5
+# 07c24665 (UTF-8 decoding read past the input) reverted: the first byte
+# announcing 1 or more than 4 bytes reaches payload_from_prefix (the UB
+# shift `1 << (7 - 8)` the first pilot's tools found)...
+mutant utf8-07c24665 utf8/utf_8_to_16.render src/utils.cc "utf8_count" "-prover z3v4.5" \
+  "if (prefix > Utils::MAX_ASCII && (count < 2 || count > 4 || count > length - i)) {\n      c = 0xfffd;\n      count = 1;\n    } else if (prefix > Utils::MAX_ASCII) {" \
+  "if (prefix > Utils::MAX_ASCII) {"
+# ... and with only its length check taken out, the read past the end at
+# `input[i + j]`.
+mutant utf8-overread utf8/utf_8_to_16.render src/utils.cc "No matching array chunk|i \+ j" "-prover z3v4.5" \
+  "count > 4 || count > length - i)" "count > 4)"
+
 # Hand renderings of the pilot (not yet generated, not drift-checked).
-entry utf8                  pass "" utf8/utf_8_to_16.c -prover z3v4.5
-entry utf8-07c24665         fail "utf_8_to_16.c.*(utf8_count|payload)|Cannot prove 2 <= utf8_count" utf8/utf_8_to_16.c -prover z3v4.5 -D UTF8_OVERREAD_REVERTED
-entry utf8-overread         fail "utf_8_to_16.c.*(No matching|array|i \+ j)" utf8/utf_8_to_16.c -prover z3v4.5 -D UTF8_LENGTH_CHECK_REMOVED
 entry string-write          pass "" prims/string_write.c
 entry string-write-af4ba7ab fail "No matching heap chunks: uchars_" prims/string_write.c -allow_assume -allow_dead_code -D AF4BA7AB_REVERTED
 entry string-write-af4ba7ab-disjoint pass "" prims/string_write.c -allow_assume -allow_dead_code -D AF4BA7AB_REVERTED -D AF4BA7AB_DISJOINT

@@ -349,6 +349,13 @@ class AstCache:
         decl := parse_ tu target i
         decl["out-of-line"] = true
         result.add decl
+    // An out-of-line definition does not repeat `static`: take it from the
+    // declaration in the class (same AST, so the same ids).
+    result.do: | d/Map |
+      if (d.get "out-of-line") == true and d.contains "previousDecl":
+        result.do: | other/Map |
+          if other["id"] == d["previousDecl"] and other.contains "storageClass":
+            d["storageClass"] = other["storageClass"]
     return result
 
 /**
