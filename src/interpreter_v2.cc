@@ -250,7 +250,10 @@ static Process* v2_process(void* process) {
 
 // Debugging aid (TOIT_V2_VALIDATE=1): checks that every object-stack slot
 // of the current task is a smi or points to something with a plausible
-// header.
+// header. Hosts only: devices have no environment.
+#ifdef TOIT_FREERTOS
+static void v2_validate(Process* process, const char* where) {}
+#else
 static void v2_validate(Process* process, const char* where) {
   static int enabled = -1;
   if (enabled < 0) enabled = getenv("TOIT_V2_VALIDATE") != null ? 1 : 0;
@@ -285,6 +288,7 @@ static void v2_validate(Process* process, const char* where) {
     if (stack != current) check(stack, "other task's");
   });
 }
+#endif
 
 // As Interpreter::gc, without moving the interpreter's stack pointers (the
 // core has stored its state into the stack object).

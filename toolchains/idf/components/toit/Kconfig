@@ -324,6 +324,17 @@ menu "Toit"
             interpreter's IRAM, and the firmware then refuses format-1
             programs. Always linked if the firmware's programs are format 1.
 
+    config TOIT_VERIFIED_CORE_VERIFIER
+        bool "Link the verifier for untrusted containers"
+        default y
+        depends on TOIT_VERIFIED_CORE
+        help
+            The format-2 verifier checks untrusted containers with their
+            shipped certificates when they are installed. Firmware that never
+            installs untrusted containers (all its programs are first-party
+            and run as trusted) can leave it out to save about 27 KB of flash
+            on the classic ESP32; every untrusted install is then rejected.
+
     config TOIT_VERIFIED_CORE_OPT_LEVEL
         string "Rust opt-level of the verified core (3, s or z)"
         default "3"
