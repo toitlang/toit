@@ -99,6 +99,27 @@ class V2MethodTable {
   // [*out_of_memory] (if given) in the latter case.
   static V2MethodTable* compute(Program* program, bool* out_of_memory = null);
 
+  // The method table literal (the compiler's -Xv2_table_literal, on by
+  // default): the compiler appends the table as the program's last
+  // literal, a byte array
+  //   u32 marker "TMT1"   u32 count   u32 bytecodes length   u32 0
+  //   count records of V2Method (16 bytes each, little endian)
+  // so that a program in flash (an image on a device) needs no table in
+  // RAM: compute() uses the literal in place after checking that it is
+  // exactly the table it would build (the same decoding, record by
+  // record), and builds one otherwise. The literal is an ordinary byte
+  // array to everything else (no bytecode refers to it).
+  static const uint32 TABLE_LITERAL_MARKER = 0x31544d54;  // "TMT1".
+  static const int TABLE_LITERAL_HEADER_SIZE = 16;
+
+  // Encodes the method table of [program] (whose bytecodes are set) as
+  // the literal's bytes. Returns null if the headers are malformed or the
+  // allocation fails; the caller owns the malloc'ed result.
+  static uint8* encode_table_literal(Program* program, word* length);
+
+  // Whether the table uses the program's table literal (no RAM copy).
+  bool in_literal() const { return !owned_; }
+
   // Whether untrusted containers may be in format 1 (and run on the C++
   // interpreter): -Xuntrusted_format1 or TOIT_UNTRUSTED_FORMAT1=1. By
   // default untrusted containers must be in format 2.
@@ -167,10 +188,15 @@ class V2MethodTable {
   }
 
  private:
-  V2MethodTable(V2Method* methods, word length) : methods_(methods), length_(length) {}
+  V2MethodTable(const V2Method* methods, word length, bool owned)
+      : methods_(methods), length_(length), owned_(owned) {}
 
-  V2Method* const methods_;
+  static V2MethodTable* from_literal(Program* program);
+
+  const V2Method* const methods_;
   const word length_;
+  // Whether methods_ is malloc'ed (else it is the program's table literal).
+  const bool owned_;
   uword verified_ = 0;
 };
 

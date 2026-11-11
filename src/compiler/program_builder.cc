@@ -445,8 +445,17 @@ void ProgramBuilder::set_interface_check_offsets(const List<uint16>& interface_c
 }
 
 Program* ProgramBuilder::cook() {
-  create_literals();
   program_->set_bytecodes(ListBuilder<uint8>::build_from_vector(all_bytecodes_));
+  if (is_format2() && Flags::v2_table_literal) {
+    // The method table as the last literal (V2MethodTable::TABLE_LITERAL_MARKER):
+    // a device runs the program from flash without building the table in
+    // RAM. The bytes stay alive with the compiler (external byte arrays
+    // keep the pointer).
+    word table_length = 0;
+    uint8* table = V2MethodTable::encode_table_literal(program_, &table_length);
+    if (table != null) add_byte_array(List<uint8>(table, table_length));
+  }
+  create_literals();
   program_->set_global_max_stack_height(global_max_stack_height_);
 
   // Clear the symbol table not used during execution.
