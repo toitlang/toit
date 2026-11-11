@@ -81,6 +81,14 @@ class V2Verifier {
   // and sets the bit if it is accepted. Returns null or the error to fail
   // the commit with. Called by the commit paths (image.writer-commit,
   // flash_registry.allocate) in [process] (see verify_installed).
+  //
+  // An allocation failure of the method table or the verifier returns
+  // OUT_OF_MEMORY (the string "OUT_OF_MEMORY"): the commit primitives then
+  // fail once with CROSS_PROCESS_GC, so the interpreter collects every
+  // process's garbage (returning free heap pages to the system) and retries
+  // the primitive; a second failure is the error (verified/core/PROGRESS.md,
+  // "Device builds").
+  static const char* const OUT_OF_MEMORY;
   static const char* install_verdict(const void* memory, word program_size, uint8* metadata,
                                      const uint8* certificate = null, word certificate_length = 0,
                                      Process* process = null);

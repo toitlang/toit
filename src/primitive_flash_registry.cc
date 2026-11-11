@@ -266,6 +266,12 @@ PRIMITIVE(allocate) {
       // Every byte of the program is written (the first page above).
       const char* error = V2Verifier::install_verdict(memory, size, meta, certificate, certificate_length,
                                                       process);
+      if (error == V2Verifier::OUT_OF_MEMORY && !process->object_heap()->retrying_primitive()) {
+        // Collect every process's garbage and retry once (rewriting the
+        // first page's content above writes the same bytes again, as any
+        // retry of this primitive does).
+        FAIL(CROSS_PROCESS_GC);
+      }
       if (error != null) {
         String* message = process->allocate_string(error);
         if (message == null) FAIL(ALLOCATION_FAILED);

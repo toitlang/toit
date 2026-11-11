@@ -30,6 +30,8 @@
 
 namespace toit {
 
+const char* const V2Verifier::OUT_OF_MEMORY = "OUT_OF_MEMORY";
+
 // The VM's primitive table, from the same declarations the primitives are
 // compiled from (primitive.h): the verifier checks every PRIMITIVE
 // instruction against these arities.
@@ -131,7 +133,8 @@ extern "C" void toit_vmverify_panic(const uint8* file, uword length) {
 }
 
 static bool v2_verify(Program* program, const V2MethodTable* table, bool trusted, word program_size,
-                      const uint8* certificate, word certificate_length, Process* process);
+                      const uint8* certificate, word certificate_length, Process* process,
+                      bool* out_of_memory = null);
 
 bool V2Verifier::verify(Program* program, const V2MethodTable* table, bool trusted,
                         const uint8* certificate, word certificate_length) {
@@ -139,7 +142,8 @@ bool V2Verifier::verify(Program* program, const V2MethodTable* table, bool trust
 }
 
 static bool v2_verify(Program* program, const V2MethodTable* table, bool trusted, word program_size,
-                      const uint8* certificate, word certificate_length, Process* process) {
+                      const uint8* certificate, word certificate_length, Process* process,
+                      bool* out_of_memory) {
   if (certificate == null && !V2Verifier::infers()) {
     // Devices (and hosts with -Xrequire_certificate): no inference, so no
     // verdict without a shipped certificate. Rejected before the program is
@@ -176,6 +180,7 @@ static bool v2_verify(Program* program, const V2MethodTable* table, bool trusted
     const_cast<V2MethodTable*>(table)->mark_verified(trusted);
     return true;
   }
+  if (out_of_memory != null) *out_of_memory = result.code == TOIT_VMVERIFY_OUT_OF_MEMORY;
   const char* kind = trusted ? "" : "untrusted ";
   if (result.method >= 0 && table->is_valid(result.method)) {
     word bci = table->at(result.method).entry + (result.offset >= 0 ? result.offset : 0);
@@ -200,11 +205,14 @@ const char* V2Verifier::verify_installed(Program* program, word program_size, bo
     fprintf(stderr, "untrusted images must be in bytecode format 2 (use -Xuntrusted_format1 to allow format 1)\n");
     return "FORMAT_2_REQUIRED";
   }
-  V2MethodTable* table = V2MethodTable::compute(program);
-  if (table == null) return "INVALID_SNAPSHOT";
-  bool accepted = v2_verify(program, table, false, program_size, certificate, certificate_length, process);
+  bool out_of_memory = false;
+  V2MethodTable* table = V2MethodTable::compute(program, &out_of_memory);
+  if (table == null) return out_of_memory ? OUT_OF_MEMORY : "INVALID_SNAPSHOT";
+  bool accepted = v2_verify(program, table, false, program_size, certificate, certificate_length, process,
+                            &out_of_memory);
   delete table;
-  return accepted ? null : "VERIFICATION_FAILED";
+  if (accepted) return null;
+  return out_of_memory ? OUT_OF_MEMORY : "VERIFICATION_FAILED";
 }
 
 void V2Verifier::accept_recorded(const V2MethodTable* table) {

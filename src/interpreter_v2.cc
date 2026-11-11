@@ -89,7 +89,8 @@ V2MethodTable::~V2MethodTable() {
 // -Xverify/TOIT_VERIFY: the core checks every stuck state of the
 // specification at run time, so an unverified program cannot make it
 // access memory outside the tables.
-V2MethodTable* V2MethodTable::compute(Program* program) {
+V2MethodTable* V2MethodTable::compute(Program* program, bool* out_of_memory) {
+  if (out_of_memory != null) *out_of_memory = false;
   const uint8* bytes = program->bytecodes.data();
   word length = program->bytecodes.length();
   if (!program->is_format2()) return v2_fail("missing tag");
@@ -101,7 +102,10 @@ V2MethodTable* V2MethodTable::compute(Program* program) {
     if (pass == 1) {
       if (count == 0 || count >= 0x1000000) return v2_fail("bad method count", count);
       methods = unvoid_cast<V2Method*>(calloc(count, sizeof(V2Method)));
-      if (methods == null) return null;
+      if (methods == null) {
+        if (out_of_memory != null) *out_of_memory = true;
+        return null;
+      }
     }
     word at = V2_TAG_SIZE;
     word index = 0;
@@ -157,7 +161,10 @@ V2MethodTable* V2MethodTable::compute(Program* program) {
       continue;
     }
     V2MethodTable* table = _new V2MethodTable(methods, count);
-    if (table == null) free(methods);
+    if (table == null) {
+      free(methods);
+      if (out_of_memory != null) *out_of_memory = true;
+    }
     return table;
   }
   UNREACHABLE();

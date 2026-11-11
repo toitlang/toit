@@ -175,6 +175,42 @@ verified/vmverify/README.md "Device size").
   the image (borrowed from flash, as the certificate is) would cut it;
   both change the core's and the verifier's `VMethod` view.
 
+  Request (branch device/esp32-build-fixes, 2026-11-11; measured under
+  QEMU on the classic ESP32 without PSRAM, PROGRESS.md "Device builds"):
+  at install the table is the largest single allocation (16-25 KB for the
+  suite tests, 28 KB for is-as-many-test, whose `calloc` fails with 35 KB
+  free and a largest block of 20 KB). The VM side now retries the install
+  after a cross-process GC; the record itself needs this change in the
+  core (and the same in the spec's view, verified/spec/src/v2/vprog.rs,
+  owned by the spec):
+
+  ```rust
+  // verified/core/src/ffi.rs (and spec/src/v2/vprog.rs `VMethod`): 16 bytes.
+  #[repr(C)]
+  pub struct V2Method {
+      pub entry: u32,      // absolute bci of the first instruction
+      pub length: u16,     // end - entry (was `end: u32`)
+      pub selector: u16,
+      pub aux: u16,
+      pub recv_start: u16,
+      pub recv_end: u16,
+      pub arity: u8,
+      pub kind: u8,        // `unused: u16` dropped
+  }
+  ```
+
+  Every reader of `end` uses `entry + length` (as u32: no overflow, the
+  loader keeps the bytecodes below `V2_MAX_TABLE`). The C++ side
+  (src/interpreter_v2.h `V2Method`, `V2MethodTable::compute`, which then
+  rejects a method body longer than 0xffff bytes: compiled code has at
+  most 6 KB, the toit CLI's largest method) and verified/layout_check.cc
+  follow in the same commit; the layout check catches a mismatch. Saves 4
+  bytes per method at install and for every running format-2 program
+  (5.6 KB for is-as-many-test). The larger saving, the table stored with
+  the image in flash at install and borrowed from there, needs no core
+  change but a flash layout change (the reservation must hold it; today
+  the certificate block occupies the tail during verification).
+
 ## 3. Spec requests from the refinement proof
 
 For verified/spec/format/PHASE4-REQUESTS.md (not edited here: owned by
