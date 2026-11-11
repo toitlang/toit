@@ -258,6 +258,38 @@ core.
 - M4: the untrusted suite against format 1, the firmware warning, the
   FORMAT-1-ONLY markers, -O2 and benchmark measurements, this document.
 
-## Gates
+- M5 (1aba38f2, 85be00dc): `sandbox-integration` merged again (the
+  contract table and grow_stack.render fixes); the verifier hints at
+  `--untrusted` when a trusted-compiled program is launched untrusted.
 
-(Filled in with the final runs.)
+## Gates (85be00dc)
+
+Scripts in the artifacts directory (final.sh, suite.sh, bench.sh, o2.sh,
+host32.sh); logs under suite/, bench/, o2/.
+
+- ctest -j16, the new default (build/host, format 2 everywhere):
+  1199/1202; failing only version and reader (not built) and
+  udp-reuse-port-test (no multicast). services-network-test passes
+  (tls-ubuntu-test, flaky, passed this run; it timed out in an earlier run).
+- The same suite with `-DTOIT_BYTECODE_FORMAT=1` (build/host-f1, format 1
+  everywhere): 1199/1202, the same three.
+- The slow-configuration groups that inspect bytecodes or snapshots
+  (optimizations, type_propagation, envelope, image, negative, pkg, cmake,
+  ctest): 692/692 in both builds.
+- verified/check.sh --tests: passed (spec 940, core 878 at both widths,
+  audit, contracts, VeriFast, sandbox ctests 123/123). Before the M5 merge
+  the contract table and grow_stack.render drifted (fixed on
+  sandbox-integration by eb247dd9; not from this branch).
+- Untrusted suite: 280 identical, the two known differences
+  (program-name-test, set-map-remove-first-test).
+- 32-bit host (build/host32, format 2 default): sandbox ctests 123/123.
+- Classic ESP32 firmware builds (toit.bin 1,462,512 B, iram0.text 129,087
+  B) with a format-1 system snapshot; installing a default-compiled
+  snapshot into its envelope prints the warning.
+- Benchmarks (callgrind in `Interpreter::run`, millions; `trs` the new
+  default, `chk` the code untrusted programs run; recorded values from
+  trusted-integration in parentheses): richards 1,075.3 (1,075.4),
+  deltablue 758.8 (758.8), pystone 811.9 (812.0), json 1,314.5 (1,314.6),
+  yaml 4,172.7 (4,173.1), strings 3,337.3 (3,337.3), RPC 412.7 (412.7),
+  map-set 2,523.4 (2,523.4); checked richards 1,163.3 (1,163.3), RPC 425.4
+  (425.4). C++ f1: richards 1,024.3, json 1,117.1. Not slower.
