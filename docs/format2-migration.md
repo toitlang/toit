@@ -436,7 +436,7 @@ base's heap (cmpctmalloc, heap_7.c, with the same `--wrap`s) for
 QEMU's mps2-an385. It replaces the flash registry (RAM with NOR
 semantics) and the peripheral event sources, gives the kernel's trace,
 clock and sleep hooks and the TRNG (a fixed sequence) a body, and stubs
-the other 125 base functions the VM references (generated from a probe
+the other base functions the VM references (125 in format 1, 127 in format 2) (generated from a probe
 link and base.elf; reaching one stops the run). extension.toit writes an
 envelope's images as the firmware tool bundles them, for an address in
 the PSRAM; output and exit go through semihosting. Same heap size as the
@@ -454,7 +454,17 @@ equal the 64-bit and 32-bit host builds'.
 
 The primitive differential (tests/fuzz/primitive-diff.toit) on the
 Cortex-M3, format 1 (GCC's C++ primitives) against format 2 (the Rust
-ports): PRIMDIFF_RESULT. Against the 32-bit x86 host the traces differ
+ports; scripts/prim-diff.sh, the checksum of every 10,000 calls), 8 seeds
+x 250,000 calls with a 3 MB heap (`toit_ec618_qemu_bigheap`): seeds 1-7
+identical (1.75 M calls); seed 8 diverges at call 149,965, a
+`float_multiply` of two NaNs that returns the first operand's NaN in C++
+and the second's in Rust (LLVM may commute `fmul`; neither IEEE nor Rust
+fixes which NaN propagates). With the base's heap (354 KB) all eight
+diverge, at the first allocation that one interpreter's retry after a
+garbage collection satisfies and the other's does not (seed 4, call
+7,575: a 70,004-byte `string_add` fails with ALLOCATION_FAILED in C++
+and succeeds in the core); every trace line before it is identical.
+Against the 32-bit x86 host the traces differ
 from call 22 on: a float subtraction with a NaN operand gives the
 canonical NaN with soft float (libgcc) and the operand's NaN on x86, and
 the pools diverge from there. With compiler_builtins' soft float, which
@@ -468,15 +478,30 @@ this machine model, calibrated with the libinsn plugin), so the counts
 come from the plugin: whole runs of one program per benchmark, minus the
 run of an empty program (millions):
 
-INSN_TABLE
+| | f1 | f2 | f2/f1 | f2, opt s | s/f1 | f2, opt z | z/f1 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| richards | 105.9 | 114.3 | 1.079 | 111.4 | 1.052 | 173.2 | 1.635 |
+| deltablue (50) | 7.44 | 8.89 | 1.195 | 8.56 | 1.152 | 11.74 | 1.579 |
+| pystone (2,000 loops) | 17.0 | 18.2 | 1.071 | 17.6 | 1.039 | 26.4 | 1.551 |
+| json encode/decode | 19.6 | 24.2 | 1.232 | 24.3 | 1.239 | 33.0 | 1.681 |
+| map/set | 14.9 | 16.0 | 1.071 | 15.8 | 1.058 | 20.3 | 1.362 |
+| strings | 12.2 | 14.2 | 1.160 | 14.7 | 1.200 | 19.0 | 1.554 |
+| GC stress | 85.4 | 78.0 | 0.913 | 77.0 | 0.902 | 105.6 | 1.237 |
+| boot and container start (the empty program) | 9.4 | 5.2 | | 5.2 | | 6.1 | |
 
-The core executes 5-23 % more instructions than the C++ interpreter on
+(f2 with the C++ interpreter linked: the same as f2.) The core executes 5-23 % more instructions than the C++ interpreter on
 the Cortex-M3 (as on x86-64, unlike Xtensa where it executes fewer), and
 fewer on the GC stress. Instructions are not cycles: the EC618 runs from
 XIP flash through a cache, the core's loop (`run_loop`, 19 KB here) is
 larger than the C++ interpreter's.
 
-Untrusted installs (shipped certificate): INSTALL_RESULT
+Untrusted installs (shipped certificate; scripts/insn-install.sh): three
+installs (a-hello 63 KB, c-map 76 KB, e-exception 72 KB images, with the
+image writes into the RAM registry and the uninstalls) take 480.7 M
+instructions (opt s: 479.2 M), the a-hello one about 143 M (its share of
+the virtual time). At 204 MHz and a CPI of 1-2 that is 0.7-1.4 s for a
+25 KB program, far from the 10 s dead-lock limit (the Xtensa estimate was
+2-3.5 s).
 
 Not covered under QEMU: the peripherals, cellular and networking, deep
 sleep and the RTC memory, the watchdogs, OTA (relocate-on-write into slot
@@ -490,7 +515,7 @@ with at most 32-bit loads (Cortex-M3 faults on unaligned LDRD/LDM; LLVM
 does not emit those for unaligned data).
 
 Hardware-only unknowns: the core's speed from XIP flash (cache misses,
-CPI) at 204 MHz (`CLK_CC_SEL_204M`); install time (the estimate below);
+CPI) at 204 MHz (`CLK_CC_SEL_204M`); install time (the estimate above);
 the free heap at boot with the modem stack up (EC618's
 `system-free` statistic is not implemented: it reports 2^30-1);
 whether the platform sets `CCR.UNALIGN_TRP` (the SDK sources do not; the

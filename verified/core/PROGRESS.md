@@ -29,9 +29,33 @@ verified/core/src or verified/spec changed.
 - QEMU (mps2-an385, tests/ec618-qemu: the slot's objects with the EC618
   base's prebuilt FreeRTOS and heap): the ESP32 device suite gives the
   same results in format 1 and 2; primitive differential f1 against f2 on
-  the Cortex-M3: PRIMDIFF_SHORT; instructions f2/f1 INSN_SHORT.
+  the Cortex-M3 (3 MB heap): 7 of 8 seeds x 250,000 calls identical,
+  seed 8 differs at a two-NaN multiply (which NaN propagates); with the
+  354 KB heap the runs diverge at allocation failures that the two
+  interpreters' GC retries resolve differently. Instructions f2/f1
+  (libinsn plugin): richards 1.079, deltablue 1.195, pystone 1.071, json
+  1.232, map/set 1.071, strings 1.160, GC stress 0.913; opt-level s is
+  9.2 KB smaller and slightly faster (richards 1.052).
+- Not a core bug but worth knowing: on soft-float targets the NaN a float
+  primitive returns depends on whose soft-float helpers are linked
+  (compiler_builtins canonicalizes, libgcc propagates an operand); the
+  EC618 firmware links the base's libgcc for both interpreters.
 
-Gates: GATES_SHORT
+Gates (ae8a4970): verified/check.sh --tests: Verus spec 940 and core 954
+at both widths, audit, VeriFast 135, nopanic (riscv32imac and thumbv7m),
+thumb codegen, sandbox ctests 125/125, round-4 batteries A-cert, B, D, E,
+F pass (C skipped: no host32 build). Three red-team batteries fail, and
+only run at all with an ASan build (built here for the gate; without one
+battery A fails at its environment check): round-3 heap and asm, round-4
+A. Not this branch: tools/asm.toit (and the round-3 snapshot mutator)
+patch methods without updating the method-table literal (`TMT1`,
+-Xv2_table_literal, device/format2 M3), so the patched snapshots fail to
+start with INVALID_ARGUMENT in the release build too; with
+`-Xv2_table_literal=false` the same patch runs. Host ctest -R
+tests/sandbox/ 125/125. Firmware: ESP32 and ESP32-C6, format 1 and format
+2 (core, no C++), build (toit.bin 1,463,072 / 1,541,840 and 1,574,848 /
+1,636,480 B); the EC618 in format 1 as before and in all format-2
+configurations.
 
 ## Device size (branch device/size, 2026-11-11)
 
