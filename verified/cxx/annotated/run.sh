@@ -194,8 +194,31 @@ rust_entries() {
   sed 's|internal_string(obj, ?len) \&\*\& i < len;|internal_string(obj, ?len) \&*\& i <= len;|' \
     rust/view_accessors.rs > "$ACXX_HOME/logs/view_accessors_neg.rs"
   rust_entry_run rust-view-index-at-length fail "$ACXX_HOME/logs/view_accessors_neg.rs" || f=$((f + $?))
+  # The like-for-like trial (README, "The Rust raw-memory layer"): of the
+  # five accessors, class_id and class_tag stop VeriFast's Rust front end
+  # ("Todo: BinOp::Shr"); the other three verify.
+  sed '/pub unsafe fn class_id/,/^    }$/d' rust/view_trial.rs | sed '/pub unsafe fn class_tag/,/^    }$/d' \
+    > "$ACXX_HOME/logs/view_trial_noshift.rs"
+  rust_entry_run rust-trial-three pass "$ACXX_HOME/logs/view_trial_noshift.rs" || f=$((f + $?))
   return $f
 }
+# The same five in Verus, with vstd::raw_ptr permissions.
+verus_trial() {
+  [[ -n "$filter" && "verus-trial" != *"$filter"* ]] && return 0
+  if ! command -v verus > /dev/null; then
+    printf 'SKIP  %-40s no verus\n' verus-trial
+    return 0
+  fi
+  local out
+  out=$(cd rust && verus --crate-type=lib verus_pptr.rs 2>&1)
+  if echo "$out" | grep -q "verification results:: [0-9]* verified, 0 errors"; then
+    printf 'ok    %-40s pass: %s\n' verus-trial "$(echo "$out" | grep 'verification results')"
+    return 0
+  fi
+  printf 'FAIL  %-40s %s\n' verus-trial "$(echo "$out" | grep -m1 -E 'error|verification results')"
+  return 1
+}
+spawn verus_trial
 spawn rust_entries
 
 for i in "${!pids[@]}"; do
