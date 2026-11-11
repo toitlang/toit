@@ -181,6 +181,25 @@ recursion and buffer overflow of #3373/#3374, encoding size truncation of
   (CONTRACTS.toml: a Verus-only clause, sound because the C++ precondition
   is weaker). The mutants `grow-stack-unbounded`, `grow-stack-word-range`
   take the new check out again and fail at the cast and at the sum.
+* **The encoders' size limit was dead on 32-bit: heap overflow in
+  `tison.encode` on the ESP32** (FIXED here, src/messaging.h and
+  messaging.cc). a4d19ec2 stopped the encoders at
+  `cursor_ > MESSAGING_ENCODING_MAX_SIZE` (0x7fffffff), which a 32-bit
+  `word` can never exceed: the size pass of a shared object graph
+  overflowed the cursor (signed overflow; it wraps), returned a small
+  size, and the write pass wrote gigabytes past the byte array allocated
+  for it. Reproduced on the host32 build with 100 x 100 x 43 references to
+  one 10 KB string (segfault; the 64-bit VM throws OUT_OF_RANGE), and
+  reachable by untrusted code with a few KB of memory (`tison.encode`;
+  `process_send` and `spawn` of unrestricted senders too). The external
+  byte counter could overflow the same way (8 out-of-line copies of one
+  blob). Fix: the limit is 0x3fffffff and covers the out-of-line data
+  (`is_too_large` checks `total_size()`), and `encode_copy` and
+  `encode_byte_array` check a blob's length against what is left before
+  adding it, so `cursor_ + external_bytes_` stays below the limit plus the
+  few bytes written between two checks (`ENC_SLACK`). The VeriFast proof of
+  the encoder needs exactly this (mutant `encoder-size-limit`). Full ctest
+  green; tests/message-encoding-size-test.toit passes on both widths.
 * No bug or missing check in the newly covered code: the real
   `encode_any` (including the byte-array/string class branches, the double
   and large-integer reads and the printf of an unencodable class tag), the

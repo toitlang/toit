@@ -360,6 +360,10 @@ bool MessageEncoder::encode_byte_array(ByteArray* object) {
   ASSERT(!encoding_tison());
   if (!reserve_external()) return false;
   ByteArray::Bytes bytes(object);
+  if (bytes.length() > MESSAGING_ENCODING_MAX_SIZE - total_size()) {
+    too_large_ = true;
+    return false;
+  }
   external_bytes_ += bytes.length();
   write_uint8(TAG_BYTE_ARRAY);
   write_cardinal(bytes.length());
@@ -468,6 +472,12 @@ bool MessageEncoder::encode_copy(Object* object, int tag) {
   // relies on its strings being valid.
   if (tag == TAG_STRING && process_ != null && process_->policy()->restricts_messaging() &&
       !Utils::is_valid_utf_8(source, length)) {
+    return false;
+  }
+  // The content goes into the encoding or out of line: check it against
+  // what is left, so that the sizes can't overflow a 32-bit word.
+  if (length > MESSAGING_ENCODING_MAX_SIZE - total_size()) {
+    too_large_ = true;
     return false;
   }
 
