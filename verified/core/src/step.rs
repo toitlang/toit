@@ -1192,6 +1192,48 @@ pub fn step_r(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
             }
             crate::regs::op_branch(m, r, p, kind, bci - d, 3)
         },
+        53 => {
+            let d = code_u16(p, bci + 1);
+            proof {
+                assert(sp::step(ap, g) == sp::call_static(ap, g, sp::dispatch_target(ap, d as int), 3)) by {
+                    reveal(sp::step);
+                }
+            }
+            return crate::rcalls::op_invoke_static(m, r, env, bci, opcode, d);
+        },
+        58 => {
+            let n = p.code.at(bci + 1) as usize;
+            let sel = code_u16(p, bci + 2);
+            proof {
+                assert(sp::step(ap, g) == sp::invoke_virtual(ap, g, sel as int, n + 1, 4)) by { reveal(sp::step); }
+            }
+            return crate::rcalls::op_invoke_virtual(m, r, env, bci, opcode, sel as i64, n + 1, 4);
+        },
+        59 => {
+            let n = code_u16(p, bci + 1);
+            let sel = code_u16(p, bci + 3);
+            proof {
+                assert(sp::step(ap, g) == sp::invoke_virtual(ap, g, sel as int, n + 1, 5)) by { reveal(sp::step); }
+            }
+            return crate::rcalls::op_invoke_virtual(m, r, env, bci, opcode, sel as i64, n + 1, 5);
+        },
+        91 => {
+            proof {
+                assert(sp::step(ap, g) == (if !sp::has_slot(g, 0) { sp::stuck(toit_spec::types::Stuck::StackRange) }
+                    else { sp::return_from(ap, g, sp::at(g, 0)) })) by { reveal(sp::step); }
+                assert(outcome_ok(ap, p.cert@, sp::step(ap, g)));
+                w0.lemma_at(p, 0);
+            }
+            let w = crate::regs::at(m, r, 0);
+            return crate::rcalls::op_return(m, r, env, w, Ghost(sp::at(g, 0)));
+        },
+        92 => {
+            proof {
+                assert(sp::step(ap, g) == sp::return_from(ap, g, sp::null2(ap))) by { reveal(sp::step); }
+                assert(const_ok(g.heap, ap.roots[0]));
+            }
+            return crate::rcalls::op_return(m, r, env, p.null, Ghost(sp::null2(ap)));
+        },
         _ => {
             return bridge_r(m, r, env);
         },

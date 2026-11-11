@@ -104,6 +104,34 @@ pub proof fn lemma_room_same(p: &Program, m0: Machine, m1: Machine)
     }
 }
 
+/// The registers of a machine after a GC point inside a step: `m` (the
+/// registers written back, reloaded after the GC) satisfies `inv` with its
+/// frames and records those of `m0`, a machine with room. If the stack did
+/// not get shorter the room holds still; if the GC shrank it, it is
+/// re-established (`ensure_room_all`).
+#[inline(always)]
+pub fn regain(m: &mut Machine, env: &Env, len0: usize, Ghost(m0): Ghost<Machine>) -> (res: Option<crate::regs::Regs>)
+    requires
+        len0 == m0.len,
+        old(m).inv(&env.p),
+        room_ok(&env.p, m0),
+        old(m).g@.frames == m0.g@.frames,
+        old(m).g@.fins.len() <= m0.g@.fins.len(),
+    ensures
+        res matches Some(r) ==> final(m).rok(r) && final(m).with(r) == *final(m)
+            && final(m).inv(&env.p) && room_ok(&env.p, *final(m)) && final(m).g == old(m).g,
+{
+    if m.len < len0 {
+        let c = ensure_room_all(m, env);
+        if let Ctl::Stuck(reason) = c {
+            return None;
+        }
+    } else {
+        proof { lemma_room_same(&env.p, m0, *m); }
+    }
+    Some(m.regs())
+}
+
 /// Re-establishes `room_ok` (cold: after a GC that shrank the stack, a task
 /// switch, an unwinding into finally code, and at the start of a run): the
 /// largest need of the frames, from their records; if the stack is too

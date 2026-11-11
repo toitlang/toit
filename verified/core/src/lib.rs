@@ -42,6 +42,7 @@ pub mod ffi;
 pub mod exec;
 pub mod regs;
 pub mod room;
+pub mod rcalls;
 pub mod machine;
 pub mod step;
 pub mod calls;
