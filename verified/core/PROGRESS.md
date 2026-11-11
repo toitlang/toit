@@ -1,5 +1,55 @@
 # Phase 4a progress (verified core, format 2 on x86-64)
 
+## Device builds on format 2 (branch device/format2, 2026-11-11)
+
+The classic ESP32 and the ESP32-C6 firmware can run everything in format
+2 on the core, without the C++ interpreter (three Kconfig lines; not the
+default yet because the Jaguar firmware no longer fits the OTA partition;
+details, tables and the other targets in docs/format2-migration.md,
+"Devices").
+Nothing was flashed; the ESP32 ran under Espressif's QEMU (the C6 has no
+QEMU machine). Artifacts: /home/flo/work/opentoit-sandbox-artifacts/
+device-format2 (README.md).
+
+- M1 (a5915a49): verifier_v2.cc did not build for devices since the
+  `--untrusted` hint (GCC 14 `-Werror=address` on the message array).
+- M2 (baeca848): Kconfig `TOIT_BYTECODE_FORMAT_2` and
+  `TOIT_CXX_INTERPRETER` (CMake `TOIT_CXX_INTERPRETER=OFF` drops
+  interpreter_run.cc and method_entries.cc; format-1 programs refused);
+  the envelope's `bytecode-formats` metadata, which `container install`
+  checks.
+- M3 (6aafa887): the method table as the program's last literal (in
+  flash for images): the format-2 tables took 37 KB of the ESP32's heap
+  at boot (80 KB free against format 1's 117 KB); now 134 KB.
+- M4 (88acdaf1, 3da07458, bd80cbc7): `TOIT_TRACE_INSTALL`; format 2
+  without the core is a CMake error on devices.
+- M5 (4f488c84, reverted by 7c716b70): the ESP32 and C6 defaulted to
+  format 2 without the C++ interpreter (and CI installed the Rust
+  targets); reverted because the Jaguar firmware no longer fits the OTA
+  partition (ESP32 108 KB over, C6 2 KB over).
+- M6 (1ea5ca7c): `sandbox-integration` merged (no conflicts).
+- Nothing changed in verified/.
+
+Install-time verification under QEMU (f2 with `TOIT_TRACE_INSTALL`,
+icount, Xtensa instructions; the images carry their table literal):
+
+| Program | Methods | Bytecodes | Verification | Free before | Heap drop |
+|---|---:|---:|---:|---:|---:|
+| a-hello | 788 | 25,084 | 403.6 M | 63,968 | 23,264 |
+| b-fold | 795 | 25,877 | 412.1 M | 63,936 | 23,400 |
+| c-map | 973 | 31,060 | 497.2 M | 51,656 | 23,416 |
+| d-string-slice | 799 | 25,705 | 413.9 M | 59,848 | 23,456 |
+
+Measurements (classic ESP32, QEMU icount; f1 = format 1/C++, f2 = format
+2/core without C++): toit.bin 1,462,800 -> 1,549,952 B (C6 1,574,496 ->
+1,640,400); IRAM 129,087 -> 116,947 B (13.1 KB free; C6 156,350 ->
+139,998); free heap at boot 116,952 -> 133,760 B; instructions f2/f1
+richards 0.720, deltablue 0.969, pystone 0.863, json 1.068, map/set
+0.958, strings 0.990, GC stress 1.025, service calls 0.996. The core's
+28.2 KB loop does not fit the free IRAM and, by an instruction-cache
+simulation of the trace, does not need to (one miss per 16,000
+instructions). Install: see below.
+
 ## Trusted containers integrated (branch core/trusted-integration, 2026-11-11)
 
 `experiment/trusted-fast` (0c7b1f6b) merged into `sandbox-integration`

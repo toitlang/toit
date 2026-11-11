@@ -109,35 +109,195 @@ different interpreter).
 
 ## Devices
 
-ESP32 targets keep format 1: the IDF component compiles the system
-snapshot and the entry program with `TOIT_BYTECODE_FORMAT=1`
-(toolchains/idf/components/toit/CMakeLists.txt), and the EC618 rule in the
-Makefile does the same. Cross builds (Raspberry Pi, Windows, ...) have no
-verified core, so their `TOIT_BYTECODE_FORMAT` defaults to 1, and their
-embedded programs, compiled by the host compiler, get
-`TOIT_BYTECODE_FORMAT=${TOIT_BYTECODE_FORMAT}` (src/CMakeLists.txt).
-`toit compile --os/--arch` (executables for another target, from the
-cross builds' vessels) defaults to format 1 too.
+Branch `device/format2` (from `sandbox-integration`; artifacts, scripts
+and logs: /home/flo/work/opentoit-sandbox-artifacts/device-format2).
 
-A user's `toit compile --snapshot` is format 2 now; an ESP32 runs only
-format 1. `toit tool firmware container install` warns when a format-2
-snapshot goes into an envelope whose system snapshot is format 1; compile
-device containers with `-Xbytecode_format=1` (or `TOIT_BYTECODE_FORMAT=1`)
-until the device has the core.
+**The classic ESP32 and the ESP32-C6 firmware can run everything in
+format 2 on the core**, with three lines in their sdkconfig:
 
-Switching a device to format 2 needs:
+    CONFIG_TOIT_VERIFIED_CORE=y
+    CONFIG_TOIT_BYTECODE_FORMAT_2=y
+    # CONFIG_TOIT_CXX_INTERPRETER is not set
 
-- the verified core in its firmware (Kconfig `TOIT_VERIFIED_CORE`): today
-  ESP32-C6 and H2 link it (PROGRESS.md "Device builds"); the classic ESP32,
-  S2 and S3 are Xtensa, for which upstream Rust has no target and the
-  esp-rs fork has open wrong-code bugs (the blocker); the C3 lacks atomics;
-  the EC618 needs a thumbv7m bring-up; the cross hosts need cargo targets;
-- dropping `TOIT_BYTECODE_FORMAT=1` from the IDF component for those
-  targets, and an envelope property saying which formats the firmware runs
-  (instead of the warning's guess from the system snapshot);
-- measurements on hardware: the core's speed from flash, the IRAM budget
-  (the trusted loop is not in IRAM), install time of untrusted containers
-  (PROGRESS.md: 1.3-13 s estimated).
+The system snapshot and the containers bundled in the envelope are then
+trusted format 2 (twins, built-ins; the compiler's default), untrusted
+containers are installed with the shipped certificate, and the C++
+interpreter is not linked. **It is not the default yet**: the Jaguar
+firmware (system and Jaguar in the app partition,
+tests/esp32/check-partition-sizes.sh) no longer fits, see "Flash" below.
+Commit 4f488c84 had the switch (sdkconfigs and the CI step that installs
+the Rust targets); 7c716b70 reverted it. The Xtensa toolchain is not a
+blocker any more:
+verified/XTENSA-RUST-EVALUATION.md and XTENSA-RUST-FIXES.md show that the
+esp-rs toolchain (`cargo +esp`, 1.99.0.0) builds the core for the classic
+ESP32 and that our code triggers none of its known wrong-code bugs
+(verified/vmverify/tests/xtensa_codegen_check.sh, to rerun on every
+toolchain update).
+
+The switches (toolchains/idf/components/toit/Kconfig):
+
+| Kconfig | Effect |
+|---|---|
+| `TOIT_VERIFIED_CORE` | links the core and the verifier (Rust, `libtoit_rust.a`) |
+| `TOIT_BYTECODE_FORMAT_2` (needs the core, default y) | the IDF component compiles the system snapshot and the entry program with `TOIT_BYTECODE_FORMAT=2`; CMake `TOIT_BYTECODE_FORMAT=2`; a device build without the core is a CMake error |
+| `TOIT_CXX_INTERPRETER` (only deselectable with format 2) | CMake option `TOIT_CXX_INTERPRETER=OFF` (hosts keep it on): interpreter_run.cc and method_entries.cc are not compiled, `Interpreter::run` only hands over to the core (interpreter_v2.cc), `ProcessGroup::create` refuses format-1 programs. printing.cc stays: it is compiled only with `TOIT_DEBUG` (empty on devices). The format-1 verifier was already a stub on FreeRTOS. |
+| `TOIT_TRACE_INSTALL` (measurements) | prints time, free heap, table location and peak heap of each install-time verification (`[install-trace]`) |
+
+The envelope records the formats its firmware runs: metadata
+`bytecode-formats` (`toit tool firmware create esp32|ec618
+--bytecode-formats=1,2`, shown by `show`; the IDF component passes 1 if
+the C++ interpreter is linked and 2 if the core is). `container install`
+refuses a snapshot in another format; envelopes without the record get
+the old warning (format-2 snapshot, format-1 system). The other targets
+(C3, S2, S3, P4, EC618) keep format 1 and record `[1]`.
+
+### The method table in flash
+
+A format-2 process group needs the method table (16 bytes per method,
+blocks and lambdas included), which `V2MethodTable::compute` built in
+RAM: 27.8 KB for the ESP32 system snapshot (1,735 methods) plus 21.5 KB
+for a 1,350-method container. Format 1 needs a bitmap of method entries
+(1 bit per bytecode byte, 13 KB for the same two programs). On the classic
+ESP32 the free heap with the suite container running fell from 117 KB
+(format 1) to 80 KB, and untrusted installs failed with MALLOC_FAILED.
+
+The compiler now appends the table as the program's last literal
+(`-Xv2_table_literal`, on by default; marker `TMT1`, count, bytecodes
+length, the records). In an image the literal is in flash; `compute()`
+uses it in place after decoding every header again and comparing it with
+its record (so the table is exactly the one it would build, also for
+untrusted programs), and builds one in RAM otherwise
+(src/v2_method_table.cc). Cost: 16 bytes of flash per method (the system
+image grows from 86 to 114 KB). Free heap at boot is now 134 KB, 17 KB
+more than format 1.
+
+### Measurements
+
+QEMU (Espressif's esp_develop_9.2.2, `-icount shift=0`: one microsecond
+of virtual time is a thousand guest instructions) on the classic ESP32;
+the ESP32-C6 has no QEMU machine (Espressif's QEMU emulates the ESP32, S3
+and C3), so only its sizes are measured. Three configurations of the same
+commit: f1 (format 1, C++ interpreter, no core: today's firmware), f2cxx
+(format 2 on the core, C++ interpreter still linked), f2 (format 2,
+`TOIT_CXX_INTERPRETER=n`: the new default).
+
+| Bytes | ESP32 f1 | f2cxx | f2 | ESP32-C6 f1 | f2cxx | f2 |
+|---|---:|---:|---:|---:|---:|---:|
+| toit.bin | 1,462,800 | 1,566,400 | 1,549,952 | 1,574,496 | 1,661,664 | 1,640,400 |
+| iram0.text | 129,087 | 129,087 | 116,947 | 156,350 | 156,350 | 139,998 |
+| dram0 data + bss | 55,052 | 55,052 | 54,636 | 47,301 | 47,309 | 46,885 |
+| Rust library (libtoit_rust.a) | 0 | 116,077 | 116,077 | 0 | 109,557 | 109,557 |
+| interpreter_run.cc + method_entries.cc | 14,583 | 14,583 | 0 | 18,255 | 18,255 | 0 |
+| system snapshot | 184,212 | 208,552 | 208,552 | 184,212 | 208,552 | 208,552 |
+| system image (32-bit) | 88,704 | 114,048 | 114,048 | 88,704 | 114,048 | 114,048 |
+| free heap at boot (suite running) | 116,952 | 133,336 | 133,760 | | | |
+| free heap after the GC stress | 87,856 | 100,104 | 100,528 | | | |
+
+Instructions (QEMU icount, thousands; the suite's single runs):
+
+| | f1 | f2 | f2/f1 |
+|---|---:|---:|---:|
+| richards | 178,552 | 128,572 | 0.720 |
+| deltablue (50) | 10,419 | 10,093 | 0.969 |
+| pystone (2,000 loops) | 24,326 | 20,993 | 0.863 |
+| json encode/decode | 26,753 | 28,559 | 1.068 |
+| map/set | 19,213 | 18,413 | 0.958 |
+| strings | 16,806 | 16,633 | 0.990 |
+| GC stress | 88,693 | 90,893 | 1.025 |
+| 200 service calls between containers | 28,534 | 28,428 | 0.996 |
+| CPU-bound container (20 M iterations) | 5,601,196 | 4,343,752 | 0.776 |
+
+On Xtensa the core executes fewer instructions than the C++ interpreter
+on most programs (on x86-64 it executes 5-20 % more, see above): icount
+counts instructions, not cycles, and the C++ interpreter runs from IRAM.
+
+**Flash.** The flashed firmware (toit.bin with the system image in its
+DROM extension; `extract --format binary`) against the OTA partition
+(classic ESP32 0x1a0000 = 1,703,936 bytes, C6 0x1d0000 = 1,900,544):
+
+| | ESP32 f1 | ESP32 f2 | C6 f1 | C6 f2 |
+|---|---:|---:|---:|---:|
+| system only | 1,593,872 | 1,681,024 | 1,705,568 | 1,771,472 |
+| with Jaguar (v1.73.0, -O2) | fits | 1,812,096: 108 KB over | fits | 1,902,544: 2 KB over |
+
+Jaguar's image: 101,376 bytes in format 1, 126,720 in format 2 (97,152
+without the table literal). Of the classic ESP32's growth (+87 KB without
+Jaguar), the Rust library is 116 KB, the C++ interpreter's removal saves
+15 KB, the system's table literal costs 28 KB and format 2's smaller
+bytecodes save a few KB. Options, none taken here: a partition layout
+with larger OTA partitions for the classic ESP32 (the C6 already has
+0x1d0000; the programs partition shrinks, and deployed devices cannot
+change their layout over the air), a smaller core (opt-level s: see
+below), or no table literal for bundled containers (their tables in RAM
+again: 29.6 KB for Jaguar).
+
+**IRAM.** Without the C++ interpreter 13.1 KB of the classic ESP32's IRAM
+are free (f1: 957 bytes). The core's loop (`step::run_loop`, everything
+inlined at opt-level 3) is 28.2 KB and does not fit, and nothing smaller
+can be moved without splitting it inside verified/core. With the numbers
+below it does not need to: an instruction-cache simulation of the QEMU
+trace (scripts/icache-sim.sh: TB trace, 32 KB 2-way LRU cache of 32-byte
+lines, instruction fetches only) gives, for one run of richards,
+deltablue and pystone on f2, 160 M instructions from flash and 9,822
+line misses (a miss every 16,000 instructions; at roughly 100-200 cycles
+a miss, under 1 % of the run). The hot code fits the cache; the data
+fetches from flash (bytecodes and program heap of the images, rodata)
+share it on the ESP32 and are not simulated, so this is a lower bound
+that hardware has to confirm.
+
+**Untrusted install** (f2 with `TOIT_TRACE_INSTALL`, scripts/installer-run.sh;
+verified/core/PROGRESS.md "Device builds on format 2" has the table): the
+verification of a 25 KB program (788 methods) with its shipped
+certificate takes 404-412 M Xtensa instructions, which is 2-3.5 s at 240
+MHz with a CPI of 1.2-2 (unmeasured); the free heap drops by about 23 KB
+during it (every allocation of the system counts) from 64 KB, and the
+program's table comes from its literal (no RAM). The whole install takes
+8-10 s of virtual time in QEMU, dominated by the emulated flash writes,
+so it says nothing about hardware. The untrusted images grow by 16 bytes
+per method (a-hello: 50,688 -> 63,360 bytes).
+
+### Checked under QEMU (classic ESP32)
+
+scripts/suite-all.sh runs one boot container (qemu/progs/suite.toit) on
+all three configurations: hello, the benchmarks above, GC stress, the
+profiler (its system message decodes), service calls to a provider
+container, preemption of a CPU-bound container (the suite's 20 ms sleeps
+are at most 4.4 ms late), an uncaught exception in another container
+(the stack trace decodes identically with `toit decode`), untrusted
+installs (six accepted programs run and exit 0; deep sleep, no
+certificate, another program's certificate and a trusted-compiled image
+are rejected with VERIFICATION_FAILED, a format-1 image with
+FORMAT_2_REQUIRED), and deep sleep. The suite's output is identical
+between f1, f2cxx and f2 except for the untrusted installs, which f1
+(no verifier) refuses. Deep sleep reaches `esp_deep_sleep_start` in all
+three and then panics in `rtc_sleep_init`: QEMU does not emulate the RTC
+sleep registers.
+
+### Other targets
+
+They keep format 1 and build as before (checked: C3, S2, S3 firmware;
+the EC618 VM library, without the base and slot links, which need xmake).
+
+- ESP32-C3 (rv32imc, no atomics): vstd's `alloc` uses `Arc`, which needs
+  compare-and-swap. A custom target (riscv32imc with `+forced-atomics`,
+  atomic CAS lowered to the `__atomic_*` calls ESP-IDF provides for the
+  C3) and `-Zbuild-std`; 1-2 days, testable under Espressif's QEMU
+  (esp32c3 machine).
+- ESP32-S2 and S3 (Xtensa LX7): the esp-rs targets xtensa-esp32s2/s3-none-elf
+  exist; the IDF mapping, the codegen check for LX7 (the S2 has no FPU)
+  and the IRAM budget: 0.5-1 day each; the S3 runs under QEMU.
+- ESP32-P4 (rv32imafc): the upstream target riscv32imafc-unknown-none-elf;
+  0.5 day plus hardware.
+- EC618 (Cortex-M3): the upstream target thumbv7m-none-eabi (atomics
+  present); the CMake mapping and the two-stage slot link with the Rust
+  archive (the SRL3 relocation of the slot must cover it); 2-3 days plus
+  hardware.
+- Cross hosts (Raspberry Pi, Windows, macOS): cargo targets for their
+  triples; mostly CI work.
+
+Still needs hardware: the core's speed from flash with the data fetches,
+install time at 160 and 240 MHz, the free heap of a real system (WiFi
+up) when the installer runs, deep sleep.
 
 ## Converted tools and tests
 
@@ -200,14 +360,14 @@ format-1 code is mixed with shared code):
 | Tools | tools/snapshot.toit format-1 header and `BYTE-CODES` (~140), needed by dump_types and the propagation tests while `--propagate` writes format 1 | keep | 0 |
 | Tests | the FORMAT-1-ONLY list above (~560 lines) | ~560 | 0.5 d |
 | Flags | `untrusted_format1`/`TOIT_UNTRUSTED_FORMAT1`, `TOIT_VERIFY_VERBOSE`; `bytecode_format` becomes internal | | with the above |
-| Devices | toit_vm links interpreter_run.cc, method_entries.cc, printing.cc into every firmware; `Interpreter::run` is IRAM_ATTR | | blocked by Xtensa (see Devices) |
+| Devices | the classic ESP32 and the C6 build without the C++ interpreter (`TOIT_CXX_INTERPRETER=n`); C3, S2, S3, P4 and EC618 still link it (format 1) | | see Devices, "Other targets" |
 
 The VM side is about 5,950 lines. Deleting them on hosts is 6-8
-engineer-days with the test and CI updates; it is not possible for device
-builds until every shipped target has the core, so the deletion step has
-to either keep the C++ interpreter as a device-only build option (an
-`#ifdef TOIT_CXX_INTERPRETER` around the files above, hosts without it) or
-wait for the Xtensa toolchain.
+engineer-days with the test and CI updates. On devices the classic ESP32
+and the C6 already build without it (CMake `TOIT_CXX_INTERPRETER`, see
+Devices); deleting it everywhere waits for the other targets' bring-up
+(C3, S2, S3, P4, EC618: 5-9 days, see "Other targets") or for dropping
+them, and for the cross hosts' cargo targets.
 
 ## services-network-test: a real library bug
 
