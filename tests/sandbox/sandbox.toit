@@ -16,6 +16,7 @@ Every test is a program that runs in three roles, all from the same image:
 */
 
 import expect show *
+import monitor
 import system.containers
 import system.services show ServiceSelector ServiceProvider ServiceHandler ServiceClient
 import system.api.service-discovery show ServiceDiscoveryServiceClient
@@ -118,6 +119,15 @@ The untrusted container runs with the untrusted policy and the given
   $quotas. If $trusted is true, it runs with the trusted policy and the
   given $quotas instead (for the quotas that only apply to code that has
   the corresponding primitives).
+
+If $prepare is not null, it is called in the driver (with the client of
+  the sibling) before the untrusted container is started, and the map it
+  returns is added to the arguments of the untrusted container.
+
+If $during is not null, it is called in the driver (with the client of
+  the sibling) in a separate task while the untrusted container runs. The
+  driver waits for it to return before it checks the sibling; an exception
+  in it fails the test.
 */
 sandbox-test arguments/any -> none
     --error/any=null
@@ -125,6 +135,8 @@ sandbox-test arguments/any -> none
     --quotas/Map?=null
     --trusted/bool=false
     --busy-sibling-ms/int?=null
+    --prepare/Lambda?=null
+    --during/Lambda?=null
     [attack]:
   if arguments is Map:
     role := arguments.get ROLE-KEY
@@ -135,7 +147,7 @@ sandbox-test arguments/any -> none
       run-attack arguments attack
       return
     throw "Unknown role: $role"
-  run-driver --error=error --exit=exit --quotas=quotas --trusted=trusted --busy-sibling-ms=busy-sibling-ms
+  run-driver --error=error --exit=exit --quotas=quotas --trusted=trusted --busy-sibling-ms=busy-sibling-ms --prepare=prepare --during=during
 
 run-attack arguments/Map [attack] -> none:
   exception := catch: attack.call arguments
@@ -152,7 +164,7 @@ run-attack arguments/Map [attack] -> none:
   print "attack failed as expected: $exception"
   exit EXIT-ATTACK-FAILED
 
-run-driver --error/any --exit/int --quotas/Map? --trusted/bool --busy-sibling-ms/int? -> none:
+run-driver --error/any --exit/int --quotas/Map? --trusted/bool --busy-sibling-ms/int? --prepare/Lambda? --during/Lambda? -> none:
   sibling-stopped := false
   sibling := containers.start containers.current {ROLE-KEY: ROLE-SIBLING}
       --on-stopped=:: sibling-stopped = true
@@ -166,12 +178,22 @@ run-driver --error/any --exit/int --quotas/Map? --trusted/bool --busy-sibling-ms
     "error": error,
     "sibling-pid": sibling-pid,
   }
+  if prepare:
+    (prepare.call client).do: | key value | untrusted-arguments[key] = value
   if busy-sibling-ms: client.busy busy-sibling-ms
   sandboxed := containers.start containers.current untrusted-arguments
       --untrusted=(not trusted)
       --quotas=quotas
+  during-done := monitor.Latch
+  if during:
+    task::
+      exception := catch --trace: during.call client
+      during-done.set exception
+  else:
+    during-done.set null
   code := sandboxed.wait
   expect-equals exit code
+  expect-null during-done.get
 
   // The VM, the driver and the sibling keep running and the sibling still
   // answers requests.
