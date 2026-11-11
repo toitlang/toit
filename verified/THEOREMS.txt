@@ -10,14 +10,8 @@
 # numbers are omitted so that the diff of this file shows only claim changes.
 
 ==============================================================================
-Top-level theorems: crate core (3)
+Top-level theorems: crate core (2)
 ==============================================================================
-
---- lemma_word_smi  (core/src/abs.rs)
-pub proof fn lemma_word_smi(w: usize)
-    requires w & 1 == 0,
-    ensures smi_range(word_smi(w) as int), smi_word(word_smi(w)) == w,
-        word_smi(w) + word_smi(w) == w as isize,
 
 --- theorem_first_run  (core/src/theorem.rs)
 pub proof fn theorem_first_run(p: &Program, m: &Machine, heap0: Seq<HeapObj>, globals0: Seq<Value>)
