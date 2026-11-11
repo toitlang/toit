@@ -1,5 +1,43 @@
 # Phase 4a progress (verified core, format 2 on x86-64)
 
+## Trusted containers integrated (branch core/trusted-integration, 2026-11-11)
+
+`experiment/trusted-fast` (0c7b1f6b) merged into `sandbox-integration`
+(09a8a644): **trusted integration complete at 84cddeab** (the merge
+commit; mergeable on its own). Conflicts: `V2MethodTable::compute` keeps
+the out-of-memory flag of the install retry and gains
+`trusted_on_verified_loop`; this file keeps both sections. Artifacts:
+/home/flo/work/opentoit-sandbox-artifacts/trusted-integration.
+
+Gates on 84cddeab: verified/check.sh --tests (spec 939, core 870 at both
+widths, audit exact, no-panic check, sandbox ctests 123/123),
+`cargo verus verify` (verified_core_verify); ctest format 1 1197/1200
+(version, reader, udp-reuse-port-test); everything in format 2 1195/1200
+(the same three, services-network-test, and bytes-allocated-test: item
+M2 below); untrusted suite 280 identical plus the two known differences;
+primitive differential 10 x 1M identical; compare_trace --format 2 on the
+four trace programs clean; 32-bit host sandbox 123/123; nostd and
+nopanic (3, s, z); xtensa_codegen_check (3 and z, with the llvm#139
+differential); ESP32-C6 firmware with the core links (toit.bin 1,660,352
+B), classic ESP32 too (toit.bin 1,565,120 B, iram0.text 129,087 B, 957
+free); ASan fuzz with the launch filter, 20 minutes: 72,745 mutants,
+62,571 rejected at launch, 0 crashes.
+
+- M1 (13c3063e): the build output committed by mistake under
+  verified/vmverify/staticlib/devsize (289 MB, 415 files) removed and
+  ignored.
+- M2 (07c691ee): bytes-allocated-test in format 2. Not nondeterminism: a
+  real allocation, a new stack. A GC inside the external byte array's
+  primitive (two GCs: the external-memory limit) shrank the task's stack
+  to the room of a call at the primitive's height (`Stack::roots_do`);
+  the caller's next call, from a higher point of its frame, grew it again
+  (116 -> 174 words, 1,472 B), counted against the byte array. Format 1
+  needs less room per call and fits. The format-2 shrink now keeps room
+  for the top frame to reach the maximal height as well: 40,168 B as in
+  format 1, 15/15 runs pass.
+- M3 (920fb95d): request D3, the 16-byte method record (`entry`, a 16-bit
+  `length`; `unused` dropped).
+
 ## Device builds (branch device/esp32-build-fixes, 2026-11-11)
 
 Fixes for the findings of verified/XTENSA-RUST-FIXES.md. Nothing was
