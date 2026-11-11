@@ -131,7 +131,18 @@ class ObjectHeap {
 
   Object** global_variables() const { return global_variables_; }
   Task* task() { return task_; }
-  void set_task(Task* task) { task_ = task; }
+  void set_task(Task* task) { task_ = task; v2_epoch_++; }
+
+  // The format-2 core's epoch: changes at every garbage collection of this
+  // heap and every task switch. Unchanged epoch implies that no object of
+  // this heap moved and the current task's stack object and its length are
+  // the same (verified/core/TRUSTED.md, "Epoch"; the core compares it
+  // around C++ primitive calls).
+  const uword* v2_epoch_address() const { return &v2_epoch_; }
+  // The allocation top and limit of new space, for the core's inline bump
+  // allocation (the fast path of SemiSpace::try_allocate).
+  uword* v2_new_space_top_address() { return two_space_heap_.new_space()->v2_top_address(); }
+  const uword* v2_new_space_limit_address() { return two_space_heap_.new_space()->v2_limit_address(); }
 
   // Garbage collection operation for runtime objects.
   GcType gc(bool try_hard);
@@ -223,6 +234,7 @@ class ObjectHeap {
   // A VM finalizer is on this list.
   FinalizerNodeFifo registered_vm_finalizers_;
 
+  uword v2_epoch_ = 0;
   int gc_count_ = 0;
   int full_gc_count_ = 0;
   int full_compacting_gc_count_ = 0;

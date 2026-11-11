@@ -22,8 +22,8 @@
 //! it and continues after the instruction, THROW (memory ran out after the
 //! collector's retries) raises the error.
 //!
-//! The call is C++ (`toit_v2_call_primitive`, a GC point that may switch
-//! the task). Its leaf contract (`gc_call_primitive`) is the protocol
+//! The call is C++ (`toit_v2_primitive`, a GC point that may switch
+//! the task; nothing moved when the heap's epoch is unchanged). Its leaf contract (`gc_call_primitive`) is the protocol
 //! itself: the status, result and the state the views represent afterwards
 //! are one of the spec's completions of the step (`theorem::completion`:
 //! for an ordinary primitive the default contract `prim_default` /
@@ -37,7 +37,6 @@ use crate::abs::*;
 use crate::exec::*;
 use crate::step::*;
 use crate::calls::*;
-use crate::ffi::PrimitiveRef;
 use crate::prims::{self, PrimOutcome};
 use toit_spec::v2::prim::PrimRet;
 use crate::alloc::reload;
@@ -89,27 +88,48 @@ pub open spec fn prim_call_post(p: &Program, m: Machine, g: State2, module: u8, 
             && const_ok(gx.heap, v)
 }
 
-/// TRUSTED (TRUSTED.md, "Primitives"): calls the C++ primitive `prim`,
-/// found by `toit_v2_lookup_primitive(module, index)` with the method's
-/// arity, on the frame's parameters (object-stack positions
-/// `first..first + arity`). May GC and may switch the task. Afterwards the
-/// status, the result and the state the views represent are a completion
-/// of the step (`prim_call_post`): the spec's PRIMITIVE protocol, with the
-/// default contract of every primitive (`prim::prim_default`) and the
-/// machine's task primitives (`prim::task_step`).
+/// The machine fields a C++ primitive call leaves alone when nothing moved
+/// (`gc_call_primitive`, epoch unchanged): everything but the heap view
+/// and the ghost state.
+pub open spec fn unmoved(m1: Machine, m0: Machine) -> bool {
+    &&& m1.mem == m0.mem
+    &&& m1.globals == m0.globals
+    &&& m1.len == m0.len && m1.top == m0.top && m1.ftop == m0.ftop && m1.rtop == m0.rtop
+    &&& m1.bci == m0.bci && m1.base == m0.base && m1.lim == m0.lim && m1.method == m0.method
+    &&& m1.fw == m0.fw && m1.need == m0.need && m1.bot == m0.bot
+}
+
+/// TRUSTED (TRUSTED.md, "Primitives" and "Epoch"): calls the C++ primitive
+/// `(module, index)` of the process' policy (`toit_v2_primitive`) on the
+/// frame's parameters (object-stack positions `first..first + arity`).
+/// `V2_PRIMITIVE_ABSENT`: the policy has no such primitive of this arity,
+/// nothing ran. Otherwise it may GC and may switch the task; afterwards
+/// the status, the result and the state the views represent are a
+/// completion of the step (`prim_call_post`): the spec's PRIMITIVE
+/// protocol, with the default contract of every primitive
+/// (`prim::prim_default`) and the machine's task primitives
+/// (`prim::task_step`). The third result says whether the heap's epoch
+/// changed. The epoch contract: unchanged epoch implies that no object
+/// moved and the current task and its stack object are the same, so the
+/// stack view and every other field but the heap view stay (`unmoved`) and
+/// the state is the step's with a new heap only.
 #[verifier::external_body]
 #[inline(always)]
-pub fn gc_call_primitive(m: &mut Machine, env: &Env, prim: &PrimitiveRef, arity: usize, first: usize,
-    Ghost(g): Ghost<State2>, Ghost(module): Ghost<u8>, Ghost(index): Ghost<u16>) -> (r: (usize, usize))
+pub fn gc_call_primitive(m: &mut Machine, env: &Env, module: u8, index: u16, arity: usize, first: usize,
+    Ghost(g): Ghost<State2>) -> (r: (usize, usize, bool))
     requires
         reloaded(*old(m), g).refines(&env.p),
         sp::step(env.p.ap@, g) == Outcome2::Primitive(g, module, index),
         first == sp::base(g),
         arity == sp::frame_height(g),
     ensures
-        exists|gx: State2, v: Value| #[trigger] prim_call_post(&env.p, *final(m), g, module, index, r.0, r.1, gx, v),
+        r.0 == V2_PRIMITIVE_ABSENT ==> *final(m) == *old(m),
+        r.0 != V2_PRIMITIVE_ABSENT ==>
+            exists|gx: State2, v: Value| #[trigger] prim_call_post(&env.p, *final(m), g, module, index, r.0, r.1, gx, v)
+                && (!r.2 ==> gx == with_heap2(g, gx.heap)),
+        r.0 != V2_PRIMITIVE_ABSENT && !r.2 ==> unmoved(*final(m), *old(m)),
 {
-    m.call_primitive_raw(env, prim, arity, first)
+    m.call_primitive_raw(env, module, index, arity, first)
 }
 
 /// Every completion of the step's PRIMITIVE is a source of outcomes.
@@ -131,43 +151,23 @@ pub proof fn lemma_source_completion(ap: Program2, g: State2, module: u8, index:
     }
 }
 
-/// PRIMITIVE module index (`spec::step`'s `Outcome2::Primitive`, completed
-/// by the protocol) through the C++ primitive of the process' policy (a GC
-/// point that may switch the task), or the raise of a missing one: the
-/// slow path of the register handler (`rarrays::op_primitive`), which runs
-/// the Rust ports itself.
-pub fn op_primitive_cxx(m: &mut Machine, env: &Env, module: u8, index: u16, arity: usize) -> (r: Ctl)
+/// Completes a C++ primitive call by its status (`prim_call_post`): reloads
+/// the machine from the views, then returns the result from the frame
+/// (SUCCESS), pushes it and continues (FAILURE) or raises it (THROW).
+pub fn prim_cxx_complete(m: &mut Machine, env: &Env, st: usize, w: usize, Ghost(g): Ghost<State2>, Ghost(m0): Ghost<Machine>,
+    Ghost(module): Ghost<u8>, Ghost(index): Ghost<u16>) -> (r: Ctl)
     requires
-        old(m).inv(&env.p),
-        sp::step(env.p.ap@, old(m).g@) == Outcome2::Primitive(old(m).g@, module, index),
-        arity == sp::frame_height(old(m).g@),
-        old(m).bci < 0x1000_0000,
-    ensures step_post(&env.p, *old(m), *final(m), r),
+        m0.inv(&env.p), m0.g@ == g, m0.bci < 0x1000_0000,
+        sp::step(env.p.ap@, g) == Outcome2::Primitive(g, module, index),
+        exists|gx: State2, v: Value| #[trigger] prim_call_post(&env.p, *old(m), g, module, index, st, w, gx, v),
+    ensures step_post(&env.p, m0, *final(m), r),
 {
     let p = &env.p;
     let ghost ap = p.ap@;
-    let ghost g = m.g@;
-    let ghost m0 = *m;
     proof {
-        m.lemma_frame(p);
+        m0.lemma_frame(p);
         lemma_shape(p, g);
     }
-    let found = env.rt.lookup_primitive(module as usize, index as usize);
-    let prim = match found {
-        Some((prim, a)) => {
-            if a != arity {
-                return op_prim_missing(m, env, module, index);
-            }
-            prim
-        },
-        None => {
-            return op_prim_missing(m, env, module, index);
-        },
-    };
-    m.save();
-    proof { lemma_saved(p, *m); }
-    let base = m.base;
-    let (st, w) = gc_call_primitive(m, env, &prim, arity, base, Ghost(g), Ghost(module), Ghost(index));
     let ghost (gx, v) = choose|gx: State2, v: Value| #[trigger] prim_call_post(p, *m, g, module, index, st, w, gx, v);
     reload(m, p, Ghost(gx));
     if st == V2_PRIMITIVE_SUCCESS {
@@ -358,7 +358,7 @@ pub proof fn lemma_completion(p: &Program, g: State2, index: u16, h2: Seq<HeapOb
 
 /// A missing primitive (`prim::prim_missing`): raises
 /// PRIMITIVE_LOOKUP_FAILED with the module and index as message.
-fn op_prim_missing(m: &mut Machine, env: &Env, module: u8, index: u16) -> (r: Ctl)
+pub fn op_prim_missing(m: &mut Machine, env: &Env, module: u8, index: u16) -> (r: Ctl)
     requires
         old(m).inv(&env.p),
         sp::step(env.p.ap@, old(m).g@) == Outcome2::Primitive(old(m).g@, module, index),

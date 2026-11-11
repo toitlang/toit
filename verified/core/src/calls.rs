@@ -348,6 +348,7 @@ impl Machine {
             r == Ctl::Next || r == Ctl::Exit(RESULT_PREEMPTED as u32, 0),
             final(self).refines(&env.p),
             sp::call(env.p.ap@, old(self).g@, target as int, ret as int) == Outcome2::Next(final(self).g@),
+            final(self).len == old(self).len,
     {
         let p = &env.p;
         let ghost m0 = *self;
@@ -565,6 +566,7 @@ impl Machine {
             !(sp::return_from(env.p.ap@, old(self).g@, v) is Stuck),
         ensures
             matches(&env.p, sp::return_from(env.p.ap@, old(self).g@, v), *final(self), r),
+            final(self).len == old(self).len,
     {
         let p = &env.p;
         let ghost ap = p.ap@;
@@ -668,6 +670,7 @@ impl Machine {
             r == Ctl::Next ==> final(self).refines(&env.p)
                 && sp::enter_finally(env.p.ap@, old(self).g@, old(self).g@.tries.last(), None)
                     == Outcome2::Next(final(self).g@),
+            final(self).len == old(self).len,
     {
         let p = &env.p;
         let ghost ap = p.ap@;

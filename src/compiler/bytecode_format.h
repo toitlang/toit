@@ -40,6 +40,29 @@ int bytecode_format();
 void set_bytecode_format(int format);
 inline bool is_format2() { return bytecode_format() == 2; }
 
+// Proposal (verified/spec/format/19-builtins-proposal.md): the format-2
+// built-ins the compiler emits (-Xv2_builtins, or TOIT_V2_BUILTINS for
+// measurements).
+static const int V2_BUILTIN_REPEAT = 1 << 0;
+static const int V2_BUILTIN_ARRAY_DO = 1 << 1;
+static const int V2_BUILTIN_HASH_FIND = 1 << 2;
+bool v2_builtin_enabled(int builtin);
+
+// Format note 20: the compiler emits the unchecked twins of the field
+// accesses (opcodes V2_FIRST_TWIN..), for trusted programs only
+// (-Xv2_unchecked, or TOIT_V2_UNCHECKED=1). The verifier rejects them in
+// untrusted programs.
+bool v2_unchecked_enabled();
+static const int V2_FIRST_TWIN = 104;
+// The twin of a field access, or -1.
+inline int v2_twin_of(int opcode) {
+  if (7 <= opcode && opcode <= 13) return V2_FIRST_TWIN + opcode - 7;  // LOAD_FIELD .. STORE_FIELD_POP.
+  if (opcode == 60) return V2_FIRST_TWIN + 7;                         // INVOKE_VIRTUAL_GET.
+  if (opcode == 61) return V2_FIRST_TWIN + 8;                         // INVOKE_VIRTUAL_SET.
+  if (opcode == 94) return V2_FIRST_TWIN + 9;                         // STORE_FIELD_THIS.
+  return -1;
+}
+
 // Sets the format for a scope and restores the previous one.
 class BytecodeFormatScope {
  public:
@@ -56,6 +79,12 @@ class BytecodeFormatScope {
 static const Opcode V2_TRY = LINK;
 static const Opcode V2_LOAD_FIELD_THIS = UNLINK;
 static const Opcode V2_STORE_FIELD_THIS = NON_LOCAL_RETURN_WIDE;
+// Proposal (format note 19): the loop steps of `repeat` and `Array.do`,
+// numbered like the format-1 intrinsics they replace.
+static const Opcode V2_LOOP_REPEAT = INTRINSIC_SMI_REPEAT;
+static const Opcode V2_LOOP_ARRAY = INTRINSIC_ARRAY_DO;
+static const Opcode V2_HASH_FIND = INTRINSIC_HASH_FIND;
+static const int V2_LOOP_STEP_LENGTH = 4;
 
 // Method header of format 2 (format note 15): two bytes, then unsigned
 // LEB128 numbers (7 bits per byte, low bits first, the top bit of a byte

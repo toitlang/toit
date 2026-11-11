@@ -164,6 +164,7 @@ impl Machine {
                 assert(outcome(ap, gs, o2));
                 crate::unwind::lemma_unwind_not_raise(ap, gh, u);
                 lemma_small(p, &m0);
+                crate::step::lemma_unchecked_ok(p, gs);
                 toit_spec::v2::theorem::lemma_outcome_ok(ap, p.cert@, p.trusted@, gs, o2);
                 lemma_shape_same(p, g, gh);
                 self.lemma_root(p, ROOT_OUT_OF_MEMORY_ERROR as int);
@@ -182,6 +183,7 @@ impl Machine {
             assert(completes(ap, Outcome2::Raise(g, v), o2));
             assert(outcome(ap, gs, o2));
             lemma_small(p, &m0);
+            crate::step::lemma_unchecked_ok(p, gs);
             toit_spec::v2::theorem::lemma_outcome_ok(ap, p.cert@, p.trusted@, gs, o2);
             assert(o2 == sp::unwind(ap, g1, u));
             lemma_shape_same(p, g, g1);

@@ -54,7 +54,7 @@ static const int V2_KIND_FIELD_ACCESSOR = 1;
 static const int V2_KIND_LAMBDA = 2;
 static const int V2_KIND_BLOCK = 3;
 static const int V2_NO_VALUE = 0xffff;
-static const int V2_OPCODE_COUNT = 101;
+static const int V2_OPCODE_COUNT = 114;
 static const int V2_PRIMITIVE_LENGTH = 4;
 // Literals 0..7: true, false and the five failure values (format note 5).
 static const int V2_FAILURE_LITERALS = 7;
@@ -76,6 +76,8 @@ static const uint8 V2_OPCODE_LENGTHS[V2_OPCODE_COUNT] = {
   1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3,  // 62..80
   3, 3, 3, 3, 3, 3, 3, 3,                    // 81..88: BRANCH*, BRANCH_BACK*
   4, 1, 1, 1, 1, 2, 6, 1, 1, 2, 1, 2,        // 89..100
+  4, 4, 5,                                   // 101..103: LOOP_REPEAT, LOOP_ARRAY, HASH_FIND (proposal, note 19)
+  2, 3, 2, 2, 2, 3, 2, 3, 3, 2,              // 104..113: the unchecked twins of the field accesses (note 20)
 };
 
 // The decoded method table of a format-2 program, owned by its process
@@ -135,6 +137,25 @@ class V2MethodTable {
   // format 2: ProcessGroup::create refuses the others.
   static bool checked_loop_linked() {
 #ifdef TOIT_VERIFIED_CORE_CHECKED_LOOP
+    return true;
+#else
+    return false;
+#endif
+  }
+
+  // Whether a trusted process whose table the launch did not verify runs on
+  // the verified loop (TOIT_V2_TRUSTED), on the assumption that the
+  // verifier would accept the compiler's output: we trust the compiler for
+  // first-party code (verified/core/EXPERIMENT-trusted.md). On by default;
+  // TOIT_TRUSTED_CHECKED_LOOP=1 keeps such programs on the checked loop
+  // (hosts only, for comparisons).
+  static bool trusted_on_verified_loop();
+
+  // Whether launches verify trusted format-2 programs although
+  // -Xverify/TOIT_VERIFY is off: debug builds do, as a check on the
+  // compiler (a rejected trusted program does not run).
+  static bool verify_trusted_by_default() {
+#ifdef TOIT_DEBUG
     return true;
 #else
     return false;
@@ -202,6 +223,21 @@ struct toit_v2_context {
   // primitive (the core may run its Rust port), else 0.
   const uint8* core_arities;
   uword core_arities_length;
+  // ObjectHeap::v2_epoch_address of the process: the core compares it around
+  // C++ primitive calls (toit_v2_primitive).
+  const uword* epoch;
+  // The unchecked mode of trusted programs: the core does not check field
+  // accesses (verified/core/EXPERIMENT-trusted.md). TRUSTED: never set for
+  // an untrusted process.
+  uword unchecked;
+  // ObjectHeap::v2_new_space_top_address and v2_new_space_limit_address of
+  // the process, and the chunk-end sentinel word: the core allocates
+  // instances and doubles inline with the new-space fast path
+  // (SemiSpace::try_allocate) and calls the allocation helpers below only
+  // when it fails (verified/core/TRUSTED.md, "Inline allocation").
+  uword* new_space_top;
+  const uword* new_space_limit;
+  uword new_space_sentinel;
   // Out.
   uword result_state;               // Interpreter::Result::State.
   int64 result_value;
@@ -216,12 +252,19 @@ static const uword TOIT_V2_PRIMITIVE_FAILURE = 1;
 static const uword TOIT_V2_PRIMITIVE_THROW = 2;
 static const uword TOIT_V2_PRIMITIVE_MISSING = 0;
 static const uword TOIT_V2_PRIMITIVE_FOUND = 1;
+static const uword TOIT_V2_PRIMITIVE_ABSENT = 3;
 
 // `toit_v2_context.accepted` for a program the launch-time verifier accepted
 // on the table the process runs (V2MethodTable::verified); any other value
 // runs the checked loop. A distinct word, not a boolean, so that no other
 // nonzero value selects the verified loop.
 static const uword TOIT_V2_ACCEPTED = 0x56455249;  // "VERI"
+
+// `toit_v2_context.accepted` for a trusted program (system process,
+// first-party code) the launch did not verify: it runs on the verified loop
+// on the assumption that the compiler's output would be accepted (we trust
+// the compiler for first-party code; verified/core/EXPERIMENT-trusted.md).
+static const uword TOIT_V2_TRUSTED = 0x54525354;  // "TRST"
 
 // Messages of the exceptions the core raises (the trace's message, as the
 // format-1 failure entry points of lib/core/exceptions.toit encode it).
@@ -242,6 +285,8 @@ static const uword TOIT_V2_REPORT_TRACE = 3;
 // Implemented by the core (verified/core/src/ffi.rs).
 #ifdef TOIT_VERIFIED_CORE
 uword toit_v2_run(toit_v2_context* context);
+// Whether core primitive `index` has a Rust port in the core.
+uword toit_v2_core_ported(uword index);
 uword toit_vcore_layout_count();
 bool toit_vcore_layout_entry(uword i, const char** name, uword* value);
 uword toit_vcore_opcode_length(uword opcode);
@@ -272,11 +317,6 @@ uword toit_v2_allocate_array(void* process, uword length, uword filler);
 // MAY GC. Replaces the current task's stack by one with at least [needed]
 // free words between the frames and the object stack.
 uword toit_v2_grow_stack(void* process, uword needed);
-// Looks up primitive (module, index) in the process' policy (the C++
-// primitive; the core decides whether to run a Rust port from the policy's
-// core arities, toit_v2_context::core_arities).
-uword toit_v2_lookup_primitive(void* process, uword module, uword index,
-                               const void** entry, uword* arity);
 // Allocation for the Rust primitives. Never GCs: 0 when the heap is full
 // (the Rust primitive then reports that it needs a GC and the core calls the
 // C++ primitive, which collects and retries). Each allocates one object of
@@ -289,11 +329,17 @@ uword toit_v2_try_allocate_array(void* process, uword length, uword filler);
 uword toit_v2_try_allocate_string(void* process, uword length);
 // Zeroed bytes (Process::allocate_byte_array).
 uword toit_v2_try_allocate_byte_array(void* process, uword length);
-// MAY GC. Calls the C++ primitive whose arguments start at object-stack
-// position [first_argument] (counted from the bottom). May switch the
-// current task (task_transfer).
-uword toit_v2_call_primitive(void* process, const void* entry, uword arity,
-                                   uword first_argument, uword* result);
+// MAY GC. Calls the C++ primitive (module, index) of the process' policy,
+// whose arguments start at object-stack position [first_argument] (counted
+// from the bottom), as the C++ interpreter calls it: the entry with a pointer
+// to the first argument; the GC-and-retry protocol only when it fails with
+// an allocation failure (out of line). TOIT_V2_PRIMITIVE_ABSENT, without
+// calling anything, if the policy has no such primitive or its arity is not
+// [arity]. May switch the current task (task_transfer). The core compares
+// the heap's epoch (toit_v2_context::epoch) around the call: unchanged, no
+// object moved and the current stack is the same (TRUSTED.md, "Epoch").
+uword toit_v2_primitive(void* process, uword module, uword index, uword arity,
+                        uword first_argument, uword* result);
 void toit_v2_report(void* process, uword kind, uword bci, uword detail);
 // Nonzero if the core should report every instruction (TOIT_V2_REPORT_TRACE),
 // for -Xtrace of the debug VM.

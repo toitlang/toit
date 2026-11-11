@@ -108,8 +108,10 @@ pub spec const ROOT_STACK_OVERFLOW: int = 28;
 /// may push a frame or replace the top frame (calls, virtual calls and
 /// their fast paths, operators and their fallbacks, tail calls, TRY, lazy
 /// globals). Growing the stack fails with stack overflow (the stack is at
-/// its maximal size) or out of memory.
-pub open spec fn grows_stack(op: u8) -> bool {
+/// its maximal size) or out of memory. An unchecked twin (format note 20)
+/// as its base.
+pub open spec fn grows_stack(raw: u8) -> bool {
+    let op = base_op(raw);
     ||| op == INVOKE_STATIC || op == INVOKE_STATIC_TAIL || op == INVOKE_BLOCK
     ||| op == INVOKE_LAMBDA_TAIL || op == INVOKE_INITIALIZER_TAIL
     ||| op == INVOKE_VIRTUAL || op == INVOKE_VIRTUAL_WIDE || op == INVOKE_VIRTUAL_GET || op == INVOKE_VIRTUAL_SET
@@ -149,7 +151,7 @@ pub open spec fn allocates_double(p: Program2, s: State2, op: u8) -> bool {
 /// has not run (stack growth and allocation happen before any change).
 pub open spec fn resource_throw(p: Program2, s: State2, o: Outcome2) -> bool {
     let b = s.bci as int;
-    let op = p.bytecodes[b];
+    let op = base_op(p.bytecodes[b]);
     &&& 0 <= b < p.bytecodes.len()
     &&& {
         ||| (grows_stack(op) || allocates_instance(op)) && o == unwind(p, s, Unwind::Throw(out_of_memory(p)))

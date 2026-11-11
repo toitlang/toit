@@ -108,13 +108,12 @@ uword toit_v2_allocate_double(void*, uint64) { abort(); }
 uword toit_v2_allocate_exception(void*, uword, uword, const uword*, uword) { abort(); }
 uword toit_v2_allocate_array(void*, uword, uword) { abort(); }
 uword toit_v2_grow_stack(void*, uword) { abort(); }
-uword toit_v2_lookup_primitive(void*, uword, uword, const void**, uword*) { abort(); }
 uword toit_v2_try_allocate_large_integer(void*, int64) { abort(); }
 uword toit_v2_try_allocate_double(void*, uint64) { abort(); }
 uword toit_v2_try_allocate_array(void*, uword, uword) { abort(); }
 uword toit_v2_try_allocate_string(void*, uword) { abort(); }
 uword toit_v2_try_allocate_byte_array(void*, uword) { abort(); }
-uword toit_v2_call_primitive(void*, const void*, uword, uword, uword*) { abort(); }
+uword toit_v2_primitive(void*, uword, uword, uword, uword, uword*) { abort(); }
 void toit_v2_report(void*, uword, uword, uword) { abort(); }
 uword toit_v2_tracing(void*) { abort(); }
 }
@@ -356,7 +355,9 @@ int main() {
     { "V2_PRIMITIVE_THROW", TOIT_V2_PRIMITIVE_THROW, false },
     { "V2_PRIMITIVE_MISSING", TOIT_V2_PRIMITIVE_MISSING, false },
     { "V2_PRIMITIVE_FOUND", TOIT_V2_PRIMITIVE_FOUND, false },
+    { "V2_PRIMITIVE_ABSENT", TOIT_V2_PRIMITIVE_ABSENT, false },
     { "V2_ACCEPTED", TOIT_V2_ACCEPTED, false },
+    { "V2_TRUSTED", TOIT_V2_TRUSTED, false },
     { "V2_REPORT_STUCK", TOIT_V2_REPORT_STUCK, false },
     { "V2_REPORT_UNCAUGHT", TOIT_V2_REPORT_UNCAUGHT, false },
     { "V2_REPORT_TASK_RETURNED", TOIT_V2_REPORT_TASK_RETURNED, false },
@@ -400,6 +401,10 @@ int main() {
     FIELD("CONTEXT_", toit_v2_context, watermark) FIELD("CONTEXT_", toit_v2_context, preempt_a_lot)
     FIELD("CONTEXT_", toit_v2_context, accepted)
     FIELD("CONTEXT_", toit_v2_context, core_arities) FIELD("CONTEXT_", toit_v2_context, core_arities_length)
+    FIELD("CONTEXT_", toit_v2_context, epoch)
+    FIELD("CONTEXT_", toit_v2_context, unchecked)
+    FIELD("CONTEXT_", toit_v2_context, new_space_top) FIELD("CONTEXT_", toit_v2_context, new_space_limit)
+    FIELD("CONTEXT_", toit_v2_context, new_space_sentinel)
     FIELD("CONTEXT_", toit_v2_context, result_state) FIELD("CONTEXT_", toit_v2_context, result_value)
 #undef FIELD
   };

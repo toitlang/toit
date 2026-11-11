@@ -136,13 +136,10 @@ impl Machine {
             assert(self.with(r) =~= m1);
             assert(m1.refines(p));
             if room_ok(p, m0) {
-                if m0.g@.fins.len() == 0 {
-                    assert forall|i: int| 0 <= i < m1.g@.frames.len() implies #[trigger] frame_room(p, m1, i) by {
-                        assert(frame_room(p, m0, i));
-                    }
-                } else {
-                    assert(frame_room(p, m0, m0.g@.frames.len() - 1));
+                assert forall|i: int| 0 <= i < m1.g@.frames.len() implies #[trigger] frame_room(p, m1, i) by {
+                    assert(frame_room(p, m0, i));
                 }
+                assert(crate::room::top_room(p, m1));
             }
         }
         r

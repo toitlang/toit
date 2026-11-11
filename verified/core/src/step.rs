@@ -47,7 +47,7 @@ use toit_spec::v2::sound::{wf, small, step_ok, outcome_ok, cur_op};
 #[cfg(verus_keep_ghost)]
 use toit_spec::v2::sound_instr::{lemma_instr, lemma_at_good, cur_k, cur_m, cur_off};
 #[cfg(verus_keep_ghost)]
-use toit_spec::v2::verifier::{accepts, value_operands, instr_ok, is_branch, map_at, w1_of};
+use toit_spec::v2::verifier::{accepts, value_operands, instr_ok, is_branch, map_at, w1_of, bk_of, is_loop, loop_operands, loop_ok, post, hf_ok};
 #[cfg(verus_keep_ghost)]
 use toit_spec::v2::types::p1;
 #[cfg(verus_keep_ghost)]
@@ -98,12 +98,34 @@ pub proof fn lemma_source_resource(ap: Program2, g: State2, o1: Outcome2)
     }
 }
 
+/// TRUSTED (verified/core/EXPERIMENT-trusted.md, TRUSTED.md section 6,
+/// "Unchecked field accesses"): in the unchecked mode of a trusted program
+/// (`Program2::unchecked`, which `accepts` allows only for trusted
+/// programs) no step reaches a failed unchecked field access: we trust the
+/// compiler for first-party code to emit field accesses only on instances
+/// that have the field (and stores only outside the program heap). A wrong
+/// program can crash the VM; an untrusted program never runs in this mode.
+#[verifier::external_body]
+pub proof fn trusted_field_accesses(ap: Program2, g: State2)
+    requires ap.unchecked,
+    ensures toit_spec::v2::sound::unchecked_ok(ap, g),
+{
+}
+
+/// `unchecked_ok` of any state: trivial without the unchecked mode.
+pub proof fn lemma_unchecked_ok(p: &Program, g: State2)
+    ensures toit_spec::v2::sound::unchecked_ok(p.ap@, g),
+{
+    if p.ap@.unchecked { trusted_field_accesses(p.ap@, g); }
+}
+
 /// A source that is not a raise is an outcome itself.
 pub proof fn lemma_source_outcome(p: &Program, m: Machine, o: Outcome2)
     requires m.inv(p), source(p.ap@, m.g@, o), !(o is Raise),
     ensures outcome(p.ap@, m.g@, o), toit_spec::v2::sound::outcome_ok(p.ap@, p.cert@, o), !(o is Stuck),
 {
     assert(completes(p.ap@, o, o));
+    lemma_unchecked_ok(p, m.g@);
     lemma_small(p, &m);
     toit_spec::v2::theorem::lemma_outcome_ok(p.ap@, p.cert@, p.trusted@, m.g@, o);
 }
@@ -140,7 +162,11 @@ pub open spec fn step_post(p: &Program, m0: Machine, m1: Machine, r: Ctl) -> boo
 #[verifier::external_body]
 #[inline(always)]
 pub fn gc_grow_stack(m: &mut Machine, env: &Env, needed: usize, Ghost(g): Ghost<State2>) -> (r: usize)
-    requires reloaded(*old(m), g).refines(&env.p),
+    requires
+        reloaded(*old(m), g).refines(&env.p),
+        // The C++ side rejects more than `Stack::max_length()` (an overflow);
+        // this bound keeps every value far below 2^31 (TRUSTED.md 9).
+        needed < GROW_STACK_MAX_NEEDED,
     ensures
         reloaded(*final(m), g).refines(&env.p),
         r == V2_OK ==> reloaded(*final(m), g).top - reloaded(*final(m), g).rtop >= needed,
@@ -156,6 +182,7 @@ pub fn gc_grow_stack(m: &mut Machine, env: &Env, needed: usize, Ghost(g): Ghost<
 pub fn grow(m: &mut Machine, env: &Env, needed: usize) -> (r: Ctl)
     requires
         old(m).inv(&env.p),
+        needed < GROW_STACK_MAX_NEEDED,
         toit_spec::v2::prim::grows_stack(env.p.ap@.bytecodes[old(m).bci as int]),
         old(m).bci < 0x1000_0000,
     ensures step_post(&env.p, *old(m), *final(m), r),
@@ -339,6 +366,7 @@ pub proof fn lemma_outcome_matches(p: &Program, m0: Machine, m1: Machine, r: Ctl
         matches(p, o, m1, r),
     ensures step_post(p, m0, m1, r),
 {
+    lemma_unchecked_ok(p, m0.g@);
     lemma_small(p, &m0);
     toit_spec::v2::theorem::lemma_outcome_ok(p.ap@, p.cert@, p.trusted@, m0.g@, o);
     match r {
@@ -409,6 +437,74 @@ proof fn lemma_back_branch(p: &Program, g: State2)
     assert(map_at(c, mi, off - w1_of(ap, mi, off)) is Some);
 }
 
+/// The operands of a loop step are values and its backward branch stays at
+/// or after the method's entry (the verifier's `loop_ok` and `loop_kinds`).
+proof fn lemma_loop_cond(p: &Program, g: State2)
+    requires
+        accepts(p.ap@, p.cert@, p.trusted@), wf(p.ap@, p.cert@, g),
+        cur_op(p.ap@, g) == 101 || cur_op(p.ap@, g) == 102,
+    ensures ({
+        let n = p.ap@.bytecodes[g.bci + 3] as int;
+        &&& sp::at(g, n) is Smi || sp::at(g, n) is Obj
+        &&& sp::at(g, n + 2) is Smi || sp::at(g, n + 2) is Obj
+        &&& cur_op(p.ap@, g) == 102 ==> (sp::at(g, n + 3) is Smi || sp::at(g, n + 3) is Obj)
+        &&& u16_at(p1(p.ap@), g.bci + 1) <= g.bci
+    }),
+{
+    let ap = p.ap@;
+    let c = p.cert@;
+    lemma_instr(ap, c, p.trusted@, g);
+    let mi = cur_m(g);
+    let off = cur_off(ap, g);
+    let k = cur_k(ap, c, g);
+    let n = bk_of(ap, mi, off, 3);
+    let y = if cur_op(ap, g) == 102 { n + 3 } else { n + 2 };
+    assert(instr_ok(ap, c, mi, off, k, p.trusted@));
+    assert(is_loop(cur_op(ap, g)));
+    assert(loop_operands(ap, mi, off) == (n, n + 1, n + 2, y));
+    assert(post(ap, c, mi, off, k, p.trusted@) is Some);
+    assert(loop_ok(ap, mi, k, n, n + 1, n + 2, y));
+    lemma_at_good(ap, c, p.trusted@, g, n);
+    lemma_at_good(ap, c, p.trusted@, g, n + 2);
+    lemma_at_good(ap, c, p.trusted@, g, y);
+    assert(map_at(c, mi, off - w1_of(ap, mi, off)) is Some);
+}
+
+/// HASH_FIND's operands are values; its forward branch stays inside the
+/// method (the verifier's `hf_ok` and the target's map).
+proof fn lemma_hash_find_cond(p: &Program, g: State2)
+    requires
+        accepts(p.ap@, p.cert@, p.trusted@), wf(p.ap@, p.cert@, g),
+        cur_op(p.ap@, g) == 103,
+    ensures ({
+        let n = p.ap@.bytecodes[g.bci + 3] as int;
+        let mm = p.ap@.bytecodes[g.bci + 4] as int;
+        &&& forall|j: int| (j == n || j == n + 1 || j == n + 2 || j == mm || j == mm + 2) ==>
+            (#[trigger] sp::at(g, j) is Smi || sp::at(g, j) is Obj)
+        &&& g.bci + u16_at(p1(p.ap@), g.bci + 1) < p.ap@.bytecodes.len()
+        &&& p.ap@.builtin.len() == 23
+    }),
+{
+    let ap = p.ap@;
+    let c = p.cert@;
+    lemma_instr(ap, c, p.trusted@, g);
+    let mi = cur_m(g);
+    let off = cur_off(ap, g);
+    let k = cur_k(ap, c, g);
+    let n = bk_of(ap, mi, off, 3);
+    let mm = bk_of(ap, mi, off, 4);
+    assert(instr_ok(ap, c, mi, off, k, p.trusted@));
+    assert(post(ap, c, mi, off, k, p.trusted@) is Some);
+    assert(hf_ok(ap, mi, k, n, mm));
+    lemma_at_good(ap, c, p.trusted@, g, n);
+    lemma_at_good(ap, c, p.trusted@, g, n + 1);
+    lemma_at_good(ap, c, p.trusted@, g, n + 2);
+    lemma_at_good(ap, c, p.trusted@, g, mm);
+    lemma_at_good(ap, c, p.trusted@, g, mm + 2);
+    assert(map_at(c, mi, off + w1_of(ap, mi, off)) is Some);
+    toit_spec::v2::sound_local::lemma_map_bound(ap, c, p.trusted@, mi, off + w1_of(ap, mi, off));
+}
+
 /// The opcodes whose handlers (or whose slow paths) run on the machine
 /// (`Slow::Op`): LOAD_GLOBAL_VAR_LAZY(_WIDE) (the initializer call),
 /// INVOKE_STATIC_TAIL, INVOKE_BLOCK, INVOKE_LAMBDA_TAIL and
@@ -427,13 +523,18 @@ pub open spec fn machine_op(op: u8) -> bool {
 #[verifier::spinoff_prover]
 pub fn step_machine(m: &mut Machine, env: &Env) -> (r: Ctl)
     requires old(m).inv(&env.p), machine_op(env.p.ap@.bytecodes[old(m).bci as int]),
-    ensures step_post(&env.p, *old(m), *final(m), r),
+    ensures
+        step_post(&env.p, *old(m), *final(m), r),
+        ({ let op = env.p.ap@.bytecodes[old(m).bci as int];
+           (op == 90 || op == 93 || op == 95 || op == 99) && r == Ctl::Next
+           ==> crate::unwind::frames_prefix(old(m).g@, final(m).g@) && final(m).len == old(m).len }),
 {
     let p = &env.p;
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     proof {
         lemma_small(p, m);
+        lemma_unchecked_ok(p, g);
         toit_spec::v2::sound_step::lemma_step(ap, p.cert@, p.trusted@, g);
         lemma_instr(ap, p.cert@, p.trusted@, g);
         reveal_with_fuel(opcode_length2, 1);
@@ -576,6 +677,78 @@ pub fn resume(m: &mut Machine, env: &Env, c: Ctl, Ghost(w0): Ghost<Machine>) -> 
     }
 }
 
+/// `resume` after a path on the machine that kept the frames below the top
+/// and the stack length (a call, a return, an unwinding: `room::top_kept`):
+/// those frames have the room they had, so only the top frame is checked,
+/// with the finally records (`room::top_room`); a rescan of every frame
+/// (`ensure_room_all`) only if that check fails.
+pub fn resume_kept(m: &mut Machine, env: &Env, Ghost(w0): Ghost<Machine>) -> (res: (Option<Regs>, Ctl))
+    requires
+        step_post(&env.p, w0, *old(m), Ctl::Next),
+        room_ok(&env.p, w0),
+        top_kept(w0.g@, old(m).g@),
+        old(m).len >= w0.len,
+    ensures
+        res.1 == Ctl::Next ==> res.0 is Some && final(m).rok(res.0->0)
+            && crate::regs::ipok(&env.p, res.0->0)
+            && crate::regs::gate_ok(&env.p, *final(m))
+            && steps_post(&env.p, w0, final(m).with(res.0->0), res.1)
+            && room_ok(&env.p, final(m).with(res.0->0)),
+        res.1 != Ctl::Next ==> steps_post(&env.p, w0, *final(m), res.1),
+{
+    let p = &env.p;
+    let ghost ap = p.ap@;
+    let ghost g = m.g@;
+    let ghost n = g.frames.len() as int;
+    proof {
+        lemma_steps_post(p, w0, *m, Ctl::Next);
+        m.lemma_frame(p);
+        crate::calls::lemma_shape(p, g);
+        lemma_rec_index(n, n - 1, FRAME_BASE);
+        lemma_rec_index(n, n - 1, FRAME_METHOD);
+        assert(rec(m.mem@, n - 1, FRAME_BASE) == g.frames[n - 1].base);
+        assert(rec(m.mem@, n - 1, FRAME_METHOD) == g.frames[n - 1].method);
+        assert(m.ftop == FRAME_WORDS * n);
+    }
+    let ri = m.ftop - FRAME_WORDS;
+    let base = m.mem.read(ri + FRAME_BASE);
+    let method = m.mem.read(ri + FRAME_METHOD);
+    if base < MAX_STACK_LENGTH {
+        proof {
+            assert(sp::valid_method(ap, g.frames[n - 1].method as int));
+            assert(ap.methods[method as int] == method_info(p.methods@[method as int], p.max_height));
+            assert(p.max_height < 0x1_0000);
+        }
+        let a = p.methods.at(method).arity as usize;
+        let total = base + a + p.max_height + m.rtop + STACK_RESERVE;
+        if total <= m.len {
+            let ghost m1 = *m;
+            proof {
+                assert(frame_need(p, g, n - 1) <= m.len);
+                assert forall|i: int| 0 <= i < g.frames.len() implies #[trigger] frame_room(p, m1, i) by {
+                    if i < n - 1 {
+                        assert(g.frames[i] == w0.g@.frames[i]);
+                        assert(frame_room(p, w0, i));
+                    }
+                }
+                assert(top_room(p, m1));
+            }
+            let r = m.enter(&env.p);
+            proof { assert(m.with(r).g == m1.g); }
+            return (Some(r), Ctl::Next);
+        }
+    }
+    let ghost m1 = *m;
+    let c2 = ensure_room_all(m, env);
+    if let Ctl::Next = c2 {
+        let r = m.enter(&env.p);
+        proof { assert(m.with(r).g == m1.g); }
+        (Some(r), c2)
+    } else {
+        (None, c2)
+    }
+}
+
 /// The run loop's invariant on registers: the registers are cursors of the
 /// machine, which satisfies `inv` with them and has room; the gate for the
 /// finally records is set.
@@ -604,9 +777,6 @@ pub open spec fn rhandler_pre(p: &Program, m: Machine, r: Regs, bci: usize, opco
 pub enum Slow {
     /// The machine's handler of the instruction (`machine_op`).
     Op,
-    /// The C++ primitive `index` of `module` for a method of arity `arity`
-    /// (or the raise of a missing one): PRIMITIVE without a Rust port.
-    Prim(u8, u16, usize),
     /// Failure `k` without a message.
     Raise(usize),
     /// INVALID_PROGRAM with the bci.
@@ -632,8 +802,6 @@ pub open spec fn slow_pre(p: &Program, m: Machine, r: Regs, k: Slow, w: usize, v
     &&& rinv(p, m, r)
     &&& match k {
         Slow::Op => machine_op(ap.bytecodes[r.ip@]),
-        Slow::Prim(module, index, arity) =>
-            sp::step(ap, g) == Outcome2::Primitive(g, module, index) && arity == sp::frame_height(g),
         Slow::Raise(kk) => kk < 5 && sp::step(ap, g) == sp::raise(ap, g, kk as int),
         Slow::Invalid => sp::step(ap, g) == sp::raise(ap, g, sp::INVALID_PROGRAM),
         Slow::As(len) => sp::step(ap, g) == sp::raise(ap, g, sp::AS_CHECK_FAILED)
@@ -664,25 +832,37 @@ pub fn slow(m: &mut Machine, r: Regs, env: &Env, k: Slow, w: usize, Ghost(v): Gh
     proof {
         assert(*m == w0);
         lemma_small(p, m);
+        lemma_unchecked_ok(p, g);
         toit_spec::v2::sound_step::lemma_step(ap, p.cert@, p.trusted@, g);
         lemma_source_step(ap, g);
         crate::regs::lemma_bci(p, *m);
     }
-    let c = match k {
-        Slow::Op => step_machine(m, env),
-        Slow::Prim(module, index, arity) => crate::primitive::op_primitive_cxx(m, env, module, index, arity),
-        Slow::Raise(kk) => m.v_raise_none(env, kk),
-        Slow::Invalid => m.v_raise_invalid(env),
-        Slow::As(len) => m.v_raise_as(env, w, Ghost(v), len),
-        Slow::Lookup(sel) => m.v_raise_lookup(env, w, Ghost(v), sel),
+    // The unwinding opcodes only pop frames (`unwind::lemma_unwind_prefix`).
+    let op = p.code.at(m.bci);
+    let unwinding = op == 90 || op == 93 || op == 95 || op == 99;
+    // `kept`: on `Next` the frames below the top are the ones before
+    // (`room::top_kept`) and the stack length is the same, so `resume_kept`
+    // checks the top frame's room only.
+    let (c, kept) = match k {
+        Slow::Op => (step_machine(m, env), unwinding),
+        Slow::Raise(kk) => (m.v_raise_none(env, kk), false),
+        Slow::Invalid => (m.v_raise_invalid(env), false),
+        Slow::As(len) => (m.v_raise_as(env, w, Ghost(v), len), false),
+        Slow::Lookup(sel) => (m.v_raise_lookup(env, w, Ghost(v), sel), false),
         Slow::Call(t, ret) => {
             match ensure_room(m, env) {
-                Some(c) => c,
+                Some(c) => (c, false),
                 None => {
                     proof { assert(outcome_ok(ap, p.cert@, sp::step(ap, g))); }
                     let c = m.push_call(env, t, ret);
-                    proof { lemma_matches(p, w0, *m, c); }
-                    c
+                    proof {
+                        lemma_matches(p, w0, *m, c);
+                        if c == Ctl::Next {
+                            assert forall|i: int| 0 <= i < m.g@.frames.len() - 1
+                                implies #[trigger] m.g@.frames[i] == w0.g@.frames[i] by {}
+                        }
+                    }
+                    (c, true)
                 },
             }
         },
@@ -692,10 +872,27 @@ pub fn slow(m: &mut Machine, r: Regs, env: &Env, k: Slow, w: usize, Ghost(v): Gh
                 crate::calls::lemma_shape(p, g);
             }
             let c = m.do_return(env, w, Ghost(v));
-            proof { lemma_matches(p, w0, *m, c); }
-            c
+            proof {
+                lemma_matches(p, w0, *m, c);
+                crate::unwind::lemma_return_prefix(ap, g, v);
+            }
+            (c, true)
         },
     };
+    if kept {
+        if let Ctl::Next = c {
+            proof {
+                if unwinding && k is Op {
+                    assert(crate::unwind::frames_prefix(w0.g@, m.g@));
+                }
+                assert(top_kept(w0.g@, m.g@));
+            }
+            return match resume_kept(m, env, Ghost(w0)) {
+                (Some(r2), Ctl::Next) => (r2, Ctl::Next),
+                (_, c2) => (r, c2),
+            };
+        }
+    }
     match resume(m, env, c, Ghost(w0)) {
         (Some(r2), Ctl::Next) => (r2, Ctl::Next),
         (_, c2) => (r, c2),
@@ -757,10 +954,12 @@ pub fn step_r(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
     let ghost w0 = m.with(*r);
     proof {
         lemma_small(p, &w0);
+        lemma_unchecked_ok(p, g);
         toit_spec::v2::sound_step::lemma_step(ap, p.cert@, p.trusted@, g);
         lemma_instr(ap, p.cert@, p.trusted@, g);
         reveal_with_fuel(opcode_length2, 1);
         lemma_room_top(p, w0);
+        toit_spec::v2::sound_instr::lemma_instr_twin(ap, p.cert@, p.trusted@, g);
     }
     let ghost bci: usize = r.ip@ as usize;
     proof { crate::regs::lemma_bci(p, w0); }
@@ -1041,52 +1240,104 @@ pub fn step_r(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
         7 => {
             let f = r.ip.byte(1, &p.code) as usize;
             proof { assert(sp::step(ap, g) == sp::op_load_field(ap, g, f as int, 2)) by { reveal(sp::step); } }
-            return crate::rfields::op_load_field(m, r, env, cur_bci(p, r.ip), opcode, f, 2);
+            return crate::rfields::op_load_field(m, r, env, cur_bci(p, r.ip), opcode, f, 2, false);
         },
         8 => {
             let f = ip_u16(p, r.ip, 1);
             proof { assert(sp::step(ap, g) == sp::op_load_field(ap, g, f as int, 3)) by { reveal(sp::step); } }
-            return crate::rfields::op_load_field(m, r, env, cur_bci(p, r.ip), opcode, f, 3);
+            return crate::rfields::op_load_field(m, r, env, cur_bci(p, r.ip), opcode, f, 3, false);
         },
         9 => {
             let e = r.ip.byte(1, &p.code) as usize;
             proof { assert(sp::step(ap, g) == sp::op_load_field_local(ap, g, e as int, false)) by { reveal(sp::step); } }
-            return crate::rfields::op_load_field_local(m, r, env, cur_bci(p, r.ip), opcode, e, false);
+            return crate::rfields::op_load_field_local(m, r, env, cur_bci(p, r.ip), opcode, e, false, false);
         },
         10 => {
             let e = r.ip.byte(1, &p.code) as usize;
             proof { assert(sp::step(ap, g) == sp::op_load_field_local(ap, g, e as int, true)) by { reveal(sp::step); } }
-            return crate::rfields::op_load_field_local(m, r, env, cur_bci(p, r.ip), opcode, e, true);
+            return crate::rfields::op_load_field_local(m, r, env, cur_bci(p, r.ip), opcode, e, true, false);
         },
         11 => {
             let f = r.ip.byte(1, &p.code) as usize;
             proof { assert(sp::step(ap, g) == sp::op_store_field(ap, g, f as int, 2, true)) by { reveal(sp::step); } }
-            return crate::rfields::op_store_field(m, r, env, cur_bci(p, r.ip), opcode, f, 2, true);
+            return crate::rfields::op_store_field(m, r, env, cur_bci(p, r.ip), opcode, f, 2, true, false);
         },
         12 => {
             let f = ip_u16(p, r.ip, 1);
             proof { assert(sp::step(ap, g) == sp::op_store_field(ap, g, f as int, 3, true)) by { reveal(sp::step); } }
-            return crate::rfields::op_store_field(m, r, env, cur_bci(p, r.ip), opcode, f, 3, true);
+            return crate::rfields::op_store_field(m, r, env, cur_bci(p, r.ip), opcode, f, 3, true, false);
         },
         13 => {
             let f = r.ip.byte(1, &p.code) as usize;
             proof { assert(sp::step(ap, g) == sp::op_store_field(ap, g, f as int, 2, false)) by { reveal(sp::step); } }
-            return crate::rfields::op_store_field(m, r, env, cur_bci(p, r.ip), opcode, f, 2, false);
+            return crate::rfields::op_store_field(m, r, env, cur_bci(p, r.ip), opcode, f, 2, false, false);
         },
         60 => {
             let sel = ip_u16(p, r.ip, 1);
             proof { assert(sp::step(ap, g) == sp::op_invoke_virtual_get(ap, g, sel as int)) by { reveal(sp::step); } }
-            return crate::rfields::op_invoke_virtual_get(m, r, env, cur_bci(p, r.ip), opcode, sel);
+            return crate::rfields::op_invoke_virtual_get(m, r, env, cur_bci(p, r.ip), opcode, sel, false);
         },
         61 => {
             let sel = ip_u16(p, r.ip, 1);
             proof { assert(sp::step(ap, g) == sp::op_invoke_virtual_set(ap, g, sel as int)) by { reveal(sp::step); } }
-            return crate::rfields::op_invoke_virtual_set(m, r, env, cur_bci(p, r.ip), opcode, sel);
+            return crate::rfields::op_invoke_virtual_set(m, r, env, cur_bci(p, r.ip), opcode, sel, false);
         },
         94 => {
             let f = r.ip.byte(1, &p.code) as usize;
             proof { assert(sp::step(ap, g) == sp::op_store_field_this(ap, g, f as int)) by { reveal(sp::step); } }
-            return crate::rfields::op_store_field_this(m, r, env, cur_bci(p, r.ip), opcode, f);
+            return crate::rfields::op_store_field_this(m, r, env, cur_bci(p, r.ip), opcode, f, false);
+        },
+        // The unchecked twins of the field accesses (format note 20; trusted
+        // programs only): the handlers above without the field check.
+        104 => {
+            let f = r.ip.byte(1, &p.code) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_load_field(ap, g, f as int, 2)) by { reveal(sp::step); } }
+            return crate::rfields::op_load_field(m, r, env, cur_bci(p, r.ip), opcode, f, 2, true);
+        },
+        105 => {
+            let f = ip_u16(p, r.ip, 1);
+            proof { assert(sp::step(ap, g) == sp::op_load_field(ap, g, f as int, 3)) by { reveal(sp::step); } }
+            return crate::rfields::op_load_field(m, r, env, cur_bci(p, r.ip), opcode, f, 3, true);
+        },
+        106 => {
+            let e = r.ip.byte(1, &p.code) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_load_field_local(ap, g, e as int, false)) by { reveal(sp::step); } }
+            return crate::rfields::op_load_field_local(m, r, env, cur_bci(p, r.ip), opcode, e, false, true);
+        },
+        107 => {
+            let e = r.ip.byte(1, &p.code) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_load_field_local(ap, g, e as int, true)) by { reveal(sp::step); } }
+            return crate::rfields::op_load_field_local(m, r, env, cur_bci(p, r.ip), opcode, e, true, true);
+        },
+        108 => {
+            let f = r.ip.byte(1, &p.code) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_store_field(ap, g, f as int, 2, true)) by { reveal(sp::step); } }
+            return crate::rfields::op_store_field(m, r, env, cur_bci(p, r.ip), opcode, f, 2, true, true);
+        },
+        109 => {
+            let f = ip_u16(p, r.ip, 1);
+            proof { assert(sp::step(ap, g) == sp::op_store_field(ap, g, f as int, 3, true)) by { reveal(sp::step); } }
+            return crate::rfields::op_store_field(m, r, env, cur_bci(p, r.ip), opcode, f, 3, true, true);
+        },
+        110 => {
+            let f = r.ip.byte(1, &p.code) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_store_field(ap, g, f as int, 2, false)) by { reveal(sp::step); } }
+            return crate::rfields::op_store_field(m, r, env, cur_bci(p, r.ip), opcode, f, 2, false, true);
+        },
+        111 => {
+            let sel = ip_u16(p, r.ip, 1);
+            proof { assert(sp::step(ap, g) == sp::op_invoke_virtual_get(ap, g, sel as int)) by { reveal(sp::step); } }
+            return crate::rfields::op_invoke_virtual_get(m, r, env, cur_bci(p, r.ip), opcode, sel, true);
+        },
+        112 => {
+            let sel = ip_u16(p, r.ip, 1);
+            proof { assert(sp::step(ap, g) == sp::op_invoke_virtual_set(ap, g, sel as int)) by { reveal(sp::step); } }
+            return crate::rfields::op_invoke_virtual_set(m, r, env, cur_bci(p, r.ip), opcode, sel, true);
+        },
+        113 => {
+            let f = r.ip.byte(1, &p.code) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_store_field_this(ap, g, f as int)) by { reveal(sp::step); } }
+            return crate::rfields::op_store_field_this(m, r, env, cur_bci(p, r.ip), opcode, f, true);
         },
         98 => {
             let f = r.ip.byte(1, &p.code) as usize;
@@ -1293,19 +1544,78 @@ pub fn step_r(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
         89 => {
             return crate::rarrays::op_primitive(m, r, env, cur_bci(p, r.ip), 89);
         },
+        // Non-local control flow (rnonlocal.rs): fast paths without
+        // handlers on the way and without finally records.
+        93 => {
+            proof { assert(sp::step(ap, g) == sp::op_non_local_return(ap, g)) by { reveal(sp::step); } }
+            let (r2, c2) = crate::rnonlocal::op_non_local_return_v(m, *r, env, cur_bci(p, r.ip), opcode);
+            crate::regs::set_regs(r, r2);
+            return c2;
+        },
+        95 => {
+            let hd = r.ip.byte(1, &p.code) as usize;
+            let off = ip_u32(p, r.ip, 2);
+            proof {
+                assert(sp::step(ap, g) == sp::op_non_local_branch(ap, g, hd as int, off as int)) by { reveal(sp::step); }
+            }
+            let (r2, c2) = crate::rnonlocal::op_non_local_branch_v(m, *r, env, cur_bci(p, r.ip), opcode, hd, off);
+            crate::regs::set_regs(r, r2);
+            return c2;
+        },
+        97 => {
+            proof { assert(sp::step(ap, g) == sp::op_try(ap, g)) by { reveal(sp::step); } }
+            let (r2, c2) = crate::rnonlocal::op_try_v(m, *r, env, cur_bci(p, r.ip), opcode);
+            crate::regs::set_regs(r, r2);
+            return c2;
+        },
+        99 => {
+            proof { assert(sp::step(ap, g) == sp::op_unwind(ap, g)) by { reveal(sp::step); } }
+            return crate::rnonlocal::op_unwind(m, r, env, cur_bci(p, r.ip), opcode);
+        },
         // Rare opcodes: the machine's handlers (`Slow::Op`). INVOKE_LAMBDA_TAIL,
-        // THROW, NON_LOCAL_RETURN, NON_LOCAL_BRANCH, TRY, UNWIND, HALT.
+        // THROW, HALT.
         56 => { return slow0(m, r, env, Slow::Op); },
         90 => { return slow0(m, r, env, Slow::Op); },
-        93 => { return slow0(m, r, env, Slow::Op); },
-        95 => { return slow0(m, r, env, Slow::Op); },
-        97 => { return slow0(m, r, env, Slow::Op); },
-        99 => { return slow0(m, r, env, Slow::Op); },
         100 => { return slow0(m, r, env, Slow::Op); },
+        // LOOP_REPEAT (proposal, format note 19).
+        101 => {
+            let d = ip_u16(p, r.ip, 1);
+            let n = r.ip.byte(3, &p.code) as usize;
+            proof {
+                assert(sp::step(ap, g) == sp::op_loop_repeat(ap, g, bci - d, n as int, 4)) by { reveal(sp::step); }
+                lemma_loop_cond(p, g);
+            }
+            crate::rloops::op_loop_repeat(m, r, p, n, d, Ghost((bci - d) as usize))
+        },
+        // LOOP_ARRAY (proposal, format note 19).
+        102 => {
+            let d = ip_u16(p, r.ip, 1);
+            let n = r.ip.byte(3, &p.code) as usize;
+            proof {
+                assert(sp::step(ap, g) == sp::op_loop_array(ap, g, bci - d, n as int, 4)) by { reveal(sp::step); }
+                lemma_loop_cond(p, g);
+                crate::arrays::lemma_heap_good(p, g);
+            }
+            crate::rloops::op_loop_array(m, r, p, n, d, Ghost((bci - d) as usize))
+        },
+        // HASH_FIND (proposal, format note 19).
+        103 => {
+            let d = ip_u16(p, r.ip, 1);
+            let n = r.ip.byte(3, &p.code) as usize;
+            let mm = r.ip.byte(4, &p.code) as usize;
+            proof {
+                assert(sp::step(ap, g) == sp::op_hash_find(ap, g, bci + d, n as int, mm as int, 5)) by { reveal(sp::step); }
+                lemma_hash_find_cond(p, g);
+                crate::arrays::lemma_heap_good(p, g);
+            }
+            let (r2, c2) = crate::rhash::op_hash_find_v(m, *r, p, n, mm, d, Ghost((bci + d) as usize));
+            crate::regs::set_regs(r, r2);
+            c2
+        },
         _ => {
             // Every opcode of format 2 (below OPCODE_COUNT2, which the
             // instruction check of the spec requires) has an arm.
-            proof { assert(opcode < 101); assert(false); }
+            proof { assert(opcode < 114); assert(false); }
             return crate::view::proven_unreachable();
         },
     };

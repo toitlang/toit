@@ -24,6 +24,12 @@ use crate::v2::bytecodes::*;
 
 type R = Result<Step, Stuck>;
 
+/// `v2::spec::Probe`.
+pub enum Probe2 {
+    Cand(Value, i64, i64, i64, i64),
+    Miss(i64),
+}
+
 /// The exceptions the format-2 machine raises itself. Their values are the
 /// literals 2..6 (src/compiler/bytecode_format.h).
 pub const LOOKUP_FAILED: usize = 0;
@@ -377,6 +383,63 @@ impl Machine {
     }
 
     // -----------------------------------------------------------------------
+    // HASH_FIND (`v2::spec::hf_find`, proposal note 19).
+
+    fn hf_at(&mut self, a: Value, i: i64) -> Option<Value> {
+        match self.fast_at(a, Value::Smi(i), false, Value::Smi(0), 8) {
+            Ok(FastAt::Get(v)) => Some(v),
+            _ => None,
+        }
+    }
+
+    fn hf_probe(&mut self, index: Value, backing: Value, hash: i64, mask: i64, start: i64,
+            mut slot: i64, mut step: i64, mut d: i64, mut fuel: i64) -> Probe2 {
+        let tombstone = self.builtin(TOMBSTONE_CLASS) as usize;
+        loop {
+            if fuel == 0 { return Probe2::Miss(-2); }
+            let hap = match self.hf_at(index, slot) { Some(Value::Smi(h)) => h, _ => return Probe2::Miss(-2) };
+            if hap == 0 {
+                return Probe2::Miss(if d > 0 { 2 * (d - 1) } else { 2 * slot + 1 });
+            }
+            let pos = hap.div_euclid(4096) - 1;
+            let k = match self.hf_at(backing, pos) { Some(k) => k, None => return Probe2::Miss(-2) };
+            let tomb = matches!(k, Value::Obj(id) if self.s.heap[id].class_id as usize == tombstone);
+            if d == 0 && tomb { d = slot + 1; }
+            if (hap & 0xfff) == (hash & 0xfff) && !tomb {
+                return Probe2::Cand(k, pos, slot, step, d);
+            }
+            let slot2 = (slot + step) & mask;
+            if slot2 == start { return Probe2::Miss(-1); }
+            slot = slot2;
+            step += 1;
+            fuel -= 1;
+        }
+    }
+
+    pub fn hf_find(&mut self, coll: Value, hashv: Value, slotv: Value, stepv: Value, dv: Value) -> Probe2 {
+        let f = match self.fields(coll) { Some(f) if f.len() >= 4 => f.clone(), _ => return Probe2::Miss(-2) };
+        let (hash, slot, step, d) = match (hashv, slotv, stepv, dv) {
+            (Value::Smi(a), Value::Smi(b), Value::Smi(c), Value::Smi(e)) => (a, b, c, e),
+            _ => return Probe2::Miss(-2),
+        };
+        let (index, backing) = (f[2], f[3]);
+        let size = match self.fast_size(index) { Ok(Some(n)) => n, _ => return Probe2::Miss(-2) };
+        if !(1 <= size && size <= 0x100_0000 && size & (size - 1) == 0
+            && 0 <= slot && slot < size && 0 <= step && step <= 2 * size && 0 <= d && d <= size) {
+            return Probe2::Miss(-2);
+        }
+        let mask = size - 1;
+        let start = hash & mask;
+        if step == 0 {
+            self.hf_probe(index, backing, hash, mask, start, start, 1, d, 2 * size)
+        } else {
+            let slot2 = (slot + step) & mask;
+            if slot2 == start { return Probe2::Miss(-1); }
+            self.hf_probe(index, backing, hash, mask, start, slot2, step + 1, d, 2 * size)
+        }
+    }
+
+    // -----------------------------------------------------------------------
     // The step.
 
     pub fn step2_unverified(&mut self) -> R {
@@ -384,8 +447,11 @@ impl Machine {
         let frame = self.top_frame()?;
         let info = self.info(frame.method)?;
         if !(info.entry <= bci && bci < info.end) { return Err(BadInstruction); }
-        let op = self.p.bytecodes[bci];
-        if op >= OPCODE_COUNT2 { return Err(BadInstruction); }
+        let raw = self.p.bytecodes[bci];
+        if raw >= OPCODE_COUNT2 { return Err(BadInstruction); }
+        // An unchecked twin (format note 20) runs as its base instruction,
+        // with the check (where the spec is stuck, this interpreter raises).
+        let op = crate::v2::bytecodes::exec_base_op(raw);
         let len = OPCODE_LENGTHS2[op as usize] as usize;
         if bci + len > info.end { return Err(BadInstruction); }
         let b1 = if len >= 2 { self.byte(bci + 1) } else { 0 };
@@ -712,6 +778,81 @@ impl Machine {
                 }
             }
             HALT => self.op2_halt(b1),
+            LOOP_REPEAT => {
+                // `v2::spec::op_loop_repeat`: counter b1, block b1 + 1, limit b1 + 2.
+                let n = self.byte(bci + 3);
+                if n < 1 { return Err(StackRange); }
+                let (vc, vb, vl) = (self.at2(n)?, self.at2(n + 1)?, self.at2(n + 2)?);
+                match (vc, vl) {
+                    (Value::Smi(i), Value::Smi(l)) if i < l => {
+                        let target = self.branch_target(bci as i64 - w1 as i64)?;
+                        self.put(n, Value::Smi(i + 1));
+                        self.drop2(1)?;
+                        self.s.stack.push(vb);
+                        self.s.stack.push(vc);
+                        self.s.bci = target;
+                        Ok(Step::Next)
+                    }
+                    _ => {
+                        self.drop2(1)?;
+                        self.next2(len)
+                    }
+                }
+            }
+            HASH_FIND => {
+                // `v2::spec::op_hash_find`: state b1, b1 + 1, b1 + 2; hash m, collection m + 2.
+                let n = self.byte(bci + 3);
+                let m = self.byte(bci + 4);
+                let (vs, vt, vd) = (self.at2(n)?, self.at2(n + 1)?, self.at2(n + 2)?);
+                let (vh, vc) = (self.at2(m)?, self.at2(m + 2)?);
+                match self.hf_find(vc, vh, vs, vt, vd) {
+                    Probe2::Cand(k, pos, slot, step, d) => {
+                        self.put(n, Value::Smi(slot));
+                        self.put(n + 1, Value::Smi(step));
+                        self.put(n + 2, Value::Smi(d));
+                        self.s.stack.push(k);
+                        self.s.stack.push(Value::Smi(pos));
+                        self.next2(len)
+                    }
+                    Probe2::Miss(code) => {
+                        let target = self.branch_target(bci as i64 + w1 as i64)?;
+                        self.s.stack.push(Value::Smi(code));
+                        self.s.bci = target;
+                        Ok(Step::Next)
+                    }
+                }
+            }
+            LOOP_ARRAY => {
+                // `v2::spec::op_loop_array`: counter b1, block b1 + 1, end
+                // b1 + 2, array b1 + 3.
+                let n = self.byte(bci + 3);
+                if n < 1 { return Err(StackRange); }
+                let (vc, vb, ve, va) = (self.at2(n)?, self.at2(n + 1)?, self.at2(n + 2)?, self.at2(n + 3)?);
+                let element = match (vc, ve, va) {
+                    (Value::Smi(i), Value::Smi(e), Value::Obj(id)) if 0 <= i && i < e && id < self.s.heap.len() => {
+                        match &self.s.heap[id].body {
+                            ExecBody::Array(elems) if (i as u64) < elems.len() as u64 => Some((i, elems[i as usize])),
+                            _ => None,
+                        }
+                    }
+                    _ => None,
+                };
+                match element {
+                    Some((i, v)) => {
+                        let target = self.branch_target(bci as i64 - w1 as i64)?;
+                        self.put(n, Value::Smi(i + 1));
+                        self.drop2(1)?;
+                        self.s.stack.push(vb);
+                        self.s.stack.push(v);
+                        self.s.bci = target;
+                        Ok(Step::Next)
+                    }
+                    None => {
+                        self.drop2(1)?;
+                        self.next2(len)
+                    }
+                }
+            }
             _ => Err(BadInstruction),
         }
     }

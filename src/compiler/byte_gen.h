@@ -83,6 +83,8 @@ class ByteGen : private ir::Visitor {
   void terminate_body();
   // Format 2: the intrinsics are generated as bytecode loops or not at all.
   void generate_intrinsic_v2(ir::PrimitiveInvocation* node);
+  // Proposal (format note 19): `find-body_` with HASH_FIND.
+  void generate_hash_find_v2();
 
   void update_absolute_positions(int absolute_entry_bci,
                                  const List<AbsoluteUse*>& uses,

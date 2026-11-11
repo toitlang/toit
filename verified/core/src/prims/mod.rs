@@ -343,18 +343,14 @@ pub proof fn lemma_array_at_put_refined(ap: Program2, vs: Seq<Value>, h: Seq<Hea
     }
 }
 
-/// The dispatch table of the core module.
+/// The family of core primitive `i` that has a Rust port (1 integers, 2
+/// arrays, 3 blobs, 4 floats; 0: none). The VM masks the primitives
+/// without a port out of the core arities (`toit_v2_core_ported`), so that
+/// their PRIMITIVE goes to C++ directly.
 #[inline(always)]
-pub fn dispatch(index: u16, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<Value>))
-    requires
-        heap_inv(c.p, old(heap)),
-        args_rel(a, old(heap)),
-    ensures
-        prim_post(c.p, old(heap), final(heap), r.0, r.1@),
-        contract(c.p, index as int, a, old(heap), final(heap), r.0, r.1@),
-        (index == 115 || index == 116) ==> r.0 is NotPorted,
+pub fn family(i: usize) -> (f: u8)
+    ensures (i == 115 || i == 116) ==> f == 0,
 {
-    let i = index as usize;
     match i {
         ix::SMI_ADD
             | ix::SMI_SUBTRACT
@@ -395,7 +391,7 @@ pub fn dispatch(index: u16, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutc
             | ix::COUNT_LEADING_ZEROS
             | ix::POPCOUNT
             | ix::OBJECT_CLASS_ID
-            => ints::dispatch(i, a, heap, c),
+            => 1,
         ix::ARRAY_LENGTH
             | ix::ARRAY_AT
             | ix::ARRAY_AT_PUT
@@ -404,7 +400,7 @@ pub fn dispatch(index: u16, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutc
             | ix::ARRAY_REPLACE
             | ix::LIST_ADD
             | ix::REBUILD_HASH_INDEX
-            => array::dispatch(i, a, heap, c),
+            => 2,
         ix::BYTE_ARRAY_IS_RAW_BYTES
             | ix::BYTE_ARRAY_LENGTH
             | ix::STRING_LENGTH
@@ -432,7 +428,7 @@ pub fn dispatch(index: u16, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutc
             | ix::READ_UINT_LITTLE_ENDIAN | ix::PUT_UINT_BIG_ENDIAN | ix::PUT_UINT_LITTLE_ENDIAN
             | ix::PUT_FLOAT_64_LITTLE_ENDIAN | ix::PUT_FLOAT_32_LITTLE_ENDIAN
             | ix::INT_VECTOR_EQUALS | ix::STRING_FROM_RUNE
-            => blob::dispatch(i, a, heap, c),
+            => 3,
         ix::FLOAT_UNARY_MINUS
             | ix::FLOAT_SQRT
             | ix::FLOAT_CEIL
@@ -459,7 +455,28 @@ pub fn dispatch(index: u16, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutc
             | ix::FLOAT_EQUALS
             | ix::COMPARE_TO
             | ix::MIN_SPECIAL_COMPARE_TO
-            => float::dispatch(i, a, heap, c),
+            => 4,
+        _ => 0,
+    }
+}
+
+/// The dispatch table of the core module.
+#[inline(always)]
+pub fn dispatch(index: u16, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<Value>))
+    requires
+        heap_inv(c.p, old(heap)),
+        args_rel(a, old(heap)),
+    ensures
+        prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+        contract(c.p, index as int, a, old(heap), final(heap), r.0, r.1@),
+        (index == 115 || index == 116) ==> r.0 is NotPorted,
+{
+    let i = index as usize;
+    match family(i) {
+        1 => ints::dispatch(i, a, heap, c),
+        2 => array::dispatch(i, a, heap, c),
+        3 => blob::dispatch(i, a, heap, c),
+        4 => float::dispatch(i, a, heap, c),
         _ => (PrimOutcome::NotPorted, Ghost(Value::Smi(0))),
     }
 }

@@ -159,7 +159,7 @@ fn method_entries(p: &VProgram, g: &XGlobal, m: usize, maps: &XMaps, trusted: bo
             }
         };
         let bci = entry + off;
-        let op = p.bytecodes[bci];
+        let op = exec_base_op(p.bytecodes[bci]);
         if op >= OPCODE_COUNT2 || OPCODE_LENGTHS2[op as usize] as usize > end - bci {
             prev = placed;
             off += 1;

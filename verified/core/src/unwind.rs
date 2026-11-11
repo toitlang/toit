@@ -291,6 +291,7 @@ impl Machine {
             r == Ctl::Next ==> final(self).refines(&env.p)
                 && sp::enter_finally(env.p.ap@, old(self).g@, old(self).g@.tries.last(), Some(gu))
                     == Outcome2::Next(final(self).g@),
+            final(self).len == old(self).len,
     {
         let p = &env.p;
         let ghost ap = p.ap@;
@@ -401,6 +402,7 @@ impl Machine {
             final(self).g@ == sp::pop_frame(old(self).g@),
             shape_ok(p, final(self).g@),
             final(self).addr() == old(self).addr(),
+            final(self).len == old(self).len,
     {
         let ghost m0 = *self;
         let ghost g0 = self.g@;
@@ -468,6 +470,7 @@ impl Machine {
             !(sp::unwind(env.p.ap@, old(self).g@, gu) is Stuck),
         ensures
             matches(&env.p, sp::unwind(env.p.ap@, old(self).g@, gu), *final(self), r),
+            final(self).len == old(self).len,
     {
         let p = &env.p;
         let ghost ap = p.ap@;
@@ -485,6 +488,7 @@ impl Machine {
                 o == sp::unwind(ap, old(self).g@, gu),
                 p == (&env.p),
                 ap == p.ap@,
+                self.len == old(self).len,
             decreases self.g@.frames.len(),
         {
             let ghost g = self.g@;
@@ -576,8 +580,9 @@ pub open spec fn unwind_ready(p: &Program, m0: Machine, m1: Machine, u: Unw, gu:
 
 pub open spec fn prep_post(p: &Program, m0: Machine, m1: Machine, r: (Prep, Ghost<Unwind>)) -> bool {
     match r.0 {
-        Prep::Done(c) => step_post(p, m0, m1, c),
-        Prep::Unwind(u) => unwind_ready(p, m0, m1, u, r.1@),
+        Prep::Done(c) => step_post(p, m0, m1, c)
+            && (c == Ctl::Next ==> frames_prefix(m0.g@, m1.g@) && m1.len == m0.len),
+        Prep::Unwind(u) => unwind_ready(p, m0, m1, u, r.1@) && m1.g@.frames == m0.g@.frames && m1.len == m0.len,
     }
 }
 
@@ -594,7 +599,9 @@ pub fn op_unwinding(m: &mut Machine, env: &Env, bci: usize, opcode: u8, hd: usiz
             && sp::step(env.p.ap@, old(m).g@) == sp::op_non_local_branch(env.p.ap@, old(m).g@, hd as int, off as int),
         opcode == 99 ==> bci + 1 < 0x1000_0000
             && sp::step(env.p.ap@, old(m).g@) == sp::op_unwind(env.p.ap@, old(m).g@),
-    ensures step_post(&env.p, *old(m), *final(m), r),
+    ensures
+        step_post(&env.p, *old(m), *final(m), r),
+        r == Ctl::Next ==> frames_prefix(old(m).g@, final(m).g@) && final(m).len == old(m).len,
 {
     let ghost m0 = *m;
     let (pr, gu) = if opcode == 90 {
@@ -609,8 +616,17 @@ pub fn op_unwinding(m: &mut Machine, env: &Env, bci: usize, opcode: u8, hd: usiz
     match pr {
         Prep::Done(c) => c,
         Prep::Unwind(u) => {
+            let ghost m1 = *m;
             let r = m.do_unwind(env, u, gu);
-            proof { lemma_matches(&env.p, m0, *m, r); }
+            proof {
+                lemma_matches(&env.p, m0, *m, r);
+                lemma_unwind_prefix(env.p.ap@, m1.g@, gu@);
+                if r == Ctl::Next {
+                    assert forall|i: int| 0 <= i < m.g@.frames.len() implies #[trigger] m.g@.frames[i] == m0.g@.frames[i] by {
+                        assert(m.g@.frames[i] == m1.g@.frames[i]);
+                    }
+                }
+            }
             r
         },
     }
@@ -909,6 +925,66 @@ pub fn op_try(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: Ctl)
     let r = m.push_call(env, t, bci + 1);
     proof { lemma_matches(p, m0, *m, r); }
     r
+}
+
+// ---------------------------------------------------------------------------
+// The frames after an unwinding.
+
+/// The frames of `g1` are the first frames of `g0`.
+pub open spec fn frames_prefix(g0: State2, g1: State2) -> bool {
+    &&& g1.frames.len() <= g0.frames.len()
+    &&& forall|i: int| 0 <= i < g1.frames.len() ==> #[trigger] g1.frames[i] == g0.frames[i]
+}
+
+/// An unwinding only pops frames: the state it continues in (entering
+/// finally code, completing a non-local return or branch) has the first
+/// frames of the state it starts from (`room::local_room` needs no rescan).
+pub proof fn lemma_unwind_prefix(ap: Program2, s: State2, u: Unwind)
+    ensures sp::unwind(ap, s, u) is Next ==> frames_prefix(s, sp::unwind(ap, s, u)->Next_0),
+    decreases s.frames.len(),
+{
+    if s.frames.len() > 0 && !sp::has_handler(s) && !(sp::top(s).base as int > s.stack.len()) {
+        let s1 = sp::pop_frame(s);
+        lemma_unwind_prefix(ap, s1, u);
+        if sp::unwind(ap, s1, u) is Next {
+            let g = sp::unwind(ap, s1, u)->Next_0;
+            assert forall|i: int| 0 <= i < g.frames.len() implies #[trigger] g.frames[i] == s.frames[i] by {
+                assert(g.frames[i] == s1.frames[i]);
+                assert(s1.frames[i] == s.frames[i]);
+            }
+        }
+        match u {
+            Unwind::Return(f, v) => {
+                if f as int == sp::top_index(s) && s.frames.len() > 1 {
+                    let r1 = State2 {
+                        stack: s.stack.subrange(0, sp::top(s).base as int).push(v),
+                        frames: s.frames.drop_last(),
+                        fins: sp::fins_popped(s),
+                        bci: sp::top(s).ret,
+                        ..s
+                    };
+                    assert forall|i: int| 0 <= i < r1.frames.len() implies #[trigger] r1.frames[i] == s.frames[i] by {}
+                }
+            },
+            _ => {},
+        }
+    }
+}
+
+/// A return pops the top frame (and may enter the caller's finally code).
+pub proof fn lemma_return_prefix(ap: Program2, s: State2, v: Value)
+    ensures sp::return_from(ap, s, v) is Next ==> frames_prefix(s, sp::return_from(ap, s, v)->Next_0),
+{
+    if s.frames.len() > 1 && !sp::has_handler(s) && !(sp::top(s).base as int > s.stack.len()) {
+        let r1 = State2 {
+            stack: s.stack.subrange(0, sp::top(s).base as int).push(v),
+            frames: s.frames.drop_last(),
+            fins: sp::fins_popped(s),
+            bci: sp::top(s).ret,
+            ..s
+        };
+        assert forall|i: int| 0 <= i < r1.frames.len() implies #[trigger] r1.frames[i] == s.frames[i] by {}
+    }
 }
 
 // ---------------------------------------------------------------------------

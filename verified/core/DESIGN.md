@@ -24,8 +24,12 @@ OBLIGATIONS.md. Trusted base: TRUSTED.md and verified/TRUSTED.toml.
   this section's `toit_v2_program` describes) and hand that table to the
   process group; a rejected program never runs (`VERIFICATION_FAILED`,
   the reason on stderr). Trusted format-2 programs are verified only with
-  `-Xverify`/`TOIT_VERIFY` (trusted rules); unverified, they rely on the
-  core's run-time checks of every stuck state.
+  `-Xverify`/`TOIT_VERIFY` (trusted rules) or in debug builds.
+  Experiment (EXPERIMENT-trusted.md): unverified, they too run on the
+  verified loop, with the trusted token (`TOIT_V2_TRUSTED`) and in the
+  unchecked mode (`Program2::unchecked`). `TOIT_TRUSTED_CHECKED_LOOP=1`
+  puts them back on the checked loop, where the core's run-time checks
+  catch every stuck state.
 - `Interpreter::run` and `prepare_process` hand format-2 processes to
   `run_v2` / `prepare_process_v2`; the scheduler is unchanged (it calls
   `Interpreter::run` as before). `load_stack`/`store_stack` are no-ops for
@@ -140,12 +144,14 @@ registers (`regs::Regs`), the rest of the machine behind a pointer.
   returns that would move records fail their existing check (`free >=
   (watermark | need)`, `bot < fr`, `view::Cursor::lt`, which is also the
   bottom-frame test) and run on the machine; the instructions inside a
-  frame do not look at the records. With records the room is the top
-  frame's only (`room::room_ok`): after a stack overflow, at the maximal
-  stack length, every frame's room with the records counted may not exist
-  while format 1 still runs the finally code; `resume` checks the top
-  frame after every machine path and every frame once the records are
-  gone. A call keeps one finally record of slack (`ensure_room`, the
+  frame do not look at the records. The room (`room::room_ok`) is every
+  frame's without the records and the top frame's with them: after a stack
+  overflow, at the maximal stack length, every frame's room with the
+  records counted may not exist while format 1 still runs the finally
+  code. After a machine path that kept the frames below the top (a call, a
+  return, an unwinding) `step::resume_kept` checks the top frame only;
+  `resume` scans every frame after the others (branch
+  experiment/trusted-fast). A call keeps one finally record of slack (`ensure_room`, the
   gate's `need`) so that a frame can always enter its finally code.
 - Preemption at calls is merged into the room check, as the C++
   interpreter merges it into its stack-limit check: a call takes the fast
@@ -228,8 +234,8 @@ array index:  0 ........... ftop ........ rtop        top ............. len-1
   the global maximal height (the verifier's bound on every frame's height,
   `instr_ok`) and leave `STACK_RESERVE` words above the frame records up to
   `i` and all finally records:
-  `base_i + arity_i + max_height + 5 (i + 1) + 5 |fins| + 8 <= len` (while
-  there are finally records, for the top frame only: section 2a). A call
+  `base_i + arity_i + max_height + 5 (i + 1) + 8 <= len`, and for the top
+  frame also with `+ 5 |fins|` (section 2a). A call
   checks once (the line above) and so establishes the new frame's room;
   returns and pops keep it; the top frame then always has at least
   `STACK_RESERVE` free words (`room::lemma_room_top`), so no push is
@@ -238,8 +244,7 @@ array index:  0 ........... ftop ........ rtop        top ............. len-1
   enough. What breaks the room: a GC that shrank the stack (the shrink in
   `Stack::roots_do` keeps room only above the current top), a task switch,
   and an unwinding entering finally code (one more record). After those,
-  `room::ensure_room_all` scans the frame records (with finally records,
-  the top frame's) and grows the stack if needed (a GC point that keeps
+  `room::ensure_room_all` scans the frame records and grows the stack if needed (a GC point that keeps
   the state; failing growth stops with `LIMIT`, out of memory); after a GC
   point a register handler only scans when the length shrank
   (`room::regain`), and `step::resume` checks after every path on the

@@ -78,6 +78,10 @@ pub struct VProgram<'a> {
     pub builtin: &'a [u16],
     pub roots: &'a [Value],
     pub literals: &'a [Value],
+    /// The unchecked mode (`Program2::unchecked`): the unchecked twins of
+    /// the field accesses are allowed (trusted programs only, format note
+    /// 20).
+    pub unchecked: bool,
 }
 
 pub open spec fn vview(p: &VProgram) -> Program2 {
@@ -94,6 +98,7 @@ pub open spec fn vview(p: &VProgram) -> Program2 {
         builtin: p.builtin@,
         roots: p.roots@,
         literals: p.literals@,
+        unchecked: p.unchecked,
     }
 }
 
@@ -179,6 +184,7 @@ pub fn vprogram_of<'a>(e: &'a ExecProgram, methods: &'a Vec<VMethod>, h: u16) ->
         builtin: e.builtin.as_slice(),
         roots: e.roots.as_slice(),
         literals: e.literals.as_slice(),
+        unchecked: false,
     };
     proof { assert(vview(&r).methods =~= pview2(e).methods); }
     r

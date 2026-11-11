@@ -63,7 +63,9 @@ fn opcode_table_v2_matches_snapshot_toit() {
         assert_eq!(OPCODE_NAMES2[i], name, "name of format-2 opcode {}", i);
         assert_eq!(OPCODE_LENGTHS2[i], *length, "length of {}", name);
         assert_eq!(exec_opcode_length2(i as u8), *length as usize, "spec length of {}", name);
-        let shared = !(i == STORE_FIELD_THIS as usize || i == TRY as usize || i == LOAD_FIELD_THIS as usize);
+        // The proposal's opcodes (format note 19) reuse the numbers of the format-1 intrinsics.
+        let shared = !(i == STORE_FIELD_THIS as usize || i == TRY as usize || i == LOAD_FIELD_THIS as usize
+            || i >= LOOP_REPEAT as usize);
         if shared {
             assert_eq!(toit_spec::bytecodes::OPCODE_NAMES[i], name, "format-1 name of opcode {}", i);
         }

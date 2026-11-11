@@ -149,6 +149,62 @@ MHz (the estimate above), the free heap of a running system when the
 installer runs, the verified core's speed from flash, the IRAM fix's
 effect on format-1 speed (the shared slow paths are cold).
 
+## Trusted containers on the core, fast (branch experiment/trusted-fast, 2026-11-11)
+
+Experiment, not for merging without the owner's decision. Results:
+EXPERIMENT-trusted.md, "Follow-up". Artifacts:
+/home/flo/work/opentoit-sandbox-artifacts/trusted-fast.
+
+- M0 (ea831741): `experiment/trusted-on-core` + `sandbox-integration`
+  (time_info, provider policy, UTF-8 literal check); no conflicts.
+- M1 (71941878): register fast paths for NON_LOCAL_RETURN/BRANCH, TRY,
+  UNWIND (null token) and the return into a TRY (rnonlocal.rs). RPC 1.81
+  -> 1.41, yaml 1.50 -> 1.26, json 1.34 -> 1.25 times C++.
+- M2 (4b293c42): inline bump allocation (new trusted item) and the mask
+  of unported core primitives. Allocation 258 -> 175, double boxing 215
+  -> 100, C++ primitive call 293 -> 245 instructions; strings 1.11.
+- M3 (814d6db7): unchecked twins instead of the mode flag (format note
+  20). Checked richards/deltablue/pystone 1.139/1.242/1.132, trusted
+  1.053/1.170/1.064.
+- M4 (76231ced): room facts (`room_ok` without the records for every
+  frame, `resume_kept`) and the UNWIND resume of a non-local return or
+  branch. RPC 1.30, json 1.20, yaml 1.20.
+- M5 (10ae6b02): the range of `needed` in the stack-growth contract on both
+  sides (review finding); two proofs stabilized for `cargo verus`. Gate
+  green at every milestone; final heavy gates in EXPERIMENT-trusted.md
+  (f1 1197/1200, format 2 1196/1200, untrusted suite 280 + 2 known,
+  primitive differential 10M identical, compare_trace clean, 32-bit
+  sandbox 123/123, ASan fuzz 30 min 0 crashes).
+
+## Trusted containers on the core (branch experiment/trusted-on-core, 2026-11-11)
+
+Experiment, not for merging without the owner's decision. Results:
+EXPERIMENT-trusted.md. Artifacts:
+/home/flo/work/opentoit-sandbox-artifacts/trusted-on-core.
+
+- M0 (248837ae): `proposal/builtins` merged with `sandbox-integration`. In
+  check.rs the built-ins' rules were ported to the fallible, panic-free
+  style. Gate green (spec 917, core 846 at both widths).
+- M1 (67d7003e): trusted format-2 programs run on the verified loop
+  (`TOIT_V2_TRUSTED`, `Accepted::trusted_program`), and
+  `TOIT_SYSTEM_FORMAT2` builds the system snapshots in format 2. Hello
+  world runs with a format-2 system process. The whole suite in format 2
+  passes 1192/1197 (format 1: 1194/1197).
+- M2 (f88ecf1d): cheap C++ calls. `toit_v2_primitive` and the heap epoch
+  complete PRIMITIVE, ALLOCATE and double boxing on the registers when
+  nothing moved. A C++ primitive call costs 293 instructions instead of
+  676 (the C++ interpreter: 68).
+- M2 also adds the unchecked mode of trusted programs
+  (`Program2::unchecked`, `step::trusted_field_accesses`): richards,
+  deltablue and pystone run at 1.11 / 1.21 / 1.10 times C++. Gate green
+  (spec 917, core 850, both widths, audit, sandbox ctests 121/121). Suite
+  again 1192/1197.
+- Open items, measured: the machine slow paths and the room rescan cost
+  13-22% of yaml and RPC; an unsound prototype without the rescan reached
+  1.17-1.43x on system workloads. Also open: inline allocation, and twin
+  opcodes instead of the mode flag (the flag costs +2.2% on richards for
+  checked code). EXPERIMENT-trusted.md has the list for "format 2 only".
+
 ## Panic-free device library, primitive size (branch device/panic-free, 2026-11-11)
 
 Size and robustness work on the device-side Rust code (verified/vmverify/
