@@ -385,7 +385,7 @@ PRIMITIVE(byte_array_convert_to_string) {
 PRIMITIVE(blob_index_of) {
   ARGS(Blob, bytes, int, byte, word, from, word, to);
   if (!(0 <= from && from <= to && to <= bytes.length())) FAIL(OUT_OF_BOUNDS);
-#if defined(__x86_64__) && !defined(__SANITIZE_THREAD__) && !defined(TOIT_ASAN)
+#if defined(__x86_64__) && !defined(__SANITIZE_THREAD__) && !defined(__SANITIZE_ADDRESS__) && !defined(TOIT_ASAN)
   const uint8* address = bytes.address();
   // Algorithm from https://github.com/erikcorry/struhchuh.
   // Search for "*" using only aligned SSE2 128 bit loads. This may load data
@@ -1461,6 +1461,16 @@ PRIMITIVE(string_rune_count) {
   const uword WORD_MASK = WORD_SIZE - 1;
   const uint8* address = bytes.address();
   word len = bytes.length();
+#if defined(TOIT_ASAN) || defined(__SANITIZE_ADDRESS__)
+  // The word-sized loads below read the bytes before and after the blob in
+  // the same aligned word. They can't fault, but AddressSanitizer rejects
+  // them (an external byte array is a malloced block of any size), so
+  // sanitizer builds count byte by byte.
+  for (word i = 0; i < len; i++) {
+    if ((address[i] & 0xc0) != 0x80) count++;
+  }
+  return Smi::from(count);
+#endif
   // This algorithm counts the runes in word-sized chunks of UTF-8.
   // We have to ensure that the memory reads are word aligned to avoid memory
   // faults.
