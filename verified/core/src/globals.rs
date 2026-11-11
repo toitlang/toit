@@ -60,7 +60,7 @@ verus! {
 /// The operands of the dynamic global instructions are values: the index
 /// of LOAD_GLOBAL_VAR_DYNAMIC (slot 0), the index and the value of
 /// STORE_GLOBAL_VAR_DYNAMIC (slots 1 and 0).
-proof fn lemma_dynamic_operands(p: &Program, g: State2)
+pub proof fn lemma_dynamic_operands(p: &Program, g: State2)
     requires
         accepts(p.ap@, p.cert@, p.trusted@), wf(p.ap@, p.cert@, g),
         cur_op(p.ap@, g) == 34 || cur_op(p.ap@, g) == 37,
@@ -86,7 +86,7 @@ impl Machine {
     #[inline(always)]
     pub fn is_lazy_word(&self, p: &Program, w: usize, Ghost(v): Ghost<Value>) -> (r: bool)
         requires
-            self.refines(p),
+            self.hrefines(p),
             w == enc(self.addr(), v),
             encodable(self.addr(), v),
         ensures r == sp::is_lazy(p.ap@, self.g@, v),
@@ -109,7 +109,7 @@ impl Machine {
     #[inline(always)]
     pub fn dyn_global_index(&self, p: &Program, w: usize, Ghost(v): Ghost<Value>) -> (r: Option<usize>)
         requires
-            self.refines(p),
+            self.hrefines(p),
             w == enc(self.addr(), v),
             encodable(self.addr(), v),
             v is Smi || v is Obj,

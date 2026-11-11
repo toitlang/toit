@@ -1412,6 +1412,60 @@ pub fn step_r(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
             proof { crate::ops::lemma_step_op(p, g); }
             return crate::rops::op_identical(m, r, env, bci, 96);
         },
+        5 => {
+            let k = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_load_outer(g, k as int)) by { reveal(sp::step); } }
+            crate::rblocks::op_load_outer(m, r, p, k)
+        },
+        6 => {
+            let k = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_store_outer(g, k as int)) by { reveal(sp::step); } }
+            crate::rblocks::op_store_outer(m, r, p, k)
+        },
+        38 => {
+            let k = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_load_block(g, k as int)) by { reveal(sp::step); } }
+            crate::rblocks::op_load_block(m, r, p, k)
+        },
+        39 => {
+            let k = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_load_outer_block(g, k as int)) by { reveal(sp::step); } }
+            crate::rblocks::op_load_outer_block(m, r, p, k)
+        },
+        55 => {
+            let k = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_invoke_block(ap, g, k as int)) by { reveal(sp::step); } }
+            return crate::rblocks::op_invoke_block(m, r, env, bci, opcode, k);
+        },
+        54 => {
+            let d = code_u16(p, bci + 1);
+            proof {
+                assert(sp::step(ap, g) == sp::op_invoke_static_tail(ap, g, d as int)) by { reveal(sp::step); }
+            }
+            return crate::rblocks::op_invoke_static_tail(m, r, env, bci, opcode, d);
+        },
+        57 => {
+            proof { assert(sp::step(ap, g) == sp::op_invoke_initializer_tail(ap, g)) by { reveal(sp::step); } }
+            return crate::rblocks::op_invoke_initializer_tail(m, r, env, bci, opcode);
+        },
+        32 => {
+            let i = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_load_global_lazy(ap, g, i as int, 2)) by { reveal(sp::step); } }
+            return crate::rblocks::op_load_global_lazy(m, r, env, bci, opcode, i, 2);
+        },
+        33 => {
+            let i = code_u16(p, bci + 1);
+            proof { assert(sp::step(ap, g) == sp::op_load_global_lazy(ap, g, i as int, 3)) by { reveal(sp::step); } }
+            return crate::rblocks::op_load_global_lazy(m, r, env, bci, opcode, i, 3);
+        },
+        34 => {
+            proof { assert(sp::step(ap, g) == sp::op_load_global_dynamic(ap, g)) by { reveal(sp::step); } }
+            return crate::rblocks::op_load_global_dynamic(m, r, env, bci, opcode);
+        },
+        37 => {
+            proof { assert(sp::step(ap, g) == sp::op_store_global_dynamic(ap, g)) by { reveal(sp::step); } }
+            return crate::rblocks::op_store_global_dynamic(m, r, env, bci, opcode);
+        },
         _ => {
             return bridge_r(m, r, env);
         },
