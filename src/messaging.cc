@@ -500,14 +500,18 @@ MessageDecoder::MessageDecoder(Process* process,
     , format_(format) {}
 
 bool MessageDecoder::decode_process_message(const uint8* buffer, int* value) {
+  // There is no process to allocate in and no program to take null, true and
+  // false from. Any process can send a TERMINATED system message with any
+  // content, so we only read an integer in the range of 'int' and refuse
+  // everything else without decoding it.
   MessageDecoder decoder(null, buffer);
-  // TODO(kasper): Make this more robust. We don't know the content.
-  Object* object = decoder.decode();
-  if (is_smi(object)) {
-    *value = Smi::value(object);
-    return true;
-  }
-  return false;
+  int tag = decoder.read_uint8();
+  if (tag != TAG_POSITIVE_SMI && tag != TAG_NEGATIVE_SMI) return false;
+  uword magnitude = decoder.read_cardinal();
+  if (!decoder.success() || magnitude > INT_MAX) return false;
+  int result = static_cast<int>(magnitude);
+  *value = (tag == TAG_POSITIVE_SMI) ? result : -result;
+  return true;
 }
 
 void MessageDecoder::register_external_allocations() {
