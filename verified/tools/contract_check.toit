@@ -26,6 +26,7 @@ Exit status 1 on any difference between the table and a source.
 
 import cli
 import fs
+import host.directory
 import host.file
 import system
 import .toml
@@ -197,4 +198,105 @@ run root/string:
       print "FAIL  contract $name:"
       problems.do: print "    $it"
   gaps.do: print "gap   $it"
+  failures += check-assumptions root (table.get "assumption" --if-absent=: [])
   exit (failures == 0 ? 0 : 1)
+
+/**
+The lemma prototypes (`lemma ... NAME(...);`, no body) of the VeriFast
+  files under $dir: a map from the file (relative to $dir) to the names.
+*/
+lemma-prototypes dir/string --suffix/string -> Map:
+  result := {:}
+  (files-under dir).do: | path/string |
+    if path.ends-with suffix:
+      names := []
+      ((file.read-contents "$dir/$path").to-string.split "\n").do: | line/string |
+        l := line.trim
+        if (l.starts-with "lemma ") or (l.starts-with "lemma_auto "):
+          paren := l.index-of "("
+          if paren > 0 and l.ends-with ");":
+            names.add (l[..paren].split " ").last
+      if not names.is-empty: result[path] = names
+  return result
+
+/** The lemmas with a body (`lemma ... NAME(...)` not ending with `;`) of the C files under $dir. */
+proved-lemmas dir/string -> Set:
+  result := {}
+  (files-under dir).do: | path/string |
+    if path.ends-with ".c" or path.ends-with ".gh":
+      ((file.read-contents "$dir/$path").to-string.split "\n").do: | line/string |
+        l := line.trim
+        if ((l.starts-with "lemma ") or (l.starts-with "lemma_auto ")) and not l.ends-with ";":
+          paren := l.index-of "("
+          if paren > 0: result.add (l[..paren].split " ").last
+  return result
+
+files-under dir/string -> List:
+  result := []
+  stream := directory.DirectoryStream dir
+  while entry := stream.next:
+    if file.is-directory "$dir/$entry":
+      (files-under "$dir/$entry").do: result.add "$entry/$it"
+    else:
+      result.add entry
+  stream.close
+  return result
+
+/**
+Checks the [[assumption]] table: each named lemma is a prototype (no
+  body) of its rendering with the contract of the table. Every bodiless
+  lemma of a rendering (`*.gen.c`) must be listed; every lemma prototype
+  of a header must be proved in some C or ghost file of the matrix.
+*/
+check-assumptions root/string assumptions/List -> int:
+  failures := 0
+  dir := "$root/cxx/annotated"
+  listed := {}
+  assumptions.do: | a/Map |
+    listed.add a["name"]
+    problems := []
+    e := catch:
+      lines := (file.read-contents "$root/$a["rendering"]").to-string.split "\n"
+      at := -1
+      lines.size.repeat: if at < 0 and (lines[it].trim.starts-with "lemma ") and (lines[it].contains " $a["name"]("): at = it
+      if at < 0: throw "no lemma $a["name"]"
+      if not lines[at].trim.ends-with ";": problems.add "lemma $a["name"] has a body: not an assumption"
+      // The clauses: `requires ...;` then `ensures ...;`, each possibly
+      // over several lines.
+      text := []
+      i := at + 1
+      ends := 0
+      while i < lines.size and ends < 2:
+        text.add lines[i]
+        if lines[i].trim.ends-with ";": ends++
+        i++
+      while i < lines.size and lines[i].trim == "": i++
+      if i < lines.size and lines[i].trim.starts-with "{": problems.add "lemma $a["name"] has a body: not an assumption"
+      clauses := normalize (text.join " ")
+      ["requires", "ensures"].do: | kind |
+        k := clauses.index-of "$kind "
+        if k < 0: throw "no $kind"
+        stop := clauses.index-of ";" k
+        have := split-top clauses[k + kind.size + 1..stop] "&*&"
+        want := split-top a[kind] "&*&"
+        if not (same want have):
+          problems.add "$kind of $a["name"]:\n      table:  $(want.join " &*& ")\n      source: $(have.join " &*& ")"
+    if e: problems.add "reading $a["rendering"]: $e"
+    if problems.is-empty:
+      print "ok    assumption $a["name"] ($a["rendering"])"
+    else:
+      failures++
+      print "FAIL  assumption $a["name"]:"
+      problems.do: print "    $it"
+  (lemma-prototypes dir --suffix=".gen.c").do: | path/string names/List |
+    names.do: | name/string |
+      if not listed.contains name:
+        failures++
+        print "FAIL  unlisted assumption: bodiless lemma $name in cxx/annotated/$path (CONTRACTS.toml [[assumption]])"
+  proved := proved-lemmas dir
+  (lemma-prototypes dir --suffix=".h").do: | path/string names/List |
+    names.do: | name/string |
+      if not proved.contains name:
+        failures++
+        print "FAIL  unproved lemma prototype $name in cxx/annotated/$path"
+  return failures

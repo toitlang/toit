@@ -25,6 +25,7 @@ typedef intptr_t word;
 typedef uintptr_t uword;
 typedef unsigned char uint8;
 typedef unsigned short uint16;
+typedef unsigned int uint32;
 typedef long long int64;
 typedef unsigned long long uint64;
 typedef int TypeTag;

@@ -82,4 +82,25 @@ inline word use_inner(word x) {
   return inner.v();
 }
 
+// Rule: `a op= b` computed in another type than a's is
+// `a = (A)((C)a op b)` (here an unsigned sum for a word; sizeof's type is
+// Clang's `__size_t`, written `size_t`).
+inline word advance(word cursor) {
+  cursor += sizeof(uint32);
+  return cursor;
+}
+
+// Rule: `@modular-arguments C::C`: the integral conversion of a
+// constructor argument to an unsigned parameter is the modular one.
+class Tagged {
+ public:
+  explicit Tagged(uword tag) : tag_(tag) {}
+  uword tag_;
+};
+
+inline uword negative_tag(word offset) {
+  Tagged t(-100 + offset);
+  return t.tag_;
+}
+
 }  // namespace toit
