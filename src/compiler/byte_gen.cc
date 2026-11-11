@@ -1194,6 +1194,25 @@ void ByteGen::generate_intrinsic_v2(PrimitiveInvocation* node) {
   int block_parameter = is_repeat ? 1 : 2;
   Label loop, done;
   __ load_integer(0);  // The index, local 0.
+  if (is_repeat) {
+    // Proposal (format note 19): the fast loop with the LOOP_REPEAT step.
+    // The frame is [this, block | i, result]: the step's counter is slot 1,
+    // the block slot 2, the limit (this) slot 3. The step pops the previous
+    // result and either branches back to the INVOKE_BLOCK with the block and
+    // the index pushed, or falls through to the ordinary loop below, which
+    // re-checks everything (and returns at once when the count is reached).
+    Label body, test;
+    __ load_null();  // The "previous block result" of the first step.
+    __ branch(Emitter::UNCONDITIONAL, &test);
+    __ forget(1);
+    __ remember(1, ExpressionStack::BLOCK);
+    __ remember(1);
+    __ bind(&body);
+    // A block that takes no argument ignores the extra one.
+    __ invoke_block(2);
+    __ bind(&test);
+    __ loop_repeat(&body, 1);
+  }
   __ bind(&loop);
   __ load_local(0);
   __ load_parameter(end_parameter, ExpressionStack::OBJECT);

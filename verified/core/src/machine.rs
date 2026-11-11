@@ -130,10 +130,12 @@ pub mod op {
     pub const LOAD_FIELD_THIS: u8 = 98;
     pub const UNWIND: u8 = 99;
     pub const HALT: u8 = 100;
+    /// Proposal (verified/spec/format/19-builtins-proposal.md).
+    pub const LOOP_REPEAT: u8 = 101;
 }
 
 /// Instruction lengths in opcode order (OPCODE_LENGTHS2).
-pub const OPCODE_LENGTHS: [u8; 101] = [
+pub const OPCODE_LENGTHS: [u8; 102] = [
     2, 3, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 3, 2,
     1, 1, 1, 1, 1, 1,
     2, 3, 1, 1, 2, 1, 2, 3, 5, 5,
@@ -146,6 +148,7 @@ pub const OPCODE_LENGTHS: [u8; 101] = [
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3,
     3, 3, 3, 3, 3, 3, 3, 3,
     4, 1, 1, 1, 1, 2, 6, 1, 1, 2, 1, 2,
+    4,
 ];
 
 pub fn opcode_length(op: u8) -> usize {
@@ -1540,7 +1543,8 @@ impl Machine {
             op::LOAD_FIELD_THIS => self.op_load_field_this(p, b1!()),
             op::UNWIND => self.op_unwind(env),
             op::HALT => self.op_halt(env, b1!()),
-            // Opcodes 101..255 (the length table covers only 0..100).
+            op::LOOP_REPEAT => self.c_loop_repeat(p, bci),
+            // Opcodes 102..255 (the length table covers only 0..101).
             _ => Ctl::Stuck(stuck::BAD_INSTRUCTION),
         }
     }
@@ -2545,6 +2549,33 @@ impl Machine {
         if !self.has_slot(n) { return Ctl::Stuck(stuck::STACK_RANGE); }
         let v = self.at(n);
         self.push_next_u(v, len)
+    }
+
+    /// LOOP_REPEAT (proposal, format note 19): `spec::op_loop_repeat` with
+    /// every stuck state checked.
+    fn c_loop_repeat(&mut self, p: &Program, bci: usize) -> Ctl {
+        let n = p.code.at(bci + 3) as usize;
+        if n < 1 || !self.has_slot(n + 2) { return Ctl::Stuck(stuck::STACK_RANGE); }
+        let (c, b, l) = (self.at(n), self.at(n + 1), self.at(n + 2));
+        if !(is_smi(c) && is_smi(l) && (c as isize) < (l as isize)) {
+            self.drop(1);
+            self.bci += OPCODE_LENGTHS[op::LOOP_REPEAT as usize] as usize;
+            return Ctl::Next;
+        }
+        let d = Self::u16_at(p, bci + 1);
+        if d > bci { return Ctl::Stuck(stuck::BAD_BRANCH); }
+        let target = bci - d;
+        if self.method >= p.methods.len() { return Ctl::Stuck(stuck::BAD_BRANCH); }
+        let m = p.methods.at(self.method);
+        if !((m.entry as usize) <= target && target < (m.end as usize)) {
+            return Ctl::Stuck(stuck::BAD_BRANCH);
+        }
+        // c < l, so c + 1 is a smi: its word is c's plus 2.
+        self.put(n, c + 2);
+        self.drop(1);
+        if !self.push(b) || !self.push(c) { return Ctl::Stuck(stuck::LIMIT); }
+        self.bci = target;
+        Ctl::Next
     }
 
     #[inline(always)]

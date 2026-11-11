@@ -1879,6 +1879,48 @@ fn x_step_branches(p: &ExecProgram, s: &mut ExecState, op: u8, len: usize, _b1: 
     }
 }
 
+proof fn lemma_step_loop_repeat(p: Program2, s: State2)
+    requires instruction_ok(p, s), op_at(p, s) == LOOP_REPEAT,
+    ensures step(p, s) == op_loop_repeat(p, s, s.bci - w1_at(p, s), byte2(p, s.bci + 3), 4),
+{
+    reveal(step);
+}
+
+/// LOOP_REPEAT (proposal, format note 19).
+fn x_step_loops(p: &ExecProgram, s: &mut ExecState, op: u8, len: usize, _b1: usize, w1: usize) -> (r: ExecOutcome2)
+    requires
+        decoded(p, old(s), op, len, _b1, w1),
+        op == LOOP_REPEAT,
+    ensures matches2(step(pview2(p), view2(old(s))), r, view2(final(s))),
+{
+    proof { lemma_step_loop_repeat(pview2(p), view2(s)); }
+    let bci = s.bci;
+    let n = p.bytecodes[bci + 3] as usize;
+    if !(1 <= n && x_has_slot(s, n) && x_has_slot(s, n + 1) && x_has_slot(s, n + 2)) {
+        return ExecOutcome2::Stuck(Stuck::StackRange);
+    }
+    let vc = x_at(s, n);
+    let vb = x_at(s, n + 1);
+    let vl = x_at(s, n + 2);
+    match (vc, vl) {
+        (Value::Smi(i), Value::Smi(l)) => {
+            if i < l {
+                x_put(s, n, Value::Smi(i + 1));
+                x_drop(s, 1);
+                x_push(s, vb);
+                x_push(s, vc);
+                proof {
+                    assert(view2(s) == push(push(drop(put(view2(old(s)), n as int, smi(i + 1)), 1), at(view2(old(s)), n as int + 1)), vc));
+                }
+                return x_branch_to(p, s, bci as i64 - w1 as i64);
+            }
+        },
+        _ => {},
+    }
+    x_drop(s, 1);
+    x_next(s, len)
+}
+
 /// One step of the covered opcodes. `None`: not covered, state unchanged.
 pub fn step_verified(p: &ExecProgram, s: &mut ExecState) -> (r: Option<ExecOutcome2>)
     requires wf_exec_program2(p), wf_exec_state2(old(s)),
@@ -1936,6 +1978,8 @@ pub fn step_verified(p: &ExecProgram, s: &mut ExecState) -> (r: Option<ExecOutco
         Some(x_step_operators(p, s, op, len, b1, w1))
     } else if BRANCH <= op && op <= BRANCH_BACK_IF_NOT_NULL {
         Some(x_step_branches(p, s, op, len, b1, w1))
+    } else if op == LOOP_REPEAT {
+        Some(x_step_loops(p, s, op, len, b1, w1))
     } else {
         None
     }

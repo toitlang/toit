@@ -597,6 +597,24 @@ void Emitter::load_field_this(int n) {
   stack_.push(ExpressionStack::OBJECT);
 }
 
+void Emitter::loop_repeat(Label* body, int counter) {
+  ASSERT(is_format2());
+  ASSERT(body->is_bound());
+  // The counter is a local or temporary; the block and limit may be
+  // parameters.
+  ASSERT(1 <= counter && counter < height() && counter + 2 <= MAX_BYTECODE_VALUE);
+  // The taken step pops the top and pushes the block and the counter.
+  ASSERT(body->height() == height() + 1);
+  int position = this->position();
+  int offset = position - body->position();
+  ASSERT(0 < offset && offset <= MAX_USHORT_VALUE);
+  emit_opcode(V2_LOOP_REPEAT);
+  emit_uint16(offset);
+  emit_uint8(counter);
+  // Falling through pops the top.
+  stack_.pop(1);
+}
+
 void Emitter::store_field_this(int n) {
   ASSERT(is_format2());
   ASSERT(n >= 0 && n <= MAX_BYTECODE_VALUE);

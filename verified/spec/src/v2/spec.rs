@@ -1309,6 +1309,39 @@ pub open spec fn op_branch(p: Program2, s: State2, kind: int, target: int, len: 
     }
 }
 
+// ---------------------------------------------------------------------------
+// Loop steps (proposal, format note 19): one bounded step of a counted
+// loop whose structure stays in the bytecode. The step pops the previous
+// block result; when its fast condition holds it stores the incremented
+// counter, pushes a copy of the block slot and the block argument, and
+// branches back to the INVOKE_BLOCK; otherwise it falls through to the
+// method's ordinary loop, which re-checks everything. No calls, no heap
+// writes. Slots are counted from the top before the pop.
+
+/// The operand slots exist, above the popped result.
+pub open spec fn loop_slots_ok(s: State2, c: int, b: int, x: int, y: int) -> bool {
+    &&& 1 <= c && 1 <= b && 1 <= x && 1 <= y
+    &&& has_slot(s, c) && has_slot(s, b) && has_slot(s, x) && has_slot(s, y)
+}
+
+/// The taken branch: counter `c` becomes `i + 1`, the result is popped, the
+/// block (slot `b`) and `v` are pushed.
+pub open spec fn loop_taken(p: Program2, s: State2, c: int, b: int, i: int, v: Value, target: int) -> Outcome2 {
+    branch_to(p, push(push(drop(put(s, c, smi(i + 1)), 1), at(s, b)), v), target)
+}
+
+/// LOOP_REPEAT n: counter `c = n`, block `b = n + 1`, limit `l = n + 2`.
+pub open spec fn op_loop_repeat(p: Program2, s: State2, target: int, n: int, len: int) -> Outcome2 {
+    let (c, b, l) = (n, n + 1, n + 2);
+    if !loop_slots_ok(s, c, b, l, l) {
+        stuck(Stuck::StackRange)
+    } else if at(s, c) is Smi && at(s, l) is Smi && smi_val(at(s, c)) < smi_val(at(s, l)) {
+        loop_taken(p, s, c, b, smi_val(at(s, c)), at(s, c), target)
+    } else {
+        next(drop(s, 1), len)
+    }
+}
+
 pub open spec fn op_halt(p: Program2, s: State2, code: int) -> Outcome2 {
     if code == 0 {
         Outcome2::Halt(goto(push(s, smi(91)), s.bci + 2), Halt2::Yield)
@@ -1456,6 +1489,9 @@ pub open spec fn step(p: Program2, s: State2) -> Outcome2 {
         else if op == TRY { op_try(p, s) }
         else if op == LOAD_FIELD_THIS { op_load_field_this(p, s, b1) }
         else if op == UNWIND { op_unwind(p, s) }
+        else if op == LOOP_REPEAT {
+            op_loop_repeat(p, s, bci - w1, byte2(p, bci + 3), len)
+        }
         else { op_halt(p, s, b1) }  // HALT
     }
 }

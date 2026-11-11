@@ -1680,6 +1680,38 @@ pub fn x_post_calls(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind
     }
 }
 
+/// `loop_ok` (proposal, format note 19).
+pub fn x_loop_ok(p: &VProgram, m: usize, k: &Vec<XKind>, c: usize, b: usize, x: usize, y: usize) -> (r: bool)
+    requires m < p.methods.len(),
+    ensures r == loop_ok(vview(p), m as int, kv(*k), c as int, b as int, x as int, y as int),
+{
+    let h = k.len();
+    if !(1 <= c && c < h && 1 <= b && b < h && 1 <= x && x < h && 1 <= y && y < h) { return false; }
+    proof {
+        assert(kv(*k)[h - 1 - c] == k@[h - 1 - c]@);
+        assert(kv(*k)[h - 1 - b] == k@[h - 1 - b]@);
+        assert(kv(*k)[h - 1 - x] == k@[h - 1 - x]@);
+        assert(kv(*k)[h - 1 - y] == k@[h - 1 - y]@);
+    }
+    x_is_val(k[h - 1 - c]) && x_is_val(k[h - 1 - x]) && x_is_val(k[h - 1 - y])
+        && !x_is_token(k[h - 1 - b]) && x_writable(p, m, k, h - 1 - c, XKind::Val)
+}
+
+/// `loop_kinds`.
+pub fn x_loop_kinds(k: &Vec<XKind>, c: usize, b: usize) -> (r: Vec<XKind>)
+    requires 1 <= c < k.len(), b < k.len(),
+    ensures kv(r) == loop_kinds(kv(*k), c as int, b as int),
+{
+    let h = k.len();
+    let kb = k[h - 1 - b];
+    proof { assert(kv(*k)[h - 1 - b] == kb@); }
+    let k1 = x_update(k, h - 1 - c, XKind::Val);
+    assert(kv(k1).len() == h);
+    let k2 = x_prefix(&k1, h - 1);
+    let k3 = x_push(&k2, kb);
+    x_push(&k3, XKind::Val)
+}
+
 pub fn x_post_misc(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>, trusted: bool) -> (r: Option<Vec<XKind>>)
     requires
         post_pre(p, m, off, k),
@@ -1740,6 +1772,9 @@ pub fn x_post_misc(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>
         else if trusted && b1 == 2 && 1 <= h { Some(x_prefix(k, h - 1)) }
         else if trusted && b1 >= 3 { Some(x_copy(k)) }
         else { None }
+    } else if op == LOOP_REPEAT {
+        let lc = p.bytecodes[bci + 3] as usize;
+        if x_loop_ok(p, m, k, lc, lc + 1, lc + 2, lc + 2) { Some(x_prefix(k, h - 1)) } else { None }
     } else {
         None
     }
@@ -2210,6 +2245,13 @@ pub fn x_instr_ok(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>,
             if !x_map_is(c, m as i64, t, &k1) { return false; }
         }
     }
+    if op == LOOP_REPEAT {
+        // `post` accepted the operands (`loop_ok`).
+        let w1 = x_u16(p, bci + 1);
+        let lc = p.bytecodes[bci + 3] as usize;
+        let kt = x_loop_kinds(k, lc, lc + 1);
+        if !x_map_is(c, m as i64, off as i64 - w1, &kt) { return false; }
+    }
     true
 }
 
@@ -2609,6 +2651,7 @@ pub fn x_pins_agree(g: &XGlobal, m: usize, maps: &XMaps, at: usize) -> (r: Optio
             proof { assert(!pin_agrees(g, i as int, mapsv(maps))); }
             return None;
         }
+        proof { assert(pin_agrees(g, i as int, mapsv(maps))); }
         i += 1;
     }
     proof {

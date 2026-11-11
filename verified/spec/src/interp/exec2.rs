@@ -712,6 +712,27 @@ impl Machine {
                 }
             }
             HALT => self.op2_halt(b1),
+            LOOP_REPEAT => {
+                // `v2::spec::op_loop_repeat`: counter b1, block b1 + 1, limit b1 + 2.
+                let n = self.byte(bci + 3);
+                if n < 1 { return Err(StackRange); }
+                let (vc, vb, vl) = (self.at2(n)?, self.at2(n + 1)?, self.at2(n + 2)?);
+                match (vc, vl) {
+                    (Value::Smi(i), Value::Smi(l)) if i < l => {
+                        let target = self.branch_target(bci as i64 - w1 as i64)?;
+                        self.put(n, Value::Smi(i + 1));
+                        self.drop2(1)?;
+                        self.s.stack.push(vb);
+                        self.s.stack.push(vc);
+                        self.s.bci = target;
+                        Ok(Step::Next)
+                    }
+                    _ => {
+                        self.drop2(1)?;
+                        self.next2(len)
+                    }
+                }
+            }
             _ => Err(BadInstruction),
         }
     }

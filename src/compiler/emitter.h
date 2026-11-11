@@ -173,6 +173,11 @@ class Emitter {
   // Format 2: TRY on the try block's method on top of the stack.
   void try_finally();
   void load_field_this(int n);
+  // Format 2, proposal (format note 19): the loop step of `repeat`. The
+  // counter is slot [counter] from the top (before the step pops the top),
+  // the block the slot above it, the limit the one above that; [body] is
+  // the bound INVOKE_BLOCK the taken step branches back to.
+  void loop_repeat(Label* body, int counter);
   void store_field_this(int n);
   // Whether the code ends with an instruction that does not continue with
   // the next one, and no label is bound after it.

@@ -512,6 +512,27 @@ fn analyze<F: Facts>(p: &VProgram, f: &mut F, m: usize, trusted: bool) -> Result
             let ot = if cond { org[..h - 1].to_vec() } else { org.clone() };
             succ.push((t, kt, ot));
         }
+        if op == LOOP_REPEAT {
+            // The taken loop step (`loop_kinds`); `post` accepted the
+            // operands, so the counter and the block are below the top.
+            let w = u16_at(p, bci + 1).unwrap_or(0);
+            let n = byte_at(p, bci + 3).unwrap_or(usize::MAX);
+            let Some(t) = off.checked_sub(w) else { return Err((off, "branch before the method".into())) };
+            if !(1 <= n && n + 1 < h) {
+                return Err((off, "loop operands outside the frame".into()));
+            }
+            let kt = x_loop_kinds(&k, n, n + 1);
+            let mut ot: Vec<u8> = Vec::with_capacity(h + 1);
+            if origins {
+                ot.extend_from_slice(&org[..h - 1]);
+                ot[h - 1 - n] = NO_ORIGIN;
+                ot.push(org[h - 2 - n]);
+                ot.push(NO_ORIGIN);
+            } else {
+                ot.resize(h + 1, NO_ORIGIN);
+            }
+            succ.push((t, kt, ot));
+        }
         for (t, k2, o2) in succ {
             if t >= size {
                 return Err((off, "successor outside the method".into()));

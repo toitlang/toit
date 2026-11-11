@@ -397,7 +397,7 @@ pub unsafe extern "C" fn toit_v2_run(context: *mut Context) -> usize {
 #[cfg(feature = "layout-tables")]
 #[no_mangle]
 pub extern "C" fn toit_vcore_opcode_length(opcode: usize) -> usize {
-    if opcode < 101 { crate::machine::opcode_length(opcode as u8) } else { 0 }
+    if opcode < crate::machine::OPCODE_LENGTHS.len() { crate::machine::opcode_length(opcode as u8) } else { 0 }
 }
 
 macro_rules! layout_table {

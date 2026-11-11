@@ -56,6 +56,10 @@ class BytecodeFormatScope {
 static const Opcode V2_TRY = LINK;
 static const Opcode V2_LOAD_FIELD_THIS = UNLINK;
 static const Opcode V2_STORE_FIELD_THIS = NON_LOCAL_RETURN_WIDE;
+// Proposal (format note 19): the loop step of `repeat`, numbered like the
+// format-1 intrinsic it replaces.
+static const Opcode V2_LOOP_REPEAT = INTRINSIC_SMI_REPEAT;
+static const int V2_LOOP_REPEAT_LENGTH = 4;
 
 // Method header of format 2 (format note 15): two bytes, then unsigned
 // LEB128 numbers (7 bits per byte, low bits first, the top bit of a byte

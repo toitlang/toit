@@ -392,6 +392,42 @@ pub open spec fn branch_kind(op: u8) -> int {
     if BRANCH <= op && op <= BRANCH_IF_NOT_NULL { op - BRANCH } else { op - BRANCH_BACK }
 }
 
+/// Byte `j` of the instruction at offset `off` of `m`.
+pub open spec fn bk_of(p: Program2, m: int, off: int, j: int) -> int {
+    p.bytecodes[instr_at(p, m, off) + j] as int
+}
+
+/// The loop steps (proposal, format note 19).
+pub open spec fn is_loop(op: u8) -> bool {
+    op == LOOP_REPEAT
+}
+
+/// A loop step's operands: the counter `c` (overwritten), the block `b`
+/// (copied) and the slots `x`, `y` it reads, counted from the top before
+/// the pop of the top slot; the counter and the read slots hold values.
+pub open spec fn loop_ok(p: Program2, m: int, k: Seq<Kind>, c: int, b: int, x: int, y: int) -> bool {
+    let h = k.len() as int;
+    &&& 1 <= c < h && 1 <= b < h && 1 <= x < h && 1 <= y < h
+    &&& is_val(top_kind(k, c)) && is_val(top_kind(k, x)) && is_val(top_kind(k, y))
+    &&& !(top_kind(k, b) is Token)
+    &&& writable(p, m, k, h - 1 - c, Kind::Val)
+}
+
+/// The kinds at the target of a taken loop step: the counter is a value,
+/// the top is popped, a copy of the block and a value are pushed.
+pub open spec fn loop_kinds(k: Seq<Kind>, c: int, b: int) -> Seq<Kind> {
+    let h = k.len() as int;
+    k.update(h - 1 - c, Kind::Val).subrange(0, h - 1).push(top_kind(k, b)).push(Kind::Val)
+}
+
+/// The operands `(c, b, x, y)` of the loop step at offset `off` of `m`: its
+/// operand byte `n` is the counter, `n + 1` the block, `n + 2` (LOOP_REPEAT:
+/// the limit) and `n + 3` (LOOP_ARRAY) the slots it reads.
+pub open spec fn loop_operands(p: Program2, m: int, off: int) -> (int, int, int, int) {
+    let n = bk_of(p, m, off, 3);
+    (n, n + 1, n + 2, n + 2)
+}
+
 /// The fall-through successor kinds of an instruction, `None` for
 /// terminators and rejected instructions.
 pub open spec fn post(p: Program2, c: Cert, m: int, off: int, k: Seq<Kind>, trusted: bool) -> Option<Seq<Kind>> {
@@ -540,6 +576,9 @@ pub open spec fn post(p: Program2, c: Cert, m: int, off: int, k: Seq<Kind>, trus
         // The value slot below the token is the exception or return value
         // the unwinding resumes with.
         if 3 <= h && top_kind(k, 1) is Token && is_val(top_kind(k, 2)) { Some(k.subrange(0, h - 3)) } else { None }
+    } else if is_loop(op) {
+        let (lc, lb, lx, ly) = loop_operands(p, m, off);
+        if loop_ok(p, m, k, lc, lb, lx, ly) { Some(k.subrange(0, h - 1)) } else { None }
     } else if op == HALT {
         // HALT 2 and 3 (deep sleep, reset) only for trusted programs.
         if b1 == 0 { Some(k.push(Kind::Val)) }
@@ -643,6 +682,10 @@ pub open spec fn instr_ok(p: Program2, c: Cert, m: int, off: int, k: Seq<Kind>, 
             let t = if op <= BRANCH_IF_NOT_NULL { off + w1 } else { off - w1 };
             (op <= BRANCH_IF_NOT_NULL ==> w1 > 0)
                 && map_at(c, m, t) == Some(if op == BRANCH || op == BRANCH_BACK { k } else { k.drop_last() })
+        } else { true }
+    &&& if is_loop(op) {
+            let (lc, lb, lx, ly) = loop_operands(p, m, off);
+            map_at(c, m, off - w1) == Some(loop_kinds(k, lc, lb))
         } else { true }
 }
 

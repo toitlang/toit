@@ -32,6 +32,8 @@ use crate::v2::sound_upto::*;
 use crate::v2::sound_raise::*;
 #[cfg(verus_only)]
 use crate::spec_common::{class_id_ok, class_id_of, u16_at, u32_at, smi, smi_ok, byte, SMI_CLASS};
+#[cfg(verus_only)]
+use crate::spec_helpers::smi_val;
 
 verus! {
 
@@ -931,6 +933,130 @@ pub proof fn lemma_step_halt(p: Program2, c: Cert, trusted: bool, s: State2)
 }
 
 // ---------------------------------------------------------------------------
+// Loop steps (proposal, format note 19).
+
+/// The taken branch of a loop step: the counter slot `lc` becomes `vc`, the
+/// top is popped, a copy of the block slot `lb` and `v` are pushed.
+#[verifier::spinoff_prover]
+pub proof fn lemma_loop_taken(p: Program2, c: Cert, trusted: bool, s: State2, s2: State2, lc: int, lb: int, vc: Value, v: Value)
+    requires
+        accepts(p, c, trusted),
+        wf(p, c, s),
+        1 <= lc < cur_k(p, c, s).len(),
+        1 <= lb < cur_k(p, c, s).len(),
+        !(top_kind(cur_k(p, c, s), lb) is Token),
+        writable(p, cur_m(s), cur_k(p, c, s), cur_k(p, c, s).len() - 1 - lc, Kind::Val),
+        good(s.heap, vc),
+        good(s.heap, v),
+        s2.frames == s.frames,
+        s2.tries == s.tries,
+        s2.fins == s.fins,
+        s2.task == s.task,
+        s2.heap == s.heap,
+        s2.globals == s.globals,
+        s2.stack == drop(put(s, lc, vc), 1).stack.push(at(s, lb)).push(v),
+        info(p, cur_m(s)).entry <= s2.bci,
+        map_at(c, cur_m(s), s2.bci - info(p, cur_m(s)).entry) == Some(loop_kinds(cur_k(p, c, s), lc, lb)),
+    ensures wf(p, c, s2),
+{
+    lemma_instr(p, c, trusted, s);
+    let b = cur_b(s);
+    let m = cur_m(s);
+    let k = cur_k(p, c, s);
+    let h = k.len() as int;
+    let ic = h - 1 - lc;
+    let jb = h - 1 - lb;
+    let k2 = loop_kinds(k, lc, lb);
+    assert(s.stack.len() == b + h);
+    assert(k2.len() == h + 1);
+    assert(s2.stack.len() == b + h + 1);
+    assert(s2.stack[b + ic] == vc);
+    assert(at(s, lb) == s.stack[b + jb]);
+    assert(s2.stack[b + h - 1] == s.stack[b + jb]);
+    assert(s2.stack[b + h] == v);
+    assert forall|x: int| 0 <= x < b + h - 1 && x != b + ic implies #[trigger] s2.stack[x] == s.stack[x] by {}
+    assert forall|j: int| 0 <= j < h - 1 && j != ic implies #[trigger] k2[j] == k[j] by {}
+    assert(k2[ic] == Kind::Val);
+    assert(k2[h - 1] == k[jb]);
+    assert(k2[h] == Kind::Val);
+    lemma_heap_ext_refl(p, s.heap);
+    assert(lframe0(p, c, s, s2, k2)) by {
+        if pinned0(p, m) && arity(p, m) >= 1 {
+            assert(ic != 0);
+            assert(s2.stack[b] == s.stack[b]);
+        }
+    }
+    assert forall|x: int| 0 <= x < b + ic implies #[trigger] s2.stack[x] == s.stack[x] by {}
+    assert forall|j: int| 0 <= j < ic implies #[trigger] k2[j] == k[j] by {}
+    assert(globals_ok(c, s2));
+    assert(lframe(p, c, s, s2, k2, ic));
+    lemma_conf_val(p, c, s2, top_i(s), k2, ic, vc);
+    lemma_conf_move(p, c, trusted, s, s2, k2, jb, h - 1);
+    lemma_conf_val(p, c, s2, top_i(s), k2, h, v);
+    assert forall|j: int| ic <= j < k2.len() implies
+        #[trigger] unchanged(p, c, s, s2, k2, j) || conf(p, c, s2, top_i(s), k2, j, k2[j], s2.stack[b + j]) by {
+        if ic < j < h - 1 {
+            assert(s2.stack[b + j] == s.stack[b + j]);
+            assert(k2[j] == k[j]);
+        }
+    }
+    assert forall|j: int| ic <= j < k2.len() && #[trigger] unchanged(p, c, s, s2, k2, j) && k2[j] is Token implies
+        k2.subrange(0, j) == k.subrange(0, j) by {
+        assert(j != ic);
+        assert(j != h - 1);
+        assert(k[j] is Token);
+        assert(below_token(k, ic));
+        assert(k[ic] is Val);
+        assert(k2.subrange(0, j) =~= k.subrange(0, j));
+    }
+    lemma_lgen(p, c, trusted, s, s2, k2, ic);
+}
+
+/// LOOP_REPEAT.
+#[verifier::spinoff_prover]
+pub proof fn lemma_step_loop(p: Program2, c: Cert, trusted: bool, s: State2)
+    requires accepts(p, c, trusted), wf(p, c, s), small(s), is_loop(cur_op(p, s)),
+    ensures step_ok(p, c, s),
+{
+    lemma_instr(p, c, trusted, s);
+    let op = cur_op(p, s);
+    let m = cur_m(s);
+    let off = cur_off(p, s);
+    let k = cur_k(p, c, s);
+    let h = k.len() as int;
+    let len = opcode_length2(op);
+    let w1 = w1_of(p, m, off);
+    let n = bk_of(p, m, off, 3);
+    assert(loop_operands(p, m, off) == (n, n + 1, n + 2, n + 2));
+    assert(!is_terminator(op));
+    assert(post(p, c, m, off, k, trusted) is Some);
+    assert(loop_ok(p, m, k, n, n + 1, n + 2, n + 2));
+    assert(post(p, c, m, off, k, trusted) == Some(k.subrange(0, h - 1)));
+    let toff = off - w1;
+    let target = info(p, m).entry + toff;
+    assert(map_at(c, m, toff) == Some(loop_kinds(k, n, n + 1)));
+    lemma_map_bound(p, c, trusted, m, toff);
+    assert(byte2(p, s.bci + 3) == n);
+    assert(step(p, s) == op_loop_repeat(p, s, s.bci - w1, n, len)) by { reveal(step); }
+    assert(s.bci - w1 == target);
+    lemma_at_good(p, c, trusted, s, n);
+    lemma_at_good(p, c, trusted, s, n + 2);
+    assert(loop_slots_ok(s, n, n + 1, n + 2, n + 2));
+    let vc = at(s, n);
+    if vc is Smi && at(s, n + 2) is Smi && smi_val(vc) < smi_val(at(s, n + 2)) {
+        let i = smi_val(vc);
+        let s1 = push(push(drop(put(s, n, smi(i + 1)), 1), at(s, n + 1)), vc);
+        let s2 = goto(s1, target);
+        assert(info(p, m).entry <= target < info(p, m).end);
+        assert(op_loop_repeat(p, s, target, n, len) == Outcome2::Next(s2));
+        lemma_loop_taken(p, c, trusted, s, s2, n, n + 1, smi(i + 1), vc);
+    } else {
+        assert(op_loop_repeat(p, s, target, n, len) == next(drop(s, 1), len));
+        lemma_drop(p, c, trusted, s, goto(drop(s, 1), s.bci + len), 1);
+    }
+}
+
+// ---------------------------------------------------------------------------
 // The family.
 
 pub proof fn lemma_step_local(p: Program2, c: Cert, trusted: bool, s: State2)
@@ -973,6 +1099,8 @@ pub proof fn lemma_step_local(p: Program2, c: Cert, trusted: bool, s: State2)
         lemma_step_branch(p, c, trusted, s);
     } else if op == IDENTICAL {
         lemma_step_identical(p, c, trusted, s);
+    } else if is_loop(op) {
+        lemma_step_loop(p, c, trusted, s);
     } else {
         assert(op == HALT);
         lemma_step_halt(p, c, trusted, s);

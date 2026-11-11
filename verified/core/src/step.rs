@@ -47,7 +47,7 @@ use toit_spec::v2::sound::{wf, small, step_ok, outcome_ok, cur_op};
 #[cfg(verus_keep_ghost)]
 use toit_spec::v2::sound_instr::{lemma_instr, lemma_at_good, cur_k, cur_m, cur_off};
 #[cfg(verus_keep_ghost)]
-use toit_spec::v2::verifier::{accepts, value_operands, instr_ok, is_branch, map_at, w1_of};
+use toit_spec::v2::verifier::{accepts, value_operands, instr_ok, is_branch, map_at, w1_of, bk_of, is_loop, loop_operands, loop_ok, post};
 #[cfg(verus_keep_ghost)]
 use toit_spec::v2::types::p1;
 #[cfg(verus_keep_ghost)]
@@ -406,6 +406,36 @@ proof fn lemma_back_branch(p: &Program, g: State2)
     let k = cur_k(ap, c, g);
     assert(instr_ok(ap, c, mi, off, k, p.trusted@));
     assert(is_branch(cur_op(ap, g)));
+    assert(map_at(c, mi, off - w1_of(ap, mi, off)) is Some);
+}
+
+/// The operands of a loop step are values and its backward branch stays at
+/// or after the method's entry (the verifier's `loop_ok` and `loop_kinds`).
+proof fn lemma_loop_cond(p: &Program, g: State2)
+    requires
+        accepts(p.ap@, p.cert@, p.trusted@), wf(p.ap@, p.cert@, g),
+        cur_op(p.ap@, g) == 101,
+    ensures ({
+        let n = p.ap@.bytecodes[g.bci + 3] as int;
+        &&& sp::at(g, n) is Smi || sp::at(g, n) is Obj
+        &&& sp::at(g, n + 2) is Smi || sp::at(g, n + 2) is Obj
+        &&& u16_at(p1(p.ap@), g.bci + 1) <= g.bci
+    }),
+{
+    let ap = p.ap@;
+    let c = p.cert@;
+    lemma_instr(ap, c, p.trusted@, g);
+    let mi = cur_m(g);
+    let off = cur_off(ap, g);
+    let k = cur_k(ap, c, g);
+    let n = bk_of(ap, mi, off, 3);
+    assert(instr_ok(ap, c, mi, off, k, p.trusted@));
+    assert(is_loop(cur_op(ap, g)));
+    assert(loop_operands(ap, mi, off) == (n, n + 1, n + 2, n + 2));
+    assert(post(ap, c, mi, off, k, p.trusted@) is Some);
+    assert(loop_ok(ap, mi, k, n, n + 1, n + 2, n + 2));
+    lemma_at_good(ap, c, p.trusted@, g, n);
+    lemma_at_good(ap, c, p.trusted@, g, n + 2);
     assert(map_at(c, mi, off - w1_of(ap, mi, off)) is Some);
 }
 
@@ -1302,10 +1332,20 @@ pub fn step_r(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
         97 => { return slow0(m, r, env, Slow::Op); },
         99 => { return slow0(m, r, env, Slow::Op); },
         100 => { return slow0(m, r, env, Slow::Op); },
+        // LOOP_REPEAT (proposal, format note 19).
+        101 => {
+            let d = ip_u16(p, r.ip, 1);
+            let n = r.ip.byte(3, &p.code) as usize;
+            proof {
+                assert(sp::step(ap, g) == sp::op_loop_repeat(ap, g, bci - d, n as int, 4)) by { reveal(sp::step); }
+                lemma_loop_cond(p, g);
+            }
+            crate::regs::op_loop_repeat(m, r, p, n, d, Ghost((bci - d) as usize))
+        },
         _ => {
             // Every opcode of format 2 (below OPCODE_COUNT2, which the
             // instruction check of the spec requires) has an arm.
-            proof { assert(opcode < 101); assert(false); }
+            proof { assert(opcode < 102); assert(false); }
             return crate::view::proven_unreachable();
         },
     };
