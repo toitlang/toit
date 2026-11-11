@@ -1,0 +1,35 @@
+# Line-B certificate structural mutations Wed Nov 11 18:44:45 CET 2026
+[cert-magic-0] verify-exit=1 rejected 
+[cert-magic-all] verify-exit=1 rejected 
+[cert-version-2] verify-exit=1 rejected 
+[cert-version-ff] verify-exit=1 rejected 
+[cert-version-0] verify-exit=1 rejected 
+[cert-mcount-0] verify-exit=1 rejected 
+[cert-mcount-huge] verify-exit=1 rejected 
+[cert-mcount-plus1] verify-exit=1 rejected 
+[cert-sec0-off-huge] verify-exit=1 rejected 
+[cert-sec0-len-huge] verify-exit=1 rejected 
+[cert-sec0-off-neg] verify-exit=1 rejected 
+[cert-sec1-off-huge] verify-exit=1 rejected 
+[cert-sec1-len-huge] verify-exit=1 rejected 
+[cert-sec2-off-huge] verify-exit=1 rejected 
+[cert-sec2-len-huge] verify-exit=1 rejected 
+[cert-sec3-off-huge] verify-exit=1 rejected 
+[cert-sec3-len-huge] verify-exit=1 rejected 
+[cert-sec4-off-huge] verify-exit=1 rejected 
+[cert-sec4-len-huge] verify-exit=1 rejected 
+[cert-sec5-off-huge] verify-exit=1 rejected 
+[cert-sec5-len-huge] verify-exit=1 rejected 
+[cert-maps-byte1] verify-exit=0 ACCEPTED(same-valid-program) 
+[cert-maps-byte2] verify-exit=0 ACCEPTED(same-valid-program) 
+[cert-maps-mid] verify-exit=0 ACCEPTED(same-valid-program) 
+[cert-header-allzero] verify-exit=1 rejected 
+[cert-sec-selfoverlap] verify-exit=1 rejected 
+[cert-sections-swap] verify-exit=1 rejected 
+# Line-B pathological verification cost
+[path-many-methods] verifier: accepted, 5815 methods, 120478 bytecodes ... peak 492 KB; progress 0
+[path-wide-method] format-2 program rejected: method body too large (69750)
+[path-deep-nest] verifier: accepted, 875 methods, 27122 bytecodes ... peak 45 KB; progress 0
+[path-big-literal] verifier: accepted, 818 methods, 25784 bytecodes ... peak 44 KB; progress 0
+[path-many-classes] verifier: accepted, 2415 methods, 53996 bytecodes ... peak 175 KB; progress 0
+# done Wed Nov 11 18:44:49 CET 2026

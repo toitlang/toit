@@ -1,0 +1,24 @@
+# Line-F primitive-argument attacks (toit.run) Wed Nov 11 18:54:13 CET 2026
+[f01-crc-table-list] x=0 F-DONE 
+[f02-crc-table-big] x=0 F-DONE 
+[f03-crc-width-edge] x=0 F-DONE 
+[f04-crc-range-oob] x=0 F-DONE 
+[f05-ba2s-slice] x=0 F-DONE 
+[f06-ba2s-oob] x=0 F-DONE 
+[f07-ba2s-highbytes] x=0 F-DONE 
+[f08-utf16-ascii] x=0 F-DONE 
+[f09-utf16-multibyte] x=0 F-DONE 
+[f10-utf162s-odd] x=0 F-DONE 
+[f11-utf162s-sur] x=0 F-DONE 
+[f12-fparse-huge] x=0 F-DONE 
+[f13-fparse-nul] x=0 F-DONE 
+[f14-iparse-18] x=0 F-DONE 
+[f15-iparse-radix] x=0 F-DONE 
+[f16-f2s-prec] x=0 F-DONE 
+[f17-fround-prec] x=0 F-DONE 
+[f18-timeinfo-ext] x=0 F-DONE 
+[f19-secs-local-ext] x=0 F-DONE 
+[f20-rawat-oob] x=0 F-DONE 
+[f21-runecount] x=0 F-DONE 
+[f22-fparse-slice] x=0 F-DONE 
+# done Wed Nov 11 18:54:44 CET 2026: 22 programs
