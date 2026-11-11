@@ -232,22 +232,10 @@ impl StackMem {
 /// cursor is plain address arithmetic (wrapping, never dereferenced out of
 /// bounds); reads and writes require the index to lie in the array of the
 /// view the cursor belongs to (`StackMem::slot`).
-#[verifier::external_body]
+#[derive(Clone, Copy)]
 pub struct Slot {
     ptr: *mut usize,
 }
-
-impl Clone for Slot {
-    #[verifier::external_body]
-    #[inline(always)]
-    fn clone(&self) -> (r: Slot)
-        ensures r == *self,
-    {
-        *self
-    }
-}
-
-impl Copy for Slot {}
 
 impl Slot {
     pub uninterp spec fn view(&self) -> int;

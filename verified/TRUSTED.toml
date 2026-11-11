@@ -675,6 +675,46 @@ justification = "isnan on a bit pattern; no contract."
 [[trusted]]
 crate = "core"
 file = "src/prims/fp.rs"
+item = "libm::ceil"
+kind = "plain_rust_item"
+count = 1
+justification = "Declaration of the C library's ceil (no_std core)."
+
+[[trusted]]
+crate = "core"
+file = "src/prims/fp.rs"
+item = "libm::extern"
+kind = "plain_rust_item"
+count = 1
+justification = "Declarations of the C library's sqrt, ceil, floor, trunc (no_std core, Phase 5)."
+
+[[trusted]]
+crate = "core"
+file = "src/prims/fp.rs"
+item = "libm::floor"
+kind = "plain_rust_item"
+count = 1
+justification = "Declaration of the C library's floor (no_std core)."
+
+[[trusted]]
+crate = "core"
+file = "src/prims/fp.rs"
+item = "libm::sqrt"
+kind = "plain_rust_item"
+count = 1
+justification = "Declaration of the C library's sqrt (no_std core)."
+
+[[trusted]]
+crate = "core"
+file = "src/prims/fp.rs"
+item = "libm::trunc"
+kind = "plain_rust_item"
+count = 1
+justification = "Declaration of the C library's trunc (no_std core)."
+
+[[trusted]]
+crate = "core"
+file = "src/prims/fp.rs"
 item = "sign"
 kind = "external_body"
 count = 1
@@ -703,6 +743,14 @@ item = "unop"
 kind = "external_body"
 count = 1
 justification = "IEEE-754 negate/sqrt/ceil/floor/trunc on bit patterns (Rust std = libm); no contract; differentially tested."
+
+[[trusted]]
+crate = "core"
+file = "src/prims/fp.rs"
+item = "unop"
+kind = "unsafe"
+count = 1
+justification = "Calls the C library's sqrt/ceil/floor/trunc (no_std core, Phase 5): the functions the C++ primitives call; validated against them by verified/core/tests/prim_diff.sh (64-bit and 32-bit hosts)."
 
 [[trusted]]
 crate = "core"
@@ -847,6 +895,14 @@ item = "Globals::view"
 kind = "uninterp"
 count = 1
 justification = "Ghost content of the Globals view; only related to memory through the external_body contracts (TRUSTED.md section 1)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "HalfWord"
+kind = "plain_rust_item"
+count = 2
+justification = "Type alias for the VM's half word (u32 on 64-bit, u16 on 32-bit targets, HALF_WORD_SIZE); the string offsets that use it are machine-checked by verified/layout_check.cc."
 
 [[trusted]]
 crate = "core"
@@ -1115,6 +1171,22 @@ justification = "Reads field f < field count of a live instance (heap integrity,
 [[trusted]]
 crate = "core"
 file = "src/view.rs"
+item = "Heap::half_word_at"
+kind = "external_body"
+count = 1
+justification = "Trusted contract of Heap::half_word_at (TRUSTED.md section 1); no postcondition (used only by the checked loop)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::half_word_at"
+kind = "unsafe"
+count = 1
+justification = "Raw access of Heap::half_word_at: the string length half word of a heap object (heap integrity, TRUSTED.md)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
 item = "Heap::header"
 kind = "external_body"
 count = 1
@@ -1323,18 +1395,18 @@ justification = "Reads the length fields of a live string (heap integrity, TRUST
 [[trusted]]
 crate = "core"
 file = "src/view.rs"
-item = "Heap::half_word_at"
+item = "Heap::word"
 kind = "external_body"
 count = 1
-justification = "Trusted contract of Heap::half_word_at (TRUSTED.md section 1); no postcondition (used only by the checked loop)."
+justification = "Trusted contract of Heap::word (TRUSTED.md section 1)."
 
 [[trusted]]
 crate = "core"
 file = "src/view.rs"
-item = "Heap::half_word_at"
+item = "Heap::word"
 kind = "unsafe"
 count = 1
-justification = "Raw access of Heap::half_word_at: the string length half word of a heap object (heap integrity, TRUSTED.md)."
+justification = "Raw access of Heap::word; in bounds by the external_body precondition (index < len) or, for heap words, by heap integrity (TRUSTED.md)."
 
 [[trusted]]
 crate = "core"
@@ -1351,30 +1423,6 @@ item = "Heap::word64"
 kind = "unsafe"
 count = 1
 justification = "Unaligned 8-byte read of the payload of a double or large integer (two words on 32-bit targets) inside the object (heap integrity, TRUSTED.md)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "HalfWord"
-kind = "plain_rust_item"
-count = 2
-justification = "Type alias for the VM's half word (u32 on 64-bit, u16 on 32-bit targets, HALF_WORD_SIZE); the string offsets that use it are machine-checked by verified/layout_check.cc."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::word"
-kind = "external_body"
-count = 1
-justification = "Trusted contract of Heap::word (TRUSTED.md section 1)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::word"
-kind = "unsafe"
-count = 1
-justification = "Raw access of Heap::word; in bounds by the external_body precondition (index < len) or, for heap words, by heap integrity (TRUSTED.md)."
 
 [[trusted]]
 crate = "core"
@@ -1435,18 +1483,82 @@ justification = "Raw access of Preemption::request; in bounds by the external_bo
 [[trusted]]
 crate = "core"
 file = "src/view.rs"
-item = "Preemption::requested"
+item = "Preemption::word"
 kind = "external_body"
 count = 1
-justification = "Trusted contract of Preemption::requested (TRUSTED.md section 1)."
+justification = "Raw read of Interpreter::watermark_ (environment nondeterminism, no contract; replaces Preemption::requested, which is now verified as word() == PREEMPTION_MARKER). The call's room check or-s it into the needed room, so any value is safe (TRUSTED.md section 1)."
 
 [[trusted]]
 crate = "core"
 file = "src/view.rs"
-item = "Preemption::requested"
+item = "Preemption::word"
 kind = "unsafe"
 count = 1
-justification = "Raw access of Preemption::requested; in bounds by the external_body precondition (index < len) or, for heap words, by heap integrity (TRUSTED.md)."
+justification = "Atomic relaxed load through the context's pointer to Interpreter::watermark_, valid while the core runs (as the previous Preemption::requested)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Slot::diff"
+kind = "external_body"
+count = 1
+justification = "Element distance of two cursors of the same stack view inside its index range: the pointer difference divided by the word size (exact: both point into one array, 0 <= o <= self < 2^16 elements)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Slot::offset"
+kind = "external_body"
+count = 1
+justification = "Cursor arithmetic (wrapping pointer offset, never dereferenced by itself): the index moves by k; the view identity is kept."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Slot::read"
+kind = "external_body"
+count = 1
+justification = "Reads element self@ + n of the stack view the cursor belongs to (same sid), inside the array: the register form of the old StackMem::read (TRUSTED.md section 1, Slot)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Slot::read"
+kind = "unsafe"
+count = 1
+justification = "Dereference of a pointer into the stack array, in bounds by the precondition (index inside the view's array, the cursor derived from that view by StackMem::slot and offset)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Slot::sid"
+kind = "uninterp"
+count = 1
+justification = "Identity of the stack view a cursor was derived from: only StackMem::slot (equal to the view's sid) and Slot::offset (kept) produce cursors, so a cursor is usable only with the view it points into."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Slot::view"
+kind = "uninterp"
+count = 1
+justification = "The array index a cursor points at (relative to its view): related to the pointer only by StackMem::slot and Slot::offset."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Slot::write"
+kind = "external_body"
+count = 1
+justification = "Stores v into element self@ + n of the cursor's stack view (same sid), inside the array; the view's identity and header words are unchanged: the register form of the old StackMem::write."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Slot::write"
+kind = "unsafe"
+count = 1
+justification = "Store through a pointer into the stack array, in bounds by the precondition (as Slot::read)."
 
 [[trusted]]
 crate = "core"
@@ -1523,22 +1635,6 @@ justification = "Trusted contract of StackMem::len (TRUSTED.md section 1)."
 [[trusted]]
 crate = "core"
 file = "src/view.rs"
-item = "StackMem::read"
-kind = "external_body"
-count = 1
-justification = "Trusted contract of StackMem::read (TRUSTED.md section 1)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "StackMem::read"
-kind = "unsafe"
-count = 1
-justification = "Raw access of StackMem::read; in bounds by the external_body precondition (index < len) or, for heap words, by heap integrity (TRUSTED.md)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
 item = "StackMem::set_header"
 kind = "external_body"
 count = 1
@@ -1555,26 +1651,26 @@ justification = "Raw access of StackMem::set_header; in bounds by the external_b
 [[trusted]]
 crate = "core"
 file = "src/view.rs"
+item = "StackMem::sid"
+kind = "uninterp"
+count = 1
+justification = "Identity of a stack view: kept by the accessors (write, copy_within, set_header), unrelated after a call that may GC replaces the view, so cursors into an old array are unusable (TRUSTED.md section 1, Slot)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "StackMem::slot"
+kind = "external_body"
+count = 1
+justification = "The cursor at index i <= len of the stack array (array + i): the only way to create a cursor; it carries the view's identity."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
 item = "StackMem::view"
 kind = "uninterp"
 count = 1
 justification = "Ghost content of the StackMem view; only related to memory through the external_body contracts (TRUSTED.md section 1)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "StackMem::write"
-kind = "external_body"
-count = 1
-justification = "Trusted contract of StackMem::write (TRUSTED.md section 1)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "StackMem::write"
-kind = "unsafe"
-count = 1
-justification = "Raw access of StackMem::write; in bounds by the external_body precondition (index < len) or, for heap words, by heap integrity (TRUSTED.md)."
 
 [[trusted]]
 crate = "core"
@@ -1687,6 +1783,14 @@ item = "OPCODE_NAMES"
 kind = "plain_rust_item"
 count = 1
 justification = "Opcode names for tracing and the table test; no semantic role."
+
+[[trusted]]
+crate = "spec"
+file = "src/exec_step.rs"
+item = "compare_mixed_impl"
+kind = "plain_rust_item"
+count = 1
+justification = "The trusted implementation of the uninterpreted compare_mixed (Interpreter::compare_numbers), moved out of the std-only reference interpreter so that x_compare_mixed builds no_std (Phase 5); unchanged code; checked by the spec differential tests and prim_diff.sh."
 
 [[trusted]]
 crate = "spec"
@@ -1807,110 +1911,6 @@ item = "<module>"
 kind = "cfg"
 count = 1
 justification = "cfg_attr that makes the crate no_std (with alloc) when built without the std feature for devices; Verus and host builds see the whole crate (verus_keep_ghost or std)."
-
-[[trusted]]
-crate = "spec"
-file = "src/exec_step.rs"
-item = "compare_mixed_impl"
-kind = "plain_rust_item"
-count = 1
-justification = "The trusted implementation of the uninterpreted compare_mixed (Interpreter::compare_numbers), moved out of the std-only reference interpreter so that x_compare_mixed builds no_std (Phase 5); unchanged code; checked by the spec differential tests and prim_diff.sh."
-
-[[trusted]]
-crate = "core"
-file = "src/prims/fp.rs"
-item = "unop"
-kind = "unsafe"
-count = 1
-justification = "Calls the C library's sqrt/ceil/floor/trunc (no_std core, Phase 5): the functions the C++ primitives call; validated against them by verified/core/tests/prim_diff.sh (64-bit and 32-bit hosts)."
-
-[[trusted]]
-crate = "core"
-file = "src/prims/fp.rs"
-item = "libm::extern"
-kind = "plain_rust_item"
-count = 1
-justification = "Declarations of the C library's sqrt, ceil, floor, trunc (no_std core, Phase 5)."
-
-[[trusted]]
-crate = "core"
-file = "src/prims/fp.rs"
-item = "libm::sqrt"
-kind = "plain_rust_item"
-count = 1
-justification = "Declaration of the C library's sqrt (no_std core)."
-
-[[trusted]]
-crate = "core"
-file = "src/prims/fp.rs"
-item = "libm::ceil"
-kind = "plain_rust_item"
-count = 1
-justification = "Declaration of the C library's ceil (no_std core)."
-
-[[trusted]]
-crate = "core"
-file = "src/prims/fp.rs"
-item = "libm::floor"
-kind = "plain_rust_item"
-count = 1
-justification = "Declaration of the C library's floor (no_std core)."
-
-[[trusted]]
-crate = "core"
-file = "src/prims/fp.rs"
-item = "libm::trunc"
-kind = "plain_rust_item"
-count = 1
-justification = "Declaration of the C library's trunc (no_std core)."
-
-[[trusted]]
-crate = "vmverify"
-file = "src/device.rs"
-item = "*"
-kind = "plain_rust_file"
-count = 1
-justification = "Devices only (feature device-runtime, no_std): the global allocator on the VM's malloc/free/realloc and the panic handler calling the VM's toit_vmverify_panic (FATAL); TRUSTED like any allocator (TRUSTED.md)."
-
-[[trusted]]
-crate = "vmverify"
-file = "src/device.rs"
-item = "VmAllocator"
-kind = "unsafe"
-count = 1
-justification = "unsafe impl GlobalAlloc: malloc returns 8-byte aligned memory; larger alignments fail (null)."
-
-[[trusted]]
-crate = "vmverify"
-file = "src/device.rs"
-item = "VmAllocator::alloc"
-kind = "unsafe"
-count = 1
-justification = "Calls the VM's malloc (devices)."
-
-[[trusted]]
-crate = "vmverify"
-file = "src/device.rs"
-item = "VmAllocator::dealloc"
-kind = "unsafe"
-count = 1
-justification = "Calls the VM's free (devices)."
-
-[[trusted]]
-crate = "vmverify"
-file = "src/device.rs"
-item = "VmAllocator::realloc"
-kind = "unsafe"
-count = 1
-justification = "Calls the VM's realloc (devices); alignment checked as in alloc."
-
-[[trusted]]
-crate = "vmverify"
-file = "src/device.rs"
-item = "panic"
-kind = "unsafe"
-count = 1
-justification = "Calls the VM's toit_vmverify_panic (FATAL, does not return) with the panic location."
 
 [[trusted]]
 crate = "spec"
@@ -2127,6 +2127,54 @@ item = "Counting::realloc"
 kind = "unsafe"
 count = 1
 justification = "Forwards to System.realloc with the caller's pointer, layout and size."
+
+[[trusted]]
+crate = "vmverify"
+file = "src/device.rs"
+item = "*"
+kind = "plain_rust_file"
+count = 1
+justification = "Devices only (feature device-runtime, no_std): the global allocator on the VM's malloc/free/realloc and the panic handler calling the VM's toit_vmverify_panic (FATAL); TRUSTED like any allocator (TRUSTED.md)."
+
+[[trusted]]
+crate = "vmverify"
+file = "src/device.rs"
+item = "VmAllocator"
+kind = "unsafe"
+count = 1
+justification = "unsafe impl GlobalAlloc: malloc returns 8-byte aligned memory; larger alignments fail (null)."
+
+[[trusted]]
+crate = "vmverify"
+file = "src/device.rs"
+item = "VmAllocator::alloc"
+kind = "unsafe"
+count = 1
+justification = "Calls the VM's malloc (devices)."
+
+[[trusted]]
+crate = "vmverify"
+file = "src/device.rs"
+item = "VmAllocator::dealloc"
+kind = "unsafe"
+count = 1
+justification = "Calls the VM's free (devices)."
+
+[[trusted]]
+crate = "vmverify"
+file = "src/device.rs"
+item = "VmAllocator::realloc"
+kind = "unsafe"
+count = 1
+justification = "Calls the VM's realloc (devices); alignment checked as in alloc."
+
+[[trusted]]
+crate = "vmverify"
+file = "src/device.rs"
+item = "panic"
+kind = "unsafe"
+count = 1
+justification = "Calls the VM's toit_vmverify_panic (FATAL, does not return) with the panic location."
 
 [[trusted]]
 crate = "vmverify"
