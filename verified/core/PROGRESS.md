@@ -1,5 +1,356 @@
 # Phase 4a progress (verified core, format 2 on x86-64)
 
+## Device size (branch device/size, 2026-11-11)
+
+Size reduction of the format-2 firmware (core, no C++ interpreter) for the
+classic ESP32. Nothing was flashed; scripts, logs and builds:
+/home/flo/work/opentoit-sandbox-artifacts/device-size (README.md).
+**Result: the classic ESP32's format-2 firmware with Jaguar still does not
+fit (1,775,744 of 1,703,936 B, 70 KB over; was 108 KB over); the ESP32-C6
+now fits with 29 KB to spare (was 2 KB over). The default was not
+flipped.** Nothing inside verified/core/src or verified/spec changed.
+
+Attribution before (classic ESP32, f2 against f1 at d960ca45; linker map,
+esp_idf_size, `scripts/mapsyms.sh`, `rust-groups.sh`, `img.sh`):
+
+| Part | Bytes |
+|---|---:|
+| toit.bin f2 - f1 | +87,136 |
+| Rust: run loop (`step::run_loop` with its jump table) | +30,887 |
+| Rust: core cold paths (`step::slow`, r* helpers, raise, unwind) | +13,728 |
+| Rust: the 106 primitives (`prims::`) | +14,952 |
+| Rust: verifier (toit_spec 13,582, vmverify glue 12,210, C entry 1,687) | +27,479 |
+| Rust: other (core/alloc, entry points, rodata) | +2,022 |
+| Rust: compiler_builtins (C math 23.5 K, u128 division 2.6 K, rest) | +27,009 |
+| newlib libm (replaced by compiler_builtins' weak math functions) | -20,571 |
+| C++ interpreter (interpreter_run, method_entries) | -14,583 |
+| C++ format-2 glue (interpreter_v2, verifier_v2) and messages | +5,890 |
+| interpreter.cc, interpreter_core.cc, other | -2,677 |
+| system image f2 - f1 (88,704 -> 114,048) | +25,344 |
+| method-table literal (16 B x 1,743 methods, with relocation bits) | +28,776 |
+| bytecodes (61,898 -> 58,883: format 2 is 5 % smaller) | -3,015 |
+| Jaguar image f2 - f1 (101,376 -> 126,720; literal 29,408 B) | +25,344 |
+| DROM extension padding (64 KB pages): with Jaguar 4 pages, f1 3 | +65,536 |
+
+There is no second loop on devices: the checked loop is not linked (393
+B remnant); trusted and verified programs share `run_loop`. The dispatch
+table is dense (no holes worth packing), the trusted images carry no
+certificate, and the C++ side is already -Os (-Oz gives the same code
+with this GCC).
+
+Bytes saved per change, classic ESP32 f2 (format 2 on the core, no C++
+interpreter): toit.bin, and the flashed binary with the system and Jaguar
+(v1.73.0, -O2) against the 1,703,936-byte OTA partition (scripts/
+jag-check.sh, as tests/esp32/check-partition-sizes.sh). Base d960ca45:
+f1 toit.bin 1,462,912 B, with Jaguar 1,659,520 B.
+
+| Change | Commit | toit.bin | saved | with Jaguar | saved |
+|---|---|---:|---:|---:|---:|
+| base (d960ca45) | | 1,550,048 | | 1,812,192 | |
+| S1 newlib's libm instead of compiler_builtins' C math functions | f803b3a8 | 1,543,488 | 6,560 | 1,805,632 | 6,560 |
+| S2 TOIT_V2_VALIDATE, TOIT_VERIFY_TIME on hosts only | ebbdf36a | 1,542,272 | 1,216 | (1,804,416) | 1,216 |
+| S3 the binary laid out around the DROM extension (no 64 KB padding) | 2d51679f | 1,542,272 | 0 | 1,779,840 | 24,576 |
+| S4 Kconfig TOIT_VERIFIED_CORE_VERIFIER (off: no verifier; default on) | d9ac75e8 | (1,512,672) | (29,584) | (1,750,256) | (29,584) |
+| S5 images without unused trailing heap blocks (system 114,048 -> 109,824) | 30f496ed | 1,542,272 | 0 | 1,775,744 | 4,096 |
+| total (default configuration) | | 1,542,256 | 7,792 | 1,775,744 | 36,448 |
+
+(The final builds, with a pinned version string, have toit.bin 1,542,256
+B; parenthesized rows are the non-default configuration.) S3 is a change of
+`toit tool firmware` only: the bootloader, the VM and the envelope format
+are unchanged; QEMU boots the relaid binaries (8 segments of at most 16)
+and runs the suite. S1 also makes the C++ math primitives (math.pow, sin,
+...) newlib's again, as in format 1.
+
+After (QEMU suite: `scripts/suite-all.sh final`, output identical to the
+previous agent's runs for f1 and f2):
+
+| | ESP32 f1 | ESP32 f2 | ESP32 f2, no verifier | C6 f1 | C6 f2 |
+|---|---:|---:|---:|---:|---:|
+| toit.bin | 1,462,864 | 1,542,256 | 1,512,672 | 1,574,544 | 1,637,680 |
+| flashed, system only | 1,548,896 | 1,652,864 | 1,627,376 | 1,660,576 | 1,748,272 |
+| flashed, with Jaguar | 1,647,200 | 1,775,744 | 1,750,256 | 1,758,880 | 1,871,152 |
+| OTA partition, margin | +56,736 | -71,808 | -46,320 | +141,664 | +29,392 |
+| Rust library | 0 | 89,068 | 61,804 | 0 | 78,557 |
+| system image | 84,480 | 109,824 | 109,824 | 84,480 | 109,824 |
+| iram0.text | 129,087 | 116,947 | 116,947 | 156,350 | 139,998 |
+| free heap at boot (QEMU) | 116,904 | 133,712 | | | |
+
+Instructions (QEMU icount, f2/f1): richards 0.720, deltablue 0.968,
+pystone 0.863, json 1.068 (unchanged). Host (callgrind Ir in
+`Interpreter::run`, trusted format 2): richards 1,075.3 M, deltablue
+758.7 M, pystone 811.9 M (EXPERIMENT-trusted.md: 1,077.9 / 760.8 /
+810.2 M).
+
+Gates (30f496ed): verified/check.sh --tests passed (VeriFast 87 checks,
+sandbox ctests 125/125); ctest -j16 1201/1204 (version, reader not run;
+udp-reuse-port-test); nostd, nopanic, xtensa_codegen_check (3, z) pass;
+firmware: classic ESP32 and C6 in f1 and f2 (and ESP32 without the
+verifier); QEMU suite identical for f1 and f2.
+
+What closing the remaining 70 KB would take (not done):
+
+- Both table literals out of the images (`-Xv2_table_literal=false`):
+  -57.5 KB flash (Jaguar alone -28.7 KB measured), but +57 KB of RAM
+  with Jaguar running (16 B per method, 1,743 + 1,837 methods; format 1
+  needs 13 KB of entry bitmaps for the two). Even then about 14.5 KB
+  over; together with the verifier left out about 15 KB to spare.
+- A smaller method record (core: `V2Method`, `exec::Program::methods`,
+  their proofs and the C++ table builder): 12 bytes (24-bit entry with the
+  kind, length, arity, selector, aux and receiver range packed) saves
+  4 B per method, 14.3 KB for system plus Jaguar; 8 bytes (entry, length,
+  arity, kind; selector, aux and receiver range in a side table for the
+  40 % / 62 % of methods that have them) saves 28.6 KB, and as much RAM
+  per installed untrusted program, at the cost of a second lookup on
+  virtual calls and receiver checks. Jaguar's headers hold the same
+  fields in 9.4 KB (5.1 B per method).
+- The C++ copies of the ported primitives (99 in primitive_core.cc,
+  9.6 KB) stay for `NotPorted`; removing those the Rust port never
+  declines needs that shown per primitive: at most 5 KB.
+- Image off-heap rounded to a word instead of a 4 KB page: about 2 KB per
+  image, if no VM code assumes page-aligned program-heap blocks (not
+  checked exhaustively).
+- Core at opt-level 2: -2.8 KB (riscv/Xtensa device_size); speed not
+  measured. Opt s: -9.2 KB at 11-15 % more instructions (rejected).
+- Partition layout (last resort): ota_0/ota_1 0x1a0000 -> 0x1c0000 (the
+  programs partition 640 -> 384 KB) gives +59 KB of margin; the C6's
+  0x1d0000 layout +125 KB. Deployed devices cannot change it over the air.
+
+## Device builds on format 2 (branch device/format2, 2026-11-11)
+
+The classic ESP32 and the ESP32-C6 firmware can run everything in format
+2 on the core, without the C++ interpreter (three Kconfig lines; not the
+default yet because the Jaguar firmware no longer fits the OTA partition;
+details, tables and the other targets in docs/format2-migration.md,
+"Devices").
+Nothing was flashed; the ESP32 ran under Espressif's QEMU (the C6 has no
+QEMU machine). Artifacts: /home/flo/work/opentoit-sandbox-artifacts/
+device-format2 (README.md).
+
+- M1 (a5915a49): verifier_v2.cc did not build for devices since the
+  `--untrusted` hint (GCC 14 `-Werror=address` on the message array).
+- M2 (baeca848): Kconfig `TOIT_BYTECODE_FORMAT_2` and
+  `TOIT_CXX_INTERPRETER` (CMake `TOIT_CXX_INTERPRETER=OFF` drops
+  interpreter_run.cc and method_entries.cc; format-1 programs refused);
+  the envelope's `bytecode-formats` metadata, which `container install`
+  checks.
+- M3 (6aafa887): the method table as the program's last literal (in
+  flash for images): the format-2 tables took 37 KB of the ESP32's heap
+  at boot (80 KB free against format 1's 117 KB); now 134 KB.
+- M4 (88acdaf1, 3da07458, bd80cbc7): `TOIT_TRACE_INSTALL`; format 2
+  without the core is a CMake error on devices.
+- M5 (4f488c84, reverted by 7c716b70): the ESP32 and C6 defaulted to
+  format 2 without the C++ interpreter (and CI installed the Rust
+  targets); reverted because the Jaguar firmware no longer fits the OTA
+  partition (ESP32 108 KB over, C6 2 KB over).
+- M6 (1ea5ca7c): `sandbox-integration` merged (no conflicts).
+- Nothing changed in verified/.
+
+Install-time verification under QEMU (f2 with `TOIT_TRACE_INSTALL`,
+icount, Xtensa instructions; the images carry their table literal):
+
+| Program | Methods | Bytecodes | Verification | Free before | Heap drop |
+|---|---:|---:|---:|---:|---:|
+| a-hello | 788 | 25,084 | 403.6 M | 63,968 | 23,264 |
+| b-fold | 795 | 25,877 | 412.1 M | 63,936 | 23,400 |
+| c-map | 973 | 31,060 | 497.2 M | 51,656 | 23,416 |
+| d-string-slice | 799 | 25,705 | 413.9 M | 59,848 | 23,456 |
+| e-exception | 926 | 28,493 | 451.0 M | 55,752 | 23,488 |
+| f-lambda | 800 | 25,419 | 407.5 M | 63,944 | 23,272 |
+
+Rejected: deep sleep (3.4 M, certificate rejected), no certificate,
+another program's certificate (malformed), a trusted-compiled image (no
+certificate), format 1 (FORMAT_2_REQUIRED). A trusted image installed
+into the programs partition (Jaguar's path) runs. The heap drop is the
+lowest free heap of any allocation during the verification (the whole
+system), not the verifier's own peak.
+
+Gates (1ea5ca7c, after the merge): verified/check.sh --tests passed;
+ctest -j16 1198/1202 (version, reader not run; udp-reuse-port-test; the
+gold of tests/negative/illegal-system-call-test was stale after
+74bf3729 on `sandbox-integration` changed lib/rpc/broker.toit: updated
+here, passes); nostd_check, nopanic_check and
+xtensa_codegen_check (3 and z) passed (on 7c716b70; verified/ is
+unchanged by this branch); firmware builds: ESP32 and C6 in f1, f2cxx,
+f2 (and opt-level s), C3, S2, S3 default, the EC618 VM library.
+
+Measurements (classic ESP32, QEMU icount; f1 = format 1/C++, f2 = format
+2/core without C++): toit.bin 1,462,800 -> 1,549,952 B (C6 1,574,496 ->
+1,640,400); IRAM 129,087 -> 116,947 B (13.1 KB free; C6 156,350 ->
+139,998); free heap at boot 116,952 -> 133,760 B; instructions f2/f1
+richards 0.720, deltablue 0.969, pystone 0.863, json 1.068, map/set
+0.958, strings 0.990, GC stress 1.025, service calls 0.996. The core's
+28.2 KB loop does not fit the free IRAM and, by an instruction-cache
+simulation of the trace, does not need to (one miss per 16,000
+instructions). Install: see below.
+
+## Proven accessors (branch core/proven-accessors, 2026-11-11)
+
+The raw-memory accessors of src/view.rs become verified code against an
+explicit memory-ownership model (TRUSTED.md section 1, "Memory model").
+Artifacts: /home/flo/work/opentoit-sandbox-artifacts/proven-accessors
+(tools/: verification, codegen comparison, callgrind benchmark, census).
+
+- P0 (trial, artifacts trial/heap_inv.rs): a field read and a field write
+  through an untagged reference (`with_exposed_provenance(obj - 1)`)
+  verify against a `PointsTo` taken from the heap model, with the model
+  update, for 64-bit and 32-bit words (10 verified, 0 errors each).
+  Design found there: the permissions live inside the view structs as
+  tracked (erased) fields, the views' ghost content is defined from them,
+  and a type invariant ties each permission to the address the accessor
+  computes. Callers are unchanged: the contracts are the same, only
+  `sid()` changed type (a pointer instead of an uninterpreted int).
+  Writes go through a helper that takes a tracked mutable borrow of the
+  permission field (`no_unwind`), so the invariant is checked against the
+  helper's contract; whole-struct replacement (`mem::swap`) verified too
+  but cost +34% code on riscv32 (stores LLVM cannot remove), and passing
+  `&mut` to the field cost the register allocation of the stack view.
+- P1 (stack, tables, globals): `Table` (`len`, `at`, `cursor`), `Globals`
+  (`len`, `at`, `set`), `StackMem` (`len`, `slot`, `read`, `write`,
+  `header`, `set_header`, `copy_within`) and `Cursor` (`offset`, `diff`,
+  `read`, `write`, `byte`, `lt`) are verified. Trusted instead: the three
+  derivation points (`Table::from_raw`, `Globals::from_raw`,
+  `StackMem::from_stack`: `Tracked::assume_new` of the permissions, with
+  their statement), the Rust semantics of `pointer::wrapping_add` and
+  `wrapping_offset` (two `assume_specification`s, used instead of vstd's
+  `with_addr`, which lost scaled addressing and cost 1 percent on the
+  checked handlers), `global size_of u8 == 1` (compile-time checked), and
+  libc memmove for `copy_within` (an FFI leaf on the permissions; the
+  verified word loop, artifacts copy_words_verified_loop.rs, cost 0.9
+  percent on sys:rpc). Core census: external_body 95 -> 76, unsafe 68 ->
+  60 entries, uninterp 14 -> 6; plus 3 assume_new, 2
+  assume_specification. Instructions (callgrind, 36 runs): all within
+  0.01 percent of sandbox-integration; riscv32 opt=s text 59,332 ->
+  59,346 B, run_loop 6,479 -> 6,483 instructions. One proof hint in
+  rloops.rs (`fall_r`, unstable at 32 bits after the change).
+- P2 (object headers, fields, elements): `Heap` owns `HeapMem`, the
+  permissions of every object's header and of the fields of instances
+  and the length and elements of arrays, keyed by (object id, word
+  index), with the heap's exposed provenance and the model (`objs`,
+  `addrs`, `class_bits`) as ghost fields. The layout is one spec
+  function, `view::word_val` (header: class id and class tag; fields at
+  `INSTANCE_FIELDS_WORD`; length and elements at `ARRAY_LENGTH_WORD`,
+  `ARRAY_ELEMENTS_WORD`; references by `abs::enc`), the Rust side of
+  CONTRACTS.toml's bridge `heap`. Tagged references: the accessor
+  computes `obj - HEAP_TAG` and gets the pointer with
+  `with_exposed_provenance` (the heap's `IsExposed` token), then
+  `wrapping_add(k)`; the permission of word k of object id is the one at
+  that pointer (`obj_ptr`), so the recomputed pointer matches by the
+  invariant. Verified: `class_id`, `class_tag`, `field`, `set_field`,
+  `array_length`, `element`, `set_element` (the writes update the
+  permission and the model in one helper, `write_heap_word`, and call
+  the write barrier, a trusted leaf without contract: the card table is
+  outside every view). Trusted instead: `Heap::new` (the derivation
+  point at entry; after a GC point the heap is the one the GC contract
+  states) and `Heap::write_barrier`. Measured trap: reading the header
+  through the generic `read_word` (`wrapping_add(0)`) cost 5 percent on
+  every smi loop (the run loop's stack pointer moved between registers
+  across handlers); a header read without the offset is exact. Census:
+  external_body 76 -> 69, unsafe 60 -> 54, uninterp 6 -> 3.
+  Instructions: all 36 runs within 0.01 percent; riscv32 text 59,348 B.
+- P3 (doubles, large integers): the payload is the words from
+  `DOUBLE_VALUE_WORD` (one, or two little-endian words on 32-bit
+  targets: `value_word`), read as words instead of an unaligned u64
+  (`read_value64`, bit-vector proofs per width). `double_bits` and
+  `large_int` verified. riscv32 opt=s: run_loop 6,479 -> 5,960
+  instructions, text 59,332 -> 57,498 B (the unaligned read was eight
+  byte loads there); host instructions 0 to -0.4 percent.
+- P4 (`array_copy`): the elements are moved by a memmove leaf stated on
+  the heap permissions (`heap_memmove`); the model's new array and the
+  heap invariant after the move are verified (`copy_elements`), as is
+  the write barrier's condition. With P2 this completes the instance and
+  array group. Instructions unchanged.
+- P5 (strings, byte arrays, content views): `HeapMem` gains the half
+  words of strings (length, hash code), the blob header words (external
+  length and address of a string; length, tag, address of a byte array),
+  the content bytes and, per object, its content pointer (`cptrs`). The
+  layouts are two spec functions, `str_ok` and `ba_ok` (V5 included: an
+  object with the byte-array tag is a model byte array exactly when it is
+  internal or raw external at a non-null address). Verified:
+  `string_len`, `string_byte`, `bytes_len`, `byte_at`, `set_byte_at`,
+  `string_content`, `byte_array_content`, `string_hash_field`,
+  `set_string_hash_field`, `content_at`, `content_set`, `content_copy`,
+  `content_fill`, `Content::len`; `Content` carries its pointer, length,
+  object and writability as (ghost) fields, and `content_ok` now also
+  says that the view's pointer is the object's content pointer, which
+  every accessor keeps (`cptrs()` unchanged) and allocation appends to
+  (`appended`); a heap after a GC point promises nothing about it, so a
+  view cannot outlive a GC point by proof, not by review. Two prims
+  lemmas take the new fact (`lemma_blob_mono`, `lemma_blob_update`) and
+  `new_string` ensures it: no other change in the 106 primitives. The
+  memmove of `array_copy` and `content_copy` is one generic FFI leaf on
+  permissions (`perm_memmove`), memset another (`perm_memset`).
+  `set_string_hash_field` now ensures the model, addresses, class bits and
+  content pointers unchanged instead of the whole view (its permission
+  changes). Census: external_body 67 -> 53, unsafe 54 -> 40 entries,
+  uninterp 3 -> 0. Instructions 0 to -0.5 percent (strings -0.25);
+  riscv32 text 57,608 B.
+- Totals (TRUSTED.toml, crate core, entries): 224 -> 146; external_body
+  95 -> 53, unsafe 68 -> 40 (occurrences 74 -> 46), uninterp 14 -> 0,
+  plain_rust_item 42 -> 42, assume_new 2 -> 6 (the four derivation
+  points), assume_specification 0 -> 2 (wrapping pointer arithmetic),
+  global_layout occurrences 2 -> 3 (`size_of u8`). view.rs: 125 -> 47
+  entries. TRUSTED.md section 0 lists the whole residual base.
+- Device library (device_size.sh, Rust library without libc, linked):
+  riscv32 opt 3 81,220 -> 79,716 B, opt s 75,354 -> 73,418 B; Xtensa
+  (classic ESP32) opt s 80,095 -> 77,667 B. Host instructions (callgrind,
+  18 workloads x 2 configurations against sandbox-integration): between
+  -0.52 and +0.01 percent.
+- Gates (on 64d2812b, artifacts gates/final-*.log): verified/check.sh
+  --tests: spec 940 and core 954 verified at both widths, audit exact,
+  layout check, spec differential 15/15, nopanic, sandbox ctests
+  123/123, red-team batteries no crash; it fails on two drifts that
+  predate the branch and that sandbox-integration has since fixed in
+  files this branch does not touch: CONTRACTS.toml's table of the leaf
+  contracts (epoch and `needed` clauses from core/trusted-integration)
+  and VeriFast's grow/grow_stack.render. ctest format 1 1198/1201
+  (version, reader, udp-reuse-port-test); everything in format 2
+  1197/1201 (the same and services-network-test); untrusted suite 280
+  identical plus the two known differences; primitive differential 10 x
+  1M identical; compare_trace --format 2 clean on the four programs;
+  32-bit host sandbox 123/123; nostd, nopanic (3, s, z), xtensa codegen
+  (3, z) pass; riscv32 and Xtensa device libraries link
+  (device_size.sh); ASan fuzz with the launch filter, 30 minutes:
+  131,438 mutants, 113,244 rejected at launch, 0 crashes.
+- Shared layout facts: every layout.rs constant the heap invariant uses
+  (`word_val`, `str_ok`, `ba_ok`: 21 constants) is a row of
+  verified/LAYOUT.toml on branch cxx/verifast-coverage (acece1a5, the
+  table both the Verus and the VeriFast models consume; checked with
+  artifacts tools/layoutcheck.sh). Not in that table yet: the Stack
+  header words (`STACK_*_WORD`, layout-checked by layout_check.cc), the
+  card-table constants of the write barrier, and the 32-bit split of a
+  double's or large integer's payload into two little-endian words
+  (`view::VALUE_WORDS`, `value_word`): rows to add on the merge.
+
+Not migrated, with the exact steps:
+
+- Inline allocation (`alloc::bump_instance`, `bump_double`, about a
+  day): make `Runtime::bump` a Verus external_body (inside `verus!`)
+  that returns the address with a tracked `Map<int, PointsTo<usize>>` of
+  the `size / WORD_SIZE` fresh words and ensures the allocator facts
+  (word aligned, `a + size <= usize::MAX`, `a | HEAP_TAG` is no address
+  of the model, outside the program heap): the trusted part shrinks to
+  that statement of `SemiSpace::try_allocate`. Then a verified
+  `Heap::append(&mut self, a, Tracked(words), Ghost(o))` that pushes the
+  object (model, address, a dummy content pointer) and moves the
+  permissions to keys `(n, k)`, proving `heap_ok` (`word_val` of the
+  header needs one bit-vector lemma for `smi(c << 5 | tag)`); the
+  bodies of `bump_instance`/`bump_double` write through the permissions
+  (a verified loop for the null fields). Their machine-level ensures
+  (`with(r).refines` of `alloc2(g, new)`) need a new lemma like
+  `primitive::lemma_refines_heap` for an appended instance or double:
+  `heap_model_ok` of the appended heap (fresh address, `obj_model_ok` of
+  the new object), the ro facts and `prog_rel` under the address
+  extension (`lemma_post_append` does this for the primitives'
+  allocations but excludes instances).
+- The checked loop's raw accessors (`Heap::{header, word, word64,
+  set_word, byte, set_byte, half_word_at}`): they have no ghost content
+  on purpose (the checked loop is plain Rust and runs only programs the
+  launch did not accept; devices do not build it). Proving them means
+  verifying the checked loop; until then they stay with it in section 4.
+- `Preemption` (the scheduler's watermark, written by another thread:
+  an atomic with no model) and `proven_unreachable` are not memory
+  accessors.
+
 ## Trusted containers integrated (branch core/trusted-integration, 2026-11-11)
 
 `experiment/trusted-fast` (0c7b1f6b) merged into `sandbox-integration`

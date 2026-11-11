@@ -29,8 +29,40 @@ crate = "core"
 file = "src/abs.rs"
 item = "size_of"
 kind = "global_layout"
-count = 2
-justification = "usize is the target's word, 8 bytes for target_pointer_width 64 and 4 for 32 (one declaration each, TRUSTED.md section 6 'Word size'): Verus fixes the width of every word proof from it; the erased build and Verus' own build for the target check it with a compile-time assertion (check.sh verifies both widths)."
+count = 3
+justification = "usize is the target's word, 8 bytes for target_pointer_width 64 and 4 for 32 (one declaration each, TRUSTED.md section 6 'Word size'), and u8 is one byte (the address arithmetic of the byte views, view::Ip): Verus fixes the width of every word proof from them; the erased build and Verus' own build for the target check each with a compile-time assertion (check.sh verifies both widths)."
+
+[[trusted]]
+crate = "core"
+file = "src/alloc.rs"
+item = "bump_double"
+kind = "external_body"
+count = 1
+justification = "ASSUMED (TRUSTED.md 9, Inline allocation): as bump_instance, for ObjectHeap::allocate_double; contract of gc_allocate_double without a GC."
+
+[[trusted]]
+crate = "core"
+file = "src/alloc.rs"
+item = "bump_double"
+kind = "unsafe"
+count = 1
+justification = "Writes the header and the 64-bit value of the fresh new-space bytes Runtime::bump returned (TRUSTED.md 9, Inline allocation)."
+
+[[trusted]]
+crate = "core"
+file = "src/alloc.rs"
+item = "bump_instance"
+kind = "external_body"
+count = 1
+justification = "ASSUMED (TRUSTED.md 9, Inline allocation): the new-space fast path of SemiSpace::try_allocate inline, the instance initialized as ObjectHeap::allocate_instance does; contract of gc_allocate_instance without a GC (nothing moves); 0 and no change if new space is full."
+
+[[trusted]]
+crate = "core"
+file = "src/alloc.rs"
+item = "bump_instance"
+kind = "unsafe"
+count = 1
+justification = "Writes the header and null fields of the fresh new-space bytes Runtime::bump returned (TRUSTED.md 9, Inline allocation)."
 
 [[trusted]]
 crate = "core"
@@ -251,6 +283,22 @@ justification = "Hands the process pointer to the allocator of the Rust primitiv
 [[trusted]]
 crate = "core"
 file = "src/ffi.rs"
+item = "Runtime::bump"
+kind = "plain_rust_item"
+count = 1
+justification = "SemiSpace::try_allocate's fast path on the process' new-space top and limit (toit_v2_context); only bump_instance and bump_double call it (TRUSTED.md 9, Inline allocation)."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "Runtime::bump"
+kind = "unsafe"
+count = 1
+justification = "Reads and writes the new-space top and limit words of the running process and the sentinel word after the allocation (inside the space: limit - top > size)."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
 item = "Runtime::call_primitive"
 kind = "external_body"
 count = 1
@@ -399,6 +447,14 @@ item = "toit_v2_allocate_instance"
 kind = "plain_rust_item"
 count = 1
 justification = "Rust declaration of a C++ function of src/interpreter_v2.cc (extern block); contract in DESIGN.md FFI contract."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "toit_v2_core_ported"
+kind = "plain_rust_item"
+count = 1
+justification = "Performance only: whether a core primitive has a Rust port (prims::family), for the policies' core arities; either path is a completion of PRIMITIVE (TRUSTED.md 9)."
 
 [[trusted]]
 crate = "core"
@@ -763,154 +819,26 @@ justification = "EXPERIMENT (verified/core/EXPERIMENT-trusted.md): in the unchec
 [[trusted]]
 crate = "core"
 file = "src/view.rs"
-item = "Content"
-kind = "external_body"
+item = "<*mutT>::wrapping_add"
+kind = "assume_specification"
 count = 1
-justification = "Opaque view (pointer, length) of the bytes of a string or byte array; valid only within one primitive call (no GC point inside one); TRUSTED.md section 8."
+justification = "Rust semantics of pointer::wrapping_add: the address moves by count elements modulo the word size, the provenance stays; never UB (results are dereferenced only through a PointsTo for that address). Gives the former trusted bodies' code exactly (getelementptr T); TRUSTED.md section 1, Memory model."
 
 [[trusted]]
 crate = "core"
 file = "src/view.rs"
-item = "Content::id"
-kind = "uninterp"
+item = "<*mutT>::wrapping_offset"
+kind = "assume_specification"
 count = 1
-justification = "Ghost: the heap-model object the view belongs to, fixed by the creating accessor's contract."
+justification = "Rust semantics of pointer::wrapping_offset (signed count), as wrapping_add; Cursor::offset (TRUSTED.md section 1, Memory model)."
 
 [[trusted]]
 crate = "core"
 file = "src/view.rs"
-item = "Content::len"
-kind = "external_body"
+item = "Globals::from_raw"
+kind = "assume_new"
 count = 1
-justification = "Returns the length the creating accessor read (== slen)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Content::slen"
-kind = "uninterp"
-count = 1
-justification = "Ghost: the view's length, equal to the object's content length by the creating accessor's contract."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Content::writable"
-kind = "uninterp"
-count = 1
-justification = "Ghost: the bytes may be written (a string or raw byte array outside the program heap), by the creating accessor's contract."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Cursor::byte"
-kind = "external_body"
-count = 1
-justification = "Reads byte ip@ + k of the bytecode table the instruction pointer belongs to (same sid), inside the table: the register form of Table::at on the bytecodes (TRUSTED.md section 1, Cursor)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Cursor::byte"
-kind = "unsafe"
-count = 1
-justification = "Dereference of a pointer into the immutable bytecodes, in bounds by the precondition (the cursor derived from the table by Table::cursor and offset)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Cursor::diff"
-kind = "external_body"
-count = 1
-justification = "Element distance of two cursors of the same view less than 2^28 elements apart: the pointer difference divided by the element size (exact: both point into one array or table)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Cursor::lt"
-kind = "external_body"
-count = 1
-justification = "Order of two cursors into the same stack array (end included): a pointer comparison, exact since both point into one allocation (the run loop's gate for returns, regs::gate_ok)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Cursor::offset"
-kind = "external_body"
-count = 1
-justification = "Cursor arithmetic (wrapping pointer offset, never dereferenced by itself): the index moves by k; the view identity is kept."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Cursor::read"
-kind = "external_body"
-count = 1
-justification = "Reads element self@ + n of the stack view the cursor belongs to (same sid), inside the array: the register form of the old StackMem::read (TRUSTED.md section 1, Cursor)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Cursor::read"
-kind = "unsafe"
-count = 1
-justification = "Dereference of a pointer into the stack array, in bounds by the precondition (index inside the view's array, the cursor derived from that view by StackMem::slot and offset)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Cursor::sid"
-kind = "uninterp"
-count = 1
-justification = "Identity of the view a cursor was derived from: only StackMem::slot, Table::cursor (equal to the view's sid) and Cursor::offset (kept) produce cursors, so a cursor is usable only with the view it points into."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Cursor::view"
-kind = "uninterp"
-count = 1
-justification = "The element index a cursor points at (relative to its view): related to the pointer only by StackMem::slot, Table::cursor and Cursor::offset."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Cursor::write"
-kind = "external_body"
-count = 1
-justification = "Stores v into element self@ + n of the cursor's stack view (same sid), inside the array; the view's identity and header words are unchanged: the register form of the old StackMem::write."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Cursor::write"
-kind = "unsafe"
-count = 1
-justification = "Store through a pointer into the stack array, in bounds by the precondition (as Cursor::read)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Globals"
-kind = "external_body"
-count = 1
-justification = "Opaque Globals view over VM memory (raw pointer and length); TRUSTED.md section 1."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Globals::at"
-kind = "external_body"
-count = 1
-justification = "Trusted contract of Globals::at (TRUSTED.md section 1)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Globals::at"
-kind = "unsafe"
-count = 1
-justification = "Raw access of Globals::at; in bounds by the external_body precondition (index < len) or, for heap words, by heap integrity (TRUSTED.md)."
+justification = "DERIVATION POINT: the permissions of the process' globals ptr[0..len) (initialized words, in the address space, accessed by nothing else while the core runs: V1); the accessors are verified against them (TRUSTED.md section 1, Memory model)."
 
 [[trusted]]
 crate = "core"
@@ -927,38 +855,6 @@ item = "Globals::from_raw"
 kind = "unsafe"
 count = 1
 justification = "Constructor of the Globals view from C++ pointers, called only by toit_v2_run / Runtime::stack (TRUSTED.md section 1)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Globals::len"
-kind = "external_body"
-count = 1
-justification = "Trusted contract of Globals::len (TRUSTED.md section 1)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Globals::set"
-kind = "external_body"
-count = 1
-justification = "Trusted contract of Globals::set (TRUSTED.md section 1)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Globals::set"
-kind = "unsafe"
-count = 1
-justification = "Raw access of Globals::set; in bounds by the external_body precondition (index < len) or, for heap words, by heap integrity (TRUSTED.md)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Globals::view"
-kind = "uninterp"
-count = 1
-justification = "Ghost content of the Globals view; only related to memory through the external_body contracts (TRUSTED.md section 1)."
 
 [[trusted]]
 crate = "core"
@@ -967,54 +863,6 @@ item = "HalfWord"
 kind = "plain_rust_item"
 count = 2
 justification = "Type alias for the VM's half word (u32 on 64-bit, u16 on 32-bit targets, HALF_WORD_SIZE); the string offsets that use it are machine-checked by verified/layout_check.cc."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap"
-kind = "external_body"
-count = 1
-justification = "Opaque Heap view over VM memory (raw pointer and length); TRUSTED.md section 1."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::addrs"
-kind = "uninterp"
-count = 1
-justification = "Heap model: address of each abstract object; related to memory only by the trusted accessor and GC contracts (TRUSTED.md, heap model)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::array_copy"
-kind = "external_body"
-count = 1
-justification = "memmove of array elements with the write barrier on the destination (as array_replace in C++); contract: the model's destination elements become the source's (bounds required)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::array_copy"
-kind = "unsafe"
-count = 1
-justification = "Raw element access inside both arrays (bounds from the precondition) and the card mark."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::array_length"
-kind = "external_body"
-count = 1
-justification = "Heap accessor: the length word of an array is the length of the model's element sequence (TRUSTED.md, heap model)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::array_length"
-kind = "unsafe"
-count = 1
-justification = "Reads the length word of a live array (heap integrity, TRUSTED.md V2)."
 
 [[trusted]]
 crate = "core"
@@ -1031,206 +879,6 @@ item = "Heap::byte"
 kind = "unsafe"
 count = 1
 justification = "Raw access of Heap::byte; in bounds by the external_body precondition (index < len) or, for heap words, by heap integrity (TRUSTED.md)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::byte_array_content"
-kind = "external_body"
-count = 1
-justification = "TRUSTED layout: inline bytes, or external raw (or mapped) bytes, as ByteArray::Bytes; None for external structs; ensures the length is the model content's (heap integrity V2)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::byte_array_content"
-kind = "unsafe"
-count = 1
-justification = "Reads the length, tag and address words of a byte array (layout-checked offsets)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::byte_at"
-kind = "external_body"
-count = 1
-justification = "Heap accessor: byte i < length of a model byte array is the model's byte (TRUSTED.md, heap model)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::byte_at"
-kind = "unsafe"
-count = 1
-justification = "Reads byte i < length of the content of a model byte array (internal, or raw external memory owned by it)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::bytes_len"
-kind = "external_body"
-count = 1
-justification = "Heap accessor and modeling assumption: a byte array is Body::Bytes exactly when it is internal or external with RAW_BYTE_TAG and a non-null address, with that length (TRUSTED.md, heap model)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::bytes_len"
-kind = "unsafe"
-count = 1
-justification = "Reads the length, tag and address words of a live byte array (heap integrity, TRUSTED.md V2)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::class_bits"
-kind = "uninterp"
-count = 1
-justification = "Heap model: the class bits the object headers follow; refines ties it to the program's class_bits table."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::class_id"
-kind = "external_body"
-count = 1
-justification = "Heap accessor: the header's class id is the model object's class id (TRUSTED.md, heap model)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::class_id"
-kind = "unsafe"
-count = 1
-justification = "Reads the header word of a live object (heap integrity, TRUSTED.md V2): obj is the model address of an object."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::class_tag"
-kind = "external_body"
-count = 1
-justification = "Heap accessor: the header's tag is the class tag of the object's class (TRUSTED.md, heap model)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::class_tag"
-kind = "unsafe"
-count = 1
-justification = "Reads the header word of a live object (heap integrity, TRUSTED.md V2): obj is the model address of an object."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::content_at"
-kind = "external_body"
-count = 1
-justification = "Reads byte i < length of a content view: the model's byte (heap integrity V2 for blobs)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::content_at"
-kind = "unsafe"
-count = 1
-justification = "Raw byte read inside the view (bound from the precondition)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::content_copy"
-kind = "external_body"
-count = 1
-justification = "memmove inside two content views (bounds required); the model's destination bytes become the source's."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::content_copy"
-kind = "unsafe"
-count = 1
-justification = "Raw memmove inside the views (bounds from the precondition)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::content_fill"
-kind = "external_body"
-count = 1
-justification = "memset inside a writable content view (bounds required); the model's bytes become the value."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::content_fill"
-kind = "unsafe"
-count = 1
-justification = "Raw memset inside the view (bounds from the precondition)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::content_set"
-kind = "external_body"
-count = 1
-justification = "Writes byte i < length of a writable content view; the model's byte changes."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::content_set"
-kind = "unsafe"
-count = 1
-justification = "Raw byte write inside the view (bound from the precondition)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::double_bits"
-kind = "external_body"
-count = 1
-justification = "Heap accessor: the value word of a double is the model's bits (TRUSTED.md, heap model)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::double_bits"
-kind = "unsafe"
-count = 1
-justification = "Reads the value word of a live double (heap integrity, TRUSTED.md V2)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::element"
-kind = "external_body"
-count = 1
-justification = "Heap accessor: an array element word is the encoding of the model's element (i < length) (TRUSTED.md, heap model)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::element"
-kind = "unsafe"
-count = 1
-justification = "Reads element i < length of a live array (heap integrity, TRUSTED.md V2)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::field"
-kind = "external_body"
-count = 1
-justification = "Heap accessor: an instance field word is the encoding of the model's field value (TRUSTED.md, heap model)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::field"
-kind = "unsafe"
-count = 1
-justification = "Reads field f < field count of a live instance (heap integrity, TRUSTED.md V2)."
 
 [[trusted]]
 crate = "core"
@@ -1267,18 +915,10 @@ justification = "Raw access of Heap::header; in bounds by the external_body prec
 [[trusted]]
 crate = "core"
 file = "src/view.rs"
-item = "Heap::large_int"
-kind = "external_body"
+item = "Heap::new"
+kind = "assume_new"
 count = 1
-justification = "Heap accessor: the value word of a large integer is the model's value (TRUSTED.md, heap model)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::large_int"
-kind = "unsafe"
-count = 1
-justification = "Reads the value word of a live large integer (heap integrity, TRUSTED.md V2)."
+justification = "DERIVATION POINT (at entry; after a GC point the heap is the one the GC contract states): the heap model is the process' heap (V2): every object lies at its tagged address with the header, fields, length and elements view::word_val states, in the address space, owned by the core while it runs; the permissions of those words (TRUSTED.md section 1, Memory model)."
 
 [[trusted]]
 crate = "core"
@@ -1287,14 +927,6 @@ item = "Heap::new"
 kind = "plain_rust_item"
 count = 1
 justification = "Constructor of the Heap view from C++ pointers, called only by toit_v2_run / Runtime::stack (TRUSTED.md section 1)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::objs"
-kind = "uninterp"
-count = 1
-justification = "Heap model: the abstract heap (State2::heap); related to memory only by the trusted accessor and GC contracts (TRUSTED.md, heap model)."
 
 [[trusted]]
 crate = "core"
@@ -1315,70 +947,6 @@ justification = "Raw access of Heap::set_byte; in bounds by the external_body pr
 [[trusted]]
 crate = "core"
 file = "src/view.rs"
-item = "Heap::set_byte_at"
-kind = "external_body"
-count = 1
-justification = "Heap accessor: storing byte i < length of a byte array outside the program heap updates exactly the model's byte; bytes hold no references, so no write barrier (TRUSTED.md, heap model)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::set_byte_at"
-kind = "unsafe"
-count = 1
-justification = "Writes byte i < length of the content of a model byte array outside the program heap (writable memory)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::set_element"
-kind = "external_body"
-count = 1
-justification = "Heap accessor: storing an element word updates the model's element (non-ro array, i < length); applies the write barrier (TRUSTED.md, heap model)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::set_element"
-kind = "unsafe"
-count = 1
-justification = "Writes element i < length of a live process-heap array and marks its card (heap integrity, TRUSTED.md V2)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::set_field"
-kind = "external_body"
-count = 1
-justification = "Heap accessor: storing a field word updates the model's field (non-ro instance, f < field count); applies the write barrier (TRUSTED.md, heap model)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::set_field"
-kind = "unsafe"
-count = 1
-justification = "Writes field f < field count of a live process-heap instance and marks its card (heap integrity, TRUSTED.md V2)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::set_string_hash_field"
-kind = "external_body"
-count = 1
-justification = "Caches a string's hash code in its header (String::_raw_set_hash_code); not in the model, which stays unchanged; only for strings outside the program heap."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::set_string_hash_field"
-kind = "unsafe"
-count = 1
-justification = "Writes the 32-bit hash field of a string (layout-checked offset)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
 item = "Heap::set_word"
 kind = "external_body"
 count = 1
@@ -1391,70 +959,6 @@ item = "Heap::set_word"
 kind = "unsafe"
 count = 1
 justification = "Raw access of Heap::set_word; in bounds by the external_body precondition (index < len) or, for heap words, by heap integrity (TRUSTED.md)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::string_byte"
-kind = "external_body"
-count = 1
-justification = "Heap accessor: byte i < length of the inline or external content is the model's byte (TRUSTED.md, heap model)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::string_byte"
-kind = "unsafe"
-count = 1
-justification = "Reads byte i < length of a live string's content (heap integrity, TRUSTED.md V2)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::string_content"
-kind = "external_body"
-count = 1
-justification = "TRUSTED layout: inline or external string bytes, as String::Bytes; ensures the length is the model content's (heap integrity V2)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::string_content"
-kind = "unsafe"
-count = 1
-justification = "Reads the length and address fields of a string (layout-checked offsets)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::string_hash_field"
-kind = "external_body"
-count = 1
-justification = "Reads a string's cached hash code (String::_raw_hash_code); no model content."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::string_hash_field"
-kind = "unsafe"
-count = 1
-justification = "Reads the 32-bit hash field of a string (layout-checked offset)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::string_len"
-kind = "external_body"
-count = 1
-justification = "Heap accessor: the internal length field, or the external length word, is the model's string length (TRUSTED.md, heap model)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::string_len"
-kind = "unsafe"
-count = 1
-justification = "Reads the length fields of a live string (heap integrity, TRUSTED.md V2)."
 
 [[trusted]]
 crate = "core"
@@ -1487,6 +991,22 @@ item = "Heap::word64"
 kind = "unsafe"
 count = 1
 justification = "Unaligned 8-byte read of the payload of a double or large integer (two words on 32-bit targets) inside the object (heap integrity, TRUSTED.md)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::write_barrier"
+kind = "external_body"
+count = 1
+justification = "FFI LEAF: the write barrier (the remembered set of the C++ GC): marks the card of the object written; the card table lies outside every view, so no contract and no effect on the model (TRUSTED.md section 1)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::write_barrier"
+kind = "unsafe"
+count = 1
+justification = "Store of NEW_SPACE_POINTERS into the card byte (obj - HEAP_TAG) >> CARD_SIZE_LOG_2 + bias of the process' remembered set, as the C++ write barrier (layout check: CARD_SIZE_LOG_2, NEW_SPACE_POINTERS)."
 
 [[trusted]]
 crate = "core"
@@ -1563,26 +1083,10 @@ justification = "Atomic relaxed load through the context's pointer to Interprete
 [[trusted]]
 crate = "core"
 file = "src/view.rs"
-item = "StackMem"
-kind = "external_body"
-count = 1
-justification = "Opaque StackMem view over VM memory (raw pointer and length); TRUSTED.md section 1."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "StackMem::copy_within"
-kind = "external_body"
-count = 1
-justification = "Trusted contract of StackMem::copy_within (TRUSTED.md section 1)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "StackMem::copy_within"
-kind = "unsafe"
-count = 1
-justification = "Raw access of StackMem::copy_within; in bounds by the external_body precondition (index < len) or, for heap words, by heap integrity (TRUSTED.md)."
+item = "StackMem::from_stack"
+kind = "assume_new"
+count = 2
+justification = "DERIVATION POINT (at entry and after every GC point, via Runtime::stack): the permissions of the Stack object's array (len words from its length word) and of its top, record-top and bci header words, all in the address space and owned by the core until the next call that may GC (TRUSTED.md section 1, Memory model)."
 
 [[trusted]]
 crate = "core"
@@ -1603,106 +1107,10 @@ justification = "Constructor of the StackMem view from C++ pointers, called only
 [[trusted]]
 crate = "core"
 file = "src/view.rs"
-item = "StackMem::hdr"
-kind = "uninterp"
+item = "Table::from_raw"
+kind = "assume_new"
 count = 1
-justification = "Ghost model of the Stack header words (top, frame top, bci), related to memory only by header/set_header (TRUSTED.md section 1)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "StackMem::header"
-kind = "external_body"
-count = 1
-justification = "Trusted contract of StackMem::header (TRUSTED.md section 1)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "StackMem::header"
-kind = "unsafe"
-count = 1
-justification = "Raw access of StackMem::header; in bounds by the external_body precondition (index < len) or, for heap words, by heap integrity (TRUSTED.md)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "StackMem::len"
-kind = "external_body"
-count = 1
-justification = "Trusted contract of StackMem::len (TRUSTED.md section 1)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "StackMem::set_header"
-kind = "external_body"
-count = 1
-justification = "Trusted contract of StackMem::set_header (TRUSTED.md section 1)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "StackMem::set_header"
-kind = "unsafe"
-count = 1
-justification = "Raw access of StackMem::set_header; in bounds by the external_body precondition (index < len) or, for heap words, by heap integrity (TRUSTED.md)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "StackMem::sid"
-kind = "uninterp"
-count = 1
-justification = "Identity of a stack view: kept by the accessors (write, copy_within, set_header), unrelated after a call that may GC replaces the view, so cursors into an old array are unusable (TRUSTED.md section 1, Slot)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "StackMem::slot"
-kind = "external_body"
-count = 1
-justification = "The cursor at index i <= len of the stack array (array + i): the only way to create a cursor; it carries the view's identity."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "StackMem::view"
-kind = "uninterp"
-count = 1
-justification = "Ghost content of the StackMem view; only related to memory through the external_body contracts (TRUSTED.md section 1)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Table"
-kind = "external_body"
-count = 1
-justification = "Opaque Table view over VM memory (raw pointer and length); TRUSTED.md section 1."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Table::at"
-kind = "external_body"
-count = 1
-justification = "Trusted contract of Table::at (TRUSTED.md section 1)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Table::at"
-kind = "unsafe"
-count = 1
-justification = "Raw access of Table::at; in bounds by the external_body precondition (index < len) or, for heap words, by heap integrity (TRUSTED.md)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Table::cursor"
-kind = "external_body"
-count = 1
-justification = "The cursor at index i of a byte table (the bytecodes: the run loop's instruction pointer); wrapping address arithmetic, reads go through Cursor::byte, which requires the index in the table."
+justification = "DERIVATION POINT: the permissions of an immutable program table ptr[0..len) (initialized, aligned, in the address space, covered by no other view); the loader passes the lengths (TRUSTED.md section 1, Memory model)."
 
 [[trusted]]
 crate = "core"
@@ -1723,26 +1131,50 @@ justification = "Constructor of the Table view from C++ pointers, called only by
 [[trusted]]
 crate = "core"
 file = "src/view.rs"
-item = "Table::len"
+item = "copy_words"
 kind = "external_body"
 count = 1
-justification = "Trusted contract of Table::len (TRUSTED.md section 1)."
+justification = "FFI LEAF: the C library's memmove on the stack array, stated on the permissions (the destination words get the source words' old values, the others keep theirs); a verified word loop with this contract costs up to 1 percent instructions (TRUSTED.md section 1)."
 
 [[trusted]]
 crate = "core"
 file = "src/view.rs"
-item = "Table::sid"
-kind = "uninterp"
+item = "copy_words"
+kind = "unsafe"
 count = 1
-justification = "Identity of a table view (immutable while the program runs): the cursors into it carry it, so the instruction pointer is usable only with the bytecode table it was created from."
+justification = "core::ptr::copy (memmove) of n words inside array[0..len): both ranges in bounds by the precondition (from + n, to + n <= len, the permissions cover the array)."
 
 [[trusted]]
 crate = "core"
 file = "src/view.rs"
-item = "Table::view"
-kind = "uninterp"
+item = "perm_memmove"
+kind = "external_body"
 count = 1
-justification = "Ghost content of the Table view; only related to memory through the external_body contracts (TRUSTED.md section 1)."
+justification = "FFI LEAF: the C library's memmove (Heap::array_copy on heap words, Heap::content_copy on content bytes), stated on the permissions: the destination elements get the source elements' old values, every other permission keeps its value; the model updates and the heap invariant after them are verified (copy_elements, copy_content); TRUSTED.md section 1."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "perm_memmove"
+kind = "unsafe"
+count = 1
+justification = "core::ptr::copy (memmove) of n elements between two permission ranges, in bounds by the precondition (the permissions of both ranges, at the pointers passed)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "perm_memset"
+kind = "external_body"
+count = 1
+justification = "FFI LEAF: the C library's memset (Heap::content_fill), stated on the permissions: the bytes of the range become v, every other permission keeps its value; the model update is verified (fill_content); TRUSTED.md section 1."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "perm_memset"
+kind = "unsafe"
+count = 1
+justification = "core::ptr::write_bytes (memset) of n bytes of a permission range, in bounds by the precondition."
 
 [[trusted]]
 crate = "core"
@@ -2379,22 +1811,6 @@ justification = "TRUSTED C ABI of the verifier (src/verifier_v2.h): copies the v
 [[trusted]]
 crate = "vmverify"
 file = "src/ffi.rs"
-item = "arities"
-kind = "unsafe"
-count = 1
-justification = "Slices over the VM's primitive arity tables (static arrays in src/verifier_v2.cc) with the lengths C++ passes."
-
-[[trusted]]
-crate = "vmverify"
-file = "src/ffi.rs"
-item = "run"
-kind = "unsafe"
-count = 1
-justification = "Converts the program from the input struct's tables (from_vm::convert's contract, passed through from toit_vmverify_verify) and runs the verdict."
-
-[[trusted]]
-crate = "vmverify"
-file = "src/ffi.rs"
 item = "VerifyInput"
 kind = "unsafe"
 count = 1
@@ -2415,6 +1831,22 @@ item = "VmProgress::method"
 kind = "unsafe"
 count = 1
 justification = "Calls the VM's progress callback with the context the VM passed (src/verifier_v2.cc v2_progress: counts and Process::note_progress). It runs between methods inside the proven toit_spec::progress::verify_shipped_progress and must not touch the program, its tables or the certificate (it only records a time): the verdict does not depend on it (vmverify/README.md, \"Install time on devices\")."
+
+[[trusted]]
+crate = "vmverify"
+file = "src/ffi.rs"
+item = "arities"
+kind = "unsafe"
+count = 1
+justification = "Slices over the VM's primitive arity tables (static arrays in src/verifier_v2.cc) with the lengths C++ passes."
+
+[[trusted]]
+crate = "vmverify"
+file = "src/ffi.rs"
+item = "run"
+kind = "unsafe"
+count = 1
+justification = "Converts the program from the input struct's tables (from_vm::convert's contract, passed through from toit_vmverify_verify) and runs the verdict."
 
 [[trusted]]
 crate = "vmverify"
@@ -2551,59 +1983,3 @@ item = "*"
 kind = "plain_rust_file"
 count = 1
 justification = "TRUSTED verdict glue: accept iff the proven check::verify (split_ok, hence accepts of the assembled certificate) and heap_check::x_loaded_ok_stream both accept the converted program and the conversion completed, with global_count and prim_arity set from trusted inputs."
-
-[[trusted]]
-crate = "core"
-file = "src/alloc.rs"
-item = "bump_instance"
-kind = "external_body"
-count = 1
-justification = "ASSUMED (TRUSTED.md 9, Inline allocation): the new-space fast path of SemiSpace::try_allocate inline, the instance initialized as ObjectHeap::allocate_instance does; contract of gc_allocate_instance without a GC (nothing moves); 0 and no change if new space is full."
-
-[[trusted]]
-crate = "core"
-file = "src/alloc.rs"
-item = "bump_instance"
-kind = "unsafe"
-count = 1
-justification = "Writes the header and null fields of the fresh new-space bytes Runtime::bump returned (TRUSTED.md 9, Inline allocation)."
-
-[[trusted]]
-crate = "core"
-file = "src/alloc.rs"
-item = "bump_double"
-kind = "external_body"
-count = 1
-justification = "ASSUMED (TRUSTED.md 9, Inline allocation): as bump_instance, for ObjectHeap::allocate_double; contract of gc_allocate_double without a GC."
-
-[[trusted]]
-crate = "core"
-file = "src/alloc.rs"
-item = "bump_double"
-kind = "unsafe"
-count = 1
-justification = "Writes the header and the 64-bit value of the fresh new-space bytes Runtime::bump returned (TRUSTED.md 9, Inline allocation)."
-
-[[trusted]]
-crate = "core"
-file = "src/ffi.rs"
-item = "Runtime::bump"
-kind = "plain_rust_item"
-count = 1
-justification = "SemiSpace::try_allocate's fast path on the process' new-space top and limit (toit_v2_context); only bump_instance and bump_double call it (TRUSTED.md 9, Inline allocation)."
-
-[[trusted]]
-crate = "core"
-file = "src/ffi.rs"
-item = "Runtime::bump"
-kind = "unsafe"
-count = 1
-justification = "Reads and writes the new-space top and limit words of the running process and the sentinel word after the allocation (inside the space: limit - top > size)."
-
-[[trusted]]
-crate = "core"
-file = "src/ffi.rs"
-item = "toit_v2_core_ported"
-kind = "plain_rust_item"
-count = 1
-justification = "Performance only: whether a core primitive has a Rust port (prims::family), for the policies' core arities; either path is a completion of PRIMITIVE (TRUSTED.md 9)."

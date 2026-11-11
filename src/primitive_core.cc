@@ -242,6 +242,9 @@ PRIMITIVE(spawn) {
     }
     method = Method(process->program()->bytecodes, table->at(method_id).entry);
   } else {
+#ifdef TOIT_NO_CXX_INTERPRETER
+    FAIL(INVALID_ARGUMENT);  // Unreachable: no format-1 process groups.
+#endif
     if (!process->group()->method_entries()->is_entry(method_id)) FAIL(INVALID_ARGUMENT);
     method = Method(process->program()->bytecodes, method_id);
     if (!method.is_lambda_method()) FAIL(INVALID_ARGUMENT);

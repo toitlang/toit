@@ -165,6 +165,8 @@ menu "Toit"
                 increase the performance dramatically, but reduce the amount of
                 free IRAM by about 13k.  Set to "n" if you cannot link because
                 of exhausted IRAM.
+                Only the C++ interpreter of format 1 (TOIT_CXX_INTERPRETER):
+                the verified core of format 2 runs from flash.
 
         config TOIT_INTERPRETER_HELPERS_IN_IRAM
             bool "Run interpreter helper code from IRAM"
@@ -288,18 +290,65 @@ menu "Toit"
         depends on IDF_TARGET_ESP32C6 || IDF_TARGET_ESP32H2 || IDF_TARGET_ESP32
         help
             Links the Verus-verified interpreter core and the format-2 verifier
-            (verified/vmverify, a no_std Rust static library built with cargo for
-            riscv32imac-unknown-none-elf) into the firmware, so that untrusted
-            containers can be verified at install time and run on the core.
-            Needs cargo and `rustup target add riscv32imac-unknown-none-elf`.
-            Only for RISC-V parts with the A extension: Rust has no upstream
-            Xtensa backend, and the ESP32-C3 (rv32imc) lacks the atomics the
-            Rust alloc library needs (verified/core/PROGRESS.md, "Phase 5").
+            (verified/vmverify, a no_std Rust static library built with cargo)
+            into the firmware, so that format-2 programs run on the core and
+            untrusted containers can be verified at install time.
+            RISC-V parts with the A extension (ESP32-C6, H2) need
+            `rustup target add riscv32imac-unknown-none-elf`; the classic
+            ESP32 (Xtensa) needs the esp-rs toolchain (`espup install`,
+            cargo +esp; verified/XTENSA-RUST-FIXES.md). The ESP32-C3
+            (rv32imc) lacks the atomics the Rust alloc library needs, and
+            the S2 and S3 are not brought up (docs/format2-migration.md,
+            "Devices").
+
+    config TOIT_BYTECODE_FORMAT_2
+        bool "Bytecode format 2 for the system and the bundled containers"
+        default y
+        depends on TOIT_VERIFIED_CORE
+        help
+            Compiles the system snapshot and the entry program in bytecode
+            format 2 (trusted: with the unchecked twins and the built-ins),
+            which run on the verified core, and records in the envelope that
+            the firmware runs format 2 (`toit tool firmware container
+            install` checks containers against it). If not selected, the
+            firmware's own programs are format 1 and run on the C++
+            interpreter.
+
+    config TOIT_CXX_INTERPRETER
+        bool "Link the C++ interpreter for format-1 programs" if TOIT_BYTECODE_FORMAT_2
+        default y
+        help
+            The C++ interpreter (src/interpreter_run.cc and its method entry
+            table) runs format-1 programs. A firmware whose programs are all
+            format 2 does not need it: deselecting it saves flash and the
+            interpreter's IRAM, and the firmware then refuses format-1
+            programs. Always linked if the firmware's programs are format 1.
+
+    config TOIT_VERIFIED_CORE_VERIFIER
+        bool "Link the verifier for untrusted containers"
+        default y
+        depends on TOIT_VERIFIED_CORE
+        help
+            The format-2 verifier checks untrusted containers with their
+            shipped certificates when they are installed. Firmware that never
+            installs untrusted containers (all its programs are first-party
+            and run as trusted) can leave it out to save about 27 KB of flash
+            on the classic ESP32; every untrusted install is then rejected.
 
     config TOIT_VERIFIED_CORE_OPT_LEVEL
         string "Rust opt-level of the verified core (3, s or z)"
         default "3"
         depends on TOIT_VERIFIED_CORE
+
+    config TOIT_TRACE_INSTALL
+        bool "Trace install-time verifications (for measurements)"
+        default n
+        depends on TOIT_VERIFIED_CORE
+        select HEAP_USE_HOOKS
+        help
+            Prints the time, the free heap and the peak heap use of every
+            install-time verification of an untrusted container
+            ("[install-trace]" lines on the console).
 
     config TOIT_VERIFIED_CORE_INFER
         bool "Link the certificate inference (for measurements)"
@@ -317,7 +366,8 @@ menu "Toit"
         depends on TOIT_VERIFIED_CORE
         help
             The checked loop runs format-2 programs the verifier did not
-            accept (trusted programs that were not verified). Devices run
-            format 2 only for verified untrusted programs and refuse others,
+            accept under the checked rules. Devices run untrusted programs
+            only after the install-time verification and trusted
+            (first-party) programs on the verified loop (the trusted token),
             so they do not need it; only useful to measure its size.
 endmenu

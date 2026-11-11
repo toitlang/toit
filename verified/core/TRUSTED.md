@@ -5,20 +5,73 @@ every escape hatch (external_body, uninterp, unsafe, plain-Rust items) is
 verified/TRUSTED.toml, enforced by `verified/check.sh`; this file explains
 the contracts behind the entries. The list must only shrink.
 
-## 1. Memory views (`src/view.rs`)
+## 0. The residual trusted base on one page
 
-Opaque structs holding raw pointers into VM memory. Their ghost content
-(`view`, uninterpreted) is related to memory only by the `requires` /
-`ensures` of the `external_body` accessors.
+Since branch core/proven-accessors (2026-11-11) no accessor of VM memory
+is trusted: every read and write of the stack, the program tables, the
+globals and the heap objects is verified against `vstd::raw_ptr`
+permissions (section 1). What remains, all of it:
 
-| View | What it wraps | Contract |
+| Kind | Items | Statement |
 |---|---|---|
-| `Table<T>` | an immutable program table `ptr[0..len)` (bytecodes, method table, dispatch table, class tables, roots, literals) | `len() == view.len()`; `at(i)` requires `i < len`, returns `view[i]` |
-| `Globals` | the process' global variables | `at`/`set` require `i < len`; `set` updates `view[i]` |
-| `StackMem` | the array of the current task's `Stack` object | `slot(i)` (`i <= len`) is the cursor at index `i`, carrying the view's identity `sid` (uninterpreted); `read`/`write` (verified: through `slot(0)`) require `i < len`; `copy_within` is a memmove with an exact contract; `header`/`set_header` access the Stack header words (top, record top, bci with the finally-record count); `write`, `copy_within` and `set_header` keep `sid` |
-| `Cursor<T>` (`Slot` = `Cursor<usize>`, `Ip` = `Cursor<u8>`) | a pointer into the array of one `StackMem` (the run loop's registers: object-stack top, frame limit, frame top, array end) or into the bytecode table (the instruction pointer) | ghost index `s@` and identity `sid` (uninterpreted); `read(n, mem)`/`write(n, v, mem)` (stack) and `byte(k, t)` (bytecodes, `Table::cursor` creates the cursor, `Table::sid` the identity) require `s.sid() == mem.sid()` and `0 <= s@ + n < len` and access element `s@ + n`; `offset(k)` moves the index by `k` (wrapping pointer arithmetic, never dereferenced itself); `diff(o)` is the element distance of two cursors of the same view (`0 <= o@ <= s@`, less than 2^28 elements apart); `lt(o, mem)` is the order of two stack cursors of `mem` inside its array (the end included), a pointer comparison (the gate of the returns' fast path, 2026-11-11, branch core/size-diet). Sound because cursors are created only by `StackMem::slot`, and a view replaced at a GC point (section 2) has an identity no contract relates to the old one, so a cursor into an old array cannot be used (the type-level form of "no pointer survives a GC point"). Added by the register loop (2026-11-11): 10 more allowlist groups than the index-based `read`/`write` they replace in the hot path (6 for the stack cursors, 4 for the instruction pointer) |
-| `Heap` | process and program heap objects | the heap model (`objs`, `addrs`, `class_bits`; `abs::obj_model_ok`: instances, arrays, doubles, large integers and strings agree with their class tag, field count, length and encodable contents; a byte array of the model has the byte-array tag): `class_id`, `class_tag`, `field`/`set_field`, `array_length`, `element`/`set_element`, `double_bits`, `large_int`, `string_len`/`string_byte`, `bytes_len`/`byte_at`/`set_byte_at`, and for the primitives `string_content`/`byte_array_content` (a `Content` view), `content_at`/`content_set`/`content_copy`/`content_fill`, `array_copy`, `string_hash_field`/`set_string_hash_field` (section 8) relate memory to it; without ghost content (used only by the checked loop of programs not accepted): `header`, `word`, `word64` (a 64-bit payload, two words on 32-bit), `byte`, `half_word_at`, `set_word`, `set_byte` access the object a tagged word designates; the setters of references apply the write barrier (card mark) |
-| `Preemption` | `Interpreter::watermark_` | `word` (the raw watermark), `clear`, `request`: environment nondeterminism, no contract; `requested` (verified) is `word() == PREEMPTION_MARKER`. The call's room check is `free >= (word | needed)`, proven for every word value |
+| Derivation points (the allocator and GC invariant, section 1) | `Table::from_raw`, `Globals::from_raw`, `StackMem::from_stack` (via `ffi::Runtime::stack`), `Heap::new`; the leaf contracts of the calls that may GC (section 2, 6: `gc_allocate_instance`, `gc_allocate_double`, `gc_allocate_exception`, `gc_grow_stack`, `gc_call_primitive`, the `Runtime` wrappers) and of `ffi::Allocator` (section 8), which hand out the views after them | the VM's memory is well formed now: the permissions of exactly the words, half words and bytes `view::word_val`, `str_ok`, `ba_ok`, `hdr_ok`, `array_ok` describe, with the values the heap model says (V1, V2, V5) |
+| FFI leaves on permissions | `copy_words` (memmove on the stack array), `perm_memmove` (memmove: `array_copy`, `content_copy`), `perm_memset` (`content_fill`), `Heap::write_barrier` (card mark, no contract) | the C library's memmove/memset, stated on the permissions; the card table is outside every view |
+| Rust and target semantics | the `assume_specification`s of `pointer::wrapping_add` and `wrapping_offset`; `global size_of usize`, `size_of u8` (compile-time checked) | wrapping address arithmetic keeps the provenance; the word size |
+| vstd | `raw_ptr` axioms (`PointsTo`, `ptr_ref`, `ptr_mut_write`, `with_exposed_provenance`, `IsExposed`), `Map`, `Seq` | Verus' own trusted base. Note: a `PointsTo` grants writing; program-heap objects (read-only memory) get permissions too, and every verified write requires `!ro` (`set_field`, `set_element`, `content_*` with `writable`, `set_byte_at`, `set_string_hash_field`) |
+| Not memory | `Preemption::{word, clear, request}` (the scheduler's watermark, environment nondeterminism), `proven_unreachable`, the loader's and scheduler's `assume_new`s (section 6), the epoch (section 9), floating point (`prims/fp.rs`, the spec's uninterpreted float functions), `Accepted::trusted_program`, the inline-allocation fast path (`alloc::bump_instance`, `bump_double`, `Runtime::bump`, section 9) | sections 6, 8, 9 |
+| The checked loop (programs not accepted; not built on devices) | `machine.rs` (plain Rust), and its raw accessors `Heap::{header, word, word64, set_word, byte, set_byte, half_word_at}` (no ghost content: the checked loop is not verified, its run-time checks keep them in bounds) | section 4 |
+| Layout constants | src/layout.rs, checked against the C++ headers at build time (section 3) | |
+| FFI structs and trampolines | ffi.rs plain items, `cold!`, the `*_raw` trampolines | section 2, 4 |
+
+## 1. Memory views and the memory model (`src/view.rs`)
+
+Every view owns permissions (`vstd::raw_ptr::PointsTo`) for the VM memory
+it touches, as tracked fields (erased: no run-time representation), and
+its ghost content is defined from them (`view()`, `objs()`, ... are
+closed spec functions of the permissions, no longer uninterpreted). A
+type invariant (`#[verifier::type_invariant]`) ties each permission to
+the address the accessor computes and, for the heap, its value to the
+heap model. So the accessors are verified code: each read is `ptr_ref`
+of the permission at that address, each write `ptr_mut_write` (in a
+helper that takes a tracked mutable borrow of the permission field, so
+that the type invariant is checked against the helper's contract), and
+the bodies are the former trusted ones (the same pointer arithmetic,
+`wrapping_add`; the instruction counts and the device code size did not
+grow: PROGRESS.md, "Proven accessors").
+
+| View | Permissions | Layout facts (the type invariant) |
+|---|---|---|
+| `Table<T>` | element `i` of `ptr[0..len)` | `array_ok`: in the address space, initialized |
+| `Globals` | word `i` of the globals | `array_ok` |
+| `StackMem` | the array words and the top, record-top and bci header words of the Stack object | `array_ok`, `hdr_ok`; `sid()` is the array's pointer |
+| `Cursor<T>` | none (a pointer with a ghost base pointer and index) | the pointer is element `idx` of the array at `base` (`at_index`, wrapping); reads and writes take the view's permission at `idx + n`, matched by `sid() == mem.sid()` (the same array pointer, address and provenance) |
+| `Heap` (`HeapMem`) | per object: its header word, an instance's fields, an array's length and elements, a double's or large integer's payload words (key: object id, word index); a string's length and hash half words (`HalfWord`: u32, u16 on 32-bit targets) and its external length and address words; a byte array's length, tag and address words; the content bytes of strings and model byte arrays (key: object id, index); the content pointer per blob; the heap's exposed provenance (`IsExposed`) | `word_val` (header: class id and the class' tag; fields; length; elements as `abs::enc`; payload words), `str_ok` (internal or external string), `ba_ok` (V5: internal, raw external at a non-null address, or opaque), the content bytes equal the model's content |
+| `Content` | none (pointer, length, object id and writability, the last two ghost) | `content_ok`: the view's pointer is the object's content pointer, which the accessors keep and a heap after a GC point does not relate to the old one |
+
+Tagged references: an accessor computes `obj - HEAP_TAG` and turns it into
+a pointer with `with_exposed_provenance` and the heap's `IsExposed` token,
+then `wrapping_add(k)`; the permission of word `k` of object `id` is at
+`at_index(obj_ptr(m, id), k)`, where `obj_ptr` is that same computation
+on the model's address `addrs[id]`, so the recomputed pointer matches by
+the invariant (and `obj - HEAP_TAG` cannot underflow: `obj_fits`).
+
+The derivation points are the only places where permissions come into
+existence (`Tracked::assume_new` in the constructors, and the contracts of
+the calls that may GC, which return a new machine whose views carry new
+permissions by their type invariants). What they assume is exactly the
+allocator and GC invariant: the objects of the model lie at their
+addresses with these words, half words and bytes, in the address space,
+and nothing else accesses them while the core runs. The C++ side states
+the same facts as its object model (verified/CONTRACTS.toml, bridge
+`heap`; verified/cxx/annotated).
+
+| Derivation point | When | Permissions |
+|---|---|---|
+| `Table::from_raw` | `toit_v2_run`, once per run | the program tables (immutable) |
+| `Globals::from_raw` | `toit_v2_run` | the globals |
+| `StackMem::from_stack` | `toit_v2_run`, and `ffi::Runtime::stack` after every call that may GC | the current task's stack array and header words |
+| `Heap::new` | `toit_v2_run` | the heap model's objects (the ghost state of the run loop's precondition) |
+| the GC leaf contracts (section 2) and `ffi::Allocator` | after each call | the views after the call (a new machine; for the allocator one appended object, the old content pointers kept: `view::appended`) |
 
 Assumptions behind the views:
 
@@ -31,8 +84,11 @@ Assumptions behind the views:
   core computes from the header (layout constants, field counts from
   `class_bits`, array lengths) are inside it. Maintained by the GC and by
   every allocation; the core's own writes only store such words or smis.
-  This is the largest assumption: the core reads object fields through
-  `Heap` without a ghost bound (OBLIGATIONS.md F1).
+  This is the largest assumption. Since branch core/proven-accessors it
+  is stated exactly, once, as the invariant of the views the derivation
+  points produce (`view::heap_ok`: `word_val`, `str_ok`, `ba_ok`), and
+  every access is proven inside it: an access to a word outside the
+  object's permissions does not verify.
 - V3 Method table: every `V2Method` has `entry <= end <= bytecodes.len()`
   (checked by the C++ loader, `V2MethodTable::compute`). The fast dispatch
   path reads up to `MAX_INSTRUCTION_LENGTH` bytes from `bci < end - 6`.
@@ -216,16 +272,13 @@ of the three header words the core uses (before: any word offset);
 
 | Item | How it could be wrong | What catches it |
 |---|---|---|
-| `Table::{len, at}`, `Table::from_raw` | `toit_v2_run` passes a wrong length for a table (e.g. a short invoke-offsets table) | layout check (struct offsets), vmverify differential (the verifier reads the same tables), ASan fuzzing |
-| `Globals::{len, at, set}`, `from_raw` | the globals pointer or length differs from the process' globals | ASan fuzzing, untrusted suite (globals tests) |
-| `StackMem::{len, slot, copy_within}`, `from_stack` | the Stack object's length word differs from the array the core indexes | `TOIT_V2_VALIDATE=1` (slot checks around GCs), ASan fuzzing |
-| `Cursor::{read, write, byte, offset, diff, lt, view, sid}`, `StackMem::{slot, sid}`, `Table::{cursor, sid}` | a cursor outlives its view (a pointer into a moved Stack): only if a contract equated the identities of views across a GC point, which none does; `diff` inexact for cursors of different arrays (excluded by `sid`) | ASan fuzzing (core_fuzz.toit, launch filter), untrusted suite, `TOIT_V2_VALIDATE=1` |
-| `StackMem::{header, set_header}` | a header word offset collides with the array | layout check (`STACK_*_WORD`), tests/sandbox |
-| `Heap::{class_id, class_tag}` | header decoding (smi shift, tag mask) differs from the C++ `HeapObject` layout | layout check (behavioral, fake objects) |
-| `Heap::{field, set_field, array_length, element, set_element}` | an object's field count or length disagrees with its class bits (heap integrity) | layout check, `TOIT_V2_VALIDATE`, ASan fuzzing |
-| `Heap::{double_bits, large_int}` | value word offset wrong | layout check (`DOUBLE_VALUE_WORD`, `LARGE_INTEGER_VALUE_WORD`), build/t differential tests |
-| `Heap::{string_len, string_byte}` | internal/external string encoding (sentinel, external words) differs from `String` | layout check, IDENTICAL on external strings (untrusted suite string tests) |
-| `Heap::{bytes_len, byte_at, set_byte_at}` | a byte-array tag other than RAW_BYTE_TAG has a valid address, or the model treats proxies as bytes (V5) | layout check, fuzzing, tests on external byte arrays (`ByteArray 20_000`) |
+| `Table::from_raw` (derivation point) | `toit_v2_run` passes a wrong length for a table (e.g. a short invoke-offsets table): the permissions would cover memory that is not the table | layout check (struct offsets), vmverify differential (the verifier reads the same tables), ASan fuzzing |
+| `Globals::from_raw` (derivation point) | the globals pointer or length differs from the process' globals | ASan fuzzing, untrusted suite (globals tests) |
+| `StackMem::from_stack`, `Runtime::stack` (derivation points) | the Stack object's length word differs from the array the core indexes, or a header word offset collides with the array | `TOIT_V2_VALIDATE=1` (slot checks around GCs), layout check (`STACK_*_WORD`), ASan fuzzing |
+| `Heap::new` (derivation point) and the layout facts `view::word_val`, `str_ok`, `ba_ok` | an object's header, field count, length, payload or blob encoding differs from the C++ `HeapObject`, `Instance`, `Array`, `Double`, `LargeInteger`, `String`, `ByteArray` layout (the constants are layout-checked; the encodings, e.g. the string sentinel, the negative byte-array length, the V5 rule, are reviewed against objects.h) | layout check (behavioral, fake objects), IDENTICAL on external strings and byte arrays (untrusted suite), prim_diff.sh, `TOIT_V2_VALIDATE`, ASan fuzzing |
+| `pointer::wrapping_add`, `wrapping_offset` (`assume_specification`) | Rust's wrapping pointer arithmetic did not keep the provenance or did not wrap modulo the word size | the Rust reference (`wrapping_offset`: "the resulting pointer has the same provenance"); Miri semantics |
+| `copy_words`, `perm_memmove`, `perm_memset` (FFI leaves) | memmove/memset wrote outside the ranges or did not move the values (the ranges are the permissions' words, in bounds by the preconditions) | libc; tests with finally records (unwinding) and `array_replace`, `byte_array_replace`, `byte_array_fill` (prim_diff.sh) |
+| `Heap::write_barrier` (FFI leaf) | the card of a written object is not marked (a GC misses a new-space pointer) | GC-heavy tests on the core, `TOIT_V2_VALIDATE=1` |
 | `Heap::{header, word, word64, set_word, byte, set_byte, half_word_at}` | only the checked loop; a missing run-time check there reads outside an object | ASan with programs not accepted (runtime-hardening-test) |
 | `Preemption::*` | the watermark is not the interpreter's | tests that preempt (tests/sandbox scheduling tests) |
 | `Runtime::*` (FFI wrappers), `PrimitiveRef` | a wrapper forgets to replace the stack view after a GC | `TOIT_V2_VALIDATE`, ASan |
@@ -235,14 +288,12 @@ of the three header words the core uses (before: any word offset);
 | `primitive::gc_call_primitive` | a C++ primitive breaks `prim_heap_ok` (e.g. writes a task's stack field, as before R5), returns a non-value, or disagrees with a precise contract of `prim_core` | fuzzing (found R5), vmverify differential, prim_diff.sh (C++ against the proven Rust ports, 10M calls); the Rust ports replace 106 of them for untrusted programs (S1) |
 | `PrimitivePolicy::core_arities` (C++, read through `Env::core_arities`, a `Table<u8>`) | an entry is non-zero for a primitive the policy denies (the Rust port would run although the C++ entry is `primitive_denied`) | tests/sandbox (denied primitives fail with PERMISSION_DENIED), review of `initialize_core_arities` (compares the policy's function pointer with `Primitive::at`) |
 | `ffi::Allocator` (`toit_v2_try_allocate_*`) | an allocation collects garbage (a Content view would dangle) or the object is not the stated builtin class and body | review (`ObjectHeap::allocate_*` without GC, `Process::allocate_string/byte_array`), prim_diff.sh, ASan fuzzing |
-| `view::Content`, `Heap::{string_content, byte_array_content, content_at, content_set, content_copy, content_fill, array_copy, string_hash_field, set_string_hash_field}` | a view's pointer or length differs from the object's bytes (external strings, V5 byte arrays), or a view outlives a GC point | layout check, prim_diff.sh, ASan fuzzing; views never leave `prims::call`, which has no GC point |
 | `prims/fp.rs` | a float operation differs from the C++ (NaN payloads, libm) | prim_diff.sh (bit-exact checksums) |
 | `prims/index.rs` `TABLE` (plain Rust) | a primitive index or arity differs from src/primitive.h | layout check (`toit_vcore_prim_entry` against MODULE_CORE) |
 | `ffi::toit_v2_run` `assume_new` (ap, cert, trusted) | the tables the core runs differ from those vmverify checked | vmverify differential (from_vm on the same `toit_v2_program`), the `Accepted` token ties the loop to the accepted table |
 | `machine::run` `assume_new` (g) | the scheduler resumes a different state | tests/sandbox task tests, untrusted suite (tasks, channels) |
 | `machine.rs` (plain-Rust file), `cold!` | the checked loop runs only programs not accepted; `cold!` (also used by the `*_raw` trampolines of the verified loop's leaf calls) passes the machine by reference to an out-of-line closure | runtime-hardening-test, the checked loop's run-time checks; review: the `*_raw` bodies only call the FFI |
 | `ffi.rs` plain items (layout tables, `Context`, `ProgramTables`, extern decls) | a C struct field moved | layout check (every offset) |
-| uninterp views (`objs`, `addrs`, `class_bits`, `view`, `hdr`) | none by themselves: they are related to memory only by the accessors' contracts | (the accessors' tests) |
 
 ## 8. Primitives (`src/prims`)
 
@@ -262,9 +313,9 @@ What the proofs rest on:
 
 | Item | Where | Assumption |
 |---|---|---|
-| Number and blob accessors | `Heap::double_bits`, `large_int`, `bytes_len` (section 1), `string_content`, `byte_array_content`, `string_hash_field`, `set_string_hash_field` | each reads (writes) the layout-checked words of the object `id` the model says has that body; `string_content`/`byte_array_content` return a `Content` whose length is the model's content length (inline, or the external address: for a byte array only a model byte array, V5); the tag facts come from `abs::obj_model_ok` (proven, no trusted lemma) |
-| Content views | `Content`, `Heap::content_at/set/copy/fill` | a view stays valid for the whole primitive call: primitives never reach a GC point (allocation does not collect, below), so no object moves and no external memory is freed while a view is alive; the views never leave `prims::call`. Every access is bounds-checked by its precondition |
-| Array memmove | `Heap::array_copy` | memmove of elements with the card mark of the destination, as C++ `array_replace` |
+| Number and blob accessors | `Heap::double_bits`, `large_int`, `bytes_len`, `string_content`, `byte_array_content`, `string_hash_field`, `set_string_hash_field` (section 1) | verified since branch core/proven-accessors against the heap's permissions; what remains is the layout the derivation point states (`word_val`, `str_ok`, `ba_ok`, V5) |
+| Content views | `Content`, `Heap::content_at/set/copy/fill` | verified: a view carries the object's content pointer (`content_ok`), which the accessors and allocation keep; a heap after a GC point relates no content pointer to the old ones, so a view cannot be used across one (proven, not reviewed). The byte moves are the memmove/memset FFI leaves on permissions (section 0) |
+| Array memmove | `Heap::array_copy` | verified model update; the move is the memmove leaf on permissions, then the card mark of the destination (the write-barrier leaf), as C++ `array_replace` |
 | Allocation without GC | `ffi::Allocator` (`toit_v2_try_allocate_*`) | appends exactly one object of the program's builtin class (`p.ap@.builtin[k]`) with the stated body at a fresh tagged address outside the program heap, keeping the model below 2^30 objects (`view::appended`), or changes nothing and returns 0. The class tag of each builtin class is checked at run time (`prims::builtin_with_tag`), not assumed |
 | Float operations | `prims/fp.rs` (external_body, no contracts) | none: scalar IEEE-754 and libm operations with the C semantics; the contracts do not depend on float values. Compared bit for bit with the C++ by the differential test |
 | The policy table | `Env::core_arities` (`PrimitivePolicy::core_arities`) | section 2: non-zero exactly where the policy resolves the VM's own primitive. Not used by the proof (the preconditions of `prims::call`, `heap_inv` and `args_ok`, are proven from `Machine::inv` in `primitive::lemma_rust_args`) |

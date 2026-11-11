@@ -158,7 +158,7 @@ Top-level theorems: crate vmverify (0)
 ==============================================================================
 
 ==============================================================================
-Verified exec entry points: crate core (1)
+Verified exec entry points: crate core (2)
 ==============================================================================
 
 --- Machine::set_field_val  (core/src/fields.rs)
@@ -179,6 +179,10 @@ pub fn set_field_val(&mut self, p: &Program, wo: usize, Ghost(o): Ghost<Value>, 
         final(self).top == old(self).top,
         final(self).bci == old(self).bci,
         final(self).same_stack(old(self)),
+
+--- Cursor::clone  (core/src/view.rs)
+fn clone(&self) -> (r: Self)
+    ensures r == *self,
 
 ==============================================================================
 Verified exec entry points: crate spec (11)

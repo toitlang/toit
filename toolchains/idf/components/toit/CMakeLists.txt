@@ -42,6 +42,11 @@ if (CONFIG_TOIT_VERIFIED_CORE)
       set(TOIT_VERIFIED_CORE_RUST_TARGET "riscv32imac-unknown-none-elf" CACHE STRING "" FORCE)
     endif()
     set(TOIT_VERIFIED_CORE_OPT_LEVEL "${CONFIG_TOIT_VERIFIED_CORE_OPT_LEVEL}" CACHE STRING "" FORCE)
+    if (CONFIG_TOIT_VERIFIED_CORE_VERIFIER)
+        set(TOIT_VERIFIED_CORE_VERIFIER ON CACHE BOOL "" FORCE)
+    else()
+        set(TOIT_VERIFIED_CORE_VERIFIER OFF CACHE BOOL "" FORCE)
+    endif()
     if (CONFIG_TOIT_VERIFIED_CORE_INFER)
         set(TOIT_VERIFIED_CORE_INFER ON CACHE BOOL "" FORCE)
     else()
@@ -55,6 +60,30 @@ if (CONFIG_TOIT_VERIFIED_CORE)
 else()
     set(TOIT_VERIFIED_CORE OFF CACHE BOOL "" FORCE)
 endif()
+
+# The bytecode format of the firmware's own programs (the system snapshot
+# and the entry program) and whether the C++ interpreter for format 1 is
+# linked (Kconfig TOIT_BYTECODE_FORMAT_2, TOIT_CXX_INTERPRETER;
+# docs/format2-migration.md, "Devices"). The envelope records the formats
+# the firmware runs.
+if (CONFIG_TOIT_BYTECODE_FORMAT_2)
+    set(TOIT_BYTECODE_FORMAT 2 CACHE STRING "" FORCE)
+else()
+    set(TOIT_BYTECODE_FORMAT 1 CACHE STRING "" FORCE)
+endif()
+if (CONFIG_TOIT_CXX_INTERPRETER)
+    set(TOIT_CXX_INTERPRETER ON CACHE BOOL "" FORCE)
+else()
+    set(TOIT_CXX_INTERPRETER OFF CACHE BOOL "" FORCE)
+endif()
+set(TOIT_DEVICE_BYTECODE_FORMATS "")
+if (CONFIG_TOIT_CXX_INTERPRETER)
+    list(APPEND TOIT_DEVICE_BYTECODE_FORMATS 1)
+endif()
+if (CONFIG_TOIT_VERIFIED_CORE)
+    list(APPEND TOIT_DEVICE_BYTECODE_FORMATS 2)
+endif()
+list(JOIN TOIT_DEVICE_BYTECODE_FORMATS "," TOIT_DEVICE_BYTECODE_FORMATS)
 
 add_subdirectory(${TOIT_BASE_DIR} toit EXCLUDE_FROM_ALL)
 
@@ -94,6 +123,8 @@ idf_component_set_property(${COMPONENT_NAME} TOIT_SDK_DIR ${TOIT_SDK_DIR})
 idf_component_set_property(${COMPONENT_NAME} SYSTEM_SNAPSHOT ${CMAKE_BINARY_DIR}/system.snapshot)
 idf_component_set_property(${COMPONENT_NAME} TOIT ${TOIT})
 idf_component_set_property(${COMPONENT_NAME} TOIT_BASE_DIR ${TOIT_BASE_DIR})
+idf_component_set_property(${COMPONENT_NAME} TOIT_BYTECODE_FORMAT ${TOIT_BYTECODE_FORMAT})
+idf_component_set_property(${COMPONENT_NAME} TOIT_DEVICE_BYTECODE_FORMATS ${TOIT_DEVICE_BYTECODE_FORMATS})
 idf_build_set_property(TOIT_COMPONENT_NAME "${COMPONENT_NAME}")
 
 include(${CMAKE_CURRENT_LIST_DIR}/resolve_file.cmake)
@@ -105,12 +136,16 @@ function(toit_postprocess)
     idf_component_get_property(TOIT_BASE_DIR ${TOIT_COMPONENT_NAME} TOIT_BASE_DIR)
     idf_component_get_property(SYSTEM_SNAPSHOT ${TOIT_COMPONENT_NAME} SYSTEM_SNAPSHOT)
 
+    idf_component_get_property(TOIT_BYTECODE_FORMAT ${TOIT_COMPONENT_NAME} TOIT_BYTECODE_FORMAT)
+    idf_component_get_property(TOIT_DEVICE_BYTECODE_FORMATS ${TOIT_COMPONENT_NAME} TOIT_DEVICE_BYTECODE_FORMATS)
+
     idf_build_get_property(EXECUTABLE_NAME EXECUTABLE_NAME)
 
-    # Devices keep bytecode format 1 (the C++ interpreter) for the system
-    # snapshot and the entry program, also when the host compiler defaults
-    # to format 2 (docs/format2-migration.md, "Devices").
-    set(DEVICE_COMPILE_ENV ${CMAKE_COMMAND} -E env TOIT_BYTECODE_FORMAT=1)
+    # The system snapshot and the entry program are compiled in the
+    # firmware's format (Kconfig TOIT_BYTECODE_FORMAT_2), independent of the
+    # host compiler's default (docs/format2-migration.md, "Devices").
+    # Format 2 is trusted (first-party) code: the compiler's default.
+    set(DEVICE_COMPILE_ENV ${CMAKE_COMMAND} -E env TOIT_BYTECODE_FORMAT=${TOIT_BYTECODE_FORMAT})
 
     add_custom_target(firmware ALL DEPENDS bootloader partition_table_bin gen_project_binary)
     # The envelope packaging below reads ota_data_initial.bin.
@@ -147,6 +182,7 @@ function(toit_postprocess)
                     "--otadata.bin=ota_data_initial.bin"
                     "--flashing.json=flasher_args.json"
                     "--system.snapshot=${SYSTEM_SNAPSHOT}"
+                    "--bytecode-formats=${TOIT_DEVICE_BYTECODE_FORMATS}"
             COMMAND echo envelope: created
     )
 

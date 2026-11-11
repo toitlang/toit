@@ -51,6 +51,9 @@ verus! {
 global size_of usize == 8;
 #[cfg(target_pointer_width = "32")]
 global size_of usize == 4;
+// The bytecodes and blob contents are byte arrays (`view::Ip`,
+// `view::Content`): their address arithmetic counts bytes.
+global size_of u8 == 1;
 
 // ---------------------------------------------------------------------------
 // Words.

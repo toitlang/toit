@@ -28,6 +28,29 @@
 #include "os.h"
 #include "process.h"
 
+#ifdef TOIT_ESP32
+#include <sdkconfig.h>
+#endif
+#ifdef CONFIG_TOIT_TRACE_INSTALL
+#include <esp_heap_caps.h>
+#include <esp_timer.h>
+
+// The lowest free heap seen by an allocation while an install-time
+// verification runs (Kconfig TOIT_TRACE_INSTALL selects HEAP_USE_HOOKS; the
+// heap of the Toit IDF fork keeps no minimum of its own). Every allocation
+// of the system counts, not only the verifier's.
+static volatile bool trace_install_active = false;
+static volatile size_t trace_install_min_free = 0;
+
+extern "C" void esp_heap_trace_alloc_hook(void* ptr, size_t size, uint32_t caps) {
+  if (!trace_install_active) return;
+  size_t now = heap_caps_get_free_size(MALLOC_CAP_8BIT);
+  if (now < trace_install_min_free) trace_install_min_free = now;
+}
+
+extern "C" void esp_heap_trace_free_hook(void* ptr) {}
+#endif
+
 namespace toit {
 
 const char* const V2Verifier::OUT_OF_MEMORY = "OUT_OF_MEMORY";
@@ -144,6 +167,15 @@ bool V2Verifier::verify(Program* program, const V2MethodTable* table, bool trust
 static bool v2_verify(Program* program, const V2MethodTable* table, bool trusted, word program_size,
                       const uint8* certificate, word certificate_length, Process* process,
                       bool* out_of_memory) {
+#ifdef TOIT_NO_V2_VERIFIER
+  // Firmware that never installs untrusted containers (Kconfig
+  // TOIT_VERIFIED_CORE_VERIFIER): the verifier is not linked, so every
+  // untrusted program is rejected.
+  USE(v2_progress);
+  USE(v2_code_name);
+  fprintf(stderr, "verifier: %sprogram rejected: the firmware has no verifier\n", trusted ? "" : "untrusted ");
+  return false;
+#else
   if (certificate == null && !V2Verifier::infers()) {
     // Devices (and hosts with -Xrequire_certificate): no inference, so no
     // verdict without a shipped certificate. Rejected before the program is
@@ -161,6 +193,9 @@ static bool v2_verify(Program* program, const V2MethodTable* table, bool trusted
   toit_vmverify_result result;
   toit_vmverify_verify(&input, &result);
   result.message[TOIT_VMVERIFY_MESSAGE_SIZE - 1] = '\0';
+#ifndef TOIT_FREERTOS
+  // Hosts only (devices have no environment; Kconfig TOIT_TRACE_INSTALL
+  // traces their installs).
   const char* timing = getenv("TOIT_VERIFY_TIME");
   if (timing != null && strcmp(timing, "1") == 0) {
     fprintf(stderr,
@@ -174,6 +209,7 @@ static bool v2_verify(Program* program, const V2MethodTable* table, bool trusted
             result.check_ns / 1e6, result.peak_bytes >> 10,
             progress.calls, process != null ? " (to the scheduler)" : "");
   }
+#endif
   if (result.code == TOIT_VMVERIFY_ACCEPTED) {
     // The only place that marks a table verified (the core's verified run
     // loop relies on it: Interpreter::run_v2).
@@ -190,12 +226,14 @@ static bool v2_verify(Program* program, const V2MethodTable* table, bool trusted
     fprintf(stderr, "verifier: %sprogram rejected: %s: %s\n",
             kind, v2_code_name(result.code), result.message);
   }
-  if (!trusted && result.message != null && strstr(result.message, "not in the unchecked mode") != null) {
+  // (`message` is an array: devices build with -Werror=address.)
+  if (!trusted && strstr(result.message, "not in the unchecked mode") != null) {
     // The compiler's default is first-party code with the trusted-only
     // twins (docs/format2-migration.md).
     fprintf(stderr, "verifier: the program was compiled for trusted use; compile it with --untrusted\n");
   }
   return false;
+#endif  // TOIT_NO_V2_VERIFIER
 }
 
 const char* V2Verifier::verify_installed(Program* program, word program_size, bool* no_verdict,
@@ -211,10 +249,36 @@ const char* V2Verifier::verify_installed(Program* program, word program_size, bo
     return "FORMAT_2_REQUIRED";
   }
   bool out_of_memory = false;
+#ifdef CONFIG_TOIT_TRACE_INSTALL
+  // Kconfig TOIT_TRACE_INSTALL: the time and the heap use of each
+  // install-time verification (for measurements on a device or in QEMU).
+  size_t trace_free = heap_caps_get_free_size(MALLOC_CAP_8BIT);
+  size_t trace_largest = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
+  trace_install_min_free = trace_free;
+  trace_install_active = true;
+  int64 trace_start = esp_timer_get_time();
+#endif
   V2MethodTable* table = V2MethodTable::compute(program, &out_of_memory);
+#ifdef CONFIG_TOIT_TRACE_INSTALL
+  size_t trace_after_table = heap_caps_get_free_size(MALLOC_CAP_8BIT);
+  if (table == null) trace_install_active = false;
+#endif
   if (table == null) return out_of_memory ? OUT_OF_MEMORY : "INVALID_SNAPSHOT";
   bool accepted = v2_verify(program, table, false, program_size, certificate, certificate_length, process,
                             &out_of_memory);
+#ifdef CONFIG_TOIT_TRACE_INSTALL
+  int64 trace_end = esp_timer_get_time();
+  trace_install_active = false;
+  size_t trace_min = trace_install_min_free;
+  printf("[install-trace] %s: %d methods, %d bytecodes; free %u largest %u; table %u B (%s);"
+         " peak use %u B (min free %u); %lld us\n",
+         accepted ? "accepted" : "rejected", static_cast<int>(table->length()),
+         static_cast<int>(program->bytecodes.length()),
+         static_cast<unsigned>(trace_free), static_cast<unsigned>(trace_largest),
+         static_cast<unsigned>(trace_free - trace_after_table), table->in_literal() ? "literal" : "RAM",
+         static_cast<unsigned>(trace_free - trace_min), static_cast<unsigned>(trace_min),
+         static_cast<long long>(trace_end - trace_start));
+#endif
   delete table;
   if (accepted) return null;
   return out_of_memory ? OUT_OF_MEMORY : "VERIFICATION_FAILED";
