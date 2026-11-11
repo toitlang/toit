@@ -68,7 +68,7 @@ lemma void foreach_unremove_frac<t>(t x, list<t> xs)
 lemma void heap_open(void *o)
   requires [?f]heap(?objs, ?H) &*& mem(o, objs) == true;
   ensures [f]heap_rest(objs, H, o) &*& [f]header(o, o_hw(H(o))) &*&
-          [f]body(o, header_tag2(o_hw(H(o))), o_len(H(o)), o_words(H(o))) &*&
+          [f]body(o, header_tag2(o_hw(H(o))), o_len(H(o)), o_aux(H(o)), o_words(H(o))) &*&
           obj_facts(objs, H, o) == true &*& addr_ok(o) == true;
 {
   open [f]heap(objs, H);
@@ -81,7 +81,7 @@ lemma void heap_open(void *o)
 
 lemma void heap_close(void *o)
   requires [?f]heap_rest(?objs, ?H, o) &*& [f]header(o, o_hw(H(o))) &*&
-           [f]body(o, header_tag2(o_hw(H(o))), o_len(H(o)), o_words(H(o))) &*&
+           [f]body(o, header_tag2(o_hw(H(o))), o_len(H(o)), o_aux(H(o)), o_words(H(o))) &*&
            obj_facts(objs, H, o) == true &*& mem(o, objs) == true;
   ensures [f]heap(objs, H);
 {
@@ -100,6 +100,73 @@ lemma void heap_facts(void *o)
   open [f]header(o, _);
   close [f]header(o, o_hw(H(o)));
   heap_close(o);
+}
+
+lemma void string_open(void *s)
+  requires [?f]heap(?objs, ?H) &*& mem(s, objs) == true &*& has_tag(H, s, STRING_TAG) == true;
+  ensures [f]heap_rest(objs, H, s) &*& [f]header(s, o_hw(H(s))) &*&
+          [f]string_body(s, o_len(H(s)), o_aux(H(s))) &*& obj_facts(objs, H, s) == true &*&
+          o_words(H(s)) == nil &*& addr_ok(s) == true;
+{
+  heap_open(s);
+  open [f]body(s, _, _, _, _);
+}
+
+lemma void string_close(void *s)
+  requires [?f]heap_rest(?objs, ?H, s) &*& [f]header(s, o_hw(H(s))) &*&
+           [f]string_body(s, o_len(H(s)), o_aux(H(s))) &*& obj_facts(objs, H, s) == true &*&
+           o_words(H(s)) == nil &*& mem(s, objs) == true &*& has_tag(H, s, STRING_TAG) == true;
+  ensures [f]heap(objs, H);
+{
+  close [f]body(s, 2 * STRING_TAG, o_len(H(s)), o_aux(H(s)), nil);
+  heap_close(s);
+}
+
+lemma void byte_array_open(void *s)
+  requires [?f]heap(?objs, ?H) &*& mem(s, objs) == true &*& has_tag(H, s, BYTE_ARRAY_TAG) == true;
+  ensures [f]heap_rest(objs, H, s) &*& [f]header(s, o_hw(H(s))) &*&
+          [f]byte_array_body(s, o_len(H(s)), o_aux(H(s))) &*& obj_facts(objs, H, s) == true &*&
+          o_words(H(s)) == nil &*& addr_ok(s) == true;
+{
+  heap_open(s);
+  open [f]body(s, _, _, _, _);
+}
+
+lemma void byte_array_close(void *s)
+  requires [?f]heap_rest(?objs, ?H, s) &*& [f]header(s, o_hw(H(s))) &*&
+           [f]byte_array_body(s, o_len(H(s)), o_aux(H(s))) &*& obj_facts(objs, H, s) == true &*&
+           o_words(H(s)) == nil &*& mem(s, objs) == true &*& has_tag(H, s, BYTE_ARRAY_TAG) == true;
+  ensures [f]heap(objs, H);
+{
+  close [f]body(s, 2 * BYTE_ARRAY_TAG, o_len(H(s)), o_aux(H(s)), nil);
+  heap_close(s);
+}
+
+lemma void blob_facts(void *b)
+  requires [?f]heap(?objs, ?H) &*& mem(b, objs) == true &*& blob_ok(H, b, STRINGS_OR_BYTE_ARRAYS) == true;
+  ensures [f]heap(objs, H) &*& 0 <= blob_len(H, b) &*& blob_len(H, b) <= MAX_BLOB &*&
+          (uword)blob_base(H, b) + blob_len(H, b) <= UINTPTR_MAX &*&
+          (is_external(H, b) ? true : blob_base(H, b) == (uint8 *)raw(b) + 2 * WORD_SIZE);
+{
+  if (has_tag(H, b, STRING_TAG)) {
+    string_open(b);
+    open [f]string_body(b, _, _);
+    if (is_external(H, b)) {
+      open [f]external_bytes(_, _);
+      close [f]external_bytes(nth(1, o_aux(H(b))), o_len(H(b)));
+    }
+    close [f]string_body(b, o_len(H(b)), o_aux(H(b)));
+    string_close(b);
+  } else {
+    byte_array_open(b);
+    open [f]byte_array_body(b, _, _);
+    if (is_external(H, b)) {
+      open [f]external_bytes(_, _);
+      close [f]external_bytes(head(o_aux(H(b))), -1 - o_len(H(b)));
+    }
+    close [f]byte_array_body(b, o_len(H(b)), o_aux(H(b)));
+    byte_array_close(b);
+  }
 }
 
 lemma void update_take_drop<t>(list<t> ps, int i, t v)
@@ -271,7 +338,7 @@ Object *Instance_at(Instance *self, word index)
 //@ ensures [f]heap(objs, H) &*& result == nth(index, o_words(H(self))) &*& good(objs, result) == true;
 {
   //@ heap_open(self);
-  //@ open [f]body(self, _, _, _);
+  //@ open [f]body(self, _, _, _, _);
   //@ open [f]instance_body(self, _, _);
   //@ pointers_focus((void **)raw(self) + 1, index);
   //@ div_rem_nonneg_unique(Instance_HEADER_SIZE + index * WORD_SIZE, WORD_SIZE, 1 + index, 0);
@@ -279,7 +346,7 @@ Object *Instance_at(Instance *self, word index)
     Object * result0 = HeapObject__at(self, Instance__offset_from((uword)index));
     //@ pointers_unfocus((void **)raw(self) + 1, index, o_words(H(self)));
     //@ close [f]instance_body(self, o_len(H(self)), o_words(H(self)));
-    //@ close [f]body(self, 2 * INSTANCE_TAG, o_len(H(self)), o_words(H(self)));
+    //@ close [f]body(self, 2 * INSTANCE_TAG, o_len(H(self)), o_aux(H(self)), o_words(H(self)));
     //@ heap_close(self);
     //@ good_nth(objs, o_words(H(self)), index);
     return result0;
@@ -300,12 +367,12 @@ word Array_length(Array *self)
 //@ ensures [f]heap(objs, H) &*& result == o_len(H(self)) &*& 0 <= result &*& result <= MAX_OBJECT_WORDS;
 {
   //@ heap_open(self);
-  //@ open [f]body(self, _, _, _);
+  //@ open [f]body(self, _, _, _, _);
   //@ open [f]array_body(self, _, _);
   {
     word result0 = (word)HeapObject__word_at(self, Array_LENGTH_OFFSET);
     //@ close [f]array_body(self, o_len(H(self)), o_words(H(self)));
-    //@ close [f]body(self, 2 * ARRAY_TAG, o_len(H(self)), o_words(H(self)));
+    //@ close [f]body(self, 2 * ARRAY_TAG, o_len(H(self)), o_aux(H(self)), o_words(H(self)));
     //@ heap_close(self);
     return result0;
   }
@@ -317,7 +384,7 @@ Object *Array_at(Array *self, word index)
 //@ ensures [f]heap(objs, H) &*& result == nth(index, o_words(H(self))) &*& good(objs, result) == true;
 {
   //@ heap_open(self);
-  //@ open [f]body(self, _, _, _);
+  //@ open [f]body(self, _, _, _, _);
   //@ open [f]array_body(self, _, _);
   //@ pointers_focus((void **)raw(self) + 2, index);
   //@ div_rem_nonneg_unique(Array_HEADER_SIZE + index * WORD_SIZE, WORD_SIZE, 2 + index, 0);
@@ -326,7 +393,7 @@ Object *Array_at(Array *self, word index)
     Object * result0 = HeapObject__at(self, Array__offset_from(index));
     //@ pointers_unfocus((void **)raw(self) + 2, index, o_words(H(self)));
     //@ close [f]array_body(self, o_len(H(self)), o_words(H(self)));
-    //@ close [f]body(self, 2 * ARRAY_TAG, o_len(H(self)), o_words(H(self)));
+    //@ close [f]body(self, 2 * ARRAY_TAG, o_len(H(self)), o_aux(H(self)), o_words(H(self)));
     //@ heap_close(self);
     //@ good_nth(objs, o_words(H(self)), index);
     return result0;
@@ -450,5 +517,299 @@ Double *Double_cast(Object *value)
 {
   // ASSERT(is_double(value)): release build, not evaluated.
   return (Double *)value;
+}
+
+// C++: src/objects.h toit::HeapObject::_raw
+uword HeapObject__raw(HeapObject *self)
+//@ requires 1 <= (uword)self;
+//@ ensures result == (uword)self - 1;
+{
+  return (uword)self - HEAP_TAG;
+}
+
+// C++: src/objects.h toit::HeapObject::_raw_at
+uword *HeapObject__raw_at__word(HeapObject *self, word offset)
+//@ requires addr_ok(self) == true &*& 0 <= offset &*& offset <= 4 * WORD_SIZE;
+//@ ensures result == (uword *)((uword)self - 1 + offset);
+{
+  return (uword *)((uword)self - HEAP_TAG + (uword)offset);
+}
+
+// C++: src/objects.h toit::HeapObject::_half_word_at
+unsigned int HeapObject__half_word_at(HeapObject *self, word offset)
+//@ requires addr_ok(self) == true &*& 0 <= offset &*& offset <= 4 * WORD_SIZE &*& [?f]half_word((uint8 *)raw(self) + offset, ?v);
+//@ ensures [f]half_word((uint8 *)raw(self) + offset, v) &*& result == v;
+{
+  //@ open [f]half_word(_, _);
+  {
+    unsigned int result0 = *(unsigned int *)HeapObject__raw_at__word(self, offset);
+    //@ close [f]half_word((uint8 *)raw(self) + offset, v);
+    return result0;
+  }
+}
+
+// C++: src/objects.h toit::String::_internal_length
+word String__internal_length(String *self)
+//@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true &*& has_tag(H, self, STRING_TAG) == true;
+//@ ensures [f]heap(objs, H) &*& result == head(o_aux(H(self))) &*& 0 <= result;
+{
+  //@ string_open(self);
+  //@ open [f]string_body(self, _, _);
+  {
+    word result0 = (word)HeapObject__half_word_at(self, String_INTERNAL_LENGTH_OFFSET);
+    //@ close [f]string_body(self, o_len(H(self)), o_aux(H(self)));
+    //@ string_close(self);
+    return result0;
+  }
+}
+
+// C++: src/objects.h toit::String::content_on_heap
+bool String_content_on_heap(String *self)
+//@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true &*& has_tag(H, self, STRING_TAG) == true;
+//@ ensures [f]heap(objs, H) &*& result == !is_external(H, self);
+{
+  return String__internal_length(self) != String_SENTINEL;
+}
+
+// C++: src/objects.h toit::String::_external_length
+word String__external_length(String *self)
+//@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true &*& has_tag(H, self, STRING_TAG) == true &*& is_external(H, self) == true;
+//@ ensures [f]heap(objs, H) &*& result == blob_len(H, self);
+{
+  //@ string_open(self);
+  //@ open [f]string_body(self, _, _);
+  // ASSERT(String__internal_length(self) == String_SENTINEL): release build, not evaluated.
+  {
+    word result0 = (word)HeapObject__word_at(self, String_EXTERNAL_LENGTH_OFFSET);
+    //@ close [f]string_body(self, o_len(H(self)), o_aux(H(self)));
+    //@ string_close(self);
+    return result0;
+  }
+}
+
+// C++: src/objects.h toit::String::_external_address
+uint8 *String__external_address(String *self)
+//@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true &*& has_tag(H, self, STRING_TAG) == true &*& is_external(H, self) == true;
+//@ ensures [f]heap(objs, H) &*& result == blob_base(H, self);
+{
+  //@ string_open(self);
+  //@ open [f]string_body(self, _, _);
+  {
+    uint8 * result0 = (uint8 *)HeapObject__word_at(self, String_EXTERNAL_ADDRESS_OFFSET);
+    //@ close [f]string_body(self, o_len(H(self)), o_aux(H(self)));
+    //@ string_close(self);
+    return result0;
+  }
+}
+
+// C++: src/objects.h toit::String::as_external
+uint8 *String_as_external(String *self)
+//@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true &*& has_tag(H, self, STRING_TAG) == true;
+//@ ensures [f]heap(objs, H) &*& result == (is_external(H, self) ? blob_base(H, self) : 0);
+{
+  if (!String_content_on_heap(self)) {
+    return unsigned_cast(String__external_address(self));
+  }
+  return 0;
+}
+
+// C++: src/objects.h toit::String::_as_utf8bytes
+uint8 *String__as_utf8bytes(String *self)
+//@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true &*& has_tag(H, self, STRING_TAG) == true;
+//@ ensures [f]heap(objs, H) &*& result == blob_base(H, self);
+{
+  //@ heap_facts(self);
+  if (String_content_on_heap(self)) {
+    return (uint8 *)HeapObject__raw_at__word(self, String_INTERNAL_HEADER_SIZE);
+  }
+  return String__external_address(self);
+}
+
+// C++: src/objects.h toit::String::cast
+String *String_cast(Object *object)
+//@ requires true;
+//@ ensures result == object;
+{
+  // ASSERT(is_string(object)): release build, not evaluated.
+  return (String *)object;
+}
+
+// C++: src/objects.h toit::String::Bytes::Bytes
+void String_Bytes_ctor(String_Bytes *self, String *string)
+//@ requires self->address_ |-> _ &*& self->length_ |-> _ &*& [?f]heap(?objs, ?H) &*& mem(string, objs) == true &*& has_tag(H, string, STRING_TAG) == true;
+//@ ensures self->address_ |-> blob_base(H, string) &*& self->length_ |-> blob_len(H, string) &*& [f]heap(objs, H);
+{
+  word len = String__internal_length(string);
+  if (len != String_SENTINEL) {
+    self->address_ = String__as_utf8bytes(string);
+    //@ string_open(string);
+    //@ open [f]string_body(string, _, _);
+    //@ close [f]string_body(string, o_len(H(string)), o_aux(H(string)));
+    //@ string_close(string);
+    self->length_ = len;
+  } else {
+    self->address_ = String_as_external(string);
+    self->length_ = String__external_length(string);
+  }
+  // ASSERT(String_Bytes_length(self) >= 0): release build, not evaluated.
+}
+
+// C++: src/objects.h toit::String::Bytes::address
+uint8 *String_Bytes_address(String_Bytes *self)
+//@ requires [?f]self->address_ |-> ?a;
+//@ ensures [f]self->address_ |-> a &*& result == a;
+{
+  return self->address_;
+}
+
+// C++: src/objects.h toit::String::Bytes::length
+word String_Bytes_length(String_Bytes *self)
+//@ requires [?f]self->length_ |-> ?l;
+//@ ensures [f]self->length_ |-> l &*& result == l;
+{
+  return self->length_;
+}
+
+// C++: src/objects.h toit::ByteArray::has_external_address
+bool ByteArray_has_external_address(ByteArray *self)
+//@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true &*& has_tag(H, self, BYTE_ARRAY_TAG) == true;
+//@ ensures [f]heap(objs, H) &*& result == is_external(H, self);
+{
+  return ByteArray_raw_length(self) < 0;
+}
+
+// C++: src/objects.h toit::ByteArray::external_tag
+word ByteArray_external_tag(ByteArray *self)
+//@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true &*& has_tag(H, self, BYTE_ARRAY_TAG) == true &*& is_external(H, self) == true;
+//@ ensures [f]heap(objs, H) &*& result == nth(1, o_aux(H(self)));
+{
+  //@ byte_array_open(self);
+  //@ open [f]byte_array_body(self, _, _);
+  // ASSERT(ByteArray_has_external_address(self)): release build, not evaluated.
+  {
+    word result0 = (word)HeapObject__word_at(self, ByteArray_EXTERNAL_TAG_OFFSET);
+    //@ close [f]byte_array_body(self, o_len(H(self)), o_aux(H(self)));
+    //@ byte_array_close(self);
+    return result0;
+  }
+}
+
+// C++: src/objects.h toit::ByteArray::_offset_from
+word ByteArray__offset_from(word index)
+//@ requires 0 <= index &*& index <= WORD_SIZE * MAX_OBJECT_WORDS;
+//@ ensures result == ByteArray_HEADER_SIZE + index;
+{
+  // ASSERT(index >= 0): release build, not evaluated.
+  // ASSERT(index <= ByteArray_max_internal_size()): release build, not evaluated.
+  return ByteArray_HEADER_SIZE + index;
+}
+
+// C++: src/objects.h toit::ByteArray::content
+uint8 *ByteArray_content(ByteArray *self)
+//@ requires addr_ok(self) == true;
+//@ ensures result == (uint8 *)((uword)self - 1 + 2 * WORD_SIZE);
+{
+  return (uint8 *)(HeapObject__raw(self) + (uword)ByteArray__offset_from(0));
+}
+
+// C++: src/objects.h toit::ByteArray::_external_address
+uint8 *ByteArray__external_address(ByteArray *self)
+//@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true &*& has_tag(H, self, BYTE_ARRAY_TAG) == true &*& is_external(H, self) == true;
+//@ ensures [f]heap(objs, H) &*& result == blob_base(H, self);
+{
+  //@ byte_array_open(self);
+  //@ open [f]byte_array_body(self, _, _);
+  {
+    uint8 * result0 = (uint8 *)HeapObject__word_at(self, ByteArray_EXTERNAL_ADDRESS_OFFSET);
+    //@ close [f]byte_array_body(self, o_len(H(self)), o_aux(H(self)));
+    //@ byte_array_close(self);
+    return result0;
+  }
+}
+
+// C++: src/objects.h toit::ByteArray::as_external
+uint8 *ByteArray_as_external(ByteArray *self)
+//@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true &*& has_tag(H, self, BYTE_ARRAY_TAG) == true;
+//@ ensures [f]heap(objs, H) &*& result == (is_external(H, self) ? blob_base(H, self) : 0);
+{
+  // ASSERT(ByteArray_external_tag(self) == (word)RawByteTag || ByteArray_external_tag(self) == (word)NullStructTag): release build, not evaluated.
+  if (ByteArray_has_external_address(self)) {
+    return unsigned_cast(ByteArray__external_address(self));
+  }
+  return 0;
+}
+
+// C++: src/objects.h toit::ByteArray::ConstBytes::ConstBytes
+void ByteArray_ConstBytes_ctor(ByteArray_ConstBytes *self, ByteArray *array)
+//@ requires self->address_ |-> _ &*& self->length_ |-> _ &*& [?f]heap(?objs, ?H) &*& mem(array, objs) == true &*& has_tag(H, array, BYTE_ARRAY_TAG) == true;
+//@ ensures self->address_ |-> blob_base(H, array) &*& self->length_ |-> blob_len(H, array) &*& [f]heap(objs, H);
+{
+  //@ heap_facts(array);
+  word l = ByteArray_raw_length(array);
+  //@ byte_array_open(array);
+  //@ open [f]byte_array_body(array, _, _);
+  //@ close [f]byte_array_body(array, o_len(H(array)), o_aux(H(array)));
+  //@ byte_array_close(array);
+  if (l >= 0) {
+    self->address_ = ByteArray_content(array);
+    self->length_ = l;
+  } else {
+    self->address_ = ByteArray_as_external(array);
+    self->length_ = (word)-1 - l;
+  }
+  // ASSERT(ByteArray_ConstBytes_length(self) >= 0): release build, not evaluated.
+}
+
+// C++: src/objects.h toit::ByteArray::ConstBytes::address
+uint8 *ByteArray_ConstBytes_address(ByteArray_ConstBytes *self)
+//@ requires [?f]self->address_ |-> ?a;
+//@ ensures [f]self->address_ |-> a &*& result == a;
+{
+  return self->address_;
+}
+
+// C++: src/objects.h toit::ByteArray::ConstBytes::length
+word ByteArray_ConstBytes_length(ByteArray_ConstBytes *self)
+//@ requires [?f]self->length_ |-> ?l;
+//@ ensures [f]self->length_ |-> l &*& result == l;
+{
+  return self->length_;
+}
+
+// C++: src/objects.h toit::ByteArray::Bytes::Bytes
+void ByteArray_Bytes_ctor(ByteArray_Bytes *self, ByteArray *array)
+//@ requires self->address_ |-> _ &*& self->length_ |-> _ &*& [?f]heap(?objs, ?H) &*& mem(array, objs) == true &*& has_tag(H, array, BYTE_ARRAY_TAG) == true;
+//@ ensures self->address_ |-> blob_base(H, array) &*& self->length_ |-> blob_len(H, array) &*& [f]heap(objs, H);
+{
+  //@ heap_facts(array);
+  word l = ByteArray_raw_length(array);
+  //@ byte_array_open(array);
+  //@ open [f]byte_array_body(array, _, _);
+  //@ close [f]byte_array_body(array, o_len(H(array)), o_aux(H(array)));
+  //@ byte_array_close(array);
+  if (l >= 0) {
+    self->address_ = ByteArray_content(array);
+    self->length_ = l;
+  } else {
+    self->address_ = ByteArray_as_external(array);
+    self->length_ = (word)-1 - l;
+  }
+  // ASSERT(ByteArray_Bytes_length(self) >= 0): release build, not evaluated.
+}
+
+// C++: src/objects.h toit::ByteArray::Bytes::address
+uint8 *ByteArray_Bytes_address(ByteArray_Bytes *self)
+//@ requires [?f]self->address_ |-> ?a;
+//@ ensures [f]self->address_ |-> a &*& result == a;
+{
+  return self->address_;
+}
+
+// C++: src/objects.h toit::ByteArray::Bytes::length
+word ByteArray_Bytes_length(ByteArray_Bytes *self)
+//@ requires [?f]self->length_ |-> ?l;
+//@ ensures [f]self->length_ |-> l &*& result == l;
+{
+  return self->length_;
 }
 
