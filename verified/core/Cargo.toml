@@ -33,12 +33,16 @@ vstd = { version = "=0.0.0-2026-11-01-0251", default-features = false, features 
 toit_spec = { path = "../spec", default-features = false }
 
 [features]
-default = ["checked-loop"]
+default = ["checked-loop", "layout-tables"]
 # The checked run loop (`machine::run_checked`): runs programs the verifier
 # did not accept (unverified trusted format-2 programs on hosts). Devices
 # build without it (verified/vmverify `checked-loop`; OBLIGATIONS.md has
 # the cfg request for machine.rs). Verus verifies with it (check.sh).
 checked-loop = []
+# The layout check's tables (`toit_vcore_layout_*`, `toit_vcore_prim_*`,
+# `toit_vcore_opcode_length`; verified/layout_check.cc, hosts only). Devices
+# build without them (OBLIGATIONS.md has the cfg request for ffi.rs).
+layout-tables = []
 
 [package.metadata.verus]
 verify = true

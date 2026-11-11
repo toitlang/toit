@@ -45,7 +45,7 @@ required-features = ["std", "infer"]
 # `std`: hosts (panics are caught and reject, phase times, counting
 # allocator, test support). Without it: `no_std` + `alloc` for devices.
 default = ["std", "infer", "checked-loop"]
-std = ["toit_spec/std"]
+std = ["toit_spec/std", "toit_verified_core/layout-tables"]
 # Devices: the global allocator and the panic handler the VM supplies
 # (src/device.rs: malloc/free, toit_vmverify_panic). Use without `std`, for
 # the static library linked into device firmware (profile `device`).
@@ -89,3 +89,10 @@ opt-level = 3
 lto = true
 codegen-units = 1
 debug = false
+
+# The verifier (verified/spec: the checker of shipped certificates and the
+# heap check) runs once per install, not per instruction: optimized for size
+# whatever the core's opt-level (at opt 3: checker 26.4 -> 17.7 KB of text;
+# verified/vmverify/README.md, "Device size").
+[profile.device.package.toit_spec]
+opt-level = "z"

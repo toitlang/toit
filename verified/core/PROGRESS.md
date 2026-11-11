@@ -16,6 +16,31 @@
    verified/vmverify/tests/nostd_check.sh. Scripts and logs:
    artifacts device-cert/ (scripts/mk32.sh builds build/host32,
    scripts/fw-all.sh the ESP32-C6 firmware variants).
+2. Installer (done, d59886d0): both commit paths verify with the image's
+   trailing certificate block before the header is written, then erase the
+   block's pages and give them back as a hole (`FlashRegistry.release-tail`).
+   Device builds link no inference (CMake `TOIT_VERIFIED_CORE_INFER`, off
+   for embedded builds) and reject an untrusted image without a certificate;
+   hosts infer as a fallback and behave as devices with
+   `TOIT_REQUIRE_CERTIFICATE=1`. Host envelopes carry the block in their
+   bundled images. tests/sandbox/install-verdict-test.toit (64- and 32-bit
+   hosts): install with the block, verdict recorded, block erased, restart
+   without verification, corruption, rejection without a certificate in the
+   device configuration, rejection of another program's certificate.
+   verified/vmverify/README.md "Where it runs".
+3. Size diet (done up to the core-side cfgs): ESP32-C6 toit.bin delta
+   +200.8 / +187.6 / +176.7 KB (opt 3 / s / z, after the merge) -> +126.6 /
+   +130.0 / +127.4 KB committed -> +94.4 / +89.1 / +87.8 KB with the
+   requested cfgs D1 (checked loop) and D2 (layout tables) of
+   OBLIGATIONS.md. Steps: inference off, checked-loop feature and the C++
+   refusal of unverified format-2 programs, no formatting on devices, id
+   table instead of `BTreeMap`, layout tables on hosts only, the verifier at
+   opt-level z. Table and next candidates: verified/vmverify/README.md
+   "Device size". Install-time RAM with a shipped certificate, 32-bit host:
+   Rust peak 11 / 15 / 18 KB for 30 / 54 / 65 KB of bytecodes (was 12.4 /
+   16.4 / 19.4; with the inference 46 / 76 / 80), plus the VM's `V2Method`
+   table (20 B per method, 19-35 KB), now the largest item (OBLIGATIONS.md
+   D3); README "Memory".
 
 ## Phase 5 (branch phase5/portability, 2026-11-11)
 

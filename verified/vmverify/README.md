@@ -393,6 +393,34 @@ Further reductions if needed: the contexts' kinds could share nodes like
 the maps (half of the global part), and the heap's id map could be a
 bitmap over the image.
 
+### Install time with a shipped certificate (devices)
+
+With a shipped certificate the global part is read in place from the
+certificate (flash) and no inference runs. In-VM Rust heap high-water mark
+of one verification, 32-bit host, `toit.run --verify --require-certificate`
+(the install path runs the same code), TOIT_VERIFY_MEM=1 phases
+(artifacts device-cert/scripts/ram.sh):
+
+| Program | Bytecodes | Methods | Objects | Inferred | Shipped, before | Shipped, now | C++ method table |
+|---|---|---|---|---|---|---|---|
+| heat-pump-test | 29.6 KB | 937 | 183 | 46 KB | 12.4 KB | 11.0 KB | 18.7 KB |
+| run-image | 54.2 KB | 1,602 | 243 | 76 KB | 16.4 KB | 15.0 KB | 32.0 KB |
+| toit.run | 64.5 KB | 1,763 | 419 | 80 KB | 19.4 KB | 18.0 KB | 35.3 KB |
+
+"Now": object ids in an open-addressing table instead of a `BTreeMap`
+(the conversion's work list for toit.run: 8.4 -> 6.9 KB), the primitive
+table taken instead of copied. What remains at the peak (during the
+certificate check, toit.run): the converted roots and literals and the
+primitive table (8.3 KB; 12 bytes per `Value` on i686, 16 on riscv32,
+where `i64` is 8-byte aligned, so about 2 KB more on the device) and the
+maps of the method being checked plus the checker's state (up to 10 KB,
+the largest method has 699 bytes of bytecode). Not in the Rust figure:
+the VM's decoded method table (`V2Method`, 20 bytes per method), which
+install-time verification computes for the verifier and frees after it;
+it is now the largest item (OBLIGATIONS.md D3). The whole transient cost
+of installing a 30-65 KB program is thus about 30-53 KB, against 65-115
+KB with the inference.
+
 ## Fuzzing the entry point in-process
 
 `src/bin/toit_vmverify_fuzz.rs` calls `toit_vmverify_verify` (the C entry
@@ -442,3 +470,73 @@ LTO). `tests/nostd_check.sh` builds spec, core and the device library for
 (verified/core/PROGRESS.md, "Phase 5"). ESP32-C6/H2 firmware links it
 with the menuconfig option `TOIT_VERIFIED_CORE`
 (toolchains/idf/components/toit).
+
+## Device size (branch device/certificate-and-size)
+
+The Rust library as a device links it (riscv32imac, `tests/device_size.sh`
+with `DEVICE_SIZE_FEATURES`; artifacts device-cert/libsizes-*.txt,
+scripts/libsizes.sh and scripts/sizetable.sh), text by component and all
+rodata, KB, at the core's opt-level 3 / s / z. Columns are cumulative:
+
+1. before: the certificate merge with the inference and the checked loop;
+2. no inference (vmverify `infer` off, the device default; CMake
+   `TOIT_VERIFIED_CORE_INFER`);
+3. no formatting (diagnostic texts only on hosts: `text!`; no `unwrap`
+   in from_vm), no `BTreeMap` (id table), vmverify's layout tables only
+   on hosts;
+4. the verifier (verified/spec) at opt-level z whatever the core's
+   (`[profile.device.package.toit_spec]`): committed state;
+5. with the requested core cfgs D1 (no checked loop) and D2 (no layout
+   tables) of verified/core/OBLIGATIONS.md applied to a copy;
+6. candidate: as 5, built with nightly `-Zbuild-std=core,alloc
+   -Cpanic=immediate-abort -Zlocation-detail=none`.
+
+| Component | 1 | 2 | 3 | 4 | 5 | 6 |
+|---|---|---|---|---|---|---|
+| core: verified loop and cold paths | 41.4 / 38.0 / 35.1 | same | same | same | 30.2 / 27.7 / 25.7 | 30.3 / 27.3 / 25.5 |
+| core: checked loop | 20.8 / 22.7 / 20.6 | same | same | same | 1.0 / 0.9 / 0.6 | same |
+| core: primitives | 15.5 / 13.4 / 12.4 | same | same | same | same | same |
+| verifier: checker | 29.9 / 29.0 / 25.6 | 26.4 / 20.3 / 17.7 | same | 17.7 / 17.7 / 17.7 | same | 16.4 / 16.5 / 16.5 |
+| verifier: heap check | 1.9 / 1.9 / 1.5 | same | same | same | same | same |
+| verifier: inference | 42.8 / 32.0 / 23.9 | 0 | 0 | 0 | 0 | 0 |
+| glue (vmverify, spec other) | 8.2 / 6.6 / 6.3 | 6.5 / 5.5 / 5.2 | 6.5 / 5.8 / 5.5 | 5.8 / 5.7 / 5.5 | same | 5.6 / 5.3 / 5.3 |
+| Rust formatting and panics | 6.0 / 6.0 / 5.9 | 3.4 / 3.4 / 4.3 | 1.6 / 1.6 / 1.7 | same | same | 0 |
+| other core/alloc, compiler builtins | 10.9 / 12.6 / 14.4 | 9.6 / 10.8 / 11.6 | 7.4 / 7.4 / 7.9 | 7.7 / 7.6 / 7.9 | same | 4.3 / 2.6 / 3.2 |
+| text | 177.2 / 162.1 / 145.5 | 125.4 / 115.8 / 108.3 | 121.4 / 111.1 / 102.3 | 112.3 / 108.5 / 102.3 | 81.3 / 76.4 / 72.9 | 74.9 / 67.7 / 64.9 |
+| rodata | 25.2 / 31.0 / 32.4 | 15.9 / 22.2 / 23.5 | 13.8 / 19.9 / 20.9 | 13.4 / 20.6 / 20.9 | 12.6 / 12.1 / 12.4 | 3.8 / 3.4 / 3.4 |
+| **total** | **202.4 / 193.1 / 177.9** | 141.3 / 138.0 / 131.7 | 135.2 / 131.0 / 123.1 | **125.7 / 129.1 / 123.1** | **93.9 / 88.6 / 85.3** | 78.7 / 71.1 / 68.3 |
+
+ESP32-C6 firmware (ESP-IDF 5.4.2, artifacts device-cert/scripts/fw-all.sh
+and firmware-*.txt; never flashed), toit.bin against the same build without
+the core (1,576,448 B; the delta includes the C++ format-2 glue):
+
+| | opt 3 | opt s | opt z |
+|---|---|---|---|
+| Phase 5 (before the certificate merge) | +187.0 KB | +179.3 KB | +172.9 KB |
+| 1: certificate merge, inference, checked loop | +200.8 KB | +187.6 KB | +176.7 KB |
+| 4: committed (device configuration) | +126.6 KB | +130.0 KB | +127.4 KB |
+| 5: with the requested core cfgs D1, D2 | +94.4 KB | +89.1 KB | +87.8 KB |
+
+What a device needs (column 5, opt 3): the verified loop with its cold
+paths 30.2 KB, the primitives 15.5 KB, the checker of shipped certificates
+17.7 KB, the heap check 1.9 KB, the glue (conversion, C ABI, device
+runtime) 5.8 KB, Rust runtime and builtins 9.3 KB, rodata 12.6 KB (jump
+tables of `op_primitive` 1.9 KB and the run loop 0.4 KB, the opcode length
+table 0.5 KB, string constants, mostly the panic locations of the
+precompiled core library, 6.4 KB). Removed: the inference 24-43 KB (and
+about 9 KB of its rodata), the checked loop 20-23 KB plus 10-11 KB of cold
+paths only it reaches (D1), the formatting machinery 4.3 KB, `BTreeMap`
+2-3 KB, the layout tables' names 1.4 KB (vmverify) and 7.6 KB (core, D2,
+opt s/z only: at s/z LLVM puts the names in the merged `.rodata.str1.1`,
+which the linker cannot garbage-collect), the checker shrinks by 8.7 KB at
+opt 3 when compiled for size. With the verifier at z, opt 3 for the core
+costs only 5-7 KB over s/z, so opt 3 (speed of the run loop) is the
+recommended setting.
+
+Next candidates: nightly build-std with `-Cpanic=immediate-abort` and
+`-Zlocation-detail=none` (column 6: -15 to -17 KB, a toolchain decision:
+Verus and the host build use stable 1.99); the run loop's cold paths at
+opt-level z (an attribute on the cold functions: part of the core); the
+primitives' jump table and the checker at z on a per-function basis; the
+`V2Method` table (RAM, OBLIGATIONS.md D3). Remaining rodata worth a look:
+the merged strings (6.4 KB at opt 3, 4 KB of it library panic locations).
