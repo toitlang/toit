@@ -207,7 +207,7 @@ impl<'a> View for MTable<'a> {
 fn x_byte_before(code: &[u8], e: usize, d: usize) -> (r: u8)
     ensures r == byte_at(code@, e - d),
 {
-    if d <= e && e - d < code.len() { code[e - d] } else { 0 }
+    if d <= e && e - d < code.len() { crate::xvec::ix(code, e - d) } else { 0 }
 }
 
 /// `u16_at(code, e - d)`, for `d >= 1`.
@@ -237,7 +237,6 @@ impl<'a> MTable<'a> {
     }
 
     #[inline(always)]
-    #[verifier::when_used_as_spec(spec_len)]
     pub fn len(&self) -> (r: usize)
         ensures r == self@.len(), r == self.spec_len(),
     {
@@ -260,7 +259,7 @@ impl<'a> MTable<'a> {
         requires i < self@.len(),
         ensures r == self@[i as int],
     {
-        let r = self.recs[i];
+        let r = crate::xvec::ix(self.recs, i);
         let e = (r >> RECORD_ENTRY_SHIFT) as usize;
         proof { assert(r >> RECORD_ENTRY_SHIFT < 0x100_0000) by (bit_vector); }
         let b = x_byte_before(self.code, e, 1);
@@ -283,8 +282,8 @@ impl<'a> MTable<'a> {
         } else {
             0xffff
         };
-        let body_end: u32 = if i + 1 < self.recs.len() {
-            self.x_hdr_start(self.recs[i + 1]) as u32
+        let body_end: u32 = if i < self.recs.len() - 1 {
+            self.x_hdr_start(crate::xvec::ix(self.recs, i + 1)) as u32
         } else if (self.code.len() as u64) < 0x1_0000_0000u64 {
             self.code.len() as u32
         } else {
@@ -319,14 +318,14 @@ pub fn x_table_ok(code: &[u8], recs: &[u32]) -> (r: bool)
         invariant 0 <= i <= recs@.len(), forall|j: int| 0 <= j < i ==> #[trigger] rec_ok(code@, recs@[j]),
         decreases recs@.len() - i,
     {
-        let r = recs[i];
+        let r = crate::xvec::ix(recs, i);
         let e = (r >> RECORD_ENTRY_SHIFT) as usize;
         proof { assert(r >> RECORD_ENTRY_SHIFT < 0x100_0000) by (bit_vector); }
         if !(1 <= e && e <= code.len()) {
             proof { assert(!rec_ok(code@, recs@[i as int])); }
             return false;
         }
-        if x_hdr_size(code[e - 1]) > e || code[e - 1] > 4 {
+        if x_hdr_size(crate::xvec::ix(code, e - 1)) > e || crate::xvec::ix(code, e - 1) > 4 {
             proof { assert(!rec_ok(code@, recs@[i as int])); }
             return false;
         }

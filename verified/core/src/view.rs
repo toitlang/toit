@@ -757,13 +757,6 @@ pub open spec fn obj_words(o: HeapObj) -> int {
     }
 }
 
-/// The words of the 64-bit payload of a double or large integer (one
-/// word, or two on 32-bit targets, little endian).
-#[cfg(target_pointer_width = "64")]
-pub const VALUE_WORDS: usize = 1;
-#[cfg(target_pointer_width = "32")]
-pub const VALUE_WORDS: usize = 2;
-
 /// The payload of a double (its bits) or large integer (its two's
 /// complement).
 pub open spec fn value64(o: HeapObj) -> u64 {

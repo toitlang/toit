@@ -1175,14 +1175,14 @@ pub fn x_below_token(k: &Vec<XKind>, i: usize) -> (r: bool)
 }
 
 pub fn x_pinned0(p: &VProgram, m: usize) -> (r: bool)
-    requires m < p.methods.len(),
+    requires m < p.methods@.len(),
     ensures r == pinned0(vview(p), m as int),
 {
     x_info(p, m).recv_start != 0xffff || x_info(p, m).kind == 3
 }
 
 pub fn x_writable(p: &VProgram, m: usize, k: &Vec<XKind>, i: usize, v: XKind) -> (r: bool)
-    requires m < p.methods.len(),
+    requires m < p.methods@.len(),
     ensures r == writable(vview(p), m as int, kv(*k), i as int, v@),
 {
     if i >= k.len() { return false; }
@@ -1195,7 +1195,7 @@ pub fn x_writable(p: &VProgram, m: usize, k: &Vec<XKind>, i: usize, v: XKind) ->
 }
 
 pub fn x_leaves0(p: &VProgram, m: usize, h: usize, n: usize) -> (r: bool)
-    requires m < p.methods.len(),
+    requires m < p.methods@.len(),
     ensures r == leaves0(vview(p), m as int, h as int, n as int),
 {
     !(x_pinned0(p, m) && x_info(p, m).arity >= 1) || (n < h && h - n >= 1)
@@ -1287,7 +1287,7 @@ pub fn x_typecheck_index_ok(p: &VProgram, op: u8, enc: i64) -> (r: bool)
 }
 
 pub fn x_this_field_ok(p: &VProgram, m: usize, f: i64) -> (r: bool)
-    requires m < p.methods.len(),
+    requires m < p.methods@.len(),
     ensures r == this_field_ok(vview(p), m as int, f as int),
 {
     let i = x_info(p, m);
@@ -1312,7 +1312,7 @@ pub fn x_this_field_ok(p: &VProgram, m: usize, f: i64) -> (r: bool)
 }
 
 pub fn x_range_has_task(p: &VProgram, m: usize) -> (r: bool)
-    requires m < p.methods.len(), wf_program2(vview(p)),
+    requires m < p.methods@.len(), wf_program2(vview(p)),
     ensures r == range_has_task(vview(p), vinfo(p, m as int)),
 {
     let i = x_info(p, m);
@@ -1321,14 +1321,14 @@ pub fn x_range_has_task(p: &VProgram, m: usize) -> (r: bool)
 }
 
 pub fn x_this_load_ok(p: &VProgram, m: usize, f: i64) -> (r: bool)
-    requires m < p.methods.len(), wf_program2(vview(p)),
+    requires m < p.methods@.len(), wf_program2(vview(p)),
     ensures r == this_load_ok(vview(p), m as int, f as int),
 {
     x_this_field_ok(p, m, f) && !(x_range_has_task(p, m) && f == 0)
 }
 
 pub fn x_this_store_ok(p: &VProgram, m: usize, f: i64) -> (r: bool)
-    requires m < p.methods.len(), wf_program2(vview(p)),
+    requires m < p.methods@.len(), wf_program2(vview(p)),
     ensures r == this_store_ok(vview(p), m as int, f as int),
 {
     x_this_field_ok(p, m, f) && !(x_range_has_task(p, m) && f <= 1)
@@ -1384,7 +1384,7 @@ pub fn x_shift(k: XKind, d: u32) -> (r: Option<XKind>)
 /// the method, and a frame of bounded height.
 pub open spec fn post_pre(p: &VProgram, m: usize, off: usize, k: &Vec<XKind>) -> bool {
     &&& wf_program2(vview(p))
-    &&& m < p.methods.len()
+    &&& m < p.methods@.len()
     &&& vinfo(p, m as int).entry + off + opcode_length2(p.bytecodes[vinfo(p, m as int).entry + off]) <= vinfo(p, m as int).end
     &&& p.bytecodes[vinfo(p, m as int).entry + off] < OPCODE_COUNT2
     &&& k.len() <= 0x10_0000
@@ -1394,7 +1394,7 @@ pub open spec fn post_pre(p: &VProgram, m: usize, off: usize, k: &Vec<XKind>) ->
 pub fn x_decode(p: &VProgram, m: usize, off: usize) -> (r: (usize, u8, usize, i64, i64))
     requires
         wf_program2(vview(p)),
-        m < p.methods.len(),
+        m < p.methods@.len(),
         vinfo(p, m as int).entry + off + opcode_length2(p.bytecodes[vinfo(p, m as int).entry + off]) <= vinfo(p, m as int).end,
     ensures ({
         let (bci, op, len, b1, w1) = r;
@@ -1700,7 +1700,7 @@ pub fn x_post_calls(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind
 
 /// `loop_ok` (proposal, format note 19).
 pub fn x_loop_ok(p: &VProgram, m: usize, k: &Vec<XKind>, c: usize, b: usize, x: usize, y: usize) -> (r: bool)
-    requires m < p.methods.len(),
+    requires m < p.methods@.len(),
     ensures r == loop_ok(vview(p), m as int, kv(*k), c as int, b as int, x as int, y as int),
 {
     let h = k.len();
@@ -1732,7 +1732,7 @@ pub fn x_loop_kinds(k: &Vec<XKind>, c: usize, b: usize) -> (res: Result<Vec<XKin
 
 /// `hf_ok` (proposal, format note 19).
 pub fn x_hf_ok(p: &VProgram, m: usize, k: &Vec<XKind>, n: usize, mm: usize) -> (r: bool)
-    requires m < p.methods.len(), n < 256, mm < 256,
+    requires m < p.methods@.len(), n < 256, mm < 256,
     ensures r == hf_ok(vview(p), m as int, kv(*k), n as int, mm as int),
 {
     let h = k.len();
@@ -2143,7 +2143,7 @@ pub fn x_terminator_ok(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XK
     requires
         g_ok(c.g),
         wf_program2(vview(p)),
-        m < p.methods.len(),
+        m < p.methods@.len(),
         vinfo(p, m as int).entry + off + opcode_length2(p.bytecodes[vinfo(p, m as int).entry + off]) <= vinfo(p, m as int).end,
         p.bytecodes[vinfo(p, m as int).entry + off] < OPCODE_COUNT2,
     ensures res matches Ok(r) ==> r == terminator_ok(vview(p), c@, m as int, off as int, kv(*k)),
@@ -2244,7 +2244,7 @@ pub fn x_terminator_ok(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XK
 }
 
 pub fn x_shape_ok(p: &VProgram, c: &XCert, m: usize, k: &Vec<XKind>) -> (r: bool)
-    requires m < p.methods.len(),
+    requires m < p.methods@.len(),
     ensures r == shape_ok(vview(p), c@, m as int, kv(*k)),
 {
     if x_pinned0(p, m) && x_info(p, m).arity >= 1 && k.len() < 1 { return false; }
@@ -2261,7 +2261,7 @@ pub fn x_shape_ok(p: &VProgram, c: &XCert, m: usize, k: &Vec<XKind>) -> (r: bool
 }
 
 pub fn x_instr_ok(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>, trusted: bool) -> (res: Result<bool, Oom>)
-    requires wf_program2(vview(p)), m < p.methods.len(), g_ok(c.g),
+    requires wf_program2(vview(p)), m < p.methods@.len(), g_ok(c.g),
     ensures res matches Ok(r) ==> r == instr_ok(vview(p), c@, m as int, off as int, kv(*k), trusted),
 {
     let i = x_info(p, m);
@@ -2319,7 +2319,7 @@ pub fn x_instr_ok(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>,
 }
 
 pub fn x_entry_kinds(p: &VProgram, c: &XCert, m: usize) -> (res: Result<Vec<XKind>, Oom>)
-    requires m < p.methods.len(),
+    requires m < p.methods@.len(),
     ensures res matches Ok(r) ==> kv(r) == entry_kinds(vview(p), c@, m as int),
 {
     let a = x_info(p, m).arity as usize;
@@ -2327,7 +2327,7 @@ pub fn x_entry_kinds(p: &VProgram, c: &XCert, m: usize) -> (res: Result<Vec<XKin
     let mut r: Vec<XKind> = try_with_capacity(a)?;
     let mut i = 0;
     while i < a
-        invariant m < p.methods.len(), a == vinfo(p, m as int).arity, e == entry_kinds(vview(p), c@, m as int),
+        invariant m < p.methods@.len(), a == vinfo(p, m as int).arity, e == entry_kinds(vview(p), c@, m as int),
             0 <= i <= a, r.len() == i, forall|ii: int| 0 <= ii < i ==> #[trigger] kv(r)[ii] == e[ii],
         decreases a - i,
     {
@@ -2367,7 +2367,7 @@ pub fn x_entry_kinds(p: &VProgram, c: &XCert, m: usize) -> (res: Result<Vec<XKin
 
 /// Every mapped instruction of `m` is accepted.
 pub fn x_method_body_ok(p: &VProgram, c: &XCert, m: usize, trusted: bool) -> (res: Result<bool, Oom>)
-    requires wf_program2(vview(p)), m < p.methods.len(), m == c.cur, c.cur < c.g.n, g_ok(c.g),
+    requires wf_program2(vview(p)), m < p.methods@.len(), m == c.cur, c.cur < c.g.n, g_ok(c.g),
     ensures res matches Ok(r) ==> r == forall|o: int| 0 <= o < c@.maps[m as int].len() && (#[trigger] c@.maps[m as int][o]) is Some ==>
         instr_ok(vview(p), c@, m as int, o, c@.maps[m as int][o]->0, trusted),
 {
@@ -2378,7 +2378,7 @@ pub fn x_method_body_ok(p: &VProgram, c: &XCert, m: usize, trusted: bool) -> (re
     let mut off = 0;
     while off < c.maps.idx.len()
         invariant
-            wf_program2(vview(p)), m < p.methods.len(), m == c.cur, c.cur < c.g.n, g_ok(c.g),
+            wf_program2(vview(p)), m < p.methods@.len(), m == c.cur, c.cur < c.g.n, g_ok(c.g),
             cm == c@.maps[m as int], cm == mapsv(c.maps),
             0 <= off <= c.maps.idx@.len(),
             forall|o: int| 0 <= o < off && (#[trigger] c@.maps[m as int][o]) is Some ==>
@@ -2400,7 +2400,7 @@ pub fn x_method_body_ok(p: &VProgram, c: &XCert, m: usize, trusted: bool) -> (re
 
 pub fn x_method_ok(p: &VProgram, c: &XCert, m: usize, trusted: bool) -> (res: Result<bool, Oom>)
     requires
-        wf_program2(vview(p)), m < p.methods.len(), c.g.n == p.methods.len(), m == c.cur, g_ok(c.g),
+        wf_program2(vview(p)), m < p.methods@.len(), c.g.n == p.methods@.len(), m == c.cur, g_ok(c.g),
     ensures res matches Ok(r) ==> r == method_ok(vview(p), c@, m as int, trusted),
 {
     let ghost cc = c@;
@@ -2438,7 +2438,7 @@ pub fn x_entry_method(p: &VProgram, k: usize) -> (r: i64)
 }
 
 pub fn x_entry_ok(p: &VProgram, c: &XCert, k: usize, a: u8) -> (r: bool)
-    requires k < p.entry_points.len(), c.g.n == p.methods.len(),
+    requires k < p.entry_points.len(), c.g.n == p.methods@.len(),
     ensures r == entry_ok(vview(p), c@, k as int, a as int),
 {
     let e = x_entry_method(p, k);
@@ -2464,7 +2464,7 @@ pub fn x_dispatch_entry_ok(p: &VProgram, d: usize) -> (r: bool)
 }
 
 pub fn x_method_table_ok(p: &VProgram, c: &XCert, m: usize) -> (r: bool)
-    requires m < p.methods.len(), c.g.n == p.methods.len(), g_ok(c.g),
+    requires m < p.methods@.len(), c.g.n == p.methods@.len(), g_ok(c.g),
     ensures r == method_table_ok(vview(p), c@, m as int),
 {
     let ghost cc = c@;
@@ -2536,7 +2536,7 @@ pub fn x_tables_ok(p: &VProgram, c: &XCert) -> (res: Result<bool, Oom>)
     }
     let mut m = 0;
     while m < n
-        invariant n == p.methods.len(), c.g.n == n, 0 <= m <= n, pv == vview(p), cc == c@,
+        invariant n == p.methods@.len(), c.g.n == n, 0 <= m <= n, pv == vview(p), cc == c@,
             g_ok(c.g),
             forall|mm: int| 0 <= mm < m ==> #[trigger] method_table_ok(pv, cc, mm),
         decreases n - m,
@@ -2583,9 +2583,9 @@ pub fn x_wf_program2(p: &VProgram) -> (r: bool)
     }
     let mut m = 0;
     while m < p.methods.len()
-        invariant 0 <= m <= p.methods.len(), pv == vview(p),
+        invariant 0 <= m <= p.methods@.len(), pv == vview(p),
             forall|mm: int| 0 <= mm < m ==> #[trigger] pv.methods[mm].entry <= pv.methods[mm].end <= pv.bytecodes.len(),
-        decreases p.methods.len() - m,
+        decreases p.methods@.len() - m,
     {
         let i = x_info(p, m);
         if !(i.entry <= i.end && i.end <= p.bytecodes.len()) { return false; }
@@ -2665,7 +2665,7 @@ pub fn x_g_ok(g: &XGlobal) -> (r: bool)
 /// decides whatever it returns). `Err(Oom)`: out of memory.
 pub trait MapOracle {
     fn method_maps(&mut self, p: &VProgram, g: &XGlobal, m: usize) -> Result<XMaps, Oom>
-        requires wf_program2(vview(p)), g_ok(g), m < p.methods.len(), g.n == p.methods.len();
+        requires wf_program2(vview(p)), g_ok(g), m < p.methods@.len(), g.n == p.methods@.len();
 }
 
 /// Pin `i` agrees with the maps `mm`.
@@ -2764,7 +2764,7 @@ pub fn verify<O: MapOracle>(p: &VProgram, g: &XGlobal, o: &mut O, trusted: bool)
     let mut m: usize = 0;
     while m < n
         invariant
-            pv == vview(p), wf_program2(pv), n == p.methods.len(), g.n == n, n < 0x1000_0000, g_ok(g),
+            pv == vview(p), wf_program2(pv), n == p.methods@.len(), g.n == n, n < 0x1000_0000, g_ok(g),
             np == npins(g),
             tables_ok(pv, tables_cert(g@)),
             0 <= m <= n, ms.len() == m, at <= np,

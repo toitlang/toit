@@ -92,6 +92,13 @@ pub const ARRAY_ELEMENTS_WORD: usize = 2;
 /// words on 32-bit targets, aligned to a word only).
 pub const DOUBLE_VALUE_WORD: usize = 1;
 pub const LARGE_INTEGER_VALUE_WORD: usize = 1;
+/// The words of the 64-bit payload of a double or large integer, from
+/// `DOUBLE_VALUE_WORD` / `LARGE_INTEGER_VALUE_WORD`: one word, or two on
+/// 32-bit targets, little endian (the low half first: `view::value_word`).
+#[cfg(target_pointer_width = "64")]
+pub const VALUE_WORDS: usize = 1;
+#[cfg(target_pointer_width = "32")]
+pub const VALUE_WORDS: usize = 2;
 /// ByteArray: raw length (negative: external), inline content, external
 /// address and tag.
 pub const BYTE_ARRAY_LENGTH_WORD: usize = 1;
