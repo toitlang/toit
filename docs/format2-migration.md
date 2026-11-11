@@ -204,7 +204,7 @@ Instructions (QEMU icount, thousands; the suite's single runs):
 | map/set | 19,213 | 18,413 | 0.958 |
 | strings | 16,806 | 16,633 | 0.990 |
 | GC stress | 88,693 | 90,893 | 1.025 |
-| 200 service calls between containers | 28,534 | 28,428 | 0.996 |
+| 200 service calls between containers | 27,417 | 27,235 | 0.993 |
 | CPU-bound container (20 M iterations) | 5,601,196 | 4,343,752 | 0.776 |
 
 On Xtensa the core executes fewer instructions than the C++ interpreter
@@ -227,9 +227,12 @@ Jaguar), the Rust library is 116 KB, the C++ interpreter's removal saves
 bytecodes save a few KB. Options, none taken here: a partition layout
 with larger OTA partitions for the classic ESP32 (the C6 already has
 0x1d0000; the programs partition shrinks, and deployed devices cannot
-change their layout over the air), a smaller core (opt-level s: see
-below), or no table literal for bundled containers (their tables in RAM
-again: 29.6 KB for Jaguar).
+change their layout over the air), a smaller core, or no table literal
+for bundled containers (their tables in RAM again: 29.6 KB for Jaguar).
+The core at opt-level s saves 9.2 KB on the ESP32 (1,671,872 bytes
+system only: Jaguar still 99 KB over) and 6.7 KB on the C6 (1,764,768:
+Jaguar fits with 4.7 KB to spare; its speed at s is unmeasured, the C6
+has no QEMU).
 
 **IRAM.** Without the C++ interpreter 13.1 KB of the classic ESP32's IRAM
 are free (f1: 957 bytes). The core's loop (`step::run_loop`, everything
@@ -262,7 +265,7 @@ scripts/suite-all.sh runs one boot container (qemu/progs/suite.toit) on
 all three configurations: hello, the benchmarks above, GC stress, the
 profiler (its system message decodes), service calls to a provider
 container, preemption of a CPU-bound container (the suite's 20 ms sleeps
-are at most 4.4 ms late), an uncaught exception in another container
+are at most 4.4 ms late in all three), an uncaught exception in another container
 (the stack trace decodes identically with `toit decode`), untrusted
 installs (six accepted programs run and exit 0; deep sleep, no
 certificate, another program's certificate and a trusted-compiled image
@@ -298,6 +301,24 @@ the EC618 VM library, without the base and slot links, which need xmake).
 Still needs hardware: the core's speed from flash with the data fetches,
 install time at 160 and 240 MHz, the free heap of a real system (WiFi
 up) when the installer runs, deep sleep.
+
+### Before the C++ interpreter can be deleted
+
+1. A flash budget for the classic ESP32 with Jaguar (partition layout or
+   about 110 KB of size reduction), then the default flip (4f488c84) and
+   the CI step for the Rust targets; the C6 needs 2 KB (or opt-level s).
+2. The other device targets on the core (C3, S2, S3, P4, EC618; 5-9 days
+   plus hardware) or dropping them; the cross hosts' cargo targets.
+3. Hardware runs of the format-2 firmware (the hw test suite, `make
+   test-hw-esp32`, compiles its programs with the host default, now
+   format 2).
+4. Jaguar and Artemis: compile format 2 for devices and read the
+   envelope's `bytecode-formats` instead of assuming format 1 (outside
+   this repository).
+5. The host side as listed under "What still depends on format 1" (6-8
+   days): the FORMAT-1-ONLY tests, `-Xbytecode_format=1`, toit.run's
+   format-1 `--verify`/`--fuzz`, the `TOIT_CHECK_PROPAGATED_TYPES` job;
+   format 1 stays inside the compiler for the propagator.
 
 ## Converted tools and tests
 

@@ -39,6 +39,24 @@ icount, Xtensa instructions; the images carry their table literal):
 | b-fold | 795 | 25,877 | 412.1 M | 63,936 | 23,400 |
 | c-map | 973 | 31,060 | 497.2 M | 51,656 | 23,416 |
 | d-string-slice | 799 | 25,705 | 413.9 M | 59,848 | 23,456 |
+| e-exception | 926 | 28,493 | 451.0 M | 55,752 | 23,488 |
+| f-lambda | 800 | 25,419 | 407.5 M | 63,944 | 23,272 |
+
+Rejected: deep sleep (3.4 M, certificate rejected), no certificate,
+another program's certificate (malformed), a trusted-compiled image (no
+certificate), format 1 (FORMAT_2_REQUIRED). A trusted image installed
+into the programs partition (Jaguar's path) runs. The heap drop is the
+lowest free heap of any allocation during the verification (the whole
+system), not the verifier's own peak.
+
+Gates (1ea5ca7c, after the merge): verified/check.sh --tests passed;
+ctest -j16 1198/1202 (version, reader not run; udp-reuse-port-test; the
+gold of tests/negative/illegal-system-call-test was stale after
+74bf3729 on `sandbox-integration` changed lib/rpc/broker.toit: updated
+here, passes); nostd_check, nopanic_check and
+xtensa_codegen_check (3 and z) passed (on 7c716b70; verified/ is
+unchanged by this branch); firmware builds: ESP32 and C6 in f1, f2cxx,
+f2 (and opt-level s), C3, S2, S3 default, the EC618 VM library.
 
 Measurements (classic ESP32, QEMU icount; f1 = format 1/C++, f2 = format
 2/core without C++): toit.bin 1,462,800 -> 1,549,952 B (C6 1,574,496 ->
