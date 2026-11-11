@@ -1105,7 +1105,7 @@ class Unit:
         prepared.do: | r/Prepared |
           if not done.contains r.c-name:
             done.add r.c-name
-            shared.add "// C++: $r.path:$(line-of r.source (begin-offset r.decl)) $r.section.args[1]$(r.trusted ? " (trusted: contract only)" : "")"
+            shared.add "// C++: $r.path $r.section.args[1]$(r.trusted ? " (trusted: contract only)" : "")"
             shared.add (prototype r)
             shared.add ""
         if s.text.trim != "": shared.add (s.text.trim --right)
@@ -1118,7 +1118,7 @@ class Unit:
         else:
           seen[r.c-name] = text
           if text:
-            c.add "// C++: $r.path:$(line-of r.source (begin-offset r.decl)) $s.args[1]"
+            c.add "// C++: $r.path $s.args[1]"
             c.add text
             c.add ""
     if h:

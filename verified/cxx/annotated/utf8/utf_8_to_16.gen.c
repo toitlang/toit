@@ -104,17 +104,17 @@ lemma void accumulate(int c, int b, int count, int j)
 }
 
 @*/
-// C++: src/utils.h:327 toit::Utils::bytes_in_utf_8_sequence
+// C++: src/utils.h toit::Utils::bytes_in_utf_8_sequence
 word Utils_bytes_in_utf_8_sequence(unsigned char prefix);
 //@ requires true;
 //@ ensures result == utf8_count(prefix);
 
-// C++: src/utils.h:338 toit::Utils::payload_from_prefix
+// C++: src/utils.h toit::Utils::payload_from_prefix
 word Utils_payload_from_prefix(unsigned char prefix);
 //@ requires 2 <= utf8_count(prefix) &*& utf8_count(prefix) <= 4;
 //@ ensures 0 <= result &*& result < mask_of(utf8_count(prefix));
 
-// C++: src/utils.cc:340 toit::Utils::utf_8_to_16
+// C++: src/utils.cc toit::Utils::utf_8_to_16
 word Utils_utf_8_to_16__uint8p_word_uint16p_word(uint8 *input, word length, uint16 *output, word output_length);
 /*@ requires [?f]uchars((uint8 *)input, length, ?bs) &*& 0 <= length &*& length <= 0x10000000 &*&
              output == 0 ? true : ushorts_(output, output_length, _) &*& 0 <= output_length; @*/
@@ -122,7 +122,7 @@ word Utils_utf_8_to_16__uint8p_word_uint16p_word(uint8 *input, word length, uint
             (output == 0 ? true : ushorts_(output, output_length, _)) &*&
             -1 <= result &*& result <= length; @*/
 
-// C++: src/utils.h:327 toit::Utils::bytes_in_utf_8_sequence
+// C++: src/utils.h toit::Utils::bytes_in_utf_8_sequence
 word Utils_bytes_in_utf_8_sequence(unsigned char prefix)
 //@ requires true;
 //@ ensures result == utf8_count(prefix);
@@ -144,7 +144,7 @@ word Utils_bytes_in_utf_8_sequence(unsigned char prefix)
   return count;
 }
 
-// C++: src/utils.h:338 toit::Utils::payload_from_prefix
+// C++: src/utils.h toit::Utils::payload_from_prefix
 word Utils_payload_from_prefix(unsigned char prefix)
 //@ requires 2 <= utf8_count(prefix) &*& utf8_count(prefix) <= 4;
 //@ ensures 0 <= result &*& result < mask_of(utf8_count(prefix));
@@ -157,7 +157,7 @@ word Utils_payload_from_prefix(unsigned char prefix)
   return (word)((int)prefix & ((1 << (7 - n_byte_sequence)) - 1));
 }
 
-// C++: src/utils.cc:340 toit::Utils::utf_8_to_16
+// C++: src/utils.cc toit::Utils::utf_8_to_16
 word Utils_utf_8_to_16__uint8p_word_uint16p_word(uint8 *input, word length, uint16 *output, word output_length)
 /*@ requires [?f]uchars((uint8 *)input, length, ?bs) &*& 0 <= length &*& length <= 0x10000000 &*&
              output == 0 ? true : ushorts_(output, output_length, _) &*& 0 <= output_length; @*/

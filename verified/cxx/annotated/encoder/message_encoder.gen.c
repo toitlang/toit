@@ -145,37 +145,37 @@ uint64 bit_cast_uint64__long(int64 src);
 uint64 bit_cast_uint64__longlong(int64 src);
 //@ requires true;
 //@ ensures true;
-// C++: src/messaging.cc:60 toit::NestingTracker::NestingTracker
+// C++: src/messaging.cc toit::NestingTracker::NestingTracker
 void NestingTracker_ctor(NestingTracker *self, int *nesting);
 //@ requires self->nesting_ |-> _ &*& integer(nesting, ?n) &*& INT_MIN <= n &*& n < INT_MAX;
 //@ ensures self->nesting_ |-> nesting &*& integer(nesting, n + 1);
 
-// C++: src/messaging.cc:64 toit::NestingTracker::~NestingTracker
+// C++: src/messaging.cc toit::NestingTracker::~NestingTracker
 void NestingTracker_dtor(NestingTracker *self);
 //@ requires self->nesting_ |-> ?p &*& integer(p, ?n) &*& INT_MIN < n &*& n <= INT_MAX;
 //@ ensures self->nesting_ |-> p &*& integer(p, n - 1);
 
-// C++: src/messaging.cc:155 toit::MessageEncoder::encode_any
+// C++: src/messaging.cc toit::MessageEncoder::encode_any
 bool MessageEncoder_encode_any(MessageEncoder *self, Object *object);
 //@ requires encoder(self, ?ids) &*& self->nesting_ |-> ?n &*& 0 <= n &*& n <= MESSAGING_ENCODING_MAX_NESTING &*& [?f]heap(?objs, ?H) &*& good(objs, object) == true;
 //@ ensures encoder(self, ids) &*& self->nesting_ |-> n &*& [f]heap(objs, H);
 
-// C++: src/messaging.cc:251 toit::MessageEncoder::encode_array
+// C++: src/messaging.cc toit::MessageEncoder::encode_array
 bool MessageEncoder_encode_array(MessageEncoder *self, Array *object, word from, word to);
 //@ requires encoder(self, ?ids) &*& self->nesting_ |-> ?n &*& 0 <= n &*& n <= MESSAGING_ENCODING_MAX_NESTING &*& [?f]heap(?objs, ?H) &*& mem(object, objs) == true &*& has_tag(H, object, ARRAY_TAG) == true &*& smi_range(from) == true &*& smi_range(to) == true;
 //@ ensures encoder(self, ids) &*& self->nesting_ |-> n &*& [f]heap(objs, H);
 
-// C++: src/messaging.cc:263 toit::MessageEncoder::encode_list
+// C++: src/messaging.cc toit::MessageEncoder::encode_list
 bool MessageEncoder_encode_list(MessageEncoder *self, Instance *instance, word from, word to);
 //@ requires encoder(self, ?ids) &*& self->nesting_ |-> ?n &*& 0 <= n &*& n <= MESSAGING_ENCODING_MAX_NESTING &*& [?f]heap(?objs, ?H) &*& mem(instance, objs) == true &*& has_tag(H, instance, INSTANCE_TAG) == true &*& header_cid(o_hw(H(instance))) == list_cid(ids) &*& smi_range(from) == true &*& smi_range(to) == true;
 //@ ensures encoder(self, ids) &*& self->nesting_ |-> n &*& [f]heap(objs, H);
 
-// C++: src/messaging.cc:283 toit::MessageEncoder::encode_map
+// C++: src/messaging.cc toit::MessageEncoder::encode_map
 bool MessageEncoder_encode_map(MessageEncoder *self, Instance *instance);
 //@ requires encoder(self, ?ids) &*& self->nesting_ |-> ?n &*& 0 <= n &*& n <= MESSAGING_ENCODING_MAX_NESTING &*& [?f]heap(?objs, ?H) &*& mem(instance, objs) == true &*& has_tag(H, instance, INSTANCE_TAG) == true &*& header_cid(o_hw(H(instance))) == map_cid(ids);
 //@ ensures encoder(self, ids) &*& self->nesting_ |-> n &*& [f]heap(objs, H);
 
-// C++: src/messaging.cc:60 toit::NestingTracker::NestingTracker
+// C++: src/messaging.cc toit::NestingTracker::NestingTracker
 void NestingTracker_ctor(NestingTracker *self, int *nesting)
 //@ requires self->nesting_ |-> _ &*& integer(nesting, ?n) &*& INT_MIN <= n &*& n < INT_MAX;
 //@ ensures self->nesting_ |-> nesting &*& integer(nesting, n + 1);
@@ -184,7 +184,7 @@ void NestingTracker_ctor(NestingTracker *self, int *nesting)
   (*nesting)++;
 }
 
-// C++: src/messaging.cc:64 toit::NestingTracker::~NestingTracker
+// C++: src/messaging.cc toit::NestingTracker::~NestingTracker
 void NestingTracker_dtor(NestingTracker *self)
 //@ requires self->nesting_ |-> ?p &*& integer(p, ?n) &*& INT_MIN < n &*& n <= INT_MAX;
 //@ ensures self->nesting_ |-> p &*& integer(p, n - 1);
@@ -192,7 +192,7 @@ void NestingTracker_dtor(NestingTracker *self)
   (*self->nesting_)--;
 }
 
-// C++: src/messaging.cc:155 toit::MessageEncoder::encode_any
+// C++: src/messaging.cc toit::MessageEncoder::encode_any
 bool MessageEncoder_encode_any(MessageEncoder *self, Object *object)
 //@ requires encoder(self, ?ids) &*& self->nesting_ |-> ?n &*& 0 <= n &*& n <= MESSAGING_ENCODING_MAX_NESTING &*& [?f]heap(?objs, ?H) &*& good(objs, object) == true;
 //@ ensures encoder(self, ids) &*& self->nesting_ |-> n &*& [f]heap(objs, H);
@@ -404,7 +404,7 @@ bool MessageEncoder_encode_any(MessageEncoder *self, Object *object)
   }
 }
 
-// C++: src/messaging.cc:251 toit::MessageEncoder::encode_array
+// C++: src/messaging.cc toit::MessageEncoder::encode_array
 bool MessageEncoder_encode_array(MessageEncoder *self, Array *object, word from, word to)
 //@ requires encoder(self, ?ids) &*& self->nesting_ |-> ?n &*& 0 <= n &*& n <= MESSAGING_ENCODING_MAX_NESTING &*& [?f]heap(?objs, ?H) &*& mem(object, objs) == true &*& has_tag(H, object, ARRAY_TAG) == true &*& smi_range(from) == true &*& smi_range(to) == true;
 //@ ensures encoder(self, ids) &*& self->nesting_ |-> n &*& [f]heap(objs, H);
@@ -424,7 +424,7 @@ bool MessageEncoder_encode_array(MessageEncoder *self, Array *object, word from,
   return true;
 }
 
-// C++: src/messaging.cc:263 toit::MessageEncoder::encode_list
+// C++: src/messaging.cc toit::MessageEncoder::encode_list
 bool MessageEncoder_encode_list(MessageEncoder *self, Instance *instance, word from, word to)
 //@ requires encoder(self, ?ids) &*& self->nesting_ |-> ?n &*& 0 <= n &*& n <= MESSAGING_ENCODING_MAX_NESTING &*& [?f]heap(?objs, ?H) &*& mem(instance, objs) == true &*& has_tag(H, instance, INSTANCE_TAG) == true &*& header_cid(o_hw(H(instance))) == list_cid(ids) &*& smi_range(from) == true &*& smi_range(to) == true;
 //@ ensures encoder(self, ids) &*& self->nesting_ |-> n &*& [f]heap(objs, H);
@@ -458,7 +458,7 @@ bool MessageEncoder_encode_list(MessageEncoder *self, Instance *instance, word f
   return false;
 }
 
-// C++: src/messaging.cc:283 toit::MessageEncoder::encode_map
+// C++: src/messaging.cc toit::MessageEncoder::encode_map
 bool MessageEncoder_encode_map(MessageEncoder *self, Instance *instance)
 //@ requires encoder(self, ?ids) &*& self->nesting_ |-> ?n &*& 0 <= n &*& n <= MESSAGING_ENCODING_MAX_NESTING &*& [?f]heap(?objs, ?H) &*& mem(instance, objs) == true &*& has_tag(H, instance, INSTANCE_TAG) == true &*& header_cid(o_hw(H(instance))) == map_cid(ids);
 //@ ensures encoder(self, ids) &*& self->nesting_ |-> n &*& [f]heap(objs, H);

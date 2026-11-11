@@ -134,7 +134,7 @@ lemma void pointers_unfocus(void **base, int i, list<void *> ps)
 }
 
 @*/
-// C++: src/objects.h:1770 toit::is_smi
+// C++: src/objects.h toit::is_smi
 bool is_smi(Object *o)
 //@ requires true;
 //@ ensures result == is_smi_w((uword)o);
@@ -143,7 +143,7 @@ bool is_smi(Object *o)
   return ((uword)o & Object_SMI_TAG_MASK) == Object_SMI_TAG;
 }
 
-// C++: src/objects.h:1774 toit::is_heap_object
+// C++: src/objects.h toit::is_heap_object
 bool is_heap_object(Object *o)
 //@ requires true;
 //@ ensures result == is_heap_w((uword)o);
@@ -152,7 +152,7 @@ bool is_heap_object(Object *o)
   return ((uword)o & Object_NON_SMI_TAG_MASK) == Object_HEAP_TAG;
 }
 
-// C++: src/objects.h:183 toit::Smi::from
+// C++: src/objects.h toit::Smi::from
 Smi *Smi_from(word value)
 //@ requires 0 <= value &*& value < 1024;
 //@ ensures result == smi_ptr(value) &*& (uword)result == 2 * value;
@@ -161,7 +161,7 @@ Smi *Smi_from(word value)
   return (Smi *)((uword)value << SMI_TAG_SIZE);
 }
 
-// C++: src/objects.h:188 toit::Smi::cast
+// C++: src/objects.h toit::Smi::cast
 Smi *Smi_cast(Object *object)
 //@ requires true;
 //@ ensures result == object;
@@ -170,7 +170,7 @@ Smi *Smi_cast(Object *object)
   return (Smi *)object;
 }
 
-// C++: src/objects.h:331 toit::HeapObject::cast
+// C++: src/objects.h toit::HeapObject::cast
 HeapObject *HeapObject_cast__Objectp(Object *obj)
 //@ requires true;
 //@ ensures result == obj;
@@ -179,7 +179,7 @@ HeapObject *HeapObject_cast__Objectp(Object *obj)
   return (HeapObject *)obj;
 }
 
-// C++: src/objects.h:385 toit::HeapObject::_raw_at
+// C++: src/objects.h toit::HeapObject::_raw_at
 uword *HeapObject__raw_at__(HeapObject *self)
 //@ requires 1 <= (uword)self;
 //@ ensures result == raw(self);
@@ -187,7 +187,7 @@ uword *HeapObject__raw_at__(HeapObject *self)
   return (uword *)((uword)self - HEAP_TAG);
 }
 
-// C++: src/objects.h:388 toit::HeapObject::_at
+// C++: src/objects.h toit::HeapObject::_at
 Object *HeapObject__at(HeapObject *self, word offset)
 //@ requires 1 <= (uword)self &*& 0 <= offset &*& offset % WORD_SIZE == 0 &*& [?f]pointer((void **)raw(self) + offset / WORD_SIZE, ?v);
 //@ ensures [f]pointer((void **)raw(self) + offset / WORD_SIZE, v) &*& result == v;
@@ -195,7 +195,7 @@ Object *HeapObject__at(HeapObject *self, word offset)
   return ((Object **)HeapObject__raw_at__(self))[offset / (word)WORD_SIZE];
 }
 
-// C++: src/objects.h:392 toit::HeapObject::_word_at
+// C++: src/objects.h toit::HeapObject::_word_at
 uword HeapObject__word_at(HeapObject *self, word offset)
 //@ requires 1 <= (uword)self &*& 0 <= offset &*& offset % WORD_SIZE == 0 &*& [?f]uintptr(raw(self) + offset / WORD_SIZE, ?v);
 //@ ensures [f]uintptr(raw(self) + offset / WORD_SIZE, v) &*& result == v;
@@ -203,7 +203,7 @@ uword HeapObject__word_at(HeapObject *self, word offset)
   return HeapObject__raw_at__(self)[offset / (word)WORD_SIZE];
 }
 
-// C++: src/objects.h:233 toit::HeapObject::header
+// C++: src/objects.h toit::HeapObject::header
 Smi *HeapObject_header(HeapObject *self)
 //@ requires [?f]header(self, ?hw);
 //@ ensures [f]header(self, hw) &*& (uword)result == hw &*& header_ok(hw) == true;
@@ -215,7 +215,7 @@ Smi *HeapObject_header(HeapObject *self)
   return Smi_cast(result);
 }
 
-// C++: src/objects.h:238 toit::HeapObject::class_id
+// C++: src/objects.h toit::HeapObject::class_id
 Smi *HeapObject_class_id(HeapObject *self)
 //@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true;
 //@ ensures [f]heap(objs, H) &*& result == smi_ptr(header_cid(o_hw(H(self)))) &*& 0 <= header_cid(o_hw(H(self))) &*& header_cid(o_hw(H(self))) < 1024 &*& is_smi_w((uword)result) && smi_val((uword)result) == header_cid(o_hw(H(self)));
@@ -241,7 +241,7 @@ Smi *HeapObject_class_id(HeapObject *self)
   }
 }
 
-// C++: src/objects.h:244 toit::HeapObject::has_class_tag
+// C++: src/objects.h toit::HeapObject::has_class_tag
 bool HeapObject_has_class_tag(HeapObject *self, TypeTag tag)
 //@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true &*& 0 <= tag &*& tag < 16;
 //@ ensures [f]heap(objs, H) &*& result == (header_tag2(o_hw(H(self))) == 2 * tag);
@@ -257,7 +257,7 @@ bool HeapObject_has_class_tag(HeapObject *self, TypeTag tag)
   return (header_word & mask) == (tag_word << shift);
 }
 
-// C++: src/objects.h:1613 toit::Instance::_offset_from
+// C++: src/objects.h toit::Instance::_offset_from
 word Instance__offset_from(uword index)
 //@ requires index <= MAX_OBJECT_WORDS;
 //@ ensures result == Instance_HEADER_SIZE + index * WORD_SIZE;
@@ -265,7 +265,7 @@ word Instance__offset_from(uword index)
   return (word)((uword)Instance_HEADER_SIZE + index * (uword)WORD_SIZE);
 }
 
-// C++: src/objects.h:1526 toit::Instance::at
+// C++: src/objects.h toit::Instance::at
 Object *Instance_at(Instance *self, word index)
 //@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true &*& header_tag2(o_hw(H(self))) == 2 * INSTANCE_TAG &*& 0 <= index &*& index < o_len(H(self));
 //@ ensures [f]heap(objs, H) &*& result == nth(index, o_words(H(self))) &*& good(objs, result) == true;
@@ -286,7 +286,7 @@ Object *Instance_at(Instance *self, word index)
   }
 }
 
-// C++: src/objects.h:513 toit::Array::_offset_from
+// C++: src/objects.h toit::Array::_offset_from
 word Array__offset_from(word index)
 //@ requires 0 <= index &*& index <= MAX_OBJECT_WORDS;
 //@ ensures result == Array_HEADER_SIZE + index * WORD_SIZE;
@@ -294,7 +294,7 @@ word Array__offset_from(word index)
   return Array_HEADER_SIZE + index * (word)WORD_SIZE;
 }
 
-// C++: src/objects.h:428 toit::Array::length
+// C++: src/objects.h toit::Array::length
 word Array_length(Array *self)
 //@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true &*& header_tag2(o_hw(H(self))) == 2 * ARRAY_TAG;
 //@ ensures [f]heap(objs, H) &*& result == o_len(H(self)) &*& 0 <= result &*& result <= MAX_OBJECT_WORDS;
@@ -311,7 +311,7 @@ word Array_length(Array *self)
   }
 }
 
-// C++: src/objects.h:436 toit::Array::at
+// C++: src/objects.h toit::Array::at
 Object *Array_at(Array *self, word index)
 //@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true &*& header_tag2(o_hw(H(self))) == 2 * ARRAY_TAG &*& 0 <= index &*& index < o_len(H(self));
 //@ ensures [f]heap(objs, H) &*& result == nth(index, o_words(H(self))) &*& good(objs, result) == true;
@@ -333,7 +333,7 @@ Object *Array_at(Array *self, word index)
   }
 }
 
-// C++: src/objects.h:1786 toit::is_instance
+// C++: src/objects.h toit::is_instance
 bool is_instance(Object *o)
 //@ requires [?f]heap(?objs, ?H) &*& good(objs, o) == true;
 //@ ensures [f]heap(objs, H) &*& result == has_tag(H, o, INSTANCE_TAG);
@@ -342,7 +342,7 @@ bool is_instance(Object *o)
   return is_heap_object(o) && HeapObject_has_class_tag(HeapObject_cast__Objectp(o), INSTANCE_TAG);
 }
 
-// C++: src/objects.h:1790 toit::is_array
+// C++: src/objects.h toit::is_array
 bool is_array(Object *o)
 //@ requires [?f]heap(?objs, ?H) &*& good(objs, o) == true;
 //@ ensures [f]heap(objs, H) &*& result == has_tag(H, o, ARRAY_TAG);
@@ -351,7 +351,7 @@ bool is_array(Object *o)
   return is_heap_object(o) && HeapObject_has_class_tag(HeapObject_cast__Objectp(o), ARRAY_TAG);
 }
 
-// C++: src/objects.h:1794 toit::is_byte_array
+// C++: src/objects.h toit::is_byte_array
 bool is_byte_array(Object *o)
 //@ requires [?f]heap(?objs, ?H) &*& good(objs, o) == true;
 //@ ensures [f]heap(objs, H) &*& result == has_tag(H, o, BYTE_ARRAY_TAG);
@@ -360,7 +360,7 @@ bool is_byte_array(Object *o)
   return is_heap_object(o) && HeapObject_has_class_tag(HeapObject_cast__Objectp(o), BYTE_ARRAY_TAG);
 }
 
-// C++: src/objects.h:1778 toit::is_double
+// C++: src/objects.h toit::is_double
 bool is_double(Object *o)
 //@ requires [?f]heap(?objs, ?H) &*& good(objs, o) == true;
 //@ ensures [f]heap(objs, H) &*& result == has_tag(H, o, DOUBLE_TAG);
@@ -369,7 +369,7 @@ bool is_double(Object *o)
   return is_heap_object(o) && HeapObject_has_class_tag(HeapObject_cast__Objectp(o), DOUBLE_TAG);
 }
 
-// C++: src/objects.h:1802 toit::is_string
+// C++: src/objects.h toit::is_string
 bool is_string(Object *o)
 //@ requires [?f]heap(?objs, ?H) &*& good(objs, o) == true;
 //@ ensures [f]heap(objs, H) &*& result == has_tag(H, o, STRING_TAG);
@@ -378,7 +378,7 @@ bool is_string(Object *o)
   return is_heap_object(o) && HeapObject_has_class_tag(HeapObject_cast__Objectp(o), STRING_TAG);
 }
 
-// C++: src/objects.h:1806 toit::is_large_integer
+// C++: src/objects.h toit::is_large_integer
 bool is_large_integer(Object *o)
 //@ requires [?f]heap(?objs, ?H) &*& good(objs, o) == true;
 //@ ensures [f]heap(objs, H) &*& result == has_tag(H, o, LARGE_INTEGER_TAG);
@@ -387,7 +387,7 @@ bool is_large_integer(Object *o)
   return is_heap_object(o) && HeapObject_has_class_tag(HeapObject_cast__Objectp(o), LARGE_INTEGER_TAG);
 }
 
-// C++: src/objects.h:241 toit::HeapObject::class_tag
+// C++: src/objects.h toit::HeapObject::class_tag
 TypeTag HeapObject_class_tag(HeapObject *self)
 //@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true;
 //@ ensures [f]heap(objs, H) &*& 0 <= result &*& result < 16;
@@ -407,7 +407,7 @@ TypeTag HeapObject_class_tag(HeapObject *self)
   }
 }
 
-// C++: src/objects.h:1559 toit::Instance::cast
+// C++: src/objects.h toit::Instance::cast
 Instance *Instance_cast(Object *value)
 //@ requires true;
 //@ ensures result == value;
@@ -416,7 +416,7 @@ Instance *Instance_cast(Object *value)
   return (Instance *)value;
 }
 
-// C++: src/objects.h:468 toit::Array::cast
+// C++: src/objects.h toit::Array::cast
 Array *Array_cast(Object *array)
 //@ requires true;
 //@ ensures result == array;
@@ -425,7 +425,7 @@ Array *Array_cast(Object *array)
   return (Array *)array;
 }
 
-// C++: src/objects.h:640 toit::ByteArray::cast
+// C++: src/objects.h toit::ByteArray::cast
 ByteArray *ByteArray_cast(Object *byte_array)
 //@ requires true;
 //@ ensures result == byte_array;
@@ -434,7 +434,7 @@ ByteArray *ByteArray_cast(Object *byte_array)
   return (ByteArray *)byte_array;
 }
 
-// C++: src/objects.h:774 toit::LargeInteger::cast
+// C++: src/objects.h toit::LargeInteger::cast
 LargeInteger *LargeInteger_cast(Object *value)
 //@ requires true;
 //@ ensures result == value;
@@ -443,7 +443,7 @@ LargeInteger *LargeInteger_cast(Object *value)
   return (LargeInteger *)value;
 }
 
-// C++: src/objects.h:1190 toit::Double::cast
+// C++: src/objects.h toit::Double::cast
 Double *Double_cast(Object *value)
 //@ requires true;
 //@ ensures result == value;
