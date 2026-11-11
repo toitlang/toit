@@ -114,6 +114,7 @@
 // src/primitive.h, the error roots of src/program.h, class Error.
 #define STRINGS_OR_BYTE_ARRAYS 0
 #define Program_ALLOCATION_FAILED_INDEX 7
+#define Program_INVALID_ARGUMENT_INDEX 16
 #define Program_OUT_OF_BOUNDS_INDEX 20
 #define Program_OUT_OF_RANGE_INDEX 21
 #define Program_WRONG_OBJECT_TYPE_INDEX 30
@@ -150,6 +151,9 @@
 #define MESSAGING_DECODING_MAX_NESTING 64
 #define MESSAGE_FORMAT_IPC 0
 #define MESSAGE_FORMAT_TISON 1
+// The message types (src/messaging.h MessageType).
+#define MESSAGE_MONITOR_NOTIFY 1
+#define MESSAGE_SYSTEM 3
 // The decoder (src/messaging.h MessageDecoder::Status, Smi limits, top.h).
 #define MessageDecoder_DECODE_SUCCESS 0
 #define MessageDecoder_DECODE_ALLOCATION_FAILED 1

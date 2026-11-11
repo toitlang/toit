@@ -25,6 +25,8 @@ struct plain_c { int a; };
 typedef int RuleMode;
 struct Defaults { word x_; RuleMode mode_; word count_; bool flag_; struct Defaults *next_; };
 typedef struct Defaults Defaults;
+struct Later { word x_; };
+typedef struct Later Later;
 // The implicit default constructor (initializes nothing).
 void plain_c_ctor(struct plain_c *self);
 //@ requires self->a |-> _;
@@ -147,6 +149,16 @@ void Defaults_ctor__word(Defaults *self, word x);
 word use_defaults(word x);
 //@ requires 0 <= x &*& x < 100;
 //@ ensures result == x + 7;
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::Later::Later
+void Later_ctor(Later *self, word x);
+//@ requires self->x_ |-> _;
+//@ ensures self->x_ |-> x;
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::count_up
+word count_up(word n);
+//@ requires 0 <= n &*& n < 1000;
+//@ ensures result == n;
 
 // C++: verified/cxx/annotated/tests/rules.cc toit::Outer::Inner::Inner
 void Outer_Inner_ctor(Outer_Inner *self, word x)
@@ -385,5 +397,27 @@ word use_defaults(word x)
   Defaults d;
   Defaults_ctor__word(&d, x);
   return d.x_ + d.count_;
+}
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::Later::Later
+void Later_ctor(Later *self, word x)
+//@ requires self->x_ |-> _;
+//@ ensures self->x_ |-> x;
+{
+  self->x_ = x;
+}
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::count_up
+word count_up(word n)
+//@ requires 0 <= n &*& n < 1000;
+//@ ensures result == n;
+{
+  word total = 0;
+  for (word i = 0; i < n; i++)
+  //@ invariant 0 <= i &*& i <= n &*& total == i;
+  {
+    total++;
+  }
+  return total;
 }
 

@@ -187,4 +187,22 @@ inline word use_defaults(word x) {
   return d.x_ + d.count_;
 }
 
+// Rule: an out-of-line constructor `C::C` (found although it is named like
+// its class).
+class Later {
+ public:
+  explicit Later(word x);
+  word x_;
+};
+
+inline Later::Later(word x) : x_(x) {}
+
+// Rule: the invariant of a loop whose body has no braces is the annotation
+// anchored at the body's first token.
+inline word count_up(word n) {
+  word total = 0;
+  for (word i = 0; i < n; i++) total++;
+  return total;
+}
+
 }  // namespace toit

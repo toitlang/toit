@@ -9,6 +9,7 @@
 #include <top.h>
 #include <objects.h>
 #include <messaging.cc>
+#include <primitive_core.cc>
 namespace toit {
 template <typename A, typename B> struct vf_same {
   static const bool value = std::is_same<typename std::decay<A>::type, typename std::decay<B>::type>::value;
@@ -16,25 +17,30 @@ template <typename A, typename B> struct vf_same {
 struct vf_probe_0 : MessageDecoder { static_assert((DECODE_ALLOCATION_FAILED) == (1), "MessageDecoder_DECODE_ALLOCATION_FAILED"); };
 struct vf_probe_1 : MessageDecoder { static_assert((DECODE_MALFORMED_INPUT) == (2), "MessageDecoder_DECODE_MALFORMED_INPUT"); };
 struct vf_probe_2 : MessageDecoder { static_assert((DECODE_SUCCESS) == (0), "MessageDecoder_DECODE_SUCCESS"); };
-struct vf_probe_3 : MessageDecoder { static_assert((MESSAGE_FORMAT_TISON) == (1), "MESSAGE_FORMAT_TISON"); };
-struct vf_probe_4 : MessageDecoder { static_assert((MESSAGING_DECODING_MAX_NESTING) == (64), "MESSAGING_DECODING_MAX_NESTING"); };
-struct vf_probe_5 : MessageDecoder { static_assert((TAG_ARRAY) == (6), "TAG_ARRAY"); };
-struct vf_probe_6 : MessageDecoder { static_assert((TAG_BYTE_ARRAY) == (12), "TAG_BYTE_ARRAY"); };
-struct vf_probe_7 : MessageDecoder { static_assert((TAG_BYTE_ARRAY_INLINE) == (13), "TAG_BYTE_ARRAY_INLINE"); };
-struct vf_probe_8 : MessageDecoder { static_assert((TAG_DOUBLE) == (7), "TAG_DOUBLE"); };
-struct vf_probe_9 : MessageDecoder { static_assert((TAG_FALSE) == (5), "TAG_FALSE"); };
-struct vf_probe_10 : MessageDecoder { static_assert((TAG_LARGE_INTEGER) == (8), "TAG_LARGE_INTEGER"); };
-struct vf_probe_11 : MessageDecoder { static_assert((TAG_MAP) == (9), "TAG_MAP"); };
-struct vf_probe_12 : MessageDecoder { static_assert((TAG_NEGATIVE_SMI) == (2), "TAG_NEGATIVE_SMI"); };
-struct vf_probe_13 : MessageDecoder { static_assert((TAG_NULL) == (3), "TAG_NULL"); };
-struct vf_probe_14 : MessageDecoder { static_assert((TAG_OVERFLOWN) == (0), "TAG_OVERFLOWN"); };
-struct vf_probe_15 : MessageDecoder { static_assert((TAG_POSITIVE_SMI) == (1), "TAG_POSITIVE_SMI"); };
-struct vf_probe_16 : MessageDecoder { static_assert((TAG_STRING) == (10), "TAG_STRING"); };
-struct vf_probe_17 : MessageDecoder { static_assert((TAG_STRING_INLINE) == (11), "TAG_STRING_INLINE"); };
-struct vf_probe_18 : MessageDecoder { static_assert((TAG_TRUE) == (4), "TAG_TRUE"); };
-struct vf_probe_19 : TisonDecoder { static_assert((TISON_MARKER) == (((uint32)0xa68900f7)), "TISON_MARKER"); static_assert(vf_same<decltype(TISON_MARKER), decltype(((uint32)0xa68900f7))>::value, "type of TISON_MARKER"); };
-struct vf_probe_20 : TisonDecoder { static_assert((TISON_VERSION) == (1), "TISON_VERSION"); static_assert(vf_same<decltype(TISON_VERSION), decltype(1)>::value, "type of TISON_VERSION"); };
-struct vf_probe_21 : TisonDecoder { static_assert((TISON_VERSION_SHIFT) == (((uint32)8)), "TISON_VERSION_SHIFT"); static_assert(vf_same<decltype(TISON_VERSION_SHIFT), decltype(((uint32)8))>::value, "type of TISON_VERSION_SHIFT"); };
+struct vf_probe_3 : MessageDecoder { static_assert((MESSAGE_FORMAT_IPC) == (0), "MESSAGE_FORMAT_IPC"); };
+struct vf_probe_4 : MessageDecoder { static_assert((MESSAGE_FORMAT_TISON) == (1), "MESSAGE_FORMAT_TISON"); };
+struct vf_probe_5 : MessageDecoder { static_assert((MESSAGING_DECODING_MAX_NESTING) == (64), "MESSAGING_DECODING_MAX_NESTING"); };
+struct vf_probe_6 : MessageDecoder { static_assert((TAG_ARRAY) == (6), "TAG_ARRAY"); };
+struct vf_probe_7 : MessageDecoder { static_assert((TAG_BYTE_ARRAY) == (12), "TAG_BYTE_ARRAY"); };
+struct vf_probe_8 : MessageDecoder { static_assert((TAG_BYTE_ARRAY_INLINE) == (13), "TAG_BYTE_ARRAY_INLINE"); };
+struct vf_probe_9 : MessageDecoder { static_assert((TAG_DOUBLE) == (7), "TAG_DOUBLE"); };
+struct vf_probe_10 : MessageDecoder { static_assert((TAG_FALSE) == (5), "TAG_FALSE"); };
+struct vf_probe_11 : MessageDecoder { static_assert((TAG_LARGE_INTEGER) == (8), "TAG_LARGE_INTEGER"); };
+struct vf_probe_12 : MessageDecoder { static_assert((TAG_MAP) == (9), "TAG_MAP"); };
+struct vf_probe_13 : MessageDecoder { static_assert((TAG_NEGATIVE_SMI) == (2), "TAG_NEGATIVE_SMI"); };
+struct vf_probe_14 : MessageDecoder { static_assert((TAG_NULL) == (3), "TAG_NULL"); };
+struct vf_probe_15 : MessageDecoder { static_assert((TAG_OVERFLOWN) == (0), "TAG_OVERFLOWN"); };
+struct vf_probe_16 : MessageDecoder { static_assert((TAG_POSITIVE_SMI) == (1), "TAG_POSITIVE_SMI"); };
+struct vf_probe_17 : MessageDecoder { static_assert((TAG_STRING) == (10), "TAG_STRING"); };
+struct vf_probe_18 : MessageDecoder { static_assert((TAG_STRING_INLINE) == (11), "TAG_STRING_INLINE"); };
+struct vf_probe_19 : MessageDecoder { static_assert((TAG_TRUE) == (4), "TAG_TRUE"); };
+struct vf_probe_20 : TisonDecoder { static_assert((TISON_MARKER) == (((uint32)0xa68900f7)), "TISON_MARKER"); static_assert(vf_same<decltype(TISON_MARKER), decltype(((uint32)0xa68900f7))>::value, "type of TISON_MARKER"); };
+struct vf_probe_21 : TisonDecoder { static_assert((TISON_VERSION) == (1), "TISON_VERSION"); static_assert(vf_same<decltype(TISON_VERSION), decltype(1)>::value, "type of TISON_VERSION"); };
+struct vf_probe_22 : TisonDecoder { static_assert((TISON_VERSION_SHIFT) == (((uint32)8)), "TISON_VERSION_SHIFT"); static_assert(vf_same<decltype(TISON_VERSION_SHIFT), decltype(((uint32)8))>::value, "type of TISON_VERSION_SHIFT"); };
+static_assert((Error::ERROR_SHIFT) == (2), "Error_ERROR_SHIFT");
+static_assert(vf_same<decltype(Error::ERROR_SHIFT), decltype(2)>::value, "type of Error_ERROR_SHIFT");
+static_assert((Error::ERROR_TAG) == (((uword)3)), "Error_ERROR_TAG");
+static_assert(vf_same<decltype(Error::ERROR_TAG), decltype(((uword)3))>::value, "type of Error_ERROR_TAG");
 static_assert((Instance::MAP_BACKING_INDEX) == (((word)3)), "Instance_MAP_BACKING_INDEX");
 static_assert(vf_same<decltype(Instance::MAP_BACKING_INDEX), decltype(((word)3))>::value, "type of Instance_MAP_BACKING_INDEX");
 static_assert((Instance::MAP_INDEX_INDEX) == (((word)2)), "Instance_MAP_INDEX_INDEX");
@@ -43,4 +49,8 @@ static_assert((Instance::MAP_SIZE_INDEX) == (((word)0)), "Instance_MAP_SIZE_INDE
 static_assert(vf_same<decltype(Instance::MAP_SIZE_INDEX), decltype(((word)0))>::value, "type of Instance_MAP_SIZE_INDEX");
 static_assert((Instance::MAP_SPACES_LEFT_INDEX) == (((word)1)), "Instance_MAP_SPACES_LEFT_INDEX");
 static_assert(vf_same<decltype(Instance::MAP_SPACES_LEFT_INDEX), decltype(((word)1))>::value, "type of Instance_MAP_SPACES_LEFT_INDEX");
+static_assert((MESSAGE_MONITOR_NOTIFY) == (1), "MESSAGE_MONITOR_NOTIFY");
+static_assert((MESSAGE_SYSTEM) == (3), "MESSAGE_SYSTEM");
+static_assert((Program::ALLOCATION_FAILED_INDEX) == (7), "Program_ALLOCATION_FAILED_INDEX");
+static_assert((Program::INVALID_ARGUMENT_INDEX) == (16), "Program_INVALID_ARGUMENT_INDEX");
 }  // namespace toit

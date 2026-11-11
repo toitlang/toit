@@ -27,6 +27,8 @@ struct plain_c { int a; };
 typedef int RuleMode;
 struct Defaults { word x_; RuleMode mode_; word count_; bool flag_; struct Defaults *next_; };
 typedef struct Defaults Defaults;
+struct Later { word x_; };
+typedef struct Later Later;
 // The implicit default constructor (initializes nothing).
 void plain_c_ctor(struct plain_c *self);
 //@ requires self->a |-> _;
@@ -233,4 +235,22 @@ inline word use_defaults(word x)
 {
   Defaults d(x);
   return d.x_ + d.count_;
+}
+
+@render verified/cxx/annotated/tests/rules.cc toit::Later::Later
+inline Later::Later(word x) : x_(x)
+//@ requires self->x_ |-> _;
+//@ ensures self->x_ |-> x;
+{}
+
+@render verified/cxx/annotated/tests/rules.cc toit::count_up
+inline word count_up(word n)
+//@ requires 0 <= n &*& n < 1000;
+//@ ensures result == n;
+{
+  word total = 0;
+  for (word i = 0; i < n; i++)
+  //@ invariant 0 <= i &*& i <= n &*& total == i;
+    total++;
+  return total;
 }

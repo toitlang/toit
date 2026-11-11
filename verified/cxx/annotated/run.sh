@@ -231,6 +231,38 @@ mutant decoder-external-string-length decoder/message_decoder.render src/messagi
 # The externals table: one entry too many is written past it.
 mutant decoder-externals-bound decoder/message_decoder.render src/messaging.cc "pointers|intptrs|No matching|<= 8|index" "$DEC_OPTS" \
   "if (index >= ARRAY_SIZE(externals_)) {" "if (index > ARRAY_SIZE(externals_)) {"
+# The ownership of a message's out-of-line blocks (wave 5). The malformed
+# message delivered as decoded (the fix of 05159afd taken out): the blocks
+# after the error stay with nobody (dec_finish needs a success).
+mutant receive-malformed-delivered decoder/message_decoder.render src/primitive_core.cc "MALFORMED|st != 2|2 != st|Cannot prove" "$DEC_OPTS" \
+  "PRIMITIVE(task_receive_message)@@if (decoder.malformed_input()) {" "if (false && decoder.malformed_input()) {"
+mutant arguments-malformed-delivered decoder/message_decoder.render src/primitive_core.cc "MALFORMED|st != 2|2 != st|Cannot prove" "$DEC_OPTS" \
+  "PRIMITIVE(main_arguments)@@if (decoder.malformed_input()) {" "if (false && decoder.malformed_input()) {"
+# A failed decode that keeps the objects' finalizers: the lent blocks are
+# not the message's again (a double free when the message is retried or
+# deleted).
+mutant receive-no-give-back decoder/message_decoder.render src/primitive_core.cc "dec_back|No matching" "$DEC_OPTS" \
+  "PRIMITIVE(task_receive_message)@@decoder.remove_disposing_finalizers();" "decoder.success();"
+# One finalizer bit left set: its block is still lent.
+mutant receive-give-back-bound decoder/message_decoder.render src/messaging.cc "lent|finalized|invariant|Cannot prove|No matching" "$DEC_OPTS" \
+  "MessageDecoder::remove_disposing_finalizers()@@for (unsigned i = 0; i < externals_count(); i++)" "for (unsigned i = 0; i + 1 < externals_count(); i++)"
+# A dropped message freed without its blocks (a leak): the message is
+# whole again (msg_whole), which free does not take.
+mutant arguments-drop-leak decoder/message_decoder.render src/primitive_core.cc "leak|msg_blocks|malloc_block" "$DEC_OPTS" \
+  "PRIMITIVE(main_arguments)@@MessageDecoder::deallocate(arguments);" "free(arguments);"
+# A decoded message freed with its blocks: the objects own them (a double
+# free when their finalizers run).
+mutant receive-success-free-all decoder/message_decoder.render src/primitive_core.cc "msg_whole|No matching" "$DEC_OPTS" \
+  "system_message->free_data_but_keep_externals();" "system_message->free_data_and_externals();"
+# A block lent to an object that is not in the externals table: nobody can
+# give it back.
+mutant decoder-unregistered-block decoder/message_decoder.render src/messaging.cc "dec_pend|leak|Cannot prove|No matching" "$DEC_OPTS" \
+  "    if (result) register_external(result, length);\n" ""
+# The deallocation walk: a block freed twice, a block not freed.
+mutant deallocate-double-free decoder/message_decoder.render src/messaging.cc "malloc_block|No matching" "$DEC_OPTS" \
+  "      read_cardinal();\n      free(read_pointer());" "      read_cardinal();\n      { uint8* p = read_pointer(); free(p); free(p); }"
+mutant deallocate-leak decoder/message_decoder.render src/messaging.cc "leak|malloc_block" "$DEC_OPTS" \
+  "      read_cardinal();\n      free(read_pointer());" "      read_cardinal();\n      read_pointer();"
 
 entry byte-content          pass "" blob/byte_content.gen.c
 # 357d1127 (#3373, byte_content nesting) reverted: without the depth limit

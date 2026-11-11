@@ -367,6 +367,11 @@ class AstCache:
       top := pieces[i][0]
       if path.size == 1 and top == name:
         result.add (parse_ tu target filter i)
+      else if path.size > 1 and top == path[0] and top == name and (parse_ tu target filter i)["kind"] != "CXXRecordDecl":
+        // An out-of-line constructor (`C::C`): named like its class.
+        decl := parse_ tu target filter i
+        decl["out-of-line"] = true
+        result.add decl
       else if path.size > 1 and top == path[0]:
         node := parse_ tu target filter i
         level := [node]
@@ -1134,9 +1139,9 @@ class Renderer:
     return left["kind"] == "CXXBoolLiteralExpr" and left["value"] == false
 
   loop-body node/Map indent/int:
-    // Annotations anchored at the body's `{` are the loop invariant.
-    if node["kind"] == "CompoundStmt":
-      ghosts-up-to (begin-offset node) indent
+    // Annotations anchored at the body's `{` are the loop invariant; for a
+    // body without braces, those anchored at its first token.
+    ghosts-up-to (begin-offset node) indent
     emit indent "{"
     body node indent + 1
     emit indent "}"
