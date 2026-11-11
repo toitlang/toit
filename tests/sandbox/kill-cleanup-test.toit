@@ -3,6 +3,7 @@
 // be found in the tests/LICENSE file.
 
 import expect show *
+import monitor
 import system.containers
 import system.services show ServiceSelector ServiceProvider ServiceHandler ServiceClient
 import system.api.service-discovery show ServiceDiscoveryServiceClient
@@ -46,7 +47,11 @@ class EchoProvider extends ServiceProvider implements EchoService ServiceHandler
     unreachable
 
   echo value/any -> any:
+    if not echoed.has-value: echoed.set true
     return value
+
+// Set when the driver has used the service of the untrusted container.
+echoed := monitor.Latch
 
 class Finalized_:
   value/int
@@ -92,5 +97,7 @@ main args:
     5.repeat: add-finalizer (Finalized_ it):: null
     // A service the driver uses.
     (EchoProvider).install
-    sleep --ms=500
+    // Only spend the CPU budget once the driver has used the service: on a
+    // slow machine the kill could otherwise come first.
+    catch: with-timeout --ms=10_000: echoed.get
     while true: null
