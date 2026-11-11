@@ -322,8 +322,12 @@ Interpreter::Result Interpreter::run_v2() {
   context.preempt_a_lot = Flags::preempt_a_lot ? 1 : 0;
   // The verified loop only for a table the launch-time verifier accepted,
   // under the untrusted rules for an untrusted process.
-  uword verified = table->verified();
-  bool accepted = verified == 1 || (verified == 2 && !process_->policy()->is_untrusted());
+  bool accepted = table->runs_verified(process_->policy()->is_untrusted());
+  // Without the checked loop (devices) ProcessGroup::create admits only
+  // accepted programs.
+  if (!accepted && !V2MethodTable::checked_loop_linked()) {
+    FATAL("format-2 program not verified and no checked loop");
+  }
   context.accepted = accepted ? TOIT_V2_ACCEPTED : 0;
   // The core runs the Rust port of a core primitive only where the policy
   // resolves it to the VM's own primitive (never a denying stub).

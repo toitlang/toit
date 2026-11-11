@@ -34,6 +34,20 @@
 
 extern crate alloc;
 
+/// A diagnostic text: `text!(FIXED, FORMAT, ARGS...)`. Hosts (`std`) format
+/// it; devices keep the fixed part only, so that the formatting machinery
+/// (3-4 KB of flash) is not linked. A device reports the reason code, the
+/// method and the offset (in `toit_vmverify_result`), not the details.
+macro_rules! text {
+    ($fixed:literal, $fmt:literal $(, $arg:expr)* $(,)?) => {{
+        #[cfg(feature = "std")]
+        let t = alloc::format!($fmt $(, $arg)*);
+        #[cfg(not(feature = "std"))]
+        let t = { $(let _ = &$arg;)* alloc::string::String::from($fixed) };
+        t
+    }};
+}
+
 pub mod clock;
 #[cfg(feature = "std")]
 pub mod counting;

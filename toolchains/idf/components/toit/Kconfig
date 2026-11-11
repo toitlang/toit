@@ -300,4 +300,24 @@ menu "Toit"
         string "Rust opt-level of the verified core (3, s or z)"
         default "3"
         depends on TOIT_VERIFIED_CORE
+
+    config TOIT_VERIFIED_CORE_INFER
+        bool "Link the certificate inference (for measurements)"
+        default n
+        depends on TOIT_VERIFIED_CORE
+        help
+            Devices verify untrusted programs with the certificate shipped in
+            the image (verified/spec/format/18-shipped-certificate.md) and
+            reject programs without one. This links the host's inference
+            too (23-40 KB of flash); only useful to measure its size.
+
+    config TOIT_VERIFIED_CORE_CHECKED_LOOP
+        bool "Link the checked run loop (for measurements)"
+        default n
+        depends on TOIT_VERIFIED_CORE
+        help
+            The checked loop runs format-2 programs the verifier did not
+            accept (trusted programs that were not verified). Devices run
+            format 2 only for verified untrusted programs and refuse others,
+            so they do not need it; only useful to measure its size.
 endmenu

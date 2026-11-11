@@ -37,7 +37,11 @@ REPO="$(cd "$VERIFIED/.." && pwd)"
 OPT="${1:?opt-level}"
 TAILDUP=1
 if [ "${2:-}" = notaildup ]; then TAILDUP=0; shift; fi
-NAME="opt$OPT$([ "$TAILDUP" = 0 ] && echo -notaildup || true)"
+# The vmverify features (default: the device configuration, without the
+# inference and the checked loop), e.g. DEVICE_SIZE_FEATURES=device-runtime,infer;
+# DEVICE_SIZE_SUFFIX is appended to the output directory's name.
+FEATURES="${DEVICE_SIZE_FEATURES:-device-runtime}"
+NAME="opt$OPT$([ "$TAILDUP" = 0 ] && echo -notaildup || true)${DEVICE_SIZE_SUFFIX:-}"
 OUT="${2:-$REPO/build/device-size}/$NAME"
 TARGET=riscv32imac-unknown-none-elf
 mkdir -p "$OUT"
@@ -52,7 +56,7 @@ BIN="$(dirname "$GCC")"
 ENVS=(CARGO_PROFILE_DEVICE_OPT_LEVEL="$OPT")
 if [ "$TAILDUP" = 0 ]; then ENVS+=(RUSTFLAGS=""); fi
 (cd "$VERIFIED/vmverify" && env "${ENVS[@]}" cargo build --quiet --profile device --lib \
-    --no-default-features --features device-runtime --target "$TARGET" --target-dir "$OUT/target")
+    --no-default-features --features "$FEATURES" --target "$TARGET" --target-dir "$OUT/target")
 LIB="$OUT/target/$TARGET/device/libtoit_vmverify.a"
 
 "$GCC" -march=rv32imac_zicsr_zifencei -mabi=ilp32 -Os -ffunction-sections -fdata-sections \

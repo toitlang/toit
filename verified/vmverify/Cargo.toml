@@ -44,7 +44,7 @@ required-features = ["std", "infer"]
 [features]
 # `std`: hosts (panics are caught and reject, phase times, counting
 # allocator, test support). Without it: `no_std` + `alloc` for devices.
-default = ["std", "infer"]
+default = ["std", "infer", "checked-loop"]
 std = ["toit_spec/std"]
 # Devices: the global allocator and the panic handler the VM supplies
 # (src/device.rs: malloc/free, toit_vmverify_panic). Use without `std`, for
@@ -54,10 +54,14 @@ device-runtime = []
 # (devices) a program without a certificate is rejected and the inference
 # is not linked.
 infer = ["toit_spec/infer"]
+# `checked-loop`: the core's checked run loop (hosts: unverified trusted
+# format-2 programs). Devices build without it and run format 2 only for
+# programs the verifier accepted.
+checked-loop = ["toit_verified_core/checked-loop"]
 
 [dependencies]
 toit_spec = { path = "../spec", default-features = false }
-toit_verified_core = { path = "../core" }
+toit_verified_core = { path = "../core", default-features = false }
 
 # This crate's profiles are the ones used when the VM's static library is
 # built (the core's own profiles only apply to its standalone builds).

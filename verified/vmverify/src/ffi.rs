@@ -17,7 +17,6 @@
 //! `toit_vmverify_input` and `toit_vmverify_result` (checked by
 //! verified/layout_check.cc).
 
-use alloc::format;
 use alloc::string::String;
 use core::ffi::c_char;
 use toit_verified_core::ffi::ProgramTables;
@@ -132,7 +131,7 @@ unsafe fn run(input: &VerifyInput) -> (verify::Verdict, usize, u64) {
     let convert_ns = t.ns();
     match converted {
         Err(e) => {
-            let mut message: String = format!("{} ({})", e.what, e.detail);
+            let mut message: String = text!("malformed program memory", "{} ({})", e.what, e.detail);
             message.truncate(MESSAGE_SIZE - 1);
             let v = verify::Verdict { code: verify::MALFORMED, method: -1, offset: -1,
                 message, heap_ns: 0, infer_ns: 0, check_ns: 0 };

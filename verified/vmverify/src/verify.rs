@@ -34,6 +34,7 @@
 //! `x_wf_program2` runs first (the inference needs it). Everything after
 //! the verdict is diagnostics.
 
+#[cfg(feature = "infer")]
 use alloc::format;
 use alloc::string::String;
 #[cfg(feature = "infer")]
@@ -122,8 +123,8 @@ pub fn verify(c: &mut Converted, trusted: bool, cert: Option<&[u8]>) -> Verdict 
     let heap_ns = t.ns();
     if !heap_ok || !complete {
         let message = match &objects.error {
-            Some(e) => format!("{} ({})", e.what, e.detail),
-            None => format!("loader contract (loaded_ok); {} objects converted", objects.count()),
+            Some(e) => text!("malformed program memory", "{} ({})", e.what, e.detail),
+            None => text!("loader contract (loaded_ok)", "loader contract (loaded_ok); {} objects converted", objects.count()),
         };
         let mut v = Verdict::new(if objects.error.is_some() { MALFORMED } else { HEAP }, message);
         v.heap_ns = heap_ns;
@@ -199,7 +200,7 @@ fn diagnose_shipped(p: &VProgram, cert: &[u8], at: usize, global_count: u64, pri
     }
     #[cfg(not(feature = "infer"))]
     let _ = trusted;
-    let mut v = Verdict::new(CERTIFICATE, format!("the shipped certificate is rejected (method {})", at));
+    let mut v = Verdict::new(CERTIFICATE, text!("the shipped certificate is rejected", "the shipped certificate is rejected (method {})", at));
     v.method = at as isize;
     v
 }

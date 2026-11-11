@@ -32,6 +32,14 @@ vstd = { version = "=0.0.0-2026-11-01-0251", default-features = false, features 
 # linked only where a crate asks for it (verified/vmverify's `infer`, hosts).
 toit_spec = { path = "../spec", default-features = false }
 
+[features]
+default = ["checked-loop"]
+# The checked run loop (`machine::run_checked`): runs programs the verifier
+# did not accept (unverified trusted format-2 programs on hosts). Devices
+# build without it (verified/vmverify `checked-loop`; OBLIGATIONS.md has
+# the cfg request for machine.rs). Verus verifies with it (check.sh).
+checked-loop = []
+
 [package.metadata.verus]
 verify = true
 

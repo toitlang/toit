@@ -192,7 +192,12 @@ impl Image {
     fn word(&self, addr: usize, k: usize) -> Result<usize, Malformed> {
         let at = k.checked_mul(WORD_SIZE).and_then(|o| addr.checked_add(o));
         match at.and_then(|a| self.range(a, WORD_SIZE)) {
-            Some(b) => Ok(usize::from_ne_bytes(b.try_into().unwrap())),
+            // No `unwrap`: its panic message would link the formatting
+            // machinery on devices (the length is right by construction).
+            Some(b) => match b.try_into() {
+                Ok(a) => Ok(usize::from_ne_bytes(a)),
+                Err(_) => bad("object extends past the program image", addr.wrapping_sub(self.start)),
+            },
             None => bad("object extends past the program image", addr.wrapping_sub(self.start)),
         }
     }
@@ -202,7 +207,10 @@ impl Image {
     fn word64(&self, addr: usize, k: usize) -> Result<u64, Malformed> {
         let at = k.checked_mul(WORD_SIZE).and_then(|o| addr.checked_add(o));
         match at.and_then(|a| self.range(a, 8)) {
-            Some(b) => Ok(u64::from_ne_bytes(b.try_into().unwrap())),
+            Some(b) => match b.try_into() {
+                Ok(a) => Ok(u64::from_ne_bytes(a)),
+                Err(_) => bad("object extends past the program image", addr.wrapping_sub(self.start)),
+            },
             None => bad("object extends past the program image", addr.wrapping_sub(self.start)),
         }
     }
@@ -357,10 +365,10 @@ impl<'a> Objects<'a> {
                 // A half word: 32 bits on 64-bit targets, 16 on 32-bit ones.
                 let at = self.image.range(addr + STRING_INTERNAL_LENGTH_BYTE, HALF)
                     .ok_or(Malformed { what: "string header outside the program image", detail: offset })?;
-                let internal = if HALF == 4 {
-                    u32::from_ne_bytes(at.try_into().unwrap()) as usize
-                } else {
-                    u16::from_ne_bytes(at.try_into().unwrap()) as usize
+                let internal = match (at.len(), at) {
+                    (4, &[a, b, c, d]) => u32::from_ne_bytes([a, b, c, d]) as usize,
+                    (2, &[a, b]) => u16::from_ne_bytes([a, b]) as usize,
+                    _ => return bad("string header outside the program image", offset),
                 };
                 if internal != STRING_SENTINEL {
                     ExecBody::Str(self.image.bytes(addr + STRING_CONTENT_BYTE, internal)?)

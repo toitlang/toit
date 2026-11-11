@@ -35,6 +35,9 @@
 #                              links the certificate inference (vmverify
 #                              `infer`); without it a format-2 program needs
 #                              a shipped certificate.
+#   TOIT_VERIFIED_CORE_CHECKED_LOOP  (default ON for hosts, OFF for embedded
+#                              builds) links the core's checked loop; without
+#                              it only verified format-2 programs run.
 #   TOIT_VERIFIED_CORE_RUST_TARGET  the Rust target triple the library is
 #                              built for (empty: cargo's host target). Set
 #                              automatically for 32-bit host builds
@@ -69,9 +72,15 @@ else()
   set(TOIT_VERIFIED_CORE_INFER_DEFAULT ON)
 endif()
 option(TOIT_VERIFIED_CORE_INFER "Link the certificate inference (hosts)" ${TOIT_VERIFIED_CORE_INFER_DEFAULT})
+# The core's checked loop (core and vmverify `checked-loop`): runs format-2
+# programs the verifier did not accept (trusted programs started without
+# -Xverify). Devices run format 2 only for verified untrusted programs
+# (ProcessGroup::create refuses the others) and do not link it.
+option(TOIT_VERIFIED_CORE_CHECKED_LOOP "Link the checked run loop of the core (hosts)" ${TOIT_VERIFIED_CORE_INFER_DEFAULT})
 
 set(TOIT_VERIFIED_CORE_ENABLED OFF CACHE INTERNAL "")
 set(TOIT_VERIFIED_CORE_INFER_ENABLED OFF CACHE INTERNAL "")
+set(TOIT_VERIFIED_CORE_CHECKED_LOOP_ENABLED OFF CACHE INTERNAL "")
 if (NOT TOIT_VERIFIED_CORE)
   return()
 endif()
@@ -83,6 +92,7 @@ if (NOT TOIT_CARGO)
 endif()
 set(TOIT_VERIFIED_CORE_ENABLED ON CACHE INTERNAL "")
 set(TOIT_VERIFIED_CORE_INFER_ENABLED ${TOIT_VERIFIED_CORE_INFER} CACHE INTERNAL "")
+set(TOIT_VERIFIED_CORE_CHECKED_LOOP_ENABLED ${TOIT_VERIFIED_CORE_CHECKED_LOOP} CACHE INTERNAL "")
 
 set(VCORE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/core")
 # The VM links one Rust static library: verified/vmverify, which contains
@@ -120,6 +130,9 @@ file(GLOB_RECURSE VCORE_SOURCES CONFIGURE_DEPENDS
 
 if (TOIT_VERIFIED_CORE_INFER)
   list(APPEND VCORE_FEATURES infer)
+endif()
+if (TOIT_VERIFIED_CORE_CHECKED_LOOP)
+  list(APPEND VCORE_FEATURES checked-loop)
 endif()
 list(JOIN VCORE_FEATURES "," VCORE_FEATURES_JOINED)
 set(VCORE_FEATURE_ARGS --no-default-features --features "${VCORE_FEATURES_JOINED}")
