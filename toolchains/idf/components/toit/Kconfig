@@ -285,7 +285,7 @@ menu "Toit"
     config TOIT_VERIFIED_CORE
         bool "Verified format-2 core and verifier (Rust) for untrusted containers"
         default n
-        depends on IDF_TARGET_ESP32C6 || IDF_TARGET_ESP32H2
+        depends on IDF_TARGET_ESP32C6 || IDF_TARGET_ESP32H2 || IDF_TARGET_ESP32
         help
             Links the Verus-verified interpreter core and the format-2 verifier
             (verified/vmverify, a no_std Rust static library built with cargo for

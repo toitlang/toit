@@ -60,6 +60,13 @@ endif()
 option(TOIT_VERIFIED_CORE "Run format-2 programs on the Verus-verified Rust core" ${TOIT_VERIFIED_CORE_DEFAULT})
 set(TOIT_VERIFIED_CORE_RUST_TARGET "${TOIT_VERIFIED_CORE_RUST_TARGET_DEFAULT}" CACHE STRING
     "Rust target triple of the verified core (empty: the host)")
+# Experiment (verified/XTENSA-RUST-FIXES.md): the classic ESP32 has no
+# upstream Rust target; the esp-rs fork (`cargo +esp`) builds `core` and
+# `alloc` from source (-Zbuild-std).
+set(TOIT_VERIFIED_CORE_CARGO_TOOLCHAIN "" CACHE STRING
+    "rustup toolchain for the verified core, with the plus (empty: the default)")
+set(TOIT_VERIFIED_CORE_CARGO_ARGS "" CACHE STRING
+    "Extra cargo arguments for the verified core (a CMake list)")
 # The certificate inference (vmverify `infer`, verified/spec/format/
 # 18-shipped-certificate.md): hosts infer a certificate for a format-2 program
 # without a shipped one (and produce shipped certificates: toit.run
@@ -149,10 +156,10 @@ set(VCORE_FEATURE_ARGS --no-default-features --features "${VCORE_FEATURES_JOINED
 add_custom_command(
   OUTPUT "${VCORE_LIB}"
   COMMAND ${CMAKE_COMMAND} -E env ${VCORE_ENV}
-          "${TOIT_CARGO}" build --profile ${VCORE_PROFILE} --quiet --lib
+          "${TOIT_CARGO}" ${TOIT_VERIFIED_CORE_CARGO_TOOLCHAIN} build --profile ${VCORE_PROFILE} --quiet --lib
           --manifest-path "${VMVERIFY_DIR}/Cargo.toml"
           --target-dir "${VCORE_TARGET_DIR}"
-          ${VCORE_CARGO_TARGET_ARGS} ${VCORE_FEATURE_ARGS}
+          ${VCORE_CARGO_TARGET_ARGS} ${VCORE_FEATURE_ARGS} ${TOIT_VERIFIED_CORE_CARGO_ARGS}
   DEPENDS ${VCORE_SOURCES}
           "${VCORE_DIR}/Cargo.toml" "${VMVERIFY_DIR}/Cargo.toml" "${VMVERIFY_DIR}/Cargo.lock"
           "${TOIT_VERIFIED_CORE_SOURCE_DIR}/spec/Cargo.toml"
