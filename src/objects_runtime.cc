@@ -75,9 +75,6 @@ bool Object::mutable_byte_content(Process* process, uint8** content, word* lengt
     int to_value = Smi::value(to);
     bool inner_success = HeapObject::cast(byte_array)->mutable_byte_content(process, content, length, error);
     if (!inner_success) return false;
-    // If the content is null, then we probably failed allocating the object.
-    // Might work after a GC.
-    if (content == null) return inner_success;
     if (0 <= from_value && from_value <= to_value && to_value <= *length) {
       *content += from_value;
       *length = to_value - from_value;
