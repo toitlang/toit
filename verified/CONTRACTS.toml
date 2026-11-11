@@ -67,6 +67,18 @@ heap = [
   "renderings for VeriFast), 64- and 32-bit.",
 ]
 
+# The named assumptions of the C++ proofs: bodiless lemmas of a rendering
+# that VeriFast takes as axioms. contract_check.toit finds each one in its
+# rendering, checks that it has no body and that its contract is the one
+# written here (conjunct by conjunct), and fails on a bodiless lemma of a
+# rendering's verbatim section that is not listed.
+[[assumption]]
+name = "two_pass_room"
+rendering = "cxx/annotated/encoder/message_encoder.gen.c"
+requires = "[?f1]e->buffer_ |-> ?b &*& [?f2]enc_buf(b, ?cap) &*& [?f3]e->cursor_ |-> ?c &*& 0 <= n"
+ensures = "[f1]e->buffer_ |-> b &*& [f2]enc_buf(b, cap) &*& [f3]e->cursor_ |-> c &*& (b == 0 || c + n <= cap)"
+note = "The message encoder's two passes: the write pass (a buffer of the size the size pass returned, on the same heap) writes no further than the size pass counted. README, 'The two-pass assumption'."
+
 [[contract]]
 name = "gc_grow_stack"
 verus_file = "core/src/step.rs"

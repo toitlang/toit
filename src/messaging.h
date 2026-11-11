@@ -60,10 +60,12 @@ enum {
   MESSAGING_DECODING_MAX_NESTING      = 64,
   MESSAGING_ENCODING_MAX_EXTERNALS    = 8,
   MESSAGING_ENCODING_MAX_INLINED_SIZE = 128,
-  // The largest encoding (without out-of-line data). Shared objects are
+  // The largest encoding, out-of-line data included. Shared objects are
   // encoded once per reference, so a small object graph can have a huge
-  // encoding; the sizes of the decoder are ints.
-  MESSAGING_ENCODING_MAX_SIZE         = 0x7fffffff,
+  // encoding; the sizes of the decoder are ints. A 32-bit word must hold
+  // the limit plus the few bytes written between two checks (a blob is
+  // checked against what is left before it is added).
+  MESSAGING_ENCODING_MAX_SIZE         = 0x3fffffff,
 
   // This constant needs to be kept in sync with the one in lib/core/message_.toit.
   MESSAGING_RESERVED_MESSAGE_TYPES = 64,
@@ -257,7 +259,7 @@ class MessageEncoder {
   // Checks the size of the encoding so far, and records whether it is too
   // large.
   bool is_too_large() {
-    if (cursor_ > MESSAGING_ENCODING_MAX_SIZE) too_large_ = true;
+    if (total_size() > MESSAGING_ENCODING_MAX_SIZE) too_large_ = true;
     if (max_total_size_ > 0 && cursor_ + external_bytes_ > max_total_size_) over_limit_ = true;
     return too_large_ || over_limit_;
   }

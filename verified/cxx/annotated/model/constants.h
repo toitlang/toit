@@ -138,5 +138,23 @@
 #define TAG_MAP 9
 #define TAG_STRING 10
 #define TAG_BYTE_ARRAY 12
+#define TAG_STRING_INLINE 11
+#define TAG_BYTE_ARRAY_INLINE 13
+#define TAG_OVERFLOWN 0
+
+// The encoders' limits and formats (src/messaging.h, messaging.cc).
+#define MESSAGING_ENCODING_MAX_SIZE 0x3fffffff
+#define MESSAGING_ENCODING_MAX_EXTERNALS 8
+#define MESSAGING_ENCODING_MAX_INLINED_SIZE 128
+#define MESSAGING_DECODING_MAX_NESTING 64
+#define MESSAGE_FORMAT_IPC 0
+#define MESSAGE_FORMAT_TISON 1
+#define TISON_MARKER ((uint32)0xa68900f7)
+#define TISON_VERSION 1
+#define TISON_VERSION_SHIFT ((uint32)8)
+// Heap tags of the external copies (src/heap_report.h, top.h).
+#define ITERATE_CUSTOM_TAGS ((word)-100)
+#define EXTERNAL_BYTE_ARRAY_MALLOC_TAG ((uint8)1)
+#define EXTERNAL_STRING_MALLOC_TAG ((uint8)3)
 
 #endif

@@ -118,6 +118,8 @@ mutant drift-utf8 utf8/utf_8_to_16.render src/utils.cc DRIFT "" \
 entry translator-rules      pass "" tests/rules.gen.c -allow_dead_code
 entry model                 pass "" model/objects.gen.c
 entry encoder               pass "" encoder/message_encoder.gen.c
+# The bound of write_cardinal's bytes (encoder/cardinal.h), with Z3.
+entry cardinal              pass "" encoder/cardinal.c -prover z3v4.5
 
 # 4. Reverted bugs. f708ad5d (message encoder bounds):
 # - encode_array with only the release-dropped ASSERT(from <= to): the
@@ -131,6 +133,23 @@ mutant f708ad5d-read encoder/message_encoder.render src/messaging.cc "to <= o_le
 # - encode_map without the bound on the backing: the read past it.
 mutant f708ad5d-map encoder/message_encoder.render src/messaging.cc "i < o_len" "" \
   "count < size && i + 1 < limit; i += 2)" "count < size; i += 2)"
+# The 32-bit size fix (README, "Findings"): a blob checked against twice
+# what is left: the sizes leave the bound (on ILP32 they overflowed).
+mutant encoder-copy-size encoder/message_encoder.render src/messaging.cc "1073741823 \+ 32|overflow" "" \
+  "if (length > MESSAGING_ENCODING_MAX_SIZE - total_size()) {" \
+  "if (length > MESSAGING_ENCODING_MAX_SIZE + MESSAGING_ENCODING_MAX_SIZE - total_size()) {"
+# ... and the same for a transferred byte array.
+mutant encoder-transfer-size encoder/message_encoder.render src/messaging.cc "1073741823 \+ 32|overflow" "" \
+  "if (bytes.length() > MESSAGING_ENCODING_MAX_SIZE - total_size()) {" \
+  "if (bytes.length() > MESSAGING_ENCODING_MAX_SIZE + MESSAGING_ENCODING_MAX_SIZE - total_size()) {"
+# The external tables: one reservation too many writes past copied_ or
+# transferred_.
+mutant encoder-externals-bound encoder/message_encoder.render src/messaging.cc "<= 8" "" \
+  "if (externals_count_ >= MESSAGING_ENCODING_MAX_EXTERNALS) {" "if (externals_count_ > MESSAGING_ENCODING_MAX_EXTERNALS) {"
+# The string copy's terminator read from the content (README, "Findings"):
+# one byte past the blob.
+mutant encoder-copy-terminator encoder/message_encoder.render src/messaging.cc "No matching heap chunks: \[_\]chars" "" \
+  "memcpy(data, source, length);" "memcpy(data, source, length + extra);"
 
 entry byte-content          pass "" blob/byte_content.gen.c
 # 357d1127 (#3373, byte_content nesting) reverted: without the depth limit

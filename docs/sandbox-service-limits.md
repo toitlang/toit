@@ -30,6 +30,12 @@ Memory and queue bounds, enforced by the VM (`src/primitive_policy.h`,
 A sandboxed sender that hits a mailbox quota gets `QUOTA_EXCEEDED`; a
 trusted sender's message to a full sandboxed mailbox is dropped.
 
+Replies are messages like any other and fall under the same bounds. The
+broker handles a reply that can't be sent instead of letting the
+exception terminate the provider: it fails the call with a short
+exception reply, and a sandboxed provider first retries a reply to a full
+mailbox for 5 s (docs/sandbox-policy.md, "Replies that can't be sent").
+
 Limits in the Toit libraries, added by the sandbox audit
 (docs/sandbox-policy.md, "Quotas"):
 
@@ -69,7 +75,9 @@ refused with a distinct error (`RATE_LIMITED`) instead of being queued, so
 a client can tell it from a failure and back off, and refused requests
 don't pile up anywhere. Reply bytes are charged as debt: they can take
 the bucket below zero, which refuses the following requests until it
-refills.
+refills. A reply that the client doesn't accept (its mailbox is full) is
+dropped by the VM for a trusted provider and is charged all the same: the
+client caused the work.
 
 The values come from three places, the most specific winning:
 

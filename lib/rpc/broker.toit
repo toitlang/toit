@@ -82,7 +82,9 @@ class RpcBroker implements SystemMessageHandler_:
     arguments := message[2]
 
     send-exception-reply :=: | exception |
-      process-send_ pid SYSTEM-RPC-REPLY_ [ id, true, exception, null ]
+      // Runs in the task that processes the messages, so it must not
+      // block: no retries.
+      send-reply-now_ pid [ id, true, exception, null ]
       return
 
     procedure := procedures_.get name
@@ -107,6 +109,71 @@ class RpcBroker implements SystemMessageHandler_:
 
   static process-policy_ pid/int -> int:
     #primitive.core.process-policy
+
+  // Whether this process' messaging is restricted (it runs with the
+  // untrusted policy). Only then can a send fail because the receiver's
+  // mailbox is full: the VM drops other senders' messages to a full
+  // mailbox instead.
+  static restricted_/bool? := null
+
+  static is-restricted_ -> bool:
+    restricted := restricted_
+    if restricted == null:
+      kind := null
+      // Sandboxed processes may not query policies, not even their own.
+      exception := catch: kind = process-policy_ Process.current.id
+      restricted = exception != null or kind == POLICY-UNTRUSTED_
+      restricted_ = restricted
+    return restricted
+
+  // A restricted process' reply to a full mailbox is retried with an
+  // exponential backoff (from 1 ms, at most 100 ms apart) for this long.
+  static REPLY-RETRY-MS ::= 5_000
+  static REPLY-RETRY-MAX-DELAY-MS ::= 100
+
+  /**
+  Sends the $reply to an RPC request to $pid.
+
+  Never throws, so a reply that can't be delivered can't take down the
+    task that sends it (or, through an uncaught exception, the process).
+    Clients that make replies fail are clients that misbehave: they don't
+    process their messages, or they ask for a reply that exceeds the
+    quotas.
+
+  If the reply can't be sent (it can't be serialized, exceeds this
+    process' message size quota, or the receiver's mailbox is full), the
+    request fails: a short exception reply with the error is sent
+    instead, and if that can't be sent either, the reply is dropped.
+
+  A process with restricted messaging gets `QUOTA_EXCEEDED` both for
+    a reply that exceeds its quotas and for one that doesn't fit into the
+    receiver's mailbox right now (which may be full of messages from
+    other sandboxed senders). It retries the reply for $REPLY-RETRY-MS,
+    unless the current task is canceled (the client canceled the request)
+    or the receiver goes away, before it gives up.
+  */
+  static send-reply_ pid/int reply/List -> none:
+    exception := catch: process-send_ pid SYSTEM-RPC-REPLY_ reply
+    if not exception: return
+    if exception == "QUOTA_EXCEEDED" and is-restricted_:
+      deadline := Time.monotonic-us + REPLY-RETRY-MS * 1_000
+      delay-ms := 1
+      while Time.monotonic-us < deadline:
+        if Task.current.is-canceled: return
+        canceled := catch: sleep --ms=delay-ms
+        if canceled: return
+        delay-ms = min REPLY-RETRY-MAX-DELAY-MS (delay-ms * 2)
+        exception = catch: process-send_ pid SYSTEM-RPC-REPLY_ reply
+        if not exception: return
+        if exception != "QUOTA_EXCEEDED": break
+    send-reply-now_ pid [ reply[0], true, exception.stringify, null ]
+
+  /**
+  Sends the $reply to an RPC request to $pid without blocking and drops
+    it if it can't be sent.
+  */
+  static send-reply-now_ pid/int reply/List -> none:
+    catch: process-send_ pid SYSTEM-RPC-REPLY_ reply
 
 class RpcRequest_:
   next/RpcRequest_? := null
@@ -133,7 +200,9 @@ class RpcRequest_:
       reply := is-exception
           ? [ id, true, exception.value.stringify, exception.trace ]
           : [ id, false, result ]
-      process-send_ pid SYSTEM-RPC-REPLY_ reply
+      // Doesn't throw: a client that makes the reply fail can't take
+      // down the processing task (and with it this process).
+      RpcBroker.send-reply_ pid reply
       return  // Stops any unwinding.
 
 monitor RpcRequestQueue_:

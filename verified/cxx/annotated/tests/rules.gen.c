@@ -10,6 +10,10 @@
 #include <stdint.h>
 #include "rules_constants.h"
 typedef intptr_t word;
+typedef uintptr_t uword;
+typedef unsigned int uint32;
+struct Tagged { uword tag_; };
+typedef struct Tagged Tagged;
 struct Outer_Inner { word v_; };
 typedef struct Outer_Inner Outer_Inner;
 struct Pair { word a_; word b_; };
@@ -70,6 +74,21 @@ word call_over(Over *o);
 int narrow(word x);
 //@ requires true;
 //@ ensures result == -1 || result == x;
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::advance
+word advance(word cursor);
+//@ requires 0 <= cursor &*& cursor < 100;
+//@ ensures result == cursor + 4;
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::Tagged::Tagged
+void Tagged_ctor(Tagged *self, uword tag);
+//@ requires self->tag_ |-> _;
+//@ ensures self->tag_ |-> tag;
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::negative_tag
+uword negative_tag(word offset);
+//@ requires 0 <= offset &*& offset < 100;
+//@ ensures true;
 
 // C++: verified/cxx/annotated/tests/rules.cc toit::Outer::Inner::Inner
 void Outer_Inner_ctor(Outer_Inner *self, word x)
@@ -169,5 +188,32 @@ int narrow(word x)
     return -1;
   }
   return n;
+}
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::advance
+word advance(word cursor)
+//@ requires 0 <= cursor &*& cursor < 100;
+//@ ensures result == cursor + 4;
+{
+  cursor = (word)((unsigned long)cursor + sizeof(uint32));
+  return cursor;
+}
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::Tagged::Tagged
+void Tagged_ctor(Tagged *self, uword tag)
+//@ requires self->tag_ |-> _;
+//@ ensures self->tag_ |-> tag;
+{
+  self->tag_ = tag;
+}
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::negative_tag
+uword negative_tag(word offset)
+//@ requires 0 <= offset &*& offset < 100;
+//@ ensures true;
+{
+  Tagged t;
+  Tagged_ctor(&t, /*@truncating@*/(uword)((word)-100 + offset));
+  return t.tag_;
 }
 

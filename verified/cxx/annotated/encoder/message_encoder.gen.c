@@ -4,48 +4,121 @@
 
 // Copyright (C) 2026 Toit contributors.
 //
-// MessageEncoder::encode_any, encode_array, encode_list and encode_map of
-// src/messaging.cc (and the NestingTracker they use), rendered from the
-// sources over the object model of ../model, with VeriFast annotations.
+// The message encoder of src/messaging.cc and messaging.h (MessageEncoder
+// and TisonEncoder): encode_any, encode_array, encode_list, encode_map,
+// encode_copy, encode_byte_array (transfers and their deduplication), the
+// buffer writers, the size checks, reserve_external and TisonEncoder::encode
+// (and the NestingTracker), rendered from the sources over the object model
+// of ../model, with VeriFast annotations.
 //
 // Property: for any heap that satisfies the object model (every reference
 // is a live object of the right layout; field VALUES arbitrary: sizes,
 // bounds, backings are whatever a program stored), the encoder reads only
 // inside objects (memory safety), has no signed overflow or lossy
 // conversion, and does not change the heap (it holds only a fraction of
-// it, given back unchanged). Unbounded: any heap, any sizes, any nesting.
+// it, given back unchanged). The counters stay below the size limit plus
+// ENC_SLACK (`enc_out`): no overflow of cursor_ or external_bytes_ on
+// either width. The tables of out-of-line data (copied_, transferred_) are
+// written below their bounds (reserve_external). In the write pass every
+// write lies in the buffer, under ONE assumption: `two_pass_room` (the
+// write pass writes no further than the size pass counted; README, "The
+// two-pass assumption"). Unbounded: any heap, any sizes, any nesting.
 //
-// The f708ad5d self-test (run.sh) re-renders this from a copy of
-// messaging.cc with the commit's three checks taken out.
+// Self-tests (run.sh): f708ad5d (encoder bounds) reverted; the size limit
+// and the blob check of the 32-bit overflow fix taken out; the external
+// table bound taken out.
+// The custom heap tags are negative numbers in a uword (src/os.h).
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include "../model/objects.gen.h"
+#include "../blob/byte_content.gen.h"
+#include "cardinal.h"
+//@ #include "../model/arith.gh"
+//@ #include "llong.gh"
 
 // ---------------------------------------------------------------------------
-// The encoder's state: the fields the rendered functions use (src/
-// messaging.h); the output buffer and its counters are the abstract
-// `encoder_buffer`. The nesting counter is outside the predicate: the
-// NestingTracker holds its address.
+// The encoder's state: the fields of src/messaging.h (TisonEncoder's
+// payload_size_ included: the two classes are one struct here, as the
+// derived-to-base conversions are not written). The nesting counter is
+// outside the predicates: the NestingTracker holds its address.
+
+typedef int MessageFormat;
+struct PrimitivePolicy;
+typedef struct PrimitivePolicy PrimitivePolicy;
 
 struct MessageEncoder {
+  Process *process_;
   Program *program_;
+  MessageFormat format_;
+  uint8 *buffer_;
+  bool take_ownership_of_buffer_;
+  word cursor_;
+  word external_bytes_;
   int nesting_;
   int problematic_class_id_;
   bool nesting_too_deep_;
+  bool too_many_externals_;
+  bool too_large_;
+  bool over_limit_;
+  word max_total_size_;
+  bool malloc_failed_;
+  unsigned externals_count_;
+  unsigned copied_count_;
+  void *copied_[MESSAGING_ENCODING_MAX_EXTERNALS];
+  unsigned transferred_count_;
+  ByteArray *transferred_[MESSAGING_ENCODING_MAX_EXTERNALS];
+  unsigned payload_size_;
 };
 typedef struct MessageEncoder MessageEncoder;
+typedef struct MessageEncoder TisonEncoder;
 
 struct NestingTracker {
   int *nesting_;
 };
 typedef struct NestingTracker NestingTracker;
 
+struct HeapTagScope {
+  uword old;
+};
+typedef struct HeapTagScope HeapTagScope;
+
+// The most bytes written between two size checks: a tag, a cardinal and a
+// pointer (an out-of-line blob), or the TISON marker and payload size.
+#define ENC_SLACK 32
+
 /*@
-predicate encoder_buffer(MessageEncoder *e;);
+// The output (cursor_, external_bytes_ and, in the write pass, the buffer
+// of cap bytes). The sizes stay below the limit plus ENC_SLACK.
+predicate enc_buf(uint8 *b, int cap;) = b == 0 ? true : uchars_(b, cap, _);
+
+predicate enc_out(MessageEncoder *e, int cap; int c, int x) =
+  e->buffer_ |-> ?b &*& enc_buf(b, cap) &*& 0 <= cap &*&
+  e->cursor_ |-> c &*& e->external_bytes_ |-> x &*&
+  0 <= c &*& 0 <= x &*& c + x <= MESSAGING_ENCODING_MAX_SIZE + ENC_SLACK;
+
+// The tables of out-of-line data: every entry is one reserved external;
+// `reserved` externals are reserved but not entered yet.
+predicate enc_tables(MessageEncoder *e, int reserved;) =
+  e->externals_count_ |-> ?k &*& e->copied_count_ |-> ?cc &*& e->transferred_count_ |-> ?tc &*&
+  k <= MESSAGING_ENCODING_MAX_EXTERNALS &*& cc + tc + reserved <= k &*&
+  pointers(e->copied_, MESSAGING_ENCODING_MAX_EXTERNALS, _) &*&
+  pointers(e->transferred_, MESSAGING_ENCODING_MAX_EXTERNALS, _);
 
 predicate encoder(MessageEncoder *e; prog_ids ids) =
   e->program_ |-> ?p &*& [_]program(p, ids) &*& prog_ok(ids) == true &*&
-  e->nesting_too_deep_ |-> _ &*& e->problematic_class_id_ |-> _ &*&
-  encoder_buffer(e);
+  e->process_ |-> ?proc &*& e->format_ |-> ?fmt &*&
+  e->nesting_too_deep_ |-> _ &*& e->problematic_class_id_ |-> _ &*& e->too_many_externals_ |-> _ &*&
+  e->too_large_ |-> ?tl &*& e->over_limit_ |-> ?ol &*& e->max_total_size_ |-> ?mts &*& e->malloc_failed_ |-> _ &*&
+  enc_tables(e, 0);
+
+// After reserve_external: one external reserved.
+predicate encoder_res(MessageEncoder *e; prog_ids ids) =
+  e->program_ |-> ?p &*& [_]program(p, ids) &*& prog_ok(ids) == true &*&
+  e->process_ |-> ?proc &*& e->format_ |-> ?fmt &*&
+  e->nesting_too_deep_ |-> _ &*& e->problematic_class_id_ |-> _ &*& e->too_many_externals_ |-> _ &*&
+  e->too_large_ |-> ?tl &*& e->over_limit_ |-> ?ol &*& e->max_total_size_ |-> ?mts &*& e->malloc_failed_ |-> _ &*&
+  enc_tables(e, 1);
 
 lemma void encoder_facts(MessageEncoder *e)
   requires encoder(e, ?ids);
@@ -54,34 +127,87 @@ lemma void encoder_facts(MessageEncoder *e)
   open encoder(e, ids);
   close encoder(e, ids);
 }
+
+// A reservation that is not used (a failure after reserve_external).
+lemma void encoder_unreserve(MessageEncoder *e)
+  requires encoder_res(e, ?ids);
+  ensures encoder(e, ids);
+{
+  open encoder_res(e, ids);
+  open enc_tables(e, 1);
+  close enc_tables(e, 0);
+  close encoder(e, ids);
+}
+
+// THE TWO-PASS ASSUMPTION (README, "The two-pass assumption"; CONTRACTS.toml
+// [[assumption]] two_pass_room). The callers run the encoder twice on the
+// same heap: a size pass without a buffer, then a write pass into a buffer
+// of the size the size pass returned (cap). The write pass makes the same
+// decisions (the heap and the encoder's inputs are the same; it stops
+// earlier, never later: its only extra failures are malloc failures, and
+// TISON's payload size is written before the payload instead of after, so
+// its sizes are ahead by at most that cardinal), so it writes no further
+// than the size pass counted. Not proved: that needs a ghost encoding
+// length shown equal in both passes.
+lemma void two_pass_room(MessageEncoder *e, int n);
+  requires [?f1]e->buffer_ |-> ?b &*& [?f2]enc_buf(b, ?cap) &*& [?f3]e->cursor_ |-> ?c &*& 0 <= n;
+  ensures [f1]e->buffer_ |-> b &*& [f2]enc_buf(b, cap) &*& [f3]e->cursor_ |-> c &*& (b == 0 || c + n <= cap);
+
+// A write of n bytes at offset c of the buffer: the range taken out, and
+// put back written.
+lemma void buf_take(uint8 *b, int c, int n)
+  requires uchars_(b, ?cap, _) &*& 0 <= c &*& 0 <= n &*& c + n <= cap;
+  ensures uchars_(b, c, _) &*& uchars_(b + c, n, _) &*& uchars_(b + c + n, cap - c - n, _);
+{
+  uchars__split(b, c);
+  uchars__split(b + c, n);
+}
+
+lemma void buf_give(uint8 *b, int c, int n)
+  requires uchars_(b, c, _) &*& chars((void *)(b + c), n, _) &*& uchars_(b + c + n, ?r, _);
+  ensures uchars_(b, c + n + r, _);
+{
+  uchars__to_chars_(b);
+  uchars__to_chars_(b + c + n);
+  chars_chars__join((void *)(b + c));
+  chars__join((void *)b);
+  chars__to_uchars_(b);
+}
+
+// Every byte array's content length is in [0, MAX_BLOB].
+lemma void byte_array_len(void *o)
+  requires [?f]heap(?objs, ?H) &*& mem(o, objs) == true &*& has_tag(H, o, BYTE_ARRAY_TAG) == true;
+  ensures [f]heap(objs, H) &*& 0 <= blob_len(H, o) &*& blob_len(H, o) <= MAX_BLOB;
+{
+  byte_array_open(o);
+  open [f]byte_array_body(o, o_len(H(o)), o_aux(H(o)));
+  close [f]byte_array_body(o, o_len(H(o)), o_aux(H(o)));
+  byte_array_close(o);
+}
 @*/
 
-// The writers and checks of src/messaging.h and messaging.cc (bounds of the
-// output buffer: not in scope, see README "Trusted").
-void MessageEncoder_write_uint8(MessageEncoder *self, uint8 value);
-//@ requires encoder(self, ?ids);
-//@ ensures encoder(self, ids);
-void MessageEncoder_write_cardinal(MessageEncoder *self, uword value);
-//@ requires encoder(self, ?ids);
-//@ ensures encoder(self, ids);
-void MessageEncoder_write_uint64(MessageEncoder *self, uint64 value);
-//@ requires encoder(self, ?ids);
-//@ ensures encoder(self, ids);
-bool MessageEncoder_is_too_large(MessageEncoder *self);
-//@ requires encoder(self, ?ids);
-//@ ensures encoder(self, ids);
-bool MessageEncoder_encoding_tison(MessageEncoder *self);
-//@ requires encoder(self, ?ids);
-//@ ensures encoder(self, ids);
+// The checks of the policy (src/process.h, primitive_policy.h): reads of
+// the process outside the object model.
+PrimitivePolicy *Process_policy(Process *self);
+//@ requires true;
+//@ ensures true;
+bool PrimitivePolicy_restricts_messaging(PrimitivePolicy *self);
+//@ requires true;
+//@ ensures true;
 
-// The leaves that copy blobs (encode_copy, encode_byte_array): assumed to
-// read only the given object.
-bool MessageEncoder_encode_copy(MessageEncoder *self, Object *object, int tag);
-//@ requires encoder(self, ?ids) &*& [?f]heap(?objs, ?H) &*& mem(object, objs) == true;
-//@ ensures encoder(self, ids) &*& [f]heap(objs, H);
-bool MessageEncoder_encode_byte_array(MessageEncoder *self, ByteArray *object);
-//@ requires encoder(self, ?ids) &*& [?f]heap(?objs, ?H) &*& has_tag(H, object, BYTE_ARRAY_TAG) == true &*& mem(object, objs) == true;
-//@ ensures encoder(self, ids) &*& [f]heap(objs, H);
+// src/utils.cc: reads the bytes given (contract only).
+bool Utils_is_valid_utf_8(uint8 *buffer, word length);
+//@ requires [?f]uchars(buffer, length, ?cs);
+//@ ensures [f]uchars(buffer, length, cs);
+
+// src/os.h HeapTagScope: sets and restores the malloc tag of the thread
+// (contract only: the OS layer).
+void HeapTagScope_ctor(HeapTagScope *self, uword tag);
+//@ requires self->old |-> _;
+//@ ensures self->old |-> _;
+void HeapTagScope_dtor(HeapTagScope *self);
+//@ requires self->old |-> _;
+//@ ensures self->old |-> _;
 
 // src/utils.h bit_cast (memcpy of the value).
 uint64 bit_cast_uint64__double(double src);
@@ -94,6 +220,11 @@ uint64 bit_cast_uint64__long(int64 src);
 uint64 bit_cast_uint64__longlong(int64 src);
 //@ requires true;
 //@ ensures true;
+// C++: src/objects.h toit::ByteArray::has_owned_external_memory (trusted: contract only)
+bool ByteArray_has_owned_external_memory(ByteArray *self);
+//@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true &*& has_tag(H, self, BYTE_ARRAY_TAG) == true;
+//@ ensures [f]heap(objs, H);
+
 // C++: src/messaging.cc toit::NestingTracker::NestingTracker
 void NestingTracker_ctor(NestingTracker *self, int *nesting);
 //@ requires self->nesting_ |-> _ &*& integer(nesting, ?n) &*& INT_MIN <= n &*& n < INT_MAX;
@@ -104,25 +235,103 @@ void NestingTracker_dtor(NestingTracker *self);
 //@ requires self->nesting_ |-> ?p &*& integer(p, ?n) &*& INT_MIN < n &*& n <= INT_MAX;
 //@ ensures self->nesting_ |-> p &*& integer(p, n - 1);
 
+// C++: src/messaging.h toit::MessageEncoder::size
+word MessageEncoder_size(MessageEncoder *self);
+//@ requires [?f]enc_out(self, ?cap, ?c, ?x);
+//@ ensures [f]enc_out(self, cap, c, x) &*& result == c;
+
+// C++: src/messaging.h toit::MessageEncoder::total_size
+word MessageEncoder_total_size(MessageEncoder *self);
+//@ requires [?f]enc_out(self, ?cap, ?c, ?x);
+//@ ensures [f]enc_out(self, cap, c, x) &*& result == c + x &*& 0 <= c &*& 0 <= x;
+
+// C++: src/messaging.h toit::MessageEncoder::encoding_for_size
+bool MessageEncoder_encoding_for_size(MessageEncoder *self);
+//@ requires [?f]self->buffer_ |-> ?b;
+//@ ensures [f]self->buffer_ |-> b &*& result == (b == 0);
+
+// C++: src/messaging.h toit::MessageEncoder::encoding_tison
+bool MessageEncoder_encoding_tison(MessageEncoder *self);
+//@ requires [?f]encoder(self, ?ids);
+//@ ensures [f]encoder(self, ids);
+
+// C++: src/messaging.h toit::TisonEncoder::payload_size
+unsigned int TisonEncoder_payload_size(TisonEncoder *self);
+//@ requires [?f]self->payload_size_ |-> ?p;
+//@ ensures [f]self->payload_size_ |-> p &*& result == p;
+
+// C++: src/messaging.h toit::MessageEncoder::is_too_large
+bool MessageEncoder_is_too_large(MessageEncoder *self);
+//@ requires encoder(self, ?ids) &*& enc_out(self, ?cap, ?c, ?x);
+//@ ensures encoder(self, ids) &*& enc_out(self, cap, c, x) &*& (result || c + x <= MESSAGING_ENCODING_MAX_SIZE);
+
+// C++: src/messaging.h toit::MessageEncoder::write_uint8
+void MessageEncoder_write_uint8(MessageEncoder *self, uint8 value);
+//@ requires enc_out(self, ?cap, ?c, ?x) &*& c + x + 1 <= MESSAGING_ENCODING_MAX_SIZE + ENC_SLACK;
+//@ ensures enc_out(self, cap, c + 1, x);
+
+// C++: src/messaging.cc toit::MessageEncoder::write_cardinal
+void MessageEncoder_write_cardinal(MessageEncoder *self, uword value);
+//@ requires enc_out(self, ?cap, ?c, ?x) &*& c + x + 10 <= MESSAGING_ENCODING_MAX_SIZE + ENC_SLACK;
+//@ ensures enc_out(self, cap, ?c1, x) &*& c < c1 &*& c1 <= c + 10;
+
+// C++: src/messaging.cc toit::MessageEncoder::write_pointer
+void MessageEncoder_write_pointer(MessageEncoder *self, void *value);
+//@ requires enc_out(self, ?cap, ?c, ?x) &*& c + x + WORD_SIZE <= MESSAGING_ENCODING_MAX_SIZE + ENC_SLACK;
+//@ ensures enc_out(self, cap, c + WORD_SIZE, x);
+
+// C++: src/messaging.cc toit::MessageEncoder::write_uint32
+void MessageEncoder_write_uint32(MessageEncoder *self, uint32 value);
+//@ requires enc_out(self, ?cap, ?c, ?x) &*& c + x + 4 <= MESSAGING_ENCODING_MAX_SIZE + ENC_SLACK;
+//@ ensures enc_out(self, cap, c + 4, x);
+
+// C++: src/messaging.cc toit::MessageEncoder::write_uint64
+void MessageEncoder_write_uint64(MessageEncoder *self, uint64 value);
+//@ requires enc_out(self, ?cap, ?c, ?x) &*& c + x + 8 <= MESSAGING_ENCODING_MAX_SIZE + ENC_SLACK;
+//@ ensures enc_out(self, cap, c + 8, x);
+
+// C++: src/messaging.cc toit::MessageEncoder::reserve_external
+bool MessageEncoder_reserve_external(MessageEncoder *self);
+//@ requires encoder(self, ?ids);
+//@ ensures result ? encoder_res(self, ids) : encoder(self, ids);
+
+// C++: src/messaging.cc toit::MessageEncoder::encode_copy
+bool MessageEncoder_encode_copy(MessageEncoder *self, Object *object, int tag);
+/*@ requires encoder(self, ?ids) &*& enc_out(self, ?cap, ?c, ?x) &*& c + x <= MESSAGING_ENCODING_MAX_SIZE &*&
+             [?f]heap(?objs, ?H) &*& good(objs, object) == true &*& (tag == TAG_STRING || tag == TAG_BYTE_ARRAY); @*/
+//@ ensures encoder(self, ids) &*& enc_out(self, cap, ?c1, ?x1) &*& c <= c1 &*& [f]heap(objs, H);
+
+// C++: src/messaging.cc toit::MessageEncoder::encode_byte_array
+bool MessageEncoder_encode_byte_array(MessageEncoder *self, ByteArray *object);
+/*@ requires encoder(self, ?ids) &*& enc_out(self, ?cap, ?c, ?x) &*& c + x <= MESSAGING_ENCODING_MAX_SIZE &*&
+             [?f]heap(?objs, ?H) &*& has_tag(H, object, BYTE_ARRAY_TAG) == true &*& mem(object, objs) == true; @*/
+//@ ensures encoder(self, ids) &*& enc_out(self, cap, ?c1, ?x1) &*& c <= c1 &*& [f]heap(objs, H);
+
+// C++: src/messaging.cc toit::TisonEncoder::encode
+bool TisonEncoder_encode(TisonEncoder *self, Object *object);
+/*@ requires encoder(self, ?ids) &*& enc_out(self, ?cap, 0, 0) &*& self->payload_size_ |-> ?ps &*& self->nesting_ |-> 0 &*&
+             [?f]heap(?objs, ?H) &*& good(objs, object) == true; @*/
+//@ ensures encoder(self, ids) &*& enc_out(self, cap, ?c1, ?x1) &*& self->payload_size_ |-> _ &*& self->nesting_ |-> 0 &*& [f]heap(objs, H);
+
 // C++: src/messaging.cc toit::MessageEncoder::encode_any
 bool MessageEncoder_encode_any(MessageEncoder *self, Object *object);
-//@ requires encoder(self, ?ids) &*& self->nesting_ |-> ?n &*& 0 <= n &*& n <= MESSAGING_ENCODING_MAX_NESTING &*& [?f]heap(?objs, ?H) &*& good(objs, object) == true;
-//@ ensures encoder(self, ids) &*& self->nesting_ |-> n &*& [f]heap(objs, H);
+//@ requires encoder(self, ?ids) &*& enc_out(self, ?cap, ?c, ?x) &*& self->nesting_ |-> ?n &*& 0 <= n &*& n <= MESSAGING_ENCODING_MAX_NESTING &*& [?f]heap(?objs, ?H) &*& good(objs, object) == true;
+//@ ensures encoder(self, ids) &*& enc_out(self, cap, ?c1, ?x1) &*& c <= c1 &*& self->nesting_ |-> n &*& [f]heap(objs, H);
 
 // C++: src/messaging.cc toit::MessageEncoder::encode_array
 bool MessageEncoder_encode_array(MessageEncoder *self, Array *object, word from, word to);
-//@ requires encoder(self, ?ids) &*& self->nesting_ |-> ?n &*& 0 <= n &*& n <= MESSAGING_ENCODING_MAX_NESTING &*& [?f]heap(?objs, ?H) &*& mem(object, objs) == true &*& has_tag(H, object, ARRAY_TAG) == true &*& smi_range(from) == true &*& smi_range(to) == true;
-//@ ensures encoder(self, ids) &*& self->nesting_ |-> n &*& [f]heap(objs, H);
+//@ requires encoder(self, ?ids) &*& enc_out(self, ?cap, ?c, ?x) &*& c + x <= MESSAGING_ENCODING_MAX_SIZE &*& self->nesting_ |-> ?n &*& 0 <= n &*& n <= MESSAGING_ENCODING_MAX_NESTING &*& [?f]heap(?objs, ?H) &*& mem(object, objs) == true &*& has_tag(H, object, ARRAY_TAG) == true &*& smi_range(from) == true &*& smi_range(to) == true;
+//@ ensures encoder(self, ids) &*& enc_out(self, cap, ?c1, ?x1) &*& c <= c1 &*& self->nesting_ |-> n &*& [f]heap(objs, H);
 
 // C++: src/messaging.cc toit::MessageEncoder::encode_list
 bool MessageEncoder_encode_list(MessageEncoder *self, Instance *instance, word from, word to);
-//@ requires encoder(self, ?ids) &*& self->nesting_ |-> ?n &*& 0 <= n &*& n <= MESSAGING_ENCODING_MAX_NESTING &*& [?f]heap(?objs, ?H) &*& mem(instance, objs) == true &*& has_tag(H, instance, INSTANCE_TAG) == true &*& header_cid(o_hw(H(instance))) == list_cid(ids) &*& smi_range(from) == true &*& smi_range(to) == true;
-//@ ensures encoder(self, ids) &*& self->nesting_ |-> n &*& [f]heap(objs, H);
+//@ requires encoder(self, ?ids) &*& enc_out(self, ?cap, ?c, ?x) &*& c + x <= MESSAGING_ENCODING_MAX_SIZE &*& self->nesting_ |-> ?n &*& 0 <= n &*& n <= MESSAGING_ENCODING_MAX_NESTING &*& [?f]heap(?objs, ?H) &*& mem(instance, objs) == true &*& has_tag(H, instance, INSTANCE_TAG) == true &*& header_cid(o_hw(H(instance))) == list_cid(ids) &*& smi_range(from) == true &*& smi_range(to) == true;
+//@ ensures encoder(self, ids) &*& enc_out(self, cap, ?c1, ?x1) &*& c <= c1 &*& self->nesting_ |-> n &*& [f]heap(objs, H);
 
 // C++: src/messaging.cc toit::MessageEncoder::encode_map
 bool MessageEncoder_encode_map(MessageEncoder *self, Instance *instance);
-//@ requires encoder(self, ?ids) &*& self->nesting_ |-> ?n &*& 0 <= n &*& n <= MESSAGING_ENCODING_MAX_NESTING &*& [?f]heap(?objs, ?H) &*& mem(instance, objs) == true &*& has_tag(H, instance, INSTANCE_TAG) == true &*& header_cid(o_hw(H(instance))) == map_cid(ids);
-//@ ensures encoder(self, ids) &*& self->nesting_ |-> n &*& [f]heap(objs, H);
+//@ requires encoder(self, ?ids) &*& enc_out(self, ?cap, ?c, ?x) &*& c + x <= MESSAGING_ENCODING_MAX_SIZE &*& self->nesting_ |-> ?n &*& 0 <= n &*& n <= MESSAGING_ENCODING_MAX_NESTING &*& [?f]heap(?objs, ?H) &*& mem(instance, objs) == true &*& has_tag(H, instance, INSTANCE_TAG) == true &*& header_cid(o_hw(H(instance))) == map_cid(ids);
+//@ ensures encoder(self, ids) &*& enc_out(self, cap, ?c1, ?x1) &*& c <= c1 &*& self->nesting_ |-> n &*& [f]heap(objs, H);
 
 // C++: src/messaging.cc toit::NestingTracker::NestingTracker
 void NestingTracker_ctor(NestingTracker *self, int *nesting)
@@ -141,10 +350,414 @@ void NestingTracker_dtor(NestingTracker *self)
   (*self->nesting_)--;
 }
 
+// C++: src/messaging.h toit::MessageEncoder::size
+word MessageEncoder_size(MessageEncoder *self)
+//@ requires [?f]enc_out(self, ?cap, ?c, ?x);
+//@ ensures [f]enc_out(self, cap, c, x) &*& result == c;
+{
+  //@ open [f]enc_out(self, cap, c, x);
+  {
+    word result0 = self->cursor_;
+    //@ close [f]enc_out(self, cap, c, x);
+    return result0;
+  }
+}
+
+// C++: src/messaging.h toit::MessageEncoder::total_size
+word MessageEncoder_total_size(MessageEncoder *self)
+//@ requires [?f]enc_out(self, ?cap, ?c, ?x);
+//@ ensures [f]enc_out(self, cap, c, x) &*& result == c + x &*& 0 <= c &*& 0 <= x;
+{
+  //@ open [f]enc_out(self, cap, c, x);
+  {
+    word result0 = self->cursor_ + self->external_bytes_;
+    //@ close [f]enc_out(self, cap, c, x);
+    return result0;
+  }
+}
+
+// C++: src/messaging.h toit::MessageEncoder::encoding_for_size
+bool MessageEncoder_encoding_for_size(MessageEncoder *self)
+//@ requires [?f]self->buffer_ |-> ?b;
+//@ ensures [f]self->buffer_ |-> b &*& result == (b == 0);
+{
+  return self->buffer_ == 0;
+}
+
+// C++: src/messaging.h toit::MessageEncoder::encoding_tison
+bool MessageEncoder_encoding_tison(MessageEncoder *self)
+//@ requires [?f]encoder(self, ?ids);
+//@ ensures [f]encoder(self, ids);
+{
+  //@ open [f]encoder(self, ids);
+  {
+    bool result0 = (int)self->format_ == (int)MESSAGE_FORMAT_TISON;
+    //@ close [f]encoder(self, ids);
+    return result0;
+  }
+}
+
+// C++: src/messaging.h toit::TisonEncoder::payload_size
+unsigned int TisonEncoder_payload_size(TisonEncoder *self)
+//@ requires [?f]self->payload_size_ |-> ?p;
+//@ ensures [f]self->payload_size_ |-> p &*& result == p;
+{
+  return self->payload_size_;
+}
+
+// C++: src/messaging.h toit::MessageEncoder::is_too_large
+bool MessageEncoder_is_too_large(MessageEncoder *self)
+//@ requires encoder(self, ?ids) &*& enc_out(self, ?cap, ?c, ?x);
+//@ ensures encoder(self, ids) &*& enc_out(self, cap, c, x) &*& (result || c + x <= MESSAGING_ENCODING_MAX_SIZE);
+{
+  //@ open encoder(self, ids);
+  if (MessageEncoder_total_size(self) > (word)MESSAGING_ENCODING_MAX_SIZE) {
+    self->too_large_ = true;
+  }
+  //@ open enc_out(self, cap, c, x);
+  if (self->max_total_size_ > 0 && self->cursor_ + self->external_bytes_ > self->max_total_size_) {
+    self->over_limit_ = true;
+  }
+  {
+    bool result0 = self->too_large_ || self->over_limit_;
+    //@ close enc_out(self, cap, c, x);
+    //@ close encoder(self, ids);
+    return result0;
+  }
+}
+
+// C++: src/messaging.h toit::MessageEncoder::write_uint8
+void MessageEncoder_write_uint8(MessageEncoder *self, uint8 value)
+//@ requires enc_out(self, ?cap, ?c, ?x) &*& c + x + 1 <= MESSAGING_ENCODING_MAX_SIZE + ENC_SLACK;
+//@ ensures enc_out(self, cap, c + 1, x);
+{
+  //@ open enc_out(self, cap, c, x);
+  //@ two_pass_room(self, 1);
+  //@ open enc_buf(?b, cap);
+  if (!MessageEncoder_encoding_for_size(self)) {
+    self->buffer_[self->cursor_] = value;
+  }
+  self->cursor_++;
+  //@ close enc_buf(b, cap);
+  //@ close enc_out(self, cap, c + 1, x);
+}
+
+// C++: src/messaging.cc toit::MessageEncoder::write_cardinal
+void MessageEncoder_write_cardinal(MessageEncoder *self, uword value)
+//@ requires enc_out(self, ?cap, ?c, ?x) &*& c + x + 10 <= MESSAGING_ENCODING_MAX_SIZE + ENC_SLACK;
+//@ ensures enc_out(self, cap, ?c1, x) &*& c < c1 &*& c1 <= c + 10;
+{
+  //@ int k = 0;
+  while (value >= 128)
+  //@ invariant enc_out(self, cap, c + k, x) &*& 0 <= k &*& k <= 9 &*& value <= UINTPTR_MAX / p128(k);
+  {
+    //@ div_rem_nonneg(value, 128);
+    //@ cardinal_step(value, k);
+    MessageEncoder_write_uint8(self, (uint8)(value % 128 + 128));
+    //@ shiftright_div(value, succ(succ(succ(succ(succ(succ(succ(zero))))))));
+    value >>= 7;
+    //@ k++;
+  }
+  MessageEncoder_write_uint8(self, (uint8)value);
+}
+
+// C++: src/messaging.cc toit::MessageEncoder::write_pointer
+void MessageEncoder_write_pointer(MessageEncoder *self, void *value)
+//@ requires enc_out(self, ?cap, ?c, ?x) &*& c + x + WORD_SIZE <= MESSAGING_ENCODING_MAX_SIZE + ENC_SLACK;
+//@ ensures enc_out(self, cap, c + WORD_SIZE, x);
+{
+  //@ open enc_out(self, cap, c, x);
+  //@ two_pass_room(self, WORD_SIZE);
+  //@ open enc_buf(?b, cap);
+  //@ if (b != 0) buf_take(b, c, WORD_SIZE);
+  if (!MessageEncoder_encoding_for_size(self)) {
+    memcpy((void *)&self->buffer_[self->cursor_], (void *)&value, (size_t)WORD_SIZE);
+  }
+  //@ if (b != 0) { chars_to_pointer(&value); buf_give(b, c, WORD_SIZE); }
+  self->cursor_ += (word)WORD_SIZE;
+  //@ close enc_buf(b, cap);
+  //@ close enc_out(self, cap, c + WORD_SIZE, x);
+}
+
+// C++: src/messaging.cc toit::MessageEncoder::write_uint32
+void MessageEncoder_write_uint32(MessageEncoder *self, uint32 value)
+//@ requires enc_out(self, ?cap, ?c, ?x) &*& c + x + 4 <= MESSAGING_ENCODING_MAX_SIZE + ENC_SLACK;
+//@ ensures enc_out(self, cap, c + 4, x);
+{
+  //@ open enc_out(self, cap, c, x);
+  //@ two_pass_room(self, 4);
+  //@ open enc_buf(?b, cap);
+  //@ if (b != 0) buf_take(b, c, 4);
+  if (!MessageEncoder_encoding_for_size(self)) {
+    memcpy((void *)&self->buffer_[self->cursor_], (void *)&value, sizeof(uint32));
+  }
+  //@ if (b != 0) { chars_to_u_integer(&value); buf_give(b, c, 4); }
+  self->cursor_ = (word)((unsigned long)self->cursor_ + sizeof(uint32));
+  //@ close enc_buf(b, cap);
+  //@ close enc_out(self, cap, c + 4, x);
+}
+
+// C++: src/messaging.cc toit::MessageEncoder::write_uint64
+void MessageEncoder_write_uint64(MessageEncoder *self, uint64 value)
+//@ requires enc_out(self, ?cap, ?c, ?x) &*& c + x + 8 <= MESSAGING_ENCODING_MAX_SIZE + ENC_SLACK;
+//@ ensures enc_out(self, cap, c + 8, x);
+{
+  //@ open enc_out(self, cap, c, x);
+  //@ two_pass_room(self, 8);
+  //@ open enc_buf(?b, cap);
+  //@ if (b != 0) buf_take(b, c, 8);
+  if (!MessageEncoder_encoding_for_size(self)) {
+    memcpy((void *)&self->buffer_[self->cursor_], (void *)&value, sizeof(uint64));
+  }
+  //@ if (b != 0) { chars_to_integer_(&value, 8, false); close u_llong_integer(&value, _); buf_give(b, c, 8); }
+  self->cursor_ = (word)((unsigned long)self->cursor_ + sizeof(uint64));
+  //@ close enc_buf(b, cap);
+  //@ close enc_out(self, cap, c + 8, x);
+}
+
+// C++: src/messaging.cc toit::MessageEncoder::reserve_external
+bool MessageEncoder_reserve_external(MessageEncoder *self)
+//@ requires encoder(self, ?ids);
+//@ ensures result ? encoder_res(self, ids) : encoder(self, ids);
+{
+  //@ open encoder(self, ids);
+  //@ open enc_tables(self, 0);
+  if (self->externals_count_ >= (unsigned int)MESSAGING_ENCODING_MAX_EXTERNALS) {
+    self->too_many_externals_ = true;
+    //@ close enc_tables(self, 0);
+    //@ close encoder(self, ids);
+    return false;
+  }
+  self->externals_count_++;
+  //@ close enc_tables(self, 1);
+  //@ close encoder_res(self, ids);
+  return true;
+}
+
+// C++: src/messaging.cc toit::MessageEncoder::encode_copy
+bool MessageEncoder_encode_copy(MessageEncoder *self, Object *object, int tag)
+/*@ requires encoder(self, ?ids) &*& enc_out(self, ?cap, ?c, ?x) &*& c + x <= MESSAGING_ENCODING_MAX_SIZE &*&
+             [?f]heap(?objs, ?H) &*& good(objs, object) == true &*& (tag == TAG_STRING || tag == TAG_BYTE_ARRAY); @*/
+//@ ensures encoder(self, ids) &*& enc_out(self, cap, ?c1, ?x1) &*& c <= c1 &*& [f]heap(objs, H);
+{
+  uint8 *source;
+  word length;
+  // ASSERT(tag == (int)TAG_STRING || tag == (int)TAG_BYTE_ARRAY): release build, not evaluated.
+  // ASSERT((int)TAG_STRING_INLINE == (int)TAG_STRING + 1): release build, not evaluated.
+  // ASSERT((int)TAG_BYTE_ARRAY_INLINE == (int)TAG_BYTE_ARRAY + 1): release build, not evaluated.
+  length = 0;
+  //@ open encoder(self, ids);
+  if (!Object_byte_content__Programp_uint8pp_wordp_BlobKind(object, self->program_, &source, &length, STRINGS_OR_BYTE_ARRAYS)) {
+    //@ close encoder(self, ids);
+    return false;
+  }
+  //@ assert [_]blob_result(objs, H, STRINGS_OR_BYTE_ARRAYS, ?a, ?l, ?bl);
+  //@ open [_]blob_result(objs, H, STRINGS_OR_BYTE_ARRAYS, a, l, bl);
+  //@ blob_facts(bl);
+  //@ uint8 *base = blob_base(H, bl);
+  //@ heap_holes_open();
+  //@ blob_take(bl);
+  //@ uchars_split(base, (uword)a - (uword)base);
+  //@ uchars_split(a, l);
+  if (tag == (int)TAG_STRING && self->process_ != 0 && PrimitivePolicy_restricts_messaging(Process_policy(self->process_)) && !Utils_is_valid_utf_8(source, length)) {
+    //@ uchars_join(a);
+    //@ uchars_join(base);
+    //@ blob_give(bl);
+    //@ heap_holes_close();
+    //@ close encoder(self, ids);
+    return false;
+  }
+  //@ uchars_join(a);
+  //@ uchars_join(base);
+  //@ blob_give(bl);
+  //@ heap_holes_close();
+  //@ close encoder(self, ids);
+  if (length > (word)MESSAGING_ENCODING_MAX_SIZE - MessageEncoder_total_size(self)) {
+    //@ open encoder(self, ids);
+    self->too_large_ = true;
+    //@ close encoder(self, ids);
+    return false;
+  }
+  if (MessageEncoder_encoding_tison(self) || length <= (word)MESSAGING_ENCODING_MAX_INLINED_SIZE) {
+    MessageEncoder_write_uint8(self, (uint8)(tag + 1));
+    MessageEncoder_write_cardinal(self, (uword)length);
+    //@ open enc_out(self, cap, ?c2, x);
+    //@ two_pass_room(self, l);
+    //@ open enc_buf(?b, cap);
+    if (!MessageEncoder_encoding_for_size(self)) {
+      //@ heap_holes_open();
+      //@ blob_take(bl);
+      //@ uchars_split(base, (uword)a - (uword)base);
+      //@ uchars_split(a, l);
+      //@ buf_take(b, c2, l);
+      memcpy((void *)&self->buffer_[self->cursor_], (void *)source, (size_t)length);
+      //@ buf_give(b, c2, l);
+      //@ chars_to_uchars(a);
+      //@ uchars_join(a);
+      //@ uchars_join(base);
+      //@ blob_give(bl);
+      //@ heap_holes_close();
+    }
+    self->cursor_ += length;
+    //@ close enc_buf(b, cap);
+    //@ close enc_out(self, cap, c2 + l, x);
+    return true;
+  }
+  // ASSERT(!MessageEncoder_encoding_tison(self)): release build, not evaluated.
+  if (!MessageEncoder_reserve_external(self)) {
+    return false;
+  }
+  //@ open enc_out(self, cap, c, x);
+  self->external_bytes_ += length;
+  //@ close enc_out(self, cap, c, x + l);
+  void *data = 0;
+  //@ open enc_out(self, cap, c, x + l);
+  //@ assert self->buffer_ |-> ?b;
+  if (!MessageEncoder_encoding_for_size(self)) {
+    HeapTagScope scope;
+    //@ close enc_out(self, cap, c, x + l);
+    int extra = (tag == (int)TAG_STRING) ? 1 : 0;
+    int heap_tag = (int)((tag == (int)TAG_STRING) ? EXTERNAL_STRING_MALLOC_TAG : EXTERNAL_BYTE_ARRAY_MALLOC_TAG);
+    HeapTagScope_ctor(&scope, /*@truncating@*/(uword)(ITERATE_CUSTOM_TAGS + (word)heap_tag));
+    data = malloc((size_t)(length + (word)extra));
+    if (data == 0) {
+      //@ open encoder_res(self, ids);
+      self->malloc_failed_ = true;
+      //@ close encoder_res(self, ids);
+      //@ encoder_unreserve(self);
+      {
+        bool result0 = false;
+        HeapTagScope_dtor(&scope);
+        return result0;
+      }
+    }
+    //@ open encoder_res(self, ids);
+    //@ open enc_tables(self, 1);
+    self->copied_[self->copied_count_++] = data;
+    //@ close enc_tables(self, 0);
+    //@ close encoder(self, ids);
+    //@ heap_holes_open();
+    //@ blob_take(bl);
+    //@ uchars_split(base, (uword)a - (uword)base);
+    //@ uchars_split(a, l);
+    memcpy(data, (void *)source, (size_t)length);
+    //@ chars_to_uchars(a);
+    //@ uchars_join(a);
+    //@ uchars_join(base);
+    //@ blob_give(bl);
+    //@ heap_holes_close();
+    //@ if (extra != 0) chars__to_uchars_((uint8 *)data + l);
+    if (extra != 0) {
+      ((uint8 *)data)[length] = 0;
+    }
+    //@ leak malloc_block(data, _) &*& chars(data, l, _);
+    //@ if (extra != 0) leak u_character((uint8 *)data + l, _);
+    HeapTagScope_dtor(&scope);
+  }
+  //@ if (b == 0) { close enc_out(self, cap, c, x + l); encoder_unreserve(self); }
+  MessageEncoder_write_uint8(self, (uint8)tag);
+  MessageEncoder_write_cardinal(self, (uword)length);
+  MessageEncoder_write_pointer(self, data);
+  return true;
+}
+
+// C++: src/messaging.cc toit::MessageEncoder::encode_byte_array
+bool MessageEncoder_encode_byte_array(MessageEncoder *self, ByteArray *object)
+/*@ requires encoder(self, ?ids) &*& enc_out(self, ?cap, ?c, ?x) &*& c + x <= MESSAGING_ENCODING_MAX_SIZE &*&
+             [?f]heap(?objs, ?H) &*& has_tag(H, object, BYTE_ARRAY_TAG) == true &*& mem(object, objs) == true; @*/
+//@ ensures encoder(self, ids) &*& enc_out(self, cap, ?c1, ?x1) &*& c <= c1 &*& [f]heap(objs, H);
+{
+  ByteArray_Bytes bytes;
+  if (MessageEncoder_encoding_tison(self) || !ByteArray_has_owned_external_memory(object)) {
+    return MessageEncoder_encode_copy(self, object, (int)TAG_BYTE_ARRAY);
+  }
+  //@ open encoder(self, ids);
+  //@ open enc_tables(self, 0);
+  for (unsigned int i = 0; i < self->transferred_count_; i++)
+  /*@ invariant self->program_ |-> ?p &*& [_]program(p, ids) &*& prog_ok(ids) == true &*&
+        self->process_ |-> ?proc &*& self->format_ |-> ?fmt &*&
+        self->nesting_too_deep_ |-> _ &*& self->problematic_class_id_ |-> _ &*& self->too_many_externals_ |-> _ &*&
+        self->too_large_ |-> ?tl &*& self->over_limit_ |-> ?ol &*& self->max_total_size_ |-> ?mts &*& self->malloc_failed_ |-> _ &*&
+        self->externals_count_ |-> ?k &*& self->copied_count_ |-> ?cc &*& self->transferred_count_ |-> ?tc &*&
+        k <= MESSAGING_ENCODING_MAX_EXTERNALS &*& cc + tc <= k &*&
+        pointers(self->copied_, MESSAGING_ENCODING_MAX_EXTERNALS, _) &*&
+        pointers(self->transferred_, MESSAGING_ENCODING_MAX_EXTERNALS, _) &*&
+        enc_out(self, cap, c, x) &*& [f]heap(objs, H) &*& 0 <= i; @*/
+  {
+    if (self->transferred_[i] == object) {
+      //@ close enc_tables(self, 0);
+      //@ close encoder(self, ids);
+      return MessageEncoder_encode_copy(self, object, (int)TAG_BYTE_ARRAY);
+    }
+  }
+  //@ close enc_tables(self, 0);
+  //@ close encoder(self, ids);
+  // ASSERT(!MessageEncoder_encoding_tison(self)): release build, not evaluated.
+  if (!MessageEncoder_reserve_external(self)) {
+    return false;
+  }
+  ByteArray_Bytes_ctor(&bytes, object);
+  //@ byte_array_len(object);
+  if (ByteArray_Bytes_length(&bytes) > (word)MESSAGING_ENCODING_MAX_SIZE - MessageEncoder_total_size(self)) {
+    //@ encoder_unreserve(self);
+    //@ open encoder(self, ids);
+    self->too_large_ = true;
+    //@ close encoder(self, ids);
+    return false;
+  }
+  //@ open enc_out(self, cap, c, x);
+  self->external_bytes_ += ByteArray_Bytes_length(&bytes);
+  //@ close enc_out(self, cap, c, x + blob_len(H, object));
+  MessageEncoder_write_uint8(self, (uint8)TAG_BYTE_ARRAY);
+  MessageEncoder_write_cardinal(self, (uword)ByteArray_Bytes_length(&bytes));
+  MessageEncoder_write_pointer(self, (void *)ByteArray_Bytes_address(&bytes));
+  //@ open encoder_res(self, ids);
+  //@ open enc_tables(self, 1);
+  self->transferred_[self->transferred_count_++] = object;
+  //@ close enc_tables(self, 0);
+  //@ close encoder(self, ids);
+  return true;
+}
+
+// C++: src/messaging.cc toit::TisonEncoder::encode
+bool TisonEncoder_encode(TisonEncoder *self, Object *object)
+/*@ requires encoder(self, ?ids) &*& enc_out(self, ?cap, 0, 0) &*& self->payload_size_ |-> ?ps &*& self->nesting_ |-> 0 &*&
+             [?f]heap(?objs, ?H) &*& good(objs, object) == true; @*/
+//@ ensures encoder(self, ids) &*& enc_out(self, cap, ?c1, ?x1) &*& self->payload_size_ |-> _ &*& self->nesting_ |-> 0 &*& [f]heap(objs, H);
+{
+  // ASSERT(MessageEncoder_encoding_tison(self)): release build, not evaluated.
+  //@ shiftleft_def(1, succ(succ(succ(succ(succ(succ(succ(succ(zero)))))))));
+  uint32 marker = TISON_MARKER | (uint32)(TISON_VERSION << TISON_VERSION_SHIFT);
+  MessageEncoder_write_uint32(self, marker);
+  //@ open enc_out(self, cap, 4, 0);
+  if (!MessageEncoder_encoding_for_size(self)) {
+    //@ close enc_out(self, cap, 4, 0);
+    // ASSERT(TisonEncoder_payload_size(self) > 0): release build, not evaluated.
+    MessageEncoder_write_cardinal(self, (uword)TisonEncoder_payload_size(self));
+    //@ open enc_out(self, cap, _, 0);
+  }
+  //@ close enc_out(self, cap, _, 0);
+  bool result = MessageEncoder_encode_any(self, object);
+  if (!result || MessageEncoder_is_too_large(self)) {
+    return false;
+  }
+  //@ open enc_out(self, cap, ?c2, ?x2);
+  if (MessageEncoder_encoding_for_size(self)) {
+    //@ close enc_out(self, cap, c2, x2);
+    uword payload_size = (size_t)MessageEncoder_size(self) - sizeof(uint32);
+    // ASSERT(payload_size > 0 && self->payload_size_ == 0): release build, not evaluated.
+    self->payload_size_ = (unsigned int)payload_size;
+    MessageEncoder_write_cardinal(self, payload_size);
+    //@ open enc_out(self, cap, _, x2);
+  }
+  //@ close enc_out(self, cap, _, x2);
+  return true;
+}
+
 // C++: src/messaging.cc toit::MessageEncoder::encode_any
 bool MessageEncoder_encode_any(MessageEncoder *self, Object *object)
-//@ requires encoder(self, ?ids) &*& self->nesting_ |-> ?n &*& 0 <= n &*& n <= MESSAGING_ENCODING_MAX_NESTING &*& [?f]heap(?objs, ?H) &*& good(objs, object) == true;
-//@ ensures encoder(self, ids) &*& self->nesting_ |-> n &*& [f]heap(objs, H);
+//@ requires encoder(self, ?ids) &*& enc_out(self, ?cap, ?c, ?x) &*& self->nesting_ |-> ?n &*& 0 <= n &*& n <= MESSAGING_ENCODING_MAX_NESTING &*& [?f]heap(?objs, ?H) &*& good(objs, object) == true;
+//@ ensures encoder(self, ids) &*& enc_out(self, cap, ?c1, ?x1) &*& c <= c1 &*& self->nesting_ |-> n &*& [f]heap(objs, H);
 {
   NestingTracker tracking;
   NestingTracker_ctor(&tracking, &self->nesting_);
@@ -355,8 +968,8 @@ bool MessageEncoder_encode_any(MessageEncoder *self, Object *object)
 
 // C++: src/messaging.cc toit::MessageEncoder::encode_array
 bool MessageEncoder_encode_array(MessageEncoder *self, Array *object, word from, word to)
-//@ requires encoder(self, ?ids) &*& self->nesting_ |-> ?n &*& 0 <= n &*& n <= MESSAGING_ENCODING_MAX_NESTING &*& [?f]heap(?objs, ?H) &*& mem(object, objs) == true &*& has_tag(H, object, ARRAY_TAG) == true &*& smi_range(from) == true &*& smi_range(to) == true;
-//@ ensures encoder(self, ids) &*& self->nesting_ |-> n &*& [f]heap(objs, H);
+//@ requires encoder(self, ?ids) &*& enc_out(self, ?cap, ?c, ?x) &*& c + x <= MESSAGING_ENCODING_MAX_SIZE &*& self->nesting_ |-> ?n &*& 0 <= n &*& n <= MESSAGING_ENCODING_MAX_NESTING &*& [?f]heap(?objs, ?H) &*& mem(object, objs) == true &*& has_tag(H, object, ARRAY_TAG) == true &*& smi_range(from) == true &*& smi_range(to) == true;
+//@ ensures encoder(self, ids) &*& enc_out(self, cap, ?c1, ?x1) &*& c <= c1 &*& self->nesting_ |-> n &*& [f]heap(objs, H);
 {
   if (from < 0 || from > to || to > Array_length(object)) {
     return false;
@@ -364,7 +977,7 @@ bool MessageEncoder_encode_array(MessageEncoder *self, Array *object, word from,
   MessageEncoder_write_uint8(self, (uint8)TAG_ARRAY);
   MessageEncoder_write_cardinal(self, (uword)(to - from));
   for (word i = from; i < to; i++)
-  //@ invariant encoder(self, ids) &*& self->nesting_ |-> n &*& [f]heap(objs, H) &*& from <= i &*& to <= o_len(H(object));
+  //@ invariant encoder(self, ids) &*& enc_out(self, cap, ?ci, ?xi) &*& c <= ci &*& self->nesting_ |-> n &*& [f]heap(objs, H) &*& from <= i &*& to <= o_len(H(object));
   {
     if (!MessageEncoder_encode_any(self, Array_at(object, i))) {
       return false;
@@ -375,8 +988,8 @@ bool MessageEncoder_encode_array(MessageEncoder *self, Array *object, word from,
 
 // C++: src/messaging.cc toit::MessageEncoder::encode_list
 bool MessageEncoder_encode_list(MessageEncoder *self, Instance *instance, word from, word to)
-//@ requires encoder(self, ?ids) &*& self->nesting_ |-> ?n &*& 0 <= n &*& n <= MESSAGING_ENCODING_MAX_NESTING &*& [?f]heap(?objs, ?H) &*& mem(instance, objs) == true &*& has_tag(H, instance, INSTANCE_TAG) == true &*& header_cid(o_hw(H(instance))) == list_cid(ids) &*& smi_range(from) == true &*& smi_range(to) == true;
-//@ ensures encoder(self, ids) &*& self->nesting_ |-> n &*& [f]heap(objs, H);
+//@ requires encoder(self, ?ids) &*& enc_out(self, ?cap, ?c, ?x) &*& c + x <= MESSAGING_ENCODING_MAX_SIZE &*& self->nesting_ |-> ?n &*& 0 <= n &*& n <= MESSAGING_ENCODING_MAX_NESTING &*& [?f]heap(?objs, ?H) &*& mem(instance, objs) == true &*& has_tag(H, instance, INSTANCE_TAG) == true &*& header_cid(o_hw(H(instance))) == list_cid(ids) &*& smi_range(from) == true &*& smi_range(to) == true;
+//@ ensures encoder(self, ids) &*& enc_out(self, cap, ?c1, ?x1) &*& c <= c1 &*& self->nesting_ |-> n &*& [f]heap(objs, H);
 {
   //@ encoder_facts(self);
   //@ heap_facts(instance);
@@ -409,8 +1022,8 @@ bool MessageEncoder_encode_list(MessageEncoder *self, Instance *instance, word f
 
 // C++: src/messaging.cc toit::MessageEncoder::encode_map
 bool MessageEncoder_encode_map(MessageEncoder *self, Instance *instance)
-//@ requires encoder(self, ?ids) &*& self->nesting_ |-> ?n &*& 0 <= n &*& n <= MESSAGING_ENCODING_MAX_NESTING &*& [?f]heap(?objs, ?H) &*& mem(instance, objs) == true &*& has_tag(H, instance, INSTANCE_TAG) == true &*& header_cid(o_hw(H(instance))) == map_cid(ids);
-//@ ensures encoder(self, ids) &*& self->nesting_ |-> n &*& [f]heap(objs, H);
+//@ requires encoder(self, ?ids) &*& enc_out(self, ?cap, ?c, ?x) &*& c + x <= MESSAGING_ENCODING_MAX_SIZE &*& self->nesting_ |-> ?n &*& 0 <= n &*& n <= MESSAGING_ENCODING_MAX_NESTING &*& [?f]heap(?objs, ?H) &*& mem(instance, objs) == true &*& has_tag(H, instance, INSTANCE_TAG) == true &*& header_cid(o_hw(H(instance))) == map_cid(ids);
+//@ ensures encoder(self, ids) &*& enc_out(self, cap, ?c1, ?x1) &*& c <= c1 &*& self->nesting_ |-> n &*& [f]heap(objs, H);
 {
   MessageEncoder_write_uint8(self, (uint8)TAG_MAP);
   //@ encoder_facts(self);
@@ -476,7 +1089,7 @@ bool MessageEncoder_encode_map(MessageEncoder *self, Instance *instance)
   }
   word count = 0;
   for (word i = 0; count < size && i + 1 < limit; i += 2)
-  //@ invariant encoder(self, ids) &*& self->nesting_ |-> n &*& [f]heap(objs, H) &*& 0 <= i &*& i <= o_len(H(array)) + 1 &*& 0 <= count &*& count <= size &*& limit <= o_len(H(array));
+  //@ invariant encoder(self, ids) &*& enc_out(self, cap, ?ci, ?xi) &*& c <= ci &*& self->nesting_ |-> n &*& [f]heap(objs, H) &*& 0 <= i &*& i <= o_len(H(array)) + 1 &*& 0 <= count &*& count <= size &*& limit <= o_len(H(array));
   {
     Object *key = Array_at(array, i);
     Object *value = Array_at(array, i + 1);
