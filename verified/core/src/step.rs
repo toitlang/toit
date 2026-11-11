@@ -1176,21 +1176,61 @@ pub fn step_r(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
             }
             crate::regs::op_branch(m, r, p, 3, bci + d, 3)
         },
-        85 | 86 | 87 | 88 => {
-            // BRANCH_BACK*: the preemption point of loops.
+        // BRANCH_BACK*: the preemption points of loops (one arm per opcode).
+        85 => {
             if env.pre.requested() {
                 env.pre.clear();
                 m.sync(*r);
                 return Ctl::Exit(RESULT_PREEMPTED as u32, 0);
             }
             let d = code_u16(p, bci + 1);
-            let kind = (opcode - 85) as usize;
             proof {
-                assert(sp::step(ap, g) == sp::op_branch(ap, g, kind as int, bci - d, 3)) by { reveal(sp::step); }
-                if kind != 0 { lemma_branch_cond(p, g); }
+                assert(sp::step(ap, g) == sp::op_branch(ap, g, 0, bci - d, 3)) by { reveal(sp::step); }
                 lemma_back_branch(p, g);
             }
-            crate::regs::op_branch(m, r, p, kind, bci - d, 3)
+            crate::regs::op_branch(m, r, p, 0, bci - d, 3)
+        },
+        86 => {
+            if env.pre.requested() {
+                env.pre.clear();
+                m.sync(*r);
+                return Ctl::Exit(RESULT_PREEMPTED as u32, 0);
+            }
+            let d = code_u16(p, bci + 1);
+            proof {
+                assert(sp::step(ap, g) == sp::op_branch(ap, g, 1, bci - d, 3)) by { reveal(sp::step); }
+                lemma_branch_cond(p, g);
+                lemma_back_branch(p, g);
+            }
+            crate::regs::op_branch(m, r, p, 1, bci - d, 3)
+        },
+        87 => {
+            if env.pre.requested() {
+                env.pre.clear();
+                m.sync(*r);
+                return Ctl::Exit(RESULT_PREEMPTED as u32, 0);
+            }
+            let d = code_u16(p, bci + 1);
+            proof {
+                assert(sp::step(ap, g) == sp::op_branch(ap, g, 2, bci - d, 3)) by { reveal(sp::step); }
+                lemma_branch_cond(p, g);
+                lemma_back_branch(p, g);
+            }
+            crate::regs::op_branch(m, r, p, 2, bci - d, 3)
+        },
+        88 => {
+            if env.pre.requested() {
+                env.pre.clear();
+                m.sync(*r);
+                return Ctl::Exit(RESULT_PREEMPTED as u32, 0);
+            }
+            let d = code_u16(p, bci + 1);
+            proof {
+                assert(sp::step(ap, g) == sp::op_branch(ap, g, 3, bci - d, 3)) by { reveal(sp::step); }
+                lemma_branch_cond(p, g);
+                lemma_back_branch(p, g);
+            }
+            crate::regs::op_branch(m, r, p, 3, bci - d, 3)
         },
         53 => {
             let d = code_u16(p, bci + 1);
@@ -1488,8 +1528,20 @@ pub fn step_r(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
         89 => {
             return crate::rarrays::op_primitive(m, r, env, bci, 89);
         },
+        // Rare opcodes: the machine's handlers (`bridge`). INVOKE_LAMBDA_TAIL,
+        // THROW, NON_LOCAL_RETURN, NON_LOCAL_BRANCH, TRY, UNWIND, HALT.
+        56 => { return bridge_r(m, r, env); },
+        90 => { return bridge_r(m, r, env); },
+        93 => { return bridge_r(m, r, env); },
+        95 => { return bridge_r(m, r, env); },
+        97 => { return bridge_r(m, r, env); },
+        99 => { return bridge_r(m, r, env); },
+        100 => { return bridge_r(m, r, env); },
         _ => {
-            return bridge_r(m, r, env);
+            // Every opcode of format 2 (below OPCODE_COUNT2, which the
+            // instruction check of the spec requires) has an arm.
+            proof { assert(opcode < 101); assert(false); }
+            return crate::view::proven_unreachable();
         },
     };
     proof {
