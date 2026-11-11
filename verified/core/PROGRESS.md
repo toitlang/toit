@@ -71,6 +71,11 @@ Artifacts: /home/flo/work/opentoit-sandbox-artifacts/proven-accessors
   `large_int` verified. riscv32 opt=s: run_loop 6,479 -> 5,960
   instructions, text 59,332 -> 57,498 B (the unaligned read was eight
   byte loads there); host instructions 0 to -0.4 percent.
+- P4 (`array_copy`): the elements are moved by a memmove leaf stated on
+  the heap permissions (`heap_memmove`); the model's new array and the
+  heap invariant after the move are verified (`copy_elements`), as is
+  the write barrier's condition. With P2 this completes the instance and
+  array group. Instructions unchanged.
 
 ## Trusted containers integrated (branch core/trusted-integration, 2026-11-11)
 

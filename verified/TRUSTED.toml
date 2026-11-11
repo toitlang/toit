@@ -907,22 +907,6 @@ justification = "Type alias for the VM's half word (u32 on 64-bit, u16 on 32-bit
 [[trusted]]
 crate = "core"
 file = "src/view.rs"
-item = "Heap::array_copy"
-kind = "external_body"
-count = 1
-justification = "memmove of array elements with the write barrier on the destination (as array_replace in C++); contract: the model's destination elements become the source's (bounds required)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::array_copy"
-kind = "unsafe"
-count = 1
-justification = "Raw element access inside both arrays (bounds from the precondition) and the card mark."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
 item = "Heap::byte"
 kind = "external_body"
 count = 1
@@ -1407,6 +1391,22 @@ item = "copy_words"
 kind = "unsafe"
 count = 1
 justification = "core::ptr::copy (memmove) of n words inside array[0..len): both ranges in bounds by the precondition (from + n, to + n <= len, the permissions cover the array)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "heap_memmove"
+kind = "external_body"
+count = 1
+justification = "FFI LEAF: the C library's memmove for Heap::array_copy, stated on the heap permissions (the destination elements get the source elements' old values, every other permission keeps its value); the model update and the heap invariant after it are verified (copy_elements); TRUSTED.md section 1."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "heap_memmove"
+kind = "unsafe"
+count = 1
+justification = "core::ptr::copy (memmove) of n words between two arrays' element ranges, in bounds by the precondition (the permissions of both ranges, at the pointers passed)."
 
 [[trusted]]
 crate = "core"

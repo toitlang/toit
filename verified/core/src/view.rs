@@ -1677,7 +1677,6 @@ impl Heap {
 
     /// memmove of `n` elements from `src[from..]` to `dst[to..]` of two
     /// arrays (possibly the same), with the write barrier on `dst`.
-    #[verifier::external_body]
     #[inline(always)]
     pub fn array_copy(&mut self, dst: usize, to: usize, src: usize, from: usize, n: usize,
                       Ghost(d): Ghost<int>, Ghost(s): Ghost<int>)
@@ -1702,13 +1701,125 @@ impl Heap {
             final(self).addrs() == old(self).addrs(),
             final(self).class_bits() == old(self).class_bits(),
     {
-        unsafe {
-            let d = ((dst - HEAP_TAG) as *mut usize).add(ARRAY_ELEMENTS_WORD);
-            let s = ((src - HEAP_TAG) as *const usize).add(ARRAY_ELEMENTS_WORD);
-            core::ptr::copy(s.add(from), d.add(to), n);
-            if n != 0 {
-                let card = ((dst - HEAP_TAG) >> CARD_SIZE_LOG_2).wrapping_add(self.remembered_set_bias);
-                *(card as *mut u8) = NEW_SPACE_POINTERS;
+        proof {
+            use_type_invariant(&*self);
+            assert(obj_fits(self.mem@, d));
+            assert(obj_fits(self.mem@, s));
+        }
+        let pd: *mut usize = with_exposed_provenance(dst - HEAP_TAG, Tracked(self.mem.borrow().exposed));
+        let ps: *mut usize = with_exposed_provenance(src - HEAP_TAG, Tracked(self.mem.borrow().exposed));
+        let pd = pd.wrapping_add(ARRAY_ELEMENTS_WORD + to);
+        let ps = ps.wrapping_add(ARRAY_ELEMENTS_WORD + from);
+        copy_elements(Tracked(self.mem.borrow_mut()), pd, ps, n, to, from, Ghost(d), Ghost(s));
+        if n != 0 {
+            self.write_barrier(dst);
+        }
+    }
+}
+
+/// TRUSTED (FFI leaf: the C library's memmove, `core::ptr::copy`, stated
+/// on the permissions): moves the values of the words `(s, sk..sk+n)` to
+/// the words `(d, dk..dk+n)` through their pointers `src` and `dst`; every
+/// other permission is unchanged.
+#[verifier::external_body]
+#[inline(always)]
+fn heap_memmove(Tracked(words): Tracked<&mut Map<(int, int), PointsTo<usize>>>, dst: *mut usize, src: *mut usize,
+                n: usize, Ghost(d): Ghost<int>, Ghost(dk): Ghost<int>, Ghost(s): Ghost<int>, Ghost(sk): Ghost<int>)
+    requires
+        forall|k: int| 0 <= k < n ==> #[trigger] old(words).contains_key((d, dk + k))
+            && old(words)[(d, dk + k)].ptr() == at_index(dst, k) && old(words)[(d, dk + k)].is_init(),
+        forall|k: int| 0 <= k < n ==> #[trigger] old(words).contains_key((s, sk + k))
+            && old(words)[(s, sk + k)].ptr() == at_index(src, k) && old(words)[(s, sk + k)].is_init(),
+    ensures
+        final(words).dom() == old(words).dom(),
+        forall|key: (int, int)| old(words).contains_key(key) ==>
+            #[trigger] final(words)[key].ptr() == old(words)[key].ptr()
+            && final(words)[key].is_init() == old(words)[key].is_init(),
+        forall|key: (int, int)| !(key.0 == d && dk <= key.1 < dk + n) ==>
+            #[trigger] final(words)[key] == old(words)[key],
+        forall|k: int| 0 <= k < n ==>
+            #[trigger] final(words)[(d, dk + k)].value() == old(words)[(s, sk + k)].value(),
+    no_unwind
+{
+    // SAFETY: both ranges are permissions' words (inside their objects).
+    unsafe { core::ptr::copy(src, dst, n) }
+}
+
+/// The elements of `array_copy`: the memmove and the model's new array.
+#[inline(always)]
+fn copy_elements(Tracked(m): Tracked<&mut HeapMem>, pd: *mut usize, ps: *mut usize, n: usize, to: usize, from: usize,
+                 Ghost(d): Ghost<int>, Ghost(s): Ghost<int>)
+    requires
+        heap_ok(*old(m)),
+        0 <= d < old(m).objs.len(),
+        0 <= s < old(m).objs.len(),
+        old(m).objs[d].body is Array,
+        old(m).objs[s].body is Array,
+        to + n <= old(m).objs[d].body->Array_0.len(),
+        from + n <= old(m).objs[s].body->Array_0.len(),
+        pd == at_index(obj_ptr(*old(m), d), ARRAY_ELEMENTS_WORD + to),
+        ps == at_index(obj_ptr(*old(m), s), ARRAY_ELEMENTS_WORD + from),
+    ensures
+        heap_ok(*final(m)),
+        final(m).objs == old(m).objs.update(d, HeapObj {
+            body: Body::Array(Seq::new(old(m).objs[d].body->Array_0.len(), |k: int|
+                if to <= k < to + n { old(m).objs[s].body->Array_0[k - to + from] }
+                else { old(m).objs[d].body->Array_0[k] })),
+            ..old(m).objs[d]
+        }),
+        final(m).addrs == old(m).addrs,
+        final(m).class_bits == old(m).class_bits,
+        final(m).exposed == old(m).exposed,
+    no_unwind
+{
+    let ghost m0 = *m;
+    let ghost dk = (ARRAY_ELEMENTS_WORD + to) as int;
+    let ghost sk = (ARRAY_ELEMENTS_WORD + from) as int;
+    proof {
+        assert forall|k: int| 0 <= k < n implies #[trigger] m0.words.contains_key((d, dk + k))
+            && m0.words[(d, dk + k)].ptr() == at_index(pd, k) && m0.words[(d, dk + k)].is_init() by {
+            assert(word_ok(m0, d, dk + k));
+            lemma_at_index_move(obj_ptr(m0, d), dk, k);
+        }
+        assert forall|k: int| 0 <= k < n implies #[trigger] m0.words.contains_key((s, sk + k))
+            && m0.words[(s, sk + k)].ptr() == at_index(ps, k) && m0.words[(s, sk + k)].is_init() by {
+            assert(word_ok(m0, s, sk + k));
+            lemma_at_index_move(obj_ptr(m0, s), sk, k);
+        }
+    }
+    heap_memmove(Tracked(&mut m.words), pd, ps, n, Ghost(d), Ghost(dk), Ghost(s), Ghost(sk));
+    proof {
+        let od = m0.objs[d];
+        let e0 = od.body->Array_0;
+        let es = m0.objs[s].body->Array_0;
+        let e1 = Seq::new(e0.len(), |k: int| if to <= k < to + n { es[k - to + from] } else { e0[k] });
+        let o2 = HeapObj { body: Body::Array(e1), ..od };
+        m.objs = m0.objs.update(d, o2);
+        assert forall|j: int| 0 <= j < m.objs.len() implies #[trigger] obj_fits(*m, j) by {
+            assert(obj_fits(m0, j));
+        }
+        assert forall|j: int, kk: int| 0 <= j < m.objs.len() && is_word(m.objs[j], kk) implies
+            #[trigger] word_ok(*m, j, kk) by {
+            assert(obj_ptr(*m, j) == obj_ptr(m0, j));
+            if j == d {
+                assert(is_word(od, kk));
+            }
+            assert(word_ok(m0, j, kk));
+            assert(m.words.contains_key((j, kk)));
+            assert(m.words[(j, kk)].ptr() == m0.words[(j, kk)].ptr());
+            assert(m.words[(j, kk)].is_init());
+            if j == d && dk <= kk < dk + n {
+                let k = kk - dk;
+                assert(m.words[(d, dk + k)].value() == m0.words[(s, sk + k)].value());
+                assert(is_word(m0.objs[s], sk + k));
+                assert(word_ok(m0, s, sk + k));
+                assert(e1[kk - ARRAY_ELEMENTS_WORD] == es[kk - ARRAY_ELEMENTS_WORD - to + from]);
+                assert(word_val(o2, m.class_bits, m.addrs, kk, m.words[(j, kk)].value()));
+            } else {
+                assert(m.words[(j, kk)] == m0.words[(j, kk)]);
+                if j == d && kk >= ARRAY_ELEMENTS_WORD {
+                    assert(e1[kk - ARRAY_ELEMENTS_WORD] == e0[kk - ARRAY_ELEMENTS_WORD]);
+                }
             }
         }
     }
