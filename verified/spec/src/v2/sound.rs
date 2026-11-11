@@ -461,12 +461,64 @@ pub open spec fn prim_heap_ok(p: Program2, h: Seq<HeapObj>, h2: Seq<HeapObj>) ->
     &&& forall|i: int| 0 <= i < h2.len() ==> basic_obj_ok(p, h2, #[trigger] h2[i])
 }
 
+/// Byte `b` continues a UTF-8 sequence (`10xx_xxxx`).
+pub open spec fn utf8_cont(b: u8) -> bool {
+    0x80 <= b && b < 0xc0
+}
+
+/// The length of the well-formed UTF-8 sequence that starts at index `i`
+/// of `s`, or 0 if none does (Unicode, table 3-7: no overlong encodings,
+/// no surrogates, nothing above U+10FFFF; the VM's
+/// `Utils::is_valid_utf_8`).
+pub open spec fn utf8_seq_len(s: Seq<u8>, i: int) -> int {
+    let n = s.len() - i;
+    let b = s[i];
+    if b < 0x80 {
+        1
+    } else if 0xc2 <= b && b <= 0xdf {
+        if n >= 2 && utf8_cont(s[i + 1]) { 2 } else { 0 }
+    } else if 0xe0 <= b && b <= 0xef {
+        // The second byte excludes overlong encodings (e0) and surrogates (ed).
+        let lo: u8 = if b == 0xe0 { 0xa0 } else { 0x80 };
+        let hi: u8 = if b == 0xed { 0x9f } else { 0xbf };
+        if n >= 3 && lo <= s[i + 1] && s[i + 1] <= hi && utf8_cont(s[i + 2]) { 3 } else { 0 }
+    } else if 0xf0 <= b && b <= 0xf4 {
+        // The second byte excludes overlong encodings (f0) and code points
+        // above U+10FFFF (f4).
+        let lo: u8 = if b == 0xf0 { 0x90 } else { 0x80 };
+        let hi: u8 = if b == 0xf4 { 0x8f } else { 0xbf };
+        if n >= 4 && lo <= s[i + 1] && s[i + 1] <= hi && utf8_cont(s[i + 2]) && utf8_cont(s[i + 3]) { 4 } else { 0 }
+    } else {
+        0
+    }
+}
+
+/// The bytes of `s` from index `i` on are a sequence of well-formed UTF-8
+/// sequences.
+pub open spec fn utf8_from(s: Seq<u8>, i: int) -> bool
+    decreases s.len() - i,
+{
+    if i < 0 || i >= s.len() {
+        i == s.len()
+    } else {
+        let n = utf8_seq_len(s, i);
+        n > 0 && utf8_from(s, i + n)
+    }
+}
+
+/// `s` is well-formed UTF-8.
+#[verifier::opaque]
+pub open spec fn utf8_ok(s: Seq<u8>) -> bool {
+    utf8_from(s, 0)
+}
+
 /// An object of the program heap: well formed, neither a suspended stack
-/// nor a task.
+/// nor a task, and a string holds well-formed UTF-8.
 pub open spec fn loaded_obj_ok(p: Program2, heap0: Seq<HeapObj>, o: HeapObj) -> bool {
     &&& basic_obj_ok(p, heap0, o)
     &&& !(o.body is Stack2)
     &&& o.class_id as int != task_class(p)
+    &&& o.body is Str ==> utf8_ok(o.body->Str_0)
 }
 
 /// The heap part of `loaded_ok` (checked by `v2::heap_check::x_loaded_heap_ok`).

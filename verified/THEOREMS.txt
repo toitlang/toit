@@ -234,7 +234,7 @@ pub fn x_loaded_ok(p: &VProgram, global_count: u64, heap: &Vec<ExecObj>, globals
     ensures forall|c: Cert| c.global_count == global_count as int ==> r == #[trigger] loaded_ok(vview(p), c, hview(heap), globals@),
 
 --- x_loaded_ok_stream  (spec/src/v2/heap_check.rs)
-pub fn x_loaded_ok_stream<S: ObjStream>(p: &VProgram, s: &mut S, global_count: u64, globals: &[Value]) -> (r: (bool, Ghost<Seq<HeapObj>>))
+pub fn x_loaded_ok_stream<S: ObjStream>(p: &VProgram, s: &mut S, global_count: u64, globals: &[Value]) -> (r: (bool, Ghost<Seq<HeapObj>>, bool))
     requires wf_program2(vview(p)),
     ensures r.0 ==> forall|c: Cert| c.global_count == global_count as int ==> #[trigger] loaded_ok(vview(p), c, r.1@, globals@),
 
