@@ -1401,7 +1401,9 @@ pub fn step_r(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
                 lemma_hash_find_cond(p, g);
                 crate::arrays::lemma_heap_good(p, g);
             }
-            crate::rhash::op_hash_find(m, r, p, n, mm, d, Ghost((bci + d) as usize))
+            let (r2, c2) = crate::rhash::op_hash_find_v(m, *r, p, n, mm, d, Ghost((bci + d) as usize));
+            crate::regs::set_regs(r, r2);
+            c2
         },
         _ => {
             // Every opcode of format 2 (below OPCODE_COUNT2, which the

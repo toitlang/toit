@@ -317,6 +317,34 @@ fn find_x(m: &Machine, p: &Program, cw: usize, Ghost(cv): Ghost<Value>, hw: usiz
     }
 }
 
+/// `op_hash_find` out of line, with the registers by value (as the run
+/// loop's other out-of-line paths): inlined, the handler changes the
+/// register allocation of the whole run loop (+3 percent instructions on
+/// programs without maps).
+#[inline(never)]
+pub fn op_hash_find_v(m: &mut Machine, r0: Regs, p: &Program, n: usize, mm: usize, dd: usize, Ghost(target): Ghost<usize>) -> (res: (Regs, Ctl))
+    requires
+        rpre(p, *old(m), r0),
+        p.ap@.builtin.len() == 23,
+        ro_ok(p),
+        vals_good(old(m).g@.heap),
+        !(sp::op_hash_find(p.ap@, old(m).g@, target as int, n as int, mm as int, 5) is Stuck),
+        forall|j: int| (j == n || j == n + 1 || j == n + 2 || j == mm || j == mm + 2) ==>
+            (#[trigger] sp::at(old(m).g@, j) is Smi || sp::at(old(m).g@, j) is Obj),
+        r0.ip@ + dd < 0x1000_0000,
+        r0.ip@ + 5 < 0x1000_0000,
+        target as int == r0.ip@ + dd,
+        n < 256, mm < 256,
+    ensures
+        res.1 == Ctl::Next,
+        rsame(*old(m), *final(m)),
+        rnext(p, *final(m), res.0, sp::op_hash_find(p.ap@, old(m).g@, target as int, n as int, mm as int, 5)),
+{
+    let mut r = r0;
+    let c = op_hash_find(m, &mut r, p, n, mm, dd, Ghost(target));
+    (r, c)
+}
+
 /// HASH_FIND n mm: probe state slots `n`, `n + 1`, `n + 2`, the hash in
 /// slot `mm`, the collection in `mm + 2`; a miss branches forward by `dd`.
 #[inline(always)]
