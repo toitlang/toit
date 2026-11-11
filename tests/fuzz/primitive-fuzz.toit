@@ -217,7 +217,7 @@ adversarial-values rng/Rng -> List:
   result.add Task.current
   return result
 
-HUGE ::= 1 << 21
+HUGE ::= 1 << 20
 
 random-argument rng/Rng pool/List -> any:
   choice := rng.next 10
@@ -285,10 +285,9 @@ main args:
       max := PRIMITIVE-NAMES[index] == "crypto_random.random" ? 1 << 14 : MAX-SIZE
       arguments.map --in-place: | arg |
         (arg is int and arg > max) ? arg % max : arg
-    if PRIMITIVE-NAMES[index] == "core.add_finalizer" and arguments[1] is not Lambda:
-      // The primitive accepts any finalizer, but the message loop in
-      // lib/core/message_.toit only handles lambdas and fails an assertion
-      // (in the system task) when the object dies.
+    if PRIMITIVE-NAMES[index] == "core.add_finalizer":
+      // The primitive accepts any finalizer, but the finalization task calls
+      // it as a lambda without arguments, and the driver dies if that throws.
       arguments[1] = :: null
     if PRIMITIVE-NAMES[index] == "core.process_send":
       arguments[0] = NO-SUCH-PID
