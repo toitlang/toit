@@ -81,7 +81,9 @@ class PrimitivePolicy {
   //    max_message_bytes, max_timers, max_processes, max_run_time_ms,
   //    cpu_budget_ms]
   // where a negative entry keeps the default of the kind and 0 means
-  // unlimited. Returns null and sets [error] to an error object if the
+  // unlimited. Later entries are ignored: entry 9 holds grants that the
+  // system process enforces (ContainerService.POLICY-GRANTS-INDEX in
+  // lib/system/api/containers.toit). Returns null and sets [error] to an error object if the
   // description is invalid. If a new policy is allocated the caller owns it
   // (see [is_owned]) and must hand it to a ProcessGroup.
   static const PrimitivePolicy* from_description(Object* description, Process* process, Object** error);

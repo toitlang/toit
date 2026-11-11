@@ -4,14 +4,15 @@
 
 import expect show *
 import system.containers
-import system.services show ServiceSelector ServiceProvider ServiceHandler ServiceClient
+import system.services show ServiceSelector ServiceProvider ServiceHandler ServiceClient TAG-UNTRUSTED-PROVIDER
 import system.api.service-discovery show ServiceDiscoveryServiceClient
 import .sandbox
 
 /**
 Nothing of a sandbox survives its kill.
 
-The untrusted container provides a service that the driver uses, has
+The untrusted container provides a service (its launch policy grants it)
+  that the driver uses, has
   messages queued in the (busy) sibling's mailbox, a pending discovery
   (a resource in the system process), timers, tasks and finalizers. Then
   it spins until the VM kills it for exceeding its CPU budget. Afterwards
@@ -31,7 +32,8 @@ interface EchoService:
 
 class EchoClient extends ServiceClient implements EchoService:
   constructor:
-    super EchoService.SELECTOR
+    // The provider is in a sandbox, so the client must opt in.
+    super (EchoService.SELECTOR.restrict.allow --tag=TAG-UNTRUSTED-PROVIDER)
 
   echo value/any -> any:
     return invoke_ EchoService.ECHO-INDEX value
@@ -55,7 +57,7 @@ class Finalized_:
 discovered -> bool:
   discovery := ServiceDiscoveryServiceClient
   discovery.open
-  result := discovery.discover EchoService.SELECTOR.uuid --no-wait
+  result := discovery.discover EchoService.SELECTOR.uuid --no-wait --untrusted-providers
   discovery.close
   return result[0] != null
 
@@ -76,6 +78,7 @@ probe client/SiblingClient -> none:
 
 main args:
   sandbox-test args
+      --provide-services
       --exit=containers.EXIT-CPU-BUDGET
       --quotas={"cpu-ms": 1_500}
       --busy-sibling-ms=3_000

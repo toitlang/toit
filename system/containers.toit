@@ -57,6 +57,18 @@ class Container:
   id -> int:
     return gid_
 
+  /**
+  Whether the policy of this container grants it to register service
+    providers when it is sandboxed (see
+    $ContainerService.POLICY-GRANT-PROVIDE-SERVICES).
+  */
+  may-provide-services -> bool:
+    if policy is not Array_: return false
+    index := ContainerService.POLICY-GRANTS-INDEX
+    if policy.size <= index: return false
+    grants := policy[index]
+    return grants & ContainerService.POLICY-GRANT-PROVIDE-SERVICES != 0
+
   is-process-running pid/int -> bool:
     return pids_.contains pid
 
@@ -100,7 +112,7 @@ class Container:
     if kind != ContainerService.POLICY-TRUSTED and kind != ContainerService.POLICY-UNTRUSTED:
       throw "INVALID_ARGUMENT"
     if policy is List:
-      if policy.size > 9: throw "INVALID_ARGUMENT"
+      if policy.size > ContainerService.POLICY-GRANTS-INDEX + 1: throw "INVALID_ARGUMENT"
       policy.do: if it is not int: throw "WRONG_OBJECT_TYPE"
       return Array_.from policy
     return policy
@@ -367,6 +379,9 @@ class ContainerManager extends ContainerServiceProvider implements SystemMessage
   done_ ::= monitor.Latch
 
   constructor .image-registry .service-manager_:
+    service-manager_.may-provide-services = :: | gid/int |
+      container/Container? := lookup-container gid
+      container != null and container.may-provide-services
     set-system-message-handler_ SYSTEM-TERMINATED_ this
     set-system-message-handler_ SYSTEM-SPAWNED_ this
     set-system-message-handler_ SYSTEM-TRACE_ this

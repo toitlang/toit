@@ -23,6 +23,15 @@ interface ContainerService:
   static POLICY-TRUSTED   /int ::= 1
   static POLICY-UNTRUSTED /int ::= 2
 
+  // A policy list holds the grants of the container at this index, after
+  // the kind and the eight quotas. The VM ignores the entry; the system
+  // process enforces the grants.
+  static POLICY-GRANTS-INDEX /int ::= 9
+  // Grant: a sandboxed (untrusted) container may register service
+  // providers. They are only discovered by trusted clients that opt in
+  // (see TAG-UNTRUSTED-PROVIDER in the system.services library).
+  static POLICY-GRANT-PROVIDE-SERVICES /int ::= 1 << 0
+
   list-images -> List
   static LIST-IMAGES-INDEX /int ::= 0
 
@@ -34,7 +43,8 @@ interface ContainerService:
 
   The $policy is null (use the default of the image), a policy kind
     (see $POLICY-TRUSTED), or a list of a policy kind followed by
-    quotas (see `start` in the system.containers library).
+    quotas and grants (see `start` in the system.containers library and
+    $POLICY-GRANTS-INDEX).
   */
   start-container handle/int arguments/any --policy/any=null -> none
   static START-CONTAINER-INDEX /int ::= 7

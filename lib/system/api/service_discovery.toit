@@ -11,7 +11,13 @@ interface ServiceDiscoveryService:
       --major=0
       --minor=3
 
-  discover uuid/string --wait/bool -> List?
+  /**
+  Discovers the providers of the service with the given $uuid.
+
+  Providers in sandboxes (tagged "untrusted-provider") are only returned
+    if $untrusted-providers is true and the caller is trusted.
+  */
+  discover uuid/string --wait/bool --untrusted-providers/bool=false -> List?
   static DISCOVER-INDEX /int ::= 0
 
   watch pid/int -> none
@@ -45,8 +51,8 @@ class ServiceDiscoveryServiceClient extends ServiceClient implements ServiceDisc
     client := _open_ selector --pid=-1 --id=0  // Hardcoded in system process.
     return client and this
 
-  discover uuid/string --wait/bool -> List?:
-    return invoke_ ServiceDiscoveryService.DISCOVER-INDEX [uuid, wait]
+  discover uuid/string --wait/bool --untrusted-providers/bool=false -> List?:
+    return invoke_ ServiceDiscoveryService.DISCOVER-INDEX [uuid, wait, untrusted-providers]
 
   watch pid/int -> none:
     invoke_ ServiceDiscoveryService.WATCH-INDEX pid

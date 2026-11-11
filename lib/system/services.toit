@@ -31,6 +31,25 @@ MAX-UNTRUSTED-CLIENTS_ /int ::= 32
 _client_ /ServiceDiscoveryService ::= (ServiceDiscoveryServiceClient).open
 
 /**
+The tag of every service provided by a sandboxed (untrusted) container.
+
+A sandbox can only provide services when its launch policy grants it (see
+  `containers.start --may-provide-services`). Its providers live in their
+  own namespace: plain selectors never match them, not even when no
+  trusted provider of the service runs, and other sandboxes never
+  discover them. A trusted client that wants to use them opts in by
+  allowing the tag explicitly:
+
+```
+selector := MyService.SELECTOR.restrict.allow --tag=TAG-UNTRUSTED-PROVIDER
+```
+
+Such a selector only matches providers with an allowed tag, so it no
+  longer matches trusted providers without tags.
+*/
+TAG-UNTRUSTED-PROVIDER ::= "untrusted-provider"
+
+/**
 A service selector is used to identify and discover services. It
   has a unique id that never changes and major and minor versions
   numbers that support evolving APIs over time.
@@ -67,7 +86,14 @@ class ServiceSelector:
         minor == selector.minor
 
   is-allowed_ --name/string --major/int --minor/int --tags/List? -> bool:
-    return true
+    return not (tags and tags.contains TAG-UNTRUSTED-PROVIDER)
+
+  /**
+  Whether this selector opts in to providers in sandboxes (see
+    $TAG-UNTRUSTED-PROVIDER).
+  */
+  includes-untrusted-providers_ -> bool:
+    return false
 
 class ServiceSelectorRestricted extends ServiceSelector:
   tags_ := {:}    // Map<string, bool>
@@ -116,7 +142,13 @@ class ServiceSelectorRestricted extends ServiceSelector:
       tags_[tag] = allow
     return this
 
+  includes-untrusted-providers_ -> bool:
+    return (tags_.get TAG-UNTRUSTED-PROVIDER) == true
+
   is-allowed_ --name/string --major/int --minor/int --tags/List? -> bool:
+    // Providers in sandboxes must be allowed explicitly.
+    if tags and (tags.contains TAG-UNTRUSTED-PROVIDER) and not includes-untrusted-providers_:
+      return false
     // Check that the name and versions are allowed.
     restrictions := names_.get name
     name-allowed := not names-include-allowed_
@@ -209,12 +241,13 @@ class ServiceClient:
     discovered/List? := null
     proxy/DiscoveryProxy_? := null
     changes/DiscoveryChanges_? := null
+    untrusted-providers := selector.includes-untrusted-providers_
     if timeout:
       // Install notification dispatch before requesting a notifiable resource.
       ServiceResourceProxyManager_.instance
       // Get a pair with a list of current services, and a resource that will
       // notify us of new services as they are registered.
-      result := _client_.discover selector.uuid --wait
+      result := _client_.discover selector.uuid --wait --untrusted-providers=untrusted-providers
       if result:
         discovered = result[0]
         resource := result[1]
@@ -222,7 +255,7 @@ class ServiceClient:
         proxy = DiscoveryProxy_ (_client_ as ServiceDiscoveryServiceClient) changes resource
     else:
       // Get a list of current services, but don't wait for new ones.
-      result := _client_.discover selector.uuid --no-wait
+      result := _client_.discover selector.uuid --no-wait --untrusted-providers=untrusted-providers
       if result: discovered = result[0]
 
     try:
@@ -230,7 +263,7 @@ class ServiceClient:
         // A registration notification can arrive after discover takes its
         // snapshot but before the proxy is registered. Re-read once after
         // registration; subsequent changes are covered by the proxy.
-        current := _client_.discover selector.uuid --no-wait
+        current := _client_.discover selector.uuid --no-wait --untrusted-providers=untrusted-providers
         discovered = current ? current[0] : null
       if discovered:
         result := find-service_ discovered
@@ -243,7 +276,7 @@ class ServiceClient:
           with-timeout timeout:
             while true:
               changes.wait
-              current := _client_.discover selector.uuid --no-wait
+              current := _client_.discover selector.uuid --no-wait --untrusted-providers=untrusted-providers
               discovered = current ? current[0] : null
               if discovered:
                 result := find-service_ discovered
