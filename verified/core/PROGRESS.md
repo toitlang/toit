@@ -93,7 +93,26 @@ u16 fields at even distances (one l16ui each; about 0.5 B of padding per
 method, 1.8 KB), or the hot fields loaded from one base with positive
 offsets; then re-measure.
 
-Gates: GATES.
+Gates (artifacts gates/, logs/): verified/check.sh --tests passed (spec
+962, core 976 at both widths; audit exact, 262 occurrences: -1, the
+`when_used_as_spec` of a first version removed; VeriFast 111; sandbox
+ctests 125/125; round-3 and round-4 batteries on build/asan and the
+debug build); ctest -j16 format 2 1205/1206 (udp-reuse-port-test; 16
+toitp/image tests needed `ninja build_test_assets` after the format
+change), format 1 (build/host-f1) 1203/1206 (version, reader,
+udp-reuse-port-test); untrusted suite 280 identical plus the two known
+differences; primitive differential 10/10 seeds identical; compare_trace
+--format 2 clean on the four programs; 32-bit host sandbox 125/125;
+nostd, nopanic (3, s, z), Xtensa codegen (3, z); firmware ESP32 and C6 in
+f1 and f2; QEMU suite output identical (f1, f2). Fuzz with the launch
+filter, 30 minutes: on Release+ASan (the earlier gates' build) 115,465
+mutants, 0 crashes; on build/asan (CMAKE_BUILD_TYPE=asan: assertions and
+UBSan) 31,010 mutants, 3 hits of one debug assertion (`objects.h:591`:
+`EncodeVisitor::visit_byte_array` takes the bytes of an external byte
+array with a non-raw tag while encoding an exception; release throws
+LOOKUP_FAILED; not related to the table; gates/fuzz-cm2). The fuzz seeds
+had all been skipped since the trusted default compiles twins
+(core_fuzz.toit now compiles them --untrusted, c41084fd).
 
 ### The red-team batteries (coordinator's item)
 
@@ -126,7 +145,17 @@ and build/host32 in the worktree, round 3 (heap 61, asm 68) and round 4
 - Second item (inline bump allocation on the permission model): not
   started; the steps in "Proven accessors" below stand. The LAYOUT.toml
   rows it asked for are in (C3).
-- Further size in the core (Xtensa, device_size): FURTHER.
+- Further size in the core (Xtensa; estimates, not measured here): the
+  verifier (27.5 KB) is the one item that alone closes the remaining 28.5
+  KB (Kconfig off: -29.6 KB, device/size S4) for products that install no
+  untrusted containers; the checker without the inference could shed its
+  cold diagnostics (`diagnose_shipped`, verdict texts: 2-3 KB). Run loop
+  (28.3 KB now): the ten unchecked twins duplicate their checked handlers
+  (2-3 KB if they share a body with a flag known at the call site), the
+  _WIDE operand variants another 1-2 KB. Cold paths (13.7 KB): one
+  generic slow call path instead of per-opcode slow arms, 3-5 KB. The 106
+  primitives (15 KB) plus their 99 C++ copies (9.6 KB) kept for
+  `NotPorted`: up to 5 KB where the port provably never declines.
 
 ## Device size (branch device/size, 2026-11-11)
 
