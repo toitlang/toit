@@ -264,7 +264,8 @@ PRIMITIVE(allocate) {
             &certificate, &certificate_length);
       }
       // Every byte of the program is written (the first page above).
-      const char* error = V2Verifier::install_verdict(memory, size, meta, certificate, certificate_length);
+      const char* error = V2Verifier::install_verdict(memory, size, meta, certificate, certificate_length,
+                                                      process);
       if (error != null) {
         String* message = process->allocate_string(error);
         if (message == null) FAIL(ALLOCATION_FAILED);

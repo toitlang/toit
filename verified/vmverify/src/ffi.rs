@@ -19,6 +19,7 @@
 
 #[cfg(feature = "std")]
 use core::ffi::c_char;
+use core::ffi::c_void;
 use toit_verified_core::ffi::ProgramTables;
 use crate::clock::Clock;
 use crate::from_vm::{self, PrimitiveArities};
@@ -43,6 +44,29 @@ pub struct VerifyInput {
     /// the program is rejected.
     pub certificate: *const u8,
     pub certificate_length: usize,
+    /// Called with `progress_context` and the method index before each
+    /// method of a shipped certificate is checked (in order, once per
+    /// method), or null. The VM tells its scheduler that the verification,
+    /// which runs inside one primitive, is making progress (README.md,
+    /// "Install time"). It must not touch the program, its tables or the
+    /// certificate.
+    pub progress: Option<unsafe extern "C" fn(context: *mut c_void, method: usize)>,
+    pub progress_context: *mut c_void,
+}
+
+/// The VM's progress callback (`VerifyInput::progress`) as the checker's
+/// `Progress` (toit_spec::progress).
+#[derive(Clone, Copy)]
+pub struct VmProgress {
+    callback: Option<unsafe extern "C" fn(context: *mut c_void, method: usize)>,
+    context: *mut c_void,
+}
+
+impl toit_spec::progress::Progress for VmProgress {
+    fn method(&mut self, m: usize) {
+        // SAFETY: the VM's callback with the context it passed (VerifyInput).
+        if let Some(f) = self.callback { unsafe { f(self.context, m) } }
+    }
 }
 
 pub const MESSAGE_SIZE: usize = 200;
@@ -144,7 +168,8 @@ unsafe fn run(input: &VerifyInput) -> (verify::Verdict, usize, u64) {
             let cert = if input.certificate.is_null() { None } else {
                 Some(core::slice::from_raw_parts(input.certificate, input.certificate_length))
             };
-            let v = verify::verify(&mut converted, input.trusted != 0, cert);
+            let progress = VmProgress { callback: input.progress, context: input.progress_context };
+            let v = verify::verify(&mut converted, input.trusted != 0, cert, progress);
             (v, converted.objects.count(), convert_ns)
         }
     }
@@ -210,6 +235,8 @@ layout_entries!(
     b"VMVERIFY_INPUT_trusted\0" => core::mem::offset_of!(VerifyInput, trusted),
     b"VMVERIFY_INPUT_certificate\0" => core::mem::offset_of!(VerifyInput, certificate),
     b"VMVERIFY_INPUT_certificate_length\0" => core::mem::offset_of!(VerifyInput, certificate_length),
+    b"VMVERIFY_INPUT_progress\0" => core::mem::offset_of!(VerifyInput, progress),
+    b"VMVERIFY_INPUT_progress_context\0" => core::mem::offset_of!(VerifyInput, progress_context),
     b"VMVERIFY_RESULT_SIZE\0" => core::mem::size_of::<VerifyResult>(),
     b"VMVERIFY_RESULT_code\0" => core::mem::offset_of!(VerifyResult, code),
     b"VMVERIFY_RESULT_method\0" => core::mem::offset_of!(VerifyResult, method),

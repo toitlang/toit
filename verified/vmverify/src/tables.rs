@@ -257,6 +257,8 @@ impl Tables {
             trusted: self.trusted as usize,
             certificate: core::ptr::null(),
             certificate_length: 0,
+            progress: None,
+            progress_context: core::ptr::null_mut(),
         }
     }
 }

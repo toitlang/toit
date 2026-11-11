@@ -15,6 +15,8 @@
 
 #pragma once
 
+#include <atomic>
+
 #include "heap.h"
 #include "interpreter.h"
 #include "linked.h"
@@ -299,6 +301,27 @@ class Process : public ProcessListFromProcessGroup::Element,
     ASSERT(state_ == RUNNING);
     ASSERT(timestamp >= 0);
     run_timestamp_ = timestamp;
+    progress_timestamp_.store(static_cast<uint32>(timestamp), std::memory_order_relaxed);
+  }
+
+  // Called by a long-running primitive of this process (install-time
+  // verification: V2Verifier::verify_installed, before each method) to
+  // tell the scheduler that it is making progress: the dead-lock check
+  // (Scheduler::tick) then measures the time since the last report instead
+  // of the time since the process started running. Only the time is
+  // recorded (in microseconds, the low 32 bits: a 32-bit store, so the
+  // scheduler's tick thread never reads a torn value); CPU time and the
+  // run-time limits of policies still count the whole run.
+  void note_progress(int64 now) {
+    progress_timestamp_.store(static_cast<uint32>(now), std::memory_order_relaxed);
+  }
+
+  // The time since the process started running or last reported progress
+  // (note_progress), whichever is later.
+  int64 stalled_us(int64 now) const {
+    int64 run_time = run_time_us(now);
+    uint32 since_progress = static_cast<uint32>(now) - progress_timestamp_.load(std::memory_order_relaxed);
+    return since_progress < run_time ? since_progress : run_time;
   }
 
   // Clears the timestamp, so the process will not appear to have
@@ -400,6 +423,9 @@ class Process : public ProcessListFromProcessGroup::Element,
   ResourceGroupListFromProcess resource_groups_;
 
   int64 run_timestamp_ = -1;
+  // The low 32 bits of the time of the last progress report (note_progress)
+  // or of run_timestamp_, whichever is later.
+  std::atomic<uint32> progress_timestamp_{0};
   uint8* current_bcp_ = null;
 
   friend class HeapObject;

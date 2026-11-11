@@ -130,7 +130,7 @@ PRIMITIVE(writer_commit) {
   // the header's checksum binds it to the bytes (flash_allocation.h). A
   // rejected image is not committed.
   const char* error = V2Verifier::install_verdict(image.begin(), program_size, metadata,
-                                                  certificate, certificate_length);
+                                                  certificate, certificate_length, process);
   if (error != null) {
     String* message = process->allocate_string(error);
     if (message == null) FAIL(ALLOCATION_FAILED);
