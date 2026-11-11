@@ -105,6 +105,7 @@ uword toit_v2_try_allocate_string(void*, uword) { abort(); }
 uword toit_v2_try_allocate_byte_array(void*, uword) { abort(); }
 uword toit_v2_call_primitive(void*, const void*, uword, uword, uword*) { abort(); }
 void toit_v2_report(void*, uword, uword, uword) { abort(); }
+uword toit_v2_tracing(void*) { abort(); }
 }
 
 // Not linked into this program; stands for the computed hash of a string

@@ -333,6 +333,7 @@ Interpreter::Result Interpreter::run_v2() {
   v2_validate(process_, "run entry");
   toit_v2_run(&context);
   v2_validate(process_, "run exit");
+  if (Flags::trace) printf("[exit core interpretation state=%d]\n", static_cast<int>(context.result_state));
 
   GcMetadata::insert_into_remembered_set(process_->task()->stack());
   Object** watermark = watermark_;
@@ -653,7 +654,16 @@ void toit_v2_report(void* raw_process, uword kind, uword bci, uword detail) {
       fprintf(stderr, "verified core: the bottom frame returned at bci %d: terminating the process\n",
               static_cast<int>(bci));
       break;
+    case TOIT_V2_REPORT_TRACE:
+      // Like Interpreter::trace, but with the format-2 opcode number (see
+      // verified/tools/compare_trace.toit).
+      printf("[%6d] #%d\n", static_cast<int>(bci), static_cast<int>(detail));
+      break;
   }
+}
+
+uword toit_v2_tracing(void* raw_process) {
+  return Flags::trace ? 1 : 0;
 }
 
 }  // extern "C"
