@@ -41,6 +41,10 @@ class StuckProvider extends ServiceProvider implements StuckService ServiceHandl
     super "test/stuck" --major=1 --minor=0
     provides StuckService.SELECTOR --handler=this
 
+  // Only providers that serve sandboxed clients are discovered by them.
+  accepts-untrusted-clients -> bool:
+    return true
+
   handle index/int arguments/any --gid/int --client/int -> any:
     unreachable
 

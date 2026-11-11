@@ -118,7 +118,11 @@ Each hypothesis is an obligation on the implementation.
    fields are instances with exactly the class's field count; instance
    fields and array elements are smis or references to existing
    objects) and is neither a suspended stack (`Stack2`) nor a task (an
-   object of the builtin task class); `globals0.len() == c.global_count`
+   object of the builtin task class), and every string holds
+   well-formed UTF-8 (`utf8_ok`: no overlong encodings, surrogates or
+   code points above U+10FFFF, as `Utils::is_valid_utf_8`; the soundness
+   proof doesn't use it, and it is not part of the invariant `wf`: the
+   primitives aren't proven to keep it); `globals0.len() == c.global_count`
    and every global is a value; every root and literal is a value.
    `v2/heap_check.rs::x_loaded_ok(p, c, heap, globals)` (Verus) is proven
    to return exactly `loaded_ok(pview2(p), c@, heap, globals)`

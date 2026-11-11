@@ -18,7 +18,10 @@
 //! `loaded_ok(vview(p), c@, heap, globals)`: object classes exist,
 //! instances of classes with fields have their class's field count, every
 //! reference in the heap, the roots, the literals and the globals is in
-//! range, and the heap has no machine objects (suspended stacks, tasks).
+//! range, the heap has no machine objects (suspended stacks, tasks), and
+//! every string holds well-formed UTF-8 (one linear pass over the string
+//! bytes; primitives are not yet proven to keep it, so it is a fact about
+//! the loaded heap, not part of the invariant `wf`).
 //! The VM can run it on an untrusted launch next to `check::verify`.
 //! `check_heap` (plain Rust) only wraps it for `toit_spec_verify` and
 //! words the rejection.
@@ -72,6 +75,71 @@ pub fn x_all_good(Ghost(h): Ghost<Seq<HeapObj>>, n: usize, vs: &[Value]) -> (r: 
     true
 }
 
+/// `utf8_seq_len(s, i)`.
+pub fn x_utf8_seq_len(s: &[u8], i: usize) -> (r: usize)
+    requires i < s@.len(),
+    ensures r as int == utf8_seq_len(s@, i as int),
+{
+    let n = s.len() - i;
+    let b = ix(s, i);
+    if b < 0x80 {
+        1
+    } else if 0xc2 <= b && b <= 0xdf {
+        if n >= 2 && x_utf8_cont(ix(s, i + 1)) { 2 } else { 0 }
+    } else if 0xe0 <= b && b <= 0xef {
+        let lo: u8 = if b == 0xe0 { 0xa0 } else { 0x80 };
+        let hi: u8 = if b == 0xed { 0x9f } else { 0xbf };
+        if n >= 3 && lo <= ix(s, i + 1) && ix(s, i + 1) <= hi && x_utf8_cont(ix(s, i + 2)) { 3 } else { 0 }
+    } else if 0xf0 <= b && b <= 0xf4 {
+        let lo: u8 = if b == 0xf0 { 0x90 } else { 0x80 };
+        let hi: u8 = if b == 0xf4 { 0x8f } else { 0xbf };
+        if n >= 4 && lo <= ix(s, i + 1) && ix(s, i + 1) <= hi && x_utf8_cont(ix(s, i + 2))
+                && x_utf8_cont(ix(s, i + 3)) { 4 } else { 0 }
+    } else {
+        0
+    }
+}
+
+/// `utf8_cont(b)`.
+#[inline(always)]
+pub fn x_utf8_cont(b: u8) -> (r: bool)
+    ensures r == utf8_cont(b),
+{
+    0x80 <= b && b < 0xc0
+}
+
+/// `utf8_ok(s)`: one pass over the bytes (ASCII bytes take the short path).
+pub fn x_utf8_ok(s: &[u8]) -> (r: bool)
+    ensures r == utf8_ok(s@),
+{
+    reveal(utf8_ok);
+    let len = s.len();
+    let mut i: usize = 0;
+    while i < len
+        invariant len == s@.len(), i <= len, utf8_ok(s@) == utf8_from(s@, i as int),
+        decreases len - i,
+    {
+        if ix(s, i) < 0x80 {
+            i += 1;
+        } else {
+            let n = x_utf8_seq_len(s, i);
+            if n == 0 {
+                return false;
+            }
+            i += n;
+        }
+    }
+    true
+}
+
+/// Diagnostics only: `o` is a string that isn't well-formed UTF-8.
+pub fn is_bad_string(o: &ExecObj) -> bool {
+    match &o.body {
+        ExecBody::Str(s) => !x_utf8_ok(s.as_slice()),
+        _ => false,
+    }
+}
+
 /// An object of the program heap (`loaded_obj_ok`).
 pub fn x_loaded_obj_ok(p: &VProgram, Ghost(h): Ghost<Seq<HeapObj>>, n: usize, o: &ExecObj) -> (r: bool)
     requires wf_program2(vview(p)), h.len() == n,
@@ -92,16 +160,41 @@ pub fn x_loaded_obj_ok(p: &VProgram, Ghost(h): Ghost<Seq<HeapObj>>, n: usize, o:
             if fc && f.len() as u64 != x_ifc(p, cl) as u64 {
                 return false;
             }
-            x_all_good(Ghost(h), n, f.as_slice())
+            let fs = f.as_slice();
+            let r = x_all_good(Ghost(h), n, fs);
+            proof {
+                // A witness for a rejection.
+                assert(fs@ == f@ && o@.body == Body::Instance(f@));
+                if !r {
+                    let i = choose|i: int| 0 <= i < f@.len() && !good(h, #[trigger] f@[i]);
+                    assert(!good(h, o@.body->Instance_0[i]));
+                }
+            }
+            r
         },
         ExecBody::Array(e) => {
             if fc {
                 return false;
             }
-            x_all_good(Ghost(h), n, e.as_slice())
+            let es = e.as_slice();
+            let r = x_all_good(Ghost(h), n, es);
+            proof {
+                // A witness for a rejection.
+                assert(es@ == e@ && o@.body == Body::Array(e@));
+                if !r {
+                    let i = choose|i: int| 0 <= i < e@.len() && !good(h, #[trigger] e@[i]);
+                    assert(!good(h, o@.body->Array_0[i]));
+                }
+            }
+            r
         },
         ExecBody::Stack(_, _) => false,
         ExecBody::Stack2(_, _, _, _, _) => false,
+        ExecBody::Str(s) => {
+            let u = x_utf8_ok(s.as_slice());
+            proof { assert(o@.body == Body::Str(s@)); }
+            !fc && u
+        },
         _ => !fc,
     }
 }
@@ -182,7 +275,9 @@ pub trait ObjStream {
 /// `global_count`. An object is checked against the count `s` gives with
 /// it; at the end every such count must be at most the number of objects,
 /// so the checks hold for the whole heap (`lemma_loaded_obj_mono`).
-pub fn x_loaded_ok_stream<S: ObjStream>(p: &VProgram, s: &mut S, global_count: u64, globals: &[Value]) -> (r: (bool, Ghost<Seq<HeapObj>>))
+/// `r.2` (diagnostics only) tells that the object that failed is a string
+/// that isn't well-formed UTF-8.
+pub fn x_loaded_ok_stream<S: ObjStream>(p: &VProgram, s: &mut S, global_count: u64, globals: &[Value]) -> (r: (bool, Ghost<Seq<HeapObj>>, bool))
     requires wf_program2(vview(p)),
     ensures r.0 ==> forall|c: Cert| c.global_count == global_count as int ==> #[trigger] loaded_ok(vview(p), c, r.1@, globals@),
 {
@@ -201,14 +296,14 @@ pub fn x_loaded_ok_stream<S: ObjStream>(p: &VProgram, s: &mut S, global_count: u
         decreases 0x2000_0000 - count,
     {
         if count >= 0x1fff_ffff {
-            return (false, Ghost(h));
+            return (false, Ghost(h), false);
         }
         match s.next_obj() {
             None => break,
             Some((o, n)) => {
                 let ghost hn = Seq::new(n as nat, |j: int| o@);
                 if !x_loaded_obj_ok(p, Ghost(hn), n, &o) {
-                    return (false, Ghost(h));
+                    return (false, Ghost(h), is_bad_string(&o));
                 }
                 let new_bound = if n > bound { n } else { bound };
                 proof {
@@ -231,7 +326,7 @@ pub fn x_loaded_ok_stream<S: ObjStream>(p: &VProgram, s: &mut S, global_count: u
         }
     }
     if bound > count {
-        return (false, Ghost(h));
+        return (false, Ghost(h), false);
     }
     proof {
         assert forall|i: int| 0 <= i < h.len() implies loaded_obj_ok(pv, h, #[trigger] h[i]) by {
@@ -239,7 +334,7 @@ pub fn x_loaded_ok_stream<S: ObjStream>(p: &VProgram, s: &mut S, global_count: u
         }
     }
     if !(x_all_good(Ghost(h), count, p.roots) && x_all_good(Ghost(h), count, p.literals)) {
-        return (false, Ghost(h));
+        return (false, Ghost(h), false);
     }
     let ok = globals.len() as u64 == global_count && x_all_good(Ghost(h), count, globals);
     proof {
@@ -250,7 +345,7 @@ pub fn x_loaded_ok_stream<S: ObjStream>(p: &VProgram, s: &mut S, global_count: u
             assert forall|c: Cert| c.global_count == global_count as int implies #[trigger] loaded_ok(vview(p), c, h, globals@) by {}
         }
     }
-    (ok, Ghost(h))
+    (ok, Ghost(h), false)
 }
 
 
@@ -265,6 +360,7 @@ pub fn check_heap(p: &VProgram, heap: &Vec<ExecObj>) -> Result<(), alloc::string
     }
     match x_loaded_heap_ok(p, heap) {
         Err(i) if i == u64::MAX => Err(alloc::string::String::from("heap too large, or a bad reference in the roots or literals")),
+        Err(i) if is_bad_string(&heap[i as usize]) => Err(alloc::format!("object {} is a string that isn't valid UTF-8", i)),
         Err(i) => Err(alloc::format!("object {} is malformed, a machine object or dangling", i)),
         Ok(()) => Ok(()),
     }

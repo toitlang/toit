@@ -3,21 +3,20 @@
 // be found in the tests/LICENSE file.
 
 import expect show *
-import system.services show ServiceSelector ServiceProvider ServiceHandler ServiceClient
+import system.services show ServiceSelector ServiceProvider ServiceHandler ServiceClient TAG-UNTRUSTED-PROVIDER
+import system.api.service-discovery show ServiceDiscoveryServiceClient
 import .sandbox
 
 /**
-Characterizes service squatting by a sandbox. This test documents an
-  open design gap (see "Threats tested" in docs/sandbox-policy.md); it
-  asserts the current behavior and must be updated when the gap is
-  closed.
+A sandbox can't squat a service that trusted clients expect.
 
-A sandbox can provide any service. Its providers get the lowest priority
-  and the "untrusted-provider" tag, so they never win against a trusted
-  provider of the same service. But while no trusted provider is
-  registered (for example during boot, or after the trusted provider
-  crashed), a trusted client with a plain selector opens the sandbox's
-  provider. Only clients that deny the tag are safe.
+The untrusted container's launch policy grants it to provide services, and
+  it provides a service for which no trusted provider runs. Its provider
+  lives in the sandbox namespace (the "untrusted-provider" tag): trusted
+  clients with a plain selector, or with a selector that only denies
+  other tags, never get it, and the discovery service doesn't even return
+  it to them. Only a client that opts in sees it (see
+  provider-grant-test.toit for its use).
 */
 
 interface SquatService:
@@ -49,17 +48,30 @@ class SquatProvider extends ServiceProvider implements SquatService ServiceHandl
     return "the sandbox"
 
 probe client/SiblingClient -> none:
-  plain := SquatClient
-  plain.open --timeout=(Duration --s=5)
-  // GAP: a trusted client with a plain selector talks to the sandbox.
-  expect-equals "the sandbox" plain.who
-  plain.close
+  discovery := ServiceDiscoveryServiceClient
+  discovery.open
+  // Wait until the sandbox's provider is registered.
+  with-timeout --ms=5_000:
+    while not (discovery.discover SquatService.SELECTOR.uuid --no-wait --untrusted-providers)[0]:
+      sleep --ms=10
 
-  restricted := SquatClient (SquatService.SELECTOR.restrict.deny --tag="untrusted-provider")
-  expect-throw "Cannot find service": restricted.open --timeout=(Duration --ms=200)
+  // A plain discovery doesn't return the sandbox's provider.
+  expect-null (discovery.discover SquatService.SELECTOR.uuid --no-wait)[0]
+  discovery.close
+
+  // Trusted clients with a plain selector don't get it, although no
+  // trusted provider of the service runs.
+  plain := SquatClient
+  expect-throw "Cannot find service": plain.open --timeout=(Duration --ms=200)
+
+  // Neither do clients that restrict their selector without opting in.
+  other := SquatClient (SquatService.SELECTOR.restrict.deny --tag="other")
+  expect-throw "Cannot find service": other.open --timeout=(Duration --ms=200)
+  denying := SquatClient (SquatService.SELECTOR.restrict.deny --tag=TAG-UNTRUSTED-PROVIDER)
+  expect-throw "Cannot find service": denying.open --timeout=(Duration --ms=200)
 
 main args:
-  sandbox-test args --error="DONE" --during=(:: probe it): | arguments/Map |
+  sandbox-test args --provide-services --error="DONE" --during=(:: probe it): | arguments/Map |
     provider := SquatProvider
     provider.install
     sleep --ms=3_000

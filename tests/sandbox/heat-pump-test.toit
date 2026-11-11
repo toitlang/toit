@@ -4,15 +4,19 @@
 
 /**
 Heat-pump demo: an untrusted control program reaches the heat-pump driver
-  (a trusted provider container) only through service discovery, and it
-  can't reach a second broker (another trusted provider) that it did not
-  discover, even when it knows its process id.
+  (a trusted provider container that serves sandboxed clients) only
+  through service discovery, and it can't reach a second broker (another
+  trusted provider that doesn't serve sandboxed clients), even when it
+  knows its process id: serving sandboxes is opt-in, and discovery
+  doesn't return the broker to the sandbox, so it never gets the
+  capability to send to it.
 */
 
 import expect show *
 import rpc
 import system.containers
 import system.services show ServiceSelector ServiceProvider ServiceHandler ServiceClient
+import system.api.service-discovery show ServiceDiscoveryServiceClient
 
 ROLE-KEY ::= "role"
 
@@ -45,6 +49,10 @@ class HeatPumpProvider extends ServiceProvider implements HeatPumpService Servic
   constructor:
     super "test/heat-pump" --major=1 --minor=0
     provides HeatPumpService.SELECTOR --handler=this
+
+  // The heat pump is meant to be controlled by sandboxed programs.
+  accepts-untrusted-clients -> bool:
+    return true
 
   handle index/int arguments/any --gid/int --client/int -> any:
     if index == HeatPumpService.SET-TARGET-INDEX: return set-target arguments
@@ -113,17 +121,40 @@ class BrokerProvider extends ServiceProvider implements BrokerService ServiceHan
   pid -> int: return Process.current.id
   received -> int: return received_
 
+// The firmware update service of the heat-pump driver. It runs in the same
+// process as the heat-pump service, but only trusted clients may use it.
+interface FirmwareService:
+  static SELECTOR ::= ServiceSelector
+      --uuid="2d4e6f80-9a1b-4c3d-8e5f-7a6b5c4d3e30"
+      --major=1
+      --minor=0
+
+  update -> none
+  static UPDATE-INDEX ::= 0
+
+class FirmwareProvider extends ServiceProvider implements FirmwareService ServiceHandler:
+  constructor:
+    super "test/heat-pump/firmware" --major=1 --minor=0
+    provides FirmwareService.SELECTOR --handler=this
+
+  handle index/int arguments/any --gid/int --client/int -> any:
+    if index == FirmwareService.UPDATE-INDEX: return update
+    unreachable
+
+  update -> none:
+
 main arguments:
   if arguments is Map:
     role := arguments[ROLE-KEY]
     if role == "heat-pump":
       (HeatPumpProvider).install
+      (FirmwareProvider).install
       while true: sleep --ms=50
     else if role == "broker":
       (BrokerProvider).install
       while true: sleep --ms=50
     else if role == "controller":
-      run-controller arguments["broker-pid"]
+      run-controller arguments["broker-pid"] arguments["heat-pump-pid"] arguments["firmware-id"]
     else:
       throw "Unknown role: $role"
     return
@@ -140,9 +171,24 @@ run-driver:
   broker-client.open --timeout=(Duration --s=5)
   broker-pid := broker-client.pid
   expect-equals 1 broker-client.opened
+  // The id of the firmware service in the heat-pump process.
+  discovery := ServiceDiscoveryServiceClient
+  discovery.open
+  firmware/List? := null
+  with-timeout --ms=5_000:
+    while not firmware:
+      firmware = (discovery.discover FirmwareService.SELECTOR.uuid --no-wait)[0]
+      if not firmware: sleep --ms=10
+  discovery.close
+  expect-equals 7 firmware.size
+  controller-arguments := {
+    ROLE-KEY: "controller",
+    "broker-pid": broker-pid,
+    "heat-pump-pid": firmware[0],
+    "firmware-id": firmware[1],
+  }
 
-  controller := containers.start containers.current
-      {ROLE-KEY: "controller", "broker-pid": broker-pid}
+  controller := containers.start containers.current controller-arguments
       --untrusted
   expect-equals 0 controller.wait
 
@@ -159,7 +205,7 @@ run-driver:
   print "OK"
 
 /** The untrusted control program. */
-run-controller broker-pid/int:
+run-controller broker-pid/int heat-pump-pid/int firmware-id/int:
   // Reaching the heat pump through discovery works.
   heat-pump := HeatPumpClient
   heat-pump.open
@@ -167,8 +213,20 @@ run-controller broker-pid/int:
   expect-equals 21 heat-pump.target
   expect-throw "OUT_OF_RANGE": heat-pump.set-target 99
 
-  // The broker was not discovered, so the controller can't send to it, no
-  // matter how.
+  // The firmware service runs in the same process, so the controller can
+  // send to it, but the provider refuses to serve the controller.
+  expect-throw "Cannot find service": (ServiceClient FirmwareService.SELECTOR).open
+  expect-throw "PERMISSION_DENIED":
+    rpc.invoke heat-pump-pid 300 [firmware-id, FirmwareService.SELECTOR.uuid, 1, 0]
+
+  // The broker doesn't serve sandboxed clients, so the controller doesn't
+  // discover it ...
+  expect-throw "Cannot find service": (BrokerClient).open
+  discovery := ServiceDiscoveryServiceClient
+  discovery.open
+  expect-null (discovery.discover BrokerService.SELECTOR.uuid --no-wait)[0]
+  discovery.close
+  // ... and can't send to it, no matter how.
   expect-throw "PERMISSION_DENIED": process-send_ broker-pid 100 "unlock"
   expect-throw "PERMISSION_DENIED":
     rpc.invoke broker-pid 300 [0, BrokerService.SELECTOR.uuid, 1, 0]

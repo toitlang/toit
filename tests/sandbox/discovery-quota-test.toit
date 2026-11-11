@@ -23,7 +23,8 @@ expect-throw expected/string [block] -> none:
   if exception != expected: throw "EXPECTED $expected, GOT $exception"
 
 main args:
-  sandbox-test args --error="DONE": | arguments/Map |
+  // The registration limits apply to sandboxes that may provide services.
+  sandbox-test args --provide-services --error="DONE": | arguments/Map |
     discovery := ServiceDiscoveryServiceClient
     discovery.open
 

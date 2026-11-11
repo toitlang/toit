@@ -14,7 +14,7 @@
 // directory of this repository.
 
 import monitor
-import system.services show ServiceProvider ServiceHandler ServiceResource
+import system.services show ServiceProvider ServiceHandler ServiceResource TAG-UNTRUSTED-PROVIDER
 import system.api.service-discovery show ServiceDiscoveryService
 import system.api.print show PrintService
 import system.api.containers show ContainerService
@@ -25,12 +25,6 @@ Services with this tag that are provided by the system process are only
 */
 TAG-SANDBOX-ONLY ::= "sandbox-only"
 
-/**
-Tag added to every service provided by a sandboxed process, so clients can
-  deny such providers with a restricted service selector.
-*/
-TAG-UNTRUSTED-PROVIDER ::= "untrusted-provider"
-
 class DiscoverableService:
   pid/int
   id/int
@@ -40,14 +34,20 @@ class DiscoverableService:
   minor/int
   priority/int
   tags/List?
-  constructor --.pid --.id --.uuid --.name --.major --.minor --.priority --.tags:
+  // Whether the provider serves sandboxed (untrusted) clients.
+  accepts-untrusted/bool
+  constructor --.pid --.id --.uuid --.name --.major --.minor --.priority --.tags --.accepts-untrusted:
 
 class DiscoveryResource extends ServiceResource:
   uuid/string
   manager/SystemServiceManager
   pid/int
+  // Whether the waiting process is sandboxed (untrusted).
+  untrusted/bool
+  // Whether the waiting process opted in to providers in sandboxes.
+  untrusted-providers/bool
 
-  constructor .uuid .manager client/int --.pid:
+  constructor .uuid .manager client/int --.pid --.untrusted --.untrusted-providers:
     super manager client --notifiable
     manager.waiting-by-pid_.update pid --init=0: it + 1
 
@@ -82,6 +82,15 @@ class SystemServiceManager extends ServiceProvider
   static MAX-UNTRUSTED-STRING-SIZE ::= 128 // Size of a uuid, name or tag.
   static MAX-UNTRUSTED-TAGS ::= 8
 
+  /**
+  Called with the group id of a sandboxed process that registers a
+    service; returns whether its launch policy grants it to provide
+    services (see $ContainerService.POLICY-GRANT-PROVIDE-SERVICES). Set
+    by the container manager. Without it, sandboxes can't provide
+    services.
+  */
+  may-provide-services/Lambda? := null
+
   constructor:
     super "system/service-discovery" --major=0 --minor=1 --patch=1
     provides ServiceDiscoveryService.SELECTOR --handler=this --id=0
@@ -95,33 +104,43 @@ class SystemServiceManager extends ServiceProvider
   handle index/int arguments/any --gid/int --client/int -> any:
     pid := pid --client=client
     if index == ServiceDiscoveryService.DISCOVER-INDEX:
+      // Older clients don't send the opt-in for providers in sandboxes.
+      untrusted-providers := arguments.size > 2 and arguments[2] == true
       return discover arguments[0] --wait=arguments[1] client --pid=pid
+          --untrusted-providers=untrusted-providers
     if index == ServiceDiscoveryService.WATCH-INDEX:
       return watch pid arguments
     if index == ServiceDiscoveryService.LISTEN-INDEX:
-      return listen pid arguments
+      return listen pid arguments --gid=gid
     if index == ServiceDiscoveryService.UNLISTEN-INDEX:
       return unlisten pid arguments
     unreachable
 
-  listen pid/int arguments/List -> none:
+  listen pid/int arguments/List --gid/int -> none:
     id := arguments[0]
     uuid := arguments[1]
     service-name := arguments[2]
     service-priority := arguments[5]
     service-tags := arguments[6]
+    // Older clients don't send the opt-in for sandboxed clients.
+    accepts-untrusted := arguments.size > 7 ? arguments[7] : false
     // Clients look at every discovered entry, so an entry with a value of
     // the wrong type (for example a tag that isn't a string) would make
     // the discovery of the service fail for all of them.
     if id is not int or uuid is not string or service-name is not string
         or arguments[3] is not int or arguments[4] is not int
         or service-priority is not int
-        or (service-tags != null and service-tags is not List):
+        or (service-tags != null and service-tags is not List)
+        or accepts-untrusted is not bool:
       throw "WRONG_OBJECT_TYPE"
     if service-tags and (service-tags.any: it is not string): throw "WRONG_OBJECT_TYPE"
 
     untrusted := is-untrusted_ pid
     if untrusted:
+      // Providing services is a privilege: a sandbox could otherwise offer
+      // services that trusted clients expect from trusted providers.
+      grant := may-provide-services
+      if not (grant and (grant.call gid)): throw "SERVICE_REGISTRATION_DENIED"
       if uuid.size > MAX-UNTRUSTED-STRING-SIZE or service-name.size > MAX-UNTRUSTED-STRING-SIZE:
         throw "INVALID_ARGUMENT"
       if service-tags and (service-tags.size > MAX-UNTRUSTED-TAGS
@@ -134,10 +153,13 @@ class SystemServiceManager extends ServiceProvider
     if services.contains id: throw "Service id $id is already in use"
 
     if untrusted:
-      // Sandboxed providers can't take over services from trusted
-      // providers, and clients can recognize (and deny) them.
+      // Sandboxed providers live in their own namespace: the tag puts them
+      // there (see $is-visible_), so only trusted clients that opt in
+      // discover them, and never instead of a trusted provider. Other
+      // sandboxes don't discover them.
       service-priority = ServiceProvider.PRIORITY-UNPREFERRED-STRONGLY
       service-tags = service-tags ? (service-tags + [TAG-UNTRUSTED-PROVIDER]) : [TAG-UNTRUSTED-PROVIDER]
+      accepts-untrusted = false
     service := DiscoverableService
         --pid=pid
         --id=id
@@ -147,6 +169,7 @@ class SystemServiceManager extends ServiceProvider
         --minor=arguments[4]
         --priority=service-priority
         --tags=service-tags
+        --accepts-untrusted=accepts-untrusted
     services[id] = service
 
     // Register the service based on its uuid and sort the all services
@@ -158,7 +181,8 @@ class SystemServiceManager extends ServiceProvider
     // If anyone is waiting for this service, signal them.
     waiting_.get uuid --if-present=: | resources/List |
       resources.do: | resource/DiscoveryResource |
-        resource.notify_ (array-of-services_ [service])
+        if is-visible_ service --untrusted=resource.untrusted --untrusted-providers=resource.untrusted-providers:
+          resource.notify_ (array-of-services_ [service])
 
     // Register the process as a service manager and signal
     // anyone waiting for services to appear.
@@ -180,32 +204,54 @@ class SystemServiceManager extends ServiceProvider
     if not services.is-empty: return
     services-by-pid_.remove pid
 
-  discover uuid/string --wait/bool client/int --pid/int -> List:
+  discover uuid/string --wait/bool client/int --pid/int --untrusted-providers/bool -> List:
     services/List? := null
     resource-serialized := null
+    untrusted := is-untrusted_ pid
     if wait:
-      if is-untrusted_ pid:
+      if untrusted:
         if uuid.size > MAX-UNTRUSTED-STRING-SIZE: throw "INVALID_ARGUMENT"
         if (waiting-by-pid_.get pid --if-absent=: 0) >= MAX-UNTRUSTED-WAITING:
           throw "QUOTA_EXCEEDED"
-      resource := DiscoveryResource uuid this client --pid=pid
+      resource := DiscoveryResource uuid this client
+          --pid=pid
+          --untrusted=untrusted
+          --untrusted-providers=untrusted-providers
       (waiting_.get uuid --init=: []).add resource
       resource-serialized = resource.serialize-for-rpc
     services = services-by-uuid_.get uuid
     if services:
-      untrusted := is-untrusted_ pid
-      system-pid := Process.current.id
-      if not untrusted:
-        // Hide the system services that only exist for sandboxed clients.
-        services = services.filter: | service/DiscoverableService |
-          not (service.pid == system-pid and service.tags and service.tags.contains TAG-SANDBOX-ONLY)
-      else:
+      services = services.filter: | service/DiscoverableService |
+        is-visible_ service --untrusted=untrusted --untrusted-providers=untrusted-providers
+      if untrusted:
         // Discovery is how a sandboxed process gets the capability to send
         // messages to a provider: grant it for every discovered provider.
         services.do: | service/DiscoverableService |
           process-grant-send_ pid service.pid
       if services.is-empty: services = null
     return [array-of-services_ services, resource-serialized]
+
+  /**
+  Whether a client discovers the given $service.
+
+  Providers tagged with $TAG-UNTRUSTED-PROVIDER (every provider in a
+    sandbox) are only discovered by trusted clients that opt in to them
+    ($untrusted-providers): plain selectors never get them, not even when
+    no trusted provider of the service runs.
+
+  Sandboxed ($untrusted) clients only discover providers that serve them.
+    The providers in the system process are reachable anyway and refuse a
+    client that they don't serve with a clear error when it opens them.
+    Other clients don't discover the system services that only exist for
+    sandboxed clients.
+  */
+  static is-visible_ service/DiscoverableService --untrusted/bool --untrusted-providers/bool -> bool:
+    tags := service.tags
+    if tags and tags.contains TAG-UNTRUSTED-PROVIDER:
+      if untrusted or not untrusted-providers: return false
+    in-system-process := service.pid == Process.current.id
+    if untrusted: return in-system-process or service.accepts-untrusted
+    return not (in-system-process and tags and tags.contains TAG-SANDBOX-ONLY)
 
   static is-untrusted_ pid/int -> bool:
     return (process-policy_ pid) == ContainerService.POLICY-UNTRUSTED
@@ -251,7 +297,7 @@ class SystemServiceManager extends ServiceProvider
       processes.remove pid
       process-send_ manager SYSTEM-RPC-NOTIFY-TERMINATED_ pid
 
-  discover uuid/string --wait/bool -> List:
+  discover uuid/string --wait/bool --untrusted-providers/bool=false -> List:
     unreachable  // <-- TODO(kasper): nasty
 
   listen id/int uuid/string -> none
@@ -259,7 +305,8 @@ class SystemServiceManager extends ServiceProvider
       --major/int
       --minor/int
       --priority/int
-      --tags/List:
+      --tags/List
+      --accepts-untrusted/bool=false:
     unreachable  // <-- TODO(kasper): nasty
 
   unlisten id/int -> none:
