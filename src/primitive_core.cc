@@ -1164,11 +1164,12 @@ PRIMITIVE(time_info) {
   Array* result = process->object_heap()->allocate_array(9, Smi::zero());
   if (result == null) FAIL(ALLOCATION_FAILED);
   struct tm timeinfo;
-  if (is_utc) {
-    gmtime_r(&t, &timeinfo);
-  } else {
-    localtime_r(&t, &timeinfo);
-  }
+  struct tm* converted = is_utc
+      ? gmtime_r(&t, &timeinfo)
+      : localtime_r(&t, &timeinfo);
+  // The conversion fails if the year doesn't fit an int. The fields are then
+  // uninitialized (stack contents).
+  if (converted == null) FAIL(OUT_OF_RANGE);
   result->at_put(0, Smi::from(timeinfo.tm_sec));
   result->at_put(1, Smi::from(timeinfo.tm_min));
   result->at_put(2, Smi::from(timeinfo.tm_hour));
