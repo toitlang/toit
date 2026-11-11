@@ -12,6 +12,7 @@
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$HERE/battery-env.sh"
+if [ ! -x "$ASANRUN" ]; then echo "SKIP line A: no ASan build at $ASANRUN"; exit 0; fi
 ASM="$HOSTRUN --project-root tools tools/asm.toit"
 BASE="$WORK/numA.snapshot"
 # Compile the base UNTRUSTED (checked opcodes + certificate); asm drops the
