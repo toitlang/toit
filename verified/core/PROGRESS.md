@@ -1,5 +1,22 @@
 # Phase 4a progress (verified core, format 2 on x86-64)
 
+## Shipped certificates on devices, size diet (branch device/certificate-and-size, 2026-11-11)
+
+1. Merge of `spec/shipped-certificate` (56ec778b) into integration
+   (a7876e58): **certificate merge complete at 531bc8a0**. Conflicts:
+   verified/core/Cargo.toml (the core stays `no_std`: toit_spec without
+   `std` and without `infer`), verified/vmverify/Cargo.toml (both the
+   `device-runtime` and the `infer` features), src/verifier.cc and
+   src/verifier_v2.cc (the entry points take both the install-time program
+   size and the shipped certificate; the FreeRTOS `verify_for_policy` runs
+   the format-2 verifier with the certificate). Gates at 531bc8a0:
+   verified/check.sh --tests (spec 892, core 781 verified at both word
+   widths), ctest -j16 1161/1164 (version, reader not run;
+   udp-reuse-port-test), 32-bit host tests/sandbox 95/95,
+   verified/vmverify/tests/nostd_check.sh. Scripts and logs:
+   artifacts device-cert/ (scripts/mk32.sh builds build/host32,
+   scripts/fw-all.sh the ESP32-C6 firmware variants).
+
 ## Phase 5 (branch phase5/portability, 2026-11-11)
 
 Portability: 32-bit words, no_std, device build, install-time
