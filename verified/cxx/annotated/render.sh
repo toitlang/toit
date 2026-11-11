@@ -12,6 +12,7 @@
 
 set -uo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/env.sh"
+acxx_lock
 
 ARGS=()
 if [ "${1:-}" = --check ]; then
@@ -24,7 +25,7 @@ if [ $# -eq 0 ]; then
 fi
 TOIT_BIN="${TOIT:-$REPO_ROOT/build/host/sdk/bin/toit}"
 [ -x "$TOIT_BIN" ] || TOIT_BIN="$(command -v toit)"
-SCRATCH="${RENDER_SCRATCH:-$ACXX_HOME/scratch}"
+SCRATCH="${RENDER_SCRATCH:-$ACXX_WORK/scratch}"
 mkdir -p "$SCRATCH" "$GEN32"
 cd "$ANNOTATED_DIR"
 # The 32-bit renderings (not committed: run.sh verifies them with

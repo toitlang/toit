@@ -19,6 +19,7 @@
 
 set -uo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/env.sh"
+acxx_lock
 QUICK=0
 if [ "${1:-}" = --quick ]; then QUICK=1; shift; fi
 filter="${1:-}"
@@ -28,23 +29,10 @@ if [ ! -x "$VERIFAST" ]; then
   echo "SKIP: VeriFast $VERIFAST_VERSION is not installed at $VERIFAST_DIR (verified/cxx/annotated/install-tools.sh)"
   exit 3
 fi
-mkdir -p "$ACXX_HOME/logs"
+mkdir -p "$ACXX_WORK/logs"
 
 failures=0
 note() { if [ "$1" -ne 0 ]; then failures=$((failures + 1)); fi; }
-
-# 1, 2.
-if [ -z "$filter" ]; then
-  if ./render.sh --check > "$ACXX_HOME/logs/render.log" 2>&1; then
-    printf 'ok    %-40s %s\n' render "$(grep -c '^ok' "$ACXX_HOME/logs/render.log") sidecars match the sources"
-  else
-    printf 'FAIL  %-40s\n' render
-    grep -v '^ok' "$ACXX_HOME/logs/render.log" | head -20
-    failures=$((failures + 1))
-  fi
-  ./constants-check.sh
-  note $?
-fi
 
 # The options every C file is verified with: -fno-strict-aliasing (the
 # object words are typed by the chunks, not by C's effective types),
@@ -52,9 +40,13 @@ fi
 # C++ writes it).
 OPTS=(-fno-strict-aliasing -assume_left_to_right_evaluation)
 
-# The entries run as parallel jobs (at most one per core); their output is
+# Every check runs as a parallel job (at most one per core); the output is
 # printed in order at the end. A job's exit status is its failure count.
-JOBS="$ACXX_HOME/logs/run-jobs"
+# Two phases: render.sh --check rewrites the 32-bit renderings (under
+# $GEN32; the committed 64-bit ones it only compares), so it runs together
+# with the LP64 proofs, and the ILP32 proofs and the mutants (which copy
+# the 32-bit model) start when it is done.
+JOBS="$ACXX_WORK/logs/run-jobs"
 rm -rf "$JOBS"
 mkdir -p "$JOBS"
 MAXJOBS="${RUN_JOBS:-$(nproc)}"
@@ -66,14 +58,43 @@ spawn() {
   pids+=($!)
   njobs=$((njobs + 1))
 }
+# The second phase's jobs, in order, each as a quoted command line.
+deferred=()
+defer() {
+  deferred+=("$(printf '%q ' "$@")")
+}
+
+# 1, 2.
+render_check() {
+  local f=0
+  if ./render.sh --check > "$ACXX_WORK/logs/render.log" 2>&1; then
+    printf 'ok    %-40s %s\n' render "$(grep -c '^ok' "$ACXX_WORK/logs/render.log") sidecars match the sources"
+  else
+    printf 'FAIL  %-40s\n' render
+    grep -v '^ok' "$ACXX_WORK/logs/render.log" | head -20
+    f=1
+  fi
+  ./constants-check.sh || f=$((f + 1))
+  return $f
+}
+render_pid=""
+if [ -z "$filter" ]; then
+  spawn render_check
+  render_pid="${pids[-1]}"
+fi
 
 # entry NAME EXPECT(pass|fail) EXPECTED-ERROR-REGEX FILE [EXTRA OPTIONS...]
 # A generated FILE (*.gen.c) is verified for ILP32 in its 32-bit rendering.
-entry() { spawn entry_run "$@"; }
+# LP64 now, ILP32 in the second phase.
+entry() {
+  spawn entry_run LP64 "$@"
+  defer entry_run ILP32 "$@"
+}
 entry_run() {
   local failures=0
+  local only="$1"; shift
   local name="$1" expect="$2" pattern="$3" file="$4"; shift 4
-  for target in LP64 ILP32; do
+  for target in "$only"; do
     local full="$name/$target"
     [[ -n "$filter" && "$full" != *"$filter"* ]] && continue
     local dir="$ANNOTATED_DIR"
@@ -103,7 +124,7 @@ entry_run() {
 mutant() {
   [ "$QUICK" = 1 ] && return
   [[ -n "$filter" && "$1" != *"$filter"* ]] && return
-  spawn ./mutant.sh "$@"
+  defer ./mutant.sh "$@"
 }
 
 # The correspondence check's self-tests: a rendered function changed in the
@@ -247,14 +268,14 @@ rust_entries() {
   local f=0
   rust_entry_run rust-view pass rust/view_accessors.rs || f=$((f + $?))
   sed 's|internal_string(obj, ?len) \&\*\& i < len;|internal_string(obj, ?len) \&*\& i <= len;|' \
-    rust/view_accessors.rs > "$ACXX_HOME/logs/view_accessors_neg.rs"
-  rust_entry_run rust-view-index-at-length fail "$ACXX_HOME/logs/view_accessors_neg.rs" || f=$((f + $?))
+    rust/view_accessors.rs > "$ACXX_WORK/logs/view_accessors_neg.rs"
+  rust_entry_run rust-view-index-at-length fail "$ACXX_WORK/logs/view_accessors_neg.rs" || f=$((f + $?))
   # The like-for-like trial (README, "The Rust raw-memory layer"): of the
   # five accessors, class_id and class_tag stop VeriFast's Rust front end
   # ("Todo: BinOp::Shr"); the other three verify.
   sed '/pub unsafe fn class_id/,/^    }$/d' rust/view_trial.rs | sed '/pub unsafe fn class_tag/,/^    }$/d' \
-    > "$ACXX_HOME/logs/view_trial_noshift.rs"
-  rust_entry_run rust-trial-three pass "$ACXX_HOME/logs/view_trial_noshift.rs" || f=$((f + $?))
+    > "$ACXX_WORK/logs/view_trial_noshift.rs"
+  rust_entry_run rust-trial-three pass "$ACXX_WORK/logs/view_trial_noshift.rs" || f=$((f + $?))
   return $f
 }
 # The same five in Verus, with vstd::raw_ptr permissions.
@@ -276,9 +297,23 @@ verus_trial() {
 spawn verus_trial
 spawn rust_entries
 
+# The second phase.
+render_status=0
+if [ -n "$render_pid" ]; then
+  wait "$render_pid"
+  render_status=$?
+fi
+for d in "${deferred[@]}"; do
+  eval "spawn $d"
+done
+
 for i in "${!pids[@]}"; do
-  wait "${pids[$i]}"
-  s=$?
+  if [ "${pids[$i]}" = "$render_pid" ]; then
+    s=$render_status
+  else
+    wait "${pids[$i]}"
+    s=$?
+  fi
   [ $s -ne 0 ] && failures=$((failures + s))
   cat "$JOBS/$i.log"
 done

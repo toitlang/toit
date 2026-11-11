@@ -25,7 +25,7 @@ name="$1"; sidecar="$2"; source="$3"; pattern="$4"; vfopts="$5"; shift 5
 TOIT_BIN="${TOIT:-$REPO_ROOT/build/host/sdk/bin/toit}"
 [ -x "$TOIT_BIN" ] || TOIT_BIN="$(command -v toit)"
 
-M="$ACXX_HOME/mutants/$name"
+M="$ACXX_WORK/mutants/$name"
 rm -rf "$M"
 mkdir -p "$M/repo/src" "$M/scratch" "$M/gen32"
 for e in "$REPO_ROOT"/*; do

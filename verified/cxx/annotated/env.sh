@@ -28,6 +28,25 @@ vm_cxx_flags() {
     -DTOIT_MODEL='"render"' -DVM_GIT_INFO='"render"' -DVM_GIT_VERSION='"render"')
 }
 
+# The tools under ACXX_HOME are shared; what a run writes (Clang's AST
+# dumps, the 32-bit renderings, the logs, the mutants' copies) is per
+# checkout: worktrees and the main checkout run the matrix at the same
+# time, and a shared AST dump written by two runs at once reads as two
+# definitions of every function in it.
+ACXX_WORK="${ACXX_WORK:-$ACXX_HOME/work/$(basename "$REPO_ROOT")-$(printf '%s' "$REPO_ROOT" | cksum | cut -d' ' -f1)}"
+mkdir -p "$ACXX_WORK/logs"
 # The 32-bit renderings (render.sh), verified with -target ILP32.
-GEN32="${GEN32:-$ACXX_HOME/gen/ilp32}"
-export ACXX_HOME VERIFAST_DIR VERIFAST CXXV_HOME ANNOTATED_DIR REPO_ROOT GEN32
+GEN32="${GEN32:-$ACXX_WORK/gen/ilp32}"
+export ACXX_HOME ACXX_WORK VERIFAST_DIR VERIFAST CXXV_HOME ANNOTATED_DIR REPO_ROOT GEN32
+
+# Takes the checkout's lock (one run of the matrix or of render.sh at a
+# time per checkout; nested calls inherit it through ACXX_LOCKED).
+acxx_lock() {
+  [ -n "${ACXX_LOCKED:-}" ] && return
+  exec 9> "$ACXX_WORK/lock"
+  if ! flock -n 9; then
+    echo "waiting for another run in this checkout ($ACXX_WORK/lock)" >&2
+    flock 9
+  fi
+  export ACXX_LOCKED=1
+}
