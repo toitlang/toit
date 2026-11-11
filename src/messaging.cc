@@ -433,6 +433,13 @@ bool MessageEncoder::encode_copy(Object* object, int tag) {
     // TODO(kasper): Report meaningful error.
     return false;
   }
+  // A sandboxed program can hold strings that aren't valid UTF-8 (crafted
+  // literals, or string slices with crafted bounds), and the receiver
+  // relies on its strings being valid.
+  if (tag == TAG_STRING && process_ != null && process_->policy()->restricts_messaging() &&
+      !Utils::is_valid_utf_8(source, length)) {
+    return false;
+  }
 
   // To avoid too many small allocations, we inline the content of the small strings or byte arrays.
   if (encoding_tison() || length <= MESSAGING_ENCODING_MAX_INLINED_SIZE) {
