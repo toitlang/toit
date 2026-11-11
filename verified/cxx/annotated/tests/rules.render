@@ -6,10 +6,15 @@
 @constants rules_constants.h
 @expand-typedef uhalf_word
 @overloaded Over::f
+@modular-arguments Tagged::Tagged
 @verbatim
 #include <stdint.h>
 #include "rules_constants.h"
 typedef intptr_t word;
+typedef uintptr_t uword;
+typedef unsigned int uint32;
+struct Tagged { uword tag_; };
+typedef struct Tagged Tagged;
 struct Outer_Inner { word v_; };
 typedef struct Outer_Inner Outer_Inner;
 struct Pair { word a_; word b_; };
@@ -101,4 +106,28 @@ inline int narrow(word x)
   int n = x;
   if (n != x) return -1;
   return n;
+}
+
+@render verified/cxx/annotated/tests/rules.cc toit::advance
+inline word advance(word cursor)
+//@ requires 0 <= cursor &*& cursor < 100;
+//@ ensures result == cursor + 4;
+{
+  cursor += sizeof(uint32);
+  return cursor;
+}
+
+@render verified/cxx/annotated/tests/rules.cc toit::Tagged::Tagged
+  explicit Tagged(uword tag) : tag_(tag)
+  //@ requires self->tag_ |-> _;
+  //@ ensures self->tag_ |-> tag;
+  {}
+
+@render verified/cxx/annotated/tests/rules.cc toit::negative_tag
+inline uword negative_tag(word offset)
+//@ requires 0 <= offset &*& offset < 100;
+//@ ensures true;
+{
+  Tagged t(-100 + offset);
+  return t.tag_;
 }

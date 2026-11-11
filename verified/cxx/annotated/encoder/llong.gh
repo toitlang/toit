@@ -1,0 +1,17 @@
+// Copyright (C) 2026 Toit contributors.
+//
+// The bytes of an unsigned long long (VeriFast's prelude has this
+// conversion for the other integer types; the writers memcpy a uint64).
+
+#ifndef TOIT_LLONG_GH
+#define TOIT_LLONG_GH
+
+lemma_auto void u_llong_integer_to_chars(void *p)
+  requires [?f]u_llong_integer(p, ?v);
+  ensures [f]chars(p, sizeof(unsigned long long), _);
+{
+  open u_llong_integer(p, v);
+  integer__to_chars(p, sizeof(unsigned long long), false);
+}
+
+#endif

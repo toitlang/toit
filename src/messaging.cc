@@ -46,7 +46,7 @@ enum MessageTag {
   TAG_BYTE_ARRAY_INLINE,
 };
 
-static int TISON_VERSION = 1;
+static const int TISON_VERSION = 1;
 
 // The first 4 bytes of a TISON message is a marker that starts with
 // a non-ASCII character. This makes it trivial to distinguish a TISON
@@ -500,7 +500,7 @@ bool MessageEncoder::encode_copy(Object* object, int tag) {
   void* data = null;
   if (!encoding_for_size()) {
     // Strings are '\0'-terminated, so we need to make sure the allocated
-    // memory is big enough for that and remember to copy it over.
+    // memory is big enough for that.
     int extra = (tag == TAG_STRING) ? 1 : 0;
     int heap_tag = (tag == TAG_STRING) ? EXTERNAL_STRING_MALLOC_TAG : EXTERNAL_BYTE_ARRAY_MALLOC_TAG;
     HeapTagScope scope(ITERATE_CUSTOM_TAGS + heap_tag);
@@ -510,7 +510,10 @@ bool MessageEncoder::encode_copy(Object* object, int tag) {
       return false;
     }
     copied_[copied_count_++] = data;
-    memcpy(data, source, length + extra);
+    // A string slice's content isn't followed by a '\0' (and a crafted
+    // slice can wrap a byte array): copy the content and terminate it.
+    memcpy(data, source, length);
+    if (extra != 0) static_cast<uint8*>(data)[length] = 0;
   }
   write_uint8(tag);
   write_cardinal(length);

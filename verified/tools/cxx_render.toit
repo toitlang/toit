@@ -184,7 +184,10 @@ A sidecar: a sequence of sections, each opened by a directive line (a
   the prototype and contract are emitted (the body is not verified, but
   still compared with the sources). `type=T` picks an overload by its
   Clang type with the spaces removed.
-Configuration: `@raii CLASS`, `@overloaded CLASS::NAME`, `@expand-typedef NAME`
+Configuration: `@raii CLASS`, `@overloaded CLASS::NAME`,
+  `@modular-arguments CLASS::CLASS` (the implicit integral conversions of
+  the constructor's arguments to an unsigned parameter are the modular
+  ones C++ defines: VeriFast's truncating cast), `@expand-typedef NAME`
   (the typedef is written as the type it stands for on the rendering's
   target, e.g. `uhalf_word`), `@constants FILE`
   (the constant table), `@header FILE` (also write a header), `@include
@@ -195,6 +198,7 @@ class Sidecar:
   sections/List := []
   raii/Set := {}
   overloaded/Set := {}
+  modular/Set := {}
   expanded/Set := {}
   constants-path/string? := null
   header/string? := null
@@ -231,6 +235,8 @@ class Sidecar:
       expanded.add words[1]
     else if directive == "overloaded":
       overloaded.add words[1]
+    else if directive == "modular-arguments":
+      modular.add words[1]
     else if directive == "constants":
       constants-path = "$dir/$words[1]"
     else if directive == "header":
@@ -430,6 +436,8 @@ Normalizes a C++ type spelling to C: drops `toit::`, `const`, `volatile`,
 */
 c-type t/string -> string:
   t = t.replace --all "toit::" ""
+  // Clang 20 names the type of sizeof `__size_t` (a builtin alias).
+  if t == "__size_t": t = "size_t"
   // A nested class `A::B` is the C struct `A_B`.
   t = t.replace --all "::" "_"
   // A const reference is passed by value (the rendering rule for
@@ -756,6 +764,18 @@ class Renderer:
     while node["kind"] == "ImplicitCastExpr": node = (inner node)[0]
     return node["kind"] == "CXXThisExpr"
 
+  // A variable, or a field of `this` or of a variable: an lvalue whose
+  // evaluation has no side effects.
+  is-pure-lvalue node/Map -> bool:
+    node = strip-parens node
+    if node["kind"] == "DeclRefExpr": return true
+    if node["kind"] == "MemberExpr":
+      base := (inner node)[0]
+      return (is-implicit-this base) or (is-pure-lvalue base)
+    if node["kind"] == "ImplicitCastExpr" and node["castKind"] == "LValueToRValue":
+      return is-pure-lvalue (inner node)[0]
+    return false
+
   expr node/Map -> Expr:
     kind := node["kind"]
     kids := inner node
@@ -847,6 +867,20 @@ class Renderer:
       all := [base-text]
       args.do: all.add (wrap (expr it) PREC-ASSIGN)
       return Expr "$name($(all.join ", "))" PREC-PRIMARY
+    if kind == "CompoundAssignOperator" and (canonical node["computeLHSType"]) != (canonical node["type"]):
+      // `a op= b` computed in another type than a's (`cursor_ +=
+      // sizeof(uint32)`: an unsigned long sum for a word): C++ converts a,
+      // computes, and converts back; VeriFast wants the conversions
+      // written: `a = (A)((C)a op b)`. `a` is evaluated twice, so it must
+      // be free of side effects.
+      lhs := kids[0]
+      if not (is-pure-lvalue lhs): fail "$(where node): compound assignment in another type to a $lhs["kind"]"
+      op := node["opcode"]
+      binop := op[..op.size - 1]
+      p := BINARY-PREC.get binop --if-absent=: fail "$(where node): operator $op"
+      a := (expr lhs).text
+      computed := "($(c-type (canonical node["computeLHSType"])))$(wrap (expr lhs) PREC-UNARY) $binop $(wrap (expr kids[1]) p + 1)"
+      return Expr "$a = ($(c-type node["type"]["qualType"]))($computed)" PREC-ASSIGN
     if kind == "BinaryOperator" or kind == "CompoundAssignOperator":
       op := node["opcode"]
       p := BINARY-PREC.get op --if-absent=: fail "$(where node): operator $op"
@@ -1071,10 +1105,17 @@ class Renderer:
     // A non-const reference parameter of the constructor is a pointer.
     ctor-params := fn-param-types-raw init["ctorType"]["qualType"]
     args := []
+    modular := sidecar.modular.contains "$type::$type"
     (inner init).size.repeat: | i |
       a := (inner init)[i]
       by-ref := i < ctor-params.size and (is-reference ctor-params[i])
-      args.add (by-ref ? "&$(wrap (expr a) PREC-UNARY)" : (wrap (expr a) PREC-ASSIGN))
+      if modular and not by-ref and a["kind"] == "ImplicitCastExpr" and a["castKind"] == "IntegralCast":
+        // `@modular-arguments`: the argument's conversion is the modular
+        // one C and C++ define for an unsigned target (a negative tag).
+        if not (c-type a["type"]["qualType"]).starts-with "u": fail "$(where a): @modular-arguments for a signed parameter"
+        args.add "/*@truncating@*/($(c-type a["type"]["qualType"]))$(wrap (expr (inner a)[0]) PREC-UNARY)"
+      else:
+        args.add (by-ref ? "&$(wrap (expr a) PREC-UNARY)" : (wrap (expr a) PREC-ASSIGN))
     ctor-name := mangle-member type type (ctor-params.map: c-type it)
     note-signature ctor-name (ctor-params.map: c-type it) init
     emit indent "$ctor-name($((["&$name"] + args).join ", "));"
