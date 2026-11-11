@@ -10,4 +10,8 @@ import .sandbox
 main args:
   sandbox-test args --error="PERMISSION_DENIED": | arguments/Map |
     system.gc-count  // Allowed.
-    system.bytes-allocated-delta
+    bytes-allocated-delta_
+
+// The primitive of the deprecated system.bytes-allocated-delta.
+bytes-allocated-delta_ -> int:
+  #primitive.core.bytes-allocated-delta
