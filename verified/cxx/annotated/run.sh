@@ -52,9 +52,26 @@ fi
 # C++ writes it).
 OPTS=(-fno-strict-aliasing -assume_left_to_right_evaluation)
 
+# The entries run as parallel jobs (at most one per core); their output is
+# printed in order at the end. A job's exit status is its failure count.
+JOBS="$ACXX_HOME/logs/run-jobs"
+rm -rf "$JOBS"
+mkdir -p "$JOBS"
+MAXJOBS="${RUN_JOBS:-$(nproc)}"
+njobs=0
+pids=()
+spawn() {
+  while [ "$(jobs -rp | wc -l)" -ge "$MAXJOBS" ]; do wait -n; done
+  ("$@") > "$JOBS/$njobs.log" 2>&1 &
+  pids+=($!)
+  njobs=$((njobs + 1))
+}
+
 # entry NAME EXPECT(pass|fail) EXPECTED-ERROR-REGEX FILE [EXTRA OPTIONS...]
 # A generated FILE (*.gen.c) is verified for ILP32 in its 32-bit rendering.
-entry() {
+entry() { spawn entry_run "$@"; }
+entry_run() {
+  local failures=0
   local name="$1" expect="$2" pattern="$3" file="$4"; shift 4
   for target in LP64 ILP32; do
     local full="$name/$target"
@@ -79,14 +96,14 @@ entry() {
       failures=$((failures + 1))
     fi
   done
+  return $failures
 }
 
 # mutant NAME SIDECAR SOURCE PATTERN "VERIFAST OPTIONS" FROM TO [FROM TO]...
 mutant() {
   [ "$QUICK" = 1 ] && return
   [[ -n "$filter" && "$1" != *"$filter"* ]] && return
-  ./mutant.sh "$@"
-  note $?
+  spawn ./mutant.sh "$@"
 }
 
 # 3. The renderings.
@@ -126,13 +143,22 @@ mutant grow-stack-unbounded grow/grow_stack.render src/interpreter_v2.cc "overfl
 mutant grow-stack-word-range grow/grow_stack.render src/interpreter_v2.cc "overflow" "-prover z3v4.5" \
   "stack_ok(len, top, rtop, bs) == true &*& needed <= STACK_MAX_BOUND; @*/" "stack_ok(len, top, rtop, bs) == true &*& needed <= UINTPTR_MAX / 2; @*/"
 
-# Hand renderings of the pilot (not yet generated, not drift-checked).
-entry string-write          pass "" prims/string_write.c
-entry string-write-af4ba7ab fail "No matching heap chunks: uchars_" prims/string_write.c -allow_assume -allow_dead_code -D AF4BA7AB_REVERTED
-entry string-write-af4ba7ab-disjoint pass "" prims/string_write.c -allow_assume -allow_dead_code -D AF4BA7AB_REVERTED -D AF4BA7AB_DISJOINT
+entry string-write          pass "" prims/string_write.gen.c
+# af4ba7ab (memcpy for a copy within one byte array) reverted: no proof...
+mutant string-write-af4ba7ab prims/string_write.render src/primitive_core.cc "No matching heap chunks: uchars_" "" \
+  "  memmove(&dest.address()[dest_index]" "  memcpy(&dest.address()[dest_index]"
+# ... and with the two ranges assumed to be in different regions (separate
+# chunks for memcpy), the same memcpy verifies: the failure is the overlap.
+mutant string-write-af4ba7ab-disjoint prims/string_write.render src/primitive_core.cc PASS "-allow_assume -allow_dead_code" \
+  "  memmove(&dest.address()[dest_index]" "  memcpy(&dest.address()[dest_index]" \
+  "  //@ regions_take(rs2, r_dst);" "  //@ assume(r_src != r_dst);\n  //@ regions_take(rs2, r_dst);" \
+  "    close mm_pre(mm_two, d, s, to - from);\n" "" \
+  "    open mm_post(_, _, _, _);\n    uint8 *sb = r_base(r_src);" "    uint8 *sb = r_base(r_src);"
 
 # 5. The Rust side (VeriFast's Rust front end, host target only).
-rust_entry() {
+
+rust_entry_run() {
+  local failures=0
   local name="$1" expect="$2" file="$3"
   [[ -n "$filter" && "$name" != *"$filter"* ]] && return
   if [ ! -d "$ACXX_HOME/tools/rustup" ]; then
@@ -151,11 +177,24 @@ rust_entry() {
     printf 'FAIL  %-40s %s (expected %s): %s\n' "$name" "$verdict" "$expect" "$first"
     failures=$((failures + 1))
   fi
+  return $failures
 }
-rust_entry rust-view pass rust/view_accessors.rs
-sed 's|internal_string(obj, ?len) \&\*\& i < len;|internal_string(obj, ?len) \&*\& i <= len;|' \
-  rust/view_accessors.rs > "$ACXX_HOME/logs/view_accessors_neg.rs"
-rust_entry rust-view-index-at-length fail "$ACXX_HOME/logs/view_accessors_neg.rs"
+# (One job: the Rust front end builds in one cargo directory.)
+rust_entries() {
+  local f=0
+  rust_entry_run rust-view pass rust/view_accessors.rs || f=$((f + $?))
+  sed 's|internal_string(obj, ?len) \&\*\& i < len;|internal_string(obj, ?len) \&*\& i <= len;|' \
+    rust/view_accessors.rs > "$ACXX_HOME/logs/view_accessors_neg.rs"
+  rust_entry_run rust-view-index-at-length fail "$ACXX_HOME/logs/view_accessors_neg.rs" || f=$((f + $?))
+  return $f
+}
+spawn rust_entries
 
+for i in "${!pids[@]}"; do
+  wait "${pids[$i]}"
+  s=$?
+  [ $s -ne 0 ] && failures=$((failures + s))
+  cat "$JOBS/$i.log"
+done
 echo "failures: $failures"
 exit $((failures > 0))

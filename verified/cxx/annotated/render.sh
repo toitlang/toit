@@ -34,5 +34,6 @@ for f in $(ls */*.h */*.gh 2>/dev/null | grep -v '\.gen\.'); do
   mkdir -p "$GEN32/$(dirname "$f")"
   cp "$f" "$GEN32/$f"
 done
-exec "$TOIT_BIN" run "$REPO_ROOT/verified/tools/cxx_render.toit" -- \
+./prefetch-ast.sh "$REPO_ROOT" "$SCRATCH" "$@" || exit 1
+exec "$TOIT_BIN" run "$REPO_ROOT/verified/tools/cxx_render.toit" -- --ast-ready \
   --repo "$REPO_ROOT" --scratch "$SCRATCH" --target "i686-linux-gnu=$GEN32" "${ARGS[@]}" "$@"

@@ -1,0 +1,212 @@
+// Copyright (C) 2026 Toit contributors.
+//
+// PRIMITIVE(string_write_to_byte_array) of src/primitive_core.cc, end to
+// end: the PRIMITIVE and ARGS macros as the compiler expands them (the
+// rendering is of the expansion: Blob, MutableBlob and word argument
+// decoding, FAIL), the Blob accessors and constructors (objects.h), and
+// the body, with VeriFast annotations.
+//
+// Blob memory is a set of regions (internal content or external memory; a
+// slice shares its byte array's region), `regions(rs)`, one `uchars` chunk
+// each. Object::byte_content and mutable_byte_content are trusted: their
+// contracts say the result range lies in one region (mutable_byte_content
+// may add one, for a copy-on-write array made mutable). Proved: the copy
+// stays inside the regions, its use of memmove is legal (the two ranges
+// may be in one region), no overflow or lossy conversion.
+//
+// Self-test (run.sh): af4ba7ab reverted (memcpy for the same byte array):
+// no proof for overlapping ranges; with non-overlap assumed, it verifies.
+@include ../model/model.cfg
+@overloaded Blob::Blob
+@verbatim
+#include "../model/objects.gen.h"
+//@ #include <listex.gh>
+
+typedef struct Object Error;
+struct Process;
+typedef struct Process Process;
+struct Program;
+typedef struct Program Program;
+typedef unsigned long size_t;
+
+// An empty C++ struct; C needs a member.
+struct uninitialized_t { char unused; };
+typedef struct uninitialized_t uninitialized_t;
+struct Blob { uint8 *address_; word length_; };
+typedef struct Blob Blob;
+struct MutableBlob { uint8 *address_; word length_; };
+typedef struct MutableBlob MutableBlob;
+
+/*@
+inductive region = region(uint8 *base, int len);
+fixpoint uint8 *r_base(region r) { switch (r) { case region(b, l): return b; } }
+fixpoint int r_len(region r) { switch (r) { case region(b, l): return l; } }
+predicate region_bytes(region r) = uchars(r_base(r), r_len(r), _);
+predicate regions(list<region> rs) = foreach(rs, region_bytes) &*& distinct(rs) == true;
+fixpoint bool in_region(region r, uint8 *a, int l) {
+  return 0 <= l && r_base(r) <= a && a + l <= r_base(r) + r_len(r) &&
+         a == r_base(r) + ((uword)a - (uword)r_base(r));  // same provenance as the region
+}
+predicate blob_in(list<region> rs, uint8 *a, int l, region r) =
+  mem(r, rs) == true &*& in_region(r, a, l) == true;
+fixpoint bool contains_r(list<region> rs2, region r) { return mem(r, rs2); }
+
+lemma void regions_take(list<region> rs, region r)
+  requires regions(rs) &*& mem(r, rs) == true;
+  ensures foreach(remove(r, rs), region_bytes) &*& uchars(r_base(r), r_len(r), _) &*& distinct(rs) == true;
+{
+  open regions(rs);
+  foreach_remove(r, rs);
+  open region_bytes(r);
+}
+
+lemma void regions_give(list<region> rs, region r)
+  requires foreach(remove(r, rs), region_bytes) &*& uchars(r_base(r), r_len(r), _) &*& distinct(rs) == true &*& mem(r, rs) == true;
+  ensures regions(rs);
+{
+  close region_bytes(r);
+  foreach_unremove(r, rs);
+  close regions(rs);
+}
+
+lemma void contains_mem(list<region> rs, list<region> rs2, region r)
+  requires forall(rs, (contains_r)(rs2)) == true &*& mem(r, rs) == true;
+  ensures mem(r, rs2) == true;
+{
+  forall_mem(r, rs, (contains_r)(rs2));
+}
+
+// memmove: one region holding both ranges, or two separate chunks.
+inductive mm_mode = mm_one(uint8 *base, int len) | mm_two;
+predicate mm_pre(mm_mode m, uint8 *dst, uint8 *src, int n) =
+  switch (m) {
+    case mm_one(base, len):
+      return uchars(base, len, ?bs) &*& base <= src &*& src + n <= base + len &*&
+             base <= dst &*& dst + n <= base + len &*& 0 <= n;
+    case mm_two:
+      return uchars(src, n, ?cs) &*& uchars_(dst, n, _);
+  };
+predicate mm_post(mm_mode m, uint8 *dst, uint8 *src, int n) =
+  switch (m) {
+    case mm_one(base, len): return uchars(base, len, _);
+    case mm_two: return uchars(src, n, ?cs) &*& uchars(dst, n, cs);
+  };
+@*/
+
+Program *Process_program(Process *self);
+//@ requires true;
+//@ ensures true;
+void uninitialized_t_ctor(uninitialized_t *self);
+//@ requires self->unused |-> _;
+//@ ensures self->unused |-> _;
+
+// Object::byte_content, Object::mutable_byte_content (objects_runtime.cc):
+// trusted; the natural next target of the object model.
+bool Object_byte_content(Object *self, Program *program, Blob *blob, int kind);
+//@ requires blob->address_ |-> _ &*& blob->length_ |-> _ &*& [?f]regions(?rs);
+/*@ ensures blob->address_ |-> ?a &*& blob->length_ |-> ?l &*& [f]regions(rs) &*&
+            result ? [_]blob_in(rs, a, l, _) : true; @*/
+bool Object_mutable_byte_content(Object *self, Process *process, MutableBlob *blob, Error **error);
+//@ requires blob->address_ |-> _ &*& blob->length_ |-> _ &*& *error |-> _ &*& regions(?rs);
+/*@ ensures blob->address_ |-> ?a &*& blob->length_ |-> ?l &*& *error |-> ?e &*& regions(?rs2) &*&
+            forall(rs, (contains_r)(rs2)) == true &*&
+            result ? [_]blob_in(rs2, a, l, _) : true; @*/
+
+void *memmove(void *dest, void *src, size_t count);
+//@ requires mm_pre(?m, dest, src, count);
+//@ ensures mm_post(m, dest, src, count) &*& result == dest;
+// From VeriFast's bin/string.h (there: chars; uchars here): for the mutant.
+void *memcpy(void *array, void *array0, size_t count);
+//@ requires uchars_(array, count, _) &*& [?f]uchars(array0, count, ?cs0);
+//@ ensures uchars(array, count, cs0) &*& [f]uchars(array0, count, cs0) &*& result == array;
+
+@prototypes
+@render src/objects.h toit::Blob::Blob tu=src/primitive_core.cc type=void(uninitialized_t&)
+  inline Blob(uninitialized_t& u)
+  //@ requires self->address_ |-> _ &*& self->length_ |-> _;
+  //@ ensures self->address_ |-> _ &*& self->length_ |-> _;
+  {}
+
+@render src/objects.h toit::Blob::address tu=src/primitive_core.cc
+  const uint8* address() const
+  //@ requires [?f]self->address_ |-> ?a;
+  //@ ensures [f]self->address_ |-> a &*& result == a;
+  { return address_; }
+
+@render src/objects.h toit::Blob::length tu=src/primitive_core.cc
+  word length() const
+  //@ requires [?f]self->length_ |-> ?l;
+  //@ ensures [f]self->length_ |-> l &*& result == l;
+  { return length_; }
+
+@render src/objects.h toit::MutableBlob::MutableBlob tu=src/primitive_core.cc params=0
+  MutableBlob() : address_(null), length_(0)
+  //@ requires self->address_ |-> _ &*& self->length_ |-> _;
+  //@ ensures self->address_ |-> 0 &*& self->length_ |-> 0;
+  {}
+
+@render src/objects.h toit::MutableBlob::address tu=src/primitive_core.cc
+  uint8* address()
+  //@ requires [?f]self->address_ |-> ?a;
+  //@ ensures [f]self->address_ |-> a &*& result == a;
+  { return address_; }
+
+@render src/objects.h toit::MutableBlob::length tu=src/primitive_core.cc
+  word length()
+  //@ requires [?f]self->length_ |-> ?l;
+  //@ ensures [f]self->length_ |-> l &*& result == l;
+  { return length_; }
+
+@render src/primitive_core.cc toit::primitive_string_write_to_byte_array
+PRIMITIVE(string_write_to_byte_array)
+/*@ requires pointer(__args, ?a0) &*& pointer(__args - 1, ?a1) &*& pointer(__args - 2, ?a2) &*&
+             pointer(__args - 3, ?a3) &*& pointer(__args - 4, ?a4) &*& regions(?rs); @*/
+/*@ ensures pointer(__args, a0) &*& pointer(__args - 1, a1) &*& pointer(__args - 2, a2) &*&
+            pointer(__args - 3, a3) &*& pointer(__args - 4, a4) &*& regions(?rs2); @*/
+{
+  ARGS(Blob, source_bytes, MutableBlob, dest, word, from, word, to, word, dest_index);
+  //@ open [_]blob_in(rs, source_bytes.address_, source_bytes.length_, ?r_src);
+  //@ assert regions(?rs2);
+  //@ open [_]blob_in(rs2, dest.address_, dest.length_, ?r_dst);
+  //@ contains_mem(rs, rs2, r_src);
+  if (to == from) return _raw_dest;
+  if (from < 0 || to > source_bytes.length() || from > to) FAIL(OUT_OF_BOUNDS);
+  if (dest_index < 0 || to - from > dest.length() - dest_index) FAIL(OUT_OF_BOUNDS);
+  //@ regions_take(rs2, r_dst);
+  //@ if (r_src != r_dst) { neq_mem_remove(r_src, r_dst, rs2); foreach_remove(r_src, remove(r_dst, rs2)); open region_bytes(r_src); }
+  //@ uint8 *d = dest.address_ + dest_index;
+  //@ uint8 *s = source_bytes.address_ + from;
+  /*@
+  if (r_src == r_dst) {
+    close mm_pre(mm_one(r_base(r_dst), r_len(r_dst)), d, s, to - from);
+  } else {
+    uint8 *sb = r_base(r_src);
+    uint8 *db = r_base(r_dst);
+    uchars_split(sb, (uword)s - (uword)sb);
+    uchars_split(s, to - from);
+    uchars_split(db, (uword)d - (uword)db);
+    uchars_split(d, to - from);
+    close mm_pre(mm_two, d, s, to - from);
+  }
+  @*/
+  // The source and the destination may be the same byte array.
+  memmove(&dest.address()[dest_index], &source_bytes.address()[from], to - from);
+  /*@
+  if (r_src == r_dst) {
+    open mm_post(_, _, _, _);
+    regions_give(rs2, r_dst);
+  } else {
+    open mm_post(_, _, _, _);
+    uint8 *sb = r_base(r_src);
+    uint8 *db = r_base(r_dst);
+    uchars_join(s);
+    uchars_join(sb);
+    uchars_join(d);
+    uchars_join(db);
+    close region_bytes(r_src);
+    foreach_unremove(r_src, remove(r_dst, rs2));
+    regions_give(rs2, r_dst);
+  }
+  @*/
+  return _raw_dest;
+}

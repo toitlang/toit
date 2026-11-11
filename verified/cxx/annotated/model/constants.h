@@ -59,6 +59,14 @@
 #define TOIT_V2_STACK_OVERFLOW ((uword)1)
 #define TOIT_V2_OUT_OF_MEMORY ((uword)2)
 
+// src/primitive.h, the error roots of src/program.h, class Error.
+#define STRINGS_OR_BYTE_ARRAYS 0
+#define Program_OUT_OF_BOUNDS_INDEX 20
+#define Program_WRONG_OBJECT_TYPE_INDEX 30
+#define Program_WRONG_BYTES_TYPE_INDEX 31
+#define Error_ERROR_SHIFT 2
+#define Error_ERROR_TAG ((uword)3)
+
 // class Utils.
 #define Utils_MAX_ASCII 0x7f
 #define Utils_UTF_8_BITS_PER_BYTE 6

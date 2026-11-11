@@ -9,7 +9,9 @@
 # Usage: mutant.sh NAME SIDECAR SOURCE PATTERN "VERIFAST OPTIONS" FROM TO [FROM TO]...
 #   SIDECAR relative to this directory, SOURCE relative to the repository.
 #   FROM/TO: literal texts (`\n` a newline); each must occur exactly once in
-#   SOURCE and, if it occurs there at all, once in the sidecar.
+#   SOURCE and, if it occurs there at all, once in the sidecar. PATTERN
+#   PASS: the mutant must verify (e.g. the reverted fix under an assumption
+#   that excludes the bug).
 # Prints one line `ok` / `FAIL` like run.sh; exit status 0 when the proof
 # failed with PATTERN on both LP64 and ILP32.
 
@@ -56,13 +58,17 @@ if [ ${#side_pairs[@]} -gt 0 ] && ! replace "$M/annotated/$sidecar" "${side_pair
   exit 1
 fi
 cd "$M/annotated"
-for f in $(ls */*.h */*.gh | grep -v '\.gen\.'); do
-  mkdir -p "$M/gen32/$(dirname "$f")"
+# The model is not mutated: its renderings (the copied ones, and the 32-bit
+# ones render.sh made) are used as they are; only the sidecar is rendered.
+mkdir -p "$M/gen32/$(dirname "$sidecar")"
+cp -r "$GEN32/model" "$M/gen32/"
+for f in $(ls "$(dirname "$sidecar")"/*.h "$(dirname "$sidecar")"/*.gh 2>/dev/null | grep -v '\.gen\.'); do
   cp "$f" "$M/gen32/$f"
 done
-if ! "$TOIT_BIN" run "$REPO_ROOT/verified/tools/cxx_render.toit" -- --repo "$M/repo" \
+"$ANNOTATED_DIR/prefetch-ast.sh" "$M/repo" "$M/scratch" "$sidecar"
+if ! "$TOIT_BIN" run "$REPO_ROOT/verified/tools/cxx_render.toit" -- --ast-ready --repo "$M/repo" \
     --scratch "$M/scratch" --target "i686-linux-gnu=$M/gen32" \
-    model/objects.render "$sidecar" > "$M/render.log" 2>&1; then
+    "$sidecar" > "$M/render.log" 2>&1; then
   printf 'FAIL  %-40s rendering failed: %s\n' "$name" "$(grep FAIL "$M/render.log" | head -1)"
   exit 1
 fi
@@ -75,7 +81,9 @@ for target in LP64 ILP32; do
   out=$(cd "$dir" && "$VERIFAST" -c -target "$target" -fno-strict-aliasing -assume_left_to_right_evaluation $vfopts "$gen" 2>&1)
   vstatus=$?
   first=$(echo "$out" | grep -m1 -E "error|errors found" || true)
-  if [ $vstatus -ne 0 ] && echo "$first" | grep -qE "$pattern"; then
+  if [ "$pattern" = PASS ] && [ $vstatus -eq 0 ]; then
+    printf 'ok    %-40s pass: %s\n' "$name/$target" "$first"
+  elif [ "$pattern" != PASS ] && [ $vstatus -ne 0 ] && echo "$first" | grep -qE "$pattern"; then
     printf 'ok    %-40s fail: %s\n' "$name/$target" "$first"
   else
     printf 'FAIL  %-40s (expected a failure matching %s): %s\n' "$name/$target" "$pattern" "$first"

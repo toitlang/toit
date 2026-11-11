@@ -289,7 +289,9 @@ class AstCache:
   units_ := {:}    // "tu|target" -> List of [top-level name, text].
   parsed_ := {:}   // "tu|target|index" -> Map.
 
-  constructor .repo .annotated-dir .scratch .signatures:
+  ast-ready/bool
+
+  constructor .repo .annotated-dir .scratch .signatures --.ast-ready=false:
 
   pieces_ tu/string target/string? filter/string -> List:
     key := "$tu|$target|$filter"
@@ -298,19 +300,30 @@ class AstCache:
       args := ["bash", "$annotated-dir/clang-ast.sh", "--repo", repo]
       if target: args += ["--target", target]
       args += [tu, filter, out]
-      status := pipe.run-program args
-      if status != 0: fail "clang-ast.sh failed ($status) for $tu"
+      // With --ast-ready, prefetch-ast.sh has made the dumps (in parallel).
+      if not (ast-ready and file.is-file out and file.is-file "$(out).index"):
+        status := pipe.run-program args
+        if status != 0: fail "clang-ast.sh failed ($status) for $tu"
       texts_[key] = file.read-contents out
       // clang-ast.sh's index: name, first byte, end byte of each top-level
       // declaration.
       result := []
       ((file.read-contents "$(out).index").to-string.split "\n").do: | line/string |
         words := line.split " "
-        if words.size == 3:
+        if words.size == 2 and words[0].starts-with "@":
+          (owners_.get key --init=: {:})[words[0][1..]] = words[1]
+        else if words.size == 3:
           result.add [words[0], int.parse words[1], int.parse words[2]]
       result
 
   texts_ := {:}
+  owners_ := {:}  // "tu|target|filter" -> (declaration id -> top-level name).
+
+  // The top-level declaration (the class) each member id of the unit belongs to.
+  owners tu/string target/string? qname/string -> Map:
+    filter := (qname.starts-with "toit::") ? "toit::" : qname
+    pieces_ tu target filter
+    return owners_.get "$tu|$target|$filter" --if-absent=: {:}
 
   parse_ tu/string target/string? filter/string index/int -> Map:
     key := "$tu|$target|$filter|$index"
@@ -413,12 +426,14 @@ Normalizes a C++ type spelling to C: drops `toit::`, `const`, `volatile`,
 c-type t/string -> string:
   t = t.replace --all "toit::" ""
   // A const reference is passed by value (the rendering rule for
-  // parameters such as bit_cast's `const From&`); other references are not
-  // supported.
+  // parameters such as bit_cast's `const From&`); another reference is a
+  // pointer (`T&` is `T *`; the argument is passed by address, a use of
+  // the parameter is `(*p)`: see `is-reference`). Rvalue references are
+  // not supported.
   if t.contains "&":
-    if not (t.starts-with "const " and t.ends-with "&") or t.contains "&&":
-      fail "reference type not supported: $t"
-    t = t[..t.size - 1]
+    if t.contains "&&" or not t.ends-with "&": fail "reference type not supported: $t"
+    if t.starts-with "const ": t = t[..t.size - 1]
+    else: t = t[..t.size - 1] + "*"
   words := []
   current := ""
   t.size.repeat: | i |
@@ -441,6 +456,10 @@ c-type t/string -> string:
       result += " $w"
   result = result.replace --all "_Bool" "bool"
   return result.trim
+
+/** Whether a C++ type is a reference rendered as a pointer (not a const one). */
+is-reference t/string -> bool:
+  return t.ends-with "&" and not t.starts-with "const " and not t.contains "&&"
 
 /** The class of a pointer-to-class type, e.g. `const toit::Array *` -> `Array`. */
 class-of-pointer t/string -> string:
@@ -503,13 +522,17 @@ class Renderer:
   signatures/Map      // C name -> parameter types, shared by all units.
   lines := []
   locals := {}
+  reference-params := {}  // Parameters of a reference type (pointers in C).
+  hoisted := {}  // The ids of the locals declared at the start of their block.
   // A stack of scopes, each a list of [class, name] of locals with a
   // destructor.
   raii-scopes := []
   result-type/string := "void"
   temp-count := 0
 
-  constructor .sidecar .constants .source .source-path .cls .ghosts .uses .signatures:
+  owners/Map         // Declaration id -> its top-level declaration (class).
+
+  constructor .sidecar .constants .source .source-path .cls .ghosts .uses .signatures .owners:
 
   where node/Map -> string:
     offset := begin-offset node
@@ -597,6 +620,9 @@ class Renderer:
 
   // The parameter types of a function type spelling `R (P1, P2) const`.
   fn-param-types fn-type/string -> List:
+    return (fn-param-types-raw fn-type).map: c-type it
+
+  fn-param-types-raw fn-type/string -> List:
     // The parameter list is the last parenthesized group (the return type
     // can contain parentheses, e.g. an enable_if condition).
     close := fn-type.index-of --last ")"
@@ -620,11 +646,11 @@ class Renderer:
       if c == '<' or c == '(': depth++
       if c == '>' or c == ')': depth--
       if c == ',' and depth == 0:
-        result.add (c-type current)
+        result.add current.trim
         current = ""
       else:
         current += string.from-rune c
-    result.add (c-type current)
+    result.add current.trim
     return result
 
   // A qualified spelling `A::B<T>::c` -> `A_B_T_c`.
@@ -646,9 +672,14 @@ class Renderer:
     rendered/string := ?
     spelled/string := ?
     context/string? := null
+    owner := owners.get ref["id"]
     if s and s.contains "::":
       spelled = s.replace --all "toit::" ""
       rendered = mangle-spelling s
+    else if not s and owner and owner != name and constants.values.contains "$(owner)_$name":
+      // Spelled inside a macro: named by the class that declares it.
+      spelled = "$owner::$name"
+      rendered = "$(owner)_$name"
     else:
       spelled = name
       if cls and constants.values.contains "$(cls)_$name":
@@ -657,7 +688,8 @@ class Renderer:
         rendered = name
       context = cls
     if not constants.values.contains rendered:
-      fail "$(where node): constant $spelled ($rendered) is not in the constant table"
+      uses["missing:$rendered"] = "$(where node): $spelled ($rendered)"
+      return rendered
     use := ConstantUse context spelled rendered is-enum
     uses[use.key] = use
     return rendered
@@ -682,6 +714,9 @@ class Renderer:
         parts := ((s.replace --all "toit::" "").replace --all " " "").split "::"
         if parts.size != 2: fail "$(where node): call of $s"
         c-name = mangle-member parts[0] parts[1] params
+      else if not s and owners.contains ref["id"]:
+        // Spelled inside a macro: named by the class that declares it.
+        c-name = mangle-member owners[ref["id"]] name params
       else:
         if not cls: fail "$(where node): static member call outside a class"
         c-name = mangle-member cls name params
@@ -739,6 +774,8 @@ class Renderer:
       ref := node["referencedDecl"]
       rk := ref["kind"]
       name := ref["name"]
+      if rk == "ParmVarDecl" and reference-params.contains name:
+        return Expr "(*$name)" PREC-PRIMARY
       if (rk == "ParmVarDecl" or rk == "VarDecl") and locals.contains name:
         return Expr name PREC-PRIMARY
       if rk == "VarDecl" or rk == "EnumConstantDecl":
@@ -812,9 +849,36 @@ class Renderer:
       ghosts-up-to (begin-offset node) indent
       stmt node indent null
 
+  // VeriFast wants a local whose address is taken declared at the start of
+  // its block: such a declaration (and an object constructed in place, whose
+  // constructor gets its address) moves there; its initialization stays
+  // where it was. Declaring earlier changes nothing in C.
+  hoist kids/List block/Map indent/int:
+    kids.do: | k/Map |
+      if k["kind"] == "DeclStmt":
+        (inner k).do: | d/Map |
+          if d["kind"] == "VarDecl":
+            init := (inner d).is-empty ? null : (strip-cleanups (inner d)[0])
+            if (init and init["kind"] == "CXXConstructExpr") or (address-taken block d["id"]):
+              hoisted.add d["id"]
+              emit indent "$(declarator (c-type d["type"]["qualType"]) d["name"]);"
+
+  address-taken node id/string -> bool:
+    if node is List:
+      (node as List).do: if address-taken it id: return true
+      return false
+    if node is not Map: return false
+    m := node as Map
+    if (m.get "kind") == "UnaryOperator" and (m.get "opcode") == "&":
+      target := (inner m)[0]
+      while target["kind"] == "ParenExpr" or target["kind"] == "ImplicitCastExpr": target = (inner target)[0]
+      if target["kind"] == "DeclRefExpr" and target["referencedDecl"]["id"] == id: return true
+    return address-taken (inner m) id
+
   block-contents node/Map indent/int:
     raii-scopes.add []
     kids := inner node
+    hoist kids node indent
     end := end-offset node
     kids.size.repeat: | i |
       next := i + 1 < kids.size ? (begin-offset kids[i + 1]) : end
@@ -950,10 +1014,22 @@ class Renderer:
       name := decl["name"]
       locals.add name
       type := c-type decl["type"]["qualType"]
-      emit indent "$(declarator type name);"
-      args := (inner init).map: wrap (expr it) PREC-ASSIGN
-      emit indent "$(type)_ctor($((["&$name"] + args).join ", "));"
+      if not hoisted.contains decl["id"]: emit indent "$(declarator type name);"
+      // A non-const reference parameter of the constructor is a pointer.
+      ctor-params := fn-param-types-raw init["ctorType"]["qualType"]
+      args := []
+      (inner init).size.repeat: | i |
+        a := (inner init)[i]
+        by-ref := i < ctor-params.size and (is-reference ctor-params[i])
+        args.add (by-ref ? "&$(wrap (expr a) PREC-UNARY)" : (wrap (expr a) PREC-ASSIGN))
+      ctor-name := mangle-member type type (ctor-params.map: c-type it)
+      note-signature ctor-name (ctor-params.map: c-type it) init
+      emit indent "$ctor-name($((["&$name"] + args).join ", "));"
       if sidecar.raii.contains type: raii-scopes.last.add [type, name]
+      return
+    if hoisted.contains decl["id"]:
+      locals.add decl["name"]
+      if init: emit indent "$decl["name"] = $(wrap (expr init) PREC-ASSIGN);"
       return
     emit indent "$(var-decl-text decl);"
 
@@ -975,6 +1051,7 @@ class Renderer:
       p := params[i]
       pname := p.get "name" --if-absent=: "p$i"
       locals.add pname
+      if is-reference p["type"]["qualType"]: reference-params.add pname
       t := c-type p["type"]["qualType"]
       types.add t
       ps.add (declarator t pname)
@@ -1124,6 +1201,9 @@ class Unit:
             c.add ""
     if h:
       h.add "#endif"
+    missing := uses.keys.filter: it.starts-with "missing:"
+    if not missing.is-empty:
+      fail "constants not in the constant table: $((missing.map: uses[it]).join "; ")"
     return [(c.join "\n") + "\n", h ? ((h.join "\n") + "\n") : null]
 
   // Finds the function, checks the sidecar's copy against it.
@@ -1186,7 +1266,7 @@ class Unit:
         k++
     if k != real.size: report-drift s path source b real annotated k
     if not pending.is-empty: fail "$sidecar.path:$s.line: annotation after the end of $qname"
-    renderer := Renderer sidecar constants source path cls ghosts uses cache.signatures
+    renderer := Renderer sidecar constants source path cls ghosts uses cache.signatures (cache.owners tu target qname)
     return Prepared s renderer decl body-node path source trusted (renderer.c-name decl)
 
   report-drift s/Section path/string source/string base/int real/List annotated/List k/int:
@@ -1237,6 +1317,7 @@ main args:
       --help="Renders VM C++ functions as C for VeriFast and checks the sidecars against the sources."
       --options=[
         cli.Flag "check" --help="Fail if a generated file differs from the committed one.",
+        cli.Flag "ast-ready" --help="Use the AST dumps prefetch-ast.sh made, if there.",
         cli.Option "repo" --help="The repository root (default: from the program path).",
         cli.Option "scratch" --help="Directory for the AST dumps." --default="/tmp",
         cli.Option "target" --multi --help="TRIPLE=DIR: also render for this Clang target (e.g. i686-linux-gnu), into DIR.",
@@ -1247,6 +1328,7 @@ main args:
 
 run invocation/cli.Invocation:
   check := invocation["check"]
+  ast-ready := invocation["ast-ready"]
   repo := invocation["repo"] or (fs.dirname (fs.dirname (fs.dirname system.program-path)))
   annotated-dir := "$repo/verified/cxx/annotated"
   scratch := invocation["scratch"]
@@ -1254,7 +1336,7 @@ run invocation/cli.Invocation:
   failures := 0
   // All units share one signature table: a C name is one C++ function
   // across the model and every target.
-  cache := AstCache repo annotated-dir scratch {:}
+  cache := AstCache repo annotated-dir scratch {:} --ast-ready=ast-ready
   target-caches := {:}
   invocation["sidecar"].do: | path/string |
     exception := catch --trace=(: it is not RenderError) --unwind=(: it is not RenderError):
@@ -1269,7 +1351,7 @@ run invocation/cli.Invocation:
         if eq < 0: fail "--target wants TRIPLE=DIR, not $spec"
         t := spec[..eq]
         dir := spec[eq + 1..]
-        target-cache := target-caches.get t --init=: AstCache repo annotated-dir scratch {:}
+        target-cache := target-caches.get t --init=: AstCache repo annotated-dir scratch {:} --ast-ready=ast-ready
         other-unit := Unit sidecar repo target-cache
         other := other-unit.render t
         out-c := "$dir/$other-unit.c-path"
