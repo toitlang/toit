@@ -351,6 +351,30 @@ if [ "$RUN_TESTS" = 1 ]; then
       done
     done
   fi
+
+  # Red-team round 4 (review/red-team/round4): trusted/untrusted confusion (A),
+  # install lifecycle (B), 32/64 differential (C), crafted collections (D),
+  # service layer (E), free hunting (F). Each battery self-checks (named
+  # verifier rule, certificate rejection, loader bound, 64==32, or ASan clean)
+  # and exits non-zero on a finding. A needs build/asan; C needs build/host32.
+  section "Red-team round-4 batteries (review/red-team/round4/battery-{A,A-cert,B,C,D,E,F}.sh)"
+  RT4="$REPO/review/red-team/round4"
+  RT4_NORMAL="$BUILD_DIR/sdk/lib/toit/bin/toit.run"
+  RT4_ASAN="$REPO/build/asan/sdk/lib/toit/bin/toit.run"
+  RT4_H32="$REPO/build/host32/sdk/lib/toit/bin/toit.run"
+  if [ ! -x "$RT4/battery-A.sh" ] || [ ! -x "$RT4_NORMAL" ]; then
+    echo "SKIP: no round-4 batteries or no toit.run in $BUILD_DIR"
+  else
+    for battery in A A-cert B C D E F; do
+      if HOSTRUN="$RT4_NORMAL" ASANRUN="$RT4_ASAN" HOST32="$RT4_H32" WORK="$LOGS/rt4" \
+          "$RT4/battery-$battery.sh" > "$LOGS/battery-rt4-$battery.log" 2>&1; then
+        echo "round4-$battery: $(tail -1 "$LOGS/battery-rt4-$battery.log")"
+      else
+        tail -20 "$LOGS/battery-rt4-$battery.log"
+        fail "red-team round-4 battery $battery"
+      fi
+    done
+  fi
 fi
 
 section "Summary"
