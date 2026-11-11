@@ -19,8 +19,10 @@ class RpcBroker implements SystemMessageHandler_:
   static MAX-TASKS/int     ::= 16
   static MAX-REQUESTS/int? ::= 64
   // A single sandboxed (untrusted) process can't take up the whole request
-  // queue, so it can't make the requests of every other client fail.
-  static MAX-REQUESTS-PER-UNTRUSTED-PROCESS/int ::= MAX-REQUESTS / 4
+  // queue, so it can't make the requests of every other client fail, nor
+  // all processing tasks, so its slow requests can't hold up the requests
+  // of every other client.
+  static MAX-REQUESTS-PER-UNTRUSTED-PROCESS/int ::= MAX-TASKS / 2
 
   procedures_/Map ::= {:}
   queue_/RpcRequestQueue_ ::= RpcRequestQueue_ MAX-TASKS
