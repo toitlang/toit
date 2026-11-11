@@ -344,6 +344,82 @@ unchanged (top/bci in locals, table pointers as run-loop arguments with
 11) were not added: they would remove the bytecode-level loops of
 `Map`/`Set` lookups and `int.repeat` (format 1's intrinsics).
 
+### Performance pass (2026-11-11, branch core/prims-integration)
+
+Instructions inside the interpreters (callgrind `--toggle-collect`,
+format 1 trusted without verification on the C++ interpreter, format 2
+with TOIT_VERIFY=1 on the verified loop; scripts and raw numbers in
+/home/flo/work/opentoit-sandbox-artifacts/prims-integration, `ir.sh`,
+`ir/results.txt`, `ir/notes.txt`). Each step was kept only if it helped;
+`verified/check.sh` stays green (no proof changed except the default arm
+below).
+
+| Step | richards | deltablue | pystone |
+|---|---|---|---|
+| format 1 | 1,024 M | 650 M | 762 M |
+| start (part 1, Rust primitives) | 2,420 M (2.36) | 1,751 M (2.69) | 1,724 M (2.26) |
+| 1. dispatch: one jump table, no range check | 2,208 M | 1,611 M | 1,571 M |
+| 2. `Env` owns the `Program` (table pointers hoisted) | 2,174 M | 1,565 M | 1,526 M |
+| 3. tail-duplicated dispatch (`-tail-dup-size=12`) | 2,097 M (2.05) | 1,513 M (2.33) | 1,446 M (1.90) |
+
+1. Dispatch. The opcode `match` had range patterns (`14..=19`, `78..=80`,
+   `81..=84`, `85..=88`), which rustc lowers as comparisons in the jump
+   table's default: LOAD_LOCAL_0..5, the most frequent opcodes, took the
+   table, a range test and a second jump. Explicit alternatives put every
+   opcode into the table (-6.3 % on richards). The default arm is proven
+   dead; `view::proven_unreachable` (`requires false`,
+   `unreachable_unchecked`, TRUSTED.md section 4) lets LLVM drop the range
+   check before the table (-2.7 %).
+2. Table pointers. The loop read the tables through `env.p`, a pointer
+   loaded from `Env`; LLVM could not prove the `Program` disjoint from the
+   stack's raw pointers and reloaded the table pointers after every stack
+   store. `Env` now holds the `Program` by value, so the loop's `&Env`
+   (noalias, readonly) covers them and they are loop invariant. No trusted
+   change (the views are the same; only their owner moved).
+3. Threading. Stable Rust 1.99 has no guaranteed tail calls (`become` is
+   nightly-only), and a handler-per-opcode function table would need
+   Verus specs for function pointers, which it does not support for this
+   use; so the dispatch stays a verified `match`. LLVM's tail duplication
+   (raised from its default with `-C llvm-args=-tail-dup-size=12` in
+   verified/vmverify/.cargo/config.toml) copies the 6-instruction dispatch
+   (bci load, opcode fetch, table load, jump) into the handlers: 2 dispatch
+   sites become 40 and the jump back to the shared block disappears.
+   Sizes 8, 12, 20: -3.2, -3.6, -4.0 % on richards; 12 was kept.
+
+Tried and dropped (`ir/notes.txt`): `panic = "abort"` for the VM's Rust
+library (no change: unwinding does not block register promotion);
+inlining `run_loop` into `machine::run` (no change) and additionally
+dropping the `black_box` of the machine fields (+1 %: the table pointer
+gets a register but `bci` stays in a stack slot); inlining the three
+out-of-line verified functions that take `&mut Machine` (`grow`,
+`raise_with`, `op_primitive`) so that the whole machine is promoted to
+registers (+13 %: a 220 KB function that spills everywhere, as the
+first performance pass found).
+
+The loop head is now the fetch and jump only: the preemption check is
+already where the C++ interpreter has it (after a call has set up the
+callee's frame, and at backward branches), not per instruction.
+
+Where the remaining time goes (richards, 2,097 M, 71.6 M bytecodes, 29
+instructions each; the C++ interpreter needs 14 per format-1
+bytecode): the dispatch (the `match` with its tail copies and the `bci`
+load: about 12 % plus 3.4 %), stack slot reads and writes through
+`StackMem` (8.8 %), program-table reads (5.7 %, now direct), the push room
+check (`top <= rtop`, 3.9 %: the verifier bounds the frame height, but
+the machine invariant does not carry the room yet, so the check is
+needed for the proof), calls and returns (`push_call`, `do_return` with
+the finally-record cut: 11 %), field accesses with their program-heap
+check (6.9 %). The largest structural cost left is that `bci`, `top` and
+the frame cache live in memory: the machine is reached through a pointer
+and the cold paths copy it, so every instruction loads and stores `bci`
+and `top`. Keeping them in registers needs the handlers to take and
+return them (a rewrite of every handler signature and its proof) or a
+split of the machine into a register part and a memory part; the
+experiments above show that promoting all of it is worse.
+
+Superinstruction candidates and the REPEAT / HASH_FIND estimate:
+PROGRESS.md, "Performance pass".
+
 ## 9. Proofs: abstraction, refinement, the end-to-end theorem
 
 The core is proven against the format-2 specification of verified/spec

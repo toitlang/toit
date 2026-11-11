@@ -1,5 +1,65 @@
 # Phase 4a progress (verified core, format 2 on x86-64)
 
+## Performance pass (branch core/prims-integration, 2026-11-11)
+
+Part 2. Three kept steps (DESIGN.md section 8, "Performance pass"):
+dispatch through one jump table without a range check, `Env` owning the
+`Program`, tail-duplicated dispatch. Instructions inside the interpreters
+(format 2 / format 1): richards 2.36 -> 2.05, deltablue 2.69 -> 2.33,
+pystone 2.26 -> 1.90. One new trusted item, `view::proven_unreachable`
+(`requires false`).
+
+WALL_TABLE
+
+Superinstruction candidates (most frequent opcode pairs, reference
+interpreter traces of the benchmarks with a harness without
+`process_stats`; artifacts prims-integration/pairs):
+
+| Pair (opcode numbers) | Count (all three) | Share of 166.3 M steps | Fusion |
+|---|---|---|---|
+| BRANCH_IF_FALSE -> LOAD_FIELD_THIS (83, 98) | 5.19 M | 3.1 % | (control flow; not a fusion) |
+| LOAD_FIELD_THIS -> LOAD_SMI_U8 (98, 26) | 4.57 M | 2.7 % | with the next two: field == small constant, branch |
+| LOAD_SMI_U8 -> INVOKE_EQ (26, 62) | 3.68 M | 2.2 % | compare with an immediate |
+| INVOKE_EQ -> BRANCH_IF_FALSE (62, 83) | 3.57 M | 2.1 % | fused compare-and-branch |
+| POP_1 -> LOAD_FIELD_THIS (41, 98) | 3.15 M | 1.9 % | |
+| STORE_FIELD_THIS -> POP_1 (94, 41) | 3.08 M | 1.9 % | STORE_FIELD_THIS_POP |
+| LOAD_SMI_1 -> INVOKE_ADD (25, 73) | 2.47 M | 1.5 % | increment |
+| INVOKE_VIRTUAL -> LOAD_FIELD_THIS (58, 98), and back (98, 58) | 2.27 M, 2.25 M | 2.7 % | |
+| LOAD_LOCAL_0 -> BRANCH_IF_TRUE (14, 82) | 1.95 M | 1.2 % | test-local-and-branch |
+| INVOKE_LT -> BRANCH_IF_FALSE (63, 83) | 1.92 M | 1.2 % | fused compare-and-branch |
+| AS_CLASS -> STORE_FIELD_THIS / RETURN (48, 94 / 48, 91) | 1.90 M, 1.80 M | 2.2 % | typed field store / typed return |
+
+Per benchmark (steps: richards 71.6 M, deltablue 45.4 M, pystone 49.3 M),
+richards is dominated by the field-test pattern (LOAD_FIELD_THIS,
+LOAD_SMI_U8, INVOKE_EQ, BRANCH_IF_FALSE), deltablue by AS_CLASS -> RETURN
+and the same compare-and-branch, pystone by INVOKE_EQ/INVOKE_ADD with
+small constants. A fused compare-and-branch (INVOKE_EQ/LT/... followed by
+BRANCH_IF_FALSE/TRUE, 5.5 M) and STORE_FIELD_THIS_POP (3.1 M) are the
+clearest candidates; each removes one dispatch (about 6 instructions
+after the tail duplication) per occurrence, together about 1 % of the
+instructions; the larger part of a step is the handler, not the
+dispatch.
+
+REPEAT and HASH_FIND (not implemented; note 16). Costs on the verified
+loop now (callgrind, artifacts prims-integration/loops, `loops.sh`,
+`steps.sh`): an `int.repeat` iteration with a one-line body is 19 spec
+steps in format 2 (12 in `SmallInteger_.repeat`, 7 in the block) against
+8 dispatches in format 1, and costs 457 instructions (format 1: 171); a
+REPEAT instruction (one dispatch per iteration that calls the block)
+removes 11 steps, about 265 instructions at the loop's 24 per step:
+about 230 per iteration (-50 %). A string-key map lookup (1,000 keys) is
+193 steps (145 in `find-body_`) and 5,683 instructions (format 1:
+2,647); a non-re-entrant HASH_PROBE that walks the index and returns to
+Toit at each hash match leaves about 20 of the 145 steps: about 2,200
+instructions (-60 %). Over the suite (note 16's step counts:
+SMI_REPEAT +49.9 M steps, HASH_FIND +3.9 M of 317 M format-2 steps)
+REPEAT would save about 15 % of all format-2 instructions, almost all of
+it in loop-heavy programs (list-test: 38 M of its 38.6 M extra steps),
+and HASH_FIND about 1 % of the suite but about 25 % of the map-heavy
+tests (map-test, set-map-middle-gap-test, rebuild-hash-index-test: 3.1 M
+of 12.5 M steps). None of the three benchmarks uses maps; pystone's main loop is one
+`repeat` (its body dominates), deltablue iterates lists with `do`.
+
 ## Rust primitives wired in (branch core/prims-integration, 2026-11-11)
 
 Part 1: merge core/primitives (b1d51876) into sandbox-integration
