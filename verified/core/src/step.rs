@@ -661,13 +661,29 @@ pub fn resume(m: &mut Machine, env: &Env, c: Ctl, Ghost(w0): Ghost<Machine>) -> 
             && room_ok(&env.p, final(m).with(res.0->0)),
         res.1 != Ctl::Next ==> steps_post(&env.p, w0, *final(m), res.1),
 {
+    resume_with(m, env, c, false, Ghost(w0))
+}
+
+/// `resume`, where `ok` says that the room is known to hold (no rescan).
+pub fn resume_with(m: &mut Machine, env: &Env, c: Ctl, ok: bool, Ghost(w0): Ghost<Machine>) -> (res: (Option<Regs>, Ctl))
+    requires
+        step_post(&env.p, w0, *old(m), c) || steps_post(&env.p, w0, *old(m), c),
+        ok ==> room_ok(&env.p, *old(m)),
+    ensures
+        res.1 == Ctl::Next ==> res.0 is Some && final(m).rok(res.0->0)
+            && crate::regs::ipok(&env.p, res.0->0)
+            && crate::regs::gate_ok(&env.p, *final(m))
+            && steps_post(&env.p, w0, final(m).with(res.0->0), res.1)
+            && room_ok(&env.p, final(m).with(res.0->0)),
+        res.1 != Ctl::Next ==> steps_post(&env.p, w0, *final(m), res.1),
+{
     proof { if step_post(&env.p, w0, *m, c) { lemma_steps_post(&env.p, w0, *m, c); } }
     if let Ctl::Next = c {
     } else {
         return (None, c);
     }
     let ghost m1 = *m;
-    let c2 = ensure_room_all(m, env);
+    let c2 = if ok { Ctl::Next } else { ensure_room_all(m, env) };
     if let Ctl::Next = c2 {
         let r = m.enter(&env.p);
         proof { assert(m.with(r).g == m1.g); }
@@ -677,24 +693,18 @@ pub fn resume(m: &mut Machine, env: &Env, c: Ctl, Ghost(w0): Ghost<Machine>) -> 
     }
 }
 
-/// `resume` after a path on the machine that kept the frames below the top
-/// and the stack length (a call, a return, an unwinding: `room::top_kept`):
-/// those frames have the room they had, so only the top frame is checked,
-/// with the finally records (`room::top_room`); a rescan of every frame
-/// (`ensure_room_all`) only if that check fails.
-pub fn resume_kept(m: &mut Machine, env: &Env, Ghost(w0): Ghost<Machine>) -> (res: (Option<Regs>, Ctl))
+/// After a path on the machine that kept the frames below the top and the
+/// stack length (a call, a return, an unwinding: `room::top_kept`): those
+/// frames have the room they had, so the room holds if the top frame has
+/// it with the finally records (`room::top_room`); `resume_with` then
+/// skips the rescan of every frame (`ensure_room_all`).
+pub fn top_room_kept(m: &Machine, env: &Env, Ghost(w0): Ghost<Machine>) -> (b: bool)
     requires
-        step_post(&env.p, w0, *old(m), Ctl::Next),
+        step_post(&env.p, w0, *m, Ctl::Next),
         room_ok(&env.p, w0),
-        top_kept(w0.g@, old(m).g@),
-        old(m).len >= w0.len,
-    ensures
-        res.1 == Ctl::Next ==> res.0 is Some && final(m).rok(res.0->0)
-            && crate::regs::ipok(&env.p, res.0->0)
-            && crate::regs::gate_ok(&env.p, *final(m))
-            && steps_post(&env.p, w0, final(m).with(res.0->0), res.1)
-            && room_ok(&env.p, final(m).with(res.0->0)),
-        res.1 != Ctl::Next ==> steps_post(&env.p, w0, *final(m), res.1),
+        top_kept(w0.g@, m.g@),
+        m.len >= w0.len,
+    ensures b ==> room_ok(&env.p, *m),
 {
     let p = &env.p;
     let ghost ap = p.ap@;
@@ -713,40 +723,30 @@ pub fn resume_kept(m: &mut Machine, env: &Env, Ghost(w0): Ghost<Machine>) -> (re
     let ri = m.ftop - FRAME_WORDS;
     let base = m.mem.read(ri + FRAME_BASE);
     let method = m.mem.read(ri + FRAME_METHOD);
-    if base < MAX_STACK_LENGTH {
-        proof {
-            assert(sp::valid_method(ap, g.frames[n - 1].method as int));
-            assert(ap.methods[method as int] == method_info(p.methods@[method as int], p.max_height));
-            assert(p.max_height < 0x1_0000);
-        }
-        let a = p.methods.at(method).arity as usize;
-        let total = base + a + p.max_height + m.rtop + STACK_RESERVE;
-        if total <= m.len {
-            let ghost m1 = *m;
-            proof {
-                assert(frame_need(p, g, n - 1) <= m.len);
-                assert forall|i: int| 0 <= i < g.frames.len() implies #[trigger] frame_room(p, m1, i) by {
-                    if i < n - 1 {
-                        assert(g.frames[i] == w0.g@.frames[i]);
-                        assert(frame_room(p, w0, i));
-                    }
-                }
-                assert(top_room(p, m1));
+    if base >= MAX_STACK_LENGTH {
+        return false;
+    }
+    proof {
+        assert(sp::valid_method(ap, g.frames[n - 1].method as int));
+        assert(ap.methods[method as int] == method_info(p.methods@[method as int], p.max_height));
+        assert(p.max_height < 0x1_0000);
+    }
+    let a = p.methods.at(method).arity as usize;
+    let total = base + a + p.max_height + m.rtop + STACK_RESERVE;
+    if total > m.len {
+        return false;
+    }
+    proof {
+        assert(frame_need(p, g, n - 1) <= m.len);
+        assert forall|i: int| 0 <= i < g.frames.len() implies #[trigger] frame_room(p, *m, i) by {
+            if i < n - 1 {
+                assert(g.frames[i] == w0.g@.frames[i]);
+                assert(frame_room(p, w0, i));
             }
-            let r = m.enter(&env.p);
-            proof { assert(m.with(r).g == m1.g); }
-            return (Some(r), Ctl::Next);
         }
+        assert(top_room(p, *m));
     }
-    let ghost m1 = *m;
-    let c2 = ensure_room_all(m, env);
-    if let Ctl::Next = c2 {
-        let r = m.enter(&env.p);
-        proof { assert(m.with(r).g == m1.g); }
-        (Some(r), c2)
-    } else {
-        (None, c2)
-    }
+    true
 }
 
 /// The run loop's invariant on registers: the registers are cursors of the
@@ -841,8 +841,8 @@ pub fn slow(m: &mut Machine, r: Regs, env: &Env, k: Slow, w: usize, Ghost(v): Gh
     let op = p.code.at(m.bci);
     let unwinding = op == 90 || op == 93 || op == 95 || op == 99;
     // `kept`: on `Next` the frames below the top are the ones before
-    // (`room::top_kept`) and the stack length is the same, so `resume_kept`
-    // checks the top frame's room only.
+    // (`room::top_kept`) and the stack length is the same, so the top frame's
+    // room is checked only (`top_room_kept`).
     let (c, kept) = match k {
         Slow::Op => (step_machine(m, env), unwinding),
         Slow::Raise(kk) => (m.v_raise_none(env, kk), false),
@@ -879,6 +879,7 @@ pub fn slow(m: &mut Machine, r: Regs, env: &Env, k: Slow, w: usize, Ghost(v): Gh
             (c, true)
         },
     };
+    let mut ok = false;
     if kept {
         if let Ctl::Next = c {
             proof {
@@ -887,13 +888,10 @@ pub fn slow(m: &mut Machine, r: Regs, env: &Env, k: Slow, w: usize, Ghost(v): Gh
                 }
                 assert(top_kept(w0.g@, m.g@));
             }
-            return match resume_kept(m, env, Ghost(w0)) {
-                (Some(r2), Ctl::Next) => (r2, Ctl::Next),
-                (_, c2) => (r, c2),
-            };
+            ok = top_room_kept(m, env, Ghost(w0));
         }
     }
-    match resume(m, env, c, Ghost(w0)) {
+    match resume_with(m, env, c, ok, Ghost(w0)) {
         (Some(r2), Ctl::Next) => (r2, Ctl::Next),
         (_, c2) => (r, c2),
     }
