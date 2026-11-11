@@ -123,7 +123,13 @@ void GcMetadata_insert_into_remembered_set__Stackp(Stack *address);
 //@ requires true;
 //@ ensures true;
 // Utils::max, Utils::min (src/utils.h, templates; the instance for word).
-word Utils_max(word a, word b);
+// Utils::max is @overloaded (model.cfg: the decoder uses the instance for
+// int): named by the parameter types, which are long on LP64 and int on
+// ILP32; each rendering uses one of the two.
+word Utils_max__long_long(word a, word b);
+//@ requires true;
+//@ ensures result == (a >= b ? a : b);
+word Utils_max__int_int(word a, word b);
 //@ requires true;
 //@ ensures result == (a >= b ? a : b);
 word Utils_min(word a, word b);
@@ -296,7 +302,7 @@ uword toit_v2_grow_stack(void *raw_process, uword needed)
   if (length < Stack_max_length()) {
     //@ shiftright_1(length);
     //@ div_rem_nonneg(length, 2);
-    new_length = Utils_max(length + (length >> 1), (length - free) + (word)needed);
+    new_length = Utils_max__long_long(length + (length >> 1), (length - free) + (word)needed);
     new_length = Utils_min(Stack_max_length(), new_length);
     if (free + (new_length - length) < (word)needed) {
       new_length = (word)-1;

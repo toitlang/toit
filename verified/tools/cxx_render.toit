@@ -800,8 +800,9 @@ class Renderer:
     if kind == "ImplicitCastExpr":
       cast := node["castKind"]
       if (ELIDED-CASTS.contains cast) or (node.get "isPartOfExplicitCast") == true: return expr kids[0]
-      if cast == "IntegralCast" and truncating and (c-type node["type"]["qualType"]) == "int" and (TRUNCATED.contains (resolve (c-type kids[0]["type"]["qualType"]))):
-        // `truncating`: the narrowing conversion of a word to int is the
+      if cast == "IntegralCast" and truncating and (c-type node["type"]["qualType"]) == "int" and ((TRUNCATED.contains (resolve (c-type kids[0]["type"]["qualType"]))) or (UNSIGNED-WORDS.contains (resolve (c-type kids[0]["type"]["qualType"])))):
+        // `truncating`: the narrowing conversion of a word (or an unsigned
+        // word: an id read as a cardinal) to int is the
         // modular one (GCC, Clang, C++20), for code that checks it.
         return Expr "/*@truncating@*/(int)$(wrap (expr kids[0]) PREC-UNARY)" PREC-UNARY
       target-type := c-type node["type"]["qualType"]
