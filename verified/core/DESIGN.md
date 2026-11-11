@@ -581,6 +581,42 @@ out-of-line copy for the bridge and for finally code): the register
 handlers duplicate the fast paths of the machine handlers, which stay for
 the slow paths and for finally code.
 
+### Size diet (2026-11-11, branch core/size-diet)
+
+Section 2a ("One body per opcode", "Finally records in the register
+loop"); progression: PROGRESS.md. Device sizes of the Rust library,
+riscv32imac, linked with --gc-sections (verified/vmverify/tests/
+device_size.sh, device features), text by component in bytes; Ir as in
+the previous table (artifacts core-size: `devsize/`, `ir/results.txt`):
+
+| Component | before opt 3 | after opt 3 | before opt s | after opt s | after opt z |
+|---|---|---|---|---|---|
+| core: verified loop and cold paths | 54,296 | 28,056 | 49,458 | 26,008 | 22,886 |
+| of which `step::run_loop` | 19,614 | 19,964 | 17,516 | 18,118 | |
+| of which the machine's step `step_m` | 25,060 | 0 | 23,384 | 0 | 0 |
+| of which `step::slow` (all slow paths) | - | 2,990 | - | 2,980 | |
+| core: primitives | 15,458 | 15,458 | 13,376 | 13,376 | 12,424 |
+| verifier: checker + heap check | 19,568 | 19,568 | 19,516 | 19,516 | |
+| Rust library total | 107,054 | 80,616 | 99,858 | 76,166 | 71,814 |
+
+| Configuration (whole core) | richards | deltablue | pystone | loop + cold + primitives |
+|---|---|---|---|---|
+| before, opt 3 | 1,234 M (1.21) | 952 M (1.46) | 940 M (1.23) | 69.8 KB |
+| after, opt 3, tail-dup 12 | 1,158 M (1.13) | 913 M (1.40) | 889 M (1.17) | 43.5 KB |
+| after, opt 3, no tail duplication | 1,273 M | 989 M | 975 M | 41.6 KB |
+| after, opt s | 1,303 M | 1,019 M | 1,021 M | 39.4 KB |
+| after, opt z | 1,569 M | 1,202 M | 1,219 M | 35.3 KB |
+
+Recommended for devices: the core at opt 3 with tail duplication (the
+default), the verifier at opt z (already a per-package override). Opt s
+saves 4.1 KB for 11-15 percent more instructions, no tail duplication 1.9
+KB for 8-10 percent; neither pays. Taking `prims::call` (the primitive
+dispatch, inlined into the loop) out of line saves 1.5 KB but costs 1-5
+percent (register allocation of the loop changes), so it stays inlined.
+Wall time (x86-64, load about 24 on 32 cores, minimum of 10): C++ 12.75 /
+7.98 / 8.86 ms, before 11.99 / 9.15 / 8.53 ms, after 11.85 / 9.27 / 8.42
+ms (0.93 / 1.16 / 0.95 of C++).
+
 ## 9. Proofs: abstraction, refinement, the end-to-end theorem
 
 The core is proven against the format-2 specification of verified/spec

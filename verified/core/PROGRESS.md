@@ -79,9 +79,30 @@ suite 280 identical + the two known differences, prim_diff.sh 10 x
 divergence, core_fuzz.toit --filter launch on ASan 30 minutes without a
 crash, 32-bit host tests/sandbox 95/95, device library links):
 
+Device configuration and next size candidates: DESIGN.md section 8 ("Size
+diet": opt 3 with tail duplication stays the best trade-off; opt s saves
+4.1 KB for 11-15 percent more instructions). What is left of the
+interpreter on devices (opt 3): the loop 20.0 KB (of which about 4 KB the
+inlined primitive dispatch, which costs 1-5 percent when taken out of
+line), its cold paths 8.1 KB, the Rust primitives 15.5 KB. Candidates:
+the primitives' argument decoding and failure results (shared code, or opt
+s for them alone, which needs them in a crate of their own: about 2-3 KB),
+the double-arithmetic out-of-memory fallback through the register virtual
+call (0.6 KB), and, outside the core, the verifier's run-time bounds
+checks (Vec indexing in toit_spec's checker and vmverify's conversion):
+they are the only panic paths left and pull in core::fmt and 5.5 KB of
+panic-location strings (about 7 KB). The core itself has no panic path
+(no call of core::panicking from toit_verified_core in the linked
+library).
+
 - M1 (385b9469): items 1-4. Gates as listed (fuzz seed 31: 86,722
   mutants, 12,466 accepted and run, 0 crashes; check.sh: spec 892, core
   837 verified at both widths, audit passed).
+- M2 (ed164a6b plus documentation): item 5, DESIGN.md section 8. Gates as
+  listed (fuzz seed 41: 169,490 mutants, 23,869 accepted and run, 0
+  crashes; ctest 1161/1164; check.sh: spec 892, core 837 at both widths,
+  307 occurrences in 298 groups; nostd_check.sh for riscv32imac and
+  riscv64imac). Wall time: DESIGN.md section 8.
 
 ## The verified loop on registers (branch core/fast-loop-proven, 2026-11-11)
 
