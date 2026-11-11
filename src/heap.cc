@@ -372,6 +372,20 @@ bool ObjectHeap::add_callable_finalizer(Instance* key, Object* lambda, bool weak
   return true;
 }
 
+void ObjectHeap::remove_callable_finalizer(Instance* key) {
+  // Unlink the node now instead of at the next GC. Otherwise a program that
+  // adds and removes a finalizer in a loop without allocating grows the list
+  // (malloced memory) without bound, and the nodes of a key that gets a new
+  // finalizer before the next GC stay on the list for as long as the key
+  // lives, since the GC only looks at the key's finalizer bit.
+  registered_callback_finalizers_.remove_wherever([key](FinalizerNode* node) -> bool {
+    if (node->key() != key) return false;
+    delete node;
+    return true;
+  });
+  key->clear_has_active_finalizer();
+}
+
 bool ObjectHeap::add_vm_finalizer(HeapObject* key) {
   ASSERT(!key->can_be_toit_finalized(program()));
   // We should already have checked whether the object is already registered.

@@ -2267,9 +2267,7 @@ PRIMITIVE(remove_finalizer) {
   // frees its memory: clearing it would leak the memory.
   if (!is_instance(object)) return BOOL(false);
   bool result = object->has_active_finalizer();
-  // We don't remove it from the finalizer list, so that must happen at the
-  // next GC.
-  object->clear_has_active_finalizer();
+  if (result) process->object_heap()->remove_callable_finalizer(Instance::cast(object));
   return BOOL(result);
 }
 
