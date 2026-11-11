@@ -180,7 +180,11 @@ Per built-in, against format 2 without it:
 The whole differential suite (`run_suite.toit`, the 277 runnable tests,
 bytecodes executed by the reference interpreter): format 2 without the
 built-ins 373.2 M, with them 314.1 M (-15.8 %), format 1 306.8 M. The
-excess of format 2 over format 1 goes from +21.6 % to +2.4 %.
+excess of format 2 over format 1 goes from +21.6 % to +2.4 %. Machine
+instructions of the whole untrusted suite (the 281 tests
+`untrusted_suite.toit` runs, each `toit.run --untrusted` under callgrind,
+counted inside `toit_v2_run`; `suite-ir.sh`, `suite-ir/0.txt`, `7.txt`):
+75,756 M without the built-ins, 60,503 M with them (-20.1 %).
 
 Cost of having the built-ins in the run loop at all (same programs,
 mask 0, against the VM of `sandbox-integration`, which measured 1,157.7 M /
@@ -352,9 +356,7 @@ system services, JSON, RPC); if devices are tight on flash, it is the one
 to leave out.
 
 What remains open on this branch: wall-clock times on an idle machine
-(above, measured under load), the instruction totals of the whole
-untrusted suite under callgrind (`suite-ir.sh`, written, not run; the
-step totals above stand in for them), a device measurement of the speed effect,
+(above, measured under load),  a device measurement of the speed effect,
 HASH_DO (above), and moving the emitted find loop next to `find-body_`
 (e.g. a format-2-only Toit body) if the owner prefers Toit to bytecode
 for it.
