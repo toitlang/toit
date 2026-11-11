@@ -208,27 +208,21 @@ impl Msg {
     }
 }
 
-/// Runs `f` on the machine, out of line. The hot loop keeps the `Machine`
-/// in registers (LLVM's scalar replacement) only if its address never
-/// escapes; every path that calls a non-inlined function goes through
-/// `cold!`, which moves the machine into this function by value and back.
+/// Runs `f` on the machine, out of line (the calls into C++ and the cold
+/// paths of the checked loop). The run loops keep the machine behind a
+/// pointer (the verified loop its hot part in registers, `regs.rs`), so
+/// the machine is passed by reference.
 #[inline(never)]
-fn cold_run<R, F: FnOnce(&mut Machine) -> R>(mut m: Machine, f: F) -> (Machine, R) {
-    let r = f(&mut m);
-    (m, r)
+#[cold]
+fn cold_run<R, F: FnOnce(&mut Machine) -> R>(m: &mut Machine, f: F) -> R {
+    f(m)
 }
 
 /// `cold!(self, |m| expr)`: evaluates `expr` with `m` the machine, out of
 /// line (see `cold_run`).
 macro_rules! cold {
     ($s:expr, |$m:ident| $e:expr) => {{
-        // SAFETY: the machine is moved out of `*$s` and moved back before
-        // anything else reads `*$s`; `cold_run` cannot unwind (panic =
-        // abort) and the machine has no destructor.
-        let taken = unsafe { core::ptr::read($s) };
-        let (back, r) = cold_run(taken, |$m: &mut Machine| $e);
-        unsafe { core::ptr::write($s, back) };
-        r
+        cold_run($s, |$m: &mut Machine| $e)
     }};
 }
 
