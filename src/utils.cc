@@ -606,7 +606,8 @@ static uint8 write_64(int bits, const char* p) {
 void Base64Encoder::encode(const uint8* data, word size, const std::function<void (uint8 out_byte)>& f) {
   // Output a buffer in base64 encoding, outputting 3 input bytes as 4 output
   // bytes.
-  word r = rest;
+  // Unsigned, as the bits that have been output are shifted out at the top.
+  uword r = rest;
   const char* table = url_mode ? base64url_output_table : base64_output_table;
   word c = bit_count;
   for (word i = 0; i < size; i++) {

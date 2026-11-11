@@ -1505,7 +1505,11 @@ class Primitive {
   static void set_up();
 
   // Use temporary tagging for marking an error.
-  static bool is_error(Object* object) { return object->is_marked(); }
+  // The result of a primitive can be the smi zero, which is the null
+  // pointer. Check the tag bits without calling a member function on it.
+  static bool is_error(Object* object) {
+    return (reinterpret_cast<uword>(object) & Object::NON_SMI_TAG_MASK) == Object::MARKED_TAG;
+  }
   static HeapObject* mark_as_error(HeapObject* object) { return object->mark(); }
   static Object* unmark_from_error(Program* program, Object* object);
   static Object* os_error(int error, Process* process, const char* operation = null);

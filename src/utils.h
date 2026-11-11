@@ -39,6 +39,30 @@ class Utils {
     return x > y ? x : y;
   }
 
+  // Toit integers are 64 bits and wrap around. Signed overflow is undefined
+  // behavior in C++, so the wrapping operations compute in unsigned
+  // arithmetic, where the two's complement wrap-around is well-defined.
+  static inline int64 wrapping_add(int64 x, int64 y) {
+    return static_cast<int64>(static_cast<uint64>(x) + static_cast<uint64>(y));
+  }
+
+  static inline int64 wrapping_sub(int64 x, int64 y) {
+    return static_cast<int64>(static_cast<uint64>(x) - static_cast<uint64>(y));
+  }
+
+  static inline int64 wrapping_mul(int64 x, int64 y) {
+    return static_cast<int64>(static_cast<uint64>(x) * static_cast<uint64>(y));
+  }
+
+  static inline int64 wrapping_negate(int64 x) {
+    return static_cast<int64>(0 - static_cast<uint64>(x));
+  }
+
+  // The shift must be in the range [0, 63].
+  static inline int64 wrapping_shift_left(int64 x, int64 bits) {
+    return static_cast<int64>(static_cast<uint64>(x) << bits);
+  }
+
   template<typename T>
   static inline bool is_power_of_two(T x) {
     return (x & (x - 1)) == 0;

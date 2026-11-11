@@ -41,8 +41,9 @@ PRIMITIVE(base64_encode)  {
   return process->allocate_string_or_error(char_cast(buffer_bytes.address()), out_len);
 }
 
-static int get_for_decode(const Blob& bytes, int index, bool url_mode) {
-  const int ERROR = -1;
+// Unsigned, so that the callers can shift the error value.
+static uint32 get_for_decode(const Blob& bytes, int index, bool url_mode) {
+  const uint32 ERROR = 0xffffffff;
   uint8_t x = bytes.address()[index];
   if (url_mode && x == '_') return 63;
   if (x >= 'a') {
@@ -99,7 +100,7 @@ PRIMITIVE(base64_decode)  {
       (get_for_decode(input, j + 1, url_mode) << 12) |
       (get_for_decode(input, j + 2, url_mode) << 6) |
       (get_for_decode(input, j + 3, url_mode) << 0);
-    // If any of the get_for_decode calls returned -1 then some of the high
+    // If any of the get_for_decode calls returned the error then some of the high
     // bits will be set, indicating invalid input.
     if (wrd >> 24 != 0) FAIL(OUT_OF_RANGE);
     buffer[i + 0] = (wrd >> 16) & 0xff;
