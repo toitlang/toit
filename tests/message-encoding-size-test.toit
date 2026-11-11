@@ -18,6 +18,7 @@ NO-SUCH-PID ::= 0x3fff_fff0
 
 main:
   test-tison
+  test-tison-wrap-around
   test-message
 
 test-tison:
@@ -28,9 +29,18 @@ test-tison:
   small := tison.encode (List 3: "y" * 1000)
   expect-equals (List 3: "y" * 1000) (tison.decode small)
 
+test-tison-wrap-around:
+  // 100 * 100 * 43 references to a 10 KB string are 4.3 GB. On a 32-bit
+  // VM the size wrapped around to a few megabytes.
+  node/any := "w" * 10_000
+  [43, 100, 100].do: | n |
+    child := node
+    node = List n: child
+  expect-throw "OUT_OF_RANGE": tison.encode node
+
 test-message:
   // Strings up to 128 bytes are copied into the message itself. 200^4
-  // references to one are 200 GB. The encoder stops at 2 GB.
+  // references to one are 200 GB. The encoder stops at 1 GB.
   node/any := "z" * 120
   4.repeat:
     child := node
