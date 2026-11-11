@@ -117,7 +117,7 @@ fn mutate(r: &mut Rng, t: &mut Tables) -> String {
             let f = r.below(8);
             match f {
                 0 => m.entry = if r.chance(30) { other.entry } else { value(r, m.entry as u64, 32, scale) as u32 },
-                1 => m.end = if r.chance(30) { other.end } else { value(r, m.end as u64, 32, scale) as u32 },
+                1 => m.length = if r.chance(30) { other.length } else { value(r, m.length as u64, 16, 0xffff) as u16 },
                 2 => m.selector = if r.chance(30) { other.selector } else { value(r, m.selector as u64, 16, 0xffff) as u16 },
                 3 => m.aux = value(r, m.aux as u64, 16, 256) as u16,
                 4 => m.recv_start = value(r, m.recv_start as u64, 16, t.class_bits.len() as u64) as u16,

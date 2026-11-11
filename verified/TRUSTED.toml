@@ -38,7 +38,7 @@ file = "src/alloc.rs"
 item = "gc_allocate_double"
 kind = "external_body"
 count = 1
-justification = "ASSUMED: toit_v2_allocate_double (may GC) keeps the abstract state the stack, header, globals and heap model represent and appends exactly the spec's double (spec_common::new_double) (or keeps it unchanged on out of memory); TRUSTED.md, GC and allocation."
+justification = "ASSUMED: toit_v2_allocate_double (may GC) keeps the abstract state the stack, header, globals and heap model represent and appends exactly the spec's double (spec_common::new_double) (or keeps it unchanged on out of memory); epoch unchanged implies nothing moved (the machine's fields and stack view stay); TRUSTED.md, GC and allocation, Epoch."
 
 [[trusted]]
 crate = "core"
@@ -46,7 +46,15 @@ file = "src/alloc.rs"
 item = "gc_allocate_instance"
 kind = "external_body"
 count = 1
-justification = "ASSUMED: toit_v2_allocate_instance (may GC) keeps the abstract state the stack, header, globals and heap model represent and appends exactly the spec's null-filled instance (or keeps it unchanged on out of memory); TRUSTED.md, GC and allocation."
+justification = "ASSUMED: toit_v2_allocate_instance (may GC) keeps the abstract state the stack, header, globals and heap model represent and appends exactly the spec's null-filled instance (or keeps it unchanged on out of memory); epoch unchanged implies nothing moved (the machine's fields and stack view stay); TRUSTED.md, GC and allocation, Epoch."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "Accepted::trusted_program"
+kind = "external_body"
+count = 1
+justification = "EXPERIMENT (verified/core/EXPERIMENT-trusted.md): the verified-loop token for a trusted program the launch did not verify (TOIT_V2_TRUSTED, written by Interpreter::run_v2 only for a process whose policy is not untrusted); the loader's assume_new then rests on the compiler for first-party code (its output would be accepted under the trusted rules: debug builds and -Xverify check it). Untrusted processes never get it; TRUSTED.md section 6, Loader."
 
 [[trusted]]
 crate = "core"
@@ -155,14 +163,6 @@ justification = "Opcode numbers exported for verified/layout_check.cc, which com
 [[trusted]]
 crate = "core"
 file = "src/ffi.rs"
-item = "PrimitiveRef"
-kind = "external_body"
-count = 1
-justification = "Opaque handle of a C++ PrimitiveEntry found in the process policy; only passed back to toit_v2_call_primitive."
-
-[[trusted]]
-crate = "core"
-file = "src/ffi.rs"
 item = "ProgramTables"
 kind = "plain_rust_item"
 count = 1
@@ -198,15 +198,15 @@ file = "src/ffi.rs"
 item = "Runtime::allocate_double"
 kind = "external_body"
 count = 1
-justification = "Wrapper of toit_v2_allocate_double: MAY GC, takes the stack view by &mut and replaces it with a fresh one (GC safety by construction, DESIGN.md)."
+justification = "Wrapper of toit_v2_allocate_double: MAY GC; replaces the stack view by a fresh one exactly when the heap's epoch changed (TRUSTED.md \"Epoch\")."
 
 [[trusted]]
 crate = "core"
 file = "src/ffi.rs"
 item = "Runtime::allocate_double"
 kind = "unsafe"
-count = 1
-justification = "FFI call to toit_v2_allocate_double (src/interpreter_v2.cc); arguments are plain words; contract in DESIGN.md FFI contract."
+count = 3
+justification = "FFI call to toit_v2_allocate_double (src/interpreter_v2.cc; plain words) and the two reads of the epoch word (as Runtime::call_primitive); DESIGN.md FFI contract."
 
 [[trusted]]
 crate = "core"
@@ -230,15 +230,15 @@ file = "src/ffi.rs"
 item = "Runtime::allocate_instance"
 kind = "external_body"
 count = 1
-justification = "Wrapper of toit_v2_allocate_instance: MAY GC, takes the stack view by &mut and replaces it with a fresh one (GC safety by construction, DESIGN.md)."
+justification = "Wrapper of toit_v2_allocate_instance: MAY GC; replaces the stack view by a fresh one exactly when the heap's epoch changed (TRUSTED.md \"Epoch\")."
 
 [[trusted]]
 crate = "core"
 file = "src/ffi.rs"
 item = "Runtime::allocate_instance"
 kind = "unsafe"
-count = 1
-justification = "FFI call to toit_v2_allocate_instance (src/interpreter_v2.cc); arguments are plain words; contract in DESIGN.md FFI contract."
+count = 3
+justification = "FFI call to toit_v2_allocate_instance (src/interpreter_v2.cc; plain words) and the two reads of the epoch word (as Runtime::call_primitive); DESIGN.md FFI contract."
 
 [[trusted]]
 crate = "core"
@@ -254,15 +254,15 @@ file = "src/ffi.rs"
 item = "Runtime::call_primitive"
 kind = "external_body"
 count = 1
-justification = "Wrapper of toit_v2_call_primitive: MAY GC, takes the stack view by &mut and replaces it with a fresh one (GC safety by construction, DESIGN.md)."
+justification = "Wrapper of toit_v2_primitive: MAY GC; reads the heap's epoch before and after the call and replaces the stack view by a fresh one exactly when it changed (the epoch contract, TRUSTED.md \"Epoch\": unchanged epoch, no object moved and the current stack is the same, so the old view stays valid)."
 
 [[trusted]]
 crate = "core"
 file = "src/ffi.rs"
 item = "Runtime::call_primitive"
 kind = "unsafe"
-count = 1
-justification = "FFI call to toit_v2_call_primitive (src/interpreter_v2.cc); arguments are plain words; contract in DESIGN.md FFI contract."
+count = 3
+justification = "The FFI call to toit_v2_primitive (src/interpreter_v2.cc; plain words) and the two reads of the epoch word (ObjectHeap::v2_epoch_address of the running process, toit_v2_context::epoch, read on the owning thread); DESIGN.md FFI contract."
 
 [[trusted]]
 crate = "core"
@@ -279,22 +279,6 @@ item = "Runtime::grow_stack"
 kind = "unsafe"
 count = 1
 justification = "FFI call to toit_v2_grow_stack (src/interpreter_v2.cc); arguments are plain words; contract in DESIGN.md FFI contract."
-
-[[trusted]]
-crate = "core"
-file = "src/ffi.rs"
-item = "Runtime::lookup_primitive"
-kind = "external_body"
-count = 1
-justification = "Wrapper of toit_v2_lookup_primitive: no GC; contract in DESIGN.md FFI contract."
-
-[[trusted]]
-crate = "core"
-file = "src/ffi.rs"
-item = "Runtime::lookup_primitive"
-kind = "unsafe"
-count = 1
-justification = "FFI call to toit_v2_lookup_primitive (src/interpreter_v2.cc); arguments are plain words; contract in DESIGN.md FFI contract."
 
 [[trusted]]
 crate = "core"
@@ -419,14 +403,6 @@ justification = "Rust declaration of a C++ function of src/interpreter_v2.cc (ex
 [[trusted]]
 crate = "core"
 file = "src/ffi.rs"
-item = "toit_v2_call_primitive"
-kind = "plain_rust_item"
-count = 1
-justification = "Rust declaration of a C++ function of src/interpreter_v2.cc (extern block); contract in DESIGN.md FFI contract."
-
-[[trusted]]
-crate = "core"
-file = "src/ffi.rs"
 item = "toit_v2_current_stack"
 kind = "plain_rust_item"
 count = 1
@@ -443,10 +419,10 @@ justification = "Rust declaration of a C++ function of src/interpreter_v2.cc (ex
 [[trusted]]
 crate = "core"
 file = "src/ffi.rs"
-item = "toit_v2_lookup_primitive"
+item = "toit_v2_primitive"
 kind = "plain_rust_item"
 count = 1
-justification = "Rust declaration of a C++ function of src/interpreter_v2.cc (extern block); contract in DESIGN.md FFI contract."
+justification = "Extern declaration of toit_v2_primitive (src/interpreter_v2.h): the C++ primitive (module, index) of the process' policy called as the C++ interpreter calls it, GC-and-retry out of line; replaces toit_v2_lookup_primitive and toit_v2_call_primitive. Signature checked by the layout check's stub."
 
 [[trusted]]
 crate = "core"
@@ -606,7 +582,7 @@ file = "src/primitive.rs"
 item = "gc_call_primitive"
 kind = "external_body"
 count = 1
-justification = "ASSUMED: toit_v2_call_primitive (may GC, may switch the task) of the primitive the lookup found, with the method's arity, ends in one of the spec's completions of the step (theorem::completion: prim_default/prim_spec for every C++ primitive of the policy, task_step for task_new/task_transfer); TRUSTED.md, Primitives."
+justification = "ASSUMED: toit_v2_primitive (may GC, may switch the task; ABSENT without effect when the policy has no such primitive of the method's arity) ends in one of the spec's completions of the step (theorem::completion: prim_default/prim_spec for every C++ primitive of the policy, task_step for task_new/task_transfer); and the epoch contract: epoch unchanged implies no object moved and the task and its stack object are the same (the machine's fields and stack view stay, the state is the step's with a new heap); TRUSTED.md, Primitives and Epoch."
 
 [[trusted]]
 crate = "core"
@@ -775,6 +751,14 @@ item = "run_loop"
 kind = "exec_allows_no_decreases_clause"
 count = 1
 justification = "A program may run forever (the scheduler preempts it); no termination is claimed, only that every step keeps the invariant."
+
+[[trusted]]
+crate = "core"
+file = "src/step.rs"
+item = "trusted_field_accesses"
+kind = "external_body"
+count = 1
+justification = "EXPERIMENT (verified/core/EXPERIMENT-trusted.md): in the unchecked mode of a trusted program (Program2::unchecked, which allows the unchecked twins of the field accesses, format note 20; accepts allows it only with trusted == true, the launch verifier sets it only for the trusted rules, and Interpreter::run_v2 never sets it for an untrusted process) no step reaches a failed unchecked field access (a twin whose check would fail): we trust the compiler for first-party code. The soundness theorem is stated without the mode; TRUSTED.md section 6."
 
 [[trusted]]
 crate = "core"
@@ -1766,7 +1750,7 @@ file = "src/view.rs"
 item = "proven_unreachable"
 kind = "external_body"
 count = 1
-justification = "requires false: Verus proves every call site dead (the dispatch's default arm, opcode >= 101 contradicts the verifier's instruction check); lets LLVM drop the jump table's range check (-2.7% instructions on richards); TRUSTED.md section 4."
+justification = "requires false: Verus proves every call site dead (the dispatch's default arm, opcode >= OPCODE_COUNT2 (114) contradicts the verifier's instruction check); lets LLVM drop the jump table's range check (-2.7% instructions on richards); TRUSTED.md section 4."
 
 [[trusted]]
 crate = "core"
@@ -2567,3 +2551,59 @@ item = "*"
 kind = "plain_rust_file"
 count = 1
 justification = "TRUSTED verdict glue: accept iff the proven check::verify (split_ok, hence accepts of the assembled certificate) and heap_check::x_loaded_ok_stream both accept the converted program and the conversion completed, with global_count and prim_arity set from trusted inputs."
+
+[[trusted]]
+crate = "core"
+file = "src/alloc.rs"
+item = "bump_instance"
+kind = "external_body"
+count = 1
+justification = "ASSUMED (TRUSTED.md 9, Inline allocation): the new-space fast path of SemiSpace::try_allocate inline, the instance initialized as ObjectHeap::allocate_instance does; contract of gc_allocate_instance without a GC (nothing moves); 0 and no change if new space is full."
+
+[[trusted]]
+crate = "core"
+file = "src/alloc.rs"
+item = "bump_instance"
+kind = "unsafe"
+count = 1
+justification = "Writes the header and null fields of the fresh new-space bytes Runtime::bump returned (TRUSTED.md 9, Inline allocation)."
+
+[[trusted]]
+crate = "core"
+file = "src/alloc.rs"
+item = "bump_double"
+kind = "external_body"
+count = 1
+justification = "ASSUMED (TRUSTED.md 9, Inline allocation): as bump_instance, for ObjectHeap::allocate_double; contract of gc_allocate_double without a GC."
+
+[[trusted]]
+crate = "core"
+file = "src/alloc.rs"
+item = "bump_double"
+kind = "unsafe"
+count = 1
+justification = "Writes the header and the 64-bit value of the fresh new-space bytes Runtime::bump returned (TRUSTED.md 9, Inline allocation)."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "Runtime::bump"
+kind = "plain_rust_item"
+count = 1
+justification = "SemiSpace::try_allocate's fast path on the process' new-space top and limit (toit_v2_context); only bump_instance and bump_double call it (TRUSTED.md 9, Inline allocation)."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "Runtime::bump"
+kind = "unsafe"
+count = 1
+justification = "Reads and writes the new-space top and limit words of the running process and the sentinel word after the allocation (inside the space: limit - top > size)."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "toit_v2_core_ported"
+kind = "plain_rust_item"
+count = 1
+justification = "Performance only: whether a core primitive has a Rust port (prims::family), for the policies' core arities; either path is a completion of PRIMITIVE (TRUSTED.md 9)."

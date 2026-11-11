@@ -1,1 +1,3 @@
 /target
+# Output of device_size.sh when given a relative OUT-DIR.
+/staticlib/devsize

@@ -54,7 +54,7 @@ pub open spec fn cur_b(s: State2) -> int {
 /// IDENTICAL, branches, HALT.
 pub open spec fn fam_local(op: u8) -> bool {
     op <= 4 || (14 <= op && op <= 31) || (34 <= op && op <= 37) || (40 <= op && op <= 52)
-        || (81 <= op && op <= 88) || op == 96 || op == 100
+        || (81 <= op && op <= 88) || op == 96 || op == 100 || op == 101 || op == 102 || op == 103
 }
 
 /// Field access.
@@ -93,7 +93,7 @@ pub open spec fn fam_prim(op: u8) -> bool {
 }
 
 pub proof fn lemma_families(op: u8)
-    requires op < OPCODE_COUNT2,
+    requires op < OPCODE_COUNT2, !is_twin(op),
     ensures fam_local(op) || fam_field(op) || fam_block(op) || fam_call(op) || fam_virtual(op)
         || fam_tail(op) || fam_unwind(op) || fam_prim(op),
 {}
@@ -147,13 +147,27 @@ pub proof fn lemma_instr(p: Program2, c: Cert, trusted: bool, s: State2)
     lemma_top_kinds(p, c, s);
     lemma_map_instr(p, c, trusted, m, off);
     lemma_map_bound(p, c, trusted, m, off);
-    assert(method_ok(p, c, m, trusted));
     assert(frame_ok(p, c, s, t)) by { reveal(wf_task); }
+    lemma_base_op(p.bytecodes[s.bci as int]);
     let op = cur_op(p, s);
     assert(op < OPCODE_COUNT2);
     assert(1 <= opcode_length2(op) <= 6) by {
         reveal_with_fuel(opcode_length2, 1);
     }
+}
+
+/// The unchecked twins at the bci of a well-formed state (format note 20):
+/// `cur_op` is a base opcode, a twin's byte occurs only in the unchecked
+/// mode, and has its base's length.
+pub proof fn lemma_instr_twin(p: Program2, c: Cert, trusted: bool, s: State2)
+    requires accepts(p, c, trusted), wf(p, c, s),
+    ensures
+        !is_twin(cur_op(p, s)),
+        is_twin(p.bytecodes[s.bci as int]) ==> p.unchecked,
+        opcode_length2(p.bytecodes[s.bci as int]) == opcode_length2(cur_op(p, s)),
+{
+    lemma_instr(p, c, trusted, s);
+    lemma_base_op(p.bytecodes[s.bci as int]);
 }
 
 /// The value in slot `n` from the top of the top frame conforms to its

@@ -33,13 +33,12 @@ uword toit_v2_allocate_double(void* p, uint64_t b) { return 0; }
 uword toit_v2_allocate_exception(void* p, uword v, uword k, const uword* w, uword c) { return 0; }
 uword toit_v2_allocate_array(void* p, uword l, uword f) { return 0; }
 uword toit_v2_grow_stack(void* p, uword n) { return 0; }
-uword toit_v2_lookup_primitive(void* p, uword m, uword i, const void** e, uword* a) { return 0; }
 uword toit_v2_try_allocate_large_integer(void* p, int64_t v) { return 0; }
 uword toit_v2_try_allocate_double(void* p, uint64_t b) { return 0; }
 uword toit_v2_try_allocate_array(void* p, uword l, uword f) { return 0; }
 uword toit_v2_try_allocate_string(void* p, uword l) { return 0; }
 uword toit_v2_try_allocate_byte_array(void* p, uword l) { return 0; }
-uword toit_v2_call_primitive(void* p, const void* e, uword a, uword f, uword* r) { return 0; }
+uword toit_v2_primitive(void* p, uword m, uword i, uword a, uword f, uword* r) { return 0; }
 void toit_v2_report(void* p, uword k, uword b, uword d) {}
 uword toit_v2_tracing(void* p) { return 0; }
 void toit_vmverify_panic(const uint8_t* file, uword length) { for (;;) {} }

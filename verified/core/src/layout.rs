@@ -175,6 +175,10 @@ pub const FIN_RESUME: usize = 2;
 pub const FIN_TARGET: usize = 3;
 pub const FIN_TARGET_HEIGHT: usize = 4;
 pub const STACK_RESERVE: usize = 8;
+/// Bound on the `needed` of `step::gc_grow_stack` (`toit_v2_grow_stack`,
+/// which rejects more than `Stack::max_length()`): far below 2^31, so
+/// the C++ side's casts to `word` stay non-negative on both widths.
+pub const GROW_STACK_MAX_NEEDED: usize = 0x10_0000;
 
 // --- Program tables (src/program.h) ---------------------------------------
 pub const ROOT_NULL: usize = 0;
@@ -243,9 +247,17 @@ pub const V2_PRIMITIVE_FAILURE: usize = 1;
 pub const V2_PRIMITIVE_THROW: usize = 2;
 pub const V2_PRIMITIVE_MISSING: usize = 0;
 pub const V2_PRIMITIVE_FOUND: usize = 1;
+/// `TOIT_V2_PRIMITIVE_ABSENT`: the policy has no such primitive with the
+/// method's arity; nothing ran (`toit_v2_primitive`).
+pub const V2_PRIMITIVE_ABSENT: usize = 3;
 /// `TOIT_V2_ACCEPTED`: the launch-time verifier accepted the program on the
 /// table the process runs (`ffi::Accepted`).
 pub const V2_ACCEPTED: usize = 0x56455249;
+/// `TOIT_V2_TRUSTED`: a trusted program (system or first-party code) that
+/// the launch did not verify; it runs on the verified loop on the
+/// assumption that the verifier would accept it (`ffi::Accepted::trusted`,
+/// verified/core/EXPERIMENT-trusted.md).
+pub const V2_TRUSTED: usize = 0x54525354;
 pub const V2_REPORT_STUCK: usize = 0;
 pub const V2_REPORT_UNCAUGHT: usize = 1;
 pub const V2_REPORT_TASK_RETURNED: usize = 2;

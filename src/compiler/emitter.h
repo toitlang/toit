@@ -173,6 +173,17 @@ class Emitter {
   // Format 2: TRY on the try block's method on top of the stack.
   void try_finally();
   void load_field_this(int n);
+  // Format 2, proposal (format note 19): a loop step, V2_LOOP_REPEAT or
+  // V2_LOOP_ARRAY. The counter is slot [counter] from the top (before the
+  // step pops the top), the block the slot above it, the limit (and for
+  // LOOP_ARRAY the array) the ones above that; [body] is the bound
+  // INVOKE_BLOCK the taken step branches back to.
+  void loop_step(Opcode opcode, Label* body, int counter);
+  // Format 2, proposal (format note 19): HASH_FIND with the probe state in
+  // slots [state] .. [state] + 2 from the top, the hash in slot [hash] and
+  // the collection in [hash] + 2. Falls through with the candidate key and
+  // its position pushed; branches to [miss] with the code pushed.
+  void hash_find(Label* miss, int state, int hash);
   void store_field_this(int n);
   // Whether the code ends with an instruction that does not continue with
   // the next one, and no label is bound after it.

@@ -1461,6 +1461,10 @@ class String : public HeapObject {
     return INTERNAL_HEADER_SIZE + index;
   }
   uint16 _assign_hash_code();
+  // The hash code of a string read from a snapshot, whose content the loader
+  // has not validated yet (it rejects literals that aren't valid UTF-8 after
+  // reading the heap: the verifier's loaded_ok).
+  void _assign_unvalidated_hash_code();
 
   uint8* _as_utf8bytes() {
     if (content_on_heap()) {

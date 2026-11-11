@@ -283,7 +283,7 @@ pub open spec fn method_info(m: V2Method, max_height: usize) -> MethodInfo {
         recv_start: m.recv_start,
         recv_end: m.recv_end,
         entry: m.entry as usize,
-        end: m.end as usize,
+        end: m.end_spec(),
     }
 }
 
@@ -303,6 +303,7 @@ pub open spec fn prog_rel(p: &crate::exec::Program, objs: Seq<HeapObj>, addr: Se
     let ap = p.ap@;
     &&& ap.word_bits == WORD_BITS
     &&& p.code@ == ap.bytecodes
+    &&& p.unchecked == ap.unchecked
     &&& p.methods@.len() == ap.methods.len()
     &&& forall|i: int| 0 <= i < ap.methods.len() ==>
             #[trigger] ap.methods[i] == method_info(p.methods@[i], p.max_height)

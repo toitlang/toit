@@ -1,14 +1,14 @@
-# Assembled-method battery Wed Nov 11 16:07:08 CET 2026
+# Assembled-method battery Wed Nov 11 16:41:51 CET 2026
 [good-retnull] x{1/1} ACCEPTED->ran:   
 [good-print55] x{0/0} ACCEPTED->ran: 55  
 [good-return-val] x{1/1} ACCEPTED->ran:   
 [halt-0] x{0/0} untrusted program rejected: method 21 at bci 225 (+0): HALT 0: successor outside the method 
 [halt-deepsleep] x{0/0} untrusted program rejected: method 21 at bci 225 (+0): HALT 2: HALT rejected with kinds [] 
 [halt-reset] x{0/0} untrusted program rejected: method 21 at bci 225 (+0): HALT 3: HALT rejected with kinds [] 
-[opcode-101] x{0/0} untrusted program rejected: method 21 at bci 225 (+0): bad opcode 101: invalid opcode 101 
+[opcode-101] x{0/0} untrusted program rejected: method 21 at bci 225 (+0): LOOP_REPEAT (past the end) (past the end) (past the end): instruction crosses the method end 
 [opcode-200] x{0/0} untrusted program rejected: method 21 at bci 225 (+0): bad opcode 200: invalid opcode 200 
 [opcode-255] x{0/0} untrusted program rejected: method 21 at bci 225 (+0): bad opcode 255: invalid opcode 255 
-[opcode-101-ctx] x{0/0} untrusted program rejected: method 21 at bci 226 (+1): bad opcode 101: invalid opcode 101 
+[opcode-101-ctx] x{0/0} untrusted program rejected: method 21 at bci 226 (+1): LOOP_REPEAT 91 (past the end) (past the end): instruction crosses the method end 
 [pop1-underflow] x{0/0} untrusted program rejected: method 21 at bci 225 (+0): POP_1: POP_1 rejected with kinds [] 
 [pop-n-underflow] x{0/0} untrusted program rejected: method 21 at bci 225 (+0): POP 5: POP rejected with kinds [] 
 [add-underflow] x{0/0} untrusted program rejected: method 21 at bci 225 (+0): INVOKE_ADD: INVOKE_ADD rejected with kinds [] 
@@ -67,4 +67,4 @@
 [loadlit-wide-oob] x{0/0} untrusted program rejected: method 21 at bci 225 (+0): LOAD_LITERAL_WIDE 232 253: LOAD_LITERAL_WIDE rejected with kinds [] 
 [allocate-oob] x{0/0} untrusted program rejected: method 21 at bci 225 (+0): ALLOCATE 250: ALLOCATE rejected with kinds [] 
 [invokevirt-oob] x{0/0} untrusted program rejected: method 21 at bci 226 (+1): INVOKE_VIRTUAL 0 232 253: INVOKE_VIRTUAL rejected with kinds [Val] 
-# done Wed Nov 11 16:07:41 CET 2026
+# done Wed Nov 11 16:42:11 CET 2026

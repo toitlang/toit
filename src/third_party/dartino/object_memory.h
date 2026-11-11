@@ -267,6 +267,13 @@ class Space : public LivenessOracle {
 
   uword top() const { return top_; }
 
+ public:
+  // For the format-2 core's inline bump allocation (SemiSpace::try_allocate
+  // inline; verified/core/TRUSTED.md, "Inline allocation").
+  uword* v2_top_address() { return &top_; }
+  const uword* v2_limit_address() const { return &limit_; }
+
+ protected:
   Program* program_ = null;
   ChunkList chunk_list_;
   uword top_ = 0;               // Allocation top in current chunk.

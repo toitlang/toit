@@ -186,7 +186,7 @@ pub proof fn lemma_this_ok(p: Program2, c: Cert, trusted: bool, s: State2, f: in
 
 #[verifier::spinoff_prover]
 pub proof fn lemma_load_field(p: Program2, c: Cert, trusted: bool, s: State2)
-    requires accepts(p, c, trusted), wf(p, c, s), small(s),
+    requires accepts(p, c, trusted), wf(p, c, s), small(s), unchecked_ok(p, s),
         cur_op(p, s) == LOAD_FIELD || cur_op(p, s) == LOAD_FIELD_WIDE,
     ensures step_ok(p, c, s),
 {
@@ -220,7 +220,7 @@ pub proof fn lemma_load_field(p: Program2, c: Cert, trusted: bool, s: State2)
 
 #[verifier::spinoff_prover]
 pub proof fn lemma_load_field_local(p: Program2, c: Cert, trusted: bool, s: State2)
-    requires accepts(p, c, trusted), wf(p, c, s), small(s),
+    requires accepts(p, c, trusted), wf(p, c, s), small(s), unchecked_ok(p, s),
         cur_op(p, s) == LOAD_FIELD_LOCAL || cur_op(p, s) == POP_LOAD_FIELD_LOCAL,
     ensures step_ok(p, c, s),
 {
@@ -265,7 +265,7 @@ pub proof fn lemma_load_field_local(p: Program2, c: Cert, trusted: bool, s: Stat
 
 #[verifier::spinoff_prover]
 pub proof fn lemma_store_field(p: Program2, c: Cert, trusted: bool, s: State2)
-    requires accepts(p, c, trusted), wf(p, c, s), small(s),
+    requires accepts(p, c, trusted), wf(p, c, s), small(s), unchecked_ok(p, s),
         cur_op(p, s) == STORE_FIELD || cur_op(p, s) == STORE_FIELD_WIDE || cur_op(p, s) == STORE_FIELD_POP,
     ensures step_ok(p, c, s),
 {
@@ -339,7 +339,7 @@ pub proof fn lemma_load_field_this(p: Program2, c: Cert, trusted: bool, s: State
 
 #[verifier::spinoff_prover]
 pub proof fn lemma_store_field_this(p: Program2, c: Cert, trusted: bool, s: State2)
-    requires accepts(p, c, trusted), wf(p, c, s), small(s), cur_op(p, s) == STORE_FIELD_THIS,
+    requires accepts(p, c, trusted), wf(p, c, s), small(s), unchecked_ok(p, s), cur_op(p, s) == STORE_FIELD_THIS,
     ensures step_ok(p, c, s),
 {
     lemma_instr(p, c, trusted, s);
@@ -369,7 +369,7 @@ pub proof fn lemma_store_field_this(p: Program2, c: Cert, trusted: bool, s: Stat
 }
 
 pub proof fn lemma_step_field(p: Program2, c: Cert, trusted: bool, s: State2)
-    requires accepts(p, c, trusted), wf(p, c, s), small(s), fam_field(cur_op(p, s)),
+    requires accepts(p, c, trusted), wf(p, c, s), small(s), unchecked_ok(p, s), fam_field(cur_op(p, s)),
     ensures step_ok(p, c, s),
 {
     let op = cur_op(p, s);

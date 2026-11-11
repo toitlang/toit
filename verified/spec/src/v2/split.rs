@@ -116,6 +116,7 @@ pub open spec fn pins_agree(g: GCert, ms: Seq<Maps>) -> bool {
 /// `accepts`, split by method.
 pub open spec fn split_ok(p: Program2, g: GCert, ms: Seq<Maps>, trusted: bool) -> bool {
     &&& crate::v2::exec::wf_program2(p)
+    &&& (p.unchecked ==> trusted)
     &&& g.n == p.methods.len()
     &&& ms.len() == g.n
     &&& tables_ok(p, tables_cert(g))
@@ -380,6 +381,7 @@ pub proof fn theorem_soundness_split(p: Program2, g: GCert, ms: Seq<Maps>, trust
         split_ok(p, g, ms, trusted),
         loaded_ok(p, with_maps(g, ms), heap0, globals0),
         reachable(p, heap0, globals0, s),
+        !p.unchecked,
     ensures
         !(step(p, s) is Stuck),
         forall|s1: State2, module: u8, index: u16, o: Outcome2|

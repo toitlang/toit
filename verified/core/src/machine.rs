@@ -130,10 +130,14 @@ pub mod op {
     pub const LOAD_FIELD_THIS: u8 = 98;
     pub const UNWIND: u8 = 99;
     pub const HALT: u8 = 100;
+    /// Proposal (verified/spec/format/19-builtins-proposal.md).
+    pub const LOOP_REPEAT: u8 = 101;
+    pub const LOOP_ARRAY: u8 = 102;
+    pub const HASH_FIND: u8 = 103;
 }
 
 /// Instruction lengths in opcode order (OPCODE_LENGTHS2).
-pub const OPCODE_LENGTHS: [u8; 101] = [
+pub const OPCODE_LENGTHS: [u8; 114] = [
     2, 3, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 3, 2,
     1, 1, 1, 1, 1, 1,
     2, 3, 1, 1, 2, 1, 2, 3, 5, 5,
@@ -146,6 +150,8 @@ pub const OPCODE_LENGTHS: [u8; 101] = [
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3,
     3, 3, 3, 3, 3, 3, 3, 3,
     4, 1, 1, 1, 1, 2, 6, 1, 1, 2, 1, 2,
+    4, 4, 5,
+    2, 3, 2, 2, 2, 3, 2, 3, 3, 2,
 ];
 
 pub fn opcode_length(op: u8) -> usize {
@@ -345,7 +351,7 @@ impl Machine {
     #[inline(never)]
     fn alloc_instance_cold(&mut self, env: &Env, class_id: usize) -> Option<usize> {
         self.save();
-        let r = env.rt.allocate_instance(&mut self.mem, class_id);
+        let (r, _) = env.rt.allocate_instance(&mut self.mem, class_id);
         if !self.reload(&env.p) { return None; }
         if r == 0 { None } else { Some(r) }
     }
@@ -355,16 +361,16 @@ impl Machine {
     /// (`alloc::gc_allocate_instance`). 0 if out of memory.
     /// Cold path: runs out of line on a copy of the machine (see `cold!`).
     #[inline(always)]
-    pub fn allocate_instance_raw(&mut self, env: &Env, class_id: usize) -> usize {
-        cold!(self, |m| env.rt.allocate_instance(&mut m.mem, class_id))
+    pub fn allocate_instance_raw(&mut self, env: &Env, class_id: usize) -> (usize, bool) {
+        env.rt.allocate_instance(&mut self.mem, class_id)
     }
 
     /// Calls a C++ primitive (MAY GC, may switch the task) without saving
-    /// or reloading the task state (`primitive::gc_call_primitive`).
-    /// Cold path: runs out of line on a copy of the machine (see `cold!`).
+    /// or reloading the task state (`primitive::gc_call_primitive`); the
+    /// stack view is replaced only if the heap's epoch changed.
     #[inline(always)]
-    pub fn call_primitive_raw(&mut self, env: &Env, prim: &crate::ffi::PrimitiveRef, arity: usize, first: usize) -> (usize, usize) {
-        cold!(self, |m| env.rt.call_primitive(&mut m.mem, prim, arity, first))
+    pub fn call_primitive_raw(&mut self, env: &Env, module: u8, index: u16, arity: usize, first: usize) -> (usize, usize, bool) {
+        env.rt.call_primitive(&mut self.mem, module as usize, index as usize, arity, first)
     }
 
     /// Grows the stack (MAY GC) without saving or reloading the task state
@@ -388,8 +394,8 @@ impl Machine {
     /// state (`alloc::gc_allocate_double`). 0 if out of memory.
     /// Cold path: runs out of line on a copy of the machine (see `cold!`).
     #[inline(always)]
-    pub fn allocate_double_raw(&mut self, env: &Env, bits: u64) -> usize {
-        cold!(self, |m| env.rt.allocate_double(&mut m.mem, bits))
+    pub fn allocate_double_raw(&mut self, env: &Env, bits: u64) -> (usize, bool) {
+        env.rt.allocate_double(&mut self.mem, bits)
     }
 
     /// Cold path: runs out of line on a copy of the machine (see `cold!`).
@@ -401,7 +407,7 @@ impl Machine {
     #[inline(never)]
     fn alloc_double_cold(&mut self, env: &Env, bits: u64) -> Option<usize> {
         self.save();
-        let r = env.rt.allocate_double(&mut self.mem, bits);
+        let (r, _) = env.rt.allocate_double(&mut self.mem, bits);
         if !self.reload(&env.p) { return None; }
         if r == 0 { None } else { Some(r) }
     }
@@ -1540,7 +1546,10 @@ impl Machine {
             op::LOAD_FIELD_THIS => self.op_load_field_this(p, b1!()),
             op::UNWIND => self.op_unwind(env),
             op::HALT => self.op_halt(env, b1!()),
-            // Opcodes 101..255 (the length table covers only 0..100).
+            op::LOOP_REPEAT => self.c_loop_repeat(p, bci),
+            op::LOOP_ARRAY => self.c_loop_array(p, bci),
+            op::HASH_FIND => self.c_hash_find(p, bci),
+            // Opcodes 104..255 (the length table covers only 0..103).
             _ => Ctl::Stuck(stuck::BAD_INSTRUCTION),
         }
     }
@@ -1998,15 +2007,11 @@ impl Machine {
         if self.lim - self.top != arity { return Ctl::Stuck(stuck::STACK_RANGE); }
         let module = p.code.at(bci + 1) as usize;
         let index = Self::u16_at(p, bci + 2);
-        let (primitive, primitive_arity) = match env.rt.lookup_primitive(module, index) {
-            None => return self.raise_msg(env, PRIMITIVE_LOOKUP_FAILED, Msg::primitive(module, index)),
-            Some(x) => x,
-        };
-        if primitive_arity != arity {
+        self.save();
+        let (status, result, _) = env.rt.call_primitive(&mut self.mem, module, index, arity, self.base);
+        if status == V2_PRIMITIVE_ABSENT {
             return self.raise_msg(env, PRIMITIVE_LOOKUP_FAILED, Msg::primitive(module, index));
         }
-        self.save();
-        let (status, result) = env.rt.call_primitive(&mut self.mem, &primitive, arity, self.base);
         if !self.reload(p) { return Ctl::Stuck(stuck::FATAL); }
         if status == V2_PRIMITIVE_SUCCESS {
             self.return_from(env, result)
@@ -2157,7 +2162,7 @@ impl Machine {
         if m >= p.methods.len() { return Ctl::Stuck(stuck::BAD_BRANCH); }
         let info = p.methods.at(m);
         let target = info.entry as usize + off;
-        if !(target < info.end as usize) { return Ctl::Stuck(stuck::BAD_BRANCH); }
+        if !(target < info.end()) { return Ctl::Stuck(stuck::BAD_BRANCH); }
         self.unwind(env, Unwinding::Branch(f, target, slot + 1 - hd))
     }
 }
@@ -2398,8 +2403,10 @@ fn run_checked(m: &mut Machine, env: &Env) -> (usize, i64) {
         let ctl = if !m.instruction_in_method(&env.p, bci) {
             Ctl::Stuck(stuck::BAD_INSTRUCTION)
         } else {
-            let opcode = env.p.code.at(bci);
-            if tracing { env.rt.report(V2_REPORT_TRACE, bci, opcode as usize); }
+            let raw = env.p.code.at(bci);
+            if tracing { env.rt.report(V2_REPORT_TRACE, bci, raw as usize); }
+            // An unchecked twin (format note 20) runs as its checked base here.
+            let opcode = toit_spec::v2::bytecodes::exec_base_op(raw);
             m.dispatch_checked(env, bci, opcode)
         };
         match ctl {
@@ -2423,7 +2430,7 @@ impl Machine {
     #[inline(always)]
     fn instruction_in_method(&self, p: &Program, bci: usize) -> bool {
         if self.method >= p.methods.len() { return false; }
-        let end = p.methods.at(self.method).end as usize;
+        let end = p.methods.at(self.method).end();
         if bci >= end || end > p.code.len() { return false; }
         let opcode = p.code.at(bci);
         if opcode as usize >= OPCODE_LENGTHS.len() { return false; }
@@ -2547,6 +2554,142 @@ impl Machine {
         self.push_next_u(v, len)
     }
 
+    /// LOOP_REPEAT (proposal, format note 19): `spec::op_loop_repeat` with
+    /// every stuck state checked.
+    fn c_loop_repeat(&mut self, p: &Program, bci: usize) -> Ctl {
+        let n = p.code.at(bci + 3) as usize;
+        if n < 1 || !self.has_slot(n + 2) { return Ctl::Stuck(stuck::STACK_RANGE); }
+        let (c, b, l) = (self.at(n), self.at(n + 1), self.at(n + 2));
+        if !(is_smi(c) && is_smi(l) && (c as isize) < (l as isize)) {
+            self.drop(1);
+            self.bci += OPCODE_LENGTHS[op::LOOP_REPEAT as usize] as usize;
+            return Ctl::Next;
+        }
+        let d = Self::u16_at(p, bci + 1);
+        if d > bci { return Ctl::Stuck(stuck::BAD_BRANCH); }
+        let target = bci - d;
+        if self.method >= p.methods.len() { return Ctl::Stuck(stuck::BAD_BRANCH); }
+        let m = p.methods.at(self.method);
+        if !((m.entry as usize) <= target && target < m.end()) {
+            return Ctl::Stuck(stuck::BAD_BRANCH);
+        }
+        // c < l, so c + 1 is a smi: its word is c's plus 2.
+        self.put(n, c + 2);
+        self.drop(1);
+        if !self.push(b) || !self.push(c) { return Ctl::Stuck(stuck::LIMIT); }
+        self.bci = target;
+        Ctl::Next
+    }
+
+    /// HASH_FIND's probe (`spec::hf_find`): `Ok((key, position, slot, step,
+    /// deleted))` for a candidate, `Err(code)` otherwise.
+    fn c_hf_find(&mut self, p: &Program, coll: usize, hash: usize, slot: usize, step: usize, d: usize)
+            -> Result<(usize, i64, i64, i64, i64), i64> {
+        match self.instance_fields(p, coll) {
+            Some(f) if f >= 4 => {}
+            _ => return Err(-2),
+        }
+        if !(is_smi(hash) && is_smi(slot) && is_smi(step) && is_smi(d)) { return Err(-2); }
+        let (hash, slot, step, d) = (smi_value(hash), smi_value(slot), smi_value(step), smi_value(d));
+        let (index, backing) = (self.field(coll, 2), self.field(coll, 3));
+        let size = match self.fast_size(p, index) { Some(n) => n, None => return Err(-2) };
+        if !(1 <= size && size <= 0x100_0000 && size & (size - 1) == 0
+            && 0 <= slot && slot < size && 0 <= step && step <= 2 * size && 0 <= d && d <= size) {
+            return Err(-2);
+        }
+        let mask = size - 1;
+        let start = hash & mask;
+        let (mut slot, mut step, mut d) = if step == 0 {
+            (start, 1, d)
+        } else {
+            let slot2 = (slot + step) & mask;
+            if slot2 == start { return Err(-1); }
+            (slot2, step + 1, d)
+        };
+        let tombstone = smi_value(p.builtin.at(10));
+        let null = p.null;
+        let mut fuel = 2 * size;
+        loop {
+            if fuel == 0 { return Err(-2); }
+            let hw = match self.fast_at(p, index, smi(slot), false, null, 8) { FastAt::Done(w) => w, _ => return Err(-2) };
+            if !is_smi(hw) { return Err(-2); }
+            let hap = smi_value(hw);
+            if hap == 0 { return Err(if d > 0 { 2 * (d - 1) } else { 2 * slot + 1 }); }
+            if hap < 0 { return Err(-2); }
+            let pos = hap / 4096 - 1;
+            if pos < 0 { return Err(-2); }
+            let k = match self.fast_at(p, backing, smi(pos), false, null, 8) { FastAt::Done(w) => w, _ => return Err(-2) };
+            let tomb = is_heap(k) && (smi_value(self.heap.header(k)) >> CLASS_ID_OFFSET) == tombstone;
+            if d == 0 && tomb { d = slot + 1; }
+            if (hap & 0xfff) == (hash & 0xfff) && !tomb { return Ok((k, pos, slot, step, d)); }
+            let slot2 = (slot + step) & mask;
+            if slot2 == start { return Err(-1); }
+            slot = slot2;
+            step += 1;
+            fuel -= 1;
+        }
+    }
+
+    /// HASH_FIND (proposal, format note 19): `spec::op_hash_find` with every
+    /// stuck state checked.
+    fn c_hash_find(&mut self, p: &Program, bci: usize) -> Ctl {
+        let n = p.code.at(bci + 3) as usize;
+        let m = p.code.at(bci + 4) as usize;
+        if !self.has_slot(n + 2) || !self.has_slot(m + 2) { return Ctl::Stuck(stuck::STACK_RANGE); }
+        let r = self.c_hf_find(p, self.at(m + 2), self.at(m), self.at(n), self.at(n + 1), self.at(n + 2));
+        match r {
+            Ok((k, pos, slot, step, d)) => {
+                self.put(n, smi(slot));
+                self.put(n + 1, smi(step));
+                self.put(n + 2, smi(d));
+                if !self.push(k) || !self.push(smi(pos)) { return Ctl::Stuck(stuck::LIMIT); }
+                self.bci += OPCODE_LENGTHS[op::HASH_FIND as usize] as usize;
+                Ctl::Next
+            }
+            Err(code) => {
+                let target = bci + Self::u16_at(p, bci + 1);
+                if self.method >= p.methods.len() { return Ctl::Stuck(stuck::BAD_BRANCH); }
+                let mt = p.methods.at(self.method);
+                if !((mt.entry as usize) <= target && target < mt.end()) {
+                    return Ctl::Stuck(stuck::BAD_BRANCH);
+                }
+                if !self.push(smi(code)) { return Ctl::Stuck(stuck::LIMIT); }
+                self.bci = target;
+                Ctl::Next
+            }
+        }
+    }
+
+    /// LOOP_ARRAY (proposal, format note 19): `spec::op_loop_array` with
+    /// every stuck state checked.
+    fn c_loop_array(&mut self, p: &Program, bci: usize) -> Ctl {
+        let n = p.code.at(bci + 3) as usize;
+        if n < 1 || !self.has_slot(n + 3) { return Ctl::Stuck(stuck::STACK_RANGE); }
+        let (c, b, e, a) = (self.at(n), self.at(n + 1), self.at(n + 2), self.at(n + 3));
+        let go = is_smi(c) && is_smi(e) && (c as isize) >= 0 && (c as isize) < (e as isize)
+            && match self.array_length(a) { Some(len) => (smi_value(c) as usize) < len, None => false };
+        if !go {
+            self.drop(1);
+            self.bci += OPCODE_LENGTHS[op::LOOP_ARRAY as usize] as usize;
+            return Ctl::Next;
+        }
+        let d = Self::u16_at(p, bci + 1);
+        if d > bci { return Ctl::Stuck(stuck::BAD_BRANCH); }
+        let target = bci - d;
+        if self.method >= p.methods.len() { return Ctl::Stuck(stuck::BAD_BRANCH); }
+        let m = p.methods.at(self.method);
+        if !((m.entry as usize) <= target && target < m.end()) {
+            return Ctl::Stuck(stuck::BAD_BRANCH);
+        }
+        let x = self.heap.word(a, ARRAY_ELEMENTS_WORD + smi_value(c) as usize);
+        // 0 <= c < e, so c + 1 is a smi: its word is c's plus 2.
+        self.put(n, c + 2);
+        self.drop(1);
+        if !self.push(b) || !self.push(x) { return Ctl::Stuck(stuck::LIMIT); }
+        self.bci = target;
+        Ctl::Next
+    }
+
     #[inline(always)]
     fn c_branch(&mut self, p: &Program, kind: usize, target: usize, len: usize) -> Ctl {
         if kind != 0 {
@@ -2567,7 +2710,7 @@ impl Machine {
         }
         if self.method >= p.methods.len() { return Ctl::Stuck(stuck::BAD_BRANCH); }
         let m = p.methods.at(self.method);
-        if !((m.entry as usize) <= target && target < (m.end as usize)) {
+        if !((m.entry as usize) <= target && target < m.end()) {
             return Ctl::Stuck(stuck::BAD_BRANCH);
         }
         self.bci = target;

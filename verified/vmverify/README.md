@@ -426,7 +426,7 @@ primitive table (8.3 KB; 12 bytes per `Value` on i686, 16 on riscv32,
 where `i64` is 8-byte aligned, so about 2 KB more on the device) and the
 maps of the method being checked plus the checker's state (up to 10 KB,
 the largest method has 699 bytes of bytecode). Not in the Rust figure:
-the VM's decoded method table (`V2Method`, 20 bytes per method), which
+the VM's decoded method table (`V2Method`, 16 bytes per method, was 20), which
 install-time verification computes for the verifier and frees after it;
 it is now the largest item (OBLIGATIONS.md D3). The whole transient cost
 of installing a 30-65 KB program is thus about 30-53 KB, against 65-115
@@ -453,7 +453,7 @@ count). Two consequences:
   between methods and must not touch the program, its tables or the
   certificate (it records a time; TRUSTED.toml). `TOIT_VERIFY_TIME=1`
   prints `progress N (to the scheduler)`.
-- Memory. The method table (20 bytes per method) and the verifier's heap
+- Memory. The method table (16 bytes per method) and the verifier's heap
   (conversion, then the maps of the method being checked) need 25-44 KB
   for the suite programs, against 47-63 KB free under QEMU without PSRAM,
   most of the rest Toit garbage. An allocation failure of either is

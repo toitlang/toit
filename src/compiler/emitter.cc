@@ -597,6 +597,41 @@ void Emitter::load_field_this(int n) {
   stack_.push(ExpressionStack::OBJECT);
 }
 
+void Emitter::loop_step(Opcode opcode, Label* body, int counter) {
+  ASSERT(is_format2());
+  ASSERT(opcode == V2_LOOP_REPEAT || opcode == V2_LOOP_ARRAY);
+  ASSERT(body->is_bound());
+  // The counter is a local or temporary; the block and limit may be
+  // parameters.
+  ASSERT(1 <= counter && counter < height() && counter + 2 <= MAX_BYTECODE_VALUE);
+  // The taken step pops the top and pushes the block and the counter.
+  ASSERT(body->height() == height() + 1);
+  int position = this->position();
+  int offset = position - body->position();
+  ASSERT(0 < offset && offset <= MAX_USHORT_VALUE);
+  emit_opcode(opcode);
+  emit_uint16(offset);
+  emit_uint8(counter);
+  // Falling through pops the top.
+  stack_.pop(1);
+}
+
+void Emitter::hash_find(Label* miss, int state, int hash) {
+  ASSERT(is_format2());
+  ASSERT(!miss->is_bound());
+  ASSERT(0 <= state && state + 2 < height() && 0 <= hash && hash + 2 <= MAX_BYTECODE_VALUE);
+  int position = this->position();
+  // The miss target has the code pushed.
+  miss->use(position, height() + 1);
+  emit_opcode(V2_HASH_FIND);
+  emit_uint16(0);
+  emit_uint8(state);
+  emit_uint8(hash);
+  // Falling through pushes the key and its position.
+  stack_.push(ExpressionStack::OBJECT);
+  stack_.push(ExpressionStack::OBJECT);
+}
+
 void Emitter::store_field_this(int n) {
   ASSERT(is_format2());
   ASSERT(n >= 0 && n <= MAX_BYTECODE_VALUE);

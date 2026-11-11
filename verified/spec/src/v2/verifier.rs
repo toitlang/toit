@@ -161,7 +161,14 @@ pub open spec fn instr_at(p: Program2, m: int, off: int) -> int {
     info(p, m).entry + off
 }
 
+/// The opcode at offset `off` of method `m` as the verifier types it: an
+/// unchecked twin (format note 20) as its base instruction.
 pub open spec fn op_of(p: Program2, m: int, off: int) -> u8 {
+    base_op(raw_op_of(p, m, off))
+}
+
+/// The opcode byte at offset `off` of method `m`.
+pub open spec fn raw_op_of(p: Program2, m: int, off: int) -> u8 {
     p.bytecodes[instr_at(p, m, off)]
 }
 
@@ -392,6 +399,63 @@ pub open spec fn branch_kind(op: u8) -> int {
     if BRANCH <= op && op <= BRANCH_IF_NOT_NULL { op - BRANCH } else { op - BRANCH_BACK }
 }
 
+/// Byte `j` of the instruction at offset `off` of `m`.
+pub open spec fn bk_of(p: Program2, m: int, off: int, j: int) -> int {
+    p.bytecodes[instr_at(p, m, off) + j] as int
+}
+
+/// The loop steps (proposal, format note 19).
+pub open spec fn is_loop(op: u8) -> bool {
+    op == LOOP_REPEAT || op == LOOP_ARRAY
+}
+
+/// A loop step's operands: the counter `c` (overwritten), the block `b`
+/// (copied) and the slots `x`, `y` it reads, counted from the top before
+/// the pop of the top slot; the counter and the read slots hold values.
+pub open spec fn loop_ok(p: Program2, m: int, k: Seq<Kind>, c: int, b: int, x: int, y: int) -> bool {
+    let h = k.len() as int;
+    &&& 1 <= c < h && 1 <= b < h && 1 <= x < h && 1 <= y < h
+    &&& is_val(top_kind(k, c)) && is_val(top_kind(k, x)) && is_val(top_kind(k, y))
+    &&& !(top_kind(k, b) is Token)
+    &&& writable(p, m, k, h - 1 - c, Kind::Val)
+}
+
+/// The kinds at the target of a taken loop step: the counter is a value,
+/// the top is popped, a copy of the block and a value are pushed.
+pub open spec fn loop_kinds(k: Seq<Kind>, c: int, b: int) -> Seq<Kind> {
+    let h = k.len() as int;
+    k.update(h - 1 - c, Kind::Val).subrange(0, h - 1).push(top_kind(k, b)).push(Kind::Val)
+}
+
+/// The operands `(c, b, x, y)` of the loop step at offset `off` of `m`: its
+/// operand byte `n` is the counter, `n + 1` the block, `n + 2` (LOOP_REPEAT:
+/// the limit) and `n + 3` (LOOP_ARRAY) the slots it reads.
+pub open spec fn loop_operands(p: Program2, m: int, off: int) -> (int, int, int, int) {
+    let n = bk_of(p, m, off, 3);
+    (n, n + 1, n + 2, if op_of(p, m, off) == LOOP_ARRAY { n + 3 } else { n + 2 })
+}
+
+/// HASH_FIND n m (proposal, format note 19): the probe state (slots `n`,
+/// `n + 1`, `n + 2`, overwritten), the hash (`m`) and the collection
+/// (`m + 2`) hold values.
+pub open spec fn hf_ok(p: Program2, m: int, k: Seq<Kind>, n: int, mm: int) -> bool {
+    let h = k.len() as int;
+    &&& 0 <= n && n + 2 < h && 0 <= mm && mm + 2 < h
+    &&& is_val(top_kind(k, n)) && is_val(top_kind(k, n + 1)) && is_val(top_kind(k, n + 2))
+    &&& is_val(top_kind(k, mm)) && is_val(top_kind(k, mm + 2))
+    &&& writable(p, m, k, h - 1 - n, Kind::Val)
+    &&& writable(p, m, k, h - 2 - n, Kind::Val)
+    &&& writable(p, m, k, h - 3 - n, Kind::Val)
+}
+
+/// The kinds after a candidate: the probe state holds values, the key and
+/// its position are pushed. (A miss pushes a value and branches.)
+pub open spec fn hf_kinds(k: Seq<Kind>, n: int) -> Seq<Kind> {
+    let h = k.len() as int;
+    k.update(h - 1 - n, Kind::Val).update(h - 2 - n, Kind::Val).update(h - 3 - n, Kind::Val)
+        .push(Kind::Val).push(Kind::Val)
+}
+
 /// The fall-through successor kinds of an instruction, `None` for
 /// terminators and rejected instructions.
 pub open spec fn post(p: Program2, c: Cert, m: int, off: int, k: Seq<Kind>, trusted: bool) -> Option<Seq<Kind>> {
@@ -540,6 +604,12 @@ pub open spec fn post(p: Program2, c: Cert, m: int, off: int, k: Seq<Kind>, trus
         // The value slot below the token is the exception or return value
         // the unwinding resumes with.
         if 3 <= h && top_kind(k, 1) is Token && is_val(top_kind(k, 2)) { Some(k.subrange(0, h - 3)) } else { None }
+    } else if is_loop(op) {
+        let (lc, lb, lx, ly) = loop_operands(p, m, off);
+        if loop_ok(p, m, k, lc, lb, lx, ly) { Some(k.subrange(0, h - 1)) } else { None }
+    } else if op == HASH_FIND {
+        let (n, mm) = (bk_of(p, m, off, 3), bk_of(p, m, off, 4));
+        if hf_ok(p, m, k, n, mm) { Some(hf_kinds(k, n)) } else { None }
     } else if op == HALT {
         // HALT 2 and 3 (deep sleep, reset) only for trusted programs.
         if b1 == 0 { Some(k.push(Kind::Val)) }
@@ -629,6 +699,9 @@ pub open spec fn instr_ok(p: Program2, c: Cert, m: int, off: int, k: Seq<Kind>, 
     &&& 0 <= off
     &&& i.entry + off < i.end
     &&& op < OPCODE_COUNT2
+    &&& raw_op_of(p, m, off) < OPCODE_COUNT2
+    // The unchecked twins only in the unchecked mode (trusted programs).
+    &&& (is_twin(raw_op_of(p, m, off)) ==> p.unchecked)
     &&& i.entry + off + len_of(p, m, off) <= i.end
     &&& wf_kinds(p, c, m, k)
     &&& ctx_ok(p, c, m, k)
@@ -644,6 +717,11 @@ pub open spec fn instr_ok(p: Program2, c: Cert, m: int, off: int, k: Seq<Kind>, 
             (op <= BRANCH_IF_NOT_NULL ==> w1 > 0)
                 && map_at(c, m, t) == Some(if op == BRANCH || op == BRANCH_BACK { k } else { k.drop_last() })
         } else { true }
+    &&& if is_loop(op) {
+            let (lc, lb, lx, ly) = loop_operands(p, m, off);
+            map_at(c, m, off - w1) == Some(loop_kinds(k, lc, lb))
+        } else { true }
+    &&& if op == HASH_FIND { w1 > 0 && map_at(c, m, off + w1) == Some(k.push(Kind::Val)) } else { true }
 }
 
 /// The kinds at the entry of method `m`.
@@ -776,6 +854,9 @@ pub open spec fn tables_ok(p: Program2, c: Cert) -> bool {
 /// (the system) may use HALT 2 and 3.
 pub open spec fn accepts(p: Program2, c: Cert, trusted: bool) -> bool {
     &&& crate::v2::exec::wf_program2(p)
+    // The unchecked mode (field accesses not checked) is for trusted
+    // programs only (verified/core/EXPERIMENT-trusted.md).
+    &&& (p.unchecked ==> trusted)
     &&& tables_ok(p, c)
     &&& forall|m: int| 0 <= m < p.methods.len() ==> #[trigger] method_ok(p, c, m, trusted)
 }

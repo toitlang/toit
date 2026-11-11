@@ -130,7 +130,10 @@ pub fn verify(c: &mut Converted, trusted: bool, cert: Option<&[u8]>, progress: V
     // Taken, not copied: the conversion does not need it any more.
     let prim_arity = core::mem::take(&mut c.prim_arity);
     let globals = core::mem::take(&mut c.globals);
-    let (p, objects) = c.split();
+    let (mut p, objects) = c.split();
+    // The unchecked twins of the field accesses (format note 20) are for
+    // trusted programs only.
+    p.unchecked = trusted;
     let p = &p;
     // The inference and the heap check require well-formed tables.
     if !check::x_wf_program2(p) {
@@ -261,7 +264,7 @@ fn diagnose(p: &VProgram, global: &infer::Global, at: Option<usize>, trusted: bo
 fn instruction(p: &VProgram, m: usize, off: usize) -> String {
     use toit_spec::v2::bytecodes::{OPCODE_LENGTHS2, OPCODE_NAMES2};
     let Some(info) = p.methods.get(m) else { return "(no method)".into() };
-    let end = info.end as usize;
+    let end = info.end();
     let at = info.entry as usize + off;
     let Some(&op) = p.bytecodes.get(at).filter(|_| at < end) else { return "(no instruction)".into() };
     let Some(name) = OPCODE_NAMES2.get(op as usize) else { return format!("bad opcode {}", op) };

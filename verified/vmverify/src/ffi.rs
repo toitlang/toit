@@ -320,8 +320,9 @@ pub unsafe extern "C" fn toit_vmverify_certify(input: *const VerifyInput, bytes:
     };
     let global_count = c.globals.len() as u64;
     let prim_arity = c.prim_arity.clone();
-    let (p, _) = c.split();
+    let (mut p, _) = c.split();
     let trusted = input.trusted != 0;
+    p.unchecked = trusted;
     match toit_spec::v2::encode::certify(&p, global_count, prim_arity.clone(), trusted) {
         Err(_) => 2,
         Ok((cert, _)) => {

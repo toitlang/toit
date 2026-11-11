@@ -174,9 +174,10 @@ pub fn set_field_r(m: &mut Machine, r: &Regs, p: &Program, wo: usize, Ghost(o): 
 
 /// LOAD_FIELD(_WIDE) f (`spec::op_load_field`).
 #[inline(always)]
-pub fn op_load_field(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode: u8, f: usize, len: usize) -> (c: Ctl)
+pub fn op_load_field(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode: u8, f: usize, len: usize, u: bool) -> (c: Ctl)
     requires
         rhandler_pre(&env.p, *old(m), *old(r), bci, opcode),
+        u == sp::twin_at(env.p.ap@, old(m).g@), u ==> env.p.ap@.unchecked,
         sp::step(env.p.ap@, old(m).g@) == sp::op_load_field(env.p.ap@, old(m).g@, f as int, len as int),
         f < 0x1_0000,
         bci + len < 0x1000_0000,
@@ -193,7 +194,9 @@ pub fn op_load_field(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcod
         w0.lemma_at(p, 0);
     }
     let w = at(m, r, 0);
-    if !m.field_access_ok(p, w, Ghost(sp::at(g, 0)), f, false) {
+    // Trusted programs in the unchecked mode skip the check: the step is not
+    // stuck (`step_ok`), so the access is valid (`spec::unchecked_fail`).
+    if !u && !m.field_access_ok(p, w, Ghost(sp::at(g, 0)), f, false) {
         proof { assert(sp::step(ap, g) == sp::raise(ap, g, sp::INVALID_PROGRAM)); }
         return slow0(m, r, env, Slow::Invalid);
     }
@@ -208,9 +211,10 @@ pub fn op_load_field(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcod
 
 /// LOAD_FIELD_LOCAL / POP_LOAD_FIELD_LOCAL enc (`spec::op_load_field_local`).
 #[inline(always)]
-pub fn op_load_field_local(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode: u8, enc: usize, pop: bool) -> (c: Ctl)
+pub fn op_load_field_local(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode: u8, enc: usize, pop: bool, u: bool) -> (c: Ctl)
     requires
         rhandler_pre(&env.p, *old(m), *old(r), bci, opcode),
+        u == sp::twin_at(env.p.ap@, old(m).g@), u ==> env.p.ap@.unchecked,
         sp::step(env.p.ap@, old(m).g@) == sp::op_load_field_local(env.p.ap@, old(m).g@, enc as int, pop),
         enc < 256,
         bci + 2 < 0x1000_0000,
@@ -230,7 +234,7 @@ pub fn op_load_field_local(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize,
         w0.lemma_at(p, slot as int);
     }
     let w = at(m, r, slot);
-    if !m.field_access_ok(p, w, Ghost(sp::at(g, slot as int)), f, false) {
+    if !u && !m.field_access_ok(p, w, Ghost(sp::at(g, slot as int)), f, false) {
         proof { assert(sp::step(ap, g) == sp::raise(ap, g, sp::INVALID_PROGRAM)); }
         return slow0(m, r, env, Slow::Invalid);
     }
@@ -250,9 +254,10 @@ pub fn op_load_field_local(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize,
 
 /// STORE_FIELD(_WIDE, _POP) f (`spec::op_store_field`).
 #[inline(always)]
-pub fn op_store_field(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode: u8, f: usize, len: usize, keep: bool) -> (c: Ctl)
+pub fn op_store_field(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode: u8, f: usize, len: usize, keep: bool, u: bool) -> (c: Ctl)
     requires
         rhandler_pre(&env.p, *old(m), *old(r), bci, opcode),
+        u == sp::twin_at(env.p.ap@, old(m).g@), u ==> env.p.ap@.unchecked,
         sp::step(env.p.ap@, old(m).g@) == sp::op_store_field(env.p.ap@, old(m).g@, f as int, len as int, keep),
         f < 0x1_0000,
         bci + len < 0x1000_0000,
@@ -273,7 +278,7 @@ pub fn op_store_field(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opco
     let wo = at(m, r, 1);
     let ghost val = sp::at(g, 0);
     let ghost o = sp::at(g, 1);
-    if !m.field_access_ok(p, wo, Ghost(o), f, true) {
+    if !u && !m.field_access_ok(p, wo, Ghost(o), f, true) {
         proof { assert(sp::step(ap, g) == sp::raise(ap, g, sp::INVALID_PROGRAM)); }
         return slow0(m, r, env, Slow::Invalid);
     }
@@ -345,9 +350,10 @@ pub fn op_load_field_this(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, 
 /// STORE_FIELD_THIS f (`spec::op_store_field_this`): the value stays. A
 /// store into a program-heap object (INVALID_PROGRAM) takes the bridge.
 #[inline(always)]
-pub fn op_store_field_this(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode: u8, f: usize) -> (c: Ctl)
+pub fn op_store_field_this(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode: u8, f: usize, u: bool) -> (c: Ctl)
     requires
         rhandler_pre(&env.p, *old(m), *old(r), bci, opcode),
+        u == sp::twin_at(env.p.ap@, old(m).g@), u ==> env.p.ap@.unchecked,
         sp::step(env.p.ap@, old(m).g@) == sp::op_store_field_this(env.p.ap@, old(m).g@, f as int),
         f < 256,
         bci + 2 < 0x1000_0000,
@@ -367,7 +373,7 @@ pub fn op_store_field_this(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize,
     let ghost o = g.stack[w0.base as int];
     let ghost id = o->Obj_0 as int;
     let this = r.fp.offset(-1).read(0, &m.mem);
-    if m.is_ro_word(p, this, Ghost(id)) {
+    if !u && m.is_ro_word(p, this, Ghost(id)) {
         proof { assert(sp::step(ap, g) == sp::raise(ap, g, sp::INVALID_PROGRAM)); }
         return slow0(m, r, env, Slow::Invalid);
     }
@@ -381,9 +387,10 @@ pub fn op_store_field_this(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize,
 /// INVOKE_VIRTUAL_GET sel (`spec::op_invoke_virtual_get`): a field
 /// accessor reads the field in place; anything else is a call.
 #[inline(always)]
-pub fn op_invoke_virtual_get(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode: u8, sel: usize) -> (c: Ctl)
+pub fn op_invoke_virtual_get(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode: u8, sel: usize, u: bool) -> (c: Ctl)
     requires
         rhandler_pre(&env.p, *old(m), *old(r), bci, opcode),
+        u == sp::twin_at(env.p.ap@, old(m).g@), u ==> env.p.ap@.unchecked,
         toit_spec::v2::prim::grows_stack(opcode),
         sp::step(env.p.ap@, old(m).g@) == sp::op_invoke_virtual_get(env.p.ap@, old(m).g@, sel as int),
         sel < 0x1_0000,
@@ -411,7 +418,7 @@ pub fn op_invoke_virtual_get(m: &mut Machine, r: &mut Regs, env: &Env, bci: usiz
             let info = p.methods.at(t);
             proof { assert(ap.methods[t as int] == method_info(p.methods@[t as int], p.max_height)); }
             let f = info.aux as usize;
-            if info.kind == KIND_FIELD_ACCESSOR && m.field_access_ok(p, w, Ghost(recv), f, false) {
+            if info.kind == KIND_FIELD_ACCESSOR && (u || m.field_access_ok(p, w, Ghost(recv), f, false)) {
                 let ghost id = recv->Obj_0 as int;
                 proof { lemma_field_val(p, &w0, recv, f as int); }
                 let v = m.heap.field(w, f, Ghost(id));
@@ -434,9 +441,10 @@ pub fn op_invoke_virtual_get(m: &mut Machine, r: &mut Regs, env: &Env, bci: usiz
 /// INVOKE_VIRTUAL_SET sel (`spec::op_invoke_virtual_set`): a field
 /// accessor writes the field in place; anything else is a call.
 #[inline(always)]
-pub fn op_invoke_virtual_set(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode: u8, sel: usize) -> (c: Ctl)
+pub fn op_invoke_virtual_set(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode: u8, sel: usize, u: bool) -> (c: Ctl)
     requires
         rhandler_pre(&env.p, *old(m), *old(r), bci, opcode),
+        u == sp::twin_at(env.p.ap@, old(m).g@), u ==> env.p.ap@.unchecked,
         toit_spec::v2::prim::grows_stack(opcode),
         sp::step(env.p.ap@, old(m).g@) == sp::op_invoke_virtual_set(env.p.ap@, old(m).g@, sel as int),
         sel < 0x1_0000,
@@ -467,7 +475,7 @@ pub fn op_invoke_virtual_set(m: &mut Machine, r: &mut Regs, env: &Env, bci: usiz
             let info = p.methods.at(t);
             proof { assert(ap.methods[t as int] == method_info(p.methods@[t as int], p.max_height)); }
             let f = info.aux as usize;
-            if info.kind == KIND_FIELD_ACCESSOR && m.field_access_ok(p, w, Ghost(recv), f, true) {
+            if info.kind == KIND_FIELD_ACCESSOR && (u || m.field_access_ok(p, w, Ghost(recv), f, true)) {
                 set_field_r(m, r, p, w, Ghost(recv), f, v, Ghost(val));
                 let ghost m1 = m.with(*r);
                 let ghost g1 = m.g@;

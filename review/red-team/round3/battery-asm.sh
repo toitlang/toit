@@ -4,14 +4,14 @@
 # instruction sequences, runs each untrusted on the normal + ASan build, and
 # records the verifier/loader verdict.  print() method id in num.snapshot = 706.
 set -u
-WT=/home/flo/work/opentoit-sandbox/.claude/worktrees/agent-a34c2fa11930f607a
-cd "$WT"
-HOSTRUN="build/host/sdk/lib/toit/bin/toit.run"
-ASANRUN="build/asan/sdk/lib/toit/bin/toit.run"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$HERE/battery-env.sh"
 ASM="$HOSTRUN --project-root tools tools/asm.toit"
-BASE=/tmp/rt3/num.snapshot
-OUT=review/red-team/round3/repro/asm
-RES=review/red-team/round3/repro/asm-results.txt
+BASE="$WORK/num.snapshot"
+battery_compile "$HERE/repro/num.toit" "$BASE" || exit 2
+OUT="$WORK/asm"
+RES="${RES:-$WORK/asm-results.txt}"
+EXPECTED="$HERE/repro/asm-results.txt"
 mkdir -p "$OUT"; : > "$RES"
 FILTER='primitive\.h\|always evaluates'
 
@@ -115,4 +115,4 @@ run_asm loadlit-oob      'LOAD_LITERAL 250; INVOKE_STATIC 706; RETURN_NULL'
 run_asm loadlit-wide-oob 'LOAD_LITERAL_WIDE 65000; RETURN_NULL'
 run_asm allocate-oob     'ALLOCATE 250; RETURN_NULL'
 run_asm invokevirt-oob   'LOAD_SMI_0; INVOKE_VIRTUAL 0 65000; RETURN_NULL'
-echo "# done $(date)" | tee -a "$RES"
+battery_finish asm

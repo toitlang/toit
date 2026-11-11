@@ -1,1 +1,0 @@
-{"rustc":11835527281324007204,"features":"","declared_features":"","target":0,"profile":0,"path":0,"deps":[[9777527083440088273,"build_script_build",false,10483397717190798129]],"local":[{"RerunIfEnvChanged":{"var":"RUST_MIN_STACK","val":null}}],"rustflags":["-C","llvm-args=-tail-dup-size=12","-C","llvm-args=-vectorize-slp=false"],"config":0,"compile_kind":0}
