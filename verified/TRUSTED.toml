@@ -630,7 +630,7 @@ file = "src/prims/fp.rs"
 item = "compare_numbers"
 kind = "external_body"
 count = 1
-justification = "Interpreter::compare_numbers (copy of machine::compare_num) on integer or double bit patterns; ensures only a non-zero result field; differentially tested."
+justification = "Interpreter::compare_numbers on integer or double bit patterns: two integers compare directly, otherwise the spec's trusted compare_mixed_impl (the run loop's mixed comparison, one copy); ensures only a non-zero result field; differentially tested (prim_diff.sh)."
 
 [[trusted]]
 crate = "core"
@@ -2259,7 +2259,7 @@ justification = "Test tool: zero-initializes a ProgramTables (plain integers and
 [[trusted]]
 crate = "vmverify"
 file = "src/bin/toit_vmverify_fuzz.rs"
-item = "run"
+item = "run_raw"
 kind = "unsafe"
 count = 2
 justification = "Test tool: zero-initialized ProgramTables filled by Tables::input; calls the C ABI entry point with pointers into buffers that live across the call."

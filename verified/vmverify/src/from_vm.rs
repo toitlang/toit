@@ -174,6 +174,9 @@ impl From<Oom> for Malformed {
 }
 
 fn bad<T>(what: &'static str, detail: usize) -> Result<T, Malformed> {
+    // Devices report the reason code only (`text!`): without the texts the
+    // linker drops them (0.6 KB).
+    let what = if cfg!(feature = "std") { what } else { "" };
     Err(Malformed { what, detail, oom: false })
 }
 

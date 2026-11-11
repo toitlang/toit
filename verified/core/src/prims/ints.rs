@@ -111,8 +111,9 @@ pub fn int_cmp_exec(op: u8, x: i64, y: i64) -> (r: bool)
 // ---------------------------------------------------------------------------
 // Arguments and results.
 
-/// The integer argument `w` (a smi or a large integer).
-#[inline(always)]
+/// The integer argument `w` (a smi or a large integer). Out of line: one
+/// copy for every primitive that decodes an integer (size diet).
+#[inline(never)]
 pub fn int_arg(h: &Heap, w: usize, Ghost(v): Ghost<Value>) -> (r: Option<i64>)
     requires
         heap_model_ok(h.objs(), h.addrs(), h.class_bits()),

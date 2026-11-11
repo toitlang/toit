@@ -510,6 +510,28 @@ Fuzzing with failing allocations: `tests/fuzz_tables.sh --certificates
 random one failing (counting.rs, `fail_after`, the calling thread only);
 the verdict must be OUT_OF_MEMORY if one failed and unchanged otherwise,
 and an infallible allocation left on the device path aborts the process.
+Run (2026-11-11, 8 processes x 15 minutes, `--seed 901`, hello world,
+lambda-test, exception-test, class-id-test, task-test): 331,770 mutants
+(32,392 accepted, 42,706 malformed memory, 123 heap contract, 60,037
+tables, 45,861 methods, 150,651 certificate rejected), each verified again
+with failing allocations: 147,729 runs had an allocation fail, all
+rejected with OUT_OF_MEMORY, the others gave the unchanged verdict; **0
+verifier panics, 0 aborts, 0 calls over 2 s** (slowest 197 ms; largest
+peak 285 KB).
+
+Size (riscv32imac, core opt 3, verifier opt z, `tests/device_size.sh`;
+verified/core/PROGRESS.md, "Panic-free device library", has the table
+by component): the Rust formatting and panic machinery (1.6 KB of text)
+and the panic locations and formatting tables (7.2 KB of rodata) are
+gone; the fallible allocation and the OUT_OF_MEMORY paths cost about 1.2
+KB (the `xvec` instantiations, the glue). With the primitives' shared
+argument decoding (-1.6 KB) and the conversion's error texts on hosts
+only (-0.6 KB) the linked library went from 103.6 to 92.3 KB (-11.0 KB,
+newlib's 12.4 KB included in both). That is most of column 6 below
+(nightly `-Cpanic=immediate-abort -Zlocation-detail=none`) on the stable
+toolchain. ESP32-C6 firmware (ESP-IDF, core opt 3, built, never flashed;
+artifacts panic-free/fw.sh): toit.bin 1,669,344 -> 1,658,656 B (-10.4
+KB: flash.text -3.0 KB, flash.rodata -7.7 KB).
 
 ## Device size (branch device/certificate-and-size)
 

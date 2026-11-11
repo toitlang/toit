@@ -153,60 +153,26 @@ pub fn from_raw32(raw: u32) -> u64 {
 const SIMPLE_LESS: u8 = 29;
 const SIMPLE_EQUAL: u8 = 114;
 const SIMPLE_GREATER: u8 = 195;
-const RESULT_MINUS_1: u8 = 1;
-const RESULT_ZERO: u8 = 2;
-const RESULT_PLUS_1: u8 = 3;
-const FLAG_LESS_FOR_MIN: u8 = 4;
-const FLAG_LESS_EQUAL: u8 = 16;
-const FLAG_EQUAL: u8 = 32;
-const FLAG_GREATER_EQUAL: u8 = 64;
-const SHORTCUT_LIMIT: i64 = 0x20000000000000;
 
 /// `Interpreter::compare_numbers` of two numbers (src/interpreter_core.cc;
 /// the same as the checked core's `machine::compare_num`): the
 /// COMPARE_RESULT and COMPARE_FLAG bits, never COMPARE_FAILED (0).
 /// `xi`/`yi`: the operand is an integer (`x`/`y` its value as bits of an
-/// i64), else a double (`x`/`y` its bits).
+/// i64), else a double (`x`/`y` its bits). Two integers compare here;
+/// otherwise the spec's `compare_mixed_impl` decides, the same code the
+/// run loop's comparisons use (one copy on devices: the two were
+/// duplicates, 0.7 KB).
 #[verifier::external_body]
 pub fn compare_numbers(xi: bool, x: u64, yi: bool, y: u64) -> (r: u8)
     ensures r & 3 != 0,
 {
-    let (lhs_is_int, lhs_int, lhs) = if xi { (true, x as i64, x as i64 as f64) } else { (false, 0, f64::from_bits(x)) };
-    let (rhs_is_int, rhs_int, rhs) = if yi { (true, y as i64, y as i64 as f64) } else { (false, 0, f64::from_bits(y)) };
-    if lhs_is_int && rhs_is_int {
-        return if lhs_int < rhs_int { SIMPLE_LESS } else if lhs_int == rhs_int { SIMPLE_EQUAL } else { SIMPLE_GREATER };
+    use toit_spec::exec_step::{compare_mixed_impl, XNum};
+    if xi && yi {
+        let (a, b) = (x as i64, y as i64);
+        return if a < b { SIMPLE_LESS } else if a == b { SIMPLE_EQUAL } else { SIMPLE_GREATER };
     }
-    if lhs < rhs { return SIMPLE_LESS; }
-    if lhs > rhs { return SIMPLE_GREATER; }
-    if lhs != rhs {
-        if lhs.is_nan() {
-            if rhs.is_nan() { return RESULT_ZERO | FLAG_LESS_FOR_MIN; }
-            return RESULT_PLUS_1 | FLAG_LESS_FOR_MIN;
-        }
-        return RESULT_MINUS_1;
-    }
-    if lhs == 0.0 {
-        if lhs.is_sign_negative() == rhs.is_sign_negative() {
-            return SIMPLE_EQUAL;
-        } else if lhs.is_sign_negative() {
-            return RESULT_MINUS_1 | FLAG_LESS_EQUAL | FLAG_EQUAL | FLAG_GREATER_EQUAL | FLAG_LESS_FOR_MIN;
-        } else {
-            return RESULT_PLUS_1 | FLAG_LESS_EQUAL | FLAG_EQUAL | FLAG_GREATER_EQUAL;
-        }
-    }
-    if !lhs_is_int && !rhs_is_int { return SIMPLE_EQUAL; }
-    let the_int = if lhs_is_int { lhs_int } else { rhs_int };
-    if -SHORTCUT_LIMIT <= the_int && the_int <= SHORTCUT_LIMIT { return SIMPLE_EQUAL; }
-    let the_double = if lhs_is_int { rhs } else { lhs };
-    if the_double <= -9223372036854778e3 {
-        return if lhs_is_int { SIMPLE_GREATER } else { SIMPLE_LESS };
-    }
-    if the_double >= 9223372036854776e3 {
-        return if lhs_is_int { SIMPLE_LESS } else { SIMPLE_GREATER };
-    }
-    let other_int = the_double as i64;
-    let c = if the_int < other_int { SIMPLE_LESS } else if the_int == other_int { SIMPLE_EQUAL } else { SIMPLE_GREATER };
-    if lhs_is_int { c } else if c == SIMPLE_LESS { SIMPLE_GREATER } else if c == SIMPLE_GREATER { SIMPLE_LESS } else { c }
+    let num = |is_int: bool, bits: u64| if is_int { XNum::Int(bits as i64) } else { XNum::Dbl(bits) };
+    compare_mixed_impl(num(xi, x), num(yi, y))
 }
 
 } // verus!
