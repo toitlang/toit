@@ -44,7 +44,9 @@ use crate::room::*;
 use crate::step::*;
 use crate::rcalls::{call_fast, push_call};
 use crate::calls::*;
-use crate::blocks::{ref_slot, lemma_slot, lemma_block_target, lemma_block_decode};
+use crate::blocks::ref_slot;
+#[cfg(verus_keep_ghost)]
+use crate::blocks::{lemma_slot, lemma_block_target, lemma_block_decode};
 #[cfg(verus_keep_ghost)]
 use crate::tail::{replace_ready, lemma_frames_method};
 use crate::ffi::V2Method;
