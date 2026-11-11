@@ -2162,7 +2162,7 @@ impl Machine {
         if m >= p.methods.len() { return Ctl::Stuck(stuck::BAD_BRANCH); }
         let info = p.methods.at(m);
         let target = info.entry as usize + off;
-        if !(target < info.end as usize) { return Ctl::Stuck(stuck::BAD_BRANCH); }
+        if !(target < info.end()) { return Ctl::Stuck(stuck::BAD_BRANCH); }
         self.unwind(env, Unwinding::Branch(f, target, slot + 1 - hd))
     }
 }
@@ -2430,7 +2430,7 @@ impl Machine {
     #[inline(always)]
     fn instruction_in_method(&self, p: &Program, bci: usize) -> bool {
         if self.method >= p.methods.len() { return false; }
-        let end = p.methods.at(self.method).end as usize;
+        let end = p.methods.at(self.method).end();
         if bci >= end || end > p.code.len() { return false; }
         let opcode = p.code.at(bci);
         if opcode as usize >= OPCODE_LENGTHS.len() { return false; }
@@ -2570,7 +2570,7 @@ impl Machine {
         let target = bci - d;
         if self.method >= p.methods.len() { return Ctl::Stuck(stuck::BAD_BRANCH); }
         let m = p.methods.at(self.method);
-        if !((m.entry as usize) <= target && target < (m.end as usize)) {
+        if !((m.entry as usize) <= target && target < m.end()) {
             return Ctl::Stuck(stuck::BAD_BRANCH);
         }
         // c < l, so c + 1 is a smi: its word is c's plus 2.
@@ -2650,7 +2650,7 @@ impl Machine {
                 let target = bci + Self::u16_at(p, bci + 1);
                 if self.method >= p.methods.len() { return Ctl::Stuck(stuck::BAD_BRANCH); }
                 let mt = p.methods.at(self.method);
-                if !((mt.entry as usize) <= target && target < (mt.end as usize)) {
+                if !((mt.entry as usize) <= target && target < mt.end()) {
                     return Ctl::Stuck(stuck::BAD_BRANCH);
                 }
                 if !self.push(smi(code)) { return Ctl::Stuck(stuck::LIMIT); }
@@ -2678,7 +2678,7 @@ impl Machine {
         let target = bci - d;
         if self.method >= p.methods.len() { return Ctl::Stuck(stuck::BAD_BRANCH); }
         let m = p.methods.at(self.method);
-        if !((m.entry as usize) <= target && target < (m.end as usize)) {
+        if !((m.entry as usize) <= target && target < m.end()) {
             return Ctl::Stuck(stuck::BAD_BRANCH);
         }
         let x = self.heap.word(a, ARRAY_ELEMENTS_WORD + smi_value(c) as usize);
@@ -2710,7 +2710,7 @@ impl Machine {
         }
         if self.method >= p.methods.len() { return Ctl::Stuck(stuck::BAD_BRANCH); }
         let m = p.methods.at(self.method);
-        if !((m.entry as usize) <= target && target < (m.end as usize)) {
+        if !((m.entry as usize) <= target && target < m.end()) {
             return Ctl::Stuck(stuck::BAD_BRANCH);
         }
         self.bci = target;

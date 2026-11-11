@@ -131,7 +131,7 @@ fn method_entries(p: &VProgram, g: &XGlobal, m: usize, maps: &XMaps, trusted: bo
         -> Vec<(usize, usize, Vec<XKind>)> {
     let mut out = Vec::new();
     let Some(info) = p.methods.get(m) else { return out };
-    let (entry, end) = (info.entry as usize, info.end as usize);
+    let (entry, end) = (info.entry as usize, info.end());
     if !(entry < end && end <= p.bytecodes.len()) { return out; }
     let size = end - entry;
     let empty = XMaps { idx: Vec::new(), nodes: Vec::new() };

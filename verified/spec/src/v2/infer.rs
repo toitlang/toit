@@ -354,7 +354,7 @@ type Error = (usize, String);
 /// preconditions (the program is `wf_program2`, checked by the caller).
 fn analyze<F: Facts>(p: &VProgram, f: &mut F, m: usize, trusted: bool) -> Result<Maps, Error> {
     let Some(info) = method(p, m).copied() else { return Err((0, "no such method".into())) };
-    let (entry, end) = (info.entry as usize, info.end as usize);
+    let (entry, end) = (info.entry as usize, info.end());
     if !(entry < end && end <= p.bytecodes.len()) {
         return Err((0, "empty method body or body outside the bytecodes".into()));
     }
@@ -805,7 +805,7 @@ impl<'a> MapOracle for Oracle<'a> {
         Ok(match self.maps(m) {
             Ok(maps) => XMaps { idx: maps.idx, nodes: maps.nodes },
             Err(_) => {
-                let size = method(self.p, m).map(|i| (i.end as usize).saturating_sub(i.entry as usize)).unwrap_or(0);
+                let size = method(self.p, m).map(|i| i.end().saturating_sub(i.entry as usize)).unwrap_or(0);
                 XMaps { idx: vec![NO_MAP; size.min(self.p.bytecodes.len())], nodes: Vec::new() }
             }
         })

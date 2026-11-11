@@ -35,19 +35,23 @@ class Program;
 class Process;
 
 // One entry of the method table: method `i` is the `i`-th method in the
-// bytecodes. Must match `V2Method` in verified/core/src/layout.rs (checked
-// by verified/layout_check.cc).
+// bytecodes. Must match `V2Method` in verified/core/src/ffi.rs (checked by
+// verified/layout_check.cc). 16 bytes: the VM holds the table of every
+// running format-2 program in RAM (verified/core/OBLIGATIONS.md, D3).
 struct V2Method {
   uint32 entry;       // Absolute bci of the first instruction.
-  uint32 end;         // Absolute bci after the last instruction.
+  uint16 length;      // Length of the body: it ends at entry + length.
   uint16 selector;    // Selector offset, 0xffff for none.
   uint16 aux;         // Captured count (lambda) or field index (accessor).
   uint16 recv_start;  // Receiver class-id range, 0xffff for none.
   uint16 recv_end;
   uint8 arity;
   uint8 kind;         // 0 method, 1 field accessor, 2 lambda, 3 block.
-  uint16 unused;
+
+  word end() const { return static_cast<word>(entry) + length; }
 };
+
+static_assert(sizeof(V2Method) == 16, "V2Method is 16 bytes");
 
 static const int V2_KIND_METHOD = 0;
 static const int V2_KIND_FIELD_ACCESSOR = 1;
@@ -111,7 +115,7 @@ class V2MethodTable {
   // The absolute bci of the header of a valid method (methods follow each
   // other, the first one after the tag). Format-2 method ids in the debug
   // information (tools/snapshot.toit) are header positions.
-  word header_of(word index) const { return index == 0 ? 4 : methods_[index - 1].end; }
+  word header_of(word index) const { return index == 0 ? 4 : methods_[index - 1].end(); }
 
   // The index of the method whose body starts at [entry], or -1.
   word index_of_entry(word entry) const;

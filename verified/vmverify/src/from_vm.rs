@@ -65,14 +65,13 @@ const _: () = {
     assert!(size_of::<VMethod>() == size_of::<V2Method>());
     assert!(align_of::<VMethod>() == align_of::<V2Method>());
     assert!(offset_of!(VMethod, entry) == offset_of!(V2Method, entry));
-    assert!(offset_of!(VMethod, end) == offset_of!(V2Method, end));
+    assert!(offset_of!(VMethod, length) == offset_of!(V2Method, length));
     assert!(offset_of!(VMethod, selector) == offset_of!(V2Method, selector));
     assert!(offset_of!(VMethod, aux) == offset_of!(V2Method, aux));
     assert!(offset_of!(VMethod, recv_start) == offset_of!(V2Method, recv_start));
     assert!(offset_of!(VMethod, recv_end) == offset_of!(V2Method, recv_end));
     assert!(offset_of!(VMethod, arity) == offset_of!(V2Method, arity));
     assert!(offset_of!(VMethod, kind) == offset_of!(V2Method, kind));
-    assert!(offset_of!(VMethod, unused) == offset_of!(V2Method, unused));
 };
 
 /// The program as converted from VM memory: borrowed tables, the decoded

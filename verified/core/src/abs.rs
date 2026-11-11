@@ -283,7 +283,7 @@ pub open spec fn method_info(m: V2Method, max_height: usize) -> MethodInfo {
         recv_start: m.recv_start,
         recv_end: m.recv_end,
         entry: m.entry as usize,
-        end: m.end as usize,
+        end: m.end_spec(),
     }
 }
 

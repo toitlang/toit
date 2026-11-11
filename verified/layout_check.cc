@@ -380,7 +380,7 @@ int main() {
     { "TASK_ID_FIELD", static_cast<uword>(Task::ID_INDEX), false },
     { "V2METHOD_SIZE", sizeof(V2Method), false },
 #define FIELD(prefix, type, name) { prefix #name, offsetof(type, name), false },
-    FIELD("V2METHOD_", V2Method, entry) FIELD("V2METHOD_", V2Method, end)
+    FIELD("V2METHOD_", V2Method, entry) FIELD("V2METHOD_", V2Method, length)
     FIELD("V2METHOD_", V2Method, selector) FIELD("V2METHOD_", V2Method, aux)
     FIELD("V2METHOD_", V2Method, recv_start) FIELD("V2METHOD_", V2Method, recv_end)
     FIELD("V2METHOD_", V2Method, arity) FIELD("V2METHOD_", V2Method, kind)

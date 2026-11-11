@@ -224,7 +224,7 @@ static int verify_snapshot(int argc, char** argv) {
       }
       for (word m = 0; m < table->length(); m++) {
         word bci = table->at(m).entry;
-        word end = table->at(m).end;
+        word end = table->at(m).end();
         while (bci < end) {
           int op = program->bytecodes.data()[bci];
           if (op >= V2_OPCODE_COUNT || bci + V2_OPCODE_LENGTHS[op] > end) break;

@@ -26,19 +26,40 @@ use toit_spec::types::{HeapObj, Body, Value};
 
 verus! {
 
-/// An entry of the method table (`toit::V2Method`).
+/// An entry of the method table (`toit::V2Method`): 16 bytes, the body at
+/// `entry..entry + length` (OBLIGATIONS.md D3).
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct V2Method {
     pub entry: u32,
-    pub end: u32,
+    pub length: u16,
     pub selector: u16,
     pub aux: u16,
     pub recv_start: u16,
     pub recv_end: u16,
     pub arity: u8,
     pub kind: u8,
-    pub unused: u16,
+}
+
+impl V2Method {
+    /// The bci after the body (0, which no table the verifier accepts has,
+    /// where it does not fit a word).
+    pub open spec fn end_spec(self) -> usize {
+        if self.entry as int + self.length as int <= usize::MAX as int {
+            (self.entry as int + self.length as int) as usize
+        } else {
+            0
+        }
+    }
+
+    #[inline(always)]
+    pub fn end(&self) -> (r: usize)
+        ensures r == self.end_spec(),
+    {
+        let e = self.entry as usize;
+        let l = self.length as usize;
+        if e <= usize::MAX - l { e + l } else { 0 }
+    }
 }
 
 } // verus!
@@ -523,7 +544,7 @@ layout_table!(
 const STRUCT_LAYOUT: &[(&[u8], usize)] = &[
     (b"V2METHOD_SIZE\0", core::mem::size_of::<V2Method>()),
     (b"V2METHOD_entry\0", core::mem::offset_of!(V2Method, entry)),
-    (b"V2METHOD_end\0", core::mem::offset_of!(V2Method, end)),
+    (b"V2METHOD_length\0", core::mem::offset_of!(V2Method, length)),
     (b"V2METHOD_selector\0", core::mem::offset_of!(V2Method, selector)),
     (b"V2METHOD_aux\0", core::mem::offset_of!(V2Method, aux)),
     (b"V2METHOD_recv_start\0", core::mem::offset_of!(V2Method, recv_start)),

@@ -264,7 +264,7 @@ fn diagnose(p: &VProgram, global: &infer::Global, at: Option<usize>, trusted: bo
 fn instruction(p: &VProgram, m: usize, off: usize) -> String {
     use toit_spec::v2::bytecodes::{OPCODE_LENGTHS2, OPCODE_NAMES2};
     let Some(info) = p.methods.get(m) else { return "(no method)".into() };
-    let end = info.end as usize;
+    let end = info.end();
     let at = info.entry as usize + off;
     let Some(&op) = p.bytecodes.get(at).filter(|_| at < end) else { return "(no instruction)".into() };
     let Some(name) = OPCODE_NAMES2.get(op as usize) else { return format!("bad opcode {}", op) };

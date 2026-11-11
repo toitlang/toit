@@ -152,10 +152,13 @@ V2MethodTable* V2MethodTable::compute(Program* program, bool* out_of_memory) {
       word entry = at;
       word end = entry + body;
       if (end > length) { free(methods); return v2_fail("truncated method body", at); }
+      // The record holds the length in 16 bits (compiled bodies have at
+      // most a few KB).
+      if (body > 0xffff) { free(methods); return v2_fail("method body too large", body); }
       if (pass == 1) {
         V2Method* m = &methods[index];
         m->entry = entry;
-        m->end = end;
+        m->length = body;
         m->selector = selector;
         m->aux = aux;
         m->recv_start = recv_start;
