@@ -1,0 +1,627 @@
+// Copyright (C) 2026 Toit contributors.
+//
+// The Toit object model for VeriFast: the predicates that say what a VM
+// object is, and the accessors of src/objects.h, rendered mechanically
+// from the C++ (verified/tools/cxx_render.toit) and verified against them.
+// Generates objects.gen.h (types, predicates, contracts: what the targets
+// include) and objects.gen.c (the accessor bodies).
+//
+// In the annotations `this` is `self`, as in the rendering.
+@include model.cfg
+@header objects.gen.h
+@verbatim
+#include <stdint.h>
+#include <stdbool.h>
+#include "constants.h"
+//@ #include <listex.gh>
+//@ #include <bitops.gh>
+
+typedef intptr_t word;
+typedef uintptr_t uword;
+typedef unsigned char uint8;
+typedef unsigned short uint16;
+typedef int TypeTag;
+
+// Every class is one opaque struct: the C++ classes have no data members,
+// `this` is the tagged word.
+struct Object;
+typedef struct Object Object;
+typedef struct Object HeapObject;
+typedef struct Object Smi;
+typedef struct Object Instance;
+typedef struct Object Array;
+typedef struct Object ByteArray;
+typedef struct Object Double;
+typedef struct Object LargeInteger;
+typedef struct Object String;
+
+
+/*@
+
+// ---------------------------------------------------------------------------
+// Tagged words.
+
+fixpoint bool is_smi_w(uword w) { return w % 2 == 0; }
+fixpoint bool is_heap_w(uword w) { return w % 4 == 1; }
+
+// The value of a smi: the word read as a signed integer, halved (exact for
+// an even word, so C's truncating division and the arithmetic shift agree).
+fixpoint int signed_of(uword w) { return w <= UINTPTR_MAX / 2 ? w : w - UINTPTR_MAX - 1; }
+fixpoint int smi_val(uword w) { return signed_of(w) / 2; }
+fixpoint bool smi_range(int v) { return -(UINTPTR_MAX / 4) - 1 <= v && v <= UINTPTR_MAX / 4; }
+
+// The word Smi::from(v) makes, for 0 <= v (class ids).
+fixpoint void *smi_ptr(int v) { return (void *)(2 * v); }
+
+// The raw (untagged) address of a heap object, as the code computes it:
+// `reinterpret_cast<uword*>(reinterpret_cast<uword>(this) - HEAP_TAG)`.
+// VeriFast gives an integer-to-pointer cast the null provenance, and so do
+// these definitions: object memory is addressed by integer, which is what
+// the VM does (the heap is exposed memory). That this memory is the object
+// is the content of the predicates below, i.e. an assumption about the
+// allocator and the GC (TRUSTED.md V2).
+fixpoint uword *raw(void *o) { return (uword *)((uword)o - 1); }
+
+// ---------------------------------------------------------------------------
+// Headers. A header is a smi whose value is (class_id << 5) | (finalizer
+// bit << 4) | class_tag. The heap model keeps class ids in [0, 1024) (the
+// 10 bits of CLASS_ID_BIT_SIZE); negative ids are the GC's free-memory
+// pseudo objects, which the code under proof never sees.
+
+fixpoint bool header_ok(uword hw) { return 0 <= hw && hw % 2 == 0 && hw < 65536; }
+fixpoint int header_cid(uword hw) { return hw / 64; }
+// has_class_tag compares `header_word & (CLASS_TAG_MASK << 1)` with `tag << 1`.
+fixpoint int header_tag2(uword hw) { return hw & 30; }
+
+// The program's classes (src/program.h roots and class bits). Global and
+// uninterpreted: one program per proof.
+fixpoint int class_tag(int cid);
+fixpoint int class_fields(int cid);
+
+inductive prog_ids = prog_ids(
+    int array_cid, int list_cid, int list_slice_cid, int map_cid,
+    int large_array_cid, int tombstone_cid);
+
+fixpoint int array_cid(prog_ids ids) { switch (ids) { case prog_ids(a, l, s, m, la, t): return a; } }
+fixpoint int list_cid(prog_ids ids) { switch (ids) { case prog_ids(a, l, s, m, la, t): return l; } }
+fixpoint int list_slice_cid(prog_ids ids) { switch (ids) { case prog_ids(a, l, s, m, la, t): return s; } }
+fixpoint int map_cid(prog_ids ids) { switch (ids) { case prog_ids(a, l, s, m, la, t): return m; } }
+fixpoint int large_array_cid(prog_ids ids) { switch (ids) { case prog_ids(a, l, s, m, la, t): return la; } }
+fixpoint int tombstone_cid(prog_ids ids) { switch (ids) { case prog_ids(a, l, s, m, la, t): return t; } }
+
+// What VerifierImpl::check_builtin_classes (src/verifier.cc) establishes
+// for an accepted program, and the class tags of the builtin classes.
+fixpoint bool prog_ok(prog_ids ids) {
+  return 0 <= array_cid(ids) && array_cid(ids) < 1024 &&
+         0 <= list_cid(ids) && list_cid(ids) < 1024 &&
+         0 <= list_slice_cid(ids) && list_slice_cid(ids) < 1024 &&
+         0 <= map_cid(ids) && map_cid(ids) < 1024 &&
+         0 <= large_array_cid(ids) && large_array_cid(ids) < 1024 &&
+         0 <= tombstone_cid(ids) && tombstone_cid(ids) < 1024 &&
+         class_tag(array_cid(ids)) == ARRAY_TAG &&
+         class_tag(list_cid(ids)) == INSTANCE_TAG && class_fields(list_cid(ids)) >= 2 &&
+         class_tag(list_slice_cid(ids)) == INSTANCE_TAG && class_fields(list_slice_cid(ids)) >= 3 &&
+         class_tag(map_cid(ids)) == INSTANCE_TAG && class_fields(map_cid(ids)) >= 4;
+}
+
+// ---------------------------------------------------------------------------
+// Objects. The abstract heap `H` maps each object to its ghost content:
+// the header word, a length (fields of an instance, length of an array or
+// a byte array) and the words of its body (fields, elements; nil for byte
+// arrays). The heap is a list of distinct tagged addresses `objs`; every
+// reference word in an object is a smi or one of `objs` (heap integrity,
+// TRUSTED.md V2). The values of fields are otherwise arbitrary: a size field
+// can be any smi, a backing field anything (the code must not trust them).
+
+inductive oinfo = oinfo(uword hw, int len, list<void *> words);
+fixpoint uword o_hw(oinfo i) { switch (i) { case oinfo(hw, l, ws): return hw; } }
+fixpoint int o_len(oinfo i) { switch (i) { case oinfo(hw, l, ws): return l; } }
+fixpoint list<void *> o_words(oinfo i) { switch (i) { case oinfo(hw, l, ws): return ws; } }
+
+fixpoint bool good(list<void *> objs, void *w) { return is_smi_w((uword)w) || mem(w, objs); }
+
+// The upper bound of an object's size: objects are in pages far below the
+// top of the address space (pages are at most a few hundred KB).
+#define MAX_OBJECT_WORDS 0x100000
+
+fixpoint bool addr_ok(void *o) {
+  return is_heap_w((uword)o) && 1 < (uword)o &&
+         (uword)o + sizeof(word) * (MAX_OBJECT_WORDS + 2) <= UINTPTR_MAX;
+}
+
+predicate header(void *o; uword hw) =
+  addr_ok(o) == true &*&
+  pointer((void **)raw(o) + 0, ?hp) &*& hw == (uword)hp &*& header_ok(hw) == true;
+
+predicate instance_body(void *o, int n; list<void *> fields) =
+  addr_ok(o) == true &*&
+  pointers((void **)raw(o) + 1, n, fields) &*& 0 <= n &*& n <= MAX_OBJECT_WORDS &*& length(fields) == n;
+
+predicate array_body(void *o; int len, list<void *> elems) =
+  addr_ok(o) == true &*&
+  uintptr(raw(o) + 1, len) &*& len <= MAX_OBJECT_WORDS &*&
+  pointers((void **)raw(o) + 2, len, elems) &*& length(elems) == len;
+
+// A byte array (internal content, or external with the length and address
+// word: the bytes themselves are a separate region, see primitives).
+predicate byte_array_body(void *o; int raw_length) =
+  addr_ok(o) == true &*&
+  intptr((intptr_t *)raw(o) + 1, raw_length) &*&
+  raw_length >= 0 ?
+    uchars((uint8 *)raw(o) + 2 * WORD_SIZE, raw_length, _) &*& raw_length <= WORD_SIZE * MAX_OBJECT_WORDS
+  :
+    uintptrs(raw(o) + 2, 2, _);
+
+predicate body(void *o, int tag2, int len; list<void *> words) =
+  tag2 == 2 * INSTANCE_TAG ? instance_body(o, len, words) :
+  tag2 == 2 * ARRAY_TAG ? array_body(o, len, words) :
+  tag2 == 2 * BYTE_ARRAY_TAG ? byte_array_body(o, len) &*& words == nil :
+  len == 0 &*& words == nil;  // Other objects: only the header is used here.
+
+predicate_ctor heap_obj(list<void *> objs, fixpoint(void *, oinfo) H)(void *o) =
+  header(o, o_hw(H(o))) &*&
+  header_tag2(o_hw(H(o))) == 2 * class_tag(header_cid(o_hw(H(o)))) &*&
+  (class_tag(header_cid(o_hw(H(o)))) == INSTANCE_TAG ? o_len(H(o)) == class_fields(header_cid(o_hw(H(o)))) : true) &*&
+  body(o, header_tag2(o_hw(H(o))), o_len(H(o)), o_words(H(o))) &*&
+  forall(o_words(H(o)), (good)(objs)) == true;
+
+predicate heap(list<void *> objs, fixpoint(void *, oinfo) H) =
+  foreach(objs, heap_obj(objs, H));
+
+// The facts about one object besides its memory.
+fixpoint bool obj_facts(list<void *> objs, fixpoint(void *, oinfo) H, void *o) {
+  return header_tag2(o_hw(H(o))) == 2 * class_tag(header_cid(o_hw(H(o)))) &&
+         (class_tag(header_cid(o_hw(H(o)))) == INSTANCE_TAG ? o_len(H(o)) == class_fields(header_cid(o_hw(H(o)))) : true) &&
+         forall(o_words(H(o)), (good)(objs));
+}
+
+predicate heap_rest(list<void *> objs, fixpoint(void *, oinfo) H, void *o) =
+  foreach(remove(o, objs), heap_obj(objs, H));
+
+fixpoint bool has_tag(fixpoint(void *, oinfo) H, void *o, int tag) {
+  return is_heap_w((uword)o) && header_tag2(o_hw(H(o))) == 2 * tag;
+}
+
+// Lemmas about the model (proved in objects.gen.c).
+
+lemma void good_nth(list<void *> objs, list<void *> ws, int i);
+  requires forall(ws, (good)(objs)) == true &*& 0 <= i &*& i < length(ws);
+  ensures good(objs, nth(i, ws)) == true;
+
+// Take one object out of (a fraction of) the heap, and put it back.
+lemma void heap_open(void *o);
+  requires [?f]heap(?objs, ?H) &*& mem(o, objs) == true;
+  ensures [f]heap_rest(objs, H, o) &*& [f]header(o, o_hw(H(o))) &*&
+          [f]body(o, header_tag2(o_hw(H(o))), o_len(H(o)), o_words(H(o))) &*&
+          obj_facts(objs, H, o) == true &*& addr_ok(o) == true;
+
+lemma void heap_close(void *o);
+  requires [?f]heap_rest(?objs, ?H, o) &*& [f]header(o, o_hw(H(o))) &*&
+           [f]body(o, header_tag2(o_hw(H(o))), o_len(H(o)), o_words(H(o))) &*&
+           obj_facts(objs, H, o) == true &*& mem(o, objs) == true;
+  ensures [f]heap(objs, H);
+
+// A good word that is not a smi is an object of the heap.
+lemma void good_mem(list<void *> objs, void *w);
+  requires good(objs, w) == true &*& is_smi_w((uword)w) == false;
+  ensures mem(w, objs) == true;
+
+// A heap-tagged word that is a good reference is an object of the heap.
+lemma void good_heap(list<void *> objs, void *w);
+  requires good(objs, w) == true &*& is_heap_w((uword)w) == true &*& 0 <= (uword)w;
+  ensures mem(w, objs) == true;
+
+// An object of the heap with a given tag (for the casts' callers).
+lemma void heap_facts(void *o);
+  requires [?f]heap(?objs, ?H) &*& mem(o, objs) == true;
+  ensures [f]heap(objs, H) &*& obj_facts(objs, H, o) == true &*& addr_ok(o) == true &*&
+          header_ok(o_hw(H(o))) == true;
+
+// The code indexes object words from the object's start, the predicates
+// hold the body as an array after the header: focus on one element of
+// such an array, and back.
+lemma void pointers_focus(void **base, int i);
+  requires [?f]pointers(base, ?n, ?ps) &*& 0 <= i &*& i < n;
+  ensures [f]pointers(base, i, take(i, ps)) &*& [f]pointer(base + i, nth(i, ps)) &*&
+          [f]pointers(base + i + 1, n - i - 1, drop(i + 1, ps));
+
+lemma void pointers_unfocus(void **base, int i, list<void *> ps);
+  requires [?f]pointers(base, i, take(i, ps)) &*& [f]pointer(base + i, ?v) &*&
+           [f]pointers(base + i + 1, ?m, drop(i + 1, ps)) &*& 0 <= i &*& i < length(ps);
+  ensures [f]pointers(base, i + 1 + m, update(i, v, ps));
+
+@*/
+
+@prototypes
+@verbatim-c
+//@ #include "arith.gh"
+
+/*@
+
+lemma void good_nth(list<void *> objs, list<void *> ws, int i)
+  requires forall(ws, (good)(objs)) == true &*& 0 <= i &*& i < length(ws);
+  ensures good(objs, nth(i, ws)) == true;
+{
+  switch (ws) {
+    case nil:
+    case cons(w, ws0):
+      if (i > 0) good_nth(objs, ws0, i - 1);
+  }
+}
+
+lemma void good_mem(list<void *> objs, void *w)
+  requires good(objs, w) == true &*& is_smi_w((uword)w) == false;
+  ensures mem(w, objs) == true;
+{
+}
+
+lemma void good_heap(list<void *> objs, void *w)
+  requires good(objs, w) == true &*& is_heap_w((uword)w) == true &*& 0 <= (uword)w;
+  ensures mem(w, objs) == true;
+{
+  div_rem_nonneg((uword)w, 4);
+  div_rem_nonneg_unique((uword)w, 2, 2 * ((uword)w / 4), 1);
+}
+
+lemma void foreach_remove_frac<t>(t x, list<t> xs)
+  requires [?f]foreach(xs, ?p) &*& mem(x, xs) == true;
+  ensures [f]foreach(remove(x, xs), p) &*& [f]p(x);
+{
+  open [f]foreach(xs, p);
+  switch (xs) {
+    case nil:
+    case cons(x0, xs0):
+      if (x0 != x) {
+        foreach_remove_frac(x, xs0);
+        close [f]foreach(remove(x, xs), p);
+      }
+  }
+}
+
+lemma void foreach_unremove_frac<t>(t x, list<t> xs)
+  requires [?f]foreach(remove(x, xs), ?p) &*& mem(x, xs) == true &*& [f]p(x);
+  ensures [f]foreach(xs, p);
+{
+  switch (xs) {
+    case nil:
+    case cons(x0, xs0):
+      if (x0 == x) {
+        close [f]foreach(xs, p);
+      } else {
+        open [f]foreach(remove(x, xs), p);
+        foreach_unremove_frac(x, xs0);
+        close [f]foreach(xs, p);
+      }
+  }
+}
+
+lemma void heap_open(void *o)
+  requires [?f]heap(?objs, ?H) &*& mem(o, objs) == true;
+  ensures [f]heap_rest(objs, H, o) &*& [f]header(o, o_hw(H(o))) &*&
+          [f]body(o, header_tag2(o_hw(H(o))), o_len(H(o)), o_words(H(o))) &*&
+          obj_facts(objs, H, o) == true &*& addr_ok(o) == true;
+{
+  open [f]heap(objs, H);
+  foreach_remove_frac(o, objs);
+  open [f]heap_obj(objs, H)(o);
+  open [f]header(o, o_hw(H(o)));
+  close [f]header(o, o_hw(H(o)));
+  close [f]heap_rest(objs, H, o);
+}
+
+lemma void heap_close(void *o)
+  requires [?f]heap_rest(?objs, ?H, o) &*& [f]header(o, o_hw(H(o))) &*&
+           [f]body(o, header_tag2(o_hw(H(o))), o_len(H(o)), o_words(H(o))) &*&
+           obj_facts(objs, H, o) == true &*& mem(o, objs) == true;
+  ensures [f]heap(objs, H);
+{
+  open [f]heap_rest(objs, H, o);
+  close [f]heap_obj(objs, H)(o);
+  foreach_unremove_frac(o, objs);
+  close [f]heap(objs, H);
+}
+
+lemma void heap_facts(void *o)
+  requires [?f]heap(?objs, ?H) &*& mem(o, objs) == true;
+  ensures [f]heap(objs, H) &*& obj_facts(objs, H, o) == true &*& addr_ok(o) == true &*&
+          header_ok(o_hw(H(o))) == true;
+{
+  heap_open(o);
+  open [f]header(o, _);
+  close [f]header(o, o_hw(H(o)));
+  heap_close(o);
+}
+
+lemma void update_take_drop<t>(list<t> ps, int i, t v)
+  requires 0 <= i &*& i < length(ps);
+  ensures append(take(i, ps), cons(v, drop(i + 1, ps))) == update(i, v, ps);
+{
+  switch (ps) {
+    case nil:
+    case cons(p, ps0):
+      if (i > 0) update_take_drop(ps0, i - 1, v);
+  }
+}
+
+lemma void pointers_focus(void **base, int i)
+  requires [?f]pointers(base, ?n, ?ps) &*& 0 <= i &*& i < n;
+  ensures [f]pointers(base, i, take(i, ps)) &*& [f]pointer(base + i, nth(i, ps)) &*&
+          [f]pointers(base + i + 1, n - i - 1, drop(i + 1, ps));
+{
+  pointers_split(base, i);
+  open [f]pointers(base + i, n - i, drop(i, ps));
+  drop_n_plus_one(i, ps);
+}
+
+lemma void pointers_unfocus(void **base, int i, list<void *> ps)
+  requires [?f]pointers(base, i, take(i, ps)) &*& [f]pointer(base + i, ?v) &*&
+           [f]pointers(base + i + 1, ?m, drop(i + 1, ps)) &*& 0 <= i &*& i < length(ps);
+  ensures [f]pointers(base, i + 1 + m, update(i, v, ps));
+{
+  close [f]pointers(base + i, m + 1, cons(v, drop(i + 1, ps)));
+  pointers_join(base);
+  update_take_drop(ps, i, v);
+}
+
+@*/
+
+@render src/objects.h toit::is_smi tu=src/objects.cc
+inline bool is_smi(const Object* o)
+//@ requires true;
+//@ ensures result == is_smi_w((uword)o);
+{
+  //@ bitand_pow_nat((uword)o, N1);
+  return (reinterpret_cast<uword>(o) & Object::SMI_TAG_MASK) == Object::SMI_TAG;
+}
+
+@render src/objects.h toit::is_heap_object tu=src/objects.cc
+inline bool is_heap_object(const Object* o)
+//@ requires true;
+//@ ensures result == is_heap_w((uword)o);
+{
+  //@ bitand_pow_nat((uword)o, N2);
+  return (reinterpret_cast<uword>(o) & Object::NON_SMI_TAG_MASK) == Object::HEAP_TAG;
+}
+
+@render src/objects.h toit::Smi::value tu=src/objects.cc type=word(Object*) trusted
+  static word value(Object* object)
+  // The body, `reinterpret_cast<word>(o) >> 1`, relies on two
+  // implementation-defined conversions (uword to word for a word above
+  // INTPTR_MAX, and the right shift of a negative word) that VeriFast
+  // refuses and GCC/Clang define (C++20 standardizes them): trusted.
+  //@ requires is_smi_w((uword)object) == true;
+  //@ ensures result == smi_val((uword)object) &*& smi_range(result) == true;
+  {
+    ASSERT(is_smi(object));
+    return reinterpret_cast<word>(object) >> SMI_TAG_SIZE;
+  }
+
+@render src/objects.h toit::Smi::value tu=src/objects.cc type=word(Smi*) trusted
+  static word value(Smi* smi)
+  //@ requires is_smi_w((uword)smi) == true;
+  //@ ensures result == smi_val((uword)smi) &*& smi_range(result) == true;
+  {
+    return reinterpret_cast<word>(smi) >> SMI_TAG_SIZE;
+  }
+
+@render src/objects.h toit::Smi::from tu=src/objects.cc
+  static Smi* from(word value)
+  //@ requires 0 <= value &*& value < 1024;
+  //@ ensures result == smi_ptr(value) &*& (uword)result == 2 * value;
+  {
+    ASSERT(is_valid(value));
+    return reinterpret_cast<Smi*>(static_cast<uword>(value) << SMI_TAG_SIZE);
+  }
+
+@render src/objects.h toit::Smi::cast tu=src/objects.cc
+  static Smi* cast(Object* object)
+  //@ requires true;
+  //@ ensures result == object;
+  {
+    ASSERT(is_smi(object));
+    return static_cast<Smi*>(object);
+  }
+
+@render src/objects.h toit::HeapObject::cast tu=src/objects.cc type=constHeapObject*(constObject*)
+  static const HeapObject* cast(const Object* obj)
+  //@ requires true;
+  //@ ensures result == obj;
+  {
+    ASSERT(is_heap_object(obj));
+    return static_cast<const HeapObject*>(obj);
+  }
+
+@render src/objects.h toit::HeapObject::cast tu=src/objects.cc type=HeapObject*(Object*)
+  static HeapObject* cast(Object* obj)
+  //@ requires true;
+  //@ ensures result == obj;
+  {
+    ASSERT(is_heap_object(obj));
+    return static_cast<HeapObject*>(obj);
+  }
+
+@render src/objects.h toit::HeapObject::_raw_at tu=src/objects.cc type=constuword*()const
+  INLINE const uword* _raw_at() const
+  //@ requires 1 <= (uword)self;
+  //@ ensures result == raw(self);
+  { return reinterpret_cast<const uword*>(reinterpret_cast<uword>(this) - HEAP_TAG); }
+
+@render src/objects.h toit::HeapObject::_at tu=src/objects.cc
+  INLINE Object* _at(word offset) const
+  //@ requires 1 <= (uword)self &*& 0 <= offset &*& offset % WORD_SIZE == 0 &*& [?f]pointer((void **)raw(self) + offset / WORD_SIZE, ?v);
+  //@ ensures [f]pointer((void **)raw(self) + offset / WORD_SIZE, v) &*& result == v;
+  { return reinterpret_cast<Object* const*>(_raw_at())[offset / WORD_SIZE]; }
+
+@render src/objects.h toit::HeapObject::_word_at tu=src/objects.cc
+  INLINE uword _word_at(word offset) const
+  //@ requires 1 <= (uword)self &*& 0 <= offset &*& offset % WORD_SIZE == 0 &*& [?f]uintptr(raw(self) + offset / WORD_SIZE, ?v);
+  //@ ensures [f]uintptr(raw(self) + offset / WORD_SIZE, v) &*& result == v;
+  { return _raw_at()[offset / WORD_SIZE]; }
+
+@render src/objects.h toit::HeapObject::header tu=src/objects.cc
+  INLINE Smi* header() const
+  //@ requires [?f]header(self, ?hw);
+  //@ ensures [f]header(self, hw) &*& (uword)result == hw &*& header_ok(hw) == true;
+  {
+    //@ open header(self, hw);
+    Object* result = _at(HEADER_OFFSET);
+    //@ close [f]header(self, hw);
+    ASSERT(is_smi(result));
+    return Smi::cast(result);
+  }
+
+@render src/objects.h toit::HeapObject::class_id tu=src/objects.cc
+  INLINE Smi* class_id() const
+  //@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true;
+  //@ ensures [f]heap(objs, H) &*& result == smi_ptr(header_cid(o_hw(H(self)))) &*& 0 <= header_cid(o_hw(H(self))) &*& header_cid(o_hw(H(self))) < 1024 &*& is_smi_w((uword)result) && smi_val((uword)result) == header_cid(o_hw(H(self)));
+  {
+    //@ heap_open(self);
+    //@ uword hw = o_hw(H(self));
+    //@ open [f]header(self, hw);
+    //@ close [f]header(self, hw);
+    //@ int v = smi_val(hw);
+    //@ div_rem_nonneg(hw, 2);
+    //@ shiftright_div(v, N5);
+    //@ div_rem_nonneg(v, 32);
+    //@ div_rem_nonneg_unique(hw, 64, v / 32, 2 * (v % 32));
+    //@ nat bits = sizeof(word) == 8 ? N64 : N32;
+    //@ bitand_pow_nat(v >> 5, bits);
+    //@ assert pow_nat(2, bits) - 1 == UINTPTR_MAX;
+    //@ div_rem_nonneg_unique(v >> 5, pow_nat(2, bits), 0, v >> 5);
+    //@ div_rem_nonneg_unique(2 * (hw / 64), 2, hw / 64, 0);
+    return Smi::from((Smi::value(header()) >> HeapObject::CLASS_ID_OFFSET) & HeapObject::CLASS_ID_MASK);
+    //@ heap_close(self);
+  }
+
+@render src/objects.h toit::HeapObject::has_class_tag tu=src/objects.cc
+  INLINE bool has_class_tag(TypeTag tag) const
+  //@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true &*& 0 <= tag &*& tag < 16;
+  //@ ensures [f]heap(objs, H) &*& result == (header_tag2(o_hw(H(self))) == 2 * tag);
+  {
+    //@ heap_open(self);
+    uword header_word = reinterpret_cast<uword>(header());
+    //@ heap_close(self);
+    uword tag_word = static_cast<uword>(tag);
+    int shift = HeapObject::CLASS_TAG_OFFSET + SMI_TAG_SIZE;
+    //@ shiftleft_def(15, N1);
+    //@ shiftleft_def(tag_word, N1);
+    uword mask = HeapObject::CLASS_TAG_MASK << shift;
+    return (header_word & mask) == (tag_word << shift);
+  }
+
+@render src/objects.h toit::Instance::_offset_from tu=src/objects.cc
+  static word _offset_from(uword index)
+  //@ requires index <= MAX_OBJECT_WORDS;
+  //@ ensures result == Instance_HEADER_SIZE + index * WORD_SIZE;
+  { return HEADER_SIZE + index  * WORD_SIZE; }
+
+@render src/objects.h toit::Instance::at tu=src/objects.cc
+  Object* at(word index) const
+  //@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true &*& header_tag2(o_hw(H(self))) == 2 * INSTANCE_TAG &*& 0 <= index &*& index < o_len(H(self));
+  //@ ensures [f]heap(objs, H) &*& result == nth(index, o_words(H(self))) &*& good(objs, result) == true;
+  {
+    //@ heap_open(self);
+    //@ open [f]body(self, _, _, _);
+    //@ open [f]instance_body(self, _, _);
+    //@ pointers_focus((void **)raw(self) + 1, index);
+    //@ div_rem_nonneg_unique(Instance_HEADER_SIZE + index * WORD_SIZE, WORD_SIZE, 1 + index, 0);
+    return _at(_offset_from(index));
+    //@ pointers_unfocus((void **)raw(self) + 1, index, o_words(H(self)));
+    //@ close [f]instance_body(self, o_len(H(self)), o_words(H(self)));
+    //@ close [f]body(self, 2 * INSTANCE_TAG, o_len(H(self)), o_words(H(self)));
+    //@ heap_close(self);
+    //@ good_nth(objs, o_words(H(self)), index);
+  }
+
+@render src/objects.h toit::Array::_offset_from tu=src/objects.cc
+  static word _offset_from(word index)
+  //@ requires 0 <= index &*& index <= MAX_OBJECT_WORDS;
+  //@ ensures result == Array_HEADER_SIZE + index * WORD_SIZE;
+  { return HEADER_SIZE + index * WORD_SIZE; }
+
+@render src/objects.h toit::Array::length tu=src/objects.cc
+  word length() const
+  //@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true &*& header_tag2(o_hw(H(self))) == 2 * ARRAY_TAG;
+  //@ ensures [f]heap(objs, H) &*& result == o_len(H(self)) &*& 0 <= result &*& result <= MAX_OBJECT_WORDS;
+  {
+    //@ heap_open(self);
+    //@ open [f]body(self, _, _, _);
+    //@ open [f]array_body(self, _, _);
+    return _word_at(LENGTH_OFFSET);
+    //@ close [f]array_body(self, o_len(H(self)), o_words(H(self)));
+    //@ close [f]body(self, 2 * ARRAY_TAG, o_len(H(self)), o_words(H(self)));
+    //@ heap_close(self);
+  }
+
+@render src/objects.h toit::Array::at tu=src/objects.cc
+  INLINE Object* at(word index) const
+  //@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true &*& header_tag2(o_hw(H(self))) == 2 * ARRAY_TAG &*& 0 <= index &*& index < o_len(H(self));
+  //@ ensures [f]heap(objs, H) &*& result == nth(index, o_words(H(self))) &*& good(objs, result) == true;
+  {
+    //@ heap_open(self);
+    //@ open [f]body(self, _, _, _);
+    //@ open [f]array_body(self, _, _);
+    //@ pointers_focus((void **)raw(self) + 2, index);
+    //@ div_rem_nonneg_unique(Array_HEADER_SIZE + index * WORD_SIZE, WORD_SIZE, 2 + index, 0);
+    ASSERT(index >= 0 && index < length());
+    return _at(_offset_from(index));
+    //@ pointers_unfocus((void **)raw(self) + 2, index, o_words(H(self)));
+    //@ close [f]array_body(self, o_len(H(self)), o_words(H(self)));
+    //@ close [f]body(self, 2 * ARRAY_TAG, o_len(H(self)), o_words(H(self)));
+    //@ heap_close(self);
+    //@ good_nth(objs, o_words(H(self)), index);
+  }
+
+@render src/objects.h toit::is_instance tu=src/objects.cc
+inline bool is_instance(const Object* o)
+//@ requires [?f]heap(?objs, ?H) &*& good(objs, o) == true;
+//@ ensures [f]heap(objs, H) &*& result == has_tag(H, o, INSTANCE_TAG);
+{
+  //@ if (is_heap_w((uword)o)) good_heap(objs, o);
+  return is_heap_object(o) && HeapObject::cast(o)->has_class_tag(INSTANCE_TAG);
+}
+
+@render src/objects.h toit::is_array tu=src/objects.cc
+inline bool is_array(const Object* o)
+//@ requires [?f]heap(?objs, ?H) &*& good(objs, o) == true;
+//@ ensures [f]heap(objs, H) &*& result == has_tag(H, o, ARRAY_TAG);
+{
+  //@ if (is_heap_w((uword)o)) good_heap(objs, o);
+  return is_heap_object(o) && HeapObject::cast(o)->has_class_tag(ARRAY_TAG);
+}
+
+@render src/objects.h toit::is_byte_array tu=src/objects.cc
+inline bool is_byte_array(const Object* o)
+//@ requires [?f]heap(?objs, ?H) &*& good(objs, o) == true;
+//@ ensures [f]heap(objs, H) &*& result == has_tag(H, o, BYTE_ARRAY_TAG);
+{
+  //@ if (is_heap_w((uword)o)) good_heap(objs, o);
+  return is_heap_object(o) && HeapObject::cast(o)->has_class_tag(BYTE_ARRAY_TAG);
+}
+
+@render src/objects.h toit::is_double tu=src/objects.cc
+inline bool is_double(const Object* o)
+//@ requires [?f]heap(?objs, ?H) &*& good(objs, o) == true;
+//@ ensures [f]heap(objs, H) &*& result == has_tag(H, o, DOUBLE_TAG);
+{
+  //@ if (is_heap_w((uword)o)) good_heap(objs, o);
+  return is_heap_object(o) && HeapObject::cast(o)->has_class_tag(DOUBLE_TAG);
+}
+
+@render src/objects.h toit::is_string tu=src/objects.cc
+inline bool is_string(const Object* o)
+//@ requires [?f]heap(?objs, ?H) &*& good(objs, o) == true;
+//@ ensures [f]heap(objs, H) &*& result == has_tag(H, o, STRING_TAG);
+{
+  //@ if (is_heap_w((uword)o)) good_heap(objs, o);
+  return is_heap_object(o) && HeapObject::cast(o)->has_class_tag(STRING_TAG);
+}
+
+@render src/objects.h toit::is_large_integer tu=src/objects.cc
+inline bool is_large_integer(const Object* o)
+//@ requires [?f]heap(?objs, ?H) &*& good(objs, o) == true;
+//@ ensures [f]heap(objs, H) &*& result == has_tag(H, o, LARGE_INTEGER_TAG);
+{
+  //@ if (is_heap_w((uword)o)) good_heap(objs, o);
+  return is_heap_object(o) && HeapObject::cast(o)->has_class_tag(LARGE_INTEGER_TAG);
+}

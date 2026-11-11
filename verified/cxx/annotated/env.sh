@@ -14,4 +14,6 @@ VERIFAST="$VERIFAST_DIR/bin/verifast"
 CXXV_HOME="${CXXV_HOME:-/home/flo/work/opentoit-sandbox-artifacts/cxx-verification}"
 ANNOTATED_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$ANNOTATED_DIR/../../.." && pwd)"
-export ACXX_HOME VERIFAST_DIR VERIFAST CXXV_HOME ANNOTATED_DIR REPO_ROOT
+# The 32-bit renderings (render.sh), verified with -target ILP32.
+GEN32="${GEN32:-$ACXX_HOME/gen/ilp32}"
+export ACXX_HOME VERIFAST_DIR VERIFAST CXXV_HOME ANNOTATED_DIR REPO_ROOT GEN32
