@@ -828,6 +828,44 @@ pub fn slow(m: &mut Machine, r: Regs, env: &Env, k: Slow, w: usize, Ghost(v): Gh
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost w0 = m.with(r);
+    // A call while finally records exist, on the registers (rfins.rs).
+    if let Slow::Call(t, ret) = k {
+        if m.fw != 0 && !env.pre.requested() {
+            proof {
+                assert(p.max_height < 0x1_0000);
+                w0.lemma_frame(p);
+            }
+            let free = r.sp.diff(r.fr);
+            if free >= FRAME_WORDS + p.max_height + STACK_RESERVE + FIN_WORDS + m.fw {
+                proof {
+                    lemma_small(p, &w0);
+                    toit_spec::v2::sound_step::lemma_step(ap, p.cert@, p.trusted@, g);
+                    assert(outcome_ok(ap, p.cert@, sp::step(ap, g)));
+                }
+                let info = p.methods.at(t);
+                let mut r2 = r;
+                crate::rfins::push_call_fins(m, &mut r2, p, t, info, ret);
+                proof { lemma_matches(p, w0, m.with(r2), Ctl::Next); }
+                return (r2, Ctl::Next);
+            }
+        }
+    }
+    // A return while finally records exist, on the registers (rfins.rs).
+    if let Slow::Return = k {
+        if m.fw != 0 {
+            proof {
+                lemma_small(p, &w0);
+                toit_spec::v2::sound_step::lemma_step(ap, p.cert@, p.trusted@, g);
+                assert(outcome_ok(ap, p.cert@, sp::step(ap, g)));
+                crate::calls::lemma_shape(p, g);
+            }
+            let mut r2 = r;
+            if crate::rfins::ret_fins_r(m, &mut r2, p, w, Ghost(v)) {
+                proof { lemma_matches(p, w0, m.with(r2), Ctl::Next); }
+                return (r2, Ctl::Next);
+            }
+        }
+    }
     m.sync(r, p);
     proof {
         assert(*m == w0);
