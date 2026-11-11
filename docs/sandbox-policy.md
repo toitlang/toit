@@ -227,6 +227,36 @@ sandbox can't make the system process throw. The per-sender quotas are
 enforced per receiver on the messages of all sandboxed senders together
 (see "Threats tested" below).
 
+### Replies that can't be sent
+
+An RPC reply is an ordinary message: it counts against the quotas, and
+sending it can fail. The broker (`RpcBroker.send-reply_` in
+`lib/rpc/broker.toit`) never lets that failure escape: before, the
+exception escaped the RPC processing task and terminated the provider
+process. What a client whose reply can't be sent observes:
+
+| Provider | Why the reply can't be sent | What the provider does | What the client observes |
+|---|---|---|---|
+| any | it can't be serialized, or it exceeds the provider's `max_message_bytes` (trusted containers can have that quota too) | sends a short exception reply with the error | the call fails (`QUOTA_EXCEEDED`, `SERIALIZATION_FAILED`, ...) |
+| trusted | the client is a sandbox and its mailbox is full | the VM drops the reply (unchanged) | no reply: the call waits until the client's own timeout cancels it |
+| sandboxed (granted to provide services) | the mailbox share of sandboxed senders at the client is full (the provider's own messages, or another sandbox's) | retries with an exponential backoff (1 ms to 100 ms) for 5 s, then sends the exception reply, then drops it | the real reply, once the client processes its messages; after 5 s the call fails with `QUOTA_EXCEEDED`, or, if the share is still full, waits until its own timeout |
+| sandboxed | the reply exceeds the provider's quotas | the same: a sandbox can't tell a reply that is too large from one to a full mailbox (both `QUOTA_EXCEEDED`) | the call fails with `QUOTA_EXCEEDED` after 5 s |
+
+A trusted provider never retries: a sandboxed client that doesn't process
+its messages must not hold the provider's processing tasks. The retries
+of a sandboxed provider slow down only the sandbox (each one holds one of
+its processing tasks); they stop early when the client cancels the call
+(its timeout sends a cancel) or goes away. The traffic between trusted
+processes is unchanged, except that a reply that can't be serialized or
+exceeds a quota fails the call instead of terminating the provider.
+
+Exempting replies from the quotas was rejected: the VM can't tell a reply
+from a forged `SYSTEM_RPC_REPLY` (`forge-rpc-reply`), so an exemption
+would let a sandbox queue unbounded memory in any receiver it may send
+to. Charging replies to per-request credits in the VM would bound that,
+but forged replies would use up the credits, so the broker would still
+have to handle the failure.
+
 Service providers bound what a sandboxed client can make them hold. These
 limits live in the Toit libraries and apply to sandboxed clients only:
 
@@ -427,7 +457,9 @@ named assert the current behavior and must change with a decision.
   of several receivers at once (the system process and up to 64 granted
   providers: 65 x 1 MB on hosts, 65 x 32 KB = 2 MB on devices, held while
   the receivers are slow), and one sandbox that fills a slow receiver's
-  mailbox locks every other sandbox out of it. Owner's position:
+  mailbox locks every other sandbox out of it (also the replies of a
+  sandboxed provider to a trusted client, which are then delayed or
+  fail; see "Replies that can't be sent"). Owner's position:
   per-sender (per-group) accounting across receivers is to be
   investigated; until then the shared per-receiver bound stays. A
   per-client budget for service calls doesn't solve it (the messages are
@@ -457,7 +489,8 @@ and must be updated when the gap is closed.
 | Reuse the pid of a dead provider | the old grant is inert (send returns false); a new provider gets a new, larger pid that the old grant doesn't cover | `grant-lifecycle` | holds; pids are a 32-bit counter (`Scheduler::next_process_id`) that would only wrap after 2^31 process creations | |
 | Send to an exited pid of the own group | | | not applicable: a sandbox can't spawn (`core-spawn`, `quota-processes`) | |
 | Forge system message types (terminated, spawned, notify-terminated, external notifications, reserved types) | `PERMISSION_DENIED` | `forge-*` | holds | |
-| Forge RPC replies and resource notifications for another process' pending requests; cancel them | no effect (replies and cancels are matched on id and sender pid) | `forge-rpc-reply` | holds | |
+| Forge RPC replies and resource notifications for another process' pending requests; cancel them | no effect (replies and cancels are matched on id and sender pid) | `forge-rpc-reply` | holds; the test failed in about 15% of runs under load: the forged messages filled the driver's mailbox share, so the sandbox's own reply to the driver's `close` failed and terminated it (fixed with the next row) | |
+| Make a provider's reply fail: ask a trusted provider with a message size quota for a large reply; fill a trusted client's mailbox share (from another sandbox, or the provider itself) so that a sandboxed provider's reply doesn't fit | the call fails or is delayed, the provider keeps serving its other clients | `rpc-reply-too-large`, `rpc-reply-full-mailbox` | fixed: `QUOTA_EXCEEDED` escaped the broker's processing task and terminated the provider (a sandbox could take a trusted provider with a `message-bytes` quota, or another sandbox's service, away from every client). See "Replies that can't be sent" | |
 | Use, close, or close resources of another process' service clients (known client ids, guessed handles) | `SERVICE_CLIENT_NOT_OWNED` | `forge-client-id` | holds | |
 | Malformed `SYSTEM_RPC_REQUEST`, `_CANCEL` or `SYSTEM_TRACE` payload (null, byte array, empty list, non-integer id or name) to the system process or a provider | dropped | `forge-rpc-request-malformed` | fixed: a single message killed the receiver (the system process and with it the VM, exit code 1) | |
 | Flood one mailbox | `QUOTA_EXCEEDED` at the per-sender quota | `flood-system`, `mailbox-flood-provider`, `mailbox-*-flood-self`, `message-too-large` | holds per receiver | |
