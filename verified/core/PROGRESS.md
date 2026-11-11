@@ -39,6 +39,31 @@ Artifacts: /home/flo/work/opentoit-sandbox-artifacts/proven-accessors
   0.01 percent of sandbox-integration; riscv32 opt=s text 59,332 ->
   59,346 B, run_loop 6,479 -> 6,483 instructions. One proof hint in
   rloops.rs (`fall_r`, unstable at 32 bits after the change).
+- P2 (object headers, fields, elements): `Heap` owns `HeapMem`, the
+  permissions of every object's header and of the fields of instances
+  and the length and elements of arrays, keyed by (object id, word
+  index), with the heap's exposed provenance and the model (`objs`,
+  `addrs`, `class_bits`) as ghost fields. The layout is one spec
+  function, `view::word_val` (header: class id and class tag; fields at
+  `INSTANCE_FIELDS_WORD`; length and elements at `ARRAY_LENGTH_WORD`,
+  `ARRAY_ELEMENTS_WORD`; references by `abs::enc`), the Rust side of
+  CONTRACTS.toml's bridge `heap`. Tagged references: the accessor
+  computes `obj - HEAP_TAG` and gets the pointer with
+  `with_exposed_provenance` (the heap's `IsExposed` token), then
+  `wrapping_add(k)`; the permission of word k of object id is the one at
+  that pointer (`obj_ptr`), so the recomputed pointer matches by the
+  invariant. Verified: `class_id`, `class_tag`, `field`, `set_field`,
+  `array_length`, `element`, `set_element` (the writes update the
+  permission and the model in one helper, `write_heap_word`, and call
+  the write barrier, a trusted leaf without contract: the card table is
+  outside every view). Trusted instead: `Heap::new` (the derivation
+  point at entry; after a GC point the heap is the one the GC contract
+  states) and `Heap::write_barrier`. Measured trap: reading the header
+  through the generic `read_word` (`wrapping_add(0)`) cost 5 percent on
+  every smi loop (the run loop's stack pointer moved between registers
+  across handlers); a header read without the offset is exact. Census:
+  external_body 76 -> 69, unsafe 60 -> 54, uninterp 6 -> 3.
+  Instructions: all 36 runs within 0.01 percent; riscv32 text 59,348 B.
 
 ## Trusted containers integrated (branch core/trusted-integration, 2026-11-11)
 

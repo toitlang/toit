@@ -907,22 +907,6 @@ justification = "Type alias for the VM's half word (u32 on 64-bit, u16 on 32-bit
 [[trusted]]
 crate = "core"
 file = "src/view.rs"
-item = "Heap"
-kind = "external_body"
-count = 1
-justification = "Opaque Heap view over VM memory (raw pointer and length); TRUSTED.md section 1."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::addrs"
-kind = "uninterp"
-count = 1
-justification = "Heap model: address of each abstract object; related to memory only by the trusted accessor and GC contracts (TRUSTED.md, heap model)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
 item = "Heap::array_copy"
 kind = "external_body"
 count = 1
@@ -935,22 +919,6 @@ item = "Heap::array_copy"
 kind = "unsafe"
 count = 1
 justification = "Raw element access inside both arrays (bounds from the precondition) and the card mark."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::array_length"
-kind = "external_body"
-count = 1
-justification = "Heap accessor: the length word of an array is the length of the model's element sequence (TRUSTED.md, heap model)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::array_length"
-kind = "unsafe"
-count = 1
-justification = "Reads the length word of a live array (heap integrity, TRUSTED.md V2)."
 
 [[trusted]]
 crate = "core"
@@ -1015,46 +983,6 @@ item = "Heap::bytes_len"
 kind = "unsafe"
 count = 1
 justification = "Reads the length, tag and address words of a live byte array (heap integrity, TRUSTED.md V2)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::class_bits"
-kind = "uninterp"
-count = 1
-justification = "Heap model: the class bits the object headers follow; refines ties it to the program's class_bits table."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::class_id"
-kind = "external_body"
-count = 1
-justification = "Heap accessor: the header's class id is the model object's class id (TRUSTED.md, heap model)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::class_id"
-kind = "unsafe"
-count = 1
-justification = "Reads the header word of a live object (heap integrity, TRUSTED.md V2): obj is the model address of an object."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::class_tag"
-kind = "external_body"
-count = 1
-justification = "Heap accessor: the header's tag is the class tag of the object's class (TRUSTED.md, heap model)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::class_tag"
-kind = "unsafe"
-count = 1
-justification = "Reads the header word of a live object (heap integrity, TRUSTED.md V2): obj is the model address of an object."
 
 [[trusted]]
 crate = "core"
@@ -1139,38 +1067,6 @@ justification = "Reads the value word of a live double (heap integrity, TRUSTED.
 [[trusted]]
 crate = "core"
 file = "src/view.rs"
-item = "Heap::element"
-kind = "external_body"
-count = 1
-justification = "Heap accessor: an array element word is the encoding of the model's element (i < length) (TRUSTED.md, heap model)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::element"
-kind = "unsafe"
-count = 1
-justification = "Reads element i < length of a live array (heap integrity, TRUSTED.md V2)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::field"
-kind = "external_body"
-count = 1
-justification = "Heap accessor: an instance field word is the encoding of the model's field value (TRUSTED.md, heap model)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::field"
-kind = "unsafe"
-count = 1
-justification = "Reads field f < field count of a live instance (heap integrity, TRUSTED.md V2)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
 item = "Heap::half_word_at"
 kind = "external_body"
 count = 1
@@ -1220,17 +1116,17 @@ justification = "Reads the value word of a live large integer (heap integrity, T
 crate = "core"
 file = "src/view.rs"
 item = "Heap::new"
-kind = "plain_rust_item"
+kind = "assume_new"
 count = 1
-justification = "Constructor of the Heap view from C++ pointers, called only by toit_v2_run / Runtime::stack (TRUSTED.md section 1)."
+justification = "DERIVATION POINT (at entry; after a GC point the heap is the one the GC contract states): the heap model is the process' heap (V2): every object lies at its tagged address with the header, fields, length and elements view::word_val states, in the address space, owned by the core while it runs; the permissions of those words (TRUSTED.md section 1, Memory model)."
 
 [[trusted]]
 crate = "core"
 file = "src/view.rs"
-item = "Heap::objs"
-kind = "uninterp"
+item = "Heap::new"
+kind = "plain_rust_item"
 count = 1
-justification = "Heap model: the abstract heap (State2::heap); related to memory only by the trusted accessor and GC contracts (TRUSTED.md, heap model)."
+justification = "Constructor of the Heap view from C++ pointers, called only by toit_v2_run / Runtime::stack (TRUSTED.md section 1)."
 
 [[trusted]]
 crate = "core"
@@ -1263,38 +1159,6 @@ item = "Heap::set_byte_at"
 kind = "unsafe"
 count = 1
 justification = "Writes byte i < length of the content of a model byte array outside the program heap (writable memory)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::set_element"
-kind = "external_body"
-count = 1
-justification = "Heap accessor: storing an element word updates the model's element (non-ro array, i < length); applies the write barrier (TRUSTED.md, heap model)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::set_element"
-kind = "unsafe"
-count = 1
-justification = "Writes element i < length of a live process-heap array and marks its card (heap integrity, TRUSTED.md V2)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::set_field"
-kind = "external_body"
-count = 1
-justification = "Heap accessor: storing a field word updates the model's field (non-ro instance, f < field count); applies the write barrier (TRUSTED.md, heap model)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::set_field"
-kind = "unsafe"
-count = 1
-justification = "Writes field f < field count of a live process-heap instance and marks its card (heap integrity, TRUSTED.md V2)."
 
 [[trusted]]
 crate = "core"
@@ -1423,6 +1287,22 @@ item = "Heap::word64"
 kind = "unsafe"
 count = 1
 justification = "Unaligned 8-byte read of the payload of a double or large integer (two words on 32-bit targets) inside the object (heap integrity, TRUSTED.md)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::write_barrier"
+kind = "external_body"
+count = 1
+justification = "FFI LEAF: the write barrier (the remembered set of the C++ GC): marks the card of the object written; the card table lies outside every view, so no contract and no effect on the model (TRUSTED.md section 1)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::write_barrier"
+kind = "unsafe"
+count = 1
+justification = "Store of NEW_SPACE_POINTERS into the card byte (obj - HEAP_TAG) >> CARD_SIZE_LOG_2 + bias of the process' remembered set, as the C++ write barrier (layout check: CARD_SIZE_LOG_2, NEW_SPACE_POINTERS)."
 
 [[trusted]]
 crate = "core"

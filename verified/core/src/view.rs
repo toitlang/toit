@@ -719,33 +719,265 @@ pub proof fn lemma_cursor_diff<T>(base: *mut T, i: int, j: int)
     assert(((i - j) * s) / s == i - j) by (nonlinear_arith) requires s > 0;
 }
 
+/// The class id and class tag a header word encodes (`HeapObject::header`
+/// is the smi `class_id << CLASS_ID_OFFSET | class_tag`, plus GC bits above
+/// the tag the core does not read).
+pub open spec fn hdr_class_id(h: usize) -> usize {
+    (((h as isize) >> 1usize) as usize) >> CLASS_ID_OFFSET
+}
+
+pub open spec fn hdr_class_tag(h: usize) -> usize {
+    (((h as isize) >> 1usize) as usize) & CLASS_TAG_MASK
+}
+
+/// Word `k` of an object of the model is one the verified accessors use:
+/// the header, an instance's fields, an array's length and elements.
+pub open spec fn is_word(o: HeapObj, k: int) -> bool {
+    k == 0 || match o.body {
+        Body::Instance(f) => 1 <= k < 1 + f.len(),
+        Body::Array(e) => 1 <= k < 2 + e.len(),
+        _ => false,
+    }
+}
+
+/// The number of those words.
+pub open spec fn obj_words(o: HeapObj) -> int {
+    match o.body {
+        Body::Instance(f) => 1 + f.len() as int,
+        Body::Array(e) => 2 + e.len() as int,
+        _ => 1,
+    }
+}
+
+/// TRUSTED (the layout of the heap model, TRUSTED.md section 1 "Memory
+/// model", V2; the same facts as verified/CONTRACTS.toml's bridge `heap`):
+/// the value `v` of word `k` of an object agrees with the model `o`. The
+/// header decodes to the object's class id and to its class' tag; the
+/// fields of an instance are words `INSTANCE_FIELDS_WORD..`; an array has
+/// its length at `ARRAY_LENGTH_WORD` and its elements from
+/// `ARRAY_ELEMENTS_WORD`; references are encoded by `abs::enc` (smis and
+/// tagged addresses). Checked against the C++ by the layout check.
+pub open spec fn word_val(o: HeapObj, cb: Seq<u16>, addrs: Seq<usize>, k: int, v: usize) -> bool {
+    if k == 0 {
+        &&& hdr_class_id(v) == o.class_id
+        &&& (o.class_id as int) < cb.len() ==> hdr_class_tag(v) == (cb[o.class_id as int] & 0xf) as usize
+    } else {
+        match o.body {
+            Body::Instance(f) => v == crate::abs::enc(addrs, f[k - INSTANCE_FIELDS_WORD]),
+            Body::Array(e) =>
+                if k == ARRAY_LENGTH_WORD { v == e.len() } else { v == crate::abs::enc(addrs, e[k - ARRAY_ELEMENTS_WORD]) },
+            _ => true,
+        }
+    }
+}
+
+/// The memory of the heap model's objects: one permission per word the
+/// verified accessors read or write (key: object id and word index), the
+/// exposed provenance of the heap (addresses are computed from tagged
+/// words), and the model itself (ghost).
+pub tracked struct HeapMem {
+    pub tracked exposed: IsExposed,
+    pub tracked words: Map<(int, int), PointsTo<usize>>,
+    pub ghost objs: Seq<HeapObj>,
+    pub ghost addrs: Seq<usize>,
+    pub ghost class_bits: Seq<u16>,
+}
+
+/// The untagged address of object `id`, as a pointer with the heap's
+/// exposed provenance (what `with_exposed_provenance(obj - HEAP_TAG)` gives).
+pub open spec fn obj_ptr(m: HeapMem, id: int) -> *mut usize {
+    ptr_mut_from_data::<usize>(PtrData::<usize> {
+        addr: (m.addrs[id] - HEAP_TAG) as usize, provenance: m.exposed@, metadata: () })
+}
+
+/// Object `id` lies in the address space.
+pub open spec fn obj_fits(m: HeapMem, id: int) -> bool {
+    &&& m.addrs[id] >= HEAP_TAG
+    &&& (m.addrs[id] - HEAP_TAG) + WORD_SIZE * obj_words(m.objs[id]) <= usize::MAX
+}
+
+/// The permission of word `k` of object `id` is that word's, initialized,
+/// and its value agrees with the model.
+pub open spec fn word_ok(m: HeapMem, id: int, k: int) -> bool {
+    &&& m.words.contains_key((id, k))
+    &&& m.words[(id, k)].ptr() == at_index(obj_ptr(m, id), k)
+    &&& m.words[(id, k)].is_init()
+    &&& word_val(m.objs[id], m.class_bits, m.addrs, k, m.words[(id, k)].value())
+}
+
+/// The heap invariant: the permissions of every word of every object.
+pub open spec fn heap_ok(m: HeapMem) -> bool {
+    &&& m.addrs.len() == m.objs.len()
+    &&& forall|id: int| 0 <= id < m.objs.len() ==> #[trigger] obj_fits(m, id)
+    &&& forall|id: int, k: int| 0 <= id < m.objs.len() && is_word(m.objs[id], k) ==> #[trigger] word_ok(m, id, k)
+}
+
+/// Stores `w` into word `k` of object `id` through `p` and makes `o2` the
+/// model's object `id`: `o2` has the same words, word `k` agrees with `w`,
+/// the others with their values as before. (A tracked borrow of the
+/// heap's permission field, as `write_elem`.)
+#[inline(always)]
+fn write_heap_word(Tracked(m): Tracked<&mut HeapMem>, Ghost(id): Ghost<int>, k: usize, p: *mut usize, w: usize,
+                   Ghost(o2): Ghost<HeapObj>)
+    requires
+        heap_ok(*old(m)),
+        0 <= id < old(m).objs.len(),
+        is_word(old(m).objs[id], k as int),
+        p == at_index(obj_ptr(*old(m), id), k as int),
+        obj_words(o2) == obj_words(old(m).objs[id]),
+        forall|j: int| #[trigger] is_word(o2, j) == is_word(old(m).objs[id], j),
+        word_val(o2, old(m).class_bits, old(m).addrs, k as int, w),
+        forall|j: int, x: usize| j != k && is_word(o2, j) ==>
+            #[trigger] word_val(o2, old(m).class_bits, old(m).addrs, j, x)
+                == word_val(old(m).objs[id], old(m).class_bits, old(m).addrs, j, x),
+    ensures
+        heap_ok(*final(m)),
+        final(m).objs == old(m).objs.update(id, o2),
+        final(m).addrs == old(m).addrs,
+        final(m).class_bits == old(m).class_bits,
+        final(m).exposed == old(m).exposed,
+    no_unwind
+{
+    let ghost m0 = *m;
+    proof { assert(word_ok(m0, id, k as int)); }
+    ptr_mut_write(p, Tracked(m.words.tracked_borrow_mut((id, k as int))), w);
+    proof {
+        m.objs = m0.objs.update(id, o2);
+        assert forall|j: int| 0 <= j < m.objs.len() implies #[trigger] obj_fits(*m, j) by {
+            assert(obj_fits(m0, j));
+        }
+        assert forall|j: int, kk: int| 0 <= j < m.objs.len() && is_word(m.objs[j], kk) implies
+            #[trigger] word_ok(*m, j, kk) by {
+            if j == id {
+                assert(is_word(m0.objs[id], kk));
+                if kk != k as int {
+                    assert(word_ok(m0, j, kk));
+                    assert(word_val(o2, m0.class_bits, m0.addrs, kk, m0.words[(j, kk)].value())
+                        == word_val(m0.objs[id], m0.class_bits, m0.addrs, kk, m0.words[(j, kk)].value()));
+                }
+            } else {
+                assert(word_ok(m0, j, kk));
+            }
+        }
+    }
+}
+
 /// Access to heap objects. A word with the heap tag that the core reads
 /// from a root (the object stack, a global, a program table) or from a
 /// field of such an object designates a live object (the GC maintains this;
-/// TRUSTED.md, "heap integrity"). Valid until the next call that may GC
-/// (holds no pointers itself, but the words it is given do).
-#[verifier::external_body]
+/// TRUSTED.md, "heap integrity"). Owns the permissions of the words the
+/// verified accessors use (`HeapMem`), valid until the next call that may
+/// GC (which produces new ones).
 pub struct Heap {
     remembered_set_bias: usize,
+    mem: Tracked<HeapMem>,
 }
 
 impl Heap {
+    #[verifier::type_invariant]
+    spec fn inv(&self) -> bool {
+        heap_ok(self.mem@)
+    }
+
     /// The heap model: the objects of the process as abstract heap objects
     /// (`State2::heap`, object ids are indices) ...
-    pub uninterp spec fn objs(&self) -> Seq<HeapObj>;
+    pub closed spec fn objs(&self) -> Seq<HeapObj> {
+        self.mem@.objs
+    }
 
     /// ... and their current addresses (tagged words). The contracts of
     /// the accessors and of the calls that may GC (`ffi::Runtime`) relate
     /// memory to this model (TRUSTED.md, "Heap model").
-    pub uninterp spec fn addrs(&self) -> Seq<usize>;
+    pub closed spec fn addrs(&self) -> Seq<usize> {
+        self.mem@.addrs
+    }
 
     /// The program's class bits (class tag and instance size per class id),
     /// which the objects' headers follow.
-    pub uninterp spec fn class_bits(&self) -> Seq<u16>;
+    pub closed spec fn class_bits(&self) -> Seq<u16> {
+        self.mem@.class_bits
+    }
+
+    /// Word `k` of object `id` (`obj` is its address).
+    #[inline(always)]
+    fn read_word(&self, obj: usize, k: usize, Ghost(id): Ghost<int>) -> (r: usize)
+        requires
+            0 <= id < self.objs().len(),
+            obj == self.addrs()[id],
+            is_word(self.objs()[id], k as int),
+        ensures word_val(self.objs()[id], self.class_bits(), self.addrs(), k as int, r),
+    {
+        proof {
+            use_type_invariant(self);
+            assert(word_ok(self.mem@, id, k as int));
+            assert(obj_fits(self.mem@, id));
+        }
+        let p: *mut usize = with_exposed_provenance(obj - HEAP_TAG, Tracked(self.mem.borrow().exposed));
+        *ptr_ref(p.wrapping_add(k), Tracked(self.mem.borrow().words.tracked_borrow((id, k as int))))
+    }
+
+    /// The header word of object `id` (`read_word` of word 0, without the
+    /// zero offset: `wrapping_add(0)` changes the run loop's register
+    /// allocation, 5 percent more instructions on the smi loops).
+    #[inline(always)]
+    fn read_header(&self, obj: usize, Ghost(id): Ghost<int>) -> (r: usize)
+        requires
+            0 <= id < self.objs().len(),
+            obj == self.addrs()[id],
+        ensures word_val(self.objs()[id], self.class_bits(), self.addrs(), 0, r),
+    {
+        proof {
+            use_type_invariant(self);
+            assert(word_ok(self.mem@, id, 0));
+            assert(obj_fits(self.mem@, id));
+            lemma_at_index_exact(obj_ptr(self.mem@, id), 0, 0);
+        }
+        let p: *mut usize = with_exposed_provenance(obj - HEAP_TAG, Tracked(self.mem.borrow().exposed));
+        *ptr_ref(p, Tracked(self.mem.borrow().words.tracked_borrow((id, 0))))
+    }
+
+    /// Stores `w` into word `k` of object `id`, which becomes `o2` in the
+    /// model (as `write_heap_word`).
+    #[inline(always)]
+    fn write_word(&mut self, obj: usize, k: usize, w: usize, Ghost(id): Ghost<int>, Ghost(o2): Ghost<HeapObj>)
+        requires
+            0 <= id < old(self).objs().len(),
+            obj == old(self).addrs()[id],
+            is_word(old(self).objs()[id], k as int),
+            obj_words(o2) == obj_words(old(self).objs()[id]),
+            forall|j: int| #[trigger] is_word(o2, j) == is_word(old(self).objs()[id], j),
+            word_val(o2, old(self).class_bits(), old(self).addrs(), k as int, w),
+            forall|j: int, x: usize| j != k && is_word(o2, j) ==>
+                #[trigger] word_val(o2, old(self).class_bits(), old(self).addrs(), j, x)
+                    == word_val(old(self).objs()[id], old(self).class_bits(), old(self).addrs(), j, x),
+        ensures
+            final(self).objs() == old(self).objs().update(id, o2),
+            final(self).addrs() == old(self).addrs(),
+            final(self).class_bits() == old(self).class_bits(),
+    {
+        proof {
+            use_type_invariant(&*self);
+            assert(obj_fits(self.mem@, id));
+        }
+        let p: *mut usize = with_exposed_provenance(obj - HEAP_TAG, Tracked(self.mem.borrow().exposed));
+        write_heap_word(Tracked(self.mem.borrow_mut()), Ghost(id), k, p.wrapping_add(k), w, Ghost(o2));
+    }
+
+    /// TRUSTED (FFI leaf: the write barrier, as the C++ `GcMetadata`
+    /// remembered set): marks the card of the object at `obj` (a tagged
+    /// address) in the remembered set. The card table is outside every
+    /// view: no contract.
+    #[verifier::external_body]
+    #[inline(always)]
+    fn write_barrier(&self, obj: usize) {
+        unsafe {
+            let card = ((obj - HEAP_TAG) >> CARD_SIZE_LOG_2).wrapping_add(self.remembered_set_bias);
+            *(card as *mut u8) = NEW_SPACE_POINTERS;
+        }
+    }
 
     /// The class id of object `id` (`obj` is its address): the header's
     /// class id.
-    #[verifier::external_body]
     #[inline(always)]
     pub fn class_id(&self, obj: usize, Ghost(id): Ghost<int>) -> (r: usize)
         requires
@@ -754,13 +986,12 @@ impl Heap {
             obj == self.addrs()[id],
         ensures r == self.objs()[id].class_id,
     {
-        let header = unsafe { *((obj - HEAP_TAG) as *const usize) };
+        let header = self.read_header(obj, Ghost(id));
         (((header as isize) >> 1) as usize) >> CLASS_ID_OFFSET
     }
 
     /// The class tag of object `id`: the header's tag, which is its class'
     /// tag in the class bits.
-    #[verifier::external_body]
     #[inline(always)]
     pub fn class_tag(&self, obj: usize, Ghost(id): Ghost<int>) -> (r: usize)
         requires
@@ -770,13 +1001,12 @@ impl Heap {
             (self.objs()[id].class_id as int) < self.class_bits().len(),
         ensures r == (self.class_bits()[self.objs()[id].class_id as int] & 0xf) as usize,
     {
-        let header = unsafe { *((obj - HEAP_TAG) as *const usize) };
+        let header = self.read_header(obj, Ghost(id));
         (((header as isize) >> 1) as usize) & CLASS_TAG_MASK
     }
 
     /// Field `f` of the instance `id`: the encoding of the abstract field
     /// (`crate::abs::enc`).
-    #[verifier::external_body]
     #[inline(always)]
     pub fn field(&self, obj: usize, f: usize, Ghost(id): Ghost<int>) -> (r: usize)
         requires
@@ -787,12 +1017,15 @@ impl Heap {
             f < self.objs()[id].body->Instance_0.len(),
         ensures r == crate::abs::enc(self.addrs(), self.objs()[id].body->Instance_0[f as int]),
     {
-        unsafe { *((obj - HEAP_TAG) as *const usize).add(INSTANCE_FIELDS_WORD + f) }
+        proof {
+            use_type_invariant(self);
+            assert(obj_fits(self.mem@, id));
+        }
+        self.read_word(obj, INSTANCE_FIELDS_WORD + f, Ghost(id))
     }
 
     /// Stores the encoding `w` of `v` into field `f` of the instance `id`
     /// (with the write barrier): the model's field becomes `v`.
-    #[verifier::external_body]
     #[inline(always)]
     pub fn set_field(&mut self, obj: usize, f: usize, w: usize, Ghost(id): Ghost<int>, Ghost(v): Ghost<Value>)
         requires
@@ -811,15 +1044,26 @@ impl Heap {
             final(self).addrs() == old(self).addrs(),
             final(self).class_bits() == old(self).class_bits(),
     {
-        unsafe {
-            *((obj - HEAP_TAG) as *mut usize).add(INSTANCE_FIELDS_WORD + f) = w;
-            let card = ((obj - HEAP_TAG) >> CARD_SIZE_LOG_2).wrapping_add(self.remembered_set_bias);
-            *(card as *mut u8) = NEW_SPACE_POINTERS;
+        proof {
+            use_type_invariant(&*self);
+            assert(obj_fits(self.mem@, id));
         }
+        let ghost o = self.objs()[id];
+        let ghost o2 = HeapObj { body: Body::Instance(o.body->Instance_0.update(f as int, v)), ..o };
+        proof {
+            assert forall|j: int, x: usize| j != (INSTANCE_FIELDS_WORD + f) as int && is_word(o2, j) implies
+                #[trigger] word_val(o2, self.class_bits(), self.addrs(), j, x)
+                    == word_val(o, self.class_bits(), self.addrs(), j, x) by {
+                if j != 0 {
+                    assert(o2.body->Instance_0[j - INSTANCE_FIELDS_WORD] == o.body->Instance_0[j - INSTANCE_FIELDS_WORD]);
+                }
+            }
+        }
+        self.write_word(obj, INSTANCE_FIELDS_WORD + f, w, Ghost(id), Ghost(o2));
+        self.write_barrier(obj);
     }
 
     /// The length of the array `id` (its length word).
-    #[verifier::external_body]
     #[inline(always)]
     pub fn array_length(&self, obj: usize, Ghost(id): Ghost<int>) -> (r: usize)
         requires
@@ -829,11 +1073,10 @@ impl Heap {
             self.objs()[id].body is Array,
         ensures r == self.objs()[id].body->Array_0.len(),
     {
-        unsafe { *((obj - HEAP_TAG) as *const usize).add(ARRAY_LENGTH_WORD) }
+        self.read_word(obj, ARRAY_LENGTH_WORD, Ghost(id))
     }
 
     /// Element `i` of the array `id`: the encoding of the abstract element.
-    #[verifier::external_body]
     #[inline(always)]
     pub fn element(&self, obj: usize, i: usize, Ghost(id): Ghost<int>) -> (r: usize)
         requires
@@ -844,12 +1087,15 @@ impl Heap {
             i < self.objs()[id].body->Array_0.len(),
         ensures r == crate::abs::enc(self.addrs(), self.objs()[id].body->Array_0[i as int]),
     {
-        unsafe { *((obj - HEAP_TAG) as *const usize).add(ARRAY_ELEMENTS_WORD + i) }
+        proof {
+            use_type_invariant(self);
+            assert(obj_fits(self.mem@, id));
+        }
+        self.read_word(obj, ARRAY_ELEMENTS_WORD + i, Ghost(id))
     }
 
     /// Stores the encoding `w` of `v` into element `i` of the array `id`
     /// (with the write barrier): the model's element becomes `v`.
-    #[verifier::external_body]
     #[inline(always)]
     pub fn set_element(&mut self, obj: usize, i: usize, w: usize, Ghost(id): Ghost<int>, Ghost(v): Ghost<Value>)
         requires
@@ -868,11 +1114,23 @@ impl Heap {
             final(self).addrs() == old(self).addrs(),
             final(self).class_bits() == old(self).class_bits(),
     {
-        unsafe {
-            *((obj - HEAP_TAG) as *mut usize).add(ARRAY_ELEMENTS_WORD + i) = w;
-            let card = ((obj - HEAP_TAG) >> CARD_SIZE_LOG_2).wrapping_add(self.remembered_set_bias);
-            *(card as *mut u8) = NEW_SPACE_POINTERS;
+        proof {
+            use_type_invariant(&*self);
+            assert(obj_fits(self.mem@, id));
         }
+        let ghost o = self.objs()[id];
+        let ghost o2 = HeapObj { body: Body::Array(o.body->Array_0.update(i as int, v)), ..o };
+        proof {
+            assert forall|j: int, x: usize| j != (ARRAY_ELEMENTS_WORD + i) as int && is_word(o2, j) implies
+                #[trigger] word_val(o2, self.class_bits(), self.addrs(), j, x)
+                    == word_val(o, self.class_bits(), self.addrs(), j, x) by {
+                if j >= ARRAY_ELEMENTS_WORD {
+                    assert(o2.body->Array_0[j - ARRAY_ELEMENTS_WORD] == o.body->Array_0[j - ARRAY_ELEMENTS_WORD]);
+                }
+            }
+        }
+        self.write_word(obj, ARRAY_ELEMENTS_WORD + i, w, Ghost(id), Ghost(o2));
+        self.write_barrier(obj);
     }
 
     /// The bits of the double `id` (its value word).
@@ -1484,8 +1742,15 @@ impl StackMem {
 }
 
 impl Heap {
+    /// TRUSTED (derivation point, at entry; the calls that may GC produce
+    /// the heap after them by their contracts): the process' heap is well
+    /// formed (V2): every object of the heap model (the ghost state the run
+    /// loop's precondition names) lies at its address with the header,
+    /// fields, length and elements `view::word_val` states, in the address
+    /// space and accessed by nothing else while the core runs: the
+    /// permissions of those words.
     pub fn new(remembered_set_bias: usize) -> Self {
-        Heap { remembered_set_bias }
+        Heap { remembered_set_bias, mem: Tracked::assume_new() }
     }
 }
 
