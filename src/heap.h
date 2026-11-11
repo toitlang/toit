@@ -180,7 +180,7 @@ class ObjectHeap {
 
   bool retrying_primitive() const { return retrying_primitive_; }
 
-  void leave_primitive() {
+  INLINE void leave_primitive() {
     retrying_primitive_ = false;
     if (limit_ != pending_limit_) install_heap_limit();
   }
