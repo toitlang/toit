@@ -257,3 +257,11 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
 
   set(CMAKE_POLICY_DEFAULT_CMP0076 NEW)
 endif()
+
+# The EC618 VM library on QEMU's mps2-an385 (tests/ec618-qemu; opt-in).
+if ("${TOIT_SYSTEM_NAME}" STREQUAL "ec618")
+  option(TOIT_EC618_QEMU_HARNESS "Build the EC618 VM harness for QEMU's mps2-an385 (tests/ec618-qemu)" OFF)
+  if (TOIT_EC618_QEMU_HARNESS)
+    add_subdirectory(tests/ec618-qemu)
+  endif()
+endif()

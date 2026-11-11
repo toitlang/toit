@@ -157,6 +157,63 @@ and build/host32 in the worktree, round 3 (heap 61, asm 68) and round 4
   primitives (15 KB) plus their 99 C++ copies (9.6 KB) kept for
   `NotPorted`: up to 5 KB where the port provably never declines.
 
+## EC618 on format 2 (branch device/ec618, 2026-11-12)
+
+The EC618 (Cortex-M3) builds and runs format 2 on the core; details,
+tables and the remaining work in docs/format2-migration.md, "EC618".
+Nothing was flashed; scripts, logs and runs:
+/home/flo/work/opentoit-sandbox-artifacts/ec618. Nothing inside
+verified/core/src or verified/spec changed.
+
+- The device library for `thumbv7m-none-eabi` (upstream tier 2) at 3, s,
+  z with LTO: nostd_check.sh (now with thumbv7m), nopanic_check.sh
+  (`NOPANIC_ARCH=arm`), device_size.sh (`DEVICE_SIZE_ARCH=arm`: Rust
+  75,728 / 66,578 / 62,418 B at 3 / s / z, against 72,806 riscv32 and
+  79,129 Xtensa at 3), and the new thumb_codegen_check.sh (v7-M Thumb-2,
+  GCC-compatible ABI attributes, no FPU, no movw/movt, no atomic helpers;
+  check.sh runs it and the arm no-panic check when the tools exist).
+  Atomics are native on v7-M; none are linked.
+- verified/vmverify/.cargo/config.toml: `+no-movt` for thumbv7m (the EC618
+  slot relocator moves words, not movw/movt pairs).
+- Firmware: `make ec618 EC618_BYTECODE_FORMAT=2` (base, both slot links,
+  SRL3 byte-identity check, envelope with `bytecode-formats` [2]); format
+  1 builds as before. VM body 315,408 -> 378,404 B (Rust 74,511, C++
+  interpreter -13,997), system image 90,156 -> 118,828, slot 502,324 of
+  786,432 B.
+- Fixed on the way: `Stack::v2_frames_skip_` is a plain static on the
+  EC618 (emulated TLS broke the slot relocation); the slot's `.bss` lay
+  over the CP's AON backup in the ASMB (a bug of format 1 too).
+- QEMU (mps2-an385, tests/ec618-qemu: the slot's objects with the EC618
+  base's prebuilt FreeRTOS and heap): the ESP32 device suite gives the
+  same results in format 1 and 2; primitive differential f1 against f2 on
+  the Cortex-M3 (3 MB heap): 7 of 8 seeds x 250,000 calls identical,
+  seed 8 differs at a two-NaN multiply (which NaN propagates); with the
+  354 KB heap the runs diverge at allocation failures that the two
+  interpreters' GC retries resolve differently. Instructions f2/f1
+  (libinsn plugin): richards 1.079, deltablue 1.195, pystone 1.071, json
+  1.232, map/set 1.071, strings 1.160, GC stress 0.913; opt-level s is
+  9.2 KB smaller and slightly faster (richards 1.052).
+- Not a core bug but worth knowing: on soft-float targets the NaN a float
+  primitive returns depends on whose soft-float helpers are linked
+  (compiler_builtins canonicalizes, libgcc propagates an operand); the
+  EC618 firmware links the base's libgcc for both interpreters.
+
+Gates (ae8a4970): verified/check.sh --tests: Verus spec 940 and core 954
+at both widths, audit, VeriFast 135, nopanic (riscv32imac and thumbv7m),
+thumb codegen, sandbox ctests 125/125, round-4 batteries A-cert, B, D, E,
+F pass (C skipped: no host32 build). Three red-team batteries fail, and
+only run at all with an ASan build (built here for the gate; without one
+battery A fails at its environment check): round-3 heap and asm, round-4
+A. Not this branch: tools/asm.toit (and the round-3 snapshot mutator)
+patch methods without updating the method-table literal (`TMT1`,
+-Xv2_table_literal, device/format2 M3), so the patched snapshots fail to
+start with INVALID_ARGUMENT in the release build too; with
+`-Xv2_table_literal=false` the same patch runs. Host ctest -R
+tests/sandbox/ 125/125. Firmware: ESP32 and ESP32-C6, format 1 and format
+2 (core, no C++), build (toit.bin 1,463,072 / 1,541,840 and 1,574,848 /
+1,636,480 B); the EC618 in format 1 as before and in all format-2
+configurations.
+
 ## Device size (branch device/size, 2026-11-11)
 
 Size reduction of the format-2 firmware (core, no C++ interpreter) for the
