@@ -1,0 +1,759 @@
+// Copyright (C) 2026 Toit contributors.
+//
+// The sender side of the external message handlers (src/messaging.cc,
+// messaging.h; the C API's toit_msg_notify and toit_msg_request_reply):
+// ExternalSystemMessageHandler::send_ (both), reply_rpc, the encoder they
+// use (the one-argument constructor, the destructor, take_buffer,
+// encode_bytes_external, encode_rpc_reply_external, the writers) and the
+// SystemMessage constructor that takes the encoder's buffer, rendered from
+// the sources with VeriFast annotations.
+//
+// Property: the ownership of the encoded buffer and of the caller's data on
+// every path. The buffer is freed exactly once or handed to the scheduler
+// inside the message; the data (a malloced block) goes to the receiver with
+// a sent message, is freed on a failure when free_on_failure, and is given
+// back to the caller on a failure otherwise. The write pass fits the
+// buffer the size pass measured (exact byte counts, no assumption: the two
+// passes encode the same values). Memory safety and no overflow on either
+// width.
+//
+// Trusted (contracts): the scheduler's send_message (takes the message, or
+// gives it back on a failure without free_on_failure), the message's
+// allocation and deletion, the process and VM accessors, strnlen.
+//
+// The proof found a leak (README, wave 6): the one-argument constructor did
+// not take the buffer although the class says so and send_ relies on it;
+// mutant sender-encoder-owns-buffer reverts the fix.
+@include ../model/model.cfg
+@overloaded ExternalSystemMessageHandler::send_
+@overloaded SystemMessage::SystemMessage
+@raii MessageEncoder
+@verbatim
+#include <stdlib.h>
+#include <string.h>
+#include "../model/objects.gen.h"
+//@ #include "../model/arith.gh"
+
+typedef int MessageFormat;
+typedef int message_err_t;
+typedef unsigned long size_t;
+
+struct MessageEncoder {
+  Process *process_;
+  Program *program_;
+  MessageFormat format_;
+  uint8 *buffer_;
+  bool take_ownership_of_buffer_;
+  word cursor_;
+  word external_bytes_;
+  int nesting_;
+  int problematic_class_id_;
+  bool nesting_too_deep_;
+  bool too_many_externals_;
+  bool too_large_;
+  bool over_limit_;
+  word max_total_size_;
+  bool malloc_failed_;
+  unsigned externals_count_;
+  unsigned copied_count_;
+  void *copied_[MESSAGING_ENCODING_MAX_EXTERNALS];
+  unsigned transferred_count_;
+  ByteArray *transferred_[MESSAGING_ENCODING_MAX_EXTERNALS];
+};
+typedef struct MessageEncoder MessageEncoder;
+
+struct SystemMessage {
+  int type_;
+  int gid_;
+  int pid_;
+  uint8 *data_;
+  word size_;
+  bool restricted_;
+  word restricted_max_count_;
+  word restricted_max_bytes_;
+};
+typedef struct SystemMessage SystemMessage;
+// The base class Message is the message itself here (one struct).
+typedef struct SystemMessage Message;
+
+struct VM;
+typedef struct VM VM;
+struct Scheduler;
+typedef struct Scheduler Scheduler;
+struct ProcessGroup;
+typedef struct ProcessGroup ProcessGroup;
+struct ExternalSystemMessageHandler {
+  VM *vm_;
+  Process *process_;
+};
+typedef struct ExternalSystemMessageHandler ExternalSystemMessageHandler;
+
+/*@
+// A malloced block (the caller's data, a copy the encoder owns).
+predicate block(void *p;) = malloc_block(p, ?n) &*& chars_(p, n, _);
+
+// The bytes an encoding of the values written so far takes: write_cardinal
+// writes card_len(v) bytes.
+fixpoint int card_len(int v) {
+  return v < 128 ? 1 : v < 16384 ? 2 : v < 2097152 ? 3 : v < 268435456 ? 4 : v < 34359738368 ? 5 :
+         v < 4398046511104 ? 6 : v < 562949953421312 ? 7 : v < 72057594037927936 ? 8 :
+         v < 9223372036854775808 ? 9 : 10;
+}
+
+lemma void card_len_step(int v)
+  requires 128 <= v &*& v <= UINTPTR_MAX;
+  ensures card_len(v) == card_len(v / 128) + 1;
+{
+  div_rem_nonneg(v, 128);
+  int q = v / 128;
+  assert v == 128 * q + v % 128;
+  if (q < 128) {} else if (q < 16384) {} else if (q < 2097152) {} else if (q < 268435456) {}
+  else if (q < 34359738368) {} else if (q < 4398046511104) {} else if (q < 562949953421312) {}
+  else if (q < 72057594037927936) {} else if (q < 9223372036854775808) {} else {}
+}
+
+// The bytes of an RPC reply: [id, true, exception, null] or [id, false,
+// data] (encode_rpc_reply_external).
+// (An exception longer than MESSAGING_ENCODING_MAX_INLINED_SIZE stops the
+// encoding after TAG_TRUE, in both passes.)
+fixpoint int reply_size(int id, bool is_exception, int elen, int length) {
+  return 1 + card_len(is_exception ? 4 : 3) + 1 + card_len(id) +
+         (is_exception ? (elen > MESSAGING_ENCODING_MAX_INLINED_SIZE ? 1 : 1 + 1 + card_len(elen) + elen + 1) :
+                         1 + 1 + card_len(length) + sizeof(void *));
+}
+
+// The buffer an encoder is given: null (the size pass), or a malloced
+// block of cap bytes.
+predicate buf_in(uint8 *buffer, int cap) =
+  buffer == 0 ? cap == 0 : malloc_block(buffer, cap) &*& chars_((void *)buffer, cap, _);
+
+// The exception string of an RPC reply (none for a normal reply).
+predicate exc_str(bool is_exception, char *exception, real fe, list<char> ecs) =
+  is_exception ? [fe]string(exception, ecs) : ecs == nil;
+
+// The encoder of an external handler (no process: no transfers, IPC
+// format): the output (the buffer, malloced and owned, or null for the size
+// pass; the cursor) and the copies it owns (copied_).
+predicate ext_encoder(MessageEncoder *e, uint8 *b, int cap, int c, int k, list<void *> copies) =
+  e->process_ |-> 0 &*& e->program_ |-> 0 &*& e->format_ |-> MESSAGE_FORMAT_IPC &*&
+  e->buffer_ |-> b &*& e->take_ownership_of_buffer_ |-> true &*&
+  (b == 0 ? cap == 0 : malloc_block(b, cap) &*& uchars_(b, cap, _)) &*&
+  e->cursor_ |-> c &*& 0 <= c &*& c <= 1000 &*&
+  e->external_bytes_ |-> _ &*& e->nesting_ |-> _ &*& e->problematic_class_id_ |-> _ &*&
+  e->nesting_too_deep_ |-> _ &*& e->too_many_externals_ |-> _ &*& e->too_large_ |-> _ &*& e->over_limit_ |-> _ &*&
+  e->max_total_size_ |-> _ &*& e->malloc_failed_ |-> _ &*&
+  e->externals_count_ |-> k &*& 0 <= k &*& k <= MESSAGING_ENCODING_MAX_EXTERNALS &*&
+  e->copied_count_ |-> length(copies) &*& length(copies) <= k &*&
+  pointers(e->copied_, length(copies), copies) &*&
+  pointers_(e->copied_ + length(copies), MESSAGING_ENCODING_MAX_EXTERNALS - length(copies), _) &*&
+  foreach(copies, block) &*&
+  e->transferred_count_ |-> 0 &*& pointers_(e->transferred_, MESSAGING_ENCODING_MAX_EXTERNALS, _);
+
+// The encoder after take_buffer: nothing owned (the copies' entries null).
+predicate ext_encoder_taken(MessageEncoder *e; int n) =
+  e->process_ |-> 0 &*& e->program_ |-> 0 &*& e->format_ |-> MESSAGE_FORMAT_IPC &*&
+  e->buffer_ |-> 0 &*& e->take_ownership_of_buffer_ |-> true &*&
+  e->cursor_ |-> _ &*& e->external_bytes_ |-> _ &*& e->nesting_ |-> _ &*& e->problematic_class_id_ |-> _ &*&
+  e->nesting_too_deep_ |-> _ &*& e->too_many_externals_ |-> _ &*& e->too_large_ |-> _ &*& e->over_limit_ |-> _ &*&
+  e->max_total_size_ |-> _ &*& e->malloc_failed_ |-> _ &*& e->externals_count_ |-> _ &*&
+  e->copied_count_ |-> n &*& 0 <= n &*& n <= MESSAGING_ENCODING_MAX_EXTERNALS &*&
+  pointers(e->copied_, n, ?cps) &*& all_eq(cps, (void *)0) == true &*&
+  pointers_(e->copied_ + n, MESSAGING_ENCODING_MAX_EXTERNALS - n, _) &*&
+  e->transferred_count_ |-> 0 &*& pointers_(e->transferred_, MESSAGING_ENCODING_MAX_EXTERNALS, _);
+
+// A system message that owns its buffer and the blocks it lists (TRUSTED:
+// the receive side's msg_whole, decoder/, for a message the encoder wrote).
+predicate sys_msg(SystemMessage *m, uint8 *b, list<void *> blocks) =
+  m->type_ |-> _ &*& m->gid_ |-> _ &*& m->pid_ |-> _ &*& m->data_ |-> b &*& m->size_ |-> _ &*&
+  m->restricted_ |-> _ &*& m->restricted_max_count_ |-> _ &*& m->restricted_max_bytes_ |-> _ &*&
+  (b == 0 ? true : malloc_block(b, ?cap) &*& uchars_(b, cap, _)) &*& foreach(blocks, block);
+
+predicate handler(ExternalSystemMessageHandler *h; VM *vm, Process *p) = h->vm_ |-> vm &*& h->process_ |-> p;
+
+lemma void foreach_append_one(list<void *> xs, void *x)
+  requires foreach(xs, block) &*& block(x);
+  ensures foreach(append(xs, cons(x, nil)), block);
+{
+  open foreach(xs, block);
+  switch (xs) {
+    case nil: close foreach(nil, block); close foreach(cons(x, nil), block);
+    case cons(y, ys): foreach_append_one(ys, x); close foreach(append(xs, cons(x, nil)), block);
+  }
+}
+
+lemma void take_update_append(list<void *> ps, int n, void *x)
+  requires 0 <= n &*& n < length(ps);
+  ensures take(n + 1, update(n, x, ps)) == append(take(n, ps), cons(x, nil));
+{
+  switch (ps) {
+    case nil:
+    case cons(y, ys): if (n > 0) take_update_append(ys, n - 1, x);
+  }
+}
+@*/
+
+// The allocation and deletion of a SystemMessage (operator new (nothrow),
+// the virtual destructor: free_data_and_externals, then the memory).
+SystemMessage *SystemMessage_new_nothrow(void);
+//@ requires true;
+/*@ ensures result == 0 ? true :
+            result->type_ |-> _ &*& result->gid_ |-> _ &*& result->pid_ |-> _ &*& result->data_ |-> _ &*& result->size_ |-> _ &*&
+            result->restricted_ |-> _ &*& result->restricted_max_count_ |-> _ &*& result->restricted_max_bytes_ |-> _ &*&
+            message_base_(result); @*/
+// Deleting a message frees its buffer and every block its encoding
+// references (free_data_and_externals); the handlers delete only messages
+// whose buffer is gone (free_data_but_keep_externals: the references are
+// the caller's again).
+void SystemMessage_delete(SystemMessage *m);
+//@ requires sys_msg(m, 0, ?blocks) &*& message_base(m);
+//@ ensures true;
+/*@
+predicate message_base_(SystemMessage *m);
+predicate message_base(SystemMessage *m);
+@*/
+// The base class's implicit constructor (the vtable, the FIFO link).
+void Message_ctor(SystemMessage *self);
+//@ requires message_base_(self);
+//@ ensures message_base(self);
+
+// The scheduler (src/scheduler.cc Scheduler::send_message): queues the
+// message (the receiver owns it and the data it references), or, on a
+// failure, deletes it when free_on_failure (everything freed) and gives it
+// back otherwise (the caller still owns it and its references).
+message_err_t Scheduler_send_message(Scheduler *self, int process_id, Message *message, bool free_on_failure);
+/*@ requires sys_msg((SystemMessage *)message, ?b, ?blocks) &*& message_base((SystemMessage *)message) &*&
+             foreach(?extra, block); @*/
+/*@ ensures result == MESSAGE_OK || free_on_failure ? true :
+            sys_msg((SystemMessage *)message, b, blocks) &*& message_base((SystemMessage *)message) &*& foreach(extra, block); @*/
+Scheduler *VM_scheduler(VM *self);
+//@ requires true;
+//@ ensures true;
+ProcessGroup *Process_group(Process *self);
+//@ requires true;
+//@ ensures true;
+int ProcessGroup_id(ProcessGroup *self);
+//@ requires true;
+//@ ensures true;
+int Process_id(Process *self);
+//@ requires true;
+//@ ensures true;
+// A C string of at most `maxlen` bytes before its terminator.
+size_t strnlen(char *s, size_t maxlen);
+//@ requires [?f]string(s, ?cs);
+//@ ensures [f]string(s, cs) &*& result == (length(cs) < maxlen ? length(cs) : maxlen);
+// src/top.h unvoid_cast (the instance for uint8*: the pointer, typed).
+uint8 *unvoid_cast_uint8p(void *p);
+//@ requires true;
+//@ ensures result == (uint8 *)p;
+// An external handler's encoder transfers no byte array (it has no
+// process): the loop over transferred_ in take_buffer never runs.
+uint8 *ByteArray_neuter(ByteArray *self, Process *process);
+//@ requires false;
+//@ ensures true;
+void HeapObject_clear_has_active_finalizer(HeapObject *self);
+//@ requires false;
+//@ ensures true;
+
+/*@
+// The encoder when it is destroyed (after take_buffer or not): the buffer
+// if it owns one, the copies' entries (null after take_buffer, freeing a
+// null pointer is allowed).
+predicate ext_enc_end(MessageEncoder *e) =
+  e->process_ |-> _ &*& e->program_ |-> _ &*& e->format_ |-> _ &*& e->buffer_ |-> ?b &*& e->take_ownership_of_buffer_ |-> true &*&
+  (b == 0 ? true : malloc_block(b, ?cap) &*& chars_((void *)b, cap, _)) &*&
+  e->cursor_ |-> _ &*& e->external_bytes_ |-> _ &*& e->nesting_ |-> _ &*& e->problematic_class_id_ |-> _ &*&
+  e->nesting_too_deep_ |-> _ &*& e->too_many_externals_ |-> _ &*& e->too_large_ |-> _ &*& e->over_limit_ |-> _ &*&
+  e->max_total_size_ |-> _ &*& e->malloc_failed_ |-> _ &*& e->externals_count_ |-> _ &*&
+  e->copied_count_ |-> ?n &*& 0 <= n &*& n <= MESSAGING_ENCODING_MAX_EXTERNALS &*&
+  pointers(e->copied_, n, ?cps) &*& foreach(cps, block) &*& pointers_(e->copied_ + n, MESSAGING_ENCODING_MAX_EXTERNALS - n, _) &*&
+  e->transferred_count_ |-> _ &*& pointers_(e->transferred_, MESSAGING_ENCODING_MAX_EXTERNALS, _);
+
+lemma void live_end(MessageEncoder *e)
+  requires ext_encoder(e, ?b, ?cap, ?c, ?k, ?copies);
+  ensures ext_enc_end(e);
+{
+  open ext_encoder(e, b, cap, c, k, copies);
+  if (b != 0) uchars__to_chars_(b);
+  close ext_enc_end(e);
+}
+
+lemma void nulls_blocks(list<void *> xs)
+  requires all_eq(xs, (void *)0) == true;
+  ensures foreach(xs, block);
+{
+  switch (xs) {
+    case nil: close foreach(nil, block);
+    case cons(x, xs0):
+      nulls_blocks(xs0);
+      malloc_block_null();
+      close chars_(0, 0, nil);
+      close block(0);
+      close foreach(xs, block);
+  }
+}
+
+lemma void taken_end(MessageEncoder *e)
+  requires ext_encoder_taken(e, ?n);
+  ensures ext_enc_end(e);
+{
+  open ext_encoder_taken(e, n);
+  assert pointers(e->copied_, n, ?cps);
+  nulls_blocks(cps);
+  close ext_enc_end(e);
+}
+
+lemma void take_all<t>(list<t> xs)
+  requires true;
+  ensures take(length(xs), xs) == xs;
+{
+  switch (xs) {
+    case nil:
+    case cons(x, xs0): take_all(xs0);
+  }
+}
+
+lemma void drop_all<t>(list<t> xs, int n)
+  requires length(xs) == n;
+  ensures drop(n, xs) == nil;
+{
+  switch (xs) {
+    case nil:
+    case cons(x, xs0): drop_all(xs0, n - 1);
+  }
+}
+@*/
+/*@
+lemma void buf_take(uint8 *b, int c, int n)
+  requires uchars_(b, ?cap, _) &*& 0 <= c &*& 0 <= n &*& c + n <= cap;
+  ensures uchars_(b, c, _) &*& uchars_(b + c, n, _) &*& uchars_(b + c + n, cap - c - n, _);
+{
+  uchars__split(b, c);
+  uchars__split(b + c, n);
+}
+
+lemma void buf_give(uint8 *b, int c, int n)
+  requires uchars_(b, c, _) &*& chars((void *)(b + c), n, _) &*& uchars_(b + c + n, ?r, _);
+  ensures uchars_(b, c + n + r, _);
+{
+  uchars__to_chars_(b);
+  uchars__to_chars_(b + c + n);
+  chars_chars__join((void *)(b + c));
+  chars__join((void *)b);
+  chars__to_uchars_(b);
+}
+
+lemma void all_eq_take_update(list<void *> ps, int i)
+  requires all_eq(take(i, ps), (void *)0) == true &*& 0 <= i &*& i < length(ps);
+  ensures all_eq(take(i + 1, update(i, (void *)0, ps)), (void *)0) == true;
+{
+  switch (ps) {
+    case nil:
+    case cons(y, ys):
+      if (i > 0) all_eq_take_update(ys, i - 1);
+  }
+}
+
+// The bytes a C string of length n gives (its first n chars), and back.
+lemma void string_prefix(char *s, int n)
+  requires [?f]string(s, ?cs) &*& 0 <= n &*& n <= length(cs);
+  ensures [f]chars(s, n, take(n, cs)) &*& [f]chars(s + n, length(cs) - n, drop(n, cs)) &*&
+          [f]character(s + length(cs), 0) &*& !mem('\0', cs);
+{
+  string_to_body_chars(s);
+  chars_split(s, n);
+}
+
+lemma void string_unprefix(char *s, int n, list<char> cs)
+  requires [?f]chars(s, n, take(n, cs)) &*& [f]chars(s + n, length(cs) - n, drop(n, cs)) &*&
+           [f]character(s + length(cs), 0) &*& !mem('\0', cs) &*& 0 <= n &*& n <= length(cs);
+  ensures [f]string(s, cs);
+{
+  chars_join(s);
+  append_take_drop_n(cs, n);
+  body_chars_to_string(s);
+}
+@*/
+@prototypes
+@render src/messaging.h toit::MessageEncoder::MessageEncoder tu=src/messaging.cc type=void(uint8*)
+  explicit MessageEncoder(uint8* buffer) : buffer_(buffer), take_ownership_of_buffer_(true)
+  /*@ requires self->process_ |-> _ &*& self->program_ |-> _ &*& self->format_ |-> _ &*& self->buffer_ |-> _ &*&
+               self->take_ownership_of_buffer_ |-> _ &*& self->cursor_ |-> _ &*& self->external_bytes_ |-> _ &*&
+               self->nesting_ |-> _ &*& self->problematic_class_id_ |-> _ &*& self->nesting_too_deep_ |-> _ &*&
+               self->too_many_externals_ |-> _ &*& self->too_large_ |-> _ &*& self->over_limit_ |-> _ &*&
+               self->max_total_size_ |-> _ &*& self->malloc_failed_ |-> _ &*& self->externals_count_ |-> _ &*&
+               self->copied_count_ |-> _ &*& pointers_(self->copied_, MESSAGING_ENCODING_MAX_EXTERNALS, _) &*&
+               self->transferred_count_ |-> _ &*& pointers_(self->transferred_, MESSAGING_ENCODING_MAX_EXTERNALS, _) &*&
+               buf_in(buffer, ?cap); @*/
+  //@ ensures ext_encoder(self, buffer, cap, 0, 0, nil);
+  {
+    //@ open buf_in(buffer, cap);
+    //@ if (buffer != 0) chars__to_uchars_(buffer);
+    //@ pointers__split(self->copied_, 0);
+    //@ close pointers(self->copied_, 0, nil);
+    //@ close foreach(nil, block);
+    //@ close ext_encoder(self, buffer, cap, 0, 0, nil);
+  }
+
+@render src/messaging.h toit::MessageEncoder::size tu=src/messaging.cc
+  word size() const
+  //@ requires [?f]ext_encoder(self, ?b, ?cap, ?c, ?k, ?copies);
+  //@ ensures [f]ext_encoder(self, b, cap, c, k, copies) &*& result == c;
+  { //@ open [f]ext_encoder(self, b, cap, c, k, copies);
+    return cursor_;
+    //@ close [f]ext_encoder(self, b, cap, c, k, copies);
+  }
+
+@render src/messaging.h toit::MessageEncoder::encoding_for_size tu=src/messaging.cc
+  bool encoding_for_size() const
+  //@ requires [?f]self->buffer_ |-> ?b;
+  //@ ensures [f]self->buffer_ |-> b &*& result == (b == 0);
+  { return buffer_ == null; }
+
+@render src/messaging.h toit::MessageEncoder::encoding_tison tu=src/messaging.cc
+  bool encoding_tison() const
+  //@ requires [?f]self->format_ |-> ?fmt;
+  //@ ensures [f]self->format_ |-> fmt &*& result == (fmt == MESSAGE_FORMAT_TISON);
+  { return format_ == MESSAGE_FORMAT_TISON; }
+
+@render src/messaging.h toit::MessageEncoder::write_uint8 tu=src/messaging.cc
+  void write_uint8(uint8 value)
+  //@ requires ext_encoder(self, ?b, ?cap, ?c, ?k, ?copies) &*& (b == 0 || c + 1 <= cap) &*& c + 1 <= 1000;
+  //@ ensures ext_encoder(self, b, cap, c + 1, k, copies);
+  {
+    //@ open ext_encoder(self, b, cap, c, k, copies);
+    if (!encoding_for_size()) buffer_[cursor_] = value;
+    cursor_++;
+    //@ close ext_encoder(self, b, cap, c + 1, k, copies);
+  }
+
+@render src/messaging.cc toit::MessageEncoder::write_cardinal
+void MessageEncoder::write_cardinal(uword value)
+//@ requires ext_encoder(self, ?b, ?cap, ?c, ?k, ?copies) &*& (b == 0 || c + card_len(value) <= cap) &*& c + 10 <= 1000;
+//@ ensures ext_encoder(self, b, cap, c + card_len(value), k, copies);
+{
+  //@ int j = 0;
+  //@ uword v0 = value;
+  while (value >= 128)
+  //@ invariant ext_encoder(self, b, cap, c + j, k, copies) &*& 0 <= j &*& j + card_len(value) == card_len(v0) &*& card_len(v0) <= 10;
+  {
+    //@ card_len_step(value);
+    //@ div_rem_nonneg(value, 128);
+    write_uint8((uint8) (value % 128 + 128));
+    //@ shiftright_div(value, succ(succ(succ(succ(succ(succ(succ(zero))))))));
+    value >>= 7;
+    //@ j++;
+  }
+  write_uint8((uint8) value);
+}
+
+@render src/messaging.cc toit::MessageEncoder::write_pointer
+void MessageEncoder::write_pointer(void* value)
+//@ requires ext_encoder(self, ?b, ?cap, ?c, ?k, ?copies) &*& (b == 0 || c + WORD_SIZE <= cap) &*& c + WORD_SIZE <= 1000;
+//@ ensures ext_encoder(self, b, cap, c + WORD_SIZE, k, copies);
+{
+  //@ open ext_encoder(self, b, cap, c, k, copies);
+  //@ if (b != 0) buf_take(b, c, WORD_SIZE);
+  if (!encoding_for_size()) memcpy(&buffer_[cursor_], &value, WORD_SIZE);
+  //@ if (b != 0) { chars_to_pointer(&value); buf_give(b, c, WORD_SIZE); }
+  cursor_ += WORD_SIZE;
+  //@ close ext_encoder(self, b, cap, c + WORD_SIZE, k, copies);
+}
+
+@render src/messaging.cc toit::MessageEncoder::reserve_external
+bool MessageEncoder::reserve_external()
+//@ requires self->externals_count_ |-> ?k &*& self->too_many_externals_ |-> _;
+/*@ ensures self->externals_count_ |-> (k < MESSAGING_ENCODING_MAX_EXTERNALS ? k + 1 : k) &*& self->too_many_externals_ |-> _ &*&
+            result == (k < MESSAGING_ENCODING_MAX_EXTERNALS); @*/
+{
+  if (externals_count_ >= MESSAGING_ENCODING_MAX_EXTERNALS) {
+    too_many_externals_ = true;
+    return false;
+  }
+  externals_count_++;
+  return true;
+}
+
+@render src/messaging.cc toit::MessageEncoder::encode_bytes_external
+bool MessageEncoder::encode_bytes_external(void* data, word length, bool free_on_failure)
+// One external more than before (the handlers encode one: k < 8).
+/*@ requires ext_encoder(self, ?b, ?cap, ?c, ?k, ?copies) &*& k < MESSAGING_ENCODING_MAX_EXTERNALS &*& 0 <= length &*&
+             c + 1 + 10 + WORD_SIZE <= 1000 &*& (b == 0 || c + 1 + card_len(length) + WORD_SIZE <= cap) &*&
+             (b != 0 && free_on_failure ? block(data) : true); @*/
+/*@ ensures ext_encoder(self, b, cap, c + 1 + card_len(length) + WORD_SIZE, k + 1,
+                        (b != 0 && free_on_failure ? append(copies, cons(data, nil)) : copies)) &*& result; @*/
+{
+  //@ open ext_encoder(self, b, cap, c, k, copies);
+  if (encoding_tison()) return false;
+  if (!reserve_external()) return false;
+  //@ close ext_encoder(self, b, cap, c, k + 1, copies);
+  write_uint8(TAG_BYTE_ARRAY);
+  write_cardinal(length);
+  write_pointer(data);
+  //@ open ext_encoder(self, b, cap, ?c3, k + 1, copies);
+  if (!encoding_for_size() && free_on_failure) {
+    //@ open pointers_(self->copied_ + length(copies), _, _);
+    //@ foreach_append_one(copies, data);
+    copied_[copied_count_++] = data;
+    //@ close pointers(self->copied_ + length(copies) + 1, 0, nil);
+    //@ close pointers(self->copied_ + length(copies), 1, cons(data, nil));
+    //@ pointers_join(self->copied_);
+  }
+  //@ close ext_encoder(self, b, cap, c3, k + 1, (b != 0 && free_on_failure ? append(copies, cons(data, nil)) : copies));
+  return true;
+}
+
+@render src/messaging.cc toit::MessageEncoder::encode_rpc_reply_external
+bool MessageEncoder::encode_rpc_reply_external(int id,
+                                               bool is_exception, const char* exception,
+                                               void* data, word length, bool free_on_failure)
+/*@ requires ext_encoder(self, ?b, ?cap, 0, 0, ?copies) &*& 0 <= id &*& 0 <= length &*&
+             exc_str(is_exception, exception, ?fe, ?ecs) &*&
+             (b == 0 || reply_size(id, is_exception, length(ecs), length) <= cap) &*&
+             (!is_exception && b != 0 && free_on_failure ? block(data) : true); @*/
+/*@ ensures exc_str(is_exception, exception, fe, ecs) &*&
+            ext_encoder(self, b, cap, reply_size(id, is_exception, length(ecs), length), ?k2,
+                        (!is_exception && b != 0 && free_on_failure ? append(copies, cons(data, nil)) : copies)) &*&
+            result == (!is_exception || length(ecs) <= MESSAGING_ENCODING_MAX_INLINED_SIZE); @*/
+{
+  //@ open ext_encoder(self, b, cap, 0, 0, copies);
+  if (encoding_tison()) return false;
+  //@ close ext_encoder(self, b, cap, 0, 0, copies);
+
+  // Either:
+  // - it's an exception: [id, true, exception-string, null], or
+  // - it's not an exception: [id, false, data].
+  write_uint8(TAG_ARRAY);
+  write_cardinal(is_exception ? 4 : 3);  // Length.
+  // Slot 0:
+  write_uint8(TAG_POSITIVE_SMI);
+  write_cardinal(id);
+
+  if (is_exception) {
+    // Slot 1:
+    write_uint8(TAG_TRUE);
+
+    // Slot 2:
+    // Inline the exception message.
+    //@ open exc_str(is_exception, exception, fe, ecs);
+    int exception_length = strnlen(exception, MESSAGING_ENCODING_MAX_INLINED_SIZE + 1);
+    if (exception_length > MESSAGING_ENCODING_MAX_INLINED_SIZE) /*@ close exc_str(is_exception, exception, fe, ecs); @*/ return false;
+    write_uint8(TAG_STRING_INLINE);
+    write_cardinal(exception_length);
+    //@ assert ext_encoder(self, b, cap, ?c4, 0, copies);
+    //@ open ext_encoder(self, b, cap, c4, 0, copies);
+    //@ if (b != 0) buf_take(b, c4, exception_length);
+    //@ string_prefix(exception, exception_length);
+    if (!encoding_for_size()) {
+      memcpy(&buffer_[cursor_], exception, exception_length);
+    }
+    //@ if (b != 0) buf_give(b, c4, exception_length);
+    //@ string_unprefix(exception, exception_length, ecs);
+    cursor_ += exception_length;
+    //@ close ext_encoder(self, b, cap, c4 + exception_length, 0, copies);
+    //@ close exc_str(is_exception, exception, fe, ecs);
+
+    // Slot 3:
+    // No stack information.
+    write_uint8(TAG_NULL);
+    return true;
+  } else {
+    // Slot 2:
+    write_uint8(TAG_FALSE);  // Not an exception.
+
+    // Slot 3:
+    return encode_bytes_external(data, length, free_on_failure);
+  }
+}
+
+@render src/messaging.cc toit::MessageEncoder::~MessageEncoder
+MessageEncoder::~MessageEncoder()
+//@ requires ext_enc_end(self);
+/*@ ensures self->process_ |-> _ &*& self->program_ |-> _ &*& self->format_ |-> _ &*& self->buffer_ |-> _ &*&
+            self->take_ownership_of_buffer_ |-> _ &*& self->cursor_ |-> _ &*& self->external_bytes_ |-> _ &*&
+            self->nesting_ |-> _ &*& self->problematic_class_id_ |-> _ &*& self->nesting_too_deep_ |-> _ &*&
+            self->too_many_externals_ |-> _ &*& self->too_large_ |-> _ &*& self->over_limit_ |-> _ &*&
+            self->max_total_size_ |-> _ &*& self->malloc_failed_ |-> _ &*& self->externals_count_ |-> _ &*&
+            self->copied_count_ |-> _ &*& pointers_(self->copied_, MESSAGING_ENCODING_MAX_EXTERNALS, _) &*&
+            self->transferred_count_ |-> _ &*& pointers_(self->transferred_, MESSAGING_ENCODING_MAX_EXTERNALS, _); @*/
+{
+  //@ open ext_enc_end(self);
+  //@ assert self->copied_count_ |-> ?n &*& pointers(self->copied_, n, ?cps);
+  for (unsigned i = 0; i < copied_count_; i++)
+  /*@ invariant self->copied_count_ |-> n &*& pointers(self->copied_, n, cps) &*& length(cps) == n &*&
+                0 <= i &*& i <= n &*& foreach(drop(i, cps), block); @*/
+  {
+    //@ drop_n_plus_one(i, cps);
+    //@ open foreach(drop(i, cps), block);
+    //@ open block(nth(i, cps));
+    free(copied_[i]);
+  }
+  //@ drop_all(cps, n);
+  //@ open foreach(drop(n, cps), block);
+  //@ pointers_pointers__join(self->copied_);
+  if (take_ownership_of_buffer_) free(buffer_);
+}
+
+@render src/messaging.cc toit::MessageEncoder::take_buffer
+uint8* MessageEncoder::take_buffer()
+//@ requires ext_encoder(self, ?b, ?cap, ?c, ?k, ?copies);
+/*@ ensures ext_encoder_taken(self, length(copies)) &*& result == b &*& foreach(copies, block) &*&
+            (b == 0 ? true : malloc_block(b, cap) &*& uchars_(b, cap, _)); @*/
+{
+  //@ open ext_encoder(self, b, cap, c, k, copies);
+  for (unsigned i = 0; i < transferred_count_; i++)
+  //@ invariant self->transferred_count_ |-> 0 &*& 0 <= i;
+  {
+    ByteArray* array = transferred_[i];
+    // Neuter the byte array. The contents of the array is now linked to from
+    // an enqueued SystemMessage and will be used to construct a new external
+    // byte array in the receiving process.
+    array->neuter(process_);
+
+    // Optimization: Eagerly remove any disposing finalizer, so the garbage
+    // collector does not have to deal with disposing a neutered byte array.
+    array->clear_has_active_finalizer();
+  }
+  for (unsigned i = 0; i < copied_count_; i++)
+  /*@ invariant self->copied_count_ |-> length(copies) &*& pointers(self->copied_, length(copies), ?cps) &*&
+                0 <= i &*& i <= length(copies) &*& length(cps) == length(copies) &*&
+                all_eq(take(i, cps), (void *)0) == true; @*/
+  {
+    //@ all_eq_take_update(cps, i);
+    copied_[i] = null;
+  }
+
+  uint8* result = buffer_;
+  buffer_ = null;
+  //@ assert pointers(self->copied_, length(copies), ?cps1);
+  //@ take_all(cps1);
+  //@ close ext_encoder_taken(self, length(copies));
+  return result;
+}
+
+@render src/messaging.h toit::SystemMessage::free_data_but_keep_externals tu=src/messaging.cc
+  void free_data_but_keep_externals()
+  //@ requires sys_msg(self, ?b, ?blocks);
+  //@ ensures sys_msg(self, 0, blocks);
+  {
+    //@ open sys_msg(self, b, blocks);
+    //@ if (b != 0) uchars__to_chars_(b);
+    free(data_);
+    data_ = null;
+    //@ close sys_msg(self, 0, blocks);
+  }
+
+@render src/messaging.cc toit::SystemMessage::SystemMessage type=void(int,int,int,MessageEncoder*)
+SystemMessage::SystemMessage(int type, int gid, int pid, MessageEncoder* encoder)
+    : type_(type)
+    , gid_(gid)
+    , pid_(pid)
+    , data_(encoder->take_buffer())
+/*@ requires self->type_ |-> _ &*& self->gid_ |-> _ &*& self->pid_ |-> _ &*& self->data_ |-> _ &*& self->size_ |-> _ &*&
+             self->restricted_ |-> _ &*& self->restricted_max_count_ |-> _ &*& self->restricted_max_bytes_ |-> _ &*&
+             message_base_(self) &*& ext_encoder(encoder, ?b, ?cap, ?c, ?k, ?copies); @*/
+//@ ensures sys_msg(self, b, copies) &*& message_base(self) &*& ext_encoder_taken(encoder, length(copies));
+{
+  //@ close sys_msg(self, b, copies);
+}
+
+@render src/messaging.cc toit::ExternalSystemMessageHandler::send_ type=message_err_t(int,int,MessageEncoder*,bool)
+message_err_t ExternalSystemMessageHandler::send_(int pid, int type, MessageEncoder* encoder, bool free_on_failure)
+/*@ requires [?fh]handler(self, ?vm, ?p) &*& ext_encoder(encoder, ?b, ?cap, ?c, ?k, ?copies) &*& foreach(?extra, block) &*&
+             (free_on_failure ? extra == nil : copies == nil); @*/
+/*@ ensures [fh]handler(self, vm, p) &*& ext_enc_end(encoder) &*&
+            (result == MESSAGE_OK || free_on_failure ? true : foreach(extra, block)); @*/
+{
+  //@ open [fh]handler(self, vm, p);
+  // Takes over the buffer and neuters the message encoder.
+  SystemMessage* system_message = _new SystemMessage(type, process_->group()->id(), process_->id(), encoder);
+  if (system_message == null) {
+    // No need to free the data or the buffer, since the destructor of the
+    // encoder already takes care of that.
+    //@ live_end(encoder);
+    //@ if (free_on_failure) open foreach(extra, block);
+    //@ close [fh]handler(self, vm, p);
+    return MESSAGE_OOM;
+  }
+
+  //@ taken_end(encoder);
+  // Sending the message can only fail if the pid is invalid or if the
+  // receiver's mailbox quota is exhausted.
+  message_err_t result = vm_->scheduler()->send_message(pid, system_message, free_on_failure);
+  ASSERT(result == MESSAGE_OK || result == MESSAGE_NO_SUCH_RECEIVER || result == MESSAGE_QUOTA_EXCEEDED);
+  if (result != MESSAGE_OK && !free_on_failure) {
+    system_message->free_data_but_keep_externals();
+    delete system_message;
+  }
+  //@ close [fh]handler(self, vm, p);
+  return result;
+}
+
+@render src/messaging.cc toit::ExternalSystemMessageHandler::send_ type=message_err_t(int,int,void*,word,bool)
+message_err_t ExternalSystemMessageHandler::send_(int pid, int type, void* data, word length, bool free_on_failure)
+//@ requires [?fh]handler(self, ?vm, ?p) &*& block(data) &*& 0 <= length;
+//@ ensures [fh]handler(self, vm, p) &*& (result == MESSAGE_OK || free_on_failure ? true : block(data));
+{
+  word buffer_size = 0;
+  //@ close buf_in(0, 0);
+  { MessageEncoder encoder(null);
+    encoder.encode_bytes_external(data, length);
+    buffer_size = encoder.size();
+    //@ live_end(&encoder_1);
+  }
+
+  uint8* buffer = unvoid_cast<uint8*>(malloc(buffer_size));
+  if (buffer == null) {
+    if (free_on_failure) /*@ open block(data); @*/ free(data);
+    return MESSAGE_OOM;
+  }
+  //@ close buf_in(buffer, buffer_size);
+  MessageEncoder encoder(buffer);  // Takes over buffer.
+  // Takes ownership of the data.
+  encoder.encode_bytes_external(data, length, free_on_failure);
+
+  //@ close foreach(nil, block);
+  //@ if (!free_on_failure) close foreach(cons(data, nil), block);
+  // Takes over the buffer and neuters the message encoder.
+  return send_(pid, type, &encoder, free_on_failure);
+  //@ if (!free_on_failure && result0 != MESSAGE_OK) { open foreach(cons(data, nil), block); open foreach(nil, block); }
+}
+
+@render src/messaging.cc toit::ExternalSystemMessageHandler::reply_rpc
+message_err_t ExternalSystemMessageHandler::reply_rpc(int pid,
+                                                      int id,
+                                                      bool is_exception,
+                                                      const char* exception,
+                                                      void* data,
+                                                      word length,
+                                                      bool free_on_failure)
+/*@ requires [?fh]handler(self, ?vm, ?p) &*& 0 <= id &*& 0 <= length &*& exc_str(is_exception, exception, ?fe, ?ecs) &*&
+             (is_exception ? true : block(data)); @*/
+/*@ ensures [fh]handler(self, vm, p) &*& exc_str(is_exception, exception, fe, ecs) &*&
+            (is_exception || result == MESSAGE_OK || free_on_failure ? true : block(data)); @*/
+{
+  word buffer_size = 0;
+  //@ close buf_in(0, 0);
+  { MessageEncoder encoder(null);
+    encoder.encode_rpc_reply_external(id, is_exception, exception, data, length, free_on_failure);
+    buffer_size = encoder.size();
+    //@ live_end(&encoder_1);
+  }
+
+  uint8* buffer = unvoid_cast<uint8*>(malloc(buffer_size));
+  if (buffer == null) {
+    if (free_on_failure && !is_exception) /*@ open block(data); @*/ free(data);
+    return MESSAGE_OOM;
+  }
+  //@ close buf_in(buffer, buffer_size);
+  MessageEncoder encoder(buffer);  // Takes over buffer.
+  // Takes ownership of the data.
+  encoder.encode_rpc_reply_external(id, is_exception, exception, data, length, free_on_failure);
+
+  int type = SYSTEM_RPC_REPLY;
+
+  //@ close foreach(nil, block);
+  //@ if (!is_exception && !free_on_failure) close foreach(cons(data, nil), block);
+  // Takes over the buffer and neuters the message encoder.
+  return send_(pid, type, &encoder, free_on_failure);
+  //@ if (!free_on_failure && result0 != MESSAGE_OK) { if (!is_exception) open foreach(cons(data, nil), block); open foreach(nil, block); }
+}

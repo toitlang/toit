@@ -347,6 +347,27 @@ mutant ffi-allocate-retries ffi/interpreter_v2.render src/interpreter_v2.cc "att
   "SIDECAR::lambda=toit_v2_allocate_double@@  for (int attempts = 1; result == null && attempts < 4; attempts++)" \
   "  for (int attempts = 1; result == null; attempts++)"
 
+# The sender side of the external message handlers (wave 6): the ownership
+# of the encoded buffer and of the caller's data on every path.
+SEND_OPTS="-allow_dead_code -prover z3v4.5"
+entry sender                pass "" sender/external_send.gen.c -allow_dead_code -prover z3v4.5
+# The fix of the encoder's one-argument constructor reverted (README,
+# "Findings", wave 6): the encoder does not own its buffer, and send_'s
+# failure path (the message not allocated) leaks it.
+mutant sender-encoder-owns-buffer sender/external_send.render src/messaging.h "take_ownership|leak|Cannot prove" "$SEND_OPTS" \
+  "explicit MessageEncoder(uint8* buffer) : buffer_(buffer), take_ownership_of_buffer_(true)" \
+  "explicit MessageEncoder(uint8* buffer) : buffer_(buffer)"
+# The data freed on a failure without free_on_failure: the caller still
+# owns it (a double free when it frees it).
+mutant sender-free-callers-data sender/external_send.render src/messaging.cc "block|No matching|Cannot prove" "$SEND_OPTS" \
+  "ExternalSystemMessageHandler::send_(int pid, int type, void* data, word length, bool free_on_failure)@@    if (free_on_failure) free(data);" \
+  "    free(data);" \
+  "SIDECAR::    if (free_on_failure) /*@ open block(data); @*/ free(data);" "    /*@ open block(data); @*/ free(data);"
+# A failed send without free_on_failure deletes the message with its
+# buffer: the deletion frees the data the caller still owns.
+mutant sender-delete-with-buffer sender/external_send.render src/messaging.cc "sys_msg|No matching|Cannot prove" "$SEND_OPTS" \
+  "    system_message->free_data_but_keep_externals();\n    delete system_message;" "    delete system_message;"
+
 entry string-write          pass "" prims/string_write.gen.c -prover z3v4.5
 # af4ba7ab (memcpy for a copy within one byte array) reverted: no proof...
 mutant string-write-af4ba7ab prims/string_write.render src/primitive_core.cc "No matching heap chunks: uchars_" "-prover z3v4.5" \

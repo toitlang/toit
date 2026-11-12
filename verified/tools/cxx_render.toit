@@ -711,6 +711,9 @@ class Renderer:
   signatures/Map      // C name -> parameter types, shared by all units.
   lines := []
   locals := {}
+  local-names := {:}  // VarDecl id -> its C name (local-name).
+  name-scopes := []   // The C names of the locals of each enclosing block.
+  param-names := {}
   reference-params := {}  // Parameters of a reference type (pointers in C).
   hoisted := {}  // The ids of the locals declared at the start of their block.
   // A stack of scopes, each a list of [class, name] of locals with a
@@ -1025,6 +1028,14 @@ class Renderer:
       return Expr "0" PREC-PRIMARY
     if kind == "CXXThisExpr":
       return Expr "self" PREC-PRIMARY
+    if kind == "CXXDeleteExpr":
+      // `delete p` (not an array): the destructor (virtual or not) and the
+      // deallocation, a function the sidecar declares for p's static class
+      // (`T_delete`).
+      if (node.get "isArrayAsWritten") == true or (node.get "isArray") == true: fail "$(where node): delete[] not supported"
+      operand := kids[0]
+      while operand["kind"] == "ImplicitCastExpr" and operand["castKind"] == "LValueToRValue": operand = (inner operand)[0]
+      return Expr "$(class-of-pointer kids[0]["type"]["qualType"])_delete($(wrap (expr kids[0]) PREC-ASSIGN))" PREC-PRIMARY
     if kind == "LambdaExpr":
       local := lambda-locals.get node["id"]
       if not local: fail "$(where node): a lambda the closure rules did not prepare"
@@ -1049,6 +1060,7 @@ class Renderer:
         return Expr captures[ref["id"]] PREC-PRIMARY
       if rk == "ParmVarDecl" and reference-params.contains name:
         return Expr "(*$name)" PREC-PRIMARY
+      if local-names.contains ref["id"]: return Expr local-names[ref["id"]] PREC-PRIMARY
       if (rk == "ParmVarDecl" or rk == "VarDecl") and locals.contains name:
         return Expr name PREC-PRIMARY
       if rk == "VarDecl" or rk == "EnumConstantDecl":
@@ -1156,7 +1168,7 @@ class Renderer:
             init := (inner d).is-empty ? null : (strip-cleanups (inner d)[0])
             if (init and init["kind"] == "CXXConstructExpr") or (address-taken block d["id"]):
               hoisted.add d["id"]
-              emit indent "$(declarator (c-type d["type"]["qualType"]) d["name"]);"
+              emit indent "$(declarator (c-type d["type"]["qualType"]) (local-name d));"
 
   address-taken node id/string -> bool:
     if node is List:
@@ -1171,6 +1183,7 @@ class Renderer:
     return address-taken (inner m) id
 
   block-contents node/Map indent/int:
+    name-scopes.add {}
     raii-scopes.add []
     kids := inner node
     hoist kids node indent
@@ -1183,6 +1196,7 @@ class Renderer:
     scope := raii-scopes.remove-last
     if not scope.is-empty and not (kids.size > 0 and kids.last["kind"] == "ReturnStmt"):
       scope.do --reversed: | entry/List | emit indent "$(entry[0])_dtor(&$(entry[1]));"
+    name-scopes.remove-last
 
   // $next: the offset where the statement after $node starts (or the end
   // of the enclosing block), or null when $node is a branch on its own.
@@ -1222,6 +1236,8 @@ class Renderer:
     else if kind == "ForStmt":
       init := kids[0]
       if not is-empty kids[1]: fail "$(where node): for with a condition variable"
+      // The loop variable's scope is the loop.
+      name-scopes.add {}
       init-text := ""
       if not is-empty init:
         if init["kind"] == "DeclStmt":
@@ -1234,6 +1250,7 @@ class Renderer:
       inc-text := is-empty kids[3] ? "" : (expr kids[3]).text
       emit indent "for ($init-text; $cond-text; $inc-text)"
       loop-body kids[4] indent
+      name-scopes.remove-last
     else if kind == "WhileStmt":
       if node.get "hasVar": fail "$(where node): while with a condition variable"
       cond := strip-parens kids[0]
@@ -1358,9 +1375,25 @@ class Renderer:
       body else-node indent + 1
     emit indent "}"
 
-  var-decl-text decl/Map -> string:
+  // The C name of a local: its own, or, when it hides another local of the
+  // function (a nested block's `encoder`; VeriFast rejects hiding), the
+  // name with a suffix. References find it by the declaration's id.
+  local-name decl/Map -> string:
+    id := decl["id"]
+    if local-names.contains id: return local-names[id]
     name := decl["name"]
+    visible := : | n/string | (param-names.contains n) or (name-scopes.any: | s/Set | s.contains n)
+    if visible.call name:
+      n := 1
+      while visible.call "$(name)_$n": n++
+      name = "$(name)_$n"
     locals.add name
+    if not name-scopes.is-empty: (name-scopes.last as Set).add name
+    local-names[id] = name
+    return name
+
+  var-decl-text decl/Map -> string:
+    name := local-name decl
     type := c-type decl["type"]["qualType"]
     kids := inner decl
     if kids.is-empty: return declarator type name
@@ -1374,18 +1407,56 @@ class Renderer:
     kids := inner decl
     init := kids.is-empty ? null : (strip-cleanups kids[0])
     if init and init["kind"] == "CXXConstructExpr":
-      name := decl["name"]
-      locals.add name
+      name := local-name decl
       type := c-type decl["type"]["qualType"]
       if not hoisted.contains decl["id"]: emit indent "$(declarator type name);"
       construct name type init indent
       if sidecar.raii.contains type: raii-scopes.last.add [type, name]
       return
+    new-init := init
+    while new-init and new-init["kind"] == "ImplicitCastExpr" and (new-init["castKind"] == "NoOp" or new-init["castKind"] == "DerivedToBase"):
+      new-init = (inner new-init)[0]
+    if new-init and new-init["kind"] == "CXXNewExpr":
+      // `T* v = new (std::nothrow) T(args);` (the `_new` of src/top.h):
+      // the allocation, a function the sidecar declares (`T_new_nothrow`:
+      // null, or the fields of a fresh T), then the constructor on success
+      // only. The arguments are evaluated after the allocation (C++17's
+      // order; C++11 leaves it open), so they must not assign anything.
+      nk := inner new-init
+      placement := nk.size == 2 ? (strip-parens nk[1]) : null
+      while placement and placement["kind"] == "ImplicitCastExpr": placement = (inner placement)[0]
+      if not (new-init.get "isPlacement") or not placement or placement["kind"] != "DeclRefExpr"
+          or placement["referencedDecl"]["name"] != "nothrow" or nk[0]["kind"] != "CXXConstructExpr":
+        fail "$(where decl): only `new (std::nothrow) T(args)` is supported"
+      if modifies-anything nk[0]: fail "$(where decl): the arguments of a new-expression must not assign anything"
+      if hoisted.contains decl["id"]: fail "$(where decl): a new-expression into a local whose address is taken"
+      name := local-name decl
+      type := c-type decl["type"]["qualType"]
+      cls-type := c-type nk[0]["type"]["qualType"]
+      emit indent "$(declarator type name) = $(cls-type)_new_nothrow();"
+      emit indent "if ($name != 0) {"
+      construct-into name cls-type nk[0] (indent + 1)
+      emit indent "}"
+      return
     if hoisted.contains decl["id"]:
-      locals.add decl["name"]
-      if init: emit indent "$decl["name"] = $(wrap (expr init) PREC-ASSIGN);"
+      name := local-name decl
+      if init: emit indent "$name = $(wrap (expr init) PREC-ASSIGN);"
       return
     emit indent "$(var-decl-text decl);"
+
+  // Whether $node has an assignment, compound assignment, increment,
+  // decrement or new-expression.
+  modifies-anything node -> bool:
+    if node is List:
+      (node as List).do: if modifies-anything it: return true
+      return false
+    if node is not Map: return false
+    m := node as Map
+    kind := m.get "kind"
+    if kind == "CompoundAssignOperator" or kind == "CXXNewExpr": return true
+    if kind == "BinaryOperator" and m["opcode"] == "=": return true
+    if kind == "UnaryOperator" and (m["opcode"] == "++" or m["opcode"] == "--"): return true
+    return modifies-anything (inner m)
 
   // The constructor call of $init (a CXXConstructExpr or a
   // CXXTemporaryObjectExpr) for the object $name of C type $type.
@@ -1488,6 +1559,7 @@ class Renderer:
       pname := p.get "name" --if-absent=: "p$i"
       locals.add pname
       if is-reference p["type"]["qualType"]: reference-params.add pname
+      param-names.add pname
       t := c-type p["type"]["qualType"]
       types.add t
       ps.add (declarator t pname)
@@ -1537,6 +1609,14 @@ class Renderer:
         if init.contains "delegatingInit":
           // A delegating constructor: the target constructor on self.
           construct-into "self" cls (inner init)[0] 1
+        else if init.contains "baseInit":
+          // The base class's default constructor (implicit: the vtable,
+          // the base's own default member initializers): `Base_ctor(self)`,
+          // whose contract the sidecar declares. Only without arguments.
+          base-ctor := (inner init)[0]
+          if base-ctor["kind"] != "CXXConstructExpr" or not (inner base-ctor).is-empty:
+            fail "$(where decl): a base-class initializer with arguments"
+          emit 1 "$(c-type init["baseInit"]["qualType"])_ctor(self);"
         else if not init.contains "anyInit":
           fail "$(where decl): a base-class initializer"
         else:
@@ -1571,6 +1651,9 @@ class Renderer:
       value = strip-parens (inner value)[0]
     if value["kind"] == "CXXBoolLiteralExpr": return value["value"] ? "true" : "false"
     if value["kind"] == "IntegerLiteral": return "$value["value"]"
+    if value["kind"] == "UnaryOperator" and value["opcode"] == "-" and (strip-parens (inner value)[0])["kind"] == "IntegerLiteral":
+      // A negative literal (`problematic_class_id_ = -1`).
+      return "-$((strip-parens (inner value)[0])["value"])"
     if value["kind"] == "CXXNullPtrLiteralExpr": return "0"
     if value["kind"] == "DeclRefExpr" and value["referencedDecl"]["kind"] == "EnumConstantDecl":
       name := value["referencedDecl"]["name"]
@@ -1668,11 +1751,13 @@ class Unit:
     ren := r.renderer
     ren.lines = []
     ren.locals = {}
+    ren.local-names = {:}
     ren.ghosts.do: | g/Ghost | g.emitted = false
     ren.function r.decl r.body --prototype
     text := expand-typedefs (ren.lines.join "\n")
     ren.ghosts.do: | g/Ghost | g.emitted = false
     ren.locals = {}
+    ren.local-names = {:}
     return text
 
   definition r/Prepared -> string:
@@ -1690,6 +1775,7 @@ class Unit:
     ren := pair[1] as Renderer
     ren.lines = []
     ren.locals = {}
+    ren.local-names = {:}
     cl.ghosts.do: | g/Ghost | g.emitted = false
     ren.lambda-function cl --prototype=prototype
     if not prototype:

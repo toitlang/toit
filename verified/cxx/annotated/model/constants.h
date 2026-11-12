@@ -161,6 +161,13 @@
 // The message types (src/messaging.h MessageType).
 #define MESSAGE_MONITOR_NOTIFY 1
 #define MESSAGE_SYSTEM 3
+// The send results (src/messaging.h message_err_t).
+#define MESSAGE_OK 0
+#define MESSAGE_OOM 1
+#define MESSAGE_NO_SUCH_RECEIVER 2
+#define MESSAGE_PERMISSION_DENIED 3
+#define MESSAGE_QUOTA_EXCEEDED 4
+#define SYSTEM_RPC_REPLY 4
 // The decoder (src/messaging.h MessageDecoder::Status, Smi limits, top.h).
 #define MessageDecoder_DECODE_SUCCESS 0
 #define MessageDecoder_DECODE_ALLOCATION_FAILED 1
