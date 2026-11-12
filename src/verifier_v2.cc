@@ -270,12 +270,16 @@ const char* V2Verifier::verify_installed(Program* program, word program_size, bo
   int64 trace_end = esp_timer_get_time();
   trace_install_active = false;
   size_t trace_min = trace_install_min_free;
-  printf("[install-trace] %s: %d methods, %d bytecodes; free %u largest %u; table %u B (%s);"
+  // The table's size is the drop in free heap while it was computed; other
+  // tasks (WiFi on the other core) can free memory meanwhile, so it is
+  // signed.
+  printf("[install-trace] %s: %d methods, %d bytecodes; free %u largest %u; table %d B (%s);"
          " peak use %u B (min free %u); %lld us\n",
          accepted ? "accepted" : "rejected", static_cast<int>(table->length()),
          static_cast<int>(program->bytecodes.length()),
          static_cast<unsigned>(trace_free), static_cast<unsigned>(trace_largest),
-         static_cast<unsigned>(trace_free - trace_after_table), table->in_literal() ? "literal" : "RAM",
+         static_cast<int>(static_cast<word>(trace_free) - static_cast<word>(trace_after_table)),
+         table->in_literal() ? "literal" : "RAM",
          static_cast<unsigned>(trace_free - trace_min), static_cast<unsigned>(trace_min),
          static_cast<long long>(trace_end - trace_start));
 #endif

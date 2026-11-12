@@ -28,11 +28,15 @@
 #   verified/vmverify/.cargo/config.toml.
 #   DEVICE_SIZE_ARCH=xtensa: the classic ESP32 (xtensa-esp32-none-elf with
 #   the esp-rs fork, `cargo +esp -Zbuild-std`, ESP-IDF's xtensa GCC;
-#   verified/XTENSA-RUST-FIXES.md). DEVICE_SIZE_LTO=false: without LTO (one
-#   object per crate, as before the staticlib package).
+#   verified/XTENSA-RUST-FIXES.md). DEVICE_SIZE_ARCH=arm: the EC618
+#   (thumbv7m-none-eabi, Cortex-M3; the SDK-pinned GNU Arm toolchain from
+#   EC618_GCC_PATH or xmake's gnu_rm package, else arm-none-eabi-gcc on the
+#   PATH). DEVICE_SIZE_LTO=false: without LTO (one object per crate, as
+#   before the staticlib package).
 # Needs the ESP-IDF RISC-V toolchain (riscv32-esp-elf-gcc, found in
 # ~/.espressif/tools or on the PATH) and the riscv32imac Rust target (or,
-# for Xtensa, the esp toolchain and ESP-IDF's xtensa-esp32-elf-gcc).
+# for Xtensa, the esp toolchain and ESP-IDF's xtensa-esp32-elf-gcc; for
+# arm, the thumbv7m-none-eabi Rust target).
 
 set -euo pipefail
 trap 'echo "device_size.sh: failed at line $LINENO" >&2' ERR
@@ -48,7 +52,7 @@ if [ "${2:-}" = notaildup ]; then TAILDUP=0; shift; fi
 # DEVICE_SIZE_SUFFIX is appended to the output directory's name.
 FEATURES="${DEVICE_SIZE_FEATURES:-device-runtime}"
 ARCH="${DEVICE_SIZE_ARCH:-riscv}"
-NAME="$([ "$ARCH" = xtensa ] && echo xtensa- || true)opt$OPT$([ "$TAILDUP" = 0 ] && echo -notaildup || true)${DEVICE_SIZE_SUFFIX:-}"
+NAME="$(case "$ARCH" in xtensa|arm) echo "$ARCH-" ;; esac)opt$OPT$([ "$TAILDUP" = 0 ] && echo -notaildup || true)${DEVICE_SIZE_SUFFIX:-}"
 OUT="${2:-$REPO/build/device-size}/$NAME"
 mkdir -p "$OUT"
 
@@ -65,9 +69,21 @@ case "$ARCH" in
     CFLAGS=(-mlongcalls)
     DEFAULT_CARGO_ARGS="+esp -Zbuild-std=core,alloc"
     ;;
+  arm)
+    TARGET=thumbv7m-none-eabi
+    PREFIX=arm-none-eabi
+    CFLAGS=(-mcpu=cortex-m3 -mthumb)
+    DEFAULT_CARGO_ARGS=""
+    ;;
   *) echo "unknown DEVICE_SIZE_ARCH: $ARCH" >&2; exit 2 ;;
 esac
-GCC="$(command -v $PREFIX-gcc || true)"
+GCC=""
+if [ "$ARCH" = arm ]; then
+  # The EC618 SDK's toolchain (Makefile EC618_GCC_PATH), as the firmware.
+  GCC="$(ls -d "${EC618_GCC_PATH:-/nonexistent}/bin/arm-none-eabi-gcc" \
+      "$HOME"/.xmake/packages/g/gnu_rm/*/*/bin/arm-none-eabi-gcc 2>/dev/null | head -1 || true)"
+fi
+[ -n "$GCC" ] || GCC="$(command -v $PREFIX-gcc || true)"
 if [ -z "$GCC" ]; then
   GCC="$(ls -d "$HOME"/.espressif/tools/*-esp-elf/esp-1[0-9]*/*-esp-elf/bin/$PREFIX-gcc 2>/dev/null | sort -V | tail -1)"
 fi

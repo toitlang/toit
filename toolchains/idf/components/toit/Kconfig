@@ -165,8 +165,8 @@ menu "Toit"
                 increase the performance dramatically, but reduce the amount of
                 free IRAM by about 13k.  Set to "n" if you cannot link because
                 of exhausted IRAM.
-                Only the C++ interpreter of format 1 (TOIT_CXX_INTERPRETER):
-                the verified core of format 2 runs from flash.
+                Only the C++ interpreter of format 1 (TOIT_CXX_INTERPRETER);
+                the verified core's loop has TOIT_VERIFIED_CORE_LOOP_IN_IRAM.
 
         config TOIT_INTERPRETER_HELPERS_IN_IRAM
             bool "Run interpreter helper code from IRAM"
@@ -287,7 +287,7 @@ menu "Toit"
     config TOIT_VERIFIED_CORE
         bool "Verified format-2 core and verifier (Rust) for untrusted containers"
         default n
-        depends on IDF_TARGET_ESP32C6 || IDF_TARGET_ESP32H2 || IDF_TARGET_ESP32
+        depends on IDF_TARGET_ESP32C6 || IDF_TARGET_ESP32H2 || IDF_TARGET_ESP32 || IDF_TARGET_ESP32S3
         help
             Links the Verus-verified interpreter core and the format-2 verifier
             (verified/vmverify, a no_std Rust static library built with cargo)
@@ -297,9 +297,9 @@ menu "Toit"
             `rustup target add riscv32imac-unknown-none-elf`; the classic
             ESP32 (Xtensa) needs the esp-rs toolchain (`espup install`,
             cargo +esp; verified/XTENSA-RUST-FIXES.md). The ESP32-C3
-            (rv32imc) lacks the atomics the Rust alloc library needs, and
-            the S2 and S3 are not brought up (docs/format2-migration.md,
-            "Devices").
+            (rv32imc) lacks the atomics the Rust alloc library needs; the
+            S3 uses the same fork (xtensa-esp32s3-none-elf); the S2 is not
+            brought up (docs/format2-migration.md, "Devices").
 
     config TOIT_BYTECODE_FORMAT_2
         bool "Bytecode format 2 for the system and the bundled containers"
@@ -339,6 +339,24 @@ menu "Toit"
         string "Rust opt-level of the verified core (3, s or z)"
         default "3"
         depends on TOIT_VERIFIED_CORE
+
+    config TOIT_VERIFIED_CORE_LOOP_IN_IRAM
+        bool "Run the verified core's loop from IRAM"
+        default y if !TOIT_CXX_INTERPRETER
+        depends on TOIT_VERIFIED_CORE
+        help
+            Places the core's run loop (step::run_loop, 20-28 KB of code) in
+            IRAM and its jump table (2.4 KB) in DRAM. Running it from flash
+            thrashes the flash cache on real hardware: on the classic ESP32
+            json, map/set and string code ran 3.5-5x slower from flash than
+            from IRAM, on the ESP32-C6 1.4-1.5x (docs/format2-migration.md,
+            "Devices: hardware results"). On the C6 it costs 22 KB of heap.
+            The classic ESP32 has 13 KB of IRAM free without the C++
+            interpreter, so it also needs
+                # CONFIG_ESP_WIFI_RX_IRAM_OPT is not set
+                CONFIG_HEAP_PLACE_FUNCTION_INTO_FLASH=y
+                CONFIG_RINGBUF_PLACE_FUNCTIONS_INTO_FLASH=y
+            in its sdkconfig (otherwise IRAM overflows at link time).
 
     config TOIT_TRACE_INSTALL
         bool "Trace install-time verifications (for measurements)"

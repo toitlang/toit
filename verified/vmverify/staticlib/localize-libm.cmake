@@ -27,7 +27,18 @@
 # object and resolve to libm. The memory and soft-float helpers stay: the
 # ROM's (memcpy, __adddf3, ...) win over them anyway.
 #
-# Usage: cmake -DNM=... -DOBJCOPY=... -DINPUT=in.a -DOUTPUT=out.a -P localize-libm.cmake
+# With -DLOOP_IN_IRAM=ON (Kconfig TOIT_VERIFIED_CORE_LOOP_IN_IRAM) it also
+# renames the sections of the core's run loop (`step::run_loop`: its code
+# and, on Xtensa, its literals to .iram1.*, its jump table to .dram1.*), so
+# that ESP-IDF's linker script places them in IRAM and DRAM, as
+# CONFIG_TOIT_INTERPRETER_IN_IRAM does for the C++ interpreter. On the
+# hardware the loop running from flash thrashes the flash cache: on the
+# classic ESP32 the json benchmark took 1.84 s from flash and 0.48 s from
+# IRAM (format 1 / C++: 0.36 s); docs/format2-migration.md, "Devices:
+# hardware results".
+#
+# Usage: cmake -DNM=... -DOBJCOPY=... [-DOBJDUMP=... -DLOOP_IN_IRAM=ON]
+#              -DINPUT=in.a -DOUTPUT=out.a -P localize-libm.cmake
 
 execute_process(
   COMMAND "${NM}" "${INPUT}"
@@ -54,6 +65,36 @@ set(args)
 foreach (name IN LISTS symbols)
   list(APPEND args "--localize-symbol=${name}")
 endforeach()
+if (LOOP_IN_IRAM)
+  execute_process(
+    COMMAND "${OBJDUMP}" -h "${INPUT}"
+    OUTPUT_VARIABLE objdump_output
+    ERROR_QUIET
+    RESULT_VARIABLE objdump_result)
+  if (NOT objdump_result EQUAL 0)
+    message(FATAL_ERROR "${OBJDUMP} -h ${INPUT} failed")
+  endif()
+  string(REPLACE "\n" ";" objdump_lines "${objdump_output}")
+  set(loop_text_found FALSE)
+  foreach (line IN LISTS objdump_lines)
+    # The Rust (v0) mangled name of toit_verified_core::step::run_loop.
+    if (line MATCHES " (\\.(text|literal|rodata|srodata)\\.[^ ]*18toit_verified_core4step8run_loop) ")
+      set(section "${CMAKE_MATCH_1}")
+      set(kind "${CMAKE_MATCH_2}")
+      if (kind STREQUAL "text")
+        list(APPEND args "--rename-section=${section}=.iram1.toit_run_loop")
+        set(loop_text_found TRUE)
+      elseif (kind STREQUAL "literal")
+        list(APPEND args "--rename-section=${section}=.iram1.toit_run_loop.literal")
+      else()
+        list(APPEND args "--rename-section=${section}=.dram1.toit_run_loop")
+      endif()
+    endif()
+  endforeach()
+  if (NOT loop_text_found)
+    message(FATAL_ERROR "LOOP_IN_IRAM: no section of step::run_loop in ${INPUT}")
+  endif()
+endif()
 execute_process(
   COMMAND "${OBJCOPY}" ${args} "${INPUT}" "${OUTPUT}.tmp"
   RESULT_VARIABLE objcopy_result)

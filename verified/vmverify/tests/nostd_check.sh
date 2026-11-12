@@ -23,12 +23,14 @@
 #   and panic handler the VM supplies, src/device.rs), as the static library
 #   device firmware links (Cargo profile `device`: panic = abort, LTO),
 #
-# for riscv32imac-unknown-none-elf (ESP32-C6, ESP32-H2: rv32imac, ilp32)
-# and riscv64imac-unknown-none-elf. ESP32-C3 (rv32imc, no atomics) is not
-# built: vstd's `alloc` feature needs `alloc::sync` (atomic compare and
+# for riscv32imac-unknown-none-elf (ESP32-C6, ESP32-H2: rv32imac, ilp32),
+# riscv64imac-unknown-none-elf and thumbv7m-none-eabi (EC618: Cortex-M3,
+# LDREX/STREX, so `alloc::sync` has native compare-and-swap). ESP32-C3
+# (rv32imc, no atomics) is not built: vstd's `alloc` feature needs `alloc::sync` (atomic compare and
 # swap), which riscv32imc-unknown-none-elf lacks (verified/core/PROGRESS.md,
 # "Phase 5"). Install the targets with
-# `rustup target add riscv32imac-unknown-none-elf riscv64imac-unknown-none-elf`.
+# `rustup target add riscv32imac-unknown-none-elf riscv64imac-unknown-none-elf
+# thumbv7m-none-eabi`.
 #
 # Usage: nostd_check.sh
 
@@ -36,7 +38,7 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VERIFIED="$(cd "$HERE/../.." && pwd)"
-TARGETS=(riscv32imac-unknown-none-elf riscv64imac-unknown-none-elf)
+TARGETS=(riscv32imac-unknown-none-elf riscv64imac-unknown-none-elf thumbv7m-none-eabi)
 WORK="$VERIFIED/../build/vmverify-nostd"
 
 for t in "${TARGETS[@]}"; do
