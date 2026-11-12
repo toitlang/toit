@@ -20,6 +20,7 @@
 use vstd::prelude::*;
 use core::ffi::c_void;
 use core::sync::atomic::AtomicUsize;
+use vstd::raw_ptr::PointsTo;
 use crate::layout::*;
 use crate::view::*;
 use toit_spec::types::{HeapObj, Body, Value};
@@ -343,28 +344,48 @@ impl Runtime {
                ns_top: *mut usize, ns_limit: *const usize, ns_sentinel: usize) -> Self {
         Runtime { process, array_word, epoch, ns_top, ns_limit, ns_sentinel }
     }
+}
 
+verus! {
+
+impl Runtime {
     /// New-space allocation without GC, inline: the fast path of
     /// `SemiSpace::try_allocate` (src/third_party/dartino/object_memory.h):
     /// `size` bytes at the allocation top, the chunk-end sentinel after
     /// them; the untagged address, or 0 if new space is full (then nothing
-    /// changed). Only the trusted allocation functions of alloc.rs call it
-    /// (TRUSTED.md, "Inline allocation").
+    /// changed). TRUSTED (TRUSTED.md, "Inline allocation"): the `size`
+    /// bytes at the old top are fresh, word aligned new space, in the
+    /// address space, at no object's address and outside the program heap
+    /// (`Heap::fresh_ok`): the permissions of their words, with the heap's
+    /// exposed provenance. `alloc::bump_instance` and `bump_double`
+    /// initialize them (verified) and append the object to the model.
+    #[verifier::external_body]
     #[inline(always)]
-    pub fn bump(&self, size: usize) -> usize {
+    pub fn bump(&self, size: usize, heap: &Heap, Ghost(ro_start): Ghost<usize>, Ghost(ro_size): Ghost<usize>)
+        -> (r: (usize, Tracked<Map<int, PointsTo<usize>>>))
+        requires size % WORD_SIZE == 0, size >= WORD_SIZE,
+        ensures r.0 != 0 ==> heap.fresh_ok(r.0, (size / WORD_SIZE) as int, r.1@, ro_start, ro_size),
+    {
         // SAFETY: `ns_top` and `ns_limit` are the new space of the running
         // process (`toit_v2_context`), used on the thread that owns it; no
         // GC runs during the run loop except inside the C++ calls.
-        unsafe {
+        let a = unsafe {
             let top = *self.ns_top;
-            if (*self.ns_limit).wrapping_sub(top) <= size { return 0; }
-            let new_top = top + size;
-            *self.ns_top = new_top;
-            *(new_top as *mut usize) = self.ns_sentinel;
-            top
-        }
+            if (*self.ns_limit).wrapping_sub(top) <= size {
+                0
+            } else {
+                let new_top = top + size;
+                *self.ns_top = new_top;
+                *(new_top as *mut usize) = self.ns_sentinel;
+                top
+            }
+        };
+        // The permissions of the fresh words (none when `a` is 0).
+        (a, Tracked::assume_new())
     }
 }
+
+} // verus!
 
 /// Whether core primitive `index` has a Rust port (`prims::family`). The
 /// policies leave the primitives without one out of their core arities

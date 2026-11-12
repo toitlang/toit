@@ -197,16 +197,106 @@ pub fn gc_allocate_instance(m: &mut Machine, env: &Env, c: usize, Ghost(g): Ghos
     m.allocate_instance_raw(env, c)
 }
 
-/// TRUSTED (TRUSTED.md, "Inline allocation"): allocates an instance of
-/// class `c` inline, with the new-space fast path of the C++ allocator
-/// (`Runtime::bump`, `SemiSpace::try_allocate`), and initializes it as
-/// `ObjectHeap::allocate_instance` does (header with class id and tag,
-/// every field null). No GC: nothing moves, no state needs saving. On
+/// A machine whose heap got the object `o` appended (`view::appended`,
+/// nothing else changed) refines the state with `o` allocated.
+pub proof fn lemma_refines_append(p: &Program, m0: Machine, m1: Machine, o: HeapObj, a: usize)
+    requires
+        m0.refines(p),
+        crate::view::appended(&m0.heap, &m1.heap, a, p.ro_start, p.ro_size),
+        m1.heap.objs() == m0.heap.objs().push(o),
+        m1.heap.class_bits() == m0.heap.class_bits(),
+        m1 == (Machine { heap: m1.heap, g: Ghost(sp::alloc2(m0.g@, o)), ..m0 }),
+        obj_model_ok(o, m0.heap.class_bits(), m1.heap.addrs()),
+        !o.ro,
+    ensures m1.refines(p),
+{
+    let g0 = m0.g@;
+    let o0 = m0.heap.objs(); let a0 = m0.heap.addrs();
+    let o1 = m1.heap.objs(); let a1 = m1.heap.addrs();
+    let cb = m0.heap.class_bits();
+    let n = o0.len() as int;
+    assert(heap_model_ok(o0, a0, cb));
+    assert forall|i: int| 0 <= i < n implies #[trigger] o1[i] == o0[i] && a1[i] == a0[i] by {
+        assert(o1.subrange(0, n)[i] == o0[i]);
+        assert(a1.subrange(0, n)[i] == a0[i]);
+    }
+    assert(a1[n] == a);
+    assert forall|i: int, j: int| 0 <= i < a1.len() && 0 <= j < a1.len() && i != j
+            implies #[trigger] a1[i] != #[trigger] a1[j] by {
+        if i < n && j < n { assert(a0[i] != a0[j]); }
+        else if i < n { assert(a0[i] != a); }
+        else if j < n { assert(a0[j] != a); }
+    }
+    assert forall|i: int| 0 <= i < a1.len() implies #[trigger] a1[i] & 3 == 1 by {
+        if i < n { assert(a0[i] & 3 == 1); }
+    }
+    assert(addrs_ok(o1, a1));
+    assert forall|v: Value| encodable(a0, v) implies #[trigger] encodable(a1, v) && enc(a1, v) == enc(a0, v) by {
+        crate::fresh::lemma_enc_push(a0, a, v);
+        assert(a1 == a0.push(a));
+    }
+    assert forall|i: int| 0 <= i < o1.len() implies #[trigger] obj_model_ok(o1[i], cb, a1) by {
+        if i < n {
+            assert(obj_model_ok(o0[i], cb, a0));
+            match o0[i].body {
+                Body::Instance(f) => {
+                    assert forall|k: int| 0 <= k < f.len() implies #[trigger] encodable(a1, f[k]) by {
+                        assert(encodable(a0, f[k]));
+                    }
+                },
+                Body::Array(e) => {
+                    assert forall|k: int| 0 <= k < e.len() implies #[trigger] encodable(a1, e[k]) by {
+                        assert(encodable(a0, e[k]));
+                    }
+                },
+                _ => {},
+            }
+        }
+    }
+    assert(heap_model_ok(o1, a1, cb));
+    assert forall|i: int| 0 <= i < o1.len() implies #[trigger] m1.g@.heap[i].ro == in_ro(p, a1[i]) by {
+        if i < n { assert(g0.heap[i].ro == in_ro(p, a0[i])); }
+    }
+    assert forall|i: int| 0 <= i < n implies (#[trigger] o1[i]).ro == o0[i].ro by {}
+    crate::prims::lemma_prog_rel_mono(p, &m0.heap, &m1.heap);
+    assert forall|i: int| 0 <= i < g0.stack.len() implies
+        enc(a1, #[trigger] g0.stack[i]) == enc(a0, g0.stack[i]) && encodable(a1, g0.stack[i]) by {
+        assert(encodable(a0, g0.stack[i]));
+    }
+    assert(m1.words() =~= enc_seq(a1, m1.g@.stack));
+    assert forall|i: int| 0 <= i < g0.globals.len() implies
+        enc(a1, #[trigger] g0.globals[i]) == enc(a0, g0.globals[i]) && encodable(a1, g0.globals[i]) by {
+        assert(encodable(a0, g0.globals[i]));
+    }
+    assert(m1.globals@ =~= enc_seq(a1, m1.g@.globals));
+}
+
+/// The header word of an object of class `c` with tag `t`
+/// (`HeapObject::header`: the smi `c << CLASS_ID_OFFSET | t`).
+pub proof fn lemma_header(c: usize, t: usize)
+    requires c < 0x1_0000, t < 16,
+    ensures
+        crate::view::hdr_class_id(((c << 5usize) | t) << 1usize) == c,
+        crate::view::hdr_class_tag(((c << 5usize) | t) << 1usize) == t,
+{
+    assert(CLASS_ID_OFFSET == 5 && CLASS_TAG_MASK == 15);
+    assert((((((((c << 5usize) | t) << 1usize) as isize) >> 1usize) as usize) >> 5usize) == c) by (bit_vector)
+        requires c < 0x1_0000, t < 16;
+    assert((((((((c << 5usize) | t) << 1usize) as isize) >> 1usize) as usize) & 15usize) == t) by (bit_vector)
+        requires c < 0x1_0000, t < 16;
+}
+
+/// Allocates an instance of class `c` inline, with the new-space fast path
+/// of the C++ allocator (`Runtime::bump`, `SemiSpace::try_allocate`: the
+/// trusted part), and initializes it as `ObjectHeap::allocate_instance`
+/// does (header with class id and tag, every field null), through the
+/// permissions of the fresh words; the model gets the instance appended
+/// (`Heap::append`). No GC: nothing moves, no state needs saving. On
 /// success the machine the registers `r` describe represents `g` with the
 /// new instance appended (the contract of `gc_allocate_instance` without
 /// the GC), the result being its tagged address; 0 if new space is full
-/// (nothing changed; the caller then takes the C++ path).
-#[verifier::external_body]
+/// or the class id does not fit the model (nothing changed; the caller
+/// then takes the C++ path).
 #[inline(always)]
 pub fn bump_instance(m: &mut Machine, env: &Env, c: usize, Ghost(r): Ghost<crate::regs::Regs>, Ghost(g): Ghost<State2>) -> (w: usize)
     requires
@@ -220,32 +310,84 @@ pub fn bump_instance(m: &mut Machine, env: &Env, c: usize, Ghost(r): Ghost<crate
             && (Machine { g: Ghost(sp::alloc2(g, new_instance(env.p.ap@, c as int))), ..*final(m) }).with(r).refines(&env.p)
             && w == enc(final(m).addr(), sp::new_ref2(g)),
 {
-    let bits = env.p.class_bits.at(c) as usize;
-    let size = ((bits >> CLASS_ID_OFFSET) & (INSTANCE_SIZE_MASK as usize)) * WORD_SIZE;
-    let a = env.rt.bump(size);
+    let ghost ap = env.p.ap@;
+    let ghost m0 = *m;
+    let ghost w0 = m.with(r);
+    proof { assert(env.p.class_bits@ == ap.class_bits); }
+    let bits = env.p.class_bits.at(c);
+    let words = ((bits >> 5u16) & 0x7ffu16) as usize;
+    proof { assert(((bits >> 5u16) & 0x7ffu16) <= 0x7ffu16) by (bit_vector); }
+    if words == 0 || c >= 0x1_0000 {
+        return 0;
+    }
+    let ghost cb = m.heap.class_bits();
+    let ghost o = new_instance(ap, c as int);
+    proof {
+        assert(cb == ap.class_bits);
+        assert(instance_field_count(p1(ap), c as int) == words - 1);
+        assert(crate::view::obj_words(o) == words);
+    }
+    let (a, mut perms) = env.rt.bump(words * WORD_SIZE, &m.heap, Ghost(env.p.ro_start), Ghost(env.p.ro_size));
     if a == 0 {
         return 0;
     }
-    let header = ((c << CLASS_ID_OFFSET) | INSTANCE_TAG) << SMI_TAG_SIZE;
+    let header = ((c << 5usize) | INSTANCE_TAG) << 1usize;
+    m.heap.write_fresh(a, Tracked(perms.borrow_mut()), 0, header, Ghost(words as int));
     let null = env.p.null;
-    // SAFETY: `a` is `size` fresh bytes of new space, word aligned.
-    unsafe {
-        let o = a as *mut usize;
-        *o = header;
-        let mut i = 1;
-        while i < size / WORD_SIZE {
-            *o.add(i) = null;
-            i += 1;
+    let ghost a1 = m.heap.addrs().push((a + HEAP_TAG) as usize);
+    proof {
+        lemma_header(c, INSTANCE_TAG);
+        assert(const_ok(m.heap.objs(), ap.roots[0]));
+        crate::fresh::lemma_enc_push(m.heap.addrs(), (a + HEAP_TAG) as usize, ap.roots[0]);
+        assert(null == enc(a1, sp::null2(ap)));
+    }
+    let mut i: usize = 1;
+    while i < words
+        invariant
+            1 <= i <= words, words <= 0x7ff,
+            a + WORD_SIZE * words <= usize::MAX,
+            crate::fresh::fresh_perms(perms@, m.heap.prov(), a, words as int),
+            perms@[0].is_init() && perms@[0].value() == header,
+            forall|k: int| 1 <= k < i ==> #[trigger] perms@[k].is_init() && perms@[k].value() == null,
+            *m == m0,
+        decreases words - i,
+    {
+        m.heap.write_fresh(a, Tracked(perms.borrow_mut()), i, null, Ghost(words as int));
+        i += 1;
+    }
+    proof {
+        assert forall|k: int| 0 <= k < crate::view::obj_words(o) implies #[trigger] perms@[k].is_init()
+            && crate::view::word_val(o, cb, a1, k, perms@[k].value()) by {
+            if k == 0 {
+                assert(o.class_id == c as u16);
+            } else {
+                assert(o.body->Instance_0[k - INSTANCE_FIELDS_WORD] == sp::null2(ap));
+            }
         }
+        assert forall|k: int| #[trigger] crate::view::is_word(o, k) <==> 0 <= k < crate::view::obj_words(o) by {}
+        assert((cb[c as int] & 0xf) as usize == INSTANCE_TAG);
+    }
+    m.heap.append(a, perms, Ghost(o), Ghost(env.p.ro_start), Ghost(env.p.ro_size));
+    proof {
+        let m1 = Machine { g: Ghost(sp::alloc2(g, o)), ..*m }.with(r);
+        assert(m.heap.addrs() == a1);
+        assert(obj_model_ok(o, cb, a1)) by {
+            assert forall|k: int| 0 <= k < o.body->Instance_0.len() implies #[trigger] encodable(a1, o.body->Instance_0[k]) by {
+                assert(o.body->Instance_0[k] == ap.roots[0]);
+            }
+        }
+        lemma_refines_append(&env.p, w0, m1, o, (a + HEAP_TAG) as usize);
+        assert(((a + 1) as usize) == (a | 1usize)) by (bit_vector) requires a % 4 == 0, a < usize::MAX;
+        assert(enc(m.addr(), sp::new_ref2(g)) == a1[g.heap.len() as int]);
     }
     a | HEAP_TAG
 }
 
-/// TRUSTED (TRUSTED.md, "Inline allocation"): a double with the given bits,
-/// allocated inline as `bump_instance` does (`ObjectHeap::allocate_double`:
-/// the header of the program's double class, then the 64-bit value), with
-/// the contract of `gc_allocate_double` without the GC.
-#[verifier::external_body]
+/// A double with the given bits, allocated inline as `bump_instance` does
+/// (`ObjectHeap::allocate_double`: the header of the program's double
+/// class, then the 64-bit value, as one or two words): the contract of
+/// `gc_allocate_double` without the GC. 0 (the C++ path) unless the
+/// program's double class has the double tag.
 #[inline(always)]
 pub fn bump_double(m: &mut Machine, env: &Env, bits: u64, Ghost(r): Ghost<crate::regs::Regs>, Ghost(g): Ghost<State2>) -> (w: usize)
     requires
@@ -257,17 +399,56 @@ pub fn bump_double(m: &mut Machine, env: &Env, bits: u64, Ghost(r): Ghost<crate:
             && (Machine { g: Ghost(sp::alloc2(g, new_double(as1(g), p1(env.p.ap@), bits))), ..*final(m) }).with(r).refines(&env.p)
             && w == enc(final(m).addr(), sp::new_ref2(g)),
 {
-    let a = env.rt.bump(WORD_SIZE + 8);
+    let ghost ap = env.p.ap@;
+    let ghost m0 = *m;
+    let ghost w0 = m.with(r);
+    proof { assert(env.p.class_bits@ == ap.class_bits); }
+    if BUILTIN_DOUBLE >= env.p.builtin.len() {
+        return 0;
+    }
+    proof {
+        assert(env.p.builtin@[BUILTIN_DOUBLE as int] == smi_word(ap.builtin[BUILTIN_DOUBLE as int] as i64));
+        lemma_smi_word(ap.builtin[BUILTIN_DOUBLE as int] as i64);
+    }
+    let cid = env.p.builtin.at(BUILTIN_DOUBLE) >> SMI_TAG_SIZE;
+    if cid >= env.p.class_bits.len() || (env.p.class_bits.at(cid) & 0xfu16) as usize != DOUBLE_TAG {
+        return 0;
+    }
+    let ghost cb = m.heap.class_bits();
+    let ghost o = new_double(as1(g), p1(ap), bits);
+    proof {
+        assert(cid == ap.builtin[BUILTIN_DOUBLE as int]);
+        assert(o.class_id == cid as u16);
+        assert(crate::view::obj_words(o) == 1 + VALUE_WORDS);
+    }
+    let (a, mut perms) = env.rt.bump((1 + VALUE_WORDS) * WORD_SIZE, &m.heap, Ghost(env.p.ro_start), Ghost(env.p.ro_size));
     if a == 0 {
         return 0;
     }
-    let cid = env.p.builtin.at(BUILTIN_DOUBLE) >> SMI_TAG_SIZE;
-    let header = ((cid << CLASS_ID_OFFSET) | DOUBLE_TAG) << SMI_TAG_SIZE;
-    // SAFETY: `a` is `WORD_SIZE + 8` fresh bytes of new space, word
-    // aligned; the value is unaligned on 32-bit targets (as in C++).
-    unsafe {
-        *(a as *mut usize) = header;
-        core::ptr::write_unaligned((a + WORD_SIZE) as *mut u64, bits);
+    let header = ((cid << 5usize) | DOUBLE_TAG) << 1usize;
+    m.heap.write_fresh(a, Tracked(perms.borrow_mut()), 0, header, Ghost((1 + VALUE_WORDS) as int));
+    let w0v = crate::fresh::value_word_x(bits, 0);
+    m.heap.write_fresh(a, Tracked(perms.borrow_mut()), 1, w0v, Ghost((1 + VALUE_WORDS) as int));
+    if VALUE_WORDS == 2 {
+        let w1v = crate::fresh::value_word_x(bits, 1);
+        m.heap.write_fresh(a, Tracked(perms.borrow_mut()), 2, w1v, Ghost((1 + VALUE_WORDS) as int));
+    }
+    let ghost a1 = m.heap.addrs().push((a + HEAP_TAG) as usize);
+    proof {
+        lemma_header(cid, DOUBLE_TAG);
+        assert forall|k: int| 0 <= k < crate::view::obj_words(o) implies #[trigger] perms@[k].is_init()
+            && crate::view::word_val(o, cb, a1, k, perms@[k].value()) by {
+            if k == 0 { assert(o.class_id == cid as u16); }
+        }
+        assert forall|k: int| #[trigger] crate::view::is_word(o, k) <==> 0 <= k < crate::view::obj_words(o) by {}
+    }
+    m.heap.append(a, perms, Ghost(o), Ghost(env.p.ro_start), Ghost(env.p.ro_size));
+    proof {
+        let m1 = Machine { g: Ghost(sp::alloc2(g, o)), ..*m }.with(r);
+        assert(m.heap.addrs() == a1);
+        lemma_refines_append(&env.p, w0, m1, o, (a + HEAP_TAG) as usize);
+        assert(((a + 1) as usize) == (a | 1usize)) by (bit_vector) requires a % 4 == 0, a < usize::MAX;
+        assert(enc(m.addr(), sp::new_ref2(g)) == a1[g.heap.len() as int]);
     }
     a | HEAP_TAG
 }

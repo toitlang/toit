@@ -38,6 +38,7 @@
 
 pub mod layout;
 pub mod view;
+pub mod fresh;
 pub mod abs;
 pub mod ffi;
 pub mod exec;

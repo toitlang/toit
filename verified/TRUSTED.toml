@@ -35,38 +35,6 @@ justification = "usize is the target's word, 8 bytes for target_pointer_width 64
 [[trusted]]
 crate = "core"
 file = "src/alloc.rs"
-item = "bump_double"
-kind = "external_body"
-count = 1
-justification = "ASSUMED (TRUSTED.md 9, Inline allocation): as bump_instance, for ObjectHeap::allocate_double; contract of gc_allocate_double without a GC."
-
-[[trusted]]
-crate = "core"
-file = "src/alloc.rs"
-item = "bump_double"
-kind = "unsafe"
-count = 1
-justification = "Writes the header and the 64-bit value of the fresh new-space bytes Runtime::bump returned (TRUSTED.md 9, Inline allocation)."
-
-[[trusted]]
-crate = "core"
-file = "src/alloc.rs"
-item = "bump_instance"
-kind = "external_body"
-count = 1
-justification = "ASSUMED (TRUSTED.md 9, Inline allocation): the new-space fast path of SemiSpace::try_allocate inline, the instance initialized as ObjectHeap::allocate_instance does; contract of gc_allocate_instance without a GC (nothing moves); 0 and no change if new space is full."
-
-[[trusted]]
-crate = "core"
-file = "src/alloc.rs"
-item = "bump_instance"
-kind = "unsafe"
-count = 1
-justification = "Writes the header and null fields of the fresh new-space bytes Runtime::bump returned (TRUSTED.md 9, Inline allocation)."
-
-[[trusted]]
-crate = "core"
-file = "src/alloc.rs"
 item = "gc_allocate_double"
 kind = "external_body"
 count = 1
@@ -284,9 +252,17 @@ justification = "Hands the process pointer to the allocator of the Rust primitiv
 crate = "core"
 file = "src/ffi.rs"
 item = "Runtime::bump"
-kind = "plain_rust_item"
+kind = "external_body"
 count = 1
-justification = "SemiSpace::try_allocate's fast path on the process' new-space top and limit (toit_v2_context); only bump_instance and bump_double call it (TRUSTED.md 9, Inline allocation)."
+justification = "DERIVATION POINT (TRUSTED.md 9, Inline allocation): SemiSpace::try_allocate's fast path on the process' new-space top and limit (toit_v2_context); the size bytes at the old top are fresh new space (Heap::fresh_ok: word aligned, in the address space, at no object's address, outside the program heap). bump_instance and bump_double initialize them and append the object to the model, verified (Heap::append)."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "Runtime::bump"
+kind = "assume_new"
+count = 1
+justification = "DERIVATION POINT: the permissions of the fresh words (with the heap's exposed provenance), as Heap::fresh_ok states (TRUSTED.md 9, Inline allocation)."
 
 [[trusted]]
 crate = "core"

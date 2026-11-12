@@ -1205,6 +1205,8 @@ pub proof fn lemma_bytes_written(m0: HeapMem, m1: HeapMem, id: int, lo: int, hi:
         assert(str_ok(m0, j));
         assert forall|k: int| 0 <= k < content(m1.objs[j]).len() implies #[trigger] byte_ok(m1, j, k) by {
             assert(byte_ok(m0, j, k));
+            if j == id && lo <= k < hi { assert(m1.bytes[(id, k)].ptr() == m0.bytes[(id, k)].ptr()); }
+            else { assert(m1.bytes[(j, k)] == m0.bytes[(j, k)]); }
         }
     }
     assert forall|j: int| 0 <= j < m1.objs.len() && (m1.objs[j].body is Bytes || is_ba_class(m1, j))
@@ -1340,6 +1342,76 @@ impl Heap {
         unsafe {
             let card = ((obj - HEAP_TAG) >> CARD_SIZE_LOG_2).wrapping_add(self.remembered_set_bias);
             *(card as *mut u8) = NEW_SPACE_POINTERS;
+        }
+    }
+
+    /// The heap's exposed provenance (the fresh memory of an inline
+    /// allocation is addressed with it).
+    pub closed spec fn prov(&self) -> Provenance {
+        self.mem@.exposed@
+    }
+
+    /// `perms` are the permissions of `n` fresh words at the untagged,
+    /// 4-byte aligned address `a` (an inline allocation, `Runtime::bump`):
+    /// in the address space, at no object's address, outside the program
+    /// heap `ro_start..ro_start+ro_size`, with room for one more object id.
+    pub open spec fn fresh_ok(&self, a: usize, n: int, perms: Map<int, PointsTo<usize>>, ro_start: usize, ro_size: usize) -> bool {
+        &&& a % 4 == 0
+        &&& 1 <= n
+        &&& a + WORD_SIZE * n <= usize::MAX
+        &&& crate::fresh::fresh_perms(perms, self.prov(), a, n)
+        &&& forall|i: int| 0 <= i < self.addrs().len() ==> #[trigger] self.addrs()[i] != a + HEAP_TAG
+        &&& !(ro_start <= a + HEAP_TAG && a + HEAP_TAG < ro_start + ro_size)
+        &&& self.objs().len() + 1 < 0x4000_0000
+    }
+
+    /// Writes `v` into fresh word `k` (`fresh_ok`).
+    #[inline(always)]
+    pub fn write_fresh(&self, a: usize, Tracked(perms): Tracked<&mut Map<int, PointsTo<usize>>>, k: usize, v: usize, Ghost(n): Ghost<int>)
+        requires k < n, a + WORD_SIZE * n <= usize::MAX, crate::fresh::fresh_perms(*old(perms), self.prov(), a, n),
+        ensures
+            crate::fresh::fresh_perms(*final(perms), self.prov(), a, n),
+            final(perms)[k as int].is_init(), final(perms)[k as int].value() == v,
+            forall|j: int| 0 <= j < n && j != k ==> #[trigger] final(perms)[j] == old(perms)[j],
+    {
+        let ghost p0 = *perms;
+        let p: *mut usize = with_exposed_provenance(a, Tracked(self.mem.borrow().exposed));
+        proof { assert(p0.contains_key(k as int)); }
+        ptr_mut_write(p.wrapping_add(k), Tracked(perms.tracked_borrow_mut(k as int)), v);
+        proof {
+            assert forall|j: int| 0 <= j < n implies #[trigger] perms.contains_key(j)
+                && perms[j].ptr() == at_index(crate::fresh::fresh_ptr_of(self.prov(), a), j) by {
+                assert(p0.contains_key(j));
+            }
+        }
+    }
+
+    /// Appends the object `o` at the fresh words `a..` (`fresh_ok`), which
+    /// hold its words: the model gets `o` at the address `a + HEAP_TAG`.
+    #[inline(always)]
+    pub fn append(&mut self, a: usize, Tracked(perms): Tracked<Map<int, PointsTo<usize>>>, Ghost(o): Ghost<HeapObj>,
+                  Ghost(ro_start): Ghost<usize>, Ghost(ro_size): Ghost<usize>)
+        requires
+            old(self).fresh_ok(a, obj_words(o), perms, ro_start, ro_size),
+            crate::abs::heap_model_ok(old(self).objs(), old(self).addrs(), old(self).class_bits()),
+            forall|k: int| 0 <= k < obj_words(o) ==> #[trigger] perms[k].is_init()
+                && word_val(o, old(self).class_bits(), old(self).addrs().push((a + HEAP_TAG) as usize), k, perms[k].value()),
+            forall|k: int| #[trigger] is_word(o, k) <==> 0 <= k < obj_words(o),
+            !is_blob(o), !o.ro,
+            (o.class_id as int) < old(self).class_bits().len(),
+            (old(self).class_bits()[o.class_id as int] & 0xf) as usize != BYTE_ARRAY_TAG,
+        ensures
+            appended(old(self), final(self), (a + HEAP_TAG) as usize, ro_start, ro_size),
+            final(self).objs() == old(self).objs().push(o),
+            final(self).addrs() == old(self).addrs().push((a + HEAP_TAG) as usize),
+    {
+        proof {
+            use_type_invariant(&*self);
+            let ghost m0 = self.mem@;
+            crate::fresh::append_mem(self.mem.borrow_mut(), perms, a, o);
+            assert(((a + 1) as usize) & 3 == 1) by (bit_vector) requires a % 4 == 0, a < usize::MAX;
+            assert(self.mem@.addrs.subrange(0, m0.addrs.len() as int) =~= m0.addrs);
+            assert(self.mem@.objs.subrange(0, m0.objs.len() as int) =~= m0.objs);
         }
     }
 
@@ -2032,7 +2104,6 @@ pub proof fn lemma_content_range(m: HeapMem, id: int, p: *mut u8, to: int, n: in
         lemma_at_index_move(m.cptrs[id], to, k);
     }
 }
-
 /// memmove of the content bytes `src[from..from+n]` to `dst[to..to+n]`
 /// (`content_copy`), with the model update.
 #[inline(always)]
@@ -2063,6 +2134,7 @@ fn copy_content(Tracked(m): Tracked<&mut HeapMem>, pd: *mut u8, ps: *mut u8, n: 
         lemma_content_range(m0, d, pd, to, n as int);
         lemma_content_range(m0, s, ps, from, n as int);
         lemma_blob_bytes(m0, s);
+        lemma_blob_bytes(m0, d);
     }
     perm_memmove(Tracked(&mut m.bytes), pd, ps, n, Ghost(d), Ghost(to), Ghost(s), Ghost(from));
     proof {
@@ -2076,8 +2148,15 @@ fn copy_content(Tracked(m): Tracked<&mut HeapMem>, pd: *mut u8, ps: *mut u8, n: 
             && m.bytes[(d, k)].is_init()
             && m.bytes[(d, k)].value() == content(m.objs[d])[k] by {
             assert(m.bytes[(d, to + (k - to))].value() == m0.bytes[(s, from + (k - to))].value());
+            assert(byte_ok(m0, d, k));
             assert(byte_ok(m0, s, from + (k - to)));
             assert(m0.bytes.contains_key((d, k)));
+            assert(0 <= k < content(m0.objs[d]).len());
+            assert(m.bytes[(d, k)].ptr() == m0.bytes[(d, k)].ptr());
+            assert(m.bytes[(d, k)].is_init());
+            assert(m.objs[d] == with_content(m0.objs[d], c1));
+            assert(content(m.objs[d])[k] == c1[k]);
+            assert(m.bytes[(d, k)].value() == content(m.objs[d])[k]);
         }
         assert(content(m.objs[d]) == c1);
         lemma_bytes_written(m0, *m, d, to, to + n);
