@@ -189,14 +189,22 @@ if (${TOIT_IS_EMBEDDED})
   # With TOIT_VERIFIED_CORE_LOOP_IN_IRAM the same step moves the run loop
   # into IRAM (Kconfig TOIT_VERIFIED_CORE_LOOP_IN_IRAM).
   option(TOIT_VERIFIED_CORE_LOOP_IN_IRAM "Place the core's run loop in IRAM (ESP32 targets)" OFF)
+  # More functions of the library for IRAM (localize-libm.cmake, IRAM_FUNCTIONS;
+  # Kconfig TOIT_VERIFIED_CORE_IRAM_FUNCTIONS): a comma-separated list.
+  set(TOIT_VERIFIED_CORE_IRAM_FUNCTIONS "" CACHE STRING "Functions of the core library for IRAM (ESP32 targets)")
+  # Rerun the step when the placement changes.
+  set(VCORE_PLACEMENT_STAMP "${CMAKE_CURRENT_BINARY_DIR}/vcore-placement.txt")
+  file(CONFIGURE OUTPUT "${VCORE_PLACEMENT_STAMP}"
+       CONTENT "loop-in-iram=${TOIT_VERIFIED_CORE_LOOP_IN_IRAM} iram-functions=${TOIT_VERIFIED_CORE_IRAM_FUNCTIONS}\n")
   set(VCORE_LINKED_LIB "${VCORE_LIB_DIR}/${CMAKE_STATIC_LIBRARY_PREFIX}toit_rust_device${CMAKE_STATIC_LIBRARY_SUFFIX}")
   add_custom_command(
     OUTPUT "${VCORE_LINKED_LIB}"
     COMMAND ${CMAKE_COMMAND} -DNM=${CMAKE_NM} -DOBJCOPY=${CMAKE_OBJCOPY}
             -DOBJDUMP=${CMAKE_OBJDUMP} -DLOOP_IN_IRAM=${TOIT_VERIFIED_CORE_LOOP_IN_IRAM}
+            "-DIRAM_FUNCTIONS=${TOIT_VERIFIED_CORE_IRAM_FUNCTIONS}"
             -DINPUT=${VCORE_LIB} -DOUTPUT=${VCORE_LINKED_LIB}
             -P "${VMLIB_DIR}/localize-libm.cmake"
-    DEPENDS "${VCORE_LIB}" "${VMLIB_DIR}/localize-libm.cmake"
+    DEPENDS "${VCORE_LIB}" "${VMLIB_DIR}/localize-libm.cmake" "${VCORE_PLACEMENT_STAMP}"
     COMMENT "Localizing the C math functions of the Rust library"
     VERBATIM
   )

@@ -42,11 +42,22 @@
 
 static void v2_validate(toit::Process* process, const char* where);
 
+// The hand-over to the core and the primitive calls run on every process
+// switch and every C++ primitive call: in IRAM with the core's loop
+// (TOIT_VERIFIED_CORE_LOOP_IN_IRAM). From flash they missed the flash cache
+// after nearly every process switch on the classic ESP32
+// (docs/format2-migration.md, "Devices: hardware results").
+#if defined(TOIT_ESP32) && defined(CONFIG_TOIT_VERIFIED_CORE_LOOP_IN_IRAM)
+#define V2_HOT IRAM_ATTR
+#else
+#define V2_HOT
+#endif
+
 namespace toit {
 
 // The method table itself (decoding, the table literal): v2_method_table.cc.
 
-void v2_program_tables(Program* program, const V2MethodTable* table, Object** globals,
+V2_HOT void v2_program_tables(Program* program, const V2MethodTable* table, Object** globals,
                        toit_v2_program* p) {
   memset(p, 0, sizeof(*p));
   p->bytecodes = program->bytecodes.data();
@@ -163,7 +174,7 @@ Object* Interpreter::v2_task_transfer(Process* process, Task* to, bool detach_st
   return Primitive::mark_as_error(to);
 }
 
-Interpreter::Result Interpreter::run_v2() {
+V2_HOT Interpreter::Result Interpreter::run_v2() {
 #ifdef TOIT_VERIFIED_CORE
   process_->object_heap()->leave_primitive();
   preemption_method_header_bcp_ = null;
@@ -232,7 +243,7 @@ Interpreter::Result Interpreter::run_v2() {
 #ifdef TOIT_NO_CXX_INTERPRETER
 // Without the C++ interpreter (interpreter_run.cc is not linked) every
 // program is format 2: ProcessGroup::create refuses format-1 programs.
-Interpreter::Result Interpreter::run() {
+V2_HOT Interpreter::Result Interpreter::run() {
   if (!process_->program()->is_format2()) FATAL("format-1 program and no C++ interpreter");
   return run_v2();
 }
@@ -482,7 +493,7 @@ uword toit_v2_try_allocate_byte_array(void* raw_process, uword length) {
 // The GC-and-retry protocol of a C++ primitive whose first call returned the
 // error [result] (the C++ interpreter's loop after its first call). Out of
 // line: the common call returns a value or a failure without collecting.
-static __attribute__((noinline)) uword v2_primitive_failed(
+static __attribute__((noinline)) V2_HOT uword v2_primitive_failed(
     Process* process, Primitive::Entry* entry, uword first_argument, Object* result, uword* result_out) {
   Program* program = process->program();
   v2_validate(process, "primitive failure");
@@ -517,7 +528,7 @@ static __attribute__((noinline)) uword v2_primitive_failed(
   return TOIT_V2_PRIMITIVE_FAILURE;
 }
 
-uword toit_v2_primitive(void* raw_process, uword module, uword index, uword arity,
+V2_HOT uword toit_v2_primitive(void* raw_process, uword module, uword index, uword arity,
                         uword first_argument, uword* result_out) {
   Process* process = v2_process(raw_process);
   const PrimitiveEntry* primitive = process->policy()->at(module, index);
