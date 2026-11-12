@@ -41,6 +41,11 @@
 // of the system counts, not only the verifier's.
 static volatile bool trace_install_active = false;
 static volatile size_t trace_install_min_free = 0;
+// The times of the first and the last progress callback (before the first
+// and the last method check): the conversion of the image and the decoding
+// of the certificate come before the first.
+static int64_t trace_install_first_progress = 0;
+static int64_t trace_install_last_progress = 0;
 
 extern "C" void esp_heap_trace_alloc_hook(void* ptr, size_t size, uint32_t caps) {
   if (!trace_install_active) return;
@@ -129,6 +134,13 @@ struct V2Progress {
 static void v2_progress(void* context, uword method) {
   V2Progress* progress = reinterpret_cast<V2Progress*>(context);
   progress->calls++;
+#ifdef CONFIG_TOIT_TRACE_INSTALL
+  if (trace_install_active) {
+    int64 now = esp_timer_get_time();
+    if (trace_install_first_progress == 0) trace_install_first_progress = now;
+    trace_install_last_progress = now;
+  }
+#endif
   if (progress->process != null) progress->process->note_progress(OS::get_monotonic_time());
 }
 
@@ -257,10 +269,13 @@ const char* V2Verifier::verify_installed(Program* program, word program_size, bo
   trace_install_min_free = trace_free;
   trace_install_active = true;
   int64 trace_start = esp_timer_get_time();
+  trace_install_first_progress = 0;
+  trace_install_last_progress = 0;
 #endif
   V2MethodTable* table = V2MethodTable::compute(program, &out_of_memory);
 #ifdef CONFIG_TOIT_TRACE_INSTALL
   size_t trace_after_table = heap_caps_get_free_size(MALLOC_CAP_8BIT);
+  int64 trace_table_end = esp_timer_get_time();
   if (table == null) trace_install_active = false;
 #endif
   if (table == null) return out_of_memory ? OUT_OF_MEMORY : "INVALID_SNAPSHOT";
@@ -282,6 +297,13 @@ const char* V2Verifier::verify_installed(Program* program, word program_size, bo
          table->in_literal() ? "literal" : "RAM",
          static_cast<unsigned>(trace_free - trace_min), static_cast<unsigned>(trace_min),
          static_cast<long long>(trace_end - trace_start));
+  if (trace_install_first_progress != 0) {
+    printf("[install-trace] table %lld us, convert and certificate %lld us, methods %lld us, after %lld us\n",
+           static_cast<long long>(trace_table_end - trace_start),
+           static_cast<long long>(trace_install_first_progress - trace_table_end),
+           static_cast<long long>(trace_install_last_progress - trace_install_first_progress),
+           static_cast<long long>(trace_end - trace_install_last_progress));
+  }
 #endif
   delete table;
   if (accepted) return null;

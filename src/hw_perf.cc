@@ -82,6 +82,7 @@ static HwPerfPc pcs[2][PC_SLOTS];
 static uint32 pc_samples[2];
 static uint32 pc_overflow[2];
 static bool tick_hooks_registered = false;
+static volatile bool sampling = false;  // Not while printing the dump.
 
 }  // namespace toit
 
@@ -90,6 +91,7 @@ extern "C" void* volatile pxCurrentTCBs[];
 namespace toit {
 
 static void IRAM_ATTR hw_perf_tick() {
+  if (!sampling) return;
   int core = hw_perf_core();
   uint32** tcb = reinterpret_cast<uint32**>(pxCurrentTCBs[core]);
   if (tcb == null) return;
@@ -201,6 +203,7 @@ void hw_perf_reset() {
   }
   reset_time_us = esp_timer_get_time();
   hw_perf_generation = hw_perf_generation + 1;
+  sampling = true;
 }
 
 static const char* BUCKET_NAMES[HWP_COUNT] = {
@@ -208,6 +211,7 @@ static const char* BUCKET_NAMES[HWP_COUNT] = {
 };
 
 void hw_perf_dump() {
+  sampling = false;
   int64 wall_us = esp_timer_get_time() - reset_time_us;
 #if defined(__XTENSA__)
   const char* other = MODES[mode_index].name;

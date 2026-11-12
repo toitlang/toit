@@ -340,6 +340,16 @@ menu "Toit"
         default "3"
         depends on TOIT_VERIFIED_CORE
 
+    config TOIT_VERIFIED_CORE_VERIFIER_OPT_LEVEL
+        string "Rust opt-level of the install-time verifier (empty: z)"
+        default ""
+        depends on TOIT_VERIFIED_CORE_VERIFIER
+        help
+            The verifier (and the spec functions it runs) is compiled for
+            size (opt-level z, verified/vmverify/staticlib/Cargo.toml);
+            3 or s here trade flash for install time
+            (docs/format2-migration.md, "Devices: hardware results").
+
     config TOIT_VERIFIED_CORE_LOOP_IN_IRAM
         bool "Run the verified core's loop from IRAM"
         default y if !TOIT_CXX_INTERPRETER

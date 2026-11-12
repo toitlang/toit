@@ -131,6 +131,20 @@ if (${TOIT_IS_EMBEDDED})
   set(VCORE_FEATURES device-runtime)
   set(TOIT_VERIFIED_CORE_OPT_LEVEL "3" CACHE STRING "Rust opt-level of the device library (3, s, z)")
   set(VCORE_ENV CARGO_PROFILE_DEVICE_OPT_LEVEL=${TOIT_VERIFIED_CORE_OPT_LEVEL})
+  # The verifier and the spec functions it runs (Cargo packages toit_vmverify
+  # and toit_spec) have their own opt-level (Cargo.toml: z, for size); a
+  # value here overrides it (Kconfig TOIT_VERIFIED_CORE_VERIFIER_OPT_LEVEL).
+  set(TOIT_VERIFIED_CORE_VERIFIER_OPT_LEVEL "" CACHE STRING "Rust opt-level of the verifier on devices (empty: Cargo.toml)")
+  set(VCORE_PROFILE_ARGS)
+  if (TOIT_VERIFIED_CORE_VERIFIER_OPT_LEVEL)
+    set(level "${TOIT_VERIFIED_CORE_VERIFIER_OPT_LEVEL}")
+    if (NOT level MATCHES "^[0-3]$")
+      set(level "\"${level}\"")
+    endif()
+    list(APPEND VCORE_PROFILE_ARGS
+         --config "profile.device.package.toit_vmverify.opt-level=${level}"
+         --config "profile.device.package.toit_spec.opt-level=${level}")
+  endif()
   set(VCORE_LINK_LIBRARIES "m")
 else()
   set(VCORE_PROFILE release)
@@ -172,7 +186,7 @@ add_custom_command(
           "${TOIT_CARGO}" ${TOIT_VERIFIED_CORE_CARGO_TOOLCHAIN} build --profile ${VCORE_PROFILE} --quiet --lib
           --manifest-path "${VMLIB_DIR}/Cargo.toml"
           --target-dir "${VCORE_TARGET_DIR}"
-          ${VCORE_CARGO_TARGET_ARGS} ${VCORE_FEATURE_ARGS} ${TOIT_VERIFIED_CORE_CARGO_ARGS}
+          ${VCORE_CARGO_TARGET_ARGS} ${VCORE_FEATURE_ARGS} ${TOIT_VERIFIED_CORE_CARGO_ARGS} ${VCORE_PROFILE_ARGS}
   DEPENDS ${VCORE_SOURCES}
           "${VCORE_DIR}/Cargo.toml" "${VMVERIFY_DIR}/Cargo.toml" "${VMLIB_DIR}/Cargo.toml"
           "${VMLIB_DIR}/Cargo.lock" "${VMLIB_DIR}/lib.rs" "${VMVERIFY_DIR}/.cargo/config.toml"
