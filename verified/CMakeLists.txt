@@ -131,6 +131,20 @@ if (${TOIT_IS_EMBEDDED})
   set(VCORE_FEATURES device-runtime)
   set(TOIT_VERIFIED_CORE_OPT_LEVEL "3" CACHE STRING "Rust opt-level of the device library (3, s, z)")
   set(VCORE_ENV CARGO_PROFILE_DEVICE_OPT_LEVEL=${TOIT_VERIFIED_CORE_OPT_LEVEL})
+  # The verifier and the spec functions it runs (Cargo packages toit_vmverify
+  # and toit_spec) have their own opt-level (Cargo.toml: z, for size); a
+  # value here overrides it (Kconfig TOIT_VERIFIED_CORE_VERIFIER_OPT_LEVEL).
+  set(TOIT_VERIFIED_CORE_VERIFIER_OPT_LEVEL "" CACHE STRING "Rust opt-level of the verifier on devices (empty: Cargo.toml)")
+  set(VCORE_PROFILE_ARGS)
+  if (TOIT_VERIFIED_CORE_VERIFIER_OPT_LEVEL)
+    set(level "${TOIT_VERIFIED_CORE_VERIFIER_OPT_LEVEL}")
+    if (NOT level MATCHES "^[0-3]$")
+      set(level "\"${level}\"")
+    endif()
+    list(APPEND VCORE_PROFILE_ARGS
+         --config "profile.device.package.toit_vmverify.opt-level=${level}"
+         --config "profile.device.package.toit_spec.opt-level=${level}")
+  endif()
   set(VCORE_LINK_LIBRARIES "m")
 else()
   set(VCORE_PROFILE release)
@@ -172,7 +186,7 @@ add_custom_command(
           "${TOIT_CARGO}" ${TOIT_VERIFIED_CORE_CARGO_TOOLCHAIN} build --profile ${VCORE_PROFILE} --quiet --lib
           --manifest-path "${VMLIB_DIR}/Cargo.toml"
           --target-dir "${VCORE_TARGET_DIR}"
-          ${VCORE_CARGO_TARGET_ARGS} ${VCORE_FEATURE_ARGS} ${TOIT_VERIFIED_CORE_CARGO_ARGS}
+          ${VCORE_CARGO_TARGET_ARGS} ${VCORE_FEATURE_ARGS} ${TOIT_VERIFIED_CORE_CARGO_ARGS} ${VCORE_PROFILE_ARGS}
   DEPENDS ${VCORE_SOURCES}
           "${VCORE_DIR}/Cargo.toml" "${VMVERIFY_DIR}/Cargo.toml" "${VMLIB_DIR}/Cargo.toml"
           "${VMLIB_DIR}/Cargo.lock" "${VMLIB_DIR}/lib.rs" "${VMVERIFY_DIR}/.cargo/config.toml"
@@ -189,14 +203,22 @@ if (${TOIT_IS_EMBEDDED})
   # With TOIT_VERIFIED_CORE_LOOP_IN_IRAM the same step moves the run loop
   # into IRAM (Kconfig TOIT_VERIFIED_CORE_LOOP_IN_IRAM).
   option(TOIT_VERIFIED_CORE_LOOP_IN_IRAM "Place the core's run loop in IRAM (ESP32 targets)" OFF)
+  # More functions of the library for IRAM (localize-libm.cmake, IRAM_FUNCTIONS;
+  # Kconfig TOIT_VERIFIED_CORE_IRAM_FUNCTIONS): a comma-separated list.
+  set(TOIT_VERIFIED_CORE_IRAM_FUNCTIONS "" CACHE STRING "Functions of the core library for IRAM (ESP32 targets)")
+  # Rerun the step when the placement changes.
+  set(VCORE_PLACEMENT_STAMP "${CMAKE_CURRENT_BINARY_DIR}/vcore-placement.txt")
+  file(CONFIGURE OUTPUT "${VCORE_PLACEMENT_STAMP}"
+       CONTENT "loop-in-iram=${TOIT_VERIFIED_CORE_LOOP_IN_IRAM} iram-functions=${TOIT_VERIFIED_CORE_IRAM_FUNCTIONS}\n")
   set(VCORE_LINKED_LIB "${VCORE_LIB_DIR}/${CMAKE_STATIC_LIBRARY_PREFIX}toit_rust_device${CMAKE_STATIC_LIBRARY_SUFFIX}")
   add_custom_command(
     OUTPUT "${VCORE_LINKED_LIB}"
     COMMAND ${CMAKE_COMMAND} -DNM=${CMAKE_NM} -DOBJCOPY=${CMAKE_OBJCOPY}
             -DOBJDUMP=${CMAKE_OBJDUMP} -DLOOP_IN_IRAM=${TOIT_VERIFIED_CORE_LOOP_IN_IRAM}
+            "-DIRAM_FUNCTIONS=${TOIT_VERIFIED_CORE_IRAM_FUNCTIONS}"
             -DINPUT=${VCORE_LIB} -DOUTPUT=${VCORE_LINKED_LIB}
             -P "${VMLIB_DIR}/localize-libm.cmake"
-    DEPENDS "${VCORE_LIB}" "${VMLIB_DIR}/localize-libm.cmake"
+    DEPENDS "${VCORE_LIB}" "${VMLIB_DIR}/localize-libm.cmake" "${VCORE_PLACEMENT_STAMP}"
     COMMENT "Localizing the C math functions of the Rust library"
     VERBATIM
   )

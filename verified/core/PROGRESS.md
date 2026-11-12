@@ -101,6 +101,42 @@ widths (core 64-bit ~2 min, 32-bit ~1 min with 16 jobs). Two proofs of
 view.rs (`lemma_bytes_written`, `copy_content`) needed explicit hints
 after the new module contents at 32 bits.
 
+## Hardware runs: where the time goes (branch device/hw-perf, 2026-11-12)
+
+Attribution and fixes of the format-2 gaps on the boards; details in
+docs/format2-migration.md, "Where the time goes"; artifacts
+/home/flo/work/opentoit-sandbox-artifacts/hw-perf.
+
+- Tool: Kconfig TOIT_HW_PERF (src/hw_perf.h): cycles, retired
+  instructions and Xtensa stall counters per VM activity and per C++
+  primitive, plus PC samples; `Profiler.start`/`stop` without a profiler
+  reset and print them.
+- Cause: not instructions (200 service calls: 32.4 M in format 2, 29.1 M
+  in format 1) but flash: the core's out-of-loop functions and glue ran
+  from flash (25-30 % of format 2's busy time on the classic ESP32, 16-25 %
+  on the C6) and evicted the C++ runtime from the shared flash cache. Of
+  the ESP32's extra cycles in service calls: instruction-fetch stalls 79 %
+  (core and glue 42 %, C++ runtime 37 %), data stalls 26 %.
+- Fix (no proven code changed): the C++ hand-over and primitive glue in
+  IRAM; Kconfig TOIT_VERIFIED_CORE_IRAM_FUNCTIONS places named core
+  functions in IRAM (classic ESP32 3.8 KB, all that fits; C6/S3 11.7 KB).
+  200 service calls f2/f1: ESP32 1.82 -> 1.25, C6 1.70 -> 1.17, S3 2.46 ->
+  1.08; json ESP32 1.06-1.11, C6 1.16.
+- Logic costs found for the core: the finally records move (ROM memmove)
+  on every call inside a `try` (9-12 % of task switching), and
+  `ensure_room_all` walks every frame on resume (2-8 %). With room for the
+  rest of the hot functions in IRAM the classic ESP32 matched format 1 on
+  service calls (543 vs 560 ms, a firmware without Bluetooth). Requests S1
+  (split the loop: 99 % of its samples in 8 KB, all in 13.8 KB of 28 KB),
+  S2-S6 in OBLIGATIONS.md ("Device speed requests").
+- WiFi RX opt (13.2 KB IRAM): no measurable throughput difference (Toit
+  TCP receive 200-300 KB/s either way).
+- Install on the classic ESP32: 5.4-6.8 s (the trace build added 0.7 s);
+  verification 4.0-5.0 s, of which 99 % method checks: 270-490 M
+  instructions at CPI 2.5, malloc/free a third of the busy samples;
+  verifier opt-level 3 or s within 5 % of z. Requests V1 (allocations),
+  V2 (instructions).
+
 ## Hardware runs (branch device/hardware, 2026-11-12)
 
 First runs of format 2 on the core on real boards: an ESP32-C6, the rig's

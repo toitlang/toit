@@ -110,6 +110,13 @@
 #define TOIT_V2_OK ((uword)0)
 #define TOIT_V2_STACK_OVERFLOW ((uword)1)
 #define TOIT_V2_OUT_OF_MEMORY ((uword)2)
+#define TOIT_V2_PRIMITIVE_SUCCESS ((uword)0)
+#define TOIT_V2_PRIMITIVE_FAILURE ((uword)1)
+#define TOIT_V2_PRIMITIVE_THROW ((uword)2)
+#define TOIT_V2_PRIMITIVE_ABSENT ((uword)3)
+// src/flags.h: a debug flag, a constant in release builds (TOIT_DEPLOY,
+// the build the renderings are made for).
+#define Flags_primitives false
 
 // src/primitive.h, the error roots of src/program.h, class Error.
 #define STRINGS_OR_BYTE_ARRAYS 0
@@ -154,6 +161,13 @@
 // The message types (src/messaging.h MessageType).
 #define MESSAGE_MONITOR_NOTIFY 1
 #define MESSAGE_SYSTEM 3
+// The send results (src/messaging.h message_err_t).
+#define MESSAGE_OK 0
+#define MESSAGE_OOM 1
+#define MESSAGE_NO_SUCH_RECEIVER 2
+#define MESSAGE_PERMISSION_DENIED 3
+#define MESSAGE_QUOTA_EXCEEDED 4
+#define SYSTEM_RPC_REPLY 4
 // The decoder (src/messaging.h MessageDecoder::Status, Smi limits, top.h).
 #define MessageDecoder_DECODE_SUCCESS 0
 #define MessageDecoder_DECODE_ALLOCATION_FAILED 1

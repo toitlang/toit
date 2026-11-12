@@ -31,6 +31,18 @@ typedef struct Later Later;
 void plain_c_ctor(struct plain_c *self);
 //@ requires self->a |-> _;
 //@ ensures self->a |-> _;
+// C++: the lambda at verified/cxx/annotated/tests/rules.cc:221:30 (the closure rules)
+struct use_lambdas_lambda1 { word base; word b; };
+word use_lambdas_lambda1_call(struct use_lambdas_lambda1 *closure);
+//@ requires [?f]closure->base |-> ?x &*& [f]closure->b |-> ?y &*& 0 <= x &*& x < 100 &*& 0 <= y &*& y < 100;
+//@ ensures [f]closure->base |-> x &*& [f]closure->b |-> y &*& result == x + y;
+
+// C++: the lambda at verified/cxx/annotated/tests/rules.cc:223:24 (the closure rules)
+struct use_lambdas_lambda2 { word base; };
+word use_lambdas_lambda2_call(struct use_lambdas_lambda2 *closure);
+//@ requires [?f]closure->base |-> ?x &*& 0 <= x &*& x < 1000;
+//@ ensures [f]closure->base |-> x &*& result == x;
+
 // C++: verified/cxx/annotated/tests/rules.cc toit::Outer::Inner::Inner
 void Outer_Inner_ctor(Outer_Inner *self, word x);
 //@ requires self->v_ |-> _ &*& x < 100;
@@ -159,6 +171,22 @@ void Later_ctor(Later *self, word x);
 word count_up(word n);
 //@ requires 0 <= n &*& n < 1000;
 //@ ensures result == n;
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::use_lambdas
+word use_lambdas(word a, word b);
+//@ requires 0 <= a &*& a < 100 &*& 0 <= b &*& b < 100;
+//@ ensures result == a + b + 3;
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::retry_once
+word retry_once__use_lambdas_lambda1(word n, struct use_lambdas_lambda1 *produce);
+/*@ requires [?f]produce->base |-> ?x &*& [f]produce->b |-> ?y &*& 0 <= x &*& x < 100 &*& 0 <= y &*& y < 100 &*&
+             0 <= n &*& n < 10; @*/
+//@ ensures [f]produce->base |-> x &*& [f]produce->b |-> y &*& result == x + y + n;
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::retry_once
+word retry_once__use_lambdas_lambda2(word n, struct use_lambdas_lambda2 *produce);
+//@ requires [?f]produce->base |-> ?x &*& 0 <= x &*& x < 1000 &*& 0 <= n &*& n < 10;
+//@ ensures [f]produce->base |-> x &*& result == x + n;
 
 // C++: verified/cxx/annotated/tests/rules.cc toit::Outer::Inner::Inner
 void Outer_Inner_ctor(Outer_Inner *self, word x)
@@ -419,5 +447,62 @@ word count_up(word n)
     total++;
   }
   return total;
+}
+
+// C++: the lambda at verified/cxx/annotated/tests/rules.cc:221:30 (the closure rules)
+word use_lambdas_lambda1_call(struct use_lambdas_lambda1 *closure)
+//@ requires [?f]closure->base |-> ?x &*& [f]closure->b |-> ?y &*& 0 <= x &*& x < 100 &*& 0 <= y &*& y < 100;
+//@ ensures [f]closure->base |-> x &*& [f]closure->b |-> y &*& result == x + y;
+{
+  return closure->base + closure->b;
+}
+
+// C++: the lambda at verified/cxx/annotated/tests/rules.cc:223:24 (the closure rules)
+word use_lambdas_lambda2_call(struct use_lambdas_lambda2 *closure)
+//@ requires [?f]closure->base |-> ?x &*& 0 <= x &*& x < 1000;
+//@ ensures [f]closure->base |-> x &*& result == x;
+{
+  return closure->base;
+}
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::use_lambdas
+word use_lambdas(word a, word b)
+//@ requires 0 <= a &*& a < 100 &*& 0 <= b &*& b < 100;
+//@ ensures result == a + b + 3;
+{
+  struct use_lambdas_lambda1 closure1;
+  struct use_lambdas_lambda2 closure2;
+  word base = a;
+  closure1.base = base;
+  closure1.b = b;
+  word first = retry_once__use_lambdas_lambda1(1, &closure1);
+  base = first;
+  closure2.base = base;
+  return retry_once__use_lambdas_lambda2(2, &closure2);
+}
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::retry_once
+word retry_once__use_lambdas_lambda1(word n, struct use_lambdas_lambda1 *produce)
+/*@ requires [?f]produce->base |-> ?x &*& [f]produce->b |-> ?y &*& 0 <= x &*& x < 100 &*& 0 <= y &*& y < 100 &*&
+             0 <= n &*& n < 10; @*/
+//@ ensures [f]produce->base |-> x &*& [f]produce->b |-> y &*& result == x + y + n;
+{
+  word result = use_lambdas_lambda1_call(produce);
+  if (result < 0) {
+    result = use_lambdas_lambda1_call(produce);
+  }
+  return result + n;
+}
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::retry_once
+word retry_once__use_lambdas_lambda2(word n, struct use_lambdas_lambda2 *produce)
+//@ requires [?f]produce->base |-> ?x &*& 0 <= x &*& x < 1000 &*& 0 <= n &*& n < 10;
+//@ ensures [f]produce->base |-> x &*& result == x + n;
+{
+  word result = use_lambdas_lambda2_call(produce);
+  if (result < 0) {
+    result = use_lambdas_lambda2_call(produce);
+  }
+  return result + n;
 }
 

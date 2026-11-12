@@ -49,6 +49,10 @@ Rendering rules (see verified/cxx/annotated/README.md, "The rendering"):
   every exit from its scope.
 * The release `ASSERT(c)` (`while (false && (c)) {}`) is a comment: its
   condition is never evaluated.
+* The closure rules: a lambda is a struct of its captures and a function
+  of it, a function template instance taking it (rendered with the
+  option `lambda=ENCLOSING[#K]`) one C function per instance (see `Closure`, with
+  the checks that make a copy of a captured value what the reference is).
 Anything else in the AST (an expression or statement kind not listed, a
   cast of an unknown kind) is an error: the tool never guesses.
 
@@ -440,6 +444,140 @@ is-empty node -> bool:
   return node is Map and not (node as Map).contains "kind"
 
 // ---------------------------------------------------------------------------
+// Closures (the closure rules; README, "The rendering").
+//
+// A lambda `[&]() -> R { body }` of a rendered function is rendered as a
+// struct of its captures (`struct F_lambdaK`, F the C name of the enclosing
+// function, K its position in it) and a function `R F_lambdaK_call(struct
+// F_lambdaK *closure)` whose body is the lambda's, a captured variable `v`
+// being `closure->v`. Where the lambda is created, a local of the struct
+// (declared at the start of the block, its address is taken) gets the
+// captured values (`closureK.v = v;`, just before the statement) and the
+// lambda expression is `&closureK`. A function template instantiated with
+// the closure type (`v2_allocate<F>`, rendered with `lambda=ENCLOSING[#K]`)
+// is one C function per instance, `name__F_lambdaK`, its closure parameter
+// a pointer to the caller's struct, and a call `f()` of it is
+// `F_lambdaK_call(f)`.
+//
+// A capture by reference is rendered as a copy of the value. That is the
+// same only because the translator checks that nothing can tell them
+// apart: the lambda only reads its captures (every use is an
+// lvalue-to-rvalue conversion), takes no parameters and is not `mutable`;
+// it is created as an argument of a call (only temporaries and the move
+// into the parameter in between), so it does not outlive the call; the
+// captured variables are locals or parameters of the enclosing function
+// whose address is never taken and that are not references, and the
+// statement that creates the lambda does not assign them (outside the
+// lambda), so no code can change them while the closure lives; the
+// template instance only calls its closure parameter (no copy escapes).
+// Anything else is an error.
+
+// Clang's spelling of a closure type -> the C name of its struct.
+LAMBDA-NAMES ::= {:}
+
+class Closure:
+  name/string          // The struct; the function is `$(name)_call`.
+  spelling/string      // `(lambda at FILE:LINE:COL)`.
+  node/Map             // The LambdaExpr.
+  body/Map             // Its body (a CompoundStmt).
+  captures/List        // [name, C type] in the order of the struct's fields.
+  local/string         // The enclosing function's local of the struct.
+  result-type/string
+  ghosts/List := []    // The annotations inside the lambda (its contract at the body's `{`).
+  constructor .name .spelling .node .body .captures .local .result-type:
+
+// The lambdas of a function body, in source order: [LambdaExpr, the
+// statement it is created in]. That statement must be a declaration, a
+// return or an expression statement of a block (the closure is
+// initialized just before it); a lambda in a condition, a loop header or
+// a branch without braces, or inside a lambda, is an error.
+collect-lambdas node out/List --statement/Map?=null --parent-kind/string="" --in-lambda/bool=false -> none:
+  if node is List:
+    (node as List).do: collect-lambdas it out --statement=statement --parent-kind=parent-kind --in-lambda=in-lambda
+    return
+  if node is not Map: return
+  m := node as Map
+  kind := m.get "kind"
+  if not kind: return
+  if kind == "LambdaExpr":
+    if in-lambda: fail "a lambda inside a lambda is not supported$(line-of-node m)"
+    if not statement: fail "a lambda outside a declaration, return or expression statement of a block$(line-of-node m)"
+    out.add [m, statement]
+    collect-lambdas (inner m) out --statement=statement --parent-kind=kind --in-lambda
+    return
+  if in-lambda:
+    collect-lambdas (inner m) out --statement=statement --parent-kind=kind --in-lambda
+    return
+  if parent-kind == "CompoundStmt" and (kind == "DeclStmt" or kind == "ReturnStmt" or kind == "ExprWithCleanups" or kind.ends-with "Expr" or kind.ends-with "Operator"):
+    statement = m
+  else if kind.ends-with "Stmt":
+    statement = null
+  collect-lambdas (inner m) out --statement=statement --parent-kind=kind
+
+// The 1-based line and column of a byte offset (Clang's columns count bytes).
+line-col source/string offset/int -> string:
+  line := 1
+  col := 1
+  for i := 0; i < offset; i++:
+    if (source.at --raw i) == '\n':
+      line++
+      col = 1
+    else:
+      col++
+  return "$line:$col"
+
+// The trailing return type of a lambda's call operator, `auto () const -> R`.
+lambda-result-type method-type/string -> string:
+  arrow := method-type.index-of "->"
+  if arrow < 0: fail "a lambda without a trailing return type (write `[&]() -> T { ... }`)"
+  if not method-type[..arrow].contains "const": fail "a mutable lambda is not supported"
+  return c-type method-type[arrow + 2..].trim
+
+// Checks the uses of the variables $ids in $node (outside lambdas when
+// $skip-lambdas): each must be a read (the operand of an lvalue-to-rvalue
+// conversion) or, with $writes, the target of an assignment, compound
+// assignment, increment or decrement. So the address of such a variable
+// is never taken and no reference is bound to it. $what names the place
+// for the error.
+check-uses node ids/Set parent/Map? what/string --writes/bool=false --skip-lambdas/bool=false -> none:
+  if node is List:
+    (node as List).do: check-uses it ids parent what --writes=writes --skip-lambdas=skip-lambdas
+    return
+  if node is not Map: return
+  m := node as Map
+  if skip-lambdas and (m.get "kind") == "LambdaExpr": return
+  if (m.get "kind") == "DeclRefExpr" and (ids.contains m["referencedDecl"]["id"]):
+    ok := parent and parent["kind"] == "ImplicitCastExpr" and parent["castKind"] == "LValueToRValue"
+    if writes and parent and (inner parent).size > 0 and (inner parent)[0] == m:
+      pk := parent["kind"]
+      if pk == "CompoundAssignOperator" or (pk == "BinaryOperator" and parent["opcode"] == "="): ok = true
+      if pk == "UnaryOperator" and (parent["opcode"] == "++" or parent["opcode"] == "--"): ok = true
+    if not ok:
+      fail "closure rules: $what uses the captured $m["referencedDecl"]["name"] other than by $(writes ? "reading or assigning" : "reading") it$(line-of-node m)"
+  (inner m).do: check-uses it ids m what --writes=writes --skip-lambdas=skip-lambdas
+
+// ` (line N)` when Clang's JSON gives the node's line (it omits a line
+// that equals the previous location's).
+line-of-node m/Map -> string:
+  loc := m.get "loc"
+  if loc is Map and loc.contains "line": return " (line $loc["line"])"
+  return ""
+
+// Checks that every use of the parameter $id in $node is the object of a
+// call of its call operator (`f()`), so the closure does not escape.
+only-called node id/string parent/Map? grand/Map? -> none:
+  if node is List:
+    (node as List).do: only-called it id parent grand
+    return
+  if node is not Map: return
+  m := node as Map
+  if (m.get "kind") == "DeclRefExpr" and m["referencedDecl"]["id"] == id:
+    ok := parent and parent["kind"] == "ImplicitCastExpr" and parent["castKind"] == "NoOp"
+        and grand and grand["kind"] == "CXXOperatorCallExpr" and (inner grand).size == 2 and (inner grand)[1] == parent
+    if not ok: fail "the closure parameter $m["referencedDecl"]["name"] is used other than called"
+  (inner m).do: only-called it id m parent
+
+// ---------------------------------------------------------------------------
 // Types.
 
 /**
@@ -447,6 +585,17 @@ Normalizes a C++ type spelling to C: drops `toit::`, `const`, `volatile`,
   `class`/`struct` keywords stay, references are rejected.
 */
 c-type t/string -> string:
+  // A lambda's closure type (Clang: `(lambda at FILE:LINE:COL)`) is a
+  // pointer to its closure struct (the closure rules, `Closure`).
+  lambda-at := t.index-of "(lambda at "
+  if lambda-at >= 0:
+    close := t.index-of ")" lambda-at
+    spelling := t[lambda-at..close + 1]
+    name := LAMBDA-NAMES.get spelling
+    if not name: fail "the closure type $spelling is not a lambda of a function this unit renders (@render ... lambda=ENCLOSING)"
+    rest := (t[..lambda-at] + t[close + 1..]).replace --all "const" ""
+    if rest.trim != "": fail "closure type $t not supported (only the closure itself, by value)"
+    return "struct $name *"
   t = t.replace --all "toit::" ""
   // Clang 20 names the type of sizeof `__size_t` (a builtin alias).
   if t == "__size_t": t = "size_t"
@@ -562,6 +711,9 @@ class Renderer:
   signatures/Map      // C name -> parameter types, shared by all units.
   lines := []
   locals := {}
+  local-names := {:}  // VarDecl id -> its C name (local-name).
+  name-scopes := []   // The C names of the locals of each enclosing block.
+  param-names := {}
   reference-params := {}  // Parameters of a reference type (pointers in C).
   hoisted := {}  // The ids of the locals declared at the start of their block.
   // A stack of scopes, each a list of [class, name] of locals with a
@@ -569,6 +721,13 @@ class Renderer:
   raii-scopes := []
   result-type/string := "void"
   temp-count := 0
+  // The closure rules: in a lambda's function, captured name -> its
+  // rendering (`closure->v`); in the enclosing function, its closures and
+  // where each is created.
+  captures := {:}
+  closures := []
+  lambda-locals := {:}  // LambdaExpr id -> the local of its closure struct.
+  lambda-at := {:}      // Statement id -> the closures created in it.
 
   owners/Map         // Declaration id -> its top-level declaration (class).
 
@@ -752,6 +911,12 @@ class Renderer:
     if node["kind"] != "DeclRefExpr": fail "$(where node): call of a $node["kind"]"
     ref := node["referencedDecl"]
     name := ref["name"]
+    // A call through a function pointer held in a local or a parameter
+    // (`entry(process, args)`, a primitive's entry): the C call through
+    // the pointer, whose contract is its function type's.
+    if (ref["kind"] == "VarDecl" or ref["kind"] == "ParmVarDecl") and locals.contains name:
+      if not (c-type ref["type"]["qualType"]).ends-with "*": fail "$(where node): call of $name, not a function pointer"
+      return name
     s := spelling node
     params := fn-param-types ref["type"]["qualType"]
     c-name/string := ?
@@ -767,7 +932,7 @@ class Renderer:
         if not cls: fail "$(where node): static member call outside a class"
         c-name = mangle-member cls name params
     else if ref["kind"] == "FunctionDecl":
-      c-name = s ? (mangle-spelling s) : name
+      c-name = (s ? (mangle-spelling s) : name) + (instance-suffix ref["type"]["qualType"])
       if sidecar.overloaded.contains name:
         c-name = "$(c-name)__$((params.map: (it.replace --all " " "").replace --all "*" "p").join "_")"
     else:
@@ -863,12 +1028,39 @@ class Renderer:
       return Expr "0" PREC-PRIMARY
     if kind == "CXXThisExpr":
       return Expr "self" PREC-PRIMARY
+    if kind == "CXXDeleteExpr":
+      // `delete p` (not an array): the destructor (virtual or not) and the
+      // deallocation, a function the sidecar declares for p's static class
+      // (`T_delete`).
+      if (node.get "isArrayAsWritten") == true or (node.get "isArray") == true: fail "$(where node): delete[] not supported"
+      operand := kids[0]
+      while operand["kind"] == "ImplicitCastExpr" and operand["castKind"] == "LValueToRValue": operand = (inner operand)[0]
+      return Expr "$(class-of-pointer kids[0]["type"]["qualType"])_delete($(wrap (expr kids[0]) PREC-ASSIGN))" PREC-PRIMARY
+    if kind == "LambdaExpr":
+      local := lambda-locals.get node["id"]
+      if not local: fail "$(where node): a lambda the closure rules did not prepare"
+      return Expr "&$local" PREC-UNARY
+    if kind == "CXXConstructExpr" and (node["type"]["qualType"].contains "(lambda at ") and kids.size == 1:
+      // The move of the closure into a by-value parameter: the closure itself.
+      return expr kids[0]
+    if kind == "CXXOperatorCallExpr" and kids.size == 2:
+      callee := kids[0]
+      while callee["kind"] == "ImplicitCastExpr": callee = (inner callee)[0]
+      if callee["kind"] == "DeclRefExpr" and callee["referencedDecl"]["name"] == "operator()":
+        // A call of a closure: its function on the closure struct.
+        closure-type := c-type kids[1]["type"]["qualType"]
+        fn := "$(closure-type[7..closure-type.size - 1].trim)_call"
+        return Expr "$fn($(wrap (expr kids[1]) PREC-ASSIGN))" PREC-PRIMARY
+      fail "$(where node): operator call $(callee.get "referencedDecl")"
     if kind == "DeclRefExpr":
       ref := node["referencedDecl"]
       rk := ref["kind"]
       name := ref["name"]
+      if captures.contains ref["id"]:
+        return Expr captures[ref["id"]] PREC-PRIMARY
       if rk == "ParmVarDecl" and reference-params.contains name:
         return Expr "(*$name)" PREC-PRIMARY
+      if local-names.contains ref["id"]: return Expr local-names[ref["id"]] PREC-PRIMARY
       if (rk == "ParmVarDecl" or rk == "VarDecl") and locals.contains name:
         return Expr name PREC-PRIMARY
       if rk == "VarDecl" or rk == "EnumConstantDecl":
@@ -968,13 +1160,15 @@ class Renderer:
   // where it was. Declaring earlier changes nothing in C.
   hoist kids/List block/Map indent/int:
     kids.do: | k/Map |
+      (lambda-at.get k["id"] --if-absent=: []).do: | c/Closure |
+        emit indent "struct $c.name $c.local;"
       if k["kind"] == "DeclStmt":
         (inner k).do: | d/Map |
           if d["kind"] == "VarDecl":
             init := (inner d).is-empty ? null : (strip-cleanups (inner d)[0])
             if (init and init["kind"] == "CXXConstructExpr") or (address-taken block d["id"]):
               hoisted.add d["id"]
-              emit indent "$(declarator (c-type d["type"]["qualType"]) d["name"]);"
+              emit indent "$(declarator (c-type d["type"]["qualType"]) (local-name d));"
 
   address-taken node id/string -> bool:
     if node is List:
@@ -989,6 +1183,7 @@ class Renderer:
     return address-taken (inner m) id
 
   block-contents node/Map indent/int:
+    name-scopes.add {}
     raii-scopes.add []
     kids := inner node
     hoist kids node indent
@@ -1001,12 +1196,17 @@ class Renderer:
     scope := raii-scopes.remove-last
     if not scope.is-empty and not (kids.size > 0 and kids.last["kind"] == "ReturnStmt"):
       scope.do --reversed: | entry/List | emit indent "$(entry[0])_dtor(&$(entry[1]));"
+    name-scopes.remove-last
 
   // $next: the offset where the statement after $node starts (or the end
   // of the enclosing block), or null when $node is a branch on its own.
   stmt node/Map indent/int next/int?:
     kind := node["kind"]
     kids := inner node
+    // The closures this statement creates get their captured values first
+    // (nothing in the statement assigns them: checked by the closure rules).
+    (lambda-at.get node["id"] --if-absent=: []).do: | c/Closure |
+      c.captures.do: | cap/List | emit indent "$c.local.$cap[0] = $cap[0];"
     if kind == "CompoundStmt":
       emit indent "{"
       block-contents node indent + 1
@@ -1036,6 +1236,8 @@ class Renderer:
     else if kind == "ForStmt":
       init := kids[0]
       if not is-empty kids[1]: fail "$(where node): for with a condition variable"
+      // The loop variable's scope is the loop.
+      name-scopes.add {}
       init-text := ""
       if not is-empty init:
         if init["kind"] == "DeclStmt":
@@ -1048,6 +1250,7 @@ class Renderer:
       inc-text := is-empty kids[3] ? "" : (expr kids[3]).text
       emit indent "for ($init-text; $cond-text; $inc-text)"
       loop-body kids[4] indent
+      name-scopes.remove-last
     else if kind == "WhileStmt":
       if node.get "hasVar": fail "$(where node): while with a condition variable"
       cond := strip-parens kids[0]
@@ -1172,9 +1375,25 @@ class Renderer:
       body else-node indent + 1
     emit indent "}"
 
-  var-decl-text decl/Map -> string:
+  // The C name of a local: its own, or, when it hides another local of the
+  // function (a nested block's `encoder`; VeriFast rejects hiding), the
+  // name with a suffix. References find it by the declaration's id.
+  local-name decl/Map -> string:
+    id := decl["id"]
+    if local-names.contains id: return local-names[id]
     name := decl["name"]
+    visible := : | n/string | (param-names.contains n) or (name-scopes.any: | s/Set | s.contains n)
+    if visible.call name:
+      n := 1
+      while visible.call "$(name)_$n": n++
+      name = "$(name)_$n"
     locals.add name
+    if not name-scopes.is-empty: (name-scopes.last as Set).add name
+    local-names[id] = name
+    return name
+
+  var-decl-text decl/Map -> string:
+    name := local-name decl
     type := c-type decl["type"]["qualType"]
     kids := inner decl
     if kids.is-empty: return declarator type name
@@ -1188,18 +1407,56 @@ class Renderer:
     kids := inner decl
     init := kids.is-empty ? null : (strip-cleanups kids[0])
     if init and init["kind"] == "CXXConstructExpr":
-      name := decl["name"]
-      locals.add name
+      name := local-name decl
       type := c-type decl["type"]["qualType"]
       if not hoisted.contains decl["id"]: emit indent "$(declarator type name);"
       construct name type init indent
       if sidecar.raii.contains type: raii-scopes.last.add [type, name]
       return
+    new-init := init
+    while new-init and new-init["kind"] == "ImplicitCastExpr" and (new-init["castKind"] == "NoOp" or new-init["castKind"] == "DerivedToBase"):
+      new-init = (inner new-init)[0]
+    if new-init and new-init["kind"] == "CXXNewExpr":
+      // `T* v = new (std::nothrow) T(args);` (the `_new` of src/top.h):
+      // the allocation, a function the sidecar declares (`T_new_nothrow`:
+      // null, or the fields of a fresh T), then the constructor on success
+      // only. The arguments are evaluated after the allocation (C++17's
+      // order; C++11 leaves it open), so they must not assign anything.
+      nk := inner new-init
+      placement := nk.size == 2 ? (strip-parens nk[1]) : null
+      while placement and placement["kind"] == "ImplicitCastExpr": placement = (inner placement)[0]
+      if not (new-init.get "isPlacement") or not placement or placement["kind"] != "DeclRefExpr"
+          or placement["referencedDecl"]["name"] != "nothrow" or nk[0]["kind"] != "CXXConstructExpr":
+        fail "$(where decl): only `new (std::nothrow) T(args)` is supported"
+      if modifies-anything nk[0]: fail "$(where decl): the arguments of a new-expression must not assign anything"
+      if hoisted.contains decl["id"]: fail "$(where decl): a new-expression into a local whose address is taken"
+      name := local-name decl
+      type := c-type decl["type"]["qualType"]
+      cls-type := c-type nk[0]["type"]["qualType"]
+      emit indent "$(declarator type name) = $(cls-type)_new_nothrow();"
+      emit indent "if ($name != 0) {"
+      construct-into name cls-type nk[0] (indent + 1)
+      emit indent "}"
+      return
     if hoisted.contains decl["id"]:
-      locals.add decl["name"]
-      if init: emit indent "$decl["name"] = $(wrap (expr init) PREC-ASSIGN);"
+      name := local-name decl
+      if init: emit indent "$name = $(wrap (expr init) PREC-ASSIGN);"
       return
     emit indent "$(var-decl-text decl);"
+
+  // Whether $node has an assignment, compound assignment, increment,
+  // decrement or new-expression.
+  modifies-anything node -> bool:
+    if node is List:
+      (node as List).do: if modifies-anything it: return true
+      return false
+    if node is not Map: return false
+    m := node as Map
+    kind := m.get "kind"
+    if kind == "CompoundAssignOperator" or kind == "CXXNewExpr": return true
+    if kind == "BinaryOperator" and m["opcode"] == "=": return true
+    if kind == "UnaryOperator" and (m["opcode"] == "++" or m["opcode"] == "--"): return true
+    return modifies-anything (inner m)
 
   // The constructor call of $init (a CXXConstructExpr or a
   // CXXTemporaryObjectExpr) for the object $name of C type $type.
@@ -1302,11 +1559,12 @@ class Renderer:
       pname := p.get "name" --if-absent=: "p$i"
       locals.add pname
       if is-reference p["type"]["qualType"]: reference-params.add pname
+      param-names.add pname
       t := c-type p["type"]["qualType"]
       types.add t
       ps.add (declarator t pname)
     if ps.is-empty: ps.add "void"
-    fname := cls ? (mangle-member cls name types) : name
+    fname := cls ? (mangle-member cls name types) : name + (instance-suffix decl["type"]["qualType"])
     note-signature fname (params.map: c-type (canonical it["type"])) decl
     result-type = (kind == "CXXConstructorDecl" or kind == "CXXDestructorDecl") ? "void" : (return-type decl["type"]["qualType"])
     return declarator result-type "$fname($(ps.join ", "))"
@@ -1314,7 +1572,30 @@ class Renderer:
   c-name decl/Map -> string:
     params := (inner decl).filter: it["kind"] == "ParmVarDecl"
     types := params.map: c-type it["type"]["qualType"]
-    return cls ? (mangle-member cls decl["name"] types) : decl["name"]
+    return cls ? (mangle-member cls decl["name"] types) : decl["name"] + (instance-suffix decl["type"]["qualType"])
+
+  // A function template instance taking a closure (the closure rules) is
+  // named after the lambda: `name__F_lambdaK`.
+  instance-suffix fn-type/string -> string:
+    at := fn-type.index-of "(lambda at "
+    if at < 0: return ""
+    close := fn-type.index-of ")" at
+    lambda := LAMBDA-NAMES.get fn-type[at..close + 1]
+    if not lambda: fail "$fn-type: a closure type of no rendered function"
+    return "__$lambda"
+
+  // The function of a closure (the closure rules), rendered by a renderer
+  // whose `captures` name the struct's fields.
+  lambda-function c/Closure --prototype/bool=false:
+    result-type = c.result-type
+    fn := "$(c.name)_call"
+    note-signature fn ["struct $c.name *"] c.node
+    lines.add (declarator c.result-type "$fn(struct $c.name *closure)") + (prototype ? ";" : "")
+    ghosts-up-to (begin-offset c.body) 0
+    if prototype: return
+    lines.add "{"
+    block-contents c.body 1
+    lines.add "}"
 
   function decl/Map body-node/Map --prototype/bool=false:
     sig := signature decl
@@ -1328,6 +1609,14 @@ class Renderer:
         if init.contains "delegatingInit":
           // A delegating constructor: the target constructor on self.
           construct-into "self" cls (inner init)[0] 1
+        else if init.contains "baseInit":
+          // The base class's default constructor (implicit: the vtable,
+          // the base's own default member initializers): `Base_ctor(self)`,
+          // whose contract the sidecar declares. Only without arguments.
+          base-ctor := (inner init)[0]
+          if base-ctor["kind"] != "CXXConstructExpr" or not (inner base-ctor).is-empty:
+            fail "$(where decl): a base-class initializer with arguments"
+          emit 1 "$(c-type init["baseInit"]["qualType"])_ctor(self);"
         else if not init.contains "anyInit":
           fail "$(where decl): a base-class initializer"
         else:
@@ -1362,6 +1651,9 @@ class Renderer:
       value = strip-parens (inner value)[0]
     if value["kind"] == "CXXBoolLiteralExpr": return value["value"] ? "true" : "false"
     if value["kind"] == "IntegerLiteral": return "$value["value"]"
+    if value["kind"] == "UnaryOperator" and value["opcode"] == "-" and (strip-parens (inner value)[0])["kind"] == "IntegerLiteral":
+      // A negative literal (`problematic_class_id_ = -1`).
+      return "-$((strip-parens (inner value)[0])["value"])"
     if value["kind"] == "CXXNullPtrLiteralExpr": return "0"
     if value["kind"] == "DeclRefExpr" and value["referencedDecl"]["kind"] == "EnumConstantDecl":
       name := value["referencedDecl"]["name"]
@@ -1408,6 +1700,7 @@ class Prepared:
   source/string
   trusted/bool
   c-name/string
+  closures/List := []  // [Closure, its Renderer] of the lambdas in the function.
   constructor .section .renderer .decl .body .path .source .trusted .c-name:
 
 class Unit:
@@ -1458,11 +1751,13 @@ class Unit:
     ren := r.renderer
     ren.lines = []
     ren.locals = {}
+    ren.local-names = {:}
     ren.ghosts.do: | g/Ghost | g.emitted = false
     ren.function r.decl r.body --prototype
     text := expand-typedefs (ren.lines.join "\n")
     ren.ghosts.do: | g/Ghost | g.emitted = false
     ren.locals = {}
+    ren.local-names = {:}
     return text
 
   definition r/Prepared -> string:
@@ -1472,6 +1767,22 @@ class Unit:
     leftover := ren.ghosts.filter: not it.emitted
     if not leftover.is-empty:
       fail "$sidecar.path:$r.section.line: annotation not at a statement boundary: $((leftover[0] as Ghost).text)"
+    return expand-typedefs (ren.lines.join "\n")
+
+  // The prototype or the definition of a closure's function.
+  lambda-text pair/List --prototype/bool=false -> string:
+    cl := pair[0] as Closure
+    ren := pair[1] as Renderer
+    ren.lines = []
+    ren.locals = {}
+    ren.local-names = {:}
+    cl.ghosts.do: | g/Ghost | g.emitted = false
+    ren.lambda-function cl --prototype=prototype
+    if not prototype:
+      leftover := cl.ghosts.filter: not it.emitted
+      if not leftover.is-empty:
+        fail "$sidecar.path: annotation not at a statement boundary of the lambda $cl.name: $((leftover[0] as Ghost).text)"
+    cl.ghosts.do: | g/Ghost | g.emitted = false
     return expand-typedefs (ren.lines.join "\n")
 
   /**
@@ -1491,6 +1802,17 @@ class Unit:
       c.add "#include \"$sidecar.header\""
       c.add ""
     shared := h or c
+    // The closure structs and the closures' functions come first: the
+    // template instances' prototypes name the structs.
+    closure-prototypes := []
+    prepared.do: | r/Prepared |
+      r.closures.do: | pair/List |
+        cl := pair[0] as Closure
+        fields := cl.captures.map: | cap/List | "$(declarator cap[1] cap[0]);"
+        closure-prototypes.add "// C++: the lambda at $cl.spelling[11..cl.spelling.size - 1] (the closure rules)"
+        closure-prototypes.add "struct $cl.name { $(fields.join " ") };"
+        closure-prototypes.add (lambda-text pair --prototype)
+        closure-prototypes.add ""
     // One C function per C name: const overloads must render the same.
     seen := {:}
     index := 0
@@ -1500,6 +1822,7 @@ class Unit:
       else if s.kind == "verbatim-c":
         c.add (s.text.trim --right)
       else if s.kind == "prototypes":
+        shared.add-all closure-prototypes
         done := {}
         prepared.do: | r/Prepared |
           if not done.contains r.c-name:
@@ -1516,6 +1839,11 @@ class Unit:
             fail "$sidecar.path:$s.line: $r.c-name renders differently from its other overload; give them different names with @overloaded"
         else:
           seen[r.c-name] = text
+          r.closures.do: | pair/List |
+            cl := pair[0] as Closure
+            c.add "// C++: the lambda at $cl.spelling[11..cl.spelling.size - 1] (the closure rules)"
+            c.add (lambda-text pair)
+            c.add ""
           if text:
             c.add "// C++: $r.path $s.args[1]"
             c.add text
@@ -1537,13 +1865,17 @@ class Unit:
     type/string? := null
     trusted := false
     truncating := false
+    lambda-of/string? := null
     s.args[2..].do: | a/string |
       if a.starts-with "tu=": tu = a[3..]
       else if a.starts-with "params=": params = int.parse a[7..]
       else if a.starts-with "type=": type = a[5..]
+      else if a.starts-with "lambda=": lambda-of = a[7..]
       else if a == "trusted": trusted = true
       else if a == "truncating": truncating = true
       else: fail "$sidecar.path:$s.line: unknown option $a"
+    // A function template instance with a closure type (the closure rules).
+    instance-spelling := lambda-of ? (resolve-lambda tu target path lambda-of) : null
     parts := qname.split "::"
     name := parts.last
     // The class, for a nested one `A::B` the C name `A_B`.
@@ -1554,6 +1886,14 @@ class Unit:
     source := (file.read-contents "$repo/$path").to-string
     candidates := []
     decls.do: | d/Map |
+      if instance-spelling:
+        // The instance of the template with that closure type.
+        if d["kind"] == "FunctionTemplateDecl":
+          (inner d).do: | f/Map |
+            if f["kind"] == "FunctionDecl" and (f["type"]["qualType"].contains instance-spelling):
+              bodies := (inner f).filter: it["kind"] == "CompoundStmt"
+              if not bodies.is-empty: candidates.add [f, bodies[0]]
+        continue.do
       if (d.get "out-of-line") == true:
         // An out-of-line definition: `C::name` must be how it is spelled.
         db := begin-offset d
@@ -1598,7 +1938,127 @@ class Unit:
     renderer.class-decl = :: | q/string |
       found := (cache.find tu target q).filter: | d/Map | d["kind"] == "CXXRecordDecl" and not (inner d).is-empty
       found.is-empty ? null : found[0]
-    return Prepared s renderer decl body-node path source trusted (renderer.c-name decl)
+    if instance-spelling:
+      // The instance only calls its closure parameters: no copy escapes.
+      ((inner decl).filter: it["kind"] == "ParmVarDecl" and (it["type"]["qualType"].contains "(lambda at ")).do: | p/Map |
+        only-called body-node p["id"] null null
+    result := Prepared s renderer decl body-node path source trusted (renderer.c-name decl)
+    // The lambdas of the function (the closure rules). A trusted function's
+    // body is not rendered (only compared with the source): no closures.
+    lambdas := []
+    if not trusted: collect-lambdas body-node lambdas
+    if not lambdas.is-empty:
+      if tu != path: fail "$sidecar.path:$s.line: lambdas are supported in the translation unit itself only"
+      fname := renderer.c-name decl
+      lambdas.size.repeat: | i |
+        node := lambdas[i][0] as Map
+        statement := lambdas[i][1] as Map
+        spelling := "(lambda at $path:$(line-col source (begin-offset node)))"
+        lname := "$(fname)_lambda$(i + 1)"
+        LAMBDA-NAMES[spelling] = lname
+        cl := make-closure node lname "closure$(i + 1)" spelling body-node statement
+        // The annotations inside the lambda are the lambda function's.
+        lb := begin-offset node
+        le := end-offset node
+        cl.ghosts = ghosts.filter: | g/Ghost | lb < g.anchor and g.anchor <= le
+        ghosts.filter --in-place: | g/Ghost | not (lb < g.anchor and g.anchor <= le)
+        lren := Renderer sidecar constants source path cls cl.ghosts uses cache.signatures (cache.owners tu target qname)
+        lren.cxx-cls = cxx-cls
+        lren.truncating = truncating
+        lren.decls-of = renderer.decls-of
+        lren.class-decl = renderer.class-decl
+        cl.captures.do: | cap/List | lren.captures[cap[2]] = "closure->$cap[0]"
+        renderer.lambda-locals[node["id"]] = cl.local
+        (renderer.lambda-at.get statement["id"] --init=: []).add cl
+        result.closures.add [cl, lren]
+    return result
+
+  /**
+  The closure of the LambdaExpr $node (the closure rules), with the checks
+    that make a copy of each captured value what the C++ reference is.
+  */
+  make-closure node/Map name/string local/string spelling/string body/Map statement/Map -> Closure:
+    kids := inner node
+    record := kids[0]
+    lambda-body := kids.last
+    if record["kind"] != "CXXRecordDecl" or lambda-body["kind"] != "CompoundStmt": fail "$spelling: unexpected lambda shape"
+    methods := (inner record).filter: it["kind"] == "CXXMethodDecl" and it["name"] == "operator()"
+    if methods.size != 1: fail "$spelling: a generic lambda is not supported"
+    method := methods[0]
+    if not ((inner method).filter: it["kind"] == "ParmVarDecl").is-empty: fail "$spelling: a lambda with parameters is not supported"
+    result-type := lambda-result-type method["type"]["qualType"]
+    fields := (inner record).filter: it["kind"] == "FieldDecl"
+    inits := kids[1..kids.size - 1]
+    if fields.size != inits.size: fail "$spelling: captures and fields differ"
+    captures := []
+    ids := {}
+    inits.size.repeat: | i |
+      init := inits[i]
+      by-ref := fields[i]["type"]["qualType"].ends-with "&"
+      ref := init
+      if not by-ref and ref["kind"] == "ImplicitCastExpr" and ref["castKind"] == "LValueToRValue": ref = (inner ref)[0]
+      if ref["kind"] != "DeclRefExpr": fail "$spelling: capture of a $ref["kind"] (only locals and parameters, no `this`, no objects by copy)"
+      decl := ref["referencedDecl"]
+      if decl["kind"] != "VarDecl" and decl["kind"] != "ParmVarDecl": fail "$spelling: capture of a $decl["kind"]"
+      if decl["type"]["qualType"].contains "&": fail "$spelling: capture of the reference $decl["name"]"
+      captures.add [decl["name"], c-type ref["type"]["qualType"], decl["id"]]
+      ids.add decl["id"]
+    // The lambda only reads its captures; the enclosing function only reads
+    // and assigns them (never takes their address or binds a reference);
+    // the statement that creates the lambda only reads them.
+    check-uses lambda-body ids null "the lambda $spelling"
+    check-uses body ids null "the enclosing function" --writes --skip-lambdas
+    check-uses statement ids null "the statement creating $spelling" --skip-lambdas
+    // The lambda is an argument of a call: only temporaries and the move
+    // into the by-value parameter between them.
+    if not (is-call-argument statement node): fail "$spelling: a lambda that is not the argument of a call (it must not outlive the statement)"
+    return Closure name spelling node lambda-body captures local result-type
+
+  // Whether the LambdaExpr $lambda is an argument of a call in $node, with
+  // only MaterializeTemporaryExpr, CXXConstructExpr (the closure's move),
+  // CXXBindTemporaryExpr and no-op conversions in between.
+  is-call-argument node lambda/Map -> bool:
+    if node is List:
+      (node as List).do: if is-call-argument it lambda: return true
+      return false
+    if node is not Map: return false
+    m := node as Map
+    if (m.get "kind") == "CallExpr":
+      (inner m)[1..].do: | a/Map |
+        while true:
+          k := a["kind"]
+          if k == "MaterializeTemporaryExpr" or k == "CXXBindTemporaryExpr" or (k == "CXXConstructExpr" and (inner a).size == 1)
+              or (k == "ImplicitCastExpr" and a["castKind"] == "NoOp"):
+            a = (inner a)[0]
+          else:
+            break
+        if a["id"] == lambda["id"]: return true
+    return is-call-argument (inner m) lambda
+
+  /**
+  The closure type of the lambda $spec (`ENCLOSING` or `ENCLOSING#K`, K
+    from 1 in source order) of a function in $path: registers its struct
+    name and returns Clang's spelling of the type.
+  */
+  resolve-lambda tu/string target/string? path/string spec/string -> string:
+    if tu != path: fail "lambda=: the template and the lambda must be in the translation unit itself"
+    hash := spec.index-of "#"
+    enclosing := hash < 0 ? spec : spec[..hash]
+    k := hash < 0 ? 0 : (int.parse spec[hash + 1..])
+    found := (cache.find tu target enclosing).filter: | d/Map | not ((inner d).filter: it["kind"] == "CompoundStmt").is-empty
+    if found.size != 1: fail "lambda=$spec: $(found.size) definitions of $enclosing"
+    body := ((inner found[0]).filter: it["kind"] == "CompoundStmt")[0]
+    lambdas := []
+    collect-lambdas body lambdas
+    if k == 0 and lambdas.size != 1: fail "lambda=$spec: $enclosing has $(lambdas.size) lambdas (name one: lambda=$enclosing#K)"
+    index := k == 0 ? 0 : k - 1
+    if index < 0 or index >= lambdas.size: fail "lambda=$spec: no such lambda"
+    source := (file.read-contents "$repo/$path").to-string
+    spelling := "(lambda at $path:$(line-col source (begin-offset lambdas[index][0])))"
+    parts := enclosing.split "::"
+    if parts[0] == "toit": parts = parts[1..]
+    LAMBDA-NAMES[spelling] = "$(parts.join "_")_lambda$(index + 1)"
+    return spelling
 
   report-drift s/Section path/string source/string base/int real/List annotated/List k/int:
     plain := annotated.filter: not it.ghost

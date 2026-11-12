@@ -67,6 +67,19 @@ if (DEFINED EXECUTING_SCRIPT)
   return()
 endif()
 
+# The compiler that `${HOST_TOIT} compile` runs, when it is built here: the
+# `toit` driver of this build's SDK runs this build's toit.compile, which is
+# rebuilt without relinking the driver. Outputs of the compiler must depend
+# on it, or they keep the old compiler's code after a change to the
+# compiler (stale test snapshots). Sets COMPILER_DEPS in the caller.
+function(TOIT_COMPILER_DEPS)
+  set(deps)
+  if (TARGET toit.compile AND "${HOST_TOIT}" STREQUAL "${CMAKE_BINARY_DIR}/sdk/bin/toit")
+    set(deps toit.compile)
+  endif()
+  set(COMPILER_DEPS ${deps} PARENT_SCOPE)
+endfunction()
+
 # Creates a custom command to build ${TARGET} with correct dependencies.
 function(ADD_TOIT_SNAPSHOT SOURCE TARGET DEP_FILE ENV)
   if (NOT DEFINED HOST_TOIT)
@@ -80,10 +93,11 @@ function(ADD_TOIT_SNAPSHOT SOURCE TARGET DEP_FILE ENV)
   if(POLICY CMP0116)
     cmake_policy(SET CMP0116 NEW)
   endif()
+  TOIT_COMPILER_DEPS()
   add_custom_command(
     OUTPUT "${TARGET}"
     DEPFILE ${DEP_FILE}
-    DEPENDS "${HOST_TOIT}" download_packages "${SOURCE}"
+    DEPENDS "${HOST_TOIT}" ${COMPILER_DEPS} download_packages "${SOURCE}"
     COMMAND ${CMAKE_COMMAND} -E env ${ENV} ASAN_OPTIONS=detect_leaks=false
       "${HOST_TOIT}" compile
       --dependency-file "${DEP_FILE}"
@@ -112,10 +126,11 @@ function(ADD_TOIT_EXE SOURCE TARGET DEP_FILE ENV)
   if (TOIT_VESSELS_ROOT)
     set(VESSELS_FLAG --vessels-root "${TOIT_VESSELS_ROOT}")
   endif()
+  TOIT_COMPILER_DEPS()
   add_custom_command(
     OUTPUT "${TARGET}"
     DEPFILE ${DEP_FILE}
-    DEPENDS "${HOST_TOIT}" download_packages "${SOURCE}"
+    DEPENDS "${HOST_TOIT}" ${COMPILER_DEPS} download_packages "${SOURCE}"
     COMMAND ${CMAKE_COMMAND} -E env ${ENV} ASAN_OPTIONS=detect_leaks=false
       "${HOST_TOIT}" compile
       --dependency-file "${DEP_FILE}"

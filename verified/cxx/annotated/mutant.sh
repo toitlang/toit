@@ -11,7 +11,8 @@
 #   a .cc file or a header of src/ (the copy replaces the link to the
 #   original in the mutant's src/, which is first on the include path and
 #   the directory of every translation unit's quoted includes; the
-#   self-test decoder-uint8-bound mutates src/messaging.h).
+#   self-test decoder-uint8-bound mutates src/messaging.h), or another
+#   file of the repository (the translator's self-test tests/rules.cc).
 #   FROM/TO: literal texts (`\n` a newline); each must occur exactly once in
 #   SOURCE and, if it occurs there at all, once in the sidecar. PATTERN
 #   DRIFT: the change is applied to the source only, and the rendering must
@@ -19,7 +20,9 @@
 #   PASS: the mutant must verify (e.g. the reverted fix under an assumption
 #   that excludes the bug). PATTERN `LP64:REGEX` or `ILP32:REGEX`: the
 #   proof must fail with REGEX for that target only and verify for the
-#   other (a check that is dead on one width).
+#   other (a check that is dead on one width). PATTERN `RENDER:REGEX`: the
+#   rendering must fail with REGEX (a rule's check, e.g. the closure
+#   rules').
 # Prints one line `ok` / `FAIL` like run.sh; exit status 0 when the proof
 # failed with PATTERN on both LP64 and ILP32 (or as a target prefix says).
 
@@ -36,7 +39,24 @@ for e in "$REPO_ROOT"/*; do
   [ "$(basename "$e")" = src ] || ln -s "$e" "$M/repo/$(basename "$e")"
 done
 for e in "$REPO_ROOT"/src/*; do ln -s "$e" "$M/repo/src/$(basename "$e")"; done
-rm "$M/repo/src/$(basename "$source")"
+# The changed file is a copy; the directories on its path become real
+# directories of links (for a source outside src/: writing through the
+# links would change the checkout).
+materialize() {
+  local cur="$M/repo" part target e parts
+  IFS=/ read -ra parts <<< "$(dirname "$1")"
+  for part in "${parts[@]}"; do
+    if [ -L "$cur/$part" ]; then
+      target="$(readlink -f "$cur/$part")"
+      rm "$cur/$part"
+      mkdir "$cur/$part"
+      for e in "$target"/*; do ln -s "$e" "$cur/$part/$(basename "$e")"; done
+    fi
+    cur="$cur/$part"
+  done
+  rm -f "$cur/$(basename "$1")"
+}
+materialize "$source"
 cp "$REPO_ROOT/$source" "$M/repo/$source"
 mkdir -p "$M/annotated"
 # The sidecar's directory and every unit whose header targets include
@@ -49,6 +69,19 @@ replace() { "$TOIT_BIN" run "$REPO_ROOT/verified/tools/text_replace.toit" -- "$@
 src_pairs=()
 side_pairs=()
 while [ $# -gt 0 ]; do
+  # A change prefixed `SIDECAR::` applies to the sidecar only (several
+  # copies of one template's text: one change per copy; annotations around
+  # the changed code), `SOURCE::` to the source only.
+  if [[ "$1" == SIDECAR::* ]]; then
+    side_pairs+=("${1#SIDECAR::}" "$2")
+    shift 2
+    continue
+  fi
+  if [[ "$1" == SOURCE::* ]]; then
+    src_pairs+=("${1#SOURCE::}" "$2")
+    shift 2
+    continue
+  fi
   # (An `ANCHOR@@TEXT` change, text_replace.toit: TEXT's first line.)
   first="$(printf '%s' "$1" | sed 's/.*@@//; s/\\n.*//')"
   found=0
@@ -84,11 +117,15 @@ if ! "$TOIT_BIN" run "$REPO_ROOT/verified/tools/cxx_render.toit" -- --ast-ready 
     printf 'ok    %-40s drift: %s\n' "$name" "$(grep -o "DRIFT: [^;]*" "$M/render.log" | head -1 | cut -c1-160)"
     exit 0
   fi
+  if [[ "$pattern" == RENDER:* ]] && grep -qE "${pattern#RENDER:}" "$M/render.log"; then
+    printf 'ok    %-40s render: %s\n' "$name" "$(grep -m1 FAIL "$M/render.log" | cut -c1-200)"
+    exit 0
+  fi
   printf 'FAIL  %-40s rendering failed: %s\n' "$name" "$(grep FAIL "$M/render.log" | head -1)"
   exit 1
 fi
-if [ "$pattern" = DRIFT ]; then
-  printf 'FAIL  %-40s the changed source rendered without a drift error\n' "$name"
+if [ "$pattern" = DRIFT ] || [[ "$pattern" == RENDER:* ]]; then
+  printf 'FAIL  %-40s the changed source rendered without the expected error\n' "$name"
   exit 1
 fi
 gen="${sidecar%.render}.gen.c"
