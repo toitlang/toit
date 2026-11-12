@@ -428,7 +428,6 @@ uword toit_v2_allocate_array(void* raw_process, uword length, uword filler) {
 }
 
 uword toit_v2_grow_stack(void* raw_process, uword needed) {
-  HW_PERF_SCOPE(HWP_ALLOC);
   Process* process = v2_process(raw_process);
   // More free words than the longest stack has: an overflow (checked here, so
   // that the casts to `word` below never see a value of 2^(WORD_BITS-1) or
