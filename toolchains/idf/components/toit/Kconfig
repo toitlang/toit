@@ -337,8 +337,17 @@ menu "Toit"
 
     config TOIT_VERIFIED_CORE_OPT_LEVEL
         string "Rust opt-level of the verified core (3, s or z)"
+        default "s" if IDF_TARGET_ARCH_XTENSA
         default "3"
         depends on TOIT_VERIFIED_CORE
+        help
+            On Xtensa the run loop is optimized for speed whatever the level
+            (`optimize(speed)`, step.rs, with the esp toolchain's nightly
+            feature); "s" makes the rest of the core (cold paths, primitives)
+            smaller: on the classic ESP32 4.3 KB less flash and, under QEMU,
+            1 to 4 percent fewer instructions than "3". The RISC-V targets
+            build with the stable toolchain, without the attribute: "s" there
+            costs 11 to 15 percent in the run loop.
 
     config TOIT_TRACE_INSTALL
         bool "Trace install-time verifications (for measurements)"
