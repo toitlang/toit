@@ -1,5 +1,38 @@
 # Phase 4a progress (verified core, format 2 on x86-64)
 
+## Hardware runs (branch device/hardware, 2026-11-12)
+
+First runs of format 2 on the core on real boards: an ESP32-C6, the rig's
+classic ESP32 boards and an ESP32-S3 (brought up here). Details, tables
+and the measurement method: docs/format2-migration.md, "Devices: hardware
+results"; artifacts /home/flo/work/opentoit-sandbox-artifacts/hardware.
+
+- Everything runs on all three chips without the C++ interpreter: the
+  device suite (services, preemption, stack traces, untrusted installs
+  and rejections, deep sleep), installs with WiFi up, long busy loops (no
+  watchdog), OTA without Jaguar (C6, ESP32). The hw test suite
+  (tests/hw/esp32, 74 tests) has the same failures in f1 and f2 apart from
+  two radio/timing tests (see the doc).
+- **The loop must run from IRAM**: from flash it thrashed the flash cache
+  (classic ESP32 json 5.1x, map/set 5.4x slower than the C++ interpreter;
+  QEMU had counted 1.07x instructions). Kconfig
+  TOIT_VERIFIED_CORE_LOOP_IN_IRAM renames `step::run_loop`'s sections in
+  the device library (no change in verified/core). With it, f2/f1 wall
+  time: ESP32 richards 0.53, deltablue 0.72, pystone 0.88, json 1.47,
+  map/set 1.38, strings 1.09, 200 RPCs 2.26; C6 0.93 / 1.16 / 1.01 / 1.31
+  / 1.17 / 1.19 / 1.79; S3 0.70 / 1.03 / 0.89 / 1.27 / 1.18 / 0.96 / 2.46.
+  A split loop (dispatch and hot handlers in IRAM) would need changes in
+  verified/core: not tried.
+- Remaining gaps on hardware: RPC between containers (1.8-2.5x), json and
+  map/set (1.2-1.5x); verification at install 1.8-2.2 s on the C6 (opt-z
+  verifier; opt 3 only 13 % faster for +12.6 KB) and 4.6-5.5 s on the
+  classic ESP32 with peak heap 12-23 KB.
+- Rust opt-level of the core (C6): s saves 5.6 KB and costs 7-24 %, z
+  saves 7.4 KB and costs 42-133 %; on the classic ESP32 the z loop (33 KB)
+  does not fit IRAM.
+- Compact method records cost 2.7-4.3 % on call-heavy code on the C6
+  (RISC-V) and 0.4-4 % on the ESP32; no alignment fault.
+
 ## Compact method records (branch core/compact-methods, 2026-11-11)
 
 The method table of format 2 shrinks from 16 to 4 bytes per method
