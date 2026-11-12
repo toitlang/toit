@@ -153,7 +153,7 @@ gives. Not proposed; reporting the front end's missing casts upstream is.
 
 ## Status
 
-`run.sh`: 11 sidecars (one the translator's self-test), 213 rendered functions (20 contract-only), proved
+`run.sh`: 11 sidecars (one the translator's self-test), 229 rendered functions (22 contract-only) and 4 closures, proved
 for LP64 and ILP32; 48 reverted-bug or contract mutants (one of them
 ILP32 only, its check dead on LP64) and 2 drift tests; about 150 checks
 (each proof 0.1-4 s, the encoder 8 s, the decoder 10-40 s and time_info
@@ -170,7 +170,7 @@ lemmas).
 | Message encoder (`encoder/`) | encode_any (all branches), encode_array, encode_list, encode_map, encode_copy (inline, out-of-line copy with its malloc and terminator), encode_byte_array (transfer, deduplication), reserve_external, is_too_large, size, total_size, encoding_for_size, encoding_tison, the writers write_uint8/cardinal/pointer/uint32/uint64, TisonEncoder::encode and payload_size, NestingTracker ctor/dtor; the cardinal's byte bound (`cardinal.c`, Z3) | verified: memory safety (reads inside objects, blob copies inside the blob found by the proven byte_content, writes inside the buffer, the tables copied_/transferred_ written below MESSAGING_ENCODING_MAX_EXTERNALS), no overflow or lossy conversion on either width (cursor_ + external_bytes_ stays below the limit plus ENC_SLACK = 32), heap read-only | **ONE assumption: `two_pass_room`** (below); contract only: `Utils::is_valid_utf_8` (reads the bytes given), `Process::policy`, `PrimitivePolicy::restricts_messaging`, HeapTagScope, `ByteArray::has_owned_external_memory` (trusted rendering), the program's class-id roots, `bit_cast`; the malloced copies are leaked into the table (ownership not modelled) | 334 / 230 / 51 / 116 | f708ad5d: count (underflow at `to - from`), read past the backing (loop bound), map past the backing; the 32-bit size fix weakened in encode_copy and in the transfer (the size bound fails; on ILP32 the sum overflows); one reservation too many (the table bound fails); the terminator read from the content (memcpy past the blob) |
 | Message decoder (`decoder/`) | TisonDecoder::decode (tison_decode's untrusted input), MessageDecoder::decode (IPC), decode_any (the switch, every tag), decode_string, decode_byte_array (both inline: copies; out of line: IPC blocks), decode_array, decode_map, decode_double, decode_large_integer, decode_integer (wave 4: canonical integers), decode_external_data and decode_rpc_request_external (wave 4: the external message handlers; the data handed out is an out-of-line block of the message or a malloced copy, `ext_data`), read_uint8/cardinal/cardinal_64/uint32/uint64/pointer, register_external, success, decoding_tison, overflown, remaining, externals_count, mark_malformed, mark_allocation_failed, NestingTracker; the digits' bound (`radix.c`, Z3); model: Array::at_put, Instance::at_put(Smi*), Smi::zero, the allocator's contracts | verified: for any input bytes (TISON) every read is inside the input (past the end the readers return 0), the cursor stays below the length + 16 on both widths, every length is checked against what is left before the copy or the allocation of that size (`length <= cap - c`, asserted), the recursion is bounded (64), a cardinal fits 64 bits and a length the word, integers are canonical (a large integer only outside the smi range: the allocator contract requires it), the externals table is written below its bound (the FATAL), the heap only grows (new objects; the new array's elements and the map's fields written), a success is a good reference and TISON consumed its input exactly; a failure leaves a well-formed heap | TISON: none beyond the model and the allocator; IPC: **two named assumptions, `ipc_room` and `ipc_external`** (below); contract only: the allocator (CONTRACTS.toml, C++-only contracts), `Utils::is_valid_utf_8`, `bit_cast`, `fail`, `Array::max_length_in_process`, `Smi::from` (now trusted: the modular shift of a negative value), `Smi::is_valid` (a template: contract only) | 360 / 322 / 35 / 149 | seventeen checks taken out, each rejected on both widths unless noted: the length checks before the inline string and byte-array copies, before the array and map allocations, the nesting limit (#3362), the fixed-size readers' bound (read_uint64; read_uint8 in the header), read_cardinal_64's size check (#3362) and digit check (wave 3), read_cardinal's word check (ILP32 only: dead on LP64), the two smi magnitude checks and decode_integer's smi range check, decode_external_data's two inline length checks (wave 4), the externals table bound |
 | Receive path (`decoder/`, wave 5: the ownership of the out-of-line blocks) | the primitives task_receive_message, main_arguments, spawn_arguments (every path: finalizer to run, no message, monitor notification, system message decoded / allocation failure / malformed / allocation of the result array failed); MessageDecoder's three constructors (delegating, default member initializers), allocation_failed, malformed_input, register_external_allocations, remove_disposing_finalizers, deallocate (static, and the recursive walk); SystemMessage's destructor, free_data_and_externals, free_data_but_keep_externals, data/type/gid/pid; the decoder's out-of-line branches, read_pointer, register_external and mark_allocation_failed with ownership | verified: no leak and no double free of a message's buffer and blocks on every path. The message (`msg_whole`) owns its buffer and its blocks; read_pointer hands out block j of the message (in order), a decoder for a process lends it to the object it allocates (`finalized`: the VM finalizer frees it), keeps it when the allocation fails; on a failure remove_disposing_finalizers takes every lent block back (the message is whole again: retried or deleted), on a success every block was lent and only the buffer is freed; deallocate frees each block once and all of them. The primitive heap contract up to finalizer bits (`grows_class`: classes and lengths kept) | **the IPC assumptions, now seven narrow ones** (`ipc_begin`, `ipc_room`, `ipc_pointer`, `ipc_external`, `ipc_length`, `ipc_end`; none creates ownership) and the GC's `gc_owns` (CONTRACTS.toml); contract only: the mailbox and the arguments slots of a process (`mailbox`, `queued`, `dying`, `main_args`, `spawn_args`: a queued system message owns encoded data, its type, gid and pid are smis), `HeapObject::clear_has_active_finalizer` (gives the block back: the GC side, which 05159afd fixed), the allocator's external string and byte array, register_external_allocation, the finalizer queue, ObjectNotifier | (in the decoder's row) | receive-malformed-delivered and arguments-malformed-delivered (the 05159afd fix taken out: `st != MALFORMED` fails), receive-no-give-back, receive-give-back-bound (one finalizer bit left), arguments-drop-leak, receive-success-free-all (blocks freed under the objects), decoder-unregistered-block, deallocate-double-free, deallocate-leak |
-| Stack growth (`grow/`) | toit_v2_grow_stack, v2_process, Stack::v2_copy_to | verified against gc_grow_stack (no precondition on `needed`: the C++ checks it) | v2_gc (preserves the abstraction), allocate_stack, Stack header accessors, Task::stack/set_stack, max_length (contract only) | 93 / 72 / 17 / 86 | the bound check taken out: fails at the cast; with the cast exact: at the sum |
+| The Rust/C++ boundary (`ffi/interpreter_v2.render`, wave 6; stack growth since wave 1, formerly `grow/`) | toit_v2_grow_stack, Stack::v2_copy_to; toit_v2_allocate_instance and toit_v2_allocate_double with their lambdas and the two instances of `v2_allocate` (closure rules); toit_v2_try_allocate_large_integer, _double, _string, _byte_array; toit_v2_current_stack; toit_v2_primitive and v2_primitive_failed (the retry protocol); v2_process | verified against both sides of CONTRACTS.toml's gc_grow_stack, gc_allocate_instance, gc_allocate_double, gc_call_primitive and allocator_* (contract_check.toit compares every conjunct): the VM state at a GC point is `vm(p, v, n)` (stack object, header fields, bytes, heap, epoch count), the GC's guarantee `gc_equiv`; at most three collections per call (the loop bounds), so an unchanged epoch word means nothing moved (the core keeps its views on that); a primitive runs only with its table arity on its frame's slots, the retry re-reads the current stack after each GC; the results are the allocator's objects (`alloc_post`) or the primitive's completion (`prim_done`) with the status and word the core gets | **three named assumptions** (`gc_equiv_trans`, `stack_copy_equiv`: the `stack` bridge as a lemma, `prim_retry`: a call that failed for want of memory has no visible effect); contract only: v2_gc (at most one collection, `gc_equiv` or nothing), the allocator (the model's, plus Process::allocate_string(word)), allocate_stack, the policy table (`PrimitivePolicy::at`: an entry's arity is what its function reads), the primitives (function type `Primitive_Entry`: prim_out, at most PRIM_EPOCHS task switches, an out-of-memory failure leaves the stack alone), is_error/unmark_from_error, the Stack header and Task accessors, v2_validate (debug aid), the write barrier | 249 / 233 / 30 / 320 | grow-stack-unbounded, grow-stack-word-range; ffi-primitive-arity (the arity check: the primitive's precondition fails), ffi-primitive-stale-stack (the stack read before the GC: the arguments' address is not the current stack's), ffi-primitive-retries and ffi-allocate-retries (a loop bound: more collections than the epoch accounting allows) |
 | Primitive `string_write_to_byte_array` (`prims/`) | the primitive with the ARGS/FAIL expansion (Blob and MutableBlob decoding by the proven byte_content / mutable_byte_content, word arguments), Blob/MutableBlob constructors and accessors | verified: the primitive heap contract in VeriFast terms (the heap only grows, objects keep class, length and external address), the copy inside the two contents (source: a string or byte array; destination: a writable byte array outside the program heap; the source range survives the destination's copy-on-write), legal memmove | none beyond the model and blob units | 21 / 59 / 7 / 22 | af4ba7ab: memcpy fails at its precondition; verifies with the two byte arrays assumed distinct |
 | Primitive `time_info` (`prims/time_info.render`, wave 4) | the primitive with the ARGS expansion (int64 and bool), floor_div, floor_mod, is_leap_year, days_from_civil, weekday_from_days, utc_fields, os_localtime, equivalent_year, local_fields, Smi::is_valid32; model: Array::at_put(Smi*) | verified: for every int64 timestamp no signed overflow and no lossy conversion (coarse bounds of every step, lemmas per step so that the proof sees bounds, not division equations), every stored field a smi, the primitive heap contract; not the correctness of the dates | the C library's `localtime_r` (fields in their C11 ranges), memset of the struct, the implicit constructors (do nothing), `Process::false_object`, `fail` (UNREACHABLE) | 135 / 72 / 32 / 109 | the red-team round 4 overflow reverted (`days * SECONDS_PER_DAY` underflows); local_fields without its year check (the shift overflows); the primitive without its year check (not a smi; on ILP32 the conversion to word) |
 | Primitive bitmap `byte_zap` (`prims/byte_zap.render`) | the primitive with the ARGS expansion (MutableBlob by the proven decoder; the int argument with its round-trip check, `truncating`), MutableBlob ctor and accessors | verified: the primitive heap contract, the memset covers exactly the destination's range in a writable byte array, a smi result | `Primitive::return_not_a_smi` (an error value) | 11 / 18 / 7 / 3 | one byte past the end: the memset fails |
@@ -186,8 +186,8 @@ Not attempted, in order of exposure, with what blocks each:
 | the decoder's remaining callers: tison_decode (the Blob argument is the content of a heap object, which the allocations must not touch: the allocator's contracts over `heap_holes`), ExternalSystemMessageHandler::run (the handed-out block: decode_external_data now gets it from the message, wave 5), the senders' side (process_send, spawn: the encoder's copies and transfers, take_buffer) | the holes form of the allocator's contracts; the scheduler's send and the encoder's tables as the message's owner | 2-3 days |
 | the IPC assumptions (`ipc_room`, `ipc_external`), proved | the encoder's ghost encoding (the two-pass assumption's) as the decoder's input: decoding it reads what the encoding wrote | with the two-pass proof, 3-4 days more |
 | ProgramOrientedEncoder / EncodeVisitor (encode_error, encoder.cc) | the object encoder's buffer (bounded, no two-pass), the program model (class names, method tables) for the trace | 4-5 days |
-| toit_v2_allocate_instance/double/array/exception (interpreter_v2.cc), the epoch | `v2_allocate` takes a lambda: a rendering rule for closures (a struct of the captures and a function); the clauses are in CONTRACTS.toml, Verus side checked | 2-3 days |
-| toit_v2_call_primitive, toit_v2_lookup_primitive (after core/trusted-integration's leaner call) | non-constant globals (`Flags::primitives`), the policy table, the retry loop around the GC | 2-3 days |
+| toit_v2_allocate_exception, toit_v2_try_allocate_array (Verus contracts gc_allocate_exception, allocator_array), toit_v2_allocate_array (the checked loop only) | a word from Rust stored as an object reference (`reinterpret_cast<Object*>(filler)`, the exception's value): in VeriFast's C model an integer-to-pointer cast has no provenance, the model's references are pointers with provenance; either an address-based `good` in the model or `-assume_no_provenance` for these functions alone (the exposed-provenance semantics the Rust side has, `IsExposed`); the exception also needs encode_error | 1-2 days (the provenance), 4-5 days with encode_error |
+| the fields of a new instance (null), a double's bits, a byte array's zeros (Verus `new_instance`, `Body::Double(bits)`, `Body::Bytes(0...)`) | outside the VeriFast heap model (a double's and a large integer's bodies are their headers; blob contents unconstrained): the allocator's contract cannot say them | 1 day (payload words in the model) |
 | Utils::is_valid_utf_8 (contract only in the encoder and the decoder; reads the bytes given) | per-target code (`#ifdef BUILD_64`: a 64-bit state machine over a 2 KB table, else two tables and an int32 state): constants with per-target types in the one constant table; the tables are mutable globals (VeriFast global array chunks); the word-at-a-time load from a byte range (`*reinterpret_cast<const uword*>`: uchars to an integer chunk) and the pointer alignment (`is_aligned`, a template on a pointer) | 1 day |
 | the other C++ primitives of the untrusted set (35 core + bitmap blit + timers/events; docs/sandbox-primitive-audit.md) | blob-only ones (crc, string_to_utf_16, utf_16_to_string, byte_array_convert_to_string): ARGS is proven, an allocation contract per result kind (strings, byte arrays); task/message/timer ones: the scheduler calls get stated contracts | 0.5-1 day each |
 
@@ -331,6 +331,60 @@ of #3378, malformed system messages of #3381) become mutants with them.
 
 ## Findings
 
+Wave 6 (the Rust/C++ boundary, `ffi/`):
+
+* **The trusted GC contract of waves 1-5 was false: it said the stack's
+  used slots were byte for byte the same after a collection** (FIXED in
+  the model; no C++ change). v2_gc's contract (grow_stack's, wave 1)
+  ensured `same_abstraction`, i.e. `drop(top * W, bs2) == drop(top * W,
+  bs)`: a moving GC rewrites every reference slot to the moved object, so
+  the claim was false whenever a slot held a moved object, and the proof of
+  stack growth rested on it. It now says what the GC does: the VM state
+  after it (stack, heap, epoch) is `gc_equiv` to the one before (the
+  abstraction is the same, an uninterpreted relation the `stack` and `heap`
+  bridges interpret), and stack growth, the allocations and the primitive
+  call are proved over that, with `stack_copy_equiv` (the old `stack`
+  bridge, now a named assumption) for the copied stack.
+* **An assumption of the Verus side the C++ wrapper does not establish:
+  the retry of a primitive after an out-of-memory failure completes the
+  original step** (`prim_retry`, CONTRACTS.toml). gc_call_primitive says
+  the whole C++ call is a completion of the PRIMITIVE step; the C++ calls
+  the primitive up to four times, each time on the state the failed call
+  left (after a GC). That is a completion of the original step only if a
+  call that fails for want of memory changes nothing the spec sees: a
+  property of every primitive (allocate before changing anything), not of
+  the wrapper, and stated nowhere before (TRUSTED.md section 8 lists
+  prim_default only). Reviewed for the untrusted set's C++ primitives
+  (process_send neuters transferred byte arrays only after the message is
+  allocated; the receive primitives give the blocks back on an allocation
+  failure, wave 5); not checked for the others.
+* **The epoch the core relies on is sound only because the retry loops are
+  bounded** (verified; no bug). The core keeps its stack view when the
+  epoch word is unchanged (TRUSTED.md, Epoch). The word wraps; the proof
+  shows at most three collections and four primitive calls per C++ call,
+  so an unchanged word is an unchanged count. The mutants ffi-*-retries
+  take a bound out: the proof fails.
+* Latent, not reachable: toit_v2_try_allocate_string lets lengths up to
+  INTPTR_MAX through (`static_cast<word>(length) < 0`), and
+  Process::allocate_string(word) computes `length + 1` for an external
+  string: signed overflow at INTPTR_MAX. The Rust callers pass at most
+  twice the largest blob (prims/blob.rs string_add, concat), far below.
+  Not changed; noted for upstream (the same code).
+* The VeriFast model is narrower than the C++ in three places, listed as
+  gaps in CONTRACTS.toml: class ids below 1024 (`header_ok`), blobs below
+  2^30 on both widths (the allocators' length precondition; TRUSTED.md
+  allows 2^62 on 64-bit), and no payload words (a new instance's null
+  fields, a double's bits, a byte array's zeros are the allocator's, not
+  stated). Words from Rust stored as object references
+  (try_allocate_array's filler, allocate_exception's value) have no
+  provenance in VeriFast's C model: those two are not rendered.
+* The model's large-integer allocator no longer requires a value outside
+  the smi range (the C++ takes any value, and the Rust allocator's
+  contract has no such precondition); decode_integer's postcondition
+  keeps the decoder canonical (mutant decoder-integer-canonical).
+* Build: test snapshots did not depend on the compiler (f3f44dde: they do
+  now, through the toit.compile target).
+
 Wave 5:
 
 * **Double free of a message's out-of-line data when a receiver dies
@@ -403,9 +457,9 @@ Wave 4:
   widths (read_cardinal_64; read_cardinal checks that a length fits the
   word) and decode_integer makes every integer canonical: a smi whenever
   the value is in this VM's smi range, else a large integer (int.MIN only
-  with the large-integer tag). Proof: the allocator's large-integer
-  contract now requires a value outside the smi range (clause `canonical`,
-  CONTRACTS.toml), mutant decoder-integer-canonical. Tests:
+  with the large-integer tag). Proof: decode_integer's postcondition (a
+  smi for a value in the smi range; until wave 6 also the allocator's
+  `canonical` clause), mutant decoder-integer-canonical. Tests:
   tests/tison-integer-width-test.toit (host and host32: fails without the
   fix on both), tests/tison-test.toit updated (2^62 with a smi tag is now
   an integer). Upstream master: the same decoder (smi tags read as words,
@@ -675,14 +729,23 @@ compares the clauses with the Verus external_body function and the
 conjuncts with the contract of the generated rendering; a change on either
 side fails until the table, and the other side, follow. "MISSING" marks a
 clause one side lacks and is reported. The bridges between the views,
-`stack` (the machine's reloaded views against the Stack words and
-`same_abstraction`) and `heap` (the abstract heap against VeriFast's
-`heap(objs, H)` at `(uword)o - 1`), are written there once: **the
-remaining reviewed assumption** of the seam. The allocation and primitive
-contracts have their Verus side checked; their C++ is not rendered yet.
-Contracts between two pieces of C++ (the allocator's, Array::at_put, used
-by the decoder) are in the table too, with an empty Verus side: only the
-VeriFast prototype (model/objects.gen.h) is compared.
+`stack` (the machine's reloaded views against the VM state `vm(p, v, n)`
+and `vm_equiv`), `heap` (the abstract heap against VeriFast's
+`heap(objs, H)` at `(uword)o - 1`) and `primitive` (a primitive's
+`prim_out` against the spec's `prim_call_post`), are written there once:
+**the remaining reviewed assumption** of the seam, with the three
+named lemmas of `ffi/` (gc_equiv_trans, stack_copy_equiv, prim_retry).
+Since wave 6 both sides are checked for every leaf contract the verified
+loop uses except gc_allocate_exception (gc_grow_stack, gc_allocate_instance,
+gc_allocate_double, gc_call_primitive) and for the Rust primitives'
+allocator (allocator_large_integer, _double, _string, _byte_array;
+allocator_array has its Verus side only). A clause whose Verus text is
+empty is a VeriFast conjunct the Verus side states by a type (the views of
+a `&mut Heap`). Contracts between two pieces of C++ (the allocator's,
+Array::at_put, used by the decoder) are in the table too, with no Verus
+function: only the VeriFast prototype (model/objects.gen.h) is compared.
+contract_check also requires every bodiless lemma of a rendering and, since
+wave 6, of a ghost header (`.gh`) to be a listed assumption.
 
 ## One layout table
 
@@ -752,7 +815,9 @@ model is revised.
   assumptions (CONTRACTS.toml `[[assumption]]`: the encoder's
   `two_pass_room`, the decoder's `ipc_begin`, `ipc_room`, `ipc_pointer`,
   `ipc_external`, `ipc_length`, `ipc_end` for inter-process messages only,
-  the GC's `gc_owns`), the receive side's model (a process's mailbox and
+  the GC's `gc_owns`, and at the boundary `gc_equiv_trans`, `stack_copy_equiv`,
+  `prim_retry`), the boundary's model (v2_gc, the policy table, each
+  primitive's contract `Primitive_Entry`), the receive side's model (a process's mailbox and
   arguments slots, `HeapObject::clear_has_active_finalizer` giving a block
   back, the finalizer queue), `Utils::is_valid_utf_8`, the
   policy reads, HeapTagScope, `ByteArray::has_owned_external_memory`, the
@@ -764,7 +829,7 @@ model is revised.
 
 * `model/`: the object model (`objects.render`, generated `objects.gen.h/.c`),
   the constant table, `arith.gh` (shift and mask lemmas), `model.cfg`.
-* `encoder/`, `decoder/`, `grow/`, `prims/`, `utf8/`: the targets (sidecar
+* `encoder/`, `decoder/`, `ffi/`, `prims/`, `utf8/`: the targets (sidecar
   and generated files); `encoder/cardinal.h`/`.c` (the cardinal's byte
   bound, proved with Z3 so that the encoder verifies with the default
   prover), `encoder/llong.gh` (a prelude conversion VeriFast lacks),

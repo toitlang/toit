@@ -90,8 +90,18 @@ verus-clauses path/string name/string -> Map:
   header := ((text[at..end].split "\n").map: | line/string |
     c := line.index-of "//"
     c >= 0 ? line[..c] : line).join "\n"
-  req := header.index-of "\n    requires"
-  ens := header.index-of "\n    ensures"
+  // A clause keyword at the start of a line, whatever the indentation (a
+  // method of an impl block is indented more).
+  line-start := : | keyword/string |
+    at-kw := -1
+    offset := 0
+    (header.split "\n").do: | line/string |
+      if at-kw < 0 and offset > 0 and ((line.trim.starts-with "$keyword ") or (line.trim == keyword)):
+        at-kw = offset - 1
+      offset += line.size + 1
+    at-kw
+  req := line-start.call "requires"
+  ens := line-start.call "ensures"
   // `requires X,` on the signature line itself.
   if req < 0: req = header.index-of " requires "
   if ens < 0: ens = header.index-of " ensures"
@@ -177,7 +187,9 @@ run root/string:
     e1 := c["verus_fn"] == "" ? null : catch --trace:
       verus := verus-clauses "$root/$c["verus_file"]" c["verus_fn"]
       ["requires", "ensures"].do: | side |
-        want := ((mine.filter: it["side"] == side and it["verus"] != "MISSING").map: normalize it["verus"])
+        // An empty Verus text: a VeriFast conjunct the Verus side states
+        // by a type (the views of a `&mut Heap`), compared on one side only.
+        want := ((mine.filter: it["side"] == side and it["verus"] != "MISSING" and it["verus"] != "").map: normalize it["verus"])
         have := verus[side]
         if not (same want have):
           problems.add "Verus $side of $c["verus_fn"] ($c["verus_file"]):\n      table:  $(want.join " | ")\n      source: $(have.join " | ")"
@@ -290,11 +302,14 @@ check-assumptions root/string assumptions/List -> int:
       failures++
       print "FAIL  assumption $a["name"]:"
       problems.do: print "    $it"
-  (lemma-prototypes dir --suffix=".gen.c").do: | path/string names/List |
-    names.do: | name/string |
-      if not listed.contains name:
-        failures++
-        print "FAIL  unlisted assumption: bodiless lemma $name in cxx/annotated/$path (CONTRACTS.toml [[assumption]])"
+  // The renderings, and the ghost headers they include (a bodiless lemma
+  // there is an axiom as well).
+  [".gen.c", ".gh"].do: | suffix |
+    (lemma-prototypes dir --suffix=suffix).do: | path/string names/List |
+      names.do: | name/string |
+        if not listed.contains name:
+          failures++
+          print "FAIL  unlisted assumption: bodiless lemma $name in cxx/annotated/$path (CONTRACTS.toml [[assumption]])"
   proved := proved-lemmas dir
   (lemma-prototypes dir --suffix=".h").do: | path/string names/List |
     names.do: | name/string |

@@ -52,6 +52,28 @@ stack = [
   "same_abstraction(old, new) refines g whenever the pre-state did. The rest",
   "of the machine state (heap, globals) is not touched by the rendered code;",
   "the GC's contract (v2_gc) states that it preserves the abstraction.",
+  "Since wave 6 the VeriFast side states this over the whole state at a GC",
+  "point, vm(p, v, n) with v = vmv(stack object, len, top, rtop, ft, fin, bci,",
+  "bytes, heap objects, H): vm_equiv(a, b) (a == b, or gc_equiv(a, b): what",
+  "v2_gc guarantees) means that a refines g exactly when b does (the GC",
+  "rewrites every root, the used slots among them, to the moved objects:",
+  "not a byte-wise equality); stack_copy_equiv ([[assumption]]) is the",
+  "paragraph above for a copied stack. An epoch count n with",
+  "ObjectHeap::v2_epoch_ = n modulo the word: unchanged count = no GC and",
+  "no task switch (TRUSTED.md, Epoch).",
+]
+primitive = [
+  "REVIEWED ASSUMPTION. For the C++ primitive the policy resolves (module,",
+  "index) to, fn = policy_fn(policy_of(p), module, index) (the table entry",
+  "whose arity is the number of arguments fn reads), prim_out(fn, a, b, raw)",
+  "on VM states a, b (stack bridge) is the spec's completion of the step:",
+  "prim_call_post(p, m', g, module, index, status, word, gx, v) for the",
+  "machine m' that b's views give, with the status and word prim_done",
+  "derives from raw (SUCCESS: raw is the value; FAILURE: the unmarked error;",
+  "THROW: an out-of-memory root after the retries). Each C++ primitive",
+  "establishes prim_out by its own contract (TRUSTED.md section 8: the",
+  "function type Primitive_Entry of cxx/annotated/ffi), and prim_retry",
+  "([[assumption]]) composes a failed call, a GC and the retry.",
 ]
 heap = [
   "REVIEWED ASSUMPTION. VeriFast's heap(objs, H) (verified/cxx/annotated/model)",
@@ -79,13 +101,40 @@ requires = "[?f1]e->buffer_ |-> ?b &*& [?f2]enc_buf(b, ?cap) &*& [?f3]e->cursor_
 ensures = "[f1]e->buffer_ |-> b &*& [f2]enc_buf(b, cap) &*& [f3]e->cursor_ |-> c &*& (b == 0 || c + n <= cap)"
 note = "The message encoder's two passes: the write pass (a buffer of the size the size pass returned, on the same heap) writes no further than the size pass counted. README, 'The two-pass assumption'."
 
+# The C++ side of the boundary (cxx/annotated/ffi, wave 6): the VM state
+# is `vm(p, v, n)` (the current stack, its header fields and bytes, the
+# heap, the epoch count n), and the GC's guarantee is `gc_equiv`, an
+# uninterpreted relation with three named properties ([[assumption]]
+# gc_equiv_trans, stack_copy_equiv, prim_retry below). Its bodiless lemmas
+# are the C++ half of "where permissions come from".
+[[assumption]]
+name = "gc_equiv_trans"
+rendering = "cxx/annotated/ffi/interpreter_v2.gen.c"
+requires = "gc_equiv(a, b) == true &*& gc_equiv(b, c) == true"
+ensures = "gc_equiv(a, c) == true"
+note = "Two collections in a row preserve the abstraction (the GC's relation composes). TRUSTED: GC-class code."
+
+[[assumption]]
+name = "stack_copy_equiv"
+rendering = "cxx/annotated/ffi/interpreter_v2.gen.c"
+requires = "a == vmv(?s, ?len, ?top, ?rtop, ?ft, ?fin, ?bci, ?bs, ?objs, ?H) &*& same_abstraction(len, top, rtop, bs, len2, top2, rtop, bs2) == true"
+ensures = "vm_equiv(a, vmv(s2, len2, top2, rtop, ft, fin, bci, bs2, objs, H)) == true"
+note = "The `stack` bridge as a lemma: a stack copied with the same observables (records, header fields, used slots by position from the end) represents the same state; which object holds them is not observable (the core re-reads the current stack). Used by stack growth after Stack::v2_copy_to."
+
+[[assumption]]
+name = "prim_retry"
+rendering = "cxx/annotated/ffi/interpreter_v2.gen.c"
+requires = "prim_out(fn, a, b, e) == true &*& oom_error(prog, e) == true &*& vm_equiv(b, b2) == true &*& prim_out(fn, b2, c, r) == true"
+ensures = "prim_out(fn, a, c, r) == true"
+note = "The retry protocol of the C++ primitives (v2_primitive_failed, as Interpreter::run's): a call that failed for want of memory has no effect the spec sees, so the call after the GC is a completion of the original step. TRUSTED per primitive (TRUSTED.md section 8): each must allocate before it changes anything visible. Not stated on the Verus side, where gc_call_primitive's completion clause covers the whole C++ call: an assumption the C++ wrapper alone does not establish (README, wave 6)."
+
 [[contract]]
 name = "gc_grow_stack"
 verus_file = "core/src/step.rs"
 verus_fn = "gc_grow_stack"
 cxx_fn = "toit_v2_grow_stack"
-rendering = "cxx/annotated/grow/grow_stack.gen.c"
-status = "verified (VeriFast, LP64 and ILP32); the C++ checks the bound on needed itself"
+rendering = "cxx/annotated/ffi/interpreter_v2.gen.c"
+status = "verified (VeriFast, LP64 and ILP32); the C++ checks the bound on needed itself; since wave 6 over the GC-aware state (vm, vm_equiv)"
 
 [[clause]]
 contract = "gc_grow_stack"
@@ -93,7 +142,7 @@ side = "requires"
 name = "views"
 bridge = "stack"
 verus = "reloaded(*old(m), g).refines(&env.p)"
-verifast = "current_stack((Process *)raw_process, ?s) &*& stack(s, ?len, ?top, ?rtop, ?ft, ?fin, ?bci, ?bs) &*& stack_ok(len, top, rtop, bs) == true"
+verifast = "vm((Process *)raw_process, ?a, ?n)"
 
 [[clause]]
 contract = "gc_grow_stack"
@@ -108,22 +157,23 @@ side = "ensures"
 name = "views"
 bridge = "stack"
 verus = "reloaded(*final(m), g).refines(&env.p)"
-verifast = "current_stack((Process *)raw_process, ?s2) &*& stack(s2, ?len2, ?top2, rtop, ft, fin, bci, ?bs2) &*& stack_ok(len2, top2, rtop, bs2) == true &*& same_abstraction(len, top, rtop, bs, len2, top2, rtop, bs2) == true"
+verifast = "vm((Process *)raw_process, ?b, ?n2) &*& vm_equiv(a, b) == true &*& n <= n2"
+note = "Before wave 6 the VeriFast side said the used slots were byte for byte the same after a GC (`same_abstraction`): false for a moving GC, which rewrites every reference slot; the trusted v2_gc contract claimed it. Now the GC's guarantee is gc_equiv (the abstraction is the same), which the core's re-derivation relies on."
 
 [[clause]]
 contract = "gc_grow_stack"
 side = "ensures"
 name = "room"
 verus = "r == V2_OK ==> reloaded(*final(m), g).top - reloaded(*final(m), g).rtop >= needed"
-verifast = "(result == TOIT_V2_OK ? top2 - rtop >= needed : result == TOIT_V2_STACK_OVERFLOW || result == TOIT_V2_OUT_OF_MEMORY)"
+verifast = "(result == TOIT_V2_OK ? v_top(b) - v_rtop(b) >= needed : result == TOIT_V2_STACK_OVERFLOW || result == TOIT_V2_OUT_OF_MEMORY)"
 
 [[contract]]
 name = "gc_allocate_instance"
 verus_file = "core/src/alloc.rs"
 verus_fn = "gc_allocate_instance"
 cxx_fn = "toit_v2_allocate_instance"
-rendering = ""
-status = "not rendered: v2_allocate takes a lambda (the translator has no rule for closures yet)"
+rendering = "cxx/annotated/ffi/interpreter_v2.gen.c"
+status = "verified (VeriFast, LP64 and ILP32; wave 6): the lambda and the v2_allocate instance (closure rules), at most three collections, the epoch"
 
 [[clause]]
 contract = "gc_allocate_instance"
@@ -131,18 +181,22 @@ side = "requires"
 name = "views"
 bridge = "stack"
 verus = "reloaded(*old(m), g).refines(&env.p)"
+verifast = "[?fp]process((Process *)raw_process, ?prog, ?ids) &*& vm((Process *)raw_process, ?a, ?n)"
 
 [[clause]]
 contract = "gc_allocate_instance"
 side = "requires"
 name = "class"
 verus = "c < env.p.ap@.class_bits.len()"
+verifast = "class_id < 1024"
+note = "A bound of the VeriFast model (header_ok: class ids below 1024), not of the C++, which takes any class id of the program; the Verus side bounds it by the program's class count. A gap for programs with more than 1024 classes (README, wave 6)."
 
 [[clause]]
 contract = "gc_allocate_instance"
 side = "requires"
 name = "instance class"
 verus = "class_tag(p1(env.p.ap@), c as int) == INSTANCE_TAG"
+verifast = "class_tag(class_id) == INSTANCE_TAG"
 
 [[clause]]
 contract = "gc_allocate_instance"
@@ -156,6 +210,8 @@ side = "ensures"
 name = "out of memory"
 bridge = "stack"
 verus = "r.0 == 0 ==> reloaded(*final(m), g).refines(&env.p)"
+verifast = "[fp]process((Process *)raw_process, prog, ids) &*& vm((Process *)raw_process, ?b, ?n2) &*& alloc_post((Process *)raw_process, a, n, b, n2, ?r, ?objsm, ?Hm) &*& result == (uword)r"
+note = "alloc_post: the state before the allocation is a's after the GCs (vm_equiv), with the null result nothing else; the result word is the object's address (0 for null: a non-null object has addr_ok)."
 
 [[clause]]
 contract = "gc_allocate_instance"
@@ -163,21 +219,23 @@ side = "ensures"
 name = "appended"
 bridge = "heap"
 verus = "r.0 != 0 ==> reloaded(*final(m), sp::alloc2(g, new_instance(env.p.ap@, c as int))).refines(&env.p) && r.0 == enc(final(m).addr(), sp::new_ref2(g))"
+verifast = "(r == 0 ? true : instance_new(v_H(b), r, class_id) == true)"
+note = "With alloc_post's other branch (r appended to the heap of the state before, outside the program heap, every other object unchanged). The fields' value (null) is the allocator's, outside the model's contract of ObjectHeap::allocate_instance (src/heap.cc writes the null object): a gap of the VeriFast side."
 
 [[clause]]
 contract = "gc_allocate_instance"
 side = "ensures"
 name = "epoch"
 verus = "!r.1 ==> crate::primitive::unmoved(*final(m), *old(m))"
-note = "The epoch contract (TRUSTED.md, Epoch): when the C++ reports no GC, nothing moved."
+note = "The epoch contract (TRUSTED.md, Epoch): when the C++ reports no GC, nothing moved. VeriFast: in alloc_post, `epoch_word(n2) == epoch_word(n) ? with_heap(b, objsm, Hm) == a`: the epoch word the core compares is unchanged only if no collection ran, because v2_allocate collects at most three times (the loop bound; mutant ffi-allocate-retries) and each collection moves the count by at most one."
 
 [[contract]]
 name = "gc_allocate_double"
 verus_file = "core/src/alloc.rs"
 verus_fn = "gc_allocate_double"
 cxx_fn = "toit_v2_allocate_double"
-rendering = ""
-status = "not rendered: v2_allocate takes a lambda"
+rendering = "cxx/annotated/ffi/interpreter_v2.gen.c"
+status = "verified (VeriFast, LP64 and ILP32; wave 6), as gc_allocate_instance"
 
 [[clause]]
 contract = "gc_allocate_double"
@@ -185,6 +243,7 @@ side = "requires"
 name = "views"
 bridge = "stack"
 verus = "reloaded(*old(m), g).refines(&env.p)"
+verifast = "[?fp]process((Process *)raw_process, ?prog, ?ids) &*& vm((Process *)raw_process, ?a, ?n)"
 
 [[clause]]
 contract = "gc_allocate_double"
@@ -192,6 +251,7 @@ side = "ensures"
 name = "out of memory"
 bridge = "stack"
 verus = "r.0 == 0 ==> reloaded(*final(m), g).refines(&env.p)"
+verifast = "[fp]process((Process *)raw_process, prog, ids) &*& vm((Process *)raw_process, ?b, ?n2) &*& alloc_post((Process *)raw_process, a, n, b, n2, ?r, ?objsm, ?Hm) &*& result == (uword)r"
 
 [[clause]]
 contract = "gc_allocate_double"
@@ -199,13 +259,15 @@ side = "ensures"
 name = "appended"
 bridge = "heap"
 verus = "r.0 != 0 ==> reloaded(*final(m), sp::alloc2(g, new_double(as1(g), p1(env.p.ap@), bits))).refines(&env.p) && r.0 == enc(final(m).addr(), sp::new_ref2(g))"
+verifast = "(r == 0 ? true : has_tag(v_H(b), r, DOUBLE_TAG) == true)"
+note = "The payload (the bits) is outside the VeriFast heap model (a double's body is its header only): the C++ converts the bits with bit_cast<double> (a memcpy) and passes the double by value to the allocator, which stores it. Whether a signaling NaN keeps its bits through a double value C leaves to the implementation; review: no x87 on this path (host32 builds with -msse2 -mfpmath=sse, arguments go through memory; ESP32 has no FPU for doubles)."
 
 [[clause]]
 contract = "gc_allocate_double"
 side = "ensures"
 name = "epoch"
 verus = "!r.1 ==> crate::primitive::unmoved(*final(m), *old(m))"
-note = "The epoch contract (TRUSTED.md, Epoch)."
+note = "The epoch contract (TRUSTED.md, Epoch); in alloc_post, as gc_allocate_instance."
 
 [[contract]]
 name = "gc_allocate_exception"
@@ -213,7 +275,7 @@ verus_file = "core/src/raise.rs"
 verus_fn = "gc_allocate_exception"
 cxx_fn = "toit_v2_allocate_exception"
 rendering = ""
-status = "not rendered: allocation through v2_allocate and the trace encoder (encode_error)"
+status = "not rendered: the value word from Rust stored as an object (reinterpret_cast<Object*>(raw_value): no provenance in VeriFast's C model), the message words read as objects, and the trace encoder (encode_error)"
 
 [[clause]]
 contract = "gc_allocate_exception"
@@ -257,9 +319,9 @@ verus = "exists|h2: Seq<HeapObj>, trace: Value| #[trigger] exception_post(&env.p
 name = "gc_call_primitive"
 verus_file = "core/src/primitive.rs"
 verus_fn = "gc_call_primitive"
-cxx_fn = "toit_v2_call_primitive"
-rendering = ""
-status = "not rendered: the retry loop around the primitive entry and the GC; the primitives are per-primitive contracts (TRUSTED.md section 8)"
+cxx_fn = "toit_v2_primitive"
+rendering = "cxx/annotated/ffi/interpreter_v2.gen.c"
+status = "verified (VeriFast, LP64 and ILP32; wave 6): toit_v2_primitive and v2_primitive_failed (the arity check, the arguments' address in the frame, the retry protocol with the stack re-read after each GC, at most three collections and four calls, the epoch); each primitive's own contract is the function type Primitive_Entry's (TRUSTED.md section 8)"
 
 [[clause]]
 contract = "gc_call_primitive"
@@ -267,44 +329,241 @@ side = "requires"
 name = "views"
 bridge = "stack"
 verus = "reloaded(*old(m), g).refines(&env.p)"
+verifast = "[?fp]process((Process *)raw_process, ?prog, ?ids) &*& vm((Process *)raw_process, ?a, ?n) &*& *result_out |-> _"
 
 [[clause]]
 contract = "gc_call_primitive"
 side = "requires"
 name = "primitive step"
 verus = "sp::step(env.p.ap@, g) == Outcome2::Primitive(g, module, index)"
+verifast = "module < 256 &*& index < 65536"
+note = "VeriFast: the module and index fit the policy's `unsigned` parameters (the Verus types u8, u16)."
 
 [[clause]]
 contract = "gc_call_primitive"
 side = "requires"
 name = "first"
+bridge = "stack"
 verus = "first == sp::base(g)"
+verifast = "first_argument < v_len(a) - v_top(a) + v_rtop(a)"
+note = "The frame's first parameter is at most the object stack's height, and a running frame has a frame record below the slots (rtop > 0): its address is inside the stack array."
 
 [[clause]]
 contract = "gc_call_primitive"
 side = "requires"
 name = "arity"
+bridge = "stack"
 verus = "arity == sp::frame_height(g)"
+verifast = "first_argument + arity <= v_len(a) - v_top(a)"
+note = "The frame's parameters are used object-stack slots. The C++ calls the primitive only when its table arity is this arity (mutant ffi-primitive-arity: without the check, a primitive reads past the frame)."
 
 [[clause]]
 contract = "gc_call_primitive"
 side = "ensures"
 name = "absent"
 verus = "r.0 == V2_PRIMITIVE_ABSENT ==> *final(m) == *old(m)"
+verifast = "[fp]process((Process *)raw_process, prog, ids) &*& vm((Process *)raw_process, ?b, ?n2) &*& (result == TOIT_V2_PRIMITIVE_ABSENT ? *result_out |-> _ &*& b == a &*& n2 == n &*& (policy_fn(policy_of((Process *)raw_process), module, index) == 0 || prim_arity(policy_fn(policy_of((Process *)raw_process), module, index)) != arity) : *result_out |-> ?w &*& prim_arity(policy_fn(policy_of((Process *)raw_process), module, index)) == arity &*& prim_done(prog, policy_fn(policy_of((Process *)raw_process), module, index), a, n, b, n2, result, w, ?raw))"
+note = "One conditional for the three clauses: ABSENT (nothing ran) or prim_done (completion and epoch)."
 
 [[clause]]
 contract = "gc_call_primitive"
 side = "ensures"
 name = "completion"
-bridge = "heap"
+bridge = "primitive"
 verus = "r.0 != V2_PRIMITIVE_ABSENT ==> exists|gx: State2, v: Value| #[trigger] prim_call_post(&env.p, *final(m), g, module, index, r.0, r.1, gx, v) && (!r.2 ==> gx == with_heap2(g, gx.heap))"
+note = "VeriFast: prim_done (in the conditional above): prim_out of the policy's function on a, from its last call `raw`, after the GCs (prim_retry), with the status and word the core gets: SUCCESS a value, FAILURE another error (unmarked), THROW an out-of-memory root after four calls."
 
 [[clause]]
 contract = "gc_call_primitive"
 side = "ensures"
 name = "epoch"
 verus = "r.0 != V2_PRIMITIVE_ABSENT && !r.2 ==> unmoved(*final(m), *old(m))"
-note = "The epoch contract (TRUSTED.md, Epoch): no GC, nothing moved."
+note = "The epoch contract (TRUSTED.md, Epoch): no GC, nothing moved. VeriFast: in prim_done, `epoch_word(n2) == epoch_word(n) ? same_stack(a, b)`: at most three collections and four calls (each at most PRIM_EPOCHS task switches), so an unchanged word is an unchanged count (mutant ffi-primitive-retries)."
+
+# The allocation without a GC of the Rust primitives (ffi::Allocator,
+# verified/core/src/ffi.rs; TRUSTED.md section 8, "Allocation without
+# GC"): the C++ entries over the model's allocator.
+[[contract]]
+name = "allocator_large_integer"
+verus_file = "core/src/ffi.rs"
+verus_fn = "large_integer"
+cxx_fn = "toit_v2_try_allocate_large_integer"
+rendering = "cxx/annotated/ffi/interpreter_v2.gen.c"
+status = "verified (VeriFast, LP64 and ILP32; wave 6) over the allocator's contract"
+
+[[clause]]
+contract = "allocator_large_integer"
+side = "requires"
+name = "views"
+bridge = "heap"
+verus = ""
+verifast = "[?fp]process((Process *)raw_process, ?prog, ?ids) &*& heap(?objs, ?H)"
+note = "Verus: the views of the `&mut Heap`."
+
+[[clause]]
+contract = "allocator_large_integer"
+side = "ensures"
+name = "out of memory"
+bridge = "heap"
+verus = "r == 0 ==> *final(heap) == *old(heap)"
+verifast = "[fp]process((Process *)raw_process, prog, ids) &*& allocated(objs, H, (Process *)raw_process, ?r, ?objs2, ?H2) &*& result == (uword)r"
+
+[[clause]]
+contract = "allocator_large_integer"
+side = "ensures"
+name = "appended"
+bridge = "heap"
+verus = "r != 0 ==> appended(old(heap), final(heap), r, p.ro_start, p.ro_size) && final(heap).objs().last() == (HeapObj { class_id: p.ap@.builtin[BUILTIN_LARGE_INTEGER as int], ro: false, body: Body::LargeInt(v) })"
+verifast = "(r == 0 ? true : has_tag(H2, r, LARGE_INTEGER_TAG) == true)"
+note = "The value is outside the VeriFast heap model (a large integer's body is its header only). The allocator takes any value; the Rust callers allocate only outside the smi range (prims/ints.rs; canonical integers). Since wave 6 the model's allocator no longer requires that (the decoder's decode_integer ensures it)."
+
+[[contract]]
+name = "allocator_double"
+verus_file = "core/src/ffi.rs"
+verus_fn = "double"
+cxx_fn = "toit_v2_try_allocate_double"
+rendering = "cxx/annotated/ffi/interpreter_v2.gen.c"
+status = "verified (VeriFast, LP64 and ILP32; wave 6) over the allocator's contract"
+
+[[clause]]
+contract = "allocator_double"
+side = "requires"
+name = "views"
+bridge = "heap"
+verus = ""
+verifast = "[?fp]process((Process *)raw_process, ?prog, ?ids) &*& heap(?objs, ?H)"
+
+[[clause]]
+contract = "allocator_double"
+side = "ensures"
+name = "out of memory"
+bridge = "heap"
+verus = "r == 0 ==> *final(heap) == *old(heap)"
+verifast = "[fp]process((Process *)raw_process, prog, ids) &*& allocated(objs, H, (Process *)raw_process, ?r, ?objs2, ?H2) &*& result == (uword)r"
+
+[[clause]]
+contract = "allocator_double"
+side = "ensures"
+name = "appended"
+bridge = "heap"
+verus = "r != 0 ==> appended(old(heap), final(heap), r, p.ro_start, p.ro_size) && final(heap).objs().last() == (HeapObj { class_id: p.ap@.builtin[BUILTIN_DOUBLE as int], ro: false, body: Body::Double(bits) })"
+verifast = "(r == 0 ? true : has_tag(H2, r, DOUBLE_TAG) == true)"
+note = "The bits are outside the VeriFast heap model (gc_allocate_double's note)."
+
+[[contract]]
+name = "allocator_array"
+verus_file = "core/src/ffi.rs"
+verus_fn = "array"
+cxx_fn = "toit_v2_try_allocate_array"
+rendering = ""
+status = "not rendered: the filler word from Rust stored as an object reference (reinterpret_cast<Object*>(filler)) has no provenance in VeriFast's C model, while the model's references are pointers with provenance (README, wave 6: an address-based `good`, or the exposed-provenance semantics the Rust side has)"
+
+[[clause]]
+contract = "allocator_array"
+side = "requires"
+name = "length"
+verus = "length <= ARRAYLET_SIZE"
+
+[[clause]]
+contract = "allocator_array"
+side = "requires"
+name = "filler"
+bridge = "heap"
+verus = "filler == crate::abs::enc(old(heap).addrs(), fv)"
+
+[[clause]]
+contract = "allocator_array"
+side = "ensures"
+name = "out of memory"
+verus = "r == 0 ==> *final(heap) == *old(heap)"
+
+[[clause]]
+contract = "allocator_array"
+side = "ensures"
+name = "appended"
+bridge = "heap"
+verus = "r != 0 ==> appended(old(heap), final(heap), r, p.ro_start, p.ro_size) && final(heap).objs().last() == (HeapObj { class_id: p.ap@.builtin[BUILTIN_ARRAY as int], ro: false, body: Body::Array(Seq::new(length as nat, |i: int| fv)) })"
+
+[[contract]]
+name = "allocator_string"
+verus_file = "core/src/ffi.rs"
+verus_fn = "string"
+cxx_fn = "toit_v2_try_allocate_string"
+rendering = "cxx/annotated/ffi/interpreter_v2.gen.c"
+status = "verified (VeriFast, LP64 and ILP32; wave 6) over the allocator's contract, for lengths up to the model's blob bound"
+
+[[clause]]
+contract = "allocator_string"
+side = "requires"
+name = "views"
+bridge = "heap"
+verus = ""
+verifast = "[?fp]process((Process *)raw_process, ?prog, ?ids) &*& heap(?objs, ?H)"
+
+[[clause]]
+contract = "allocator_string"
+side = "requires"
+name = "length"
+verus = "MISSING"
+verifast = "length <= MAX_BLOB"
+note = "The VeriFast model bounds a blob by 2^30 - 1 on both widths (the heap invariant: TRUSTED.md, Word size, says 2^62 on 64-bit), so the proof covers those lengths; the Verus contract has no precondition and the C++ rejects only lengths above INTPTR_MAX (`static_cast<word>(length) < 0`). Above the bound on 64-bit the C++ allocates a string the model does not describe. Also: Process::allocate_string(word) computes `length + 1` for an external string, undefined behaviour at length == INTPTR_MAX, which the check lets through (unreachable: the Rust callers pass at most twice the largest blob; README, wave 6)."
+
+[[clause]]
+contract = "allocator_string"
+side = "ensures"
+name = "out of memory"
+bridge = "heap"
+verus = "r == 0 ==> *final(heap) == *old(heap)"
+verifast = "[fp]process((Process *)raw_process, prog, ids) &*& allocated(objs, H, (Process *)raw_process, ?r, ?objs2, ?H2) &*& result == (uword)r"
+
+[[clause]]
+contract = "allocator_string"
+side = "ensures"
+name = "appended"
+bridge = "heap"
+verus = "r != 0 ==> appended(old(heap), final(heap), r, p.ro_start, p.ro_size) && final(heap).objs().last().class_id == p.ap@.builtin[BUILTIN_STRING as int] && final(heap).objs().last().body is Str && content(final(heap).objs().last()).len() == length"
+verifast = "(r == 0 ? true : has_tag(H2, r, STRING_TAG) == true &*& blob_len(H2, r) == length)"
+
+[[contract]]
+name = "allocator_byte_array"
+verus_file = "core/src/ffi.rs"
+verus_fn = "byte_array"
+cxx_fn = "toit_v2_try_allocate_byte_array"
+rendering = "cxx/annotated/ffi/interpreter_v2.gen.c"
+status = "verified (VeriFast, LP64 and ILP32; wave 6) over the allocator's contract, for lengths up to the model's blob bound"
+
+[[clause]]
+contract = "allocator_byte_array"
+side = "requires"
+name = "views"
+bridge = "heap"
+verus = ""
+verifast = "[?fp]process((Process *)raw_process, ?prog, ?ids) &*& heap(?objs, ?H)"
+
+[[clause]]
+contract = "allocator_byte_array"
+side = "requires"
+name = "length"
+verus = "MISSING"
+verifast = "length <= MAX_BLOB"
+note = "As allocator_string's (without the `+ 1`)."
+
+[[clause]]
+contract = "allocator_byte_array"
+side = "ensures"
+name = "out of memory"
+bridge = "heap"
+verus = "r == 0 ==> *final(heap) == *old(heap)"
+verifast = "[fp]process((Process *)raw_process, prog, ids) &*& heap(?objs2, ?H2)"
+
+[[clause]]
+contract = "allocator_byte_array"
+side = "ensures"
+name = "appended"
+bridge = "heap"
+verus = "r != 0 ==> appended(old(heap), final(heap), r, p.ro_start, p.ro_size) && final(heap).objs().last() == (HeapObj { class_id: p.ap@.builtin[BUILTIN_BYTE_ARRAY as int], ro: false, body: Body::Bytes(Seq::new(length as nat, |i: int| 0u8)) })"
+verifast = "(result == 0 ? objs2 == objs &*& H2 == H : objs2 == cons(head(objs2), objs) &*& result == (uword)head(objs2) &*& mem(head(objs2), objs) == false &*& forall(objs, (same_obj)(H, H2)) == true &*& in_program_heap((Process *)raw_process, head(objs2)) == false &*& has_tag(H2, head(objs2), BYTE_ARRAY_TAG) == true &*& blob_ok(H2, head(objs2), STRINGS_OR_BYTE_ARRAYS) == true &*& blob_len(H2, head(objs2)) == length)"
+note = "The zero bytes are outside the VeriFast heap model (contents are unconstrained chunks); the C++ allocator clears them (ByteArray::_initialize, _initialize_external_memory with clear_content)."
 
 # The decoder's assumptions (verified/cxx/annotated/decoder): the
 # inter-process path only (TISON, the untrusted input, needs none). Wave 5
@@ -499,14 +758,6 @@ name = "views"
 bridge = "heap"
 verus = ""
 verifast = "[_]object_heap(self, ?p) &*& [?f]process(p, ?prog, ?ids) &*& heap(?objs, ?H)"
-
-[[clause]]
-contract = "allocate_large_integer"
-side = "requires"
-name = "canonical"
-verus = ""
-verifast = "smi_range(value) == false"
-note = "Not required by the allocator (it takes any int64): a requirement on its callers, which keep integers canonical (the decoder: decode_integer; README, 'Findings', wave 4). The mutant decoder-integer-canonical takes the decoder's smi check out."
 
 [[clause]]
 contract = "allocate_large_integer"

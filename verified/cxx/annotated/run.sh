@@ -232,12 +232,13 @@ mutant decoder-cardinal-word decoder/message_decoder.render src/messaging.cc "IL
 # Finding 3 (wave 4): the smi tags' magnitude above INT64_MAX (the
 # conversion to int64 overflows); without the smi range check in
 # decode_integer a value in the smi range is allocated as a large integer
-# (not canonical: the allocator contract's `canonical` clause fails).
+# (not canonical: decode_integer's postcondition, a smi for a value in the
+# smi range, fails; until wave 6 the allocator's `canonical` clause did).
 mutant decoder-smi-magnitude decoder/message_decoder.render src/messaging.cc "overflow|int64|9223372036854775807" "$DEC_OPTS" \
   "case TAG_POSITIVE_SMI: {\n      uint64 value = read_cardinal_64();\n      if (value > static_cast<uint64>(INT64_MAX)) return mark_malformed();\n" "case TAG_POSITIVE_SMI: {\n      uint64 value = read_cardinal_64();\n"
 mutant decoder-negative-smi-magnitude decoder/message_decoder.render src/messaging.cc "overflow|int64|9223372036854775807" "$DEC_OPTS" \
   "case TAG_NEGATIVE_SMI: {\n      uint64 value = read_cardinal_64();\n      if (value > static_cast<uint64>(INT64_MAX)) return mark_malformed();\n" "case TAG_NEGATIVE_SMI: {\n      uint64 value = read_cardinal_64();\n"
-mutant decoder-integer-canonical decoder/message_decoder.render src/messaging.cc "smi_range" "$DEC_OPTS" \
+mutant decoder-integer-canonical decoder/message_decoder.render src/messaging.cc "smi_range|smi_val|is_smi_w" "$DEC_OPTS" \
   "  if (Smi::is_valid(value)) return Smi::from(static_cast<word>(value));\n" ""
 # decode_external_data (the external message handlers, wave 4): without
 # the inline length check the int conversion and the copy's length are
@@ -303,15 +304,48 @@ mutant utf8-07c24665 utf8/utf_8_to_16.render src/utils.cc "utf8_count" "-prover 
 mutant utf8-overread utf8/utf_8_to_16.render src/utils.cc "No matching array chunk|i \+ j" "-prover z3v4.5" \
   "count > 4 || count > length - i)" "count > 4)"
 
-entry grow-stack            pass "" grow/grow_stack.gen.c -prover z3v4.5
+# The Rust/C++ boundary of src/interpreter_v2.cc (wave 6; stack growth
+# since wave 1): the leaf contracts of CONTRACTS.toml. `-allow_dead_code`:
+# the trace of Flags::primitives, a constant false in release builds.
+FFI_OPTS="-allow_dead_code -prover z3v4.5"
+entry ffi                   pass "" ffi/interpreter_v2.gen.c -allow_dead_code -prover z3v4.5
 # The bound on `needed` (core/trusted-integration) taken out again: the
 # cast to word overflows; with only the cast made exact by a precondition,
 # the sum.
-mutant grow-stack-unbounded grow/grow_stack.render src/interpreter_v2.cc "overflow|underflow" "-prover z3v4.5" \
+mutant grow-stack-unbounded ffi/interpreter_v2.render src/interpreter_v2.cc "overflow|underflow" "$FFI_OPTS" \
   "  if (needed > static_cast<uword>(Stack::max_length())) return TOIT_V2_STACK_OVERFLOW;\n" ""
-mutant grow-stack-word-range grow/grow_stack.render src/interpreter_v2.cc "overflow" "-prover z3v4.5" \
+mutant grow-stack-word-range ffi/interpreter_v2.render src/interpreter_v2.cc "overflow" "$FFI_OPTS" \
   "  if (needed > static_cast<uword>(Stack::max_length())) return TOIT_V2_STACK_OVERFLOW;\n" "" \
-  "stack_ok(len, top, rtop, bs) == true; @*/\n/*@ ensures current_stack" "stack_ok(len, top, rtop, bs) == true &*& needed <= UINTPTR_MAX / 2; @*/\n/*@ ensures current_stack"
+  "uword toit_v2_grow_stack(void* raw_process, uword needed)@@//@ requires vm((Process *)raw_process, ?a, ?n);" \
+  "//@ requires vm((Process *)raw_process, ?a, ?n) &*& needed <= UINTPTR_MAX / 2;"
+# The primitive call without its arity check: a primitive of another arity
+# reads arguments outside the frame (its precondition fails).
+mutant ffi-primitive-arity ffi/interpreter_v2.render src/interpreter_v2.cc "prim_arity" "$FFI_OPTS" \
+  "if (primitive == null || static_cast<uword>(primitive->arity) != arity) return TOIT_V2_PRIMITIVE_ABSENT;" \
+  "if (primitive == null) return TOIT_V2_PRIMITIVE_ABSENT;"
+# The retry after a GC with the stack read before the GC (moved or
+# shrunk: the arguments' address is not the current stack's).
+mutant ffi-primitive-stale-stack ffi/interpreter_v2.render src/interpreter_v2.cc "v_s|stack_array" "$FFI_OPTS" \
+  "SOURCE::    GcMetadata::insert_into_remembered_set(process->task()->stack());\n    v2_gc(process, malloc_failed" \
+  "    Stack* stack = process->task()->stack();\n    GcMetadata::insert_into_remembered_set(stack);\n    v2_gc(process, malloc_failed" \
+  "SOURCE::    Stack* stack = process->task()->stack();\n    result = entry(" "    result = entry(" \
+  "SIDECAR::    //@ open vm(process, bc, nc);\n    GcMetadata::insert_into_remembered_set(process->task()->stack());\n" \
+  "    //@ open vm(process, bc, nc);\n    Stack* stack = process->task()->stack();\n    GcMetadata::insert_into_remembered_set(stack);\n" \
+  "SIDECAR::    //@ same_frames_facts(a, bg);\n    Stack* stack = process->task()->stack();\n" "    //@ same_frames_facts(a, bg);\n"
+# The primitive retry loop one attempt longer: more collections than the
+# epoch accounting allows (an unchanged epoch word would no longer mean
+# that nothing moved).
+mutant ffi-primitive-retries ffi/interpreter_v2.render src/interpreter_v2.cc "attempts|<= 4|invariant|Cannot prove" "$FFI_OPTS" \
+  "    if (attempts > 3) {" "    if (attempts > 4) {"
+# The allocation retry loop without its bound (both instances of the
+# template): unbounded collections, the epoch could wrap.
+mutant ffi-allocate-retries ffi/interpreter_v2.render src/interpreter_v2.cc "attempts|<= 4|n \+ 3|invariant|Cannot prove" "$FFI_OPTS" \
+  "SOURCE::  for (int attempts = 1; result == null && attempts < 4; attempts++) {" \
+  "  for (int attempts = 1; result == null; attempts++) {" \
+  "SIDECAR::lambda=toit_v2_allocate_instance@@  for (int attempts = 1; result == null && attempts < 4; attempts++)" \
+  "  for (int attempts = 1; result == null; attempts++)" \
+  "SIDECAR::lambda=toit_v2_allocate_double@@  for (int attempts = 1; result == null && attempts < 4; attempts++)" \
+  "  for (int attempts = 1; result == null; attempts++)"
 
 entry string-write          pass "" prims/string_write.gen.c -prover z3v4.5
 # af4ba7ab (memcpy for a copy within one byte array) reverted: no proof...

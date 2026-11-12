@@ -110,6 +110,13 @@
 #define TOIT_V2_OK ((uword)0)
 #define TOIT_V2_STACK_OVERFLOW ((uword)1)
 #define TOIT_V2_OUT_OF_MEMORY ((uword)2)
+#define TOIT_V2_PRIMITIVE_SUCCESS ((uword)0)
+#define TOIT_V2_PRIMITIVE_FAILURE ((uword)1)
+#define TOIT_V2_PRIMITIVE_THROW ((uword)2)
+#define TOIT_V2_PRIMITIVE_ABSENT ((uword)3)
+// src/flags.h: a debug flag, a constant in release builds (TOIT_DEPLOY,
+// the build the renderings are made for).
+#define Flags_primitives false
 
 // src/primitive.h, the error roots of src/program.h, class Error.
 #define STRINGS_OR_BYTE_ARRAYS 0

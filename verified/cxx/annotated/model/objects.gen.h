@@ -595,9 +595,12 @@ String *Program_wrong_object_type(Program *self);
 String *Program_permission_denied(Program *self);
 //@ requires true;
 //@ ensures true;
+// (allocation_failed is one of the roots a primitive's error names for a
+// GC and a retry: ffi/interpreter_v2.render compares it.)
+//@ fixpoint String *root_allocation_failed(Program *prog);
 String *Program_allocation_failed(Program *self);
 //@ requires true;
-//@ ensures true;
+//@ ensures result == root_allocation_failed(self);
 Error *Error_from(String *string);
 //@ requires true;
 //@ ensures true;
@@ -672,11 +675,12 @@ Double *ObjectHeap_allocate_double(ObjectHeap *self, double value);
 /*@ ensures [f]process(p, prog, ids) &*& allocated(objs, H, p, result, ?objs2, ?H2) &*&
             (result == 0 ? true : has_tag(H2, result, DOUBLE_TAG) == true); @*/
 
-// A large integer of the given value. Required outside the smi range:
-// the callers keep integers canonical (the allocator itself takes any
-// value, a weaker precondition).
+// A large integer of the given value (any value: canonical integers are
+// the callers' business; the decoder's decode_integer ensures a smi for a
+// value in the smi range, and the Rust primitives allocate only outside
+// it, prims/ints.rs).
 LargeInteger *ObjectHeap_allocate_large_integer(ObjectHeap *self, int64 value);
-//@ requires [_]object_heap(self, ?p) &*& [?f]process(p, ?prog, ?ids) &*& heap(?objs, ?H) &*& smi_range(value) == false;
+//@ requires [_]object_heap(self, ?p) &*& [?f]process(p, ?prog, ?ids) &*& heap(?objs, ?H);
 /*@ ensures [f]process(p, prog, ids) &*& allocated(objs, H, p, result, ?objs2, ?H2) &*&
             (result == 0 ? true : has_tag(H2, result, LARGE_INTEGER_TAG) == true); @*/
 // C++: src/objects.h toit::is_smi

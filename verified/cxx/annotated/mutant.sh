@@ -70,9 +70,15 @@ src_pairs=()
 side_pairs=()
 while [ $# -gt 0 ]; do
   # A change prefixed `SIDECAR::` applies to the sidecar only (several
-  # copies of one template's text: one change per copy).
+  # copies of one template's text: one change per copy; annotations around
+  # the changed code), `SOURCE::` to the source only.
   if [[ "$1" == SIDECAR::* ]]; then
     side_pairs+=("${1#SIDECAR::}" "$2")
+    shift 2
+    continue
+  fi
+  if [[ "$1" == SOURCE::* ]]; then
+    src_pairs+=("${1#SOURCE::}" "$2")
     shift 2
     continue
   fi

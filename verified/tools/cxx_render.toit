@@ -908,6 +908,12 @@ class Renderer:
     if node["kind"] != "DeclRefExpr": fail "$(where node): call of a $node["kind"]"
     ref := node["referencedDecl"]
     name := ref["name"]
+    // A call through a function pointer held in a local or a parameter
+    // (`entry(process, args)`, a primitive's entry): the C call through
+    // the pointer, whose contract is its function type's.
+    if (ref["kind"] == "VarDecl" or ref["kind"] == "ParmVarDecl") and locals.contains name:
+      if not (c-type ref["type"]["qualType"]).ends-with "*": fail "$(where node): call of $name, not a function pointer"
+      return name
     s := spelling node
     params := fn-param-types ref["type"]["qualType"]
     c-name/string := ?
@@ -1851,11 +1857,11 @@ class Unit:
       ((inner decl).filter: it["kind"] == "ParmVarDecl" and (it["type"]["qualType"].contains "(lambda at ")).do: | p/Map |
         only-called body-node p["id"] null null
     result := Prepared s renderer decl body-node path source trusted (renderer.c-name decl)
-    // The lambdas of the function (the closure rules).
+    // The lambdas of the function (the closure rules). A trusted function's
+    // body is not rendered (only compared with the source): no closures.
     lambdas := []
-    collect-lambdas body-node lambdas
+    if not trusted: collect-lambdas body-node lambdas
     if not lambdas.is-empty:
-      if trusted: fail "$sidecar.path:$s.line: a trusted function with lambdas"
       if tu != path: fail "$sidecar.path:$s.line: lambdas are supported in the translation unit itself only"
       fname := renderer.c-name decl
       lambdas.size.repeat: | i |
