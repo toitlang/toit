@@ -107,6 +107,10 @@ pub struct Machine {
     pub fw: usize,
     pub need: usize,
     pub bot: Slot,
+    /// The slow path a register handler hands to the run loop with
+    /// `Ctl::Slow`, and its word (not part of the abstraction).
+    pub slow_k: crate::step::Slow,
+    pub slow_w: usize,
     pub g: Ghost<State2>,
 }
 
@@ -120,6 +124,11 @@ pub enum Ctl {
     /// A stuck state of the spec (or an implementation limit): the process
     /// is terminated.
     Stuck(usize),
+    /// A register handler's slow path (`step::Slow`, with the instruction's
+    /// word), which the run loop runs (`step::slow`): one call site instead
+    /// of one per handler. Only register handlers return it (`rpost`); the
+    /// slow path and its word are in `Machine::slow_k`, `slow_w`.
+    Slow,
 }
 
 /// Reasons for a stuck state (`types::Stuck`), reported to stderr.

@@ -148,6 +148,7 @@ pub open spec fn step_post(p: &Program, m0: Machine, m1: Machine, r: Ctl) -> boo
         Ctl::Exit(st, _) => (st == RESULT_PREEMPTED || st == RESULT_YIELDED) ==>
             m1.inv(p) && advances(p.ap@, m0.g@, m1.g@),
         Ctl::Stuck(reason) => reason == stuck::LIMIT,
+        Ctl::Slow => false,
     }
 }
 
@@ -337,6 +338,7 @@ pub open spec fn matches(p: &Program, o: Outcome2, m1: Machine, r: Ctl) -> bool 
                 o is Halt && !(o->Halt_1 is Yield)
             },
         Ctl::Stuck(reason) => reason == stuck::LIMIT,
+        Ctl::Slow => false,
     }
 }
 
@@ -612,8 +614,9 @@ pub fn step_machine(m: &mut Machine, env: &Env) -> (r: Ctl)
 /// What a step on registers guarantees: on `Next` the registers `r1` are
 /// cursors of `m1` and `m1.with(r1)` is the machine of `step_post` (one
 /// step) or of `steps_post` (the machine's handlers ran several steps until
-/// no finally records were left, `settle`); on any other result the
-/// machine `m1` itself (the registers written back).
+/// no finally records were left, `settle`); on `Slow` nothing changed and
+/// the slow path applies (`slow_pre`: the run loop runs it); on any other
+/// result the machine `m1` itself (the registers written back).
 pub open spec fn rpost(p: &Program, m0: Machine, r0: Regs, m1: Machine, r1: Regs, c: Ctl) -> bool {
     if c == Ctl::Next {
         &&& m1.rok(r1)
@@ -621,6 +624,10 @@ pub open spec fn rpost(p: &Program, m0: Machine, r0: Regs, m1: Machine, r1: Regs
         &&& crate::regs::gate_ok(p, m1)
         &&& step_post(p, m0.with(r0), m1.with(r1), c) || steps_post(p, m0.with(r0), m1.with(r1), c)
         &&& room_ok(p, m1.with(r1))
+    } else if c is Slow {
+        &&& m1 == (Machine { slow_k: m1.slow_k, slow_w: m1.slow_w, ..m0 })
+        &&& r1 == r0
+        &&& exists|v: Value| #[trigger] slow_pre(p, m1, r1, m1.slow_k, m1.slow_w, v)
     } else {
         step_post(p, m0.with(r0), m1, c) || steps_post(p, m0.with(r0), m1, c)
     }
@@ -633,6 +640,7 @@ pub open spec fn steps_post(p: &Program, m0: Machine, m1: Machine, r: Ctl) -> bo
         Ctl::Exit(st, _) => (st == RESULT_PREEMPTED || st == RESULT_YIELDED) ==>
             m1.inv(p) && reaches(p.ap@, m0.g@, m1.g@),
         Ctl::Stuck(reason) => reason == stuck::LIMIT,
+        Ctl::Slow => false,
     }
 }
 
@@ -774,6 +782,7 @@ pub open spec fn rhandler_pre(p: &Program, m: Machine, r: Regs, bci: usize, opco
 /// A slow path of a register handler, run on the machine: what the
 /// machine's code does there, with the word `w` (value `v`) of the
 /// instruction where one is needed.
+#[derive(Clone, Copy)]
 pub enum Slow {
     /// The machine's handler of the instruction (`machine_op`).
     Op,
@@ -814,15 +823,15 @@ pub open spec fn slow_pre(p: &Program, m: Machine, r: Regs, k: Slow, w: usize, v
     }
 }
 
-/// Runs a slow path on the machine, out of line (one copy for every
-/// register handler): writes the registers back, runs the machine's code
+/// Runs a slow path on the machine, out of line (the run loop calls it for every
+/// register handler's Ctl::Slow): writes the registers back, runs the machine's code
 /// (the raises, calls, returns, unwinding and C++ calls, which handle
 /// finally records, stack growth and preemption), and derives the
 /// registers again (`resume`).
 #[inline(never)]
 pub fn slow(m: &mut Machine, r: Regs, env: &Env, k: Slow, w: usize, Ghost(v): Ghost<Value>) -> (res: (Regs, Ctl))
     requires slow_pre(&env.p, *old(m), r, k, w, v),
-    ensures rpost(&env.p, *old(m), r, *final(m), res.0, res.1),
+    ensures rpost(&env.p, *old(m), r, *final(m), res.0, res.1), !(res.1 is Slow),
 {
     let p = &env.p;
     let ghost ap = p.ap@;
@@ -935,15 +944,39 @@ pub fn slow(m: &mut Machine, r: Regs, env: &Env, k: Slow, w: usize, Ghost(v): Gh
     }
 }
 
-/// `slow` for an inlined handler: the registers in place.
+/// The slow-path request fields of the machine are not part of anything
+/// the slow path's precondition looks at.
+pub proof fn lemma_slow_fields(p: &Program, m0: Machine, m1: Machine, r: Regs, k: Slow, w: usize, v: Value)
+    requires
+        slow_pre(p, m0, r, k, w, v),
+        m1 == (Machine { slow_k: m1.slow_k, slow_w: m1.slow_w, ..m0 }),
+    ensures slow_pre(p, m1, r, k, w, v),
+{
+    assert(m1.with(r) == (Machine { slow_k: m1.slow_k, slow_w: m1.slow_w, ..m0.with(r) }));
+    assert(m1.with(r).inv(p));
+    assert forall|i: int| 0 <= i < m1.with(r).g@.frames.len() implies #[trigger] frame_room(p, m1.with(r), i) by {
+        assert(frame_room(p, m0.with(r), i));
+    }
+    assert(room_ok(p, m1.with(r)));
+    assert(rinv(p, m1, r));
+}
+
+/// The slow path of an inlined handler: handed to the run loop
+/// (`Ctl::Slow`, the request in the machine), which runs `slow` at its one
+/// call site.
 #[inline(always)]
 pub fn slow_r(m: &mut Machine, r: &mut Regs, env: &Env, k: Slow, w: usize, Ghost(v): Ghost<Value>) -> (c: Ctl)
     requires slow_pre(&env.p, *old(m), *old(r), k, w, v),
     ensures rpost(&env.p, *old(m), *old(r), *final(m), *final(r), c),
 {
-    let (r2, c) = slow(m, *r, env, k, w, Ghost(v));
-    crate::regs::set_regs(r, r2);
-    c
+    let ghost m0 = *m;
+    m.slow_k = k;
+    m.slow_w = w;
+    proof {
+        lemma_slow_fields(&env.p, m0, *m, *r, k, w, v);
+        assert(slow_pre(&env.p, *m, *r, m.slow_k, m.slow_w, v));
+    }
+    Ctl::Slow
 }
 
 /// A slow path without a word.
@@ -1800,31 +1833,69 @@ pub fn run_loop(m: &mut Machine, env: &Env, accepted: &crate::ffi::Accepted) -> 
             Ctl::Next => {
                 proof { lemma_rstep_reaches(&env.p, m0.g@, before, m.with(r), ctl); }
             },
-            Ctl::Exit(state, value) => {
-                proof {
-                    if state == RESULT_PREEMPTED || state == RESULT_YIELDED {
-                        lemma_rstep_reaches(&env.p, m0.g@, before, *m, ctl);
-                    }
+            Ctl::Slow => {
+                // A handler's slow path: one call site for all of them.
+                let k = m.slow_k;
+                let w = m.slow_w;
+                let ghost v = choose|v: Value| slow_pre(&env.p, *m, r, k, w, v);
+                let (r2, c2) = slow(m, r, env, k, w, Ghost(v));
+                r = r2;
+                match c2 {
+                    Ctl::Next => {
+                        proof { lemma_rstep_reaches(&env.p, m0.g@, before, m.with(r), c2); }
+                    },
+                    Ctl::Exit(state, value) => { return leave_exit(m, state, value, Ghost(m0), Ghost(before), Ghost(&env.p)); },
+                    Ctl::Stuck(reason) => { return leave_stuck(m, env, reason, Ghost(m0)); },
+                    Ctl::Slow => {
+                        proof { assert(false); }
+                        return crate::view::proven_unreachable();
+                    },
                 }
-                m.save();
-                proof {
-                    if state == RESULT_PREEMPTED || state == RESULT_YIELDED {
-                        assert(m.refines(&env.p));
-                        assert(m.inv(&env.p));
-                        assert(reaches(env.p.ap@, m0.g@, m.g@));
-                    }
-                    assert(run_post(&env.p, m0, *m, (state as usize, value)));
-                }
-                return (state as usize, value);
             },
-            Ctl::Stuck(reason) => {
-                env.rt.report(V2_REPORT_STUCK, m.bci, reason);
-                m.save();
-                assert(run_post(&env.p, m0, *m, (RESULT_TERMINATED, 1i64)));
-                return (RESULT_TERMINATED, 1);
-            },
+            // The fields, not the result: passing the result on would keep
+            // it in memory, where every handler would then store it.
+            Ctl::Exit(state, value) => { return leave_exit(m, state, value, Ghost(m0), Ghost(before), Ghost(&env.p)); },
+            Ctl::Stuck(reason) => { return leave_stuck(m, env, reason, Ghost(m0)); },
         }
     }
+}
+
+/// Leaves the run loop after a step that exits: the machine is saved.
+#[inline(never)]
+fn leave_exit(m: &mut Machine, state: u32, value: i64, Ghost(m0): Ghost<Machine>, Ghost(before): Ghost<Machine>,
+              Ghost(p): Ghost<&Program>) -> (r: (usize, i64))
+    requires
+        step_post(p, before, *old(m), Ctl::Exit(state, value)) || steps_post(p, before, *old(m), Ctl::Exit(state, value)),
+        reaches(p.ap@, m0.g@, before.g@),
+    ensures run_post(p, m0, *final(m), r),
+{
+    proof {
+        if state == RESULT_PREEMPTED || state == RESULT_YIELDED {
+            lemma_rstep_reaches(p, m0.g@, before, *m, Ctl::Exit(state, value));
+        }
+    }
+    m.save();
+    proof {
+        if state == RESULT_PREEMPTED || state == RESULT_YIELDED {
+            assert(m.refines(p));
+            assert(m.inv(p));
+            assert(reaches(p.ap@, m0.g@, m.g@));
+        }
+        assert(run_post(p, m0, *m, (state as usize, value)));
+    }
+    (state as usize, value)
+}
+
+/// Leaves the run loop after a step that is stuck (out of room): the
+/// machine is saved.
+#[inline(never)]
+fn leave_stuck(m: &mut Machine, env: &Env, reason: usize, Ghost(m0): Ghost<Machine>) -> (r: (usize, i64))
+    ensures run_post(&env.p, m0, *final(m), r),
+{
+    env.rt.report(V2_REPORT_STUCK, m.bci, reason);
+    m.save();
+    assert(run_post(&env.p, m0, *m, (RESULT_TERMINATED, 1i64)));
+    (RESULT_TERMINATED, 1)
 }
 
 } // verus!

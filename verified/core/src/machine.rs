@@ -1383,7 +1383,7 @@ pub fn run(p: Program, rt: Runtime, globals: Globals, heap: Heap, pre: Preemptio
     let mut m = Machine {
         mem, globals, heap,
         len: 0, top: 0, ftop: 0, rtop: 0, bci: 0, base: 0, lim: 0, method: 0,
-        fw: 0, need: usize::MAX, bot,
+        fw: 0, need: usize::MAX, bot, slow_k: crate::step::Slow::Op, slow_w: 0,
         g: Ghost::assume_new(),
     };
     let env = Env { p, rt, pre, core_arities };
@@ -2417,6 +2417,13 @@ fn run_checked(m: &mut Machine, env: &Env) -> (usize, i64) {
             }
             Ctl::Stuck(reason) => {
                 env.rt.report(V2_REPORT_STUCK, m.bci, reason);
+                m.save();
+                return (RESULT_TERMINATED, 1);
+            }
+            // Only register handlers (not the checked ones) hand a slow path
+            // to the loop.
+            Ctl::Slow => {
+                env.rt.report(V2_REPORT_STUCK, m.bci, stuck::FATAL);
                 m.save();
                 return (RESULT_TERMINATED, 1);
             }
