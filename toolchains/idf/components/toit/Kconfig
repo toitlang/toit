@@ -388,4 +388,16 @@ menu "Toit"
             only after the install-time verification and trusted
             (first-party) programs on the verified loop (the trusted token),
             so they do not need it; only useful to measure its size.
+
+    config TOIT_HW_PERF
+        bool "Cycle and performance counters per VM activity (for measurements)"
+        default n
+        help
+            Counts the cycles (and on Xtensa the retired instructions and one
+            stall or exception counter of the core's performance monitor)
+            spent running processes, in primitives, in the GC, in the
+            scheduler and idle, per core and per primitive (src/hw_perf.h).
+            Profiler.start without an installed profiler resets the
+            counters, Profiler.stop prints them ("[hw-perf]" lines). Costs
+            some 50-100 cycles per primitive call and IRAM.
 endmenu

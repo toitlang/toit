@@ -18,6 +18,7 @@
 #include <math.h>
 
 #include "flags.h"
+#include "hw_perf.h"
 #include "primitive_policy.h"
 #include "printing.h"
 #include "process.h"
@@ -1325,7 +1326,9 @@ Interpreter::Result Interpreter::run() {
       Primitive::Entry* entry = reinterpret_cast<Primitive::Entry*>(primitive->function);
 
       sp_ = sp;
+      HW_PERF_PRIMITIVE_START(hw_perf_start);
       Object* result = entry(process_, sp + parameter_offset + arity - 1); // Skip the frame.
+      HW_PERF_PRIMITIVE_END(hw_perf_start, primitive_module, primitive_index);
       sp = sp_;
 
       for (int attempts = 1; true; attempts++) {

@@ -28,6 +28,7 @@
 #include "encoder.h"
 #include "heap_report.h"
 #include "heap_roots.h"
+#include "hw_perf.h"
 #include "interpreter.h"
 #include "objects_inline.h"
 #include "process.h"
@@ -314,6 +315,7 @@ static void v2_gc(Process* process, bool malloc_failed, int attempts, bool force
 
 template <typename F>
 static uword v2_allocate(Process* process, const char* reason, F allocate) {
+  HW_PERF_SCOPE(HWP_ALLOC);
   HeapObject* result = allocate();
   for (int attempts = 1; result == null && attempts < 4; attempts++) {
     v2_gc(process, false, attempts, false, reason);
@@ -415,6 +417,7 @@ uword toit_v2_allocate_array(void* raw_process, uword length, uword filler) {
 }
 
 uword toit_v2_grow_stack(void* raw_process, uword needed) {
+  HW_PERF_SCOPE(HWP_ALLOC);
   Process* process = v2_process(raw_process);
   // More free words than the longest stack has: an overflow (checked here, so
   // that the casts to `word` below never see a value of 2^(WORD_BITS-1) or
@@ -525,7 +528,9 @@ uword toit_v2_primitive(void* raw_process, uword module, uword index, uword arit
   // the primitive must find the stack in the remembered set.
   Stack* stack = process->task()->stack();
   GcMetadata::insert_into_remembered_set(stack);
+  HW_PERF_PRIMITIVE_START(hw_perf_start);
   Object* result = entry(process, stack->v2_slot_address(first_argument));
+  HW_PERF_PRIMITIVE_END(hw_perf_start, module, index);
   if (Primitive::is_error(result)) {
     return v2_primitive_failed(process, entry, first_argument, result, result_out);
   }
