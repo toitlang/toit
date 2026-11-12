@@ -165,7 +165,7 @@ If the buffer is not null then allocations are made, pointed to by the encoded
 */
 class MessageEncoder {
  public:
-  explicit MessageEncoder(uint8* buffer) : buffer_(buffer) {}
+  explicit MessageEncoder(uint8* buffer) : buffer_(buffer), take_ownership_of_buffer_(true) {}
   MessageEncoder(Process* process, uint8* buffer)
       : MessageEncoder(process, buffer, MESSAGE_FORMAT_IPC, true) {}
   ~MessageEncoder();
