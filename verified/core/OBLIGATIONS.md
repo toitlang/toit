@@ -223,6 +223,87 @@ verified/vmverify/README.md "Device size").
   change but a flash layout change (the reservation must hold it; today
   the certificate block occupies the tail during verification).
 
+### Device speed requests (branch device/hw-perf, 2026-11-12)
+
+Measured on the boards (docs/format2-migration.md, "Devices: hardware
+results", "Where the time goes"; artifacts
+/home/flo/work/opentoit-sandbox-artifacts/hw-perf). Format 2 executes
+about as many instructions as format 1 (service calls: 32.4 M vs 29.1 M
+for 200 calls on the classic ESP32), but on the classic ESP32 (40 MHz DIO
+flash, a 32 KB flash cache per core shared by code and data, a miss costs
+microseconds) every function the core runs from flash costs cache misses,
+while the C++ interpreter it replaces kept its loop and helpers (hash
+find included) in IRAM. Of the extra
+cycles of 200 service calls (+180 M), instruction-fetch stalls were 79 %,
+data stalls 26 %. The device-library step can place any function by name
+(Kconfig TOIT_VERIFIED_CORE_IRAM_FUNCTIONS, localize-libm.cmake), but the
+classic ESP32 has no IRAM left: everything below needs room made inside
+the core. Ranked by measured benefit per byte (PC samples per byte of
+code in flash, all perfbench workloads, classic ESP32):
+
+- S1 (largest): split `step::run_loop` into a hot part for IRAM and cold
+  arms in flash, with stable names. Of its 28.3 KB, the 64-byte blocks
+  that got any PC sample over perfbench and hwbench are 13.8 KB; 99 % of
+  the loop's samples fall in 8 KB, 99.9 % in 12 KB; 15 KB never got a
+  sample. A hot part of at most 14 KB frees 14 KB of IRAM on the classic
+  ESP32: enough to turn `ESP_WIFI_RX_IRAM_OPT` back on (13.2 KB) or for
+  every helper of S2. The renaming step needs one symbol (or a name
+  pattern) per part; today it moves `step::run_loop` only.
+- S2: these out-of-loop functions are hot (samples per byte; size at opt
+  3, Xtensa): `rnonlocal::op_try_v` 3.3 (223 B), `prims::array::list_add`
+  2.3 (212), `room::ensure_room_all` 1.3 (215), `prims::blob::json_skip_whitespace`
+  1.3 (181), `rarrays::cxx_primitive_v` 1.2 (276), `prims::ints::int_arg`
+  1.1 (60), `toit_v2_run` 0.8 (614), `prims::array::array_new` 0.8 (146),
+  `machine::run` 0.75 (267), `prims::blob::string_length` 0.7 (101),
+  `rnonlocal::op_non_local_return_v` 0.7 (423), `rnonlocal::ret_try_v` 0.6
+  (63), `rhash::probe_x` 0.5 (600), `rhash::op_hash_find_v` 0.5 (1,159),
+  `rarrays::cxx_primitive_rest` 0.4 (523), `rnonlocal::unwind_resume_v`
+  0.4 (370), `rarrays::resume_r` 0.3, `rhash::hf_at_x` 0.3 (674),
+  `prims::blob::blob_arg` 0.3 (1,105), `Machine::large_loc` 0.25,
+  `step::slow` 0.2 (4,980: its hot arms are the resume after a failed C++
+  primitive, which every `task_transfer` takes, and the preemption check;
+  split them from the rest). `Machine::reload_cold` and
+  `Machine::do_return` are out of line on Xtensa and RISC-V and hot in
+  service calls. The first ten (3.8 KB) are in IRAM now on the classic
+  ESP32 (service calls 1.02 s -> 0.71 s, format 1 0.56 s); with every
+  one in IRAM (a firmware without Bluetooth, for the room) 200 service
+  calls took 0.54 s, json 0.36 s (format 1: 0.56 / 0.44 s).
+- S3: the finally records move on every call and return
+  (`Machine::call`, calls.rs `copy_within(f, f + FRAME_WORDS, e - f)`,
+  `pop_frame_record`): inside any `try` (monitors, service handlers, task
+  code) each call does a ROM memmove of all records above the frames. It
+  is 9-12 % of the busy time of task switching (tasks-1k: 9.3 % on the
+  ESP32, 12 % on the C6) and 1-4 % of the other workloads. Request a
+  layout in which pushing or popping a frame record does not move the
+  finally records (e.g. records growing from the other end of their
+  region, or linked per frame).
+- S4: `ensure_room_all` walks every frame of the stack (O(depth)) on the
+  resume paths (room.rs:181, step.rs:686): 7.8 % of tasks-1k on the C6,
+  2.2 % on the ESP32. Request a check of the top frame (or an incremental
+  bound) where the state allows it.
+- S5: `toit_v2_run` builds the `exec::Program` (about 30 words from the
+  context, the built-in class ids and the roots read from the program in
+  flash) on every process entry: 400 entries per 200 service calls, 4 %
+  of their busy time from flash before it moved to IRAM. A `Program`
+  prepared once per process group (and passed by pointer) would avoid the
+  flash reads on every entry.
+- S6 (data): data stalls were 26 % of the extra cycles of service calls
+  (ESP32: 88 M vs 42 M cycles for 200 calls). Reads from the program in
+  flash per call (the method record, the literal, the dispatch entry)
+  compete with code for the same cache; fewer distinct lines touched per
+  call helps.
+
+Install-time verifier (owned with the spec): on the classic ESP32 the
+check of a 25-31 KB program executes 270-490 M instructions (about 10-16
+thousand per bytecode byte) at 2.4-2.5 cycles each; instruction-fetch
+stalls are 18-21 % of its cycles; opt-level 3 (+11 KB) or s (+2 KB)
+instead of z changed its time by under 5 %. malloc/free (the Rust
+allocations go through ESP-IDF's heap_caps layers, in flash in the
+format-2 sdkconfig of the classic ESP32) took about a third of the
+verifier's busy samples. Requests: V1 fewer allocations (reuse the
+per-method vectors across methods, or an arena per method check); V2
+fewer instructions per bytecode.
+
 ## 3. Spec requests from the refinement proof
 
 For verified/spec/format/PHASE4-REQUESTS.md (not edited here: owned by
