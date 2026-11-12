@@ -141,6 +141,7 @@ The switches (toolchains/idf/components/toit/Kconfig):
 | `TOIT_VERIFIED_CORE` | links the core and the verifier (Rust, `libtoit_rust.a`) |
 | `TOIT_BYTECODE_FORMAT_2` (needs the core, default y) | the IDF component compiles the system snapshot and the entry program with `TOIT_BYTECODE_FORMAT=2`; CMake `TOIT_BYTECODE_FORMAT=2`; a device build without the core is a CMake error |
 | `TOIT_CXX_INTERPRETER` (only deselectable with format 2) | CMake option `TOIT_CXX_INTERPRETER=OFF` (hosts keep it on): interpreter_run.cc and method_entries.cc are not compiled, `Interpreter::run` only hands over to the core (interpreter_v2.cc), `ProcessGroup::create` refuses format-1 programs. printing.cc stays: it is compiled only with `TOIT_DEBUG` (empty on devices). The format-1 verifier was already a stub on FreeRTOS. |
+| `TOIT_VERIFIED_CORE_LOOP_IN_IRAM` (default without the C++ interpreter) | the core's loop in IRAM, its jump table in DRAM; the classic ESP32 needs three IRAM-freeing sdkconfig lines ("Devices: hardware results") |
 | `TOIT_TRACE_INSTALL` (measurements) | prints time, free heap, table location and peak heap of each install-time verification (`[install-trace]`) |
 
 The envelope records the formats its firmware runs: metadata
@@ -257,7 +258,9 @@ line misses (a miss every 16,000 instructions; at roughly 100-200 cycles
 a miss, under 1 % of the run). The hot code fits the cache; the data
 fetches from flash (bytecodes and program heap of the images, rodata)
 share it on the ESP32 and are not simulated, so this is a lower bound
-that hardware has to confirm.
+that hardware has to confirm. **Hardware did not confirm it**: from flash
+the loop made json 5x slower on the classic ESP32; it now runs from IRAM
+("Devices: hardware results").
 
 **Untrusted install** (f2 with `TOIT_TRACE_INSTALL`, scripts/installer-run.sh;
 verified/core/PROGRESS.md "Device builds on format 2" has the table): the
@@ -547,12 +550,15 @@ Remaining before the EC618 can default to format 2:
    see verified/core/PROGRESS.md "Device size"), then the default flip
    (4f488c84) and the CI step for the Rust targets. The C6 fits now (29
    KB to spare) and could flip on its own.
-2. The other device targets on the core (C3, S2, S3, P4; 4-6 days plus
-   hardware; the EC618 needs a hardware run and the default flip, see
-   "EC618") or dropping them; the cross hosts' cargo targets.
-3. Hardware runs of the format-2 firmware (the hw test suite, `make
-   test-hw-esp32`, compiles its programs with the host default, now
-   format 2).
+2. The other device targets on the core (C3, S2, P4; the S3 is brought up,
+   see "Devices: hardware results"; the EC618 builds and runs under QEMU
+   and needs a hardware run and the default flip, see "EC618") or dropping
+   them; the cross hosts' cargo targets.
+3. Hardware runs of the format-2 firmware: done for the C6, the classic
+   ESP32 (with the hw test suite) and the S3 ("Devices: hardware
+   results"); open: the gap in RPC and json speed, the install time on
+   the classic ESP32, WiFi RX throughput without its IRAM option, the
+   EC618.
 4. Jaguar and Artemis: compile format 2 for devices and read the
    envelope's `bytecode-formats` instead of assuming format 1 (outside
    this repository).
@@ -560,6 +566,204 @@ Remaining before the EC618 can default to format 2:
    days): the FORMAT-1-ONLY tests, `-Xbytecode_format=1`, toit.run's
    format-1 `--verify`/`--fuzz`, the `TOIT_CHECK_PROPAGATED_TYPES` job;
    format 1 stays inside the compiler for the propagator.
+
+## Devices: hardware results
+
+Branch `device/hardware` (2026-11-12), the first runs on real boards: an
+ESP32-C6 (QFN40 rev 0.1, 160 MHz, 8 MB flash used as 4 MB) and the rig's
+classic ESP32 boards (rev 1, 240 MHz, 4 MB DIO flash at 40 MHz, no PSRAM).
+Scripts, logs, firmware and the programs:
+/home/flo/work/opentoit-sandbox-artifacts/hardware (README.md there).
+Configurations from the same commit (`scripts/fw-all.sh`): **f1** format
+1, C++ interpreter in IRAM, no core (today's firmware); **f2** format 2 on
+the core, no C++ interpreter, the core's loop in IRAM (below); **f2flash**
+the same with the loop in flash (what device/format2 measured under QEMU).
+The numbers are after merging the compact method records (a773bcfe)
+unless marked "before".
+
+**Everything works on all three chips in format 2** (the S3 below): the device suite (hello,
+benchmarks, GC stress, profiler, service calls between containers,
+preemption of a CPU-bound container, a container dying with a stack
+trace, six untrusted installs that run and exit 0, five rejected ones
+(deep sleep, no certificate, forged certificate, trusted-compiled,
+format 1), deep sleep and wake-up), installs with WiFi up, a 60 s busy
+loop in a spawned process and a 30 s one in the only process (no task
+watchdog, no dead-lock report; the ticking process is at most 1.7 ms late
+on the ESP32, 100 ms on the single-core C6, the same as f1), and an OTA
+update without Jaguar on the C6 and the ESP32 (`progs/suite/hwota.toit`:
+1.77 / 1.67 MB over TCP from the host in 41 / 46 s, written with
+`system.firmware`, reboot, the new firmware validates itself; the ESP32
+with two 0x1c0000 OTA partitions, since f2 with a container does not fit
+0x1a0000). The suite's output is identical between f1 and
+f2 except for the untrusted installs (f1 has no verifier).
+
+### The core's loop must run from IRAM
+
+With the loop in flash (as built until now) the classic ESP32 ran json 5.1
+times, map/set 5.4, strings 2.8, pystone 2.4 and deltablue 1.6 times
+slower than f1, although QEMU counted about as many instructions (json
+1.07): the 28 KB loop does not stay in the 32 KB flash cache, which it
+shares with the bytecodes, the program heap and the C++ primitives, and a
+miss costs about 1 us with this flash. Moving it to IRAM (the C++
+interpreter has always been there) removed most of that:
+
+| ms, median of 7 (before the merge) | f1 | f2flash | loop in IRAM | + jump table in DRAM |
+|---|---:|---:|---:|---:|
+| ESP32 json | 362 | 1,841 | 533 | 477 |
+| ESP32 map/set | 206 | 1,120 | 386 | 340 |
+| ESP32 pystone | 175 | 420 | 149 | 148 |
+| ESP32 deltablue | 121 | 189 | 106 | 96 |
+| C6 json | 243 | 489 | | 323 |
+| C6 map/set | 162 | 262 | | 188 |
+
+Kconfig `TOIT_VERIFIED_CORE_LOOP_IN_IRAM` (default when the C++
+interpreter is not linked) renames the loop's sections in the device
+library (vmverify/staticlib/localize-libm.cmake): code and Xtensa literals
+to `.iram1.*`, the 2.4 KB jump table to `.dram1.*`. The C6 has room (it
+costs 22 KB of heap: 233 KB free at boot instead of 251). The classic
+ESP32 has 13 KB of IRAM free without the C++ interpreter, so its sdkconfig
+also needs `# CONFIG_ESP_WIFI_RX_IRAM_OPT is not set`,
+`CONFIG_HEAP_PLACE_FUNCTION_INTO_FLASH=y` and
+`CONFIG_RINGBUF_PLACE_FUNCTIONS_INTO_FLASH=y`; 4.5 KB of IRAM stay free at
+opt-level 3; at opt-level z the loop (33 KB) overflows IRAM by 832 bytes.
+WiFi RX throughput without `ESP_WIFI_RX_IRAM_OPT` is not measured (the
+1.77 MB OTA download ran at 43 KB/s on the C6, which keeps the option).
+Splitting the loop (dispatch and hot handlers in IRAM, the rest in flash)
+needs changes inside verified/core and was not tried.
+
+### Measurements
+
+Wall-clock medians of 7 runs on the device (`progs/suite/hwbench.toit`,
+`Time.monotonic-us`), ratio f2/f1. rpc-200 is the device suite's single
+run of 200 service calls between containers.
+
+| ms | ESP32 f1 | ESP32 f2 | ratio | C6 f1 | C6 f2 | ratio |
+|---|---:|---:|---:|---:|---:|---:|
+| richards | 1,866 | 997 | 0.53 | 1,205 | 1,127 | 0.93 |
+| deltablue (50) | 136 | 99 | 0.72 | 87 | 101 | 1.16 |
+| pystone (2,000) | 174 | 154 | 0.88 | 174 | 175 | 1.01 |
+| json | 374 | 549 | 1.47 | 246 | 322 | 1.31 |
+| map/set | 216 | 299 | 1.38 | 162 | 189 | 1.17 |
+| strings | 202 | 220 | 1.09 | 133 | 158 | 1.19 |
+| GC stress | 1,140 | 835 | 0.73 | 971 | 1,002 | 1.03 |
+| loop 1M | 1,950 | 1,680 | 0.86 | 1,945 | 1,934 | 0.99 |
+| 200k calls | 547 | 632 | 1.16 | 650 | 654 | 1.01 |
+| rpc-200 | 490 (before) | 1,107 | 2.26 | 323 | 579 | 1.79 |
+
+| | ESP32 f1 | ESP32 f2 | C6 f1 | C6 f2 |
+|---|---:|---:|---:|---:|
+| firmware.bin (toit.bin + system image) | 1,549,248 | 1,631,792 | 1,661,008 | 1,727,536 |
+| free heap at boot | 116,880 | 131,328 | 218,096 | 233,136 |
+| free heap with WiFi up | 60,352 | 74,760 | 155,792 | 170,768 |
+| untrusted install, 55-63 KB images, WiFi up | refused | 6.0-7.2 s | refused | 3.0-3.5 s |
+| of which verification (`TOIT_TRACE_INSTALL`) | | 4.6-5.5 s | | 1.8-2.2 s |
+| verifier peak heap | | 12-24 KB | | 12-22 KB |
+
+The rest of an install is writing the image to flash (f1 takes 1.3-2.0 s
+on the ESP32 and 1.0-1.5 s on the C6 to refuse the same images). The
+ESP32 is short of memory with WiFi up: 75 KB free, the largest block 45-70
+KB. Untrusted installs worked once the installer wrote the image in 4 KB
+chunks (as Jaguar does); writing a 63 KB image in one call needs a 63 KB
+block in the system process and failed with MALLOC_FAILED on 4 of 6
+images (on f1 too: it is the RPC message, not the verifier).
+
+Single runs are sensitive to where the containers lie in flash: f1's
+richards took 1.37 s in the suite's envelope and 1.92 s in the benchmark's
+(f2: 1.00 s in both), so compare the same envelope kind.
+
+**Rust opt-level of the core** (f2, loop in IRAM; ratio to opt-level 3):
+
+| | firmware.bin | richards | json | pystone | loop 1M |
+|---|---:|---:|---:|---:|---:|
+| C6 opt 3 | 1,727,536 | 1,127 | 322 | 175 | 1,934 |
+| C6 opt s | 1,721,968 (-5.6 KB) | 1.18 | 1.10 | 1.18 | 1.24 |
+| C6 opt z | 1,720,096 (-7.4 KB) | 1.91 | 1.42 | 1.83 | 2.33 |
+| ESP32 opt 3 | 1,631,792 | 997 | 549 | 154 | 1,680 |
+| ESP32 opt s | 1,625,296 (-6.5 KB) | 1.30 | 0.95 | 1.23 | 1.35 |
+| ESP32 opt 3, loop in flash | 1,634,176 | 1.06 | 3.40 | 3.09 | 1.06 |
+| ESP32 opt z, loop in flash (does not fit IRAM) | 1,629,488 (-2.3 KB) | 3.50 | 3.58 | 5.70 | 4.46 |
+
+Size-optimised Rust saves 6-7 KB and costs 7-35 % at s and 40-130 % (C6)
+or 3-6x (ESP32, flash) at z: not worth it for the loop. With the loop in
+flash, the ESP32's 200k-calls loop took 7.8 s in one build (12x; 0.63 s
+from IRAM): a conflict in the flash cache between the loop and the
+called code, which shows how fragile flash execution is.
+
+**Compact method records** (a773bcfe, 4-byte records read in place from
+flash), f2 before and after the merge, same scripts: C6 richards +3.1 %,
+deltablue +4.3 %, pystone +2.7 %, 200k calls +2.7 %, json and map/set
+unchanged; ESP32 richards +0.4 %, deltablue +2.4 %, pystone +4.0 %, 200k
+calls -0.5 %, json +15 %, map/set -12 %, strings -7 % (the last three move
+with the flash layout, see above). So RISC-V is affected too (3-4 % on
+call-heavy code). No alignment fault or other failure; the table literal
+is now mandatory, so its flash-vs-RAM cost cannot be isolated any more
+(before the merge, with the loop in flash, a RAM table made the ESP32's
+json 23 % faster; on the C6 with the loop in IRAM the difference was
+within 2 %). To repeat on another branch: build `f2` with
+`scripts/fw-all.sh <target> <tag> f2`, `scripts/mkenvs.sh <target> f2
+bench`, run `scripts/hwrun.sh <board> <target>-f2-bench <log> 400
+[--test-partitions]` (the ESP32's f2 with a container needs the larger
+layout), compare with `scripts/bench-table.sh <log> <log>`.
+
+### Hardware test suite (tests/hw/esp32)
+
+74 tests on the rig's two classic ESP32 boards (`scripts/hwsuite.sh`):
+f1 with the standard layout and the tests compiled in format 1
+(`TOIT_BYTECODE_FORMAT=1`), f2 with two 0x1c0000 OTA partitions
+(`ESP32_PARTITIONS`) and the tests in format 2 (trusted, as Jaguar
+installs them). Both: 70 passed, 4 failed (826 s / 855 s).
+
+| test | f1 | f2 |
+|---|---|---|
+| short-sleep-test | fails (3 of 3 reruns) | fails (3 of 3) |
+| espnow1-board1 | fails | fails |
+| spi-target-board1 | fails | fails |
+| wifi1-board1 (WiFi scan) | fails (4 of 4) | passes (2 of 2) |
+| wait-for1-board1 (short GPIO pulses) | passes | failed once, passed on the rerun |
+
+So no test fails because of format 2. wifi1's difference is probably the
+sdkconfig (f2 has `ESP_WIFI_RX_IRAM_OPT` off) or the radio environment,
+not the interpreter; wait-for1 is timing-sensitive (a pulse of two
+back-to-back `pin.set` calls on the other board).
+
+### ESP32-S3
+
+The core builds for the S3 with the esp-rs fork (`xtensa-esp32s3-none-elf`,
+Kconfig and the IDF component's CMake: three lines) and the loop fits its
+IRAM without sdkconfig changes. On the rig's S3 board (QFN56 rev 0.1, 2 MB
+embedded PSRAM, which Toit uses as heap) the device suite, installs with
+WiFi, the busy loops and deep sleep pass as on the other chips. f2/f1:
+richards 0.70, deltablue 1.03, pystone 0.89, json 1.27, map/set 1.18,
+strings 0.96, GC stress 1.09, loop 0.82, 200k calls 1.15, rpc-200 2.46;
+installs 2.5-3.0 s; firmware.bin 1,527,888 (f1) / 1,610,304 (f2). Not
+done for the S3: the codegen check of verified/vmverify/tests/
+xtensa_codegen_check.sh for LX7 and the hw test suite.
+
+### Found and fixed
+
+- The loop in flash (above): Kconfig `TOIT_VERIFIED_CORE_LOOP_IN_IRAM`.
+- A trusted format-2 container on a format-1 firmware hit the FATAL in
+  `Interpreter::run_v2` and rebooted the device (C6 and ESP32); a format-1
+  container on a firmware without the C++ interpreter failed with
+  MALLOC_FAILED. The spawn primitive now refuses both with
+  FORMAT_1_REQUIRED / FORMAT_2_REQUIRED (checked on both boards).
+- `[install-trace]` printed the table's size unsigned (4294965480 B when
+  WiFi freed memory on the other core meanwhile).
+- The format-2 firmware with the hw tester's container does not fit the
+  classic ESP32's 0x1a0000 app partitions: the tester takes a partition
+  table (`ESP32_PARTITIONS`, tests/hw/README.md); the runs used two
+  0x1c0000 OTA partitions and a 384 KB programs partition.
+
+QEMU did not show: the flash-cache cost of code and data in flash (the
+dominant effect), the layout sensitivity, the real install time (QEMU's
+estimate was 2-3.5 s for the verification at 240 MHz; it is 4.6-5.5 s,
+with the verifier at opt-level z and in flash), deep sleep (works on
+both), and the RPC cost (2.3x on the ESP32, 1.8x on the C6, against 1.0x
+in QEMU instructions).
+
+Boards afterwards: the rig's two classic ESP32 boards and S3 board 1 hold
+their previous firmware again (written back from flash dumps taken
+before; Toit v2.0.0-alpha.199, format 1); the C6 runs format 2.
 
 ## Converted tools and tests
 

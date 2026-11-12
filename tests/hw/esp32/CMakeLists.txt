@@ -83,6 +83,11 @@ foreach(esp_variant ${VARIANTS})
     string(TOUPPER ${board} BOARD)
     set(port "$ENV{${ESP_VARIANT}_${BOARD}_PORT}")
     set(test_name "setup-${board}-${esp_variant}")
+    # Optional: a partition table replacing the envelope's (tests/hw/README.md).
+    set(partitions_args)
+    if (NOT "$ENV{${ESP_VARIANT}_PARTITIONS}" STREQUAL "")
+      set(partitions_args --partitions "$ENV{${ESP_VARIANT}_PARTITIONS}")
+    endif()
     add_test(
       NAME ${test_name}
       COMMAND "${TOIT_EXE_HW}" "${TESTER}" setup
@@ -91,6 +96,7 @@ foreach(esp_variant ${VARIANTS})
           --port "${port}"
           --envelope "$ENV{${ESP_VARIANT}_ENVELOPE}"
           ${control_flag}
+          ${partitions_args}
           # Typically the SSID and password are the same for all variants, but
           # this makes it more consistent.
           --wifi-ssid "$ENV{${ESP_VARIANT}_WIFI_SSID}"

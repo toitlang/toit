@@ -47,6 +47,28 @@ PRIMITIVE(spawn) {
   if (allocation->type() != FLASH_ALLOCATION_TYPE_PROGRAM) FAIL(INVALID_ARGUMENT);
   Program* program = const_cast<Program*>(static_cast<const Program*>(allocation));
 
+  // A container in a format this VM cannot run is refused here, before
+  // anything is allocated. Without the check a format-2 container on a
+  // format-1 firmware (installed trusted, as Jaguar installs) reached
+  // Interpreter::run_v2's FATAL and rebooted the device (found on an
+  // ESP32-C6, docs/format2-migration.md "Devices: hardware results"), and a
+  // format-1 container on a firmware without the C++ interpreter failed
+  // with a misleading MALLOC_FAILED.
+#ifndef TOIT_VERIFIED_CORE
+  if (program->is_format2()) {
+    String* error = process->allocate_string("FORMAT_1_REQUIRED");
+    if (error == null) FAIL(ALLOCATION_FAILED);
+    return Error::from(error);
+  }
+#endif
+#ifdef TOIT_NO_CXX_INTERPRETER
+  if (!program->is_format2()) {
+    String* error = process->allocate_string("FORMAT_2_REQUIRED");
+    if (error == null) FAIL(ALLOCATION_FAILED);
+    return Error::from(error);
+  }
+#endif
+
   word message_size = 0;
   { MessageEncoder size_encoder(process, null);
     if (!size_encoder.encode(arguments)) return size_encoder.create_error_object(process);
