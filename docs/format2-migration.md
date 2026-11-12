@@ -143,6 +143,9 @@ The switches (toolchains/idf/components/toit/Kconfig):
 | `TOIT_CXX_INTERPRETER` (only deselectable with format 2) | CMake option `TOIT_CXX_INTERPRETER=OFF` (hosts keep it on): interpreter_run.cc and method_entries.cc are not compiled, `Interpreter::run` only hands over to the core (interpreter_v2.cc), `ProcessGroup::create` refuses format-1 programs. printing.cc stays: it is compiled only with `TOIT_DEBUG` (empty on devices). The format-1 verifier was already a stub on FreeRTOS. |
 | `TOIT_VERIFIED_CORE_LOOP_IN_IRAM` (default without the C++ interpreter) | the core's loop in IRAM, its jump table in DRAM; the classic ESP32 needs three IRAM-freeing sdkconfig lines ("Devices: hardware results") |
 | `TOIT_TRACE_INSTALL` (measurements) | prints time, free heap, table location and peak heap of each install-time verification (`[install-trace]`) |
+| `TOIT_VERIFIED_CORE_IRAM_FUNCTIONS` | more functions of the core for IRAM, by mangled name (defaults per target: "Where the time goes") |
+| `TOIT_VERIFIED_CORE_VERIFIER_OPT_LEVEL` | the install-time verifier's Rust opt-level (empty: z) |
+| `TOIT_HW_PERF` (measurements) | cycle, instruction and stall counters per VM activity and PC samples (src/hw_perf.h) |
 
 The envelope records the formats its firmware runs: metadata
 `bytecode-formats` (`toit tool firmware create esp32|ec618
@@ -556,9 +559,9 @@ Remaining before the EC618 can default to format 2:
    them; the cross hosts' cargo targets.
 3. Hardware runs of the format-2 firmware: done for the C6, the classic
    ESP32 (with the hw test suite) and the S3 ("Devices: hardware
-   results"); open: the gap in RPC and json speed, the install time on
-   the classic ESP32, WiFi RX throughput without its IRAM option, the
-   EC618.
+   results"); the RPC and json gaps are attributed and partly closed
+   ("Where the time goes"); open: the core's IRAM split (requests S1-S6),
+   the install time on the classic ESP32 (V1, V2), the EC618.
 4. Jaguar and Artemis: compile format 2 for devices and read the
    envelope's `bytecode-formats` instead of assuming format 1 (outside
    this repository).
@@ -764,6 +767,160 @@ in QEMU instructions).
 Boards afterwards: the rig's two classic ESP32 boards and S3 board 1 hold
 their previous firmware again (written back from flash dumps taken
 before; Toit v2.0.0-alpha.199, format 1); the C6 runs format 2.
+
+### Where the time goes (branch device/hw-perf)
+
+Branch `device/hw-perf` (2026-11-12, from `sandbox-integration` d369b967).
+Scripts, logs, firmware, programs:
+/home/flo/work/opentoit-sandbox-artifacts/hw-perf (README.md there; the
+method of `device/hardware` plus the tools below).
+
+**Tools.** Kconfig `TOIT_HW_PERF` (src/hw_perf.h, off by default) counts,
+per core, the cycles spent running processes, in each C++ primitive, in
+the core's allocation calls, the GC, sends and idle, and on Xtensa the
+retired instructions and one stall counter of the performance monitor
+(instruction-fetch stalls, data stalls, window exceptions, interrupts; a
+different one per run). It also samples the interrupted PC from the
+FreeRTOS tick hook (1 kHz in these builds). `Profiler.start` without an
+installed profiler resets the counters, `Profiler.stop` prints them;
+`progs/suite/perfbench.toit` brackets each run of the service-call,
+task-switch, tison, json and map/set components with them
+(`hwbench.toit` and `hwinstall.toit` now too; on other firmware the calls
+fail and are ignored). `scripts/perf-table.sh`, `pc-profile.sh`,
+`shares.sh` and `loop-coverage.sh` summarize the logs.
+
+**Attribution.** Format 2 executes about as many instructions as format 1
+(200 service calls on the classic ESP32: 32.4 M against 29.1 M), as QEMU
+said; the time goes to waiting for flash. The classic ESP32 reads code and
+data through one 32 KB flash cache per core from 40 MHz DIO flash, and a
+miss costs about a microsecond or more. The C++ interpreter kept its loop and
+helpers (hash find included) in IRAM; the core's loop is in IRAM, but
+everything the loop calls out of line ran from flash: the hand-over
+(`toit_v2_run`, `run_v2`), the primitive call path, try/finally and
+non-local returns, hash find, the room check, the Rust primitives. These
+evict the C++ runtime (message encoding, sends, the scheduler) from the
+cache, which then runs slower too.
+
+| Share | ESP32 RPC | ESP32 json | C6 RPC | C6 json |
+|---|---:|---:|---:|---:|
+| gap before (f2/f1, perfbench) | 1.82 | 1.20 | 1.70 | 1.29 |
+| core code outside the loop and its glue, from flash: share of format 2's busy time (PC samples) | 26 % | 30 % | 25 % | 16 % |
+| of the extra cycles (ESP32 counters, 200 calls: +180 M): instruction-fetch stalls in the core's code and glue | 42 % | | | |
+| ... instruction-fetch stalls in C++ primitives and runtime | 37 % | | | |
+| ... data stalls (program, tables, literals in flash) | 26 % | | | |
+| ... extra instructions | 2 % | | | |
+| ROM memmove of finally records (busy time) | 0.4 % | 0.8 % | 1.1 % | 1.7 % |
+| `ensure_room_all` (busy time) | 1.5 % | 0.3 % | 1.9 % | 0.4 % |
+| gap removed by the placement below | 69 % | 70 % | 76 % | 46 % |
+
+Task switching (`tasks-1k`, two tasks over channels) has a logic cost on
+top: every call inside a `try` moves all finally records with a ROM
+memmove (9 % of busy time on the ESP32, 12 % on the C6) and
+`ensure_room_all` walks every frame on resume (2 % / 8 %); requests S3
+and S4 in verified/core/OBLIGATIONS.md. On the C6 the same placement
+leaves 7-18 % on json, strings and map/set; there the PC samples show
+the loop itself as the bulk (no stall counters on RISC-V).
+
+**json, map/set and strings move with the flash layout.** The same
+program on the classic ESP32 changes by up to 30 % between builds that
+differ only in code placement elsewhere (f1 json 379-582 ms, f2
+interp-1k 18-41 ms in this envelope, counting the instrumented builds), in format 1 as in format 2: hot
+code and data that map to the same cache sets evict each other. Ratios
+below 1.2 for these benchmarks on the classic ESP32 are within that
+noise; RPC and task switching (1.3-1.8x) are not.
+
+**Fixes** (no change in proven code):
+
+- src/interpreter_v2.cc: the hand-over and primitive-call glue in IRAM
+  with the loop (`V2_HOT`: `run`, `run_v2`, `v2_program_tables`,
+  `toit_v2_primitive`, `v2_primitive_failed`; 1.1 KB).
+- Kconfig `TOIT_VERIFIED_CORE_IRAM_FUNCTIONS`: functions of the core's
+  library for IRAM by (mangled) name, renamed by the device-library step
+  (localize-libm.cmake). Default on the classic ESP32: the ten with the
+  most samples per byte that fit (3.8 KB: try/finally, `toit_v2_run`, room
+  check, primitive call, `machine::run`, `list_add`, non-local return,
+  hash find, `json_skip_whitespace`, `array_new`); 125 bytes of IRAM stay
+  free. Default on the C6 and S3: eighteen (11.7 KB; the C6's free heap at
+  boot drops from 233 to 219 KB, still above format 1's 218 KB).
+
+| ms, median of 7 | ESP32 f1 | f2 before | f2 after | C6 f1 | f2 before | f2 after |
+|---|---:|---:|---:|---:|---:|---:|
+| rpc-200 | 560 | 1,017 | 707 | 319 | 542 | 373 |
+| rpc-echo-50 | 156 | 281 | 196 | 95 | 155 | 111 |
+| tasks-1k | 389 | 558 | 513 | 298 | 490 | 448 |
+| json | 445 | 534 | 470 | 247 | 320 | 287 |
+| map-set | 343 | 276 | 200 | 163 | 195 | 176 |
+
+With every hot function in IRAM (list B on a classic-ESP32 firmware
+without Bluetooth, for the room) 200 service calls took 543 ms (f1 560)
+and json 358 ms (f1 445): the classic ESP32 reaches format 1 when the core
+makes room in IRAM (request S1: split the loop; 99 % of its PC samples
+fall in 8 KB of its 28 KB, every sampled block in 13.8 KB).
+
+**WiFi RX throughput** (`progs/suite/hwrx.toit`: 1 MB over TCP from the
+host into a Toit program, 5 runs, median KB/s, two sessions each): f1
+with `ESP_WIFI_RX_IRAM_OPT` 243 / 302, f1 without it 274 / 240, f2
+(without it) 228 / 202. The option makes no difference measurable above
+the radio's noise; Toit's receive path, not the driver, limits the rate,
+and format 2's slower Toit code costs some 20 %. It needs 13.2 KB of
+IRAM: with a split loop (S1) both fit.
+
+**Install time** (classic ESP32, WiFi up, 55-63 KB images): 5.4-6.8 s in
+the product configuration (no trace), 1.1-1.6 s of it writing and
+registering the image (format 1 refuses the same images in 1.7-2.1 s).
+The `TOIT_TRACE_INSTALL` build used so far adds 0.7 s (a heap hook on
+every allocation), so verification is 4.0-5.0 s, not 4.6-5.5 s. Of the
+verification, the table takes 3-4 ms, converting the image and decoding
+the certificate 25-37 ms, the method checks the rest: 270-490 M
+instructions (10-16 thousand per bytecode byte) at 2.4-2.5 cycles each;
+instruction-fetch stalls are 18-21 % of the cycles, data stalls 6 %, and
+malloc/free (through ESP-IDF's heap_caps layers, in flash in this
+sdkconfig) about a third of the verifier's busy samples. The verifier at
+opt-level 3 (+11 KB flash) or s (+2 KB) verified within 5 % of z (new
+Kconfig `TOIT_VERIFIED_CORE_VERIFIER_OPT_LEVEL`, default z): not worth
+it. What would help is fewer allocations and fewer instructions in the
+checker (requests V1, V2). The image is read from flash in place; with
+the time in instructions and allocation, buffering it in RAM (25-31 KB of
+a 74 KB heap) was not tried. C6: 2.9-3.5 s.
+
+**Final measurements** (same method as above, f1 and f2 of the same
+commit a3cc7ee2; hwbench and perfbench envelopes, medians of 7, f2/f1):
+
+| f2/f1 | ESP32 | C6 | S3 |
+|---|---:|---:|---:|
+| richards | 0.67 | 0.95 | 0.71 |
+| deltablue | 0.87 | 1.09 | 0.94 |
+| pystone | 0.89 | 1.00 | 0.89 |
+| json | 1.11 | 1.16 | 1.03 |
+| map/set | 0.64 | 1.10 | 1.07 |
+| strings | 1.09 | 1.16 | 0.96 |
+| GC stress | 1.02 | 0.95 | 1.02 |
+| loop 1M | 0.84 | 1.02 | 0.80 |
+| 200k calls | 1.11 | 1.02 | 1.10 |
+| rpc-200 (perfbench) | 1.25 (565 / 707 ms) | 1.17 (320 / 373) | 1.08 (252 / 271) |
+| rpc-echo-50 | 1.25 | 1.17 | 1.05 |
+| yield-2k | 1.52 | 1.27 | 1.08 |
+| tasks-1k | 1.32 | 1.51 | 1.35 |
+| tison-2k | 1.06 | 1.15 | 1.13 |
+| install, untrusted 55-63 KB, WiFi up | 5.4-6.8 s | 2.9-3.5 s | |
+| free heap at boot (f1 / f2) | 117 / 131 KB | 218 / 219 KB | |
+
+Still above 1.15: service calls on the classic ESP32 (1.25) and the C6
+(1.17): the core functions that do not fit the ESP32's IRAM (`step::slow`,
+hash probing, `reload_cold`, `do_return`: 9 % of its busy time) and data
+stalls on program reads from flash; task switching on all three (1.3-1.5):
+the finally-record memmove, `ensure_room_all` and the primitive-failure
+resume through `step::slow` on every `task_transfer`; yield on the ESP32
+(1.52; 1.10 before this branch's placement, so a cache-set conflict of
+the new layout, not a logic cost) and the C6 (1.27: the hand-over per
+process entry); json and strings on the C6 (1.16; the loop itself). The
+requests to the core, ranked by measured benefit per byte, are S1-S6 in
+verified/core/OBLIGATIONS.md ("Device speed requests").
+
+Boards afterwards: the rig's ESP32 boards 1 and 2 and S3 board 1 were
+written back from dumps taken before the first flash and boot their
+previous firmware (Toit v2.0.0-alpha.199, format 1); the dumps are
+deleted. The C6 runs format 2.
 
 ## Converted tools and tests
 

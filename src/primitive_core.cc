@@ -19,6 +19,7 @@
 #include "flags.h"
 #include "heap.h"
 #include "heap_report.h"
+#include "hw_perf.h"
 #include "objects_inline.h"
 #include "os.h"
 #include "primitive.h"
@@ -2697,6 +2698,13 @@ PRIMITIVE(profiler_install) {
 
 PRIMITIVE(profiler_start) {
   Profiler* profiler = process->profiler();
+#ifdef TOIT_HW_PERF
+  // Without a profiler: reset the hardware counters (hw_perf.h).
+  if (profiler == null) {
+    hw_perf_reset();
+    return process->true_object();
+  }
+#endif
   if (profiler == null) FAIL(ALREADY_CLOSED);
   if (profiler->is_active()) return process->false_object();
   profiler->start();
@@ -2707,6 +2715,13 @@ PRIMITIVE(profiler_start) {
 
 PRIMITIVE(profiler_stop) {
   Profiler* profiler = process->profiler();
+#ifdef TOIT_HW_PERF
+  // Without a profiler: print the hardware counters (hw_perf.h).
+  if (profiler == null) {
+    hw_perf_dump();
+    return process->true_object();
+  }
+#endif
   if (profiler == null) FAIL(ALREADY_CLOSED);
   if (!profiler->is_active()) return process->false_object();
   profiler->stop();

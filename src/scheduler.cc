@@ -15,6 +15,7 @@
 
 #include "resource.h"
 #include "flags.h"
+#include "hw_perf.h"
 #include "interpreter.h"
 #include "objects_inline.h"
 #include "os.h"
@@ -279,6 +280,7 @@ message_err_t Scheduler::send_system_message(SystemMessage* message) {
 }
 
 message_err_t Scheduler::send_message(int process_id, Message* message, bool free_on_failure) {
+  HW_PERF_SCOPE(HWP_SEND);
   Locker locker(mutex_);
   Process* p = find_process(locker, process_id);
   if (p == null) {
@@ -294,6 +296,7 @@ message_err_t Scheduler::send_message(int process_id, Message* message, bool fre
 }
 
 message_err_t Scheduler::send_message_from(Process* sender, int process_id, SystemMessage* message) {
+  HW_PERF_SCOPE(HWP_SEND);
   Locker locker(mutex_);
   const PrimitivePolicy* policy = sender->policy();
   if (process_id < 0) {
@@ -484,6 +487,7 @@ void Scheduler::run(SchedulerThread* scheduler_thread) {
     OS::feed_watchdog();
 
     if (ready_count_ == 0) {
+      HW_PERF_SCOPE(HWP_IDLE);
       OS::wait(has_processes_);
       continue;
     }
@@ -503,7 +507,9 @@ void Scheduler::run(SchedulerThread* scheduler_thread) {
       OS::signal(has_processes_);
     }
 
-    run_process(locker, process, scheduler_thread);
+    { HW_PERF_SCOPE(HWP_PROCESS);
+      run_process(locker, process, scheduler_thread);
+    }
   }
 
   // Notify potential other thread, that no more processes are left.
@@ -538,6 +544,7 @@ bool Scheduler::kill(const Program* program) {
 }
 
 void Scheduler::gc(Process* process, bool malloc_failed, bool try_hard) {
+  HW_PERF_SCOPE(HWP_GC);
   bool doing_idle_process_gc = try_hard || malloc_failed || (process && process->system_refused_memory());
   bool doing_cross_process_gc = false;
   // Avoid getting time if we don't need it.  Best-case scavenges
@@ -730,6 +737,7 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
     process->set_idle_since_gc(false);
     if (process->signals() == 0) {
       Unlocker unlock(locker);
+      HW_PERF_SCOPE(HWP_RUN);
       result = interpreter->run();
     }
     preemption_method_header_bcp = interpreter->preemption_method_header_bcp();
@@ -776,6 +784,7 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
 
   switch (result.state()) {
     case Interpreter::Result::PREEMPTED: {
+      HW_PERF_COUNT(HWP_PREEMPTED);
       Profiler* profiler = process->profiler();
       Task* task = process->task();
       if (profiler && task && profiler->should_profile_task(task->id())) {
@@ -796,6 +805,7 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
     }
 
     case Interpreter::Result::YIELDED:
+      HW_PERF_COUNT(HWP_YIELDED);
       wait_for_any_gc_to_complete(locker, process, Process::IDLE);
       if (process->has_messages()) {
         process_ready(locker, process);

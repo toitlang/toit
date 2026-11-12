@@ -95,6 +95,48 @@ if (LOOP_IN_IRAM)
     message(FATAL_ERROR "LOOP_IN_IRAM: no section of step::run_loop in ${INPUT}")
   endif()
 endif()
+# IRAM_FUNCTIONS (Kconfig TOIT_VERIFIED_CORE_IRAM_FUNCTIONS): more functions
+# of the library for IRAM, each given by the end of its mangled name: a C
+# name (toit_v2_run) or the v0-mangled path inside the crate (for
+# toit_verified_core::rhash::op_hash_find_v: 5rhash14op_hash_find_v). The
+# hot paths outside the loop on the boards: docs/format2-migration.md,
+# "Devices: hardware results".
+if (IRAM_FUNCTIONS)
+  if (NOT objdump_lines)
+    execute_process(
+      COMMAND "${OBJDUMP}" -h "${INPUT}"
+      OUTPUT_VARIABLE objdump_output
+      ERROR_QUIET
+      RESULT_VARIABLE objdump_result)
+    if (NOT objdump_result EQUAL 0)
+      message(FATAL_ERROR "${OBJDUMP} -h ${INPUT} failed")
+    endif()
+    string(REPLACE "\n" ";" objdump_lines "${objdump_output}")
+  endif()
+  string(REPLACE "," ";" iram_functions "${IRAM_FUNCTIONS}")
+  foreach (function IN LISTS iram_functions)
+    set(found FALSE)
+    foreach (line IN LISTS objdump_lines)
+      if (line MATCHES " (\\.(text|literal|rodata|srodata)\\.([^ ]*18toit_verified_core)?${function}) ")
+        set(section "${CMAKE_MATCH_1}")
+        set(kind "${CMAKE_MATCH_2}")
+        if (kind STREQUAL "text")
+          list(APPEND args "--rename-section=${section}=.iram1.toit_core.${function}")
+          set(found TRUE)
+        elseif (kind STREQUAL "literal")
+          list(APPEND args "--rename-section=${section}=.iram1.toit_core.${function}.literal")
+        else()
+          list(APPEND args "--rename-section=${section}=.dram1.toit_core.${function}")
+        endif()
+      endif()
+    endforeach()
+    if (NOT found)
+      # A renamed function only loses its placement (a warning, so that
+      # changes inside the core do not break the device build).
+      message(WARNING "IRAM_FUNCTIONS: no section for ${function} in ${INPUT}")
+    endif()
+  endforeach()
+endif()
 execute_process(
   COMMAND "${OBJCOPY}" ${args} "${INPUT}" "${OUTPUT}.tmp"
   RESULT_VARIABLE objcopy_result)
