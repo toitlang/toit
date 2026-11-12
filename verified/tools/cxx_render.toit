@@ -367,6 +367,11 @@ class AstCache:
       top := pieces[i][0]
       if path.size == 1 and top == name:
         result.add (parse_ tu target filter i)
+      else if path.size > 1 and top == path[0] and top == name and (parse_ tu target filter i)["kind"] != "CXXRecordDecl":
+        // An out-of-line constructor (`C::C`): named like its class.
+        decl := parse_ tu target filter i
+        decl["out-of-line"] = true
+        result.add decl
       else if path.size > 1 and top == path[0]:
         node := parse_ tu target filter i
         level := [node]
@@ -1134,9 +1139,9 @@ class Renderer:
     return left["kind"] == "CXXBoolLiteralExpr" and left["value"] == false
 
   loop-body node/Map indent/int:
-    // Annotations anchored at the body's `{` are the loop invariant.
-    if node["kind"] == "CompoundStmt":
-      ghosts-up-to (begin-offset node) indent
+    // Annotations anchored at the body's `{` are the loop invariant; for a
+    // body without braces, those anchored at its first token.
+    ghosts-up-to (begin-offset node) indent
     emit indent "{"
     body node indent + 1
     emit indent "}"
@@ -1199,6 +1204,11 @@ class Renderer:
   // The constructor call of $init (a CXXConstructExpr or a
   // CXXTemporaryObjectExpr) for the object $name of C type $type.
   construct name/string type/string init/Map indent/int:
+    construct-into "&$name" type init indent
+
+  // The constructor call of $init for the object at $target (`&name`, or
+  // `self` for a delegating constructor).
+  construct-into target/string type/string init/Map indent/int:
     // A non-const reference parameter of the constructor is a pointer.
     ctor-params := fn-param-types-raw init["ctorType"]["qualType"]
     args := []
@@ -1217,7 +1227,7 @@ class Renderer:
     ctor-cls := type.starts-with "struct " ? type[7..] : type
     ctor-name := mangle-member ctor-cls ctor-cls (ctor-params.map: c-type it)
     note-signature ctor-name (ctor-params.map: c-type it) init
-    emit indent "$ctor-name($((["&$name"] + args).join ", "));"
+    emit indent "$ctor-name($(([target] + args).join ", "));"
 
   /**
   `a = b` for objects of a class whose assignment operator is the implicit
@@ -1315,11 +1325,55 @@ class Renderer:
     lines.add "{"
     (inner decl).do: | init/Map |
       if init["kind"] == "CXXCtorInitializer":
-        field := init["anyInit"]["name"]
-        value := inner init
-        emit 1 "self->$field = $(wrap (expr value[0]) PREC-ASSIGN);"
+        if init.contains "delegatingInit":
+          // A delegating constructor: the target constructor on self.
+          construct-into "self" cls (inner init)[0] 1
+        else if not init.contains "anyInit":
+          fail "$(where decl): a base-class initializer"
+        else:
+          field := init["anyInit"]["name"]
+          value := (inner init)[0]
+          if value["kind"] == "CXXDefaultInitExpr":
+            // A default member initializer, spelled in the class (another
+            // file): its value, written out (default-init-value).
+            emit 1 "self->$field = $(default-init-value value);"
+          else:
+            emit 1 "self->$field = $(wrap (expr value) PREC-ASSIGN);"
     block-contents body-node 1
     lines.add "}"
+
+  /**
+  The value of a default member initializer (Clang's CXXDefaultInitExpr
+    with the initializer as its child). Its expression is spelled in the
+    class definition, usually another file than the function's, so it is
+    rendered from the AST's values, never from source text: integer and
+    boolean literals, null (a null pointer conversion), and enumerators,
+    named and checked through the constant table like any constant (by
+    their declared name, in the class's scope). Anything else is an error.
+  */
+  default-init-value node/Map -> string:
+    kids := inner node
+    if kids.is-empty: fail "$(where node): a default member initializer without its expression (Clang too old?)"
+    value := strip-parens kids[0]
+    while value["kind"] == "ImplicitCastExpr" or value["kind"] == "ConstantExpr":
+      if value["kind"] == "ImplicitCastExpr" and value["castKind"] == "NullToPointer": return "0"
+      if value["kind"] == "ImplicitCastExpr" and not (["IntegralCast", "NoOp", "LValueToRValue"].contains value["castKind"]):
+        fail "$(where node): default member initializer with a $value["castKind"] conversion"
+      value = strip-parens (inner value)[0]
+    if value["kind"] == "CXXBoolLiteralExpr": return value["value"] ? "true" : "false"
+    if value["kind"] == "IntegerLiteral": return "$value["value"]"
+    if value["kind"] == "CXXNullPtrLiteralExpr": return "0"
+    if value["kind"] == "DeclRefExpr" and value["referencedDecl"]["kind"] == "EnumConstantDecl":
+      name := value["referencedDecl"]["name"]
+      rendered := (cls and constants.values.contains "$(cls)_$name") ? "$(cls)_$name" : name
+      if not constants.values.contains rendered:
+        uses["missing:$rendered"] = "$(where node): $name ($rendered)"
+        return rendered
+      use := ConstantUse cxx-cls name rendered true
+      uses[use.key] = use
+      return rendered
+    fail "$(where node): default member initializer $value["kind"] not supported"
+    unreachable
 
 /** Replaces the identifier $name (whole words only) in $text. */
 replace-word text/string name/string by/string -> string:

@@ -164,4 +164,45 @@ inline int use_plain() {
   return p.a;
 }
 
+// Rules (wave 5, the message decoder's constructors): a default member
+// initializer is written out from its value (literals, null, enumerators
+// of the constant table); a delegating constructor calls the target
+// constructor on `self`.
+enum RuleMode { RULE_MODE_A, RULE_MODE_B };
+
+class Defaults {
+ public:
+  explicit Defaults(word x) : Defaults(x, RULE_MODE_B) {}
+  Defaults(word x, RuleMode mode) : x_(x), mode_(mode) {}
+
+  word x_;
+  RuleMode mode_ = RULE_MODE_A;
+  word count_ = 7;
+  bool flag_ = false;
+  Defaults* next_ = null;
+};
+
+inline word use_defaults(word x) {
+  Defaults d(x);
+  return d.x_ + d.count_;
+}
+
+// Rule: an out-of-line constructor `C::C` (found although it is named like
+// its class).
+class Later {
+ public:
+  explicit Later(word x);
+  word x_;
+};
+
+inline Later::Later(word x) : x_(x) {}
+
+// Rule: the invariant of a loop whose body has no braces is the annotation
+// anchored at the body's first token.
+inline word count_up(word n) {
+  word total = 0;
+  for (word i = 0; i < n; i++) total++;
+  return total;
+}
+
 }  // namespace toit

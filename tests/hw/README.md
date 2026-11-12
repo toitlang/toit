@@ -50,6 +50,17 @@ yourself, otherwise ctest invokes
 `toit tool firmware container add … -e "" -o …` and the tester fails
 immediately with `Error: Failed to open '' for reading (FILE_NOT_FOUND: "")`.
 
+**`ESP32_PARTITIONS` / `ESP32S3_PARTITIONS`** (optional): a partition table
+(CSV or binary) that the setup flashes instead of the envelope's. The
+format-2 firmware of the classic ESP32 with the tester container does not
+fit the 0x1a0000 app partitions; a layout with two 0x1c0000 OTA partitions
+and a 384 KB programs partition does (docs/format2-migration.md, "Devices:
+hardware results"). Re-run `make rebuild-cmake-hw` after changing it.
+
+**Bytecode format.** The tester compiles the test programs and its own
+container with the host's default format (2). For a format-1 firmware
+export `TOIT_BYTECODE_FORMAT=1` before running ctest.
+
 **Why `make rebuild-cmake-hw` matters.** The CMake test definition embeds the
 env-var values into each test's command line at *configure* time
 ([`esp32/CMakeLists.txt`](esp32/CMakeLists.txt)). Changing `ESP32_ENVELOPE`

@@ -10,3 +10,13 @@
 # this file).
 [build]
 rustflags = ["-C", "llvm-args=-tail-dup-size=12", "-C", "llvm-args=-vectorize-slp=false"]
+
+# The EC618 (Cortex-M3): one image runs from either flash slot, and the
+# slot relocator (tools/ec618/gen-slot-reloc.toit, src/slot_reloc_ec618.cc)
+# moves 32-bit words (R_ARM_ABS32) and branches to the base, not movw/movt
+# pairs. LLVM loads addresses with movw/movt on v7-M (switch tables, for
+# example), so the core takes them from literal pools, as GCC does for the C++
+# side (docs/format2-migration.md, "EC618"). A target's rustflags replace
+# [build] rustflags, so the two flags above are repeated.
+[target.thumbv7m-none-eabi]
+rustflags = ["-C", "llvm-args=-tail-dup-size=12", "-C", "llvm-args=-vectorize-slp=false", "-C", "target-feature=+no-movt"]

@@ -32,6 +32,12 @@ WANTED ::= {
   "__vm_data_start", "end_ap_data", "__toit_rtc_slot",
 }
 
+// The end of the slot's share of the ASMB (always-on RAM): the CP's AON
+// memory backup starts here (CP_AONMEMBACKUP_START_ADDR in the SDK's
+// PLAT/device/target/board/ec618_0h00/common/inc/mem_map.h). The base does
+// not export it.
+ASMB-SLOT-END ::= 0xA800
+
 main args:
   cmd := cli.Command "gen-slot-ld"
       --help="""
@@ -155,8 +161,16 @@ SECTIONS
     *(.toit.rtc.noinit)
   }
 
-  /* The VM's .bss, zeroed by the VM itself at entry. */
-  .vm_dram_zi (NOLOAD) :
+  /* The base leaves the ASMB from its exported slot address up to the CP's
+   * AON memory backup (CP_AONMEMBACKUP_START_ADDR, mem_map.h) free. */
+  ASSERT(ADDR(.toit.rtc.noinit) + SIZEOF(.toit.rtc.noinit) <= 0x$(%08x ASMB-SLOT-END),
+         "VM RTC-noinit region overlaps the CP's AON memory backup")
+
+  /* The VM's .bss, zeroed by the VM itself at entry: in the pooled dram
+   * reserve, right after .data. Without an address it would follow the
+   * previous section, the RTC-noinit region in the ASMB, and the VM's
+   * memset at entry would clear the CP's AON backup and rrcMem. */
+  .vm_dram_zi ADDR(.vm_dram_data) + SIZEOF(.vm_dram_data) (NOLOAD) :
   {
     __vm_zi_start = .;
     *(.bss*)

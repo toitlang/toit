@@ -105,6 +105,13 @@ class EncodeVisitor : public Visitor {
     encoder_->write_byte('$');
     encoder_->write_byte('U');
     encoder_->write_byte('#');
+    // A proxy (an external byte array tagged with the type of a C++ struct:
+    // resources, groups) has no bytes to show: its external address is the
+    // struct, which as_external refuses. Encoded as empty.
+    if (byte_array->has_external_address() && byte_array->external_tag() != RawByteTag) {
+      encoder_->write_int(0);
+      return;
+    }
     ByteArray::Bytes bytes(byte_array);
     const int limit = Utils::min(bytes.length(), MAX_NOF_BYTEARRAY_ELEMENTS);
     encoder_->write_int(limit);

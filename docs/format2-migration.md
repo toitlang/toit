@@ -141,6 +141,7 @@ The switches (toolchains/idf/components/toit/Kconfig):
 | `TOIT_VERIFIED_CORE` | links the core and the verifier (Rust, `libtoit_rust.a`) |
 | `TOIT_BYTECODE_FORMAT_2` (needs the core, default y) | the IDF component compiles the system snapshot and the entry program with `TOIT_BYTECODE_FORMAT=2`; CMake `TOIT_BYTECODE_FORMAT=2`; a device build without the core is a CMake error |
 | `TOIT_CXX_INTERPRETER` (only deselectable with format 2) | CMake option `TOIT_CXX_INTERPRETER=OFF` (hosts keep it on): interpreter_run.cc and method_entries.cc are not compiled, `Interpreter::run` only hands over to the core (interpreter_v2.cc), `ProcessGroup::create` refuses format-1 programs. printing.cc stays: it is compiled only with `TOIT_DEBUG` (empty on devices). The format-1 verifier was already a stub on FreeRTOS. |
+| `TOIT_VERIFIED_CORE_LOOP_IN_IRAM` (default without the C++ interpreter) | the core's loop in IRAM, its jump table in DRAM; the classic ESP32 needs three IRAM-freeing sdkconfig lines ("Devices: hardware results") |
 | `TOIT_TRACE_INSTALL` (measurements) | prints time, free heap, table location and peak heap of each install-time verification (`[install-trace]`) |
 
 The envelope records the formats its firmware runs: metadata
@@ -149,7 +150,8 @@ The envelope records the formats its firmware runs: metadata
 the C++ interpreter is linked and 2 if the core is). `container install`
 refuses a snapshot in another format; envelopes without the record get
 the old warning (format-2 snapshot, format-1 system). The other targets
-(C3, S2, S3, P4, EC618) keep format 1 and record `[1]`.
+(C3, S2, S3, P4) keep format 1 and record `[1]`; the EC618 records `[1]`
+by default and `[2]` with `make ec618 EC618_BYTECODE_FORMAT=2`.
 
 ### The method table in flash
 
@@ -256,7 +258,9 @@ line misses (a miss every 16,000 instructions; at roughly 100-200 cycles
 a miss, under 1 % of the run). The hot code fits the cache; the data
 fetches from flash (bytecodes and program heap of the images, rodata)
 share it on the ESP32 and are not simulated, so this is a lower bound
-that hardware has to confirm.
+that hardware has to confirm. **Hardware did not confirm it**: from flash
+the loop made json 5x slower on the classic ESP32; it now runs from IRAM
+("Devices: hardware results").
 
 **Untrusted install** (f2 with `TOIT_TRACE_INSTALL`, scripts/installer-run.sh;
 verified/core/PROGRESS.md "Device builds on format 2" has the table): the
@@ -301,16 +305,242 @@ the EC618 VM library, without the base and slot links, which need xmake).
   and the IRAM budget: 0.5-1 day each; the S3 runs under QEMU.
 - ESP32-P4 (rv32imafc): the upstream target riscv32imafc-unknown-none-elf;
   0.5 day plus hardware.
-- EC618 (Cortex-M3): the upstream target thumbv7m-none-eabi (atomics
-  present); the CMake mapping and the two-stage slot link with the Rust
-  archive (the SRL3 relocation of the slot must cover it); 2-3 days plus
-  hardware.
+- EC618 (Cortex-M3): builds and runs format 2 on the core (QEMU,
+  mps2-an385), not the default yet; see "EC618" below.
 - Cross hosts (Raspberry Pi, Windows, macOS): cargo targets for their
   triples; mostly CI work.
 
 Still needs hardware: the core's speed from flash with the data fetches,
 install time at 160 and 240 MHz, the free heap of a real system (WiFi
 up) when the installer runs, deep sleep.
+
+### EC618
+
+Branch `device/ec618` (from `sandbox-integration` 43e27bd0; scripts, logs,
+builds and QEMU runs: /home/flo/work/opentoit-sandbox-artifacts/ec618).
+Nothing was flashed. **The EC618 firmware builds in format 2 on the core
+without the C++ interpreter, base and slot links included, and the VM
+library of that slot runs the device suite under QEMU (mps2-an385, a
+generic Cortex-M3) with the same results as the ESP32 under QEMU. Format 1
+stays the default.**
+
+    make ec618                                    # format 1, C++ (as before)
+    make ec618 EC618_BYTECODE_FORMAT=2 EC618_BUILD_DIR=build/ec618-f2
+
+Makefile variables: `EC618_BYTECODE_FORMAT` (1 or 2), `EC618_BUILD_DIR`
+(one per configuration; the base, `EC618_BASE_DIR`, is shared),
+`EC618_RUST_OPT_LEVEL` (3, s, z), `EC618_CXX_INTERPRETER` (ON links both
+interpreters, the envelope records `[1, 2]`), `EC618_VERIFIER` (OFF: no
+untrusted installs). Format 2 compiles the system snapshot in format 2 and
+writes `bytecode-formats` `[2]` into the envelope; `container install`
+refuses format-1 snapshots for it (checked). The Rust target is the
+upstream tier-2 `thumbv7m-none-eabi` (`rustup target add`; no fork),
+set in toolchains/ec618.cmake.
+
+**The Rust library on the Cortex-M3.** Builds for thumbv7m at 3, s and z
+with LTO; nostd_check.sh builds it, `NOPANIC_ARCH=arm nopanic_check.sh`
+finds no panic machinery at 3, s and z, and `thumb_codegen_check.sh`
+(new; check.sh runs both when the target and an arm-none-eabi GCC are
+installed) checks what the firmware assumes: v7-M Thumb-2 objects whose
+wchar_t and stack-alignment attributes match GCC's (the FFI structs hold
+no enums, whose size differs: GCC's arm-none-eabi uses small enums), no
+FPU instructions, no movw/movt relocations, no atomic helpers. Atomics:
+v7-M has LDREX/STREX, Rust's 8/16/32-bit atomics are native
+(`target_has_atomic` 8, 16, 32, ptr; no 64-bit ones, which the core does
+not use); the linked library contains none. Largest stack frames:
+`verify` 684 B, `toit_vmverify_verify` 476 B, `run_loop` 324 B, against
+the 8 KB scheduler-thread stacks.
+
+Three things were needed for the slot link (two-stage link and SRL3
+relocation, docs/ec618-design-notes.md):
+
+- movw/movt. The relocator moves 32-bit words (R_ARM_ABS32) and branches
+  into the base, and gen-slot-reloc aborts on an in-slot movw/movt pair.
+  LLVM loads addresses with movw/movt on v7-M (the core had one pair, a
+  switch table; compiler_builtins' math functions have more). The core is
+  compiled with `-C target-feature=+no-movt` (literal pools, as GCC's code
+  for the C++ side), in a `[target.thumbv7m-none-eabi]` section of
+  verified/vmverify/.cargo/config.toml. rustc warns that the feature is
+  unknown to it and passes it to LLVM; if a later rustc refuses it, the
+  relocator needs movw/movt support (the device relocator,
+  src/slot_reloc_ec618.cc, and gen-slot-reloc; 1-2 days).
+  compiler_builtins' math stays out: localize-libm.cmake makes it local
+  and newlib's (the base's) is linked, so the check sees none.
+- Thread-local storage. `Stack::v2_frames_skip_` (objects.h) was
+  `thread_local`; the EC618 toolchain emulates TLS (`__emutls_get_address`)
+  and calls a weak TLS wrapper, a branch to address 0 that the
+  relocation's byte-identity check (slot A relocated against an
+  independently linked slot B) caught. The EC618 runs one scheduler thread
+  (`OS::num_cores` is 1), so it is a plain static there.
+- The Rust archive is linked after the `--whole-archive` group: the
+  base's libgcc and newlib (`--just-symbols`) define the memory and
+  soft-float helpers, so compiler_builtins' copies are not used (which
+  matters: compiler_builtins' soft-float add returns the canonical NaN,
+  libgcc's returns the NaN operand).
+
+A bug of the format-1 build too (gen-slot-ld.toit, since #3199): the
+slot's `.bss` had no address and followed the RTC-noinit region in the
+ASMB (0x8c88): 9.7 KB ending at 0xbaf4, over the CP's AON memory backup
+(0xa800) and rrcMem (0xb000), which `toit_start` zeroes. It is now placed
+after `.data` in the VM's RAM pool, and the RTC region is checked against
+0xa800. Untested on hardware; upstream candidate.
+
+**Program images.** Nothing format-specific was needed in the image
+path; this is what differs from the ESP32:
+
+| | ESP32 | EC618 |
+|---|---|---|
+| bundled images | DROM extension after the app in the OTA partition, mapped through the flash MMU (64 KB pages) | in the VM slot (0xC0000 bytes, two slots) right after the VM body, XIP flash (one mapping for code and data) |
+| relocation | relocated once for the extension address | relocated with the VM: the images' pointer words join the slot's SRL3 table (352 for the system image in format 2, 350 in format 1); writing the canonical image to slot B relocates them |
+| installed containers | programs partition | flash registry partition (0xA8000 bytes), relocated on write, as on the ESP32 |
+| word size, byte order | 4, little-endian | 4, little-endian |
+| alignment | | Cortex-M3: unaligned LDR/STR allowed (unless CCR.UNALIGN_TRP), LDRD/LDM not; GCC and LLVM both emit unaligned single loads |
+
+The method-table literal (`TMT1`) holds offsets, no addresses, so it adds
+no relocations and is read in place from the slot or the registry. The
+system image grows from 90,156 to 118,828 bytes (the literal: 16 B per
+method).
+
+**Sizes** (bytes; `make ec618`, slot A, tools: scripts/size-table.sh,
+mapsizes.sh on the slot link's map). Budgets: a slot is 786,432 bytes
+(VM body, bundled images, `.data` image and the relocation trailer); the
+VM's RAM pool is 24,576 (8 KB `.data` and 16 KB `.bss` reserves of the
+base); the heap is shared with the platform (354,240 bytes from
+`end_ap_data` to `start_up_buffer`).
+
+| | f1 | f2 | f2, opt s | f2, opt z | f2, no verifier | f2 + C++ |
+|---|---:|---:|---:|---:|---:|---:|
+| VM body (`.vm_a`) | 315,408 | 378,404 | 369,248 | 366,020 | 355,420 | 394,684 |
+| of it Rust (core, primitives, verifier) | 0 | 74,511 | 65,349 | 62,131 | 53,246 | 74,511 |
+| of it C++ interpreter (interpreter_run, method_entries) | 13,997 | 0 | 0 | 0 | 0 | 13,997 |
+| of it format-2 glue (interpreter_v2, verifier_v2, v2_method_table) | 2,258 | 6,778 | 6,778 | 6,778 | 5,065 | 6,678 |
+| bundled images (system) | 90,156 | 118,828 | 118,828 | 118,828 | 118,828 | 118,828 |
+| populated slot | 411,026 | 502,324 | 493,136 | 489,902 | 479,262 | 519,192 |
+| slot margin | 375,406 | 284,108 | 293,296 | 296,530 | 307,170 | 267,240 |
+| `.data` + `.bss` (pool 24,576) | 10,420 | 9,908 | 9,908 | 9,908 | 9,908 | 10,420 |
+
+mbedTLS is 123,153 bytes of every body; the rest of the VM about 174 KB.
+Unlike the ESP32 there is no flash budget problem: format 2 adds 91 KB to
+the slot and leaves 284 KB. The ESP32's saving options mostly do not
+apply: newlib's libm is already used (the base's), there is no 64 KB
+padding to remove. Opt-level s saves 9.2 KB at no cost in instructions
+(below); z saves 3 KB more but costs 50 %; leaving the verifier out saves
+21 KB. RAM: `.data` shrinks by 420 bytes (the C++ interpreter's
+dispatch table); the method tables of bundled and installed images are
+read from flash, so format 2 needs no table RAM (format 1 builds an entry
+bitmap per program).
+
+**QEMU.** tests/ec618-qemu (CMake option `TOIT_EC618_QEMU_HARNESS` of an
+EC618 build directory, target `toit_ec618_qemu`; `run.sh` runs an
+envelope). The harness links the objects of the slot (libtoit_vm.a whole,
+the Rust library, mbedTLS), the EC618 base's prebuilt FreeRTOS kernel
+(PLAT/libs/libfreertos.a, with its SysTick and CMSIS-RTOS2 layer) and the
+base's heap (cmpctmalloc, heap_7.c, with the same `--wrap`s) for
+QEMU's mps2-an385. It replaces the flash registry (RAM with NOR
+semantics) and the peripheral event sources, gives the kernel's trace,
+clock and sleep hooks and the TRNG (a fixed sequence) a body, and stubs
+the other base functions the VM references (125 in format 1, 127 in format 2) (generated from a probe
+link and base.elf; reaching one stops the run). extension.toit writes an
+envelope's images as the firmware tool bundles them, for an address in
+the PSRAM; output and exit go through semihosting. Same heap size as the
+base.
+
+QEMU 9.2.2 (built user-locally from the Espressif fork's sources with the
+arm-softmmu target). The device suite of the ESP32 work (hello,
+richards, deltablue, pystone, JSON, maps, strings, GC stress, the
+profiler, services between containers, preemption of a CPU-bound
+container, an uncaught exception in another container, six untrusted
+installs that run and exit 0, and the five rejections) gives the same
+`SUITE` lines as the ESP32 under QEMU, in format 1 and in format 2 (format
+1 refuses the untrusted installs: no verifier). The benchmarks' checksums
+equal the 64-bit and 32-bit host builds'.
+
+The primitive differential (tests/fuzz/primitive-diff.toit) on the
+Cortex-M3, format 1 (GCC's C++ primitives) against format 2 (the Rust
+ports; scripts/prim-diff.sh, the checksum of every 10,000 calls), 8 seeds
+x 250,000 calls with a 3 MB heap (`toit_ec618_qemu_bigheap`): seeds 1-7
+identical (1.75 M calls); seed 8 diverges at call 149,965, a
+`float_multiply` of two NaNs that returns the first operand's NaN in C++
+and the second's in Rust (LLVM may commute `fmul`; neither IEEE nor Rust
+fixes which NaN propagates). With the base's heap (354 KB) all eight
+diverge, at the first allocation that one interpreter's retry after a
+garbage collection satisfies and the other's does not (seed 4, call
+7,575: a 70,004-byte `string_add` fails with ALLOCATION_FAILED in C++
+and succeeds in the core); every trace line before it is identical.
+Against the 32-bit x86 host the traces differ
+from call 22 on: a float subtraction with a NaN operand gives the
+canonical NaN with soft float (libgcc) and the operand's NaN on x86, and
+the pools diverge from there. With compiler_builtins' soft float, which
+the harness linked at first, the two formats differed too (call 118:
+libgcc's add keeps the operand's NaN, compiler_builtins' does not); the
+firmware links libgcc's for both, and so does the harness now.
+
+Instructions: QEMU's virtual clock is not one instruction per nanosecond
+here (`-icount shift=0` gives 3.3 instructions per virtual nanosecond on
+this machine model, calibrated with the libinsn plugin), so the counts
+come from the plugin: whole runs of one program per benchmark, minus the
+run of an empty program (millions):
+
+| | f1 | f2 | f2/f1 | f2, opt s | s/f1 | f2, opt z | z/f1 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| richards | 105.9 | 114.3 | 1.079 | 111.4 | 1.052 | 173.2 | 1.635 |
+| deltablue (50) | 7.44 | 8.89 | 1.195 | 8.56 | 1.152 | 11.74 | 1.579 |
+| pystone (2,000 loops) | 17.0 | 18.2 | 1.071 | 17.6 | 1.039 | 26.4 | 1.551 |
+| json encode/decode | 19.6 | 24.2 | 1.232 | 24.3 | 1.239 | 33.0 | 1.681 |
+| map/set | 14.9 | 16.0 | 1.071 | 15.8 | 1.058 | 20.3 | 1.362 |
+| strings | 12.2 | 14.2 | 1.160 | 14.7 | 1.200 | 19.0 | 1.554 |
+| GC stress | 85.4 | 78.0 | 0.913 | 77.0 | 0.902 | 105.6 | 1.237 |
+| boot and container start (the empty program) | 9.4 | 5.2 | | 5.2 | | 6.1 | |
+
+(f2 with the C++ interpreter linked: the same as f2.) The core executes 5-23 % more instructions than the C++ interpreter on
+the Cortex-M3 (as on x86-64, unlike Xtensa where it executes fewer), and
+fewer on the GC stress. Instructions are not cycles: the EC618 runs from
+XIP flash through a cache, the core's loop (`run_loop`, 19 KB here) is
+larger than the C++ interpreter's.
+
+Untrusted installs (shipped certificate; scripts/insn-install.sh): three
+installs (a-hello 63 KB, c-map 76 KB, e-exception 72 KB images, with the
+image writes into the RAM registry and the uninstalls) take 480.7 M
+instructions (opt s: 479.2 M), the a-hello one about 143 M (its share of
+the virtual time). At 204 MHz and a CPI of 1-2 that is 0.7-1.4 s for a
+25 KB program, far from the 10 s dead-lock limit (the Xtensa estimate was
+2-3.5 s).
+
+Not covered under QEMU: the peripherals, cellular and networking, deep
+sleep and the RTC memory, the watchdogs, OTA (relocate-on-write into slot
+B, the anchor), real flash timing, the base's own heap use.
+
+Requests to the core owner: none. For core/compact-methods: the EC618
+needs nothing as long as the table literal stays free of absolute
+addresses (images are only relocated at the words their relocation bits
+mark, and the EC618 relocates them again on OTA) and its records are read
+with at most 32-bit loads (Cortex-M3 faults on unaligned LDRD/LDM; LLVM
+does not emit those for unaligned data).
+
+Hardware-only unknowns: the core's speed from XIP flash (cache misses,
+CPI) at 204 MHz (`CLK_CC_SEL_204M`); install time (the estimate above);
+the free heap at boot with the modem stack up (EC618's
+`system-free` statistic is not implemented: it reports 2^30-1);
+whether the platform sets `CCR.UNALIGN_TRP` (the SDK sources do not; the
+C++ VM would fault too); OTA from a format-1 to a format-2 slot (the slot
+carries VM and images together, so they always agree; containers
+installed in the flash registry in format 1 stop starting:
+FORMAT_2_REQUIRED, as on the ESP32); deep sleep, peripherals, cellular.
+
+Remaining before the EC618 can default to format 2:
+
+1. A hardware run of the format-2 firmware: tests/hw/ec618 (136 files;
+   its programs must be compiled in the firmware's format), the heap
+   report, an untrusted install, OTA between an f1 and an f2 slot; 1-2
+   days with the rig.
+2. The `.bss` fix on hardware and upstream (0.5 day).
+3. The default flip (`EC618_BYTECODE_FORMAT ?= 2`, probably at opt-level
+   s) and CI: `rustup target add thumbv7m-none-eabi`, and the QEMU
+   harness as a job (qemu-system-arm from the distribution has
+   mps2-an385); 0.5-1 day.
+4. Jaguar and Artemis: compile for the envelope's `bytecode-formats`, and
+   the migration of format-1 containers installed in the field (shared
+   with the ESP32).
 
 ### Before the C++ interpreter can be deleted
 
@@ -320,11 +550,15 @@ up) when the installer runs, deep sleep.
    see verified/core/PROGRESS.md "Device size"), then the default flip
    (4f488c84) and the CI step for the Rust targets. The C6 fits now (29
    KB to spare) and could flip on its own.
-2. The other device targets on the core (C3, S2, S3, P4, EC618; 5-9 days
-   plus hardware) or dropping them; the cross hosts' cargo targets.
-3. Hardware runs of the format-2 firmware (the hw test suite, `make
-   test-hw-esp32`, compiles its programs with the host default, now
-   format 2).
+2. The other device targets on the core (C3, S2, P4; the S3 is brought up,
+   see "Devices: hardware results"; the EC618 builds and runs under QEMU
+   and needs a hardware run and the default flip, see "EC618") or dropping
+   them; the cross hosts' cargo targets.
+3. Hardware runs of the format-2 firmware: done for the C6, the classic
+   ESP32 (with the hw test suite) and the S3 ("Devices: hardware
+   results"); open: the gap in RPC and json speed, the install time on
+   the classic ESP32, WiFi RX throughput without its IRAM option, the
+   EC618.
 4. Jaguar and Artemis: compile format 2 for devices and read the
    envelope's `bytecode-formats` instead of assuming format 1 (outside
    this repository).
@@ -332,6 +566,204 @@ up) when the installer runs, deep sleep.
    days): the FORMAT-1-ONLY tests, `-Xbytecode_format=1`, toit.run's
    format-1 `--verify`/`--fuzz`, the `TOIT_CHECK_PROPAGATED_TYPES` job;
    format 1 stays inside the compiler for the propagator.
+
+## Devices: hardware results
+
+Branch `device/hardware` (2026-11-12), the first runs on real boards: an
+ESP32-C6 (QFN40 rev 0.1, 160 MHz, 8 MB flash used as 4 MB) and the rig's
+classic ESP32 boards (rev 1, 240 MHz, 4 MB DIO flash at 40 MHz, no PSRAM).
+Scripts, logs, firmware and the programs:
+/home/flo/work/opentoit-sandbox-artifacts/hardware (README.md there).
+Configurations from the same commit (`scripts/fw-all.sh`): **f1** format
+1, C++ interpreter in IRAM, no core (today's firmware); **f2** format 2 on
+the core, no C++ interpreter, the core's loop in IRAM (below); **f2flash**
+the same with the loop in flash (what device/format2 measured under QEMU).
+The numbers are after merging the compact method records (a773bcfe)
+unless marked "before".
+
+**Everything works on all three chips in format 2** (the S3 below): the device suite (hello,
+benchmarks, GC stress, profiler, service calls between containers,
+preemption of a CPU-bound container, a container dying with a stack
+trace, six untrusted installs that run and exit 0, five rejected ones
+(deep sleep, no certificate, forged certificate, trusted-compiled,
+format 1), deep sleep and wake-up), installs with WiFi up, a 60 s busy
+loop in a spawned process and a 30 s one in the only process (no task
+watchdog, no dead-lock report; the ticking process is at most 1.7 ms late
+on the ESP32, 100 ms on the single-core C6, the same as f1), and an OTA
+update without Jaguar on the C6 and the ESP32 (`progs/suite/hwota.toit`:
+1.77 / 1.67 MB over TCP from the host in 41 / 46 s, written with
+`system.firmware`, reboot, the new firmware validates itself; the ESP32
+with two 0x1c0000 OTA partitions, since f2 with a container does not fit
+0x1a0000). The suite's output is identical between f1 and
+f2 except for the untrusted installs (f1 has no verifier).
+
+### The core's loop must run from IRAM
+
+With the loop in flash (as built until now) the classic ESP32 ran json 5.1
+times, map/set 5.4, strings 2.8, pystone 2.4 and deltablue 1.6 times
+slower than f1, although QEMU counted about as many instructions (json
+1.07): the 28 KB loop does not stay in the 32 KB flash cache, which it
+shares with the bytecodes, the program heap and the C++ primitives, and a
+miss costs about 1 us with this flash. Moving it to IRAM (the C++
+interpreter has always been there) removed most of that:
+
+| ms, median of 7 (before the merge) | f1 | f2flash | loop in IRAM | + jump table in DRAM |
+|---|---:|---:|---:|---:|
+| ESP32 json | 362 | 1,841 | 533 | 477 |
+| ESP32 map/set | 206 | 1,120 | 386 | 340 |
+| ESP32 pystone | 175 | 420 | 149 | 148 |
+| ESP32 deltablue | 121 | 189 | 106 | 96 |
+| C6 json | 243 | 489 | | 323 |
+| C6 map/set | 162 | 262 | | 188 |
+
+Kconfig `TOIT_VERIFIED_CORE_LOOP_IN_IRAM` (default when the C++
+interpreter is not linked) renames the loop's sections in the device
+library (vmverify/staticlib/localize-libm.cmake): code and Xtensa literals
+to `.iram1.*`, the 2.4 KB jump table to `.dram1.*`. The C6 has room (it
+costs 22 KB of heap: 233 KB free at boot instead of 251). The classic
+ESP32 has 13 KB of IRAM free without the C++ interpreter, so its sdkconfig
+also needs `# CONFIG_ESP_WIFI_RX_IRAM_OPT is not set`,
+`CONFIG_HEAP_PLACE_FUNCTION_INTO_FLASH=y` and
+`CONFIG_RINGBUF_PLACE_FUNCTIONS_INTO_FLASH=y`; 4.5 KB of IRAM stay free at
+opt-level 3; at opt-level z the loop (33 KB) overflows IRAM by 832 bytes.
+WiFi RX throughput without `ESP_WIFI_RX_IRAM_OPT` is not measured (the
+1.77 MB OTA download ran at 43 KB/s on the C6, which keeps the option).
+Splitting the loop (dispatch and hot handlers in IRAM, the rest in flash)
+needs changes inside verified/core and was not tried.
+
+### Measurements
+
+Wall-clock medians of 7 runs on the device (`progs/suite/hwbench.toit`,
+`Time.monotonic-us`), ratio f2/f1. rpc-200 is the device suite's single
+run of 200 service calls between containers.
+
+| ms | ESP32 f1 | ESP32 f2 | ratio | C6 f1 | C6 f2 | ratio |
+|---|---:|---:|---:|---:|---:|---:|
+| richards | 1,866 | 997 | 0.53 | 1,205 | 1,127 | 0.93 |
+| deltablue (50) | 136 | 99 | 0.72 | 87 | 101 | 1.16 |
+| pystone (2,000) | 174 | 154 | 0.88 | 174 | 175 | 1.01 |
+| json | 374 | 549 | 1.47 | 246 | 322 | 1.31 |
+| map/set | 216 | 299 | 1.38 | 162 | 189 | 1.17 |
+| strings | 202 | 220 | 1.09 | 133 | 158 | 1.19 |
+| GC stress | 1,140 | 835 | 0.73 | 971 | 1,002 | 1.03 |
+| loop 1M | 1,950 | 1,680 | 0.86 | 1,945 | 1,934 | 0.99 |
+| 200k calls | 547 | 632 | 1.16 | 650 | 654 | 1.01 |
+| rpc-200 | 490 (before) | 1,107 | 2.26 | 323 | 579 | 1.79 |
+
+| | ESP32 f1 | ESP32 f2 | C6 f1 | C6 f2 |
+|---|---:|---:|---:|---:|
+| firmware.bin (toit.bin + system image) | 1,549,248 | 1,631,792 | 1,661,008 | 1,727,536 |
+| free heap at boot | 116,880 | 131,328 | 218,096 | 233,136 |
+| free heap with WiFi up | 60,352 | 74,760 | 155,792 | 170,768 |
+| untrusted install, 55-63 KB images, WiFi up | refused | 6.0-7.2 s | refused | 3.0-3.5 s |
+| of which verification (`TOIT_TRACE_INSTALL`) | | 4.6-5.5 s | | 1.8-2.2 s |
+| verifier peak heap | | 12-24 KB | | 12-22 KB |
+
+The rest of an install is writing the image to flash (f1 takes 1.3-2.0 s
+on the ESP32 and 1.0-1.5 s on the C6 to refuse the same images). The
+ESP32 is short of memory with WiFi up: 75 KB free, the largest block 45-70
+KB. Untrusted installs worked once the installer wrote the image in 4 KB
+chunks (as Jaguar does); writing a 63 KB image in one call needs a 63 KB
+block in the system process and failed with MALLOC_FAILED on 4 of 6
+images (on f1 too: it is the RPC message, not the verifier).
+
+Single runs are sensitive to where the containers lie in flash: f1's
+richards took 1.37 s in the suite's envelope and 1.92 s in the benchmark's
+(f2: 1.00 s in both), so compare the same envelope kind.
+
+**Rust opt-level of the core** (f2, loop in IRAM; ratio to opt-level 3):
+
+| | firmware.bin | richards | json | pystone | loop 1M |
+|---|---:|---:|---:|---:|---:|
+| C6 opt 3 | 1,727,536 | 1,127 | 322 | 175 | 1,934 |
+| C6 opt s | 1,721,968 (-5.6 KB) | 1.18 | 1.10 | 1.18 | 1.24 |
+| C6 opt z | 1,720,096 (-7.4 KB) | 1.91 | 1.42 | 1.83 | 2.33 |
+| ESP32 opt 3 | 1,631,792 | 997 | 549 | 154 | 1,680 |
+| ESP32 opt s | 1,625,296 (-6.5 KB) | 1.30 | 0.95 | 1.23 | 1.35 |
+| ESP32 opt 3, loop in flash | 1,634,176 | 1.06 | 3.40 | 3.09 | 1.06 |
+| ESP32 opt z, loop in flash (does not fit IRAM) | 1,629,488 (-2.3 KB) | 3.50 | 3.58 | 5.70 | 4.46 |
+
+Size-optimised Rust saves 6-7 KB and costs 7-35 % at s and 40-130 % (C6)
+or 3-6x (ESP32, flash) at z: not worth it for the loop. With the loop in
+flash, the ESP32's 200k-calls loop took 7.8 s in one build (12x; 0.63 s
+from IRAM): a conflict in the flash cache between the loop and the
+called code, which shows how fragile flash execution is.
+
+**Compact method records** (a773bcfe, 4-byte records read in place from
+flash), f2 before and after the merge, same scripts: C6 richards +3.1 %,
+deltablue +4.3 %, pystone +2.7 %, 200k calls +2.7 %, json and map/set
+unchanged; ESP32 richards +0.4 %, deltablue +2.4 %, pystone +4.0 %, 200k
+calls -0.5 %, json +15 %, map/set -12 %, strings -7 % (the last three move
+with the flash layout, see above). So RISC-V is affected too (3-4 % on
+call-heavy code). No alignment fault or other failure; the table literal
+is now mandatory, so its flash-vs-RAM cost cannot be isolated any more
+(before the merge, with the loop in flash, a RAM table made the ESP32's
+json 23 % faster; on the C6 with the loop in IRAM the difference was
+within 2 %). To repeat on another branch: build `f2` with
+`scripts/fw-all.sh <target> <tag> f2`, `scripts/mkenvs.sh <target> f2
+bench`, run `scripts/hwrun.sh <board> <target>-f2-bench <log> 400
+[--test-partitions]` (the ESP32's f2 with a container needs the larger
+layout), compare with `scripts/bench-table.sh <log> <log>`.
+
+### Hardware test suite (tests/hw/esp32)
+
+74 tests on the rig's two classic ESP32 boards (`scripts/hwsuite.sh`):
+f1 with the standard layout and the tests compiled in format 1
+(`TOIT_BYTECODE_FORMAT=1`), f2 with two 0x1c0000 OTA partitions
+(`ESP32_PARTITIONS`) and the tests in format 2 (trusted, as Jaguar
+installs them). Both: 70 passed, 4 failed (826 s / 855 s).
+
+| test | f1 | f2 |
+|---|---|---|
+| short-sleep-test | fails (3 of 3 reruns) | fails (3 of 3) |
+| espnow1-board1 | fails | fails |
+| spi-target-board1 | fails | fails |
+| wifi1-board1 (WiFi scan) | fails (4 of 4) | passes (2 of 2) |
+| wait-for1-board1 (short GPIO pulses) | passes | failed once, passed on the rerun |
+
+So no test fails because of format 2. wifi1's difference is probably the
+sdkconfig (f2 has `ESP_WIFI_RX_IRAM_OPT` off) or the radio environment,
+not the interpreter; wait-for1 is timing-sensitive (a pulse of two
+back-to-back `pin.set` calls on the other board).
+
+### ESP32-S3
+
+The core builds for the S3 with the esp-rs fork (`xtensa-esp32s3-none-elf`,
+Kconfig and the IDF component's CMake: three lines) and the loop fits its
+IRAM without sdkconfig changes. On the rig's S3 board (QFN56 rev 0.1, 2 MB
+embedded PSRAM, which Toit uses as heap) the device suite, installs with
+WiFi, the busy loops and deep sleep pass as on the other chips. f2/f1:
+richards 0.70, deltablue 1.03, pystone 0.89, json 1.27, map/set 1.18,
+strings 0.96, GC stress 1.09, loop 0.82, 200k calls 1.15, rpc-200 2.46;
+installs 2.5-3.0 s; firmware.bin 1,527,888 (f1) / 1,610,304 (f2). Not
+done for the S3: the codegen check of verified/vmverify/tests/
+xtensa_codegen_check.sh for LX7 and the hw test suite.
+
+### Found and fixed
+
+- The loop in flash (above): Kconfig `TOIT_VERIFIED_CORE_LOOP_IN_IRAM`.
+- A trusted format-2 container on a format-1 firmware hit the FATAL in
+  `Interpreter::run_v2` and rebooted the device (C6 and ESP32); a format-1
+  container on a firmware without the C++ interpreter failed with
+  MALLOC_FAILED. The spawn primitive now refuses both with
+  FORMAT_1_REQUIRED / FORMAT_2_REQUIRED (checked on both boards).
+- `[install-trace]` printed the table's size unsigned (4294965480 B when
+  WiFi freed memory on the other core meanwhile).
+- The format-2 firmware with the hw tester's container does not fit the
+  classic ESP32's 0x1a0000 app partitions: the tester takes a partition
+  table (`ESP32_PARTITIONS`, tests/hw/README.md); the runs used two
+  0x1c0000 OTA partitions and a 384 KB programs partition.
+
+QEMU did not show: the flash-cache cost of code and data in flash (the
+dominant effect), the layout sensitivity, the real install time (QEMU's
+estimate was 2-3.5 s for the verification at 240 MHz; it is 4.6-5.5 s,
+with the verifier at opt-level z and in flash), deep sleep (works on
+both), and the RPC cost (2.3x on the ESP32, 1.8x on the C6, against 1.0x
+in QEMU instructions).
+
+Boards afterwards: the rig's two classic ESP32 boards and S3 board 1 hold
+their previous firmware again (written back from flash dumps taken
+before; Toit v2.0.0-alpha.199, format 1); the C6 runs format 2.
 
 ## Converted tools and tests
 
@@ -394,13 +826,14 @@ format-1 code is mixed with shared code):
 | Tools | tools/snapshot.toit format-1 header and `BYTE-CODES` (~140), needed by dump_types and the propagation tests while `--propagate` writes format 1 | keep | 0 |
 | Tests | the FORMAT-1-ONLY list above (~560 lines) | ~560 | 0.5 d |
 | Flags | `untrusted_format1`/`TOIT_UNTRUSTED_FORMAT1`, `TOIT_VERIFY_VERBOSE`; `bytecode_format` becomes internal | | with the above |
-| Devices | the classic ESP32 and the C6 build without the C++ interpreter (`TOIT_CXX_INTERPRETER=n`); C3, S2, S3, P4 and EC618 still link it (format 1) | | see Devices, "Other targets" |
+| Devices | the classic ESP32, the C6 and the EC618 build without the C++ interpreter (`TOIT_CXX_INTERPRETER=n`, `EC618_BYTECODE_FORMAT=2`); C3, S2, S3 and P4 still link it (format 1) | | see Devices, "Other targets" |
 
 The VM side is about 5,950 lines. Deleting them on hosts is 6-8
 engineer-days with the test and CI updates. On devices the classic ESP32
 and the C6 already build without it (CMake `TOIT_CXX_INTERPRETER`, see
 Devices); deleting it everywhere waits for the other targets' bring-up
-(C3, S2, S3, P4, EC618: 5-9 days, see "Other targets") or for dropping
+(C3, S2, S3, P4: 4-6 days, see "Other targets"; the EC618 builds without
+it, see "EC618") or for dropping
 them, and for the cross hosts' cargo targets.
 
 ## services-network-test: a real library bug

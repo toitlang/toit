@@ -307,20 +307,58 @@ verus = "r.0 != V2_PRIMITIVE_ABSENT && !r.2 ==> unmoved(*final(m), *old(m))"
 note = "The epoch contract (TRUSTED.md, Epoch): no GC, nothing moved."
 
 # The decoder's assumptions (verified/cxx/annotated/decoder): the
-# inter-process path only (TISON, the untrusted input, needs neither).
+# inter-process path only (TISON, the untrusted input, needs none). Wave 5
+# split them by what each says and added the ownership of the out-of-line
+# blocks: the message owns its buffer and blocks (`msg_whole`); no
+# assumption creates ownership, they only say which block a pointer is.
+[[assumption]]
+name = "ipc_begin"
+rendering = "cxx/annotated/decoder/message_decoder.gen.c"
+requires = "[_]encoded(b, ?cap, ?ps)"
+ensures = "[_]ipc_msg(d, b, cap, ps) &*& ipc_pos(d, 0)"
+note = "A decoder constructed over an encoded message reads it from the start (the decoders' constructors). Names the message and starts the pointer count; claims nothing about memory."
+
 [[assumption]]
 name = "ipc_room"
 rendering = "cxx/annotated/decoder/message_decoder.gen.c"
-requires = "[_]ipc_msg(d, ?b, ?cap) &*& [?f]d->cursor_ |-> ?c &*& 0 <= n"
+requires = "[_]ipc_msg(d, ?b, ?cap, ?ps) &*& [?f]d->cursor_ |-> ?c &*& 0 <= n"
 ensures = "[f]d->cursor_ |-> c &*& c + n <= cap"
-note = "An inter-process message is the encoder's output, decoded once in the process it was sent to: every read of the decoder lies in the message (the decoder decides as the encoder did). README, 'The decoder's assumptions'."
+note = "An inter-process message is the encoder's output, decoded in step with the encoding: every read of the decoder lies in the message (the readers, with the read's size; inline contents). README, 'The decoder's assumptions'."
+
+[[assumption]]
+name = "ipc_pointer"
+rendering = "cxx/annotated/decoder/message_decoder.gen.c"
+requires = "[_]ipc_msg(d, ?b, ?cap, ?ps) &*& ipc_pos(d, ?j)"
+ensures = "ipc_pos(d, j + 1) &*& j < length(ps) &*& nth(j, ps) == p"
+note = "The j-th out-of-line pointer a decoder reads is the message's j-th block (read_pointer, the only reader of pointers). The ownership comes from the message (msg_blocks), so a wrong position can not create a block: each is handed out once."
 
 [[assumption]]
 name = "ipc_external"
 rendering = "cxx/annotated/decoder/message_decoder.gen.c"
-requires = "[_]ipc_msg(d, ?b, ?cap) &*& [?f]d->cursor_ |-> ?c"
-ensures = "[f]d->cursor_ |-> c &*& msg_block(data, length) &*& 0 <= length &*& length < MAX_BLOB"
-note = "An out-of-line pointer of a message is a block the message owns, of the length written before it, read once: the decoded object takes it (or, when the allocation fails, the message keeps it). README, 'The decoder's assumptions'."
+requires = "[_]ipc_msg(d, ?b, ?cap, ?ps) &*& [?f]d->cursor_ |-> ?c"
+ensures = "[f]d->cursor_ |-> c &*& 0 <= length &*& length < MAX_BLOB"
+note = "The length written before an out-of-line pointer is a content length (the out-of-line branches of the decoders). Wave 5: no longer creates the block (it comes from the message)."
+
+[[assumption]]
+name = "ipc_length"
+rendering = "cxx/annotated/decoder/message_decoder.gen.c"
+requires = "[_]ipc_msg(d, ?b, ?cap, ?ps) &*& [?f]d->cursor_ |-> ?c"
+ensures = "[f]d->cursor_ |-> c &*& 0 <= n &*& c + n <= cap"
+note = "A length MessageDecoder::deallocate's walk reads (inline content, array, map) is that of what follows, at least a byte per element (the walk has no checks: it frees what the encoder wrote)."
+
+[[assumption]]
+name = "ipc_end"
+rendering = "cxx/annotated/decoder/message_decoder.gen.c"
+requires = "[_]ipc_msg(d, ?b, ?cap, ?ps) &*& [?f]ipc_pos(d, ?j) &*& [?g]d->process_ |-> ?p &*& [?h]d->status_ |-> ?st &*& (p == 0 || st == MessageDecoder_DECODE_SUCCESS)"
+ensures = "[f]ipc_pos(d, j) &*& [g]d->process_ |-> p &*& [h]d->status_ |-> st &*& j == length(ps)"
+note = "A decoder that has read the message's value (a process's decoder: with success; the deallocation walk: always) has read every pointer. Used after a successful decode (dec_finish) and after the walk; without the success condition the malformed-message leak would verify (mutants receive-malformed-delivered, arguments-malformed-delivered)."
+
+[[assumption]]
+name = "gc_owns"
+rendering = "cxx/annotated/decoder/message_decoder.gen.c"
+requires = "finalized(o, p)"
+ensures = "true"
+note = "The GC's side (trusted, TRUSTED.md: GC-class code): an external string or byte array with an active VM finalizer owns its block and frees it when it dies; the decoder drops its right to take the block back (clear_has_active_finalizer) once the decoded value is delivered. Its counterpart, also trusted: memory of an object whose finalizer bit is clear is freed by neither the finalizer nor the dying heap (VmFinalizerNode::weak_processing and heap_dying; heap_dying broke it before 05159afd: a double free)."
 
 # The allocator and the field writes the renderings use (C++ calling C++:
 # no Verus side). The allocations are contracts only (TRUSTED.md V2, the

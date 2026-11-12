@@ -27,12 +27,15 @@
 // garbage: their fields are smis, null, or decoded objects).
 //
 // The inter-process path (IPC: size_ is INT_MAX, the input is a message the
-// encoder wrote) rests on TWO named assumptions (CONTRACTS.toml
-// [[assumption]]): `ipc_room` (a read of the decoder lies in the message)
-// and `ipc_external` (an out-of-line string or byte array is a block the
-// message owns: handed to the new object, or kept by the message when the
-// allocation fails). The externals table is written below its bound (the
+// encoder wrote) rests on named assumptions (CONTRACTS.toml [[assumption]]:
+// ipc_begin, ipc_room, ipc_pointer, ipc_external, ipc_length, ipc_end; and
+// the GC's gc_owns). The externals table is written below its bound (the
 // FATAL is the check).
+//
+// Wave 5, the receive path: the ownership of a message's buffer and
+// out-of-line blocks through the decoder, its callers (task_receive_message,
+// main_arguments, spawn_arguments: every path) and MessageDecoder::deallocate:
+// no leak, no double free (README, "The externals' ownership").
 //
 // Integers are canonical (wave 4): a smi tag's magnitude is read with 64
 // bits on both widths and every integer in this VM's smi range is a smi
@@ -87,44 +90,180 @@ struct NestingTracker {
 typedef struct NestingTracker NestingTracker;
 
 /*@
-// An inter-process message of cap bytes at b, written by the encoder,
-// that d decodes (abstract: what the encoder wrote is not modelled).
-predicate ipc_msg(MessageDecoder *d, uint8 *b, int cap;);
+// THE OWNERSHIP OF A MESSAGE (wave 5). An inter-process message is a
+// malloced buffer the encoder wrote and the out-of-line blocks its
+// pointers name (malloced copies, transferred external byte arrays), in
+// the order of the pointers. Whoever owns the message owns the buffer and
+// the blocks (`msg_whole`). A decoder for a process lends each block it
+// reads to the external string or byte array it allocates over it (the
+// object's VM finalizer frees it: `finalized`); on a failure the decoder's
+// caller takes them back (remove_disposing_finalizers), and the message is
+// whole again; on a success the objects keep them and only the buffer is
+// freed. A decoder without a process (MessageDecoder::deallocate's walk,
+// the external message handlers) hands each block it reads to its caller.
 
-// An out-of-line block of a message: malloced content of `length` bytes
-// (for a string followed by its terminator), owned by the message until a
-// decoded object takes it (abstract).
-predicate msg_block(uint8 *data, int length);
+// An out-of-line block: a malloced block (whatever its size).
+predicate msg_block(uint8 *data;) = malloc_block(data, ?n) &*& chars_((char *)data, n, _);
+
+predicate msg_blocks(list<uint8 *> ps;) =
+  switch (ps) {
+    case nil: return true;
+    case cons(p, ps0): return msg_block(p) &*& msg_blocks(ps0);
+  };
+
+// The cap bytes at b are a message the encoder wrote, with the out-of-line
+// blocks ps (abstract: what the encoder wrote is not modelled).
+predicate encoded(uint8 *b, int cap; list<uint8 *> ps);
+
+// A whole message: the buffer and every block.
+predicate msg_whole(uint8 *b) =
+  malloc_block(b, ?cap) &*& uchars(b, cap, _) &*& [_]encoded(b, cap, ?ps) &*& 0 <= cap &*& cap <= MAX_BLOB &*&
+  msg_blocks(ps);
+
+// The block p, lent to the external string or byte array o: its VM
+// finalizer frees it (the GC's side, trusted), unless the finalizer bit is
+// cleared, which gives the block back (HeapObject::clear_has_active_finalizer).
+predicate finalized(void *o, uint8 *p;);
+
+// The blocks ps lent to the objects os (the decoder's externals table and
+// its sizes, both initialized for these entries).
+predicate lent(list<uint8 *> ps, list<option<void *> > os, list<option<intptr_t> > ls;) =
+  switch (ps) {
+    case nil: return os == nil &*& ls == nil;
+    case cons(p, ps0): return
+      os != nil &*& ls != nil &*& head(os) != none &*& head(ls) != none &*&
+      finalized(the(head(os)), p) &*& lent(ps0, tail(os), tail(ls));
+  };
+
+// The decoder d decodes the message of cap bytes at b with the blocks ps
+// (abstract), and has read j of its out-of-line pointers (abstract).
+predicate ipc_msg(MessageDecoder *d; uint8 *b, int cap, list<uint8 *> ps);
+predicate ipc_pos(MessageDecoder *d; int j);
+
+// The ownership a decoder holds, past the j pointers it has read: the
+// blocks after them; for a decoder with a process the first k blocks are
+// lent to the k objects of the externals table, and block k, when read
+// but not lent (j == k + 1), is held after its allocation failed
+// (`out`: false), or is with the caller between its read and the
+// allocation (`out`: true, dec_out).
+predicate ipc_own(MessageDecoder *d, Process *proc, uint8 *b, int cap, int st, int k, list<option<void *> > es, list<option<intptr_t> > ls, bool out;) =
+  [_]ipc_msg(d, b, cap, ?ps) &*& ipc_pos(d, ?j) &*& 0 <= j &*& j <= length(ps) &*& msg_blocks(drop(j, ps)) &*&
+  (proc == 0 ? !out :
+     0 <= k &*& k <= j &*& lent(take(k, ps), take(k, es), take(k, ls)) &*&
+     (out ? j == k + 1 :
+        j == k ? true : j == k + 1 &*& st == MessageDecoder_DECODE_ALLOCATION_FAILED &*& msg_block(nth(k, ps))));
 
 // The decoder: its process and program, the input (TISON: size == cap, the
 // blob's bytes; IPC: size == INT_MAX and the message), the cursor (below
-// cap + 16), the status and the externals table (k entries).
+// cap + 16), the status, the externals table (k entries) and, for IPC, the
+// ownership of the message's blocks.
 predicate dec(MessageDecoder *d, real fb, Process *proc, prog_ids ids, int fmt, uint8 *b, int size, int cap; int c, int st, int k) =
   d->process_ |-> proc &*& d->program_ |-> ?prog &*& (proc == 0 ? true : [_]program(prog, ids) &*& prog_ok(ids) == true) &*&
   d->format_ |-> fmt &*& d->buffer_ |-> b &*& d->size_ |-> size &*& d->cursor_ |-> c &*& d->status_ |-> st &*&
   [fb]uchars(b, cap, _) &*& 0 <= cap &*& cap <= MAX_BLOB &*&
-  (fmt == MESSAGE_FORMAT_TISON ? size == cap : fmt == MESSAGE_FORMAT_IPC &*& size == INT_MAX &*& [_]ipc_msg(d, b, cap)) &*&
+  (fmt == MESSAGE_FORMAT_TISON ? size == cap : fmt == MESSAGE_FORMAT_IPC &*& size == INT_MAX) &*&
   0 <= c &*& c <= cap + 16 &*&
   (st == MessageDecoder_DECODE_SUCCESS || st == MessageDecoder_DECODE_ALLOCATION_FAILED || st == MessageDecoder_DECODE_MALFORMED_INPUT) &*&
-  d->externals_count_ |-> k &*& k <= MESSAGING_ENCODING_MAX_EXTERNALS &*&
-  pointers(d->externals_, MESSAGING_ENCODING_MAX_EXTERNALS, _) &*&
-  intptrs(d->externals_sizes_, MESSAGING_ENCODING_MAX_EXTERNALS, _);
+  d->externals_count_ |-> k &*& 0 <= k &*& k <= MESSAGING_ENCODING_MAX_EXTERNALS &*&
+  pointers_(d->externals_, MESSAGING_ENCODING_MAX_EXTERNALS, ?es) &*&
+  intptrs_(d->externals_sizes_, MESSAGING_ENCODING_MAX_EXTERNALS, ?ls) &*&
+  (fmt == MESSAGE_FORMAT_TISON ? true : [_]ipc_msg(d, b, cap, _) &*& ipc_own(d, proc, b, cap, st, k, es, ls, false));
+
+// A decoder with a process between the read of block k and its allocation
+// (read_pointer's postcondition): the block is with the caller.
+predicate dec_out(MessageDecoder *d, real fb, Process *proc, prog_ids ids, int fmt, uint8 *b, int size, int cap; int c, int st, int k) =
+  d->process_ |-> proc &*& d->program_ |-> ?prog &*& proc != 0 &*& [_]program(prog, ids) &*& prog_ok(ids) == true &*&
+  d->format_ |-> fmt &*& d->buffer_ |-> b &*& d->size_ |-> size &*& d->cursor_ |-> c &*& d->status_ |-> st &*&
+  [fb]uchars(b, cap, _) &*& 0 <= cap &*& cap <= MAX_BLOB &*&
+  fmt == MESSAGE_FORMAT_IPC &*& size == INT_MAX &*&
+  0 <= c &*& c <= cap + 16 &*&
+  (st == MessageDecoder_DECODE_SUCCESS || st == MessageDecoder_DECODE_ALLOCATION_FAILED || st == MessageDecoder_DECODE_MALFORMED_INPUT) &*&
+  d->externals_count_ |-> k &*& 0 <= k &*& k <= MESSAGING_ENCODING_MAX_EXTERNALS &*&
+  pointers_(d->externals_, MESSAGING_ENCODING_MAX_EXTERNALS, ?es) &*&
+  intptrs_(d->externals_sizes_, MESSAGING_ENCODING_MAX_EXTERNALS, ?ls) &*&
+  [_]ipc_msg(d, b, cap, _) &*& ipc_own(d, proc, b, cap, st, k, es, ls, true);
+
+// The precondition of mark_allocation_failed: the decoder, or (r) the
+// decoder whose block k failed to be allocated, with the block.
+predicate dec_af(MessageDecoder *d, real fb, Process *proc, prog_ids ids, int fmt, uint8 *b, int size, int cap, int c, int st, int k, bool r) =
+  r ? dec_out(d, fb, proc, ids, fmt, b, size, cap, c, st, k) &*& [_]ipc_msg(d, b, cap, ?ps) &*& k < length(ps) &*& msg_block(nth(k, ps))
+    : dec(d, fb, proc, ids, fmt, b, size, cap, c, st, k);
+
+// The precondition of register_external: the decoder whose block k was
+// lent to o (dec_out, with the object's token).
+predicate dec_pend(MessageDecoder *d, real fb, Process *proc, prog_ids ids, int fmt, uint8 *b, int size, int cap, int c, int st, int k, void *o) =
+  dec_out(d, fb, proc, ids, fmt, b, size, cap, c, st, k) &*& [_]ipc_msg(d, b, cap, ?ps) &*& k < length(ps) &*& finalized(o, nth(k, ps));
 
 // THE IPC ASSUMPTIONS (README, "The decoder's assumptions"; CONTRACTS.toml
-// [[assumption]] ipc_room, ipc_external). An inter-process message is the
-// encoder's output, decoded once, in the process it was sent to: every
-// read the decoder makes lies in the message (the decoder decides as the
-// encoder did: the same tags, lengths and nesting), and every out-of-line
-// pointer it reads is a block the message owns, of the length before it,
-// read once. Not proved: that needs a ghost encoding shared with the
-// encoder's proof (the two-pass assumption's ghost function).
+// [[assumption]]). An inter-process message is the encoder's output,
+// decoded in step with the encoding (the same tags, lengths and nesting);
+// a decoder stops at its first failure. Not proved: that needs a ghost
+// encoding shared with the encoder's proof (the two-pass assumption's
+// ghost function). Each is used only where it says.
+//
+// A decoder constructed over an encoded message reads it from the start
+// (the decoders' constructors).
+lemma void ipc_begin(MessageDecoder *d, uint8 *b);
+  requires [_]encoded(b, ?cap, ?ps);
+  ensures [_]ipc_msg(d, b, cap, ps) &*& ipc_pos(d, 0);
+
+// Every read of the decoder lies in the message (the readers, with the
+// read's size; inline contents).
 lemma void ipc_room(MessageDecoder *d, int n);
-  requires [_]ipc_msg(d, ?b, ?cap) &*& [?f]d->cursor_ |-> ?c &*& 0 <= n;
+  requires [_]ipc_msg(d, ?b, ?cap, ?ps) &*& [?f]d->cursor_ |-> ?c &*& 0 <= n;
   ensures [f]d->cursor_ |-> c &*& c + n <= cap;
 
-lemma void ipc_external(MessageDecoder *d, uint8 *data, int length);
-  requires [_]ipc_msg(d, ?b, ?cap) &*& [?f]d->cursor_ |-> ?c;
-  ensures [f]d->cursor_ |-> c &*& msg_block(data, length) &*& 0 <= length &*& length < MAX_BLOB;
+// The j-th out-of-line pointer the decoder reads is the j-th block
+// (read_pointer).
+lemma void ipc_pointer(MessageDecoder *d, uint8 *p);
+  requires [_]ipc_msg(d, ?b, ?cap, ?ps) &*& ipc_pos(d, ?j);
+  ensures ipc_pos(d, j + 1) &*& j < length(ps) &*& nth(j, ps) == p;
+
+// The length before an out-of-line pointer is a content length (the
+// out-of-line branches of the decoders).
+lemma void ipc_external(MessageDecoder *d, int length);
+  requires [_]ipc_msg(d, ?b, ?cap, ?ps) &*& [?f]d->cursor_ |-> ?c;
+  ensures [f]d->cursor_ |-> c &*& 0 <= length &*& length < MAX_BLOB;
+
+// A length the deallocation walk reads (inline content, array or map) is
+// that of what follows it, at least a byte per element.
+lemma void ipc_length(MessageDecoder *d, int n);
+  requires [_]ipc_msg(d, ?b, ?cap, ?ps) &*& [?f]d->cursor_ |-> ?c;
+  ensures [f]d->cursor_ |-> c &*& 0 <= n &*& c + n <= cap;
+
+// A decoder that has read the message's value (a process's decoder: with
+// success; the walk without a process: always) has read every pointer.
+lemma void ipc_end(MessageDecoder *d);
+  requires [_]ipc_msg(d, ?b, ?cap, ?ps) &*& [?f]ipc_pos(d, ?j) &*& [?g]d->process_ |-> ?p &*& [?h]d->status_ |-> ?st &*&
+           (p == 0 || st == MessageDecoder_DECODE_SUCCESS);
+  ensures [f]ipc_pos(d, j) &*& [g]d->process_ |-> p &*& [h]d->status_ |-> st &*& j == length(ps);
+
+// THE GC'S SIDE (trusted, like the allocator): an object whose VM
+// finalizer is active owns its block; dropping the right to take it back
+// (the decoded objects of a successful decode, now reachable) leaves it to
+// the finalizer.
+lemma void gc_owns(void *o, uint8 *p);
+  requires finalized(o, p);
+  ensures true;
+
+// A decoder for a process has no allocation failure behind it (it stops
+// at its first failure): the condition of its reads and marks, so that a
+// block it reads is the one after those it lent.
+fixpoint bool not_failed(int fmt, Process *proc, int st) {
+  return fmt == MESSAGE_FORMAT_TISON || proc == 0 || st != MessageDecoder_DECODE_ALLOCATION_FAILED;
+}
+
+// A heap change that keeps every object's class (header class id and tag),
+// length and aux words: `grows` up to the header's other bits (the
+// finalizer bit, which the receive path's failures clear). What the
+// primitive heap contract asks for (objects keep their class and length).
+fixpoint bool kept_class(fixpoint(void *, oinfo) H, fixpoint(void *, oinfo) H2, void *o) {
+  return header_cid(o_hw(H2(o))) == header_cid(o_hw(H(o))) && header_tag2(o_hw(H2(o))) == header_tag2(o_hw(H(o))) &&
+         o_len(H2(o)) == o_len(H(o)) && o_aux(H2(o)) == o_aux(H(o));
+}
+fixpoint bool grows_class(list<void *> objs, fixpoint(void *, oinfo) H, list<void *> objs2, fixpoint(void *, oinfo) H2) {
+  return subset(objs, objs2) && forall(objs, (kept_class)(H, H2));
+}
 
 // The data decode_external_data hands out: an out-of-line block of the
 // message, or a malloced copy of inline content (`length` bytes, followed
@@ -133,7 +272,7 @@ predicate ext_data(bool copied, void *data, int length) =
   copied ?
     malloc_block(data, ?n) &*& 0 <= length &*& length <= n &*& uchars(data, length, _) &*& chars_((char *)data + length, n - length, _)
   :
-    msg_block(data, length);
+    msg_block(data);
 
 // A byte of the input is a byte (as in ../utf8).
 lemma void uchars_nth_limits(uint8 *p, int i)
@@ -210,6 +349,143 @@ lemma void good_grows(list<void *> objs, fixpoint(void *, oinfo) H, list<void *>
 {
   if (!is_smi_w((uword)w)) mem_subset(w, objs, objs2);
 }
+
+// --- The ownership of the blocks (wave 5).
+
+lemma void drop_nth_cons<t>(list<t> xs, int j)
+  requires 0 <= j &*& j < length(xs);
+  ensures drop(j, xs) == cons(nth(j, xs), drop(j + 1, xs));
+{
+  switch (xs) {
+    case nil:
+    case cons(x, xs0): if (j > 0) drop_nth_cons(xs0, j - 1);
+  }
+}
+
+lemma void take_snoc<t>(list<t> xs, int k)
+  requires 0 <= k &*& k < length(xs);
+  ensures take(k + 1, xs) == append(take(k, xs), cons(nth(k, xs), nil));
+{
+  switch (xs) {
+    case nil:
+    case cons(x, xs0): if (k > 0) take_snoc(xs0, k - 1);
+  }
+}
+
+lemma void take_update<t>(list<t> xs, int k, t v)
+  requires 0 <= k &*& k < length(xs);
+  ensures take(k, update(k, v, xs)) == take(k, xs) &*& take(k + 1, update(k, v, xs)) == append(take(k, xs), cons(v, nil));
+{
+  switch (xs) {
+    case nil:
+    case cons(x, xs0): if (k > 0) take_update(xs0, k - 1, v);
+  }
+}
+
+lemma void lent_snoc(list<uint8 *> ps, list<option<void *> > os, list<option<intptr_t> > ls, uint8 *p, void *o, intptr_t l)
+  requires lent(ps, os, ls) &*& finalized(o, p);
+  ensures lent(append(ps, cons(p, nil)), append(os, cons(some(o), nil)), append(ls, cons(some(l), nil)));
+{
+  open lent(ps, os, ls);
+  switch (ps) {
+    case nil:
+      close lent(nil, nil, nil);
+    case cons(p0, ps0):
+      switch (os) { case nil: case cons(o0, os0): }
+      switch (ls) { case nil: case cons(l0, ls0): }
+      lent_snoc(ps0, tail(os), tail(ls), p, o, l);
+  }
+  close lent(append(ps, cons(p, nil)), append(os, cons(some(o), nil)), append(ls, cons(some(l), nil)));
+}
+
+lemma void msg_blocks_join(list<uint8 *> xs, list<uint8 *> ys)
+  requires msg_blocks(xs) &*& msg_blocks(ys);
+  ensures msg_blocks(append(xs, ys));
+{
+  open msg_blocks(xs);
+  switch (xs) {
+    case nil:
+    case cons(x, xs0):
+      msg_blocks_join(xs0, ys);
+      close msg_blocks(append(xs, ys));
+  }
+}
+
+lemma void msg_blocks_snoc(list<uint8 *> xs, uint8 *p)
+  requires msg_blocks(xs) &*& msg_block(p);
+  ensures msg_blocks(append(xs, cons(p, nil)));
+{
+  close msg_blocks(nil);
+  close msg_blocks(cons(p, nil));
+  msg_blocks_join(xs, cons(p, nil));
+}
+
+// The element read at index i of an array whose first k entries are lent.
+lemma void lent_head(list<uint8 *> ps, list<option<void *> > os, list<option<intptr_t> > ls, int i, int k)
+  requires lent(drop(i, take(k, ps)), drop(i, take(k, os)), drop(i, take(k, ls))) &*& 0 <= i &*& i < k &*& k <= length(ps) &*&
+           k <= length(os) &*& k <= length(ls);
+  ensures lent(drop(i, take(k, ps)), drop(i, take(k, os)), drop(i, take(k, ls))) &*&
+          drop(i, take(k, ps)) == cons(nth(i, ps), drop(i + 1, take(k, ps))) &*&
+          drop(i, take(k, os)) == cons(nth(i, os), drop(i + 1, take(k, os))) &*&
+          drop(i, take(k, ls)) == cons(nth(i, ls), drop(i + 1, take(k, ls)));
+{
+  drop_nth_cons(take(k, ps), i);
+  drop_nth_cons(take(k, os), i);
+  drop_nth_cons(take(k, ls), i);
+  nth_take(i, k, ps);
+  nth_take(i, k, os);
+  nth_take(i, k, ls);
+}
+
+// The class-keeping heap change composes.
+lemma void kept_class_trans(list<void *> objs, fixpoint(void *, oinfo) H, fixpoint(void *, oinfo) H1, fixpoint(void *, oinfo) H2)
+  requires forall(objs, (kept_class)(H, H1)) == true &*& forall(objs, (kept_class)(H1, H2)) == true;
+  ensures forall(objs, (kept_class)(H, H2)) == true;
+{
+  switch (objs) {
+    case nil:
+    case cons(o, objs0): kept_class_trans(objs0, H, H1, H2);
+  }
+}
+
+lemma void kept_class_refl(list<void *> objs, fixpoint(void *, oinfo) H)
+  requires true;
+  ensures forall(objs, (kept_class)(H, H)) == true;
+{
+  switch (objs) {
+    case nil:
+    case cons(o, objs0): kept_class_refl(objs0, H);
+  }
+}
+
+// A heap that grew, then kept the classes of the grown heap's objects.
+lemma void grows_then_class(list<void *> objs, fixpoint(void *, oinfo) H, list<void *> objs1, fixpoint(void *, oinfo) H1, fixpoint(void *, oinfo) H2)
+  requires grows(objs, H, objs1, H1) == true &*& forall(objs1, (kept_class)(H1, H2)) == true;
+  ensures grows_class(objs, H, objs1, H2) == true;
+{
+  switch (objs) {
+    case nil:
+    case cons(o, objs0):
+      forall_mem(o, objs1, (kept_class)(H1, H2));
+      grows_then_class(objs0, H, objs1, H1, H2);
+  }
+}
+
+lemma void grows_class_of_grows(list<void *> objs, fixpoint(void *, oinfo) H, list<void *> objs1, fixpoint(void *, oinfo) H1)
+  requires grows(objs, H, objs1, H1) == true;
+  ensures grows_class(objs, H, objs1, H1) == true;
+{
+  kept_class_refl(objs1, H1);
+  grows_then_class(objs, H, objs1, H1, H1);
+}
+
+// mark_allocation_failed's precondition from the decoder.
+lemma void dec_af_plain(MessageDecoder *d)
+  requires dec(d, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st, ?k);
+  ensures dec_af(d, fb, proc, ids, fmt, b, size, cap, c, st, k, false);
+{
+  close dec_af(d, fb, proc, ids, fmt, b, size, cap, c, st, k, false);
+}
 @*/
 
 // src/utils.cc: reads the bytes given (contract only).
@@ -248,16 +524,310 @@ void fail(const char *format, ...);
 //@ ensures false;
 
 // src/heap.h: an external string or byte array over a block of a message
-// (IPC only), which takes the block; or null and the block stays with the
-// message.
+// (IPC only), with a VM finalizer (dispose), which takes the block; or
+// null and the block stays with the caller.
 String *ObjectHeap_allocate_external_string(ObjectHeap *self, word length, uint8 *memory, bool dispose);
-//@ requires [_]object_heap(self, ?p) &*& [?f]process(p, ?prog, ?ids) &*& heap(?objs, ?H) &*& msg_block(memory, length);
+/*@ requires [_]object_heap(self, ?p) &*& [?f]process(p, ?prog, ?ids) &*& heap(?objs, ?H) &*& msg_block(memory) &*&
+             dispose == true &*& 0 <= length &*& length < MAX_BLOB; @*/
 /*@ ensures [f]process(p, prog, ids) &*& allocated(objs, H, p, result, ?objs2, ?H2) &*&
-            (result == 0 ? msg_block(memory, length) : has_tag(H2, result, STRING_TAG) == true); @*/
+            (result == 0 ? msg_block(memory) : has_tag(H2, result, STRING_TAG) == true &*& finalized(result, memory)); @*/
 ByteArray *ObjectHeap_allocate_external_byte_array(ObjectHeap *self, word length, uint8 *memory, bool dispose, bool clear_content);
-//@ requires [_]object_heap(self, ?p) &*& [?f]process(p, ?prog, ?ids) &*& heap(?objs, ?H) &*& msg_block(memory, length);
+/*@ requires [_]object_heap(self, ?p) &*& [?f]process(p, ?prog, ?ids) &*& heap(?objs, ?H) &*& msg_block(memory) &*&
+             dispose == true &*& 0 <= length &*& length < MAX_BLOB; @*/
 /*@ ensures [f]process(p, prog, ids) &*& allocated(objs, H, p, result, ?objs2, ?H2) &*&
-            (result == 0 ? msg_block(memory, length) : has_tag(H2, result, BYTE_ARRAY_TAG) == true); @*/
+            (result == 0 ? msg_block(memory) : has_tag(H2, result, BYTE_ARRAY_TAG) == true &*& finalized(result, memory)); @*/
+
+// src/objects.h HeapObject::clear_has_active_finalizer (contract only):
+// clears the header's finalizer bit (no other bit: the object keeps its
+// class); for an object over a lent block, that gives the block back (the
+// GC's side, trusted: neither the finalizer nor the dying heap frees the
+// memory of an object whose bit is clear).
+void HeapObject_clear_has_active_finalizer(HeapObject *self);
+//@ requires finalized(self, ?p) &*& heap(?objs, ?H);
+//@ ensures msg_block(p) &*& heap(objs, ?H2) &*& forall(objs, (kept_class)(H, H2)) == true;
+
+// src/heap.h ObjectHeap::register_external_allocation (accounting only).
+void ObjectHeap_register_external_allocation(ObjectHeap *self, word size);
+//@ requires true;
+//@ ensures true;
+
+// ---------------------------------------------------------------------------
+// The receive side (wave 5): the messages of a process's mailbox and its
+// main and spawn arguments, as the primitives see them.
+
+// SystemMessage (src/messaging.h) and the Message base: one struct with
+// the fields the rendered code reads (the classes are one opaque struct).
+struct SystemMessage { int type_; int gid_; int pid_; uint8 *data_; };
+typedef struct SystemMessage SystemMessage;
+typedef struct SystemMessage Message;
+typedef struct SystemMessage ObjectNotifyMessage;
+struct ObjectNotifier;
+typedef struct ObjectNotifier ObjectNotifier;
+typedef int MessageType;
+
+/*@
+// The kind of a message (its virtual message_type), abstract.
+predicate msg_kind(Message *m; int t);
+
+// A message of a mailbox: a system message owns its encoded data (never
+// null: the scheduler and the senders always give one), and its type, gid
+// and pid are smis (the type is an int argument or a VM constant; ids are
+// below 2^30) -- the mailbox model, trusted like the scheduler.
+predicate queued(Message *m) =
+  msg_kind(m, ?t) &*&
+  (t == MESSAGE_SYSTEM ?
+     m->data_ |-> ?d &*& d != 0 &*& msg_whole(d) &*&
+     m->type_ |-> ?ty &*& m->gid_ |-> ?g &*& m->pid_ |-> ?pi &*&
+     smi_range(ty) == true &*& smi_range(g) == true &*& smi_range(pi) == true
+   : true);
+
+// A message being deleted: a system message owns its data if any.
+predicate dying(Message *m) =
+  msg_kind(m, ?t) &*&
+  (t == MESSAGE_SYSTEM ? m->data_ |-> ?d &*& (d == 0 ? true : msg_whole(d)) &*& m->type_ |-> _ &*& m->gid_ |-> _ &*& m->pid_ |-> _ : true);
+
+// The mailbox of process p, its first message (abstract), and the main and
+// spawn arguments (encoded messages the process owns).
+predicate mailbox(Process *p; Message *first);
+predicate main_args(Process *p; uint8 *a);
+predicate spawn_args(Process *p; uint8 *a);
+
+// A decoder whose message is whole again (remove_disposing_finalizers):
+// the fields, its fraction of the buffer and every block.
+predicate dec_back(MessageDecoder *d, real fb, uint8 *b, int cap, list<uint8 *> ps) =
+  d->process_ |-> _ &*& d->program_ |-> _ &*& d->format_ |-> _ &*& d->buffer_ |-> _ &*& d->size_ |-> _ &*&
+  d->cursor_ |-> _ &*& d->status_ |-> _ &*& d->externals_count_ |-> _ &*&
+  pointers_(d->externals_, MESSAGING_ENCODING_MAX_EXTERNALS, _) &*& intptrs_(d->externals_sizes_, MESSAGING_ENCODING_MAX_EXTERNALS, _) &*&
+  [fb]uchars(b, cap, _) &*& [_]ipc_msg(d, b, cap, ps) &*& msg_blocks(ps) &*& ipc_pos(d, _);
+
+// A decoder done with a successful decode: the objects own the blocks (the
+// GC frees them), the table's first k sizes are set.
+predicate dec_done(MessageDecoder *d, Process *proc, int k) =
+  d->process_ |-> proc &*& d->program_ |-> _ &*& d->format_ |-> _ &*& d->buffer_ |-> _ &*& d->size_ |-> _ &*&
+  d->cursor_ |-> _ &*& d->status_ |-> _ &*& d->externals_count_ |-> k &*& 0 <= k &*& k <= MESSAGING_ENCODING_MAX_EXTERNALS &*&
+  pointers_(d->externals_, MESSAGING_ENCODING_MAX_EXTERNALS, _) &*&
+  intptrs(d->externals_sizes_, k, _) &*& intptrs_(d->externals_sizes_ + k, MESSAGING_ENCODING_MAX_EXTERNALS - k, _) &*& ipc_pos(d, _);
+
+fixpoint bool is_some<t>(option<t> o) { switch (o) { case none: return false; case some(v): return true; } }
+
+// The first k entries of an array, set, as an initialized array.
+lemma void intptrs__take(intptr_t *p, int n, int k)
+  requires intptrs_(p, n, ?vs) &*& 0 <= k &*& k <= n &*& forall(take(k, vs), is_some) == true;
+  ensures intptrs(p, k, _) &*& intptrs_(p + k, n - k, drop(k, vs));
+{
+  if (k == 0) {
+    close intptrs(p, 0, nil);
+  } else {
+    open intptrs_(p, n, vs);
+    assert intptr_(p, ?v);
+    switch (v) { case none: case some(x): }
+    close intptr(p, the(v));
+    intptrs__take(p + 1, n - 1, k - 1);
+    close intptrs(p, k, _);
+  }
+}
+
+lemma void pointers__take(void **p, int n, int k)
+  requires pointers_(p, n, ?vs) &*& 0 <= k &*& k <= n &*& forall(take(k, vs), is_some) == true;
+  ensures pointers(p, k, map(the, take(k, vs))) &*& pointers_(p + k, n - k, drop(k, vs));
+{
+  if (k == 0) {
+    close pointers(p, 0, nil);
+  } else {
+    open pointers_(p, n, vs);
+    assert pointer_(p, ?v);
+    switch (v) { case none: case some(x): }
+    close pointer(p, the(v));
+    pointers__take(p + 1, n - 1, k - 1);
+    close pointers(p, k, map(the, take(k, vs)));
+  }
+}
+
+lemma void pointers__give(void **p, int k)
+  requires pointers(p, k, ?ws) &*& pointers_(p + k, ?m, ?rest) &*& 0 <= k &*& 0 <= m;
+  ensures pointers_(p, k + m, _);
+{
+  open pointers(p, k, ws);
+  if (k != 0) {
+    open pointer(p, ?w);
+    pointers__give(p + 1, k - 1);
+    assert pointers_(p + 1, k - 1 + m, ?vs1);
+    close pointers_(p, k + m, cons(some(w), vs1));
+  }
+}
+
+lemma void nth_map_<a, b>(fixpoint(a, b) f, list<a> xs, int i)
+  requires 0 <= i &*& i < length(xs);
+  ensures nth(i, map(f, xs)) == f(nth(i, xs));
+{
+  switch (xs) {
+    case nil:
+    case cons(x, xs0): if (i > 0) nth_map_(f, xs0, i - 1);
+  }
+}
+
+lemma void lent_some(list<uint8 *> ps, list<option<void *> > os, list<option<intptr_t> > ls)
+  requires lent(ps, os, ls);
+  ensures lent(ps, os, ls) &*& forall(os, is_some) == true &*& length(os) == length(ps);
+{
+  open lent(ps, os, ls);
+  switch (ps) {
+    case nil:
+    case cons(p, ps0):
+      lent_some(ps0, tail(os), tail(ls));
+      switch (os) { case nil: case cons(o, os0): switch (o) { case none: case some(v): } }
+  }
+  close lent(ps, os, ls);
+}
+
+lemma void intptrs__give(intptr_t *p, int k)
+  requires intptrs(p, k, ?ws) &*& intptrs_(p + k, ?m, ?rest) &*& 0 <= k &*& 0 <= m;
+  ensures intptrs_(p, k + m, _);
+{
+  open intptrs(p, k, ws);
+  if (k != 0) {
+    open intptr(p, ?w);
+    intptrs__give(p + 1, k - 1);
+    assert intptrs_(p + 1, k - 1 + m, ?vs1);
+    close intptrs_(p, k + m, cons(some(w), vs1));
+  }
+}
+
+// The lent objects of a successful decode keep their blocks: the GC's.
+lemma void lent_to_gc(list<uint8 *> ps, list<option<void *> > os, list<option<intptr_t> > ls)
+  requires lent(ps, os, ls);
+  ensures forall(ls, is_some) == true &*& length(ls) == length(ps);
+{
+  open lent(ps, os, ls);
+  switch (ps) {
+    case nil:
+    case cons(p, ps0):
+      gc_owns(the(head(os)), p);
+      lent_to_gc(ps0, tail(os), tail(ls));
+      switch (ls) { case nil: case cons(l, ls0): switch (l) { case none: case some(v): } }
+  }
+}
+
+lemma void pointers__length(void **p, int n)
+  requires [?f]pointers_(p, n, ?vs) &*& 0 <= n;
+  ensures [f]pointers_(p, n, vs) &*& length(vs) == n;
+{
+  open [f]pointers_(p, n, vs);
+  if (n > 0) pointers__length(p + 1, n - 1);
+  close [f]pointers_(p, n, vs);
+}
+
+lemma void intptrs__length(intptr_t *p, int n)
+  requires [?f]intptrs_(p, n, ?vs) &*& 0 <= n;
+  ensures [f]intptrs_(p, n, vs) &*& length(vs) == n;
+{
+  open [f]intptrs_(p, n, vs);
+  if (n > 0) intptrs__length(p + 1, n - 1);
+  close [f]intptrs_(p, n, vs);
+}
+
+// The fields of a decoder (what a local MessageDecoder gives back at the
+// end of its scope).
+predicate dec_fields(MessageDecoder *d) =
+  d->process_ |-> _ &*& d->program_ |-> _ &*& d->format_ |-> _ &*& d->buffer_ |-> _ &*& d->size_ |-> _ &*&
+  d->cursor_ |-> _ &*& d->status_ |-> _ &*& d->externals_count_ |-> _ &*&
+  pointers_(d->externals_, MESSAGING_ENCODING_MAX_EXTERNALS, _) &*& intptrs_(d->externals_sizes_, MESSAGING_ENCODING_MAX_EXTERNALS, _);
+
+// After a successful decode (ipc_end: every block was read, and lent).
+// (The status is SUCCESS: neither ALLOCATION_FAILED nor MALFORMED_INPUT.)
+lemma void dec_finish(MessageDecoder *d)
+  requires dec(d, ?fb, ?proc, ?ids, MESSAGE_FORMAT_IPC, ?b, ?size, ?cap, ?c, ?st, ?k) &*& proc != 0 &*&
+           st != MessageDecoder_DECODE_ALLOCATION_FAILED &*& st != MessageDecoder_DECODE_MALFORMED_INPUT;
+  ensures dec_done(d, proc, k) &*& [fb]uchars(b, cap, _) &*& [_]ipc_msg(d, b, cap, ?ps) &*& k == length(ps);
+{
+  open dec(d, fb, proc, ids, MESSAGE_FORMAT_IPC, b, size, cap, c, st, k);
+  open ipc_own(d, proc, b, cap, st, k, ?es, ?ls, false);
+  assert [_]ipc_msg(d, b, cap, ?ps) &*& ipc_pos(d, ?j);
+  ipc_end(d);
+  open msg_blocks(drop(j, ps));
+  lent_to_gc(take(k, ps), take(k, es), take(k, ls));
+  intptrs__length(d->externals_sizes_, MESSAGING_ENCODING_MAX_EXTERNALS);
+  intptrs__take(d->externals_sizes_, MESSAGING_ENCODING_MAX_EXTERNALS, k);
+  close dec_done(d, proc, k);
+}
+
+// The end of a successful receive: the decoder's fields back.
+lemma void dec_done_dispose(MessageDecoder *d)
+  requires dec_done(d, ?proc, ?k);
+  ensures dec_fields(d);
+{
+  open dec_done(d, proc, k);
+  intptrs__give(d->externals_sizes_, k);
+  leak ipc_pos(d, _);
+  close dec_fields(d);
+}
+
+// A failed receive (remove_disposing_finalizers): the message is whole
+// again, the decoder's fields back, and the heap changed only in the
+// finalizer bits of objects the decode made.
+lemma void receive_give_back(MessageDecoder *d, uint8 *b, list<void *> objs, fixpoint(void *, oinfo) H, list<void *> objs1, fixpoint(void *, oinfo) H1)
+  requires dec_back(d, 1, b, ?cap, ?ps) &*& malloc_block(b, cap) &*& [_]encoded(b, cap, ps) &*& 0 <= cap &*& cap <= MAX_BLOB &*&
+           grows(objs, H, objs1, H1) == true &*& heap(objs1, ?H2) &*& forall(objs1, (kept_class)(H1, H2)) == true;
+  ensures msg_whole(b) &*& dec_fields(d) &*& heap(objs1, H2) &*& grows_class(objs, H, objs1, H2) == true;
+{
+  open dec_back(d, 1, b, cap, ps);
+  leak ipc_pos(d, _);
+  close msg_whole(b);
+  close dec_fields(d);
+  grows_then_class(objs, H, objs1, H1, H2);
+}
+@*/
+
+// src/process.h, the main and spawn arguments: the process's message.
+uint8 *Process_main_arguments(Process *self);
+//@ requires [?f]main_args(self, ?a);
+//@ ensures [f]main_args(self, a) &*& result == a;
+void Process_clear_main_arguments(Process *self);
+//@ requires main_args(self, _);
+//@ ensures main_args(self, 0);
+uint8 *Process_spawn_arguments(Process *self);
+//@ requires [?f]spawn_args(self, ?a);
+//@ ensures [f]spawn_args(self, a) &*& result == a;
+void Process_clear_spawn_arguments(Process *self);
+//@ requires spawn_args(self, _);
+//@ ensures spawn_args(self, 0);
+
+// src/process.h, the mailbox (under the process mutex): the first message;
+// removing it deletes it (~SystemMessage: free_data_and_externals, rendered
+// below).
+Message *Process_peek_message(Process *self);
+//@ requires [?f]mailbox(self, ?m);
+//@ ensures [f]mailbox(self, m) &*& result == m;
+void Process_remove_first_message(Process *self);
+//@ requires mailbox(self, ?m) &*& m != 0 &*& dying(m);
+//@ ensures mailbox(self, ?m2) &*& (m2 == 0 ? true : queued(m2));
+
+// The roots and the program's empty array.
+HeapObject *Process_null_object(Process *self);
+//@ requires [?f]process(self, ?prog, ?ids) &*& [?g]heap(?objs, ?H);
+//@ ensures [f]process(self, prog, ids) &*& [g]heap(objs, H) &*& mem(result, objs) == true;
+Array *Program_empty_array(Program *self);
+//@ requires [?f]program(self, ?ids) &*& [?g]heap(?objs, ?H);
+//@ ensures [f]program(self, ids) &*& [g]heap(objs, H) &*& mem(result, objs) == true;
+
+// The finalizer queue of the heap (not the object model's business).
+bool ObjectHeap_has_finalizer_to_run(ObjectHeap *self);
+//@ requires true;
+//@ ensures true;
+Object *ObjectHeap_next_finalizer_to_run(ObjectHeap *self);
+//@ requires [?g]heap(?objs, ?H);
+//@ ensures [g]heap(objs, H) &*& good(objs, result) == true;
+
+// The message's kind (virtual) and a monitor notification's object.
+MessageType Message_message_type(Message *self);
+//@ requires [?f]msg_kind(self, ?t);
+//@ ensures [f]msg_kind(self, t) &*& result == t;
+ObjectNotifier *ObjectNotifyMessage_object_notifier(ObjectNotifyMessage *self);
+//@ requires true;
+//@ ensures true;
+Object *ObjectNotifier_object(ObjectNotifier *self);
+//@ requires [?g]heap(?objs, ?H);
+//@ ensures [g]heap(objs, H) &*& good(objs, result) == true;
 // C++: src/messaging.cc toit::NestingTracker::NestingTracker
 void NestingTracker_ctor(NestingTracker *self, int *nesting);
 //@ requires self->nesting_ |-> _ &*& integer(nesting, ?n) &*& INT_MIN <= n &*& n < INT_MAX;
@@ -290,17 +860,17 @@ word MessageDecoder_remaining(MessageDecoder *self);
 
 // C++: src/messaging.h toit::MessageDecoder::externals_count
 uword MessageDecoder_externals_count(MessageDecoder *self);
-//@ requires [?f]dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st, ?k);
-//@ ensures [f]dec(self, fb, proc, ids, fmt, b, size, cap, c, st, k) &*& result == k &*& 0 <= k &*& k <= MESSAGING_ENCODING_MAX_EXTERNALS;
+//@ requires [?f]self->externals_count_ |-> ?k;
+//@ ensures [f]self->externals_count_ |-> k &*& result == k;
 
 // C++: src/messaging.h toit::MessageDecoder::mark_malformed
 Object *MessageDecoder_mark_malformed(MessageDecoder *self);
-//@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st, ?k);
+//@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st, ?k) &*& not_failed(fmt, proc, st) == true;
 //@ ensures dec(self, fb, proc, ids, fmt, b, size, cap, c, MessageDecoder_DECODE_MALFORMED_INPUT, k) &*& result == 0 &*& (uword)result == 0;
 
 // C++: src/messaging.h toit::MessageDecoder::mark_allocation_failed
 Object *MessageDecoder_mark_allocation_failed(MessageDecoder *self);
-//@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st, ?k);
+//@ requires dec_af(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st, ?k, ?r);
 //@ ensures dec(self, fb, proc, ids, fmt, b, size, cap, c, MessageDecoder_DECODE_ALLOCATION_FAILED, k) &*& result == 0 &*& (uword)result == 0;
 
 // C++: src/messaging.h toit::MessageDecoder::read_uint8
@@ -321,31 +891,37 @@ uint64 MessageDecoder_read_uint64(MessageDecoder *self);
 
 // C++: src/messaging.cc toit::MessageDecoder::read_pointer
 uint8 *MessageDecoder_read_pointer(MessageDecoder *self);
-//@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st, ?k) &*& c <= cap;
-//@ ensures dec(self, fb, proc, ids, fmt, b, size, cap, c + sizeof(void *), st, k) &*& (fmt == MESSAGE_FORMAT_TISON || c + sizeof(void *) <= cap);
+//@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st, ?k) &*& c <= cap &*& not_failed(fmt, proc, st) == true;
+/*@ ensures (fmt == MESSAGE_FORMAT_IPC && proc != 0 ?
+              dec_out(self, fb, proc, ids, fmt, b, size, cap, c + sizeof(void *), st, k) &*&
+              [_]ipc_msg(self, b, cap, ?ps) &*& k < length(ps) &*& nth(k, ps) == result
+            :
+              dec(self, fb, proc, ids, fmt, b, size, cap, c + sizeof(void *), st, k)) &*&
+            (fmt == MESSAGE_FORMAT_TISON ? true : malloc_block(result, ?n) &*& chars_((char *)result, n, _)) &*&
+            (fmt == MESSAGE_FORMAT_TISON || c + sizeof(void *) <= cap); @*/
 
 // C++: src/messaging.cc toit::MessageDecoder::read_cardinal
 uword MessageDecoder_read_cardinal(MessageDecoder *self);
-//@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st, ?k) &*& c <= cap + 8;
+//@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st, ?k) &*& c <= cap + 8 &*& not_failed(fmt, proc, st) == true;
 /*@ ensures dec(self, fb, proc, ids, fmt, b, size, cap, ?c2, ?st2, k) &*& c < c2 &*& c2 <= (c < cap ? cap + 1 : c + 1) &*&
             (c2 <= cap || result == 0) &*& (st2 == st || st2 == MessageDecoder_DECODE_MALFORMED_INPUT) &*&
             (fmt == MESSAGE_FORMAT_TISON || c2 <= cap); @*/
 
 // C++: src/messaging.cc toit::MessageDecoder::read_cardinal_64
 uint64 MessageDecoder_read_cardinal_64(MessageDecoder *self);
-//@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st, ?k) &*& c <= cap + 8;
+//@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st, ?k) &*& c <= cap + 8 &*& not_failed(fmt, proc, st) == true;
 /*@ ensures dec(self, fb, proc, ids, fmt, b, size, cap, ?c2, ?st2, k) &*& c < c2 &*& c2 <= (c < cap ? cap + 1 : c + 1) &*&
             (c2 <= cap || result == 0) &*& (st2 == st || st2 == MessageDecoder_DECODE_MALFORMED_INPUT) &*&
             (fmt == MESSAGE_FORMAT_TISON || c2 <= cap); @*/
 
 // C++: src/messaging.cc toit::MessageDecoder::register_external
 void MessageDecoder_register_external(MessageDecoder *self, HeapObject *object, word length);
-//@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st, ?k);
+//@ requires dec_pend(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st, ?k, object);
 //@ ensures dec(self, fb, proc, ids, fmt, b, size, cap, c, st, k + 1);
 
 // C++: src/messaging.cc toit::MessageDecoder::decode_string
 Object *MessageDecoder_decode_string(MessageDecoder *self, bool inlined);
-/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st0, ?k) &*& c <= cap &*&
+/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st0, ?k) &*& c <= cap &*& proc != 0 &*& not_failed(fmt, proc, st0) == true &*&
              [?fp]process(proc, ?prog, ids) &*& heap(?objs, ?H); @*/
 /*@ ensures dec(self, fb, proc, ids, fmt, b, size, cap, ?c2, ?st, ?k2) &*& [fp]process(proc, prog, ids) &*&
             heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*& good(objs2, result) == true &*&
@@ -353,7 +929,7 @@ Object *MessageDecoder_decode_string(MessageDecoder *self, bool inlined);
 
 // C++: src/messaging.cc toit::MessageDecoder::decode_byte_array
 Object *MessageDecoder_decode_byte_array(MessageDecoder *self, bool inlined);
-/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st0, ?k) &*& c <= cap &*&
+/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st0, ?k) &*& c <= cap &*& proc != 0 &*& not_failed(fmt, proc, st0) == true &*&
              [?fp]process(proc, ?prog, ids) &*& heap(?objs, ?H); @*/
 /*@ ensures dec(self, fb, proc, ids, fmt, b, size, cap, ?c2, ?st, ?k2) &*& [fp]process(proc, prog, ids) &*&
             heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*& good(objs2, result) == true &*&
@@ -361,7 +937,7 @@ Object *MessageDecoder_decode_byte_array(MessageDecoder *self, bool inlined);
 
 // C++: src/messaging.cc toit::MessageDecoder::decode_double
 Object *MessageDecoder_decode_double(MessageDecoder *self);
-/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st0, ?k) &*& c <= cap &*&
+/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st0, ?k) &*& c <= cap &*& not_failed(fmt, proc, st0) == true &*&
              [?fp]process(proc, ?prog, ids) &*& heap(?objs, ?H); @*/
 /*@ ensures dec(self, fb, proc, ids, fmt, b, size, cap, ?c2, ?st, k) &*& [fp]process(proc, prog, ids) &*&
             heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*& good(objs2, result) == true &*&
@@ -369,7 +945,7 @@ Object *MessageDecoder_decode_double(MessageDecoder *self);
 
 // C++: src/messaging.cc toit::MessageDecoder::decode_large_integer
 Object *MessageDecoder_decode_large_integer(MessageDecoder *self);
-/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st0, ?k) &*& c <= cap &*&
+/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st0, ?k) &*& c <= cap &*& not_failed(fmt, proc, st0) == true &*&
              [?fp]process(proc, ?prog, ids) &*& heap(?objs, ?H); @*/
 /*@ ensures dec(self, fb, proc, ids, fmt, b, size, cap, ?c2, ?st, k) &*& [fp]process(proc, prog, ids) &*&
             heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*& good(objs2, result) == true &*&
@@ -377,7 +953,7 @@ Object *MessageDecoder_decode_large_integer(MessageDecoder *self);
 
 // C++: src/messaging.cc toit::MessageDecoder::decode_integer
 Object *MessageDecoder_decode_integer(MessageDecoder *self, int64 value);
-/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st0, ?k) &*&
+/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st0, ?k) &*& not_failed(fmt, proc, st0) == true &*&
              [?fp]process(proc, ?prog, ids) &*& heap(?objs, ?H); @*/
 /*@ ensures dec(self, fb, proc, ids, fmt, b, size, cap, c, ?st, k) &*& [fp]process(proc, prog, ids) &*&
             heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*& good(objs2, result) == true &*&
@@ -386,7 +962,7 @@ Object *MessageDecoder_decode_integer(MessageDecoder *self, int64 value);
 
 // C++: src/messaging.cc toit::MessageDecoder::decode_array
 Object *MessageDecoder_decode_array(MessageDecoder *self);
-/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st0, ?k) &*& c <= cap &*& proc != 0 &*&
+/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st0, ?k) &*& c <= cap &*& proc != 0 &*& not_failed(fmt, proc, st0) == true &*&
              [?fp]process(proc, ?prog, ids) &*& self->nesting_ |-> ?n &*& 0 <= n &*& n <= MESSAGING_DECODING_MAX_NESTING &*&
              heap(?objs, ?H); @*/
 /*@ ensures dec(self, fb, proc, ids, fmt, b, size, cap, ?c2, ?st, ?k2) &*& [fp]process(proc, prog, ids) &*&
@@ -395,7 +971,7 @@ Object *MessageDecoder_decode_array(MessageDecoder *self);
 
 // C++: src/messaging.cc toit::MessageDecoder::decode_map
 Object *MessageDecoder_decode_map(MessageDecoder *self);
-/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?sz, ?cap, ?c, ?st0, ?k) &*& c <= cap &*& proc != 0 &*&
+/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?sz, ?cap, ?c, ?st0, ?k) &*& c <= cap &*& proc != 0 &*& not_failed(fmt, proc, st0) == true &*&
              [?fp]process(proc, ?prog, ids) &*& self->nesting_ |-> ?n &*& 0 <= n &*& n <= MESSAGING_DECODING_MAX_NESTING &*&
              heap(?objs, ?H); @*/
 /*@ ensures dec(self, fb, proc, ids, fmt, b, sz, cap, ?c2, ?st, ?k2) &*& [fp]process(proc, prog, ids) &*&
@@ -404,7 +980,7 @@ Object *MessageDecoder_decode_map(MessageDecoder *self);
 
 // C++: src/messaging.cc toit::MessageDecoder::decode_any
 Object *MessageDecoder_decode_any(MessageDecoder *self);
-/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st0, ?k) &*& c <= cap + 8 &*& proc != 0 &*&
+/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st0, ?k) &*& c <= cap + 8 &*& proc != 0 &*& not_failed(fmt, proc, st0) == true &*&
              [?fp]process(proc, ?prog, ids) &*& self->nesting_ |-> ?n &*& 0 <= n &*& n <= MESSAGING_DECODING_MAX_NESTING &*&
              heap(?objs, ?H); @*/
 /*@ ensures dec(self, fb, proc, ids, fmt, b, size, cap, ?c2, ?st, ?k2) &*& [fp]process(proc, prog, ids) &*&
@@ -428,16 +1004,132 @@ Object *MessageDecoder_decode(MessageDecoder *self);
 
 // C++: src/messaging.cc toit::MessageDecoder::decode_external_data
 bool MessageDecoder_decode_external_data(MessageDecoder *self, void **data, word *length);
-//@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st0, ?k) &*& c <= cap &*& *data |-> _ &*& *length |-> _;
+//@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st0, ?k) &*& c <= cap &*& proc == 0 &*& *data |-> _ &*& *length |-> _;
 /*@ ensures dec(self, fb, proc, ids, fmt, b, size, cap, ?c2, ?st, k) &*&
             (result ? *data |-> ?d &*& *length |-> ?l &*& fmt == MESSAGE_FORMAT_IPC &*& ext_data(?copied, d, l) : *data |-> _ &*& *length |-> _); @*/
 
 // C++: src/messaging.cc toit::MessageDecoder::decode_rpc_request_external
 bool MessageDecoder_decode_rpc_request_external(MessageDecoder *self, int *id, int *name, void **data, word *length);
-/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st0, ?k) &*& c <= cap &*&
+/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st0, ?k) &*& c <= cap &*& proc == 0 &*&
              *id |-> _ &*& *name |-> _ &*& *data |-> _ &*& *length |-> _; @*/
 /*@ ensures dec(self, fb, proc, ids, fmt, b, size, cap, ?c2, ?st, k) &*& *id |-> _ &*& *name |-> _ &*&
             (result ? *data |-> ?d &*& *length |-> ?l &*& fmt == MESSAGE_FORMAT_IPC &*& ext_data(?copied, d, l) : *data |-> _ &*& *length |-> _); @*/
+
+// C++: src/messaging.h toit::MessageDecoder::allocation_failed
+bool MessageDecoder_allocation_failed(MessageDecoder *self);
+//@ requires [?f]dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st, ?k);
+//@ ensures [f]dec(self, fb, proc, ids, fmt, b, size, cap, c, st, k) &*& result == (st == MessageDecoder_DECODE_ALLOCATION_FAILED);
+
+// C++: src/messaging.h toit::MessageDecoder::malformed_input
+bool MessageDecoder_malformed_input(MessageDecoder *self);
+//@ requires [?f]dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st, ?k);
+//@ ensures [f]dec(self, fb, proc, ids, fmt, b, size, cap, c, st, k) &*& result == (st == MessageDecoder_DECODE_MALFORMED_INPUT);
+
+// C++: src/messaging.cc toit::MessageDecoder::MessageDecoder
+void MessageDecoder_ctor__Processp_uint8p_word_MessageFormat(MessageDecoder *self, Process *process, uint8 *buffer, word size, MessageFormat format);
+/*@ requires self->process_ |-> _ &*& self->program_ |-> _ &*& self->buffer_ |-> _ &*& self->size_ |-> _ &*& self->format_ |-> _ &*&
+             self->cursor_ |-> _ &*& self->nesting_ |-> _ &*& self->status_ |-> _ &*& self->externals_count_ |-> _ &*&
+             pointers_(self->externals_, MESSAGING_ENCODING_MAX_EXTERNALS, _) &*& intptrs_(self->externals_sizes_, MESSAGING_ENCODING_MAX_EXTERNALS, _) &*&
+             process != 0 &*& [?fp]process(process, ?prog, ?ids) &*&
+             [?fb]uchars(buffer, ?cap, _) &*& 0 <= cap &*& cap <= MAX_BLOB &*&
+             (format == MESSAGE_FORMAT_TISON ? size == cap :
+                format == MESSAGE_FORMAT_IPC &*& size == INT_MAX &*& [_]encoded(buffer, cap, ?ps) &*& msg_blocks(ps)); @*/
+/*@ ensures dec(self, fb, process, ids, format, buffer, size, cap, 0, MessageDecoder_DECODE_SUCCESS, 0) &*& self->nesting_ |-> 0 &*&
+            [fp]process(process, prog, ids) &*& (format == MESSAGE_FORMAT_TISON ? true : [_]ipc_msg(self, buffer, cap, ?ps2) &*& [_]encoded(buffer, cap, ps2)); @*/
+
+// C++: src/messaging.h toit::MessageDecoder::MessageDecoder
+void MessageDecoder_ctor__Processp_uint8p(MessageDecoder *self, Process *process, uint8 *buffer);
+/*@ requires self->process_ |-> _ &*& self->program_ |-> _ &*& self->buffer_ |-> _ &*& self->size_ |-> _ &*& self->format_ |-> _ &*&
+               self->cursor_ |-> _ &*& self->nesting_ |-> _ &*& self->status_ |-> _ &*& self->externals_count_ |-> _ &*&
+               pointers_(self->externals_, MESSAGING_ENCODING_MAX_EXTERNALS, _) &*& intptrs_(self->externals_sizes_, MESSAGING_ENCODING_MAX_EXTERNALS, _) &*&
+               process != 0 &*& [?fp]process(process, ?prog, ?ids) &*&
+               [?fb]uchars(buffer, ?cap, _) &*& 0 <= cap &*& cap <= MAX_BLOB &*& [_]encoded(buffer, cap, ?ps) &*& msg_blocks(ps); @*/
+/*@ ensures dec(self, fb, process, ids, MESSAGE_FORMAT_IPC, buffer, INT_MAX, cap, 0, MessageDecoder_DECODE_SUCCESS, 0) &*& self->nesting_ |-> 0 &*&
+              [fp]process(process, prog, ids) &*& [_]ipc_msg(self, buffer, cap, ps); @*/
+
+// C++: src/messaging.h toit::MessageDecoder::MessageDecoder
+void MessageDecoder_ctor__uint8p(MessageDecoder *self, uint8 *buffer);
+/*@ requires self->process_ |-> _ &*& self->program_ |-> _ &*& self->buffer_ |-> _ &*& self->size_ |-> _ &*& self->format_ |-> _ &*&
+               self->cursor_ |-> _ &*& self->nesting_ |-> _ &*& self->status_ |-> _ &*& self->externals_count_ |-> _ &*&
+               pointers_(self->externals_, MESSAGING_ENCODING_MAX_EXTERNALS, _) &*& intptrs_(self->externals_sizes_, MESSAGING_ENCODING_MAX_EXTERNALS, _) &*&
+               [?fb]uchars(buffer, ?cap, _) &*& 0 <= cap &*& cap <= MAX_BLOB &*& [_]encoded(buffer, cap, ?ps) &*& msg_blocks(ps); @*/
+/*@ ensures dec(self, fb, 0, ?ids, MESSAGE_FORMAT_IPC, buffer, INT_MAX, cap, 0, MessageDecoder_DECODE_SUCCESS, 0) &*& self->nesting_ |-> 0 &*&
+              [_]ipc_msg(self, buffer, cap, ps); @*/
+
+// C++: src/messaging.cc toit::MessageDecoder::register_external_allocations
+void MessageDecoder_register_external_allocations(MessageDecoder *self);
+//@ requires dec_done(self, ?proc, ?k);
+//@ ensures dec_done(self, proc, k);
+
+// C++: src/messaging.cc toit::MessageDecoder::remove_disposing_finalizers
+void MessageDecoder_remove_disposing_finalizers(MessageDecoder *self);
+/*@ requires dec(self, ?fb, ?proc, ?ids, MESSAGE_FORMAT_IPC, ?b, ?size, ?cap, ?c, ?st, ?k) &*& proc != 0 &*& heap(?objs, ?H); @*/
+/*@ ensures dec_back(self, fb, b, cap, ?ps) &*& [_]ipc_msg(self, b, cap, ps) &*& heap(objs, ?H2) &*&
+            forall(objs, (kept_class)(H, H2)) == true; @*/
+
+// C++: src/messaging.cc toit::MessageDecoder::deallocate
+void MessageDecoder_deallocate__uint8p(uint8 *buffer);
+//@ requires buffer == 0 ? true : msg_whole(buffer);
+//@ ensures true;
+
+// C++: src/messaging.cc toit::MessageDecoder::deallocate
+void MessageDecoder_deallocate__(MessageDecoder *self);
+/*@ requires dec(self, ?fb, 0, ?ids, MESSAGE_FORMAT_IPC, ?b, INT_MAX, ?cap, ?c, ?st, ?k) &*& c <= cap; @*/
+/*@ ensures dec(self, fb, 0, ids, MESSAGE_FORMAT_IPC, b, INT_MAX, cap, ?c2, ?st2, k) &*& c2 <= cap; @*/
+
+// C++: src/messaging.cc toit::SystemMessage::free_data_and_externals
+void SystemMessage_free_data_and_externals(SystemMessage *self);
+//@ requires self->data_ |-> ?d &*& (d == 0 ? true : msg_whole(d));
+//@ ensures self->data_ |-> 0;
+
+// C++: src/messaging.h toit::SystemMessage::~SystemMessage
+void SystemMessage_dtor(SystemMessage *self);
+//@ requires self->data_ |-> ?d &*& (d == 0 ? true : msg_whole(d));
+//@ ensures self->data_ |-> 0;
+
+// C++: src/messaging.h toit::SystemMessage::free_data_but_keep_externals
+void SystemMessage_free_data_but_keep_externals(SystemMessage *self);
+//@ requires self->data_ |-> ?d &*& d != 0 &*& malloc_block(d, ?cap) &*& uchars(d, cap, _);
+//@ ensures self->data_ |-> 0;
+
+// C++: src/messaging.h toit::SystemMessage::data
+uint8 *SystemMessage_data(SystemMessage *self);
+//@ requires [?f]self->data_ |-> ?d;
+//@ ensures [f]self->data_ |-> d &*& result == d;
+
+// C++: src/messaging.h toit::SystemMessage::type
+int SystemMessage_type(SystemMessage *self);
+//@ requires [?f]self->type_ |-> ?t;
+//@ ensures [f]self->type_ |-> t &*& result == t;
+
+// C++: src/messaging.h toit::SystemMessage::gid
+int SystemMessage_gid(SystemMessage *self);
+//@ requires [?f]self->gid_ |-> ?g;
+//@ ensures [f]self->gid_ |-> g &*& result == g;
+
+// C++: src/messaging.h toit::SystemMessage::pid
+int SystemMessage_pid(SystemMessage *self);
+//@ requires [?f]self->pid_ |-> ?p;
+//@ ensures [f]self->pid_ |-> p &*& result == p;
+
+// C++: src/primitive_core.cc toit::primitive_main_arguments
+Object *primitive_main_arguments(Process *process, Object **__args);
+/*@ requires process != 0 &*& [?fp]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*& main_args(process, ?a) &*& (a == 0 ? true : msg_whole(a)); @*/
+/*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows_class(objs, H, objs2, H2) == true &*&
+            main_args(process, ?a2) &*& (a2 == 0 ? true : msg_whole(a2)); @*/
+
+// C++: src/primitive_core.cc toit::primitive_spawn_arguments
+Object *primitive_spawn_arguments(Process *process, Object **__args);
+/*@ requires process != 0 &*& [?fp]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*& spawn_args(process, ?a) &*& (a == 0 ? true : msg_whole(a)); @*/
+/*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows_class(objs, H, objs2, H2) == true &*&
+            spawn_args(process, ?a2) &*& (a2 == 0 ? true : msg_whole(a2)); @*/
+
+// C++: src/primitive_core.cc toit::primitive_task_receive_message
+Object *primitive_task_receive_message(Process *process, Object **__args);
+/*@ requires process != 0 &*& [?fp]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
+             mailbox(process, ?m) &*& (m == 0 ? true : queued(m)); @*/
+/*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows_class(objs, H, objs2, H2) == true &*&
+            mailbox(process, ?m2) &*& (m2 == 0 ? true : queued(m2)); @*/
 
 // C++: src/messaging.cc toit::NestingTracker::NestingTracker
 void NestingTracker_ctor(NestingTracker *self, int *nesting)
@@ -505,23 +1197,19 @@ word MessageDecoder_remaining(MessageDecoder *self)
 
 // C++: src/messaging.h toit::MessageDecoder::externals_count
 uword MessageDecoder_externals_count(MessageDecoder *self)
-//@ requires [?f]dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st, ?k);
-//@ ensures [f]dec(self, fb, proc, ids, fmt, b, size, cap, c, st, k) &*& result == k &*& 0 <= k &*& k <= MESSAGING_ENCODING_MAX_EXTERNALS;
+//@ requires [?f]self->externals_count_ |-> ?k;
+//@ ensures [f]self->externals_count_ |-> k &*& result == k;
 {
-  //@ open [f]dec(self, fb, proc, ids, fmt, b, size, cap, c, st, k);
-  {
-    uword result0 = (uword)self->externals_count_;
-    //@ close [f]dec(self, fb, proc, ids, fmt, b, size, cap, c, st, k);
-    return result0;
-  }
+  return (uword)self->externals_count_;
 }
 
 // C++: src/messaging.h toit::MessageDecoder::mark_malformed
 Object *MessageDecoder_mark_malformed(MessageDecoder *self)
-//@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st, ?k);
+//@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st, ?k) &*& not_failed(fmt, proc, st) == true;
 //@ ensures dec(self, fb, proc, ids, fmt, b, size, cap, c, MessageDecoder_DECODE_MALFORMED_INPUT, k) &*& result == 0 &*& (uword)result == 0;
 {
   //@ open dec(self, fb, proc, ids, fmt, b, size, cap, c, st, k);
+  //@ if (fmt != MESSAGE_FORMAT_TISON) { open ipc_own(self, proc, b, cap, st, k, ?es, ?ls, false); close ipc_own(self, proc, b, cap, MessageDecoder_DECODE_MALFORMED_INPUT, k, es, ls, false); }
   self->status_ = MessageDecoder_DECODE_MALFORMED_INPUT;
   //@ close dec(self, fb, proc, ids, fmt, b, size, cap, c, MessageDecoder_DECODE_MALFORMED_INPUT, k);
   return 0;
@@ -529,10 +1217,24 @@ Object *MessageDecoder_mark_malformed(MessageDecoder *self)
 
 // C++: src/messaging.h toit::MessageDecoder::mark_allocation_failed
 Object *MessageDecoder_mark_allocation_failed(MessageDecoder *self)
-//@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st, ?k);
+//@ requires dec_af(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st, ?k, ?r);
 //@ ensures dec(self, fb, proc, ids, fmt, b, size, cap, c, MessageDecoder_DECODE_ALLOCATION_FAILED, k) &*& result == 0 &*& (uword)result == 0;
 {
-  //@ open dec(self, fb, proc, ids, fmt, b, size, cap, c, st, k);
+  //@ open dec_af(self, fb, proc, ids, fmt, b, size, cap, c, st, k, r);
+  /*@
+    if (r) {
+      // The block k failed to be allocated: the decoder holds it again.
+      open dec_out(self, fb, proc, ids, fmt, b, size, cap, c, st, k);
+      open ipc_own(self, proc, b, cap, st, k, ?es, ?ls, true);
+      close ipc_own(self, proc, b, cap, MessageDecoder_DECODE_ALLOCATION_FAILED, k, es, ls, false);
+    } else {
+      open dec(self, fb, proc, ids, fmt, b, size, cap, c, st, k);
+      if (fmt != MESSAGE_FORMAT_TISON) {
+        open ipc_own(self, proc, b, cap, st, k, ?es, ?ls, false);
+        close ipc_own(self, proc, b, cap, MessageDecoder_DECODE_ALLOCATION_FAILED, k, es, ls, false);
+      }
+    }
+    @*/
   self->status_ = MessageDecoder_DECODE_ALLOCATION_FAILED;
   //@ close dec(self, fb, proc, ids, fmt, b, size, cap, c, MessageDecoder_DECODE_ALLOCATION_FAILED, k);
   return 0;
@@ -621,8 +1323,14 @@ uint64 MessageDecoder_read_uint64(MessageDecoder *self)
 
 // C++: src/messaging.cc toit::MessageDecoder::read_pointer
 uint8 *MessageDecoder_read_pointer(MessageDecoder *self)
-//@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st, ?k) &*& c <= cap;
-//@ ensures dec(self, fb, proc, ids, fmt, b, size, cap, c + sizeof(void *), st, k) &*& (fmt == MESSAGE_FORMAT_TISON || c + sizeof(void *) <= cap);
+//@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st, ?k) &*& c <= cap &*& not_failed(fmt, proc, st) == true;
+/*@ ensures (fmt == MESSAGE_FORMAT_IPC && proc != 0 ?
+              dec_out(self, fb, proc, ids, fmt, b, size, cap, c + sizeof(void *), st, k) &*&
+              [_]ipc_msg(self, b, cap, ?ps) &*& k < length(ps) &*& nth(k, ps) == result
+            :
+              dec(self, fb, proc, ids, fmt, b, size, cap, c + sizeof(void *), st, k)) &*&
+            (fmt == MESSAGE_FORMAT_TISON ? true : malloc_block(result, ?n) &*& chars_((char *)result, n, _)) &*&
+            (fmt == MESSAGE_FORMAT_TISON || c + sizeof(void *) <= cap); @*/
 {
   uint8 *result;
   result = 0;
@@ -645,14 +1353,33 @@ uint8 *MessageDecoder_read_pointer(MessageDecoder *self)
   self->cursor_ = next;
   {
     uint8 * result0 = result;
-    //@ close dec(self, fb, proc, ids, fmt, b, size, cap, c + sizeof(void *), st, k);
+    /*@
+  if (fmt == MESSAGE_FORMAT_TISON) {
+    close dec(self, fb, proc, ids, fmt, b, size, cap, c + sizeof(void *), st, k);
+  } else {
+    // The j-th pointer is the j-th block: handed to the caller.
+    open ipc_own(self, proc, b, cap, st, k, ?es, ?ls, false);
+    assert [_]ipc_msg(self, b, cap, ?ps) &*& ipc_pos(self, ?j);
+    ipc_pointer(self, result);
+    drop_nth_cons(ps, j);
+    open msg_blocks(drop(j, ps));
+    open msg_block(result);
+    if (proc == 0) {
+      close ipc_own(self, proc, b, cap, st, k, es, ls, false);
+      close dec(self, fb, proc, ids, fmt, b, size, cap, c + sizeof(void *), st, k);
+    } else {
+      close ipc_own(self, proc, b, cap, st, k, es, ls, true);
+      close dec_out(self, fb, proc, ids, fmt, b, size, cap, c + sizeof(void *), st, k);
+    }
+  }
+  @*/
     return result0;
   }
 }
 
 // C++: src/messaging.cc toit::MessageDecoder::read_cardinal
 uword MessageDecoder_read_cardinal(MessageDecoder *self)
-//@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st, ?k) &*& c <= cap + 8;
+//@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st, ?k) &*& c <= cap + 8 &*& not_failed(fmt, proc, st) == true;
 /*@ ensures dec(self, fb, proc, ids, fmt, b, size, cap, ?c2, ?st2, k) &*& c < c2 &*& c2 <= (c < cap ? cap + 1 : c + 1) &*&
             (c2 <= cap || result == 0) &*& (st2 == st || st2 == MessageDecoder_DECODE_MALFORMED_INPUT) &*&
             (fmt == MESSAGE_FORMAT_TISON || c2 <= cap); @*/
@@ -667,7 +1394,7 @@ uword MessageDecoder_read_cardinal(MessageDecoder *self)
 
 // C++: src/messaging.cc toit::MessageDecoder::read_cardinal_64
 uint64 MessageDecoder_read_cardinal_64(MessageDecoder *self)
-//@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st, ?k) &*& c <= cap + 8;
+//@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st, ?k) &*& c <= cap + 8 &*& not_failed(fmt, proc, st) == true;
 /*@ ensures dec(self, fb, proc, ids, fmt, b, size, cap, ?c2, ?st2, k) &*& c < c2 &*& c2 <= (c < cap ? cap + 1 : c + 1) &*&
             (c2 <= cap || result == 0) &*& (st2 == st || st2 == MessageDecoder_DECODE_MALFORMED_INPUT) &*&
             (fmt == MESSAGE_FORMAT_TISON || c2 <= cap); @*/
@@ -713,24 +1440,37 @@ uint64 MessageDecoder_read_cardinal_64(MessageDecoder *self)
 
 // C++: src/messaging.cc toit::MessageDecoder::register_external
 void MessageDecoder_register_external(MessageDecoder *self, HeapObject *object, word length)
-//@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st, ?k);
+//@ requires dec_pend(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st, ?k, object);
 //@ ensures dec(self, fb, proc, ids, fmt, b, size, cap, c, st, k + 1);
 {
+  //@ open dec_pend(self, fb, proc, ids, fmt, b, size, cap, c, st, k, object);
+  //@ open dec_out(self, fb, proc, ids, fmt, b, size, cap, c, st, k);
   // ASSERT(!MessageDecoder_decoding_tison(self)): release build, not evaluated.
   unsigned int index = (unsigned int)MessageDecoder_externals_count(self);
   if ((unsigned long)index >= ((sizeof((self->externals_)) / sizeof((*(self->externals_)))) / (size_t)!((sizeof((self->externals_)) % sizeof((*(self->externals_)))) != 0))) {
     fail("[message decoder: too many externals: %d]", index + 1);
   }
-  //@ open dec(self, fb, proc, ids, fmt, b, size, cap, c, st, k);
   self->externals_[index] = object;
   self->externals_sizes_[index] = length;
   self->externals_count_++;
+  /*@
+  {
+    // Block k is lent to the object: entry k of the table.
+    open ipc_own(self, proc, b, cap, st, k, ?es, ?ls, true);
+    assert [_]ipc_msg(self, b, cap, ?ps);
+    lent_snoc(take(k, ps), take(k, es), take(k, ls), nth(k, ps), object, length);
+    take_snoc(ps, k);
+    take_update(es, k, some((void *)object));
+    take_update(ls, k, some(length));
+    close ipc_own(self, proc, b, cap, st, k + 1, update(k, some((void *)object), es), update(k, some(length), ls), false);
+  }
+  @*/
   //@ close dec(self, fb, proc, ids, fmt, b, size, cap, c, st, k + 1);
 }
 
 // C++: src/messaging.cc toit::MessageDecoder::decode_string
 Object *MessageDecoder_decode_string(MessageDecoder *self, bool inlined)
-/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st0, ?k) &*& c <= cap &*&
+/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st0, ?k) &*& c <= cap &*& proc != 0 &*& not_failed(fmt, proc, st0) == true &*&
              [?fp]process(proc, ?prog, ids) &*& heap(?objs, ?H); @*/
 /*@ ensures dec(self, fb, proc, ids, fmt, b, size, cap, ?c2, ?st, ?k2) &*& [fp]process(proc, prog, ids) &*&
             heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*& good(objs2, result) == true &*&
@@ -761,19 +1501,20 @@ Object *MessageDecoder_decode_string(MessageDecoder *self, bool inlined)
     //@ buf_unfocus(b, c1, length);
     //@ close dec(self, fb, proc, ids, fmt, b, size, cap, c1 + length, st1, k);
     //@ open allocated(objs, H, proc, result, ?objs1, ?H1);
-    //@ if (result != 0) grows_alloc(objs, H, result, H1);
+    //@ if (result != 0) grows_alloc(objs, H, result, H1); else dec_af_plain(self);
   } else if (MessageDecoder_decoding_tison(self)) {
     //@ close dec(self, fb, proc, ids, fmt, b, size, cap, c1, st1, k);
     return MessageDecoder_mark_malformed(self);
   } else {
     //@ close dec(self, fb, proc, ids, fmt, b, size, cap, c1, st1, k);
     uint8 *data = MessageDecoder_read_pointer(self);
-    //@ open dec(self, fb, proc, ids, fmt, b, size, cap, ?c3, st1, k);
-    //@ ipc_external(self, data, length);
+    //@ open dec_out(self, fb, proc, ids, fmt, b, size, cap, ?c3, st1, k);
+    //@ ipc_external(self, length);
+    //@ close msg_block(data);
     result = ObjectHeap_allocate_external_string(Process_object_heap(self->process_), length, data, true);
-    //@ close dec(self, fb, proc, ids, fmt, b, size, cap, c3, st1, k);
+    //@ close dec_out(self, fb, proc, ids, fmt, b, size, cap, c3, st1, k);
     //@ open allocated(objs, H, proc, result, ?objs1, ?H1);
-    //@ if (result != 0) grows_alloc(objs, H, result, H1); else leak msg_block(data, length);
+    //@ if (result != 0) { grows_alloc(objs, H, result, H1); close dec_pend(self, fb, proc, ids, fmt, b, size, cap, c3, st1, k, result); } else close dec_af(self, fb, proc, ids, fmt, b, size, cap, c3, st1, k, true);
     if (result != 0) {
       MessageDecoder_register_external(self, result, length + 1);
     }
@@ -786,7 +1527,7 @@ Object *MessageDecoder_decode_string(MessageDecoder *self, bool inlined)
 
 // C++: src/messaging.cc toit::MessageDecoder::decode_byte_array
 Object *MessageDecoder_decode_byte_array(MessageDecoder *self, bool inlined)
-/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st0, ?k) &*& c <= cap &*&
+/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st0, ?k) &*& c <= cap &*& proc != 0 &*& not_failed(fmt, proc, st0) == true &*&
              [?fp]process(proc, ?prog, ids) &*& heap(?objs, ?H); @*/
 /*@ ensures dec(self, fb, proc, ids, fmt, b, size, cap, ?c2, ?st, ?k2) &*& [fp]process(proc, prog, ids) &*&
             heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*& good(objs2, result) == true &*&
@@ -823,18 +1564,20 @@ Object *MessageDecoder_decode_byte_array(MessageDecoder *self, bool inlined)
     }
     self->cursor_ += length;
     //@ close dec(self, fb, proc, ids, fmt, b, size, cap, c1 + length, st1, k);
+    //@ if (result == 0) dec_af_plain(self);
   } else if (MessageDecoder_decoding_tison(self)) {
     //@ close dec(self, fb, proc, ids, fmt, b, size, cap, c1, st1, k);
     return MessageDecoder_mark_malformed(self);
   } else {
     //@ close dec(self, fb, proc, ids, fmt, b, size, cap, c1, st1, k);
     uint8 *data = MessageDecoder_read_pointer(self);
-    //@ open dec(self, fb, proc, ids, fmt, b, size, cap, ?c3, st1, k);
-    //@ ipc_external(self, data, length);
+    //@ open dec_out(self, fb, proc, ids, fmt, b, size, cap, ?c3, st1, k);
+    //@ ipc_external(self, length);
+    //@ close msg_block(data);
     result = ObjectHeap_allocate_external_byte_array(Process_object_heap(self->process_), length, data, true, false);
-    //@ close dec(self, fb, proc, ids, fmt, b, size, cap, c3, st1, k);
+    //@ close dec_out(self, fb, proc, ids, fmt, b, size, cap, c3, st1, k);
     //@ open allocated(objs, H, proc, result, ?objs1, ?H1);
-    //@ if (result != 0) grows_alloc(objs, H, result, H1); else leak msg_block(data, length);
+    //@ if (result != 0) { grows_alloc(objs, H, result, H1); close dec_pend(self, fb, proc, ids, fmt, b, size, cap, c3, st1, k, result); } else close dec_af(self, fb, proc, ids, fmt, b, size, cap, c3, st1, k, true);
     if (result != 0) {
       MessageDecoder_register_external(self, result, length);
     }
@@ -847,7 +1590,7 @@ Object *MessageDecoder_decode_byte_array(MessageDecoder *self, bool inlined)
 
 // C++: src/messaging.cc toit::MessageDecoder::decode_double
 Object *MessageDecoder_decode_double(MessageDecoder *self)
-/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st0, ?k) &*& c <= cap &*&
+/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st0, ?k) &*& c <= cap &*& not_failed(fmt, proc, st0) == true &*&
              [?fp]process(proc, ?prog, ids) &*& heap(?objs, ?H); @*/
 /*@ ensures dec(self, fb, proc, ids, fmt, b, size, cap, ?c2, ?st, k) &*& [fp]process(proc, prog, ids) &*&
             heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*& good(objs2, result) == true &*&
@@ -862,7 +1605,7 @@ Object *MessageDecoder_decode_double(MessageDecoder *self)
   Double *result = ObjectHeap_allocate_double(Process_object_heap(self->process_), bit_cast_double__unsignedlong(value));
   //@ close dec(self, fb, proc, ids, fmt, b, size, cap, c1, st1, k);
   //@ open allocated(objs, H, proc, result, ?objs1, ?H1);
-  //@ if (result != 0) grows_alloc(objs, H, result, H1);
+  //@ if (result != 0) grows_alloc(objs, H, result, H1); else dec_af_plain(self);
   if (result == 0) {
     return MessageDecoder_mark_allocation_failed(self);
   }
@@ -871,7 +1614,7 @@ Object *MessageDecoder_decode_double(MessageDecoder *self)
 
 // C++: src/messaging.cc toit::MessageDecoder::decode_large_integer
 Object *MessageDecoder_decode_large_integer(MessageDecoder *self)
-/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st0, ?k) &*& c <= cap &*&
+/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st0, ?k) &*& c <= cap &*& not_failed(fmt, proc, st0) == true &*&
              [?fp]process(proc, ?prog, ids) &*& heap(?objs, ?H); @*/
 /*@ ensures dec(self, fb, proc, ids, fmt, b, size, cap, ?c2, ?st, k) &*& [fp]process(proc, prog, ids) &*&
             heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*& good(objs2, result) == true &*&
@@ -888,7 +1631,7 @@ Object *MessageDecoder_decode_large_integer(MessageDecoder *self)
 
 // C++: src/messaging.cc toit::MessageDecoder::decode_integer
 Object *MessageDecoder_decode_integer(MessageDecoder *self, int64 value)
-/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st0, ?k) &*&
+/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st0, ?k) &*& not_failed(fmt, proc, st0) == true &*&
              [?fp]process(proc, ?prog, ids) &*& heap(?objs, ?H); @*/
 /*@ ensures dec(self, fb, proc, ids, fmt, b, size, cap, c, ?st, k) &*& [fp]process(proc, prog, ids) &*&
             heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*& good(objs2, result) == true &*&
@@ -903,7 +1646,7 @@ Object *MessageDecoder_decode_integer(MessageDecoder *self, int64 value)
   LargeInteger *result = ObjectHeap_allocate_large_integer(Process_object_heap(self->process_), value);
   //@ close dec(self, fb, proc, ids, fmt, b, size, cap, c, st0, k);
   //@ open allocated(objs, H, proc, result, ?objs1, ?H1);
-  //@ if (result != 0) grows_alloc(objs, H, result, H1);
+  //@ if (result != 0) grows_alloc(objs, H, result, H1); else dec_af_plain(self);
   if (result == 0) {
     return MessageDecoder_mark_allocation_failed(self);
   }
@@ -912,7 +1655,7 @@ Object *MessageDecoder_decode_integer(MessageDecoder *self, int64 value)
 
 // C++: src/messaging.cc toit::MessageDecoder::decode_array
 Object *MessageDecoder_decode_array(MessageDecoder *self)
-/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st0, ?k) &*& c <= cap &*& proc != 0 &*&
+/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st0, ?k) &*& c <= cap &*& proc != 0 &*& not_failed(fmt, proc, st0) == true &*&
              [?fp]process(proc, ?prog, ids) &*& self->nesting_ |-> ?n &*& 0 <= n &*& n <= MESSAGING_DECODING_MAX_NESTING &*&
              heap(?objs, ?H); @*/
 /*@ ensures dec(self, fb, proc, ids, fmt, b, size, cap, ?c2, ?st, ?k2) &*& [fp]process(proc, prog, ids) &*&
@@ -932,12 +1675,12 @@ Object *MessageDecoder_decode_array(MessageDecoder *self)
   Array *result = ObjectHeap_allocate_array(Process_object_heap(self->process_), length, Smi_zero());
   //@ close dec(self, fb, proc, ids, fmt, b, size, cap, c1, st1, k);
   //@ open allocated(objs, H, proc, result, ?objs1, ?H1);
-  //@ if (result != 0) grows_alloc(objs, H, result, H1);
+  //@ if (result != 0) grows_alloc(objs, H, result, H1); else dec_af_plain(self);
   if (result == 0) {
     return MessageDecoder_mark_allocation_failed(self);
   }
   for (word i = 0; i < length; i++)
-  /*@ invariant dec(self, fb, proc, ids, fmt, b, size, cap, ?ci, ?sti, ?ki) &*& ci <= cap + 1 &*&
+  /*@ invariant dec(self, fb, proc, ids, fmt, b, size, cap, ?ci, ?sti, ?ki) &*& ci <= cap + 1 &*& not_failed(fmt, proc, sti) == true &*&
                 [fp]process(proc, prog, ids) &*& self->nesting_ |-> n &*& 0 <= i &*&
                 heap(?objsi, ?Hi) &*& grows(objs, H, objsi, Hi) == true &*& mem(result, objsi) == true &*&
                 has_tag(Hi, result, ARRAY_TAG) == true &*& o_len(Hi(result)) == length; @*/
@@ -958,7 +1701,7 @@ Object *MessageDecoder_decode_array(MessageDecoder *self)
 
 // C++: src/messaging.cc toit::MessageDecoder::decode_map
 Object *MessageDecoder_decode_map(MessageDecoder *self)
-/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?sz, ?cap, ?c, ?st0, ?k) &*& c <= cap &*& proc != 0 &*&
+/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?sz, ?cap, ?c, ?st0, ?k) &*& c <= cap &*& proc != 0 &*& not_failed(fmt, proc, st0) == true &*&
              [?fp]process(proc, ?prog, ids) &*& self->nesting_ |-> ?n &*& 0 <= n &*& n <= MESSAGING_DECODING_MAX_NESTING &*&
              heap(?objs, ?H); @*/
 /*@ ensures dec(self, fb, proc, ids, fmt, b, sz, cap, ?c2, ?st, ?k2) &*& [fp]process(proc, prog, ids) &*&
@@ -978,7 +1721,7 @@ Object *MessageDecoder_decode_map(MessageDecoder *self)
   Instance *result = ObjectHeap_allocate_instance(Process_object_heap(self->process_), Program_map_class_id(self->program_));
   //@ close dec(self, fb, proc, ids, fmt, b, sz, cap, c1, st1, k);
   //@ open allocated(objs, H, proc, result, ?objs1, ?H1);
-  //@ if (result != 0) grows_alloc(objs, H, result, H1);
+  //@ if (result != 0) grows_alloc(objs, H, result, H1); else dec_af_plain(self);
   if (result == 0) {
     return MessageDecoder_mark_allocation_failed(self);
   }
@@ -1004,12 +1747,12 @@ Object *MessageDecoder_decode_map(MessageDecoder *self)
   Array *array = ObjectHeap_allocate_array(Process_object_heap(self->process_), size * 2, Smi_zero());
   //@ close dec(self, fb, proc, ids, fmt, b, sz, cap, c1, st1, k);
   //@ open allocated(objs1, H1, proc, array, ?objs2a, ?H2a);
-  //@ if (array != 0) { grows_alloc(objs1, H1, array, H2a); grows_keeps(objs1, H1, objs2a, H2a, result); grows_trans(objs, H, objs1, H1, objs2a, H2a); }
+  //@ if (array != 0) { grows_alloc(objs1, H1, array, H2a); grows_keeps(objs1, H1, objs2a, H2a, result); grows_trans(objs, H, objs1, H1, objs2a, H2a); } else dec_af_plain(self);
   if (array == 0) {
     return MessageDecoder_mark_allocation_failed(self);
   }
   for (word i = 0; i < size * 2; i++)
-  /*@ invariant dec(self, fb, proc, ids, fmt, b, sz, cap, ?ci, ?sti, ?ki) &*& ci <= cap + 1 &*&
+  /*@ invariant dec(self, fb, proc, ids, fmt, b, sz, cap, ?ci, ?sti, ?ki) &*& ci <= cap + 1 &*& not_failed(fmt, proc, sti) == true &*&
                 [fp]process(proc, prog, ids) &*& self->nesting_ |-> n &*& 0 <= i &*&
                 heap(?objsi, ?Hi) &*& grows(objs, H, objsi, Hi) == true &*&
                 mem(array, objsi) == true &*& has_tag(Hi, array, ARRAY_TAG) == true &*& o_len(Hi(array)) == size * 2 &*&
@@ -1048,7 +1791,7 @@ Object *MessageDecoder_decode_map(MessageDecoder *self)
 
 // C++: src/messaging.cc toit::MessageDecoder::decode_any
 Object *MessageDecoder_decode_any(MessageDecoder *self)
-/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st0, ?k) &*& c <= cap + 8 &*& proc != 0 &*&
+/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st0, ?k) &*& c <= cap + 8 &*& proc != 0 &*& not_failed(fmt, proc, st0) == true &*&
              [?fp]process(proc, ?prog, ids) &*& self->nesting_ |-> ?n &*& 0 <= n &*& n <= MESSAGING_DECODING_MAX_NESTING &*&
              heap(?objs, ?H); @*/
 /*@ ensures dec(self, fb, proc, ids, fmt, b, size, cap, ?c2, ?st, ?k2) &*& [fp]process(proc, prog, ids) &*&
@@ -1241,7 +1984,7 @@ Object *MessageDecoder_decode(MessageDecoder *self)
 
 // C++: src/messaging.cc toit::MessageDecoder::decode_external_data
 bool MessageDecoder_decode_external_data(MessageDecoder *self, void **data, word *length)
-//@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st0, ?k) &*& c <= cap &*& *data |-> _ &*& *length |-> _;
+//@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st0, ?k) &*& c <= cap &*& proc == 0 &*& *data |-> _ &*& *length |-> _;
 /*@ ensures dec(self, fb, proc, ids, fmt, b, size, cap, ?c2, ?st, k) &*&
             (result ? *data |-> ?d &*& *length |-> ?l &*& fmt == MESSAGE_FORMAT_IPC &*& ext_data(?copied, d, l) : *data |-> _ &*& *length |-> _); @*/
 {
@@ -1257,7 +2000,8 @@ bool MessageDecoder_decode_external_data(MessageDecoder *self, void **data, word
     *data = (void *)MessageDecoder_read_pointer(self);
     //@ assert *data |-> ?d0 &*& *length |-> ?l0;
     //@ open dec(self, fb, proc, ids, fmt, b, size, cap, ?c3, ?st3, k);
-    //@ ipc_external(self, d0, l0);
+    //@ ipc_external(self, l0);
+    //@ close msg_block(d0);
     //@ close dec(self, fb, proc, ids, fmt, b, size, cap, c3, st3, k);
     //@ close ext_data(false, d0, l0);
     return true;
@@ -1272,6 +2016,7 @@ bool MessageDecoder_decode_external_data(MessageDecoder *self, void **data, word
     int malloc_length = Utils_max__int_int(1, encoded_length);
     void *copy = malloc((size_t)malloc_length);
     if (copy == 0) {
+      //@ dec_af_plain(self);
       MessageDecoder_mark_allocation_failed(self);
       return false;
     }
@@ -1290,7 +2035,8 @@ bool MessageDecoder_decode_external_data(MessageDecoder *self, void **data, word
     *data = (void *)MessageDecoder_read_pointer(self);
     //@ assert *data |-> ?d1 &*& *length |-> ?l1;
     //@ open dec(self, fb, proc, ids, fmt, b, size, cap, ?c5, ?st5, k);
-    //@ ipc_external(self, d1, l1);
+    //@ ipc_external(self, l1);
+    //@ close msg_block(d1);
     //@ close dec(self, fb, proc, ids, fmt, b, size, cap, c5, st5, k);
     //@ close ext_data(false, d1, l1);
     return true;
@@ -1304,6 +2050,7 @@ bool MessageDecoder_decode_external_data(MessageDecoder *self, void **data, word
     int encoded_length = /*@truncating@*/(int)(*length = cardinal);
     char *copy = unvoid_cast_charp(malloc((size_t)(encoded_length + 1)));
     if (copy == 0) {
+      //@ dec_af_plain(self);
       MessageDecoder_mark_allocation_failed(self);
       return false;
     }
@@ -1325,7 +2072,7 @@ bool MessageDecoder_decode_external_data(MessageDecoder *self, void **data, word
 
 // C++: src/messaging.cc toit::MessageDecoder::decode_rpc_request_external
 bool MessageDecoder_decode_rpc_request_external(MessageDecoder *self, int *id, int *name, void **data, word *length)
-/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st0, ?k) &*& c <= cap &*&
+/*@ requires dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st0, ?k) &*& c <= cap &*& proc == 0 &*&
              *id |-> _ &*& *name |-> _ &*& *data |-> _ &*& *length |-> _; @*/
 /*@ ensures dec(self, fb, proc, ids, fmt, b, size, cap, ?c2, ?st, k) &*& *id |-> _ &*& *name |-> _ &*&
             (result ? *data |-> ?d &*& *length |-> ?l &*& fmt == MESSAGE_FORMAT_IPC &*& ext_data(?copied, d, l) : *data |-> _ &*& *length |-> _); @*/
@@ -1361,5 +2108,485 @@ bool MessageDecoder_decode_rpc_request_external(MessageDecoder *self, int *id, i
     return false;
   }
   return MessageDecoder_decode_external_data(self, data, length);
+}
+
+// C++: src/messaging.h toit::MessageDecoder::allocation_failed
+bool MessageDecoder_allocation_failed(MessageDecoder *self)
+//@ requires [?f]dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st, ?k);
+//@ ensures [f]dec(self, fb, proc, ids, fmt, b, size, cap, c, st, k) &*& result == (st == MessageDecoder_DECODE_ALLOCATION_FAILED);
+{
+  //@ open [f]dec(self, fb, proc, ids, fmt, b, size, cap, c, st, k);
+  {
+    bool result0 = (int)self->status_ == (int)MessageDecoder_DECODE_ALLOCATION_FAILED;
+    //@ close [f]dec(self, fb, proc, ids, fmt, b, size, cap, c, st, k);
+    return result0;
+  }
+}
+
+// C++: src/messaging.h toit::MessageDecoder::malformed_input
+bool MessageDecoder_malformed_input(MessageDecoder *self)
+//@ requires [?f]dec(self, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st, ?k);
+//@ ensures [f]dec(self, fb, proc, ids, fmt, b, size, cap, c, st, k) &*& result == (st == MessageDecoder_DECODE_MALFORMED_INPUT);
+{
+  //@ open [f]dec(self, fb, proc, ids, fmt, b, size, cap, c, st, k);
+  {
+    bool result0 = (int)self->status_ == (int)MessageDecoder_DECODE_MALFORMED_INPUT;
+    //@ close [f]dec(self, fb, proc, ids, fmt, b, size, cap, c, st, k);
+    return result0;
+  }
+}
+
+// C++: src/messaging.cc toit::MessageDecoder::MessageDecoder
+void MessageDecoder_ctor__Processp_uint8p_word_MessageFormat(MessageDecoder *self, Process *process, uint8 *buffer, word size, MessageFormat format)
+/*@ requires self->process_ |-> _ &*& self->program_ |-> _ &*& self->buffer_ |-> _ &*& self->size_ |-> _ &*& self->format_ |-> _ &*&
+             self->cursor_ |-> _ &*& self->nesting_ |-> _ &*& self->status_ |-> _ &*& self->externals_count_ |-> _ &*&
+             pointers_(self->externals_, MESSAGING_ENCODING_MAX_EXTERNALS, _) &*& intptrs_(self->externals_sizes_, MESSAGING_ENCODING_MAX_EXTERNALS, _) &*&
+             process != 0 &*& [?fp]process(process, ?prog, ?ids) &*&
+             [?fb]uchars(buffer, ?cap, _) &*& 0 <= cap &*& cap <= MAX_BLOB &*&
+             (format == MESSAGE_FORMAT_TISON ? size == cap :
+                format == MESSAGE_FORMAT_IPC &*& size == INT_MAX &*& [_]encoded(buffer, cap, ?ps) &*& msg_blocks(ps)); @*/
+/*@ ensures dec(self, fb, process, ids, format, buffer, size, cap, 0, MessageDecoder_DECODE_SUCCESS, 0) &*& self->nesting_ |-> 0 &*&
+            [fp]process(process, prog, ids) &*& (format == MESSAGE_FORMAT_TISON ? true : [_]ipc_msg(self, buffer, cap, ?ps2) &*& [_]encoded(buffer, cap, ps2)); @*/
+{
+  self->process_ = process;
+  self->program_ = process != 0 ? Process_program(process) : 0;
+  self->buffer_ = buffer;
+  self->size_ = size;
+  self->format_ = format;
+  self->cursor_ = 0;
+  self->nesting_ = 0;
+  self->status_ = MessageDecoder_DECODE_SUCCESS;
+  self->externals_count_ = 0;
+  /*@
+  if (format == MESSAGE_FORMAT_IPC) {
+    ipc_begin(self, buffer);
+    close lent(nil, nil, nil);
+    assert pointers_(self->externals_, _, ?es) &*& intptrs_(self->externals_sizes_, _, ?ls);
+    close ipc_own(self, process, buffer, cap, MessageDecoder_DECODE_SUCCESS, 0, es, ls, false);
+  }
+  @*/
+  //@ close dec(self, fb, process, ids, format, buffer, size, cap, 0, MessageDecoder_DECODE_SUCCESS, 0);
+}
+
+// C++: src/messaging.h toit::MessageDecoder::MessageDecoder
+void MessageDecoder_ctor__Processp_uint8p(MessageDecoder *self, Process *process, uint8 *buffer)
+/*@ requires self->process_ |-> _ &*& self->program_ |-> _ &*& self->buffer_ |-> _ &*& self->size_ |-> _ &*& self->format_ |-> _ &*&
+               self->cursor_ |-> _ &*& self->nesting_ |-> _ &*& self->status_ |-> _ &*& self->externals_count_ |-> _ &*&
+               pointers_(self->externals_, MESSAGING_ENCODING_MAX_EXTERNALS, _) &*& intptrs_(self->externals_sizes_, MESSAGING_ENCODING_MAX_EXTERNALS, _) &*&
+               process != 0 &*& [?fp]process(process, ?prog, ?ids) &*&
+               [?fb]uchars(buffer, ?cap, _) &*& 0 <= cap &*& cap <= MAX_BLOB &*& [_]encoded(buffer, cap, ?ps) &*& msg_blocks(ps); @*/
+/*@ ensures dec(self, fb, process, ids, MESSAGE_FORMAT_IPC, buffer, INT_MAX, cap, 0, MessageDecoder_DECODE_SUCCESS, 0) &*& self->nesting_ |-> 0 &*&
+              [fp]process(process, prog, ids) &*& [_]ipc_msg(self, buffer, cap, ps); @*/
+{
+  MessageDecoder_ctor__Processp_uint8p_word_MessageFormat(self, process, buffer, 2147483647, MESSAGE_FORMAT_IPC);
+}
+
+// C++: src/messaging.h toit::MessageDecoder::MessageDecoder
+void MessageDecoder_ctor__uint8p(MessageDecoder *self, uint8 *buffer)
+/*@ requires self->process_ |-> _ &*& self->program_ |-> _ &*& self->buffer_ |-> _ &*& self->size_ |-> _ &*& self->format_ |-> _ &*&
+               self->cursor_ |-> _ &*& self->nesting_ |-> _ &*& self->status_ |-> _ &*& self->externals_count_ |-> _ &*&
+               pointers_(self->externals_, MESSAGING_ENCODING_MAX_EXTERNALS, _) &*& intptrs_(self->externals_sizes_, MESSAGING_ENCODING_MAX_EXTERNALS, _) &*&
+               [?fb]uchars(buffer, ?cap, _) &*& 0 <= cap &*& cap <= MAX_BLOB &*& [_]encoded(buffer, cap, ?ps) &*& msg_blocks(ps); @*/
+/*@ ensures dec(self, fb, 0, ?ids, MESSAGE_FORMAT_IPC, buffer, INT_MAX, cap, 0, MessageDecoder_DECODE_SUCCESS, 0) &*& self->nesting_ |-> 0 &*&
+              [_]ipc_msg(self, buffer, cap, ps); @*/
+{
+  self->process_ = 0;
+  self->program_ = 0;
+  self->buffer_ = buffer;
+  self->size_ = 2147483647;
+  self->format_ = MESSAGE_FORMAT_IPC;
+  self->cursor_ = 0;
+  self->nesting_ = 0;
+  self->status_ = MessageDecoder_DECODE_SUCCESS;
+  self->externals_count_ = 0;
+  /*@
+    {
+      ipc_begin(self, buffer);
+      assert pointers_(self->externals_, _, ?es) &*& intptrs_(self->externals_sizes_, _, ?ls);
+      close ipc_own(self, 0, buffer, cap, MessageDecoder_DECODE_SUCCESS, 0, es, ls, false);
+      close dec(self, fb, 0, default_value<prog_ids>, MESSAGE_FORMAT_IPC, buffer, INT_MAX, cap, 0, MessageDecoder_DECODE_SUCCESS, 0);
+    }
+    @*/
+}
+
+// C++: src/messaging.cc toit::MessageDecoder::register_external_allocations
+void MessageDecoder_register_external_allocations(MessageDecoder *self)
+//@ requires dec_done(self, ?proc, ?k);
+//@ ensures dec_done(self, proc, k);
+{
+  //@ open dec_done(self, proc, k);
+  //@ assert intptrs(self->externals_sizes_, k, ?ws);
+  // ASSERT(!MessageDecoder_decoding_tison(self)): release build, not evaluated.
+  ObjectHeap *heap = Process_object_heap(self->process_);
+  for (unsigned int i = 0; (uword)i < MessageDecoder_externals_count(self); i++)
+  //@ invariant self->externals_count_ |-> k &*& intptrs(self->externals_sizes_, k, ws) &*& 0 <= i &*& i <= k;
+  {
+    ObjectHeap_register_external_allocation(heap, self->externals_sizes_[i]);
+  }
+  //@ close dec_done(self, proc, k);
+}
+
+// C++: src/messaging.cc toit::MessageDecoder::remove_disposing_finalizers
+void MessageDecoder_remove_disposing_finalizers(MessageDecoder *self)
+/*@ requires dec(self, ?fb, ?proc, ?ids, MESSAGE_FORMAT_IPC, ?b, ?size, ?cap, ?c, ?st, ?k) &*& proc != 0 &*& heap(?objs, ?H); @*/
+/*@ ensures dec_back(self, fb, b, cap, ?ps) &*& [_]ipc_msg(self, b, cap, ps) &*& heap(objs, ?H2) &*&
+            forall(objs, (kept_class)(H, H2)) == true; @*/
+{
+  //@ open dec(self, fb, proc, ids, MESSAGE_FORMAT_IPC, b, size, cap, c, st, k);
+  //@ open ipc_own(self, proc, b, cap, st, k, ?es, ?ls, false);
+  //@ assert [_]ipc_msg(self, b, cap, ?ps) &*& ipc_pos(self, ?j);
+  //@ pointers__length((void **)self->externals_, MESSAGING_ENCODING_MAX_EXTERNALS);
+  //@ intptrs__length(self->externals_sizes_, MESSAGING_ENCODING_MAX_EXTERNALS);
+  //@ close msg_blocks(nil);
+  //@ kept_class_refl(objs, H);
+  //@ lent_some(take(k, ps), take(k, es), take(k, ls));
+  //@ pointers__take((void **)self->externals_, MESSAGING_ENCODING_MAX_EXTERNALS, k);
+  //@ list<void *> ws = map(the, take(k, es));
+  // ASSERT(!MessageDecoder_decoding_tison(self)): release build, not evaluated.
+  for (unsigned int i = 0; (uword)i < MessageDecoder_externals_count(self); i++)
+  /*@ invariant self->externals_count_ |-> k &*& pointers(self->externals_, k, ws) &*& 0 <= i &*& i <= k &*&
+                msg_blocks(take(i, ps)) &*& lent(drop(i, take(k, ps)), drop(i, take(k, es)), drop(i, take(k, ls))) &*&
+                heap(objs, ?Hi) &*& forall(objs, (kept_class)(H, Hi)) == true; @*/
+  {
+    //@ lent_head(ps, es, ls, i, k);
+    //@ open lent(drop(i, take(k, ps)), drop(i, take(k, es)), drop(i, take(k, ls)));
+    //@ nth_map_(the, take(k, es), i);
+    HeapObject_clear_has_active_finalizer(self->externals_[i]);
+    //@ assert heap(objs, ?Hn);
+    //@ kept_class_trans(objs, H, Hi, Hn);
+    //@ msg_blocks_snoc(take(i, ps), nth(i, ps));
+    //@ take_snoc(ps, i);
+  }
+  /*@
+  {
+    // Every block is the message's again: the ones given back, the one
+    // whose allocation failed (if any), the ones not read.
+    open lent(drop(k, take(k, ps)), drop(k, take(k, es)), drop(k, take(k, ls)));
+    if (j != k) { drop_nth_cons(ps, k); close msg_blocks(drop(k, ps)); }
+    msg_blocks_join(take(k, ps), drop(k, ps));
+    append_take_drop_n(ps, k);
+    pointers__give((void **)self->externals_, k);
+    close dec_back(self, fb, b, cap, ps);
+  }
+  @*/
+}
+
+// C++: src/messaging.cc toit::MessageDecoder::deallocate
+void MessageDecoder_deallocate__uint8p(uint8 *buffer)
+//@ requires buffer == 0 ? true : msg_whole(buffer);
+//@ ensures true;
+{
+  MessageDecoder decoder;
+  if (buffer == 0) {
+    return;
+  }
+  //@ open msg_whole(buffer);
+  //@ assert malloc_block(buffer, ?cap) &*& [_]encoded(buffer, cap, ?ps);
+  MessageDecoder_ctor__uint8p(&decoder, buffer);
+  MessageDecoder_deallocate__(&decoder);
+  /*@
+  {
+    open dec(&decoder, ?fb, 0, ?ids, MESSAGE_FORMAT_IPC, buffer, INT_MAX, cap, ?c, ?st, ?k);
+    open ipc_own(&decoder, 0, buffer, cap, st, k, ?es, ?ls, false);
+    assert ipc_pos(&decoder, ?j);
+    ipc_end(&decoder);
+    open msg_blocks(drop(j, ps));
+    leak ipc_pos(&decoder, _);
+    assert uchars(buffer, cap, ?cs);
+    uchars_to_chars(buffer);
+    chars_to_chars_((char *)buffer);
+  }
+  @*/
+  free((void *)buffer);
+}
+
+// C++: src/messaging.cc toit::MessageDecoder::deallocate
+void MessageDecoder_deallocate__(MessageDecoder *self)
+/*@ requires dec(self, ?fb, 0, ?ids, MESSAGE_FORMAT_IPC, ?b, INT_MAX, ?cap, ?c, ?st, ?k) &*& c <= cap; @*/
+/*@ ensures dec(self, fb, 0, ids, MESSAGE_FORMAT_IPC, b, INT_MAX, cap, ?c2, ?st2, k) &*& c2 <= cap; @*/
+{
+  int tag = (int)MessageDecoder_read_uint8(self);
+  switch (tag) {
+    case (int)TAG_POSITIVE_SMI:
+    case (int)TAG_NEGATIVE_SMI:
+      MessageDecoder_read_cardinal(self);
+      break;
+    case (int)TAG_NULL:
+    case (int)TAG_TRUE:
+    case (int)TAG_FALSE:
+      break;
+    case (int)TAG_STRING:
+    case (int)TAG_BYTE_ARRAY:
+      MessageDecoder_read_cardinal(self);
+      free((void *)MessageDecoder_read_pointer(self));
+      break;
+    case (int)TAG_STRING_INLINE:
+    case (int)TAG_BYTE_ARRAY_INLINE:
+      {
+        word length = /*@truncating@*/(word)MessageDecoder_read_cardinal(self);
+        //@ open dec(self, fb, 0, ids, MESSAGE_FORMAT_IPC, b, INT_MAX, cap, ?c1, ?st1, k);
+        //@ ipc_length(self, length);
+        self->cursor_ += length;
+        //@ close dec(self, fb, 0, ids, MESSAGE_FORMAT_IPC, b, INT_MAX, cap, c1 + length, st1, k);
+        break;
+      }
+    case (int)TAG_ARRAY:
+    case (int)TAG_MAP:
+      {
+        word length = /*@truncating@*/(word)MessageDecoder_read_cardinal(self);
+        //@ open dec(self, fb, 0, ids, MESSAGE_FORMAT_IPC, b, INT_MAX, cap, ?c1, ?st1, k);
+        //@ ipc_length(self, length);
+        //@ close dec(self, fb, 0, ids, MESSAGE_FORMAT_IPC, b, INT_MAX, cap, c1, st1, k);
+        if (tag == (int)TAG_MAP) {
+          length *= 2;
+        }
+        for (word i = 0; i < length; i++)
+        //@ invariant dec(self, fb, 0, ids, MESSAGE_FORMAT_IPC, b, INT_MAX, cap, ?ci, ?sti, k) &*& ci <= cap &*& 0 <= i;
+        {
+          MessageDecoder_deallocate__(self);
+        }
+        break;
+      }
+    case (int)TAG_DOUBLE:
+    case (int)TAG_LARGE_INTEGER:
+      MessageDecoder_read_uint64(self);
+      break;
+    default:
+      fail("[message decoder: unhandled message tag: %d]", tag);
+  }
+}
+
+// C++: src/messaging.cc toit::SystemMessage::free_data_and_externals
+void SystemMessage_free_data_and_externals(SystemMessage *self)
+//@ requires self->data_ |-> ?d &*& (d == 0 ? true : msg_whole(d));
+//@ ensures self->data_ |-> 0;
+{
+  MessageDecoder_deallocate__uint8p(self->data_);
+  self->data_ = 0;
+}
+
+// C++: src/messaging.h toit::SystemMessage::~SystemMessage
+void SystemMessage_dtor(SystemMessage *self)
+//@ requires self->data_ |-> ?d &*& (d == 0 ? true : msg_whole(d));
+//@ ensures self->data_ |-> 0;
+{
+  SystemMessage_free_data_and_externals(self);
+}
+
+// C++: src/messaging.h toit::SystemMessage::free_data_but_keep_externals
+void SystemMessage_free_data_but_keep_externals(SystemMessage *self)
+//@ requires self->data_ |-> ?d &*& d != 0 &*& malloc_block(d, ?cap) &*& uchars(d, cap, _);
+//@ ensures self->data_ |-> 0;
+{
+  //@ uchars_to_chars(d);
+  //@ chars_to_chars_((char *)d);
+  free((void *)self->data_);
+  self->data_ = 0;
+}
+
+// C++: src/messaging.h toit::SystemMessage::data
+uint8 *SystemMessage_data(SystemMessage *self)
+//@ requires [?f]self->data_ |-> ?d;
+//@ ensures [f]self->data_ |-> d &*& result == d;
+{
+  return self->data_;
+}
+
+// C++: src/messaging.h toit::SystemMessage::type
+int SystemMessage_type(SystemMessage *self)
+//@ requires [?f]self->type_ |-> ?t;
+//@ ensures [f]self->type_ |-> t &*& result == t;
+{
+  return self->type_;
+}
+
+// C++: src/messaging.h toit::SystemMessage::gid
+int SystemMessage_gid(SystemMessage *self)
+//@ requires [?f]self->gid_ |-> ?g;
+//@ ensures [f]self->gid_ |-> g &*& result == g;
+{
+  return self->gid_;
+}
+
+// C++: src/messaging.h toit::SystemMessage::pid
+int SystemMessage_pid(SystemMessage *self)
+//@ requires [?f]self->pid_ |-> ?p;
+//@ ensures [f]self->pid_ |-> p &*& result == p;
+{
+  return self->pid_;
+}
+
+// C++: src/primitive_core.cc toit::primitive_main_arguments
+Object *primitive_main_arguments(Process *process, Object **__args)
+/*@ requires process != 0 &*& [?fp]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*& main_args(process, ?a) &*& (a == 0 ? true : msg_whole(a)); @*/
+/*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows_class(objs, H, objs2, H2) == true &*&
+            main_args(process, ?a2) &*& (a2 == 0 ? true : msg_whole(a2)); @*/
+{
+  MessageDecoder decoder;
+  uint8 *arguments = Process_main_arguments(process);
+  //@ grows_refl(objs, H);
+  //@ grows_class_of_grows(objs, H, objs, H);
+  if (!(arguments != 0)) {
+    return Program_empty_array(Process_program(process));
+  }
+  //@ open msg_whole(arguments);
+  //@ assert malloc_block(arguments, ?cap) &*& [_]encoded(arguments, cap, ?ps);
+  MessageDecoder_ctor__Processp_uint8p(&decoder, process, arguments);
+  Object *decoded = MessageDecoder_decode(&decoder);
+  //@ assert heap(?objs1, ?H1);
+  if (MessageDecoder_allocation_failed(&decoder)) {
+    MessageDecoder_remove_disposing_finalizers(&decoder);
+    //@ receive_give_back(&decoder, arguments, objs, H, objs1, H1);
+    //@ open dec_fields(&decoder);
+    return (Object *)((uword)((int)(Program_ALLOCATION_FAILED_INDEX) << Error_ERROR_SHIFT) | Error_ERROR_TAG);
+  }
+  if (MessageDecoder_malformed_input(&decoder)) {
+    MessageDecoder_remove_disposing_finalizers(&decoder);
+    //@ receive_give_back(&decoder, arguments, objs, H, objs1, H1);
+    //@ open dec_fields(&decoder);
+    Process_clear_main_arguments(process);
+    MessageDecoder_deallocate__uint8p(arguments);
+    return (Object *)((uword)((int)(Program_INVALID_ARGUMENT_INDEX) << Error_ERROR_SHIFT) | Error_ERROR_TAG);
+  }
+  Process_clear_main_arguments(process);
+  //@ dec_finish(&decoder);
+  //@ uchars_to_chars(arguments);
+  //@ chars_to_chars_((char *)arguments);
+  free((void *)arguments);
+  MessageDecoder_register_external_allocations(&decoder);
+  //@ dec_done_dispose(&decoder);
+  //@ open dec_fields(&decoder);
+  //@ grows_class_of_grows(objs, H, objs1, H1);
+  return decoded;
+}
+
+// C++: src/primitive_core.cc toit::primitive_spawn_arguments
+Object *primitive_spawn_arguments(Process *process, Object **__args)
+/*@ requires process != 0 &*& [?fp]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*& spawn_args(process, ?a) &*& (a == 0 ? true : msg_whole(a)); @*/
+/*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows_class(objs, H, objs2, H2) == true &*&
+            spawn_args(process, ?a2) &*& (a2 == 0 ? true : msg_whole(a2)); @*/
+{
+  MessageDecoder decoder;
+  uint8 *arguments = Process_spawn_arguments(process);
+  //@ grows_refl(objs, H);
+  //@ grows_class_of_grows(objs, H, objs, H);
+  if (!(arguments != 0)) {
+    return Program_empty_array(Process_program(process));
+  }
+  //@ open msg_whole(arguments);
+  //@ assert malloc_block(arguments, ?cap) &*& [_]encoded(arguments, cap, ?ps);
+  MessageDecoder_ctor__Processp_uint8p(&decoder, process, arguments);
+  Object *decoded = MessageDecoder_decode(&decoder);
+  //@ assert heap(?objs1, ?H1);
+  if (MessageDecoder_allocation_failed(&decoder)) {
+    MessageDecoder_remove_disposing_finalizers(&decoder);
+    //@ receive_give_back(&decoder, arguments, objs, H, objs1, H1);
+    //@ open dec_fields(&decoder);
+    return (Object *)((uword)((int)(Program_ALLOCATION_FAILED_INDEX) << Error_ERROR_SHIFT) | Error_ERROR_TAG);
+  }
+  if (MessageDecoder_malformed_input(&decoder)) {
+    MessageDecoder_remove_disposing_finalizers(&decoder);
+    //@ receive_give_back(&decoder, arguments, objs, H, objs1, H1);
+    //@ open dec_fields(&decoder);
+    Process_clear_spawn_arguments(process);
+    MessageDecoder_deallocate__uint8p(arguments);
+    return (Object *)((uword)((int)(Program_INVALID_ARGUMENT_INDEX) << Error_ERROR_SHIFT) | Error_ERROR_TAG);
+  }
+  Process_clear_spawn_arguments(process);
+  //@ dec_finish(&decoder);
+  //@ uchars_to_chars(arguments);
+  //@ chars_to_chars_((char *)arguments);
+  free((void *)arguments);
+  MessageDecoder_register_external_allocations(&decoder);
+  //@ dec_done_dispose(&decoder);
+  //@ open dec_fields(&decoder);
+  //@ grows_class_of_grows(objs, H, objs1, H1);
+  return decoded;
+}
+
+// C++: src/primitive_core.cc toit::primitive_task_receive_message
+Object *primitive_task_receive_message(Process *process, Object **__args)
+/*@ requires process != 0 &*& [?fp]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
+             mailbox(process, ?m) &*& (m == 0 ? true : queued(m)); @*/
+/*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows_class(objs, H, objs2, H2) == true &*&
+            mailbox(process, ?m2) &*& (m2 == 0 ? true : queued(m2)); @*/
+{
+  //@ grows_refl(objs, H);
+  //@ grows_class_of_grows(objs, H, objs, H);
+  ObjectHeap *heap = Process_object_heap(process);
+  if (ObjectHeap_has_finalizer_to_run(heap)) {
+    return ObjectHeap_next_finalizer_to_run(heap);
+  }
+  Message *message = Process_peek_message(process);
+  if (message == 0) {
+    return Process_null_object(process);
+  }
+  //@ open queued(message);
+  MessageType message_type = Message_message_type(message);
+  Object *result = Process_null_object(process);
+  if ((int)message_type == (int)MESSAGE_MONITOR_NOTIFY) {
+    ObjectNotifyMessage *object_notify = (ObjectNotifyMessage *)message;
+    ObjectNotifier *notifier = ObjectNotifyMessage_object_notifier(object_notify);
+    if (notifier != 0) {
+      result = ObjectNotifier_object(notifier);
+    }
+    //@ close dying(message);
+  } else if ((int)message_type == (int)MESSAGE_SYSTEM) {
+    MessageDecoder decoder;
+    Array *array = ObjectHeap_allocate_array(Process_object_heap(process), 4, Smi_from(0));
+    //@ open allocated(objs, H, process, array, ?objsA, ?HA);
+    //@ if (array == 0) close queued(message); else grows_alloc(objs, H, array, HA);
+    if (array == 0) {
+      return (Object *)((uword)((int)(Program_ALLOCATION_FAILED_INDEX) << Error_ERROR_SHIFT) | Error_ERROR_TAG);
+    }
+    SystemMessage *system_message = (SystemMessage *)message;
+    //@ assert message->data_ |-> ?d;
+    //@ open msg_whole(d);
+    //@ assert malloc_block(d, ?cap) &*& [_]encoded(d, cap, ?ps);
+    MessageDecoder_ctor__Processp_uint8p(&decoder, process, SystemMessage_data(system_message));
+    Object *decoded = MessageDecoder_decode(&decoder);
+    //@ assert heap(?objs1, ?H1);
+    //@ grows_trans(objs, H, objsA, HA, objs1, H1);
+    if (MessageDecoder_allocation_failed(&decoder)) {
+      MessageDecoder_remove_disposing_finalizers(&decoder);
+      //@ receive_give_back(&decoder, d, objs, H, objs1, H1);
+      //@ open dec_fields(&decoder);
+      //@ close queued(message);
+      return (Object *)((uword)((int)(Program_ALLOCATION_FAILED_INDEX) << Error_ERROR_SHIFT) | Error_ERROR_TAG);
+    }
+    if (MessageDecoder_malformed_input(&decoder)) {
+      MessageDecoder_remove_disposing_finalizers(&decoder);
+      //@ receive_give_back(&decoder, d, objs, H, objs1, H1);
+      //@ open dec_fields(&decoder);
+      //@ close dying(message);
+      Process_remove_first_message(process);
+      return Process_null_object(process);
+    }
+    //@ dec_finish(&decoder);
+    MessageDecoder_register_external_allocations(&decoder);
+    SystemMessage_free_data_but_keep_externals(system_message);
+    //@ dec_done_dispose(&decoder);
+    //@ open dec_fields(&decoder);
+    //@ grows_keeps(objsA, HA, objs1, H1, array);
+    Array_at_put__word_Smip(array, 0, Smi_from((word)SystemMessage_type(system_message)));
+    //@ assert heap(objs1, ?Ha);
+    //@ put_step(objs, H, objs1, H1, Ha, array);
+    Array_at_put__word_Smip(array, 1, Smi_from((word)SystemMessage_gid(system_message)));
+    //@ assert heap(objs1, ?Hb);
+    //@ put_step(objs, H, objs1, Ha, Hb, array);
+    Array_at_put__word_Smip(array, 2, Smi_from((word)SystemMessage_pid(system_message)));
+    //@ assert heap(objs1, ?Hc);
+    //@ put_step(objs, H, objs1, Hb, Hc, array);
+    Array_at_put__word_Objectp(array, 3, decoded);
+    //@ assert heap(objs1, ?Hd);
+    //@ put_step(objs, H, objs1, Hc, Hd, array);
+    //@ grows_class_of_grows(objs, H, objs1, Hd);
+    result = array;
+    //@ close dying(message);
+  } else {
+    fail("unreachable");
+  }
+  Process_remove_first_message(process);
+  return result;
 }
 

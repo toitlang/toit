@@ -184,6 +184,23 @@ build-image -> ByteArray
   result += crypto.sha256 result
   return result
 
+/**
+Returns the bundled extension (the images of the $containers and the
+  configuration) as $build-image puts it into the slot, but relocated for
+  $address. The EC618 VM harness for QEMU (tests/ec618-qemu) loads it there.
+*/
+extension-bytes -> ByteArray
+    --containers/List
+    --system-uuid/Uuid
+    --config-encoded/ByteArray
+    --address/int:
+  extension := build-extension_
+      --containers=containers
+      --system-uuid=system-uuid
+      --config-encoded=config-encoded
+      --extension-xip-addr=address
+  return extension.bytes
+
 class Extension_:
   bytes/ByteArray
   pointer-offsets/List

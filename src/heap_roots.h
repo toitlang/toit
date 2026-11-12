@@ -93,7 +93,13 @@ class VmFinalizerNode : public FinalizerNode {
     : FinalizerNode(key, heap) {}
 
   virtual void roots_do(RootCallback* cb);
-  virtual void heap_dying() { free_external_memory(); }
+  // As in weak_processing: a cleared finalizer bit means the object gave
+  // its memory away (a message decoder that failed gave it back to the
+  // message, which frees it; a transferred byte array was neutered), and
+  // the node is only waiting for the next GC to unlink it.
+  virtual void heap_dying() {
+    if (key_->has_active_finalizer()) free_external_memory();
+  }
   virtual bool weak_processing(bool in_closure_queue, RootCallback* visitor, LivenessOracle* oracle);
 
  private:

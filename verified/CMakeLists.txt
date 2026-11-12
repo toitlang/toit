@@ -186,10 +186,14 @@ set(VCORE_LINKED_LIB "${VCORE_LIB}")
 if (${TOIT_IS_EMBEDDED})
   # The firmware links newlib's libm, not compiler_builtins' copy of the C
   # math functions (vmverify/staticlib/localize-libm.cmake).
+  # With TOIT_VERIFIED_CORE_LOOP_IN_IRAM the same step moves the run loop
+  # into IRAM (Kconfig TOIT_VERIFIED_CORE_LOOP_IN_IRAM).
+  option(TOIT_VERIFIED_CORE_LOOP_IN_IRAM "Place the core's run loop in IRAM (ESP32 targets)" OFF)
   set(VCORE_LINKED_LIB "${VCORE_LIB_DIR}/${CMAKE_STATIC_LIBRARY_PREFIX}toit_rust_device${CMAKE_STATIC_LIBRARY_SUFFIX}")
   add_custom_command(
     OUTPUT "${VCORE_LINKED_LIB}"
     COMMAND ${CMAKE_COMMAND} -DNM=${CMAKE_NM} -DOBJCOPY=${CMAKE_OBJCOPY}
+            -DOBJDUMP=${CMAKE_OBJDUMP} -DLOOP_IN_IRAM=${TOIT_VERIFIED_CORE_LOOP_IN_IRAM}
             -DINPUT=${VCORE_LIB} -DOUTPUT=${VCORE_LINKED_LIB}
             -P "${VMLIB_DIR}/localize-libm.cmake"
     DEPENDS "${VCORE_LIB}" "${VMLIB_DIR}/localize-libm.cmake"

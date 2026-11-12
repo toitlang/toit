@@ -108,6 +108,10 @@ tool never guesses):
 | `do S while (false)` (a macro's statement wrapper: INT64_VALUE_OR_WRONG_TYPE of ARGS) | `{ S }`; an error when a break or continue of S would leave the do |
 | `@render ... truncating`, an explicit `static_cast` narrowing a signed integer (`static_cast<time_t>(int64)` on a 32-bit time_t; Clang's NoOp over an IntegralCast for a typedef) | VeriFast's truncating cast (for code that checks the round trip) |
 | an object of a struct spelled with its tag (`struct tm tm;`, a C header's struct) | `struct tm tm; tm_ctor(&tm);` (the constructor named by the tag) |
+| a default member initializer (Clang's `CXXDefaultInitExpr`, wave 5: the decoder's `size_ = INT_MAX`, `status_ = DECODE_SUCCESS`) | `self->f = value;` written from the AST's values, never from source text (the expression is spelled in the class, another file): integer and boolean literals, null, enumerators of the constant table (checked in the class's scope); anything else is an error |
+| a delegating constructor (`C(a) : C(a, K) {}`, wave 5) | the target constructor called on `self`: `C_ctor__T1_T2(self, a, K);` |
+| an out-of-line constructor `C::C` (wave 5) | found although it is named like its class (the lookup took it for the class) |
+| a loop whose body has no braces, with an invariant (wave 5: `for (...) deallocate();`) | the annotation anchored at the body's first token is the invariant, written before the added `{` |
 
 Each rule added after the pilot has a self-test in `tests/rules.cc` and
 `tests/rules.render` (rendered, compared with the committed
@@ -147,9 +151,9 @@ gives. Not proposed; reporting the front end's missing casts upstream is.
 
 ## Status
 
-`run.sh`: 11 sidecars (one the translator's self-test), 189 rendered functions (24 contract-only), proved
-for LP64 and ILP32; 41 reverted-bug or contract mutants (one of them
-ILP32 only, its check dead on LP64) and 2 drift tests; about 140 checks
+`run.sh`: 11 sidecars (one the translator's self-test), 213 rendered functions (20 contract-only), proved
+for LP64 and ILP32; 48 reverted-bug or contract mutants (one of them
+ILP32 only, its check dead on LP64) and 2 drift tests; about 150 checks
 (each proof 0.1-4 s, the encoder 8 s, the decoder 10-40 s and time_info
 25-45 s on loaded cores). Lines: `metrics.sh` (C++ = the
 rendered functions' lines; annotations among them; then the hand-written C
@@ -163,6 +167,7 @@ lemmas).
 | MutableBlob decoding (`blob/mutable_byte_content.render`) | Object::mutable_byte_content (5-argument, 4-argument, MutableBlob), MutableBlob ctor; model: Instance::at_put (with the heap update), HeapObject::_at_put, on_program_heap, heap growth and blob hole lemmas | verified: a successful result lies in the content of ONE live byte array (internal or raw external) outside the program heap; the heap only grows (the copy-on-write branch allocates, copies the immutable content with a legal memcpy and stores the new backing and `true`); recursion bounded | the allocator (`Process::allocate_byte_array`: a fresh byte array of the asked length outside the program heap, nothing else changed), `Process::on_program_heap` (an address range: `in_program_heap`), the true object is a heap object, the write barrier (card table outside the model), Error::from and the error roots | 76 / 54 / 4 / 2 | 357d1127 reverted here too: the recursive call; without the program-heap check: `in_program_heap == false`; without the external tag check (both decoders): `blob_ok` |
 | Message encoder (`encoder/`) | encode_any (all branches), encode_array, encode_list, encode_map, encode_copy (inline, out-of-line copy with its malloc and terminator), encode_byte_array (transfer, deduplication), reserve_external, is_too_large, size, total_size, encoding_for_size, encoding_tison, the writers write_uint8/cardinal/pointer/uint32/uint64, TisonEncoder::encode and payload_size, NestingTracker ctor/dtor; the cardinal's byte bound (`cardinal.c`, Z3) | verified: memory safety (reads inside objects, blob copies inside the blob found by the proven byte_content, writes inside the buffer, the tables copied_/transferred_ written below MESSAGING_ENCODING_MAX_EXTERNALS), no overflow or lossy conversion on either width (cursor_ + external_bytes_ stays below the limit plus ENC_SLACK = 32), heap read-only | **ONE assumption: `two_pass_room`** (below); contract only: `Utils::is_valid_utf_8` (reads the bytes given), `Process::policy`, `PrimitivePolicy::restricts_messaging`, HeapTagScope, `ByteArray::has_owned_external_memory` (trusted rendering), the program's class-id roots, `bit_cast`; the malloced copies are leaked into the table (ownership not modelled) | 334 / 230 / 51 / 116 | f708ad5d: count (underflow at `to - from`), read past the backing (loop bound), map past the backing; the 32-bit size fix weakened in encode_copy and in the transfer (the size bound fails; on ILP32 the sum overflows); one reservation too many (the table bound fails); the terminator read from the content (memcpy past the blob) |
 | Message decoder (`decoder/`) | TisonDecoder::decode (tison_decode's untrusted input), MessageDecoder::decode (IPC), decode_any (the switch, every tag), decode_string, decode_byte_array (both inline: copies; out of line: IPC blocks), decode_array, decode_map, decode_double, decode_large_integer, decode_integer (wave 4: canonical integers), decode_external_data and decode_rpc_request_external (wave 4: the external message handlers; the data handed out is an out-of-line block of the message or a malloced copy, `ext_data`), read_uint8/cardinal/cardinal_64/uint32/uint64/pointer, register_external, success, decoding_tison, overflown, remaining, externals_count, mark_malformed, mark_allocation_failed, NestingTracker; the digits' bound (`radix.c`, Z3); model: Array::at_put, Instance::at_put(Smi*), Smi::zero, the allocator's contracts | verified: for any input bytes (TISON) every read is inside the input (past the end the readers return 0), the cursor stays below the length + 16 on both widths, every length is checked against what is left before the copy or the allocation of that size (`length <= cap - c`, asserted), the recursion is bounded (64), a cardinal fits 64 bits and a length the word, integers are canonical (a large integer only outside the smi range: the allocator contract requires it), the externals table is written below its bound (the FATAL), the heap only grows (new objects; the new array's elements and the map's fields written), a success is a good reference and TISON consumed its input exactly; a failure leaves a well-formed heap | TISON: none beyond the model and the allocator; IPC: **two named assumptions, `ipc_room` and `ipc_external`** (below); contract only: the allocator (CONTRACTS.toml, C++-only contracts), `Utils::is_valid_utf_8`, `bit_cast`, `fail`, `Array::max_length_in_process`, `Smi::from` (now trusted: the modular shift of a negative value), `Smi::is_valid` (a template: contract only) | 360 / 322 / 35 / 149 | seventeen checks taken out, each rejected on both widths unless noted: the length checks before the inline string and byte-array copies, before the array and map allocations, the nesting limit (#3362), the fixed-size readers' bound (read_uint64; read_uint8 in the header), read_cardinal_64's size check (#3362) and digit check (wave 3), read_cardinal's word check (ILP32 only: dead on LP64), the two smi magnitude checks and decode_integer's smi range check, decode_external_data's two inline length checks (wave 4), the externals table bound |
+| Receive path (`decoder/`, wave 5: the ownership of the out-of-line blocks) | the primitives task_receive_message, main_arguments, spawn_arguments (every path: finalizer to run, no message, monitor notification, system message decoded / allocation failure / malformed / allocation of the result array failed); MessageDecoder's three constructors (delegating, default member initializers), allocation_failed, malformed_input, register_external_allocations, remove_disposing_finalizers, deallocate (static, and the recursive walk); SystemMessage's destructor, free_data_and_externals, free_data_but_keep_externals, data/type/gid/pid; the decoder's out-of-line branches, read_pointer, register_external and mark_allocation_failed with ownership | verified: no leak and no double free of a message's buffer and blocks on every path. The message (`msg_whole`) owns its buffer and its blocks; read_pointer hands out block j of the message (in order), a decoder for a process lends it to the object it allocates (`finalized`: the VM finalizer frees it), keeps it when the allocation fails; on a failure remove_disposing_finalizers takes every lent block back (the message is whole again: retried or deleted), on a success every block was lent and only the buffer is freed; deallocate frees each block once and all of them. The primitive heap contract up to finalizer bits (`grows_class`: classes and lengths kept) | **the IPC assumptions, now seven narrow ones** (`ipc_begin`, `ipc_room`, `ipc_pointer`, `ipc_external`, `ipc_length`, `ipc_end`; none creates ownership) and the GC's `gc_owns` (CONTRACTS.toml); contract only: the mailbox and the arguments slots of a process (`mailbox`, `queued`, `dying`, `main_args`, `spawn_args`: a queued system message owns encoded data, its type, gid and pid are smis), `HeapObject::clear_has_active_finalizer` (gives the block back: the GC side, which 05159afd fixed), the allocator's external string and byte array, register_external_allocation, the finalizer queue, ObjectNotifier | (in the decoder's row) | receive-malformed-delivered and arguments-malformed-delivered (the 05159afd fix taken out: `st != MALFORMED` fails), receive-no-give-back, receive-give-back-bound (one finalizer bit left), arguments-drop-leak, receive-success-free-all (blocks freed under the objects), decoder-unregistered-block, deallocate-double-free, deallocate-leak |
 | Stack growth (`grow/`) | toit_v2_grow_stack, v2_process, Stack::v2_copy_to | verified against gc_grow_stack (no precondition on `needed`: the C++ checks it) | v2_gc (preserves the abstraction), allocate_stack, Stack header accessors, Task::stack/set_stack, max_length (contract only) | 93 / 72 / 17 / 86 | the bound check taken out: fails at the cast; with the cast exact: at the sum |
 | Primitive `string_write_to_byte_array` (`prims/`) | the primitive with the ARGS/FAIL expansion (Blob and MutableBlob decoding by the proven byte_content / mutable_byte_content, word arguments), Blob/MutableBlob constructors and accessors | verified: the primitive heap contract in VeriFast terms (the heap only grows, objects keep class, length and external address), the copy inside the two contents (source: a string or byte array; destination: a writable byte array outside the program heap; the source range survives the destination's copy-on-write), legal memmove | none beyond the model and blob units | 21 / 59 / 7 / 22 | af4ba7ab: memcpy fails at its precondition; verifies with the two byte arrays assumed distinct |
 | Primitive `time_info` (`prims/time_info.render`, wave 4) | the primitive with the ARGS expansion (int64 and bool), floor_div, floor_mod, is_leap_year, days_from_civil, weekday_from_days, utc_fields, os_localtime, equivalent_year, local_fields, Smi::is_valid32; model: Array::at_put(Smi*) | verified: for every int64 timestamp no signed overflow and no lossy conversion (coarse bounds of every step, lemmas per step so that the proof sees bounds, not division equations), every stored field a smi, the primitive heap contract; not the correctness of the dates | the C library's `localtime_r` (fields in their C11 ranges), memset of the struct, the implicit constructors (do nothing), `Process::false_object`, `fail` (UNREACHABLE) | 135 / 72 / 32 / 109 | the red-team round 4 overflow reverted (`days * SECONDS_PER_DAY` underflows); local_fields without its year check (the shift overflows); the primitive without its year check (not a smi; on ILP32 the conversion to word) |
@@ -176,7 +181,7 @@ Not attempted, in order of exposure, with what blocks each:
 |---|---|---|
 | the two-pass assumption of the encoder, proved | a ghost encoding function (fixpoint over the heap and the encoder state: cursor, externals, transfers, the early stops) shown to be what both passes compute, the write pass ahead by TISON's payload cardinal | 5-7 days |
 | take_buffer, the destructor, encode_bytes_external, encode_rpc_reply_external, encode_arguments, encode_bundles | trusted callers (C or the boot), not reachable with untrusted data; the copied_ table would need its ownership modelled (the malloced copies) | 1-2 days |
-| the decoder's callers: tison_decode (the Blob argument is the content of a heap object, which the allocations must not touch: the allocator's contracts over `heap_holes`), task_receive_message, main_arguments, spawn_arguments (the externals' ownership, below), deallocate, ExternalSystemMessageHandler::run (decode_external_data and decode_rpc_request_external are proved, wave 4) | the holes form of the allocator's contracts; the ownership model (below); the decoder's constructors (a delegating constructor and default member initializers: a translator rule) | 2-3 days |
+| the decoder's remaining callers: tison_decode (the Blob argument is the content of a heap object, which the allocations must not touch: the allocator's contracts over `heap_holes`), ExternalSystemMessageHandler::run (the handed-out block: decode_external_data now gets it from the message, wave 5), the senders' side (process_send, spawn: the encoder's copies and transfers, take_buffer) | the holes form of the allocator's contracts; the scheduler's send and the encoder's tables as the message's owner | 2-3 days |
 | the IPC assumptions (`ipc_room`, `ipc_external`), proved | the encoder's ghost encoding (the two-pass assumption's) as the decoder's input: decoding it reads what the encoding wrote | with the two-pass proof, 3-4 days more |
 | ProgramOrientedEncoder / EncodeVisitor (encode_error, encoder.cc) | the object encoder's buffer (bounded, no two-pass), the program model (class names, method tables) for the trace | 4-5 days |
 | toit_v2_allocate_instance/double/array/exception (interpreter_v2.cc), the epoch | `v2_allocate` takes a lambda: a rendering rule for closures (a struct of the captures and a function); the clauses are in CONTRACTS.toml, Verus side checked | 2-3 days |
@@ -184,29 +189,65 @@ Not attempted, in order of exposure, with what blocks each:
 | Utils::is_valid_utf_8 (contract only in the encoder and the decoder; reads the bytes given) | per-target code (`#ifdef BUILD_64`: a 64-bit state machine over a 2 KB table, else two tables and an int32 state): constants with per-target types in the one constant table; the tables are mutable globals (VeriFast global array chunks); the word-at-a-time load from a byte range (`*reinterpret_cast<const uword*>`: uchars to an integer chunk) and the pointer alignment (`is_aligned`, a template on a pointer) | 1 day |
 | the other C++ primitives of the untrusted set (35 core + bitmap blit + timers/events; docs/sandbox-primitive-audit.md) | blob-only ones (crc, string_to_utf_16, utf_16_to_string, byte_array_convert_to_string): ARGS is proven, an allocation contract per result kind (strings, byte arrays); task/message/timer ones: the scheduler calls get stated contracts | 0.5-1 day each |
 
-### The externals' ownership (design; not done)
+### The primitives of the untrusted set
 
-The callers of the IPC decoder (task_receive_message, main_arguments,
-spawn_arguments) hand the out-of-line blocks of a message to the decoded
-objects (their finalizer frees the block), take them back on an
-allocation failure (remove_disposing_finalizers: the message is retried
-and still owns everything), and on success free only the buffer
-(free_data_but_keep_externals). The leak of wave 3 was the malformed
-path, delivered as decoded. A proof needs: (1) a message predicate
-`msg(b, cap, lent)` (the buffer, and the blocks not lent to objects),
-opened by an assumption at the decoder's construction (the buffer is an
-encoder message: `ipc_msg`); (2) `lent(o)` tokens from
-allocate_external_* (instead of `leak msg_block`) recorded with the
-externals table in `dec`; (3) clear_has_active_finalizer giving a token
-back (a header change: the finalizer bit outside `o_hw`, or a weaker
-`grows`); (4) free_data_but_keep_externals requiring every block lent
-(on success: an assumption `ipc_complete`, the encoder/decoder agreement
-again) and remove_first_message/deallocate requiring none lent. The
-malformed path then fails the proof as it is; the fix (drop the message
-after remove_disposing_finalizers, deallocating all of it) is a draft
-(Upstream candidates) and was not applied unproved. Estimate 1-2 days,
-plus the decoder's constructors (a translator rule for a delegating
-constructor and default member initializers).
+The untrusted policy allows 141 core primitives, `bitmap.byte_zap`,
+`bitmap.blit` and the 7 timer and events primitives
+(docs/sandbox-primitive-audit.md). 106 core primitives run as proven Rust
+ports for untrusted programs (verified/core/src/prims: **Rust-verified**).
+The other 44 are C++. Their status here: **VeriFast-verified** (the
+primitive's body, with its ARGS expansion, proved), **partly** (the C++
+it calls on untrusted data proved, the primitive's own glue contract
+only), **contract-only** (only the primitive contract of TRUSTED.md
+section 8, which the Rust proof assumes; reviewed and fuzzed by the
+audit).
+
+| Primitive (C++) | Status | What is proved |
+|---|---|---|
+| `task_receive_message` | VeriFast-verified (wave 5) | every path: the message's ownership (no leak, no double free), the heap contract up to finalizer bits |
+| `main_arguments`, `spawn_arguments` | VeriFast-verified (wave 5) | as task_receive_message |
+| `time_info` | VeriFast-verified (wave 4) | no overflow or lossy conversion for any int64, fields smis |
+| `bitmap.byte_zap` | VeriFast-verified | the memset inside one writable byte array |
+| `process_send` | partly | the encoder (memory safety, size limits; `two_pass_room`); the scheduler's delivery contract only |
+| `byte_array_convert_to_string`, `byte_array_is_valid_string_content` | partly | the Blob decoding (byte_content); `Utils::is_valid_utf_8` contract only |
+| `string_to_utf_16` | partly | `Utils::utf_8_to_16` and the Blob decoding |
+| `crc` | partly | the Blob decoding |
+| `task_new`, `task_transfer`, `task_has_messages`, `add_finalizer`, `remove_finalizer`, `spawn_method`, `encode_error` | contract-only | |
+| `time`, `seconds_since_epoch_local`, `get_real_time_clock`, `random`, `gc_count`, `process_current_id`, `process_system_id`, `word_size`, `platform`, `architecture` | contract-only | |
+| `int_parse`, `float_parse`, `float_to_string`, `float_round`, `int64_to_string`, `uint64_to_string`, `printf_style_int64_to_string`, `smi_to_string_base_10`, `utf_16_to_string` | contract-only | |
+| `bitmap.blit` | contract-only | |
+| `timer.init`, `timer.create`, `timer.arm`, `timer.delete`, `events.read_state`, `events.register_monitor_notifier`, `events.unregister_monitor_notifier` | contract-only | |
+
+Totals: 106 Rust-verified, 5 VeriFast-verified, 5 partly, 34
+contract-only (of 150). The encoding module (`tison_decode`: the decoder
+verified, its glue not rendered) is denied to untrusted programs.
+
+### The externals' ownership (wave 5, done)
+
+A message (`msg_whole(b)`) owns its malloced buffer and its out-of-line
+blocks `ps` (the order of their pointers; `encoded(b, cap, ps)` is the
+abstract fact that the encoder wrote it). The decoder's predicate `dec`
+holds, for IPC, the blocks after the j pointers read (`ipc_pos`), and for
+a decoder with a process the `lent` tokens of the first k (one per entry
+of the externals table: `finalized(o, p)`, from allocate_external_*), and
+block k when its allocation failed (status ALLOCATION_FAILED).
+read_pointer hands block j to its caller (`ipc_pointer`: the j-th pointer
+is the j-th block; ownership is never created, only moved), so the walk
+of MessageDecoder::deallocate frees each block once, and a decoder for a
+process holds it out (`dec_out`) until register_external records the
+token or mark_allocation_failed takes it back (`dec_af`).
+remove_disposing_finalizers turns every token back into its block
+(`clear_has_active_finalizer`) and gives the whole message back
+(`dec_back`); on a success `ipc_end` says every block was read, hence
+lent, and the tokens go to the GC (`gc_owns`). The "reads stop at the
+first failure" fact is the condition `not_failed` on the decoder's reads
+and marks (a decoder for a process reads no pointer after an allocation
+failure). The finalizer bit is in the header word, so the receive
+primitives keep `grows_class` (classes, lengths and aux words), not
+`grows`. The malformed path of the three primitives fails the proof
+without the drop (mutants *-malformed-delivered); the drop is applied
+(05159afd). Modelling clear_has_active_finalizer's contract ("gives the
+block back") exposed the double free of "Findings".
 
 ### The two-pass assumption
 
@@ -238,18 +279,27 @@ goes to `uchars_(buffer, cap)` at the cursor.
 The untrusted path, TISON (`tison_decode`: the bytes of a blob, `size_` its
 length), needs none: every reader checks the cursor against `size_`. The
 inter-process path decodes a message the encoder wrote, with `size_` set
-to INT_MAX: the readers' checks do not bound the reads by the message. Two
-bodiless lemmas (CONTRACTS.toml `[[assumption]]`, checked by
-contract_check.toit like `two_pass_room`) state what that path relies on:
+to INT_MAX: the readers' checks do not bound the reads by the message.
+Bodiless lemmas (CONTRACTS.toml `[[assumption]]`, checked by
+contract_check.toit like `two_pass_room`) state what that path relies on
+(wave 5 split the old `ipc_external`, which created a block's ownership
+out of nothing, into narrower facts; ownership now comes from the message,
+"The externals' ownership"):
 
-* `ipc_room(d, n)`: a read of n bytes at the cursor lies in the message
-  (`[_]ipc_msg(d, b, cap)`, an abstract predicate of the decoder and its
-  message). Used at each read of the IPC path, with the read's size.
-* `ipc_external(d, data, length)`: the pointer just read is a block the
-  message owns (`msg_block`), of the length before it, below MAX_BLOB; the
-  new external string or byte array takes it, or the message keeps it when
-  the allocation fails (the contracts of allocate_external_string and
-  allocate_external_byte_array).
+* `ipc_begin(d, b)`: a decoder constructed over an encoded message reads it
+  from the start (names the message, `[_]ipc_msg(d, b, cap, ps)`, and
+  starts the pointer count `ipc_pos(d, 0)`).
+* `ipc_room(d, n)`: a read of n bytes at the cursor lies in the message.
+  Used at each read of the IPC path, with the read's size.
+* `ipc_pointer(d, p)`: the j-th pointer read is the j-th block.
+* `ipc_external(d, length)`: the length before a pointer is a content
+  length, below MAX_BLOB.
+* `ipc_length(d, n)`: a length the deallocation walk reads is that of what
+  follows (a byte per element at least).
+* `ipc_end(d)`: after the message's value (a process's decoder: with
+  success; the walk: always) every pointer was read.
+
+and the GC's `gc_owns` (an object with an active finalizer owns its block).
 
 Why they hold: the encoder writes the message, the decoder reads it in the
 same VM with the same tags and limits (nesting 8 against 64, the smi
@@ -278,6 +328,66 @@ of #3378, malformed system messages of #3381) become mutants with them.
 
 
 ## Findings
+
+Wave 5:
+
+* **Double free of a message's out-of-line data when a receiver dies
+  after a failed decode** (FIXED here, src/heap_roots.h; 05159afd).
+  Reachable by any process, sandboxed included, against the VM's malloc
+  heap. A failed decode gives the blocks back to the message by clearing
+  the finalizer bits of the external strings and byte arrays it made
+  (remove_disposing_finalizers); their VM finalizer nodes stay until the
+  next GC, which unlinks them. VmFinalizerNode::heap_dying freed the
+  memory of every node without looking at the bit. So a process that
+  fails to decode a message twice (an allocation failure, and again on
+  the retry after the GC: task_receive_message throws) and then ends
+  (uncaught exception: no GC in between) frees each such block twice: the
+  message frees it when the process deletes its mailbox, the dying heap
+  again. A receiver controls both its heap limit (set-max-heap-size) and
+  its end, and any sender can make the message (a byte array over 128
+  bytes, then lists). glibc aborts the VM ("free(): double free detected
+  in tcache 2"); without its check, heap corruption. The same with
+  main_arguments and spawn_arguments. Found while writing the contract of
+  clear_has_active_finalizer ("gives the block back") for the receive
+  proof: the GC side did not honour it at heap death. Fix: heap_dying, like
+  weak_processing, frees only when the bit is set. Reproducers and
+  regression tests: tests/message-receive-oom-test-compiler.toit (end to
+  end from Toit code: aborts without the fix) and
+  tests/ctest/message-receive-ownership-test.cc (through main_arguments,
+  also host32). Upstream master: the same heap_dying and the same callers.
+* **The malformed-message leak of wave 3: fixed and proved** (05159afd;
+  the wave-4 draft applied). task_receive_message, main_arguments and
+  spawn_arguments drop a message the decoder rejects (after giving the
+  blocks back) and free all of it; before, it was delivered as decoded
+  and the blocks after the error leaked. Unreachable from this branch's
+  encoder (b609da9f), reproduced with a hand-made message
+  (message-receive-ownership-test.cc: 1 MB leaked without the fix). The
+  drop alone would have introduced the double free above (the dropped
+  message frees the blocks the decoded objects' nodes still name): both
+  are needed. Upstream master: delivers malformed messages as decoded.
+* **encode_error read a proxy byte array as bytes** (FIXED here,
+  src/encoder.cc EncodeVisitor::visit_byte_array; reported by the
+  coordinator from the core fuzzer on the assertion-enabled sanitizer
+  build: `objects.h:591 external_tag() == RawByteTag || ...` 3 times).
+  The exception and trace encoder (encode_error: any object as the error's
+  message, and the stack) built ByteArray::Bytes over any byte array; for a
+  proxy (an external byte array whose address is a C++ struct: a timer, a
+  resource group, tagged with the struct's type) that calls as_external,
+  whose assertion forbids it. The code is wrong, not the assertion: it
+  treats a struct pointer as bytes. Release builds read the proxy's
+  external length, 0 for every proxy the VM makes, so nothing was read
+  (no memory-safety impact in release; assertion builds stopped). Fix: a
+  non-raw external byte array is encoded as empty. Regression test:
+  tests/encode-error-proxy-test.toit (stops the asan build without the
+  fix). Upstream master: the same visitor. Not in the proved code
+  (encode_error is "Not attempted"; the message encoder's own byte arrays
+  go through the proved byte_content, which refuses proxies).
+* No other bug in the receive path: on every path (no message, a monitor
+  notification, a finalizer to run, the result array not allocated, an
+  allocation failure, a malformed message, success) the message's buffer
+  and blocks are freed exactly once (or kept whole for the retry), and
+  the walk of MessageDecoder::deallocate frees every block once (under
+  the IPC assumptions).
 
 Wave 4:
 
@@ -480,6 +590,14 @@ Waves 1-2:
 
 Drafts, not filed (no issue or PR has been opened).
 
+* Wave 5: VmFinalizerNode::heap_dying must not free the memory of an
+  object whose finalizer bit is clear (src/heap_roots.h, upstream
+  heap_roots.h:94): the double free of "Findings", reachable upstream by
+  any process that fails to decode a message twice and then ends. One
+  line; the regression tests of 05159afd go with it. With it, the drop of
+  malformed messages (task_receive_message, main_arguments,
+  spawn_arguments: 05159afd) can go too.
+
 * `mutable_byte_content` (src/objects_runtime.cc, the byte-array slice
   branch; upstream master has the same line, objects_runtime.cc:80):
   `if (content == null) return inner_success;` tests the out-parameter,
@@ -524,9 +642,8 @@ Wave 3 (the decoder; upstream master's messaging.cc has all of them):
   malformed message (delivered as decoded, the externals after the error
   leaked) is unreachable; a defensive fix would drop such a message with
   `remove_disposing_finalizers()` and the message's own deallocation.
-  Wave 4 draft (not applied: unproved, see "The externals' ownership";
-  the patch is /home/flo/work/opentoit-sandbox-artifacts/annotated-cxx/
-  callers-malformed-drop.diff): in task_receive_message, after the
+  Wave 4 draft (applied and proved in wave 5, 05159afd, together with
+  the heap_dying fix it needs): in task_receive_message, after the
   allocation-failure branch, `if (decoder.malformed_input()) {
   decoder.remove_disposing_finalizers(); process->remove_first_message();
   return process->null_object(); }` (the library skips a null message);
@@ -631,8 +748,11 @@ model is revised.
   `Array::max_length_in_process`, `Process::on_program_heap`/`true_object`,
   the write barrier, `Error::from` and the error roots, the named
   assumptions (CONTRACTS.toml `[[assumption]]`: the encoder's
-  `two_pass_room`, the decoder's `ipc_room` and `ipc_external`, the latter
-  two for inter-process messages only), `Utils::is_valid_utf_8`, the
+  `two_pass_room`, the decoder's `ipc_begin`, `ipc_room`, `ipc_pointer`,
+  `ipc_external`, `ipc_length`, `ipc_end` for inter-process messages only,
+  the GC's `gc_owns`), the receive side's model (a process's mailbox and
+  arguments slots, `HeapObject::clear_has_active_finalizer` giving a block
+  back, the finalizer queue), `Utils::is_valid_utf_8`, the
   policy reads, HeapTagScope, `ByteArray::has_owned_external_memory`, the
   program roots, `fail`. Each is still compared with its source when it is
   a `@render ... trusted`; the others are plain prototypes.
