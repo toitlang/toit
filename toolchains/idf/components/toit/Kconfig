@@ -354,8 +354,13 @@ menu "Toit"
         default y if !TOIT_CXX_INTERPRETER
         depends on TOIT_VERIFIED_CORE
         help
-            Places the core's run loop (step::run_loop, 20-28 KB of code) in
-            IRAM and its jump table (2.4 KB) in DRAM. Running it from flash
+            Places the core's run loop (step::run_loop: the dispatch and the
+            handlers of the frequent opcodes, 12.2 KB on the classic ESP32;
+            the rare opcodes and every slow path are out of line in
+            step::step_cold and step::slow, in flash) in IRAM and its jump
+            table in DRAM. With the split loop the classic ESP32 links with
+            ESP_WIFI_RX_IRAM_OPT on (1.8 KB of IRAM left); the lines below
+            were needed for the whole loop (19-28 KB). Running it from flash
             thrashes the flash cache on real hardware: on the classic ESP32
             json, map/set and string code ran 3.5-5x slower from flash than
             from IRAM, on the ESP32-C6 1.4-1.5x (docs/format2-migration.md,
