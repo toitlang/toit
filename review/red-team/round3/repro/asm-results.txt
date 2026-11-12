@@ -1,70 +1,70 @@
-# Assembled-method battery Wed Nov 11 21:33:08 CET 2026
+# Assembled-method battery Thu Nov 12 02:27:26 CET 2026
 [good-retnull] x{1/1} ACCEPTED->ran:   
 [good-print55] x{0/0} ACCEPTED->ran: 55  
 [good-return-val] x{1/1} ACCEPTED->ran:   
-[halt-0] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): HALT 0: successor outside the method 
-[halt-deepsleep] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): HALT 2: HALT rejected with kinds [] 
-[halt-reset] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): HALT 3: HALT rejected with kinds [] 
-[opcode-101] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): LOOP_REPEAT (past the end) (past the end) (past the end): instruction crosses the method end 
-[opcode-200] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): bad opcode 200: invalid opcode 200 
-[opcode-255] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): bad opcode 255: invalid opcode 255 
-[opcode-101-ctx] x{0/0} untrusted program rejected: method 22 at bci 277 (+1): LOOP_REPEAT 91 (past the end) (past the end): instruction crosses the method end 
-[pop1-underflow] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): POP_1: POP_1 rejected with kinds [] 
-[pop-n-underflow] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): POP 5: POP rejected with kinds [] 
-[add-underflow] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): INVOKE_ADD: INVOKE_ADD rejected with kinds [] 
-[add-one-operand] x{0/0} untrusted program rejected: method 22 at bci 277 (+1): INVOKE_ADD: INVOKE_ADD rejected with kinds [Val] 
+[halt-0] x{0/0} untrusted program rejected: method 22 at bci 291 (+2): bad opcode 255: invalid opcode 255 
+[halt-deepsleep] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): HALT 2: HALT rejected with kinds [] 
+[halt-reset] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): HALT 3: HALT rejected with kinds [] 
+[opcode-101] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): LOOP_REPEAT (past the end) (past the end) (past the end): instruction crosses the method end 
+[opcode-200] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): bad opcode 200: invalid opcode 200 
+[opcode-255] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): bad opcode 255: invalid opcode 255 
+[opcode-101-ctx] x{0/0} untrusted program rejected: method 22 at bci 290 (+1): LOOP_REPEAT 91 (past the end) (past the end): instruction crosses the method end 
+[pop1-underflow] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): POP_1: POP_1 rejected with kinds [] 
+[pop-n-underflow] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): POP 5: POP rejected with kinds [] 
+[add-underflow] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): INVOKE_ADD: INVOKE_ADD rejected with kinds [] 
+[add-one-operand] x{0/0} untrusted program rejected: method 22 at bci 290 (+1): INVOKE_ADD: INVOKE_ADD rejected with kinds [Val] 
 [return-highstack] x{1/1} ACCEPTED->ran:   
 [retnull-highstk] x{1/1} ACCEPTED->ran:   
-[loadlocal5-oob] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): LOAD_LOCAL_5: LOAD_LOCAL_5 rejected with kinds [] 
-[storelocal-high] x{0/0} untrusted program rejected: method 22 at bci 277 (+1): STORE_LOCAL 64: STORE_LOCAL rejected with kinds [Val] 
+[loadlocal5-oob] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): LOAD_LOCAL_5: LOAD_LOCAL_5 rejected with kinds [] 
+[storelocal-high] x{0/0} untrusted program rejected: method 22 at bci 290 (+1): STORE_LOCAL 64: STORE_LOCAL rejected with kinds [Val] 
 [loadlocal-high] ASM-ERROR:       nm := info ? info.name : "?"
-[fall-off-end] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): LOAD_SMI_0: successor outside the method 
+[fall-off-end] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): LOAD_SMI_0: successor outside the method 
 [empty-body] ASM-ERROR:       nm := info ? info.name : "?"
-[trunc-invoke] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): INVOKE_STATIC (past the end) (past the end): instruction crosses the method end 
-[trunc-smi] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): LOAD_SMI_U8 (past the end): instruction crosses the method end 
-[trunc-primitive] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): PRIMITIVE 255 (past the end) (past the end): instruction crosses the method end 
-[branch-into-mid] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): BRANCH 3 0: successor outside the method 
-[branch-oob-fwd] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): BRANCH 127 0: successor outside the method 
+[trunc-invoke] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): INVOKE_STATIC (past the end) (past the end): instruction crosses the method end 
+[trunc-smi] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): LOAD_SMI_U8 (past the end): instruction crosses the method end 
+[trunc-primitive] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): PRIMITIVE 255 255 (past the end): instruction crosses the method end 
+[branch-into-mid] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): BRANCH 3 0: successor outside the method 
+[branch-oob-fwd] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): BRANCH 127 0: successor outside the method 
 [branch-neg] x{1/1} ACCEPTED->ran:   
-[prim-module-oob] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): PRIMITIVE 255 255 255: PRIMITIVE rejected with kinds [] 
-[prim-idx-oob] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): PRIMITIVE 0 255 255: PRIMITIVE rejected with kinds [] 
-[prim-denied] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): PRIMITIVE 0 0 0: PRIMITIVE rejected with kinds [] 
-[merge-height] x{0/0} untrusted program rejected: method 22 at bci 282 (+6): RETURN_NULL: incompatible kinds at merge: [] and [Val, Val] 
-[merge-height2] x{0/0} untrusted program rejected: method 22 at bci 281 (+5): INVOKE_ADD: incompatible kinds at merge: [] and [Val] 
-[loop-grow-stack] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): LOAD_SMI_0: incompatible kinds at merge: [] and [Val] 
-[loop-grow-stack2] x{0/0} untrusted program rejected: method 22 at bci 277 (+1): LOAD_SMI_1: incompatible kinds at merge: [Val] and [Val, Val] 
-[merge-blockref] x{0/0} untrusted program rejected: method 22 at bci 280 (+4): LOAD_BLOCK 194: LOAD_BLOCK rejected with kinds [] 
-[merge-methodid] x{0/0} untrusted program rejected: method 22 at bci 285 (+9): INVOKE_LAMBDA_TAIL: incompatible kinds at merge: [] and [Method(706)] 
-[merge-val-initzr] x{0/0} untrusted program rejected: method 22 at bci 281 (+5): INVOKE_INITIALIZER_TAIL: incompatible kinds at merge: [] and [Val] 
-[loadblock-oob] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): LOAD_BLOCK 232: LOAD_BLOCK rejected with kinds [] 
-[loadblock-main] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): LOAD_BLOCK 194: LOAD_BLOCK rejected with kinds [] 
-[invokeblock-val] x{0/0} untrusted program rejected: method 22 at bci 277 (+1): INVOKE_BLOCK 0: INVOKE_BLOCK rejected with kinds [Val] 
-[invokeblock-arity] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): LOAD_BLOCK 194: LOAD_BLOCK rejected with kinds [] 
-[loadouterblock] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): LOAD_OUTER_BLOCK 0: LOAD_OUTER_BLOCK rejected with kinds [] 
-[nonlocal-return] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): NON_LOCAL_RETURN: NON_LOCAL_RETURN rejected with kinds [] 
-[nonlocal-return2] x{0/0} untrusted program rejected: method 22 at bci 277 (+1): NON_LOCAL_RETURN: NON_LOCAL_RETURN rejected with kinds [Val] 
-[nonlocal-branch] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): NON_LOCAL_BRANCH 0 0 0 0 0: rejected by the checker with kinds [] 
-[nonlocal-branch2] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): NON_LOCAL_BRANCH 5 64 66 15 0: rejected by the checker with kinds [] 
-[unwind-notry] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): UNWIND: UNWIND rejected with kinds [] 
-[unwind-notry2] x{0/0} untrusted program rejected: method 22 at bci 278 (+2): UNWIND: UNWIND rejected with kinds [Val, Val] 
-[try-alone] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): TRY: TRY rejected with kinds [] 
-[try-ret] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): TRY: TRY rejected with kinds [] 
-[try-unwind] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): TRY: TRY rejected with kinds [] 
-[try-unwind-vals] x{0/0} untrusted program rejected: method 22 at bci 277 (+1): TRY: TRY rejected with kinds [Val] 
-[static-tail-ok] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): INVOKE_STATIC_TAIL 194 2: INVOKE_STATIC_TAIL rejected with kinds [] 
-[static-tail-oob] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): INVOKE_STATIC_TAIL 232 253: INVOKE_STATIC_TAIL rejected with kinds [] 
-[lambda-tail-val] x{0/0} untrusted program rejected: method 22 at bci 277 (+1): INVOKE_LAMBDA_TAIL: INVOKE_LAMBDA_TAIL rejected with kinds [Val] 
-[lambda-tail-empty] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): INVOKE_LAMBDA_TAIL: INVOKE_LAMBDA_TAIL rejected with kinds [] 
+[prim-module-oob] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): PRIMITIVE 255 255 255: PRIMITIVE rejected with kinds [] 
+[prim-idx-oob] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): PRIMITIVE 0 255 255: PRIMITIVE rejected with kinds [] 
+[prim-denied] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): PRIMITIVE 0 0 0: PRIMITIVE rejected with kinds [] 
+[merge-height] x{0/0} untrusted program rejected: method 22 at bci 295 (+6): RETURN_NULL: incompatible kinds at merge: [] and [Val, Val] 
+[merge-height2] x{0/0} untrusted program rejected: method 22 at bci 294 (+5): INVOKE_ADD: incompatible kinds at merge: [] and [Val] 
+[loop-grow-stack] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): LOAD_SMI_0: incompatible kinds at merge: [] and [Val] 
+[loop-grow-stack2] x{0/0} untrusted program rejected: method 22 at bci 290 (+1): LOAD_SMI_1: incompatible kinds at merge: [Val] and [Val, Val] 
+[merge-blockref] x{0/0} untrusted program rejected: method 22 at bci 293 (+4): LOAD_BLOCK 194: LOAD_BLOCK rejected with kinds [] 
+[merge-methodid] x{0/0} untrusted program rejected: method 22 at bci 298 (+9): INVOKE_LAMBDA_TAIL: incompatible kinds at merge: [] and [Method(706)] 
+[merge-val-initzr] x{0/0} untrusted program rejected: method 22 at bci 294 (+5): INVOKE_INITIALIZER_TAIL: incompatible kinds at merge: [] and [Val] 
+[loadblock-oob] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): LOAD_BLOCK 232: LOAD_BLOCK rejected with kinds [] 
+[loadblock-main] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): LOAD_BLOCK 194: LOAD_BLOCK rejected with kinds [] 
+[invokeblock-val] x{0/0} untrusted program rejected: method 22 at bci 290 (+1): INVOKE_BLOCK 0: INVOKE_BLOCK rejected with kinds [Val] 
+[invokeblock-arity] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): LOAD_BLOCK 194: LOAD_BLOCK rejected with kinds [] 
+[loadouterblock] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): LOAD_OUTER_BLOCK 0: LOAD_OUTER_BLOCK rejected with kinds [] 
+[nonlocal-return] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): NON_LOCAL_RETURN: NON_LOCAL_RETURN rejected with kinds [] 
+[nonlocal-return2] x{0/0} untrusted program rejected: method 22 at bci 290 (+1): NON_LOCAL_RETURN: NON_LOCAL_RETURN rejected with kinds [Val] 
+[nonlocal-branch] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): NON_LOCAL_BRANCH 0 0 0 0 0: rejected by the checker with kinds [] 
+[nonlocal-branch2] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): NON_LOCAL_BRANCH 5 64 66 15 0: rejected by the checker with kinds [] 
+[unwind-notry] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): UNWIND: UNWIND rejected with kinds [] 
+[unwind-notry2] x{0/0} untrusted program rejected: method 22 at bci 291 (+2): UNWIND: UNWIND rejected with kinds [Val, Val] 
+[try-alone] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): TRY: TRY rejected with kinds [] 
+[try-ret] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): TRY: TRY rejected with kinds [] 
+[try-unwind] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): TRY: TRY rejected with kinds [] 
+[try-unwind-vals] x{0/0} untrusted program rejected: method 22 at bci 290 (+1): TRY: TRY rejected with kinds [Val] 
+[static-tail-ok] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): INVOKE_STATIC_TAIL 194 2: INVOKE_STATIC_TAIL rejected with kinds [] 
+[static-tail-oob] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): INVOKE_STATIC_TAIL 232 253: INVOKE_STATIC_TAIL rejected with kinds [] 
+[lambda-tail-val] x{0/0} untrusted program rejected: method 22 at bci 290 (+1): INVOKE_LAMBDA_TAIL: INVOKE_LAMBDA_TAIL rejected with kinds [Val] 
+[lambda-tail-empty] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): INVOKE_LAMBDA_TAIL: INVOKE_LAMBDA_TAIL rejected with kinds [] 
 [init-tail-val] x{1/1} ACCEPTED->ran:   
 [init-tail-oob] x{0/0} ACCEPTED->ran: ---- Received a Toit system message. Exe 
-[throw-empty] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): THROW: THROW rejected with kinds [] 
+[throw-empty] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): THROW: THROW rejected with kinds [] 
 [throw-smi] x{1/1} ACCEPTED->ran:   
-[storefieldthis] x{0/0} untrusted program rejected: method 22 at bci 277 (+1): STORE_FIELD_THIS 0: STORE_FIELD_THIS rejected with kinds [Val] 
-[loadfieldthis] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): LOAD_FIELD_THIS 0: LOAD_FIELD_THIS rejected with kinds [] 
-[loadfieldthis-hi] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): LOAD_FIELD_THIS 200: LOAD_FIELD_THIS rejected with kinds [] 
-[loadglobal-oob] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): LOAD_GLOBAL_VAR 250: LOAD_GLOBAL_VAR rejected with kinds [] 
-[loadlit-oob] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): LOAD_LITERAL 250: LOAD_LITERAL rejected with kinds [] 
-[loadlit-wide-oob] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): LOAD_LITERAL_WIDE 232 253: LOAD_LITERAL_WIDE rejected with kinds [] 
-[allocate-oob] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): ALLOCATE 250: ALLOCATE rejected with kinds [] 
-[invokevirt-oob] x{0/0} untrusted program rejected: method 22 at bci 277 (+1): INVOKE_VIRTUAL 0 232 253: INVOKE_VIRTUAL rejected with kinds [Val] 
-# done Wed Nov 11 21:33:46 CET 2026
+[storefieldthis] x{0/0} untrusted program rejected: method 22 at bci 290 (+1): STORE_FIELD_THIS 0: STORE_FIELD_THIS rejected with kinds [Val] 
+[loadfieldthis] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): LOAD_FIELD_THIS 0: LOAD_FIELD_THIS rejected with kinds [] 
+[loadfieldthis-hi] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): LOAD_FIELD_THIS 200: LOAD_FIELD_THIS rejected with kinds [] 
+[loadglobal-oob] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): LOAD_GLOBAL_VAR 250: LOAD_GLOBAL_VAR rejected with kinds [] 
+[loadlit-oob] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): LOAD_LITERAL 250: LOAD_LITERAL rejected with kinds [] 
+[loadlit-wide-oob] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): LOAD_LITERAL_WIDE 232 253: LOAD_LITERAL_WIDE rejected with kinds [] 
+[allocate-oob] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): ALLOCATE 250: ALLOCATE rejected with kinds [] 
+[invokevirt-oob] x{0/0} untrusted program rejected: method 22 at bci 290 (+1): INVOKE_VIRTUAL 0 232 253: INVOKE_VIRTUAL rejected with kinds [Val] 
+# done Thu Nov 12 02:28:18 CET 2026
