@@ -1208,6 +1208,66 @@ __attribute__((used)) Object** toit_native_push_double(Object** sp, NativeContex
     "popq %rcx\n"                                \
     "popq %rbp\n"                                \
     "ret\n")
+#elif defined(__arm__)
+// The stubs save the registers that calls can change: r1-r3, r12, the link
+// register, and the floating-point registers that aren't saved by the callee.
+// r4 keeps the stack aligned to 8 bytes.
+#if defined(__ARM_FP) && defined(__ARM_NEON)
+#define ARM_SAVE_FP "vpush {d0-d7}\n" "vpush {d16-d31}\n"
+#define ARM_LOAD_FP "vpop {d16-d31}\n" "vpop {d0-d7}\n"
+#elif defined(__ARM_FP)
+#define ARM_SAVE_FP "vpush {d0-d7}\n"
+#define ARM_LOAD_FP "vpop {d0-d7}\n"
+#else
+#define ARM_SAVE_FP
+#define ARM_LOAD_FP
+#endif
+#define STUB_BODY(name, target)                  \
+  __asm__(                                       \
+    ".text\n"                                    \
+    ".globl " name "\n"                          \
+    ".type " name ", %function\n"                \
+    ".p2align 2\n"                               \
+    name ":\n"                                   \
+    "push {r1, r2, r3, r4, r12, lr}\n"           \
+    ARM_SAVE_FP                                  \
+    "bl " target "\n"                            \
+    ARM_LOAD_FP                                  \
+    "pop {r1, r2, r3, r4, r12, lr}\n"            \
+    "bx lr\n")
+#elif defined(__i386__)
+// The arguments come in eax, edx, ecx and esi (see native_abi.h), and the
+// target takes them on the stack. The int target ignores the last one.
+#define SAVE_XMM32(n, offset) "movups %xmm" #n ", " #offset "(%esp)\n"
+#define LOAD_XMM32(n, offset) "movups " #offset "(%esp), %xmm" #n "\n"
+#define STUB_BODY(name, target)                  \
+  __asm__(                                       \
+    ".text\n"                                    \
+    ".globl " name "\n"                          \
+    ".p2align 4\n"                               \
+    name ":\n"                                   \
+    "pushl %ebp\n"                               \
+    "movl %esp, %ebp\n"                          \
+    "pushl %ecx\n"                               \
+    "pushl %edx\n"                               \
+    "subl $128, %esp\n"                          \
+    "andl $-16, %esp\n"                          \
+    SAVE_XMM32(0, 0) SAVE_XMM32(1, 16) SAVE_XMM32(2, 32) SAVE_XMM32(3, 48)  \
+    SAVE_XMM32(4, 64) SAVE_XMM32(5, 80) SAVE_XMM32(6, 96) SAVE_XMM32(7, 112) \
+    "subl $16, %esp\n"                           \
+    "movl %eax, 0(%esp)\n"                       \
+    "movl %edx, 4(%esp)\n"                       \
+    "movl %ecx, 8(%esp)\n"                       \
+    "movl %esi, 12(%esp)\n"                      \
+    "call " target "\n"                          \
+    "addl $16, %esp\n"                           \
+    LOAD_XMM32(0, 0) LOAD_XMM32(1, 16) LOAD_XMM32(2, 32) LOAD_XMM32(3, 48)  \
+    LOAD_XMM32(4, 64) LOAD_XMM32(5, 80) LOAD_XMM32(6, 96) LOAD_XMM32(7, 112) \
+    "leal -8(%ebp), %esp\n"                      \
+    "popl %edx\n"                                \
+    "popl %ecx\n"                                \
+    "popl %ebp\n"                                \
+    "ret\n")
 #endif
 
 STUB(toit_native_int_stub, toit_native_int_arithmetic);

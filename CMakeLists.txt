@@ -191,12 +191,12 @@ set(EXTERNAL_TOIT_LIBS)
 include(tools/external.cmake)
 
 # Native code is built for the host with the SDK, and for now
-# it is only supported for the normal 64-bit release builds. Cross builds
+# it is only supported for the normal release builds. Cross builds
 # have the native runtime, so the firmware of their envelopes can be
 # extracted as native code.
 set(TOIT_NATIVE_SUPPORTED FALSE)
 if (NOT ${TOIT_IS_EMBEDDED} AND NOT WIN32 AND NOT ENABLE_LTO AND
-    "${CMAKE_BUILD_TYPE}" STREQUAL "Release" AND CMAKE_SIZEOF_VOID_P EQUAL 8)
+    "${CMAKE_BUILD_TYPE}" STREQUAL "Release")
   set(TOIT_NATIVE_SUPPORTED TRUE)
 endif()
 

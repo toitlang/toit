@@ -587,6 +587,78 @@ inline __attribute__((always_inline)) Object** native_call_double_stub(Object** 
   return result;
 }
 
+#elif defined(__arm__)
+
+// The call keeps the link register in r12, which the stub saves.
+inline __attribute__((always_inline)) Object** native_call_int_stub(Object** sp_, NativeContext* c_, intptr_t opcode) {
+  register Object** r0 __asm__("r0") = sp_;
+  register NativeContext* r1 __asm__("r1") = c_;
+  register intptr_t r2 __asm__("r2") = opcode;
+  __asm__ volatile("mov r12, lr\n"
+                   "bl " NATIVE_SYMBOL(toit_native_int_stub) "\n"
+                   "mov lr, r12\n"
+                   : "+r"(r0) : "r"(r1), "r"(r2) : "r12", "cc", "memory");
+  return r0;
+}
+
+#if defined(__ARM_PCS_VFP)
+
+// Doubles are passed in a floating-point register.
+inline __attribute__((always_inline)) Object** native_call_double_stub(Object** sp_, NativeContext* c_, double value) {
+  register Object** r0 __asm__("r0") = sp_;
+  register NativeContext* r1 __asm__("r1") = c_;
+  register double d0 __asm__("d0") = value;
+  __asm__ volatile("mov r12, lr\n"
+                   "bl " NATIVE_SYMBOL(toit_native_double_stub) "\n"
+                   "mov lr, r12\n"
+                   : "+r"(r0) : "r"(r1), "w"(d0) : "r12", "cc", "memory");
+  return r0;
+}
+
+#else
+
+// Doubles are passed in a pair of integer registers.
+inline __attribute__((always_inline)) Object** native_call_double_stub(Object** sp_, NativeContext* c_, double value) {
+  uint32_t words[2];
+  __builtin_memcpy(words, &value, sizeof(value));
+  register Object** r0 __asm__("r0") = sp_;
+  register NativeContext* r1 __asm__("r1") = c_;
+  register uint32_t r2 __asm__("r2") = words[0];
+  register uint32_t r3 __asm__("r3") = words[1];
+  __asm__ volatile("mov r12, lr\n"
+                   "bl " NATIVE_SYMBOL(toit_native_double_stub) "\n"
+                   "mov lr, r12\n"
+                   : "+r"(r0) : "r"(r1), "r"(r2), "r"(r3) : "r12", "cc", "memory");
+  return r0;
+}
+
+#endif  // __ARM_PCS_VFP
+
+#elif defined(__i386__)
+
+// The stubs take their arguments in registers: the stack pointer in eax, the
+// context in edx, and the opcode or the low word of the double in ecx, and
+// the high word of the double in esi. The x87 registers can't hold values
+// across the call.
+#define NATIVE_X87_CLOBBERS "st", "st(1)", "st(2)", "st(3)", "st(4)", "st(5)", "st(6)", "st(7)"
+
+inline __attribute__((always_inline)) Object** native_call_int_stub(Object** sp_, NativeContext* c_, intptr_t opcode) {
+  Object** result;
+  __asm__ volatile("call " NATIVE_SYMBOL(toit_native_int_stub) "\n"
+                   : "=a"(result) : "a"(sp_), "d"(c_), "c"(opcode) : "cc", "memory", NATIVE_X87_CLOBBERS);
+  return result;
+}
+
+inline __attribute__((always_inline)) Object** native_call_double_stub(Object** sp_, NativeContext* c_, double value) {
+  uint32_t words[2];
+  __builtin_memcpy(words, &value, sizeof(value));
+  Object** result;
+  __asm__ volatile("call " NATIVE_SYMBOL(toit_native_double_stub) "\n"
+                   : "=a"(result) : "a"(sp_), "d"(c_), "c"(words[0]), "S"(words[1])
+                   : "cc", "memory", NATIVE_X87_CLOBBERS);
+  return result;
+}
+
 #endif
 
 #define NATIVE_RUNTIME_CALL(call)                                \

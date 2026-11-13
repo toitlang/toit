@@ -136,6 +136,12 @@ else()
 endif()
 endif()  # NOT TOIT_IS_CROSS
 
+# The generated code must use the floating-point ABI and the instructions of
+# the runtime it is linked with.
+if (DEFINED ARM_CPU_FLAGS)
+  separate_arguments(TOIT_NATIVE_ARM_CPU_FLAGS UNIX_COMMAND "${ARM_CPU_FLAGS}")
+  list(APPEND TOIT_NATIVE_COMPILE_FLAGS ${TOIT_NATIVE_ARM_CPU_FLAGS})
+endif()
 string(REPLACE ";" " " TOIT_NATIVE_COMPILE_LINE "${TOIT_NATIVE_COMPILE_FLAGS}")
 string(REPLACE ";" " " TOIT_NATIVE_LINK_LINE "${TOIT_NATIVE_LINK_FLAGS}")
 file(GENERATE

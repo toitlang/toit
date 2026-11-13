@@ -32,8 +32,9 @@ case "${TARGET}" in
   host) QEMU=""; CLANG_TARGET="$(uname -m)-linux-gnu" ;;
   aarch64) QEMU=qemu-aarch64; CLANG_TARGET=aarch64-linux-gnu ;;
   riscv64) QEMU=qemu-riscv64; CLANG_TARGET=riscv64-linux-gnu ;;
-  armv7|raspbian|arm-linux-gnueabi) QEMU=qemu-arm; CLANG_TARGET="" ;;
-  host32) QEMU=""; CLANG_TARGET="" ;;
+  armv7|raspbian) QEMU=qemu-arm; CLANG_TARGET=arm-linux-gnueabihf ;;
+  arm-linux-gnueabi) QEMU=qemu-arm; CLANG_TARGET=arm-linux-gnueabi ;;
+  host32) QEMU=""; CLANG_TARGET=i686-linux-gnu ;;
   *) echo "Unknown target: ${TARGET}" >&2; exit 2 ;;
 esac
 QEMU="${QEMU_USER:-${QEMU}}"
