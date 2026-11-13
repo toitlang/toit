@@ -509,8 +509,11 @@ container-install invocation/cli.Invocation -> none:
   image-data/ByteArray := ?
   if image-path.ends-with ".toit":
     if not file.is-file image-path: ui.abort "Program source not found: $image-path"
-    image-data = compile-snapshot_ image-path --ui=ui
-    if not invocation["strip"]: source = create-source-archive image-path --ui=ui
+    // The snapshot is compiled from the archive, so its source map has the
+    // paths of the archive instead of the paths on this machine.
+    archive := create-source-archive image-path --ui=ui
+    image-data = compile-snapshot-from-archive_ archive --ui=ui
+    if not invocation["strip"]: source = archive
   else:
     if invocation["strip"]:
       ui.abort "Only programs that are installed from source can be stripped of their sources."
@@ -670,7 +673,120 @@ create-source-archive path/string --ui/cli.Ui -> ByteArray:
       --protocol=protocol
       --cwd-path=(fs.to-slash directory.cwd)
       --include-sdk=false
-  return prune-lock-files_ buffer.bytes
+  project-root := fs.to-slash (translator.to-path project-uri)
+  return relocate-source-archive_ (prune-lock-files_ buffer.bytes) --project-root=project-root
+
+/**
+Moves the files in the source $archive away from the absolute paths they had
+  on the machine that installed the program.
+
+The paths would tell anyone who gets the envelope how that machine is
+  organized, including the name of the user. The files of the program are
+  moved to a folder that is named after the folder of its project, and each
+  package cache to a folder of its own, so the stack traces of the program
+  show paths like '/my-app/src/main.toit'.
+*/
+relocate-source-archive_ archive/ByteArray --project-root/string -> ByteArray:
+  entries := []  // Of [name, content] pairs.
+  (tar.Reader (io.Reader archive)).do: | header/tar.Header content/ByteArray |
+    entries.add [header.name, content]
+  is-file := : | name/string | name.starts-with "/" and not name.starts-with "/<"
+
+  cache-paths := []
+  sdk-path/string? := null
+  entries.do: | entry/List |
+    if entry[0] == "/<package-cache-paths>":
+      cache-paths = (entry[1].to-string.split "\n").filter: it != ""
+    else if entry[0] == "/<sdk-path>":
+      sdk-path = entry[1].to-string.trim --right "/"
+  // The archive doesn't have the files of the SDK, but its metadata has the
+  // folders of the SDK that the compiler looked at.
+  is-sdk := : | path/string | sdk-path != null and sdk-path != "" and (is-below_ path sdk-path)
+  cache-paths = cache-paths.map: | path/string | path.trim --right "/"
+
+  // The files of the program are in the folder that has the project and all
+  // the files that aren't in a package cache.
+  directories := []
+  if project-root != "/": directories.add (project-root.trim --right "/")
+  entries.do: | entry/List |
+    name/string := entry[0]
+    if (is-file.call name) and not (cache-paths.any: is-below_ name it):
+      directories.add (fs.dirname name)
+  root := common-directory_ directories
+  base := fs.basename root
+  if base == "": base = "program"
+
+  moves := []  // Of [from, to] pairs, the most specific first.
+  cache-paths.size.repeat: | i/int | moves.add [cache-paths[i], "/.package-caches/$i"]
+  moves.add [root, "/$base"]
+  relocate := : | path/string | relocate-path_ path moves
+
+  result := entries.map: | entry/List |
+    name/string := entry[0]
+    content/ByteArray := entry[1]
+    if is-file.call name:
+      [relocate.call name, content]
+    else if name == "/<compiler-input>":
+      inputs := (json.decode content).map: relocate.call it
+      [name, json.encode inputs]
+    else if name == "/<package-cache-paths>":
+      relocated := cache-paths.map: relocate.call it
+      [name, (relocated.join "\n").to-byte-array]
+    else if name == "/<meta>":
+      meta := json.decode content
+      files := {:}
+      meta["files"].do: | path/string value |
+        if not is-sdk.call path: files[relocate.call path] = value
+      directories-meta := {:}
+      meta["directories"].do: | path/string value |
+        if not is-sdk.call path: directories-meta[relocate.call path] = value
+      [name, json.encode { "files": files, "directories": directories-meta }]
+    else if name == "/<compiler-flags>":
+      flags := content.to-string.split "\n"
+      flags = flags.map: | flag/string | flag.starts-with "/" ? relocate.call flag : flag
+      [name, (flags.join "\n").to-byte-array]
+    else if name == "/<cwd>":
+      [name, "/$base".to-byte-array]
+    else if name == "/<sdk-path>":
+      // The sources of the SDK aren't in the archive.
+      [name, "/.sdk/".to-byte-array]
+    else:
+      [name, content]
+
+  buffer := io.Buffer
+  writer := tar.Writer buffer
+  result.do: | entry/List | writer.add entry[0] entry[1]
+  writer.close
+  return buffer.bytes
+
+is-below_ path/string directory/string -> bool:
+  return path == directory or path.starts-with "$directory/"
+
+/**
+Returns the $path moved by the first of the $moves, a list of [from, to]
+  pairs, that it is below, or the $path itself if there is none.
+*/
+relocate-path_ path/string moves/List -> string:
+  moves.do: | move/List |
+    from/string := move[0]
+    if from == "/":
+      return "$move[1]$path"
+    if is-below_ path from:
+      return "$move[1]$path[from.size..]"
+  return path
+
+/** Returns the deepest directory that has all the $directories. */
+common-directory_ directories/List -> string:
+  if directories.is-empty: return "/"
+  common/List := directories[0].split "/"
+  directories.do: | directory/string |
+    segments := directory.split "/"
+    length := 0
+    while length < common.size and length < segments.size and common[length] == segments[length]:
+      length++
+    common = common[..length]
+  result := common.join "/"
+  return result == "" ? "/" : result
 
 /**
 Removes the packages that the program doesn't use from the lock files in the
@@ -1155,21 +1271,37 @@ save-snapshot-for-decoding_ snapshot/ByteArray --ui/cli.Ui -> none:
     ui.emit --verbose "Saved the snapshot of the system program for decoding: $path"
 
 /**
-Compiles the program at the given $path to a snapshot with the compiler of
-  the SDK, and returns it.
+Compiles the program in the source $archive to a snapshot with the compiler
+  of the SDK, and returns it.
 
 The snapshot is the one 'toit compile --snapshot -O2' makes. Containers in
   firmware stay in flash, so they are optimized for size and speed. Their ids
   are the ids of the images of these snapshots, so installing the same
-  program compiled the same way, for example with
-  'jag container install -O2', finds the image in the firmware.
+  program compiled the same way, for example with 'jag container install
+  -O2', finds the image in the firmware. The id doesn't depend on where the
+  sources are, and with '--source-root', the source map has the paths in the
+  archive and the SDK instead of the paths on this machine.
 */
-compile-snapshot_ path/string --ui/cli.Ui -> ByteArray:
+compile-snapshot-from-archive_ archive/ByteArray --ui/cli.Ui -> ByteArray:
   tmp-dir := directory.mkdtemp "/tmp/toit-firmware-snapshot-"
   try:
+    root := "$tmp-dir/sources"
+    unpacked := unpack-source-archive_ archive --root=root
     output := "$tmp-dir/program.snapshot"
-    exit-code := pipe.run-program [toit-path_ find-sdk-lib_, "compile", "--snapshot", "-O2", "-o", output, path]
-    if exit-code != 0: ui.abort "Compiling $path failed."
+    // The same compilation as 'toit compile --snapshot -O2'. The source map
+    // has the paths in the archive.
+    arguments := [
+      compiler-path_ find-sdk-lib_, "-O2",
+      "--source-root", root,
+      "-w", output,
+      "$root$unpacked["entry"]",
+    ]
+    cache-paths := unpacked["package-cache-paths"].map: "$root$it"
+    environment := cache-paths.is-empty
+        ? null
+        : { "TOIT_PACKAGE_CACHE_PATHS": cache-paths.join (platform == system.PLATFORM-WINDOWS ? ";" : ":") }
+    exit-code := pipe.run-program --environment=environment arguments
+    if exit-code != 0: ui.abort "Compiling $unpacked["entry"] failed."
     return file.read-contents output
   finally:
     directory.rmdir --recursive tmp-dir

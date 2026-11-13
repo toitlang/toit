@@ -97,6 +97,11 @@ class SourceMapper {
 
   explicit SourceMapper(SourceManager* manager) : manager_(manager) {}
 
+  // Write the paths that errors show instead of the absolute paths. For
+  // sources that were unpacked to a temporary folder, the absolute paths
+  // only tell where they were unpacked and where the SDK is.
+  void set_use_error_paths(bool value) { use_error_paths_ = value; }
+
   SourceManager* manager() const { return manager_; }
 
   /// Returns a malloced buffer of the source-map.
@@ -192,6 +197,7 @@ class SourceMapper {
 
   friend class MethodMapper;
   SourceManager* manager_;
+  bool use_error_paths_ = false;
 
   MethodMapper register_lambda(int outer_id, ir::Code* code);
   MethodMapper register_block(int outer_id, ir::Code* code);

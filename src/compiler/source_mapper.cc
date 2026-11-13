@@ -195,7 +195,7 @@ void SourceMapper::visit_method_info(SourceInfoCollector* collector) {
     }
     collector->write_string(entry.name);
     collector->write_string(entry.holder_name);
-    collector->write_string(entry.absolute_path);
+    collector->write_string(use_error_paths_ ? entry.error_path.c_str() : entry.absolute_path);
     collector->write_string(entry.error_path.c_str());
     collector->write_int(entry.position.line);
     collector->write_int(entry.position.column);
@@ -224,7 +224,7 @@ void SourceMapper::visit_class_info(SourceInfoCollector* collector) {
     collector->write_int(encoded_super);
     collector->write_int(entry.location_id);
     collector->write_string(entry.name);
-    collector->write_string(entry.absolute_path);
+    collector->write_string(use_error_paths_ ? entry.error_path.c_str() : entry.absolute_path);
     collector->write_string(entry.error_path.c_str());
     collector->write_int(entry.position.line);
     collector->write_int(entry.position.column);

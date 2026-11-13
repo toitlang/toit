@@ -2476,6 +2476,7 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
       configuration_.optimization_level >= 1;
 
   SourceMapper unoptimized_source_mapper(source_manager());
+  unoptimized_source_mapper.set_use_error_paths(configuration_.source_root != null);
   auto source_mapper = &unoptimized_source_mapper;
   TypeOracle oracle(source_mapper);
   MethodSelectorOffsets method_selector_offsets;
@@ -2488,6 +2489,7 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
                                    &method_selector_offsets);
 
   SourceMapper optimized_source_mapper(source_manager());
+  optimized_source_mapper.set_use_error_paths(configuration_.source_root != null);
   if (run_optimizations && configuration_.optimization_level >= 2) {
     statistics.switch_phase(PipelineStatistics::OPTIMIZATION);
     bool quiet = true;
