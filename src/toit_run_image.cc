@@ -32,10 +32,14 @@
 #include "snapshot.h"
 #include "third_party/dartino/gc_metadata.h"
 
+// Native firmware has no system image of its own. Its system program is
+// compiled to native code, and its image is with the startup images.
+#ifndef TOIT_RUN_IMAGE_NATIVE
 extern "C" {
   extern unsigned char run_image_image[];
   extern unsigned int run_image_image_len;
 };
+#endif
 
 namespace toit {
 
@@ -114,10 +118,18 @@ int main(int argc, char **argv) {
   OS::set_up();
   ObjectMemory::set_up();
 
-  uint8* image = run_image_image;
-  unsigned int image_size = run_image_image_len;
+  unsigned int image_size = 0;
   uint8* system_image = argc >= 2 ? read_system_image(argv[1], &image_size) : null;
-  if (system_image != null) image = system_image;
+#ifdef TOIT_RUN_IMAGE_NATIVE
+  if (system_image == null) FATAL("Native firmware needs its system image in startup-images/system");
+  uint8* image = system_image;
+#else
+  uint8* image = system_image;
+  if (image == null) {
+    image = run_image_image;
+    image_size = run_image_image_len;
+  }
+#endif
   if (image_size % WORD_SIZE != 0) FATAL("Invalid system image");
   // We use one word for the following WORD_BIT_SIZE words as relocation bits.
   int relocated_size = (image_size / (WORD_BIT_SIZE + 1)) * WORD_BIT_SIZE;

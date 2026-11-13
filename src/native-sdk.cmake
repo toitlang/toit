@@ -57,7 +57,7 @@ function(toit_native_collect item)
   set(TOIT_NATIVE_LINK_FLAGS "${TOIT_NATIVE_LINK_FLAGS}" PARENT_SCOPE)
 endfunction()
 
-toit_native_collect(toit_native_main)
+toit_native_collect(toit_native_entry)
 
 # The generated code references what it needs, so the
 # linker can leave the rest out. That includes system libraries.
@@ -98,6 +98,9 @@ set(TOIT_NATIVE_COMPILE_FLAGS
 
 # The system program is native code too. It goes through the same steps as
 # the programs in the executables, so it is only compiled once if we can.
+# Cross builds can't run their compiler, and their native runtime is only for
+# the firmware of their envelopes, which has a system program of its own.
+if (NOT TOIT_IS_CROSS)
 set(TOIT_NATIVE_SYSTEM_SOURCE "${TOIT_SDK_SOURCE_DIR}/system/extensions/host/toit.run.toit")
 set(TOIT_NATIVE_SYSTEM_CC "${TOIT_NATIVE_DIR}/system.cc")
 set(TOIT_NATIVE_SYSTEM_OBJECT "${TOIT_NATIVE_DIR}/system.o")
@@ -131,6 +134,7 @@ else()
   list(PREPEND TOIT_NATIVE_LINK_FLAGS "@SDK@/system.cc")
   set(TOIT_NATIVE_SYSTEM_OUTPUT "${TOIT_NATIVE_SYSTEM_CC}")
 endif()
+endif()  # NOT TOIT_IS_CROSS
 
 string(REPLACE ";" " " TOIT_NATIVE_COMPILE_LINE "${TOIT_NATIVE_COMPILE_FLAGS}")
 string(REPLACE ";" " " TOIT_NATIVE_LINK_LINE "${TOIT_NATIVE_LINK_FLAGS}")
@@ -139,6 +143,10 @@ file(GENERATE
   CONTENT "${TOIT_NATIVE_COMPILE_LINE}\n${TOIT_NATIVE_LINK_LINE}\n"
 )
 
+# The firmware of host envelopes is linked with the bytecode loop instead of
+# the stub that native executables have, so it can also run containers that
+# aren't native code.
+list(APPEND TOIT_NATIVE_ARCHIVES toit_native_bytecodes toit_native_run_image)
 set(TOIT_NATIVE_ARCHIVE_FILES)
 foreach(archive ${TOIT_NATIVE_ARCHIVES})
   list(APPEND TOIT_NATIVE_ARCHIVE_FILES "$<TARGET_FILE:${archive}>")
@@ -149,7 +157,7 @@ endforeach()
 add_custom_target(
   build_native_sdk
   ALL
-  DEPENDS "${TOIT_NATIVE_SYSTEM_OUTPUT}"
+  DEPENDS ${TOIT_NATIVE_SYSTEM_OUTPUT}
   COMMAND "${CMAKE_COMMAND}" -E make_directory "${TOIT_NATIVE_DIR}/lib"
   COMMAND "${CMAKE_COMMAND}" -E copy_if_different ${TOIT_NATIVE_ARCHIVE_FILES} "${TOIT_NATIVE_DIR}/lib"
   VERBATIM

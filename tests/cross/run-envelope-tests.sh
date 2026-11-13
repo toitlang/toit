@@ -3,17 +3,22 @@
 # Use of this source code is governed by a Zero-Clause BSD license that can
 # be found in the tests/LICENSE file.
 
-# Runs the firmware of a host envelope that was built for another
-# architecture ('make TARGET=<target> sdk') with qemu-user, in the ways the
-# firmware tool can extract it.
+# Runs the firmware of a host envelope in the ways the firmware tool can
+# extract it. Envelopes for other architectures ('make TARGET=<target> sdk')
+# run with qemu-user.
 #
 # Usage: tests/cross/run-envelope-tests.sh <target>
-# where <target> is aarch64, riscv64, armv7, raspbian, arm-linux-gnueabi, or
-# host32.
+# where <target> is host, aarch64, riscv64, armv7, raspbian,
+# arm-linux-gnueabi, or host32.
 #
 # The envelope's 'run-image' runs with the loader and libraries of the
 # sysroot that the target was built with (build/<target>/sysroot). The
-# 32-bit x86 firmware (host32) runs directly, with the libraries of the host.
+# firmware of the host and of the 32-bit x86 target (host32) runs directly,
+# with the libraries of the host.
+#
+# If the SDK of the target has a native folder, the firmware is also
+# extracted as native code. The generated code is compiled with clang++, or
+# with TOIT_NATIVE_CXX, which must be able to compile for the target.
 
 set -euo pipefail
 
@@ -24,10 +29,11 @@ ENVELOPE="${ENVELOPE:-${ROOT_DIR}/build/${TARGET}/firmware.envelope}"
 SYSROOT="${SYSROOT:-${ROOT_DIR}/build/${TARGET}/sysroot}"
 
 case "${TARGET}" in
-  aarch64) QEMU=qemu-aarch64 ;;
-  riscv64) QEMU=qemu-riscv64 ;;
-  armv7|raspbian|arm-linux-gnueabi) QEMU=qemu-arm ;;
-  host32) QEMU="" ;;
+  host) QEMU=""; CLANG_TARGET="$(uname -m)-linux-gnu" ;;
+  aarch64) QEMU=qemu-aarch64; CLANG_TARGET=aarch64-linux-gnu ;;
+  riscv64) QEMU=qemu-riscv64; CLANG_TARGET=riscv64-linux-gnu ;;
+  armv7|raspbian|arm-linux-gnueabi) QEMU=qemu-arm; CLANG_TARGET="" ;;
+  host32) QEMU=""; CLANG_TARGET="" ;;
   *) echo "Unknown target: ${TARGET}" >&2; exit 2 ;;
 esac
 QEMU="${QEMU_USER:-${QEMU}}"
@@ -105,5 +111,17 @@ run_mode() {
 
 run_mode plain
 run_mode combined --combine
+
+NATIVE_DIR="${ROOT_DIR}/build/${TARGET}/sdk/lib/toit/native"
+if [[ -n "${CLANG_TARGET}" && -f "${NATIVE_DIR}/native.flags" ]]; then
+  native_support=(--directory "${NATIVE_DIR}" --target "${CLANG_TARGET}")
+  if [[ -n "${QEMU}" ]]; then
+    native_support+=(--sysroot "${TARGET}")
+    export TOIT_SYSROOT="${SYSROOT}"
+  fi
+  "${TOIT}" tool firmware -e "${ENVELOPE_WITH_CONTAINERS}" native-support add "${native_support[@]}"
+  run_mode native --native
+  run_mode combined-native --combine --native
+fi
 
 echo "All ${TARGET} firmware modes passed."

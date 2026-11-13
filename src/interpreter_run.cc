@@ -288,9 +288,10 @@ bool Interpreter::has_bytecodes() {
 }
 
 // Firmware with native code has the native engine, which uses the bytecode
-// loop for the programs that aren't native code. Other executables only run
-// bytecodes.
-#ifndef TOIT_NATIVE_EMBEDDED
+// loop for the programs that aren't native code, and so does the firmware of
+// host envelopes that is compiled to native code (TOIT_NATIVE_BYTECODES).
+// Other executables only run bytecodes.
+#if !defined(TOIT_NATIVE_EMBEDDED) && !defined(TOIT_NATIVE_BYTECODES)
 
 bool Interpreter::can_run(Program* program) {
   return true;
@@ -311,7 +312,7 @@ Interpreter::Result Interpreter::run() {
   return run_bytecodes();
 }
 
-#endif  // TOIT_NATIVE_EMBEDDED
+#endif  // !TOIT_NATIVE_EMBEDDED && !TOIT_NATIVE_BYTECODES
 
 Interpreter::Result Interpreter::run_bytecodes() {
 #define LABEL(opcode, length, format, print) &&interpret_##opcode,

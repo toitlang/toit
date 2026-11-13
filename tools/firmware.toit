@@ -961,55 +961,18 @@ build-native-firmware_ envelope/Envelope sources/Map
     directory.mkdir support-dir
     unpack-native-support_ support --directory=support-dir
 
-    native-cc := "$tmp-dir/native.cc"
-    native-o := "$tmp-dir/native.o"
-    snapshot-path := "$tmp-dir/system.snapshot"
     elf := "$tmp-dir/firmware.elf"
     bin := "$tmp-dir/firmware.bin"
-    compile-system-with-programs_ sources --tmp-dir=tmp-dir --ui=ui [
-      "--native-firmware", snapshot-path, "-o", native-cc,
-    ]
+    sources-cc := generate-native-code_ envelope sources --separate=separate --tmp-dir=tmp-dir --ui=ui
+    objects := sources-cc.map: | cc/string |
+      object := "$(cc).o"
+      run-native-tool_ [cxx] + recipe["compile"] + ["-c", cc, "-o", object] --ui=ui
+      object
 
-    run-native-tool_ [cxx] + recipe["compile"] + ["-c", native-cc, "-o", native-o] --ui=ui
-    objects := [native-o]
-
-    // The other containers are compiled to native code on their own. Their
-    // snapshots replace the ones in the envelope, because their images have
-    // the headers of the methods instead of the bytecodes.
-    separate.do: | name/string archive/ByteArray |
-      root := "$tmp-dir/separate/$name"
-      unpacked := unpack-source-archive_ archive --root=root
-      container-cc := "$tmp-dir/$(name).cc"
-      container-o := "$tmp-dir/$(name).o"
-      container-snapshot := "$tmp-dir/$(name).snapshot"
-      arguments := [
-        compiler-path_ find-sdk-lib_, "-O2",
-        // The sources are shown with the paths they had when they were installed.
-        "--source-root", root,
-        "--native-firmware", container-snapshot, "-o", container-cc,
-        "$root$unpacked["entry"]",
-      ]
-      cache-paths := unpacked["package-cache-paths"].map: "$root$it"
-      environment := cache-paths.is-empty
-          ? null
-          : { "TOIT_PACKAGE_CACHE_PATHS": cache-paths.join (platform == system.PLATFORM-WINDOWS ? ";" : ":") }
-      exit-code := pipe.run-program --environment=environment arguments
-      if exit-code != 0: ui.abort "Compiling container '$name' to native code failed."
-      run-native-tool_ [cxx] + recipe["compile"] + ["-c", container-cc, "-o", container-o] --ui=ui
-      objects.add container-o
-      entries[name] = read-compiled-snapshot_ container-snapshot --envelope=envelope --ui=ui
-      save-snapshot-for-decoding_ entries[name] --ui=ui
-
-    // The firmware is linked with the bytecode loop, or the stub that
-    // replaces it.
-    bytecodes := recipe["bytecodes"]
-    link := []
-    recipe["link"].do: | argument/string |
-      if not interpreter and argument == bytecodes["library"]: argument = bytecodes["stub"]
-      if argument == "{native}":
-        link.add-all objects
-      else:
-        link.add (substitute_ argument { "{support}": support-dir, "{output}": elf })
+    link := native-link-arguments_ recipe objects
+        --interpreter=interpreter
+        --support-dir=support-dir
+        --output=elf
     // The link command is long, so it is passed in a response file.
     response := "$tmp-dir/link.rsp"
     file.write-contents --path=response
@@ -1022,9 +985,133 @@ build-native-firmware_ envelope/Envelope sources/Map
 
     entries[AR-ENTRY-ESP32-FIRMWARE-BIN] = file.read-contents bin
     entries[AR-ENTRY-ESP32-FIRMWARE-ELF] = file.read-contents elf
-    entries[SYSTEM-CONTAINER-NAME] = read-compiled-snapshot_ snapshot-path --envelope=envelope --ui=ui
   finally:
     directory.rmdir --recursive tmp-dir
+
+/**
+Builds the native 'run-image' executable of the firmware of the host
+  $envelope, with the programs in the given $sources combined with the system
+  program, and the programs in $separate compiled to native code on their own.
+
+The system program and the separate containers get the snapshots of their
+  native code in the envelope (in memory). Their images are in the startup
+  images, like the images of other containers, and the executable runs the
+  system image from there.
+
+The generated code is compiled with clang++ for the target of the native
+  support, or with the compiler that TOIT_NATIVE_CXX gives. Native support
+  for another architecture links with the sysroot that TOIT_SYSROOT gives.
+*/
+build-native-host-firmware_ envelope/Envelope sources/Map
+    --separate/Map
+    --interpreter/bool
+    --ui/cli.Ui -> ByteArray:
+  entries := envelope.entries
+  support := entries.get AR-ENTRY-NATIVE-SUPPORT
+  if not support:
+    ui.abort "The envelope doesn't have native support."
+  recipe := native-support-recipe_ support
+  check-native-support_ recipe --envelope=envelope --ui=ui
+  cxx := os.env.get "TOIT_NATIVE_CXX" or "clang++"
+  target-flags := ["--target=$recipe["target"]"]
+  link-flags := []
+  if sysroot-name := recipe.get "sysroot":
+    sysroot := os.env.get "TOIT_SYSROOT"
+    if not sysroot:
+      ui.abort """
+          Native firmware for $recipe["target"] needs the sysroot it was built with.
+          Download $((recipe.get "sysroot-url") or sysroot-name), unpack it, and set TOIT_SYSROOT to its folder."""
+    target-flags.add "--sysroot=$sysroot"
+    link-flags.add "-fuse-ld=lld"
+
+  tmp-dir := directory.mkdtemp "/tmp/toit-firmware-native-"
+  try:
+    support-dir := "$tmp-dir/native-support"
+    directory.mkdir support-dir
+    unpack-native-support_ support --directory=support-dir
+
+    sources-cc := generate-native-code_ envelope sources --separate=separate --tmp-dir=tmp-dir --ui=ui
+    objects := sources-cc.map: | cc/string |
+      object := "$(cc).o"
+      run-native-tool_ [cxx] + target-flags + recipe["compile"] + ["-O2", "-c", cc, "-o", object] --ui=ui
+      object
+
+    executable := "$tmp-dir/run-image"
+    link := native-link-arguments_ recipe objects
+        --interpreter=interpreter
+        --support-dir=support-dir
+        --output=executable
+    run-native-tool_ [cxx] + target-flags + link-flags + ["-o", executable] + link --ui=ui
+    return file.read-contents executable
+  finally:
+    directory.rmdir --recursive tmp-dir
+
+/**
+Writes the C++ code of the system program of the $envelope with the programs
+  in the given $sources combined with it, and of the programs in $separate,
+  which are compiled on their own. Returns the paths of the C++ files.
+
+The code is the code of firmware, which has the images of the programs
+  elsewhere. Their snapshots replace the ones in the envelope, because their
+  images have the headers of the methods instead of the bytecodes.
+*/
+generate-native-code_ envelope/Envelope sources/Map
+    --separate/Map
+    --tmp-dir/string
+    --ui/cli.Ui -> List:
+  entries := envelope.entries
+  system-cc := "$tmp-dir/system.cc"
+  system-snapshot := "$tmp-dir/system.snapshot"
+  compile-system-with-programs_ sources
+      --system-source=(system-source-path_ --kind=envelope.kind)
+      --tmp-dir=tmp-dir
+      --ui=ui
+      ["--native-firmware", system-snapshot, "-o", system-cc]
+  entries[SYSTEM-CONTAINER-NAME] = read-compiled-snapshot_ system-snapshot --envelope=envelope --ui=ui
+  result := [system-cc]
+
+  separate.do: | name/string archive/ByteArray |
+    root := "$tmp-dir/separate/$name"
+    unpacked := unpack-source-archive_ archive --root=root
+    container-cc := "$tmp-dir/$(name).cc"
+    container-snapshot := "$tmp-dir/$(name).snapshot"
+    arguments := [
+      compiler-path_ find-sdk-lib_, "-O2",
+      // The sources are shown with the paths they had when they were installed.
+      "--source-root", root,
+      "--native-firmware", container-snapshot, "-o", container-cc,
+      "$root$unpacked["entry"]",
+    ]
+    cache-paths := unpacked["package-cache-paths"].map: "$root$it"
+    environment := cache-paths.is-empty
+        ? null
+        : { "TOIT_PACKAGE_CACHE_PATHS": cache-paths.join (platform == system.PLATFORM-WINDOWS ? ";" : ":") }
+    exit-code := pipe.run-program --environment=environment arguments
+    if exit-code != 0: ui.abort "Compiling container '$name' to native code failed."
+    result.add container-cc
+    entries[name] = read-compiled-snapshot_ container-snapshot --envelope=envelope --ui=ui
+    save-snapshot-for-decoding_ entries[name] --ui=ui
+  return result
+
+/**
+Returns the arguments of the link command in the $recipe of native support
+  that is unpacked in $support-dir, with the given $objects of the generated
+  code. The firmware is linked with the bytecode loop, unless $interpreter is
+  false, and then with the stub that replaces it.
+*/
+native-link-arguments_ recipe/Map objects/List
+    --interpreter/bool
+    --support-dir/string
+    --output/string -> List:
+  bytecodes := recipe["bytecodes"]
+  link := []
+  recipe["link"].do: | argument/string |
+    if not interpreter and argument == bytecodes["library"]: argument = bytecodes["stub"]
+    if argument == "{native}":
+      link.add-all objects
+    else:
+      link.add (substitute_ argument { "{support}": support-dir, "{output}": output })
+  return link
 
 // Quotes an argument for a GCC response file, where a backslash escapes
 // the next character, also in quotes.
@@ -1077,6 +1164,9 @@ find-native-tool_ variable/string pattern/string --name/string --install/string 
 Unpacks the native $support into the given $directory, and returns its recipe.
 */
 unpack-native-support_ support/ByteArray --directory/string -> Map:
+  if not is-gzip_ support:
+    tar.extract --reader=(io.Reader support) --directory=directory
+    return json.decode (file.read-contents "$directory/recipe.json")
   decoder := zlib.GzipDecoder
   writer := task::
     try:
@@ -1094,6 +1184,10 @@ unpack-native-support_ support/ByteArray --directory/string -> Map:
 Returns the recipe of the native $support without unpacking the rest.
 */
 native-support-recipe_ support/ByteArray -> Map:
+  if not is-gzip_ support:
+    (tar.Reader (io.Reader support)).do: | header/tar.Header content/ByteArray |
+      if header.name == "recipe.json": return json.decode content
+    throw "Native support without a recipe"
   decoder := zlib.GzipDecoder
   // The recipe is the first file, so the reader stops before the writer has
   // written everything, and the writer must not wait for it forever.
@@ -1113,11 +1207,20 @@ native-support-recipe_ support/ByteArray -> Map:
 
 NATIVE-SUPPORT-VERSION ::= 2
 
+// The native support of ESP32 envelopes is gzipped, and the native support of
+// host envelopes is a plain tar.
+is-gzip_ bytes/ByteArray -> bool:
+  return bytes.size >= 2 and bytes[0] == 0x1f and bytes[1] == 0x8b
+
 check-native-support_ recipe/Map --envelope/Envelope --ui/cli.Ui -> none:
   if recipe["version"] != NATIVE-SUPPORT-VERSION:
     ui.abort "The native support has version $recipe["version"], but $NATIVE-SUPPORT-VERSION is supported."
   if recipe["sdk-version"] != envelope.sdk-version:
     ui.abort "The native support is for $recipe["sdk-version"], but the envelope is for $envelope.sdk-version."
+  if envelope.kind == Envelope.KIND-HOST:
+    if (recipe.get "kind") != Envelope.KIND-STRING-HOST or recipe["word-size"] != envelope.word-size:
+      ui.abort "The native support isn't for this host envelope."
+    return
   chip := (Esp32Binary envelope.entries[AR-ENTRY-ESP32-FIRMWARE-BIN]).chip-name
   if recipe["chip"] != chip:
     ui.abort "The native support is for $recipe["chip"], but the envelope is for $chip."
@@ -1129,7 +1232,11 @@ native-support-cmd -> cli.Command:
 
         Envelopes with native support can extract native firmware, where the
           installed programs and the system program are compiled to native code
-          (see 'extract --native'). Build it with 'make esp32c3 ESP32_NATIVE_SUPPORT=1'.
+          (see 'extract --native').
+
+        ESP32 envelopes get native support from 'make esp32c3 ESP32_NATIVE_SUPPORT=1'.
+          Host envelopes get it from the native folder of the SDK they were built
+          with (lib/toit/native), with --directory and --target.
         """
   option-output := cli.OptionPath OPTION-OUTPUT
       --short-name=OPTION-OUTPUT-SHORT
@@ -1137,11 +1244,18 @@ native-support-cmd -> cli.Command:
   cmd.add
       cli.Command "add"
           --help="Add native support to the envelope."
-          --options=[ option-output ]
+          --options=[
+            option-output,
+            cli.OptionPath "directory"
+                --help="The native folder of the SDK of a host envelope (lib/toit/native).",
+            cli.Option "target"
+                --help="The target of a host envelope for clang, like 'aarch64-linux-gnu'.",
+            cli.Option "sysroot"
+                --help="The toitlang/sysroots sysroot that a host envelope for another architecture links with, like 'aarch64'.",
+          ]
           --rest=[
             cli.OptionPath "file"
-                --help="The native support (native-support.tar.gz)."
-                --required,
+                --help="The native support of an ESP32 envelope (native-support.tar.gz).",
           ]
           --run=:: native-support-add it
   cmd.add
@@ -1153,13 +1267,98 @@ native-support-cmd -> cli.Command:
 
 native-support-add invocation/cli.Invocation -> none:
   ui := invocation.cli.ui
-  support := read-file invocation["file"] --ui=ui
-  recipe := native-support-recipe_ support
+  path := invocation["file"]
+  native-directory := invocation["directory"]
+  if (path == null) == (native-directory == null):
+    ui.abort "Give either the native support or the native folder of an SDK (--directory)."
   update-envelope invocation: | envelope/Envelope |
-    if envelope.kind != Envelope.KIND-ESP32:
-      ui.abort "Only ESP32 envelopes support native firmware."
-    check-native-support_ recipe --envelope=envelope --ui=ui
+    support/ByteArray := ?
+    if native-directory:
+      if envelope.kind != Envelope.KIND-HOST:
+        ui.abort "Only host envelopes get native support from the native folder of an SDK."
+      target := invocation["target"]
+      if not target: ui.abort "Native support for a host envelope needs a target (--target)."
+      support = pack-host-native-support_ native-directory
+          --target=target
+          --sysroot=invocation["sysroot"]
+          --envelope=envelope
+          --ui=ui
+    else:
+      if envelope.kind != Envelope.KIND-ESP32:
+        ui.abort "Host envelopes get native support from the native folder of an SDK (--directory)."
+      support = read-file path --ui=ui
+    check-native-support_ (native-support-recipe_ support) --envelope=envelope --ui=ui
     envelope.entries[AR-ENTRY-NATIVE-SUPPORT] = support
+
+// The toitlang/sysroots release that host envelopes for other architectures
+// are built with. See TOITLANG_SYSROOTS in the Makefile.
+SYSROOTS-URL_ ::= "https://github.com/toitlang/sysroots/releases/download/v1.6.0"
+
+/**
+Packs the native support of a host envelope from the $native-directory of the
+  SDK that built it.
+
+The native support has the libraries of the native runtime and a recipe with
+  the flags from the SDK's native.flags. Its firmware is linked with the
+  main function of 'run-image' instead of the one of native executables, and
+  with the bytecode loop instead of the stub, so it can also run containers
+  that aren't native code.
+*/
+pack-host-native-support_ native-directory/string
+    --target/string
+    --sysroot/string?
+    --envelope/Envelope
+    --ui/cli.Ui -> ByteArray:
+  flags-path := "$native-directory/native.flags"
+  if not file.is-file flags-path: ui.abort "Not the native folder of an SDK: $native-directory"
+  lines := (file.read-contents flags-path).to-string.split "\n"
+  split := : | line/string | (line.split " ").filter: it != ""
+  compile := split.call lines[0]
+  link := split.call lines[1]
+  // The system program of the firmware is generated when it is extracted.
+  link = link.filter: it != "@SDK@/system.o" and it != "@SDK@/system.cc"
+  link = link.map: it.replace --all "@SDK@" "{support}"
+  entry := "{support}/lib/libtoit_native_entry.a"
+  stub := "{support}/lib/libtoit_no_bytecodes.a"
+  library := "{support}/lib/libtoit_native_bytecodes.a"
+  if not link.contains entry or not link.contains stub:
+    ui.abort "The native folder of the SDK is too old for native firmware: $native-directory"
+  link = link.map: | argument/string |
+    if argument == entry: "{support}/lib/libtoit_native_run_image.a"
+    else if argument == stub: library
+    else: argument
+  recipe := {
+    "version": NATIVE-SUPPORT-VERSION,
+    "sdk-version": envelope.sdk-version,
+    "kind": Envelope.KIND-STRING-HOST,
+    "word-size": envelope.word-size,
+    "target": target,
+    "compile": compile,
+    "link": ["{native}"] + link,
+    "bytecodes": { "library": library, "stub": stub },
+  }
+  if sysroot:
+    recipe["sysroot"] = sysroot
+    recipe["sysroot-url"] = "$SYSROOTS-URL_/sysroot-$(sysroot).tar.gz"
+
+  // A plain tar. The envelope is compressed as a whole when it is published.
+  buffer := io.Buffer
+  writer := tar.Writer buffer
+  // The recipe comes first, so it can be read without the rest.
+  writer.add "recipe.json" (json.encode recipe)
+  lib-directory := "$native-directory/lib"
+  names := []
+  stream := directory.DirectoryStream lib-directory
+  try:
+    while name := stream.next:
+      if name.ends-with ".a": names.add name
+  finally:
+    stream.close
+  names.sort --in-place
+  names.do: | name/string |
+    writer.add "lib/$name" (file.read-contents "$lib-directory/$name")
+  writer.close
+  return buffer.bytes
 
 native-support-remove invocation/cli.Invocation -> none:
   update-envelope invocation: | envelope/Envelope |
@@ -1544,10 +1743,9 @@ extract invocation/cli.Invocation -> none:
         --interpreter=invocation["interpreter"]
         --ui=ui
     extract-esp32 invocation envelope --config-encoded=config-encoded
-  else if invocation["native"] or not invocation["interpreter"]:
-    ui.abort "Only ESP32 envelopes support native firmware."
-  else if invocation["combine"] and envelope.kind != Envelope.KIND-HOST:
-    ui.abort "Only ESP32 and host envelopes support combining containers."
+  else if envelope.kind != Envelope.KIND-HOST and
+      (invocation["combine"] or invocation["native"] or not invocation["interpreter"]):
+    ui.abort "Only ESP32 and host envelopes support combining containers and native firmware."
   else if envelope.kind == Envelope.KIND-HOST:
     extract-host invocation envelope --config-encoded=config-encoded
   else if envelope.kind == Envelope.KIND-EC618:
@@ -1616,15 +1814,53 @@ extract-host invocation/cli.Invocation envelope/Envelope --config-encoded/ByteAr
   bundled-images := {:}
   name-to-uuid-mapping := {:}
   // With --combine, the containers that have their sources are compiled
-  // into the system program.
-  combined/Map := invocation["combine"] ? envelope.container-sources : {:}
-  if invocation["combine"] and combined.is-empty:
+  // into the system program. With --native, the system program and the
+  // containers that have their sources are compiled to native code, and
+  // the ones that aren't combined are compiled on their own.
+  combine := invocation["combine"]
+  native := invocation["native"]
+  interpreter := invocation["interpreter"]
+  if not interpreter and not native:
+    ui.abort "Only native firmware can leave out the interpreter. Use --native too."
+  sources := envelope.container-sources
+  combined/Map := combine ? sources : {:}
+  separate := {:}
+  if native:
+    sources.do: | name/string archive/ByteArray |
+      if not combined.contains name: separate[name] = archive
+  if combine and combined.is-empty:
     ui.emit --warning "There are no containers with sources to combine."
+  if not interpreter:
+    entries.do --keys: | name/string |
+      if is-container-name name and not sources.contains name:
+        ui.abort "Firmware without the interpreter can only run containers that are compiled to native code, but '$name' has no sources."
+  // The containers keep the ids they have when they run from their snapshots,
+  // also when their snapshots are replaced by the ones of their native code.
+  ids := {:}
+  sources.do --keys: | name/string |
+    if combined.contains name or separate.contains name:
+      ids[name] = image-id
+          --snapshot-uuid=(SnapshotBundle name entries[name]).uuid
+          --assets=entries.get "+$name"
+  system-snapshot/ByteArray? := null
+  if native:
+    run-image = build-native-host-firmware_ envelope combined
+        --separate=separate
+        --interpreter=interpreter
+        --ui=ui
+    system-snapshot = entries[SYSTEM-CONTAINER-NAME]
+  else if not combined.is-empty:
+    system-snapshot = compile-system-with-programs combined --envelope=envelope --ui=ui
+  if system-snapshot: save-snapshot-for-decoding_ system-snapshot --ui=ui
+
   entries.do: | name/string content/ByteArray |
-    if not is-container-name name: continue.do
+    if not is-container-name name or name == SYSTEM-CONTAINER-NAME: continue.do
     if combined.contains name: continue.do
     entry-assets := entries.get "+$name"
-    container := extract-container name flags content --assets=entry-assets --word-size=word-size
+    container := extract-container name flags content
+        --assets=entry-assets
+        --word-size=word-size
+        --id=(ids.get name)
     uuid := container.id.to-string
     relocated := container.relocate
         --relocation-base=0 // Must be 0, since we add the relocation information back.
@@ -1639,11 +1875,11 @@ extract-host invocation/cli.Invocation envelope/Envelope --config-encoded/ByteAr
       bundled-images[name] = relocatable
     name-to-uuid-mapping[name] = uuid
 
-  if not combined.is-empty:
-    startup-images[HOST-SYSTEM-IMAGE-NAME_] = combined-host-system-image_ envelope combined
+  if system-snapshot:
+    startup-images[HOST-SYSTEM-IMAGE-NAME_] = host-system-image_ envelope system-snapshot combined
+        --ids=ids
         --flags=flags
         --system-uuid=system-uuid
-        --ui=ui
     name-to-uuid-mapping[HOST-SYSTEM-IMAGE-NAME_] = HOST-SYSTEM-IMAGE-FILE_
 
   parts := []
@@ -1746,33 +1982,30 @@ HOST-SYSTEM-IMAGE-NAME_ ::= "\$system"
 HOST-SYSTEM-IMAGE-FILE_ ::= "system"
 
 /**
-Compiles the system program of the host $envelope with the programs in the
-  $combined source archives, and returns its relocatable image.
+Returns the relocatable image of the system program of the host $envelope
+  from its $snapshot, which has the programs in $combined compiled into it.
 
 The image has the system assets that describe the containers that run the
-  combined programs. They keep the ids that they have when they run from
-  their snapshots.
+  combined programs, with the given $ids.
 */
-combined-host-system-image_ envelope/Envelope combined/Map
+host-system-image_ envelope/Envelope snapshot/ByteArray combined/Map
+    --ids/Map
     --flags/Map?
-    --system-uuid/Uuid
-    --ui/cli.Ui -> ByteArray:
+    --system-uuid/Uuid -> ByteArray:
   entries := envelope.entries
-  snapshot := compile-system-with-programs combined --envelope=envelope --ui=ui
-  save-snapshot-for-decoding_ snapshot --ui=ui
   description := []
   index := 0
   combined.do --keys: | name/string |
-    id := image-id
-        --snapshot-uuid=(SnapshotBundle name entries[name]).uuid
-        --assets=entries.get "+$name"
+    id/Uuid := ids[name]
     description.add name
     description.add index++
     description.add ((flags and flags.get name) or 0)
     // The system program gives the containers their assets.
     description.add (entries.get "+$name")
     description.add id.to-byte-array
-  system-assets := assets.encode { "combined": tison.encode description }
+  system-assets := description.is-empty
+      ? null
+      : assets.encode { "combined": tison.encode description }
   system := extract-container SYSTEM-CONTAINER-NAME flags snapshot
       --assets=system-assets
       --word-size=envelope.word-size

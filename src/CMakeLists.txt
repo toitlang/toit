@@ -372,16 +372,50 @@ if (NOT ${TOIT_IS_EMBEDDED})
       native_module_stubs.cc
     )
 
+    # Native executables have the stub instead of the bytecode loop. The
+    # firmware of host envelopes is linked with the bytecode loop instead, so
+    # it can also run containers that aren't native. Unlike toit_interpreter,
+    # it leaves the rest of the engine to the native engine.
+    add_library(
+      toit_no_bytecodes
+      STATIC
+      interpreter_no_bytecodes.cc
+    )
+
+    add_library(
+      toit_native_bytecodes
+      STATIC
+      interpreter_run.cc
+      primitive_tables.cc
+    )
+    target_compile_definitions(toit_native_bytecodes PRIVATE TOIT_NATIVE_BYTECODES)
+
     add_library(
       toit_native_main
       STATIC
-      native_main.cc
       interpreter_native.cc
       native.cc
-      interpreter_no_bytecodes.cc
     )
-    target_link_libraries(toit_native_main PUBLIC ${TOIT_LINK_LIBS})
+    target_link_libraries(toit_native_main PUBLIC ${TOIT_LINK_LIBS} toit_no_bytecodes)
     target_include_directories(toit_native_main PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+
+    # The main function of native executables. The firmware of host envelopes
+    # has the main function of 'run-image' instead, which runs the system
+    # image from its startup images.
+    add_library(
+      toit_native_entry
+      STATIC
+      native_main.cc
+    )
+    target_link_libraries(toit_native_entry PUBLIC toit_native_main)
+
+    add_library(
+      toit_native_run_image
+      STATIC
+      toit_run_image.cc
+    )
+    target_compile_definitions(toit_native_run_image PRIVATE TOIT_RUN_IMAGE_NATIVE)
+    target_link_libraries(toit_native_run_image PUBLIC toit_native_main)
   endif()
 
   set(VESSEL_SIZES 128 256 512 1024 8192)

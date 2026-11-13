@@ -75,7 +75,11 @@ static int dispatch_index(NativeContext* c, Object* receiver, word offset) {
 
 const NativeProgram* NativeRuntime::registered_program(bool is_system) {
   for (int i = 0; i < registered_count; i++) {
-    if (registered_programs[i]->is_system == is_system) return registered_programs[i];
+    const NativeProgram* program = registered_programs[i];
+    // The code of containers that run from firmware has no image. They are
+    // started by the system program, and found by the uuid of their image.
+    if (program->image_size == 0) continue;
+    if (program->is_system == is_system) return program;
   }
   return null;
 }
