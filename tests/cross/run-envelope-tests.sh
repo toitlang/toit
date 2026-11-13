@@ -67,7 +67,14 @@ fib n/int -> int: return n < 2 ? n : (fib n - 1) + (fib n - 2)
 main: print "TOIT-CROSS-FIRST: $(fib 20)"
 EOF
 cat > "${TEMP_DIR}/app/second.toit" <<'EOF'
-main: print "TOIT-CROSS-SECOND: $(List 10: it * it)"
+main:
+  // Doubles and integers that don't fit in a small integer go through the
+  // runtime of native code.
+  sum := 0.0
+  10.repeat: sum += it * 0.5
+  big := 1
+  62.repeat: big *= 2
+  print "TOIT-CROSS-SECOND: $(List 10: it * it) $sum $(1.5 * 2.25) $(1 << 62) $(big >> 52)"
 EOF
 cat > "${TEMP_DIR}/app/snapshot.toit" <<'EOF'
 main: print "TOIT-CROSS-SNAPSHOT"
@@ -84,7 +91,7 @@ ENVELOPE_WITH_CONTAINERS="${TEMP_DIR}/containers.envelope"
 
 EXPECTED=(
   "TOIT-CROSS-FIRST: 6765"
-  "TOIT-CROSS-SECOND: [0, 1, 4, 9, 16, 25, 36, 49, 64, 81]"
+  "TOIT-CROSS-SECOND: [0, 1, 4, 9, 16, 25, 36, 49, 64, 81] 22.5 3.375 4611686018427387904 1024"
   "TOIT-CROSS-SNAPSHOT"
 )
 

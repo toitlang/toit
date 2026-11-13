@@ -1036,6 +1036,96 @@ __attribute__((used)) Object** toit_native_push_double(Object** sp, NativeContex
     "ldp x1, x2, [sp], #16\n"                    \
     "ldp x29, x30, [sp], #16\n"                  \
     "ret\n")
+#elif defined(__riscv) && __riscv_xlen == 64
+#if defined(__riscv_flen)
+#define RISCV64_SAVE_FP \
+    "fsd ft0, 160(sp)\n" \
+    "fsd ft1, 152(sp)\n" \
+    "fsd ft2, 144(sp)\n" \
+    "fsd ft3, 136(sp)\n" \
+    "fsd ft4, 128(sp)\n" \
+    "fsd ft5, 120(sp)\n" \
+    "fsd ft6, 112(sp)\n" \
+    "fsd ft7, 104(sp)\n" \
+    "fsd ft8, 96(sp)\n" \
+    "fsd ft9, 88(sp)\n" \
+    "fsd ft10, 80(sp)\n" \
+    "fsd ft11, 72(sp)\n" \
+    "fsd fa0, 64(sp)\n" \
+    "fsd fa1, 56(sp)\n" \
+    "fsd fa2, 48(sp)\n" \
+    "fsd fa3, 40(sp)\n" \
+    "fsd fa4, 32(sp)\n" \
+    "fsd fa5, 24(sp)\n" \
+    "fsd fa6, 16(sp)\n" \
+    "fsd fa7, 8(sp)\n"
+#define RISCV64_LOAD_FP \
+    "fld fa7, 8(sp)\n" \
+    "fld fa6, 16(sp)\n" \
+    "fld fa5, 24(sp)\n" \
+    "fld fa4, 32(sp)\n" \
+    "fld fa3, 40(sp)\n" \
+    "fld fa2, 48(sp)\n" \
+    "fld fa1, 56(sp)\n" \
+    "fld fa0, 64(sp)\n" \
+    "fld ft11, 72(sp)\n" \
+    "fld ft10, 80(sp)\n" \
+    "fld ft9, 88(sp)\n" \
+    "fld ft8, 96(sp)\n" \
+    "fld ft7, 104(sp)\n" \
+    "fld ft6, 112(sp)\n" \
+    "fld ft5, 120(sp)\n" \
+    "fld ft4, 128(sp)\n" \
+    "fld ft3, 136(sp)\n" \
+    "fld ft2, 144(sp)\n" \
+    "fld ft1, 152(sp)\n" \
+    "fld ft0, 160(sp)\n"
+#else
+#define RISCV64_SAVE_FP
+#define RISCV64_LOAD_FP
+#endif
+#define STUB_BODY(name, target)                  \
+  __asm__(                                       \
+    ".text\n"                                    \
+    ".globl " name "\n"                          \
+    ".p2align 1\n"                               \
+    name ":\n"                                   \
+    "addi sp, sp, -288\n"                        \
+    "sd ra, 280(sp)\n" \
+    "sd a1, 272(sp)\n" \
+    "sd a2, 264(sp)\n" \
+    "sd a3, 256(sp)\n" \
+    "sd a4, 248(sp)\n" \
+    "sd a5, 240(sp)\n" \
+    "sd a6, 232(sp)\n" \
+    "sd a7, 224(sp)\n" \
+    "sd t0, 216(sp)\n" \
+    "sd t1, 208(sp)\n" \
+    "sd t2, 200(sp)\n" \
+    "sd t3, 192(sp)\n" \
+    "sd t4, 184(sp)\n" \
+    "sd t5, 176(sp)\n" \
+    "sd t6, 168(sp)\n" \
+    RISCV64_SAVE_FP                              \
+    "call " target "\n"                          \
+    RISCV64_LOAD_FP                              \
+    "ld t6, 168(sp)\n" \
+    "ld t5, 176(sp)\n" \
+    "ld t4, 184(sp)\n" \
+    "ld t3, 192(sp)\n" \
+    "ld t2, 200(sp)\n" \
+    "ld t1, 208(sp)\n" \
+    "ld t0, 216(sp)\n" \
+    "ld a7, 224(sp)\n" \
+    "ld a6, 232(sp)\n" \
+    "ld a5, 240(sp)\n" \
+    "ld a4, 248(sp)\n" \
+    "ld a3, 256(sp)\n" \
+    "ld a2, 264(sp)\n" \
+    "ld a1, 272(sp)\n" \
+    "ld ra, 280(sp)\n" \
+    "addi sp, sp, 288\n"                         \
+    "ret\n")
 #elif defined(__riscv)
 #define STUB_BODY(name, target)                  \
   __asm__(                                       \

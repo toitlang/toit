@@ -517,6 +517,38 @@ inline __attribute__((always_inline)) Object** native_call_int_stub(Object** sp_
   return r0;
 }
 
+#if defined(__riscv_float_abi_double)
+
+// Doubles are passed in a floating-point register.
+inline __attribute__((always_inline)) Object** native_call_double_stub(Object** sp_, NativeContext* c_, double value) {
+  register Object** r0 __asm__("a0") = sp_;
+  register NativeContext* r1 __asm__("a1") = c_;
+  register double f0 __asm__("fa0") = value;
+  __asm__ volatile("mv t6, ra\n"
+                   "call " NATIVE_SYMBOL(toit_native_double_stub) "\n"
+                   "mv ra, t6\n"
+                   : "+r"(r0) : "r"(r1), "f"(f0) : "t6", "memory");
+  return r0;
+}
+
+#elif __riscv_xlen == 64
+
+// Without floating-point registers, doubles are passed in an integer register.
+inline __attribute__((always_inline)) Object** native_call_double_stub(Object** sp_, NativeContext* c_, double value) {
+  uint64_t bits;
+  __builtin_memcpy(&bits, &value, sizeof(value));
+  register Object** r0 __asm__("a0") = sp_;
+  register NativeContext* r1 __asm__("a1") = c_;
+  register uint64_t r2 __asm__("a2") = bits;
+  __asm__ volatile("mv t6, ra\n"
+                   "call " NATIVE_SYMBOL(toit_native_double_stub) "\n"
+                   "mv ra, t6\n"
+                   : "+r"(r0) : "r"(r1), "r"(r2) : "t6", "memory");
+  return r0;
+}
+
+#else
+
 // Doubles are passed in a pair of integer registers.
 inline __attribute__((always_inline)) Object** native_call_double_stub(Object** sp_, NativeContext* c_, double value) {
   uint32_t words[2];
@@ -531,6 +563,8 @@ inline __attribute__((always_inline)) Object** native_call_double_stub(Object** 
                    : "+r"(r0) : "r"(r1), "r"(r2), "r"(r3) : "t6", "memory");
   return r0;
 }
+
+#endif  // __riscv_float_abi_double
 
 #elif defined(__x86_64__)
 
