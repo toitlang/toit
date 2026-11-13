@@ -72,7 +72,12 @@ int run_program(SnapshotBundle boot_bundle, SnapshotBundle application_bundle, c
             boot_image.program(), boot_bundle, application_bundle, argv, group_id);
       } else {
         auto application_image = read_image_from_bundle(application_bundle);
-        exit = vm.scheduler()->run_boot_program(application_image.program(), argv, group_id);
+        if (application_image.is_valid()) {
+          exit = vm.scheduler()->run_boot_program(application_image.program(), argv, group_id);
+        } else {
+          fprintf(stderr, "Invalid snapshot\n");
+          exit = Scheduler::ExitState(Scheduler::EXIT_ERROR, 1);
+        }
         application_image.release();
       }
       boot_image.release();
