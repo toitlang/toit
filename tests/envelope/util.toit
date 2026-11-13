@@ -80,18 +80,18 @@ class EnvelopeTest:
   firmware arguments/List --allow-fail/bool=false -> int:
     return run-program_ [toit-bin, "tool", "firmware", "-e", envelope] + arguments --allow-fail=allow-fail
 
-  extract --path/string --format/string="binary" --config/ByteArray?=null -> none:
-    cmd := [toit-bin, "tool", "firmware", "-e", envelope, "extract", "--format", format, "-o", path]
+  extract --path/string --format/string="binary" --config/ByteArray?=null --flags/List=[] -> none:
+    cmd := [toit-bin, "tool", "firmware", "-e", envelope, "extract", "--format", format, "-o", path] + flags
     if config:
       tmp-config-path := "$tmp-dir/__tmp__.config"
       file.write-contents --path=tmp-config-path config
       cmd.add_all ["--config", tmp-config-path]
     run-program_ cmd
 
-  extract-to-dir --dir-path/string --config/ByteArray?=null -> none:
+  extract-to-dir --dir-path/string --config/ByteArray?=null --flags/List=[] -> none:
     directory.mkdir --recursive dir-path
     tmp-extracted := "$tmp-dir/__extracted__"
-    extract --path=tmp-extracted --format="tar" --config=config
+    extract --path=tmp-extracted --format="tar" --config=config --flags=flags
     run-program_ ["tar", "x", "-f", tmp-extracted, "-C", dir-path]
 
   build-ota --name/string --source/string --output/string -> none:

@@ -22,8 +22,13 @@ main args:
     file.write-contents --path=source """
       main: print "hello from source"
       """
+    // The containers run different programs, so they have different ids.
+    stripped-source := "$test.tmp-dir/stripped.toit"
+    file.write-contents --path=stripped-source """
+      main: print "hello from stripped"
+      """
     test.firmware ["container", "install", "hello", source]
-    test.firmware ["container", "install", "stripped", source, "--strip"]
+    test.firmware ["container", "install", "stripped", stripped-source, "--strip"]
     containers := list-containers test
     expect-equals true containers["hello"]["source"]
     expect-not (containers["stripped"].contains "source")
@@ -32,9 +37,22 @@ main args:
     test.extract-to-dir --dir-path=test.tmp-dir
     output := test.backticks "$test.tmp-dir/ota0"
     expect (output.contains "hello from source")
+    expect (output.contains "hello from stripped")
 
-    // Only ESP32 envelopes can combine containers.
-    expect-equals 1 (test.firmware --allow-fail ["extract", "--combine", "--format", "tar", "-o", "$test.tmp-dir/x"])
+    // With --combine, the container that has its sources runs from the
+    // system program, which has an image of its own. The stripped container
+    // still runs its snapshot.
+    combined-dir := "$test.tmp-dir/combined"
+    test.extract-to-dir --dir-path=combined-dir --flags=["--combine"]
+    startup-images := directory-entries "$combined-dir/ota0/startup-images"
+    expect-equals 2 startup-images.size
+    expect (startup-images.contains "system")
+    output = test.backticks "$combined-dir/ota0"
+    expect (output.contains "hello from source")
+    expect (output.contains "hello from stripped")
+
+    // Host envelopes don't support native firmware yet.
+    expect-equals 1 (test.firmware --allow-fail ["extract", "--native", "--format", "tar", "-o", "$test.tmp-dir/x"])
 
     test-paths test
 
@@ -83,6 +101,15 @@ snapshot-uuid path/string -> ByteArray:
   while entry := reader.next:
     if entry.name == "uuid": return entry.content
   throw "No uuid in $path"
+
+directory-entries path/string -> List:
+  result := []
+  stream := directory.DirectoryStream path
+  try:
+    while name := stream.next: result.add name
+  finally:
+    stream.close
+  return result
 
 list-containers test/EnvelopeTest -> Map:
   path := "$test.tmp-dir/containers.json"

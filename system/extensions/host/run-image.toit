@@ -47,6 +47,7 @@ STARTUP-DIR-NAME ::= "startup-images"
 BUNDLED-DIR-NAME ::= "bundled-images"
 INSTALLED-DIR-NAME ::= "installed-images"
 VALIDATED-FILE-NAME_ ::= "validated"
+SYSTEM-IMAGE-FILE-NAME_ ::= "system"
 
 // TODO(kasper): It feels annoying to have to put this here. Maybe we
 // can have some sort of reasonable default in the ContainerManager?
@@ -398,6 +399,10 @@ handle-arguments arguments/List container-manager/RunImageContainerManager -> no
         while file-name/string? := stream.next:
           path := "$dir/$file-name"
           if not file.is-file path: continue
+          // The system image of firmware that has programs combined with
+          // the system program is with the startup images, but the
+          // 'run-image' executable runs it, and it is running now.
+          if is-startup-dir and file-name == SYSTEM-IMAGE-FILE-NAME_: continue
           add-image path existing-uuids --run-boot=is-startup-dir --run-critical=is-startup-dir
       finally:
         stream.close

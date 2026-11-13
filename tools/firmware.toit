@@ -874,7 +874,11 @@ compile-system-with-programs sources/Map --envelope/Envelope --ui/cli.Ui -> Byte
   tmp-dir := directory.mkdtemp "/tmp/toit-firmware-programs-"
   try:
     output := "$tmp-dir/system.snapshot"
-    compile-system-with-programs_ sources --tmp-dir=tmp-dir --ui=ui ["-w", output]
+    compile-system-with-programs_ sources
+        --system-source=(system-source-path_ --kind=envelope.kind)
+        --tmp-dir=tmp-dir
+        --ui=ui
+        ["-w", output]
     return read-compiled-snapshot_ output --envelope=envelope --ui=ui
   finally:
     directory.rmdir --recursive tmp-dir
@@ -883,9 +887,12 @@ compile-system-with-programs sources/Map --envelope/Envelope --ui/cli.Ui -> Byte
 Compiles the system program with the programs in the given $sources
   combined with it, using the given $output-arguments, like '-w <path>'.
 */
-compile-system-with-programs_ sources/Map --tmp-dir/string --ui/cli.Ui output-arguments/List -> none:
+compile-system-with-programs_ sources/Map
+    --system-source/string=system-source-path_
+    --tmp-dir/string
+    --ui/cli.Ui
+    output-arguments/List -> none:
   sdk-lib := find-sdk-lib_
-  system-source := system-source-path_
   if not file.is-file system-source:
     ui.abort "The SDK doesn't have the sources of the system program ($system-source)."
   arguments := [compiler-path_ sdk-lib, "-O2"]
@@ -1306,8 +1313,11 @@ compile-snapshot-from-archive_ archive/ByteArray --ui/cli.Ui -> ByteArray:
   finally:
     directory.rmdir --recursive tmp-dir
 
-// The source of the system program of the SDK for the ESP32.
-system-source-path_ -> string:
+// The source of the system program of the SDK for envelopes of the given
+// $kind. Host envelopes run it with the 'run-image' executable.
+system-source-path_ --kind/int=Envelope.KIND-ESP32 -> string:
+  if kind == Envelope.KIND-HOST:
+    return "$find-sdk-lib_/system-sources/system/extensions/host/run-image.toit"
   return "$find-sdk-lib_/system-sources/system/extensions/esp32/boot.toit"
 
 toit-path_ sdk-lib/string -> string:
@@ -1534,8 +1544,10 @@ extract invocation/cli.Invocation -> none:
         --interpreter=invocation["interpreter"]
         --ui=ui
     extract-esp32 invocation envelope --config-encoded=config-encoded
-  else if invocation["combine"] or invocation["native"] or not invocation["interpreter"]:
-    ui.abort "Only ESP32 envelopes support combining containers and native firmware."
+  else if invocation["native"] or not invocation["interpreter"]:
+    ui.abort "Only ESP32 envelopes support native firmware."
+  else if invocation["combine"] and envelope.kind != Envelope.KIND-HOST:
+    ui.abort "Only ESP32 and host envelopes support combining containers."
   else if envelope.kind == Envelope.KIND-HOST:
     extract-host invocation envelope --config-encoded=config-encoded
   else if envelope.kind == Envelope.KIND-EC618:
@@ -1603,8 +1615,14 @@ extract-host invocation/cli.Invocation envelope/Envelope --config-encoded/ByteAr
   startup-images := {:}
   bundled-images := {:}
   name-to-uuid-mapping := {:}
+  // With --combine, the containers that have their sources are compiled
+  // into the system program.
+  combined/Map := invocation["combine"] ? envelope.container-sources : {:}
+  if invocation["combine"] and combined.is-empty:
+    ui.emit --warning "There are no containers with sources to combine."
   entries.do: | name/string content/ByteArray |
     if not is-container-name name: continue.do
+    if combined.contains name: continue.do
     entry-assets := entries.get "+$name"
     container := extract-container name flags content --assets=entry-assets --word-size=word-size
     uuid := container.id.to-string
@@ -1620,6 +1638,13 @@ extract-host invocation/cli.Invocation envelope/Envelope --config-encoded/ByteAr
     else:
       bundled-images[name] = relocatable
     name-to-uuid-mapping[name] = uuid
+
+  if not combined.is-empty:
+    startup-images[HOST-SYSTEM-IMAGE-NAME_] = combined-host-system-image_ envelope combined
+        --flags=flags
+        --system-uuid=system-uuid
+        --ui=ui
+    name-to-uuid-mapping[HOST-SYSTEM-IMAGE-NAME_] = HOST-SYSTEM-IMAGE-FILE_
 
   parts := []
   bits := io.Buffer
@@ -1711,6 +1736,52 @@ extract-host invocation/cli.Invocation envelope/Envelope --config-encoded/ByteAr
   tar-bytes.close
 
   write-file output-path --ui=ui: it.write tar-bytes.bytes
+
+// Host firmware with programs combined with the system program has a system
+// image of its own, which the 'run-image' executable runs instead of the one
+// that is compiled into it. It is one of the startup images, under a name
+// that isn't the name of a container, so firmware updates that are written
+// by older firmware carry it along.
+HOST-SYSTEM-IMAGE-NAME_ ::= "\$system"
+HOST-SYSTEM-IMAGE-FILE_ ::= "system"
+
+/**
+Compiles the system program of the host $envelope with the programs in the
+  $combined source archives, and returns its relocatable image.
+
+The image has the system assets that describe the containers that run the
+  combined programs. They keep the ids that they have when they run from
+  their snapshots.
+*/
+combined-host-system-image_ envelope/Envelope combined/Map
+    --flags/Map?
+    --system-uuid/Uuid
+    --ui/cli.Ui -> ByteArray:
+  entries := envelope.entries
+  snapshot := compile-system-with-programs combined --envelope=envelope --ui=ui
+  save-snapshot-for-decoding_ snapshot --ui=ui
+  description := []
+  index := 0
+  combined.do --keys: | name/string |
+    id := image-id
+        --snapshot-uuid=(SnapshotBundle name entries[name]).uuid
+        --assets=entries.get "+$name"
+    description.add name
+    description.add index++
+    description.add ((flags and flags.get name) or 0)
+    // The system program gives the containers their assets.
+    description.add (entries.get "+$name")
+    description.add id.to-byte-array
+  system-assets := assets.encode { "combined": tison.encode description }
+  system := extract-container SYSTEM-CONTAINER-NAME flags snapshot
+      --assets=system-assets
+      --word-size=envelope.word-size
+  relocated := system.relocate
+      --relocation-base=0
+      --system-uuid=system-uuid
+      --attach-assets
+  relocated = pad relocated (1 << 12)
+  return system.relocation-information.apply-to relocated
 
 /**
 Parses the flash size (a string like "16MB") from the flashing settings and
