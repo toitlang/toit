@@ -385,7 +385,7 @@ PRIMITIVE(byte_array_convert_to_string) {
 PRIMITIVE(blob_index_of) {
   ARGS(Blob, bytes, int, byte, word, from, word, to);
   if (!(0 <= from && from <= to && to <= bytes.length())) FAIL(OUT_OF_BOUNDS);
-#if defined(__x86_64__) && !defined(__SANITIZE_THREAD__) && !defined(TOIT_ASAN)
+#if defined(__x86_64__) && !defined(__SANITIZE_THREAD__) && !defined(__SANITIZE_ADDRESS__) && !defined(TOIT_ASAN)
   const uint8* address = bytes.address();
   // Algorithm from https://github.com/erikcorry/struhchuh.
   // Search for "*" using only aligned SSE2 128 bit loads. This may load data
@@ -1148,37 +1148,191 @@ PRIMITIVE(time) {
   return Primitive::integer(timestamp, process);
 }
 
-#ifdef TOIT_WINDOWS
-static struct tm* gmtime_r(const time_t* t, struct tm* timeinfo) {
-  return gmtime_s(timeinfo, t) ? NULL : timeinfo;
+// Calendar computations for time_info. Dates are in the proleptic Gregorian
+// calendar and, like POSIX time_t, timestamps ignore leap seconds.
+
+static const int64 SECONDS_PER_DAY = 24 * 60 * 60;
+
+static int64 floor_div(int64 a, int64 b) {
+  ASSERT(b > 0);
+  int64 q = a / b;
+  return (a % b < 0) ? q - 1 : q;
 }
 
-static struct tm* localtime_r(const time_t* t, struct tm* timeinfo) {
-  return localtime_s(timeinfo, t) ? NULL : timeinfo;
+static bool is_leap_year(int64 year) {
+  return (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
 }
+
+// The number of days from 1970-01-01 to the given date (month in 1-12).
+// This is 'days_from_civil' of Howard Hinnant's "chrono-Compatible Low-Level
+// Date Algorithms" (public domain).
+// The computation uses years that start on March 1st, so that the leap day is
+// the last day of the year, and 400-year eras of 146097 days.
+static int64 days_from_civil(int64 year, int month, int day) {
+  year -= month <= 2;
+  int64 era = floor_div(year, 400);
+  // In [0, 399].
+  int64 year_of_era = year - era * 400;
+  // In [0, 365], counted from March 1st.
+  int64 day_of_year = (153 * (month > 2 ? month - 3 : month + 9) + 2) / 5 + day - 1;
+  // In [0, 146096].
+  int64 day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+  // 719468 is the number of days from 0000-03-01 to 1970-01-01.
+  return era * 146097 + day_of_era - 719468;
+}
+
+// 0 is Sunday, like tm_wday. 1970-01-01 was a Thursday.
+static int weekday_from_days(int64 days) {
+  return static_cast<int>(days - floor_div(days + 4, 7) * 7 + 4);
+}
+
+struct TimeFields {
+  int64 year;
+  int month;    // 0-11, like tm_mon.
+  int day;      // 1-31.
+  int hour;
+  int minute;
+  int second;   // Normally 0-59, but the C library may report a leap second.
+  int weekday;  // 0-6, Sunday is 0.
+  int yearday;  // 0-365.
+  bool is_dst;
+};
+
+// Computes the UTC fields of the given timestamp without calling the C
+// library. This is exact for every int64, unlike gmtime_s on Windows which
+// rejects all times before 1970.
+// This is 'civil_from_days' of Howard Hinnant's algorithms.
+static void utc_fields(int64 timestamp, TimeFields* fields) {
+  int64 days = floor_div(timestamp, SECONDS_PER_DAY);
+  int seconds_of_day = static_cast<int>(timestamp - days * SECONDS_PER_DAY);
+  // Days since 0000-03-01.
+  int64 z = days + 719468;
+  int64 era = floor_div(z, 146097);
+  // In [0, 146096].
+  int64 day_of_era = z - era * 146097;
+  // In [0, 399].
+  int64 year_of_era =
+      (day_of_era - day_of_era / 1460 + day_of_era / 36524 - day_of_era / 146096) / 365;
+  // In [0, 365], counted from March 1st.
+  int64 day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+  // In [0, 11], 0 is March.
+  int64 shifted_month = (5 * day_of_year + 2) / 153;
+  // In [0, 11], 0 is January.
+  int month = static_cast<int>(shifted_month < 10 ? shifted_month + 2 : shifted_month - 10);
+  int64 year = year_of_era + era * 400 + (month <= 1);
+  fields->year = year;
+  fields->month = month;
+  fields->day = static_cast<int>(day_of_year - (153 * shifted_month + 2) / 5 + 1);
+  fields->hour = seconds_of_day / 3600;
+  fields->minute = (seconds_of_day / 60) % 60;
+  fields->second = seconds_of_day % 60;
+  fields->weekday = weekday_from_days(days);
+  fields->yearday = static_cast<int>(days - days_from_civil(year, 1, 1));
+  fields->is_dst = false;
+}
+
+// Converts with the C library's localtime. Returns false if the C library
+// can't convert the timestamp.
+static bool os_localtime(int64 timestamp, struct tm* result) {
+  memset(result, 0, sizeof(*result));
+  time_t t = static_cast<time_t>(timestamp);
+  if (static_cast<int64>(t) != timestamp) return false;  // A 32-bit time_t.
+#ifdef TOIT_WINDOWS
+  // The CRT's localtime_s fails with EINVAL for times before 1970 and after
+  // 3000-12-31T23:59:59Z (_MAX__TIME64_T). Don't hand them to it.
+  const int64 MAX_WINDOWS_TIME = 32535215999LL;
+  if (timestamp < 0 || timestamp > MAX_WINDOWS_TIME) return false;
+  return localtime_s(result, &t) == 0;
+#else
+  return localtime_r(&t, result) != null;
 #endif
+}
+
+// Returns the year in [first, first + 27] that has the same calendar as the
+// given year: it is a leap year if the given year is, and it starts on the
+// same weekday. The range must not contain a year divisible by 100, so that
+// it repeats every 28 years and contains all 14 calendars.
+static int equivalent_year(int64 year, int first) {
+  bool is_leap = is_leap_year(year);
+  int weekday = weekday_from_days(days_from_civil(year, 1, 1));
+  for (int candidate = first; candidate < first + 28; candidate++) {
+    if (is_leap_year(candidate) == is_leap &&
+        weekday_from_days(days_from_civil(candidate, 1, 1)) == weekday) {
+      return candidate;
+    }
+  }
+  UNREACHABLE();
+}
+
+// Computes the local fields of the given timestamp.
+// The C library does this whenever it can. Otherwise (on Windows for times
+// before 1970 or after the year 3000, or with a 32-bit time_t) the timestamp
+// is moved by whole days into an equivalent year (same leap-year status and
+// weekdays) that the C library handles: 1971-1998 for earlier times,
+// 2010-2037 for later ones. The UTC offset and daylight-saving status that the
+// C library reports for the moved time are then applied to the original
+// timestamp.
+// The Windows C library has no historical zone data: it applies the rules of
+// the zone (from the TZ variable or the system settings) to every year, so
+// the result is what it would compute if it accepted the timestamp.
+// A C library with historical data (only used here with a 32-bit time_t)
+// applies the rules of the equivalent year instead of the historical ones.
+// The equivalent years are the closest to the range of the C library, which
+// keeps the results continuous at its limits.
+// Returns false if the timestamp is out of range.
+static bool local_fields(int64 timestamp, TimeFields* fields) {
+  struct tm tm;
+  if (os_localtime(timestamp, &tm)) {
+    fields->year = static_cast<int64>(tm.tm_year) + 1900;
+    fields->month = tm.tm_mon;
+    fields->day = tm.tm_mday;
+    fields->hour = tm.tm_hour;
+    fields->minute = tm.tm_min;
+    fields->second = tm.tm_sec;
+    fields->weekday = tm.tm_wday;
+    fields->yearday = tm.tm_yday;
+    // When the information isn't available we just say false for daylight saving.
+    fields->is_dst = tm.tm_isdst > 0;
+    return true;
+  }
+  TimeFields utc;
+  utc_fields(timestamp, &utc);
+  // Avoid overflows in the shift below. The caller rejects these years anyway.
+  if (!Smi::is_valid32(utc.year)) return false;
+  int equivalent = equivalent_year(utc.year, utc.year < 2000 ? 1971 : 2010);
+  int64 shift_days = days_from_civil(equivalent, 1, 1) - days_from_civil(utc.year, 1, 1);
+  int64 moved = timestamp + shift_days * SECONDS_PER_DAY;
+  if (!os_localtime(moved, &tm)) return false;
+  int64 local_moved_days = days_from_civil(static_cast<int64>(tm.tm_year) + 1900, tm.tm_mon + 1, tm.tm_mday);
+  int64 local_moved =
+      local_moved_days * SECONDS_PER_DAY + tm.tm_hour * 3600 + tm.tm_min * 60 + tm.tm_sec;
+  int64 offset = local_moved - moved;
+  utc_fields(timestamp + offset, fields);
+  fields->is_dst = tm.tm_isdst > 0;
+  return true;
+}
 
 PRIMITIVE(time_info) {
   ARGS(int64, timestamp, bool, is_utc)
-  time_t t = timestamp;
+  TimeFields fields;
+  if (is_utc) {
+    utc_fields(timestamp, &fields);
+  } else if (!local_fields(timestamp, &fields)) {
+    FAIL(OUT_OF_RANGE);
+  }
+  // Keep the year a small integer on all platforms.
+  if (!Smi::is_valid32(fields.year)) FAIL(OUT_OF_RANGE);
   Array* result = process->object_heap()->allocate_array(9, Smi::zero());
   if (result == null) FAIL(ALLOCATION_FAILED);
-  struct tm timeinfo;
-  if (is_utc) {
-    gmtime_r(&t, &timeinfo);
-  } else {
-    localtime_r(&t, &timeinfo);
-  }
-  result->at_put(0, Smi::from(timeinfo.tm_sec));
-  result->at_put(1, Smi::from(timeinfo.tm_min));
-  result->at_put(2, Smi::from(timeinfo.tm_hour));
-  result->at_put(3, Smi::from(timeinfo.tm_mday));
-  result->at_put(4, Smi::from(timeinfo.tm_mon));
-  result->at_put(5, Smi::from(timeinfo.tm_year + 1900));
-  result->at_put(6, Smi::from(timeinfo.tm_wday));
-  result->at_put(7, Smi::from(timeinfo.tm_yday));
-  // When the information isn't available we just say false for daylight saving.
-  result->at_put(8, BOOL(timeinfo.tm_isdst == 1));
+  result->at_put(0, Smi::from(fields.second));
+  result->at_put(1, Smi::from(fields.minute));
+  result->at_put(2, Smi::from(fields.hour));
+  result->at_put(3, Smi::from(fields.day));
+  result->at_put(4, Smi::from(fields.month));
+  result->at_put(5, Smi::from(static_cast<word>(fields.year)));
+  result->at_put(6, Smi::from(fields.weekday));
+  result->at_put(7, Smi::from(fields.yearday));
+  result->at_put(8, BOOL(fields.is_dst));
   return result;
 }
 
@@ -1461,6 +1615,16 @@ PRIMITIVE(string_rune_count) {
   const uword WORD_MASK = WORD_SIZE - 1;
   const uint8* address = bytes.address();
   word len = bytes.length();
+#if defined(TOIT_ASAN) || defined(__SANITIZE_ADDRESS__)
+  // The word-sized loads below read the bytes before and after the blob in
+  // the same aligned word. They can't fault, but AddressSanitizer rejects
+  // them (an external byte array is a malloced block of any size), so
+  // sanitizer builds count byte by byte.
+  for (word i = 0; i < len; i++) {
+    if ((address[i] & 0xc0) != 0x80) count++;
+  }
+  return Smi::from(count);
+#endif
   // This algorithm counts the runes in word-sized chunks of UTF-8.
   // We have to ensure that the memory reads are word aligned to avoid memory
   // faults.
@@ -2281,7 +2445,9 @@ PRIMITIVE(create_off_heap_byte_array) {
   uint8* buffer = allocation.alloc(length);
   if (buffer == null) FAIL(ALLOCATION_FAILED);
 
-  ByteArray* result = process->object_heap()->allocate_proxy(length, buffer, true);
+  // The memory comes from malloc. Clear it, so the program doesn't see what
+  // the VM or other processes freed.
+  ByteArray* result = process->object_heap()->allocate_external_byte_array(length, buffer, true, true);
   if (result == null) FAIL(ALLOCATION_FAILED);
   allocation.keep_result();
   return result;
