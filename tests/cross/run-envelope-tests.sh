@@ -39,7 +39,14 @@ case "${TARGET}" in
 esac
 QEMU="${QEMU_USER:-${QEMU}}"
 
+# Each firmware gets two minutes. On macOS, timeout comes with the GNU
+# coreutils as gtimeout, and without either the firmware runs without a limit.
 RUNNER=()
+if command -v timeout >/dev/null 2>&1; then
+  RUNNER=(timeout 120)
+elif command -v gtimeout >/dev/null 2>&1; then
+  RUNNER=(gtimeout 120)
+fi
 if [[ -n "${QEMU}" ]]; then
   if ! command -v "${QEMU}" >/dev/null 2>&1; then
     echo "QEMU executable not found: ${QEMU}" >&2
@@ -49,7 +56,7 @@ if [[ -n "${QEMU}" ]]; then
     echo "Sysroot not found: ${SYSROOT}" >&2
     exit 2
   fi
-  RUNNER=("${QEMU}" -L "${SYSROOT}")
+  RUNNER+=("${QEMU}" -L "${SYSROOT}")
 fi
 if [[ ! -f "${ENVELOPE}" ]]; then
   echo "Envelope not found: ${ENVELOPE}" >&2
@@ -106,7 +113,9 @@ run_mode() {
       --format=tar -o "${dir}/firmware.tar"
   tar x -f "${dir}/firmware.tar" -C "${dir}"
   local output
-  output="$(timeout 120 "${RUNNER[@]}" "${dir}/ota0/run-image" \
+  # Bash 3.2, which macOS has, doesn't allow expanding an empty array
+  # with 'set -u'.
+  output="$(${RUNNER[@]+"${RUNNER[@]}"} "${dir}/ota0/run-image" \
       "${dir}/ota0" "${dir}/inactive" 2>&1)" || true
   for line in "${EXPECTED[@]}"; do
     if [[ "${output}" != *"${line}"* ]]; then

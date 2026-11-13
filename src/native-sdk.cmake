@@ -63,6 +63,8 @@ toit_native_collect(toit_native_entry)
 # linker can leave the rest out. That includes system libraries.
 list(REMOVE_ITEM TOIT_NATIVE_LINK_FLAGS "-Wl,-all_load" "-Wl,--whole-archive" "-Wl,--no-whole-archive")
 if (APPLE)
+  # Clang ignores the flag on macOS, where the C++ library is always dynamic.
+  list(REMOVE_ITEM TOIT_NATIVE_LINK_FLAGS "-static-libstdc++")
   list(APPEND TOIT_NATIVE_LINK_FLAGS "-Wl,-dead_strip_dylibs")
 else()
   list(PREPEND TOIT_NATIVE_LINK_FLAGS "-Wl,--as-needed")
