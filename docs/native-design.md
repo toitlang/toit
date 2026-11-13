@@ -125,7 +125,13 @@ Without `--combine`, the containers run their snapshots, like any other. With
 `--native`, the system program and the containers with sources are compiled to
 native code, whether they are combined or not. Containers that aren't combined
 are compiled on their own, so they don't share code with the system program,
-but their images are still separate, like the images of other containers:
+but their images are still separate, like the images of other containers.
+Each of them has the native code of the libraries it uses, so on the
+ESP32-C3, a single small container compiled on its own almost fills the
+standard app partition. Combining is what makes native firmware small: the
+system program combined with containers and compiled to native code is
+smaller than the system program as bytecodes. The four ways to extract the
+firmware:
 
 ```
 toit tool firmware -e firmware.envelope container install hello hello.toit

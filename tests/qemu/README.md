@@ -132,3 +132,23 @@ The automated runner creates the flash image and supplies these options.
 
 ESP32-S2 USB CDC is intentionally outside this test and the current stdio
 implementation.
+
+## ESP32-C3 native code
+
+`run-c3-native-tests.sh` installs containers from source in an ESP32-C3
+envelope with native support, and boots the firmware in each of the ways it
+can be extracted: as it is, with `--combine`, with `--native`, and with both.
+Native extraction compiles the generated code with esp-clang and links it with
+the RISC-V toolchain of ESP-IDF, so both must be installed (see
+`docs/native-design.md`):
+
+```sh
+make esp32c3 ESP32_NATIVE_SUPPORT=1
+QEMU_SYSTEM_RISCV32=/tmp/qemu-toit-$QEMU_VERSION-linux-x86_64/bin/qemu-system-riscv32 \
+  tests/qemu/run-c3-native-tests.sh
+```
+
+Don't give QEMU an eFuse file, like the one `idf.py qemu` makes. The eFuses
+that QEMU has by default have the ADC calibration of the chip. Without it,
+ESP-IDF calibrates the ADC at startup, and QEMU doesn't emulate the ADC of the
+ESP32-C3, so the firmware never starts.
