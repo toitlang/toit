@@ -41,10 +41,17 @@ endif()
 # instructions, so Clang calls the library for atomic loads, which takes a
 # lock. With forced atomics it loads and stores words directly, like GCC does
 # for the rest of the firmware. Clang still warns that the loads aren't lock
-# free, because the warning doesn't know about forced atomics.
+# free, because the warning doesn't know about forced atomics. The ESP32-C6
+# has atomic instructions.
+if (CONFIG_IDF_TARGET_ESP32C6)
+    set(TOIT_NATIVE_ARCH_FLAGS -march=rv32imac_zicsr_zifencei -mabi=ilp32)
+else()
+    set(TOIT_NATIVE_ARCH_FLAGS
+        -march=rv32imc_zicsr_zifencei -mabi=ilp32
+        -Xclang -target-feature -Xclang +forced-atomics -Wno-atomic-alignment)
+endif()
 set(TOIT_NATIVE_CXX_FLAGS
-    --target=riscv32-esp-elf -march=rv32imc_zicsr_zifencei -mabi=ilp32
-    -Xclang -target-feature -Xclang +forced-atomics -Wno-atomic-alignment
+    --target=riscv32-esp-elf ${TOIT_NATIVE_ARCH_FLAGS}
     -Wno-missing-multilib
     -std=gnu++11 -ffreestanding -fno-exceptions -fno-rtti -ffunction-sections -fdata-sections
     -O2)
@@ -99,8 +106,8 @@ if (TOIT_NATIVE_EMBEDDED)
     add_dependencies(${COMPONENT_LIB} toit_no_bytecodes)
 endif()
 
-if (TOIT_NATIVE_EMBEDDED AND NOT CONFIG_IDF_TARGET_ESP32C3)
-    message(FATAL_ERROR "Firmware with native code is only supported for the ESP32-C3")
+if (TOIT_NATIVE_EMBEDDED AND NOT CONFIG_IDF_TARGET_ESP32C3 AND NOT CONFIG_IDF_TARGET_ESP32C6)
+    message(FATAL_ERROR "Firmware with native code is only supported for the ESP32-C3 and ESP32-C6")
 endif()
 
 idf_component_set_property(${COMPONENT_NAME} TOIT_NATIVE_SUPPORT "${TOIT_NATIVE_SUPPORT}")

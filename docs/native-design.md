@@ -141,8 +141,9 @@ toit tool firmware -e firmware.envelope extract --native --format=image -o nativ
 toit tool firmware -e firmware.envelope extract --combine --native --format=image -o both.img
 ```
 
-Native extraction is only for the ESP32-C3, and it needs an envelope with
-native support, which `make esp32c3 ESP32_NATIVE_SUPPORT=1` builds. `toit tool
+Native extraction of ESP32 firmware is only for the RISC-V chips, the ESP32-C3
+and the ESP32-C6, and it needs an envelope with native support, which `make
+esp32c3 ESP32_NATIVE_SUPPORT=1` (or `esp32c6`) builds. `toit tool
 firmware show` tells whether an envelope has it. The native support comes from
 a second build of the firmware with the native runtime and without generated
 code. It has the libraries without debug information, the linker scripts, and

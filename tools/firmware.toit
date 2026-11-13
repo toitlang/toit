@@ -1234,7 +1234,8 @@ native-support-cmd -> cli.Command:
           installed programs and the system program are compiled to native code
           (see 'extract --native').
 
-        ESP32 envelopes get native support from 'make esp32c3 ESP32_NATIVE_SUPPORT=1'.
+        ESP32-C3 and ESP32-C6 envelopes get native support from
+          'make esp32c3 ESP32_NATIVE_SUPPORT=1' (or esp32c6).
           Host envelopes get it from the native folder of the SDK they were built
           with (lib/toit/native), with --directory and --target.
         """

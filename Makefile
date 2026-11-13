@@ -35,7 +35,7 @@ ESP32_PORT=
 # The system process is started from its own entry point.
 ESP32_SYSTEM_ENTRY=system/extensions/esp32/boot.toit
 
-# Use 'make esp32c3 ESP32_NATIVE_SUPPORT=1' to build an envelope that also
+# Use 'make esp32c3 ESP32_NATIVE_SUPPORT=1' (or esp32c6) to build an envelope that also
 # supports extracting native firmware ('toit tool firmware extract --native').
 # The native support is built in a build directory of its own.
 ESP32_NATIVE_SUPPORT ?=
