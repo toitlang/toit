@@ -1013,7 +1013,7 @@ build-native-host-firmware_ envelope/Envelope sources/Map
   recipe := native-support-recipe_ support
   check-native-support_ recipe --envelope=envelope --ui=ui
   cxx := os.env.get "TOIT_NATIVE_CXX" or "clang++"
-  target-flags := ["--target=$recipe["target"]"]
+  target-flags := recipe["target-flags"].copy
   link-flags := []
   if sysroot-name := recipe.get "sysroot":
     sysroot := os.env.get "TOIT_SYSROOT"
@@ -1237,7 +1237,8 @@ native-support-cmd -> cli.Command:
         ESP32-C3 and ESP32-C6 envelopes get native support from
           'make esp32c3 ESP32_NATIVE_SUPPORT=1' (or esp32c6).
           Host envelopes get it from the native folder of the SDK they were built
-          with (lib/toit/native), with --directory and --target.
+          with (lib/toit/native), with --directory and --target, or with --arch for
+          envelopes with more than one architecture, like the one for macOS.
         """
   option-output := cli.OptionPath OPTION-OUTPUT
       --short-name=OPTION-OUTPUT-SHORT
@@ -1251,6 +1252,9 @@ native-support-cmd -> cli.Command:
                 --help="The native folder of the SDK of a host envelope (lib/toit/native).",
             cli.Option "target"
                 --help="The target of a host envelope for clang, like 'aarch64-linux-gnu'.",
+            cli.Option "arch"
+                --help="An architecture of a host envelope with more than one, for clang's -arch, like 'arm64'."
+                --multi,
             cli.Option "sysroot"
                 --help="The toitlang/sysroots sysroot that a host envelope for another architecture links with, like 'aarch64'.",
           ]
@@ -1278,9 +1282,14 @@ native-support-add invocation/cli.Invocation -> none:
       if envelope.kind != Envelope.KIND-HOST:
         ui.abort "Only host envelopes get native support from the native folder of an SDK."
       target := invocation["target"]
-      if not target: ui.abort "Native support for a host envelope needs a target (--target)."
+      archs := invocation["arch"]
+      if (target == null) == archs.is-empty:
+        ui.abort "Native support for a host envelope needs either a target (--target) or architectures (--arch)."
+      target-flags := target ? ["--target=$target"] : []
+      archs.do: target-flags.add-all ["-arch", it]
       support = pack-host-native-support_ native-directory
-          --target=target
+          --target=(target or (archs.join "+"))
+          --target-flags=target-flags
           --sysroot=invocation["sysroot"]
           --envelope=envelope
           --ui=ui
@@ -1307,6 +1316,7 @@ The native support has the libraries of the native runtime and a recipe with
 */
 pack-host-native-support_ native-directory/string
     --target/string
+    --target-flags/List
     --sysroot/string?
     --envelope/Envelope
     --ui/cli.Ui -> ByteArray:
@@ -1334,6 +1344,7 @@ pack-host-native-support_ native-directory/string
     "kind": Envelope.KIND-STRING-HOST,
     "word-size": envelope.word-size,
     "target": target,
+    "target-flags": target-flags,
     "compile": compile,
     "link": ["{native}"] + link,
     "bytecodes": { "library": library, "stub": stub },

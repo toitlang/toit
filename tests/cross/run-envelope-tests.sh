@@ -123,6 +123,13 @@ run_mode combined --combine
 NATIVE_DIR="${ROOT_DIR}/build/${TARGET}/sdk/lib/toit/native"
 if [[ -n "${CLANG_TARGET}" && -f "${NATIVE_DIR}/native.flags" ]]; then
   native_support=(--directory "${NATIVE_DIR}" --target "${CLANG_TARGET}")
+  if [[ "${TARGET}" == host && "$(uname)" == Darwin ]]; then
+    # The macOS envelope has all the architectures of its run-image.
+    native_support=(--directory "${NATIVE_DIR}")
+    for arch in $(lipo -archs "${ROOT_DIR}/build/host/run_image/toit_run_image"); do
+      native_support+=(--arch "${arch}")
+    done
+  fi
   if [[ -n "${QEMU}" ]]; then
     native_support+=(--sysroot "${TARGET}")
     export TOIT_SYSROOT="${SYSROOT}"
