@@ -15,8 +15,11 @@ This compiles the program and the system program to C++, compiles that with
 executable. `--native-source` writes the generated C++ instead.
 
 The C++ compiler has to guarantee tail calls, which Clang does. `TOIT_CXX`
-selects a different one. Native code is supported for 64-bit release builds
-on the host, except on Windows.
+selects a different one. Native code is supported for release builds on
+Linux and macOS, on x86, x86-64, ARM, ARM64 and RISC-V, and on the ESP32-C3
+and the ESP32-C6. It isn't supported on Windows, or on the Xtensa chips (the
+ESP32, the ESP32-S2 and the ESP32-S3), because Clang doesn't implement tail
+calls for Xtensa.
 
 ## Engines
 
