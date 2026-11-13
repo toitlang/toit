@@ -74,6 +74,14 @@ class NativeSupport:
         self.add_file(os.path.join(full, name))
     return "{support}/" + self.support_path(path)
 
+  @staticmethod
+  def anonymous(info):
+    """Leaves out who built the native support, and when."""
+    info.uid = info.gid = 0
+    info.uname = info.gname = ""
+    info.mtime = 0
+    return info
+
   def write(self, output, recipe):
     with tempfile.TemporaryDirectory() as tmp:
       # The tar reader of the firmware tool handles GNU long names, but not PAX.
@@ -82,14 +90,24 @@ class NativeSupport:
         data = json.dumps(recipe, indent=2).encode()
         info = tarfile.TarInfo("recipe.json")
         info.size = len(data)
-        tar.addfile(info, io.BytesIO(data))
+        tar.addfile(self.anonymous(info), io.BytesIO(data))
         for support_path, path in sorted(self.files.items()):
           if path.endswith(".a"):
             # The debug information is most of the size and isn't needed to link.
             stripped = os.path.join(tmp, "stripped.a")
             subprocess.run([self.strip, "--strip-debug", "-o", stripped, path], check=True)
             path = stripped
-          tar.add(path, arcname=support_path)
+          elif path.endswith(".ld"):
+            # Generated linker scripts say where they were generated from, which
+            # would tell everyone who gets the envelope where it was built.
+            with open(path, "r") as f: text = f.read()
+            text = text.replace(self.build_dir, "build").replace(self.idf_path, "idf")
+            data = text.encode()
+            info = tarfile.TarInfo(support_path)
+            info.size = len(data)
+            tar.addfile(self.anonymous(info), io.BytesIO(data))
+            continue
+          tar.add(path, arcname=support_path, filter=self.anonymous)
 
 # The library with the bytecode loop, and the stub that replaces it.
 BYTECODES_LIBRARY = "libtoit_bytecodes.a"
