@@ -87,7 +87,11 @@ struct SlotRelocTable {
 };
 
 // Parses the "SRL3" header of `blob` (`len` bytes) into `table`. Returns whether
-// the magic, sizes and varint streams are well-formed.
+// the magic, sizes and varint streams are well-formed. Sites must be aligned,
+// wholly inside the body, sorted and non-overlapping across all streams.
+// Only zero padding up to the next word boundary may follow the streams.
+// The body, data and trailer must fit the table's claimed reservation;
+// callers with a physical slot must additionally check that slot's bounds.
 bool slot_reloc_parse(const uint8_t* blob, size_t len, SlotRelocTable* table);
 
 // Locates and parses the reloc table stored at the TAIL of a slot. It rides
@@ -168,8 +172,9 @@ class SlotFirmware {
   // address is `slot_base_addr` (equal to `slot` on an XIP board), with
   // reservation `slot_size`. Parses the self-locating tail trailer to recover
   // the table and computes `delta = slot_base_addr - link_base`. Returns false
-  // when no valid trailer is present or the table is not word-aligned (the
-  // builder pads it so the canonical body starts on a 4-byte boundary).
+  // when no valid trailer is present, the body/data overlaps the physical
+  // trailer, or the table is not word-aligned (the builder pads it so the
+  // canonical body starts on a 4-byte boundary).
   bool open(const uint8_t* slot, uint32_t slot_base_addr, uint32_t slot_size);
 
   bool is_valid() const { return valid_; }

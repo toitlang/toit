@@ -337,6 +337,65 @@ static void test_slot_firmware_data() {
   CHECK(cgot == data_ptr, "copy(): .data is verbatim in slot B too");
 }
 
+static void test_invalid_tables() {
+  auto rejected = [](const std::vector<uint8_t>& blob, const char* message) {
+    SlotRelocTable table;
+    CHECK(!slot_reloc_parse(blob.data(), blob.size(), &table), message);
+  };
+  rejected(build_table(0x991000, 0x1000, 0x100, {0x100}, {}), "site beyond body rejected");
+  rejected(build_table(0x991000, 0x1000, 0x100, {2}, {}), "unaligned ABS32 rejected");
+  rejected(build_table(0x991000, 0x1000, 0x100, {}, {3}), "unaligned branch rejected");
+  rejected(build_table(0x991000, 0x1000, 0x100, {4, 4}, {}), "duplicate ABS32 rejected");
+  rejected(build_table(0x991000, 0x1000, 0x100, {}, {4, 6}), "overlapping branches rejected");
+  rejected(build_table(0x991000, 0x1000, 0x100, {4}, {6}), "overlapping streams rejected");
+  rejected(build_table(0x991000, 0x1000, 0xffffffff, {}, {}), "oversized body rejected");
+  rejected(build_table(0x991000, 0x1000, 0x100, {}, {}, 0xffffffff), "overflowing data size rejected");
+  rejected(build_table(0x991000, 0x1000, 0xfe0, {}, {}), "body/trailer overlap rejected");
+  rejected(build_table(0x991000, 0, 0, {}, {}), "empty slot rejected");
+  rejected(build_table(0x991000, 0x1000, 0x100, {4, 0xfffffffc, 4}, {}), "offset accumulation overflow rejected");
+  StraddleSite site = {0x100, {0, 0, 0, 0}};
+  rejected(build_table(0x991000, 0x1000, 0x100, {}, {}, 0, {site}), "straddle outside body rejected");
+  site.offset = 6;
+  rejected(build_table(0x991000, 0x1000, 0x100, {4}, {}, 0, {site}), "straddle overlaps ABS32 rejected");
+  rejected(build_table(0x991000, 0x1000, 0x100, {}, {4}, 0, {site}), "straddle overlaps branch rejected");
+  auto truncated = build_table(0x991000, 0x1000, 0x100, {}, {}, 0, {site});
+  truncated.pop_back();
+  rejected(truncated, "truncated canonical straddle bytes rejected");
+  auto blob = build_table(0x991000, 0x1000, 0x100, {0}, {});
+  blob.resize(52);
+  blob.insert(blob.end(), {0x80, 0x80, 0x80, 0x80, 0x10});
+  rejected(blob, "varint wider than uint32 rejected");
+  blob.resize(52);
+  blob.insert(blob.end(), {0x80, 0x80, 0x80, 0x80, 0x80, 0});
+  rejected(blob, "six-byte varint rejected");
+  blob.resize(53);
+  rejected(blob, "truncated varint rejected");
+  blob = build_table(0x991000, 0x1000, 0x100, {0}, {});
+  blob.push_back(1);
+  rejected(blob, "nonzero trailing bytes rejected");
+  blob.back() = 0;
+  while (blob.size() & 3) blob.push_back(0);
+  SlotRelocTable parsed;
+  CHECK(slot_reloc_parse(blob.data(), blob.size(), &parsed), "word-alignment padding accepted");
+  blob.insert(blob.end(), {0, 0, 0, 0});
+  rejected(blob, "excess trailing padding rejected");
+
+  uint8_t untouched[8];
+  memset(untouched, 0xa5, sizeof(untouched));
+  CHECK(!slot_reloc_build_trailer(blob.data(), 0xffffffff, untouched, sizeof(untouched)),
+        "trailer length overflow rejected before writing");
+  CHECK(untouched[0] == 0xa5 && untouched[7] == 0xa5, "rejected trailer leaves output untouched");
+  blob = build_table(0x991000, 0x60000, 0x2000, {}, {});
+  std::vector<uint8_t> small_slot(0x2000, 0xff);
+  slot_reloc_build_trailer(blob.data(), blob.size(),
+                          small_slot.data() + small_slot.size() - blob.size() - 4, blob.size() + 4);
+  CHECK(!slot_reloc_parse_trailer(small_slot.data(), small_slot.size(), &parsed),
+        "body must fit actual slot, not only the claimed reservation");
+  SlotFirmware firmware;
+  CHECK(!firmware.open(small_slot.data(), 0x991000, small_slot.size()),
+        "canonical view rejects body beyond actual slot");
+}
+
 int main(int, char**) {
   // The VM library this links against guards the global `new`; allow the
   // std::vector allocations this test uses (matches the other ctests).
@@ -353,6 +412,7 @@ int main(int, char**) {
   test_slot_firmware();
   printf("SlotFirmware verbatim VM .data region\n");
   test_slot_firmware_data();
+  test_invalid_tables();
   printf("\n%s (%d failure%s)\n", g_failures ? "FAILED" : "PASSED",
          g_failures, g_failures == 1 ? "" : "s");
   return g_failures ? 1 : 0;

@@ -17,7 +17,7 @@ import crypto.sha256 as crypto
 import io show LITTLE-ENDIAN
 import uuid show Uuid
 
-import ..ec618.partitions show find-anchor-table
+import ..ec618.partitions show find-provisioning-anchor
 import ..ec618.slot-reloc show SlotRelocTable TO-SLOT TO-CANONICAL
 import .image-details as image-details
 
@@ -40,9 +40,10 @@ pad_ bits/ByteArray alignment/int -> ByteArray:
   return bits + (ByteArray padded-size - bits.size)
 
 partition-xip_ image/ByteArray type/string -> int:
-  table := find-anchor-table image
-  if table == null:
+  record := find-provisioning-anchor image
+  if record == null:
     throw "no anchor record in the AP image — it must be provisioned (tools/ec618/gen-anchor.toit)"
+  table := record.parts.entries
   for i := 0; i < table.size; i++:
     partition := table[i]
     if partition.type == type:
@@ -297,22 +298,44 @@ pointer-offsets_ relocatable/ByteArray --word-size/int [block] -> none:
     pos = end
 
 /**
-Returns the logical parts of an EC618 AP image.
+Returns the logical parts of an EC618 canonical OTA image.
+
+The ranges cover exactly the bytes exposed by `system.firmware.map`, including
+  the relocation header and VM .data initializer. Configuration occupies only
+  its own extension suffix, not the free slot space or relocation trailer.
+  The canonical stream has no appended digest: extraction reports SHA-256
+  separately for `FirmwareWriter.commit --checksum`.
 */
-parts firmware-bin/ByteArray -> List:
-  SHA256-SIZE ::= 32
-  result := []
-  details-offset := image-details.find-offset firmware-bin --word-size=WORD-SIZE
-  extension-addr := LITTLE-ENDIAN.uint32 firmware-bin details-offset
-  if extension-addr == 0:
-    result.add { "type": "binary", "from": 0, "to": firmware-bin.size }
-    return result
-  extension-offset := extension-addr - XIP-BASE_ - AP-LOAD-OFFSET_
-  result.add { "type": "binary", "from": 0, "to": extension-offset }
-  if extension-offset < firmware-bin.size:
-    used := LITTLE-ENDIAN.uint32 firmware-bin extension-offset + 4
-    config-end := firmware-bin.size - SHA256-SIZE
-    result.add { "type": "images", "from": extension-offset, "to": extension-offset + used }
-    result.add { "type": "config", "from": extension-offset + used, "to": config-end }
-    result.add { "type": "checksum", "from": config-end, "to": firmware-bin.size }
+parts canonical/ByteArray -> List:
+  if canonical.size < 4: throw "truncated EC618 canonical header"
+  length := LITTLE-ENDIAN.uint32 canonical 0
+  if length > canonical.size - 4: throw "truncated EC618 canonical table"
+  table := SlotRelocTable.parse canonical[4..4 + length]
+  body-offset := 4 + length
+  body-end := body-offset + table.body-size
+  if body-end + table.data-size != canonical.size:
+    throw "EC618 canonical length does not match its relocation table"
+  details-offset := body-offset +
+      (image-details.find-offset canonical[body-offset..body-end] --word-size=WORD-SIZE)
+  extension-addr := LITTLE-ENDIAN.uint32 canonical details-offset
+  extension-offset := body-offset + extension-addr - table.link-base
+  if extension-offset < body-offset or extension-offset > body-end - 24:
+    throw "EC618 extension is outside the canonical body"
+  if (LITTLE-ENDIAN.uint32 canonical extension-offset) != 0x98dfc301:
+    throw "invalid EC618 extension magic"
+  used := LITTLE-ENDIAN.uint32 canonical (extension-offset + 4)
+  count := LITTLE-ENDIAN.uint32 canonical (extension-offset + 12)
+  if used < 20 + 8 * count or used > body-end - extension-offset - 4:
+    throw "invalid EC618 extension/config boundary"
+  config-offset := extension-offset + used
+  config-size := LITTLE-ENDIAN.uint32 canonical config-offset
+  if config-size != body-end - config-offset - 4:
+    throw "EC618 config length does not match the canonical body"
+  result := [
+    { "type": "binary", "from": 0, "to": extension-offset },
+    { "type": "images", "from": extension-offset, "to": config-offset },
+    { "type": "config", "from": config-offset, "to": body-end },
+  ]
+  if table.data-size != 0:
+    result.add { "type": "data", "from": body-end, "to": canonical.size }
   return result
