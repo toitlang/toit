@@ -371,9 +371,13 @@ class MessageDecoder {
   Object* decode_map();
   Object* decode_byte_array(bool inlined);
   Object* decode_double();
+  Object* decode_smi(bool negative);
   Object* decode_large_integer();
+  Object* decode_integer(int64 value);
 
   void deallocate();
+
+  uint64 read_cardinal_64();
 
   uint8 read_uint8() {
     word cursor = cursor_++;

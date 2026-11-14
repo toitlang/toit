@@ -561,17 +561,10 @@ Object* MessageDecoder::decode_any() {
   switch (tag) {
     case TAG_OVERFLOWN:
       return mark_malformed();
-    case TAG_POSITIVE_SMI: {
-      uword value = read_cardinal();
-      if (value > static_cast<uword>(Smi::MAX_SMI_VALUE)) return mark_malformed();
-      return Smi::from(static_cast<word>(value));
-    }
-    case TAG_NEGATIVE_SMI: {
-      uword value = read_cardinal();
-      // The negation of MIN_SMI_VALUE is MAX_SMI_VALUE + 1 and doesn't overflow.
-      if (value > static_cast<uword>(-Smi::MIN_SMI_VALUE)) return mark_malformed();
-      return Smi::from(-static_cast<word>(value));
-    }
+    case TAG_POSITIVE_SMI:
+      return decode_smi(false);
+    case TAG_NEGATIVE_SMI:
+      return decode_smi(true);
     case TAG_NULL:
       return program_->null_object();
     case TAG_TRUE:
@@ -808,9 +801,30 @@ Object* MessageDecoder::decode_double() {
   return result;
 }
 
+Object* MessageDecoder::decode_smi(bool negative) {
+  // The encoder uses the smi tags for the smis of its own word size. TISON
+  // written by a 64-bit VM thus has 62-bit smis, which are large integers on
+  // a 32-bit VM.
+  const uint64 max_smi_64 = (static_cast<uint64>(1) << 62) - 1;
+  uint64 magnitude = read_cardinal_64();
+  if (!success()) return null;
+  // The negation of the smallest 64-bit smi is the largest one + 1.
+  if (magnitude > (negative ? max_smi_64 + 1 : max_smi_64)) return mark_malformed();
+  int64 value = static_cast<int64>(magnitude);
+  return decode_integer(negative ? -value : value);
+}
+
 Object* MessageDecoder::decode_large_integer() {
   int64 value = read_uint64();
   if (value == 0 && overflown()) return mark_malformed();
+  return decode_integer(value);
+}
+
+Object* MessageDecoder::decode_integer(int64 value) {
+  // Integers that fit a smi must be smis, also when the encoder had a
+  // different word size: a 32-bit VM writes large integers that are smis
+  // on a 64-bit VM.
+  if (Smi::is_valid(value)) return Smi::from(static_cast<word>(value));
   LargeInteger* result = process_->object_heap()->allocate_large_integer(value);
   if (result == null) return mark_allocation_failed();
   return result;
@@ -839,6 +853,23 @@ uword MessageDecoder::read_cardinal() {
   if (byte == 0 && overflown()) return 0;
   result += ((uword) byte) << shift;
   return result;
+}
+
+uint64 MessageDecoder::read_cardinal_64() {
+  // Like read_cardinal, but for 64 bits on all platforms.
+  uint64 result = 0;
+  for (int shift = 0; true; shift += 7) {
+    uint8 byte = read_uint8();
+    uint64 digit = byte & 0x7f;
+    // Bits beyond 64 bits are malformed (and shifting by 64 or more is
+    // undefined).
+    if (shift >= 64 || digit > (UINT64_MAX >> shift)) {
+      mark_malformed();
+      return 0;
+    }
+    result |= digit << shift;
+    if (byte < 128) return result;
+  }
 }
 
 uint32 MessageDecoder::read_uint32() {
