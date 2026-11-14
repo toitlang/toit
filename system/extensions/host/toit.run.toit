@@ -77,13 +77,15 @@ class SystemContainerImage extends ContainerImageFromSnapshot:
 
 class ApplicationContainerImage extends ContainerImageFromSnapshot:
   snapshot/ByteArray? := null
-  flags ::= ContainerService.FLAG-RUN-BOOT | ContainerService.FLAG-RUN-CRITICAL
+  flags/int
 
   // Arguments passed to main in the system process are automatically
   // forwarded to the application process on boot.
   default-arguments/any
 
-  constructor manager/ContainerManager bundle/ByteArray .default-arguments:
+  constructor manager/ContainerManager bundle/ByteArray .default-arguments --untrusted/bool=false:
+    flags = ContainerService.FLAG-RUN-BOOT | ContainerService.FLAG-RUN-CRITICAL
+    if untrusted: flags |= ContainerService.FLAG-UNTRUSTED
     super manager bundle
 
   initialize reader/ArReader -> none:
@@ -105,6 +107,9 @@ main arguments:
   bundles/Array_ ::= spawn-arguments_
   system-bundle ::= bundles[0]
   application-bundle ::= bundles[1]
+  // The optional third entry holds the launch options from the command
+  // line (see toit_run.cc).
+  untrusted := bundles.size > 2 and bundles[2] == true
   if application-bundle is not ByteArray:
     print-on-stderr_ "toit.run.toit must be provided a snapshot"
     exit 1
@@ -113,5 +118,5 @@ main arguments:
   container-manager.register-system-image
       SystemContainerImage container-manager system-bundle
   container-manager.register-image
-      ApplicationContainerImage container-manager application-bundle arguments
+      ApplicationContainerImage container-manager application-bundle arguments --untrusted=untrusted
   exit (boot container-manager)

@@ -16,6 +16,7 @@
 #include "messaging.h"
 #include <toit/toit.h>
 
+#include "flags.h"
 #include "objects.h"
 #include "process.h"
 #include "scheduler.h"
@@ -361,10 +362,16 @@ bool MessageEncoder::encode_arguments(char** argv, int argc) {
 }
 
 bool MessageEncoder::encode_bundles(SnapshotBundle system, SnapshotBundle application) {
+  // The boot program (system/extensions/host/toit.run.toit) gets the two
+  // bundles and, if the application must run as an untrusted container, a
+  // third entry that is true.
+  bool untrusted = Flags::untrusted;
   write_uint8(TAG_ARRAY);
-  write_cardinal(2);
-  return encode_bytes_external(system.buffer(), system.size()) &&
+  write_cardinal(untrusted ? 3 : 2);
+  bool ok = encode_bytes_external(system.buffer(), system.size()) &&
       encode_bytes_external(application.buffer(), application.size());
+  if (ok && untrusted) write_uint8(TAG_TRUE);
+  return ok;
 }
 #endif
 

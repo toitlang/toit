@@ -19,6 +19,7 @@
 # they take both as arguments.
 set(TOOL_TESTS
   "tests/sandbox/runtime-hardening-test.toit"
+  "tests/sandbox/invalid-utf-8-literal-test.toit"
 )
 file(GLOB SANDBOX_TESTS RELATIVE "${TOIT_SDK_SOURCE_DIR}" "*-test.toit")
 
@@ -41,4 +42,41 @@ foreach(file ${SANDBOX_TESTS})
       )
     set_tests_properties(${file} PROPERTIES TIMEOUT 40)
   endif()
+endforeach()
+
+# Programs run directly as untrusted containers with 'toit.run --untrusted'.
+set(UNTRUSTED_RUN_TESTS
+  # Name, program, expected exit code, expected output (regex).
+  "print|print-main.toit|0|hello from the sandbox"
+  # Long messages are truncated at a character boundary.
+  "print-long|print-long-main.toit|0|é[.][.][.].*done printing"
+  "denied|denied-main.toit|0|hostname: PERMISSION_DENIED.*file: PRIMITIVE_LOOKUP_FAILED"
+  # Large byte arrays work (external backing store, charged to the heap); the
+  # explicit external and off-heap constructors are denied.
+  "large-byte-array|large-byte-array-main.toit|0|100: size=100 zero=true last=42 filled=7.*10000: size=10000 zero=true last=42 filled=7.*1000000: size=1000000 zero=true last=42 filled=7.*buffer: hello.*external: PERMISSION_DENIED.*off-heap: PERMISSION_DENIED"
+  "uncaught|uncaught-main.toit|1|PERMISSION_DENIED"
+  "deep-sleep|deep-sleep-main.toit|242|before deep sleep"
+)
+
+foreach(entry ${UNTRUSTED_RUN_TESTS})
+  string(REPLACE "|" ";" fields "${entry}")
+  list(GET fields 0 name)
+  list(GET fields 1 program)
+  list(GET fields 2 exit_code)
+  list(GET fields 3 output)
+  foreach(mode source snapshot)
+    set(test_name "tests/sandbox/cli/${name}-${mode}")
+    add_test(
+      NAME ${test_name}
+      COMMAND ${CMAKE_COMMAND}
+          -DTOIT_RUN=$<TARGET_FILE:toit.run>
+          -DPROGRAM=${CMAKE_CURRENT_SOURCE_DIR}/cli/${program}
+          -DMODE=${mode}
+          -DEXPECTED_EXIT=${exit_code}
+          "-DEXPECTED_OUTPUT=${output}"
+          -DTMP=${CMAKE_CURRENT_BINARY_DIR}/cli-${name}-${mode}
+          -P ${CMAKE_CURRENT_SOURCE_DIR}/run-untrusted.cmake
+      )
+    set_tests_properties(${test_name} PROPERTIES TIMEOUT 40)
+  endforeach()
 endforeach()
