@@ -260,7 +260,9 @@ inline bool intrinsic_shl(Object* a, Object* b, Smi** result) {
   if (!Interpreter::are_smis(a, b)) return false;
   word bits_to_shift = Smi::value(b);
   if (bits_to_shift < 0 || bits_to_shift >= WORD_BIT_SIZE) return false;
-  *result = (Smi*) (((word) a) << bits_to_shift);
+  // Shift unsigned: shifting a negative value, or into the sign bit, is
+  // undefined behavior for signed integers.
+  *result = (Smi*) (((uword) a) << bits_to_shift);
   // Only succeed if no bits are lost.
   return ((word) a) == (((word) *result) >> bits_to_shift);
 }

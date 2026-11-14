@@ -474,7 +474,7 @@ PRIMITIVE(crc) {
       entry = int_table_entry;
     }
     if (big_endian) {
-      accumulator = (accumulator << 8) ^ entry;
+      accumulator = Utils::wrapping_shift_left(accumulator, 8) ^ entry;
     } else {
       accumulator = (static_cast<uint64>(accumulator) >> 8) ^ entry;
     }
@@ -658,7 +658,7 @@ PRIMITIVE(read_int_big_endian) {
   }
   int64 value = static_cast<int8>(source.address()[offset]);  // Sign extend.
   for (uword i = 1; i <= width_minus_1; i++) {
-    value <<= 8;
+    value = Utils::wrapping_shift_left(value, 8);
     value |= source.address()[offset + i];
   }
   return Primitive::integer(value, process);
@@ -678,7 +678,7 @@ PRIMITIVE(read_int_little_endian) {
   }
   int64 value = static_cast<int8>(source.address()[offset + width_minus_1]);  // Sign extend.
   for (uword i = width_minus_1; i != 0; i--) {
-    value <<= 8;
+    value = Utils::wrapping_shift_left(value, 8);
     value |= source.address()[offset + i - 1];
   }
   return Primitive::integer(value, process);
@@ -705,7 +705,7 @@ PRIMITIVE(smi_add) {
   if (!is_large_integer(arg)) FAIL(WRONG_OBJECT_TYPE);
   overflow:
   int64 other = is_smi(arg) ? (int64) Smi::value(arg) : LargeInteger::cast(arg)->value();
-  return Primitive::integer((int64) receiver + other, process);
+  return Primitive::integer(Utils::wrapping_add(receiver, other), process);
 }
 
 PRIMITIVE(smi_subtract) {
@@ -716,15 +716,17 @@ PRIMITIVE(smi_subtract) {
   }
   if (!is_large_integer(arg)) FAIL(WRONG_OBJECT_TYPE);
   int64 other = LargeInteger::cast(arg)->value();
-  return Primitive::integer((int64) receiver - other, process);
+  return Primitive::integer(Utils::wrapping_sub(receiver, other), process);
 }
 
 PRIMITIVE(smi_multiply) {
   ARGS(word, receiver, Object, arg);
   if (is_smi(arg)) {
-    word other = Smi::value(arg);
+    // The tagged smi is `other << 1`, so the product is the tagged result.
+    // Using it avoids shifting a negative value.
+    word tagged_other = reinterpret_cast<word>(arg);
     word result;
-    if (__builtin_mul_overflow(receiver, other << 1, &result)) goto overflow;
+    if (__builtin_mul_overflow(receiver, tagged_other, &result)) goto overflow;
     Smi* r = reinterpret_cast<Smi*>(result);
     ASSERT(r == Smi::from(result >> 1));
     return r;
@@ -732,7 +734,7 @@ PRIMITIVE(smi_multiply) {
   if (!is_large_integer(arg)) FAIL(WRONG_OBJECT_TYPE);
   overflow:
   int64 other = is_smi(arg) ? (int64) Smi::value(arg) : LargeInteger::cast(arg)->value();
-  return Primitive::integer((int64) receiver * other, process);
+  return Primitive::integer(Utils::wrapping_mul(receiver, other), process);
 }
 
 PRIMITIVE(smi_divide) {
@@ -855,9 +857,9 @@ PRIMITIVE(int64_to_string) {
     char sign = '+';
     if (value < 0) {
       sign = '-';
-      // This also works fine for min-int.  The negation has no effect, but the
-      // correct value ends up in the unsigned variable.
-      unsigned_value = -value;
+      // Negate in unsigned arithmetic, so that min-int does not overflow. Its
+      // magnitude is representable as uint64.
+      unsigned_value = 0 - static_cast<uint64>(value);
     } else {
       unsigned_value = value;
     }
@@ -901,8 +903,8 @@ PRIMITIVE(uint64_to_string) {
 PRIMITIVE(large_integer_add) {
   ARGS(LargeInteger, receiver, Object, arg);
   int64 result = receiver->value();
-  if (is_smi(arg)) result += Smi::value(arg);
-  else if (is_large_integer(arg)) result += LargeInteger::cast(arg)->value();
+  if (is_smi(arg)) result = Utils::wrapping_add(result, Smi::value(arg));
+  else if (is_large_integer(arg)) result = Utils::wrapping_add(result, LargeInteger::cast(arg)->value());
   else FAIL(WRONG_OBJECT_TYPE);
   return Primitive::integer(result, process);
 }
@@ -910,8 +912,8 @@ PRIMITIVE(large_integer_add) {
 PRIMITIVE(large_integer_subtract) {
   ARGS(LargeInteger, receiver, Object, arg);
   int64 result = receiver->value();
-  if (is_smi(arg)) result -= Smi::value(arg);
-  else if (is_large_integer(arg)) result -= LargeInteger::cast(arg)->value();
+  if (is_smi(arg)) result = Utils::wrapping_sub(result, Smi::value(arg));
+  else if (is_large_integer(arg)) result = Utils::wrapping_sub(result, LargeInteger::cast(arg)->value());
   else FAIL(WRONG_OBJECT_TYPE);
   return Primitive::integer(result, process);
 }
@@ -919,8 +921,8 @@ PRIMITIVE(large_integer_subtract) {
 PRIMITIVE(large_integer_multiply) {
   ARGS(LargeInteger, receiver, Object, arg);
   int64 result = receiver->value();
-  if (is_smi(arg)) result *= Smi::value(arg);
-  else if (is_large_integer(arg)) result *= LargeInteger::cast(arg)->value();
+  if (is_smi(arg)) result = Utils::wrapping_mul(result, Smi::value(arg));
+  else if (is_large_integer(arg)) result = Utils::wrapping_mul(result, LargeInteger::cast(arg)->value());
   else FAIL(WRONG_OBJECT_TYPE);
   return Primitive::integer(result, process);
 }
@@ -961,7 +963,7 @@ PRIMITIVE(large_integer_mod) {
 
 PRIMITIVE(large_integer_unary_minus) {
   ARGS(LargeInteger, receiver);
-  return Primitive::integer(-receiver->value(), process);
+  return Primitive::integer(Utils::wrapping_negate(receiver->value()), process);
 }
 
 PRIMITIVE(large_integer_not) {
@@ -1022,7 +1024,7 @@ PRIMITIVE(large_integer_shift_left) {
   ARGS(LargeInteger, receiver, int64, number_of_bits);
   if (number_of_bits < 0) FAIL(NEGATIVE_ARGUMENT);
   if (number_of_bits >= LARGE_INT_BIT_SIZE) return Primitive::integer(0, process);
-  return Primitive::integer(receiver->value() << number_of_bits, process);
+  return Primitive::integer(Utils::wrapping_shift_left(receiver->value(), number_of_bits), process);
 }
 
 PRIMITIVE(float_unary_minus) {
@@ -1194,7 +1196,9 @@ PRIMITIVE(seconds_since_epoch_local) {
   ARGS(int32, year, int32, month, int32, day, int32, hour, int32, min, int32, sec, Object, daylight_saving_is_active)
   struct tm decomposed;
   memset(&decomposed, 0, sizeof(decomposed));
-  decomposed.tm_year = year - 1900;
+  // Subtract unsigned, so that years close to the minimal int32 wrap around
+  // instead of overflowing.
+  decomposed.tm_year = static_cast<int32>(static_cast<uint32>(year) - 1900u);
   decomposed.tm_mon = month;
   decomposed.tm_mday = day;
   decomposed.tm_hour = hour;
@@ -2096,7 +2100,7 @@ PRIMITIVE(smi_shift_left) {
   if (number_of_bits < 0) FAIL(NEGATIVE_ARGUMENT);
   if (number_of_bits >= 64) return Smi::zero();
   int64 value = Smi::value(receiver);
-  return Primitive::integer(value << number_of_bits, process);
+  return Primitive::integer(Utils::wrapping_shift_left(value, number_of_bits), process);
 }
 
 PRIMITIVE(task_new) {
