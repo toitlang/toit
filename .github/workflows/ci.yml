@@ -484,7 +484,8 @@ jobs:
     needs: [prereqs]
     if: needs.prereqs.outputs.RUN_CROSS_FLOW == 'true'
 
-    runs-on: ubuntu-latest
+    # arm-runner-action requires qemu-user-static, which Ubuntu 26.04 removed.
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Set up constants

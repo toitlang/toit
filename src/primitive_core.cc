@@ -233,7 +233,7 @@ PRIMITIVE(spawn) {
   InitialMemoryManager initial_memory_manager;
   if (!initial_memory_manager.allocate()) FAIL(ALLOCATION_FAILED);
 
-  unsigned size = 0;
+  word size = 0;
   { MessageEncoder size_encoder(process, null);
     if (!size_encoder.encode(arguments)) {
       return size_encoder.create_error_object(process);
@@ -540,7 +540,9 @@ PRIMITIVE(string_write_to_byte_array) {
   if (to == from) return _raw_dest;
   if (from < 0 || to > source_bytes.length() || from > to) FAIL(OUT_OF_BOUNDS);
   if (dest_index < 0 || to - from > dest.length() - dest_index) FAIL(OUT_OF_BOUNDS);
-  memcpy(&dest.address()[dest_index], &source_bytes.address()[from], to - from);
+  // The source and destination may be the same byte array (or overlapping
+  // slices of it), so we must use memmove.
+  memmove(&dest.address()[dest_index], &source_bytes.address()[from], to - from);
   return _raw_dest;
 }
 
@@ -720,14 +722,11 @@ PRIMITIVE(smi_add) {
 PRIMITIVE(smi_subtract) {
   ARGS(word, receiver, Object, arg);
   if (is_smi(arg)) {
-    word other = Smi::value(arg);
-    if ((receiver < 0) && (other > Smi::MAX_SMI_VALUE + receiver)) goto overflow;
-    if ((receiver > 0) && (other < Smi::MIN_SMI_VALUE + receiver)) goto overflow;
-    return Smi::from(receiver - other);
+    // Smis have fewer bits than words, so the difference fits a word.
+    return Primitive::integer(static_cast<int64>(receiver) - Smi::value(arg), process);
   }
   if (!is_large_integer(arg)) FAIL(WRONG_OBJECT_TYPE);
-  overflow:
-  int64 other = is_smi(arg) ? (int64) Smi::value(arg) : LargeInteger::cast(arg)->value();
+  int64 other = LargeInteger::cast(arg)->value();
   return Primitive::integer((int64) receiver - other, process);
 }
 
@@ -2163,7 +2162,7 @@ PRIMITIVE(process_send) {
   }
 
   const PolicyQuotas& quotas = policy->quotas();
-  unsigned size = 0;
+  word size = 0;
   word total_size = 0;
   { MessageEncoder size_encoder(process, null);
     // Stop the size pass at the quota: a shared object is encoded once per
@@ -2228,6 +2227,8 @@ Object* MessageEncoder::create_error_object(Process* process) {
   Object* result = null;
   if (malloc_failed_) {
     FAIL(MALLOC_FAILED);
+  } else if (too_large_) {
+    FAIL(OUT_OF_RANGE);
   } else if (nesting_too_deep_) {
     result = process->allocate_string_or_error("NESTING_TOO_DEEP");
   } else if (problematic_class_id_ >= 0) {
@@ -2263,6 +2264,9 @@ PRIMITIVE(task_receive_message) {
   }
 
   Message* message = process->peek_message();
+  // The library only calls this when there is a message, but a program can
+  // call it at any time.
+  if (message == null) return process->null_object();
   MessageType message_type = message->message_type();
   Object* result = process->null_object();
 

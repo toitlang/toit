@@ -441,6 +441,8 @@ class ContainerManager extends ContainerServiceProvider implements SystemMessage
     else if type == SYSTEM-SPAWNED_:
       if container: container.on-process-start_ pid
     else if type == SYSTEM-TRACE_:
+      // Any process can send trace messages; drop malformed ones.
+      if arguments is not ByteArray: return
       origin-id/uuid.Uuid? ::= trace-find-origin-id arguments
       origin/ContainerImage? ::= origin-id and lookup-image origin-id
       if not (origin and origin.trace arguments):
