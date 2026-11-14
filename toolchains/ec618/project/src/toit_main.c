@@ -27,12 +27,8 @@
 #include <stdint.h>
 #include <string.h>
 #include "common_api.h"
-// TODO(toit): drop the LuatOS `luat_*` interface layer from the EC618 glue.
-// The Toit VM resources (gpio/i2c/uart/adc/...) bind the PLAT driver/HAL
-// directly; the glue should too, so we don't depend on the LuatOS interface
-// layer at all. This file still uses luat_rtos_task_*; replace it with the
-// FreeRTOS task API directly.
-#include "luat_rtos.h"
+#include "FreeRTOS.h"
+#include "task.h"
 #include "mem_map.h"    // AP_FLASH_XIP_ADDR.
 #include "anchor.h"
 #include "reset.h"
@@ -57,8 +53,6 @@ const uint8_t toit_anchor_sentinel[ANCHOR_SENTINEL_SIZE] = ANCHOR_SENTINEL_BYTES
 uint8_t toit_booted_slot = 'A';
 
 typedef void (*toit_start_fn)(void);
-
-static luat_rtos_task_handle toit_task_handle;
 
 // The partition table attached to the slot selected for this boot. During
 // a trial this is the pending table; after rollback it is the known-good
@@ -107,7 +101,7 @@ static void load_boot_table(uint8_t slot) {
   while (boot_table_count == 0 || slot_entry('A') == NULL || slot_entry('B') == NULL) {
     printf("[toit] ERROR: no valid partition table at the anchor — cannot boot. "
            "Reflash the device (provisioning writes the table).\n");
-    luat_rtos_task_sleep(5000);
+    vTaskDelay(pdMS_TO_TICKS(5000));
   }
 }
 
@@ -200,13 +194,19 @@ static void toit_task(void *param) {
   // toit_start() does not return in normal operation (enters deep sleep).
   // If it does return, halt.
   while (1) {
-    luat_rtos_task_sleep(10000);
+    vTaskDelay(pdMS_TO_TICKS(10000));
   }
 }
 
 static void toit_task_init(void) {
-  // 8KB stack for the Toit main task.
-  luat_rtos_task_create(&toit_task_handle, 8 * 1024, 20, "toit", toit_task, NULL, 0);
+  // FreeRTOS takes stack words, unlike the former LuatOS byte count.
+  // create_event_task mapped its priority 20 to 8 + (20 * 16 / 100) = 11.
+  // Preserve that scheduling priority without its unused event-task wrapper.
+  const unsigned stack_words = (8 * 1024) / sizeof(StackType_t);
+  if (xTaskCreate(toit_task, "toit", stack_words, NULL, 11, NULL) != pdPASS) {
+    printf("[toit] ERROR: could not create the VM dispatcher task\n");
+    dispatcher_reset();
+  }
 }
 
 // INIT_TASK_EXPORT stores this function pointer in `.task_fun_array.1`.
