@@ -4,6 +4,10 @@ export alpha beta
 
 abstract class Device extends Base with Mix implements Interface:
     static VALUE /int ::= 1
+    static TEXT ::= """
+        preserve
+        continuation bytes
+        """
     configure
         --organization/string
         --application/string
