@@ -18,6 +18,7 @@
 #include <math.h>
 
 #include "flags.h"
+#include "primitive_policy.h"
 #include "printing.h"
 #include "process.h"
 #include "process_group.h"
@@ -232,6 +233,95 @@ Method Program::find_method(Object* receiver, word offset) {
 #define ON_PROGRAM_HEAP(object) \
   (reinterpret_cast<uword>(object) - program_heap_start < program_heap_size)
 
+// Run-time check of field accesses. The receiver must be an instance (or a
+// task) and the field index must be inside the instance. The structural
+// verifier does not prove the receivers of field accesses, so the field
+// accesses of every process whose policy is untrusted are checked (of every
+// process in builds with TOIT_CHECKED_FIELD_ACCESS): a malformed access
+// becomes a Toit exception (via program_failure) instead of a read or write
+// past the end of an object.
+//
+// Such processes run with a dispatch table that sends the field bytecodes
+// and the field accessor calls to entries that check the access first (see
+// Interpreter::run), so the other processes don't pay for the check.
+//
+// Kept minimal: a tag test on the pointer, one header load, one class-bits
+// load, two compares. The header holds the class tag in its low bits and the
+// class id above them; the class bits hold the instance size in words.
+static inline bool field_access_ok(const uint16* class_bits, Object* object, word index) {
+  if (!is_heap_object(object)) return false;
+  word header = Smi::value(HeapObject::cast(object)->header());
+  word tag = header & HeapObject::CLASS_TAG_MASK;
+  if (tag != INSTANCE_TAG && tag != TASK_TAG) return false;
+  word size_in_words = (class_bits[header >> HeapObject::CLASS_ID_OFFSET] >> HeapObject::CLASS_ID_OFFSET) & Program::INSTANCE_SIZE_MASK;
+  return static_cast<uword>(index) + (HeapObject::SIZE / WORD_SIZE) < static_cast<uword>(size_in_words);
+}
+
+// The checks of the checked dispatch table's entries are out of line (not
+// inlined into Interpreter::run): on the ESP32 the interpreter runs from
+// IRAM, which is small, and only untrusted processes execute them. These
+// functions are not IRAM_ATTR, so they are in flash.
+#define INTERPRETER_OUT_OF_LINE __attribute__((noinline))
+
+// Whether the field access of the field bytecode at bcp is legal (see
+// field_access_ok).
+static INTERPRETER_OUT_OF_LINE bool checked_field_access_ok(Program* program, Object** sp, const uint8* bcp) {
+  Object* object;
+  word index;
+  switch (*bcp) {
+    case LOAD_FIELD:
+      object = sp[0];
+      index = bcp[1];
+      break;
+    case LOAD_FIELD_WIDE:
+      object = sp[0];
+      index = Utils::read_unaligned_uint16(bcp + 1);
+      break;
+    case LOAD_FIELD_LOCAL:
+      object = sp[bcp[1] & 0x0f];
+      index = bcp[1] >> 4;
+      break;
+    case POP_LOAD_FIELD_LOCAL:
+      object = sp[(bcp[1] & 0x0f) + 1];
+      index = bcp[1] >> 4;
+      break;
+    case STORE_FIELD:
+    case STORE_FIELD_POP:
+      object = sp[1];
+      index = bcp[1];
+      break;
+    case STORE_FIELD_WIDE:
+      object = sp[1];
+      index = Utils::read_unaligned_uint16(bcp + 1);
+      break;
+    default:
+      return false;
+  }
+  return field_access_ok(program->class_bits.data(), object, index);
+}
+
+// The field accessor that a virtual getter or setter call (or INVOKE_SIZE)
+// of a checked process must call instead of inlining it, or an invalid
+// method if the target is not a field accessor.
+static INTERPRETER_OUT_OF_LINE Method checked_field_accessor(Program* program, Object* receiver, const uint8* bcp) {
+  Method target = program->find_method(receiver, Utils::read_unaligned_uint16(bcp + 1));
+  if (!target.is_valid() || !target.is_field_accessor()) return Method::invalid();
+  return target;
+}
+
+// The entry of the checked dispatch table for the given opcode.
+#define CHECKED_DISPATCH_TARGET(opcode)                                       \
+  (opcode == LOAD_FIELD             ? &&checked_LOAD_FIELD             :      \
+   opcode == LOAD_FIELD_WIDE        ? &&checked_LOAD_FIELD_WIDE        :      \
+   opcode == LOAD_FIELD_LOCAL       ? &&checked_LOAD_FIELD_LOCAL       :      \
+   opcode == POP_LOAD_FIELD_LOCAL   ? &&checked_POP_LOAD_FIELD_LOCAL   :      \
+   opcode == STORE_FIELD            ? &&checked_STORE_FIELD            :      \
+   opcode == STORE_FIELD_WIDE       ? &&checked_STORE_FIELD_WIDE       :      \
+   opcode == STORE_FIELD_POP        ? &&checked_STORE_FIELD_POP        :      \
+   opcode == INVOKE_VIRTUAL_GET     ? &&checked_INVOKE_VIRTUAL_GET     :      \
+   opcode == INVOKE_VIRTUAL_SET     ? &&checked_INVOKE_VIRTUAL_SET     :      \
+   &&interpret_##opcode)
+
 // Out of line (not IRAM_ATTR, so in flash on the ESP32): only malformed
 // programs reach it.
 static __attribute__((noinline)) void print_corrupt_stack(Program* program, uint8* bcp) {
@@ -306,10 +396,17 @@ Interpreter::Result Interpreter::run() {
 #define LABEL(opcode, length, format, print) &&interpret_##opcode,
   // On EC618 (no data cache), place the dispatch table in RAM for fast access.
 #ifdef TOIT_EC618
-  static void* dispatch_table[] __attribute__((section(".data"))) = {
+  static void* unchecked_dispatch_table[] __attribute__((section(".data"))) = {
 #else
-  static void* dispatch_table[] = {
+  static void* unchecked_dispatch_table[] = {
 #endif
+    BYTECODES(LABEL)
+  };
+#undef LABEL
+  // The dispatch table of processes whose field accesses are checked (see
+  // field_access_ok).
+#define LABEL(opcode, length, format, print) CHECKED_DISPATCH_TARGET(opcode),
+  static void* const checked_dispatch_table[] = {
     BYTECODES(LABEL)
   };
 #undef LABEL
@@ -326,8 +423,14 @@ Interpreter::Result Interpreter::run() {
   method_entries_ = process_->group()->method_entries();
   const uword program_heap_start = reinterpret_cast<uword>(program);
   const uword program_heap_size = program->size_no_assets();
+  // The policy of a process never changes.
+  bool check_field_accesses = process_->policy()->is_untrusted();
+#ifdef TOIT_CHECKED_FIELD_ACCESS
+  check_field_accesses = true;
+#endif
+  void* const* dispatch_table = check_field_accesses ? checked_dispatch_table : unchecked_dispatch_table;
   // The target of a call that takes the shared slow path
-  // (CALL_STACK_OVERFLOW).
+  // (CALL_STACK_OVERFLOW, CALL_FIELD_ACCESSOR).
   Method call_target = Method::invalid();
   // The method entry of a branch that is preempted (PREEMPT_AT_BRANCH).
   uint8* preemption_entry = null;
@@ -420,8 +523,25 @@ Interpreter::Result Interpreter::run() {
     PUSH(value);
   OPCODE_END();
 
+  // The entries of the checked dispatch table for the field bytecodes check
+  // the access (out of line: checked_field_access_ok) and continue with the
+  // bytecode.
+#define CHECKED_FIELD_ACCESS(opcode)                                       \
+  checked_##opcode:                                                        \
+    if (!checked_field_access_ok(program, sp, bcp)) goto PROGRAM_FAILURE;  \
+    goto interpret_##opcode;
+  CHECKED_FIELD_ACCESS(LOAD_FIELD)
+  CHECKED_FIELD_ACCESS(LOAD_FIELD_WIDE)
+  CHECKED_FIELD_ACCESS(LOAD_FIELD_LOCAL)
+  CHECKED_FIELD_ACCESS(POP_LOAD_FIELD_LOCAL)
+  CHECKED_FIELD_ACCESS(STORE_FIELD)
+  CHECKED_FIELD_ACCESS(STORE_FIELD_WIDE)
+  CHECKED_FIELD_ACCESS(STORE_FIELD_POP)
+#undef CHECKED_FIELD_ACCESS
+
   OPCODE_BEGIN_WITH_WIDE(LOAD_FIELD, field_index);
-    Instance* instance = Instance::cast(POP());
+    Object* object = POP();
+    Instance* instance = Instance::cast(object);
     PUSH(instance->at(field_index));
     CHECK_PROPAGATED_TYPES_TOP();
   OPCODE_END();
@@ -430,7 +550,8 @@ Interpreter::Result Interpreter::run() {
     B_ARG1(encoded);
     int local = encoded & 0x0f;
     int field = encoded >> 4;
-    Instance* instance = Instance::cast(STACK_AT(local));
+    Object* object = STACK_AT(local);
+    Instance* instance = Instance::cast(object);
     PUSH(instance->at(field));
     CHECK_PROPAGATED_TYPES_TOP();
   OPCODE_END();
@@ -439,7 +560,8 @@ Interpreter::Result Interpreter::run() {
     B_ARG1(encoded);
     int local = encoded & 0x0f;
     int field = encoded >> 4;
-    Instance* instance = Instance::cast(STACK_AT(local + 1));
+    Object* object = STACK_AT(local + 1);
+    Instance* instance = Instance::cast(object);
     STACK_AT_PUT(0, instance->at(field));
     CHECK_PROPAGATED_TYPES_TOP();
   OPCODE_END();
@@ -757,6 +879,26 @@ Interpreter::Result Interpreter::run() {
     CALL_METHOD(target, _length_);
   OPCODE_END();
 
+  // The entries of the checked dispatch table for the virtual getter and
+  // setter calls don't inline field accessors: they call them, so that the
+  // field bytecode of the accessor checks the access.
+  // INVOKE_SIZE continues here, too.
+  checked_INVOKE_VIRTUAL_GET:
+    call_target = checked_field_accessor(program, STACK_AT(0), bcp);
+    if (!call_target.is_valid()) goto interpret_INVOKE_VIRTUAL_GET;
+    goto CALL_FIELD_ACCESSOR;
+
+  checked_INVOKE_VIRTUAL_SET:
+    call_target = checked_field_accessor(program, STACK_AT(1), bcp);
+    if (!call_target.is_valid()) goto interpret_INVOKE_VIRTUAL_SET;
+    // Fall through.
+
+  CALL_FIELD_ACCESSOR: {
+    static_assert(INVOKE_VIRTUAL_GET_LENGTH == INVOKE_VIRTUAL_SET_LENGTH, "Unexpected bytecode length");
+    Method target = call_target;
+    CALL_METHOD(target, INVOKE_VIRTUAL_GET_LENGTH);
+  }
+
   OPCODE_BEGIN(INVOKE_VIRTUAL_GET);
     Object* receiver = STACK_AT(0);
     word offset = Utils::read_unaligned_uint16(bcp + 1);
@@ -1032,7 +1174,8 @@ Interpreter::Result Interpreter::run() {
       STACK_AT_PUT(0, result);
       DISPATCH(INVOKE_SIZE_LENGTH);
     }
-    DISPATCH_TO(INVOKE_VIRTUAL_GET);
+    // Through the dispatch table, which may check field accessors.
+    goto *dispatch_table[INVOKE_VIRTUAL_GET];
   OPCODE_END();
 
   OPCODE_BEGIN(BRANCH);
@@ -1258,8 +1401,8 @@ Interpreter::Result Interpreter::run() {
 
   PROGRAM_FAILURE: {
     // The program violated an invariant that the interpreter checks at run
-    // time (a malformed block reference, method id, try link or a store
-    // into the program heap). Report it as a Toit exception with the bci of
+    // time (a malformed block reference, method id, try link, field access
+    // or a store into the program heap). Report it as a Toit exception with the bci of
     // the failing instruction. The program_failure entry point never
     // returns, so the return address does not matter.
     PUSH(Smi::from(program->absolute_bci_from_bcp(bcp)));

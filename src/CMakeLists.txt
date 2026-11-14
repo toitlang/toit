@@ -142,6 +142,13 @@ if (DEFINED ENV{TOIT_CHECK_PROPAGATED_TYPES})
   set(TOIT_INTERPRETER_FLAGS "${TOIT_INTERPRETER_FLAGS};-DTOIT_CHECK_PROPAGATED_TYPES")
 endif()
 
+# Run-time checked field accesses for every process: LOAD_FIELD*,
+# STORE_FIELD* check that the receiver is an instance with enough fields.
+# Without this option only processes with the untrusted policy are checked.
+if (DEFINED ENV{TOIT_CHECKED_FIELD_ACCESS})
+  set(TOIT_INTERPRETER_FLAGS "${TOIT_INTERPRETER_FLAGS};-DTOIT_CHECKED_FIELD_ACCESS")
+endif()
+
 set_source_files_properties(interpreter_core.cc PROPERTIES COMPILE_OPTIONS "-O3;$ENV{LOCAL_INTERPRETER_CXXFLAGS}")
 set_source_files_properties(interpreter_run.cc PROPERTIES COMPILE_OPTIONS "-O3;${TOIT_INTERPRETER_FLAGS};$ENV{LOCAL_INTERPRETER_CXXFLAGS}")
 set_source_files_properties(utils.cc PROPERTIES COMPILE_FLAGS "-DTOIT_MODEL=\"\\\"${TOIT_MODEL}\\\"\" -DVM_GIT_INFO=\"\\\"${VM_GIT_INFO}\\\"\" -DVM_GIT_VERSION=\"\\\"${TOIT_GIT_VERSION}\\\"\"")
