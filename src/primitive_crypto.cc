@@ -25,9 +25,9 @@ extern "C" int mbedtls_hardware_poll(void* data, unsigned char* output,
 #include <random>
 #endif
 
-#if !defined(TOIT_FREERTOS) || defined(CONFIG_TOIT_CRYPTO)
+#if !defined(TOIT_EMBEDDED) || defined(CONFIG_TOIT_CRYPTO)
 
-#if !defined(TOIT_FREERTOS)
+#if !defined(TOIT_EMBEDDED)
 #define CONFIG_TOIT_CRYPTO_EXTRA 1
 #endif
 

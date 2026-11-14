@@ -23,7 +23,7 @@ namespace toit {
 #define MATERIALIZE_DEBUG_FLAG(type, prefix, name, value, doc)
 #endif
 
-#ifndef TOIT_FREERTOS
+#ifndef TOIT_EMBEDDED
 #define MATERIALIZE_DEPLOY_FLAG(type, prefix, name, value, doc) type Flags::name = value;
 #else
 #define MATERIALIZE_DEPLOY_FLAG(type, prefix, name, value, doc)
@@ -31,7 +31,7 @@ namespace toit {
 
 FLAGS_DO(MATERIALIZE_DEBUG_FLAG, MATERIALIZE_DEPLOY_FLAG)
 
-#ifndef TOIT_FREERTOS
+#ifndef TOIT_EMBEDDED
 
 static bool is_valid_flag(const char* argument) {
   return (strncmp(argument, "-X", 2) == 0) && (strlen(argument) > 2);

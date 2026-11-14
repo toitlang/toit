@@ -25,7 +25,7 @@
 
 #include "objects_inline.h"
 
-#if defined(TOIT_FREERTOS)
+#if defined(TOIT_EMBEDDED)
 #undef TOIT_CHECK_PROPAGATED_TYPES
 #endif
 

@@ -137,7 +137,7 @@ void Process::set_spawn_arguments(uint8* arguments) {
   spawn_arguments_ = arguments;
 }
 
-#ifndef TOIT_FREERTOS
+#ifndef TOIT_EMBEDDED
 void Process::set_main_arguments(char** argv) {
   ASSERT(main_arguments_ == null);
   int argc = 0;
