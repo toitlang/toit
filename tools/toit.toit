@@ -204,6 +204,24 @@ main args/List:
       --run=:: compile-or-analyze-or-run --command="analyze" it
   commands-command.add analyze-command
 
+  format-command := cli.Command "format"
+      --help="Pretty-print Toit source files in place."
+      --rest=[
+        cli.OptionPath "source"
+          --help="The Toit source files to format."
+          --extensions=[".toit"]
+          --required
+          --multi,
+      ]
+      --run=:: | invocation/cli.Invocation |
+        sources/List := invocation["source"]
+        sources.do: | source |
+          if not file.is-file source:
+            invocation.cli.ui.abort "Source file not found: $source"
+        exit-code := run invocation["sdk-dir"] "toit.compile" ["--format"] + sources
+        exit exit-code
+  commands-command.add format-command
+
   compile-command := cli.Command "compile"
       --help="""
         Compile the given Toit source file to a Toit binary or a Toit snapshot."""
