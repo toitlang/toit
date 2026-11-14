@@ -123,6 +123,10 @@ The $attack block is called in the untrusted container with the arguments
 If $exit is not $EXIT-ATTACK-FAILED, the untrusted container is expected
   to be terminated by the VM with that exit code.
 
+If $refused is not null, the VM is expected to refuse to start the
+  untrusted container (for example because the verifier rejects the
+  program), so that starting it throws $refused and the attack never runs.
+
 If $busy-sibling-ms is not null, the sibling is made busy (it doesn't
   process messages) for that many milliseconds right before the untrusted
   container is started.
@@ -144,6 +148,7 @@ If $during is not null, it is called in the driver (with the client of
 sandbox-test arguments/any -> none
     --error/any=null
     --exit/int=EXIT-ATTACK-FAILED
+    --refused/string?=null
     --quotas/Map?=null
     --trusted/bool=false
     --busy-sibling-ms/int?=null
@@ -159,7 +164,7 @@ sandbox-test arguments/any -> none
       run-attack arguments attack
       return
     throw "Unknown role: $role"
-  run-driver --error=error --exit=exit --quotas=quotas --trusted=trusted --busy-sibling-ms=busy-sibling-ms --prepare=prepare --during=during
+  run-driver --error=error --exit=exit --refused=refused --quotas=quotas --trusted=trusted --busy-sibling-ms=busy-sibling-ms --prepare=prepare --during=during
 
 run-attack arguments/Map [attack] -> none:
   exception := catch: attack.call arguments
@@ -176,7 +181,7 @@ run-attack arguments/Map [attack] -> none:
   print "attack failed as expected: $exception"
   exit EXIT-ATTACK-FAILED
 
-run-driver --error/any --exit/int --quotas/Map? --trusted/bool --busy-sibling-ms/int? --prepare/Lambda? --during/Lambda? -> none:
+run-driver --error/any --exit/int --refused/string? --quotas/Map? --trusted/bool --busy-sibling-ms/int? --prepare/Lambda? --during/Lambda? -> none:
   sibling-stopped := false
   sibling := containers.start containers.current {ROLE-KEY: ROLE-SIBLING}
       --on-stopped=:: sibling-stopped = true
@@ -193,19 +198,27 @@ run-driver --error/any --exit/int --quotas/Map? --trusted/bool --busy-sibling-ms
   if prepare:
     (prepare.call client).do: | key value | untrusted-arguments[key] = value
   if busy-sibling-ms: client.busy busy-sibling-ms
-  sandboxed := containers.start containers.current untrusted-arguments
-      --untrusted=(not trusted)
-      --quotas=quotas
-  during-done := monitor.Latch
-  if during:
-    task::
-      exception := catch --trace: during.call client
-      during-done.set exception
+  if refused:
+    exception := catch:
+      containers.start containers.current untrusted-arguments
+          --untrusted=(not trusted)
+          --quotas=quotas
+          --on-stopped=:: throw "refused container stopped"
+    expect-equals refused exception
   else:
-    during-done.set null
-  code := sandboxed.wait
-  expect-equals exit code
-  expect-null during-done.get
+    sandboxed := containers.start containers.current untrusted-arguments
+        --untrusted=(not trusted)
+        --quotas=quotas
+    during-done := monitor.Latch
+    if during:
+      task::
+        exception := catch --trace: during.call client
+        during-done.set exception
+    else:
+      during-done.set null
+    code := sandboxed.wait
+    expect-equals exit code
+    expect-null during-done.get
 
   // The VM, the driver and the sibling keep running and the sibling still
   // answers requests.

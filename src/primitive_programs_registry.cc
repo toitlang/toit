@@ -21,6 +21,7 @@
 #include "flash_registry.h"
 #include "embedded_data.h"
 #include "scheduler.h"
+#include "verifier.h"
 #include "vm.h"
 
 namespace toit {
@@ -67,6 +68,17 @@ PRIMITIVE(spawn) {
   Object* policy_error = null;
   const PrimitivePolicy* policy = PrimitivePolicy::from_description(policy_description, process, &policy_error);
   if (policy == null) return policy_error;
+
+  // Programs started as untrusted containers are always verified with the
+  // untrusted rules before they run. The program is already in flash, so
+  // this happens on every start rather than once at install time.
+  // Trusted containers from flash keep running unverified.
+  if (policy->is_untrusted() && !Verifier::verify_for_policy(program, policy)) {
+    PrimitivePolicy::release(policy);
+    String* error = process->allocate_string("VERIFICATION_FAILED");
+    if (error == null) FAIL(ALLOCATION_FAILED);
+    return Error::from(error);
+  }
 
   // Takes over the policy, also on failure.
   ProcessGroup* process_group = ProcessGroup::create(group_id, program, null, policy);

@@ -213,9 +213,10 @@ example because it is stuck in a primitive), it is killed with exit code
 replaces the `PROCESS_MAX_RUN_TIME` dead-lock `FATAL` for such processes.
 A kill takes effect when the running primitive returns.
 
-`HALT 2` (deep sleep) and `HALT 3` (reset) from an untrusted process
-terminate that process with exit code 242 instead of acting on the
-device.
+`HALT 2` (deep sleep) and `HALT 3` (reset) are rejected by the verifier
+in untrusted programs (see below), so such a program never starts. As a
+second line of defense, an untrusted process that reaches them anyway is
+terminated with exit code 242 instead of acting on the device.
 
 A container explicitly started as untrusted through the container API is
 never critical: its failure doesn't terminate the system, even if its
@@ -255,11 +256,29 @@ trusted policy (only its quotas are used). Running a container from an
 unflagged image untrusted is up to the caller. Existing images are
 unaffected.
 
+## Verification at launch
+
+Every program that is started with the untrusted policy is checked by the
+structural bytecode verifier (`src/verifier.cc`) with the untrusted rules
+before a process group is created for it: `snapshot.launch` (host) and
+`programs_registry.spawn` (containers in flash) call
+`Verifier::verify_for_policy`. This happens independent of `-Xverify` and
+`TOIT_VERIFY`; trusted programs are still only verified when one of them
+is set. A rejected program never runs: the verifier prints its errors to
+stderr and the launch fails with the error `VERIFICATION_FAILED`. The
+container manager forgets a container whose start failed; a refused
+run-critical container ends the system with exit code 1 (so `toit run
+--untrusted` exits with 1), and `boot` keeps booting the other images.
+
+Builds without the verifier (FreeRTOS devices) refuse all untrusted
+programs.
+
 ## Field accesses
 
-The interpreter checks every field access of an untrusted process at run
-time, in every build. Such processes run with their own dispatch table,
-which sends the seven field bytecodes (`LOAD_FIELD`, `LOAD_FIELD_WIDE`,
+The verifier does not prove the receivers of field accesses, so the
+interpreter checks every field access of an untrusted process at run time,
+in every build. Such processes run with their own dispatch table, which
+sends the seven field bytecodes (`LOAD_FIELD`, `LOAD_FIELD_WIDE`,
 `LOAD_FIELD_LOCAL`, `POP_LOAD_FIELD_LOCAL`, `STORE_FIELD`,
 `STORE_FIELD_WIDE`, `STORE_FIELD_POP`) to entries that check that the
 receiver is an instance (or task) with enough fields, and which calls field
@@ -281,13 +300,37 @@ code); the driver then checks that the sibling still answers requests.
 mechanism. `tests/sandbox/cli/` holds programs run directly with
 `toit.run --untrusted`, from source and from a snapshot.
 
+## Open for devices
+
+Devices can't run untrusted programs yet:
+
+- The structural verifier (`src/verifier.cc`) is host-only. It uses the STL
+  (`std::vector`, `std::unordered_map`, `std::string`) and allocates with
+  throwing `new` (under `AllowThrowingNew`), and it is not compiled for
+  FreeRTOS. Without it, `Verifier::verify_for_policy` refuses every
+  untrusted program, so `programs_registry.spawn` with the untrusted policy
+  (or an image with `FLAG-UNTRUSTED`) fails with `VERIFICATION_FAILED` on
+  ESP32 and other FreeRTOS devices.
+- Untrusted containers in flash are verified on every start: the result
+  of the verification is not recorded with the image, so a device would
+  pay for it at every boot.
+
+The C++ verifier will not be ported to FreeRTOS. The plan is that untrusted
+programs move to bytecode format 2, whose verifier is written in Rust
+(`verified/`) and verified against the bytecode specification, for the
+host and for install time on the device. The device verifies an image once,
+when it is installed, and keeps the verdict in the flash allocation
+metadata. Until then, untrusted containers are a host-only feature.
+
 ## Known gaps
 
 - The untrusted policy is a dispatch-time gate only. It relies on the
-  interpreter hardening (stack-pointer and method-id validation) to keep a
-  malformed program from jumping to code that bypasses the primitive
-  table. Untrusted programs are not structurally verified before they
-  run.
+  interpreter hardening (block and method-id validation) and on the
+  verifier, which is not proven sound yet; a verifier bug lets a
+  malicious snapshot bypass the primitive table.
+- Untrusted containers in flash are verified on every start, not once at
+  install time, and not at all on devices (which refuse them; see "Open
+  for devices").
 - A sandbox can make the system process print a warning for every
   unhandled message it sends (rate bounded only by the mailbox quota and
   the system process' speed).

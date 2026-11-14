@@ -15,11 +15,13 @@
 
 # Most sandbox tests are a trusted driver that starts an untrusted container
 # (and a trusted sibling) from its own image. See sandbox.toit.
-# The tests of the interpreter hardening fork toit.run and toit.compile, so
-# they take both as arguments.
+# The tests of the structural verifier and the interpreter hardening fork
+# toit.run and toit.compile, so they take both as arguments.
 set(TOOL_TESTS
   "tests/sandbox/field-access-test.toit"
   "tests/sandbox/runtime-hardening-test.toit"
+  "tests/sandbox/verify-reject-test.toit"
+  "tests/sandbox/verify-launch-test.toit"
   "tests/sandbox/invalid-utf-8-literal-test.toit"
 )
 file(GLOB SANDBOX_TESTS RELATIVE "${TOIT_SDK_SOURCE_DIR}" "*-test.toit")
@@ -47,7 +49,8 @@ endforeach()
 
 # Programs run directly as untrusted containers with 'toit.run --untrusted'.
 set(UNTRUSTED_RUN_TESTS
-  # Name, program, expected exit code, expected output (regex).
+  # Name, program, expected exit code, expected output (regex),
+  # optionally output that must not appear (regex).
   "print|print-main.toit|0|hello from the sandbox"
   # Long messages are truncated at a character boundary.
   "print-long|print-long-main.toit|0|é[.][.][.].*done printing"
@@ -56,7 +59,9 @@ set(UNTRUSTED_RUN_TESTS
   # explicit external and off-heap constructors are denied.
   "large-byte-array|large-byte-array-main.toit|0|100: size=100 zero=true last=42 filled=7.*10000: size=10000 zero=true last=42 filled=7.*1000000: size=1000000 zero=true last=42 filled=7.*buffer: hello.*external: PERMISSION_DENIED.*off-heap: PERMISSION_DENIED"
   "uncaught|uncaught-main.toit|1|PERMISSION_DENIED"
-  "deep-sleep|deep-sleep-main.toit|242|before deep sleep"
+  # The verifier rejects deep sleep in untrusted programs at launch; the
+  # program never runs.
+  "deep-sleep|deep-sleep-main.toit|1|HALT 2.*VERIFICATION_FAILED|before deep sleep"
 )
 
 foreach(entry ${UNTRUSTED_RUN_TESTS})
@@ -65,6 +70,11 @@ foreach(entry ${UNTRUSTED_RUN_TESTS})
   list(GET fields 1 program)
   list(GET fields 2 exit_code)
   list(GET fields 3 output)
+  set(unexpected "")
+  list(LENGTH fields field_count)
+  if(field_count GREATER 4)
+    list(GET fields 4 unexpected)
+  endif()
   foreach(mode source snapshot)
     set(test_name "tests/sandbox/cli/${name}-${mode}")
     add_test(
@@ -75,6 +85,7 @@ foreach(entry ${UNTRUSTED_RUN_TESTS})
           -DMODE=${mode}
           -DEXPECTED_EXIT=${exit_code}
           "-DEXPECTED_OUTPUT=${output}"
+          "-DUNEXPECTED_OUTPUT=${unexpected}"
           -DTMP=${CMAKE_CURRENT_BINARY_DIR}/cli-${name}-${mode}
           -P ${CMAKE_CURRENT_SOURCE_DIR}/run-untrusted.cmake
       )

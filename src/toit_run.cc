@@ -26,6 +26,8 @@
 #include "run.h"
 #include "snapshot.h"
 #include "snapshot_bundle.h"
+#include "verifier.h"
+#include "bytecodes.h"
 #include "utils.h"
 #include "main_utf_8_helper.h"
 #include "compiler/compiler.h"
@@ -81,6 +83,231 @@ static bool is_binary_file(const char* path) {
   return !is_text;
 }
 
+extern "C" {
+  extern unsigned char toit_run_snapshot[];
+  extern unsigned int toit_run_snapshot_len;
+};
+
+#define BYTECODE_LENGTH(name, length, format, print) length,
+static const int opcode_length[] = { BYTECODES(BYTECODE_LENGTH) };
+#undef BYTECODE_LENGTH
+#define BYTECODE_NAME(name, length, format, print) #name,
+static const char* const opcode_name[] = { BYTECODES(BYTECODE_NAME) };
+#undef BYTECODE_NAME
+
+static void print_verify_usage() {
+  fprintf(stderr,
+      "Usage: toit.run --verify [options] (<snapshot> | --system)\n"
+      "  -q, -v, -vv, -vvv      Verbosity (default -v: summary on stderr).\n"
+      "  --trusted              Use the rules for trusted programs (allow HALT 2/3).\n"
+      "  --strict               Unproven field receivers are errors.\n"
+      "  --primitives           Print the set of referenced primitives.\n"
+      "  --system               Verify the embedded system snapshot.\n"
+      "  --corrupt=<bci>:<byte> Patch one byte of the bytecodes before verifying.\n"
+      "  --fuzz=<n>             Verify n single-byte mutations of the bytecodes.\n"
+      "  --dump=<method id>     Disassemble a method.\n"
+      "  --emit-bytecodes=<f>   Write the raw program bytecodes to the file and exit.\n"
+      "  --emit-coverage=<f>    Write per-byte reachability (1=opcode, 2=operand) and exit.\n");
+}
+
+// Loads the snapshot, optionally corrupts bytecodes, and runs the verifier.
+// Returns the process exit code: 0 if the program is accepted, 1 if it is
+// rejected, 2 for usage errors.
+static int verify_snapshot(int argc, char** argv) {
+  VerifierOptions options;
+  options.verbosity = 1;
+  bool system = false;
+  int corrupt_bci = -1;
+  int corrupt_value = 0;
+  int fuzz = 0;
+  int dump = -1;
+  const char* emit_bytecodes = null;
+  const char* emit_coverage = null;
+  const char* path = null;
+  for (int i = 0; i < argc; i++) {
+    if (strcmp(argv[i], "-q") == 0) options.verbosity = 0;
+    else if (strcmp(argv[i], "-v") == 0) options.verbosity = 1;
+    else if (strcmp(argv[i], "-vv") == 0) options.verbosity = 2;
+    else if (strcmp(argv[i], "-vvv") == 0) options.verbosity = 3;
+    else if (strcmp(argv[i], "--trusted") == 0) options.untrusted = false;
+    else if (strcmp(argv[i], "--strict") == 0) options.strict = true;
+    else if (strcmp(argv[i], "--primitives") == 0) options.print_primitives = true;
+    else if (strcmp(argv[i], "--system") == 0) system = true;
+    else if (strncmp(argv[i], "--corrupt=", 10) == 0) {
+      if (sscanf(argv[i] + 10, "%d:%d", &corrupt_bci, &corrupt_value) != 2) {
+        print_verify_usage();
+        return 2;
+      }
+    }
+    else if (strncmp(argv[i], "--fuzz=", 7) == 0) fuzz = atoi(argv[i] + 7);
+    else if (strncmp(argv[i], "--dump=", 7) == 0) dump = atoi(argv[i] + 7);
+    else if (strncmp(argv[i], "--emit-bytecodes=", 17) == 0) emit_bytecodes = argv[i] + 17;
+    else if (strncmp(argv[i], "--emit-coverage=", 16) == 0) emit_coverage = argv[i] + 16;
+    else if (argv[i][0] == '-') {
+      print_verify_usage();
+      return 2;
+    } else {
+      path = argv[i];
+    }
+  }
+  if ((path == null) == !system) {
+    print_verify_usage();
+    return 2;
+  }
+  SnapshotBundle bundle = system
+      ? SnapshotBundle(toit_run_snapshot, toit_run_snapshot_len)
+      : SnapshotBundle::read_from_file(path);
+  if (!bundle.is_valid()) {
+    fprintf(stderr, "Not a valid snapshot: %s\n", system ? "<system>" : path);
+    return 2;
+  }
+  uint8 uuid[UUID_SIZE];
+  uint8* id = bundle.uuid(uuid) ? uuid : null;
+  ProgramImage image = bundle.snapshot().read_image(id);
+  if (!image.is_valid()) {
+    fprintf(stderr, "Could not read the snapshot\n");
+    return 1;
+  }
+  Program* program = image.program();
+  // The image is read-only; give the verifier a private copy of the bytecodes
+  // so that corruption experiments can patch them.
+  int length = program->bytecodes.length();
+  uint8* copy = unvoid_cast<uint8*>(malloc(length));
+  memcpy(copy, program->bytecodes.data(), length);
+  Verifier::set_bytecodes_for_testing(program, copy, length);
+
+  if (emit_bytecodes != null) {
+    // Writes the raw bytecodes so a test can locate them in the snapshot
+    // file and patch them (see tests/sandbox).
+    FILE* file = fopen(emit_bytecodes, "wb");
+    if (file == null) { fprintf(stderr, "Could not open %s\n", emit_bytecodes); return 2; }
+    size_t written = fwrite(copy, 1, length, file);
+    fclose(file);
+    return written == static_cast<size_t>(length) ? 0 : 2;
+  }
+
+  if (emit_coverage != null) {
+    // Writes the reachability of every byte (1 = instruction start, 2 =
+    // operand byte, 0 = unreached) so a test can patch only real instruction
+    // operands (see tests/sandbox).
+    uint8* coverage = unvoid_cast<uint8*>(calloc(length, 1));
+    Verifier::set_coverage_for_testing(coverage);
+    VerifierOptions quiet = options;
+    quiet.verbosity = 0;
+    quiet.print_primitives = false;
+    VerifierStats stats;
+    bool ok = Verifier::verify(program, &stats, quiet);
+    Verifier::set_coverage_for_testing(null);
+    if (!ok) { free(coverage); fprintf(stderr, "could not verify to compute coverage\n"); return 1; }
+    FILE* file = fopen(emit_coverage, "wb");
+    if (file == null) { free(coverage); fprintf(stderr, "Could not open %s\n", emit_coverage); return 2; }
+    size_t written = fwrite(coverage, 1, length, file);
+    fclose(file);
+    free(coverage);
+    return written == static_cast<size_t>(length) ? 0 : 2;
+  }
+
+  if (dump >= 0) {
+    // Disassembles the method with the given id (we do not know where it
+    // ends, so this stops after at most 200 instructions).
+    if (dump + Method::entry_offset() > length) return 2;
+    Method method(copy + dump);
+    printf("method %d: arity %d, max height %d, selector offset %d, %s\n", dump, method.arity(),
+           method.max_height(), method.selector_offset(),
+           method.is_block_method() ? "block" : method.is_lambda_method() ? "lambda"
+           : method.is_field_accessor() ? "field accessor" : "method");
+    int bci = 0;
+    for (int i = 0; i < 200 && dump + Method::entry_offset() + bci < length; i++) {
+      uint8* bcp = method.bcp_from_bci(bci);
+      int opcode = bcp[0];
+      if (opcode >= ILLEGAL_END) { printf("  %5d: <invalid opcode %d>\n", static_cast<int>(bcp - copy), opcode); break; }
+      printf("  %5d (+%3d): %-28s", static_cast<int>(bcp - copy), bci, opcode_name[opcode]);
+      for (int j = 1; j < opcode_length[opcode]; j++) printf(" %3d", bcp[j]);
+      printf("\n");
+      bci += opcode_length[opcode];
+    }
+    return 0;
+  }
+
+  if (corrupt_bci >= 0) {
+    if (corrupt_bci >= length) { fprintf(stderr, "bci out of range\n"); return 2; }
+    fprintf(stderr, "corrupting byte at bci %d: %d -> %d\n", corrupt_bci, copy[corrupt_bci], corrupt_value);
+    copy[corrupt_bci] = corrupt_value;
+  }
+
+  if (fuzz > 0) {
+    // Mutate one random byte of the bytecodes at a time and report how
+    // many mutations the verifier rejects. Deterministic seed.
+    // The coverage of the unmutated program classifies accepted mutations.
+    uint8* coverage = unvoid_cast<uint8*>(calloc(length, 1));
+    Verifier::set_coverage_for_testing(coverage);
+    VerifierOptions quiet = options;
+    quiet.verbosity = 0;
+    quiet.print_primitives = false;
+    { VerifierStats stats;
+      if (!Verifier::verify(program, &stats, quiet)) { fprintf(stderr, "fuzz: base program is rejected\n"); return 1; }
+    }
+    Verifier::set_coverage_for_testing(null);
+    uint32 seed = 0x5eed1234;
+    auto next_random = [&]() { seed = seed * 1103515245 + 12345; return (seed >> 8); };
+    int rejected = 0;
+    int accepted = 0;
+    int accepted_unreachable = 0;
+    int accepted_opcode = 0;
+    int accepted_operand = 0;
+    for (int i = 0; i < fuzz; i++) {
+      int bci = next_random() % length;
+      int value = next_random() & 0xff;
+      uint8 old = copy[bci];
+      if (old == value) { i--; continue; }
+      copy[bci] = value;
+      VerifierStats stats;
+      bool ok = Verifier::verify(program, &stats, quiet);
+      if (ok) {
+        accepted++;
+        const char* what;
+        char buffer[128];
+        if (coverage[bci] == 0) {
+          what = "unreachable byte";
+          accepted_unreachable++;
+        } else if (coverage[bci] == 1) {
+          snprintf(buffer, sizeof(buffer), "opcode %s -> %s", opcode_name[old],
+                   value < ILLEGAL_END ? opcode_name[value] : "<invalid>");
+          what = buffer;
+          accepted_opcode++;
+        } else {
+          int start = bci;
+          while (start > 0 && coverage[start] != 1) start--;
+          snprintf(buffer, sizeof(buffer), "operand %d of %s", bci - start, opcode_name[copy[start]]);
+          what = buffer;
+          accepted_operand++;
+        }
+        if (options.verbosity >= 2 || accepted <= 40) {
+          fprintf(stderr, "fuzz: accepted mutation bci %d: %d -> %d (%s)\n", bci, old, value, what);
+        }
+      } else {
+        rejected++;
+      }
+      copy[bci] = old;
+    }
+    fprintf(stderr, "fuzz: %d mutations, %d rejected, %d accepted (%d unreachable bytes, %d opcodes, %d operands)\n",
+            fuzz, rejected, accepted, accepted_unreachable, accepted_opcode, accepted_operand);
+    free(coverage);
+    return 0;
+  }
+
+  VerifierStats stats;
+  bool ok = Verifier::verify(program, &stats, options);
+  printf("%s methods=%d blocks=%d lambdas=%d instructions=%d bytes=%d passes=%d "
+         "heap_objects=%d method_entries=%d primitive_sites=%d primitives=%d "
+         "errors=%d warnings=%d time_us=%" PRId64 "\n",
+         ok ? "VERIFIED" : "REJECTED",
+         stats.methods, stats.blocks, stats.lambdas, stats.instructions, stats.bytes, stats.passes,
+         stats.heap_objects, stats.method_entries, stats.primitive_sites, stats.distinct_primitives,
+         stats.errors, stats.warnings, stats.time_us);
+  return ok ? 0 : 1;
+}
+
 int main(int argc, char **argv) {
   Flags::process_args(&argc, argv);
   if (argc < 2) print_usage(1);
@@ -102,6 +329,11 @@ int main(int argc, char **argv) {
     strcpy(boot_bundle_path, argv[2]);
     argc -= 2;
     argv += 2;
+  }
+
+  // Verify a snapshot without running it. Used by 'toit tool verify'.
+  if (strcmp(argv[1], "--verify") == 0) {
+    exit(verify_snapshot(argc - 2, &argv[2]));
   }
 
   // Run the application as an untrusted (sandboxed) container. Equivalent
