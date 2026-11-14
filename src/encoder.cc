@@ -101,6 +101,12 @@ class EncodeVisitor : public Visitor {
     encoder_->write_byte('$');
     encoder_->write_byte('U');
     encoder_->write_byte('#');
+    if (byte_array->has_external_address() && byte_array->external_tag() != RawByteTag) {
+      // A proxy for a C++ object (a resource, a resource group). Its external
+      // address points to the C++ object, not to bytes.
+      encoder_->write_int(0);
+      return;
+    }
     ByteArray::Bytes bytes(byte_array);
     const int limit = Utils::min(bytes.length(), MAX_NOF_BYTEARRAY_ELEMENTS);
     encoder_->write_int(limit);
