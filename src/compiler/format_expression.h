@@ -22,19 +22,11 @@
 namespace toit {
 namespace compiler {
 
-struct FormatExpressionOptions {
-  // Development switch used to measure the readability/churn tradeoff. It is
-  // not intended to become a user-facing formatter option.
-  bool parenthesize_mixed_bitwise = true;
-};
-
 // Produces the canonical one-line spelling for an expression. Returns false
 // when the expression kind is not implemented or inherently spans lines.
 bool format_expression_flat(ast::Expression* expression,
                             Source* source,
-                            std::string* result,
-                            const FormatExpressionOptions& options =
-                                FormatExpressionOptions());
+                            std::string* result);
 
 // Formats one expression directly from its AST. Returns false for expression
 // kinds not implemented by the current review slice.
@@ -42,9 +34,7 @@ bool format_expression(ast::Expression* expression,
                        Source* source,
                        int base_indentation,
                        FormatOutput* result,
-                       const FormatStyle& style = FormatStyle(),
-                       const FormatExpressionOptions& options =
-                           FormatExpressionOptions());
+                       const FormatStyle& style = FormatStyle());
 
 } // namespace compiler
 } // namespace toit
