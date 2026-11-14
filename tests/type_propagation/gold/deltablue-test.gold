@@ -80,6 +80,8 @@ Strength.next-weaker tests/type_propagation/deltablue-test.toit
  85[091] - return S1 1
  88[053] - invoke static unreachable <sdk>/core/exceptions.toit // {}
  91[041] - pop 1
+ 92[022] - load null
+ 93[090] - throw 0
 
 REQUIRED tests/type_propagation/deltablue-test.toit
   0[042] - allocate instance Strength

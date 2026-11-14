@@ -70,6 +70,8 @@ at-put_ tests/type_propagation/primitive-rules-test.toit
   0[089] - invoke primitive {core::array_at_put}
   4[053] - invoke static throw <sdk>/core/exceptions.toit // [{String_}] -> {}
   7[041] - pop 1
+  8[022] - load null
+  9[090] - throw 0
 
 write-to_ tests/type_propagation/primitive-rules-test.toit
  - argument 0: {String_}
@@ -80,15 +82,21 @@ write-to_ tests/type_propagation/primitive-rules-test.toit
   0[089] - invoke primitive {core::string_write_to_byte_array}
   4[053] - invoke static throw <sdk>/core/exceptions.toit // [{String_}] -> {}
   7[041] - pop 1
+  8[022] - load null
+  9[090] - throw 0
 
 tison-decode_ tests/type_propagation/primitive-rules-test.toit
  - argument 0: {ByteArray_}
   0[089] - invoke primitive {encoding::tison_decode}
   4[053] - invoke static throw <sdk>/core/exceptions.toit // [{String_}] -> {}
   7[041] - pop 1
+  8[022] - load null
+  9[090] - throw 0
 
 opendir_ tests/type_propagation/primitive-rules-test.toit
  - argument 0: {String_}
   0[089] - invoke primitive {file::opendir}
   4[053] - invoke static throw <sdk>/core/exceptions.toit // [{String_}] -> {}
   7[041] - pop 1
+  8[022] - load null
+  9[090] - throw 0

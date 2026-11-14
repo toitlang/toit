@@ -10,11 +10,17 @@ main args:
   input := "tests/cow-read-only-input.toit"
   process := pipe.fork
       --use-path
+      --create-stderr
       toit-run
       [
         toit-run,
         input
       ]
+  stderr := process.stderr.in.read-all.to-string
   exit-value := process.wait
 
-  expect-not-null (pipe.exit-signal exit-value)
+  // Stores into the read-only program heap are rejected with an exception
+  // (they used to be a segmentation fault).
+  expect-null (pipe.exit-signal exit-value)
+  expect-not-equals 0 (pipe.exit-code exit-value)
+  expect (stderr.contains "PERMISSION_DENIED")
