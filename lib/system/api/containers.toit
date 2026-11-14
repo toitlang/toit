@@ -14,6 +14,14 @@ interface ContainerService:
 
   static FLAG-RUN-BOOT     /int ::= 1 << 0
   static FLAG-RUN-CRITICAL /int ::= 1 << 1
+  // Containers from images with this flag always run with the untrusted
+  // (sandbox) policy.
+  static FLAG-UNTRUSTED    /int ::= 1 << 2
+
+  // Policy kinds, as returned by the process-policy primitive. Keep in sync
+  // with PrimitivePolicy::Kind in src/primitive_policy.h.
+  static POLICY-TRUSTED   /int ::= 1
+  static POLICY-UNTRUSTED /int ::= 2
 
   list-images -> List
   static LIST-IMAGES-INDEX /int ::= 0
@@ -21,7 +29,13 @@ interface ContainerService:
   load-image id/uuid.Uuid -> List?
   static LOAD-IMAGE-INDEX /int ::= 1
 
-  start-container handle/int arguments/any -> none
+  /**
+  Starts the container with the given $handle.
+
+  The $policy is null (use the default of the image) or a policy kind
+    (see $POLICY-TRUSTED).
+  */
+  start-container handle/int arguments/any --policy/any=null -> none
   static START-CONTAINER-INDEX /int ::= 7
 
   stop-container handle/int -> none
@@ -61,8 +75,8 @@ class ContainerServiceClient extends ServiceClient implements ContainerService:
   load-image id/uuid.Uuid -> List?:
     return invoke_ ContainerService.LOAD-IMAGE-INDEX id.to-byte-array
 
-  start-container handle/int arguments/any -> none:
-    invoke_ ContainerService.START-CONTAINER-INDEX [handle, arguments]
+  start-container handle/int arguments/any --policy/any=null -> none:
+    invoke_ ContainerService.START-CONTAINER-INDEX [handle, arguments, policy]
 
   stop-container handle/int -> none:
     invoke_ ContainerService.STOP-CONTAINER-INDEX handle

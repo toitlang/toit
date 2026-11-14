@@ -111,7 +111,7 @@ Process* Scheduler::new_boot_process(Locker& locker, Program* program, int group
     ASSERT(ok);
   }
 
-  ProcessGroup* group = ProcessGroup::create(group_id, program);
+  ProcessGroup* group = ProcessGroup::create(group_id, program, null, PrimitivePolicy::system());
   SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, group_id);
   manager.global_variables = program->global_variables.copy();
   ASSERT(manager.global_variables);  // Booting system.
@@ -161,7 +161,7 @@ Scheduler::ExitState Scheduler::launch_program(Locker& locker, Process* process)
   interpreter.activate(process);
   interpreter.prepare_process();
   interpreter.deactivate();
-  process->mark_as_priviliged();
+  // The boot process runs with the system policy (see new_boot_process).
   ASSERT(process->is_privileged());
 
   // Update the state and start the boot process.
@@ -283,6 +283,13 @@ message_err_t Scheduler::send_message(int process_id, Message* message, bool fre
   p->_append_message(message);
   process_ready(locker, p);
   return MESSAGE_OK;
+}
+
+int Scheduler::policy_kind(int pid) {
+  Locker locker(mutex_);
+  Process* process = find_process(locker, pid);
+  if (process == null) return -1;
+  return process->policy()->kind();
 }
 
 message_err_t Scheduler::send_system_message(Locker& locker, SystemMessage* message) {

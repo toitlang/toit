@@ -16,6 +16,14 @@
 import monitor
 import system.services show ServiceProvider ServiceHandler ServiceResource
 import system.api.service-discovery show ServiceDiscoveryService
+import system.api.print show PrintService
+import system.api.containers show ContainerService
+
+/**
+Services with this tag that are provided by the system process are only
+  discovered by sandboxed (untrusted) clients.
+*/
+TAG-SANDBOX-ONLY ::= "sandbox-only"
 
 class DiscoverableService:
   pid/int
@@ -56,11 +64,12 @@ class SystemServiceManager extends ServiceProvider
     super "system/service-discovery" --major=0 --minor=1 --patch=1
     provides ServiceDiscoveryService.SELECTOR --handler=this --id=0
     install
+    (SandboxPrintServiceProvider).install
 
   handle index/int arguments/any --gid/int --client/int -> any:
     pid := pid --client=client
     if index == ServiceDiscoveryService.DISCOVER-INDEX:
-      return discover arguments[0] --wait=arguments[1] client
+      return discover arguments[0] --wait=arguments[1] client --pid=pid
     if index == ServiceDiscoveryService.WATCH-INDEX:
       return watch pid arguments
     if index == ServiceDiscoveryService.LISTEN-INDEX:
@@ -117,7 +126,7 @@ class SystemServiceManager extends ServiceProvider
     if not services.is-empty: return
     services-by-pid_.remove pid
 
-  discover uuid/string --wait/bool client/int -> List:
+  discover uuid/string --wait/bool client/int --pid/int -> List:
     services/List? := null
     resource-serialized := null
     if wait:
@@ -125,7 +134,16 @@ class SystemServiceManager extends ServiceProvider
       (waiting_.get uuid --init=: []).add resource
       resource-serialized = resource.serialize-for-rpc
     services = services-by-uuid_.get uuid
+    if services and not is-untrusted_ pid:
+      // Hide the system services that only exist for sandboxed clients.
+      system-pid := Process.current.id
+      services = services.filter: | service/DiscoverableService |
+        not (service.pid == system-pid and service.tags and service.tags.contains TAG-SANDBOX-ONLY)
+      if services.is-empty: services = null
     return [array-of-services_ services, resource-serialized]
+
+  static is-untrusted_ pid/int -> bool:
+    return (process-policy_ pid) == ContainerService.POLICY-UNTRUSTED
 
   // TODO(kasper): Consider keeping the list of
   // services in a form that is ready to send
@@ -184,3 +202,39 @@ class SystemServiceManager extends ServiceProvider
 
   watch target/int -> none:
     unreachable  // <-- TODO(kasper): nasty
+
+/**
+A print service in the system process for sandboxed (untrusted) clients.
+
+Sandboxed processes can't write to stdout themselves, so their $print
+  goes through this service. It is only discovered by sandboxed clients;
+  other processes keep printing directly.
+*/
+class SandboxPrintServiceProvider extends ServiceProvider implements PrintService ServiceHandler:
+  static MAX-MESSAGE-SIZE ::= 4096
+
+  constructor:
+    super "system/print/sandbox" --major=0 --minor=1 --tags=[TAG-SANDBOX-ONLY]
+    provides PrintService.SELECTOR --handler=this
+
+  handle index/int arguments/any --gid/int --client/int -> any:
+    if index == PrintService.PRINT-INDEX:
+      if arguments is not string: throw "WRONG_OBJECT_TYPE"
+      return print arguments
+    unreachable
+
+  print message/string -> none:
+    if message.size > MAX-MESSAGE-SIZE:
+      // Cut at a character boundary. UTF-8 continuation bytes are
+      // 0b10xx_xxxx.
+      end := MAX-MESSAGE-SIZE
+      while end > 0 and (message.at --raw end) & 0xc0 == 0x80: end--
+      message = message[..end] + "..."
+    write-on-stdout_ message true
+
+/**
+Returns the policy kind of the process with the given $pid, or -1 if
+  there is no such process.
+*/
+process-policy_ pid/int -> int:
+  #primitive.core.process-policy

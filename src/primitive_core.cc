@@ -2171,6 +2171,11 @@ PRIMITIVE(process_send) {
   return BOOL(result == MESSAGE_OK);
 }
 
+PRIMITIVE(process_policy) {
+  ARGS(int, pid);
+  return Smi::from(VM::current()->scheduler()->policy_kind(pid));
+}
+
 PRIMITIVE(pid_for_external_id) {
   ARGS(String, id)
   return Smi::from(pid_for_external_id(id));

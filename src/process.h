@@ -19,6 +19,7 @@
 #include "interpreter.h"
 #include "linked.h"
 #include "messaging.h"
+#include "primitive_policy.h"
 #include "profiler.h"
 #include "resource.h"
 #include "snapshot_bundle.h"
@@ -104,9 +105,12 @@ class Process : public ProcessListFromProcessGroup::Element,
 
   bool is_suspended() const { return state_ == SUSPENDED_IDLE || state_ == SUSPENDED_SCHEDULED; }
 
-  // Returns whether this process is privileged (a system process).
-  bool is_privileged() const { return is_privileged_; }
-  void mark_as_priviliged() { is_privileged_ = true; }
+  // The policy of the process. It is the policy of its process group and is
+  // cached here for fast access from the interpreter and primitives.
+  const PrimitivePolicy* policy() const { return policy_; }
+
+  // Returns whether this process is privileged (runs with the system policy).
+  bool is_privileged() const { return policy_->is_system(); }
 
   // Garbage collection operation for runtime objects.
   GcType gc(bool try_hard) {
@@ -298,11 +302,11 @@ class Process : public ProcessListFromProcessGroup::Element,
 
   int const id_;
   int next_task_id_;
-  bool is_privileged_ = false;
 
   Program* program_;
   ProcessRunner* runner_;
   ProcessGroup* group_;
+  const PrimitivePolicy* const policy_;
 
   uint8 priority_ = PRIORITY_NORMAL;
   uint8 target_priority_ = PRIORITY_NORMAL;

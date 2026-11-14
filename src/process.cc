@@ -39,6 +39,7 @@ Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, S
     , program_(program)
     , runner_(runner)
     , group_(group)
+    , policy_(group->policy())
     , program_heap_address_(reinterpret_cast<uword>(program))
     , program_heap_size_(program ? program->size_no_assets() : 0)
     , entry_(Method::invalid())
