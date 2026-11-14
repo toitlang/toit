@@ -26,6 +26,10 @@
 namespace toit {
 
 bool Object::byte_content(Program* program, const uint8** content, word* length, BlobKind strings_only) const {
+  return byte_content(program, content, length, strings_only, 0);
+}
+
+bool Object::byte_content(Program* program, const uint8** content, word* length, BlobKind strings_only, int depth) const {
   if (is_string(this)) {
     String::Bytes bytes(String::cast(this));
     *length = bytes.length();
@@ -43,11 +47,12 @@ bool Object::byte_content(Program* program, const uint8** content, word* length,
     return true;
   }
   if (is_instance(this)) {
+    if (depth >= MAX_BYTE_CONTENT_DEPTH) return false;
     auto instance = Instance::cast(this);
     auto class_id = instance->class_id();
     if (strings_only == STRINGS_OR_BYTE_ARRAYS && class_id == program->byte_array_cow_class_id()) {
       auto backing = instance->at(Instance::BYTE_ARRAY_COW_BACKING_INDEX);
-      return backing->byte_content(program, content, length, strings_only);
+      return backing->byte_content(program, content, length, strings_only, depth + 1);
     } else if ((strings_only == STRINGS_OR_BYTE_ARRAYS && class_id == program->byte_array_slice_class_id())
           || class_id == program->string_slice_class_id()
           || class_id == program->string_byte_slice_class_id()) {
@@ -64,7 +69,7 @@ bool Object::byte_content(Program* program, const uint8** content, word* length,
       if (!is_smi(to)) return false;
       word from_value = Smi::value(from);
       word to_value = Smi::value(to);
-      bool inner_success = HeapObject::cast(wrapped)->byte_content(program, content, length, strings_only);
+      bool inner_success = wrapped->byte_content(program, content, length, strings_only, depth + 1);
       if (!inner_success) return false;
       if (0 <= from_value && from_value <= to_value && to_value <= *length) {
         *content += from_value;
