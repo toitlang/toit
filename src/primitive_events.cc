@@ -24,16 +24,26 @@ namespace toit {
 
 MODULE_IMPLEMENTATION(events, MODULE_EVENTS)
 
+// The group and the resource come from Toit code: the group may have no
+// event source (for example the generic resource group), and the resource
+// may belong to another group.
+static EventSource* checked_event_source(ResourceGroup* group, Resource* resource) {
+  if (resource->resource_group() != group) return null;
+  return group->event_source();
+}
+
 PRIMITIVE(read_state) {
   ARGS(ResourceGroup, resource_group, Resource, resource);
-
-  return Smi::from(resource_group->event_source()->read_state(resource));
+  EventSource* source = checked_event_source(resource_group, resource);
+  if (source == null) FAIL(WRONG_OBJECT_TYPE);
+  return Smi::from(source->read_state(resource));
 }
 
 PRIMITIVE(register_monitor_notifier) {
   ARGS(Object, monitor, ResourceGroup, group, Resource, resource);
 
-  EventSource* source = group->event_source();
+  EventSource* source = checked_event_source(group, resource);
+  if (source == null) FAIL(WRONG_OBJECT_TYPE);
   if (!source->update_resource_monitor(resource, process, monitor)) FAIL(MALLOC_FAILED);
   return process->null_object();
 }
@@ -55,7 +65,9 @@ PRIMITIVE(unregister_monitor_notifier) {
   ResourceGroup* group = group_proxy->as_external<ResourceGroup>();
   Resource* resource = resource_proxy->as_external<Resource>();
   if (group && resource) {
-    group->event_source()->delete_resource_monitor(resource);
+    EventSource* source = checked_event_source(group, resource);
+    if (source == null) FAIL(WRONG_OBJECT_TYPE);
+    source->delete_resource_monitor(resource);
   }
   return process->null_object();
 }

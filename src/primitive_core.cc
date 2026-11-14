@@ -925,29 +925,37 @@ PRIMITIVE(large_integer_multiply) {
   return Primitive::integer(result, process);
 }
 
+// Ints wrap around. Dividing int.MIN by -1 traps on x86 (SIGFPE, taking
+// down the whole VM), so division by -1 is handled separately.
+static int64 wrapping_negate(int64 value) {
+  return static_cast<int64>(0 - static_cast<uint64>(value));
+}
+
 PRIMITIVE(large_integer_divide) {
   ARGS(LargeInteger, receiver, Object, arg);
   int64 result = receiver->value();
+  int64 divisor;
   if (is_smi(arg)) {
-    if (Smi::value(arg) == 0) return Primitive::mark_as_error(process->program()->division_by_zero());
-    result /= Smi::value(arg);
+    divisor = Smi::value(arg);
   } else if (is_large_integer(arg)) {
-    ASSERT(LargeInteger::cast(arg)->value() != 0LL);
-    result /= LargeInteger::cast(arg)->value();
+    divisor = LargeInteger::cast(arg)->value();
   } else FAIL(WRONG_OBJECT_TYPE);
+  if (divisor == 0) return Primitive::mark_as_error(process->program()->division_by_zero());
+  result = (divisor == -1) ? wrapping_negate(result) : result / divisor;
   return Primitive::integer(result, process);
 }
 
 PRIMITIVE(large_integer_mod) {
   ARGS(LargeInteger, receiver, Object, arg);
   int64 result = receiver->value();
+  int64 divisor;
   if (is_smi(arg)) {
-    if (Smi::value(arg) == 0) return Primitive::mark_as_error(process->program()->division_by_zero());
-    result %= Smi::value(arg);
+    divisor = Smi::value(arg);
   } else if (is_large_integer(arg)) {
-    ASSERT(LargeInteger::cast(arg)->value() != 0LL);
-    result %= LargeInteger::cast(arg)->value();
+    divisor = LargeInteger::cast(arg)->value();
   } else FAIL(WRONG_OBJECT_TYPE);
+  if (divisor == 0) return Primitive::mark_as_error(process->program()->division_by_zero());
+  result = (divisor == -1) ? 0 : result % divisor;
   return Primitive::integer(result, process);
 }
 
