@@ -270,7 +270,9 @@ Process* Scheduler::run_external(ProcessRunner* runner) {
 
 message_err_t Scheduler::send_system_message(SystemMessage* message) {
   Locker locker(mutex_);
-  return send_system_message(locker, message);
+  message_err_t result = send_system_message(locker, message);
+  if (result != MESSAGE_OK) delete message;
+  return result;
 }
 
 message_err_t Scheduler::send_message(int process_id, Message* message, bool free_on_failure) {
@@ -280,9 +282,73 @@ message_err_t Scheduler::send_message(int process_id, Message* message, bool fre
     if (free_on_failure) delete message;
     return MESSAGE_NO_SUCH_RECEIVER;
   }
-  p->_append_message(message);
+  if (!p->_append_message(message)) {
+    if (free_on_failure) delete message;
+    return MESSAGE_QUOTA_EXCEEDED;
+  }
   process_ready(locker, p);
   return MESSAGE_OK;
+}
+
+message_err_t Scheduler::send_message_from(Process* sender, int process_id, SystemMessage* message) {
+  Locker locker(mutex_);
+  const PrimitivePolicy* policy = sender->policy();
+  if (process_id < 0) {
+    message_err_t result = send_system_message(locker, message);
+    if (result != MESSAGE_OK) delete message;
+    return result;
+  }
+  Process* receiver = find_process(locker, process_id);
+  if (policy->restricts_messaging()) {
+    // Check the target before looking at whether it exists, so a sandboxed
+    // process can't probe for process ids.
+    bool allowed = (receiver != null && receiver == boot_process_)
+        || (receiver != null && receiver->group() == sender->group())
+        || sender->group()->may_send_to(process_id);
+    if (!allowed) {
+      delete message;
+      return MESSAGE_PERMISSION_DENIED;
+    }
+  }
+  if (receiver == null) {
+    delete message;
+    return MESSAGE_NO_SUCH_RECEIVER;
+  }
+  // A process in a messaging-restricted group that receives an RPC request
+  // may reply to the requester (it may always send to the system process).
+  // If its allowed-target set is full, the request is refused like a
+  // request to a full mailbox.
+  ProcessGroup* receiver_group = receiver->group();
+  if (receiver_group != sender->group() &&
+      receiver_group->policy()->restricts_messaging() &&
+      message->type() == SYSTEM_RPC_REQUEST &&
+      sender != boot_process_ &&
+      !receiver_group->grant_send_to(sender->id())) {
+    delete message;
+    return MESSAGE_QUOTA_EXCEEDED;
+  }
+  if (!receiver->_append_message(message)) {
+    delete message;
+    return MESSAGE_QUOTA_EXCEEDED;
+  }
+  process_ready(locker, receiver);
+  return MESSAGE_OK;
+}
+
+Scheduler::GrantResult Scheduler::grant_send(int pid, int target) {
+  Locker locker(mutex_);
+  Process* process = find_process(locker, pid);
+  if (process == null) return GRANT_NO_SUCH_PROCESS;
+  ProcessGroup* group = process->group();
+  if (!group->policy()->restricts_messaging()) return GRANT_OK;
+  // The system process and the own group are always allowed targets, so
+  // they don't take up room in the allowed-target set.
+  Process* target_process = find_process(locker, target);
+  if (target_process != null &&
+      (target_process == boot_process_ || target_process->group() == group)) {
+    return GRANT_OK;
+  }
+  return group->grant_send_to(target) ? GRANT_OK : GRANT_QUOTA_EXCEEDED;
 }
 
 int Scheduler::policy_kind(int pid) {
@@ -294,7 +360,7 @@ int Scheduler::policy_kind(int pid) {
 
 message_err_t Scheduler::send_system_message(Locker& locker, SystemMessage* message) {
   if (boot_process_ != null) {
-    boot_process_->_append_message(message);
+    if (!boot_process_->_append_message(message)) return MESSAGE_QUOTA_EXCEEDED;
     process_ready(locker, boot_process_);
     return MESSAGE_OK;
   }
@@ -313,7 +379,9 @@ message_err_t Scheduler::send_system_message(Locker& locker, SystemMessage* mess
       break;
     }
     default:
-      FATAL("unhandled system message %d", message->type());
+      // Without a boot process there is nobody to handle the message. Drop
+      // it instead of aborting the VM; any process can send these.
+      break;
   }
 
   delete message;
@@ -324,7 +392,10 @@ void Scheduler::send_notify_message(ObjectNotifier* notifier) {
   Locker locker(mutex_);
   Process* process = notifier->process();
   if (process->state() == Process::TERMINATING) return;
-  process->_append_message(notifier->message());
+  // Notifications are not subject to mailbox quotas, so this can't fail.
+  bool ok = process->_append_message(notifier->message());
+  ASSERT(ok);
+  USE(ok);
   process_ready(locker, process);
 }
 
@@ -343,6 +414,11 @@ bool Scheduler::signal_process(Process* sender, int target_id, Process::Signal s
 int Scheduler::spawn(Program* program, ProcessGroup* process_group, int priority,
                      Method method, MessageEncoder* arguments, InitialMemoryManager* initial_memory) {
   Locker locker(mutex_);
+
+  word max_processes = process_group->policy()->quotas().max_processes;
+  if (max_processes > 0 && process_group->process_count() >= max_processes) {
+    return QUOTA_EXCEEDED_PROCESS_ID;
+  }
 
   SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, process_group->id());
   if (!termination) return INVALID_PROCESS_ID;
@@ -562,6 +638,7 @@ void Scheduler::gc(Process* process, bool malloc_failed, bool try_hard) {
 
 void Scheduler::add_process(Locker& locker, Process* process) {
   num_processes_++;
+  if (process->policy()->quotas().limits_run_time()) num_run_time_limited_processes_++;
   process_ready(locker, process);
 }
 
@@ -664,14 +741,26 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
     result = runner->run();
   }
 
+  process->add_cpu_time_us(process->run_time_us(OS::get_monotonic_time()));
   process->clear_run_timestamp();
   process->set_scheduler_thread(null);
+
+  // A process whose policy does not allow it to act on the device is
+  // terminated with an error instead of putting the device to sleep or
+  // resetting it.
+  if ((result.state() == Interpreter::Result::DEEP_SLEEP ||
+       result.state() == Interpreter::Result::RESET) &&
+      !process->policy()->may_halt_device()) {
+    result = Interpreter::Result(Interpreter::Result::TERMINATED, SANDBOX_EXIT_DEVICE_HALT);
+  }
 
   while (result.state() != Interpreter::Result::TERMINATED) {
     uint32 signals = process->signals();
     if (signals == 0) break;
     if (signals & Process::KILL) {
-      result = Interpreter::Result(Interpreter::Result::TERMINATED);
+      // Processes killed for violating their policy report a specific exit
+      // value. Other kills report 0, as before.
+      result = Interpreter::Result(Interpreter::Result::TERMINATED, process->kill_exit_value());
       // TODO(kasper): Would it be meaningful to clear the KILL
       // signal bits here like the other cases?
     } else if (signals & Process::PREEMPT) {
@@ -715,6 +804,7 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
 
       int id = process->id();
       ProcessGroup* group = process->group();
+      if (process->policy()->quotas().limits_run_time()) num_run_time_limited_processes_--;
       bool last_in_group = !group->remove(process);
       ASSERT(group->lookup(id) == null);
       SystemMessage* message = process->take_termination_message(result.value());
@@ -939,13 +1029,41 @@ void Scheduler::tick(Locker& locker, int64 now) {
 
   bool any_profiling = num_profiled_processes_ > 0;
   bool any_ready = first_non_empty_ready_queue < NUMBER_OF_READY_QUEUES;
-  if (!PROCESS_MAX_RUN_TIME_ENFORCE && !any_profiling && !any_ready) return;
+  if (!PROCESS_MAX_RUN_TIME_ENFORCE && !any_profiling && !any_ready &&
+      num_run_time_limited_processes_ == 0) {
+    return;
+  }
 
   for (SchedulerThread* thread : threads_) {
     Process* process = thread->interpreter()->process();
     if (process == null) continue;
 
     int64 run_time_us = process->run_time_us(now);
+
+    // Processes with a run-time limit or a CPU budget in their policy are
+    // killed when they exceed it. For them this replaces the dead-lock FATAL
+    // below, so a sandboxed process can't take down the VM.
+    const PolicyQuotas& quotas = process->policy()->quotas();
+    int64 max_run_time_us = quotas.max_run_time_us;
+    int64 cpu_budget_us = quotas.cpu_budget_us;
+    if (quotas.limits_run_time()) {
+      bool over_run_time = max_run_time_us > 0 && run_time_us > max_run_time_us;
+      bool over_budget = cpu_budget_us > 0 && process->cpu_time_us() + run_time_us > cpu_budget_us;
+      if (over_run_time || over_budget) {
+        process->kill_for_policy(SANDBOX_EXIT_CPU_BUDGET);
+        continue;
+      }
+      if (process->signals() & Process::PREEMPT) continue;
+      bool should_preempt =
+           (max_run_time_us > 0 && run_time_us > max_run_time_us / 2)
+        || (any_profiling && process->profiler() != null)
+        || (any_ready && compute_ready_queue_index(process->priority()) >= first_non_empty_ready_queue);
+      if (should_preempt) process->signal(Process::PREEMPT);
+      continue;
+    }
+
+    if (!PROCESS_MAX_RUN_TIME_ENFORCE && !any_profiling && !any_ready) continue;
+
     if (PROCESS_MAX_RUN_TIME_ENFORCE && run_time_us > PROCESS_MAX_RUN_TIME_US) {
       fprintf(stderr, "Potential deadlock detected:\n");
       fprintf(stderr, "  Process: %d\n", process->id());

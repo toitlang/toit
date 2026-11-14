@@ -121,6 +121,24 @@ PRIMITIVE(blit) {
     dest_write_width = 0;
   }
   if (operation == ADD_16_LE) dest_write_width++;
+  if (process->policy()->quotas().max_run_time_us > 0) {
+    // A process with a run-time quota is only stopped when its primitive
+    // returns, so the work must be bounded. With zero pixel strides the
+    // pixels per line aren't bounded by the blob sizes, and with a zero
+    // line stride on one side the lines are bounded by the other side
+    // only: 2^23 pixels on each of a million lines took hours. Allow a
+    // few passes over the source and destination.
+    word src_room = src.length() - src_read_width;
+    word dest_room = dest.length() - dest_write_width - dest_offset;
+    word lines = 0;
+    if (src_room > 0 && dest_room > 0) {
+      word src_lines = src_line_stride == 0 ? -1 : (src_room - 1) / src_line_stride + 1;
+      word dest_lines = dest_line_stride == 0 ? -1 : (dest_room - 1) / dest_line_stride + 1;
+      lines = src_lines < 0 ? dest_lines : (dest_lines < 0 ? src_lines : Utils::min(src_lines, dest_lines));
+    }
+    word max_work = 4 * (src.length() + dest.length()) + 0x10000;
+    if (pixels_per_line > 0 && lines > max_work / pixels_per_line) FAIL(OUT_OF_RANGE);
+  }
   while (src_offset + src_read_width < src.length() &&
          dest_offset + dest_write_width < dest.length()) {
     word src_index = src_offset;

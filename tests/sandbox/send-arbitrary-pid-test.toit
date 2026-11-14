@@ -1,0 +1,10 @@
+// Copyright (C) 2026 Toit contributors.
+// Use of this source code is governed by a Zero-Clause BSD license that can
+// be found in the tests/LICENSE file.
+
+import .sandbox
+
+// Sending to a process that was not discovered is denied.
+main args:
+  sandbox-test args --error="PERMISSION_DENIED": | arguments/Map |
+    process-send_ arguments["sibling-pid"] USER-MESSAGE-TYPE ["hello"]

@@ -59,6 +59,13 @@ Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, S
     , state_(IDLE)
     , scheduler_thread_(null) {
   if (initial_memory) initial_memory->dont_auto_free();
+  // The heap cap of the policy is installed by the VM and can not be raised
+  // by the program (see the set_max_heap_size primitive).
+  word max_heap = policy_->quotas().max_heap_bytes;
+  if (program && max_heap > 0) {
+    object_heap_.set_max_heap_size(max_heap);
+    object_heap_.update_pending_limit();
+  }
   // We can't start a process from a heap that has not been linearly allocated
   // because we use the address range to distinguish program pointers and
   // process pointers.
@@ -291,14 +298,36 @@ ByteArray* Process::allocate_byte_array(word length, bool force_external) {
   return null;
 }
 
-void Process::_append_message(Message* message) {
+bool Process::_append_message(Message* message) {
   Locker locker(OS::process_mutex());
   if (message->is_object_notify()) {
     ObjectNotifyMessage* obj_notify = static_cast<ObjectNotifyMessage*>(message);
-    if (obj_notify->is_queued()) return;
+    if (obj_notify->is_queued()) return true;
     obj_notify->mark_queued();
+  } else if (message->is_system()) {
+    SystemMessage* system = static_cast<SystemMessage*>(message);
+    word size = system->size();
+    // Quotas of the receiver. They bound the whole mailbox, including the
+    // messages from trusted senders (for example RPC replies), so they are
+    // a multiple of the per-sender quotas below: a sandboxed process that
+    // fills its mailbox with its own messages still gets its replies.
+    const PolicyQuotas& quotas = policy_->quotas();
+    const word factor = PolicyQuotas::RECEIVER_FACTOR;
+    if (quotas.max_mailbox_messages > 0 && mailbox_count_ >= factor * quotas.max_mailbox_messages) return false;
+    if (quotas.max_mailbox_bytes > 0 && mailbox_bytes_ + size > factor * quotas.max_mailbox_bytes) return false;
+    // Quotas of a messaging-restricted sender. They protect every receiver,
+    // including the system process, from being flooded by sandboxed code.
+    if (system->is_restricted()) {
+      if (system->restricted_max_count() > 0 && restricted_count_ >= system->restricted_max_count()) return false;
+      if (system->restricted_max_bytes() > 0 && restricted_bytes_ + size > system->restricted_max_bytes()) return false;
+      restricted_count_++;
+      restricted_bytes_ += size;
+    }
+    mailbox_count_++;
+    mailbox_bytes_ += size;
   }
   messages_.append(message);
+  return true;
 }
 
 bool Process::has_messages() {
@@ -317,6 +346,15 @@ void Process::remove_first_message() {
   Message* message = messages_.remove_first();
   if (message->is_object_notify()) {
     if (!static_cast<ObjectNotifyMessage*>(message)->mark_dequeued()) return;
+  } else if (message->is_system()) {
+    SystemMessage* system = static_cast<SystemMessage*>(message);
+    word size = system->size();
+    mailbox_count_--;
+    mailbox_bytes_ -= size;
+    if (system->is_restricted()) {
+      restricted_count_--;
+      restricted_bytes_ -= size;
+    }
   }
   delete message;
 }
@@ -383,6 +421,16 @@ void Process::random_seed(const uint8* buffer, size_t size) {
 
 void Process::add_resource_group(ResourceGroup* r) {
   resource_groups_.prepend(r);
+}
+
+bool Process::may_add_permanent_resource_group() {
+  if (!policy()->restricts_messaging()) return true;
+  int count = 0;
+  for (auto it : resource_groups_) {
+    USE(it);
+    if (++count >= MAX_RESTRICTED_RESOURCE_GROUPS) return false;
+  }
+  return true;
 }
 
 void Process::remove_resource_group(ResourceGroup* group) {

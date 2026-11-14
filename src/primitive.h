@@ -285,6 +285,7 @@ namespace toit {
   PRIMITIVE(firmware_mapping_copy, 5)        \
   PRIMITIVE(rtc_user_bytes, 0)               \
   PRIMITIVE(hostname, 0)                     \
+  PRIMITIVE(process_grant_send, 2)           \
   PRIMITIVE(process_policy, 1)               \
 
 #define MODULE_TIMER(PRIMITIVE)              \

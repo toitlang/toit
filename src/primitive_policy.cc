@@ -15,6 +15,7 @@
 
 #include "primitive_policy.h"
 
+#include "messaging.h"
 #include "objects_inline.h"
 #include "process.h"
 
@@ -55,8 +56,9 @@ static const unsigned BITMAP_COUNT = 0 MODULE_BITMAP(PRIMITIVE_COUNT);
 // The core primitives an untrusted program may call. This is the set the
 // core library needs (measured on the test suite) plus the remaining pure,
 // process-local primitives and read-only clock access. Anything that reaches
-// the host, flash, the environment, other processes (beyond process_send),
-// writes the clock, or changes VM-global settings is not in this list.
+// the host, flash, the environment, other processes (beyond process_send,
+// which is gated separately), writes the clock, or changes VM-global
+// settings is not in this list.
 //
 // Deliberately left out although process-local, because no ordinary program
 // needs them: external and off-heap byte arrays (byte_array_new_external,
@@ -246,6 +248,28 @@ static void build_partial_table(PrimitiveEntry* table,
   }
 }
 
+#ifdef TOIT_FREERTOS
+static const word UNTRUSTED_MAX_HEAP_BYTES = 128 * KB;
+static const word UNTRUSTED_MAX_MAILBOX_BYTES = 32 * KB;
+static const word UNTRUSTED_MAX_MESSAGE_BYTES = 8 * KB;
+#else
+static const word UNTRUSTED_MAX_HEAP_BYTES = 64 * MB;
+static const word UNTRUSTED_MAX_MAILBOX_BYTES = 1 * MB;
+static const word UNTRUSTED_MAX_MESSAGE_BYTES = 256 * KB;
+#endif
+
+static const PolicyQuotas UNTRUSTED_QUOTAS = {
+  UNTRUSTED_MAX_HEAP_BYTES,     // max_heap_bytes.
+  256,                          // max_mailbox_messages.
+  UNTRUSTED_MAX_MAILBOX_BYTES,  // max_mailbox_bytes.
+  UNTRUSTED_MAX_MESSAGE_BYTES,  // max_message_bytes.
+  64,                           // max_timers.
+  1,                            // max_processes.
+  2 * 1000 * 1000,              // max_run_time_us.
+  0,                            // cpu_budget_us.
+  64,                           // max_send_grants.
+};
+
 }  // namespace
 
 PrimitivePolicy PrimitivePolicy::system_;
@@ -254,6 +278,8 @@ PrimitivePolicy PrimitivePolicy::untrusted_;
 
 void PrimitivePolicy::initialize_all(Kind kind) {
   kind_ = kind;
+  owned_ = false;
+  quotas_ = {};
   for (unsigned module = 0; module < Primitive::MODULE_COUNT; module++) {
     const PrimitiveEntry* table = Primitive::at(module, 0);
     tables_[module] = table;
@@ -263,6 +289,8 @@ void PrimitivePolicy::initialize_all(Kind kind) {
 
 void PrimitivePolicy::initialize_untrusted() {
   kind_ = UNTRUSTED;
+  owned_ = false;
+  quotas_ = UNTRUSTED_QUOTAS;
   for (unsigned module = 0; module < Primitive::MODULE_COUNT; module++) {
     tables_[module] = null;
     lengths_[module] = 0;
@@ -304,6 +332,88 @@ const PrimitivePolicy* PrimitivePolicy::launchable(int kind) {
     case UNTRUSTED: return &untrusted_;
     default: return null;
   }
+}
+
+bool PrimitivePolicy::may_send_type(int type) const {
+  if (!restricts_messaging()) return true;
+  if (type >= MESSAGING_RESERVED_MESSAGE_TYPES) return true;
+  switch (type) {
+    case SYSTEM_TRACE:
+    case SYSTEM_RPC_REQUEST:
+    case SYSTEM_RPC_REPLY:
+    case SYSTEM_RPC_CANCEL:
+    case SYSTEM_RPC_NOTIFY_RESOURCE:
+      return true;
+    default:
+      return false;
+  }
+}
+
+static bool read_quota(Array* array, int index, word* out, word scale, word max) {
+  if (index >= array->length()) return true;
+  Object* value = array->at(index);
+  if (!is_smi(value)) return false;
+  word v = Smi::value(value);
+  if (v < 0) return true;  // Keep the default.
+  if (v > max / scale) return false;
+  *out = v * scale;
+  return true;
+}
+
+const PrimitivePolicy* PrimitivePolicy::from_description(Object* description, Process* process, Object** error) {
+  Program* program = process->program();
+  *error = null;
+  if (is_smi(description)) {
+    const PrimitivePolicy* result = launchable(Smi::value(description));
+    if (result == null) *error = Primitive::mark_as_error(program->invalid_argument());
+    return result;
+  }
+  if (!is_array(description)) {
+    *error = Primitive::mark_as_error(program->wrong_object_type());
+    return null;
+  }
+  Array* array = Array::cast(description);
+  if (array->length() < 1 || !is_smi(array->at(0))) {
+    *error = Primitive::mark_as_error(program->invalid_argument());
+    return null;
+  }
+  const PrimitivePolicy* base = launchable(Smi::value(array->at(0)));
+  if (base == null) {
+    *error = Primitive::mark_as_error(program->invalid_argument());
+    return null;
+  }
+  PolicyQuotas quotas = base->quotas_;
+  word run_time_ms = -1;
+  word cpu_budget_ms = -1;
+  const word MAX_WORD = Smi::MAX_SMI_VALUE;
+  bool ok = read_quota(array, 1, &quotas.max_heap_bytes, 1, MAX_WORD)
+      && read_quota(array, 2, &quotas.max_mailbox_messages, 1, MAX_WORD)
+      && read_quota(array, 3, &quotas.max_mailbox_bytes, 1, MAX_WORD)
+      && read_quota(array, 4, &quotas.max_message_bytes, 1, MAX_WORD)
+      && read_quota(array, 5, &quotas.max_timers, 1, MAX_WORD)
+      && read_quota(array, 6, &quotas.max_processes, 1, MAX_WORD)
+      && read_quota(array, 7, &run_time_ms, 1, MAX_WORD)
+      && read_quota(array, 8, &cpu_budget_ms, 1, MAX_WORD);
+  if (!ok) {
+    *error = Primitive::mark_as_error(program->out_of_range());
+    return null;
+  }
+  if (run_time_ms >= 0) quotas.max_run_time_us = static_cast<int64>(run_time_ms) * 1000;
+  if (cpu_budget_ms >= 0) quotas.cpu_budget_us = static_cast<int64>(cpu_budget_ms) * 1000;
+
+  PrimitivePolicy* result = _new PrimitivePolicy();
+  if (result == null) {
+    *error = Primitive::mark_as_error(program->malloc_failed());
+    return null;
+  }
+  *result = *base;
+  result->owned_ = true;
+  result->quotas_ = quotas;
+  return result;
+}
+
+void PrimitivePolicy::release(const PrimitivePolicy* policy) {
+  if (policy != null && policy->is_owned()) delete policy;
 }
 
 } // namespace toit

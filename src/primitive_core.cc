@@ -254,6 +254,8 @@ PRIMITIVE(spawn) {
   initial_memory_manager.global_variables = process->program()->global_variables.copy();
   if (!initial_memory_manager.global_variables) FAIL(MALLOC_FAILED);
 
+  // The child is created in the same process group, so it inherits the
+  // group's policy. The scheduler enforces the process quota of the policy.
   int pid = VM::current()->scheduler()->spawn(
       process->program(),
       process->group(),
@@ -261,6 +263,9 @@ PRIMITIVE(spawn) {
       method,
       &encoder,                  // Takes over encoder.
       &initial_memory_manager);  // Takes over initial memory.
+  if (pid == Scheduler::QUOTA_EXCEEDED_PROCESS_ID) {
+    FAIL(QUOTA_EXCEEDED);
+  }
   if (pid == Scheduler::INVALID_PROCESS_ID) {
     FAIL(MALLOC_FAILED);
   }
@@ -272,6 +277,9 @@ PRIMITIVE(get_generic_resource_group) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
+  // The group lives until the process exits, so a sandboxed program calling
+  // this in a loop would take VM memory without bound.
+  if (!process->may_add_permanent_resource_group()) FAIL(QUOTA_EXCEEDED);
   SimpleResourceGroup* resource_group = _new SimpleResourceGroup(process);
   if (!resource_group) FAIL(MALLOC_FAILED);
 
@@ -2143,13 +2151,32 @@ PRIMITIVE(task_transfer) {
 PRIMITIVE(process_send) {
   ARGS(int, process_id, int, type, Object, array);
 
+  const PrimitivePolicy* policy = process->policy();
+  // Sandboxed processes may only send the RPC and trace message types and
+  // the non-reserved types. Their targets are checked by the scheduler.
+  if (!policy->may_send_type(type)) FAIL(PERMISSION_DENIED);
+  // Trace messages may only go to the system process.
+  if (policy->restricts_messaging() && type == SYSTEM_TRACE && process_id >= 0 &&
+      process_id != VM::current()->scheduler()->boot_process_id()) {
+    FAIL(PERMISSION_DENIED);
+  }
+
+  const PolicyQuotas& quotas = policy->quotas();
   word size = 0;
+  word total_size = 0;
   { MessageEncoder size_encoder(process, null);
+    // Stop the size pass at the quota: a shared object is encoded once per
+    // reference, so the work isn't bounded by the size of the object graph,
+    // and a primitive can't be interrupted.
+    size_encoder.set_max_total_size(quotas.max_message_bytes);
     if (!size_encoder.encode(array)) {
+      if (size_encoder.over_limit()) FAIL(QUOTA_EXCEEDED);
       return size_encoder.create_error_object(process);
     }
     size = size_encoder.size();
+    total_size = size_encoder.total_size();
   }
+  if (quotas.max_message_bytes > 0 && total_size > quotas.max_message_bytes) FAIL(QUOTA_EXCEEDED);
 
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + EXTERNAL_BYTE_ARRAY_MALLOC_TAG);
   uint8* buffer = unvoid_cast<uint8*>(malloc(size));
@@ -2163,12 +2190,27 @@ PRIMITIVE(process_send) {
   // Takes over the buffer and neutralizes the MessageEncoder.
   SystemMessage* message = _new SystemMessage(type, process->group()->id(), process->id(), &encoder);
   if (message == null) FAIL(MALLOC_FAILED);
+  message->set_size(total_size);
+  if (policy->restricts_messaging()) {
+    message->set_restricted(quotas.max_mailbox_messages, quotas.max_mailbox_bytes);
+  }
 
-  // One of the calls below takes over the SystemMessage.
-  message_err_t result = (process_id >= 0)
-      ? VM::current()->scheduler()->send_message(process_id, message)
-      : VM::current()->scheduler()->send_system_message(message);
+  // Takes over the SystemMessage.
+  message_err_t result = VM::current()->scheduler()->send_message_from(process, process_id, message);
+  if (result == MESSAGE_PERMISSION_DENIED) FAIL(PERMISSION_DENIED);
+  // Sandboxed senders learn that they are flooding a mailbox. For other
+  // senders the message is dropped, as for a missing receiver, so a full
+  // sandboxed mailbox can't make the system process throw.
+  if (result == MESSAGE_QUOTA_EXCEEDED && policy->restricts_messaging()) FAIL(QUOTA_EXCEEDED);
   return BOOL(result == MESSAGE_OK);
+}
+
+PRIMITIVE(process_grant_send) {
+  PRIVILEGED;
+  ARGS(int, pid, int, target);
+  Scheduler::GrantResult result = VM::current()->scheduler()->grant_send(pid, target);
+  if (result == Scheduler::GRANT_QUOTA_EXCEEDED) FAIL(QUOTA_EXCEEDED);
+  return BOOL(result == Scheduler::GRANT_OK);
 }
 
 PRIMITIVE(process_policy) {
@@ -2456,6 +2498,9 @@ PRIMITIVE(profiler_uninstall) {
 
 PRIMITIVE(set_max_heap_size) {
   ARGS(word, max_bytes);
+  // The heap cap of the policy can not be raised by the program.
+  word cap = process->policy()->quotas().max_heap_bytes;
+  if (cap > 0 && (max_bytes <= 0 || max_bytes > cap)) max_bytes = cap;
   process->set_max_heap_size(max_bytes);
   process->object_heap()->update_pending_limit();
   return process->null_object();

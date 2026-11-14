@@ -38,11 +38,11 @@ class Container:
   resources/Set ::= {}
 
   /**
-  The policy kind the container runs with (see
-    $ContainerService.POLICY-TRUSTED). Determined when the container is
-    started.
+  The policy the container runs with: a policy kind (see
+    $ContainerService.POLICY-TRUSTED) or a list of a policy kind followed
+    by quotas. Determined when the container is started.
   */
-  policy/int := ContainerService.POLICY-TRUSTED
+  policy/any := ContainerService.POLICY-TRUSTED
 
   /**
   Whether an error in this container terminates the system. Containers
@@ -62,9 +62,10 @@ class Container:
 
   start arguments/any=image.default-arguments --policy/any=null -> none:
     if pids_: throw "Already started"
-    kind := policy-for_ policy --image-untrusted=image.untrusted
+    validated := policy-for_ policy --image-untrusted=image.untrusted
+    kind := validated is Array_ ? validated[0] : validated
     explicitly-untrusted := policy != null and kind == ContainerService.POLICY-UNTRUSTED
-    this.policy = kind
+    this.policy = validated
     critical = image.run-critical and not explicitly-untrusted
     pids_ = {image.spawn this arguments}
 
@@ -73,15 +74,29 @@ class Container:
     given $policy (null for the default of the image).
 
   The $ContainerService.FLAG-UNTRUSTED flag of an image is binding: a
-    container from a flagged image always runs with the untrusted policy.
-    Running a container from an image without the flag untrusted is up to
-    the caller.
+    container from a flagged image always runs with the untrusted policy,
+    with the quotas of the request. Running a container from an image
+    without the flag untrusted is up to the caller.
   */
-  static policy-for_ policy/any --image-untrusted/bool -> int:
-    kind := policy or ContainerService.POLICY-TRUSTED
+  static policy-for_ policy/any --image-untrusted/bool -> any:
+    if image-untrusted:
+      if policy == null: return ContainerService.POLICY-UNTRUSTED
+      validated := validate-policy_ policy
+      if validated is Array_:
+        validated[0] = ContainerService.POLICY-UNTRUSTED
+        return validated
+      return ContainerService.POLICY-UNTRUSTED
+    return validate-policy_ (policy or ContainerService.POLICY-TRUSTED)
+
+  static validate-policy_ policy/any -> any:
+    kind := policy is List ? (policy.is-empty ? null : policy[0]) : policy
     if kind != ContainerService.POLICY-TRUSTED and kind != ContainerService.POLICY-UNTRUSTED:
       throw "INVALID_ARGUMENT"
-    return image-untrusted ? ContainerService.POLICY-UNTRUSTED : kind
+    if policy is List:
+      if policy.size > 9: throw "INVALID_ARGUMENT"
+      policy.do: if it is not int: throw "WRONG_OBJECT_TYPE"
+      return Array_.from policy
+    return policy
 
   stop -> none:
     if not pids_: throw "Not started"

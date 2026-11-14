@@ -15,7 +15,7 @@ interface ContainerService:
   static FLAG-RUN-BOOT     /int ::= 1 << 0
   static FLAG-RUN-CRITICAL /int ::= 1 << 1
   // Containers from images with this flag always run with the untrusted
-  // (sandbox) policy.
+  // (sandbox) policy. A start request can only change their quotas.
   static FLAG-UNTRUSTED    /int ::= 1 << 2
 
   // Policy kinds, as returned by the process-policy primitive. Keep in sync
@@ -32,8 +32,9 @@ interface ContainerService:
   /**
   Starts the container with the given $handle.
 
-  The $policy is null (use the default of the image) or a policy kind
-    (see $POLICY-TRUSTED).
+  The $policy is null (use the default of the image), a policy kind
+    (see $POLICY-TRUSTED), or a list of a policy kind followed by
+    quotas (see `start` in the system.containers library).
   */
   start-container handle/int arguments/any --policy/any=null -> none
   static START-CONTAINER-INDEX /int ::= 7

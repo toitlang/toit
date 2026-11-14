@@ -14,15 +14,21 @@ TRUSTED ::= ContainerService.POLICY-TRUSTED
 UNTRUSTED ::= ContainerService.POLICY-UNTRUSTED
 
 main:
-  // Flagged images always run untrusted.
+  // Flagged images always run untrusted, with the requested quotas.
   expect-equals UNTRUSTED (Container.policy-for_ null --image-untrusted)
   expect-equals UNTRUSTED (Container.policy-for_ TRUSTED --image-untrusted)
   expect-equals UNTRUSTED (Container.policy-for_ UNTRUSTED --image-untrusted)
+  expect-list-equals [UNTRUSTED, 1000, -1]
+      Container.policy-for_ [TRUSTED, 1000, -1] --image-untrusted
+  expect-list-equals [UNTRUSTED, 1000]
+      Container.policy-for_ [UNTRUSTED, 1000] --image-untrusted
 
   // Images without the flag run with the requested policy.
   expect-equals TRUSTED (Container.policy-for_ null --no-image-untrusted)
   expect-equals TRUSTED (Container.policy-for_ TRUSTED --no-image-untrusted)
   expect-equals UNTRUSTED (Container.policy-for_ UNTRUSTED --no-image-untrusted)
+  expect-list-equals [TRUSTED, 1000]
+      Container.policy-for_ [TRUSTED, 1000] --no-image-untrusted
 
   // Invalid policies are rejected for both.
   expect-throw "INVALID_ARGUMENT": Container.policy-for_ 0 --image-untrusted

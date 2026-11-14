@@ -153,6 +153,12 @@ class Process : public ProcessListFromProcessGroup::Element,
   void add_resource_group(ResourceGroup* r);
   void remove_resource_group(ResourceGroup* r);
 
+  // Whether the process may create another resource group with a primitive
+  // that has no way to free it before the process exits. Bounded for
+  // processes with restricted messaging (untrusted containers).
+  bool may_add_permanent_resource_group();
+  static const int MAX_RESTRICTED_RESOURCE_GROUPS = 64;
+
   SchedulerThread* scheduler_thread() { return scheduler_thread_; }
   void set_scheduler_thread(SchedulerThread* scheduler_thread) {
     scheduler_thread_ = scheduler_thread;
@@ -161,6 +167,31 @@ class Process : public ProcessListFromProcessGroup::Element,
   void signal(Signal signal);
   void clear_signal(Signal signal);
   uint32 signals() const { return signals_; }
+
+  // Kills the process because it violated its policy. The [exit_value] is
+  // reported in the termination message. Must be called with the scheduler
+  // lock held.
+  void kill_for_policy(uint8 exit_value) {
+    if (kill_exit_value_ == 0) kill_exit_value_ = exit_value;
+    signal(KILL);
+  }
+  uint8 kill_exit_value() const { return kill_exit_value_; }
+
+  // Accounting of the CPU time used by the process (excluding the current
+  // run). Only updated by the scheduler.
+  int64 cpu_time_us() const { return cpu_time_us_; }
+  void add_cpu_time_us(int64 us) { cpu_time_us_ += us; }
+
+  // Timer accounting for the timer quota of the policy.
+  bool try_add_timer() {
+    word max = policy_->quotas().max_timers;
+    if (max > 0 && timer_count_ >= max) return false;
+    timer_count_++;
+    return true;
+  }
+  void remove_timer() {
+    if (timer_count_ > 0) timer_count_--;
+  }
 
   // Processes have a priority in the range [0..255]. The scheduler
   // prioritizes running processes with higher priorities, so processes
@@ -297,7 +328,9 @@ class Process : public ProcessListFromProcessGroup::Element,
 
  private:
   Process(Program* program, ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination, InitialMemoryManager* initial_memory);
-  void _append_message(Message* message);
+  // Appends the message to the mailbox. Returns false, without taking over
+  // the message, if a mailbox quota would be exceeded.
+  bool _append_message(Message* message);
   void _ensure_random_seeded();
 
   int const id_;
@@ -307,6 +340,17 @@ class Process : public ProcessListFromProcessGroup::Element,
   ProcessRunner* runner_;
   ProcessGroup* group_;
   const PrimitivePolicy* const policy_;
+
+  // Mailbox accounting (system messages only), guarded by the process mutex.
+  word mailbox_count_ = 0;
+  word mailbox_bytes_ = 0;
+  // The part of the mailbox that was sent by messaging-restricted senders.
+  word restricted_count_ = 0;
+  word restricted_bytes_ = 0;
+
+  word timer_count_ = 0;
+  uint8 kill_exit_value_ = 0;
+  int64 cpu_time_us_ = 0;
 
   uint8 priority_ = PRIORITY_NORMAL;
   uint8 target_priority_ = PRIORITY_NORMAL;

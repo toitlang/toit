@@ -35,6 +35,8 @@ enum message_err_t : int {
   MESSAGE_OK = 0,
   MESSAGE_OOM = 1,
   MESSAGE_NO_SUCH_RECEIVER = 2,
+  MESSAGE_PERMISSION_DENIED = 3,  // The sender's policy does not allow the receiver.
+  MESSAGE_QUOTA_EXCEEDED = 4,     // A mailbox quota would be exceeded.
 };
 
 enum MessageType {
@@ -109,6 +111,21 @@ class SystemMessage : public Message {
 
   void set_pid(int pid) { pid_ = pid; }
 
+  // Mailbox accounting. The size is the encoded size including out-of-line
+  // data. Messages from messaging-restricted senders also carry the sender's
+  // mailbox limits, so the receiver can enforce them even after the sender
+  // is gone.
+  word size() const { return size_; }
+  void set_size(word size) { size_ = size; }
+  bool is_restricted() const { return restricted_; }
+  word restricted_max_count() const { return restricted_max_count_; }
+  word restricted_max_bytes() const { return restricted_max_bytes_; }
+  void set_restricted(word max_count, word max_bytes) {
+    restricted_ = true;
+    restricted_max_count_ = max_count;
+    restricted_max_bytes_ = max_bytes;
+  }
+
   // Free the encoded buffer and but keep any external memory areas that it references.
   // This is used after succesfully decoding a message and thus taking ownership of such
   // external areas.
@@ -125,6 +142,10 @@ class SystemMessage : public Message {
   const int gid_;  // The process group ID this message comes from.
   int pid_;  // The process ID this message comes from.
   uint8* data_;
+  word size_ = 0;
+  bool restricted_ = false;
+  word restricted_max_count_ = 0;
+  word restricted_max_bytes_ = 0;
 };
 
 class ObjectNotifyMessage : public Message {
@@ -177,7 +198,15 @@ class MessageEncoder {
   static void encode_process_message(uint8* buffer, uint8 value);
 
   word size() const { return cursor_; }
+  // The encoded size plus the size of all out-of-line data.
+  word total_size() const { return cursor_ + external_bytes_; }
   bool malloc_failed() const { return malloc_failed_; }
+  // Limits the encoded size plus the size of all out-of-line data (the
+  // message-size quota of a sandboxed sender). The encoder stops as soon as
+  // the limit is exceeded. 0 means no limit.
+  void set_max_total_size(word max) { max_total_size_ = max; }
+  // Whether the encoding failed because of the limit of set_max_total_size.
+  bool over_limit() const { return over_limit_; }
   // Whether the encoding failed because it is larger than
   // MESSAGING_ENCODING_MAX_SIZE.
   bool too_large() const { return too_large_; }
@@ -196,7 +225,7 @@ class MessageEncoder {
 
   bool encode(Object* object) {
     ASSERT(!encoding_tison());
-    return encode_any(object) && !is_too_large();
+    return encode_any(object) && !is_too_large() && !is_over_limit();
   }
   bool encode_bytes_external(void* data, word length, bool free_on_failure = true);
   // If 'is_exception' is true, encodes the string.
@@ -222,6 +251,13 @@ class MessageEncoder {
 
   bool encode_any(Object* object);
 
+  // Checks the size of the encoding so far against the limit of
+  // set_max_total_size, and records whether it is exceeded.
+  bool is_over_limit() {
+    if (max_total_size_ > 0 && cursor_ + external_bytes_ > max_total_size_) over_limit_ = true;
+    return over_limit_;
+  }
+
   // Checks the size of the encoding so far, and records whether it is too
   // large.
   bool is_too_large() {
@@ -244,10 +280,13 @@ class MessageEncoder {
   uint8* buffer_;
   bool take_ownership_of_buffer_ = false;
   word cursor_ = 0;
+  word external_bytes_ = 0;
   int nesting_ = 0;
   int problematic_class_id_ = -1;
   bool nesting_too_deep_ = false;
   bool too_many_externals_ = false;
+  bool over_limit_ = false;
+  word max_total_size_ = 0;
   bool too_large_ = false;
 
   bool malloc_failed_ = false;

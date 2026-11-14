@@ -35,11 +35,21 @@ PRIMITIVE(launch) {
   // Launching a program from bytes is reserved for the system process. The
   // system process decides the policy of the launched program group.
   PRIVILEGED;
-  ARGS(Blob, bytes, int, gid, Blob, program_id, Object, arguments, int, policy_kind);
+  ARGS(Blob, bytes, int, gid, Blob, program_id, Object, arguments, Object, policy_description);
   if (program_id.length() != 16) FAIL(OUT_OF_BOUNDS);
 
-  const PrimitivePolicy* policy = PrimitivePolicy::launchable(policy_kind);
-  if (policy == null) FAIL(INVALID_ARGUMENT);
+  Object* policy_error = null;
+  const PrimitivePolicy* policy = PrimitivePolicy::from_description(policy_description, process, &policy_error);
+  if (policy == null) return policy_error;
+  // Release an owned policy on the early-failure paths below.
+  class PolicyHolder {
+   public:
+    explicit PolicyHolder(const PrimitivePolicy* policy) : policy_(policy) {}
+    ~PolicyHolder() { PrimitivePolicy::release(policy_); }
+    const PrimitivePolicy* take() { auto result = policy_; policy_ = null; return result; }
+   private:
+    const PrimitivePolicy* policy_;
+  } policy_holder(policy);
 
   word size = 0;
   { MessageEncoder size_encoder(process, null);
@@ -63,7 +73,7 @@ PRIMITIVE(launch) {
   Snapshot snapshot(bytes.address(), bytes.length());
   auto image = snapshot.read_image(program_id.address());
   Program* program = image.program();
-  ProcessGroup* process_group = ProcessGroup::create(gid, program, image.memory(), policy);
+  ProcessGroup* process_group = ProcessGroup::create(gid, program, image.memory(), policy_holder.take());
   ASSERT(process_group);  // Allocations only fail on devices.
 
   initial_memory_manager.global_variables = program->global_variables.copy();

@@ -10,6 +10,7 @@ import rpc
 import rpc.broker
 import monitor
 
+import system.api.containers show ContainerService
 import system.api.service-discovery
   show
     ServiceDiscoveryService
@@ -24,6 +25,16 @@ RPC-SERVICES-CLOSE-RESOURCE_ /int ::= 303
 // Internal limits.
 RANDOM-ID-LIMIT_       /int ::= 0x3fff_ffff
 RESOURCE-HANDLE-LIMIT_ /int ::= 0x1fff_ffff  // Will be shifted up by one.
+// Open clients a sandboxed (untrusted) process may have with a provider
+// process.
+MAX-UNTRUSTED-CLIENTS_ /int ::= 32
+
+/**
+Returns the policy kind of the process with the given $pid, or -1 if
+  there is no such process. Not available to sandboxed processes.
+*/
+process-policy_ pid/int -> int:
+  #primitive.core.process-policy
 
 _client_ /ServiceDiscoveryService ::= (ServiceDiscoveryServiceClient).open
 
@@ -408,6 +419,18 @@ class ServiceProvider:
   on-opened client/int -> none:
     // Override in subclasses.
 
+  /**
+  Whether clients in sandboxed (untrusted) containers may open this
+    provider's services.
+
+  Sandboxed processes can only reach providers they discovered, so
+    providers outside the system process accept them by default.
+    Providers in the system process are reachable by every process, so
+    they reject sandboxed clients unless they override this.
+  */
+  accepts-untrusted-clients -> bool:
+    return Process.current.id != SYSTEM-PROCESS-ID_
+
   on-closed client/int -> none:
     // Override in subclasses.
 
@@ -764,6 +787,15 @@ class ServiceManager_ implements SystemMessageHandler_:
     provider/ServiceProvider? ::= providers_.get id
     if not provider: throw "Unknown service:$id"
     service := provider._validate_ uuid major minor
+    if not provider.accepts-untrusted-clients and pid != Process.current.id:
+      if (process-policy_ pid) == ContainerService.POLICY-UNTRUSTED: throw "PERMISSION_DENIED"
+
+    // Every open client takes memory in this process until the client
+    // closes it, so a sandbox may only have a bounded number of them.
+    existing/Set? ::= clients-by-pid_.get pid
+    if existing and existing.size >= MAX-UNTRUSTED-CLIENTS_
+        and broker.RpcBroker.is-untrusted_ pid:
+      throw "QUOTA_EXCEEDED"
 
     clients/Set ::= clients-by-pid_.get pid --init=(: {})
     if clients.is-empty and pid != Process.current.id:

@@ -37,6 +37,9 @@ PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
+  // The group lives until the process exits, so a sandboxed program calling
+  // this in a loop would take VM memory without bound.
+  if (!process->may_add_permanent_resource_group()) FAIL(QUOTA_EXCEEDED);
   TimerResourceGroup* resource_group = _new TimerResourceGroup(process, TimerEventSource::instance());
   if (!resource_group) FAIL(MALLOC_FAILED);
 
@@ -50,8 +53,14 @@ PRIMITIVE(create) {
   ByteArray* timer_proxy = process->object_heap()->allocate_proxy();
   if (timer_proxy == null) FAIL(ALLOCATION_FAILED);
 
+  // Enforce the timer quota of the process' policy.
+  if (!process->try_add_timer()) FAIL(QUOTA_EXCEEDED);
+
   Timer* timer = _new Timer(resource_group);
-  if (timer == null) FAIL(MALLOC_FAILED);
+  if (timer == null) {
+    process->remove_timer();
+    FAIL(MALLOC_FAILED);
+  }
 
   resource_group->register_resource(timer);
   timer_proxy->set_external_address(timer);
@@ -71,6 +80,7 @@ PRIMITIVE(delete) {
   ARGS(TimerResourceGroup, resource_group, Timer, timer);
 
   resource_group->unregister_resource(timer);
+  process->remove_timer();
 
   timer_proxy->clear_external_address();
 
