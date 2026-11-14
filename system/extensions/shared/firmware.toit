@@ -16,6 +16,7 @@
 import system.base.firmware show FirmwareServiceProviderBase
 
 import encoding.ubjson
+import ...shutdown show ShutdownCoordinator
 
 /**
 Shared provider behavior for embedded firmware services.
@@ -27,8 +28,9 @@ Platform providers supply validation, rollback, upgrade, URI, and writer
 abstract class EmbeddedFirmwareServiceProviderBase
     extends FirmwareServiceProviderBase:
   config_/Map ::= {:}
+  shutdown/ShutdownCoordinator
 
-  constructor name/string:
+  constructor name/string .shutdown:
     catch: config_ = ubjson.decode firmware-embedded-config_
     super name --major=0 --minor=1
 

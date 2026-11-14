@@ -46,6 +46,7 @@ class Container:
     return pids_.contains pid
 
   start arguments/any=image.default-arguments -> none:
+    image.manager.check-running
     if pids_: throw "Already started"
     pids_ = {image.spawn this arguments}
 
@@ -63,6 +64,7 @@ class Container:
     resources.do: it.send-event event
 
   on-stop_ -> none:
+    if not pids_: return  // A loaded image need not have been started.
     pids_.do: on-process-stop_ it 0
 
   on-process-start_ pid/int -> none:
@@ -111,6 +113,7 @@ abstract class ContainerImage:
   abstract id -> uuid.Uuid
 
   load -> Container:
+    manager.check-running
     // We load the container without starting it, so we can
     // register the container correctly before we receive the
     // first events from it. This avoids a race condition
@@ -302,6 +305,7 @@ class ContainerManager extends ContainerServiceProvider implements SystemMessage
 
   system-image_/ContainerImage? := null
   done_ ::= monitor.Latch
+  shutting-down_/bool := false
 
   constructor .image-registry .service-manager_:
     set-system-message-handler_ SYSTEM-TERMINATED_ this
@@ -323,6 +327,20 @@ class ContainerManager extends ContainerServiceProvider implements SystemMessage
 
   system-image -> ContainerImage:
     return system-image_
+
+  check-running -> none:
+    if shutting-down_: throw "System is shutting down"
+
+  handle index/int arguments/any --gid/int --client/int -> any:
+    check-running
+    return super index arguments --gid=gid --client=client
+
+  shutdown -> none:
+    shutting-down_ = true
+    // stop-all waits for the VM to terminate every process using each
+    // application image, including native-resource teardown. Keep the
+    // system image running so service cleanup and reset can finish.
+    images.do: | image/ContainerImage | image.stop-all
 
   images -> List:
     return images_.values.filter: it != system-image_
@@ -360,6 +378,9 @@ class ContainerManager extends ContainerServiceProvider implements SystemMessage
 
   on-container-stop_ container/Container error/int -> none:
     containers-by-id_.remove container.id
+    // Do not let boot's wait-until-done exit the system process halfway
+    // through an intentional shutdown, including for critical containers.
+    if shutting-down_: return
     // If we've got an error in an image that run with the run.critical
     // flag, we treat that as a fatal error and terminate the system process.
     if error != 0 and container.image.run-critical:
