@@ -34,11 +34,31 @@ check-local timestamp/int expected/List --is-dst/bool=false:
   check timestamp --no-is-utc expected --is-dst=is-dst
 
 main:
+  // Non-Windows targets use libc and can have a 32-bit time_t. Check that
+  // their unsupported dates fail instead of returning truncated timestamps.
+  if system.BYTES-PER-WORD == 4 and system.platform != system.PLATFORM-WINDOWS:
+    error := catch: time-info -2_208_988_800 true
+    if error:
+      expect-equals "OUT_OF_RANGE" error
+      test-narrow-time-t
+      return
   test-utc
   test-utc-calendar
   test-utc-against-time-utc
   test-local-default-zone
   test-local-fixed-offset
+  test-local-daylight-saving
+
+test-narrow-time-t:
+  check-utc -1 [1969, 12, 31, 23, 59, 59, 3, 364]
+  check-utc -14_182_980 [1969, 7, 20, 20, 17, 0, 0, 200]
+  check-utc -(1 << 31) [1901, 12, 13, 20, 45, 52, 5, 346]
+  check-utc ((1 << 31) - 1) [2038, 1, 19, 3, 14, 7, 2, 18]
+  [-(1 << 31) - 1, 1 << 31, -2_208_988_800, -86_400_000_000].do: | timestamp |
+    [true, false].do: | is-utc |
+      expect-throw "OUT_OF_RANGE": time-info timestamp is-utc
+  set-timezone "ABC5"
+  check-local -1 [1969, 12, 31, 18, 59, 59, 3, 364]
   test-local-daylight-saving
 
 test-utc:

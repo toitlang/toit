@@ -11,10 +11,20 @@ time-info timestamp/int is-utc/bool -> List:
   #primitive.core.time-info
 
 main:
+  timestamps := [
+    int.MAX,
+    int.MIN,
+    int.MIN + 1,
+    int.MIN + 86_399,
+    1 << 60,
+    -(1 << 60),
+    1 << 55,
+    -(1 << 55),
+  ]
   [true, false].do: | is-utc |
     info := time-info 0 is-utc
     expect-equals 9 info.size
-    [int.MAX, int.MIN, 1 << 60, -(1 << 60)].do: | timestamp |
+    timestamps.do: | timestamp |
       expect-throw "OUT_OF_RANGE": time-info timestamp is-utc
   utc := time-info 0 true
   expect-equals 1970 utc[5]

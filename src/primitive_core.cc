@@ -1148,6 +1148,19 @@ PRIMITIVE(time) {
   return Primitive::integer(timestamp, process);
 }
 
+struct TimeFields {
+  int64 year;
+  int month;    // 0-11, like tm_mon.
+  int day;      // 1-31.
+  int hour;
+  int minute;
+  int second;   // Normally 0-59, but the C library may report a leap second.
+  int weekday;  // 0-6, Sunday is 0.
+  int yearday;  // 0-365.
+  bool is_dst;
+};
+
+#ifdef TOIT_WINDOWS
 // Calendar computations for time_info. Dates are in the proleptic Gregorian
 // calendar and, like POSIX time_t, timestamps ignore leap seconds.
 
@@ -1186,25 +1199,16 @@ static int weekday_from_days(int64 days) {
   return static_cast<int>(days - floor_div(days + 4, 7) * 7 + 4);
 }
 
-struct TimeFields {
-  int64 year;
-  int month;    // 0-11, like tm_mon.
-  int day;      // 1-31.
-  int hour;
-  int minute;
-  int second;   // Normally 0-59, but the C library may report a leap second.
-  int weekday;  // 0-6, Sunday is 0.
-  int yearday;  // 0-365.
-  bool is_dst;
-};
-
 // Computes the UTC fields of the given timestamp without calling the C
 // library. This is exact for every int64, unlike gmtime_s on Windows which
 // rejects all times before 1970.
 // This is 'civil_from_days' of Howard Hinnant's algorithms.
 static void utc_fields(int64 timestamp, TimeFields* fields) {
   int64 days = floor_div(timestamp, SECONDS_PER_DAY);
-  int seconds_of_day = static_cast<int>(timestamp - days * SECONDS_PER_DAY);
+  // The rounded-down day can start below INT64_MIN. Use the remainder
+  // instead of multiplying it back into seconds.
+  int seconds_of_day = static_cast<int>(timestamp % SECONDS_PER_DAY);
+  if (seconds_of_day < 0) seconds_of_day += SECONDS_PER_DAY;
   // Days since 0000-03-01.
   int64 z = days + 719468;
   int64 era = floor_div(z, 146097);
@@ -1236,16 +1240,12 @@ static void utc_fields(int64 timestamp, TimeFields* fields) {
 static bool os_localtime(int64 timestamp, struct tm* result) {
   memset(result, 0, sizeof(*result));
   time_t t = static_cast<time_t>(timestamp);
-  if (static_cast<int64>(t) != timestamp) return false;  // A 32-bit time_t.
-#ifdef TOIT_WINDOWS
+  if (static_cast<int64>(t) != timestamp) return false;
   // The CRT's localtime_s fails with EINVAL for times before 1970 and after
   // 3000-12-31T23:59:59Z (_MAX__TIME64_T). Don't hand them to it.
   const int64 MAX_WINDOWS_TIME = 32535215999LL;
   if (timestamp < 0 || timestamp > MAX_WINDOWS_TIME) return false;
   return localtime_s(result, &t) == 0;
-#else
-  return localtime_r(&t, result) != null;
-#endif
 }
 
 // Returns the year in [first, first + 27] that has the same calendar as the
@@ -1266,7 +1266,7 @@ static int equivalent_year(int64 year, int first) {
 
 // Computes the local fields of the given timestamp.
 // The C library does this whenever it can. Otherwise (on Windows for times
-// before 1970 or after the year 3000, or with a 32-bit time_t) the timestamp
+// before 1970 or after the year 3000) the timestamp
 // is moved by whole days into an equivalent year (same leap-year status and
 // weekdays) that the C library handles: 1971-1998 for earlier times,
 // 2010-2037 for later ones. The UTC offset and daylight-saving status that the
@@ -1275,8 +1275,6 @@ static int equivalent_year(int64 year, int first) {
 // The Windows C library has no historical zone data: it applies the rules of
 // the zone (from the TZ variable or the system settings) to every year, so
 // the result is what it would compute if it accepted the timestamp.
-// A C library with historical data (only used here with a 32-bit time_t)
-// applies the rules of the equivalent year instead of the historical ones.
 // The equivalent years are the closest to the range of the C library, which
 // keeps the results continuous at its limits.
 // Returns false if the timestamp is out of range.
@@ -1312,14 +1310,44 @@ static bool local_fields(int64 timestamp, TimeFields* fields) {
   return true;
 }
 
+#else
+
+// Use the C library on non-Windows targets, including embedded devices, so
+// the calendar fallback doesn't add to their firmware. A failed conversion
+// must not expose the uninitialized fields of a struct tm.
+static bool posix_fields(int64 timestamp, bool is_utc, TimeFields* fields) {
+  time_t t = static_cast<time_t>(timestamp);
+  if (static_cast<int64>(t) != timestamp) return false;
+  struct tm tm;
+  memset(&tm, 0, sizeof(tm));
+  struct tm* converted = is_utc ? gmtime_r(&t, &tm) : localtime_r(&t, &tm);
+  if (converted == null) return false;
+  fields->year = static_cast<int64>(tm.tm_year) + 1900;
+  fields->month = tm.tm_mon;
+  fields->day = tm.tm_mday;
+  fields->hour = tm.tm_hour;
+  fields->minute = tm.tm_min;
+  fields->second = tm.tm_sec;
+  fields->weekday = tm.tm_wday;
+  fields->yearday = tm.tm_yday;
+  fields->is_dst = tm.tm_isdst > 0;
+  return true;
+}
+
+#endif  // TOIT_WINDOWS
+
 PRIMITIVE(time_info) {
   ARGS(int64, timestamp, bool, is_utc)
   TimeFields fields;
+#ifdef TOIT_WINDOWS
   if (is_utc) {
     utc_fields(timestamp, &fields);
   } else if (!local_fields(timestamp, &fields)) {
     FAIL(OUT_OF_RANGE);
   }
+#else
+  if (!posix_fields(timestamp, is_utc, &fields)) FAIL(OUT_OF_RANGE);
+#endif
   // Keep the year a small integer on all platforms.
   if (!Smi::is_valid32(fields.year)) FAIL(OUT_OF_RANGE);
   Array* result = process->object_heap()->allocate_array(9, Smi::zero());
