@@ -10,12 +10,12 @@
 #include <windows.h>
 
 #include "../error_win.h"
-#include "../event_sources/terminal_win.h"
 #include "../objects_inline.h"
 #include "../primitive.h"
 #include "../process.h"
 #include "../resource.h"
 #include "../resource_pool.h"
+#include "terminal.h"
 
 namespace toit {
 
@@ -55,18 +55,33 @@ class TerminalModeResource : public Resource {
   bool active_ = true;
 };
 
-class TerminalResizeResourceGroup : public ResourceGroup {
- public:
-  TAG(TerminalResizeResourceGroup);
-
-  TerminalResizeResourceGroup(Process* process, EventSource* event_source)
-      : ResourceGroup(process, event_source) {}
-
-  uint32_t on_event(Resource* resource, word data, uint32_t state) override {
-    USE(resource);
-    return state | static_cast<uint32_t>(data);
+// Resolves the standard descriptor numbers through the Win32 standard-handle
+// table. This is required for pseudoconsoles, whose handles aren't necessarily
+// mirrored in the C runtime descriptor table.
+static HANDLE terminal_handle(int fd) {
+  switch (fd) {
+    case 0: return GetStdHandle(STD_INPUT_HANDLE);
+    case 1: return GetStdHandle(STD_OUTPUT_HANDLE);
+    case 2: return GetStdHandle(STD_ERROR_HANDLE);
   }
-};
+
+  intptr_t os_handle = _get_osfhandle(fd);
+  if (os_handle == -1 || os_handle == -2) return INVALID_HANDLE_VALUE;
+  return reinterpret_cast<HANDLE>(os_handle);
+}
+
+int read_terminal_dimensions(int fd, TerminalDimensions* dimensions) {
+  HANDLE handle = terminal_handle(fd);
+  if (handle == NULL || handle == INVALID_HANDLE_VALUE) return ERROR_INVALID_HANDLE;
+
+  CONSOLE_SCREEN_BUFFER_INFO info;
+  if (!GetConsoleScreenBufferInfo(handle, &info)) return GetLastError();
+  dimensions->columns = info.srWindow.Right - info.srWindow.Left + 1;
+  dimensions->rows = info.srWindow.Bottom - info.srWindow.Top + 1;
+  dimensions->pixel_width = 0;
+  dimensions->pixel_height = 0;
+  return 0;
+}
 
 MODULE_IMPLEMENTATION(terminal, MODULE_TERMINAL)
 
@@ -158,53 +173,6 @@ PRIMITIVE(size) {
   result->at_put(2, Smi::from(dimensions.pixel_width));
   result->at_put(3, Smi::from(dimensions.pixel_height));
   return result;
-}
-
-PRIMITIVE(resize_init) {
-  ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) FAIL(ALLOCATION_FAILED);
-
-  TerminalResizeEventSource* event_source = TerminalResizeEventSource::instance();
-  if (!event_source->use()) FAIL(ERROR);
-
-  auto group = _new TerminalResizeResourceGroup(process, event_source);
-  if (group == null) {
-    event_source->unuse();
-    FAIL(MALLOC_FAILED);
-  }
-
-  proxy->set_external_address(group);
-  return proxy;
-}
-
-PRIMITIVE(resize_watch) {
-  ARGS(TerminalResizeResourceGroup, group, int, fd);
-
-  TerminalDimensions dimensions;
-  int error = read_terminal_dimensions(fd, &dimensions);
-  if (error != 0) return windows_error(process, error);
-
-  ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) FAIL(ALLOCATION_FAILED);
-
-  auto resource = _new TerminalResizeResource(group, fd, dimensions);
-  if (resource == null) FAIL(MALLOC_FAILED);
-  group->register_resource(resource);
-  proxy->set_external_address(resource);
-  return proxy;
-}
-
-PRIMITIVE(resize_unwatch) {
-  ARGS(
-      TerminalResizeResource,
-      resource,
-      TerminalResizeResourceGroup,
-      group);
-  if (resource->resource_group() != group) FAIL(WRONG_OBJECT_TYPE);
-
-  group->unregister_resource(resource);
-  resource_proxy->clear_external_address();
-  return process->null_object();
 }
 
 }  // namespace toit

@@ -14,9 +14,6 @@ TYPE_PRIMITIVE_BOOL(is_terminal)
 TYPE_PRIMITIVE_BYTE_ARRAY(enter_raw)
 TYPE_PRIMITIVE_NULL(restore)
 TYPE_PRIMITIVE_ARRAY(size)
-TYPE_PRIMITIVE_BYTE_ARRAY(resize_init)
-TYPE_PRIMITIVE_BYTE_ARRAY(resize_watch)
-TYPE_PRIMITIVE_NULL(resize_unwatch)
 
 }  // namespace toit::compiler
 }  // namespace toit
