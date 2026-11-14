@@ -1,4 +1,4 @@
-// Tests the EC618 application watchdog (lib/ec618/watchdog.toit) end to end.
+// Tests the common application watchdog API on EC618 end to end.
 //
 // The user deadline is enforced by a high-priority task whose timed wait wakes
 // the chip from tickless idle. The normal WDT is its active-time backstop if a

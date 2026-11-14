@@ -83,6 +83,7 @@ namespace toit {
   M(unix_socket, MODULE_UNIX_SOCKET)         \
   M(one_wire, MODULE_ONE_WIRE)               \
   M(watchdog, MODULE_WATCHDOG)               \
+  M(rp2350,  MODULE_RP2350)                  \
 
 #define MODULE_WATCHDOG(PRIMITIVE)           \
   PRIMITIVE(start, 1)                        \
@@ -99,6 +100,23 @@ namespace toit {
   PRIMITIVE(start, 4)                        \
   PRIMITIVE(finish, 1)                       \
   PRIMITIVE(abort, 1)                        \
+
+#define MODULE_RP2350(PRIMITIVE)             \
+  PRIMITIVE(boot_partition, 0)               \
+  PRIMITIVE(is_trial, 0)                     \
+  PRIMITIVE(validate, 0)                     \
+  PRIMITIVE(rollback, 0)                     \
+  PRIMITIVE(inactive_size, 0)                \
+  PRIMITIVE(inactive_erase, 1)               \
+  PRIMITIVE(inactive_write, 2)               \
+  PRIMITIVE(upgrade, 0)                      \
+  PRIMITIVE(stage, 2)                        \
+  PRIMITIVE(unique_id, 0)                    \
+  PRIMITIVE(watchdog_start, 1)               \
+  PRIMITIVE(watchdog_feed, 0)                \
+  PRIMITIVE(watchdog_stop, 0)                \
+  PRIMITIVE(watchdog_caused_reset, 0)        \
+  PRIMITIVE(woke_from_deep_sleep, 0)         \
 
 #define MODULE_CORE(PRIMITIVE)               \
   PRIMITIVE(write_on_stdout, 2)              \
