@@ -13,5 +13,6 @@ abstract class Device extends Base with Mix implements Interface:
       else: return false
     configure-network-interface --organization-identifier/string --application-identifier/string --word-size/int contents/ByteArray --more-flags/int -> bool:
       return true
+    scaled --stride/int=(value * factor): return stride
 
 main: return 0

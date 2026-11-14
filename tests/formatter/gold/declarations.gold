@@ -20,5 +20,8 @@ abstract class Device extends Base with Mix implements Interface:
   :
     return true
 
+  scaled --stride/int=(value * factor):
+    return stride
+
 main:
   return 0

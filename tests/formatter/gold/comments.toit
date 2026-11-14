@@ -5,6 +5,14 @@ main:
     /* Opaque
        alignment. */
     return value
+    // First group.
+
+
+
+    // Second group.
+
+
+    grouped := 2
 
 class C:
     configure
