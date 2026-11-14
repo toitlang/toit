@@ -57,8 +57,11 @@ enum {
   MESSAGING_ENCODING_MAX_INLINED_SIZE = 128,
   // The largest encoding (without out-of-line data). Shared objects are
   // encoded once per reference, so a small object graph can have a huge
-  // encoding; the sizes of the decoder are ints.
-  MESSAGING_ENCODING_MAX_SIZE         = 0x7fffffff,
+  // encoding; the sizes of the decoder are ints. The size is checked before
+  // each object and before the content of a string or byte array is added,
+  // so the cursor stays below the limit plus a few bytes. That must fit a
+  // 32-bit word.
+  MESSAGING_ENCODING_MAX_SIZE         = 0x3fffffff,
 
   // This constant needs to be kept in sync with the one in lib/core/message_.toit.
   MESSAGING_RESERVED_MESSAGE_TYPES = 64,

@@ -435,6 +435,12 @@ bool MessageEncoder::encode_copy(Object* object, int tag) {
 
   // To avoid too many small allocations, we inline the content of the small strings or byte arrays.
   if (encoding_tison() || length <= MESSAGING_ENCODING_MAX_INLINED_SIZE) {
+    // Check the content against what is left, so that the cursor can't
+    // overflow a 32-bit word.
+    if (length > MESSAGING_ENCODING_MAX_SIZE - cursor_) {
+      too_large_ = true;
+      return false;
+    }
     write_uint8(tag + 1);
     write_cardinal(length);
     if (!encoding_for_size()) {
