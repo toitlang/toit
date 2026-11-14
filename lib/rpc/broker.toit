@@ -60,7 +60,7 @@ class RpcBroker implements SystemMessageHandler_:
   cancel-requests pid/int -> none:
     queue_.cancel: | request/RpcRequest_ | request.pid == pid
 
-  on-message type gid/int pid/int message/List -> none:
+  on-message type gid/int pid/int message/any -> none:
     // When canceling requests for specific processes, there can still be
     // enqueued system messages from such a process that will end up here.
     // To avoid having requests from such processes in the broker request
@@ -68,12 +68,16 @@ class RpcBroker implements SystemMessageHandler_:
     // of canceling their requests (do it before canceling to be sure).
     if not accept gid pid: return
 
+    // Any process can send these messages. Drop malformed ones instead of
+    // throwing: the handler runs in whatever task processes the messages.
+    if message is not List or message.size < 1 or message[0] is not int: return
     id/int := message[0]
     if type == SYSTEM-RPC-CANCEL_:
       queue_.cancel: | request/RpcRequest_ | request.pid == pid and request.id == id
       return
 
     assert: type == SYSTEM-RPC-REQUEST_
+    if message.size < 3 or message[1] is not int: return
     name/int := message[1]
     arguments := message[2]
 

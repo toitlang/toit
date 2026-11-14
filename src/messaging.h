@@ -57,6 +57,10 @@ enum {
   MESSAGING_ENCODING_MAX_NESTING      = 8,
   MESSAGING_ENCODING_MAX_EXTERNALS    = 8,
   MESSAGING_ENCODING_MAX_INLINED_SIZE = 128,
+  // The largest encoding (without out-of-line data). Shared objects are
+  // encoded once per reference, so a small object graph can have a huge
+  // encoding; the sizes of the decoder are ints.
+  MESSAGING_ENCODING_MAX_SIZE         = 0x7fffffff,
 
   // This constant needs to be kept in sync with the one in lib/core/message_.toit.
   MESSAGING_RESERVED_MESSAGE_TYPES = 64,
@@ -193,7 +197,7 @@ class MessageEncoder {
 
   static void encode_process_message(uint8* buffer, uint8 value);
 
-  unsigned size() const { return cursor_; }
+  word size() const { return cursor_; }
   // The encoded size plus the size of all out-of-line data.
   word total_size() const { return cursor_ + external_bytes_; }
   bool malloc_failed() const { return malloc_failed_; }
@@ -203,6 +207,9 @@ class MessageEncoder {
   void set_max_total_size(word max) { max_total_size_ = max; }
   // Whether the encoding failed because of the limit of set_max_total_size.
   bool over_limit() const { return over_limit_; }
+  // Whether the encoding failed because it is larger than
+  // MESSAGING_ENCODING_MAX_SIZE.
+  bool too_large() const { return too_large_; }
 
   /**
   Some encoders can take over the data pointed to by external
@@ -218,7 +225,7 @@ class MessageEncoder {
 
   bool encode(Object* object) {
     ASSERT(!encoding_tison());
-    return encode_any(object) && !is_over_limit();
+    return encode_any(object) && !is_too_large() && !is_over_limit();
   }
   bool encode_bytes_external(void* data, word length, bool free_on_failure = true);
   // If 'is_exception' is true, encodes the string.
@@ -251,6 +258,13 @@ class MessageEncoder {
     return over_limit_;
   }
 
+  // Checks the size of the encoding so far, and records whether it is too
+  // large.
+  bool is_too_large() {
+    if (cursor_ > MESSAGING_ENCODING_MAX_SIZE) too_large_ = true;
+    return too_large_;
+  }
+
   void write_uint32(uint32 value);
   void write_cardinal(uword value);
 
@@ -273,6 +287,7 @@ class MessageEncoder {
   bool too_many_externals_ = false;
   bool over_limit_ = false;
   word max_total_size_ = 0;
+  bool too_large_ = false;
 
   bool malloc_failed_ = false;
 

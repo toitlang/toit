@@ -60,7 +60,7 @@ PRIMITIVE(launch) {
     const PrimitivePolicy* policy_;
   } policy_holder(policy);
 
-  unsigned size = 0;
+  word size = 0;
   { MessageEncoder size_encoder(process, null);
     if (!size_encoder.encode(arguments)) FAIL(WRONG_OBJECT_TYPE);
     size = size_encoder.size();

@@ -45,7 +45,7 @@ PRIMITIVE(spawn) {
   if (allocation->type() != FLASH_ALLOCATION_TYPE_PROGRAM) FAIL(INVALID_ARGUMENT);
   Program* program = const_cast<Program*>(static_cast<const Program*>(allocation));
 
-  unsigned message_size = 0;
+  word message_size = 0;
   { MessageEncoder size_encoder(process, null);
     if (!size_encoder.encode(arguments)) return size_encoder.create_error_object(process);
     message_size = size_encoder.size();
