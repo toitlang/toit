@@ -887,7 +887,10 @@ Interpreter::Result Interpreter::run() {
   OPCODE_BEGIN(opcode);                                                \
     Object* a0 = STACK_AT(1);                                          \
     Object* a1 = STACK_AT(0);                                          \
-    if (are_smis(a0, a1) && (a1 != Smi::zero())) {                     \
+    /* MIN_SMI / -1 is not a smi. Leave it to the slow path. */        \
+    bool min_by_minus_one =                                            \
+        a0 == Smi::from(Smi::MIN_SMI_VALUE) && a1 == Smi::from(-1);    \
+    if (are_smis(a0, a1) && a1 != Smi::zero() && !min_by_minus_one) {  \
       word i0 = Smi::value(a0);                                        \
       word i1 = Smi::value(a1);                                        \
       STACK_AT_PUT(1, Smi::from(i0 op i1));                            \
@@ -1696,8 +1699,10 @@ Object** Interpreter::hash_find(Object** sp, Program* program, Interpreter::Hash
     // Call the rebuild block with old_size as argument.
     Smi* rebuild_block = Smi::cast(STACK_AT(parameter_offset + REBUILD));
     Method rebuild_target = Method(program->bytecodes, Smi::value(*from_block(rebuild_block)));
+    // Read the old size before pushing: the push shifts the stack offsets.
+    Object* old_size = STACK_AT(OLD_SIZE);
     PUSH(rebuild_block);
-    PUSH(STACK_AT(OLD_SIZE));
+    PUSH(old_size);
     *block_to_call = rebuild_target;
     *action_return = kCallBlockThenRestartBytecode;
     return sp;
