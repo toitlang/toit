@@ -557,6 +557,10 @@ Object* TisonDecoder::decode() {
 }
 
 Object* MessageDecoder::decode_any() {
+  // Arrays and maps recurse; deeply nested input would exhaust the native
+  // stack.
+  NestingTracker tracking(&nesting_);
+  if (nesting_ > MESSAGING_DECODING_MAX_NESTING) return mark_malformed();
   int tag = read_uint8();
   switch (tag) {
     case TAG_OVERFLOWN:
@@ -832,11 +836,21 @@ uword MessageDecoder::read_cardinal() {
   uint8 byte = read_uint8();
   int shift = 0;
   while (byte >= 128) {
+    // A cardinal never has more bits than a word. Longer encodings are
+    // malformed (and shifting by the word size or more is undefined).
+    if (shift >= WORD_BIT_SIZE) {
+      mark_malformed();
+      return 0;
+    }
     result += (((uword) byte) - 128) << shift;
     shift += 7;
     byte = read_uint8();
   }
   if (byte == 0 && overflown()) return 0;
+  if (shift >= WORD_BIT_SIZE) {
+    mark_malformed();
+    return 0;
+  }
   result += ((uword) byte) << shift;
   return result;
 }
