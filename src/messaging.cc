@@ -759,7 +759,13 @@ bool MessageDecoder::decode_external_data(void** data, word* length) {
     *data = read_pointer();
     return true;
   } else if (tag == TAG_BYTE_ARRAY_INLINE) {
-    int encoded_length = *length = read_cardinal();
+    word cardinal = read_cardinal();
+    // As in decode_byte_array: the content must fit the message.
+    if (cardinal < 0 || cardinal > remaining()) {
+      mark_malformed();
+      return false;
+    }
+    int encoded_length = *length = cardinal;
     // 'malloc' is allowed to return 'null' if the length is zero.
     // We always want to have a valid pointer, so we allocate at least one byte.
     int malloc_length = Utils::max(1, encoded_length);
@@ -776,7 +782,13 @@ bool MessageDecoder::decode_external_data(void** data, word* length) {
     *data = read_pointer();
     return true;
   } else if (tag == TAG_STRING_INLINE) {
-    int encoded_length = *length = read_cardinal();
+    word cardinal = read_cardinal();
+    // As in decode_string: the content must fit the message.
+    if (cardinal < 0 || cardinal > remaining()) {
+      mark_malformed();
+      return false;
+    }
+    int encoded_length = *length = cardinal;
     char* copy = unvoid_cast<char*>(malloc(encoded_length + 1));
     if (copy == null) {
       mark_allocation_failed();
