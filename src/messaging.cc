@@ -658,6 +658,12 @@ Object* MessageDecoder::decode_string(bool inlined) {
   String* result = null;
   if (inlined) {
     if (length < 0 || length > remaining()) return mark_malformed();
+    // TISON input is untrusted, and the VM relies on strings being valid
+    // UTF-8 (the conversions read as many continuation bytes as the
+    // first byte announces).
+    if (decoding_tison() && !Utils::is_valid_utf_8(&buffer_[cursor_], length)) {
+      return mark_malformed();
+    }
     result = process_->allocate_string(reinterpret_cast<const char*>(&buffer_[cursor_]), length);
     cursor_ += length;
   } else if (decoding_tison()) {

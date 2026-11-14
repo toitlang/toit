@@ -58,8 +58,9 @@ class EncodeVisitor : public Visitor {
     const bool overflow = printed > MAX_NOF_STRING_ELEMENTS;
     if (overflow) {
       printed = MAX_NOF_STRING_ELEMENTS;
-      // Don't chop up UTF-8 sequences.
-      while ((bytes.at(printed) & ~Utils::UTF_8_MASK) == Utils::UTF_8_PAYLOAD) {
+      // Don't chop up UTF-8 sequences. Don't walk past the start of a
+      // string that isn't valid UTF-8.
+      while (printed > 0 && (bytes.at(printed) & ~Utils::UTF_8_MASK) == Utils::UTF_8_PAYLOAD) {
         printed--;
       }
     }
