@@ -136,7 +136,7 @@ bool TisonEncoder::encode(Object* object) {
     write_cardinal(payload_size());
   }
   bool result = encode_any(object);
-  if (!result) return false;
+  if (!result || is_too_large()) return false;
   // Compute the number of bytes we need to encode the payload size.
   // Later, when we're not encoding for size, we know the payload size
   // and will encode this before the payload.
@@ -157,6 +157,9 @@ bool MessageEncoder::encode_any(Object* object) {
     nesting_too_deep_ = true;
     return false;
   }
+  // Stop early: shared objects are encoded for every reference, so the
+  // work isn't bounded by the size of the object graph.
+  if (is_too_large()) return false;
 
   if (is_smi(object)) {
     word value = Smi::value(object);

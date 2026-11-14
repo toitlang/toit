@@ -55,6 +55,10 @@ enum {
   MESSAGING_ENCODING_MAX_NESTING      = 8,
   MESSAGING_ENCODING_MAX_EXTERNALS    = 8,
   MESSAGING_ENCODING_MAX_INLINED_SIZE = 128,
+  // The largest encoding (without out-of-line data). Shared objects are
+  // encoded once per reference, so a small object graph can have a huge
+  // encoding; the sizes of the decoder are ints.
+  MESSAGING_ENCODING_MAX_SIZE         = 0x7fffffff,
 
   // This constant needs to be kept in sync with the one in lib/core/message_.toit.
   MESSAGING_RESERVED_MESSAGE_TYPES = 64,
@@ -172,8 +176,11 @@ class MessageEncoder {
 
   static void encode_process_message(uint8* buffer, uint8 value);
 
-  unsigned size() const { return cursor_; }
+  word size() const { return cursor_; }
   bool malloc_failed() const { return malloc_failed_; }
+  // Whether the encoding failed because it is larger than
+  // MESSAGING_ENCODING_MAX_SIZE.
+  bool too_large() const { return too_large_; }
 
   /**
   Some encoders can take over the data pointed to by external
@@ -187,7 +194,10 @@ class MessageEncoder {
   */
   uint8* take_buffer();
 
-  bool encode(Object* object) { ASSERT(!encoding_tison()); return encode_any(object); }
+  bool encode(Object* object) {
+    ASSERT(!encoding_tison());
+    return encode_any(object) && !is_too_large();
+  }
   bool encode_bytes_external(void* data, word length, bool free_on_failure = true);
   // If 'is_exception' is true, encodes the string.
   // Otherwise the data and length.
@@ -212,6 +222,13 @@ class MessageEncoder {
 
   bool encode_any(Object* object);
 
+  // Checks the size of the encoding so far, and records whether it is too
+  // large.
+  bool is_too_large() {
+    if (cursor_ > MESSAGING_ENCODING_MAX_SIZE) too_large_ = true;
+    return too_large_;
+  }
+
   void write_uint32(uint32 value);
   void write_cardinal(uword value);
 
@@ -231,6 +248,7 @@ class MessageEncoder {
   int problematic_class_id_ = -1;
   bool nesting_too_deep_ = false;
   bool too_many_externals_ = false;
+  bool too_large_ = false;
 
   bool malloc_failed_ = false;
 
