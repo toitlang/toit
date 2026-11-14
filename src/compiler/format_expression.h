@@ -28,6 +28,14 @@ struct FormatExpressionOptions {
   bool parenthesize_mixed_bitwise = true;
 };
 
+// Produces the canonical one-line spelling for an expression. Returns false
+// when the expression kind is not implemented or inherently spans lines.
+bool format_expression_flat(ast::Expression* expression,
+                            Source* source,
+                            std::string* result,
+                            const FormatExpressionOptions& options =
+                                FormatExpressionOptions());
+
 // Formats one expression directly from its AST. Returns false for expression
 // kinds not implemented by the current review slice.
 bool format_expression(ast::Expression* expression,
