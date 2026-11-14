@@ -223,9 +223,12 @@ PRIMITIVE(spawn) {
   if (priority != -1 && (priority < 0 || priority > 0xff)) FAIL(OUT_OF_RANGE);
   if (!is_smi(entry)) FAIL(WRONG_OBJECT_TYPE);
 
-  int method_id = Smi::value(entry);
-  ASSERT(method_id != -1);
+  // The method id comes from a 'Lambda_' object, which the program can
+  // modify. It must be a legal lambda method of the program.
+  word method_id = Smi::value(entry);
+  if (!process->group()->method_entries()->is_entry(method_id)) FAIL(INVALID_ARGUMENT);
   Method method(process->program()->bytecodes, method_id);
+  if (!method.is_lambda_method()) FAIL(INVALID_ARGUMENT);
 
   InitialMemoryManager initial_memory_manager;
   if (!initial_memory_manager.allocate()) FAIL(ALLOCATION_FAILED);
@@ -1876,6 +1879,8 @@ PRIMITIVE(array_at) {
 
 PRIMITIVE(array_at_put) {
   ARGS(Array, receiver, int, index, Object, value);
+  // Arrays on the program heap are shared and read-only.
+  if (receiver->on_program_heap(process)) FAIL(PERMISSION_DENIED);
   if (index >= 0 && index < receiver->length()) {
     receiver->at_put(index, value);
     return value;
@@ -1907,6 +1912,8 @@ PRIMITIVE(array_replace) {
   if (index < 0 || from < 0 || from > to || to > source_length) FAIL(OUT_OF_BOUNDS);
   word len = to - from;
   if (index + len > dest_length) FAIL(OUT_OF_BOUNDS);
+  // Arrays on the program heap are shared and read-only.
+  if (dest->on_program_heap(process)) FAIL(PERMISSION_DENIED);
   // Our write barrier is only there to record the presence of pointers
   // from old-space to new-space, and the resolution is per-object.  If
   // there were no pointers from old-space to new-space then an intra-
@@ -1930,6 +1937,8 @@ PRIMITIVE(list_add) {
   ARGS(Object, receiver, Object, value);
   if (is_instance(receiver)) {
     Instance* list = Instance::cast(receiver);
+    // Objects on the program heap are shared and read-only.
+    if (list->on_program_heap(process)) FAIL(PERMISSION_DENIED);
     if (list->class_id() == process->program()->list_class_id()) {
       Object* array_object;
       if (is_array(array_object = list->at(0))) {
@@ -1938,7 +1947,7 @@ PRIMITIVE(list_add) {
         Object* size_object = list->at(1);
         if (is_smi(size_object)) {
           word size = Smi::value(size_object);
-          if (0 <= size && size < array->length()) {
+          if (0 <= size && size < array->length() && !array->on_program_heap(process)) {
             list->at_put(1, Smi::from(size + 1));
             array->at_put(size, value);
             return process->null_object();
@@ -1988,6 +1997,8 @@ PRIMITIVE(byte_array_at) {
 
 PRIMITIVE(byte_array_at_put) {
   ARGS(ByteArray, receiver, int, index, int64, value);
+  // Byte arrays on the program heap are shared and read-only.
+  if (receiver->on_program_heap(process)) FAIL(PERMISSION_DENIED);
   if (!receiver->has_external_address() || receiver->external_tag() == RawByteTag) {
     ByteArray::Bytes bytes(receiver);
     if (!bytes.is_valid_index(index)) FAIL(OUT_OF_BOUNDS);
@@ -2358,6 +2369,8 @@ PRIMITIVE(rebuild_hash_index) {
   // The probing below only stays in bounds and terminates for a non-empty
   // power-of-two index array.
   if (new_length == 0 || !Utils::is_power_of_two(new_length)) FAIL(INVALID_ARGUMENT);
+  // Arrays on the program heap are shared and read-only.
+  if (new_array->on_program_heap(process)) FAIL(PERMISSION_DENIED);
   word index_mask = new_length - 1;
   word length = old_array->length();
   for (word i = 0; i < length; i++) {

@@ -23,6 +23,8 @@ always-return tests/type_propagation/nlr-test.toit
  10[040] - pop 2
  12[053] - invoke static unreachable <sdk>/core/exceptions.toit
  15[041] - pop 1
+ 16[022] - load null
+ 17[090] - throw 0
 
 [block] in always-return tests/type_propagation/nlr-test.toit
  - argument 0: [block]
@@ -62,6 +64,8 @@ stop-unwinding tests/type_propagation/nlr-test.toit
  17[091] - return S6 0
  20[099] - unwind
  21[041] - pop 1
+ 22[022] - load null
+ 23[090] - throw 0
 
 [block] in stop-unwinding tests/type_propagation/nlr-test.toit
  - argument 0: [block]
@@ -101,6 +105,8 @@ stop-unwinding-alternative tests/type_propagation/nlr-test.toit
  17[091] - return S6 0
  20[099] - unwind
  21[041] - pop 1
+ 22[022] - load null
+ 23[090] - throw 0
 
 [block] in stop-unwinding-alternative tests/type_propagation/nlr-test.toit
  - argument 0: [block]

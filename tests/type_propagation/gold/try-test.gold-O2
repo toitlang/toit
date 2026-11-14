@@ -18,6 +18,8 @@ nested tests/type_propagation/try-test.toit
  16[091] - return S6 0
  19[099] - unwind
  20[041] - pop 1
+ 21[022] - load null
+ 22[090] - throw 0
 
 [block] in nested tests/type_propagation/try-test.toit
  - argument 0: [block]
