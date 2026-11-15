@@ -5,6 +5,7 @@
 #include "../../src/top.h"
 #include "../../src/compiler/compiler.h"
 #include "../../src/flags.h"
+#include "../../src/event_sources/ble_host.h"
 #include "../../src/flash_registry.h"
 #include "../../src/os.h"
 #include "../../src/scheduler.h"
@@ -45,6 +46,11 @@ int main(int argc, char** argv) {
       {
         VM vm;
         vm.load_platform_event_sources();
+#if defined(TOIT_LINUX) || defined(TOIT_WINDOWS)
+        // macOS loads this source for every VM, even without BLE resources.
+        // Exercise its teardown on the other hosts as well.
+        vm.event_manager()->add_event_source(_new HostBleEventSource());
+#endif
         auto image = bundle.snapshot().read_image(null);
         char argument[] = "unread startup argument";
         char* arguments[] = {argument, null};
