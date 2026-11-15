@@ -87,6 +87,9 @@ for two seconds by default, rather than establishing indefinite streaming.
 ESP32/S3 I2S has known failures listed in `../esp32/fail.cmake`, so a peer
 failure alone does not identify the EC618 as the faulty endpoint.
 
+The optional [SPI observer](i2s-spi-observer/README.md) uses a separate native
+fixture to check I2S output independently of the S3 I2S receiver.
+
 Native S3 reception remains intermittent. Independent diagnostic captures are
 not part of this suite; do not interpret a failing peer verdict as a pass or
 claim indefinite streaming from bounded captures.
