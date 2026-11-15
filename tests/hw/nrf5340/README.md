@@ -1016,7 +1016,9 @@ reference.
 ## System OFF GPIO wake and timed restart
 
 `power-nrf5340.toit` tests argument validation, System OFF wake at both GPIO
-levels, and a 750 ms System ON sleep followed by software reset. Each shutdown
+levels, and a 750 ms timed `power.deep-sleep` followed by software reset.
+It also checks `supports-timed-deep-sleep`, invalid durations, and rejection of
+combined timer/GPIO wake configuration. Each shutdown
 has a pending I2C read (fixture SCL held low), a child blocked on UART RX, and an
 open ADC. The wake pin is still owned by a GPIO resource until teardown. The
 fixture checks released UART/GPIO outputs at each sleep marker and changes the
@@ -1109,3 +1111,102 @@ settings, Toit storage, and all 256 KiB of network flash compared with the initi
 backups. The controller bytes written during these tests matched the originally
 installed controller. `fixture.log` confirms the unchanged ESP32 wired fixture
 responds and is idle. These tests do not qualify atomic updates or OTA.
+
+## Standalone deep sleep and current measurement
+
+These probes need only the nRF5340 board. They do not need the ESP32 fixture.
+Current qualification additionally needs an instrument that resolves microamps;
+a functional wake test or debugger register inspection does not establish
+sleep current. The following tests have been prepared, not run on hardware
+for the current changes.
+
+### Prepare matching firmware
+
+Build each program in a separate output directory using the same board and
+configuration. Use the normal RC/LDO configuration first:
+
+```sh
+tools/zephyr/build.sh --host build/host/sdk/bin/toit \
+  --build-dir build/nrf-current-timed \
+  --program tests/hw/nrf5340/deep-sleep-current.toit
+tools/zephyr/build.sh --host build/host/sdk/bin/toit \
+  --build-dir build/nrf-current-off \
+  --program tests/hw/nrf5340/poweroff-current.toit
+```
+
+Each build produces `toit.envelope` and `zephyr/zephyr.bin`. These firmware
+images each contain exactly one probe; do not install both probes concurrently.
+Save the currently installed application/envelope before replacing it.
+
+For the low-current comparison, repeat both commands with new output
+directories and these extra arguments:
+
+```sh
+--config toolchains/zephyr/low-power.conf \
+--overlay toolchains/zephyr/low-power.overlay
+```
+
+First verify that the board has the 32.768 kHz crystal and VREGMAIN DC/DC
+inductor/capacitors. Do not assume that another module with the same SoC has
+these components. In each generated `zephyr/.config`, check
+`CONFIG_TICKLESS_KERNEL=y`, `CONFIG_PM_DEVICE=y`, and
+`CONFIG_CLOCK_CONTROL_NRF_K32SRC_XTAL=y` for the low-current variant.
+Its RC calibration option should be absent or disabled. In
+`zephyr/zephyr.dts`, `vregmain` must have `regulator-initial-mode = <1>`.
+For these application-only probes, `CONFIG_SOC_NRF53_CPUNET_ENABLE` and
+Bluetooth must be disabled. Keep those generated files with the results.
+
+### Verify behavior without a precision meter
+
+1. Disconnect the paired fixture and anything attached to P1.00. Each probe
+   drives P1.00 high for two seconds, then deliberately leaves it open for
+   VM teardown. A weak external pull-down (for example 100 kohms) lets a meter
+   or logic analyzer distinguish the driven high level from a released pin.
+2. Flash the timed image using the existing board flash procedure. Capture
+   console timestamps through the board's persistent serial path.
+   Expect `POWER CURRENT entering timed 60 s deep sleep`,
+   `VM teardown complete`, and `System ON sleep for 60000 ms`.
+   P1.00 must fall after teardown and remain low throughout the wait.
+3. Expect a fresh boot after approximately 60 seconds plus boot time.
+   Subsequent boot messages must include the software-reset bit (0x2) and
+   exclude the watchdog bit (0x10). Run at least three cycles. A missing
+   crystal can prevent the low-current image from booting, so establish
+   normal operation before attempting a current measurement.
+4. Flash the untimed image. Expect `POWER CURRENT entering untimed deep sleep`
+   and `System OFF wake-pin=-1`. P1.00 must be released. It must remain asleep
+   for at least two minutes and boot again when the physical reset input is
+   asserted. Timed restart is not expected for this image.
+5. If the ESP32 fixture becomes available, run `power-nrf5340.toit` using the
+   paired procedure above. This adds pending I2C, UART-child and ADC cleanup,
+   GPIO wake, and recovery checks. Run `power-edge-nrf5340.toit` to check that
+   an armed watchdog still interrupts the legacy timed-sleep entry point.
+
+An attached debugger can emulate System OFF. Repeat functional reset/wake
+checks with the debugger detached and a pin reset or power cycle before
+accepting the untimed behavior.
+
+### Measure when suitable equipment is available
+
+1. Measure the module/SoC supply, excluding the USB-to-UART bridge, power LEDs,
+   and debugger supply. Use the same supply voltage and temperature for both
+   images. Ensure UART, SWD, fixture, and GPIO connections cannot back-power
+   the target; disconnect them for the measurement. After programming,
+   disconnect the debugger and apply a pin reset or power cycle.
+2. Capture the timed probe for at least three complete cycles. Average a
+   window well inside each 60-second sleep interval (for example seconds
+   10-50); also record periodic spikes and integrated whole-cycle charge.
+   Do not report only the minimum sample or include boot current in the
+   steady-sleep average. Repeat with the untimed probe over matching windows.
+3. Repeat for both the normal RC/LDO and verified crystal/DC/DC variants.
+   Record the firmware commit, generated configuration, board revision,
+   instrument, supply voltage, temperature, steady currents, and their ratio.
+   A target of a few microamps and approximately 2x the untimed current is
+   not a pass result until both absolute current and ratio have been measured.
+4. If current is too high, check debugger release and board loads first, then
+   console suspension, application CPU clock (64 MHz), GPIO-event latency
+   (LowPower), network core forced off, and unused peripheral clocks.
+   Periodic RC calibration should disappear in the crystal configuration.
+   Kernel RAM remains powered during timed sleep and is an outstanding
+   optimization if it prevents meeting the target.
+5. Restore the saved application when finished. Keep functional logs separate
+   from current traces; a pass in one does not imply a pass in the other.
