@@ -2039,13 +2039,13 @@ class Envelope:
         throw "Zephyr envelope version and controller contents disagree"
 
   constructor.create .entries --.sdk-version --.kind --.word-size:
-    version_ = kind == KIND-EC618
-        ? ENVELOPE-FORMAT-VERSION-EC618
-        : kind == KIND-ZEPHYR
-            ? (entries.contains AR-ENTRY-ZEPHYR-NETWORK-BIN
-                ? ENVELOPE-FORMAT-VERSION-ZEPHYR-NRF5340
-                : ENVELOPE-FORMAT-VERSION-ZEPHYR)
-            : ENVELOPE-FORMAT-VERSION-ESP32-HOST
+    version_ = ENVELOPE-FORMAT-VERSION-ESP32-HOST
+    if kind == KIND-EC618:
+      version_ = ENVELOPE-FORMAT-VERSION-EC618
+    else if kind == KIND-ZEPHYR:
+      version_ = ENVELOPE-FORMAT-VERSION-ZEPHYR
+      if entries.contains AR-ENTRY-ZEPHYR-NETWORK-BIN:
+        version_ = ENVELOPE-FORMAT-VERSION-ZEPHYR-NRF5340
 
   store path/string --ui/cli.Ui -> none:
     write-file path --ui=ui: | writer/io.Writer |
