@@ -60,45 +60,58 @@ reset -> none:
   __reset__
 
 /**
-Stops the VM and enters System OFF without returning.
+Configures $pin as a deep-sleep wake source.
 
-If $wake-pin is supplied, configures that pin as an input after releasing all
-  VM resources. Its active level is high when $wake-high is true, otherwise low.
-  $pull-up and $pull-down select an optional internal pull; they cannot both be
-  enabled. An already-active level can cause an immediate wake.
-The wake pin may currently belong to a peripheral: the VM closes it before
-  configuring the wake input. Console and other board-reserved pins are rejected.
-
-Wakeup restarts the device from boot and normally reports $RESET-LOW-POWER-WAKE
-  for GPIO wake on nRF5340. Without a pin, wake requires another hardware source
-  such as reset or debugger attachment. There is no RTC timer wake from System
-  OFF on nRF5340; use $deep-sleep for a timed restart instead.
-RAM contents are not retained. An attached debugger can emulate System OFF,
-  so functional wake tests do not establish power consumption.
+$pin is an integer GPIO number. The active level is high when $wake-high is
+  true, otherwise low. $pull-up and $pull-down select an optional internal
+  pull; they cannot both be enabled. Reserved and unavailable pins are rejected.
+The configuration applies to the whole device and takes effect at the next
+  $deep-sleep, after all VM resources have been released. The pin may currently
+  belong to a GPIO or peripheral resource.
+Multiple pins can be configured; any active pin can wake the device. Repeated
+  calls replace the configuration for that pin. Configuration remains until
+  $disable-wakeup-pin is called or the device reboots.
+An already-active level can cause an immediate wake. Both timed and untimed
+  deep sleep use these wake sources.
 */
-power-off --wake-pin/int?=null --wake-high/bool=true --pull-up/bool=false --pull-down/bool=false -> none:
-  flags := (wake-high ? 1 : 0) | (pull-up ? 2 : 0) | (pull-down ? 4 : 0)
-  request := prepare-poweroff_ (wake-pin == null ? -1 : wake-pin) flags
-  __deep-sleep__ request
+configure-wakeup-pin pin/int
+    --wake-high/bool=true --pull-up/bool=false --pull-down/bool=false -> none:
+  flags := 8 | (wake-high ? 1 : 0) | (pull-up ? 2 : 0) | (pull-down ? 4 : 0)
+  configure-wakeup-pin_ pin flags
+
+/** Disables $pin as a deep-sleep wake source without changing its current GPIO configuration. */
+disable-wakeup-pin pin/int -> none:
+  configure-wakeup-pin_ pin 0
 
 /**
-Stops the VM, sleeps for $duration in System ON, and reboots.
+Stops all containers and enters deep sleep without returning.
 
-Accepts durations of 1 ms through 24 hours, in whole milliseconds. The duration
-  starts after VM teardown. The console is suspended, but the Zephyr timebase
-  and system RAM remain powered; this is not System OFF. Applications restart
-  from boot with $RESET-SOFTWARE, and RAM contents are not preserved for Toit.
-The application CPU is switched to 64 MHz and GPIO events use low-power
-  latency before waiting. Current consumption still depends on the board's
-  clock source, regulators, powered RAM, and peripherals.
-An armed watchdog is neither stopped nor fed and can reset the device earlier.
+If $duration is supplied, waits in System ON for 1 ms through 24 hours and
+  reboots. The duration starts after VM teardown. Any configured wake pin
+  can end the wait early. Both timer and pin wake report $RESET-SOFTWARE.
+Without $duration, enters System OFF. Configured wake pins remain active;
+  GPIO wake normally reports $RESET-LOW-POWER-WAKE. Without a wake pin,
+  waking requires another hardware source such as reset.
+Wake pins are configured after releasing VM resources. Toit state is not
+  preserved. Configure wake pins with $configure-wakeup-pin.
+
+Timed sleep suspends the console, selects a 64 MHz application CPU clock
+  and low-power GPIO-event latency, and keeps the Zephyr timebase and RAM
+  powered. An armed watchdog is neither stopped nor fed and can reset earlier.
+Untimed sleep does not retain RAM. An attached debugger can emulate System
+  OFF, so functional wake tests do not establish power consumption.
+Nordic's reference configurations use approximately 1.5-2.1 microamps with
+  an RTC, compared with approximately 1 microamp in System OFF: roughly twice
+  the current. This is not a measured upper bound for this firmware. Board
+  configuration, powered RAM, and peripherals can increase the difference.
+  See https://docs.nordicsemi.com/r/bundle/ps_nrf5340/page/chapters/current_consumption/doc/current_consumption.html.
 */
-deep-sleep duration/Duration -> none:
-  request := validate-sleep_ duration.in-ms
+deep-sleep duration/Duration?=null -> none:
+  request := duration ? (validate-sleep_ duration.in-ms) : int.MIN
   __deep-sleep__ request
 
-prepare-poweroff_ pin/int flags/int -> int:
-  #primitive.zephyr.prepare-poweroff
+configure-wakeup-pin_ pin/int flags/int -> none:
+  #primitive.zephyr.configure-wakeup-pin
 
 validate-sleep_ duration-ms/int -> int:
   #primitive.zephyr.validate-sleep

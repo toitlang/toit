@@ -3,6 +3,7 @@
 #include "top.h"
 #ifdef TOIT_ZEPHYR
 #include "objects_inline.h"
+#include "os.h"
 #include "primitive.h"
 #include "primitive_zephyr.h"
 #include "process.h"
@@ -47,20 +48,26 @@ void zephyr_capture_reset_reason() {
 MODULE_IMPLEMENTATION(zephyr, MODULE_ZEPHYR)
 
 static const int MAX_SLEEP_MS = 24 * 60 * 60 * 1000;
-static bool valid_wake_config(int pin, int flags) {
-  if (flags < 0 || flags > 7 || (flags & 6) == 6) return false;
-  if (pin == -1) return (flags & 6) == 0;
-  return pin >= 0 && pin < 64 && zephyr_gpio_port(pin) != null &&
+static const int WAKE_PIN_COUNT = 64;
+static const int WAKE_ENABLED = 8;
+// Device-wide configuration, like ESP32 external wake and EC618 wake pads.
+// Only primitives mutate it. Sleep reads it after every VM thread has stopped.
+static uint8_t wake_configs[WAKE_PIN_COUNT];
+
+static bool valid_wake_pin(int pin) {
+  return pin >= 0 && pin < WAKE_PIN_COUNT && zephyr_gpio_port(pin) != null &&
       !zephyr_pin_is_restricted(pin);
 }
 
-PRIMITIVE(prepare_poweroff) {
+PRIMITIVE(configure_wakeup_pin) {
   ARGS(int, pin, int, flags);
-  if (!valid_wake_config(pin, flags)) FAIL(INVALID_ARGUMENT);
-  // Carry the entire request in the scheduler exit value. There is no global
-  // pending configuration for another process to overwrite before shutdown.
-  int encoded = pin == -1 ? 0 : ((pin + 1) << 3) | flags;
-  return Smi::from(-1 - encoded);
+  if (!valid_wake_pin(pin)) FAIL(INVALID_ARGUMENT);
+  if (flags != 0 && (flags < WAKE_ENABLED || flags > 15 || (flags & 6) == 6)) {
+    FAIL(INVALID_ARGUMENT);
+  }
+  Locker locker(OS::global_mutex());
+  wake_configs[pin] = flags;
+  return process->null_object();
 }
 
 PRIMITIVE(validate_sleep) {
@@ -69,42 +76,73 @@ PRIMITIVE(validate_sleep) {
   return Smi::from(duration_ms);
 }
 
+static k_sem wake_signal;
+static gpio_callback wake_callbacks[WAKE_PIN_COUNT / 32];
+
+static void on_wake_pin(const device* port, gpio_callback*, gpio_port_pins_t pins) {
+  // Level interrupts must be disabled before returning or an active input
+  // keeps interrupting and can starve the thread that performs the reboot.
+  for (int pin = 0; pin < 32; pin++) {
+    if ((pins & BIT(pin)) == 0) continue;
+    if (gpio_pin_interrupt_configure(port, pin, GPIO_INT_DISABLE) != 0) {
+      sys_reboot(SYS_REBOOT_COLD);
+    }
+  }
+  k_sem_give(&wake_signal);
+}
+
 void zephyr_enter_sleep(int64 request) {
-  int pin = -1;
-  int flags = 0;
-  if (request > 0) {
-    if (request > MAX_SLEEP_MS) FATAL("invalid timed sleep request");
+  bool timed = request != INT64_MIN;
+  if (timed && (request < 1 || request > MAX_SLEEP_MS)) {
+    FATAL("invalid timed sleep request");
+  }
+  if (timed) {
     printf("[toit] System ON sleep for %lld ms\n", static_cast<long long>(request));
   } else {
-    if (request < -520 || request == 0) FATAL("invalid power-off request");
-    int encoded = static_cast<int>(-request - 1);
-    pin = (encoded >> 3) - 1;
-    flags = encoded & 7;
-    if (!valid_wake_config(pin, flags)) FATAL("invalid wake GPIO configuration");
-    printf("[toit] System OFF wake-pin=%d active=%d\n", pin, flags & 1);
+    bool any = false;
+    for (int pin = 0; pin < WAKE_PIN_COUNT; pin++) {
+      if (wake_configs[pin] == 0) continue;
+      any = true;
+      printf("[toit] System OFF wake-pin=%d active=%d\n", pin, wake_configs[pin] & 1);
+    }
+    if (!any) printf("[toit] System OFF wake-pin=-1 active=0\n");
   }
   fflush(stdout);
   const device* console = DEVICE_DT_GET(DT_CHOSEN(zephyr_console));
   int result = pm_device_action_run(console, PM_DEVICE_ACTION_SUSPEND);
   if (result) FATAL("cannot suspend console: %d", result);
-  if (request > 0) {
-    // The nRF5340 RTC cannot wake System OFF. Keep the Zephyr timebase alive
-    // with the VM stopped, then reboot. Do not stop or feed the watchdog.
-    // Nordic requires 64 MHz for low-current System ON idle. Do not inherit
-    // a 128 MHz clock or low-latency GPIO setting from the running application.
-    // All VM peripheral resources have been retired before changing these.
+
+  if (timed) {
+    // Nordic requires 64 MHz and low-power GPIO-event latency for low-current
+    // System ON idle. VM peripheral resources have already been retired.
     nrf_clock_hfclk_div_set(NRF_CLOCK, NRF_CLOCK_HFCLK_DIV_2);
     SystemCoreClockUpdate();
     nrf_gpiote_latency_set(
         reinterpret_cast<NRF_GPIOTE_Type*>(DT_REG_ADDR(DT_NODELABEL(gpiote))),
         NRF_GPIOTE_LATENCY_LOWPOWER);
-    k_sleep(K_MSEC(request));
-    sys_reboot(SYS_REBOOT_COLD);
+    k_sem_init(&wake_signal, 0, 1);
+    for (int port_index = 0; port_index < WAKE_PIN_COUNT / 32; port_index++) {
+      uint32_t mask = 0;
+      const device* port = null;
+      for (int bit = 0; bit < 32; bit++) {
+        int pin = port_index * 32 + bit;
+        if (wake_configs[pin] == 0) continue;
+        mask |= BIT(bit);
+        port = zephyr_gpio_port(pin);
+      }
+      if (mask == 0) continue;
+      gpio_init_callback(&wake_callbacks[port_index], on_wake_pin, mask);
+      result = gpio_add_callback(port, &wake_callbacks[port_index]);
+      if (result) FATAL("cannot install sleep wake callback: %d", result);
+    }
+  } else {
+    // Preserve an already-active sense condition until SYSTEMOFF is written.
+    irq_lock();
   }
-  // Do not let an already-active GPIO run a level IRQ and consume the wake
-  // condition before SYSTEMOFF is written. GPIO is armed only after teardown.
-  irq_lock();
-  if (pin >= 0) {
+
+  for (int pin = 0; pin < WAKE_PIN_COUNT; pin++) {
+    int flags = wake_configs[pin];
+    if (flags == 0) continue;
     const device* port = zephyr_gpio_port(pin);
     gpio_flags_t mode = GPIO_INPUT;
     if (flags & 2) mode |= GPIO_PULL_UP;
@@ -113,6 +151,14 @@ void zephyr_enter_sleep(int64 request) {
     if (!result) result = gpio_pin_interrupt_configure(port, pin % 32,
         flags & 1 ? GPIO_INT_LEVEL_HIGH : GPIO_INT_LEVEL_LOW);
     if (result) sys_reboot(SYS_REBOOT_COLD);
+  }
+
+  if (timed) {
+    // An already-active pin can signal before the wait begins; the semaphore
+    // preserves that wake. Otherwise the first pin or timeout ends the sleep.
+    // The watchdog is neither stopped nor fed.
+    k_sem_take(&wake_signal, K_MSEC(request));
+    sys_reboot(SYS_REBOOT_COLD);
   }
   sys_poweroff();
 }

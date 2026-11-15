@@ -489,7 +489,7 @@ namespace toit {
 #define MODULE_ZEPHYR(PRIMITIVE)             \
   PRIMITIVE(reset_reason, 0)                 \
   PRIMITIVE(supported_reset_reasons, 0)       \
-  PRIMITIVE(prepare_poweroff, 2)             \
+  PRIMITIVE(configure_wakeup_pin, 2)          \
   PRIMITIVE(validate_sleep, 1)               \
 
 #define MODULE_CELLULAR(PRIMITIVE)           \

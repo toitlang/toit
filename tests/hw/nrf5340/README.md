@@ -1017,8 +1017,10 @@ reference.
 
 `power-nrf5340.toit` tests argument validation, System OFF wake at both GPIO
 levels, and a 750 ms timed `power.deep-sleep` followed by software reset.
-It also checks `supports-timed-deep-sleep`, invalid durations, and rejection of
-combined timer/GPIO wake configuration. Each shutdown
+It also checks `supports-timed-deep-sleep`, invalid durations and wake pins,
+and configuring/disabling a wake source without disturbing its live GPIO.
+The wake pin remains configured during the timed phase, but is held inactive,
+so the timer must end that sleep. Each shutdown
 has a pending I2C read (fixture SCL held low), a child blocked on UART RX, and an
 open ADC. The wake pin is still owned by a GPIO resource until teardown. The
 fixture checks released UART/GPIO outputs at each sleep marker and changes the
@@ -1219,3 +1221,24 @@ accepting the untimed behavior.
    optimization if it prevents meeting the target.
 5. Restore the saved application when finished. Keep functional logs separate
    from current traces; a pass in one does not imply a pass in the other.
+
+### Timed pin wake and multiple wake sources
+
+Build `tests/hw/nrf5340/timed-wake-nrf5340.toit` as the bundled program using
+the same CMake commands above. This is a standalone test; disconnect the
+ESP32 fixture and external loads from P1.00, P1.01, and P1.02.
+
+1. Leave both wake inputs inactive (the probe pulls P1.00 down and P1.01 up).
+   Expect a reboot after the 60-second sleep plus boot time.
+2. On a subsequent cycle, drive P1.00 high after sleep entry. Expect an early
+   reboot with the software-reset bit. Repeat by driving P1.01 low.
+3. Hold either input active before sleep entry. Expect an immediate restart
+   rather than a lost wake; release the input to avoid repeating the restart.
+4. Toggle P1.02 in either direction during sleep. It was configured, replaced,
+   then disabled, so it must not end sleep early.
+5. Repeat the paired tests above to verify resource cleanup with the new
+   configuration API. Those tests still cover untimed wake at both levels
+   and watchdog expiry during timed sleep.
+
+This procedure checks the new behavior; it has not yet been run on hardware.
+Neither an attached debugger nor these GPIO tests qualify current consumption.

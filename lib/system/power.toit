@@ -69,45 +69,26 @@ reset -> none:
 /**
 Enters deep sleep and wakes into a fresh boot.
 
-ESP32 and EC618 require $duration; their platform libraries document minimum
-  durations and provide additional wake-source configuration.
-On nRF5340, supplying $duration stops the VM, waits in System ON, and reboots.
-  Durations of 1 ms through 24 hours are supported. The wait starts after VM
-  teardown; booting and starting containers take additional time. An armed
-  watchdog remains active and can reset the device earlier.
-Omit $duration on nRF5340 to enter System OFF. Timed sleep consumes more power:
-  Nordic's reference configurations use approximately 1.5-2.1 microamps with
-  an RTC, compared with approximately 1 microamp in System OFF. These are
-  chip-level typical figures, not a measured bound for this firmware. Board
-  configuration, powered RAM, and peripherals can increase the difference.
-  See https://docs.nordicsemi.com/r/bundle/ps_nrf5340/page/chapters/current_consumption/doc/current_consumption.html.
+If $duration is given, enables a wake timer. Otherwise sleeps until a
+  configured wake source fires or the device is reset. Wake sources are
+  configured through the platform library: esp32.enable-external-wakeup,
+  ec618.configure-wakeup-input or ec618.configure-wakeup-pad, and
+  zephyr.configure-wakeup-pin. A configured pin can end a timed sleep early.
 Container termination has the same cleanup semantics as $reset.
 
-The optional integer $wake-pin and its $wake-high level are supported on
-  nRF5340 when $duration is omitted. Combining a duration with GPIO wake
-  configuration throws `UNIMPLEMENTED`. The pin is configured after releasing
-  VM resources. $pull-up and $pull-down select its bias and cannot both be
-  enabled. Without a pin or duration, waking requires another hardware source
-  such as reset.
+ESP32 and nRF5340 wake on the configured pin level; EC618 wakes on an edge.
+  Valid wake pins, pulls, and duration limits depend on the platform.
+  ESP32 rounds durations below 50 ms up to 50 ms; EC618 rounds durations
+  below one second up to one second. nRF5340 accepts 1 ms through 24 hours.
+On nRF5340, timed sleep uses System ON and untimed sleep uses System OFF.
+  See zephyr.deep-sleep for power-consumption and watchdog considerations.
 */
-deep-sleep duration/Duration?=null
-    --wake-pin/int?=null --wake-high/bool=true
-    --pull-up/bool=false --pull-down/bool=false -> none:
+deep-sleep duration/Duration?=null -> none:
   if system.platform == system.PLATFORM-ZEPHYR:
-    if duration:
-      if wake-pin != null or pull-up or pull-down or not wake-high:
-        throw "UNIMPLEMENTED"
-      zephyr.deep-sleep duration
-    zephyr.power-off --wake-pin=wake-pin --wake-high=wake-high
-        --pull-up=pull-up
-        --pull-down=pull-down
-  if wake-pin != null or pull-up or pull-down or not wake-high:
-    throw "UNIMPLEMENTED"
+    zephyr.deep-sleep duration
   if (system.architecture.starts-with "esp32"):
-    if not duration: throw "INVALID_ARGUMENT"
     esp32.deep-sleep duration
   if system.architecture == system.ARCHITECTURE-EC618:
-    if not duration: throw "INVALID_ARGUMENT"
     ec618.deep-sleep duration
   throw "UNIMPLEMENTED"
 

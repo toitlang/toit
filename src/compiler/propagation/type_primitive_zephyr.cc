@@ -6,7 +6,7 @@ namespace compiler {
 MODULE_TYPES(zephyr, MODULE_ZEPHYR)
 TYPE_PRIMITIVE_INT(reset_reason)
 TYPE_PRIMITIVE_INT(supported_reset_reasons)
-TYPE_PRIMITIVE_INT(prepare_poweroff)
+TYPE_PRIMITIVE_NULL(configure_wakeup_pin)
 TYPE_PRIMITIVE_INT(validate_sleep)
 }  // namespace compiler
 }  // namespace toit

@@ -8,6 +8,7 @@ import spi
 import uart
 import system.power
 import system.watchdog
+import zephyr
 
 main:
   run
@@ -30,20 +31,16 @@ run --edge-cases/bool=false:
   request.call "CONFIG 22 IN 0"
 
   if phase == 0:
-    [-2, 0, 2, 18, 20, 22, 48, 64].do: |pin|
-      expect-equals "INVALID_ARGUMENT" (catch: power.deep-sleep --wake-pin=pin)
-    expect-equals "INVALID_ARGUMENT" (catch: power.deep-sleep --wake-pin=32 --pull-up --pull-down)
-    expect-equals "INVALID_ARGUMENT" (catch: power.deep-sleep --pull-up)
+    [-2, -1, 0, 2, 18, 20, 22, 48, 64].do: |pin|
+      expect-equals "INVALID_ARGUMENT" (catch: zephyr.configure-wakeup-pin pin)
+    expect-equals "INVALID_ARGUMENT" (catch: zephyr.configure-wakeup-pin 32 --pull-up --pull-down)
     [-1, 0, 86400001].do: |ms|
       expect-equals "INVALID_ARGUMENT" (catch: power.deep-sleep (Duration --ms=ms))
-    expect-throw "UNIMPLEMENTED": power.deep-sleep (Duration --s=1) --wake-pin=32
-    expect-throw "UNIMPLEMENTED": power.deep-sleep (Duration --s=1) --pull-up
-    expect-throw "UNIMPLEMENTED": power.deep-sleep (Duration --s=1) --pull-down
-    expect-throw "UNIMPLEMENTED": power.deep-sleep (Duration --s=1) --no-wake-high
+    // Disabling a wake source must not close or reconfigure the live ACK pin.
+    zephyr.configure-wakeup-pin 33 --no-wake-high --pull-up
+    zephyr.disable-wakeup-pin 33
     expect-equals 1 (validate-sleep 1)
     expect-equals 86400000 (validate-sleep 86400000)
-    expect-equals -1 (prepare-poweroff -1 0)
-    expect-equals -270 (prepare-poweroff 32 5)
     print "POWER validation and duration bounds PASS"
   else if phase < 3:
     expect (power.reset-reason & power.RESET-LOW-POWER-WAKE != 0)
@@ -82,8 +79,9 @@ run --edge-cases/bool=false:
     expect pending
     expect-equals level wake.get
     print "POWER pending I2C, UART child and ADC ready phase=$phase"
+    zephyr.configure-wakeup-pin 32 --wake-high=high --pull-down=high --pull-up=(not high)
     if phase < 2:
-      power.deep-sleep --wake-pin=32 --wake-high=high --pull-down=high --pull-up=(not high)
+      power.deep-sleep
     else:
       if edge-cases: watchdog.start --timeout=(Duration --ms=2000)
       power.deep-sleep (Duration --ms=(edge-cases ? 5000 : 750))
@@ -128,9 +126,6 @@ run --edge-cases/bool=false:
   else:
     print "NRF5340 POWER PASS: GPIO wake, timed restart, teardown and peripheral recovery"
 
-// Validate long durations and reset-only power-off without actually sleeping.
+// Validate long durations without actually sleeping.
 validate-sleep duration-ms/int -> int:
   #primitive.zephyr.validate-sleep
-
-prepare-poweroff pin/int flags/int -> int:
-  #primitive.zephyr.prepare-poweroff
