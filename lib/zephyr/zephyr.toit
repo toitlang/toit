@@ -88,6 +88,9 @@ Accepts durations of 1 ms through 24 hours, in whole milliseconds. The duration
   starts after VM teardown. The console is suspended, but the Zephyr timebase
   and system RAM remain powered; this is not System OFF. Applications restart
   from boot with $RESET-SOFTWARE, and RAM contents are not preserved for Toit.
+The application CPU is switched to 64 MHz and GPIO events use low-power
+  latency before waiting. Current consumption still depends on the board's
+  clock source, regulators, powered RAM, and peripherals.
 An armed watchdog is neither stopped nor fed and can reset the device earlier.
 */
 sleep-and-restart duration/Duration -> none:

@@ -1,0 +1,11 @@
+/* Copyright (C) 2026 Toit contributors.
+ * SPDX-License-Identifier: Apache-2.0 */
+
+/* Requires the VREGMAIN DC/DC inductor and capacitors on the board.
+ * Do not apply this overlay to hardware wired for LDO-only operation.
+ */
+#include <zephyr/dt-bindings/regulator/nrf5x.h>
+
+&vregmain {
+  regulator-initial-mode = <NRF5X_REG_MODE_DCDC>;
+};

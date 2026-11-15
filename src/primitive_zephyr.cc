@@ -7,6 +7,8 @@
 #include "primitive_zephyr.h"
 #include "process.h"
 #include "resources/pins_zephyr.h"
+#include <hal/nrf_clock.h>
+#include <hal/nrf_gpiote.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/hwinfo.h>
 #include <zephyr/pm/device.h>
@@ -88,6 +90,14 @@ void zephyr_enter_sleep(int64 request) {
   if (request > 0) {
     // The nRF5340 RTC cannot wake System OFF. Keep the Zephyr timebase alive
     // with the VM stopped, then reboot. Do not stop or feed the watchdog.
+    // Nordic requires 64 MHz for low-current System ON idle. Do not inherit
+    // a 128 MHz clock or low-latency GPIO setting from the running application.
+    // All VM peripheral resources have been retired before changing these.
+    nrf_clock_hfclk_div_set(NRF_CLOCK, NRF_CLOCK_HFCLK_DIV_2);
+    SystemCoreClockUpdate();
+    nrf_gpiote_latency_set(
+        reinterpret_cast<NRF_GPIOTE_Type*>(DT_REG_ADDR(DT_NODELABEL(gpiote))),
+        NRF_GPIOTE_LATENCY_LOWPOWER);
     k_sleep(K_MSEC(request));
     sys_reboot(SYS_REBOOT_COLD);
   }
