@@ -3,7 +3,7 @@
 // be found in the tests/LICENSE file.
 import gpio
 import zephyr
-import zephyr.watchdog
+import system.watchdog
 import expect show *
 
 main:
@@ -28,20 +28,20 @@ main:
   expect-equals reason zephyr.reset-reason
   expect (zephyr.supported-reset-reasons & zephyr.RESET-SOFTWARE != 0)
   expect (zephyr.supported-reset-reasons & zephyr.RESET-WATCHDOG != 0)
-  watchdog.watchdog-stop
-  watchdog.watchdog-feed
+  watchdog.stop
+  watchdog.feed
 
   if phase == 0:
     [0, -1, 0x07d0_0000].do: | milliseconds |
       expect-equals "INVALID_ARGUMENT" (catch:
-        watchdog.watchdog-start --timeout=(Duration --ms=milliseconds))
+        watchdog.start --timeout=(Duration --ms=milliseconds))
     64.repeat:
-      watchdog.watchdog-start --timeout=(Duration --ms=1000)
-      watchdog.watchdog-feed
-      watchdog.watchdog-start --timeout=(Duration --ms=1500)
-      watchdog.watchdog-feed
-      watchdog.watchdog-stop
-      watchdog.watchdog-stop
+      watchdog.start --timeout=(Duration --ms=1000)
+      watchdog.feed
+      watchdog.start --timeout=(Duration --ms=1500)
+      watchdog.feed
+      watchdog.stop
+      watchdog.stop
     print "WATCHDOG 64 start/reconfigure/stop cycles PASS"
     request.call "CONFIG 18 DOWN 0"
     indicator := gpio.Pin 8 --output --value=1
@@ -56,19 +56,19 @@ main:
     expect-equals 0 (reason & zephyr.RESET-WATCHDOG)
     request.call "CHECK 18 0"
     print "SOFTWARE RESET AND GPIO RELEASE PASS"
-    watchdog.watchdog-start --timeout=(Duration --ms=400)
+    watchdog.start --timeout=(Duration --ms=400)
     8.repeat:
       sleep --ms=100
-      watchdog.watchdog-feed
+      watchdog.feed
     // Invalid reconfiguration must leave the current watchdog usable.
     expect-equals "INVALID_ARGUMENT" (catch:
-      watchdog.watchdog-start --timeout=(Duration --ms=0))
-    watchdog.watchdog-feed
-    watchdog.watchdog-stop
+      watchdog.start --timeout=(Duration --ms=0))
+    watchdog.feed
+    watchdog.stop
     sleep --ms=600
     print "WATCHDOG FEED AND STOP PASS"
     set-phase.call 2
-    watchdog.watchdog-start --timeout=(Duration --ms=500)
+    watchdog.start --timeout=(Duration --ms=500)
     print "WATCHDOG SLEEP ARMED timeout=500"
     sleep --ms=2000
     throw "watchdog failed during sleep"
@@ -78,22 +78,22 @@ main:
   if phase == 2:
     print "WATCHDOG SLEEP RESET PASS"
     set-phase.call 3
-    watchdog.watchdog-start --timeout=(Duration --ms=500)
+    watchdog.start --timeout=(Duration --ms=500)
     print "WATCHDOG BUSY ARMED timeout=500"
     while true: null
 
   if phase == 3:
     print "WATCHDOG BUSY RESET PASS"
     set-phase.call 4
-    watchdog.watchdog-start --timeout=(Duration --ms=500)
+    watchdog.start --timeout=(Duration --ms=500)
     print "WATCHDOG VM EXIT ARMED timeout=500"
     return
 
   expect-equals 4 phase
   print "WATCHDOG VM EXIT RESET PASS"
   // Stopped after reset; it must also be possible to arm and stop again.
-  watchdog.watchdog-start --timeout=(Duration --ms=100)
-  watchdog.watchdog-stop
+  watchdog.start --timeout=(Duration --ms=100)
+  watchdog.stop
   sleep --ms=200
   indicator := gpio.Pin 8 --output --value=1
   request.call "WAIT 18 1"

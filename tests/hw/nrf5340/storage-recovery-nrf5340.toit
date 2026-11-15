@@ -3,7 +3,7 @@
 // be found in the tests/LICENSE file.
 import gpio
 import zephyr
-import zephyr.watchdog
+import system.watchdog
 import system.storage
 import expect show *
 import .storage-nrf5340 show verify-persistent
@@ -19,7 +19,7 @@ main:
     sequence++
     print "GPIO REQUEST $sequence $command"
     with-timeout --ms=5000: ack.wait-for (sequence & 1)
-  watchdog.watchdog-stop
+  watchdog.stop
   // This test follows storage-nrf5340 and verifies preservation when flashing
   // a different firmware image, as well as preservation across fault resets.
   verify-persistent
@@ -55,8 +55,8 @@ main:
   milliseconds := [100, 250, 400][phase]
   update := ByteArray 4096 --initial=0xfc
   print "STORAGE interrupting rewrite after $milliseconds ms"
-  watchdog.watchdog-start --timeout=(Duration --ms=milliseconds)
+  watchdog.start --timeout=(Duration --ms=milliseconds)
   region.write --at=0 update
   // If the rewrite completed before the reset, do not silently pass.
-  watchdog.watchdog-stop
+  watchdog.stop
   throw "rewrite completed before the fault injection"

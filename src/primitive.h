@@ -489,9 +489,6 @@ namespace toit {
 #define MODULE_ZEPHYR(PRIMITIVE)             \
   PRIMITIVE(reset_reason, 0)                 \
   PRIMITIVE(supported_reset_reasons, 0)       \
-  PRIMITIVE(watchdog_start, 1)               \
-  PRIMITIVE(watchdog_feed, 0)                \
-  PRIMITIVE(watchdog_stop, 0)                \
   PRIMITIVE(prepare_poweroff, 2)             \
   PRIMITIVE(validate_sleep, 1)               \
 

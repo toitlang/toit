@@ -16,6 +16,8 @@ Supported timeout ranges depend on the platform. ESP32 supports positive
 
 The platform-specific watchdog APIs operate on this same watchdog. Other
   containers that feed or reconfigure it can interfere with monitoring.
+  On nRF5340, the hardware watchdog accepts 1 through 0x07cf_ffff milliseconds,
+  continues during System ON sleep, and pauses while halted by a debugger.
   Host platforms throw `UNIMPLEMENTED`.
 */
 

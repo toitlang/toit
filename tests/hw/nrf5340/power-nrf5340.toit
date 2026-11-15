@@ -7,7 +7,7 @@ import i2c
 import spi
 import uart
 import zephyr
-import zephyr.watchdog
+import system.watchdog
 
 main:
   run
@@ -80,7 +80,7 @@ run --edge-cases/bool=false:
     if phase < 2:
       zephyr.power-off --wake-pin=32 --wake-high=high --pull-down=high --pull-up=(not high)
     else:
-      if edge-cases: watchdog.watchdog-start --timeout=(Duration --ms=2000)
+      if edge-cases: watchdog.start --timeout=(Duration --ms=2000)
       zephyr.sleep-and-restart (Duration --ms=(edge-cases ? 5000 : 750))
     throw "power operation returned"
 

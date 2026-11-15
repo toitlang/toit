@@ -9,7 +9,6 @@
 #include "resources/pins_zephyr.h"
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/hwinfo.h>
-#include <zephyr/drivers/watchdog.h>
 #include <zephyr/pm/device.h>
 #include <zephyr/sys/poweroff.h>
 #include <zephyr/sys/reboot.h>
@@ -26,35 +25,6 @@ void zephyr_capture_reset_reason() {
   printf("[toit] reset cause=0x%lx supported=0x%lx\n",
          static_cast<unsigned long>(reset_reason),
          static_cast<unsigned long>(supported_reset_reasons));
-}
-
-#define TOIT_PLATFORM DT_COMPAT_GET_ANY_STATUS_OKAY(toit_platform)
-static const device* const watchdog = DEVICE_DT_GET(DT_PHANDLE(TOIT_PLATFORM, watchdog_port));
-static K_MUTEX_DEFINE(watchdog_mutex);
-static int watchdog_channel = -1;
-static bool watchdog_running = false;
-
-static int watchdog_enable() {
-  // Continue counting in ordinary sleep, but allow a debugger to halt the CPU.
-  int result = wdt_setup(watchdog, WDT_OPT_PAUSE_HALTED_BY_DBG);
-  if (!result) watchdog_running = true;
-  return result;
-}
-
-static int watchdog_disable() {
-  if (watchdog_channel < 0) return 0;
-  // A failed setup can leave an allocated channel. Retrying setup before stop
-  // lets the driver free that channel instead of leaking another on each retry.
-  if (!watchdog_running) {
-    int result = watchdog_enable();
-    if (result) return result;
-  }
-  int result = wdt_disable(watchdog);
-  if (!result) {
-    watchdog_channel = -1;
-    watchdog_running = false;
-  }
-  return result;
 }
 
 MODULE_IMPLEMENTATION(zephyr, MODULE_ZEPHYR)
@@ -125,42 +95,5 @@ void zephyr_enter_sleep(int64 request) {
 PRIMITIVE(reset_reason) { return Smi::from(reset_reason); }
 PRIMITIVE(supported_reset_reasons) { return Smi::from(supported_reset_reasons); }
 
-PRIMITIVE(watchdog_start) {
-  ARGS(int, timeout_ms);
-  // nRF's 32-bit LFCLK counter, expressed in whole milliseconds.
-  if (timeout_ms < 1 || timeout_ms > 0x07cfffff) FAIL(INVALID_ARGUMENT);
-  if (!device_is_ready(watchdog)) FAIL(HARDWARE_ERROR);
-  k_mutex_lock(&watchdog_mutex, K_FOREVER);
-  Defer unlock { [&] { k_mutex_unlock(&watchdog_mutex); } };
-  int result = watchdog_disable();
-  if (result) return Primitive::os_error(result, process);
-  wdt_timeout_cfg config = {};
-  config.window.max = timeout_ms;
-  config.flags = WDT_FLAG_RESET_SOC;
-  result = wdt_install_timeout(watchdog, &config);
-  if (result < 0) return Primitive::os_error(result, process);
-  watchdog_channel = result;
-  result = watchdog_enable();
-  if (result) return Primitive::os_error(result, process);
-  return process->null_object();
-}
-
-PRIMITIVE(watchdog_feed) {
-  k_mutex_lock(&watchdog_mutex, K_FOREVER);
-  Defer unlock { [&] { k_mutex_unlock(&watchdog_mutex); } };
-  if (watchdog_running) {
-    int result = wdt_feed(watchdog, watchdog_channel);
-    if (result) return Primitive::os_error(result, process);
-  }
-  return process->null_object();
-}
-
-PRIMITIVE(watchdog_stop) {
-  k_mutex_lock(&watchdog_mutex, K_FOREVER);
-  Defer unlock { [&] { k_mutex_unlock(&watchdog_mutex); } };
-  int result = watchdog_disable();
-  if (result) return Primitive::os_error(result, process);
-  return process->null_object();
-}
 }  // namespace toit
 #endif
