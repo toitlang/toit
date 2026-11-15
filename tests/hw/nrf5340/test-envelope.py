@@ -27,6 +27,8 @@ def ar_entries(data):
 
 def main():
     build = Path(sys.argv[1]).resolve()
+    profiles = sys.argv[2:] or ["default", "ble", "secure"]
+    assert "default" in profiles and set(profiles) <= {"default", "ble", "secure"}
     host = build / "host/sdk/bin/toit"
 
     def cli(envelope, *args, error=None):
@@ -57,7 +59,8 @@ def main():
         work = Path(directory)
         default = build / "default/toit.envelope"
         cli(default, "extract", "--format=binary", "-o", work / "default.bin")
-        for profile, version in (("default", 1003), ("ble", 1004), ("secure", 1004)):
+        for profile in profiles:
+            version = 1003 if profile == "default" else 1004
             source = build / profile / "toit.envelope"
             data = source.read_bytes()
             entries = {name: (start, end, payload) for name, start, end, payload in ar_entries(data)}
@@ -92,7 +95,7 @@ def main():
             bad.write_bytes(data[:start] + data[end:])
             cli(bad, "show", error="version and controller contents disagree")
             print(f"{profile}: bundle hashes, container edits, and rejection checks passed")
-    print("Default application-only and both two-core envelope profiles passed")
+    print(f"Envelope profiles passed: {', '.join(profiles)}")
 
 
 if __name__ == "__main__":
