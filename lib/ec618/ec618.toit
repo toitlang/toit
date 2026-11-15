@@ -46,6 +46,10 @@ DEEP-SLEEP-MIN-DURATION ::= Duration --s=1
 Enters deep sleep for the specified $duration and does not return.
   Exiting deep sleep causes the device to start over from main.
 
+Omit $duration to sleep without a timer. Previously configured wake sources
+  remain enabled; without one, waking requires another hardware source such
+  as reset. Configured wake pins can also end a timed sleep early.
+
 Durations shorter than $DEEP-SLEEP-MIN-DURATION are increased to that
   duration. Use $reset instead when no sleep is intended.
 
@@ -54,8 +58,9 @@ Durations longer than one hardware-timer interval are split across hibernate
   Toit VM, and configured wakeup pads remain armed. A non-timer wake cancels
   the remaining duration and starts the device normally.
 */
-deep-sleep duration/Duration -> none:
-  __deep-sleep__ duration.in-ms
+deep-sleep duration/Duration?=null -> none:
+  // int.MIN cannot be a duration in milliseconds: Duration stores microseconds.
+  __deep-sleep__ (duration ? duration.in-ms : int.MIN)
 
 /**
 Resets the EC618 and does not return.

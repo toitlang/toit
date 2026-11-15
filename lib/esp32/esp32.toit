@@ -108,6 +108,10 @@ DEEP-SLEEP-MIN-DURATION ::= Duration --ms=50
 Enters deep sleep for the specified duration (up to 24h) and does not return.
   Exiting deep sleep causes the ESP32 to start over from main.
 
+Omit $duration to sleep without a timer. Previously configured wake sources
+  remain enabled; without one, waking requires another hardware source such
+  as reset. Configured wake pins can also end a timed sleep early.
+
 Durations shorter than $DEEP-SLEEP-MIN-DURATION are increased to that
   duration. Use $reset instead when no sleep is intended.
 
@@ -118,8 +122,9 @@ If the ESP32 wakes up due to the $duration expiring, then
   $reset-reason is set to $RESET-DEEPSLEEP and the
   $wakeup-cause is set to $WAKEUP-TIMER.
 */
-deep-sleep duration/Duration -> none:
-  __deep-sleep__ duration.in-ms
+deep-sleep duration/Duration?=null -> none:
+  // int.MIN cannot be a duration in milliseconds: Duration stores microseconds.
+  __deep-sleep__ (duration ? duration.in-ms : int.MIN)
 
 /**
 Resets the ESP32 and does not return.

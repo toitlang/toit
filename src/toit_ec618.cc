@@ -607,6 +607,12 @@ static void start() {
     }
 
     case Scheduler::EXIT_DEEP_SLEEP: {
+      // int.MIN is the no-timer sentinel; Duration.in-ms cannot produce it.
+      // Keep zero/negative duration requests on the legacy minimum-time path.
+      if (exit_state.value == INT64_MIN) {
+        printf("[toit] INFO: entering deep sleep without wakeup timer\n");
+        enter_deep_sleep(0);
+      }
       const int64 MIN_MS = 1000;  // Deep-sleep timer minimum is ~1s on EC618.
       int64 ms = exit_state.value;
       if (ms < MIN_MS) ms = MIN_MS;
