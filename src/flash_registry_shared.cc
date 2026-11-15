@@ -83,7 +83,7 @@ bool FlashRegistry::is_erased(word offset, word size) {
   word cursor = 0;
 
   word from_aligned = Utils::round_up(offset, sizeof(uword));
-  word unaligned_prefix = from_aligned - offset;
+  word unaligned_prefix = Utils::min(size, from_aligned - offset);
   if (unaligned_prefix > 0) {
     if (!is_erased_unaligned(memory, 0, unaligned_prefix)) return false;
     cursor = unaligned_prefix;
