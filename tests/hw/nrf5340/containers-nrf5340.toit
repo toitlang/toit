@@ -27,7 +27,7 @@ main arguments:
   id := Uuid bytes[12..28]
   bucket := storage.Bucket.open --flash "nrf-containers"
   if phase == 0:
-    expect-equals "PRIVILEGED_PRIMITIVE" (catch: privileged-flash-size 0)
+    expect-throw "PRIVILEGED_PRIMITIVE": privileged-flash-size 0
     containers.uninstall id
     bucket.remove "echo"
     bucket["boots"] = 0
@@ -43,7 +43,7 @@ main arguments:
       writer.close
     writer := containers.ContainerImageWriter bytes.size
     writer.write bytes[..7]
-    expect-equals "Incomplete image" (catch: writer.commit)
+    expect-throw "Incomplete image": writer.commit
     writer.close
     expect-equals 1 containers.images.size
     installed := install bytes --no-run-boot
@@ -65,8 +65,8 @@ main arguments:
     worker = containers.start id {"op": "hold"}
     request.call "WAIT 18 1"
     request.call "WAIT 23 1"
-    expect-equals "ALREADY_IN_USE" (catch: gpio.Pin 8 --output)
-    expect-equals "ALREADY_IN_USE" (catch: storage.Region.open --flash "nrf-container-held")
+    expect-throw "ALREADY_IN_USE": gpio.Pin 8 --output
+    expect-throw "ALREADY_IN_USE": storage.Region.open --flash "nrf-container-held"
     expect-equals 0 worker.stop
     request.call "CHECK 18 0"
     request.call "CHECK 23 0"

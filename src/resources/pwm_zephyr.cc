@@ -206,13 +206,6 @@ PRIMITIVE(start) {
   if (!channel) FAIL(MALLOC_FAILED);
   int result = channel->open(pin);
   if (result == 0) {
-    // Borrowed Pin objects bypass the global ownership pool, but cannot drive
-    // two channels of this generator through the same pin.
-    for (auto other : group->channels) {
-      if (other && other->pin() == channel->pin()) result = -EBUSY;
-    }
-  }
-  if (result == 0) {
     group->channels[index] = channel;
     result = group->reconfigure();
     if (result != 0) {

@@ -536,19 +536,16 @@ ASAN_OPTIONS=detect_leaks=0:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 \
 ```
 
 `pwm-nrf5340.toit` uses nRF pins 32, 36, 8 and 9, wired to ESP32 pins 13, 32,
-18 and 23. Run it with those ESP32 pins configured as inputs, for example with
-the BLE peer fixture. It does not use the wired fixture's acknowledgement
+18 and 23. Run it with those ESP32 pins configured as inputs, with
+the wired fixture. It does not use the wired fixture's acknowledgement
 protocol. It checks all four controllers independently, four channels on one
 controller, resource exhaustion, failed-open rollback, clamping, frequency
-changes, sixteen close/remap cycles, legacy borrowed pins, child-process
-cleanup, and active generators at VM teardown. The borrowed-pin deprecation
+changes, sixteen close/remap cycles, rejection of deprecated Pin arguments, child-process
+cleanup, and active generators at VM teardown. The deliberate deprecated-Pin test
 warnings during compilation are expected.
 
-For slow waveforms it enables the digital input buffer on the PWM-driven pad
-and measures sixteen periods using GPIO edge waits. This requires no new wire,
-but the scheduler limits timing precision; it is not an external waveform or
-high-frequency qualification. The final four live outputs must also be checked
-externally after `VM teardown complete` to verify release.
+Waveform measurements use the separate paired fixture below. Check the final
+four live outputs externally after VM teardown to verify release.
 
 ```sh
 build/host/sdk/bin/toit compile -s -o build/nrf5340-pwm/test.snapshot \
@@ -594,16 +591,10 @@ python3 -u tests/hw/nrf5340/check-gpio.py \
   --cleanup-command 'PWM_RELEASE 18' --cleanup-command 'PWM_RELEASE 23'
 ```
 
-Both suites now pass on hardware. `build/nrf5340-pwm/lifecycle.log` records
-sixteen remap cycles, resource limits and invalid inputs, clamping, borrowed
-pins, 50/100 Hz pad read-back and child-process cleanup. `paired-final.log`
-records 69 fixture requests, including all four independent controllers,
-1/2/5/10 kHz frequency measurements, shared-frequency changes, duty ratios at
-50 Hz and 4 Hz, channel reuse, and four endpoint/recovery cycles. Every
-endpoint cycle checks a PWM train and both static levels with RMT. After each
-suite's successful VM teardown, all four outputs pass the dual-bias release
-check. External frequency checks above 10 kHz and scheduler latency during
-lowest-frequency stops remain outstanding.
+The paired suite measures all four independent controllers, shared-frequency
+changes, duty ratios, channel reuse, and static endpoints. Endpoint checks use
+RMT captures plus opposite-pull GPIO checks. Frequency measurements above
+10 kHz and scheduler latency during low-frequency stops remain outstanding.
 
 ## Software reset and hardware watchdog
 

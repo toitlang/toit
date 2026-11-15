@@ -92,24 +92,4 @@ main:
   PINS.do: |number|
     leaked := Pwm --frequency=50
     leaked.start number --duty-factor=0.5
-  print "NRF5340 PWM PASS: controllers, channels, ownership, waveform and process cleanup"
-
-measure pin/gpio.Pin frequency/int factor/float:
-  with-timeout --ms=2000:
-    pin.wait-for 0
-    pin.wait-for 1
-    start := Time.monotonic-us
-    previous := start
-    high := 0
-    16.repeat:
-      pin.wait-for 0
-      low := Time.monotonic-us
-      high += low - previous
-      pin.wait-for 1
-      previous = Time.monotonic-us
-    elapsed := previous - start
-    measured := 16_000_000.0 / elapsed
-    duty := high.to-float / elapsed
-    expect ((measured / frequency - 1).abs < 0.1)
-    expect ((duty - factor).abs < 0.1)
-    print "PWM pad frequency=$measured duty=$duty PASS"
+  print "NRF5340 PWM PASS: controllers, channels, ownership and process cleanup"
