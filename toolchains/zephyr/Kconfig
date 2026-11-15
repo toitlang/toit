@@ -6,7 +6,8 @@ config TOIT_CRYPTO
 	bool "Toit cryptographic primitives"
 	default y
 	help
-	  Required for the UUIDs used by the storage service.
+	  Enables the standard Toit cryptographic operations. Storage uses SHA-1
+	  for UUIDv5 identifiers, so firmware with storage must enable this.
 
 config TOIT_CRYPTO_EXTRA
 	bool "Additional Toit cryptographic primitives"
@@ -28,7 +29,9 @@ config TOIT_PSA_CRYPTO
 	depends on PSA_CRYPTO_PROVIDER_CUSTOM
 	select PSA_CRYPTO_CLIENT
 	help
-	  Shares one Mbed TLS implementation and configuration between the VM
+	  Enable when a Zephyr subsystem needs PSA operations. Native probes
+	  without the VM cannot use this provider. Shares one Mbed TLS
+	  implementation and configuration between the VM
 	  and Zephyr. Enables the volatile AES and P-256 operations needed by
 	  Bluetooth SMP. This does not provide persistent Bluetooth bond storage.
 

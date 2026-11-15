@@ -19,6 +19,9 @@
 #define DECLARE_I2C(node, prop, i) PINCTRL_DT_DEV_CONFIG_DECLARE(DT_PHANDLE_BY_IDX(node, prop, i));
 DT_FOREACH_PROP_ELEM(TOIT_PLATFORM, i2c_ports, DECLARE_I2C)
 
+// Initial Zephyr implementation: Nordic pinctrl and peripheral semantics.
+// Add a separate SoC implementation before enabling this backend elsewhere.
+BUILD_ASSERT(IS_ENABLED(CONFIG_SOC_NRF5340_CPUAPP));
 namespace toit {
 struct I2cController {
   I2cController(const device* d, pinctrl_dev_config* p) : dev(d), config(p) {}

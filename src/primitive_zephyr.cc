@@ -13,6 +13,9 @@
 #include <zephyr/sys/poweroff.h>
 #include <zephyr/sys/reboot.h>
 
+// Reset reporting uses Zephyr APIs. Sleep transitions currently implement
+// nRF5340 System OFF/System ON behavior and must be adapted for another SoC.
+BUILD_ASSERT(IS_ENABLED(CONFIG_SOC_NRF5340_CPUAPP));
 namespace toit {
 Object* zephyr_error(int error, Process* process) {
   ASSERT(error < 0);

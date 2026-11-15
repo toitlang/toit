@@ -21,6 +21,9 @@
 #define DECLARE_UART(node, prop, i) PINCTRL_DT_DEV_CONFIG_DECLARE(DT_PHANDLE_BY_IDX(node, prop, i));
 DT_FOREACH_PROP_ELEM(TOIT_PLATFORM, uart_ports, DECLARE_UART)
 
+// Initial Zephyr implementation: Nordic pinctrl and peripheral semantics.
+// Add a separate SoC implementation before enabling this backend elsewhere.
+BUILD_ASSERT(IS_ENABLED(CONFIG_SOC_NRF5340_CPUAPP));
 namespace toit {
 static const uint32_t READ_READY = 1, UART_ERROR = 2, WRITE_READY = 4, UART_BREAK_STATE = 8;
 struct UartController {

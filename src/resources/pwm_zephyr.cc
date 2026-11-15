@@ -21,6 +21,9 @@
   PINCTRL_DT_DEV_CONFIG_DECLARE(DT_PHANDLE_BY_IDX(node, prop, i));
 DT_FOREACH_PROP_ELEM(TOIT_PLATFORM, pwm_ports, DECLARE_PWM)
 
+// Initial Zephyr implementation: Nordic pinctrl and peripheral semantics.
+// Add a separate SoC implementation before enabling this backend elsewhere.
+BUILD_ASSERT(IS_ENABLED(CONFIG_SOC_NRF5340_CPUAPP));
 namespace toit {
 static constexpr unsigned CHANNELS = 4;
 struct PwmController {

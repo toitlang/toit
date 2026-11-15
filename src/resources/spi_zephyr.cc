@@ -20,6 +20,9 @@
 #define TOIT_PLATFORM DT_COMPAT_GET_ANY_STATUS_OKAY(toit_platform)
 #define DECLARE_SPI(node, prop, i) PINCTRL_DT_DEV_CONFIG_DECLARE(DT_PHANDLE_BY_IDX(node, prop, i));
 DT_FOREACH_PROP_ELEM(TOIT_PLATFORM, spi_ports, DECLARE_SPI)
+// Initial Zephyr implementation: Nordic pinctrl and peripheral semantics.
+// Add a separate SoC implementation before enabling this backend elsewhere.
+BUILD_ASSERT(IS_ENABLED(CONFIG_SOC_NRF5340_CPUAPP));
 namespace toit {
 struct SpiController {
   SpiController(const device* d, pinctrl_dev_config* p) : dev(d), config(p) {}
