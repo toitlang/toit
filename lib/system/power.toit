@@ -71,20 +71,33 @@ Enters deep sleep and wakes into a fresh boot.
 
 ESP32 and EC618 require $duration; their platform libraries document minimum
   durations and provide additional wake-source configuration.
-On nRF5340, omit $duration to enter System OFF. A timer cannot wake that state,
-  so supplying a duration throws `UNIMPLEMENTED`. Use $sleep-and-restart when
-  the higher consumption of System ON is acceptable.
+On nRF5340, supplying $duration stops the VM, waits in System ON, and reboots.
+  Durations of 1 ms through 24 hours are supported. The wait starts after VM
+  teardown; booting and starting containers take additional time. An armed
+  watchdog remains active and can reset the device earlier.
+Omit $duration on nRF5340 to enter System OFF. Timed sleep consumes more power:
+  Nordic's reference configurations use approximately 1.5-2.1 microamps with
+  an RTC, compared with approximately 1 microamp in System OFF. These are
+  chip-level typical figures, not a measured bound for this firmware. Board
+  configuration, powered RAM, and peripherals can increase the difference.
+  See https://docs.nordicsemi.com/r/bundle/ps_nrf5340/page/chapters/current_consumption/doc/current_consumption.html.
+Container termination has the same cleanup semantics as $reset.
 
 The optional integer $wake-pin and its $wake-high level are supported on
-  nRF5340. The pin is configured after releasing VM resources. $pull-up and
-  $pull-down select its bias and cannot both be enabled. Without a pin,
-  waking requires another hardware source such as reset.
+  nRF5340 when $duration is omitted. Combining a duration with GPIO wake
+  configuration throws `UNIMPLEMENTED`. The pin is configured after releasing
+  VM resources. $pull-up and $pull-down select its bias and cannot both be
+  enabled. Without a pin or duration, waking requires another hardware source
+  such as reset.
 */
 deep-sleep duration/Duration?=null
     --wake-pin/int?=null --wake-high/bool=true
     --pull-up/bool=false --pull-down/bool=false -> none:
   if system.platform == system.PLATFORM-ZEPHYR:
-    if duration: throw "UNIMPLEMENTED"
+    if duration:
+      if wake-pin != null or pull-up or pull-down or not wake-high:
+        throw "UNIMPLEMENTED"
+      zephyr.sleep-and-restart duration
     zephyr.power-off --wake-pin=wake-pin --wake-high=wake-high
         --pull-up=pull-up
         --pull-down=pull-down
@@ -101,6 +114,7 @@ deep-sleep duration/Duration?=null
 /**
 Stops the VM, waits in System ON, and restarts after $duration.
 
+Equivalent to $deep-sleep with a duration on nRF5340.
 Currently supported on nRF5340 for 1 ms through 24 hours. The wait starts
   after VM teardown; booting and starting containers take additional time.
   Container termination has the same cleanup semantics as $reset.
@@ -114,10 +128,16 @@ sleep-and-restart duration/Duration -> none:
   if system.platform != system.PLATFORM-ZEPHYR: throw "UNIMPLEMENTED"
   zephyr.sleep-and-restart duration
 
-/** Returns whether timed deep sleep is supported by this platform. */
+/**
+Returns whether $deep-sleep accepts a duration on this platform.
+
+This describes timer wake support, not a particular hardware power state or
+  current consumption. On nRF5340, timed sleep uses System ON.
+*/
 supports-timed-deep-sleep -> bool:
   return (system.architecture.starts-with "esp32") or
-      system.architecture == system.ARCHITECTURE-EC618
+      system.architecture == system.ARCHITECTURE-EC618 or
+      system.platform == system.PLATFORM-ZEPHYR
 
 /**
 Returns the normalized reset-cause bit mask.

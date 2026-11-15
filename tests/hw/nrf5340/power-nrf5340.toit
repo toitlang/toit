@@ -13,6 +13,7 @@ main:
   run
 
 run --edge-cases/bool=false:
+  expect power.supports-timed-deep-sleep
   ack := gpio.Pin 33 --input --pull-down
   phase-pins := [36, 37].map: gpio.Pin it --input
   phase := phase-pins[0].get | (phase-pins[1].get << 1)
@@ -34,7 +35,12 @@ run --edge-cases/bool=false:
     expect-equals "INVALID_ARGUMENT" (catch: power.deep-sleep --wake-pin=32 --pull-up --pull-down)
     expect-equals "INVALID_ARGUMENT" (catch: power.deep-sleep --pull-up)
     [-1, 0, 86400001].do: |ms|
+      expect-equals "INVALID_ARGUMENT" (catch: power.deep-sleep (Duration --ms=ms))
       expect-equals "INVALID_ARGUMENT" (catch: power.sleep-and-restart (Duration --ms=ms))
+    expect-throw "UNIMPLEMENTED": power.deep-sleep (Duration --s=1) --wake-pin=32
+    expect-throw "UNIMPLEMENTED": power.deep-sleep (Duration --s=1) --pull-up
+    expect-throw "UNIMPLEMENTED": power.deep-sleep (Duration --s=1) --pull-down
+    expect-throw "UNIMPLEMENTED": power.deep-sleep (Duration --s=1) --no-wake-high
     expect-equals 1 (validate-sleep 1)
     expect-equals 86400000 (validate-sleep 86400000)
     expect-equals -1 (prepare-poweroff -1 0)
@@ -81,7 +87,10 @@ run --edge-cases/bool=false:
       power.deep-sleep --wake-pin=32 --wake-high=high --pull-down=high --pull-up=(not high)
     else:
       if edge-cases: watchdog.start --timeout=(Duration --ms=2000)
-      power.sleep-and-restart (Duration --ms=(edge-cases ? 5000 : 750))
+      if edge-cases:
+        power.sleep-and-restart (Duration --ms=5000)
+      else:
+        power.deep-sleep (Duration --ms=750)
     throw "power operation returned"
 
   // Power transitions must retire live peripherals and release their pins.
