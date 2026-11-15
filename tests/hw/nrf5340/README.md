@@ -1,12 +1,7 @@
 # nRF5340 hardware fixtures
 
-BLE fixtures and their implementation are preserved in the separate #3329–#3331
-stack based on #3328. The BLE sections below describe that combined bring-up;
-their sources and configurations require the separate BLE stack. The nRF
-stack's active checks cover the default VM and wired peripherals.
-
-The initial wiring fixture checks the connections between an Ebyte E83-2G4M03S-TB and an
-ESP32 DevKitC V4 before the nRF5340 Toit port is available. The ESP32 runs Toit;
+The wiring fixture checks the connections between an Ebyte E83-2G4M03S-TB and an
+ESP32 DevKitC V4 independently of the nRF5340 firmware. The ESP32 runs Toit;
 the host temporarily controls nRF GPIO and SAADC registers through SWD.
 It does not erase or flash the nRF.
 
@@ -122,15 +117,6 @@ Use `--prepare-only` to validate compilation and packaging without hardware;
 omit the serial and restoration arguments in that mode. `--tests gpio uart`
 selects a subset. A prepared-only result is not a hardware pass. The individual
 test commands below remain useful when diagnosing a particular driver.
-
-The latest qualification is recorded in `build/nrf5340-acceptance/summary.json`:
-all eight suites passed, totaling 1,563 fixture requests. The initial run passed
-the first five suites and exposed the SPI capture issue described below. After
-correcting the ESP32 fixture and expanding the SPI test, SPI, ADC, and PWM passed
-in the `remaining` run. Both runs restored the normal nRF image and preserved
-settings and Toit storage byte-for-byte. The result records the exact sources,
-firmware hashes, and individual logs rather than treating the initial run as a
-pass. Both 32-bit and 64-bit host suites also passed all 1,010 non-flaky tests.
 
 `gpio-nrf5340.toit` exercises the Zephyr-backed Toit GPIO API. It uses P1.00
 (number 32) as the main signal, P1.01 (33) for acknowledgements, and P0.08 (8)
@@ -496,11 +482,11 @@ python3 tests/hw/nrf5340/check-gpio.py \
   --cleanup-command IDLE --log-dir build/nrf5340-adc
 ```
 
-The suite passed 21 fixture requests. It checks both input channels with a
+The ADC suite checks both input channels with a
 seven-level staircase, raw values, all eight gains, maximum-voltage rounding
 and saturation, sample counts crossing the 64-sample native chunk boundary,
 concurrent reads, deadlines and task-cancellation recovery, 64
-close/reacquire cycles, borrowed-pin compatibility, and process cleanup.
+close/reacquire cycles, rejection of deprecated Pin arguments, and process cleanup.
 A child leaves both ADCs open; the parent observes its pin ownership and then
 reclaims both pins after the child exits. The final electrical release check
 uses a separate GPIO output, since an ADC input does not drive the line.
@@ -548,10 +534,6 @@ g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined -g \
 ASAN_OPTIONS=detect_leaks=0:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 \
   build/nrf5340-pwm/pwm-data-test
 ```
-
-This passed (`build/nrf5340-pwm/data-test.log`). Both the normal and BLE builds
-pass with PWM enabled (`build.log` and `ble-build.log` in the same directory).
-These checks do not establish hardware operation, pin routing or cleanup.
 
 `pwm-nrf5340.toit` uses nRF pins 32, 36, 8 and 9, wired to ESP32 pins 13, 32,
 18 and 23. Run it with those ESP32 pins configured as inputs, for example with
@@ -611,13 +593,6 @@ python3 -u tests/hw/nrf5340/check-gpio.py \
   --cleanup-command 'PWM_RELEASE 13' --cleanup-command 'PWM_RELEASE 32' \
   --cleanup-command 'PWM_RELEASE 18' --cleanup-command 'PWM_RELEASE 23'
 ```
-
-The first run passed all four controllers' frequencies and the 25/50/75-percent
-duty checks, then exposed the unarmed static-capture problem
-(`paired-first.log`). The corrected fixture uses explicit `PWM_ARM`,
-`PWM_TRAIN` and `PWM_STATIC` commands. These tests allow 3% frequency error
-(or two counts) and eight percentage points of polled duty error; they do not
-establish precision clock accuracy or high-frequency signal quality.
 
 Both suites now pass on hardware. `build/nrf5340-pwm/lifecycle.log` records
 sixteen remap cycles, resource limits and invalid inputs, clamping, borrowed
@@ -794,158 +769,6 @@ uses the shared PSA provider and Secure Connections pairing. Bonding is enabled
 per connection when Toit requests `connect --secure`. It does not enable SMP
 debug logging or self-tests.
 
-## BLE secure central connections
-
-`ble-security-esp32` is an independent ESP-IDF Bluedroid peer. Its `fff0`
-service exposes an encrypted-read-only `fff1` characteristic containing
-`toit-secure-v1`. Build it with the repository's ESP-IDF environment and flash
-the identified ESP32. Its UART accepts `STATUS`, `CLEAR`, `ACCEPT`, `REJECT`,
-`NO_BOND`, `LEGACY`, `HOLD`, and `REBOOT`. `HOLD` leaves the security request
-unanswered to exercise cancellation. The fixture does not print key material.
-
-Use the Zephyr environment described above and the existing HCI network image:
-
-```sh
-cmake -S toolchains/zephyr -B build/zephyr-nrf5340-pairing -G Ninja \
-  -DBOARD=e83_2g4m03s_tb/nrf5340/cpuapp \
-  -DPython3_EXECUTABLE="$PWD/.cache/zephyr-venv/bin/python" \
-  '-DEXTRA_CONF_FILE=bluetooth.conf;settings.conf;bluetooth-security.conf' \
-  -DDTC_OVERLAY_FILE="$PWD/toolchains/zephyr/bluetooth.overlay" \
-  -DTOIT_ZEPHYR_PROGRAM="$PWD/tests/hw/nrf5340/ble-pairing-nrf5340.toit" \
-  -DTOIT_ZEPHYR_STARTUP_TEST="$PWD/tests/hw/nrf5340/ble-pairing-clear-native.c"
-cmake --build build/zephyr-nrf5340-pairing --target toit_envelope -j8
-python3 tests/hw/nrf5340/check-pairing.py \
-  --image build/zephyr-nrf5340-pairing/zephyr/zephyr.bin \
-  --esp-serial "$ESP_SERIAL" --nrf-serial "$NRF_SERIAL" \
-  --log-dir build/nrf5340-pairing/first --policy ACCEPT
-```
-
-The cleanup hook deletes only the nRF's `bt/keys` records. All policies except
-`KEEP` also clear the ESP32's bonds. These are destructive **test** operations
-on the devices' existing bonds; use the dedicated lab boards.
-To verify persistence, rebuild with `-DTOIT_ZEPHYR_STARTUP_TEST=` and use
-`--policy KEEP` with a fresh log directory. Require an initial nRF bond count
-of one, an ESP32 boot bond count of one, and no new ESP32 key events. Opening
-the console resets this ESP32 devkit; the runner waits for boot before issuing
-commands. The nRF firmware replacement preserves both persistent partitions.
-
-For rejection, build `ble-pairing-negative-nrf5340.toit` with the cleanup hook
-and run each of `REJECT`, `NO_BOND`, and `LEGACY` in a separate log directory.
-For cancellation, build `ble-pairing-cancel-nrf5340.toit` with the cleanup hook
-and use `HOLD`. The runner verifies both the Toit result and peer connection
-counts, and requires VM teardown. Always restore the normal nRF firmware and
-the ESP32 wired fixture after qualification.
-
-Secure connections require SC Just Works, a 16-byte key, and bonding. They do
-not provide MITM authentication. Passkey, numeric comparison, OOB, and public
-bond deletion APIs remain unavailable. Do not use the separate crypto
-self-test configuration for pairing: its SMP debug logging can expose keys.
-
-Hardware qualification is recorded in `build/nrf5340-pairing/summary.json`:
-twelve encrypted connections (including four using persisted bonds after
-firmware replacement and peer reboot), nine rejected connections across the
-three policies, and four cancellations. Both consoles and VM teardown were
-checked. The successful recovery run follows the failure/cancellation tests.
-The positive image is 672 KiB with 135220 bytes of static RAM; default BLE
-remains 580 KiB with pairing disabled. One flash timed out in FTDI transport
-at 250 kHz and passed after resetting only the debug adapter and retrying.
-
-## BLE secure peripheral connections
-
-`ble-peripheral-security-esp32` reverses the roles: its independent Bluedroid
-central connects to the nRF's `toit-nrf-sec` advertisement. Build and flash it
-with the repository's ESP-IDF environment. It exposes UART commands `RUN`,
-`RUN_REJECT`, `BOND`, `NO_BOND`, `CLEAR`, and `STATUS`.
-
-Use the same Zephyr security configuration and bond cleanup hook as the central
-test above, with `TOIT_ZEPHYR_PROGRAM` set to
-`tests/hw/nrf5340/ble-peripheral-security-nrf5340.toit`. Then run:
-
-```sh
-python3 tests/hw/nrf5340/check-peripheral-security.py \
-  --image build/zephyr-nrf5340-pairing/zephyr/zephyr.bin \
-  --esp-serial "$ESP_SERIAL" --nrf-serial "$NRF_SERIAL" \
-  --log-dir build/nrf5340-peripheral-security/bonded --policy BOND
-```
-
-The test checks encrypted-only characteristic and descriptor reads, writes,
-and local value updates, followed by peripheral/adapter close and reopen.
-Rebuild without the cleanup hook and use `KEEP` to check persisted bonds
-after nRF firmware replacement and ESP32 reboot. For fresh non-bonded pairing,
-use `ble-peripheral-security-unbonded-nrf5340.toit` with the cleanup hook and
-`NO_BOND`. `ble-peripheral-security-bonding-nrf5340.toit` with `BOND` checks
-that the bonding flag alone permits SC pairing. Legacy pairing remains disabled
-by the shared Zephyr configuration.
-
-Use `ble-peripheral-security-disabled-nrf5340.toit` with the cleanup hook and
-`DISABLED` to verify refusal when neither peripheral flag is set. The ESP32
-then reconnects without requesting security and writes a plaintext control
-value, proving the peripheral remains usable after refusal. All runs require
-four adapter cycles and VM teardown; `KEEP` additionally requires restored
-bonds and no new ESP32 key events. Use a fresh log directory for every run.
-
-The Bluedroid fixture explicitly removes its volatile peer record after each
-non-bonded connection. This stack retains the SC PENC key in RAM even without
-a bond; its `ESP_BLE_SEC_ENCRYPT` path otherwise tries that stale key on the
-next link. The original reconnect failure is retained in
-`build/nrf5340-peripheral-security/unbonded`. This is fixture-side cleanup,
-not persistence of unbonded keys on the nRF. Key-event logs contain only type
-tags, never key material. The cleanup completion can report a storage failure
-because there were no NVS bond keys to delete; the RAM record has already been
-removed. The test checks zero bonds and a fresh encryption-key event on every
-connection rather than treating that storage status as proof of RAM cleanup.
-
-`ble-pairing-mixed-nrf5340.toit` uses the earlier ESP32 security **peripheral**
-fixture to check role isolation. It opens a security-disabled local peripheral
-before or after a secure central connection, closes that peripheral, then
-reads the remote encrypted value. Restore both normal board images afterward.
-
-Hardware evidence is in `build/nrf5340-peripheral-security/summary.json`:
-sixteen secure peripheral connections (bonded, persisted, unbonded, and
-bonding-only), four pairing refusals with four plaintext recovery connections,
-and four secure central connections checking local-peripheral isolation.
-All completed adapter cleanup and VM teardown. The positive server image
-uses 672 KiB of flash and 135220 bytes of static RAM without the cleanup hook.
-The normal BLE build remains 580 KiB with security disabled. The permission
-regression covers all four shared Toit guard fixes: characteristic `read` and
-`write`, descriptor `read` and `set-value`, using encrypted-only permissions.
-
-### Notification and indication encryption
-
-`ble-notify-security-nrf5340.toit` gives two characteristics both notification
-and indication properties, protecting notifications on one and indications on
-the other. Both retain plaintext reads. Build it with the same security
-configuration and bond-cleanup startup hook above, and flash the updated
-`ble-peripheral-security-esp32` fixture. Run:
-
-```sh
-python3 tests/hw/nrf5340/check-peripheral-security.py \
-  --image build/zephyr-nrf5340-bonds/zephyr/zephyr.bin \
-  --esp-serial "$ESP_SERIAL" --nrf-serial "$NRF_SERIAL" \
-  --log-dir build/nrf5340-notify-security/hardware \
-  --policy NO_BOND --notifications
-```
-
-Before pairing, the peer reads both plaintext values and attempts to enable
-protected CCC bits with Write Commands. Reading the CCC back must show zero.
-Commands deliberately avoid Bluedroid's automatic pairing/retry on an ATT
-error response. Each characteristic's unprotected mode must still deliver.
-After explicit SC pairing, both modes on both characteristics must deliver
-the expected bytes and notification/indication type. Every mode is disabled
-after use. The test repeats through four adapter lifetimes, with fresh keys
-and zero bonds, then requires VM teardown. It does not exercise restoration of
-a bonded CCC on an unencrypted reconnect; the native tests separately check
-the permission attribute used at send time, without requiring a CCC write.
-
-The four-cycle run passed in `build/nrf5340-notify-security/verified`: sixteen
-rejected CCC enables, eight plaintext deliveries, sixteen encrypted deliveries,
-four fresh pairings and VM teardown. The client re-registers notifications
-before each trigger because Bluedroid clears its local registrations on Service
-Changed after pairing. The initial failure and diagnostic run are retained in
-`hardware` and `diagnostic`; neither is counted as passing evidence.
-The existing encrypted characteristic/descriptor read/write suite also passed
-four connections using the updated firmware and peer, in `read-write-regression`.
-
 ## Container installation and lifecycle
 
 The Zephyr build now bundles the system image and application separately.
@@ -1075,20 +898,6 @@ asset pattern, name and noncritical boot flag. It then explicitly starts the
 `worker`, whose boot flag is disabled, and waits for its VM smoke test. No ESP32
 fixture or GPIO wiring is needed for this test.
 
-Both variants passed on the E83 board, each completing 1552 garbage collections.
-The full 131072-byte storage partition, including five existing allocations,
-was byte-identical before and after the two flashes. The SWD deployment tool
-verified both the old and new firmware while taking these storage backups.
-Evidence is in `build/nrf5340-envelope`: `prepare.log`, `host.log`, `ctest.log`,
-`flash-snapshot/console.log`, `flash-image/console.log`, `before.json`,
-`after.json`, and `storage-check.log`. Re-extraction after selecting envelope
-format 1003 produced the exact same flashed binaries (`flashed-sha256.txt`).
-The CMake target was also checked with a source application plus an additional
-precompiled image; its extraction preserved native bytes and all three containers.
-The board was then restored to the system-only envelope extraction at
-`build/nrf5340-envelope/final-base.bin`; that file was the SWD deployment
-reference for the envelope milestone (the lifecycle milestone below supersedes it). `final.json` records the final firmware/storage check.
-
 ## Critical-container lifecycle
 
 `lifecycle-nrf5340.toit` tests the VM's error-restart policy with two envelope
@@ -1135,19 +944,6 @@ worker exits with code 23 or throws an exception. The ESP32 checks that GPIO5,
 UART TX, and SPI CS stop driving during teardown/backoff. After reset, the
 controller verifies the software-reset flag and exercises UART loopback, I2C,
 SPI, and ADC. Final VM completion must release GPIO5 again.
-
-Both variants passed on hardware: 26 fixture requests and exactly two boots
-each. `build/nrf5340-lifecycle/{exit,throw}/paired.log` records the checks, with
-raw console and flash logs beside it. The unchanged original firmware was
-also tested: `before/paired.log` shows successful teardown and released pins,
-followed by failure to reboot. Four host regressions passed (`host-tests.log`).
-The existing reset/watchdog suite also passed: 16 fixture requests across five
-boots, recorded under `reset-regression`.
-The final restore was verified through SWD. All 131072 storage bytes and five
-allocations matched the preceding envelope milestone's backup (`final.json`
-and `storage-check.log`). The lifecycle milestone used
-`build/nrf5340-lifecycle/system-only.bin` as its firmware reference; the native
-fault milestone below supersedes it.
 
 After testing, restore a system-only image and keep it as the SWD deployment
 reference:
@@ -1271,13 +1067,6 @@ already active before shutdown. Add
 report watchdog reset instead of software reset. Its two-second timer starts
 before teardown, and the requested sleep is five seconds.
 
-Both variants passed with 40 fixture requests and four boots each. The normal
-variant observed 759 ms for the requested 750 ms sleep. The edge variant
-observed 1513 ms before watchdog reset, after roughly 500 ms of I2C cleanup.
-Evidence is in `build/nrf5340-poweroff/{vm,edge}`, `vm-paired.log`, and
-`edge-paired.log`. Three host container/firmware regressions passed
-(`host-tests.log`).
-
 The independent `poweroff-native.c` probe also passed both wake levels with
 14 fixture requests and three boots (`native`, `native-paired.log`). Build it
 using `TOIT_ZEPHYR_BUILD_VM=OFF` and `TOIT_ZEPHYR_NATIVE_SOURCE` as for the fault
@@ -1297,381 +1086,6 @@ as above. The restored image is the deployment reference for this milestone.
 The final SWD verification (`final.json`, `storage-check.log`) confirmed that
 all 131072 persistent-storage bytes and five allocations match the preceding
 fault milestone. The system-only image remains 503808 bytes (492 KiB).
-
-## Shared Bluetooth and Toit crypto qualification
-
-`ble-security-crypto.conf` enables Zephyr SMP with Toit's vendored Mbed TLS
-as its custom PSA provider. It also enables the optional Toit SipHash and
-Blake2s primitives so their `tests/crypto-test.toit` checks can run.
-The normal and default BLE configurations leave these options disabled.
-Asynchronous RSA generation remains unsupported on Zephyr.
-
-Run `tools/zephyr/setup.sh` first and use the Zephyr environment described
-above. The network core must already have the HCI IPC firmware from the next
-section. No ESP32 peer is required for this test.
-
-```sh
-cmake -S toolchains/zephyr -B build/zephyr-nrf5340-security -G Ninja \
-  -DBOARD=e83_2g4m03s_tb/nrf5340/cpuapp \
-  -DPython3_EXECUTABLE="$PWD/.cache/zephyr-venv/bin/python" \
-  '-DEXTRA_CONF_FILE=bluetooth.conf;../../tests/hw/nrf5340/ble-security-crypto.conf' \
-  -DDTC_OVERLAY_FILE="$PWD/toolchains/zephyr/bluetooth.overlay" \
-  -DTOIT_ZEPHYR_STARTUP_TEST="$PWD/tests/hw/nrf5340/ble-security-crypto.c" \
-  -DTOIT_ZEPHYR_PROGRAM="$PWD/tests/hw/nrf5340/ble-security-crypto.toit"
-cmake --build build/zephyr-nrf5340-security --target toit_envelope -j8
-python3 tools/nrf5340/flash.py \
-  build/zephyr-nrf5340-security/zephyr/zephyr.bin \
-  --serial "$NRF_SERIAL" --log-dir build/nrf5340-security/final-hardware \
-  --expect 'NRF5340 SHARED CRYPTO PASS' \
-  --stop-after 'VM teardown complete' --seconds 600
-```
-
-The native startup probe checks AES/CMAC known answers, key permissions,
-P-256 known answers, rejection of an invalid peer point, generated ECDH in
-both directions, and exhaustion/reuse of all sixteen volatile key slots.
-Then the Toit program runs the existing hash, ChaCha, SipHash, AEAD, Adler,
-Blake2s, HMAC and random tests, sixteen Bluetooth
-adapter open/close cycles with Zephyr's SMP self-tests, and those crypto tests
-again while scanning and advertising remain active. Require both native PSA
-and final shared-crypto PASS markers, all sixteen adapter cycles, and VM
-teardown without an exception.
-
-For the complete shared suite, set `TOIT_ZEPHYR_PROGRAM` to
-`ble-security-crypto-exhaustive.toit` and increase the capture timeout. This
-also runs the exhaustive pure-Toit Hamming and MD5 sweeps twice. The initial
-full run was stopped after more than ten minutes in the MD5 sweep, confirmed
-by mapping the live VM stack back to source; it is not recorded as a pass.
-The focused qualification retains HMAC's MD5 known answers. The complete
-suite has passed the earlier host regression runs.
-
-This crypto qualification image does not enable Toit's secure-connect API.
-The separate settings and Bluetooth security configuration provides that
-integration; this crypto test does not exercise persistent bonds.
-SMP debug logging is required for Zephyr's self-tests and must
-not be used for actual pairing because it can log key material. The test
-only scans and advertises without accepting connections. Restore the normal
-system-only image after qualification.
-
-## Network-core HCI IPC and BLE qualification
-
-The originally locked network core was recovered with explicit user approval
-on 2026-10-25. Application flash/UICR were restored and verified before the
-controller was installed. The native probe and sixteen-cycle Toit adapter
-test have now passed on hardware, and the ESP32 observed nRF advertisements.
-Evidence is in `build/nrf5340-ble/{native-hardware,toit-hardware,esp-peer-console}.log`.
-The four-cycle GATT discovery/descriptor-read suite also passes; see
-`build/nrf5340-ble/gatt-uuid-fix-hardware.log`. Its UUID regression covers
-16-, 32-, and 128-bit spellings of a Bluetooth-assigned service. Immediate
-close/reconnect still fails (`connect-debug-peripheral-peer.log`), even with
-ESP32 scanning disabled. Further GATT qualification is ongoing.
-See `docs/nrf5340.md` for the full-device recovery requirement;
-do not use a generic recover command assuming it preserves application flash.
-The full application/UICR backup and hashes are in
-`build/nrf5340-ble/before-recovery/manifest.json`. All persistent bytes matched
-the preceding power-management checkpoint when that backup was taken.
-Use the manifest's `application-uicr` entry for restoration, not its raw dump:
-unselected KMU key reads return a masked value. The restorable image was
-completed by selecting and reading all 128 slots, checking successful access,
-and restoring slot selection to zero. All slots were readable and empty.
-
-After `tools/zephyr/setup.sh`, use the same Zephyr environment as earlier:
-
-```sh
-cmake -S .cache/zephyr-workspace/zephyr/samples/bluetooth/hci_ipc \
-  -B build/zephyr-nrf5340-hci -G Ninja \
-  -DBOARD=e83_2g4m03s_tb/nrf5340/cpunet \
-  -DBOARD_ROOT="$PWD/toolchains/zephyr" \
-  -DPython3_EXECUTABLE="$PWD/.cache/zephyr-venv/bin/python" \
-  -DEXTRA_CONF_FILE="$PWD/toolchains/zephyr/hci-ipc.conf"
-cmake --build build/zephyr-nrf5340-hci -j8
-cmake -S toolchains/zephyr -B build/zephyr-nrf5340-ble-native -G Ninja \
-  -DBOARD=e83_2g4m03s_tb/nrf5340/cpuapp \
-  -DPython3_EXECUTABLE="$PWD/.cache/zephyr-venv/bin/python" \
-  -DTOIT_ZEPHYR_BUILD_VM=OFF \
-  -DTOIT_ZEPHYR_NATIVE_SOURCE="$PWD/tests/hw/nrf5340/ble-native.c" \
-  -DEXTRA_CONF_FILE="$PWD/toolchains/zephyr/bluetooth.conf" \
-  -DDTC_OVERLAY_FILE="$PWD/toolchains/zephyr/bluetooth.overlay"
-cmake --build build/zephyr-nrf5340-ble-native -j8
-```
-
-For the optional VM link check, use `build/zephyr-nrf5340-ble`, omit both native
-options, set `-DTOIT_ZEPHYR_PROGRAM=`, and build target `toit_envelope`. The
-network-core controller is built automatically and carried by the format 1004
-envelope. Extract it with `--format=tar` and pass the tar to
-`tools/nrf5340/flash.py`; see the [two-core deployment instructions](../../../docs/nrf5340.md#firmware-envelopes).
-The backend implements scanning and nonconnectable
-advertising, unencrypted central connections, GATT discovery, and attribute
-reads/writes, subscriptions and peripheral connections. Secure Connections
-Just Works pairing and persistent bonds are covered by the security tests below.
-
-`ble-native.c` checks HCI initialization, identity, AES-128 LE/BE known answers,
-48 random bytes, and four two-second advertising/scanning cycles. Scan reports
-are diagnostic; they do not yet assert an ESP32 peer identity or prove outbound
-RF operation. The separate paired Toit test supplies that evidence. Radio
-tests temporarily replace the wired fixture; restore it afterward.
-
-The first Toit-level test, `ble-nrf5340.toit`, compiles and is prepared as
-`build/nrf5340-ble/toit-test.bin`; it passes on hardware. It checks exclusive adapter
-ownership, zero/finite/infinite scans, deadline cancellation and reuse,
-advertisement/scan-response encoding, repeated stop, sixteen adapter reopen
-cycles, and automatic teardown with scanning and advertising still active.
-Install its snapshot as `ble-test` into the optional BLE envelope and extract
-with `--format=tar` to deploy both cores. After network recovery, this
-passed hardware validation with the identified ESP32 observing advertisements.
-
-The paired connection test, `ble-connect-nrf5340.toit`, passes all four adapter
-cycles with the [independent Bluedroid peer](ble-connect-esp32/README.md) and with
-`ble-peer-esp32.toit` after applying its documented NimBLE dependency correction.
-The previous failure on the second connection was traced to an ESP32 callback
-suppressed on early disconnect, leaving advertising stopped. The nRF image and
-connection timing are unchanged. The affected unmodified NimBLE version still
-fails this case. Use the
-ESP32 firmware's matching SDK to install the peer, and restore the existing
-`wiring-esp32.toit` fixture afterward. The peer advertises `toit-esp-peer`, exposes
-read-only characteristics, a description descriptor, a notification
-characteristic with a CCCD, and prints a five-second heartbeat. With the
-`--observe-advertising` program argument it first scans for `toit-nrf-probe`
-and prints `ESP32 BLE PEER observed nRF advertisement`. Use this mode for
-outbound advertisement validation; connection/GATT tests use the peripheral
-alone. The nRF test checks identifier validation,
-16 cancelled attempts, 32 connect/close cycles, duplicate connections, ATT MTU,
-a three-second connection timeout, adapter reopen, closing an adapter while
-connecting, and final teardown with an active connection. It assumes its
-synthetic random-static address `c2:47:73:19:aa:55` is absent from the test area.
-The VM close currently waits synchronously for native connection cleanup, so
-the Toit timeout cannot preempt that native wait.
-
-Prepared snapshots and envelopes live under `build/nrf5340-ble/`:
-`ble-connect.snapshot`, `ble-peer.snapshot`, `connect-test.envelope`, and
-`connect-test.bin`. These are preparation artifacts, not hardware test results.
-The connection backend and shared library compile, and the four existing host
-regressions passed in `connections-host-tests.log`; none exercises HCI callback
-ordering. The current hardware evidence is under
-`build/nrf5340-ble/early-disconnect/`: `bluedroid-nrf.log` and
-`bluedroid-console.log` record the independent peer run; `fixed-nrf.log` and
-`fixed-console.log` record the corrected Toit peer. Each run checks the complete
-nRF lifecycle suite. Bluedroid's HCI log records 37 remote disconnects, including
-adapter close and VM teardown. The independent fixture README explains the
-pinned dependency revision, diagnostic, patch, and restoration procedure.
-
-`ble-gatt-nrf5340.toit` is prepared as `gatt.snapshot`, `gatt-test.envelope` and
-`gatt-test.bin` in that directory. With the expanded ESP32 peer it checks
-service/characteristic/descriptor discovery, properties and handles, filtered
-descriptor boundaries, empty ranges, missing UUIDs, 32-bit UUID queries, and
-four connection/adapter reopen cycles. The updated `gatt-uuid-fix` artifacts
-pass on hardware, including equivalent 16-/32-/128-bit service UUID filters.
-The native backend limits each discovery to 64 records and zero or one UUID
-filter. Descriptor reads now check the description and CCCD values too.
-Closing a resource or interrupting a GATT wait cancels the native request.
-Zephyr's discovery API does not distinguish normal completion from all ATT
-errors, so some peer-side errors can yield empty or partial results.
-
-`ble-values-nrf5340.toit` is prepared as `values.snapshot`, `values-test.envelope`
-and `values-test.bin`. It uses the peer's separate value service to check long
-and empty reads, encrypted-read ATT errors, writes with and without responses,
-empty and MTU-sized echoes, oversized-write rejection, and cancelling/reusing
-delayed reads and writes across four adapter lifetimes. The shared UUIDs and
-512-byte payload are in `ble-values-shared.toit`. The ESP32 delays selected
-responses for 200 ms so a 30 ms client timeout can interrupt a pending request.
-The test does not assume cancellation rolls back a write. All four cycles
-pass on hardware (`values-uuid-fix-hardware.log`).
-
-`ble-notify-nrf5340.toit` is prepared as `notify.snapshot`, `notify-test.envelope`
-and `notify-test.bin`. Its UUIDs and deterministic payloads are shared with the
-peer in `ble-notify-shared.toit`. Trigger writes select notifications or
-indications and request a burst. The peer acknowledges the trigger before
-sending, allowing NimBLE to process TX completions and indication ACKs. The
-nRF polls a separate completion counter without consuming queued values.
-During the intentional overflow burst, the old ESP32 SDK can lose a subscriber
-between client enumeration and send; only that `INVALID_ARGUMENT` race after
-the queue has overflowed is tolerated. Other send failures terminate the peer.
-Overflow recovery requires a fresh marker after a bounded tail of already
-queued old values, then checks that the queue is empty. Resubscribing cannot
-retract packets already queued by the peer.
-The current fixture uses ordinary `write` for every value, including empty
-values. This requires the ESP32 backend fix that allocates an mbuf for empty
-data; a null notification buffer instead asks NimBLE to send the stored value.
-The earlier passing run used a store-before-send workaround with the old SDK.
-The repeat run with the fixed native firmware passes all four adapter cycles
-(`notify-qualified-hardware.log`, `esp-peer-qualified-console.log`), including
-empty notifications after nonempty values without the old workaround.
-The test covers FIFO order, empty and MTU-sized values, independent read
-results, cancelled receiver waits, unsubscribe/resubscribe, overflow reporting,
-duplicate subscription ownership, and disconnect with active subscriptions.
-There are four adapter cycles. The first run exposed a fixture TX timeout
-while sending inside the trigger callback; the corrected asynchronous version
-passes all four cycles (`notify-empty-fix-hardware.log` and
-`esp-peer-empty-fix-console.log`). It does not yet
-exercise cancellation during a delayed CCC response or peer-initiated disconnect.
-
-The optional BLE configuration now enables Zephyr's automatic ATT MTU
-exchange. The normal `ble-peer-esp32.toit` fixture explicitly prefers MTU 247;
-the value and notification test entry points require that negotiated value.
-Both four-cycle suites pass with 244-byte writes, notifications and indications,
-plus 512-byte reads, ATT errors, cancellation, overflow and reuse. Evidence is
-under `build/nrf5340-ble/auto-mtu/`: `values-hardware.log`,
-`notify-hardware.log`, and `peer247-console.log`.
-
-For minimum-MTU compatibility, install `ble-peer-mtu23-esp32.toit` on the ESP32
-and `ble-client-mtu23-nrf5340.toit` on the nRF. This combines both suites with
-an explicit MTU-23 assertion, for eight adapter lifetimes. It passes in
-`client23-hardware.log` with the peer console in `peer23-console.log`. The test
-must end with `NRF5340 BLE CLIENT MTU23 PASS` and successful VM teardown.
-
-The automatic-exchange build also passes `ble-connect-nrf5340.toit` against
-the independent Bluedroid fixture (`auto-mtu/connect-hardware.log` and
-`connect-peer-console.log`): 32 immediate connect/close cycles and all 37
-expected remote disconnects, including adapter and VM teardown.
-These are negotiation checks; runtime `Adapter.set-preferred-mtu` remains
-unsupported on the nRF backend.
-
-`ble-server-nrf5340.toit` and `ble-server-esp32.toit` reverse the roles. The nRF
-serves stored values and receives queued writes; the ESP32 discovers and reads
-the database, writes characteristic/descriptor echoes, and receives both
-notifications and indications. Run the server image on the nRF and the separate
-ESP32 central snapshot against a firmware built with the matching SDK. The
-existing `ble-peer-esp32.toit` is for the opposite direction and is not this
-test's partner. Restore the wired fixture after radio testing.
-
-Build the ESP32 peer firmware from this worktree, using its matching host SDK.
-The cached Jaguar alpha.199 firmware crashes on empty writes, uses prepared
-writes for ordinary Write Requests, and ignores immediate read-start errors.
-Those ESP32 backend defects are fixed here. For a fresh peer build, after
-activating the ESP-IDF environment:
-
-```sh
-mkdir -p build/esp32-nrf-peer
-cp toolchains/esp32/sdkconfig build/esp32-nrf-peer/sdkconfig
-idf.py -C toolchains/esp32 -B "$PWD/build/esp32-nrf-peer" \
-  -D SDKCONFIG="$PWD/build/esp32-nrf-peer/sdkconfig" build
-build/host/sdk/bin/toit compile -s \
-  -o build/nrf5340-ble/server-peer-native.snapshot \
-  tests/hw/nrf5340/ble-server-esp32.toit
-build/host/sdk/bin/toit tool firmware \
-  -e build/esp32-nrf-peer/firmware.envelope container install server-peer \
-  build/nrf5340-ble/server-peer-native.snapshot \
-  -o build/nrf5340-ble/server-peer-native.envelope
-```
-
-Flash the resulting envelope on the identified ESP32. Start the nRF server
-first and reset the client once it reports `NRF5340 BLE SERVER READY`. Holding
-the ESP32 in reset during nRF startup avoids resetting an already established
-link. Preserve console logs from both boards.
-
-Prepared outputs are `server.snapshot`, `server-test.envelope`, `server-test.bin`
-and `server-peer.snapshot` under `build/nrf5340-ble`. They cover four adapter
-lifetimes, two peripheral lifetimes per adapter and two incoming connections
-per peripheral lifetime. Logs from both boards are required: look for
-`NRF5340 BLE SERVER PASS` and `ESP32 BLE SERVER PEER PASS`, then independently
-check process cleanup. Before fragment compaction, the MTU-23 run stalled
-after 242 bytes of a long read;
-increasing the timeout does not help. With MTU 247, long/empty reads,
-encrypted-read rejection and descriptor writes/read-back work. The old ESP32
-firmware then panicked in `ble_gattc_write_long` on an empty Write Request
-(`server-controlled-hardware.log`, `server-peer-controlled-console.log`).
-Its backend passed a null mbuf for empty data. With the three ESP32 fixes above,
-all sixteen connections and eight peripheral lifetimes pass across four
-adapters (`server-read-hardware.log`, `server-peer-read-console.log`), including
-final nRF VM teardown. That hardware run negotiated MTU 247.
-
-The ESP32 read callback now compacts subsequent fragments into its existing
-mbuf chain and reports allocation failures while discarding partial results.
-The updated firmware builds (`esp-peer-compact-build.log`). A 32-bit ASan/UBSan
-experiment using the actual NimBLE allocator exhausts a 12-buffer pool after
-264 bytes with concatenation, but assembles 512 bytes using two buffers with
-compaction (`mbuf-probe/run.log`). This validates the allocation explanation,
-not the production callback or hardware behavior.
-
-The regular server peer now explicitly requests and checks MTU 247. The
-`ble-server-mtu23-esp32.toit` entry point runs the same sixteen-connection suite
-with MTU 23; it must complete the 512-byte reads in small fragments. Prepared
-peer envelopes are `server-peer-compact.envelope` and
-`server-peer-mtu23.envelope` under `build/nrf5340-ble`. Both snapshots compile.
-Repeat the nRF server run from cycle zero for each peer envelope and preserve
-both console logs. After recovery of the PC USB controller, the MTU-23 suite
-passes all sixteen connections, including thirty-two complete 512-byte reads,
-eight peripheral lifetimes, four adapter lifetimes and final VM teardown
-(`server-mtu23-sync-hardware.log`, `server-mtu23-sync-peer.log`). This also
-qualifies the PWM-enabled BLE build. Both consoles must be attached before
-starting the peer: attaching the ESP32 console during an earlier run reset it
-and invalidated that attempt. The updated peer also passes the entire suite
-at MTU 247 on the build without temporary diagnostics
-(`server-mtu247-retry-hardware.log`, `server-mtu247-retry-peer.log`). The first
-flash attempt timed out in the FTDI transport; closing and reopening it restored
-access, and the retry flashed and verified successfully.
-These tests do not qualify multiple simultaneous peers, slow/missing indication ACKs,
-write-queue overflow, allocation failure or cancellation races. Deferred Toit
-read/write callbacks and prepared writes remain explicitly unsupported.
-
-With automatic MTU exchange enabled on the nRF, the MTU-23 suite passes again:
-sixteen connections, eight peripheral lifetimes, four adapters and VM teardown
-(`auto-mtu/server-order23-hardware.log`, `server-order23-console.log`). The ESP32
-peer includes a connection-readiness fix: an MTU event arriving before CONNECT
-must not wake Toit until the native connection handle is installed. It records
-the early event, handles it once after CONNECT, and ignores duplicate events.
-Without this fix the first service discovery can return ENOTCONN. These tests
-use unencrypted links and do not qualify secure pairing.
-The same updated ESP32 backend passes all sixteen MTU-247 connections against
-the earlier `server-qualified.bin` nRF image, which has automatic exchange
-disabled (`auto-mtu/server-order247-hardware.log`, `server-order247-console.log`).
-This deliberately checks the ESP32-initiated exchange path; it is not a test
-of incoming MTU-247 connections with nRF automatic exchange enabled.
-
-The [native GATT tests](ble-native-tests/README.md) run the production server
-callbacks and Zephyr's host database locally, without a radio or the Toit VM.
-All seven cases passed with ASan/UBSan, including write-queue overflow/recovery,
-per-mode encryption permissions, and contention between callback execution
-and owner detachment. Their evidence
-is in `build/nrf5340-ble/native-tests-run.log`; this does not qualify the paired
-radio tests or replace their lifecycle checks.
-
-Host checks for the new report queue and AD parser:
-
-```sh
-g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined -g \
-  tests/hw/nrf5340/ble-data-test.cc -o build/nrf5340-ble/ble-data-test
-ASAN_OPTIONS=detect_leaks=0 build/nrf5340-ble/ble-data-test
-```
-
-These passed (`data-test.log`). LeakSanitizer is disabled because it cannot run
-under this sandbox's tracing; address and undefined-behavior sanitizers remain
-enabled. The expanded read-fragment/UUID/handle-range/capacity checks pass in
-`values-data-test.log`. Four shared BLE/container/firmware regressions passed in
-`values-host-tests.log`. These host checks do not test radio operation,
-callback timing, transport reinitialization, or hardware power transitions.
-Notification queue ownership/bounds/wraparound/empty/reset checks pass in
-`notify-data-test.log`, and the same four host regressions pass in
-`notify-host-tests.log`. All prepared BLE images and the ESP32 peer snapshot
-are rebuilt against the SDK with the appended notification primitive.
-
-The recovery bundle can be checked and staged without a board:
-
-```sh
-python3 tests/hw/nrf5340/test-prepare-recovery.py
-python3 tools/nrf5340/prepare-recovery.py \
-  build/nrf5340-ble/recovery-plan.json build/nrf5340-ble/recovery-bundle
-```
-
-Use a new destination for each bundle. The ten host tests cover corrupted or
-truncated backups, unsafe UICR/key contents, wrong-core vectors, storage
-overlap, existing-output preservation, publication failure, and a concurrent
-source-file replacement. The utility never opens a debugger or erases flash;
-live backup comparison and recovery approval remain separate prerequisites.
-
-The separate recovery runner's twelve host tests use a memory-model debugger:
-
-```sh
-python3 tests/hw/nrf5340/test-recover.py
-```
-
-They check full application/storage preservation, empty-key validation,
-device identity matching, and failure handling before and after the erase
-boundary. No test accesses hardware. The runner's default check-only path has
-also passed on the E83 board, with all flash and UICR matched and all 128 KMU
-slots checked. See `build/nrf5340-recovery/23e7797a3a66458cae12d28b8af052e4`.
-The application was resumed and confirmed running afterward. This check-only
-milestone preceded the later authorized recovery recorded under
-`build/nrf5340-ble/recovery-executed/`.
 
 ## Ordinary two-core firmware updates
 
