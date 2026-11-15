@@ -36,7 +36,6 @@ run --edge-cases/bool=false:
     expect-equals "INVALID_ARGUMENT" (catch: power.deep-sleep --pull-up)
     [-1, 0, 86400001].do: |ms|
       expect-equals "INVALID_ARGUMENT" (catch: power.deep-sleep (Duration --ms=ms))
-      expect-equals "INVALID_ARGUMENT" (catch: power.sleep-and-restart (Duration --ms=ms))
     expect-throw "UNIMPLEMENTED": power.deep-sleep (Duration --s=1) --wake-pin=32
     expect-throw "UNIMPLEMENTED": power.deep-sleep (Duration --s=1) --pull-up
     expect-throw "UNIMPLEMENTED": power.deep-sleep (Duration --s=1) --pull-down
@@ -87,10 +86,7 @@ run --edge-cases/bool=false:
       power.deep-sleep --wake-pin=32 --wake-high=high --pull-down=high --pull-up=(not high)
     else:
       if edge-cases: watchdog.start --timeout=(Duration --ms=2000)
-      if edge-cases:
-        power.sleep-and-restart (Duration --ms=5000)
-      else:
-        power.deep-sleep (Duration --ms=750)
+      power.deep-sleep (Duration --ms=(edge-cases ? 5000 : 750))
     throw "power operation returned"
 
   // Power transitions must retire live peripherals and release their pins.

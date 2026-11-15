@@ -72,7 +72,7 @@ The wake pin may currently belong to a peripheral: the VM closes it before
 Wakeup restarts the device from boot and normally reports $RESET-LOW-POWER-WAKE
   for GPIO wake on nRF5340. Without a pin, wake requires another hardware source
   such as reset or debugger attachment. There is no RTC timer wake from System
-  OFF on nRF5340; use $sleep-and-restart for a timed restart instead.
+  OFF on nRF5340; use $deep-sleep for a timed restart instead.
 RAM contents are not retained. An attached debugger can emulate System OFF,
   so functional wake tests do not establish power consumption.
 */
@@ -93,7 +93,7 @@ The application CPU is switched to 64 MHz and GPIO events use low-power
   clock source, regulators, powered RAM, and peripherals.
 An armed watchdog is neither stopped nor fed and can reset the device earlier.
 */
-sleep-and-restart duration/Duration -> none:
+deep-sleep duration/Duration -> none:
   request := validate-sleep_ duration.in-ms
   __deep-sleep__ request
 

@@ -1123,27 +1123,36 @@ for the current changes.
 ### Prepare matching firmware
 
 Build each program in a separate output directory using the same board and
-configuration. Use the normal RC/LDO configuration first:
+configuration. Set up the host SDK and Zephyr environment as described in
+[Build and run](../../../docs/nrf5340.md#build-and-run). Use the normal RC/LDO
+configuration first:
 
 ```sh
-tools/zephyr/build.sh --host build/host/sdk/bin/toit \
-  --build-dir build/nrf-current-timed \
-  --program tests/hw/nrf5340/deep-sleep-current.toit
-tools/zephyr/build.sh --host build/host/sdk/bin/toit \
-  --build-dir build/nrf-current-off \
-  --program tests/hw/nrf5340/poweroff-current.toit
+cmake -S toolchains/zephyr -B build/nrf-current-timed -G Ninja \
+  -DBOARD=e83_2g4m03s_tb/nrf5340/cpuapp \
+  -DPython3_EXECUTABLE="$PWD/.cache/zephyr-venv/bin/python" \
+  -DTOIT_HOST="$PWD/build/host/sdk/bin/toit" \
+  -DTOIT_ZEPHYR_PROGRAM="$PWD/tests/hw/nrf5340/deep-sleep-current.toit"
+cmake --build build/nrf-current-timed --target toit_envelope -j4
+
+cmake -S toolchains/zephyr -B build/nrf-current-off -G Ninja \
+  -DBOARD=e83_2g4m03s_tb/nrf5340/cpuapp \
+  -DPython3_EXECUTABLE="$PWD/.cache/zephyr-venv/bin/python" \
+  -DTOIT_HOST="$PWD/build/host/sdk/bin/toit" \
+  -DTOIT_ZEPHYR_PROGRAM="$PWD/tests/hw/nrf5340/poweroff-current.toit"
+cmake --build build/nrf-current-off --target toit_envelope -j4
 ```
 
 Each build produces `toit.envelope` and `zephyr/zephyr.bin`. These firmware
 images each contain exactly one probe; do not install both probes concurrently.
 Save the currently installed application/envelope before replacing it.
 
-For the low-current comparison, repeat both commands with new output
-directories and these extra arguments:
+For the low-current comparison, repeat the configure/build pairs with new
+output directories and these extra CMake configure arguments:
 
 ```sh
---config toolchains/zephyr/low-power.conf \
---overlay toolchains/zephyr/low-power.overlay
+-DEXTRA_CONF_FILE="$PWD/toolchains/zephyr/low-power.conf" \
+-DDTC_OVERLAY_FILE="$PWD/toolchains/zephyr/low-power.overlay"
 ```
 
 First verify that the board has the 32.768 kHz crystal and VREGMAIN DC/DC
@@ -1179,7 +1188,7 @@ Bluetooth must be disabled. Keep those generated files with the results.
 5. If the ESP32 fixture becomes available, run `power-nrf5340.toit` using the
    paired procedure above. This adds pending I2C, UART-child and ADC cleanup,
    GPIO wake, and recovery checks. Run `power-edge-nrf5340.toit` to check that
-   an armed watchdog still interrupts the legacy timed-sleep entry point.
+   an armed watchdog still interrupts timed deep sleep.
 
 An attached debugger can emulate System OFF. Repeat functional reset/wake
 checks with the debugger detached and a pin reset or power cycle before

@@ -97,7 +97,7 @@ deep-sleep duration/Duration?=null
     if duration:
       if wake-pin != null or pull-up or pull-down or not wake-high:
         throw "UNIMPLEMENTED"
-      zephyr.sleep-and-restart duration
+      zephyr.deep-sleep duration
     zephyr.power-off --wake-pin=wake-pin --wake-high=wake-high
         --pull-up=pull-up
         --pull-down=pull-down
@@ -110,23 +110,6 @@ deep-sleep duration/Duration?=null
     if not duration: throw "INVALID_ARGUMENT"
     ec618.deep-sleep duration
   throw "UNIMPLEMENTED"
-
-/**
-Stops the VM, waits in System ON, and restarts after $duration.
-
-Equivalent to $deep-sleep with a duration on nRF5340.
-Currently supported on nRF5340 for 1 ms through 24 hours. The wait starts
-  after VM teardown; booting and starting containers take additional time.
-  Container termination has the same cleanup semantics as $reset.
-The console is suspended, but the timebase and system RAM remain powered.
-  Consumption depends on the board configuration, clocks, and peripherals;
-  this operation does not promise deep-sleep power.
-An armed watchdog remains active and can reset the device earlier.
-  After reboot, $reset-reason includes $RESET-SOFTWARE.
-*/
-sleep-and-restart duration/Duration -> none:
-  if system.platform != system.PLATFORM-ZEPHYR: throw "UNIMPLEMENTED"
-  zephyr.sleep-and-restart duration
 
 /**
 Returns whether $deep-sleep accepts a duration on this platform.

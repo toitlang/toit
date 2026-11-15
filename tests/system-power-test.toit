@@ -15,4 +15,3 @@ main:
   expect-throw "UNIMPLEMENTED": power.reset-reason
   expect-throw "UNIMPLEMENTED": power.deep-sleep
   expect-throw "UNIMPLEMENTED": power.deep-sleep (Duration --s=1)
-  expect-throw "UNIMPLEMENTED": power.sleep-and-restart (Duration --ms=1)
