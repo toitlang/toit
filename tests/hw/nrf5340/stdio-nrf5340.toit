@@ -87,6 +87,9 @@ main:
 
   print "STDIN OVERFLOW READY"
   sleep --ms=2000
+  // The native ring retains the correctly received prefix before reporting loss.
+  prefix := with-timeout --ms=1000: input.read-bytes 4096
+  prefix.do: expect-equals 0x55 it
   error := catch: with-timeout --ms=100: input.read-byte
   expect-not-null error
   expect (error != DEADLINE-EXCEEDED-ERROR)

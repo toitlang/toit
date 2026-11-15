@@ -78,22 +78,17 @@ class StdinResource : public ZephyrResource {
 
   static int available(int* error) {
     unsigned key = irq_lock();
-    *error = error_;
     int size = size_;
-    if (error_) {
-      // A discontinuous byte stream must not look like a successful read.
-      // Report the loss once and discard the partial buffered input.
-      error_ = size_ = head_ = 0;
-      size = 0;
-    }
+    *error = size == 0 ? error_ : 0;
+    if (size == 0) error_ = 0;
     irq_unlock(key);
     return size;
   }
 
   static int read(uint8_t* destination, int capacity, int* error) {
     unsigned key = irq_lock();
-    *error = error_;
-    if (error_) error_ = size_ = head_ = 0;
+    *error = size_ == 0 ? error_ : 0;
+    if (size_ == 0) error_ = 0;
     int count = Utils::min(capacity, size_);
     // Keep IRQ exclusion short while the next DMA buffer is being received.
     int first = Utils::min(count, BUFFER_SIZE - head_);
@@ -122,7 +117,9 @@ class StdinResource : public ZephyrResource {
     bool changed = false;
     switch (event->type) {
       case UART_RX_RDY: {
-        if (!first_) break;
+        // Keep the valid prefix. Do not append across a loss boundary until
+        // readers have drained that prefix and observed the pending error.
+        if (!first_ || error_ != 0) break;
         int count = Utils::min(static_cast<int>(event->data.rx.len), BUFFER_SIZE - size_);
         int tail = (head_ + size_) % BUFFER_SIZE;
         int first = Utils::min(count, BUFFER_SIZE - tail);
@@ -222,12 +219,14 @@ PRIMITIVE(stdin_open) {
 PRIMITIVE(stdin_read) {
   ARGS(StdinResource, resource);
   USE(resource);
-  int resumed = StdinResource::resume();
-  if (resumed) return Primitive::os_error(-resumed, process);
   int error = 0;
   int size = StdinResource::available(&error);
   if (error) return Primitive::os_error(error, process);
-  if (!size) return Smi::from(-1);  // Wait; a UART has no EOF indication.
+  if (size == 0) {
+    int resumed = StdinResource::resume();
+    if (resumed != 0) return Primitive::os_error(-resumed, process);
+    return Smi::from(-1);  // Wait; a UART has no EOF indication.
+  }
   size = Utils::min(size, 1024);
   ByteArray* result = process->allocate_byte_array(size, true);
   if (!result) FAIL(ALLOCATION_FAILED);
