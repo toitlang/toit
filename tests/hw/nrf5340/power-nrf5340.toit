@@ -6,7 +6,7 @@ import gpio.adc show Adc
 import i2c
 import spi
 import uart
-import zephyr
+import system.power
 import system.watchdog
 
 main:
@@ -23,30 +23,30 @@ run --edge-cases/bool=false:
     sequence++
     print "GPIO REQUEST $sequence $command"
     with-timeout --ms=5000: ack.wait-for (sequence & 1)
-  print "POWER phase=$phase cause=$(zephyr.reset-reason)"
+  print "POWER phase=$phase cause=$(power.reset-reason)"
   request.call "CONFIG 19 DOWN 0"
   request.call "CHECK 19 0"
   request.call "CONFIG 22 IN 0"
 
   if phase == 0:
     [-2, 0, 2, 18, 20, 22, 48, 64].do: |pin|
-      expect-equals "INVALID_ARGUMENT" (catch: zephyr.power-off --wake-pin=pin)
-    expect-equals "INVALID_ARGUMENT" (catch: zephyr.power-off --wake-pin=32 --pull-up --pull-down)
-    expect-equals "INVALID_ARGUMENT" (catch: zephyr.power-off --pull-up)
+      expect-equals "INVALID_ARGUMENT" (catch: power.deep-sleep --wake-pin=pin)
+    expect-equals "INVALID_ARGUMENT" (catch: power.deep-sleep --wake-pin=32 --pull-up --pull-down)
+    expect-equals "INVALID_ARGUMENT" (catch: power.deep-sleep --pull-up)
     [-1, 0, 86400001].do: |ms|
-      expect-equals "INVALID_ARGUMENT" (catch: zephyr.sleep-and-restart (Duration --ms=ms))
+      expect-equals "INVALID_ARGUMENT" (catch: power.sleep-and-restart (Duration --ms=ms))
     expect-equals 1 (validate-sleep 1)
     expect-equals 86400000 (validate-sleep 86400000)
     expect-equals -1 (prepare-poweroff -1 0)
     expect-equals -270 (prepare-poweroff 32 5)
     print "POWER validation and duration bounds PASS"
   else if phase < 3:
-    expect (zephyr.reset-reason & zephyr.RESET-LOW-POWER-WAKE != 0)
-    expect-equals 0 (zephyr.reset-reason & zephyr.RESET-SOFTWARE)
+    expect (power.reset-reason & power.RESET-LOW-POWER-WAKE != 0)
+    expect-equals 0 (power.reset-reason & power.RESET-SOFTWARE)
   else:
-    expected := edge-cases ? zephyr.RESET-WATCHDOG : zephyr.RESET-SOFTWARE
-    expect (zephyr.reset-reason & expected != 0)
-    expect-equals 0 (zephyr.reset-reason & zephyr.RESET-LOW-POWER-WAKE)
+    expected := edge-cases ? power.RESET-WATCHDOG : power.RESET-SOFTWARE
+    expect (power.reset-reason & expected != 0)
+    expect-equals 0 (power.reset-reason & power.RESET-LOW-POWER-WAKE)
 
   if phase < 3:
     high := phase != 1
@@ -78,12 +78,13 @@ run --edge-cases/bool=false:
     expect-equals level wake.get
     print "POWER pending I2C, UART child and ADC ready phase=$phase"
     if phase < 2:
-      zephyr.power-off --wake-pin=32 --wake-high=high --pull-down=high --pull-up=(not high)
+      power.deep-sleep --wake-pin=32 --wake-high=high --pull-down=high --pull-up=(not high)
     else:
       if edge-cases: watchdog.start --timeout=(Duration --ms=2000)
-      zephyr.sleep-and-restart (Duration --ms=(edge-cases ? 5000 : 750))
+      power.sleep-and-restart (Duration --ms=(edge-cases ? 5000 : 750))
     throw "power operation returned"
 
+  // Power transitions must retire live peripherals and release their pins.
   // Check usable peripherals after both System OFF wakes and the timed restart.
   request.call "UART_OPEN 18 23 115200 1"
   port := uart.Port --tx=8 --rx=9 --baud-rate=115200

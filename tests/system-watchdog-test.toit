@@ -9,7 +9,8 @@ import system.watchdog
 main:
   // This is a host API test. Embedded expiry and lifecycle behavior require
   // the watchdog package's hardware runner, without interfering feed pings.
-  if system.platform == system.PLATFORM-FREERTOS: return
+  if system.platform == system.PLATFORM-FREERTOS or
+      system.platform == system.PLATFORM-ZEPHYR: return
 
   [-1000, -1, 0, 1, 999].do: |us/int|
     expect-equals "INVALID_ARGUMENT" (catch:
