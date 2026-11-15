@@ -1,5 +1,10 @@
 # nRF5340 hardware fixtures
 
+BLE fixtures and their implementation are preserved in the separate #3329–#3331
+stack based on #3328. The BLE sections below describe that combined bring-up;
+their sources and configurations require the separate BLE stack. The nRF
+stack's active checks cover the default VM and wired peripherals.
+
 The initial wiring fixture checks the connections between an Ebyte E83-2G4M03S-TB and an
 ESP32 DevKitC V4 before the nRF5340 Toit port is available. The ESP32 runs Toit;
 the host temporarily controls nRF GPIO and SAADC registers through SWD.

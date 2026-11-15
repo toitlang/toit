@@ -16,7 +16,7 @@ cd "$root"
 export ZEPHYR_BASE=${ZEPHYR_BASE:-"$root/.cache/zephyr-workspace/zephyr"}
 export GNUARMEMB_TOOLCHAIN_PATH=${GNUARMEMB_TOOLCHAIN_PATH:-/usr}
 export ZEPHYR_TOOLCHAIN_VARIANT=gnuarmemb
-export IDF_PATH="$root/third_party/esp-idf"
+export IDF_PATH=${IDF_PATH:-"$root/third_party/esp-idf"}
 python=${ZEPHYR_PYTHON:-"$root/.cache/zephyr-venv/bin/python"}
 jobs=${CMAKE_BUILD_PARALLEL_LEVEL:-4}
 [[ -x "$python" ]] || { echo "Missing Zephyr Python: $python" >&2; exit 1; }
@@ -42,7 +42,13 @@ run tools-packages "$host" pkg install --no-auto-sync --project-root="$root/tool
 run test-packages "$host" pkg install --no-auto-sync --project-root="$root/tests"
 run firmware-tests "$host" run "$root/tests/zephyr-firmware-test.toit"
 
-for profile in default ble secure; do
+profiles=(default)
+if [[ -f "$root/src/resources/ble_zephyr.cc" ]]; then
+  profiles+=(ble secure)
+else
+  echo "BLE profiles and native GATT tests belong to the separate BLE stack."
+fi
+for profile in "${profiles[@]}"; do
   options=("-DEXTRA_CONF_FILE=" "-DDTC_OVERLAY_FILE="
     "-DTOIT_ZEPHYR_PROGRAM=$root/tests/hw/nrf5340/vm-smoke.toit")
   if [[ $profile != default ]]; then
@@ -70,7 +76,7 @@ for profile in default ble secure; do
   fi
 done
 
-run envelope-integration python3 "$root/tests/hw/nrf5340/test-envelope.py" "$build"
+run envelope-integration python3 "$root/tests/hw/nrf5340/test-envelope.py" "$build" "${profiles[@]}"
 peripheral_output=$(mktemp -d "$build/peripherals.XXXXXX")
 run peripheral-packaging python3 "$root/tests/hw/nrf5340/check-peripherals.py" \
   --toit "$host" --envelope "$build/default/toit.envelope" \
@@ -81,10 +87,12 @@ run controller-configure cmake -S "$ZEPHYR_BASE/samples/bluetooth/hci_ipc" -B "$
   -DPython3_EXECUTABLE="$python" -DEXTRA_CONF_FILE="$root/toolchains/zephyr/hci-ipc.conf"
 run controller-build cmake --build "$build/controller" -j "$jobs"
 
-run native-configure env ZEPHYR_TOOLCHAIN_VARIANT=host \
-  cmake -S "$root/tests/hw/nrf5340/ble-native-tests" -B "$build/native" -G Ninja \
-  -DBOARD=native_sim/native/64 -DPython3_EXECUTABLE="$python"
-run native-build cmake --build "$build/native" -j "$jobs"
-run native-tests env ASAN_OPTIONS=detect_leaks=0:halt_on_error=1 \
-  UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 timeout 45s "$build/native/zephyr/zephyr.exe"
+if [[ -f "$root/src/resources/ble_zephyr.cc" ]]; then
+  run native-configure env ZEPHYR_TOOLCHAIN_VARIANT=host \
+    cmake -S "$root/tests/hw/nrf5340/ble-native-tests" -B "$build/native" -G Ninja \
+    -DBOARD=native_sim/native/64 -DPython3_EXECUTABLE="$python"
+  run native-build cmake --build "$build/native" -j "$jobs"
+  run native-tests env ASAN_OPTIONS=detect_leaks=0:halt_on_error=1 \
+    UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 timeout 45s "$build/native/zephyr/zephyr.exe"
+fi
 echo "Zephyr build checks passed. Logs and images: $build"

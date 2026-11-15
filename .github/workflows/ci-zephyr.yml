@@ -57,7 +57,7 @@ jobs:
           python3 tools/nrf5340/flash.py --help
           python3 tools/nrf5340/deploy.py --help
           python3 tests/hw/nrf5340/test-flash.py
-      - name: Build firmware profiles and run native GATT tests
+      - name: Build firmware and run checks available in this stack
         run: bash tools/zephyr/check-build.sh
       - name: Preserve logs and firmware
         if: always()
