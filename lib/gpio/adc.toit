@@ -239,7 +239,7 @@ adc-get-raw_ resource:
 adc-close_ resource:
   #primitive.adc.close
 
-// A null group denotes a synchronous backend (currently ESP32).
+// A null group denotes a synchronous backend (ESP32 and Zephyr).
 adc-event-group_ ::= adc-init-group_
 
 adc-init-group_:

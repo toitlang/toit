@@ -109,6 +109,17 @@ class AdcResource : public SimpleResource {
 
 MODULE_IMPLEMENTATION(adc, MODULE_ADC)
 
+PRIMITIVE(init_group) {
+  // SAADC requests complete synchronously and use the generic resource group.
+  return process->null_object();
+}
+
+PRIMITIVE(cancel) {
+  ARGS(AdcResource, resource);
+  USE(resource);  // No DMA request survives a synchronous primitive call.
+  return process->null_object();
+}
+
 PRIMITIVE(init) {
   ARGS(SimpleResourceGroup, group, int, pin, bool, allow_restricted, double, max);
   // Unlike ESP32 ADC2, SAADC has no separate restricted converter.
