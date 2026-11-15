@@ -27,7 +27,7 @@
 
 namespace toit {
 
-#ifndef TOIT_FREERTOS
+#ifndef TOIT_EMBEDDED
 
 enum class SnapshotTypeTag {
   OBJECT_TAG = 0,
@@ -1235,7 +1235,7 @@ void BaseSnapshotWriter::write_heap_object(HeapObject* object) {
   }
 }
 
-#endif  // TOIT_FREERTOS
+#endif  // TOIT_EMBEDDED
 
 void PointerCallback::object_table(Object** table, int length) {
   ASSERT(length >= 0);
@@ -1246,7 +1246,7 @@ void ProgramImage::do_pointers(PointerCallback* callback) const {
   program()->do_pointers(callback);
 }
 
-#ifndef TOIT_FREERTOS
+#ifndef TOIT_EMBEDDED
 
 class RelocationBits : public PointerCallback {
  public:
@@ -1348,7 +1348,7 @@ int ImageInputStream::read(word* buffer) {
   return pos;
 }
 
-#endif  // TOIT_FREERTOS
+#endif  // TOIT_EMBEDDED
 
 ImageOutputStream::ImageOutputStream(ProgramImage image)
     : image_(image)

@@ -6,7 +6,7 @@
 
 #include "../top.h"
 
-#if !defined(TOIT_FREERTOS)
+#if !defined(TOIT_EMBEDDED)
 
 #include "../os.h"
 #include "../resource.h"
@@ -45,4 +45,4 @@ class StdinEventSource : public LazyEventSource, public Thread {
 
 }  // namespace toit
 
-#endif  // !defined(TOIT_FREERTOS)
+#endif  // !defined(TOIT_EMBEDDED)
