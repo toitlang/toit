@@ -177,12 +177,11 @@ main:
   request.call "CHECK 13 0"
   print "ADC process cleanup and parent reacquisition PASS"
 
-  // Exercise borrowed-pin compatibility without transferring GPIO ownership.
+  // Deprecated Pin arguments and negative GPIO numbers are rejected.
   borrowed := gpio.Pin 4 --input
-  adc := Adc borrowed
-  near reference adc.get 0.02
-  adc.close
-  expect-equals "ALREADY_IN_USE" (catch: gpio.Pin 4 --input)
+  expect-throw "INVALID_ARGUMENT": Adc borrowed
+  expect-throw "INVALID_ARGUMENT": Adc -6
+  expect-throw "ALREADY_IN_USE": Adc 4
   borrowed.close
   // Leave ADC resources open for final VM teardown too.
   first = Adc 4

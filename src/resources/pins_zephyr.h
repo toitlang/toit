@@ -12,34 +12,29 @@ bool zephyr_pin_is_restricted(int num);
 int zephyr_pin_claim(int num);
 void zephyr_pin_release(int num);
 
-// Transactional ownership, including the legacy encoding for borrowed Pin
-// objects. A peripheral's member keeps its pins until native teardown finishes.
+// Transactional ownership. A peripheral keeps its pins until native teardown
+// finishes. The internal -1 sentinel represents an omitted optional pin.
 class ZephyrPins {
  public:
   ~ZephyrPins() { release(); }
   int add(int encoded, int* decoded) {
-    bool owned = encoded >= 0;
-    int64 num = encoded >= -1 ? encoded : -static_cast<int64>(encoded) - 2;
+    int num = encoded;
     if (num == -1) { *decoded = -1; return 0; }
-    if (num > INT32_MAX || zephyr_gpio_port(num) == null) return -EINVAL;
+    if (num < 0 || zephyr_gpio_port(num) == null) return -EINVAL;
     if (count_ == 8) return -EINVAL;
     for (int i = 0; i < count_; i++) if (pins_[i] == num) return -EINVAL;
-    if (owned) {
-      if (zephyr_pin_is_restricted(num)) return -EPERM;
-      int result = zephyr_pin_claim(num);
-      if (result) return result;
-    }
-    pins_[count_] = num;
-    owned_[count_++] = owned;
+    if (zephyr_pin_is_restricted(num)) return -EPERM;
+    int result = zephyr_pin_claim(num);
+    if (result != 0) return result;
+    pins_[count_++] = num;
     *decoded = num;
     return 0;
   }
   void release() {
-    while (count_) { --count_; if (owned_[count_]) zephyr_pin_release(pins_[count_]); }
+    while (count_ != 0) zephyr_pin_release(pins_[--count_]);
   }
  private:
   int pins_[8];
-  bool owned_[8];
   int count_ = 0;
 };
 }  // namespace toit

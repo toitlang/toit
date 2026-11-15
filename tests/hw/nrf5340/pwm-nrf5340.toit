@@ -59,29 +59,17 @@ main:
     PINS.do: (gpio.Pin it --input).close
     print "PWM lifecycle cycle=$cycle PASS"
 
-  // Read the PWM-driven pad through its digital input buffer. This requires
-  // no extra wire, but does not replace measurement by the external fixture.
-  pin := gpio.Pin 32 --input --output
+  // Pin objects cannot bypass peripheral ownership on this platform.
+  pin := gpio.Pin 32 --input
   generator := Pwm --frequency=50 --max-frequency=100
-  channel := generator.start pin
-  expect-equals "ALREADY_IN_USE" (catch: generator.start pin)
-  pin.configure --input --output
-  expect-equals 0 pin.get
-  channel.set-duty-factor 1
-  sleep --ms=25
-  expect-equals 1 pin.get
-  [0.25, 0.5, 0.75].do: |factor/float|
-    channel.set-duty-factor factor
-    sleep --ms=25
-    measure pin 50 factor
-  generator.frequency = 100
-  pin.configure --input --output
-  measure pin 100 0.75
-  channel.close
-  pin.configure --input
-  // Closing a borrowed channel must leave the original Pin reserved.
-  expect-equals "ALREADY_IN_USE" (catch: gpio.Pin 32 --input)
+  expect-throw "INVALID_ARGUMENT": generator.start pin
+  expect-throw "INVALID_ARGUMENT": generator.start -34
+  expect-throw "ALREADY_IN_USE": generator.start 32
   pin.close
+  channel := generator.start 32
+  expect-throw "ALREADY_IN_USE": gpio.Pin 32 --input
+  channel.close
+  (gpio.Pin 32 --input).close
   generator.close
 
   child := spawn::

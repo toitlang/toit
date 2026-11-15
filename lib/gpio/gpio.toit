@@ -972,6 +972,9 @@ The given $value is either `null` (no pin), an integer GPIO number (new API),
 */
 to-pin-num_ value/any -> int:
   if value == null: return -1
+  if system.platform == system.PLATFORM-ZEPHYR:
+    if value is int and value >= 0: return value
+    throw "INVALID_ARGUMENT"
   if value is int: return value
   if value is Pin: return -((value as Pin).num + 2)
   throw "INVALID_ARGUMENT"
