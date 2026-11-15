@@ -16,25 +16,52 @@ Sleep ends the current VM and wakes into a fresh boot. Supported wake sources
   and minimum durations depend on the platform. Hosts throw `UNIMPLEMENTED`.
 */
 
+/** Reset triggered by the external reset pin. */
 RESET-PIN ::= 1 << 0
+/** Reset requested by software. */
 RESET-SOFTWARE ::= 1 << 1
+/** Reset caused by a supply-voltage drop or power glitch. */
 RESET-BROWNOUT ::= 1 << 2
+/** Reset caused by powering on the device. */
 RESET-POWER-ON ::= 1 << 3
+/** Reset caused by an expired watchdog timer. */
 RESET-WATCHDOG ::= 1 << 4
+/** Reset triggered by a debugger or debug interface. */
 RESET-DEBUG ::= 1 << 5
+/** Reset caused by a security violation. */
 RESET-SECURITY ::= 1 << 6
+/** Reset caused by waking from a low-power state. */
 RESET-LOW-POWER-WAKE ::= 1 << 7
+/** Reset caused by a detected CPU lockup. */
 RESET-CPU-LOCKUP ::= 1 << 8
+/** Reset caused by a parity error. */
 RESET-PARITY ::= 1 << 9
+/** Reset caused by a phase-locked loop (PLL) error. */
 RESET-PLL ::= 1 << 10
+/** Reset caused by a clock error. */
 RESET-CLOCK ::= 1 << 11
+/** Reset reported as a hardware fault or platform-specific fatal error. */
 RESET-HARDWARE ::= 1 << 12
+/** Reset reported by the platform as a user reset. */
 RESET-USER ::= 1 << 13
+/** Reset caused by an unsafe temperature. */
 RESET-TEMPERATURE ::= 1 << 14
+/** Reset caused by entering or leaving the bootloader. */
 RESET-BOOTLOADER ::= 1 << 15
+/** Reset caused by a flash error-correcting code (ECC) error. */
 RESET-FLASH ::= 1 << 16
 
-/** Resets the device after releasing VM resources. */
+/**
+Stops all containers, releases their native resources, and resets the device.
+
+This terminates the entire VM, including containers other than the caller.
+  It does not unwind Toit stacks or run application shutdown code. Flush
+  buffered application data and coordinate any application cleanup beforehand.
+On nRF5340, resource cleanup disconnects pins owned by VM peripherals before
+  requesting the hardware reset. This does not reset external devices attached
+  to those pins.
+Does not return.
+*/
 reset -> none:
   if not embedded_: throw "UNIMPLEMENTED"
   __reset__
@@ -74,9 +101,14 @@ deep-sleep duration/Duration?=null
 /**
 Stops the VM, waits in System ON, and restarts after $duration.
 
-Currently supported on nRF5340 for 1 ms through 24 hours. This keeps the
-  timebase and system RAM powered. An armed watchdog remains active and can
-  reset the device earlier. This operation does not promise deep-sleep power.
+Currently supported on nRF5340 for 1 ms through 24 hours. The wait starts
+  after VM teardown; booting and starting containers take additional time.
+  Container termination has the same cleanup semantics as $reset.
+The console is suspended, but the timebase and system RAM remain powered.
+  Consumption depends on the board configuration, clocks, and peripherals;
+  this operation does not promise deep-sleep power.
+An armed watchdog remains active and can reset the device earlier.
+  After reboot, $reset-reason includes $RESET-SOFTWARE.
 */
 sleep-and-restart duration/Duration -> none:
   if system.platform != system.PLATFORM-ZEPHYR: throw "UNIMPLEMENTED"
