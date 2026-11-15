@@ -7,6 +7,7 @@
 #include "../objects_inline.h"
 #include "../primitive.h"
 #include "../process.h"
+#include "../resource_pool.h"
 #include "pins_zephyr.h"
 #include <atomic>
 #include <zephyr/drivers/i2c.h>
@@ -23,7 +24,7 @@ struct I2cController {
   I2cController(const device* d, pinctrl_dev_config* p) : dev(d), config(p) {}
   const device* dev;
   pinctrl_dev_config* config;
-  bool claimed = false, broken = false;
+  bool broken = false;
   pinctrl_soc_pin_t active[2], sleep[2];
   pinctrl_state states[2];
 
@@ -44,17 +45,20 @@ struct I2cController {
 static I2cController controllers[] = {
   DT_FOREACH_PROP_ELEM(TOIT_PLATFORM, i2c_ports, I2C_CONTROLLER)
 };
-static I2cController* claim_controller() {
-  Locker locker(OS::global_mutex());
-  for (auto& controller : controllers) {
-    if (!controller.claimed && !controller.broken) { controller.claimed = true; return &controller; }
-  }
-  return null;
+#define CONTROLLER_SLOT(node, prop, i) &controllers[i]
+static ResourcePool<I2cController*, null> controller_pool(
+    DT_FOREACH_PROP_ELEM_SEP(TOIT_PLATFORM, i2c_ports, CONTROLLER_SLOT, (,)));
+#undef CONTROLLER_SLOT
+// A controller with failed initialization remains quarantined until reboot.
+static void release_controller(I2cController* controller) {
+  if (!controller->broken) controller_pool.put(controller);
 }
+
+
 
 class I2cDeviceResource;
 
-// Zephyr's Nordic I2C API blocks until the IRQ completes the transfer. A
+// The currently supported Nordic TWIM driver blocks until the IRQ completes the transfer. A
 // dedicated worker keeps the VM runnable while owning all DMA buffers until
 // completion. Cancellation waits for driver retirement before freeing them.
 class I2cBusResource : public ZephyrResource, public Thread {
@@ -78,12 +82,11 @@ class I2cBusResource : public ZephyrResource, public Thread {
     }
     pins.release();
     if (controller_) {
-      Locker locker(OS::global_mutex());
-      controller_->claimed = false;
+      release_controller(controller_);
     }
   }
   int open(int sda, int scl, bool pullup) {
-    controller_ = claim_controller();
+    controller_ = controller_pool.any();
     if (!controller_) return -EBUSY;
     int result = controller_->map(sda, scl, pullup);
     if (result != 0) return result;

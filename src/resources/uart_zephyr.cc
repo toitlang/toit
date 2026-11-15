@@ -7,6 +7,7 @@
 #include "../objects_inline.h"
 #include "../primitive.h"
 #include "../process.h"
+#include "../resource_pool.h"
 #include "pins_zephyr.h"
 #include <atomic>
 #include <zephyr/drivers/uart.h>
@@ -26,7 +27,6 @@ struct UartController {
   UartController(const device* d, pinctrl_dev_config* p) : dev(d), config(p) {}
   const device* dev;
   pinctrl_dev_config* config;
-  bool claimed = false;
   bool broken = false;
   pinctrl_soc_pin_t active[4];
   pinctrl_soc_pin_t sleep[4];
@@ -51,13 +51,16 @@ struct UartController {
 static UartController controllers[] = {
   DT_FOREACH_PROP_ELEM(TOIT_PLATFORM, uart_ports, UART_CONTROLLER)
 };
-static UartController* claim_controller() {
-  Locker locker(OS::global_mutex());
-  for (auto& controller : controllers) {
-    if (!controller.claimed && !controller.broken) { controller.claimed = true; return &controller; }
-  }
-  return null;
+#define CONTROLLER_SLOT(node, prop, i) &controllers[i]
+static ResourcePool<UartController*, null> controller_pool(
+    DT_FOREACH_PROP_ELEM_SEP(TOIT_PLATFORM, uart_ports, CONTROLLER_SLOT, (,)));
+#undef CONTROLLER_SLOT
+// A controller with failed initialization remains quarantined until reboot.
+static void release_controller(UartController* controller) {
+  if (!controller->broken) controller_pool.put(controller);
 }
+
+
 
 class UartResource : public ZephyrResource {
  public:
@@ -85,8 +88,7 @@ class UartResource : public ZephyrResource {
     if (clock_) onoff_release(clock_);
     pins.release();
     if (controller_) {
-      Locker locker(OS::global_mutex());
-      controller_->claimed = false;
+      release_controller(controller_);
     }
     free(ring_);
   }
@@ -96,7 +98,7 @@ class UartResource : public ZephyrResource {
     tx_pin_ = tx;
     rx_pin_ = rx;
     flow_control_ = config.flow_ctrl == UART_CFG_FLOW_CTRL_RTS_CTS;
-    controller_ = claim_controller();
+    controller_ = controller_pool.any();
     if (!controller_) return -EBUSY;
     // UARTE does not request HFXO itself. Hold the accurate clock while the
     // port is open, including receive-only operation.

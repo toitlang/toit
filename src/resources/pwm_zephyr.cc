@@ -6,6 +6,7 @@
 #include "../objects_inline.h"
 #include "../primitive.h"
 #include "../process.h"
+#include "../resource_pool.h"
 #include "../resource.h"
 #include "pins_zephyr.h"
 #include "pwm_zephyr_data.h"
@@ -26,7 +27,7 @@ struct PwmController {
   PwmController(const device* d, pinctrl_dev_config* p) : dev(d), config(p) {}
   const device* dev;
   pinctrl_dev_config* config;
-  bool claimed = false, broken = false;
+  bool broken = false;
   pinctrl_soc_pin_t active[CHANNELS], sleep[CHANNELS];
   pinctrl_state states[2];
 
@@ -46,6 +47,15 @@ struct PwmController {
 static PwmController controllers[] = {
   DT_FOREACH_PROP_ELEM(TOIT_PLATFORM, pwm_ports, PWM_CONTROLLER)
 };
+#define CONTROLLER_SLOT(node, prop, i) &controllers[i]
+static ResourcePool<PwmController*, null> controller_pool(
+    DT_FOREACH_PROP_ELEM_SEP(TOIT_PLATFORM, pwm_ports, CONTROLLER_SLOT, (,)));
+#undef CONTROLLER_SLOT
+// A controller with failed initialization remains quarantined until reboot.
+static void release_controller(PwmController* controller) {
+  if (!controller->broken) controller_pool.put(controller);
+}
+
 
 class PwmResource;
 class PwmResourceGroup : public ResourceGroup {
@@ -62,8 +72,7 @@ class PwmResourceGroup : public ResourceGroup {
       int result = suspend();
       if (result != 0) FATAL("PWM suspend failed: %d", result);
     }
-    Locker locker(OS::global_mutex());
-    controller_->claimed = false;
+    release_controller(controller_);
   }
   const device* dev() const { return controller_->dev; }
   int maximum() const { return maximum_; }
@@ -164,21 +173,11 @@ PRIMITIVE(init) {
   if (!period.set(frequency) || !period.set(max_frequency) || frequency > max_frequency) FAIL(INVALID_ARGUMENT);
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (!proxy) FAIL(ALLOCATION_FAILED);
-  PwmController* controller = null;
-  {
-    Locker locker(OS::global_mutex());
-    for (auto& candidate : controllers) {
-      if (candidate.claimed || candidate.broken) continue;
-      controller = &candidate;
-      controller->claimed = true;
-      break;
-    }
-  }
+  PwmController* controller = controller_pool.any();
   if (!controller) FAIL(ALREADY_IN_USE);
   auto group = _new PwmResourceGroup(process, controller, frequency, max_frequency);
   if (!group) {
-    Locker locker(OS::global_mutex());
-    controller->claimed = false;
+    release_controller(controller);
     FAIL(MALLOC_FAILED);
   }
   proxy->set_external_address(group);

@@ -7,6 +7,7 @@
 #include "../objects_inline.h"
 #include "../primitive.h"
 #include "../process.h"
+#include "../resource_pool.h"
 #include "../utils.h"
 #include "pins_zephyr.h"
 #include <atomic>
@@ -24,7 +25,7 @@ struct SpiController {
   SpiController(const device* d, pinctrl_dev_config* p) : dev(d), config(p) {}
   const device* dev;
   pinctrl_dev_config* config;
-  bool claimed = false, broken = false;
+  bool broken = false;
   pinctrl_soc_pin_t active[3], sleep[3];
   pinctrl_state states[2];
   int map(int clock, int mosi, int miso) {
@@ -44,13 +45,16 @@ struct SpiController {
 static SpiController controllers[] = {
   DT_FOREACH_PROP_ELEM(TOIT_PLATFORM, spi_ports, SPI_CONTROLLER)
 };
-static SpiController* claim_controller() {
-  Locker locker(OS::global_mutex());
-  for (auto& controller : controllers) {
-    if (!controller.claimed && !controller.broken) { controller.claimed = true; return &controller; }
-  }
-  return null;
+#define CONTROLLER_SLOT(node, prop, i) &controllers[i]
+static ResourcePool<SpiController*, null> controller_pool(
+    DT_FOREACH_PROP_ELEM_SEP(TOIT_PLATFORM, spi_ports, CONTROLLER_SLOT, (,)));
+#undef CONTROLLER_SLOT
+// A controller with failed initialization remains quarantined until reboot.
+static void release_controller(SpiController* controller) {
+  if (!controller->broken) controller_pool.put(controller);
 }
+
+
 class SpiDevice;
 class SpiResourceGroup : public ResourceGroup {
  public:
@@ -64,8 +68,7 @@ class SpiResourceGroup : public ResourceGroup {
     }
     pins.release();
     if (controller_) {
-      Locker locker(OS::global_mutex());
-      controller_->claimed = false;
+      release_controller(controller_);
     }
   }
   int open(int mosi, int miso, int clock) {
@@ -75,7 +78,7 @@ class SpiResourceGroup : public ResourceGroup {
       if (result != 0) return result;
     }
     mosi_ = decoded[0]; miso_ = decoded[1];
-    controller_ = claim_controller();
+    controller_ = controller_pool.any();
     if (!controller_) return -EBUSY;
     int result = controller_->map(decoded[2], mosi_, miso_);
     if (result != 0) return result;
