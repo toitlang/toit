@@ -129,4 +129,4 @@ void Siphash::process_block() {
 
 }
 
-#endif  // !defined(TOIT_FREERTOS) || defined(CONFIG_TOIT_CRYPTO)
+#endif  // !defined(TOIT_EMBEDDED) || defined(CONFIG_TOIT_CRYPTO)

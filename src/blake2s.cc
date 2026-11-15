@@ -122,4 +122,4 @@ void Blake2s::process_block(bool last) {
 
 }  // namespace toit.
 
-#endif  // !defined(TOIT_FREERTOS) || defined(CONFIG_TOIT_CRYPTO)
+#endif  // !defined(TOIT_EMBEDDED) || defined(CONFIG_TOIT_CRYPTO)

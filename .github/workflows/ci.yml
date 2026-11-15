@@ -127,6 +127,13 @@ env:
   ESPTOOL_VERSION: "v5.1.0%2Btoitlang.universal"
 
 jobs:
+  platform-guards:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check embedded platform guards
+        run: bash tools/check-platform-guards.sh
+
   prereqs:
     if: >-
       github.event_name != 'pull_request' ||

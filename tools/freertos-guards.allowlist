@@ -1,0 +1,44 @@
+src/event_sources/ble_esp32.cc:#endif // TOIT_FREERTOS && CONFIG_BT_ENABLED
+src/event_sources/ble_esp32.cc:#if defined(TOIT_FREERTOS) && CONFIG_BT_ENABLED
+src/event_sources/lwip_esp32.cc:#else // (defined(TOIT_FREERTOS) && defined(CONFIG_TOIT_ENABLE_IP)) || defined(TOIT_USE_LWIP)
+src/event_sources/lwip_esp32.cc:#endif // (defined(TOIT_FREERTOS) && defined(CONFIG_TOIT_ENABLE_IP)) || defined(TOIT_USE_LWIP)
+src/event_sources/lwip_esp32.cc:#if (defined(TOIT_FREERTOS) && defined(CONFIG_TOIT_ENABLE_IP)) || defined(TOIT_USE_LWIP)
+src/event_sources/lwip_esp32.h:#endif  // defined(TOIT_USE_LWIP) || (defined(TOIT_FREERTOS) && defined(CONFIG_TOIT_ENABLE_IP))
+src/event_sources/lwip_esp32.h:#if defined(TOIT_USE_LWIP) || (defined(TOIT_FREERTOS) && defined(CONFIG_TOIT_ENABLE_IP))
+src/event_sources/subprocess.cc:  #ifdef TOIT_FREERTOS
+src/mutex.h:#ifdef TOIT_FREERTOS
+src/mutex.h:#ifdef TOIT_FREERTOS
+src/mutex.h:#ifdef TOIT_FREERTOS
+src/mutex.h:#ifdef TOIT_FREERTOS
+src/mutex.h:#ifdef TOIT_FREERTOS
+src/mutex.h:#ifdef TOIT_FREERTOS
+src/mutex.h:#ifdef TOIT_FREERTOS
+src/os_freertos.h:#endif  // TOIT_FREERTOS
+src/os_freertos.h:#ifdef TOIT_FREERTOS
+src/primitive_core.cc:#ifdef TOIT_FREERTOS
+src/primitive_file_non_win.cc:#endif  // !TOIT_EC618 && (TOIT_POSIX || TOIT_FREERTOS)
+src/primitive_file_non_win.cc:#endif  // TOIT_FREERTOS
+src/primitive_file_non_win.cc:#endif // TOIT_FREERTOS
+src/primitive_file_non_win.cc:#endif // TOIT_FREERTOS
+src/primitive_file_non_win.cc:#if defined(TOIT_FREERTOS)
+src/primitive_file_non_win.cc:#if defined(TOIT_LINUX) || defined(TOIT_FREERTOS)
+src/primitive_file_non_win.cc:#ifdef TOIT_FREERTOS
+src/primitive_file_non_win.cc:#ifdef TOIT_FREERTOS
+src/primitive_file_non_win.cc:#ifdef TOIT_FREERTOS
+src/primitive_file_non_win.cc:#ifdef TOIT_FREERTOS
+src/primitive_file_non_win.cc:#ifndef TOIT_FREERTOS
+src/primitive_file_non_win.cc:#ifndef TOIT_FREERTOS
+src/primitive_file_non_win.cc:#ifndef TOIT_FREERTOS
+src/primitive_file_non_win.cc:#ifndef TOIT_FREERTOS
+src/primitive_file_non_win.cc:#ifndef TOIT_FREERTOS
+src/primitive_file_non_win.cc:#ifndef TOIT_FREERTOS
+src/resources/spi_esp32.h:#ifdef TOIT_FREERTOS
+src/resources/tcp_esp32.cc:#endif // defined(TOIT_FREERTOS) && defined(CONFIG_TOIT_ENABLE_IP) || defined(TOIT_USE_LWIP)
+src/resources/tcp_esp32.cc:#if defined(TOIT_FREERTOS) && defined(CONFIG_TOIT_ENABLE_IP) || defined(TOIT_USE_LWIP)
+src/resources/udp_esp32.cc:#endif // (defined(TOIT_FREERTOS) && defined(CONFIG_TOIT_ENABLE_IP)) || defined(TOIT_USE_LWIP)
+src/resources/udp_esp32.cc:#if (defined(TOIT_FREERTOS) && defined(CONFIG_TOIT_ENABLE_IP)) || defined(TOIT_USE_LWIP)
+src/scheduler.cc:#endif  // TOIT_FREERTOS
+src/scheduler.cc:#ifdef TOIT_FREERTOS
+src/top.h:#define TOIT_FREERTOS
+src/top.h:#if defined(TOIT_FREERTOS) || defined(TOIT_ZEPHYR)
+src/top.h://  TOIT_FREERTOS : FreeRTOS

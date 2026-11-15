@@ -839,4 +839,4 @@ PRIMITIVE(pm_locks_dump) {
 
 } // namespace toit
 
-#endif // TOIT_FREERTOS
+#endif // TOIT_ESP32
