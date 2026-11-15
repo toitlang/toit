@@ -2,6 +2,7 @@
 // Use of this source code is governed by the LGPL-2.1 license in LICENSE.
 #include "../top.h"
 #ifdef TOIT_ZEPHYR
+#include "../primitive_zephyr.h"
 #include "../event_sources/zephyr.h"
 #include "../objects_inline.h"
 #include "../primitive.h"
@@ -56,7 +57,7 @@ class StdinResource : public ZephyrResource {
     }
     if (!first_) {
       int result = uart_callback_set(console(), on_uart, null);
-      if (result) {
+      if (result != 0) {
         free(buffer);
         return result;
       }
@@ -109,7 +110,7 @@ class StdinResource : public ZephyrResource {
     // Full blocks are published during continuous input; idle input is
     // delivered after 1 ms. This avoids allocating a Toit object per byte.
     int result = uart_rx_enable(console(), dma_[0], sizeof(dma_[0]), 1000);
-    if (result) rx_active_.store(false);
+    if (result != 0) rx_active_.store(false);
     return result;
   }
   static void on_uart(const device* dev, uart_event* event, void*) {
@@ -211,7 +212,7 @@ PRIMITIVE(stdin_open) {
   AutoUnregisteringResource<StdinResource> cleanup(group, resource);
   int result = resource->open();
   if (result == -ENOMEM) FAIL(MALLOC_FAILED);
-  if (result) return Primitive::os_error(-result, process);
+  if (result != 0) return zephyr_error(result, process);
   cleanup.set_external_address(proxy);
   return proxy;
 }
@@ -224,12 +225,12 @@ PRIMITIVE(stdin_read) {
   if (error) return Primitive::os_error(error, process);
   if (size == 0) {
     int resumed = StdinResource::resume();
-    if (resumed != 0) return Primitive::os_error(-resumed, process);
+    if (resumed != 0) return zephyr_error(resumed, process);
     return Smi::from(-1);  // Wait; a UART has no EOF indication.
   }
   size = Utils::min(size, 1024);
   ByteArray* result = process->allocate_byte_array(size, true);
-  if (!result) FAIL(ALLOCATION_FAILED);
+  if (result == 0) FAIL(ALLOCATION_FAILED);
   ByteArray::Bytes bytes(result);
   int count = StdinResource::read(bytes.address(), size, &error);
   if (error) return Primitive::os_error(error, process);

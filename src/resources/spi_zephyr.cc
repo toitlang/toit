@@ -2,6 +2,7 @@
 // Use of this source code is governed by the LGPL-2.1 license in LICENSE.
 #include "../top.h"
 #ifdef TOIT_ZEPHYR
+#include "../primitive_zephyr.h"
 #include "../event_sources/zephyr.h"
 #include "../objects_inline.h"
 #include "../primitive.h"
@@ -59,7 +60,7 @@ class SpiResourceGroup : public ResourceGroup {
     ASSERT(active_device == null);
     if (powered_) {
       int result = pm_device_action_run(dev(), PM_DEVICE_ACTION_SUSPEND);
-      if (result) FATAL("SPI suspend failed: %d", result);
+      if (result != 0) FATAL("SPI suspend failed: %d", result);
     }
     pins.release();
     if (controller_) {
@@ -71,19 +72,19 @@ class SpiResourceGroup : public ResourceGroup {
     int decoded[3], encoded[] = {mosi, miso, clock};
     for (int i = 0; i < 3; i++) {
       int result = pins.add(encoded[i], &decoded[i]);
-      if (result) return result;
+      if (result != 0) return result;
     }
     mosi_ = decoded[0]; miso_ = decoded[1];
     controller_ = claim_controller();
     if (!controller_) return -EBUSY;
     int result = controller_->map(decoded[2], mosi_, miso_);
-    if (result) return result;
+    if (result != 0) return result;
     if (!device_is_ready(dev())) {
       result = device_init(dev());
-      if (result) { controller_->broken = true; return result; }
+      if (result != 0) { controller_->broken = true; return result; }
     } else {
       result = pm_device_action_run(dev(), PM_DEVICE_ACTION_RESUME);
-      if (result) return result;
+      if (result != 0) return result;
     }
     powered_ = true;
     return 0;
@@ -96,9 +97,9 @@ class SpiResourceGroup : public ResourceGroup {
     // Zephyr caches the spi_config address. Invalidate that cache before its
     // owning device is freed, even if an allocator later reuses the address.
     int result = pm_device_action_run(dev(), PM_DEVICE_ACTION_SUSPEND);
-    if (result) FATAL("SPI cache invalidation failed: %d", result);
+    if (result != 0) FATAL("SPI cache invalidation failed: %d", result);
     result = pm_device_action_run(dev(), PM_DEVICE_ACTION_RESUME);
-    if (result) FATAL("SPI resume failed: %d", result);
+    if (result != 0) FATAL("SPI resume failed: %d", result);
     last_device_ = null;
   }
   void remember(SpiDevice* device) { last_device_ = device; }
@@ -139,15 +140,15 @@ class SpiDevice : public ZephyrResource {
   int open(int cs, int dc) {
     int decoded_cs;
     int result = pins.add(cs, &decoded_cs);
-    if (result) return result;
+    if (result != 0) return result;
     result = pins.add(dc, &dc_);
-    if (result) return result;
+    if (result != 0) return result;
     if (decoded_cs >= 0) {
       config_.cs.gpio = {zephyr_gpio_port(decoded_cs), static_cast<gpio_pin_t>(decoded_cs % 32), GPIO_ACTIVE_LOW};
       config_.cs.cs_is_gpio = true;
       config_.cs.delay = 1;
       result = gpio_pin_configure_dt(&config_.cs.gpio, GPIO_OUTPUT_INACTIVE);
-      if (result) return result;
+      if (result != 0) return result;
     }
     if (dc_ >= 0) return gpio_pin_configure(zephyr_gpio_port(dc_), dc_ % 32, GPIO_OUTPUT_LOW);
     return 0;
@@ -190,7 +191,7 @@ class SpiDevice : public ZephyrResource {
     group()->remember(this);
     native_locked_ = true;
     int result = spi_transceive_cb(group()->dev(), &config_, &tx_buffers_, read ? &rx_buffers_ : null, complete, this);
-    if (result) {
+    if (result != 0) {
       release_bus();
       retire_locked();
     }
@@ -219,7 +220,7 @@ class SpiDevice : public ZephyrResource {
     if (!done_.load() && k_sem_take(&finished_, K_SECONDS(5))) FATAL("SPI DMA did not stop");
     Locker locker(group()->event_source()->mutex());
     int result = release_bus();
-    if (result) FATAL("SPI release failed: %d", result);
+    if (result != 0) FATAL("SPI release failed: %d", result);
     retire_locked();
   }
   int release_bus() {
@@ -277,7 +278,7 @@ PRIMITIVE(init) {
   if (result == -EBUSY) FAIL(ALREADY_IN_USE);
   if (result == -EPERM) FAIL(PERMISSION_DENIED);
   if (result == -EINVAL) FAIL(INVALID_ARGUMENT);
-  if (result) return Primitive::os_error(-result, process);
+  if (result != 0) return zephyr_error(result, process);
   proxy->set_external_address(group);
   adopted = true;
   return proxy;
@@ -305,7 +306,7 @@ PRIMITIVE(device) {
   if (result == -EBUSY) FAIL(ALREADY_IN_USE);
   if (result == -EPERM) FAIL(PERMISSION_DENIED);
   if (result == -EINVAL) FAIL(INVALID_ARGUMENT);
-  if (result) return Primitive::os_error(-result, process);
+  if (result != 0) return zephyr_error(result, process);
   cleanup.set_external_address(proxy);
   return proxy;
 }
@@ -324,14 +325,14 @@ PRIMITIVE(transfer_start) {
   if (result == -EINVAL) FAIL(INVALID_ARGUMENT);
   if (result == -EMSGSIZE) FAIL(OUT_OF_RANGE);
   if (result == -ENOMEM) FAIL(MALLOC_FAILED);
-  if (result) return Primitive::os_error(-result, process);
+  if (result != 0) return zephyr_error(result, process);
   return process->null_object();
 }
 PRIMITIVE(transfer_finish) {
   ARGS(SpiDevice, device, MutableBlob, output, int, from, bool, read);
   if (from < 0 || from > output.length() || device->length() > output.length() - from) FAIL(OUT_OF_BOUNDS);
   int result = device->finish(output.address() + from, read);
-  if (result < 0) return Primitive::os_error(-result, process);
+  if (result < 0) return zephyr_error(result, process);
   return BOOL(result != 0);
 }
 PRIMITIVE(transfer_abort) { ARGS(SpiDevice, device); device->abort(); return process->true_object(); }
@@ -345,7 +346,7 @@ PRIMITIVE(release_bus) {
   ARGS(SpiDevice, device);
   if (device->group()->reserved_device != device) FAIL(INVALID_STATE);
   int result = device->release_bus();
-  if (result) return Primitive::os_error(-result, process);
+  if (result != 0) return zephyr_error(result, process);
   device->group()->reserved_device = null;
   return process->null_object();
 }

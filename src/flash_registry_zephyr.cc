@@ -11,6 +11,7 @@
 #define STORAGE_NODE DT_PHANDLE(TOIT_PLATFORM, storage_partition)
 
 namespace toit {
+// This initial backend is specific to nRF5340 memory-mapped flash.
 // NVMC invalidates caches when entering write/erase mode. Program each word
 // at most once between erases, within Nordic's two-write limit even for byte
 // updates. Rewriting an existing word uses a recoverable page transaction.
@@ -25,6 +26,7 @@ static uint32 page_buffer[FLASH_PAGE_SIZE / sizeof(uint32)];
 static const word registry_size = DT_REG_SIZE(STORAGE_NODE) - 2 * FLASH_PAGE_SIZE;
 static const word journal_header = registry_size;
 static const word journal_data = registry_size + FLASH_PAGE_SIZE;
+// Toit's persistent journal marker (hexadecimal ASCII TOIT), also the CRC seed.
 static const uint32 JOURNAL_MAGIC = 0x544f4954;
 struct Journal {
   uint32 offset;

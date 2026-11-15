@@ -2,6 +2,7 @@
 // Use of this source code is governed by the LGPL-2.1 license in LICENSE.
 #include "../top.h"
 #ifdef TOIT_ZEPHYR
+#include "../primitive_zephyr.h"
 #include "../event_sources/zephyr.h"
 #include "../objects_inline.h"
 #include "../primitive.h"
@@ -73,7 +74,7 @@ class I2cBusResource : public ZephyrResource, public Thread {
     }
     if (powered_) {
       int result = pm_device_action_run(controller_->dev, PM_DEVICE_ACTION_SUSPEND);
-      if (result) FATAL("I2C suspend failed: %d", result);
+      if (result != 0) FATAL("I2C suspend failed: %d", result);
     }
     pins.release();
     if (controller_) {
@@ -85,13 +86,13 @@ class I2cBusResource : public ZephyrResource, public Thread {
     controller_ = claim_controller();
     if (!controller_) return -EBUSY;
     int result = controller_->map(sda, scl, pullup);
-    if (result) return result;
+    if (result != 0) return result;
     if (!device_is_ready(controller_->dev)) {
       result = device_init(controller_->dev);
-      if (result) { controller_->broken = true; return result; }
+      if (result != 0) { controller_->broken = true; return result; }
     } else {
       result = pm_device_action_run(controller_->dev, PM_DEVICE_ACTION_RESUME);
-      if (result) return result;
+      if (result != 0) return result;
     }
     powered_ = true;
     if (!spawn()) return -ENOMEM;
@@ -124,17 +125,18 @@ class I2cBusResource : public ZephyrResource, public Thread {
     if (!active_job_) return;
     k_sem_take(&finished_, K_FOREVER);
     Locker locker(resource_group()->event_source()->mutex());
-    retire_locked();
+    retire_locked(locker);
   }
   bool completed() const { return active_job_ && done_.load(); }
   bool belongs_to(I2cDeviceResource* owner) const { return active_job_ && owner_ == owner; }
   int rx_length() const { return rx_length_; }
-  int finish_locked(uint8_t* output) {
+  int finish_locked(const Locker& locker, uint8_t* output) {
+    ASSERT(locker.mutex() == resource_group()->event_source()->mutex());
     ASSERT(completed());
     int result = result_;
     if (result == 0 && output && rx_length_) memcpy(output, rx_, rx_length_);
     k_sem_take(&finished_, K_FOREVER);
-    retire_locked();
+    retire_locked(locker);
     return result;
   }
   int device_count() const { return device_count_; }
@@ -142,7 +144,8 @@ class I2cBusResource : public ZephyrResource, public Thread {
   void release_device() { ASSERT(device_count_ > 0); device_count_--; }
   ZephyrPins pins;
  private:
-  void retire_locked() {
+  void retire_locked(const Locker& locker) {
+    ASSERT(locker.mutex() == resource_group()->event_source()->mutex());
     // finished_ follows notify, so no old completion can be published after
     // pending flags are cleared or the next job has been submitted.
     active_job_ = false;
@@ -157,7 +160,7 @@ class I2cBusResource : public ZephyrResource, public Thread {
       k_sem_take(&request_, K_FOREVER);
       if (stopping_.load()) return;
       int result = i2c_configure(controller_->dev, I2C_MODE_CONTROLLER | I2C_SPEED_SET(speed_));
-      if (!result) {
+      if (result == 0) {
         i2c_msg messages[2] = {};
         int count = 0;
         if (tx_length_ || !rx_length_) {
@@ -238,12 +241,12 @@ PRIMITIVE(bus_create) {
     int result = bus->pins.add(encoded[i], &decoded[i]);
     if (result == -EBUSY) FAIL(ALREADY_IN_USE);
     if (result == -EPERM) FAIL(PERMISSION_DENIED);
-    if (result) FAIL(INVALID_ARGUMENT);
+    if (result != 0) FAIL(INVALID_ARGUMENT);
   }
   int result = bus->open(decoded[0], decoded[1], pullup);
   if (result == -EBUSY) FAIL(ALREADY_IN_USE);
   if (result == -ENOMEM) FAIL(MALLOC_FAILED);
-  if (result) return Primitive::os_error(-result, process);
+  if (result != 0) return zephyr_error(result, process);
   cleanup.set_external_address(proxy);
   return proxy;
 }
@@ -262,14 +265,14 @@ PRIMITIVE(bus_probe) {
   int result = bus->start(null, address, I2C_SPEED_STANDARD, null, 0, 0);
   if (result == -EBUSY) FAIL(ALREADY_IN_USE);
   if (result == -ENOMEM) FAIL(MALLOC_FAILED);
-  if (result) return Primitive::os_error(-result, process);
+  if (result != 0) return zephyr_error(result, process);
   return process->null_object();
 }
 PRIMITIVE(bus_probe_finish) {
   ARGS(I2cBusResource, bus);
   Locker locker(bus->resource_group()->event_source()->mutex());
   if (!bus->belongs_to(null) || !bus->completed()) FAIL(INVALID_STATE);
-  return BOOL(bus->finish_locked(null) == 0);
+  return BOOL(bus->finish_locked(locker, null) == 0);
 }
 PRIMITIVE(bus_abort_controller_operation) {
   ARGS(I2cBusResource, bus);
@@ -304,7 +307,7 @@ PRIMITIVE(device_transfer_start) {
   int result = device->bus()->start(device, device->address(), device->speed(), tx.address(), tx.length(), rx_length);
   if (result == -EBUSY) FAIL(ALREADY_IN_USE);
   if (result == -ENOMEM) FAIL(MALLOC_FAILED);
-  if (result) return Primitive::os_error(-result, process);
+  if (result != 0) return zephyr_error(result, process);
   return process->null_object();
 }
 PRIMITIVE(device_transfer_finish) {
@@ -313,7 +316,7 @@ PRIMITIVE(device_transfer_finish) {
   Locker locker(bus->resource_group()->event_source()->mutex());
   if (!bus->belongs_to(device) || !bus->completed()) FAIL(INVALID_STATE);
   if (length < bus->rx_length() || length > output.length()) FAIL(OUT_OF_BOUNDS);
-  int result = bus->finish_locked(output.address());
+  int result = bus->finish_locked(locker, output.address());
   // The pinned Nordic driver maps address/data NACK events to -EIO.
   return Smi::from(result == 0 ? 0 : result == -EIO ? 1 : result == -ETIMEDOUT ? 2 : 3);
 }

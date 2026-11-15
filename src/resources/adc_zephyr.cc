@@ -2,6 +2,7 @@
 // Use of this source code is governed by the LGPL-2.1 license in LICENSE.
 #include "../top.h"
 #ifdef TOIT_ZEPHYR
+#include "../primitive_zephyr.h"
 #include "../objects_inline.h"
 #include "../primitive.h"
 #include "../process.h"
@@ -22,7 +23,7 @@ static const device* const adc = DEVICE_DT_GET(ADC_NODE);
 static const int pins[] = DT_PROP(TOIT_PLATFORM, adc_pins);
 static const int inputs[] = DT_PROP(TOIT_PLATFORM, adc_inputs);
 BUILD_ASSERT(ARRAY_SIZE(pins) == ARRAY_SIZE(inputs));
-static K_MUTEX_DEFINE(adc_mutex);
+static Mutex adc_mutex(0, "ADC");
 
 struct AdcRange {
   double maximum;
@@ -43,7 +44,7 @@ class AdcResource : public SimpleResource {
   int init(int encoded) {
     int pin;
     int result = pins_.add(encoded, &pin);
-    if (result) return result;
+    if (result != 0) return result;
     for (unsigned i = 0; i < ARRAY_SIZE(pins); i++) {
       if (pin != pins[i]) continue;
       input_ = inputs[i];
@@ -56,8 +57,7 @@ class AdcResource : public SimpleResource {
   int read(int samples, int* sum) {
     // The driver serializes reads but not channel setup. Keep both operations
     // together, including when different Toit processes use different gains.
-    k_mutex_lock(&adc_mutex, K_FOREVER);
-    Defer unlock { [&] { k_mutex_unlock(&adc_mutex); } };
+    Locker locker(&adc_mutex);
     adc_channel_cfg config = {};
     config.channel_id = 0;
     config.input_positive = input_;
@@ -65,7 +65,7 @@ class AdcResource : public SimpleResource {
     config.gain = range_->gain;
     config.acquisition_time = ADC_ACQ_TIME(ADC_ACQ_TIME_MICROSECONDS, 40);
     int result = adc_channel_setup(adc, &config);
-    if (result) return result;
+    if (result != 0) return result;
 
     // One synchronous native request is bounded to 64 samples. No DMA retains
     // stack memory after adc_read returns. Using one
@@ -89,11 +89,11 @@ class AdcResource : public SimpleResource {
       calibration.options = null;
       calibration.calibrate = true;
       result = adc_read(adc, &calibration);
-      if (result) return result;
+      if (result != 0) return result;
       calibrate_ = false;
     }
     result = adc_read(adc, &sequence);
-    if (result) return result;
+    if (result != 0) return result;
     *sum = 0;
     for (int i = 0; i < samples; i++) *sum += buffer[i];
     return 0;
@@ -127,11 +127,11 @@ PRIMITIVE(init) {
   auto resource = _new AdcResource(group, range);
   if (resource == null) FAIL(MALLOC_FAILED);
   int result = resource->init(pin);
-  if (result) {
+  if (result != 0) {
     group->unregister_resource(resource);
     if (result == -EBUSY) FAIL(ALREADY_IN_USE);
     if (result == -EINVAL || result == -EPERM) FAIL(INVALID_ARGUMENT);
-    return Primitive::os_error(result, process);
+    return zephyr_error(result, process);
   }
   proxy->set_external_address(resource);
   return proxy;
@@ -142,7 +142,7 @@ PRIMITIVE(get) {
   if (samples < 1 || samples > 64) FAIL(OUT_OF_RANGE);
   int sum;
   int result = resource->read(samples, &sum);
-  if (result) return Primitive::os_error(result, process);
+  if (result != 0) return zephyr_error(result, process);
   return Primitive::allocate_double(sum * resource->maximum() / (4096.0 * samples), process);
 }
 
@@ -150,7 +150,7 @@ PRIMITIVE(get_raw) {
   ARGS(AdcResource, resource);
   int raw;
   int result = resource->read(1, &raw);
-  if (result) return Primitive::os_error(result, process);
+  if (result != 0) return zephyr_error(result, process);
   return Smi::from(raw);
 }
 

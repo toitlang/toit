@@ -2,6 +2,7 @@
 // Use of this source code is governed by the LGPL-2.1 license in LICENSE.
 #include "../top.h"
 #ifdef TOIT_ZEPHYR
+#include "../primitive_zephyr.h"
 #include "../event_sources/zephyr.h"
 #include "../objects_inline.h"
 #include "../primitive.h"
@@ -79,7 +80,7 @@ class UartResource : public ZephyrResource {
     }
     if (active_) {
       int result = pm_device_action_run(dev(), PM_DEVICE_ACTION_SUSPEND);
-      if (result) FATAL("UART suspend failed: %d", result);
+      if (result != 0) FATAL("UART suspend failed: %d", result);
     }
     if (clock_) onoff_release(clock_);
     pins.release();
@@ -117,19 +118,19 @@ class UartResource : public ZephyrResource {
     if (clock_result < 0) return clock_result;
     clock_ = manager;
     int result = controller_->map(tx, rx, rts, cts);
-    if (result) return result;
+    if (result != 0) return result;
     if (!device_is_ready(dev())) {
       result = device_init(dev());
-      if (result) { controller_->broken = true; return result; }
+      if (result != 0) { controller_->broken = true; return result; }
     } else {
       result = pm_device_action_run(dev(), PM_DEVICE_ACTION_RESUME);
-      if (result) return result;
+      if (result != 0) return result;
     }
     active_ = true;
     result = uart_configure(dev(), &config);
-    if (result) return result;
+    if (result != 0) return result;
     result = uart_callback_set(dev(), callback, this);
-    if (result) return result;
+    if (result != 0) return result;
     callback_set_ = true;
     return start_rx();
   }
@@ -144,11 +145,11 @@ class UartResource : public ZephyrResource {
     rx_enabled_.store(true);
     uart_config config;
     int result = uart_config_get(dev(), &config);
-    if (result) { rx_enabled_.store(false); return result; }
+    if (result != 0) { rx_enabled_.store(false); return result; }
     // Keep the idle timeout longer than a few characters at low baud rates.
     int timeout = Utils::max(1000, static_cast<int>(48000000 / config.baudrate));
     result = uart_rx_enable(dev(), dma_[0], sizeof(dma_[0]), timeout);
-    if (result) rx_enabled_.store(false);
+    if (result != 0) rx_enabled_.store(false);
     return result;
   }
   void service() {
@@ -161,7 +162,7 @@ class UartResource : public ZephyrResource {
     if (tx_busy_.load()) return -EBUSY;
     uart_config config;
     int result = uart_config_get(dev(), &config);
-    if (result) return result;
+    if (result != 0) return result;
     pause_rx_.store(true);
     if (rx_enabled_.load()) {
       result = uart_rx_disable(dev());
@@ -189,7 +190,7 @@ class UartResource : public ZephyrResource {
     memcpy(tx_, bytes, count);
     tx_busy_.store(true);
     int result = uart_tx(dev(), tx_, count, SYS_FOREVER_US);
-    if (result) { tx_busy_.store(false); return result; }
+    if (result != 0) { tx_busy_.store(false); return result; }
     return count;
   }
   bool tx_idle() const { return !tx_busy_.load(); }
@@ -311,7 +312,7 @@ PRIMITIVE(create) {
     int result = resource->pins.add(encoded[i], &decoded[i]);
     if (result == -EBUSY) FAIL(ALREADY_IN_USE);
     if (result == -EPERM) FAIL(PERMISSION_DENIED);
-    if (result) FAIL(INVALID_ARGUMENT);
+    if (result != 0) FAIL(INVALID_ARGUMENT);
   }
   uart_config config = {};
   config.baudrate = baud;
@@ -321,7 +322,7 @@ PRIMITIVE(create) {
   config.flow_ctrl = rts == -1 ? UART_CFG_FLOW_CTRL_NONE : UART_CFG_FLOW_CTRL_RTS_CTS;
   int result = resource->start(decoded[0], decoded[1], decoded[2], decoded[3], config);
   if (result == -EBUSY) FAIL(ALREADY_IN_USE);
-  if (result) return Primitive::os_error(-result, process);
+  if (result != 0) return zephyr_error(result, process);
   cleanup.set_external_address(proxy);
   return proxy;
 }
@@ -337,14 +338,14 @@ PRIMITIVE(get_baud_rate) {
   ARGS(UartResource, resource);
   uart_config config;
   int result = uart_config_get(resource->dev(), &config);
-  if (result) return Primitive::os_error(-result, process);
+  if (result != 0) return zephyr_error(result, process);
   return Primitive::integer(config.baudrate, process);
 }
 PRIMITIVE(set_baud_rate) {
   ARGS(UartResource, resource, uint32, baud);
   if (baud == 0) FAIL(INVALID_ARGUMENT);
   int result = resource->set_baud(baud);
-  if (result) return Primitive::os_error(-result, process);
+  if (result != 0) return zephyr_error(result, process);
   return process->null_object();
 }
 PRIMITIVE(write) {
@@ -352,7 +353,7 @@ PRIMITIVE(write) {
   if (from < 0 || from > to || to > bytes.length()) FAIL(OUT_OF_RANGE);
   if (break_length != 0) FAIL(UNIMPLEMENTED);
   int count = resource->write(bytes.address() + from, to - from);
-  if (count < 0) return Primitive::os_error(-count, process);
+  if (count < 0) return zephyr_error(count, process);
   return Smi::from(count);
 }
 PRIMITIVE(wait_tx) { ARGS(UartResource, resource); return BOOL(resource->tx_idle()); }

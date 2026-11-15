@@ -14,6 +14,18 @@
 #include <zephyr/sys/reboot.h>
 
 namespace toit {
+Object* zephyr_error(int error, Process* process) {
+  ASSERT(error < 0);
+  switch (error) {
+    case -EINVAL: FAIL(INVALID_ARGUMENT);
+    case -EBUSY: FAIL(ALREADY_IN_USE);
+    case -EPERM: FAIL(PERMISSION_DENIED);
+    case -ENOMEM: FAIL(MALLOC_FAILED);
+    case -EMSGSIZE: FAIL(OUT_OF_RANGE);
+    default: return Primitive::os_error(-error, process);
+  }
+}
+
 static uint32_t reset_reason;
 static uint32_t supported_reset_reasons;
 void zephyr_capture_reset_reason() {

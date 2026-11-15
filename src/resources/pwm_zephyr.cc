@@ -2,6 +2,7 @@
 // Use of this source code is governed by the LGPL-2.1 license in LICENSE.
 #include "../top.h"
 #if defined(TOIT_ZEPHYR) && CONFIG_PWM
+#include "../primitive_zephyr.h"
 #include "../objects_inline.h"
 #include "../primitive.h"
 #include "../process.h"
@@ -59,7 +60,7 @@ class PwmResourceGroup : public ResourceGroup {
   ~PwmResourceGroup() override {
     if (powered_) {
       int result = suspend();
-      if (result) FATAL("PWM suspend failed: %d", result);
+      if (result != 0) FATAL("PWM suspend failed: %d", result);
     }
     Locker locker(OS::global_mutex());
     controller_->claimed = false;
@@ -73,7 +74,7 @@ class PwmResourceGroup : public ResourceGroup {
  private:
   int suspend() {
     int result = pm_device_action_run(dev(), PM_DEVICE_ACTION_SUSPEND);
-    if (!result) powered_ = false;
+    if (result == 0) powered_ = false;
     return result;
   }
   PwmController* controller_;
@@ -91,12 +92,12 @@ class PwmResource : public Resource {
     group()->channels[index_] = null;
     // Retire DMA and disconnect this output before releasing pin ownership.
     int result = group()->reconfigure();
-    if (result) FATAL("PWM channel cleanup failed: %d", result);
+    if (result != 0) FATAL("PWM channel cleanup failed: %d", result);
   }
   PwmResourceGroup* group() const { return static_cast<PwmResourceGroup*>(resource_group()); }
   int open(int encoded) {
     int result = pins_.add(encoded, &pin_);
-    if (result) return result;
+    if (result != 0) return result;
     return pin_ < 0 ? -EINVAL : 0;
   }
   int pin() const { return pin_; }
@@ -104,7 +105,7 @@ class PwmResource : public Resource {
   int apply(double factor) {
     int result = pwm_set_cycles(group()->dev(), index_, group()->period.cycles,
         group()->period.pulse(factor), PWM_POLARITY_NORMAL);
-    if (!result) factor_ = factor <= 0 ? 0 : factor >= 1 ? 1 : factor;
+    if (result == 0) factor_ = factor <= 0 ? 0 : factor >= 1 ? 1 : factor;
     return result;
   }
  private:
@@ -120,7 +121,7 @@ int PwmResourceGroup::reconfigure() {
   // Pin changes and frequency changes may interrupt one period on other channels.
   if (powered_) {
     int result = suspend();
-    if (result) return result;
+    if (result != 0) return result;
   }
   int pins[CHANNELS];
   bool any = false;
@@ -129,7 +130,7 @@ int PwmResourceGroup::reconfigure() {
     any |= channels[i] != null;
   }
   int result = controller_->map(pins);
-  if (result) return result;
+  if (result != 0) return result;
   if (!any) {
     // Updating pinctrl's table alone does not write PSEL. Detach every output
     // even when there is no subsequent resume to apply the new mapping.
@@ -137,20 +138,20 @@ int PwmResourceGroup::reconfigure() {
   }
   if (!device_is_ready(dev())) {
     result = device_init(dev());
-    if (result) { controller_->broken = true; return result; }
+    if (result != 0) { controller_->broken = true; return result; }
   } else {
     result = pm_device_action_run(dev(), PM_DEVICE_ACTION_RESUME);
-    if (result) return result;
+    if (result != 0) return result;
   }
   powered_ = true;
   uint64_t clock;
   result = pwm_get_cycles_per_sec(dev(), 0, &clock);
-  if (result) return result;
+  if (result != 0) return result;
   if (clock != ZephyrPwmPeriod::CLOCK_HZ) return -ENOTSUP;
   for (auto channel : channels) {
     if (!channel) continue;
     result = channel->apply(channel->factor());
-    if (result) return result;
+    if (result != 0) return result;
   }
   return 0;
 }
@@ -202,27 +203,27 @@ PRIMITIVE(start) {
   auto channel = _new PwmResource(group, index, factor);
   if (!channel) FAIL(MALLOC_FAILED);
   int result = channel->open(pin);
-  if (!result) {
+  if (result == 0) {
     // Borrowed Pin objects bypass the global ownership pool, but cannot drive
     // two channels of this generator through the same pin.
     for (auto other : group->channels) {
       if (other && other->pin() == channel->pin()) result = -EBUSY;
     }
   }
-  if (!result) {
+  if (result == 0) {
     group->channels[index] = channel;
     result = group->reconfigure();
-    if (result) {
+    if (result != 0) {
       group->channels[index] = null;
       int rollback = group->reconfigure();
       if (rollback) FATAL("PWM rollback failed: %d", rollback);
     }
   }
-  if (result) {
+  if (result != 0) {
     delete channel;
     if (result == -EBUSY) FAIL(ALREADY_IN_USE);
     if (result == -EINVAL || result == -EPERM) FAIL(INVALID_ARGUMENT);
-    return Primitive::os_error(-result, process);
+    return zephyr_error(result, process);
   }
   group->register_resource(channel);
   proxy->set_external_address(channel);
@@ -240,7 +241,7 @@ PRIMITIVE(set_factor) {
   ARGS(PwmResourceGroup, group, PwmResource, channel, double, factor);
   if (channel->group() != group || std::isnan(factor)) FAIL(INVALID_ARGUMENT);
   int result = channel->apply(factor);
-  if (result) return Primitive::os_error(-result, process);
+  if (result != 0) return zephyr_error(result, process);
   return process->null_object();
 }
 
@@ -254,11 +255,11 @@ PRIMITIVE(set_frequency) {
   ZephyrPwmPeriod previous = group->period;
   if (frequency > group->maximum() || !group->period.set(frequency)) FAIL(INVALID_ARGUMENT);
   int result = group->reconfigure();
-  if (result) {
+  if (result != 0) {
     group->period = previous;
     int rollback = group->reconfigure();
     if (rollback) FATAL("PWM frequency rollback failed: %d", rollback);
-    return Primitive::os_error(-result, process);
+    return zephyr_error(result, process);
   }
   return process->null_object();
 }

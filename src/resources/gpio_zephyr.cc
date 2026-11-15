@@ -2,6 +2,7 @@
 // Use of this source code is governed by the LGPL-2.1 license in LICENSE.
 #include "../top.h"
 #ifdef TOIT_ZEPHYR
+#include "../primitive_zephyr.h"
 #include "../event_sources/zephyr.h"
 #include "../objects_inline.h"
 #include "../primitive.h"
@@ -43,7 +44,7 @@ class GpioResource : public ZephyrResource {
     int result = gpio_pin_configure(port_, pin(), flags);
     if (listeners_) {
       int interrupt_result = gpio_pin_interrupt_configure(port_, pin(), GPIO_INT_EDGE_BOTH);
-      if (!result) result = interrupt_result;
+      if (result == 0) result = interrupt_result;
       if (before >= 0 && gpio_pin_get_raw(port_, pin()) != before) record_edge();
     }
     return result;
@@ -55,18 +56,18 @@ class GpioResource : public ZephyrResource {
     if (enable) {
       gpio_flags_t flags;
       int result = gpio_pin_get_config(port_, pin(), &flags);
-      if (result) return result;
+      if (result != 0) return result;
       if (!(flags & GPIO_INPUT)) return -EINVAL;
       if (listeners_ == 0) {
         result = gpio_pin_interrupt_configure(port_, pin(), GPIO_INT_EDGE_BOTH);
-        if (result) return result;
+        if (result != 0) return result;
       }
       listeners_++;
     } else {
       if (listeners_ <= 0) return -EINVAL;
       if (listeners_ == 1) {
         int result = gpio_pin_interrupt_configure(port_, pin(), GPIO_INT_DISABLE);
-        if (result) return result;
+        if (result != 0) return result;
       }
       listeners_--;
     }
@@ -116,11 +117,11 @@ PRIMITIVE(use) {
   if (proxy == null) FAIL(ALLOCATION_FAILED);
   int result = zephyr_pin_claim(num);
   if (result == -EBUSY) FAIL(ALREADY_IN_USE);
-  if (result) return Primitive::os_error(-result, process);
+  if (result != 0) return zephyr_error(result, process);
   auto resource = _new GpioResource(group, num);
   if (resource == null) { zephyr_pin_release(num); FAIL(MALLOC_FAILED); }
   result = resource->init();
-  if (result) { delete resource; return Primitive::os_error(-result, process); }
+  if (result != 0) { delete resource; return zephyr_error(result, process); }
   group->register_resource(resource);
   proxy->set_external_address(resource);
   return proxy;
@@ -140,7 +141,7 @@ PRIMITIVE(config) {
       (open_drain ? GPIO_OPEN_DRAIN : 0);
   if (output && value >= 0) flags |= value ? GPIO_OUTPUT_INIT_HIGH : GPIO_OUTPUT_INIT_LOW;
   int result = resource->configure(flags);
-  if (result) return Primitive::os_error(-result, process);
+  if (result != 0) return zephyr_error(result, process);
   return process->null_object();
 }
 PRIMITIVE(config_interrupt) {
@@ -148,7 +149,7 @@ PRIMITIVE(config_interrupt) {
   USE(value);  // Both edges are required by gpio.Pin.wait-for.
   uint32_t timestamp;
   int result = resource->configure_interrupt(enable, &timestamp);
-  if (result) return Primitive::os_error(-result, process);
+  if (result != 0) return zephyr_error(result, process);
   return Smi::from(timestamp);
 }
 PRIMITIVE(last_edge_trigger_timestamp) {
@@ -158,14 +159,14 @@ PRIMITIVE(last_edge_trigger_timestamp) {
 PRIMITIVE(get) {
   ARGS(GpioResource, resource);
   int value = gpio_pin_get_raw(resource->port(), resource->pin());
-  if (value < 0) return Primitive::os_error(-value, process);
+  if (value < 0) return zephyr_error(value, process);
   return Smi::from(value);
 }
 PRIMITIVE(set) {
   ARGS(GpioResource, resource, int, value);
   if (value != 0 && value != 1) FAIL(INVALID_ARGUMENT);
   int result = gpio_pin_set_raw(resource->port(), resource->pin(), value);
-  if (result) return Primitive::os_error(-result, process);
+  if (result != 0) return zephyr_error(result, process);
   return process->null_object();
 }
 PRIMITIVE(set_pull) {
@@ -173,22 +174,22 @@ PRIMITIVE(set_pull) {
   if (direction < -1 || direction > 1) FAIL(INVALID_ARGUMENT);
   gpio_flags_t flags;
   int result = gpio_pin_get_config(resource->port(), resource->pin(), &flags);
-  if (result) return Primitive::os_error(-result, process);
+  if (result != 0) return zephyr_error(result, process);
   flags &= ~(GPIO_PULL_UP | GPIO_PULL_DOWN);
   if (direction) flags |= direction > 0 ? GPIO_PULL_UP : GPIO_PULL_DOWN;
   result = resource->configure(flags);
-  if (result) return Primitive::os_error(-result, process);
+  if (result != 0) return zephyr_error(result, process);
   return process->null_object();
 }
 PRIMITIVE(set_open_drain) {
   ARGS(GpioResource, resource, bool, enable);
   gpio_flags_t flags;
   int result = gpio_pin_get_config(resource->port(), resource->pin(), &flags);
-  if (result) return Primitive::os_error(-result, process);
+  if (result != 0) return zephyr_error(result, process);
   flags &= ~(GPIO_SINGLE_ENDED | GPIO_LINE_OPEN_DRAIN);
   if (enable) flags |= GPIO_OPEN_DRAIN;
   result = resource->configure(flags);
-  if (result) return Primitive::os_error(-result, process);
+  if (result != 0) return zephyr_error(result, process);
   return process->null_object();
 }
 }  // namespace toit

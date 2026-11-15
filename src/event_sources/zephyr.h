@@ -6,6 +6,10 @@
 #include "../resource.h"
 #include <zephyr/kernel.h>
 
+// Resource callbacks and IRQ exclusion assume one application CPU. A separate
+// network processor may run its own firmware, but must not share VM resources.
+BUILD_ASSERT(!IS_ENABLED(CONFIG_SMP), "Toit Zephyr resources require one application CPU");
+
 namespace toit {
 
 // Interrupts only accumulate flags and wake the worker. Resource lookup and

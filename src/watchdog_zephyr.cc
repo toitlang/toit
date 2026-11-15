@@ -2,6 +2,7 @@
 // Use of this source code is governed by the LGPL-2.1 license in LICENSE.
 #include "top.h"
 #ifdef TOIT_ZEPHYR
+#include "primitive_zephyr.h"
 #include "objects_inline.h"
 #include "primitive.h"
 #include "process.h"
@@ -45,15 +46,15 @@ Object* platform_watchdog_start(Process* process, int timeout_ms) {
   if (!device_is_ready(watchdog)) FAIL(HARDWARE_ERROR);
   Locker locker(OS::global_mutex());
   int result = watchdog_disable();
-  if (result != 0) return Primitive::os_error(-result, process);
+  if (result != 0) return zephyr_error(result, process);
   wdt_timeout_cfg config = {};
   config.window.max = timeout_ms;
   config.flags = WDT_FLAG_RESET_SOC;
   result = wdt_install_timeout(watchdog, &config);
-  if (result < 0) return Primitive::os_error(-result, process);
+  if (result < 0) return zephyr_error(result, process);
   watchdog_channel = result;
   result = watchdog_enable();
-  if (result != 0) return Primitive::os_error(-result, process);
+  if (result != 0) return zephyr_error(result, process);
   return process->null_object();
 }
 
@@ -61,7 +62,7 @@ Object* platform_watchdog_feed(Process* process) {
   Locker locker(OS::global_mutex());
   if (watchdog_running) {
     int result = wdt_feed(watchdog, watchdog_channel);
-    if (result != 0) return Primitive::os_error(-result, process);
+    if (result != 0) return zephyr_error(result, process);
   }
   return process->null_object();
 }
@@ -69,7 +70,7 @@ Object* platform_watchdog_feed(Process* process) {
 Object* platform_watchdog_stop(Process* process) {
   Locker locker(OS::global_mutex());
   int result = watchdog_disable();
-  if (result != 0) return Primitive::os_error(-result, process);
+  if (result != 0) return zephyr_error(result, process);
   return process->null_object();
 }
 }  // namespace toit
