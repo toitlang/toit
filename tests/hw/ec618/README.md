@@ -219,3 +219,30 @@ The S3 must be reset into the idle fixture before unrelated GPIO/UART tests,
 so its bus pins are inputs. Stop the UART1 bridge before tests that own that
 lane. `gpio-aon-output-ec618.toit` now runs the consolidated GPIO test with
 `gpio-map-esp32.toit`, observing PAD42 directly instead of powering a sensor.
+
+## Shared reset flags and EC618 detail
+
+The EC618 reset constants now use the same bit values as `system.power`.
+This intentionally changes the previous EC618 enum API. Update callers of the
+removed cause-specific constants to use the shared flags or the detail function,
+and rebuild containers with the matching firmware. The common flag groups hard
+faults, assertions, and cellular-processor resets as hardware resets, and groups
+watchdog kinds.
+Use `ec618.reset-reason-detail` for the exact symbolic cause.
+
+The host regression is `tests/ec618-reset-reason-test.toit`. Check the native
+conversion against the SDK's real enum without hardware:
+
+```sh
+c++ -std=c++11 -Wall -Wextra \
+  -I"$EC618_SDK/PLAT/prebuild/PLAT/inc" \
+  tests/hw/ec618/reset-reason-native-test.cc \
+  -o build/ec618-reset-reason-test
+build/ec618-reset-reason-test
+```
+
+Set `EC618_SDK` to the `luatos-soc-ec618` checkout used for the firmware.
+The reset/deep-sleep contract test also checks that the common and EC618 APIs
+agree and that `reset-reason-detail` still distinguishes software reset from
+normal sleep wake. The native application watchdog may still report power-on;
+this change does not infer a watchdog cause that the hardware did not report.

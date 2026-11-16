@@ -115,7 +115,7 @@ reset-reason -> int:
   if (system.architecture.starts-with "esp32"):
     return esp32-reasons_.get esp32.reset-reason --if-absent=: 0
   if system.architecture == system.ARCHITECTURE-EC618:
-    return ec618-reasons_.get ec618.reset-reason --if-absent=: 0
+    return ec618.reset-reason
   throw "UNIMPLEMENTED"
 
 embedded_ -> bool:
@@ -139,20 +139,4 @@ esp32-reasons_ ::= {
   esp32.RESET-EFUSE: RESET-HARDWARE,
   esp32.RESET-POWER-GLITCH: RESET-BROWNOUT,
   esp32.RESET-CPU-LOCKUP: RESET-CPU-LOCKUP,
-}
-
-ec618-reasons_ ::= {
-  ec618.RESET-POWER-ON: RESET-POWER-ON,
-  ec618.RESET-NORMAL: RESET-SOFTWARE,
-  ec618.RESET-SOFTWARE: RESET-SOFTWARE,
-  ec618.RESET-HARDFAULT: RESET-HARDWARE,
-  ec618.RESET-ASSERT: RESET-HARDWARE,
-  ec618.RESET-WATCHDOG-SOFTWARE: RESET-WATCHDOG,
-  ec618.RESET-WATCHDOG-HARDWARE: RESET-WATCHDOG,
-  ec618.RESET-LOCKUP: RESET-CPU-LOCKUP,
-  ec618.RESET-AON-WATCHDOG: RESET-WATCHDOG,
-  ec618.RESET-BATTERY-LOW: RESET-BROWNOUT,
-  ec618.RESET-TEMPERATURE-HIGH: RESET-TEMPERATURE,
-  ec618.RESET-FOTA: RESET-SOFTWARE,
-  ec618.RESET-CP-RESET: RESET-HARDWARE,
 }

@@ -485,6 +485,7 @@ namespace toit {
   PRIMITIVE(base_id, 0)                      \
   PRIMITIVE(slot_size, 0)                    \
   PRIMITIVE(console_uart_set, 1)             \
+  PRIMITIVE(reset_reason_detail, 0)          \
 
 #define MODULE_ZEPHYR(PRIMITIVE)             \
   PRIMITIVE(reset_reason, 0)                 \

@@ -30,6 +30,7 @@
 #include "slot_reloc_ec618.h"
 #include "watchdog_ec618.h"
 #include "wakeup_ec618.h"
+#include "reset_reason_ec618.h"
 
 extern "C" {
   #include "flash_rt.h"
@@ -583,15 +584,20 @@ PRIMITIVE(wakeup_pin_values) {
   return Primitive::integer(slpManGetWakeupPinValue(), process);
 }
 
-// Returns the AP-side reset reason of the most recent boot as a
-// LastResetState_e value (see lib/ec618 reset-reason constants). The CP
-// reset reason is read but not surfaced; the AP value is what application
-// code reacts to (e.g. distinguishing a watchdog reset from a power-on).
-PRIMITIVE(reset_reason) {
+static LastResetState_e read_reset_reason() {
   LastResetState_e ap = LAST_RESET_UNKNOWN;
   LastResetState_e cp = LAST_RESET_UNKNOWN;
   ResetStateGet(&ap, &cp);
-  return Smi::from(ap);
+  return ap;
+}
+
+PRIMITIVE(reset_reason) {
+  return Smi::from(ec618_reset_reason_flags(read_reset_reason()));
+}
+
+// Keep the detailed vendor reason separate from the shared flags.
+PRIMITIVE(reset_reason_detail) {
+  return Smi::from(read_reset_reason());
 }
 
 // The sleep manager's wake-source latch (slpManGetWakeupSrc) reads correctly

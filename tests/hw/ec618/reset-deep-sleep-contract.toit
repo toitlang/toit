@@ -14,6 +14,7 @@ The test is self-verifying across the two reboots it requests. Install it as a
 
 import ec618
 import system.storage
+import system.power
 
 BUCKET-NAME ::= "test/ec618-reset-deep-sleep-contract"
 STATE-KEY ::= "state"
@@ -32,6 +33,8 @@ main:
 
   if state == 1:
     assert-equals ec618.RESET-SOFTWARE ec618.reset-reason
+    assert-equals power.RESET-SOFTWARE power.reset-reason
+    assert-equals "software" ec618.reset-reason-detail
     assert-equals ec618.WAKEUP-POWER-ON ec618.wakeup-cause
     bucket[STATE-KEY] = #[2]
     bucket.close
@@ -41,7 +44,9 @@ main:
   if state == 2:
     // A zero-duration request is clamped to the hardware minimum and remains
     // a real timer-backed deep sleep. It must not look like a software reset.
-    assert-equals ec618.RESET-NORMAL ec618.reset-reason
+    assert-equals ec618.RESET-LOW-POWER-WAKE ec618.reset-reason
+    assert-equals power.RESET-LOW-POWER-WAKE power.reset-reason
+    assert-equals "normal" ec618.reset-reason-detail
     assert-equals ec618.WAKEUP-RTC ec618.wakeup-cause
     bucket[STATE-KEY] = #[0]
     bucket.close

@@ -43,6 +43,7 @@ TYPE_PRIMITIVE(slot_mark_invalid_and_reset) {
 TYPE_PRIMITIVE_BOOL(slot_trial)
 TYPE_PRIMITIVE_NULL(slot_program_mode)
 TYPE_PRIMITIVE_INT(reset_reason)
+TYPE_PRIMITIVE_INT(reset_reason_detail)
 TYPE_PRIMITIVE_INT(wakeup_cause)
 TYPE_PRIMITIVE_NULL(watchdog_init)
 TYPE_PRIMITIVE_NULL(watchdog_feed)

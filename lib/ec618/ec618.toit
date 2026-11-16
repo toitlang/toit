@@ -191,50 +191,36 @@ The device never activates a slot linked against a different base.
 base-id -> string:
   #primitive.ec618.base-id
 
-/** Reset after power was (re)applied (cold boot). */
-RESET-POWER-ON ::= 0
-/** Normal reset after waking from deep sleep (sleep2) or hibernate. */
-RESET-NORMAL ::= 1
-/** Software reset (an explicit system reset request). */
-RESET-SOFTWARE ::= 2
-/** Reset after a hard fault (see the fault dump on the console). */
-RESET-HARDFAULT ::= 3
-/** Reset after a failed runtime assertion in the platform. */
-RESET-ASSERT ::= 4
-/**
-Reset attributed to a watchdog via a software-recorded reason.
+// These flags have the same values as the system.power RESET-* constants.
 
-Note: the application watchdog in the `ec618.watchdog` library does not produce
-  this. Its reset is an autonomous hardware reset that the chip reports as
-  $RESET-POWER-ON.
-*/
-RESET-WATCHDOG-SOFTWARE ::= 5
-/**
-Reset attributed to a hardware watchdog.
-
-Note: the application watchdog in the `ec618.watchdog` library does not produce
-  this. Its reset is an autonomous hardware reset that the chip reports as
-  $RESET-POWER-ON.
-*/
-RESET-WATCHDOG-HARDWARE ::= 6
-/** Reset after the CPU locked up. */
-RESET-LOCKUP ::= 7
-/** Reset by the always-on (sleep-manager) watchdog. */
-RESET-AON-WATCHDOG ::= 8
-/** Reset because the battery voltage was too low. */
-RESET-BATTERY-LOW ::= 9
-/** Reset because the temperature was too high. */
-RESET-TEMPERATURE-HIGH ::= 10
-/** Reset to apply a firmware-over-the-air update. */
-RESET-FOTA ::= 11
-/** Reset triggered by the cellular processor (CP). */
-RESET-CP-RESET ::= 12
 /** The reset reason could not be determined. */
-RESET-UNKNOWN ::= 13
+RESET-UNKNOWN ::= 0
+/** Reset requested by software, including a firmware update. */
+RESET-SOFTWARE ::= 1 << 1
+/** Reset caused by low battery voltage. */
+RESET-BROWNOUT ::= 1 << 2
+/** Reset after power was applied. */
+RESET-POWER-ON ::= 1 << 3
+/** Reset attributed to a watchdog. */
+RESET-WATCHDOG ::= 1 << 4
+/** Reset after waking from low-power sleep or hibernate. */
+RESET-LOW-POWER-WAKE ::= 1 << 7
+/** Reset after the CPU locked up. */
+RESET-CPU-LOCKUP ::= 1 << 8
+/** Reset caused by a hard fault, assertion, or cellular-processor reset. */
+RESET-HARDWARE ::= 1 << 12
+/** Reset caused by excessive temperature. */
+RESET-TEMPERATURE ::= 1 << 14
 
-// Human-readable names indexed by the RESET-* value. Keep in sync with the
-// constants above (the SDK's LastResetState_e order).
-RESET-REASON-NAMES_/List ::= [
+// Names for the shared flags, in bit order.
+RESET-REASON-NAMES_ ::= [
+  "pin", "software", "brownout", "power-on", "watchdog", "debug", "security",
+  "low-power-wake", "cpu-lockup", "parity", "pll", "clock", "hardware",
+  "user", "temperature", "bootloader", "flash",
+]
+
+// Names for the vendor's LastResetState_e values, used only for detail.
+RESET-DETAIL-NAMES_ ::= [
   "power-on",
   "normal",
   "software",
@@ -252,29 +238,57 @@ RESET-REASON-NAMES_/List ::= [
 ]
 
 /**
-Returns the reason for the most recent reset of the application processor.
+Returns the reset reason as a combination of RESET-* flags.
 
-The result is one of the RESET-* constants ($RESET-POWER-ON,
-  $RESET-WATCHDOG-HARDWARE, ...). Use $reset-reason-name to turn it into a
-  human-readable string.
+These flags have the same values as those in system.power. Zero means unknown.
+  Test individual bits rather than comparing the entire value.
+Use $reset-reason-detail to distinguish causes grouped under the same flag.
+  For example, hard faults and assertions both set $RESET-HARDWARE.
 
 Requires a base image that initializes the vendor reset-reason decoder.
   Early development bases omitted this and reported $RESET-POWER-ON for every
   cause, including software resets and deep-sleep wakes.
+The application watchdog can be reported as $RESET-POWER-ON by the hardware.
+  $RESET-WATCHDOG is set only when the SDK identifies a watchdog reset.
 */
 reset-reason -> int:
   #primitive.ec618.reset-reason
 
 /**
-Returns a human-readable name for the given reset $reason.
+Returns a human-readable name for the reset $reason.
 
-The $reason should be one of the RESET-* constants, typically the result of
-  $reset-reason. Unrecognized values are formatted as "reset-<n>".
+$reason is a bit mask, typically the result of $reset-reason. Multiple causes
+  are separated by commas. Unrecognized bits are formatted as "reset-<n>".
 */
 reset-reason-name reason/int -> string:
-  if 0 <= reason < RESET-REASON-NAMES_.size:
-    return RESET-REASON-NAMES_[reason]
+  if reason == RESET-UNKNOWN: return "unknown"
+  names := []
+  remaining := reason
+  RESET-REASON-NAMES_.size.repeat: |index|
+    flag := 1 << index
+    if reason & flag != 0:
+      names.add RESET-REASON-NAMES_[index]
+      remaining &= ~flag
+  if remaining != 0: names.add "reset-$remaining"
+  return names.join ","
+
+/**
+Returns the detailed reset cause as a symbolic name.
+
+The names are "power-on", "normal" (wake from sleep or hibernate), "software",
+  "hardfault", "assert", "watchdog-software", "watchdog-hardware", "lockup",
+  "aon-watchdog", "battery-low", "temperature-high", "fota", "cp-reset",
+  and "unknown". Unrecognized SDK values are formatted as "reset-<n>".
+Use this when the shared flags returned by $reset-reason group several causes.
+*/
+reset-reason-detail -> string:
+  reason := reset-reason-detail_
+  if 0 <= reason < RESET-DETAIL-NAMES_.size:
+    return RESET-DETAIL-NAMES_[reason]
   return "reset-$reason"
+
+reset-reason-detail_ -> int:
+  #primitive.ec618.reset-reason-detail
 
 /** Cold boot: power was (re)applied, or a reset that isn't a sleep wake. */
 WAKEUP-POWER-ON ::= 0
