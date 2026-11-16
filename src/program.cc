@@ -62,24 +62,34 @@ void Program::read(SnapshotReader* st) {
   global_variables.read(st);
   literals.read(st);
 
+  // The snapshot is untrusted. Format violations mark the reader as
+  // failed, and the caller discards the image. Only the format is checked:
+  // the bytecodes and the indexes in the tables are not validated.
   // ROOTS table.
-  int nof_roots = st->read_cardinal();
-  ASSERT(nof_roots == ROOT_COUNT);
+  uword nof_roots = st->read_cardinal();
+  if (nof_roots != ROOT_COUNT) st->fail("invalid root count");
   for (int i = 0; i < ROOT_COUNT; i++) roots_[i] = st->read_object();
   // Builtin classes.
-  int nof_builtin_classes = st->read_cardinal();
-  ASSERT(nof_builtin_classes == BUILTIN_CLASS_IDS_COUNT);
-  for (int i = 0; i < BUILTIN_CLASS_IDS_COUNT; i++) _builtin_class_ids[i] = Smi::cast(st->read_object());
+  uword nof_builtin_classes = st->read_cardinal();
+  if (nof_builtin_classes != BUILTIN_CLASS_IDS_COUNT) st->fail("invalid builtin class count");
+  for (int i = 0; i < BUILTIN_CLASS_IDS_COUNT; i++) {
+    Object* id = st->read_object();
+    if (!is_smi(id)) {
+      st->fail("builtin class id is not a smi");
+      id = Smi::zero();
+    }
+    _builtin_class_ids[i] = Smi::cast(id);
+  }
   // INVOKE_BYTECODE_COUNT table.
-  int nof_invoke_bytecodes = st->read_cardinal();
-  ASSERT(nof_invoke_bytecodes == INVOKE_BYTECODE_COUNT);
+  uword nof_invoke_bytecodes = st->read_cardinal();
+  if (nof_invoke_bytecodes != INVOKE_BYTECODE_COUNT) st->fail("invalid invoke bytecode count");
   for (int i = 0; i < INVOKE_BYTECODE_COUNT; i++) {
     // The read value must be readjusted with -1.
     invoke_bytecode_offsets_[i] = st->read_cardinal() - 1;
   }
   // ENTRY_POINTS_COUNT table.
-  int nof_entry_points = st->read_cardinal();
-  ASSERT(nof_entry_points == ENTRY_POINTS_COUNT);
+  uword nof_entry_points = st->read_cardinal();
+  if (nof_entry_points != ENTRY_POINTS_COUNT) st->fail("invalid entry point count");
   for (int i = 0; i < ENTRY_POINTS_COUNT; i++) {
     entry_point_indexes_[i] = st->read_cardinal();
   }
@@ -88,7 +98,6 @@ void Program::read(SnapshotReader* st) {
   dispatch_table = st->read_external_list_int32();
   bytecodes = st->read_external_list_uint8();
   global_max_stack_height_ = st->read_cardinal();
-  ASSERT(st->eos());
   // The source-mapping was not serialized into the snapshot and is therefore
   // kept as `null`.
 }

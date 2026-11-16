@@ -221,12 +221,12 @@ class HeapAllocator : public SnapshotAllocator {
   Object** allocate_external_pointers(int count) override {
     return unvoid_cast<Object**>(allocate_external(count * sizeof(Object*)));
   }
+  // The counts are only declared by the (untrusted) snapshot header.
+  // The ImageAllocator checks every allocation against the reserved space.
   uint16* allocate_external_uint16s(int count) override {
-    ASSERT(count / 2 <= _external_int32_count);
     return unvoid_cast<uint16*>(allocate_external(count * 2));
   }
   int32* allocate_external_int32s(int count) override {
-    ASSERT(count <= _external_int32_count);
     return unvoid_cast<int32*>(allocate_external(count * 4));
   }
 
@@ -393,7 +393,16 @@ class ImageAllocator : public HeapAllocator {
 
   void set_program(Program* program) { program_ = program; }
 
-  void expand();
+  // Adds a new block to the program heap. Returns false if the image
+  // has no space left for it.
+  bool expand();
+
+  // Frees the image (used when the snapshot is rejected).
+  void release() {
+    delete image_;
+    image_ = null;
+    memory_ = null;
+  }
 
  protected:
   void* allocate_external(int byte_size) override;
@@ -406,6 +415,8 @@ class ImageAllocator : public HeapAllocator {
   void* memory_ = null;
   void* external_top_ = null;
   void* block_top_ = null;
+  void* external_end_ = null;  // End of the external (off-heap) section.
+  void* memory_end_ = null;    // End of the image.
 
   Program* program_ = null;
 
@@ -560,7 +571,7 @@ SnapshotReader::SnapshotReader(const uint8* buffer, int length, SnapshotAllocato
     , length_(length)
     , allocator_(allocator)
     , large_integer_id_(-1)
-    , snapshot_size_(0)
+    , snapshot_size_(length)
     , index_(0)
     , pos_(0)
     , table_(null) {}
@@ -576,15 +587,37 @@ bool SnapshotReader::initialize(int snapshot_size,
                                 int external_byte_count,
                                 int table_length,
                                 int large_integer_id) {
+  // The header is untrusted. Bound the declared sizes by the size of the
+  // snapshot, so that a malformed header cannot make us reserve huge
+  // amounts of memory. Every allocation is checked against the reserved
+  // space later, so these bounds only need to be generous.
+  if (snapshot_size < PROGRAM_SNAPSHOT_HEADER_BYTE_SIZE || snapshot_size > length_) {
+    fail("invalid snapshot size");
+    return false;
+  }
+  int64 bound = snapshot_size;  // 64 bits, so the multiplications below cannot overflow.
+  if (normal_block_count < 0 ||
+      normal_block_count > (32 * bound) / TOIT_PAGE_SIZE + 2 ||
+      external_pointer_count < 0 || external_pointer_count > bound ||
+      external_int32_count < 0 || external_int32_count > bound ||
+      external_byte_count < 0 || external_byte_count > 8 * bound ||
+      table_length < 0 || table_length > bound) {
+    fail("invalid header counts");
+    return false;
+  }
   snapshot_size_ = snapshot_size;
   bool succeeded = allocator_->initialize(normal_block_count,
                                           external_pointer_count,
                                           external_int32_count,
                                           external_byte_count);
-  if (!succeeded) return false;
+  if (!succeeded) {
+    fail("allocation failed");
+    return false;
+  }
   table_length_ = table_length;
   table_ = _new HeapObject*[table_length_];
   large_integer_id_ = large_integer_id;
+  if (table_ == null) fail("allocation failed");
   return table_ != null;
 }
 
@@ -608,8 +641,8 @@ uint8* SnapshotReader::allocate_external_bytes(int count) {
 bool ImageSnapshotReader::read_header() {
   uint32 magic = read_uint32();
   if (magic != PROGRAM_SNAPSHOT_MAGIC) {
-    printf("Magic marker in snapshot is %x!\n", magic);
-    exit(1);
+    fail("invalid magic marker");
+    return false;
   }
   int snapshot_size = read_uint32();
   int encoded_block_count = read_uint32();
@@ -643,9 +676,14 @@ uint64 SnapshotReader::read_uint64() {
 }
 
 void SnapshotReader::read_object_header(SnapshotTypeTag* tag, int* extra) {
-  int header = read_cardinal();
+  uword header = read_cardinal();
   *tag = static_cast<SnapshotTypeTag>(header & OBJECT_HEADER_TYPE_MASK);
-  *extra = header >> OBJECT_HEADER_TYPE_SIZE;
+  uword value = header >> OBJECT_HEADER_TYPE_SIZE;
+  if (value > static_cast<uword>(INT32_MAX)) {
+    fail("object header out of range");
+    value = 0;
+  }
+  *extra = static_cast<int>(value);
 }
 
 uword SnapshotReader::read_cardinal() {
@@ -653,9 +691,17 @@ uword SnapshotReader::read_cardinal() {
   uint8 byte = read_byte();
   int shift = 0;
   while (byte >= 128) {
+    if (shift >= WORD_BIT_SIZE) {
+      fail("cardinal too long");
+      return 0;
+    }
     result += (((uword) byte) - 128) << shift;
     shift += 7;
     byte = read_byte();
+  }
+  if (shift >= WORD_BIT_SIZE) {
+    fail("cardinal too long");
+    return 0;
   }
   result += ((uword) byte) << shift;
   return result;
@@ -666,18 +712,32 @@ uint64 SnapshotReader::read_cardinal64() {
   uint8 byte = read_byte();
   int shift = 0;
   while (byte >= 128) {
+    if (shift >= 64) {
+      fail("cardinal too long");
+      return 0;
+    }
     result += (((uint64) byte) - 128) << shift;
     shift += 7;
     byte = read_byte();
   }
+  if (shift >= 64) {
+    fail("cardinal too long");
+    return 0;
+  }
   result += ((uint64) byte) << shift;
   // The `+ 1` is for the negative case.
-  ASSERT(result <= static_cast<uint64>(INT64_MAX) + 1);
+  if (result > static_cast<uint64>(INT64_MAX) + 1) {
+    fail("integer out of range");
+    return 0;
+  }
   return result;
 }
 
 uint8 SnapshotReader::read_byte() {
-  ASSERT(pos_ < length_);
+  if (pos_ >= snapshot_size_) {
+    fail("truncated snapshot");
+    return 0;
+  }
   return buffer_[pos_++];
 }
 
@@ -706,12 +766,29 @@ int64 SnapshotReader::read_int64() {
 }
 
 Object* SnapshotReader::read_integer(bool is_negated) {
-  int64 value = static_cast<int64>(read_cardinal64());
-  if (is_negated) value = -value;
+  uint64 magnitude = read_cardinal64();
+  if (!is_negated && magnitude > static_cast<uint64>(INT64_MAX)) {
+    fail("integer out of range");
+    return Smi::zero();
+  }
+  // Negate in unsigned arithmetic, so that INT64_MIN does not overflow.
+  int64 value = static_cast<int64>(is_negated ? (0 - magnitude) : magnitude);
   if (Smi::is_valid(value)) return Smi::from(value);
+  if (class_bits_ == null || large_integer_id_ < 0 || large_integer_id_ >= class_bits_length_) {
+    fail("invalid large integer class id");
+    return Smi::zero();
+  }
   auto large_integer_class_bits = class_bits_[large_integer_id_];
   TypeTag class_tag = Program::class_tag_from_class_bits(large_integer_class_bits);
+  if (class_tag != LARGE_INTEGER_TAG) {
+    fail("invalid large integer class");
+    return Smi::zero();
+  }
   LargeInteger* result = static_cast<LargeInteger*>(allocate_object(TypeTag::LARGE_INTEGER_TAG, 0));
+  if (result == null) {
+    fail("program heap exhausted");
+    return Smi::zero();
+  }
   result->_set_header(Smi::from(large_integer_id_), class_tag);
   result->_set_value(value);
   return result;
@@ -740,26 +817,98 @@ static void allocation_size(TypeTag heap_tag, int optional_length,
 }
 
 Object* SnapshotReader::read_object() {
+  if (failed()) return Smi::zero();
   SnapshotTypeTag type;
   int extra;
   read_object_header(&type, &extra);
+  if (failed()) return Smi::zero();
   switch (type) {
     case SnapshotTypeTag::POSITIVE_SMI_TAG: return read_integer(false);
     case SnapshotTypeTag::NEGATIVE_SMI_TAG: return read_integer(true);
-    case SnapshotTypeTag::BACK_REFERENCE_TAG: return table_[extra];
+    case SnapshotTypeTag::BACK_REFERENCE_TAG:
+      if (extra >= index_) {
+        fail("back reference to an object that was not read yet");
+        return Smi::zero();
+      }
+      return table_[extra];
     case SnapshotTypeTag::OBJECT_TAG:
     case SnapshotTypeTag::IN_TABLE_TAG:
       // Handled here.
       break;
+    default:
+      fail("invalid object header");
+      return Smi::zero();
   }
   bool in_table = type == SnapshotTypeTag::IN_TABLE_TAG;
   int optional_length = extra;
-  TypeTag heap_tag = (TypeTag) (read_byte());
+  int raw_tag = read_byte();
+  if (raw_tag < ARRAY_TAG || raw_tag > BYTE_ARRAY_TAG) {
+    // Large integers are encoded as integers, never as heap objects.
+    fail("invalid object tag");
+    return Smi::zero();
+  }
+  TypeTag heap_tag = static_cast<TypeTag>(raw_tag);
+  // Every element (or byte) needs at least one byte in the snapshot. This
+  // also keeps the size computations below far from overflowing.
+  if (optional_length > remaining()) {
+    fail("object length exceeds the snapshot");
+    return Smi::zero();
+  }
+  if (class_bits_ == null) {
+    fail("object before the class table");
+    return Smi::zero();
+  }
+  if (depth_ >= MAX_OBJECT_DEPTH) {
+    fail("objects nested too deeply");
+    return Smi::zero();
+  }
   HeapObject* result = allocate_object(heap_tag, optional_length);
-  if (in_table) table_[index_++] = result;
-  result->_set_header(Smi::cast(read_object()));
-  ASSERT((0 <= Smi::value(result->class_id()) && Smi::value(result->class_id()) < class_bits_length_));
-  ASSERT(ARRAY_TAG <= result->class_tag() && result->class_tag() <= LARGE_INTEGER_TAG);
+  if (result == null) {
+    fail("program heap exhausted");
+    return Smi::zero();
+  }
+  if (in_table) {
+    if (index_ >= table_length_) {
+      fail("too many table objects");
+      return Smi::zero();
+    }
+    table_[index_++] = result;
+  }
+  depth_++;
+  Object* header = read_object();
+  depth_--;
+  if (failed()) return Smi::zero();
+  if (!is_smi(header)) {
+    fail("non-smi object header");
+    return Smi::zero();
+  }
+  result->_set_header(Smi::cast(header));
+  // The class id, the tag and the size must agree with the class table,
+  // because the interpreter sizes and dispatches objects by their class.
+  word class_id = Smi::value(result->class_id());
+  if (class_id < 0 || class_id >= class_bits_length_) {
+    fail("class id out of range");
+    return Smi::zero();
+  }
+  if (result->class_tag() != heap_tag ||
+      Program::class_tag_from_class_bits(class_bits_[class_id]) != heap_tag) {
+    fail("object tag does not match its class");
+    return Smi::zero();
+  }
+  word class_size = Program::instance_size_from_class_bits(class_bits_[class_id]);
+  if (heap_tag == INSTANCE_TAG || heap_tag == ODDBALL_TAG) {
+    word allocated = heap_tag == INSTANCE_TAG
+        ? Instance::allocation_size(optional_length)
+        : HeapObject::allocation_size();
+    if (allocated != class_size) {
+      fail("instance size does not match its class");
+      return Smi::zero();
+    }
+  } else if (class_size != 0) {
+    fail("variable-sized object of a fixed-size class");
+    return Smi::zero();
+  }
+  depth_++;
   switch (heap_tag) {
     case TypeTag::ARRAY_TAG:
       static_cast<Array*>(result)->read_content(this, optional_length);
@@ -774,22 +923,30 @@ Object* SnapshotReader::read_object() {
       // Oddballs have no body parts.
       break;
     case TypeTag::INSTANCE_TAG:
-      static_cast<Instance*>(result)->read_content(this);
+      static_cast<Instance*>(result)->read_content(this, optional_length);
       break;
     case TypeTag::DOUBLE_TAG:
       static_cast<Double*>(result)->read_content(this);
       break;
-    case TypeTag::LARGE_INTEGER_TAG:
-      FATAL("Should not read large integer from snapshot");
     default:
-      FATAL("Unexpected class tag");
+      UNREACHABLE();  // The tag was checked above.
   }
+  depth_--;
+  if (failed()) return Smi::zero();
   return result;
 }
 
 List<int32> SnapshotReader::read_external_list_int32() {
   int length = read_int32();
+  if (length < 0 || length > remaining() / 4) {
+    fail("invalid list length");
+    return List<int32>();
+  }
   int32* data = allocate_external_int32s(length);
+  if (data == null) {
+    fail("external memory exhausted");
+    return List<int32>();
+  }
   ASSERT(Utils::is_aligned(reinterpret_cast<uword>(data), WORD_SIZE));
   List<int32> result(data, length);
   for (int i = 0; i < length; i++) {
@@ -800,7 +957,15 @@ List<int32> SnapshotReader::read_external_list_int32() {
 
 List<uint16> SnapshotReader::read_external_list_uint16() {
   int length = read_int32();
+  if (length < 0 || length > remaining() / 2) {
+    fail("invalid list length");
+    return List<uint16>();
+  }
   uint16* data = allocate_external_uint16s(length);
+  if (data == null) {
+    fail("external memory exhausted");
+    return List<uint16>();
+  }
   ASSERT(Utils::is_aligned(reinterpret_cast<uword>(data), WORD_SIZE));
   List<uint16> result(data, length);
   for (int i = 0; i < length; i++) {
@@ -811,7 +976,15 @@ List<uint16> SnapshotReader::read_external_list_uint16() {
 
 List<uint8> SnapshotReader::read_external_list_uint8() {
   int length = read_int32();
+  if (length < 0 || length > remaining()) {
+    fail("invalid list length");
+    return List<uint8>();
+  }
   uint8* data = allocate_external_bytes(length);
+  if (data == null) {
+    fail("external memory exhausted");
+    return List<uint8>();
+  }
   ASSERT(Utils::is_aligned(reinterpret_cast<uword>(data), WORD_SIZE));
   memcpy(data, &buffer_[pos_], length);
   pos_ += length;
@@ -819,8 +992,20 @@ List<uint8> SnapshotReader::read_external_list_uint8() {
 }
 
 Object** SnapshotReader::read_external_object_table(int* length) {
-  int n = read_cardinal();
+  uword count = read_cardinal();
+  // Every entry needs at least one byte.
+  if (count > static_cast<uword>(remaining())) {
+    fail("invalid table length");
+    *length = 0;
+    return null;
+  }
+  int n = static_cast<int>(count);
   Object** table = allocate_external_pointers(n);
+  if (table == null) {
+    fail("external memory exhausted");
+    *length = 0;
+    return null;
+  }
   ASSERT(Utils::is_aligned(reinterpret_cast<uword>(table), WORD_SIZE));
   for (int i = 0; i < n; i++) {
     table[i] = read_object();
@@ -878,7 +1063,11 @@ bool ImageAllocator::initialize(int normal_block_count,
   // used more uniformly with the rest of the memory. (For example GC).
   image_ = _new ProtectableAlignedMemory(memory_byte_size, TOIT_PAGE_SIZE);
   memory_ = image_->address();
-  if (memory_ == null) return false;
+  if (memory_ == null) {
+    release();
+    return false;
+  }
+  memory_end_ = Utils::address_at(memory_, memory_byte_size);
 
 #ifndef TOIT_DEBUG
   // Keep the uninitialized 0xcd markers in debug mode, but otherwise
@@ -887,6 +1076,7 @@ bool ImageAllocator::initialize(int normal_block_count,
 #endif
   external_top_ = memory_;
   void* const external_end = Utils::address_at(external_top_, external_size());
+  external_end_ = external_end;
 
   external_top_ = Utils::address_at(external_top_, Utils::round_up(sizeof(Program), WORD_SIZE));
 
@@ -901,38 +1091,55 @@ ProgramImage ImageSnapshotReader::read_image(const uint8* id) {
   // allocator_ is an ImageAllocator
   //   which is a subclass of HeapAllocator
   //     which is a subset of SnapshotAllocator
-  bool succeeded = read_header();
-  ASSERT(succeeded);  // We expect to never run out of memory on the desktop.
+  // The snapshot is untrusted: on any format violation the image is
+  // released and an invalid image is returned.
+  if (!read_header()) {
+    image_allocator_.release();
+    return ProgramImage::invalid();
+  }
   program_  = new (image_allocator_.memory()) Program(id, image_allocator_.image()->byte_size());
   image_allocator_.set_program(program_);
 
-  image_allocator_.expand();
-  program_->read(this);
+  if (!image_allocator_.expand()) fail("program heap exhausted");
+  if (!failed()) program_->read(this);
+  if (!failed() && !eos()) fail("trailing data");
+  if (failed()) {
+    image_allocator_.release();
+    return ProgramImage::invalid();
+  }
   image_allocator_.image()->mark_read_only();
 
   return ProgramImage(image_allocator_.image());
 }
 
-void ImageAllocator::expand() {
+bool ImageAllocator::expand() {
+  if (reinterpret_cast<uword>(memory_end_) - reinterpret_cast<uword>(block_top_) < TOIT_PAGE_SIZE) {
+    return false;
+  }
   ProgramBlock* block = new (block_top_) ProgramBlock();
   block_top_ = Utils::address_at(block_top_, TOIT_PAGE_SIZE);
   program_->heap_.blocks_.append(block);
+  return true;
 }
 
 HeapObject* ImageAllocator::allocate_object(TypeTag tag, int length) {
   int word_count, extra_bytes;
   allocation_size(tag, length, &word_count, &extra_bytes);
-  int byte_size = _align(word_count * sizeof(word) + extra_bytes);
+  int64 byte_size = _align(word_count * sizeof(word) + extra_bytes);
+  if (byte_size <= 0 || byte_size >= ProgramHeap::max_allocation_size()) return null;
   HeapObject* result = program_->heap_.blocks_.last()->allocate_raw(byte_size);
   if (result != null) return result;
-  ASSERT(byte_size < ProgramHeap::max_allocation_size());
-  expand();
+  if (!expand()) return null;
   return program_->heap_.blocks_.last()->allocate_raw(byte_size);
 }
 
 void* ImageAllocator::allocate_external(int byte_size) {
+  if (byte_size < 0) return null;
+  uword rounded = Utils::round_up(static_cast<uword>(byte_size), WORD_SIZE);
+  uword available = reinterpret_cast<uword>(external_end_) - reinterpret_cast<uword>(external_top_);
+  if (rounded > available) return null;
   void* result = external_top_;
-  external_top_ = Utils::address_at(external_top_, Utils::round_up(byte_size, WORD_SIZE));
+  external_top_ = Utils::address_at(external_top_, rounded);
   return result;
 }
 

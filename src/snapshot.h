@@ -165,6 +165,15 @@ class SnapshotReader {
 
   bool eos() { return pos_ == snapshot_size_; }
 
+  // The snapshot is untrusted input. Every violation of the format marks
+  // the reader as failed; reads after a failure return neutral values and
+  // the image is discarded at the end.
+  void fail(const char* reason) {
+    if (failure_ == null) failure_ = reason;
+  }
+  bool failed() const { return failure_ != null; }
+  const char* failure() const { return failure_; }
+
  protected:
   Object* read_integer(bool is_negated);
   uint16 read_uint16();
@@ -190,9 +199,20 @@ class SnapshotReader {
   int index_;
   int pos_;
   HeapObject** table_;
-  int table_length_;
-  uint16* class_bits_;
-  int class_bits_length_;
+  int table_length_ = 0;
+  uint16* class_bits_ = null;
+  int class_bits_length_ = 0;
+  int depth_ = 0;
+  const char* failure_ = null;
+
+  // Number of bytes left in the snapshot.
+  int remaining() const { return snapshot_size_ - pos_; }
+
+  // Program heaps are shallow (literals and initial global values); a
+  // deeper nesting is malformed and would exhaust the native stack.
+  static const int MAX_OBJECT_DEPTH = 1000;
+
+  friend class ImageSnapshotReader;
 };
 
 class SnapshotWriter {
