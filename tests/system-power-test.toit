@@ -8,6 +8,11 @@ import system.power
 main:
   expect-equals 32 nrf5340.P1-00
   expect-equals 36 nrf5340.P1-04
+  [Duration.ZERO, Duration --us=-1, Duration --ms=-1].do: |duration|
+    expect-throw "INVALID_ARGUMENT": power.deep-sleep duration
+  expect-throw "INVALID_ARGUMENT": power.configure-wakeup-pin -1
+  expect-throw "INVALID_ARGUMENT": power.configure-wakeup-pin 0 --pull-up --pull-down
+  expect-throw "INVALID_ARGUMENT": power.disable-wakeup-pin -1
   if system.platform == system.PLATFORM-FREERTOS or
       system.platform == system.PLATFORM-ZEPHYR: return
   expect (not power.supports-timed-deep-sleep)
@@ -15,6 +20,7 @@ main:
   expect-throw "UNIMPLEMENTED": power.reset-reason
   expect-throw "UNIMPLEMENTED": power.deep-sleep
   expect-throw "UNIMPLEMENTED": power.deep-sleep (Duration --s=1)
-  expect-throw "UNIMPLEMENTED": power.deep-sleep Duration.ZERO
+  // Positive sub-millisecond durations reach the platform-specific checks.
+  expect-throw "UNIMPLEMENTED": power.deep-sleep (Duration --us=1)
   expect-throw "UNIMPLEMENTED": power.configure-wakeup-pin 0
   expect-throw "UNIMPLEMENTED": power.disable-wakeup-pin 0

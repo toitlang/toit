@@ -64,7 +64,8 @@ reset -> none:
 /**
 Enters deep sleep and wakes into a fresh boot.
 
-If $duration is given, enables a wake timer. Otherwise sleeps until a
+If $duration is given, it must be positive and enables a wake timer.
+  Otherwise sleeps until a
   configured wake source fires or the device is reset. Configure GPIO wake
   sources with $configure-wakeup-pin. A configured pin can end a timed sleep
   early. Other wake sources are available through the platform libraries.
@@ -72,7 +73,7 @@ Container termination has the same cleanup semantics as $reset.
 
 ESP32 and nRF5340 wake on the configured pin level; EC618 wakes on an edge.
   Valid wake pins, pulls, and duration limits depend on the platform.
-  ESP32 rounds durations below 50 ms up to 50 ms; EC618 rounds durations
+  ESP32 rounds positive durations below 50 ms up to 50 ms; EC618 rounds durations
   below one second up to one second. nRF5340 accepts 1 ms through 24 hours.
   Use $reset when no sleep is intended.
 
@@ -104,6 +105,7 @@ Nordic's reference configurations use approximately 1.5-2.1 microamps with
   See https://docs.nordicsemi.com/r/bundle/ps_nrf5340/page/chapters/current_consumption/doc/current_consumption.html.
 */
 deep-sleep duration/Duration?=null -> none:
+  if duration and duration.in-us <= 0: throw "INVALID_ARGUMENT"
   // int.MIN cannot be a duration in milliseconds: Duration stores microseconds.
   request := prepare-sleep_ (duration ? duration.in-ms : int.MIN)
   __deep-sleep__ request
@@ -146,6 +148,7 @@ nRF5340 accepts available, non-reserved GPIOs.
 */
 configure-wakeup-pin pin/int
     --wake-high/bool=true --pull-up/bool=false --pull-down/bool=false -> none:
+  if pin < 0 or (pull-up and pull-down): throw "INVALID_ARGUMENT"
   flags := 8 | (wake-high ? 1 : 0) | (pull-up ? 2 : 0) | (pull-down ? 4 : 0)
   configure-wakeup-pin_ pin flags
 
@@ -156,6 +159,7 @@ Does not change the pin's current GPIO configuration. The supported pins are
   the same as for $configure-wakeup-pin.
 */
 disable-wakeup-pin pin/int -> none:
+  if pin < 0: throw "INVALID_ARGUMENT"
   configure-wakeup-pin_ pin 0
 
 configure-wakeup-pin_ pin/int flags/int -> none:

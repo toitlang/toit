@@ -105,8 +105,14 @@ WAKEUP-UART ::= 8
 /** The shortest duration supported by $deep-sleep. */
 DEEP-SLEEP-MIN-DURATION ::= Duration --ms=50
 
-/** Deprecated. Use $power.deep-sleep. */
+/**
+Deprecated. Use $power.deep-sleep.
+
+Preserves the legacy behavior of rounding nonpositive durations up to
+  $DEEP-SLEEP-MIN-DURATION. The shared API requires a positive duration.
+*/
 deep-sleep duration/Duration?=null -> none:
+  if duration and duration.in-us <= 0: duration = DEEP-SLEEP-MIN-DURATION
   power.deep-sleep duration
 
 /**
