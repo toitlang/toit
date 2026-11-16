@@ -80,17 +80,45 @@ ESP32 and nRF5340 wake on the configured pin level; EC618 wakes on an edge.
   Valid wake pins, pulls, and duration limits depend on the platform.
   ESP32 rounds durations below 50 ms up to 50 ms; EC618 rounds durations
   below one second up to one second. nRF5340 accepts 1 ms through 24 hours.
-On nRF5340, timed sleep uses System ON and untimed sleep uses System OFF.
-  See zephyr.deep-sleep for power-consumption and watchdog considerations.
+  Use $reset when no sleep is intended.
+
+# ESP32
+Supports durations up to 24 hours. Longer sleeps can be chained by the
+  application. Timer wake reports $RESET-LOW-POWER-WAKE and
+  esp32.WAKEUP-TIMER.
+
+# EC618
+Durations longer than one hardware-timer interval are split across hibernate
+  cycles. Intermediate timer wakes re-enter hibernate without starting the
+  Toit VM, and configured wakeup pads remain armed. A non-timer wake cancels
+  the remaining duration and starts the device normally.
+
+# nRF5340
+Timed sleep uses System ON and untimed sleep uses System OFF. The duration
+  starts after VM teardown. Both timer and pin wake from timed sleep report
+  $RESET-SOFTWARE; GPIO wake from untimed sleep normally reports
+  $RESET-LOW-POWER-WAKE.
+Timed sleep suspends the console, selects a 64 MHz application CPU clock
+  and low-power GPIO-event latency, and keeps the Zephyr timebase and RAM
+  powered. An armed watchdog is neither stopped nor fed and can reset earlier.
+Untimed sleep does not retain RAM. An attached debugger can emulate System
+  OFF, so functional wake tests do not establish power consumption.
+Nordic's reference configurations use approximately 1.5-2.1 microamps with
+  an RTC, compared with approximately 1 microamp in System OFF: roughly twice
+  the current. This is not a measured upper bound for this firmware. Board
+  configuration, powered RAM, and peripherals can increase the difference.
+  See https://docs.nordicsemi.com/r/bundle/ps_nrf5340/page/chapters/current_consumption/doc/current_consumption.html.
 */
 deep-sleep duration/Duration?=null -> none:
-  if system.platform == system.PLATFORM-ZEPHYR:
-    zephyr.deep-sleep duration
-  if (system.architecture.starts-with "esp32"):
-    esp32.deep-sleep duration
-  if system.architecture == system.ARCHITECTURE-EC618:
-    ec618.deep-sleep duration
-  throw "UNIMPLEMENTED"
+  if not embedded_: throw "UNIMPLEMENTED"
+  // int.MIN cannot be a duration in milliseconds: Duration stores microseconds.
+  request := duration ? duration.in-ms : int.MIN
+  if duration and system.platform == system.PLATFORM-ZEPHYR:
+    request = validate-zephyr-sleep_ request
+  __deep-sleep__ request
+
+validate-zephyr-sleep_ duration-ms/int -> int:
+  #primitive.zephyr.validate-sleep
 
 /**
 Returns whether $deep-sleep accepts a duration on this platform.

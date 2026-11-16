@@ -2,6 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import system.power
 import system.trace show send-trace-message
 import system.storage  // For toitdoc.
 
@@ -104,27 +105,9 @@ WAKEUP-UART ::= 8
 /** The shortest duration supported by $deep-sleep. */
 DEEP-SLEEP-MIN-DURATION ::= Duration --ms=50
 
-/**
-Enters deep sleep for the specified duration (up to 24h) and does not return.
-  Exiting deep sleep causes the ESP32 to start over from main.
-
-Omit $duration to sleep without a timer. Previously configured wake sources
-  remain enabled; without one, waking requires another hardware source such
-  as reset. Configured wake pins can also end a timed sleep early.
-
-Durations shorter than $DEEP-SLEEP-MIN-DURATION are increased to that
-  duration. Use $reset instead when no sleep is intended.
-
-If you need to deep sleep for longer than 24h, you can chain multiple
-  deep sleeps.
-
-If the ESP32 wakes up due to the $duration expiring, then
-  $reset-reason is set to $RESET-DEEPSLEEP and the
-  $wakeup-cause is set to $WAKEUP-TIMER.
-*/
+/** Deprecated. Use $power.deep-sleep. */
 deep-sleep duration/Duration?=null -> none:
-  // int.MIN cannot be a duration in milliseconds: Duration stores microseconds.
-  __deep-sleep__ (duration ? duration.in-ms : int.MIN)
+  power.deep-sleep duration
 
 /**
 Resets the ESP32 and does not return.

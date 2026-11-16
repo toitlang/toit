@@ -13,6 +13,7 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+import system.power
 import gpio show Pin
 import gpio.adc
 import i2c
@@ -42,25 +43,9 @@ Most user code should use the helpers on $Ec618:
 /** The shortest duration supported by $deep-sleep. */
 DEEP-SLEEP-MIN-DURATION ::= Duration --s=1
 
-/**
-Enters deep sleep for the specified $duration and does not return.
-  Exiting deep sleep causes the device to start over from main.
-
-Omit $duration to sleep without a timer. Previously configured wake sources
-  remain enabled; without one, waking requires another hardware source such
-  as reset. Configured wake pins can also end a timed sleep early.
-
-Durations shorter than $DEEP-SLEEP-MIN-DURATION are increased to that
-  duration. Use $reset instead when no sleep is intended.
-
-Durations longer than one hardware-timer interval are split across hibernate
-  cycles. Intermediate timer wakes re-enter hibernate without starting the
-  Toit VM, and configured wakeup pads remain armed. A non-timer wake cancels
-  the remaining duration and starts the device normally.
-*/
+/** Deprecated. Use $power.deep-sleep. */
 deep-sleep duration/Duration?=null -> none:
-  // int.MIN cannot be a duration in milliseconds: Duration stores microseconds.
-  __deep-sleep__ (duration ? duration.in-ms : int.MIN)
+  power.deep-sleep duration
 
 /**
 Resets the EC618 and does not return.
