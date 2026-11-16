@@ -106,10 +106,14 @@ run invocation/cli.Invocation -> none:
     if ap == null:
       fail "no AP zone in toit.binpkg"
     else:
-      table := find-anchor-table ap
-      if table == null:
-        fail "no CRC-valid anchor record in the AP image — a device flashed with this cannot boot"
+      record/AnchorRecord? := null
+      record-error := catch: record = find-anchor-record ap
+      if record-error:
+        fail "invalid AP anchor: $record-error"
+      else if record == null:
+        fail "no valid anchor record in the AP image — a device flashed with this cannot boot"
       else:
+        table := record.parts.entries
         slots := table.filter: it.type == "slot"
         if slots.size == 2: ok "anchor record: $(table.size) entries, 2 slots"
         else: fail "anchor record has $(slots.size) slot entries (need 2)"
@@ -118,10 +122,10 @@ run invocation/cli.Invocation -> none:
           parts.entries.size.repeat: | i/int |
             a/Partition := table[i]
             b/Partition := parts.entries[i]
-            if a.name != b.name or a.offset != b.offset or a.size != b.size: matches = false
+            if a.name != b.name or a.type != b.type or a.offset != b.offset or a.size != b.size: matches = false
         if matches: ok "record table matches the descriptor"
         else: warn "record table differs from the descriptor (retargeted image? fine if intentional)"
-        console := find-anchor-console ap
+        console := record.console
         console-name := console == 0xff ? "off" : "uart$console"
         ok "console byte: $console-name"
 

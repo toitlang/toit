@@ -47,7 +47,13 @@ class SlotRelocTable:
 
   constructor --.link-base --.slot-size --.body-size --.data-size=0 --.abs32-offsets --.thmbl-offsets --.straddle-entries=[] --.base-version=0 --.base-fp=(ByteArray 16):
 
-  /** Parses an "SRL3" $blob (as written by tools/ec618/gen-slot-reloc.toit). */
+  /**
+  Parses an "SRL3" $blob (as written by tools/ec618/gen-slot-reloc.toit).
+
+  Rejects invalid geometry, overflowing or truncated varints, misaligned,
+    overlapping or out-of-body sites, and unexpected trailing bytes.
+    Allows zero padding to the next word boundary, as used in slot trailers.
+  */
   constructor.parse blob/ByteArray:
     if blob.size < 52: throw "SRL3 table too small"
     4.repeat: if blob[it] != MAGIC[it]: throw "bad SRL3 magic"
@@ -60,29 +66,43 @@ class SlotRelocTable:
     straddle-count := LITTLE-ENDIAN.uint32 blob 28
     base-version = LITTLE-ENDIAN.uint32 blob 32
     base-fp = blob.copy 36 52
+    front-limit := slot-size - 4 - blob.size
+    if front-limit < 0 or body-size > front-limit or data-size > front-limit - body-size:
+      throw "SRL3 body/data overlaps the relocation trailer"
     pos := 52
     abs32 := []
     previous := 0
-    abs32-count.repeat:
+    abs32-count.repeat: |index/int|
       result := read-varint blob pos
-      previous += result[0]
+      previous = checked-offset_ previous result[0] body-size 4 (index == 0)
       abs32.add previous
       pos = result[1]
     thmbl := []
     previous = 0
-    thmbl-count.repeat:
+    thmbl-count.repeat: |index/int|
       result := read-varint blob pos
-      previous += result[0]
+      previous = checked-offset_ previous result[0] body-size 2 (index == 0)
       thmbl.add previous
       pos = result[1]
     straddle := []
     previous = 0
-    straddle-count.repeat:
+    straddle-count.repeat: |index/int|
       result := read-varint blob pos
-      previous += result[0]
+      previous = checked-offset_ previous result[0] body-size 2 (index == 0)
       pos = result[1]
+      if blob.size - pos < 4: throw "truncated SRL3 straddle bytes"
       straddle.add [previous, blob.copy pos (pos + 4)]
       pos += 4
+    padding := blob.size - pos
+    if (padding != 0 and padding != (4 - pos % 4) % 4) or
+        not (blob[pos..].every: it == 0):
+      throw "invalid SRL3 trailing padding"
+    sites := abs32 + thmbl + (straddle.map: it[0])
+    sites.sort --in-place
+    end := 0
+    sites.do: |offset/int|
+      if offset < end: throw "overlapping SRL3 relocation sites"
+      end = offset + 4
     abs32-offsets = abs32
     thmbl-offsets = thmbl
     straddle-entries = straddle
@@ -188,10 +208,18 @@ read-varint bytes/ByteArray pos/int -> List:
   value := 0
   shift := 0
   while true:
+    if pos >= bytes.size: throw "truncated SRL3 varint"
     b := bytes[pos++]
+    if shift == 28 and b > 0x0f: throw "SRL3 varint exceeds uint32"
     value |= (b & 0x7f) << shift
     if (b & 0x80) == 0: return [value, pos]
     shift += 7
+
+checked-offset_ previous/int delta/int body-size/int alignment/int first/bool -> int:
+  offset := previous + delta
+  if offset > body-size - 4 or offset % alignment != 0 or (not first and delta < 4):
+    throw "invalid SRL3 relocation site"
+  return offset
 
 /** Writes the ascending $offsets to $buffer as delta-encoded unsigned LEB128 varints. */
 write-varint-deltas buffer/Buffer offsets/List -> none:
@@ -202,6 +230,7 @@ write-varint-deltas buffer/Buffer offsets/List -> none:
 
 /** Writes $value to $buffer as an unsigned LEB128 varint. */
 write-varint buffer/Buffer value/int -> none:
+  if not 0 <= value <= 0xffff_ffff: throw "SRL3 varint exceeds uint32"
   while true:
     b := value & 0x7f
     value >>= 7
