@@ -83,6 +83,7 @@ namespace toit {
   M(unix_socket, MODULE_UNIX_SOCKET)         \
   M(one_wire, MODULE_ONE_WIRE)               \
   M(watchdog, MODULE_WATCHDOG)               \
+  M(usb_host, MODULE_USB_HOST)               \
 
 #define MODULE_WATCHDOG(PRIMITIVE)           \
   PRIMITIVE(start, 1)                        \
@@ -942,6 +943,26 @@ namespace toit {
   PRIMITIVE(add_peer, 6)                     \
   PRIMITIVE(remove_peer, 2)                  \
 
+#define MODULE_USB_HOST(PRIMITIVE)           \
+  PRIMITIVE(init, 0)                         \
+  PRIMITIVE(create, 1)                       \
+  PRIMITIVE(stop, 1)                         \
+  PRIMITIVE(close, 1)                        \
+  PRIMITIVE(device_open, 1)                  \
+  PRIMITIVE(device_close, 1)                 \
+  PRIMITIVE(claim_interface, 3)              \
+  PRIMITIVE(release_interface, 2)            \
+  PRIMITIVE(control_submit, 8)               \
+  PRIMITIVE(control_finish, 1)               \
+  PRIMITIVE(out_submit, 3)                   \
+  PRIMITIVE(out_finish, 1)                   \
+  PRIMITIVE(in_submit, 4)                    \
+  PRIMITIVE(in_finish, 1)                    \
+  PRIMITIVE(cancel, 2)                       \
+  PRIMITIVE(in_stream_start, 5)              \
+  PRIMITIVE(in_stream_read, 2)               \
+  PRIMITIVE(in_stream_stop, 1)               \
+
 #define MODULE_BIGNUM(PRIMITIVE)             \
   PRIMITIVE(binary_operator, 5)              \
   PRIMITIVE(exp_mod, 6)                      \
@@ -1252,6 +1273,7 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_RmtResourceGroup(N, name)    MAKE_UNPACKING_MACRO(RmtResourceGroup, N, name)
 #define _A_T_PcntUnitResourceGroup(N, name) MAKE_UNPACKING_MACRO(PcntUnitResourceGroup, N, name)
 #define _A_T_EspNowResourceGroup(N, name) MAKE_UNPACKING_MACRO(EspNowResourceGroup, N, name)
+#define _A_T_UsbHostResourceGroup(N, name) MAKE_UNPACKING_MACRO(UsbHostResourceGroup, N, name)
 #define _A_T_RsaGenerationResourceGroup(N, name) MAKE_UNPACKING_MACRO(RsaGenerationResourceGroup, N, name)
 #define _A_T_CellularResourceGroup(N, name) MAKE_UNPACKING_MACRO(CellularResourceGroup, N, name)
 
@@ -1314,6 +1336,7 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_TouchResource(N, name)       MAKE_UNPACKING_MACRO(TouchResource, N, name)
 #define _A_T_PcntUnitResource(N, name)    MAKE_UNPACKING_MACRO(PcntUnitResource, N, name)
 #define _A_T_EspNowResource(N, name)      MAKE_UNPACKING_MACRO(EspNowResource, N, name)
+#define _A_T_UsbHostResource(N, name)     MAKE_UNPACKING_MACRO(UsbHostResource, N, name)
 #define _A_T_RmtResource(N, name)         MAKE_UNPACKING_MACRO(RmtResource, N, name)
 #define _A_T_RmtSyncManagerResource(N, name)  MAKE_UNPACKING_MACRO(RmtSyncManagerResource, N, name)
 #define _A_T_RmtSyncManagerResource(N, name)  MAKE_UNPACKING_MACRO(RmtSyncManagerResource, N, name)
