@@ -22,6 +22,8 @@
 #include "os.h"
 #include "primitive.h"
 #include "process.h"
+#include "power.h"
+#include "reset_reason.h"
 #include "watchdog.h"
 #include "scheduler.h"
 #include "sha1.h"
@@ -350,12 +352,111 @@ PRIMITIVE(ota_rollback) {
   FAIL(ERROR);
 }
 
+Object* platform_reset_reason(Process* process) {
+  uint32_t reason;
+  switch (esp_reset_reason()) {
+    case ESP_RST_POWERON: reason = ResetReason::POWER_ON; break;
+    case ESP_RST_EXT: reason = ResetReason::PIN; break;
+    case ESP_RST_SW: reason = ResetReason::SOFTWARE; break;
+    case ESP_RST_PANIC: reason = ResetReason::HARDWARE; break;
+    case ESP_RST_INT_WDT: reason = ResetReason::WATCHDOG; break;
+    case ESP_RST_TASK_WDT: reason = ResetReason::WATCHDOG; break;
+    case ESP_RST_WDT: reason = ResetReason::WATCHDOG; break;
+    case ESP_RST_DEEPSLEEP: reason = ResetReason::LOW_POWER_WAKE; break;
+    case ESP_RST_BROWNOUT: reason = ResetReason::BROWNOUT; break;
+    case ESP_RST_SDIO: reason = ResetReason::HARDWARE; break;
+    case ESP_RST_USB: reason = ResetReason::HARDWARE; break;
+    case ESP_RST_JTAG: reason = ResetReason::DEBUG; break;
+    case ESP_RST_EFUSE: reason = ResetReason::HARDWARE; break;
+    case ESP_RST_PWR_GLITCH: reason = ResetReason::BROWNOUT; break;
+    case ESP_RST_CPU_LOCKUP: reason = ResetReason::CPU_LOCKUP; break;
+    default: reason = ResetReason::UNKNOWN; break;
+  }
+  return Smi::from(reason);
+}
+
 PRIMITIVE(reset_reason) {
   return Smi::from(esp_reset_reason());
 }
 
 PRIMITIVE(total_deep_sleep_time) {
   return Primitive::integer(RtcMemory::accumulated_deep_sleep_time_us(), process);
+}
+
+#if SOC_PM_SUPPORT_EXT1_WAKEUP
+static uint8_t wake_pin_configs[SOC_GPIO_PIN_COUNT];
+
+static esp_sleep_ext1_wakeup_mode_t wake_low_mode() {
+#if CONFIG_IDF_TARGET_ESP32
+  return ESP_EXT1_WAKEUP_ALL_LOW;
+#else
+  return ESP_EXT1_WAKEUP_ANY_LOW;
+#endif
+}
+#endif
+
+Object* platform_configure_wakeup_pin(Process* process, int pin, int flags) {
+#if SOC_PM_SUPPORT_EXT1_WAKEUP
+  if (pin < 0 || pin >= SOC_GPIO_PIN_COUNT ||
+      !esp_sleep_is_valid_wakeup_gpio(static_cast<gpio_num_t>(pin))) {
+    FAIL(INVALID_ARGUMENT);
+  }
+#if CONFIG_IDF_TARGET_ESP32
+  // Input-only GPIO34..39 do not have internal pulls.
+  if (pin >= 34 && (flags & (WAKE_PULL_UP | WAKE_PULL_DOWN))) FAIL(UNSUPPORTED);
+#endif
+  Locker locker(OS::global_mutex());
+  if (flags & WAKE_ENABLED) {
+    for (int other = 0; other < SOC_GPIO_PIN_COUNT; other++) {
+      if (other == pin || !(wake_pin_configs[other] & WAKE_ENABLED)) continue;
+#if !SOC_PM_SUPPORT_EXT1_WAKEUP_MODE_PER_PIN
+      if ((wake_pin_configs[other] ^ flags) & WAKE_HIGH) FAIL(UNSUPPORTED);
+#endif
+#if CONFIG_IDF_TARGET_ESP32
+      // ALL_LOW on multiple pins cannot implement the shared "any pin" contract.
+      if (!(flags & WAKE_HIGH)) FAIL(UNSUPPORTED);
+#endif
+    }
+  }
+  esp_err_t err;
+  uint64_t mask = UINT64_C(1) << pin;
+  if (flags == 0) {
+    err = esp_sleep_disable_ext1_wakeup_io(mask);
+  } else {
+    err = esp_sleep_enable_ext1_wakeup_io(mask,
+        flags & WAKE_HIGH ? ESP_EXT1_WAKEUP_ANY_HIGH : wake_low_mode());
+  }
+  if (err == ESP_ERR_NOT_ALLOWED) FAIL(UNSUPPORTED);
+  if (err == ESP_ERR_INVALID_ARG) FAIL(INVALID_ARGUMENT);
+  if (err != ESP_OK) FAIL(ERROR);
+  wake_pin_configs[pin] = flags;
+  return process->null_object();
+#else
+  FAIL(UNSUPPORTED);
+#endif
+}
+
+void power_prepare_esp32_sleep() {
+#if SOC_PM_SUPPORT_EXT1_WAKEUP
+  // Configure pulls only after VM GPIO cleanup and the RTC pull workaround.
+  // IDF arms the input and holds these pull settings during sleep.
+  for (int pin = 0; pin < SOC_GPIO_PIN_COUNT; pin++) {
+    int flags = wake_pin_configs[pin];
+    if (!(flags & WAKE_ENABLED)) continue;
+    gpio_num_t gpio = static_cast<gpio_num_t>(pin);
+#if SOC_RTCIO_INPUT_OUTPUT_SUPPORTED
+    FATAL_IF_NOT_ESP_OK(rtc_gpio_pullup_dis(gpio));
+    FATAL_IF_NOT_ESP_OK(rtc_gpio_pulldown_dis(gpio));
+    if (flags & WAKE_PULL_UP) FATAL_IF_NOT_ESP_OK(rtc_gpio_pullup_en(gpio));
+    if (flags & WAKE_PULL_DOWN) FATAL_IF_NOT_ESP_OK(rtc_gpio_pulldown_en(gpio));
+#else
+    FATAL_IF_NOT_ESP_OK(gpio_pullup_dis(gpio));
+    FATAL_IF_NOT_ESP_OK(gpio_pulldown_dis(gpio));
+    if (flags & WAKE_PULL_UP) FATAL_IF_NOT_ESP_OK(gpio_pullup_en(gpio));
+    if (flags & WAKE_PULL_DOWN) FATAL_IF_NOT_ESP_OK(gpio_pulldown_en(gpio));
+#endif
+  }
+#endif
 }
 
 PRIMITIVE(enable_external_wakeup) {
@@ -367,10 +468,16 @@ PRIMITIVE(enable_external_wakeup) {
   // Newer chips only support "any low" (same enum value as ESP32's "all low").
   esp_sleep_ext1_wakeup_mode_t low_mode = ESP_EXT1_WAKEUP_ANY_LOW;
 #endif
+  Locker locker(OS::global_mutex());
   esp_err_t err = esp_sleep_enable_ext1_wakeup(pin_mask, on_any_high ? ESP_EXT1_WAKEUP_ANY_HIGH : low_mode);
   if (err != ESP_OK) {
     ESP_LOGE("Toit", "Failed: sleep_enable_ext1_wakeup");
     FAIL(ERROR);
+  }
+  // The legacy call replaces the mask, including pulls set through system.power.
+  for (int pin = 0; pin < SOC_GPIO_PIN_COUNT; pin++) {
+    wake_pin_configs[pin] = (static_cast<uint64_t>(pin_mask) & (UINT64_C(1) << pin))
+        ? WAKE_ENABLED | (on_any_high ? WAKE_HIGH : 0) : 0;
   }
 #else
   FAIL(UNSUPPORTED);

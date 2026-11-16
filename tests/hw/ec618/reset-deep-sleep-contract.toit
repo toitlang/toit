@@ -44,7 +44,7 @@ main:
   if state == 2:
     // A zero-duration request is clamped to the hardware minimum and remains
     // a real timer-backed deep sleep. It must not look like a software reset.
-    assert-equals ec618.RESET-LOW-POWER-WAKE ec618.reset-reason
+    assert-equals ec618.RESET-NORMAL ec618.reset-reason
     assert-equals power.RESET-LOW-POWER-WAKE power.reset-reason
     assert-equals "normal" ec618.reset-reason-detail
     assert-equals ec618.WAKEUP-RTC ec618.wakeup-cause

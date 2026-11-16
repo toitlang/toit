@@ -2,8 +2,6 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import system.power
-
 /**
 Platform operations for Toit on Zephyr.
 
@@ -60,33 +58,6 @@ After reboot, $reset-reason includes $RESET-SOFTWARE on the nRF5340.
 */
 reset -> none:
   __reset__
-
-/**
-Configures $pin as a deep-sleep wake source.
-
-$pin is an integer GPIO number. The active level is high when $wake-high is
-  true, otherwise low. $pull-up and $pull-down select an optional internal
-  pull; they cannot both be enabled. Reserved and unavailable pins are rejected.
-The configuration applies to the whole device and takes effect at the next
-  $power.deep-sleep, after all VM resources have been released. The pin may
-  currently belong to a GPIO or peripheral resource.
-Multiple pins can be configured; any active pin can wake the device. Repeated
-  calls replace the configuration for that pin. Configuration remains until
-  $disable-wakeup-pin is called or the device reboots.
-An already-active level can cause an immediate wake. Both timed and untimed
-  deep sleep use these wake sources.
-*/
-configure-wakeup-pin pin/int
-    --wake-high/bool=true --pull-up/bool=false --pull-down/bool=false -> none:
-  flags := 8 | (wake-high ? 1 : 0) | (pull-up ? 2 : 0) | (pull-down ? 4 : 0)
-  configure-wakeup-pin_ pin flags
-
-/** Disables $pin as a deep-sleep wake source without changing its current GPIO configuration. */
-disable-wakeup-pin pin/int -> none:
-  configure-wakeup-pin_ pin 0
-
-configure-wakeup-pin_ pin/int flags/int -> none:
-  #primitive.zephyr.configure-wakeup-pin
 
 /**
 Returns the reset-cause bit mask captured at boot.

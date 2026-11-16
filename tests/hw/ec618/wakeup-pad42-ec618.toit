@@ -1,6 +1,7 @@
 // Copyright (C) 2026 Toit contributors.
 
 import ec618
+import system.power
 
 import .framed-control show FramedChannel
 import .uart-rig as rig
@@ -43,8 +44,8 @@ main args:
     control.send "WAKE $mode"
     control.expect "READY $mode" --timeout-ms=CONTROL-TIMEOUT-MS
 
-    ec618.configure-wakeup-pad pad --pos-edge --pull-down
-    if mode == "disabled": ec618.disable-wakeup-pad pad
+    power.configure-wakeup-pin pad --pull-down
+    if mode == "disabled": power.disable-wakeup-pin pad
 
     // This must be the final console line before deep sleep. The host changes
     // to the reboot baud as soon as it receives the expected-cause marker.
@@ -55,5 +56,5 @@ main args:
   finally:
     control-owner.close
 
-  ec618.deep-sleep (Duration --s=(mode == "enabled" ? 5 : 3))
+  power.deep-sleep (Duration --s=(mode == "enabled" ? 5 : 3))
   throw "deep sleep returned"

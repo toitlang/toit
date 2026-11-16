@@ -15,3 +15,6 @@ main:
   expect-throw "UNIMPLEMENTED": power.reset-reason
   expect-throw "UNIMPLEMENTED": power.deep-sleep
   expect-throw "UNIMPLEMENTED": power.deep-sleep (Duration --s=1)
+  expect-throw "UNIMPLEMENTED": power.deep-sleep Duration.ZERO
+  expect-throw "UNIMPLEMENTED": power.configure-wakeup-pin 0
+  expect-throw "UNIMPLEMENTED": power.disable-wakeup-pin 0

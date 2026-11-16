@@ -148,6 +148,9 @@ total-deep-sleep-time -> int:
 Sets the ESP32 to wake up from deep sleep if the GPIO pins in $pin-mask
   matches the mode.
 
+For individual wake pins, prefer $power.configure-wakeup-pin.
+  This mask API also supports the original ESP32's all-low condition.
+
 The $pin-mask is a bit mask of the pins to monitor.
 
 If the ESP32 wakes up due to the GPIO pins, then $reset-reason is set to

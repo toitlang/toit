@@ -8,7 +8,6 @@ import spi
 import uart
 import system.power
 import system.watchdog
-import zephyr
 
 main:
   run
@@ -32,13 +31,13 @@ run --edge-cases/bool=false:
 
   if phase == 0:
     [-2, -1, 0, 2, 18, 20, 22, 48, 64].do: |pin|
-      expect-equals "INVALID_ARGUMENT" (catch: zephyr.configure-wakeup-pin pin)
-    expect-equals "INVALID_ARGUMENT" (catch: zephyr.configure-wakeup-pin 32 --pull-up --pull-down)
+      expect-equals "INVALID_ARGUMENT" (catch: power.configure-wakeup-pin pin)
+    expect-equals "INVALID_ARGUMENT" (catch: power.configure-wakeup-pin 32 --pull-up --pull-down)
     [-1, 0, 86400001].do: |ms|
       expect-equals "INVALID_ARGUMENT" (catch: power.deep-sleep (Duration --ms=ms))
     // Disabling a wake source must not close or reconfigure the live ACK pin.
-    zephyr.configure-wakeup-pin 33 --no-wake-high --pull-up
-    zephyr.disable-wakeup-pin 33
+    power.configure-wakeup-pin 33 --no-wake-high --pull-up
+    power.disable-wakeup-pin 33
     expect-equals 1 (validate-sleep 1)
     expect-equals 86400000 (validate-sleep 86400000)
     print "POWER validation and duration bounds PASS"
@@ -79,7 +78,7 @@ run --edge-cases/bool=false:
     expect pending
     expect-equals level wake.get
     print "POWER pending I2C, UART child and ADC ready phase=$phase"
-    zephyr.configure-wakeup-pin 32 --wake-high=high --pull-down=high --pull-up=(not high)
+    power.configure-wakeup-pin 32 --wake-high=high --pull-down=high --pull-up=(not high)
     if phase < 2:
       power.deep-sleep
     else:
@@ -128,4 +127,4 @@ run --edge-cases/bool=false:
 
 // Validate long durations without actually sleeping.
 validate-sleep duration-ms/int -> int:
-  #primitive.zephyr.validate-sleep
+  #primitive.power.prepare-sleep

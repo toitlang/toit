@@ -31,6 +31,7 @@
 #include "watchdog_ec618.h"
 #include "wakeup_ec618.h"
 #include "reset_reason_ec618.h"
+#include "power.h"
 
 extern "C" {
   #include "flash_rt.h"
@@ -591,12 +592,11 @@ static LastResetState_e read_reset_reason() {
   return ap;
 }
 
-PRIMITIVE(reset_reason) {
+Object* platform_reset_reason(Process* process) {
   return Smi::from(ec618_reset_reason_flags(read_reset_reason()));
 }
 
-// Keep the detailed vendor reason separate from the shared flags.
-PRIMITIVE(reset_reason_detail) {
+PRIMITIVE(reset_reason) {
   return Smi::from(read_reset_reason());
 }
 
@@ -640,6 +640,21 @@ extern "C" void toit_restore_wakeup_config(const uint8_t* configs) {
   memcpy(wakeup_pad_configs_, configs, sizeof(wakeup_pad_configs_));
 }
 
+Object* platform_configure_wakeup_pin(Process* process, int pin, int flags) {
+  int index = wakeup_index_for_pad(pin);
+  if (!is_valid_wakeup_index(index)) FAIL(INVALID_ARGUMENT);
+  uint8_t packed = kWakeupManaged;
+  if (flags & WAKE_ENABLED) {
+    packed |= kWakeupEnabled;
+    packed |= flags & WAKE_HIGH ? kWakeupPositiveEdge : kWakeupNegativeEdge;
+    if (flags & WAKE_PULL_UP) packed |= kWakeupPullUp;
+    if (flags & WAKE_PULL_DOWN) packed |= kWakeupPullDown;
+  }
+  Locker locker(OS::global_mutex());
+  wakeup_pad_configs_[index] = packed;
+  return process->null_object();
+}
+
 PRIMITIVE(wakeup_pad_configure) {
   ARGS(int, index, bool, enabled, bool, pos_edge, bool, neg_edge,
        bool, pull_up, bool, pull_down);
@@ -652,6 +667,7 @@ PRIMITIVE(wakeup_pad_configure) {
   if (neg_edge) packed |= kWakeupNegativeEdge;
   if (pull_up) packed |= kWakeupPullUp;
   if (pull_down) packed |= kWakeupPullDown;
+  Locker locker(OS::global_mutex());
   wakeup_pad_configs_[index] = packed;
   return process->null_object();
 }

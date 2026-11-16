@@ -222,13 +222,11 @@ lane. `gpio-aon-output-ec618.toit` now runs the consolidated GPIO test with
 
 ## Shared reset flags and EC618 detail
 
-The EC618 reset constants now use the same bit values as `system.power`.
-This intentionally changes the previous EC618 enum API. Update callers of the
-removed cause-specific constants to use the shared flags or the detail function,
-and rebuild containers with the matching firmware. The common flag groups hard
-faults, assertions, and cellular-processor resets as hardware resets, and groups
-watchdog kinds.
-Use `ec618.reset-reason-detail` for the exact symbolic cause.
+The existing EC618 reset constants and `ec618.reset-reason` retain their enum
+values. `system.power.reset-reason` returns shared flags, normalized in the
+native primitive. Hard faults, assertions, and cellular-processor resets share
+the hardware flag; watchdog kinds share the watchdog flag. Use the original
+EC618 enum or `ec618.reset-reason-detail` for the exact cause.
 
 The host regression is `tests/ec618-reset-reason-test.toit`. Check the native
 conversion against the SDK's real enum without hardware:
@@ -243,6 +241,6 @@ build/ec618-reset-reason-test
 
 Set `EC618_SDK` to the `luatos-soc-ec618` checkout used for the firmware.
 The reset/deep-sleep contract test also checks that the common and EC618 APIs
-agree and that `reset-reason-detail` still distinguishes software reset from
+report their respective enum/flag values and that `reset-reason-detail` still distinguishes software reset from
 normal sleep wake. The native application watchdog may still report power-on;
 this change does not infer a watchdog cause that the hardware did not report.

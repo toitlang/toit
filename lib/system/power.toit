@@ -2,11 +2,6 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import system
-import esp32
-import ec618
-import zephyr
-
 /**
 Controls device reset and sleep.
 
@@ -63,17 +58,16 @@ On nRF5340, resource cleanup disconnects pins owned by VM peripherals before
 Does not return.
 */
 reset -> none:
-  if not embedded_: throw "UNIMPLEMENTED"
+  check-reset_
   __reset__
 
 /**
 Enters deep sleep and wakes into a fresh boot.
 
 If $duration is given, enables a wake timer. Otherwise sleeps until a
-  configured wake source fires or the device is reset. Wake sources are
-  configured through the platform library: esp32.enable-external-wakeup,
-  ec618.configure-wakeup-input or ec618.configure-wakeup-pad, and
-  zephyr.configure-wakeup-pin. A configured pin can end a timed sleep early.
+  configured wake source fires or the device is reset. Configure GPIO wake
+  sources with $configure-wakeup-pin. A configured pin can end a timed sleep
+  early. Other wake sources are available through the platform libraries.
 Container termination has the same cleanup semantics as $reset.
 
 ESP32 and nRF5340 wake on the configured pin level; EC618 wakes on an edge.
@@ -110,15 +104,62 @@ Nordic's reference configurations use approximately 1.5-2.1 microamps with
   See https://docs.nordicsemi.com/r/bundle/ps_nrf5340/page/chapters/current_consumption/doc/current_consumption.html.
 */
 deep-sleep duration/Duration?=null -> none:
-  if not embedded_: throw "UNIMPLEMENTED"
   // int.MIN cannot be a duration in milliseconds: Duration stores microseconds.
-  request := duration ? duration.in-ms : int.MIN
-  if duration and system.platform == system.PLATFORM-ZEPHYR:
-    request = validate-zephyr-sleep_ request
+  request := prepare-sleep_ (duration ? duration.in-ms : int.MIN)
   __deep-sleep__ request
 
-validate-zephyr-sleep_ duration-ms/int -> int:
-  #primitive.zephyr.validate-sleep
+prepare-sleep_ duration-ms/int -> int:
+  #primitive.power.prepare-sleep
+
+check-reset_ -> none:
+  #primitive.power.check-reset
+
+/**
+Configures $pin as a deep-sleep wake source.
+
+$pin is an integer GPIO number, using the same numbering as gpio.Pin.
+  $wake-high selects a high level on ESP32 and nRF5340, or a rising edge on
+  EC618. When false, selects a low level or falling edge instead.
+$pull-up and $pull-down select an optional internal pull while asleep.
+  They cannot both be enabled. Unsupported pins or combinations are rejected
+  before sleep; configuration errors leave the previous settings intact.
+The configuration applies to the whole device and takes effect at the next
+  $deep-sleep, after all VM resources have been released. Configuring a wake
+  pin does not change its current GPIO configuration or ownership.
+Multiple pins can be configured; any configured pin can wake the device.
+  Repeated calls replace the configuration for that pin. Settings remain
+  until $disable-wakeup-pin is called or the device reboots.
+An already-active level can cause immediate wake on ESP32 and nRF5340.
+  EC618 requires an edge after sleep entry.
+
+# Platform restrictions
+ESP32 uses EXT1-capable RTC GPIOs. Targets without EXT1 are currently
+  unsupported. Original ESP32 supports multiple high-level pins or one
+  low-level pin. ESP32-S2/S3 require all wake pins to use the same level;
+  chips with per-pin EXT1 polarity support allow mixed levels.
+  Original ESP32 GPIO34-39 require external pulls.
+EC618 accepts physical PAD40-42. Its pulls belong to the approximately 2 V
+  wake-input domain, independently of ordinary GPIO pulls and the AON supply.
+  Dedicated non-GPIO wake inputs and both-edge wake remain available through
+  ec618.configure-wakeup-input.
+nRF5340 accepts available, non-reserved GPIOs.
+*/
+configure-wakeup-pin pin/int
+    --wake-high/bool=true --pull-up/bool=false --pull-down/bool=false -> none:
+  flags := 8 | (wake-high ? 1 : 0) | (pull-up ? 2 : 0) | (pull-down ? 4 : 0)
+  configure-wakeup-pin_ pin flags
+
+/**
+Disables $pin as a deep-sleep wake source.
+
+Does not change the pin's current GPIO configuration. The supported pins are
+  the same as for $configure-wakeup-pin.
+*/
+disable-wakeup-pin pin/int -> none:
+  configure-wakeup-pin_ pin 0
+
+configure-wakeup-pin_ pin/int flags/int -> none:
+  #primitive.power.configure-wakeup-pin
 
 /**
 Returns whether $deep-sleep accepts a duration on this platform.
@@ -127,9 +168,7 @@ This describes timer wake support, not a particular hardware power state or
   current consumption. On nRF5340, timed sleep uses System ON.
 */
 supports-timed-deep-sleep -> bool:
-  return (system.architecture.starts-with "esp32") or
-      system.architecture == system.ARCHITECTURE-EC618 or
-      system.platform == system.PLATFORM-ZEPHYR
+  #primitive.power.supports-timed-sleep
 
 /**
 Returns the reset reason as a combination of RESET-* flags.
@@ -139,32 +178,4 @@ Zero means unknown. Multiple flags may be set; test individual bits rather
 Platform-specific details remain available through the platform libraries.
 */
 reset-reason -> int:
-  if system.platform == system.PLATFORM-ZEPHYR: return zephyr.reset-reason
-  if (system.architecture.starts-with "esp32"):
-    return esp32-reasons_.get esp32.reset-reason --if-absent=: 0
-  if system.architecture == system.ARCHITECTURE-EC618:
-    return ec618.reset-reason
-  throw "UNIMPLEMENTED"
-
-embedded_ -> bool:
-  return (system.architecture.starts-with "esp32") or
-      system.architecture == system.ARCHITECTURE-EC618 or
-      system.platform == system.PLATFORM-ZEPHYR
-
-esp32-reasons_ ::= {
-  esp32.RESET-POWER-ON: RESET-POWER-ON,
-  esp32.RESET-EXTERNAL: RESET-PIN,
-  esp32.RESET-SOFTWARE: RESET-SOFTWARE,
-  esp32.RESET-PANIC: RESET-HARDWARE,
-  esp32.RESET-INTERRUPT-WATCHDOG: RESET-WATCHDOG,
-  esp32.RESET-TASK-WATCHDOG: RESET-WATCHDOG,
-  esp32.RESET-OTHER-WATCHDOG: RESET-WATCHDOG,
-  esp32.RESET-DEEPSLEEP: RESET-LOW-POWER-WAKE,
-  esp32.RESET-BROWNOUT: RESET-BROWNOUT,
-  esp32.RESET-SDIO: RESET-HARDWARE,
-  esp32.RESET-USB: RESET-HARDWARE,
-  esp32.RESET-JTAG: RESET-DEBUG,
-  esp32.RESET-EFUSE: RESET-HARDWARE,
-  esp32.RESET-POWER-GLITCH: RESET-BROWNOUT,
-  esp32.RESET-CPU-LOCKUP: RESET-CPU-LOCKUP,
-}
+  #primitive.power.reset-reason

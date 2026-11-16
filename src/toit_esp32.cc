@@ -38,6 +38,7 @@
 
 #include "heap.h"
 #include "process.h"
+#include "power.h"
 #include "memory.h"
 #include "messaging.h"
 #include "embedded_data.h"
@@ -198,6 +199,7 @@ static void start() {
     }
   }
 #endif
+  power_prepare_esp32_sleep();
   RtcMemory::on_deep_sleep_start();
   esp_deep_sleep_start();
 }

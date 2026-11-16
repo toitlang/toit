@@ -7,6 +7,7 @@
 #include "primitive.h"
 #include "primitive_zephyr.h"
 #include "process.h"
+#include "power.h"
 #include "resources/pins_zephyr.h"
 #include <hal/nrf_clock.h>
 #include <hal/nrf_gpiote.h>
@@ -49,7 +50,6 @@ MODULE_IMPLEMENTATION(zephyr, MODULE_ZEPHYR)
 
 static const int MAX_SLEEP_MS = 24 * 60 * 60 * 1000;
 static const int WAKE_PIN_COUNT = 64;
-static const int WAKE_ENABLED = 8;
 // Device-wide configuration, like ESP32 external wake and EC618 wake pads.
 // Only primitives mutate it. Sleep reads it after every VM thread has stopped.
 static uint8_t wake_configs[WAKE_PIN_COUNT];
@@ -59,21 +59,11 @@ static bool valid_wake_pin(int pin) {
       !zephyr_pin_is_restricted(pin);
 }
 
-PRIMITIVE(configure_wakeup_pin) {
-  ARGS(int, pin, int, flags);
+Object* platform_configure_wakeup_pin(Process* process, int pin, int flags) {
   if (!valid_wake_pin(pin)) FAIL(INVALID_ARGUMENT);
-  if (flags != 0 && (flags < WAKE_ENABLED || flags > 15 || (flags & 6) == 6)) {
-    FAIL(INVALID_ARGUMENT);
-  }
   Locker locker(OS::global_mutex());
   wake_configs[pin] = flags;
   return process->null_object();
-}
-
-PRIMITIVE(validate_sleep) {
-  ARGS(int, duration_ms);
-  if (duration_ms < 1 || duration_ms > MAX_SLEEP_MS) FAIL(INVALID_ARGUMENT);
-  return Smi::from(duration_ms);
 }
 
 static k_sem wake_signal;
@@ -163,6 +153,7 @@ void zephyr_enter_sleep(int64 request) {
   sys_poweroff();
 }
 
+Object* platform_reset_reason(Process* process) { return Smi::from(reset_reason); }
 PRIMITIVE(reset_reason) { return Smi::from(reset_reason); }
 PRIMITIVE(supported_reset_reasons) { return Smi::from(supported_reset_reasons); }
 

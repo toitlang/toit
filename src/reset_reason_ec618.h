@@ -7,8 +7,8 @@
 
 namespace toit {
 
-// The vendor ABI uses an enum. Convert at the SDK boundary so both Toit APIs
-// expose the shared flags. The detail primitive retains the original enum.
+// Normalize the vendor enum for system.power. The existing EC618 API keeps
+// returning the original enum so callers can distinguish all detailed causes.
 inline uint32_t ec618_reset_reason_flags(LastResetState_e reason) {
   switch (reason) {
     case LAST_RESET_POR: return ResetReason::POWER_ON;

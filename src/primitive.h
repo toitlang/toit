@@ -84,6 +84,14 @@ namespace toit {
   M(one_wire, MODULE_ONE_WIRE)               \
   M(watchdog, MODULE_WATCHDOG)               \
   M(zephyr, MODULE_ZEPHYR)                   \
+  M(power, MODULE_POWER)                     \
+
+#define MODULE_POWER(PRIMITIVE)              \
+  PRIMITIVE(check_reset, 0)                  \
+  PRIMITIVE(prepare_sleep, 1)                \
+  PRIMITIVE(supports_timed_sleep, 0)          \
+  PRIMITIVE(reset_reason, 0)                 \
+  PRIMITIVE(configure_wakeup_pin, 2)         \
 
 #define MODULE_WATCHDOG(PRIMITIVE)           \
   PRIMITIVE(start, 1)                        \
@@ -485,13 +493,10 @@ namespace toit {
   PRIMITIVE(base_id, 0)                      \
   PRIMITIVE(slot_size, 0)                    \
   PRIMITIVE(console_uart_set, 1)             \
-  PRIMITIVE(reset_reason_detail, 0)          \
 
 #define MODULE_ZEPHYR(PRIMITIVE)             \
   PRIMITIVE(reset_reason, 0)                 \
   PRIMITIVE(supported_reset_reasons, 0)       \
-  PRIMITIVE(configure_wakeup_pin, 2)          \
-  PRIMITIVE(validate_sleep, 1)               \
 
 #define MODULE_CELLULAR(PRIMITIVE)           \
   PRIMITIVE(init, 0)                         \
