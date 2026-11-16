@@ -3,11 +3,11 @@
 // be found in the tests/LICENSE file.
 
 import gpio
-import monitor
 
 import .framed-control show FramedChannel
 import .uart-rig as rig
 import .wiring as wiring
+import ..shared.gpio-wait show capture-level
 
 /**
 ESP32 observer for the EC618 concurrent GPIO-output regression.
@@ -18,6 +18,9 @@ The three inputs have pull-downs, so a released EC618 pad reads low while the
 The same helper also watches the GPIO11 wire for a pulse opposite to each
   requested initial output level. Its pull points toward that requested level,
   so a mux/configuration glitch cannot be hidden by a mismatched idle state.
+  This requires no opposing external pull on that net. On the current rig,
+  the I2C pull-up on S3 GPIO6 shares this wire and prevents the initial-low
+  check from settling; remove it before running both initial-level cases.
 */
 
 CONTROL-BAUD ::= 115200
@@ -30,17 +33,12 @@ capture-open-glitch control/FramedChannel pin/gpio.Pin level/int -> none:
       --input
       --pull-up=(level == 1)
       --pull-down=(level == 0)
-  result := monitor.Channel 1
   if pin.get != level:
     throw "GPIO11 did not settle to requested idle level $level"
-  task::
-    error := catch:
-      with-timeout --ms=GLITCH-WINDOW-MS:
-        pin.wait-for (1 - level)
-    result.send error == null
+  result := capture-level pin (1 - level) (Duration --ms=GLITCH-WINDOW-MS)
   control.send "ARMED $level"
   control.expect "DONE" --timeout-ms=CONTROL-TIMEOUT-MS
-  if result.receive:
+  if result.get:
     throw "opposite-level pulse observed while opening output at $level"
   control.send "CLEAN $level"
 

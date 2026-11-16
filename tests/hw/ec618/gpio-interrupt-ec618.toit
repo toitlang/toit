@@ -7,6 +7,7 @@ import gpio
 import .framed-control show FramedChannel
 import .uart-rig as rig
 import .wiring as wiring
+import ..shared.gpio-wait show wait-for-level
 
 /**
 EC618 half of the GPIO-interrupt test (device under test).
@@ -42,9 +43,8 @@ main:
     count-pulses control pin 10 "50Hz"
 
     // Quiet line: no spurious wakeups.
-    e := catch: with-timeout --ms=500: pin.wait-for 1
-    quiet-ok := e == DEADLINE-EXCEEDED-ERROR
-    print "gpio-interrupt-ec618: quiet $(quiet-ok ? "ok" : "FAIL ($e)")"
+    quiet-ok := not (wait-for-level pin 1 (Duration --ms=500))
+    print "gpio-interrupt-ec618: quiet $(quiet-ok ? "ok" : "FAIL (unexpected high level)")"
     if not quiet-ok: failures.add "quiet"
 
     count-pulses control pin 2 "250Hz"
@@ -66,16 +66,15 @@ count-pulses control/FramedChannel pin/gpio.Pin phase-ms/int label/string -> non
   control.send "P $PULSES $phase-ms"
   control.expect "ARMED" --timeout-ms=15_000
   count := 0
-  error := catch:
+  catch --unwind=(: it != DEADLINE-EXCEEDED-ERROR):
     with-timeout --ms=(2 * PULSES * 2 * phase-ms + 3000):
       PULSES.repeat:
         pin.wait-for 1
         pin.wait-for 0
         count++
-  if error != null and error != DEADLINE-EXCEEDED-ERROR: throw error
   control.expect "DONE" --timeout-ms=15_000
   // Allow the line to settle, then make sure no extra edges follow.
-  extra := catch: with-timeout --ms=500: pin.wait-for 1
-  ok := count == PULSES and extra == DEADLINE-EXCEEDED-ERROR
-  print "gpio-interrupt-ec618: $label $(ok ? "ok" : "FAIL") (counted $count/$PULSES$(extra == DEADLINE-EXCEEDED-ERROR ? "" : ", extra edge"))"
+  extra := wait-for-level pin 1 (Duration --ms=500)
+  ok := count == PULSES and not extra
+  print "gpio-interrupt-ec618: $label $(ok ? "ok" : "FAIL") (counted $count/$PULSES$(extra ? ", extra edge" : ""))"
   if not ok: failures.add label

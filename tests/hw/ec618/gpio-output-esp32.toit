@@ -5,6 +5,7 @@
 import gpio
 
 import .wiring as wiring
+import ..shared.gpio-wait show wait-for-level
 
 /**
 ESP32 half of the GPIO-output HW test.
@@ -13,7 +14,8 @@ Reads the pin that the EC618 half (gpio-output-ec618.toit) toggles and confirms
   it sees a square wave: it waits for the first edge (the EC618 side starts a
   little after us), then counts edges over a short window.
 
-Prints a single "gpio-output-esp32: PASS ..." / "... FAIL ..." verdict line.
+Prints "gpio-output-esp32: PASS ..." on success. Missing activity or an
+  insufficient waveform throws, so a normal container exit cannot hide failure.
 */
 
 // The EC618 side is launched after us (compile + serial install), so wait
@@ -25,30 +27,28 @@ MIN-EDGES ::= 10
 
 main:
   pin := gpio.Pin wiring.ESP32-GPIO11-PIN --input --pull-down
-  print "gpio-output-esp32: waiting up to $(WAIT-FOR-FIRST.in-s)s for activity on IO$(wiring.ESP32-GPIO11-PIN)"
+  try:
+    print "gpio-output-esp32: waiting up to $(WAIT-FOR-FIRST.in-s)s for activity on IO$(wiring.ESP32-GPIO11-PIN)"
+    // An external pull-up can hold the idle wire high. Require a transition
+    // from its initial level rather than treating an idle high as activity.
+    current := pin.get
+    if not (wait-for-level pin (1 - current) WAIT-FOR-FIRST):
+      throw "gpio-output-esp32: FAIL no transition within $(WAIT-FOR-FIRST.in-s)s"
+    current = 1 - current
 
-  saw-activity := (catch: with-timeout WAIT-FOR-FIRST: pin.wait-for 1) == null
-  if not saw-activity:
-    print "gpio-output-esp32: FAIL no high level seen on IO$(wiring.ESP32-GPIO11-PIN) within $(WAIT-FOR-FIRST.in-s)s (EC618 not driving or started late — settle and retry; if it persists, power-cycle the ESP32: a latched input reads frozen while the wire is fine)"
-    pin.close
-    return
+    saw-0 := current == 0
+    saw-1 := current == 1
+    edges := 0
+    deadline := Time.monotonic-us + SAMPLE.in-us
+    while Time.monotonic-us < deadline:
+      next := 1 - current
+      if not (wait-for-level pin next PER-EDGE-TIMEOUT): break
+      current = next
+      if current == 0: saw-0 = true else: saw-1 = true
+      edges++
 
-  // Count edges over the sample window.
-  current := pin.get
-  saw-0 := current == 0
-  saw-1 := current == 1
-  edges := 0
-  deadline := Time.monotonic-us + SAMPLE.in-us
-  while Time.monotonic-us < deadline:
-    next := 1 - current
-    timed-out := (catch: with-timeout PER-EDGE-TIMEOUT: pin.wait-for next) != null
-    if timed-out: break
-    current = next
-    if current == 0: saw-0 = true else: saw-1 = true
-    edges++
-  pin.close
-
-  if edges >= MIN-EDGES and saw-0 and saw-1:
+    if edges < MIN-EDGES or not saw-0 or not saw-1:
+      throw "gpio-output-esp32: FAIL edges=$edges saw-0=$saw-0 saw-1=$saw-1 (expected >= $MIN-EDGES and both levels)"
     print "gpio-output-esp32: PASS edges=$edges (saw both 0 and 1)"
-  else:
-    print "gpio-output-esp32: FAIL edges=$edges saw-0=$saw-0 saw-1=$saw-1 (expected >= $MIN-EDGES; both levels + few edges usually means the EC618 session started late and we sampled the wave's tail — settle and retry)"
+  finally:
+    pin.close

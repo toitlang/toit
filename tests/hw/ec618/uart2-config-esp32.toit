@@ -32,67 +32,72 @@ main:
   send-break := false
   done := false
 
-  task::
-    buffer := #[]
-    while not done:
-      chunk/ByteArray? := null
-      if buffer.is-empty:
-        chunk = control.in.read
-      else:
-        // A partial line that goes idle is reset junk — the EC618 boot ROM
-        // sprays a newline-less banner on UART1 at every reset. Discard it
-        // so it cannot glue onto the next real command.
-        e := catch: chunk = with-timeout --ms=300: control.in.read
-        if e:
-          print "uart2-config-esp32: discarding $buffer.size idle junk bytes"
-          buffer = #[]
-          continue
-      if chunk == null: break
-      buffer += chunk
-      while true:
-        nl := buffer.index-of '\n'
-        if nl < 0: break
-        line := buffer[..nl].to-string-non-throwing.trim
-        buffer = buffer[nl + 1 ..]
-        if line == "": continue
-        if line == "Q":
-          done = true
-          continue
-        if line == "B":
-          send-break = true
-          continue
-        parts := line.split " "
-        if parts.size != 4: continue
-        config/List? := null
-        catch: config = parts.map: int.parse it
-        if config: pending = config
-
   test/uart.Port? := null
-  while not done:
-    if pending != null:
-      config := pending
-      pending = null
-      if test: test.close
-      test = uart.Port
-          --rx=wiring.ESP32-UART2-RX-PIN
-          --tx=wiring.ESP32-UART2-TX-PIN
-          --baud-rate=config[0]
-          --data-bits=config[1]
-          --parity=config[2]
-          --stop-bits=(stop-bits-of config[3])
-      print "uart2-config-esp32: test UART $config[0] $(config[1])d p$config[2] s$config[3]"
-    if send-break and test:
-      send-break = false
-      // Let the EC618 enter wait-for-break after sending the command.
-      sleep --ms=100
-      test.out.write #[0x55] --break-length=12 --flush
-    if test:
-      data/ByteArray? := null
-      catch: data = with-timeout --ms=200: test.in.read
-      if data: test.out.write data
-    else:
-      sleep --ms=100
-
-  if test: test.close
-  control.close
+  try:
+    Task.group --required=1 [
+      ::
+        buffer := #[]
+        while not done:
+          chunk/ByteArray? := null
+          if buffer.is-empty:
+            chunk = control.in.read
+          else:
+            // A partial line that goes idle is reset junk — the EC618 boot ROM
+            // sprays a newline-less banner on UART1 at every reset. Discard it
+            // so it cannot glue onto the next real command.
+            e := catch --unwind=(: it != DEADLINE-EXCEEDED-ERROR):
+              chunk = with-timeout --ms=300: control.in.read
+            if e:
+              print "uart2-config-esp32: discarding $buffer.size idle junk bytes"
+              buffer = #[]
+              continue
+          if chunk == null: throw "UART2 control reader closed"
+          buffer += chunk
+          while true:
+            nl := buffer.index-of '\n'
+            if nl < 0: break
+            line := buffer[..nl].to-string-non-throwing.trim
+            buffer = buffer[nl + 1 ..]
+            if line == "": continue
+            if line == "Q":
+              done = true
+              continue
+            if line == "B":
+              send-break = true
+              continue
+            parts := line.split " "
+            if parts.size != 4: continue
+            config := parts.map: int.parse it --if-error=(: null)
+            if not (config.contains null): pending = config,
+      ::
+        while not done:
+          if pending != null:
+            config := pending
+            pending = null
+            if test: test.close
+            test = uart.Port
+                --rx=wiring.ESP32-UART2-RX-PIN
+                --tx=wiring.ESP32-UART2-TX-PIN
+                --baud-rate=config[0]
+                --data-bits=config[1]
+                --parity=config[2]
+                --stop-bits=(stop-bits-of config[3])
+            print "uart2-config-esp32: test UART $config[0] $(config[1])d p$config[2] s$config[3]"
+          if send-break and test:
+            send-break = false
+            // Let the EC618 enter wait-for-break after sending the command.
+            sleep --ms=100
+            test.out.write #[0x55] --break-length=12 --flush
+          if test:
+            data/ByteArray? := null
+            error := catch --unwind=(: it != DEADLINE-EXCEEDED-ERROR):
+              data = with-timeout --ms=200: test.in.read
+            if not error and data == null: throw "UART2 echo reader closed"
+            if data: test.out.write data
+          else:
+            sleep --ms=100,
+    ]
+  finally:
+    if test: test.close
+    control.close
   print "uart2-config-esp32: done"

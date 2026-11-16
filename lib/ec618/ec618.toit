@@ -13,7 +13,7 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-import gpio show Pin
+import gpio show Pin Pin_
 import gpio.adc
 import i2c
 import spi
@@ -387,7 +387,8 @@ class Ec618:
       --pull-down/bool=false
       --open-drain/bool=false
       --value/int=0:
-    return Pin num
+    // Preserve deferred configuration when neither direction is requested.
+    return Pin_ num
         --input=input
         --output=output
         --pull-up=pull-up

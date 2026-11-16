@@ -132,7 +132,7 @@ main:
   test = uart.Port --tx=test-tx --rx=test-rx --baud-rate=115200
   errors-before = test.errors
   control.out.write "B\n"
-  break-error := catch:
+  break-error := catch --unwind=(: it != DEADLINE-EXCEEDED-ERROR):
     with-timeout --ms=3000:
       test.wait-for-break
   errs = test.errors - errors-before
@@ -148,12 +148,15 @@ main:
     throw "UART2 config matrix failed: $failures"
   print "uart2-config-ec618: PASS $configs.size configs x $BAUDS.size bauds + staging boundaries, parity-error, and break detection"
 
-// Reads exactly n bytes (or fewer on a 3s stall), as one ByteArray.
-read-exactly port/uart.Port n/int -> ByteArray:
+// Reads exactly n bytes, or fewer after the stall deadline (3s by default).
+// EOF and driver errors propagate, including during the parity-mismatch test.
+read-exactly port/any n/int --stall-ms/int=3000 -> ByteArray:
   result := #[]
   while result.size < n:
     chunk/ByteArray? := null
-    catch: chunk = with-timeout --ms=3000: port.in.read
-    if chunk == null: break
+    error := catch --unwind=(: it != DEADLINE-EXCEEDED-ERROR):
+      chunk = with-timeout --ms=stall-ms: port.in.read
+    if error: break
+    if chunk == null: throw "UART2 config reader closed"
     result += chunk
   return result.size > n ? result[..n] : result

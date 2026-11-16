@@ -37,55 +37,62 @@ main:
   failures := []
 
   rises := 0
-  task --background::
-    while true:
-      de.wait-for 1
-      rises++
-      de.wait-for 0
-
   print "uart2-rs485-esp32: ready (DE IO$(wiring.ESP32-UART2-DIRECTION-PIN) level $de.get; test IO$(wiring.ESP32-UART2-RX-PIN) in / IO$(wiring.ESP32-UART2-TX-PIN) out)"
 
-  first := true
-  BAUDS.do: | baud/int |
-    port := uart.Port
-        --rx=wiring.ESP32-UART2-RX-PIN
-        --tx=wiring.ESP32-UART2-TX-PIN
-        --baud-rate=baud
+  try:
+    Task.group --required=1 [
+      ::
+        while true:
+          de.wait-for 1
+          rises++
+          de.wait-for 0,
+      ::
+        first := true
+        BAUDS.do: | baud/int |
+          port := uart.Port
+              --rx=wiring.ESP32-UART2-RX-PIN
+              --tx=wiring.ESP32-UART2-TX-PIN
+              --baud-rate=baud
 
-    ITERATIONS.repeat: | i/int |
-      expected := ByteArray TOKEN-SIZE: (it * 31 + 7 + i) & 0xff
-      before := rises
-      // The very first read waits for the mini-jag upload + start.
-      got := read-exactly port TOKEN-SIZE (first ? 120_000 : 15_000)
-      first = false
-      dropped := wait-low de
-      pulses := rises - before
-      ok := got == expected and dropped and pulses == 1
-      print "uart2-rs485-esp32: $baud iter $i $(ok ? "ok" : "FAIL") (got $got.size, pulses $pulses, de-drop $dropped)"
-      if not ok: failures.add "$baud/iter$i"
-      if de.get != 0:
-        print "uart2-rs485-esp32: $baud iter $i FAIL DE high while we transmit"
-        failures.add "$baud/iter$(i)-de-busy"
-      port.out.write got
+          try:
+            ITERATIONS.repeat: | i/int |
+              expected := ByteArray TOKEN-SIZE: (it * 31 + 7 + i) & 0xff
+              before := rises
+              // The very first read waits for the mini-jag upload + start.
+              got := read-exactly port TOKEN-SIZE (first ? 120_000 : 15_000)
+              first = false
+              dropped := wait-low de
+              pulses := rises - before
+              ok := got == expected and dropped and pulses == 1
+              print "uart2-rs485-esp32: $baud iter $i $(ok ? "ok" : "FAIL") (got $got.size, pulses $pulses, de-drop $dropped)"
+              if not ok: failures.add "$baud/iter$i"
+              if de.get != 0:
+                print "uart2-rs485-esp32: $baud iter $i FAIL DE high while we transmit"
+                failures.add "$baud/iter$(i)-de-busy"
+              port.out.write got
 
-    expected := ByteArray BIG-SIZE: (it * 31 + 7) & 0xff
-    before := rises
-    got := read-exactly port BIG-SIZE 15_000
-    dropped := wait-low de
-    pulses := rises - before
-    ok := got == expected and dropped and pulses == 1
-    print "uart2-rs485-esp32: $baud big $(ok ? "ok" : "FAIL") (got $got.size, pulses $pulses, de-drop $dropped)"
-    if not ok: failures.add "$baud/big"
-    port.out.write #['K']
+            expected := ByteArray BIG-SIZE: (it * 31 + 7) & 0xff
+            before := rises
+            got := read-exactly port BIG-SIZE 15_000
+            dropped := wait-low de
+            pulses := rises - before
+            ok := got == expected and dropped and pulses == 1
+            print "uart2-rs485-esp32: $baud big $(ok ? "ok" : "FAIL") (got $got.size, pulses $pulses, de-drop $dropped)"
+            if not ok: failures.add "$baud/big"
+            port.out.write #['K']
 
-    // Let the 'K' leave the wire before tearing the port down.
-    sleep --ms=200
-    port.close
+            // Let the 'K' leave the wire before tearing the port down.
+            sleep --ms=200
+          finally:
+            port.close,
+    ]
+  finally:
+    de.close
 
   if failures.is-empty:
     print "uart2-rs485-esp32: PASS"
   else:
-    print "uart2-rs485-esp32: FAIL $failures"
+    throw "uart2-rs485-esp32: FAIL $failures"
 
 // Waits up to 1s for DE to drop (polling: the monitor task owns wait-for).
 wait-low de/gpio.Pin -> bool:
@@ -95,11 +102,14 @@ wait-low de/gpio.Pin -> bool:
   return false
 
 // Reads exactly n bytes, allowing stall-ms between chunks.
-read-exactly port/uart.Port n/int stall-ms/int -> ByteArray:
+// Only a deadline permits a short read; EOF and driver errors fail the test.
+read-exactly port/any n/int stall-ms/int -> ByteArray:
   result := #[]
   while result.size < n:
     chunk/ByteArray? := null
-    catch: chunk = with-timeout --ms=stall-ms: port.in.read
-    if chunk == null: break
+    error := catch --unwind=(: it != DEADLINE-EXCEEDED-ERROR):
+      chunk = with-timeout --ms=stall-ms: port.in.read
+    if error: break
+    if chunk == null: throw "UART2 RS485 reader closed"
     result += chunk
   return result.size > n ? result[..n] : result
