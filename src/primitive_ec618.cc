@@ -656,6 +656,25 @@ Object* platform_configure_wakeup_pin(Process* process, int pin, int flags) {
   return process->null_object();
 }
 
+void platform_wakeup_sources(WakeupSources* sources) {
+  Locker locker(OS::global_mutex());
+  for (int index = 0; index < kWakeupPadCount; index++) {
+    int config = wakeup_pad_configs_[index];
+    if (!(config & kWakeupEnabled)) continue;
+    int flags = WAKE_ENABLED | WAKE_TRIGGER_EDGE;
+    if (config & kWakeupPositiveEdge) flags |= WAKE_HIGH;
+    if ((config & (kWakeupPositiveEdge | kWakeupNegativeEdge)) ==
+        (kWakeupPositiveEdge | kWakeupNegativeEdge)) flags |= WAKE_BOTH_EDGES;
+    if (config & kWakeupPullUp) flags |= WAKE_PULL_UP;
+    if (config & kWakeupPullDown) flags |= WAKE_PULL_DOWN;
+    if (index >= kFirstGpioWakeupIndex) {
+      sources->add(WAKE_SOURCE_PIN, kFirstGpioWakeupPad + index - kFirstGpioWakeupIndex, flags);
+    } else {
+      sources->add(WAKE_SOURCE_INPUT, index, flags);
+    }
+  }
+}
+
 PRIMITIVE(wakeup_pad_configure) {
   ARGS(int, index, bool, enabled, bool, pos_edge, bool, neg_edge,
        bool, pull_up, bool, pull_down);

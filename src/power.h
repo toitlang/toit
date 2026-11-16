@@ -18,6 +18,31 @@ enum WakePinConfig {
   WAKE_TRIGGER_MASK = 3 << 4,
 };
 Object* platform_configure_wakeup_pin(Process* process, int pin, int flags);
+
+// Snapshot wire format: three bytes per source (kind, pin/input, effective flags).
+// Keep in sync with lib/system/power-wakeup_.toit.
+enum WakeupSourceKind {
+  WAKE_SOURCE_PIN = 0,
+  WAKE_SOURCE_INPUT = 1,
+  WAKE_SOURCE_TOUCH = 2,
+};
+enum WakeupSourceFlags {
+  WAKE_BOTH_EDGES = 1 << 6,
+  WAKE_ALL_LOW = 1 << 7,
+};
+struct WakeupSources {
+  // At most 64 GPIOs plus one touch-controller source on supported platforms.
+  uint8 data[65 * 3];
+  int size = 0;
+  void add(int kind, int id, int flags) {
+    ASSERT(size + 3 <= static_cast<int>(sizeof(data)));
+    data[size++] = kind;
+    data[size++] = id;
+    data[size++] = flags;
+  }
+};
+// Takes a coherent snapshot under the same lock used by configuration.
+void platform_wakeup_sources(WakeupSources* sources);
 #ifdef TOIT_ESP32
 // Called after VM resources are gone and the default RTC pulls are cleared.
 void power_prepare_esp32_sleep();

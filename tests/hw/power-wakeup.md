@@ -50,3 +50,23 @@ wake sources, original ESP32 all-low masks, and EC618 both-edge wake.
 
 Functional wake tests do not qualify current consumption. For nRF current
 measurement, use the debugger-disconnected procedure in `nrf5340/README.md`.
+
+## Inspect configuration without sleeping
+
+Run `power-wakeup-sources.toit` in isolation after setting `PIN` for the board.
+It checks resolved AUTO mode, explicit-mode rejection without changing the
+previous configuration, replacement, removal, and independence of returned
+snapshots while the GPIO remains owned. It does not enter sleep.
+
+Run `ec618/wakeup-sources.toit` to check dedicated inputs and both-edge
+configuration through the existing EC618 APIs. Run `esp32/wakeup-sources.toit`
+on original ESP32 or ESP32-S2/S3 to check the existing mask API, including the
+original ESP32 all-low group and mask replacement.
+
+For touch-capable ESP32 boards, configure the electrodes normally, call
+`esp32.enable-touchpad-wakeup`, and verify that `power.wakeup-sources` contains
+a `power.TouchWakeup` entry. Reboot afterwards to clear touch wake.
+
+The query reports Toit-managed configuration for this boot. It does not
+include a future `deep-sleep` duration, implicit hardware reset, or firmware
+defaults configured outside Toit's APIs.

@@ -2,6 +2,9 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import .power-wakeup_ show WakeupSource PinWakeup InputWakeup TouchWakeup decode-wakeup-sources
+export WakeupSource PinWakeup InputWakeup TouchWakeup
+
 /**
 Controls device reset and sleep.
 
@@ -181,6 +184,36 @@ disable-wakeup-pin pin/int -> none:
 
 configure-wakeup-pin_ pin/int flags/int -> none:
   #primitive.power.configure-wakeup-pin
+
+/**
+Returns a snapshot of wake sources configured through Toit in this boot.
+
+Each entry is a $PinWakeup, $InputWakeup, or $TouchWakeup. Pin and input
+  entries report the effective trigger, polarity, and pulls. This includes
+  configuration made through the platform libraries as well as this library.
+The snapshot applies to the whole device, including other containers.
+  Reading it neither changes configuration nor claims any pins. Changing a
+  returned list does not change the device or another snapshot.
+$WAKE-AUTO is resolved when configuring a pin; snapshots report $WAKE-LEVEL
+  or $WAKE-EDGE. Both-edge EC618 sources have a null wake-high polarity.
+  Original ESP32 all-low masks appear as one pin group with all-low true.
+The timer passed to $deep-sleep is not persistent configuration and is not
+  included. Hardware reset, board defaults, and sources configured outside
+  Toit's APIs are also outside this snapshot. This reports configuration,
+  not the cause of the previous wake or a guarantee that sleep can be entered.
+Hosts throw `UNIMPLEMENTED`.
+
+# Examples
+```
+power.wakeup-sources.do: |source|
+  print source
+```
+*/
+wakeup-sources -> List:
+  return decode-wakeup-sources wakeup-sources_
+
+wakeup-sources_ -> ByteArray:
+  #primitive.power.wakeup-sources
 
 /**
 Returns whether $deep-sleep accepts a duration on this platform.
