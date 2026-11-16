@@ -29,6 +29,7 @@
 #include "../vm.h"
 
 #include "gpio_esp32.h"
+#include "i2s_event_state.h"
 
 #include "../event_sources/system_esp32.h"
 #include "../event_sources/ev_queue_esp32.h"
@@ -40,9 +41,9 @@ namespace toit {
 static_assert(2 * SOC_I2S_NUM <= I2S_EVENT_QUEUE_SIZE,
               "Increase I2S_EVENT_QUEUE_SIZE");
 
-const int kReadState = 1 << 0;
-const int kWriteState = 1 << 1;
-const int kErrorState = 1 << 2;
+const int kReadState = I2sEventState::READ;
+const int kWriteState = I2sEventState::WRITE;
+const int kErrorState = I2sEventState::ERROR;
 
 class I2sResourceGroup : public ResourceGroup {
  public:
@@ -52,10 +53,7 @@ class I2sResourceGroup : public ResourceGroup {
       : ResourceGroup(process, event_source) {}
 
   uint32_t on_event(Resource* r, word data, uint32_t state) {
-    if (data == kReadState || data == kWriteState || data == kErrorState) {
-      state |= data;
-    }
-    return state;
+    return I2sEventState::merge(state, data);
   }
 };
 
