@@ -61,4 +61,20 @@ PRIMITIVE(configure_wakeup_pin) {
   FAIL(UNIMPLEMENTED);
 #endif
 }
+
+PRIMITIVE(wakeup_sources) {
+#if defined(TOIT_ESP32) || defined(TOIT_EC618) || defined(TOIT_ZEPHYR)
+  WakeupSources sources;
+  platform_wakeup_sources(&sources);
+  // Allocate after dropping the platform lock; GC must not run under it.
+  ByteArray* result = process->allocate_byte_array(sources.size);
+  if (result == null) FAIL(ALLOCATION_FAILED);
+  ByteArray::Bytes bytes(result);
+  memcpy(bytes.address(), sources.data, sources.size);
+  return result;
+#else
+  FAIL(UNIMPLEMENTED);
+#endif
+}
+
 }  // namespace toit

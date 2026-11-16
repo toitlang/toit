@@ -20,6 +20,7 @@ main:
   expect (not power.supports-timed-deep-sleep)
   expect-throw "UNIMPLEMENTED": power.reset
   expect-throw "UNIMPLEMENTED": power.reset-reason
+  expect-throw "UNIMPLEMENTED": power.wakeup-sources
   expect-throw "UNIMPLEMENTED": power.deep-sleep
   expect-throw "UNIMPLEMENTED": power.deep-sleep (Duration --s=1)
   // Positive sub-millisecond durations reach the platform-specific checks.

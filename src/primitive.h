@@ -92,6 +92,7 @@ namespace toit {
   PRIMITIVE(supports_timed_sleep, 0)          \
   PRIMITIVE(reset_reason, 0)                 \
   PRIMITIVE(configure_wakeup_pin, 2)         \
+  PRIMITIVE(wakeup_sources, 0)               \
 
 #define MODULE_WATCHDOG(PRIMITIVE)           \
   PRIMITIVE(start, 1)                        \

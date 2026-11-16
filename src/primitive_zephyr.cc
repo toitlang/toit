@@ -68,6 +68,15 @@ Object* platform_configure_wakeup_pin(Process* process, int pin, int flags) {
   return process->null_object();
 }
 
+void platform_wakeup_sources(WakeupSources* sources) {
+  Locker locker(OS::global_mutex());
+  for (int pin = 0; pin < WAKE_PIN_COUNT; pin++) {
+    if (wake_configs[pin] & WAKE_ENABLED) {
+      sources->add(WAKE_SOURCE_PIN, pin, wake_configs[pin]);
+    }
+  }
+}
+
 static k_sem wake_signal;
 static gpio_callback wake_callbacks[WAKE_PIN_COUNT / 32];
 

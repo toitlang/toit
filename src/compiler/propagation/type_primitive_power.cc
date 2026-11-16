@@ -11,5 +11,6 @@ TYPE_PRIMITIVE_INT(prepare_sleep)
 TYPE_PRIMITIVE_BOOL(supports_timed_sleep)
 TYPE_PRIMITIVE_INT(reset_reason)
 TYPE_PRIMITIVE_NULL(configure_wakeup_pin)
+TYPE_PRIMITIVE_BYTE_ARRAY(wakeup_sources)
 }  // namespace compiler
 }  // namespace toit

@@ -383,6 +383,8 @@ PRIMITIVE(total_deep_sleep_time) {
   return Primitive::integer(RtcMemory::accumulated_deep_sleep_time_us(), process);
 }
 
+static bool touch_wakeup_enabled = false;
+
 #if SOC_PM_SUPPORT_EXT1_WAKEUP
 static uint8_t wake_pin_configs[SOC_GPIO_PIN_COUNT];
 
@@ -438,6 +440,26 @@ Object* platform_configure_wakeup_pin(Process* process, int pin, int flags) {
 #endif
 }
 
+void platform_wakeup_sources(WakeupSources* sources) {
+  Locker locker(OS::global_mutex());
+#if SOC_PM_SUPPORT_EXT1_WAKEUP
+  int low_count = 0;
+#if CONFIG_IDF_TARGET_ESP32
+  for (int pin = 0; pin < SOC_GPIO_PIN_COUNT; pin++) {
+    if ((wake_pin_configs[pin] & (WAKE_ENABLED | WAKE_HIGH)) == WAKE_ENABLED) low_count++;
+  }
+#endif
+  for (int pin = 0; pin < SOC_GPIO_PIN_COUNT; pin++) {
+    int flags = wake_pin_configs[pin];
+    if (!(flags & WAKE_ENABLED)) continue;
+    flags |= WAKE_TRIGGER_LEVEL;
+    if (low_count > 1 && !(flags & WAKE_HIGH)) flags |= WAKE_ALL_LOW;
+    sources->add(WAKE_SOURCE_PIN, pin, flags);
+  }
+#endif
+  if (touch_wakeup_enabled) sources->add(WAKE_SOURCE_TOUCH, 0, 0);
+}
+
 void power_prepare_esp32_sleep() {
 #if SOC_PM_SUPPORT_EXT1_WAKEUP
   // Configure pulls only after VM GPIO cleanup and the RTC pull workaround.
@@ -470,6 +492,13 @@ PRIMITIVE(enable_external_wakeup) {
   // Newer chips only support "any low" (same enum value as ESP32's "all low").
   esp_sleep_ext1_wakeup_mode_t low_mode = ESP_EXT1_WAKEUP_ANY_LOW;
 #endif
+  // IDF clears the previous mask before validating the replacement. Check it
+  // first so a rejected call cannot desynchronize hardware and the snapshot.
+  uint64_t remaining = static_cast<uint64_t>(pin_mask);
+  for (int pin = 0; remaining != 0; pin++, remaining >>= 1) {
+    if ((remaining & 1) && (pin >= SOC_GPIO_PIN_COUNT ||
+        !esp_sleep_is_valid_wakeup_gpio(static_cast<gpio_num_t>(pin)))) FAIL(ERROR);
+  }
   Locker locker(OS::global_mutex());
   esp_err_t err = esp_sleep_enable_ext1_wakeup(pin_mask, on_any_high ? ESP_EXT1_WAKEUP_ANY_HIGH : low_mode);
   if (err != ESP_OK) {
@@ -491,11 +520,14 @@ PRIMITIVE(enable_touchpad_wakeup) {
 #ifdef CONFIG_IDF_TARGET_ESP32P4
   FAIL(UNIMPLEMENTED);
 #elif SOC_TOUCH_SENSOR_SUPPORTED
+  Locker locker(OS::global_mutex());
   esp_err_t err = esp_sleep_enable_touchpad_wakeup();
   if (err != ESP_OK) {
     ESP_LOGE("Toit", "Failed: sleep_enable_touchpad_wakeup");
     FAIL(ERROR);
   }
+  // Reflect the enabled source even if the following power-domain setup fails.
+  touch_wakeup_enabled = true;
   err = esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
   if (err != ESP_OK) {
     ESP_LOGE("Toit", "Failed: sleep_enable_touchpad_wakeup - power domain");
