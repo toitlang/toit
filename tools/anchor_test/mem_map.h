@@ -1,6 +1,8 @@
 // Copyright (C) 2026 Toit contributors.
 //
-// Host-test stub for the EC618 SDK mem_map.h. The marker buffer in the
-// test is the "flash", so XIP base 0 makes phys == buffer address.
+// Map the emulator's anchor buffer to its real EC618 physical address.
+// The separate address-only base-id symbol uses the same translation.
 #pragma once
-#define AP_FLASH_XIP_ADDR 0u
+#include <stdint.h>
+extern uint8_t __toit_anchor_start[];
+#define AP_FLASH_XIP_ADDR ((uint32_t)(uintptr_t)__toit_anchor_start - 0x1b1000u)
