@@ -643,6 +643,7 @@ extern "C" void toit_restore_wakeup_config(const uint8_t* configs) {
 Object* platform_configure_wakeup_pin(Process* process, int pin, int flags) {
   int index = wakeup_index_for_pad(pin);
   if (!is_valid_wakeup_index(index)) FAIL(INVALID_ARGUMENT);
+  if ((flags & WAKE_TRIGGER_MASK) == WAKE_TRIGGER_LEVEL) FAIL(UNSUPPORTED);
   uint8_t packed = kWakeupManaged;
   if (flags & WAKE_ENABLED) {
     packed |= kWakeupEnabled;

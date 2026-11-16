@@ -20,11 +20,14 @@ original ESP32 GPIO33 (33), or EC618 PAD42 (42). Check the board wiring first.
 5. Set `TIMED=false` and re-enable the pin. Only the pin or a hardware reset
    should wake the device. With `DISABLE-WAKE=true`, use hardware reset to
    recover.
-6. Configure another valid pin before sleep and verify either can wake.
+6. Set `TRIGGER` to `power.WAKE-LEVEL` on ESP32/nRF or `power.WAKE-EDGE`
+   on EC618 and repeat. The opposite explicit mode must throw `UNSUPPORTED`
+   before sleeping and leave the existing wake configuration unchanged.
+7. Configure another valid pin before sleep and verify either can wake.
    nRF supports mixed levels. Original ESP32 must reject adding a second
    low-level pin or mixing levels; ESP32-S2/S3 must reject mixed levels.
    A rejected configuration must leave the original source armed.
-7. Check that wake works with the pin still held by `gpio.Pin` in this probe.
+8. Check that wake works with the pin still held by `gpio.Pin` in this probe.
    This exercises applying the sleep pulls after the VM closes GPIO resources.
 
 Use an external signal source appropriate to the board's input voltage.

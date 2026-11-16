@@ -44,7 +44,7 @@ main args:
     control.send "WAKE $mode"
     control.expect "READY $mode" --timeout-ms=CONTROL-TIMEOUT-MS
 
-    power.configure-wakeup-pin pad --pull-down
+    power.configure-wakeup-pin pad --pull-down --trigger=power.WAKE-EDGE
     if mode == "disabled": power.disable-wakeup-pin pad
 
     // This must be the final console line before deep sleep. The host changes

@@ -36,7 +36,8 @@ run --edge-cases/bool=false:
     [-1, 0, 86400001].do: |ms|
       expect-equals "INVALID_ARGUMENT" (catch: power.deep-sleep (Duration --ms=ms))
     // Disabling a wake source must not close or reconfigure the live ACK pin.
-    power.configure-wakeup-pin 33 --no-wake-high --pull-up
+    power.configure-wakeup-pin 33 --no-wake-high --pull-up --trigger=power.WAKE-LEVEL
+    expect-equals "UNSUPPORTED" (catch: power.configure-wakeup-pin 33 --trigger=power.WAKE-EDGE)
     power.disable-wakeup-pin 33
     expect-equals 1 (validate-sleep 1)
     expect-equals 86400000 (validate-sleep 86400000)

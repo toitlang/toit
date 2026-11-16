@@ -405,6 +405,8 @@ Object* platform_configure_wakeup_pin(Process* process, int pin, int flags) {
   // Input-only GPIO34..39 do not have internal pulls.
   if (pin >= 34 && (flags & (WAKE_PULL_UP | WAKE_PULL_DOWN))) FAIL(UNSUPPORTED);
 #endif
+  if ((flags & WAKE_TRIGGER_MASK) == WAKE_TRIGGER_EDGE) FAIL(UNSUPPORTED);
+  if (flags != 0) flags = (flags & ~WAKE_TRIGGER_MASK) | WAKE_TRIGGER_LEVEL;
   Locker locker(OS::global_mutex());
   if (flags & WAKE_ENABLED) {
     for (int other = 0; other < SOC_GPIO_PIN_COUNT; other++) {

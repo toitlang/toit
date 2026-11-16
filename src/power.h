@@ -13,6 +13,9 @@ enum WakePinConfig {
   WAKE_PULL_UP = 2,
   WAKE_PULL_DOWN = 4,
   WAKE_ENABLED = 8,
+  WAKE_TRIGGER_LEVEL = 1 << 4,
+  WAKE_TRIGGER_EDGE = 2 << 4,
+  WAKE_TRIGGER_MASK = 3 << 4,
 };
 Object* platform_configure_wakeup_pin(Process* process, int pin, int flags);
 #ifdef TOIT_ESP32

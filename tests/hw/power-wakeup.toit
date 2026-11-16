@@ -10,6 +10,8 @@ WAKE-PIN ::= 32
 WAKE-HIGH ::= true
 DISABLE-WAKE ::= false
 TIMED ::= true
+// Try WAKE-LEVEL on ESP32/nRF or WAKE-EDGE on EC618; the opposite must fail.
+TRIGGER ::= power.WAKE-AUTO
 
 main:
   print "WAKE PROBE reset flags=$(power.reset-reason)"
@@ -21,6 +23,7 @@ main:
   // Keep the pin owned through shutdown: wake setup must survive GPIO cleanup.
   pin := gpio.Pin WAKE-PIN --input --pull-down=WAKE-HIGH --pull-up=(not WAKE-HIGH)
   power.configure-wakeup-pin WAKE-PIN
+      --trigger=TRIGGER
       --wake-high=WAKE-HIGH
       --pull-down=WAKE-HIGH
       --pull-up=(not WAKE-HIGH)

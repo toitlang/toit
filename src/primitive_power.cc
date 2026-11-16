@@ -51,7 +51,8 @@ PRIMITIVE(reset_reason) {
 PRIMITIVE(configure_wakeup_pin) {
 #if defined(TOIT_ESP32) || defined(TOIT_EC618) || defined(TOIT_ZEPHYR)
   ARGS(int, pin, int, flags);
-  if (flags != 0 && (flags < WAKE_ENABLED || flags > 15 ||
+  if (flags != 0 && (!(flags & WAKE_ENABLED) || (flags & ~0x3f) != 0 ||
+      (flags & WAKE_TRIGGER_MASK) == WAKE_TRIGGER_MASK ||
       (flags & (WAKE_PULL_UP | WAKE_PULL_DOWN)) == (WAKE_PULL_UP | WAKE_PULL_DOWN))) {
     FAIL(INVALID_ARGUMENT);
   }

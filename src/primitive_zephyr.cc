@@ -61,6 +61,8 @@ static bool valid_wake_pin(int pin) {
 
 Object* platform_configure_wakeup_pin(Process* process, int pin, int flags) {
   if (!valid_wake_pin(pin)) FAIL(INVALID_ARGUMENT);
+  if ((flags & WAKE_TRIGGER_MASK) == WAKE_TRIGGER_EDGE) FAIL(UNSUPPORTED);
+  if (flags != 0) flags = (flags & ~WAKE_TRIGGER_MASK) | WAKE_TRIGGER_LEVEL;
   Locker locker(OS::global_mutex());
   wake_configs[pin] = flags;
   return process->null_object();

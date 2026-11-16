@@ -117,11 +117,24 @@ check-reset_ -> none:
   #primitive.power.check-reset
 
 /**
+Selects level triggering when supported, otherwise edge triggering.
+*/
+WAKE-AUTO ::= 0
+/** Requires level triggering. Unsupported configurations throw `UNSUPPORTED`. */
+WAKE-LEVEL ::= 1
+/** Requires edge triggering. Unsupported configurations throw `UNSUPPORTED`. */
+WAKE-EDGE ::= 2
+
+/**
 Configures $pin as a deep-sleep wake source.
 
 $pin is an integer GPIO number, using the same numbering as gpio.Pin.
-  $wake-high selects a high level on ESP32 and nRF5340, or a rising edge on
-  EC618. When false, selects a low level or falling edge instead.
+  $wake-high selects the active polarity: high or rising when true, low or
+  falling when false.
+$trigger selects $WAKE-AUTO (the default), $WAKE-LEVEL, or $WAKE-EDGE.
+  $WAKE-AUTO prefers level triggering when supported, otherwise edge triggering.
+  An explicit mode is required exactly; unsupported modes throw `UNSUPPORTED`
+  without changing the previous configuration.
 $pull-up and $pull-down select an optional internal pull while asleep.
   They cannot both be enabled. Unsupported pins or combinations are rejected
   before sleep; configuration errors leave the previous settings intact.
@@ -131,10 +144,12 @@ The configuration applies to the whole device and takes effect at the next
 Multiple pins can be configured; any configured pin can wake the device.
   Repeated calls replace the configuration for that pin. Settings remain
   until $disable-wakeup-pin is called or the device reboots.
-An already-active level can cause immediate wake on ESP32 and nRF5340.
-  EC618 requires an edge after sleep entry.
+Level triggering can wake immediately if the pin is already active.
+  Edge triggering requires a transition after sleep entry.
 
 # Platform restrictions
+ESP32 and the current nRF5340 backend support $WAKE-LEVEL; EC618 supports
+  $WAKE-EDGE. $WAKE-AUTO selects these respective modes.
 ESP32 uses EXT1-capable RTC GPIOs. Targets without EXT1 are currently
   unsupported. Original ESP32 supports multiple high-level pins or one
   low-level pin. ESP32-S2/S3 require all wake pins to use the same level;
@@ -147,9 +162,11 @@ EC618 accepts physical PAD40-42. Its pulls belong to the approximately 2 V
 nRF5340 accepts available, non-reserved GPIOs.
 */
 configure-wakeup-pin pin/int
-    --wake-high/bool=true --pull-up/bool=false --pull-down/bool=false -> none:
+    --wake-high/bool=true --pull-up/bool=false --pull-down/bool=false
+    --trigger/int=WAKE-AUTO -> none:
   if pin < 0 or (pull-up and pull-down): throw "INVALID_ARGUMENT"
-  flags := 8 | (wake-high ? 1 : 0) | (pull-up ? 2 : 0) | (pull-down ? 4 : 0)
+  if not WAKE-AUTO <= trigger <= WAKE-EDGE: throw "INVALID_ARGUMENT"
+  flags := 8 | (wake-high ? 1 : 0) | (pull-up ? 2 : 0) | (pull-down ? 4 : 0) | (trigger << 4)
   configure-wakeup-pin_ pin flags
 
 /**

@@ -13,6 +13,8 @@ main:
   expect-throw "INVALID_ARGUMENT": power.configure-wakeup-pin -1
   expect-throw "INVALID_ARGUMENT": power.configure-wakeup-pin 0 --pull-up --pull-down
   expect-throw "INVALID_ARGUMENT": power.disable-wakeup-pin -1
+  [-1, 3, int.MAX].do: |trigger|
+    expect-throw "INVALID_ARGUMENT": power.configure-wakeup-pin 0 --trigger=trigger
   if system.platform == system.PLATFORM-FREERTOS or
       system.platform == system.PLATFORM-ZEPHYR: return
   expect (not power.supports-timed-deep-sleep)
@@ -22,5 +24,6 @@ main:
   expect-throw "UNIMPLEMENTED": power.deep-sleep (Duration --s=1)
   // Positive sub-millisecond durations reach the platform-specific checks.
   expect-throw "UNIMPLEMENTED": power.deep-sleep (Duration --us=1)
-  expect-throw "UNIMPLEMENTED": power.configure-wakeup-pin 0
+  [power.WAKE-AUTO, power.WAKE-LEVEL, power.WAKE-EDGE].do: |trigger|
+    expect-throw "UNIMPLEMENTED": power.configure-wakeup-pin 0 --trigger=trigger
   expect-throw "UNIMPLEMENTED": power.disable-wakeup-pin 0
