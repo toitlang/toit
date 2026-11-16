@@ -560,6 +560,13 @@ blur-log ba width:
 blur-test:
   if not bytemap-primitives-present:
     return
+
+  // Blurring an empty image does no work, whatever the width. The primitive
+  // used to loop over all columns, taking more than a second.
+  start := Time.monotonic-us
+  bytemap-blur #[] 0x7fff_ffff 3 2
+  expect (Time.monotonic-us - start) < 100_000
+
   ba := ByteArray 25
   ba[12] = 255
   gold := blur-gold ba 5 2
