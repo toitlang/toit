@@ -104,11 +104,11 @@ supports-timed-deep-sleep -> bool:
       system.platform == system.PLATFORM-ZEPHYR
 
 /**
-Returns the normalized reset-cause bit mask.
+Returns the reset reason as a combination of RESET-* flags.
 
-Platform-specific detail remains available from the platform libraries.
-On nRF5340, all reported causes are preserved; on ESP32 and EC618 the reported
-  enum value is mapped to the corresponding common flag.
+Zero means unknown. Multiple flags may be set; test individual bits rather
+  than comparing the entire value.
+Platform-specific details remain available through the platform libraries.
 */
 reset-reason -> int:
   if system.platform == system.PLATFORM-ZEPHYR: return zephyr.reset-reason
