@@ -25,6 +25,7 @@
 #include <esp_netif.h>
 #endif
 #include <esp_now.h>
+#include <esp_idf_version.h>
 #include <esp_log.h>
 
 #include "wifi_espnow_esp32.h"
@@ -213,7 +214,11 @@ static_assert(kEventQueueSize <= ESPNOW_EVENT_QUEUE_SIZE,
 static QueueHandle_t event_queue;
 
 // This function is registered as callback and will then be called on the high-priority WiFi task.
+#if ESP_IDF_VERSION_MAJOR >= 6
+static void espnow_send_cb(const esp_now_send_info_t* tx_info, esp_now_send_status_t status) {
+#else
 static void espnow_send_cb(const uint8* mac_addr, esp_now_send_status_t status) {
+#endif
   tx_status = status;
   auto event = EspNowEvent::SEND_DONE;
   auto ret = xQueueSend(event_queue, &event, 0);

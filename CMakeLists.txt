@@ -63,7 +63,15 @@ endif()
 
 set(TOIT_SDK_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
-if (DEFINED ENV{IDF_PATH})
+if (NOT TOIT_IS_EMBEDDED)
+  # Host SDK identity stays independent of the selected device IDF. This also
+  # prevents sourcing IDF 6 from silently switching the host's Mbed TLS tree.
+  if (DEFINED ENV{TOIT_HOST_IDF_PATH})
+    set(IDF_PATH "$ENV{TOIT_HOST_IDF_PATH}")
+  else()
+    set(IDF_PATH "${CMAKE_CURRENT_SOURCE_DIR}/third_party/esp-idf")
+  endif()
+elseif (DEFINED ENV{IDF_PATH})
   set(IDF_PATH "$ENV{IDF_PATH}")
 else ()
   set(IDF_PATH "${CMAKE_CURRENT_SOURCE_DIR}/third_party/esp-idf")

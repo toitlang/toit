@@ -7,6 +7,12 @@ set(TOIT_BASE_DIR ${COMPONENT_PATH}/../../../..)
 set(TOIT_COMPONENT_REQUIRES
         "efuse" "esp_adc" "esp_eth" "esp_hw_support" "esp_netif" "esp_psram" "esp_rom"
         "nvs_flash" "spi_flash" "mbedtls" "bt" "app_update" "ulp" "fatfs")
+if(IDF_VERSION_MAJOR GREATER_EQUAL 6)
+    list(APPEND TOIT_COMPONENT_REQUIRES
+        "esp_driver_i2c" "esp_driver_pcnt" "esp_driver_rmt"
+        "esp_driver_ledc" "esp_driver_usb_serial_jtag"
+        "esp_hal_i2c" "esp_hal_i2s" "esp_hal_pcnt" "esp_hal_rmt" "esp_hal_uart")
+endif()
 if(CONFIG_TOIT_ENABLE_SPI_TARGET AND CONFIG_SOC_CACHE_INTERNAL_MEM_VIA_L1CACHE)
     list(APPEND TOIT_COMPONENT_REQUIRES "esp_mm")
 endif()
@@ -45,6 +51,12 @@ target_compile_definitions(toit_vm PUBLIC
         -DESP32
         -D__FREERTOS__
         -DRAW)
+
+if(IDF_VERSION_MAJOR GREATER_EQUAL 6)
+    # TF-PSA-Crypto and TLS must share the IDF config, including the PSA user
+    # config. Copying include directories alone does not propagate these flags.
+    target_link_libraries(toit_vm PRIVATE idf::mbedtls)
+endif()
 
 if (CONFIG_IDF_TARGET_ARCH_XTENSA)
     set(TOIT_ARCH_COMPILE_OPTIONS -mlongcalls)

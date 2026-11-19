@@ -16,7 +16,7 @@
 #pragma once
 
 #define MBEDTLS_ALLOW_PRIVATE_ACCESS
-#include <mbedtls/aes.h>
+#include "mbedtls_compat.h"
 
 #include "top.h"
 #include "objects.h"

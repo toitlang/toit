@@ -135,13 +135,12 @@ void gpio_pool_put(int num) {
   // Clear all state associated with the GPIO pin.
   // NOTE: Don't use gpio_reset_pin - it will put on an internal pull-up that's
   // kept during deep sleep.
-  gpio_config_t cfg = {
-    .pin_bit_mask = 1ULL << num,
-    .mode = GPIO_MODE_DISABLE,
-    .pull_up_en = GPIO_PULLUP_DISABLE,
-    .pull_down_en = GPIO_PULLDOWN_DISABLE,
-    .intr_type = GPIO_INTR_DISABLE,
-  };
+  gpio_config_t cfg = {};
+  cfg.pin_bit_mask = 1ULL << num;
+  cfg.mode = GPIO_MODE_DISABLE;
+  cfg.pull_up_en = GPIO_PULLUP_DISABLE;
+  cfg.pull_down_en = GPIO_PULLDOWN_DISABLE;
+  cfg.intr_type = GPIO_INTR_DISABLE;
   gpio_config(&cfg);
   if (GPIO_IS_VALID_OUTPUT_GPIO(num)) gpio_set_level(static_cast<gpio_num_t>(num), 0);
 
@@ -317,13 +316,12 @@ PRIMITIVE(config) {
   int num = resource->pin();
   if (value < -1 || value > 1) FAIL(INVALID_ARGUMENT);
 
-  gpio_config_t cfg = {
-    .pin_bit_mask = 1ULL << num,
-    .mode = GPIO_MODE_OUTPUT_OD,
-    .pull_up_en = static_cast<gpio_pullup_t>(pull_up),
-    .pull_down_en = static_cast<gpio_pulldown_t>(pull_down),
-    .intr_type = GPIO_INTR_DISABLE,
-  };
+  gpio_config_t cfg = {};
+  cfg.pin_bit_mask = 1ULL << num;
+  cfg.mode = GPIO_MODE_OUTPUT_OD;
+  cfg.pull_up_en = static_cast<gpio_pullup_t>(pull_up);
+  cfg.pull_down_en = static_cast<gpio_pulldown_t>(pull_down);
+  cfg.intr_type = GPIO_INTR_DISABLE;
 
   if (output) {
     // Set the value before switching the mode.
