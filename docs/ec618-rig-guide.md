@@ -66,6 +66,27 @@ sequentially. SPI also shares the classic helper's UART2 wires, so use UART1
 for bus-test control. Reset the S3 into its idle fixture before unrelated
 GPIO/UART tests. Keep all wired boards powered to avoid clamping shared nets.
 
+The additional ribbon breakout uses the following verified connections.
+Printed breakout contact numbers run in the opposite direction from the
+pinout image: image contact = 25 - printed contact. Use EC618 PAD numbers
+in Toit, rather than either connector contact number.
+
+| Printed breakout contact | EC618 PAD | S3 GPIO |
+| --- | --- | --- |
+| 8 | 19 | 1 |
+| 17 | 20 | 2 |
+| 12 | 18 | 42 |
+| 1 | 21 | 41 |
+| 22 | 27 | 40 |
+| 20 | 28 | 39 |
+| 2 | 22 | 8 |
+
+These nets expose alternate UART2 and I2C routes, SPI chip select and I2S1.
+PAD22 now connects to GPIO8; GPIO38 is the earlier route. Disconnect DS18B20
+DQ from PAD19/GPIO1 before I2S or the optional FPC I2C1 matrix. The rig retains
+four I2C pullups. `EC618_TEST_I2C_FPC=ON`, together with `EC618_TEST_BUSES=ON`,
+adds the concurrent I2C test using PAD27/PAD28 and PAD19/PAD20.
+
 ## Build and base compatibility
 
 Install CMake, Ninja, xmake, and ectool. The default `EC618_GCC_PATH` selects

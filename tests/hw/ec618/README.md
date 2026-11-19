@@ -18,6 +18,133 @@ Executable tests import their physical signal assignments from
 [`wiring.toit`](wiring.toit). Add a function-named signal there instead of
 embedding a rig pin number in an individual test.
 
+## CTest with a resident agent
+
+Configure `tests/hw` with `TOIT_EXE_HW` matching the installed firmware,
+`EC618_BOARD_PORT` set to its persistent UART0 path, and `EC618_EXPECT_BASE`
+set to its exact base identity. Enable `EC618_TEST_STANDALONE` for basics,
+ADC/cellular lifecycle and events, watchdog-stop, firmware-writer lifecycle
+and integer-width tests.
+`EC618_TEST_FPC` adds I2S allocation and stop tests, plus GPIO/peripheral
+ownership and failed-open cleanup on the breakout I2C, UART and I2S routes.
+The ownership test includes closing unconfigured I2S after UART use; keep
+peer pins idle. Enable
+`EC618_TEST_I2S_MASTER` only with DS18B20 disconnected and peer clock pins
+left as inputs; it adds the live-clock stop test.
+
+Run `ctest --test-dir <hardware-build> -C ec618 -L standalone --output-on-failure`.
+The Toit runner takes the shared rig lock through `flock`, checks the base
+identity and non-trial slot before each test, and checks health afterward.
+Failure triggers cancellation and a bounded recovery wait; successful
+recovery does not turn a failed test into a pass. It never flashes firmware.
+This standalone label does not cover coordinated bus payload matrices.
+
+For the breakout matrix, provision `fpc-target-s3.toit` on the S3 and run
+the classic ESP32 UART1 bridge. Configure `EC618_TEST_BUSES=ON`,
+`EC618_BUS_TARGET_PORT` and `EC618_BUS_BRIDGE`, then run CTest with
+`-C ec618 -L fpc-bus`. The four cases cover concurrent I2C0/I2C1, both
+alternate UART2 routes and SPI. `run-ec618-bus.toit` requires the exact
+`FPC-BUS-1` fixture identity, a complete case-specific controller verdict,
+and successful framed relay completion. It resets the target to idle and
+checks EC618 health after each case. CTest retains controller and relay
+output together. The bus and paired-I2S options require different resident
+S3 firmware and cannot be enabled together. These Toit runners do not add
+a Python dependency or provision either board.
+
+The default concurrent-I2C case uses I2C0 on PAD27/PAD28 and I2C1 on the
+original PAD23/PAD24 route, leaving the DS18B20 clock net idle. With DS18B20
+DQ disconnected, additionally enable `EC618_TEST_I2C_FPC=ON`. This registers
+`fpc-dual-i2c-fpc-ec618`, which runs both controllers concurrently with I2C1
+on breakout PAD19/PAD20. Both cases check 50/100/400 kHz and payload sizes
+1, 31, 32, 33, 65, 129 and 513 bytes, including 2,100 concurrent reads.
+
+## Paired I2S tests
+
+The three CMake options `EC618_TEST_I2S_RX`, `EC618_TEST_I2S_TX` and
+`EC618_TEST_I2S_DUPLEX` select different resident S3 fixtures:
+`i2s-source-s3.toit`, `i2s-sink-s3.toit` and `i2s-duplex-s3.toit`, respectively.
+Enable only one option per build directory. Preserve the original S3 image
+before provisioning a fixture, disconnect DS18B20 DQ from the shared clock
+net, and verify the physical assignments in `wiring.toit`.
+
+Configure `tests/hw` with `TOIT_EXE_HW` pointing to the compiler matching the
+installed EC618 firmware, `EC618_BOARD_PORT` and `EC618_I2S_PEER_PORT` set to
+verified persistent serial paths, and `EC618_EXPECT_BASE` set to the expected
+base identity. Configuration and `ctest --show-only` do not provision boards.
+The runner requires the corresponding resident fixture and uses the shared
+rig lock. For example, after configuring receive tests:
+
+```sh
+ctest --test-dir <hardware-build> -C ec618 -L i2s-rx --output-on-failure
+```
+
+The current matrices register 94 receive, 30 transmit and 12 duplex cases.
+These counts include the 96-kHz configurations; registration is not evidence
+that every case passes. The verifier checks distinct channel patterns and
+never resynchronizes after a payload mismatch. Startup allowances in the
+S3 fixture do not qualify first-frame fidelity. Duplex checks both directions
+for two seconds by default, rather than establishing indefinite streaming.
+ESP32/S3 I2S has known failures listed in `../esp32/fail.cmake`, so a peer
+failure alone does not identify the EC618 as the faulty endpoint.
+
+Native S3 reception remains intermittent. Independent diagnostic captures are
+not part of this suite; do not interpret a failing peer verdict as a pass or
+claim indefinite streaming from bounded captures.
+
+EC618 Datasheet V1.3, section 7.5 specifies up to 96 kHz for 16/24-bit
+samples and 48 kHz for 32-bit samples. The driver rejects higher 32-bit
+rates in both roles, including explicit buffer-duration configurations.
+The manufacturer-authored document was consulted through a
+[third-party mirror](https://www.scribd.com/document/1060340987/EC618-Datasheet-V1-3),
+not a manufacturer-hosted PDF.
+
+EC618's default software ring targets 200 ms, capped at 32768 bytes per
+direction with a minimum of 512 stereo frames. An explicit
+`--buffer-duration-ms` value from 1 through 1000 bypasses the default byte
+cap and can fail allocation. High-rate wide samples therefore have less than
+200 ms of default buffering. Buffer-allocation and stop/restart tests do not
+substitute for exact live payload checks.
+
+## Cellular notifications and lifecycle
+
+After configuring an EC618 build, run the notification regression on the host:
+
+```sh
+cmake -P tests/hw/ec618/run-cellular-state-test.cmake
+```
+
+The runner reads vendor header paths and definitions from
+`build/ec618/compile_commands.json`. Set `-DCOMPILE_COMMANDS=<path>` before
+`-P` to use another build, or `-DCXX=<path>` to select a host C++ compiler.
+It checks truncated and unaligned notification payloads, attach/detach
+ordering, disconnect causes and IPv4 validity using the actual vendor types.
+It requires neither a SIM nor radio access.
+
+Run `cellular-lifecycle-ec618.toit` on EC618 to check exclusivity, ownership,
+disconnect-reason access and release/reacquisition. A run with argument `leak`,
+followed by a normal run, checks cleanup after container exit. These lifecycle
+checks do not require network attachment. Network tests require a working SIM
+and cellular coverage; passing host tests does not qualify network operation.
+
+## Dedicated 1-Wire controller
+
+The native controller provides standard-speed reset, bit and byte operations
+on PAD19 (mux 3), or PAD17/22/48 (mux 4). It permits one owner at a time and
+reserves the selected pad. Strong pull-up is not supported. The separate
+`one-wire.hardware` package backend supplies ROM search, CRC, serialization
+and deadline/cancellation cleanup; the ordinary portable package import does
+not require these new native primitives.
+
+Recorded hardware qualification covers PAD19: DS18B20 ROM search and conversion
+CRC, deadline abort, task cancellation, cross-container ownership and cleanup
+after normal exit or forced stop. This does not qualify PAD17/22/48. Portable
+package and unsupported-backend host tests do not replace sensor tests.
+The hardware backend requires a supporting SDK release before publication.
+
+Disconnect DS18B20 DQ before I2S tests that drive the shared PAD19 clock net.
+When testing 1-Wire, leave the connected peer pin as an input and use the
+sensor wiring and pull-up recorded in the rig guide.
+
 ## Pin identity
 
 Toit identifies an EC618 pin by its physical PAD number. Module silkscreen

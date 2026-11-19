@@ -2,6 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import system.firmware
 import system.trace show send-trace-message
 import system.storage
 
@@ -274,25 +275,60 @@ program-path -> string?:
 
 /**
 The hostname of the machine running the program.
+
+On embedded platforms, this is the hostname set with $hostname=, the
+  "hostname" entry of the firmware config, or the built-in default.
 */
 hostname -> string:
   if platform == PLATFORM-FREERTOS:
-    config-name := bucket_.get "hostname"
-    if config-name: return config-name
+    if configured := configured-hostname_:
+      return configured
   return hostname_
 
 /**
 Sets the hostname of the machine running the program.
+
+The hostname is stored persistently and survives reboots and firmware
+  updates. Use null to remove it and go back to the default.
 
 This operation is not supported on all platforms.
 
 Only new network connections will use the new hostname. Also, some
   routers may cache the old hostname for a while.
 */
-hostname= hostname/string -> none:
+hostname= hostname/string? -> none:
   if platform != PLATFORM-FREERTOS:
     throw "UNSUPPORTED"
+  set-configured-hostname_ hostname
+
+/**
+The hostname from the system bucket or, if absent, from the firmware
+  configuration. Ignores invalid firmware configuration entries.
+Returns null if neither is set.
+*/
+configured-hostname_ -> string?:
+  if override := bucket_.get "hostname": return override
+  configured := firmware.config["hostname"]
+  if configured is string and is-valid-hostname_ configured: return configured
+  return null
+
+set-configured-hostname_ hostname/string? -> none:
+  if not hostname:
+    bucket_.remove "hostname"
+    return
+  if not is-valid-hostname_ hostname: throw "INVALID_ARGUMENT"
   bucket_["hostname"] = hostname
+
+/** Max length accepted by the ESP-IDF netif. */
+HOSTNAME-MAX-SIZE_ ::= 32
+
+is-valid-hostname_ hostname/string -> bool:
+  if not 1 <= hostname.size <= HOSTNAME-MAX-SIZE_: return false
+  if hostname.starts-with "-" or hostname.ends-with "-": return false
+  hostname.do --runes: | c/int |
+    is-valid := ('a' <= c <= 'z') or ('A' <= c <= 'Z') or ('0' <= c <= '9') or c == '-'
+    if not is-valid: return false
+  return true
 
 hostname_ -> string:
   #primitive.core.hostname

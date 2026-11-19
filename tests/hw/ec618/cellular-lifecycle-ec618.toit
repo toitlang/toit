@@ -29,16 +29,28 @@ main args:
   other-group := cellular-init_
   try:
     expect-throws "ALREADY_IN_USE":
+      cellular-connect_ group
+    expect-throws "ALREADY_IN_USE":
       cellular-connect_ other-group
+    expect-throws "INVALID_ARGUMENT":
+      cellular-disconnect_ other-group events
+    expect-throws "INVALID_ARGUMENT":
+      cellular-get-ip_ group 1
+    reason := cellular-disconnect-reason_ events
+    if reason.is-empty: throw "missing cellular reason"
+    print "cellular-lifecycle: reason=$reason"
   finally:
     cellular-close_ other-group
 
   cellular-disconnect_ group events
+  if cellular-get-ip_ group 0: throw "stale address after disconnect"
+  expect-throws "ALREADY_CLOSED":
+    cellular-disconnect-reason_ events
   events = cellular-connect_ group
   cellular-disconnect_ group events
   cellular-close_ group
 
-  print "cellular-lifecycle: PASS exclusivity, disconnect, and reacquisition"
+  print "cellular-lifecycle: PASS exclusivity, reason, ownership, disconnect, and reacquisition"
 
 cellular-init_:
   #primitive.cellular.init
@@ -51,3 +63,9 @@ cellular-connect_ resource-group:
 
 cellular-disconnect_ resource-group resource:
   #primitive.cellular.disconnect
+
+cellular-disconnect-reason_ resource -> string:
+  #primitive.cellular.disconnect-reason
+
+cellular-get-ip_ resource-group index/int -> ByteArray?:
+  #primitive.cellular.get-ip

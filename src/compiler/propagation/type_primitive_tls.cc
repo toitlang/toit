@@ -20,23 +20,45 @@ namespace compiler {
 
 MODULE_TYPES(tls, MODULE_TLS)
 
-TYPE_PRIMITIVE_ANY(init)
-TYPE_PRIMITIVE_ANY(deinit)
-TYPE_PRIMITIVE_ANY(init_socket)
-TYPE_PRIMITIVE_ANY(create)
+TYPE_PRIMITIVE_BYTE_ARRAY(init)
+TYPE_PRIMITIVE_NULL(deinit)
+TYPE_PRIMITIVE_NULL(init_socket)
+TYPE_PRIMITIVE_BYTE_ARRAY(create)
 TYPE_PRIMITIVE_BYTE_ARRAY(take_outgoing)
-TYPE_PRIMITIVE_ANY(set_incoming)
-TYPE_PRIMITIVE_ANY(handshake)
-TYPE_PRIMITIVE_ANY(close)
-TYPE_PRIMITIVE_ANY(close_write)
-TYPE_PRIMITIVE_ANY(read)
-TYPE_PRIMITIVE_ANY(write)
-TYPE_PRIMITIVE_ANY(add_root_certificate)
+TYPE_PRIMITIVE_NULL(set_incoming)
+TYPE_PRIMITIVE_NULL(handshake)
+TYPE_PRIMITIVE_NULL(close)
+
+TYPE_PRIMITIVE(close_write) {
+  result.add_smi(program);
+  result.add_null(program);
+  failure.add_string(program);
+}
+
+TYPE_PRIMITIVE(read) {
+  result.add_byte_array(program);
+  result.add_smi(program);
+  result.add_null(program);
+  failure.add_string(program);
+}
+
+TYPE_PRIMITIVE_SMI(write)
+TYPE_PRIMITIVE_NULL(add_root_certificate)
 TYPE_PRIMITIVE_INT(add_global_root_certificate)
 TYPE_PRIMITIVE_NULL(use_system_trusted_root_certificates)
-TYPE_PRIMITIVE_ANY(add_certificate)
-TYPE_PRIMITIVE_ANY(error)
-TYPE_PRIMITIVE_ANY(get_internals)
+TYPE_PRIMITIVE_NULL(add_certificate)
+
+TYPE_PRIMITIVE(error) {
+  failure.add_string(program);
+}
+
+TYPE_PRIMITIVE(get_internals) {
+  result.add_array(program);
+  result.add_smi(program);
+  result.add_null(program);
+  failure.add_string(program);
+}
+
 TYPE_PRIMITIVE_NULL(get_random)
 TYPE_PRIMITIVE_BYTE_ARRAY(token_acquire)
 TYPE_PRIMITIVE_NULL(token_release)

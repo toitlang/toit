@@ -20,11 +20,11 @@ namespace compiler {
 
 MODULE_TYPES(image, MODULE_IMAGE)
 
-TYPE_PRIMITIVE_ANY(current_id)
-TYPE_PRIMITIVE_ANY(writer_create)
-TYPE_PRIMITIVE_ANY(writer_write)
-TYPE_PRIMITIVE_ANY(writer_commit)
-TYPE_PRIMITIVE_ANY(writer_close)
+TYPE_PRIMITIVE_BYTE_ARRAY(current_id)
+TYPE_PRIMITIVE_BYTE_ARRAY(writer_create)
+TYPE_PRIMITIVE_NULL(writer_write)
+TYPE_PRIMITIVE_NULL(writer_commit)
+TYPE_PRIMITIVE_NULL(writer_close)
 
 }  // namespace toit::compiler
 }  // namespace toit

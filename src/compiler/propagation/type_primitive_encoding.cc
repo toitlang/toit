@@ -20,9 +20,13 @@ namespace compiler {
 
 MODULE_TYPES(encoding, MODULE_ENCODING)
 
-TYPE_PRIMITIVE_ANY(base64_encode)
-TYPE_PRIMITIVE_ANY(base64_decode)
-TYPE_PRIMITIVE_ANY(tison_decode)
+TYPE_PRIMITIVE_STRING(base64_encode)
+TYPE_PRIMITIVE_BYTE_ARRAY(base64_decode)
+
+TYPE_PRIMITIVE(tison_decode) {
+  result.add_decoded(program);
+  failure.add_string(program);
+}
 
 TYPE_PRIMITIVE(tison_encode) {
   result.add_byte_array(program);

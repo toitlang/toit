@@ -34,6 +34,8 @@ class FinalizerNode : public FinalizerNodeFifo::Element {
   FinalizerNode(HeapObject* key, ObjectHeap* heap) : key_(key), heap_(heap) {}
   virtual ~FinalizerNode();
 
+  HeapObject* key() const { return key_; }
+
   // Called at the end of compaction and at other times where all pointers
   // should be visited with no weakness/finalization processing.
   virtual void roots_do(RootCallback* cb) = 0;
@@ -91,7 +93,12 @@ class VmFinalizerNode : public FinalizerNode {
     : FinalizerNode(key, heap) {}
 
   virtual void roots_do(RootCallback* cb);
-  virtual void heap_dying() { free_external_memory(); }
+  // As in weak_processing: if the finalizer bit is cleared, the object no
+  // longer owns its memory. For example, a message decoder that failed gave
+  // the memory back to the message, which frees it.
+  virtual void heap_dying() {
+    if (key_->has_active_finalizer()) free_external_memory();
+  }
   virtual bool weak_processing(bool in_closure_queue, RootCallback* visitor, LivenessOracle* oracle);
 
  private:

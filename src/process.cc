@@ -252,7 +252,7 @@ String* Process::allocate_string(const char* content) {
 }
 
 ByteArray* Process::allocate_byte_array(word length, bool force_external) {
-  ASSERT(length >= 0);
+  if (length < 0) return null;
   if (force_external || length > ByteArray::max_internal_size_in_process()) {
     // Byte array cannot fit within a heap block so place content in malloced space.
     AllocationManager allocation(this);

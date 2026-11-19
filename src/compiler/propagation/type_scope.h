@@ -17,12 +17,15 @@
 
 #include "type_stack.h"
 
+#include <vector>
+
 namespace toit {
 namespace compiler {
 
 // Forward declarations.
 class BlockTemplate;
 class MethodTemplate;
+struct Unwinding;
 
 class TypeScope {
  public:
@@ -44,6 +47,18 @@ class TypeScope {
   MethodTemplate* method() const { return method_; }
   TypeScope* outer() const { return outer_; }
 
+  // The unwinding this scope is part of, if any. It is non-null for
+  // the finally code that runs on the way to a non-local target, so
+  // it plays the role of the link information in the interpreter.
+  Unwinding* unwinding() const { return unwinding_; }
+  void set_unwinding(Unwinding* unwinding) { unwinding_ = unwinding; }
+
+  // We keep track of whether we're in finally code, including
+  // any blocks and methods that run on behalf of it.
+  bool is_in_finally() const { return finally_depth_ > 0; }
+  void enter_finally() { finally_depth_++; }
+  void leave_finally() { finally_depth_--; }
+
   TypeStack* at(int n) const {
     ASSERT(n >= 0);
     ASSERT(n <= level_);
@@ -60,14 +75,18 @@ class TypeScope {
   // discarded.
   TypeScope* copy_lazy(const TypeScope* target = null) const;
 
+  // Make sure this scope has its own copy of all its stacks,
+  // so it can outlive the scopes it was copied from.
+  void own_stacks();
+
   enum MergeKind {
     MERGE_LOCAL,
     MERGE_RETURN,
-    MERGE_UNWIND
+    MERGE_UNWIND,
+    MERGE_OUTER   // Merge all levels of this scope from a nested scope.
   };
 
   bool merge(const TypeScope* other, MergeKind kind);
-  void merge_any_locals(Program* program);
 
  private:
   TypeStack* top_ = null;
@@ -84,6 +103,11 @@ class TypeScope {
   MethodTemplate* method_;
   TypeScope* const outer_;
   uword* const wrapped_;
+  Unwinding* unwinding_ = null;
+  int finally_depth_ = 0;
+
+  // Stacks replaced by merging that others may still be using.
+  std::vector<TypeStack*> replaced_;
 
   TypeScope(const TypeScope* source, const TypeScope* target);
 

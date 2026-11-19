@@ -20,18 +20,44 @@ namespace compiler {
 
 MODULE_TYPES(udp, MODULE_UDP)
 
-TYPE_PRIMITIVE_ANY(init)
-TYPE_PRIMITIVE_ANY(create_socket)
-TYPE_PRIMITIVE_ANY(bind)
-TYPE_PRIMITIVE_ANY(bind_socket)
-TYPE_PRIMITIVE_ANY(connect)
-TYPE_PRIMITIVE_ANY(receive)
-TYPE_PRIMITIVE_ANY(send)
-TYPE_PRIMITIVE_ANY(get_option)
-TYPE_PRIMITIVE_ANY(set_option)
-TYPE_PRIMITIVE_ANY(error_number)
-TYPE_PRIMITIVE_ANY(close)
-TYPE_PRIMITIVE_ANY(gc)
+TYPE_PRIMITIVE_BYTE_ARRAY(init)
+TYPE_PRIMITIVE_BYTE_ARRAY(create_socket)
+TYPE_PRIMITIVE_BYTE_ARRAY(bind)
+TYPE_PRIMITIVE_NULL(bind_socket)
+
+TYPE_PRIMITIVE(connect) {
+  result.add_byte_array(program);
+  result.add_null(program);
+  failure.add_string(program);
+}
+
+TYPE_PRIMITIVE(receive) {
+  result.add_array(program);
+  result.add_byte_array(program);
+  result.add_smi(program);
+  result.add_null(program);
+  failure.add_string(program);
+}
+
+TYPE_PRIMITIVE_SMI(send)
+
+TYPE_PRIMITIVE(get_option) {
+  result.add_byte_array(program);
+  result.add_string(program);
+  result.add_bool(program);
+  result.add_smi(program);
+  failure.add_string(program);
+}
+
+TYPE_PRIMITIVE_NULL(set_option)
+TYPE_PRIMITIVE_SMI(error_number)
+TYPE_PRIMITIVE_NULL(close)
+
+TYPE_PRIMITIVE(gc) {
+  result.add_bool(program);
+  result.add_null(program);
+  failure.add_string(program);
+}
 
 }  // namespace toit::compiler
 }  // namespace toit

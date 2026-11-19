@@ -76,7 +76,7 @@ test-board1:
   port := uart.Port --tx=TX1 --rx=RX1 --baud-rate=BAUD-RATE
   CONFIGS-TO-TEST.do: | config/Config |
     // Wait for board 2 to be ready.
-    port.in.read
+    expect-equals 'x' port.in.read-byte
 
     for i := 0; i < MAX-RETRIES; i++:
       scanned := wifi.scan #[config.channel]
@@ -104,6 +104,9 @@ test-board1:
     socket := network.tcp-connect SOFTAP-ADDRESS PORT
     print "Sending 'ok'"
     socket.out.write "ok" --flush
+    // Writing queues the TCP data. Keep WiFi running until the other board
+    // confirms receipt, rather than disconnecting with data still in flight.
+    expect-equals 'd' port.in.read-byte
     socket.close
     network.close
 
@@ -127,6 +130,7 @@ test-board2:
     received := socket.in.read
     print "received: $received"
     expect-equals #['o', 'k'] received
+    port.out.write "d" --flush
     socket.close
     server-socket.close
     network-ap.close

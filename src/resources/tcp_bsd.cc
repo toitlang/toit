@@ -131,6 +131,10 @@ int bind_socket(int fd, const char* address, int port) {
     addr.sin_addr.s_addr = INADDR_ANY;
   } else {
     struct hostent* server = gethostbyname(address);
+    if (server == null || server->h_length != sizeof(addr.sin_addr.s_addr)) {
+      errno = EINVAL;
+      return -1;
+    }
     bcopy((char*)server->h_addr, (char*)&addr.sin_addr.s_addr, server->h_length);
   }
   addr.sin_port = htons(port);
@@ -174,6 +178,7 @@ PRIMITIVE(close_write) {
 
 PRIMITIVE(connect) {
   ARGS(TcpResourceGroup, resource_group, Blob, address, int, port, int, window_size);
+  if (address.length() != 4) FAIL(OUT_OF_BOUNDS);
 
   ByteArray* resource_proxy = process->object_heap()->allocate_proxy();
   if (resource_proxy == null) FAIL(ALLOCATION_FAILED);
@@ -190,8 +195,6 @@ PRIMITIVE(connect) {
   socklen_t size = sizeof(sockaddr);
   bzero((char*)&addr, size);
   addr.sin_family = AF_INET;
-  // TODO(florian): This looks like we could write out of bounds. We should
-  // probably check that the address_bytes_length is the right size.
   memcpy(&addr.sin_addr.s_addr, address.address(), address.length());
   addr.sin_port = htons(port);
   int result = connect(id, reinterpret_cast<struct sockaddr*>(&addr), size);

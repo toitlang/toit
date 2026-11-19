@@ -480,8 +480,7 @@ class BleReadWriteElement : public BleCallbackResource {
     // If the resource has been deleted ignore the callback.
     BleResource* resource = resource_for_token(arg);
     if (resource == null) return BLE_ERR_OPERATION_CANCELLED;
-    static_cast<BleReadWriteElement*>(resource)->_on_attribute_read(scope, error, attr);
-    return BLE_ERR_SUCCESS;
+    return static_cast<BleReadWriteElement*>(resource)->_on_attribute_read(scope, error, attr);
   }
 
   // Callback for when this peripheral is accessed.
@@ -506,7 +505,7 @@ class BleReadWriteElement : public BleCallbackResource {
   virtual bool marked_for_deletion() const = 0;
 
  private:
-  void _on_attribute_read(const BleCallbackScope& scope, const ble_gatt_error* error, ble_gatt_attr* attr);
+  int _on_attribute_read(const BleCallbackScope& scope, const ble_gatt_error* error, ble_gatt_attr* attr);
   int _on_access(BleCallbackScope& scope, ble_gatt_access_ctxt* ctxt);
 
   ble_uuid_any_t uuid_;
@@ -1172,6 +1171,7 @@ class BleRemoteDeviceResource : public ServiceContainer<BleRemoteDeviceResource>
   };
   void _on_event(const BleCallbackScope& scope, ble_gap_event* event);
   void _on_service_discovered(const BleCallbackScope& scope, const ble_gatt_error* error, const ble_gatt_svc* service);
+  void handle_mtu_exchange();
 
   void switch_to_state(State new_state) {
     // Once we are marked for deletion, we don't care for any new state transitions anymore.
@@ -1182,6 +1182,8 @@ class BleRemoteDeviceResource : public ServiceContainer<BleRemoteDeviceResource>
   BleCentralManagerResource* central_manager_;
   uint16 handle_;
   bool secure_connection_;
+  bool mtu_received_ = false;
+  bool mtu_processed_ = false;
   State state_;
 };
 
@@ -1820,9 +1822,15 @@ void BleRemoteDeviceResource::_on_event(const BleCallbackScope& scope, ble_gap_e
       if (event->connect.status == 0) {
         ASSERT(handle() == kInvalidHandle)
         set_handle(event->connect.conn_handle);
-        // TODO(mikkel): Expose this as a primitive.
-        ble_gattc_exchange_mtu(event->connect.conn_handle, null, null);
         switch_to_state(CONNECTED);
+        if (mtu_received_) {
+          // A peer can initiate MTU exchange before this ESP-IDF version
+          // reports connection success. Do not send a duplicate exchange.
+          handle_mtu_exchange();
+        } else {
+          // TODO(mikkel): Expose this as a primitive.
+          ble_gattc_exchange_mtu(event->connect.conn_handle, null, null);
+        }
       } else {
         BleEventSource::instance()->on_event(this, kBleConnectFailed);
         switch_to_state(DISCONNECTED);
@@ -1848,12 +1856,8 @@ void BleRemoteDeviceResource::_on_event(const BleCallbackScope& scope, ble_gap_e
       }
       break;
     case BLE_GAP_EVENT_MTU:
-      if (secure_connection_) {
-        ble_gap_security_initiate(event->mtu.conn_handle);
-      } else {
-        BleEventSource::instance()->on_event(this, kBleConnected);
-        switch_to_state(CONNECTED);
-      }
+      mtu_received_ = true;
+      handle_mtu_exchange();
       break;
     case BLE_GAP_EVENT_ENC_CHANGE:
       if (secure_connection_) {
@@ -1861,6 +1865,18 @@ void BleRemoteDeviceResource::_on_event(const BleCallbackScope& scope, ble_gap_e
         switch_to_state(CONNECTED);
       }
       break;
+  }
+}
+
+void BleRemoteDeviceResource::handle_mtu_exchange() {
+  // The MTU event alone does not make this resource usable: CONNECT must
+  // first publish its connection handle. Ignore duplicate or late events.
+  if (!mtu_received_ || mtu_processed_ || handle() == kInvalidHandle || state_ != CONNECTED) return;
+  mtu_processed_ = true;
+  if (secure_connection_) {
+    ble_gap_security_initiate(handle());
+  } else {
+    BleEventSource::instance()->on_event(this, kBleConnected);
   }
 }
 
@@ -2063,14 +2079,30 @@ bool BleReadWriteElement::toit_callback_is_setup(bool for_read) const {
   return handler != null;
 }
 
-void BleReadWriteElement::_on_attribute_read(const BleCallbackScope& scope,
+int BleReadWriteElement::_on_attribute_read(const BleCallbackScope& scope,
                                              const struct ble_gatt_error* error,
                                              struct ble_gatt_attr* attr) {
   switch (error->status) {
     case 0: {
-      set_mbuf_received(attr->om);
-      // Take ownership of the buffer.
-      attr->om = null;
+      if (mbuf_received_ == null) {
+        set_mbuf_received(attr->om);
+        // Take ownership of the first fragment, including an empty value.
+        attr->om = null;
+      } else {
+        // Fill the existing chain's unused space instead of retaining one
+        // mbuf per ATT fragment. At MTU 23 a 512-byte read has 24 fragments,
+        // which can exhaust the RX pool before the read completes.
+        int err = os_mbuf_appendfrom(mbuf_received_, attr->om, 0, OS_MBUF_PKTLEN(attr->om));
+        if (err != 0) {
+          // Append can have copied a prefix before running out of buffers.
+          // Discard the incomplete result and stop NimBLE's read procedure.
+          set_mbuf_received(null);
+          set_error(BLE_HS_ENOMEM);
+          BleEventSource::instance()->on_event(this, kBleValueDataReadFailed);
+          return BLE_HS_ENOMEM;
+        }
+        // NimBLE retains ownership and frees this fragment after the callback.
+      }
       break;
     }
     case BLE_HS_EDONE: // No more data can be read.
@@ -2078,10 +2110,12 @@ void BleReadWriteElement::_on_attribute_read(const BleCallbackScope& scope,
       break;
 
     default:
+      set_mbuf_received(null);
       set_error(error->status);
       BleEventSource::instance()->on_event(this, kBleValueDataReadFailed);
       break;
   }
+  return BLE_ERR_SUCCESS;
 }
 
 int BleReadWriteElement::_on_access(BleCallbackScope& scope, ble_gatt_access_ctxt* ctxt) {
@@ -2307,15 +2341,13 @@ int BlePeripheralManagerResource::_on_gap(const BleCallbackScope& scope, struct 
 
 static Object* blob_to_mbuf(Process* process, Blob& bytes, os_mbuf** result) {
   *result = null;
-  if (bytes.length() > 0) {
-    os_mbuf* mbuf = ble_hs_mbuf_from_flat(bytes.address(), bytes.length());
-    // A null response is not an allocation error, as the mbufs are allocated on boot based on configuration settings.
-    // Therefore, a GC will do little to help the situation and will eventually result in the VM thinking it is out of memory.
-    // The mbuf will be freed eventually by the NimBLE stack. The client code will
-    // have to wait and then try again.
-    if (!mbuf) FAIL(QUOTA_EXCEEDED);
-    *result = mbuf;
-  }
+  // Empty data still needs an mbuf. NimBLE's write API dereferences it, and
+  // its notification API treats null as a request to read the stored value.
+  os_mbuf* mbuf = ble_hs_mbuf_from_flat(bytes.address(), bytes.length());
+  // The fixed NimBLE pools are not reclaimed by a Toit GC. Retry after queued
+  // packets have been released instead of reporting a heap allocation error.
+  if (!mbuf) FAIL(QUOTA_EXCEEDED);
+  *result = mbuf;
   return null;  // No error.
 }
 
@@ -2861,11 +2893,14 @@ PRIMITIVE(request_read) {
 
   if (!element->service()->device()) FAIL(INVALID_ARGUMENT);
   if (!element->ensure_token()) FAIL(ALLOCATION_FAILED);
-  ble_gattc_read_long(element->service()->device()->handle(),
-                      element->handle(),
-                      0,
-                      BleReadWriteElement::on_attribute_read,
-                      element->token());
+  int err = ble_gattc_read_long(element->service()->device()->handle(),
+                              element->handle(),
+                              0,
+                              BleReadWriteElement::on_attribute_read,
+                              element->token());
+  // A rejected request (for example after disconnect) has no completion
+  // callback. Report it here instead of leaving the caller waiting forever.
+  if (err != BLE_ERR_SUCCESS) return nimble_stack_error(process, err);
 
   return process->null_object();
 }
@@ -2911,10 +2946,11 @@ PRIMITIVE(write_value) {
 
   int err;
   if (with_response) {
-    err = ble_gattc_write_long(
+    // The MTU check above guarantees a single Write Request. Long writes use
+    // Prepare/Execute Write, which is a different, optional server operation.
+    err = ble_gattc_write(
         element->service()->device()->handle(),
         element->handle(),
-        0,
         om,
         BleCharacteristicResource::on_write_response,
         element->token());
@@ -2928,7 +2964,7 @@ PRIMITIVE(write_value) {
 
   if (err != BLE_ERR_SUCCESS) {
     // The 'om' buffer is always consumed by the call to
-    // ble_gattc_write_long() or ble_gattc_write_no_rsp()
+    // ble_gattc_write() or ble_gattc_write_no_rsp()
     // regardless of the outcome.
     if (allow_retry && err == BLE_HS_ENOMEM) {
       // Resource exhaustion.

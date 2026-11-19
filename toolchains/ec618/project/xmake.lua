@@ -49,3 +49,26 @@ if os.getenv("TOIT_EC618_BOOT_DIAGNOSTICS") == "1" then
         add_cxflags("-DTOIT_EC618_BOOT_DIAGNOSTICS=1", {force = true})
     target_end()
 end
+
+-- Recursive SDK source globs follow filesystem enumeration order. Freeze the
+-- object order before archiving/linking so identical inputs retain the same
+-- base addresses across checkouts. Normalize Windows path separators too.
+for _, name in ipairs({"driver", TARGET_NAME, TARGET_NAME .. ".elf"}) do
+    target(name)
+        before_link(function (target)
+            table.sort(target:objectfiles(), function (a, b)
+                a = a:gsub("\\", "/")
+                b = b:gsub("\\", "/")
+                -- Lua string comparison can use host locale collation.
+                -- Compare bytes so punctuation has the same order everywhere.
+                for i = 1, math.min(#a, #b) do
+                    local x, y = a:byte(i), b:byte(i)
+                    if x ~= y then
+                        return x < y
+                    end
+                end
+                return #a < #b
+            end)
+        end)
+    target_end()
+end

@@ -31,5 +31,37 @@ bytecode-test:
   (confuse b) as I
   a as A
 
+run-block [block]:
+  block.call
+
+after-wide-return:
+  print "after"
+
+// Returns from a block when there are enough locals on the stack to need
+// the wide variant of the non-local return bytecode. There is more code
+// in the block, so we can see where the bytecode ends.
+wide-return-test:
+  x0 := confuse 0
+  x1 := confuse 1
+  x2 := confuse 2
+  x3 := confuse 3
+  x4 := confuse 4
+  x5 := confuse 5
+  x6 := confuse 6
+  x7 := confuse 7
+  x8 := confuse 8
+  x9 := confuse 9
+  x10 := confuse 10
+  x11 := confuse 11
+  x12 := confuse 12
+  x13 := confuse 13
+  x14 := confuse 14
+  x15 := confuse 15
+  run-block:
+    if confuse x0: return
+    after-wide-return
+  print x0 + x1 + x2 + x3 + x4 + x5 + x6 + x7 + x8 + x9 + x10 + x11 + x12 + x13 + x14 + x15
+
 main:
   bytecode-test
+  wide-return-test

@@ -21,6 +21,7 @@ main:
   io-data-test network
   broadcast-test network
   close-test network
+  ipv6-address-test network
 
 ping-ping-test network/net.Client:
   times := 10
@@ -184,4 +185,12 @@ close-test network/net.Client:
 
   ready.receive
   sleep --ms=100
+  socket.close
+
+ipv6-address-test network/net.Client:
+  // The host implementation only supports IPv4 addresses.
+  socket := udp.Socket network "127.0.0.1" 0
+  ipv6 := net.SocketAddress (net.IpAddress (ByteArray 16)) 1234
+  expect-throw "OUT_OF_BOUNDS": socket.connect ipv6
+  expect-throw "OUT_OF_BOUNDS": socket.send (net.Datagram #['f', 'o', 'o'] ipv6)
   socket.close

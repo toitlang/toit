@@ -24,6 +24,7 @@
 #include "ir.h"
 #include "lsp/lsp.h"
 #include "no_such_method.h"
+#include "optimizations/utils.h"
 #include "queryable_class.h"
 #include "toitdoc.h"
 
@@ -442,13 +443,61 @@ class TypeChecker : public ReturningVisitor<Type> {
         return argument_types[0];
       }
     }
+    bool receiver_is_guaranteed = is_guaranteed(node->receiver());
     if (is_arithmetic_operation(selector)) {
       if (receiver_type == integer_type_) {
-        if (argument_types[0] == integer_type_) return integer_type_;
-        if (argument_types[0] == float_type_) return float_type_;
+        if (argument_types[0] == integer_type_ || argument_types[0] == float_type_) {
+          if (receiver_is_guaranteed && is_guaranteed(arguments[0])) guaranteed_calls_.insert(node);
+          return argument_types[0];
+        }
       }
     }
+    if (receiver_is_guaranteed &&
+        !method->is_setter() &&
+        method->return_type().is_class() &&
+        overrides_keep_return_type(klass, selector, method)) {
+      guaranteed_calls_.insert(node);
+    }
     return method->return_type();
+  }
+
+  /// Whether every method a call with [selector] on an instance of
+  /// [klass] can dispatch to returns a subtype of [method]'s return type.
+  /// A method's return value is only checked against its own declared
+  /// type, and nothing requires an override to keep the overridden
+  /// method's return type, so otherwise the static return type doesn't
+  /// hold at runtime.
+  bool overrides_keep_return_type(Class* klass, Selector<CallShape> selector, Method* method) {
+    Selector<PlainShape> plain(selector.name(), selector.shape().to_plain_shape());
+    auto& cache = override_cache_[klass];
+    auto probe = cache.find(plain);
+    if (probe != cache.end()) return probe->second;
+    auto return_type = method->return_type();
+    bool result = true;
+    for (auto sub : subtypes_of(klass)) {
+      auto target = queryables_->find(sub)->second.lookup(plain);
+      if (target == null || target == method || target->is_abstract()) continue;
+      auto target_type = target->return_type();
+      if (!target_type.is_class() ||
+          (target_type.is_nullable() && !return_type.is_nullable()) ||
+          !is_assignable(return_type, target_type)) {
+        result = false;
+        break;
+      }
+    }
+    cache.add(plain, result);
+    return result;
+  }
+
+  const std::vector<Class*>& subtypes_of(Class* klass) {
+    auto probe = subtypes_cache_.find(klass);
+    if (probe != subtypes_cache_.end()) return probe->second;
+    std::vector<Class*> result;
+    for (auto candidate : classes_) {
+      if (is_subtype_of(candidate, klass)) result.push_back(candidate);
+    }
+    subtypes_cache_.add(klass, result);
+    return subtypes_cache_[klass];
   }
 
   Type visit_CallBlock(CallBlock* node) { return visit_Call(node); }
@@ -553,14 +602,46 @@ class TypeChecker : public ReturningVisitor<Type> {
       local->set_type(Type::any());
     } else if (right_type == true_type_ || right_type == false_type_) {
       local->set_type(boolean_type_);
+      if (is_guaranteed(node->right())) local->mark_guaranteed_inferred_type();
     } else {
       if (node->right()->is_LiteralNull()) {
         local->set_type(Type::any());
       } else {
         local->set_type(right_type);
+        if (is_guaranteed(node->right())) local->mark_guaranteed_inferred_type();
       }
     }
     return right_type;
+  }
+
+  /// Whether the static class of [node]'s type also holds at runtime.
+  /// Conservative.
+  bool is_guaranteed(Expression* node) {
+    if (node->is_Literal()) return true;
+    if (node->is_ReferenceLocal()) return node->as_ReferenceLocal()->target()->has_guaranteed_type();
+    if (node->is_ReferenceGlobal()) {
+      auto global = node->as_ReferenceGlobal()->target();
+      return global->has_explicit_type() && global->return_type().is_class();
+    }
+    if (node->is_Typecheck()) return node->as_Typecheck()->is_as_check();
+    if (node->is_FieldLoad()) {
+      auto load = node->as_FieldLoad();
+      // Like `compute_guaranteed_type`, don't trust field loads on `this` in
+      // constructors.
+      if (method_->is_constructor() && is_This(load->receiver(), method_->holder(), method_)) {
+        return false;
+      }
+      return load->field()->type().is_class();
+    }
+    if (node->is_CallVirtual()) return guaranteed_calls_.contains(node->as_CallVirtual());
+    if (node->is_CallStatic()) {
+      return node->as_CallStatic()->target()->target()->return_type().is_class();
+    }
+    if (node->is_Sequence()) {
+      auto expressions = node->as_Sequence()->expressions();
+      return !expressions.is_empty() && is_guaranteed(expressions.last());
+    }
+    return false;
   }
 
   Type visit_AssignmentLocal(AssignmentLocal* node) {
@@ -636,6 +717,14 @@ class TypeChecker : public ReturningVisitor<Type> {
 
   // The current method.
   Method* method_;
+
+  // Virtual calls whose static type also holds at runtime.
+  // See `is_guaranteed`.
+  UnorderedSet<CallVirtual*> guaranteed_calls_;
+  // Results of `overrides_keep_return_type`, by receiver class and selector.
+  UnorderedMap<Class*, UnorderedMap<Selector<PlainShape>, bool>> override_cache_;
+  // Results of `subtypes_of`.
+  UnorderedMap<Class*, std::vector<Class*>> subtypes_cache_;
 
   Type boolean_type_;
   Type true_type_;

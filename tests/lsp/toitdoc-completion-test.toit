@@ -72,7 +72,7 @@ class SomeClass2 extends SomeClass:
 
   /** $imported.ImportedClass */
   /*            ^~~~~~~~~~~~~
-    + ImportedClass, ImportedInterface
+    + ImportedClass, ImportedInterface, ImportedMixin
     - *
   */
   foo2 param1:
@@ -80,7 +80,7 @@ class SomeClass2 extends SomeClass:
   // TODO(florian): not sure we should have "constructor"
   /** $SomeClass.static-field */
   /*             ^~~~~~~~~~~~
-    + member, member2 field, setter, super-target1, static-fun, static-field, constructor
+    + member, member2, field, setter, super-target1, static-fun, static-field, constructor
     - *
   */
   foo3 param1:
@@ -88,7 +88,7 @@ class SomeClass2 extends SomeClass:
   // TODO(florian): not sure if we should have "constructor".
   /** $imported.ImportedClass.imported-member */
   /*                          ^~~~~~~~~~~~~~~
-    - imported-member, imported-static-member, constructor
+    + imported-member, imported-static-member, constructor
     - *
   */
   foo4 --named:

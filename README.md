@@ -174,7 +174,7 @@ make
 
 The Toit VM has a requirement for the [Espressif IoT Development Framework](https://idf.espressif.com/), both for Linux and ESP32 builds (for Linux it's for the [Mbed TLS](https://www.trustedfirmware.org/projects/mbed-tls/) implementation).
 
-We recommend you use Toitware's [ESP-IDF fork](https://github.com/toitware/esp-idf) that comes with a few changes:
+We recommend you use the [ESP-IDF fork maintained by Toit contributors](https://github.com/toitware/esp-idf) that comes with a few changes:
 
 * Custom malloc implementation
 * Allocation-fixes for UART, etc.

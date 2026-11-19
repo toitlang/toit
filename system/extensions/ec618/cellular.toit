@@ -125,14 +125,17 @@ class CellularModule implements NetworkModule:
           // Keep waiting for attachment.
 
   disconnect -> none:
-    if not resource-group_: return
+    resource-group := resource-group_
+    if not resource-group: return
+    // Claim the group before anything that can yield, so a concurrent
+    // disconnect (from the event callback or a client) returns.
+    resource-group_ = null
     critical-do:
       logger_.debug "closing"
       if events_:
         events_.dispose
         events_ = null
-    cellular-close_ resource-group_
-    resource-group_ = null
+    cellular-close_ resource-group
     address_ = null
     service.on-module-closed this
 

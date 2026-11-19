@@ -15,6 +15,7 @@ import monitor
 import net
 import net.ethernet
 import spi
+import system
 
 import system.api.ethernet show EthernetService
 import system.api.network show NetworkService
@@ -246,7 +247,8 @@ class EthernetServiceProvider extends EthernetServiceProviderBase_:
     finally: | is-exception exception |
       // If we're not returning a network resource to the client, we
       // must take care to decrement the usage count correctly.
-      if is-exception: state_.down
+      if is-exception:
+        critical-do: state_.down
 
   address resource/NetworkResource -> ByteArray:
     return (state_.module as EthernetModule_).address.to-byte-array
@@ -293,16 +295,20 @@ class EthernetModule_ implements NetworkModule:
 
   connect -> none:
     service.on-module-opened this
+    ethernet-set-hostname_ resource-group_ system.hostname
     with-timeout ETHERNET-CONNECT-TIMEOUT: wait-for-connected_
     with-timeout ETHERNET-DHCP-TIMEOUT: wait-for-dhcp-ip-address_
 
   disconnect -> none:
-    if not resource-group_: return
-    logger_.debug "closing"
-    ethernet-close_ resource-group_
+    resource-group := resource-group_
+    if not resource-group: return
     resource-group_ = null
+    // Close before anything that can yield or throw. We may be running in a
+    // canceled task, and logging is an RPC to a service that may be gone.
+    ethernet-close_ resource-group
     address_ = null
     service.on-module-closed this
+    critical-do: logger_.debug "closed"
 
   wait-for-connected_ -> none:
     logger_.debug "connecting"
@@ -348,3 +354,6 @@ ethernet-disconnect_ resource-group resource:
 
 ethernet-get-ip_ resource:
   #primitive.ethernet.get-ip
+
+ethernet-set-hostname_ resource-group hostname:
+  #primitive.ethernet.set-hostname

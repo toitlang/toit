@@ -252,6 +252,10 @@ Returns the reason for the most recent reset of the application processor.
 The result is one of the RESET-* constants ($RESET-POWER-ON,
   $RESET-WATCHDOG-HARDWARE, ...). Use $reset-reason-name to turn it into a
   human-readable string.
+
+Requires a base image that initializes the vendor reset-reason decoder.
+  Early development bases omitted this and reported $RESET-POWER-ON for every
+  cause, including software resets and deep-sleep wakes.
 */
 reset-reason -> int:
   #primitive.ec618.reset-reason
@@ -301,9 +305,8 @@ The result is one of the WAKEUP-* constants ($WAKEUP-POWER-ON,
   $WAKEUP-RTC, ...). Use $wakeup-cause-name to turn it into a
   human-readable string.
 
-The EC618 reports $reset-reason as $RESET-POWER-ON even after a wake
-  from deep sleep, so this is the call that tells a deep-sleep wake
-  (by timer or wakeup pad) apart from a cold boot.
+Use this to identify the wake source (timer, wakeup pad, or power-on);
+  $reset-reason alone does not identify which source ended deep sleep.
 */
 wakeup-cause -> int:
   #primitive.ec618.wakeup-cause
@@ -354,17 +357,20 @@ class Ec618:
   // UART pad layout. Values must match `kUartPads` in pad_table_ec618.cc.
   // Flattened as controller, mapping, then [tx, rx, rts, cts]. 0xff means
   // the corresponding role isn't available on that mapping.
-  static UART-MAPPINGS-PER-CONTROLLER_ ::= 2
+  static UART-MAPPINGS-PER-CONTROLLER_ ::= 3
   static UART-PADS-PER-MAPPING_ ::= 4
   static UART-PADS_/ByteArray ::= #[
     30, 29,   27,   28,  // UART0 mapping 0 — primary.
     32, 31, 0xff, 0xff,  // UART0 mapping 1 — alt; no flow control.
+    0xff, 0xff, 0xff, 0xff,  // UART0 mapping 2 — unavailable.
 
     34, 33,   31,   32,  // UART1 mapping 0 — only TX/RX/RTS route.
     34, 33, 0xff,   22,  // UART1 mapping 1 — alternate CTS.
+    0xff, 0xff, 0xff, 0xff,  // UART1 mapping 2 — unavailable.
 
     26, 25, 0xff, 0xff,  // UART2 mapping 0 — primary.
     28, 27, 0xff, 0xff,  // UART2 mapping 1 — alt 1.
+    22, 21, 0xff, 0xff,  // UART2 mapping 2 — TX=PAD22/GPIO7, RX=PAD21/GPIO6.
   ]
 
   /**
@@ -517,9 +523,10 @@ class Ec618:
   Opens UART2 (EC618 controller 2). UART2 has no hardware flow control.
 
   Mapping selector $mapping picks between pin layouts:
-  - 0 (default): TX=GPIO11, RX=GPIO10.
-  - 1:           TX=GPIO13, RX=GPIO12 (the layout Air780EG/EUG modules
+  - 0 (default): TX=PAD26/GPIO11, RX=PAD25/GPIO10.
+  - 1:           TX=PAD28/GPIO13, RX=PAD27/GPIO12 (the layout Air780EG/EUG modules
                  use, because GPIO10/11 are taken by their GNSS subsystem).
+  - 2:           TX=PAD22/GPIO7, RX=PAD21/GPIO6.
 
   With $mode equal to $uart.Port.MODE-RS485-HALF-DUPLEX, $rs485-de is the
     RS485 direction (DE) pin: the driver raises it just before a
@@ -561,6 +568,11 @@ class Ec618:
     (peripheral-routed at iomux function 2; as GPIOs the same pads are
     GPIO15/GPIO14 at function 4).
 
+  For the camera breakout route, construct $i2c.Bus with `--sda=27 --scl=28`.
+    PAD31/PAD32 is another accepted SDA/SCL route. These routes use the same
+    I2C0 controller; only one can be open at a time. Pad numbers are physical
+    EC618 PAD indices, not connector contact numbers or logical GPIO numbers.
+
   If $pull-up is true, the pads' internal pull-ups are enabled. Most
     sensor breakouts carry their own bus pull-ups.
 
@@ -579,6 +591,11 @@ class Ec618:
 
   SDA=PAD23, SCL=PAD24 (GPIO8/GPIO9) — the module's I2C1/SPI0 pins; one
     peripheral at a time.
+
+  For the camera breakout route, construct $i2c.Bus with `--sda=19 --scl=20`.
+    This uses the same I2C1 controller and shares pads with I2S1 SCK/WS;
+    those functions cannot be open simultaneously. I2C0 on PAD27/PAD28 and
+    I2C1 on PAD19/PAD20 can operate concurrently.
 
   If $pull-up is true, the pads' internal pull-ups are enabled.
 

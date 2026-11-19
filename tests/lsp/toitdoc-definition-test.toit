@@ -32,7 +32,7 @@ class SomeClass:
 /*@ super_target1x */
 
   super-target2 x y:
-/*@ super_target2 x y*/
+/*@ super_target2xy */
 
 class SomeClass2 extends SomeClass:
 /*    @ SomeClass2 */

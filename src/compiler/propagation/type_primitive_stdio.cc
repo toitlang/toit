@@ -9,9 +9,15 @@ namespace compiler {
 
 MODULE_TYPES(stdio, MODULE_STDIO)
 
-TYPE_PRIMITIVE_ANY(stdin_init)
-TYPE_PRIMITIVE_ANY(stdin_open)
-TYPE_PRIMITIVE_ANY(stdin_read)
+TYPE_PRIMITIVE_BYTE_ARRAY(stdin_init)
+TYPE_PRIMITIVE_BYTE_ARRAY(stdin_open)
+
+TYPE_PRIMITIVE(stdin_read) {
+  result.add_byte_array(program);
+  result.add_smi(program);
+  result.add_null(program);
+  failure.add_string(program);
+}
 
 }  // namespace toit::compiler
 }  // namespace toit

@@ -14,6 +14,7 @@
 // directory of this repository.
 
 #include "type_database.h"
+#include "type_primitive.h"
 #include "type_propagator.h"
 #include "type_stack.h"
 
@@ -100,6 +101,36 @@ void TypeDatabase::check_return(uint8* bcp, Object* value) const {
       : HeapObject::cast(value)->class_id();
   if (type.contains(Smi::value(class_id))) return;
   FATAL("didn't expect %d at %d", Smi::value(class_id), position);
+}
+
+// Checks a value produced by a primitive directly against the rule for that
+// primitive. The return sites only know the merged types of everything that
+// returns there, so they can miss rules that are too strict.
+void TypeDatabase::check_primitive(unsigned module, unsigned index, Object** arguments, Object* value, bool is_failure) const {
+  const TypePrimitiveEntry* primitive = TypePrimitive::at(module, index);
+  if (primitive == null) return;
+  TypePrimitive::Entry* entry = reinterpret_cast<TypePrimitive::Entry*>(primitive->function);
+  // Evaluate the rule on the classes of the actual arguments.
+  int arity = primitive->arity;
+  TypeStack stack(-1, arity + 2, words_per_type_);
+  for (int i = 0; i < arity; i++) {
+    Object* argument = arguments[-i];
+    stack.push_instance(Smi::value(is_smi(argument)
+        ? program_->smi_class_id()
+        : HeapObject::cast(argument)->class_id()));
+  }
+  stack.push_empty();
+  stack.push_empty();
+  TypeSet result = stack.local(0);
+  TypeSet failure = stack.local(1);
+  entry(program_, TypePrimitiveArguments(&stack, words_per_type_), result, failure);
+  Smi* class_id = is_smi(value)
+      ? program_->smi_class_id()
+      : HeapObject::cast(value)->class_id();
+  TypeSet type = is_failure ? failure : result;
+  if (type.contains(Smi::value(class_id))) return;
+  FATAL("didn't expect %d from primitive %u:%u (%s)",
+      Smi::value(class_id), module, index, is_failure ? "failure" : "result");
 }
 
 void TypeDatabase::check_method_entry(Method method, Object** sp) const {

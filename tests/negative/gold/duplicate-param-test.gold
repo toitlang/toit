@@ -15,7 +15,7 @@ tests/negative/duplicate-param-test.toit:8:3: error: Unresolved identifier: 'unr
   ^~~~~~~~~~
 tests/negative/duplicate-param-test.toit:9:12: error: Duplicate parameter 'name'
 bar --name [--name]:
-           ^~~~~~~
+           ^~~~~~~~
 tests/negative/duplicate-param-test.toit:9:5: note: First declaration of 'name'
 bar --name [--name]:
     ^~~~~~

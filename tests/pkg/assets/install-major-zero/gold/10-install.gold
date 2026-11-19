@@ -1,0 +1,76 @@
+OK
+[pkg, init]
+==================
+OK
+[pkg, registry, add, test-reg, --local, registry-zero]
+==================
+// Without a version the newest 0.x is installed with a caret constraint.
+==================
+OK
+[pkg, install, zero]
+Package 'localhost:<[*PORT*]>/pkg/zero@0.1.2' installed with prefix 'zero'.
+==================
+== package.yaml
+dependencies:
+  zero:
+    url: localhost:<[*PORT*]>/pkg/zero
+    version: ^0.1.2
+==================
+// An explicit minor is also written as a caret constraint.
+==================
+OK
+[pkg, install, --prefix=minor, zero@0.1]
+Package 'localhost:<[*PORT*]>/pkg/zero@0.1.2' installed with prefix 'minor'.
+==================
+== package.yaml
+dependencies:
+  zero:
+    url: localhost:<[*PORT*]>/pkg/zero
+    version: ^0.1.2
+  minor:
+    url: localhost:<[*PORT*]>/pkg/zero
+    version: ^0.1.2
+==================
+// An explicit major 0 accepts all 0.x versions.
+==================
+OK
+[pkg, install, --prefix=major, zero@0]
+Package 'localhost:<[*PORT*]>/pkg/zero@0.1.2' installed with prefix 'major'.
+==================
+== package.lock
+prefixes:
+  major: localhost_<[*PORT*]>/pkg/zero-0
+  minor: localhost_<[*PORT*]>/pkg/zero-0
+  zero: localhost_<[*PORT*]>/pkg/zero-0
+packages:
+  localhost_<[*PORT*]>/pkg/zero-0:
+    hash: <[*HASH*]>
+    url: localhost:<[*PORT*]>/pkg/zero
+    version: 0.1.2
+==================
+== package.yaml
+dependencies:
+  zero:
+    url: localhost:<[*PORT*]>/pkg/zero
+    version: ^0.1.2
+  minor:
+    url: localhost:<[*PORT*]>/pkg/zero
+    version: ^0.1.2
+  major:
+    url: localhost:<[*PORT*]>/pkg/zero
+    version: ">=0.1.2,<1.0.0"
+==================
+OK
+[pkg, update]
+==================
+== package.yaml
+dependencies:
+  zero:
+    url: localhost:<[*PORT*]>/pkg/zero
+    version: ^0.1.2
+  minor:
+    url: localhost:<[*PORT*]>/pkg/zero
+    version: ^0.1.2
+  major:
+    url: localhost:<[*PORT*]>/pkg/zero
+    version: ">=0.1.2,<1.0.0"

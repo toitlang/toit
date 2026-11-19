@@ -16,6 +16,7 @@
 #pragma once
 
 #include "type_set.h"
+#include "type_stack.h"
 #include "../../primitive.h"
 
 namespace toit {
@@ -24,8 +25,29 @@ class Program;
 
 namespace compiler {
 
-#define TYPE_PRIMITIVE(name) \
-  static void type_primitive_##name(Program* program, TypeSet result, TypeSet failure)
+// The types of the arguments passed to a primitive, for the primitives that
+// return one of their arguments.
+class TypePrimitiveArguments {
+ public:
+  TypePrimitiveArguments(TypeStack* stack, int words_per_type)
+      : stack_(stack)
+      , words_per_type_(words_per_type) {}
+
+  void add_to(TypeSet types, int index) const {
+    types.add_all(stack_->get(index), words_per_type_);
+  }
+
+ private:
+  TypeStack* const stack_;
+  const int words_per_type_;
+};
+
+#define TYPE_PRIMITIVE(name)                 \
+  static void type_primitive_##name(         \
+      Program* program,                      \
+      TypePrimitiveArguments arguments,      \
+      TypeSet result,                        \
+      TypeSet failure)
 
 #define TYPE_PRIMITIVE_HELPER(name, method) \
   TYPE_PRIMITIVE(name) {         \
@@ -53,13 +75,16 @@ struct TypePrimitiveEntry {
 
 class TypePrimitive {
  public:
-  typedef void Entry(Program* program, TypeSet result, TypeSet failure);
+  typedef void Entry(Program* program, TypePrimitiveArguments arguments, TypeSet result, TypeSet failure);
   static void set_up();
 
-  // Module-specific primitive lookup. May return null if the primitive isn't linked in.
+  // Module-specific primitive lookup. May return null if the primitive isn't
+  // linked in, or if the module or index is out of range.
   static const TypePrimitiveEntry* at(unsigned module, unsigned index) {
+    if (module >= Primitive::MODULE_COUNT) return null;
     const TypePrimitiveEntry* table = primitives_[module];
-    return (table == null) ? null : &table[index];
+    if (table == null || index >= primitive_counts_[module]) return null;
+    return &table[index];
   }
 
   static bool uses_entry_task(unsigned module, unsigned index);
@@ -67,6 +92,7 @@ class TypePrimitive {
 
  private:
   static const TypePrimitiveEntry* primitives_[];
+  static const unsigned primitive_counts_[];
 };
 
 // ----------------------------------------------------------------------------

@@ -664,7 +664,7 @@ WorkerTask.run tests/type_propagation/richards-test.toit
  67[060] - invoke virtual get a2 // [{Packet}] -> {Null_|List_}
  70[015] - load local 1
  71[009] - load field local 38 // [{WorkerTask}] -> {Null_|LargeInteger_|SmallInteger_}
- 73[079] - invoke at_put // [{Null_|List_}, {LargeInteger_|SmallInteger_}, {Null_|LargeInteger_|SmallInteger_}] -> {*}
+ 73[079] - invoke at_put // [{Null_|List_}, {LargeInteger_|SmallInteger_}, {Null_|LargeInteger_|SmallInteger_}] -> {Null_|LargeInteger_|SmallInteger_}
  74[041] - pop 1
  75[014] - load local 0
  76[014] - load local 0

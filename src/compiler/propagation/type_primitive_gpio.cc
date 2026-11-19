@@ -20,15 +20,15 @@ namespace compiler {
 
 MODULE_TYPES(gpio, MODULE_GPIO)
 
-TYPE_PRIMITIVE_ANY(init)
-TYPE_PRIMITIVE_ANY(use)
-TYPE_PRIMITIVE_ANY(unuse)
-TYPE_PRIMITIVE_ANY(config)
-TYPE_PRIMITIVE_ANY(get)
-TYPE_PRIMITIVE_ANY(set)
-TYPE_PRIMITIVE_ANY(config_interrupt)
-TYPE_PRIMITIVE_ANY(last_edge_trigger_timestamp)
-TYPE_PRIMITIVE_ANY(set_open_drain)
+TYPE_PRIMITIVE_BYTE_ARRAY(init)
+TYPE_PRIMITIVE_BYTE_ARRAY(use)
+TYPE_PRIMITIVE_NULL(unuse)
+TYPE_PRIMITIVE_NULL(config)
+TYPE_PRIMITIVE_SMI(get)
+TYPE_PRIMITIVE_NULL(set)
+TYPE_PRIMITIVE_SMI(config_interrupt)
+TYPE_PRIMITIVE_SMI(last_edge_trigger_timestamp)
+TYPE_PRIMITIVE_NULL(set_open_drain)
 TYPE_PRIMITIVE_NULL(set_pull)
 
 }  // namespace toit::compiler

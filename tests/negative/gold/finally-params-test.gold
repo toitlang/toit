@@ -24,13 +24,13 @@ tests/negative/finally-params-test.toit:27:19: error: Can't use 'super' as name 
                   ^~~~~
 tests/negative/finally-params-test.toit:30:14: error: Handler parameters may not be blocks
   finally: | [a] [b] |
-             ^~
+             ^~~
 tests/negative/finally-params-test.toit:30:18: error: Handler parameters may not be blocks
   finally: | [a] [b] |
-                 ^~
+                 ^~~
 tests/negative/finally-params-test.toit:33:16: error: Handler parameters may not be blocks
   finally: | a [b] |
-               ^~
+               ^~~
 tests/negative/finally-params-test.toit:36:14: error: Handler parameters may not be field-storing
   finally: | .field other |
              ^~~~~~

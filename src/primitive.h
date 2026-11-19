@@ -81,6 +81,24 @@ namespace toit {
   M(espnow,  MODULE_ESPNOW)                  \
   M(bignum,  MODULE_BIGNUM)                  \
   M(unix_socket, MODULE_UNIX_SOCKET)         \
+  M(one_wire, MODULE_ONE_WIRE)               \
+  M(watchdog, MODULE_WATCHDOG)               \
+
+#define MODULE_WATCHDOG(PRIMITIVE)           \
+  PRIMITIVE(start, 1)                        \
+  PRIMITIVE(feed, 0)                         \
+  PRIMITIVE(stop, 0)                         \
+
+// Dedicated 1-Wire controller operations. Protocol/device logic lives in the
+// one_wire package, which also provides an RMT backend on other platforms.
+#define MODULE_ONE_WIRE(PRIMITIVE)           \
+  PRIMITIVE(capabilities, 1)                 \
+  PRIMITIVE(init, 0)                         \
+  PRIMITIVE(create, 3)                       \
+  PRIMITIVE(close, 2)                        \
+  PRIMITIVE(start, 4)                        \
+  PRIMITIVE(finish, 1)                       \
+  PRIMITIVE(abort, 1)                        \
 
 #define MODULE_CORE(PRIMITIVE)               \
   PRIMITIVE(write_on_stdout, 2)              \
@@ -517,6 +535,7 @@ namespace toit {
   PRIMITIVE(read_to_buffer, 2)               \
   PRIMITIVE(errors_underrun, 1)              \
   PRIMITIVE(errors_overrun, 1)               \
+  PRIMITIVE(configure_buffered, 14)          \
 
 #define MODULE_SPI(PRIMITIVE)                \
   PRIMITIVE(init, 3)                         \
@@ -740,6 +759,8 @@ namespace toit {
   PRIMITIVE(get, 2)                         \
   PRIMITIVE(get_raw, 1)                     \
   PRIMITIVE(close, 1)                       \
+  PRIMITIVE(init_group, 0)                  \
+  PRIMITIVE(cancel, 1)                      \
 
 #define MODULE_DAC(PRIMITIVE)               \
   PRIMITIVE(init, 0)                        \
@@ -1226,6 +1247,7 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_BleResourceGroup(N, name)    MAKE_UNPACKING_MACRO(BleResourceGroup, N, name)
 #define _A_T_X509ResourceGroup(N, name)   MAKE_UNPACKING_MACRO(X509ResourceGroup, N, name)
 #define _A_T_PwmResourceGroup(N, name)    MAKE_UNPACKING_MACRO(PwmResourceGroup, N, name)
+#define _A_T_OneWireResourceGroup(N, name) MAKE_UNPACKING_MACRO(OneWireResourceGroup, N, name)
 #define _A_T_RpcResourceGroup(N, name)    MAKE_UNPACKING_MACRO(RpcResourceGroup, N, name)
 #define _A_T_RmtResourceGroup(N, name)    MAKE_UNPACKING_MACRO(RmtResourceGroup, N, name)
 #define _A_T_PcntUnitResourceGroup(N, name) MAKE_UNPACKING_MACRO(PcntUnitResourceGroup, N, name)
@@ -1254,6 +1276,7 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_RsaGenerationResource(N, name) MAKE_UNPACKING_MACRO(RsaGenerationResource, N, name)
 #define _A_T_BaseMbedTlsSocket(N, name)   MAKE_UNPACKING_MACRO(BaseMbedTlsSocket, N, name)
 #define _A_T_X509Certificate(N, name)     MAKE_UNPACKING_MACRO(X509Certificate, N, name)
+#define _A_T_TlsHandshakeToken(N, name)   MAKE_UNPACKING_MACRO(TlsHandshakeToken, N, name)
 #define _A_T_AesContext(N, name)          MAKE_UNPACKING_MACRO(AesContext, N, name)
 #define _A_T_AesCbcContext(N, name)       MAKE_UNPACKING_MACRO(AesCbcContext, N, name)
 #define _A_T_FlashRegion(N, name)         MAKE_UNPACKING_MACRO(FlashRegion, N, name)
@@ -1283,9 +1306,11 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_SpiTargetResource(N, name)   MAKE_UNPACKING_MACRO(SpiTargetResource, N, name)
 #define _A_T_SpiBufferTargetResource(N, name) MAKE_UNPACKING_MACRO(SpiBufferTargetResource, N, name)
 #define _A_T_AdcResource(N, name)         MAKE_UNPACKING_MACRO(AdcResource, N, name)
+#define _A_T_AdcResourceGroup(N, name)    MAKE_UNPACKING_MACRO(AdcResourceGroup, N, name)
 #define _A_T_DacResource(N, name)         MAKE_UNPACKING_MACRO(DacResource, N, name)
 #define _A_T_PmLockResource(N, name)      MAKE_UNPACKING_MACRO(PmLockResource, N, name)
 #define _A_T_PwmResource(N, name)         MAKE_UNPACKING_MACRO(PwmResource, N, name)
+#define _A_T_OneWireResource(N, name)     MAKE_UNPACKING_MACRO(OneWireResource, N, name)
 #define _A_T_TouchResource(N, name)       MAKE_UNPACKING_MACRO(TouchResource, N, name)
 #define _A_T_PcntUnitResource(N, name)    MAKE_UNPACKING_MACRO(PcntUnitResource, N, name)
 #define _A_T_EspNowResource(N, name)      MAKE_UNPACKING_MACRO(EspNowResource, N, name)
@@ -1431,10 +1456,15 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
   _A_T_##t12(11, n12); \
   _A_T_##t13(12, n13);
 
-#define _OVERRIDE(_1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17, _18, _19, _20, _21, _22, _23, _24, _25, _26, NAME, ...) NAME
+#define _A_28(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, n6, t7, n7, t8, n8, t9, n9, t10, n10, t11, n11, t12, n12, t13, n13, t14, n14) \
+  _A_26(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, n6, t7, n7, t8, n8, t9, n9, t10, n10, t11, n11, t12, n12, t13, n13) \
+  _A_T_##t14(13, n14);
+
+#define _OVERRIDE(_1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17, _18, _19, _20, _21, _22, _23, _24, _25, _26, _27, _28, NAME, ...) NAME
 
 #define ARGS(...)        \
   _OVERRIDE(__VA_ARGS__, \
+    _A_28, _ODD,         \
     _A_26, _ODD,         \
     _A_24, _ODD,         \
     _A_22, _ODD,         \
@@ -1458,6 +1488,11 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 
 // ----------------------------------------------------------------------------
 
+// Macros to count the modules and the primitives in each module.
+#define MODULE_COUNT_ONE(name, entries) + 1
+#define MODULE_PRIMITIVE_COUNT_ONE(name, arity) + 1
+#define MODULE_PRIMITIVE_COUNT(name, entries) 0 entries(MODULE_PRIMITIVE_COUNT_ONE),
+
 struct PrimitiveEntry {
   void* function;
   int arity;
@@ -1470,16 +1505,25 @@ class Primitive {
   static void set_up();
 
   // Use temporary tagging for marking an error.
-  static bool is_error(Object* object) { return object->is_marked(); }
+  // The result of a primitive can be the smi zero, which is the null
+  // pointer. Check the tag bits without calling a member function on it.
+  static bool is_error(Object* object) {
+    return (reinterpret_cast<uword>(object) & Object::NON_SMI_TAG_MASK) == Object::MARKED_TAG;
+  }
   static HeapObject* mark_as_error(HeapObject* object) { return object->mark(); }
   static Object* unmark_from_error(Program* program, Object* object);
   static Object* os_error(int error, Process* process, const char* operation = null);
   static Object* return_not_a_smi(Process* process, Object* value);
 
-  // Module-specific primitive lookup. May return null if the primitive isn't linked in.
+  static const unsigned MODULE_COUNT = 0 MODULES(MODULE_COUNT_ONE);
+
+  // Module-specific primitive lookup. May return null if the primitive isn't
+  // linked in, or if the module or index is out of range.
   static const PrimitiveEntry* at(unsigned module, unsigned index) {
+    if (module >= MODULE_COUNT) return null;
     const PrimitiveEntry* table = primitives_[module];
-    return (table == null) ? null : &table[index];
+    if (table == null || index >= primitive_counts_[module]) return null;
+    return &table[index];
   }
 
   // Allocates or returns allocation failure.
@@ -1494,6 +1538,7 @@ class Primitive {
 
  private:
   static const PrimitiveEntry* primitives_[];
+  static const unsigned primitive_counts_[];
 };
 
 } // namespace toit

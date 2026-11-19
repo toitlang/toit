@@ -196,10 +196,15 @@ Method Program::find_method(Object* receiver, word offset) {
   if (propagated_types) {                             \
     propagated_types->check_return(bcp, *sp);         \
   }
+#define CHECK_PROPAGATED_TYPES_PRIMITIVE(module, index, arguments, value, is_failure) \
+  if (propagated_types) {                                                               \
+    propagated_types->check_primitive(module, index, arguments, value, is_failure);     \
+  }
 #else
 #define CHECK_PROPAGATED_TYPES_METHOD_ENTRY(target)
 #define CHECK_PROPAGATED_TYPES_TOP()
 #define CHECK_PROPAGATED_TYPES_RETURN()
+#define CHECK_PROPAGATED_TYPES_PRIMITIVE(module, index, arguments, value, is_failure)
 #endif
 
 #define CALL_METHOD_WITH_RETURN_ADDRESS(target, return_address)       \
@@ -255,7 +260,9 @@ inline bool intrinsic_shl(Object* a, Object* b, Smi** result) {
   if (!Interpreter::are_smis(a, b)) return false;
   word bits_to_shift = Smi::value(b);
   if (bits_to_shift < 0 || bits_to_shift >= WORD_BIT_SIZE) return false;
-  *result = (Smi*) (((word) a) << bits_to_shift);
+  // Shift unsigned: shifting a negative value, or into the sign bit, is
+  // undefined behavior for signed integers.
+  *result = (Smi*) (((uword) a) << bits_to_shift);
   // Only succeed if no bits are lost.
   return ((word) a) == (((word) *result) >> bits_to_shift);
 }
@@ -882,7 +889,10 @@ Interpreter::Result Interpreter::run() {
   OPCODE_BEGIN(opcode);                                                \
     Object* a0 = STACK_AT(1);                                          \
     Object* a1 = STACK_AT(0);                                          \
-    if (are_smis(a0, a1) && (a1 != Smi::zero())) {                     \
+    /* MIN_SMI / -1 is not a smi. Leave it to the slow path. */        \
+    bool min_by_minus_one =                                            \
+        a0 == Smi::from(Smi::MIN_SMI_VALUE) && a1 == Smi::from(-1);    \
+    if (are_smis(a0, a1) && a1 != Smi::zero() && !min_by_minus_one) {  \
       word i0 = Smi::value(a0);                                        \
       word i1 = Smi::value(a1);                                        \
       STACK_AT_PUT(1, Smi::from(i0 op i1));                            \
@@ -1141,6 +1151,7 @@ Interpreter::Result Interpreter::run() {
         sp = sp_;
       }
 
+      CHECK_PROPAGATED_TYPES_PRIMITIVE(primitive_module, primitive_index, sp + parameter_offset + arity - 1, result, true);
       // GC might have taken place in object heap but local "method" is from program heap.
       PUSH(result);
       process_->object_heap()->leave_primitive();
@@ -1148,6 +1159,7 @@ Interpreter::Result Interpreter::run() {
       DISPATCH(PRIMITIVE_LENGTH);
 
     done:
+      CHECK_PROPAGATED_TYPES_PRIMITIVE(primitive_module, primitive_index, sp + parameter_offset + arity - 1, result, false);
       static_assert(FRAME_SIZE == 2, "Unexpected frame size");
       Object* frame_marker = POP();
       ASSERT(frame_marker == program->frame_marker());
@@ -1555,7 +1567,8 @@ Interpreter::Result Interpreter::run() {
       if (target.arity() > 2) {
         Object* value;
         bool result = fast_at(process_, backing, Smi::from(c + 1), false, &value);
-        ASSERT(result);
+        // Only fails if the backing was corrupted.
+        if (!result) value = program->null_object();
         PUSH(value);
       }
       // Call block, afterwards continue at the same bytecode.
@@ -1688,8 +1701,10 @@ Object** Interpreter::hash_find(Object** sp, Program* program, Interpreter::Hash
     // Call the rebuild block with old_size as argument.
     Smi* rebuild_block = Smi::cast(STACK_AT(parameter_offset + REBUILD));
     Method rebuild_target = Method(program->bytecodes, Smi::value(*from_block(rebuild_block)));
+    // Read the old size before pushing: the push shifts the stack offsets.
+    Object* old_size = STACK_AT(OLD_SIZE);
     PUSH(rebuild_block);
-    PUSH(STACK_AT(OLD_SIZE));
+    PUSH(old_size);
     *block_to_call = rebuild_target;
     *action_return = kCallBlockThenRestartBytecode;
     return sp;
