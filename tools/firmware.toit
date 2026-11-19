@@ -1400,6 +1400,12 @@ flash-cmd -> cli.Command:
             --required,
         cli.OptionInt "baud"
             --default=921600,
+        cli.OptionEnum "compression" ["auto", "on", "off"]
+            --default="auto"
+            --help="Control transfer compression for ESP32 flashing.",
+        cli.Flag "reset"
+            --default=true
+            --help="Reset before and after flashing. Use --no-reset for an ESP32 already in download mode.",
         cli.OptionEnum "chip" ["esp32", "esp32c3", "esp32c6", "esp32p4", "esp32s2", "esp32s3", "esp32s31"]
             --hidden
             --help="Deprecated. Don't use this option.",
@@ -1418,6 +1424,8 @@ flash invocation/cli.Invocation -> none:
   config-path := invocation["config"]
   port := invocation["port"]
   baud := invocation["baud"]
+  compression := invocation["compression"]
+  no-reset := not invocation["reset"]
   partition-table-path := invocation["partitions"]
 
   ui := invocation.cli.ui
@@ -1428,6 +1436,10 @@ flash invocation/cli.Invocation -> none:
   envelope := Envelope.load input-path --ui=ui
 
   if envelope.kind == Envelope.KIND-EC618:
+    if compression != "auto":
+      ui.abort "The '--compression' option is only supported for ESP32 envelopes."
+    if no-reset:
+      ui.abort "The '--no-reset' option is only supported for ESP32 envelopes."
     flash-ec618 invocation envelope
     return
 
@@ -1470,17 +1482,19 @@ flash invocation/cli.Invocation -> none:
           // Any serial interaction with an ESP32-S2 using its integrated USB
           // peripheral takes it out of manually entered download mode. Running
           // 'flash-id' here would therefore make the port disappear before the
-          // actual 'write-flash' command gets a chance to open it.
+          // actual 'write-flash' command gets a chance to open it. With
+          // '--no-reset', use a single serial session so a separate probe
+          // cannot disturb a device already in download mode.
           no-stub := (flashing["extra_esptool_args"].get "stub") == false
-          if chip != "esp32s2":
+          if chip != "esp32s2" and not no-reset:
             required-flash-size := parse-flash-size_ flashing["flash_settings"]["flash_size"] --ui=ui
             detected-flash-size := detect-flash-size_ esptool --port=port --chip=chip --rom-only=no-stub
             if detected-flash-size and detected-flash-size < required-flash-size:
               ui.abort "The partition table needs $(required-flash-size / 0x100000)MB of flash, but the device only has $(detected-flash-size / 0x100000)MB."
             if not detected-flash-size:
               ui.emit --warning "Could not determine the device's flash size; skipping the flash-size check."
-          before-args := flashing["extra_esptool_args"]["before"]
-          after-args := flashing["extra_esptool_args"]["after"]
+          before-args := no-reset ? "no-reset" : flashing["extra_esptool_args"]["before"]
+          after-args := no-reset ? "no-reset" : flashing["extra_esptool_args"]["after"]
           write-flash-args := flashing["write_flash_args"]
           before-args = before-args.replace --all "default_reset" "default-reset"
           before-args = before-args.replace --all "no_reset" "no-reset"
@@ -1492,6 +1506,10 @@ flash invocation/cli.Invocation -> none:
             else if it == "--flash_freq": "--flash-freq"
             else: it
 
+          if compression != "auto":
+            write-flash-args = write-flash-args.filter:
+              it != "--compress" and it != "--no-compress" and it != "-z" and it != "-u"
+            write-flash-args.add (compression == "on" ? "--compress" : "--no-compress")
           code := pipe.run-program esptool + [
             "--port", port,
             "--baud", "$baud",

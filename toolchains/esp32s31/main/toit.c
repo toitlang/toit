@@ -16,7 +16,9 @@
 // Toit ESP32 top level, derived from ESP-IDF Hello World example.
 
 extern void toit_start();
+extern void usb_console_start(void);
 
 void app_main() {
+  usb_console_start();
   toit_start();
 }
