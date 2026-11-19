@@ -4958,6 +4958,125 @@ CONFIG_TOIT_SYSTEM_SOURCE_PROJECT_ROOT="system"
 CONFIG_RODATA_PADDING=2097152
 # end of Advanced setup
 # end of Toit
+
+#
+# TinyUSB Stack
+#
+# default:
+CONFIG_TINYUSB_DEBUG_LEVEL=1
+
+#
+# TinyUSB DCD
+#
+# default:
+# CONFIG_TINYUSB_MODE_SLAVE is not set
+# default:
+CONFIG_TINYUSB_MODE_DMA=y
+# end of TinyUSB DCD
+
+#
+# TinyUSB callbacks
+#
+# default:
+# CONFIG_TINYUSB_SUSPEND_CALLBACK is not set
+# default:
+# CONFIG_TINYUSB_RESUME_CALLBACK is not set
+# end of TinyUSB callbacks
+
+#
+# Descriptor configuration
+#
+
+#
+# You can provide your custom descriptors via tinyusb_driver_install()
+#
+# default:
+CONFIG_TINYUSB_DESC_USE_ESPRESSIF_VID=y
+# default:
+CONFIG_TINYUSB_DESC_USE_DEFAULT_PID=y
+# default:
+CONFIG_TINYUSB_DESC_BCD_DEVICE=0x0100
+# default:
+CONFIG_TINYUSB_DESC_MANUFACTURER_STRING="Espressif Systems"
+# default:
+CONFIG_TINYUSB_DESC_PRODUCT_STRING="Espressif Device"
+# default:
+CONFIG_TINYUSB_DESC_SERIAL_STRING="123456"
+# default:
+CONFIG_TINYUSB_DESC_CDC_STRING="Espressif CDC Device"
+# end of Descriptor configuration
+
+#
+# Mass Storage Class (MSC)
+#
+# default:
+# CONFIG_TINYUSB_MSC_ENABLED is not set
+# end of Mass Storage Class (MSC)
+
+#
+# Communication Device Class (CDC)
+#
+CONFIG_TINYUSB_CDC_ENABLED=y
+# default:
+CONFIG_TINYUSB_CDC_COUNT=1
+# default:
+CONFIG_TINYUSB_CDC_RX_BUFSIZE=512
+# default:
+CONFIG_TINYUSB_CDC_TX_BUFSIZE=512
+# default:
+CONFIG_TINYUSB_CDC_EP_BUFSIZE=512
+# end of Communication Device Class (CDC)
+
+#
+# Musical Instrument Digital Interface (MIDI)
+#
+# default:
+CONFIG_TINYUSB_MIDI_COUNT=0
+# end of Musical Instrument Digital Interface (MIDI)
+
+#
+# Human Interface Device Class (HID)
+#
+# default:
+CONFIG_TINYUSB_HID_COUNT=0
+# end of Human Interface Device Class (HID)
+
+#
+# Device Firmware Upgrade (DFU)
+#
+# default:
+# CONFIG_TINYUSB_DFU_MODE_DFU is not set
+# default:
+# CONFIG_TINYUSB_DFU_MODE_DFU_RUNTIME is not set
+# default:
+CONFIG_TINYUSB_DFU_MODE_NONE=y
+# end of Device Firmware Upgrade (DFU)
+
+#
+# Bluetooth Host Class (BTH)
+#
+# default:
+# CONFIG_TINYUSB_BTH_ENABLED is not set
+# end of Bluetooth Host Class (BTH)
+
+#
+# Network driver (ECM/NCM/RNDIS)
+#
+# default:
+# CONFIG_TINYUSB_NET_MODE_ECM_RNDIS is not set
+# default:
+# CONFIG_TINYUSB_NET_MODE_NCM is not set
+# default:
+CONFIG_TINYUSB_NET_MODE_NONE=y
+# end of Network driver (ECM/NCM/RNDIS)
+
+#
+# Vendor Specific Interface
+#
+# default:
+CONFIG_TINYUSB_VENDOR_COUNT=0
+# end of Vendor Specific Interface
+# end of TinyUSB Stack
 # end of Component config
 
 # default:
