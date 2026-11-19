@@ -47,5 +47,6 @@ enable_testing()
 
 add_subdirectory(pi)
 add_subdirectory(esp32)
+add_subdirectory(ec618)
 
 add_custom_target(check_hw DEPENDS check_pi check_hw_esp32)

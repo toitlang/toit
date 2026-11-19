@@ -147,7 +147,7 @@ main args:
             --type="path"
             --required,
         cli.Option "port-board2"
-            --help="The path to the UART port of board 2"
+            --help="The UART port of board 2; reset the idle peer for single-board tests"
             --type="path",
         cli.Option "arg"
             --help="The argument to pass to the test"
@@ -289,6 +289,7 @@ run-test invocation/cli.Invocation:
   port-board2 := invocation["port-board2"]
   test-path := invocation["test"]
   test2-path := invocation["test2"]
+  if test2-path and not port-board2: throw "A second test requires --port-board2"
   arg := invocation["arg"]
   flaky := invocation["flaky"]
   use-network := invocation["control"] == "network"
@@ -302,6 +303,18 @@ run-test invocation/cli.Invocation:
       print "\n"
       log "Attempt $(attempt + 1) of $attempts"
       error := catch:
+        if port-board2 and not test2-path:
+          // The peer shares fixture wiring and can retain output levels in
+          // deep sleep after a previous two-board test.
+          log "Resetting unused board2"
+          peer := uart.HostPort port-board2 --baud-rate=CONSOLE-BAUD-RATE
+          try:
+            peer.set-control-flag uart.HostPort.CONTROL-FLAG-DTR false
+            peer.set-control-flag uart.HostPort.CONTROL-FLAG-RTS true
+            sleep --ms=500
+            peer.set-control-flag uart.HostPort.CONTROL-FLAG-RTS false
+          finally:
+            peer.close
         board1 := TestDevice
             --name="board1"
             --port-path=port-board1
@@ -326,7 +339,7 @@ run-test invocation/cli.Invocation:
               board1-ready.set true
             if error: board1-ready.set --exception error
 
-          if port-board2:
+          if test2-path:
             board2 = TestDevice
                 --name="board2"
                 --port-path=port-board2
@@ -347,7 +360,7 @@ run-test invocation/cli.Invocation:
 
           board1.run-test
           board1.wait-until-running
-          if port-board2:
+          if test2-path:
             board2.run-test
             board2.wait-until-running
 
@@ -839,8 +852,12 @@ class Ec618Link:
     // A (re)booted device always talks 115200 (CMD-BAUD switches are lost
     // on reset) — but a device still alive from a PREVIOUS tester
     // invocation may be lingering at the fast rate (until its 60 s idle
-    // watchdog resets it). Alternate the ping attempts across both rates.
-    rates := fast-baud_ != 115200 ? [115200, fast-baud_] : [115200]
+    // watchdog resets it). Probe the default fast rate even when this run
+    // requests 115200: that is how an upload failed at 921600 can be retried
+    // at the slower rate without waiting for a watchdog reset.
+    rates := [115200, 921600]
+    if fast-baud_ != 115200 and fast-baud_ != 921600:
+      rates.insert fast-baud_ --at=1
     initial-rate-error := catch: port_.baud-rate = 115200
     if initial-rate-error:
       log "$name_: could not initially select 115200 baud: $initial-rate-error"
@@ -951,6 +968,7 @@ class Ec618Link:
   // Installs a container image, chunked with per-chunk acks so the small
   // device RX buffer never overflows on the flow-control-less UART.
   install-container image/ByteArray --chunk/int=2048 -> none:
+    if not (0 < chunk <= CONTAINER-CHUNK-SIZE): throw "invalid container chunk size: $chunk"
     summer := crc.Crc32
     summer.add image
     header := ByteArray 8
@@ -969,7 +987,9 @@ class Ec618Link:
 
   // Streams the running test's output to the log until the agent reports the
   // test's exit code. Returns whether it exited cleanly (code 0).
-  run --timeout-ms/int --embedded/bool=false -> bool:
+  // The optional observer receives decoded output chunks, which may split
+  // lines. It can coordinate a peer after the test has armed its inputs.
+  run --timeout-ms/int --embedded/bool=false --on-output/Lambda?=null -> bool:
     send (embedded ? CMD-RUN-EMBEDDED : CMD-RUN)
     deadline := Time.monotonic-us + timeout-ms * 1000
     marker := "$MINI-JAG-TAG run: test exited code="
@@ -990,7 +1010,9 @@ class Ec618Link:
       catch --unwind=(: it != DEADLINE-EXCEEDED-ERROR):
         data = with-timeout --ms=1000: reader_.read
       if not data: continue
-      collected += emit-device-output (data.to-string-non-throwing)
+      text := data.to-string-non-throwing
+      collected += emit-device-output text
+      if on-output: on-output.call text
 
       if not expected-reboot-wake:
         expectation := collected.index-of EC618-EXPECT-REBOOT-WAKE-TAG
@@ -1030,9 +1052,8 @@ class Ec618Link:
       if collected.contains cleanup-failed-marker:
         log "$name_: the agent could not uninstall the completed test"
         return false
-      // The device reboots straight into the agent if the watchdog fires, so a
-      // fresh ready banner mid-run means the test hung or crashed the device and
-      // the watchdog recovered it — a failure, but the device is back on its own.
+      // A fresh ready banner mid-run indicates a reboot. The banner records
+      // the reset reason; do not assume every unexpected reboot is a watchdog.
       ready-index := collected.index-of MINI-JAG-EC618-READY
       if ready-index >= 0:
         // Serial reads may split the status line anywhere. Do not classify a
@@ -1046,7 +1067,7 @@ class Ec618Link:
               return true
             log "$name_: deliberate reboot had the wrong wake cause (expected $expected-reboot-wake)"
             return false
-          log "$name_: the watchdog reset the device during the test (recovered, no external reset)"
+          log "$name_: the device rebooted unexpectedly during the test (recovered, no external reset)"
           return false
     // On a fast-baud link a rebooted device (back at 115200) prints its
     // ready banner as garbage, so the recovery check above can't see it.
@@ -1060,7 +1081,7 @@ class Ec618Link:
         send CMD-PING
         catch --unwind=(: it != DEADLINE-EXCEEDED-ERROR):
           if (read-ack --timeout-ms=1500) == ACK-PONG:
-            log "$name_: the watchdog reset the device during the test (recovered at 115200)"
+            log "$name_: the device recovered at 115200 after an apparent reboot during the test"
             return false
     // Do not abandon the device process. Ask the resident agent to stop it:
     // Container.stop runs Toit finally blocks and native resource destructors,
@@ -1084,18 +1105,27 @@ class Ec618Link:
     writer_.write header
     expect "FW-BEGIN" ACK-OK --timeout-ms=10_000
 
-  fw-write-all image/ByteArray --chunk/int=4096 -> none:
+  fw-write-all image/ByteArray --chunk/int=FW-CHUNK-SIZE -> none:
+    if not (0 < chunk <= FW-CHUNK-SIZE): throw "invalid firmware chunk size: $chunk"
     offset := 0
     start := Time.monotonic-us
     while offset < image.size:
       n := min chunk (image.size - offset)
       header := ByteArray 4
       io.BIG-ENDIAN.put-uint32 header 0 n
-      send CMD-FW-WRITE
-      writer_.write header
-      expect "FW-WRITE ready@$offset" ACK-READY --timeout-ms=10_000
-      send-bytes_ image offset n
-      expect "FW-WRITE ok@$offset" ACK-OK --timeout-ms=30_000
+      phase := "header"
+      error := catch:
+        send CMD-FW-WRITE
+        writer_.write header
+        phase = "ready"
+        expect "FW-WRITE ready@$offset" ACK-READY --timeout-ms=10_000
+        phase = "payload"
+        send-bytes_ image offset n
+        phase = "completion"
+        expect "FW-WRITE ok@$offset" ACK-OK --timeout-ms=30_000
+      if error:
+        log "$name_: firmware upload failed phase=$phase offset=$offset length=$n total=$image.size error=$error"
+        throw error
       offset += n
       if offset % (32 * 1024) == 0 or offset == image.size:
         elapsed := (Time.monotonic-us - start) / 1_000_000.0

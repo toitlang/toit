@@ -53,8 +53,18 @@ enum {
   MESSAGING_PROCESS_MESSAGE_SIZE = 3,
 
   MESSAGING_ENCODING_MAX_NESTING      = 8,
+  // The decoder is more lenient than the encoder, but must bound the
+  // recursion: TISON input is untrusted.
+  MESSAGING_DECODING_MAX_NESTING      = 64,
   MESSAGING_ENCODING_MAX_EXTERNALS    = 8,
   MESSAGING_ENCODING_MAX_INLINED_SIZE = 128,
+  // The largest encoding (without out-of-line data). Shared objects are
+  // encoded once per reference, so a small object graph can have a huge
+  // encoding; the sizes of the decoder are ints. The size is checked before
+  // each object and before the content of a string or byte array is added,
+  // so the cursor stays below the limit plus a few bytes. That must fit a
+  // 32-bit word.
+  MESSAGING_ENCODING_MAX_SIZE         = 0x3fffffff,
 
   // This constant needs to be kept in sync with the one in lib/core/message_.toit.
   MESSAGING_RESERVED_MESSAGE_TYPES = 64,
@@ -165,15 +175,18 @@ If the buffer is not null then allocations are made, pointed to by the encoded
 */
 class MessageEncoder {
  public:
-  explicit MessageEncoder(uint8* buffer) : buffer_(buffer) {}
+  explicit MessageEncoder(uint8* buffer) : buffer_(buffer), take_ownership_of_buffer_(true) {}
   MessageEncoder(Process* process, uint8* buffer)
       : MessageEncoder(process, buffer, MESSAGE_FORMAT_IPC, true) {}
   ~MessageEncoder();
 
   static void encode_process_message(uint8* buffer, uint8 value);
 
-  unsigned size() const { return cursor_; }
+  word size() const { return cursor_; }
   bool malloc_failed() const { return malloc_failed_; }
+  // Whether the encoding failed because it is larger than
+  // MESSAGING_ENCODING_MAX_SIZE.
+  bool too_large() const { return too_large_; }
 
   /**
   Some encoders can take over the data pointed to by external
@@ -187,7 +200,10 @@ class MessageEncoder {
   */
   uint8* take_buffer();
 
-  bool encode(Object* object) { ASSERT(!encoding_tison()); return encode_any(object); }
+  bool encode(Object* object) {
+    ASSERT(!encoding_tison());
+    return encode_any(object) && !is_too_large();
+  }
   bool encode_bytes_external(void* data, word length, bool free_on_failure = true);
   // If 'is_exception' is true, encodes the string.
   // Otherwise the data and length.
@@ -212,6 +228,13 @@ class MessageEncoder {
 
   bool encode_any(Object* object);
 
+  // Checks the size of the encoding so far, and records whether it is too
+  // large.
+  bool is_too_large() {
+    if (cursor_ > MESSAGING_ENCODING_MAX_SIZE) too_large_ = true;
+    return too_large_;
+  }
+
   void write_uint32(uint32 value);
   void write_cardinal(uword value);
 
@@ -231,6 +254,7 @@ class MessageEncoder {
   int problematic_class_id_ = -1;
   bool nesting_too_deep_ = false;
   bool too_many_externals_ = false;
+  bool too_large_ = false;
 
   bool malloc_failed_ = false;
 
@@ -340,6 +364,7 @@ class MessageDecoder {
   const MessageFormat format_ = MESSAGE_FORMAT_IPC;
 
   word cursor_ = 0;
+  int nesting_ = 0;
   Status status_ = DECODE_SUCCESS;
 
   unsigned externals_count_ = 0;
@@ -353,9 +378,13 @@ class MessageDecoder {
   Object* decode_map();
   Object* decode_byte_array(bool inlined);
   Object* decode_double();
+  Object* decode_smi(bool negative);
   Object* decode_large_integer();
+  Object* decode_integer(int64 value);
 
   void deallocate();
+
+  uint64 read_cardinal_64();
 
   uint8 read_uint8() {
     word cursor = cursor_++;

@@ -20,9 +20,9 @@ namespace compiler {
 
 MODULE_TYPES(events, MODULE_EVENTS)
 
-TYPE_PRIMITIVE_ANY(read_state)
-TYPE_PRIMITIVE_ANY(register_monitor_notifier)
-TYPE_PRIMITIVE_ANY(unregister_monitor_notifier)
+TYPE_PRIMITIVE_SMI(read_state)
+TYPE_PRIMITIVE_NULL(register_monitor_notifier)
+TYPE_PRIMITIVE_NULL(unregister_monitor_notifier)
 
 }  // namespace toit::compiler
 }  // namespace toit

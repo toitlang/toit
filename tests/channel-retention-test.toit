@@ -44,8 +44,11 @@ test-allocation-free-receive -> none:
   channel := Channel 256
   256.repeat: channel.send it
   stats := List 11
+  // Initialize the constant before measuring: its lazy initialization can
+  // allocate when optimizations are disabled.
+  allocated-index := system.STATS-INDEX-BYTES-ALLOCATED-IN-OBJECT-HEAP
   system.process-stats stats
-  before := stats[system.STATS-INDEX-BYTES-ALLOCATED-IN-OBJECT-HEAP]
+  before := stats[allocated-index]
   256.repeat: channel.receive --blocking=false
   system.process-stats stats
-  expect-equals before stats[system.STATS-INDEX-BYTES-ALLOCATED-IN-OBJECT-HEAP]
+  expect-equals before stats[allocated-index]

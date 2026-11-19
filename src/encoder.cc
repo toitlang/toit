@@ -42,6 +42,10 @@ class EncodeVisitor : public Visitor {
   const word MAX_NOF_STRING_ELEMENTS = 255;
   const word MAX_NOF_BYTEARRAY_ELEMENTS = 40;
   const word MAX_NOF_ARRAY_ELEMENTS = 10;
+  // Collections nested deeper than this are encoded like opaque instances.
+  // This keeps the native stack bounded for deeply nested or cyclic
+  // collections.
+  const int MAX_NESTING_LEVEL = 8;
 
   void visit_smi(Smi* smi) {
     encoder_->write_int(Smi::value(smi));
@@ -54,8 +58,9 @@ class EncodeVisitor : public Visitor {
     const bool overflow = printed > MAX_NOF_STRING_ELEMENTS;
     if (overflow) {
       printed = MAX_NOF_STRING_ELEMENTS;
-      // Don't chop up UTF-8 sequences.
-      while ((bytes.at(printed) & ~Utils::UTF_8_MASK) == Utils::UTF_8_PAYLOAD) {
+      // Don't chop up UTF-8 sequences. Don't walk past the start of a
+      // string that isn't valid UTF-8.
+      while (printed > 0 && (bytes.at(printed) & ~Utils::UTF_8_MASK) == Utils::UTF_8_PAYLOAD) {
         printed--;
       }
     }
@@ -72,6 +77,10 @@ class EncodeVisitor : public Visitor {
   }
 
   void visit_array(Array* array) {
+    if (level_ >= MAX_NESTING_LEVEL) {
+      write_opaque(array);
+      return;
+    }
     encoder_->write_header(2, 'A');
     encoder_->write_int(array->length());
     encoder_->write_byte('[');
@@ -80,6 +89,9 @@ class EncodeVisitor : public Visitor {
     encoder_->write_int(limit);
     EncodeVisitor sub(encoder_, level_ + 1);
     for (int i = 0; i < limit; i++) {
+      // Once the buffer has overflowed, the encoding is discarded. Stop early,
+      // so that wide cyclic collections don't take exponential time.
+      if (encoder_->buffer()->has_overflow()) return;
       sub.accept(array->at(i));
     }
   }
@@ -89,6 +101,12 @@ class EncodeVisitor : public Visitor {
     encoder_->write_byte('$');
     encoder_->write_byte('U');
     encoder_->write_byte('#');
+    if (byte_array->has_external_address() && byte_array->external_tag() != RawByteTag) {
+      // A proxy for a C++ object (a resource, a resource group). Its external
+      // address points to the C++ object, not to bytes.
+      encoder_->write_int(0);
+      return;
+    }
     ByteArray::Bytes bytes(byte_array);
     const int limit = Utils::min(bytes.length(), MAX_NOF_BYTEARRAY_ELEMENTS);
     encoder_->write_int(limit);
@@ -99,7 +117,22 @@ class EncodeVisitor : public Visitor {
 
   void visit_stack(Stack* stack);
 
+  // Whether the given List_ has an array as backing and a size within it.
+  // The fields are ordinary instance fields that Toit code can set to
+  // anything; other lists are encoded as plain instances.
+  static bool is_valid_list(Instance* instance) {
+    Object* backing = instance->at(Instance::LIST_ARRAY_INDEX);
+    Object* size = instance->at(Instance::LIST_SIZE_INDEX);
+    if (!is_array(backing) || !is_smi(size)) return false;
+    word value = Smi::value(size);
+    return 0 <= value && value <= Array::cast(backing)->length();
+  }
+
   void visit_list(Instance* instance, Array* backing_array, word size) {
+    if (level_ >= MAX_NESTING_LEVEL) {
+      write_opaque(instance);
+      return;
+    }
     encoder_->write_header(2, 'L');
     encoder_->write_int(size);
     encoder_->write_byte('[');
@@ -108,13 +141,14 @@ class EncodeVisitor : public Visitor {
     encoder_->write_int(limit);
     EncodeVisitor sub(encoder_, level_ + 1);
     for (int i = 0; i < limit; i++) {
+      if (encoder_->buffer()->has_overflow()) return;
       sub.accept(backing_array->at(i));
     }
   }
 
   void visit_instance(Instance* instance) {
     Smi* class_id = instance->class_id();
-    if (class_id == encoder_->program()->list_class_id() && is_array(instance->at(Instance::LIST_ARRAY_INDEX))) {
+    if (class_id == encoder_->program()->list_class_id() && is_valid_list(instance)) {
       // The backing storage in a list can be either an array -- or a
       // large array. Only optimize if it isn't large.
       // We use the same layout assumptions for List_ as the interpreter.
@@ -123,9 +157,14 @@ class EncodeVisitor : public Visitor {
           Array::cast(instance->at(Instance::LIST_ARRAY_INDEX)),
           Smi::value(instance->at(Instance::LIST_SIZE_INDEX)));
     } else {
-      encoder_->write_header(1, 'I');
-      encoder_->write_int(Smi::value(class_id));
+      write_opaque(instance);
     }
+  }
+
+  // Encodes the object as an instance of its class, without any content.
+  void write_opaque(HeapObject* object) {
+    encoder_->write_header(1, 'I');
+    encoder_->write_int(Smi::value(object->class_id()));
   }
 
   void visit_oddball(HeapObject* oddball) {
@@ -247,7 +286,7 @@ ProgramOrientedEncoder::ProgramOrientedEncoder(Program* program, Buffer* buffer)
 bool ProgramOrientedEncoder::encode(Object* object) {
   EncodeVisitor visitor(this);
   visitor.accept(object);
-  return true;
+  return !buffer()->has_overflow();
 }
 
 bool ProgramOrientedEncoder::encode_error(Object* type, Object* message, Stack* stack) {

@@ -63,6 +63,7 @@ main:
       //   slave start. The upper bound is what detects stale DMA replay.
       expect nonzero >= MARKER-SIZE - 4
       expect nonzero <= MARKER-SIZE
+          --message="Expected at most $MARKER-SIZE nonzero marker bytes, got $nonzero"
       expect-equals 0 (input.errors --overrun)
     finally:
       output.close

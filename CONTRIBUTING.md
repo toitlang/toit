@@ -9,31 +9,29 @@ Contributing code to a community is a great way to engage. Make sure to read our
 
 ## Individual contributions
 
-Before we can use your code, you must sign Toitware's
-[individual contributor license agreement](CLA.md) (CLA). Toitware is the startup company that originally developed
-the Toit language and it continues to be the maintainer of the associated open source projects. Requiring a CLA
-is a common and well-accepted practice in open source. Major open source projects require CLAs
-such as Apache Software Foundation projects, Facebook projects (such as React), Google projects (including Go),
-Python, Django, and more.
+Before we can merge your code, you must accept the
+[individual contributor license agreement](CLA.md) (CLA) for Toit contributors.
+In that agreement, "Toit contributors" means Florian Loitsch and Kasper Lund, acting as
+maintainers of the Toit project.
 
-The CLA is based on [Google's CLA for individuals](https://cla.developers.google.com/about/google-individual), which in return
-is based on the [Apache CLA for individuals](https://www.apache.org/licenses/icla.pdf). Send an email
-to [open-source@toit.io](mailto:open-source@toit.io) indicating your request to sign the
-CLA and we will respond with a document ready for your electronic signature. Please include a link to your GitHub
-user profile page in the request to make it easier to identify your contributions going forward.
+The CLA is based on [Google's CLA for individuals](https://cla.developers.google.com/about/google-individual),
+which in turn is based on the [Apache CLA for individuals](https://www.apache.org/licenses/icla.pdf).
+Ask a maintainer on your pull request to arrange acceptance. The maintainer will link to the
+exact revision of the CLA to accept. You can then sign by posting this statement from your
+own GitHub account:
 
-The CLA makes it explicit that contributions are licensed under the project's respective open source licenses,
-that contributors give permission to use the contributions indefinitely, and provides Toitware the right to
-include the contributions in commercial products. The license also makes clear that contributors are not assuming
-any warranty or support obligations for any contributions. Agreeing to the CLA is not a transfer of ownership.
-You do not lose or change any of your rights to use your own contributions for any other purpose.
+> I have read the Toit contributors Individual Contributor License Agreement and I hereby agree to its terms.
 
-The CLA is necessary mainly because you own the copyright to your changes, even after your contributions become part of
-our codebase, so we need your permission to use and distribute your code. We also need to be sure of various
-other things - for instance that you‘ll tell us if you know that your code infringes on other people’s
-patents. Importantly, the CLA also gives Toitware the right to **sublicense** your contributions, which means that
-Toitware can use your work in commercial products and distribute them under other licenses, including proprietary
-ones; see [dual licensing](#dual-licensing).
+A maintainer must verify and record acceptance before merging. The record includes your
+GitHub account, the acceptance comment URL and date, and the revision of the CLA you accepted.
+A signed copy of the form in [CLA.md](CLA.md) can be used instead; arrange delivery with a
+maintainer and include a link to your GitHub profile.
+
+You retain ownership of your contributions and the right to use them for any other purpose.
+The CLA grants a perpetual license to use and distribute your contributions, including the
+right to **sublicense** them under other licenses. It also covers relevant patent permissions
+and your authority to contribute, including any necessary permission from your employer.
+It does not require you to provide warranties or support.
 
 You don‘t have to sign the CLA until after you’ve submitted your code for review and a member has
 approved it, but you must do it before we can put your code into our codebase. Before you start working on a
@@ -41,15 +39,15 @@ larger contribution, you should get in touch with us first through the issue tra
 we can help out and possibly guide you. Coordinating up front makes it much easier to avoid frustration later
 on.
 
-### Dual licensing
+### Relicensing and dual licensing
 
-Toitware uses the Toit programming language and its open source implementation to build the
-full [Toit platform](https://toit.io). The Toit platform is a closed source derivative of the open source
-code base and it is licensed under a [proprietary commercial license](https://toit.io/terms-of-service).
-This implies that the language implementation uses [dual licensing](https://en.wikipedia.org/wiki/Multi-licensing)
-since the same code is offered under two different licences. By granting Toitware the right to sublicense your
-contributions, the CLA ensures that Toitware can continue to use this setup to build a business around the Toit language.
+The CLA lets Toit contributors distribute your contributions under different licenses without
+requesting permission again. This includes a future change from LGPL to a permissive license
+such as MIT. The grant also permits commercial and proprietary licensing. Accepting the CLA
+does not itself change the licenses currently used by the project.
 
+This permission covers your contributions, not code owned by third parties. A change to the
+project's license still requires the necessary rights for all code included in that change.
 
 ## Corporate contributions
 

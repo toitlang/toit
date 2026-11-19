@@ -9,13 +9,13 @@ namespace compiler {
 
 MODULE_TYPES(terminal, MODULE_TERMINAL)
 
-TYPE_PRIMITIVE_ANY(init)
+TYPE_PRIMITIVE_BYTE_ARRAY(init)
 TYPE_PRIMITIVE_BOOL(is_terminal)
-TYPE_PRIMITIVE_ANY(enter_raw)
+TYPE_PRIMITIVE_BYTE_ARRAY(enter_raw)
 TYPE_PRIMITIVE_NULL(restore)
 TYPE_PRIMITIVE_ARRAY(size)
-TYPE_PRIMITIVE_ANY(resize_init)
-TYPE_PRIMITIVE_ANY(resize_watch)
+TYPE_PRIMITIVE_BYTE_ARRAY(resize_init)
+TYPE_PRIMITIVE_BYTE_ARRAY(resize_watch)
 TYPE_PRIMITIVE_NULL(resize_unwatch)
 
 }  // namespace toit::compiler

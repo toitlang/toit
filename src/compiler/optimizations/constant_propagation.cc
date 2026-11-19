@@ -20,6 +20,7 @@
 #include <math.h>
 
 #include "../set.h"
+#include "../../utils.h"
 
 namespace toit {
 namespace compiler {
@@ -155,16 +156,20 @@ class FoldingInliningVisitor : public ReplacingVisitor {
 };
 
 Expression* FoldingInliningVisitor::fold_int_int(int64 left, int64 right, Symbol selector, Source::Range range) {
+  // Ints wrap around. The folded values must be the ones the VM computes.
   if (selector == Token::symbol(Token::ADD)) {
-    return zone_new<ir::LiteralInteger>(left + right, range);
+    return zone_new<ir::LiteralInteger>(Utils::wrapping_add(left, right), range);
   } else if (selector == Token::symbol(Token::SUB)) {
-    return zone_new<ir::LiteralInteger>(left - right, range);
+    return zone_new<ir::LiteralInteger>(Utils::wrapping_sub(left, right), range);
   } else if (selector == Token::symbol(Token::MUL)) {
-    return zone_new<ir::LiteralInteger>(left * right, range);
+    return zone_new<ir::LiteralInteger>(Utils::wrapping_mul(left, right), range);
   } else if (selector == Token::symbol(Token::MOD) && right != 0) {
-    return zone_new<ir::LiteralInteger>(left % right, range);
+    // int.MIN % -1 traps on x86.
+    return zone_new<ir::LiteralInteger>(right == -1 ? 0 : left % right, range);
   } else if (selector == Token::symbol(Token::DIV) && right != 0) {
-    return zone_new<ir::LiteralInteger>(left / right, range);
+    // int.MIN / -1 traps on x86.
+    int64 quotient = right == -1 ? Utils::wrapping_negate(left) : left / right;
+    return zone_new<ir::LiteralInteger>(quotient, range);
   } else if (selector == Token::symbol(Token::BIT_OR)) {
     return zone_new<ir::LiteralInteger>(left | right, range);
   } else if (selector == Token::symbol(Token::BIT_XOR)) {
@@ -175,7 +180,7 @@ Expression* FoldingInliningVisitor::fold_int_int(int64 left, int64 right, Symbol
     if (right >= 64) {
       return zone_new<ir::LiteralInteger>(0, range);
     } else if (right >= 0) {
-      return zone_new<ir::LiteralInteger>(left << right, range);
+      return zone_new<ir::LiteralInteger>(Utils::wrapping_shift_left(left, right), range);
     }
   } else if (selector == Token::symbol(Token::BIT_SHR)) {
     if (right >= 64) {

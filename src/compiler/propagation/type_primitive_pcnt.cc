@@ -20,13 +20,13 @@ namespace compiler {
 
 MODULE_TYPES(pcnt, MODULE_PCNT)
 
-TYPE_PRIMITIVE_ANY(new_unit)
-TYPE_PRIMITIVE_ANY(close_unit)
-TYPE_PRIMITIVE_ANY(new_channel)
-TYPE_PRIMITIVE_ANY(start)
-TYPE_PRIMITIVE_ANY(stop)
-TYPE_PRIMITIVE_ANY(clear)
-TYPE_PRIMITIVE_ANY(get_count)
+TYPE_PRIMITIVE_BYTE_ARRAY(new_unit)
+TYPE_PRIMITIVE_NULL(close_unit)
+TYPE_PRIMITIVE_NULL(new_channel)
+TYPE_PRIMITIVE_NULL(start)
+TYPE_PRIMITIVE_NULL(stop)
+TYPE_PRIMITIVE_NULL(clear)
+TYPE_PRIMITIVE_INT(get_count)
 
 }  // namespace toit::compiler
 }  // namespace toit

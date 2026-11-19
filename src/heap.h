@@ -137,6 +137,8 @@ class ObjectHeap {
   GcType gc(bool try_hard);
 
   bool add_callable_finalizer(Instance* key, Object* lambda, bool make_weak);
+  // Removes the Toit finalizer or weak-map registration of the key, if any.
+  void remove_callable_finalizer(Instance* key);
   bool add_vm_finalizer(HeapObject* key);
 
   bool has_finalizer_to_run() const { return !runnable_finalizers_.is_empty(); }

@@ -142,6 +142,7 @@ PRIMITIVE(create_socket) {
 
 PRIMITIVE(bind_socket) {
   ARGS(ByteArray, proxy, IntResource, connection_resource, Blob, address, int, port);
+  if (address.length() != 4) FAIL(OUT_OF_BOUNDS);
   USE(proxy);
   int fd = connection_resource->id();
 
@@ -149,7 +150,6 @@ PRIMITIVE(bind_socket) {
   socklen_t size = sizeof(sockaddr);
   bzero((char*)&addr, size);
   addr.sin_family = AF_INET;
-  // TODO(florian): we should probably check that the size is ok.
   memcpy(&addr.sin_addr.s_addr, address.address(), address.length());
   addr.sin_port = htons(port);
   if (bind(fd, reinterpret_cast<struct sockaddr*>(&addr), size) != 0) {
@@ -161,6 +161,7 @@ PRIMITIVE(bind_socket) {
 
 PRIMITIVE(bind) {
   ARGS(UdpResourceGroup, resource_group, Blob, address, int, port);
+  if (address.length() != 4) FAIL(OUT_OF_BOUNDS);
 
   ByteArray* resource_proxy = process->object_heap()->allocate_proxy();
   if (resource_proxy == null) FAIL(ALLOCATION_FAILED);
@@ -176,7 +177,6 @@ PRIMITIVE(bind) {
   socklen_t size = sizeof(sockaddr);
   bzero((char*)&addr, size);
   addr.sin_family = AF_INET;
-  // TODO(florian): we should probably check that the size is ok.
   memcpy(&addr.sin_addr.s_addr, address.address(), address.length());
   addr.sin_port = htons(port);
   if (bind(id, reinterpret_cast<struct sockaddr*>(&addr), size) != 0) {
@@ -190,6 +190,7 @@ PRIMITIVE(bind) {
 
 PRIMITIVE(connect) {
   ARGS(ByteArray, proxy, IntResource, connection, Blob, address, int, port);
+  if (address.length() != 4) FAIL(OUT_OF_BOUNDS);
   USE(proxy);
   int fd = connection->id();
 
@@ -197,7 +198,6 @@ PRIMITIVE(connect) {
   socklen_t size = sizeof(sockaddr);
   bzero((char*)&addr, size);
   addr.sin_family = AF_INET;
-  // TODO(florian): we should probably check that the size is ok.
   memcpy(&addr.sin_addr.s_addr, address.address(), address.length());
   addr.sin_port = htons(port);
   if (connect(fd, reinterpret_cast<struct sockaddr*>(&addr), size) != 0) {
@@ -272,7 +272,7 @@ PRIMITIVE(send) {
     addr_in.sin_family = AF_INET;
     Blob address_bytes;
     if (!address->byte_content(process->program(), &address_bytes, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_OBJECT_TYPE);
-    // TODO(florian): we are not checking that the bytes fit into the 's_addr'.
+    if (address_bytes.length() != 4) FAIL(OUT_OF_BOUNDS);
     memcpy(&addr_in.sin_addr.s_addr, address_bytes.address(), address_bytes.length());
     addr_in.sin_port = htons(port);
     addr = reinterpret_cast<struct sockaddr*>(&addr_in);

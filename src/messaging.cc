@@ -136,7 +136,7 @@ bool TisonEncoder::encode(Object* object) {
     write_cardinal(payload_size());
   }
   bool result = encode_any(object);
-  if (!result) return false;
+  if (!result || is_too_large()) return false;
   // Compute the number of bytes we need to encode the payload size.
   // Later, when we're not encoding for size, we know the payload size
   // and will encode this before the payload.
@@ -157,6 +157,9 @@ bool MessageEncoder::encode_any(Object* object) {
     nesting_too_deep_ = true;
     return false;
   }
+  // Stop early: shared objects are encoded for every reference, so the
+  // work isn't bounded by the size of the object graph.
+  if (is_too_large()) return false;
 
   if (is_smi(object)) {
     word value = Smi::value(object);
@@ -245,7 +248,9 @@ bool MessageEncoder::encode_any(Object* object) {
 }
 
 bool MessageEncoder::encode_array(Array* object, word from, word to) {
-  ASSERT(from <= to);
+  // The range comes from the fields of lists and list slices, which Toit
+  // code can set to anything.
+  if (from < 0 || from > to || to > object->length()) return false;
   write_uint8(TAG_ARRAY);
   write_cardinal(to - from);
   for (word i = from; i < to; i++) {
@@ -255,6 +260,11 @@ bool MessageEncoder::encode_array(Array* object, word from, word to) {
 }
 
 bool MessageEncoder::encode_list(Instance* instance, word from, word to) {
+  // Only encode elements that are in the list. The size field is an ordinary
+  // instance field and not necessarily within the backing array: encode_array
+  // checks that.
+  Object* size = instance->at(Instance::LIST_SIZE_INDEX);
+  if (!is_smi(size) || to > Smi::value(size)) return false;
   Object* backing = instance->at(Instance::LIST_ARRAY_INDEX);
   if (is_smi(backing)) return false;
   Smi* class_id = HeapObject::cast(backing)->class_id();
@@ -279,12 +289,22 @@ bool MessageEncoder::encode_map(Instance* instance) {
   object = instance->at(Instance::MAP_SIZE_INDEX);
   if (!is_smi(object)) return false;
   word size = Smi::value(object);
+  if (size < 0) return false;
 
   write_cardinal(size);
   if (size == 0) return true;  // Do this before looking at the backing, which may be null.
+  // The number of used slots in the backing. The size and the backing are
+  // ordinary instance fields, which Toit code can set to anything, so the
+  // entries are bounded by the backing, not by the size.
+  word limit = -1;
   Smi* class_id = backing->class_id();
   if (class_id == program_->list_class_id()) {
-    object = Instance::cast(backing)->at(Instance::LIST_ARRAY_INDEX);
+    Instance* list = Instance::cast(backing);
+    object = list->at(Instance::LIST_SIZE_INDEX);
+    if (!is_smi(object)) return false;
+    limit = Smi::value(object);
+    if (limit < 0) return false;
+    object = list->at(Instance::LIST_ARRAY_INDEX);
     if (is_smi(object)) return false;
     backing = HeapObject::cast(object);
   }
@@ -296,8 +316,13 @@ bool MessageEncoder::encode_map(Instance* instance) {
     return false;
   }
   Array* array = Array::cast(backing);
+  if (limit < 0) {
+    limit = array->length();
+  } else if (limit > array->length()) {
+    return false;
+  }
   word count = 0;
-  for (word i = 0; count < size; i += 2) {
+  for (word i = 0; count < size && i + 1 < limit; i += 2) {
     Object* key = array->at(i);
     Object* value = array->at(i + 1);
     if (is_smi(key) || HeapObject::cast(key)->class_id() != program_->tombstone_class_id()) {
@@ -306,7 +331,8 @@ bool MessageEncoder::encode_map(Instance* instance) {
       count++;
     }
   }
-  return true;
+  // The map has fewer entries than its size field claims.
+  return count == size;
 }
 
 bool MessageEncoder::reserve_external() {
@@ -432,6 +458,12 @@ bool MessageEncoder::encode_copy(Object* object, int tag) {
 
   // To avoid too many small allocations, we inline the content of the small strings or byte arrays.
   if (encoding_tison() || length <= MESSAGING_ENCODING_MAX_INLINED_SIZE) {
+    // Check the content against what is left, so that the cursor can't
+    // overflow a 32-bit word.
+    if (length > MESSAGING_ENCODING_MAX_SIZE - cursor_) {
+      too_large_ = true;
+      return false;
+    }
     write_uint8(tag + 1);
     write_cardinal(length);
     if (!encoding_for_size()) {
@@ -500,14 +532,18 @@ MessageDecoder::MessageDecoder(Process* process,
     , format_(format) {}
 
 bool MessageDecoder::decode_process_message(const uint8* buffer, int* value) {
+  // There is no process to allocate in and no program to take null, true and
+  // false from. Any process can send a TERMINATED system message with any
+  // content, so we only read an integer in the range of 'int' and refuse
+  // everything else without decoding it.
   MessageDecoder decoder(null, buffer);
-  // TODO(kasper): Make this more robust. We don't know the content.
-  Object* object = decoder.decode();
-  if (is_smi(object)) {
-    *value = Smi::value(object);
-    return true;
-  }
-  return false;
+  int tag = decoder.read_uint8();
+  if (tag != TAG_POSITIVE_SMI && tag != TAG_NEGATIVE_SMI) return false;
+  uword magnitude = decoder.read_cardinal();
+  if (!decoder.success() || magnitude > INT_MAX) return false;
+  int result = static_cast<int>(magnitude);
+  *value = (tag == TAG_POSITIVE_SMI) ? result : -result;
+  return true;
 }
 
 void MessageDecoder::register_external_allocations() {
@@ -554,14 +590,18 @@ Object* TisonDecoder::decode() {
 }
 
 Object* MessageDecoder::decode_any() {
+  // Arrays and maps recurse; deeply nested input would exhaust the native
+  // stack.
+  NestingTracker tracking(&nesting_);
+  if (nesting_ > MESSAGING_DECODING_MAX_NESTING) return mark_malformed();
   int tag = read_uint8();
   switch (tag) {
     case TAG_OVERFLOWN:
       return mark_malformed();
     case TAG_POSITIVE_SMI:
-      return Smi::from(read_cardinal());
+      return decode_smi(false);
     case TAG_NEGATIVE_SMI:
-      return Smi::from(-static_cast<word>(read_cardinal()));
+      return decode_smi(true);
     case TAG_NULL:
       return program_->null_object();
     case TAG_TRUE:
@@ -647,6 +687,13 @@ Object* MessageDecoder::decode_string(bool inlined) {
   if (length == 0 && overflown()) return mark_malformed();
   String* result = null;
   if (inlined) {
+    if (length < 0 || length > remaining()) return mark_malformed();
+    // TISON input is untrusted, and the VM relies on strings being valid
+    // UTF-8 (the conversions read as many continuation bytes as the
+    // first byte announces).
+    if (decoding_tison() && !Utils::is_valid_utf_8(&buffer_[cursor_], length)) {
+      return mark_malformed();
+    }
     result = process_->allocate_string(reinterpret_cast<const char*>(&buffer_[cursor_]), length);
     cursor_ += length;
   } else if (decoding_tison()) {
@@ -663,6 +710,10 @@ Object* MessageDecoder::decode_string(bool inlined) {
 Object* MessageDecoder::decode_array() {
   word length = read_cardinal();
   if (length == 0 && overflown()) return mark_malformed();
+  // Every element needs at least one byte.
+  if (length < 0 || length > remaining() || length > Array::max_length_in_process()) {
+    return mark_malformed();
+  }
   Array* result = process_->object_heap()->allocate_array(length, Smi::zero());
   if (result == null) return mark_allocation_failed();
   for (word i = 0; i < length; i++) {
@@ -676,6 +727,10 @@ Object* MessageDecoder::decode_array() {
 Object* MessageDecoder::decode_map() {
   word size = read_cardinal();
   if (size == 0 && overflown()) return mark_malformed();
+  // Every key and every value needs at least one byte.
+  if (size < 0 || size > remaining() / 2 || size > Array::max_length_in_process() / 2) {
+    return mark_malformed();
+  }
   Instance* result = process_->object_heap()->allocate_instance(program_->map_class_id());
   if (result == null) return mark_allocation_failed();
   if (size == 0) {
@@ -704,6 +759,7 @@ Object* MessageDecoder::decode_byte_array(bool inlined) {
   if (length == 0 && overflown()) return mark_malformed();
   ByteArray* result = null;
   if (inlined) {
+    if (length < 0 || length > remaining()) return mark_malformed();
     result = process_->allocate_byte_array(length, false);
     if (result != null) {
       ByteArray::Bytes bytes(result);
@@ -729,7 +785,13 @@ bool MessageDecoder::decode_external_data(void** data, word* length) {
     *data = read_pointer();
     return true;
   } else if (tag == TAG_BYTE_ARRAY_INLINE) {
-    int encoded_length = *length = read_cardinal();
+    word cardinal = read_cardinal();
+    // As in decode_byte_array: the content must fit the message.
+    if (cardinal < 0 || cardinal > remaining()) {
+      mark_malformed();
+      return false;
+    }
+    int encoded_length = *length = cardinal;
     // 'malloc' is allowed to return 'null' if the length is zero.
     // We always want to have a valid pointer, so we allocate at least one byte.
     int malloc_length = Utils::max(1, encoded_length);
@@ -746,7 +808,13 @@ bool MessageDecoder::decode_external_data(void** data, word* length) {
     *data = read_pointer();
     return true;
   } else if (tag == TAG_STRING_INLINE) {
-    int encoded_length = *length = read_cardinal();
+    word cardinal = read_cardinal();
+    // As in decode_string: the content must fit the message.
+    if (cardinal < 0 || cardinal > remaining()) {
+      mark_malformed();
+      return false;
+    }
+    int encoded_length = *length = cardinal;
     char* copy = unvoid_cast<char*>(malloc(encoded_length + 1));
     if (copy == null) {
       mark_allocation_failed();
@@ -788,9 +856,30 @@ Object* MessageDecoder::decode_double() {
   return result;
 }
 
+Object* MessageDecoder::decode_smi(bool negative) {
+  // The encoder uses the smi tags for the smis of its own word size. TISON
+  // written by a 64-bit VM thus has 62-bit smis, which are large integers on
+  // a 32-bit VM.
+  const uint64 max_smi_64 = (static_cast<uint64>(1) << 62) - 1;
+  uint64 magnitude = read_cardinal_64();
+  if (!success()) return null;
+  // The negation of the smallest 64-bit smi is the largest one + 1.
+  if (magnitude > (negative ? max_smi_64 + 1 : max_smi_64)) return mark_malformed();
+  int64 value = static_cast<int64>(magnitude);
+  return decode_integer(negative ? -value : value);
+}
+
 Object* MessageDecoder::decode_large_integer() {
   int64 value = read_uint64();
   if (value == 0 && overflown()) return mark_malformed();
+  return decode_integer(value);
+}
+
+Object* MessageDecoder::decode_integer(int64 value) {
+  // Integers that fit a smi must be smis, also when the encoder had a
+  // different word size: a 32-bit VM writes large integers that are smis
+  // on a 64-bit VM.
+  if (Smi::is_valid(value)) return Smi::from(static_cast<word>(value));
   LargeInteger* result = process_->object_heap()->allocate_large_integer(value);
   if (result == null) return mark_allocation_failed();
   return result;
@@ -812,13 +901,42 @@ uword MessageDecoder::read_cardinal() {
   uint8 byte = read_uint8();
   int shift = 0;
   while (byte >= 128) {
-    result += (((uword) byte) - 128) << shift;
+    // A cardinal never has more bits than a word. Longer encodings, and
+    // digits with bits beyond the word, are malformed (and shifting by the
+    // word size or more is undefined).
+    uword digit = byte - 128;
+    if (shift >= WORD_BIT_SIZE || digit > (UINTPTR_MAX >> shift)) {
+      mark_malformed();
+      return 0;
+    }
+    result += digit << shift;
     shift += 7;
     byte = read_uint8();
   }
   if (byte == 0 && overflown()) return 0;
+  if (shift >= WORD_BIT_SIZE || byte > (UINTPTR_MAX >> shift)) {
+    mark_malformed();
+    return 0;
+  }
   result += ((uword) byte) << shift;
   return result;
+}
+
+uint64 MessageDecoder::read_cardinal_64() {
+  // Like read_cardinal, but for 64 bits on all platforms.
+  uint64 result = 0;
+  for (int shift = 0; true; shift += 7) {
+    uint8 byte = read_uint8();
+    uint64 digit = byte & 0x7f;
+    // Bits beyond 64 bits are malformed (and shifting by 64 or more is
+    // undefined).
+    if (shift >= 64 || digit > (UINT64_MAX >> shift)) {
+      mark_malformed();
+      return 0;
+    }
+    result |= digit << shift;
+    if (byte < 128) return result;
+  }
 }
 
 uint32 MessageDecoder::read_uint32() {

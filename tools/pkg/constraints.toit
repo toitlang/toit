@@ -92,7 +92,12 @@ class Constraint:
         simple-constraints[1].comparator == "<":
       min/SemanticVersion := simple-constraints[0].constraint-version
       max/SemanticVersion := simple-constraints[1].constraint-version
-      if max.patch == 0 and max.minor == 0 and min.major + 1 == max.major:
+      // Must match the ranges produced by $parse.
+      if min.major != 0 and max.patch == 0 and max.minor == 0 and min.major + 1 == max.major:
+        // E.g., ">=1.2.3,<2.0.0" -> "^1.2.3" (major != 0):
+        return "^$min"
+      if min.major == 0 and max.major == 0 and max.patch == 0 and min.minor + 1 == max.minor:
+        // E.g., ">=0.1.2,<0.2.0" -> "^0.1.2" (major == 0) - only allow patch updates:
         return "^$min"
       if max.patch == 0 and min.major == max.major and min.minor + 1 == max.minor:
         return "~$min"

@@ -26,6 +26,9 @@ uri -> string?:
 
 /**
 The configuration of the current firmware.
+
+The configuration is empty if the program is not running as firmware, for
+  example when started with `toit run`.
 */
 config /FirmwareConfig ::= FirmwareConfig_
 
@@ -243,9 +246,11 @@ interface FirmwareMapping:
 
 class FirmwareConfig_ implements FirmwareConfig:
   operator [] key/string -> any:
+    if not _client_: return null
     return _client_.config-entry key
 
   ubjson -> ByteArray:
+    if not _client_: return #[]
     return _client_.config-ubjson
 
 class FirmwareMapping_ implements FirmwareMapping:

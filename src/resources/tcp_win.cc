@@ -258,6 +258,7 @@ static Object* create_events(Process* process, SOCKET socket, WSAEVENT& read_eve
 
 PRIMITIVE(connect) {
   ARGS(TcpResourceGroup, resource_group, Blob, address, int, port, int, window_size);
+  if (address.length() != 4) FAIL(OUT_OF_BOUNDS);
 
   ByteArray* resource_proxy = process->object_heap()->allocate_proxy();
   if (resource_proxy == null) FAIL(ALLOCATION_FAILED);

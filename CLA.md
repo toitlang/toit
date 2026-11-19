@@ -1,20 +1,20 @@
-# Toitware Individual Contributor License Agreement
+# Toit contributors Individual Contributor License Agreement
 
 In order to clarify the intellectual property license granted with Contributions from any person or
-entity, Toitware must have a Contributor License Agreement ("CLA") on file that has
+entity, Toit contributors must have a Contributor License Agreement ("CLA") on file that has
 been signed by each Contributor, indicating agreement to the license terms below. This license is
-for your protection as a Contributor as well as the protection of Toitware; it does not change your
+for your protection as a Contributor as well as the protection of Toit contributors; it does not change your
 rights to use your own Contributions for any other purpose.
 
 You accept and agree to the following terms and conditions for Your present and future
-Contributions submitted to Toitware. Except for the license granted herein to Toitware and
-recipients of software distributed by Toitware, You reserve all right, title, and interest in and
+Contributions submitted to Toit contributors. Except for the license granted herein to Toit contributors and
+recipients of software distributed by Toit contributors, You reserve all right, title, and interest in and
 to Your Contributions.
 
 1. Definitions:
 
 - "You" (or "Your") shall mean the copyright owner or legal entity authorized by the copyright owner
-that is making this Agreement with Toitware. For legal entities, the entity making a Contribution
+that is making this Agreement with Toit contributors. For legal entities, the entity making a Contribution
 and all other entities that control, are controlled by, or are under common control with that
 entity are considered to be a single Contributor. For the purposes of this definition, "control"
 means (i) the power, direct or indirect, to cause the direction or management of such entity,
@@ -22,31 +22,32 @@ whether by contract or otherwise, or (ii) ownership of fifty percent (50%) or mo
 outstanding shares, or (iii) beneficial ownership of such entity.
 
 - "Contribution" shall mean any original work of authorship, including any modifications or additions
-to an existing work, that is intentionally submitted by You to Toitware for inclusion in, or
-documentation of, any of the products owned or managed by Toitware (the "Work"). For the purposes
-of this definition, "submitted" means any form of electronic, verbal, or written communication sent
-to Toitware or its representatives, including but not limited to communication on electronic mailing
-lists, source code control systems, and issue tracking systems that are managed by, or on behalf of,
-Toitware for the purpose of discussing and improving the Work, but excluding communication that is
-conspicuously marked or otherwise designated in writing by You as "Not a Contribution."
+to an existing work, that is intentionally submitted by You to Toit contributors for inclusion in, or
+documentation of, the Toit programming language and its associated open source projects (the "Work").
+For the purposes of this definition, "submitted" means any form of electronic, verbal, or written
+communication sent to Toit contributors or their representatives, including but not limited to
+communication on electronic mailing lists, source code control systems, and issue tracking systems
+that are managed by, or on behalf of, Toit contributors for the purpose of discussing and improving
+the Work, but excluding communication that is conspicuously marked or otherwise designated in
+writing by You as "Not a Contribution."
 
-- "Affiliate" shall mean with respect to any entity, any other entity that, directly or indirectly
-through one or more intermediaries, controls, is controlled by, or is under common control with,
-such entity, and the term “control” (including the terms "controlled by" and "under common control
-with") means the possession, directly or indirectly, of the power to direct or cause the direction
-of the management and policies of such entity, whether through ownership of voting securities, by
-contract or otherwise.
-
-- "Toitware" shall mean Toitware ApS and its Affiliate(s).
+- "Toit contributors" in this Agreement shall mean Florian Loitsch and Kasper Lund,
+acting as maintainers of the Toit project. This name identifies these two individuals as the
+recipients of the licenses granted herein; it does not mean every person who contributes to Toit
+and does not describe a separate legal entity.
 
 2. Grant of Copyright License. Subject to the terms and conditions of this Agreement, You hereby grant
-to Toitware and to recipients of software distributed by Toitware a perpetual, worldwide,
+to Toit contributors and to recipients of software distributed by Toit contributors a perpetual, worldwide,
 non-exclusive, no-charge, royalty-free, irrevocable copyright license to reproduce, prepare
 derivative works of, publicly display, publicly perform, sublicense, and distribute Your
-Contributions and such derivative works.
+Contributions and such derivative works. This grant includes permission for Toit contributors to
+license and sublicense Your Contributions and such derivative works under different licenses,
+including permissive open source licenses such as the MIT License, as well as commercial or
+proprietary licenses, without obtaining further permission from You. This Agreement does not
+transfer ownership of Your Contributions.
 
 3. Grant of Patent License. Subject to the terms and conditions of this Agreement, You hereby grant to
-Toitware and to recipients of software distributed by Toitware a perpetual, worldwide,
+Toit contributors and to recipients of software distributed by Toit contributors a perpetual, worldwide,
 non-exclusive, no-charge, royalty-free, irrevocable (except as stated in this section) patent
 license to make, have made, use, offer to sell, sell, import, and otherwise transfer the Work, where
 such license applies only to those patent claims licensable by You that are necessarily infringed by
@@ -60,8 +61,8 @@ terminate as of the date such litigation is filed.
 4. You represent that you are legally entitled to grant the above license. If your employer(s) has
 rights to intellectual property that you create that includes your Contributions, you represent that
 you have received permission to make Contributions on behalf of that employer, that your employer
-has waived such rights for your Contributions to Toitware, or that your employer has executed a
-separate Corporate CLA with Toitware.
+has waived such rights for your Contributions to Toit contributors, or that your employer has executed a
+separate Corporate CLA with Toit contributors.
 
 5. You represent that each of Your Contributions is Your original creation (see section 7 for
 submissions on behalf of others). You represent that Your Contribution submissions include complete
@@ -76,20 +77,31 @@ WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied, including, with
 warranties or conditions of TITLE, NON- INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A PARTICULAR
 PURPOSE.
 
-7. Should You wish to submit work that is not Your original creation, You may submit it to Toitware
+7. Should You wish to submit work that is not Your original creation, You may submit it to Toit contributors
 separately from any Contribution, identifying the complete details of its source and of any license
 or other restriction (including, but not limited to, related patents, trademarks, and license
 agreements) of which you are personally aware, and conspicuously marking the work as "Submitted on
 behalf of a third-party: [named here]".
 
-8. You agree to notify Toitware of any facts or circumstances of which you become aware that would
+8. You agree to notify Toit contributors of any facts or circumstances of which you become aware that would
 make these representations inaccurate in any respect.
 
 
-## Signature
+## Acceptance and signature
 
-I hereby agree to the above terms and conditions of the Toitware Individual Contributor License
-Agreement for any present and future Contributions submitted to Toitware.
+You may sign this Agreement electronically by posting the following statement from Your own
+GitHub account on a pull request, in response to a maintainer's request linking to the exact
+revision of this Agreement being accepted:
+
+> I have read the Toit contributors Individual Contributor License Agreement and I hereby agree to its terms.
+
+The acceptance record must identify Your GitHub account, the comment URL and date, and the
+revision of this Agreement accepted. You may instead sign the form below. A later revision of
+this Agreement does not change the terms You previously accepted without Your agreement.
+
+
+I hereby agree to the above terms and conditions of the Toit contributors Individual Contributor License
+Agreement for any present and future Contributions submitted to Toit contributors.
 
 
 Name

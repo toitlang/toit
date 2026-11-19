@@ -394,8 +394,7 @@ void Scheduler::run(SchedulerThread* scheduler_thread) {
   // all OS threads at startup on platforms that may have a hard time starting
   // such threads later due to memory pressure.
   while (!has_exit_reason()) {
-    // Feed the platform VM-liveness watchdog (a no-op where there is none).
-    // A wedged VM stops cycling this loop, stops feeding, and gets reset.
+    // Service the platform watchdog (a no-op where there is none).
     OS::feed_watchdog();
 
     if (ready_count_ == 0) {
@@ -919,6 +918,9 @@ void Scheduler::terminate_execution(Locker& locker, ExitState exit) {
 }
 
 void Scheduler::tick(Locker& locker, int64 now) {
+  // A healthy CPU-bound process need not return to the scheduler. The tick
+  // thread must keep platform watchdogs alive in that case as well.
+  OS::feed_watchdog();
   tick_schedule(locker, now, true);
 
   int first_non_empty_ready_queue = NUMBER_OF_READY_QUEUES;

@@ -21,6 +21,7 @@ main:
   test-wrong-version
   test-wrong-size
   test-random-corruption
+  test-crafted-input
 
 test-simple-types -> none:
   // null
@@ -147,3 +148,98 @@ test-random-corruption:
       exception := catch: decoded = tison.decode copy
       if exception:
         expect-equals "WRONG_OBJECT_TYPE" exception
+
+// Tags of the encoding. Must match src/messaging.cc.
+TAG-POSITIVE-SMI ::= 1
+TAG-NEGATIVE-SMI ::= 2
+TAG-NULL ::= 3
+TAG-ARRAY ::= 6
+TAG-MAP ::= 9
+TAG-STRING-INLINE ::= 11
+TAG-BYTE-ARRAY-INLINE ::= 13
+
+encode-cardinal value/int -> ByteArray:
+  assert: value >= 0
+  bytes := []
+  while value >= 128:
+    bytes.add (value & 0x7f) | 0x80
+    value >>= 7
+  bytes.add value
+  return ByteArray bytes.size: bytes[it]
+
+/**
+Wraps the given $payload in a TISON header with the correct payload size.
+*/
+make-tison payload/ByteArray -> ByteArray:
+  marker := (tison.encode null)[..4]
+  return marker + (encode-cardinal payload.size) + payload
+
+test-crafted-input:
+  // Sanity check the helpers.
+  expect-null (tison.decode (make-tison #[TAG-NULL]))
+  expect-equals 0x3fff_ffff
+      tison.decode (make-tison #[TAG-POSITIVE-SMI] + (encode-cardinal 0x3fff_ffff))
+  expect-equals -(0x4000_0000)
+      tison.decode (make-tison #[TAG-NEGATIVE-SMI] + (encode-cardinal 0x4000_0000))
+  expect-equals "abc"
+      tison.decode (make-tison #[TAG-STRING-INLINE, 3, 'a', 'b', 'c'])
+  expect-bytes-equal #[1, 2]
+      tison.decode (make-tison #[TAG-BYTE-ARRAY-INLINE, 2, 1, 2])
+  expect-structural-equals [null, null]
+      tison.decode (make-tison #[TAG-ARRAY, 2, TAG-NULL, TAG-NULL])
+  expect-structural-equals {5: null}
+      tison.decode (make-tison #[TAG-MAP, 1, TAG-POSITIVE-SMI, 5, TAG-NULL])
+
+  // Strings and byte arrays that are longer than the remaining input.
+  [TAG-STRING-INLINE, TAG-BYTE-ARRAY-INLINE].do: | tag/int |
+    [4, 100, 1_000_000, 0x3fff_ffff].do: | length/int |
+      payload := #[tag] + (encode-cardinal length) + #['a', 'b', 'c']
+      expect-throw "WRONG_OBJECT_TYPE": tison.decode (make-tison payload)
+
+  // Arrays and maps with more entries than the input could hold.
+  [TAG-ARRAY, TAG-MAP].do: | tag/int |
+    [3, 1000, 0x3fff_ffff].do: | length/int |
+      payload := #[tag] + (encode-cardinal length) + #[TAG-NULL, TAG-NULL]
+      expect-throw "WRONG_OBJECT_TYPE": tison.decode (make-tison payload)
+
+  // Smis that are outside the Smi range.
+  // 2^62 is too big for a positive Smi on all platforms.
+  two-62 := #[0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x40]
+  // 2^62 + 1 is too big for a negative Smi on all platforms.
+  two-62-plus-1 := #[0x81, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x40]
+  // 2^63 is too big for any Smi.
+  two-63 := #[0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x01]
+  expect-throw "WRONG_OBJECT_TYPE": tison.decode (make-tison #[TAG-POSITIVE-SMI] + two-62)
+  expect-throw "WRONG_OBJECT_TYPE": tison.decode (make-tison #[TAG-POSITIVE-SMI] + two-63)
+  expect-throw "WRONG_OBJECT_TYPE": tison.decode (make-tison #[TAG-NEGATIVE-SMI] + two-62-plus-1)
+  expect-throw "WRONG_OBJECT_TYPE": tison.decode (make-tison #[TAG-NEGATIVE-SMI] + two-63)
+
+  // Cardinals that are longer than a word (used to shift past 64 bits).
+  overlong := ByteArray 12: it == 11 ? 0x01 : 0x80
+  expect-throw "WRONG_OBJECT_TYPE": tison.decode (make-tison #[TAG-POSITIVE-SMI] + overlong)
+  expect-throw "WRONG_OBJECT_TYPE": tison.decode (make-tison #[TAG-STRING-INLINE] + overlong)
+
+  // Cardinals whose last digit has bits beyond the word (the bits used to be
+  // dropped, so that 2^64 + 5 decoded as 5).
+  two-64 := #[0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x02]
+  two-64-plus-5 := #[0x85, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x02]
+  // 2^32 is beyond the word of a 32-bit VM.
+  two-32 := #[0x80, 0x80, 0x80, 0x80, 0x10]
+  expect-throw "WRONG_OBJECT_TYPE": tison.decode (make-tison #[TAG-POSITIVE-SMI] + two-64-plus-5)
+  expect-throw "WRONG_OBJECT_TYPE": tison.decode (make-tison #[TAG-ARRAY] + two-64)
+  expect-throw "WRONG_OBJECT_TYPE": tison.decode (make-tison #[TAG-ARRAY] + two-32)
+
+  // Deeply nested arrays and maps must not exhaust the native stack.
+  [TAG-ARRAY, TAG-MAP].do: | tag/int |
+    depth := 1_000_000
+    level := tag == TAG-ARRAY ? #[tag, 1] : #[tag, 1, TAG-NULL]
+    payload := ByteArray depth * level.size + 1
+    depth.repeat: payload.replace (it * level.size) level
+    payload[depth * level.size] = TAG-NULL
+    expect-throw "WRONG_OBJECT_TYPE": tison.decode (make-tison payload)
+  // Moderate nesting is still accepted.
+  // (The encoder is stricter and only produces 8 levels.)
+  nested := null
+  20.repeat: nested = [nested]
+  payload := ByteArray 41: it == 40 ? TAG-NULL : (it % 2 == 0 ? TAG-ARRAY : 1)
+  expect-structural-equals nested (tison.decode (make-tison payload))

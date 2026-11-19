@@ -446,7 +446,7 @@ class ServiceProvider:
       _clients-closed-signal_.wait:
         _clients-closed_ > 0 and _clients_.is-empty
     if not _manager_: return
-    _clients_.do: _manager_.close it
+    _clients_.to-list.do: _manager_.close it  // A copy: $_close_ removes from the set.
     if _manager_: _uninstall_
 
   pid --client/int -> int?:
@@ -622,8 +622,10 @@ abstract class ServiceResourceProxy:
     if not handle: return null
     _handle_ = null
     remove-finalizer this
-    if handle & 1 == 1:
-      ServiceResourceProxyManager_.instance.unregister client_.id handle
+    // A closed client has already unregistered all its proxies.
+    client-id := client_.id
+    if client-id and handle & 1 == 1:
+      ServiceResourceProxyManager_.instance.unregister client-id handle
     return handle
 
 class Service_:

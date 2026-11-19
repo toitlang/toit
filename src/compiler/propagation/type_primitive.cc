@@ -31,6 +31,9 @@ enum {
   primitives_[INDEX_##name] = name##_types_;
 
 const TypePrimitiveEntry* TypePrimitive::primitives_[COUNT];
+const unsigned TypePrimitive::primitive_counts_[COUNT] = {
+  MODULES(MODULE_PRIMITIVE_COUNT)
+};
 
 MODULES(MODULE_PRIMITIVES_WEAK)
 

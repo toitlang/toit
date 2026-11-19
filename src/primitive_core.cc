@@ -186,6 +186,14 @@ PRIMITIVE(main_arguments) {
     decoder.remove_disposing_finalizers();
     FAIL(ALLOCATION_FAILED);
   }
+  if (decoder.malformed_input()) {
+    // Not produced by the encoder. Drop the arguments and free all of them
+    // (see task_receive_message).
+    decoder.remove_disposing_finalizers();
+    process->clear_main_arguments();
+    MessageDecoder::deallocate(arguments);
+    FAIL(INVALID_ARGUMENT);
+  }
 
   process->clear_main_arguments();
   free(arguments);
@@ -202,6 +210,14 @@ PRIMITIVE(spawn_arguments) {
   if (decoder.allocation_failed()) {
     decoder.remove_disposing_finalizers();
     FAIL(ALLOCATION_FAILED);
+  }
+  if (decoder.malformed_input()) {
+    // Not produced by the encoder. Drop the arguments and free all of them
+    // (see task_receive_message).
+    decoder.remove_disposing_finalizers();
+    process->clear_spawn_arguments();
+    MessageDecoder::deallocate(arguments);
+    FAIL(INVALID_ARGUMENT);
   }
 
   process->clear_spawn_arguments();
@@ -230,7 +246,7 @@ PRIMITIVE(spawn) {
   InitialMemoryManager initial_memory_manager;
   if (!initial_memory_manager.allocate()) FAIL(ALLOCATION_FAILED);
 
-  unsigned size = 0;
+  word size = 0;
   { MessageEncoder size_encoder(process, null);
     if (!size_encoder.encode(arguments)) {
       return size_encoder.create_error_object(process);
@@ -474,7 +490,7 @@ PRIMITIVE(crc) {
       entry = int_table_entry;
     }
     if (big_endian) {
-      accumulator = (accumulator << 8) ^ entry;
+      accumulator = Utils::wrapping_shift_left(accumulator, 8) ^ entry;
     } else {
       accumulator = (static_cast<uint64>(accumulator) >> 8) ^ entry;
     }
@@ -528,8 +544,10 @@ PRIMITIVE(string_write_to_byte_array) {
   ARGS(Blob, source_bytes, MutableBlob, dest, word, from, word, to, word, dest_index);
   if (to == from) return _raw_dest;
   if (from < 0 || to > source_bytes.length() || from > to) FAIL(OUT_OF_BOUNDS);
-  if (dest_index + to - from > dest.length()) FAIL(OUT_OF_BOUNDS);
-  memcpy(&dest.address()[dest_index], &source_bytes.address()[from], to - from);
+  if (dest_index < 0 || to - from > dest.length() - dest_index) FAIL(OUT_OF_BOUNDS);
+  // The source and destination may be the same byte array (or overlapping
+  // slices of it), so we must use memmove.
+  memmove(&dest.address()[dest_index], &source_bytes.address()[from], to - from);
   return _raw_dest;
 }
 
@@ -656,7 +674,7 @@ PRIMITIVE(read_int_big_endian) {
   }
   int64 value = static_cast<int8>(source.address()[offset]);  // Sign extend.
   for (uword i = 1; i <= width_minus_1; i++) {
-    value <<= 8;
+    value = Utils::wrapping_shift_left(value, 8);
     value |= source.address()[offset + i];
   }
   return Primitive::integer(value, process);
@@ -676,7 +694,7 @@ PRIMITIVE(read_int_little_endian) {
   }
   int64 value = static_cast<int8>(source.address()[offset + width_minus_1]);  // Sign extend.
   for (uword i = width_minus_1; i != 0; i--) {
-    value <<= 8;
+    value = Utils::wrapping_shift_left(value, 8);
     value |= source.address()[offset + i - 1];
   }
   return Primitive::integer(value, process);
@@ -703,29 +721,28 @@ PRIMITIVE(smi_add) {
   if (!is_large_integer(arg)) FAIL(WRONG_OBJECT_TYPE);
   overflow:
   int64 other = is_smi(arg) ? (int64) Smi::value(arg) : LargeInteger::cast(arg)->value();
-  return Primitive::integer((int64) receiver + other, process);
+  return Primitive::integer(Utils::wrapping_add(receiver, other), process);
 }
 
 PRIMITIVE(smi_subtract) {
   ARGS(word, receiver, Object, arg);
   if (is_smi(arg)) {
-    word other = Smi::value(arg);
-    if ((receiver < 0) && (other > Smi::MAX_SMI_VALUE + receiver)) goto overflow;
-    if ((receiver > 0) && (other < Smi::MIN_SMI_VALUE + receiver)) goto overflow;
-    return Smi::from(receiver - other);
+    // Smis have fewer bits than words, so the difference fits a word.
+    return Primitive::integer(static_cast<int64>(receiver) - Smi::value(arg), process);
   }
   if (!is_large_integer(arg)) FAIL(WRONG_OBJECT_TYPE);
-  overflow:
-  int64 other = is_smi(arg) ? (int64) Smi::value(arg) : LargeInteger::cast(arg)->value();
-  return Primitive::integer((int64) receiver - other, process);
+  int64 other = LargeInteger::cast(arg)->value();
+  return Primitive::integer(Utils::wrapping_sub(receiver, other), process);
 }
 
 PRIMITIVE(smi_multiply) {
   ARGS(word, receiver, Object, arg);
   if (is_smi(arg)) {
-    word other = Smi::value(arg);
+    // The tagged smi is `other << 1`, so the product is the tagged result.
+    // Using it avoids shifting a negative value.
+    word tagged_other = reinterpret_cast<word>(arg);
     word result;
-    if (__builtin_mul_overflow(receiver, other << 1, &result)) goto overflow;
+    if (__builtin_mul_overflow(receiver, tagged_other, &result)) goto overflow;
     Smi* r = reinterpret_cast<Smi*>(result);
     ASSERT(r == Smi::from(result >> 1));
     return r;
@@ -733,7 +750,7 @@ PRIMITIVE(smi_multiply) {
   if (!is_large_integer(arg)) FAIL(WRONG_OBJECT_TYPE);
   overflow:
   int64 other = is_smi(arg) ? (int64) Smi::value(arg) : LargeInteger::cast(arg)->value();
-  return Primitive::integer((int64) receiver * other, process);
+  return Primitive::integer(Utils::wrapping_mul(receiver, other), process);
 }
 
 PRIMITIVE(smi_divide) {
@@ -741,7 +758,8 @@ PRIMITIVE(smi_divide) {
   if (is_smi(arg)) {
     word other = Smi::value(arg);
     if (other == 0) return Primitive::mark_as_error(process->program()->division_by_zero());
-    return Smi::from(receiver / other);
+    // MIN_SMI / -1 is not a smi; Primitive::integer promotes it.
+    return Primitive::integer((int64) receiver / other, process);
   }
   if (!is_large_integer(arg)) FAIL(WRONG_OBJECT_TYPE);
   int64 other = is_smi(arg) ? (int64) Smi::value(arg) : LargeInteger::cast(arg)->value();
@@ -855,9 +873,9 @@ PRIMITIVE(int64_to_string) {
     char sign = '+';
     if (value < 0) {
       sign = '-';
-      // This also works fine for min-int.  The negation has no effect, but the
-      // correct value ends up in the unsigned variable.
-      unsigned_value = -value;
+      // Negate in unsigned arithmetic, so that min-int does not overflow. Its
+      // magnitude is representable as uint64.
+      unsigned_value = 0 - static_cast<uint64>(value);
     } else {
       unsigned_value = value;
     }
@@ -901,8 +919,8 @@ PRIMITIVE(uint64_to_string) {
 PRIMITIVE(large_integer_add) {
   ARGS(LargeInteger, receiver, Object, arg);
   int64 result = receiver->value();
-  if (is_smi(arg)) result += Smi::value(arg);
-  else if (is_large_integer(arg)) result += LargeInteger::cast(arg)->value();
+  if (is_smi(arg)) result = Utils::wrapping_add(result, Smi::value(arg));
+  else if (is_large_integer(arg)) result = Utils::wrapping_add(result, LargeInteger::cast(arg)->value());
   else FAIL(WRONG_OBJECT_TYPE);
   return Primitive::integer(result, process);
 }
@@ -910,8 +928,8 @@ PRIMITIVE(large_integer_add) {
 PRIMITIVE(large_integer_subtract) {
   ARGS(LargeInteger, receiver, Object, arg);
   int64 result = receiver->value();
-  if (is_smi(arg)) result -= Smi::value(arg);
-  else if (is_large_integer(arg)) result -= LargeInteger::cast(arg)->value();
+  if (is_smi(arg)) result = Utils::wrapping_sub(result, Smi::value(arg));
+  else if (is_large_integer(arg)) result = Utils::wrapping_sub(result, LargeInteger::cast(arg)->value());
   else FAIL(WRONG_OBJECT_TYPE);
   return Primitive::integer(result, process);
 }
@@ -919,41 +937,49 @@ PRIMITIVE(large_integer_subtract) {
 PRIMITIVE(large_integer_multiply) {
   ARGS(LargeInteger, receiver, Object, arg);
   int64 result = receiver->value();
-  if (is_smi(arg)) result *= Smi::value(arg);
-  else if (is_large_integer(arg)) result *= LargeInteger::cast(arg)->value();
+  if (is_smi(arg)) result = Utils::wrapping_mul(result, Smi::value(arg));
+  else if (is_large_integer(arg)) result = Utils::wrapping_mul(result, LargeInteger::cast(arg)->value());
   else FAIL(WRONG_OBJECT_TYPE);
   return Primitive::integer(result, process);
+}
+
+// Ints wrap around. Dividing int.MIN by -1 traps on x86 (SIGFPE, taking
+// down the whole VM), so division by -1 is handled separately.
+static int64 wrapping_negate(int64 value) {
+  return static_cast<int64>(0 - static_cast<uint64>(value));
 }
 
 PRIMITIVE(large_integer_divide) {
   ARGS(LargeInteger, receiver, Object, arg);
   int64 result = receiver->value();
+  int64 divisor;
   if (is_smi(arg)) {
-    if (Smi::value(arg) == 0) return Primitive::mark_as_error(process->program()->division_by_zero());
-    result /= Smi::value(arg);
+    divisor = Smi::value(arg);
   } else if (is_large_integer(arg)) {
-    ASSERT(LargeInteger::cast(arg)->value() != 0LL);
-    result /= LargeInteger::cast(arg)->value();
+    divisor = LargeInteger::cast(arg)->value();
   } else FAIL(WRONG_OBJECT_TYPE);
+  if (divisor == 0) return Primitive::mark_as_error(process->program()->division_by_zero());
+  result = (divisor == -1) ? wrapping_negate(result) : result / divisor;
   return Primitive::integer(result, process);
 }
 
 PRIMITIVE(large_integer_mod) {
   ARGS(LargeInteger, receiver, Object, arg);
   int64 result = receiver->value();
+  int64 divisor;
   if (is_smi(arg)) {
-    if (Smi::value(arg) == 0) return Primitive::mark_as_error(process->program()->division_by_zero());
-    result %= Smi::value(arg);
+    divisor = Smi::value(arg);
   } else if (is_large_integer(arg)) {
-    ASSERT(LargeInteger::cast(arg)->value() != 0LL);
-    result %= LargeInteger::cast(arg)->value();
+    divisor = LargeInteger::cast(arg)->value();
   } else FAIL(WRONG_OBJECT_TYPE);
+  if (divisor == 0) return Primitive::mark_as_error(process->program()->division_by_zero());
+  result = (divisor == -1) ? 0 : result % divisor;
   return Primitive::integer(result, process);
 }
 
 PRIMITIVE(large_integer_unary_minus) {
   ARGS(LargeInteger, receiver);
-  return Primitive::integer(-receiver->value(), process);
+  return Primitive::integer(Utils::wrapping_negate(receiver->value()), process);
 }
 
 PRIMITIVE(large_integer_not) {
@@ -1014,7 +1040,7 @@ PRIMITIVE(large_integer_shift_left) {
   ARGS(LargeInteger, receiver, int64, number_of_bits);
   if (number_of_bits < 0) FAIL(NEGATIVE_ARGUMENT);
   if (number_of_bits >= LARGE_INT_BIT_SIZE) return Primitive::integer(0, process);
-  return Primitive::integer(receiver->value() << number_of_bits, process);
+  return Primitive::integer(Utils::wrapping_shift_left(receiver->value(), number_of_bits), process);
 }
 
 PRIMITIVE(float_unary_minus) {
@@ -1186,7 +1212,9 @@ PRIMITIVE(seconds_since_epoch_local) {
   ARGS(int32, year, int32, month, int32, day, int32, hour, int32, min, int32, sec, Object, daylight_saving_is_active)
   struct tm decomposed;
   memset(&decomposed, 0, sizeof(decomposed));
-  decomposed.tm_year = year - 1900;
+  // Subtract unsigned, so that years close to the minimal int32 wrap around
+  // instead of overflowing.
+  decomposed.tm_year = static_cast<int32>(static_cast<uint32>(year) - 1900u);
   decomposed.tm_mon = month;
   decomposed.tm_mday = day;
   decomposed.tm_hour = hour;
@@ -1935,11 +1963,14 @@ PRIMITIVE(list_add) {
       if (is_array(array_object = list->at(0))) {
         // Small array backing case.
         Array* array = Array::cast(array_object);
-        word size = Smi::value(list->at(1));
-        if (size < array->length()) {
-          list->at_put(1, Smi::from(size + 1));
-          array->at_put(size, value);
-          return process->null_object();
+        Object* size_object = list->at(1);
+        if (is_smi(size_object)) {
+          word size = Smi::value(size_object);
+          if (0 <= size && size < array->length()) {
+            list->at_put(1, Smi::from(size + 1));
+            array->at_put(size, value);
+            return process->null_object();
+          }
         }
       } else {
         // Large array backing case.
@@ -2085,7 +2116,7 @@ PRIMITIVE(smi_shift_left) {
   if (number_of_bits < 0) FAIL(NEGATIVE_ARGUMENT);
   if (number_of_bits >= 64) return Smi::zero();
   int64 value = Smi::value(receiver);
-  return Primitive::integer(value << number_of_bits, process);
+  return Primitive::integer(Utils::wrapping_shift_left(value, number_of_bits), process);
 }
 
 PRIMITIVE(task_new) {
@@ -2129,7 +2160,7 @@ PRIMITIVE(task_transfer) {
 PRIMITIVE(process_send) {
   ARGS(int, process_id, int, type, Object, array);
 
-  unsigned size = 0;
+  word size = 0;
   { MessageEncoder size_encoder(process, null);
     if (!size_encoder.encode(array)) {
       return size_encoder.create_error_object(process);
@@ -2166,6 +2197,8 @@ Object* MessageEncoder::create_error_object(Process* process) {
   Object* result = null;
   if (malloc_failed_) {
     FAIL(MALLOC_FAILED);
+  } else if (too_large_) {
+    FAIL(OUT_OF_RANGE);
   } else if (nesting_too_deep_) {
     result = process->allocate_string_or_error("NESTING_TOO_DEEP");
   } else if (problematic_class_id_ >= 0) {
@@ -2201,6 +2234,9 @@ PRIMITIVE(task_receive_message) {
   }
 
   Message* message = process->peek_message();
+  // The library only calls this when there is a message, but a program can
+  // call it at any time.
+  if (message == null) return process->null_object();
   MessageType message_type = message->message_type();
   Object* result = process->null_object();
 
@@ -2218,6 +2254,14 @@ PRIMITIVE(task_receive_message) {
     if (decoder.allocation_failed()) {
       decoder.remove_disposing_finalizers();
       FAIL(ALLOCATION_FAILED);
+    }
+    if (decoder.malformed_input()) {
+      // Not produced by the encoder. Drop the message like a canceled one.
+      // The objects decoded so far give their out-of-line data back to the
+      // message, and deleting the message frees all of it.
+      decoder.remove_disposing_finalizers();
+      process->remove_first_message();
+      return process->null_object();
     }
     decoder.register_external_allocations();
     system_message->free_data_but_keep_externals();
@@ -2256,10 +2300,15 @@ PRIMITIVE(add_finalizer) {
 
 PRIMITIVE(remove_finalizer) {
   ARGS(HeapObject, object)
+  // Objects on the program heap never get a finalizer (see add_finalizer),
+  // and they must not be modified.
+  if (object->on_program_heap(process)) return BOOL(false);
+  // Only instances get Toit finalizers (see add_finalizer). The same header
+  // bit marks the VM finalizer of an external byte array or string, which
+  // frees its memory: clearing it would leak the memory.
+  if (!is_instance(object)) return BOOL(false);
   bool result = object->has_active_finalizer();
-  // We don't remove it from the finalizer list, so that must happen at the
-  // next GC.
-  object->clear_has_active_finalizer();
+  if (result) process->object_heap()->remove_callable_finalizer(Instance::cast(object));
   return BOOL(result);
 }
 
@@ -2343,7 +2392,11 @@ PRIMITIVE(rebuild_hash_index) {
   if (!is_array(o) || !is_array(n)) FAIL(OUT_OF_RANGE);
   Array* old_array = Array::cast(o);
   Array* new_array = Array::cast(n);
-  word index_mask = new_array->length() - 1;
+  word new_length = new_array->length();
+  // The probing below only stays in bounds and terminates for a non-empty
+  // power-of-two index array.
+  if (new_length == 0 || !Utils::is_power_of_two(new_length)) FAIL(INVALID_ARGUMENT);
+  word index_mask = new_length - 1;
   word length = old_array->length();
   for (word i = 0; i < length; i++) {
     Object* o = old_array->at(i);
@@ -2357,7 +2410,11 @@ PRIMITIVE(rebuild_hash_index) {
     }
     word slot = hash_and_position & index_mask;
     word step = 1;
+    // Triangular probing visits every slot of a power-of-two array within
+    // new_length steps. If there is no free slot, fail instead of looping
+    // forever.
     while (new_array->at(slot) != 0) {
+      if (step > new_length) FAIL(INVALID_ARGUMENT);
       slot = (slot + step) & index_mask;
       step++;
     }
@@ -2731,10 +2788,29 @@ PRIMITIVE(firmware_unmap) {
   return process->null_object();
 }
 
+// Extracts the backing bytes, the offset, and the size of a firmware
+// mapping, and checks that the mapping lies within the backing bytes.
+// Returns null on success, and an error otherwise.
+static Object* firmware_mapping_fields(Process* process, Instance* receiver, Blob* input, word* offset, word* size) {
+  Object* offset_object = receiver->at(1);
+  Object* size_object = receiver->at(2);
+  if (!is_smi(offset_object) || !is_smi(size_object)) FAIL(WRONG_OBJECT_TYPE);
+  if (!receiver->at(0)->byte_content(process->program(), input, STRINGS_OR_BYTE_ARRAYS)) {
+    FAIL(WRONG_OBJECT_TYPE);
+  }
+  *offset = Smi::value(offset_object);
+  *size = Smi::value(size_object);
+  if (*offset < 0 || *size < 0 || *size > input->length() - *offset) FAIL(OUT_OF_BOUNDS);
+  return null;
+}
+
 PRIMITIVE(firmware_mapping_at) {
   ARGS(Instance, receiver, int, index);
-  word offset = Smi::value(receiver->at(1));
-  word size = Smi::value(receiver->at(2));
+  Blob input;
+  word offset;
+  word size;
+  Object* error = firmware_mapping_fields(process, receiver, &input, &offset, &size);
+  if (error != null) return error;
   if (index < 0 || index >= size) FAIL(OUT_OF_BOUNDS);
 
 #ifdef TOIT_EC618
@@ -2742,11 +2818,6 @@ PRIMITIVE(firmware_mapping_at) {
   // not read from the proxy's external address.
   return Smi::from(ec618_active_firmware_at(static_cast<uint32>(offset + index)));
 #else
-  Blob input;
-  if (!receiver->at(0)->byte_content(process->program(), &input, STRINGS_OR_BYTE_ARRAYS)) {
-    FAIL(WRONG_OBJECT_TYPE);
-  }
-
   // Firmware is potentially mapped into memory that only allow word
   // access. We read the full word before masking and shifting. This
   // asssumes that we're running on a little endian platform.
@@ -2760,8 +2831,11 @@ PRIMITIVE(firmware_mapping_at) {
 PRIMITIVE(firmware_mapping_copy) {
   ARGS(Instance, receiver, word, from, word, to, MutableBlob, output, word, index);
   if (index < 0) FAIL(OUT_OF_BOUNDS);
-  word offset = Smi::value(receiver->at(1));
-  word size = Smi::value(receiver->at(2));
+  Blob input;
+  word offset;
+  word size;
+  Object* error = firmware_mapping_fields(process, receiver, &input, &offset, &size);
+  if (error != null) return error;
   if (!Utils::is_aligned(from + offset, sizeof(uint32)) ||
       !Utils::is_aligned(to + offset, sizeof(uint32))) FAIL(INVALID_ARGUMENT);
   if (from > to || from < 0 || to > size) FAIL(OUT_OF_BOUNDS);
@@ -2778,11 +2852,6 @@ PRIMITIVE(firmware_mapping_copy) {
     FAIL(INVALID_ARGUMENT);
   }
 #else
-  Blob input;
-  if (!receiver->at(0)->byte_content(process->program(), &input, STRINGS_OR_BYTE_ARRAYS)) {
-    FAIL(WRONG_OBJECT_TYPE);
-  }
-
   // Firmware is potentially mapped into memory that only allow word
   // access. We use an IRAM safe memcpy alternative that guarantees
   // always reading whole words to avoid issues with this.

@@ -1270,24 +1270,24 @@ chain-test tests/type_propagation/deltablue-test.toit
 148[014] - load local 0
 149[023] - load smi 0
 150[020] - load literal Chain test failed: 
-152[079] - invoke at_put // [{LargeArray_|SmallArray_}, {SmallInteger_}, {String_}] -> {*}
+152[079] - invoke at_put // [{LargeArray_|SmallArray_}, {SmallInteger_}, {String_}] -> {String_}
 153[002] - pop, load local S0
 155[025] - load smi 1
 156[000] - load local S6
 158[060] - invoke virtual get value // [{Null_|Variable}] -> {Null_|LargeInteger_|SmallInteger_}
-161[079] - invoke at_put // [{LargeArray_|SmallArray_}, {SmallInteger_}, {Null_|LargeInteger_|SmallInteger_}] -> {*}
+161[079] - invoke at_put // [{LargeArray_|SmallArray_}, {SmallInteger_}, {Null_|LargeInteger_|SmallInteger_}] -> {Null_|LargeInteger_|SmallInteger_}
 162[002] - pop, load local S0
 164[026] - load smi 2
 166[020] - load literal  != 
-168[079] - invoke at_put // [{LargeArray_|SmallArray_}, {SmallInteger_}, {String_}] -> {*}
+168[079] - invoke at_put // [{LargeArray_|SmallArray_}, {SmallInteger_}, {String_}] -> {String_}
 169[002] - pop, load local S0
 171[026] - load smi 3
 173[017] - load local 3
-174[079] - invoke at_put // [{LargeArray_|SmallArray_}, {SmallInteger_}, {LargeInteger_|SmallInteger_}] -> {*}
+174[079] - invoke at_put // [{LargeArray_|SmallArray_}, {SmallInteger_}, {LargeInteger_|SmallInteger_}] -> {LargeInteger_|SmallInteger_}
 175[002] - pop, load local S0
 177[026] - load smi 4
 179[020] - load literal 
-181[079] - invoke at_put // [{LargeArray_|SmallArray_}, {SmallInteger_}, {String_}] -> {*}
+181[079] - invoke at_put // [{LargeArray_|SmallArray_}, {SmallInteger_}, {String_}] -> {String_}
 182[002] - pop, load local S0
 184[004] - store local, pop S1
 186[053] - invoke static simple-interpolate-strings_ <sdk>/core/utils.toit // [{LargeArray_|SmallArray_}] -> {String_}

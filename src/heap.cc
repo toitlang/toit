@@ -50,8 +50,7 @@ Instance* ObjectHeap::allocate_instance(Smi* class_id) {
 }
 
 Array* ObjectHeap::allocate_array(word length, Object* filler) {
-  ASSERT(length >= 0);
-  ASSERT(length <= Array::max_length_in_process());
+  if (length < 0 || length > Array::max_length_in_process()) return null;
   HeapObject* result = _allocate_raw(Array::allocation_size(length));
   if (result == null) {
     return null;  // Allocation failure.
@@ -63,9 +62,8 @@ Array* ObjectHeap::allocate_array(word length, Object* filler) {
 }
 
 ByteArray* ObjectHeap::allocate_internal_byte_array(word length) {
-  ASSERT(length >= 0);
   // Byte array should fit within one heap block.
-  ASSERT(length <= ByteArray::max_internal_size_in_process());
+  if (length < 0 || length > ByteArray::max_internal_size_in_process()) return null;
   ByteArray* result = unvoid_cast<ByteArray*>(_allocate_raw(ByteArray::internal_allocation_size(length)));
   if (result == null) return null;  // Allocation failure.
   // Initialize object.
@@ -372,6 +370,20 @@ bool ObjectHeap::add_callable_finalizer(Instance* key, Object* lambda, bool weak
   registered_callback_finalizers_.prepend(node);
   key->set_has_active_finalizer();
   return true;
+}
+
+void ObjectHeap::remove_callable_finalizer(Instance* key) {
+  // Unlink the node now instead of at the next GC. Otherwise a program that
+  // adds and removes a finalizer in a loop without allocating grows the list
+  // (malloced memory) without bound, and the nodes of a key that gets a new
+  // finalizer before the next GC stay on the list for as long as the key
+  // lives, since the GC only looks at the key's finalizer bit.
+  registered_callback_finalizers_.remove_wherever([key](FinalizerNode* node) -> bool {
+    if (node->key() != key) return false;
+    delete node;
+    return true;
+  });
+  key->clear_has_active_finalizer();
 }
 
 bool ObjectHeap::add_vm_finalizer(HeapObject* key) {

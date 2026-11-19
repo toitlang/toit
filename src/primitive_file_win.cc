@@ -240,11 +240,7 @@ PRIMITIVE(opendir2) {
 }
 
 PRIMITIVE(readdir) {
-  ARGS(ByteArray, directory_proxy);
-
-  if (!directory_proxy->has_external_address()) FAIL(WRONG_OBJECT_TYPE);
-
-  auto directory = directory_proxy->as_external<Directory>();
+  ARGS(Directory, directory);
 
   if (directory->done()) return process->null_object();
 
@@ -272,16 +268,13 @@ PRIMITIVE(readdir) {
 }
 
 PRIMITIVE(closedir) {
-  ARGS(ByteArray, proxy);
-
-  if (!proxy->has_external_address()) FAIL(WRONG_OBJECT_TYPE);
-  auto directory = proxy->as_external<Directory>();
+  ARGS(Directory, directory);
 
   FindClose(directory->dir_handle());
 
   directory->resource_group()->unregister_resource(directory);
 
-  proxy->clear_external_address();
+  directory_proxy->clear_external_address();
   return process->null_object();
 }
 

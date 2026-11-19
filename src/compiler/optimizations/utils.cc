@@ -50,6 +50,9 @@ Type compute_guaranteed_type(Expression* node, Class* holder, Method* method, Li
   if (node->is_ReferenceLocal()) {
     auto target = node->as_ReferenceLocal()->target();
     if (!target->is_effectively_final()) return Type::invalid();
+    // Inferred types may come from virtual calls whose target is overridden
+    // with an incompatible return type.
+    if (!target->has_guaranteed_type()) return Type::invalid();
     if (!target->type().is_class()) return Type::invalid();
     return target->type();
   } else if (node->is_CallStatic()) {

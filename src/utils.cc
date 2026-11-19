@@ -335,13 +335,18 @@ bool Utils::is_valid_utf_8(const uint8* buffer, word length) {
 // See also is_valid_utf_8.  Returns size in 16 bit code units.
 // If output is null, does not write.  If output_length is too small,
 // returns -1.
+// Never reads past the input: a first byte that announces more bytes than
+// there are, or is not a first byte, becomes the replacement character.
 word Utils::utf_8_to_16(const uint8* input, word length, uint16* output, word output_length) {
   word size = 0;
   for (word i = 0; i < length; ) {
     uint8 prefix = input[i];
     word count = Utils::bytes_in_utf_8_sequence(prefix);
     int c;
-    if (prefix > Utils::MAX_ASCII) {
+    if (prefix > Utils::MAX_ASCII && (count < 2 || count > 4 || count > length - i)) {
+      c = 0xfffd;
+      count = 1;
+    } else if (prefix > Utils::MAX_ASCII) {
       c = Utils::payload_from_prefix(prefix);
       for (word j = 1; j < count; j++) {
         c <<= Utils::UTF_8_BITS_PER_BYTE;
@@ -606,7 +611,8 @@ static uint8 write_64(int bits, const char* p) {
 void Base64Encoder::encode(const uint8* data, word size, const std::function<void (uint8 out_byte)>& f) {
   // Output a buffer in base64 encoding, outputting 3 input bytes as 4 output
   // bytes.
-  word r = rest;
+  // Unsigned, as the bits that have been output are shifted out at the top.
+  uword r = rest;
   const char* table = url_mode ? base64url_output_table : base64_output_table;
   word c = bit_count;
   for (word i = 0; i < size; i++) {

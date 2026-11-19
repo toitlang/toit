@@ -20,10 +20,10 @@ namespace compiler {
 
 MODULE_TYPES(spi_flash, MODULE_SPI_FLASH)
 
-TYPE_PRIMITIVE_ANY(init_sdcard)
-TYPE_PRIMITIVE_ANY(init_nor_flash)
-TYPE_PRIMITIVE_ANY(init_nand_flash)
-TYPE_PRIMITIVE_ANY(close)
+TYPE_PRIMITIVE_BYTE_ARRAY(init_sdcard)
+TYPE_PRIMITIVE_BYTE_ARRAY(init_nor_flash)
+TYPE_PRIMITIVE_BYTE_ARRAY(init_nand_flash)
+TYPE_PRIMITIVE_NULL(close)
 
 }  // namespace toit::compiler
 }  // namespace toit

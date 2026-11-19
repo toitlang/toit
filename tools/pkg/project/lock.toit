@@ -369,9 +369,9 @@ class LockFileBuilder:
           Missing version for $dep.url in solution.
           This can happen when the specification and description are out of sync."""
 
-      if available-versions.size > 0:
-        // We prefer to use higher versions.
-        available-versions.sort: | a b | -(a.compare-to b)
+      // We prefer to use higher versions. Make a copy, instead of using
+      // --in-place so that we don't modify solver's output.
+      available-versions = available-versions.sort: | a b | -(a.compare-to b)
 
       matching := dep.constraint.first-satisfying available-versions
       if not matching:

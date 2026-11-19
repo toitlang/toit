@@ -20,48 +20,68 @@ namespace compiler {
 
 MODULE_TYPES(ble, MODULE_BLE)
 
-TYPE_PRIMITIVE_ANY(init)
-TYPE_PRIMITIVE_ANY(create_adapter)
-TYPE_PRIMITIVE_ANY(create_peripheral_manager)
-TYPE_PRIMITIVE_ANY(create_central_manager)
-TYPE_PRIMITIVE_ANY(close)
-TYPE_PRIMITIVE_ANY(release_resource)
-TYPE_PRIMITIVE_ANY(scan_start)
-TYPE_PRIMITIVE_ANY(scan_next)
-TYPE_PRIMITIVE_ANY(scan_stop)
-TYPE_PRIMITIVE_ANY(connect)
-TYPE_PRIMITIVE_ANY(disconnect)
-TYPE_PRIMITIVE_ANY(discover_services)
-TYPE_PRIMITIVE_ANY(discover_services_result)
-TYPE_PRIMITIVE_ANY(discover_characteristics)
-TYPE_PRIMITIVE_ANY(discover_characteristics_result)
-TYPE_PRIMITIVE_ANY(discover_descriptors)
-TYPE_PRIMITIVE_ANY(discover_descriptors_result)
-TYPE_PRIMITIVE_ANY(request_read)
-TYPE_PRIMITIVE_ANY(get_value)
-TYPE_PRIMITIVE_ANY(write_value)
-TYPE_PRIMITIVE_ANY(handle)
-TYPE_PRIMITIVE_ANY(set_characteristic_notify)
-TYPE_PRIMITIVE_ANY(advertise_start)
-TYPE_PRIMITIVE_ANY(advertise_start_raw)
-TYPE_PRIMITIVE_ANY(advertise_stop)
-TYPE_PRIMITIVE_ANY(add_service)
-TYPE_PRIMITIVE_ANY(reserve_services)
-TYPE_PRIMITIVE_ANY(start_gatt_server)
-TYPE_PRIMITIVE_ANY(add_characteristic)
-TYPE_PRIMITIVE_ANY(add_descriptor)
-TYPE_PRIMITIVE_ANY(deploy_service)
-TYPE_PRIMITIVE_ANY(set_value)
-TYPE_PRIMITIVE_ANY(get_subscribed_clients)
-TYPE_PRIMITIVE_ANY(notify_characteristics_value)
-TYPE_PRIMITIVE_ANY(get_att_mtu)
-TYPE_PRIMITIVE_ANY(set_preferred_mtu)
-TYPE_PRIMITIVE_ANY(get_error)
-TYPE_PRIMITIVE_ANY(clear_error)
-TYPE_PRIMITIVE_ANY(get_bonded_peers)
-TYPE_PRIMITIVE_ANY(toit_callback_init)
-TYPE_PRIMITIVE_ANY(toit_callback_deinit)
-TYPE_PRIMITIVE_ANY(toit_callback_reply)
+TYPE_PRIMITIVE_BYTE_ARRAY(init)
+TYPE_PRIMITIVE_BYTE_ARRAY(create_adapter)
+TYPE_PRIMITIVE_BYTE_ARRAY(create_peripheral_manager)
+TYPE_PRIMITIVE_BYTE_ARRAY(create_central_manager)
+TYPE_PRIMITIVE_NULL(close)
+TYPE_PRIMITIVE_NULL(release_resource)
+TYPE_PRIMITIVE_NULL(scan_start)
+
+TYPE_PRIMITIVE(scan_next) {
+  result.add_array(program);
+  result.add_null(program);
+  failure.add_string(program);
+}
+
+TYPE_PRIMITIVE_NULL(scan_stop)
+TYPE_PRIMITIVE_BYTE_ARRAY(connect)
+TYPE_PRIMITIVE_NULL(disconnect)
+TYPE_PRIMITIVE_NULL(discover_services)
+TYPE_PRIMITIVE_ARRAY(discover_services_result)
+TYPE_PRIMITIVE_NULL(discover_characteristics)
+TYPE_PRIMITIVE_ARRAY(discover_characteristics_result)
+TYPE_PRIMITIVE_NULL(discover_descriptors)
+TYPE_PRIMITIVE_ARRAY(discover_descriptors_result)
+TYPE_PRIMITIVE_NULL(request_read)
+
+TYPE_PRIMITIVE(get_value) {
+  result.add_byte_array(program);
+  result.add_null(program);
+  failure.add_string(program);
+}
+
+TYPE_PRIMITIVE_SMI(write_value)
+TYPE_PRIMITIVE_SMI(handle)
+TYPE_PRIMITIVE_NULL(set_characteristic_notify)
+
+TYPE_PRIMITIVE(advertise_start) {
+  failure.add_string(program);
+}
+
+TYPE_PRIMITIVE_NULL(advertise_start_raw)
+TYPE_PRIMITIVE_NULL(advertise_stop)
+TYPE_PRIMITIVE_BYTE_ARRAY(add_service)
+TYPE_PRIMITIVE_NULL(reserve_services)
+TYPE_PRIMITIVE_NULL(start_gatt_server)
+TYPE_PRIMITIVE_BYTE_ARRAY(add_characteristic)
+TYPE_PRIMITIVE_BYTE_ARRAY(add_descriptor)
+TYPE_PRIMITIVE_NULL(deploy_service)
+TYPE_PRIMITIVE_NULL(set_value)
+TYPE_PRIMITIVE_ARRAY(get_subscribed_clients)
+TYPE_PRIMITIVE_NULL(notify_characteristics_value)
+TYPE_PRIMITIVE_SMI(get_att_mtu)
+TYPE_PRIMITIVE_NULL(set_preferred_mtu)
+
+TYPE_PRIMITIVE(get_error) {
+  failure.add_string(program);
+}
+
+TYPE_PRIMITIVE_NULL(clear_error)
+TYPE_PRIMITIVE_ARRAY(get_bonded_peers)
+TYPE_PRIMITIVE_NULL(toit_callback_init)
+TYPE_PRIMITIVE_NULL(toit_callback_deinit)
+TYPE_PRIMITIVE_NULL(toit_callback_reply)
 TYPE_PRIMITIVE_NULL(set_gap_device_name)
 
 }  // namespace toit::compiler

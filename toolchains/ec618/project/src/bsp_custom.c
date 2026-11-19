@@ -9,6 +9,7 @@
 #include "clock.h"
 #include "slpman.h"
 #include "plat_config.h"
+#include "reset.h"
 
 #include "Driver_USART.h"
 
@@ -99,16 +100,13 @@ int _write(int file, char *ptr, int len) {
 
 void BSP_CustomInit(void) {
 #if CONFIG_TOIT_EC618_VM_WATCHDOG
-    // Leave the always-on (AON) watchdog running: it is the platform's
-    // whole-chip liveness guard, armed by the boot ROM (~27s) and auto-fed by
-    // the CP core whenever a healthy CP runs. Feed it once here to refresh
-    // the window from early boot, covering the time until the CP is up.
-    // The deep-sleep path stops it before hibernating (toit_ec618.cc), where
-    // the CP stops feeding.
+    // Refresh the boot ROM's AON watchdog window until the platform idle
+    // task and VM scheduler can feed it. The deep-sleep path stops it before
+    // hibernating (toit_ec618.cc), when those software feeders stop running.
     slpManAonWdtFeed();
 #else
-    // CP-less debugging (bring-up, missing/mismatched CP image): nothing
-    // would feed the AON, so stop it before it reboots the device (~27s).
+    // Debugging may deliberately prevent platform feeding. Stop the AON
+    // before it reboots the device (~27s).
     slpManAonWdtStop();
 #endif
 
@@ -120,6 +118,12 @@ void BSP_CustomInit(void) {
     soc_uart0_set_log_off(1);
     BSP_SetPlatConfigItemValue(PLAT_CONFIG_ITEM_LOG_CONTROL, 0);
 #endif
+
+    // Match the vendor BSP initialization order: capture the wake source
+    // before ResetReasonInit consumes the reset flags. Without this call,
+    // ResetStateGet only returns the zero-initialized state (POR).
+    (void)slpManGetWakeupSrc();
+    ResetReasonInit();
 
 #if CONFIG_TOIT_EC618_PRINT_UART
     SetPrintUart();

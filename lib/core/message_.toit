@@ -85,6 +85,8 @@ process-messages_:
     while task-has-messages_:
       message := task-receive-message_
       if message is __Monitor__:
+        // Runs inline and must not block: this loop is the only reader
+        // of the messages, including the ones that would unblock it.
         message.notify_
         continue
       else if not message:
@@ -150,7 +152,11 @@ monitor MessageProcessor_:
     gid ::= message[1]
     pid ::= message[2]
     arguments ::= message[3]
-    handler.on-message type gid pid arguments
+    // The message comes from another process. An exception in its handler
+    // must not unwind the task that happens to process the messages: that
+    // would let any process that can send to us kill one of our tasks (and
+    // with it this process).
+    catch --trace: handler.on-message type gid pid arguments
 
   run message/Array_ -> bool:
     if message_ or not task_: return false

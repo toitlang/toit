@@ -818,7 +818,7 @@ abstract class int extends num:
             return int.MIN
         return if-error.call RANGE-ERR_
 
-      value := hex-char-to-value char --if-error=(: if-error.call PARSE-ERR_)
+      value := hex-char-to-value char --if-error=(: return if-error.call PARSE-ERR_)
       result <<= 4
       result |= value
       continue.generic-parser_ result

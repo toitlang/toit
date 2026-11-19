@@ -99,10 +99,17 @@ install-esptool: sdk
 .PHONY: sdk-no-cmake
 sdk-no-cmake: tools-no-cmake
 
+# Host and ESP32 builds don't use the EC618 SDK. Check only the submodules
+# needed by the requested build, so an unrelated SDK needn't be cloned.
+BUILD_SUBMODULES = third_party/esp-idf
+ifneq ($(filter ec618%,$(MAKECMDGOALS) $(TARGET) $(TOOLCHAIN)),)
+BUILD_SUBMODULES += third_party/luatos-soc-ec618
+endif
+
 .PHONY: check-env
 check-env:
 ifndef IGNORE_SUBMODULE
-	@ if git submodule status | grep '^[-+]' ; then \
+	@ if git submodule status -- $(BUILD_SUBMODULES) | grep '^[-+]' ; then \
 		echo "Submodules not updated or initialized. Did you 'git submodule update --init --recursive'?"; \
 		echo "You can disable this check by setting IGNORE_SUBMODULE=1"; \
 		exit 1; \
@@ -256,6 +263,8 @@ EC618_BASE_DIR ?= $(BUILD)/ec618-base
 # device needs a slot spliced in.
 .PHONY: ec618-base
 ec618-base: check-env host-tools
+	$(TOIT_BIN) run tests/ec618-base-api-test.toit
+	$(TOIT_BIN) run --project-root tools tools/ec618/check-base-api.toit
 	mkdir -p $(BUILD)/ec618-base
 	cd $(EC618_SDK) && rm -rf build && \
 		TOIT_BASE_LINK=1 GCC_PATH=$(EC618_GCC_PATH) PROJECT_NAME=toit PROJECT_DIR=$(CURDIR)/toolchains/ec618/project xmake config -p cross -y && \
@@ -263,6 +272,8 @@ ec618-base: check-env host-tools
 	cd $(CURDIR)
 	cp $(EC618_SDK)/build/toit/toit.elf $(BUILD)/ec618-base/base.elf
 	cp $(EC618_SDK)/build/toit/ap.bin $(BUILD)/ec618-base/base.bin
+	$(TOIT_BIN) run --project-root tools tools/ec618/check-base-api.toit -- --elf=$(BUILD)/ec618-base/base.elf \
+		--nm=$(EC618_GCC_PATH)/bin/arm-none-eabi-nm
 	# Stamp the base-id record (magic + base-vN + fingerprint) into the
 	# reserved page; every slot build reads it into its SRL3 table and the
 	# device rejects slots built against a different base.
@@ -273,7 +284,10 @@ ec618-base: check-env host-tools
 		--nm=$(EC618_GCC_PATH)/bin/arm-none-eabi-nm \
 		--manifest=$(BUILD)/ec618-base/base-manifest.json
 
-ec618: check-env host-tools
+# Keep each .ONESHELL recipe short: Windows command launching can truncate
+# long recipes before the final checks, even while reporting success.
+.PHONY: ec618-link ec618-relocations
+ec618-link: check-env host-tools
 	# Build the EC618 VM library.
 	mkdir -p $(BUILD)/ec618
 	(cd $(BUILD)/ec618 && cmake $(CURDIR) -G Ninja -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_TOOLCHAIN_FILE=$(CURDIR)/toolchains/ec618.cmake -DEC618_GCC_PATH=$(EC618_GCC_PATH) --no-warn-unused-cli)
@@ -288,6 +302,11 @@ ec618: check-env host-tools
 	# after base-side changes (toolchains/ec618/project/, the SDK submodule)
 	# rerun `make ec618-base`.
 	test -f $(EC618_BASE_DIR)/base.elf || $(MAKE) ec618-base
+	# Validate the selected base too, including downloaded or previously built
+	# artifacts. A freshly built base passing the gate does not prove that the
+	# base used for this slot retains the complete peripheral contract.
+	$(TOIT_BIN) run --project-root tools tools/ec618/check-base-api.toit -- --elf=$(EC618_BASE_DIR)/base.elf \
+		--nm=$(EC618_GCC_PATH)/bin/arm-none-eabi-nm
 	# Generate the slot linker scripts from the base's geometry (correct for
 	# exactly this base, by construction), then link slot A (neutral link
 	# base) and slot B (its real flash address — the byte-identity oracle).
@@ -342,6 +361,8 @@ ec618: check-env host-tools
 		--readelf=$(EC618_GCC_PATH)/bin/arm-none-eabi-readelf \
 		--elf=$(BUILD)/ec618/toit-slot-a.elf \
 		--out=$(BUILD)/ec618/generated/toit_data_reloc.c --check
+
+ec618-relocations: ec618-link
 	# Assemble the full AP images: overlay each slot link onto the base image.
 	# The slot links confine all loadable bytes to the slot region (the .data
 	# init LMA rides in-slot, after the body), so this touches no base byte —
@@ -391,6 +412,8 @@ ec618: check-env host-tools
 		--out=$(BUILD)/ec618/slot-reloc.bin \
 		--data-out=$(BUILD)/ec618/slot-data.bin \
 		--verify-slot-b=$(BUILD)/ec618/ap-slot-b.bin
+
+ec618: ec618-relocations
 	# Prove the DEVICE relocator (src/slot_reloc_ec618.cc — the C++ that runs
 	# on the chip): relocate canonical == slot B and un-relocate slot B ==
 	# canonical, both whole-body and sector-chunked. The slot flash addresses are

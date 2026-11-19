@@ -179,7 +179,7 @@ class Heap extends Memory:
   */
   store o/snapshot.ToitHeapObject [--if-absent] -> int:
     // Avoid filling the 'already_written_map' with integers.
-    if this is not ToitInteger:
+    if o is not snapshot.ToitInteger:
       return contained-objects_.get o --init=if-absent
 
     // Integers are either going to be encoded as Smis, or as LargeIntegers.
@@ -190,7 +190,7 @@ class Heap extends Memory:
     result := if-absent.call
     // The following 'if' only serves as safeguard against future changes.
     if not ToitInteger.is-smi-address result:
-      value := (this as ToitInteger).o_.value
+      value := (o as snapshot.ToitInteger).value
       // A large integer.
       if contained-objects_.contains value:
         throw "Large integers should be deduplicated"

@@ -1072,12 +1072,9 @@ void BaseSnapshotWriter::write_integer(int64 value) {
     write_cardinal64(value);
   } else {
     write_object_header(SnapshotTypeTag::NEGATIVE_SMI_TAG);
-    // In the case of INT64_MIN the value of `-value` will still be negative, but
-    // the implicit cast to uint64 (the parameter type of [write_cardinal64])
-    // converts to a positive number.
-    // Converting from signed to unsigned integer (of same size) with two's
-    // complement representation does not change the bit-pattern.
-    write_cardinal64(-value);
+    // Negate in unsigned arithmetic, so that INT64_MIN does not overflow. Its
+    // magnitude is representable as uint64.
+    write_cardinal64(0 - static_cast<uint64>(value));
   }
   if (!Smi::is_valid32(value)) {
     // No need to allocate any object if it's a valid 32-bit smi.

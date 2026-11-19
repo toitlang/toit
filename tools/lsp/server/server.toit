@@ -46,6 +46,7 @@ import .rpc
 import .uri-path-translator as translator
 import .utils
 import .verbose
+import .summary show Class Method Module
 import .toitdoc-markdown show ToitdocMarkdownVisitor
 
 DEFAULT-SETTINGS /Map ::= {:}
@@ -568,11 +569,34 @@ class LspServer:
     if not element: return null
 
     toitdoc := element.toitdoc
+    if not toitdoc and is-constructor_ element:
+      // Undocumented constructors show the documentation of their class.
+      klass := class-of_ element --module=document.summary
+      if klass: toitdoc = klass.toitdoc
     if not toitdoc: return null
 
     visitor := ToitdocMarkdownVisitor
     visitor.visit-Contents toitdoc
     return Hover --contents=visitor.build
+
+  static is-constructor_ element/any -> bool:
+    if element is not Method: return false
+    kind := (element as Method).kind
+    return kind == Method.CONSTRUCTOR-KIND or kind == Method.FACTORY-KIND
+
+  /**
+  Returns the class of the $module that declares the given constructor or
+    factory $element.
+
+  Named constructors and factories are in the statics of the class.
+  */
+  static class-of_ element/Method --module/Module -> Class?:
+    module.classes.do: | klass/Class |
+      if klass.constructors.contains element
+          or klass.factories.contains element
+          or klass.statics.contains element:
+        return klass
+    return null
 
   document-symbol params/DocumentSymbolParams -> List/*<DocumentSymbol>*/:
     uri := translator.canonicalize params.text-document.uri
