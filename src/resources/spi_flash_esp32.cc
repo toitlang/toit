@@ -94,7 +94,7 @@ static ByteArray* init_common(Process* process, const char* mount_point,
     return null;
   }
 
-  char* mount_point_buffer = static_cast<char*>(malloc(strlen(mount_point)));
+  char* mount_point_buffer = static_cast<char*>(malloc(strlen(mount_point) + 1));
   if (!mount_point_buffer) {
     *error = Primitive::mark_as_error(process->program()->malloc_failed());
     return null;
@@ -168,7 +168,9 @@ PRIMITIVE(init_nor_flash) {
 #else
   ARGS(cstring, mount_point, SpiResourceGroup, spi_bus, int, gpio_cs,int, frequency, int, format_if_mount_failed, int, max_files, int, allocation_unit_size)
 
-  if (frequency < 0 || frequency > ESP_FLASH_80MHZ) FAIL(INVALID_ARGUMENT);
+  // SDK FREQUENCY-* selectors are independent of IDF's removed speed enum.
+  const int frequencies_mhz[] = {5, 10, 20, 26, 40, 80};
+  if (frequency < 0 || frequency >= static_cast<int>(ARRAY_SIZE(frequencies_mhz))) FAIL(INVALID_ARGUMENT);
 
   // Decode the pin and reserve it from the shared pool. The reserver releases
   // it again if we leave without calling `keep()`.
@@ -192,7 +194,7 @@ PRIMITIVE(init_nor_flash) {
       .io_mode = SPI_FLASH_FASTRD,
       .input_delay_ns = 0,
       .cs_id = 0,
-      .freq_mhz = frequency
+      .freq_mhz = frequencies_mhz[frequency]
   };
 #pragma GCC diagnostic pop
 

@@ -32,10 +32,13 @@ extern "C" int mbedtls_hardware_poll(void* data, unsigned char* output,
 #endif
 
 #define MBEDTLS_ALLOW_PRIVATE_ACCESS
-#include "mbedtls/gcm.h"
-#include "mbedtls/chachapoly.h"
-#include "mbedtls/ecdsa.h"
-#include "mbedtls/ecp.h"
+#include "mbedtls_compat.h"
+#if MBEDTLS_VERSION_MAJOR >= 4
+#include <psa/crypto.h>
+extern "C" {
+#include "psa_util_internal.h"
+}
+#endif
 
 #include "aes.h"
 #include "objects.h"
@@ -807,6 +810,81 @@ static mbedtls_md_type_t get_md_alg(int id) {
   }
 }
 
+#if MBEDTLS_VERSION_MAJOR >= 4
+static int generate_psa_key(mbedtls_pk_context* pk, psa_key_type_t type, size_t bits) {
+  psa_key_attributes_t attributes = PSA_KEY_ATTRIBUTES_INIT;
+  psa_set_key_type(&attributes, type);
+  psa_set_key_bits(&attributes, bits);
+  psa_set_key_usage_flags(&attributes, PSA_KEY_USAGE_EXPORT);
+  mbedtls_svc_key_id_t key = MBEDTLS_SVC_KEY_ID_INIT;
+  psa_status_t status = psa_generate_key(&attributes, &key);
+  psa_reset_key_attributes(&attributes);
+  if (status != PSA_SUCCESS) return psa_pk_status_to_mbedtls(status);
+  int ret = mbedtls_pk_copy_from_psa(key, pk);
+  psa_destroy_key(key);
+  return ret;
+}
+
+static int rsa_crypt(mbedtls_pk_context* pk, bool decrypt, int padding_mode,
+                     mbedtls_md_type_t hash, Blob data, unsigned char* output,
+                     size_t output_size, size_t* output_len) {
+  psa_algorithm_t algorithm = PSA_ALG_RSA_PKCS1V15_CRYPT;
+  if (padding_mode == 1) {
+    psa_algorithm_t digest;
+    switch (hash) {
+      case MBEDTLS_MD_SHA1: digest = PSA_ALG_SHA_1; break;
+      case MBEDTLS_MD_SHA256: digest = PSA_ALG_SHA_256; break;
+      case MBEDTLS_MD_SHA384: digest = PSA_ALG_SHA_384; break;
+      case MBEDTLS_MD_SHA512: digest = PSA_ALG_SHA_512; break;
+      default: return MBEDTLS_ERR_PK_BAD_INPUT_DATA;
+    }
+    algorithm = PSA_ALG_RSA_OAEP(digest);
+  }
+  psa_key_attributes_t attributes = PSA_KEY_ATTRIBUTES_INIT;
+  int ret = mbedtls_pk_get_psa_attributes(pk,
+      decrypt ? PSA_KEY_USAGE_DECRYPT : PSA_KEY_USAGE_ENCRYPT, &attributes);
+  if (ret != 0) return ret;
+  psa_set_key_algorithm(&attributes, algorithm);
+  mbedtls_svc_key_id_t key = MBEDTLS_SVC_KEY_ID_INIT;
+  ret = mbedtls_pk_import_into_psa(pk, &attributes, &key);
+  psa_reset_key_attributes(&attributes);
+  if (ret != 0) return ret;
+  psa_status_t status = decrypt
+      ? psa_asymmetric_decrypt(key, algorithm, data.address(), data.length(),
+          null, 0, output, output_size, output_len)
+      : psa_asymmetric_encrypt(key, algorithm, data.address(), data.length(),
+          null, 0, output, output_size, output_len);
+  psa_destroy_key(key);
+  return psa_pk_status_to_mbedtls(status);
+}
+#endif
+
+static bool pk_is_rsa(const mbedtls_pk_context* pk) {
+#if MBEDTLS_VERSION_MAJOR >= 4
+  return PSA_KEY_TYPE_IS_RSA(mbedtls_pk_get_key_type(pk));
+#else
+  return mbedtls_pk_can_do(pk, MBEDTLS_PK_RSA);
+#endif
+}
+
+static bool pk_is_ec(const mbedtls_pk_context* pk) {
+#if MBEDTLS_VERSION_MAJOR >= 4
+  return PSA_KEY_TYPE_IS_ECC(mbedtls_pk_get_key_type(pk));
+#else
+  return mbedtls_pk_can_do(pk, MBEDTLS_PK_ECKEY);
+#endif
+}
+
+static int generate_rsa_key(mbedtls_pk_context* pk, int bits) {
+#if MBEDTLS_VERSION_MAJOR >= 4
+  return generate_psa_key(pk, PSA_KEY_TYPE_RSA_KEY_PAIR, bits);
+#else
+  int ret = mbedtls_pk_setup(pk, mbedtls_pk_info_from_type(MBEDTLS_PK_RSA));
+  if (ret == 0) ret = mbedtls_rsa_gen_key(mbedtls_pk_rsa(*pk), rsa_rng, null, bits, 65537);
+  return ret;
+#endif
+}
+
 static bool is_pem(Blob key) {
   return key.length() > 5 && memcmp(key.address(), "-----", 5) == 0;
 }
@@ -844,8 +922,11 @@ static int rsa_parse_key_from_blob(mbedtls_pk_context* pk, Blob key, Blob passwo
     const unsigned char* pwd = password.length() > 0 ? password.address() : null;
     ret = mbedtls_pk_parse_key(pk,
                                parse_buf, parse_len,
-                               pwd, password.length(),
-                               rsa_rng, null);
+                               pwd, password.length()
+#if MBEDTLS_VERSION_MAJOR == 3
+                               , rsa_rng, null
+#endif
+                               );
   } else {
     ret = mbedtls_pk_parse_public_key(pk, parse_buf, parse_len);
   }
@@ -1062,10 +1143,7 @@ PRIMITIVE(rsa_generate_start) {
     RsaGenerationResource* res = static_cast<RsaGenerationResource*>(r);
     mbedtls_pk_context pk;
     mbedtls_pk_init(&pk);
-    int ret = mbedtls_pk_setup(&pk, mbedtls_pk_info_from_type(MBEDTLS_PK_RSA));
-    if (ret == 0) {
-      ret = mbedtls_rsa_gen_key(mbedtls_pk_rsa(pk), rsa_rng, null, res->bits(), 65537);
-    }
+    int ret = generate_rsa_key(&pk, res->bits());
 
     if (ret == 0) {
       unsigned char* prv = res->prv_buf();
@@ -1190,10 +1268,7 @@ PRIMITIVE(rsa_generate) {
   mbedtls_pk_init(&pk);
   Defer free_pk{ [&pk] { mbedtls_pk_free(&pk); } };
 
-  int ret = mbedtls_pk_setup(&pk, mbedtls_pk_info_from_type(MBEDTLS_PK_RSA));
-  if (ret != 0) return tls_error(null, process, ret);
-
-  ret = mbedtls_rsa_gen_key(mbedtls_pk_rsa(pk), rsa_rng, null, bits, 65537);
+  int ret = generate_rsa_key(&pk, bits);
   if (ret != 0) return tls_error(null, process, ret);
 
   int prv_ret, pub_ret;
@@ -1233,12 +1308,16 @@ PRIMITIVE(rsa_sign) {
 
   int ret = rsa_parse_key_from_blob(&pk, private_key_der, Blob(), true,process);
   if (ret != 0) return tls_error(null, process, ret);
-  if (!mbedtls_pk_can_do(&pk, MBEDTLS_PK_RSA)) FAIL(INVALID_ARGUMENT);
+  if (!pk_is_rsa(&pk)) FAIL(INVALID_ARGUMENT);
 
   uint8_t sig[MBEDTLS_PK_SIGNATURE_MAX_SIZE];
   size_t actual_len = 0;
   ret = mbedtls_pk_sign(&pk, md_alg, digest.address(), digest.length(),
-                        sig, sizeof(sig), &actual_len, rsa_rng, null);
+                        sig, sizeof(sig), &actual_len
+#if MBEDTLS_VERSION_MAJOR < 4
+                        , rsa_rng, null
+#endif
+                        );
 
   if (ret != 0) return tls_error(null, process, ret);
 
@@ -1262,7 +1341,7 @@ PRIMITIVE(rsa_verify) {
 
   int ret = rsa_parse_key_from_blob(&pk, public_key_der, Blob(), false, process);
   if (ret != 0) return tls_error(null, process, ret);
-  if (!mbedtls_pk_can_do(&pk, MBEDTLS_PK_RSA)) FAIL(INVALID_ARGUMENT);
+  if (!pk_is_rsa(&pk)) FAIL(INVALID_ARGUMENT);
 
   ret = mbedtls_pk_verify(&pk, md_alg, digest.address(), digest.length(), signature.address(), signature.length());
 
@@ -1278,7 +1357,7 @@ PRIMITIVE(rsa_get_private_key_der) {
 
   int ret = rsa_parse_key_from_blob(&pk, key, password, true, process);
   if (ret != 0) return tls_error(null, process, ret);
-  if (!mbedtls_pk_can_do(&pk, MBEDTLS_PK_RSA)) FAIL(INVALID_ARGUMENT);
+  if (!pk_is_rsa(&pk)) FAIL(INVALID_ARGUMENT);
 
   int export_ret;
   ByteArray* result = rsa_export_der(&pk, process, true, &export_ret);
@@ -1304,7 +1383,7 @@ PRIMITIVE(rsa_get_public_key_der) {
     ret = rsa_parse_key_from_blob(&pk, key, Blob(), false, process);
   }
   if (ret != 0) return tls_error(null, process, ret);
-  if (!mbedtls_pk_can_do(&pk, MBEDTLS_PK_RSA)) FAIL(INVALID_ARGUMENT);
+  if (!pk_is_rsa(&pk)) FAIL(INVALID_ARGUMENT);
 
   int export_ret;
   ByteArray* result = rsa_export_der(&pk, process, false, &export_ret);
@@ -1328,19 +1407,28 @@ PRIMITIVE(rsa_encrypt) {
 
   int ret = rsa_parse_key_from_blob(&pk, public_key_der, Blob(), false,process);
   if (ret != 0) return tls_error(null, process, ret);
-  if (!mbedtls_pk_can_do(&pk, MBEDTLS_PK_RSA)) FAIL(INVALID_ARGUMENT);
+  if (!pk_is_rsa(&pk)) FAIL(INVALID_ARGUMENT);
 
-  int padding = (padding_mode == RSA_PADDING_OAEP_V21) ? MBEDTLS_RSA_PKCS_V21 : MBEDTLS_RSA_PKCS_V15;
   mbedtls_md_type_t hash = get_md_alg(hash_id);
+#if MBEDTLS_VERSION_MAJOR < 4
+  int padding = (padding_mode == RSA_PADDING_OAEP_V21) ? MBEDTLS_RSA_PKCS_V21 : MBEDTLS_RSA_PKCS_V15;
   mbedtls_rsa_set_padding(mbedtls_pk_rsa(pk), padding, hash);
 
   size_t output_size = mbedtls_pk_get_len(&pk);
+#else
+  size_t output_size = (mbedtls_pk_get_bitlen(&pk) + 7) / 8;
+#endif
   ByteArray* result = process->allocate_byte_array(output_size, /*force_external*/ true);
   if (result == null) FAIL(ALLOCATION_FAILED);
 
   size_t output_len = 0;
+#if MBEDTLS_VERSION_MAJOR >= 4
+  ret = rsa_crypt(&pk, false, padding_mode, hash, data,
+                  ByteArray::Bytes(result).address(), output_size, &output_len);
+#else
   ret = mbedtls_pk_encrypt(&pk, data.address(), data.length(),
                            ByteArray::Bytes(result).address(), &output_len, output_size, rsa_rng, null);
+#endif
 
   if (ret != 0) return tls_error(null, process, ret);
 
@@ -1360,19 +1448,28 @@ PRIMITIVE(rsa_decrypt) {
 
   int ret = rsa_parse_key_from_blob(&pk, private_key_der, Blob(), true, process);
   if (ret != 0) return tls_error(null, process, ret);
-  if (!mbedtls_pk_can_do(&pk, MBEDTLS_PK_RSA)) FAIL(INVALID_ARGUMENT);
+  if (!pk_is_rsa(&pk)) FAIL(INVALID_ARGUMENT);
 
-  int padding = (padding_mode == RSA_PADDING_OAEP_V21) ? MBEDTLS_RSA_PKCS_V21 : MBEDTLS_RSA_PKCS_V15;
   mbedtls_md_type_t hash = get_md_alg(hash_id);
+#if MBEDTLS_VERSION_MAJOR < 4
+  int padding = (padding_mode == RSA_PADDING_OAEP_V21) ? MBEDTLS_RSA_PKCS_V21 : MBEDTLS_RSA_PKCS_V15;
   mbedtls_rsa_set_padding(mbedtls_pk_rsa(pk), padding, hash);
 
   size_t output_size = mbedtls_pk_get_len(&pk);
+#else
+  size_t output_size = (mbedtls_pk_get_bitlen(&pk) + 7) / 8;
+#endif
   ByteArray* result = process->allocate_byte_array(output_size, /*force_external*/ true);
   if (result == null) FAIL(ALLOCATION_FAILED);
 
   size_t output_len = 0;
+#if MBEDTLS_VERSION_MAJOR >= 4
+  ret = rsa_crypt(&pk, true, padding_mode, hash, data,
+                  ByteArray::Bytes(result).address(), output_size, &output_len);
+#else
   ret = mbedtls_pk_decrypt(&pk, data.address(), data.length(),
                            ByteArray::Bytes(result).address(), &output_len, output_size, rsa_rng, null);
+#endif
 
   if (ret != 0) return tls_error(null, process, ret);
 
@@ -1396,7 +1493,7 @@ static Object* ec_get_der_helper(Process* process, ByteArray* result, Blob key, 
     result->resize_external(process, 0);
     return tls_error(null, process, ret);
   }
-  if (!mbedtls_pk_can_do(&pk, MBEDTLS_PK_ECKEY)) {
+  if (!pk_is_ec(&pk)) {
     result->resize_external(process, 0);
     FAIL(INVALID_ARGUMENT);
   }
@@ -1437,10 +1534,17 @@ PRIMITIVE(ec_generate_key) {
   mbedtls_pk_init(&pk);
   Defer free_pk{ [&pk] { mbedtls_pk_free(&pk); } };
 
+#if MBEDTLS_VERSION_MAJOR >= 4
+  size_t bits = 0;
+  psa_ecc_family_t family = mbedtls_ecc_group_to_psa(info->grp_id, &bits);
+  if (family == 0) FAIL(INVALID_ARGUMENT);
+  int ret = generate_psa_key(&pk, PSA_KEY_TYPE_ECC_KEY_PAIR(family), bits);
+#else
   int ret = mbedtls_pk_setup(&pk, mbedtls_pk_info_from_type(MBEDTLS_PK_ECKEY));
   if (ret != 0) return tls_error(null, process, ret);
 
   ret = mbedtls_ecp_gen_key(info->grp_id, mbedtls_pk_ec(pk), rsa_rng, null);
+#endif
   if (ret != 0) return tls_error(null, process, ret);
 
   int prv_ret, pub_ret;
@@ -1473,12 +1577,16 @@ PRIMITIVE(ec_sign) {
 
   int ret = rsa_parse_key_from_blob(&pk, private_key_der, Blob(), true, process);
   if (ret != 0) return tls_error(null, process, ret);
-  if (!mbedtls_pk_can_do(&pk, MBEDTLS_PK_ECKEY)) FAIL(INVALID_ARGUMENT);
+  if (!pk_is_ec(&pk)) FAIL(INVALID_ARGUMENT);
 
   uint8_t sig[MBEDTLS_PK_SIGNATURE_MAX_SIZE];
   size_t actual_len = 0;
   ret = mbedtls_pk_sign(&pk, md_alg, digest.address(), digest.length(),
-                        sig, sizeof(sig), &actual_len, rsa_rng, null);
+                        sig, sizeof(sig), &actual_len
+#if MBEDTLS_VERSION_MAJOR < 4
+                        , rsa_rng, null
+#endif
+                        );
 
   if (ret != 0) return tls_error(null, process, ret);
 
@@ -1500,7 +1608,7 @@ PRIMITIVE(ec_verify) {
 
   int ret = rsa_parse_key_from_blob(&pk, public_key_der, Blob(), false, process);
   if (ret != 0) return tls_error(null, process, ret);
-  if (!mbedtls_pk_can_do(&pk, MBEDTLS_PK_ECKEY)) FAIL(INVALID_ARGUMENT);
+  if (!pk_is_ec(&pk)) FAIL(INVALID_ARGUMENT);
 
   ret = mbedtls_pk_verify(&pk, md_alg, digest.address(), digest.length(), signature.address(), signature.length());
 
@@ -1547,10 +1655,27 @@ PRIMITIVE(ec_compute_shared_secret) {
     return tls_error(null, process, ret);
   }
 
-  if (!mbedtls_pk_can_do(&pk_prv, MBEDTLS_PK_ECKEY) || !mbedtls_pk_can_do(&pk_pub, MBEDTLS_PK_ECKEY)) {    
+  if (!pk_is_ec(&pk_prv) || !pk_is_ec(&pk_pub)) {
     FAIL(INVALID_ARGUMENT);
   }
 
+#if MBEDTLS_VERSION_MAJOR >= 4
+  if (mbedtls_pk_get_bitlen(&pk_prv) != mbedtls_pk_get_bitlen(&pk_pub) ||
+      PSA_KEY_TYPE_ECC_GET_FAMILY(mbedtls_pk_get_key_type(&pk_prv)) !=
+      PSA_KEY_TYPE_ECC_GET_FAMILY(mbedtls_pk_get_key_type(&pk_pub))) FAIL(INVALID_ARGUMENT);
+  psa_key_attributes_t attributes = PSA_KEY_ATTRIBUTES_INIT;
+  ret = mbedtls_pk_get_psa_attributes(&pk_prv, PSA_KEY_USAGE_DERIVE, &attributes);
+  if (ret != 0) return tls_error(null, process, ret);
+  mbedtls_svc_key_id_t key = MBEDTLS_SVC_KEY_ID_INIT;
+  ret = mbedtls_pk_import_into_psa(&pk_prv, &attributes, &key);
+  psa_reset_key_attributes(&attributes);
+  if (ret != 0) return tls_error(null, process, ret);
+  size_t glen = 0;
+  psa_status_t status = psa_raw_key_agreement(PSA_ALG_ECDH, key,
+      pk_pub.pub_raw, pk_pub.pub_raw_len, ByteArray::Bytes(result).address(), GLEN_MAX, &glen);
+  psa_destroy_key(key);
+  if (status != PSA_SUCCESS) return tls_error(null, process, psa_pk_status_to_mbedtls(status));
+#else
   mbedtls_ecp_keypair *ec_prv = mbedtls_pk_ec(pk_prv);
   mbedtls_ecp_keypair *ec_pub = mbedtls_pk_ec(pk_pub);
 
@@ -1578,6 +1703,7 @@ PRIMITIVE(ec_compute_shared_secret) {
     return tls_error(null, process, ret);
   }
 
+#endif
   result->resize_external(process, glen);
   return result;
 }

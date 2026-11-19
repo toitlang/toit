@@ -18,6 +18,7 @@
 #ifdef TOIT_ESP32
 
 #include <driver/ledc.h>
+#include <driver/gpio.h>
 #include <esp_clk_tree.h>
 
 #include "../objects_inline.h"
@@ -117,13 +118,12 @@ class PwmResourceGroup : public ResourceGroup {
       // Reset the pin and return it to the shared pool.
       gpio_pool_put(pwm->num());
     } else {
-      gpio_config_t cfg = {
-          .pin_bit_mask = BIT64(pwm->num()),
-          .mode = GPIO_MODE_DISABLE,
-          .pull_up_en = GPIO_PULLUP_DISABLE,
-          .pull_down_en = GPIO_PULLDOWN_DISABLE,
-          .intr_type = GPIO_INTR_DISABLE,
-      };
+      gpio_config_t cfg = {};
+      cfg.pin_bit_mask = BIT64(pwm->num());
+      cfg.mode = GPIO_MODE_DISABLE;
+      cfg.pull_up_en = GPIO_PULLUP_DISABLE;
+      cfg.pull_down_en = GPIO_PULLDOWN_DISABLE;
+      cfg.intr_type = GPIO_INTR_DISABLE;
       gpio_config(&cfg);
     }
     ledc_channels.put(pwm->channel());
@@ -226,19 +226,15 @@ PRIMITIVE(start) {
   ledc_channel_t channel = ledc_channels.any();
   if (channel == kInvalidLedcChannel) FAIL(ALREADY_IN_USE);
 
-  ledc_channel_config_t config = {
-    .gpio_num = pin_num,
-    .speed_mode = SPEED_MODE,
-    .channel = channel,
-    .intr_type = LEDC_INTR_DISABLE,
-    .timer_sel = resource_group->timer(),
-    .duty = compute_duty_factor(resource_group, factor),
-    .hpoint = 0,
-    .sleep_mode = LEDC_SLEEP_MODE_NO_ALIVE_NO_PD,
-    .flags = {
-      .output_invert = false,
-    },
-  };
+  ledc_channel_config_t config = {};
+  config.gpio_num = pin_num;
+  config.speed_mode = SPEED_MODE;
+  config.channel = channel;
+  config.intr_type = LEDC_INTR_DISABLE;
+  config.timer_sel = resource_group->timer();
+  config.duty = compute_duty_factor(resource_group, factor);
+  config.sleep_mode = LEDC_SLEEP_MODE_NO_ALIVE_NO_PD;
+
   esp_err_t err = ledc_channel_config(&config);
   if (err != ESP_OK) {
     ledc_channels.put(channel);

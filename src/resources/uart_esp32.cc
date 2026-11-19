@@ -21,7 +21,16 @@
 
 #include "driver/gpio.h"
 #include "driver/uart.h"
+#include "esp_idf_version.h"
+#if ESP_IDF_VERSION_MAJOR >= 6
+#include "hal/uart_periph.h"
+#define SOC_UART_TX_PIN_IDX SOC_UART_PERIPH_SIGNAL_TX
+#define SOC_UART_RX_PIN_IDX SOC_UART_PERIPH_SIGNAL_RX
+#define SOC_UART_RTS_PIN_IDX SOC_UART_PERIPH_SIGNAL_RTS
+#define SOC_UART_CTS_PIN_IDX SOC_UART_PERIPH_SIGNAL_CTS
+#else
 #include "soc/uart_periph.h"
+#endif
 #include "esp_log.h"
 #include "esp_rom_gpio.h"
 #include "esp_timer.h"
@@ -544,20 +553,15 @@ PRIMITIVE(create) {
       hw_flowcontrol = UART_HW_FLOWCTRL_CTS;
     }
   }
-  uart_config_t uart_config = {
-    .baud_rate = baud_rate,
-    .data_bits = data_bits_to_uart_word_length(data_bits),
-    .parity = int_to_uart_parity(parity),
-    .stop_bits = int_to_uart_stop_bits(stop_bits),
-    .flow_ctrl = hw_flowcontrol,
-    // Unused if flow_ctrl is disabled, but 122 seems to be a common default, otherwise.
-    .rx_flow_ctrl_thresh = 122,
-    .source_clk = UART_SCLK_DEFAULT,
-    .flags = {
-      .allow_pd = 0,
-      .backup_before_sleep = 0,
-    },
-  };
+  uart_config_t uart_config = {};
+  uart_config.baud_rate = baud_rate;
+  uart_config.data_bits = data_bits_to_uart_word_length(data_bits);
+  uart_config.parity = int_to_uart_parity(parity);
+  uart_config.stop_bits = int_to_uart_stop_bits(stop_bits);
+  uart_config.flow_ctrl = hw_flowcontrol;
+  // Unused if flow control is disabled.
+  uart_config.rx_flow_ctrl_thresh = 122;
+  uart_config.source_clk = UART_SCLK_DEFAULT;
 
   err = uart_param_config(port, &uart_config);
   if (err != ESP_OK) return Primitive::os_error(err, process);

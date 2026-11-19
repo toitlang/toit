@@ -65,6 +65,10 @@ static dac_channel_t get_dac_channel(int pin) {
 
 #error "Unexpected DAC support for the ESP32C6"
 
+#elif CONFIG_IDF_TARGET_ESP32S31
+
+#error "Unexpected DAC support for the ESP32S31"
+
 #elif CONFIG_IDF_TARGET_ESP32P4
 
 #error "Unexpected DAC support for the ESP32P4"

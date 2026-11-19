@@ -19,6 +19,13 @@
 
 #include <cmath>
 #include <driver/i2c_master.h>
+#include <esp_idf_version.h>
+#if ESP_IDF_VERSION_MAJOR >= 6
+#include <hal/i2c_ll.h>
+#define TOIT_I2C_FIFO_LEN I2C_LL_GET(FIFO_LEN)
+#else
+#define TOIT_I2C_FIFO_LEN SOC_I2C_FIFO_LEN
+#endif
 #ifdef CONFIG_TOIT_ENABLE_I2C_TARGET
 #include <driver/i2c_slave.h>
 #endif
@@ -332,7 +339,7 @@ class I2cRegisterTargetResource : public I2cTargetResourceBase {
   }
 
   uint8_t* registers_;
-  uint8_t transmit_buffer_[SOC_I2C_FIFO_LEN];
+  uint8_t transmit_buffer_[TOIT_I2C_FIFO_LEN];
   uint32_t register_count_;
   uint32_t register_address_byte_size_;
   uint32_t register_pointer_ = 0;
@@ -621,7 +628,7 @@ PRIMITIVE(target_create) {
 
   if (send_buffer_size == 0 || receive_buffer_size == 0 ||
       default_response.length() == 0 ||
-      default_response.length() > SOC_I2C_FIFO_LEN) {
+      default_response.length() > TOIT_I2C_FIFO_LEN) {
     FAIL(INVALID_ARGUMENT);
   }
 
@@ -855,7 +862,7 @@ PRIMITIVE(register_target_create) {
     .scl = scl_num,
     .address_length = address_length,
     .address = address,
-    .send_buffer_size = SOC_I2C_FIFO_LEN,
+    .send_buffer_size = TOIT_I2C_FIFO_LEN,
     .receive_buffer_size = receive_buffer_size,
     .pullup = pullup,
     .allow_power_down = allow_power_down,

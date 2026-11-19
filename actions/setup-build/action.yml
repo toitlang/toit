@@ -9,6 +9,10 @@ inputs:
     description: "Whether to install build tools for compiling to the ESP32."
     required: false
     default: "false"
+  esp32s31:
+    description: "Whether to install the separately pinned S31 build tools."
+    required: false
+    default: "false"
   ec618:
     description: "Whether the EC618 SDK is needed."
     required: false
@@ -34,6 +38,7 @@ runs:
       run: |
         echo "Toit directory: ${{ inputs.toit-dir }}"
         echo "ESP32: ${{ inputs.esp32 }}"
+        echo "ESP32-S31: ${{ inputs.esp32s31 }}"
         echo "EC618: ${{ inputs.ec618 }}"
         echo "Initialize submodules: ${{ inputs.init-submodules }}"
         echo "Use ccache: ${{ inputs.use-ccache }}"
@@ -180,6 +185,11 @@ runs:
         ./export.ps1
         # Install the MbedTLS dependencies in the sourced Python environment.
         pip install jsonschema jinja2
+
+    - name: Install ESP32-S31 tools
+      if: inputs.esp32s31 == 'true'
+      shell: bash
+      run: ${{inputs.toit-dir}}/tools/setup-idf-s31.sh --install
 
     - name: Setup compilation env
       shell: bash

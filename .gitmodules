@@ -7,3 +7,6 @@
 	path = third_party/luatos-soc-ec618
 	url = https://github.com/toitlang/luatos-soc-2022.git
 	branch = floitsch/bring-up-cleaned
+[submodule "third_party/esp-idf-s31"]
+	path = third_party/esp-idf-s31
+	url = https://github.com/addshore/esp-idf.git

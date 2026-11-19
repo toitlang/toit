@@ -17,16 +17,14 @@
 
 #if !defined(TOIT_FREERTOS) || CONFIG_TOIT_CRYPTO
 #define MBEDTLS_ALLOW_PRIVATE_ACCESS
-#include <mbedtls/chachapoly.h>
+#include "../mbedtls_compat.h"
 #include <mbedtls/error.h>
-#include <mbedtls/gcm.h>
 #include <mbedtls/oid.h>
 #include <mbedtls/pem.h>
 #include <mbedtls/platform.h>
-#if MBEDTLS_VERSION_MAJOR >= 3
+#if MBEDTLS_VERSION_MAJOR == 3
 #include <../library/ssl_misc.h>
-#include <mbedtls/cipher.h>
-#else
+#elif MBEDTLS_VERSION_MAJOR < 3
 #include <mbedtls/ssl_internal.h>
 #endif
 
@@ -50,8 +48,10 @@
 namespace toit {
 
 void MbedTlsResourceGroup::uninit() {
+#if MBEDTLS_VERSION_MAJOR < 4
   mbedtls_ctr_drbg_free(&ctr_drbg_);
   mbedtls_entropy_free(&entropy_);
+#endif
 }
 
 void BaseMbedTlsSocket::uninit_certs() {
@@ -60,7 +60,7 @@ void BaseMbedTlsSocket::uninit_certs() {
   private_key_ = null;
 }
 
-#if MBEDTLS_VERSION_MAJOR >= 3
+#if MBEDTLS_VERSION_MAJOR == 3
 static int random_generator(void* arg, unsigned char* output, size_t len) {
   auto mixer = reinterpret_cast<EntropyMixer*>(arg);
   return mixer->get_entropy(output, len);
@@ -73,7 +73,7 @@ int BaseMbedTlsSocket::add_certificate(X509Certificate* cert, const uint8_t* pri
   private_key_ = _new mbedtls_pk_context;
   if (!private_key_) return MBEDTLS_ERR_PK_ALLOC_FAILED;
   mbedtls_pk_init(private_key_);
-#if MBEDTLS_VERSION_MAJOR >= 3
+#if MBEDTLS_VERSION_MAJOR == 3
   // We need a random number generator to blind the calculations in the RSA, to
   // avoid timing attacks.
   void* random_arg = reinterpret_cast<void*>(EntropyMixer::instance());
@@ -261,7 +261,9 @@ void BaseMbedTlsSocket::clear_error_data() {
 void MbedTlsResourceGroup::init_conf(mbedtls_ssl_config* conf) {
   mbedtls_platform_set_calloc_free(tagging_mbedtls_calloc, tagging_mbedtls_free);
   mbedtls_ssl_config_init(conf);
+#if MBEDTLS_VERSION_MAJOR < 4
   mbedtls_ssl_conf_rng(conf, mbedtls_ctr_drbg_random, &ctr_drbg_);
+#endif
   auto transport = MBEDTLS_SSL_TRANSPORT_STREAM;
   auto client_server = (mode_ == TLS_SERVER) ? MBEDTLS_SSL_IS_SERVER : MBEDTLS_SSL_IS_CLIENT;
 
@@ -284,10 +286,14 @@ void MbedTlsResourceGroup::init_conf(mbedtls_ssl_config* conf) {
 }
 
 int MbedTlsResourceGroup::init() {
+#if MBEDTLS_VERSION_MAJOR >= 4
+  return psa_crypto_init() == PSA_SUCCESS ? 0 : MBEDTLS_ERR_SSL_INTERNAL_ERROR;
+#else
   mbedtls_ctr_drbg_init(&ctr_drbg_);
   mbedtls_entropy_init(&entropy_);
   int ret = mbedtls_ctr_drbg_seed(&ctr_drbg_, mbedtls_entropy_func, &entropy_, null, 0);
   return ret;
+#endif
 }
 
 uint32_t MbedTlsResourceGroup::on_event(Resource* resource, word data, uint32_t state) {
@@ -892,6 +898,7 @@ bool MbedTlsSocket::init() {
   return true;
 }
 
+#if MBEDTLS_VERSION_MAJOR < 4
 #if MBEDTLS_VERSION_MAJOR >= 3 && MBEDTLS_VERSION_MINOR >= 5
 #define GET_KEY_BITLEN(info) (mbedtls_cipher_info_get_key_bitlen(info))
 #define GET_IV_SIZE(info) (mbedtls_cipher_info_get_iv_size(info))
@@ -925,8 +932,15 @@ static bool known_transform(mbedtls_ssl_transform* transform, size_t iv_len) {
   return true;
 }
 
+#endif
+
 PRIMITIVE(get_internals) {
   ARGS(BaseMbedTlsSocket, socket);
+#if MBEDTLS_VERSION_MAJOR >= 4
+  // PSA owns the traffic keys. Keep TLS record processing inside Mbed TLS.
+  USE(socket);
+  return process->null_object();
+#else
   size_t iv_len = socket->ssl.transform_out->ivlen;
   // mbedtls_cipher_context_t from include/mbedtls/cipher.h.
   if (socket->ssl.transform_out == null || socket->ssl.transform_in == null) {
@@ -1023,11 +1037,12 @@ PRIMITIVE(get_internals) {
   result->at_put(8, Smi::from(socket->ssl.session->ciphersuite));
 
   return result;
+#endif
 }
 
 PRIMITIVE(get_random) {
   ARGS(MutableBlob, destination);
-  EntropyMixer::instance()->get_entropy(destination.address(), destination.length());
+  if (!EntropyMixer::instance()->get_entropy(destination.address(), destination.length())) FAIL(ERROR);
   return process->null_object();
 }
 

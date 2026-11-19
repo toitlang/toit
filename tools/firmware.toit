@@ -1096,8 +1096,9 @@ Both stdout and stderr are captured (different esptool versions print the line
   one stream ever emits more than fits in its buffer (which would otherwise
   deadlock the sequential drain).
 */
-detect-flash-size_ esptool/List --port/string --chip/string -> int?:
-  command := esptool + ["--port", port, "--chip", chip, "flash-id"]
+detect-flash-size_ esptool/List --port/string --chip/string --rom-only/bool=false -> int?:
+  stub-args := rom-only ? ["--no-stub"] : []
+  command := esptool + ["--port", port, "--chip", chip] + stub-args + ["flash-id"]
   output/string? := null
   catch:
     process := pipe.fork --use-path --create-stdout --create-stderr command[0] command
@@ -1250,7 +1251,7 @@ build-esp32-image invocation/cli.Invocation envelope/Envelope --config-encoded/B
   chip := binary.chip-name
   write.call partitions chip flashing
 
-find-esptool_ -> List:
+find-esptool_ --chip/string="auto" -> List:
   bin-extension := ?
   bin-name := system.program-path
   if platform == system.PLATFORM-WINDOWS:
@@ -1268,9 +1269,15 @@ find-esptool_ -> List:
   dir := list[..list.size - 1].join "/"
   if not bin-name.ends-with ".toit" and dir != "":
     // This executable is supposed to live in 'bin', whereas the esptool is in 'lib/toit/bin'.
-    esptool := "$dir/../lib/toit/bin/esptool$bin-extension"
+    suffix := chip == "esp32s31" or chip == "auto" ? "-s31" : ""
+    esptool := "$dir/../lib/toit/bin/esptool$suffix$bin-extension"
     if file.is-file esptool:
       return [esptool]
+    if chip == "auto":
+      // Older SDK installations still provide the universal tool for probing.
+      esptool = "$dir/../lib/toit/bin/esptool$bin-extension"
+      if file.is-file esptool:
+        return [esptool]
   // Try to find esptool in PATH.
   esptool := "esptool$bin-extension"
   catch:
@@ -1393,7 +1400,13 @@ flash-cmd -> cli.Command:
             --required,
         cli.OptionInt "baud"
             --default=921600,
-        cli.OptionEnum "chip" ["esp32", "esp32c3", "esp32c6", "esp32p4", "esp32s2", "esp32s3"]
+        cli.OptionEnum "compression" ["auto", "on", "off"]
+            --default="auto"
+            --help="Control transfer compression for ESP32 flashing.",
+        cli.Flag "reset"
+            --default=true
+            --help="Reset before and after flashing. Use --no-reset for an ESP32 already in download mode.",
+        cli.OptionEnum "chip" ["esp32", "esp32c3", "esp32c6", "esp32p4", "esp32s2", "esp32s3", "esp32s31"]
             --hidden
             --help="Deprecated. Don't use this option.",
         cli.OptionPatterns "partition"
@@ -1411,6 +1424,8 @@ flash invocation/cli.Invocation -> none:
   config-path := invocation["config"]
   port := invocation["port"]
   baud := invocation["baud"]
+  compression := invocation["compression"]
+  no-reset := not invocation["reset"]
   partition-table-path := invocation["partitions"]
 
   ui := invocation.cli.ui
@@ -1421,6 +1436,10 @@ flash invocation/cli.Invocation -> none:
   envelope := Envelope.load input-path --ui=ui
 
   if envelope.kind == Envelope.KIND-EC618:
+    if compression != "auto":
+      ui.abort "The '--compression' option is only supported for ESP32 envelopes."
+    if no-reset:
+      ui.abort "The '--no-reset' option is only supported for ESP32 envelopes."
     flash-ec618 invocation envelope
     return
 
@@ -1432,10 +1451,6 @@ flash invocation/cli.Invocation -> none:
     if not stat or stat[file.ST-TYPE] != file.CHARACTER-DEVICE:
       throw "cannot open port '$port'"
 
-  // Resolve the external tool before building the image or creating temporary
-  // partition files, so a missing esptool fails without leaving file output.
-  esptool := find-esptool_
-
   config-encoded := ByteArray 0
   if config-path:
     config-encoded = read-file config-path --ui=ui
@@ -1444,6 +1459,8 @@ flash invocation/cli.Invocation -> none:
 
   build-esp32-image invocation envelope --config-encoded=config-encoded
       --write=: | partitions/Map chip/string flashing/Map |
+        // Select the chip-specific tool before creating temporary partition files.
+        esptool := find-esptool_ --chip=chip
         tmp := directory.mkdtemp "/tmp/toit-flash-"
         try:
           partition-args := []
@@ -1465,16 +1482,19 @@ flash invocation/cli.Invocation -> none:
           // Any serial interaction with an ESP32-S2 using its integrated USB
           // peripheral takes it out of manually entered download mode. Running
           // 'flash-id' here would therefore make the port disappear before the
-          // actual 'write-flash' command gets a chance to open it.
-          if chip != "esp32s2":
+          // actual 'write-flash' command gets a chance to open it. With
+          // '--no-reset', use a single serial session so a separate probe
+          // cannot disturb a device already in download mode.
+          no-stub := (flashing["extra_esptool_args"].get "stub") == false
+          if chip != "esp32s2" and not no-reset:
             required-flash-size := parse-flash-size_ flashing["flash_settings"]["flash_size"] --ui=ui
-            detected-flash-size := detect-flash-size_ esptool --port=port --chip=chip
+            detected-flash-size := detect-flash-size_ esptool --port=port --chip=chip --rom-only=no-stub
             if detected-flash-size and detected-flash-size < required-flash-size:
               ui.abort "The partition table needs $(required-flash-size / 0x100000)MB of flash, but the device only has $(detected-flash-size / 0x100000)MB."
             if not detected-flash-size:
               ui.emit --warning "Could not determine the device's flash size; skipping the flash-size check."
-          before-args := flashing["extra_esptool_args"]["before"]
-          after-args := flashing["extra_esptool_args"]["after"]
+          before-args := no-reset ? "no-reset" : flashing["extra_esptool_args"]["before"]
+          after-args := no-reset ? "no-reset" : flashing["extra_esptool_args"]["after"]
           write-flash-args := flashing["write_flash_args"]
           before-args = before-args.replace --all "default_reset" "default-reset"
           before-args = before-args.replace --all "no_reset" "no-reset"
@@ -1486,13 +1506,17 @@ flash invocation/cli.Invocation -> none:
             else if it == "--flash_freq": "--flash-freq"
             else: it
 
+          if compression != "auto":
+            write-flash-args = write-flash-args.filter:
+              it != "--compress" and it != "--no-compress" and it != "-z" and it != "-u"
+            write-flash-args.add (compression == "on" ? "--compress" : "--no-compress")
           code := pipe.run-program esptool + [
             "--port", port,
             "--baud", "$baud",
             "--chip", chip,
             "--before", before-args,
             "--after", after-args
-          ] + ["write-flash"] + write-flash-args + partition-args
+          ] + (no-stub ? ["--no-stub"] : []) + ["write-flash"] + write-flash-args + partition-args
           if code != 0: exit 1
         finally:
           directory.rmdir --recursive tmp
@@ -2160,6 +2184,10 @@ class Esp32S3AddressMap implements AddressMap:
   drom-map-start ::= 0x3c000000
   drom-map-end   ::= 0x3e000000
 
+class Esp32S31AddressMap implements AddressMap:
+  drom-map-start ::= 0x40000000
+  drom-map-end   ::= 0x44000000
+
 class Esp32Binary:
   static MAGIC-OFFSET_         ::= 0
   static SEGMENT-COUNT-OFFSET_ ::= 1
@@ -2179,6 +2207,7 @@ class Esp32Binary:
   static ESP-CHIP-ID-ESP32-P4 ::= 0x0012  // Chip ID: ESP32-P4.
   static ESP-CHIP-ID-ESP32-S2 ::= 0x0002  // Chip ID: ESP32-S2.
   static ESP-CHIP-ID-ESP32-S3 ::= 0x0009  // Chip ID: ESP32-S3.
+  static ESP-CHIP-ID-ESP32-S31 ::= 0x0020  // Chip ID: ESP32-S31.
 
   static CHIP-ADDRESS-MAPS_ ::= {
       ESP-CHIP-ID-ESP32    : Esp32AddressMap,
@@ -2187,6 +2216,7 @@ class Esp32Binary:
       ESP-CHIP-ID-ESP32-P4 : Esp32P4AddressMap,
       ESP-CHIP-ID-ESP32-S2 : Esp32S2AddressMap,
       ESP-CHIP-ID-ESP32-S3 : Esp32S3AddressMap,
+      ESP-CHIP-ID-ESP32-S31 : Esp32S31AddressMap,
   }
 
   static CHIP-NAMES_ ::= {
@@ -2197,6 +2227,7 @@ class Esp32Binary:
       ESP-CHIP-ID-ESP32-P4 : "esp32p4",
       ESP-CHIP-ID-ESP32-S2 : "esp32s2",
       ESP-CHIP-ID-ESP32-S3 : "esp32s3",
+      ESP-CHIP-ID-ESP32-S31 : "esp32s31",
   }
 
   header_/ByteArray

@@ -16,10 +16,8 @@
 #pragma once
 
 #define MBEDTLS_ALLOW_PRIVATE_ACCESS
-#include <mbedtls/ctr_drbg.h>
+#include "../mbedtls_compat.h"
 #include <mbedtls/debug.h>
-#include <mbedtls/entropy.h>
-#include <mbedtls/gcm.h>
 #include <mbedtls/ssl_cookie.h>
 #include <mbedtls/ssl.h>
 #include <mbedtls/x509_crl.h>
@@ -158,12 +156,14 @@ class MbedTlsResourceGroup : public ResourceGroup {
   Object* tls_socket_create(Process* process, const char* hostname);
   Object* tls_handshake(Process* process, TlsSocket* socket);
 
-  mbedtls_entropy_context* entropy() { return &entropy_; }
+
 
  private:
   void init_conf(mbedtls_ssl_config* conf);
+#if MBEDTLS_VERSION_MAJOR < 4
   mbedtls_entropy_context entropy_;
   mbedtls_ctr_drbg_context ctr_drbg_;
+#endif
   Mode mode_;
 
   friend class BaseMbedTlsSocket;
