@@ -116,8 +116,9 @@ static void run(Program* program) {
   free(long_memory);
   free(backing_memory);
   free(ok_memory);
-  group->remove(process);
+  group->begin_process_teardown(process);
   delete process;
+  group->finish_process_teardown();
   delete group;
 }
 

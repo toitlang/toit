@@ -150,8 +150,9 @@ static Process* new_process(Program* program, ProcessGroup* group) {
 
 static void delete_process(ProcessGroup* group, Process* process) {
   // As the scheduler does when a process terminates: no GC before.
-  group->remove(process);
+  group->begin_process_teardown(process);
   delete process;
+  group->finish_process_teardown();
 }
 
 // [external byte array of a SMALL block, `count` arrays of `length` zeros,
