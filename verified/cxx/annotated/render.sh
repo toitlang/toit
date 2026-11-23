@@ -21,7 +21,10 @@ if [ "${1:-}" = --check ]; then
 fi
 if [ $# -eq 0 ]; then
   cd "$ANNOTATED_DIR"
-  set -- model/objects.render $(ls */*.render | grep -v '^model/' | sort)
+  # model/objects.render first, then the model's other sidecars (they
+  # include objects.gen.h), then the rest.
+  set -- model/objects.render $(ls model/*.render | grep -v '^model/objects\.render$' | sort) \
+    $(ls */*.render | grep -v '^model/' | sort)
 fi
 TOIT_BIN="${TOIT:-$REPO_ROOT/build/host/sdk/bin/toit}"
 [ -x "$TOIT_BIN" ] || TOIT_BIN="$(command -v toit)"
