@@ -68,6 +68,9 @@ PRIMITIVE(byte_array_is_valid_string_content)
   //@ error_word(Program_WRONG_BYTES_TYPE_INDEX);
   //@ error_word(Program_OUT_OF_RANGE_INDEX);
   //@ error_word(Program_OUT_OF_BOUNDS_INDEX);
+  // `end` is an int: its range, not the blob bound (2^62 on LP64), keeps
+  // `end - start` in an int.
+  //@ truncate_signed_limits(smi_val((uword)a2), N31);
   ARGS(Blob, bytes, int, start, int, end);
   if (!(0 <= start && start <= end && end <= bytes.length())) FAIL(OUT_OF_BOUNDS);
   //@ assert [_]blob_result(objs, H, STRINGS_OR_BYTE_ARRAYS, ?a, ?l, ?b);
@@ -113,6 +116,9 @@ PRIMITIVE(byte_array_convert_to_string)
   //@ error_word(Program_WRONG_BYTES_TYPE_INDEX);
   //@ error_word(Program_OUT_OF_RANGE_INDEX);
   //@ error_word(Program_OUT_OF_BOUNDS_INDEX);
+  // `end` is an int: its range, not the blob bound (2^62 on LP64), keeps
+  // `end - start` in an int.
+  //@ truncate_signed_limits(smi_val((uword)a2), N31);
   ARGS(Blob, bytes, int, start, int, end);
   if (!(0 <= start && start <= end && end <= bytes.length())) FAIL(OUT_OF_BOUNDS);
   //@ assert [_]blob_result(objs, H, STRINGS_OR_BYTE_ARRAYS, ?a, ?l, ?b);

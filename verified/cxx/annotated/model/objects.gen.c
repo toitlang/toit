@@ -675,7 +675,7 @@ TypeTag HeapObject_class_tag(HeapObject *self)
   //@ shiftright_div(smi_val(hw), zero);
   //@ div_rem_nonneg_unique(smi_val(hw), 1, smi_val(hw), 0);
   //@ bitand_limits(hw / 2, 15, N4);
-  //@ Z value = int_of_Z_of_uintN(hw / 2, N16);
+  //@ Z value = int_of_Z_of_uintN(hw / 2, N64);
   //@ Z mask = Zdigit(Zdigit(Zdigit(Zdigit(Zsign(false), true), true), true), true);
   //@ bitand_def(hw / 2, value, 15, mask);
   //@ bitand_def(hw, Zdigit(value, false), 30, Zdigit(mask, false));

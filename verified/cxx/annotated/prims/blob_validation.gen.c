@@ -154,6 +154,7 @@ Object *primitive_byte_array_is_valid_string_content(Process *process, Object **
   //@ error_word(Program_WRONG_BYTES_TYPE_INDEX);
   //@ error_word(Program_OUT_OF_RANGE_INDEX);
   //@ error_word(Program_OUT_OF_BOUNDS_INDEX);
+  //@ truncate_signed_limits(smi_val((uword)a2), N31);
   Object *_raw_bytes = __args[-(0)];
   uninitialized_t_ctor(&_u_bytes);
   Blob_ctor__uninitialized_tp(&bytes, &_u_bytes);
@@ -226,6 +227,7 @@ Object *primitive_byte_array_convert_to_string(Process *process, Object **__args
   //@ error_word(Program_WRONG_BYTES_TYPE_INDEX);
   //@ error_word(Program_OUT_OF_RANGE_INDEX);
   //@ error_word(Program_OUT_OF_BOUNDS_INDEX);
+  //@ truncate_signed_limits(smi_val((uword)a2), N31);
   Object *_raw_bytes = __args[-(0)];
   uninitialized_t_ctor(&_u_bytes);
   Blob_ctor__uninitialized_tp(&bytes, &_u_bytes);
