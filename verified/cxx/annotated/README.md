@@ -763,8 +763,10 @@ record used by the loop fits inside that literal. For each current record,
 ESBMC checks `v2_check_header` against the five canonical kind bytes and
 their sizes from format note 21. A successful check places the header at
 the expected offset, leaves room for a body, and accepts exactly the receiver
-intervals allowed by that kind. The proof covers rejection of invalid
-positions, kind bytes and receiver intervals on LP64 and ILP32.
+intervals allowed by that kind; every entry but a block's must be odd (the
+header's u16 fields are then 2-byte aligned for the core's aligned loads).
+The proof covers rejection of invalid positions, kind bytes, even entries
+and receiver intervals on LP64 and ILP32.
 ESBMC also checks `v2_next_header` for an arbitrary four-byte record, header
 kind and legal current entry and image length. Every successful call locates
 the exact header strictly between the current and next entries. A rejected
@@ -775,8 +777,9 @@ Frama-C/WP verifies the same validation loop compiled by the VM
 (`src/v2_validate_records.h`) against those helper contracts. For every
 permitted count the loop terminates and accepts exactly the record
 sequences specified in `loader/records.c`. The first header starts after
-the four-byte tag. Each header is canonical and every method has at least
-one body byte before the next header or the end of the image. This gives
+the four-byte tag. Each header is canonical (including the odd entry) and
+every method has at least one body byte before the next header or the end
+of the image. This gives
 strictly increasing entry offsets. Run `run.sh --quick v2-table` to
 check the loop and its native helpers on both word sizes.
 
@@ -792,8 +795,8 @@ It models the null outcome of nonthrowing scalar allocation explicitly
 and invokes the native destructor before releasing the table storage.
 ESBMC also checks the body of `V2MethodTable::compute` against the
 separately verified helper outcomes. The source image must pass the TBC2
-tag and size checks before literal selection. The reader receives the
-selected inline or external payload. Installation receives exactly the
+tag and size checks and be 2-byte aligned before literal selection. The
+reader receives the selected inline or external payload. Installation receives exactly the
 image, record pointer and count passed to successful validation. The
 caller gets the installation result, and only allocation failure sets
 the optional out-of-memory flag. Diagnostic output is outside this proof.

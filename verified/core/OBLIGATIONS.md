@@ -98,6 +98,15 @@ Open:
   [native frame check](../cxx/harness/prepare_process_v2.cc) exercises
   `prepare_process_v2` with a valid task and stack, symbolic method and dispatch tables,
   either entry selection, and symbolic stack length and contents.
+  The facts of `prog_rel` about the method table that the core reads
+  without bounds checks (`vprog::table_ok`: every header inside the
+  bytecodes with a canonical kind byte, and since branch
+  core/call-speed-size every entry but a block's odd) and the 2-byte
+  alignment of the bytecodes (`Table::even`, for the aligned header
+  loads of `Table::u16_at_even`, TRUSTED.md section 1) are checked by
+  `V2MethodTable::compute` (the validation loop and its helpers are
+  proven, verified/cxx/annotated/README.md); `toit_v2_run` re-checks the
+  alignment.
 - S3 size bound `small`: implied by `refines` (stack below 2^20 words,
   heap model below 2^30 objects); exceeding it is a defined stop or a
   resource throw (`prim::resource_throw`).

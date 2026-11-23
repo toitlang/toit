@@ -51,6 +51,29 @@ grow: PROGRESS.md, "Proven accessors").
 | `Heap` (`CardBytes`) | write permission for one byte per distinct writable-object card, with the card table’s exposed provenance | `card_ok` relates each permission to its physical address under the VM-supplied bias. Verified field and array stores initialize the destination byte with the mark. An object is marked afterwards exactly when it was already marked or shares that card. Array copy has the same effect for a nonempty range and preserves all marks for an empty range. |
 | `Content` | none (pointer, length, object id and writability, the last two ghost) | `content_ok`: the view's pointer is the object's content pointer, which the accessors keep and a heap after a GC point does not relate to the old one |
 
+Aligned header loads (`Table::u16_at_even`, branch core/call-speed-size):
+the u16 fields of a method header (selector, receiver range; format note
+21) are read with one 16-bit load instead of two byte loads, a shift and
+an or (Xtensa and the ESP32 RISC-V cores have no unaligned 16-bit
+loads). The function is external_body with `unsafe`: its contract says
+the load yields `code[i] | code[i + 1] << 8` for an even `i` with
+`i + 1 < len` in a table at an even address (`Table::even`), which is
+exactly the verified byte read it replaces on a little-endian target
+(`u16::from_le` makes it so on any byte order). The facts it needs are
+in `prog_rel` (abs.rs): `table_ok` requires the entry of every method,
+accessor and lambda to be odd (`vprog::rec_ok`; the fields lie at odd
+distances before it, so at even offsets), and `p.code.even()` requires
+the bytecodes to start at an even address. The loader establishes both:
+`V2MethodTable::compute` rejects unaligned bytecodes and even entries
+(`v2_check_header`, `V2_HEADER_EVEN_ENTRY`; proven with the rest of the
+table validation, verified/cxx/annotated/README.md, and mirrored by the
+spec loader `interp::loader::method_table_v2` and `vprog::x_table_ok`),
+the compiler pads before such entries (`V2_PAD`, a never-executed
+`RETURN_NULL`), and `toit_v2_run` re-checks the alignment of the
+bytecodes before it builds the views. The load itself goes through
+`pre` (`ptr - PRE`, the `Table` type invariant), so that the negative
+distance of a field folds into the load's unsigned offset on Xtensa.
+
 Tagged references: an accessor computes `obj - HEAP_TAG` and turns it into
 a pointer with `with_exposed_provenance` and the heap's `IsExposed` token,
 then `wrapping_add(k)`; the permission of word `k` of object `id` is at
@@ -1481,6 +1504,20 @@ the path. Its one use is the default arm of the verified dispatch
 check), which removes the range check before the jump table. It assumes
 nothing about the VM; it is wrong only if Verus' proof of the caller is.
 
+`step::split_loop` (performance, branch core/call-speed-size) is an
+external_body function without a contract whose body is
+`cfg!(target_os = "none")`: true on devices, false on hosts. On devices
+the handlers of the rare opcodes (`step::cold_op`) leave the run loop and
+run through its one slow-path call site in `step_cold` (flash), so that
+the hot part (`step::run_loop`, placed in IRAM) stays small; on hosts
+every handler stays in the loop (the split costs 7 to 19 percent there).
+The dispatch tests `!split_loop()` in the guards of those arms, and
+`step_cold` requires `cold_op` of the current opcode and ensures the same
+`rpost` as the in-loop handlers (it calls `step_c`). Since Verus does not
+know the value, `step_r` is verified for both: either configuration is a
+completion of the spec's step. It assumes nothing about the VM or the
+program; a wrong value can only cost speed or IRAM.
+
 ## 5. The spec
 
 verified/spec/src/v2/spec.rs is the definition the handlers follow. That it
@@ -1536,6 +1573,8 @@ of the three header words the core uses (before: any word offset);
 | `Heap::new` (derivation point) and the layout facts `view::word_val`, `str_ok`, `ba_ok` | an object's header, field count, length, payload or blob encoding differs from the C++ `HeapObject`, `Instance`, `Array`, `Double`, `LargeInteger`, `String`, `ByteArray` layout (the constants are layout-checked; the encodings, e.g. the string sentinel, the negative byte-array length, the V5 rule, are reviewed against objects.h) | layout check (behavioral, fake objects), IDENTICAL on external strings and byte arrays (untrusted suite), prim_diff.sh, `TOIT_V2_VALIDATE`, ASan fuzzing |
 | `pointer::wrapping_add`, `wrapping_offset` (`assume_specification`) | Rust's wrapping pointer arithmetic did not keep the provenance or did not wrap modulo the word size | the Rust reference (`wrapping_offset`: "the resulting pointer has the same provenance"); Miri semantics |
 | Card permissions at heap entry and GC transitions | the published bias must designate the live card table, with exclusive access to the bytes covering writable process objects while the core holds the view | `Heap::write_barrier` verifies the store and its effect on existing marks using those permissions. The checked loop uses its separate raw `Heap::set_word` path. |
+| `Table::u16_at_even` (aligned load) | the target's 16-bit load is not the little-endian combination of the two bytes, or the address is not 2-byte aligned (a load exception on Xtensa; `pre + (i + PRE)` not `ptr + i`) | `u16::from_le` (byte order), the aligned-address facts in `prog_rel` checked by the loader (`V2MethodTable::compute`, `toit_v2_run`), every call on devices (an unaligned load traps), the suites on the core |
+| `step::split_loop` | none for correctness (both values are verified); a host build with `target_os = "none"` would only run slower | performance measurements (PROGRESS.md, call-speed-size) |
 | `Heap::{header, word, word64, set_word, byte, set_byte, half_word_at}` | only the checked loop; a missing run-time check there reads outside an object | ASan with programs not accepted (runtime-hardening-test) |
 | `Preemption::*` | the watermark is not the interpreter's | tests that preempt (tests/sandbox scheduling tests) |
 | `Runtime::*` (FFI wrappers), `PrimitiveRef` | a wrapper forgets to replace the stack view after a GC | `TOIT_V2_VALIDATE`, ASan |

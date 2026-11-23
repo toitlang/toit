@@ -96,6 +96,17 @@ contract. bump_double checks the double class' tag at run time (no spec
 fact) and bump_instance class ids below 2^16 (the model's). TRUSTED.toml:
 -5 entries, +2.
 
+Merged onto wip/collector-proofs (2026-11-23): that branch had proven the
+same fast path independently and without `unsafe` (`Runtime::bump` over
+`Runtime::allocation_window`, `allocate_modeled` and
+`Heap::register_inline`; trusted: the window's `assume_new` and
+external_body). The merge keeps that proof and drops item 3's code
+(`Runtime::bump` with its three trusted entries, `fresh.rs`,
+`Heap::{fresh_ok, write_fresh, append}`, `alloc::lemma_refines_append`);
+the device measurements above were taken with item 3. The loader's
+alignment and odd-entry checks of item 1 moved into the factored,
+proven table validation (`v2_check_header`, `v2_compute_method_table.h`).
+
 Proofs: core 962 -> 1007 items (spec 962 unchanged), zero admits, both
 widths (core 64-bit ~2 min, 32-bit ~1 min with 16 jobs). Two proofs of
 view.rs (`lemma_bytes_written`, `copy_content`) needed explicit hints

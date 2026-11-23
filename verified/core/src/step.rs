@@ -1744,9 +1744,6 @@ pub fn step_r(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
     done(m, r, c, p)
 }
 
-/// The opcodes whose handlers are out of line (`step_cold`): rare in the
-/// measured workloads, so that the run loop's hot part (IRAM on devices)
-/// stays small.
 /// Whether the run loop is split into a hot part and a cold part
 /// (`step_cold`, `cold_op`): on devices (no OS), where the hot part goes
 /// to IRAM; on hosts every handler stays in the loop (the split costs 7 to
@@ -1758,6 +1755,9 @@ pub fn split_loop() -> bool {
     cfg!(target_os = "none")
 }
 
+/// The opcodes whose handlers are out of line (`step_cold`): rare in the
+/// measured workloads, so that the run loop's hot part (IRAM on devices)
+/// stays small.
 pub open spec fn cold_op(op: u8) -> bool {
     op == 1 || op == 8 || op == 12 || op == 21 || op == 24 || op == 28 || op == 31 || op == 33 || op == 34 || op == 36 || op == 37 || op == 39 || op == 43 || op == 45 || op == 46 || op == 47 || op == 49 || op == 51 || op == 54 || op == 56 || op == 57 || op == 59 || op == 68 || op == 70 || op == 72 || op == 76 || op == 77 || op == 86 || op == 87 || op == 88 || op == 89 || op == 90 || op == 95 || op == 96 || op == 97 || op == 99 || op == 100 || op == 105 || op == 109
 }
