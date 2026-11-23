@@ -11,7 +11,7 @@
 set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 files=("$@")
-[ ${#files[@]} -eq 0 ] && files=(model/objects.render $(ls */*.render | grep -v '^model/' | sort))
+[ ${#files[@]} -eq 0 ] && files=(model/objects.render $(ls model/*.render | grep -v '^model/objects\.render$' | sort) $(ls */*.render | grep -v '^model/' | sort))
 printf '%-30s %8s %8s %8s %8s %8s\n' sidecar functions "C++" annot "C(trust)" annot
 for f in "${files[@]}"; do
   awk -v name="$f" '

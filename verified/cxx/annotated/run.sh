@@ -16,7 +16,7 @@
 # Usage: run.sh [--quick] [--slow] [FILTER]
 #   FILTER: only the entries whose name contains it. --quick: no mutants.
 #   Without --slow: the fast tier, everything except the model-checker jobs
-#   listed by `slow` below (the gate runs this). --slow: only those
+#   listed by `slow` in model-check-jobs.sh (the gate runs this). --slow: only those
 #   long model-checker jobs (see "Model-checker jobs" below and the README's
 #   slow-tier table).
 # Exit status: 0 when every entry has its expected verdict; 1 when one has
@@ -94,7 +94,7 @@ defer() {
 #              failure ("error");
 #   NOVERDICT  it ran out of time or memory, or died of a signal: nothing
 #              was proved or refuted.
-# The fast tier runs every job not listed by `slow` below, the slow tier
+# The fast tier runs every job not listed by `slow` in model-check-jobs.sh, the slow tier
 # (--slow) only those. Settings (environment; memory in GB):
 #   RUN_MEM_BUDGET    the memory of all model-checker jobs at once (40)
 #   RUN_FAST_MEM      a fast job's cap (4)    RUN_FAST_TIMEOUT  (600 s)
@@ -111,7 +111,7 @@ MC_BUDGET_MB=$(gb_to_mb "${RUN_MEM_BUDGET:-40}")
 MC_STATS="$ACXX_WORK/logs/model-check-$TIER.tsv"
 [ -f "$MC_STATS" ] || printf 'job\ttier\tverdict\tseconds\tpeak_rss_mb\tpeak_vm_mb\tcap_mb\ttimeout_s\tdate\tdetail\n' > "$MC_STATS"
 MC_MEMFILE="$ACXX_HOME/work/model-check-memory"
-declare -A SLOW_MEM=() SLOW_TIME=() KNOWN_NOVERDICT=()
+declare -A SLOW_MEM=() SLOW_TIME=() KNOWN_NOVERDICT=() FAST_MEM=()
 # slow NAME/ABI [CAP-GB [TIMEOUT-S]]: a job of the slow tier.
 slow() {
   SLOW_MEM[$1]="${2:-${RUN_SLOW_MEM:-16}}"
@@ -123,7 +123,9 @@ known_noverdict() {
   slow "$1" 40 14400
   KNOWN_NOVERDICT[$1]="$2"
 }
-source "$ANNOTATED_DIR/slow-jobs.sh"
+# fast_cap NAME/ABI CAP-GB: a fast job that needs more than RUN_FAST_MEM.
+fast_cap() { FAST_MEM[$1]="$2"; }
+source "$ANNOTATED_DIR/model-check-jobs.sh"
 
 # mc_select NAME: whether this run runs the model-checker job NAME (filter,
 # tier); sets its cap MC_CAP_MB and timeout MC_TIMEOUT.
@@ -142,7 +144,7 @@ mc_select() {
     MC_TIMEOUT=$(awk -v t="${SLOW_TIME[$name]}" -v s="${RUN_TIME_SCALE:-1}" 'BEGIN {printf "%d", t * s}')
   else
     [ "$TIER" = fast ] || return 1
-    MC_CAP_MB=$(gb_to_mb "${RUN_FAST_MEM:-4}" "${RUN_MEM_SCALE:-1}")
+    MC_CAP_MB=$(gb_to_mb "${FAST_MEM[$name]:-${RUN_FAST_MEM:-4}}" "${RUN_MEM_SCALE:-1}")
     MC_TIMEOUT=$(awk -v t="${RUN_FAST_TIMEOUT:-600}" -v s="${RUN_TIME_SCALE:-1}" 'BEGIN {printf "%d", t * s}')
   fi
   return 0
@@ -150,12 +152,23 @@ mc_select() {
 
 # Reserve and give back MB of the machine-wide budget. The reservations are
 # lines `PID MB` in $MC_MEMFILE; those of dead processes no longer count. A
-# job larger than the whole budget runs when nothing else holds any.
+# job larger than the whole budget runs when nothing else holds any. The
+# jobs waiting for memory queue in $MC_MEMFILE.queue (first come, first
+# served: a large job is not starved by smaller ones that keep fitting).
 mem_acquire() {
-  local need="$1" used pid mb lines
+  local need="$1" used pid mb lines queue head
+  exec 8>> "$MC_MEMFILE.lock"
+  flock 8
+  echo "$BASHPID" >> "$MC_MEMFILE.queue"
+  exec 8>&-
   while :; do
     exec 8>> "$MC_MEMFILE.lock"
     flock 8
+    queue=()
+    while read -r pid; do
+      [ -n "$pid" ] && [ -e "/proc/$pid" ] && queue+=("$pid")
+    done < "$MC_MEMFILE.queue"
+    head="${queue[0]:-}"
     lines=()
     used=0
     if [ -f "$MC_MEMFILE" ]; then
@@ -165,14 +178,16 @@ mem_acquire() {
         used=$((used + mb))
       done < "$MC_MEMFILE"
     fi
-    if (( used == 0 || used + need <= MC_BUDGET_MB )); then
+    if [ "$head" = "$BASHPID" ] && (( used == 0 || used + need <= MC_BUDGET_MB )); then
       lines+=("$BASHPID $need")
       printf '%s\n' "${lines[@]}" > "$MC_MEMFILE"
+      printf '%s\n' "${queue[@]:1}" > "$MC_MEMFILE.queue"
       exec 8>&-
       return 0
     fi
+    printf '%s\n' "${queue[@]}" > "$MC_MEMFILE.queue"
     exec 8>&-
-    sleep 5
+    sleep 3
   done
 }
 mem_release() {
