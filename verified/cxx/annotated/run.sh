@@ -11,7 +11,8 @@
 #   4. the reverted-bug self-tests (mutant.sh): each must fail where the
 #      bug is;
 #   5. the Rust raw-memory layer (VeriFast's Rust front end);
-#   6. the model-checker jobs (ESBMC, CBMC; Frama-C/WP for three loops).
+#   6. the model-checker jobs (ESBMC, CBMC; Frama-C/WP for three loops);
+#   7. Z3 on the EC618 instruction-level SMT models (heap/smt-models.sh).
 #
 # Usage: run.sh [--quick] [--slow] [FILTER]
 #   FILTER: only the entries whose name contains it. --quick: no mutants.
@@ -915,6 +916,23 @@ ec618_arena_layout() {
     "-I$REPO_ROOT/toolchains/ec618/project/src/cmpctmalloc"
 }
 spawn ec618_arena_layout
+# The EC618 instruction-level SMT models (heap/smt-models.sh): every
+# heap/ec618_*.smt2 and every model listed there, with Z3. Their self-tests
+# (not with --quick): an off-by-one in the page-classification bound and in
+# the survivor-space capacity test must change a verdict.
+if [ "$TIER" = fast ]; then
+  for smt_name in $( (ls heap/ec618_*.smt2 | sed 's|^heap/||; s|\.smt2$||'; heap/smt-models.sh --list) | sort -u); do
+    if [[ "ec618-smt/${smt_name#ec618_}" == *"$filter"* ]]; then spawn ./heap/smt-models.sh "$smt_name"; fi
+  done
+  if [ "$QUICK" = 0 ] && [[ "ec618-smt-mutant/page-classify-bound" == *"$filter"* ]]; then
+    spawn ./heap/smt-models.sh --mutant page-classify-bound ec618_page_classify \
+      "(define-fun writes () Bool (< r3 extent))" "(define-fun writes () Bool (<= r3 extent))"
+  fi
+  if [ "$QUICK" = 0 ] && [[ "ec618-smt-mutant/scavenge-copy-capacity" == *"$filter"* ]]; then
+    spawn ./heap/smt-models.sh --mutant scavenge-copy-capacity ec618_scavenge_copy \
+      "(define-fun fits () Bool (> (word (- limit dst)) n))" "(define-fun fits () Bool (>= (word (- limit dst)) n))"
+  fi
+fi
 ec618_arena_init() {
   local name=gc-ec618-arena-init inc="$ACXX_WORK/gc-ec618-arena-init"
   [[ -n "$filter" && "$name/ILP32" != *"$filter"* ]] && return 0
