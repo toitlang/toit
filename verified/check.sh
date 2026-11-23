@@ -25,9 +25,12 @@
 #      VeriFast proofs of the residual C++ (verified/cxx/annotated), spec
 #      differential tests, the device library's no-panic check, sandbox
 #      ctests, and (optional, when a second build exists) the red-team
-#      batteries.
+#      batteries. The residual C++ matrix runs its fast tier.
+#   4. With --slow (implies --tests): also the slow tier of the residual
+#      C++ matrix (verified/cxx/annotated/run.sh --slow: the long
+#      model-checker jobs; hours, memory-capped).
 #
-# Usage: verified/check.sh [--tests] [--update-allowlist] [--build DIR]
+# Usage: verified/check.sh [--tests] [--slow] [--update-allowlist] [--build DIR]
 # Exit code is non-zero on any failure.
 
 set -u -o pipefail
@@ -36,11 +39,13 @@ VERIFIED="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$VERIFIED/.." && pwd)"
 BUILD_DIR="$REPO/build/host"
 RUN_TESTS=0
+RUN_SLOW=0
 AUDIT_ARGS=()
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --tests) RUN_TESTS=1 ;;
+    --slow) RUN_TESTS=1; RUN_SLOW=1 ;;
     --update-allowlist) AUDIT_ARGS+=(--update-allowlist) ;;
     --build) shift; BUILD_DIR="$(cd "$1" && pwd)" ;;
     -h|--help) sed -n '/^# The gate/,/^# Exit code/p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
@@ -268,11 +273,28 @@ if [ "$RUN_TESTS" = 1 ]; then
     vf_status=$?
     if [ $vf_status -eq 3 ]; then
       grep '^SKIP' "$LOGS/verifast.log"
+    elif [ $vf_status -eq 4 ]; then
+      grep '^NOVERDICT' "$LOGS/verifast.log" | head -40
+      fail "VeriFast matrix of the residual C++: a model-checker job gave no verdict (out of time or memory)"
     elif [ $vf_status -ne 0 ]; then
       grep -v '^ok' "$LOGS/verifast.log" | head -40
       fail "VeriFast proofs of the residual C++ (a proof failed or a rendering drifted)"
     else
-      echo "$(grep -c '^ok' "$LOGS/verifast.log") VeriFast checks passed ($(tail -1 "$LOGS/verifast.log"))"
+      echo "$(grep -c '^ok' "$LOGS/verifast.log") checks passed ($(tail -1 "$LOGS/verifast.log"))"
+    fi
+    if [ "$RUN_SLOW" = 1 ]; then
+      section "The slow tier of the residual C++'s model-checker jobs (run.sh --slow)"
+      # Hours; memory-capped jobs, see the README's slow-tier table.
+      TOIT="$TOIT_BIN" "$VERIFIED/cxx/annotated/run.sh" --slow > "$LOGS/slow.log" 2>&1
+      slow_status=$?
+      grep -v '^ok' "$LOGS/slow.log" | head -60
+      if [ $slow_status -eq 4 ]; then
+        fail "slow tier: no verdict for some jobs (out of time or memory; nothing refuted)"
+      elif [ $slow_status -ne 0 ]; then
+        fail "slow tier: a model-checker job failed"
+      else
+        echo "$(grep -c '^ok' "$LOGS/slow.log") slow-tier jobs passed"
+      fi
     fi
   fi
 

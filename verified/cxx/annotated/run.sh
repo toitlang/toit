@@ -10,19 +10,37 @@
 #      verdict;
 #   4. the reverted-bug self-tests (mutant.sh): each must fail where the
 #      bug is;
-#   5. the Rust raw-memory layer (VeriFast's Rust front end).
+#   5. the Rust raw-memory layer (VeriFast's Rust front end);
+#   6. the model-checker jobs (ESBMC, CBMC; Frama-C/WP for three loops).
 #
-# Usage: run.sh [--quick] [FILTER]
+# Usage: run.sh [--quick] [--slow] [FILTER]
 #   FILTER: only the entries whose name contains it. --quick: no mutants.
-# Exit status: 0 when every entry has its expected verdict. Exit status 3
-# (and a SKIP line) when VeriFast is not installed (install-tools.sh).
+#   Without --slow: the fast tier, everything except the model-checker jobs
+#   listed by `slow` below (the gate runs this). --slow: only those
+#   long model-checker jobs (see "Model-checker jobs" below and the README's
+#   slow-tier table).
+# Exit status: 0 when every entry has its expected verdict; 1 when one has
+# not (a FAIL line); 4 when none failed but a model-checker job gave no
+# verdict (a NOVERDICT line: out of time or memory). Exit status 3 (and a
+# SKIP line) when VeriFast is not installed (install-tools.sh).
 
 set -uo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/env.sh"
-acxx_lock
 QUICK=0
-if [ "${1:-}" = --quick ]; then QUICK=1; shift; fi
+TIER=fast
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --quick) QUICK=1 ;;
+    --slow) TIER=slow ;;
+    -*) echo "Unknown option: $1" >&2; exit 2 ;;
+    *) break ;;
+  esac
+  shift
+done
 filter="${1:-}"
+# The slow tier renders nothing and writes only its own jobs' files, so it
+# has its own lock: the fast tier can run in this checkout meanwhile.
+if [ "$TIER" = slow ]; then acxx_lock slow; else acxx_lock; fi
 cd "$ANNOTATED_DIR"
 
 if [ ! -x "$VERIFAST" ]; then
@@ -47,6 +65,7 @@ OPTS=(-fno-strict-aliasing -assume_left_to_right_evaluation)
 # with the LP64 proofs, and the ILP32 proofs and the mutants (which copy
 # the 32-bit model) start when it is done.
 JOBS="$ACXX_WORK/logs/run-jobs"
+[ "$TIER" = slow ] && JOBS="$ACXX_WORK/logs/run-jobs-slow"
 rm -rf "$JOBS"
 mkdir -p "$JOBS"
 MAXJOBS="${RUN_JOBS:-$(nproc)}"
@@ -64,6 +83,187 @@ defer() {
   deferred+=("$(printf '%q ' "$@")")
 }
 
+# 6. Model-checker jobs. Every ESBMC and CBMC run (cpp_equivalence,
+# ec618_cbmc, array_allocation) goes through mc_select and mc_run: it runs
+# under a memory cap (ulimit -v) and a timeout, and holds its cap from a
+# memory budget shared by every checkout on the machine while it runs, so
+# memory, not the core count, limits how many run at once. Its line is
+#   ok         the job has its expected verdict (the properties hold, or the
+#              expected violation was found);
+#   FAIL       a property is violated ("property violated"), or another
+#              failure ("error");
+#   NOVERDICT  it ran out of time or memory, or died of a signal: nothing
+#              was proved or refuted.
+# The fast tier runs every job not listed by `slow` below, the slow tier
+# (--slow) only those. Settings (environment; memory in GB):
+#   RUN_MEM_BUDGET    the memory of all model-checker jobs at once (40)
+#   RUN_FAST_MEM      a fast job's cap (4)    RUN_FAST_TIMEOUT  (600 s)
+#   RUN_SLOW_MEM      a slow job's cap when its entry gives none (16)
+#   RUN_SLOW_TIMEOUT  a slow job's timeout when its entry gives none (7200 s)
+#   RUN_MEM_SCALE, RUN_TIME_SCALE  multiply every cap, every timeout (1)
+#   RUN_KNOWN_NOVERDICT=1  also run the jobs known to give no verdict
+#   RUN_MC=0          skip the model-checker jobs (VeriFast iterations)
+# Each job's verdict, time and peak memory (resident and virtual, of its
+# whole process tree, sampled every second) are appended to
+# $ACXX_WORK/logs/model-check-TIER.tsv.
+gb_to_mb() { awk -v g="$1" -v s="${2:-1}" 'BEGIN {printf "%d", g * s * 1024}'; }
+MC_BUDGET_MB=$(gb_to_mb "${RUN_MEM_BUDGET:-40}")
+MC_STATS="$ACXX_WORK/logs/model-check-$TIER.tsv"
+[ -f "$MC_STATS" ] || printf 'job\ttier\tverdict\tseconds\tpeak_rss_mb\tpeak_vm_mb\tcap_mb\ttimeout_s\tdate\tdetail\n' > "$MC_STATS"
+MC_MEMFILE="$ACXX_HOME/work/model-check-memory"
+declare -A SLOW_MEM=() SLOW_TIME=() KNOWN_NOVERDICT=()
+# slow NAME/ABI [CAP-GB [TIMEOUT-S]]: a job of the slow tier.
+slow() {
+  SLOW_MEM[$1]="${2:-${RUN_SLOW_MEM:-16}}"
+  SLOW_TIME[$1]="${3:-${RUN_SLOW_TIMEOUT:-7200}}"
+}
+# known_noverdict NAME/ABI REASON: a slow job that is known not to finish;
+# the slow tier reports it as NOVERDICT without running it.
+known_noverdict() {
+  slow "$1" 40 14400
+  KNOWN_NOVERDICT[$1]="$2"
+}
+source "$ANNOTATED_DIR/slow-jobs.sh"
+
+# mc_select NAME: whether this run runs the model-checker job NAME (filter,
+# tier); sets its cap MC_CAP_MB and timeout MC_TIMEOUT.
+mc_select() {
+  local name="$1"
+  [[ -n "$filter" && "$name" != *"$filter"* ]] && return 1
+  [ "${RUN_MC:-1}" = 0 ] && return 1
+  if [ -n "${SLOW_MEM[$name]+x}" ]; then
+    [ "$TIER" = slow ] || return 1
+    if [ -n "${KNOWN_NOVERDICT[$name]+x}" ] && [ "${RUN_KNOWN_NOVERDICT:-0}" != 1 ]; then
+      printf 'NOVERDICT %-36s known: %s (not run; RUN_KNOWN_NOVERDICT=1 runs it)\n' "$name" "${KNOWN_NOVERDICT[$name]}"
+      printf '%s\t%s\t%s\t\t\t\t\t\t%s\t%s\n' "$name" "$TIER" known-noverdict "$(date -Is)" "${KNOWN_NOVERDICT[$name]}" >> "$MC_STATS"
+      return 1
+    fi
+    MC_CAP_MB=$(gb_to_mb "${SLOW_MEM[$name]}" "${RUN_MEM_SCALE:-1}")
+    MC_TIMEOUT=$(awk -v t="${SLOW_TIME[$name]}" -v s="${RUN_TIME_SCALE:-1}" 'BEGIN {printf "%d", t * s}')
+  else
+    [ "$TIER" = fast ] || return 1
+    MC_CAP_MB=$(gb_to_mb "${RUN_FAST_MEM:-4}" "${RUN_MEM_SCALE:-1}")
+    MC_TIMEOUT=$(awk -v t="${RUN_FAST_TIMEOUT:-600}" -v s="${RUN_TIME_SCALE:-1}" 'BEGIN {printf "%d", t * s}')
+  fi
+  return 0
+}
+
+# Reserve and give back MB of the machine-wide budget. The reservations are
+# lines `PID MB` in $MC_MEMFILE; those of dead processes no longer count. A
+# job larger than the whole budget runs when nothing else holds any.
+mem_acquire() {
+  local need="$1" used pid mb lines
+  while :; do
+    exec 8>> "$MC_MEMFILE.lock"
+    flock 8
+    lines=()
+    used=0
+    if [ -f "$MC_MEMFILE" ]; then
+      while read -r pid mb; do
+        [ -n "$pid" ] && [ -e "/proc/$pid" ] || continue
+        lines+=("$pid $mb")
+        used=$((used + mb))
+      done < "$MC_MEMFILE"
+    fi
+    if (( used == 0 || used + need <= MC_BUDGET_MB )); then
+      lines+=("$BASHPID $need")
+      printf '%s\n' "${lines[@]}" > "$MC_MEMFILE"
+      exec 8>&-
+      return 0
+    fi
+    exec 8>&-
+    sleep 5
+  done
+}
+mem_release() {
+  exec 8>> "$MC_MEMFILE.lock"
+  flock 8
+  if [ -f "$MC_MEMFILE" ]; then
+    grep -v "^$BASHPID " "$MC_MEMFILE" > "$MC_MEMFILE.new"
+    mv "$MC_MEMFILE.new" "$MC_MEMFILE"
+  fi
+  exec 8>&-
+}
+
+# mc_sample PID FILE: writes the peak resident and virtual size (kB) of
+# PID's process tree to FILE, every second, while PID runs.
+mc_sample() {
+  local root="$1" out="$2" rss=0 vm=0 all frontier kids r v p
+  while [ -e "/proc/$root" ]; do
+    all="$root"
+    frontier="$root"
+    while kids=$(pgrep -d, -P "$frontier" 2> /dev/null) && [ -n "$kids" ]; do
+      all="$all,$kids"
+      frontier="$kids"
+    done
+    read -r r v < <(for p in ${all//,/ }; do cat "/proc/$p/status" 2> /dev/null; done |
+      awk '/^VmHWM:/ {r += $2} /^VmPeak:/ {v += $2} END {print r + 0, v + 0}')
+    (( r > rss )) && rss=$r
+    (( v > vm )) && vm=$v
+    echo "$rss $vm" > "$out"
+    sleep 1
+  done
+}
+
+# mc_run NAME LOG COMMAND...: runs COMMAND (output to LOG) under the cap and
+# timeout mc_select set, and classifies it: MC_VERDICT pass, fail or
+# noverdict, MC_REASON, and MC_USAGE (time and peak memory).
+mc_run() {
+  local name="$1" log="$2"
+  shift 2
+  local cap_kb=$((MC_CAP_MB * 1024)) peak="$log.peak" start end status pid sampler rss vm
+  mem_acquire "$MC_CAP_MB"
+  start=$(date +%s%N)
+  echo "0 0" > "$peak"
+  ( ulimit -v "$cap_kb"; exec timeout -k 30 "$MC_TIMEOUT" "$@" ) > "$log" 2>&1 &
+  pid=$!
+  mc_sample "$pid" "$peak" &
+  sampler=$!
+  wait "$pid"
+  status=$?
+  wait "$sampler"
+  end=$(date +%s%N)
+  mem_release
+  read -r rss vm < "$peak"
+  local tenths=$(((end - start) / 100000000))
+  local secs="$((tenths / 10)).$((tenths % 10))"
+  MC_USAGE=$(awk -v s="$secs" -v r="$rss" -v v="$vm" -v c="$MC_CAP_MB" \
+    'BEGIN {printf "%s s, peak %.2f GB (virtual %.2f of %.1f GB)", s, r / 1048576, v / 1048576, c / 1024}')
+  MC_VERDICT=fail
+  if [ $status -eq 0 ]; then
+    MC_VERDICT=pass
+    MC_REASON=""
+  elif [ $status -eq 124 ] || { [ $status -eq 137 ] && (( tenths >= MC_TIMEOUT * 10 )); }; then
+    MC_VERDICT=noverdict
+    MC_REASON="timeout after $MC_TIMEOUT s"
+  elif grep -q 'VERIFICATION FAILED' "$log"; then
+    MC_REASON="property violated"
+  elif (( vm * 100 >= cap_kb * 85 )) || grep -qE 'bad_alloc|[Oo]ut of memory|Memory exhausted|Cannot allocate memory' "$log"; then
+    MC_VERDICT=noverdict
+    MC_REASON="out of memory (exit $status)"
+  elif [ $status -ge 128 ]; then
+    MC_VERDICT=noverdict
+    MC_REASON="killed by signal $((status - 128))"
+  else
+    MC_REASON="error (exit $status)"
+  fi
+  printf '%s\t%s\t%s\t%s\t%d\t%d\t%d\t%d\t%s\t%s\n' "$name" "$TIER" "$MC_VERDICT" "$secs" $((rss / 1024)) $((vm / 1024)) \
+    "$MC_CAP_MB" "$MC_TIMEOUT" "$(date -Is)" "$MC_REASON" >> "$MC_STATS"
+}
+
+# mc_report NAME DETAIL LOG: prints the line for the last mc_run; returns 1
+# for a FAIL (the job's failure count), 0 otherwise (a NOVERDICT is counted
+# from its line).
+mc_report() {
+  local name="$1" detail="$2" log="$3"
+  case "$MC_VERDICT" in
+    pass) printf 'ok    %-40s %s (%s)\n' "$name" "$detail" "$MC_USAGE" ;;
+    noverdict) printf 'NOVERDICT %-36s %s (%s), see %s\n' "$name" "$MC_REASON" "$MC_USAGE" "$log" ;;
+    *) printf 'FAIL  %-40s %s (%s), see %s\n' "$name" "$MC_REASON" "$MC_USAGE" "$log"; return 1 ;;
+  esac
+  return 0
+}
+
 # 1, 2.
 render_check() {
   local f=0
@@ -78,7 +278,7 @@ render_check() {
   return $f
 }
 render_pid=""
-if [ -z "$filter" ]; then
+if [ -z "$filter" ] && [ "$TIER" = fast ]; then
   spawn render_check
   render_pid="${pids[-1]}"
 fi
@@ -87,10 +287,12 @@ fi
 # A generated FILE (*.gen.c) is verified for ILP32 in its 32-bit rendering.
 # LP64 now, ILP32 in the second phase.
 entry() {
+  [ "$TIER" = fast ] || return 0
   spawn entry_run LP64 "$@"
   defer entry_run ILP32 "$@"
 }
 entry_run() {
+  [ "$TIER" = fast ] || return 0
   local failures=0
   local only="$1"; shift
   local name="$1" expect="$2" pattern="$3" file="$4"; shift 4
@@ -123,6 +325,7 @@ entry_run() {
 # mutant NAME SIDECAR SOURCE PATTERN "VERIFAST OPTIONS" FROM TO [FROM TO]...
 mutant() {
   [ "$QUICK" = 1 ] && return
+  [ "$TIER" = fast ] || return
   [[ -n "$filter" && "$1" != *"$filter"* ]] && return
   defer ./mutant.sh "$@"
 }
@@ -402,7 +605,7 @@ spawn entry_run LP64 smi-contract pass "" model/smi.c -I "$ANNOTATED_DIR/model" 
 defer entry_run ILP32 smi-contract pass "" model/smi.c -I "$GEN32/model" -prover z3v4.5
 cpp_equivalence() {
   local name="$1/$2" bits="$3" harness="$4"
-  [[ -n "$filter" && "$name" != *"$filter"* ]] && return 0
+  mc_select "$name" || return 0
   source ../env.sh
   if [ ! -x "$ESBMC" ]; then
     echo "FAIL  $name requires ESBMC (verified/cxx/install-tools.sh esbmc)"
@@ -410,16 +613,13 @@ cpp_equivalence() {
   fi
   local log="$ACXX_WORK/logs/$1-$bits.log"
   shift 4
-  if "$ESBMC" "../harness/$harness.cc" "${CXXV_FLAGS[@]}" --std c++11 -DTOIT_VERIFIED_CORE \
-      "--$bits" "-DCXXV_WORD_BITS=$bits" --overflow-check "$@" > "$log" 2>&1; then
-    printf 'ok    %-40s %s\n' "$name" "$(grep 'properties failed' "$log")"
-  else
-    printf 'FAIL  %-40s see %s\n' "$name" "$log"
-    return 1
-  fi
+  mc_run "$name" "$log" "$ESBMC" "../harness/$harness.cc" "${CXXV_FLAGS[@]}" --std c++11 -DTOIT_VERIFIED_CORE \
+    "--$bits" "-DCXXV_WORD_BITS=$bits" --overflow-check "$@"
+  mc_report "$name" "$(grep 'properties failed' "$log")" "$log"
 }
 finalizer_unlink_code() {
   local name="finalizer-unlink-code/$1"
+  [ "$TIER" = fast ] || return 0
   [[ -n "$filter" && "$name" != *"$filter"* ]] && return 0
   local options=()
   (( QUICK )) || options+=(--mutant)
@@ -685,6 +885,7 @@ ec618_clear_pages() {
 spawn ec618_clear_pages
 ec618_cbmc() {
   local name="$1" inc="$2" harness="$3" unwind="$4"
+  mc_select "$name/ILP32" || return 0
   source ../env.sh
   local log="$ACXX_WORK/logs/$name-32.log"
   arm-none-eabi-gcc -std=c11 -E -mcpu=cortex-m3 -mthumb "-I$inc" \
@@ -699,12 +900,9 @@ ec618_cbmc() {
       solver_tmp="$inc"
     fi
   fi
-  if TMPDIR="$solver_tmp" "$CBMC_BIN/cbmc" "$inc/$harness.i" --32 --unwinding-assertions --unwind "$unwind" "${solver_options[@]}" > "$log" 2>&1; then
-    printf 'ok    %-40s %s\n' "$name/ILP32" "$(grep 'of .* failed' "$log")"
-  else
-    echo "FAIL  $name/ILP32 see $log"
-    return 1
-  fi
+  TMPDIR="$solver_tmp" mc_run "$name/ILP32" "$log" \
+    "$CBMC_BIN/cbmc" "$inc/$harness.i" --32 --unwinding-assertions --unwind "$unwind" "${solver_options[@]}"
+  mc_report "$name/ILP32" "$(grep 'of .* failed' "$log")" "$log"
 }
 ec618_thread_tags() {
   local name=gc-ec618-thread-tags inc="$ACXX_WORK/gc-ec618-thread-tags"
@@ -1279,8 +1477,8 @@ spawn cpp_equivalence task-id-exhaustion ILP32 32 task_id_exhaustion --unwind 2
 spawn cpp_equivalence task-new LP64 64 task_new -DRAW
 spawn cpp_equivalence task-new ILP32 32 task_new -DRAW
 for target in LP64 ILP32; do
-  if [[ "v2-table-loop/$target" == *"$filter"* ]]; then spawn ./loader/wp.sh "$target"; fi
-  if [[ "gc-page-scan-wp/$target" == *"$filter"* ]]; then spawn ./heap/page-scan-wp.sh "$target"; fi
+  if [ "$TIER" = fast ] && [[ "v2-table-loop/$target" == *"$filter"* ]]; then spawn ./loader/wp.sh "$target"; fi
+  if [ "$TIER" = fast ] && [[ "gc-page-scan-wp/$target" == *"$filter"* ]]; then spawn ./heap/page-scan-wp.sh "$target"; fi
 done
 spawn cpp_equivalence smi-cpp LP64 64 smi
 spawn cpp_equivalence smi-cpp ILP32 32 smi
@@ -1543,19 +1741,15 @@ spawn cpp_equivalence old-space-retry LP64 64 old_space_retry
 spawn cpp_equivalence old-space-retry ILP32 32 old_space_retry
 array_allocation() {
   local name="process-array-allocation/$1" bits="$2"
-  [[ -n "$filter" && "$name" != *"$filter"* ]] && return 0
+  mc_select "$name" || return 0
   source ../env.sh
   local modes=(proof) mode log
   (( QUICK )) || modes+=(young-filler old-filler unmarked-old)
   for mode in "${modes[@]}"; do
     log="$ACXX_WORK/logs/process-array-allocation-$bits-$mode.log"
-    if python3 heap/check_array_allocation.py "$mode" "$bits" "$CXXV_SRC" "$ACXX_WORK" \
-        ../harness/process_array_allocation.cc "$ESBMC" "${CXXV_FLAGS[@]}" -DTOIT_VERIFIED_CORE > "$log" 2>&1; then
-      echo "ok    $name $mode"
-    else
-      echo "FAIL  $name $mode see $log"
-      return 1
-    fi
+    mc_run "$name:$mode" "$log" python3 heap/check_array_allocation.py "$mode" "$bits" "$CXXV_SRC" "$ACXX_WORK" \
+      ../harness/process_array_allocation.cc "$ESBMC" "${CXXV_FLAGS[@]}" -DTOIT_VERIFIED_CORE
+    mc_report "$name:$mode" "" "$log" || return 1
   done
 }
 spawn array_allocation LP64 64
@@ -1794,7 +1988,7 @@ mutant byte-content-slice-to blob/byte_content.render src/objects.cc "pointer_wi
 
 entry utf8-validator        pass "" utf8/validator.gen.c
 for target in LP64 ILP32; do
-  if [[ "utf8-wp/$target" == *"$filter"* ]]; then spawn ./utf8/wp.sh "$target"; fi
+  if [ "$TIER" = fast ] && [[ "utf8-wp/$target" == *"$filter"* ]]; then spawn ./utf8/wp.sh "$target"; fi
 done
 entry utf16-to-8            pass "" utf8/utf_16_to_8.gen.c -prover z3v4.5
 mutant utf16-to-8-byte-order utf8/utf_16_to_8.render src/utils.cc "Cannot prove" "-prover z3v4.5" \
@@ -2248,8 +2442,8 @@ verus_trial() {
   printf 'FAIL  %-40s %s\n' verus-trial "$(echo "$out" | grep -m1 -E 'error|verification results')"
   return 1
 }
-spawn verus_trial
-spawn rust_entries
+[ "$TIER" = fast ] && spawn verus_trial
+[ "$TIER" = fast ] && spawn rust_entries
 
 # The second phase.
 render_status=0
@@ -2270,6 +2464,22 @@ for i in "${!pids[@]}"; do
   fi
   [ $s -ne 0 ] && failures=$((failures + s))
   cat "$JOBS/$i.log"
+  # A job that failed before printing its verdict (e.g. a missing source
+  # file while preparing a harness).
+  if [ $s -ne 0 ] && ! grep -q '^FAIL' "$JOBS/$i.log"; then
+    printf 'FAIL  %-40s exited with %d before a verdict, see above and %s\n' "job $i" "$s" "$JOBS/$i.log"
+  fi
 done
-echo "failures: $failures"
-exit $((failures > 0))
+noverdicts=$(cat "$JOBS"/*.log 2> /dev/null | grep -c '^NOVERDICT')
+slow_jobs=0
+for name in "${!SLOW_MEM[@]}"; do
+  [[ -z "$filter" || "$name" == *"$filter"* ]] && slow_jobs=$((slow_jobs + 1))
+done
+if [ "$TIER" = fast ]; then
+  echo "failures: $failures, no verdict: $noverdicts ($slow_jobs model-checker jobs of the slow tier not run: run.sh --slow)"
+else
+  echo "failures: $failures, no verdict: $noverdicts (slow tier: $slow_jobs jobs; times and peaks in $MC_STATS)"
+fi
+if [ "$failures" -gt 0 ]; then exit 1; fi
+if [ "$noverdicts" -gt 0 ]; then exit 4; fi
+exit 0

@@ -40,12 +40,14 @@ GEN32="${GEN32:-$ACXX_WORK/gen/ilp32}"
 export ACXX_HOME ACXX_WORK VERIFAST_DIR VERIFAST CXXV_HOME ANNOTATED_DIR REPO_ROOT GEN32
 
 # Takes the checkout's lock (one run of the matrix or of render.sh at a
-# time per checkout; nested calls inherit it through ACXX_LOCKED).
+# time per checkout; nested calls inherit it through ACXX_LOCKED). With an
+# argument, a separate lock of that name (run.sh --slow: `slow`).
 acxx_lock() {
   [ -n "${ACXX_LOCKED:-}" ] && return
-  exec 9> "$ACXX_WORK/lock"
+  local lock="$ACXX_WORK/lock${1:+-$1}"
+  exec 9> "$lock"
   if ! flock -n 9; then
-    echo "waiting for another run in this checkout ($ACXX_WORK/lock)" >&2
+    echo "waiting for another run in this checkout ($lock)" >&2
     flock 9
   fi
   export ACXX_LOCKED=1
