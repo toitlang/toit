@@ -1,0 +1,79 @@
+// Copyright (C) 2026 Toit contributors.
+@include ../model/model.cfg
+@verbatim
+#include <math.h>
+#include "boxed_double.gen.h"
+#include "argument_error.gen.h"
+//@ #include "decimal.gh"
+//@ #include "../model/truncate.gh"
+
+/*@
+fixpoint int round_argument_error(fixpoint(void *, oinfo) H, void *receiver, void *precision) {
+  return !has_tag(H, receiver, DOUBLE_TAG) ? Program_WRONG_OBJECT_TYPE_INDEX :
+    !is_smi_w((uword)precision) ? (has_tag(H, precision, LARGE_INTEGER_TAG) ? Program_OUT_OF_RANGE_INDEX : Program_WRONG_OBJECT_TYPE_INDEX) :
+    smi_val((uword)precision) < INT_MIN || smi_val((uword)precision) > INT_MAX ? Program_OUT_OF_RANGE_INDEX :
+    smi_val((uword)precision) < 0 || smi_val((uword)precision) > 15 ? Program_INVALID_ARGUMENT_INDEX : 0;
+}
+@*/
+
+// Scalar libm calls preserve the VM heap.
+int isnan(double value);
+  //@ requires true;
+  //@ ensures (result != 0) == (fp_of_double(value) == fp_NaN);
+double round(double value);
+  //@ requires true;
+  //@ ensures true;
+
+@prototypes
+@render src/primitive_core.cc toit::decimal_round_factor
+static int64 decimal_round_factor(int precision)
+//@ requires true;
+/*@ ensures (precision < 0 || precision > 15) ? result == 0 :
+            result == pow_nat(10, nat_of_int(precision)) &*& 1 <= result &*& result <= 1000000000000000; @*/
+//@ terminates;
+{
+  if (precision < 0 || precision > 15) return 0;
+  int64 factor = 1;
+  for (int i = 0; i < precision; i++)
+    /*@ invariant 0 <= i &*& i <= precision &*& factor == pow_nat(10, nat_of_int(i)); @*/
+    //@ decreases precision - i;
+  {
+    //@ decimal_power_le(nat_of_int(i), nat_of_int(15));
+    //@ succ_int(i);
+    factor *= 10;
+  }
+  //@ decimal_power_le(nat_of_int(precision), nat_of_int(15));
+  return factor;
+}
+
+@render src/primitive_core.cc toit::primitive_float_round truncating
+PRIMITIVE(float_round)
+/*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
+             pointer(__args, ?x0) &*& pointer(__args - 1, ?x1) &*& good(objs, x0) && good(objs, x1); @*/
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+            pointer(__args, x0) &*& pointer(__args - 1, x1) &*&
+            (round_argument_error(H, x0, x1) != 0 ?
+               objs2 == objs && H2 == H && (uword)result == 4 * round_argument_error(H, x0, x1) + 3 :
+             (uword)result % 4 == 3 ? objs2 == objs && H2 == H &&
+              ((uword)result == 4 * Program_OUT_OF_RANGE_INDEX + 3 ||
+               (uword)result == ((uword)root_allocation_failed(prog) | 3)) :
+             good(objs2, result) && has_tag(H2, result, DOUBLE_TAG) &&
+               (result == x0 ? objs2 == objs && H2 == H : objs2 == cons(result, objs))); @*/
+{
+  //@ truncate_signed_limits(smi_val((uword)x1), N31);
+  //@ if (INT_MIN <= smi_val((uword)x1) && smi_val((uword)x1) <= INT_MAX) truncate_signed_id(smi_val((uword)x1), N31);
+  //@ close valid_arg(x1, objs);
+  //@ leak valid_arg(x1, objs);
+  //@ grows_refl(objs, H);
+  //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);
+  //@ error_word(Program_INVALID_ARGUMENT_INDEX);
+  //@ error_word(Program_OUT_OF_RANGE_INDEX);
+  ARGS(double, receiver, int, precision);
+  int64 factor = decimal_round_factor(precision);
+  if (factor == 0) FAIL(INVALID_ARGUMENT);
+  if (isnan(receiver)) FAIL(OUT_OF_RANGE);
+  // Binary64 values of either sign with magnitude at least 2^52 are already integral.
+  if (receiver >= 4503599627370496.0 || receiver <= -4503599627370496.0) return _raw_receiver;
+  //@ assert 1 <= factor && factor <= 1000000000000000;
+  return Primitive::allocate_double(round(receiver * factor) / factor, process);
+}

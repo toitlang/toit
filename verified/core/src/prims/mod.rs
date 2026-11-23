@@ -830,10 +830,8 @@ pub proof fn lemma_kept_refl(ap: Program2, o: HeapObj)
     match o.body { Body::Instance(f) => {}, _ => {} }
 }
 
-/// The new object of an allocation keeps the heap invariant: it is not
-/// an instance (its class has neither the instance nor the task tag), its
-/// body agrees with its class tag (array exactly for the array tag), its
-/// contents are good, and an array is shorter than 2^30.
+/// Appending an object of the expected class, with modeled fields and
+/// well-formed contents, preserves the heap invariant.
 pub proof fn lemma_post_append(p: &Program, h0: &Heap, h1: &Heap, r: usize)
     requires
         heap_inv(p, h0),
@@ -843,9 +841,11 @@ pub proof fn lemma_post_append(p: &Program, h0: &Heap, h1: &Heap, r: usize)
             let cb = h1.class_bits();
             let t = class_tag_of(cb, o.class_id as int);
             &&& (o.class_id as int) < cb.len()
-            &&& t != INSTANCE_TAG as int && t != TASK_TAG as int
+            &&& t != TASK_TAG as int
+            &&& (o.body is Instance) == (t == INSTANCE_TAG as int)
+            &&& (o.body is Instance) ==> o.body->Instance_0.len() == ifc_bits(cb, o.class_id as int)
             &&& (o.body is Array) == (t == ARRAY_TAG as int)
-            &&& !(o.body is Instance) && !(o.body is Stack2) && !(o.body is Stack)
+            &&& !(o.body is Stack2) && !(o.body is Stack)
             &&& body_good(h1.objs(), h1.addrs(), o.body)
             &&& (o.body is Array ==> o.body->Array_0.len() < 0x4000_0000)
             &&& tags_ok(o, cb)

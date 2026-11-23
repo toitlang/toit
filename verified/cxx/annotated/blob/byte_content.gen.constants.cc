@@ -13,9 +13,11 @@ namespace toit {
 template <typename A, typename B> struct vf_same {
   static const bool value = std::is_same<typename std::decay<A>::type, typename std::decay<B>::type>::value;
 };
-struct vf_probe_0 : Object { static_assert((MAX_BYTE_CONTENT_DEPTH) == (8), "Object_MAX_BYTE_CONTENT_DEPTH"); static_assert(vf_same<decltype(MAX_BYTE_CONTENT_DEPTH), decltype(8)>::value, "type of Object_MAX_BYTE_CONTENT_DEPTH"); };
-struct vf_probe_1 : Object { static_assert((RawByteTag) == (0), "RawByteTag"); };
-struct vf_probe_2 : Object { static_assert((STRINGS_OR_BYTE_ARRAYS) == (0), "STRINGS_OR_BYTE_ARRAYS"); };
+struct vf_probe_0 : HeapObject { static_assert((INSTANCE_TAG) == (2), "INSTANCE_TAG"); };
+struct vf_probe_1 : HeapObject { static_assert((STRINGS_OR_BYTE_ARRAYS) == (0), "STRINGS_OR_BYTE_ARRAYS"); };
+struct vf_probe_2 : Object { static_assert((MAX_BYTE_CONTENT_DEPTH) == (8), "Object_MAX_BYTE_CONTENT_DEPTH"); static_assert(vf_same<decltype(MAX_BYTE_CONTENT_DEPTH), decltype(8)>::value, "type of Object_MAX_BYTE_CONTENT_DEPTH"); };
+struct vf_probe_3 : Object { static_assert((RawByteTag) == (0), "RawByteTag"); };
+struct vf_probe_4 : Object { static_assert((STRINGS_OR_BYTE_ARRAYS) == (0), "STRINGS_OR_BYTE_ARRAYS"); };
 static_assert((Instance::BYTE_ARRAY_COW_BACKING_INDEX) == (((word)0)), "Instance_BYTE_ARRAY_COW_BACKING_INDEX");
 static_assert(vf_same<decltype(Instance::BYTE_ARRAY_COW_BACKING_INDEX), decltype(((word)0))>::value, "type of Instance_BYTE_ARRAY_COW_BACKING_INDEX");
 static_assert((Instance::BYTE_ARRAY_SLICE_BYTE_ARRAY_INDEX) == (((word)0)), "Instance_BYTE_ARRAY_SLICE_BYTE_ARRAY_INDEX");

@@ -24,6 +24,35 @@
 // Self-test (run.sh): the depth limit of 1db9d6ea (#3373) taken out: the
 // recursive call's precondition fails.
 #include "../model/objects.gen.h"
+
+/*@
+fixpoint int slice_length(void *from, void *to, int available) {
+  return is_smi_w((uword)from) && is_smi_w((uword)to) &&
+         0 <= smi_val((uword)from) && smi_val((uword)from) <= smi_val((uword)to) &&
+         smi_val((uword)to) <= available ? smi_val((uword)to) - smi_val((uword)from) : -1;
+}
+
+fixpoint int decoded_length(nat fuel, fixpoint(void *, oinfo) H, prog_ids ids, void *o, int kind) {
+  switch (fuel) {
+    case zero: return blob_ok(H, o, kind) ? blob_len(H, o) : -1;
+    case succ(rest):
+      return blob_ok(H, o, kind) ? blob_len(H, o) :
+        !has_tag(H, o, INSTANCE_TAG) ? -1 :
+        kind == STRINGS_OR_BYTE_ARRAYS && header_cid(o_hw(H(o))) == byte_array_cow_cid(ids)
+          ? decoded_length(rest, H, ids, nth(0, o_words(H(o))), kind) :
+        (kind == STRINGS_OR_BYTE_ARRAYS && header_cid(o_hw(H(o))) == byte_array_slice_cid(ids) ||
+         header_cid(o_hw(H(o))) == string_slice_cid(ids) || header_cid(o_hw(H(o))) == string_byte_slice_cid(ids)) &&
+         is_heap_w((uword)nth(0, o_words(H(o))))
+          ? slice_length(nth(1, o_words(H(o))), nth(2, o_words(H(o))),
+                         decoded_length(rest, H, ids, nth(0, o_words(H(o))), kind)) : -1;
+  }
+}
+
+lemma void decoded_leaf(nat fuel, fixpoint(void *, oinfo) H, prog_ids ids, void *o, int kind)
+  requires !has_tag(H, o, INSTANCE_TAG);
+  ensures decoded_length(fuel, H, ids, o, kind) == (blob_ok(H, o, kind) ? blob_len(H, o) : -1);
+{ switch (fuel) { case zero: case succ(rest): } }
+@*/
 // C++: src/objects.h toit::Blob::Blob
 void Blob_ctor__uint8p_word(Blob *self, uint8 *address, word length);
 //@ requires self->address_ |-> _ &*& self->length_ |-> _;
@@ -35,16 +64,18 @@ bool Object_byte_content__Programp_uint8pp_wordp_BlobKind_int(Object *self, Prog
              pointer_((void **)content, ?oc0) &*& intptr_(length, ?ol0) &*&
              (strings_only == STRINGS_OR_BYTE_ARRAYS || strings_only == STRINGS_ONLY) &*&
              0 <= depth &*& depth <= Object_MAX_BYTE_CONTENT_DEPTH; @*/
-/*@ ensures [f]heap(objs, H) &*& result ? *content |-> ?a &*& *length |-> ?l &*& [_]blob_result(objs, H, strings_only, a, l, _) :
-            pointer_((void **)content, ?oc) &*& intptr_(length, ?ol) &*& (oc0 == none || oc != none) &*& (ol0 == none || ol != none); @*/
+/*@ ensures [f]heap(objs, H) &*& result ? *content |-> ?a &*& *length |-> ?l &*& l == decoded_length(nat_of_int(Object_MAX_BYTE_CONTENT_DEPTH - depth), H, ids, self, strings_only) &*& [_]blob_result(objs, H, strings_only, a, l, ?b) &*&
+            ((has_tag(H, self, STRING_TAG) || has_tag(H, self, BYTE_ARRAY_TAG)) ? b == self && a == blob_base(H, self) && l == blob_len(H, self) : true) :
+            decoded_length(nat_of_int(Object_MAX_BYTE_CONTENT_DEPTH - depth), H, ids, self, strings_only) == -1 &*& pointer_((void **)content, ?oc) &*& intptr_(length, ?ol) &*& (oc0 == none || oc != none) &*& (ol0 == none || ol != none); @*/
 
 // C++: src/objects.cc toit::Object::byte_content
 bool Object_byte_content__Programp_uint8pp_wordp_BlobKind(Object *self, Program *program, uint8 **content, word *length, BlobKind strings_only);
 /*@ requires [_]program(program, ?ids) &*& prog_ok(ids) == true &*& [?f]heap(?objs, ?H) &*& good(objs, self) == true &*&
              pointer_((void **)content, ?oc0) &*& intptr_(length, ?ol0) &*&
              (strings_only == STRINGS_OR_BYTE_ARRAYS || strings_only == STRINGS_ONLY); @*/
-/*@ ensures [f]heap(objs, H) &*& result ? *content |-> ?a &*& *length |-> ?l &*& [_]blob_result(objs, H, strings_only, a, l, _) :
-            pointer_((void **)content, ?oc) &*& intptr_(length, ?ol) &*& (oc0 == none || oc != none) &*& (ol0 == none || ol != none); @*/
+/*@ ensures [f]heap(objs, H) &*& result ? *content |-> ?a &*& *length |-> ?l &*& l == decoded_length(nat_of_int(Object_MAX_BYTE_CONTENT_DEPTH), H, ids, self, strings_only) &*& [_]blob_result(objs, H, strings_only, a, l, ?b) &*&
+            ((has_tag(H, self, STRING_TAG) || has_tag(H, self, BYTE_ARRAY_TAG)) ? b == self && a == blob_base(H, self) && l == blob_len(H, self) : true) :
+            decoded_length(nat_of_int(Object_MAX_BYTE_CONTENT_DEPTH), H, ids, self, strings_only) == -1 &*& pointer_((void **)content, ?oc) &*& intptr_(length, ?ol) &*& (oc0 == none || oc != none) &*& (ol0 == none || ol != none); @*/
 
 // C++: src/objects.cc toit::Object::byte_content
 bool Object_byte_content__Programp_Blobp_BlobKind(Object *self, Program *program, Blob *blob, BlobKind strings_only);
@@ -52,6 +83,13 @@ bool Object_byte_content__Programp_Blobp_BlobKind(Object *self, Program *program
              blob->address_ |-> _ &*& blob->length_ |-> _ &*&
              (strings_only == STRINGS_OR_BYTE_ARRAYS || strings_only == STRINGS_ONLY); @*/
 /*@ ensures [f]heap(objs, H) &*& blob->address_ |-> ?a &*& blob->length_ |-> ?l &*&
-            result ? [_]blob_result(objs, H, strings_only, a, l, _) : true; @*/
+            result ? [_]blob_result(objs, H, strings_only, a, l, ?b) &*&
+            ((has_tag(H, self, STRING_TAG) || has_tag(H, self, BYTE_ARRAY_TAG)) ? b == self && a == blob_base(H, self) && l == blob_len(H, self) : true) : true; @*/
+
+// C++: src/objects.cc toit::HeapObject::can_be_toit_finalized
+bool HeapObject_can_be_toit_finalized(HeapObject *self, Program *program);
+//@ requires [_]program(program, ?ids) &*& prog_ok(ids) == true &*& [?f]heap(?objs, ?H) &*& mem(self, objs) == true;
+/*@ ensures [f]heap(objs, H) &*& result == (has_tag(H, self, INSTANCE_TAG) && header_cid(o_hw(H(self))) != map_cid(ids) &&
+            decoded_length(nat_of_int(Object_MAX_BYTE_CONTENT_DEPTH), H, ids, self, STRINGS_OR_BYTE_ARRAYS) == -1); @*/
 
 #endif

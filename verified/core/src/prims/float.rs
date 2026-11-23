@@ -18,8 +18,8 @@
 //! number_to_float, number_to_integer, float_to_raw(32), raw(32)_to_float,
 //! and compare_to / min_special_compare_to (`Interpreter::compare_numbers`).
 //!
-//! The float operations themselves are the trusted scalar functions of
-//! `fp`; what is proven is the argument decoding (the double accessor),
+//! Comparisons, sign, NaN and finiteness have exact binary64 contracts. Other float
+//! operations use trusted scalar functions. The proofs cover argument decoding,
 //! the allocation of the result and the heap contract. float_round,
 //! float_to_string and float_parse stay in C++.
 
@@ -64,6 +64,12 @@ pub fn num_arg(h: &Heap, w: usize, Ghost(v): Ghost<Value>) -> (r: Option<(bool, 
     requires
         heap_model_ok(h.objs(), h.addrs(), h.class_bits()),
         w == enc(h.addrs(), v), good(h.objs(), v), encodable(h.addrs(), v),
+    ensures r == match toit_spec::v2::prim_core::int_val(h.objs(), v) {
+        Some(i) => Some((true, i as u64)),
+        None => match toit_spec::v2::prim_core::double_val(h.objs(), v) {
+            Some(bits) => Some((false, bits)), None => None,
+        },
+    },
 {
     match ints::int_arg(h, w, Ghost(v)) {
         Some(i) => Some((true, i as u64)),
@@ -79,6 +85,8 @@ pub fn double_res(heap: &mut Heap, c: &Ctx, bits: u64) -> (r: (PrimOutcome, Ghos
     requires heap_inv(c.p, old(heap)),
     ensures
         prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+        !(r.0 is NotPorted) ==> toit_spec::v2::prim_core::boxed_result(c.p.ap@, old(heap).objs(), final(heap).objs(),
+            ret_of(c.p, r.0, r.1@), toit_spec::spec_common::DOUBLE_CLASS, Body::Double(bits)),
         !(r.0 is Failure),
         r.0 is Success ==> ({
             let v = r.1@;
@@ -98,6 +106,7 @@ pub fn double_res(heap: &mut Heap, c: &Ctx, bits: u64) -> (r: (PrimOutcome, Ghos
     let ghost id = h0.objs().len() as int;
     proof {
         assert(heap.objs()[id] == heap.objs().last());
+        assert(heap.objs() =~= h0.objs().push(heap.objs().last()));
         lemma_post_append(c.p, &h0, heap, w);
     }
     (PrimOutcome::Success(w), Ghost(Value::Obj(id as usize)))
@@ -123,19 +132,29 @@ pub fn float_binop(op: u8, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutco
 /// (`op` 0..4).
 pub fn float_unop(op: u8, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<Value>))
     requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 1,
-    ensures prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+    ensures
+        prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+        op == 0 ==> contract(c.p, ix::FLOAT_UNARY_MINUS as int, a, old(heap), final(heap), r.0, r.1@),
+        2 <= op <= 4 ==> contract(c.p, ix::FLOAT_CEIL as int + op as int - 2, a, old(heap), final(heap), r.0, r.1@),
 {
     let x = match double_arg(heap, a.w[0], Ghost(a.vs@[0])) {
         Some(x) => x,
         None => return fail(c.p, heap, ROOT_WRONG_OBJECT_TYPE),
     };
-    double_res(heap, c, fp::unop(op, x))
+    let bits = if op == 0 { x ^ 0x8000_0000_0000_0000 } else if op == 1 { fp::libm_unop(op, x) }
+        else { fp::round_integral(op, x) };
+    let result = double_res(heap, c, bits);
+    proof { if 2 <= op <= 4 { assert(toit_spec::v2::prim_core::integral_round_result(op, x, bits)); } }
+    result
 }
 
 /// float_less_than .. float_equals (`op` 0..4).
 pub fn float_compare(op: u8, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<Value>))
     requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 2,
-    ensures prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+    ensures
+        prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+        toit_spec::v2::prim_core::float_cmp_contract(c.p.ap@, op, a.vs@, old(heap).objs(),
+            final(heap).objs(), ret_of(c.p, r.0, r.1@)),
 {
     let x = match double_arg(heap, a.w[0], Ghost(a.vs@[0])) {
         Some(x) => x,
@@ -154,6 +173,11 @@ pub fn float_query(op: u8, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutco
     requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 1,
     ensures
         prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+        op <= 2 ==> toit_spec::v2::prim_core::float_classify_contract(c.p.ap@,
+            toit_spec::v2::prim_core::I_FLOAT_SIGN + op, a.vs@, old(heap).objs(), final(heap).objs(),
+            ret_of(c.p, r.0, r.1@)),
+        op == 3 ==> contract(c.p, ix::FLOAT_TO_RAW as int, a, old(heap), final(heap), r.0, r.1@),
+        op == 4 ==> contract(c.p, ix::FLOAT_TO_RAW32 as int, a, old(heap), final(heap), r.0, r.1@),
         // float_to_raw: the bits as an integer.
         (op == 3 && r.0 is Success) ==> a.vs@[0] is Obj
             && old(heap).objs()[a.vs@[0]->Obj_0 as int].body is Double
@@ -168,7 +192,7 @@ pub fn float_query(op: u8, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutco
         let (rw, rv) = smi_res(heap, fp::sign(x));
         ok(c.p, heap, rw, rv)
     } else if op == 1 {
-        ok_bool(c.p, heap, fp::is_nan(x))
+        ok_bool(c.p, heap, crate::numbers::nan_bits(x))
     } else if op == 2 {
         ok_bool(c.p, heap, fp::is_finite(x))
     } else if op == 3 {
@@ -176,18 +200,29 @@ pub fn float_query(op: u8, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutco
     } else {
         // `Primitive::integer`: a large integer on 32-bit targets when the
         // bits do not fit a smi.
-        ints::int_res(heap, c, fp::to_raw32(x) as i64)
+        let raw = fp::to_raw32(x);
+        let result = ints::int_res(heap, c, raw as i64);
+        proof { assert(toit_spec::v2::prim_core::narrowing_result(x, raw)); }
+        result
     }
 }
 
 /// number_to_float (`to_double`: an integer or a double).
 pub fn number_to_float(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<Value>))
     requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 1,
-    ensures prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+    ensures
+        prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+        contract(c.p, ix::NUMBER_TO_FLOAT as int, a, old(heap), final(heap), r.0, r.1@),
 {
     match num_arg(heap, a.w[0], Ghost(a.vs@[0])) {
         None => fail(c.p, heap, ROOT_WRONG_OBJECT_TYPE),
-        Some((true, i)) => double_res(heap, c, fp::from_int(i as i64)),
+        Some((true, i)) => {
+            proof {
+                let value = toit_spec::v2::prim_core::int_val(heap.objs(), a.vs@[0])->Some_0;
+                assert(i as i64 == value) by (bit_vector) requires i == value as u64;
+            }
+            double_res(heap, c, fp::from_int(i as i64))
+        },
         Some((false, b)) => double_res(heap, c, b),
     }
 }
@@ -195,7 +230,9 @@ pub fn number_to_float(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, 
 /// number_to_integer: an integer as is, a double truncated.
 pub fn number_to_integer(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<Value>))
     requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 1,
-    ensures prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+    ensures
+        prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+        contract(c.p, ix::NUMBER_TO_INTEGER as int, a, old(heap), final(heap), r.0, r.1@),
 {
     if ints::int_arg(heap, a.w[0], Ghost(a.vs@[0])).is_some() {
         return ok(c.p, heap, a.w[0], Ghost(a.vs@[0]));
@@ -217,6 +254,8 @@ pub fn raw_to_float(raw32: bool, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (Pri
     requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 1,
     ensures
         prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+        contract(c.p, if raw32 { ix::RAW32_TO_FLOAT as int } else { ix::RAW_TO_FLOAT as int },
+            a, old(heap), final(heap), r.0, r.1@),
         (!raw32 && r.0 is Success) ==> ({
             let x = toit_spec::v2::prim_core::int_val(old(heap).objs(), a.vs@[0]);
             &&& x is Some && r.1@ is Obj
@@ -229,8 +268,12 @@ pub fn raw_to_float(raw32: bool, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (Pri
     };
     if !raw32 { return double_res(heap, c, x as u64); }
     let u = x as u64;
+    assert(((u >> 32) == 0) == (0 <= x && x <= 0xffff_ffff)) by (bit_vector) requires u == x as u64;
     if (u >> 32u64) != 0 { return fail(c.p, heap, ROOT_OUT_OF_RANGE); }
-    double_res(heap, c, fp::from_raw32(u as u32))
+    let bits = fp::from_raw32(u as u32);
+    let result = double_res(heap, c, bits);
+    proof { assert(toit_spec::v2::prim_core::widening_result(x as u32, bits)); }
+    result
 }
 
 /// compare_to (the result -1, 0, 1) and min_special_compare_to (the
@@ -238,6 +281,8 @@ pub fn raw_to_float(raw32: bool, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (Pri
 pub fn compare_to(min_special: bool, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<Value>))
     requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 2,
     ensures prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+        contract(c.p, if min_special { ix::MIN_SPECIAL_COMPARE_TO as int } else { ix::COMPARE_TO as int },
+            a, old(heap), final(heap), r.0, r.1@),
 {
     let x = num_arg(heap, a.w[0], Ghost(a.vs@[0]));
     let y = num_arg(heap, a.w[1], Ghost(a.vs@[1]));
@@ -246,6 +291,22 @@ pub fn compare_to(min_special: bool, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: 
         _ => return fail(c.p, heap, ROOT_INVALID_ARGUMENT),
     };
     let result = fp::compare_numbers(xi, xb, yi, yb);
+    proof {
+        use toit_spec::spec_helpers::Num;
+        use toit_spec::v2::prim_core::{int_val, numeric_arg};
+        if xi {
+            let i = int_val(heap.objs(), a.vs@[0])->Some_0;
+            assert(i as u64 as i64 == i) by (bit_vector);
+        }
+        if yi {
+            let i = int_val(heap.objs(), a.vs@[1])->Some_0;
+            assert(i as u64 as i64 == i) by (bit_vector);
+        }
+        assert(numeric_arg(heap.objs(), a.vs@[0]) ==
+            Some(if xi { Num::Int(xb as i64 as int) } else { Num::Dbl(xb) }));
+        assert(numeric_arg(heap.objs(), a.vs@[1]) ==
+            Some(if yi { Num::Int(yb as i64 as int) } else { Num::Dbl(yb) }));
+    }
     if min_special {
         ok_bool(c.p, heap, result & 4 != 0)
     } else {

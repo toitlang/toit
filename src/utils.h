@@ -184,7 +184,7 @@ class Utils {
   `from` should be less than the bit-size of T.
   */
   template<typename T>
-  static inline void mark_bits(T* data, int from, int bit_size) {
+  static inline void mark_bits(T* data, int from, uword bit_size) {
     set_or_clear_bits<T, true>(data, from, bit_size);
   }
 
@@ -195,17 +195,26 @@ class Utils {
   `from` should be less than the bit-size of T.
   */
   template<typename T>
-  static inline void clear_bits(T* data, int from, int bit_size) {
+  static inline void clear_bits(T* data, int from, uword bit_size) {
     set_or_clear_bits<T, false>(data, from, bit_size);
+  }
+
+  template<typename T>
+  static inline void fill_words(T* data, uword count, T value) {
+    for (uword i = 0; i < count; ++i) {
+      data[i] = value;
+    }
   }
 
   // See `mark_bits` and `clear_bits`.
   template<typename T, bool set>
-  static inline void set_or_clear_bits(T* data, int from, int bit_size) {
+  static inline void set_or_clear_bits(T* data, int from, uword bit_size) {
     static const int T_BITS = BYTE_BIT_SIZE * sizeof(T);
     static const T ALL_ONES = -1;
     static const T ONE = 1;
-    if (bit_size + from >= T_BITS) {
+    if (bit_size == 0) return;
+    const uword first_bits = T_BITS - from;
+    if (bit_size >= first_bits) {
       // Handle the first word of marking where some bits at the start of the
       // word are not set.
       if (set) {
@@ -227,15 +236,13 @@ class Utils {
     }
 
     data++;
-    ASSERT(bit_size + from >= T_BITS);
-    for (bit_size -= T_BITS - from; bit_size >= T_BITS; bit_size -= T_BITS) {
-      // Full bit_size where whole words are marked.
-      if (set) {
-        *data++ = ALL_ONES;
-      } else {
-        *data++ = 0;
-      }
+    bit_size -= first_bits;
+    uword full_words = bit_size / T_BITS;
+    if (full_words != 0) {
+      fill_words(data, full_words, set ? ALL_ONES : T{0});
+      data += full_words;
     }
+    bit_size %= T_BITS;
     if (bit_size != 0) {
       // The last word where some bits near the end of the word are not marked.
       if (set) {
@@ -329,6 +336,8 @@ class Utils {
     return c >= UTF_8_PREFIX;
   }
 
+  // length counts 16-bit units in a possibly unaligned little-endian byte buffer.
+  static word utf_16le_to_8(const uint8* input, word length, uint8* output = null, word output_length = 0);
   static word utf_16_to_8(const uint16* input, word length, uint8* output = null, word output_length = 0);
   static word utf_8_to_16(const uint8* input, word length, uint16* output = null, word output_length = 0);
 #ifdef TOIT_WINDOWS

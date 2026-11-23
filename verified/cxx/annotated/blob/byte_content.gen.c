@@ -19,9 +19,12 @@ bool Object_byte_content__Programp_uint8pp_wordp_BlobKind_int(Object *self, Prog
              pointer_((void **)content, ?oc0) &*& intptr_(length, ?ol0) &*&
              (strings_only == STRINGS_OR_BYTE_ARRAYS || strings_only == STRINGS_ONLY) &*&
              0 <= depth &*& depth <= Object_MAX_BYTE_CONTENT_DEPTH; @*/
-/*@ ensures [f]heap(objs, H) &*& result ? *content |-> ?a &*& *length |-> ?l &*& [_]blob_result(objs, H, strings_only, a, l, _) :
-            pointer_((void **)content, ?oc) &*& intptr_(length, ?ol) &*& (oc0 == none || oc != none) &*& (ol0 == none || ol != none); @*/
+/*@ ensures [f]heap(objs, H) &*& result ? *content |-> ?a &*& *length |-> ?l &*& l == decoded_length(nat_of_int(Object_MAX_BYTE_CONTENT_DEPTH - depth), H, ids, self, strings_only) &*& [_]blob_result(objs, H, strings_only, a, l, ?b) &*&
+            ((has_tag(H, self, STRING_TAG) || has_tag(H, self, BYTE_ARRAY_TAG)) ? b == self && a == blob_base(H, self) && l == blob_len(H, self) : true) :
+            decoded_length(nat_of_int(Object_MAX_BYTE_CONTENT_DEPTH - depth), H, ids, self, strings_only) == -1 &*& pointer_((void **)content, ?oc) &*& intptr_(length, ?ol) &*& (oc0 == none || oc != none) &*& (ol0 == none || ol != none); @*/
 {
+  //@ nat fuel = nat_of_int(Object_MAX_BYTE_CONTENT_DEPTH - depth);
+  //@ if (!has_tag(H, self, INSTANCE_TAG)) decoded_leaf(fuel, H, ids, self, strings_only);
   if (is_string(self)) {
     String_Bytes bytes;
     //@ good_heap(objs, self);
@@ -53,6 +56,7 @@ bool Object_byte_content__Programp_uint8pp_wordp_BlobKind_int(Object *self, Prog
     if (depth >= Object_MAX_BYTE_CONTENT_DEPTH) {
       return false;
     }
+    //@ succ_int(Object_MAX_BYTE_CONTENT_DEPTH - depth - 1);
     Instance *instance = Instance_cast(self);
     Smi *class_id = HeapObject_class_id(instance);
     //@ heap_facts(instance);
@@ -102,8 +106,9 @@ bool Object_byte_content__Programp_uint8pp_wordp_BlobKind(Object *self, Program 
 /*@ requires [_]program(program, ?ids) &*& prog_ok(ids) == true &*& [?f]heap(?objs, ?H) &*& good(objs, self) == true &*&
              pointer_((void **)content, ?oc0) &*& intptr_(length, ?ol0) &*&
              (strings_only == STRINGS_OR_BYTE_ARRAYS || strings_only == STRINGS_ONLY); @*/
-/*@ ensures [f]heap(objs, H) &*& result ? *content |-> ?a &*& *length |-> ?l &*& [_]blob_result(objs, H, strings_only, a, l, _) :
-            pointer_((void **)content, ?oc) &*& intptr_(length, ?ol) &*& (oc0 == none || oc != none) &*& (ol0 == none || ol != none); @*/
+/*@ ensures [f]heap(objs, H) &*& result ? *content |-> ?a &*& *length |-> ?l &*& l == decoded_length(nat_of_int(Object_MAX_BYTE_CONTENT_DEPTH), H, ids, self, strings_only) &*& [_]blob_result(objs, H, strings_only, a, l, ?b) &*&
+            ((has_tag(H, self, STRING_TAG) || has_tag(H, self, BYTE_ARRAY_TAG)) ? b == self && a == blob_base(H, self) && l == blob_len(H, self) : true) :
+            decoded_length(nat_of_int(Object_MAX_BYTE_CONTENT_DEPTH), H, ids, self, strings_only) == -1 &*& pointer_((void **)content, ?oc) &*& intptr_(length, ?ol) &*& (oc0 == none || oc != none) &*& (ol0 == none || ol != none); @*/
 {
   return Object_byte_content__Programp_uint8pp_wordp_BlobKind_int(self, program, content, length, strings_only, 0);
 }
@@ -114,7 +119,8 @@ bool Object_byte_content__Programp_Blobp_BlobKind(Object *self, Program *program
              blob->address_ |-> _ &*& blob->length_ |-> _ &*&
              (strings_only == STRINGS_OR_BYTE_ARRAYS || strings_only == STRINGS_ONLY); @*/
 /*@ ensures [f]heap(objs, H) &*& blob->address_ |-> ?a &*& blob->length_ |-> ?l &*&
-            result ? [_]blob_result(objs, H, strings_only, a, l, _) : true; @*/
+            result ? [_]blob_result(objs, H, strings_only, a, l, ?b) &*&
+            ((has_tag(H, self, STRING_TAG) || has_tag(H, self, BYTE_ARRAY_TAG)) ? b == self && a == blob_base(H, self) && l == blob_len(H, self) : true) : true; @*/
 {
   uint8 *content;
   word length;
@@ -128,5 +134,28 @@ bool Object_byte_content__Programp_Blobp_BlobKind(Object *self, Program *program
     ((*blob)).length_ = tmp0.length_;
   }
   return result;
+}
+
+// C++: src/objects.cc toit::HeapObject::can_be_toit_finalized
+bool HeapObject_can_be_toit_finalized(HeapObject *self, Program *program)
+//@ requires [_]program(program, ?ids) &*& prog_ok(ids) == true &*& [?f]heap(?objs, ?H) &*& mem(self, objs) == true;
+/*@ ensures [f]heap(objs, H) &*& result == (has_tag(H, self, INSTANCE_TAG) && header_cid(o_hw(H(self))) != map_cid(ids) &&
+            decoded_length(nat_of_int(Object_MAX_BYTE_CONTENT_DEPTH), H, ids, self, STRINGS_OR_BYTE_ARRAYS) == -1); @*/
+{
+  uint8 *dummy1;
+  word dummy2;
+  //@ heap_facts(self);
+  TypeTag tag = HeapObject_class_tag(self);
+  if ((int)tag != (int)INSTANCE_TAG) {
+    return false;
+  }
+  if (Object_byte_content__Programp_uint8pp_wordp_BlobKind(self, program, &dummy1, &dummy2, STRINGS_OR_BYTE_ARRAYS)) {
+    //@ open [_]blob_result(objs, H, STRINGS_OR_BYTE_ARRAYS, _, _, _);
+    return false;
+  }
+  if (is_instance(self) && HeapObject_class_id(self) == Program_map_class_id(program)) {
+    return false;
+  }
+  return true;
 }
 

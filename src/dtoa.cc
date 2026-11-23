@@ -21,28 +21,7 @@
 
 namespace toit {
 
-void double_to_shortest(double value, char* buffer, size_t buffer_size) {
-  if (buffer_size < MAX_BUFFER_SIZE_DOUBLE_TO_SHORTEST) {
-    UNIMPLEMENTED();
-  }
-  bool is_negative = signbit(value);
-  auto v = jkj::dragonbox::to_decimal(value,
-    jkj::dragonbox::policy::sign::ignore
-#ifdef TOIT_FREERTOS
-    , jkj::dragonbox::policy::cache::compact
-#endif
-  );
-
-  char digits[20];
-  uint64 significand = v.significand;
-  int exponent = v.exponent;
-  // TODO(florian): optimize this and avoid the division/modulo.
-  word digit_count = 0;
-  do {
-    digits[digit_count++] = '0' + (significand % 10);
-    significand /= 10;
-  } while (significand != 0);
-
+static int write_shortest_decimal(char* buffer, const char* digits, int digit_count, int exponent, bool is_negative) {
   int pos = 0;
   if (is_negative) {
     buffer[pos++] = '-';
@@ -69,7 +48,6 @@ void double_to_shortest(double value, char* buffer, size_t buffer_size) {
       }
       buffer[pos++] = '.';
       buffer[pos++] = '0';
-      buffer[pos++] = '\0';
     } else if (adjusted_exponent >= 0) {
       // Decimal point inside the number.
       for (int i = digit_count - 1; i >= 0; i--) {
@@ -78,7 +56,6 @@ void double_to_shortest(double value, char* buffer, size_t buffer_size) {
           buffer[pos++] = '.';
         }
       }
-      buffer[pos++] = '\0';
     } else {
       // Decimal point before the number.
       buffer[pos++] = '0';
@@ -89,7 +66,6 @@ void double_to_shortest(double value, char* buffer, size_t buffer_size) {
       for (int i = digit_count - 1; i >= 0; i--) {
         buffer[pos++] = digits[i];
       }
-      buffer[pos++] = '\0';
     }
   } else {
     // Exponential representation.
@@ -116,8 +92,44 @@ void double_to_shortest(double value, char* buffer, size_t buffer_size) {
     buffer[pos++] = '0' + tens;
     adjusted_exponent -= tens * 10;
     buffer[pos++] = '0' + adjusted_exponent;
-    buffer[pos++] = '\0';
   }
+  buffer[pos] = '\0';
+  return pos;
+}
+
+static int format_shortest_decimal(char* buffer, uint64 significand, int exponent, bool is_negative) {
+  // A binary64 shortest decimal has at most 17 digits. Check the conversion
+  // result before using it to size or index either buffer.
+  if (significand >= 100000000000000000ULL || exponent < -340 || exponent > 308) return -1;
+  char digits[17];
+  int digit_count = 0;
+  while (true) {
+    digits[digit_count++] = '0' + (significand % 10);
+    significand /= 10;
+    if (significand == 0) break;
+  }
+  return write_shortest_decimal(buffer, digits, digit_count, exponent, is_negative);
+}
+
+static uint64 shortest_significand(double value, int* exponent) {
+  auto v = jkj::dragonbox::to_decimal(value,
+    jkj::dragonbox::policy::sign::ignore
+#ifdef TOIT_FREERTOS
+    , jkj::dragonbox::policy::cache::compact
+#endif
+  );
+  *exponent = v.exponent;
+  return v.significand;
+}
+
+int double_to_shortest(double value, char* buffer, size_t buffer_size) {
+  if (buffer_size < MAX_BUFFER_SIZE_DOUBLE_TO_SHORTEST) {
+    return -1;
+  }
+  bool is_negative = signbit(value);
+  int exponent;
+  uint64 significand = shortest_significand(value, &exponent);
+  return format_shortest_decimal(buffer, significand, exponent, is_negative);
 }
 
 } // namespace toit

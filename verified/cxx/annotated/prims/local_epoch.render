@@ -1,0 +1,136 @@
+// Copyright (C) 2026 Toit contributors.
+@include ../model/model.cfg
+@verbatim
+#include "integer.gen.h"
+//@ #include "../model/arith.gh"
+#include "local_time.h"
+
+typedef int int32;
+
+/*@
+fixpoint int arg_value(fixpoint(void *, oinfo) H, void *arg) {
+  return is_smi_w((uword)arg) ? smi_val((uword)arg) : o_number(H(arg));
+}
+fixpoint int epoch_error(fixpoint(void *, oinfo) H, list<void *> args) {
+  switch (args) {
+    case nil: return 0;
+    case cons(arg, rest): return
+      !is_smi_w((uword)arg) && !has_tag(H, arg, LARGE_INTEGER_TAG) ? Program_WRONG_OBJECT_TYPE_INDEX :
+      arg_value(H, arg) < INT_MIN || arg_value(H, arg) > INT_MAX ? Program_OUT_OF_RANGE_INDEX : epoch_error(H, rest);
+  }
+}
+fixpoint int local_year(int year) {
+  return year - 1900 < INT_MIN ? year - 1900 + 4294967296 : year - 1900;
+}
+fixpoint int dst_flag(Process *p, void *dst) {
+  return dst == process_null(p) ? -1 : dst == process_boolean(p, true) ? 1 : dst == process_boolean(p, false) ? 0 : 2;
+}
+// Distinct live objects own disjoint header words, even when C compares
+// tagged references by address and the verifier also tracks pointer provenance.
+lemma void same_live_root(void *arg, void *root)
+  requires heap(?objs, ?H) &*& good(objs, arg) == true &*& mem(root, objs) == true &*& (uword)arg == (uword)root;
+  ensures heap(objs, H) &*& arg == root;
+{
+  if (arg != root) {
+    heap_facts(root);
+    good_heap(objs, arg);
+    heap_open(root);
+    open heap_rest(objs, H, root);
+    neq_mem_remove(arg, root, objs);
+    foreach_remove(arg, remove(root, objs));
+    open heap_obj(objs, H)(arg);
+    open header(root, _);
+    open header(arg, _);
+    pointer_distinct(raw(root), raw(arg));
+  }
+}
+
+predicate mktime_observation(int year, int month, int day, int hour, int min, int sec, int dst, option<int> outcome);
+@*/
+
+// Linux mktime normalizes the weekday on success and leaves it untouched
+// on failure. A successful conversion may return timestamp -1.
+time_t mktime(struct tm *t);
+/*@ requires t->tm_year |-> ?y &*& t->tm_mon |-> ?m &*& t->tm_mday |-> ?d &*&
+             t->tm_hour |-> ?h &*& t->tm_min |-> ?min &*& t->tm_sec |-> ?s &*& t->tm_isdst |-> ?dst &*&
+             t->tm_wday |-> -1 &*& t->tm_yday |-> _; @*/
+/*@ ensures t->tm_year |-> _ &*& t->tm_mon |-> _ &*& t->tm_mday |-> _ &*& t->tm_hour |-> _ &*&
+            t->tm_min |-> _ &*& t->tm_sec |-> _ &*& t->tm_isdst |-> _ &*& t->tm_yday |-> _ &*& t->tm_wday |-> ?w &*&
+            (w == -1 ? result == -1 &*& mktime_observation(y, m, d, h, min, s, dst, none) :
+             0 <= w &*& w <= 6 &*& mktime_observation(y, m, d, h, min, s, dst, some(result))); @*/
+
+@prototypes
+@render src/primitive_core.cc toit::primitive_seconds_since_epoch_local
+PRIMITIVE(seconds_since_epoch_local)
+/*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
+             pointer(__args, ?x0) &*&
+             pointer(__args - 1, ?x1) &*&
+             pointer(__args - 2, ?x2) &*&
+             pointer(__args - 3, ?x3) &*&
+             pointer(__args - 4, ?x4) &*&
+             pointer(__args - 5, ?x5) &*&
+             pointer(__args - 6, ?x6) &*&
+             good(objs, x0) && good(objs, x1) && good(objs, x2) && good(objs, x3) && good(objs, x4) && good(objs, x5) && good(objs, x6); @*/
+/*@ ensures [f]process(process, prog, ids) &*& heap(?after, ?H2) &*& grows(objs, H, after, H2) == true &*&
+             pointer(__args, x0) &*&
+             pointer(__args - 1, x1) &*&
+             pointer(__args - 2, x2) &*&
+             pointer(__args - 3, x3) &*&
+             pointer(__args - 4, x4) &*&
+             pointer(__args - 5, x5) &*&
+             pointer(__args - 6, x6) &*&
+             (epoch_error(H, cons(x0, cons(x1, cons(x2, cons(x3, cons(x4, cons(x5, nil))))))) != 0 ?
+                after == objs &*& H2 == H &*& (uword)result == 4 * epoch_error(H, cons(x0, cons(x1, cons(x2, cons(x3, cons(x4, cons(x5, nil))))))) + 3 :
+              dst_flag(process, x6) == 2 ? after == objs &*& H2 == H &*& (uword)result == 4 * Program_WRONG_OBJECT_TYPE_INDEX + 3 :
+              exists<option<int> >(?observation) &*&
+              mktime_observation(local_year(arg_value(H, x0)), arg_value(H, x1), arg_value(H, x2), arg_value(H, x3), arg_value(H, x4), arg_value(H, x5), dst_flag(process, x6), observation) &*&
+              (observation == none ? after == objs &*& H2 == H &*& result == process_null(process) :
+               integer_result(prog, objs, H, after, H2, the(observation), result) == true)); @*/
+{
+  //@ grows_refl(objs, H);
+  //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);
+  //@ error_word(Program_OUT_OF_RANGE_INDEX);
+  ARGS(int32, year, int32, month, int32, day, int32, hour, int32, min, int32, sec, Object, daylight_saving_is_active)
+  //@ close tm_fields(&decomposed);
+  struct tm decomposed;
+  memset(&decomposed, 0, sizeof(decomposed));
+  //@ open tm_fields(&decomposed);
+  // Preserve the wrapped 32-bit tm_year even at the lower limit of the input range.
+  int64 tm_year = static_cast<int64>(year) - 1900;
+  if (tm_year < INT32_MIN) tm_year += 0x100000000LL;
+  decomposed.tm_year = static_cast<int32>(tm_year);
+  decomposed.tm_mon = month;
+  decomposed.tm_mday = day;
+  decomposed.tm_hour = hour;
+  decomposed.tm_min = min;
+  decomposed.tm_sec = sec;
+  if (daylight_saving_is_active == process->null_object()) {
+    //@ same_live_root(x6, process_null(process));
+    decomposed.tm_isdst = -1;
+  } else if (daylight_saving_is_active == process->true_object()) {
+    //@ same_live_root(x6, process_boolean(process, true));
+    decomposed.tm_isdst = 1;
+  } else if (daylight_saving_is_active == process->false_object()) {
+    //@ same_live_root(x6, process_boolean(process, false));
+    decomposed.tm_isdst = 0;
+  } else {
+    FAIL(WRONG_OBJECT_TYPE);
+  }
+#ifdef TOIT_LINUX
+  // A successful mktime can set errno while reading the timezone. It sets
+  // the weekday even when the timestamp itself is -1.
+  decomposed.tm_wday = -1;
+  int64 result = mktime(&decomposed);
+  bool failed = result == -1 && decomposed.tm_wday == -1;
+#else
+  errno = 0;
+  int64 result = mktime(&decomposed);
+  bool failed = result == -1 && errno != 0;
+#endif
+  if (failed) {
+    //@ close exists<option<int> >(none);
+    return process->null_object();
+  }
+  //@ close exists<option<int> >(some(result));
+  return Primitive::integer(result, process);
+}

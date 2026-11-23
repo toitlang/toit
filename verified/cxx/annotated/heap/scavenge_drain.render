@@ -1,0 +1,397 @@
+// Copyright (C) 2026 Toit contributors.
+@include ../model/model.cfg
+@verbatim
+#include "free_list.gen.h"
+//@ #include "scan_positions.gh"
+typedef struct Chunk { struct Chunk *next_; uword scavenge_pointer_; uword end_; } Chunk;
+typedef struct ChunkList { Chunk anchor_; } ChunkList;
+typedef struct SemiSpace { ChunkList chunk_list_; Program *program_; } SemiSpace;
+typedef struct ScavengeVisitor { SemiSpace to_; OldSpace *old_; uint8 *record_; uint8 dummy_record_; } ScavengeVisitor;
+typedef ScavengeVisitor RootCallback;
+
+/*@
+fixpoint Program *image(OldSpace *s);
+fixpoint uint8 *card(uword address);
+// A destination chunk can acquire more objects while the visitor scans it.
+predicate chunk_cursor(Chunk *c; uword cursor, uword limit, bool work) =
+  c->scavenge_pointer_ |-> cursor &*& [_]c->end_ |-> limit &*& 0 < cursor &*& cursor < limit &*&
+  pointer((void **)cursor,?word_at_cursor) &*& work == (word_at_cursor != 0);
+predicate chunks(Chunk *c, Chunk *end; int n, bool work, int room) =
+  c == end ? n == 0 &*& work == false &*& room == 0 :
+  c->next_ |-> ?next &*& chunk_cursor(c,?cur,?limit,?active) &*& chunks(next,end,?m,?later,?suffix) &*&
+  room == limit-cur+suffix &*& limit >= cur &*& 0 <= suffix &*& n == m+1 &*& 0 <= m &*& work == (active || later);
+predicate scanned(list<Chunk *> done, Chunk *first, Chunk *end, Chunk *next, int room) =
+  switch(done) {
+    case nil: return first == next &*& room == 0;
+    case cons(c,cs): return scanned(cs,first,end,c,?prefix) &*& c != end &*& c->next_ |-> next &*&
+      chunk_cursor(c,?cur,?limit,false) &*& limit >= cur &*& room == prefix+limit-cur;
+  };
+lemma void restore_scanned(list<Chunk *> done, Chunk *first, Chunk *end, Chunk *next)
+  requires scanned(done,first,end,next,?prefix) &*& chunks(next,end,?n,false,?suffix) &*& 0 <= n &*& 0 <= suffix;
+  ensures chunks(first,end,n+length(done),false,prefix+suffix);
+{
+  open scanned(done,first,end,next,prefix);
+  switch(done) {
+    case nil:
+    case cons(c,cs):
+      assert chunk_cursor(c,?cur,?limit,false);
+      close chunks(c,end,n+1,false,limit-cur+suffix);
+      restore_scanned(cs,first,end,c);
+  }
+}
+predicate track_bounds(PromotedTrack *track; uword start, PromotedTrack *next) =
+  1 <= (uword)track &*& (uword)track-1+3*sizeof(word) <= UINTPTR_MAX &*& start == (uword)track-1+3*sizeof(word) &*&
+  pointer((void **)raw(track),_) &*& pointer((void **)raw(track)+2,next);
+predicate track_header(PromotedTrack *track; uword start, uword end, PromotedTrack *next) =
+  track_bounds(track,start,next) &*& (uword)track >= 1 &*& uintptr(raw(track)+1,end);
+predicate partition(Program *p, uword current, uword end;);
+predicate range(Program *p, uword current, uword end;) =
+  current <= end &*& end < UINTPTR_MAX &*& 0 < current &*& current % sizeof(word) == 0 &*&
+  (current == end ? true : partition(p,current,end));
+predicate tracks(Program *p, PromotedTrack *t; int length, bool nonempty, int words) =
+  t == 0 ? length == 0 &*& nonempty == false &*& words == 0 :
+  track_header(t,?start,?end,?next) &*& range(p,start,end) &*& tracks(p,next,?n,?more,?later_words) &*&
+  end % sizeof(word) == 0 &*& 0 <= later_words &*& words == track_words(start,end)+later_words &*&
+  0 <= n &*& length == n+1 &*& nonempty == (start != end || more);
+// The newest track's physical header spans the allocation window until flush.
+// Only bytes below the bump pointer contain objects to scan.
+predicate live_tracks(Program *p, PromotedTrack *t, uword top; int count, bool work, int words) =
+  top == 0 || t == 0 ? tracks(p,t,count,work,words) :
+  track_header(t,?lo,?capacity,?next) &*& top <= capacity &*& top % sizeof(word) == 0 &*&
+  range(p,lo,top) &*& tracks(p,next,?n,?later,?rest) &*& 0 <= n &*& 0 <= rest &*&
+  count == n+1 &*& work == (lo != top || later) &*& words == track_words(lo,top)+rest;
+inductive filler = filler(uword,int);
+fixpoint int filler_bytes(list<filler> fs) {
+  switch(fs) {
+    case nil: return 0;
+    case cons(f,tail): return switch(f) { case filler(addr,n): return n+filler_bytes(tail); };
+  }
+}
+predicate retained_fillers(list<filler> fs) =
+  switch(fs) {
+    case nil: return true;
+    case cons(f,tail): return switch(f) { case filler(addr,bytes): return filler_words(addr,bytes) &*& retained_fillers(tail); };
+  };
+lemma void collect_tail(FreeList *table, uword top, uword limit, list<list<region> > bs, list<filler> fs)
+  requires top <= limit &*& length(bs) == 12 &*& retained_fillers(fs) &*&
+    (top == 0 ? limit == 0 &*& banks(table->buckets_,0,bs) : free_table_after(table,bs,top,limit-top));
+  ensures retained_fillers(?after_fillers) &*& banks(table->buckets_,0,?after) &*& length(after) == 12 &*&
+    free_bytes(after)+filler_bytes(after_fillers) == free_bytes(bs)+filler_bytes(fs)+limit-top;
+{
+  if (top != 0) {
+    open free_table_after(table,bs,top,limit-top);
+    if (limit-top < 3*sizeof(word)) {
+      close retained_fillers(cons(filler(top,limit-top),fs));
+    } else {
+      open exists<FreeListRegion*>(?added);
+      int k = size_bucket(limit-top);
+      replace_bytes(bs,k,cons(region(added,limit-top),nth(k,bs)));
+    }
+  }
+}
+predicate allocation_window(OldSpace *s, bool tracking, uword top, int available) =
+  s->top_ |-> top &*& s->limit_ |-> ?limit &*& s->used_ |-> ?used &*&
+  s->tracking_allocations_ |-> tracking &*& banks(s->free_list_.buckets_,0,?bs) &*& length(bs) == 12 &*&
+  retained_fillers(?fillers) &*& available == limit-top+free_bytes(bs)+filler_bytes(fillers) &*& available >= 0 &*& top <= limit &*& limit-top <= used &*&
+  (top == 0 ? limit == 0 : free_storage(top,limit-top));
+predicate unreserved(ScavengeVisitor *v, OldSpace *s; list<int> positions);
+predicate promotions(ScavengeVisitor *v, OldSpace *s, PromotedTrack *head, int budget, bool pending) =
+  allocation_window(s,true,?top,?available) &*& live_tracks(image(s),head,top,?count,pending,?reserved) &*& 0 <= reserved &*&
+  unreserved(v,s,?positions) &*& budget == available+(length(positions)+reserved)*sizeof(word);
+predicate tracking(ScavengeVisitor *v, OldSpace *s, PromotedTrack *head, int budget, bool young, bool pending) =
+  pointer_within_limits(&v->dummy_record_) == true &*& pointer_within_limits(&v->to_.chunk_list_) == true &*&
+  pointer_within_limits(&v->to_.chunk_list_.anchor_) == true &*& [_]v->to_.program_ |-> image(s) &*& v->to_.chunk_list_.anchor_.next_ |-> ?first &*&
+  chunks(first,&v->to_.chunk_list_.anchor_,?n,young,?room) &*& 0 <= n &*& 0 <= room &*&
+  promotions(v,s,head,?old_budget,pending) &*& 0 <= old_budget &*& budget == room+old_budget;
+predicate scan_work(ScavengeVisitor *v, OldSpace *s, int budget, bool young, bool pending, PromotedTrack *head) =
+  [_]s->program_ |-> image(s) &*& s->promoted_track_ |-> head &*& v->record_ |-> _ &*&
+  tracking(v,s,head,budget,young,pending);
+predicate object_size(HeapObject *o, Program *p; int n);
+@*/
+// Visiting a chunk may append successors. Its final cursor is drained. A
+// successful walk consumes scan positions. An empty walk preserves the suffix.
+bool scan_copied_chunk(Program *p, ScavengeVisitor *v, Chunk *c);
+/*@ requires chunk_cursor(c,?start,?limit,?active) &*& c->next_ |-> ?next &*& chunks(next,?end,?n,?later,?suffix) &*&
+    v->record_ |-> &v->dummy_record_ &*& promotions(v,?old,?head,?pool,?pending) &*& old->promoted_track_ |-> head &*& p == image(old); @*/
+/*@ ensures result == active &*& chunk_cursor(c,?last,limit,false) &*& c->next_ |-> ?after &*& chunks(after,end,?m,?more,?new_suffix) &*&
+    v->record_ |-> &v->dummy_record_ &*& promotions(v,old,?new_head,?rest,?o) &*& old->promoted_track_ |-> new_head &*& 0 <= m &*& 0 <= rest &*& 0 <= new_suffix &*& last <= limit &*&
+    (active ? start < last && rest+new_suffix <= pool+suffix && m <= UINTPTR_MAX && (!pending || o) && (!later || more) :
+              last == start && new_suffix == suffix && rest == pool && o == pending && m == n && more == later && after == next && new_head == head); @*/
+//@ terminates;
+void PromotedTrack_zap(PromotedTrack *self);
+//@ requires track_header(self,_,_,_);
+//@ ensures true;
+//@ terminates;
+uint8 *GcMetadata_remembered_set_for(HeapObject *object);
+//@ requires true;
+//@ ensures result == card((uword)object);
+//@ terminates;
+HeapObject *HeapObject_from_address(uword address);
+//@ requires address % sizeof(word) == 0 &*& address < UINTPTR_MAX;
+//@ ensures (uword)result == address+1;
+//@ terminates;
+word HeapObject_size(HeapObject *object,Program *program);
+//@ requires object_size(object,program,?n);
+//@ ensures result == n;
+//@ terminates;
+void HeapObject_roots_do(HeapObject *object,Program *program,RootCallback *visitor);
+/*@ requires partition(program,?current,?end) &*& (uword)object == current+1 &*&
+    visitor->record_ |-> card((uword)object) &*& tracking(visitor,?old,?head,?before,?young,?pending) &*& old->promoted_track_ |-> head &*& program == image(old); @*/
+/*@ ensures old->promoted_track_ |-> ?later &*& tracking(visitor,old,later,?remaining,?y,?o) &*&
+    0 <= remaining &*& remaining <= before &*& (!young || y) &*& (!pending || o) &*& visitor->record_ |-> _ &*&
+    object_size(object,program,?bytes) &*& 0 < bytes &*& current+bytes <= end &*& range(program,current+bytes,end); @*/
+//@ terminates;
+@prototypes
+@render src/objects.h toit::PromotedTrack::start tu=src/third_party/dartino/object_memory_mark_sweep.cc
+  uword start()
+  //@ requires [?f]track_header(self,?start,?end,?next);
+  //@ ensures [f]track_header(self,start,end,next) &*& result == start;
+  //@ terminates;
+  {
+    //@ open [f]track_header(self,start,end,next);
+    //@ open [f]track_bounds(self,start,next);
+    return _raw() + HEADER_SIZE;
+    //@ close [f]track_bounds(self,start,next);
+    //@ close [f]track_header(self,start,end,next);
+  }
+@render src/objects.h toit::PromotedTrack::end tu=src/third_party/dartino/object_memory_mark_sweep.cc
+  uword end() const
+  //@ requires [?f]track_header(self,?start,?end,?next);
+  //@ ensures [f]track_header(self,start,end,next) &*& result == end;
+  //@ terminates;
+  {
+    //@ open [f]track_header(self,start,end,next);
+    return _word_at(END_OFFSET);
+    //@ close [f]track_header(self,start,end,next);
+  }
+@render src/objects.h toit::PromotedTrack::cast type=PromotedTrack*(Object*) tu=src/third_party/dartino/object_memory_mark_sweep.cc
+  static PromotedTrack* cast(Object* value)
+  //@ requires true;
+  //@ ensures result == value;
+  //@ terminates;
+  {
+    ASSERT(is_promoted_track(value));
+    return static_cast<PromotedTrack*>(value);
+  }
+@render src/objects.h toit::PromotedTrack::next tu=src/third_party/dartino/object_memory_mark_sweep.cc
+  PromotedTrack* next()
+  //@ requires [?f]track_header(self,?start,?end,?next);
+  //@ ensures [f]track_header(self,start,end,next) &*& result == next;
+  //@ terminates;
+  {
+    //@ open [f]track_header(self,start,end,next);
+    //@ open [f]track_bounds(self,start,next);
+    Object* result = _at(NEXT_OFFSET);
+    //@ close [f]track_bounds(self,start,next);
+    //@ close [f]track_header(self,start,end,next);
+    if (result == null) return null;
+    return PromotedTrack::cast(result);
+  }
+@render src/third_party/dartino/two_space_heap.h toit::ScavengeVisitor::set_record_to_dummy_address tu=src/third_party/dartino/object_memory_copying.cc
+  void set_record_to_dummy_address()
+  //@ requires self->record_ |-> _ &*& pointer_within_limits(&self->dummy_record_) == true;
+  //@ ensures self->record_ |-> &self->dummy_record_;
+  //@ terminates;
+  {
+    record_ = &dummy_record_;
+  }
+@render src/third_party/dartino/object_memory_copying.cc toit::SemiSpace::complete_scavenge
+bool SemiSpace::complete_scavenge(ScavengeVisitor* visitor)
+/*@ requires self == &visitor->to_ &*& scan_work(visitor,?old,?budget,?young,?promoted,?initial_head) &*& 0 <= budget; @*/
+/*@ ensures result == young &*& scan_work(visitor,old,?left,false,?old_left,_) &*& 0 <= left &*&
+      (result ? left < budget && (!promoted || old_left) : left == budget && old_left == promoted); @*/
+//@ terminates;
+{
+  //@ open scan_work(visitor,old,budget,young,promoted,initial_head);
+  //@ open tracking(visitor,old,_,_,young,promoted);
+  //@ assert self->chunk_list_.anchor_.next_ |-> ?first;
+  //@ Chunk *anchor = &self->chunk_list_.anchor_;
+  //@ list<Chunk *> done = nil;
+  //@ close scanned(done,first,anchor,first,0);
+  bool found_work = false;
+  visitor->set_record_to_dummy_address();
+  for (auto chunk : chunk_list_)
+    /*@ invariant scanned(done,first,anchor,__begin1,?prefix) &*& 0 <= prefix &*& __end1 == anchor &*& chunks(__begin1,anchor,?n,?later,?suffix) &*& 0 <= suffix &*& 0 <= n &*&
+        [_]self->program_ |-> image(old) &*& old->promoted_track_ |-> ?head &*& promotions(visitor,old,head,?pool,?pending) &*&
+        0 <= pool &*& visitor->record_ |-> &visitor->dummy_record_ &*& young == (found_work || later) &*&
+        (found_work ? prefix+suffix+pool < budget && (!promoted || pending) : prefix+suffix+pool == budget && promoted == pending); @*/
+    //@ decreases (pool+prefix+suffix)*(UINTPTR_MAX+1)+n;
+  {
+    //@ open chunks(chunk,anchor,n,later,suffix);
+    if (scan_copied_chunk(program_, visitor, chunk)) found_work = true;
+    //@ assert chunk_cursor(chunk,?last,?limit,false);
+    //@ close scanned(cons(chunk,done),first,anchor,__begin1,prefix+limit-last);
+    //@ done = cons(chunk,done);
+  }
+  //@ open chunks(__begin1,anchor,_,_,_);
+  //@ close chunks(anchor,anchor,0,false,0);
+  //@ restore_scanned(done,first,anchor,anchor);
+  //@ assert promotions(visitor,old,?h,?remaining,?o);
+  //@ assert chunks(first,anchor,_,false,?young_room);
+  //@ close tracking(visitor,old,h,remaining+young_room,false,o);
+  //@ close scan_work(visitor,old,remaining+young_room,false,o,h);
+  return found_work;
+}
+@render src/third_party/dartino/two_space_heap.h toit::ScavengeVisitor::set_record_new_space_pointers tu=src/third_party/dartino/object_memory_mark_sweep.cc
+  void set_record_new_space_pointers(uint8* p)
+  //@ requires self->record_ |-> _;
+  //@ ensures self->record_ |-> p;
+  //@ terminates;
+  { record_ = p; }
+@render src/third_party/dartino/object_memory_mark_sweep.cc toit::scan_promoted_track
+static bool scan_promoted_track(Program* program, ScavengeVisitor* visitor, PromotedTrack* track)
+/*@ requires track_header(track,?first,?limit,?next) &*& range(program,first,limit) &*& limit % sizeof(word) == 0 &*&
+    scan_work(visitor,?old,?budget,?young,?pending,?initial_head) &*& program == image(old) &*& 0 <= budget; @*/
+/*@ ensures track_header(track,first,limit,next) &*& scan_work(visitor,old,?left,?y,?o,?last_head) &*& result == (first != limit) &*&
+    0 <= left &*& (result ? left <= budget && (!young || y) && (!pending || o) : left == budget && y == young && o == pending && last_head == initial_head); @*/
+//@ terminates;
+{
+  uword start = track->start();
+  uword end = track->end();
+  uword current = start;
+  while (current != end)
+    /*@ invariant range(program,current,limit) &*& first <= current &*& scan_work(visitor,old,?b,?y,?o,?head) &*&
+        0 <= b &*& (current == first ? b == budget && y == young && o == pending && head == initial_head :
+        b <= budget && (!young || y) && (!pending || o)); @*/
+    //@ decreases limit-current;
+  {
+    //@ open range(program,current,limit);
+    //@ open scan_work(visitor,old,b,y,o,head);
+    HeapObject* object = HeapObject::from_address(current);
+    visitor->set_record_new_space_pointers(GcMetadata::remembered_set_for(object));
+    object->roots_do(program, visitor);
+    //@ assert tracking(visitor,old,?new_head,?rest,?y2,?o2);
+    //@ close scan_work(visitor,old,rest,y2,o2,new_head);
+    current += object->size(program);
+  }
+  //@ open range(program,current,limit);
+  return start != end;
+}
+@render src/third_party/dartino/object_memory_mark_sweep.cc toit::OldSpace::start_tracking_allocations
+void OldSpace::start_tracking_allocations()
+//@ requires allocation_window(self,false,?top,?available) &*& self->promoted_track_ |-> 0;
+//@ ensures allocation_window(self,true,0,available) &*& self->promoted_track_ |-> 0;
+//@ terminates;
+{
+  //@ open allocation_window(self,false,top,available);
+  //@ assert self->limit_ |-> ?limit;
+  //@ assert banks(self->free_list_.buckets_,0,?bs);
+  //@ assert retained_fillers(?fs);
+  //@ close exists((uword)0);
+  flush();
+  ASSERT(!tracking_allocations_);
+  ASSERT(promoted_track_ == null);
+  tracking_allocations_ = true;
+  //@ collect_tail(&self->free_list_,top,limit,bs,fs);
+  //@ close allocation_window(self,true,0,available);
+}
+@render src/third_party/dartino/object_memory_mark_sweep.cc toit::OldSpace::start_scavenge
+void OldSpace::start_scavenge()
+//@ requires allocation_window(self,false,?top,?available) &*& self->promoted_track_ |-> 0;
+//@ ensures allocation_window(self,true,0,available) &*& self->promoted_track_ |-> 0;
+//@ terminates;
+{
+  start_tracking_allocations();
+}
+@render src/third_party/dartino/object_memory_mark_sweep.cc toit::OldSpace::end_tracking_allocations
+void OldSpace::end_tracking_allocations()
+//@ requires self->tracking_allocations_ |-> true &*& self->promoted_track_ |-> 0;
+//@ ensures self->tracking_allocations_ |-> false &*& self->promoted_track_ |-> 0;
+//@ terminates;
+{
+  ASSERT(tracking_allocations_);
+  ASSERT(promoted_track_ == null);
+  tracking_allocations_ = false;
+}
+@render src/third_party/dartino/object_memory_mark_sweep.cc toit::OldSpace::end_scavenge
+void OldSpace::end_scavenge()
+//@ requires self->tracking_allocations_ |-> true &*& self->promoted_track_ |-> 0;
+//@ ensures self->tracking_allocations_ |-> false &*& self->promoted_track_ |-> 0;
+//@ terminates;
+{
+  end_tracking_allocations();
+}
+@render src/third_party/dartino/object_memory_mark_sweep.cc toit::OldSpace::complete_scavenge
+bool OldSpace::complete_scavenge(
+    ScavengeVisitor* visitor)
+/*@ requires scan_work(visitor,self,?budget,?young,?original_work,?head) &*& 0 <= budget; @*/
+/*@ ensures result == original_work &*& scan_work(visitor,self,?left,?young_left,?old_left,?last_head) &*& 0 <= left &*&
+      (result ? left < budget && (!young || young_left) : left == budget && !old_left && young_left == young && last_head == 0); @*/
+//@ terminates;
+{
+  //@ open scan_work(visitor,self,budget,young,original_work,head);
+  //@ open tracking(visitor,self,head,budget,young,original_work);
+  //@ assert chunks(_,_,_,young,?young_room);
+  //@ open promotions(visitor,self,head,_,original_work);
+  //@ open allocation_window(self,true,?top,?available);
+  //@ assert self->limit_ |-> ?limit;
+  //@ assert banks(self->free_list_.buckets_,0,?bs);
+  //@ assert retained_fillers(?fs);
+  //@ open live_tracks(image(self),head,top,?original_count,original_work,?original_words);
+  /*@ if (head != 0) {
+    if (top == 0) { open tracks(image(self),head,original_count,original_work,original_words); }
+    open track_header(head,?lo,?cap,?next);
+    close track_end(head,cap);
+    close exists(cap);
+  } else { close exists((uword)0); } @*/
+  flush();
+  /*@ if (head != 0) {
+    open track_end(head,?end);
+    assert track_bounds(head,?lo,?next);
+    close track_header(head,lo,end,next);
+    close tracks(image(self),head,original_count,original_work,original_words);
+  } @*/
+  //@ collect_tail(&self->free_list_,top,limit,bs,fs);
+  //@ close allocation_window(self,true,0,available);
+  //@ close tracks(image(self),0,0,false,0);
+  //@ close live_tracks(image(self),0,0,0,false,0);
+  //@ assert unreserved(visitor,self,?positions);
+  //@ close promotions(visitor,self,0,available+length(positions)*sizeof(word),false);
+  //@ close tracking(visitor,self,0,young_room+available+length(positions)*sizeof(word),young,false);
+  ASSERT(tracking_allocations_);
+  bool found_work = false;
+  PromotedTrack* promoted = promoted_track_;
+  promoted_track_ = null;
+  //@ assert tracking(visitor,self,0,?pool,young,false);
+  //@ close scan_work(visitor,self,pool,young,false,0);
+  while (promoted)
+    /*@ invariant tracks(image(self),promoted,?count,?more,?reserved) &*& scan_work(visitor,self,?b,?y,?o,?live) &*&
+        original_work == (found_work || more) &*& 0 <= b &*&
+        (found_work ? b+reserved*sizeof(word) < budget && (!young || y) : b+reserved*sizeof(word) == budget && y == young && !o && live == 0); @*/
+    //@ decreases count;
+  {
+    //@ open tracks(image(self),promoted,count,more,reserved);
+    //@ assert track_header(promoted,?lo,?hi,?following);
+    //@ open range(image(self),lo,hi);
+    //@ aligned_distance(lo,hi);
+    //@ close range(image(self),lo,hi);
+    //@ open scan_work(visitor,self,b,y,o,live);
+    //@ close scan_work(visitor,self,b,y,o,live);
+    if (scan_promoted_track(program_, visitor, promoted)) found_work = true;
+    PromotedTrack* previous = promoted;
+    promoted = promoted->next();
+    previous->zap();
+  }
+  //@ open tracks(image(self),promoted,_,_,_);
+  return found_work;
+}
+@render src/third_party/dartino/two_space_heap.h toit::ScavengeVisitor::complete_scavenge tu=src/third_party/dartino/two_space_heap.cc
+  void complete_scavenge()
+  /*@ requires self->old_ |-> ?old &*& pointer_within_limits(&self->to_) == true &*&
+        scan_work(self,old,?budget,?young,?promoted,_) &*& 0 <= budget; @*/
+  /*@ ensures self->old_ |-> old &*& scan_work(self,old,?left,false,false,0) &*& 0 <= left &*& left <= budget &*&
+        (young || promoted ? left < budget : left == budget); @*/
+  //@ terminates;
+  {
+    bool work_found = true;
+    while (work_found)
+      /*@ invariant self->old_ |-> old &*& scan_work(self,old,?remaining,?y,?o,?head) &*& 0 <= remaining &*& remaining <= budget &*&
+            (!young && !promoted ? remaining == budget : true) &*&
+            (remaining == budget ? y == young && o == promoted : true) &*& (!work_found ? !y && !o && head == 0 : true); @*/
+      //@ decreases remaining + (work_found ? 1 : 0);
+    {
+      bool young_work = to_.complete_scavenge(this);
+      bool old_work = old_->complete_scavenge(this);
+      work_found = young_work || old_work;
+    }
+  }

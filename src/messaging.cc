@@ -163,14 +163,7 @@ bool MessageEncoder::encode_any(Object* object) {
   if (is_too_large()) return false;
 
   if (is_smi(object)) {
-    word value = Smi::value(object);
-    if (value >= 0) {
-      write_uint8(TAG_POSITIVE_SMI);
-      write_cardinal(value);
-    } else {
-      write_uint8(TAG_NEGATIVE_SMI);
-      write_cardinal(-value);
-    }
+    encode_smi(object);
     return true;
   }
 
@@ -183,26 +176,7 @@ bool MessageEncoder::encode_any(Object* object) {
       if (!is_smi(size)) return false;
       return encode_list(instance, 0, Smi::value(size));
     } else if (class_id == program->list_slice_class_id()) {
-      Object* from_object = instance->at(Instance::LIST_SLICE_FROM_INDEX);
-      Object* to_object = instance->at(Instance::LIST_SLICE_TO_INDEX);
-      if (!is_smi(from_object) || !is_smi(to_object)) return false;
-      word from = Smi::value(from_object);
-      word to = Smi::value(to_object);
-      Object* backing_object = instance->at(Instance::LIST_SLICE_LIST_INDEX);
-      if (is_array(backing_object)) {
-        Array* backing = Array::cast(backing_object);
-        return encode_array(backing, from, to);
-      } else if (is_instance(backing_object)) {
-        Instance* backing = Instance::cast(backing_object);
-        Smi* backing_class_id = backing->class_id();
-        if (backing_class_id != program->list_class_id()) {
-          problematic_class_id_ = Smi::value(backing_class_id);
-          return false;
-        }
-        return encode_list(backing, from, to);
-      } else {
-        return false;
-      }
+      return encode_list_slice(instance);
     } else if (class_id == program->map_class_id()) {
       return encode_map(instance);
     } else if (class_id == program->byte_array_cow_class_id()) {
@@ -248,6 +222,17 @@ bool MessageEncoder::encode_any(Object* object) {
   return false;
 }
 
+void MessageEncoder::encode_smi(Object* object) {
+  word value = Smi::value(object);
+  if (value >= 0) {
+    write_uint8(TAG_POSITIVE_SMI);
+    write_cardinal(value);
+  } else {
+    write_uint8(TAG_NEGATIVE_SMI);
+    write_cardinal(-value);
+  }
+}
+
 bool MessageEncoder::encode_array(Array* object, word from, word to) {
   // The range comes from the fields of lists and list slices, which Toit
   // code can set to anything.
@@ -261,6 +246,29 @@ bool MessageEncoder::encode_array(Array* object, word from, word to) {
     if (!encode_any(object->at(i))) return false;
   }
   return true;
+}
+
+bool MessageEncoder::encode_list_slice(Instance* instance) {
+  Object* from_object = instance->at(Instance::LIST_SLICE_FROM_INDEX);
+  Object* to_object = instance->at(Instance::LIST_SLICE_TO_INDEX);
+  if (!is_smi(from_object) || !is_smi(to_object)) return false;
+  word from = Smi::value(from_object);
+  word to = Smi::value(to_object);
+  Object* backing_object = instance->at(Instance::LIST_SLICE_LIST_INDEX);
+  if (is_array(backing_object)) {
+    Array* backing = Array::cast(backing_object);
+    return encode_array(backing, from, to);
+  } else if (is_instance(backing_object)) {
+    Instance* backing = Instance::cast(backing_object);
+    Smi* backing_class_id = backing->class_id();
+    if (backing_class_id != program_->list_class_id()) {
+      problematic_class_id_ = Smi::value(backing_class_id);
+      return false;
+    }
+    return encode_list(backing, from, to);
+  } else {
+    return false;
+  }
 }
 
 bool MessageEncoder::encode_list(Instance* instance, word from, word to) {
@@ -707,7 +715,9 @@ void MessageDecoder::deallocate() {
       word length = read_cardinal();
       // Maps have two nested encodings per entry.
       if (tag == TAG_MAP) length *= 2;
-      for (word i = 0; i < length; i++) deallocate();
+      for (word i = 0; i < length; i++) {
+        deallocate();
+      }
       break;
     }
     case TAG_DOUBLE:

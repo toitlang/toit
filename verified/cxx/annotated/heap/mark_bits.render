@@ -1,0 +1,39 @@
+// Copyright (C) 2026 Toit contributors.
+@include ../model/model.cfg
+@overloaded Utils::fill_words
+@verbatim
+#include "../model/objects.gen.h"
+
+/*@
+lemma void extend_marked(unsigned int *data, int n, unsigned int value)
+  requires uints(data,n,?xs) &*& all_eq(xs,value) == true &*& data[n] |-> value;
+  ensures uints(data,n+1,?ys) &*& all_eq(ys,value) == true;
+{
+  open uints(data,n,xs);
+  if (n == 0) {
+    close uints(data+1,0,nil);
+    close uints(data,1,cons(value,nil));
+  } else {
+    extend_marked(data+1,n-1,value);
+    assert uints(data+1,n,?tail);
+    close uints(data,n+1,cons(value,tail));
+  }
+}
+@*/
+
+@render src/utils.h toit::Utils::fill_words tu=src/third_party/dartino/gc_metadata.cc type=void(unsignedint*,uword,unsignedint)
+  static inline void fill_words(T* data, uword count, T value)
+  //@ requires uints(data,count,?original);
+  //@ ensures uints(data,length(original),?xs) &*& all_eq(xs,value) == true;
+  {
+    //@ close uints(data,0,nil);
+    for (uword i = 0; i < count; ++i)
+    /*@ invariant uints(data,i,?prefix) &*& all_eq(prefix,value) == true &*&
+                  i <= count &*& uints(data+i,count-i,_); @*/
+    {
+      //@ open uints(data+i,count-i,_);
+      data[i] = value;
+      //@ extend_marked(data,i,value);
+    }
+    //@ open uints(data+count,0,_);
+  }

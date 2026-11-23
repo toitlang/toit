@@ -12,7 +12,7 @@
 set -uo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/env.sh"
 cd "$ANNOTATED_DIR"
-[ $# -eq 0 ] && set -- $(ls */*.gen.constants.cc)
+[ $# -eq 0 ] && set -- $(ls */*.gen.constants.cc */*.abi.cc)
 CLANG="${CLANGXX:-clang++}"
 vm_cxx_flags "$REPO_ROOT"
 mkdir -p "$ACXX_WORK/logs"

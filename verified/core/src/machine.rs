@@ -1317,7 +1317,7 @@ enum Num {
 }
 
 /// `Interpreter::compare_numbers` (src/interpreter_core.cc); the mixed
-/// case is `spec_helpers::compare_mixed` (uninterpreted in the spec).
+/// case is `spec_helpers::compare_mixed`.
 fn compare_num(a: Num, b: Num) -> u8 {
     const SIMPLE_LESS: u8 = 29;
     const SIMPLE_EQUAL: u8 = 114;

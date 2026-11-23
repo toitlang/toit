@@ -1,0 +1,217 @@
+// Copyright (C) 2026 Toit contributors.
+@include ../model/model.cfg
+@header utf_16_to_8.gen.h
+@verbatim
+#include "../model/objects.gen.h"
+//@ #include "../model/arith.gh"
+
+/*@
+fixpoint list<unsigned char> scalar_bytes(int c) {
+  return c <= 127 ? cons(c, nil) :
+         c <= 2047 ? cons(192 + c / 64, cons(128 + c % 64, nil)) :
+         c <= 65535 ? cons(224 + c / 4096, cons(128 + (c / 64) % 64, cons(128 + c % 64, nil))) :
+         cons(240 + c / 262144, cons(128 + (c / 4096) % 64, cons(128 + (c / 64) % 64, cons(128 + c % 64, nil))));
+}
+
+// A matched surrogate pair contributes one scalar. Skip its low surrogate
+// on the next recursive step. Each unpaired surrogate contributes U+FFFD.
+fixpoint list<unsigned char> utf8_encoding(list<unsigned short> units, bool skip) {
+  switch (units) {
+    case nil: return nil;
+    case cons(w, rest):
+      return skip ? utf8_encoding(rest, false) :
+        0xd800 <= w && w <= 0xdbff && rest != nil && 0xdc00 <= head(rest) && head(rest) <= 0xdfff ?
+          append(scalar_bytes(65536 + (w % 1024) * 1024 + head(rest) % 1024), utf8_encoding(rest, true)) :
+          append(scalar_bytes(0xd800 <= w && w <= 0xdfff ? 65533 : w), utf8_encoding(rest, false));
+  }
+}
+
+fixpoint list<unsigned short> utf16le_units(list<unsigned char> bytes, bool high, int low) {
+  switch (bytes) {
+    case nil: return nil;
+    case cons(b, rest): return high ? cons(low + 256 * b, utf16le_units(rest, false, 0)) : utf16le_units(rest, true, b);
+  }
+}
+
+lemma void unit_count(list<unsigned char> bytes, int n)
+  requires 0 <= n &*& length(bytes) == 2 * n;
+  ensures length(utf16le_units(bytes, false, 0)) == n;
+{
+  switch (bytes) {
+    case nil:
+    case cons(lo, tail):
+      switch (tail) { case nil: case cons(hi, rest): unit_count(rest, n - 1); }
+  }
+}
+
+lemma void unit_at(uint8 *p, int n, int i)
+  requires [?f]uchars(p, 2 * n, ?bs) &*& 0 <= i &*& i < n;
+  ensures [f]uchars(p, 2 * n, bs) &*&
+          nth(i, utf16le_units(bs, false, 0)) == nth(2 * i, bs) + 256 * nth(2 * i + 1, bs) &*&
+          0 <= nth(2 * i, bs) &*& nth(2 * i, bs) <= 255 &*&
+          0 <= nth(2 * i + 1, bs) &*& nth(2 * i + 1, bs) <= 255;
+{
+  open [f]uchars(p, 2 * n, bs);
+  open [f]uchars(p + 1, 2 * n - 1, _);
+  if (i == 0) {
+    u_character_limits(p);
+    u_character_limits(p + 1);
+  } else {
+    unit_at(p + 2, n - 1, i - 1);
+  }
+  close [f]uchars(p + 1, 2 * n - 1, _);
+  close [f]uchars(p, 2 * n, bs);
+}
+
+lemma void emit_byte(list<unsigned char> prior, int index, unsigned char value, list<unsigned char> rest)
+  requires 0 <= index &*& index < length(prior);
+  ensures append(take(index + 1, update(index, value, prior)), rest) == append(take(index, prior), cons(value, rest));
+{
+  switch (prior) {
+    case nil:
+    case cons(first, tail):
+      if (index > 0) emit_byte(tail, index - 1, value, rest);
+  }
+}
+@*/
+
+@prototypes
+@render src/utils.cc toit::read_utf16le_unit
+static uint16 read_utf16le_unit(const uint8* input, word index)
+/*@ requires [?f]uchars((uint8 *)input, ?len, ?bs) &*& len % 2 == 0 &*&
+             0 <= index &*& index < len / 2 &*& len <= 0x3fffffff; @*/
+/*@ ensures [f]uchars((uint8 *)input, len, bs) &*& result == nth(index, utf16le_units(bs, false, 0)) &*& 0 <= result &*& result <= 65535; @*/
+{
+  //@ div_rem_nonneg(len, 2);
+  //@ unit_at((uint8 *)input, len / 2, index);
+  uword offset = static_cast<uword>(index) * sizeof(uint16);
+  return input[offset] + (input[offset + 1] << 8);
+}
+
+@render src/utils.cc toit::Utils::utf_16le_to_8
+word Utils::utf_16le_to_8(const uint8* input, word length, uint8* output, word output_length)
+/*@ requires [?f]uchars((uint8 *)input, 2 * length, ?bs) &*& 0 <= length &*& length <= 0x1fffffff &*&
+             (output == 0 ? true : uchars(output, output_length, _) &*& 0 <= output_length); @*/
+/*@ ensures [f]uchars((uint8 *)input, 2 * length, bs) &*& -1 <= result &*& result <= 3 * length &*&
+            (output == 0 ? result == length(utf8_encoding(utf16le_units(bs, false, 0), false)) :
+             uchars(output, output_length, ?out) &*&
+             (result == -1 ? output_length < length(utf8_encoding(utf16le_units(bs, false, 0), false)) :
+              result <= output_length && result == length(utf8_encoding(utf16le_units(bs, false, 0), false)) &&
+              take(result, out) == utf8_encoding(utf16le_units(bs, false, 0), false))); @*/
+{
+  //@ list<unsigned short> ws = utf16le_units(bs, false, 0);
+  //@ unit_count(bs, length);
+  word size = 0;
+  for (word i = 0; i < length; i++)
+  /*@ invariant [f]uchars((uint8 *)input, 2 * length, bs) &*& 0 <= i &*& i <= length &*&
+                0 <= size &*& size <= 3 * i &*& size + length(utf8_encoding(drop(i, ws), false)) == length(utf8_encoding(ws, false)) &*&
+                (output == 0 ? true : uchars(output, output_length, ?out) &*& size <= output_length &*&
+                 append(take(size, out), utf8_encoding(drop(i, ws), false)) == utf8_encoding(ws, false)); @*/
+  {
+    //@ drop_n_plus_one(i, ws);
+    int c = read_utf16le_unit(input, i);
+    if (Utils::MIN_SURROGATE <= c && c <= Utils::MAX_SURROGATE) {
+      // Surrogate pairs.
+      int decoded = 0xfffd;  // Substitute character for illegal sequences.
+      if (i + 1 != length) {
+        //@ drop_n_plus_one(i + 1, ws);
+        uint16 part2 = read_utf16le_unit(input, i + 1);
+        if (0xd800 <= c && c <= 0xdbff && 0xdc00 <= part2 && part2 <= 0xdfff) {
+          //@ bitand_pow_nat(c, N10);
+          //@ bitand_pow_nat(part2, N10);
+          //@ div_rem_nonneg(c, 1024);
+          //@ div_rem_nonneg(part2, 1024);
+          decoded = 0x10000 + ((c & 0x3ff) << 10) + (part2 & 0x3ff);
+          i++;
+        }
+      }
+      //@ assert decoded == 0xfffd || (0x10000 <= decoded && decoded <= 0x10ffff);
+      c = decoded;
+    }
+    //@ list<unsigned char> rest = utf8_encoding(drop(i + 1, ws), false);
+    if (c <= Utils::MAX_ASCII) {
+      if (output) {
+        if (size == output_length) return -1;
+        //@ assert uchars(output, output_length, ?prior0);
+        //@ emit_byte(prior0, size + 0, c, append(drop(1, scalar_bytes(c)), rest));
+        output[size] = c;
+      }
+      size++;
+    } else if (c <= Utils::MAX_TWO_BYTE_UNICODE) {
+      if (output) {
+        if (size + 1 >= output_length) return -1;
+        //@ shiftright_div(c, N6);
+        //@ assert uchars(output, output_length, ?prior0);
+        //@ emit_byte(prior0, size + 0, 0xc0 + (c >> 6), append(drop(1, scalar_bytes(c)), rest));
+        output[size]     = 0xc0 + (c >> 6);
+        //@ bitand_pow_nat(c, N6);
+        //@ div_rem_nonneg(c, 64);
+        //@ assert uchars(output, output_length, ?prior1);
+        //@ emit_byte(prior1, size + 1, 128 + (c & 63), append(drop(2, scalar_bytes(c)), rest));
+        output[size + 1] = Utils::UTF_8_PAYLOAD + (c & Utils::UTF_8_MASK);
+      }
+      size += 2;
+    } else if (c <= Utils::MAX_THREE_BYTE_UNICODE) {
+      if (output) {
+        if (size + 2 >= output_length) return -1;
+        //@ shiftright_div(c, N12);
+        //@ assert uchars(output, output_length, ?prior0);
+        //@ emit_byte(prior0, size + 0, 0xe0 + (c >> 12), append(drop(1, scalar_bytes(c)), rest));
+        output[size]     = 0xe0 + (c >> 12);
+        //@ shiftright_div(c, N6);
+        //@ bitand_pow_nat(c >> 6, N6);
+        //@ div_rem_nonneg(c >> 6, 64);
+        //@ assert uchars(output, output_length, ?prior1);
+        //@ emit_byte(prior1, size + 1, 128 + ((c >> 6) & 63), append(drop(2, scalar_bytes(c)), rest));
+        output[size + 1] = Utils::UTF_8_PAYLOAD + ((c >> 6) & Utils::UTF_8_MASK);
+        //@ bitand_pow_nat(c, N6);
+        //@ div_rem_nonneg(c, 64);
+        //@ assert uchars(output, output_length, ?prior2);
+        //@ emit_byte(prior2, size + 2, 128 + (c & 63), append(drop(3, scalar_bytes(c)), rest));
+        output[size + 2] = Utils::UTF_8_PAYLOAD + (c & Utils::UTF_8_MASK);
+      }
+      size += 3;
+    } else {
+      if (output) {
+        if (size + 3 >= output_length) return -1;
+        //@ shiftright_div(c, nat_of_int(18));
+        //@ assert uchars(output, output_length, ?prior0);
+        //@ emit_byte(prior0, size + 0, 0xf0 + (c >> 18), append(drop(1, scalar_bytes(c)), rest));
+        output[size]     = 0xf0 + (c >> 18);
+        //@ shiftright_div(c, N12);
+        //@ bitand_pow_nat(c >> 12, N6);
+        //@ div_rem_nonneg(c >> 12, 64);
+        //@ assert uchars(output, output_length, ?prior1);
+        //@ emit_byte(prior1, size + 1, 128 + ((c >> 12) & 63), append(drop(2, scalar_bytes(c)), rest));
+        output[size + 1] = Utils::UTF_8_PAYLOAD + ((c >> 12) & Utils::UTF_8_MASK);
+        //@ shiftright_div(c, N6);
+        //@ bitand_pow_nat(c >> 6, N6);
+        //@ div_rem_nonneg(c >> 6, 64);
+        //@ assert uchars(output, output_length, ?prior2);
+        //@ emit_byte(prior2, size + 2, 128 + ((c >> 6) & 63), append(drop(3, scalar_bytes(c)), rest));
+        output[size + 2] = Utils::UTF_8_PAYLOAD + ((c >> 6) & Utils::UTF_8_MASK);
+        //@ bitand_pow_nat(c, N6);
+        //@ div_rem_nonneg(c, 64);
+        //@ assert uchars(output, output_length, ?prior3);
+        //@ emit_byte(prior3, size + 3, 128 + (c & 63), append(drop(4, scalar_bytes(c)), rest));
+        output[size + 3] = Utils::UTF_8_PAYLOAD + (c & Utils::UTF_8_MASK);
+      }
+      size += 4;
+    }
+  }
+  return size;
+}
+
+@render src/utils.cc toit::Utils::utf_16_to_8 type=word(constuint16*,word,uint8*,word)
+word Utils::utf_16_to_8(const uint16* input, word length, uint8* output, word output_length)
+/*@ requires [?f]uchars((uint8 *)input, 2 * length, ?bs) &*& 0 <= length &*& length <= 0x1fffffff &*&
+             (output == 0 ? true : uchars(output, output_length, _) &*& 0 <= output_length); @*/
+/*@ ensures [f]uchars((uint8 *)input, 2 * length, bs) &*& -1 <= result &*& result <= 3 * length &*&
+            (output == 0 ? result == length(utf8_encoding(utf16le_units(bs, false, 0), false)) :
+             uchars(output, output_length, ?out) &*&
+             (result == -1 ? output_length < length(utf8_encoding(utf16le_units(bs, false, 0), false)) :
+              result <= output_length && result == length(utf8_encoding(utf16le_units(bs, false, 0), false)) &&
+              take(result, out) == utf8_encoding(utf16le_units(bs, false, 0), false))); @*/
+{
+  return utf_16le_to_8(reinterpret_cast<const uint8*>(input), length, output, output_length);
+}

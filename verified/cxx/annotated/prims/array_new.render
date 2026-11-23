@@ -1,0 +1,39 @@
+// Copyright (C) 2026 Toit contributors.
+@include ../model/model.cfg
+@verbatim
+#include "array_allocation.gen.h"
+#include "argument_error.gen.h"
+//@ #include "../model/truncate.gh"
+
+/*@
+fixpoint int new_array_error(fixpoint(void *, oinfo) H, void *length) {
+  return !is_smi_w((uword)length) ? (has_tag(H, length, LARGE_INTEGER_TAG) ? Program_OUT_OF_RANGE_INDEX : Program_WRONG_OBJECT_TYPE_INDEX) :
+    smi_val((uword)length) < INT_MIN || smi_val((uword)length) > INT_MAX ? Program_OUT_OF_RANGE_INDEX :
+    smi_val((uword)length) < 0 ? Program_OUT_OF_BOUNDS_INDEX :
+    smi_val((uword)length) > Array_ARRAYLET_SIZE ? Program_OUT_OF_RANGE_INDEX : 0;
+}
+@*/
+@prototypes
+@render src/primitive_core.cc toit::primitive_array_new truncating
+PRIMITIVE(array_new)
+/*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
+             pointer(__args, ?n) &*& pointer(__args - 1, ?v) &*& good(objs, n) && good(objs, v); @*/
+/*@ ensures [f]process(process, prog, ids) &*& heap(?after, ?H2) &*& pointer(__args, n) &*& pointer(__args - 1, v) &*&
+            grows(objs, H, after, H2) == true &*&
+            (new_array_error(H, n) != 0 ? after == objs && H2 == H && (uword)result == 4 * new_array_error(H, n) + 3 :
+             smi_val((uword)n) == 0 ? after == objs && H2 == H && result == empty_array_root(prog) :
+             filled_array_result(prog, objs, H, after, H2, smi_val((uword)n), v, result) == true); @*/
+{
+  //@ grows_refl(objs, H);
+  //@ error_word(Program_OUT_OF_RANGE_INDEX);
+  //@ error_word(Program_OUT_OF_BOUNDS_INDEX);
+  //@ close valid_arg(n, objs);
+  //@ leak valid_arg(n, objs);
+  //@ truncate_signed_limits(smi_val((uword)n), N31);
+  //@ if (INT_MIN <= smi_val((uword)n) && smi_val((uword)n) <= INT_MAX) truncate_signed_id(smi_val((uword)n), N31);
+  ARGS(int, length, Object, filler);
+  if (length == 0) return process->program()->empty_array();
+  if (length < 0) FAIL(OUT_OF_BOUNDS);
+  if (length > Array::ARRAYLET_SIZE) FAIL(OUT_OF_RANGE);
+  return Primitive::allocate_array(length, filler, process);
+}

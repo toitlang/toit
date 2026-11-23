@@ -40,6 +40,7 @@ main:
   test-local-default-zone
   test-local-fixed-offset
   test-local-daylight-saving
+  test-local-epoch-minus-one
 
 test-utc:
   check-utc 0 [1970, 1, 1, 0, 0, 0, 4, 0]
@@ -180,6 +181,16 @@ test-local-daylight-saving:
   // The POSIX C libraries apply the rules after 1970.
   if system.platform != system.PLATFORM-WINDOWS:
     check-local 300_000_000 [1979, 7, 5, 1, 20, 0, 4, 185] --is-dst
+
+test-local-epoch-minus-one:
+  if system.platform != system.PLATFORM-LINUX: return
+  // Change TZ without calling tzset. On glibc the first mktime can leave
+  //   ENOENT from the zone-file lookup even though the conversion succeeded.
+  set-env_ "TZ" "UTC0"
+  expect-equals -1 (Time.local 1969 12 31 23 59 59).s-since-epoch
+
+set-env_ key/string value/string:
+  #primitive.core.set-env
 
 list-equals a/List b/List -> bool:
   if a.size != b.size: return false

@@ -1,0 +1,202 @@
+// Copyright (C) 2026 Toit contributors.
+@include ../model/model.cfg
+@verbatim
+#include "../model/objects.gen.h"
+//@ #include "../model/arith.gh"
+
+typedef struct Method { uint8 *bytes_; } Method;
+typedef struct V2MethodTable { uint32 *records_; word length_; } V2MethodTable;
+typedef struct ProcessGroup { V2MethodTable *v2_methods_; } ProcessGroup;
+struct Process { Method spawn_method_; ProcessGroup *group_; };
+
+/*@
+fixpoint int record_entry(unsigned int r) { return r >> 8; }
+fixpoint bool ordered_from(int lower, list<int> xs) {
+  switch (xs) {
+    case nil: return true;
+    case cons(x, rest): return lower < x && ordered_from(x, rest);
+  }
+}
+lemma void ordered_lower(int lower, list<int> xs, int i)
+  requires ordered_from(lower, xs) == true &*& 0 <= i &*& i < length(xs);
+  ensures lower < nth(i, xs);
+{
+  switch (xs) { case nil: case cons(x, rest): if (i > 0) ordered_lower(x, rest, i - 1); }
+}
+lemma void ordered_pair(int lower, list<int> xs, int i, int j)
+  requires ordered_from(lower, xs) == true &*& 0 <= i &*& i < j &*& j < length(xs);
+  ensures nth(i, xs) < nth(j, xs);
+{
+  switch (xs) { case nil: case cons(x, rest):
+    if (i == 0) ordered_lower(x, rest, j - 1); else ordered_pair(x, rest, i - 1, j - 1);
+  }
+}
+lemma void entry_at(uint32 *base, int i)
+  requires [?f]uints(base, ?n, ?rs) &*& 0 <= i &*& i < n;
+  ensures [f]uints(base, n, rs) &*& nth(i, map(record_entry, rs)) == record_entry(nth(i, rs)) &*&
+          0 <= nth(i, rs) &*& nth(i, rs) <= UINT_MAX;
+{
+  open [f]uints(base, n, rs);
+  if (i == 0) u_integer_limits(base); else entry_at(base + 1, i - 1);
+  close [f]uints(base, n, rs);
+}
+predicate method_table(V2MethodTable *t; list<int> entries) =
+  t->records_ |-> ?data &*& t->length_ |-> ?n &*& uints(data, n, ?rs) &*&
+  entries == map(record_entry, rs) &*& ordered_from(-1, entries) == true &*&
+  0 <= n &*& n == length(entries) &*& smi_range(n) == true;
+fixpoint int lookup_entry(int entry, list<int> entries) {
+  return mem(entry, entries) ? index_of(entry, entries) : -1;
+}
+fixpoint uint8 *code_base(Program *prog);
+fixpoint list<unsigned char> code_bytes(Program *prog);
+fixpoint bool format_two(Program *prog) {
+  return length(code_bytes(prog)) >= 4 && nth(0, code_bytes(prog)) == 84 && nth(1, code_bytes(prog)) == 66 &&
+         nth(2, code_bytes(prog)) == 67 && nth(3, code_bytes(prog)) == 50;
+}
+predicate image_code(Program *prog;) =
+  prog->bytecodes.data_ |-> code_base(prog) &*& prog->bytecodes.length_ |-> length(code_bytes(prog)) &*&
+  uchars(code_base(prog), length(code_bytes(prog)), code_bytes(prog));
+fixpoint int spawn_bci(Program *prog, uint8 *bytes) { return (uword)bytes - (uword)code_base(prog); }
+predicate method_position(Program *prog, uint8 *bytes;) =
+  bytes == code_base(prog) + spawn_bci(prog, bytes) &*& spawn_bci(prog, bytes) < length(code_bytes(prog)) &*&
+  0 <= spawn_bci(prog, bytes) &*& spawn_bci(prog, bytes) <= INT_MAX &*& (format_two(prog) || smi_range(spawn_bci(prog, bytes))) == true;
+predicate spawn_inputs(Process *p, Program *prog, uint8 *bytes; list<int> entries) =
+  bytes == 0 ? entries == nil :
+  method_position(prog, bytes) &*& (format_two(prog) ?
+    p->group_ |-> ?group &*& group->v2_methods_ |-> ?table &*& method_table(table, entries) : entries == nil);
+@*/
+
+// Projections of the two const List<uint8> accessors in src/utils.h.
+word BytecodeList_length(BytecodeList *self)
+//@ requires [?f]self->length_ |-> ?n;
+//@ ensures [f]self->length_ |-> n &*& result == n;
+{ return self->length_; }
+uint8 *BytecodeList_data(BytecodeList *self)
+//@ requires [?f]self->data_ |-> ?p;
+//@ ensures [f]self->data_ |-> p &*& result == p;
+{ return self->data_; }
+
+@prototypes
+@render src/program.h toit::Program::is_format2 tu=src/program.cc
+  bool is_format2() const
+  //@ requires [?f]image_code(self);
+  //@ ensures [f]image_code(self) &*& result == format_two(self);
+  {
+    //@ open [f]image_code(self);
+    return bytecodes.length() >= 4 &&
+        bytecodes.data()[0] == 'T' && bytecodes.data()[1] == 'B' &&
+        bytecodes.data()[2] == 'C' && bytecodes.data()[3] == '2';
+    //@ close [f]image_code(self);
+  }
+
+@render src/program.cc toit::Program::absolute_bci_from_bcp
+int Program::absolute_bci_from_bcp(uint8* bcp) const
+//@ requires [?f]image_code(self) &*& [?g]method_position(self, bcp);
+//@ ensures [f]image_code(self) &*& [g]method_position(self, bcp) &*& result == spawn_bci(self, bcp);
+{
+  //@ open [f]image_code(self);
+  //@ open [g]method_position(self, bcp);
+  return bcp - bytecodes.data();
+  //@ close [g]method_position(self, bcp);
+  //@ close [f]image_code(self);
+}
+
+@render src/interpreter_v2.h toit::V2MethodTable::entry_of tu=src/v2_method_table.cc
+  word entry_of(word index) const
+  //@ requires [?f]method_table(self, ?entries) &*& 0 <= index &*& index < length(entries);
+  //@ ensures [f]method_table(self, entries) &*& result == nth(index, entries);
+  {
+    //@ open [f]method_table(self, entries);
+    //@ assert [f]uints(?base, _, ?rs);
+    //@ entry_at(base, index);
+    //@ shiftright_div(nth(index, rs), N8);
+    return records_[index] >> V2_RECORD_ENTRY_SHIFT;
+    //@ close [f]method_table(self, entries);
+  }
+
+@render src/v2_method_table.cc toit::V2MethodTable::index_of_entry
+word V2MethodTable::index_of_entry(word entry) const
+//@ requires [?f]method_table(self, ?entries);
+//@ ensures [f]method_table(self, entries) &*& result == lookup_entry(entry, entries) &*& smi_range(result) == true;
+{
+  //@ open [f]method_table(self, entries);
+  word low = 0;
+  word high = length_ - 1;
+  //@ close [f]method_table(self, entries);
+  //@ if (mem(entry, entries)) { mem_nth_index_of(entry, entries); }
+  while (low <= high)
+    /*@ invariant [f]method_table(self, entries) &*& 0 <= low &*& low <= high + 1 &*& high < length(entries) &*&
+                  (mem(entry, entries) ? low <= index_of(entry, entries) && index_of(entry, entries) <= high : true); @*/
+    //@ decreases high + 1 - low;
+  {
+    word mid = low + (high - low) / 2;
+    word e = entry_of(mid);
+    /*@ if (mem(entry, entries)) {
+      int found = index_of(entry, entries);
+      if (mid < found) ordered_pair(-1, entries, mid, found);
+      if (found < mid) ordered_pair(-1, entries, found, mid);
+    } @*/
+    if (e == entry) return mid;
+    if (e < entry) {
+      low = mid + 1;
+    } else {
+      high = mid - 1;
+    }
+  }
+  return -1;
+}
+
+@render src/process.h toit::Process::spawn_method tu=src/primitive_core.cc
+  Method spawn_method() const
+  //@ requires [?f]self->spawn_method_.bytes_ |-> ?bytes;
+  //@ ensures [f]self->spawn_method_.bytes_ |-> bytes &*& result.bytes_ == bytes;
+  { return spawn_method_; }
+
+@render src/objects.h toit::Method::is_valid tu=src/primitive_core.cc
+  bool is_valid() const
+  //@ requires [?f]self->bytes_ |-> ?bytes;
+  //@ ensures [f]self->bytes_ |-> bytes &*& result == (bytes != 0);
+  { return bytes_ != null; }
+
+@render src/objects.h toit::Method::header_bcp tu=src/primitive_core.cc
+  uint8* header_bcp() const
+  //@ requires [?f]self->bytes_ |-> ?bytes;
+  //@ ensures [f]self->bytes_ |-> bytes &*& result == bytes;
+  { return bytes_; }
+
+@render src/process.h toit::Process::group tu=src/primitive_core.cc
+  ProcessGroup* group()
+  //@ requires [?f]self->group_ |-> ?group;
+  //@ ensures [f]self->group_ |-> group &*& result == group;
+  { return group_; }
+
+@render src/process_group.h toit::ProcessGroup::v2_methods tu=src/primitive_core.cc
+  const V2MethodTable* v2_methods() const
+  //@ requires [?f]self->v2_methods_ |-> ?table;
+  //@ ensures [f]self->v2_methods_ |-> table &*& result == table;
+  { return v2_methods_; }
+
+@render src/primitive_core.cc toit::primitive_spawn_method
+PRIMITIVE(spawn_method)
+/*@ requires [?f]process(process, ?prog, ?ids) &*& [?i]image_code(prog) &*& [?g]process->spawn_method_.bytes_ |-> ?bytes &*&
+             [?h]spawn_inputs(process, prog, bytes, ?entries); @*/
+/*@ ensures [f]process(process, prog, ids) &*& [i]image_code(prog) &*& [g]process->spawn_method_.bytes_ |-> bytes &*& [h]spawn_inputs(process, prog, bytes, entries) &*&
+            is_smi_w((uword)result) == true &*& smi_val((uword)result) ==
+            (bytes == 0 ? -1 : format_two(prog) ? lookup_entry(spawn_bci(prog, bytes), entries) : spawn_bci(prog, bytes)); @*/
+{
+  Method method = process->spawn_method();
+  if (process->program()->is_format2()) {
+    if (!method.is_valid()) return Smi::from(-1);
+    //@ open [h]spawn_inputs(process, prog, bytes, entries);
+    word entry = process->program()->absolute_bci_from_bcp(method.header_bcp());
+    return Smi::from(process->group()->v2_methods()->index_of_entry(entry));
+    //@ close [h]spawn_inputs(process, prog, bytes, entries);
+  }
+  //@ open [h]spawn_inputs(process, prog, bytes, entries);
+  int id = method.is_valid()
+      ? process->program()->absolute_bci_from_bcp(method.header_bcp())
+      : -1;
+  //@ if (bytes != 0) { open [h]method_position(prog, bytes); close [h]method_position(prog, bytes); }
+  //@ close [h]spawn_inputs(process, prog, bytes, entries);
+  return Smi::from(id);
+}

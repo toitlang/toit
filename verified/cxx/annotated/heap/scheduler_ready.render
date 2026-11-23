@@ -1,0 +1,109 @@
+// Copyright (C) 2026 Toit contributors.
+@include ../model/model.cfg
+@verbatim
+#include <stdbool.h>
+#include "../model/constants.h"
+typedef struct Process { struct Process *next_; } Process;
+typedef struct ProcessListFromScheduler { char unused; } ProcessListFromScheduler;
+typedef struct Scheduler {
+  ProcessListFromScheduler ready_queue_[Scheduler_NUMBER_OF_READY_QUEUES];
+  int ready_count_;
+} Scheduler;
+/*@
+predicate queue(ProcessListFromScheduler *q; list<Process *> entries);
+predicate buckets(ProcessListFromScheduler *q, int n; list<list<Process *> > layout) =
+  n <= 0 ? n == 0 &*& layout == nil : pointer_within_limits(q) == true &*& queue(q,?xs) &*& buckets(q+1,n-1,?rest) &*& layout == cons(xs,rest);
+fixpoint list<Process *> dispatch_order(list<list<Process *> > layout) {
+  switch(layout) {
+    case nil: return nil;
+    case cons(xs,rest): return append(xs,dispatch_order(rest));
+  }
+}
+fixpoint list<list<Process *> > drop_first_ready(list<list<Process *> > layout) {
+  switch(layout) {
+    case nil: return nil;
+    case cons(xs,rest): return xs == nil ? cons(xs,drop_first_ready(rest)) : cons(tail(xs),rest);
+  }
+}
+lemma void order_after_pop(list<list<Process *> > layout)
+  requires true;
+  ensures dispatch_order(drop_first_ready(layout)) ==
+      (dispatch_order(layout) == nil ? nil : tail(dispatch_order(layout)));
+{
+  switch(layout) {
+    case nil:
+    case cons(xs,rest):
+      switch(xs) {
+        case nil: order_after_pop(rest);
+        case cons(p,tail):
+      }
+  }
+}
+predicate skipped(ProcessListFromScheduler *base, int n, list<list<Process *> > all, list<list<Process *> > rest) =
+  n <= 0 ? n == 0 &*& all == rest :
+    pointer_within_limits(base+(n-1)) == true &*& queue(base+(n-1),nil) &*& skipped(base,n-1,all,cons(nil,rest));
+lemma void restore(ProcessListFromScheduler *base,int n,list<list<Process *> > all,list<list<Process *> > rest)
+  requires skipped(base,n,all,rest) &*& buckets(base+n,?m,rest) &*& 0 <= m;
+  ensures buckets(base,n+m,all);
+{
+  open skipped(base,n,all,rest);
+  if (n > 0) {
+    close buckets(base+(n-1),m+1,cons(nil,rest));
+    restore(base,n-1,all,cons(nil,rest));
+  }
+}
+lemma void skip_after_pop(ProcessListFromScheduler *base,int n,list<list<Process *> > all,list<list<Process *> > rest)
+  requires skipped(base,n,all,rest);
+  ensures skipped(base,n,drop_first_ready(all),drop_first_ready(rest));
+{
+  open skipped(base,n,all,rest);
+  if (n > 0) skip_after_pop(base,n-1,all,cons(nil,rest));
+  close skipped(base,n,drop_first_ready(all),drop_first_ready(rest));
+}
+@*/
+bool LinkedList_SchedulerProcess_is_empty(ProcessListFromScheduler *q);
+//@ requires queue(q,?ps);
+//@ ensures queue(q,ps) &*& result == (ps == nil);
+//@ terminates;
+Process *ProcessListFromScheduler_remove_first(ProcessListFromScheduler *q);
+//@ requires queue(q,?ps) &*& ps != nil;
+//@ ensures queue(q,tail(ps)) &*& result == head(ps) &*& result != 0 &*& result->next_ |-> 0;
+//@ terminates;
+@render src/scheduler.cc toit::Scheduler::dequeue_ready_process
+Process* Scheduler::dequeue_ready_process()
+/*@ requires buckets(self->ready_queue_,Scheduler_NUMBER_OF_READY_QUEUES,?layout) &*&
+      self->ready_count_ |-> length(dispatch_order(layout)); @*/
+/*@ ensures buckets(self->ready_queue_,Scheduler_NUMBER_OF_READY_QUEUES,drop_first_ready(layout)) &*&
+      self->ready_count_ |-> length(dispatch_order(drop_first_ready(layout))) &*&
+      (result == 0 ? true : result->next_ |-> 0) &*&
+      (result == 0) == (dispatch_order(layout) == nil) &*& result == (dispatch_order(layout) == nil ? (Process *)0 : head(dispatch_order(layout))); @*/
+//@ terminates;
+{
+  //@ order_after_pop(layout);
+  //@ close skipped(self->ready_queue_,0,layout,layout);
+  for (int i = 0; i < NUMBER_OF_READY_QUEUES; i++)
+    /*@ invariant 0 <= i &*& i <= Scheduler_NUMBER_OF_READY_QUEUES &*& skipped(self->ready_queue_,i,layout,?rest) &*&
+          buckets(self->ready_queue_+i,Scheduler_NUMBER_OF_READY_QUEUES-i,rest) &*&
+          self->ready_count_ |-> length(dispatch_order(layout)) &*& dispatch_order(rest) == dispatch_order(layout); @*/
+    //@ decreases Scheduler_NUMBER_OF_READY_QUEUES-i;
+  {
+    //@ open buckets(self->ready_queue_+i,Scheduler_NUMBER_OF_READY_QUEUES-i,rest);
+    if (ready_queue_[i].is_empty()) {
+      //@ close skipped(self->ready_queue_,i+1,layout,tail(rest));
+      continue;
+    }
+    //@ assert queue(self->ready_queue_+i,?xs);
+    //@ switch (xs) { case nil: case cons(p,tail): }
+    Process* process = ready_queue_[i].remove_first();
+    ready_count_--;
+    //@ close buckets(self->ready_queue_+i,Scheduler_NUMBER_OF_READY_QUEUES-i,drop_first_ready(rest));
+    //@ skip_after_pop(self->ready_queue_,i,layout,rest);
+    //@ restore(self->ready_queue_,i,drop_first_ready(layout),drop_first_ready(rest));
+    return process;
+  }
+  //@ open buckets(self->ready_queue_+Scheduler_NUMBER_OF_READY_QUEUES,0,_);
+  //@ close buckets(self->ready_queue_+Scheduler_NUMBER_OF_READY_QUEUES,0,nil);
+  //@ skip_after_pop(self->ready_queue_,Scheduler_NUMBER_OF_READY_QUEUES,layout,nil);
+  //@ restore(self->ready_queue_,Scheduler_NUMBER_OF_READY_QUEUES,drop_first_ready(layout),nil);
+  return null;
+}

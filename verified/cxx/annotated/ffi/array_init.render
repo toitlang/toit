@@ -1,0 +1,68 @@
+// Copyright (C) 2026 Toit contributors.
+//
+// ObjectHeap::allocate_array calls this initializer after setting the
+// header of a fresh allocation. Only the length and element slots are writable.
+@include ../model/model.cfg
+@verbatim
+#include "../model/objects.gen.h"
+
+/*@
+lemma void append_filler(list<void *> prefix, void *value)
+  requires all_eq(prefix, value) == true;
+  ensures all_eq(append(prefix, cons(value, nil)), value) == true;
+{
+  switch (prefix) {
+    case nil:
+    case cons(x, xs): append_filler(xs, value);
+  }
+}
+@*/
+@prototypes
+@render src/objects.h toit::HeapObject::_word_at_put tu=src/heap.cc
+  INLINE void _word_at_put(word offset, uword value)
+  //@ requires 1 <= (uword)self &*& 0 <= offset &*& offset % WORD_SIZE == 0 &*& uintptr_(raw(self) + offset / WORD_SIZE, _);
+  //@ ensures uintptr(raw(self) + offset / WORD_SIZE, value);
+  { _raw_at()[offset / WORD_SIZE] = value; }
+
+@render src/objects.h toit::Array::_set_length tu=src/heap.cc
+  void _set_length(word value)
+  //@ requires 1 <= (uword)self &*& 0 <= value &*& uintptr_(raw(self) + LAYOUT_ARRAY_LENGTH_WORD, _);
+  //@ ensures uintptr(raw(self) + LAYOUT_ARRAY_LENGTH_WORD, value);
+  { _word_at_put(LENGTH_OFFSET, value); }
+
+@render src/objects.h toit::Array::at_put_no_write_barrier tu=src/heap.cc
+  INLINE void at_put_no_write_barrier(word index, Object* value)
+  /*@ requires 1 <= (uword)self &*& 0 <= index &*& index < MAX_OBJECT_WORDS &*&
+               pointer_((void **)raw(self) + LAYOUT_ARRAY_ELEMENTS_WORD + index, _); @*/
+  //@ ensures pointer((void **)raw(self) + LAYOUT_ARRAY_ELEMENTS_WORD + index, value);
+  {
+    ASSERT(index >= 0 && index < length());
+    //@ div_rem_nonneg_unique(Array_HEADER_SIZE + index * WORD_SIZE, WORD_SIZE, 2 + index, 0);
+    _at_put(_offset_from(index), value);
+  }
+
+@render src/objects.h toit::Array::_initialize_no_write_barrier tu=src/heap.cc
+  void _initialize_no_write_barrier(word length, Object* filler)
+  /*@ requires 1 <= (uword)self &*& 0 <= length &*& length <= MAX_OBJECT_WORDS &*&
+               uintptr_(raw(self) + LAYOUT_ARRAY_LENGTH_WORD, _) &*&
+               pointers_((void **)raw(self) + LAYOUT_ARRAY_ELEMENTS_WORD, length, _); @*/
+  /*@ ensures uintptr(raw(self) + LAYOUT_ARRAY_LENGTH_WORD, length) &*&
+              pointers((void **)raw(self) + LAYOUT_ARRAY_ELEMENTS_WORD, length, ?slots) &*&
+              all_eq(slots, (void *)filler) == true; @*/
+  {
+    _set_length(length);
+    //@ void **base = (void **)raw(self) + LAYOUT_ARRAY_ELEMENTS_WORD;
+    //@ close pointers(base, 0, nil);
+    for (word index = 0; index < length; index++)
+    /*@ invariant 0 <= index &*& index <= length &*& pointers(base, index, ?done) &*& all_eq(done, (void *)filler) == true &*&
+                  pointers_(base + index, length - index, _); @*/
+    {
+      //@ open pointers_(base + index, length - index, _);
+      at_put_no_write_barrier(index, filler);
+      //@ close pointers(base + index + 1, 0, nil);
+      //@ close pointers(base + index, 1, cons((void *)filler, nil));
+      //@ pointers_join(base);
+      //@ append_filler(done, filler);
+    }
+    //@ open pointers_(base + length, 0, _);
+  }

@@ -32,11 +32,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "../model/objects.gen.h"
+#include "../utf8/validator.gen.h"
+#include "../model/byte_array_ownership.gen.h"
 #include "../blob/byte_content.gen.h"
 #include "cardinal.h"
 //@ #include "../model/arith.gh"
-//@ #include "llong.gh"
+//@ #include "../model/llong.gh"
 
 // ---------------------------------------------------------------------------
 // The encoder's state: the fields of src/messaging.h (TisonEncoder's
@@ -196,11 +197,6 @@ bool PrimitivePolicy_restricts_messaging(PrimitivePolicy *self);
 //@ requires true;
 //@ ensures true;
 
-// src/utils.cc: reads the bytes given (contract only).
-bool Utils_is_valid_utf_8(uint8 *buffer, word length);
-//@ requires [?f]uchars(buffer, length, ?cs);
-//@ ensures [f]uchars(buffer, length, cs);
-
 // src/os.h HeapTagScope: sets and restores the malloc tag of the thread
 // (contract only: the OS layer).
 void HeapTagScope_ctor(HeapTagScope *self, uword tag);
@@ -223,14 +219,6 @@ uint64 bit_cast_uint64__longlong(int64 src);
 //@ ensures true;
 
 @prototypes
-@render src/objects.h toit::ByteArray::has_owned_external_memory tu=src/messaging.cc trusted
-  bool has_owned_external_memory() const
-  //@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true &*& has_tag(H, self, BYTE_ARRAY_TAG) == true;
-  //@ ensures [f]heap(objs, H);
-  {
-    return has_external_address() && has_active_finalizer();
-  }
-
 @render src/messaging.cc toit::NestingTracker::NestingTracker
   NestingTracker(int* nesting) : nesting_(nesting)
   //@ requires self->nesting_ |-> _ &*& integer(nesting, ?n) &*& INT_MIN <= n &*& n < INT_MAX;
@@ -427,7 +415,7 @@ bool MessageEncoder::encode_copy(Object* object, int tag)
   //@ uint8 *base = blob_base(H, bl);
   //@ heap_holes_open();
   //@ blob_take(bl);
-  //@ uchars_split(base, (uword)a - (uword)base);
+  //@ if (a != base) uchars_split(base, (uword)a - (uword)base);
   //@ uchars_split(a, l);
   // A sandboxed program can hold strings that aren't valid UTF-8 (crafted
   // literals, or string slices with crafted bounds), and the receiver
@@ -435,14 +423,14 @@ bool MessageEncoder::encode_copy(Object* object, int tag)
   if (tag == TAG_STRING && process_ != null && process_->policy()->restricts_messaging() &&
       !Utils::is_valid_utf_8(source, length)) {
     //@ uchars_join(a);
-    //@ uchars_join(base);
+    //@ if (a != base) uchars_join(base);
     //@ blob_give(bl);
     //@ heap_holes_close();
     //@ close encoder(self, ids);
     return false;
   }
   //@ uchars_join(a);
-  //@ uchars_join(base);
+  //@ if (a != base) uchars_join(base);
   //@ blob_give(bl);
   //@ heap_holes_close();
   //@ close encoder(self, ids);
@@ -465,14 +453,14 @@ bool MessageEncoder::encode_copy(Object* object, int tag)
     if (!encoding_for_size()) {
       //@ heap_holes_open();
       //@ blob_take(bl);
-      //@ uchars_split(base, (uword)a - (uword)base);
+      //@ if (a != base) uchars_split(base, (uword)a - (uword)base);
       //@ uchars_split(a, l);
       //@ buf_take(b, c2, l);
       memcpy(&buffer_[cursor_], source, length);
       //@ buf_give(b, c2, l);
       //@ chars_to_uchars(a);
       //@ uchars_join(a);
-      //@ uchars_join(base);
+      //@ if (a != base) uchars_join(base);
       //@ blob_give(bl);
       //@ heap_holes_close();
     }
@@ -514,14 +502,14 @@ bool MessageEncoder::encode_copy(Object* object, int tag)
     //@ close encoder(self, ids);
     //@ heap_holes_open();
     //@ blob_take(bl);
-    //@ uchars_split(base, (uword)a - (uword)base);
+    //@ if (a != base) uchars_split(base, (uword)a - (uword)base);
     //@ uchars_split(a, l);
     // A string slice's content isn't followed by a '\0' (and a crafted
     // slice can wrap a byte array): copy the content and terminate it.
     memcpy(data, source, length);
     //@ chars_to_uchars(a);
     //@ uchars_join(a);
-    //@ uchars_join(base);
+    //@ if (a != base) uchars_join(base);
     //@ blob_give(bl);
     //@ heap_holes_close();
     //@ if (extra != 0) chars__to_uchars_((uint8 *)data + l);
@@ -650,14 +638,7 @@ bool MessageEncoder::encode_any(Object* object)
   if (is_too_large()) return false;
 
   if (is_smi(object)) {
-    word value = Smi::value(object);
-    if (value >= 0) {
-      write_uint8(TAG_POSITIVE_SMI);
-      write_cardinal(value);
-    } else {
-      write_uint8(TAG_NEGATIVE_SMI);
-      write_cardinal(-value);
-    }
+    encode_smi(object);
     return true;
   }
 
@@ -675,30 +656,7 @@ bool MessageEncoder::encode_any(Object* object)
       if (!is_smi(size)) return false;
       return encode_list(instance, 0, Smi::value(size));
     } else if (class_id == program->list_slice_class_id()) {
-      Object* from_object = instance->at(Instance::LIST_SLICE_FROM_INDEX);
-      Object* to_object = instance->at(Instance::LIST_SLICE_TO_INDEX);
-      if (!is_smi(from_object) || !is_smi(to_object)) return false;
-      word from = Smi::value(from_object);
-      word to = Smi::value(to_object);
-      Object* backing_object = instance->at(Instance::LIST_SLICE_LIST_INDEX);
-      if (is_array(backing_object)) {
-        //@ good_heap(objs, backing_object);
-        Array* backing = Array::cast(backing_object);
-        return encode_array(backing, from, to);
-      } else if (is_instance(backing_object)) {
-        //@ good_heap(objs, backing_object);
-        Instance* backing = Instance::cast(backing_object);
-        Smi* backing_class_id = backing->class_id();
-        if (backing_class_id != program->list_class_id()) {
-          //@ open encoder(self, ids);
-          problematic_class_id_ = Smi::value(backing_class_id);
-          //@ close encoder(self, ids);
-          return false;
-        }
-        return encode_list(backing, from, to);
-      } else {
-        return false;
-      }
+      return encode_list_slice(instance);
     } else if (class_id == program->map_class_id()) {
       return encode_map(instance);
     } else if (class_id == program->byte_array_cow_class_id()) {
@@ -746,6 +704,21 @@ bool MessageEncoder::encode_any(Object* object)
   return false;
 }
 
+@render src/messaging.cc toit::MessageEncoder::encode_smi
+void MessageEncoder::encode_smi(Object* object)
+//@ requires enc_out(self, ?cap, ?c, ?x) &*& c + x <= MESSAGING_ENCODING_MAX_SIZE &*& is_smi_w((uword)object) == true;
+//@ ensures enc_out(self, cap, ?c1, x) &*& c < c1;
+{
+  word value = Smi::value(object);
+  if (value >= 0) {
+    write_uint8(TAG_POSITIVE_SMI);
+    write_cardinal(value);
+  } else {
+    write_uint8(TAG_NEGATIVE_SMI);
+    write_cardinal(-value);
+  }
+}
+
 @render src/messaging.cc toit::MessageEncoder::encode_array
 bool MessageEncoder::encode_array(Array* object, word from, word to)
 //@ requires encoder(self, ?ids) &*& enc_out(self, ?cap, ?c, ?x) &*& c + x <= MESSAGING_ENCODING_MAX_SIZE &*& self->nesting_ |-> ?n &*& 0 <= n &*& n <= MESSAGING_ENCODING_MAX_NESTING &*& [?f]heap(?objs, ?H) &*& mem(object, objs) == true &*& has_tag(H, object, ARRAY_TAG) == true &*& smi_range(from) == true &*& smi_range(to) == true;
@@ -763,6 +736,40 @@ bool MessageEncoder::encode_array(Array* object, word from, word to)
     if (!encode_any(object->at(i))) return false;
   }
   return true;
+}
+
+@render src/messaging.cc toit::MessageEncoder::encode_list_slice
+bool MessageEncoder::encode_list_slice(Instance* instance)
+//@ requires encoder(self, ?ids) &*& enc_out(self, ?cap, ?c, ?x) &*& c + x <= MESSAGING_ENCODING_MAX_SIZE &*& self->nesting_ |-> ?n &*& 0 <= n &*& n <= MESSAGING_ENCODING_MAX_NESTING &*& [?f]heap(?objs, ?H) &*& mem(instance, objs) == true &*& has_tag(H, instance, INSTANCE_TAG) == true &*& header_cid(o_hw(H(instance))) == list_slice_cid(ids);
+//@ ensures encoder(self, ids) &*& enc_out(self, cap, ?c1, ?x1) &*& c <= c1 &*& self->nesting_ |-> n &*& [f]heap(objs, H);
+{
+  //@ encoder_facts(self);
+  //@ heap_facts(instance);
+  Object* from_object = instance->at(Instance::LIST_SLICE_FROM_INDEX);
+  Object* to_object = instance->at(Instance::LIST_SLICE_TO_INDEX);
+  if (!is_smi(from_object) || !is_smi(to_object)) return false;
+  word from = Smi::value(from_object);
+  word to = Smi::value(to_object);
+  Object* backing_object = instance->at(Instance::LIST_SLICE_LIST_INDEX);
+  if (is_array(backing_object)) {
+    //@ good_heap(objs, backing_object);
+    Array* backing = Array::cast(backing_object);
+    return encode_array(backing, from, to);
+  } else if (is_instance(backing_object)) {
+    //@ good_heap(objs, backing_object);
+    Instance* backing = Instance::cast(backing_object);
+    Smi* backing_class_id = backing->class_id();
+    //@ open encoder(self, ids);
+    if (backing_class_id != program_->list_class_id()) {
+      problematic_class_id_ = Smi::value(backing_class_id);
+      //@ close encoder(self, ids);
+      return false;
+    }
+    //@ close encoder(self, ids);
+    return encode_list(backing, from, to);
+  } else {
+    return false;
+  }
 }
 
 @render src/messaging.cc toit::MessageEncoder::encode_list

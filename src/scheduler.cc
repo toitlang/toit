@@ -112,6 +112,7 @@ Process* Scheduler::new_boot_process(Locker& locker, Program* program, int group
     ASSERT(ok);
   }
 
+  if (next_process_id_ == INVALID_PROCESS_ID) return null;
   ProcessGroup* group = ProcessGroup::create(group_id, program, null, PrimitivePolicy::system());
   // A malformed format-2 program has no method table (the reason is on
   // stderr).
@@ -132,6 +133,7 @@ Process* Scheduler::new_boot_process(Locker& locker, Program* program, int group
 Scheduler::ExitState Scheduler::run_boot_program(Program* program, int group_id) {
   Locker locker(mutex_);
   Process* process = new_boot_process(locker, program, group_id);
+  if (process == null) return ExitState(EXIT_ERROR, 1);
   return launch_program(locker, process);
 }
 
@@ -140,6 +142,7 @@ Scheduler::ExitState Scheduler::run_boot_program(Program* program, int group_id)
 Scheduler::ExitState Scheduler::run_boot_program(Program* program, char** argv, int group_id) {
   Locker locker(mutex_);
   Process* process = new_boot_process(locker, program, group_id);
+  if (process == null) return ExitState(EXIT_ERROR, 1);
   process->set_main_arguments(argv);
   return launch_program(locker, process);
 }
@@ -152,6 +155,7 @@ Scheduler::ExitState Scheduler::run_boot_program(
     int group_id) {
   Locker locker(mutex_);
   Process* process = new_boot_process(locker, program, group_id);
+  if (process == null) return ExitState(EXIT_ERROR, 1);
   process->set_main_arguments(argv);
   process->set_spawn_arguments(system, application);
   return launch_program(locker, process);
@@ -225,6 +229,7 @@ int Scheduler::next_group_id() {
 
 int Scheduler::run_program(Program* program, MessageEncoder* arguments, ProcessGroup* group, InitialMemoryManager* initial_memory) {
   Locker locker(mutex_);
+  if (next_process_id_ == INVALID_PROCESS_ID) return QUOTA_EXCEEDED_PROCESS_ID;
   SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, group->id());
   if (termination == null) {
     return INVALID_PROCESS_ID;
@@ -249,6 +254,7 @@ int Scheduler::run_program(Program* program, MessageEncoder* arguments, ProcessG
 Process* Scheduler::run_external(ProcessRunner* runner) {
   int group_id = next_group_id();
   Locker locker(mutex_);
+  if (next_process_id_ == INVALID_PROCESS_ID) return null;
   ProcessGroup* group = ProcessGroup::create(group_id, null);
   if (group == null) return null;
   SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, group_id);
@@ -325,15 +331,11 @@ message_err_t Scheduler::send_message_from(Process* sender, int process_id, Syst
   // If its allowed-target set is full, the request is refused like a
   // request to a full mailbox.
   ProcessGroup* receiver_group = receiver->group();
-  if (receiver_group != sender->group() &&
-      receiver_group->policy()->restricts_messaging() &&
-      message->type() == SYSTEM_RPC_REQUEST &&
-      sender != boot_process_ &&
-      !receiver_group->grant_send_to(sender->id())) {
-    delete message;
-    return MESSAGE_QUOTA_EXCEEDED;
-  }
-  if (!receiver->_append_message(message)) {
+  bool needs_reply_grant = receiver_group != sender->group() &&
+                           receiver_group->policy()->restricts_messaging() &&
+                           message->type() == SYSTEM_RPC_REQUEST &&
+                           sender != boot_process_;
+  if (!receiver->_append_message(message, needs_reply_grant ? sender->id() : -1)) {
     delete message;
     return MESSAGE_QUOTA_EXCEEDED;
   }
@@ -373,13 +375,14 @@ message_err_t Scheduler::send_system_message(Locker& locker, SystemMessage* mess
 
   // Default processing of system messages.
   switch (message->type()) {
-    case SystemMessage::TERMINATED:
+    case SystemMessage::TERMINATED: {
       int value;
       if (MessageDecoder::decode_process_message(message->data(), &value)) {
         ExitReason reason = (value == 0) ? EXIT_DONE : EXIT_ERROR;
         terminate_execution(locker, ExitState(reason, value));
       }
       break;
+    }
     case SystemMessage::SPAWNED: {
       // Do nothing. With no boot process, we don't care about newly spawned processes.
       break;
@@ -426,29 +429,31 @@ int Scheduler::spawn(Program* program, ProcessGroup* process_group, int priority
     return QUOTA_EXCEEDED_PROCESS_ID;
   }
 
+  if (next_process_id_ == INVALID_PROCESS_ID) return QUOTA_EXCEEDED_PROCESS_ID;
   SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, process_group->id());
   if (!termination) return INVALID_PROCESS_ID;
 
-  // Takes over the initial_memory.
+  // Acquire both messages before the constructor registers the new process.
+  SystemMessage* spawned = new_process_message(SystemMessage::SPAWNED, process_group->id());
+  if (!spawned) {
+    delete termination;
+    return INVALID_PROCESS_ID;
+  }
+  // Takes over the initial_memory and termination message on success.
   Process* process = _new Process(program, process_group, termination, method, initial_memory);
   if (!process) {
+    delete spawned;
     delete termination;
     return INVALID_PROCESS_ID;
   }
   process->set_spawn_arguments(arguments->take_buffer());  // Neuters the encoder.
 
-  SystemMessage* spawned = new_process_message(SystemMessage::SPAWNED, process_group->id());
-  if (!spawned) {
-    delete termination;
-    delete process;
-    return INVALID_PROCESS_ID;
-  }
   int pid = process->id();
   spawned->set_pid(pid);
   // Send the SPAWNED message before returning from the call to spawn. This is necessary
   // to make sure the system doesn't conclude that there are no processes left just after
   // spawning, but before the spawned process starts up.
-  send_system_message(locker, spawned);
+  if (send_system_message(locker, spawned) != MESSAGE_OK) delete spawned;
   if (priority != -1) process->set_target_priority(priority);
   new_process(locker, process);
   return pid;
@@ -466,13 +471,28 @@ void Scheduler::new_process(Locker& locker, Process* process) {
 // Make sure we compute a unique id for each call.
 int Scheduler::next_process_id() {
   ASSERT(is_locked());
-  if (next_process_id_ == INVALID_PROCESS_ID) next_process_id_++;
-  return next_process_id_++;
+  int id = next_process_id_;
+  if (id == INVALID_PROCESS_ID) return id;
+  int64 next = static_cast<int64>(id) + 1;
+  next_process_id_ = next <= INT32_MAX && Smi::is_valid(next) ? static_cast<int>(next) : INVALID_PROCESS_ID;
+  return id;
 }
 
 int Scheduler::process_count() {
   Locker locker(mutex_);
   return num_processes_;
+}
+
+Process* Scheduler::dequeue_ready_process() {
+  for (int i = 0; i < NUMBER_OF_READY_QUEUES; i++) {
+    if (ready_queue_[i].is_empty()) {
+      continue;
+    }
+    Process* process = ready_queue_[i].remove_first();
+    ready_count_--;
+    return process;
+  }
+  return null;
 }
 
 void Scheduler::run(SchedulerThread* scheduler_thread) {
@@ -492,14 +512,7 @@ void Scheduler::run(SchedulerThread* scheduler_thread) {
       continue;
     }
 
-    Process* process = null;
-    for (int i = 0; i < NUMBER_OF_READY_QUEUES; i++) {
-      ProcessListFromScheduler& ready_queue = ready_queue_[i];
-      if (ready_queue.is_empty()) continue;
-      process = ready_queue.remove_first();
-      ready_count_--;
-      break;
-    }
+    Process* process = dequeue_ready_process();
     ASSERT(process->state() == Process::SCHEDULED);
 
     if (ready_count_ > 0) {
@@ -561,15 +574,7 @@ void Scheduler::gc(Process* process, bool malloc_failed, bool try_hard) {
     } else {
       doing_cross_process_gc = true;
       gc_cross_processes_ = true;
-      gc_waiting_for_preemption_ = 0;
-
-      for (SchedulerThread* thread : threads_) {
-        Process* running_process = thread->interpreter()->process();
-        if (running_process != null && running_process != process) {
-          running_process->signal(Process::PREEMPT);
-          gc_waiting_for_preemption_++;
-        }
-      }
+      gc_waiting_for_preemption_ = request_gc_preemption(process);
 
       // We try to get the processes currently running on the OS threads
       // to be preempted, but since we only GC them if we can get them to
@@ -589,46 +594,25 @@ void Scheduler::gc(Process* process, bool malloc_failed, bool try_hard) {
     }
   }
 
-  int gcs = 0;
+  size_t gcs = 0;
   USE(gcs);
   if (doing_idle_process_gc) {
     ProcessListFromScheduler targets;
     { Locker locker(mutex_);
-      for (ProcessGroup* group : groups_) {
-        for (Process* target : group->processes()) {
-          if (target->program() == null) continue;  // External process.
-          if (target->state() != Process::RUNNING && !target->idle_since_gc()) {
-            if (target->state() != Process::SUSPENDED_AWAITING_GC) {
-              gc_suspend_process(locker, target);
-            }
-            targets.append(target);
-          }
-        }
-      }
+      select_gc_targets(locker, &targets, doing_cross_process_gc);
     }
 
-    for (Process* target : targets) {
-      GcType type = target->gc(try_hard);
-      if (type != NEW_SPACE_GC) {
-        Locker locker(mutex_);
-        target->set_idle_since_gc(true);
-      }
-      gcs++;
-    }
+    gcs = scan_gc_targets(targets, try_hard);
 
     { Locker locker(mutex_);
-      while (!targets.is_empty()) {
-        Process* target = targets.remove_first();
-        if (target->state() != Process::SUSPENDED_AWAITING_GC) {
-          gc_resume_process(locker, target);
-        }
-      }
+      resume_gc_targets(locker, &targets);
     }
   }
 
   if (process && process->program() != null) {
     // Not external process.
     process->gc(try_hard);
+    gcs++;
   }
 
   if (doing_cross_process_gc) {
@@ -636,9 +620,9 @@ void Scheduler::gc(Process* process, bool malloc_failed, bool try_hard) {
     gc_cross_processes_ = false;
 #ifdef TOIT_GC_LOGGING
     int64 microseconds = OS::get_monotonic_time() - start;
-    printf("[gc @ %p%s | cross process gc with %d gcs, took %d.%03dms]\n",
+    printf("[gc @ %p%s | cross process gc with %zu gcs, took %d.%03dms]\n",
         process, VM::current()->scheduler()->is_boot_process(process) ? "*" : " ",
-        gcs + 1,
+        gcs,
         static_cast<int>(microseconds / 1000),
         static_cast<int>(microseconds % 1000));
 #endif
@@ -736,11 +720,14 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
     interpreter->activate(process);
     process->set_idle_since_gc(false);
     if (process->signals() == 0) {
-      Unlocker unlock(locker);
-      HW_PERF_SCOPE(HWP_RUN);
-      result = interpreter->run();
+      { Unlocker unlock(locker);
+        HW_PERF_SCOPE(HWP_RUN);
+        result = interpreter->run();
+      }
+      if (result.state() == Interpreter::Result::PREEMPTED) {
+        preemption_method_header_bcp = interpreter->preemption_method_header_bcp();
+      }
     }
-    preemption_method_header_bcp = interpreter->preemption_method_header_bcp();
     interpreter->deactivate();
 
     if (process->profiler() && process->profiler()->is_active()) {
@@ -755,6 +742,7 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
   process->add_cpu_time_us(process->run_time_us(OS::get_monotonic_time()));
   process->clear_run_timestamp();
   process->set_scheduler_thread(null);
+  acknowledge_gc_preemption(scheduler_thread);
 
   // A process whose policy does not allow it to act on the device is
   // terminated with an error instead of putting the device to sleep or
@@ -787,12 +775,11 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
       HW_PERF_COUNT(HWP_PREEMPTED);
       Profiler* profiler = process->profiler();
       Task* task = process->task();
-      if (profiler && task && profiler->should_profile_task(task->id())) {
+      if (preemption_method_header_bcp && profiler && task && profiler->should_profile_task(task->id())) {
         Stack* stack = task->stack();
         if (stack) {
           int bci = stack->absolute_bci_at_preemption(process->program());
-          ASSERT(preemption_method_header_bcp);
-          if (bci >= 0 && preemption_method_header_bcp) {
+          if (bci >= 0) {
             int method = process->program()->absolute_bci_from_bcp(preemption_method_header_bcp);
             profiler->register_method(method);
             profiler->increment(bci);
@@ -812,43 +799,9 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
       }
       break;
 
-    case Interpreter::Result::TERMINATED: {
-      wait_for_any_gc_to_complete(locker, process, Process::RUNNING);
-
-      int id = process->id();
-      ProcessGroup* group = process->group();
-      if (process->policy()->quotas().limits_run_time()) num_run_time_limited_processes_--;
-      bool last_in_group = !group->remove(process);
-      ASSERT(group->lookup(id) == null);
-      SystemMessage* message = process->take_termination_message(result.value());
-
-      // Deleting processes might need to take the event source lock, so we have
-      // to unlock the scheduler to not get into a deadlock with the delivery of
-      // an asynchronous event that needs to call [process_ready] and thus also
-      // take the scheduler lock.
-      { Unlocker unlock(locker);
-        delete process;
-      }
-
-      num_processes_--;
-      if (process == boot_process_) boot_process_ = null;
-
-      // Send the termination message after having deleted the process. This ensures
-      // that the message for the boot process will not be assumed to be handled by
-      // the boot process that is going away.
-      if (send_system_message(locker, message) != MESSAGE_OK) {
-#ifdef TOIT_FREERTOS
-        printf("[message: cannot send termination message for pid %d]\n", id);
-#endif
-        delete message;
-      }
-
-      if (last_in_group) {
-        group->unlink();
-        delete group;
-      }
+    case Interpreter::Result::TERMINATED:
+      terminate_process(locker, process, result.value());
       break;
-    }
 
     case Interpreter::Result::DEEP_SLEEP: {
       ExitState exit(EXIT_DEEP_SLEEP, result.value());
@@ -861,6 +814,43 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
       terminate_execution(locker, exit);
       break;
     }
+  }
+}
+
+void Scheduler::terminate_process(Locker& locker, Process* process, uint8 exit_value) {
+  wait_for_any_gc_to_complete(locker, process, Process::RUNNING);
+
+  int id = process->id();
+  ProcessGroup* group = process->group();
+  if (process->policy()->quotas().limits_run_time()) num_run_time_limited_processes_--;
+  group->begin_process_teardown(process);
+  ASSERT(group->lookup(id) == null);
+  SystemMessage* message = process->take_termination_message(exit_value);
+  if (process == boot_process_) boot_process_ = null;
+
+  // Deleting processes might need to take the event source lock, so we have
+  // to unlock the scheduler to not get into a deadlock with the delivery of
+  // an asynchronous event that needs to call [process_ready] and thus also
+  // take the scheduler lock.
+  { Unlocker unlock(locker);
+    delete process;
+  }
+
+  num_processes_--;
+
+  // Send the termination message after having deleted the process. This ensures
+  // that the message for the boot process will not be assumed to be handled by
+  // the boot process that is going away.
+  if (send_system_message(locker, message) != MESSAGE_OK) {
+#ifdef TOIT_FREERTOS
+    printf("[message: cannot send termination message for pid %d]\n", id);
+#endif
+    delete message;
+  }
+
+  if (group->finish_process_teardown()) {
+    group->unlink();
+    delete group;
   }
 }
 
@@ -895,6 +885,46 @@ void Scheduler::update_priority(Locker& locker, Process* process, uint8 priority
   }
 }
 
+int Scheduler::request_gc_preemption(Process* process) {
+  int count = 0;
+  for (SchedulerThread* thread : threads_) {
+    Process* running_process = thread->mark_for_gc_preemption(process);
+    if (running_process != null) {
+      running_process->signal(Process::PREEMPT);
+      count++;
+    }
+  }
+  return count;
+}
+
+void Scheduler::acknowledge_gc_preemption(SchedulerThread* worker) {
+  // A worker may return after the collector timed out. Each new barrier
+  // replaces every worker's mark before releasing the scheduler lock.
+  if (worker->take_gc_preemption_request() && gc_waiting_for_preemption_ > 0) {
+    if (--gc_waiting_for_preemption_ == 0) OS::signal_all(gc_condition_);
+  }
+}
+
+void Scheduler::select_gc_targets(Locker& locker, ProcessListFromScheduler* targets, bool cross_owner) {
+  for (ProcessGroup* group : groups_) {
+    for (Process* target : group->processes_) {
+      if (claim_gc_target(locker, target, cross_owner)) {
+        targets->append(target);
+      }
+    }
+  }
+}
+
+bool Scheduler::claim_gc_target(Locker& locker, Process* target, bool doing_cross_process_gc) {
+  if (target->program() == null || target->idle_since_gc()) return false;
+  // Only the collector that holds the cross-process barrier can scan its
+  // waiters. An ordinary suspension already belongs to another collector.
+  if (target->state() == Process::SUSPENDED_AWAITING_GC) return doing_cross_process_gc;
+  if (target->state() != Process::IDLE && target->state() != Process::SCHEDULED) return false;
+  gc_suspend_process(locker, target);
+  return true;
+}
+
 void Scheduler::gc_suspend_process(Locker& locker, Process* process) {
   ASSERT(process->state() != Process::RUNNING);  // Preempt the process first.
   ASSERT(process->state() != Process::SUSPENDED_AWAITING_GC);
@@ -907,6 +937,31 @@ void Scheduler::gc_suspend_process(Locker& locker, Process* process) {
     ready_count_--;
   }
   ASSERT(process->is_suspended());
+}
+
+void Scheduler::scan_gc_target(Process* target, bool try_hard) {
+  if (target->gc(try_hard) != NEW_SPACE_GC) {
+    Locker locker(mutex_);
+    target->set_idle_since_gc(true);
+  }
+}
+
+size_t Scheduler::scan_gc_targets(ProcessListFromScheduler& targets, bool try_hard) {
+  size_t scanned = 0;
+  for (Process* target : targets) {
+    scan_gc_target(target, try_hard);
+    scanned++;
+  }
+  return scanned;
+}
+
+void Scheduler::resume_gc_targets(Locker& locker, ProcessListFromScheduler* targets) {
+  while (!targets->is_empty()) {
+    Process* target = targets->remove_first();
+    if (target->state() != Process::SUSPENDED_AWAITING_GC) {
+      gc_resume_process(locker, target);
+    }
+  }
 }
 
 void Scheduler::gc_resume_process(Locker& locker, Process* process) {
@@ -922,8 +977,6 @@ void Scheduler::wait_for_any_gc_to_complete(Locker& locker, Process* process, Pr
   ASSERT(process->scheduler_thread() == null);
   if (gc_cross_processes_) {
     process->set_state(Process::SUSPENDED_AWAITING_GC);
-    gc_waiting_for_preemption_--;
-    OS::signal_all(gc_condition_);
     do {
       OS::wait(gc_condition_);
     } while (gc_cross_processes_);
@@ -953,8 +1006,6 @@ void Scheduler::process_ready(Process* process) {
 }
 
 void Scheduler::process_ready(Locker& locker, Process* process) {
-  USE(locker);  // We assume we own the mutex here.
-
   Process::State state = process->state();
   if (state != Process::IDLE) {
     if (state == Process::SUSPENDED_IDLE) {
@@ -971,6 +1022,10 @@ void Scheduler::process_ready(Locker& locker, Process* process) {
     OS::signal(has_processes_);
   }
 
+  wake_worker_for_ready_process(locker, priority);
+}
+
+void Scheduler::wake_worker_for_ready_process(Locker& locker, uint8 priority) {
   // Count the number of idle scheduler threads.
   int idle = 0;
   for (SchedulerThread* thread : threads_) {

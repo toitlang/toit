@@ -18,6 +18,7 @@
 #ifdef TOIT_WINDOWS
 
 #include "os.h"
+#include "os_page_extent.h"
 #include "process.h"
 #include "program.h"
 #include "utils.h"
@@ -366,24 +367,20 @@ void OS::ungrab_virtual_memory(void* address, uword size) {
 
 bool OS::use_virtual_memory(void* addr, uword sz) {
   ASSERT(addr != null);
-  if (sz == 0) return true;
-  uword address = reinterpret_cast<uword>(addr);
-  uword end = address + sz;
-  uword rounded = Utils::round_down(address, 4096);
-  uword size = Utils::round_up(end - rounded, 4096);
-  void* result = VirtualAlloc(reinterpret_cast<void*>(rounded), size, MEM_COMMIT, PAGE_READWRITE);
-  if (result != reinterpret_cast<void*>(rounded)) FATAL("use_virtual_memory");
+  OSPageExtent pages;
+  if (!OSPageExtent::covering(reinterpret_cast<uword>(addr), sz, 4096, &pages)) return false;
+  if (pages.size == 0) return true;
+  void* start = reinterpret_cast<void*>(pages.start);
+  void* result = VirtualAlloc(start, pages.size, MEM_COMMIT, PAGE_READWRITE);
+  if (result != start) FATAL("use_virtual_memory");
   return true;
 }
 
 void OS::unuse_virtual_memory(void* addr, uword sz) {
-  uword address = reinterpret_cast<uword>(addr);
-  uword end = address + sz;
-  uword rounded = Utils::round_up(address, 4096);
-  uword size = Utils::round_down(end - rounded, 4096);
-  if (size != 0) {
-    BOOL ok = VirtualFree(reinterpret_cast<void*>(rounded), size, MEM_DECOMMIT);
-    if (!ok) FATAL("unuse_virtual_memory");
+  OSPageExtent pages;
+  if (!OSPageExtent::contained(reinterpret_cast<uword>(addr), sz, 4096, &pages)) FATAL("Invalid virtual memory range");
+  if (pages.size != 0 && !VirtualFree(reinterpret_cast<void*>(pages.start), pages.size, MEM_DECOMMIT)) {
+    FATAL("unuse_virtual_memory");
   }
 }
 

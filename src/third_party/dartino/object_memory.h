@@ -111,6 +111,7 @@ class Chunk : public ChunkList::Element {
   Chunk(Space* owner, uword start, uword size);
 
   friend class ObjectMemory;
+  friend class SemiSpace;
 };
 
 // Abstract base class for visiting all objects in a space.
@@ -183,7 +184,7 @@ class Space : public LivenessOracle {
   void iterate_objects(HeapObjectVisitor* visitor, LivenessOracle* filter = null);
 
   // Iterate all the objects that are grey, after a mark stack overflow.
-  void iterate_overflowed_objects(RootCallback* visitor, MarkingStack* stack);
+  void iterate_overflowed_objects(RootCallback* visitor, MarkingStack* stack) const;
 
   void iterate_chunks(void* context, Process* process, process_chunk_callback_t* callback);
 
@@ -237,19 +238,12 @@ class Space : public LivenessOracle {
   }
 
   Chunk* remove_chunk() {
-    return chunk_list_.remove_first();
+    Chunk* chunk = chunk_list_.remove_first();
+    if (chunk) chunk->set_owner(nullptr);
+    return chunk;
   }
 
   PageType page_type() { return page_type_; }
-
-  inline void swap(Space& other) {
-    using std::swap;
-    swap(program_, other.program_);
-    swap(chunk_list_, other.chunk_list_);
-    swap(top_, other.top_);
-    swap(limit_, other.limit_);
-    swap(page_type_, other.page_type_);
-  }
 
   void validate_before_mark_sweep(PageType page_type, bool object_starts_should_be_clear);
 
@@ -280,10 +274,6 @@ class Space : public LivenessOracle {
   uword limit_ = 0;             // Allocation limit in current chunk.
   PageType page_type_;
 };
-
-inline void swap(Space& a, Space& b) {
-  a.swap(b);
-}
 
 class SemiSpace : public Space {
  public:
@@ -316,8 +306,17 @@ class SemiSpace : public Space {
 
   virtual void append(Chunk* chunk);
 
-  inline void swap(SemiSpace& other) {
-    static_cast<Space&>(*this).swap(static_cast<Space&>(other));
+  // Take the copied objects from the temporary semispace after a scavenge.
+  void take_survivors(SemiSpace& source) {
+    ASSERT(is_empty() && !source.is_empty() && source.chunk_list_.first() == source.chunk_list_.last());
+    ASSERT(program_ == source.program_ && page_type_ == source.page_type_);
+    Chunk* chunk = source.chunk_list_.remove_first();
+    chunk_list_.append(chunk);
+    // Rebinding a live chunk must preserve its page classification and GC tables.
+    chunk->owner_ = this;
+    top_ = source.top_;
+    limit_ = source.limit_;
+    source.top_ = source.limit_ = 0;
   }
 
   void validate();
@@ -327,10 +326,6 @@ class SemiSpace : public Space {
 
   uword allocate_in_new_chunk(uword size);
 };
-
-inline void swap(SemiSpace& a, SemiSpace& b) {
-  a.swap(b);
-}
 
 class FreeList {
  public:
@@ -378,24 +373,7 @@ class FreeList {
     // Search the bucket containing regions that could, but are not
     // guaranteed to, satisfy the allocation.
     if (smallest_bucket > NUMBER_OF_BUCKETS) smallest_bucket = NUMBER_OF_BUCKETS;
-    FreeListRegion* previous = null;
-    FreeListRegion* current = buckets_[smallest_bucket - 1];
-    while (current != null) {
-      if (current->size() >= min_size) {
-        if (previous != null) {
-          previous->set_next_region(current->next_region());
-        } else {
-          buckets_[smallest_bucket - 1] =
-              reinterpret_cast<FreeListRegion*>(current->next_region());
-        }
-        current->set_next_region(null);
-        return current;
-      }
-      previous = current;
-      current = reinterpret_cast<FreeListRegion*>(current->next_region());
-    }
-
-    return null;
+    return take_first_fit(&buckets_[smallest_bucket - 1], min_size);
   }
 
   void clear() {
@@ -419,8 +397,29 @@ class FreeList {
   }
 
  private:
-  // Buckets of power of two sized free lists regions. Bucket i
-  // contains regions of size larger than 2 ** (i + 1).
+  static FreeListRegion* take_first_fit(FreeListRegion** head, uword min_size) {
+    FreeListRegion* previous = null;
+    FreeListRegion* current = *head;
+    while (current != null) {
+      if (current->size() >= min_size) {
+        if (previous != null) {
+          previous->set_next_region(current->next_region());
+        } else {
+          *head =
+              reinterpret_cast<FreeListRegion*>(current->next_region());
+        }
+        current->set_next_region(null);
+        return current;
+      }
+      previous = current;
+      current = reinterpret_cast<FreeListRegion*>(current->next_region());
+    }
+
+    return null;
+  }
+
+  // Bucket i holds sizes from 2^i up to but excluding 2^(i+1).
+  // The last bucket also holds every larger size.
   static const int NUMBER_OF_BUCKETS = 12;
 #if defined(_MSC_VER)
   // Work around Visual Studo 2013 bug 802058
@@ -495,6 +494,8 @@ class OldSpace : public Space {
 
  private:
   uword allocate_from_free_list(uword size);
+  FreeListRegion* take_free_region(uword size);
+  uword allocate_in_free_region(FreeListRegion* region, uword size);
   uword allocate_in_new_chunk(uword size);
   Chunk* allocate_and_use_chunk(uword size);
   void validate_sweep(Chunk* chunk);
@@ -520,9 +521,8 @@ class OldSpace : public Space {
 // ObjectMemory controls all memory used by object heaps.
 class ObjectMemory {
  public:
-  // Allocate a new chunk for a given space. All chunk sizes are
-  // rounded up the page size and the allocated memory is aligned
-  // to a page boundary.
+  // Allocate a page-aligned chunk, rounding its size up to whole pages.
+  // Return null for zero bytes or an unrepresentable rounded size.
   static Chunk* allocate_chunk(Space* space, uword size);
 
   // Release the chunk.
@@ -536,8 +536,12 @@ class ObjectMemory {
 
   static inline Mutex* spare_chunk_mutex() { return spare_chunk_mutex_; }
 
-  static inline Chunk* spare_chunk(Locker& locker) { return spare_chunk_; }
-  static inline void set_spare_chunk(Locker& locker, Chunk* spare_chunk) { spare_chunk_ = spare_chunk; }
+  // FreeRTOS may replace the borrowed chunk with a lower-address reservation.
+  static Chunk* take_spare_chunk(Locker& locker);
+  static inline void set_spare_chunk(Locker& locker, Chunk* spare_chunk) {
+    ASSERT(locker.mutex() == spare_chunk_mutex_ && spare_chunk_ == nullptr && spare_chunk != nullptr);
+    spare_chunk_ = spare_chunk;
+  }
 
  private:
   static Chunk* allocate_chunk_helper(Space* space, uword size, void* memory);

@@ -78,6 +78,7 @@ PRIMITIVE(arm) {
 
 PRIMITIVE(delete) {
   ARGS(TimerResourceGroup, resource_group, Timer, timer);
+  if (timer->resource_group() != resource_group) FAIL(WRONG_OBJECT_TYPE);
 
   resource_group->unregister_resource(timer);
   process->remove_timer();

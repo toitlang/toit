@@ -1,0 +1,267 @@
+// Copyright (C) 2026 Toit contributors.
+@include ../model/model.cfg
+@verbatim
+#include "blit_pixel.gen.h"
+#include "byte_zap.gen.h"
+#include "blob_args.gen.h"
+#define BLIT_WORD_MAX (UINTPTR_MAX / 2)
+/*@
+fixpoint int blit_rows_in(int length, int last_byte, int stride) {
+  return last_byte >= length ? 0 : stride == 0 ? BLIT_WORD_MAX : (length-1-last_byte)/stride+1;
+}
+fixpoint int blit_min(int a, int b) { return a < b ? a : b; }
+fixpoint int blit_visits(int sl, int sp, int ss, int dl, int dp, int ds, int pixels, int operation) {
+  return pixels == 0 ? 0 : pixels * blit_min(
+    blit_rows_in(sl, (pixels-1)*sp, ss),
+    blit_rows_in(dl, (pixels-1)*abs(dp) + (operation == ADD_16_LE ? 1 : 0), ds));
+}
+@*/
+struct PolicyQuotas { int64 max_run_time_us; int64 cpu_budget_us; };
+typedef struct PolicyQuotas PolicyQuotas;
+struct PrimitivePolicy { PolicyQuotas quotas_; };
+typedef struct PrimitivePolicy PrimitivePolicy;
+// The process owns a reference to its group's immutable policy.
+/*@
+fixpoint int blit_run_time(Process *p);
+fixpoint int blit_cpu_budget(Process *p);
+@*/
+PrimitivePolicy *Process_policy(Process *self);
+  //@ requires [?f]process(self, ?prog, ?ids);
+  /*@ ensures [f]process(self, prog, ids) &*& [_]result->quotas_.max_run_time_us |-> blit_run_time(self) &*&
+              [_]result->quotas_.cpu_budget_us |-> blit_cpu_budget(self); @*/
+@prototypes
+
+@render src/primitive_policy.h toit::PolicyQuotas::limits_run_time tu=src/primitive_bitmap.cc
+bool limits_run_time() const
+  //@ requires [?f]self->max_run_time_us |-> ?run &*& [?g]self->cpu_budget_us |-> ?cpu;
+  //@ ensures [f]self->max_run_time_us |-> run &*& [g]self->cpu_budget_us |-> cpu &*& result == (run > 0 || cpu > 0);
+{ return max_run_time_us > 0 || cpu_budget_us > 0; }
+
+@render src/primitive_policy.h toit::PrimitivePolicy::limits_run_time tu=src/primitive_bitmap.cc
+bool limits_run_time() const
+  //@ requires [?f]self->quotas_.max_run_time_us |-> ?run &*& [?g]self->quotas_.cpu_budget_us |-> ?cpu;
+  //@ ensures [f]self->quotas_.max_run_time_us |-> run &*& [g]self->quotas_.cpu_budget_us |-> cpu &*& result == (run > 0 || cpu > 0);
+{ return quotas_.limits_run_time(); }
+
+@render src/primitive_bitmap.cc toit::blit_line_limit
+static word blit_line_limit(word length, word last_byte, word stride)
+/*@ requires 0 <= length &*& length <= BLIT_WORD_MAX &*& last_byte >= 0 &*& stride >= 0; @*/
+/*@ ensures 0 <= result &*& result <= BLIT_WORD_MAX &*&
+            (last_byte >= length ? result == 0 :
+             stride == 0 ? result == BLIT_WORD_MAX :
+             result == (length-1-last_byte)/stride + 1) &*&
+            (result > 0 ? (result-1)*stride + last_byte < length : true); @*/
+//@ terminates;
+{
+  if (last_byte >= length) return 0;
+  if (stride == 0) return INTPTR_MAX;
+  //@ div_rem_nonneg(length-1-last_byte, stride);
+  return (length - 1 - last_byte) / stride + 1;
+}
+
+@render src/primitive_bitmap.cc toit::blit_work_fits
+static bool blit_work_fits(word lines, word pixels, word src_length, word dest_length)
+/*@ requires 0 <= lines &*& lines <= BLIT_WORD_MAX &*& 0 < pixels &*& pixels < 0x800000 &*&
+             0 <= src_length &*& src_length <= BLIT_WORD_MAX &*& 0 <= dest_length &*& dest_length <= BLIT_WORD_MAX; @*/
+/*@ ensures result == (lines*pixels <= 4*(src_length+dest_length)+0x10000); @*/
+//@ terminates;
+{
+  if (lines <= INT_MAX && src_length <= INT_MAX && dest_length <= INT_MAX) {
+    //@ mul_mono_l(0, lines, pixels);
+    //@ mul_mono_l(lines, INT_MAX, pixels);
+    //@ mul_mono_l(pixels, 0x7fffff, INT_MAX);
+    int64 budget = 4 * (static_cast<int64>(src_length) + dest_length) + 0x10000;
+    return static_cast<int64>(lines) * pixels <= budget;
+  }
+
+  // Divide the budget by pixels without first forming four times the sum
+  // of two word lengths. Each whole quotient pays for four rows.
+  //@ div_rem_nonneg(src_length, pixels);
+  //@ div_rem_nonneg(dest_length, pixels);
+  //@ div_rem_nonneg(lines, 4);
+  uint64 whole = static_cast<uint64>(src_length / pixels) + static_cast<uint64>(dest_length / pixels);
+  //@ assert whole*pixels + src_length%pixels + dest_length%pixels == src_length + dest_length;
+  //@ if (whole > lines/4) mul_mono_l(lines, 4*whole, pixels);
+  if (whole > static_cast<uint64>(lines / 4)) return true;
+  int64 remaining_lines = lines - static_cast<int64>(4 * whole);
+  int64 remainder_budget = 4 * (static_cast<int64>(src_length % pixels) + dest_length % pixels) + 0x10000;
+  //@ div_rem_nonneg(remainder_budget, pixels);
+  /*@ if (remaining_lines <= remainder_budget/pixels) mul_mono_l(remaining_lines, remainder_budget/pixels, pixels);
+      else mul_mono_l(remainder_budget/pixels+1, remaining_lines, pixels); @*/
+  return remaining_lines <= remainder_budget / pixels;
+}
+
+@render src/primitive_bitmap.cc toit::blit_rows
+static bool blit_rows(const uint8* src, word src_length, word src_pixel_stride, word src_line_stride,
+                      uint8* dest, word dest_length, word dest_pixel_stride, word dest_line_stride,
+                      word pixels, const uint8* lookup, word shift, word mask, word operation, bool limited)
+/*@ requires blit_views((uint8 *)src, src_length, dest, dest_length, (uint8 *)lookup, ?state, ?counter, ?visits) &*&
+             0 <= src_length &*& src_length <= BLIT_WORD_MAX &*& 0 <= dest_length &*& dest_length <= BLIT_WORD_MAX &*&
+             0 <= pixels &*& pixels < 0x800000 &*& 0 <= src_pixel_stride &*& src_pixel_stride < 128 &*&
+             -128 < dest_pixel_stride &*& dest_pixel_stride <= 128 &*&
+             0 <= src_line_stride &*& src_line_stride < 0x800000 &*& 0 <= dest_line_stride &*& dest_line_stride < 0x800000 &*&
+             (src_line_stride != 0 || dest_line_stride != 0) &*& 0 <= operation &*& operation < 6 &*&
+             (operation != ADD_16_LE || dest_pixel_stride >= 0); @*/
+/*@ ensures result == (!limited || blit_visits(src_length, src_pixel_stride, src_line_stride,
+              dest_length, dest_pixel_stride, dest_line_stride, pixels, operation) <= 4*(src_length+dest_length)+0x10000) &*&
+            blit_views((uint8 *)src, src_length, dest, dest_length, (uint8 *)lookup, state, counter,
+              visits + (result ? blit_visits(src_length, src_pixel_stride, src_line_stride,
+              dest_length, dest_pixel_stride, dest_line_stride, pixels, operation) : 0)); @*/
+//@ terminates;
+{
+  if (pixels == 0) return true;
+  //@ mul_mono_l(0, pixels-1, src_pixel_stride);
+  //@ mul_mono_l(pixels-1, 0x7ffffe, src_pixel_stride);
+  //@ mul_mono_l(src_pixel_stride, 127, 0x7ffffe);
+  //@ int magnitude = dest_pixel_stride < 0 ? -dest_pixel_stride : dest_pixel_stride;
+  //@ mul_mono_l(0, pixels-1, magnitude);
+  //@ mul_mono_l(pixels-1, 0x7ffffe, magnitude);
+  //@ mul_mono_l(magnitude, 128, 0x7ffffe);
+  word src_last = (pixels - 1) * src_pixel_stride;
+  word dest_span = (pixels - 1) * (dest_pixel_stride < 0 ? -dest_pixel_stride : dest_pixel_stride);
+  word extra = operation == ADD_16_LE ? 1 : 0;
+  word src_lines = blit_line_limit(src_length, src_last, src_line_stride);
+  word dest_lines = blit_line_limit(dest_length, dest_span + extra, dest_line_stride);
+  word lines = src_lines < dest_lines ? src_lines : dest_lines;
+  if (limited && !blit_work_fits(lines, pixels, src_length, dest_length)) return false;
+  for (word row = 0; row < lines; row++)
+    /*@ invariant 0 <= row &*& row <= lines &*& blit_views((uint8 *)src, src_length, dest, dest_length, (uint8 *)lookup, state, counter, visits+row*pixels); @*/
+    //@ decreases lines-row;
+  {
+    //@ mul_mono_l(0, row, src_line_stride);
+    //@ mul_mono_l(0, row, dest_line_stride);
+    //@ mul_mono_l(row, src_lines-1, src_line_stride);
+    //@ mul_mono_l(row, dest_lines-1, dest_line_stride);
+    word src_start = row * src_line_stride;
+    word dest_start = row * dest_line_stride + (dest_pixel_stride < 0 ? dest_span : 0);
+    for (word x = 0; x < pixels; x++)
+      /*@ invariant 0 <= x &*& x <= pixels &*& blit_views((uint8 *)src, src_length, dest, dest_length, (uint8 *)lookup, state, counter, visits+row*pixels+x); @*/
+      //@ decreases pixels-x;
+    {
+      //@ mul_mono_l(0, x, src_pixel_stride);
+      //@ mul_mono_l(0, x, magnitude);
+      //@ mul_mono_l(x, pixels-1, src_pixel_stride);
+      //@ if (dest_pixel_stride < 0) mul_mono_l(x, pixels-1, -dest_pixel_stride); else mul_mono_l(x, pixels-1, dest_pixel_stride);
+      word src_index = src_start + x * src_pixel_stride;
+      word dest_index = dest_start + x * dest_pixel_stride;
+      blit_pixel(src, src_index, dest, dest_index, lookup, shift, mask, operation);
+    }
+  }
+  return true;
+}
+
+@render src/primitive_bitmap.cc toit::blit_with_destination
+static Object* blit_with_destination(Process* process, Object** __args, MutableBlob* dest)
+/*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?after, ?H2) &*& dest->address_ |-> ?da &*& dest->length_ |-> ?dl &*&
+             [_]mutable_result(after, H2, process, da, dl, _) &*&
+             pointer(__args - 0, ?x1) &*&
+             pointer(__args - 1, ?x2) &*&
+             pointer(__args - 2, ?x3) &*&
+             pointer(__args - 3, ?x4) &*&
+             pointer(__args - 4, ?x5) &*&
+             pointer(__args - 5, ?x6) &*&
+             pointer(__args - 6, ?x7) &*&
+             pointer(__args - 7, ?x8) &*&
+             pointer(__args - 8, ?x9) &*&
+             pointer(__args - 9, ?x10) &*& good(after, x3) && good(after, x7); @*/
+/*@ ensures [f]process(process, prog, ids) &*& heap(after, H2) &*& dest->address_ |-> da &*& dest->length_ |-> dl &*&
+             pointer(__args - 0, x1) &*&
+             pointer(__args - 1, x2) &*&
+             pointer(__args - 2, x3) &*&
+             pointer(__args - 3, x4) &*&
+             pointer(__args - 4, x5) &*&
+             pointer(__args - 5, x6) &*&
+             pointer(__args - 6, x7) &*&
+             pointer(__args - 7, x8) &*&
+             pointer(__args - 8, x9) &*&
+             pointer(__args - 9, x10) &*& (result == process_null(process) || (uword)result % 4 == 3); @*/
+{
+  //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);
+  //@ error_word(Program_WRONG_BYTES_TYPE_INDEX);
+  //@ error_word(Program_OUT_OF_BOUNDS_INDEX);
+  //@ error_word(Program_INVALID_ARGUMENT_INDEX);
+  //@ error_word(Program_OUT_OF_RANGE_INDEX);
+  ARGS(word, dest_pixel_stride, word, dest_line_stride,
+       Blob, src, word, src_pixel_stride, word,  src_line_stride,
+       word, pixels_per_line,
+       Object, lut,
+       word, shift, word, mask, word, operation);
+  // To avoid security issues caused by overflow, all values are limited to
+  // positive 23 bits values.  We could up the limit on 64 bit, but this
+  // would increase differences between device and server.
+  if (operation < 0 || operation >= NUMBER_OF_POSSIBLE_OPERATIONS) FAIL(OUT_OF_BOUNDS);
+  if (dest_line_stride < 0 || dest_line_stride >= 0x800000 ||
+      src_line_stride < 0 || src_line_stride >= 0x800000 ||
+      pixels_per_line < 0 || pixels_per_line >= 0x800000) FAIL(INVALID_ARGUMENT);
+  if (src_pixel_stride < 0 || src_pixel_stride >= 128) FAIL(INVALID_ARGUMENT);
+  // dest_pixel_stride is also multiplied by other values, but we allow negative values.
+  if (!(-0x80 < dest_pixel_stride && dest_pixel_stride <= 0x80)) {
+    FAIL(INVALID_ARGUMENT);
+  }
+  //@ assert [_]mutable_result(after, H2, process, da, dl, ?db);
+  //@ assert [_]blob_result(after, H2, STRINGS_OR_BYTE_ARRAYS, ?sa, ?sl, ?sb);
+  const uint8* lookup;
+  if (lut == process->null_object()) {
+    lookup = null;
+    //@ close blit_lookup(after, H2, lookup);
+    //@ leak blit_lookup(after, H2, lookup);
+  } else {
+    Blob blob;
+    if (!lut->byte_content(process->program(), &blob, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_OBJECT_TYPE);
+    lookup = blob.address();
+    if (blob.length() < 0x100) FAIL(INVALID_ARGUMENT);
+    //@ close blit_lookup(after, H2, lookup);
+    //@ leak blit_lookup(after, H2, lookup);
+  }
+  if (dest_line_stride == 0 && src_line_stride == 0) FAIL(INVALID_ARGUMENT);
+  if (dest_pixel_stride < 0 && operation == ADD_16_LE) FAIL(INVALID_ARGUMENT);
+  //@ open [_]mutable_result(after, H2, process, da, dl, db);
+  //@ open [_]blob_result(after, H2, STRINGS_OR_BYTE_ARRAYS, sa, sl, sb);
+  //@ int counter = create_ghost_cell<int>(0);
+  //@ close blit_views(sa, sl, da, dl, (uint8 *)lookup, blit_state(after, H2, process), counter, 0);
+  bool fits = blit_rows(src.address(), src.length(), src_pixel_stride, src_line_stride,
+                        dest->address(), dest->length(), dest_pixel_stride, dest_line_stride,
+                        pixels_per_line, lookup, shift, mask, operation,
+                        process->policy()->limits_run_time());
+  //@ open blit_views(sa, sl, da, dl, (uint8 *)lookup, blit_state(after, H2, process), counter, _);
+  //@ leak ghost_cell<int>(counter, _);
+  //@ assert fits == (!(blit_run_time(process) > 0 || blit_cpu_budget(process) > 0) || blit_visits(sl, src_pixel_stride, src_line_stride, dl, dest_pixel_stride, dest_line_stride, pixels_per_line, operation) <= 4*(sl+dl)+0x10000);
+  if (!fits) FAIL(OUT_OF_RANGE);
+  return process->null_object();
+}
+
+@render src/primitive_bitmap.cc toit::primitive_blit
+PRIMITIVE(blit)
+/*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
+             pointer(__args - 0, ?x0) &*&
+             pointer(__args - 1, ?x1) &*&
+             pointer(__args - 2, ?x2) &*&
+             pointer(__args - 3, ?x3) &*&
+             pointer(__args - 4, ?x4) &*&
+             pointer(__args - 5, ?x5) &*&
+             pointer(__args - 6, ?x6) &*&
+             pointer(__args - 7, ?x7) &*&
+             pointer(__args - 8, ?x8) &*&
+             pointer(__args - 9, ?x9) &*&
+             pointer(__args - 10, ?x10) &*&
+             good(objs, x0) && good(objs, x1) && good(objs, x2) && good(objs, x3) && good(objs, x4) && good(objs, x5) && good(objs, x6) && good(objs, x7) && good(objs, x8) && good(objs, x9) && good(objs, x10); @*/
+/*@ ensures [f]process(process, prog, ids) &*& heap(?after, ?H2) &*& grows(objs, H, after, H2) == true &*&
+             pointer(__args - 0, x0) &*&
+             pointer(__args - 1, x1) &*&
+             pointer(__args - 2, x2) &*&
+             pointer(__args - 3, x3) &*&
+             pointer(__args - 4, x4) &*&
+             pointer(__args - 5, x5) &*&
+             pointer(__args - 6, x6) &*&
+             pointer(__args - 7, x7) &*&
+             pointer(__args - 8, x8) &*&
+             pointer(__args - 9, x9) &*&
+             pointer(__args - 10, x10) &*& (result == process_null(process) || (uword)result % 4 == 3); @*/
+{
+  ARGS(MutableBlob, dest);
+  //@ assert heap(?after, ?H2);
+  //@ if (!is_smi_w((uword)x3)) mem_subset(x3, objs, after);
+  //@ if (!is_smi_w((uword)x7)) mem_subset(x7, objs, after);
+  //@ pointer_limits(__args - 1);
+  return blit_with_destination(process, __args - 1, &dest);
+}

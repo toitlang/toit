@@ -35,38 +35,6 @@ justification = "usize is the target's word, 8 bytes for target_pointer_width 64
 [[trusted]]
 crate = "core"
 file = "src/alloc.rs"
-item = "bump_double"
-kind = "external_body"
-count = 1
-justification = "ASSUMED (TRUSTED.md 9, Inline allocation): as bump_instance, for ObjectHeap::allocate_double; contract of gc_allocate_double without a GC."
-
-[[trusted]]
-crate = "core"
-file = "src/alloc.rs"
-item = "bump_double"
-kind = "unsafe"
-count = 1
-justification = "Writes the header and the 64-bit value of the fresh new-space bytes Runtime::bump returned (TRUSTED.md 9, Inline allocation)."
-
-[[trusted]]
-crate = "core"
-file = "src/alloc.rs"
-item = "bump_instance"
-kind = "external_body"
-count = 1
-justification = "ASSUMED (TRUSTED.md 9, Inline allocation): the new-space fast path of SemiSpace::try_allocate inline, the instance initialized as ObjectHeap::allocate_instance does; contract of gc_allocate_instance without a GC (nothing moves); 0 and no change if new space is full."
-
-[[trusted]]
-crate = "core"
-file = "src/alloc.rs"
-item = "bump_instance"
-kind = "unsafe"
-count = 1
-justification = "Writes the header and null fields of the fresh new-space bytes Runtime::bump returned (TRUSTED.md 9, Inline allocation)."
-
-[[trusted]]
-crate = "core"
-file = "src/alloc.rs"
 item = "gc_allocate_double"
 kind = "external_body"
 count = 1
@@ -79,6 +47,30 @@ item = "gc_allocate_instance"
 kind = "external_body"
 count = 1
 justification = "ASSUMED: toit_v2_allocate_instance (may GC) keeps the abstract state the stack, header, globals and heap model represent and appends exactly the spec's null-filled instance (or keeps it unchanged on out of memory); epoch unchanged implies nothing moved (the machine's fields and stack view stay); TRUSTED.md, GC and allocation, Epoch."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "Runtime::allocation_window"
+kind = "assume_new"
+count = 1
+justification = "Derives the exclusive semispace word permissions for a single allocation before any call that may collect."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "Runtime::allocation_window"
+kind = "external_body"
+count = 1
+justification = "Supplies ownership of the current semispace window and the top and limit slots at the addresses supplied by the C++ context."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "inline_page_metadata"
+kind = "external_body"
+count = 1
+justification = "Supplies write ownership of a missing card byte, with no assumption about its initial contents. On 64-bit targets the object-count bound is needed only at the model limit. The 32-bit bound follows from header extent, alignment and uniqueness."
 
 [[trusted]]
 crate = "core"
@@ -203,14 +195,6 @@ justification = "repr(C) mirror of toit_v2_program; size and field offsets machi
 [[trusted]]
 crate = "core"
 file = "src/ffi.rs"
-item = "Runtime"
-kind = "external_body"
-count = 1
-justification = "Opaque holder of the Process pointer and the Stack array offset used by the FFI wrappers (TRUSTED.md section 2)."
-
-[[trusted]]
-crate = "core"
-file = "src/ffi.rs"
 item = "Runtime::allocate_array"
 kind = "external_body"
 count = 1
@@ -279,22 +263,6 @@ item = "Runtime::allocator"
 kind = "external_body"
 count = 1
 justification = "Hands the process pointer to the allocator of the Rust primitives."
-
-[[trusted]]
-crate = "core"
-file = "src/ffi.rs"
-item = "Runtime::bump"
-kind = "plain_rust_item"
-count = 1
-justification = "SemiSpace::try_allocate's fast path on the process' new-space top and limit (toit_v2_context); only bump_instance and bump_double call it (TRUSTED.md 9, Inline allocation)."
-
-[[trusted]]
-crate = "core"
-file = "src/ffi.rs"
-item = "Runtime::bump"
-kind = "unsafe"
-count = 1
-justification = "Reads and writes the new-space top and limit words of the running process and the sentinel word after the allocation (inside the space: limit - top > size)."
 
 [[trusted]]
 crate = "core"
@@ -651,50 +619,10 @@ justification = "IEEE-754 add/sub/mul/div/fmod on bit patterns (Rust std, same a
 [[trusted]]
 crate = "core"
 file = "src/prims/fp.rs"
-item = "compare"
+item = "native_widen_nan"
 kind = "external_body"
 count = 1
-justification = "IEEE-754 comparisons on bit patterns; no contract; differentially tested."
-
-[[trusted]]
-crate = "core"
-file = "src/prims/fp.rs"
-item = "compare_numbers"
-kind = "external_body"
-count = 1
-justification = "Interpreter::compare_numbers on integer or double bit patterns: two integers compare directly, otherwise the spec's trusted compare_mixed_impl (the run loop's mixed comparison, one copy); ensures only a non-zero result field; differentially tested (prim_diff.sh)."
-
-[[trusted]]
-crate = "core"
-file = "src/prims/fp.rs"
-item = "from_int"
-kind = "external_body"
-count = 1
-justification = "(double) of an int64 (Rust `as f64`, round to nearest as C++); no contract."
-
-[[trusted]]
-crate = "core"
-file = "src/prims/fp.rs"
-item = "from_raw32"
-kind = "external_body"
-count = 1
-justification = "bit_cast<float> widened to double; no contract."
-
-[[trusted]]
-crate = "core"
-file = "src/prims/fp.rs"
-item = "is_finite"
-kind = "external_body"
-count = 1
-justification = "isfinite on a bit pattern; no contract."
-
-[[trusted]]
-crate = "core"
-file = "src/prims/fp.rs"
-item = "is_nan"
-kind = "external_body"
-count = 1
-justification = "isnan on a bit pattern; no contract."
+justification = "Obtains the native NaN payload for raw32_to_float. The verified caller checks the result is a NaN. All numeric values and infinities are widened with verified integer operations."
 
 [[trusted]]
 crate = "core"
@@ -739,42 +667,26 @@ justification = "Declaration of the C library's trunc (no_std core)."
 [[trusted]]
 crate = "core"
 file = "src/prims/fp.rs"
-item = "sign"
+item = "native_narrow_nan"
 kind = "external_body"
 count = 1
-justification = "float_sign on a bit pattern; ensures the result is -1, 0 or 1."
+justification = "Obtains the native NaN payload for float_to_raw32. The verified caller checks that the result encodes a binary32 NaN."
 
 [[trusted]]
 crate = "core"
 file = "src/prims/fp.rs"
-item = "to_int"
+item = "libm_unop"
 kind = "external_body"
 count = 1
-justification = "number_to_integer of a double: NaN, range check against INT64_MIN/INT64_MAX as C++, truncation; no contract."
+justification = "Native sqrt and the native NaN sign/payload choice for ceil/floor/trunc. The verified caller checks that a NaN input rounds to a NaN."
 
 [[trusted]]
 crate = "core"
 file = "src/prims/fp.rs"
-item = "to_raw32"
-kind = "external_body"
-count = 1
-justification = "bit_cast<uint32>((float) x); no contract."
-
-[[trusted]]
-crate = "core"
-file = "src/prims/fp.rs"
-item = "unop"
-kind = "external_body"
-count = 1
-justification = "IEEE-754 negate/sqrt/ceil/floor/trunc on bit patterns (Rust std = libm); no contract; differentially tested."
-
-[[trusted]]
-crate = "core"
-file = "src/prims/fp.rs"
-item = "unop"
+item = "libm_unop"
 kind = "unsafe"
 count = 1
-justification = "Calls the C library's sqrt/ceil/floor/trunc (no_std core, Phase 5): the functions the C++ primitives call; validated against them by verified/core/tests/prim_diff.sh (64-bit and 32-bit hosts)."
+justification = "Calls C sqrt, or ceil/floor/trunc only on a NaN: the functions the C++ primitives call; validated against them by verified/core/tests/prim_diff.sh (64-bit and 32-bit hosts)."
 
 [[trusted]]
 crate = "core"
@@ -917,8 +829,8 @@ crate = "core"
 file = "src/view.rs"
 item = "Heap::new"
 kind = "assume_new"
-count = 1
-justification = "DERIVATION POINT (at entry; after a GC point the heap is the one the GC contract states): the heap model is the process' heap (V2): every object lies at its tagged address with the header, fields, length and elements view::word_val states, in the address space, owned by the core while it runs; the permissions of those words (TRUSTED.md section 1, Memory model)."
+count = 2
+justification = "DERIVATION POINT: the VM supplies the heap model and its word permissions, and exclusive initialized permissions for the remembered-set bytes covering writable process objects at the current GC bias, until an operation that may change the heap (TRUSTED.md section 1)."
 
 [[trusted]]
 crate = "core"
@@ -991,22 +903,6 @@ item = "Heap::word64"
 kind = "unsafe"
 count = 1
 justification = "Unaligned 8-byte read of the payload of a double or large integer (two words on 32-bit targets) inside the object (heap integrity, TRUSTED.md)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::write_barrier"
-kind = "external_body"
-count = 1
-justification = "FFI LEAF: the write barrier (the remembered set of the C++ GC): marks the card of the object written; the card table lies outside every view, so no contract and no effect on the model (TRUSTED.md section 1)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::write_barrier"
-kind = "unsafe"
-count = 1
-justification = "Store of NEW_SPACE_POINTERS into the card byte (obj - HEAP_TAG) >> CARD_SIZE_LOG_2 + bias of the process' remembered set, as the C++ write barrier (layout check: CARD_SIZE_LOG_2, NEW_SPACE_POINTERS)."
 
 [[trusted]]
 crate = "core"
@@ -1131,54 +1027,6 @@ justification = "Constructor of the Table view from C++ pointers, called only by
 [[trusted]]
 crate = "core"
 file = "src/view.rs"
-item = "copy_words"
-kind = "external_body"
-count = 1
-justification = "FFI LEAF: the C library's memmove on the stack array, stated on the permissions (the destination words get the source words' old values, the others keep theirs); a verified word loop with this contract costs up to 1 percent instructions (TRUSTED.md section 1)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "copy_words"
-kind = "unsafe"
-count = 1
-justification = "core::ptr::copy (memmove) of n words inside array[0..len): both ranges in bounds by the precondition (from + n, to + n <= len, the permissions cover the array)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "perm_memmove"
-kind = "external_body"
-count = 1
-justification = "FFI LEAF: the C library's memmove (Heap::array_copy on heap words, Heap::content_copy on content bytes), stated on the permissions: the destination elements get the source elements' old values, every other permission keeps its value; the model updates and the heap invariant after them are verified (copy_elements, copy_content); TRUSTED.md section 1."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "perm_memmove"
-kind = "unsafe"
-count = 1
-justification = "core::ptr::copy (memmove) of n elements between two permission ranges, in bounds by the precondition (the permissions of both ranges, at the pointers passed)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "perm_memset"
-kind = "external_body"
-count = 1
-justification = "FFI LEAF: the C library's memset (Heap::content_fill), stated on the permissions: the bytes of the range become v, every other permission keeps its value; the model update is verified (fill_content); TRUSTED.md section 1."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "perm_memset"
-kind = "unsafe"
-count = 1
-justification = "core::ptr::write_bytes (memset) of n bytes of a permission range, in bounds by the precondition."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
 item = "proven_unreachable"
 kind = "external_body"
 count = 1
@@ -1235,22 +1083,6 @@ justification = "Opcode names for tracing and the table test; no semantic role."
 [[trusted]]
 crate = "spec"
 file = "src/exec_step.rs"
-item = "compare_mixed_impl"
-kind = "plain_rust_item"
-count = 1
-justification = "The trusted implementation of the uninterpreted compare_mixed (Interpreter::compare_numbers), moved out of the std-only reference interpreter so that x_compare_mixed builds no_std (Phase 5); unchanged code; checked by the spec differential tests and prim_diff.sh."
-
-[[trusted]]
-crate = "spec"
-file = "src/exec_step.rs"
-item = "x_compare_mixed"
-kind = "external_body"
-count = 1
-justification = "Mixed int/double comparison delegated to the unverified interp::exec::compare_mixed; implements the uninterpreted compare_mixed."
-
-[[trusted]]
-crate = "spec"
-file = "src/exec_step.rs"
 item = "x_double_add"
 kind = "external_body"
 count = 1
@@ -1278,7 +1110,7 @@ file = "src/interp/exec.rs"
 item = "*"
 kind = "plain_rust_file"
 count = 1
-justification = "Unverified mirror of the format-1 spec (DESIGN.md); also implements compare_mixed behind x_compare_mixed."
+justification = "Unverified mirror of the format-1 spec (DESIGN.md)."
 
 [[trusted]]
 crate = "spec"
@@ -1367,14 +1199,6 @@ item = "interp"
 kind = "cfg"
 count = 1
 justification = "Keeps the reference interpreter (plain Rust, std) out of no_std device builds; Verus always sees it."
-
-[[trusted]]
-crate = "spec"
-file = "src/spec_helpers.rs"
-item = "compare_mixed"
-kind = "uninterp"
-count = 1
-justification = "Mixed int/double comparison left uninterpreted in the spec; no assumption beyond being a function."
 
 [[trusted]]
 crate = "spec"

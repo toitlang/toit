@@ -1,0 +1,64 @@
+// Copyright (C) 2026 Toit contributors.
+@include ../model/model.cfg
+@verbatim
+#include "../model/objects.gen.h"
+typedef int GcType;
+struct ObjectHeap { int gc_count_; int full_gc_count_; int full_compacting_gc_count_; };
+struct Process { ObjectHeap object_heap_; };
+
+/*@
+fixpoint bool valid_count(int n) { return 0 <= n && n <= INT_MAX && smi_range(n); }
+fixpoint int next_count(int n) { return n == INT_MAX || n == UINTPTR_MAX / 4 ? 0 : n + 1; }
+predicate gc_counts(ObjectHeap *h; int all, int full, int compact) =
+  h->gc_count_ |-> all &*& h->full_gc_count_ |-> full &*& h->full_compacting_gc_count_ |-> compact &*&
+  valid_count(all) == true &*& valid_count(full) == true &*& valid_count(compact) == true;
+@*/
+
+@prototypes
+@render src/heap.cc toit::ObjectHeap::next_gc_count
+int ObjectHeap::next_gc_count(int count)
+//@ requires valid_count(count) == true;
+//@ ensures valid_count(result) == true &*& result == next_count(count);
+{
+  const word limit = Smi::MAX_SMI_VALUE < INT32_MAX ? Smi::MAX_SMI_VALUE : INT32_MAX;
+  if (count == limit) return 0;
+  return count + 1;
+}
+
+@render src/heap.cc toit::ObjectHeap::record_gc
+void ObjectHeap::record_gc(GcType type)
+//@ requires gc_counts(self, ?all, ?full, ?compact) &*& 0 <= type &*& type <= 2;
+//@ ensures gc_counts(self, next_count(all), type == 0 ? full : next_count(full), type == 2 ? next_count(compact) : compact);
+{
+  //@ open gc_counts(self, all, full, compact);
+  gc_count_ = next_gc_count(gc_count_);
+  if (type != NEW_SPACE_GC) full_gc_count_ = next_gc_count(full_gc_count_);
+  if (type == COMPACTING_GC) full_compacting_gc_count_ = next_gc_count(full_compacting_gc_count_);
+  //@ close gc_counts(self, _, _, _);
+}
+
+@render src/heap.h toit::ObjectHeap::gc_count tu=src/heap.cc
+  int gc_count(GcType type)
+  //@ requires [?f]gc_counts(self, ?all, ?full, ?compact) &*& 0 <= type &*& type <= 2;
+  //@ ensures [f]gc_counts(self, all, full, compact) &*& result == (type == 0 ? all : type == 1 ? full : compact) &*& valid_count(result) == true;
+  {
+    //@ open [f]gc_counts(self, all, full, compact);
+    if (type == NEW_SPACE_GC) return gc_count_;
+    if (type == FULL_GC) return full_gc_count_;
+    if (type == COMPACTING_GC) return full_compacting_gc_count_;
+    UNREACHABLE();
+  }
+
+@render src/process.h toit::Process::gc_count tu=src/heap.cc
+  int gc_count(GcType type)
+  //@ requires [?f]gc_counts(&self->object_heap_, ?all, ?full, ?compact) &*& 0 <= type &*& type <= 2;
+  //@ ensures [f]gc_counts(&self->object_heap_, all, full, compact) &*& result == (type == 0 ? all : type == 1 ? full : compact) &*& valid_count(result) == true;
+  { return object_heap_.gc_count(type); }
+
+@render src/primitive_core.cc toit::primitive_gc_count
+PRIMITIVE(gc_count)
+//@ requires [?f]gc_counts(&process->object_heap_, ?all, ?full, ?compact);
+//@ ensures [f]gc_counts(&process->object_heap_, all, full, compact) &*& is_smi_w((uword)result) == true &*& smi_val((uword)result) == all;
+{
+  return Smi::from(process->gc_count(NEW_SPACE_GC));
+}

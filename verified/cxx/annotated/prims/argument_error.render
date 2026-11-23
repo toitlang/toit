@@ -1,0 +1,31 @@
+// Copyright (C) 2026 Toit contributors.
+//
+// Shared error path for the ARGS macro's integer conversion.
+@include ../model/model.cfg
+@header argument_error.gen.h
+@verbatim
+#include "../model/objects.gen.h"
+//@ #include "../model/arith.gh"
+
+// A primitive's decoded arguments remain VM values across a copy-on-write
+// allocation by an earlier argument in the same ARGS expansion.
+/*@
+predicate valid_arg(void *value, list<void *> entry_objs) = good(entry_objs, value) == true;
+@*/
+@prototypes
+@render src/primitive.cc toit::Primitive::return_not_a_smi
+Object* Primitive::return_not_a_smi(Process* process, Object* value)
+//@ requires [?f]heap(?objs, ?H) &*& [_]valid_arg(value, ?entry_objs) &*& subset(entry_objs, objs) == true;
+/*@ ensures [f]heap(objs, H) &*& (uword)result == 4 * (has_tag(H, value, LARGE_INTEGER_TAG) ?
+              Program_OUT_OF_RANGE_INDEX : Program_WRONG_OBJECT_TYPE_INDEX) + 3; @*/
+{
+  //@ open [_]valid_arg(value, entry_objs);
+  //@ if (!is_smi_w((uword)value)) mem_subset(value, entry_objs, objs);
+  //@ error_word(Program_OUT_OF_RANGE_INDEX);
+  //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);
+  if (is_large_integer(value)) {
+    FAIL(OUT_OF_RANGE);
+  } else {
+    FAIL(WRONG_OBJECT_TYPE);
+  }
+}

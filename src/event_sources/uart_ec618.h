@@ -17,6 +17,8 @@
 
 #ifdef TOIT_EC618
 
+#include <atomic>
+
 #include "../resource.h"
 #include "../os.h"
 #include "../top.h"
@@ -46,7 +48,7 @@ class EventResource : public Resource {
 // wake-up tokens for persistent peripheral state retained in the mailbox.
 class Ec618EventSource : public EventSource, public Thread {
  public:
-  static Ec618EventSource* instance() { return instance_; }
+  static Ec618EventSource* instance() { return instance_.load(std::memory_order_acquire); }
 
   Ec618EventSource();
   ~Ec618EventSource();
@@ -64,10 +66,9 @@ class Ec618EventSource : public EventSource, public Thread {
   void entry() override;
   void dispatch_event(Locker& locker, Event::Type type, word data);
 
-  static Ec618EventSource* instance_;
+  static std::atomic<Ec618EventSource*> instance_;
   QueueHandle_t queue_;
   Ec618EventMailbox mailbox_;
-  bool stop_;
 };
 
 }  // namespace toit

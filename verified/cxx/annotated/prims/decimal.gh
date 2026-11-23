@@ -1,0 +1,22 @@
+// Copyright (C) 2026 Toit contributors.
+
+#ifndef TOIT_DECIMAL_GH
+#define TOIT_DECIMAL_GH
+
+#include <nat.gh>
+
+lemma void decimal_power_le(nat a, nat b)
+  requires int_of_nat(a) <= int_of_nat(b);
+  ensures pow_nat(10, a) <= pow_nat(10, b) &*& 0 < pow_nat(10, a);
+{
+  switch (b) {
+    case zero: switch (a) { case zero: case succ(a0): }
+    case succ(b0):
+      switch (a) {
+        case zero: decimal_power_le(zero, b0);
+        case succ(a0): decimal_power_le(a0, b0);
+      }
+  }
+}
+
+#endif

@@ -50,7 +50,8 @@
 // check of decode_integer; the externals table bound.
 #include <stdio.h>
 #include <stdlib.h>
-#include "../model/objects.gen.h"
+#include "../utf8/validator.gen.h"
+#include "../model/finalizer_nodes.h"
 #include "radix.h"
 //@ #include "../model/arith.gh"
 //@ #include "../model/truncate.gh"
@@ -117,7 +118,7 @@ predicate encoded(uint8 *b, int cap; list<uint8 *> ps);
 
 // A whole message: the buffer and every block.
 predicate msg_whole(uint8 *b) =
-  malloc_block(b, ?cap) &*& uchars(b, cap, _) &*& [_]encoded(b, cap, ?ps) &*& 0 <= cap &*& cap <= MAX_BLOB &*&
+  malloc_block(b, ?cap) &*& uchars(b, cap, _) &*& [_]encoded(b, cap, ?ps) &*& 0 <= cap &*& cap <= MESSAGING_ENCODING_MAX_SIZE &*&
   msg_blocks(ps);
 
 // The block p, lent to the external string or byte array o: its VM
@@ -160,7 +161,7 @@ predicate ipc_own(MessageDecoder *d, Process *proc, uint8 *b, int cap, int st, i
 predicate dec(MessageDecoder *d, real fb, Process *proc, prog_ids ids, int fmt, uint8 *b, int size, int cap; int c, int st, int k) =
   d->process_ |-> proc &*& d->program_ |-> ?prog &*& (proc == 0 ? true : [_]program(prog, ids) &*& prog_ok(ids) == true) &*&
   d->format_ |-> fmt &*& d->buffer_ |-> b &*& d->size_ |-> size &*& d->cursor_ |-> c &*& d->status_ |-> st &*&
-  [fb]uchars(b, cap, _) &*& 0 <= cap &*& cap <= MAX_BLOB &*&
+  [fb]uchars(b, cap, _) &*& 0 <= cap &*& cap <= MESSAGING_ENCODING_MAX_SIZE &*&
   (fmt == MESSAGE_FORMAT_TISON ? size == cap : fmt == MESSAGE_FORMAT_IPC &*& size == INT_MAX) &*&
   0 <= c &*& c <= cap + 16 &*&
   (st == MessageDecoder_DECODE_SUCCESS || st == MessageDecoder_DECODE_ALLOCATION_FAILED || st == MessageDecoder_DECODE_MALFORMED_INPUT) &*&
@@ -174,7 +175,7 @@ predicate dec(MessageDecoder *d, real fb, Process *proc, prog_ids ids, int fmt, 
 predicate dec_out(MessageDecoder *d, real fb, Process *proc, prog_ids ids, int fmt, uint8 *b, int size, int cap; int c, int st, int k) =
   d->process_ |-> proc &*& d->program_ |-> ?prog &*& proc != 0 &*& [_]program(prog, ids) &*& prog_ok(ids) == true &*&
   d->format_ |-> fmt &*& d->buffer_ |-> b &*& d->size_ |-> size &*& d->cursor_ |-> c &*& d->status_ |-> st &*&
-  [fb]uchars(b, cap, _) &*& 0 <= cap &*& cap <= MAX_BLOB &*&
+  [fb]uchars(b, cap, _) &*& 0 <= cap &*& cap <= MESSAGING_ENCODING_MAX_SIZE &*&
   fmt == MESSAGE_FORMAT_IPC &*& size == INT_MAX &*&
   0 <= c &*& c <= cap + 16 &*&
   (st == MessageDecoder_DECODE_SUCCESS || st == MessageDecoder_DECODE_ALLOCATION_FAILED || st == MessageDecoder_DECODE_MALFORMED_INPUT) &*&
@@ -223,7 +224,7 @@ lemma void ipc_pointer(MessageDecoder *d, uint8 *p);
 // out-of-line branches of the decoders).
 lemma void ipc_external(MessageDecoder *d, int length);
   requires [_]ipc_msg(d, ?b, ?cap, ?ps) &*& [?f]d->cursor_ |-> ?c;
-  ensures [f]d->cursor_ |-> c &*& 0 <= length &*& length < MAX_BLOB;
+  ensures [f]d->cursor_ |-> c &*& 0 <= length &*& length < MESSAGING_ENCODING_MAX_SIZE;
 
 // A length the deallocation walk reads (inline content, array or map) is
 // that of what follows it, at least a byte per element.
@@ -308,7 +309,7 @@ lemma void buf_unfocus(uint8 *b, int c, int n)
 
 lemma void dec_facts(MessageDecoder *d)
   requires [?f]dec(d, ?fb, ?proc, ?ids, ?fmt, ?b, ?size, ?cap, ?c, ?st, ?k);
-  ensures [f]dec(d, fb, proc, ids, fmt, b, size, cap, c, st, k) &*& 0 <= cap &*& cap <= MAX_BLOB &*& 0 <= c &*& c <= cap + 16 &*&
+  ensures [f]dec(d, fb, proc, ids, fmt, b, size, cap, c, st, k) &*& 0 <= cap &*& cap <= MESSAGING_ENCODING_MAX_SIZE &*& 0 <= c &*& c <= cap + 16 &*&
           (fmt == MESSAGE_FORMAT_TISON ? size == cap : size == INT_MAX) &*& 0 <= k &*& k <= MESSAGING_ENCODING_MAX_EXTERNALS;
 {
   open [f]dec(d, fb, proc, ids, fmt, b, size, cap, c, st, k);
@@ -488,11 +489,6 @@ lemma void dec_af_plain(MessageDecoder *d)
 }
 @*/
 
-// src/utils.cc: reads the bytes given (contract only).
-bool Utils_is_valid_utf_8(uint8 *buffer, word length);
-//@ requires [?f]uchars(buffer, length, ?cs);
-//@ ensures [f]uchars(buffer, length, cs);
-
 // src/utils.h bit_cast (memcpy of the value): the template instance for
 // uint64 to double (`unsigned long` on LP64, `unsigned long long` on ILP32).
 double bit_cast_double__unsignedlong(uint64 src);
@@ -501,13 +497,6 @@ double bit_cast_double__unsignedlong(uint64 src);
 double bit_cast_double__unsignedlonglong(uint64 src);
 //@ requires true;
 //@ ensures true;
-
-// src/objects.h Smi::is_valid (a template: no rendering rule), the
-// instance for int64: `MIN_SMI_VALUE <= value && value <= MAX_SMI_VALUE`
-// (contract only).
-bool Smi_is_valid(int64 value);
-//@ requires true;
-//@ ensures result == smi_range(value);
 
 // src/utils.h Utils::max (a template, @overloaded: the instance for int) and
 // unvoid_cast (the instance for char*: the pointer, typed).
@@ -528,12 +517,12 @@ void fail(const char *format, ...);
 // null and the block stays with the caller.
 String *ObjectHeap_allocate_external_string(ObjectHeap *self, word length, uint8 *memory, bool dispose);
 /*@ requires [_]object_heap(self, ?p) &*& [?f]process(p, ?prog, ?ids) &*& heap(?objs, ?H) &*& msg_block(memory) &*&
-             dispose == true &*& 0 <= length &*& length < MAX_BLOB; @*/
+             dispose == true &*& 0 <= length &*& length < MESSAGING_ENCODING_MAX_SIZE; @*/
 /*@ ensures [f]process(p, prog, ids) &*& allocated(objs, H, p, result, ?objs2, ?H2) &*&
             (result == 0 ? msg_block(memory) : has_tag(H2, result, STRING_TAG) == true &*& finalized(result, memory)); @*/
 ByteArray *ObjectHeap_allocate_external_byte_array(ObjectHeap *self, word length, uint8 *memory, bool dispose, bool clear_content);
 /*@ requires [_]object_heap(self, ?p) &*& [?f]process(p, ?prog, ?ids) &*& heap(?objs, ?H) &*& msg_block(memory) &*&
-             dispose == true &*& 0 <= length &*& length < MAX_BLOB; @*/
+             dispose == true &*& 0 <= length &*& length < MESSAGING_ENCODING_MAX_SIZE; @*/
 /*@ ensures [f]process(p, prog, ids) &*& allocated(objs, H, p, result, ?objs2, ?H2) &*&
             (result == 0 ? msg_block(memory) : has_tag(H2, result, BYTE_ARRAY_TAG) == true &*& finalized(result, memory)); @*/
 
@@ -554,6 +543,8 @@ void ObjectHeap_register_external_allocation(ObjectHeap *self, word size);
 // ---------------------------------------------------------------------------
 // The receive side (wave 5): the messages of a process's mailbox and its
 // main and spawn arguments, as the primitives see them.
+
+struct Process { uint8 *main_arguments_; uint8 *spawn_arguments_; };
 
 // SystemMessage (src/messaging.h) and the Message base: one struct with
 // the fields the rendered code reads (the classes are one opaque struct).
@@ -589,8 +580,8 @@ predicate dying(Message *m) =
 // The mailbox of process p, its first message (abstract), and the main and
 // spawn arguments (encoded messages the process owns).
 predicate mailbox(Process *p; Message *first);
-predicate main_args(Process *p; uint8 *a);
-predicate spawn_args(Process *p; uint8 *a);
+predicate main_args(Process *p; uint8 *a) = p->main_arguments_ |-> a;
+predicate spawn_args(Process *p; uint8 *a) = p->spawn_arguments_ |-> a;
 
 // A decoder whose message is whole again (remove_disposing_finalizers):
 // the fields, its fraction of the buffer and every block.
@@ -766,7 +757,7 @@ lemma void dec_done_dispose(MessageDecoder *d)
 // again, the decoder's fields back, and the heap changed only in the
 // finalizer bits of objects the decode made.
 lemma void receive_give_back(MessageDecoder *d, uint8 *b, list<void *> objs, fixpoint(void *, oinfo) H, list<void *> objs1, fixpoint(void *, oinfo) H1)
-  requires dec_back(d, 1, b, ?cap, ?ps) &*& malloc_block(b, cap) &*& [_]encoded(b, cap, ps) &*& 0 <= cap &*& cap <= MAX_BLOB &*&
+  requires dec_back(d, 1, b, ?cap, ?ps) &*& malloc_block(b, cap) &*& [_]encoded(b, cap, ps) &*& 0 <= cap &*& cap <= MESSAGING_ENCODING_MAX_SIZE &*&
            grows(objs, H, objs1, H1) == true &*& heap(objs1, ?H2) &*& forall(objs1, (kept_class)(H1, H2)) == true;
   ensures msg_whole(b) &*& dec_fields(d) &*& heap(objs1, H2) &*& grows_class(objs, H, objs1, H2) == true;
 {
@@ -777,20 +768,6 @@ lemma void receive_give_back(MessageDecoder *d, uint8 *b, list<void *> objs, fix
   grows_then_class(objs, H, objs1, H1, H2);
 }
 @*/
-
-// src/process.h, the main and spawn arguments: the process's message.
-uint8 *Process_main_arguments(Process *self);
-//@ requires [?f]main_args(self, ?a);
-//@ ensures [f]main_args(self, a) &*& result == a;
-void Process_clear_main_arguments(Process *self);
-//@ requires main_args(self, _);
-//@ ensures main_args(self, 0);
-uint8 *Process_spawn_arguments(Process *self);
-//@ requires [?f]spawn_args(self, ?a);
-//@ ensures [f]spawn_args(self, a) &*& result == a;
-void Process_clear_spawn_arguments(Process *self);
-//@ requires spawn_args(self, _);
-//@ ensures spawn_args(self, 0);
 
 // src/process.h, the mailbox (under the process mutex): the first message;
 // removing it deletes it (~SystemMessage: free_data_and_externals, rendered
@@ -803,21 +780,71 @@ void Process_remove_first_message(Process *self);
 //@ ensures mailbox(self, ?m2) &*& (m2 == 0 ? true : queued(m2));
 
 // The roots and the program's empty array.
-HeapObject *Process_null_object(Process *self);
-//@ requires [?f]process(self, ?prog, ?ids) &*& [?g]heap(?objs, ?H);
-//@ ensures [f]process(self, prog, ids) &*& [g]heap(objs, H) &*& mem(result, objs) == true;
 Array *Program_empty_array(Program *self);
 //@ requires [?f]program(self, ?ids) &*& [?g]heap(?objs, ?H);
 //@ ensures [f]program(self, ids) &*& [g]heap(objs, H) &*& mem(result, objs) == true;
 
-// The finalizer queue of the heap (not the object model's business).
-bool ObjectHeap_has_finalizer_to_run(ObjectHeap *self);
-//@ requires true;
-//@ ensures true;
-Object *ObjectHeap_next_finalizer_to_run(ObjectHeap *self);
-//@ requires [?g]heap(?objs, ?H);
-//@ ensures [g]heap(objs, H) &*& good(objs, result) == true;
+/*@
+predicate runnable_callbacks(ObjectHeap *owner; list<registration> pending) =
+  owner->runnable_finalizers_.anchor_.next_ |-> ?first &*& owner->runnable_finalizers_.tail_ |-> ?tail &*&
+  callback_chain(first, owner, ?last, pending) &*& tail == (first == 0 ? &owner->runnable_finalizers_.anchor_ : last);
 
+predicate finalizer_ready(Process *p; bool ready, list<registration> pending, list<registration> registered) =
+  [_]process_heap_address(p)->program_ |-> loaded_program(p) &*& [_]program(loaded_program(p), _) &*&
+  runnable_callbacks(process_heap_address(p), pending) &*& registered_callbacks(process_heap_address(p), registered) &*&
+  ready == (pending != nil);
+
+fixpoint void *closure_of(registration r) { switch (r) { case registration(k, c, w): return c; } }
+fixpoint bool keep_callback(registration r) { switch (r) { case registration(k, c, w): return w; } }
+fixpoint bool live_closures(list<void *> objs, list<registration> rs) {
+  switch (rs) {
+    case nil: return true;
+    case cons(r, rest): return good(objs, closure_of(r)) && live_closures(objs, rest);
+  }
+}
+@*/
+
+FinalizerNode *FinalizerNodeFifo_remove_first(FinalizerNodeFifo *q)
+/*@ requires runnable_callbacks(?owner, ?pending) &*& q == &owner->runnable_finalizers_; @*/
+/*@ ensures runnable_callbacks(owner, tail(pending)) &*& (result == 0 ? pending == nil :
+    callback_fields(result, ?key, ?callback, owner) &*& callback_kind(result, ?weak) &*&
+    pending == cons(registration(key, callback, weak), tail(pending))); @*/
+{
+  //@ open runnable_callbacks(owner, pending);
+  FinalizerNode *first = q->anchor_.next_;
+  //@ open callback_chain(first, owner, _, pending);
+  if (first != 0) {
+    callback_detach_first((void **)&q->anchor_.next_, (void **)&q->tail_, (void **)&first->next_, &q->anchor_);
+    //@ close unlinked(first);
+    //@ close callback_fields(first, _, _, owner);
+  } else {
+    //@ close callback_chain(0, owner, 0, nil);
+  }
+  //@ close runnable_callbacks(owner, tail(pending));
+  return first;
+}
+
+// Dynamic dispatch and the C++ deallocator use the concrete callback type.
+bool CallableFinalizerNode_keep_after_callback(CallableFinalizerNode *node);
+//@ requires [?f]callback_kind(node, ?weak);
+//@ ensures [f]callback_kind(node, weak) &*& result == weak;
+void CallableFinalizerNode_delete(CallableFinalizerNode *node)
+//@ requires callback_fields(node, ?key, ?closure, ?owner) &*& callback_kind(node, ?weak);
+//@ ensures true;
+{ FinalizerNode_delete(node); }
+
+bool LinkedList_FinalizerNode_is_empty(FinalizerNodeFifo *queue)
+//@ requires [?f]queue->anchor_.next_ |-> ?head;
+//@ ensures [f]queue->anchor_.next_ |-> head &*& result == (head == 0);
+{
+  return callback_queue_empty(queue->anchor_.next_);
+}
+
+// Snapshot of the signed allocation allowance used by task_has_messages.
+//@ predicate allocation_allowance(Process *p; word available);
+word ObjectHeap_max_external_allocation(ObjectHeap *self);
+//@ requires [_]object_heap(self, ?p) &*& [?f]allocation_allowance(p, ?available);
+//@ ensures [f]allocation_allowance(p, available) &*& result == available;
 // The message's kind (virtual) and a monitor notification's object.
 MessageType Message_message_type(Message *self);
 //@ requires [?f]msg_kind(self, ?t);
@@ -1031,7 +1058,7 @@ void MessageDecoder_ctor__Processp_uint8p_word_MessageFormat(MessageDecoder *sel
              self->cursor_ |-> _ &*& self->nesting_ |-> _ &*& self->status_ |-> _ &*& self->externals_count_ |-> _ &*&
              pointers_(self->externals_, MESSAGING_ENCODING_MAX_EXTERNALS, _) &*& intptrs_(self->externals_sizes_, MESSAGING_ENCODING_MAX_EXTERNALS, _) &*&
              process != 0 &*& [?fp]process(process, ?prog, ?ids) &*&
-             [?fb]uchars(buffer, ?cap, _) &*& 0 <= cap &*& cap <= MAX_BLOB &*&
+             [?fb]uchars(buffer, ?cap, _) &*& 0 <= cap &*& cap <= MESSAGING_ENCODING_MAX_SIZE &*&
              (format == MESSAGE_FORMAT_TISON ? size == cap :
                 format == MESSAGE_FORMAT_IPC &*& size == INT_MAX &*& [_]encoded(buffer, cap, ?ps) &*& msg_blocks(ps)); @*/
 /*@ ensures dec(self, fb, process, ids, format, buffer, size, cap, 0, MessageDecoder_DECODE_SUCCESS, 0) &*& self->nesting_ |-> 0 &*&
@@ -1043,7 +1070,7 @@ void MessageDecoder_ctor__Processp_uint8p(MessageDecoder *self, Process *process
                self->cursor_ |-> _ &*& self->nesting_ |-> _ &*& self->status_ |-> _ &*& self->externals_count_ |-> _ &*&
                pointers_(self->externals_, MESSAGING_ENCODING_MAX_EXTERNALS, _) &*& intptrs_(self->externals_sizes_, MESSAGING_ENCODING_MAX_EXTERNALS, _) &*&
                process != 0 &*& [?fp]process(process, ?prog, ?ids) &*&
-               [?fb]uchars(buffer, ?cap, _) &*& 0 <= cap &*& cap <= MAX_BLOB &*& [_]encoded(buffer, cap, ?ps) &*& msg_blocks(ps); @*/
+               [?fb]uchars(buffer, ?cap, _) &*& 0 <= cap &*& cap <= MESSAGING_ENCODING_MAX_SIZE &*& [_]encoded(buffer, cap, ?ps) &*& msg_blocks(ps); @*/
 /*@ ensures dec(self, fb, process, ids, MESSAGE_FORMAT_IPC, buffer, INT_MAX, cap, 0, MessageDecoder_DECODE_SUCCESS, 0) &*& self->nesting_ |-> 0 &*&
               [fp]process(process, prog, ids) &*& [_]ipc_msg(self, buffer, cap, ps); @*/
 
@@ -1052,7 +1079,7 @@ void MessageDecoder_ctor__uint8p(MessageDecoder *self, uint8 *buffer);
 /*@ requires self->process_ |-> _ &*& self->program_ |-> _ &*& self->buffer_ |-> _ &*& self->size_ |-> _ &*& self->format_ |-> _ &*&
                self->cursor_ |-> _ &*& self->nesting_ |-> _ &*& self->status_ |-> _ &*& self->externals_count_ |-> _ &*&
                pointers_(self->externals_, MESSAGING_ENCODING_MAX_EXTERNALS, _) &*& intptrs_(self->externals_sizes_, MESSAGING_ENCODING_MAX_EXTERNALS, _) &*&
-               [?fb]uchars(buffer, ?cap, _) &*& 0 <= cap &*& cap <= MAX_BLOB &*& [_]encoded(buffer, cap, ?ps) &*& msg_blocks(ps); @*/
+               [?fb]uchars(buffer, ?cap, _) &*& 0 <= cap &*& cap <= MESSAGING_ENCODING_MAX_SIZE &*& [_]encoded(buffer, cap, ?ps) &*& msg_blocks(ps); @*/
 /*@ ensures dec(self, fb, 0, ?ids, MESSAGE_FORMAT_IPC, buffer, INT_MAX, cap, 0, MessageDecoder_DECODE_SUCCESS, 0) &*& self->nesting_ |-> 0 &*&
               [_]ipc_msg(self, buffer, cap, ps); @*/
 
@@ -1112,6 +1139,36 @@ int SystemMessage_pid(SystemMessage *self);
 //@ requires [?f]self->pid_ |-> ?p;
 //@ ensures [f]self->pid_ |-> p &*& result == p;
 
+// C++: src/process.cc toit::Process::set_main_arguments
+void Process_set_main_arguments(Process *self, uint8 *arguments);
+//@ requires main_args(self, 0) &*& (arguments == 0 ? true : msg_whole(arguments));
+//@ ensures main_args(self, arguments) &*& (arguments == 0 ? true : msg_whole(arguments));
+
+// C++: src/process.h toit::Process::main_arguments
+uint8 *Process_main_arguments(Process *self);
+//@ requires [?f]main_args(self, ?a);
+//@ ensures [f]main_args(self, a) &*& result == a;
+
+// C++: src/process.h toit::Process::clear_main_arguments
+void Process_clear_main_arguments(Process *self);
+//@ requires main_args(self, _);
+//@ ensures main_args(self, 0);
+
+// C++: src/process.cc toit::Process::set_spawn_arguments
+void Process_set_spawn_arguments(Process *self, uint8 *arguments);
+//@ requires spawn_args(self, 0) &*& (arguments == 0 ? true : msg_whole(arguments));
+//@ ensures spawn_args(self, arguments) &*& (arguments == 0 ? true : msg_whole(arguments));
+
+// C++: src/process.h toit::Process::spawn_arguments
+uint8 *Process_spawn_arguments(Process *self);
+//@ requires [?f]spawn_args(self, ?a);
+//@ ensures [f]spawn_args(self, a) &*& result == a;
+
+// C++: src/process.h toit::Process::clear_spawn_arguments
+void Process_clear_spawn_arguments(Process *self);
+//@ requires spawn_args(self, _);
+//@ ensures spawn_args(self, 0);
+
 // C++: src/primitive_core.cc toit::primitive_main_arguments
 Object *primitive_main_arguments(Process *process, Object **__args);
 /*@ requires process != 0 &*& [?fp]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*& main_args(process, ?a) &*& (a == 0 ? true : msg_whole(a)); @*/
@@ -1124,12 +1181,47 @@ Object *primitive_spawn_arguments(Process *process, Object **__args);
 /*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows_class(objs, H, objs2, H2) == true &*&
             spawn_args(process, ?a2) &*& (a2 == 0 ? true : msg_whole(a2)); @*/
 
+// C++: src/heap.h toit::ObjectHeap::program
+Program *ObjectHeap_program(ObjectHeap *self);
+//@ requires [?f]self->program_ |-> ?prog;
+//@ ensures [f]self->program_ |-> prog &*& result == prog;
+
+// C++: src/heap_roots.h toit::CallableFinalizerNode::lambda
+Object *CallableFinalizerNode_lambda(CallableFinalizerNode *self);
+//@ requires [?f]callback_fields(self, ?key, ?callback, ?owner);
+//@ ensures [f]callback_fields(self, key, callback, owner) &*& result == callback;
+
+// C++: src/heap.cc toit::ObjectHeap::next_finalizer_to_run
+Object *ObjectHeap_next_finalizer_to_run(ObjectHeap *self);
+/*@ requires [_]object_heap(self, ?p) &*& self == process_heap_address(p) &*&
+             finalizer_ready(p, ?ready, ?pending, ?registered) &*&
+             [?g]heap(?objs, ?H) &*& live_closures(objs, pending) == true; @*/
+/*@ ensures [g]heap(objs, H) &*& good(objs, result) == true &*& live_closures(objs, tail(pending)) == true &*&
+            finalizer_ready(p, _, tail(pending), ready && keep_callback(head(pending)) ? cons(head(pending), registered) : registered) &*&
+            (ready ? result == closure_of(head(pending)) : true); @*/
+
+// C++: src/heap.h toit::ObjectHeap::has_finalizer_to_run
+bool ObjectHeap_has_finalizer_to_run(ObjectHeap *self);
+//@ requires [_]object_heap(self, ?p) &*& self == process_heap_address(p) &*& [?f]finalizer_ready(p, ?ready, ?pending, ?registered);
+//@ ensures [f]finalizer_ready(p, ready, pending, registered) &*& result == ready &*& ready == (pending != nil);
+
+// C++: src/primitive_core.cc toit::primitive_task_has_messages
+Object *primitive_task_has_messages(Process *process, Object **__args);
+/*@ requires [?fp]process(process, ?prog, ?ids) &*& [?fh]heap(?objs, ?H) &*&
+             [?fa]allocation_allowance(process, ?available) &*& [?ff]finalizer_ready(process, ?ready, ?pending, ?registered) &*&
+             [?fm]mailbox(process, ?m); @*/
+/*@ ensures [fp]process(process, prog, ids) &*& [fh]heap(objs, H) &*&
+            [fa]allocation_allowance(process, available) &*& [ff]finalizer_ready(process, ready, pending, registered) &*& [fm]mailbox(process, m) &*&
+            (available < 0 ? (uword)result == 4 * Program_ALLOCATION_FAILED_INDEX + 3 :
+             result == process_boolean(process, ready || m != 0) &*& mem(result, objs) == true); @*/
+
 // C++: src/primitive_core.cc toit::primitive_task_receive_message
 Object *primitive_task_receive_message(Process *process, Object **__args);
 /*@ requires process != 0 &*& [?fp]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
-             mailbox(process, ?m) &*& (m == 0 ? true : queued(m)); @*/
+             finalizer_ready(process, ?ready, ?pending, ?registered) &*& live_closures(objs, pending) == true &*& mailbox(process, ?m) &*& (m == 0 ? true : queued(m)); @*/
 /*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows_class(objs, H, objs2, H2) == true &*&
-            mailbox(process, ?m2) &*& (m2 == 0 ? true : queued(m2)); @*/
+            finalizer_ready(process, _, tail(pending), ready && keep_callback(head(pending)) ? cons(head(pending), registered) : registered) &*&
+            live_closures(objs2, tail(pending)) == true &*& (ready ? result == closure_of(head(pending)) : true) &*& mailbox(process, ?m2) &*& (m2 == 0 ? true : queued(m2)); @*/
 
 // C++: src/messaging.cc toit::NestingTracker::NestingTracker
 void NestingTracker_ctor(NestingTracker *self, int *nesting)
@@ -1496,7 +1588,10 @@ Object *MessageDecoder_decode_string(MessageDecoder *self, bool inlined)
       //@ close dec(self, fb, proc, ids, fmt, b, size, cap, c1, st1, k);
       return MessageDecoder_mark_malformed(self);
     }
+    //@ assert [?share]uchars(b + c1, length, ?data);
+    //@ close string_source(native_bytes(share, data), objs, H, b + c1, length);
     result = Process_allocate_string__charp_word(self->process_, (char *)&self->buffer_[self->cursor_], length);
+    //@ open string_source(native_bytes(share, data), objs, H, b + c1, length);
     self->cursor_ += length;
     //@ buf_unfocus(b, c1, length);
     //@ close dec(self, fb, proc, ids, fmt, b, size, cap, c1 + length, st1, k);
@@ -2142,7 +2237,7 @@ void MessageDecoder_ctor__Processp_uint8p_word_MessageFormat(MessageDecoder *sel
              self->cursor_ |-> _ &*& self->nesting_ |-> _ &*& self->status_ |-> _ &*& self->externals_count_ |-> _ &*&
              pointers_(self->externals_, MESSAGING_ENCODING_MAX_EXTERNALS, _) &*& intptrs_(self->externals_sizes_, MESSAGING_ENCODING_MAX_EXTERNALS, _) &*&
              process != 0 &*& [?fp]process(process, ?prog, ?ids) &*&
-             [?fb]uchars(buffer, ?cap, _) &*& 0 <= cap &*& cap <= MAX_BLOB &*&
+             [?fb]uchars(buffer, ?cap, _) &*& 0 <= cap &*& cap <= MESSAGING_ENCODING_MAX_SIZE &*&
              (format == MESSAGE_FORMAT_TISON ? size == cap :
                 format == MESSAGE_FORMAT_IPC &*& size == INT_MAX &*& [_]encoded(buffer, cap, ?ps) &*& msg_blocks(ps)); @*/
 /*@ ensures dec(self, fb, process, ids, format, buffer, size, cap, 0, MessageDecoder_DECODE_SUCCESS, 0) &*& self->nesting_ |-> 0 &*&
@@ -2174,7 +2269,7 @@ void MessageDecoder_ctor__Processp_uint8p(MessageDecoder *self, Process *process
                self->cursor_ |-> _ &*& self->nesting_ |-> _ &*& self->status_ |-> _ &*& self->externals_count_ |-> _ &*&
                pointers_(self->externals_, MESSAGING_ENCODING_MAX_EXTERNALS, _) &*& intptrs_(self->externals_sizes_, MESSAGING_ENCODING_MAX_EXTERNALS, _) &*&
                process != 0 &*& [?fp]process(process, ?prog, ?ids) &*&
-               [?fb]uchars(buffer, ?cap, _) &*& 0 <= cap &*& cap <= MAX_BLOB &*& [_]encoded(buffer, cap, ?ps) &*& msg_blocks(ps); @*/
+               [?fb]uchars(buffer, ?cap, _) &*& 0 <= cap &*& cap <= MESSAGING_ENCODING_MAX_SIZE &*& [_]encoded(buffer, cap, ?ps) &*& msg_blocks(ps); @*/
 /*@ ensures dec(self, fb, process, ids, MESSAGE_FORMAT_IPC, buffer, INT_MAX, cap, 0, MessageDecoder_DECODE_SUCCESS, 0) &*& self->nesting_ |-> 0 &*&
               [fp]process(process, prog, ids) &*& [_]ipc_msg(self, buffer, cap, ps); @*/
 {
@@ -2186,7 +2281,7 @@ void MessageDecoder_ctor__uint8p(MessageDecoder *self, uint8 *buffer)
 /*@ requires self->process_ |-> _ &*& self->program_ |-> _ &*& self->buffer_ |-> _ &*& self->size_ |-> _ &*& self->format_ |-> _ &*&
                self->cursor_ |-> _ &*& self->nesting_ |-> _ &*& self->status_ |-> _ &*& self->externals_count_ |-> _ &*&
                pointers_(self->externals_, MESSAGING_ENCODING_MAX_EXTERNALS, _) &*& intptrs_(self->externals_sizes_, MESSAGING_ENCODING_MAX_EXTERNALS, _) &*&
-               [?fb]uchars(buffer, ?cap, _) &*& 0 <= cap &*& cap <= MAX_BLOB &*& [_]encoded(buffer, cap, ?ps) &*& msg_blocks(ps); @*/
+               [?fb]uchars(buffer, ?cap, _) &*& 0 <= cap &*& cap <= MESSAGING_ENCODING_MAX_SIZE &*& [_]encoded(buffer, cap, ?ps) &*& msg_blocks(ps); @*/
 /*@ ensures dec(self, fb, 0, ?ids, MESSAGE_FORMAT_IPC, buffer, INT_MAX, cap, 0, MessageDecoder_DECODE_SUCCESS, 0) &*& self->nesting_ |-> 0 &*&
               [_]ipc_msg(self, buffer, cap, ps); @*/
 {
@@ -2416,6 +2511,64 @@ int SystemMessage_pid(SystemMessage *self)
   return self->pid_;
 }
 
+// C++: src/process.cc toit::Process::set_main_arguments
+void Process_set_main_arguments(Process *self, uint8 *arguments)
+//@ requires main_args(self, 0) &*& (arguments == 0 ? true : msg_whole(arguments));
+//@ ensures main_args(self, arguments) &*& (arguments == 0 ? true : msg_whole(arguments));
+{
+  //@ open main_args(self, 0);
+  // ASSERT(self->main_arguments_ == 0): release build, not evaluated.
+  self->main_arguments_ = arguments;
+  //@ close main_args(self, arguments);
+}
+
+// C++: src/process.h toit::Process::main_arguments
+uint8 *Process_main_arguments(Process *self)
+//@ requires [?f]main_args(self, ?a);
+//@ ensures [f]main_args(self, a) &*& result == a;
+{
+  return self->main_arguments_;
+}
+
+// C++: src/process.h toit::Process::clear_main_arguments
+void Process_clear_main_arguments(Process *self)
+//@ requires main_args(self, _);
+//@ ensures main_args(self, 0);
+{
+  //@ open main_args(self, _);
+  self->main_arguments_ = 0;
+  //@ close main_args(self, 0);
+}
+
+// C++: src/process.cc toit::Process::set_spawn_arguments
+void Process_set_spawn_arguments(Process *self, uint8 *arguments)
+//@ requires spawn_args(self, 0) &*& (arguments == 0 ? true : msg_whole(arguments));
+//@ ensures spawn_args(self, arguments) &*& (arguments == 0 ? true : msg_whole(arguments));
+{
+  //@ open spawn_args(self, 0);
+  // ASSERT(self->spawn_arguments_ == 0): release build, not evaluated.
+  self->spawn_arguments_ = arguments;
+  //@ close spawn_args(self, arguments);
+}
+
+// C++: src/process.h toit::Process::spawn_arguments
+uint8 *Process_spawn_arguments(Process *self)
+//@ requires [?f]spawn_args(self, ?a);
+//@ ensures [f]spawn_args(self, a) &*& result == a;
+{
+  return self->spawn_arguments_;
+}
+
+// C++: src/process.h toit::Process::clear_spawn_arguments
+void Process_clear_spawn_arguments(Process *self)
+//@ requires spawn_args(self, _);
+//@ ensures spawn_args(self, 0);
+{
+  //@ open spawn_args(self, _);
+  self->spawn_arguments_ = 0;
+  //@ close spawn_args(self, 0);
+}
+
 // C++: src/primitive_core.cc toit::primitive_main_arguments
 Object *primitive_main_arguments(Process *process, Object **__args)
 /*@ requires process != 0 &*& [?fp]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*& main_args(process, ?a) &*& (a == 0 ? true : msg_whole(a)); @*/
@@ -2504,12 +2657,102 @@ Object *primitive_spawn_arguments(Process *process, Object **__args)
   return decoded;
 }
 
+// C++: src/heap.h toit::ObjectHeap::program
+Program *ObjectHeap_program(ObjectHeap *self)
+//@ requires [?f]self->program_ |-> ?prog;
+//@ ensures [f]self->program_ |-> prog &*& result == prog;
+{
+  return self->program_;
+}
+
+// C++: src/heap_roots.h toit::CallableFinalizerNode::lambda
+Object *CallableFinalizerNode_lambda(CallableFinalizerNode *self)
+//@ requires [?f]callback_fields(self, ?key, ?callback, ?owner);
+//@ ensures [f]callback_fields(self, key, callback, owner) &*& result == callback;
+{
+  //@ open [f]callback_fields(self, key, callback, owner);
+  {
+    Object * result0 = self->lambda_;
+    //@ close [f]callback_fields(self, key, callback, owner);
+    return result0;
+  }
+}
+
+// C++: src/heap.cc toit::ObjectHeap::next_finalizer_to_run
+Object *ObjectHeap_next_finalizer_to_run(ObjectHeap *self)
+/*@ requires [_]object_heap(self, ?p) &*& self == process_heap_address(p) &*&
+             finalizer_ready(p, ?ready, ?pending, ?registered) &*&
+             [?g]heap(?objs, ?H) &*& live_closures(objs, pending) == true; @*/
+/*@ ensures [g]heap(objs, H) &*& good(objs, result) == true &*& live_closures(objs, tail(pending)) == true &*&
+            finalizer_ready(p, _, tail(pending), ready && keep_callback(head(pending)) ? cons(head(pending), registered) : registered) &*&
+            (ready ? result == closure_of(head(pending)) : true); @*/
+{
+  //@ open finalizer_ready(p, ready, pending, registered);
+  CallableFinalizerNode *node = (CallableFinalizerNode *)FinalizerNodeFifo_remove_first(&self->runnable_finalizers_);
+  if (node == 0) {
+    //@ close finalizer_ready(p, false, nil, registered);
+    return Program_null_object(ObjectHeap_program(self));
+  }
+  Object *result = CallableFinalizerNode_lambda(node);
+  if (CallableFinalizerNode_keep_after_callback(node)) {
+    //@ open registered_callbacks(self, registered);
+    //@ close registered_callbacks(self, registered);
+    FinalizerNodeFifo_prepend(&self->registered_callback_finalizers_, node);
+  } else {
+    CallableFinalizerNode_delete(node);
+  }
+  //@ close finalizer_ready(p, _, tail(pending), _);
+  return result;
+}
+
+// C++: src/heap.h toit::ObjectHeap::has_finalizer_to_run
+bool ObjectHeap_has_finalizer_to_run(ObjectHeap *self)
+//@ requires [_]object_heap(self, ?p) &*& self == process_heap_address(p) &*& [?f]finalizer_ready(p, ?ready, ?pending, ?registered);
+//@ ensures [f]finalizer_ready(p, ready, pending, registered) &*& result == ready &*& ready == (pending != nil);
+{
+  //@ open [f]finalizer_ready(p, ready, pending, registered);
+  //@ open [f]runnable_callbacks(self, pending);
+  //@ assert [f]callback_chain(?first, self, ?last, pending);
+  //@ open [f]callback_chain(first, self, last, pending);
+  //@ close [f]callback_chain(first, self, last, pending);
+  {
+    bool result0 = !LinkedList_FinalizerNode_is_empty(&self->runnable_finalizers_);
+    //@ close [f]runnable_callbacks(self, pending);
+    //@ close [f]finalizer_ready(p, ready, pending, registered);
+    return result0;
+  }
+}
+
+// C++: src/primitive_core.cc toit::primitive_task_has_messages
+Object *primitive_task_has_messages(Process *process, Object **__args)
+/*@ requires [?fp]process(process, ?prog, ?ids) &*& [?fh]heap(?objs, ?H) &*&
+             [?fa]allocation_allowance(process, ?available) &*& [?ff]finalizer_ready(process, ?ready, ?pending, ?registered) &*&
+             [?fm]mailbox(process, ?m); @*/
+/*@ ensures [fp]process(process, prog, ids) &*& [fh]heap(objs, H) &*&
+            [fa]allocation_allowance(process, available) &*& [ff]finalizer_ready(process, ready, pending, registered) &*& [fm]mailbox(process, m) &*&
+            (available < 0 ? (uword)result == 4 * Program_ALLOCATION_FAILED_INDEX + 3 :
+             result == process_boolean(process, ready || m != 0) &*& mem(result, objs) == true); @*/
+{
+  ObjectHeap *heap = Process_object_heap(process);
+  //@ error_word(Program_ALLOCATION_FAILED_INDEX);
+  if (ObjectHeap_max_external_allocation(heap) < 0) {
+    return (Object *)((uword)((int)(Program_ALLOCATION_FAILED_INDEX) << Error_ERROR_SHIFT) | Error_ERROR_TAG);
+  }
+  if (ObjectHeap_has_finalizer_to_run(heap)) {
+    return ((true) ? Process_true_object(process) : Process_false_object(process));
+  } else {
+    Message *message = Process_peek_message(process);
+    return ((message != 0) ? Process_true_object(process) : Process_false_object(process));
+  }
+}
+
 // C++: src/primitive_core.cc toit::primitive_task_receive_message
 Object *primitive_task_receive_message(Process *process, Object **__args)
 /*@ requires process != 0 &*& [?fp]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
-             mailbox(process, ?m) &*& (m == 0 ? true : queued(m)); @*/
+             finalizer_ready(process, ?ready, ?pending, ?registered) &*& live_closures(objs, pending) == true &*& mailbox(process, ?m) &*& (m == 0 ? true : queued(m)); @*/
 /*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows_class(objs, H, objs2, H2) == true &*&
-            mailbox(process, ?m2) &*& (m2 == 0 ? true : queued(m2)); @*/
+            finalizer_ready(process, _, tail(pending), ready && keep_callback(head(pending)) ? cons(head(pending), registered) : registered) &*&
+            live_closures(objs2, tail(pending)) == true &*& (ready ? result == closure_of(head(pending)) : true) &*& mailbox(process, ?m2) &*& (m2 == 0 ? true : queued(m2)); @*/
 {
   //@ grows_refl(objs, H);
   //@ grows_class_of_grows(objs, H, objs, H);

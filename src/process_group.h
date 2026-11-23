@@ -74,9 +74,10 @@ class ProcessGroup : public ProcessGroupList::Element {
   Process* lookup(int process_id);
   void add(Process* process);
 
-  // Remove the given process from this group. Returns true
-  // if there are more processes left in the group.
-  bool remove(Process* process);
+  // Both calls hold the scheduler lock. Keep the group alive across the
+  // unlocked process destructor. Finish returns true when it can be deleted.
+  void begin_process_teardown(Process* process);
+  bool finish_process_teardown();
 
   ProcessListFromProcessGroup& processes() { return processes_; }
 
@@ -92,6 +93,7 @@ class ProcessGroup : public ProcessGroupList::Element {
   V2MethodTable* v2_methods_ = null;
 
   ProcessListFromProcessGroup processes_;
+  uword pending_teardowns_ = 0;
 
   const PrimitivePolicy* const policy_;
 

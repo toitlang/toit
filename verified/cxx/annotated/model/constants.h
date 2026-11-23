@@ -15,24 +15,54 @@
 
 // src/top.h.
 #define WORD_SIZE ((int)sizeof(word))
+#define BYTE_BIT_SIZE 8
+#define GcMetadata_NEW_SPACE_POINTERS ((uint8)1)
+#define CANNOT_RESIZE 1
+#define OLD_SPACE_PAGE 1
+#define NEW_SPACE_PAGE 2
+#define UNKNOWN_SPACE_PAGE 0
+#define GcMetadata_NO_NEW_SPACE_POINTERS ((uint8)0)
+#define GcMetadata_NO_OBJECT_START 2
+#define GcMetadata_MARK_BITS_SHIFT ((int)(sizeof(word) == 8 ? 6 : 5))
+#define GcMetadata_CARD_SIZE_IN_BITS_LOG_2 ((int)(sizeof(word) == 8 ? 11 : 10))
+#define GcMetadata_CARD_SIZE_LOG_2 ((int)(sizeof(word) == 8 ? 8 : 7))
+#define GcMetadata_CARD_SIZE ((int)(32 * sizeof(word)))
+#define Scheduler_NUMBER_OF_READY_QUEUES 5
+#define Process_PREEMPT 2
+#define Process_SUSPENDED_AWAITING_GC 6
+#define MarkingStack_CHUNK_SIZE 128
+#define FreeList_NUMBER_OF_BUCKETS 12
+#define FreeListRegion_NEXT_OFFSET ((word)(2 * sizeof(word)))
+#define PromotedTrack_NEXT_OFFSET ((word)(2 * sizeof(word)))
+#define PromotedTrack_END_OFFSET ((word)sizeof(word))
+#define PromotedTrack_HEADER_SIZE ((word)(3 * sizeof(word)))
+#define SENTINEL_SIZE ((uword)sizeof(void *))
 
 // class Object.
 #define SMI_TAG_SIZE 1
 #define Object_SMI_TAG_MASK ((uword)1)
 #define Object_SMI_TAG ((uword)0)
+#define Object_MARKED_TAG ((uword)3)
+#define Object_NON_SMI_TAG_SIZE 2
 #define Object_NON_SMI_TAG_MASK ((uword)3)
 #define Object_HEAP_TAG ((uword)1)
 #define HEAP_TAG ((uword)1)
 
 // class HeapObject.
+#define HeapObject_SIZE ((word)sizeof(word))
 #define HEADER_OFFSET ((word)0)
 #define HeapObject_CLASS_ID_OFFSET ((word)5)
 #define HeapObject_CLASS_ID_MASK ((uword)UINTPTR_MAX)
+#define HeapObject_FINALIZER_BIT_OFFSET ((word)4)
 #define HeapObject_CLASS_TAG_OFFSET ((word)0)
 #define HeapObject_CLASS_TAG_MASK ((uword)15)
 
+#define LargeInteger_VALUE_OFFSET ((word)sizeof(word))
+
 // class Instance, class Array.
+#define Array_ARRAYLET_SIZE ((word)500)
 #define Instance_HEADER_SIZE ((word)sizeof(word))
+#define Task_STACK_INDEX ((word)0)
 #define Instance_LIST_ARRAY_INDEX ((word)0)
 #define Instance_LIST_SIZE_INDEX ((word)1)
 #define Instance_LIST_SLICE_LIST_INDEX ((word)0)
@@ -51,6 +81,14 @@
 #define Instance_STRING_BYTE_SLICE_STRING_INDEX ((word)0)
 #define Instance_STRING_BYTE_SLICE_FROM_INDEX ((word)1)
 #define Instance_STRING_BYTE_SLICE_TO_INDEX ((word)2)
+#define Stack_HEADER_SIZE ((word)(10 * sizeof(word)))
+#define Stack_LENGTH_OFFSET ((word)(2 * sizeof(word)))
+#define Stack_PENDING_STACK_CHECK_METHOD_OFFSET ((word)(5 * sizeof(word)))
+#define Stack_TRY_TOP_OFFSET ((word)(4 * sizeof(word)))
+#define Stack_V2_MAX_LENGTH ((word)65536)
+#define Stack_V2_FRAME_TOP_SHIFT 16
+#define Stack_V2_FIN_WORDS ((word)5)
+#define Stack_TOP_OFFSET ((word)(3 * sizeof(word)))
 #define Array_LENGTH_OFFSET ((word)sizeof(word))
 #define Array_HEADER_SIZE ((word)(2 * sizeof(word)))
 
@@ -105,6 +143,7 @@
 #define LARGE_INTEGER_TAG 6
 #define STACK_TAG 7
 #define TASK_TAG 8
+#define FREE_LIST_REGION_TAG 9
 
 // src/interpreter_v2.h (the FFI result codes).
 #define TOIT_V2_OK ((uword)0)
@@ -120,8 +159,17 @@
 
 // src/primitive.h, the error roots of src/program.h, class Error.
 #define STRINGS_OR_BYTE_ARRAYS 0
+#define FLASH_PAGE_SIZE_LOG2 12
+#define Program_ROOT_COUNT 35
+#define Program_BUILTIN_CLASS_IDS_COUNT 23
+#define Error_MAX_TAGGED_ERROR 256
 #define Program_ALLOCATION_FAILED_INDEX 7
+#define Program_ERROR_INDEX 12
+#define Program_ILLEGAL_UTF_8_INDEX 15
 #define Program_INVALID_ARGUMENT_INDEX 16
+#define Program_ALREADY_EXISTS_INDEX 10
+#define Program_MALLOC_FAILED_INDEX 17
+#define Program_CROSS_PROCESS_GC_INDEX 18
 #define Program_OUT_OF_BOUNDS_INDEX 20
 #define Program_OUT_OF_RANGE_INDEX 21
 #define Program_WRONG_OBJECT_TYPE_INDEX 30
@@ -129,8 +177,15 @@
 #define Error_ERROR_SHIFT 2
 #define Error_ERROR_TAG ((uword)3)
 
+#define Scheduler_INVALID_PROCESS_ID (-1)
+
 // class Utils.
 #define Utils_MAX_ASCII 0x7f
+#define Utils_MAX_TWO_BYTE_UNICODE 0x7ff
+#define Utils_MAX_THREE_BYTE_UNICODE 0xffff
+#define Utils_MIN_SURROGATE 0xd800
+#define Utils_MAX_SURROGATE 0xdfff
+#define Utils_UTF_8_PAYLOAD 0x80
 #define Utils_UTF_8_BITS_PER_BYTE 6
 #define Utils_UTF_8_MASK 0x3f
 
@@ -188,6 +243,31 @@
 // range (src/objects.h).
 #define SECONDS_PER_DAY ((int64)86400)
 #define Smi_MIN_SMI32_VALUE ((word)-1073741824)
+#define MAX_BUFFER_SIZE_DOUBLE_TO_SHORTEST 26
+#define FP_NAN 0
+#define FP_INFINITE 1
+#define FP_ZERO 2
+#define NUMBER_OF_POSSIBLE_OPERATIONS 6
+#define OVERWRITE 0
+#define OR 1
+#define ADD 2
+#define ADD_16_LE 3
+#define AND 4
+#define XOR 5
 #define Smi_MAX_SMI32_VALUE ((word)1073741823)
+
+#define V2_RECORD_ENTRY_SHIFT 8
+
+#define NEW_SPACE_GC 0
+#define FULL_GC 1
+#define COMPACTING_GC 2
+
+// Linux host page size on both verified ABIs.
+#define TOIT_PAGE_SIZE_LOG2 15
+#define TOIT_PAGE_SIZE 32768
+#define MINIMUM_POST_GC_SPACE ((uword)(TOIT_PAGE_SIZE / 2))
+#define ObjectHeap_ALLOCATION_SUCCESS 0
+#define ObjectHeap_ALLOCATION_HIT_LIMIT 1
+#define ObjectHeap__UNLIMITED_EXPANSION ((word)0x7fffffff)
 
 #endif

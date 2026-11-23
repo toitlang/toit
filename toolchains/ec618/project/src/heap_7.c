@@ -25,33 +25,44 @@ extern char end_ap_data;
 extern char start_up_buffer;
 
 static cmpct_heap_t *heap = NULL;
-static int heap_initialized = 0;
 
-static void ensure_heap_initialized(void) {
-    if (heap_initialized) return;
-    heap_initialized = 1;
-    void *start = (void *)&end_ap_data;
-    size_t size = (size_t)(&start_up_buffer - &end_ap_data);
-    heap = cmpct_register_impl(start, size);
+size_t xPortGetTotalHeapSize(void) {
+    uintptr_t start = (uintptr_t)&end_ap_data;
+    uintptr_t end = (uintptr_t)&start_up_buffer;
+    return end > start ? end - start : 0;
+}
+
+static int ensure_heap_initialized(void) {
+    if (heap != NULL) return 1;
+    // Boot is single-threaded. Once tasks are running, serialize the first
+    // registration just as cmpctmalloc serializes its allocation operations.
+    int running = xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED;
+    if (running) vTaskSuspendAll();
+    if (heap == NULL) {
+        size_t size = xPortGetTotalHeapSize();
+        if (size != 0) heap = cmpct_register_impl(&end_ap_data, size);
+    }
+    if (running) xTaskResumeAll();
+    return heap != NULL;
 }
 
 // --- Standard FreeRTOS heap functions ---
 
 void *pvPortMallocEC(size_t xWantedSize, unsigned int funcPtr) {
     (void)funcPtr;
-    ensure_heap_initialized();
+    if (!ensure_heap_initialized()) return NULL;
     return cmpct_malloc_impl(heap, xWantedSize);
 }
 
 void *pvPortReallocEC(void *pv, size_t xWantedSize, unsigned int funcPtr) {
     (void)funcPtr;
-    ensure_heap_initialized();
+    if (!ensure_heap_initialized()) return NULL;
     return cmpct_realloc_impl(heap, pv, xWantedSize);
 }
 
 void vPortFree(void *pv) {
     if (pv == NULL) return;
-    ensure_heap_initialized();
+    if (!ensure_heap_initialized()) return;
     cmpct_free_impl(heap, pv);
 }
 
@@ -74,7 +85,7 @@ void *pvPortZeroAssertMalloc(size_t xWantedSize) {
 }
 
 void *pvPortMemalign(size_t alignment, size_t size) {
-    ensure_heap_initialized();
+    if (!ensure_heap_initialized()) return NULL;
     return cmpct_aligned_alloc_impl(heap, size, alignment);
 }
 
@@ -84,21 +95,17 @@ void *pvPortMemAlignMallocEC(size_t xWantedSize, unsigned int funcPtr) {
 }
 
 size_t xPortGetFreeHeapSize(void) {
-    if (!heap_initialized) return 0;
+    if (heap == NULL) return 0;
     return cmpct_free_size_impl(heap);
 }
 
 size_t xPortGetMinimumEverFreeHeapSize(void) {
-    if (!heap_initialized) return 0;
+    if (heap == NULL) return 0;
     return cmpct_minimum_free_size_impl(heap);
 }
 
-size_t xPortGetTotalHeapSize(void) {
-    return (size_t)(&start_up_buffer - &end_ap_data);
-}
-
 size_t xPortGetMaximumFreeBlockSize(void) {
-    if (!heap_initialized) return 0;
+    if (heap == NULL) return 0;
     multi_heap_info_t info;
     cmpct_get_info_impl(heap, &info);
     return info.largest_free_block;
@@ -147,7 +154,7 @@ void *__wrap__memalign_r(struct _reent *r, size_t alignment, size_t size) {
 // --- Toit-specific: heap stats and iteration ---
 
 void vPortGetHeapStats(heap_stats_t *stats) {
-    if (!heap_initialized) {
+    if (heap == NULL) {
         memset(stats, 0, sizeof(*stats));
         return;
     }
@@ -166,13 +173,13 @@ void vPortGetHeapStats(heap_stats_t *stats) {
 
 void vPortIterateAllocations(void *user_data, void *tag,
     tagged_memory_callback_t callback, uint32_t flags) {
-    if (!heap_initialized) return;
+    if (heap == NULL) return;
     cmpct_iterate_tagged_memory_areas(heap, user_data, tag, callback, flags);
 }
 
 void vPortSetHeapTag(void *tag) {
-    if (!heap_initialized) return;
-    cmpct_set_option(heap, MALLOC_OPTION_THREAD_TAG, tag);
+    // A task can tag the first allocation, before heap registration.
+    cmpct_set_option(NULL, MALLOC_OPTION_THREAD_TAG, tag);
 }
 
 void *vPortGetHeapTag(void) {

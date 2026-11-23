@@ -33,6 +33,8 @@ verus! {
 pub const WORD_SIZE: usize = 8;
 #[cfg(target_pointer_width = "32")]
 pub const WORD_SIZE: usize = 4;
+/// Word recognized by the C++ heap walker at the end of a chunk.
+pub const CHUNK_END_SENTINEL: usize = 0;
 /// `WORD_BIT_SIZE`; the spec program's `word_bits` (`abs::prog_rel`).
 #[cfg(target_pointer_width = "64")]
 pub const WORD_BITS: usize = 64;
@@ -94,7 +96,7 @@ pub const DOUBLE_VALUE_WORD: usize = 1;
 pub const LARGE_INTEGER_VALUE_WORD: usize = 1;
 /// The words of the 64-bit payload of a double or large integer, from
 /// `DOUBLE_VALUE_WORD` / `LARGE_INTEGER_VALUE_WORD`: one word, or two on
-/// 32-bit targets, little endian (the low half first: `view::value_word`).
+/// 32-bit targets, in native order (`view::value_word`).
 #[cfg(target_pointer_width = "64")]
 pub const VALUE_WORDS: usize = 1;
 #[cfg(target_pointer_width = "32")]

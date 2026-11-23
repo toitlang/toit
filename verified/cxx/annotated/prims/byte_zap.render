@@ -10,20 +10,15 @@
 // writes exactly the content range of a writable byte array outside the
 // program heap, the result is a smi.
 @include ../model/model.cfg
+@header byte_zap.gen.h
 @verbatim
-#include "../model/objects.gen.h"
+#include "argument_error.gen.h"
 #include "../blob/byte_content.gen.h"
 #include "../blob/mutable_byte_content.gen.h"
 
 void *memset(void *array, int value, size_t size);
 //@ requires uchars_(array, size, _);
 //@ ensures uchars(array, size, _) &*& result == array;
-
-// The failure of an int argument that is not a smi (WRONG_OBJECT_TYPE, or
-// OUT_OF_RANGE for a large integer): an error value, reads nothing.
-Object *Primitive_return_not_a_smi(Process *process, Object *value);
-//@ requires true;
-//@ ensures true;
 
 @prototypes
 @render src/objects.h toit::MutableBlob::MutableBlob tu=src/primitive_bitmap.cc params=0
@@ -47,10 +42,12 @@ Object *Primitive_return_not_a_smi(Process *process, Object *value);
 @render src/primitive_bitmap.cc toit::primitive_byte_zap truncating
 PRIMITIVE(byte_zap)
 /*@ requires [?fp]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
-             pointer(__args, ?a0) &*& pointer(__args - 1, ?a1) &*& good(objs, a0) == true; @*/
+             pointer(__args, ?a0) &*& pointer(__args - 1, ?a1) &*& good(objs, a0) == true &*& good(objs, a1) == true; @*/
 /*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
             pointer(__args, a0) &*& pointer(__args - 1, a1); @*/
 {
+  //@ close valid_arg(a1, objs);
+  //@ leak valid_arg(a1, objs);
   ARGS(MutableBlob, bytes, int, value);
   //@ assert heap(?objs2, ?H2) &*& [_]mutable_result(objs2, H2, process, ?da, ?dl, ?bd);
   //@ open [_]mutable_result(objs2, H2, process, da, dl, bd);

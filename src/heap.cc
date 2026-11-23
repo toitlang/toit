@@ -37,13 +37,15 @@ namespace toit {
 Instance* ObjectHeap::allocate_instance(Smi* class_id) {
   word size = program()->allocation_instance_size_for(class_id);
   TypeTag class_tag = program()->class_tag_for(class_id);
-  word result_word = allocate_new_space(size);
+  if (size < Instance::HEADER_SIZE) {
+    set_last_allocation_result(ALLOCATION_HIT_LIMIT);
+    return null;
+  }
+  uword result_word = allocate_new_space(size);
   if (!result_word) return null;  // Allocation failure.
   // Initialize object.
-  Object* null_object = program()->null_object();
-  for (word i = WORD_SIZE; i < size; i += WORD_SIZE) {
-    *reinterpret_cast<Object**>(result_word + i) = null_object;
-  }
+  Object** fields = reinterpret_cast<Object**>(result_word + Instance::HEADER_SIZE);
+  Utils::fill_words<Object*>(fields, Instance::fields_from_size(size), program()->null_object());
   HeapObject* result = HeapObject::from_address(result_word);
   result->_set_header(class_id, class_tag);
   return Instance::cast(result);
@@ -106,6 +108,19 @@ String* ObjectHeap::allocate_internal_string(word length) {
   return String::cast(result);
 }
 
+bool InitialMemoryManager::can_allocate_task(Program* program) {
+  Smi* id = program->task_class_id();
+  if (!is_smi(id)) return false;
+  word index = Smi::value(id);
+  if (index < 0 || index >= program->class_bits.length()) return false;
+  int bits = program->class_bits[index];
+  if (Program::class_tag_from_class_bits(bits) != TASK_TAG) return false;
+  word task_size = Program::instance_size_from_class_bits(bits);
+  word stack_size = Stack::allocation_size(Stack::initial_length());
+  return task_size >= Instance::allocation_size(Task::ID_INDEX + 1) &&
+         stack_size + task_size + SENTINEL_SIZE <= TOIT_PAGE_SIZE;
+}
+
 bool InitialMemoryManager::allocate() {
   initial_chunk = ObjectMemory::allocate_chunk(null, TOIT_PAGE_SIZE);
   if (!initial_chunk) return false;
@@ -132,8 +147,7 @@ ObjectHeap::ObjectHeap(Program* program, Process* owner, Chunk* initial_chunk, O
     , mutex_(mutex) {
   if (!initial_chunk) return;
   task_ = allocate_task();
-  ASSERT(task_);  // Should not fail, because a newly created heap has at least
-                  // enough space for the task structure.
+  ASSERT(task_);  // ProcessGroup::create checked both objects fit on the initial page.
   // Currently the heap is empty and it has one block allocated for objects.
   update_pending_limit();
   limit_ = pending_limit_;
@@ -163,47 +177,55 @@ ObjectHeap::~ObjectHeap() {
   ASSERT(object_notifiers_.is_empty());
 }
 
+// Heap space and externally backed objects can together exceed a signed word.
+static uword combined_heap_bytes(uword internal, uword external) {
+  if (external > UINTPTR_MAX - internal) return UINTPTR_MAX;
+  return internal + external;
+}
+
+uword ObjectHeap::reserved_heap_bytes() const {
+  return combined_heap_bytes(two_space_heap_.size(), external_memory());
+}
+
+static word doubled_heap_limit(uword bytes) {
+  if (bytes > INTPTR_MAX / 2) return INTPTR_MAX;
+  return static_cast<word>(bytes * 2);
+}
+
 word ObjectHeap::update_pending_limit() {
-  word length = two_space_heap_.size() + external_memory_;
-  // We call a new GC when the heap size has doubled, in an attempt to do
-  // meaningful work before the next GC, but while still not allowing the heap
-  // to grow too much when there is garbage to be found.
-  word MIN = TOIT_PAGE_SIZE;
-  word new_limit = Utils::max(MIN, length * 2);
+  word next = doubled_heap_limit(reserved_heap_bytes());
+  if (next < TOIT_PAGE_SIZE) next = TOIT_PAGE_SIZE;
   if (has_max_heap_size()) {
-    // If the user set a max then we feel more justified in using up to that
-    // much memory, so we allow the heap to quadruple before the next GC, but
-    // limited by the max.
-    new_limit = Utils::min(max_heap_size_, new_limit * 2);
+    // Allow twice as much growth when the configured maximum bounds it.
+    next = doubled_heap_limit(static_cast<uword>(next));
+    if (next > max_heap_size_) next = max_heap_size_;
   }
-  pending_limit_ = new_limit;
-  return new_limit;
+  pending_limit_ = next;
+  return next;
 }
 
 word ObjectHeap::max_external_allocation() {
   if (!has_limit() && !has_max_heap_size()) return _UNLIMITED_EXPANSION;
-  word total = external_memory_ + two_space_heap_.size();
-  return limit_ - total;
+  uword total = reserved_heap_bytes();
+  if (limit_ < 0 || total > static_cast<uword>(limit_)) return -1;
+  return limit_ - static_cast<word>(total);
 }
 
 void ObjectHeap::register_external_allocation(word size) {
   if (size == 0) return;
-  // Update both current and lifetime external-memory accounting atomically.
-  external_memory_ += size;
+  // The live and lifetime counts are updated independently.
+  ASSERT(size >= 0);
+  external_memory_.fetch_add(static_cast<uword>(size));
   total_external_memory_.fetch_add(size, std::memory_order_relaxed);
 }
 
 void ObjectHeap::unregister_external_allocation(word size) {
   if (size == 0) return;
-  // Overloading on an atomic type makes an atomic += and returns new value.
-  uword old_external_memory = external_memory_;
-  uword external_memory = external_memory_ -= size;
-  USE(old_external_memory);
-  USE(external_memory);
-  // Check that the external memory does not underflow into 'negative' range.
-  // This works even if we allocate so much external memory that we exceed the
-  // range of signed 'word'.  This is possible on 32 bit Linux.
-  ASSERT(old_external_memory >= external_memory);
+  ASSERT(size >= 0);
+  uword released = static_cast<uword>(size);
+  uword before = external_memory_.fetch_sub(released);
+  USE(before);
+  ASSERT(before >= released);
 }
 
 ByteArray* ObjectHeap::allocate_external_byte_array(word length, uint8* memory, bool dispose, bool clear_content) {
@@ -253,6 +275,11 @@ String* ObjectHeap::allocate_external_string(word length, uint8* memory, bool di
 }
 
 Task* ObjectHeap::allocate_task() {
+  // IDs are unique within the process and must fit both a Smi and the profiler's int.
+  if (!owner()->has_task_id()) {
+    set_last_allocation_result(ALLOCATION_HIT_LIMIT);
+    return null;
+  }
   // First allocate the stack.
   Stack* stack = allocate_stack(Stack::initial_length());
   if (stack == null) return null;  // Allocation failure.
@@ -261,10 +288,6 @@ Task* ObjectHeap::allocate_task() {
   Task* result = unvoid_cast<Task*>(allocate_instance(task_id));
   if (result == null) return null;  // Allocation failure.
   Task::cast(result)->_initialize(stack, Smi::from(owner()->next_task_id()));
-  int fields = Instance::fields_from_size(program()->instance_size_for(result));
-  for (int i = Task::ID_INDEX + 1; i < fields; i++) {
-    result->at_put(i, program()->null_object());
-  }
   return result;
 }
 
@@ -275,6 +298,10 @@ Stack* ObjectHeap::allocate_stack(word length) {
   // Initialize object.
   result->_set_header(program(), program()->stack_class_id());
   Stack::cast(result)->_initialize(length);
+  // The verified core takes a view of every word, including unused slots.
+  if (program()->is_format2()) {
+    Utils::fill_words<Object*>(result->_stack_limit_addr(), length, Smi::zero());
+  }
   return result;
 }
 
@@ -282,10 +309,14 @@ void ObjectHeap::iterate_roots(RootCallback* callback) {
   // Process the roots in the object heap.
   callback->do_root(reinterpret_cast<Object**>(&task_));
   callback->do_roots(global_variables_, program()->global_variables.length());
-  for (auto root : external_roots_) callback->do_roots(root->slot(), 1);
+  for (auto root : external_roots_) {
+    callback->do_roots(root->slot(), 1);
+  }
 
   // Process roots in the object_notifiers_ list.
-  for (ObjectNotifier* n : object_notifiers_) n->roots_do(callback);
+  for (ObjectNotifier* n : object_notifiers_) {
+    n->roots_do(callback);
+  }
 }
 
 void ObjectHeap::iterate_chunks(void* context, process_chunk_callback_t* callback) {
@@ -293,14 +324,24 @@ void ObjectHeap::iterate_chunks(void* context, process_chunk_callback_t* callbac
   two_space_heap_.iterate_chunks(context, callback);
 }
 
+int ObjectHeap::next_gc_count(int count) {
+  const word limit = Smi::MAX_SMI_VALUE < INT32_MAX ? Smi::MAX_SMI_VALUE : INT32_MAX;
+  if (count == limit) return 0;
+  return count + 1;
+}
+
+void ObjectHeap::record_gc(GcType type) {
+  gc_count_ = next_gc_count(gc_count_);
+  if (type != NEW_SPACE_GC) full_gc_count_ = next_gc_count(full_gc_count_);
+  if (type == COMPACTING_GC) full_compacting_gc_count_ = next_gc_count(full_compacting_gc_count_);
+}
+
 GcType ObjectHeap::gc(bool try_hard) {
   Locker locker(mutex_);
   GcType type = two_space_heap_.collect_new_space(try_hard);
-  gc_count_++;
-  v2_epoch_++;
+  record_gc(type);
+  advance_v2_epoch();
   if (type != NEW_SPACE_GC) {
-    full_gc_count_++;
-    if (type == COMPACTING_GC) full_compacting_gc_count_++;
     // Update the pending limit that will be installed after the current
     // primitive (that caused the GC) completes.
     update_pending_limit();
@@ -317,8 +358,8 @@ GcType ObjectHeap::gc(bool try_hard) {
 
 // Install a new allocation limit at the end of a primitive that caused a GC.
 void ObjectHeap::install_heap_limit() {
-  word total = external_memory_ + two_space_heap_.size();
-  if (total > pending_limit_) {
+  uword total = reserved_heap_bytes();
+  if (pending_limit_ < 0 || total > static_cast<uword>(pending_limit_)) {
     // If we already went over the heuristic limit that triggers a new GC we set
     // a flag that means the next scavenge won't promote into old space.
     two_space_heap_.set_promotion_failed();
@@ -351,29 +392,37 @@ void ObjectHeap::iterate_finalization_roots(RootCallback* cb) {
 }
 
 bool ObjectHeap::add_callable_finalizer(Instance* key, Object* lambda, bool weak_map) {
-  // We should already have checked whether the object already has the bit set.
-  // It may be on the finalizer list because we remove finalizers by unsetting
-  // the bit, but we don't traverse and clean the list before the next GC.
+  // The primitive rejects keys that already have an active finalizer.
   ASSERT(!key->has_active_finalizer());
-  CallableFinalizerNode* node;
-  if (weak_map) {
-    ASSERT(!key->can_be_toit_finalized(program()));
-    ASSERT(!key->has_active_finalizer());
-    node = _new WeakMapFinalizerNode(key, lambda, this);
-  } else {
-    ASSERT(key->can_be_toit_finalized(program()));
-    ASSERT(!key->has_active_finalizer());
-    node = _new ToitFinalizerNode(key, lambda, this);
-  }
-  if (node == null) return false;  // Allocation failed.
-  // Add it at the head of the list in case there is an old "removed" finalizer
-  // lower down on the list, waiting to be unlinked at the next GC.
-  registered_callback_finalizers_.prepend(node);
+  if (!prepend_callable_finalizer(key, lambda, weak_map)) return false;
   key->set_has_active_finalizer();
   return true;
 }
 
+bool ObjectHeap::prepend_callable_finalizer(Instance* key, Object* lambda, bool weak_map) {
+  CallableFinalizerNode* node;
+  if (weak_map) {
+    ASSERT(!key->can_be_toit_finalized(program()));
+    ASSERT(!key->has_active_finalizer());
+    auto weak_node = _new WeakMapFinalizerNode(key, lambda, this);
+    node = weak_node;
+  } else {
+    ASSERT(key->can_be_toit_finalized(program()));
+    ASSERT(!key->has_active_finalizer());
+    auto ordinary_node = _new ToitFinalizerNode(key, lambda, this);
+    node = ordinary_node;
+  }
+  if (node == null) return false;  // Allocation failed.
+  registered_callback_finalizers_.prepend(node);
+  return true;
+}
+
 void ObjectHeap::remove_callable_finalizer(Instance* key) {
+  unlink_callable_finalizers(key);
+  key->clear_has_active_finalizer();
+}
+
+void ObjectHeap::unlink_callable_finalizers(Instance* key) {
   // Unlink the node now instead of at the next GC. Otherwise a program that
   // adds and removes a finalizer in a loop without allocating grows the list
   // (malloced memory) without bound, and the nodes of a key that gets a new
@@ -384,7 +433,6 @@ void ObjectHeap::remove_callable_finalizer(Instance* key) {
     delete node;
     return true;
   });
-  key->clear_has_active_finalizer();
 }
 
 bool ObjectHeap::add_vm_finalizer(HeapObject* key) {
@@ -398,7 +446,7 @@ bool ObjectHeap::add_vm_finalizer(HeapObject* key) {
 }
 
 Object* ObjectHeap::next_finalizer_to_run() {
-  ToitFinalizerNode* node = static_cast<ToitFinalizerNode*>(runnable_finalizers_.remove_first());
+  auto node = static_cast<CallableFinalizerNode*>(runnable_finalizers_.remove_first());
   if (node == null) {
     return program()->null_object();
   }

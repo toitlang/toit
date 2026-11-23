@@ -113,11 +113,12 @@ void Interpreter::prepare_process_v2() {
   stack->v2_word_at_put(length - 1, reinterpret_cast<uword>(task));
   stack->v2_set_top(length - 1);
   stack->v2_word_at_put(Stack::V2_FRAME_METHOD, entry);
-  stack->v2_word_at_put(Stack::V2_FRAME_RET, table->at(entry).entry);
+  word bci = table->entry_of(entry);
+  stack->v2_word_at_put(Stack::V2_FRAME_RET, bci);
   stack->v2_word_at_put(Stack::V2_FRAME_BASE, 0);
   stack->v2_word_at_put(Stack::V2_FRAME_HANDLER, 0);
   stack->v2_set_frame_top(Stack::V2_FRAME_WORDS);
-  stack->v2_set_bci(table->at(entry).entry);
+  stack->v2_set_bci(bci);
   GcMetadata::insert_into_remembered_set(stack);
 }
 
@@ -139,7 +140,7 @@ static bool v2_start_task(Process* process, Stack* from_stack, Stack* to_stack, 
   to_stack->v2_word_at_put(length - 2, reinterpret_cast<uword>(to));
   to_stack->v2_word_at_put(length - 3, reinterpret_cast<uword>(program->false_object()));
   to_stack->v2_set_top(length - 3);
-  word e = table->at(entry).entry;
+  word e = table->entry_of(entry);
   to_stack->v2_word_at_put(Stack::V2_FRAME_METHOD, entry);
   to_stack->v2_word_at_put(Stack::V2_FRAME_RET, e);
   to_stack->v2_word_at_put(Stack::V2_FRAME_BASE, 0);
@@ -205,7 +206,6 @@ V2_HOT Interpreter::Result Interpreter::run_v2() {
   context.epoch = process_->object_heap()->v2_epoch_address();
   context.new_space_top = process_->object_heap()->v2_new_space_top_address();
   context.new_space_limit = process_->object_heap()->v2_new_space_limit_address();
-  context.new_space_sentinel = reinterpret_cast<uword>(chunk_end_sentinel());
   // Trusted programs may use the unchecked twins of the field accesses
   // (format note 20; the compiler emits them with -Xv2_unchecked). Never an
   // untrusted process: its launch verification rejects them.
@@ -302,20 +302,24 @@ static void v2_validate(Process* process, const char* where) {
 }
 #endif
 
+static void v2_report_allocation_failure(Process* process, const char* reason, word parameter1, word parameter2) {
+  static const int BUFFER_SIZE = 50;
+  char buffer[BUFFER_SIZE];
+  snprintf(buffer, BUFFER_SIZE, "out of memory in %s %" PRIdPTR ":%" PRIdPTR,
+           reason, parameter1, parameter2);
+  buffer[BUFFER_SIZE - 1] = '\0';
+  OS::heap_summary_report(0, buffer, process);
+  if (VM::current()->scheduler()->is_boot_process(process)) {
+    OS::out_of_memory("Out of memory in system process");
+  }
+}
+
 // As Interpreter::gc, without moving the interpreter's stack pointers (the
 // core has stored its state into the stack object).
 static void v2_gc(Process* process, bool malloc_failed, int attempts, bool force_cross_process,
                   const char* reason, word parameter1 = 0, word parameter2 = 0) {
   if (attempts == 3) {
-    static const int BUFFER_SIZE = 50;
-    char buffer[BUFFER_SIZE];
-    snprintf(buffer, BUFFER_SIZE, "out of memory in %s %" PRIdPTR ":%" PRIdPTR,
-             reason, parameter1, parameter2);
-    buffer[BUFFER_SIZE - 1] = '\0';
-    OS::heap_summary_report(0, buffer, process);
-    if (VM::current()->scheduler()->is_boot_process(process)) {
-      OS::out_of_memory("Out of memory in system process");
-    }
+    v2_report_allocation_failure(process, reason, parameter1, parameter2);
     return;
   }
   GcMetadata::insert_into_remembered_set(process->task()->stack());
@@ -473,10 +477,12 @@ uword toit_v2_try_allocate_double(void* raw_process, uint64 bits) {
   return reinterpret_cast<uword>(v2_process(raw_process)->object_heap()->allocate_double(value));
 }
 
-uword toit_v2_try_allocate_array(void* raw_process, uword length, uword filler) {
-  if (length > static_cast<uword>(Array::ARRAYLET_SIZE)) return 0;
+uword toit_v2_try_allocate_array(void* raw_process, uword length, void* filler) {
+  if (length > static_cast<uword>(Array::ARRAYLET_SIZE)) {
+    return 0;
+  }
   return reinterpret_cast<uword>(v2_process(raw_process)->object_heap()->allocate_array(
-      length, reinterpret_cast<Object*>(filler)));
+      length, static_cast<Object*>(filler)));
 }
 
 uword toit_v2_try_allocate_string(void* raw_process, uword length) {
@@ -517,9 +523,10 @@ static __attribute__((noinline)) V2_HOT uword v2_primitive_failed(
       *result_out = reinterpret_cast<uword>(result);
       return TOIT_V2_PRIMITIVE_THROW;
     }
-    GcMetadata::insert_into_remembered_set(process->task()->stack());
     v2_gc(process, malloc_failed, attempts, force_cross_process, "primitive");
     Stack* stack = process->task()->stack();
+    // A moving collection can replace the stack and clear its old card.
+    GcMetadata::insert_into_remembered_set(stack);
     result = entry(process, stack->v2_slot_address(first_argument));
   }
   process->object_heap()->leave_primitive();

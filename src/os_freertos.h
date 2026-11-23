@@ -50,11 +50,12 @@ class ConditionVariable {
   bool wait_us(int64 us) {
     if (us <= 0LL) return false;
 
-    // Use ceiling divisions to avoid rounding the ticks down and thus
-    // not waiting long enough.
-    uint32 ms = 1 + static_cast<uint32>((us - 1) / 1000LL);
-    uint32 ticks = (ms + portTICK_PERIOD_MS - 1) / portTICK_PERIOD_MS;
-    return wait_ticks(ticks);
+    if (us > OS::MAX_WAIT_US) us = OS::MAX_WAIT_US;
+    // Round up before narrowing. portMAX_DELAY is reserved for wait().
+    static_assert(portTICK_PERIOD_MS > 0, "expected a tick period of at least one millisecond");
+    int64 ticks = 1 + (us - 1) / (1000LL * portTICK_PERIOD_MS);
+    if (ticks >= portMAX_DELAY) ticks = portMAX_DELAY - 1;
+    return wait_ticks(static_cast<uint32>(ticks));
   }
 
   bool wait_ticks(uint32 ticks) {

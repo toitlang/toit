@@ -48,7 +48,7 @@
 #include "rtc_memory_esp32.h"
 #include "vm.h"
 #include "objects_inline.h"
-#include "third_party/dartino/gc_metadata.h"
+#include "third_party/dartino/object_memory.h"
 
 namespace toit {
 
@@ -112,7 +112,7 @@ static void start() {
     exit_state = vm.scheduler()->run_boot_program(const_cast<Program*>(program), group_id);
   }
 
-  GcMetadata::tear_down();
+  ObjectMemory::tear_down();
   OS::tear_down();
   FlashRegistry::tear_down();
 

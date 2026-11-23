@@ -31,11 +31,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "../model/objects.gen.h"
+#include "../utf8/validator.gen.h"
+#include "../model/byte_array_ownership.gen.h"
 #include "../blob/byte_content.gen.h"
 #include "cardinal.h"
 //@ #include "../model/arith.gh"
-//@ #include "llong.gh"
+//@ #include "../model/llong.gh"
 
 // ---------------------------------------------------------------------------
 // The encoder's state: the fields of src/messaging.h (TisonEncoder's
@@ -195,11 +196,6 @@ bool PrimitivePolicy_restricts_messaging(PrimitivePolicy *self);
 //@ requires true;
 //@ ensures true;
 
-// src/utils.cc: reads the bytes given (contract only).
-bool Utils_is_valid_utf_8(uint8 *buffer, word length);
-//@ requires [?f]uchars(buffer, length, ?cs);
-//@ ensures [f]uchars(buffer, length, cs);
-
 // src/os.h HeapTagScope: sets and restores the malloc tag of the thread
 // (contract only: the OS layer).
 void HeapTagScope_ctor(HeapTagScope *self, uword tag);
@@ -220,11 +216,6 @@ uint64 bit_cast_uint64__long(int64 src);
 uint64 bit_cast_uint64__longlong(int64 src);
 //@ requires true;
 //@ ensures true;
-// C++: src/objects.h toit::ByteArray::has_owned_external_memory (trusted: contract only)
-bool ByteArray_has_owned_external_memory(ByteArray *self);
-//@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true &*& has_tag(H, self, BYTE_ARRAY_TAG) == true;
-//@ ensures [f]heap(objs, H);
-
 // C++: src/messaging.cc toit::NestingTracker::NestingTracker
 void NestingTracker_ctor(NestingTracker *self, int *nesting);
 //@ requires self->nesting_ |-> _ &*& integer(nesting, ?n) &*& INT_MIN <= n &*& n < INT_MAX;
@@ -318,9 +309,19 @@ bool MessageEncoder_encode_any(MessageEncoder *self, Object *object);
 //@ requires encoder(self, ?ids) &*& enc_out(self, ?cap, ?c, ?x) &*& self->nesting_ |-> ?n &*& 0 <= n &*& n <= MESSAGING_ENCODING_MAX_NESTING &*& [?f]heap(?objs, ?H) &*& good(objs, object) == true;
 //@ ensures encoder(self, ids) &*& enc_out(self, cap, ?c1, ?x1) &*& c <= c1 &*& self->nesting_ |-> n &*& [f]heap(objs, H);
 
+// C++: src/messaging.cc toit::MessageEncoder::encode_smi
+void MessageEncoder_encode_smi(MessageEncoder *self, Object *object);
+//@ requires enc_out(self, ?cap, ?c, ?x) &*& c + x <= MESSAGING_ENCODING_MAX_SIZE &*& is_smi_w((uword)object) == true;
+//@ ensures enc_out(self, cap, ?c1, x) &*& c < c1;
+
 // C++: src/messaging.cc toit::MessageEncoder::encode_array
 bool MessageEncoder_encode_array(MessageEncoder *self, Array *object, word from, word to);
 //@ requires encoder(self, ?ids) &*& enc_out(self, ?cap, ?c, ?x) &*& c + x <= MESSAGING_ENCODING_MAX_SIZE &*& self->nesting_ |-> ?n &*& 0 <= n &*& n <= MESSAGING_ENCODING_MAX_NESTING &*& [?f]heap(?objs, ?H) &*& mem(object, objs) == true &*& has_tag(H, object, ARRAY_TAG) == true &*& smi_range(from) == true &*& smi_range(to) == true;
+//@ ensures encoder(self, ids) &*& enc_out(self, cap, ?c1, ?x1) &*& c <= c1 &*& self->nesting_ |-> n &*& [f]heap(objs, H);
+
+// C++: src/messaging.cc toit::MessageEncoder::encode_list_slice
+bool MessageEncoder_encode_list_slice(MessageEncoder *self, Instance *instance);
+//@ requires encoder(self, ?ids) &*& enc_out(self, ?cap, ?c, ?x) &*& c + x <= MESSAGING_ENCODING_MAX_SIZE &*& self->nesting_ |-> ?n &*& 0 <= n &*& n <= MESSAGING_ENCODING_MAX_NESTING &*& [?f]heap(?objs, ?H) &*& mem(instance, objs) == true &*& has_tag(H, instance, INSTANCE_TAG) == true &*& header_cid(o_hw(H(instance))) == list_slice_cid(ids);
 //@ ensures encoder(self, ids) &*& enc_out(self, cap, ?c1, ?x1) &*& c <= c1 &*& self->nesting_ |-> n &*& [f]heap(objs, H);
 
 // C++: src/messaging.cc toit::MessageEncoder::encode_list
@@ -557,18 +558,18 @@ bool MessageEncoder_encode_copy(MessageEncoder *self, Object *object, int tag)
   //@ uint8 *base = blob_base(H, bl);
   //@ heap_holes_open();
   //@ blob_take(bl);
-  //@ uchars_split(base, (uword)a - (uword)base);
+  //@ if (a != base) uchars_split(base, (uword)a - (uword)base);
   //@ uchars_split(a, l);
   if (tag == (int)TAG_STRING && self->process_ != 0 && PrimitivePolicy_restricts_messaging(Process_policy(self->process_)) && !Utils_is_valid_utf_8(source, length)) {
     //@ uchars_join(a);
-    //@ uchars_join(base);
+    //@ if (a != base) uchars_join(base);
     //@ blob_give(bl);
     //@ heap_holes_close();
     //@ close encoder(self, ids);
     return false;
   }
   //@ uchars_join(a);
-  //@ uchars_join(base);
+  //@ if (a != base) uchars_join(base);
   //@ blob_give(bl);
   //@ heap_holes_close();
   //@ close encoder(self, ids);
@@ -587,14 +588,14 @@ bool MessageEncoder_encode_copy(MessageEncoder *self, Object *object, int tag)
     if (!MessageEncoder_encoding_for_size(self)) {
       //@ heap_holes_open();
       //@ blob_take(bl);
-      //@ uchars_split(base, (uword)a - (uword)base);
+      //@ if (a != base) uchars_split(base, (uword)a - (uword)base);
       //@ uchars_split(a, l);
       //@ buf_take(b, c2, l);
       memcpy((void *)&self->buffer_[self->cursor_], (void *)source, (size_t)length);
       //@ buf_give(b, c2, l);
       //@ chars_to_uchars(a);
       //@ uchars_join(a);
-      //@ uchars_join(base);
+      //@ if (a != base) uchars_join(base);
       //@ blob_give(bl);
       //@ heap_holes_close();
     }
@@ -638,12 +639,12 @@ bool MessageEncoder_encode_copy(MessageEncoder *self, Object *object, int tag)
     //@ close encoder(self, ids);
     //@ heap_holes_open();
     //@ blob_take(bl);
-    //@ uchars_split(base, (uword)a - (uword)base);
+    //@ if (a != base) uchars_split(base, (uword)a - (uword)base);
     //@ uchars_split(a, l);
     memcpy(data, (void *)source, (size_t)length);
     //@ chars_to_uchars(a);
     //@ uchars_join(a);
-    //@ uchars_join(base);
+    //@ if (a != base) uchars_join(base);
     //@ blob_give(bl);
     //@ heap_holes_close();
     //@ if (extra != 0) chars__to_uchars_((uint8 *)data + l);
@@ -779,14 +780,7 @@ bool MessageEncoder_encode_any(MessageEncoder *self, Object *object)
     }
   }
   if (is_smi(object)) {
-    word value = Smi_value__Objectp(object);
-    if (value >= 0) {
-      MessageEncoder_write_uint8(self, (uint8)TAG_POSITIVE_SMI);
-      MessageEncoder_write_cardinal(self, (uword)value);
-    } else {
-      MessageEncoder_write_uint8(self, (uint8)TAG_NEGATIVE_SMI);
-      MessageEncoder_write_cardinal(self, (uword)-value);
-    }
+    MessageEncoder_encode_smi(self, object);
     {
       bool result2 = true;
       NestingTracker_dtor(&tracking);
@@ -817,81 +811,40 @@ bool MessageEncoder_encode_any(MessageEncoder *self, Object *object)
         return result4;
       }
     } else if (class_id == Program_list_slice_class_id(program)) {
-      Object *from_object = Instance_at(instance, Instance_LIST_SLICE_FROM_INDEX);
-      Object *to_object = Instance_at(instance, Instance_LIST_SLICE_TO_INDEX);
-      if (!is_smi(from_object) || !is_smi(to_object)) {
-        {
-          bool result5 = false;
-          NestingTracker_dtor(&tracking);
-          return result5;
-        }
-      }
-      word from = Smi_value__Objectp(from_object);
-      word to = Smi_value__Objectp(to_object);
-      Object *backing_object = Instance_at(instance, Instance_LIST_SLICE_LIST_INDEX);
-      if (is_array(backing_object)) {
-        //@ good_heap(objs, backing_object);
-        Array *backing = Array_cast(backing_object);
-        {
-          bool result6 = MessageEncoder_encode_array(self, backing, from, to);
-          NestingTracker_dtor(&tracking);
-          return result6;
-        }
-      } else if (is_instance(backing_object)) {
-        //@ good_heap(objs, backing_object);
-        Instance *backing = Instance_cast(backing_object);
-        Smi *backing_class_id = HeapObject_class_id(backing);
-        if (backing_class_id != Program_list_class_id(program)) {
-          //@ open encoder(self, ids);
-          self->problematic_class_id_ = (int)Smi_value__Smip(backing_class_id);
-          //@ close encoder(self, ids);
-          {
-            bool result7 = false;
-            NestingTracker_dtor(&tracking);
-            return result7;
-          }
-        }
-        {
-          bool result8 = MessageEncoder_encode_list(self, backing, from, to);
-          NestingTracker_dtor(&tracking);
-          return result8;
-        }
-      } else {
-        {
-          bool result9 = false;
-          NestingTracker_dtor(&tracking);
-          return result9;
-        }
+      {
+        bool result5 = MessageEncoder_encode_list_slice(self, instance);
+        NestingTracker_dtor(&tracking);
+        return result5;
       }
     } else if (class_id == Program_map_class_id(program)) {
       {
-        bool result10 = MessageEncoder_encode_map(self, instance);
+        bool result6 = MessageEncoder_encode_map(self, instance);
         NestingTracker_dtor(&tracking);
-        return result10;
+        return result6;
       }
     } else if (class_id == Program_byte_array_cow_class_id(program)) {
       {
-        bool result11 = MessageEncoder_encode_copy(self, object, (int)TAG_BYTE_ARRAY);
+        bool result7 = MessageEncoder_encode_copy(self, object, (int)TAG_BYTE_ARRAY);
         NestingTracker_dtor(&tracking);
-        return result11;
+        return result7;
       }
     } else if (class_id == Program_byte_array_slice_class_id(program)) {
       {
-        bool result12 = MessageEncoder_encode_copy(self, object, (int)TAG_BYTE_ARRAY);
+        bool result8 = MessageEncoder_encode_copy(self, object, (int)TAG_BYTE_ARRAY);
         NestingTracker_dtor(&tracking);
-        return result12;
+        return result8;
       }
     } else if (class_id == Program_string_byte_slice_class_id(program)) {
       {
-        bool result13 = MessageEncoder_encode_copy(self, object, (int)TAG_BYTE_ARRAY);
+        bool result9 = MessageEncoder_encode_copy(self, object, (int)TAG_BYTE_ARRAY);
         NestingTracker_dtor(&tracking);
-        return result13;
+        return result9;
       }
     } else if (class_id == Program_string_slice_class_id(program)) {
       {
-        bool result14 = MessageEncoder_encode_copy(self, object, (int)TAG_STRING);
+        bool result10 = MessageEncoder_encode_copy(self, object, (int)TAG_STRING);
         NestingTracker_dtor(&tracking);
-        return result14;
+        return result10;
       }
     } else {
       //@ open encoder(self, ids);
@@ -901,58 +854,58 @@ bool MessageEncoder_encode_any(MessageEncoder *self, Object *object)
   } else if (object == Program_null_object(program)) {
     MessageEncoder_write_uint8(self, (uint8)TAG_NULL);
     {
-      bool result15 = true;
+      bool result11 = true;
       NestingTracker_dtor(&tracking);
-      return result15;
+      return result11;
     }
   } else if (object == Program_true_object(program)) {
     MessageEncoder_write_uint8(self, (uint8)TAG_TRUE);
     {
-      bool result16 = true;
+      bool result12 = true;
       NestingTracker_dtor(&tracking);
-      return result16;
+      return result12;
     }
   } else if (object == Program_false_object(program)) {
     MessageEncoder_write_uint8(self, (uint8)TAG_FALSE);
     {
-      bool result17 = true;
+      bool result13 = true;
       NestingTracker_dtor(&tracking);
-      return result17;
+      return result13;
     }
   } else if (is_byte_array(object)) {
     {
-      bool result18 = MessageEncoder_encode_byte_array(self, ByteArray_cast(object));
+      bool result14 = MessageEncoder_encode_byte_array(self, ByteArray_cast(object));
       NestingTracker_dtor(&tracking);
-      return result18;
+      return result14;
     }
   } else if (is_double(object)) {
     MessageEncoder_write_uint8(self, (uint8)TAG_DOUBLE);
     MessageEncoder_write_uint64(self, bit_cast_uint64__double(Double_value(Double_cast(object))));
     {
-      bool result19 = true;
+      bool result15 = true;
       NestingTracker_dtor(&tracking);
-      return result19;
+      return result15;
     }
   } else if (is_string(object)) {
     {
-      bool result20 = MessageEncoder_encode_copy(self, object, (int)TAG_STRING);
+      bool result16 = MessageEncoder_encode_copy(self, object, (int)TAG_STRING);
       NestingTracker_dtor(&tracking);
-      return result20;
+      return result16;
     }
   } else if (is_array(object)) {
     Array *array = Array_cast(object);
     {
-      bool result21 = MessageEncoder_encode_array(self, array, 0, Array_length(array));
+      bool result17 = MessageEncoder_encode_array(self, array, 0, Array_length(array));
       NestingTracker_dtor(&tracking);
-      return result21;
+      return result17;
     }
   } else if (is_large_integer(object)) {
     MessageEncoder_write_uint8(self, (uint8)TAG_LARGE_INTEGER);
     MessageEncoder_write_uint64(self, bit_cast_uint64__long(LargeInteger_value(LargeInteger_cast(object))));
     {
-      bool result22 = true;
+      bool result18 = true;
       NestingTracker_dtor(&tracking);
-      return result22;
+      return result18;
     }
   } else if (is_heap_object(object)) {
     if (!MessageEncoder_encoding_tison(self)) {
@@ -960,9 +913,24 @@ bool MessageEncoder_encode_any(MessageEncoder *self, Object *object)
     }
   }
   {
-    bool result23 = false;
+    bool result19 = false;
     NestingTracker_dtor(&tracking);
-    return result23;
+    return result19;
+  }
+}
+
+// C++: src/messaging.cc toit::MessageEncoder::encode_smi
+void MessageEncoder_encode_smi(MessageEncoder *self, Object *object)
+//@ requires enc_out(self, ?cap, ?c, ?x) &*& c + x <= MESSAGING_ENCODING_MAX_SIZE &*& is_smi_w((uword)object) == true;
+//@ ensures enc_out(self, cap, ?c1, x) &*& c < c1;
+{
+  word value = Smi_value__Objectp(object);
+  if (value >= 0) {
+    MessageEncoder_write_uint8(self, (uint8)TAG_POSITIVE_SMI);
+    MessageEncoder_write_cardinal(self, (uword)value);
+  } else {
+    MessageEncoder_write_uint8(self, (uint8)TAG_NEGATIVE_SMI);
+    MessageEncoder_write_cardinal(self, (uword)-value);
   }
 }
 
@@ -987,6 +955,42 @@ bool MessageEncoder_encode_array(MessageEncoder *self, Array *object, word from,
     }
   }
   return true;
+}
+
+// C++: src/messaging.cc toit::MessageEncoder::encode_list_slice
+bool MessageEncoder_encode_list_slice(MessageEncoder *self, Instance *instance)
+//@ requires encoder(self, ?ids) &*& enc_out(self, ?cap, ?c, ?x) &*& c + x <= MESSAGING_ENCODING_MAX_SIZE &*& self->nesting_ |-> ?n &*& 0 <= n &*& n <= MESSAGING_ENCODING_MAX_NESTING &*& [?f]heap(?objs, ?H) &*& mem(instance, objs) == true &*& has_tag(H, instance, INSTANCE_TAG) == true &*& header_cid(o_hw(H(instance))) == list_slice_cid(ids);
+//@ ensures encoder(self, ids) &*& enc_out(self, cap, ?c1, ?x1) &*& c <= c1 &*& self->nesting_ |-> n &*& [f]heap(objs, H);
+{
+  //@ encoder_facts(self);
+  //@ heap_facts(instance);
+  Object *from_object = Instance_at(instance, Instance_LIST_SLICE_FROM_INDEX);
+  Object *to_object = Instance_at(instance, Instance_LIST_SLICE_TO_INDEX);
+  if (!is_smi(from_object) || !is_smi(to_object)) {
+    return false;
+  }
+  word from = Smi_value__Objectp(from_object);
+  word to = Smi_value__Objectp(to_object);
+  Object *backing_object = Instance_at(instance, Instance_LIST_SLICE_LIST_INDEX);
+  if (is_array(backing_object)) {
+    //@ good_heap(objs, backing_object);
+    Array *backing = Array_cast(backing_object);
+    return MessageEncoder_encode_array(self, backing, from, to);
+  } else if (is_instance(backing_object)) {
+    //@ good_heap(objs, backing_object);
+    Instance *backing = Instance_cast(backing_object);
+    Smi *backing_class_id = HeapObject_class_id(backing);
+    //@ open encoder(self, ids);
+    if (backing_class_id != Program_list_class_id(self->program_)) {
+      self->problematic_class_id_ = (int)Smi_value__Smip(backing_class_id);
+      //@ close encoder(self, ids);
+      return false;
+    }
+    //@ close encoder(self, ids);
+    return MessageEncoder_encode_list(self, backing, from, to);
+  } else {
+    return false;
+  }
 }
 
 // C++: src/messaging.cc toit::MessageEncoder::encode_list

@@ -1,0 +1,52 @@
+// Copyright (C) 2026 Toit contributors.
+@include ../model/model.cfg
+@header integer.gen.h
+@verbatim
+#include "../model/objects.gen.h"
+
+/*@
+fixpoint bool large_integer_result(Program *prog, list<void *> objs, fixpoint(void *, oinfo) H,
+                                   list<void *> objs2, fixpoint(void *, oinfo) H2, int value, void *result) {
+  return (uword)result % 4 == 3 ?
+    (uword)result == ((uword)root_allocation_failed(prog) | 3) && objs2 == objs && H2 == H :
+    objs2 == cons(result, objs) && !mem(result, objs) && has_tag(H2, result, LARGE_INTEGER_TAG) && o_number(H2(result)) == value &&
+      forall(objs, (same_obj)(H, H2));
+}
+fixpoint bool integer_result(Program *prog, list<void *> objs, fixpoint(void *, oinfo) H,
+                             list<void *> objs2, fixpoint(void *, oinfo) H2, int value, void *result) {
+  return smi_range(value) ?
+    is_smi_w((uword)result) && smi_val((uword)result) == value && objs2 == objs && H2 == H :
+    large_integer_result(prog, objs, H, objs2, H2, value, result);
+}
+@*/
+@prototypes
+@render src/primitive.h toit::Primitive::mark_as_error tu=src/primitive.cc
+  static HeapObject* mark_as_error(HeapObject* object)
+  //@ requires true;
+  //@ ensures (uword)result == ((uword)object | 3) &*& (uword)result % 4 == 3;
+  { return object->mark(); }
+
+@render src/primitive.cc toit::Primitive::allocate_large_integer
+Object* Primitive::allocate_large_integer(int64 value, Process* process)
+//@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H);
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*&
+            large_integer_result(prog, objs, H, objs2, H2, value, result) == true &*& grows(objs, H, objs2, H2) == true; @*/
+{
+  Object* result = process->object_heap()->allocate_large_integer(value);
+  //@ open allocated(objs, H, process, result, ?objs1, ?H1);
+  //@ if (result != 0) grows_alloc(objs, H, result, H1); else grows_refl(objs, H);
+  if (result != null) return result;
+  return mark_as_error(process->program()->allocation_failed());
+}
+
+@render src/primitive.h toit::Primitive::integer tu=src/primitive.cc
+  static Object* integer(int64 value, Process* process)
+  //@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H);
+  /*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*&
+              integer_result(prog, objs, H, objs2, H2, value, result) == true &*& grows(objs, H, objs2, H2) == true &*&
+              (good(objs2, result) || (uword)result % 4 == 3); @*/
+  {
+    //@ grows_refl(objs, H);
+    if (Smi::is_valid(value)) return Smi::from((word) value);
+    return allocate_large_integer(value, process);
+  }

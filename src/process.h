@@ -103,7 +103,13 @@ class Process : public ProcessListFromProcessGroup::Element,
   ~Process();
 
   int id() const { return id_; }
-  int next_task_id() { return next_task_id_++; }
+  bool has_task_id() const {
+    return next_task_id_ <= INT32_MAX && Smi::is_valid(static_cast<int64>(next_task_id_));
+  }
+  int next_task_id() {
+    ASSERT(has_task_id());
+    return static_cast<int>(next_task_id_++);
+  }
 
   bool is_suspended() const { return state_ == SUSPENDED_IDLE || state_ == SUSPENDED_SCHEDULED; }
 
@@ -237,7 +243,7 @@ class Process : public ProcessListFromProcessGroup::Element,
 
   bool should_allow_external_allocation(word size) {
     word max = object_heap_.max_external_allocation();
-    bool result = max >= size;
+    bool result = size >= 0 && size <= max;
     object_heap_.set_last_allocation_result(result ? ObjectHeap::ALLOCATION_SUCCESS : ObjectHeap::ALLOCATION_HIT_LIMIT);
     return result;
   }
@@ -278,7 +284,8 @@ class Process : public ProcessListFromProcessGroup::Element,
 
   inline bool on_program_heap(const HeapObject* object) {
     uword address = reinterpret_cast<uword>(object);
-    return address - program_heap_address_ < program_heap_size_;
+    uword start = reinterpret_cast<uword>(program_);
+    return address >= start && address - start < program_heap_size_;
   }
 
   inline HeapObject* false_object() const { return false_object_; }
@@ -352,12 +359,16 @@ class Process : public ProcessListFromProcessGroup::Element,
  private:
   Process(Program* program, ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination, InitialMemoryManager* initial_memory);
   // Appends the message to the mailbox. Returns false, without taking over
-  // the message, if a mailbox quota would be exceeded.
+  // the message, if admission or a requested reply grant fails.
   bool _append_message(Message* message);
+  // Called under the scheduler lock. A nonnegative reply_to grants the
+  // receiver's group permission to reply if the message is accepted.
+  bool _append_message(SystemMessage* message, int reply_to = -1);
+  bool append_system_message_locked(SystemMessage* message, int reply_to);
   void _ensure_random_seeded();
 
   int const id_;
-  int next_task_id_;
+  uint32 next_task_id_;
 
   Program* program_;
   ProcessRunner* runner_;
@@ -378,7 +389,6 @@ class Process : public ProcessListFromProcessGroup::Element,
   uint8 priority_ = PRIORITY_NORMAL;
   uint8 target_priority_ = PRIORITY_NORMAL;
 
-  uword program_heap_address_;
   uword program_heap_size_;
 
   Method entry_;

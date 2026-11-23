@@ -40,7 +40,7 @@ class TwoSpaceHeap {
   HeapObject* allocate(uword size);
 
   // Allocate raw object. Returns null if new space is full.
-  inline word allocate_new_space(uword size) {
+  inline uword allocate_new_space(uword size) {
     return semi_space_.try_allocate(size);
   }
 
@@ -63,9 +63,9 @@ class TwoSpaceHeap {
 
   OldSpace* old_space() { return &old_space_; }
 
-  word size() const { return old_space_.size() + new_space()->size(); }
+  uword size() const { return old_space_.size() + new_space()->size(); }
 
-  void swap_semi_spaces(SemiSpace& from, SemiSpace& to);
+  Chunk* swap_semi_spaces(SemiSpace& from, SemiSpace& to);
 
   Process* process();
 
@@ -121,6 +121,7 @@ class TwoSpaceHeap {
   friend class ScavengeVisitor;
 
   void do_scavenge(ScavengeVisitor* visitor);
+  void record_direct_old_allocation(uword address, uword size);
 
   Program* program_;
   ObjectHeap* process_heap_;
@@ -153,8 +154,9 @@ class ScavengeVisitor : public RootCallback {
   void complete_scavenge() {
     bool work_found = true;
     while (work_found) {
-      work_found = to_.complete_scavenge(this);
-      work_found |= old_->complete_scavenge(this);
+      bool young_work = to_.complete_scavenge(this);
+      bool old_work = old_->complete_scavenge(this);
+      work_found = young_work || old_work;
     }
   }
 
@@ -180,6 +182,8 @@ class ScavengeVisitor : public RootCallback {
   void set_record_new_space_pointers(uint8* p) { record_ = p; }
 
  private:
+  inline void scavenge_root(Object** p);
+
   template <class SomeSpace>
   static inline HeapObject* clone_into_space(Program* program, HeapObject* original, SomeSpace* to);
 

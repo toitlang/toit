@@ -19,8 +19,8 @@
 //! (src/primitive_core.cc).
 //!
 //! Arrays are in the heap model (`abs::obj_model_ok`: the array tag is
-//! exactly `Body::Array`), so reads, writes, lengths and the results of
-//! `array_length`, `array_at` and `array_at_put` have functional specs.
+//! exactly `Body::Array`). The primitive contracts specify indexing, updates,
+//! allocation, expansion and overlapping slice replacements.
 
 use vstd::prelude::*;
 use crate::layout::*;
@@ -102,6 +102,7 @@ pub fn int32_arg(h: &Heap, w: usize, Ghost(v): Ghost<Value>) -> (r: Result<i64, 
     ensures
         r is Ok ==> v == Value::Smi(r->Ok_0) && -0x8000_0000 <= r->Ok_0 < 0x8000_0000,
         r is Err ==> r->Err_0 == ROOT_OUT_OF_RANGE || r->Err_0 == ROOT_WRONG_OBJECT_TYPE,
+        r is Err ==> r->Err_0 as int == toit_spec::v2::prim_core::int32_error(h.objs(), v),
         (v is Smi && -0x8000_0000 <= v->Smi_0 < 0x8000_0000) ==> r is Ok,
 {
     proof { lemma_word(h, w, v); }
@@ -308,6 +309,9 @@ fn new_array(heap: &mut Heap, c: &Ctx, len: usize, filler: usize, Ghost(fv): Gho
         filler == enc(old(heap).addrs(), fv), good(old(heap).objs(), fv), encodable(old(heap).addrs(), fv),
     ensures
         prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+        !(r.0 is NotPorted) ==> toit_spec::v2::prim_core::boxed_result(c.p.ap@, old(heap).objs(),
+            final(heap).objs(), ret_of(c.p, r.0, r.1@), toit_spec::spec_common::ARRAY_CLASS,
+            Body::Array(Seq::new(len as nat, |i: int| fv))),
         !(r.0 is Failure),
         r.0 is Success ==> array_val(final(heap).objs(), r.1@) == Some(Seq::new(len as nat, |i: int| fv))
             && r.1@ == Value::Obj(old(heap).objs().len() as usize)
@@ -334,6 +338,7 @@ fn new_array(heap: &mut Heap, c: &Ctx, len: usize, filler: usize, Ghost(fv): Gho
         assert forall|k: int| 0 <= k < e.len() implies good(heap.objs(), #[trigger] e[k]) && encodable(heap.addrs(), e[k]) by {
             assert(e[k] == fv);
         }
+        assert(heap.objs() =~= h0.objs().push(o));
         lemma_post_append(c.p, &h0, heap, w);
     }
     (PrimOutcome::Success(w), Ghost(Value::Obj(id as usize)))
@@ -343,6 +348,7 @@ fn new_array(heap: &mut Heap, c: &Ctx, len: usize, filler: usize, Ghost(fv): Gho
 pub fn array_new(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<Value>))
     requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 2,
     ensures prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+        contract(c.p, ix::ARRAY_NEW as int, a, old(heap), final(heap), r.0, r.1@),
 {
     let len = match int32_arg(heap, a.w[0], Ghost(a.vs@[0])) {
         Ok(n) => n,
@@ -362,6 +368,7 @@ pub fn array_new(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<
 pub fn array_expand(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<Value>))
     requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 4,
     ensures prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+        contract(c.p, ix::ARRAY_EXPAND as int, a, old(heap), final(heap), r.0, r.1@),
 {
     let w = a.w[0];
     let oid = match array_arg(heap, w, Ghost(a.vs@[0])) {
@@ -415,6 +422,9 @@ pub fn array_expand(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Gho
             if k < n { lemma_element_good(c.p, &h1, oid@, k); } else { lemma_element_good(c.p, &h1, nid, k); }
         }
         lemma_post_update(c.p, &h1, heap, nid, o2);
+        assert(e2 =~= Seq::new(length as nat, |i: int|
+            if i < old_length { h0.objs()[oid@].body->Array_0[i] } else { a.vs@[3] }));
+        assert(heap.objs() =~= h0.objs().push(o2));
         lemma_post_trans(c.p, &h0, &h1, heap);
         assert(heap.addrs() == h1.addrs());
     }
@@ -425,6 +435,7 @@ pub fn array_expand(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Gho
 pub fn array_replace(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<Value>))
     requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 5,
     ensures prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+        contract(c.p, ix::ARRAY_REPLACE as int, a, old(heap), final(heap), r.0, r.1@),
 {
     let dw = a.w[0];
     let did = match array_arg(heap, dw, Ghost(a.vs@[0])) {
@@ -471,6 +482,10 @@ pub fn array_replace(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Gh
             if to2 <= k < to2 + len { lemma_element_good(c.p, &h0, sid@, k - to2 + from2); }
             else { lemma_element_good(c.p, &h0, did@, k); }
         }
+        let dst = h0.objs()[did@].body->Array_0;
+        let src = h0.objs()[sid@].body->Array_0;
+        assert(e2 =~= dst.subrange(0, to2) + src.subrange(from2, to as int)
+            + dst.subrange(to2 + len, dst.len() as int));
         lemma_post_update(c.p, &h0, heap, did@, o2);
     }
     let (nw, nv) = root(c.p, heap, ROOT_NULL);

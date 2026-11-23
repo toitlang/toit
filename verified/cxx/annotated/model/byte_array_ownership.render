@@ -1,0 +1,79 @@
+// Copyright (C) 2026 Toit contributors.
+@include model.cfg
+@header byte_array_ownership.gen.h
+@verbatim
+#include "objects.gen.h"
+//@ #include "arith.gh"
+
+/*@
+fixpoint bool active_flag(uword hw) { return (smi_val(hw) & 16) != 0; }
+
+// A running process sees a normal header. During collection the first
+// word may instead point to the destination containing the normal header.
+predicate flag_header(HeapObject *o; uword first_word, uword hw) =
+  addr_ok(o) == true &*& pointer((void **)raw(o), ?first) &*& first_word == (uword)first &*&
+  (is_heap_w((uword)first) ? header(first, hw) : hw == (uword)first &*& header_ok(hw) == true);
+
+lemma void normal_flag_header(HeapObject *o);
+  requires [?f]header(o, ?hw);
+  ensures [f]flag_header(o, hw, hw) &*& !is_heap_w(hw);
+@*/
+@prototypes
+@verbatim-c
+/*@
+lemma void normal_flag_header(HeapObject *o)
+  requires [?f]header(o, ?hw);
+  ensures [f]flag_header(o, hw, hw) &*& !is_heap_w(hw);
+{
+  open [f]header(o, hw);
+  div_rem_nonneg(hw, 4);
+  close [f]flag_header(o, hw, hw);
+}
+@*/
+@render src/objects.h toit::HeapObject::has_forwarding_address tu=src/objects.cc
+  INLINE bool has_forwarding_address() const
+  //@ requires addr_ok(self) == true &*& [?f]pointer((void **)raw(self), ?first);
+  //@ ensures [f]pointer((void **)raw(self), first) &*& result == is_heap_w((uword)first);
+  {
+    return is_heap_object(_at(HEADER_OFFSET));
+  }
+
+@render src/objects.h toit::HeapObject::forwarding_address tu=src/objects.cc
+  INLINE HeapObject* forwarding_address() const
+  //@ requires addr_ok(self) == true &*& [?f]pointer((void **)raw(self), ?first) &*& is_heap_w((uword)first) == true;
+  //@ ensures [f]pointer((void **)raw(self), first) &*& result == first;
+  {
+    ASSERT(has_forwarding_address());
+    return HeapObject::cast(_at(HEADER_OFFSET));
+  }
+
+@render src/objects.h toit::HeapObject::has_active_finalizer tu=src/objects.cc
+  INLINE bool has_active_finalizer() const
+  //@ requires [?f]flag_header(self, ?first, ?hw);
+  //@ ensures [f]flag_header(self, first, hw) &*& result == active_flag(hw);
+  {
+    //@ open [f]flag_header(self, first, hw);
+    const HeapObject* target = this;
+    if (has_forwarding_address()) {
+      target = forwarding_address();
+    }
+    //@ if (!is_heap_w(first)) close [f]header(self, hw);
+    //@ shiftleft_def(1, N4);
+    return (Smi::value(target->header()) & (1 << HeapObject::FINALIZER_BIT_OFFSET)) != 0;
+    //@ if (!is_heap_w(first)) open [f]header(self, hw);
+    //@ close [f]flag_header(self, first, hw);
+  }
+
+@render src/objects.h toit::ByteArray::has_owned_external_memory tu=src/messaging.cc
+  bool has_owned_external_memory() const
+  //@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true &*& has_tag(H, self, BYTE_ARRAY_TAG) == true;
+  //@ ensures [f]heap(objs, H) &*& result == (is_external(H, self) && (smi_val(o_hw(H(self))) & 16) != 0);
+  {
+    if (!has_external_address()) return false;
+    //@ heap_open(self);
+    //@ normal_flag_header(self);
+    return has_active_finalizer();
+    //@ open [f]flag_header(self, _, _);
+    //@ close [f]header(self, o_hw(H(self)));
+    //@ heap_close(self);
+  }

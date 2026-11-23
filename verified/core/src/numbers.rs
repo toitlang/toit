@@ -16,11 +16,8 @@
 //! Numbers and identity on the heap model, verified: `spec_helpers::num_of`,
 //! `compare_numbers` and `identical` of two operands (smis, doubles, large
 //! integers, strings). The heap model's accessors read double bits, large
-//! integer values and string bytes (`view::Heap`); the comparison of a
-//! double with a number is the spec's uninterpreted `compare_mixed`, whose
-//! implementation is the spec crate's trusted `x_compare_mixed` (the
-//! interpreter's `compare_numbers` on host doubles), and double arithmetic
-//! is its trusted `x_double_add`/`sub`/`mul` (host IEEE-754).
+//! integer values and string bytes (`view::Heap`); numeric comparisons use the verified
+//! `x_compare_mixed`. Double arithmetic uses the trusted `x_double_add`/`sub`/`mul` (host IEEE-754).
 
 use vstd::prelude::*;
 use crate::layout::*;

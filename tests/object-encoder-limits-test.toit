@@ -2,6 +2,7 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import encoding.ubjson
 import expect show *
 
 // The object encoder (the encode-object and encode-error primitives) must
@@ -11,6 +12,7 @@ import expect show *
 main:
   test-cycles
   test-overflow
+  test-string-cutoff
 
 test-cycles:
   list := []
@@ -40,3 +42,16 @@ test-overflow:
   expect-throw "OUT_OF_BOUNDS": encode_ big
   // The error encoder has a larger buffer, but not large enough.
   expect-null (encode-error "FOO" big)
+
+test-string-cutoff:
+  ascii := "a" * 255
+  expect-equals ascii (ubjson.decode (encode_ ascii)).last
+  expect-equals "$ascii..." (ubjson.decode (encode_ (ascii + "b"))).last
+  // The cutoff can fall on any continuation byte of a four-byte character.
+  3.repeat: |i|
+    prefix := "a" * (252 + i)
+    message := prefix + "😹" + "b"
+    expected := prefix + "..."
+    expect-equals expected (ubjson.decode (encode_ message)).last
+    error := (ubjson.decode (encode-error "FOO" message)).last
+    expect-equals expected error[2]

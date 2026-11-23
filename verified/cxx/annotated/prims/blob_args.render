@@ -1,0 +1,37 @@
+// Copyright (C) 2026 Toit contributors.
+// Accessors used by the ARGS(Blob, ...) expansion and by a local Blob.
+@include ../model/model.cfg
+@header blob_args.gen.h
+@verbatim
+#include "../blob/byte_content.gen.h"
+
+struct uninitialized_t { char unused; };
+typedef struct uninitialized_t uninitialized_t;
+void uninitialized_t_ctor(uninitialized_t *self);
+//@ requires self->unused |-> _;
+//@ ensures self->unused |-> _;
+
+@prototypes
+@render src/objects.h toit::Blob::Blob tu=src/primitive_core.cc type=void(uninitialized_t&)
+  inline Blob(uninitialized_t& u)
+  //@ requires self->address_ |-> _ &*& self->length_ |-> _;
+  //@ ensures self->address_ |-> _ &*& self->length_ |-> _;
+  {}
+
+@render src/objects.h toit::Blob::address tu=src/primitive_core.cc
+  const uint8* address() const
+  //@ requires [?f]self->address_ |-> ?a;
+  //@ ensures [f]self->address_ |-> a &*& result == a;
+  { return address_; }
+
+@render src/objects.h toit::Blob::length tu=src/primitive_core.cc
+  word length() const
+  //@ requires [?f]self->length_ |-> ?l;
+  //@ ensures [f]self->length_ |-> l &*& result == l;
+  { return length_; }
+
+@render src/objects.h toit::Blob::Blob tu=src/primitive_core.cc params=0
+  inline Blob() : address_(null), length_(0)
+  //@ requires self->address_ |-> _ &*& self->length_ |-> _;
+  //@ ensures self->address_ |-> 0 &*& self->length_ |-> 0;
+  {}

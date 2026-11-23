@@ -42,25 +42,31 @@
 stack = [
   "REVIEWED ASSUMPTION. For the current task's stack s with the Stack header",
   "words (length len, top top, record top rtop, frame top ft, finally count",
-  "fin, bci) and the array bytes bs (VeriFast: current_stack(p, s) &*&",
+  "fin, bci) and the array bytes bs (VeriFast: current_stack(p, task, s) &*&",
   "stack(s, len, top, rtop, ft, fin, bci, bs) &*& stack_ok(len, top, rtop, bs)):",
   "reloaded(m, g) re-derives the machine's cached fields (length, top, frame",
   "top, bci, the top frame's base and method) from exactly these words, so",
   "reloaded(m, g).refines(p) depends on the stack only through (len - top,",
   "rtop, ft, fin, bci, take(rtop * W, bs), drop(top * W, bs)): the observables",
-  "same_abstraction keeps. Hence a VeriFast post-state with",
+  "same_abstraction keeps. StackMem requires initialized words throughout",
+  "the array. current_stack owns the object heap's current-task field and",
+  "the native stack-pointer slot in that task. Both addresses may change across",
+  "a collection or task switch. The VM predicate requires a TBC2 program.",
+  "Format-2 stack allocation fills all slots with tagged zero;",
+  "growth copies the live ranges into initialized storage. A VeriFast post-state with",
   "same_abstraction(old, new) refines g whenever the pre-state did. The rest",
   "of the machine state (heap, globals) is not touched by the rendered code;",
-  "the GC's contract (v2_gc) states that it preserves the abstraction.",
+  "v2_gc obtains preservation of the abstraction from the Scheduler::gc contract.",
   "Since wave 6 the VeriFast side states this over the whole state at a GC",
   "point, vm(p, v, n) with v = vmv(stack object, len, top, rtop, ft, fin, bci,",
   "bytes, heap objects, H): vm_equiv(a, b) (a == b, or gc_equiv(a, b): what",
   "v2_gc guarantees) means that a refines g exactly when b does (the GC",
   "rewrites every root, the used slots among them, to the moved objects:",
   "not a byte-wise equality); stack_copy_equiv ([[assumption]]) is the",
-  "paragraph above for a copied stack. An epoch count n with",
-  "ObjectHeap::v2_epoch_ = n modulo the word: unchanged count = no GC and",
-  "no task switch (TRUSTED.md, Epoch).",
+  "paragraph above for a copied stack. heap_epoch owns ObjectHeap::v2_epoch_",
+  "and its mathematical count n. Each native tick advances n and writes",
+  "the new count modulo the word. An unchanged count excludes collection",
+  "and task switches under the call bounds (TRUSTED.md, Epoch).",
 ]
 primitive = [
   "REVIEWED ASSUMPTION. For the C++ primitive the policy resolves (module,",
@@ -81,9 +87,12 @@ heap = [
   "a member of objs, with header, length and body words as H says, at the",
   "address (uword)o - 1; every reference word in a body is a smi or a member;",
   "the objects are distinct; a string or byte array holds its content inside",
-  "the object or at its external address, and an external byte array owns",
+  "the object or at its external address. Strings own a trailing NUL at their",
+  "declared end (checked for images by from_vm.rs). An external byte array owns",
   "its bytes exactly when tagged RawByteTag (no two blobs share external",
-  "bytes); Process::on_program_heap is the address range in_program_heap.",
+  "bytes). Process::on_program_heap proves membership in the half-open range",
+  "in_program_heap from the process program pointer and cached image length.",
+  "The loader supplies a live image spanning the page count in its header.",
   "The layout constants of both are checked against the same C++ headers",
   "(verified/layout_check.cc for Rust, the *.gen.constants.cc of the",
   "renderings for VeriFast), 64- and 32-bit.",
@@ -414,8 +423,8 @@ side = "ensures"
 name = "appended"
 bridge = "heap"
 verus = "r != 0 ==> appended(old(heap), final(heap), r, p.ro_start, p.ro_size) && final(heap).objs().last() == (HeapObj { class_id: p.ap@.builtin[BUILTIN_LARGE_INTEGER as int], ro: false, body: Body::LargeInt(v) })"
-verifast = "(r == 0 ? true : has_tag(H2, r, LARGE_INTEGER_TAG) == true)"
-note = "The value is outside the VeriFast heap model (a large integer's body is its header only). The allocator takes any value; the Rust callers allocate only outside the smi range (prims/ints.rs; canonical integers). Since wave 6 the model's allocator no longer requires that (the decoder's decode_integer ensures it)."
+verifast = "(r == 0 ? true : has_tag(H2, r, LARGE_INTEGER_TAG) == true &*& o_number(H2(r)) == value)"
+note = "The VeriFast model tracks the payload and verifies the initializer and getter. The wrapper carries the exact signed payload through to the caller. ESBMC checks the native object's class, tag and payload given fresh raw storage or exhaustion. The allocator takes any value; the Rust callers allocate only outside the smi range (prims/ints.rs; canonical integers). Since wave 6 the model's allocator no longer requires that (the decoder's decode_integer ensures it)."
 
 [[contract]]
 name = "allocator_double"
@@ -455,27 +464,40 @@ name = "allocator_array"
 verus_file = "core/src/ffi.rs"
 verus_fn = "array"
 cxx_fn = "toit_v2_try_allocate_array"
-rendering = ""
-status = "not rendered: the filler word from Rust stored as an object reference (reinterpret_cast<Object*>(filler)) has no provenance in VeriFast's C model, while the model's references are pointers with provenance (README, wave 6: an address-based `good`, or the exposed-provenance semantics the Rust side has)"
+rendering = "cxx/annotated/ffi/interpreter_v2.gen.c"
+status = "verified (VeriFast, LP64 and ILP32) over ObjectHeap::allocate_array's contract"
+
+[[clause]]
+contract = "allocator_array"
+side = "requires"
+name = "views"
+bridge = "heap"
+verus = ""
+verifast = "[?fp]process((Process *)raw_process, ?prog, ?ids) &*& heap(?objs, ?H)"
 
 [[clause]]
 contract = "allocator_array"
 side = "requires"
 name = "length"
 verus = "length <= ARRAYLET_SIZE"
+verifast = ""
+note = "The wrapper also handles larger requests, returning zero before the conversion to word."
 
 [[clause]]
 contract = "allocator_array"
 side = "requires"
 name = "filler"
 bridge = "heap"
-verus = "filler == crate::abs::enc(old(heap).addrs(), fv)"
+verus = "filler == crate::abs::enc(old(heap).addrs(), fv) && toit_spec::v2::sound::good(old(heap).objs(), fv) && crate::abs::encodable(old(heap).addrs(), fv)"
+verifast = "good(objs, filler) == true"
+note = "The FFI passes the encoded filler as a tagged pointer with exposed provenance. The heap bridge identifies the Rust object addresses with the VM references."
 
 [[clause]]
 contract = "allocator_array"
 side = "ensures"
 name = "out of memory"
 verus = "r == 0 ==> *final(heap) == *old(heap)"
+verifast = "[fp]process((Process *)raw_process, prog, ids) &*& allocated(objs, H, (Process *)raw_process, ?r, ?objs2, ?H2) &*& result == (uword)r"
 
 [[clause]]
 contract = "allocator_array"
@@ -483,6 +505,7 @@ side = "ensures"
 name = "appended"
 bridge = "heap"
 verus = "r != 0 ==> appended(old(heap), final(heap), r, p.ro_start, p.ro_size) && final(heap).objs().last() == (HeapObj { class_id: p.ap@.builtin[BUILTIN_ARRAY as int], ro: false, body: Body::Array(Seq::new(length as nat, |i: int| fv)) })"
+verifast = "(r == 0 ? true : length <= Array_ARRAYLET_SIZE &*& has_tag(H2, r, ARRAY_TAG) == true &*& o_len(H2(r)) == length &*& all_eq(o_words(H2(r)), filler) == true)"
 
 [[contract]]
 name = "allocator_string"
@@ -506,7 +529,7 @@ side = "requires"
 name = "length"
 verus = "MISSING"
 verifast = "length <= MAX_BLOB"
-note = "The VeriFast model bounds a blob by 2^30 - 1 on both widths (the heap invariant: TRUSTED.md, Word size, says 2^62 on 64-bit), so the proof covers those lengths; the Verus contract has no precondition and the C++ rejects only lengths above INTPTR_MAX (`static_cast<word>(length) < 0`). Above the bound on 64-bit the C++ allocates a string the model does not describe. Also: Process::allocate_string(word) computes `length + 1` for an external string, undefined behaviour at length == INTPTR_MAX, which the check lets through (unreachable: the Rust callers pass at most twice the largest blob; README, wave 6)."
+note = "The VeriFast model bounds a blob by 2^30 - 1 on ILP32 and INT_MAX on LP64. The Verus contract has no length precondition. ESBMC checks the native FFI entry and Process allocation path for every word-sized input with modeled heap constructors. Process::allocate_string rejects INTPTR_MAX before reserving a terminator. The abstract heap correspondence above MAX_BLOB remains open."
 
 [[clause]]
 contract = "allocator_string"
@@ -563,7 +586,7 @@ name = "appended"
 bridge = "heap"
 verus = "r != 0 ==> appended(old(heap), final(heap), r, p.ro_start, p.ro_size) && final(heap).objs().last() == (HeapObj { class_id: p.ap@.builtin[BUILTIN_BYTE_ARRAY as int], ro: false, body: Body::Bytes(Seq::new(length as nat, |i: int| 0u8)) })"
 verifast = "(result == 0 ? objs2 == objs &*& H2 == H : objs2 == cons(head(objs2), objs) &*& result == (uword)head(objs2) &*& mem(head(objs2), objs) == false &*& forall(objs, (same_obj)(H, H2)) == true &*& in_program_heap((Process *)raw_process, head(objs2)) == false &*& has_tag(H2, head(objs2), BYTE_ARRAY_TAG) == true &*& blob_ok(H2, head(objs2), STRINGS_OR_BYTE_ARRAYS) == true &*& blob_len(H2, head(objs2)) == length)"
-note = "The zero bytes are outside the VeriFast heap model (contents are unconstrained chunks); the C++ allocator clears them (ByteArray::_initialize, _initialize_external_memory with clear_content)."
+note = "The VeriFast heap model leaves the bytes unconstrained. ESBMC checks the native FFI and process allocation paths, including the request to clear external bytes. The byte-array-initialization check verifies the in-heap and external constructor calls to memset, including their exact addresses and extents, under the raw reservation and libc contracts."
 
 # The decoder's assumptions (verified/cxx/annotated/decoder): the
 # inter-process path only (TISON, the untrusted input, needs none). Wave 5
@@ -595,7 +618,7 @@ note = "The j-th out-of-line pointer a decoder reads is the message's j-th block
 name = "ipc_external"
 rendering = "cxx/annotated/decoder/message_decoder.gen.c"
 requires = "[_]ipc_msg(d, ?b, ?cap, ?ps) &*& [?f]d->cursor_ |-> ?c"
-ensures = "[f]d->cursor_ |-> c &*& 0 <= length &*& length < MAX_BLOB"
+ensures = "[f]d->cursor_ |-> c &*& 0 <= length &*& length < MESSAGING_ENCODING_MAX_SIZE"
 note = "The length written before an out-of-line pointer is a content length (the out-of-line branches of the decoders). Wave 5: no longer creates the block (it comes from the message)."
 
 [[assumption]]
@@ -630,7 +653,7 @@ verus_file = ""
 verus_fn = ""
 cxx_fn = "Process_allocate_string__charp_word"
 rendering = "cxx/annotated/model/objects.gen.h"
-status = "contract only (the allocator); used by the message decoder"
+status = "copy from a native buffer or heap slice verified in model/objects.render; allocation by length remains a contract"
 
 [[clause]]
 contract = "allocate_string"
@@ -645,7 +668,7 @@ contract = "allocate_string"
 side = "requires"
 name = "content"
 verus = ""
-verifast = "[?fc]uchars((uint8 *)content, length, ?cs) &*& 0 <= length &*& length <= MAX_BLOB"
+verifast = "string_source(?source, objs, H, (uint8 *)content, length) &*& 0 <= length &*& length <= MAX_BLOB"
 
 [[clause]]
 contract = "allocate_string"
@@ -653,7 +676,7 @@ side = "ensures"
 name = "allocated"
 bridge = "heap"
 verus = ""
-verifast = "[f]process(self, prog, ids) &*& [fc]uchars((uint8 *)content, length, cs) &*& allocated(objs, H, self, result, ?objs2, ?H2) &*& (result == 0 ? true : has_tag(H2, result, STRING_TAG) == true &*& blob_len(H2, result) == length)"
+verifast = "[f]process(self, prog, ids) &*& string_source(source, objs, H, (uint8 *)content, length) &*& allocated(objs, H, self, result, ?objs2, ?H2) &*& (result == 0 ? true : has_tag(H2, result, STRING_TAG) == true &*& blob_len(H2, result) == length)"
 
 [[contract]]
 name = "allocate_array"
@@ -661,7 +684,7 @@ verus_file = ""
 verus_fn = ""
 cxx_fn = "ObjectHeap_allocate_array"
 rendering = "cxx/annotated/model/objects.gen.h"
-status = "contract only (the allocator); used by the message decoder"
+status = "native constructor and two-space retry checked together by process-array-allocation on LP64 and ILP32 over per-space reservation contracts and a valid class table. heap/remembered_card.render derives the retry card from the published mapping and requires ownership of its byte. ffi/array_init.render proves the length and all filler stores"
 
 [[clause]]
 contract = "allocate_array"
@@ -684,7 +707,7 @@ side = "ensures"
 name = "allocated"
 bridge = "heap"
 verus = ""
-verifast = "[f]process(p, prog, ids) &*& allocated(objs, H, p, result, ?objs2, ?H2) &*& (result == 0 ? true : has_tag(H2, result, ARRAY_TAG) == true &*& o_len(H2(result)) == length)"
+verifast = "[f]process(p, prog, ids) &*& allocated(objs, H, p, result, ?objs2, ?H2) &*& (result == 0 ? true : has_tag(H2, result, ARRAY_TAG) == true &*& o_len(H2(result)) == length &*& all_eq(o_words(H2(result)), (void *)filler) == true)"
 note = "Null also for a length outside [0, Array::max_length_in_process()] (src/heap.cc checks it)."
 
 [[contract]]
@@ -765,7 +788,7 @@ side = "ensures"
 name = "allocated"
 bridge = "heap"
 verus = ""
-verifast = "[f]process(p, prog, ids) &*& allocated(objs, H, p, result, ?objs2, ?H2) &*& (result == 0 ? true : has_tag(H2, result, LARGE_INTEGER_TAG) == true)"
+verifast = "[f]process(p, prog, ids) &*& allocated(objs, H, p, result, ?objs2, ?H2) &*& (result == 0 ? true : has_tag(H2, result, LARGE_INTEGER_TAG) == true &*& o_number(H2(result)) == value)"
 
 [[contract]]
 name = "array_at_put"

@@ -49,6 +49,7 @@ extern "C" {
 #include <signal.h>
 #include <string.h>
 #include <cinttypes>
+#include <climits>
 #include <ctype.h>
 #include <errno.h>
 #include <sys/time.h>
@@ -418,13 +419,15 @@ PRIMITIVE(large_integer_equals)                LARGE_INTEGER_COMPARE(==)
 PRIMITIVE(byte_array_is_valid_string_content) {
   ARGS(Blob, bytes, int, start, int, end);
   if (!(0 <= start && start <= end && end <= bytes.length())) FAIL(OUT_OF_BOUNDS);
-  return BOOL(Utils::is_valid_utf_8(bytes.address() + start, end - start));
+  bool valid = Utils::is_valid_utf_8(bytes.address() + start, end - start);
+  return BOOL(valid);
 }
 
 PRIMITIVE(byte_array_convert_to_string) {
   ARGS(Blob, bytes, int, start, int, end);
   if (!(0 <= start && start <= end && end <= bytes.length())) FAIL(OUT_OF_BOUNDS);
-  if (!Utils::is_valid_utf_8(bytes.address() + start, end - start)) FAIL(ILLEGAL_UTF_8);
+  bool valid = Utils::is_valid_utf_8(bytes.address() + start, end - start);
+  if (!valid) FAIL(ILLEGAL_UTF_8);
   return process->allocate_string_or_error(char_cast(bytes.address()) + start, end - start);
 }
 
@@ -479,10 +482,10 @@ static Array* get_array_from_list(Object* object, Process* process) {
   if (is_instance(object)) {
     Instance* list = Instance::cast(object);
     if (list->class_id() == process->program()->list_class_id()) {
-      Object* array_object;
       // This 'if' will fail if we are dealing with a List so large
       // that it has arraylets.
-      if (is_array(array_object = list->at(0))) {
+      Object* array_object = list->at(0);
+      if (is_array(array_object)) {
         result = Array::cast(array_object);
       }
     }
@@ -506,9 +509,10 @@ PRIMITIVE(crc) {
     if (blob.length() != 0x100) FAIL(INVALID_ARGUMENT);
     byte_table = blob.address();
   }
+  uint64 checksum = static_cast<uint64>(accumulator);
   for (word i = from; i < to; i++) {
     uint8 byte = data.address()[i];
-    uint64 index = accumulator;
+    uint64 index = checksum;
     if (big_endian) index >>= width - 8;
     index = (byte ^ index) & 0xff;
     int64 entry;
@@ -519,20 +523,16 @@ PRIMITIVE(crc) {
       INT64_VALUE_OR_WRONG_TYPE(int_table_entry, table_entry);
       entry = int_table_entry;
     }
-    if (big_endian) {
-      accumulator = Utils::wrapping_shift_left(accumulator, 8) ^ entry;
-    } else {
-      accumulator = (static_cast<uint64>(accumulator) >> 8) ^ entry;
-    }
+    checksum = (big_endian ? checksum << 8 : checksum >> 8) ^ static_cast<uint64>(entry);
   }
   if ((width & 63) != 0) {
     // If width is less than 64 we have to mask the result.  For the little
     // endian case (width == 0) we don't need to mask.
     uint64 mask = 1;
     mask = (mask << (width & 63)) - 1;
-    accumulator &= mask;
+    checksum &= mask;
   }
-  return Primitive::integer(accumulator, process);
+  return Primitive::integer(static_cast<int64>(checksum), process);
 }
 
 PRIMITIVE(string_from_rune) {
@@ -791,158 +791,72 @@ PRIMITIVE(smi_divide) {
     return Primitive::integer((int64) receiver / other, process);
   }
   if (!is_large_integer(arg)) FAIL(WRONG_OBJECT_TYPE);
-  int64 other = is_smi(arg) ? (int64) Smi::value(arg) : LargeInteger::cast(arg)->value();
+  int64 other = LargeInteger::cast(arg)->value();
+  if (other == 0) return Primitive::mark_as_error(process->program()->division_by_zero());
   return Primitive::integer((int64) receiver / other, process);
 }
 
 PRIMITIVE(smi_mod) {
   ARGS(word, receiver, Object, arg);
-  if (arg == 0) return Primitive::mark_as_error(process->program()->division_by_zero());
   if (is_smi(arg)) {
     word other = Smi::value(arg);
     if (other == 0) return Primitive::mark_as_error(process->program()->division_by_zero());
     return Smi::from(receiver % other);
   }
   if (!is_large_integer(arg)) FAIL(WRONG_OBJECT_TYPE);
-  int64 other = is_smi(arg) ? (int64) Smi::value(arg) : LargeInteger::cast(arg)->value();
+  int64 other = LargeInteger::cast(arg)->value();
+  if (other == 0) return Primitive::mark_as_error(process->program()->division_by_zero());
   return Primitive::integer((int64) receiver % other, process);
 }
 
-// Signed for base 10, unsigned for bases 2, 8 or 16.
-#ifdef TOIT_EC618
-// Newlib nano doesn't support 64-bit printf specifiers (PRId64 etc.).
-// Manual int64-to-string conversion.
-static void int64_to_string(char* buffer, size_t size, int64 value, int base) {
-  if (value == 0) { buffer[0] = '0'; buffer[1] = '\0'; return; }
-  char tmp[70];
-  int i = 0;
-  bool negative = false;
-  uint64 uval;
-  if (base == 10 && value < 0) {
-    negative = true;
-    uval = uint64(0) - static_cast<uint64>(value);
-  } else {
-    uval = static_cast<uint64>(value);
-  }
-  while (uval > 0 && i < 68) {
-    int digit = uval % base;
-    tmp[i++] = digit < 10 ? '0' + digit : 'a' + digit - 10;
-    uval /= base;
-  }
-  char* p = buffer;
-  if (negative) *p++ = '-';
-  for (int j = i - 1; j >= 0; j--) *p++ = tmp[j];
-  *p = '\0';
-}
-#endif
-
-static Object* printf_style_integer_to_string(Process* process, int64 value, int base) {
-  ASSERT(base == 2 || base == 8 || base == 10 || base == 16);
-  char buffer[70];
-#ifdef TOIT_EC618
-  // Newlib nano doesn't support 64-bit format specifiers.
-  // Hexadecimal and octal formatting preserve all 64 bits of negative values.
-  if (base == 2) {
-    char* p = buffer;
-    int first_bit = value == 0 ? 0 : 63 - Utils::clz(value);
-    for (int i = first_bit; i >= 0; i--) {
-      *p++ = '0' + ((value >> i) & 1);
-    }
-    *p++ = '\0';
-  } else if (value >= INT_MIN && value <= INT_MAX && (base == 10 || value >= 0)) {
-    int v = static_cast<int>(value);
-    switch (base) {
-      case 8:  snprintf(buffer, sizeof(buffer), "%o", static_cast<unsigned>(v)); break;
-      case 10: snprintf(buffer, sizeof(buffer), "%d", v); break;
-      case 16: snprintf(buffer, sizeof(buffer), "%x", static_cast<unsigned>(v)); break;
-    }
-  } else {
-    int64_to_string(buffer, sizeof(buffer), value, base);
-  }
-#else
+static uint64 format_quotient(uint64 value, int base) {
+  // Constant divisors let embedded targets use shifts or reciprocal multiplication.
   switch (base) {
-    case 2: {
-      char* p = buffer;
-      int first_bit = value == 0 ? 0 : 63 - Utils::clz(value);
-      for (int i = first_bit; i >= 0; i--) {
-        *p++ = '0' + ((value >> i) & 1);
-      }
-      *p++ = '\0';
-      break;
-    }
-    case 8:
-      snprintf(buffer, sizeof(buffer), "%" PRIo64, value);
-      break;
-    case 10:
-      snprintf(buffer, sizeof(buffer), "%" PRId64, value);
-      break;
-    case 16:
-      snprintf(buffer, sizeof(buffer), "%" PRIx64, value);
-      break;
-    default:
-      buffer[0] = '\0';
+    case 2: return value / 2;
+    case 8: return value / 8;
+    case 10: return value / 10;
+    case 16: return value / 16;
+    default: return value / base;
   }
-#endif
-  return process->allocate_string_or_error(buffer);
+}
+
+static Object* format_integer(Process* process, int64 value, int base, bool unsigned_format) {
+  uint64 remaining;
+  bool negative = value < 0 && !unsigned_format;
+  if (value < 0) {
+    uint64 complement = static_cast<uint64>(-(value + 1));
+    remaining = negative ? complement + 1 : static_cast<uint64>(UINT64_MAX) - complement;
+  } else {
+    remaining = static_cast<uint64>(value);
+  }
+  // A 64-bit magnitude in base two and an optional minus sign.
+  uint8 buffer[65];
+  int start = sizeof(buffer);
+  while (true) {
+    uint64 quotient = format_quotient(remaining, base);
+    int digit = static_cast<int>(remaining - quotient * base);
+    remaining = quotient;
+    start--;
+    buffer[start] = digit < 10 ? '0' + digit : 'a' + (digit - 10);
+    if (remaining == 0) break;
+  }
+  if (negative) {
+    start--;
+    buffer[start] = '-';
+  }
+  Object* result = process->allocate_string_or_error(reinterpret_cast<const char*>(buffer + start), sizeof(buffer) - start);
+  return result;
 }
 
 PRIMITIVE(int64_to_string) {
   ARGS(int64, value, int, base);
   if (!(2 <= base && base <= 36)) FAIL(OUT_OF_RANGE);
-  if (base == 10 || (value >= 0 && (base == 2 || base == 8 || base == 16))) {
-    return printf_style_integer_to_string(process, value, base);
-  }
-  const int BUFFER_SIZE = 70;
-  char buffer[BUFFER_SIZE];
-  char* p = &buffer[0];
-  if (value == 0) {
-    snprintf(buffer, BUFFER_SIZE, "0");
-  } else {
-    uint64 unsigned_value;
-    char sign = '+';
-    if (value < 0) {
-      sign = '-';
-      // Negate in unsigned arithmetic, so that min-int does not overflow. Its
-      // magnitude is representable as uint64.
-      unsigned_value = 0 - static_cast<uint64>(value);
-    } else {
-      unsigned_value = value;
-    }
-    p = &buffer[BUFFER_SIZE];
-    *--p = '\0';
-    while (unsigned_value != 0) {
-      int digit = unsigned_value % base;
-      unsigned_value /= base;
-      if (digit < 10) {
-        *--p = '0' + digit;
-      } else {
-        *--p = 'a' + digit - 10;
-      }
-    }
-    if (sign == '-') {
-      *--p = sign;
-    }
-  }
-  return process->allocate_string_or_error(p);
+  return format_integer(process, value, base, false);
 }
 
 PRIMITIVE(uint64_to_string) {
   ARGS(int64, value);
-  char buffer[70];
-#ifdef TOIT_EC618
-  // Newlib nano does not implement the unsigned 64-bit format specifier.
-  uint64 remaining = static_cast<uint64>(value);
-  char* start = buffer + sizeof(buffer);
-  *--start = '\0';
-  do {
-    *--start = '0' + remaining % 10;
-    remaining /= 10;
-  } while (remaining != 0);
-  return process->allocate_string_or_error(start);
-#else
-  snprintf(buffer, sizeof(buffer), "%" PRIu64, static_cast<uint64>(value));
-  return process->allocate_string_or_error(buffer);
-#endif
+  return format_integer(process, value, 10, true);
 }
 
 PRIMITIVE(large_integer_add) {
@@ -975,7 +889,7 @@ PRIMITIVE(large_integer_multiply) {
 // Ints wrap around. Dividing int.MIN by -1 traps on x86 (SIGFPE, taking
 // down the whole VM), so division by -1 is handled separately.
 static int64 wrapping_negate(int64 value) {
-  return static_cast<int64>(0 - static_cast<uint64>(value));
+  return value == INT64_MIN ? value : -value;
 }
 
 PRIMITIVE(large_integer_divide) {
@@ -1002,7 +916,7 @@ PRIMITIVE(large_integer_mod) {
     divisor = LargeInteger::cast(arg)->value();
   } else FAIL(WRONG_OBJECT_TYPE);
   if (divisor == 0) return Primitive::mark_as_error(process->program()->division_by_zero());
-  result = (divisor == -1) ? 0 : result % divisor;
+  result = (divisor == -1) ? static_cast<int64>(0) : result % divisor;
   return Primitive::integer(result, process);
 }
 
@@ -1102,68 +1016,88 @@ PRIMITIVE(float_mod) {
   return Primitive::allocate_double(fmod(receiver, arg), process);
 }
 
+static int64 decimal_round_factor(int precision) {
+  if (precision < 0 || precision > 15) return 0;
+  int64 factor = 1;
+  for (int i = 0; i < precision; i++) {
+    factor *= 10;
+  }
+  return factor;
+}
+
 PRIMITIVE(float_round) {
   ARGS(double, receiver, int, precision);
-  if (precision < 0 || precision > 15) FAIL(INVALID_ARGUMENT);
+  int64 factor = decimal_round_factor(precision);
+  if (factor == 0) FAIL(INVALID_ARGUMENT);
   if (isnan(receiver)) FAIL(OUT_OF_RANGE);
-  if (receiver > pow(10,54)) return _raw_receiver;
-  int factor = pow(10, precision);
+  // Binary64 values of either sign with magnitude at least 2^52 are already integral.
+  if (receiver >= 4503599627370496.0 || receiver <= -4503599627370496.0) return _raw_receiver;
   return Primitive::allocate_double(round(receiver * factor) / factor, process);
+}
+
+static bool parse_short_decimal(const uint8* input, word length, int64* value) {
+  bool negative = input[0] == '-';
+  word first = negative ? 1 : 0;
+  if (first == length) return false;
+  int64 magnitude = 0;
+  for (word index = first; index < length; index++) {
+    uint8 c = input[index];
+    if ('0' <= c && c <= '9') {
+      magnitude = magnitude * 10 + (c - '0');
+    } else if (c == '_') {
+      if (index == first || index == length - 1) return false;
+    } else {
+      return false;
+    }
+  }
+  *value = negative ? -magnitude : magnitude;
+  return true;
 }
 
 PRIMITIVE(int_parse) {
   ARGS(Blob, input, word, from, word, to, int, block_arg_dont_use_this);
   if (!(0 <= from && from < to && to <= input.length())) FAIL(OUT_OF_RANGE);
-  // Difficult cases, handled by Toit code.  If the ASCII length is always less
-  // than 18 we don't have to worry about 64 bit overflow.
+  // Longer inputs use the Toit parser. Eighteen decimal digits fit in int64.
   if (to - from > 18) FAIL(OUT_OF_RANGE);
-  uint64 result = 0;
-  bool negative = false;
-  word index = from;
-  const uint8* in = input.address();
-  if (in[index] == '-') {
-    negative = true;
-    index++;
-    if (index == to) FAIL(INVALID_ARGUMENT);
-  }
-  for (; index < to; index++) {
-    char c = in[index];
-    if ('0' <= c && c <= '9') {
-      result *= 10;
-      result += c - '0';
-    } else if (c == '_') {
-      if (index == from || index == to - 1 || (negative && index == from + 1)) FAIL(INVALID_ARGUMENT);
-    } else {
-      FAIL(INVALID_ARGUMENT);
-    }
-  }
-  return Primitive::integer(negative ? -result : result, process);
+  int64 value = 0;
+  bool valid = parse_short_decimal(input.address() + from, to - from, &value);
+  if (!valid) FAIL(INVALID_ARGUMENT);
+  Object* parsed = Primitive::integer(value, process);
+  return parsed;
+}
+
+static bool parse_float_buffer(const uint8* bytes, word length, double* value) {
+  const char* start = reinterpret_cast<const char*>(bytes);
+  char* end;
+  *value = strtod(start, &end);
+  return end == start + length;
 }
 
 PRIMITIVE(float_parse) {
   ARGS(Blob, input, word, from, word, to, int, block_arg_dont_use_this);
   if (!(0 <= from && from < to && to <= input.length())) FAIL(OUT_OF_RANGE);
-  const char* from_ptr = char_cast(input.address() + from);
-  // strtod removes leading whitespace, but float.parse doesn't accept it.
-  if (isspace(*from_ptr)) FAIL(ERROR);
-  bool needs_free = false;
-  char* copied;
-  if (!is_string(_raw_input) || to != input.length()) {  // Strings are null-terminated.
-    // There is no way to tell strtod to stop early.
-    // We have to copy the area we are interested in.
-    copied = reinterpret_cast<char*>(malloc(to - from + 1));
-    if (copied == null) FAIL(ALLOCATION_FAILED);
-    memcpy(copied, from_ptr, to - from);
-    copied[to - from] = 0;
-    from_ptr = copied;
-    needs_free = true;
+  bool terminated = is_string(_raw_input) && to == input.length();
+  const uint8* bytes = input.address() + from;
+  word length = to - from;
+  // strtod skips leading whitespace, but float.parse rejects it.
+  if (isspace(bytes[0])) {
+    FAIL(ERROR);
   }
-  char* ptr = null;
-  double result = strtod(from_ptr, &ptr);
-  // Throw exception if conversion failed or strtod did not process the entire string.
-  bool succeeded = *ptr == '\0';
-  if (needs_free) free(copied);
-  if (!succeeded) FAIL(ERROR);
+  double result;
+  bool parsed;
+  if (terminated) {
+    parsed = parse_float_buffer(bytes, length, &result);
+  } else {
+    uint8* copy = static_cast<uint8*>(malloc(static_cast<size_t>(length) + 1));
+    if (copy == null) {
+      FAIL(ALLOCATION_FAILED);
+    }
+    memcpy(copy, bytes, length);
+    copy[length] = 0;
+    parsed = parse_float_buffer(copy, length, &result);
+    free(copy);
+  }
+  if (!parsed) FAIL(ERROR);
   return Primitive::allocate_double(result, process);
 }
 
@@ -1404,9 +1338,10 @@ PRIMITIVE(seconds_since_epoch_local) {
   ARGS(int32, year, int32, month, int32, day, int32, hour, int32, min, int32, sec, Object, daylight_saving_is_active)
   struct tm decomposed;
   memset(&decomposed, 0, sizeof(decomposed));
-  // Subtract unsigned, so that years close to the minimal int32 wrap around
-  // instead of overflowing.
-  decomposed.tm_year = static_cast<int32>(static_cast<uint32>(year) - 1900u);
+  // Preserve the wrapped 32-bit tm_year even at the lower limit of the input range.
+  int64 tm_year = static_cast<int64>(year) - 1900;
+  if (tm_year < INT32_MIN) tm_year += 0x100000000LL;
+  decomposed.tm_year = static_cast<int32>(tm_year);
   decomposed.tm_mon = month;
   decomposed.tm_mday = day;
   decomposed.tm_hour = hour;
@@ -1421,9 +1356,18 @@ PRIMITIVE(seconds_since_epoch_local) {
   } else {
     FAIL(WRONG_OBJECT_TYPE);
   }
+#ifdef TOIT_LINUX
+  // A successful mktime can set errno while reading the timezone. It sets
+  // the weekday even when the timestamp itself is -1.
+  decomposed.tm_wday = -1;
+  int64 result = mktime(&decomposed);
+  bool failed = result == -1 && decomposed.tm_wday == -1;
+#else
   errno = 0;
   int64 result = mktime(&decomposed);
-  if (result == -1 && errno != 0) {
+  bool failed = result == -1 && errno != 0;
+#endif
+  if (failed) {
     return process->null_object();
   }
   return Primitive::integer(result, process);
@@ -1757,105 +1701,97 @@ PRIMITIVE(string_rune_count) {
 
 PRIMITIVE(smi_to_string_base_10) {
   ARGS(word, receiver);
-  char buffer[32];
-#ifdef TOIT_EC618
-  // Newlib nano's %zd outputs "zd" literally.
-  snprintf(buffer, sizeof(buffer), "%d", static_cast<int>(receiver));
-#else
-  snprintf(buffer, sizeof(buffer), "%zd", receiver);
-#endif
-  return process->allocate_string_or_error(buffer);
+  return format_integer(process, receiver, 10, false);
 }
 
-// Used for %-based interpolation.  Only understands bases 8 and 16.
-// Treats the input as an unsigned 64 integer like printf for those
-// bases.
+// Interpolation formats binary, octal and hexadecimal as unsigned 64-bit values.
 PRIMITIVE(printf_style_int64_to_string) {
   ARGS(int64, receiver, int, base);
   if (base != 2 && base != 8 && base != 16) FAIL(INVALID_ARGUMENT);
-  return printf_style_integer_to_string(process, receiver, base);
+  return format_integer(process, receiver, base, true);
 }
 
-// Safe way to ensure a double print without chopping off characters.
-// The initial buffer is owned by the caller and must not be freed or reallocated
-// by this function. If a larger buffer is needed, a fresh one is malloc'd; the
-// caller is responsible for freeing the returned buffer iff it differs from the
-// one originally passed in.
-static char* safe_double_print(char* stack_buffer, int stack_size, const char* format, int precision, double value) {
-  char* buffer = stack_buffer;
-  int size = stack_size;
-  while (true) {
-    int required = snprintf(buffer, size, format, precision, value);
-    // snprintf returns either -1 if the output was truncated or the number of chars
-    // needed to store the result.
-    if (required > -1 && required < size) {
-      if (!isfinite(value)) return buffer;
-
-      // Make sure the output looks like a double. It must have `e` or `.` in it.
-      for (int i = 0; i < required; i++) {
-        char c = buffer[i];
-        if (c == 'e' || c == 'E' || c == '.') return buffer;
-      }
-      // Add the `.0`.
-      if (size < required + 3) {
-        char* new_buffer = unvoid_cast<char*>(malloc(required + 3));
-        if (new_buffer == null) {
-          if (buffer != stack_buffer) free(buffer);
-          return null;
-        }
-        memcpy(new_buffer, buffer, required);
-        if (buffer != stack_buffer) free(buffer);
-        buffer = new_buffer;
-      }
-      buffer[required] = '.';
-      buffer[required + 1] = '0';
-      buffer[required + 2] = '\0';
-      return buffer;
-    }
-    if (buffer != stack_buffer) free(buffer);
-    // +3 for the potential ".0" and '\0'.
-    size = required < 0 ? size * 2 : required + 1 + 2;
-    buffer = unvoid_cast<char*>(malloc(size));
-    if (buffer == null) return null;
+// On success, returns the length excluding the terminator. If the result
+// does not fit, returns an upper bound that includes room for a possible ".0".
+static int format_fixed_double(char* buffer, int capacity, int precision, double value) {
+  int written = snprintf(buffer, capacity, "%.*lf", precision, value);
+  if (written < 0 || written > INT_MAX - 3) {
+    return -1;
   }
+  if (written >= capacity) return written + 2;
+  for (int i = 0; i < written; i++) {
+    char c = buffer[i];
+    if (c == 'e' || c == 'E' || c == '.') {
+      return written;
+    }
+  }
+  if (capacity - written >= 3) {
+    buffer[written] = '.';
+    buffer[written + 1] = '0';
+    buffer[written + 2] = '\0';
+  }
+  return written + 2;
+}
+
+static Object* copy_float_string(Process* process, const char* buffer, int length) {
+  Object* result = process->allocate_string(buffer, length);
+  if (result == null) FAIL(ALLOCATION_FAILED);
+  return result;
+}
+
+static Object* fixed_double_to_string(Process* process, int precision, double value) {
+  char stack_buffer[MAX_BUFFER_SIZE_DOUBLE_TO_SHORTEST];
+  int length = format_fixed_double(stack_buffer, sizeof(stack_buffer), precision, value);
+  if (length >= 0 && length < static_cast<int>(sizeof(stack_buffer))) {
+    return copy_float_string(process, stack_buffer, length);
+  }
+  // A legacy snprintf may report truncation as -1. A finite binary64 in
+  // the C locale needs at most a sign, 309 integer digits, a point, and
+  // 64 fractional digits. Allow space for ".0" and the terminator as well.
+  if (!Smi::is_valid(static_cast<int64>(length))) FAIL(MALLOC_FAILED);
+  int capacity = length < 0 ? 1 + 309 + 1 + 64 + 3 : length + 1;
+  char* buffer = static_cast<char*>(malloc(capacity));
+  if (buffer == null) FAIL(MALLOC_FAILED);
+  length = format_fixed_double(buffer, capacity, precision, value);
+  if (length < 0 || length >= capacity) {
+    free(buffer);
+    FAIL(MALLOC_FAILED);
+  }
+  Object* result = copy_float_string(process, buffer, length);
+  free(buffer);
+  return result;
 }
 
 PRIMITIVE(float_to_string) {
   ARGS(double, receiver, Object, precision);
-  if (isnan(receiver)) return process->allocate_string_or_error("nan");
+  int classification = fpclassify(receiver);
+  if (classification == FP_NAN) return process->allocate_string_or_error("nan");
   bool is_negative = signbit(receiver);
-  if (isinf(receiver)) {
+  if (classification == FP_INFINITE) {
     if (is_negative) {
       return process->allocate_string_or_error("-inf");
     } else {
       return process->allocate_string_or_error("inf");
     }
   }
-  char* buffer;
-  char stack_buffer[MAX_BUFFER_SIZE_DOUBLE_TO_SHORTEST];
   if (precision == process->null_object()) {
-    if (receiver == 0.0) {
+    if (classification == FP_ZERO) {
       if (is_negative) {
         return process->allocate_string_or_error("-0.0");
       } else {
         return process->allocate_string_or_error("0.0");
       }
     }
-    double_to_shortest(receiver, stack_buffer, sizeof(stack_buffer));
-    buffer = stack_buffer;
-  } else {
-    const char* format = "%.*lf";
-    if (is_large_integer(precision)) FAIL(OUT_OF_BOUNDS);
-    if (!is_smi(precision)) FAIL(WRONG_OBJECT_TYPE);
-    word prec = Smi::value(precision);
-    if (prec < 0 || prec > 64) FAIL(OUT_OF_BOUNDS);
-    buffer = safe_double_print(stack_buffer, sizeof(stack_buffer), format, prec, receiver);
-    if (buffer == null) FAIL(MALLOC_FAILED);
+    char stack_buffer[MAX_BUFFER_SIZE_DOUBLE_TO_SHORTEST];
+    int length = double_to_shortest(receiver, stack_buffer, sizeof(stack_buffer));
+    if (length < 0) FAIL(INVALID_ARGUMENT);
+    return copy_float_string(process, stack_buffer, length);
   }
-  Object* result = process->allocate_string(buffer);
-  if (buffer != stack_buffer) free(buffer);
-  if (result == null) FAIL(ALLOCATION_FAILED);
-  return result;
+  if (is_large_integer(precision)) FAIL(OUT_OF_BOUNDS);
+  if (!is_smi(precision)) FAIL(WRONG_OBJECT_TYPE);
+  word prec = Smi::value(precision);
+  if (prec < 0 || prec > 64) FAIL(OUT_OF_BOUNDS);
+  return fixed_double_to_string(process, static_cast<int>(prec), receiver);
 }
 
 PRIMITIVE(float_sign) {
@@ -2048,27 +1984,31 @@ PRIMITIVE(string_raw_at) {
   return Smi::from(c);
 }
 
+static bool fill_string_from_utf_16(const Blob* input, String* destination) {
+  String::MutableBytes output(destination);
+  word written = Utils::utf_16le_to_8(input->address(), input->length() / 2, output.address(), output.length());
+  return written == output.length();
+}
+
 PRIMITIVE(utf_16_to_string) {
   ARGS(Blob, utf_16);
   if ((utf_16.length() & 1) != 0) FAIL(INVALID_ARGUMENT);
   if (utf_16.length() > 0x3fffffff) FAIL(OUT_OF_BOUNDS);
 
-  int utf_8_length = Utils::utf_16_to_8(
-      reinterpret_cast<const uint16*>(utf_16.address()),
-      utf_16.length() >> 1);
-
+  word utf_8_length = Utils::utf_16le_to_8(utf_16.address(), utf_16.length() / 2, nullptr, 0);
+  if (utf_8_length > Smi::MAX_SMI_VALUE) FAIL(OUT_OF_BOUNDS);
   String* result = process->allocate_string(utf_8_length);
   if (result == null) FAIL(ALLOCATION_FAILED);
-
-  String::MutableBytes utf_8(result);
-
-  Utils::utf_16_to_8(
-      reinterpret_cast<const uint16*>(utf_16.address()),
-      utf_16.length() >> 1,
-      utf_8.address(),
-      utf_8.length());
-
+  bool filled = fill_string_from_utf_16(&utf_16, result);
+  if (!filled) FAIL(INVALID_ARGUMENT);
   return result;
+}
+
+// The byte-array capacity is measured in bytes, the converter in UTF-16 units.
+static word fill_utf_16(const Blob* input, ByteArray::Bytes* output) {
+  if (reinterpret_cast<uword>(output->address()) % sizeof(uint16) != 0) return -1;
+  return Utils::utf_8_to_16(input->address(), input->length(),
+                            reinterpret_cast<uint16*>(output->address()), output->length() / static_cast<word>(sizeof(uint16)));
 }
 
 PRIMITIVE(string_to_utf_16) {
@@ -2076,19 +2016,15 @@ PRIMITIVE(string_to_utf_16) {
   if (utf_8.length() > 0xfffffff) FAIL(OUT_OF_BOUNDS);
 
   int utf_16_length = Utils::utf_8_to_16(
-      utf_8.address(),
-      utf_8.length());
+      utf_8.address(), utf_8.length(), static_cast<uint16*>(nullptr), 0);
 
   ByteArray* result = process->allocate_byte_array(utf_16_length << 1);
   if (result == null) FAIL(ALLOCATION_FAILED);
 
   ByteArray::Bytes bytes(result);
 
-  Utils::utf_8_to_16(
-      utf_8.address(),
-      utf_8.length(),
-      reinterpret_cast<uint16*>(bytes.address()),
-      utf_16_length);
+  word written = fill_utf_16(&utf_8, &bytes);
+  if (written != utf_16_length) FAIL(INVALID_ARGUMENT);
 
   return result;
 }
@@ -2552,7 +2488,8 @@ PRIMITIVE(add_finalizer) {
   // Objects on the program heap will never die, so it makes no difference
   // whether we have a finalizer on them.
   if (!object->on_program_heap(process)) {
-    if (object->has_active_finalizer()) FAIL(ALREADY_EXISTS);
+    bool already_active = object->has_active_finalizer();
+    if (already_active) FAIL(ALREADY_EXISTS);
     if (!process->object_heap()->add_callable_finalizer(Instance::cast(object), finalizer, make_weak)) FAIL(MALLOC_FAILED);
   }
   return process->null_object();
@@ -2573,7 +2510,7 @@ PRIMITIVE(remove_finalizer) {
 }
 
 PRIMITIVE(gc_count) {
-  return Smi::from(process->object_heap()->gc_count(NEW_SPACE_GC));
+  return Smi::from(process->gc_count(NEW_SPACE_GC));
 }
 
 PRIMITIVE(create_off_heap_byte_array) {

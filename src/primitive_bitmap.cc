@@ -24,7 +24,8 @@
 #include "primitive_font.h"
 #include "primitive.h"
 
-#include <stdlib.h>  // For abs().
+#include <climits>
+#include <stdlib.h>
 
 namespace toit {
 
@@ -44,23 +45,87 @@ static const int AND = 4;
 static const int XOR = 5;
 static const int NUMBER_OF_POSSIBLE_OPERATIONS = 6;
 
-static const uint8 IDENTITY_LOOKUP[256] = {
-  0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
-  0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F,
-  0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2A, 0x2B, 0x2C, 0x2D, 0x2E, 0x2F,
-  0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3A, 0x3B, 0x3C, 0x3D, 0x3E, 0x3F,
-  0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49, 0x4A, 0x4B, 0x4C, 0x4D, 0x4E, 0x4F,
-  0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x5A, 0x5B, 0x5C, 0x5D, 0x5E, 0x5F,
-  0x60, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69, 0x6A, 0x6B, 0x6C, 0x6D, 0x6E, 0x6F,
-  0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78, 0x79, 0x7A, 0x7B, 0x7C, 0x7D, 0x7E, 0x7F,
-  0x80, 0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8A, 0x8B, 0x8C, 0x8D, 0x8E, 0x8F,
-  0x90, 0x91, 0x92, 0x93, 0x94, 0x95, 0x96, 0x97, 0x98, 0x99, 0x9A, 0x9B, 0x9C, 0x9D, 0x9E, 0x9F,
-  0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7, 0xA8, 0xA9, 0xAA, 0xAB, 0xAC, 0xAD, 0xAE, 0xAF,
-  0xB0, 0xB1, 0xB2, 0xB3, 0xB4, 0xB5, 0xB6, 0xB7, 0xB8, 0xB9, 0xBA, 0xBB, 0xBC, 0xBD, 0xBE, 0xBF,
-  0xC0, 0xC1, 0xC2, 0xC3, 0xC4, 0xC5, 0xC6, 0xC7, 0xC8, 0xC9, 0xCA, 0xCB, 0xCC, 0xCD, 0xCE, 0xCF,
-  0xD0, 0xD1, 0xD2, 0xD3, 0xD4, 0xD5, 0xD6, 0xD7, 0xD8, 0xD9, 0xDA, 0xDB, 0xDC, 0xDD, 0xDE, 0xDF,
-  0xE0, 0xE1, 0xE2, 0xE3, 0xE4, 0xE5, 0xE6, 0xE7, 0xE8, 0xE9, 0xEA, 0xEB, 0xEC, 0xED, 0xEE, 0xEF,
-  0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5, 0xF6, 0xF7, 0xF8, 0xF9, 0xFA, 0xFB, 0xFC, 0xFD, 0xFE, 0xFF };
+// Number of complete rows in one blob. A stationary blob imposes no row
+// limit once its first row fits. At least one of the two blobs advances.
+static word blit_line_limit(word length, word last_byte, word stride) {
+  if (last_byte >= length) return 0;
+  if (stride == 0) return INTPTR_MAX;
+  return (length - 1 - last_byte) / stride + 1;
+}
+
+static bool blit_work_fits(word lines, word pixels, word src_length, word dest_length) {
+  if (lines <= INT_MAX && src_length <= INT_MAX && dest_length <= INT_MAX) {
+    int64 budget = 4 * (static_cast<int64>(src_length) + dest_length) + 0x10000;
+    return static_cast<int64>(lines) * pixels <= budget;
+  }
+
+  // Divide the budget by pixels without first forming four times the sum
+  // of two word lengths. Each whole quotient pays for four rows.
+  uint64 whole = static_cast<uint64>(src_length / pixels) + static_cast<uint64>(dest_length / pixels);
+  if (whole > static_cast<uint64>(lines / 4)) return true;
+  int64 remaining_lines = lines - static_cast<int64>(4 * whole);
+  int64 remainder_budget = 4 * (static_cast<int64>(src_length % pixels) + dest_length % pixels) + 0x10000;
+  return remaining_lines <= remainder_budget / pixels;
+}
+
+static void blit_pixel(const uint8* src, word src_index, uint8* dest, word dest_index,
+                       const uint8* lookup, word shift, word mask, word operation) {
+  uint8_t pixel = src[src_index];
+  uint16_t looked_up = pixel;
+  if (lookup != null) {
+    looked_up = lookup[pixel];
+  }
+  looked_up *= 257;
+  looked_up >>= shift & 7;
+  looked_up &= mask;
+  uint8 low_byte = looked_up & 0xff;
+  // Ordered in approximate order of popularity - we might want to
+  // move this 'if' outside the loop for a better speed/code size
+  // tradeoff.
+  if (operation == OVERWRITE) {
+    dest[dest_index] = low_byte;
+  } else if (operation == OR) {
+    dest[dest_index] = dest[dest_index] | low_byte;
+  } else if (operation == ADD) {
+    uint32_t value = dest[dest_index];
+    value += looked_up;
+    dest[dest_index] = value > 0xff ? 0xffu : value;
+  } else if (operation == AND) {
+    dest[dest_index] = dest[dest_index] & low_byte;
+  } else if (operation == XOR) {
+    dest[dest_index] = dest[dest_index] ^ low_byte;
+  } else {
+    ASSERT(operation == ADD_16_LE);
+    uint32_t value = dest[dest_index] + 256 * dest[dest_index + 1];
+    value += looked_up;
+    if (value > 0xffff) value = 0xffff;
+    dest[dest_index] = value % 256;
+    dest[dest_index + 1] = value / 256;
+  }
+}
+
+static bool blit_rows(const uint8* src, word src_length, word src_pixel_stride, word src_line_stride,
+                      uint8* dest, word dest_length, word dest_pixel_stride, word dest_line_stride,
+                      word pixels, const uint8* lookup, word shift, word mask, word operation, bool limited) {
+  if (pixels == 0) return true;
+  word src_last = (pixels - 1) * src_pixel_stride;
+  word dest_span = (pixels - 1) * (dest_pixel_stride < 0 ? -dest_pixel_stride : dest_pixel_stride);
+  word extra = operation == ADD_16_LE ? 1 : 0;
+  word src_lines = blit_line_limit(src_length, src_last, src_line_stride);
+  word dest_lines = blit_line_limit(dest_length, dest_span + extra, dest_line_stride);
+  word lines = src_lines < dest_lines ? src_lines : dest_lines;
+  if (limited && !blit_work_fits(lines, pixels, src_length, dest_length)) return false;
+  for (word row = 0; row < lines; row++) {
+    word src_start = row * src_line_stride;
+    word dest_start = row * dest_line_stride + (dest_pixel_stride < 0 ? dest_span : 0);
+    for (word x = 0; x < pixels; x++) {
+      word src_index = src_start + x * src_pixel_stride;
+      word dest_index = dest_start + x * dest_pixel_stride;
+      blit_pixel(src, src_index, dest, dest_index, lookup, shift, mask, operation);
+    }
+  }
+  return true;
+}
 
 // Takes a rectangle from the src and copies it to a rectangle in the dest.
 // The number of lines is determined by which data runs out first.
@@ -69,9 +134,9 @@ static const uint8 IDENTITY_LOOKUP[256] = {
 //   rotated right by the given number of bits, anded with the mask, and then
 //   either written to the destination or orred with the destination, depending
 //   on the operation.
-PRIMITIVE(blit) {
-  ARGS(MutableBlob, dest, word, dest_pixel_stride, word, dest_line_stride,
-       Blob,         src, word,  src_pixel_stride, word,  src_line_stride,
+static Object* blit_with_destination(Process* process, Object** __args, MutableBlob* dest) {
+  ARGS(word, dest_pixel_stride, word, dest_line_stride,
+       Blob, src, word, src_pixel_stride, word,  src_line_stride,
        word, pixels_per_line,
        Object, lut,
        word, shift, word, mask, word, operation);
@@ -79,102 +144,36 @@ PRIMITIVE(blit) {
   // positive 23 bits values.  We could up the limit on 64 bit, but this
   // would increase differences between device and server.
   if (operation < 0 || operation >= NUMBER_OF_POSSIBLE_OPERATIONS) FAIL(OUT_OF_BOUNDS);
-  word mask_23 = -0x800000;
-  if (((dest_line_stride | src_line_stride | pixels_per_line) & mask_23) != 0) {
-    FAIL(INVALID_ARGUMENT);
-  }
-  // src_pixel_stride is multiplied by other values so to avoid security issues caused by
-  // overflows it is limited to positive 7 bit values.
-  word mask_7 = -0x80;
-  if ((src_pixel_stride & mask_7) != 0) {
-    FAIL(INVALID_ARGUMENT);
-  }
+  if (dest_line_stride < 0 || dest_line_stride >= 0x800000 ||
+      src_line_stride < 0 || src_line_stride >= 0x800000 ||
+      pixels_per_line < 0 || pixels_per_line >= 0x800000) FAIL(INVALID_ARGUMENT);
+  if (src_pixel_stride < 0 || src_pixel_stride >= 128) FAIL(INVALID_ARGUMENT);
   // dest_pixel_stride is also multiplied by other values, but we allow negative values.
   if (!(-0x80 < dest_pixel_stride && dest_pixel_stride <= 0x80)) {
     FAIL(INVALID_ARGUMENT);
   }
   const uint8* lookup;
   if (lut == process->null_object()) {
-    lookup = IDENTITY_LOOKUP;
+    lookup = null;
   } else {
     Blob blob;
     if (!lut->byte_content(process->program(), &blob, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_OBJECT_TYPE);
     lookup = blob.address();
     if (blob.length() < 0x100) FAIL(INVALID_ARGUMENT);
   }
-  word abs_dest_pixel_stride = abs(dest_pixel_stride);
-  // Avoid infinite loop.
   if (dest_line_stride == 0 && src_line_stride == 0) FAIL(INVALID_ARGUMENT);
-
-  word src_offset = 0;
-  word dest_offset = 0;
-  word src_read_width = (pixels_per_line - 1) * src_pixel_stride;
-  word dest_write_width = (pixels_per_line - 1) * abs_dest_pixel_stride;
-  // 16 bit operation writes one more byte.
-  if (abs_dest_pixel_stride != dest_pixel_stride) {
-    // Too complicated to work out the bounds checking in this case.
-    if (operation == ADD_16_LE) FAIL(INVALID_ARGUMENT);
-    // Start at the end of the 0th line when stepping backwards within each line.
-    dest_offset += dest_write_width;
-    // We can start each destination line right at the end of the blob, since
-    // we will be stepping backwards.
-    dest_write_width = 0;
-  }
-  if (operation == ADD_16_LE) dest_write_width++;
-  if (process->policy()->quotas().max_run_time_us > 0) {
-    // A process with a run-time quota is only stopped when its primitive
-    // returns, so the work must be bounded. With zero pixel strides the
-    // pixels per line aren't bounded by the blob sizes, and with a zero
-    // line stride on one side the lines are bounded by the other side
-    // only: 2^23 pixels on each of a million lines took hours. Allow a
-    // few passes over the source and destination.
-    word src_room = src.length() - src_read_width;
-    word dest_room = dest.length() - dest_write_width - dest_offset;
-    word lines = 0;
-    if (src_room > 0 && dest_room > 0) {
-      word src_lines = src_line_stride == 0 ? -1 : (src_room - 1) / src_line_stride + 1;
-      word dest_lines = dest_line_stride == 0 ? -1 : (dest_room - 1) / dest_line_stride + 1;
-      lines = src_lines < 0 ? dest_lines : (dest_lines < 0 ? src_lines : Utils::min(src_lines, dest_lines));
-    }
-    word max_work = 4 * (src.length() + dest.length()) + 0x10000;
-    if (pixels_per_line > 0 && lines > max_work / pixels_per_line) FAIL(OUT_OF_RANGE);
-  }
-  while (src_offset + src_read_width < src.length() &&
-         dest_offset + dest_write_width < dest.length()) {
-    word src_index = src_offset;
-    word dest_index = dest_offset;
-    for (word x = 0; x < pixels_per_line; x++, src_index += src_pixel_stride, dest_index += dest_pixel_stride) {
-      uint8_t pixel = src.address()[src_index];
-      uint16_t looked_up = lookup[pixel];
-      looked_up |= looked_up << 8;
-      looked_up >>= shift & 7;
-      looked_up &= mask;
-      // Ordered in approximate order of popularity - we might want to
-      // move this 'if' outside the loop for a better speed/code size
-      // tradeoff.
-      if (operation == OVERWRITE) {
-        dest.address()[dest_index] = looked_up;
-      } else if (operation == OR) {
-        dest.address()[dest_index] |= looked_up;
-      } else if (operation == ADD) {
-        uint16_t value = dest.address()[dest_index];
-        value += looked_up;
-        dest.address()[dest_index] = value > 0xff ? 0xff : value;
-      } else if (operation == AND) {
-        dest.address()[dest_index] &= looked_up;
-      } else if (operation == XOR) {
-        dest.address()[dest_index] ^= looked_up;
-      } else {
-        ASSERT(operation == ADD_16_LE);
-        uint32_t value = Utils::read_unaligned_uint16(dest.address() + dest_index);
-        value += looked_up;
-        Utils::write_unaligned_uint16(dest.address() + dest_index, value > 0xffff ? 0xffff : value);
-      }
-    }
-    src_offset += src_line_stride;
-    dest_offset += dest_line_stride;
-  }
+  if (dest_pixel_stride < 0 && operation == ADD_16_LE) FAIL(INVALID_ARGUMENT);
+  bool fits = blit_rows(src.address(), src.length(), src_pixel_stride, src_line_stride,
+                        dest->address(), dest->length(), dest_pixel_stride, dest_line_stride,
+                        pixels_per_line, lookup, shift, mask, operation,
+                        process->policy()->limits_run_time());
+  if (!fits) FAIL(OUT_OF_RANGE);
   return process->null_object();
+}
+
+PRIMITIVE(blit) {
+  ARGS(MutableBlob, dest);
+  return blit_with_destination(process, __args - 1, &dest);
 }
 
 struct DrawData {

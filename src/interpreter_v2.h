@@ -234,6 +234,10 @@ class V2MethodTable {
   }
 
  private:
+  // Called after all records have passed validation. Borrows the literal
+  // when aligned. Sets the optional failure flag only on allocation failure.
+  static V2MethodTable* install(const uint8* records, uword count, const uint8* bytes,
+                                word length, bool* out_of_memory);
   V2MethodTable(const uint32* records, word length, const uint8* bytecodes, word bytecodes_length, bool owned)
       : records_(records), length_(length), bytecodes_(bytecodes), bytecodes_length_(bytecodes_length),
         owned_(owned) {}
@@ -309,13 +313,12 @@ struct toit_v2_context {
   // an untrusted process.
   uword unchecked;
   // ObjectHeap::v2_new_space_top_address and v2_new_space_limit_address of
-  // the process, and the chunk-end sentinel word: the core allocates
+  // the process. The core allocates
   // instances and doubles inline with the new-space fast path
   // (SemiSpace::try_allocate) and calls the allocation helpers below only
   // when it fails (verified/core/TRUSTED.md, "Inline allocation").
   uword* new_space_top;
   const uword* new_space_limit;
-  uword new_space_sentinel;
   // Out.
   uword result_state;               // Interpreter::Result::State.
   int64 result_value;
@@ -402,7 +405,7 @@ uword toit_v2_grow_stack(void* process, uword needed);
 uword toit_v2_try_allocate_large_integer(void* process, int64 value);
 uword toit_v2_try_allocate_double(void* process, uint64 bits);
 // [length] <= Array::ARRAYLET_SIZE; every element [filler].
-uword toit_v2_try_allocate_array(void* process, uword length, uword filler);
+uword toit_v2_try_allocate_array(void* process, uword length, void* filler);
 // Uninitialized bytes (Process::allocate_string).
 uword toit_v2_try_allocate_string(void* process, uword length);
 // Zeroed bytes (Process::allocate_byte_array).

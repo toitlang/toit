@@ -1,0 +1,266 @@
+// Copyright (C) 2026 Toit contributors.
+@include ../model/model.cfg
+@verbatim
+#include <stdbool.h>
+#include <stdint.h>
+#include <limits.h>
+#include "../model/constants.h"
+typedef struct Process { char unused; } Process;
+typedef struct Interpreter { Process *process_; } Interpreter;
+typedef struct SchedulerThread { struct SchedulerThread *next_; Interpreter interpreter_; bool gc_preemption_requested_; } SchedulerThread;
+typedef struct SchedulerThreadList { SchedulerThread anchor_; } SchedulerThreadList;
+typedef struct ConditionVariable { char unused; } ConditionVariable;
+typedef struct Scheduler { SchedulerThreadList threads_; int gc_waiting_for_preemption_; ConditionVariable *gc_condition_; } Scheduler;
+/*@
+predicate workers(SchedulerThread *p, bool marked, Process *requester; list<Process *> running) =
+  p == 0 ? running == nil : p->next_ |-> ?next &*& p->interpreter_.process_ |-> ?process &*&
+    p->gc_preemption_requested_ |-> ?flag &*& (!marked || flag == (process != 0 && process != requester)) &*&
+    pointer_within_limits(&p->interpreter_) == true &*& workers(next,marked,requester,?rest) &*& running == cons(process,rest);
+predicate past(list<SchedulerThread *> done, SchedulerThread *first, SchedulerThread *cursor, Process *requester,
+               list<Process *> all, list<Process *> rest) =
+  switch(done) {
+    case nil: return first == cursor &*& all == rest;
+    case cons(t,tail): return t != 0 &*& t->next_ |-> cursor &*& t->interpreter_.process_ |-> ?p &*&
+      t->gc_preemption_requested_ |-> (p != 0 && p != requester) &*&
+      pointer_within_limits(&t->interpreter_) == true &*& past(tail,first,t,requester,all,cons(p,rest));
+  };
+lemma void restore(list<SchedulerThread *> done, SchedulerThread *first, SchedulerThread *cursor, Process *requester)
+  requires past(done,first,cursor,requester,?all,?rest) &*& workers(cursor,true,requester,rest);
+  ensures workers(first,true,requester,all);
+{
+  open past(done,first,cursor,requester,all,rest);
+  switch(done) {
+    case nil:
+    case cons(t,tail):
+      close workers(t,true,requester,_);
+      restore(tail,first,t,requester);
+  }
+}
+// Live process pointers compare by address; null denotes an idle worker.
+fixpoint bool comparable(Process *r, list<Process *> ps) {
+  switch(ps) {
+    case nil: return true;
+    case cons(p,tail): return (p == 0 || (uintptr_t)p != 0) &&
+      (p == r || (uintptr_t)p != (uintptr_t)r) && comparable(r,tail);
+  }
+}
+fixpoint list<Process *> peers(Process *requester, list<Process *> ps) {
+  switch(ps) {
+    case nil: return nil;
+    case cons(p,tail): return p == 0 || p == requester ? peers(requester,tail) : cons(p,peers(requester,tail));
+  }
+}
+lemma void bounded(Process *requester, list<Process *> ps)
+  requires true;
+  ensures length(peers(requester,ps)) <= length(ps);
+{
+  switch(ps) {
+    case nil:
+    case cons(p,tail): bounded(requester,tail);
+  }
+}
+predicate signals(list<Process *> ps);
+predicate notifications(ConditionVariable *cv, int count);
+@*/
+void Process_signal(Process *p, int signal);
+//@ requires signals(cons(p,?rest)) &*& signal == Process_PREEMPT;
+//@ ensures signals(rest);
+//@ terminates;
+void OS_signal_all(ConditionVariable *cv);
+//@ requires notifications(cv,?count);
+//@ ensures notifications(cv,count+1);
+//@ terminates;
+@prototypes
+@render src/scheduler.h toit::SchedulerThread::interpreter tu=src/scheduler.cc
+  Interpreter* interpreter()
+  //@ requires pointer_within_limits(&self->interpreter_) == true;
+  //@ ensures result == &self->interpreter_;
+  //@ terminates;
+  { return &interpreter_; }
+@render src/interpreter.h toit::Interpreter::process tu=src/scheduler.cc
+  Process* process()
+  //@ requires [?f]self->process_ |-> ?p;
+  //@ ensures [f]self->process_ |-> p &*& result == p;
+  //@ terminates;
+  { return process_; }
+@render src/scheduler.h toit::SchedulerThread::mark_for_gc_preemption tu=src/scheduler.cc
+  Process* mark_for_gc_preemption(Process* requester)
+  /*@ requires pointer_within_limits(&self->interpreter_) == true &*& self->interpreter_.process_ |-> ?p &*&
+               self->gc_preemption_requested_ |-> _ &*& comparable(requester,cons(p,nil)) == true; @*/
+  /*@ ensures self->interpreter_.process_ |-> p &*& self->gc_preemption_requested_ |-> (p != 0 && p != requester) &*&
+              result == (p != 0 && p != requester ? p : (Process*)0); @*/
+  //@ terminates;
+  {
+    Process* running = interpreter()->process();
+    gc_preemption_requested_ = running != null && running != requester;
+    return gc_preemption_requested_ ? running : null;
+  }
+@render src/scheduler.cc toit::Scheduler::request_gc_preemption
+int Scheduler::request_gc_preemption(Process* process)
+/*@ requires pointer_within_limits(&self->threads_) == true &*& self->threads_.anchor_.next_ |-> ?first &*&
+      workers(first,false,process,?all) &*& comparable(process,all) == true &*& length(all) <= INT_MAX &*& signals(peers(process,all)); @*/
+/*@ ensures self->threads_.anchor_.next_ |-> first &*& workers(first,true,process,all) &*&
+      result == length(peers(process,all)) &*& signals(nil); @*/
+//@ terminates;
+{
+  int count = 0;
+  //@ bounded(process,all);
+  //@ list<SchedulerThread *> done = nil;
+  //@ close past(done,first,first,process,all,all);
+  for (SchedulerThread* thread : threads_)
+    /*@ invariant __end1 == 0 &*& past(done,first,__begin1,process,all,?rest) &*& workers(__begin1,false,process,rest) &*& comparable(process,rest) == true &*&
+          signals(peers(process,rest)) &*& count+length(peers(process,rest)) == length(peers(process,all)); @*/
+    //@ decreases length(rest);
+  {
+    //@ open workers(thread,false,process,rest);
+    Process* running_process = thread->mark_for_gc_preemption(process);
+    if (running_process != null) {
+      running_process->signal(Process::PREEMPT);
+      count++;
+    }
+    //@ assert thread->next_ |-> ?next;
+    //@ close past(cons(thread,done),first,next,process,all,tail(rest));
+    //@ done = cons(thread,done);
+  }
+  //@ open workers(0,false,process,_);
+  //@ close workers(0,true,process,nil);
+  //@ restore(done,first,0,process);
+  return count;
+}
+@render src/scheduler.h toit::SchedulerThread::take_gc_preemption_request tu=src/scheduler.cc
+  bool take_gc_preemption_request()
+  //@ requires self->gc_preemption_requested_ |-> ?marked;
+  //@ ensures self->gc_preemption_requested_ |-> false &*& result == marked;
+  //@ terminates;
+  {
+    bool requested = gc_preemption_requested_;
+    gc_preemption_requested_ = false;
+    return requested;
+  }
+@render src/scheduler.cc toit::Scheduler::acknowledge_gc_preemption
+void Scheduler::acknowledge_gc_preemption(SchedulerThread* worker)
+/*@ requires worker->gc_preemption_requested_ |-> ?marked &*& self->gc_waiting_for_preemption_ |-> ?n &*& n >= 0 &*&
+             self->gc_condition_ |-> ?cv &*& notifications(cv,?prior); @*/
+/*@ ensures worker->gc_preemption_requested_ |-> false &*& self->gc_waiting_for_preemption_ |-> (marked && n > 0 ? n-1 : n) &*&
+            self->gc_condition_ |-> cv &*& notifications(cv,prior+(marked && n == 1 ? 1 : 0)); @*/
+//@ terminates;
+{
+  if (worker->take_gc_preemption_request() && gc_waiting_for_preemption_ > 0) {
+    if (--gc_waiting_for_preemption_ == 0) OS::signal_all(gc_condition_);
+  }
+}
+@verbatim
+/*@
+// Separate the mutable request bits from the bindings observed at request time.
+predicate bindings(SchedulerThread *p, list<Process *> ps; list<SchedulerThread *> ws) =
+  switch (ps) {
+    case nil: return p == 0 &*& ws == nil;
+    case cons(process, rest): return p != 0 &*& p->next_ |-> ?next &*&
+      p->interpreter_.process_ |-> process &*& pointer_within_limits(&p->interpreter_) == true &*&
+      bindings(next,rest,?tail) &*& ws == cons(p,tail);
+  };
+predicate flags(list<SchedulerThread *> ws; int count) =
+  switch (ws) {
+    case nil: return count == 0;
+    case cons(w,rest): return w->gc_preemption_requested_ |-> ?b &*& flags(rest,?n) &*& count == n+(b ? 1 : 0);
+  };
+lemma void initial_flags(SchedulerThread *p, Process *requester, list<Process *> ps)
+  requires workers(p,true,requester,ps);
+  ensures bindings(p,ps,?ws) &*& flags(ws,length(peers(requester,ps)));
+{
+  open workers(p,true,requester,ps);
+  switch (ps) {
+    case nil: close bindings(p,ps,nil); close flags(nil,0);
+    case cons(process,rest):
+      initial_flags(p->next_,requester,rest);
+      assert bindings(_,rest,?tail);
+      close bindings(p,ps,cons(p,tail));
+      close flags(cons(p,tail),_);
+  }
+}
+
+// Rebuild the request traversal's input, including unconsumed timeout marks.
+lemma void prepare_request(SchedulerThread *p, Process *requester, list<Process *> ps)
+  requires bindings(p,ps,?ws) &*& flags(ws,?pending);
+  ensures workers(p,false,requester,ps);
+{
+  open bindings(p,ps,ws);
+  open flags(ws,pending);
+  switch (ps) {
+    case nil:
+    case cons(process,rest): prepare_request(p->next_,requester,rest);
+  }
+  close workers(p,false,requester,ps);
+}
+
+// Frame out every other worker's bit while the chosen worker acknowledges.
+predicate other_flags(list<SchedulerThread *> ws, SchedulerThread *worker; int count) =
+  switch (ws) {
+    case nil: return count == 0 &*& false;
+    case cons(w,rest): return w == worker ? flags(rest,count) :
+      w->gc_preemption_requested_ |-> ?b &*& other_flags(rest,worker,?n) &*& count == n+(b ? 1 : 0);
+  };
+lemma void flags_nonnegative(list<SchedulerThread *> ws)
+  requires flags(ws,?n);
+  ensures flags(ws,n) &*& 0 <= n;
+{
+  open flags(ws,n);
+  switch (ws) { case nil: case cons(w,rest): flags_nonnegative(rest); }
+  close flags(ws,n);
+}
+lemma void select_worker(list<SchedulerThread *> ws, SchedulerThread *worker)
+  requires flags(ws,?n) &*& mem(worker,ws) == true;
+  ensures worker->gc_preemption_requested_ |-> ?b &*& other_flags(ws,worker,?others) &*&
+          0 <= others &*& n == others+(b ? 1 : 0);
+{
+  open flags(ws,n);
+  switch (ws) {
+    case nil:
+    case cons(w,rest):
+      if (w == worker) flags_nonnegative(rest); else select_worker(rest,worker);
+      close other_flags(ws,worker,_);
+  }
+}
+lemma void restore_worker(list<SchedulerThread *> ws, SchedulerThread *worker)
+  requires worker->gc_preemption_requested_ |-> ?b &*& other_flags(ws,worker,?others);
+  ensures flags(ws,others+(b ? 1 : 0));
+{
+  open other_flags(ws,worker,others);
+  switch (ws) {
+    case nil:
+    case cons(w,rest):
+      if (w != worker) restore_worker(rest,worker);
+      close flags(ws,_);
+  }
+}
+@*/
+
+// Induction step over lock-serialized worker returns. Before timeout the
+// outstanding counter equals the population of marked workers. After timeout
+// it stays zero independently of which marked workers still have to return.
+void check_worker_return(Scheduler *s, SchedulerThread *worker, bool timed_out)
+/*@ requires flags(?ws,?pending) &*& mem(worker,ws) == true &*&
+      s->gc_waiting_for_preemption_ |-> (timed_out ? 0 : pending) &*&
+      s->gc_condition_ |-> ?cv &*& notifications(cv,?prior); @*/
+/*@ ensures flags(ws,?remaining) &*& s->gc_waiting_for_preemption_ |-> (timed_out ? 0 : remaining) &*&
+      s->gc_condition_ |-> cv &*& notifications(cv,prior+(!timed_out && pending > 0 && remaining == 0 ? 1 : 0)); @*/
+//@ terminates;
+{
+  //@ select_worker(ws,worker);
+  Scheduler_acknowledge_gc_preemption(s,worker);
+  //@ restore_worker(ws,worker);
+}
+
+// Request initialization as performed by Scheduler::gc under the mutex.
+void check_new_request(Scheduler *s, Process *requester)
+/*@ requires pointer_within_limits(&s->threads_) == true &*& s->threads_.anchor_.next_ |-> ?first &*&
+      bindings(first,?ps,?ws) &*& flags(ws,?old_pending) &*& s->gc_waiting_for_preemption_ |-> _ &*&
+      comparable(requester,ps) == true &*& length(ps) <= INT_MAX &*& signals(peers(requester,ps)); @*/
+/*@ ensures s->threads_.anchor_.next_ |-> first &*& bindings(first,ps,?current) &*& flags(current,?pending) &*&
+      s->gc_waiting_for_preemption_ |-> pending &*& pending == length(peers(requester,ps)) &*& signals(nil); @*/
+//@ terminates;
+{
+  //@ prepare_request(first,requester,ps);
+  s->gc_waiting_for_preemption_ = Scheduler_request_gc_preemption(s,requester);
+  //@ initial_flags(first,requester,ps);
+}

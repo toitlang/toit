@@ -22,13 +22,9 @@
 @include ../model/model.cfg
 @verbatim
 #include "../model/objects.gen.h"
-#include "../blob/byte_content.gen.h"
+#include "blob_args.gen.h"
 #include "../blob/mutable_byte_content.gen.h"
 //@ #include <listex.gh>
-
-// An empty C++ struct; C needs a member.
-struct uninitialized_t { char unused; };
-typedef struct uninitialized_t uninitialized_t;
 
 /*@
 // memmove: one region holding both ranges, or two separate chunks.
@@ -48,32 +44,10 @@ predicate mm_post(mm_mode m, uint8 *dst, uint8 *src, int n) =
   };
 @*/
 
-void uninitialized_t_ctor(uninitialized_t *self);
-//@ requires self->unused |-> _;
-//@ ensures self->unused |-> _;
-
 void *memmove(void *dest, void *src, size_t count);
 //@ requires mm_pre(?m, dest, src, count);
 //@ ensures mm_post(m, dest, src, count) &*& result == dest;
 @prototypes
-@render src/objects.h toit::Blob::Blob tu=src/primitive_core.cc type=void(uninitialized_t&)
-  inline Blob(uninitialized_t& u)
-  //@ requires self->address_ |-> _ &*& self->length_ |-> _;
-  //@ ensures self->address_ |-> _ &*& self->length_ |-> _;
-  {}
-
-@render src/objects.h toit::Blob::address tu=src/primitive_core.cc
-  const uint8* address() const
-  //@ requires [?f]self->address_ |-> ?a;
-  //@ ensures [f]self->address_ |-> a &*& result == a;
-  { return address_; }
-
-@render src/objects.h toit::Blob::length tu=src/primitive_core.cc
-  word length() const
-  //@ requires [?f]self->length_ |-> ?l;
-  //@ ensures [f]self->length_ |-> l &*& result == l;
-  { return length_; }
-
 @render src/objects.h toit::MutableBlob::MutableBlob tu=src/primitive_core.cc params=0
   MutableBlob() : address_(null), length_(0)
   //@ requires self->address_ |-> _ &*& self->length_ |-> _;

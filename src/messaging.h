@@ -300,10 +300,12 @@ class MessageEncoder {
   unsigned transferred_count_ = 0;
   ByteArray* transferred_[MESSAGING_ENCODING_MAX_EXTERNALS];
 
+  void encode_smi(Object* object);
   bool encode_array(Array* object, word from, word to);
   bool encode_byte_array(ByteArray* object);
   bool reserve_external();
   bool encode_copy(Object* object, int tag);
+  bool encode_list_slice(Instance* instance);
   bool encode_list(Instance* instance, word from, word to);
   bool encode_map(Instance* instance);
 

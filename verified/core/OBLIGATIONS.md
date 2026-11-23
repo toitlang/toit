@@ -93,8 +93,11 @@ Open:
   `x_loaded_ok == loaded_ok`, on the tables the core executes); the core
   runs the verified loop only for accepted programs
   (`toit_v2_context.accepted`). Trusted: the conversion
-  verified/vmverify/src/from_vm.rs and `prepare_process_v2` building the
-  initial state.
+  verified/vmverify/src/from_vm.rs and the binding of the concrete task,
+  stack and method table to the spec's initial heap. The
+  [native frame check](../cxx/harness/prepare_process_v2.cc) exercises
+  `prepare_process_v2` with a valid task and stack, symbolic method and dispatch tables,
+  either entry selection, and symbolic stack length and contents.
 - S3 size bound `small`: implied by `refines` (stack below 2^20 words,
   heap model below 2^30 objects); exceeding it is a defined stop or a
   resource throw (`prim::resource_throw`).

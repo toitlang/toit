@@ -1,0 +1,177 @@
+// Copyright (C) 2026 Toit contributors.
+@include ../model/model.cfg
+@overloaded Utils::min
+@verbatim
+#include "../model/objects.gen.h"
+//@ #include "../model/arith.gh"
+
+struct Process {
+  bool random_seeded_;
+  uint64 random_state0_;
+  uint64 random_state1_;
+};
+
+/*@
+fixpoint int mix_left(int a) { return a ^ truncate_unsigned(a * 8388608, 64); }
+fixpoint int next_state(int a, int b) {
+  return ((mix_left(a) ^ (mix_left(a) / 262144)) ^ b) ^ (b / 32);
+}
+lemma_auto(value & 0xfffffff) void random_result_range(int value)
+  requires true;
+  ensures 0 <= (value & 0xfffffff) && (value & 0xfffffff) <= 0xfffffff;
+{
+  bitand_limits(value, 0xfffffff, nat_of_int(28));
+}
+predicate random_state(Process *p; bool seeded, uint64 a, uint64 b) =
+  p->random_seeded_ |-> seeded &*& p->random_state0_ |-> a &*& p->random_state1_ |-> b;
+@*/
+
+//@ fixpoint int minof(int x, int y) { return x < y ? x : y; }
+typedef uword size_t;
+unsigned long Utils_min__unsignedlong_unsignedlong(unsigned long x, unsigned long y);
+//@ requires true;
+//@ ensures result == minof(x, y);
+unsigned int Utils_min__unsignedint_unsignedint(unsigned int x, unsigned int y);
+//@ requires true;
+//@ ensures result == minof(x, y);
+void *memcpy(void *dest, const void *src, size_t count);
+//@ requires chars(dest, count, _) &*& [?f]chars(src, count, ?bytes);
+//@ ensures chars(dest, count, bytes) &*& [f]chars(src, count, bytes) &*& result == dest;
+
+/*@
+fixpoint int seeded_word(int initial, list<char> bytes) {
+  return head(integers_of_chars(8, false,
+    append(take(minof(8, length(bytes)), bytes), drop(minof(8, length(bytes)), chars_of_integers(8, false, cons(initial, nil))))));
+}
+lemma void seed_word_open(uint64 *p)
+  requires *p |-> ?v;
+  ensures chars((void *)p, 8, chars_of_integers(8, false, cons(v, nil)));
+{
+  open u_llong_integer(p, v);
+  integer__limits(p);
+  close integers_((void *)(p+1), 8, false, 0, nil);
+  close integers_(p, 8, false, 1, cons(v, nil));
+  integers__to_chars(p);
+}
+lemma void seed_word_close(uint64 *p)
+  requires chars((void *)p, 8, ?bytes);
+  ensures *p |-> head(integers_of_chars(8, false, bytes));
+{
+  chars_to_integers_(p, 8, false, 1);
+  open integers_(p, 8, false, 1, _);
+}
+@*/
+struct EntropyMixer;
+typedef struct EntropyMixer EntropyMixer;
+EntropyMixer *EntropyMixer_instance(void);
+//@ requires true;
+//@ ensures true;
+bool EntropyMixer_get_entropy(EntropyMixer *self, uint8 *dest, size_t size);
+//@ requires uchars_(dest, size, _);
+//@ ensures result ? uchars(dest, size, _) : uchars_(dest, size, _);
+void *memset(void *dest, int value, size_t size);
+//@ requires uchars_(dest, size, _) &*& 0 <= value &*& value <= 255;
+//@ ensures uchars(dest, size, ?bytes) &*& all_eq(bytes, value) == true &*& result == dest;
+@prototypes
+@render src/process.cc toit::Process::random_seed
+void Process::random_seed(const uint8* buffer, size_t size)
+//@ requires random_state(self, _, _, _) &*& [?f]chars((void *)buffer, size, ?bytes);
+/*@ ensures random_state(self, true, seeded_word(0xdefa17, bytes), (length(bytes) < 8 ? 0xf00baa : seeded_word(0xf00baa, drop(8, bytes)))) &*&
+            [f]chars((void *)buffer, length(bytes), bytes); @*/
+{
+  //@ open random_state(self, _, _, _);
+  //@ chars_limits((void *)buffer);
+  //@ uint8 *base = buffer;
+  random_state0_ = 0xdefa17;
+  random_state1_ = 0xf00baa;
+  //@ seed_word_open(&self->random_state0_);
+  //@ int k = minof(size, 8);
+  //@ chars_split((void *)buffer, k);
+  //@ chars_split((void *)&self->random_state0_, k);
+  memcpy(&random_state0_, buffer, Utils::min(size, sizeof(random_state0_)));
+  //@ chars_join((void *)&self->random_state0_);
+  //@ seed_word_close(&self->random_state0_);
+  if (size >= sizeof(random_state0_)) {
+    buffer += sizeof(random_state0_);
+    size -= sizeof(random_state0_);
+    //@ seed_word_open(&self->random_state1_);
+    //@ int j = minof(size, 8);
+    //@ chars_split((void *)buffer, j);
+    //@ chars_split((void *)&self->random_state1_, j);
+    memcpy(&random_state1_, buffer, Utils::min(size, sizeof(random_state1_)));
+    //@ chars_join((void *)&self->random_state1_);
+    //@ seed_word_close(&self->random_state1_);
+    //@ chars_join((void *)buffer);
+  }
+  //@ chars_join((void *)base);
+  random_seeded_ = true;
+}
+
+@render src/process.cc toit::Process::_ensure_random_seeded
+void Process::_ensure_random_seeded()
+//@ requires random_state(self, ?seeded, ?a, ?b);
+//@ ensures random_state(self, true, ?x, ?y) &*& (seeded ? x == a && y == b : true);
+{
+  //@ open random_state(self, seeded, a, b);
+  if (random_seeded_) return;
+  uint8 seed[16];
+#ifdef TOIT_EC618
+  // On EC618, the EntropyMixer static instance may not be safely initialized
+  // (its constructor needs FreeRTOS which may not be up during static init).
+  // Seed directly from the hardware RNG.
+  uint8_t rand_buf[24];
+  if (rngGenRandom(rand_buf) == 0) {
+    memcpy(seed, rand_buf, sizeof(seed));
+  } else {
+    // Fallback: constant seed. Not ideal but prevents a crash.
+    memset(seed, 0x42, sizeof(seed));
+  }
+#else
+  if (!EntropyMixer::instance()->get_entropy(seed, sizeof(seed))) {
+    memset(seed, 0x42, sizeof(seed));
+  }
+#endif
+  //@ uchars_to_chars(seed);
+  //@ close random_state(self, false, a, b);
+  random_seed(seed, sizeof(seed));
+  //@ open random_state(self, true, _, _);
+  //@ chars_to_uchars(seed);
+  //@ uchars_to_uchars_(seed);
+  random_seeded_ = true;
+}
+
+@render src/process.cc toit::Process::random truncating
+uint64 Process::random()
+//@ requires random_state(self, ?seeded, ?a, ?b);
+/*@ ensures random_state(self, true, ?x, ?y) &*& result == truncate_unsigned(x + y, 64) &*&
+            (seeded ? x == b && y == next_state(a, b) : true); @*/
+{
+  _ensure_random_seeded();
+  //@ open random_state(self, true, ?a1, ?b1);
+  uint64 s1 = random_state0_;
+  uint64 s0 = random_state1_;
+  random_state0_ = s0;
+  //@ truncate_unsigned_def(s1 << 23, N64);
+  //@ bitxor_limits(s1, truncate_unsigned(s1 << 23, 64), N64);
+  s1 ^= s1 << 23;
+  //@ shiftright_div(s1, nat_of_int(18));
+  //@ bitxor_limits(s1, s1 >> 18, N64);
+  s1 ^= s1 >> 18;
+  //@ bitxor_limits(s1, s0, N64);
+  s1 ^= s0;
+  //@ shiftright_div(s0, nat_of_int(5));
+  //@ bitxor_limits(s1, s0 >> 5, N64);
+  s1 ^= s0 >> 5;
+  random_state1_ = s1;
+  return random_state0_ + random_state1_;
+}
+
+@render src/primitive_core.cc toit::primitive_random
+PRIMITIVE(random)
+//@ requires random_state(process, ?seeded, ?a, ?b);
+/*@ ensures random_state(process, true, ?x, ?y) &*& (seeded ? x == b && y == next_state(a, b) : true) &*&
+            is_smi_w((uword)result) == true &*& smi_val((uword)result) == (truncate_unsigned(x + y, 64) & 0xfffffff) &*&
+            0 <= smi_val((uword)result) &*& smi_val((uword)result) <= 0xfffffff; @*/
+{
+  return Smi::from(process->random() & 0xfffffff);
+}

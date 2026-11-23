@@ -8,15 +8,40 @@
 #include <type_traits>
 #include <top.h>
 #include <objects.h>
-#include <objects_runtime.cc>
+#include <primitive.cc>
 #include <interpreter_v2.cc>
+#include <objects_runtime.cc>
 namespace toit {
 template <typename A, typename B> struct vf_same {
   static const bool value = std::is_same<typename std::decay<A>::type, typename std::decay<B>::type>::value;
 };
-struct vf_probe_0 : Stack { static_assert((WORD_SIZE) == (((int)sizeof(word))), "WORD_SIZE"); static_assert(vf_same<decltype(WORD_SIZE), decltype(((int)sizeof(word)))>::value, "type of WORD_SIZE"); };
+struct vf_probe_0 : HeapObject { static_assert((WORD_SIZE) == (((int)sizeof(word))), "WORD_SIZE"); static_assert(vf_same<decltype(WORD_SIZE), decltype(((int)sizeof(word)))>::value, "type of WORD_SIZE"); };
+struct vf_probe_1 : Stack { static_assert((HEADER_SIZE) == (((word)(10 * sizeof(word)))), "Stack_HEADER_SIZE"); static_assert(vf_same<decltype(HEADER_SIZE), decltype(((word)(10 * sizeof(word))))>::value, "type of Stack_HEADER_SIZE"); };
+struct vf_probe_2 : Stack { static_assert((LENGTH_OFFSET) == (((word)(2 * sizeof(word)))), "Stack_LENGTH_OFFSET"); static_assert(vf_same<decltype(LENGTH_OFFSET), decltype(((word)(2 * sizeof(word))))>::value, "type of Stack_LENGTH_OFFSET"); };
+struct vf_probe_3 : Stack { static_assert((PENDING_STACK_CHECK_METHOD_OFFSET) == (((word)(5 * sizeof(word)))), "Stack_PENDING_STACK_CHECK_METHOD_OFFSET"); static_assert(vf_same<decltype(PENDING_STACK_CHECK_METHOD_OFFSET), decltype(((word)(5 * sizeof(word))))>::value, "type of Stack_PENDING_STACK_CHECK_METHOD_OFFSET"); };
+struct vf_probe_4 : Stack { static_assert((TOP_OFFSET) == (((word)(3 * sizeof(word)))), "Stack_TOP_OFFSET"); static_assert(vf_same<decltype(TOP_OFFSET), decltype(((word)(3 * sizeof(word))))>::value, "type of Stack_TOP_OFFSET"); };
+struct vf_probe_5 : Stack { static_assert((TRY_TOP_OFFSET) == (((word)(4 * sizeof(word)))), "Stack_TRY_TOP_OFFSET"); static_assert(vf_same<decltype(TRY_TOP_OFFSET), decltype(((word)(4 * sizeof(word))))>::value, "type of Stack_TRY_TOP_OFFSET"); };
+struct vf_probe_6 : Stack { static_assert((V2_FIN_WORDS) == (((word)5)), "Stack_V2_FIN_WORDS"); static_assert(vf_same<decltype(V2_FIN_WORDS), decltype(((word)5))>::value, "type of Stack_V2_FIN_WORDS"); };
+struct vf_probe_7 : Stack { static_assert((V2_FRAME_TOP_SHIFT) == (16), "Stack_V2_FRAME_TOP_SHIFT"); static_assert(vf_same<decltype(V2_FRAME_TOP_SHIFT), decltype(16)>::value, "type of Stack_V2_FRAME_TOP_SHIFT"); };
+struct vf_probe_8 : Stack { static_assert((V2_MAX_LENGTH) == (((word)65536)), "Stack_V2_MAX_LENGTH"); static_assert(vf_same<decltype(V2_MAX_LENGTH), decltype(((word)65536))>::value, "type of Stack_V2_MAX_LENGTH"); };
+struct vf_probe_9 : Stack { static_assert((WORD_SIZE) == (((int)sizeof(word))), "WORD_SIZE"); static_assert(vf_same<decltype(WORD_SIZE), decltype(((int)sizeof(word)))>::value, "type of WORD_SIZE"); };
+struct vf_probe_10 : Task { static_assert((STACK_INDEX) == (((word)0)), "Task_STACK_INDEX"); static_assert(vf_same<decltype(STACK_INDEX), decltype(((word)0))>::value, "type of Task_STACK_INDEX"); };
+static_assert((Array::ARRAYLET_SIZE) == (((word)500)), "Array_ARRAYLET_SIZE");
+static_assert(vf_same<decltype(Array::ARRAYLET_SIZE), decltype(((word)500))>::value, "type of Array_ARRAYLET_SIZE");
+static_assert((Error::ERROR_SHIFT) == (2), "Error_ERROR_SHIFT");
+static_assert(vf_same<decltype(Error::ERROR_SHIFT), decltype(2)>::value, "type of Error_ERROR_SHIFT");
+static_assert((Error::ERROR_TAG) == (((uword)3)), "Error_ERROR_TAG");
+static_assert(vf_same<decltype(Error::ERROR_TAG), decltype(((uword)3))>::value, "type of Error_ERROR_TAG");
+static_assert((Error::MAX_TAGGED_ERROR) == (256), "Error_MAX_TAGGED_ERROR");
+static_assert(vf_same<decltype(Error::MAX_TAGGED_ERROR), decltype(256)>::value, "type of Error_MAX_TAGGED_ERROR");
 static_assert((Flags::primitives) == (false), "Flags_primitives");
 static_assert(vf_same<decltype(Flags::primitives), decltype(false)>::value, "type of Flags_primitives");
+static_assert((Object::MARKED_TAG) == (((uword)3)), "Object_MARKED_TAG");
+static_assert(vf_same<decltype(Object::MARKED_TAG), decltype(((uword)3))>::value, "type of Object_MARKED_TAG");
+static_assert((Object::NON_SMI_TAG_MASK) == (((uword)3)), "Object_NON_SMI_TAG_MASK");
+static_assert(vf_same<decltype(Object::NON_SMI_TAG_MASK), decltype(((uword)3))>::value, "type of Object_NON_SMI_TAG_MASK");
+static_assert((Program::INVALID_ARGUMENT_INDEX) == (16), "Program_INVALID_ARGUMENT_INDEX");
+static_assert((Program::ROOT_COUNT) == (35), "Program_ROOT_COUNT");
 static_assert((TOIT_V2_OK) == (((uword)0)), "TOIT_V2_OK");
 static_assert(vf_same<decltype(TOIT_V2_OK), decltype(((uword)0))>::value, "type of TOIT_V2_OK");
 static_assert((TOIT_V2_OUT_OF_MEMORY) == (((uword)2)), "TOIT_V2_OUT_OF_MEMORY");

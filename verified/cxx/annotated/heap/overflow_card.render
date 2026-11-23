@@ -1,0 +1,164 @@
+// Copyright (C) 2026 Toit contributors.
+@include ../model/model.cfg
+@verbatim
+#include "../model/objects.gen.h"
+struct RootCallback;
+typedef struct RootCallback RootCallback;
+
+/*@
+// Heap partition for a single pass. The witness is an original object start.
+// A visit may shorten an extent and expose new filler boundaries.
+predicate partition(Program *p, RootCallback *cb, int address, int witness, int sentinel);
+predicate cursor(Program *p, RootCallback *cb, int address, int witness, int sentinel) =
+  partition(p,cb,address,witness,sentinel) &*& address % sizeof(word) == 0 &*&
+  pointer((void **)address,?header) &*& (header == 0) == (address == sentinel);
+// The partition supplies the next boundary at the current object's size.
+// Enumeration can shorten the object and must return the new boundary.
+fixpoint HeapObject *tagged(int a) { return (HeapObject *)(a+1); }
+predicate object_extent(HeapObject *o, Program *p, int bytes);
+predicate extent(HeapObject *o, Program *p, RootCallback *cb, int address, int witness, int sentinel, int bytes) =
+  object_extent(o,p,bytes) &*& o == tagged(address) &*& bytes > 0 &*& address + bytes <= sentinel &*& cursor(p,cb,address+bytes,witness,sentinel);
+predicate scanned(int witness, bool inspected, bool was_grey, bool traced, bool black);
+fixpoint bool discovery_step(int old,int now,bool flagged,bool later) {
+  return 0 <= now && now <= old && (!flagged || later) && (!later || flagged || now < old);
+}
+// Root enumeration alone can set more overflow bits while this object is inspected.
+predicate overflow_state(int fresh,bool flag,bool bit);
+@*/
+@render src/third_party/dartino/object_memory.h toit::chunk_end_sentinel tu=src/third_party/dartino/object_memory.cc
+static inline Object* chunk_end_sentinel()
+//@ requires true;
+//@ ensures result == 0;
+//@ terminates;
+{
+  return reinterpret_cast<Object*>(0);
+}
+
+@render src/third_party/dartino/object_memory.h toit::has_sentinel_at tu=src/third_party/dartino/object_memory.cc
+static inline bool has_sentinel_at(uword address)
+//@ requires [?f]pointer((void **)address,?header);
+//@ ensures [f]pointer((void **)address,header) &*& result == (header == 0);
+//@ terminates;
+{
+  return *reinterpret_cast<Object**>(address) == chunk_end_sentinel();
+}
+
+@render src/objects.h toit::HeapObject::from_address tu=src/third_party/dartino/object_memory.cc
+  static HeapObject* from_address(uword address)
+  //@ requires address < UINTPTR_MAX &*& address % sizeof(word) == 0;
+  //@ ensures result == tagged(address);
+  //@ terminates;
+  {
+    ASSERT((address & NON_SMI_TAG_MASK) == SMI_TAG);
+    return reinterpret_cast<HeapObject*>(address + HEAP_TAG);
+  }
+
+@verbatim
+bool GcMetadata_is_grey(HeapObject *o);
+/*@ requires cursor(?p,?cb,?a,?w,?end) &*& o == tagged(a) &*& a < end &*& scanned(w,?i,?g,?t,?b); @*/
+/*@ ensures extent(o,p,cb,a,w,end,?n) &*& n > 0 &*& a+n <= end &*& (a < w ? a+n <= w : true) &*&
+    scanned(w,a == w || i,a == w ? result : g,t,b); @*/
+//@ terminates;
+void HeapObject_roots_do(HeapObject *o,Program *p,RootCallback *cb);
+/*@ requires extent(o,p,cb,?a,?w,?end,?old) &*& scanned(w,?i,?g,?t,?b) &*&
+    overflow_state(?fresh,?flag,?pending) &*& fresh >= 0; @*/
+/*@ ensures extent(o,p,cb,a,w,end,?n) &*& n > 0 &*& n <= old &*& scanned(w,i,g,a == w || t,b) &*&
+    overflow_state(?left,?later,?bit) &*& discovery_step(fresh,left,flag,later) == true &*&
+    (!pending || bit) &*& (!bit || pending || later); @*/
+//@ terminates;
+word HeapObject_size(HeapObject *o,Program *p);
+//@ requires extent(o,p,?cb,?a,?w,?end,?n);
+//@ ensures extent(o,p,cb,a,w,end,n) &*& result == n;
+//@ terminates;
+void GcMetadata_mark_all(HeapObject *o,uword bytes);
+//@ requires extent(o,?p,?cb,?a,?w,?end,bytes) &*& scanned(w,?i,?g,?t,?b);
+//@ ensures extent(o,p,cb,a,w,end,bytes) &*& scanned(w,i,g,t,a == w || b);
+//@ terminates;
+
+@render src/third_party/dartino/object_memory.cc toit::scan_overflow_card
+static void scan_overflow_card(Program* program, RootCallback* visitor, uword address, uword limit)
+/*@ requires cursor(program,visitor,address,?w,?end) &*& address <= w &*& w <= limit &*& w <= end &*& end <= UINTPTR_MAX &*&
+    scanned(w,false,false,false,false) &*& overflow_state(?fresh,?flag,?pending) &*& fresh >= 0; @*/
+/*@ ensures cursor(program,visitor,?last,w,end) &*& last <= end &*& (last == end || last >= limit) &*&
+    scanned(w,last > w,?grey,last > w && grey,last > w && grey) &*& (w == limit || w == end || last > w) &*&
+    overflow_state(?left,?later,?bit) &*& discovery_step(fresh,left,flag,later) == true &*&
+    (!pending || bit) &*& (!bit || pending || later); @*/
+//@ terminates;
+{
+  while (address < limit)
+  /*@ invariant cursor(program,visitor,address,w,end) &*& address <= end &*&
+      scanned(w,address > w,?g,address > w && g,address > w && g) &*&
+      overflow_state(?budget,?raised,?bit) &*& discovery_step(fresh,budget,flag,raised) == true &*&
+      (!pending || bit) &*& (!bit || pending || raised); @*/
+  //@ decreases end - address;
+  {
+    //@ open cursor(program,visitor,address,w,end);
+    if (has_sentinel_at(address)) {
+      //@ close cursor(program,visitor,address,w,end);
+      break;
+    }
+    //@ close cursor(program,visitor,address,w,end);
+    HeapObject* object = HeapObject::from_address(address);
+    if (GcMetadata::is_grey(object)) {
+      object->roots_do(program, visitor);
+      GcMetadata::mark_all(object, object->size(program));
+    }
+    address += object->size(program);
+    //@ open extent(object,program,visitor,_,w,end,_);
+    //@ leak object_extent(object,program,_);
+  }
+}
+
+@verbatim
+struct MarkingStack;
+typedef struct MarkingStack MarkingStack;
+/*@
+fixpoint uint8 *overflow_byte(int address);
+// The sequence alternates one group scan with one drain. Counter operations
+// advance only at the drain, after the corresponding group has been scanned.
+// Probe is the nominated card's group, or -1 if it is in another chunk.
+predicate groups(Program *p, RootCallback *visitor, MarkingStack *stack, uint8 *base,
+                 int start,int count,int done,bool drain_due,int probe,int fresh,bool flag,bool pending);
+
+@*/
+uint8 *GcMetadata_overflow_bits_for(uword address);
+//@ requires true;
+//@ ensures result == overflow_byte(address);
+//@ terminates;
+void scan_overflow_group(Program *program,RootCallback *visitor,uint8 *bits,uword card);
+/*@ requires groups(program,visitor,?stack,?base,?start,?count,?done,false,?probe,?fresh,?flag,?pending) &*&
+    fresh >= 0 &*& done < count &*& bits == base+done &*& card == start+done*(8*GcMetadata_CARD_SIZE); @*/
+/*@ ensures groups(program,visitor,stack,base,start,count,done,true,probe,?left,?later,?bit) &*&
+    discovery_step(fresh,left,flag,later) == true &*& (!bit || (pending && probe != done) || later); @*/
+//@ terminates;
+void MarkingStack_empty(MarkingStack *stack,RootCallback *visitor);
+//@ requires groups(?program,visitor,stack,?base,?start,?count,?done,true,?probe,?fresh,?flag,?pending) &*& fresh >= 0;
+/*@ ensures groups(program,visitor,stack,base,start,count,done+1,false,probe,?left,?later,?bit) &*&
+    discovery_step(fresh,left,flag,later) == true &*& (!bit || pending || later); @*/
+//@ terminates;
+
+@render src/third_party/dartino/object_memory.cc toit::scan_overflow_chunk
+static void scan_overflow_chunk(Program* program, RootCallback* visitor, MarkingStack* stack, uword start, uword end)
+/*@ requires groups(program,visitor,stack,overflow_byte(start),start,?count,0,false,?probe,?fresh,?flag,?pending) &*&
+    0 <= count &*& fresh >= 0 &*& -1 <= probe &*& probe < count &*&
+    end <= UINTPTR_MAX &*& end == start+count*(8*GcMetadata_CARD_SIZE) &*& pointer_within_limits(overflow_byte(start)) == true &*&
+    pointer_within_limits(overflow_byte(start)+count) == true; @*/
+/*@ ensures groups(program,visitor,stack,overflow_byte(start),start,count,count,false,probe,?left,?later,?bit) &*&
+    discovery_step(fresh,left,flag,later) == true &*& (!bit || (pending && probe == -1) || later); @*/
+//@ terminates;
+{
+  uint8* bits = GcMetadata::overflow_bits_for(start);
+  //@ int done = 0;
+  for (uword card = start; card < end; card += 8 * GcMetadata::CARD_SIZE)
+  /*@ invariant groups(program,visitor,stack,overflow_byte(start),start,count,done,false,probe,?budget,?raised,?bit) &*& 0 <= done &*&
+      discovery_step(fresh,budget,flag,raised) == true &*& (!bit || (pending && (probe == -1 || done <= probe)) || raised) &*&
+      done <= count &*& card == start+done*(8*GcMetadata_CARD_SIZE) &*& bits == overflow_byte(start)+done; @*/
+  //@ decreases count - done;
+  {
+    //@ mul_mono_l(done+1,count,8*GcMetadata_CARD_SIZE);
+    scan_overflow_group(program, visitor, bits, card);
+    ++bits;
+    stack->empty(visitor);
+    //@ done++;
+  }
+}

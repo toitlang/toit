@@ -139,8 +139,9 @@ Grants to the allowed-target set are issued:
   pid returned to an untrusted client is granted to the client's group
   (`system/services.toit`, `SystemServiceManager.discover`, through the
   privileged primitive `core.process_grant_send`);
-- by the scheduler, when a process of an untrusted group receives an RPC
-  request: the requester's pid is granted so the provider can reply.
+- by the scheduler when a process of an untrusted group receives an RPC
+  request. Admission to the receiver's mailbox grants the requester's pid
+  so the provider can reply. A rejected request leaves the grant set unchanged.
 
 The set holds at most `max_send_grants` pids, and grants are never
 evicted: evicting an older grant would silently break a capability the

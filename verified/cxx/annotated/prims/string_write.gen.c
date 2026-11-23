@@ -24,13 +24,9 @@
 // Self-test (run.sh): af4ba7ab reverted (memcpy for the same byte array):
 // no proof for overlapping ranges; with non-overlap assumed, it verifies.
 #include "../model/objects.gen.h"
-#include "../blob/byte_content.gen.h"
+#include "blob_args.gen.h"
 #include "../blob/mutable_byte_content.gen.h"
 //@ #include <listex.gh>
-
-// An empty C++ struct; C needs a member.
-struct uninitialized_t { char unused; };
-typedef struct uninitialized_t uninitialized_t;
 
 /*@
 // memmove: one region holding both ranges, or two separate chunks.
@@ -50,28 +46,9 @@ predicate mm_post(mm_mode m, uint8 *dst, uint8 *src, int n) =
   };
 @*/
 
-void uninitialized_t_ctor(uninitialized_t *self);
-//@ requires self->unused |-> _;
-//@ ensures self->unused |-> _;
-
 void *memmove(void *dest, void *src, size_t count);
 //@ requires mm_pre(?m, dest, src, count);
 //@ ensures mm_post(m, dest, src, count) &*& result == dest;
-// C++: src/objects.h toit::Blob::Blob
-void Blob_ctor__uninitialized_tp(Blob *self, uninitialized_t *u);
-//@ requires self->address_ |-> _ &*& self->length_ |-> _;
-//@ ensures self->address_ |-> _ &*& self->length_ |-> _;
-
-// C++: src/objects.h toit::Blob::address
-uint8 *Blob_address(Blob *self);
-//@ requires [?f]self->address_ |-> ?a;
-//@ ensures [f]self->address_ |-> a &*& result == a;
-
-// C++: src/objects.h toit::Blob::length
-word Blob_length(Blob *self);
-//@ requires [?f]self->length_ |-> ?l;
-//@ ensures [f]self->length_ |-> l &*& result == l;
-
 // C++: src/objects.h toit::MutableBlob::MutableBlob
 void MutableBlob_ctor__(MutableBlob *self);
 //@ requires self->address_ |-> _ &*& self->length_ |-> _;
@@ -96,29 +73,6 @@ Object *primitive_string_write_to_byte_array(Process *process, Object **__args);
 /*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
             pointer(__args, a0) &*& pointer(__args - 1, a1) &*& pointer(__args - 2, a2) &*&
             pointer(__args - 3, a3) &*& pointer(__args - 4, a4); @*/
-
-// C++: src/objects.h toit::Blob::Blob
-void Blob_ctor__uninitialized_tp(Blob *self, uninitialized_t *u)
-//@ requires self->address_ |-> _ &*& self->length_ |-> _;
-//@ ensures self->address_ |-> _ &*& self->length_ |-> _;
-{
-}
-
-// C++: src/objects.h toit::Blob::address
-uint8 *Blob_address(Blob *self)
-//@ requires [?f]self->address_ |-> ?a;
-//@ ensures [f]self->address_ |-> a &*& result == a;
-{
-  return self->address_;
-}
-
-// C++: src/objects.h toit::Blob::length
-word Blob_length(Blob *self)
-//@ requires [?f]self->length_ |-> ?l;
-//@ ensures [f]self->length_ |-> l &*& result == l;
-{
-  return self->length_;
-}
 
 // C++: src/objects.h toit::MutableBlob::MutableBlob
 void MutableBlob_ctor__(MutableBlob *self)

@@ -38,7 +38,10 @@ mkdir -p "$M/repo/src" "$M/scratch" "$M/gen32"
 for e in "$REPO_ROOT"/*; do
   [ "$(basename "$e")" = src ] || ln -s "$e" "$M/repo/$(basename "$e")"
 done
-for e in "$REPO_ROOT"/src/*; do ln -s "$e" "$M/repo/src/$(basename "$e")"; done
+# Keep the directory hierarchy real. A nested header can use ../../objects.h;
+# following a directory symlink there would include the original header as
+# well as the mutant and defeat #pragma once.
+cp -Rs "$REPO_ROOT/src/." "$M/repo/src/" || exit 1
 # The changed file is a copy; the directories on its path become real
 # directories of links (for a source outside src/: writing through the
 # links would change the checkout).
@@ -61,7 +64,7 @@ cp "$REPO_ROOT/$source" "$M/repo/$source"
 mkdir -p "$M/annotated"
 # The sidecar's directory and every unit whose header targets include
 # (model, blob).
-(cd "$ANNOTATED_DIR" && cp -r model blob "$M/annotated/" && { [ -d "$M/annotated/$(dirname "$sidecar")" ] || cp -r "$(dirname "$sidecar")" "$M/annotated/"; })
+(cd "$ANNOTATED_DIR" && cp -r model blob utf8 "$M/annotated/" && { [ -d "$M/annotated/$(dirname "$sidecar")" ] || cp -r "$(dirname "$sidecar")" "$M/annotated/"; })
 replace() { "$TOIT_BIN" run "$REPO_ROOT/verified/tools/text_replace.toit" -- "$@"; }
 # A change applies to the source and the sidecar's copy of the changed
 # function alike; a change of an annotation only (a weaker contract) to the
@@ -105,7 +108,16 @@ cd "$M/annotated"
 # The model is not mutated: its renderings (the copied ones, and the 32-bit
 # ones render.sh made) are used as they are; only the sidecar is rendered.
 mkdir -p "$M/gen32/$(dirname "$sidecar")"
-cp -r "$GEN32/model" "$GEN32/blob" "$M/gen32/"
+cp -r "$GEN32/model" "$GEN32/blob" "$GEN32/utf8" "$M/gen32/"
+# A primitive can use the verified contract of a sibling translation unit.
+if [[ "$source" == verified/cxx/annotated/model/*.h ]]; then
+  relative="${source#verified/cxx/annotated/}"
+  cp "$M/repo/$source" "$M/annotated/$relative" || exit 1
+  cp "$M/repo/$source" "$M/gen32/$relative" || exit 1
+fi
+for header in "$GEN32/$(dirname "$sidecar")"/*.gen.h; do
+  if [ -f "$header" ]; then cp "$header" "$M/gen32/$(dirname "$sidecar")/"; fi
+done
 for f in $(ls "$(dirname "$sidecar")"/*.h "$(dirname "$sidecar")"/*.gh 2>/dev/null | grep -v '\.gen\.'); do
   cp "$f" "$M/gen32/$f"
 done

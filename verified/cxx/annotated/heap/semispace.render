@@ -1,0 +1,546 @@
+// Copyright (C) 2026 Toit contributors.
+@include ../model/model.cfg
+@static-member GcMetadata::singleton_
+@header semispace.gen.h
+@verbatim
+#include "free_list.gen.h"
+//@ #include "../model/arith.gh"
+//@ #include "scan_positions.gh"
+
+typedef struct ChunkList { char opaque; } ChunkList;
+typedef int PageType;
+struct SemiSpace { Program *program_; uword top_; uword limit_; ChunkList chunk_list_; PageType page_type_; };
+typedef struct SemiSpace SemiSpace;
+
+typedef SemiSpace Space;
+// The active chunk has at least one word reserved for the sentinel.
+//@ predicate chunk_list_empty(Space *s; bool empty);
+bool Space_is_empty(Space *self);
+//@ requires [_]chunk_list_empty(self, ?empty);
+//@ ensures result == empty;
+struct Chunk { uword start_; uword end_; Space *owner_; uword scavenge_pointer_; };
+typedef struct Chunk Chunk;
+// The metadata subsystem owns a separate table of object starts.
+typedef struct GcMetadata {
+  uword starts_bias_;
+  uword mark_bits_bias_;
+  uword remembered_set_bias_;
+  uword overflow_bits_bias_;
+  uword lowest_address_;
+  uword heap_extent_;
+  uint8 *page_type_bytes_;
+  uint8 *remembered_set_;
+} GcMetadata;
+extern GcMetadata GcMetadata_singleton_;
+void *memset(void *dest, int value, size_t count);
+//@ requires uchars_(dest, count, _) &*& 0 <= value &*& value <= 255;
+//@ ensures uchars_(dest, count, ?bytes) &*& all_eq(bytes, some(value)) == true &*& result == dest;
+  //@ terminates;
+/*@
+fixpoint bool metadata_contains(uword lowest,uword extent,uword address) {
+  return lowest <= address && address <= truncate_unsigned(lowest+extent,8*sizeof(word));
+}
+fixpoint int card(uword address) { return address / GcMetadata_CARD_SIZE; }
+fixpoint uint8 *table_address(int index,uword bias) {
+  return (uint8 *)truncate_unsigned(index+bias,8*sizeof(word));
+}
+predicate start_slot(uword address; option<uint8> value) =
+  [_]GcMetadata_singleton_.starts_bias_ |-> ?bias &*& uchar_(table_address(card(address),bias),value);
+predicate starts_state(uword start, uword end; bool cleared) =
+  [_]GcMetadata_singleton_.starts_bias_ |-> ?bias &*&
+  uchars_(table_address(card(start),bias), card(end) - card(start), ?bytes) &*&
+  cleared == all_eq(bytes, some(GcMetadata_NO_OBJECT_START));
+predicate sentinel_view(uword top, uword limit; bool flushed) =
+  top == 0 && limit == 0 ? flushed == true :
+    pointer((void **)top, ?p) &*& flushed == (p == 0);
+@*/
+// Tracking a promotion writes a header and updates the card tables.
+// The initializer owns only the header words and its metadata.
+//@ predicate promotion_metadata(uword start);
+//@ predicate promotion_header(PromotedTrack *track, PromotedTrack *next, uword start, uword limit);
+PromotedTrack *PromotedTrack_initialize(PromotedTrack *next, uword location, uword end);
+//@ requires pointers_((void **)location, 3, _) &*& promotion_metadata(location) &*& end - location > 3 * sizeof(word);
+//@ ensures promotion_header(result, next, location, end);
+/*@
+predicate old_window(OldSpace *s, uword top, uword limit, list<option<void *> > slots) =
+  s->top_ |-> top &*& s->limit_ |-> limit &*& pointers_((void **)top, ?count, slots) &*&
+  top % sizeof(word) == 0 &*& (top != 0 || count == 0) &*& limit == top + count * sizeof(word);
+
+predicate old_controls(OldSpace *s, bool tracking, uword used, bool failed) =
+  s->tracking_allocations_ |-> tracking &*& s->used_ |-> used &*& s->promotion_failed_ |-> failed;
+
+fixpoint list<list<region> > free_search_banks(list<list<region> > bs, uword top, uword limit) {
+  return flushed_banks(bs,limit-top >= 3*sizeof(word) ? (FreeListRegion *)(top+1) : 0,limit-top);
+}
+fixpoint FreeListRegion *selected_free_region(list<list<region> > bs, uword top, uword limit, int request) {
+  return first_fit(searched_regions(free_search_banks(bs,top,limit),request),request);
+}
+fixpoint uword free_payload(FreeListRegion *region, bool tracking) {
+  return region == 0 ? 0 : (uword)raw(region) + (tracking ? 3 : 0)*sizeof(word);
+}
+// A free-list miss is the only path that needs resources for obtaining a new chunk.
+predicate chunk_source(OldSpace *s, uword size, uword chunk_result);
+predicate chunk_complete(OldSpace *s, uword size, uword chunk_result);
+predicate free_input(OldSpace *s, uword size, uword top, uword limit, uword used, bool tracking, uword expected, list<list<region> > bs) =
+  limit-top <= used &*& size + (tracking ? 3 : 0)*sizeof(word) <= UINTPTR_MAX &*&
+  banks(s->free_list_.buckets_,0,bs) &*& length(bs) == 12 &*& used+free_bytes(bs) <= UINTPTR_MAX &*&
+  s->promoted_track_ |-> ?prev &*& exists<uword>(?end) &*& (tracking && prev != 0 ? track_end(prev,end) : true) &*&
+  expected == free_payload(selected_free_region(bs,top,limit,size+(tracking ? 3 : 0)*sizeof(word)),tracking) &*&
+  (selected_free_region(bs,top,limit,size+(tracking ? 3 : 0)*sizeof(word)) != 0 ?
+    start_slot(expected,_) &*& (tracking ? promotion_metadata(expected-3*sizeof(word)) : true) : true);
+predicate free_receipt(OldSpace *s, uword expected, bool tracking, uword top, uword limit, PromotedTrack *prev, list<list<region> > bs, uword size) =
+  banks(s->free_list_.buckets_,0,banks_after_search(free_search_banks(bs,top,limit),size+(tracking ? 3 : 0)*sizeof(word))) &*&
+  (tracking && prev != 0 ? track_end(prev,_) : true) &*&
+  (top != 0 && limit-top < 3*sizeof(word) ? filler_words(top,limit-top) : true) &*&
+  s->promoted_track_ |-> ?current &*&
+  (expected == 0 ? current == prev : start_slot(expected,some((uint8)(expected % 256))) &*&
+    (tracking ? promotion_header(current,prev,expected-3*sizeof(word),_) : current == prev));
+predicate old_sources(OldSpace *s, int stage, uword size, uword free_result, uword chunk_result) =
+  stage == 1 ? (free_result == 0 ? chunk_source(s,size,chunk_result) : true) &*& free_receipt(s,free_result,_,_,_,_,_,size) :
+  stage == 2 &*& chunk_complete(s,size,chunk_result);
+predicate old_request(OldSpace *s, uword size, uword top, uword limit, bool tracking, uword used, bool stopped, uword free_addr, uword chunk_addr) =
+  size <= limit - top ? start_slot(top,_) :
+  stopped ? true : free_input(s,size,top,limit,used,tracking,free_addr,_) &*& (free_addr == 0 ? chunk_source(s,size,chunk_addr) : true);
+predicate reservation(uword result, uword size) =
+  result == 0 ? true : result % sizeof(word) == 0 &*& pointers_((void **)result, size / sizeof(word), _);
+@*/
+uword OldSpace_allocate_in_new_chunk(OldSpace *self, uword size);
+/*@ requires old_window(self, _, _, _) &*& old_controls(self, _, _, _) &*& old_sources(self, 1, size, 0, ?chunk_addr); @*/
+/*@ ensures old_window(self, _, _, _) &*& old_controls(self, _, _, _) &*& old_sources(self, 2, size, 0, chunk_addr) &*&
+            result == chunk_addr &*& reservation(result, size); @*/
+
+/*@
+predicate page_request(OldSpace *s, uword bytes, uword base);
+predicate page_result(OldSpace *s, uword bytes, uword base);
+predicate space_chunks(OldSpace *s, list<pair<Chunk *,int> > chunks);
+fixpoint int reserved_chunk_bytes(list<pair<Chunk *,int> > chunks) {
+  switch (chunks) {
+    case nil: return 0;
+    case cons(h,t): return snd(h) + reserved_chunk_bytes(t);
+  }
+}
+lemma void inserted_chunk_extent(list<pair<Chunk *,int> > chunks, pair<Chunk *,int> inserted)
+  requires mem(inserted,chunks) == true;
+  ensures reserved_chunk_bytes(chunks) == snd(inserted) + reserved_chunk_bytes(remove(inserted,chunks));
+{
+  switch (chunks) {
+    case nil:
+    case cons(h,t): if (h != inserted) inserted_chunk_extent(t,inserted);
+  }
+}
+predicate detached_chunk(OldSpace *s, Chunk *chunk, uword base, uword size);
+predicate attached_metadata(Chunk *chunk, uword base, uword size, bool tracking);
+@*/
+Chunk *ObjectMemory_allocate_chunk(OldSpace *s, uword size);
+//@ requires page_request(s,size,?base);
+//@ ensures page_result(s,size,base) &*& (base == 0 ? result == 0 : result != 0 &*& result->start_ |-> base &*& result->end_ |-> base+size &*& base % sizeof(word) == 0 &*& pointers_((void **)base,size/sizeof(word),_) &*& detached_chunk(s,result,base,size));
+void Space_append(OldSpace *s, Chunk *chunk);
+/*@ requires detached_chunk(s,chunk,?base,?size) &*& space_chunks(s,?chunks) &*&
+    [?f]s->tracking_allocations_ |-> ?tracking; @*/
+/*@ ensures [f]s->tracking_allocations_ |-> tracking &*& space_chunks(s,?after) &*&
+    mem(pair(chunk,size),after) == true &*& remove(pair(chunk,size),after) == chunks &*&
+    attached_metadata(chunk,base,size,tracking) &*& (tracking ? promotion_metadata(base) : true); @*/
+
+@prototypes
+@render src/third_party/dartino/object_memory.h toit::chunk_end_sentinel tu=src/third_party/dartino/object_memory_copying.cc
+static inline Object* chunk_end_sentinel()
+//@ requires true;
+//@ ensures result == 0;
+{
+  return reinterpret_cast<Object*>(0);
+}
+
+@render src/third_party/dartino/object_memory.h toit::write_sentinel_at tu=src/third_party/dartino/object_memory_copying.cc
+inline void write_sentinel_at(uword address)
+//@ requires pointer_((void **)address, _);
+//@ ensures pointer((void **)address, 0);
+{
+  ASSERT(sizeof(Object*) == SENTINEL_SIZE);
+  *reinterpret_cast<Object**>(address) = chunk_end_sentinel();
+}
+
+@render src/third_party/dartino/object_memory.h toit::SemiSpace::try_allocate tu=src/third_party/dartino/object_memory_copying.cc
+uword SemiSpace::try_allocate(uword size)
+/*@ requires self->top_ |-> ?top &*& self->limit_ |-> ?limit &*&
+             pointers_((void **)top, ?words, ?slots) &*& 0 <= words &*& limit == top + words * sizeof(word) &*&
+             (top != 0 || words == 0) &*& top % sizeof(word) == 0 &*& size % sizeof(word) == 0; @*/
+/*@ ensures self->limit_ |-> limit &*& length(word_starts(top,nat_of_int(words))) == words &*&
+            distinct(word_starts(top,nat_of_int(words))) == true &*&
+            forall_int((available_word)(word_starts(top,nat_of_int(words)),top,limit)) == true &*&
+            (size >= limit - top ?
+              result == 0 &*& self->top_ |-> top &*& pointers_((void **)top, words, slots) :
+              result == top &*& result != 0 &*& self->top_ |-> ?after &*& after == top + size &*&
+              word_starts(top,nat_of_int(words)) == append(word_starts(result,nat_of_int(size/sizeof(word))),word_starts(after,nat_of_int(words-size/sizeof(word)))) &*&
+              pointers_((void **)top, size / sizeof(word), take(size / sizeof(word), slots)) &*&
+              pointer((void **)(top + size), 0) &*&
+              pointers_((void **)(top + size) + 1, words - size / sizeof(word) - 1, tail(drop(size / sizeof(word), slots)))); @*/
+{
+  //@ window_positions(top,nat_of_int(words));
+  if (limit_ - top_ <= size) return 0;
+  uword result = top_;
+  top_ += size;
+  //@ div_rem_nonneg(size, sizeof(word));
+  //@ int k = size / sizeof(word);
+  //@ split_window(top,nat_of_int(k),words-k);
+  //@ pointers__split((void **)top, k);
+  //@ open pointers_((void **)top + k, words - k, drop(k, slots));
+  write_sentinel_at(top_);
+  return result;
+}
+
+@render src/third_party/dartino/object_memory_copying.cc toit::SemiSpace::flush
+void SemiSpace::flush()
+/*@ requires [_]chunk_list_empty(self, ?empty) &*& self->top_ |-> ?top &*&
+             (empty ? true : pointer_((void **)top, _)); @*/
+/*@ ensures self->top_ |-> top &*& (empty ? true : pointer((void **)top, 0)); @*/
+{
+  if (!is_empty()) {
+    ASSERT(top_ < limit_);
+    write_sentinel_at(top_);
+  }
+}
+
+@render src/third_party/dartino/object_memory_copying.cc toit::SemiSpace::allocate
+uword SemiSpace::allocate(uword size)
+/*@ requires self->top_ |-> ?top &*& self->limit_ |-> ?limit &*&
+             pointers_((void **)top, ?words, ?slots) &*& 0 <= words &*& limit == top + words * sizeof(word) &*&
+             (top != 0 || words == 0) &*& top % sizeof(word) == 0 &*& size % sizeof(word) == 0 &*& [_]chunk_list_empty(self, words == 0); @*/
+/*@ ensures self->limit_ |-> limit &*& length(word_starts(top,nat_of_int(words))) == words &*&
+            distinct(word_starts(top,nat_of_int(words))) == true &*&
+            forall_int((available_word)(word_starts(top,nat_of_int(words)),top,limit)) == true &*&
+            (size >= limit - top ?
+              result == 0 &*& self->top_ |-> top &*& (words == 0 ? pointers_((void **)top, words, slots) :
+                pointer((void **)top, 0) &*& pointers_((void **)top + 1, words - 1, tail(slots))) :
+              result == top &*& result != 0 &*& self->top_ |-> ?after &*& after == top + size &*&
+              word_starts(top,nat_of_int(words)) == append(word_starts(result,nat_of_int(size/sizeof(word))),word_starts(after,nat_of_int(words-size/sizeof(word)))) &*&
+              pointers_((void **)top, size / sizeof(word), take(size / sizeof(word), slots)) &*&
+              pointer((void **)(top + size), 0) &*&
+              pointers_((void **)(top + size) + 1, words - size / sizeof(word) - 1, tail(drop(size / sizeof(word), slots)))); @*/
+{
+  //@ window_positions(top,nat_of_int(words));
+  if (limit_ - top_ > size) {
+    uword result = top_;
+    top_ += size;
+    //@ div_rem_nonneg(size, sizeof(word));
+    //@ int k = size / sizeof(word);
+    //@ split_window(top,nat_of_int(k),words-k);
+    //@ pointers__split((void **)top, k);
+    //@ open pointers_((void **)top + k, words - k, drop(k, slots));
+    write_sentinel_at(top_);
+    return result;
+  }
+  if (!is_empty()) {
+    //@ open pointers_((void **)top, words, slots);
+    flush();
+  }
+  return 0;
+}
+
+@render src/third_party/dartino/object_memory.h toit::Chunk::start tu=src/third_party/dartino/object_memory_copying.cc
+  uword start() const
+  //@ requires [?f]self->start_ |-> ?start;
+  //@ ensures [f]self->start_ |-> start &*& result == start;
+  //@ terminates;
+  { return start_; }
+
+@render src/third_party/dartino/object_memory.h toit::Chunk::end tu=src/third_party/dartino/object_memory_copying.cc
+  uword end() const
+  //@ requires [?f]self->end_ |-> ?end;
+  //@ ensures [f]self->end_ |-> end &*& result == end;
+  { return end_; }
+
+@render src/third_party/dartino/object_memory.h toit::has_sentinel_at tu=src/third_party/dartino/object_memory_copying.cc
+static inline bool has_sentinel_at(uword address)
+//@ requires [?f]pointer((void **)address, ?p);
+//@ ensures [f]pointer((void **)address, p) &*& result == (p == 0);
+{
+  return *reinterpret_cast<Object**>(address) == chunk_end_sentinel();
+}
+
+@render src/third_party/dartino/object_memory_copying.cc toit::SemiSpace::is_flushed
+bool SemiSpace::is_flushed()
+/*@ requires [?f]self->top_ |-> ?top &*& [f]self->limit_ |-> ?limit &*&
+             [f]sentinel_view(top, limit, ?flushed); @*/
+/*@ ensures [f]self->top_ |-> top &*& [f]self->limit_ |-> limit &*&
+            [f]sentinel_view(top, limit, flushed) &*& result == flushed; @*/
+{
+  //@ open [f]sentinel_view(top, limit, flushed);
+  if (top_ == 0 && limit_ == 0) return true;
+  return has_sentinel_at(top_);
+}
+
+@render src/third_party/dartino/gc_metadata.h toit::GcMetadata::in_metadata_range tu=src/third_party/dartino/object_memory_copying.cc type=bool(unsignedlong)|bool(unsignedint) truncating
+  static bool in_metadata_range(T address_argument)
+  //@ requires [_]GcMetadata_singleton_.lowest_address_ |-> ?base &*& [_]GcMetadata_singleton_.heap_extent_ |-> ?extent;
+  //@ ensures result == metadata_contains(base,extent,address_argument);
+  {
+    uword address = reinterpret_cast<uword>(address_argument);
+    uword lowest = singleton_.lowest_address_;
+    return lowest <= address && address <= lowest + singleton_.heap_extent_;
+  }
+
+@render src/third_party/dartino/gc_metadata.h toit::GcMetadata::starts_for tu=src/third_party/dartino/object_memory_copying.cc truncating
+  static inline uint8* starts_for(uword address)
+  //@ requires [_]GcMetadata_singleton_.starts_bias_ |-> ?bias;
+  //@ ensures result == table_address(card(address),bias);
+  {
+    ASSERT(in_metadata_range(address));
+    //@ shiftright_div(address,sizeof(word) == 8 ? N8 : N7);
+    return reinterpret_cast<uint8*>((address >> CARD_SIZE_LOG_2) +
+                                    singleton_.starts_bias_);
+  }
+
+@render src/third_party/dartino/gc_metadata.h toit::GcMetadata::initialize_starts_for_chunk tu=src/third_party/dartino/object_memory_copying.cc
+  static void initialize_starts_for_chunk(const Chunk* chunk, uword only_above = 0)
+  /*@ requires [?f]chunk->start_ |-> ?lo &*& [f]chunk->end_ |-> ?hi &*& lo <= hi &*&
+               (only_above < hi ? starts_state(only_above > lo ? only_above : lo, hi, _) : true); @*/
+  /*@ ensures [f]chunk->start_ |-> lo &*& [f]chunk->end_ |-> hi &*&
+              (only_above < hi ? starts_state(only_above > lo ? only_above : lo, hi, true) : true); @*/
+  {
+    uword start = chunk->start();
+    uword end = chunk->end();
+    if (only_above >= end) return;
+    if (only_above > start) {
+      ASSERT(only_above % CARD_SIZE == 0);
+      start = only_above;
+    }
+    ASSERT(in_metadata_range(start));
+    //@ open starts_state(start, end, _);
+    uint8* from = starts_for(start);
+    //@ shiftright_div(start, nat_of_int(GcMetadata_CARD_SIZE_LOG_2));
+    //@ shiftright_div(end, nat_of_int(GcMetadata_CARD_SIZE_LOG_2));
+    uword cards = (end >> CARD_SIZE_LOG_2) - (start >> CARD_SIZE_LOG_2);
+    memset(from, NO_OBJECT_START, cards);
+    //@ close starts_state(start, end, true);
+  }
+
+@render src/third_party/dartino/object_memory_copying.cc toit::SemiSpace::update_base_and_limit
+void SemiSpace::update_base_and_limit(Chunk* chunk, uword top)
+/*@ requires self->top_ |-> _ &*& self->limit_ |-> _ &*& [?f]chunk->start_ |-> ?start &*& [f]chunk->end_ |-> ?end &*&
+             0 < start &*& start <= top &*& top % sizeof(word) == 0 &*&
+             pointers_((void **)top, ?words, ?slots) &*& 0 < words &*& end == top + words * sizeof(word) &*&
+             [_]GcMetadata_singleton_.lowest_address_ |-> ?lowest &*& [_]GcMetadata_singleton_.heap_extent_ |-> ?extent &*&
+             (top == start && metadata_contains(lowest,extent,top) ? starts_state(start, end, _) : true); @*/
+/*@ ensures self->top_ |-> top &*& self->limit_ |-> end &*& [f]chunk->start_ |-> start &*& [f]chunk->end_ |-> end &*&
+            distinct(word_starts(top,nat_of_int(words))) == true &*& length(word_starts(top,nat_of_int(words))) == words &*&
+            forall_int((available_word)(word_starts(top,nat_of_int(words)),top,end)) == true &*&
+            pointer((void **)top, 0) &*& pointers_((void **)top + 1, words - 1, tail(slots)) &*&
+            (top == start && metadata_contains(lowest,extent,top) ? starts_state(start, end, true) : true); @*/
+{
+  ASSERT(is_flushed());
+  ASSERT(top >= chunk->start());
+  ASSERT(top < chunk->end());
+  top_ = top;
+  //@ window_positions(top,nat_of_int(words));
+  //@ open pointers_((void **)top, words, slots);
+  write_sentinel_at(top_);
+  limit_ = chunk->end();
+  if (top == chunk->start() && GcMetadata::in_metadata_range(top)) {
+    GcMetadata::initialize_starts_for_chunk(chunk);
+  }
+}
+
+@render src/third_party/dartino/object_memory.h toit::Chunk::size tu=src/third_party/dartino/object_memory_mark_sweep.cc
+  uword size() const
+  //@ requires [?f]self->start_ |-> ?lo &*& [f]self->end_ |-> ?hi &*& lo <= hi;
+  //@ ensures [f]self->start_ |-> lo &*& [f]self->end_ |-> hi &*& result == hi - lo;
+  //@ terminates;
+  { return end_ - start_; }
+
+@render src/third_party/dartino/object_memory_mark_sweep.cc toit::OldSpace::use_whole_chunk
+void OldSpace::use_whole_chunk(Chunk* chunk)
+/*@ requires [?f]chunk->start_ |-> ?lo &*& [f]chunk->end_ |-> ?hi &*&
+             self->top_ |-> _ &*& self->limit_ |-> _ &*& self->used_ |-> ?used &*&
+             self->tracking_allocations_ |-> ?tracking &*& self->promoted_track_ |-> ?prev &*&
+             pointers_((void **)lo, ?n, ?words) &*& 0 < lo &*& lo % sizeof(word) == 0 &*&
+             n >= 1 &*& hi == lo + n * sizeof(word) &*& used + hi - lo - sizeof(word) <= UINTPTR_MAX &*&
+             (tracking ? promotion_metadata(lo) &*& n > 4 : true); @*/
+/*@ ensures [f]chunk->start_ |-> lo &*& [f]chunk->end_ |-> hi &*&
+            self->top_ |-> ?payload &*& payload == lo + (tracking ? 3 : 0) * sizeof(word) &*& self->limit_ |-> ?limit &*& limit == hi - sizeof(word) &*&
+            track_words(payload,limit) == n - (tracking ? 4 : 1) &*&
+            self->used_ |-> used + hi - lo - sizeof(word) &*& self->tracking_allocations_ |-> tracking &*&
+            self->promoted_track_ |-> ?track &*& pointer((void **)(hi - sizeof(word)), 0) &*&
+            (tracking ? promotion_header(track, prev, lo, hi - sizeof(word)) &*&
+              pointers_((void **)lo + 3, n - 4, drop(3, take(n - 1, words))) :
+              track == prev &*& pointers_((void **)lo, n - 1, take(n - 1, words))); @*/
+{
+  top_ = chunk->start();
+  limit_ = top_ + chunk->size() - WORD_SIZE;
+  //@ pointers__split((void **)lo, n - 1);
+  //@ open pointers_((void **)lo + n - 1, 1, _);
+  *reinterpret_cast<Object**>(limit_) = chunk_end_sentinel();
+  if (tracking_allocations_) {
+    //@ pointers__split((void **)lo, 3);
+    promoted_track_ = PromotedTrack::initialize(promoted_track_, top_, limit_);
+    top_ += PromotedTrack::header_size();
+  }
+  used_ += chunk->size() - WORD_SIZE;
+  //@ div_rem_nonneg(lo,sizeof(word));
+  //@ div_rem_nonneg_unique(hi-sizeof(word),sizeof(word),lo/sizeof(word)+n-1,0);
+  //@ div_rem_nonneg_unique(lo+(tracking ? 3 : 0)*sizeof(word),sizeof(word),lo/sizeof(word)+(tracking ? 3 : 0),0);
+}
+
+@render src/third_party/dartino/gc_metadata.h toit::GcMetadata::record_start tu=src/third_party/dartino/object_memory_mark_sweep.cc
+  inline static void record_start(uword address)
+  //@ requires start_slot(address,_);
+  //@ ensures start_slot(address,some((uint8)(address % 256)));
+  {
+    //@ open start_slot(address,_);
+    uint8* start = starts_for(address);
+    ASSERT(CARD_SIZE_LOG_2 <= 8);
+    *start = static_cast<uint8>(address % 256);
+    //@ close start_slot(address,some((uint8)(address % 256)));
+  }
+
+@render src/third_party/dartino/object_memory.h toit::OldSpace::needs_garbage_collection tu=src/third_party/dartino/object_memory_mark_sweep.cc
+  bool needs_garbage_collection()
+  //@ requires self->tracking_allocations_ |-> ?tracking &*& self->used_ |-> ?used &*& self->promotion_failed_ |-> ?failed;
+  //@ ensures self->tracking_allocations_ |-> tracking &*& self->used_ |-> used &*& self->promotion_failed_ |-> failed &*& result == (!tracking && used > 0 && failed);
+  {
+    if (tracking_allocations_) return false;
+    return used_ > 0 && promotion_failed_;
+  }
+
+@render src/third_party/dartino/object_memory_mark_sweep.cc toit::OldSpace::allocate
+uword OldSpace::allocate(uword size)
+/*@ requires old_window(self, ?top, ?limit, ?slots) &*& old_controls(self, ?tracking, ?used, ?failed) &*&
+             0 < size &*& size % sizeof(word) == 0 &*&
+             old_request(self, size, top, limit, tracking, used, !tracking && used > 0 && failed, ?free_addr, ?chunk_addr); @*/
+/*@ ensures old_window(self, ?next, ?last, ?rest) &*& old_controls(self, ?tracking1, ?used1, ?failed1) &*& reservation(result, size) &*&
+            (size <= limit - top ? result == top &*& result != 0 &*& next == top + size &*& last == limit &*&
+              track_words(top,next) == size/sizeof(word) &*& forall_int((promotion_transfer)(top,next,last)) == true &*&
+              rest == drop(size / sizeof(word), slots) &*& tracking1 == tracking &*& used1 == used &*& failed1 == failed &*&
+              start_slot(top,some((uint8)(top % 256))) :
+             !tracking && used > 0 && failed ? result == 0 && next == top && last == limit && rest == slots &&
+              tracking1 == tracking && used1 == used && failed1 == failed :
+             old_sources(self, ?stage, size, free_addr, chunk_addr) &*&
+               (free_addr != 0 ? result == free_addr && stage == 1 : result == chunk_addr && stage == 2)); @*/
+{
+  ASSERT(size >= HeapObject::SIZE);
+  ASSERT(Utils::is_aligned(size, WORD_SIZE));
+  //@ open old_request(self, size, top, limit, tracking, used, _, free_addr, chunk_addr);
+  //@ open old_window(self, top, limit, slots);
+  if (limit_ - top_ >= static_cast<uword>(size)) {
+    uword result = top_;
+    top_ += size;
+    GcMetadata::record_start(result);
+    //@ div_rem_nonneg(size, sizeof(word));
+    //@ div_rem_nonneg(top,sizeof(word));
+    //@ div_rem_nonneg_unique(top+size,sizeof(word),top/sizeof(word)+size/sizeof(word),0);
+    //@ div_rem_nonneg_unique(limit,sizeof(word),top/sizeof(word)+length(slots),0);
+    //@ account_bump(top,top+size,limit);
+    //@ pointers__split((void **)top, size / sizeof(word));
+    //@ close reservation(result, size);
+    //@ close old_window(self, top + size, limit, drop(size / sizeof(word), slots));
+    return result;
+  }
+  //@ close old_window(self, top, limit, slots);
+  //@ open old_controls(self, tracking, used, failed);
+  if (needs_garbage_collection()) {
+    //@ close old_controls(self, tracking, used, failed);
+    //@ close reservation(0, size);
+    return 0;
+  }
+  //@ close old_controls(self, tracking, used, failed);
+  uword result = allocate_from_free_list(size);
+  //@ close old_sources(self,1,size,free_addr,chunk_addr);
+  //@ if (result == 0) open reservation(0, size);
+  if (result == 0) result = allocate_in_new_chunk(size);
+  return result;
+}
+
+@render src/third_party/dartino/object_memory_mark_sweep.cc toit::OldSpace::allocate_in_free_region
+uword OldSpace::allocate_in_free_region(FreeListRegion* region, uword size)
+/*@ requires region_storage(region,?base,?n,0,?words) &*& self->top_ |-> 0 &*& self->limit_ |-> 0 &*&
+    old_controls(self,?tracking,?used,?failed) &*& self->promoted_track_ |-> ?prev &*&
+    size > 0 &*& size % sizeof(word) == 0 &*& size + (tracking ? 3 : 0) * sizeof(word) <= n * sizeof(word) &*&
+    used + n * sizeof(word) <= UINTPTR_MAX &*& (tracking ? promotion_metadata(base) : true) &*&
+    start_slot(base + (tracking ? 3 : 0) * sizeof(word),_); @*/
+/*@ ensures result == base + (tracking ? 3 : 0) * sizeof(word) &*& reservation(result,size) &*&
+    old_window(self,?next,base+n*sizeof(word),drop(size / sizeof(word),tracking ? drop(3,words) : words)) &*& next == result+size &*&
+    track_words(result,next) == size/sizeof(word) &*& forall_int((promotion_transfer)(result,next,base+n*sizeof(word))) == true &*&
+    old_controls(self,tracking,used+n*sizeof(word),failed) &*& self->promoted_track_ |-> ?current &*&
+    (tracking ? promotion_header(current,prev,base,base+n*sizeof(word)) : current == prev) &*&
+    start_slot(result,some((uint8)(result % 256))); @*/
+{
+  //@ open region_storage(region,base,n,0,words);
+  top_ = region->_raw();
+  //@ close region_storage(region,base,n,0,words);
+  limit_ = top_ + region->size();
+  //@ open old_controls(self,tracking,used,failed);
+  used_ += region->size();
+  //@ open region_storage(region,base,n,0,words);
+  if (tracking_allocations_) {
+    //@ pointers__split((void **)base,3);
+    promoted_track_ =
+        PromotedTrack::initialize(promoted_track_, top_, limit_);
+    top_ += PromotedTrack::header_size();
+    //@ close old_window(self,base+3*sizeof(word),base+n*sizeof(word),drop(3,words));
+  }
+  //@ if (!tracking) close old_window(self,base,base+n*sizeof(word),words);
+  //@ close old_controls(self,tracking,used+n*sizeof(word),failed);
+  ASSERT(static_cast<unsigned>(size) <= limit_ - top_);
+  //@ close old_request(self,size,base+(tracking ? 3 : 0)*sizeof(word),base+n*sizeof(word),tracking,used+n*sizeof(word),!tracking && used+n*sizeof(word)>0 && failed,0,0);
+  return allocate(size);
+}
+
+@render src/third_party/dartino/object_memory_mark_sweep.cc toit::OldSpace::allocate_from_free_list
+uword OldSpace::allocate_from_free_list(uword size)
+/*@ requires old_window(self,?top,?limit,?slots) &*& old_controls(self,?tracking,?used,?failed) &*&
+    size > 0 &*& size % sizeof(word) == 0 &*& free_input(self,size,top,limit,used,tracking,?expected,?bs); @*/
+/*@ ensures result == expected &*& reservation(result,size) &*& old_window(self,?next,?last,_) &*& old_controls(self,tracking,?charged,failed) &*&
+    (result == 0 ? next == 0 && last == 0 && charged == used-(limit-top) :
+      next == result+size && charged == used-(limit-top)+(last-result)+(tracking ? 3 : 0)*sizeof(word)) &*&
+    free_receipt(self,expected,tracking,top,limit,_,bs,size); @*/
+{
+  //@ open free_input(self,size,top,limit,used,tracking,expected,bs);
+  //@ assert self->promoted_track_ |-> ?prev;
+  //@ open old_window(self,top,limit,slots);
+  //@ open old_controls(self,tracking,used,failed);
+  //@ if (top == 0) {open pointers_((void **)top,0,slots);} else {close free_storage(top,limit-top);}
+  FreeListRegion* region = take_free_region(size);
+  //@ open exists<FreeListRegion *>(?inserted);
+  //@ open exists<int>(?taken);
+  //@ close old_controls(self,tracking,used-(limit-top),failed);
+  /*@ if (region == 0) {
+    close pointers_((void **)0,0,nil);
+    close old_window(self,0,0,nil);
+    close reservation(0,size);
+    close free_receipt(self,0,tracking,top,limit,prev,bs,size);
+  } @*/
+  if (region == null) return 0;
+  //@ open block(region,taken,0);
+  //@ assert region_storage(region,?base,?n,0,?words);
+  //@ open region_storage(region,base,n,0,words);
+  //@ close region_storage(region,base,n,0,words);
+  return allocate_in_free_region(region, size);
+  //@ close free_receipt(self,expected,tracking,top,limit,prev,bs,size);
+}
+
+@render src/third_party/dartino/object_memory_mark_sweep.cc toit::OldSpace::allocate_and_use_chunk
+Chunk* OldSpace::allocate_and_use_chunk(uword size)
+/*@ requires page_request(self,size,?base) &*& space_chunks(self,?chunks) &*& self->top_ |-> 0 &*& self->limit_ |-> 0 &*&
+    self->used_ |-> ?used &*& self->tracking_allocations_ |-> ?tracking &*& self->promoted_track_ |-> ?prev &*&
+    size % sizeof(word) == 0 &*& size >= (tracking ? 5 : 1)*sizeof(word) &*& used+size-sizeof(word) <= UINTPTR_MAX; @*/
+/*@ ensures page_result(self,size,base) &*& self->tracking_allocations_ |-> tracking &*&
+    (base == 0 ? result == 0 &*& space_chunks(self,chunks) &*& self->top_ |-> 0 &*& self->limit_ |-> 0 &*&
+       self->used_ |-> used &*& self->promoted_track_ |-> prev :
+     result != 0 &*& result->start_ |-> base &*& result->end_ |-> base+size &*&
+       space_chunks(self,?after) &*& mem(pair(result,size),after) == true &*& remove(pair(result,size),after) == chunks &*&
+       reserved_chunk_bytes(after) == reserved_chunk_bytes(chunks)+size &*&
+       attached_metadata(result,base,size,tracking) &*& self->used_ |-> used+size-sizeof(word) &*&
+       old_window(self,base+(tracking ? 3 : 0)*sizeof(word),base+size-sizeof(word),_) &*&
+       pointer((void **)(base+size-sizeof(word)),0) &*& self->promoted_track_ |-> ?current &*&
+       (tracking ? promotion_header(current,prev,base,base+size-sizeof(word)) : current == prev)); @*/
+{
+  Chunk* chunk = ObjectMemory::allocate_chunk(this, size);
+  if (chunk != null) {
+    //@ div_rem_nonneg(size,sizeof(word));
+    append(chunk);
+    use_whole_chunk(chunk);
+    //@ assert space_chunks(self,?after);
+    //@ inserted_chunk_extent(after,pair(chunk,size));
+    //@ close old_window(self,base+(tracking ? 3 : 0)*sizeof(word),base+size-sizeof(word),_);
+  }
+  return chunk;
+}

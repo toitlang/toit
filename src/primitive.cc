@@ -106,10 +106,15 @@ Object* Primitive::return_not_a_smi(Process* process, Object* value) {
   }
 }
 
+static_assert(Program::ROOT_COUNT <= (Error::MAX_TAGGED_ERROR >> Error::ERROR_SHIFT),
+              "Every root index must fit in an immediate primitive error");
+
 Object* Primitive::unmark_from_error(Program* program, Object* marked_error) {
   ASSERT((reinterpret_cast<uword>(marked_error) & 3) == Error::ERROR_TAG);
   if (reinterpret_cast<uword>(marked_error) < Error::MAX_TAGGED_ERROR) {
-    return program->root(reinterpret_cast<uword>(marked_error) >> Error::ERROR_SHIFT);
+    int index = reinterpret_cast<uword>(marked_error) >> Error::ERROR_SHIFT;
+    if (index >= Program::ROOT_COUNT) index = Program::INVALID_ARGUMENT_INDEX;
+    return program->root(index);
   }
   return marked_error->unmark();
 }

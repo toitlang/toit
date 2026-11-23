@@ -1,0 +1,14 @@
+// Copyright (C) 2026 Toit contributors.
+//
+// This zero-argument primitive returns the target's word size in bytes.
+@include ../model/model.cfg
+@verbatim
+#include "../model/objects.gen.h"
+@prototypes
+@render src/primitive_core.cc toit::primitive_word_size
+PRIMITIVE(word_size)
+//@ requires true;
+//@ ensures is_smi_w((uword)result) == true &*& smi_val((uword)result) == sizeof(word);
+{
+  return Smi::from(WORD_SIZE);
+}

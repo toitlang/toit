@@ -19,7 +19,7 @@
 #include "flash_registry.h"
 #include "main_utf_8_helper.h"
 #include "os.h"
-#include "third_party/dartino/gc_metadata.h"
+#include "third_party/dartino/object_memory.h"
 #include "snapshot.h"
 #include "snapshot_bundle.h"
 #include "vessel/token.h"
@@ -39,10 +39,6 @@ int main(int argc, char **argv) {
   Flags::program_path = OS::get_executable_path();
   Flags::process_args(&argc, argv);
 
-  FlashRegistry::set_up();
-  OS::set_up();
-  ObjectMemory::set_up();
-
   bool modified = false;
   for (size_t i = 0; i < sizeof(VESSEL_TOKEN); i++) {
     if (vessel_snapshot_data[i] != VESSEL_TOKEN[i]) {
@@ -55,6 +51,10 @@ int main(int argc, char **argv) {
     return -1;
   }
 
+  FlashRegistry::set_up();
+  OS::set_up();
+  ObjectMemory::set_up();
+
   int snapshot_size = reinterpret_cast<uint32*>(vessel_snapshot_data)[0];
   uint8* snapshot = &vessel_snapshot_data[4];
   // TODO(florian): we currently create a copy, as the snapshot is freed at the end.
@@ -66,7 +66,7 @@ int main(int argc, char **argv) {
   argv++;
   int exit_code = run_program(null, bundle, argv);
 
-  GcMetadata::tear_down();
+  ObjectMemory::tear_down();
   OS::tear_down();
   FlashRegistry::tear_down();
   return exit_code;

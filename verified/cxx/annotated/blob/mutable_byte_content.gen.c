@@ -19,7 +19,7 @@ bool Object_mutable_byte_content__Processp_uint8pp_wordp_Errorpp_int(Object *sel
              pointer_((void **)content, ?oc0) &*& intptr_(length, ?ol0) &*& pointer_((void **)error, _) &*&
              0 <= depth &*& depth <= Object_MAX_BYTE_CONTENT_DEPTH; @*/
 /*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
-            pointer((void **)error, _) &*&
+            pointer((void **)error, ?err) &*& (uword)err % 4 == 3 &*&
             result ? *content |-> ?a &*& *length |-> ?l &*& [_]mutable_result(objs2, H2, process, a, l, _) :
               pointer_((void **)content, ?oc) &*& intptr_(length, ?ol) &*& (oc0 == none || oc != none) &*& (ol0 == none || ol != none); @*/
 {
@@ -83,11 +83,11 @@ bool Object_mutable_byte_content__Processp_uint8pp_wordp_Errorpp_int(Object *sel
     //@ blob_take(new_backing);
     //@ blob_take(b);
     //@ uint8 *bb = blob_base(H2, b);
-    //@ uchars_split(bb, (uword)ic - (uword)bb);
+    //@ if (ic != bb) uchars_split(bb, (uword)ic - (uword)bb);
     //@ uchars_split(ic, il);
     memcpy((void *)ByteArray_Bytes_address(&bytes), (void *)immutable_content, (size_t)immutable_length);
     //@ uchars_join(ic);
-    //@ uchars_join(bb);
+    //@ if (ic != bb) uchars_join(bb);
     //@ blob_give(b);
     //@ blob_give(new_backing);
     //@ heap_holes_close();
@@ -143,7 +143,7 @@ bool Object_mutable_byte_content__Processp_uint8pp_wordp_Errorpp(Object *self, P
 /*@ requires [?fp]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*& good(objs, self) == true &*&
              pointer_((void **)content, ?oc0) &*& intptr_(length, ?ol0) &*& pointer_((void **)error, _); @*/
 /*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
-            pointer((void **)error, _) &*&
+            pointer((void **)error, ?err) &*& (uword)err % 4 == 3 &*&
             result ? *content |-> ?a &*& *length |-> ?l &*& [_]mutable_result(objs2, H2, process, a, l, _) :
               pointer_((void **)content, ?oc) &*& intptr_(length, ?ol) &*& (oc0 == none || oc != none) &*& (ol0 == none || ol != none); @*/
 {
@@ -155,7 +155,7 @@ bool Object_mutable_byte_content__Processp_MutableBlobp_Errorpp(Object *self, Pr
 /*@ requires [?fp]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*& good(objs, self) == true &*&
              blob->address_ |-> _ &*& blob->length_ |-> _ &*& pointer_((void **)error, _); @*/
 /*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
-            pointer((void **)error, _) &*& blob->address_ |-> ?a &*& blob->length_ |-> ?l &*&
+            pointer((void **)error, ?err) &*& (uword)err % 4 == 3 &*& blob->address_ |-> ?a &*& blob->length_ |-> ?l &*&
             result ? [_]mutable_result(objs2, H2, process, a, l, _) : true; @*/
 {
   uint8 *content;

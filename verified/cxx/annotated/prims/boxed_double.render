@@ -1,0 +1,19 @@
+// Copyright (C) 2026 Toit contributors.
+@include ../model/model.cfg
+@header boxed_double.gen.h
+@verbatim
+#include "integer.gen.h"
+@prototypes
+@render src/primitive.cc toit::Primitive::allocate_double
+Object* Primitive::allocate_double(double value, Process* process)
+//@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H);
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+            ((uword)result % 4 == 3 ? objs2 == objs && H2 == H && (uword)result == ((uword)root_allocation_failed(prog) | 3) :
+             !mem(result, objs) && objs2 == cons(result, objs) && good(objs2, result) && has_tag(H2, result, DOUBLE_TAG)); @*/
+{
+  Object* result = process->object_heap()->allocate_double(value);
+  //@ open allocated(objs, H, process, result, ?objs1, ?H1);
+  //@ if (result != 0) grows_alloc(objs, H, result, H1); else grows_refl(objs, H);
+  if (result != null) return result;
+  return mark_as_error(process->program()->allocation_failed());
+}

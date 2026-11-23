@@ -33,6 +33,10 @@ const char* Process::StateName[] = {
   "RUNNING",
 };
 
+static uword program_image_size(const Program* program) {
+  return program ? program->size_no_assets() : 0;
+}
+
 Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination, InitialMemoryManager* initial_memory)
     : id_(VM::current()->scheduler()->next_process_id())
     , next_task_id_(0)
@@ -40,8 +44,7 @@ Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, S
     , runner_(runner)
     , group_(group)
     , policy_(group->policy())
-    , program_heap_address_(reinterpret_cast<uword>(program))
-    , program_heap_size_(program ? program->size_no_assets() : 0)
+    , program_heap_size_(program_image_size(program))
     , entry_(Method::invalid())
     , spawn_method_(Method::invalid())
     , object_heap_(
@@ -204,7 +207,8 @@ String* Process::allocate_string(const char* content, word length) {
 }
 
 String* Process::allocate_string(word length) {
-  ASSERT(length >= 0);
+  // The external representation charges one more byte for its terminator.
+  if (length < 0 || length == INTPTR_MAX) return null;
   bool can_fit_in_heap_block = length <= String::max_internal_size_in_process();
   if (can_fit_in_heap_block) {
     String* result = object_heap()->allocate_internal_string(length);
@@ -298,6 +302,14 @@ ByteArray* Process::allocate_byte_array(word length, bool force_external) {
   return null;
 }
 
+// The counter must remain representable even for an unlimited mailbox. A
+// scaled quota above INTPTR_MAX admits every representable total.
+static bool mailbox_has_room(word used, word added, word quota, word factor) {
+  ASSERT(factor > 0);
+  if (used < 0 || added < 0 || added > INTPTR_MAX - used) return false;
+  return quota <= 0 || quota > INTPTR_MAX / factor || used + added <= quota * factor;
+}
+
 bool Process::_append_message(Message* message) {
   Locker locker(OS::process_mutex());
   if (message->is_object_notify()) {
@@ -305,28 +317,43 @@ bool Process::_append_message(Message* message) {
     if (obj_notify->is_queued()) return true;
     obj_notify->mark_queued();
   } else if (message->is_system()) {
-    SystemMessage* system = static_cast<SystemMessage*>(message);
-    word size = system->size();
-    // Quotas of the receiver. They bound the whole mailbox, including the
-    // messages from trusted senders (for example RPC replies), so they are
-    // a multiple of the per-sender quotas below: a sandboxed process that
-    // fills its mailbox with its own messages still gets its replies.
-    const PolicyQuotas& quotas = policy_->quotas();
-    const word factor = PolicyQuotas::RECEIVER_FACTOR;
-    if (quotas.max_mailbox_messages > 0 && mailbox_count_ >= factor * quotas.max_mailbox_messages) return false;
-    if (quotas.max_mailbox_bytes > 0 && mailbox_bytes_ + size > factor * quotas.max_mailbox_bytes) return false;
-    // Quotas of a messaging-restricted sender. They protect every receiver,
-    // including the system process, from being flooded by sandboxed code.
-    if (system->is_restricted()) {
-      if (system->restricted_max_count() > 0 && restricted_count_ >= system->restricted_max_count()) return false;
-      if (system->restricted_max_bytes() > 0 && restricted_bytes_ + size > system->restricted_max_bytes()) return false;
-      restricted_count_++;
-      restricted_bytes_ += size;
-    }
-    mailbox_count_++;
-    mailbox_bytes_ += size;
+    return append_system_message_locked(static_cast<SystemMessage*>(message), -1);
   }
   messages_.append(message);
+  return true;
+}
+
+bool Process::_append_message(SystemMessage* system, int reply_to) {
+  Locker locker(OS::process_mutex());
+  return append_system_message_locked(system, reply_to);
+}
+
+bool Process::append_system_message_locked(SystemMessage* system, int reply_to) {
+  word size = system->size();
+  // Quotas of the receiver. They bound the whole mailbox, including the
+  // messages from trusted senders (for example RPC replies), so they are
+  // a multiple of the per-sender quotas below: a sandboxed process that
+  // fills its mailbox with its own messages still gets its replies.
+  const PolicyQuotas& quotas = policy_->quotas();
+  const word factor = PolicyQuotas::RECEIVER_FACTOR;
+  if (!mailbox_has_room(mailbox_count_, 1, quotas.max_mailbox_messages, factor)) return false;
+  if (!mailbox_has_room(mailbox_bytes_, size, quotas.max_mailbox_bytes, factor)) return false;
+  // Quotas of a messaging-restricted sender. They protect every receiver,
+  // including the system process, from being flooded by sandboxed code.
+  if (system->is_restricted()) {
+    if (!mailbox_has_room(restricted_count_, 1, system->restricted_max_count(), 1)) return false;
+    if (!mailbox_has_room(restricted_bytes_, size, system->restricted_max_bytes(), 1)) return false;
+  }
+  // A grant belongs to a delivered request. Linking a message into the
+  // FIFO and charging the admitted counters cannot fail after this point.
+  if (reply_to >= 0 && !group_->grant_send_to(reply_to)) return false;
+  if (system->is_restricted()) {
+    restricted_count_++;
+    restricted_bytes_ += size;
+  }
+  mailbox_count_++;
+  mailbox_bytes_ += size;
+  messages_.append(system);
   return true;
 }
 
@@ -387,7 +414,9 @@ void Process::_ensure_random_seeded() {
     memset(seed, 0x42, sizeof(seed));
   }
 #else
-  EntropyMixer::instance()->get_entropy(seed, sizeof(seed));
+  if (!EntropyMixer::instance()->get_entropy(seed, sizeof(seed))) {
+    memset(seed, 0x42, sizeof(seed));
+  }
 #endif
   random_seed(seed, sizeof(seed));
   random_seeded_ = true;

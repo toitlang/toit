@@ -56,7 +56,9 @@ class MarkingVisitor : public RootCallback {
   virtual void do_roots(Object** start, word length) override {
     Object** end = start + length;
     // Mark live all HeapObjects pointed to by pointers in [start, end)
-    for (Object** p = start; p < end; p++) mark_pointer(*p);
+    for (Object** p = start; p < end; p++) {
+      mark_pointer(*p);
+    }
   }
 
   bool shrink_stacks() const override { return true; }

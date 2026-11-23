@@ -108,6 +108,7 @@ class PrimitivePolicy {
   bool may_send_type(int type) const;
 
   const PolicyQuotas& quotas() const { return quotas_; }
+  bool limits_run_time() const { return quotas_.limits_run_time(); }
 
   // Primitive lookup with bounds checks. Returns null if the module or index
   // is out of range or if the module is not linked or denied as a whole.

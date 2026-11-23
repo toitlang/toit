@@ -219,15 +219,15 @@ class HeapAllocator : public SnapshotAllocator {
   }
 
   Object** allocate_external_pointers(int count) override {
-    return unvoid_cast<Object**>(allocate_external(count * sizeof(Object*)));
+    return unvoid_cast<Object**>(allocate_external(static_cast<int64>(count) * WORD_SIZE));
   }
   // The counts are only declared by the (untrusted) snapshot header.
   // The ImageAllocator checks every allocation against the reserved space.
   uint16* allocate_external_uint16s(int count) override {
-    return unvoid_cast<uint16*>(allocate_external(count * 2));
+    return unvoid_cast<uint16*>(allocate_external(static_cast<int64>(count) * 2));
   }
   int32* allocate_external_int32s(int count) override {
-    return unvoid_cast<int32*>(allocate_external(count * 4));
+    return unvoid_cast<int32*>(allocate_external(static_cast<int64>(count) * 4));
   }
 
   int normal_block_count() const { return normal_block_count_; }
@@ -236,7 +236,7 @@ class HeapAllocator : public SnapshotAllocator {
   int external_byte_count() const { return external_byte_count_; }
 
  protected:
-  virtual void* allocate_external(int byte_size) = 0;
+  virtual void* allocate_external(int64 byte_size) = 0;
 
  private:
   int normal_block_count_;
@@ -405,7 +405,7 @@ class ImageAllocator : public HeapAllocator {
   }
 
  protected:
-  void* allocate_external(int byte_size) override;
+  void* allocate_external(int64 byte_size) override;
 
  private:
   ProtectableAlignedMemory* image_ = null;
@@ -420,11 +420,7 @@ class ImageAllocator : public HeapAllocator {
 
   Program* program_ = null;
 
-  // Returns the byte_size needed for the unfolded page aligned image.
-  uword image_byte_size();
-
-  // Returns the byte_size needed for the external (off-heap) memory at the head of the image.
-  uword external_size();
+  bool image_sizes(int* external_bytes, int* total_bytes) const;
 };
 
 template <typename T>
@@ -595,7 +591,7 @@ bool SnapshotReader::initialize(int snapshot_size,
     fail("invalid snapshot size");
     return false;
   }
-  word bound = snapshot_size;
+  int64 bound = snapshot_size;
   if (normal_block_count < 0 ||
       normal_block_count > (32 * bound) / TOIT_PAGE_SIZE + 2 ||
       external_pointer_count < 0 || external_pointer_count > bound ||
@@ -976,6 +972,7 @@ List<uint16> SnapshotReader::read_external_list_uint16() {
 
 List<uint8> SnapshotReader::read_external_list_uint8() {
   int length = read_int32();
+  if (failed()) return List<uint8>();
   if (length < 0 || length > remaining()) {
     fail("invalid list length");
     return List<uint8>();
@@ -1033,17 +1030,24 @@ HeapObject* SizedVirtualAllocator::allocate_object(TypeTag tag, int length) {
   return null;
 }
 
-uword ImageAllocator::external_size() {
-  int summed_allocations =
-      Utils::round_up(sizeof(Program), WORD_SIZE) +
-      external_pointer_count() * WORD_SIZE +
-      Utils::round_up(external_int32_count() * sizeof(int32), WORD_SIZE) +
-      Utils::round_up(external_byte_count(), WORD_SIZE);
-  return Utils::round_up(summed_allocations, TOIT_PAGE_SIZE); // Aligned off-heap.
-}
-
-uword ImageAllocator::image_byte_size() {
-  return external_size() + TOIT_PAGE_SIZE * normal_block_count();
+bool ImageAllocator::image_sizes(int* external_bytes, int* total_bytes) const {
+  if (normal_block_count() < 0 || external_pointer_count() < 0 ||
+      external_int32_count() < 0 || external_byte_count() < 0) return false;
+  // Counts are 32-bit. Keep the full sum through page alignment on both ABIs.
+  auto aligned = [](int64 bytes, int alignment) {
+    return (bytes + alignment - 1) & -static_cast<int64>(alignment);
+  };
+  int64 external = aligned(sizeof(Program), WORD_SIZE) +
+                   static_cast<int64>(external_pointer_count()) * WORD_SIZE +
+                   aligned(static_cast<int64>(external_int32_count()) * INT32_SIZE, WORD_SIZE) +
+                   aligned(external_byte_count(), WORD_SIZE);
+  external = aligned(external, TOIT_PAGE_SIZE);
+  int64 total = external + static_cast<int64>(normal_block_count()) * TOIT_PAGE_SIZE;
+  // The image constructor and snapshot format use signed int sizes.
+  if (total > INT_MAX) return false;
+  *external_bytes = static_cast<int>(external);
+  *total_bytes = static_cast<int>(total);
+  return true;
 }
 
 bool ImageAllocator::initialize(int normal_block_count,
@@ -1055,13 +1059,15 @@ bool ImageAllocator::initialize(int normal_block_count,
                             external_int32_count,
                             external_byte_count);
 
-  int memory_byte_size = image_byte_size();
+  int external_bytes, memory_byte_size;
+  if (!image_sizes(&external_bytes, &memory_byte_size)) return false;
   // Memory is split into two sections:
   //  1. external (off-heap)
   //  2. heap/block
   // Heap memory must be chunked into blocks of TOIT_PAGE_SIZE so that it can be
   // used more uniformly with the rest of the memory. (For example GC).
   image_ = _new ProtectableAlignedMemory(memory_byte_size, TOIT_PAGE_SIZE);
+  if (image_ == null) return false;
   memory_ = image_->address();
   if (memory_ == null) {
     release();
@@ -1074,14 +1080,9 @@ bool ImageAllocator::initialize(int normal_block_count,
   // initialize the memory to 0 to make the image more deterministic.
   memset(memory_, 0, memory_byte_size);
 #endif
-  external_top_ = memory_;
-  void* const external_end = Utils::address_at(external_top_, external_size());
-  external_end_ = external_end;
-
-  external_top_ = Utils::address_at(external_top_, Utils::round_up(sizeof(Program), WORD_SIZE));
-
-  int offset = Utils::round_up(reinterpret_cast<uword>(external_end), TOIT_PAGE_SIZE) - reinterpret_cast<uword>(external_end);
-  block_top_ = Utils::address_at(external_end, offset);
+  external_top_ = Utils::address_at(memory_, Utils::round_up(sizeof(Program), WORD_SIZE));
+  external_end_ = Utils::address_at(memory_, external_bytes);
+  block_top_ = external_end_;
   ASSERT(Utils::is_aligned((uword)block_top_, TOIT_PAGE_SIZE));
   return true;
 }
@@ -1133,8 +1134,8 @@ HeapObject* ImageAllocator::allocate_object(TypeTag tag, int length) {
   return program_->heap_.blocks_.last()->allocate_raw(byte_size);
 }
 
-void* ImageAllocator::allocate_external(int byte_size) {
-  if (byte_size < 0) return null;
+void* ImageAllocator::allocate_external(int64 byte_size) {
+  if (byte_size < 0 || byte_size > INT_MAX) return null;
   uword rounded = Utils::round_up(static_cast<uword>(byte_size), WORD_SIZE);
   uword available = reinterpret_cast<uword>(external_end_) - reinterpret_cast<uword>(external_top_);
   if (rounded > available) return null;

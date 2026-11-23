@@ -132,9 +132,8 @@ choices**:
    CHECK_PREEMPT, `push_error` on allocation failure and the GC retry loops
    of ALLOCATE/PRIMITIVE are absent; allocation never fails and the stack is
    unbounded. BRANCH_BACK's second operand is therefore unused.
-2. IEEE-754 add/sub/mul (INVOKE_ADD/SUB/MUL) and the int/double branch of
-   `compare_numbers` are uninterpreted spec functions (`double_add`, ...,
-   `compare_mixed`); the interpreter implements them with host `f64`.
+2. IEEE-754 add/sub/mul (INVOKE_ADD/SUB/MUL) use uninterpreted spec functions
+   implemented with host `f64`. Numeric comparison has a bit-level specification.
 3. Loops bounded by fuel: `hash_find` and `hash_do` (2^32 iterations) and
    nested large arrays in `fast_at` (depth 8). Beyond the bound the spec is
    stuck (`OutOfFuel`) where the C++ VM may loop forever.
@@ -239,8 +238,8 @@ the dispatch table, `lookup_failure`, call frame) — plus the
 it. Check time: about 5 s for the crate (`cargo verus verify`, vstd
 cached; 224 verified items).
 
-Trusted base of the proof: the four `external_body` functions for
-IEEE-754 arithmetic and `compare_mixed`; the loader establishing
+Trusted base of the proof: the three `external_body` functions for
+IEEE-754 arithmetic; the loader establishing
 `wf_program` (also asserted at run time in `Machine::new`); Rust/Verus.
 The checker of shipped certificates and the heap check (the code devices
 run) also rely on `xvec.rs`: element access without the bounds check

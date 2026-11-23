@@ -42,6 +42,9 @@ class InitialMemoryManager {
     heap_mutex = null;
   }
 
+  // The initial page must hold the stack, task instance and trailing sentinel.
+  static bool can_allocate_task(Program* program);
+
   // Allocates initial pages for heap.  Returns success.
   bool allocate();
 
@@ -108,7 +111,7 @@ class ObjectHeap {
     ALLOCATION_OUT_OF_MEMORY  // The system is out of memory, we should GC other processes.
   };
 
-  void set_last_allocation_result(AllocationResult result) {
+  void set_last_allocation_result(ObjectHeap::AllocationResult result) {
     last_allocation_result_ = result;
   }
 
@@ -131,7 +134,7 @@ class ObjectHeap {
 
   Object** global_variables() const { return global_variables_; }
   Task* task() { return task_; }
-  void set_task(Task* task) { task_ = task; v2_epoch_++; }
+  void set_task(Task* task) { task_ = task; advance_v2_epoch(); }
 
   // The format-2 core's epoch: changes at every garbage collection of this
   // heap and every task switch. Unchanged epoch implies that no object of
@@ -155,7 +158,7 @@ class ObjectHeap {
   bool has_finalizer_to_run() const { return !runnable_finalizers_.is_empty(); }
   Object* next_finalizer_to_run();
 
-  // Tells how many gc operations this heap has experienced.
+  // Counts wrap to zero after the largest nonnegative int that fits a Smi.
   int gc_count(GcType type) {
     if (type == NEW_SPACE_GC) return gc_count_;
     if (type == FULL_GC) return full_gc_count_;
@@ -193,12 +196,15 @@ class ObjectHeap {
   word update_pending_limit();
 
  private:
+  bool prepend_callable_finalizer(Instance* key, Object* lambda, bool weak_map);
+  void unlink_callable_finalizers(Instance* key);
+  uword reserved_heap_bytes() const;
   Program* const program_;
   HeapObject* _allocate_raw(word byte_size) {
     return two_space_heap_.allocate(byte_size);
   }
 
-  inline word allocate_new_space(word byte_size) {
+  inline uword allocate_new_space(word byte_size) {
     return two_space_heap_.allocate_new_space(byte_size);
   }
 
@@ -221,7 +227,7 @@ class ObjectHeap {
   word pending_limit_ = 0;
 
   word max_heap_size_ = 0;  // Configured max heap size, incl. external allocation.
-  std::atomic<word> external_memory_;  // Allocated external memory in bytes.
+  std::atomic<uword> external_memory_;  // Allocated external memory in bytes.
   std::atomic<uint64> total_external_memory_;  // Includes memory that was later freed.
 
   Task* task_ = null;
@@ -235,6 +241,9 @@ class ObjectHeap {
   FinalizerNodeFifo registered_vm_finalizers_;
 
   uword v2_epoch_ = 0;
+  void advance_v2_epoch() { v2_epoch_ = v2_epoch_ + 1; }
+  static int next_gc_count(int count);
+  void record_gc(GcType type);
   int gc_count_ = 0;
   int full_gc_count_ = 0;
   int full_compacting_gc_count_ = 0;

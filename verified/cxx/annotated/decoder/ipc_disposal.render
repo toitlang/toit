@@ -1,0 +1,617 @@
+// Copyright (C) 2026 Toit contributors.
+//
+// A node describes one complete encoding between two byte offsets.
+// A forest owns consecutive nodes and their external allocations.
+@include ../model/model.cfg
+@overloaded MessageDecoder::deallocate
+@verbatim
+#include <stdlib.h>
+#include <string.h>
+#include "../model/objects.gen.h"
+#include "radix.h"
+//@ #include "../model/arith.gh"
+//@ #include "../model/llong.gh"
+
+struct MessageEncoder { uint8 *buffer_; word cursor_; };
+typedef struct MessageEncoder MessageEncoder;
+struct MessageDecoder { uint8 *buffer_; word size_; word cursor_; };
+typedef struct MessageDecoder MessageDecoder;
+
+/*@
+predicate tag_at(MessageDecoder *d, int start, int tag) =
+  [_]d->buffer_ |-> ?b &*& [_]d->size_ |-> ?size &*& 0 <= start &*& start < size &*&
+  0 <= tag &*& tag <= 255 &*& [_]u_character(b + start, tag);
+// A base-128 digit contributes its low seven bits at place 128^k.
+// Continuation bytes own the following digits. The first terminal byte
+// fixes both the numerical value and the next field's offset.
+predicate digits(MessageDecoder *d, int pos, int k, int acc, int value, int end) =
+  tag_at(d, pos, ?byte) &*& digit_tail(d, pos + 1, byte, k, acc, value, end);
+
+predicate digit_tail(MessageDecoder *d, int pos, int byte, int k, int acc, int value, int end) =
+  0 <= k &*& k <= 9 &*& 0 <= byte &*& byte <= 255 &*& 0 <= acc &*& acc < pow128(k) &*&
+  (byte < 128 ?
+    byte <= UINT64_MAX / pow128(k) &*& end == pos &*& value == acc + byte * pow128(k) :
+    k < 9 &*& digits(d, pos, k + 1, acc + (byte - 128) * pow128(k), value, end));
+
+predicate cardinal_at(MessageDecoder *d, int start, int value, int end) =
+  [_]d->size_ |-> ?size &*& end <= size &*& 0 <= value &*& value <= UINTPTR_MAX &*&
+  digits(d, start, 0, 0, value, end);
+predicate pointer_at(MessageDecoder *d, int start, uint8 *value) =
+  [_]d->buffer_ |-> ?b &*& [_]d->size_ |-> ?size &*& 0 <= start &*& start + WORD_SIZE <= size &*&
+  pointer_within_limits(b + start) == true &*& [_]chars((char *)b + start, WORD_SIZE, ?cs) &*& value == pointer_of_chars(cs);
+predicate fixed64_at(MessageDecoder *d, int start) =
+  [_]d->buffer_ |-> ?b &*& [_]d->size_ |-> ?size &*& 0 <= start &*& start + 8 <= size &*&
+  pointer_within_limits(b + start) == true &*& [_]chars((char *)b + start, 8, _);
+
+predicate node(MessageDecoder *d, int start, int end) =
+  0 <= start &*& start < end &*& end <= INT_MAX &*& tag_at(d, start, ?tag) &*&
+  (tag == TAG_NULL || tag == TAG_TRUE || tag == TAG_FALSE ? end == start + 1 :
+   tag == TAG_POSITIVE_SMI || tag == TAG_NEGATIVE_SMI ? cardinal_at(d, start + 1, _, end) :
+   tag == TAG_DOUBLE || tag == TAG_LARGE_INTEGER ? fixed64_at(d, start + 1) &*& end == start + 9 :
+   tag == TAG_STRING || tag == TAG_BYTE_ARRAY ?
+     cardinal_at(d, start + 1, _, ?p) &*& pointer_at(d, p, ?block) &*& end == p + WORD_SIZE &*&
+     block != 0 &*& malloc_block(block, ?n) &*& chars_((char *)block, n, _) :
+   tag == TAG_STRING_INLINE || tag == TAG_BYTE_ARRAY_INLINE ?
+     cardinal_at(d, start + 1, ?n, ?p) &*& 0 <= n &*& start < p &*& end == p + n :
+   (tag == TAG_ARRAY || tag == TAG_MAP) &*& cardinal_at(d, start + 1, ?n, ?p) &*&
+     0 <= n &*& n <= (tag == TAG_MAP ? PROCESS_ARRAY_LIMIT / 2 : PROCESS_ARRAY_LIMIT) &*&
+     start < p &*& forest(d, p, end, tag == TAG_MAP ? 2 * n : n));
+
+predicate forest(MessageDecoder *d, int start, int end, int count) =
+  0 <= count &*& (count == 0 ? start == end :
+    node(d, start, ?next) &*& forest(d, next, end, count - 1));
+
+// The writer advances left to right. Save each continuation byte until the
+// terminal digit supplies the end offset needed by the reader.
+predicate digit_prefix(MessageDecoder *d, int start, int k, int acc) =
+  0 <= k &*& k <= 9 &*& (k == 0 ? acc == 0 :
+    digit_prefix(d, start, k - 1, ?old) &*& tag_at(d, start + k - 1, ?byte) &*&
+    128 <= byte &*& 0 <= old &*& old < pow128(k - 1) &*& acc == old + (byte - 128) * pow128(k - 1));
+
+lemma void finish_digits(MessageDecoder *d, int start, int k, int acc)
+  requires digit_prefix(d, start, k, acc) &*& digits(d, start + k, k, acc, ?value, ?end);
+  ensures digits(d, start, 0, 0, value, end);
+{
+  open digit_prefix(d, start, k, acc);
+  if (k != 0) {
+    assert digit_prefix(d, start, k - 1, ?old);
+    assert tag_at(d, start + k - 1, ?byte);
+    open tag_at(d, start + k - 1, byte);
+    close tag_at(d, start + k - 1, byte);
+    close digit_tail(d, start + k, byte, k - 1, old, value, end);
+    close digits(d, start + k - 1, k - 1, old, value, end);
+    finish_digits(d, start, k - 1, old);
+  }
+}
+
+predicate cardinal_destination(MessageEncoder *e, MessageDecoder *d, int start, int n) =
+  [_]e->buffer_ |-> ?b &*& e->cursor_ |-> start &*& 0 <= start &*& start + n <= INT_MAX &*&
+  (b == 0 ? d == 0 : d != 0 &*&
+    [_]d->buffer_ |-> b &*& [_]d->size_ |-> ?cap &*& start + n <= cap &*&
+    uchars_(b + start, n, _));
+
+// Turn the chunks produced by the native scalar writers into a node at the
+// reader's offset. Callers retain the prefix and suffix of the envelope.
+lemma void scalar_node(MessageDecoder *d, int start, int tag)
+  requires [_]d->buffer_ |-> ?b &*& [_]d->size_ |-> ?size &*&
+           0 <= start &*& size <= INT_MAX &*& start < size &*& u_character(b + start, tag) &*&
+           (tag == TAG_NULL || tag == TAG_TRUE || tag == TAG_FALSE ? true :
+             (tag == TAG_DOUBLE || tag == TAG_LARGE_INTEGER) &*& start + 9 <= size &*&
+             pointer_within_limits(b + (start + 1)) == true &*& chars((char *)b + (start + 1), 8, _));
+  ensures node(d, start, tag == TAG_DOUBLE || tag == TAG_LARGE_INTEGER ? start + 9 : start + 1);
+{
+  leak u_character(b + start, tag);
+  close tag_at(d, start, tag);
+  if (tag == TAG_DOUBLE || tag == TAG_LARGE_INTEGER) {
+    leak chars((char *)b + (start + 1), 8, _);
+    close fixed64_at(d, start + 1);
+    close node(d, start, start + 9);
+  } else {
+    close node(d, start, start + 1);
+  }
+}
+
+// Close a tagged integer or an inline blob after the native writer has
+// produced its sign/magnitude or length field. Inline bytes own no external
+// allocation; their contents are immaterial to the cleanup walk.
+lemma void cardinal_leaf(MessageDecoder *d, int start, int tag, int n, int p)
+  requires [_]d->buffer_ |-> ?b &*& [_]d->size_ |-> ?size &*& size <= INT_MAX &*&
+           0 <= start &*& start < p &*& p <= size &*& u_character(b + start, tag) &*&
+           cardinal_at(d, start + 1, n, p) &*&
+           (tag == TAG_POSITIVE_SMI || tag == TAG_NEGATIVE_SMI ? true :
+            (tag == TAG_STRING_INLINE || tag == TAG_BYTE_ARRAY_INLINE) &*& 0 <= n &*& p + n <= size);
+  ensures node(d, start, tag == TAG_POSITIVE_SMI || tag == TAG_NEGATIVE_SMI ? p : p + n);
+{
+  leak u_character(b + start, tag);
+  close tag_at(d, start, tag);
+  if (tag == TAG_POSITIVE_SMI || tag == TAG_NEGATIVE_SMI) close node(d, start, p);
+  else close node(d, start, p + n);
+}
+
+// A parent's children can be assembled in encoding order. The join consumes
+// their ownership, so the same external allocation cannot serve two children.
+lemma void join_children(MessageDecoder *d, int start, int mid, int end, int left, int right)
+  requires forest(d, start, mid, left) &*& forest(d, mid, end, right);
+  ensures forest(d, start, end, left + right);
+{
+  open forest(d, start, mid, left);
+  if (left != 0) {
+    assert node(d, start, ?next);
+    join_children(d, next, mid, end, left - 1, right);
+    open forest(d, next, end, left - 1 + right);
+    close forest(d, next, end, left - 1 + right);
+    close forest(d, start, end, left + right);
+  }
+}
+
+lemma void container_node(MessageDecoder *d, int start, int tag, int n, int p, int end)
+  requires [_]d->buffer_ |-> ?b &*& [_]d->size_ |-> ?size &*& size <= INT_MAX &*&
+           0 <= start &*& start < p &*& p <= end &*& end <= size &*& u_character(b + start, tag) &*&
+           (tag == TAG_ARRAY || tag == TAG_MAP) &*& 0 <= n &*& n <= (tag == TAG_MAP ? PROCESS_ARRAY_LIMIT / 2 : PROCESS_ARRAY_LIMIT) &*&
+           cardinal_at(d, start + 1, n, p) &*& forest(d, p, end, tag == TAG_MAP ? 2 * n : n);
+  ensures node(d, start, end);
+{
+  leak u_character(b + start, tag);
+  close tag_at(d, start, tag);
+  close node(d, start, end);
+}
+
+// An external leaf also needs the originating allocation's ownership token.
+// The cardinal and pointer may start at any offset after the tag.
+lemma void external_node(MessageDecoder *d, int start, int p, int tag, uint8 *block)
+  requires [_]d->buffer_ |-> ?b &*& [_]d->size_ |-> ?size &*& size <= INT_MAX &*&
+           0 <= start &*& start < p &*& p + WORD_SIZE <= size &*& (tag == TAG_STRING || tag == TAG_BYTE_ARRAY) &*&
+           u_character(b + start, tag) &*& cardinal_at(d, start + 1, _, p) &*&
+           pointer_within_limits(b + p) == true &*& chars((char *)b + p, WORD_SIZE, ?cs) &*&
+           pointer_of_chars(cs) == block &*& block != 0 &*& malloc_block(block, ?n) &*& chars_((char *)block, n, _);
+  ensures node(d, start, p + WORD_SIZE);
+{
+  leak u_character(b + start, tag);
+  close tag_at(d, start, tag);
+  leak chars((char *)b + p, WORD_SIZE, cs);
+  close pointer_at(d, p, block);
+  close node(d, start, p + WORD_SIZE);
+}
+
+fixpoint bool valid_array_slice(int lo, int hi, int len) {
+  return 0 <= lo && lo <= hi && hi <= len && hi - lo <= PROCESS_ARRAY_LIMIT;
+}
+fixpoint int array_payload_start(int start, int count) {
+  return start + 1 + cardinal_width(count);
+}
+
+// Only the unwritten suffix belongs to the next child. Completed siblings
+// and their external owners stay with the enclosing array.
+predicate output_suffix(MessageEncoder *e, MessageDecoder *d, int pos, int cap) =
+  [_]e->buffer_ |-> ?b &*& e->cursor_ |-> pos &*& 0 <= pos &*& pos <= cap &*& cap <= INT_MAX &*&
+  (b == 0 ? d == 0 : d != 0 &*& [_]d->buffer_ |-> b &*& [_]d->size_ |-> cap &*&
+    uchars_(b + pos, cap - pos, _));
+
+fixpoint int smi_magnitude(int value) { return value < 0 ? -value : value; }
+fixpoint int smi_end(int start, int value) {
+  return start + 1 + cardinal_width(smi_magnitude(value));
+}
+predicate smi_wire(MessageDecoder *d, int start, int value) =
+  tag_at(d, start, value < 0 ? TAG_NEGATIVE_SMI : TAG_POSITIVE_SMI) &*&
+  cardinal_at(d, start + 1, smi_magnitude(value), smi_end(start, value));
+
+lemma void smi_cleanup_node(MessageDecoder *d, int start, int value)
+  requires smi_wire(d, start, value) &*& smi_end(start, value) <= INT_MAX;
+  ensures node(d, start, smi_end(start, value));
+{
+  open smi_wire(d, start, value);
+  open tag_at(d, start, ?tag);
+  close tag_at(d, start, tag);
+  close node(d, start, smi_end(start, value));
+}
+
+predicate array_header(MessageDecoder *d, int start, int count) =
+  d == 0 ? true : [_]d->buffer_ |-> ?b &*& u_character(b + start, TAG_ARRAY) &*&
+    cardinal_at(d, start + 1, count, array_payload_start(start, count));
+
+// Recursive-call boundary. The offsets can depend on the occurrence in
+// the traversal (including repeated references), and can start anywhere.
+predicate child_context(MessageEncoder *e, MessageDecoder *d, list<void *> slots, fixpoint(int, int) offsets, int index);
+predicate array_children(MessageEncoder *e, MessageDecoder *d, list<void *> slots, fixpoint(int, int) offsets, int index, int stop) =
+  index < stop ? child_context(e, d, slots, offsets, index) : true;
+predicate failed_child(MessageEncoder *e, MessageDecoder *d, void *child, int start, int end);
+@*/
+
+bool MessageEncoder_encode_any(MessageEncoder *self, Object *child);
+/*@ requires array_children(self, ?d, ?ws, ?offsets, ?i, ?stop) &*& i < stop &*&
+             [?f]heap(?objs, ?H) &*& good(objs, child) == true &*& child == nth(i, ws) &*&
+             output_suffix(self, d, offsets(i), ?cap); @*/
+/*@ ensures [f]heap(objs, H) &*& array_children(self, d, ws, offsets, i + 1, stop) &*& output_suffix(self, d, ?end, cap) &*&
+            offsets(i) <= end &*& end <= cap &*&
+            (result ? end == offsets(i + 1) &*& (d == 0 ? true : node(d, offsets(i), end)) :
+                      failed_child(self, d, child, offsets(i), end)); @*/
+
+Object *MessageDecoder_mark_malformed(MessageDecoder *self);
+//@ requires false;
+//@ ensures false;
+
+void fail(const char *format, ...);
+//@ requires false;
+//@ ensures false;
+
+@render src/messaging.h toit::MessageEncoder::encoding_for_size tu=src/messaging.cc
+  bool encoding_for_size() const
+  //@ requires [?f]self->buffer_ |-> ?b;
+  //@ ensures [f]self->buffer_ |-> b &*& result == (b == 0);
+  { return buffer_ == null; }
+
+@render src/messaging.h toit::MessageEncoder::write_uint8 tu=src/messaging.cc
+  void write_uint8(uint8 value)
+  /*@ requires [?f]self->buffer_ |-> ?b &*& self->cursor_ |-> ?start &*& 0 <= start &*& start < INT_MAX &*&
+               (b == 0 ? true : uchars_(b + start, 1, _)); @*/
+  /*@ ensures [f]self->buffer_ |-> b &*& self->cursor_ |-> start + 1 &*&
+              (b == 0 ? true : u_character(b + start, value)); @*/
+  {
+    //@ if (b != 0) { open uchars_(b + start, 1, _); open uchars_(b + start + 1, 0, _); }
+    if (!encoding_for_size()) buffer_[cursor_] = value;
+    cursor_++;
+  }
+
+@render src/messaging.cc toit::MessageEncoder::write_cardinal
+void MessageEncoder::write_cardinal(uword value)
+//@ requires cardinal_destination(self, ?d, ?start, cardinal_width(value));
+//@ ensures self->cursor_ |-> start + cardinal_width(value) &*& (d == 0 ? true : cardinal_at(d, start, value, start + cardinal_width(value)));
+{
+  //@ int original = value;
+  //@ open cardinal_destination(self, d, start, cardinal_width(value));
+  //@ assert [_]self->buffer_ |-> ?b;
+  //@ int k = 0;
+  //@ int acc = 0;
+  //@ if (b != 0) close digit_prefix(d, start, 0, 0);
+  while (value >= 128)
+  /*@ invariant [_]self->buffer_ |-> b &*& self->cursor_ |-> start + k &*& 0 <= k &*& k <= 9 &*&
+                original == acc + value * pow128(k) &*& 0 <= acc &*& acc < pow128(k) &*&
+                k + cardinal_width(value) == cardinal_width(original) &*&
+                (b == 0 ? d == 0 : d != 0 &*& [_]d->buffer_ |-> b &*& [_]d->size_ |-> ?cap &*&
+                  start + cardinal_width(original) <= cap &*& digit_prefix(d, start, k, acc) &*&
+                  uchars_(b + (start + k), cardinal_width(value), _)); @*/
+  {
+    //@ emit_digit(value, k, acc);
+    //@ if (b != 0) uchars__split(b + (start + k), 1);
+    write_uint8((uint8) (value % 128 + 128));
+    /*@ if (b != 0) {
+      leak u_character(b + (start + k), _);
+      close tag_at(d, start + k, value % 128 + 128);
+      close digit_prefix(d, start, k + 1, acc + (value % 128) * pow128(k));
+    } @*/
+    //@ acc += (value % 128) * pow128(k);
+    //@ shiftright_div(value, succ(succ(succ(succ(succ(succ(succ(zero))))))));
+    value >>= 7;
+    //@ k++;
+  }
+  //@ last_digit(value, k, acc);
+  write_uint8((uint8) value);
+  /*@ if (b != 0) {
+    leak u_character(b + (start + k), _);
+    close tag_at(d, start + k, value);
+    close digit_tail(d, start + k + 1, value, k, acc, original, start + k + 1);
+    close digits(d, start + k, k, acc, original, start + k + 1);
+    finish_digits(d, start, k, acc);
+    close cardinal_at(d, start, original, start + k + 1);
+  } @*/
+}
+
+@render src/messaging.cc toit::MessageEncoder::write_uint64
+void MessageEncoder::write_uint64(uint64 value)
+/*@ requires [?f]self->buffer_ |-> ?b &*& self->cursor_ |-> ?start &*& 0 <= start &*& start + 8 <= INT_MAX &*&
+             (b == 0 ? true : pointer_within_limits(b + start) == true &*& chars_((char *)b + start, 8, _)); @*/
+/*@ ensures [f]self->buffer_ |-> b &*& self->cursor_ |-> start + 8 &*&
+            (b == 0 ? true : chars((char *)b + start, 8, _)); @*/
+{
+  if (!encoding_for_size()) memcpy(&buffer_[cursor_], &value, sizeof(uint64));
+  //@ if (b != 0) { chars_to_integer_(&value, 8, false); close u_llong_integer(&value, _); }
+  cursor_ += sizeof(uint64);
+}
+
+@render src/messaging.cc toit::MessageEncoder::write_pointer
+void MessageEncoder::write_pointer(void* value)
+/*@ requires [?f]self->buffer_ |-> ?b &*& self->cursor_ |-> ?start &*& 0 <= start &*& start + WORD_SIZE <= INT_MAX &*&
+             (b == 0 ? true : pointer_within_limits(b + start) == true &*& chars_((char *)b + start, WORD_SIZE, _)); @*/
+/*@ ensures [f]self->buffer_ |-> b &*& self->cursor_ |-> start + WORD_SIZE &*&
+            (b == 0 ? true : chars((char *)b + start, WORD_SIZE, ?cs) &*& pointer_of_chars(cs) == value); @*/
+{
+  if (!encoding_for_size()) memcpy(&buffer_[cursor_], &value, WORD_SIZE);
+  //@ if (b != 0) chars_to_pointer(&value);
+  cursor_ += WORD_SIZE;
+}
+
+@render src/messaging.cc toit::MessageEncoder::encode_smi
+void MessageEncoder::encode_smi(Object* object)
+/*@ requires is_smi_w((uword)object) == true &*& output_suffix(self, ?d, ?start, ?cap) &*&
+             smi_end(start, smi_val((uword)object)) <= cap; @*/
+/*@ ensures output_suffix(self, d, smi_end(start, smi_val((uword)object)), cap) &*&
+            (d == 0 ? true : smi_wire(d, start, smi_val((uword)object))); @*/
+{
+  word value = Smi::value(object);
+  //@ open output_suffix(self, d, start, cap);
+  //@ assert [_]self->buffer_ |-> ?b;
+  //@ if (b != 0) uchars__split(b + start, 1);
+  if (value >= 0) {
+    write_uint8(TAG_POSITIVE_SMI);
+    /*@ if (b != 0) {
+      leak u_character(b + start, _);
+      close tag_at(d, start, TAG_POSITIVE_SMI);
+      uchars__split(b + (start + 1), cardinal_width(value));
+    } @*/
+    //@ close cardinal_destination(self, d, start + 1, cardinal_width(value));
+    write_cardinal(value);
+  } else {
+    write_uint8(TAG_NEGATIVE_SMI);
+    /*@ if (b != 0) {
+      leak u_character(b + start, _);
+      close tag_at(d, start, TAG_NEGATIVE_SMI);
+      uchars__split(b + (start + 1), cardinal_width(-value));
+    } @*/
+    //@ close cardinal_destination(self, d, start + 1, cardinal_width(-value));
+    write_cardinal(-value);
+  }
+  //@ if (d != 0) close smi_wire(d, start, value);
+  //@ close output_suffix(self, d, smi_end(start, value), cap);
+}
+
+@render src/messaging.cc toit::MessageEncoder::encode_array
+bool MessageEncoder::encode_array(Array* object, word from, word to)
+/*@ requires [?f]heap(?objs, ?H) &*& mem(object, objs) == true &*& has_tag(H, object, ARRAY_TAG) == true &*&
+             smi_range(from) == true &*& smi_range(to) == true &*&
+             array_children(self, ?d, ?ws, ?offsets, from, to) &*& ws == o_words(H(object)) &*& output_suffix(self, d, ?start, ?cap) &*&
+             (valid_array_slice(from, to, o_len(H(object))) ?
+               offsets(from) == array_payload_start(start, to - from) && offsets(from) <= cap : true); @*/
+/*@ ensures [f]heap(objs, H) &*& array_children(self, d, ws, offsets, ?next, to) &*& output_suffix(self, d, ?end, cap) &*&
+            (valid_array_slice(from, to, o_len(H(object))) ?
+              (result ? next == to &*& end == offsets(to) &*& (d == 0 ? true : node(d, start, end)) :
+                from < next &*& next <= to &*& array_header(d, start, to - from) &*&
+                (d == 0 ? true : forest(d, offsets(from), offsets(next - 1), next - 1 - from)) &*&
+                failed_child(self, d, nth(next - 1, ws), offsets(next - 1), end)) :
+              !result &*& next == from &*& end == start); @*/
+{
+  if (from < 0 || from > to || to > object->length()) return false;
+  if (to - from > Array::max_length_in_process()) return false;
+  //@ open output_suffix(self, d, start, cap);
+  //@ assert [_]self->buffer_ |-> ?b;
+  //@ if (b != 0) uchars__split(b + start, 1);
+  write_uint8(TAG_ARRAY);
+  //@ if (b != 0) uchars__split(b + (start + 1), cardinal_width(to - from));
+  //@ close cardinal_destination(self, d, start + 1, cardinal_width(to - from));
+  write_cardinal(to - from);
+  //@ close array_header(d, start, to - from);
+  //@ close output_suffix(self, d, offsets(from), cap);
+  //@ if (d != 0) close forest(d, offsets(from), offsets(from), 0);
+  for (word i = from; i < to; i++)
+  /*@ invariant [f]heap(objs, H) &*& array_children(self, d, ws, offsets, i, to) &*& output_suffix(self, d, offsets(i), cap) &*&
+                array_header(d, start, to - from) &*& from <= i &*& i <= to &*& offsets(from) <= offsets(i) &*&
+                (d == 0 ? true : forest(d, offsets(from), offsets(i), i - from)); @*/
+  {
+    if (!encode_any(object->at(i))) return false;
+    /*@ if (d != 0) {
+      close forest(d, offsets(i + 1), offsets(i + 1), 0);
+      close forest(d, offsets(i), offsets(i + 1), 1);
+      join_children(d, offsets(from), offsets(i), offsets(i + 1), i - from, 1);
+    } @*/
+  }
+  //@ open array_header(d, start, to - from);
+  //@ open output_suffix(self, d, offsets(to), cap);
+  //@ if (d != 0) container_node(d, start, TAG_ARRAY, to - from, offsets(from), offsets(to));
+  //@ close output_suffix(self, d, offsets(to), cap);
+  return true;
+}
+
+@render src/messaging.h toit::MessageDecoder::read_uint8 tu=src/messaging.cc
+  uint8 read_uint8()
+  //@ requires self->cursor_ |-> ?start &*& tag_at(self, start, ?tag);
+  //@ ensures self->cursor_ |-> start + 1 &*& result == tag;
+  {
+    //@ open tag_at(self, start, tag);
+    word cursor = cursor_++;
+    return (cursor < size_) ? buffer_[cursor] : 0;
+  }
+
+@render src/messaging.h toit::MessageDecoder::overflown tu=src/messaging.cc
+  bool overflown() const
+  //@ requires [?f]self->cursor_ |-> ?pos &*& [_]self->size_ |-> ?size;
+  //@ ensures [f]self->cursor_ |-> pos &*& result == (pos > size);
+  { return cursor_ > size_; }
+
+@render src/messaging.cc toit::MessageDecoder::read_cardinal_64
+uint64 MessageDecoder::read_cardinal_64()
+//@ requires self->cursor_ |-> ?start &*& cardinal_at(self, start, ?value, ?end);
+//@ ensures self->cursor_ |-> end &*& result == value &*& result <= UINTPTR_MAX;
+{
+  //@ open cardinal_at(self, start, value, end);
+  //@ open digits(self, start, 0, 0, value, end);
+  uint64 result = 0;
+  uint8 byte = read_uint8();
+  int shift = 0;
+  //@ int k = 0;
+  while (byte >= 128)
+  /*@ invariant self->cursor_ |-> ?pos &*& digit_tail(self, pos, byte, k, result, value, end) &*&
+                [_]self->size_ |-> ?size &*& end <= size &*& shift == 7 * k; @*/
+  {
+    //@ open digit_tail(self, pos, byte, k, result, value, end);
+    //@ digit_pow(k);
+    //@ shiftright_div(18446744073709551615, nat_of_int(shift));
+    uint64 digit = byte - 128;
+    if (shift >= 64 || digit > (UINT64_MAX >> shift)) {
+      mark_malformed();
+      return 0;
+    }
+    //@ digit_step(result, digit, k);
+    //@ shiftleft_def(digit, nat_of_int(shift));
+    //@ open digits(self, pos, k + 1, result + digit * pow128(k), value, end);
+    result += digit << shift;
+    shift += 7;
+    //@ k++;
+    byte = read_uint8();
+  }
+  //@ open digit_tail(self, pos, byte, k, result, value, end);
+  //@ digit_pow(k);
+  //@ shiftright_div(18446744073709551615, nat_of_int(shift));
+  if (byte == 0 && overflown()) return 0;
+  if (shift >= 64 || byte > (UINT64_MAX >> shift)) {
+    mark_malformed();
+    return 0;
+  }
+  //@ digit_step(result, byte, k);
+  //@ shiftleft_def(byte, nat_of_int(shift));
+  result += static_cast<uint64>(byte) << shift;
+  return result;
+}
+
+@render src/messaging.cc toit::MessageDecoder::read_cardinal
+uword MessageDecoder::read_cardinal()
+//@ requires self->cursor_ |-> ?start &*& cardinal_at(self, start, ?value, ?end);
+//@ ensures self->cursor_ |-> end &*& result == value;
+{
+  uint64 result = read_cardinal_64();
+  if (result > UINTPTR_MAX) {
+    mark_malformed();
+    return 0;
+  }
+  return static_cast<uword>(result);
+}
+
+@render src/messaging.cc toit::MessageDecoder::read_pointer
+uint8* MessageDecoder::read_pointer()
+//@ requires self->cursor_ |-> ?start &*& pointer_at(self, start, ?value);
+//@ ensures self->cursor_ |-> start + WORD_SIZE &*& result == value;
+{
+  uint8* result = null;
+  //@ open pointer_at(self, start, value);
+  word cursor = cursor_;
+  word next = cursor + sizeof(result);
+  if (next <= size_) {
+    //@ pointer_to_chars(&result);
+    //@ chars_to_chars_((char *)&result);
+    memcpy(&result, &buffer_[cursor], sizeof(result));
+    //@ chars_to_pointer(&result);
+  }
+  cursor_ = next;
+  return result;
+}
+
+@render src/messaging.cc toit::MessageDecoder::read_uint64
+uint64 MessageDecoder::read_uint64()
+//@ requires self->cursor_ |-> ?start &*& fixed64_at(self, start);
+//@ ensures self->cursor_ |-> start + 8;
+{
+  uint64 result = 0;
+  //@ open fixed64_at(self, start);
+  word cursor = cursor_;
+  word next = cursor + sizeof(result);
+  if (next <= size_) {
+    //@ open u_llong_integer(&result, _);
+    //@ integer__to_chars(&result, 8, false);
+    //@ chars_to_chars_((char *)&result);
+    memcpy(&result, &buffer_[cursor], sizeof(result));
+    //@ chars_to_integer_(&result, 8, false);
+    //@ close u_llong_integer(&result, _);
+  }
+  cursor_ = next;
+  return result;
+}
+
+@render src/messaging.cc toit::MessageDecoder::deallocate params=0
+void MessageDecoder::deallocate()
+//@ requires self->cursor_ |-> ?start &*& node(self, start, ?end);
+//@ ensures self->cursor_ |-> end;
+{
+  //@ open node(self, start, end);
+  int tag = read_uint8();
+  switch (tag) {
+    case TAG_POSITIVE_SMI:
+    case TAG_NEGATIVE_SMI:
+      read_cardinal();
+      break;
+    case TAG_NULL:
+    case TAG_TRUE:
+    case TAG_FALSE:
+      break;
+    case TAG_STRING:
+    case TAG_BYTE_ARRAY:
+      read_cardinal();
+      free(read_pointer());
+      break;
+    case TAG_STRING_INLINE:
+    case TAG_BYTE_ARRAY_INLINE: {
+      word length = read_cardinal();
+      cursor_ += length;
+      break;
+    }
+    case TAG_ARRAY:
+    case TAG_MAP: {
+      word length = read_cardinal();
+      // Maps have two nested encodings per entry.
+      if (tag == TAG_MAP) length *= 2;
+      for (word i = 0; i < length; i++)
+      //@ invariant self->cursor_ |-> ?pos &*& forest(self, pos, end, length - i) &*& 0 <= i &*& i <= length;
+      {
+        //@ open forest(self, pos, end, length - i);
+        deallocate();
+      }
+      //@ open forest(self, _, end, 0);
+      break;
+    }
+    case TAG_DOUBLE:
+    case TAG_LARGE_INTEGER:
+      read_uint64();
+      break;
+    default:
+      FATAL("[message decoder: unhandled message tag: %d]", tag);
+  }
+}
+
+@verbatim
+// Base case of recursive array encoding: exercise both real passes and then
+// run the native cleanup walk. No child contract or allocation token is needed.
+/*@
+fixpoint int empty_array_end(int end, int i) { return end; }
+@*/
+void check_empty_array(MessageEncoder *sizer, MessageEncoder *writer, MessageDecoder *d, Array *array, word at)
+/*@ requires [?f]heap(?objs, ?H) &*& mem(array, objs) == true &*& has_tag(H, array, ARRAY_TAG) == true &*&
+             0 <= at &*& at <= o_len(H(array)) &*& smi_range(at) == true &*&
+             output_suffix(sizer, 0, ?start, ?sizing_cap) &*& output_suffix(writer, d, start, ?cap) &*&
+             d != 0 &*& d->cursor_ |-> start &*& start + 2 <= cap &*& start + 2 <= sizing_cap; @*/
+/*@ ensures [f]heap(objs, H) &*& output_suffix(sizer, 0, start + 2, sizing_cap) &*&
+            output_suffix(writer, d, start + 2, cap) &*& d->cursor_ |-> start + 2; @*/
+{
+  //@ close array_children(sizer, 0, o_words(H(array)), (empty_array_end)(start + 2), at, at);
+  bool sized = MessageEncoder_encode_array(sizer, array, at, at);
+  //@ assert sized == true;
+  //@ open array_children(sizer, 0, _, _, _, at);
+  //@ close array_children(writer, d, o_words(H(array)), (empty_array_end)(start + 2), at, at);
+  bool written = MessageEncoder_encode_array(writer, array, at, at);
+  //@ assert written == true;
+  //@ open array_children(writer, d, _, _, _, at);
+  MessageDecoder_deallocate__(d);
+}
+
+// Check the scalar writer against both native readers at an arbitrary
+// offset. Other envelope bytes and the encoder's ownership tables are framed.
+void check_smi_wire(MessageEncoder *sizer, MessageEncoder *writer, MessageDecoder *d, Object *object, bool dispose)
+/*@ requires is_smi_w((uword)object) == true &*& output_suffix(sizer, 0, ?start, ?sizing_cap) &*&
+             output_suffix(writer, d, start, ?cap) &*& d != 0 &*& d->cursor_ |-> start &*&
+             smi_end(start, smi_val((uword)object)) <= cap &*& smi_end(start, smi_val((uword)object)) <= sizing_cap; @*/
+/*@ ensures output_suffix(sizer, 0, smi_end(start, smi_val((uword)object)), sizing_cap) &*&
+            output_suffix(writer, d, smi_end(start, smi_val((uword)object)), cap) &*&
+            d->cursor_ |-> smi_end(start, smi_val((uword)object)); @*/
+{
+  MessageEncoder_encode_smi(sizer, object);
+  MessageEncoder_encode_smi(writer, object);
+  //@ int value = smi_val((uword)object);
+  if (dispose) {
+    //@ open output_suffix(writer, d, smi_end(start, value), cap);
+    //@ smi_cleanup_node(d, start, value);
+    //@ close output_suffix(writer, d, smi_end(start, value), cap);
+    MessageDecoder_deallocate__(d);
+  } else {
+    //@ open smi_wire(d, start, value);
+    uint8 tag = MessageDecoder_read_uint8(d);
+    uint64 magnitude = MessageDecoder_read_cardinal_64(d);
+    //@ assert tag == (value < 0 ? TAG_NEGATIVE_SMI : TAG_POSITIVE_SMI);
+    //@ assert magnitude == smi_magnitude(value);
+  }
+}

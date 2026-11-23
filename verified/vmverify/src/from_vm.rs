@@ -228,6 +228,14 @@ impl Image {
             None => bad("object content outside the program image", addr.wrapping_sub(self.start)),
         }
     }
+
+    fn string_bytes(&self, addr: usize, len: usize) -> Result<Vec<u8>, Malformed> {
+        let storage = len.checked_add(1).and_then(|n| self.range(addr, n));
+        match storage.and_then(|bytes| bytes.split_last()) {
+            Some((&0, content)) => Ok(try_copy(content)?),
+            _ => bad("string lacks a terminator inside the program image", addr.wrapping_sub(self.start)),
+        }
+    }
 }
 
 /// Untagged address -> object id: an open-addressing hash table of ids
@@ -445,11 +453,11 @@ impl<'a> Objects<'a> {
                     _ => return bad("string header outside the program image", offset),
                 };
                 if internal != STRING_SENTINEL {
-                    ExecBody::Str(self.image.bytes(addr + STRING_CONTENT_BYTE, internal)?)
+                    ExecBody::Str(self.image.string_bytes(addr + STRING_CONTENT_BYTE, internal)?)
                 } else {
                     let length = self.image.word(addr, STRING_EXTERNAL_LENGTH_WORD)?;
                     let content = self.image.word(addr, STRING_EXTERNAL_ADDRESS_WORD)?;
-                    ExecBody::Str(self.image.bytes(content, length)?)
+                    ExecBody::Str(self.image.string_bytes(content, length)?)
                 }
             }
             DOUBLE_TAG => ExecBody::Double(self.image.word64(addr, DOUBLE_VALUE_WORD)?),
@@ -542,10 +550,11 @@ mod tests {
 
     // Class 0: an instance class with 2 fields (size 3 words); class 1: an
     // array class; class 2: a byte-array class.
-    const CLASS_BITS: [u16; 3] = [
+    const CLASS_BITS: [u16; 4] = [
         (3 << CLASS_ID_OFFSET) as u16 | INSTANCE_TAG as u16,
         ARRAY_TAG as u16,
         BYTE_ARRAY_TAG as u16,
+        STRING_TAG as u16,
     ];
 
     fn smi(v: i64) -> usize { (v << SMI_TAG_SIZE) as usize }
@@ -722,6 +731,35 @@ mod tests {
         let mut f = external(RAW_BYTE_TAG, true);
         f.image[9] = 8;
         assert!(f.convert().is_err());
+    }
+
+    #[test]
+    fn checks_the_terminator_of_internal_and_external_strings() {
+        for external in [false, true] {
+            let mut f = Fixture::sized(if external { 12 } else { 10 });
+            f.image[7] = header(3, STRING_TAG);
+            let length_at = 7 + STRING_INTERNAL_LENGTH_BYTE / WORD_SIZE;
+            let mut halves = f.image[length_at].to_ne_bytes();
+            let offset = STRING_INTERNAL_LENGTH_BYTE % WORD_SIZE;
+            let mut set_length = |f: &mut Fixture, n: usize| {
+                let internal = if external { STRING_SENTINEL } else { n };
+                halves[offset..offset + HALF].copy_from_slice(&(internal as u32).to_ne_bytes());
+                f.image[length_at] = usize::from_ne_bytes(halves);
+                if external {
+                    f.image[7 + STRING_EXTERNAL_LENGTH_WORD] = n;
+                    f.image[7 + STRING_EXTERNAL_ADDRESS_WORD] = f.image.as_ptr() as usize + 11 * WORD_SIZE;
+                }
+            };
+            let data = f.image.len() - 1;
+            f.image[data] = usize::from_ne_bytes([b'a', 0, b'b', 0, 0, 0, 0, 0]);
+            set_length(&mut f, 3);
+            let (_, heap) = f.convert().unwrap();
+            assert!(matches!(&heap[1].body, ExecBody::Str(bytes) if bytes == b"a\0b"));
+            set_length(&mut f, 2);
+            assert!(f.convert().is_err());
+            set_length(&mut f, WORD_SIZE);
+            assert!(f.convert().is_err());
+        }
     }
 
     #[test]

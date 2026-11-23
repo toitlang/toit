@@ -160,8 +160,9 @@ PRIMITIVE(spawn) {
 
   // Takes over the encoder and the initial_memory_manager.
   int pid = VM::current()->scheduler()->run_program(program, &encoder, process_group, &initial_memory_manager);
-  if (pid == Scheduler::INVALID_PROCESS_ID) {
+  if (pid < 0) {
     delete process_group;
+    if (pid == Scheduler::QUOTA_EXCEEDED_PROCESS_ID) FAIL(QUOTA_EXCEEDED);
     FAIL(MALLOC_FAILED);
   }
   return Smi::from(pid);

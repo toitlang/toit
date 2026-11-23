@@ -1,0 +1,65 @@
+// Copyright (C) 2026 Toit contributors.
+@include ../model/model.cfg
+@verbatim
+#include "../model/objects.gen.h"
+struct RootCallback;
+typedef struct RootCallback RootCallback;
+
+/*@
+predicate relocator(RootCallback *cb,fixpoint(void *,void *) forward,list<void *> visited);
+fixpoint bool is_bytecode(void *o,uword lo,uword hi) { return lo <= (uword)o && (uword)o < hi; }
+fixpoint list<void *> relocated(list<void *> xs,uword lo,uword hi,fixpoint(void *,void *) f) {
+  switch(xs) {
+    case nil: return nil;
+    case cons(x,r): return cons(is_bytecode(x,lo,hi) ? x : f(x),relocated(r,lo,hi,f));
+  }
+}
+fixpoint list<void *> visits(list<void *> xs,uword lo,uword hi,list<void *> acc) {
+  switch(xs) {
+    case nil: return acc;
+    case cons(x,r): return visits(r,lo,hi,is_bytecode(x,lo,hi) ? acc : cons(x,acc));
+  }
+}
+@*/
+
+// A copying visitor can overwrite the slot and records one visit of its old value.
+void RootCallback_do_root(RootCallback *cb,Object **slot);
+//@ requires *slot |-> ?x &*& relocator(cb,?f,?seen);
+//@ ensures *slot |-> f(x) &*& relocator(cb,f,cons(x,seen));
+
+@render src/objects.cc toit::visit_stack_roots
+static void visit_stack_roots(Object** slots, word top, word length, uword bytecodes_from, uword bytecodes_to, RootCallback* cb)
+/*@ requires 0 <= top &*& top <= length &*& pointer_within_limits(slots) == true &*&
+             pointer_within_limits(slots+top) == true &*& pointers((void **)slots+top,length-top,?xs) &*& relocator(cb,?f,?seen); @*/
+/*@ ensures pointers((void **)slots+top,length-top,relocated(xs,bytecodes_from,bytecodes_to,f)) &*&
+            relocator(cb,f,visits(xs,bytecodes_from,bytecodes_to,seen)); @*/
+{
+  Object** roots = slots + top;
+  word used = length - top;
+  //@ pointers_limits((void **)roots);
+  //@ close pointers((void **)roots,0,nil);
+  for (word i = 0; i < used; i++)
+  /*@ invariant 0 <= i &*& i <= used &*& pointers((void **)roots,i,?done) &*& pointers((void **)roots+i,used-i,?rest) &*&
+                append(done,relocated(rest,bytecodes_from,bytecodes_to,f)) == relocated(xs,bytecodes_from,bytecodes_to,f) &*&
+                relocator(cb,f,?now) &*& visits(rest,bytecodes_from,bytecodes_to,now) == visits(xs,bytecodes_from,bytecodes_to,seen); @*/
+  {
+    //@ open pointers((void **)roots+i,used-i,rest);
+    //@ pointer_limits((void **)roots+i);
+    uword value = reinterpret_cast<uword>(roots[i]);
+    /*@ if (value >= bytecodes_from && value < bytecodes_to) {
+      close pointers((void **)roots+i+1,0,nil);
+      close pointers((void **)roots+i,1,cons(head(rest),nil));
+      pointers_join((void **)roots);
+      append_assoc(done,cons(head(rest),nil),relocated(tail(rest),bytecodes_from,bytecodes_to,f));
+    } @*/
+    if (value >= bytecodes_from && value < bytecodes_to) continue;
+    cb->do_root(&roots[i]);
+    //@ close pointers((void **)roots+i+1,0,nil);
+    //@ close pointers((void **)roots+i,1,cons(f(head(rest)),nil));
+    //@ pointers_join((void **)roots);
+    //@ append_assoc(done,cons(f(head(rest)),nil),relocated(tail(rest),bytecodes_from,bytecodes_to,f));
+  }
+  //@ open pointers((void **)roots+used,0,_);
+  //@ assert pointers((void **)roots,used,?out);
+  //@ append_nil(out);
+}

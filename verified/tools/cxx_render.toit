@@ -183,7 +183,7 @@ A sidecar: a sequence of sections, each opened by a directive line (a
   one). `@verbatim-c`: copied to the C file only.
 * `@prototypes`: the prototypes, with their contracts, of every function
   the sidecar renders (to the header when there is one).
-* `@render FILE QUALIFIED-NAME [tu=FILE] [params=N] [type=T] [trusted] [truncating]`:
+* `@render FILE QUALIFIED-NAME [tu=FILE] [params=N] [type=T] [trusted] [truncating] [unsigned-word-conversion]`:
   the section holds the annotated copy of the function. `trusted`: only
   the prototype and contract are emitted (the body is not verified, but
   still compared with the sources). `type=T` picks an overload by its
@@ -192,7 +192,15 @@ A sidecar: a sequence of sections, each opened by a directive line (a
   truncating casts (the modular conversions GCC and Clang define and
   C++20 standardizes), for code that checks the result; so is an
   explicit static_cast narrowing a signed integer (os_localtime's
-  `static_cast<time_t>`). A `do S while (false)` (a macro's wrapper) is S
+  `static_cast<time_t>`). Explicit casts between int64 and uint64 and a
+  uint64 left shift by a literal in [0, 63] also use modular arithmetic.
+  A plain uword variable’s `+=` uses the same modular sum as `+`.
+  `unsigned-word-conversion` renders an implicit conversion from
+  `word` to `uword` modulo the target word size.
+  A statement-level `static_assert` is checked again using the rendered types.
+  A discarded relaxed fetch_add on std::atomic<uint64> with a uword charge
+  maps to the modeled atomic operation.
+  A `do S while (false)` (a macro's wrapper) is S
   as a block (no break or continue may leave it); an object of a struct
   spelled with its tag (`struct tm`) is constructed by `tm_ctor`.
 Configuration: `@raii CLASS`, `@overloaded CLASS::NAME`,
@@ -209,6 +217,7 @@ class Sidecar:
   sections/List := []
   raii/Set := {}
   overloaded/Set := {}
+  static-members/Set := {}
   modular/Set := {}
   expanded/Set := {}
   constants-path/string? := null
@@ -244,6 +253,8 @@ class Sidecar:
       raii.add words[1]
     else if directive == "expand-typedef":
       expanded.add words[1]
+    else if directive == "static-member":
+      static-members.add words[1]
     else if directive == "overloaded":
       overloaded.add words[1]
     else if directive == "modular-arguments":
@@ -367,8 +378,17 @@ class AstCache:
     result := []
     filter := (qname.starts-with "toit::") ? "toit::" : qname
     pieces := pieces_ tu target filter
+    // Read direct members individually when the index lists them. Decoding the
+    // enclosing class can exhaust the JSON decoder's stack on an unrelated
+    // initializer. Keep out-of-line definitions in the same candidate list.
+    member := path.size == 2 and path.first != name ? (path.join "::") : null
+    indexed := member and (pieces.any: it[0] == member)
     pieces.size.repeat: | i |
       top := pieces[i][0]
+      if indexed and top == member:
+        result.add (parse_ tu target filter i)
+        continue.repeat
+      if indexed and top == path.first: continue.repeat
       if path.size == 1 and top == name:
         result.add (parse_ tu target filter i)
       else if path.size > 1 and top == path[0] and top == name and (parse_ tu target filter i)["kind"] != "CXXRecordDecl":
@@ -705,6 +725,7 @@ class Renderer:
   cxx-cls/string? := null  // Its C++ name (`A::B`).
   class-decl/Lambda? := null  // Qualified class name -> its declaration in the AST, or null.
   truncating/bool := false  // `@render ... truncating`: word-to-int conversions are modular.
+  unsigned-word-conversion/bool := false
   decls-of/Lambda? := null  // Qualified name -> its declarations (in the class and out of line).
   ghosts/List
   uses/Map            // key -> ConstantUse, shared by the unit.
@@ -764,12 +785,24 @@ class Renderer:
     if not b or not e: return null
     return source[b..e + (end-token-length node)]
 
+  // The ABI check for Method requires a trivially copyable pointer-sized value.
+  is-method-copy node/Map -> bool:
+    if node["kind"] != "CXXConstructExpr" or node["type"]["qualType"] != "Method": return false
+    ctor := node["ctorType"]["qualType"]
+    return (inner node).size == 1 and node["constructionKind"] == "complete"
+        and (ctor == "void (const Method &) noexcept" or ctor == "void (Method &&) noexcept")
+
   // --- Names.
 
   // $param-types: the C types of the parameters. An overloaded member gets
   // them in its name (`C_m__T1_T2`, `*` as `p`), so that two overloads are
   // never one C function, except const overloads (same parameters).
   mangle-member class-name/string name/string param-types/List -> string:
+    // Clang names the instantiated list base for an inherited FIFO method.
+    if class-name == "List<uint8>": class-name = "BytecodeList"
+    if class-name == "LinkedList<Process , 2>": class-name = "LinkedList_SchedulerProcess"
+    if class-name == "LinkedList<FinalizerNode>": class-name = "LinkedList_FinalizerNode"
+    if class-name == "Program_Table<Object * >": class-name = "Program_ObjectTable"
     base/string := ?
     if name.starts-with "~": base = "$(class-name)_dtor"
     else if name == class-name or class-name.ends-with "_$name": base = "$(class-name)_ctor"
@@ -976,6 +1009,8 @@ class Renderer:
         // modular one (GCC, Clang, C++20), for code that checks it.
         return Expr "/*@truncating@*/(int)$(wrap (expr kids[0]) PREC-UNARY)" PREC-UNARY
       target-type := c-type node["type"]["qualType"]
+      if unsigned-word-conversion and cast == "IntegralCast" and target-type == "uword" and (c-type kids[0]["type"]["qualType"]) == "word":
+        return Expr "/*@truncating@*/(uword)$(wrap (expr kids[0]) PREC-UNARY)" PREC-UNARY
       if cast == "IntegralCast" and truncating and (SIGNED-TARGETS.contains target-type) and (UNSIGNED-WORDS.contains (resolve (c-type kids[0]["type"]["qualType"]))):
         // `truncating`: so is the conversion of an unsigned word or 64-bit
         // integer to word or int64 (a value above the signed range becomes
@@ -998,6 +1033,13 @@ class Renderer:
         operand = (inner operand)[0]
       else if node["castKind"] != "IntegralCast":
         operand = null
+      if kind == "CXXStaticCastExpr" and truncating and operand:
+        // CRC treats signed integer arguments as 64-bit bit patterns and
+        // converts the finished checksum back to a signed VM integer.
+        to := c-type node["type"]["qualType"]
+        from := c-type operand["type"]["qualType"]
+        if (to == "uint64" and from == "int64") or (to == "int64" and from == "uint64"):
+          return Expr "/*@truncating@*/($to)$(wrap (expr operand) PREC-UNARY)" PREC-UNARY
       if kind == "CXXStaticCastExpr" and truncating and operand
           and (SIGNED-INTEGERS.contains (resolve (c-type (node["type"].get "desugaredQualType" --if-absent=: node["type"]["qualType"]))))
           and (TRUNCATED.contains (resolve (c-type (operand["type"].get "desugaredQualType" --if-absent=: operand["type"]["qualType"])))):
@@ -1040,6 +1082,7 @@ class Renderer:
       local := lambda-locals.get node["id"]
       if not local: fail "$(where node): a lambda the closure rules did not prepare"
       return Expr "&$local" PREC-UNARY
+    if is-method-copy node: return expr kids[0]
     if kind == "CXXConstructExpr" and (node["type"]["qualType"].contains "(lambda at ") and kids.size == 1:
       // The move of the closure into a by-value parameter: the closure itself.
       return expr kids[0]
@@ -1063,6 +1106,16 @@ class Renderer:
       if local-names.contains ref["id"]: return Expr local-names[ref["id"]] PREC-PRIMARY
       if (rk == "ParmVarDecl" or rk == "VarDecl") and locals.contains name:
         return Expr name PREC-PRIMARY
+      if rk == "VarDecl" and cls and sidecar.static-members.contains "$cxx-cls::$name":
+        // Verify the storage declaration before referring to its modeled C global.
+        record := class-decl.call "toit::$cxx-cls"
+        if record:
+          members := (inner record).filter: | d | (d.get "name") == name and (d.get "storageClass") == "static"
+          if (members.any: it["id"] == ref["id"]): return Expr "$(cls)_$name" PREC-PRIMARY
+          // The reference may name the definition outside the class.
+          (decls-of.call "toit::$cxx-cls::$name").do: | d/Map |
+            if d["id"] == ref["id"] and (members.any: it["id"] == (d.get "previousDecl")):
+              return Expr "$(cls)_$name" PREC-PRIMARY
       if rk == "VarDecl" or rk == "EnumConstantDecl":
         return Expr (constant node ref) PREC-PRIMARY
       fail "$(where node): reference to a $rk ($name)"
@@ -1087,6 +1140,15 @@ class Renderer:
       else:
         class-name = c-type base["type"]["qualType"]
         base-text = "&$(wrap (expr base) PREC-UNARY)"
+        // A field of a nested class can have an unqualified type spelling
+        // inside its enclosing class. Match the actual selected declaration.
+        member-id := member.get "referencedMemberDecl"
+        if cxx-cls and base["kind"] == "MemberExpr" and (owners.get member-id) == (cxx-cls.split "::").first:
+          nested := "$cxx-cls::$class-name::$member["name"]"
+          if ((decls-of.call "toit::$nested").any: | d | d["id"] == member-id and not (d.contains "out-of-line")):
+            class-name = "$(cls)_$class-name"
+      // ChunkList is the VM typedef for this specialization.
+      if class-name == "DoubleLinkedList<Chunk>": class-name = "ChunkList"
       types := arg-types args
       // An overloaded member is named by its declared parameter types (as
       // its definition is), not by the argument types, which differ between
@@ -1116,6 +1178,27 @@ class Renderer:
     if kind == "BinaryOperator" or kind == "CompoundAssignOperator":
       op := node["opcode"]
       p := BINARY-PREC.get op --if-absent=: fail "$(where node): operator $op"
+      if op == "-" and (kids.every: | child | {"uint8 *", "unsigned char *"}.contains (c-type child["type"]["qualType"])):
+        // Both pointee types have unit size. VeriFast implements pointer differences for char pointers.
+        return Expr "(char *)$(wrap (expr kids[0]) PREC-UNARY) - (char *)$(wrap (expr kids[1]) PREC-UNARY)" p
+      if truncating and op == "<<" and (c-type node["type"]["qualType"]) == "uint64" and kids[1]["kind"] == "IntegerLiteral":
+        // An unsigned 64-bit shift discards high bits. The literal must
+        // be a valid shift count before the modular rendering applies.
+        count := int.parse kids[1]["value"]
+        if 0 <= count and count < 64:
+          return Expr "/*@truncating@*/($(wrap (expr kids[0]) p) << $count)" PREC-PRIMARY
+      if truncating and op == "-" and (c-type node["type"]["qualType"]) == "uword":
+        // Unsigned address differences wrap at the target word width.
+        return Expr "/*@truncating@*/($(wrap (expr kids[0]) p) - $(wrap (expr kids[1]) p + 1))" PREC-PRIMARY
+      if truncating and op == "+=" and kids[0]["kind"] == "DeclRefExpr" and (c-type node["type"]["qualType"]) == "uword" and (canonical node["computeResultType"]) == (canonical node["type"]):
+        // Expanding a plain word variable preserves evaluation of the lvalue and the modular sum.
+        lhs := (expr kids[0]).text
+        rhs := wrap (expr kids[1]) (BINARY-PREC["+"] + 1)
+        return Expr "$lhs = /*@truncating@*/($lhs + $rhs)" PREC-ASSIGN
+      if truncating and op == "+" and {"uint64", "uword"}.contains (c-type node["type"]["qualType"]):
+        // Unsigned sums wrap at their declared width, including biased metadata addresses.
+        sum := "/*@truncating@*/($(wrap (expr kids[0]) p) + $(wrap (expr kids[1]) p + 1))"
+        return Expr sum p
       if p == PREC-ASSIGN:
         return Expr "$(wrap (expr kids[0]) PREC-UNARY) $op $(wrap (expr kids[1]) PREC-ASSIGN)" p
       return Expr "$(wrap (expr kids[0]) p) $op $(wrap (expr kids[1]) p + 1)" p
@@ -1212,7 +1295,44 @@ class Renderer:
       block-contents node indent + 1
       emit indent "}"
     else if kind == "DeclStmt":
-      kids.do: | decl/Map | var-decl decl indent
+      kids.do: | decl/Map |
+        if decl["kind"] == "StaticAssertDecl":
+          // Clang checks the specialization. Also check the condition against the rendered types.
+          emit indent "//@ assert $((expr (inner decl)[0]).text);"
+        else:
+          var-decl decl indent
+    else if kind == "CXXMemberCallExpr" and kids.size == 3 and (kids[0].get "name") == "fetch_add" and
+        ((canonical (inner kids[0])[0]["type"]).starts-with "std::__atomic_base<"):
+      // A discarded relaxed uint64 fetch_add issues one atomic charge, including on ILP32.
+      base := (inner kids[0])[0]
+      amount := kids[1]
+      order := kids[2]
+      width := canonical node["type"]
+      if base["kind"] != "ImplicitCastExpr" or base["castKind"] != "UncheckedDerivedToBase" or
+          (canonical base["type"]) != "std::__atomic_base<$width>" or
+          (inner base)[0]["type"]["qualType"] != "std::atomic<uint64>" or
+          (canonical (inner base)[0]["type"]) != "std::atomic<$width>" or
+          (canonical amount["type"]) != width or order["kind"] != "DeclRefExpr" or
+          order["type"]["qualType"] != "std::memory_order" or order["referencedDecl"]["name"] != "memory_order_relaxed":
+        fail "$(where node): unsupported atomic fetch_add"
+      if amount["kind"] == "ImplicitCastExpr" and amount["castKind"] == "IntegralCast": amount = (inner amount)[0]
+      if amount["type"]["qualType"] != "uword": fail "$(where node): expected word-sized atomic charge"
+      emit indent "atomic_uint64_add_relaxed(&$(wrap (expr (inner base)[0]) PREC-UNARY), $(wrap (expr amount) PREC-ASSIGN));"
+    else if kind == "CXXOperatorCallExpr" and kids.size == 3 and kids[1]["kind"] == "ImplicitCastExpr" and kids[1]["castKind"] == "UncheckedDerivedToBase":
+      // Discarded compound updates on std::atomic<uword> are single atomic operations.
+      receiver := (inner kids[1])[0]
+      callee := kids[0]
+      if callee["kind"] == "ImplicitCastExpr": callee = (inner callee)[0]
+      value-type := canonical kids[2]["type"]
+      if callee["kind"] != "DeclRefExpr" or
+          receiver["type"]["qualType"] != "std::atomic<uword>" or
+          (canonical receiver["type"]) != "std::atomic<$value-type>" or
+          (canonical kids[1]["type"]) != "std::__atomic_base<$value-type>":
+        fail "$(where node): unsupported overloaded operator statement"
+      operator := callee["referencedDecl"]["name"]
+      if operator != "operator-=" and operator != "operator+=": fail "$(where node): unsupported atomic update $operator"
+      operation := operator == "operator+=" ? "add" : "subtract"
+      emit indent "atomic_uword_$operation(&$(wrap (expr receiver) PREC-UNARY), $(wrap (expr kids[2]) PREC-ASSIGN));"
     else if kind == "ReturnStmt":
       after := next != null and (has-ghosts-up-to next)
       dtors := live-destructors
@@ -1233,6 +1353,8 @@ class Renderer:
     else if kind == "IfStmt":
       if node.get "hasInit" or node.get "hasVar": fail "$(where node): if with an initializer"
       if-chain node indent "if"
+    else if kind == "CXXForRangeStmt":
+      linked-range node indent
     else if kind == "ForStmt":
       init := kids[0]
       if not is-empty kids[1]: fail "$(where node): for with a condition variable"
@@ -1252,7 +1374,22 @@ class Renderer:
       loop-body kids[4] indent
       name-scopes.remove-last
     else if kind == "WhileStmt":
-      if node.get "hasVar": fail "$(where node): while with a condition variable"
+      if node.get "hasVar":
+        // A fresh pointer is initialized and tested on each iteration.
+        decls := inner kids[0]
+        if kids.size != 3 or kids[0]["kind"] != "DeclStmt" or decls.size != 1 or
+            not (canonical decls[0]["type"]).ends-with "*":
+          fail "$(where node): expected a single pointer condition variable"
+        name-scopes.add {}
+        emit indent "while (true)"
+        ghosts-up-to (begin-offset kids[2]) indent
+        emit indent "{"
+        var-decl decls[0] (indent + 1)
+        emit (indent + 1) "if (!($((expr kids[1]).text))) break;"
+        body kids[2] (indent + 1)
+        emit indent "}"
+        name-scopes.remove-last
+        return
       cond := strip-parens kids[0]
       if is-release-assert cond:
         emit indent "// ASSERT($((expr (strip-parens (inner cond)[1])).text)): release build, not evaluated."
@@ -1341,6 +1478,97 @@ class Renderer:
     left := strip-parens (inner cond)[0]
     return left["kind"] == "CXXBoolLiteralExpr" and left["value"] == false
 
+  // Lower the cursors checked by chunk_iterator.cc, gc_root_iterator.cc and
+  // scheduler_target_queue.cc. The accepted statements fall through to the
+  // implicit increment. Closing-brace annotations run after it.
+  linked-range node/Map indent/int:
+    kids := inner node
+    if kids.size != 8 or not (is-empty kids[0]): fail "$(where node): unsupported range initializer"
+    range := (inner (inner kids[1])[0])[0]
+    decl := (inner kids[6])[0]
+    block := kids[7]
+    statements := inner block
+    range-type := range["type"].get "desugaredQualType"
+    element-type := "Chunk"
+    list-type := "ChunkList"
+    scheduler-workers := range-type == "LinkedList<toit::SchedulerThread>"
+    process-groups := range-type == "DoubleLinkedList<toit::ProcessGroup>"
+    group-members := range-type == "LinkedList<toit::Process>"
+    scheduler-targets := range-type == "LinkedFifo<toit::Process, 2>"
+    if range-type == "DoubleLinkedList<toit::HeapRoot>":
+      element-type = "HeapRoot"
+      list-type = "HeapRootList"
+    else if range-type == "DoubleLinkedList<toit::ObjectNotifier>":
+      element-type = "ObjectNotifier"
+      list-type = "ObjectNotifierList"
+    else if scheduler-workers:
+      element-type = "SchedulerThread"
+      list-type = "SchedulerThreadList"
+    else if process-groups:
+      element-type = "ProcessGroup"
+      list-type = "ProcessGroupList"
+    else if group-members:
+      element-type = "Process"
+      list-type = "ProcessListFromProcessGroup"
+    else if scheduler-targets:
+      element-type = "Process"
+      list-type = "ProcessListFromScheduler"
+    else if range-type != "const DoubleLinkedList<toit::Chunk>" and range-type != "DoubleLinkedList<toit::Chunk>":
+      fail "$(where node): unsupported linked-list range type"
+    pointer-type := (decl["type"]["qualType"] as string).replace --all "toit::" ""
+    expected := range-type == "const DoubleLinkedList<toit::Chunk>" ? "const Chunk *" : "$(element-type) *"
+    body-size := (scheduler-targets or scheduler-workers) ? 2 : 1
+    if not (is-pure-lvalue range) or pointer-type != expected or block["kind"] != "CompoundStmt" or statements.size != body-size:
+      fail "$(where node): unexpected linked-list range declaration or body"
+    body-kinds := element-type == "Chunk" ? ["CompoundAssignOperator", "CallExpr"] : ["CXXMemberCallExpr"]
+    if range-type == "DoubleLinkedList<toit::Chunk>": body-kinds = ["IfStmt", "BinaryOperator"]
+    if scheduler-workers: body-kinds = ["DeclStmt"]
+    if process-groups: body-kinds = ["CXXForRangeStmt"]
+    if group-members: body-kinds = ["IfStmt"]
+    if not (body-kinds.contains statements[0]["kind"]): fail "$(where node): unsupported linked-list range body"
+    if scheduler-workers:
+      decls := inner statements[0]
+      if decls.size != 1 or decls[0]["type"]["qualType"] != "Process *" or statements[1]["kind"] != "IfStmt":
+        fail "$(where node): unexpected preemption loop body"
+      branch := inner statements[1]
+      if branch.size != 2 or branch[1]["kind"] != "CompoundStmt": fail "$(where node): unexpected preemption condition"
+      actions := inner branch[1]
+      if actions.size != 2 or actions[0]["kind"] != "CXXMemberCallExpr" or actions[1]["kind"] != "UnaryOperator":
+        fail "$(where node): expected a preemption request and counter update"
+    if group-members:
+      // A conditional append falls through to the implicit iterator increment.
+      branch := inner statements[0]
+      if branch.size != 2 or branch[1]["kind"] != "CompoundStmt": fail "$(where node): unexpected group member condition"
+      actions := inner branch[1]
+      if actions.size != 1 or actions[0]["kind"] != "CXXMemberCallExpr": fail "$(where node): expected a conditional member call"
+    if scheduler-targets and statements[1]["kind"] != "UnaryOperator": fail "$(where node): expected a scan counter update"
+    // Clang resolves the three overloaded operators in the implicit header.
+    [4, 5, 6].do: | index |
+      op := index == 6 ? (inner decl)[0] : kids[index]
+      name := ["operator!=", "operator++", "operator*"][index - 4]
+      if op["kind"] != "CXXOperatorCallExpr" or ((inner (inner op)[0])[0]["referencedDecl"].get "name") != name:
+        fail "$(where node): unexpected range operator"
+    range-name := local-name (inner kids[1])[0]
+    cursor := local-name (inner kids[2])[0]
+    end := local-name (inner kids[3])[0]
+    element := local-name decl
+    emit indent "$list-type *$range-name = &$(wrap (expr range) PREC-UNARY);"
+    // A process has separate intrusive links for membership and scheduling.
+    link := group-members ? "member_next_" : "next_"
+    emit indent "$element-type *$cursor = $range-name->anchor_.$link;"
+    end-value := (scheduler-targets or group-members or scheduler-workers) ? "0" : "&$range-name->anchor_"
+    emit indent "$element-type *$end = $end-value;"
+    emit indent "while ($cursor != $end)"
+    ghosts-up-to (begin-offset block) indent
+    emit indent "{"
+    emit (indent + 1) "$element-type *$element = $cursor;"
+    statements.do: | statement |
+      ghosts-up-to (begin-offset statement) (indent + 1)
+      stmt statement (indent + 1) null
+    emit (indent + 1) "$cursor = $cursor->$link;"
+    ghosts-up-to (end-offset block) (indent + 1)
+    emit indent "}"
+
   loop-body node/Map indent/int:
     // Annotations anchored at the body's `{` are the loop invariant; for a
     // body without braces, those anchored at its first token.
@@ -1406,7 +1634,16 @@ class Renderer:
     if decl.get "storageClass": fail "$(where decl): $decl["storageClass"] local"
     kids := inner decl
     init := kids.is-empty ? null : (strip-cleanups kids[0])
-    if init and init["kind"] == "CXXConstructExpr":
+    if init and init["kind"] == "InitListExpr" and decl["type"]["qualType"] == "struct timespec":
+      fields := inner init
+      if fields.size != 2 or not (fields.every: it["kind"] == "ImplicitValueInitExpr" and (canonical it["type"]) == "long"):
+        fail "$(where decl): expected two zero-initialized long fields in timespec"
+      name := local-name decl
+      if not hoisted.contains decl["id"]: emit indent "struct timespec $name;"
+      emit indent "$(name).tv_sec = 0;"
+      emit indent "$(name).tv_nsec = 0;"
+      return
+    if init and init["kind"] == "CXXConstructExpr" and not (is-method-copy init):
       name := local-name decl
       type := c-type decl["type"]["qualType"]
       if not hoisted.contains decl["id"]: emit indent "$(declarator type name);"
@@ -1610,19 +1847,21 @@ class Renderer:
           // A delegating constructor: the target constructor on self.
           construct-into "self" cls (inner init)[0] 1
         else if init.contains "baseInit":
-          // The base class's default constructor (implicit: the vtable,
-          // the base's own default member initializers): `Base_ctor(self)`,
-          // whose contract the sidecar declares. Only without arguments.
+          // The base subobject uses the receiver representation of the sidecar.
+          // Forward its constructor arguments with the usual conversion rules.
           base-ctor := (inner init)[0]
-          if base-ctor["kind"] != "CXXConstructExpr" or not (inner base-ctor).is-empty:
-            fail "$(where decl): a base-class initializer with arguments"
-          emit 1 "$(c-type init["baseInit"]["qualType"])_ctor(self);"
+          if base-ctor["kind"] != "CXXConstructExpr" or (base-ctor.get "constructionKind") != "non-virtual base":
+            fail "$(where decl): expected a non-virtual base constructor"
+          construct-into "self" (c-type init["baseInit"]["qualType"]) base-ctor 1
         else if not init.contains "anyInit":
           fail "$(where decl): a base-class initializer"
         else:
           field := init["anyInit"]["name"]
           value := (inner init)[0]
-          if value["kind"] == "CXXDefaultInitExpr":
+          if value["kind"] == "CXXConstructExpr":
+            // Construct the embedded object in its own storage.
+            construct-into "&self->$field" (c-type value["type"]["qualType"]) value 1
+          else if value["kind"] == "CXXDefaultInitExpr":
             // A default member initializer, spelled in the class (another
             // file): its value, written out (default-init-value).
             emit 1 "self->$field = $(default-init-value value);"
@@ -1685,6 +1924,13 @@ replace-word text/string name/string by/string -> string:
 
 /** `T name`, without a space after a `*`. */
 declarator type/string name/string -> string:
+  // Fixed-size local byte arrays retain their bound, including for sizeof.
+  if ((type.starts-with "uint8 [ ") or (type.starts-with "char [ ")) and type.ends-with " ]":
+    bracket := type.index-of "["
+    element := type[..bracket].trim
+    count := type[bracket + 1..type.size - 2].trim
+    bound := int.parse count
+    return "$element $(name)[$bound]"
   if type.ends-with "*": return "$type$name"
   return "$type $name"
 
@@ -1865,6 +2111,7 @@ class Unit:
     type/string? := null
     trusted := false
     truncating := false
+    unsigned-word-conversion := false
     lambda-of/string? := null
     s.args[2..].do: | a/string |
       if a.starts-with "tu=": tu = a[3..]
@@ -1873,6 +2120,7 @@ class Unit:
       else if a.starts-with "lambda=": lambda-of = a[7..]
       else if a == "trusted": trusted = true
       else if a == "truncating": truncating = true
+      else if a == "unsigned-word-conversion": unsigned-word-conversion = true
       else: fail "$sidecar.path:$s.line: unknown option $a"
     // A function template instance with a closure type (the closure rules).
     instance-spelling := lambda-of ? (resolve-lambda tu target path lambda-of) : null
@@ -1893,6 +2141,16 @@ class Unit:
             if f["kind"] == "FunctionDecl" and (f["type"]["qualType"].contains instance-spelling):
               bodies := (inner f).filter: it["kind"] == "CompoundStmt"
               if not bodies.is-empty: candidates.add [f, bodies[0]]
+        continue.do
+      if type and d["kind"] == "FunctionTemplateDecl":
+        // Select an instantiated method by its concrete Clang signature.
+        (inner d).do: | f/Map |
+          if f["kind"] != "CXXMethodDecl": continue.do
+          if not ((inner f).any: it["kind"] == "TemplateArgument"): continue.do
+          // A typedef can instantiate different primitive types on the two ABIs.
+          if not ((type.split "|").contains (f["type"]["qualType"].replace --all " " "")): continue.do
+          bodies := (inner f).filter: it["kind"] == "CompoundStmt"
+          if not bodies.is-empty: candidates.add [f, bodies[0]]
         continue.do
       if (d.get "out-of-line") == true:
         // An out-of-line definition: `C::name` must be how it is spelled.
@@ -1934,6 +2192,7 @@ class Unit:
     renderer := Renderer sidecar constants source path cls ghosts uses cache.signatures (cache.owners tu target qname)
     renderer.cxx-cls = cxx-cls
     renderer.truncating = truncating
+    renderer.unsigned-word-conversion = unsigned-word-conversion
     renderer.decls-of = :: | q/string | cache.find tu target q
     renderer.class-decl = :: | q/string |
       found := (cache.find tu target q).filter: | d/Map | d["kind"] == "CXXRecordDecl" and not (inner d).is-empty
@@ -1965,6 +2224,7 @@ class Unit:
         lren := Renderer sidecar constants source path cls cl.ghosts uses cache.signatures (cache.owners tu target qname)
         lren.cxx-cls = cxx-cls
         lren.truncating = truncating
+        lren.unsigned-word-conversion = unsigned-word-conversion
         lren.decls-of = renderer.decls-of
         lren.class-decl = renderer.class-decl
         cl.captures.do: | cap/List | lren.captures[cap[2]] = "closure->$cap[0]"

@@ -8,11 +8,14 @@
 
 #include "../../heap_report.h"
 #include "../../objects.h"
+#include "../../os_page_extent.h"
 #include "../../utils.h"
 
 #include "gc_metadata.h"
 
 namespace toit {
+
+#include "overflow_registration.h"
 
 #ifdef TOIT_FREERTOS
 // ESP32 has a cache line of 32 bytes, as does Cortex M7 and Cortex M3.
@@ -26,7 +29,13 @@ static const uword CACHE_LINE = 64;
 GcMetadata GcMetadata::singleton_;
 
 void GcMetadata::tear_down() {
-  OS::ungrab_virtual_memory(singleton_.metadata_, singleton_.metadata_size_);
+  uint8* reservation = singleton_.metadata_;
+  if (!reservation) return;
+  uword bytes = singleton_.metadata_size_;
+  int heuristics = singleton_.large_heap_heuristics_;
+  singleton_ = GcMetadata{};
+  singleton_.large_heap_heuristics_ = heuristics;
+  OS::ungrab_virtual_memory(reservation, bytes);
 }
 
 void GcMetadata::get_metadata_extent(uword* address_return, uword* size_return) {
@@ -34,34 +43,42 @@ void GcMetadata::get_metadata_extent(uword* address_return, uword* size_return) 
   *size_return = singleton_.metadata_size_;
 }
 
-void GcMetadata::set_up() { singleton_.set_up_singleton(); }
+void GcMetadata::set_up() {
+  if (singleton_.metadata_) FATAL("GC metadata already initialized");
+  GcMetadata tables{};
+  tables.large_heap_heuristics_ = singleton_.large_heap_heuristics_;
+  tables.initialize();
+  singleton_ = tables;
+}
 
-void GcMetadata::set_up_singleton() {
+// In internal ESP32 RAM, the low portion is used for C allocations. The
+// metadata allocation rounds to 4 KiB, so keep the extra heap coverage
+// available within the 12 KiB and 16 KiB metadata sizes.
+static inline uword internal_ram_metadata_prefix(uword size) {
+  const uword malloc_prefix = 108 * KB;
+  const uword small_heap = 148 * KB;
+  const uword medium_heap = 200 * KB;
+  if (size <= small_heap) return 0;
+  uword retained = size < small_heap + malloc_prefix ? small_heap : medium_heap;
+  return Utils::min(malloc_prefix, size - retained);
+}
+
+void GcMetadata::initialize() {
   OS::HeapMemoryRange range = OS::get_heap_memory_range();
 
   uword range_address = reinterpret_cast<uword>(range.address);
-  lowest_address_ = Utils::round_down(range_address, TOIT_PAGE_SIZE);
-  uword size = Utils::round_up(range.size + range_address - lowest_address_, TOIT_PAGE_SIZE);
+  OSPageExtent pages;
+  if (range.size == 0 || !OSPageExtent::covering(range_address, range.size, TOIT_PAGE_SIZE, &pages) ||
+      pages.size > UINTPTR_MAX - pages.start) {
+    FATAL("Invalid GC heap range");
+  }
+  lowest_address_ = pages.start;
+  uword size = pages.size;
 #ifdef TOIT_ESP32
-  // Assume that the first 108k of memory can be used for C allocations, so we
-  // remove that from the area that needs to be covered by the heap metadata.
-  // This reduces the heap metadata from 24k or 28k to 16k.
-  const uword ONLY_FOR_MALLOC = 108 * KB;
-  const uword TWELVE_K_METADATA_LIMIT = 148 * KB;
-  const uword SIXTEEN_K_METADATA_LIMIT = 200 * KB;
   if (!OS::use_spiram_for_metadata() && !OS::use_spiram_for_heap()) {
-    word adjust = ONLY_FOR_MALLOC;
-    // Metadata sizes are rounded up to the next 4k boundary, so we might as
-    // well increase the covered size to make use of the extra space.
-    if (size - adjust < TWELVE_K_METADATA_LIMIT) {
-      adjust = size - TWELVE_K_METADATA_LIMIT;
-    } else if (size - adjust < SIXTEEN_K_METADATA_LIMIT) {
-      adjust = size - SIXTEEN_K_METADATA_LIMIT;
-    }
-    if (adjust > 0) {
-      lowest_address_ += adjust;
-      size -= adjust;
-    }
+    uword prefix = internal_ram_metadata_prefix(size);
+    lowest_address_ += prefix;
+    size -= prefix;
   }
 #endif
   heap_extent_ = size;
@@ -80,20 +97,16 @@ void GcMetadata::set_up_singleton() {
 
   uword cumulative_mark_bits_size = Utils::round_up(size >> CUMULATIVE_MARK_BITS_SHIFT, CACHE_LINE);
 
-  uword page_type_size_ = Utils::round_up(size >> TOIT_PAGE_SIZE_LOG2, CACHE_LINE);
+  uword page_type_size = Utils::round_up(size >> TOIT_PAGE_SIZE_LOG2, CACHE_LINE);
 
-  metadata_size_ = Utils::round_up(
-                                           //                                                          Size per 4k
-                                           //                     Overhead on:        32bit   64bit    page on 32 bit.
-      number_of_cards_ +                   // One remembered set byte per card.       1/128   1/256    32 bytes
-          number_of_cards_ +               // One object start offset byte per card.  1/128   1/256    32 bytes
-          mark_bits_size +                 // One mark bit per word.                  1/32    1/64     128 bytes
-          cumulative_mark_bits_size +      // One uword per 32 mark bits              1/32    1/32     128 bytes
-          mark_stack_overflow_bits_size +  // One bit per card                        1/1024  1/2048   4 bytes
-          page_type_size_,                 // One byte per page                       1/4096  1/32768  1 byte
-                                           //            Total:                       7.9%    5.5%
-                                           //            Total without mark bits:     1.6%    0.8%
-      TOIT_PAGE_SIZE);
+  // One mark bit per heap word, then one destination word and two card
+  // bytes per 32 heap words, one overflow bit per card, and one page byte.
+  uword count_offset = mark_bits_size;
+  uword remembered_offset = count_offset + cumulative_mark_bits_size;
+  uword starts_offset = remembered_offset + number_of_cards_;
+  uword overflow_offset = starts_offset + number_of_cards_;
+  uword page_type_offset = overflow_offset + mark_stack_overflow_bits_size;
+  metadata_size_ = Utils::round_up(page_type_offset + page_type_size, TOIT_PAGE_SIZE);
 
   // We create all the metadata with just one allocation.  Otherwise we will
   // lose memory when the malloc rounds a series of big allocations up to 4k
@@ -108,28 +121,27 @@ void GcMetadata::set_up_singleton() {
     abort();
   }
 
-  // Mark bits must be page aligned so that mark_all detects page boundary
-  // crossings, so we do that first.
+  // Keep the mark bits and destination counts at the start for lazy commitment.
   mark_bits_ = reinterpret_cast<uint32*>(metadata_);
 
-  cumulative_mark_bit_counts_ = reinterpret_cast<uword*>(metadata_ + mark_bits_size);
-
-  remembered_set_ = metadata_ + mark_bits_size + cumulative_mark_bits_size;
-
-  object_starts_ = remembered_set_ + number_of_cards_;
-
-  mark_stack_overflow_bits_ = object_starts_ + number_of_cards_;
-
-  page_type_bytes_ = mark_stack_overflow_bits_ + mark_stack_overflow_bits_size;
+  cumulative_mark_bit_counts_ = reinterpret_cast<uword*>(metadata_ + count_offset);
+  remembered_set_ = metadata_ + remembered_offset;
+  object_starts_ = metadata_ + starts_offset;
+  mark_stack_overflow_bits_ = metadata_ + overflow_offset;
+  page_type_bytes_ = metadata_ + page_type_offset;
 
   // The mark bits and cumulative mark bits are the biggest, so they are not
   // mapped in immediately in order to reduce the memory footprint of very
   // small programs.  We do it when we create pages that need them.
-  OS::use_virtual_memory(remembered_set_, number_of_cards_);
-  OS::use_virtual_memory(object_starts_, number_of_cards_);
-  OS::use_virtual_memory(mark_stack_overflow_bits_, mark_stack_overflow_bits_size);
-  OS::use_virtual_memory(page_type_bytes_, page_type_size_);
-  memset(page_type_bytes_, UNKNOWN_SPACE_PAGE, page_type_size_);
+  if (!OS::use_virtual_memory(remembered_set_, number_of_cards_) ||
+      !OS::use_virtual_memory(object_starts_, number_of_cards_) ||
+      !OS::use_virtual_memory(mark_stack_overflow_bits_, mark_stack_overflow_bits_size) ||
+      !OS::use_virtual_memory(page_type_bytes_, page_type_size)) {
+    OS::ungrab_virtual_memory(metadata_, metadata_size_);
+    printf("[toit] ERROR: failed to commit GC metadata\n");
+    abort();
+  }
+  memset(page_type_bytes_, UNKNOWN_SPACE_PAGE, page_type_size);
 
   uword start = reinterpret_cast<uword>(object_starts_);
   uword lowest = lowest_address_;
@@ -308,25 +320,19 @@ uword GcMetadata::object_address_from_start(uword card, uint8 start) {
 void GcMetadata::slow_mark(HeapObject* object, uword size) {
   int mask_shift = ((reinterpret_cast<uword>(object) >> WORD_SHIFT) & 31);
   uint32* data = mark_bits_for(object);
-  uint32 words = size >> WORD_SHIFT;
+  uword words = size >> WORD_SHIFT;
 
   Utils::mark_bits(data, mask_shift, words);
 }
 
 void GcMetadata::mark_stack_overflow(HeapObject* object) {
   uword address = object->_raw();  // Note we need this untagged because we write the low byte into the starts_for.
-  uint8* overflow_bits = overflow_bits_for(address);
-  *overflow_bits |= 1U << ((address >> CARD_SIZE_LOG_2) & 7);
-  // We can have a mark stack overflow in new-space where we do not normally
-  // maintain object starts. By updating the object starts for this card we
-  // can be sure that the necessary objects in this card are walkable.
-  uint8* start = starts_for(address);
-  ASSERT(CARD_SIZE_LOG_2 <= 8);
-  uint8 low_byte = static_cast<uint8>(address);
-  // We only overwrite the object start if we didn't have object start info
-  // before or if this object is before the previous object start, which
-  // would mean we would not scan the necessary object.
-  if (*start == NO_OBJECT_START || *start > low_byte) *start = low_byte;
+  // New space may have no recorded start. Recovery must begin at or before
+  // every deferred object in this card, including any earlier registration.
+  static_assert(CARD_SIZE_LOG_2 <= 8, "object starts fit the low address byte");
+  static_assert(NO_OBJECT_START % WORD_SIZE != 0, "aligned object starts differ from the sentinel");
+  record_overflow_start(overflow_bits_for(address), starts_for(address),
+                        (address >> CARD_SIZE_LOG_2) & 7, static_cast<uint8>(address), NO_OBJECT_START);
 }
 
 }  // namespace toit

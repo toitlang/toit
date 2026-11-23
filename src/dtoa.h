@@ -22,6 +22,8 @@ namespace toit {
 // Includes the terminating '\0'.
 constexpr int MAX_BUFFER_SIZE_DOUBLE_TO_SHORTEST = 26;
 
-void double_to_shortest(double value, char* buffer, size_t buffer_size);
+// Formats a finite, nonzero binary64. Returns the character count, or -1 if
+// the buffer is too small or the decimal components exceed binary64 bounds.
+int double_to_shortest(double value, char* buffer, size_t buffer_size);
 
 } // namespace toit

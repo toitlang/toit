@@ -1,0 +1,126 @@
+// Copyright (C) 2026 Toit contributors.
+
+#ifndef TOIT_SCAN_POSITIONS_GH
+#define TOIT_SCAN_POSITIONS_GH
+
+#include <quantifiers.gh>
+#include <listex.gh>
+#include <nat.gh>
+
+fixpoint int track_words(int start, int end) { return end/sizeof(void *)-start/sizeof(void *); }
+
+lemma void aligned_distance(int start, int end)
+  requires 0 <= start &*& start <= end &*& start % sizeof(void *) == 0 &*& end % sizeof(void *) == 0;
+  ensures end-start == track_words(start,end)*sizeof(void *) &*& track_words(start,end) == (end-start)/sizeof(void *);
+{
+  div_rem_nonneg(start,sizeof(void *));
+  div_rem_nonneg(end,sizeof(void *));
+  div_rem_nonneg_unique(end-start,sizeof(void *),end/sizeof(void *)-start/sizeof(void *),0);
+}
+
+fixpoint bool promotion_transfer(int before, int after, int limit, int start) {
+  return start < 0 || before < start || start % sizeof(void *) != 0 ||
+         track_words(start,after) == track_words(start,before)+track_words(before,after) &&
+         track_words(start,after)+track_words(after,limit) == track_words(start,before)+track_words(before,limit);
+}
+
+lemma void account_bump(int before, int after, int limit)
+  requires 0 <= before &*& before <= after &*& after <= limit &*&
+           before % sizeof(void *) == 0 &*& after % sizeof(void *) == 0 &*& limit % sizeof(void *) == 0;
+  ensures forall_int((promotion_transfer)(before,after,limit)) == true;
+{
+  if (!forall_int((promotion_transfer)(before,after,limit))) {
+    int start = not_forall_int((promotion_transfer)(before,after,limit));
+  }
+}
+
+// Include unused words so a later allocation, or a filler created by
+// shrinking a stack, can expose a new header without increasing the budget.
+fixpoint list<int> word_starts(int base, nat words) {
+  switch (words) {
+    case zero: return nil;
+    case succ(n): return cons(base,word_starts(base+sizeof(void *),n));
+  }
+}
+
+fixpoint bool available_word(list<int> pool, int lo, int hi, int a) {
+  return a < lo || hi <= a || a % sizeof(void *) != 0 || mem(a,pool);
+}
+
+lemma void word_in_window(int base, nat words, int a)
+  requires 0 <= base &*& base % sizeof(void *) == 0 &*& a % sizeof(void *) == 0 &*&
+           base <= a &*& a < base+int_of_nat(words)*sizeof(void *);
+  ensures mem(a,word_starts(base,words)) == true;
+{
+  switch (words) {
+    case zero:
+    case succ(n):
+      if (a != base) {
+        div_rem_nonneg(base,sizeof(void *));
+        div_rem_nonneg(a,sizeof(void *));
+        if (a/sizeof(void *) <= base/sizeof(void *)) { assert false; }
+        div_rem_nonneg_unique(base+sizeof(void *),sizeof(void *),base/sizeof(void *)+1,0);
+        word_in_window(base+sizeof(void *),n,a);
+      }
+  }
+}
+
+lemma void before_window(int a, int base, nat words)
+  requires a < base;
+  ensures !mem(a,word_starts(base,words));
+{
+  switch (words) {
+    case zero:
+    case succ(n): before_window(a,base+sizeof(void *),n);
+  }
+}
+
+lemma void word_count(int base, nat words)
+  requires true;
+  ensures length(word_starts(base,words)) == int_of_nat(words) &*& distinct(word_starts(base,words)) == true;
+{
+  switch (words) {
+    case zero:
+    case succ(n):
+      before_window(base,base+sizeof(void *),n);
+      word_count(base+sizeof(void *),n);
+  }
+}
+
+lemma void split_window(int base, nat used, int remaining)
+  requires 0 <= remaining;
+  ensures word_starts(base,nat_of_int(int_of_nat(used)+remaining)) ==
+          append(word_starts(base,used),word_starts(base+int_of_nat(used)*sizeof(void *),nat_of_int(remaining)));
+{
+  switch (used) {
+    case zero:
+    case succ(n):
+      succ_int(int_of_nat(n)+remaining);
+      split_window(base+sizeof(void *),n,remaining);
+  }
+}
+
+lemma void window_positions(int base, nat words)
+  requires base >= 0 &*& base % sizeof(void *) == 0;
+  ensures forall_int((available_word)(word_starts(base,words),base,base+int_of_nat(words)*sizeof(void *))) == true &*&
+          length(word_starts(base,words)) == int_of_nat(words) &*& distinct(word_starts(base,words)) == true;
+{
+  word_count(base,words);
+  if (!forall_int((available_word)(word_starts(base,words),base,base+int_of_nat(words)*sizeof(void *)))) {
+    int a = not_forall_int((available_word)(word_starts(base,words),base,base+int_of_nat(words)*sizeof(void *)));
+    word_in_window(base,words,a);
+  }
+}
+
+lemma void consume_scan_position(list<int> pool, int current, int next, int limit)
+  requires forall_int((available_word)(pool,current,limit)) == true &*& current % sizeof(void *) == 0 &*& current < next &*& next <= limit;
+  ensures mem(current,pool) == true &*& forall_int((available_word)(remove(current,pool),next,limit)) == true;
+{
+  forall_int_elim((available_word)(pool,current,limit),current);
+  if (!forall_int((available_word)(remove(current,pool),next,limit))) {
+    int a = not_forall_int((available_word)(remove(current,pool),next,limit));
+    forall_int_elim((available_word)(pool,current,limit),a);
+    neq_mem_remove(a,current,pool);
+  }
+}
+#endif

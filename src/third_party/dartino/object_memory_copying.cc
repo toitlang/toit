@@ -168,6 +168,18 @@ uword SemiSpace::used() const {
   return (top() - chunk_list_.last()->start());
 }
 
+static bool scan_copied_chunk(Program* program, ScavengeVisitor* visitor, Chunk* chunk) {
+  uword start = chunk->scavenge_pointer();
+  uword current = start;
+  while (!has_sentinel_at(current)) {
+    HeapObject* object = HeapObject::from_address(current);
+    object->roots_do(program, visitor);
+    current += object->size(program);
+  }
+  chunk->set_scavenge_pointer(current);
+  return current != start;
+}
+
 // Called multiple times until there is no more work.  Finds objects moved to
 // the to-space and traverses them to find and fix more new-space pointers.
 bool SemiSpace::complete_scavenge(ScavengeVisitor* visitor) {
@@ -176,16 +188,7 @@ bool SemiSpace::complete_scavenge(ScavengeVisitor* visitor) {
   visitor->set_record_to_dummy_address();
 
   for (auto chunk : chunk_list_) {
-    uword current = chunk->scavenge_pointer();
-    while (!has_sentinel_at(current)) {
-      found_work = true;
-      HeapObject* object = HeapObject::from_address(current);
-      object->roots_do(program_, visitor);
-
-      current += object->size(program_);
-    }
-    // Set up the already-scanned pointer for next round.
-    chunk->set_scavenge_pointer(current);
+    if (scan_copied_chunk(program_, visitor, chunk)) found_work = true;
   }
 
   return found_work;

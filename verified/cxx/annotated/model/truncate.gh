@@ -33,11 +33,28 @@ lemma void Z_truncate_signed_id(Z z, nat n)
   }
 }
 
+lemma void int_of_complement(Z z)
+  requires true;
+  ensures int_of_Z(Z_not(z)) == -1 - int_of_Z(z);
+{
+  switch (z) {
+    case Zsign(b):
+    case Zdigit(rest, bit): int_of_complement(rest);
+  }
+}
+
 lemma void truncate_signed_id(int x, nat n)
-  requires 0 <= x &*& x < pow_nat(2, n);
+  requires -pow_nat(2, n) <= x &*& x < pow_nat(2, n);
   ensures truncate_signed(x, int_of_nat(n)) == x;
 {
-  Z z = int_of_Z_of_uintN(x, n);
+  Z z;
+  if (x < 0) {
+    Z complement = int_of_Z_of_uintN(-1 - x, n);
+    int_of_complement(complement);
+    z = Z_not(complement);
+  } else {
+    z = int_of_Z_of_uintN(x, n);
+  }
   truncate_signed_def(x, z, n);
   Z_truncate_signed_id(z, n);
 }

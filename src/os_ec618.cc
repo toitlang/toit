@@ -41,6 +41,7 @@ extern "C" {
 #include "memory.h"
 #include "os.h"
 #include "os_freertos.h"
+#include "os_page_extent.h"
 #include "rtc_memory_ec618.h"
 #include "process.h"
 #include "program.h"
@@ -52,16 +53,16 @@ extern "C" {
 namespace {
 
 // Cortex-M3 has no 64-bit exclusive accesses. Protect the compiler's 64-bit
-// atomic helpers against task switches and maskable interrupts on this single
-// core. Restore PRIMASK so nested calls preserve the caller's interrupt state.
-// NMI and fault handlers must not access these atomic objects.
-class Atomic64Guard {
+// atomic helpers and task-to-thread map against task switches and maskable
+// interrupts on this single core. Restore PRIMASK for nested callers.
+// NMI and fault handlers must not access the protected state.
+class InterruptMaskGuard {
  public:
-  Atomic64Guard() : mask_(__get_PRIMASK()) {
+  InterruptMaskGuard() : mask_(__get_PRIMASK()) {
     __disable_irq();
     __DMB();
   }
-  ~Atomic64Guard() {
+  ~InterruptMaskGuard() {
     __DMB();
     __set_PRIMASK(mask_);
   }
@@ -76,12 +77,12 @@ class Atomic64Guard {
 // requested by every memory-order argument, including sequential consistency.
 // Use plain volatile accesses here to avoid recursively calling these helpers.
 extern "C" uint64_t __atomic_load_8(const volatile void* ptr, int) {
-  Atomic64Guard guard;
+  InterruptMaskGuard guard;
   return *static_cast<const volatile uint64_t*>(ptr);
 }
 
 extern "C" uint64_t __atomic_fetch_add_8(volatile void* ptr, uint64_t value, int) {
-  Atomic64Guard guard;
+  InterruptMaskGuard guard;
   volatile uint64_t* target = static_cast<volatile uint64_t*>(ptr);
   uint64_t previous = *target;
   *target = previous + value;
@@ -89,7 +90,7 @@ extern "C" uint64_t __atomic_fetch_add_8(volatile void* ptr, uint64_t value, int
 }
 
 extern "C" uint64_t __atomic_fetch_sub_8(volatile void* ptr, uint64_t value, int) {
-  Atomic64Guard guard;
+  InterruptMaskGuard guard;
   volatile uint64_t* target = static_cast<volatile uint64_t*>(ptr);
   uint64_t previous = *target;
   *target = previous - value;
@@ -150,6 +151,7 @@ void OS::close(int fd) {
 const int DEFAULT_STACK_SIZE = 2 * KB;
 
 static Thread* get_current_thread() {
+  InterruptMaskGuard guard;
   TaskHandle_t task = xTaskGetCurrentTaskHandle();
   if (task == null) return null;
   ThreadMapEntry* cached = cached_thread_entry;
@@ -165,24 +167,32 @@ static Thread* get_current_thread() {
 
 static void set_current_thread(Thread* thread) {
   TaskHandle_t task = xTaskGetCurrentTaskHandle();
-  // Look for existing entry or empty slot.
-  int empty = -1;
-  for (int i = 0; i < CONFIG_TOIT_EC618_MAX_THREADS; i++) {
-    if (thread_map[i].task == task) {
-      thread_map[i].thread = thread;
-      cached_thread_entry = &thread_map[i];
+  if (task == null) FATAL("no current task");
+  {
+    InterruptMaskGuard guard;
+    int empty = -1;
+    for (int i = 0; i < CONFIG_TOIT_EC618_MAX_THREADS; i++) {
+      if (thread_map[i].task == task) {
+        thread_map[i].thread = thread;
+        cached_thread_entry = &thread_map[i];
+        return;
+      }
+      if (empty < 0 && thread_map[i].task == null) empty = i;
+    }
+    if (empty >= 0) {
+      thread_map[empty].task = task;
+      thread_map[empty].thread = thread;
+      cached_thread_entry = &thread_map[empty];
       return;
     }
-    if (empty < 0 && thread_map[i].task == null) empty = i;
   }
-  if (empty < 0) FATAL("too many threads");
-  thread_map[empty].task = task;
-  thread_map[empty].thread = thread;
-  cached_thread_entry = &thread_map[empty];
+  FATAL("too many threads");
 }
 
 static void clear_current_thread() {
+  InterruptMaskGuard guard;
   TaskHandle_t task = xTaskGetCurrentTaskHandle();
+  if (task == null) return;
   for (int i = 0; i < CONFIG_TOIT_EC618_MAX_THREADS; i++) {
     if (thread_map[i].task == task) {
       thread_map[i].task = null;
@@ -215,11 +225,19 @@ static void ec618_thread_start(void* arg) {
 
 void Thread::_boot() {
   auto thread = reinterpret_cast<ThreadData*>(handle_);
+  Thread* previous = thread == null ? get_current_thread() : null;
   set_current_thread(this);
   ASSERT(current() == this);
-  HeapTagScope scope(ITERATE_CUSTOM_TAGS + OTHER_THREADS_MALLOC_TAG);
-  entry();
-  clear_current_thread();
+  {
+    HeapTagScope scope(ITERATE_CUSTOM_TAGS + OTHER_THREADS_MALLOC_TAG);
+    entry();
+  }
+  if (previous == null) {
+    clear_current_thread();
+  } else {
+    set_current_thread(previous);
+  }
+  if (thread == null) return;  // run() borrowed the calling task.
   xSemaphoreGive(thread->terminated);
   vTaskDelete(null);
 }
@@ -232,7 +250,10 @@ bool Thread::spawn(int stack_size, int core) {
   // the requested RAM. Round up and check the vendor's 16-bit depth limit.
   unsigned stack_words = (static_cast<unsigned>(stack_size) + sizeof(StackType_t) - 1)
       / sizeof(StackType_t);
-  if (stack_words > UINT16_MAX) return false;
+  // The port reserves 16 frame words below the last stack word, after
+  // aligning that word down to eight bytes. Alignment can consume one word.
+  static_assert(sizeof(StackType_t) == 4, "EC618 stack frame uses 32-bit words");
+  if (stack_words < 18 || stack_words > UINT16_MAX) return false;
 
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + THREAD_SPAWN_MALLOC_TAG);
   ThreadData* thread = _new ThreadData();
@@ -252,6 +273,7 @@ bool Thread::spawn(int stack_size, int core) {
     tskIDLE_PRIORITY + 1,
     &thread->handle);
   if (res != pdPASS) {
+    handle_ = null;
     vSemaphoreDelete(thread->terminated);
     delete thread;
     return false;
@@ -337,22 +359,15 @@ bool OS::use_virtual_memory(void* address, uword size) {
 void OS::unuse_virtual_memory(void* address, uword size) {}
 
 OS::HeapMemoryRange OS::get_heap_memory_range() {
-#ifdef TOIT_CMPCTMALLOC
-  heap_stats_t stats;
-  vPortGetHeapStats(&stats);
-  if (stats.lowest_address != null) {
-    HeapMemoryRange range;
-    range.address = stats.lowest_address;
-    range.size = reinterpret_cast<uword>(stats.highest_address) -
-                 reinterpret_cast<uword>(stats.lowest_address);
-    return range;
+  // GC chunks are whole, aligned pages of the arena registered by heap_7.c.
+  // Discovering their address range does not require inspecting live allocations.
+  uword start = reinterpret_cast<uword>(&end_ap_data);
+  uword end = reinterpret_cast<uword>(&start_up_buffer);
+  OSPageExtent pages;
+  if (end <= start || !OSPageExtent::contained(start, end - start, TOIT_PAGE_SIZE, &pages)) {
+    return {nullptr, 0};
   }
-#endif
-  // Fallback: use linker-defined symbols.
-  HeapMemoryRange range;
-  range.address = reinterpret_cast<void*>(&end_ap_data);
-  range.size = reinterpret_cast<uword>(&start_up_buffer) - reinterpret_cast<uword>(&end_ap_data);
-  return range;
+  return {reinterpret_cast<void*>(pages.start), pages.size};
 }
 
 void OS::tear_down() {

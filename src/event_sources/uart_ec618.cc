@@ -18,28 +18,32 @@
 #ifdef TOIT_EC618
 
 #include "uart_ec618.h"
+#include "task.h"
 
 namespace toit {
 
-Ec618EventSource* Ec618EventSource::instance_ = null;
+static_assert(ATOMIC_POINTER_LOCK_FREE == 2, "ISR publication requires lock-free pointers");
+std::atomic<Ec618EventSource*> Ec618EventSource::instance_{null};
 
 Ec618EventSource::Ec618EventSource()
     : EventSource("Ec618", 1)
     , Thread("Ec618Event")
-    , queue_(xQueueCreate(32, sizeof(Event)))
-    , stop_(false) {
-  ASSERT(instance_ == null);
-  instance_ = this;
-  spawn(4 * KB);
+    , queue_(xQueueCreate(32, sizeof(Event))) {
+  ASSERT(instance() == null);
+  if (queue_ == null) FATAL("Failed to allocate EC618 event queue");
+  if (!spawn(4 * KB)) FATAL("Failed to start EC618 event worker");
+  instance_.store(this, std::memory_order_release);
 }
 
 Ec618EventSource::~Ec618EventSource() {
-  stop_ = true;
+  // Close producer admission before the blocking STOP send. A task sender
+  // cannot be preempted by teardown while it holds a source pointer, and an
+  // ISR on this single-core port completes before any task resumes.
+  instance_.store(null, std::memory_order_release);
   Event stop_event = { Event::STOP, 0 };
-  xQueueSend(queue_, &stop_event, portMAX_DELAY);
+  if (xQueueSend(queue_, &stop_event, portMAX_DELAY) != pdTRUE) FATAL("Failed to stop EC618 event worker");
   join();
   vQueueDelete(queue_);
-  instance_ = null;
 }
 
 void Ec618EventSource::on_unregister_resource(Locker& locker, Resource* r) {
@@ -47,18 +51,21 @@ void Ec618EventSource::on_unregister_resource(Locker& locker, Resource* r) {
 }
 
 void Ec618EventSource::send_event(Event::Type type, word data) {
-  if (instance_ == null) return;
-  if (!instance_->mailbox_.publish(type, data)) return;
-  Event event = { type, data };
-  xQueueSend(instance_->queue_, &event, 0);
+  taskENTER_CRITICAL();
+  auto source = instance();
+  if (source != null && source->mailbox_.publish(type, data)) {
+    Event event = { type, data };
+    xQueueSend(source->queue_, &event, 0);
+  }
+  taskEXIT_CRITICAL();
 }
 
 void Ec618EventSource::send_event_from_isr(Event::Type type, word data) {
-  if (instance_ == null) return;
-  if (!instance_->mailbox_.publish(type, data)) return;
+  auto source = instance();
+  if (source == null || !source->mailbox_.publish(type, data)) return;
   Event event = { type, data };
   BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-  xQueueSendFromISR(instance_->queue_, &event, &xHigherPriorityTaskWoken);
+  xQueueSendFromISR(source->queue_, &event, &xHigherPriorityTaskWoken);
   portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
 
@@ -70,7 +77,7 @@ void Ec618EventSource::dispatch_event(Locker& locker, Event::Type type, word dat
 }
 
 void Ec618EventSource::entry() {
-  while (!stop_) {
+  while (true) {
     Event event;
     if (xQueueReceive(queue_, &event, portMAX_DELAY) != pdTRUE) continue;
     if (event.type == Event::STOP) break;

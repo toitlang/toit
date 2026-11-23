@@ -1108,11 +1108,10 @@ pub fn compare_ints(a: i64, b: i64) -> u8 {
     if a < b { 29 } else if a == b { 114 } else { 195 }
 }
 
-/// `Interpreter::compare_numbers` for at least one double (trusted mirror of
-/// the uninterpreted `compare_mixed`).
+/// `Interpreter::compare_numbers` for at least one double, shared with the verified loop.
 pub fn compare_mixed(a: Num, b: Num) -> u8 {
     let conv = |n: Num| match n { Num::Int(i) => crate::exec_step::XNum::Int(i), Num::Dbl(d) => crate::exec_step::XNum::Dbl(d) };
-    crate::exec_step::compare_mixed_impl(conv(a), conv(b))
+    crate::exec_step::x_compare_mixed(conv(a), conv(b))
 }
 
 /// Trusted implementation of the uninterpreted `double_add/sub/mul`.

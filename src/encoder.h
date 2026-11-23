@@ -76,7 +76,8 @@ class MallocedBuffer : public Buffer {
 
   virtual void put_byte(uint8 c) {
     if (pos_ < length_) buffer_[pos_] = c;
-    pos_++;
+    // Counting passes need the attempted size even after the buffer fills.
+    if (pos_ < INTPTR_MAX) pos_++;
   }
 
   bool has_content() const { return length_ > 0; }
@@ -112,6 +113,7 @@ class Encoder {
   void write_header(word size, uint8 tag);
   void write_double(double value);
   void write_byte_array_header(word length);
+  void write_byte_array(ByteArray* array);
   void write_string(const char* string);
   // Always uses the 32 bit encoding even if a smaller one would suffice.  This
   // helps make the size of something predictable.

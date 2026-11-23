@@ -22,8 +22,8 @@
 //! a type invariant per view ties them to the addresses and, for the heap,
 //! to the heap model, so the accessors are verified. Trusted: the
 //! derivation points that create the permissions (the constructors at the
-//! end of this file) and the FFI leaves (memmove, memset, the write
-//! barrier); every `external_body` item is listed in `TRUSTED.md`.
+//! end of this file). See `TRUSTED.md` for each
+//! remaining `external_body`.
 //!
 //! Views of process memory (`StackMem`) are invalidated by every call that
 //! may garbage collect: those calls (`Runtime`) take the view by value and
@@ -189,6 +189,7 @@ impl<T: Copy> Table<T> {
     #[inline(always)]
     pub fn len(&self) -> (r: usize)
         ensures r == self@.len(),
+        no_unwind
     {
         self.len
     }
@@ -197,6 +198,7 @@ impl<T: Copy> Table<T> {
     pub fn at(&self, i: usize) -> (r: T)
         requires i < self@.len(),
         ensures r == self@[i as int],
+        no_unwind
     {
         proof {
             use_type_invariant(self);
@@ -511,19 +513,14 @@ impl StackMem {
 }
 
 
-/// memmove of `n` elements from `from..from+n` to `to..to+n` of the array
-/// at `array` (`StackMem::copy_within`). TRUSTED: the C library's
-/// `memmove` (an FFI leaf, `core::ptr::copy`), stated on the permissions:
-/// it writes exactly the destination words, which then hold the source
-/// words' old values. (A verified word loop with the same contract,
-/// verified/core/TRUSTED.md section 1, costs up to 1 percent more
-/// instructions on unwinding-heavy code: kept out.)
-#[verifier::external_body]
+/// Moves stack words in place. When the destination starts above the
+/// source, copy from the end so an overlapping write preserves unread words.
 #[inline(always)]
 fn copy_words(array: *mut usize, Ghost(len): Ghost<int>, Tracked(words): Tracked<&mut Map<int, PointsTo<usize>>>,
               from: usize, to: usize, n: usize)
     requires
         array_ok(*old(words), array, len),
+        len <= usize::MAX,
         from + n <= len,
         to + n <= len,
     ensures
@@ -532,9 +529,33 @@ fn copy_words(array: *mut usize, Ghost(len): Ghost<int>, Tracked(words): Tracked
             (if to <= i < to + n { old(words)[i - to + from].value() } else { old(words)[i].value() }),
     no_unwind
 {
-    // SAFETY: `from + n` and `to + n` lie in the array (the permissions
-    // cover `array[0..len)`).
-    unsafe { core::ptr::copy(array.add(from), array.add(to), n) }
+    if from == to { return; }
+    let mut done = 0usize;
+    while done < n
+        invariant
+            done <= n, from + n <= len, to + n <= len, len <= usize::MAX,
+            array_ok(*words, array, len),
+            forall|i: int| 0 <= i < len ==> #[trigger] words[i].value() ==
+                (if (if from < to { to + n - done <= i < to + n } else { to <= i < to + done }) {
+                    old(words)[i - to + from].value()
+                } else { old(words)[i].value() }),
+        decreases n - done,
+    {
+        let offset = if from < to { n - 1 - done } else { done };
+        let src = from + offset;
+        let dst = to + offset;
+        proof { assert(elem_ok(*words, array, src as int)); }
+        let value = *ptr_ref(array.wrapping_add(src), Tracked(words.tracked_borrow(src as int)));
+        let ghost previous = *words;
+        write_elem(Tracked(words), Ghost(array), Ghost(len), Ghost(dst as int), array.wrapping_add(dst), value);
+        proof {
+            assert forall|i: int| 0 <= i < len implies #[trigger] words[i].value() ==
+                (if i == dst { value } else { previous[i].value() }) by {
+                assert(values(*words, len)[i] == values(previous, len).update(dst as int, value)[i]);
+            }
+        }
+        done += 1;
+    }
 }
 
 /// A cursor into the elements of a view: a pointer to element `self@` of
@@ -767,7 +788,7 @@ pub open spec fn value64(o: HeapObj) -> u64 {
     }
 }
 
-/// Word `j` of a 64-bit payload `b` (little endian).
+/// Word `j` of a 64-bit payload `b` in native byte order.
 #[cfg(target_pointer_width = "64")]
 pub open spec fn value_word(b: u64, j: int) -> usize {
     b as usize
@@ -775,7 +796,11 @@ pub open spec fn value_word(b: u64, j: int) -> usize {
 
 #[cfg(target_pointer_width = "32")]
 pub open spec fn value_word(b: u64, j: int) -> usize {
-    if j == 0 { (b & 0xffff_ffffu64) as usize } else { (b >> 32u64) as usize }
+    #[cfg(target_endian = "little")]
+    let low = j == 0;
+    #[cfg(target_endian = "big")]
+    let low = j == 1;
+    if low { (b & 0xffff_ffffu64) as usize } else { (b >> 32u64) as usize }
 }
 
 /// TRUSTED (the layout of the heap model, TRUSTED.md section 1 "Memory
@@ -815,6 +840,7 @@ pub open spec fn word_val(o: HeapObj, cb: Seq<u16>, addrs: Seq<usize>, k: int, v
 /// to its content (`cptrs`: inline in the object, or the external
 /// address).
 pub tracked struct HeapMem {
+    pub tracked word_exposures: Map<int, IsExposed>,
     pub tracked exposed: IsExposed,
     pub tracked words: Map<(int, int), PointsTo<usize>>,
     pub tracked halves: Map<(int, int), PointsTo<HalfWord>>,
@@ -826,11 +852,20 @@ pub tracked struct HeapMem {
     pub ghost class_bits: Seq<u16>,
 }
 
-/// The untagged address of object `id`, as a pointer with the heap's
-/// exposed provenance (what `with_exposed_provenance(obj - HEAP_TAG)` gives).
+/// Word pointers retain the provenance of the semispace that supplied them.
+pub open spec fn word_exposure(m: HeapMem, id: int) -> IsExposed {
+    if m.word_exposures.contains_key(id) { m.word_exposures[id] } else { m.exposed }
+}
+
+proof fn object_exposure(tracked m: &HeapMem, id: int) -> (tracked token: IsExposed)
+    ensures token == word_exposure(*m, id),
+{
+    if m.word_exposures.contains_key(id) { *m.word_exposures.tracked_borrow(id) } else { m.exposed }
+}
+
 pub open spec fn obj_ptr(m: HeapMem, id: int) -> *mut usize {
     ptr_mut_from_data::<usize>(PtrData::<usize> {
-        addr: (m.addrs[id] - HEAP_TAG) as usize, provenance: m.exposed@, metadata: () })
+        addr: (m.addrs[id] - HEAP_TAG) as usize, provenance: word_exposure(m, id)@, metadata: () })
 }
 
 /// The byte address `a` as a pointer with the heap's exposed provenance.
@@ -977,7 +1012,7 @@ pub proof fn lemma_blob_frame(m0: HeapMem, m1: HeapMem, id: int)
     requires
         blob_mem_ok(m0),
         m1.halves == m0.halves, m1.bwords == m0.bwords, m1.bytes == m0.bytes, m1.cptrs == m0.cptrs,
-        m1.exposed == m0.exposed, m1.addrs == m0.addrs, m1.class_bits == m0.class_bits,
+        m1.word_exposures == m0.word_exposures, m1.exposed == m0.exposed, m1.addrs == m0.addrs, m1.class_bits == m0.class_bits,
         m1.objs.len() == m0.objs.len(),
         0 <= id < m0.objs.len(),
         forall|j: int| 0 <= j < m0.objs.len() && j != id ==> #[trigger] m1.objs[j] == m0.objs[j],
@@ -1034,7 +1069,7 @@ fn write_heap_word(Tracked(m): Tracked<&mut HeapMem>, Ghost(id): Ghost<int>, k: 
         final(m).objs == old(m).objs.update(id, o2),
         final(m).addrs == old(m).addrs,
         final(m).class_bits == old(m).class_bits,
-        final(m).exposed == old(m).exposed,
+        final(m).word_exposures == old(m).word_exposures, final(m).exposed == old(m).exposed,
         final(m).cptrs == old(m).cptrs,
     no_unwind
 {
@@ -1068,7 +1103,7 @@ fn write_heap_word(Tracked(m): Tracked<&mut HeapMem>, Ghost(id): Ghost<int>, k: 
 pub proof fn lemma_word_frame(m0: HeapMem, m1: HeapMem, id: int)
     requires
         heap_ok(m0),
-        m1.words == m0.words, m1.exposed == m0.exposed, m1.addrs == m0.addrs, m1.class_bits == m0.class_bits,
+        m1.words == m0.words, m1.word_exposures == m0.word_exposures, m1.exposed == m0.exposed, m1.addrs == m0.addrs, m1.class_bits == m0.class_bits,
         m1.objs.len() == m0.objs.len(),
         0 <= id < m0.objs.len(),
         forall|j: int| 0 <= j < m0.objs.len() && j != id ==> #[trigger] m1.objs[j] == m0.objs[j],
@@ -1105,7 +1140,7 @@ fn write_content_byte(Tracked(m): Tracked<&mut HeapMem>, Ghost(id): Ghost<int>, 
             with_content(old(m).objs[id], content(old(m).objs[id]).update(i, v))),
         final(m).addrs == old(m).addrs,
         final(m).class_bits == old(m).class_bits,
-        final(m).exposed == old(m).exposed,
+        final(m).word_exposures == old(m).word_exposures, final(m).exposed == old(m).exposed,
         final(m).cptrs == old(m).cptrs,
     no_unwind
 {
@@ -1120,6 +1155,7 @@ fn write_content_byte(Tracked(m): Tracked<&mut HeapMem>, Ghost(id): Ghost<int>, 
         let o2 = with_content(o, content(o).update(i, v));
         m.objs = m0.objs.update(id, o2);
         assert(m.bytes.dom() =~= m0.bytes.dom());
+        assert(byte_ok(*m, id, i));
         lemma_bytes_written(m0, *m, id, i, i + 1);
     }
 }
@@ -1133,17 +1169,14 @@ pub proof fn lemma_bytes_written(m0: HeapMem, m1: HeapMem, id: int, lo: int, hi:
         0 <= id < m0.objs.len(),
         is_blob(m0.objs[id]),
         m1.words == m0.words, m1.halves == m0.halves, m1.bwords == m0.bwords, m1.cptrs == m0.cptrs,
-        m1.exposed == m0.exposed, m1.addrs == m0.addrs, m1.class_bits == m0.class_bits,
+        m1.word_exposures == m0.word_exposures, m1.exposed == m0.exposed, m1.addrs == m0.addrs, m1.class_bits == m0.class_bits,
         m1.objs.len() == m0.objs.len(),
         forall|j: int| 0 <= j < m0.objs.len() && j != id ==> #[trigger] m1.objs[j] == m0.objs[j],
         m1.objs[id] == with_content(m0.objs[id], content(m1.objs[id])),
         content(m1.objs[id]).len() == content(m0.objs[id]).len(),
         m1.bytes.dom() == m0.bytes.dom(),
         forall|key: (int, int)| !(key.0 == id && lo <= key.1 < hi) ==> #[trigger] m1.bytes[key] == m0.bytes[key],
-        forall|k: int| lo <= k < hi ==> 0 <= k < content(m0.objs[id]).len()
-            && #[trigger] m1.bytes[(id, k)].ptr() == m0.bytes[(id, k)].ptr()
-            && m1.bytes[(id, k)].is_init()
-            && m1.bytes[(id, k)].value() == content(m1.objs[id])[k],
+        forall|k: int| lo <= k < hi ==> #[trigger] byte_ok(m1, id, k),
         forall|k: int| 0 <= k < content(m0.objs[id]).len() && !(lo <= k < hi) ==>
             #[trigger] content(m1.objs[id])[k] == content(m0.objs[id])[k],
     ensures heap_ok(m1),
@@ -1168,6 +1201,42 @@ pub proof fn lemma_bytes_written(m0: HeapMem, m1: HeapMem, id: int, lo: int, hi:
     }
 }
 
+/// One permission per physical card byte (objects on the same card share it).
+pub tracked struct CardBytes {
+    pub tracked exposed: IsExposed,
+    pub tracked bytes: Map<usize, PointsTo<u8>>,
+}
+
+pub open spec fn card_index(obj: usize) -> usize {
+    ((obj - HEAP_TAG) as usize) >> CARD_SIZE_LOG_2
+}
+
+spec fn card_address(obj: usize, bias: usize) -> usize {
+    card_index(obj).wrapping_add(bias)
+}
+
+spec fn card_ok(c: CardBytes, a: usize) -> bool {
+    &&& c.bytes.contains_key(a)
+    &&& c.bytes[a].ptr() == ptr_mut_from_data::<u8>(PtrData::<u8> {
+        addr: a, provenance: c.exposed@, metadata: (),
+    })
+}
+
+#[inline(always)]
+fn mark_card(Tracked(c): Tracked<&mut CardBytes>, a: usize)
+    requires card_ok(*old(c), a),
+    ensures
+        forall|k: usize| card_ok(*old(c), k) ==> #[trigger] card_ok(*final(c), k),
+        final(c).exposed == old(c).exposed, final(c).bytes.dom() == old(c).bytes.dom(),
+        final(c).bytes[a].is_init(), final(c).bytes[a].value() == NEW_SPACE_POINTERS,
+        forall|k: usize| k != a && old(c).bytes.contains_key(k) ==>
+            #[trigger] final(c).bytes[k] == old(c).bytes[k],
+    no_unwind
+{
+    let p: *mut u8 = with_exposed_provenance(a, Tracked(c.exposed));
+    ptr_mut_write(p, Tracked(c.bytes.tracked_borrow_mut(a)), NEW_SPACE_POINTERS);
+}
+
 /// Access to heap objects. A word with the heap tag that the core reads
 /// from a root (the object stack, a global, a program table) or from a
 /// field of such an object designates a live object (the GC maintains this;
@@ -1176,13 +1245,239 @@ pub proof fn lemma_bytes_written(m0: HeapMem, m1: HeapMem, id: int, lo: int, hi:
 /// GC (which produces new ones).
 pub struct Heap {
     remembered_set_bias: usize,
+    cards: Tracked<CardBytes>,
     mem: Tracked<HeapMem>,
+}
+
+/// The word permissions handed to the heap are indexed by its next object
+/// ID and word offset. Only the object's words belong in this map.
+pub(crate) open spec fn inline_keys(id: int, o: HeapObj) -> Set<(int, int)> {
+    Seq::new(obj_words(o) as nat, |k: int| (id, k)).to_set()
+}
+
+pub(crate) open spec fn inline_word(words: Map<(int, int), PointsTo<usize>>, id: int, k: int, top: usize,
+                    o: HeapObj, cb: Seq<u16>, addr: Seq<usize>) -> bool {
+    let perm = words[(id, k)];
+    &&& perm.ptr()@.addr == top + k * WORD_SIZE
+    &&& perm.is_init()
+    &&& word_val(o, cb, addr, k, perm.value())
+}
+
+/// Count the possible header addresses. A header occupies at least one word
+/// and its exclusive end fits in usize, excluding the last aligned address.
+#[cfg(target_pointer_width = "32")]
+proof fn header_count_32(m: HeapMem)
+    requires
+        heap_ok(m), m.addrs.no_duplicates(),
+        forall|i: int| 0 <= i < m.addrs.len() ==> #[trigger] m.addrs[i] & 3 == HEAP_TAG,
+    ensures m.objs.len() < 0x4000_0000,
+{
+    let possible = Seq::new(0x3fff_ffff, |slot: int| (4 * slot + 1) as usize);
+    assert forall|a: usize| m.addrs.to_set().contains(a) implies possible.to_set().contains(a) by {
+        let i = choose|i: int| 0 <= i < m.addrs.len() && m.addrs[i] == a;
+        assert(obj_fits(m, i));
+        assert(obj_words(m.objs[i]) >= 1);
+        assert(a % 4 == 1) by (bit_vector) requires a & 3 == 1;
+        let slot = a as int / 4;
+        assert(0 <= slot < possible.len());
+        assert(possible[slot] == a);
+    }
+    m.addrs.unique_seq_to_set();
+    possible.lemma_cardinality_of_set();
+    vstd::set_lib::lemma_len_subset(m.addrs.to_set(), possible.to_set());
+}
+
+/// Supply any missing remembered-set card permission and the count bound
+/// for targets whose address space alone permits more objects.
+#[verifier::external_body]
+proof fn inline_page_metadata(tracked cards: &CardBytes, tracked m: &HeapMem, bias: usize,
+                              tagged: usize, o: HeapObj,
+                              tracked words: &Map<(int, int), PointsTo<usize>>)
+                              -> (tracked incoming: Map<usize, PointsTo<u8>>)
+    requires
+        tagged & 3 == HEAP_TAG, !o.ro, o.body is Instance || o.body is Double,
+        words.dom() == inline_keys(m.objs.len() as int, o),
+        forall|k: int| is_word(o, k) ==> #[trigger] inline_word(
+            *words, m.objs.len() as int, k, (tagged - HEAP_TAG) as usize, o, m.class_bits, m.addrs),
+    ensures
+        WORD_SIZE == 8 ==> m.objs.len() + 1 < 0x4000_0000,
+        ({
+            let a = card_address(tagged, bias);
+            !card_ok(*cards, a) ==> {
+                &&& incoming.dom() == set![a]
+                &&& card_ok(CardBytes { exposed: cards.exposed, bytes: incoming }, a)
+            }
+        }),
+{ Map::tracked_empty() }
+
+proof fn install_inline_card(tracked cards: &mut CardBytes, a: usize, tracked incoming: Map<usize, PointsTo<u8>>)
+    requires
+        !card_ok(*old(cards), a), incoming.dom() == set![a],
+        card_ok(CardBytes { exposed: old(cards).exposed, bytes: incoming }, a),
+    ensures
+        card_ok(*final(cards), a),
+        forall|k: usize| card_ok(*old(cards), k) ==> #[trigger] card_ok(*final(cards), k)
+            && final(cards).bytes[k] == old(cards).bytes[k],
+{
+    cards.bytes.tracked_union_prefer_right(incoming);
+}
+
+/// Appending an address preserves the encoding of a modeled object's
+/// existing references, all of which were already encodable.
+proof fn written_word_after_append(o: HeapObj, cb: Seq<u16>, addr: Seq<usize>, tagged: usize, k: int, value: usize)
+    requires crate::abs::obj_model_ok(o, cb, addr), is_word(o, k), word_val(o, cb, addr, k, value),
+    ensures word_val(o, cb, addr.push(tagged), k, value),
+{
+    if k > 0 {
+        match o.body {
+            Body::Instance(f) => { assert(crate::abs::encodable(addr, f[k - INSTANCE_FIELDS_WORD])); },
+            Body::Array(e) if k >= ARRAY_ELEMENTS_WORD => { assert(crate::abs::encodable(addr, e[k - ARRAY_ELEMENTS_WORD])); },
+            _ => {},
+        }
+    }
+}
+
+proof fn install_inline_words(tracked m: &mut HeapMem, tagged: usize, o: HeapObj, tracked token: IsExposed,
+                              tracked words: Map<(int, int), PointsTo<usize>>)
+    requires
+        heap_ok(*old(m)), crate::abs::heap_model_ok(old(m).objs, old(m).addrs, old(m).class_bits),
+        tagged >= HEAP_TAG, tagged - HEAP_TAG + obj_words(o) * WORD_SIZE <= usize::MAX,
+        o.body is Instance || o.body is Double, crate::abs::obj_model_ok(o, old(m).class_bits, old(m).addrs),
+        words.dom() == inline_keys(old(m).objs.len() as int, o),
+        forall|k: int| is_word(o, k) ==> #[trigger] inline_word(words, old(m).objs.len() as int, k,
+            (tagged - HEAP_TAG) as usize, o, old(m).class_bits, old(m).addrs),
+        forall|key: (int, int)| words.contains_key(key) ==> (#[trigger] words[key]).ptr()@.provenance == token@,
+    ensures
+        heap_ok(*final(m)), final(m).objs == old(m).objs.push(o),
+        final(m).addrs == old(m).addrs.push(tagged), final(m).class_bits == old(m).class_bits,
+        final(m).cptrs == old(m).cptrs.push(addr_ptr(*old(m), 0)),
+{
+    let before = *m;
+    let n = m.objs.len() as int;
+    let indices = Seq::new(obj_words(o) as nat, |k: int| (n, k));
+    m.word_exposures.tracked_insert(n, token);
+    m.words.tracked_union_prefer_right(words);
+    m.objs = m.objs.push(o);
+    m.addrs = m.addrs.push(tagged);
+    m.cptrs = m.cptrs.push(addr_ptr(before, 0));
+    assert forall|id: int| 0 <= id < m.objs.len() implies #[trigger] obj_fits(*m, id) by {
+        if id != n { assert(obj_fits(before, id)); }
+    }
+    assert forall|id: int, k: int| 0 <= id < m.objs.len() && is_word(m.objs[id], k)
+        implies #[trigger] word_ok(*m, id, k) by {
+        if id == n {
+            assert(indices[k] == (n, k));
+            assert(inline_word(words, n, k, (tagged - HEAP_TAG) as usize, o, before.class_bits, before.addrs));
+            assert(words.contains_key((n, k)));
+            lemma_at_index_exact(obj_ptr(*m, id), k, obj_words(o));
+            written_word_after_append(o, before.class_bits, before.addrs, tagged, k, words[(n, k)].value());
+        } else {
+            if indices.contains((id, k)) {
+                let j = choose|j: int| 0 <= j < indices.len() && indices[j] == (id, k);
+            }
+            assert(!words.contains_key((id, k)));
+            assert(word_ok(before, id, k));
+            assert(crate::abs::obj_model_ok(before.objs[id], before.class_bits, before.addrs));
+            written_word_after_append(before.objs[id], before.class_bits, before.addrs, tagged, k, before.words[(id, k)].value());
+        }
+    }
+    assert forall|id: int| 0 <= id < m.objs.len() && m.objs[id].body is Str implies #[trigger] str_ok(*m, id) by {
+        assert(id < n); assert(str_ok(before, id));
+        assert forall|k: int| 0 <= k < content(m.objs[id]).len() implies #[trigger] byte_ok(*m, id, k) by {
+            assert(byte_ok(before, id, k));
+        }
+    }
+    assert forall|id: int| 0 <= id < m.objs.len() && (m.objs[id].body is Bytes || is_ba_class(*m, id))
+        implies #[trigger] ba_ok(*m, id) by {
+        assert(id < n); assert(ba_ok(before, id));
+        if m.objs[id].body is Bytes {
+            assert forall|k: int| 0 <= k < content(m.objs[id]).len() implies #[trigger] byte_ok(*m, id, k) by {
+                assert(byte_ok(before, id, k));
+            }
+        }
+    }
 }
 
 impl Heap {
     #[verifier::type_invariant]
     spec fn inv(&self) -> bool {
-        heap_ok(self.mem@)
+        &&& heap_ok(self.mem@)
+        &&& forall|id: int| 0 <= id < self.mem@.objs.len() && !self.mem@.objs[id].ro ==>
+            #[trigger] card_ok(self.cards@, card_address(self.mem@.addrs[id], self.remembered_set_bias))
+    }
+
+    /// An exclusively owned allocation header cannot occupy any live
+    /// object's header word, irrespective of pointer provenance.
+    #[inline(always)]
+    pub(crate) fn prove_fresh_header(&self, Ghost(tagged): Ghost<usize>, Tracked(fresh): Tracked<&mut PointsTo<usize>>)
+        requires
+            tagged >= HEAP_TAG, old(fresh).ptr()@.addr == tagged - HEAP_TAG,
+        ensures
+            *final(fresh) == *old(fresh),
+            forall|id: int| 0 <= id < self.objs().len() ==> #[trigger] self.addrs()[id] != tagged,
+        no_unwind
+    {
+        proof {
+            use_type_invariant(self);
+            if exists|id: int| 0 <= id < self.objs().len() && #[trigger] self.addrs()[id] == tagged {
+                let id = choose|id: int| 0 <= id < self.objs().len() && #[trigger] self.addrs()[id] == tagged;
+                let m = self.mem@;
+                assert(word_ok(m, id, 0));
+                assert(obj_fits(m, id));
+                lemma_at_index_exact(obj_ptr(m, id), 0, 0);
+                let tracked live = self.mem.borrow().words.tracked_borrow((id, 0int));
+                fresh.is_disjoint(live);
+                assert(live.ptr()@.addr == tagged - HEAP_TAG);
+            }
+        }
+    }
+
+    #[inline(always)]
+    pub(crate) fn register_inline(&mut self, p: &crate::exec::Program, Ghost(top): Ghost<usize>,
+                                  Ghost(tagged): Ghost<usize>, Ghost(o): Ghost<HeapObj>,
+                                  Tracked(token): Tracked<IsExposed>, Tracked(words): Tracked<Map<(int, int), PointsTo<usize>>>)
+        requires
+            tagged >= HEAP_TAG, top == tagged - HEAP_TAG, tagged & 3 == HEAP_TAG,
+            !crate::exec::in_ro(p, tagged),
+            top + obj_words(o) * WORD_SIZE <= usize::MAX,
+            !o.ro, o.body is Instance || o.body is Double,
+            crate::abs::obj_model_ok(o, old(self).class_bits(), old(self).addrs()),
+            crate::abs::heap_model_ok(old(self).objs(), old(self).addrs(), old(self).class_bits()),
+            forall|id: int| 0 <= id < old(self).objs().len() ==> #[trigger] old(self).addrs()[id] != tagged,
+            forall|key: (int, int)| words.contains_key(key) ==> (#[trigger] words[key]).ptr()@.provenance == token@,
+            words.dom() == inline_keys(old(self).objs().len() as int, o),
+            forall|k: int| is_word(o, k) ==> #[trigger] inline_word(
+                words, old(self).objs().len() as int, k, top, o, old(self).class_bits(), old(self).addrs()),
+        ensures
+            appended(old(self), final(self), tagged, p.ro_start, p.ro_size),
+            final(self).objs() == old(self).objs().push(o),
+            forall|a: usize| old(self).card_marked(a) ==> #[trigger] final(self).card_marked(a),
+    {
+        proof {
+            use_type_invariant(&*self);
+            let before = self.mem@;
+            let old_cards = self.cards@;
+            let bias = self.remembered_set_bias;
+            let a = card_address(tagged, bias);
+            let needs_count_bound = WORD_SIZE == 8 && before.objs.len() + 1 >= 0x4000_0000;
+            if needs_count_bound || !card_ok(old_cards, a) {
+                let tracked incoming = inline_page_metadata(self.cards.borrow(), self.mem.borrow(), bias, tagged, o, &words);
+                if !card_ok(old_cards, a) {
+                    install_inline_card(self.cards.borrow_mut(), a, incoming);
+                }
+            }
+            install_inline_words(self.mem.borrow_mut(), tagged, o, token, words);
+            #[cfg(target_pointer_width = "32")]
+            header_count_32(self.mem@);
+            assert forall|obj: usize| old(self).card_marked(obj) implies #[trigger] self.card_marked(obj) by {
+                let a = card_address(obj, bias);
+                assert(card_ok(old_cards, a));
+                assert(card_ok(self.cards@, a));
+            }
+            assert(self.mem@.objs.subrange(0, before.objs.len() as int) =~= before.objs);
+            assert(self.mem@.addrs.subrange(0, before.addrs.len() as int) =~= before.addrs);
+            assert(self.mem@.cptrs.subrange(0, before.objs.len() as int) =~= before.cptrs);
+        }
     }
 
     /// The heap model: the objects of the process as abstract heap objects
@@ -1225,7 +1520,7 @@ impl Heap {
             assert(word_ok(self.mem@, id, k as int));
             assert(obj_fits(self.mem@, id));
         }
-        let p: *mut usize = with_exposed_provenance(obj - HEAP_TAG, Tracked(self.mem.borrow().exposed));
+        let p: *mut usize = with_exposed_provenance(obj - HEAP_TAG, Tracked(object_exposure(self.mem.borrow(), id)));
         *ptr_ref(p.wrapping_add(k), Tracked(self.mem.borrow().words.tracked_borrow((id, k as int))))
     }
 
@@ -1245,7 +1540,7 @@ impl Heap {
             assert(obj_fits(self.mem@, id));
             lemma_at_index_exact(obj_ptr(self.mem@, id), 0, 0);
         }
-        let p: *mut usize = with_exposed_provenance(obj - HEAP_TAG, Tracked(self.mem.borrow().exposed));
+        let p: *mut usize = with_exposed_provenance(obj - HEAP_TAG, Tracked(object_exposure(self.mem.borrow(), id)));
         *ptr_ref(p, Tracked(self.mem.borrow().words.tracked_borrow((id, 0))))
     }
 
@@ -1264,9 +1559,12 @@ impl Heap {
                 #[trigger] word_val(o2, old(self).class_bits(), old(self).addrs(), j, x)
                     == word_val(old(self).objs()[id], old(self).class_bits(), old(self).addrs(), j, x),
             !is_blob(o2), !is_blob(old(self).objs()[id]),
+            o2.ro == old(self).objs()[id].ro,
             o2.class_id == old(self).objs()[id].class_id,
         ensures
             final(self).objs() == old(self).objs().update(id, o2),
+            final(self).cards@ == old(self).cards@,
+            final(self).remembered_set_bias == old(self).remembered_set_bias,
             final(self).addrs() == old(self).addrs(),
             final(self).class_bits() == old(self).class_bits(),
             final(self).cptrs() == old(self).cptrs(),
@@ -1275,21 +1573,45 @@ impl Heap {
             use_type_invariant(&*self);
             assert(obj_fits(self.mem@, id));
         }
-        let p: *mut usize = with_exposed_provenance(obj - HEAP_TAG, Tracked(self.mem.borrow().exposed));
+        let p: *mut usize = with_exposed_provenance(obj - HEAP_TAG, Tracked(object_exposure(self.mem.borrow(), id)));
         write_heap_word(Tracked(self.mem.borrow_mut()), Ghost(id), k, p.wrapping_add(k), w, Ghost(o2));
     }
 
-    /// TRUSTED (FFI leaf: the write barrier, as the C++ `GcMetadata`
-    /// remembered set): marks the card of the object at `obj` (a tagged
-    /// address) in the remembered set. The card table is outside every
-    /// view: no contract.
-    #[verifier::external_body]
+    pub closed spec fn card_marked(&self, obj: usize) -> bool {
+        let a = card_address(obj, self.remembered_set_bias);
+        card_ok(self.cards@, a) && self.cards@.bytes[a].is_init()
+            && self.cards@.bytes[a].value() == NEW_SPACE_POINTERS
+    }
+
     #[inline(always)]
-    fn write_barrier(&self, obj: usize) {
-        unsafe {
-            let card = ((obj - HEAP_TAG) >> CARD_SIZE_LOG_2).wrapping_add(self.remembered_set_bias);
-            *(card as *mut u8) = NEW_SPACE_POINTERS;
+    fn write_barrier(&mut self, obj: usize, Ghost(id): Ghost<int>)
+        requires
+            0 <= id < old(self).objs().len(),
+            !old(self).objs()[id].ro,
+            old(self).addrs().len() == old(self).objs().len(),
+            obj == old(self).addrs()[id],
+        ensures
+            final(self).card_marked(obj),
+            forall|other: usize| #[trigger] final(self).card_marked(other) ==
+                (old(self).card_marked(other) || card_index(obj) == card_index(other)),
+            final(self).mem@ == old(self).mem@,
+    {
+        proof {
+            use_type_invariant(&*self);
+            assert(obj_fits(self.mem@, id));
+            assert(card_ok(self.cards@, card_address(obj, self.remembered_set_bias)));
         }
+        let card = ((obj - HEAP_TAG) >> CARD_SIZE_LOG_2).wrapping_add(self.remembered_set_bias);
+        assert(card == card_address(obj, self.remembered_set_bias));
+        proof {
+            let bias = self.remembered_set_bias;
+            let dest = card_index(obj);
+            assert forall|k: usize| #[trigger] k.wrapping_add(bias) == dest.wrapping_add(bias)
+                implies k == dest by {
+                assert(k == dest) by (bit_vector) requires k.wrapping_add(bias) == dest.wrapping_add(bias);
+            }
+        }
+        mark_card(Tracked(self.cards.borrow_mut()), card);
     }
 
     /// The class id of object `id` (`obj` is its address): the header's
@@ -1353,6 +1675,9 @@ impl Heap {
             !old(self).objs()[id].ro,
             w == crate::abs::enc(old(self).addrs(), v),
         ensures
+            final(self).card_marked(obj),
+            forall|other: usize| #[trigger] final(self).card_marked(other) ==
+                (old(self).card_marked(other) || card_index(obj) == card_index(other)),
             final(self).objs() == old(self).objs().update(id, HeapObj {
                 body: Body::Instance(old(self).objs()[id].body->Instance_0.update(f as int, v)),
                 ..old(self).objs()[id]
@@ -1377,7 +1702,7 @@ impl Heap {
             }
         }
         self.write_word(obj, INSTANCE_FIELDS_WORD + f, w, Ghost(id), Ghost(o2));
-        self.write_barrier(obj);
+        self.write_barrier(obj, Ghost(id));
     }
 
     /// The length of the array `id` (its length word).
@@ -1424,6 +1749,9 @@ impl Heap {
             !old(self).objs()[id].ro,
             w == crate::abs::enc(old(self).addrs(), v),
         ensures
+            final(self).card_marked(obj),
+            forall|other: usize| #[trigger] final(self).card_marked(other) ==
+                (old(self).card_marked(other) || card_index(obj) == card_index(other)),
             final(self).objs() == old(self).objs().update(id, HeapObj {
                 body: Body::Array(old(self).objs()[id].body->Array_0.update(i as int, v)),
                 ..old(self).objs()[id]
@@ -1448,7 +1776,7 @@ impl Heap {
             }
         }
         self.write_word(obj, ARRAY_ELEMENTS_WORD + i, w, Ghost(id), Ghost(o2));
-        self.write_barrier(obj);
+        self.write_barrier(obj, Ghost(id));
     }
 
     /// The 64-bit payload of the double or large integer `id`: its value
@@ -1477,8 +1805,12 @@ impl Heap {
             self.objs()[id].body is Double || self.objs()[id].body is LargeInt,
         ensures r == value64(self.objs()[id]),
     {
-        let lo = self.read_word(obj, DOUBLE_VALUE_WORD, Ghost(id));
-        let hi = self.read_word(obj, DOUBLE_VALUE_WORD + 1, Ghost(id));
+        let first = self.read_word(obj, DOUBLE_VALUE_WORD, Ghost(id));
+        let second = self.read_word(obj, DOUBLE_VALUE_WORD + 1, Ghost(id));
+        #[cfg(target_endian = "little")]
+        let (lo, hi) = (first, second);
+        #[cfg(target_endian = "big")]
+        let (lo, hi) = (second, first);
         let ghost b = value64(self.objs()[id]);
         proof {
             assert(lo == (b & 0xffff_ffffu64) as usize && hi == (b >> 32u64) as usize
@@ -1550,7 +1882,7 @@ impl Heap {
         proof {
             lemma_at_index_exact(obj_ptr(self.mem@, id), k as int, (k + 1) as int);
         }
-        let p: *mut usize = with_exposed_provenance(obj - HEAP_TAG, Tracked(self.mem.borrow().exposed));
+        let p: *mut usize = with_exposed_provenance(obj - HEAP_TAG, Tracked(object_exposure(self.mem.borrow(), id)));
         *ptr_ref(p.wrapping_add(k), Tracked(self.mem.borrow().bwords.tracked_borrow((id, k as int))))
     }
 
@@ -1907,16 +2239,13 @@ pub proof fn lemma_blob_bytes(m: HeapMem, id: int)
     if m.objs[id].body is Str { assert(str_ok(m, id)); } else { assert(ba_ok(m, id)); }
 }
 
-/// TRUSTED (FFI leaf: the C library's memmove, `core::ptr::copy`, stated
-/// on the permissions): moves the values of the elements `(s, sk..sk+n)`
-/// to the elements `(d, dk..dk+n)` through their pointers `src` and `dst`;
-/// every other permission is unchanged. (Heap words for `array_copy`,
-/// content bytes for `content_copy`.)
-#[verifier::external_body]
+/// Moves heap words or blob bytes, preserving the original source values
+/// even when the two ranges overlap in the same object.
 #[inline(always)]
-fn perm_memmove<T>(Tracked(perms): Tracked<&mut Map<(int, int), PointsTo<T>>>, dst: *mut T, src: *mut T,
-                   n: usize, Ghost(d): Ghost<int>, Ghost(dk): Ghost<int>, Ghost(s): Ghost<int>, Ghost(sk): Ghost<int>)
+fn perm_memmove<T: Copy>(Tracked(perms): Tracked<&mut Map<(int, int), PointsTo<T>>>, dst: *mut T, src: *mut T,
+                   n: usize, backwards: bool, Ghost(d): Ghost<int>, Ghost(dk): Ghost<int>, Ghost(s): Ghost<int>, Ghost(sk): Ghost<int>)
     requires
+        backwards == (dk > sk),
         forall|k: int| 0 <= k < n ==> #[trigger] old(perms).contains_key((d, dk + k))
             && old(perms)[(d, dk + k)].ptr() == at_index(dst, k) && old(perms)[(d, dk + k)].is_init(),
         forall|k: int| 0 <= k < n ==> #[trigger] old(perms).contains_key((s, sk + k))
@@ -1924,7 +2253,7 @@ fn perm_memmove<T>(Tracked(perms): Tracked<&mut Map<(int, int), PointsTo<T>>>, d
     ensures
         final(perms).dom() == old(perms).dom(),
         forall|key: (int, int)| old(perms).contains_key(key) ==>
-            #[trigger] final(perms)[key].ptr() == old(perms)[key].ptr()
+            (#[trigger] final(perms)[key]).ptr() == old(perms)[key].ptr()
             && final(perms)[key].is_init() == old(perms)[key].is_init(),
         forall|key: (int, int)| !(key.0 == d && dk <= key.1 < dk + n) ==>
             #[trigger] final(perms)[key] == old(perms)[key],
@@ -1932,32 +2261,76 @@ fn perm_memmove<T>(Tracked(perms): Tracked<&mut Map<(int, int), PointsTo<T>>>, d
             #[trigger] final(perms)[(d, dk + k)].value() == old(perms)[(s, sk + k)].value(),
     no_unwind
 {
-    // SAFETY: both ranges are permissions' elements (inside their objects).
-    unsafe { core::ptr::copy(src, dst, n) }
+    let mut done = 0usize;
+    while done < n
+        invariant
+            done <= n, backwards == (dk > sk),
+            perms.dom() == old(perms).dom(),
+            forall|k: int| 0 <= k < n ==> #[trigger] old(perms).contains_key((d, dk + k))
+                && old(perms)[(d, dk + k)].ptr() == at_index(dst, k) && old(perms)[(d, dk + k)].is_init(),
+            forall|k: int| 0 <= k < n ==> #[trigger] old(perms).contains_key((s, sk + k))
+                && old(perms)[(s, sk + k)].ptr() == at_index(src, k) && old(perms)[(s, sk + k)].is_init(),
+            forall|key: (int, int)| old(perms).contains_key(key) ==>
+                (#[trigger] perms[key]).ptr() == old(perms)[key].ptr()
+                && perms[key].is_init() == old(perms)[key].is_init(),
+            forall|key: (int, int)| !(key.0 == d && (if backwards {
+                dk + n - done <= key.1 < dk + n
+            } else { dk <= key.1 < dk + done })) ==> #[trigger] perms[key] == old(perms)[key],
+            forall|k: int| (if backwards { n - done <= k < n } else { 0 <= k < done }) ==>
+                #[trigger] perms[(d, dk + k)].value() == old(perms)[(s, sk + k)].value(),
+        decreases n - done,
+    {
+        let k = if backwards { n - 1 - done } else { done };
+        let ghost source = (s, sk + k);
+        let ghost target = (d, dk + k);
+        proof {
+            assert(old(perms).contains_key(source));
+            assert(old(perms).contains_key(target));
+            assert(perms[source] == old(perms)[source]);
+        }
+        let value = *ptr_ref(src.wrapping_add(k), Tracked(perms.tracked_borrow(source)));
+        ptr_mut_write(dst.wrapping_add(k), Tracked(perms.tracked_borrow_mut(target)), value);
+        done += 1;
+    }
 }
 
-/// TRUSTED (FFI leaf: the C library's memset, `core::ptr::write_bytes`,
-/// stated on the permissions): the bytes `(d, dk..dk+n)` through `dst`
-/// become `v`; every other permission is unchanged.
-#[verifier::external_body]
+/// Fills the owned bytes of a blob, preserving all other permissions.
 #[inline(always)]
 fn perm_memset(Tracked(perms): Tracked<&mut Map<(int, int), PointsTo<u8>>>, dst: *mut u8, v: u8, n: usize,
                Ghost(d): Ghost<int>, Ghost(dk): Ghost<int>)
     requires
-        forall|k: int| 0 <= k < n ==> #[trigger] old(perms).contains_key((d, dk + k))
-            && old(perms)[(d, dk + k)].ptr() == at_index(dst, k) && old(perms)[(d, dk + k)].is_init(),
+        forall|k: int| dk <= k < dk + n ==> #[trigger] old(perms).contains_key((d, k))
+            && old(perms)[(d, k)].ptr() == at_index(dst, k - dk) && old(perms)[(d, k)].is_init(),
     ensures
         final(perms).dom() == old(perms).dom(),
         forall|key: (int, int)| old(perms).contains_key(key) ==>
-            #[trigger] final(perms)[key].ptr() == old(perms)[key].ptr()
+            (#[trigger] final(perms)[key]).ptr() == old(perms)[key].ptr()
             && final(perms)[key].is_init() == old(perms)[key].is_init(),
         forall|key: (int, int)| !(key.0 == d && dk <= key.1 < dk + n) ==>
             #[trigger] final(perms)[key] == old(perms)[key],
-        forall|k: int| 0 <= k < n ==> #[trigger] final(perms)[(d, dk + k)].value() == v,
+        forall|k: int| dk <= k < dk + n ==> #[trigger] final(perms)[(d, k)].value() == v,
     no_unwind
 {
-    // SAFETY: the range is the permissions' bytes (inside the object).
-    unsafe { core::ptr::write_bytes(dst, v, n) }
+    let mut i = 0usize;
+    while i < n
+        invariant
+            i <= n,
+            perms.dom() == old(perms).dom(),
+            forall|key: (int, int)| old(perms).contains_key(key) ==>
+                (#[trigger] perms[key]).ptr() == old(perms)[key].ptr()
+                && perms[key].is_init() == old(perms)[key].is_init(),
+            forall|key: (int, int)| !(key.0 == d && dk <= key.1 < dk + i) ==>
+                #[trigger] perms[key] == old(perms)[key],
+            forall|k: int| dk <= k < dk + i ==> #[trigger] perms[(d, k)].value() == v,
+            forall|k: int| dk <= k < dk + n ==> #[trigger] old(perms).contains_key((d, k))
+                && old(perms)[(d, k)].ptr() == at_index(dst, k - dk) && old(perms)[(d, k)].is_init(),
+        decreases n - i,
+    {
+        let ghost key = (d, dk + i);
+        proof { assert(old(perms).contains_key(key)); }
+        ptr_mut_write(dst.wrapping_add(i), Tracked(perms.tracked_borrow_mut(key)), v);
+        i += 1;
+    }
 }
 
 /// The permissions of the content bytes `to..to+n` of blob `id` are at
@@ -1982,9 +2355,10 @@ pub proof fn lemma_content_range(m: HeapMem, id: int, p: *mut u8, to: int, n: in
 /// memmove of the content bytes `src[from..from+n]` to `dst[to..to+n]`
 /// (`content_copy`), with the model update.
 #[inline(always)]
-fn copy_content(Tracked(m): Tracked<&mut HeapMem>, pd: *mut u8, ps: *mut u8, n: usize,
+fn copy_content(Tracked(m): Tracked<&mut HeapMem>, pd: *mut u8, ps: *mut u8, n: usize, backwards: bool,
                 Ghost(d): Ghost<int>, Ghost(to): Ghost<int>, Ghost(s): Ghost<int>, Ghost(from): Ghost<int>)
     requires
+        backwards == (to > from),
         heap_ok(*old(m)),
         0 <= d < old(m).objs.len(), 0 <= s < old(m).objs.len(),
         is_blob(old(m).objs[d]), is_blob(old(m).objs[s]),
@@ -2000,7 +2374,7 @@ fn copy_content(Tracked(m): Tracked<&mut HeapMem>, pd: *mut u8, ps: *mut u8, n: 
                 else { content(old(m).objs[d])[k] }))),
         final(m).addrs == old(m).addrs,
         final(m).class_bits == old(m).class_bits,
-        final(m).exposed == old(m).exposed,
+        final(m).word_exposures == old(m).word_exposures, final(m).exposed == old(m).exposed,
         final(m).cptrs == old(m).cptrs,
     no_unwind
 {
@@ -2008,22 +2382,24 @@ fn copy_content(Tracked(m): Tracked<&mut HeapMem>, pd: *mut u8, ps: *mut u8, n: 
     proof {
         lemma_content_range(m0, d, pd, to, n as int);
         lemma_content_range(m0, s, ps, from, n as int);
+        lemma_blob_bytes(m0, d);
         lemma_blob_bytes(m0, s);
     }
-    perm_memmove(Tracked(&mut m.bytes), pd, ps, n, Ghost(d), Ghost(to), Ghost(s), Ghost(from));
+    perm_memmove(Tracked(&mut m.bytes), pd, ps, n, backwards, Ghost(d), Ghost(to), Ghost(s), Ghost(from));
     proof {
         let od = m0.objs[d];
         let cs = content(m0.objs[s]);
         let cd = content(od);
         let c1 = Seq::new(cd.len(), |k: int| if to <= k < to + n { cs[k - to + from] } else { cd[k] });
         m.objs = m0.objs.update(d, with_content(od, c1));
-        assert forall|k: int| to <= k < to + n implies 0 <= k < content(m0.objs[d]).len()
-            && #[trigger] m.bytes[(d, k)].ptr() == m0.bytes[(d, k)].ptr()
-            && m.bytes[(d, k)].is_init()
-            && m.bytes[(d, k)].value() == content(m.objs[d])[k] by {
-            assert(m.bytes[(d, to + (k - to))].value() == m0.bytes[(s, from + (k - to))].value());
+        assert forall|k: int| to <= k < to + n implies #[trigger] byte_ok(*m, d, k) by {
+            assert(byte_ok(m0, d, k));
             assert(byte_ok(m0, s, from + (k - to)));
-            assert(m0.bytes.contains_key((d, k)));
+            assert(m.bytes[(d, k)].ptr() == m0.bytes[(d, k)].ptr());
+            assert(m.bytes[(d, k)].is_init());
+            assert(m.bytes[(d, to + (k - to))].value() == m0.bytes[(s, from + (k - to))].value());
+            assert(content(m.objs[d]) == c1);
+            assert(c1[k] == cs[k - to + from]);
         }
         assert(content(m.objs[d]) == c1);
         lemma_bytes_written(m0, *m, d, to, to + n);
@@ -2047,24 +2423,32 @@ fn fill_content(Tracked(m): Tracked<&mut HeapMem>, pd: *mut u8, v: u8, n: usize,
                 if to <= k < to + n { v } else { content(old(m).objs[d])[k] }))),
         final(m).addrs == old(m).addrs,
         final(m).class_bits == old(m).class_bits,
-        final(m).exposed == old(m).exposed,
+        final(m).word_exposures == old(m).word_exposures, final(m).exposed == old(m).exposed,
         final(m).cptrs == old(m).cptrs,
     no_unwind
 {
     let ghost m0 = *m;
-    proof { lemma_content_range(m0, d, pd, to, n as int); }
+    proof {
+        lemma_blob_bytes(m0, d);
+        assert forall|k: int| to <= k < to + n implies #[trigger] m0.bytes.contains_key((d, k))
+            && m0.bytes[(d, k)].ptr() == at_index(pd, k - to) && m0.bytes[(d, k)].is_init() by {
+            assert(byte_ok(m0, d, k));
+            lemma_at_index_move(m0.cptrs[d], to, k - to);
+        }
+    }
     perm_memset(Tracked(&mut m.bytes), pd, v, n, Ghost(d), Ghost(to));
     proof {
         let od = m0.objs[d];
         let cd = content(od);
         let c1 = Seq::new(cd.len(), |k: int| if to <= k < to + n { v } else { cd[k] });
         m.objs = m0.objs.update(d, with_content(od, c1));
-        assert forall|k: int| to <= k < to + n implies 0 <= k < content(m0.objs[d]).len()
-            && #[trigger] m.bytes[(d, k)].ptr() == m0.bytes[(d, k)].ptr()
-            && m.bytes[(d, k)].is_init()
-            && m.bytes[(d, k)].value() == content(m.objs[d])[k] by {
-            assert(m.bytes[(d, to + (k - to))].value() == v);
-            assert(m0.bytes.contains_key((d, k)));
+        assert forall|k: int| to <= k < to + n implies #[trigger] byte_ok(*m, d, k) by {
+            assert(byte_ok(m0, d, k));
+            assert(m.bytes[(d, k)].ptr() == m0.bytes[(d, k)].ptr());
+            assert(m.bytes[(d, k)].is_init());
+            assert(m.bytes[(d, k)].value() == v);
+            assert(content(m.objs[d]) == c1);
+            assert(c1[k] == v);
         }
         assert(content(m.objs[d]) == c1);
         lemma_bytes_written(m0, *m, d, to, to + n);
@@ -2085,7 +2469,7 @@ fn write_hash(Tracked(m): Tracked<&mut HeapMem>, Ghost(id): Ghost<int>, p: *mut 
         final(m).objs == old(m).objs,
         final(m).addrs == old(m).addrs,
         final(m).class_bits == old(m).class_bits,
-        final(m).exposed == old(m).exposed,
+        final(m).word_exposures == old(m).word_exposures, final(m).exposed == old(m).exposed,
         final(m).cptrs == old(m).cptrs,
     no_unwind
 {
@@ -2253,7 +2637,7 @@ impl Heap {
             final(self).cptrs() == old(self).cptrs(),
     {
         proof { use_type_invariant(&*self); }
-        copy_content(Tracked(self.mem.borrow_mut()), dst.ptr.wrapping_add(to), src.ptr.wrapping_add(from), n,
+        copy_content(Tracked(self.mem.borrow_mut()), dst.ptr.wrapping_add(to), src.ptr.wrapping_add(from), n, to > from,
             Ghost(dst.id()), Ghost(to as int), Ghost(src.id()), Ghost(from as int));
     }
 
@@ -2290,6 +2674,9 @@ impl Heap {
             to + n <= old(self).objs()[d].body->Array_0.len(),
             from + n <= old(self).objs()[s].body->Array_0.len(),
         ensures
+            n != 0 ==> final(self).card_marked(dst),
+            forall|other: usize| #[trigger] final(self).card_marked(other) ==
+                (old(self).card_marked(other) || (n != 0 && card_index(dst) == card_index(other))),
             final(self).objs() == old(self).objs().update(d, HeapObj {
                 body: Body::Array(Seq::new(old(self).objs()[d].body->Array_0.len(), |k: int|
                     if to <= k < to + n { old(self).objs()[s].body->Array_0[k - to + from] }
@@ -2305,13 +2692,13 @@ impl Heap {
             assert(obj_fits(self.mem@, d));
             assert(obj_fits(self.mem@, s));
         }
-        let pd: *mut usize = with_exposed_provenance(dst - HEAP_TAG, Tracked(self.mem.borrow().exposed));
-        let ps: *mut usize = with_exposed_provenance(src - HEAP_TAG, Tracked(self.mem.borrow().exposed));
+        let pd: *mut usize = with_exposed_provenance(dst - HEAP_TAG, Tracked(object_exposure(self.mem.borrow(), d)));
+        let ps: *mut usize = with_exposed_provenance(src - HEAP_TAG, Tracked(object_exposure(self.mem.borrow(), s)));
         let pd = pd.wrapping_add(ARRAY_ELEMENTS_WORD + to);
         let ps = ps.wrapping_add(ARRAY_ELEMENTS_WORD + from);
         copy_elements(Tracked(self.mem.borrow_mut()), pd, ps, n, to, from, Ghost(d), Ghost(s));
         if n != 0 {
-            self.write_barrier(dst);
+            self.write_barrier(dst, Ghost(d));
         }
     }
 }
@@ -2340,7 +2727,7 @@ fn copy_elements(Tracked(m): Tracked<&mut HeapMem>, pd: *mut usize, ps: *mut usi
         }),
         final(m).addrs == old(m).addrs,
         final(m).class_bits == old(m).class_bits,
-        final(m).exposed == old(m).exposed,
+        final(m).word_exposures == old(m).word_exposures, final(m).exposed == old(m).exposed,
         final(m).cptrs == old(m).cptrs,
     no_unwind
 {
@@ -2359,7 +2746,7 @@ fn copy_elements(Tracked(m): Tracked<&mut HeapMem>, pd: *mut usize, ps: *mut usi
             lemma_at_index_move(obj_ptr(m0, s), sk, k);
         }
     }
-    perm_memmove(Tracked(&mut m.words), pd, ps, n, Ghost(d), Ghost(dk), Ghost(s), Ghost(sk));
+    perm_memmove(Tracked(&mut m.words), pd, ps, n, to > from, Ghost(d), Ghost(dk), Ghost(s), Ghost(sk));
     proof {
         let od = m0.objs[d];
         let e0 = od.body->Array_0;
@@ -2502,9 +2889,10 @@ impl Heap {
     /// loop's precondition names) lies at its address with the header,
     /// fields, length and elements `view::word_val` states, in the address
     /// space and accessed by nothing else while the core runs: the
-    /// permissions of those words.
+    /// permissions of those words and the distinct GC card bytes covering
+    /// writable objects, under the published bias for this execution interval.
     pub fn new(remembered_set_bias: usize) -> Self {
-        Heap { remembered_set_bias, mem: Tracked::assume_new() }
+        Heap { remembered_set_bias, cards: Tracked::assume_new(), mem: Tracked::assume_new() }
     }
 }
 

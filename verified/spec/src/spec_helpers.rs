@@ -24,7 +24,7 @@ use crate::spec_common::*;
 verus! {
 
 // ---------------------------------------------------------------------------
-// Floating point. IEEE-754 arithmetic and the mixed int/double comparison
+// Floating point. IEEE-754 arithmetic operations
 // are uninterpreted in the spec; the interpreter implements them with the
 // host's f64 (trusted, see DESIGN.md).
 
@@ -36,9 +36,6 @@ pub enum Num {
     Int(int),
     Dbl(u64),
 }
-
-/// `Interpreter::compare_numbers` when at least one operand is a double.
-pub uninterp spec fn compare_mixed(a: Num, b: Num) -> u8;
 
 pub open spec fn is_nan_bits(bits: u64) -> bool {
     ((bits >> 52u64) & 0x7ffu64) == 0x7ffu64 && (bits & 0xf_ffff_ffff_ffffu64) != 0
@@ -56,6 +53,76 @@ pub const SIMPLE_GREATER: u8 = 195;
 
 pub open spec fn compare_ints(a: int, b: int) -> u8 {
     if a < b { SIMPLE_LESS } else if a == b { SIMPLE_EQUAL } else { SIMPLE_GREATER }
+}
+
+/// Non-NaN encodings increase with magnitude. Applying the sign orders
+/// negatives in reverse and maps both encodings of zero to the same rank.
+pub open spec fn binary64_rank(bits: u64) -> i64 {
+    let magnitude = (bits & 0x7fff_ffff_ffff_ffff) as int;
+    (if bits >> 63 == 0 { magnitude } else { -magnitude }) as i64
+}
+
+/// Order an unsigned integer and the absolute value of a nonnegative binary64
+/// encoding. Below 2^52, a fractional remainder breaks a tie with the integer part.
+pub open spec fn magnitude_order(i: u64, d: u64) -> int {
+    let e = d >> 52;
+    let sig = (d & 0x000f_ffff_ffff_ffff) | (1u64 << 52);
+    if d == 0 { i as int }
+    else if e < 1023 { if i == 0 { -1 } else { 1 } }
+    else if e >= 1087 { -1 }
+    else if e >= 1075 { i as int - (sig << (e - 1075)) as int }
+    else {
+        let shift = (1075 - e) as u64;
+        let whole = sig >> shift;
+        if i == whole && sig != whole << shift { -1 } else { i as int - whole as int }
+    }
+}
+
+pub open spec fn order_flags(order: int) -> u8 {
+    compare_ints(order, 0)
+}
+
+/// Opposite signed zeros are relationally equal (bits 4, 5 and 6).
+/// The low two bits order -0 before +0, and bit 2 selects -0 for min.
+pub open spec fn zero_flags(lhs_negative: bool, rhs_negative: bool) -> u8 {
+    if lhs_negative == rhs_negative { SIMPLE_EQUAL }
+    else if lhs_negative { 117 } else { 115 }
+}
+
+pub open spec fn int_double_flags(i: i64, d: u64, int_first: bool) -> u8 {
+    let mag = d & 0x7fff_ffff_ffff_ffff;
+    let neg = d >> 63 != 0;
+    if is_nan_bits(d) { if int_first { 1 } else { 7 } }
+    else if i == 0 && mag == 0 { zero_flags(!int_first && neg, int_first && neg) }
+    else {
+        let order = if (i < 0) != neg { if i < 0 { -1int } else { 1int } }
+            else {
+                let abs_i = if i < 0 { 0u64.wrapping_sub(i as u64) } else { i as u64 };
+                let m = magnitude_order(abs_i, mag);
+                if neg { -m } else { m }
+            };
+        order_flags(if int_first { order } else { -order })
+    }
+}
+
+/// For NaNs the relational flags are clear. The low bits order every NaN
+/// after ordinary numbers and tie two NaNs. For min, a left NaN sets bit 2.
+pub open spec fn compare_mixed(a: Num, b: Num) -> u8 {
+    match (a, b) {
+        (Num::Int(x), Num::Int(y)) => compare_ints(x, y),
+        (Num::Int(i), Num::Dbl(d)) => int_double_flags(i as i64, d, true),
+        (Num::Dbl(d), Num::Int(i)) => int_double_flags(i as i64, d, false),
+        (Num::Dbl(x), Num::Dbl(y)) => {
+            if is_nan_bits(x) { if is_nan_bits(y) { 6 } else { 7 } }
+            else if is_nan_bits(y) { 1 }
+            else {
+                let a = binary64_rank(x);
+                let b = binary64_rank(y);
+                if a == b { zero_flags(x >> 63 != 0, y >> 63 != 0) }
+                else { compare_ints(a as int, b as int) }
+            }
+        },
+    }
 }
 
 pub open spec fn num_of(s: State, v: Value) -> Option<Num> {

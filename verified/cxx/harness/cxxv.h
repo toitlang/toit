@@ -24,6 +24,7 @@ extern "C" {
 int nondet_int();
 unsigned nondet_uint();
 long nondet_long();
+int64_t nondet_int64();
 unsigned long nondet_ulong();
 unsigned char nondet_uchar();
 unsigned short nondet_ushort();
@@ -60,6 +61,5 @@ using std::signbit;
 #define CXXV_ASSERT(c, msg) __ESBMC_assert((c), msg)
 #endif
 
-// A nondeterministic int64 / word.
-static inline int64_t nondet_int64() { return static_cast<int64_t>(nondet_long()); }
+// A nondeterministic word on LP64 and ILP32.
 static inline intptr_t nondet_word() { return static_cast<intptr_t>(nondet_long()); }

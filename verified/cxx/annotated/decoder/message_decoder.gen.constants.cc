@@ -9,7 +9,9 @@
 #include <top.h>
 #include <objects.h>
 #include <messaging.cc>
+#include <process.cc>
 #include <primitive_core.cc>
+#include <heap.cc>
 namespace toit {
 template <typename A, typename B> struct vf_same {
   static const bool value = std::is_same<typename std::decay<A>::type, typename std::decay<B>::type>::value;

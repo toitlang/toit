@@ -197,20 +197,20 @@ pub fn gc_allocate_instance(m: &mut Machine, env: &Env, c: usize, Ghost(g): Ghos
     m.allocate_instance_raw(env, c)
 }
 
-/// TRUSTED (TRUSTED.md, "Inline allocation"): allocates an instance of
+/// Allocates an instance of
 /// class `c` inline, with the new-space fast path of the C++ allocator
 /// (`Runtime::bump`, `SemiSpace::try_allocate`), and initializes it as
 /// `ObjectHeap::allocate_instance` does (header with class id and tag,
 /// every field null). No GC: nothing moves, no state needs saving. On
 /// success the machine the registers `r` describe represents `g` with the
 /// new instance appended (the contract of `gc_allocate_instance` without
-/// the GC), the result being its tagged address; 0 if new space is full
-/// (nothing changed; the caller then takes the C++ path).
-#[verifier::external_body]
+/// the GC), the result being its tagged address. If the inline path declines
+/// the allocation, it returns 0 with the heap unchanged and the caller takes
+/// the C++ path.
 #[inline(always)]
 pub fn bump_instance(m: &mut Machine, env: &Env, c: usize, Ghost(r): Ghost<crate::regs::Regs>, Ghost(g): Ghost<State2>) -> (w: usize)
     requires
-        old(m).with(r).refines(&env.p),
+        old(m).with(r).inv(&env.p), crate::exec::ro_ok(&env.p),
         old(m).g@ == g,
         c < env.p.ap@.class_bits.len(),
         class_tag(p1(env.p.ap@), c as int) == INSTANCE_TAG,
@@ -220,36 +220,17 @@ pub fn bump_instance(m: &mut Machine, env: &Env, c: usize, Ghost(r): Ghost<crate
             && (Machine { g: Ghost(sp::alloc2(g, new_instance(env.p.ap@, c as int))), ..*final(m) }).with(r).refines(&env.p)
             && w == enc(final(m).addr(), sp::new_ref2(g)),
 {
-    let bits = env.p.class_bits.at(c) as usize;
-    let size = ((bits >> CLASS_ID_OFFSET) & (INSTANCE_SIZE_MASK as usize)) * WORD_SIZE;
-    let a = env.rt.bump(size);
-    if a == 0 {
-        return 0;
-    }
-    let header = ((c << CLASS_ID_OFFSET) | INSTANCE_TAG) << SMI_TAG_SIZE;
-    let null = env.p.null;
-    // SAFETY: `a` is `size` fresh bytes of new space, word aligned.
-    unsafe {
-        let o = a as *mut usize;
-        *o = header;
-        let mut i = 1;
-        while i < size / WORD_SIZE {
-            *o.add(i) = null;
-            i += 1;
-        }
-    }
-    a | HEAP_TAG
+    env.rt.bump(m, &env.p, crate::ffi::InlineRequest::Instance(c), Ghost(r))
 }
 
-/// TRUSTED (TRUSTED.md, "Inline allocation"): a double with the given bits,
+/// A double with the given bits,
 /// allocated inline as `bump_instance` does (`ObjectHeap::allocate_double`:
 /// the header of the program's double class, then the 64-bit value), with
 /// the contract of `gc_allocate_double` without the GC.
-#[verifier::external_body]
 #[inline(always)]
 pub fn bump_double(m: &mut Machine, env: &Env, bits: u64, Ghost(r): Ghost<crate::regs::Regs>, Ghost(g): Ghost<State2>) -> (w: usize)
     requires
-        old(m).with(r).refines(&env.p),
+        old(m).with(r).inv(&env.p), crate::exec::ro_ok(&env.p),
         old(m).g@ == g,
     ensures
         w == 0 ==> *final(m) == *old(m),
@@ -257,19 +238,7 @@ pub fn bump_double(m: &mut Machine, env: &Env, bits: u64, Ghost(r): Ghost<crate:
             && (Machine { g: Ghost(sp::alloc2(g, new_double(as1(g), p1(env.p.ap@), bits))), ..*final(m) }).with(r).refines(&env.p)
             && w == enc(final(m).addr(), sp::new_ref2(g)),
 {
-    let a = env.rt.bump(WORD_SIZE + 8);
-    if a == 0 {
-        return 0;
-    }
-    let cid = env.p.builtin.at(BUILTIN_DOUBLE) >> SMI_TAG_SIZE;
-    let header = ((cid << CLASS_ID_OFFSET) | DOUBLE_TAG) << SMI_TAG_SIZE;
-    // SAFETY: `a` is `WORD_SIZE + 8` fresh bytes of new space, word
-    // aligned; the value is unaligned on 32-bit targets (as in C++).
-    unsafe {
-        *(a as *mut usize) = header;
-        core::ptr::write_unaligned((a + WORD_SIZE) as *mut u64, bits);
-    }
-    a | HEAP_TAG
+    env.rt.bump(m, &env.p, crate::ffi::InlineRequest::Double(bits), Ghost(r))
 }
 
 /// TRUSTED (TRUSTED.md, "GC and allocation"): allocates a double with the

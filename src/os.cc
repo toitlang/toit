@@ -173,12 +173,23 @@ bool OS::get_real_time(struct timespec* time) {
 
 AlignedMemoryBase::~AlignedMemoryBase() {}
 
-AlignedMemory::AlignedMemory(size_t size_in_bytes, size_t alignment) : size_in_bytes(size_in_bytes) {
-  raw = malloc(alignment + size_in_bytes);
+AlignedMemory::AlignedMemory(size_t size_in_bytes, size_t alignment)
+    : size_in_bytes(size_in_bytes), raw(null), aligned(null) {
+  if (alignment == 0 || !Utils::is_power_of_two(alignment)) return;
+  size_t mask = alignment - 1;
+  if (size_in_bytes > SIZE_MAX - mask) return;
+  // Page protection rounds up the end, so the final partial page must
+  // belong to this allocation too.
+  size_t extent = (size_in_bytes + mask) & ~mask;
+  if (extent > SIZE_MAX - alignment) return;
+  size_t reserved = extent + alignment;
+  raw = malloc(reserved);
+  if (raw == null) return;
 #ifdef TOIT_DEBUG
-  memset(raw, 0xcd, alignment + size_in_bytes);
+  memset(raw, 0xcd, reserved);
 #endif
-  aligned = void_cast(Utils::round_up(unvoid_cast<char*>(raw), alignment));
+  size_t offset = -reinterpret_cast<uword>(raw) & mask;
+  aligned = static_cast<uint8*>(raw) + offset;
 }
 
 AlignedMemory::~AlignedMemory() {
@@ -202,67 +213,39 @@ static uint64* toit_heap_bits;        // Free bits for the range.
 
 static const int BITS_PER_UINT64_LOG_2 = 6;
 
-// Scans forwards from start of the bitmaps to find a set of free pages that
-// are big enough.  On 64 bit platforms there are 512 bitmaps (each 64 bit) for
-// the default max heap size of 1Gbyte.  We don't make allocations that cross
-// the boundary between bitmaps. Currently the max allocation size requested is
-// 256k, which is 8 pages.
-static void* find_free_area(const Locker& locker, uword size) {
-  int bitmaps = toit_heap_size >> (TOIT_PAGE_SIZE_LOG2 + BITS_PER_UINT64_LOG_2);
-  for (int i = 0; i < bitmaps; i++) {
-    uint64 map = toit_heap_bits[i];
-    // Fast out for fully allocated bitmaps.
-    if (map + 1 == 0) continue;  // All 1's.
-    unsigned unused_pages = 64 - Utils::popcount(map);
-    // Fast out - if there are not enough zero bits in the word there is no
-    // point in scanning it for a long enough run.
-    if (unused_pages < size) continue;
-    if (size == 64) {
-      uint64 zero = 0;
-      toit_heap_bits[i] = zero - 1;  // All ones.
-      return Utils::void_add(toit_heap_range, i << (TOIT_PAGE_SIZE_LOG2 + BITS_PER_UINT64_LOG_2));
-    }
-    uint64 one = 1;
-    uint64 mask = (one << size) - 1;
-    // Scan the bitmap word for a run of the right length.
-    for (unsigned j = 0; j <= 64 - size; j++) {
-      if ((map & mask) == 0) {
-        toit_heap_bits[i] |= mask;
-        return Utils::void_add(toit_heap_range, (i << (TOIT_PAGE_SIZE_LOG2 + BITS_PER_UINT64_LOG_2)) + (j << TOIT_PAGE_SIZE_LOG2));
-      }
-      mask <<= 1;
-    }
+#include "heap_page_scan.h"
+
+static unsigned free_page_offset(uint64 bits, unsigned pages) {
+  if (bits == UINT64_MAX || 64u - Utils::popcount(bits) < pages) return 64;
+  uint64 mask = page_run_mask(pages, 0);
+  for (unsigned j = 0; j <= 64 - pages; j++) {
+    if ((bits & mask) == 0) return j;
+    mask <<= 1;
   }
-  return null;
+  return 64;
 }
 
 void* OS::allocate_pages(uword size) {
   Locker locker(OS::resource_mutex());
-  ASSERT(Utils::is_aligned(size, TOIT_PAGE_SIZE));
-  size >>= TOIT_PAGE_SIZE_LOG2;
-  ASSERT(size <= 64);  // 64 bits per bitmap, since we use uint64.
-  void* result = find_free_area(locker, size);
-  if (result) use_virtual_memory(result, size << TOIT_PAGE_SIZE_LOG2);
-  return result;
+  if (size == 0 || size > 64 * TOIT_PAGE_SIZE || !Utils::is_aligned(size, TOIT_PAGE_SIZE)) return null;
+  unsigned pages = static_cast<unsigned>(size >> TOIT_PAGE_SIZE_LOG2);
+  uword words = toit_heap_size >> (TOIT_PAGE_SIZE_LOG2 + BITS_PER_UINT64_LOG_2);
+  uword page = first_free_page(toit_heap_bits, words, pages);
+  if (page == 64 * words) return null;
+  void* address = Utils::void_add(toit_heap_range, page << TOIT_PAGE_SIZE_LOG2);
+  if (!OS::use_virtual_memory(address, size)) return null;
+  claim_page_run(toit_heap_bits, page, pages);
+  return address;
 }
 
 void OS::free_pages(void* address, uword size) {
   Locker locker(OS::resource_mutex());
-  word size_in_pages = size >> TOIT_PAGE_SIZE_LOG2;
-  uword page_number = Utils::void_sub(address, toit_heap_range) >> TOIT_PAGE_SIZE_LOG2;
-  uword index = page_number >> BITS_PER_UINT64_LOG_2;
-  ASSERT(size_in_pages <= 64);  // 64 bits per bitmap, since we use uint64.
-  uint64 old_bits = toit_heap_bits[index];
-  if (size_in_pages == 64) {
-    ASSERT(old_bits + 1 == 0);  // All 1's.
-    toit_heap_bits[index] = 0;
-  } else {
-    uint64 one = 1;
-    uint64 mask = (one << size_in_pages) - 1;
-    uint64 new_bits = old_bits & ~(mask << (page_number & 63));
-    ASSERT(Utils::popcount(old_bits) - Utils::popcount(new_bits) == size_in_pages);
-    toit_heap_bits[index] = new_bits;
-  }
+  ASSERT(size > 0 && size <= 64 * TOIT_PAGE_SIZE && Utils::is_aligned(size, TOIT_PAGE_SIZE));
+  unsigned pages = static_cast<unsigned>(size >> TOIT_PAGE_SIZE_LOG2);
+  uword page = Utils::void_sub(address, toit_heap_range) >> TOIT_PAGE_SIZE_LOG2;
+  ASSERT(page % 64 <= 64 - pages);
+  ASSERT((toit_heap_bits[page / 64] & page_run_mask(pages, page % 64)) == page_run_mask(pages, page % 64));
+  release_page_run(toit_heap_bits, page, pages);
   unuse_virtual_memory(address, size);
 }
 
@@ -300,13 +283,20 @@ OS::HeapMemoryRange OS::get_heap_memory_range() {
 
     // We grab the whole virtual memory range with an mmap, but we don't
     // actually ask for the memory. That is done on demand with mprotect.
-    toit_heap_range = Utils::round_up(grab_virtual_memory(null, max_heap + TOIT_PAGE_SIZE), TOIT_PAGE_SIZE);
-    if (!toit_heap_range) {
+    uword reservation_size = max_heap + TOIT_PAGE_SIZE;
+    void* reservation = grab_virtual_memory(null, reservation_size);
+    if (!reservation) {
       FATAL("Could not reserve %dMbytes of address space.", static_cast<int>(max_heap >> 20));
     }
-    toit_heap_size = max_heap;
     uword bitmaps = max_heap / (TOIT_PAGE_SIZE * 64);
-    toit_heap_bits = reinterpret_cast<uint64*>(calloc(bitmaps, sizeof(uint64)));
+    uint64* bits = static_cast<uint64*>(calloc(bitmaps, sizeof(uint64)));
+    if (!bits) {
+      ungrab_virtual_memory(reservation, reservation_size);
+      FATAL("Could not allocate the heap page bitmap.");
+    }
+    toit_heap_range = Utils::round_up(reservation, TOIT_PAGE_SIZE);
+    toit_heap_size = max_heap;
+    toit_heap_bits = bits;
     single_range_.address = toit_heap_range;
     single_range_.size = max_heap;
   }

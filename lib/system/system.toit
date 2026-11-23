@@ -179,7 +179,11 @@ Deprecated.  This function doesn't nest.  Use $process-stats instead.
 bytes-allocated-delta -> int:
   #primitive.core.bytes-allocated-delta
 
-/** Returns the number of garbage collections. */
+/**
+Returns the number of garbage collections in the current process.
+The counter wraps to zero every 2^30 collections on 32-bit targets and
+  every 2^31 collections on 64-bit targets.
+*/
 gc-count -> int:
   #primitive.core.gc-count
 

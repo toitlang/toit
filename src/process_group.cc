@@ -45,6 +45,11 @@ ProcessGroup::~ProcessGroup() {
 ProcessGroup* ProcessGroup::create(int id, Program* program, AlignedMemoryBase* memory,
                                    const PrimitivePolicy* policy, V2MethodTable* v2_methods) {
   ASSERT(policy != null);
+  if (program != null && !InitialMemoryManager::can_allocate_task(program)) {
+    delete v2_methods;
+    PrimitivePolicy::release(policy);
+    return null;
+  }
   MethodEntryTable* entries = null;
   if (program != null && program->is_format2()) {
     if (v2_methods == null) {
@@ -153,13 +158,20 @@ void ProcessGroup::add(Process* process) {
   processes_.prepend(process);
 }
 
-bool ProcessGroup::remove(Process* process) {
+void ProcessGroup::begin_process_teardown(Process* process) {
   ASSERT(VM::current()->scheduler()->is_locked());
   Process* p = processes_.remove(process);
   if (p != process) {
     FATAL("Process not in list");
   }
-  return !processes_.is_empty();
+  ++pending_teardowns_;
+}
+
+bool ProcessGroup::finish_process_teardown() {
+  ASSERT(VM::current()->scheduler()->is_locked());
+  ASSERT(pending_teardowns_ != 0);
+  --pending_teardowns_;
+  return pending_teardowns_ == 0 && processes_.is_empty();
 }
 
 } // namespace toit

@@ -164,7 +164,7 @@ itself: 64 iterations of a division by a symbolic base): no result in 25
 minutes; with the base a constant (7) per run, still none in 25 minutes:
 64 unrolled iterations of a 64-bit `%` and `/` on a symbolic value, plus
 the harness's check that parses the digits back, are too much for
-bit-blasting.
+bit-blasting. The [current VeriFast proof](cxx/annotated/prims/format_integer.render) covers all 64-bit inputs and radices 2–36 for the shared C++ formatter. The native harness now captures the explicit length passed to the allocator.
 
 ### (b) Fields a program controls: the message encoder
 

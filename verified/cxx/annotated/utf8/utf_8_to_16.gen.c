@@ -2,125 +2,7 @@
 // The C++ functions are rendered from their current sources, the
 // annotations come from the sidecar: verified/cxx/annotated/README.md.
 
-// Copyright (C) 2026 Toit contributors.
-//
-// Utils::utf_8_to_16 and its two helpers (src/utils.cc, src/utils.h),
-// rendered from the sources, with VeriFast annotations. The function the
-// first pilot (verified/CXX-VERIFICATION-PILOT.md, (d)) checked with ESBMC
-// for inputs of at most 8 bytes and with Frama-C/WP (89 of 96 goals).
-//
-// Contract: reads only input[0, length), writes only output[0,
-// output_length) (when output is not null), no signed overflow, no UB
-// shift, no out-of-range conversion; returns -1 or a size in [0, length].
-// Unbounded (any length). Verified with -prover z3v4.5 (the bit-blasting
-// lemmas need Z3).
-//
-// Self-tests (run.sh): 07c24665 reverted in a copy of utils.cc (the old
-// code read as many continuation bytes as the first byte announced), and
-// only its length check taken out.
-#include "../model/objects.gen.h"
-//@ #include "../model/arith.gh"
-
-/*@
-
-// The number of leading one bits of a byte (8 for 0xff); 1 for ASCII, as
-// bytes_in_utf_8_sequence returns.
-fixpoint int lead_floor(int c) {
-  return c == 0 ? 0 : c == 1 ? 128 : c == 2 ? 192 : c == 3 ? 224 : c == 4 ? 240 :
-         c == 5 ? 248 : c == 6 ? 252 : c == 7 ? 254 : 255;
-}
-fixpoint int mask_of(int c) {
-  return c == 0 ? 128 : c == 1 ? 64 : c == 2 ? 32 : c == 3 ? 16 : c == 4 ? 8 :
-         c == 5 ? 4 : c == 6 ? 2 : c == 7 ? 1 : 0;
-}
-fixpoint int utf8_count(int p) {
-  return p <= 127 ? 1 : p < 192 ? 1 : p < 224 ? 2 : p < 240 ? 3 : p < 248 ? 4 :
-         p < 252 ? 5 : p < 254 ? 6 : p < 255 ? 7 : 8;
-}
-
-// A bit test on a byte, by bit-blasting (bitops.gh, Z_of_uint8).
-lemma void byte_and(int p, int m)
-  requires 0 <= p &*& p < 256 &*& (m == 128 || m == 64 || m == 32 || m == 16 || m == 8 || m == 4 || m == 2 || m == 1 || m == 0);
-  ensures (p & m) == ((p / (m == 0 ? 1 : m)) % 2 == 1 && m != 0 ? m : 0);
-{
-  Z z = Z_of_uint8(p);
-  Z zm = Z_of_uint8(m);
-  bitand_def(p, z, m, zm);
-}
-
-// One step of the loop of bytes_in_utf_8_sequence: with the top c bits of
-// p set, bit 7 - c is set exactly when p has another leading one.
-lemma void lead_step(int p, int c)
-  requires 0 <= c &*& c <= 8 &*& lead_floor(c) <= p &*& p < 256;
-  ensures ((p & mask_of(c)) != 0) == (c < 8 && p >= lead_floor(c + 1));
-{
-  byte_and(p, mask_of(c));
-  if (c == 8) {} else {
-    div_rem_nonneg(p, mask_of(c));
-    div_rem_nonneg(p / mask_of(c), 2);
-  }
-}
-
-lemma void uchars_nth_limits(uint8 *p, int i)
-  requires [?f]uchars(p, ?n, ?cs) &*& 0 <= i &*& i < n;
-  ensures [f]uchars(p, n, cs) &*& 0 <= nth(i, cs) &*& nth(i, cs) <= 255;
-{
-  open [f]uchars(p, n, cs);
-  if (i == 0) {
-    u_character_limits(p);
-  } else {
-    uchars_nth_limits(p + 1, i - 1);
-  }
-  close [f]uchars(p, n, cs);
-}
-
-lemma void shiftright_div_small(int m)
-  requires 0 <= m &*& m <= 128;
-  ensures (m >> 1) == m / 2;
-{
-  shiftright_div(m, N1);
-}
-
-// Bounds of the decoded value after j bytes of a count-byte sequence.
-fixpoint int c_bound(int count, int j) {
-  return count == 2 ? (j == 1 ? 32 : 2048) :
-         count == 3 ? (j == 1 ? 16 : j == 2 ? 1024 : 65536) :
-         (j == 1 ? 8 : j == 2 ? 512 : j == 3 ? 32768 : 2097152);
-}
-
-lemma void accumulate(int c, int b, int count, int j)
-  requires 2 <= count &*& count <= 4 &*& 1 <= j &*& j < count &*&
-           0 <= c &*& c < c_bound(count, j);
-  ensures 0 <= ((c * 64) | (b & 63)) &*& ((c * 64) | (b & 63)) < c_bound(count, j + 1);
-{
-  bitand_limits(b, 63, N6);
-  nat n = count == 2 ? N11 :
-          count == 3 ? (j == 1 ? N10 : N16) :
-          (j == 1 ? N9 : j == 2 ? N15 : nat_of_int(21));
-  if (count == 4 && j == 3) {
-    assert pow_nat(2, n) == 2097152;
-  }
-  bitor_limits(c * 64, b & 63, n);
-}
-
-@*/
-// C++: src/utils.h toit::Utils::bytes_in_utf_8_sequence
-word Utils_bytes_in_utf_8_sequence(unsigned char prefix);
-//@ requires true;
-//@ ensures result == utf8_count(prefix);
-
-// C++: src/utils.h toit::Utils::payload_from_prefix
-word Utils_payload_from_prefix(unsigned char prefix);
-//@ requires 2 <= utf8_count(prefix) &*& utf8_count(prefix) <= 4;
-//@ ensures 0 <= result &*& result < mask_of(utf8_count(prefix));
-
-// C++: src/utils.cc toit::Utils::utf_8_to_16
-word Utils_utf_8_to_16__uint8p_word_uint16p_word(uint8 *input, word length, uint16 *output, word output_length);
-/*@ requires [?f]uchars((uint8 *)input, length, ?bs) &*& 0 <= length &*& length <= 0x10000000 &*&
-             output == 0 ? true : ushorts_(output, output_length, _) &*& 0 <= output_length; @*/
-/*@ ensures [f]uchars((uint8 *)input, length, bs) &*&
-            (output == 0 ? true : ushorts_(output, output_length, _)) &*&
-            -1 <= result &*& result <= length; @*/
+#include "utf_8_to_16.gen.h"
 
 // C++: src/utils.h toit::Utils::bytes_in_utf_8_sequence
 word Utils_bytes_in_utf_8_sequence(unsigned char prefix)
@@ -147,7 +29,7 @@ word Utils_bytes_in_utf_8_sequence(unsigned char prefix)
 // C++: src/utils.h toit::Utils::payload_from_prefix
 word Utils_payload_from_prefix(unsigned char prefix)
 //@ requires 2 <= utf8_count(prefix) &*& utf8_count(prefix) <= 4;
-//@ ensures 0 <= result &*& result < mask_of(utf8_count(prefix));
+//@ ensures 0 <= result &*& result < mask_of(utf8_count(prefix)) &*& result == (prefix & (mask_of(utf8_count(prefix)) - 1));
 {
   word n_byte_sequence = Utils_bytes_in_utf_8_sequence(prefix);
   //@ nat k = n_byte_sequence == 2 ? N5 : n_byte_sequence == 3 ? N4 : N3;
@@ -160,17 +42,23 @@ word Utils_payload_from_prefix(unsigned char prefix)
 // C++: src/utils.cc toit::Utils::utf_8_to_16
 word Utils_utf_8_to_16__uint8p_word_uint16p_word(uint8 *input, word length, uint16 *output, word output_length)
 /*@ requires [?f]uchars((uint8 *)input, length, ?bs) &*& 0 <= length &*& length <= 0x10000000 &*&
-             output == 0 ? true : ushorts_(output, output_length, _) &*& 0 <= output_length; @*/
+             exists<bool>(?keep) &*& (output == 0 ? true : ushorts_(output, output_length, ?initial) &*& 0 <= output_length &*&
+             (!keep || initialized_units(output_length, initial))); @*/
 /*@ ensures [f]uchars((uint8 *)input, length, bs) &*&
-            (output == 0 ? true : ushorts_(output, output_length, _)) &*&
-            -1 <= result &*& result <= length; @*/
+            (output == 0 ? true : ushorts_(output, output_length, ?ws) &*& (result == -1 || initialized_units(result, ws)) &*& (!keep || initialized_units(output_length, ws))) &*&
+            -1 <= result &*& result <= length &*&
+            (result == -1 ? output != 0 && output_length < length && output_length < utf16_units(bs, 0, -1) :
+             result == utf16_units(bs, 0, -1) && (output == 0 || result <= output_length)); @*/
 {
+  //@ if (output != 0) word_capacity(output);
   word size = 0;
   for (word i = 0; i < length; )
   /*@ invariant [f]uchars((uint8 *)input, length, bs) &*&
-                (output == 0 ? true : ushorts_(output, output_length, _)) &*&
-                0 <= i &*& i <= length &*& 0 <= size &*& size <= i; @*/
+                (output == 0 ? true : ushorts_(output, output_length, ?ws) &*& length(ws) == output_length &*& initialized_units(size, ws) == true &*& (!keep || initialized_units(output_length, ws))) &*&
+                size + utf16_units(drop(i, bs), 0, -1) == utf16_units(bs, 0, -1) &*&
+                0 <= i &*& i <= length &*& 0 <= size &*& size <= i &*& (output == 0 || size <= output_length); @*/
   {
+    //@ drop_n_plus_one(i, bs);
     uint8 prefix = input[i];
     //@ uchars_nth_limits((uint8 *)input, i);
     word count = Utils_bytes_in_utf_8_sequence(prefix);
@@ -181,9 +69,11 @@ word Utils_utf_8_to_16__uint8p_word_uint16p_word(uint8 *input, word length, uint
     } else if ((int)prefix > Utils_MAX_ASCII) {
       c = (int)Utils_payload_from_prefix(prefix);
       for (word j = 1; j < count; j++)
-      /*@ invariant [f]uchars((uint8 *)input, length, bs) &*& 1 <= j &*& j <= count &*&
+      /*@ invariant [f]uchars((uint8 *)input, length, bs) &*& count <= length - i &*& 1 <= j &*& j <= count &*&
+                    utf16_units(drop(i + j, bs), count - j, c) == utf16_units(drop(i, bs), 0, -1) &*&
                     0 <= c &*& c < c_bound(count, j); @*/
       {
+        //@ drop_n_plus_one(i + j, bs);
         //@ accumulate(c, nth(i + j, bs), count, j);
         c <<= Utils_UTF_8_BITS_PER_BYTE;
         c |= (int)input[i + j] & Utils_UTF_8_MASK;
@@ -191,11 +81,16 @@ word Utils_utf_8_to_16__uint8p_word_uint16p_word(uint8 *input, word length, uint
     } else {
       c = (int)prefix;
     }
+    //@ count_pending(drop(i + count, bs), c);
+    //@ units_nonnegative(drop(i + count, bs), 0, -1);
     if (c < 0x10000) {
       if (output != 0) {
         if (size >= output_length) {
           return (word)-1;
         }
+        //@ assert ushorts_(output, output_length, ?ws);
+        //@ record_unit(size, c, ws);
+        //@ if (keep) keep_initialized(size, c, ws);
         output[size] = (uint16)c;
       }
       size++;
@@ -207,7 +102,13 @@ word Utils_utf_8_to_16__uint8p_word_uint16p_word(uint8 *input, word length, uint
         }
         //@ shiftright_div(c, N10);
         //@ bitand_pow_nat(c, N10);
+        //@ assert ushorts_(output, output_length, ?ws);
+        //@ record_unit(size, 0xd800 + (c >> 10), ws);
+        //@ if (keep) keep_initialized(size, 0xd800 + (c >> 10), ws);
         output[size] = (uint16)(0xd800 + (c >> 10));
+        //@ assert ushorts_(output, output_length, ?first);
+        //@ record_unit(size + 1, 0xdc00 + (c & 0x3ff), first);
+        //@ if (keep) keep_initialized(size + 1, 0xdc00 + (c & 0x3ff), first);
         output[size + 1] = (uint16)(0xdc00 + (c & 0x3ff));
       }
       size += 2;

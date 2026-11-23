@@ -56,8 +56,6 @@ int main(int argc, char **argv) {
     };
     compiler::Compiler compiler;
     compiler.language_server(compiler_config);
-    OS::tear_down();
-    return 0;
   } else if (argc >= 2 && SnapshotBundle::is_bundle_file(argv[1])) {
     // Bundle reading.
     char* bundle_path = argv[1];
@@ -83,7 +81,7 @@ int main(int argc, char **argv) {
     exit_state = run_program(null, toit_bundle, &argv[1]);
   }
 
-  GcMetadata::tear_down();
+  ObjectMemory::tear_down();
   OS::tear_down();
   FlashRegistry::tear_down();
   return exit_state;

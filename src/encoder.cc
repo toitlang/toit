@@ -15,7 +15,7 @@
 
 #include "objects_inline.h"
 #include "encoder.h"
-#include "visitor.h"
+#include "encoder_visitor.h"
 #include "heap.h"
 #include "bytecodes.h"
 #include "profiler.h"
@@ -23,177 +23,6 @@
 #include "uuid.h"
 
 namespace toit {
-
-class EncodeVisitor : public Visitor {
- public:
-  explicit EncodeVisitor(ProgramOrientedEncoder* encoder) : encoder_(encoder), level_(0) {};
-
-  void visit_byte_array(const uint8* bytes, word length) {
-    encoder_->write_byte_array_header(length);
-    for (word i = 0; i < length; i++) {
-      encoder_->write_byte(bytes[i]);
-    }
-  }
-
- private:
-  EncodeVisitor(ProgramOrientedEncoder* encoder, int level) : encoder_(encoder), level_(level) {};
-
-  // Restrictions when encoding collections.
-  const word MAX_NOF_STRING_ELEMENTS = 255;
-  const word MAX_NOF_BYTEARRAY_ELEMENTS = 40;
-  const word MAX_NOF_ARRAY_ELEMENTS = 10;
-  // Arrays and lists can contain themselves. Deeper ones are encoded as null.
-  const int MAX_NESTING_LEVEL = 16;
-
-  // Whether an array or list at this level is left out. Once the buffer has
-  // overflowed, the result is discarded, so stop visiting; this also bounds
-  // the work for collections that contain themselves several times.
-  bool skip_collection() {
-    if (encoder_->buffer()->has_overflow()) return true;
-    if (level_ >= MAX_NESTING_LEVEL) {
-      encoder_->write_byte('Z');
-      return true;
-    }
-    return false;
-  }
-
-  void visit_smi(Smi* smi) {
-    encoder_->write_int(Smi::value(smi));
-  }
-  void visit_string(String* string) {
-    encoder_->write_byte('S');
-    String::Bytes bytes(string);
-    const char* OVERFLOW_DOTS = "...";
-    int printed = bytes.length();
-    const bool overflow = printed > MAX_NOF_STRING_ELEMENTS;
-    if (overflow) {
-      printed = MAX_NOF_STRING_ELEMENTS;
-      // Don't chop up UTF-8 sequences. Don't walk past the start of a
-      // string that isn't valid UTF-8.
-      while (printed > 0 && (bytes.at(printed) & ~Utils::UTF_8_MASK) == Utils::UTF_8_PAYLOAD) {
-        printed--;
-      }
-    }
-    const int limit = printed + (overflow ? strlen(OVERFLOW_DOTS) : 0);
-    encoder_->write_int(limit);
-    for (int i = 0; i < printed; i++) {
-      encoder_->write_byte(bytes.at(i));
-    }
-    if (overflow) {
-      for (const char* p = OVERFLOW_DOTS; *p; p++) {
-        encoder_->write_byte(*p);
-      }
-    }
-  }
-
-  void visit_array(Array* array) {
-    if (skip_collection()) return;
-    encoder_->write_header(2, 'A');
-    encoder_->write_int(array->length());
-    encoder_->write_byte('[');
-    encoder_->write_byte('#');
-    const word limit = Utils::min(array->length(), MAX_NOF_ARRAY_ELEMENTS);
-    encoder_->write_int(limit);
-    EncodeVisitor sub(encoder_, level_ + 1);
-    for (int i = 0; i < limit; i++) {
-      sub.accept(array->at(i));
-    }
-  }
-
-  void visit_byte_array(ByteArray* byte_array) {
-    encoder_->write_byte('[');
-    encoder_->write_byte('$');
-    encoder_->write_byte('U');
-    encoder_->write_byte('#');
-    // A proxy (an external byte array tagged with the type of a C++ struct:
-    // resources, groups) has no bytes to show: its external address is the
-    // struct, which as_external refuses. Encoded as empty.
-    if (byte_array->has_external_address() && byte_array->external_tag() != RawByteTag) {
-      encoder_->write_int(0);
-      return;
-    }
-    ByteArray::Bytes bytes(byte_array);
-    const int limit = Utils::min(bytes.length(), MAX_NOF_BYTEARRAY_ELEMENTS);
-    encoder_->write_int(limit);
-    for (int i = 0; i < limit; i++) {
-      encoder_->write_byte(bytes.at(i));
-    }
-  }
-
-  void visit_stack(Stack* stack);
-
-  // Whether the given List_ has an array as backing and a size within it.
-  // The fields are ordinary instance fields that Toit code can set to
-  // anything; other lists are encoded as plain instances.
-  static bool is_valid_list(Instance* instance) {
-    Object* backing = instance->at(Instance::LIST_ARRAY_INDEX);
-    Object* size = instance->at(Instance::LIST_SIZE_INDEX);
-    if (!is_array(backing) || !is_smi(size)) return false;
-    word value = Smi::value(size);
-    return 0 <= value && value <= Array::cast(backing)->length();
-  }
-
-  void visit_list(Instance* instance, Array* backing_array, word size) {
-    if (skip_collection()) return;
-    encoder_->write_header(2, 'L');
-    encoder_->write_int(size);
-    encoder_->write_byte('[');
-    encoder_->write_byte('#');
-    const word limit = Utils::min(size, MAX_NOF_ARRAY_ELEMENTS);
-    encoder_->write_int(limit);
-    EncodeVisitor sub(encoder_, level_ + 1);
-    for (int i = 0; i < limit; i++) {
-      sub.accept(backing_array->at(i));
-    }
-  }
-
-  void visit_instance(Instance* instance) {
-    Smi* class_id = instance->class_id();
-    if (class_id == encoder_->program()->list_class_id() && is_valid_list(instance)) {
-      // The backing storage in a list can be either an array -- or a
-      // large array. Only optimize if it isn't large.
-      // We use the same layout assumptions for List_ as the interpreter.
-      visit_list(
-          instance,
-          Array::cast(instance->at(Instance::LIST_ARRAY_INDEX)),
-          Smi::value(instance->at(Instance::LIST_SIZE_INDEX)));
-    } else {
-      encoder_->write_header(1, 'I');
-      encoder_->write_int(Smi::value(class_id));
-    }
-  }
-
-  void visit_oddball(HeapObject* oddball) {
-    Program* program = encoder_->program();
-    if (oddball == program->null_object()) encoder_->write_byte('Z');
-    else if (oddball == program->true_object()) encoder_->write_byte('T');
-    else if (oddball == program->false_object()) encoder_->write_byte('F');
-    else UNREACHABLE();
-  }
-
-  void visit_double(Double* d) {
-    encoder_->write_double(d->value());
-  }
-
-  void visit_large_integer(LargeInteger* large_integer) {
-    encoder_->write_int(large_integer->value());
-  }
-
-  void visit_task(Task* value) {
-    visit_instance(value);
-  }
-
- public:
-  void visit_frame(int index, int absolute_bci) {
-    encoder_->write_header(2, 'F');
-    encoder_->write_int(index);
-    encoder_->write_int(absolute_bci);
-  }
-
- private:
-  ProgramOrientedEncoder* encoder_;
-  int level_;
-};
 
 #ifdef TOIT_FREERTOS
 #define MAX_NUMBER_OF_STACK_FRAMES  40  // About 629 bytes of stack trace, max.
@@ -204,13 +33,15 @@ class EncodeVisitor : public Visitor {
 
 class EncodeFrameCallback : public FrameCallback {
  public:
-  EncodeFrameCallback(EncodeVisitor* visitor, int number_of_frames) : visitor_(visitor), number_of_frames_(number_of_frames), count_(0) {}
+  EncodeFrameCallback(Encoder* encoder, int number_of_frames) : encoder_(encoder), number_of_frames_(number_of_frames), count_(0) {}
 
   void do_frame(Stack* stack, int number, int absolute_bci) {
-     if (_include(number)) {
-       visitor_->visit_frame(number, absolute_bci);
-       count_++;
-     }
+    if (_include(number)) {
+      encoder_->write_header(2, 'F');
+      encoder_->write_int(number);
+      encoder_->write_int(absolute_bci);
+      count_++;
+    }
   }
 
   int number_of_frames_written() {
@@ -230,20 +61,17 @@ class EncodeFrameCallback : public FrameCallback {
     // user.
     int boundary_1 = MAX_NUMBER_OF_STACK_FRAMES / 3;
     int boundary_2 = MAX_NUMBER_OF_STACK_FRAMES - boundary_1;
-    // This means we only dump the top and bottom frames if we have more than 20 stack frames.
     return (index < boundary_1) || (number_of_frames_ - index) <= boundary_2;
   }
 
-  EncodeVisitor* const visitor_;
+  Encoder* const encoder_;
   int const number_of_frames_;
   int count_;
 };
 
 void EncodeVisitor::visit_stack(Stack* stack) {
-  FrameCallback nothing;
-  int number_of_frames = stack->frames_do(encoder_->program(), &nothing);
-  EncodeVisitor sub(encoder_, level_ + 1);
-  EncodeFrameCallback doit(&sub, number_of_frames);
+  int number_of_frames = stack->frames_do(encoder_->program(), nullptr);
+  EncodeFrameCallback doit(encoder_, number_of_frames);
   encoder_->write_byte('[');
   encoder_->write_byte('#');
   encoder_->write_int(2);
@@ -391,6 +219,18 @@ void Encoder::write_byte_array_header(word length) {
   write_byte('U');
   write_byte('#');
   write_int(length);
+}
+
+void Encoder::write_byte_array(ByteArray* array) {
+  // External proxies hold native objects, so they have no payload to encode.
+  if (array->has_external_address() && array->external_tag() != RawByteTag) {
+    write_byte_array_header(0);
+    return;
+  }
+  ByteArray::Bytes bytes(array);
+  const word limit = Utils::min(bytes.length(), word{40});
+  write_byte_array_header(limit);
+  for (word i = 0; i < limit; i++) write_byte(bytes.at(i));
 }
 
 void Encoder::write_string(const char* string) {

@@ -161,7 +161,7 @@ Each hypothesis is an obligation on the implementation.
    terminal for the theorem. Message delivery and other primitives are
    oracle completions under hypothesis 2.
 5. **Specification inputs**: the floating-point operations
-   `double_add/sub/mul` and `compare_mixed` are `uninterp` in the spec
+   `double_add/sub/mul` are `uninterp` in the spec
    (`spec_helpers.rs`); the theorem holds for every interpretation of
    them, so they add nothing to the trusted base of the proof.
 

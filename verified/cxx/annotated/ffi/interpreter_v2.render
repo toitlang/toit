@@ -15,10 +15,10 @@
 // states represent the same state of the spec when `vm_equiv` (the GC
 // preserves that; a stack copied with the same observables too). Trusted
 // (contracts below, each still compared with the sources): the GC
-// (v2_gc), the allocator, the Stack header accessors, the task's stack
-// field, the policy table and the primitives' contract (a function
+// (Scheduler::gc), the allocator, the policy
+// table and the primitives' contract (a function
 // pointer type), the write barrier. Verified: the retry loops (at most
-// three collections: the epoch cannot wrap), the bound checks before the
+// three collections: a changed epoch cannot return to its initial word), the bound checks before the
 // allocator and before the conversions, the arity check before a
 // primitive reads its arguments, the stack re-read after a GC, the copies
 // of stack growth, and the epoch accounting the core relies on (an
@@ -27,10 +27,23 @@
 @verbatim
 #include "../model/objects.gen.h"
 //@ #include "../model/arith.gh"
+// Verify the native field accessors here with ownership of one field and
+// require the barrier before publishing a pointer. The shared model also
+// verifies those bodies with ownership of a whole instance.
+#define Instance_at Instance_at_field
+#define Instance_at_put__word_Objectp Instance_at_put_field
+#define HeapObject__at_put HeapObject_store_remembered_field
 
 typedef struct Object Stack;
 typedef struct Object Task;
 typedef unsigned long size_t;
+// The native process-epoch and current-task checks use the full C++ layout.
+//@ inductive epoch_count = epoch_count(int);
+struct ObjectHeap {
+  Task *task_;
+  uword v2_epoch_;
+  //@ epoch_count history;
+};
 
 // Stack::max_length() = (ObjectHeap::max_allocation_size() - HEADER_SIZE) /
 // WORD_SIZE: a few thousand words (pages of 32 KB on the host, 4 KB on
@@ -45,16 +58,67 @@ typedef unsigned long size_t;
 /*@
 // A Stack object: length, top, record top, the header fields the core
 // keeps (frame top, finally count, bci), and the array as bytes.
-predicate stack_hdr(Stack *s; int len, int top, int rtop, int ftop, int fin, int bci);
-fixpoint uint8 *stack_array(Stack *s);
-predicate records_of(int ftop, int fin; int rtop);
+predicate stack_hdr(Stack *s; int len, int top, int rtop, int ftop, int fin, int bci) =
+  1 <= (uword)s &*&
+  uintptr(raw(s) + 2, ?l) &*& uintptr(raw(s) + 3, ?t) &*&
+  len == l &*& top == t &*& 0 <= top &*& top <= len &*& len <= STACK_MAX_BOUND &*&
+  (uword)s - 1 + Stack_HEADER_SIZE + len * sizeof(word) <= UINTPTR_MAX &*&
+  uintptr(raw(s) + 4, ?records) &*& 0 <= records &*& records <= UINTPTR_MAX &*&
+  rtop == records % Stack_V2_MAX_LENGTH &*& ftop == records / Stack_V2_MAX_LENGTH &*&
+  fin == (rtop - ftop) / Stack_V2_FIN_WORDS &*&
+  uintptr(raw(s) + 5, ?bits) &*& bci == truncate_signed(bits, 8 * sizeof(word) - 1);
+fixpoint uint8 *stack_array(Stack *s) { return (uint8 *)((uword)s - 1 + Stack_HEADER_SIZE); }
+fixpoint int stack_max_length() { return (TOIT_PAGE_SIZE - 96 - Stack_HEADER_SIZE) / sizeof(word); }
+// Reading back a signed bytecode index stored as an unsigned machine word.
+lemma void signed_word_bits(Z z, nat n)
+  requires 0 <= int_of_Z(z) &*& int_of_Z(z) < 2 * pow_nat(2,n);
+  ensures int_of_Z(Z_truncate_signed(z,n)) ==
+    (int_of_Z(z) < pow_nat(2,n) ? int_of_Z(z) : int_of_Z(z) - 2 * pow_nat(2,n));
+{
+  switch (n) {
+    case zero:
+      switch (z) { case Zsign(b): case Zdigit(high,low): }
+    case succ(k):
+      pow2_pos(k);
+      switch (z) {
+        case Zsign(b): signed_word_bits(z,k);
+        case Zdigit(high,low): signed_word_bits(high,k);
+      }
+  }
+}
+
+lemma void signed_word_roundtrip(int x, nat n)
+  requires -pow_nat(2,n) <= x &*& x < pow_nat(2,n);
+  ensures truncate_signed(truncate_unsigned(x,int_of_nat(succ(n))),int_of_nat(n)) == x;
+{
+  int modulus = 2 * pow_nat(2,n);
+  int bits = x < 0 ? x + modulus : x;
+  divrem_intro(x,modulus,x < 0 ? -1 : 0,bits);
+  truncate_unsigned_def(x,succ(n));
+  Z z = int_of_Z_of_uintN(bits,succ(n));
+  signed_word_bits(z,n);
+  truncate_signed_def(bits,z,n);
+}
+// Stack::V2_FIN_WORDS and the native accessor round trip are checked by stack-records.
+predicate records_of(int ftop, int fin; int rtop) =
+  rtop == ftop + Stack_V2_FIN_WORDS * fin &*& 0 <= ftop &*& 0 <= fin &*& rtop <= stack_max_length();
+// The format-2 allocator initializes every slot before Rust constructs StackMem.
+predicate fresh_stack(Stack *s; int len) =
+  stack_hdr(s, len, _, _, _, _, _) &*& uchars(stack_array(s), len * sizeof(word), _);
 predicate stack(Stack *s; int len, int top, int rtop, int ftop, int fin, int bci, list<uint8> bs) =
-  stack_hdr(s, len, top, rtop, ftop, fin, bci) &*& uchars(stack_array(s), len * sizeof(word), bs) &*&
+  stack_hdr(s, len, top, rtop, ftop, fin, bci) &*&
+  uchars(stack_array(s), rtop * sizeof(word), ?prefix) &*&
+  uchars(stack_array(s) + rtop * sizeof(word), (top - rtop) * sizeof(word), ?gap) &*&
+  uchars(stack_array(s) + top * sizeof(word), (len - top) * sizeof(word), ?suffix) &*&
+  bs == append(prefix, append(gap, suffix)) &*&
   [_]records_of(ftop, fin, rtop);
 
 // The current task's stack, and the process's task (an Instance).
-predicate current_stack(Process *p; Stack *s);
-fixpoint Task *task_of(Process *p);
+// Both addresses can change at a GC point or a task switch.
+predicate task_stack_field(Task *task; Stack *s) =
+  1 <= (uword)task &*& pointer((void **)raw(task) + 1 + Task_STACK_INDEX, s);
+predicate current_stack(Process *p; Task *task, Stack *s) =
+  ObjectHeap_task_(process_heap_address(p), task) &*& task_stack_field(task, s);
 
 // The observables of a stack the core relies on: same records, header
 // fields and used slots (by position from the end).
@@ -97,11 +161,24 @@ fixpoint bool same_stack(vmv a, vmv b) { return with_heap(b, v_objs(a), v_H(a)) 
 
 // The epoch: ObjectHeap::v2_epoch_ is `epoch_word(n)`; n counts the
 // collections of the process's heap and its task switches.
-predicate epoch(Process *p; int n);
 fixpoint int epoch_word(int n) { return n % (UINTPTR_MAX + 1); }
+predicate heap_epoch(ObjectHeap *h; int n) =
+  h->history |-> epoch_count(n) &*& 0 <= n &*& h->v2_epoch_ |-> epoch_word(n);
+predicate epoch(Process *p; int n) = heap_epoch(process_heap_address(p), n);
 
+lemma void init_heap_epoch(ObjectHeap *h)
+  requires h->history |-> _ &*& h->v2_epoch_ |-> 0;
+  ensures heap_epoch(h, 0);
+{
+  h->history = epoch_count(0);
+  close heap_epoch(h, 0);
+}
+
+// The loaded program has the TBC2 bytecode header throughout this process.
+fixpoint bool format2_heap(ObjectHeap *h);
 predicate vm(Process *p, vmv v, int n) =
-  current_stack(p, ?s) &*& stack(s, ?len, ?top, ?rtop, ?ft, ?fin, ?bci, ?bs) &*& stack_ok(len, top, rtop, bs) == true &*&
+  format2_heap(process_heap_address(p)) == true &*&
+  current_stack(p, _, ?s) &*& stack(s, ?len, ?top, ?rtop, ?ft, ?fin, ?bci, ?bs) &*& stack_ok(len, top, rtop, bs) == true &*&
   heap(?objs, ?H) &*& epoch(p, n) &*& 0 <= n &*&
   v == vmv(s, len, top, rtop, ft, fin, bci, bs, objs, H);
 
@@ -127,9 +204,13 @@ predicate prim_frame(int first) = true;
 // (Primitive::unmark_from_error), the roots that ask for a GC and a
 // retry.
 fixpoint bool is_marked(Object *raw) { return (uword)raw % 4 == 3; }
-fixpoint Object *unmarked(Program *prog, Object *raw);
-fixpoint Object *root_malloc_failed(Program *prog);
-fixpoint Object *root_cross_process_gc(Program *prog);
+fixpoint Object *unmarked(Program *prog, Object *raw) {
+  return (uword)raw < Error_MAX_TAGGED_ERROR
+      ? nth((uword)raw / 4 < Program_ROOT_COUNT ? (uword)raw / 4 : Program_INVALID_ARGUMENT_INDEX, program_roots(prog))
+      : (Object *)((uword)raw - 2);
+}
+fixpoint Object *root_malloc_failed(Program *prog) { return nth(Program_MALLOC_FAILED_INDEX, program_roots(prog)); }
+fixpoint Object *root_cross_process_gc(Program *prog) { return nth(Program_CROSS_PROCESS_GC_INDEX, program_roots(prog)); }
 // (VeriFast's C pointer comparison: a true `p == q` means the same address,
 // a false one different pointers. In the VM, one address space, the two
 // coincide for these roots; the core gets THROW for the first and FAILURE
@@ -156,17 +237,6 @@ predicate alloc_post(Process *p, vmv a, int n, vmv b, int n2, void *r, list<void
   (r == 0 ? objsm == v_objs(b) &*& Hm == v_H(b) :
      v_objs(b) == cons(r, objsm) &*& mem(r, objsm) == false &*&
      forall(objsm, (same_obj)(Hm, v_H(b))) == true &*& in_program_heap(p, r) == false);
-
-lemma void take_take_le(int i, int j, list<uint8> xs)
-  requires 0 <= i &*& i <= j;
-  ensures take(i, take(j, xs)) == take(i, xs);
-{
-  switch (xs) {
-    case nil:
-    case cons(x, xs0):
-      if (i > 0) take_take_le(i - 1, j - 1, xs0);
-  }
-}
 
 lemma void drop_append_one(list<uint8> b, list<uint8> c, int n)
   requires n == length(b);
@@ -255,21 +325,40 @@ lemma void same_frames_trans(vmv a, vmv b, vmv c)
 
 // The process accessors (src/process.h) and the allocator (src/heap.h;
 // Process::object_heap and ObjectHeap are the model's).
-Task *Process_task(Process *self);
-//@ requires true;
-//@ ensures result == task_of(self);
 // ObjectHeap::allocate_stack: null, or a fresh stack of the asked length
 // (stacks are not objects of the heap model: the `stack` bridge).
 Stack *ObjectHeap_allocate_stack(ObjectHeap *self, word length);
-//@ requires 0 <= length &*& length <= STACK_MAX_BOUND;
-//@ ensures result == 0 ? true : stack(result, length, length, 0, 0, 0, 0, ?bs) &*& length(bs) == length * sizeof(word);
+//@ requires format2_heap(self) == true &*& 0 <= length &*& length <= stack_max_length();
+//@ ensures result == 0 ? true : fresh_stack(result, length);
 void ObjectHeap_leave_primitive(ObjectHeap *self);
 //@ requires true;
 //@ ensures true;
 // The write barrier (src/third_party/dartino/gc_metadata.h, a template).
+//@ predicate remembered_stack(Stack *address);
 void GcMetadata_insert_into_remembered_set__Stackp(Stack *address);
 //@ requires true;
-//@ ensures true;
+//@ ensures remembered_stack(address);
+
+typedef struct VM { char unused; } VM;
+typedef struct Scheduler { char unused; } Scheduler;
+/*@
+fixpoint VM *current_vm();
+fixpoint Scheduler *scheduler_of(VM *vm);
+predicate gc_returned(Process *p, bool failed, bool hard);
+predicate allocation_reported(Process *p, char *reason, int parameter1, int parameter2);
+predicate gc_action(Process *p, int attempts, bool failed, bool force, char *reason, int p1, int p2) =
+  attempts == 3 ? allocation_reported(p, reason, p1, p2) : gc_returned(p, failed, attempts > 1 || force);
+@*/
+VM *VM_current(void);
+//@ requires true;
+//@ ensures result == current_vm();
+Scheduler *VM_scheduler(VM *self);
+//@ requires true;
+//@ ensures result == scheduler_of(self);
+void Scheduler_gc(Scheduler *self, Process *process, bool malloc_failed, bool try_hard);
+/*@ requires self == scheduler_of(current_vm()) &*& vm(process, ?a, ?n) &*& remembered_stack(v_s(a)); @*/
+/*@ ensures vm(process, ?b, ?n2) &*& n <= n2 &*& n2 <= n + GC_EPOCHS &*& same_frames(a, b) == true &*&
+            (n2 == n ? b == a : gc_equiv(a, b) == true) &*& gc_returned(process, malloc_failed, try_hard); @*/
 // Utils::max, Utils::min (src/utils.h, templates; the instance for word).
 // Utils::max is @overloaded (model.cfg: the decoder uses the instance for
 // int): named by the parameter types, which are long on LP64 and int on
@@ -361,7 +450,7 @@ predicate ghost_start(vmv a, int n) = true;
 // switched no task and left the stack alone (the retry protocol needs
 // it, with prim_retry).
 typedef Object *Primitive_Entry(Process *process, Object **arguments);
-/*@ requires [?fp]process(process, ?prog, ?ids) &*& vm(process, ?a, ?n) &*& prim_frame(?first) &*&
+/*@ requires [?fp]process(process, ?prog, ?ids) &*& vm(process, ?a, ?n) &*& prim_frame(?first) &*& remembered_stack(v_s(a)) &*&
              0 <= first &*& first + prim_arity((void *)this) <= v_len(a) - v_top(a) &*&
              (void *)arguments == stack_array(v_s(a)) + (v_len(a) - 1 - first) * sizeof(word); @*/
 /*@ ensures [fp]process(process, prog, ids) &*& vm(process, ?b, ?n2) &*& n <= n2 &*& n2 <= n + PRIM_EPOCHS &*&
@@ -402,118 +491,305 @@ PrimitivePolicy *Process_policy(Process *self);
 PrimitiveEntry *PrimitivePolicy_at(PrimitivePolicy *self, unsigned module, unsigned index);
 //@ requires true;
 //@ ensures result == 0 ? policy_fn(self, module, index) == 0 : [_]entry_ok(result, policy_fn(self, module, index), _);
-bool Primitive_is_error(Object *object);
-//@ requires true;
-//@ ensures result == is_marked(object);
-Object *Primitive_unmark_from_error(Program *program, Object *object);
-//@ requires true;
-//@ ensures result == unmarked(program, object);
 Object *Program_malloc_failed(Program *self);
-//@ requires true;
+//@ requires [_]program(self, ?ids);
 //@ ensures result == root_malloc_failed(self);
 Object *Program_cross_process_gc(Program *self);
-//@ requires true;
+//@ requires [_]program(self, ?ids);
 //@ ensures result == root_cross_process_gc(self);
-// Process::allocate_string(word) (src/process.cc): a string of `length`
-// bytes (internal, or external with malloced memory), outside the program
-// heap, or null and nothing changed. The bound is the model's blob bound
-// (README, "One contract, two renderings": the Verus contract has none).
-String *Process_allocate_string__word(Process *self, word length);
-//@ requires [?f]process(self, ?prog, ?ids) &*& heap(?objs, ?H) &*& 0 <= length &*& length <= MAX_BLOB;
-/*@ ensures [f]process(self, prog, ids) &*& allocated(objs, H, self, result, ?objs2, ?H2) &*&
-            (result == 0 ? true : has_tag(H2, result, STRING_TAG) == true &*& blob_len(H2, result) == length); @*/
 @prototypes
-@render src/objects.h toit::Stack::length tu=src/objects_runtime.cc trusted
+@render src/primitive.cc toit::Primitive::unmark_from_error
+Object* Primitive::unmark_from_error(Program* program, Object* marked_error)
+//@ requires [_]program(program, ?ids) &*& is_marked(marked_error) == true;
+//@ ensures result == unmarked(program, marked_error);
+{
+  ASSERT((reinterpret_cast<uword>(marked_error) & 3) == Error::ERROR_TAG);
+  if (reinterpret_cast<uword>(marked_error) < Error::MAX_TAGGED_ERROR) {
+    //@ shiftright_div((uword)marked_error, N2);
+    int index = reinterpret_cast<uword>(marked_error) >> Error::ERROR_SHIFT;
+    if (index >= Program::ROOT_COUNT) index = Program::INVALID_ARGUMENT_INDEX;
+    return program->root(index);
+  }
+  return marked_error->unmark();
+}
+
+@render src/primitive.h toit::Primitive::is_error tu=src/interpreter_v2.cc
+  static bool is_error(Object* object)
+  //@ requires true;
+  //@ ensures result == is_marked(object);
+  {
+    //@ bitand_pow_nat((uword)object, N2);
+    return (reinterpret_cast<uword>(object) & Object::NON_SMI_TAG_MASK) == Object::MARKED_TAG;
+  }
+
+@render src/objects.h toit::Stack::length tu=src/objects_runtime.cc
   word length() const
   //@ requires [?f]stack_hdr(self, ?len, ?top, ?rtop, ?ft, ?fin, ?bci);
   //@ ensures [f]stack_hdr(self, len, top, rtop, ft, fin, bci) &*& result == len;
-  { return _word_at(LENGTH_OFFSET); }
+  {
+    //@ open [f]stack_hdr(self, len, top, rtop, ft, fin, bci);
+    return _word_at(LENGTH_OFFSET);
+  }
 
-@render src/objects.h toit::Stack::top tu=src/objects_runtime.cc trusted
+@render src/objects.h toit::Stack::top tu=src/objects_runtime.cc
   word top() const
   //@ requires [?f]stack_hdr(self, ?len, ?top, ?rtop, ?ft, ?fin, ?bci);
   //@ ensures [f]stack_hdr(self, len, top, rtop, ft, fin, bci) &*& result == top;
-  { return _word_at(TOP_OFFSET); }
+  {
+    //@ open [f]stack_hdr(self, len, top, rtop, ft, fin, bci);
+    return _word_at(TOP_OFFSET);
+  }
 
-@render src/objects.h toit::Stack::v2_record_top tu=src/objects_runtime.cc trusted
+@render src/objects.h toit::Stack::v2_records_word tu=src/objects_runtime.cc
+  uword v2_records_word() const
+  //@ requires 1 <= (uword)self &*& [?f]uintptr(raw(self) + 4, ?records);
+  //@ ensures [f]uintptr(raw(self) + 4, records) &*& result == records;
+  { return _word_at(TRY_TOP_OFFSET); }
+
+@render src/objects.h toit::Stack::v2_record_top tu=src/objects_runtime.cc
   word v2_record_top() const
   //@ requires [?f]stack_hdr(self, ?len, ?top, ?rtop, ?ft, ?fin, ?bci);
   //@ ensures [f]stack_hdr(self, len, top, rtop, ft, fin, bci) &*& result == rtop;
-  { return v2_records_word() & (V2_MAX_LENGTH - 1); }
+  {
+    //@ open [f]stack_hdr(self, len, top, rtop, ft, fin, bci);
+    //@ assert [f]uintptr(raw(self) + 4, ?records);
+    //@ bitand_pow_nat(records, N16);
+    //@ div_rem_nonneg(records, Stack_V2_MAX_LENGTH);
+    return v2_records_word() & (V2_MAX_LENGTH - 1);
+  }
 
-@render src/objects.h toit::Stack::v2_frame_top tu=src/objects_runtime.cc trusted
+@render src/objects.h toit::Stack::v2_frame_top tu=src/objects_runtime.cc
   word v2_frame_top() const
   //@ requires [?f]stack_hdr(self, ?len, ?top, ?rtop, ?ft, ?fin, ?bci);
   //@ ensures [f]stack_hdr(self, len, top, rtop, ft, fin, bci) &*& result == ft;
-  { return v2_records_word() >> V2_FRAME_TOP_SHIFT; }
+  {
+    //@ open [f]stack_hdr(self, len, top, rtop, ft, fin, bci);
+    //@ assert [f]uintptr(raw(self) + 4, ?records);
+    //@ shiftright_div(records, N16);
+    //@ div_rem_nonneg(records, Stack_V2_MAX_LENGTH);
+    return v2_records_word() >> V2_FRAME_TOP_SHIFT;
+  }
 
-@render src/objects.h toit::Stack::v2_fin_count tu=src/objects_runtime.cc trusted
+@render src/objects.h toit::Stack::v2_fin_count tu=src/objects_runtime.cc
   word v2_fin_count() const
   //@ requires [?f]stack_hdr(self, ?len, ?top, ?rtop, ?ft, ?fin, ?bci);
   //@ ensures [f]stack_hdr(self, len, top, rtop, ft, fin, bci) &*& result == fin;
-  { return (v2_record_top() - v2_frame_top()) / V2_FIN_WORDS; }
+  {
+    //@ open [f]stack_hdr(self, len, top, rtop, ft, fin, bci);
+    //@ assert [f]uintptr(raw(self) + 4, ?records);
+    //@ div_rem_nonneg(records, Stack_V2_MAX_LENGTH);
+    //@ close [f]stack_hdr(self, len, top, rtop, ft, fin, bci);
+    return (v2_record_top() - v2_frame_top()) / V2_FIN_WORDS;
+  }
 
-@render src/objects.h toit::Stack::v2_bci tu=src/objects_runtime.cc trusted
+@render src/objects.h toit::Stack::v2_bci_word tu=src/objects_runtime.cc
+  uword v2_bci_word() const
+  //@ requires 1 <= (uword)self &*& [?f]uintptr(raw(self) + 5, ?bits);
+  //@ ensures [f]uintptr(raw(self) + 5, bits) &*& result == bits;
+  { return _word_at(PENDING_STACK_CHECK_METHOD_OFFSET); }
+
+@render src/objects.h toit::Stack::v2_bci tu=src/objects_runtime.cc truncating
   word v2_bci() const
   //@ requires [?f]stack_hdr(self, ?len, ?top, ?rtop, ?ft, ?fin, ?bci);
   //@ ensures [f]stack_hdr(self, len, top, rtop, ft, fin, bci) &*& result == bci;
-  { return v2_bci_word(); }
+  {
+    //@ open [f]stack_hdr(self, len, top, rtop, ft, fin, bci);
+    return v2_bci_word();
+  }
 
-@render src/objects.h toit::Stack::_set_top tu=src/objects_runtime.cc trusted
+@render src/objects.h toit::HeapObject::_word_at_put tu=src/objects_runtime.cc
+  INLINE void _word_at_put(word offset, uword value)
+  //@ requires 1 <= (uword)self &*& 0 <= offset &*& offset % WORD_SIZE == 0 &*& uintptr_(raw(self) + offset / WORD_SIZE, _);
+  //@ ensures uintptr(raw(self) + offset / WORD_SIZE, value);
+  { _raw_at()[offset / WORD_SIZE] = value; }
+
+@render src/objects.h toit::Stack::_set_top tu=src/objects_runtime.cc
   void _set_top(word value)
-  //@ requires stack_hdr(self, ?len, _, ?rtop, ?ft, ?fin, ?bci);
+  //@ requires stack_hdr(self, ?len, _, ?rtop, ?ft, ?fin, ?bci) &*& 0 <= value &*& value <= len;
   //@ ensures stack_hdr(self, len, value, rtop, ft, fin, bci);
-  { _word_at_put(TOP_OFFSET, value); }
+  {
+    //@ open stack_hdr(self, len, _, rtop, ft, fin, bci);
+    _word_at_put(TOP_OFFSET, value);
+    //@ close stack_hdr(self, len, value, rtop, ft, fin, bci);
+  }
 
-@render src/objects.h toit::Stack::v2_set_records tu=src/objects_runtime.cc trusted
+@render src/objects.h toit::Stack::_set_try_top tu=src/objects_runtime.cc
+  void _set_try_top(word value)
+  //@ requires 1 <= (uword)self &*& 0 <= value &*& uintptr_(raw(self) + 4, _);
+  //@ ensures uintptr(raw(self) + 4, value);
+  { _word_at_put(TRY_TOP_OFFSET, value); }
+
+@render src/objects.h toit::Stack::v2_set_records tu=src/objects_runtime.cc unsigned-word-conversion
   void v2_set_records(word frame_top, word fin_count, word bci)
   // The record top is frame_top + fin_count * V2_FIN_WORDS: taken as the
   // source stack's (records_of).
   //@ requires stack_hdr(self, ?len, ?top, _, _, _, _) &*& [_]records_of(frame_top, fin_count, ?rtop);
   //@ ensures stack_hdr(self, len, top, rtop, frame_top, fin_count, bci);
   {
+    //@ open stack_hdr(self, len, top, _, _, _, _);
+    //@ open [_]records_of(frame_top, fin_count, rtop);
     word record_top = frame_top + V2_FIN_WORDS * fin_count;
+    //@ int packed = frame_top * Stack_V2_MAX_LENGTH + rtop;
+    //@ div_rem_nonneg_unique(packed, Stack_V2_MAX_LENGTH, frame_top, rtop);
+    //@ bitand_pow_nat(packed, N16);
+    //@ bitand_bitnot_eq(packed, Stack_V2_MAX_LENGTH - 1);
+    //@ shiftleft_def(frame_top, N16);
     _set_try_top(record_top | (frame_top << V2_FRAME_TOP_SHIFT));
+    //@ signed_word_roundtrip(bci, sizeof(word) == 8 ? N63 : N31);
     _word_at_put(PENDING_STACK_CHECK_METHOD_OFFSET, bci);
+    //@ div_rem_nonneg_unique(rtop - frame_top, Stack_V2_FIN_WORDS, fin_count, 0);
+    //@ close stack_hdr(self, len, top, rtop, frame_top, fin_count, bci);
   }
 
-@render src/objects.h toit::Stack::_array_address tu=src/objects_runtime.cc trusted
+@render src/objects.h toit::Stack::_array_offset_from tu=src/objects_runtime.cc
+  static word _array_offset_from(word index)
+  //@ requires 0 <= index &*& index <= STACK_MAX_BOUND;
+  //@ ensures result == Stack_HEADER_SIZE + index * WORD_SIZE;
+  { return HEADER_SIZE + index  * WORD_SIZE; }
+
+@render src/objects.h toit::Stack::_array_address tu=src/objects_runtime.cc
   uword* _array_address(word index)
-  // (VeriFast does not simplify p + 0 to p: the index-0 case separately.)
+  // memcpy of the prefix starts at the base even when its byte count is zero.
   //@ requires [?f]stack_hdr(self, ?len, ?top, ?rtop, ?ft, ?fin, ?bci) &*& 0 <= index &*& index <= len;
   //@ ensures [f]stack_hdr(self, len, top, rtop, ft, fin, bci) &*& (void *)result == (index == 0 ? stack_array(self) : stack_array(self) + index * sizeof(word));
-  { return _raw_at(_array_offset_from(index)); }
+  {
+    //@ open [f]stack_hdr(self, len, top, rtop, ft, fin, bci);
+    return _raw_at(_array_offset_from(index));
+  }
 
-@render src/objects.h toit::Stack::v2_slot_address tu=src/objects_runtime.cc trusted
+@render src/objects.h toit::Stack::v2_slot_address tu=src/objects_runtime.cc
   Object** v2_slot_address(word position)
   // (Stated on the VM state: the primitive call computes its arguments'
   // address in the call's argument list, with the state closed.)
   //@ requires [?f]vm(?p, ?a, ?n) &*& self == v_s(a) &*& 0 <= position &*& position < v_len(a);
   //@ ensures [f]vm(p, a, n) &*& (void *)result == stack_array(self) + (v_len(a) - 1 - position) * sizeof(word);
   {
-    return reinterpret_cast<Object**>(_array_address(length() - 1 - position));
+    //@ open [f]vm(p, a, n);
+    //@ assert [f]stack(self, ?len, ?top, ?rtop, ?ft, ?fin, ?bci, ?bs);
+    //@ open [f]stack(self, len, top, rtop, ft, fin, bci, bs);
+    Object** slot = reinterpret_cast<Object**>(_array_address(length() - 1 - position));
+    //@ close [f]stack(self, len, top, rtop, ft, fin, bci, bs);
+    //@ close [f]vm(p, a, n);
+    return slot;
   }
 
-@render src/objects_inline.h toit::Stack::max_length tu=src/objects_runtime.cc trusted
+@render src/objects_inline.h toit::Stack::max_length tu=src/objects_runtime.cc
 word Stack::max_length()
 //@ requires true;
-//@ ensures 0 < result &*& result <= STACK_MAX_BOUND;
+//@ ensures result == stack_max_length() &*& 0 < result &*& result <= STACK_MAX_BOUND;
 {
   return (ObjectHeap::max_allocation_size() - HEADER_SIZE) / WORD_SIZE;
 }
 
-@render src/objects.h toit::Task::stack tu=src/objects_runtime.cc trusted
-  Stack* stack()
-  //@ requires [?f]current_stack(?p, ?s) &*& self == task_of(p);
-  //@ ensures [f]current_stack(p, s) &*& result == s;
-  { return Stack::cast(at(STACK_INDEX)); }
+@render src/heap.h toit::ObjectHeap::task tu=src/interpreter_v2.cc
+  Task* task()
+  //@ requires [_]object_heap(self, ?p) &*& self == process_heap_address(p) &*& [?f]current_stack(p, ?t, ?s);
+  //@ ensures [f]current_stack(p, t, s) &*& result == t;
+  {
+    //@ open [f]current_stack(p, t, s);
+    return task_;
+    //@ close [f]current_stack(p, t, s);
+  }
 
-@render src/objects.h toit::Task::set_stack tu=src/objects_runtime.cc trusted
+@render src/heap.h toit::ObjectHeap::v2_epoch_address tu=src/interpreter_v2.cc
+  const uword* v2_epoch_address() const
+  //@ requires [?f]heap_epoch(self, ?n);
+  //@ ensures [f]heap_epoch(self, n) &*& result == &self->v2_epoch_;
+  {
+    //@ open [f]heap_epoch(self, n);
+    return &v2_epoch_;
+    //@ close [f]heap_epoch(self, n);
+  }
+
+@render src/heap.h toit::ObjectHeap::advance_v2_epoch tu=src/interpreter_v2.cc truncating
+  void advance_v2_epoch()
+  //@ requires heap_epoch(self, ?n);
+  //@ ensures heap_epoch(self, n + 1);
+  {
+    //@ open heap_epoch(self, n);
+    //@ int modulus = UINTPTR_MAX + 1;
+    //@ div_rem_nonneg(n, modulus);
+    //@ int next = epoch_word(n) + 1;
+    //@ int carry = next == modulus ? 1 : 0;
+    //@ int low = next == modulus ? 0 : next;
+    //@ divrem_intro(next, modulus, carry, low);
+    //@ truncate_unsigned_def(next, sizeof(word) == 8 ? N64 : N32);
+    //@ div_rem_nonneg_unique(n + 1, modulus, n / modulus + carry, low);
+    v2_epoch_ = v2_epoch_ + 1;
+    //@ self->history = epoch_count(n + 1);
+    //@ close heap_epoch(self, n + 1);
+  }
+
+@render src/heap.h toit::ObjectHeap::set_task tu=src/interpreter_v2.cc
+  void set_task(Task* task)
+  //@ requires self->task_ |-> _ &*& heap_epoch(self, ?n);
+  //@ ensures self->task_ |-> task &*& heap_epoch(self, n + 1);
+  { task_ = task; advance_v2_epoch(); }
+
+@render src/process.h toit::Process::task tu=src/interpreter_v2.cc
+  Task* task()
+  //@ requires [?f]current_stack(self, ?t, ?s);
+  //@ ensures [f]current_stack(self, t, s) &*& result == t;
+  { return object_heap()->task(); }
+
+@render src/objects.h toit::Instance::at tu=src/objects_runtime.cc
+  Object* at(word index) const
+  //@ requires 1 <= (uword)self &*& 0 <= index &*& index <= MAX_OBJECT_WORDS &*& [?f]pointer((void **)raw(self) + 1 + index, ?value);
+  //@ ensures [f]pointer((void **)raw(self) + 1 + index, value) &*& result == value;
+  {
+    //@ div_rem_nonneg_unique(Instance_HEADER_SIZE + index * WORD_SIZE, WORD_SIZE, 1 + index, 0);
+    return _at(_offset_from(index));
+  }
+
+@render src/objects.h toit::Stack::cast tu=src/objects_runtime.cc type=Stack*(Object*)
+  static Stack* cast(Object* stack)
+  //@ requires true;
+  //@ ensures result == stack;
+  {
+    ASSERT(is_stack(stack));
+    return static_cast<Stack*>(stack);
+  }
+
+@render src/objects.h toit::Task::stack tu=src/objects_runtime.cc
+  Stack* stack()
+  //@ requires [?f]current_stack(?p, ?t, ?s) &*& self == t;
+  //@ ensures [f]current_stack(p, t, s) &*& result == s;
+  {
+    //@ open [f]current_stack(p, t, s);
+    //@ open [f]task_stack_field(t, s);
+    return Stack::cast(at(STACK_INDEX));
+    //@ close [f]task_stack_field(t, s);
+    //@ close [f]current_stack(p, t, s);
+  }
+
+@render src/objects.h toit::HeapObject::_at_put tu=src/objects_runtime.cc
+  INLINE void _at_put(word offset, Object* value)
+  /*@ requires remembered_instance(self) &*& 1 <= (uword)self &*& 0 <= offset &*& offset % WORD_SIZE == 0 &*&
+               pointer_((void **)raw(self) + offset / WORD_SIZE, _); @*/
+  //@ ensures remembered_instance(self) &*& pointer((void **)raw(self) + offset / WORD_SIZE, value);
+  { reinterpret_cast<Object**>(_raw_at())[offset / WORD_SIZE] = value; }
+
+@render src/objects_inline.h toit::Instance::at_put tu=src/objects_runtime.cc type=void(word,Object*)
+inline void Instance::at_put(word index, Object* value)
+//@ requires 1 <= (uword)self &*& 0 <= index &*& index <= MAX_OBJECT_WORDS &*& pointer((void **)raw(self) + 1 + index, _);
+//@ ensures pointer((void **)raw(self) + 1 + index, value) &*& remembered_instance(self);
+{
+  GcMetadata::insert_into_remembered_set(this);
+  //@ div_rem_nonneg_unique(Instance_HEADER_SIZE + index * WORD_SIZE, WORD_SIZE, 1 + index, 0);
+  _at_put(_offset_from(index), value);
+}
+
+@render src/objects.h toit::Task::set_stack tu=src/objects_runtime.cc
   void set_stack(Stack* value)
-  // The old stack becomes garbage (given back to the heap).
-  //@ requires current_stack(?p, ?s) &*& self == task_of(p) &*& stack(s, _, _, _, _, _, _, _);
-  //@ ensures current_stack(p, value);
-  { at_put(STACK_INDEX, value); }
+  //@ requires current_stack(?p, ?t, ?s) &*& self == t;
+  //@ ensures current_stack(p, t, value) &*& remembered_instance(t);
+  {
+    //@ open current_stack(p, t, s);
+    //@ open task_stack_field(t, s);
+    at_put(STACK_INDEX, value);
+    //@ close task_stack_field(t, value);
+    //@ close current_stack(p, t, value);
+  }
 
 @render src/interpreter_v2.cc v2_process
 static Process* v2_process(void* process)
@@ -523,10 +799,26 @@ static Process* v2_process(void* process)
   return static_cast<Process*>(process);
 }
 
-@render src/interpreter_v2.cc v2_gc trusted
+@render src/interpreter_v2.cc v2_report_allocation_failure trusted
+static void v2_report_allocation_failure(Process* process, const char* reason, word parameter1, word parameter2)
+//@ requires true;
+//@ ensures allocation_reported(process, (char *)reason, parameter1, parameter2);
+{
+  static const int BUFFER_SIZE = 50;
+  char buffer[BUFFER_SIZE];
+  snprintf(buffer, BUFFER_SIZE, "out of memory in %s %" PRIdPTR ":%" PRIdPTR,
+           reason, parameter1, parameter2);
+  buffer[BUFFER_SIZE - 1] = '\0';
+  OS::heap_summary_report(0, buffer, process);
+  if (VM::current()->scheduler()->is_boot_process(process)) {
+    OS::out_of_memory("Out of memory in system process");
+  }
+}
+
+@render src/interpreter_v2.cc v2_gc
 static void v2_gc(Process* process, bool malloc_failed, int attempts, bool force_cross_process,
                   const char* reason, word parameter1 = 0, word parameter2 = 0)
-// TRUSTED, "the GC preserves the abstraction": the current task's stack
+// Under the scheduler collection contract, the current task's stack
 // may be another (moved) object, possibly shrunk, with the same records,
 // header fields and used slots, every root rewritten; the heap's objects
 // moved. At most one collection of the process's heap (Process::gc), which
@@ -534,37 +826,35 @@ static void v2_gc(Process* process, bool malloc_failed, int attempts, bool force
 // only reports).
 //@ requires vm(process, ?a, ?n);
 /*@ ensures vm(process, ?b, ?n2) &*& n <= n2 &*& n2 <= n + GC_EPOCHS &*& same_frames(a, b) == true &*&
-            (n2 == n ? b == a : gc_equiv(a, b) == true); @*/
+            (n2 == n ? b == a : gc_equiv(a, b) == true) &*& (attempts == 3 ? b == a && n2 == n : true) &*&
+            gc_action(process, attempts, malloc_failed, force_cross_process, (char *)reason, parameter1, parameter2); @*/
 {
   if (attempts == 3) {
-    static const int BUFFER_SIZE = 50;
-    char buffer[BUFFER_SIZE];
-    snprintf(buffer, BUFFER_SIZE, "out of memory in %s %" PRIdPTR ":%" PRIdPTR,
-             reason, parameter1, parameter2);
-    buffer[BUFFER_SIZE - 1] = '\0';
-    OS::heap_summary_report(0, buffer, process);
-    if (VM::current()->scheduler()->is_boot_process(process)) {
-      OS::out_of_memory("Out of memory in system process");
-    }
+    v2_report_allocation_failure(process, reason, parameter1, parameter2);
+    //@ switch (a) { case vmv(st,l,t,rt,ft,fin,bci,bs,os,H): }
+    //@ close gc_action(process, attempts, malloc_failed, force_cross_process, (char *)reason, parameter1, parameter2);
     return;
   }
+  //@ open vm(process, a, n);
   GcMetadata::insert_into_remembered_set(process->task()->stack());
+  //@ close vm(process, a, n);
   v2_validate(process, "gc");
   VM::current()->scheduler()->gc(process, malloc_failed, attempts > 1 || force_cross_process);
   v2_validate(process, "after gc");
+  //@ close gc_action(process, attempts, malloc_failed, force_cross_process, (char *)reason, parameter1, parameter2);
 }
 
 @render src/objects_runtime.cc toit::Stack::v2_copy_to
 void Stack::v2_copy_to(Stack* other)
 /*@ requires stack(self, ?len, ?top, ?rtop, ?ft, ?fin, ?bci, ?bs) &*& stack_ok(len, top, rtop, bs) == true &*&
-             stack(other, ?olen, _, _, _, _, _, ?obs) &*& length(obs) == olen * sizeof(word) &*&
+             fresh_stack(other, ?olen) &*&
              olen <= STACK_MAX_BOUND &*& olen >= (len - top) + rtop; @*/
 /*@ ensures stack(self, len, top, rtop, ft, fin, bci, bs) &*&
             stack(other, olen, ?otop, rtop, ft, fin, bci, ?obs2) &*& stack_ok(olen, otop, rtop, obs2) == true &*&
             same_abstraction(len, top, rtop, bs, olen, otop, rtop, obs2) == true; @*/
 {
   //@ open stack(self, len, top, rtop, ft, fin, bci, bs);
-  //@ open stack(other, olen, _, _, _, _, _, obs);
+  //@ open fresh_stack(other, olen);
   word used = length() - top();
   word records = v2_record_top();
   ASSERT(other->length() >= used + records);
@@ -572,26 +862,22 @@ void Stack::v2_copy_to(Stack* other)
   //@ int W = sizeof(word);
   //@ uint8 *sa = stack_array(self);
   //@ uint8 *oa = stack_array(other);
-  //@ uchars_split(sa, top * W);
-  //@ uchars_split(sa, records * W);
+  //@ assert uchars(sa, records * W, ?o1);
+  //@ assert uchars(sa + records * W, (top - records) * W, ?oldgap);
+  //@ assert uchars(sa + top * W, (len - top) * W, ?o3);
   //@ uchars_split(oa, (top + displacement) * W);
   //@ uchars_split(oa, records * W);
+  //@ assert uchars(oa + records * W, (top + displacement - records) * W, ?newgap);
   memcpy(other->_array_address(0), _array_address(0), records * WORD_SIZE);
   memcpy(other->_array_address(top() + displacement), _array_address(top()), used * WORD_SIZE);
-  //@ list<uint8> o1 = take(records * W, take(top * W, bs));
-  //@ list<uint8> o3 = drop(top * W, bs);
-  //@ assert uchars(oa + records * W, (top + displacement - records) * W, ?o2);
-  //@ uchars_join(oa);
-  //@ uchars_join(oa);
-  //@ uchars_join(sa);
-  //@ uchars_join(sa);
   other->_set_top(displacement + top());
   other->v2_set_records(v2_frame_top(), v2_fin_count(), v2_bci());
   GcMetadata::insert_into_remembered_set(other);
-  //@ append_assoc(o1, o2, o3);
-  //@ take_append_bytes(o1, o2, o3, records * W);
-  //@ take_take_le(records * W, top * W, bs);
-  //@ drop_append_bytes(o1, o2, o3, (top + displacement) * W);
+  //@ leak remembered_stack(_);
+  //@ take_append_bytes(o1, oldgap, o3, records * W);
+  //@ drop_append_bytes(o1, oldgap, o3, top * W);
+  //@ take_append_bytes(o1, newgap, o3, records * W);
+  //@ drop_append_bytes(o1, newgap, o3, (top + displacement) * W);
   //@ close stack(self, len, top, rtop, ft, fin, bci, bs);
 }
 
@@ -609,7 +895,7 @@ uword toit_v2_grow_stack(void* raw_process, uword needed)
   // verified/core/src/layout.rs).
   if (needed > static_cast<uword>(Stack::max_length())) return TOIT_V2_STACK_OVERFLOW;
   //@ open vm(process, a, n);
-  //@ assert current_stack(process, ?s) &*& stack(s, ?len, ?top, ?rtop, ?ft, ?fin, ?bci, ?bs);
+  //@ assert current_stack(process, _, ?s) &*& stack(s, ?len, ?top, ?rtop, ?ft, ?fin, ?bci, ?bs);
   Stack* stack = process->task()->stack();
   // The core has written into the stack since it was last remembered. The
   // old stack becomes garbage, but the collector still scans it whenever
@@ -617,6 +903,7 @@ uword toit_v2_grow_stack(void* raw_process, uword needed)
   // so its new-space pointers must stay up to date: remember it now, as
   // Interpreter::store_stack does for format 1.
   GcMetadata::insert_into_remembered_set(stack);
+  //@ leak remembered_stack(_);
   //@ open stack(s, len, top, rtop, ft, fin, bci, bs);
   word length = stack->length();
   word free = stack->top() - stack->v2_record_top();
@@ -634,10 +921,11 @@ uword toit_v2_grow_stack(void* raw_process, uword needed)
   Stack* new_stack = process->object_heap()->allocate_stack(new_length);
   for (int attempts = 1; new_stack == null && attempts < 4; attempts++)
   /*@ invariant vm(process, ?c, ?nc) &*& vm_equiv(a, c) == true &*& same_frames(a, c) == true &*& n <= nc &*&
-                (new_stack == 0 ? true : stack(new_stack, new_length, new_length, 0, 0, 0, 0, ?nbs) &*& length(nbs) == new_length * sizeof(word)) &*&
+                (new_stack == 0 ? true : fresh_stack(new_stack, new_length)) &*&
                 1 <= attempts; @*/
   {
     v2_gc(process, false, attempts, false, "'stack grow'", length, new_length);
+    //@ leak gc_action(_, _, _, _, _, _, _);
     //@ assert vm(process, ?c2, ?nc2);
     //@ vm_equiv_trans(a, c, c2);
     //@ same_frames_trans(a, c, c2);
@@ -648,11 +936,14 @@ uword toit_v2_grow_stack(void* raw_process, uword needed)
   // The GC may have moved or shrunk the old stack.
   //@ assert vm(process, ?c, ?nc);
   //@ open vm(process, c, nc);
-  //@ assert current_stack(process, ?sc) &*& stack(sc, ?lenc, ?topc, rtop, ft, fin, bci, ?bsc) &*& heap(?objsc, ?Hc);
+  //@ assert current_stack(process, _, ?sc) &*& stack(sc, ?lenc, ?topc, rtop, ft, fin, bci, ?bsc) &*& heap(?objsc, ?Hc);
   stack = process->task()->stack();
   stack->v2_copy_to(new_stack);
   //@ assert stack(new_stack, new_length, ?top3, rtop, ft, fin, bci, ?bs3);
   process->task()->set_stack(new_stack);
+  //@ leak remembered_instance(_);
+  // The old stack is now eligible for collection.
+  //@ leak stack(sc, _, _, _, _, _, _, _);
   //@ stack_copy_equiv(c, new_stack, new_length, top3, bs3);
   //@ vm_equiv_trans(a, c, vmv(new_stack, new_length, top3, rtop, ft, fin, bci, bs3, objsc, Hc));
   //@ close vm(process, vmv(new_stack, new_length, top3, rtop, ft, fin, bci, bs3, objsc, Hc), nc);
@@ -661,8 +952,8 @@ uword toit_v2_grow_stack(void* raw_process, uword needed)
 
 @render src/interpreter_v2.cc toit_v2_current_stack
 uword toit_v2_current_stack(void* process)
-//@ requires [?f]current_stack((Process *)process, ?s);
-//@ ensures [f]current_stack((Process *)process, s) &*& result == (uword)s;
+//@ requires [?f]current_stack((Process *)process, ?t, ?s);
+//@ ensures [f]current_stack((Process *)process, t, s) &*& result == (uword)s;
 {
   return reinterpret_cast<uword>(v2_process(process)->task()->stack());
 }
@@ -677,6 +968,7 @@ static uword v2_allocate(Process* process, const char* reason, F allocate)
 {
   //@ open vm(process, a, n);
   //@ assert heap(?objs0, ?H0);
+  HW_PERF_SCOPE(HWP_ALLOC);
   HeapObject* result = allocate();
   //@ open allocated(objs0, H0, process, result, ?objs1, ?H1);
   //@ if (result != 0) heap_facts(result);
@@ -693,6 +985,7 @@ static uword v2_allocate(Process* process, const char* reason, F allocate)
     //@ open alloc_post(process, a, n, b, nb, result, objsm, Hm);
     //@ with_heap_id(b);
     v2_gc(process, false, attempts, false, reason);
+    //@ leak gc_action(_, _, _, _, _, _, _);
     //@ assert vm(process, ?b2, ?nb2);
     //@ vm_equiv_trans(a, b, b2);
     //@ same_frames_trans(a, b, b2);
@@ -741,6 +1034,7 @@ static uword v2_allocate(Process* process, const char* reason, F allocate)
 {
   //@ open vm(process, a, n);
   //@ assert heap(?objs0, ?H0);
+  HW_PERF_SCOPE(HWP_ALLOC);
   HeapObject* result = allocate();
   //@ open allocated(objs0, H0, process, result, ?objs1, ?H1);
   //@ if (result != 0) heap_facts(result);
@@ -757,6 +1051,7 @@ static uword v2_allocate(Process* process, const char* reason, F allocate)
     //@ open alloc_post(process, a, n, b, nb, result, objsm, Hm);
     //@ with_heap_id(b);
     v2_gc(process, false, attempts, false, reason);
+    //@ leak gc_action(_, _, _, _, _, _, _);
     //@ assert vm(process, ?b2, ?nb2);
     //@ vm_equiv_trans(a, b, b2);
     //@ same_frames_trans(a, b, b2);
@@ -798,7 +1093,7 @@ uword toit_v2_allocate_double(void* raw_process, uint64 bits)
 uword toit_v2_try_allocate_large_integer(void* raw_process, int64 value)
 //@ requires [?fp]process((Process *)raw_process, ?prog, ?ids) &*& heap(?objs, ?H);
 /*@ ensures [fp]process((Process *)raw_process, prog, ids) &*& allocated(objs, H, (Process *)raw_process, ?r, ?objs2, ?H2) &*&
-            result == (uword)r &*& (r == 0 ? true : has_tag(H2, r, LARGE_INTEGER_TAG) == true); @*/
+            result == (uword)r &*& (r == 0 ? true : has_tag(H2, r, LARGE_INTEGER_TAG) == true &*& o_number(H2(r)) == value); @*/
 {
   return reinterpret_cast<uword>(v2_process(raw_process)->object_heap()->allocate_large_integer(value));
 }
@@ -811,6 +1106,22 @@ uword toit_v2_try_allocate_double(void* raw_process, uint64 bits)
 {
   double value = bit_cast<double>(bits);
   return reinterpret_cast<uword>(v2_process(raw_process)->object_heap()->allocate_double(value));
+}
+
+@render src/interpreter_v2.cc toit_v2_try_allocate_array
+uword toit_v2_try_allocate_array(void* raw_process, uword length, void* filler)
+/*@ requires [?fp]process((Process *)raw_process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
+             good(objs, filler) == true; @*/
+/*@ ensures [fp]process((Process *)raw_process, prog, ids) &*& allocated(objs, H, (Process *)raw_process, ?r, ?objs2, ?H2) &*&
+            result == (uword)r &*& (r == 0 ? true : length <= Array_ARRAYLET_SIZE &*&
+              has_tag(H2, r, ARRAY_TAG) == true &*& o_len(H2(r)) == length &*& all_eq(o_words(H2(r)), filler) == true); @*/
+{
+  if (length > static_cast<uword>(Array::ARRAYLET_SIZE)) {
+    //@ close allocated(objs, H, (Process *)raw_process, 0, objs, H);
+    return 0;
+  }
+  return reinterpret_cast<uword>(v2_process(raw_process)->object_heap()->allocate_array(
+      length, static_cast<Object*>(filler)));
 }
 
 @render src/interpreter_v2.cc toit_v2_try_allocate_string
@@ -883,7 +1194,7 @@ static void v2_validate(Process* process, const char* where)
 }
 
 @render src/interpreter_v2.cc v2_primitive_failed
-static __attribute__((noinline)) uword v2_primitive_failed(
+static __attribute__((noinline)) V2_HOT uword v2_primitive_failed(
     Process* process, Primitive::Entry* entry, uword first_argument, Object* result, uword* result_out)
 /*@ requires [?fp]process(process, ?prog, ?ids) &*& ghost_start(?a, ?n) &*& vm(process, ?b, ?nb) &*& *result_out |-> _ &*&
              is_Primitive_Entry(entry) == true &*& prim_out(entry, a, b, result) == true &*& is_marked(result) == true &*&
@@ -898,7 +1209,7 @@ static __attribute__((noinline)) uword v2_primitive_failed(
   //@ Object *raw = result;
   //@ if (oom_error(prog, result)) same_stack_frames(a, b);
   for (int attempts = 1; true; attempts++)
-  /*@ invariant [fp]process(process, prog, ids) &*& vm(process, ?bc, ?nc) &*& *result_out |-> _ &*& result == raw &*&
+  /*@ invariant [fp]process(process, prog, ids) &*& [_]program(prog, ids) &*& vm(process, ?bc, ?nc) &*& *result_out |-> _ &*& result == raw &*&
                 prim_out(entry, a, bc, raw) == true &*& 1 <= attempts &*& attempts <= 4 &*&
                 n <= nc &*& nc <= n + attempts * PRIM_EPOCHS + (attempts - 1) * GC_EPOCHS &*&
                 (nc == n ? same_stack(a, bc) == true : true) &*&
@@ -930,15 +1241,14 @@ static __attribute__((noinline)) uword v2_primitive_failed(
       //@ close prim_done(prog, entry, a, n, bc, nc, TOIT_V2_PRIMITIVE_THROW, (uword)unmarked(prog, raw), raw);
       return TOIT_V2_PRIMITIVE_THROW;
     }
-    //@ open vm(process, bc, nc);
-    GcMetadata::insert_into_remembered_set(process->task()->stack());
-    //@ close vm(process, bc, nc);
     v2_gc(process, malloc_failed, attempts, force_cross_process, "primitive");
+    //@ leak gc_action(_, _, _, _, _, _, _);
     //@ assert vm(process, ?bg, ?ng);
     //@ same_frames_trans(a, bc, bg);
     //@ open vm(process, bg, ng);
     //@ same_frames_facts(a, bg);
     Stack* stack = process->task()->stack();
+    GcMetadata::insert_into_remembered_set(stack);
     //@ close vm(process, bg, ng);
     //@ close prim_frame(first_argument);
     result = entry(process, stack->v2_slot_address(first_argument));
@@ -978,7 +1288,9 @@ uword toit_v2_primitive(void* raw_process, uword module, uword index, uword arit
   GcMetadata::insert_into_remembered_set(stack);
   //@ close vm(process, a, n);
   //@ close prim_frame(first_argument);
+  HW_PERF_PRIMITIVE_START(hw_perf_start);
   Object* result = entry(process, stack->v2_slot_address(first_argument));
+  HW_PERF_PRIMITIVE_END(hw_perf_start, module, index);
   if (Primitive::is_error(result)) {
     //@ close ghost_start(a, n);
     return v2_primitive_failed(process, entry, first_argument, result, result_out);

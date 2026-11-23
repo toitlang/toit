@@ -59,20 +59,24 @@ HeapObject* TwoSpaceHeap::new_space_allocation_failure(uword size) {
     // directly into old-space.
     uword result = old_space_.allocate(size);
     if (result != 0) {
-      // New-space allocations are counted through its used-byte total.
-      // This primitive retry bypasses new space, so account for it here.
-      total_bytes_allocated_.fetch_add(size, std::memory_order_relaxed);
-      // The code that populates newly allocated objects assumes that they
-      // are in new space and does not have a write barrier.  We mark the
-      // object dirty immediately, so it is checked by the next GC.
-      GcMetadata::insert_into_remembered_set(result);
+      record_direct_old_allocation(result, size);
       return HeapObject::from_address(result);
     }
   }
   return null;
 }
 
-void TwoSpaceHeap::swap_semi_spaces(SemiSpace& from, SemiSpace& to) {
+void TwoSpaceHeap::record_direct_old_allocation(uword address, uword size) {
+  // New-space allocations are counted through its used-byte total.
+  // This primitive retry bypasses new space, so account for it here.
+  total_bytes_allocated_.fetch_add(size, std::memory_order_relaxed);
+  // The code that populates newly allocated objects assumes that they
+  // are in new space and does not have a write barrier.  We mark the
+  // object dirty immediately, so it is checked by the next GC.
+  GcMetadata::insert_into_remembered_set(address);
+}
+
+Chunk* TwoSpaceHeap::swap_semi_spaces(SemiSpace& from, SemiSpace& to) {
   water_mark_ = to.top();
   bool postpone_old_space = old_space()->is_empty() && !large_allocation_failed_;
 #ifdef TOIT_DEBUG
@@ -98,7 +102,9 @@ void TwoSpaceHeap::swap_semi_spaces(SemiSpace& from, SemiSpace& to) {
       water_mark_ = to.single_chunk_start();
     }
   }
-  swap(from, to);
+  Chunk* spare = from.remove_chunk();
+  from.take_survivors(to);
+  return spare;
 }
 
 template <class SomeSpace>
@@ -116,32 +122,38 @@ HeapObject* ScavengeVisitor::clone_into_space(Program* program, HeapObject* orig
   return target;
 }
 
+inline void ScavengeVisitor::scavenge_root(Object** p) {
+  if (!in_from_space(*p)) {
+    return;
+  }
+  HeapObject* old_object = reinterpret_cast<HeapObject*>(*p);
+  if (old_object->has_forwarding_address()) {
+    HeapObject* destination = old_object->forwarding_address();
+    *p = destination;
+    if (in_to_space(destination)) *record_ = GcMetadata::NEW_SPACE_POINTERS;
+  } else {
+    if (old_object->_raw() < water_mark_) {
+      HeapObject* moved_object = clone_into_space(program_, old_object, old_);
+      // The old space may fill up.  This is a bad moment for a GC, so we
+      // promote to the to-space instead.
+      if (moved_object == NULL) {
+        trigger_old_space_gc_ = true;
+        moved_object = clone_into_space(program_, old_object, &to_);
+        *record_ = GcMetadata::NEW_SPACE_POINTERS;
+      }
+      *p = moved_object;
+    } else {
+      *p = clone_into_space(program_, old_object, &to_);
+      *record_ = GcMetadata::NEW_SPACE_POINTERS;
+    }
+    ASSERT(*p != NULL);  // In an emergency we can move to to-space.
+  }
+}
+
 void ScavengeVisitor::do_roots(Object** start, word count) {
   Object** end = start + count;
   for (Object** p = start; p < end; p++) {
-    if (!in_from_space(*p)) continue;
-    HeapObject* old_object = reinterpret_cast<HeapObject*>(*p);
-    if (old_object->has_forwarding_address()) {
-      HeapObject* destination = old_object->forwarding_address();
-      *p = destination;
-      if (in_to_space(destination)) *record_ = GcMetadata::NEW_SPACE_POINTERS;
-    } else {
-      if (old_object->_raw() < water_mark_) {
-        HeapObject* moved_object = clone_into_space(program_, old_object, old_);
-        // The old space may fill up.  This is a bad moment for a GC, so we
-        // promote to the to-space instead.
-        if (moved_object == NULL) {
-          trigger_old_space_gc_ = true;
-          moved_object = clone_into_space(program_, old_object, &to_);
-          *record_ = GcMetadata::NEW_SPACE_POINTERS;
-        }
-        *p = moved_object;
-      } else {
-        *p = clone_into_space(program_, old_object, &to_);
-        *record_ = GcMetadata::NEW_SPACE_POINTERS;
-      }
-      ASSERT(*p != NULL);  // In an emergency we can move to to-space.
-    }
+    scavenge_root(p);
   }
 }
 
@@ -230,20 +242,7 @@ GcType TwoSpaceHeap::collect_new_space(bool try_hard) {
   if (!spare_chunk_) {
     // Use shared spare chunk.
     Locker locker(ObjectMemory::spare_chunk_mutex());
-    Chunk* spare_chunk = ObjectMemory::spare_chunk(locker);
-
-#ifdef TOIT_FREERTOS
-    // Try to move new-spaces down in memory.
-    Chunk* new_spare_chunk = ObjectMemory::allocate_chunk(null, TOIT_PAGE_SIZE);
-    if (new_spare_chunk) {
-      if (new_spare_chunk < spare_chunk) {
-        ObjectMemory::free_chunk(spare_chunk);
-        spare_chunk = new_spare_chunk;
-      } else {
-        ObjectMemory::free_chunk(new_spare_chunk);
-      }
-    }
-#endif
+    Chunk* spare_chunk = ObjectMemory::take_spare_chunk(locker);
 
     ScavengeVisitor visitor(program_, this, spare_chunk);
     SemiSpace* to = visitor.to_space();
@@ -253,11 +252,7 @@ GcType TwoSpaceHeap::collect_new_space(bool try_hard) {
     to_used = to->used();
     trigger_old_space_gc = visitor.trigger_old_space_gc();
 
-    Chunk* spare_chunk_after = from->remove_chunk();
-
-    ObjectMemory::set_spare_chunk(locker, spare_chunk_after);
-
-    swap_semi_spaces(*from, *to);
+    ObjectMemory::set_spare_chunk(locker, swap_semi_spaces(*from, *to));
   } else {
     // Use our own spare chunk. This means we don't need the lock.
     ScavengeVisitor visitor(program_, this, spare_chunk_);
@@ -268,11 +263,10 @@ GcType TwoSpaceHeap::collect_new_space(bool try_hard) {
     to_used = to->used();
     trigger_old_space_gc = visitor.trigger_old_space_gc();
 
-    spare_chunk_ = from->remove_chunk();
+    spare_chunk_ = swap_semi_spaces(*from, *to);
 #ifdef TOIT_DEBUG
     spare_chunk_->scramble();
 #endif
-    swap_semi_spaces(*from, *to);
   }
 
   if (Flags::tracegc) {

@@ -101,7 +101,7 @@ extern "C" {
 #include "rtc_memory_ec618.h"
 #include "scheduler.h"
 #include "vm.h"
-#include "third_party/dartino/gc_metadata.h"
+#include "third_party/dartino/object_memory.h"
 
 #include "anchor.h"
 #include "slot_reloc_ec618.h"
@@ -596,7 +596,7 @@ static void start() {
     reset_into_staged_slot_if_needed();
   }
 
-  GcMetadata::tear_down();
+  ObjectMemory::tear_down();
   OS::tear_down();
   FlashRegistry::tear_down();
 

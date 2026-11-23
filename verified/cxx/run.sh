@@ -30,6 +30,10 @@ mkdir -p "$logs"
 
 # name | expect (pass/fail) | mutant (- for none) | command...
 checks=(
+  "array-new-root-32|pass|-|verified/cxx/esbmc.sh verified/cxx/harness/array_new.cc --32"
+  "array-new-root-64|pass|-|verified/cxx/esbmc.sh verified/cxx/harness/array_new.cc --64"
+  "division-error-root-32|pass|-|verified/cxx/esbmc.sh verified/cxx/harness/division_error_root.cc --32"
+  "division-error-root-64|pass|-|verified/cxx/esbmc.sh verified/cxx/harness/division_error_root.cc --64"
   "utf8|pass|-|verified/cxx/esbmc.sh verified/cxx/harness/utf_8_to_16.cc --unwind 10 --overflow-check"
   "utf8-mutant|fail|utf-8-to-16-overread|verified/cxx/esbmc.sh verified/cxx/harness/utf_8_to_16.cc --unwind 10"
   "utf8-equiv|pass|-|verified/cxx/esbmc.sh verified/cxx/harness/utf_8_to_16_equiv.cc --unwind 10"
@@ -37,15 +41,16 @@ checks=(
   "utf8-crux-mutant|fail|utf-8-to-16-overread|env CRUX_HARNESS_FLAGS=-DN=3 verified/cxx/crux.sh verified/cxx/harness/crux_utf_8_to_16.cc utils.cc -Os"
   "kani|kani|-|verified/cxx/kani.sh"
 )
-# The object-level harnesses: in the pilot none of these finished within
-# 10 GB and 25-40 minutes (write-up, "Pilot results"). Run them by name
-# (verified/cxx/run.sh encoder ...) with CXXV_MEM_GB and patience.
+# Run the counterexample and larger object-level checks by name. The
+# pilot results describe the memory and time requirements of the latter.
 slow=(
+  "external-accounting-lost-update-32|fail:concurrent registration and release preserve both changes|external-accounting-lost-update|verified/cxx/esbmc.sh verified/cxx/harness/external_accounting_threads.cc --32 -DCXXV_WORD_BITS=32 -DTOIT_VERIFIED_CORE --overflow-check"
+  "external-accounting-lost-update-64|fail:concurrent registration and release preserve both changes|external-accounting-lost-update|verified/cxx/esbmc.sh verified/cxx/harness/external_accounting_threads.cc --64 -DCXXV_WORD_BITS=64 -DTOIT_VERIFIED_CORE --overflow-check"
   "encoder|pass|-|verified/cxx/esbmc.sh verified/cxx/harness/message_encoder.cc --unwind 3 --unwindsetname N@toit@S@MessageEncoder@encode_array:0:5,N@toit@S@MessageEncoder@encode_map:0:5,N@toit@S@MessageEncoder@write_cardinal:0:11 --overflow-check -DCXXV_NO_WRITE_PASS -DCXXV_COLLECTION=0 -DCXXV_BACKING=0 -DCXXV_ARRAY=1"
   "encoder-mutant|fail|message-encoder-bounds|verified/cxx/esbmc.sh verified/cxx/harness/message_encoder.cc --unwind 3 --unwindsetname N@toit@S@MessageEncoder@encode_array:0:5,N@toit@S@MessageEncoder@encode_map:0:5,N@toit@S@MessageEncoder@write_cardinal:0:11 -DCXXV_NO_WRITE_PASS -DCXXV_COLLECTION=0 -DCXXV_BACKING=0 -DCXXV_ARRAY=1"
-  "int-parse|pass|-|verified/cxx/esbmc.sh verified/cxx/harness/int_parse.cc --unwind 2 --unwindsetname primitive_core.cc@N@toit@primitive_int_parse:0:19,int_parse.cc@parse_reference:0:19 --overflow-check -DCXXV_BLOB_KIND=2 -DCXXV_MAX_BLOB=19"
+  "int-parse|pass|-|verified/cxx/esbmc.sh verified/cxx/harness/int_parse.cc --unwind 2 --unwindsetname primitive_core.cc@N@toit@parse_short_decimal:0:19,int_parse.cc@parse_reference:0:19 --overflow-check -DCXXV_BLOB_KIND=2 -DCXXV_MAX_BLOB=19"
   "int64-to-string|pass|-|verified/cxx/esbmc.sh verified/cxx/harness/int64_to_string.cc --unwind 72 --overflow-check"
-  "grow-stack|pass|-|verified/cxx/esbmc.sh verified/cxx/harness/grow_stack.cc --unwind 6 --unwindsetname __memcpy_impl:0:30 --overflow-check -DCXXV_MAX_LENGTH=3 -DCXXV_NEEDED_MAX=3"
+  "grow-stack|pass|-|verified/cxx/esbmc.sh verified/cxx/harness/grow_stack.cc --unwind 7 --unwindsetname __memcpy_impl:0:30 --overflow-check -DCXXV_MAX_LENGTH=3 -DCXXV_NEEDED_MAX=3"
   # Not run at all: Frama-C/WP (89 of 96 goals, see the write-up),
   # string_write.cc (ESBMC crashes on it: tool defect T3).
 )
@@ -70,6 +75,13 @@ for entry in "${checks[@]}"; do
     if [ -z "$bad" ] && grep -q "^Checking harness" "$logs/$name.log"; then verdict=expected; else verdict="UNEXPECTED $bad"; fi
   elif grep -qE "Out of memory|SIGSEGV|PARSING ERROR|esbmc.sh: cannot" "$logs/$name.log"; then
     verdict="TOOL FAILURE"
+  elif [[ "$expect" == fail:* ]]; then
+    reason=${expect#fail:}
+    if [ "$status" -ne 0 ] && grep -Fqx "  $reason" "$logs/$name.log" && grep -Fxq "VERIFICATION FAILED" "$logs/$name.log"; then
+      verdict=expected
+    else
+      verdict=UNEXPECTED
+    fi
   elif [ "$expect" = pass ] && [ $status -eq 0 ]; then verdict=expected
   elif [ "$expect" = fail ] && [ $status -ne 0 ]; then verdict=expected
   else verdict=UNEXPECTED

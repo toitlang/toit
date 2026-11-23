@@ -1,0 +1,173 @@
+// Copyright (C) 2026 Toit contributors.
+@include ../model/model.cfg
+@verbatim
+#include "chunk_chain.h"
+#include "../model/objects.gen.h"
+struct RootCallback;
+typedef struct RootCallback RootCallback;
+typedef struct Space { ChunkList chunk_list_; Program *program_; } Space;
+typedef struct MarkingStack {
+  Program *program_;
+  HeapObject **next_;
+  HeapObject **limit_;
+  HeapObject *backing_[128];
+  bool overflowed_;
+} MarkingStack;
+
+/*@
+// Track any two fixed chunks, one in each space, and their pending cards.
+// A work bit can initially be set only in a chunk belonging to that space.
+predicate layout(Space *s; Program *image,list<Chunk *> nodes) =
+  s->program_ |-> image &*& pointer_within_limits(&s->chunk_list_) == true &*&
+  pointer_within_limits(&s->chunk_list_.anchor_) == true &*&
+  s->chunk_list_.anchor_.next_ |-> ?first &*& chunk_chain(first,&s->chunk_list_.anchor_,nodes,?bytes) &*& bytes >= 0;
+predicate recovery(RootCallback *v, MarkingStack *s, Space *old, Space *young,
+                   Chunk *old_home,Chunk *young_home,int fresh,bool old_bit,bool young_bit);
+predicate cards(RootCallback *v, MarkingStack *s, Space *old, Space *young,
+                Chunk *oh,Chunk *yh,int fresh,bool old_bit,bool young_bit) =
+  layout(old,?op,?os) &*& layout(young,?yp,?ys) &*&
+  recovery(v,s,old,young,oh,yh,fresh,old_bit,young_bit) &*&
+  (oh == 0 || mem(oh,os)) &*& (yh == 0 || mem(yh,ys)) &*&
+  (!old_bit || oh != 0) &*& (!young_bit || yh != 0);
+predicate stack_state(MarkingStack *s, int count, bool flagged) =
+  s->next_ |-> s->backing_+count &*& 0 <= count &*& count <= 128 &*&
+  pointer_within_limits(s->backing_) == true &*& pointer_within_limits(s->backing_+128) == true &*&
+  s->overflowed_ |-> flagged;
+@*/
+@render src/third_party/dartino/mark_sweep.h toit::MarkingStack::is_empty tu=src/third_party/dartino/object_memory_mark_sweep.cc
+  bool is_empty()
+  //@ requires stack_state(self,?q,?f);
+  //@ ensures stack_state(self,q,f) &*& result == (q == 0);
+  //@ terminates;
+  {
+    //@ open stack_state(self,q,f);
+    return next_ == &backing_[0];
+    //@ close stack_state(self,q,f);
+  }
+@render src/third_party/dartino/mark_sweep.h toit::MarkingStack::is_overflowed tu=src/third_party/dartino/object_memory_mark_sweep.cc
+  bool is_overflowed()
+  //@ requires stack_state(self,?q,?f);
+  //@ ensures stack_state(self,q,f) &*& result == f;
+  //@ terminates;
+  {
+    //@ open stack_state(self,q,f);
+    return overflowed_;
+    //@ close stack_state(self,q,f);
+  }
+@render src/third_party/dartino/mark_sweep.h toit::MarkingStack::clear_overflow tu=src/third_party/dartino/object_memory_mark_sweep.cc
+  void clear_overflow()
+  //@ requires stack_state(self,?q,_);
+  //@ ensures stack_state(self,q,false);
+  //@ terminates;
+  {
+    //@ open stack_state(self,q,_);
+    overflowed_ = false;
+    //@ close stack_state(self,q,false);
+  }
+
+@verbatim
+// Draining leaves the queue empty. Raising the flag costs a first discovery.
+void MarkingStack_empty(MarkingStack *self,RootCallback *visitor);
+/*@ requires stack_state(self,?q,?flag) &*& cards(visitor,self,?old,?young,?oh,?yh,?fresh,?o,?y) &*& fresh >= 0; @*/
+/*@ ensures stack_state(self,0,?flag2) &*& cards(visitor,self,old,young,oh,yh,?left,?o2,?y2) &*&
+    0 <= left &*& left <= fresh &*& (!flag || flag2) &*& (!flag2 || flag || left < fresh) &*&
+    (!o2 || o || flag2) &*& (!y2 || y || flag2); @*/
+//@ terminates;
+
+// A chunk scan consumes the original flag for every card in this chunk.
+// Newly flagged cards can belong to either space. Draining the last group
+// leaves the stack empty. Each newly raised overflow costs a first discovery.
+void scan_overflow_chunk(Program *program,RootCallback *visitor,MarkingStack *s,uword start,uword end);
+/*@ requires stack_state(s,0,?flag) &*& recovery(visitor,s,?old,?young,?oh,?yh,?fresh,?o,?y) &*&
+    exists<Space*>(?space) &*& exists<Chunk*>(?chunk) &*& [?f]chunk->start_ |-> start &*& [f]chunk->end_ |-> end &*&
+    [?g]space->program_ |-> program &*& fresh >= 0 &*& old != young &*& (space == old || space == young); @*/
+/*@ ensures stack_state(s,0,?flag2) &*& recovery(visitor,s,old,young,oh,yh,?left,?o2,?y2) &*&
+    [f]chunk->start_ |-> start &*& [f]chunk->end_ |-> end &*& [g]space->program_ |-> program &*&
+    0 <= left &*& left <= fresh &*& (!flag || flag2) &*& (!flag2 || flag || left < fresh) &*&
+    (!o2 || ((space != old || chunk != oh) && o) || flag2) &*&
+    (!y2 || ((space != young || chunk != yh) && y) || flag2) &*&
+    (!o2 || o || oh != 0) &*& (!y2 || y || yh != 0); @*/
+//@ terminates;
+
+@render src/third_party/dartino/object_memory.h toit::Chunk::start tu=src/third_party/dartino/object_memory.cc
+  uword start() const
+  //@ requires [?f]self->start_ |-> ?lo;
+  //@ ensures [f]self->start_ |-> lo &*& result == lo;
+  //@ terminates;
+  { return start_; }
+@render src/third_party/dartino/object_memory.h toit::Chunk::end tu=src/third_party/dartino/object_memory.cc
+  uword end() const
+  //@ requires [?f]self->end_ |-> ?hi;
+  //@ ensures [f]self->end_ |-> hi &*& result == hi;
+  //@ terminates;
+  { return end_; }
+
+@render src/third_party/dartino/object_memory.cc toit::Space::iterate_overflowed_objects
+void Space::iterate_overflowed_objects(RootCallback* visitor, MarkingStack* stack) const
+/*@ requires stack_state(stack,0,?flag) &*& cards(visitor,stack,?old,?young,?oh,?yh,?fresh,?o,?y) &*&
+    fresh >= 0 &*& old != young &*& (self == old || self == young); @*/
+/*@ ensures stack_state(stack,0,?flag2) &*& cards(visitor,stack,old,young,oh,yh,?left,?o2,?y2) &*&
+    0 <= left &*& left <= fresh &*& (!flag || flag2) &*& (!flag2 || flag || left < fresh) &*&
+    (!o2 || (self != old && o) || flag2) &*& (!y2 || (self != young && y) || flag2); @*/
+//@ terminates;
+{
+  //@ open cards(visitor,stack,old,young,oh,yh,fresh,o,y);
+  //@ assert recovery(visitor,stack,old,young,oh,yh,fresh,o,y);
+  //@ if (self == old) {} else { assert self == young; }
+  //@ open layout(self,?image,?nodes);
+  //@ assert self->chunk_list_.anchor_.next_ |-> ?first;
+  //@ Chunk *anchor = &self->chunk_list_.anchor_;
+  //@ list<Chunk *> done = nil;
+  //@ close visited(done,first,anchor,first,0);
+  for (auto chunk : chunk_list_)
+  /*@ invariant self->program_ |-> image &*& __end1 == anchor &*& visited(done,first,anchor,__begin1,?prefix) &*&
+      chunk_chain(__begin1,anchor,?tail,?rest) &*& prefix >= 0 &*& rest >= 0 &*& restored(done,tail) == nodes &*&
+      stack_state(stack,0,?fl) &*& recovery(visitor,stack,old,young,oh,yh,?budget,?oc,?yc) &*&
+      0 <= budget &*& budget <= fresh &*& (!flag || fl) &*& (!fl || flag || budget < fresh) &*&
+      (!oc || oh != 0) &*& (!yc || yh != 0) &*&
+      (!oc || (o && (self != old || mem(oh,tail))) || fl) &*&
+      (!yc || (y && (self != young || mem(yh,tail))) || fl); @*/
+  //@ decreases length(tail);
+  {
+    //@ open chunk_chain(chunk,anchor,tail,rest);
+    //@ open chunk_node(chunk,anchor,?next,?size);
+    //@ close exists(self);
+    //@ close exists(chunk);
+    scan_overflow_chunk(program_, visitor, stack, chunk->start(), chunk->end());
+    //@ close chunk_node(chunk,anchor,next,size);
+    //@ close visited(cons(chunk,done),first,anchor,next,prefix+size);
+    //@ done = cons(chunk,done);
+  }
+  /*@ if (__begin1 != anchor) {
+    open chunk_chain(__begin1,anchor,_,_);
+    open chunk_node(__begin1,anchor,_,_);
+  } @*/
+  //@ assert __begin1 == anchor;
+  //@ open chunk_chain(anchor,anchor,_,_);
+  //@ close chunk_chain(anchor,anchor,nil,0);
+  //@ restore_chain(1,done,first,anchor,anchor);
+  //@ close layout(self,image,nodes);
+  //@ close cards(visitor,stack,old,young,oh,yh,_,_,_);
+}
+
+@render src/third_party/dartino/object_memory_mark_sweep.cc toit::MarkingStack::process
+void MarkingStack::process(RootCallback* visitor, Space* old_space, Space* new_space)
+/*@ requires stack_state(self,?q,?f) &*& cards(visitor,self,old_space,new_space,?oh,?yh,?fresh,?o,?y) &*&
+    fresh >= 0 &*& old_space != new_space &*& (!o && !y || f); @*/
+/*@ ensures stack_state(self,0,false) &*& cards(visitor,self,old_space,new_space,oh,yh,?left,false,false) &*&
+    0 <= left &*& left <= fresh; @*/
+//@ terminates;
+{
+  while (!is_empty() || is_overflowed())
+  /*@ invariant stack_state(self,?count,?flagged) &*& cards(visitor,self,old_space,new_space,oh,yh,?left,?ob,?yb) &*&
+      0 <= left &*& left <= fresh &*& (!ob && !yb || flagged); @*/
+  //@ decreases 2*left + (count != 0 || flagged ? 1 : 0);
+  {
+    empty(visitor);
+    if (is_overflowed()) {
+      clear_overflow();
+      old_space->iterate_overflowed_objects(visitor, this);
+      new_space->iterate_overflowed_objects(visitor, this);
+    }
+  }
+}

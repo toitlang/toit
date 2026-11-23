@@ -1,0 +1,115 @@
+// Copyright (C) 2026 Toit contributors.
+@include ../model/model.cfg
+@verbatim
+#include <stdlib.h>
+#include <string.h>
+#include "boxed_double.gen.h"
+#include "argument_error.gen.h"
+#include "blob_args.gen.h"
+#include "read_slice.h"
+
+/*@
+predicate float_input(char *p, int length, list<uint8> bs) =
+  uchars((uint8 *)p, length, bs) &*& u_character((uint8 *)p + length, 0);
+@*/
+// strtod can stop early. The consumed prefix cannot include a NUL byte.
+double strtod(char *start, char **end);
+//@ requires float_input(start, ?n, ?bs) &*& pointer_((void **)end, _);
+/*@ ensures float_input(start, n, bs) &*& exists<int>(?used) &*& *end |-> start + used &*&
+            0 <= used &*& used <= n &*& !mem((uint8)0, take(used, bs)); @*/
+int isspace(int c);
+//@ requires 0 <= c &*& c <= 255;
+//@ ensures true;
+
+@prototypes
+@render src/primitive_core.cc toit::parse_float_buffer
+static bool parse_float_buffer(const uint8* bytes, word length, double* value)
+//@ requires uchars((uint8 *)bytes, length, ?bs) &*& u_character((uint8 *)bytes + length, 0) &*& double__(value, _) &*& 0 < length;
+//@ ensures uchars((uint8 *)bytes, length, bs) &*& u_character((uint8 *)bytes + length, 0) &*& double_(value, ?parsed_value) &*& (result ? !mem((uint8)0, bs) : true);
+{
+  const char* start = reinterpret_cast<const char*>(bytes);
+  char* end;
+  //@ close float_input(start, length, bs);
+  *value = strtod(start, &end);
+  //@ open exists<int>(?used);
+  //@ open float_input(start, length, bs);
+  return end == start + length;
+}
+
+@render src/primitive_core.cc toit::primitive_float_parse truncating
+PRIMITIVE(float_parse)
+/*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
+             pointer(__args, ?x0) &*& pointer(__args - 1, ?x1) &*& pointer(__args - 2, ?x2) &*& pointer(__args - 3, ?x3) &*&
+             good(objs, x0) && good(objs, x1) && good(objs, x2) && good(objs, x3); @*/
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+            pointer(__args, x0) &*& pointer(__args - 1, x1) &*& pointer(__args - 2, x2) &*& pointer(__args - 3, x3) &*&
+            ((uword)result % 4 == 3 ? objs2 == objs && H2 == H &&
+              ((uword)result == 4 * Program_WRONG_BYTES_TYPE_INDEX + 3 ||
+               (uword)result == 4 * Program_WRONG_OBJECT_TYPE_INDEX + 3 ||
+               (uword)result == 4 * Program_OUT_OF_RANGE_INDEX + 3 ||
+               (uword)result == 4 * Program_ERROR_INDEX + 3 ||
+               (uword)result == 4 * Program_ALLOCATION_FAILED_INDEX + 3 ||
+               (uword)result == ((uword)root_allocation_failed(prog) | 3)) :
+              !mem(result, objs) && objs2 == cons(result, objs) && good(objs2, result) && has_tag(H2, result, DOUBLE_TAG)); @*/
+{
+  //@ close valid_arg(x3, objs);
+  //@ leak valid_arg(x3, objs);
+  //@ grows_refl(objs, H);
+  //@ error_word(Program_WRONG_BYTES_TYPE_INDEX);
+  //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);
+  //@ error_word(Program_OUT_OF_RANGE_INDEX);
+  //@ error_word(Program_ERROR_INDEX);
+  //@ error_word(Program_ALLOCATION_FAILED_INDEX);
+  ARGS(Blob, input, word, from, word, to, int, block_arg_dont_use_this);
+  if (!(0 <= from && from < to && to <= input.length())) FAIL(OUT_OF_RANGE);
+  //@ assert [_]blob_result(objs, H, STRINGS_OR_BYTE_ARRAYS, ?a, ?len, ?source);
+  //@ open [_]blob_result(objs, H, STRINGS_OR_BYTE_ARRAYS, a, len, source);
+  //@ blob_facts(source);
+  bool terminated = is_string(_raw_input) && to == input.length();
+  const uint8* bytes = input.address() + from;
+  word length = to - from;
+  //@ borrow_slice(source, (uint8 *)bytes, length);
+  //@ assert uchars((uint8 *)bytes, length, ?bs);
+  //@ open uchars((uint8 *)bytes, length, bs);
+  //@ u_character_limits((uint8 *)bytes);
+  //@ close uchars((uint8 *)bytes, length, bs);
+  // strtod skips leading whitespace, but float.parse rejects it.
+  if (isspace(bytes[0])) {
+    //@ return_slice(source, (uint8 *)bytes);
+    FAIL(ERROR);
+  }
+  double result;
+  bool parsed;
+  if (terminated) {
+    //@ open validation_slice(objs, H, source, (uint8 *)bytes, length);
+    //@ open blob_hole(objs, H, source);
+    //@ open blob_shell(source, _, _, _);
+    parsed = parse_float_buffer(bytes, length, &result);
+    //@ close blob_shell(source, header_tag2(o_hw(H(source))), o_len(H(source)), o_aux(H(source)));
+    //@ close blob_hole(objs, H, source);
+    //@ close validation_slice(objs, H, source, (uint8 *)bytes, length);
+  } else {
+    uint8* copy = static_cast<uint8*>(malloc(static_cast<size_t>(length) + 1));
+    if (copy == null) {
+      //@ return_slice(source, (uint8 *)bytes);
+      FAIL(ALLOCATION_FAILED);
+    }
+    //@ chars__split((char *)copy, length);
+    //@ uchars_to_chars((uint8 *)bytes);
+    memcpy(copy, bytes, length);
+    //@ chars_to_uchars((uint8 *)bytes);
+    //@ chars_to_uchars(copy);
+    //@ chars__to_uchars_(copy + length);
+    copy[length] = 0;
+    parsed = parse_float_buffer(copy, length, &result);
+    //@ close uchars(copy + length + 1, 0, nil);
+    //@ close uchars(copy + length, 1, cons((uint8)0, nil));
+    //@ uchars_join(copy);
+    //@ uchars_to_chars(copy);
+    free(copy);
+  }
+  //@ return_slice(source, (uint8 *)bytes);
+  if (!parsed) FAIL(ERROR);
+  //@ assert parsed && !mem((uint8)0, bs);
+  return Primitive::allocate_double(result, process);
+}

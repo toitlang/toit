@@ -41,27 +41,50 @@ pub spec const I_STRING_LENGTH: int = 10;
 pub spec const I_ARRAY_LENGTH: int = 13;
 pub spec const I_ARRAY_AT: int = 14;
 pub spec const I_ARRAY_AT_PUT: int = 15;
+pub spec const I_ARRAY_NEW: int = 16;
+pub spec const I_ARRAY_EXPAND: int = 17;
+pub spec const I_ARRAY_REPLACE: int = 18;
 pub spec const I_SMI_UNARY_MINUS: int = 20;
 pub spec const I_SMI_NOT: int = 21;
 pub spec const I_SMI_AND: int = 22;
 pub spec const I_SMI_OR: int = 23;
 pub spec const I_SMI_XOR: int = 24;
+pub spec const I_COMPARE_TO: int = 31;
+pub spec const I_MIN_SPECIAL_COMPARE_TO: int = 32;
 pub spec const I_COUNT_LEADING_ZEROS: int = 39;
 pub spec const I_POPCOUNT: int = 40;
+pub spec const I_NUMBER_TO_FLOAT: int = 42;
 pub spec const I_SMI_ADD: int = 51;
 pub spec const I_SMI_SUBTRACT: int = 52;
 pub spec const I_SMI_MULTIPLY: int = 53;
 pub spec const I_SMI_DIVIDE: int = 54;
+pub spec const I_FLOAT_UNARY_MINUS: int = 55;
+pub spec const I_FLOAT_SIGN: int = 63;
+pub spec const I_FLOAT_IS_NAN: int = 64;
+pub spec const I_FLOAT_IS_FINITE: int = 65;
 pub spec const I_SMI_LESS_THAN: int = 67;
 pub spec const I_SMI_LESS_THAN_OR_EQUAL: int = 68;
 pub spec const I_SMI_GREATER_THAN: int = 69;
 pub spec const I_SMI_GREATER_THAN_OR_EQUAL: int = 70;
+pub spec const I_FLOAT_LESS_THAN: int = 72;
+pub spec const I_FLOAT_LESS_THAN_OR_EQUAL: int = 73;
+pub spec const I_FLOAT_GREATER_THAN: int = 74;
+pub spec const I_FLOAT_GREATER_THAN_OR_EQUAL: int = 75;
+pub spec const I_FLOAT_EQUALS: int = 83;
 pub spec const I_SMI_MOD: int = 71;
 pub spec const I_SMI_EQUALS: int = 82;
 pub spec const I_SMI_SHIFT_RIGHT: int = 84;
 pub spec const I_SMI_UNSIGNED_SHIFT_RIGHT: int = 85;
 pub spec const I_SMI_SHIFT_LEFT: int = 86;
+pub spec const I_FLOAT_TO_RAW: int = 88;
+pub spec const I_RAW_TO_FLOAT: int = 89;
+pub spec const I_FLOAT_TO_RAW32: int = 90;
+pub spec const I_RAW32_TO_FLOAT: int = 91;
 pub spec const I_OBJECT_CLASS_ID: int = 92;
+pub spec const I_NUMBER_TO_INTEGER: int = 93;
+pub spec const I_FLOAT_CEIL: int = 95;
+pub spec const I_FLOAT_FLOOR: int = 96;
+pub spec const I_FLOAT_TRUNC: int = 97;
 pub spec const I_BYTE_ARRAY_LENGTH: int = 119;
 pub spec const I_BYTE_ARRAY_AT: int = 120;
 pub spec const I_BYTE_ARRAY_AT_PUT: int = 121;
@@ -185,8 +208,7 @@ pub spec const OP_USHR: u8 = 9;
 pub spec const OP_SHL: u8 = 10;
 
 /// The binary integer operations (64-bit, wrapping). `None`: the error
-/// `int_err`. Division and modulo are specified only up to their error
-/// (`Some(0)` stands for "some integer").
+/// `int_err`. The quotient truncates toward zero and wraps to 64 bits.
 pub open spec fn int_op(op: u8, x: i64, y: i64) -> Option<i64> {
     if op == OP_ADD { Some(x.wrapping_add(y)) }
     else if op == OP_SUB { Some(x.wrapping_sub(y)) }
@@ -197,23 +219,16 @@ pub open spec fn int_op(op: u8, x: i64, y: i64) -> Option<i64> {
     else if op == OP_SHR { if y < 0 { None } else if y >= 64 { Some(if x < 0 { -1i64 } else { 0i64 }) } else { Some(x >> (y as u64)) } }
     else if op == OP_USHR { if y < 0 { None } else if y >= 64 { Some(0) } else { Some(((x as u64) >> (y as u64)) as i64) } }
     else if op == OP_SHL { if y < 0 { None } else if y >= 64 { Some(0) } else { Some(((x as u64) << (y as u64)) as i64) } }
-    else { if y == 0 { None } else { Some(0) } }
+    else if y == 0 { None }
+    else if op == OP_DIV {
+        if x == i64::MIN && y == -1 { Some(i64::MIN) }
+        else { Some(crate::spec_common::tdiv(x as int, y as int) as i64) }
+    }
+    else { Some(crate::spec_common::trem(x as int, y as int) as i64) }
 }
 
 pub open spec fn int_err(op: u8) -> int {
     if op == OP_DIV || op == OP_MOD { R_DIVISION_BY_ZERO } else { R_NEGATIVE_ARGUMENT }
-}
-
-/// An integer result `z` (`Primitive::integer`): a smi if it fits (heap
-/// unchanged), else a new large integer; out of memory only then.
-/// `exact == false`: only "some integer" is specified.
-pub open spec fn int_result(h: Seq<HeapObj>, h2: Seq<HeapObj>, r: PrimRet, z: i64, exact: bool) -> bool {
-    match r {
-        PrimRet::Success(v) => int_val(h2, v) is Some
-            && (exact ==> int_val(h2, v) == Some(z) && (smi_in(z) ==> h2 == h && v == Value::Smi(z))),
-        PrimRet::Failure(_) => false,
-        PrimRet::OutOfMemory(_) => !exact || !smi_in(z),
-    }
 }
 
 /// `smi_add` .. `smi_shift_left` (`large == false`, a smi receiver) and
@@ -230,7 +245,7 @@ pub open spec fn int_binop_contract(p: Program2, op: u8, large: bool, args: Seq<
         } else {
             match int_op(op, x->Some_0, y->Some_0) {
                 None => fails(p, h, h2, r, int_err(op)),
-                Some(z) => int_result(h, h2, r, z, op != OP_DIV && op != OP_MOD),
+                Some(z) => raw_integer_result(p, h, h2, r, z),
             }
         }
     }
@@ -273,13 +288,12 @@ pub open spec fn popcount(x: u64, n: nat) -> nat
     if n == 0 { 0 } else { (x % 2) as nat + popcount(x / 2, (n - 1) as nat) }
 }
 
-/// Negation, complement, population count (`count_leading_zeros` is
-/// specified up to the result being an integer).
+/// Negation, complement and bit counts use the full 64-bit representation.
 pub open spec fn unop_spec(op: u8, x: i64) -> i64 {
     if op == UN_NEG { 0i64.wrapping_sub(x) }
     else if op == UN_NOT { !x }
     else if op == UN_POPCOUNT { popcount(x as u64, 64) as i64 }
-    else { 0 }
+    else { vstd::std_specs::bits::u64_leading_zeros(x as u64) as i64 }
 }
 
 /// `smi_unary_minus`, `smi_not` (smi receiver), `large_integer_unary_minus`,
@@ -293,7 +307,296 @@ pub open spec fn int_unop_contract(p: Program2, op: u8, large: bool, args: Seq<V
             else if large { large_val(h, args[0]) } else { smi_val(args[0]) };
         match x {
             None => fails(p, h, h2, r, R_WRONG_OBJECT_TYPE),
-            Some(x) => int_result(h, h2, r, unop_spec(op, x), op != UN_CLZ),
+            Some(x) => raw_integer_result(p, h, h2, r, unop_spec(op, x)),
+        }
+    }
+}
+
+/// The Toit primitive treats every NaN as positive and returns -1 for negative zero.
+pub open spec fn float_sign(bits: u64) -> i64 {
+    if crate::spec_helpers::is_nan_bits(bits) { 1 }
+    else if bits >> 63 == 1 { (-1int) as i64 }
+    else if bits == 0 { 0 }
+    else { 1 }
+}
+
+pub open spec fn finite_bits(bits: u64) -> bool {
+    ((bits >> 52) & 0x7ff) != 0x7ff
+}
+
+pub open spec fn binary64_compare(op: u8, x: u64, y: u64) -> bool {
+    !crate::spec_helpers::is_nan_bits(x) && !crate::spec_helpers::is_nan_bits(y)
+        && int_cmp(op, crate::spec_helpers::binary64_rank(x), crate::spec_helpers::binary64_rank(y))
+}
+
+pub open spec fn double_val(h: Seq<HeapObj>, v: Value) -> Option<u64> {
+    if v is Obj && (v->Obj_0 as int) < h.len() && h[v->Obj_0 as int].body is Double {
+        Some(h[v->Obj_0 as int].body->Double_0)
+    } else { None }
+}
+
+pub open spec fn numeric_arg(h: Seq<HeapObj>, v: Value) -> Option<crate::spec_helpers::Num> {
+    match int_val(h, v) {
+        Some(i) => Some(crate::spec_helpers::Num::Int(i as int)),
+        None => match double_val(h, v) {
+            Some(d) => Some(crate::spec_helpers::Num::Dbl(d)), None => None,
+        },
+    }
+}
+
+pub open spec fn compare_to_contract(p: Program2, for_min: bool, args: Seq<Value>,
+    h: Seq<HeapObj>, h2: Seq<HeapObj>, r: PrimRet) -> bool
+{
+    args.len() == 2 ==> match (numeric_arg(h, args[0]), numeric_arg(h, args[1])) {
+        (Some(x), Some(y)) => {
+            let flags = crate::spec_helpers::compare_mixed(x, y);
+            h == h2 && r == PrimRet::Success(if for_min { bool_val(p, flags & 4 != 0) }
+                else { Value::Smi(((flags & 3) as int - 2) as i64) })
+        },
+        _ => fails(p, h, h2, r, R_INVALID_ARGUMENT),
+    }
+}
+
+/// A successful box appends exactly one writable object and returns its ID.
+pub open spec fn boxed_result(p: Program2, h: Seq<HeapObj>, h2: Seq<HeapObj>,
+    r: PrimRet, class: int, body: Body) -> bool
+{
+    match r {
+        PrimRet::Success(v) => h2 == h.push(HeapObj { class_id: p.builtin[class], ro: false, body })
+            && v == Value::Obj(h.len() as usize),
+        PrimRet::OutOfMemory(e) => h2 == h && e == p.roots[ROOT_ALLOCATION_FAILED],
+        _ => false,
+    }
+}
+
+pub open spec fn raw_integer_result(p: Program2, h: Seq<HeapObj>, h2: Seq<HeapObj>,
+    r: PrimRet, value: i64) -> bool
+{
+    if smi_in(value) { h2 == h && r == PrimRet::Success(Value::Smi(value)) }
+    else { boxed_result(p, h, h2, r, crate::spec_common::LARGE_INTEGER_CLASS, Body::LargeInt(value)) }
+}
+
+/// Align the leading one at bit 63. The low 11 bits then decide whether
+/// the retained 53-bit significand rounds up, including at an exact tie.
+pub open spec fn integer_binary64(i: i64) -> u64 {
+    if i == 0 { 0 } else {
+        let magnitude = if i < 0 { 0u64.wrapping_sub(i as u64) } else { i as u64 };
+        let shift = vstd::std_specs::bits::u64_leading_zeros(magnitude) as u32;
+        let normalized = magnitude << shift;
+        let retained = normalized >> 11;
+        let discarded = normalized & 0x7ff;
+        let increment = discarded > 0x400 || (discarded == 0x400 && retained & 1 == 1);
+        // Adding the implicit bit supplies one exponent unit; a carry from
+        // rounding the largest significand supplies another.
+        let base = ((1085 - shift) as u64) << 52;
+        let unsigned = (base + retained + (if increment { 1int } else { 0int })) as u64;
+        unsigned | ((i as u64) & 0x8000_0000_0000_0000)
+    }
+}
+
+pub open spec fn number_to_float_contract(p: Program2, args: Seq<Value>, h: Seq<HeapObj>,
+    h2: Seq<HeapObj>, r: PrimRet) -> bool
+{
+    args.len() == 1 ==> {
+        let bits = match int_val(h, args[0]) {
+            Some(i) => Some(integer_binary64(i)),
+            None => double_val(h, args[0]),
+        };
+        match bits {
+            Some(b) => boxed_result(p, h, h2, r, crate::spec_common::DOUBLE_CLASS, Body::Double(b)),
+            None => fails(p, h, h2, r, R_WRONG_OBJECT_TYPE),
+        }
+    }
+}
+
+/// Truncate binary64 to a signed 64-bit integer. The outer None denotes
+/// NaN and the inner None denotes a value outside the signed range.
+pub open spec fn truncate_binary64(bits: u64) -> Option<Option<i64>> {
+    let exponent = (bits >> 52) & 0x7ff;
+    if crate::spec_helpers::is_nan_bits(bits) { None }
+    else if bits == 0xc3e0_0000_0000_0000 { Some(Some(i64::MIN)) }
+    else if exponent >= 1086 { Some(None) }
+    else if exponent < 1023 { Some(Some(0)) }
+    else {
+        let significand = (bits & 0x000f_ffff_ffff_ffff) | (1u64 << 52);
+        let magnitude = if exponent < 1075 { significand >> ((1075 - exponent) as u64) }
+            else { significand << ((exponent - 1075) as u64) };
+        Some(Some((if bits >> 63 == 0 { magnitude as int } else { -(magnitude as int) }) as i64))
+    }
+}
+
+pub open spec fn number_to_integer_contract(p: Program2, args: Seq<Value>, h: Seq<HeapObj>,
+    h2: Seq<HeapObj>, r: PrimRet) -> bool
+{
+    args.len() == 1 ==> {
+        let v = args[0];
+        if int_val(h, v) is Some { h2 == h && r == PrimRet::Success(v) }
+        else {
+            match double_val(h, v) {
+                None => fails(p, h, h2, r, R_WRONG_OBJECT_TYPE),
+                Some(bits) => match truncate_binary64(bits) {
+                    None => fails(p, h, h2, r, R_INVALID_ARGUMENT),
+                    Some(None) => fails(p, h, h2, r, R_OUT_OF_RANGE),
+                    Some(Some(i)) => raw_integer_result(p, h, h2, r, i),
+                },
+            }
+        }
+    }
+}
+
+pub open spec fn binary32_nan(raw: u32) -> bool {
+    (raw & 0x7fff_ffff) > 0x7f80_0000
+}
+
+/// Exact widening for a number or infinity. NaN payloads are platform-dependent.
+pub open spec fn widened_binary32(raw: u32) -> u64 {
+    let sign = ((raw & 0x8000_0000) as u64) << 32;
+    let exponent = (raw >> 23) & 0xff;
+    let fraction = raw & 0x007f_ffff;
+    if exponent == 0 {
+        if fraction == 0 { sign } else {
+            let shift = vstd::std_specs::bits::u32_leading_zeros(fraction);
+            sign | (((905 - shift) as u64) << 52)
+                | ((((fraction << shift) & 0x7fff_ffff) as u64) << 21)
+        }
+    } else if exponent == 255 { sign | 0x7ff0_0000_0000_0000 }
+    else { sign | (((exponent + 896) as u64) << 52) | ((fraction as u64) << 29) }
+}
+
+/// Round binary64 numbers to binary32. In the subnormal range, one unit
+/// in the retained significand is 2^-149. The implicit bit contributes
+/// one exponent unit when the result is normal.
+pub open spec fn narrowed_binary64(bits: u64) -> u32 {
+    let sign = ((bits >> 32) as u32) & 0x8000_0000;
+    let e = (bits >> 52) & 0x7ff;
+    if e < 873 { sign }
+    else if e > 1150 { sign | 0x7f80_0000 }
+    else {
+        let sig = (bits & 0x000f_ffff_ffff_ffff) | (1u64 << 52);
+        let shift: u64 = if e < 897 { (926 - e) as u64 } else { 29 };
+        let base = if e < 897 { 0u32 } else { ((e - 897) as u32) << 23 };
+        let kept = sig >> shift;
+        let half = 1u64 << ((shift - 1) as u64);
+        let rest = sig & ((2 * half - 1) as u64);
+        let up = rest > half || (rest == half && kept & 1 == 1);
+        sign | ((base + kept + (if up { 1int } else { 0int })) as u32)
+    }
+}
+
+pub open spec fn narrowing_result(bits: u64, raw: u32) -> bool {
+    if crate::spec_helpers::is_nan_bits(bits) { binary32_nan(raw) }
+    else { raw == narrowed_binary64(bits) }
+}
+
+pub open spec fn float_to_raw32_contract(p: Program2, args: Seq<Value>, h: Seq<HeapObj>,
+    h2: Seq<HeapObj>, r: PrimRet) -> bool
+{
+    args.len() == 1 ==> match double_val(h, args[0]) {
+        None => fails(p, h, h2, r, R_WRONG_OBJECT_TYPE),
+        Some(bits) => exists|raw: u32| #[trigger] narrowing_result(bits, raw)
+            && raw_integer_result(p, h, h2, r, raw as i64),
+    }
+}
+
+pub open spec fn widening_result(raw: u32, bits: u64) -> bool {
+    if binary32_nan(raw) { crate::spec_helpers::is_nan_bits(bits) }
+    else { bits == widened_binary32(raw) }
+}
+
+pub open spec fn raw32_to_float_contract(p: Program2, args: Seq<Value>, h: Seq<HeapObj>,
+    h2: Seq<HeapObj>, r: PrimRet) -> bool
+{
+    args.len() == 1 ==> match int_val(h, args[0]) {
+        None => fails(p, h, h2, r, R_WRONG_OBJECT_TYPE),
+        Some(i) => if i < 0 || i > 0xffff_ffff {
+            fails(p, h, h2, r, R_OUT_OF_RANGE)
+        } else {
+            exists|bits: u64| #[trigger] widening_result(i as u32, bits)
+                && boxed_result(p, h, h2, r, crate::spec_common::DOUBLE_CLASS, Body::Double(bits))
+        },
+    }
+}
+
+/// Round finite binary64 values to an integral binary64. The exponent
+/// determines the encoded weight of one, including at a power-of-two carry.
+pub open spec fn rounded_integral_bits(op: u8, bits: u64) -> u64 {
+    let sign = bits & 0x8000_0000_0000_0000;
+    let magnitude = bits & 0x7fff_ffff_ffff_ffff;
+    let e = magnitude >> 52;
+    let away = (op == 2 && sign == 0) || (op == 3 && sign != 0);
+    if magnitude == 0 || e >= 1075 { bits }
+    else if e < 1023 { sign | (if away { 0x3ff0_0000_0000_0000u64 } else { 0u64 }) }
+    else {
+        let unit = 1u64 << ((1075 - e) as u64);
+        let mask = (unit - 1) as u64;
+        let base = bits & !mask;
+        if away && bits & mask != 0 { base.wrapping_add(unit) } else { base }
+    }
+}
+
+pub open spec fn integral_round_result(op: u8, bits: u64, out: u64) -> bool {
+    if crate::spec_helpers::is_nan_bits(bits) { crate::spec_helpers::is_nan_bits(out) }
+    else { out == rounded_integral_bits(op, bits) }
+}
+
+pub open spec fn float_round_integral_contract(p: Program2, op: u8, args: Seq<Value>,
+    h: Seq<HeapObj>, h2: Seq<HeapObj>, r: PrimRet) -> bool
+{
+    args.len() == 1 ==> match double_val(h, args[0]) {
+        None => fails(p, h, h2, r, R_WRONG_OBJECT_TYPE),
+        Some(bits) => exists|out: u64| #[trigger] integral_round_result(op, bits, out)
+            && boxed_result(p, h, h2, r, crate::spec_common::DOUBLE_CLASS, Body::Double(out)),
+    }
+}
+
+pub open spec fn float_bits_contract(p: Program2, index: int, args: Seq<Value>,
+    h: Seq<HeapObj>, h2: Seq<HeapObj>, r: PrimRet) -> bool
+{
+    args.len() == 1 ==> {
+        if index == I_RAW_TO_FLOAT {
+            match int_val(h, args[0]) {
+                Some(raw) => boxed_result(p, h, h2, r, crate::spec_common::DOUBLE_CLASS, Body::Double(raw as u64)),
+                None => fails(p, h, h2, r, R_WRONG_OBJECT_TYPE),
+            }
+        } else {
+            match double_val(h, args[0]) {
+                None => fails(p, h, h2, r, R_WRONG_OBJECT_TYPE),
+                Some(bits) => if index == I_FLOAT_TO_RAW {
+                    raw_integer_result(p, h, h2, r, bits as i64)
+                } else {
+                    boxed_result(p, h, h2, r, crate::spec_common::DOUBLE_CLASS,
+                        Body::Double(bits ^ 0x8000_0000_0000_0000))
+                },
+            }
+        }
+    }
+}
+
+pub open spec fn float_cmp_contract(p: Program2, op: u8, args: Seq<Value>,
+    h: Seq<HeapObj>, h2: Seq<HeapObj>, r: PrimRet) -> bool
+{
+    args.len() == 2 ==> match (double_val(h, args[0]), double_val(h, args[1])) {
+        (Some(x), Some(y)) => h2 == h && r == PrimRet::Success(bool_val(p, binary64_compare(op, x, y))),
+        _ => fails(p, h, h2, r, R_WRONG_OBJECT_TYPE),
+    }
+}
+
+pub open spec fn float_classify_contract(p: Program2, index: int, args: Seq<Value>,
+    h: Seq<HeapObj>, h2: Seq<HeapObj>, r: PrimRet) -> bool
+{
+    args.len() == 1 ==> {
+        let v = args[0];
+        if v is Obj && (v->Obj_0 as int) < h.len() && h[v->Obj_0 as int].body is Double {
+            let bits = h[v->Obj_0 as int].body->Double_0;
+            let result = if index == I_FLOAT_SIGN { Value::Smi(float_sign(bits)) }
+                else {
+                    let b = if index == I_FLOAT_IS_NAN { crate::spec_helpers::is_nan_bits(bits) }
+                        else { finite_bits(bits) };
+                    p.roots[if b { 1 } else { 2 }]
+                };
+            h2 == h && r == PrimRet::Success(result)
+        } else {
+            fails(p, h, h2, r, R_WRONG_OBJECT_TYPE)
         }
     }
 }
@@ -320,6 +623,61 @@ pub open spec fn int32_val(v: Value) -> Option<i64> {
     }
 }
 
+/// Error returned by ARGS(int) when the operand cannot be decoded.
+pub open spec fn int32_error(h: Seq<HeapObj>, v: Value) -> int {
+    if int_val(h, v) is Some { R_OUT_OF_RANGE } else { R_WRONG_OBJECT_TYPE }
+}
+
+pub open spec fn array_new_contract(p: Program2, args: Seq<Value>, h: Seq<HeapObj>,
+    h2: Seq<HeapObj>, r: PrimRet) -> bool
+{
+    args.len() == 2 ==> match int32_val(args[0]) {
+        None => fails(p, h, h2, r, int32_error(h, args[0])),
+        Some(n) => if n == 0 { h2 == h && r == PrimRet::Success(p.roots[crate::spec_common::EMPTY_ARRAY_ROOT]) }
+            else if n < 0 { fails(p, h, h2, r, R_OUT_OF_BOUNDS) }
+            else if n > crate::spec_common::ARRAYLET_SIZE { fails(p, h, h2, r, R_OUT_OF_RANGE) }
+            else { boxed_result(p, h, h2, r, crate::spec_common::ARRAY_CLASS,
+                Body::Array(Seq::new(n as nat, |i: int| args[1]))) },
+    }
+}
+
+pub open spec fn array_expand_contract(p: Program2, args: Seq<Value>, h: Seq<HeapObj>,
+    h2: Seq<HeapObj>, r: PrimRet) -> bool
+{
+    args.len() == 4 ==> match (array_val(h, args[0]), args[1], args[2]) {
+        (Some(src), Value::Smi(old_len), Value::Smi(n)) =>
+            if n == 0 { h2 == h && r == PrimRet::Success(p.roots[crate::spec_common::EMPTY_ARRAY_ROOT]) }
+            else if n < 0 { fails(p, h, h2, r, R_OUT_OF_BOUNDS) }
+            else if n > crate::spec_common::ARRAYLET_SIZE || old_len < 0 || old_len > src.len() {
+                fails(p, h, h2, r, R_OUT_OF_RANGE)
+            } else { boxed_result(p, h, h2, r, crate::spec_common::ARRAY_CLASS,
+                Body::Array(Seq::new(n as nat, |i: int| if i < old_len { src[i] } else { args[3] }))) },
+        _ => fails(p, h, h2, r, R_WRONG_OBJECT_TYPE),
+    }
+}
+
+/// The source slice comes from the original heap even when both arguments refer to one array.
+pub open spec fn array_replace_contract(p: Program2, args: Seq<Value>, h: Seq<HeapObj>,
+    h2: Seq<HeapObj>, r: PrimRet) -> bool
+{
+    args.len() == 5 ==> match (array_val(h, args[0]), args[1], array_val(h, args[2]), args[3], args[4]) {
+        (Some(dst), Value::Smi(index), Some(src), Value::Smi(from), Value::Smi(to)) => {
+            let end = index + to - from;
+            let id = args[0]->Obj_0 as int;
+            if index < 0 || from < 0 || from > to || to > src.len() || end > dst.len() {
+                fails(p, h, h2, r, R_OUT_OF_BOUNDS)
+            } else if h[id].ro { fails(p, h, h2, r, R_PERMISSION_DENIED) }
+            else {
+                let elements = dst.subrange(0, index as int) + src.subrange(from as int, to as int)
+                    + dst.subrange(end, dst.len() as int);
+                h2 == h.update(id, HeapObj { body: Body::Array(elements), ..h[id] })
+                    && r == PrimRet::Success(p.roots[crate::spec_common::NULL_ROOT])
+            }
+        },
+        _ => fails(p, h, h2, r, R_WRONG_OBJECT_TYPE),
+    }
+}
+
 /// `array_length`.
 pub open spec fn array_length_contract(p: Program2, args: Seq<Value>,
     h: Seq<HeapObj>, h2: Seq<HeapObj>, r: PrimRet) -> bool
@@ -339,7 +697,7 @@ pub open spec fn array_at_contract(p: Program2, args: Seq<Value>,
     args.len() == 2 ==> match array_val(h, args[0]) {
         None => fails(p, h, h2, r, R_WRONG_OBJECT_TYPE),
         Some(e) => match int32_val(args[1]) {
-            None => h2 == h && r is Failure,
+            None => fails(p, h, h2, r, int32_error(h, args[1])),
             Some(i) => if 0 <= i < e.len() {
                 h2 == h && r == PrimRet::Success(e[i as int])
             } else {
@@ -357,7 +715,7 @@ pub open spec fn array_at_put_contract(p: Program2, args: Seq<Value>,
         Value::Obj(id) => match array_val(h, args[0]) {
             None => fails(p, h, h2, r, R_WRONG_OBJECT_TYPE),
             Some(e) => match int32_val(args[1]) {
-                None => h2 == h && r is Failure,
+                None => fails(p, h, h2, r, int32_error(h, args[1])),
                 Some(i) => if h[id as int].ro {
                     fails(p, h, h2, r, R_PERMISSION_DENIED)
                 } else if 0 <= i < e.len() {
@@ -474,7 +832,31 @@ pub open spec fn core_contract(p: Program2, index: int, args: Seq<Value>,
     else if index == I_LARGE_INTEGER_NOT { int_unop_contract(p, UN_NOT, true, args, h, h2, r) }
     else if index == I_COUNT_LEADING_ZEROS { int_unop_contract(p, UN_CLZ, false, args, h, h2, r) }
     else if index == I_POPCOUNT { int_unop_contract(p, UN_POPCOUNT, false, args, h, h2, r) }
+    else if I_FLOAT_CEIL <= index <= I_FLOAT_TRUNC {
+        float_round_integral_contract(p, (index - I_FLOAT_CEIL + 2) as u8, args, h, h2, r)
+    }
+    else if index == I_FLOAT_TO_RAW32 { float_to_raw32_contract(p, args, h, h2, r) }
+    else if index == I_RAW32_TO_FLOAT { raw32_to_float_contract(p, args, h, h2, r) }
+    else if index == I_NUMBER_TO_FLOAT { number_to_float_contract(p, args, h, h2, r) }
+    else if index == I_NUMBER_TO_INTEGER { number_to_integer_contract(p, args, h, h2, r) }
+    else if index == I_FLOAT_UNARY_MINUS || index == I_FLOAT_TO_RAW || index == I_RAW_TO_FLOAT {
+        float_bits_contract(p, index, args, h, h2, r)
+    }
+    else if index == I_FLOAT_LESS_THAN { float_cmp_contract(p, CMP_LT, args, h, h2, r) }
+    else if index == I_FLOAT_LESS_THAN_OR_EQUAL { float_cmp_contract(p, CMP_LTE, args, h, h2, r) }
+    else if index == I_FLOAT_GREATER_THAN { float_cmp_contract(p, CMP_GT, args, h, h2, r) }
+    else if index == I_FLOAT_GREATER_THAN_OR_EQUAL { float_cmp_contract(p, CMP_GTE, args, h, h2, r) }
+    else if index == I_COMPARE_TO || index == I_MIN_SPECIAL_COMPARE_TO {
+        compare_to_contract(p, index == I_MIN_SPECIAL_COMPARE_TO, args, h, h2, r)
+    }
+    else if index == I_FLOAT_EQUALS { float_cmp_contract(p, CMP_EQ, args, h, h2, r) }
+    else if index == I_FLOAT_SIGN || index == I_FLOAT_IS_NAN || index == I_FLOAT_IS_FINITE {
+        float_classify_contract(p, index, args, h, h2, r)
+    }
     else if index == I_OBJECT_CLASS_ID { object_class_id_contract(p, args, h, h2, r) }
+    else if index == I_ARRAY_NEW { array_new_contract(p, args, h, h2, r) }
+    else if index == I_ARRAY_EXPAND { array_expand_contract(p, args, h, h2, r) }
+    else if index == I_ARRAY_REPLACE { array_replace_contract(p, args, h, h2, r) }
     else if index == I_ARRAY_LENGTH { array_length_contract(p, args, h, h2, r) }
     else if index == I_ARRAY_AT { array_at_contract(p, args, h, h2, r) }
     else if index == I_ARRAY_AT_PUT { array_at_put_contract(p, args, h, h2, r) }

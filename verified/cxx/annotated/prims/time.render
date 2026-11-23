@@ -1,0 +1,102 @@
+// Copyright (C) 2026 Toit contributors.
+@include ../model/model.cfg
+@verbatim
+#include "integer.gen.h"
+#include "argument_error.gen.h"
+
+// The clocks supply a signed 64-bit reading. Neither API receives VM memory.
+int64 OS_get_monotonic_time(void);
+//@ requires true;
+//@ ensures true;
+int64 OS_get_system_time(void);
+//@ requires true;
+//@ ensures true;
+struct timespec { long tv_sec; long tv_nsec; };
+// The platform controls the outcome and both signed clock fields.
+//@ predicate clock_sample(bool ok, long sec, long nsec);
+bool OS_get_real_time(struct timespec *out);
+//@ requires clock_sample(?ok, ?sec, ?nsec) &*& out->tv_sec |-> 0 &*& out->tv_nsec |-> 0;
+//@ ensures result == ok &*& out->tv_sec |-> ?s &*& out->tv_nsec |-> ?ns &*& (ok ? s == sec && ns == nsec : true);
+
+/*@
+fixpoint bool clock_integer(fixpoint(void *, oinfo) H, void *w, int value) {
+  return smi_range(value) ? is_smi_w((uword)w) && smi_val((uword)w) == value :
+         has_tag(H, w, LARGE_INTEGER_TAG) && o_number(H(w)) == value;
+}
+lemma void clock_array_words(Array *a)
+  requires heap(?objs, ?H) &*& mem(a, objs) == true &*& has_tag(H, a, ARRAY_TAG) == true;
+  ensures heap(objs, H) &*& length(o_words(H(a))) == o_len(H(a));
+{
+  heap_open(a);
+  open body(a, _, _, _, _, _);
+  open array_body(a, _, _);
+  close array_body(a, _, _);
+  close body(a, header_tag2(o_hw(H(a))), o_len(H(a)), o_aux(H(a)), o_number(H(a)), o_words(H(a)));
+  heap_close(a);
+}
+@*/
+@prototypes
+@render src/primitive_core.cc toit::primitive_time
+PRIMITIVE(time)
+//@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*& pointer(__args, ?arg);
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& pointer(__args, arg) &*&
+            grows(objs, H, objs2, H2) == true &*& (good(objs2, result) || (uword)result % 4 == 3); @*/
+{
+  //@ grows_refl(objs, H);
+  //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);
+  ARGS(bool, since_wakeup);
+  int64 timestamp = since_wakeup ? OS::get_monotonic_time() : OS::get_system_time();
+  return Primitive::integer(timestamp, process);
+}
+
+@render src/primitive.h toit::Primitive::is_error tu=src/primitive_core.cc
+  static bool is_error(Object* object)
+  //@ requires true;
+  //@ ensures result == ((uword)object % 4 == 3);
+  {
+    //@ bitand_pow_nat((uword)object, N2);
+    return (reinterpret_cast<uword>(object) & Object::NON_SMI_TAG_MASK) == Object::MARKED_TAG;
+  }
+
+@render src/primitive_core.cc toit::primitive_get_real_time_clock
+PRIMITIVE(get_real_time_clock)
+//@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*& clock_sample(?ok, ?sec, ?nsec);
+/*@ ensures [f]process(process, prog, ids) &*& heap(?final_objs, ?final_H) &*& grows(objs, H, final_objs, final_H) == true &*&
+            (((uword)result == 4 * Program_ALLOCATION_FAILED_INDEX + 3 && final_objs == objs && final_H == H) ||
+             (!ok && (uword)result == 4 * Program_ERROR_INDEX + 3) ||
+             (ok && (!smi_range(sec) || !smi_range(nsec)) && (uword)result == ((uword)root_allocation_failed(prog) | 3)) ||
+             (ok && mem(result, final_objs) && !mem(result, objs) && has_tag(final_H, result, ARRAY_TAG) &&
+              o_len(final_H(result)) == 2 && clock_integer(final_H, nth(0, o_words(final_H(result))), sec) &&
+              clock_integer(final_H, nth(1, o_words(final_H(result))), nsec))); @*/
+{
+  //@ grows_refl(objs, H);
+  //@ error_word(Program_ALLOCATION_FAILED_INDEX);
+  //@ error_word(Program_ERROR_INDEX);
+  Array* result = process->object_heap()->allocate_array(2, Smi::zero());
+  //@ open allocated(objs, H, process, result, ?objs1, ?H1);
+  //@ if (result == 0) { leak clock_sample(ok, sec, nsec); } else { grows_alloc(objs, H, result, H1); }
+  if (result == null) FAIL(ALLOCATION_FAILED);
+  struct timespec time{};
+  if (!OS::get_real_time(&time)) FAIL(ERROR);
+
+  Object* tv_sec = Primitive::integer(time.tv_sec, process);
+  //@ assert heap(?objs2, ?H2);
+  //@ grows_trans(objs, H, objs1, H1, objs2, H2);
+  if (Primitive::is_error(tv_sec)) return tv_sec;
+  Object* tv_nsec = Primitive::integer(time.tv_nsec, process);
+  //@ assert heap(?objs3, ?H3);
+  //@ grows_trans(objs, H, objs2, H2, objs3, H3);
+  if (Primitive::is_error(tv_nsec)) return tv_nsec;
+  //@ forall_mem(result, objs1, (kept)(H1, H2));
+  //@ mem_subset(result, objs2, objs3);
+  //@ forall_mem(result, objs2, (kept)(H2, H3));
+  //@ if (!smi_range(sec)) { forall_mem(tv_sec, objs2, (kept)(H2, H3)); mem_subset(tv_sec, objs2, objs3); }
+  //@ clock_array_words(result);
+  result->at_put(0, tv_sec);
+  //@ assert heap(objs3, ?H4);
+  //@ grows_trans(objs, H, objs3, H3, objs3, H4);
+  result->at_put(1, tv_nsec);
+  //@ assert heap(objs3, ?H5);
+  //@ grows_trans(objs, H, objs3, H4, objs3, H5);
+  return result;
+}

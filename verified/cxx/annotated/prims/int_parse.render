@@ -1,0 +1,110 @@
+// Copyright (C) 2026 Toit contributors.
+@include ../model/model.cfg
+@verbatim
+#include "integer.gen.h"
+#include "argument_error.gen.h"
+#include "blob_args.gen.h"
+#include "read_slice.h"
+//@ #include "decimal.gh"
+
+/*@
+fixpoint int decimal_digits(list<unsigned char> bytes, int acc, bool first) {
+  switch (bytes) {
+    case nil: return acc;
+    case cons(c, tail):
+      return '0' <= c && c <= '9' ? decimal_digits(tail, 10 * acc + c - '0', false) :
+             c == '_' && !first && tail != nil ? decimal_digits(tail, acc, false) : -1;
+  }
+}
+
+fixpoint int decimal_magnitude(list<unsigned char> bytes) {
+  return head(bytes) == '-' ? (length(bytes) == 1 ? -1 : decimal_digits(tail(bytes), 0, true)) :
+                              decimal_digits(bytes, 0, true);
+}
+
+fixpoint int signed_decimal(list<unsigned char> bytes) {
+  return head(bytes) == '-' ? -decimal_magnitude(bytes) : decimal_magnitude(bytes);
+}
+
+@*/
+@prototypes
+@render src/primitive_core.cc toit::parse_short_decimal
+static bool parse_short_decimal(const uint8* input, word length, int64* value)
+//@ requires [?f]uchars((uint8 *)input, length, ?bs) &*& 1 <= length &*& length <= 18 &*& *value |-> ?old;
+/*@ ensures [f]uchars((uint8 *)input, length, bs) &*& result == (decimal_magnitude(bs) >= 0) &*&
+            decimal_magnitude(bs) < 1000000000000000000 &*& *value |-> (result ? signed_decimal(bs) : old); @*/
+//@ terminates;
+{
+  //@ uchars_inv();
+  //@ drop_n_plus_one(0, bs);
+  bool negative = input[0] == '-';
+  word first = negative ? 1 : 0;
+  if (first == length) return false;
+  int64 magnitude = 0;
+  for (word index = first; index < length; index++)
+    /*@ invariant first <= index &*& index <= length &*& [f]uchars((uint8 *)input, length, bs) &*&
+                  0 <= magnitude &*& magnitude < pow_nat(10, nat_of_int(index)) &*&
+                  decimal_magnitude(bs) == decimal_digits(drop(index, bs), magnitude, index == first); @*/
+    //@ decreases length - index;
+  {
+    //@ drop_n_plus_one(index, bs);
+    //@ decimal_power_le(nat_of_int(index), nat_of_int(17));
+    //@ succ_int(index);
+    uint8 c = input[index];
+    if ('0' <= c && c <= '9') {
+      magnitude = magnitude * 10 + (c - '0');
+    } else if (c == '_') {
+      if (index == first || index == length - 1) return false;
+    } else {
+      return false;
+    }
+  }
+  //@ decimal_power_le(nat_of_int(length), nat_of_int(18));
+  *value = negative ? -magnitude : magnitude;
+  return true;
+}
+
+@render src/primitive_core.cc toit::primitive_int_parse truncating
+PRIMITIVE(int_parse)
+/*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
+             pointer(__args, ?x0) &*& pointer(__args - 1, ?x1) &*& pointer(__args - 2, ?x2) &*& pointer(__args - 3, ?x3) &*&
+             good(objs, x0) && good(objs, x1) && good(objs, x2) && good(objs, x3); @*/
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+            pointer(__args, x0) &*& pointer(__args - 1, x1) &*& pointer(__args - 2, x2) &*& pointer(__args - 3, x3) &*&
+            ((uword)result % 4 == 3 ? objs2 == objs && H2 == H &&
+              ((uword)result == 4 * Program_WRONG_BYTES_TYPE_INDEX + 3 ||
+               (uword)result == 4 * Program_WRONG_OBJECT_TYPE_INDEX + 3 ||
+               (uword)result == 4 * Program_OUT_OF_RANGE_INDEX + 3 ||
+               (uword)result == 4 * Program_INVALID_ARGUMENT_INDEX + 3 ||
+               (uword)result == ((uword)root_allocation_failed(prog) | 3)) :
+              good(objs2, result) && (is_smi_w((uword)result) ?
+                objs2 == objs && H2 == H && -1000000000000000000 < smi_val((uword)result) && smi_val((uword)result) < 1000000000000000000 :
+                objs2 == cons(result, objs) && has_tag(H2, result, LARGE_INTEGER_TAG) &&
+                -1000000000000000000 < o_number(H2(result)) && o_number(H2(result)) < 1000000000000000000)); @*/
+{
+  //@ close valid_arg(x3, objs);
+  //@ leak valid_arg(x3, objs);
+  //@ grows_refl(objs, H);
+  //@ error_word(Program_WRONG_BYTES_TYPE_INDEX);
+  //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);
+  //@ error_word(Program_OUT_OF_RANGE_INDEX);
+  //@ error_word(Program_INVALID_ARGUMENT_INDEX);
+  ARGS(Blob, input, word, from, word, to, int, block_arg_dont_use_this);
+  if (!(0 <= from && from < to && to <= input.length())) FAIL(OUT_OF_RANGE);
+  // Longer inputs use the Toit parser. Eighteen decimal digits fit in int64.
+  if (to - from > 18) FAIL(OUT_OF_RANGE);
+  int64 value = 0;
+  //@ assert [_]blob_result(objs, H, STRINGS_OR_BYTE_ARRAYS, ?a, ?len, ?source);
+  //@ open [_]blob_result(objs, H, STRINGS_OR_BYTE_ARRAYS, a, len, source);
+  //@ blob_facts(source);
+  //@ borrow_slice(source, a + from, to - from);
+  //@ assert uchars(a + from, to - from, ?bytes);
+  bool valid = parse_short_decimal(input.address() + from, to - from, &value);
+  //@ return_slice(source, a + from);
+  //@ assert valid == (decimal_magnitude(bytes) >= 0);
+  if (!valid) FAIL(INVALID_ARGUMENT);
+  Object* parsed = Primitive::integer(value, process);
+  //@ assert heap(?after, ?contents);
+  //@ assert integer_result(prog, objs, H, after, contents, signed_decimal(bytes), parsed) == true;
+  return parsed;
+}

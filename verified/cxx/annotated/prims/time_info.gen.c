@@ -27,21 +27,7 @@
 // overflows).
 #include "../model/objects.gen.h"
 
-typedef long time_t;
-typedef unsigned long size_t;
-
-// The fields of struct tm that src/primitive_core.cc reads (C11 7.27.1).
-struct tm {
-  int tm_sec;
-  int tm_min;
-  int tm_hour;
-  int tm_mday;
-  int tm_mon;
-  int tm_year;
-  int tm_wday;
-  int tm_yday;
-  int tm_isdst;
-};
+#include "local_time.h"
 
 struct TimeFields {
   int64 year;
@@ -57,12 +43,6 @@ struct TimeFields {
 typedef struct TimeFields TimeFields;
 
 /*@
-// The fields of a struct tm, possibly uninitialized.
-predicate tm_fields(struct tm *t;) =
-  t->tm_sec |-> _ &*& t->tm_min |-> _ &*& t->tm_hour |-> _ &*& t->tm_mday |-> _ &*&
-  t->tm_mon |-> _ &*& t->tm_year |-> _ &*& t->tm_wday |-> _ &*& t->tm_yday |-> _ &*&
-  t->tm_isdst |-> _;
-
 // A converted time: the fields in their ranges (C11 7.27.1; tm_sec up to
 // 60 for a leap second).
 predicate tm_ok(struct tm *t; int year) =
@@ -154,11 +134,6 @@ predicate fields_(TimeFields *f;) =
   f->second |-> _ &*& f->weekday |-> _ &*& f->yearday |-> _ &*& f->is_dst |-> _;
 @*/
 
-// memset of the struct tm (the only use here).
-void *memset(void *array, int value, size_t size);
-//@ requires tm_fields(array) &*& size == sizeof(struct tm);
-//@ ensures tm_fields(array) &*& result == array;
-
 // The C library: null, or the fields of the time in their ranges.
 struct tm *localtime_r(time_t *timer, struct tm *buf);
 //@ requires [?f]long_integer(timer, ?t) &*& tm_fields(buf);
@@ -169,19 +144,12 @@ struct tm *localtime_r(time_t *timer, struct tm *buf);
 void TimeFields_ctor(TimeFields *self);
 //@ requires fields_(self);
 //@ ensures fields_(self);
-void tm_ctor(struct tm *self);
-//@ requires tm_fields(self);
-//@ ensures tm_fields(self);
+
 
 // src/top.h: the VM's fatal error (does not return).
 void fail(const char *format, ...);
 //@ requires true;
 //@ ensures false;
-
-// src/objects.h Process::false_object (a root of the program).
-HeapObject *Process_false_object(Process *self);
-//@ requires [?f]process(self, ?prog, ?ids) &*& [?g]heap(?objs, ?H);
-//@ ensures [f]process(self, prog, ids) &*& [g]heap(objs, H) &*& mem(result, objs) == true;
 // C++: src/primitive_core.cc toit::floor_div
 int64 floor_div(int64 a, int64 b);
 //@ requires 1 < b &*& b <= 146097;

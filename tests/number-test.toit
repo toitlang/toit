@@ -111,6 +111,11 @@ test-round:
   expect-equals -3 (-3.4).round
   expect-equals -4 (-3.5).round
   expect-equals 3 (math.PI.round)
+  expect-equals 0.0000000001 (1.4e-10.round --precision=10)  // @no-warn
+  expect-equals -2e-15 ((-1.6e-15).round --precision=15)  // @no-warn
+  expect-equals (-float.MAX-FINITE) ((-float.MAX-FINITE).round --precision=15)  // @no-warn
+  expect-number-invalid-argument: 1.0.round --precision=-1  // @no-warn
+  expect-number-invalid-argument: 1.0.round --precision=16  // @no-warn
 
   big-float ::= math.pow 10 200
   expect-number-out-of-range: big-float.round
@@ -415,6 +420,11 @@ test-parse-float:
   expect-float-parsing-error: float.parse (" 123".to-byte-array)
   expect-float-parsing-error: float.parse "3.14x"
   expect-float-parsing-error: float.parse ("3.14x".to-byte-array)
+  expect-float-parsing-error: float.parse "\0"
+  expect-float-parsing-error: float.parse "1.25\0"
+  expect-float-parsing-error: float.parse "1.25\0x".to-byte-array
+  expect-float-parsing-error: float.parse #[0xff, 49]
+  expect-identical 1.25 (float.parse "1.25\0x"[0..4])
 
 
 test-smis-and-floats:
@@ -644,6 +654,16 @@ test-float-stringify:
   expect-equals
     "1.7976931348623157e308"
     (1.7976931348623157e+308).stringify
+  // The negative 17-digit fraction fills the shortest-format buffer.
+  expect-equals "-0.0000012345678901234567" (-0.0000012345678901234567).stringify
+  expect-equals "1e-07" (1e-7).stringify
+  expect-equals "5e-324" (5e-324).stringify
+  expect-equals "100000000000000000000.0" (1e20).stringify
+  expect-equals "1e21" (1e21).stringify
+  expect-equals "-0.0" (-0.0).stringify
+  // With a .0 suffix and terminator, these need 26 and 27 bytes.
+  expect-equals "75557863725914323419136.0" ((75557863725914323419136.0).to-string --precision=0)
+  expect-equals "604462909807314587353088.0" ((604462909807314587353088.0).to-string --precision=0)
   // Finally test with precision.
   expect-equals
     "123.00"

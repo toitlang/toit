@@ -48,7 +48,9 @@ void Space::free_all_chunks() {
 
 uword Space::size() const {
   uword result = 0;
-  for (auto chunk : chunk_list_) result += chunk->size();
+  for (auto chunk : chunk_list_) {
+    result += chunk->size();
+  }
   ASSERT(used() <= result);
   return result;
 }
@@ -78,44 +80,60 @@ HeapObject* Space::object_at_offset(word offset) {
   return HeapObject::from_address(address);
 }
 
-void Space::iterate_overflowed_objects(RootCallback* visitor, MarkingStack* stack) {
-  static_assert(
-      TOIT_PAGE_SIZE % (1 << GcMetadata::CARD_SIZE_IN_BITS_LOG_2) == 0,
-      "MarkStackOverflowBytesMustCoverAFractionOfAPage");
+// Callbacks can flag additional cards, including the card being scanned.
+template<typename ScanCard>
+static inline void scan_overflow_byte(uint8* bits, uword first_card, ScanCard scan) {
+  for (int i = 0; i < 8 && *bits != 0; ++i) {
+    unsigned mask = 1U << i;
+    if ((*bits & mask) == 0) continue;
+    *bits &= ~mask;
+    scan(first_card + i * GcMetadata::CARD_SIZE);
+  }
+}
 
-  for (auto chunk : chunk_list_) {
-    uint8* bits = GcMetadata::overflow_bits_for(chunk->start());
-    uint8* bits_limit = GcMetadata::overflow_bits_for(chunk->end());
-    uword card = chunk->start();
-    for (; bits < bits_limit; bits++) {
-      for (int i = 0; i < 8; i++, card += GcMetadata::CARD_SIZE) {
-        // Skip cards 8 at a time if they are clear.
-        if (*bits == 0) {
-          card += GcMetadata::CARD_SIZE * (8 - i);
-          break;
-        }
-        if ((*bits & (1 << i)) != 0) {
-          // Clear the bit immediately, since the mark stack could overflow and
-          // a different object in this card could fail to push, setting the
-          // bit again.
-          *bits &= ~(1 << i);
-          uint8 start = *GcMetadata::starts_for(card);
-          ASSERT(start != GcMetadata::NO_OBJECT_START);
-          uword object_address = (card | start);
-          for (HeapObject* object;
-               object_address < card + GcMetadata::CARD_SIZE &&
-               !has_sentinel_at(object_address);
-               object_address += object->size(program_)) {
-            object = HeapObject::from_address(object_address);
-            if (GcMetadata::is_grey(object)) {
-              object->roots_do(program_, visitor);  // This changes the size of stacks!
-              GcMetadata::mark_all(object, object->size(program_));
-            }
-          }
-        }
-      }
-      stack->empty(visitor);
+static void scan_overflow_card(Program* program, RootCallback* visitor, uword address, uword limit) {
+  while (address < limit) {
+    if (has_sentinel_at(address)) {
+      break;
     }
+    HeapObject* object = HeapObject::from_address(address);
+    if (GcMetadata::is_grey(object)) {
+      object->roots_do(program, visitor);  // Stack visitation may shrink the object.
+      GcMetadata::mark_all(object, object->size(program));
+    }
+    address += object->size(program);
+  }
+}
+
+template<typename ScanRange>
+static inline void scan_overflow_group(uint8* bits, uword card, ScanRange scan) {
+  scan_overflow_byte(bits, card, [&](uword current_card) {
+    uint8 start = *GcMetadata::starts_for(current_card);
+    ASSERT(start != GcMetadata::NO_OBJECT_START);
+    scan(current_card | start, current_card + GcMetadata::CARD_SIZE);
+  });
+}
+
+static void scan_overflow_group(Program* program, RootCallback* visitor, uint8* bits, uword card) {
+  scan_overflow_group(bits, card, [&](uword start, uword limit) {
+    scan_overflow_card(program, visitor, start, limit);
+  });
+}
+
+static_assert(TOIT_PAGE_SIZE % (8 * GcMetadata::CARD_SIZE) == 0, "overflow groups must divide a page");
+
+static void scan_overflow_chunk(Program* program, RootCallback* visitor, MarkingStack* stack, uword start, uword end) {
+  uint8* bits = GcMetadata::overflow_bits_for(start);
+  for (uword card = start; card < end; card += 8 * GcMetadata::CARD_SIZE) {
+    scan_overflow_group(program, visitor, bits, card);
+    ++bits;
+    stack->empty(visitor);
+  }
+}
+
+void Space::iterate_overflowed_objects(RootCallback* visitor, MarkingStack* stack) const {
+  for (auto chunk : chunk_list_) {
+    scan_overflow_chunk(program_, visitor, stack, chunk->start(), chunk->end());
   }
 }
 
@@ -200,6 +218,24 @@ std::atomic<uword> ObjectMemory::allocated_;
 Chunk* ObjectMemory::spare_chunk_ = null;
 Mutex* ObjectMemory::spare_chunk_mutex_ = null;
 
+Chunk* ObjectMemory::take_spare_chunk(Locker& locker) {
+  ASSERT(locker.mutex() == spare_chunk_mutex_ && spare_chunk_ != nullptr);
+  Chunk* chunk = spare_chunk_;
+  spare_chunk_ = nullptr;
+#ifdef TOIT_FREERTOS
+  // Prefer a lower page for new space when the allocator can supply one.
+  Chunk* candidate = allocate_chunk(null, TOIT_PAGE_SIZE);
+  if (candidate) {
+    if (candidate->start() < chunk->start()) {
+      free_chunk(chunk);
+      return candidate;
+    }
+    free_chunk(candidate);
+  }
+#endif
+  return chunk;
+}
+
 void ObjectMemory::tear_down() {
   if (!spare_chunk_mutex_) FATAL("ObjectMemory::tear_down without set_up");
   OS::dispose(spare_chunk_mutex_);
@@ -232,29 +268,28 @@ void Chunk::find(uword word, const char* name) {
 #endif
 
 Chunk* ObjectMemory::allocate_chunk(Space* owner, uword size) {
+  if (size == 0 || size > UINTPTR_MAX - (TOIT_PAGE_SIZE - 1)) return null;
+  size = Utils::round_up(size, TOIT_PAGE_SIZE);
 #ifdef TOIT_FREERTOS
   static const int UNUSABLE_SIZE = 50;
   void* unusable_pages[UNUSABLE_SIZE];
-  size = Utils::round_up(size, TOIT_PAGE_SIZE);
-  uword lowest = GcMetadata::lowest_old_space_address();
-  for (int i = 0; i < UNUSABLE_SIZE; i++) {
-    void* memory = OS::allocate_pages(size);
-    if (memory == null ||
-        (GcMetadata::in_metadata_range(memory) &&
-         GcMetadata::in_metadata_range(reinterpret_cast<uword>(memory) + size - 1))) {
-      for (int j = 0; j < i; j++) OS::free_pages(unusable_pages[j], size);
-      return allocate_chunk_helper(owner, size, memory);
+  void* memory = null;
+  int rejected = 0;
+  for (; rejected < UNUSABLE_SIZE; rejected++) {
+    void* candidate = OS::allocate_pages(size);
+    if (!candidate) break;
+    if (GcMetadata::contains_chunk(candidate, size)) {
+      memory = candidate;
+      break;
     }
-    unusable_pages[i] = memory;
+    unusable_pages[rejected] = candidate;
   }
-  printf("New allocation %p-%p\n", unusable_pages[0], unvoid_cast<char*>(unusable_pages[0]) + size);
-  printf("Metadata range %p-%p\n", reinterpret_cast<void*>(lowest), reinterpret_cast<uint8*>(lowest) + GcMetadata::heap_extent());
-  FATAL("Toit heap outside expected range");
+  for (int i = 0; i < rejected; i++) OS::free_pages(unusable_pages[i], size);
 #else
-  void* memory = OS::allocate_pages(Utils::round_up(size, TOIT_PAGE_SIZE));
+  void* memory = OS::allocate_pages(size);
+#endif
   if (!memory) return null;
   return allocate_chunk_helper(owner, size, memory);
-#endif
 }
 
 Chunk* ObjectMemory::allocate_chunk_helper(Space* owner, uword size, void* memory) {
@@ -284,8 +319,8 @@ Chunk* ObjectMemory::allocate_chunk_helper(Space* owner, uword size, void* memor
 
 void Chunk::set_owner(Space* value) {
   owner_ = value;
-  GcMetadata::mark_pages_for_chunk(this, value->page_type());
-  initialize_metadata();
+  GcMetadata::mark_pages_for_chunk(this, value ? value->page_type() : UNKNOWN_SPACE_PAGE);
+  if (value) initialize_metadata();
 }
 
 void Chunk::initialize_metadata() const {
@@ -304,13 +339,22 @@ void ObjectMemory::free_chunk(Chunk* chunk) {
 }
 
 void ObjectMemory::set_up() {
+  if (spare_chunk_mutex_) FATAL("Can't call ObjectMemory::set_up twice");
   allocated_ = 0;
   GcMetadata::set_up();
-  spare_chunk_ = allocate_chunk(null, TOIT_PAGE_SIZE);
-  if (!spare_chunk_) FATAL("Can't allocate initial spare chunk");
-  if (spare_chunk_mutex_) FATAL("Can't call ObjectMemory::set_up twice");
-  spare_chunk_mutex_ = OS::allocate_mutex(7, "Spare memory chunk");
-  if (!spare_chunk_mutex_) FATAL("Can't allocate spare memory mutex");
+  Chunk* chunk = allocate_chunk(null, TOIT_PAGE_SIZE);
+  if (!chunk) {
+    GcMetadata::tear_down();
+    FATAL("Can't allocate initial spare chunk");
+  }
+  Mutex* mutex = OS::allocate_mutex(7, "Spare memory chunk");
+  if (!mutex) {
+    free_chunk(chunk);
+    GcMetadata::tear_down();
+    FATAL("Can't allocate spare memory mutex");
+  }
+  spare_chunk_ = chunk;
+  spare_chunk_mutex_ = mutex;
 }
 
 }  // namespace toit

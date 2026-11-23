@@ -59,6 +59,12 @@ test-from-16:
     "(😹)"
     string.from-utf-16 #['(', 0, 0x3d, 0xd8, 0x39, 0xde, ')', 0]  // Surrogate pair for U+1F639.
 
+  // The surrogate pair starts at an odd byte offset in the backing array.
+  padded := #[0xff, 0x3d, 0xd8, 0x39, 0xde, 0xff]
+  expect-equals "😹" (string.from-utf-16 padded[1..5])
+  expect-equals "\u{fffd}" (string.from-utf-16 padded[1..3])
+  expect-error "INVALID_ARGUMENT": string.from-utf-16 padded[1..4]
+
   // Unpaired surrogate is replaced with a error character, 0xfffd.
   expect-equals
     "<\u{fffd}>"

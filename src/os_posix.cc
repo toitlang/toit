@@ -18,6 +18,7 @@
 #ifdef TOIT_POSIX
 
 #include "os.h"
+#include "os_page_extent.h"
 #include "process.h"
 #include "program.h"
 #include "utils.h"
@@ -32,6 +33,50 @@
 #include <sys/mman.h>
 
 namespace toit {
+
+void* OS::grab_virtual_memory(void* hint, uword size) {
+  OSPageExtent pages;
+  if (!OSPageExtent::covering(0, size, getpagesize(), &pages) || pages.size == 0) return null;
+  void* result = mmap(hint, pages.size, PROT_NONE, MAP_PRIVATE | MAP_ANON, -1, 0);
+  if (result == MAP_FAILED) return null;
+  // The VM uses null to signal failure, even if the OS granted address zero.
+  if (result == null) ungrab_virtual_memory(result, pages.size);
+  return result;
+}
+
+void OS::ungrab_virtual_memory(void* address, uword size) {
+  if (size == 0) return;
+  OSPageExtent pages;
+  uword start = reinterpret_cast<uword>(address);
+  if (!OSPageExtent::covering(start, size, getpagesize(), &pages) || pages.start != start) {
+    FATAL("Invalid virtual memory reservation");
+  }
+  if (munmap(address, pages.size) == 0) return;
+  perror("munmap");
+  exit(1);
+}
+
+bool OS::use_virtual_memory(void* addr, uword size) {
+  ASSERT(addr != null);
+  OSPageExtent pages;
+  if (!OSPageExtent::covering(reinterpret_cast<uword>(addr), size, getpagesize(), &pages)) return false;
+  if (pages.size == 0) return true;
+  if (mprotect(reinterpret_cast<void*>(pages.start), pages.size, PROT_READ | PROT_WRITE) == 0) return true;
+  if (errno == ENOMEM) return false;
+  perror("mprotect");
+  exit(1);
+}
+
+void OS::unuse_virtual_memory(void* addr, uword size) {
+  OSPageExtent pages;
+  if (!OSPageExtent::contained(reinterpret_cast<uword>(addr), size, getpagesize(), &pages)) {
+    FATAL("Invalid virtual memory range");
+  }
+  if (pages.size == 0) return;
+  if (mprotect(reinterpret_cast<void*>(pages.start), pages.size, PROT_NONE) == 0) return;
+  perror("mprotect");
+  exit(1);
+}
 
 char* OS::get_executable_path_from_arg(const char* source_arg) {
   return realpath(source_arg, null);
@@ -251,11 +296,14 @@ void OS::heap_summary_report(int max_pages, const char* marker, Process* process
 }
 
 ProtectableAlignedMemory::~ProtectableAlignedMemory() {
-  int status = mprotect(address(), byte_size(), PROT_READ | PROT_WRITE);
-  if (status != 0) perror("~ProtectableAlignedMemory. mark_read_write");
+  if (address() != null && byte_size() != 0) {
+    int status = mprotect(address(), byte_size(), PROT_READ | PROT_WRITE);
+    if (status != 0) perror("~ProtectableAlignedMemory. mark_read_write");
+  }
 }
 
 void ProtectableAlignedMemory::mark_read_only() {
+  if (address() == null || byte_size() == 0) return;
   int status = mprotect(address(), byte_size(), PROT_READ);
   if (status != 0) perror("mark_read_only");
 }

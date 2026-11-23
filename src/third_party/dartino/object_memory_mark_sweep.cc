@@ -17,6 +17,8 @@
 
 namespace toit {
 
+#include "sweep_empty_cards.h"
+
 OldSpace::OldSpace(Program* program, TwoSpaceHeap* owner)
     : Space(program, CAN_RESIZE, OLD_SPACE_PAGE),
       heap_(owner) {}
@@ -80,14 +82,21 @@ void OldSpace::use_whole_chunk(Chunk* chunk) {
 Chunk* OldSpace::allocate_and_use_chunk(uword size) {
   Chunk* chunk = ObjectMemory::allocate_chunk(this, size);
   if (chunk != null) {
-    // Link it into the space.
+    // append initializes the metadata. Installing a promotion header then
+    // records its start and dirties its card for the remembered-set scan.
     append(chunk);
     use_whole_chunk(chunk);
-    GcMetadata::initialize_starts_for_chunk(chunk);
-    GcMetadata::initialize_remembered_set_for_chunk(chunk);
-    GcMetadata::clear_mark_bits_for_chunk(chunk);
   }
   return chunk;
+}
+
+static uword promotion_chunk_size(uword size, bool tracking, uword preferred, word expansion_limit) {
+  if (expansion_limit <= 0) return 0;
+  uword capacity = Utils::round_down(static_cast<uword>(expansion_limit), TOIT_PAGE_SIZE);
+  uword overhead = WORD_SIZE + (tracking ? PromotedTrack::header_size() : 0);
+  if (capacity < overhead || size > capacity - overhead) return 0;
+  uword preferred_pages = Utils::round_down(Utils::min(preferred, capacity), TOIT_PAGE_SIZE);
+  return Utils::round_up(Utils::max(size + overhead, preferred_pages), TOIT_PAGE_SIZE);
 }
 
 uword OldSpace::allocate_in_new_chunk(uword size) {
@@ -95,24 +104,12 @@ uword OldSpace::allocate_in_new_chunk(uword size) {
   ASSERT(top_ == 0);  // Space is flushed.
   // Allocate new chunk.  After a certain heap size we start allocating
   // multi-page chunks to improve fragmentation.
-  int tracking_size = tracking_allocations_ ? 0 : PromotedTrack::header_size();
-  word max_expansion_signed = heap_->max_external_allocation();
-  if (max_expansion_signed > 0) {
-    uword max_expansion = max_expansion_signed;
-    uword smallest_chunk_size = Utils::round_down(Utils::min(get_default_chunk_size(used()), max_expansion), TOIT_PAGE_SIZE);
-    uword min_space_needed = size + tracking_size + WORD_SIZE;  // Make room for sentinel.
-    // Toit uses arraylets and external objects, so all objects should fit on a page.
-    ASSERT(min_space_needed <= TOIT_PAGE_SIZE);
-    uword chunk_size = Utils::round_up(Utils::max(min_space_needed, smallest_chunk_size), TOIT_PAGE_SIZE);
-
-    if (chunk_size <= max_expansion) {
-      Chunk* chunk = allocate_and_use_chunk(chunk_size);
-      if (chunk != null) {
-        return allocate(size);
-      } else {
-        heap_->report_malloc_failed();
-      }
-    }
+  word expansion_limit = heap_->max_external_allocation();
+  uword preferred = get_default_chunk_size(used());
+  uword chunk_size = promotion_chunk_size(size, tracking_allocations_, preferred, expansion_limit);
+  if (chunk_size != 0) {
+    if (allocate_and_use_chunk(chunk_size) != null) return allocate(size);
+    heap_->report_malloc_failed();
   }
 
   // Speed up later attempts during this scavenge to promote objects.
@@ -129,31 +126,36 @@ void OldSpace::report_new_space_progress(uword bytes_collected) {
 }
 
 uword OldSpace::allocate_from_free_list(uword size) {
+  FreeListRegion* region = take_free_region(size);
+  if (region == null) return 0;
+  return allocate_in_free_region(region, size);
+}
+
+FreeListRegion* OldSpace::take_free_region(uword size) {
   // Flush the rest of the active region into the free list.
   flush();
 
-  FreeListRegion* region = free_list_.get_region(
+  return free_list_.get_region(
       tracking_allocations_ ? size + PromotedTrack::header_size() : size);
-  if (region != null) {
-    top_ = region->_raw();
-    limit_ = top_ + region->size();
-    // Account all of the region's memory as used for now. When the
-    // rest of the freelist region is flushed into the freelist we
-    // decrement used_ by the amount still left unused. used_
-    // therefore reflects actual memory usage after flush has been
-    // called.  (Do this before the tracking info below overwrites
-    // the free region's data.)
-    used_ += region->size();
-    if (tracking_allocations_) {
-      promoted_track_ =
-          PromotedTrack::initialize(promoted_track_, top_, limit_);
-      top_ += PromotedTrack::header_size();
-    }
-    ASSERT(static_cast<unsigned>(size) <= limit_ - top_);
-    return allocate(size);
-  }
+}
 
-  return 0;
+uword OldSpace::allocate_in_free_region(FreeListRegion* region, uword size) {
+  top_ = region->_raw();
+  limit_ = top_ + region->size();
+  // Account all of the region's memory as used for now. When the
+  // rest of the freelist region is flushed into the freelist we
+  // decrement used_ by the amount still left unused. used_
+  // therefore reflects actual memory usage after flush has been
+  // called.  (Do this before the tracking info below overwrites
+  // the free region's data.)
+  used_ += region->size();
+  if (tracking_allocations_) {
+    promoted_track_ =
+        PromotedTrack::initialize(promoted_track_, top_, limit_);
+    top_ += PromotedTrack::header_size();
+  }
+  ASSERT(static_cast<unsigned>(size) <= limit_ - top_);
+  return allocate(size);
 }
 
 uword OldSpace::allocate(uword size) {
@@ -353,6 +355,19 @@ void OldSpace::start_scavenge() {
   start_tracking_allocations();
 }
 
+static bool scan_promoted_track(Program* program, ScavengeVisitor* visitor, PromotedTrack* track) {
+  uword start = track->start();
+  uword end = track->end();
+  uword current = start;
+  while (current != end) {
+    HeapObject* object = HeapObject::from_address(current);
+    visitor->set_record_new_space_pointers(GcMetadata::remembered_set_for(object));
+    object->roots_do(program, visitor);
+    current += object->size(program);
+  }
+  return start != end;
+}
+
 // Called multiple times until there is no more work.  Finds objects moved to
 // the old-space and traverses them to find and fix more new-space pointers.
 bool OldSpace::complete_scavenge(
@@ -367,16 +382,7 @@ bool OldSpace::complete_scavenge(
   promoted_track_ = null;
 
   while (promoted) {
-    uword traverse = promoted->start();
-    uword end = promoted->end();
-    if (traverse != end) {
-      found_work = true;
-    }
-    for (HeapObject* obj = HeapObject::from_address(traverse); traverse != end;
-         traverse += obj->size(program_), obj = HeapObject::from_address(traverse)) {
-      visitor->set_record_new_space_pointers(GcMetadata::remembered_set_for(obj));
-      obj->roots_do(program_, visitor);
-    }
+    if (scan_promoted_track(program_, visitor, promoted)) found_work = true;
     PromotedTrack* previous = promoted;
     promoted = promoted->next();
     previous->zap();
@@ -495,23 +501,49 @@ uword CompactingVisitor::visit(HeapObject* object) {
   return size;
 }
 
+struct SweepFreeRegion {
+  uword start;
+  uword end;
+  unsigned following_free_words;
+};
+
+// The run consists of complete empty cards in [first, limit). At the
+// chunk boundaries there is no preceding card and the final word is reserved.
+static inline SweepFreeRegion sweep_free_region(uword first, uword limit,
+                                               uint32 preceding_marks, uint32 following_marks) {
+  uword start = first - Utils::clz(preceding_marks) * WORD_SIZE;
+  if (following_marks == 0) return {start, limit - WORD_SIZE, 0};
+  unsigned prefix = Utils::ctz(following_marks);
+  return {start, limit + prefix * WORD_SIZE, prefix};
+}
+
+// The prefix belongs to the free region. Only holes after it need fillers.
+static inline bool sweep_needs_fill(uint32 marks, unsigned first_marked) {
+  return marks + (1U << first_marked) != 0;
+}
+
 // Sweep method that mostly looks at the mark bits.  For speed it doesn't touch
 // the live objects, but writes freelist structures in the gaps between them.
 uword OldSpace::sweep() {
+  static_assert(GcMetadata::CARD_SIZE == 32 * WORD_SIZE, "one mark bit per word");
   // Clear the free list. It will be rebuilt during sweeping.
   free_list_.clear();
   uword used = 0;
   const word SINGLE_FREE_WORD = -108;
   ASSERT(reinterpret_cast<Object*>(SINGLE_FREE_WORD) == FreeListRegion::single_free_word_header());
   chunk_list_.remove_wherever([&](Chunk* chunk) -> bool {
-    uword line = chunk->start();
-    uword end = line + chunk->size();
-    uint32* mark_bits = GcMetadata::mark_bits_for(chunk->start());
-    while (line < end) {
-      ASSERT(mark_bits == GcMetadata::mark_bits_for(line));
-      // Only put complete empty lines on the freelist.
-      uint32 bits = *mark_bits;
-      if (bits != 0) {
+    uword base = chunk->start();
+    uword end = base + chunk->size();
+    const uint32* marks = GcMetadata::mark_bits_for(base);
+    uint8* starts = GcMetadata::starts_for(base);
+    uword cards = chunk->size() / GcMetadata::CARD_SIZE;
+    for (uword card = 0; card < cards;) {
+      SweepCardStep step = sweep_card_step(marks, starts, cards, card, GcMetadata::NO_OBJECT_START);
+      uword first = card;
+      card = step.next_card;
+      uword line = base + step.marked_card * GcMetadata::CARD_SIZE;
+      uint32 bits = step.marks;
+      if (step.marked_card == first) {
         if (bits != 0xffffffff) {
           // Not entirely free.  Zap any free words with single-word marker.
           // We may end up zapping the tail of a free area here, but that's
@@ -519,84 +551,45 @@ uword OldSpace::sweep() {
           // areas are at least 32 words long.
           // The object starts may end up pointing at one of these single free
           // word things, but that's OK because they are iterable.
-          for (int i = 0; i < GcMetadata::CARD_SIZE / WORD_SIZE; i++) {
-            if ((bits & (1U << i)) == 0) {
-              *reinterpret_cast<word*>(line + (i << WORD_SIZE_LOG_2)) = SINGLE_FREE_WORD;
-            }
-          }
+          fill_unmarked_words(reinterpret_cast<word*>(line), bits, 0, SINGLE_FREE_WORD);
         }
-        line += GcMetadata::CARD_SIZE;
-        mark_bits++;
-        ASSERT(mark_bits == GcMetadata::mark_bits_for(line));
         used += Utils::popcount(bits);
         continue;
       }
       // All 32 bits are zero so we have found a free area at least 32 words long.
-      uword start_of_free = line;
-      uint8* object_start_location = GcMetadata::starts_for(line);
-      if (line != chunk->start()) {
-        // Free area may have started in previous line.
-        uint32 previous_mark_bits = mark_bits[-1];
-        if ((previous_mark_bits & 0x80000000) == 0) {  // Check last bit.
-          ASSERT(previous_mark_bits != 0);
-          // Count most significant zeros to get free bytes at end of previous line.
-          start_of_free -= Utils::clz(previous_mark_bits) << WORD_SIZE_LOG_2;
-          // Object starts may be pointing into the free area, which we have to
-          // fix.
-          uint8* previous_object_start_location = object_start_location - 1;
-          ASSERT(previous_object_start_location == GcMetadata::starts_for(start_of_free));
-          // The object starts may point to the middle of this free area, which
-          // is not the valid start of an object.  So we reset it to the start of
-          // the free area, which is a place we can always iterate from.
-          *previous_object_start_location = start_of_free;
-        }
+      if (step.whole_chunk) {
+        ObjectMemory::free_chunk(chunk);
+        return true;
       }
-      // Scan to find the end of the free area.
-      while (bits == 0) {
-        ASSERT(object_start_location == GcMetadata::starts_for(line));
-        *object_start_location++ = GcMetadata::NO_OBJECT_START;
-        line += GcMetadata::CARD_SIZE;
-        mark_bits++;
-        ASSERT(object_start_location == GcMetadata::starts_for(line));
-        ASSERT(mark_bits == GcMetadata::mark_bits_for(line));
-        if (line == end) {
-          if (start_of_free == chunk->start()) {
-            ObjectMemory::free_chunk(chunk);
-            return true;  // Remove empty chunks from list.
-          }
-          // The last free space must end one word earlier to make space for
-          // the end-of-chunk sentinel.
-          free_list_.add_region(start_of_free, end - start_of_free - WORD_SIZE);
-          goto end_of_chunk;
-        }
-        bits = *mark_bits;
+      uword first_empty = base + first * GcMetadata::CARD_SIZE;
+      SweepFreeRegion region = sweep_free_region(first_empty, line, step.preceding_marks, bits);
+      if (region.start < first_empty) {
+        // The preceding card's iteration point may lie inside the new free region.
+        uint8* previous_start = starts + first - 1;
+        ASSERT(previous_start == GcMetadata::starts_for(region.start));
+        *previous_start = region.start;
+      }
+      if (line == end) {
+        free_list_.add_region(region.start, region.end - region.start);
+        break;
       }
       // Found a mark bit indicating the end of the free area.
-      ASSERT(bits == *mark_bits);
-      ASSERT(mark_bits == GcMetadata::mark_bits_for(line));
+      ASSERT(bits != 0);
       used += Utils::popcount(bits);
-      int free_words_at_start = Utils::ctz(bits);
-      if (bits + (1U << free_words_at_start) != 0) {
+      unsigned free_words_at_start = region.following_free_words;
+      if (sweep_needs_fill(bits, free_words_at_start)) {
         // The bits don't follow the pattern 1*0*, so we have to zap more
         // free areas in this line.
-        for (int i = free_words_at_start; i < 32; i++) {
-          if ((bits & (1U << i)) == 0) {
-            *reinterpret_cast<word*>(line + (i << WORD_SIZE_LOG_2)) = SINGLE_FREE_WORD;
-          }
-        }
+        fill_unmarked_words(reinterpret_cast<word*>(line), bits, free_words_at_start, SINGLE_FREE_WORD);
       }
-      uword end_of_free = line + (free_words_at_start << WORD_SIZE_LOG_2);
-      free_list_.add_region(start_of_free, end_of_free - start_of_free);
+      free_list_.add_region(region.start, region.end - region.start);
       // We set the object starts for this card to NO_OBJECT_START, but
       // that's not very helpful.  Repair it to point to the end of the
       // free area, which is a valid place to iterate from.
-      uint8* end_starts_location = GcMetadata::starts_for(end_of_free);
-      ASSERT(end_of_free < end);
-      *end_starts_location = end_of_free;
-      line += GcMetadata::CARD_SIZE;
-      mark_bits++;
+      uint8* end_starts_location = GcMetadata::starts_for(region.end);
+      ASSERT(region.end < end);
+      *end_starts_location = region.end;
     }
-  end_of_chunk:
     // Repair sentinel in case it was zapped by a marking bitmap.
     *reinterpret_cast<Object**>(end - WORD_SIZE) = chunk_end_sentinel();
 #ifdef TOIT_DEBUG

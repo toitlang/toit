@@ -22,6 +22,30 @@ fixpoint int pow128(int k) {
 }
 
 // The shift of the k-th digit, as the shift operators see it.
+fixpoint int cardinal_width(int v) {
+  return v < pow128(1) ? 1 :
+         v < pow128(2) ? 2 :
+         v < pow128(3) ? 3 :
+         v < pow128(4) ? 4 :
+         v < pow128(5) ? 5 :
+         v < pow128(6) ? 6 :
+         v < pow128(7) ? 7 :
+         v < pow128(8) ? 8 :
+         v < pow128(9) ? 9 : 10;
+}
+
+lemma void emit_digit(int v, int k, int acc);
+  requires 128 <= v &*& 0 <= k &*& k <= 9 &*& 0 <= acc &*& acc < pow128(k) &*&
+           acc + v * pow128(k) <= 18446744073709551615;
+  ensures k < 9 &*& cardinal_width(v) == 1 + cardinal_width(v / 128) &*&
+          0 <= v % 128 &*& v % 128 < 128 &*& acc + (v % 128) * pow128(k) < pow128(k + 1) &*&
+          acc + v * pow128(k) == acc + (v % 128) * pow128(k) + (v / 128) * pow128(k + 1);
+
+lemma void last_digit(int v, int k, int acc);
+  requires 0 <= v &*& v < 128 &*& 0 <= k &*& k <= 9 &*& 0 <= acc &*& acc < pow128(k) &*&
+           acc + v * pow128(k) <= 18446744073709551615;
+  ensures v <= 18446744073709551615 / pow128(k);
+
 lemma void digit_pow(int k);
   requires 0 <= k &*& k <= 9;
   ensures pow_nat(2, nat_of_int(7 * k)) == pow128(k);

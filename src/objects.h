@@ -249,21 +249,21 @@ class HeapObject : public Object {
     return (header_word & mask) == (tag_word << shift);
   }
   INLINE bool has_active_finalizer() const {
-    const HeapObject* self = this;
+    const HeapObject* target = this;
     if (has_forwarding_address()) {
-      self = forwarding_address();
+      target = forwarding_address();
     }
-    return (Smi::value(self->header()) & (1 << HeapObject::FINALIZER_BIT_OFFSET)) != 0;
+    return (Smi::value(target->header()) & (1 << HeapObject::FINALIZER_BIT_OFFSET)) != 0;
   }
   INLINE void set_has_active_finalizer() {
     ASSERT(!has_forwarding_address());
-    uword header_word = Smi::value(header());
+    word header_word = Smi::value(header());
     header_word |= 1 << HeapObject::FINALIZER_BIT_OFFSET;
     _set_header(Smi::from(header_word));
   }
   INLINE void clear_has_active_finalizer() {
     ASSERT(!has_forwarding_address());
-    uword header_word = Smi::value(header());
+    word header_word = Smi::value(header());
     header_word &= ~(1 << HeapObject::FINALIZER_BIT_OFFSET);
     _set_header(Smi::from(header_word));
   }
@@ -401,8 +401,16 @@ class HeapObject : public Object {
   INLINE double _double_at(word offset) const { return bit_cast<double>(_int64_at(offset)); }
   INLINE void _double_at_put(word offset, double value) { _int64_at_put(offset, bit_cast<int64>(value)); }
 
-  INLINE int64 _int64_at(word offset) const { return *reinterpret_cast<const int64*>(_raw_at(offset)); }
-  INLINE void _int64_at_put(word offset, int64 value) { *reinterpret_cast<int64*>(_raw_at(offset)) = value; }
+  // On 32-bit heaps the payload may only be word-aligned.
+  INLINE int64 _int64_at(word offset) const {
+    int64 result;
+    memcpy(&result, _raw_at(offset), sizeof(result));
+    return result;
+  }
+  INLINE void _int64_at_put(word offset, int64 value) {
+    int64 stored = value;
+    memcpy(_raw_at(offset), &stored, sizeof(stored));
+  }
 
   static word _align(word byte_size) { return (byte_size + (WORD_SIZE - 1)) & ~(WORD_SIZE - 1); }
 
@@ -672,7 +680,8 @@ class ByteArray : public HeapObject {
   // The finalizer flag is shared with Toit finalizers, but `add-finalizer`
   // only accepts instances, so on a byte array it means the VM finalizer.
   bool has_owned_external_memory() const {
-    return has_external_address() && has_active_finalizer();
+    if (!has_external_address()) return false;
+    return has_active_finalizer();
   }
 
   uint8* neuter(Process* process);
@@ -685,7 +694,11 @@ class ByteArray : public HeapObject {
   void do_pointers(PointerCallback* cb);
 
  private:
-  word raw_length() const { return _word_at(LENGTH_OFFSET); }
+  word raw_length() const {
+    uword bits = _word_at(LENGTH_OFFSET);
+    if (bits <= UINTPTR_MAX / 2) return static_cast<word>(bits);
+    return -1 - static_cast<word>(UINTPTR_MAX - bits);
+  }
   uint8* content() { return reinterpret_cast<uint8*>(_raw() + _offset_from(0)); }
   const uint8* content() const { return reinterpret_cast<const uint8*>(_raw() + _offset_from(0)); }
 
@@ -996,6 +1009,7 @@ class Stack : public HeapObject {
   void roots_do(Program* program, RootCallback* cb);
 
   // Iterates over all frames on this stack and returns the number of frames.
+  // A null callback requests only the count.
   int frames_do(Program* program, FrameCallback* cb);
 
   static INLINE word initial_length() { return 64; }
@@ -1067,7 +1081,8 @@ class Stack : public HeapObject {
   // The address of the object-stack slot at [position], counted from the
   // bottom.
   Object** v2_slot_address(word position) {
-    return reinterpret_cast<Object**>(_array_address(length() - 1 - position));
+    Object** slot = reinterpret_cast<Object**>(_array_address(length() - 1 - position));
+    return slot;
   }
   // A task that never ran: its code as the only object-stack slot, no frames.
   void v2_initialize_new_task(Object* code);
@@ -1131,6 +1146,8 @@ class Stack : public HeapObject {
   static const word PENDING_STACK_CHECK_METHOD_OFFSET = TRY_TOP_OFFSET + WORD_SIZE;
   static const word GUARD_ZONE_OFFSET = PENDING_STACK_CHECK_METHOD_OFFSET + WORD_SIZE;
   static const word HEADER_SIZE = GUARD_ZONE_OFFSET + GUARD_ZONE_SIZE;
+
+  word shrink_v2_for_gc(word top, int max_height, bool aggressive, RootCallback* cb);
 
   void _set_length(word value) { _word_at_put(LENGTH_OFFSET, value); }
   void _set_top(word value) { _word_at_put(TOP_OFFSET, value); }

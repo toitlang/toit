@@ -229,6 +229,24 @@ pub open spec fn args_at(m: Machine) -> int {
     if m.base < m.len { m.len - 1 - m.base } else { 0 }
 }
 
+/// The machine invariant supplies the heap facts shared by primitive
+/// dispatch and inline allocation.
+pub proof fn lemma_heap_inv(p: &Program, m: Machine)
+    requires m.inv(p),
+    ensures prims::heap_inv(p, &m.heap),
+{
+    let ap = p.ap@;
+    let c = p.cert@;
+    let g = m.g@;
+    let h = m.heap;
+    reveal(wf);
+    assert forall|i: int| 0 <= i < h.objs().len() implies
+        #[trigger] toit_spec::v2::sound::basic_obj_ok(ap, h.objs(), h.objs()[i]) by {
+        reveal(toit_spec::v2::sound::heap_ok);
+        assert(toit_spec::v2::sound::obj_ok(ap, c, g.heap, g.heap[i]));
+    }
+}
+
 /// At a PRIMITIVE the Rust primitives' preconditions hold: the heap is the
 /// one the abstraction describes (`prims::heap_inv`) and the frame's
 /// parameters, block references as their smis, are at `args_at(m)`.
@@ -254,12 +272,7 @@ pub proof fn lemma_rust_args(p: &Program, m: Machine, arity: usize)
     toit_spec::v2::sound_prim::lemma_prim_facts(ap, c, p.trusted@, g);
     toit_spec::v2::sound_instr::lemma_instr(ap, c, p.trusted@, g);
     m.lemma_frame(p);
-    // The heap.
-    assert forall|i: int| 0 <= i < h.objs().len() implies
-        #[trigger] toit_spec::v2::sound::basic_obj_ok(ap, h.objs(), h.objs()[i]) by {
-        reveal(toit_spec::v2::sound::heap_ok);
-        assert(toit_spec::v2::sound::obj_ok(ap, c, g.heap, g.heap[i]));
-    }
+    lemma_heap_inv(p, m);
     // The arguments.
     let k = toit_spec::v2::sound_instr::cur_k(ap, c, g);
     assert(k.len() == arity);

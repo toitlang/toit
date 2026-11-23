@@ -16,7 +16,7 @@ should-never-die ::= List
 
 provoke-finalization-processing:
   current-count := system.gc-count
-  while system.gc-count <= current-count: List 100
+  while system.gc-count == current-count: List 100
   sleep --ms=10  // Allow finalization to run.
 
 main:

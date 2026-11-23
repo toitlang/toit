@@ -1,0 +1,11 @@
+--- a/src/heap.cc
++++ b/src/heap.cc
+@@ -201,7 +201,7 @@
+   if (size == 0) return;
+   // The live and lifetime counts are updated independently.
+   ASSERT(size >= 0);
+-  external_memory_.fetch_add(static_cast<uword>(size));
++  external_memory_.store(external_memory_.load() + static_cast<uword>(size));
+   total_external_memory_.fetch_add(size, std::memory_order_relaxed);
+ }
+ 

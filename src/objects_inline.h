@@ -36,6 +36,15 @@ word Stack::max_length() {
   return (ObjectHeap::max_allocation_size() - HEADER_SIZE) / WORD_SIZE;
 }
 
+inline void Stack::v2_initialize_new_task(Object* code) {
+  word len = length();
+  ASSERT(len >= V2_FRAME_WORDS + 1);
+  *reinterpret_cast<Object**>(_array_address(len - 1)) = code;
+  _set_top(len - 1);
+  v2_set_records(0, 0, 0);
+  GcMetadata::insert_into_remembered_set(this);
+}
+
 word ByteArray::max_internal_size_in_process() {
   return ObjectHeap::max_allocation_size() - HEADER_SIZE;
 }

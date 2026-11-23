@@ -7,14 +7,18 @@
 //
 // Contract: reads only input[0, length), writes only output[0,
 // output_length) (when output is not null), no signed overflow, no UB
-// shift, no out-of-range conversion; returns -1 or a size in [0, length].
-// Unbounded (any length). Verified with -prover z3v4.5 (the bit-blasting
-// lemmas need Z3).
+// shift, no out-of-range conversion. For lengths through 0x10000000, the
+// sizing pass computes the exact number of output units for these bytes.
+// The writing pass succeeds exactly when capacity suffices, and initializes
+// each unit in the returned prefix.
+// Verified with -prover z3v4.5 (the bit-blasting lemmas need Z3).
 //
 // Self-tests (run.sh): 07c24665 reverted in a copy of utils.cc (the old
 // code read as many continuation bytes as the first byte announced), and
-// only its length check taken out.
+// only its length check taken out. The output checks also reject a wrong
+// sizing result, a one-unit surrogate count, and a missing surrogate write.
 @include ../model/model.cfg
+@header utf_8_to_16.gen.h
 @verbatim
 #include "../model/objects.gen.h"
 //@ #include "../model/arith.gh"
@@ -34,6 +38,91 @@ fixpoint int mask_of(int c) {
 fixpoint int utf8_count(int p) {
   return p <= 127 ? 1 : p < 192 ? 1 : p < 224 ? 2 : p < 240 ? 3 : p < 248 ? 4 :
          p < 252 ? 5 : p < 254 ? 6 : p < 255 ? 7 : 8;
+}
+
+// Pending holds the scalar assembled so far. At a sequence boundary its
+// width is counted before the next sequence starts. -1 is the empty prefix.
+fixpoint int scalar_units(int pending) {
+  return pending == -1 ? 0 : pending < 65536 ? 1 : 2;
+}
+
+fixpoint int utf16_units(list<unsigned char> bytes, int remaining, int pending) {
+  switch (bytes) {
+    case nil: return remaining == 0 ? scalar_units(pending) : 0;
+    case cons(b, rest):
+      return remaining > 0 ?
+        utf16_units(rest, remaining - 1, (pending * 64) | (b & 63)) :
+        scalar_units(pending) +
+        (b <= 127 ? utf16_units(rest, 0, b) :
+         utf8_count(b) < 2 || utf8_count(b) > 4 || utf8_count(b) > 1 + length(rest) ?
+           utf16_units(rest, 0, 65533) :
+           utf16_units(rest, utf8_count(b) - 1, b & (mask_of(utf8_count(b)) - 1)));
+  }
+}
+
+lemma void count_pending(list<unsigned char> bytes, int pending)
+  requires true;
+  ensures utf16_units(bytes, 0, pending) == scalar_units(pending) + utf16_units(bytes, 0, -1);
+{
+  switch (bytes) { case nil: case cons(b, rest): }
+}
+
+lemma void units_nonnegative(list<unsigned char> bytes, int remaining, int pending)
+  requires true;
+  ensures 0 <= utf16_units(bytes, remaining, pending);
+{
+  switch (bytes) {
+    case nil:
+    case cons(b, rest):
+      if (remaining > 0) {
+        units_nonnegative(rest, remaining - 1, (pending * 64) | (b & 63));
+      } else if (b <= 127) {
+        units_nonnegative(rest, 0, b);
+      } else if (utf8_count(b) < 2 || utf8_count(b) > 4 || utf8_count(b) > 1 + length(rest)) {
+        units_nonnegative(rest, 0, 65533);
+      } else {
+        units_nonnegative(rest, utf8_count(b) - 1, b & (mask_of(utf8_count(b)) - 1));
+      }
+  }
+}
+
+fixpoint bool initialized_units(int count, list<option<unsigned short> > words) {
+  switch (words) {
+    case nil: return count == 0;
+    case cons(w, rest): return count == 0 || (w != none && initialized_units(count - 1, rest));
+  }
+}
+
+lemma void record_unit(int size, unsigned short value, list<option<unsigned short> > words)
+  requires 0 <= size &*& size < length(words) &*& initialized_units(size, words) == true;
+  ensures initialized_units(size + 1, update(size, some(value), words)) == true;
+{
+  switch (words) {
+    case nil:
+    case cons(w, rest):
+      if (size > 0) record_unit(size - 1, value, rest);
+      else { switch (rest) { case nil: case cons(h, t): } }
+  }
+}
+
+lemma void keep_initialized(int index, unsigned short value, list<option<unsigned short> > words)
+  requires 0 <= index &*& index < length(words) &*& initialized_units(length(words), words) == true;
+  ensures initialized_units(length(words), update(index, some(value), words)) == true;
+{
+  switch (words) {
+    case nil:
+    case cons(w, rest):
+      if (index != 0) keep_initialized(index - 1, value, rest);
+  }
+}
+
+lemma void word_capacity(unsigned short *p)
+  requires [?f]ushorts_(p, ?n, ?ws);
+  ensures [f]ushorts_(p, n, ws) &*& length(ws) == n &*& initialized_units(0, ws) == true;
+{
+  open [f]ushorts_(p, n, ws);
+  if (n != 0) word_capacity(p + 1);
+  close [f]ushorts_(p, n, ws);
 }
 
 // A bit test on a byte, by bit-blasting (bitops.gh, Z_of_uint8).
@@ -127,7 +216,7 @@ lemma void accumulate(int c, int b, int count, int j)
 @render src/utils.h toit::Utils::payload_from_prefix tu=src/utils.cc
   static word payload_from_prefix(unsigned char prefix)
   //@ requires 2 <= utf8_count(prefix) &*& utf8_count(prefix) <= 4;
-  //@ ensures 0 <= result &*& result < mask_of(utf8_count(prefix));
+  //@ ensures 0 <= result &*& result < mask_of(utf8_count(prefix)) &*& result == (prefix & (mask_of(utf8_count(prefix)) - 1));
   {
     word n_byte_sequence = bytes_in_utf_8_sequence(prefix);
     //@ nat k = n_byte_sequence == 2 ? N5 : n_byte_sequence == 3 ? N4 : N3;
@@ -140,17 +229,23 @@ lemma void accumulate(int c, int b, int count, int j)
 @render src/utils.cc toit::Utils::utf_8_to_16 type=word(constuint8*,word,uint16*,word)
 word Utils::utf_8_to_16(const uint8* input, word length, uint16* output, word output_length)
 /*@ requires [?f]uchars((uint8 *)input, length, ?bs) &*& 0 <= length &*& length <= 0x10000000 &*&
-             output == 0 ? true : ushorts_(output, output_length, _) &*& 0 <= output_length; @*/
+             exists<bool>(?keep) &*& (output == 0 ? true : ushorts_(output, output_length, ?initial) &*& 0 <= output_length &*&
+             (!keep || initialized_units(output_length, initial))); @*/
 /*@ ensures [f]uchars((uint8 *)input, length, bs) &*&
-            (output == 0 ? true : ushorts_(output, output_length, _)) &*&
-            -1 <= result &*& result <= length; @*/
+            (output == 0 ? true : ushorts_(output, output_length, ?ws) &*& (result == -1 || initialized_units(result, ws)) &*& (!keep || initialized_units(output_length, ws))) &*&
+            -1 <= result &*& result <= length &*&
+            (result == -1 ? output != 0 && output_length < length && output_length < utf16_units(bs, 0, -1) :
+             result == utf16_units(bs, 0, -1) && (output == 0 || result <= output_length)); @*/
 {
+  //@ if (output != 0) word_capacity(output);
   word size = 0;
   for (word i = 0; i < length; )
   /*@ invariant [f]uchars((uint8 *)input, length, bs) &*&
-                (output == 0 ? true : ushorts_(output, output_length, _)) &*&
-                0 <= i &*& i <= length &*& 0 <= size &*& size <= i; @*/
+                (output == 0 ? true : ushorts_(output, output_length, ?ws) &*& length(ws) == output_length &*& initialized_units(size, ws) == true &*& (!keep || initialized_units(output_length, ws))) &*&
+                size + utf16_units(drop(i, bs), 0, -1) == utf16_units(bs, 0, -1) &*&
+                0 <= i &*& i <= length &*& 0 <= size &*& size <= i &*& (output == 0 || size <= output_length); @*/
   {
+    //@ drop_n_plus_one(i, bs);
     uint8 prefix = input[i];
     //@ uchars_nth_limits((uint8 *)input, i);
     word count = Utils::bytes_in_utf_8_sequence(prefix);
@@ -161,9 +256,11 @@ word Utils::utf_8_to_16(const uint8* input, word length, uint16* output, word ou
     } else if (prefix > Utils::MAX_ASCII) {
       c = Utils::payload_from_prefix(prefix);
       for (word j = 1; j < count; j++)
-      /*@ invariant [f]uchars((uint8 *)input, length, bs) &*& 1 <= j &*& j <= count &*&
+      /*@ invariant [f]uchars((uint8 *)input, length, bs) &*& count <= length - i &*& 1 <= j &*& j <= count &*&
+                    utf16_units(drop(i + j, bs), count - j, c) == utf16_units(drop(i, bs), 0, -1) &*&
                     0 <= c &*& c < c_bound(count, j); @*/
       {
+        //@ drop_n_plus_one(i + j, bs);
         //@ accumulate(c, nth(i + j, bs), count, j);
         c <<= Utils::UTF_8_BITS_PER_BYTE;
         c |= input[i + j] & Utils::UTF_8_MASK;
@@ -171,9 +268,14 @@ word Utils::utf_8_to_16(const uint8* input, word length, uint16* output, word ou
     } else {
       c = prefix;
     }
+    //@ count_pending(drop(i + count, bs), c);
+    //@ units_nonnegative(drop(i + count, bs), 0, -1);
     if (c < 0x10000) {
       if (output) {
         if (size >= output_length) return -1;
+        //@ assert ushorts_(output, output_length, ?ws);
+        //@ record_unit(size, c, ws);
+        //@ if (keep) keep_initialized(size, c, ws);
         output[size] = c;
       }
       size++;
@@ -184,7 +286,13 @@ word Utils::utf_8_to_16(const uint8* input, word length, uint16* output, word ou
         if (size + 1 >= output_length) return -1;
         //@ shiftright_div(c, N10);
         //@ bitand_pow_nat(c, N10);
+        //@ assert ushorts_(output, output_length, ?ws);
+        //@ record_unit(size, 0xd800 + (c >> 10), ws);
+        //@ if (keep) keep_initialized(size, 0xd800 + (c >> 10), ws);
         output[size] = 0xd800 + (c >> 10);
+        //@ assert ushorts_(output, output_length, ?first);
+        //@ record_unit(size + 1, 0xdc00 + (c & 0x3ff), first);
+        //@ if (keep) keep_initialized(size + 1, 0xdc00 + (c & 0x3ff), first);
         output[size + 1] = 0xdc00 + (c & 0x3ff);
       }
       size += 2;

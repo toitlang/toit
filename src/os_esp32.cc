@@ -541,8 +541,7 @@ void OS::unuse_virtual_memory(void* address, uword size) {}
 OS::HeapMemoryRange OS::get_heap_memory_range() {
   multi_heap_info_t info{};
 
-  int caps = EXTERNAL_CAPS;
-  heap_caps_get_info(&info, caps);
+  heap_caps_get_info(&info, EXTERNAL_CAPS);
 
   bool use_spiram = info.lowest_address != null;
 
@@ -571,14 +570,13 @@ OS::HeapMemoryRange OS::get_heap_memory_range() {
     use_spiram = false;
   }
 #endif
+  use_spiram_for_heap_ = use_spiram;
+  use_spiram_for_metadata_ = use_spiram;
   if (use_spiram) {
-    use_spiram_for_metadata_ = true;
-    use_spiram_for_heap_ = true;
     printf("[toit] INFO: using SPIRAM for heap metadata and heap\n");
+  } else {
+    heap_caps_get_info(&info, toit_heap_caps_flags_for_heap());
   }
-
-  caps = toit_heap_caps_flags_for_heap();
-  heap_caps_get_info(&info, caps);
 
   // Older esp-idfs or mallocs other than cmpctmalloc won't set the
   // lowest_address and highest_address fields.

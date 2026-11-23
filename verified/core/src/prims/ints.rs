@@ -21,13 +21,8 @@
 //! its signed overflow wraps on the supported compilers). A result in smi
 //! range is a smi, otherwise a new large integer (`Primitive::integer`).
 //! Functional specification: `int_val` of the result is `int_op` /
-//! `int_cmp` of the arguments' `int_val` (division and modulo only up to
-//! their error cases: Verus has no spec of truncating division).
-//!
-//! The C++ divides by a large integer whose value is 0 or -1 (`int64`
-//! division traps); such objects are never created (`Primitive::integer`
-//! makes smis of small values), but the port handles them (division by
-//! zero fails, -1 negates) instead of trapping.
+//! `int_cmp` of the arguments. Division truncates toward zero and
+//! remainder has the sign of the dividend.
 
 use vstd::prelude::*;
 use crate::layout::*;
@@ -70,7 +65,7 @@ pub fn int_op_exec(op: u8, x: i64, y: i64) -> (r: Result<i64, usize>)
     ensures
         r is Err <==> int_op(op, x, y) is None,
         r is Err ==> r->Err_0 as int == int_err(op) && r->Err_0 < ROOT_COUNT,
-        r is Ok && op != DIV && op != MOD ==> int_op(op, x, y) == Some(r->Ok_0),
+        r is Ok ==> int_op(op, x, y) == Some(r->Ok_0),
 {
     if op == ADD { Ok(x.wrapping_add(y)) }
     else if op == SUB { Ok(x.wrapping_sub(y)) }
@@ -92,12 +87,28 @@ pub fn int_op_exec(op: u8, x: i64, y: i64) -> (r: Result<i64, usize>)
         else { Ok(((x as u64) << (y as u64)) as i64) }
     } else if op == DIV {
         if y == 0 { Err(ROOT_DIVISION_BY_ZERO) }
-        else if y == -1 { Ok(0i64.wrapping_sub(x)) }
-        else { Ok(x / y) }
+        else if y == -1 {
+            assert(toit_spec::spec_common::tdiv(x as int, -1) == -(x as int));
+            let neg = 0i64.wrapping_sub(x);
+            proof {
+                if x == i64::MIN { assert(0i64.wrapping_sub(i64::MIN) == i64::MIN) by (compute); }
+            }
+            Ok(neg)
+        }
+        else {
+            proof { crate::ops::lemma_rust_div(x as int, y as int); }
+            Ok(x.checked_div(y).unwrap())
+        }
     } else {
         if y == 0 { Err(ROOT_DIVISION_BY_ZERO) }
-        else if y == -1 { Ok(0) }
-        else { Ok(x % y) }
+        else if y == -1 {
+            assert(toit_spec::spec_common::trem(x as int, -1) == 0);
+            Ok(0)
+        }
+        else {
+            proof { crate::ops::lemma_rust_div(x as int, y as int); }
+            Ok(x.checked_rem(y).unwrap())
+        }
     }
 }
 
@@ -158,6 +169,8 @@ pub fn int_res(heap: &mut Heap, c: &Ctx, x: i64) -> (r: (PrimOutcome, Ghost<Valu
     requires heap_inv(c.p, old(heap)),
     ensures
         prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+        !(r.0 is NotPorted) ==> toit_spec::v2::prim_core::raw_integer_result(c.p.ap@,
+            old(heap).objs(), final(heap).objs(), ret_of(c.p, r.0, r.1@), x),
         !(r.0 is Failure),
         r.0 is Success ==> int_val(final(heap).objs(), r.1@) == Some(x),
         r.0 is Success && smi_in(x) ==> *final(heap) == *old(heap) && r.1@ == Value::Smi(x),
@@ -180,6 +193,7 @@ pub fn int_res(heap: &mut Heap, c: &Ctx, x: i64) -> (r: (PrimOutcome, Ghost<Valu
     let ghost id = h0.objs().len() as int;
     proof {
         assert(heap.objs()[id] == heap.objs().last());
+        assert(heap.objs() =~= h0.objs().push(heap.objs().last()));
         lemma_post_append(c.p, &h0, heap, w);
     }
     (PrimOutcome::Success(w), Ghost(Value::Obj(id as usize)))

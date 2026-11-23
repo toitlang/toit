@@ -27,7 +27,7 @@
 #include "vm.h"
 #include "os.h"
 #include "snapshot.h"
-#include "third_party/dartino/gc_metadata.h"
+#include "third_party/dartino/object_memory.h"
 
 extern "C" {
   extern unsigned char run_image_image[];
@@ -94,7 +94,7 @@ int main(int argc, char **argv) {
 
   int exit_state = run_program(reinterpret_cast<Program*>(relocated.program()), &argv[1]);
 
-  GcMetadata::tear_down();
+  ObjectMemory::tear_down();
   OS::tear_down();
   FlashRegistry::tear_down();
   return exit_state;

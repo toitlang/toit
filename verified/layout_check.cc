@@ -43,6 +43,7 @@
 #include "verifier_v2.h"
 #include "tags.h"
 #include "third_party/dartino/gc_metadata.h"
+#include "third_party/dartino/object_memory.h"
 
 using namespace toit;
 
@@ -110,7 +111,7 @@ uword toit_v2_allocate_array(void*, uword, uword) { abort(); }
 uword toit_v2_grow_stack(void*, uword) { abort(); }
 uword toit_v2_try_allocate_large_integer(void*, int64) { abort(); }
 uword toit_v2_try_allocate_double(void*, uint64) { abort(); }
-uword toit_v2_try_allocate_array(void*, uword, uword) { abort(); }
+uword toit_v2_try_allocate_array(void*, uword, void*) { abort(); }
 uword toit_v2_try_allocate_string(void*, uword) { abort(); }
 uword toit_v2_try_allocate_byte_array(void*, uword) { abort(); }
 uword toit_v2_primitive(void*, uword, uword, uword, uword, uword*) { abort(); }
@@ -236,6 +237,7 @@ int main() {
 
   Expected expected[] = {
     { "WORD_SIZE", WORD_SIZE, false },
+    { "CHUNK_END_SENTINEL", reinterpret_cast<uword>(chunk_end_sentinel()), false },
     { "SMI_TAG_SIZE", static_cast<uword>(Object::SMI_TAG_SIZE), false },
     { "SMI_TAG_MASK", Object::SMI_TAG_MASK, false },
     { "SMI_TAG", Object::SMI_TAG, false },
@@ -397,7 +399,7 @@ int main() {
     FIELD("PROGRAM_", toit_v2_program, invoke_offsets) FIELD("PROGRAM_", toit_v2_program, entry_points)
     FIELD("PROGRAM_", toit_v2_program, builtin_class_ids) FIELD("PROGRAM_", toit_v2_program, roots)
     FIELD("PROGRAM_", toit_v2_program, literals) FIELD("PROGRAM_", toit_v2_program, globals)
-    FIELD("PROGRAM_", toit_v2_program, program_heap_start)
+    FIELD("PROGRAM_", toit_v2_program, program_heap_start) FIELD("PROGRAM_", toit_v2_program, program_heap_size)
     FIELD("PROGRAM_", toit_v2_program, remembered_set_bias)
     FIELD("PROGRAM_", toit_v2_program, global_max_height)
     FIELD("PROGRAM_", toit_v2_program, stack_array_word)
@@ -409,7 +411,6 @@ int main() {
     FIELD("CONTEXT_", toit_v2_context, epoch)
     FIELD("CONTEXT_", toit_v2_context, unchecked)
     FIELD("CONTEXT_", toit_v2_context, new_space_top) FIELD("CONTEXT_", toit_v2_context, new_space_limit)
-    FIELD("CONTEXT_", toit_v2_context, new_space_sentinel)
     FIELD("CONTEXT_", toit_v2_context, result_state) FIELD("CONTEXT_", toit_v2_context, result_value)
 #undef FIELD
   };

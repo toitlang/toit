@@ -67,6 +67,7 @@ pub spec const RUN_GLOBAL_INITIALIZER: int = 8;
 pub spec const NULL_ROOT: int = 0;
 pub spec const TRUE_ROOT: int = 1;
 pub spec const FALSE_ROOT: int = 2;
+pub spec const EMPTY_ARRAY_ROOT: int = 3;
 pub spec const ERROR_ROOT: int = 12;
 
 // ---------------------------------------------------------------------------

@@ -31,26 +31,85 @@
 namespace toit {
 static const int V2_TAG_SIZE = 4;
 
-static V2MethodTable* v2_fail(const char* message, word detail = -1) {
-  if (detail >= 0) {
-    fprintf(stderr, "format-2 program rejected: %s (%" PRIdPTR ")\n", message, detail);
-  } else {
-    fprintf(stderr, "format-2 program rejected: %s\n", message);
-  }
-  return null;
-}
-
 V2MethodTable::~V2MethodTable() {
   if (owned_) free(const_cast<uint32*>(records_));
 }
+
+static_assert(V2_TAG_SIZE == 4 && V2_RECORD_ENTRY_SHIFT == 8, "method table proof constants");
+#include "v2_validate_records.h"
 
 static uint32 v2_read_u32_le(const uint8* p) {
   return static_cast<uint32>(p[0]) | (static_cast<uint32>(p[1]) << 8) |
          (static_cast<uint32>(p[2]) << 16) | (static_cast<uint32>(p[3]) << 24);
 }
 
+static word v2_record_entry(const uint8* p) {
+  return v2_read_u32_le(p) >> V2_RECORD_ENTRY_SHIFT;
+}
+
 static uint16 v2_read_u16_le(const uint8* p) {
   return static_cast<uint16>(p[0] | (p[1] << 8));
+}
+
+#include "v2_compute_method_table.h"
+
+static ByteArray* v2_last_table_literal(Program* program) {
+  // The table has length -1 before the compiler creates it.
+  int count = program->literals.length();
+  if (count <= 0) return null;
+  Object* last = program->literals.at(count - 1);
+  return is_byte_array(last) ? ByteArray::cast(last) : null;
+}
+
+static V2LiteralStatus v2_read_table_literal(const uint8* data, word size, word length, V2TableLiteral* table) {
+  if (size < V2MethodTable::TABLE_LITERAL_HEADER_SIZE ||
+      v2_read_u32_le(data) != V2MethodTable::TABLE_LITERAL_MARKER) {
+    return V2LiteralStatus::NO_TABLE;
+  }
+  table->count = v2_read_u32_le(data + 4);
+  if (v2_read_u32_le(data + 8) != static_cast<uword>(length)) return V2LiteralStatus::OTHER_BYTECODES;
+  if (table->count == 0 || table->count >= 0x1000000) return V2LiteralStatus::BAD_COUNT;
+  if (static_cast<uword>(size - V2MethodTable::TABLE_LITERAL_HEADER_SIZE) != table->count * sizeof(uint32)) {
+    return V2LiteralStatus::BAD_SIZE;
+  }
+  table->records = data + V2MethodTable::TABLE_LITERAL_HEADER_SIZE;
+  return V2LiteralStatus::OK;
+}
+
+static V2Header v2_check_header(const uint8* bytes, word length, word entry, word expected) {
+  if (entry <= expected || entry >= length) return V2_HEADER_BAD_ENTRY;
+  int kind_byte = bytes[entry - 1];
+  int kind = kind_byte & V2_KIND_MASK;
+  if ((kind_byte & ~(V2_KIND_MASK | V2_KIND_SINGLE)) != 0 ||
+      ((kind_byte & V2_KIND_SINGLE) != 0 && kind != V2_KIND_METHOD)) {
+    return V2_HEADER_BAD_KIND;
+  }
+  if (entry - V2MethodTable::header_size(kind_byte) != expected) return V2_HEADER_BAD_POSITION;
+  if (kind == V2_KIND_METHOD || kind == V2_KIND_FIELD_ACCESSOR) {
+    uint16 start = v2_read_u16_le(bytes + entry - V2_RECV_START_BACK);
+    bool ok = true;
+    if (kind == V2_KIND_METHOD && (kind_byte & V2_KIND_SINGLE) == 0) {
+      // At least two classes (one class or none is the short form).
+      ok = start < V2_NO_VALUE && start + 1 < v2_read_u16_le(bytes + entry - V2_RECV_END_BACK);
+    } else if (kind == V2_KIND_FIELD_ACCESSOR) {
+      uint16 end = v2_read_u16_le(bytes + entry - V2_RECV_END_BACK);
+      ok = start == V2_NO_VALUE ? end == V2_NO_VALUE : start < end;
+    }
+    if (!ok) return V2_HEADER_BAD_RANGE;
+  }
+  return V2_HEADER_OK;
+}
+
+// Compute the exclusive end of a non-final method's body. Delay the
+// header read until the next entry has been checked against the image.
+static V2NextHeader v2_next_header(const uint8* bytes, word length, word entry,
+                                   const uint8* next_record, word* end) {
+  word next = v2_record_entry(next_record);
+  if (next <= entry || next > length) return V2_NEXT_BAD_ENTRY;
+  word header = next - V2MethodTable::header_size(bytes[next - 1]);
+  if (header <= entry) return V2_NEXT_EMPTY_BODY;
+  *end = header;
+  return V2_NEXT_OK;
 }
 
 // Format note 21 and `vdecode` in verified/spec/src/v2/vprog.rs: the
@@ -115,79 +174,8 @@ bool V2MethodTable::trusted_on_verified_loop() {
   return enabled == 1;
 }
 
-// The table literal (format note 21), checked: every header lies inside
-// the bytecodes before its entry (the core reads headers without bounds
-// checks: `table_ok` in verified/spec/src/v2/vprog.rs, part of the
-// loader's contract `prog_rel`), the methods follow each other from the
-// tag to the end of the bytecodes with nonempty bodies, and every header
-// is in its canonical form (no unknown kind-byte bits, SINGLE only for a
-// method, a range of at least two classes in the long form, no empty
-// accessor range). Only what
-// is needed for the table: everything else (dispatch table, receiver
-// ranges, instructions, branch targets, terminators, HALT in untrusted
-// programs, the program heap) is the structural verifier's job
-// (verifier_v2.h), which runs on this very table before an untrusted
-// program runs. Trusted format-2 programs are verified only with
-// -Xverify/TOIT_VERIFY: the core checks every stuck state of the
-// specification at run time, so an unverified program cannot make it
-// access memory outside the tables.
-V2MethodTable* V2MethodTable::compute(Program* program, bool* out_of_memory) {
-  if (out_of_memory != null) *out_of_memory = false;
-  const uint8* bytes = program->bytecodes.data();
-  word length = program->bytecodes.length();
-  if (!program->is_format2()) return v2_fail("missing tag");
-  if (length >= V2_MAX_BYTECODES) return v2_fail("bytecodes too large");
-  // Not yet created (-1) while the compiler builds the program.
-  word literals = program->literals.length();
-  if (literals <= 0) return v2_fail("no method table");
-  Object* last = program->literals.at(literals - 1);
-  if (!is_byte_array(last)) return v2_fail("no method table");
-  ByteArray::Bytes literal(ByteArray::cast(last));
-  const uint8* data = literal.address();
-  word size = literal.length();
-  if (size < TABLE_LITERAL_HEADER_SIZE || v2_read_u32_le(data) != TABLE_LITERAL_MARKER) {
-    return v2_fail("no method table");
-  }
-  uword count = v2_read_u32_le(data + 4);
-  if (v2_read_u32_le(data + 8) != static_cast<uword>(length)) return v2_fail("method table of other bytecodes");
-  if (count == 0 || count >= 0x1000000) return v2_fail("bad method count", count);
-  if (static_cast<uword>(size - TABLE_LITERAL_HEADER_SIZE) != count * sizeof(uint32)) {
-    return v2_fail("bad method table size", size);
-  }
-  word expected = V2_TAG_SIZE;  // The next header.
-  const uint8* records = data + TABLE_LITERAL_HEADER_SIZE;
-  for (uword i = 0; i < count; i++) {
-    word entry = v2_read_u32_le(records + 4 * i) >> V2_RECORD_ENTRY_SHIFT;
-    if (entry <= expected || entry >= length) return v2_fail("bad method entry", i);
-    int kind_byte = bytes[entry - 1];
-    int kind = kind_byte & V2_KIND_MASK;
-    if ((kind_byte & ~(V2_KIND_MASK | V2_KIND_SINGLE)) != 0 ||
-        ((kind_byte & V2_KIND_SINGLE) != 0 && kind != V2_KIND_METHOD)) {
-      return v2_fail("bad method kind byte", entry - 1);
-    }
-    if (entry - header_size(kind_byte) != expected) return v2_fail("methods do not follow each other", i);
-    if (kind == V2_KIND_METHOD || kind == V2_KIND_FIELD_ACCESSOR) {
-      uint16 start = v2_read_u16_le(bytes + entry - V2_RECV_START_BACK);
-      bool ok = true;
-      if (kind == V2_KIND_METHOD && (kind_byte & V2_KIND_SINGLE) == 0) {
-        // At least two classes (one class or none is the short form).
-        ok = start < V2_NO_VALUE && start + 1 < v2_read_u16_le(bytes + entry - V2_RECV_END_BACK);
-      } else if (kind == V2_KIND_FIELD_ACCESSOR) {
-        uint16 end = v2_read_u16_le(bytes + entry - V2_RECV_END_BACK);
-        ok = start == V2_NO_VALUE ? end == V2_NO_VALUE : start < end;
-      }
-      if (!ok) return v2_fail("bad receiver range", entry);
-    }
-    // The body is at least one instruction; the next header follows it.
-    expected = entry + 1;
-    if (i + 1 < count) {
-      word next = v2_read_u32_le(records + 4 * (i + 1)) >> V2_RECORD_ENTRY_SHIFT;
-      if (next <= entry || next > length) return v2_fail("bad method entry", i + 1);
-      expected = next - header_size(bytes[next - 1]);
-      if (expected <= entry) return v2_fail("empty method body", i);
-    }
-  }
-  if (expected > length) return v2_fail("truncated method body");
+V2MethodTable* V2MethodTable::install(const uint8* records, uword count, const uint8* bytes,
+                                     word length, bool* out_of_memory) {
   // The records are read as u32: the bytes must be aligned (program heap
   // and off-heap allocations are word aligned; copied otherwise).
   if ((reinterpret_cast<uword>(records) & 3) == 0) {

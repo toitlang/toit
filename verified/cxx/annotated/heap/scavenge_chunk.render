@@ -1,0 +1,126 @@
+// Copyright (C) 2026 Toit contributors.
+@include ../model/model.cfg
+@verbatim
+#include "../model/objects.gen.h"
+//@ #include "scan_positions.gh"
+//@ #include <ghost_cells.gh>
+typedef struct RootCallback { char unused; } RootCallback;
+typedef RootCallback ScavengeVisitor;
+typedef struct Chunk { uword scavenge_pointer_; } Chunk;
+
+/*@
+predicate partition(Program *p, RootCallback *v, int current, int limit, list<int> queue);
+predicate cursor(Program *p, RootCallback *v, int current, int limit, list<int> queue) =
+  partition(p,v,current,limit,queue) &*& 0 < current &*& current <= limit &*& limit <= UINTPTR_MAX &*&
+  current % sizeof(word) == 0 &*& pointer((void **)current,?header) &*&
+  (header == 0) == (queue == nil) &*& (queue == nil || current == head(queue) && current < limit);
+predicate object_size(HeapObject *o, Program *p; int size);
+predicate promotions(RootCallback *v, bool pending);
+predicate promotion_state(RootCallback *v, bool counted, bool pending) =
+  counted ? promotions(v,pending) : pending == false;
+predicate measurement(int id, bool counted, list<int> pool) =
+  counted ? ghost_cell(id,pool) : pool == nil;
+// A nominated object can join the queue initially or while scanning an edge.
+predicate visits(RootCallback *v, int probe, int count, bool enqueued);
+@*/
+void HeapObject_roots_do(HeapObject *o, Program *p, RootCallback *v);
+/*@ requires cursor(p,v,?a,?limit,cons(a,?tail)) &*& (uword)o == a+1 &*& visits(v,?probe,?count,?enqueued) &*& promotion_state(v,?counted,?old); @*/
+/*@ ensures object_size(o,p,?size) &*& 0 < size &*& a+size <= limit &*&
+    exists<list<int> >(?added) &*& cursor(p,v,a+size,limit,append(tail,added)) &*&
+    visits(v,probe,count + (a == probe ? 1 : 0),enqueued || mem(probe,added)) &*&
+    promotion_state(v,counted,?promoted) &*& (!old || promoted); @*/
+//@ terminates;
+word HeapObject_size(HeapObject *o,Program *p);
+//@ requires object_size(o,p,?size);
+//@ ensures result == size;
+//@ terminates;
+@prototypes
+@render src/third_party/dartino/object_memory.h toit::chunk_end_sentinel tu=src/third_party/dartino/object_memory_copying.cc
+static inline Object* chunk_end_sentinel()
+//@ requires true;
+//@ ensures result == 0;
+//@ terminates;
+{
+  return reinterpret_cast<Object*>(0);
+}
+@render src/third_party/dartino/object_memory.h toit::has_sentinel_at tu=src/third_party/dartino/object_memory_copying.cc
+static inline bool has_sentinel_at(uword address)
+//@ requires [?f]pointer((void **)address,?header);
+//@ ensures [f]pointer((void **)address,header) &*& result == (header == 0);
+//@ terminates;
+{
+  return *reinterpret_cast<Object**>(address) == chunk_end_sentinel();
+}
+@render src/objects.h toit::HeapObject::from_address tu=src/third_party/dartino/object_memory_copying.cc
+  static HeapObject* from_address(uword address)
+  //@ requires 0 < address &*& address < UINTPTR_MAX &*& address % sizeof(word) == 0;
+  //@ ensures (uword)result == address+1;
+  //@ terminates;
+  {
+    ASSERT((address & NON_SMI_TAG_MASK) == SMI_TAG);
+    return reinterpret_cast<HeapObject*>(address + HEAP_TAG);
+  }
+@render src/third_party/dartino/object_memory.h toit::Chunk::scavenge_pointer tu=src/third_party/dartino/object_memory_copying.cc
+  uword scavenge_pointer() const
+  //@ requires [?f]self->scavenge_pointer_ |-> ?p;
+  //@ ensures [f]self->scavenge_pointer_ |-> p &*& result == p;
+  //@ terminates;
+  { return scavenge_pointer_; }
+@render src/third_party/dartino/object_memory.h toit::Chunk::set_scavenge_pointer tu=src/third_party/dartino/object_memory_copying.cc
+  void set_scavenge_pointer(uword p)
+  //@ requires self->scavenge_pointer_ |-> _;
+  //@ ensures self->scavenge_pointer_ |-> p;
+  //@ terminates;
+  {
+    ASSERT(p >= start_);
+    ASSERT(p <= end_);
+    scavenge_pointer_ = p;
+  }
+@render src/third_party/dartino/object_memory_copying.cc toit::scan_copied_chunk
+static bool scan_copied_chunk(Program* program, ScavengeVisitor* visitor, Chunk* chunk)
+/*@ requires chunk->scavenge_pointer_ |-> ?first &*& cursor(program,visitor,first,?limit,?initial) &*& visits(visitor,?probe,0,false) &*& measurement(?id,?counted,?initial_pool) &*& promotion_state(visitor,counted,?old) &*& (!counted || forall_int((available_word)(initial_pool,first,limit))); @*/
+/*@ ensures chunk->scavenge_pointer_ |-> ?last &*& cursor(program,visitor,last,limit,nil) &*& visits(visitor,probe,?now,?enqueued) &*& 0 <= now &*& now <= 1 &*& (!enqueued || now == 1) &*&
+      first <= last &*& last <= limit &*& result == (first != last) &*& result == (initial != nil) &*&
+      measurement(id,counted,?rest) &*& promotion_state(visitor,counted,?promoted) &*& (!counted || forall_int((available_word)(rest,last,limit))) &*& (result ? (!counted || length(rest) < length(initial_pool)) && (!old || promoted) : rest == initial_pool && promoted == old) &*&
+      (!counted || !distinct(initial_pool) || distinct(rest) && mem(probe,rest) == (mem(probe,initial_pool) && now == 0)) &*&
+      (!mem(probe,initial) || now == 1) &*& (now == 0 || first <= probe && probe < last); @*/
+//@ terminates;
+{
+  uword start = chunk->scavenge_pointer();
+  uword current = start;
+  //@ open cursor(program,visitor,current,limit,initial);
+  while (!has_sentinel_at(current))
+  /*@ invariant first <= current &*& current <= limit &*& limit <= UINTPTR_MAX &*& current % sizeof(word) == 0 &*&
+        partition(program,visitor,current,limit,?queue) &*& pointer((void **)current,?h) &*& (h == 0) == (queue == nil) &*&
+        (queue == nil || current == head(queue) && current < limit) &*&
+        visits(visitor,probe,?hit,?enqueued) &*& 0 <= hit &*& hit <= 1 &*& (!enqueued || hit == 1 || mem(probe,queue)) &*& (!mem(probe,initial) || hit == 1 || mem(probe,queue)) &*&
+        (hit == 0 || first <= probe && probe < current) &*&
+        measurement(id,counted,?pool) &*& promotion_state(visitor,counted,?pending) &*& (!counted || forall_int((available_word)(pool,current,limit))) &*&
+        (!counted || !distinct(initial_pool) || distinct(pool) && mem(probe,pool) == (mem(probe,initial_pool) && hit == 0)) &*& (current == first ? queue == initial && pool == initial_pool && pending == old :
+        initial != nil && (!counted || length(pool) < length(initial_pool)) && (!old || pending)); @*/
+  //@ decreases limit-current;
+  {
+    HeapObject* object = HeapObject::from_address(current);
+    //@ switch (queue) { case nil: case cons(hd,tl): }
+    //@ close cursor(program,visitor,current,limit,queue);
+    object->roots_do(program, visitor);
+    //@ assert object_size(object,program,?size);
+    //@ open measurement(id,counted,pool);
+    /*@ if (counted) {
+      consume_scan_position(pool,current,current+size,limit);
+      if (distinct(initial_pool)) {
+        distinct_remove(current,pool);
+        if (probe == current) { distinct_mem_remove(current,pool); } else { neq_mem_remove(probe,current,pool); }
+      }
+      ghost_cell_mutate<list<int> >(id,remove<int>(current,pool));
+    } @*/
+    //@ close measurement(id,counted,remove(current,pool));
+    //@ open exists<list<int> >(?added);
+    //@ mem_append(probe,tail(queue),added);
+    current += object->size(program);
+    //@ open cursor(program,visitor,current,limit,_);
+  }
+  //@ close cursor(program,visitor,current,limit,nil);
+  chunk->set_scavenge_pointer(current);
+  return current != start;
+}

@@ -1,0 +1,40 @@
+// Copyright (C) 2026 Toit contributors.
+@include ../model/model.cfg
+@overloaded Utils::fill_words
+@verbatim
+#include "../model/objects.gen.h"
+
+/*@
+lemma void extend_fill(void **base,int count,void *value)
+  requires pointers(base,count,?xs) &*& all_eq(xs,value) == true &*& base[count] |-> value;
+  ensures pointers(base,count+1,?ys) &*& all_eq(ys,value) == true;
+{
+  open pointers(base,count,xs);
+  if (count == 0) {
+    close pointers(base+1,0,nil);
+    close pointers(base,1,cons(value,nil));
+  } else {
+    extend_fill(base+1,count-1,value);
+    assert pointers(base+1,count,?tail);
+    close pointers(base,count+1,cons(value,tail));
+  }
+}
+@*/
+@render src/utils.h toit::Utils::fill_words tu=src/objects.cc type=void(toit::Object**,uword,toit::Object*)
+  static inline void fill_words(T* data, uword count, T value)
+  //@ requires pointers_((void **)data,count,_);
+  //@ ensures pointers((void **)data,count,?xs) &*& all_eq(xs,(void *)value) == true;
+  //@ terminates;
+  {
+    //@ close pointers((void **)data,0,nil);
+    for (uword i = 0; i < count; ++i)
+    /*@ invariant i <= count &*& pointers((void **)data,i,?prefix) &*& all_eq(prefix,(void *)value) == true &*&
+                  pointers_((void **)data+i,count-i,_); @*/
+    //@ decreases count-i;
+    {
+      //@ open pointers_((void **)data+i,count-i,_);
+      data[i] = value;
+      //@ extend_fill((void **)data,i,value);
+    }
+    //@ open pointers_((void **)data+count,0,_);
+  }

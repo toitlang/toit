@@ -1,0 +1,594 @@
+// Copyright (C) 2026 Toit contributors.
+@include ../model/model.cfg
+@header free_list.gen.h
+@verbatim
+#include "../model/objects.gen.h"
+#include "free_region.h"
+typedef uword size_t;
+struct FreeList { FreeListRegion *buckets_[FreeList_NUMBER_OF_BUCKETS]; };
+typedef struct FreeList FreeList;
+
+/*@
+inductive region = region_entry(pair<FreeListRegion *, int>);
+fixpoint region region(FreeListRegion *p, int n) { return region_entry(pair(p,n)); }
+fixpoint FreeListRegion *address(region r) { switch (r) { case region_entry(e): return fst(e); } }
+fixpoint int extent(region r) { switch (r) { case region_entry(e): return snd(e); } }
+fixpoint FreeListRegion *first_fit(list<region> items, int size) {
+  switch (items) {
+    case nil: return 0;
+    case cons(h,t): return extent(h) >= size ? address(h) : first_fit(t,size);
+  }
+}
+fixpoint list<region> remaining(list<region> items, int size) {
+  switch (items) {
+    case nil: return nil;
+    case cons(h,t): return extent(h) >= size ? t : cons(h,remaining(t,size));
+  }
+}
+
+// Count bytes in chainable regions. Short fillers are outside the free list.
+fixpoint int chain_bytes(list<region> xs) {
+  switch(xs) { case nil: return 0; case cons(h,t): return (extent(h) > 0 ? extent(h) : 0) + chain_bytes(t); }
+}
+fixpoint int free_bytes(list<list<region> > bs) {
+  switch(bs) { case nil: return 0; case cons(h,t): return chain_bytes(h) + free_bytes(t); }
+}
+fixpoint int fit_bytes(list<region> xs, int size) {
+  switch(xs) { case nil: return 0; case cons(h,t): return extent(h) >= size ? extent(h) : fit_bytes(t,size); }
+}
+lemma void chain_bytes_nonnegative(list<region> xs)
+  requires true;
+  ensures chain_bytes(xs) >= 0;
+{
+  switch(xs) { case nil: case cons(h,t): chain_bytes_nonnegative(t); }
+}
+lemma void free_bytes_nonnegative(list<list<region> > bs)
+  requires true;
+  ensures free_bytes(bs) >= 0;
+{
+  switch(bs) { case nil: case cons(h,t): chain_bytes_nonnegative(h); free_bytes_nonnegative(t); }
+}
+lemma void replace_bytes(list<list<region> > bs, int i, list<region> xs)
+  requires 0 <= i &*& i < length(bs);
+  ensures free_bytes(update(i,xs,bs)) == free_bytes(bs) - chain_bytes(nth(i,bs)) + chain_bytes(xs);
+{
+  switch(bs) { case nil: case cons(h,t): if (i != 0) replace_bytes(t,i-1,xs); }
+}
+lemma void remove_bytes(list<region> xs, int size)
+  requires size > 0;
+  ensures chain_bytes(remaining(xs,size)) + fit_bytes(xs,size) == chain_bytes(xs);
+{
+  switch(xs) { case nil: case cons(h,t): if (extent(h) < size) remove_bytes(t,size); }
+}
+
+// Ownership of a chainable region, including its payload, follows its link.
+predicate block(FreeListRegion *p, int size, FreeListRegion *next) =
+  region_storage(p,?base,?count,next,?slots) &*& size == count * sizeof(word);
+predicate chain(FreeListRegion *p, list<region> items) =
+  p == 0 ? items == nil :
+    block(p, ?n, ?next) &*& chain(next, ?tail) &*& items == cons(region(p,n),tail);
+
+// Keep the last skipped node separately so its link can be rewritten.
+predicate skipped(FreeListRegion *p, FreeListRegion *stop, list<region> items, int min) =
+  switch (items) {
+    case nil: return p == stop;
+    case cons(h,t): return p != 0 &*& p == address(h) &*& extent(h) < min &*&
+      block(p, extent(h), ?next) &*& skipped(next,stop,t,min);
+  };
+
+lemma void extend_skipped(FreeListRegion *p, FreeListRegion *last, FreeListRegion *next, list<region> xs, int min, int n)
+  requires skipped(p,last,xs,min) &*& last != 0 &*& block(last,n,next) &*& n < min;
+  ensures skipped(p,next,append(xs,cons(region(last,n),nil)),min);
+{
+  open skipped(p,last,xs,min);
+  switch (xs) {
+    case nil:
+      close skipped(next,next,nil,min);
+    case cons(h,t):
+      assert block(p,extent(h),?q);
+      extend_skipped(q,last,next,t,min,n);
+  }
+  close skipped(p,next,append(xs,cons(region(last,n),nil)),min);
+}
+
+lemma void restore_skipped(FreeListRegion *p, FreeListRegion *stop, list<region> xs, int min)
+  requires skipped(p,stop,xs,min) &*& chain(stop,?ys);
+  ensures chain(p,append(xs,ys));
+{
+  open skipped(p,stop,xs,min);
+  switch (xs) {
+    case nil:
+    case cons(h,t):
+      assert block(p,extent(h),?q);
+      restore_skipped(q,stop,t,min);
+      switch (h) { case region_entry(e): switch(e) { case pair(a,n): } }
+      close chain(p,append(xs,ys));
+  }
+}
+
+fixpoint int size_bucket(int n) {
+  return n < 2 ? 0 : n < 4 ? 1 : n < 8 ? 2 : n < 16 ? 3 : n < 32 ? 4 :
+         n < 64 ? 5 : n < 128 ? 6 : n < 256 ? 7 : n < 512 ? 8 : n < 1024 ? 9 : n < 2048 ? 10 : 11;
+}
+fixpoint bool in_bucket(int i, region r) { return extent(r) > 0 && size_bucket(extent(r)) == i; }
+fixpoint bool empty_bank(list<region> xs) { return xs == nil; }
+fixpoint int highest_nonempty(list<list<region> > bs) {
+  switch (bs) {
+    case nil: return -1;
+    case cons(h,t): return highest_nonempty(t) >= 0 ? 1 + highest_nonempty(t) : h == nil ? -1 : 0;
+  }
+}
+fixpoint int search_bucket(list<list<region> > bs, int size) {
+  return highest_nonempty(bs) > size_bucket(size) ? highest_nonempty(bs) : size_bucket(size);
+}
+fixpoint list<region> searched_regions(list<list<region> > bs, int size) {
+  return nth(search_bucket(bs,size),bs);
+}
+fixpoint list<list<region> > banks_after_search(list<list<region> > bs, int size) {
+  return update(search_bucket(bs,size),remaining(searched_regions(bs,size),size),bs);
+}
+lemma void all_banks_empty(list<list<region> > bs)
+  requires forall(bs,empty_bank) == true;
+  ensures highest_nonempty(bs) == -1;
+{
+  switch(bs) { case nil: case cons(h,t): all_banks_empty(t); }
+}
+lemma void highest_bank_bound(list<list<region> > bs, int i)
+  requires 0 <= i &*& i < length(bs) &*& forall(drop(i+1,bs),empty_bank) == true;
+  ensures highest_nonempty(bs) <= i &*& (nth(i,bs) != nil ? highest_nonempty(bs) == i : true);
+{
+  switch(bs) {
+    case nil:
+    case cons(h,t): if (i == 0) all_banks_empty(t); else highest_bank_bound(t,i-1);
+  }
+}
+// Bucket contents after returning the active suffix to the free list.
+fixpoint list<list<region> > flushed_banks(list<list<region> > banks, FreeListRegion *inserted, int bytes) {
+  return inserted == 0 ? banks : update(size_bucket(bytes),cons(region(inserted,bytes),nth(size_bucket(bytes),banks)),banks);
+}
+predicate bank(FreeListRegion **cell, int i, list<region> xs) =
+  *cell |-> ?root &*& chain(root,xs) &*& forall(xs,(in_bucket)(i)) == true;
+predicate banks(FreeListRegion **cells, int i, list<list<region> > bs) =
+  switch (bs) {
+    case nil: return true;
+    case cons(h,t): return bank(cells,i,h) &*& banks(cells+1,i+1,t);
+  };
+// Clearing the bucket heads leaves every previous chain available to sweep.
+fixpoint list<list<region> > empty_banks_like(list<list<region> > bs) {
+  switch(bs) { case nil: return nil; case cons(h,t): return cons(nil,empty_banks_like(t)); }
+}
+predicate detached_banks(list<list<region> > bs) =
+  switch(bs) {
+    case nil: return true;
+    case cons(h,t): return chain(?root,h) &*& detached_banks(t);
+  };
+lemma void detach_banks(FreeListRegion **cells, int i, list<list<region> > bs)
+  requires banks(cells,i,bs);
+  ensures pointers((void **)cells,length(bs),_) &*& detached_banks(bs);
+{
+  open banks(cells,i,bs);
+  switch(bs) {
+    case nil: close pointers((void **)cells,0,nil);
+    case cons(h,t):
+      open bank(cells,i,h);
+      detach_banks(cells+1,i+1,t);
+      close pointers((void **)cells,length(bs),_);
+  }
+  close detached_banks(bs);
+}
+fixpoint bool null_head(void *p) { return p == 0; }
+lemma void install_empty_banks(FreeListRegion **cells, int i, list<list<region> > bs)
+  requires pointers((void **)cells,length(bs),?heads) &*& forall(heads,null_head) == true;
+  ensures banks(cells,i,empty_banks_like(bs));
+{
+  open pointers((void **)cells,length(bs),heads);
+  switch(bs) {
+    case nil:
+    case cons(h,t):
+      close chain(0,nil);
+      close bank(cells,i,nil);
+      install_empty_banks(cells+1,i+1,t);
+  }
+  close banks(cells,i,empty_banks_like(bs));
+}
+predicate before_bank(FreeListRegion **cells, int i, list<list<region> > bs, int count) =
+  count == 0 ? true : bank(cells,i,head(bs)) &*& before_bank(cells+1,i+1,tail(bs),count-1);
+
+lemma void focus_bank(FreeListRegion **cells, int i, list<list<region> > bs, int k)
+  requires banks(cells,i,bs) &*& 0 <= k &*& k < length(bs);
+  ensures before_bank(cells,i,bs,k) &*& bank(cells+k,i+k,nth(k,bs)) &*& banks(cells+k+1,i+k+1,drop(k+1,bs));
+{
+  open banks(cells,i,bs);
+  switch(bs) {
+    case nil:
+    case cons(h,t):
+      if (k != 0) focus_bank(cells+1,i+1,t,k-1);
+      close before_bank(cells,i,bs,k);
+  }
+}
+
+lemma void replace_bank(FreeListRegion **cells, int i, list<list<region> > bs, int k, list<region> xs)
+  requires before_bank(cells,i,bs,k) &*& bank(cells+k,i+k,xs) &*& banks(cells+k+1,i+k+1,drop(k+1,bs)) &*& 0 <= k &*& k < length(bs);
+  ensures banks(cells,i,update(k,xs,bs));
+{
+  open before_bank(cells,i,bs,k);
+  switch(bs) {
+    case nil:
+    case cons(h,t):
+      if (k != 0) replace_bank(cells+1,i+1,t,k-1,xs);
+      close banks(cells,i,update(k,xs,bs));
+  }
+}
+
+lemma void skip_empty(int i, list<list<region> > bs)
+  requires 0 <= i &*& i < length(bs) &*& nth(i,bs) == nil &*& forall(drop(i+1,bs),empty_bank) == true;
+  ensures forall(drop(i,bs),empty_bank) == true &*& update(i,nth(i,bs),bs) == bs;
+{
+  switch (bs) { case nil: case cons(h,t): if (i != 0) skip_empty(i-1,t); }
+}
+
+lemma void remove_fit(int i, list<region> xs, int size)
+  requires forall(xs,(in_bucket)(i)) == true;
+  ensures forall(remaining(xs,size),(in_bucket)(i)) == true;
+{
+  switch(xs) { case nil: case cons(h,t): if (extent(h) < size) remove_fit(i,t,size); }
+}
+@*/
+int Utils_clz(uword size);
+//@ requires size > 0;
+//@ ensures 0 <= result &*& result < 8 * sizeof(word) &*& size_bucket(size) == (8 * sizeof(word) - result >= 12 ? 11 : 8 * sizeof(word) - result - 1);
+//@ terminates;
+
+@render src/objects.h toit::FreeListRegion::cast type=FreeListRegion*(Object*) tu=src/third_party/dartino/object_memory_mark_sweep.cc
+  static FreeListRegion* cast(Object* value)
+  //@ requires true;
+  //@ ensures result == value;
+  {
+    ASSERT(is_free_list_region(value));
+    return static_cast<FreeListRegion*>(value);
+  }
+
+@render src/objects.h toit::FreeListRegion::next_region tu=src/third_party/dartino/object_memory_mark_sweep.cc
+  FreeListRegion* next_region()
+  //@ requires block(self,?n,?next);
+  //@ ensures block(self,n,next) &*& result == next;
+  {
+    ASSERT(can_be_daisychained());
+    //@ open block(self,n,next);
+    //@ open region_storage(self,?base,?count,next,?slots);
+    //@ open pointers_((void **)base,count,slots);
+    //@ open pointers_((void **)base+1,count-1,_);
+    //@ open pointers_((void **)base+2,count-2,_);
+    Object* result = _at(NEXT_OFFSET);
+    //@ close pointers_((void **)base+2,count-2,drop(2,slots));
+    //@ close pointers_((void **)base+1,count-1,tail(slots));
+    //@ close pointers_((void **)base,count,slots);
+    //@ close region_storage(self,base,count,next,slots);
+    //@ close block(self,n,next);
+    if (result == null) return null;
+    return FreeListRegion::cast(result);
+  }
+
+@render src/objects.h toit::FreeListRegion::set_next_region tu=src/third_party/dartino/object_memory_mark_sweep.cc
+  void set_next_region(FreeListRegion* next)
+  //@ requires block(self,?n,?old);
+  //@ ensures block(self,n,next);
+  //@ terminates;
+  {
+    ASSERT(can_be_daisychained());
+    //@ open block(self,n,old);
+    //@ open region_storage(self,?base,?count,old,?slots);
+    //@ open pointers_((void **)base,count,slots);
+    //@ open pointers_((void **)base+1,count-1,_);
+    //@ open pointers_((void **)base+2,count-2,_);
+    _at_put(NEXT_OFFSET, next);
+    //@ list<option<void *> > updated = update(2,some((void *)next),slots);
+    //@ close pointers_((void **)base+2,count-2,drop(2,updated));
+    //@ close pointers_((void **)base+1,count-1,tail(updated));
+    //@ close pointers_((void **)base,count,updated);
+    //@ close region_storage(self,base,count,next,updated);
+    //@ close block(self,n,next);
+  }
+
+@verbatim
+/*@
+predicate free_storage(uword start, int size) =
+  start != 0 &*& start % sizeof(word) == 0 &*& size >= 0 &*& size % sizeof(word) == 0 &*&
+  pointers_((void **)start,size / sizeof(word),_);
+predicate filler_words(uword start, int size);
+@*/
+/*@
+predicate free_table_after(FreeList *table, list<list<region> > bs, uword start, uword size) =
+  size < 3 * sizeof(word) ? filler_words(start,size) &*& banks(table->buckets_,0,bs) :
+    exists<FreeListRegion*>(?p) &*& p == (FreeListRegion *)(start+1) &*& (uword)p == start + 1 &*&
+    banks(table->buckets_,0,update(size_bucket(size),cons(region(p,size),nth(size_bucket(size),bs)),bs));
+@*/
+FreeListRegion *FreeListRegion_create_at(uword start, uword size);
+//@ requires free_storage(start,size);
+//@ ensures size < 3 * sizeof(word) ? result == 0 &*& filler_words(start,size) : result != 0 &*& result == (FreeListRegion *)(start+1) &*& (uword)result == start + 1 &*& block(result,size,0);
+//@ terminates;
+
+@render src/third_party/dartino/object_memory.h toit::FreeList::clear tu=src/third_party/dartino/object_memory_mark_sweep.cc
+  void clear()
+  //@ requires banks(self->buckets_,0,?bs) &*& length(bs) == FreeList_NUMBER_OF_BUCKETS;
+  //@ ensures banks(self->buckets_,0,empty_banks_like(bs)) &*& detached_banks(bs);
+  //@ terminates;
+  {
+    //@ detach_banks(self->buckets_,0,bs);
+    //@ close pointers((void **)self->buckets_,0,nil);
+    for (int i = 0; i < NUMBER_OF_BUCKETS; i++)
+    /*@ invariant 0 <= i &*& i <= FreeList_NUMBER_OF_BUCKETS &*&
+          pointers((void **)self->buckets_,i,?done) &*& forall(done,null_head) == true &*&
+          pointers((void **)self->buckets_+i,FreeList_NUMBER_OF_BUCKETS-i,_) &*& detached_banks(bs); @*/
+    //@ decreases FreeList_NUMBER_OF_BUCKETS-i;
+    {
+      //@ open pointers((void **)self->buckets_+i,FreeList_NUMBER_OF_BUCKETS-i,_);
+      buckets_[i] = null;
+      //@ close pointers((void **)self->buckets_+i+1,0,nil);
+      //@ close pointers((void **)self->buckets_+i,1,cons((void *)0,nil));
+      //@ pointers_join((void **)self->buckets_);
+      //@ forall_append(done,cons((void *)0,nil),null_head);
+    }
+    //@ open pointers((void **)self->buckets_+FreeList_NUMBER_OF_BUCKETS,0,_);
+    //@ install_empty_banks(self->buckets_,0,bs);
+  }
+
+@render src/third_party/dartino/object_memory.h toit::FreeList::add_region tu=src/third_party/dartino/object_memory_mark_sweep.cc
+  void add_region(uword free_start, uword free_size)
+  /*@ requires free_storage(free_start,free_size) &*& banks(self->buckets_,0,?bs) &*& length(bs) == 12; @*/
+  /*@ ensures free_table_after(self,bs,free_start,free_size); @*/
+  //@ terminates;
+  {
+    FreeListRegion* result = FreeListRegion::create_at(free_start, free_size);
+    if (!result) {
+      //@ close free_table_after(self,bs,free_start,free_size);
+      return;
+    }
+    const int WORD_BITS = sizeof(uword) * BYTE_BIT_SIZE;
+    int bucket = WORD_BITS - Utils::clz(free_size) - 1;
+    if (bucket >= NUMBER_OF_BUCKETS) bucket = NUMBER_OF_BUCKETS - 1;
+    //@ focus_bank(self->buckets_,0,bs,bucket);
+    //@ open bank(self->buckets_+bucket,bucket,nth(bucket,bs));
+    result->set_next_region(buckets_[bucket]);
+    buckets_[bucket] = result;
+    //@ list<region> xs = cons(region(result,free_size),nth(bucket,bs));
+    //@ close chain(result,xs);
+    //@ close bank(self->buckets_+bucket,bucket,xs);
+    //@ replace_bank(self->buckets_,0,bs,bucket,xs);
+    //@ close exists(result);
+    //@ close free_table_after(self,bs,free_start,free_size);
+  }
+
+@render src/third_party/dartino/object_memory.h toit::FreeList::take_first_fit tu=src/third_party/dartino/object_memory_mark_sweep.cc
+  static FreeListRegion* take_first_fit(FreeListRegion** head, uword min_size)
+  /*@ requires *head |-> ?p &*& chain(p,?items); @*/
+  /*@ ensures *head |-> ?q &*& chain(q,remaining(items,min_size)) &*& result == first_fit(items,min_size) &*&
+              (result == 0 ? fit_bytes(items,min_size) == 0 : block(result,fit_bytes(items,min_size),0) &*& min_size <= fit_bytes(items,min_size)); @*/
+  {
+    FreeListRegion* previous = null;
+    FreeListRegion* current = *head;
+    //@ list<region> prefix = nil;
+    while (current != null)
+    /*@ invariant *head |-> ?root &*& chain(current,?tail) &*&
+          first_fit(items,min_size) == first_fit(tail,min_size) &*& fit_bytes(items,min_size) == fit_bytes(tail,min_size) &*&
+          (previous == 0 ? root == current &*& prefix == nil &*& remaining(items,min_size) == remaining(tail,min_size) :
+            skipped(root,previous,prefix,min_size) &*& block(previous,?pn,current) &*& pn < min_size &*&
+            remaining(items,min_size) == append(prefix,cons(region(previous,pn),remaining(tail,min_size)))); @*/
+    {
+      //@ open chain(current,tail);
+      //@ open block(current,_,_);
+      if (current->size() >= min_size) {
+        //@ close block(current,_,_);
+        if (previous != null) {
+          previous->set_next_region(current->next_region());
+          //@ assert block(previous,?pn,?after);
+          //@ assert chain(after,?ys);
+          //@ close chain(previous,cons(region(previous,pn),ys));
+          //@ restore_skipped(root,previous,prefix,min_size);
+        } else {
+          *head =
+              reinterpret_cast<FreeListRegion*>(current->next_region());
+        }
+        current->set_next_region(null);
+        return current;
+      }
+      //@ close block(current,_,_);
+      /*@ if (previous == 0) {
+        close skipped(root,current,nil,min_size);
+      } else {
+        assert block(previous,?pn,current);
+        extend_skipped(root,previous,current,prefix,min_size,pn);
+        append_assoc(prefix,cons(region(previous,pn),nil),remaining(tail,min_size));
+        prefix = append(prefix,cons(region(previous,pn),nil));
+      } @*/
+      previous = current;
+      current = reinterpret_cast<FreeListRegion*>(current->next_region());
+    }
+
+    /*@ { open chain(current,tail);
+        close chain(current,nil);
+        if (previous != 0) {
+          assert block(previous,?pn,current);
+          close chain(previous,cons(region(previous,pn),nil));
+          restore_skipped(root,previous,prefix,min_size);
+        } } @*/
+    return null;
+  }
+
+@render src/third_party/dartino/object_memory.h toit::FreeList::get_region tu=src/third_party/dartino/object_memory_mark_sweep.cc
+  FreeListRegion* get_region(uword min_size)
+  /*@ requires banks(self->buckets_,0,?bs) &*& length(bs) == 12 &*& min_size > 0; @*/
+  /*@ ensures exists<int>(?i) &*& size_bucket(min_size) <= i &*& i < 12 &*& forall(drop(i+1,bs),empty_bank) == true &*&
+              banks(self->buckets_,0,update(i,remaining(nth(i,bs),min_size),bs)) &*&
+              result == first_fit(nth(i,bs),min_size) &*&
+              free_bytes(update(i,remaining(nth(i,bs),min_size),bs)) == free_bytes(bs) - fit_bytes(nth(i,bs),min_size) &*&
+              (result == 0 ? i == size_bucket(min_size) &*& fit_bytes(nth(i,bs),min_size) == 0 :
+                block(result,fit_bytes(nth(i,bs),min_size),0) &*& fit_bytes(nth(i,bs),min_size) >= min_size); @*/
+  {
+    const int WORD_BITS = sizeof(uword) * BYTE_BIT_SIZE;
+    int smallest_bucket = WORD_BITS - Utils::clz(min_size);
+    ASSERT(smallest_bucket > 0);
+
+    // Take the first region in the largest list guaranteed to satisfy the
+    // allocation.
+    //@ drop_length(bs);
+    for (int i = NUMBER_OF_BUCKETS - 1; i >= smallest_bucket; i--)
+    /*@ invariant banks(self->buckets_,0,bs) &*& i < 12 &*& 0 <= i &*&
+                  size_bucket(min_size) <= i &*& forall(drop(i+1,bs),empty_bank) == true; @*/
+    {
+      //@ focus_bank(self->buckets_,0,bs,i);
+      //@ open bank(self->buckets_+i,i,nth(i,bs));
+      FreeListRegion* result = buckets_[i];
+      //@ open chain(result,nth(i,bs));
+      if (result != null) {
+        ASSERT(result->size() >= min_size);
+        FreeListRegion* next_region =
+            reinterpret_cast<FreeListRegion*>(result->next_region());
+        result->set_next_region(null);
+        buckets_[i] = next_region;
+        //@ assert block(result,?n,0);
+        //@ assert chain(next_region,?rest);
+        //@ close bank(self->buckets_+i,i,rest);
+        //@ replace_bank(self->buckets_,0,bs,i,rest);
+        //@ replace_bytes(bs,i,rest);
+        //@ close exists(i);
+        return result;
+      }
+      //@ close chain(result,nil);
+      //@ close bank(self->buckets_+i,i,nil);
+      //@ replace_bank(self->buckets_,0,bs,i,nil);
+      //@ skip_empty(i,bs);
+    }
+
+    // Search the bucket containing regions that could, but are not
+    // guaranteed to, satisfy the allocation.
+    if (smallest_bucket > NUMBER_OF_BUCKETS) smallest_bucket = NUMBER_OF_BUCKETS;
+    //@ int k = smallest_bucket - 1;
+    //@ focus_bank(self->buckets_,0,bs,k);
+    //@ open bank(self->buckets_+k,k,nth(k,bs));
+    //@ pointer_limits(self->buckets_+k);
+    return take_first_fit(&buckets_[smallest_bucket - 1], min_size);
+    //@ remove_fit(k,nth(k,bs),min_size);
+    //@ close bank(self->buckets_+k,k,remaining(nth(k,bs),min_size));
+    //@ replace_bank(self->buckets_,0,bs,k,remaining(nth(k,bs),min_size));
+    //@ remove_bytes(nth(k,bs),min_size);
+    //@ replace_bytes(bs,k,remaining(nth(k,bs),min_size));
+    //@ close exists(k);
+  }
+
+@verbatim
+typedef HeapObject PromotedTrack;
+struct OldSpace {
+  FreeList free_list_;
+  uword top_;
+  uword limit_;
+  uword used_;
+  bool tracking_allocations_;
+  bool promotion_failed_;
+  PromotedTrack *promoted_track_;
+  Program *program_;
+};
+typedef struct OldSpace OldSpace;
+/*@
+predicate track_end(PromotedTrack *p, uword end) =
+  (uword)p >= 1 &*& uintptr(raw(p) + 1,end);
+@*/
+
+@prototypes
+@render src/objects.h toit::HeapObject::_word_at_put tu=src/third_party/dartino/object_memory_mark_sweep.cc
+  INLINE void _word_at_put(word offset, uword value)
+  //@ requires 1 <= (uword)self &*& 0 <= offset &*& offset % sizeof(word) == 0 &*& uintptr(raw(self) + offset / sizeof(word),_);
+  //@ ensures uintptr(raw(self) + offset / sizeof(word),value);
+  //@ terminates;
+  { _raw_at()[offset / WORD_SIZE] = value; }
+
+@render src/objects.h toit::PromotedTrack::set_end tu=src/third_party/dartino/object_memory_mark_sweep.cc
+  void set_end(uword end)
+  //@ requires track_end(self,_);
+  //@ ensures track_end(self,end);
+  //@ terminates;
+  {
+    //@ open track_end(self,_);
+    _word_at_put(END_OFFSET, end);
+    //@ close track_end(self,end);
+  }
+
+@render src/objects.h toit::PromotedTrack::header_size tu=src/third_party/dartino/object_memory_mark_sweep.cc
+  static inline uword header_size()
+  //@ requires true;
+  //@ ensures result == 3 * sizeof(word);
+  { return HEADER_SIZE; }
+
+@render src/third_party/dartino/object_memory_mark_sweep.cc toit::OldSpace::flush
+void OldSpace::flush()
+/*@ requires self->top_ |-> ?top &*& self->limit_ |-> ?limit &*& self->used_ |-> ?used &*&
+    top <= limit &*& limit - top <= used &*& (top == 0 ? limit == 0 : free_storage(top,limit-top)) &*&
+    banks(self->free_list_.buckets_,0,?bs) &*& length(bs) == 12 &*&
+    self->tracking_allocations_ |-> ?tracking &*& self->promoted_track_ |-> ?track &*&
+    exists<uword>(?end) &*& (tracking && track != 0 ? track_end(track,end) : true); @*/
+/*@ ensures self->top_ |-> 0 &*& self->limit_ |-> 0 &*& self->used_ |-> used - (limit-top) &*&
+    (top == 0 ? banks(self->free_list_.buckets_,0,bs) : free_table_after(&self->free_list_,bs,top,limit-top)) &*&
+    self->tracking_allocations_ |-> tracking &*& self->promoted_track_ |-> track &*&
+    (tracking && track != 0 ? track_end(track,top == 0 ? end : top) : true); @*/
+//@ terminates;
+{
+  if (top_ != 0) {
+    uword free_size = limit_ - top_;
+    free_list_.add_region(top_, free_size);
+    if (tracking_allocations_ && promoted_track_ != null) {
+      ASSERT(promoted_track_ != null);
+      ASSERT(promoted_track_->end() >= top_);
+      promoted_track_->set_end(top_);
+    }
+    top_ = 0;
+    limit_ = 0;
+    used_ -= free_size;
+    ASSERT(static_cast<word>(used_) >= 0);
+  }
+}
+
+@render src/third_party/dartino/object_memory_mark_sweep.cc toit::OldSpace::take_free_region
+FreeListRegion* OldSpace::take_free_region(uword size)
+/*@ requires self->top_ |-> ?top &*& self->limit_ |-> ?limit &*& self->used_ |-> ?used &*&
+    top <= limit &*& limit-top <= used &*& (top == 0 ? limit == 0 : free_storage(top,limit-top)) &*&
+    banks(self->free_list_.buckets_,0,?bs) &*& length(bs) == 12 &*& used + free_bytes(bs) <= UINTPTR_MAX &*&
+    self->tracking_allocations_ |-> ?tracking &*& self->promoted_track_ |-> ?track &*&
+    exists<uword>(?end) &*& (tracking && track != 0 ? track_end(track,end) : true) &*&
+    size > 0 &*& size + (tracking ? 3 : 0)*sizeof(word) <= UINTPTR_MAX; @*/
+/*@ ensures self->top_ |-> 0 &*& self->limit_ |-> 0 &*& self->used_ |-> used-(limit-top) &*&
+    self->tracking_allocations_ |-> tracking &*& self->promoted_track_ |-> track &*&
+    (tracking && track != 0 ? track_end(track,top == 0 ? end : top) : true) &*&
+    (top != 0 && limit-top < 3*sizeof(word) ? filler_words(top,limit-top) : true) &*&
+    exists<FreeListRegion *>(?inserted) &*& (limit-top >= 3*sizeof(word) ?
+      inserted != 0 && inserted == (FreeListRegion *)(top+1) && (uword)inserted == top+1 : inserted == 0) &*&
+    result == first_fit(searched_regions(flushed_banks(bs,inserted,limit-top),size+(tracking ? 3 : 0)*sizeof(word)),
+                        size+(tracking ? 3 : 0)*sizeof(word)) &*&
+    banks(self->free_list_.buckets_,0,?after) &*& length(after) == 12 &*& exists<int>(?taken) &*&
+    after == banks_after_search(flushed_banks(bs,inserted,limit-top),size+(tracking ? 3 : 0)*sizeof(word)) &*&
+    used-(limit-top) + free_bytes(after) + taken ==
+      used + free_bytes(bs) - (limit-top < 3*sizeof(word) ? limit-top : 0) &*&
+    (result == 0 ? taken == 0 : block(result,taken,0) &*& taken >= size + (tracking ? 3 : 0)*sizeof(word) &*&
+      used-(limit-top)+taken <= UINTPTR_MAX); @*/
+{
+  flush();
+  //@ FreeListRegion *inserted = 0;
+  /*@ if (top != 0) {
+    open free_table_after(&self->free_list_,bs,top,limit-top);
+    if (limit-top >= 3*sizeof(word)) {
+      open exists(?fresh);
+      inserted = fresh;
+      int k = size_bucket(limit-top);
+      replace_bytes(bs,k,cons(region(fresh,limit-top),nth(k,bs)));
+    }
+  } @*/
+  //@ assert banks(self->free_list_.buckets_,0,?flushed);
+  return free_list_.get_region(
+      tracking_allocations_ ? size + PromotedTrack::header_size() : size);
+  //@ open exists(?i);
+  //@ int request = size + (tracking ? 3 : 0)*sizeof(word);
+  //@ list<list<region> > rest = update(i,remaining(nth(i,flushed),request),flushed);
+  //@ highest_bank_bound(flushed,i);
+  //@ free_bytes_nonnegative(rest);
+  //@ close exists(fit_bytes(nth(i,flushed),request));
+  //@ close exists(inserted);
+}

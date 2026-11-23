@@ -28,8 +28,9 @@ TimerEventSource::TimerEventSource()
     , timer_changed_(OS::allocate_condition_variable(mutex()))
     , stop_(false) {
   ASSERT(instance_ == null);
+  if (timer_changed_ == null) FATAL("Failed to allocate timer condition variable");
+  if (!spawn()) FATAL("Failed to start timer worker");
   instance_ = this;
-  spawn();
 }
 
 TimerEventSource::~TimerEventSource() {

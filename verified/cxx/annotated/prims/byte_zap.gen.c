@@ -2,51 +2,7 @@
 // The C++ functions are rendered from their current sources, the
 // annotations come from the sidecar: verified/cxx/annotated/README.md.
 
-// Copyright (C) 2026 Toit contributors.
-//
-// PRIMITIVE(byte_zap) of src/primitive_bitmap.cc (in the untrusted set,
-// stays C++): the ARGS expansion (MutableBlob decoding by the proven
-// mutable_byte_content, an int argument) and the memset of the whole
-// destination.
-//
-// Proved: the primitive heap contract in VeriFast terms (the heap only
-// grows, objects keep class, length and external address), the memset
-// writes exactly the content range of a writable byte array outside the
-// program heap, the result is a smi.
-#include "../model/objects.gen.h"
-#include "../blob/byte_content.gen.h"
-#include "../blob/mutable_byte_content.gen.h"
-
-void *memset(void *array, int value, size_t size);
-//@ requires uchars_(array, size, _);
-//@ ensures uchars(array, size, _) &*& result == array;
-
-// The failure of an int argument that is not a smi (WRONG_OBJECT_TYPE, or
-// OUT_OF_RANGE for a large integer): an error value, reads nothing.
-Object *Primitive_return_not_a_smi(Process *process, Object *value);
-//@ requires true;
-//@ ensures true;
-// C++: src/objects.h toit::MutableBlob::MutableBlob
-void MutableBlob_ctor__(MutableBlob *self);
-//@ requires self->address_ |-> _ &*& self->length_ |-> _;
-//@ ensures self->address_ |-> 0 &*& self->length_ |-> 0;
-
-// C++: src/objects.h toit::MutableBlob::address
-uint8 *MutableBlob_address(MutableBlob *self);
-//@ requires [?f]self->address_ |-> ?a;
-//@ ensures [f]self->address_ |-> a &*& result == a;
-
-// C++: src/objects.h toit::MutableBlob::length
-word MutableBlob_length(MutableBlob *self);
-//@ requires [?f]self->length_ |-> ?l;
-//@ ensures [f]self->length_ |-> l &*& result == l;
-
-// C++: src/primitive_bitmap.cc toit::primitive_byte_zap
-Object *primitive_byte_zap(Process *process, Object **__args);
-/*@ requires [?fp]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
-             pointer(__args, ?a0) &*& pointer(__args - 1, ?a1) &*& good(objs, a0) == true; @*/
-/*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
-            pointer(__args, a0) &*& pointer(__args - 1, a1); @*/
+#include "byte_zap.gen.h"
 
 // C++: src/objects.h toit::MutableBlob::MutableBlob
 void MutableBlob_ctor__(MutableBlob *self)
@@ -76,12 +32,14 @@ word MutableBlob_length(MutableBlob *self)
 // C++: src/primitive_bitmap.cc toit::primitive_byte_zap
 Object *primitive_byte_zap(Process *process, Object **__args)
 /*@ requires [?fp]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
-             pointer(__args, ?a0) &*& pointer(__args - 1, ?a1) &*& good(objs, a0) == true; @*/
+             pointer(__args, ?a0) &*& pointer(__args - 1, ?a1) &*& good(objs, a0) == true &*& good(objs, a1) == true; @*/
 /*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
             pointer(__args, a0) &*& pointer(__args - 1, a1); @*/
 {
   MutableBlob bytes;
   Error *_mutable_blob_error_bytes;
+  //@ close valid_arg(a1, objs);
+  //@ leak valid_arg(a1, objs);
   Object *_raw_bytes = __args[-(0)];
   MutableBlob_ctor__(&bytes);
   if (!Object_mutable_byte_content__Processp_MutableBlobp_Errorpp(_raw_bytes, process, &bytes, &_mutable_blob_error_bytes)) {

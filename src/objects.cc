@@ -269,6 +269,45 @@ word Stack::absolute_bci_at_preemption(Program* program) {
   return program->absolute_bci_from_bcp(bcp);
 }
 
+static void visit_stack_roots(Object** slots, word top, word length, uword bytecodes_from, uword bytecodes_to, RootCallback* cb) {
+  Object** roots = slots + top;
+  word used = length - top;
+  for (word i = 0; i < used; i++) {
+    uword value = reinterpret_cast<uword>(roots[i]);
+    if (value >= bytecodes_from && value < bytecodes_to) continue;
+    cb->do_root(&roots[i]);
+  }
+}
+
+word Stack::shrink_v2_for_gc(word top, int max_height, bool aggressive, RootCallback* cb) {
+  // Format 2: the frame and finally records at the bottom stay where they
+  // are; the object stack moves down. The verified core needs room for a
+  // frame and the reserve above the records (verified/core/src/layout.rs).
+  // A call needs that room above the caller's top, wherever in its frame
+  // the caller is: the top frame keeps room to reach its maximal height
+  // too. Without it a GC inside a primitive (whose frame holds only its
+  // arguments) shrinks the stack so that the caller's next call grows it
+  // again, an allocation of a new stack each time (bytes-allocated-test).
+  if (max_height < 0) return top;
+  word record_top = v2_record_top();
+  // Compute the reserve before narrowing to the stack's word-sized indices.
+  int64 minimum_space = 2 * static_cast<int64>(max_height) + RESERVED_STACK_FOR_CALLS +
+                        record_top + V2_FRAME_WORDS + V2_STACK_RESERVE;
+  if (top > minimum_space && (aggressive || (cb->shrink_stacks() && top > length() >> 1))) {
+    word reduction = top - static_cast<word>(minimum_space);
+    if (aggressive || reduction >= 8) {
+      word used = length() - top;
+      memmove(_array_address(top - reduction), _array_address(top), used << WORD_SIZE_LOG_2);
+      word len = length() - reduction;
+      top -= reduction;
+      _set_length(len);
+      _set_top(top);
+      Utils::fill_words(_root_at(_array_offset_from(len)), reduction, FreeListRegion::single_free_word_header());
+    }
+  }
+  return top;
+}
+
 void Stack::roots_do(Program* program, RootCallback* cb) {
   if (is_guard_zone_touched()) FATAL("stack overflow detected");
   word top = this->top();
@@ -283,64 +322,36 @@ void Stack::roots_do(Program* program, RootCallback* cb) {
   // stack so much that an overflow check would have failed.  Luckily the
   // compiler kept track of the maximum space that any function could need, so
   // we can use that.
-  word minimum_space = program->global_max_stack_height() + RESERVED_STACK_FOR_CALLS;
   if (program->is_format2()) {
-    // Format 2: the frame and finally records at the bottom stay where they
-    // are; the object stack moves down. The verified core needs room for a
-    // frame and the reserve above the records (verified/core/src/layout.rs).
-    // A call needs that room above the caller's top, wherever in its frame
-    // the caller is: the top frame keeps room to reach its maximal height
-    // too. Without it a GC inside a primitive (whose frame holds only its
-    // arguments) shrinks the stack so that the caller's next call grows it
-    // again, an allocation of a new stack each time (bytes-allocated-test).
-    word record_top = v2_record_top();
-    minimum_space += record_top + V2_FRAME_WORDS + V2_STACK_RESERVE + program->global_max_stack_height();
+    top = shrink_v2_for_gc(top, program->global_max_stack_height(), Flags::shrink_stacks_a_lot, cb);
+  } else {
+    int64 minimum_space = static_cast<int64>(program->global_max_stack_height()) + RESERVED_STACK_FOR_CALLS;
+    // Don't shrink the stack unless we can halve the size.  The growing algo
+    // grows it by 50%, to try to avoid too much churn.
     if (top > minimum_space && (Flags::shrink_stacks_a_lot || (cb->shrink_stacks() && top > length() >> 1))) {
-      word reduction = top - minimum_space;
+      word reduction = top - static_cast<word>(minimum_space);
       if (Flags::shrink_stacks_a_lot || reduction >= 8) {
-        word used = length() - top;
-        memmove(_array_address(top - reduction), _array_address(top), used << WORD_SIZE_LOG_2);
+        auto destin = _array_address(0);
+        auto source = _array_address(reduction);
+        memmove(destin, source, (length() - reduction) << WORD_SIZE_LOG_2);
+        // We don't need to update the remembered set/write barrier because the
+        // start of the stack object has not moved.
         word len = length() - reduction;
         top -= reduction;
         _set_length(len);
         _set_top(top);
+        _set_try_top(try_top() - reduction);
+        // Now that the stack is smaller we need to fill the space after it with
+        // something to keep the heap iterable.
         for (word i = 0; i < reduction; i++) {
           auto one_word = static_cast<FreeListRegion*>(HeapObject::cast(_array_address(len + i)));
           one_word->_set_header(Smi::from(SINGLE_FREE_WORD_CLASS_ID), SINGLE_FREE_WORD_TAG);
         }
       }
     }
-  } else
-  // Don't shrink the stack unless we can halve the size.  The growing algo
-  // grows it by 50%, to try to avoid too much churn.
-  if (top > minimum_space && (Flags::shrink_stacks_a_lot || (cb->shrink_stacks() && top > length() >> 1))) {
-    word reduction = top - minimum_space;
-    if (Flags::shrink_stacks_a_lot || reduction >= 8) {
-      auto destin = _array_address(0);
-      auto source = _array_address(reduction);
-      memmove(destin, source, (length() - reduction) << WORD_SIZE_LOG_2);
-      // We don't need to update the remembered set/write barrier because the
-      // start of the stack object has not moved.
-      word len = length() - reduction;
-      top -= reduction;
-      _set_length(len);
-      _set_top(top);
-      _set_try_top(try_top() - reduction);
-      // Now that the stack is smaller we need to fill the space after it with
-      // something to keep the heap iterable.
-      for (word i = 0; i < reduction; i++) {
-        auto one_word = static_cast<FreeListRegion*>(HeapObject::cast(_array_address(len + i)));
-        one_word->_set_header(Smi::from(SINGLE_FREE_WORD_CLASS_ID), SINGLE_FREE_WORD_TAG);
-      }
-    }
   }
-  Object** roots = _root_at(_array_offset_from(top));
-  word used_length = length() - top;
-  for (word i = 0; i < used_length; i++) {
-    Object* root_object = roots[i];
-    if (bytecodes_from <= root_object && root_object < bytecodes_to) continue;
-    cb->do_root(&roots[i]);
-  }
+  visit_stack_roots(_stack_limit_addr(), top, length(), reinterpret_cast<uword>(bytecodes_from),
+                   reinterpret_cast<uword>(bytecodes_to), cb);
 }
 
 #ifdef TOIT_EC618
@@ -349,34 +360,46 @@ int Stack::v2_frames_skip_ = 2;
 thread_local int Stack::v2_frames_skip_ = 2;
 #endif
 
-int Stack::v2_frames_do(Program* program, FrameCallback* cb) {
-  // The locations, top frame first: the bci the task is suspended at, then
-  // the return bci of each frame (a location in the frame below it), except
-  // the bottom frame's (not a call site). As for format 1, the top two
-  // (the primitive and the `throw`) are not reported, unless the machine
-  // raised the exception itself (v2_frames_skip_ is 0 then).
-  word frames = v2_frame_top() / V2_FRAME_WORDS;
-  int frame_no = 0;
-  int skip = v2_frames_skip_;
-  for (word k = frames; k >= 1; k--) {
+// Enumerate the top location, followed by the return locations stored in
+// successive frames. The bottom frame's return is not a call site.
+class V2FrameWalker {
+ public:
+  V2FrameWalker(Stack* stack, int skip)
+      : stack_(stack), frames_(stack->v2_frame_top() / Stack::V2_FRAME_WORDS),
+        skipped_(Utils::min(frames_, Utils::max(0, skip))), next_(0) {}
+
+  int count() const { return frames_ - skipped_; }
+
+  bool next(Program* program, FrameCallback* cb) {
+    if (next_ >= count()) return false;
+    int depth = skipped_ + next_;
     word bci;
-    if (k == frames) {
-      // As a return address: the location after the raising instruction.
-      bci = v2_bci();
+    if (depth == 0) {
+      bci = stack_->v2_bci();
       if (0 <= bci && bci < program->bytecodes.length() && program->bytecodes[bci] < V2_OPCODE_COUNT) {
         bci += V2_OPCODE_LENGTHS[program->bytecodes[bci]];
       }
     } else {
-      bci = v2_word_at(k * V2_FRAME_WORDS + V2_FRAME_RET);
+      bci = stack_->v2_word_at((frames_ - depth) * Stack::V2_FRAME_WORDS + Stack::V2_FRAME_RET);
     }
-    if (skip > 0) {
-      skip--;
-      continue;
-    }
-    cb->do_frame(this, frame_no, bci);
-    frame_no++;
+    cb->do_frame(stack_, next_, bci);
+    ++next_;
+    return true;
   }
-  return frame_no;
+
+ private:
+  Stack* const stack_;
+  const int frames_;
+  const int skipped_;
+  int next_;
+};
+
+int Stack::v2_frames_do(Program* program, FrameCallback* cb) {
+  V2FrameWalker walker(this, v2_frames_skip_);
+  if (cb != nullptr) {
+    while (walker.next(program, cb)) {}
+  }
+  return walker.count();
 }
 
 int Stack::frames_do(Program* program, FrameCallback* cb) {
@@ -398,7 +421,7 @@ int Stack::frames_do(Program* program, FrameCallback* cb) {
       // Don't report the `throw` frame.
       is_first_frame = false;
     } else {
-      cb->do_frame(this, frame_no, program->absolute_bci_from_bcp(last_return_bcp));
+      if (cb != nullptr) cb->do_frame(this, frame_no, program->absolute_bci_from_bcp(last_return_bcp));
       frame_no++;
     }
     last_return_bcp = return_bcp;

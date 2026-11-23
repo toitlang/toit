@@ -24,9 +24,9 @@
 // The real interpreter_v2.cc and objects_runtime.cc are compiled
 // unmodified. What is modelled instead of compiled (all of it group (3),
 // trusted by decision):
-//  * ObjectHeap::allocate_stack (src/heap.cc): returns null or a fresh
-//    Stack of the requested length initialized by the VM's own
-//    Stack::_initialize;
+//  * raw reservation (TwoSpaceHeap::allocate): fails or supplies fresh
+//    storage. The native ObjectHeap::allocate_stack sets the header,
+//    initializes the guards and fills the entire format-2 payload;
 //  * the GC (Scheduler::gc, no body here): moves nothing. The function
 //    re-reads the task's stack after each GC, which this model cannot test;
 //  * the card-marking write barrier (GcMetadata::insert_into_remembered_set,
@@ -66,6 +66,8 @@ template <> inline void GcMetadata::insert_into_remembered_set<Array*>(Array* ad
 }  // namespace toit
 
 #include "interpreter_v2.cc"
+#include "heap.cc"
+#include "objects.cc"
 // Stack::v2_copy_to, extracted verbatim from src/objects_runtime.cc by
 // verified/cxx/esbmc.sh (ESBMC 8.6 crashes on the whole file: tool defect T3).
 namespace toit {
@@ -86,13 +88,9 @@ using namespace toit;
 extern "C" char* getenv(const char* name) { return null; }
 
 namespace toit {
-Stack* ObjectHeap::allocate_stack(word length) {
-  if (nondet_bool()) return null;  // Out of memory (before or after a GC).
-  HeapObject* result = cxxv::raw_object(Stack::allocation_size(length));
-  cxxv::set_header(result, Program::stack_class_id_INDEX, STACK_TAG);
-  Stack* stack = static_cast<Stack*>(result);
-  stack->_initialize(length);
-  return stack;
+HeapObject* TwoSpaceHeap::allocate(uword bytes) {
+  if (nondet_bool()) return nullptr;
+  return cxxv::raw_object(bytes);
 }
 }  // namespace toit
 
@@ -101,6 +99,10 @@ int main() {
   cxxv::World world;
   cxxv::make_world(&world);
   Process* process = world.process;
+  *const_cast<Program**>(&process->object_heap_.program_) = world.program;
+  uint8 bytecodes[] = {'T', 'B', 'C', '2'};
+  world.program->bytecodes = List<uint8>(bytecodes, 4);
+  world.class_bits[Program::stack_class_id_INDEX] = Program::compute_class_bits(STACK_TAG, 0);
 
   // The VM and scheduler the GC path dereferences (fields unconstrained).
   VM* vm = static_cast<VM*>(malloc(sizeof(VM)));
@@ -119,6 +121,8 @@ int main() {
   cxxv::set_header(raw, Program::stack_class_id_INDEX, STACK_TAG);
   Stack* stack = static_cast<Stack*>(raw);
   stack->_set_length(length);
+  // At a GC point StackMem owns initialized words throughout the old array.
+  for (word i = 0; i < length; ++i) stack->v2_word_at_put(i, nondet_ulong());
   word top = nondet_word();
   word frame_top = nondet_word();
   word fin_count = nondet_word();
@@ -160,6 +164,10 @@ int main() {
     CXXV_ASSERT(now->v2_frame_top() == frame_top, "P3: same frame top");
     CXXV_ASSERT(now->v2_fin_count() == fin_count, "P3: same finally records");
     CXXV_ASSERT(now->v2_bci() == bci, "P3: same bci");
+    word gap_index = nondet_word();
+    if (now->v2_record_top() <= gap_index && gap_index < now->top()) {
+      CXXV_ASSERT(now->v2_word_at(gap_index) == 0, "P3: the unused gap retains the allocator's tagged zero");
+    }
     if (has_record) CXXV_ASSERT(now->v2_word_at(record_index) == record_value, "P3: records copied");
     if (has_slot) {
       CXXV_ASSERT(now->v2_word_at(now->length() - 1 - slot_position) == slot_value, "P3: slots copied");

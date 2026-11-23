@@ -21,6 +21,35 @@
 @verbatim
 #include "../model/objects.gen.h"
 
+/*@
+fixpoint int slice_length(void *from, void *to, int available) {
+  return is_smi_w((uword)from) && is_smi_w((uword)to) &&
+         0 <= smi_val((uword)from) && smi_val((uword)from) <= smi_val((uword)to) &&
+         smi_val((uword)to) <= available ? smi_val((uword)to) - smi_val((uword)from) : -1;
+}
+
+fixpoint int decoded_length(nat fuel, fixpoint(void *, oinfo) H, prog_ids ids, void *o, int kind) {
+  switch (fuel) {
+    case zero: return blob_ok(H, o, kind) ? blob_len(H, o) : -1;
+    case succ(rest):
+      return blob_ok(H, o, kind) ? blob_len(H, o) :
+        !has_tag(H, o, INSTANCE_TAG) ? -1 :
+        kind == STRINGS_OR_BYTE_ARRAYS && header_cid(o_hw(H(o))) == byte_array_cow_cid(ids)
+          ? decoded_length(rest, H, ids, nth(0, o_words(H(o))), kind) :
+        (kind == STRINGS_OR_BYTE_ARRAYS && header_cid(o_hw(H(o))) == byte_array_slice_cid(ids) ||
+         header_cid(o_hw(H(o))) == string_slice_cid(ids) || header_cid(o_hw(H(o))) == string_byte_slice_cid(ids)) &&
+         is_heap_w((uword)nth(0, o_words(H(o))))
+          ? slice_length(nth(1, o_words(H(o))), nth(2, o_words(H(o))),
+                         decoded_length(rest, H, ids, nth(0, o_words(H(o))), kind)) : -1;
+  }
+}
+
+lemma void decoded_leaf(nat fuel, fixpoint(void *, oinfo) H, prog_ids ids, void *o, int kind)
+  requires !has_tag(H, o, INSTANCE_TAG);
+  ensures decoded_length(fuel, H, ids, o, kind) == (blob_ok(H, o, kind) ? blob_len(H, o) : -1);
+{ switch (fuel) { case zero: case succ(rest): } }
+@*/
+
 @prototypes
 @render src/objects.h toit::Blob::Blob tu=src/objects.cc type=void(constuint8*,word)
   Blob(const uint8* address, word length)
@@ -35,9 +64,12 @@ bool Object::byte_content(Program* program, const uint8** content, word* length,
              pointer_((void **)content, ?oc0) &*& intptr_(length, ?ol0) &*&
              (strings_only == STRINGS_OR_BYTE_ARRAYS || strings_only == STRINGS_ONLY) &*&
              0 <= depth &*& depth <= Object_MAX_BYTE_CONTENT_DEPTH; @*/
-/*@ ensures [f]heap(objs, H) &*& result ? *content |-> ?a &*& *length |-> ?l &*& [_]blob_result(objs, H, strings_only, a, l, _) :
-            pointer_((void **)content, ?oc) &*& intptr_(length, ?ol) &*& (oc0 == none || oc != none) &*& (ol0 == none || ol != none); @*/
+/*@ ensures [f]heap(objs, H) &*& result ? *content |-> ?a &*& *length |-> ?l &*& l == decoded_length(nat_of_int(Object_MAX_BYTE_CONTENT_DEPTH - depth), H, ids, self, strings_only) &*& [_]blob_result(objs, H, strings_only, a, l, ?b) &*&
+            ((has_tag(H, self, STRING_TAG) || has_tag(H, self, BYTE_ARRAY_TAG)) ? b == self && a == blob_base(H, self) && l == blob_len(H, self) : true) :
+            decoded_length(nat_of_int(Object_MAX_BYTE_CONTENT_DEPTH - depth), H, ids, self, strings_only) == -1 &*& pointer_((void **)content, ?oc) &*& intptr_(length, ?ol) &*& (oc0 == none || oc != none) &*& (ol0 == none || ol != none); @*/
 {
+  //@ nat fuel = nat_of_int(Object_MAX_BYTE_CONTENT_DEPTH - depth);
+  //@ if (!has_tag(H, self, INSTANCE_TAG)) decoded_leaf(fuel, H, ids, self, strings_only);
   if (is_string(this)) {
     //@ good_heap(objs, self);
     String::Bytes bytes(String::cast(this));
@@ -65,6 +97,7 @@ bool Object::byte_content(Program* program, const uint8** content, word* length,
   if (is_instance(this)) {
     //@ good_heap(objs, self);
     if (depth >= MAX_BYTE_CONTENT_DEPTH) return false;
+    //@ succ_int(Object_MAX_BYTE_CONTENT_DEPTH - depth - 1);
     auto instance = Instance::cast(this);
     auto class_id = instance->class_id();
     //@ heap_facts(instance);
@@ -109,8 +142,9 @@ bool Object::byte_content(Program* program, const uint8** content, word* length,
 /*@ requires [_]program(program, ?ids) &*& prog_ok(ids) == true &*& [?f]heap(?objs, ?H) &*& good(objs, self) == true &*&
              pointer_((void **)content, ?oc0) &*& intptr_(length, ?ol0) &*&
              (strings_only == STRINGS_OR_BYTE_ARRAYS || strings_only == STRINGS_ONLY); @*/
-/*@ ensures [f]heap(objs, H) &*& result ? *content |-> ?a &*& *length |-> ?l &*& [_]blob_result(objs, H, strings_only, a, l, _) :
-            pointer_((void **)content, ?oc) &*& intptr_(length, ?ol) &*& (oc0 == none || oc != none) &*& (ol0 == none || ol != none); @*/
+/*@ ensures [f]heap(objs, H) &*& result ? *content |-> ?a &*& *length |-> ?l &*& l == decoded_length(nat_of_int(Object_MAX_BYTE_CONTENT_DEPTH), H, ids, self, strings_only) &*& [_]blob_result(objs, H, strings_only, a, l, ?b) &*&
+            ((has_tag(H, self, STRING_TAG) || has_tag(H, self, BYTE_ARRAY_TAG)) ? b == self && a == blob_base(H, self) && l == blob_len(H, self) : true) :
+            decoded_length(nat_of_int(Object_MAX_BYTE_CONTENT_DEPTH), H, ids, self, strings_only) == -1 &*& pointer_((void **)content, ?oc) &*& intptr_(length, ?ol) &*& (oc0 == none || oc != none) &*& (ol0 == none || ol != none); @*/
 {
   return byte_content(program, content, length, strings_only, 0);
 }
@@ -121,11 +155,42 @@ bool Object::byte_content(Program* program, Blob* blob, BlobKind strings_only) c
              blob->address_ |-> _ &*& blob->length_ |-> _ &*&
              (strings_only == STRINGS_OR_BYTE_ARRAYS || strings_only == STRINGS_ONLY); @*/
 /*@ ensures [f]heap(objs, H) &*& blob->address_ |-> ?a &*& blob->length_ |-> ?l &*&
-            result ? [_]blob_result(objs, H, strings_only, a, l, _) : true; @*/
+            result ? [_]blob_result(objs, H, strings_only, a, l, ?b) &*&
+            ((has_tag(H, self, STRING_TAG) || has_tag(H, self, BYTE_ARRAY_TAG)) ? b == self && a == blob_base(H, self) && l == blob_len(H, self) : true) : true; @*/
 {
   const uint8* content = null;
   word length = 0;
   bool result = byte_content(program, &content, &length, strings_only);
   *blob = Blob(content, length);
   return result;
+}
+
+@render src/objects.cc toit::HeapObject::can_be_toit_finalized
+bool HeapObject::can_be_toit_finalized(Program* program) const
+//@ requires [_]program(program, ?ids) &*& prog_ok(ids) == true &*& [?f]heap(?objs, ?H) &*& mem(self, objs) == true;
+/*@ ensures [f]heap(objs, H) &*& result == (has_tag(H, self, INSTANCE_TAG) && header_cid(o_hw(H(self))) != map_cid(ids) &&
+            decoded_length(nat_of_int(Object_MAX_BYTE_CONTENT_DEPTH), H, ids, self, STRINGS_OR_BYTE_ARRAYS) == -1); @*/
+{
+  //@ heap_facts(self);
+  auto tag = class_tag();
+  if (tag != INSTANCE_TAG) return false;
+  // Some instances are banned for Toit finalizers.  These are typically
+  // things like string slices, which are implemented as special instances,
+  // but don't have identity.  We reuse the byte_content function to check
+  // this.
+  const uint8* dummy1;
+  word dummy2;
+  if (byte_content(program, &dummy1, &dummy2, STRINGS_OR_BYTE_ARRAYS)) {
+    //@ open [_]blob_result(objs, H, STRINGS_OR_BYTE_ARRAYS, _, _, _);
+    // Can't finalize strings and byte arrays.  This is partly because it
+    // doesn't make sense, but also because we only have one finalizer bit in
+    // the header, and it's also for VM finalizers, that free external memory.
+    return false;
+  }
+  if (is_instance(this) && class_id() == program->map_class_id()) {
+    // Can't finalize maps, because we use the finalize bit in the header to
+    // mark weak maps.
+    return false;
+  }
+  return true;
 }

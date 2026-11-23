@@ -134,7 +134,9 @@ class Program : public FlashAllocation {
 
   #define DECLARE_ENTRY_POINT_ACCESSOR(name, lib_name, arity) Method name() { \
     int dispatch_index = entry_point_indexes_[name##_INDEX]; \
-    return Method(&bytecodes[dispatch_table[dispatch_index]]); }
+    int offset = dispatch_table[dispatch_index]; \
+    ASSERT(offset >= 0 && offset < bytecodes.length()); \
+    return Method(bytecodes.data() + offset); }
   ENTRY_POINTS(DECLARE_ENTRY_POINT_ACCESSOR)
   #undef DECLARE_ENTRY_POINT_ACCESSOR
 

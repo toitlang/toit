@@ -40,8 +40,24 @@ class SchedulerThread : public Thread, public SchedulerThreadList::Element {
   void entry();
 
  private:
+  friend class Scheduler;
+
+  // The scheduler lock protects this mark across GC requests and timeouts.
+  Process* mark_for_gc_preemption(Process* requester) {
+    Process* running = interpreter()->process();
+    gc_preemption_requested_ = running != null && running != requester;
+    return gc_preemption_requested_ ? running : null;
+  }
+
+  bool take_gc_preemption_request() {
+    bool requested = gc_preemption_requested_;
+    gc_preemption_requested_ = false;
+    return requested;
+  }
+
   Scheduler* const scheduler_;
   Interpreter interpreter_;
+  bool gc_preemption_requested_ = false;
 };
 
 class Scheduler {
@@ -82,8 +98,9 @@ class Scheduler {
     int group_id);
 #endif
 
-  // Run a new program. Returns the process ID of the root process.
-  // Takes over the arguments and initial memory.
+  // On success, takes ownership of the group, argument buffer and initial
+  // memory and returns the root process ID. Allocation failure returns
+  // INVALID_PROCESS_ID and ID exhaustion returns QUOTA_EXCEEDED_PROCESS_ID.
   int run_program(Program* program, MessageEncoder* arguments, ProcessGroup* group, InitialMemoryManager* initial_memory);
 
   // Run a new external program. Returns the process.
@@ -124,7 +141,7 @@ class Scheduler {
   int spawn(Program* program, ProcessGroup* process_group, int priority,
             Method method, MessageEncoder* arguments, InitialMemoryManager* initial_memory);
 
-  // Returns a new process id (only called from Process constructor).
+  // Called under the scheduler lock. Returns INVALID_PROCESS_ID after exhaustion.
   int next_process_id();
   int next_group_id();
 
@@ -160,7 +177,7 @@ class Scheduler {
   Object* process_stats(Array* array, int group_id, int process_id, Process* calling_process);
 
   static const int INVALID_PROCESS_ID = -1;
-  // Returned by spawn when the process quota of the group is exhausted.
+  // The group process quota or the scheduler's process ID space is exhausted.
   static const int QUOTA_EXCEEDED_PROCESS_ID = -2;
 
   bool is_locked() const { return OS::is_locked(mutex_); }
@@ -177,6 +194,7 @@ class Scheduler {
   void new_process(Locker& locker, Process* process);
   void add_process(Locker& locker, Process* process);
   void run_process(Locker& locker, Process* process, SchedulerThread* scheduler_thread);
+  void terminate_process(Locker& locker, Process* process, uint8 exit_value);
 
   // Update the priority of a process. This may cause preemption of the process
   // or it may move the process to another ready queue.
@@ -191,6 +209,13 @@ class Scheduler {
   // puts the threads back into its original state, modulo idle->scheduled transitions that
   // are still supported while the process is suspended.
   void gc_suspend_process(Locker& locker, Process* process);
+  int request_gc_preemption(Process* process);
+  void acknowledge_gc_preemption(SchedulerThread* worker);
+  void select_gc_targets(Locker& locker, ProcessListFromScheduler* targets, bool cross_owner);
+  bool claim_gc_target(Locker& locker, Process* target, bool doing_cross_process_gc);
+  void scan_gc_target(Process* target, bool try_hard);
+  size_t scan_gc_targets(ProcessListFromScheduler& targets, bool try_hard);
+  void resume_gc_targets(Locker& locker, ProcessListFromScheduler* targets);
   void gc_resume_process(Locker& locker, Process* process);
 
   // Check if a cross-process GC is in process and wait for it to complete if so. After
@@ -201,6 +226,8 @@ class Scheduler {
 
   void process_ready(Process* process);
   void process_ready(Locker& locker, Process* process);
+  Process* dequeue_ready_process();
+  void wake_worker_for_ready_process(Locker& locker, uint8 priority);
 
   bool has_exit_reason() { return exit_state_.reason != EXIT_NONE; }
 
@@ -249,7 +276,7 @@ class Scheduler {
   int next_process_id_;
   int64 next_tick_ = 0;
 
-  static const int NUMBER_OF_READY_QUEUES = 5;
+  enum : int { NUMBER_OF_READY_QUEUES = 5 };
   ProcessListFromScheduler ready_queue_[NUMBER_OF_READY_QUEUES];
   int ready_count_ = 0;
 

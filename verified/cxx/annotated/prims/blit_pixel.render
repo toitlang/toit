@@ -1,0 +1,98 @@
+// Copyright (C) 2026 Toit contributors.
+@include ../model/model.cfg
+@header blit_pixel.gen.h
+@verbatim
+#include "../blob/borrow_slice.h"
+//@ #include "../model/arith.gh"
+//@ #include <ghost_cells.gh>
+/*@
+inductive blit_state = blit_state(list<void *>, fixpoint(void *, oinfo), Process *);
+predicate blit_lookup(list<void *> objs, fixpoint(void *, oinfo) H, uint8 *lut) =
+  lut == 0 ? true : [_]blob_result(objs, H, STRINGS_OR_BYTE_ARRAYS, lut, ?len, _) &*& len >= 256;
+
+predicate blit_views(uint8 *src, int sl, uint8 *dest, int dl, uint8 *lut, blit_state state, int counter, int visits) =
+  switch (state) {
+    case blit_state(objs, H, process): return ghost_cell<int>(counter, visits) &*& heap(objs, H) &*&
+      [_]blob_result(objs, H, STRINGS_OR_BYTE_ARRAYS, src, sl, _) &*&
+      [_]mutable_result(objs, H, process, dest, dl, _) &*& [_]blit_lookup(objs, H, lut);
+  };
+@*/
+@prototypes
+@render src/primitive_bitmap.cc toit::blit_pixel truncating
+static void blit_pixel(const uint8* src, word src_index, uint8* dest, word dest_index,
+                       const uint8* lookup, word shift, word mask, word operation)
+/*@ requires blit_views((uint8 *)src, ?sl, dest, ?dl, (uint8 *)lookup, ?state, ?counter, ?visits) &*&
+             0 <= src_index &*& src_index < sl &*& 0 <= dest_index &*&
+             dest_index + (operation == ADD_16_LE ? 1 : 0) < dl &*& 0 <= operation &*& operation < 6; @*/
+//@ ensures blit_views((uint8 *)src, sl, dest, dl, (uint8 *)lookup, state, counter, visits+1);
+//@ terminates;
+{
+  //@ open blit_views((uint8 *)src, sl, dest, dl, (uint8 *)lookup, state, counter, visits);
+  //@ switch (state) { case blit_state(objs, H, process): }
+  //@ assert heap(?objs, ?H);
+  //@ assert [_]blob_result(objs, H, STRINGS_OR_BYTE_ARRAYS, (uint8 *)src, sl, ?sb);
+  //@ borrow_slice(sb, (uint8 *)src, sl);
+  uint8_t pixel = src[src_index];
+  //@ slice_byte_limits((uint8 *)src, src_index);
+  //@ return_slice(sb, (uint8 *)src, sl);
+  //@ open [_]blit_lookup(objs, H, (uint8 *)lookup);
+  uint16_t looked_up = pixel;
+  if (lookup != null) {
+    //@ assert [_]blob_result(objs, H, STRINGS_OR_BYTE_ARRAYS, (uint8 *)lookup, ?ll, ?lb);
+    //@ borrow_slice(lb, (uint8 *)lookup, ll);
+    //@ slice_byte_limits((uint8 *)lookup, pixel);
+    looked_up = lookup[pixel];
+    //@ return_slice(lb, (uint8 *)lookup, ll);
+  }
+  //@ assert [_]mutable_result(objs, H, ?process, dest, dl, ?db);
+  //@ open [_]mutable_result(objs, H, process, dest, dl, db);
+  //@ close blob_result(objs, H, STRINGS_OR_BYTE_ARRAYS, dest, dl, db);
+  //@ leak blob_result(objs, H, STRINGS_OR_BYTE_ARRAYS, dest, dl, db);
+  //@ blob_facts(db);
+  //@ borrow_slice(db, dest, dl);
+  looked_up *= 257;
+  //@ bitand_limits(shift, 7, N3);
+  //@ nat n = nat_of_int(shift & 7);
+  //@ Z z = Z_of_uint16(looked_up);
+  //@ shiftright_def(looked_up, z, n);
+  //@ Z_shiftright_div(z, n);
+  //@ pow2_pos(n);
+  //@ div_rem_nonneg(looked_up, pow_nat(2,n));
+  looked_up >>= shift & 7;
+  //@ bitand_limits(looked_up, mask, N16);
+  looked_up &= mask;
+  //@ bitand_limits(looked_up, 255, N8);
+  uint8 low_byte = looked_up & 0xff;
+  // Ordered in approximate order of popularity - we might want to
+  // move this 'if' outside the loop for a better speed/code size
+  // tradeoff.
+  //@ slice_byte_limits(dest, dest_index);
+  //@ assert uchars(dest, dl, ?ds);
+  if (operation == OVERWRITE) {
+    dest[dest_index] = low_byte;
+  } else if (operation == OR) {
+    //@ bitor_limits(nth(dest_index, ds), low_byte, N8);
+    dest[dest_index] = dest[dest_index] | low_byte;
+  } else if (operation == ADD) {
+    uint32_t value = dest[dest_index];
+    value += looked_up;
+    dest[dest_index] = value > 0xff ? 0xffu : value;
+  } else if (operation == AND) {
+    //@ bitand_limits(nth(dest_index, ds), low_byte, N8);
+    dest[dest_index] = dest[dest_index] & low_byte;
+  } else if (operation == XOR) {
+    //@ bitxor_limits(nth(dest_index, ds), low_byte, N8);
+    dest[dest_index] = dest[dest_index] ^ low_byte;
+  } else {
+    ASSERT(operation == ADD_16_LE);
+    //@ slice_byte_limits(dest, dest_index+1);
+    uint32_t value = dest[dest_index] + 256 * dest[dest_index + 1];
+    value += looked_up;
+    if (value > 0xffff) value = 0xffff;
+    dest[dest_index] = value % 256;
+    dest[dest_index + 1] = value / 256;
+  }
+  //@ return_slice(db, dest, dl);
+  //@ ghost_cell_mutate(counter, visits+1);
+  //@ close blit_views((uint8 *)src, sl, dest, dl, (uint8 *)lookup, state, counter, visits+1);
+}

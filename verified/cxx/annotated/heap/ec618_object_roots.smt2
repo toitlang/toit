@@ -1,0 +1,142 @@
+; Concrete 32-bit EC618 young visitor. All offsets and sizes are bytes.
+(set-logic QF_BV)
+(define-sort W () (_ BitVec 32))
+(declare-const h W)
+(define-fun tag () W (bvand (bvlshr h #x00000001) #x0000000f))
+(define-fun bit () W (bvshl #x00000001 tag))
+; Routes numbered array=0, instance=1, stack=2, leaf=3, invalid=4.
+
+(define-fun route () W
+  (ite (= (bvand h #x0000001e) #x00000000) #x00000000
+  (ite (bvugt (bvsub tag #x00000001) #x0000000a) #x00000004
+  (ite (distinct (bvand bit #x00000e7a) #x00000000) #x00000003
+  (ite (distinct (bvand bit #x00000104) #x00000000) #x00000001
+  (ite (= tag #x00000007) #x00000002 #x00000004))))))
+(push)
+(assert (distinct route
+  (ite (= tag #x00000000) #x00000000
+  (ite (or (= tag #x00000002) (= tag #x00000008)) #x00000001
+  (ite (= tag #x00000007) #x00000002
+  (ite (bvule tag #x0000000b) #x00000003 #x00000004))))))
+(check-sat)
+(pop)
+(declare-const raw W)
+(declare-const extent W)
+(define-fun words ((k W)) W (bvshl k #x00000002))
+(define-fun aligned ((k W)) Bool (= (bvand k #x00000003) #x00000000))
+(define-fun fit ((a W) (n W)) Bool (bvule n (bvnot a)))
+(assert (and (aligned raw) (aligned extent) (bvuge extent #x00000004) (fit raw extent)))
+(define-fun end () W (bvadd raw extent))
+(define-fun tagged () W (bvadd raw #x00000001))
+(declare-const n W)
+(declare-const top W)
+(define-fun room ((prefix W)) Bool
+  (and (bvule n (bvlshr (bvnot prefix) #x00000002)) (= extent (bvadd prefix (words n)))))
+; For ordinary instances, a nonzero class size supplies all words after the
+; header. ASRS acts on a nonnegative difference under this size contract.
+(push)
+(assert (bvsge extent #x00000004))
+(define-fun bytes () W (bvsub extent #x00000004))
+(define-fun fields () W (bvashr (ite (bvslt bytes #x00000000) (bvsub extent #x00000001) bytes) #x00000002))
+(assert (or (distinct (bvadd (bvadd raw #x00000004) (words fields)) end)
+            (distinct fields (bvlshr bytes #x00000002))))
+(check-sat)
+(pop)
+(push)
+(assert (room #x00000008))
+(assert (or (distinct (bvadd tagged #x00000007) (bvadd raw #x00000008))
+            (distinct (bvadd (bvadd tagged #x00000007) (words n)) end)))
+(check-sat)
+(pop)
+; Well-formed stack has four guard words and 0 <= top <= length.
+(push)
+(assert (and (room #x00000028) (bvule top n)))
+(define-fun slots () W (bvadd tagged #x00000027))
+(define-fun first () W (bvadd slots (words top)))
+(define-fun used () W (bvsub n top))
+(assert (or (bvult first slots) (bvugt first end) (bvslt used #x00000000)
+            (distinct (bvadd first (words used)) end)
+            (bvugt (bvadd tagged #x00000023) (bvsub end #x00000004))))
+(check-sat)
+(pop)
+; Probe one arbitrary slot. At entry to iteration i, precisely slots below
+; i that pass the filter have been visited. For bulk ranges every slot passes.
+; For stacks read each current value before visiting the slot. This proof
+; assumes earlier callbacks preserve unvisited fields and stack metadata.
+(declare-const start W)
+(declare-const count W)
+(declare-const i W)
+(declare-const j W)
+(declare-const lo W)
+(declare-const hi W)
+(declare-const probe-value W)
+(declare-const current-value W)
+(declare-const stack Bool)
+(assert (and (aligned start) (bvule count #x3fffffff) (fit start (words count))
+             (bvule i count) (bvult j count) (bvule lo hi)
+             (=> (= i j) (= current-value probe-value))))
+(define-fun address ((k W)) W (bvadd start (words k)))
+(define-fun eligible ((v W)) Bool (or (not stack) (not (and (bvule lo v) (bvult v hi)))))
+(define-fun branches ((v W)) Bool (or (not stack) (bvugt lo v) (not (bvugt hi v))))
+(define-fun seen ((k W)) W (ite (and (bvult j k) (eligible probe-value)) #x00000001 #x00000000))
+(push)
+(assert (or (distinct (seen #x00000000) #x00000000)
+            (distinct (seen count) (ite (eligible probe-value) #x00000001 #x00000000))))
+(check-sat)
+(pop)
+(push)
+(assert (bvult i count))
+(define-fun next () W (bvadd i #x00000001))
+(define-fun new-visit () W (ite (and (= (address i) (address j)) (branches current-value)) #x00000001 #x00000000))
+(assert (or (distinct (bvslt i count) (bvult (address i) (address count)))
+            (bvule (address next) (address i)) (bvugt (address next) (address count))
+            (distinct (bvadd (address i) #x00000004) (address next))
+            (distinct (bvadd (seen i) new-visit) (seen next))))
+(check-sat)
+(pop)
+
+; PromotedTrack::zap receives raw+1. For a nonwrapping track it rewrites
+; exactly its three descriptor words to single-free-word headers. A later
+; heap walk decodes each as one four-byte leaf before the first promotion.
+(reset)
+(set-logic QF_BV)
+(define-sort W () (_ BitVec 32))
+(declare-const track W)
+(assert (and (= (bvand track #x00000003) #x00000000) (bvule track #xfffffff0)))
+(define-fun p () W (bvadd track #x00000001))
+(define-fun first-object () W (bvadd p #x0000000b))
+(define-fun count-code () W (ite (bvult first-object track) #x00000001 #x00000004))
+(define-fun stop () W (bvadd (bvsub p #x00000005) (bvshl count-code #x00000002)))
+(define-fun filler () W (bvnot #x0000006b))
+(define-fun class () W (bvashr filler #x00000006))
+(push)
+(assert (or (distinct stop first-object) (distinct (bvsub stop track) #x0000000c)
+            (distinct class #xfffffffe) (distinct ((_ extract 4 1) filler) #xa)
+            (= filler #x00000000)))
+(check-sat)
+(pop)
+(declare-const k W)
+(push)
+(assert (bvult k #x00000003))
+(define-fun dst () W (bvadd track (bvshl k #x00000002)))
+(assert (or (bvult dst track) (bvugt (bvadd dst #x00000004) stop)
+            (bvule (bvadd dst #x00000004) dst)))
+(check-sat)
+(pop)
+; Both scan loops advance by the *post-visit* size. With intact object
+; boundaries each step is within the run, updates the card of its raw
+; start, and strictly decreases remaining bytes for a fixed track end.
+(declare-const cur W)
+(declare-const end W)
+(declare-const n W)
+(assert (and (bvule first-object cur) (bvult cur end)
+             (= (bvand cur #x00000003) #x00000000)
+             (bvugt n #x00000000) (bvule n (bvsub end cur))
+             (= (bvand n #x00000003) #x00000000)))
+(define-fun after () W (bvadd cur n))
+(push)
+(assert (or (bvule after cur) (bvugt after end)
+            (bvuge (bvsub end after) (bvsub end cur))
+            (distinct (bvlshr cur #x00000007) (bvlshr (bvadd cur #x00000001) #x00000007))))
+(check-sat)
+(pop)

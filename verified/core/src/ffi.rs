@@ -18,6 +18,7 @@
 //! core calls; every one that may GC consumes the stack view.
 
 use vstd::prelude::*;
+use vstd::raw_ptr::*;
 use core::ffi::c_void;
 use core::sync::atomic::AtomicUsize;
 use crate::layout::*;
@@ -74,7 +75,6 @@ pub struct Context {
     pub unchecked: usize,
     pub new_space_top: *mut usize,
     pub new_space_limit: *const usize,
-    pub new_space_sentinel: usize,
     pub result_state: usize,
     pub result_value: i64,
 }
@@ -89,7 +89,7 @@ extern "C" {
     fn toit_v2_grow_stack(process: *mut c_void, needed: usize) -> usize;
     fn toit_v2_try_allocate_large_integer(process: *mut c_void, value: i64) -> usize;
     fn toit_v2_try_allocate_double(process: *mut c_void, bits: u64) -> usize;
-    fn toit_v2_try_allocate_array(process: *mut c_void, length: usize, filler: usize) -> usize;
+    fn toit_v2_try_allocate_array(process: *mut c_void, length: usize, filler: *mut c_void) -> usize;
     fn toit_v2_try_allocate_string(process: *mut c_void, length: usize) -> usize;
     fn toit_v2_try_allocate_byte_array(process: *mut c_void, length: usize) -> usize;
     fn toit_v2_primitive(process: *mut c_void, module: usize, index: usize, arity: usize,
@@ -135,21 +135,19 @@ impl Accepted {
 /// fresh one derived from the process after the call: the old view, whose
 /// pointers may be stale, is unreachable afterwards. The caller must have
 /// stored its state into the stack object before the call.
-#[verifier::external_body]
 pub struct Runtime {
-    process: *mut c_void,
+    process: *mut u8,
     array_word: usize,
     epoch: *const usize,
     ns_top: *mut usize,
     ns_limit: *const usize,
-    ns_sentinel: usize,
 }
 
 impl Runtime {
     /// A view of the current task's stack.
     #[verifier::external_body]
     pub fn stack(&self) -> StackMem {
-        unsafe { StackMem::from_stack(toit_v2_current_stack(self.process), self.array_word) }
+        unsafe { StackMem::from_stack(toit_v2_current_stack(self.process.cast()), self.array_word) }
     }
 
     /// MAY GC. An instance of the class with null fields, or 0; whether the
@@ -160,7 +158,7 @@ impl Runtime {
     pub fn allocate_instance(&self, stack: &mut StackMem, class_id: usize) -> (usize, bool) {
         // SAFETY: as `call_primitive`.
         let before = unsafe { *self.epoch };
-        let r = unsafe { toit_v2_allocate_instance(self.process, class_id) };
+        let r = unsafe { toit_v2_allocate_instance(self.process.cast(), class_id) };
         let moved = unsafe { *self.epoch } != before;
         if moved { *stack = self.stack(); }
         (r, moved)
@@ -174,7 +172,7 @@ impl Runtime {
     pub fn allocate_exception(&self, stack: &mut StackMem, value: usize, kind: usize,
                               words: &[usize; V2_MESSAGE_MAX_WORDS], count: usize) -> usize {
         let count = if count <= V2_MESSAGE_MAX_WORDS { count } else { 0 };
-        let r = unsafe { toit_v2_allocate_exception(self.process, value, kind, words.as_ptr(), count) };
+        let r = unsafe { toit_v2_allocate_exception(self.process.cast(), value, kind, words.as_ptr(), count) };
         *stack = self.stack();
         r
     }
@@ -186,7 +184,7 @@ impl Runtime {
     pub fn allocate_double(&self, stack: &mut StackMem, bits: u64) -> (usize, bool) {
         // SAFETY: as `call_primitive`.
         let before = unsafe { *self.epoch };
-        let r = unsafe { toit_v2_allocate_double(self.process, bits) };
+        let r = unsafe { toit_v2_allocate_double(self.process.cast(), bits) };
         let moved = unsafe { *self.epoch } != before;
         if moved { *stack = self.stack(); }
         (r, moved)
@@ -195,7 +193,7 @@ impl Runtime {
     /// MAY GC. An array of `length` elements, all `filler`, or 0.
     #[verifier::external_body]
     pub fn allocate_array(&self, stack: &mut StackMem, length: usize, filler: usize) -> usize {
-        let r = unsafe { toit_v2_allocate_array(self.process, length, filler) };
+        let r = unsafe { toit_v2_allocate_array(self.process.cast(), length, filler) };
         *stack = self.stack();
         r
     }
@@ -204,7 +202,7 @@ impl Runtime {
     /// free words.
     #[verifier::external_body]
     pub fn grow_stack(&self, stack: &mut StackMem, needed: usize) -> usize {
-        let r = unsafe { toit_v2_grow_stack(self.process, needed) };
+        let r = unsafe { toit_v2_grow_stack(self.process.cast(), needed) };
         *stack = self.stack();
         r
     }
@@ -212,7 +210,7 @@ impl Runtime {
     /// The allocator of the Rust primitives (allocation without GC).
     #[verifier::external_body]
     pub fn allocator(&self) -> Allocator {
-        Allocator { process: self.process }
+        Allocator { process: self.process.cast() }
     }
 
     /// MAY GC, may switch the current task. Calls the C++ primitive
@@ -229,7 +227,7 @@ impl Runtime {
         // SAFETY: `epoch` is `ObjectHeap::v2_epoch_address` of the running
         // process (toit_v2_context::epoch), read on the thread that owns it.
         let before = unsafe { *self.epoch };
-        let status = unsafe { toit_v2_primitive(self.process, module, index, arity, first, &mut result) };
+        let status = unsafe { toit_v2_primitive(self.process.cast(), module, index, arity, first, &mut result) };
         let moved = unsafe { *self.epoch } != before;
         if moved { *stack = self.stack(); }
         (status, result, moved)
@@ -237,7 +235,7 @@ impl Runtime {
 
     #[verifier::external_body]
     pub fn report(&self, kind: usize, bci: usize, detail: usize) {
-        unsafe { toit_v2_report(self.process, kind, bci, detail) }
+        unsafe { toit_v2_report(self.process.cast(), kind, bci, detail) }
     }
 
     /// Whether the VM traces every instruction (`-Xtrace`, debug builds); the
@@ -245,7 +243,7 @@ impl Runtime {
     /// run; the verified loop does not trace.
     #[verifier::external_body]
     pub fn tracing(&self) -> bool {
-        unsafe { toit_v2_tracing(self.process) != 0 }
+        unsafe { toit_v2_tracing(self.process.cast()) != 0 }
     }
 }
 
@@ -295,7 +293,9 @@ impl Allocator {
                  Ghost(fv): Ghost<Value>) -> (r: usize)
         requires
             length <= ARRAYLET_SIZE,
-            filler == crate::abs::enc(old(heap).addrs(), fv),
+            filler == crate::abs::enc(old(heap).addrs(), fv)
+                && toit_spec::v2::sound::good(old(heap).objs(), fv)
+                && crate::abs::encodable(old(heap).addrs(), fv),
         ensures
             r == 0 ==> *final(heap) == *old(heap),
             r != 0 ==> appended(old(heap), final(heap), r, p.ro_start, p.ro_size)
@@ -303,7 +303,9 @@ impl Allocator {
                     class_id: p.ap@.builtin[BUILTIN_ARRAY as int], ro: false,
                     body: Body::Array(Seq::new(length as nat, |i: int| fv)) }),
     {
-        unsafe { toit_v2_try_allocate_array(self.process, length, filler) }
+        // The VM exposes heap addresses as tagged words. Pass the filler with
+        // exposed provenance, just like a tagged Object* from a C++ caller.
+        unsafe { toit_v2_try_allocate_array(self.process, length, core::ptr::with_exposed_provenance_mut(filler)) }
     }
 
     /// A string of `length` bytes (`Process::allocate_string`: inline, or
@@ -336,33 +338,496 @@ impl Allocator {
     }
 }
 
+/// Permissions supplied by the owning process for one inline allocation.
+tracked struct NewSpaceWindow {
+    tracked top: PointsTo<usize>,
+    tracked limit: PointsTo<usize>,
+    tracked exposed: IsExposed,
+    tracked slots: Map<usize, PointsTo<usize>>,
+}
+
+impl NewSpaceWindow {
+    spec fn owns_word(self, addr: usize) -> bool {
+        &&& self.slots.contains_key(addr)
+        &&& self.slots[addr].ptr() == ptr_mut_from_data::<usize>(PtrData::<usize> {
+            addr, provenance: self.exposed@, metadata: (),
+        })
+    }
+
+    spec fn contains_value(self, base: usize, index: usize, value: usize) -> bool {
+        let a = (base + index * WORD_SIZE) as usize;
+        self.slots.contains_key(a) && self.slots[a].is_init() && self.slots[a].value() == value
+    }
+
+    spec fn valid(self, top: *mut usize, limit: *mut usize) -> bool {
+        &&& self.top.ptr() == top && self.top.is_init()
+        &&& self.limit.ptr() == limit && self.limit.is_init()
+        &&& self.top.value() <= self.limit.value()
+        &&& self.top.value() == 0 ==> self.limit.value() == 0
+        &&& self.top.value() % WORD_SIZE == 0 && self.limit.value() % WORD_SIZE == 0
+        &&& forall|a: usize| self.top.value() <= a < self.limit.value() && a % WORD_SIZE == 0
+            ==> #[trigger] self.owns_word(a)
+    }
+}
+
+/// Reserve the requested bytes and write the chunk-end sentinel after them.
+#[inline(always)]
+fn reserve_new_space(top_slot: *mut usize, limit_slot: *mut usize, size: usize,
+                     Tracked(window): Tracked<NewSpaceWindow>) -> (r: (usize, Tracked<NewSpaceWindow>))
+    requires window.valid(top_slot, limit_slot), size % WORD_SIZE == 0,
+    ensures
+        r.1@.valid(top_slot, limit_slot),
+        r.0 == 0 <==> window.limit.value() - window.top.value() <= size,
+        r.0 == 0 ==> r.1@ == window,
+        r.0 != 0 ==> {
+            let after = r.1@;
+            let end = after.top.value();
+            &&& r.0 == window.top.value()
+            &&& end == r.0 + size
+            &&& end + WORD_SIZE <= window.limit.value()
+            &&& after.limit == window.limit
+            &&& forall|a: usize| window.owns_word(a) ==> #[trigger] after.owns_word(a)
+            &&& after.slots.dom() == window.slots.dom()
+            &&& after.slots[end].is_init() && after.slots[end].value() == CHUNK_END_SENTINEL
+            &&& forall|a: usize| a != end && window.slots.contains_key(a) ==>
+                #[trigger] after.slots[a] == window.slots[a]
+        },
+    no_unwind
+{
+    let ghost before = window;
+    let tracked mut window = window;
+    let top = *ptr_ref(top_slot, Tracked(&window.top));
+    let limit = *ptr_ref(limit_slot, Tracked(&window.limit));
+    if limit - top <= size { return (0, Tracked(window)); }
+    let end = top + size;
+    proof { assert(window.owns_word(end)); }
+    let p = with_exposed_provenance(end, Tracked(window.exposed));
+    ptr_mut_write(top_slot, Tracked(&mut window.top), end);
+    ptr_mut_write(p, Tracked(window.slots.tracked_borrow_mut(end)), CHUNK_END_SENTINEL);
+    proof {
+        assert forall|a: usize| before.owns_word(a) implies #[trigger] window.owns_word(a) by {}
+        assert forall|a: usize| end <= a < limit && a % WORD_SIZE == 0
+            implies #[trigger] window.owns_word(a) by {
+            assert(before.owns_word(a));
+        }
+    }
+    (top, Tracked(window))
+}
+
+/// Layout of an object created by the inline allocator.
+enum InlineObject {
+    Instance { class_bits: u16, null: usize },
+    Double { bits: u64 },
+}
+
+impl InlineObject {
+    spec fn tag(&self) -> usize {
+        match self {
+            InlineObject::Instance { .. } => INSTANCE_TAG,
+            InlineObject::Double { .. } => DOUBLE_TAG,
+        }
+    }
+
+    spec fn header_bits(&self, cid: usize) -> usize {
+        ((cid << CLASS_ID_OFFSET) | self.tag()) << SMI_TAG_SIZE
+    }
+
+    #[inline(always)]
+    fn header(&self, cid: usize) -> (h: usize)
+        ensures h == self.header_bits(cid),
+            cid <= 0xffff ==> hdr_class_id(h) == cid && hdr_class_tag(h) == self.tag(),
+        no_unwind
+    {
+        let tag = match self {
+            InlineObject::Instance { .. } => INSTANCE_TAG,
+            InlineObject::Double { .. } => DOUBLE_TAG,
+        };
+        let h = ((cid << CLASS_ID_OFFSET) | tag) << SMI_TAG_SIZE;
+        proof {
+            if cid <= 0xffff {
+                assert(((((h as isize) >> 1usize) as usize) >> 5usize) == cid
+                    && ((((h as isize) >> 1usize) as usize) & 15usize) == tag) by (bit_vector)
+                    requires cid <= 0xffff, tag == 2 || tag == 4,
+                        h == ((cid << 5usize) | tag) << 1usize;
+            }
+        }
+        h
+    }
+
+    #[inline(always)]
+    fn words(&self) -> (n: usize)
+        ensures n == self.word_count(), n <= 0xffff,
+        no_unwind
+    {
+        match self {
+            InlineObject::Instance { class_bits, .. } => ((*class_bits >> CLASS_ID_OFFSET) & INSTANCE_SIZE_MASK) as usize,
+            InlineObject::Double { .. } => 1 + 8 / WORD_SIZE,
+        }
+    }
+
+    spec fn word_count(&self) -> usize {
+        match self {
+            InlineObject::Instance { class_bits, .. } => ((*class_bits >> CLASS_ID_OFFSET) & INSTANCE_SIZE_MASK) as usize,
+            InlineObject::Double { .. } => (1 + 8usize / WORD_SIZE) as usize,
+        }
+    }
+
+    spec fn word(&self, header: usize, i: usize) -> usize {
+        if i == 0 { header } else { self.payload(i) }
+    }
+
+    spec fn payload(&self, i: usize) -> usize {
+        match self {
+            InlineObject::Instance { null, .. } => *null,
+            InlineObject::Double { bits } => value_word(*bits, i - 1),
+        }
+    }
+
+    #[inline(always)]
+    fn payload_word(&self, i: usize) -> (w: usize)
+        requires 1 <= i < self.word_count(),
+        ensures w == self.payload(i),
+        no_unwind
+    {
+        match self {
+            InlineObject::Instance { null, .. } => *null,
+            InlineObject::Double { bits } => {
+                #[cfg(target_pointer_width = "64")]
+                { *bits as usize }
+                #[cfg(target_pointer_width = "32")]
+                {
+                    #[cfg(target_endian = "little")]
+                    let low = i == 1;
+                    #[cfg(target_endian = "big")]
+                    let low = i == 2;
+                    if low { (*bits & 0xffff_ffff) as usize } else { (*bits >> 32) as usize }
+                }
+            },
+        }
+    }
+}
+
+/// Physical reservation and initialization for the heap model proof below.
+#[inline(always)]
+fn allocate_new_space(top_slot: *mut usize, limit_slot: *mut usize, cid: usize,
+                      object: InlineObject, Tracked(window): Tracked<NewSpaceWindow>) -> (r: (usize, Tracked<NewSpaceWindow>))
+    requires window.valid(top_slot, limit_slot),
+    ensures
+        r.1@.valid(top_slot, limit_slot),
+        r.0 == 0 <==> object.word_count() == 0 ||
+            window.limit.value() - window.top.value() <= object.word_count() * WORD_SIZE,
+        r.0 == 0 ==> r.1@ == window,
+        r.0 != 0 ==> {
+            let after = r.1@;
+            let end = after.top.value();
+            &&& r.0 == window.top.value()
+            &&& cid <= 0xffff ==> hdr_class_id(after.slots[r.0].value()) == cid
+                && hdr_class_tag(after.slots[r.0].value()) == object.tag()
+            &&& end == r.0 + object.word_count() * WORD_SIZE
+            &&& end + WORD_SIZE <= window.limit.value()
+            &&& after.limit == window.limit
+            &&& after.slots.dom() == window.slots.dom()
+            &&& after.slots[end].is_init() && after.slots[end].value() == CHUNK_END_SENTINEL
+            &&& forall|a: usize| window.owns_word(a) ==> #[trigger] after.owns_word(a)
+            &&& forall|j: usize| j < object.word_count() ==> #[trigger] after.contains_value(
+                r.0, j, object.word(object.header_bits(cid), j))
+            &&& forall|a: usize| !(r.0 <= a <= end) && window.slots.contains_key(a) ==>
+                #[trigger] after.slots[a] == window.slots[a]
+        },
+    no_unwind
+{
+    let header = object.header(cid);
+    let n = object.words();
+    if n == 0 { return (0, Tracked(window)); }
+    let size = n * WORD_SIZE;
+    let (top, Tracked(reserved)) = reserve_new_space(top_slot, limit_slot, size, Tracked(window));
+    if top == 0 { return (0, Tracked(reserved)); }
+    let tracked mut w = reserved;
+    let mut i = 0usize;
+    while i < n
+        invariant
+            window.valid(top_slot, limit_slot),
+            0 < n == object.word_count(), i <= n,
+            top == window.top.value(), top > 0, top % WORD_SIZE == 0,
+            size == n * WORD_SIZE, top + size < window.limit.value(),
+            w.top == reserved.top, w.limit == reserved.limit, w.exposed == reserved.exposed,
+            w.slots.dom() == reserved.slots.dom(),
+            forall|a: usize| window.owns_word(a) ==> #[trigger] w.owns_word(a),
+            forall|a: usize| !(top <= a < top + i * WORD_SIZE) && reserved.slots.contains_key(a) ==>
+                #[trigger] w.slots[a] == reserved.slots[a],
+            forall|j: usize| j < i ==> #[trigger] w.contains_value(
+                top, j, object.word(header, j)),
+        decreases n - i,
+    {
+        let a = top + i * WORD_SIZE;
+        proof { assert(window.owns_word(a)); assert(w.owns_word(a)); }
+        let value = if i == 0 { header } else { object.payload_word(i) };
+        let p = with_exposed_provenance(a, Tracked(w.exposed));
+        let ghost before = w;
+        ptr_mut_write(p, Tracked(w.slots.tracked_borrow_mut(a)), value);
+        proof {
+            assert forall|k: usize| window.owns_word(k) implies #[trigger] w.owns_word(k) by {
+                assert(before.owns_word(k));
+            }
+            assert forall|j: usize| j <= i implies #[trigger] w.contains_value(
+                top, j, object.word(header, j)) by {
+                if j < i { assert(before.contains_value(top, j, object.word(header, j))); }
+            }
+        }
+        i += 1;
+    }
+    proof {
+        let end = reserved.top.value();
+        assert(w.contains_value(top, 0, object.word(header, 0)));
+        assert forall|a: usize| end <= a < window.limit.value() && a % WORD_SIZE == 0
+            implies #[trigger] w.owns_word(a) by { assert(window.owns_word(a)); }
+        assert(window.owns_word(end));
+        assert(reserved.owns_word(end));
+        assert(w.slots[end] == reserved.slots[end]);
+        assert forall|a: usize| !(top <= a <= end) && window.slots.contains_key(a)
+            implies #[trigger] w.slots[a] == window.slots[a] by {
+            assert(w.slots[a] == reserved.slots[a]);
+        }
+    }
+    (top, Tracked(w))
+}
+
+/// Inputs of the interpreter's no-GC allocation instructions.
+pub(crate) enum InlineRequest {
+    Instance(usize),
+    Double(u64),
+}
+
+impl InlineRequest {
+    pub(crate) open spec fn model(&self, p: toit_spec::v2::types::Program2, g: toit_spec::v2::types::State2) -> HeapObj {
+        match self {
+            InlineRequest::Instance(cid) => crate::alloc::new_instance(p, *cid as int),
+            InlineRequest::Double(bits) => toit_spec::spec_common::new_double(
+                toit_spec::v2::types::as1(g), toit_spec::v2::types::p1(p), *bits),
+        }
+    }
+
+    pub(crate) open spec fn tables_ready(&self, p: &crate::exec::Program) -> bool {
+        match self {
+            InlineRequest::Instance(c) => *c < p.class_bits@.len() && (p.class_bits@[*c as int] & 0xf) == INSTANCE_TAG,
+            InlineRequest::Double(_) => BUILTIN_DOUBLE < p.builtin@.len(),
+        }
+    }
+}
+
+impl NewSpaceWindow {
+    spec fn model_word(self, top: usize, k: int, o: HeapObj, cb: Seq<u16>, addr: Seq<usize>) -> bool {
+        let a = (top + k * WORD_SIZE) as usize;
+        &&& self.owns_word(a)
+        &&& self.slots[a].is_init()
+        &&& word_val(o, cb, addr, k, self.slots[a].value())
+    }
+}
+
+/// Selects the layout from the running program and relates every initialized
+/// word to the same object the bytecode specification appends.
+#[inline(always)]
+fn allocate_modeled(top_slot: *mut usize, limit_slot: *mut usize,
+                    p: &crate::exec::Program, req: InlineRequest,
+                    Ghost(g): Ghost<toit_spec::v2::types::State2>, Ghost(addr): Ghost<Seq<usize>>,
+                    Tracked(window): Tracked<NewSpaceWindow>) -> (r: (usize, Tracked<NewSpaceWindow>))
+    requires
+        window.valid(top_slot, limit_slot), req.tables_ready(p), crate::exec::ro_ok(p),
+        crate::abs::prog_rel(p, g.heap, addr),
+    ensures
+        r.1@.valid(top_slot, limit_slot),
+        r.0 == 0 ==> r.1@ == window,
+        r.0 != 0 ==> {
+            let o = req.model(p.ap@, g);
+            let end = r.1@.top.value();
+            &&& (o.class_id as int) < p.ap@.class_bits.len()
+            &&& (p.ap@.class_bits[o.class_id as int] & 0xf) == (if o.body is Instance { INSTANCE_TAG } else { DOUBLE_TAG })
+            &&& o.body is Instance ==> o.body->Instance_0.len() == crate::abs::ifc_bits(p.ap@.class_bits, o.class_id as int)
+            &&& r.0 == window.top.value()
+            &&& p.ro_size == 0 || end + WORD_SIZE <= p.ro_start || p.ro_start + p.ro_size <= r.0
+            &&& end == r.0 + obj_words(o) * WORD_SIZE
+            &&& r.1@.slots[end].is_init() && r.1@.slots[end].value() == CHUNK_END_SENTINEL
+            &&& forall|k: int| is_word(o, k) ==>
+                #[trigger] r.1@.model_word(r.0, k, o, p.ap@.class_bits, addr)
+        },
+    no_unwind
+{
+    // Check the entire remaining window, including the chunk-end sentinel,
+    // before any object or allocator metadata is modified.
+    let top = *ptr_ref(top_slot, Tracked(&window.top));
+    let limit = *ptr_ref(limit_slot, Tracked(&window.limit));
+    if p.ro_size != 0 && top < p.ro_start + p.ro_size && p.ro_start < limit {
+        return (0, Tracked(window));
+    }
+    let (cid, layout) = match &req {
+        InlineRequest::Instance(c) => {
+            if *c > 0xffff { return (0, Tracked(window)); }
+            let bits = p.class_bits.at(*c);
+            (*c, InlineObject::Instance { class_bits: bits, null: p.null })
+        },
+        InlineRequest::Double(bits) => {
+            let w = p.builtin.at(BUILTIN_DOUBLE);
+            let cid = w >> SMI_TAG_SIZE;
+            proof {
+                let c = p.ap@.builtin[BUILTIN_DOUBLE as int];
+                assert(p.builtin@[BUILTIN_DOUBLE as int] == crate::abs::smi_word(c as i64));
+                assert(w == ((c as usize) + (c as usize)) as usize);
+                assert(cid == c as usize) by (bit_vector)
+                    requires w == (c as usize).wrapping_add(c as usize), cid == w >> 1usize;
+            }
+            if cid >= p.class_bits.len() || (p.class_bits.at(cid) & 0xf) != DOUBLE_TAG as u16 {
+                return (0, Tracked(window));
+            }
+            (cid, InlineObject::Double { bits: *bits })
+        },
+    };
+    let ghost header = layout.header_bits(cid);
+    let ghost o = req.model(p.ap@, g);
+    let (top, Tracked(after)) = allocate_new_space(top_slot, limit_slot, cid, layout, Tracked(window));
+    if top != 0 {
+        proof {
+            assert(p.roots@[0] == crate::abs::enc(addr, p.ap@.roots[0]));
+            assert(layout.word_count() == obj_words(o));
+            assert forall|k: int| is_word(o, k) implies #[trigger]
+                after.model_word(top, k, o, p.ap@.class_bits, addr) by {
+                let j = k as usize;
+                assert(0 <= k < layout.word_count());
+                assert(after.contains_value(top, j, layout.word(header, j)));
+            }
+        }
+    }
+    (top, Tracked(after))
+}
+
+proof fn take_inline_words(tracked window: NewSpaceWindow, top: usize, id: int, o: HeapObj,
+                           cb: Seq<u16>, addr: Seq<usize>) -> (tracked words: Map<(int, int), PointsTo<usize>>)
+    requires
+        o.body is Instance || o.body is Double,
+        top + obj_words(o) * WORD_SIZE <= usize::MAX,
+        forall|k: int| is_word(o, k) ==> #[trigger] window.model_word(top, k, o, cb, addr),
+    ensures
+        words.dom() == inline_keys(id, o),
+        forall|key: (int, int)| words.contains_key(key) ==> (#[trigger] words[key]).ptr()@.provenance == window.exposed@,
+        forall|k: int| is_word(o, k) ==> #[trigger] inline_word(words, id, k, top, o, cb, addr),
+{
+    let indices = Seq::new(obj_words(o) as nat, |k: int| (id, k));
+    assert forall|key: (int, int)| #[trigger] indices.to_set().contains(key) <==>
+        key.0 == id && 0 <= key.1 < obj_words(o) by {
+        if indices.contains(key) {
+            let k = choose|k: int| 0 <= k < indices.len() && indices[k] == key;
+        } else if key.0 == id && 0 <= key.1 < obj_words(o) {
+            assert(indices[key.1] == key);
+        }
+    }
+    let keys = Map::new(inline_keys(id, o), |key: (int, int)| (top + key.1 * WORD_SIZE) as usize);
+    assert forall|key: (int, int)| keys.contains_key(key) implies window.slots.contains_key(keys[key]) by {
+        assert(window.model_word(top, key.1, o, cb, addr));
+    }
+    assert forall|x: (int, int), y: (int, int)| x != y && keys.contains_key(x) && keys.contains_key(y)
+        implies keys[x] != keys[y] by {
+        assert(keys[x] == top + x.1 * WORD_SIZE);
+        assert(keys[y] == top + y.1 * WORD_SIZE);
+    }
+    let tracked words = Map::tracked_map_keys(window.slots, keys);
+    assert forall|key: (int, int)| words.contains_key(key) implies
+        (#[trigger] words[key]).ptr()@.provenance == window.exposed@ by {
+        assert(window.model_word(top, key.1, o, cb, addr));
+        assert(words[key] == window.slots[keys[key]]);
+    }
+    assert forall|k: int| is_word(o, k) implies #[trigger] inline_word(words, id, k, top, o, cb, addr) by {
+        assert(keys.contains_key((id, k)));
+        assert(window.model_word(top, k, o, cb, addr));
+        assert(words[(id, k)] == window.slots[keys[(id, k)]]);
+    }
+    words
+}
+
+impl Runtime {
+    /// Each fast-path allocation acquires the currently owned window after
+    /// the last possible GC, and consumes its permissions before returning.
+    #[verifier::external_body]
+    #[inline(always)]
+    fn allocation_window(&self) -> (w: Tracked<NewSpaceWindow>)
+        ensures w@.valid(self.ns_top, self.ns_limit as *mut usize),
+    {
+        Tracked::assume_new()
+    }
+
+    #[inline(always)]
+    pub(crate) fn bump(&self, m: &mut crate::exec::Machine, p: &crate::exec::Program,
+                       req: InlineRequest, Ghost(r): Ghost<crate::regs::Regs>) -> (tagged: usize)
+        requires old(m).with(r).inv(p), req.tables_ready(p), crate::exec::ro_ok(p),
+        ensures
+            tagged == 0 ==> *final(m) == *old(m),
+            tagged != 0 ==> *final(m) == (crate::exec::Machine { heap: final(m).heap, ..*old(m) })
+                && (crate::exec::Machine {
+                    g: Ghost(toit_spec::v2::spec::alloc2(old(m).g@, req.model(p.ap@, old(m).g@))), ..*final(m)
+                }).with(r).refines(p)
+                && tagged == crate::abs::enc(final(m).addr(), toit_spec::v2::spec::new_ref2(old(m).g@)),
+    {
+        let Tracked(window) = self.allocation_window();
+        let ghost g = m.g@;
+        let ghost o = req.model(p.ap@, g);
+        let (top, Tracked(after)) = allocate_modeled(self.ns_top, self.ns_limit as *mut usize, p, req, Ghost(g), Ghost(m.addr()), Tracked(window));
+        if top == 0 { return 0; }
+        let ghost before = *m;
+        let tagged = top | HEAP_TAG;
+        proof {
+            assert(tagged & 3 == HEAP_TAG && tagged != 0) by (bit_vector)
+                requires tagged == top | 1usize, top % 4usize == 0, HEAP_TAG == 1usize;
+        }
+        let ghost initialized = after;
+        let tracked mut after = after;
+        proof {
+            assert(after.model_word(top, 0, o, p.ap@.class_bits, m.addr()));
+            assert(top == tagged - HEAP_TAG) by (bit_vector)
+                requires tagged == top | 1usize, top % 4usize == 0, HEAP_TAG == 1usize;
+        }
+        m.heap.prove_fresh_header(Ghost(tagged), Tracked(after.slots.tracked_borrow_mut(top)));
+        proof {
+            assert(after.slots =~= initialized.slots);
+            let null = toit_spec::v2::spec::null2(p.ap@);
+            assert(crate::abs::const_ok(g.heap, null));
+            if o.body is Instance {
+                assert forall|i: int| 0 <= i < o.body->Instance_0.len()
+                    implies #[trigger] crate::abs::encodable(m.addr(), o.body->Instance_0[i]) by {
+                    assert(o.body->Instance_0[i] == null);
+                }
+            }
+        }
+        let tracked token = after.exposed;
+        let tracked words = take_inline_words(after, top, m.heap.objs().len() as int, o, p.ap@.class_bits, m.addr());
+        m.heap.register_inline(p, Ghost(top), Ghost(tagged), Ghost(o), Tracked(token), Tracked(words));
+        proof {
+            let h0 = &before.heap;
+            let h1 = &m.heap;
+            let n = h0.objs().len() as int;
+            crate::primitive::lemma_heap_inv(p, before.with(r));
+            assert(h1.objs().last() == o);
+            if o.body is Instance {
+                let null = toit_spec::v2::spec::null2(p.ap@);
+                assert(crate::abs::const_ok(h0.objs(), null));
+                assert forall|i: int| 0 <= i < o.body->Instance_0.len()
+                    implies toit_spec::v2::sound::good(h1.objs(), #[trigger] o.body->Instance_0[i])
+                        && crate::abs::encodable(h1.addrs(), o.body->Instance_0[i]) by {
+                    assert(o.body->Instance_0[i] == null);
+                }
+            }
+            crate::prims::lemma_post_append(p, h0, h1, tagged);
+            let next = crate::exec::Machine { g: Ghost(toit_spec::v2::spec::alloc2(g, o)), ..*m };
+            crate::primitive::lemma_refines_heap(p, before.with(r), next.with(r));
+            assert(h1.addrs()[n] == tagged);
+        }
+        tagged
+    }
+}
+
 } // verus!
 
 impl Runtime {
     pub fn new(process: *mut c_void, array_word: usize, epoch: *const usize,
-               ns_top: *mut usize, ns_limit: *const usize, ns_sentinel: usize) -> Self {
-        Runtime { process, array_word, epoch, ns_top, ns_limit, ns_sentinel }
-    }
-
-    /// New-space allocation without GC, inline: the fast path of
-    /// `SemiSpace::try_allocate` (src/third_party/dartino/object_memory.h):
-    /// `size` bytes at the allocation top, the chunk-end sentinel after
-    /// them; the untagged address, or 0 if new space is full (then nothing
-    /// changed). Only the trusted allocation functions of alloc.rs call it
-    /// (TRUSTED.md, "Inline allocation").
-    #[inline(always)]
-    pub fn bump(&self, size: usize) -> usize {
-        // SAFETY: `ns_top` and `ns_limit` are the new space of the running
-        // process (`toit_v2_context`), used on the thread that owns it; no
-        // GC runs during the run loop except inside the C++ calls.
-        unsafe {
-            let top = *self.ns_top;
-            if (*self.ns_limit).wrapping_sub(top) <= size { return 0; }
-            let new_top = top + size;
-            *self.ns_top = new_top;
-            *(new_top as *mut usize) = self.ns_sentinel;
-            top
-        }
+               ns_top: *mut usize, ns_limit: *const usize) -> Self {
+        Runtime { process: process.cast(), array_word, epoch, ns_top, ns_limit }
     }
 }
 
@@ -426,7 +891,7 @@ pub unsafe extern "C" fn toit_v2_run(context: *mut Context) -> usize {
         trusted: Ghost::assume_new(),
     };
     let runtime = Runtime::new(c.process, p.stack_array_word, c.epoch,
-        c.new_space_top, c.new_space_limit, c.new_space_sentinel);
+        c.new_space_top, c.new_space_limit);
     let globals = Globals::from_raw(p.globals, p.globals_length);
     let heap = Heap::new(p.remembered_set_bias);
     let preemption = Preemption::from_raw(c.watermark);
@@ -469,7 +934,7 @@ macro_rules! layout_table {
 }
 
 layout_table!(
-    WORD_SIZE, SMI_TAG_SIZE, SMI_TAG_MASK, SMI_TAG, NON_SMI_TAG_MASK, HEAP_TAG, ERROR_TAG,
+    WORD_SIZE, CHUNK_END_SENTINEL, SMI_TAG_SIZE, SMI_TAG_MASK, SMI_TAG, NON_SMI_TAG_MASK, HEAP_TAG, ERROR_TAG,
     MIN_SMI, MAX_SMI,
     HEADER_WORD, CLASS_TAG_OFFSET, CLASS_TAG_MASK, CLASS_ID_OFFSET, INSTANCE_SIZE_MASK,
     ARRAY_TAG, STRING_TAG, INSTANCE_TAG, ODDBALL_TAG, DOUBLE_TAG, BYTE_ARRAY_TAG,
@@ -523,6 +988,7 @@ const STRUCT_LAYOUT: &[(&[u8], usize)] = &[
     (b"PROGRAM_literals\0", core::mem::offset_of!(ProgramTables, literals)),
     (b"PROGRAM_globals\0", core::mem::offset_of!(ProgramTables, globals)),
     (b"PROGRAM_program_heap_start\0", core::mem::offset_of!(ProgramTables, program_heap_start)),
+    (b"PROGRAM_program_heap_size\0", core::mem::offset_of!(ProgramTables, program_heap_size)),
     (b"PROGRAM_remembered_set_bias\0", core::mem::offset_of!(ProgramTables, remembered_set_bias)),
     (b"PROGRAM_global_max_height\0", core::mem::offset_of!(ProgramTables, global_max_height)),
     (b"PROGRAM_stack_array_word\0", core::mem::offset_of!(ProgramTables, stack_array_word)),
@@ -538,7 +1004,6 @@ const STRUCT_LAYOUT: &[(&[u8], usize)] = &[
     (b"CONTEXT_unchecked\0", core::mem::offset_of!(Context, unchecked)),
     (b"CONTEXT_new_space_top\0", core::mem::offset_of!(Context, new_space_top)),
     (b"CONTEXT_new_space_limit\0", core::mem::offset_of!(Context, new_space_limit)),
-    (b"CONTEXT_new_space_sentinel\0", core::mem::offset_of!(Context, new_space_sentinel)),
     (b"CONTEXT_result_state\0", core::mem::offset_of!(Context, result_state)),
     (b"CONTEXT_result_value\0", core::mem::offset_of!(Context, result_value)),
 ];

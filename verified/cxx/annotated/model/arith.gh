@@ -60,4 +60,14 @@ lemma void shiftright_1(int x)
   shiftright_div(x, N1);
 }
 
+lemma void error_word(int index)
+  requires 0 <= index &*& index < 256;
+  ensures ((index << 2) | 3) == index * 4 + 3;
+{
+  Z z = int_of_Z_of_uintN(index, N8);
+  shiftleft_def(index, N2);
+  bitor_def(index << 2, Zdigit(Zdigit(z, false), false), 3, Zdigit(Zdigit(Zsign(false), true), true));
+  switch (z) { case Zsign(b): case Zdigit(high, low): }
+}
+
 #endif

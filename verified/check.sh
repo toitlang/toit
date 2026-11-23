@@ -226,6 +226,19 @@ elif ! "$TOIT_BIN" run "$VERIFIED/tools/layout_table.toit" -- --check --root "$V
 fi
 
 if [ "$RUN_TESTS" = 1 ]; then
+  section "IEEE binary64 specification checks"
+  z3_bin="${VERUS_Z3_PATH:-$(command -v z3)}"
+  if [ -z "$z3_bin" ] && command -v verus >/dev/null; then
+    z3_bin="$(dirname "$(realpath "$(command -v verus)")")/z3"
+  fi
+  for query in "$VERIFIED"/spec/tests/binary64-*.smt2; do
+    if result=$("$z3_bin" "$query") && [ "$result" = unsat ]; then
+      echo "$(basename "$query") passed"
+    else
+      fail "IEEE check $query with Z3 ($z3_bin): $result"
+    fi
+  done
+
   section "Escape-hatch audit regression test (verified/tools/tests/trust_audit_test.sh)"
   if ! tools_ready || ! TOIT="$TOIT_BIN" "$VERIFIED/tools/tests/trust_audit_test.sh"; then
     fail "escape-hatch audit regression test"

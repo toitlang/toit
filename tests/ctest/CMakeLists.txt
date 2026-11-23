@@ -98,6 +98,11 @@ foreach(MODE positive negative)
       )
     endif()
 
+    if (exe STREQUAL "finalizer-roots-test" OR exe STREQUAL "stack-gc-roots-test")
+      # Inspect the native storage and the exact slots passed to the visitor.
+      target_compile_options(${exe} PRIVATE -fno-access-control)
+    endif()
+
     if (IS_NEGATIVE_TEST)
       target_compile_definitions(${exe} PRIVATE NEGATIVE_TEST)
     endif()

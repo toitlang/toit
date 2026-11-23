@@ -58,8 +58,8 @@ class GcMetadata {
     }
     ASSERT(in_metadata_range(start));
     uint8* from = starts_for(start);
-    uint8* to = starts_for(end);
-    memset(from, NO_OBJECT_START, to - from);
+    uword cards = (end >> CARD_SIZE_LOG_2) - (start >> CARD_SIZE_LOG_2);
+    memset(from, NO_OBJECT_START, cards);
   }
 
   static void initialize_remembered_set_for_chunk(const Chunk* chunk, uword only_above = 0) {
@@ -327,29 +327,15 @@ class GcMetadata {
     // word-sized bit operation on an unaligned mark bit that corresponds to an
     // object that is too close to the end of a page (the next page may belong
     // to a different process).
-    // The boundary check is done on the mark bits rather than the object address.
-    // Each byte has 8 mark bits, each corresponding to a word in the object
-    // space, so we divide by both 8 and the word size (4 or 8).  Then subtract
-    // 1 to make an all-ones mask.
-    uword page_boundary_mask = (TOIT_PAGE_SIZE / BYTE_BIT_SIZE / WORD_SIZE) - 1;
-    // More efficient to mask with this because we can usually use byte compare
-    // instructions.  Therefore we conservatively reduce the size of this mask.
-    // This means we use the byte compare on 64 bit with a page size >= 16k,
-    // and on 32 bit with a page size >= 8k.
-    if (page_boundary_mask > 0xff) page_boundary_mask = 0xff;
+    // Measure from the heap page, since the OS may place the mark table at
+    // a different alignment. One mark byte describes eight heap words.
+    constexpr uword mark_bytes_per_page = TOIT_PAGE_SIZE / BYTE_BIT_SIZE / WORD_SIZE;
+    constexpr uword granule = mark_bytes_per_page < 256 ? mark_bytes_per_page : 256;
+    uword byte_offset = (reinterpret_cast<uword>(object) >> MARK_BITS_SHIFT) & (granule - 1);
 
-    // Assert that the mark bits array is sufficiently aligned that we can do
-    // the end-of-page test on the mark bits instead of the object.
-    uword first_object_on_page = reinterpret_cast<uword>(object) & ~(TOIT_PAGE_SIZE - 1);
-    uword first_mark_bits_on_page = bytewise_mark_bits_for(reinterpret_cast<HeapObject*>(first_object_on_page));
-    USE(first_object_on_page);
-    USE(first_mark_bits_on_page);
-    ASSERT(Utils::round_up(first_mark_bits_on_page, page_boundary_mask + 1) == first_mark_bits_on_page);
-
-    // Limit to 25 words (or 57) since marking 26 bits could span 5 bytes and a
-    // 32 bit write can only set 4 bytes.
+    // Allow seven leading bits before the object's first mark.
     uword max_fast_word_size = sizeof(word) * 8 - 7;
-    if (size_in_words > max_fast_word_size || (page_boundary_mask & bits) > (page_boundary_mask & (bits + WORD_SIZE))) {
+    if (size_in_words > max_fast_word_size || byte_offset + WORD_SIZE >= granule) {
       slow_mark(object, size);
     } else {
       uword mask = 1;
@@ -414,6 +400,13 @@ class GcMetadata {
 
   static uword heap_extent() { return singleton_.heap_extent_; }
 
+  static bool contains_chunk(void* memory, uword size) {
+    uword address = reinterpret_cast<uword>(memory);
+    uword lowest = singleton_.lowest_address_;
+    uword extent = singleton_.heap_extent_;
+    return size != 0 && address >= lowest && size <= extent && address - lowest <= extent - size;
+  }
+
   // This method returns true for the end of the very last page
   // in the metadata range.  This means it can be used for the end
   // of a page when calculating a range of metadata corresponding
@@ -442,7 +435,7 @@ class GcMetadata {
   inline static void record_start(uword address) {
     uint8* start = starts_for(address);
     ASSERT(CARD_SIZE_LOG_2 <= 8);
-    *start = static_cast<uint8>(address);
+    *start = static_cast<uint8>(address % 256);
   }
 
   // An object at this address may contain a pointer from old-space to
@@ -483,7 +476,7 @@ class GcMetadata {
 
   static GcMetadata singleton_;
 
-  void set_up_singleton();
+  void initialize();
 
   static void slow_mark(HeapObject* object, uword size);
   static uword end_of_destination_of_last_live_object_starting_before(
@@ -491,24 +484,24 @@ class GcMetadata {
   static uword last_line_that_fits(Program* program, uword line, uword dest_limit);
 
   // Heap metadata (remembered set etc.).
-  uword lowest_address_;
-  uword heap_extent_;
-  uword heap_start_munged_;
-  uword heap_extent_munged_;
-  uword number_of_cards_;
-  uword metadata_size_;
-  uint8* metadata_;
-  uint8* remembered_set_;
-  uint8* object_starts_;
-  uint32* mark_bits_;
-  uint8_t* mark_stack_overflow_bits_;
-  uint8_t* page_type_bytes_;
-  uword* cumulative_mark_bit_counts_;
-  uword starts_bias_;
-  uword remembered_set_bias_;
-  uword mark_bits_bias_;
-  uword overflow_bits_bias_;
-  uword cumulative_mark_bits_bias_;
+  uword lowest_address_ = 0;
+  uword heap_extent_ = 0;
+  uword heap_start_munged_ = 0;
+  uword heap_extent_munged_ = 0;
+  uword number_of_cards_ = 0;
+  uword metadata_size_ = 0;
+  uint8* metadata_ = nullptr;
+  uint8* remembered_set_ = nullptr;
+  uint8* object_starts_ = nullptr;
+  uint32* mark_bits_ = nullptr;
+  uint8_t* mark_stack_overflow_bits_ = nullptr;
+  uint8_t* page_type_bytes_ = nullptr;
+  uword* cumulative_mark_bit_counts_ = nullptr;
+  uword starts_bias_ = 0;
+  uword remembered_set_bias_ = 0;
+  uword mark_bits_bias_ = 0;
+  uword overflow_bits_bias_ = 0;
+  uword cumulative_mark_bits_bias_ = 0;
 #ifdef TOIT_FREERTOS
   int large_heap_heuristics_ = 0;
 #else

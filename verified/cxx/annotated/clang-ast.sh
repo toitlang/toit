@@ -43,7 +43,18 @@ vm_cxx_flags "$REPO_ROOT"
 # expressions take seconds on these dumps.)
 LC_ALL=C awk 'BEGIN { pos = 0; np = 0; NAME = "  \"name\": \""; ID = "\"id\": \"0x" }
   { line_start = pos; pos += length($0) + 1 }
-  $0 == "{" { start = line_start; name = ""; np = 0 }
+  $0 == "{" { start = line_start; name = ""; np = 0; record = 0; children = 0 }
+  $0 == "  \"kind\": \"CXXRecordDecl\"," { record = 1 }
+  # Direct children of a class can be decoded independently. In particular,
+  # Primitive contains a deeply nested constant initializer unrelated to its methods.
+  record && $0 == "  \"inner\": [" { children = 1 }
+  $0 == "  ]" { children = 0 }
+  children && $0 == "    {" { member_start = line_start; member = "" }
+  children && /^      "name": "/ { member = $0; sub(/^      "name": "/, "", member); sub(/".*$/, "", member) }
+  children && /^    },?$/ && member != "" {
+    print name "::" member, member_start, line_start + 5
+    member = ""
+  }
   name == "" && substr($0, 1, 11) == NAME { name = substr($0, 12); sub(/".*$/, "", name) }
   want_kind {
     want_kind = 0

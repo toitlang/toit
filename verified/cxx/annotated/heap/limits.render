@@ -1,0 +1,226 @@
+// Copyright (C) 2026 Toit contributors.
+@include ../model/model.cfg
+@verbatim
+#include "chunk_chain.h"
+#include <stdint.h>
+#include <stdbool.h>
+#include "../model/constants.h"
+typedef intptr_t word;
+typedef uintptr_t uword;
+typedef int ObjectHeap_AllocationResult;
+typedef struct Space { ChunkList chunk_list_; bool promotion_failed_; } Space;
+typedef Space OldSpace;
+typedef Space SemiSpace;
+typedef struct TwoSpaceHeap { OldSpace old_space_; SemiSpace semi_space_; } TwoSpaceHeap;
+typedef struct ObjectHeap { int last_allocation_result_; TwoSpaceHeap two_space_heap_; word pending_limit_; word limit_; word max_heap_size_; } ObjectHeap;
+typedef struct Process { ObjectHeap object_heap_; } Process;
+
+/*@
+fixpoint int heap_min(int a, int b) { return a < b ? a : b; }
+fixpoint int heap_max(int a, int b) { return a > b ? a : b; }
+predicate space_size(Space *s; int value) =
+  pointer_within_limits(&s->chunk_list_) == true &*& pointer_within_limits(&s->chunk_list_.anchor_) == true &*&
+  s->chunk_list_.anchor_.next_ |-> ?first &*& chunk_chain(first, &s->chunk_list_.anchor_, _, value) &*&
+  0 <= value &*& value <= UINTPTR_MAX;
+predicate internal_size(TwoSpaceHeap *h; int value) =
+  pointer_within_limits(h) == true &*& pointer_within_limits(&h->old_space_) == true &*&
+  pointer_within_limits(&h->semi_space_) == true &*& space_size(&h->old_space_, ?old) &*&
+  space_size(&h->semi_space_, ?young) &*& old + young <= UINTPTR_MAX &*& value == old + young;
+predicate external_size(ObjectHeap *h; int value);
+fixpoint int measured_bytes(int raw, int external) {
+  return raw + external;
+}
+fixpoint int byte_total(int raw, int external) {
+  return measured_bytes(raw, external) > UINTPTR_MAX ? UINTPTR_MAX : measured_bytes(raw, external);
+}
+fixpoint int allocation_room(int used, int limit, int cap) {
+  return limit == 0 && cap == 0 ? ObjectHeap__UNLIMITED_EXPANSION : used > limit ? -1 : limit - used;
+}
+fixpoint int growth_limit(int used, int cap) {
+  return cap == 0 ? heap_min(UINTPTR_MAX / 2, heap_max(TOIT_PAGE_SIZE, 2 * used)) :
+                    heap_min(cap, 2 * heap_max(TOIT_PAGE_SIZE, 2 * used));
+}
+@*/
+uword ObjectHeap_external_memory(ObjectHeap *self);
+//@ requires [?f]external_size(self, ?bytes);
+//@ ensures [f]external_size(self, bytes) &*& result == bytes;
+@prototypes
+@render src/third_party/dartino/object_memory.h toit::Chunk::size tu=src/third_party/dartino/object_memory.cc
+  uword size() const
+  //@ requires [?f]self->start_ |-> ?lo &*& [f]self->end_ |-> ?hi &*& lo <= hi;
+  //@ ensures [f]self->start_ |-> lo &*& [f]self->end_ |-> hi &*& result == hi - lo;
+  //@ terminates;
+  { return end_ - start_; }
+
+@render src/third_party/dartino/object_memory.cc toit::Space::size
+uword Space::size() const
+//@ requires [?f]space_size(self, ?bytes);
+//@ ensures [f]space_size(self, bytes) &*& result == bytes;
+//@ terminates;
+{
+  //@ open [f]space_size(self, bytes);
+  //@ assert [f]self->chunk_list_.anchor_.next_ |-> ?first;
+  //@ Chunk *anchor = &self->chunk_list_.anchor_;
+  //@ list<Chunk *> done = nil;
+  //@ close [f]visited(done, first, anchor, first, 0);
+  uword result = 0;
+  for (auto chunk : chunk_list_)
+    /*@ invariant __end1 == anchor &*& [f]visited(done, first, anchor, __begin1, result) &*&
+          [f]chunk_chain(__begin1, anchor, ?tail, ?rest) &*& 0 <= rest &*& result + rest == bytes; @*/
+    //@ decreases length(tail);
+  {
+    //@ open [f]chunk_chain(chunk, anchor, tail, rest);
+    //@ open [f]chunk_node(chunk, anchor, ?next, ?size);
+    result += chunk->size();
+    //@ close [f]chunk_node(chunk, anchor, next, size);
+    //@ close [f]visited(cons(chunk, done), first, anchor, next, result);
+    //@ done = cons(chunk, done);
+  }
+  /*@ if (__begin1 != anchor) {
+    open [f]chunk_chain(__begin1, anchor, _, _);
+    open [f]chunk_node(__begin1, anchor, _, _);
+  } @*/
+  //@ assert __begin1 == anchor;
+  //@ open [f]chunk_chain(anchor, anchor, _, _);
+  //@ close [f]chunk_chain(anchor, anchor, nil, 0);
+  //@ restore_chain(f, done, first, anchor, anchor);
+  ASSERT(used() <= result);
+  //@ close [f]space_size(self, bytes);
+  return result;
+}
+
+@render src/third_party/dartino/two_space_heap.h toit::TwoSpaceHeap::new_space type=constSemiSpace*()const tu=src/heap.cc
+  const SemiSpace* new_space() const
+  //@ requires pointer_within_limits(&self->semi_space_) == true;
+  //@ ensures result == &self->semi_space_;
+  { return &semi_space_; }
+
+@render src/third_party/dartino/two_space_heap.h toit::TwoSpaceHeap::size tu=src/heap.cc
+  uword size() const
+  //@ requires [?f]internal_size(self, ?raw);
+  //@ ensures [f]internal_size(self, raw) &*& result == raw;
+  {
+    //@ open [f]internal_size(self, raw);
+    return old_space_.size() + new_space()->size();
+  }
+
+@render src/third_party/dartino/object_memory.h toit::OldSpace::set_promotion_failed tu=src/heap.cc
+  void set_promotion_failed(bool value)
+  //@ requires self->promotion_failed_ |-> _;
+  //@ ensures self->promotion_failed_ |-> value;
+  { promotion_failed_ = value; }
+
+@render src/third_party/dartino/two_space_heap.h toit::TwoSpaceHeap::set_promotion_failed tu=src/heap.cc
+  void set_promotion_failed()
+  //@ requires self->old_space_.promotion_failed_ |-> _;
+  //@ ensures self->old_space_.promotion_failed_ |-> true;
+  { old_space_.set_promotion_failed(true); }
+
+@render src/heap.cc toit::combined_heap_bytes
+static uword combined_heap_bytes(uword internal, uword external)
+//@ requires true;
+//@ ensures result == heap_min(UINTPTR_MAX, internal + external);
+{
+  if (external > UINTPTR_MAX - internal) return UINTPTR_MAX;
+  return internal + external;
+}
+
+@render src/heap.cc toit::ObjectHeap::reserved_heap_bytes
+uword ObjectHeap::reserved_heap_bytes() const
+//@ requires [?f]internal_size(&self->two_space_heap_, ?raw) &*& [?g]external_size(self, ?external);
+//@ ensures [f]internal_size(&self->two_space_heap_, raw) &*& [g]external_size(self, external) &*& result == byte_total(raw, external);
+{
+  //@ open [f]internal_size(&self->two_space_heap_, raw);
+  //@ close [f]internal_size(&self->two_space_heap_, raw);
+  return combined_heap_bytes(two_space_heap_.size(), external_memory());
+}
+
+@render src/heap.cc toit::doubled_heap_limit
+static word doubled_heap_limit(uword bytes)
+//@ requires true;
+//@ ensures result == heap_min(UINTPTR_MAX / 2, 2 * bytes);
+{
+  if (bytes > INTPTR_MAX / 2) return INTPTR_MAX;
+  return static_cast<word>(bytes * 2);
+}
+
+@render src/heap.h toit::ObjectHeap::has_max_heap_size tu=src/heap.cc
+  bool has_max_heap_size() const
+  //@ requires [?m]self->max_heap_size_ |-> ?cap;
+  //@ ensures [m]self->max_heap_size_ |-> cap &*& result == (cap != 0);
+  { return max_heap_size_ != 0; }
+
+@render src/heap.h toit::ObjectHeap::has_limit tu=src/heap.cc
+  bool has_limit() const
+  //@ requires [?m]self->max_heap_size_ |-> ?cap &*& [?l]self->limit_ |-> ?limit;
+  //@ ensures [m]self->max_heap_size_ |-> cap &*& [l]self->limit_ |-> limit &*& result == (limit != cap);
+  { return limit_ != max_heap_size_; }
+
+@render src/heap.cc toit::ObjectHeap::update_pending_limit
+word ObjectHeap::update_pending_limit()
+//@ requires [?f]internal_size(&self->two_space_heap_, ?raw) &*& [?g]external_size(self, ?external) &*& [?m]self->max_heap_size_ |-> ?cap &*& self->pending_limit_ |-> _;
+/*@ ensures [f]internal_size(&self->two_space_heap_, raw) &*& [g]external_size(self, external) &*& [m]self->max_heap_size_ |-> cap &*&
+            self->pending_limit_ |-> result &*& result == growth_limit(measured_bytes(raw, external), cap); @*/
+{
+  word next = doubled_heap_limit(reserved_heap_bytes());
+  if (next < TOIT_PAGE_SIZE) next = TOIT_PAGE_SIZE;
+  if (has_max_heap_size()) {
+    // Allow twice as much growth when the configured maximum bounds it.
+    next = doubled_heap_limit(static_cast<uword>(next));
+    if (next > max_heap_size_) next = max_heap_size_;
+  }
+  pending_limit_ = next;
+  return next;
+}
+
+@render src/heap.cc toit::ObjectHeap::max_external_allocation
+word ObjectHeap::max_external_allocation()
+//@ requires [?f]internal_size(&self->two_space_heap_, ?raw) &*& [?g]external_size(self, ?external) &*& [?m]self->max_heap_size_ |-> ?cap &*& [?l]self->limit_ |-> ?limit;
+/*@ ensures [f]internal_size(&self->two_space_heap_, raw) &*& [g]external_size(self, external) &*& [m]self->max_heap_size_ |-> cap &*& [l]self->limit_ |-> limit &*&
+            result == allocation_room(measured_bytes(raw, external), limit, cap); @*/
+{
+  if (!has_limit() && !has_max_heap_size()) return _UNLIMITED_EXPANSION;
+  uword total = reserved_heap_bytes();
+  if (limit_ < 0 || total > static_cast<uword>(limit_)) return -1;
+  return limit_ - static_cast<word>(total);
+}
+
+@render src/heap.cc toit::ObjectHeap::install_heap_limit
+void ObjectHeap::install_heap_limit()
+//@ requires [?f]internal_size(&self->two_space_heap_, ?raw) &*& [?g]external_size(self, ?external) &*& [?m]self->pending_limit_ |-> ?pending &*& self->limit_ |-> _ &*& self->two_space_heap_.old_space_.promotion_failed_ |-> ?failed;
+/*@ ensures [f]internal_size(&self->two_space_heap_, raw) &*& [g]external_size(self, external) &*& [m]self->pending_limit_ |-> pending &*& self->limit_ |-> pending &*&
+            self->two_space_heap_.old_space_.promotion_failed_ |-> (failed || measured_bytes(raw, external) > pending); @*/
+{
+  //@ open [f]internal_size(&self->two_space_heap_, raw);
+  //@ close [f]internal_size(&self->two_space_heap_, raw);
+  uword total = reserved_heap_bytes();
+  if (pending_limit_ < 0 || total > static_cast<uword>(pending_limit_)) {
+    // If we already went over the heuristic limit that triggers a new GC we set
+    // a flag that means the next scavenge won't promote into old space.
+    two_space_heap_.set_promotion_failed();
+  }
+  limit_ = pending_limit_;
+}
+
+@render src/heap.h toit::ObjectHeap::set_last_allocation_result tu=src/heap.cc
+  void set_last_allocation_result(ObjectHeap::AllocationResult result)
+  //@ requires self->last_allocation_result_ |-> _;
+  //@ ensures self->last_allocation_result_ |-> result;
+  {
+    last_allocation_result_ = result;
+  }
+
+@render src/process.h toit::Process::should_allow_external_allocation tu=src/heap.cc
+  bool should_allow_external_allocation(word size)
+  /*@ requires [?f]internal_size(&self->object_heap_.two_space_heap_, ?raw) &*& [?g]external_size(&self->object_heap_, ?external) &*&
+               [?m]self->object_heap_.max_heap_size_ |-> ?cap &*& [?l]self->object_heap_.limit_ |-> ?limit &*& self->object_heap_.last_allocation_result_ |-> _; @*/
+  /*@ ensures [f]internal_size(&self->object_heap_.two_space_heap_, raw) &*& [g]external_size(&self->object_heap_, external) &*&
+              [m]self->object_heap_.max_heap_size_ |-> cap &*& [l]self->object_heap_.limit_ |-> limit &*&
+              self->object_heap_.last_allocation_result_ |-> (result ? ObjectHeap_ALLOCATION_SUCCESS : ObjectHeap_ALLOCATION_HIT_LIMIT) &*&
+              result == (0 <= size && size <= allocation_room(measured_bytes(raw, external), limit, cap)); @*/
+  {
+    word max = object_heap_.max_external_allocation();
+    bool result = size >= 0 && size <= max;
+    object_heap_.set_last_allocation_result(result ? ObjectHeap::ALLOCATION_SUCCESS : ObjectHeap::ALLOCATION_HIT_LIMIT);
+    return result;
+  }

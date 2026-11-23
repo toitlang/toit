@@ -17,6 +17,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "constants.h"
+#include "program_class_ids.h"
 //@ #include <listex.gh>
 //@ #include <bitops.gh>
 //@ #include <maps.gh>
@@ -47,6 +48,8 @@ typedef int BlobKind;
 // The views of blob content (src/objects.h): plain structs.
 struct String_Bytes { uint8 *address_; word length_; };
 typedef struct String_Bytes String_Bytes;
+struct String_MutableBytes { uint8 *address_; word length_; };
+typedef struct String_MutableBytes String_MutableBytes;
 struct ByteArray_Bytes { uint8 *address_; word length_; };
 typedef struct ByteArray_Bytes ByteArray_Bytes;
 struct ByteArray_ConstBytes { uint8 *address_; word length_; };
@@ -88,6 +91,10 @@ fixpoint void *smi_ptr(int v) { return (void *)(2 * v); }
 // is the content of the predicates below, i.e. an assumption about the
 // allocator and the GC (TRUSTED.md V2).
 fixpoint uword *raw(void *o) { return (uword *)((uword)o - 1); }
+predicate copied_header(void *object; list<char> bytes) =
+  chars((char *)raw(object),sizeof(word),bytes);
+predicate installed_forwarding(void *original,void *target) =
+  pointer((void **)raw(original),target) &*& is_heap_w((uword)target) == true;
 
 // ---------------------------------------------------------------------------
 // Headers. A header is a smi whose value is (class_id << 5) | (finalizer
@@ -161,24 +168,25 @@ fixpoint bool prog_ok(prog_ids ids) {
 // when external, the address; for an external byte array the address and
 // the external tag). The heap is a list of distinct tagged addresses `objs`;
 // every reference word in an object is a smi or one of `objs` (heap
-// integrity, TRUSTED.md V2). The values of fields are otherwise arbitrary: a
+// integrity, TRUSTED.md V2). The number field holds the signed 64-bit payload of a LargeInteger. The values of fields are otherwise arbitrary: a
 // size field can be any smi, a backing field anything (the code must not
 // trust them).
 
-inductive oinfo = oinfo(uword hw, int len, list<void *> words, list<uword> aux);
-fixpoint uword o_hw(oinfo i) { switch (i) { case oinfo(hw, l, ws, ax): return hw; } }
-fixpoint int o_len(oinfo i) { switch (i) { case oinfo(hw, l, ws, ax): return l; } }
-fixpoint list<void *> o_words(oinfo i) { switch (i) { case oinfo(hw, l, ws, ax): return ws; } }
-fixpoint list<uword> o_aux(oinfo i) { switch (i) { case oinfo(hw, l, ws, ax): return ax; } }
+inductive oinfo = oinfo(uword hw, int len, list<void *> words, list<uword> aux, int64 number);
+fixpoint uword o_hw(oinfo i) { switch (i) { case oinfo(hw, l, ws, ax, n): return hw; } }
+fixpoint int o_len(oinfo i) { switch (i) { case oinfo(hw, l, ws, ax, n): return l; } }
+fixpoint list<void *> o_words(oinfo i) { switch (i) { case oinfo(hw, l, ws, ax, n): return ws; } }
+fixpoint list<uword> o_aux(oinfo i) { switch (i) { case oinfo(hw, l, ws, ax, n): return ax; } }
+
+fixpoint int64 o_number(oinfo i) { switch (i) { case oinfo(hw, l, ws, ax, n): return n; } }
 
 fixpoint bool good(list<void *> objs, void *w) { return is_smi_w((uword)w) || mem(w, objs); }
 
 // The upper bound of an object's size: objects are in pages far below the
 // top of the address space (pages are at most a few hundred KB).
 #define MAX_OBJECT_WORDS 0x100000
-// The upper bound of an external blob (TRUSTED.md, "Word size": byte
-// lengths of the heap model are below 2^30).
-#define MAX_BLOB 0x3fffffff
+// Blob lengths fit a Smi. The LP64 model covers lengths through INT_MAX.
+#define MAX_BLOB (WORD_SIZE == 4 ? 0x3fffffff : INT_MAX)
 
 fixpoint bool addr_ok(void *o) {
   return is_heap_w((uword)o) && 1 < (uword)o &&
@@ -232,23 +240,28 @@ predicate string_body(void *o, int len, list<uword> aux;) =
   half_word((uint8 *)raw(o) + LAYOUT_STRING_INTERNAL_LENGTH_BYTE, ?il) &*&
   il != String_SENTINEL ?
     aux == cons(il, nil) &*& len == il &*& il <= WORD_SIZE * MAX_OBJECT_WORDS &*&
-    uchars((uint8 *)raw(o) + LAYOUT_STRING_CONTENT_BYTE, il, _)
+    uchars((uint8 *)raw(o) + LAYOUT_STRING_CONTENT_BYTE, il, _) &*& u_character((uint8 *)raw(o) + LAYOUT_STRING_CONTENT_BYTE + il, 0)
   :
     uintptr(raw(o) + LAYOUT_STRING_EXTERNAL_LENGTH_WORD, len) &*& uintptr(raw(o) + LAYOUT_STRING_EXTERNAL_ADDRESS_WORD, ?ea) &*& len <= MAX_BLOB &*&
-    aux == cons(il, cons(ea, nil)) &*& external_bytes(ea, len);
+    aux == cons(il, cons(ea, nil)) &*& external_bytes(ea, len) &*& u_character((uint8 *)ea + len, 0);
 
-predicate body(void *o, int tag2, int len, list<uword> aux; list<void *> words) =
+predicate boxed_bytes(void *p; int value) =
+  chars(p, 8, ?cs) &*& value == head(integers_of_chars(8, true, cs)) &*& integers_of_chars(8, true, cs) == cons(value, nil);
+
+predicate body(void *o, int tag2, int len, list<uword> aux, int64 number; list<void *> words) =
   tag2 == 2 * INSTANCE_TAG ? instance_body(o, len, words) &*& aux == nil :
   tag2 == 2 * ARRAY_TAG ? array_body(o, len, words) &*& aux == nil :
   tag2 == 2 * BYTE_ARRAY_TAG ? byte_array_body(o, len, aux) &*& words == nil :
   tag2 == 2 * STRING_TAG ? string_body(o, len, aux) &*& words == nil :
+  tag2 == 2 * LARGE_INTEGER_TAG ?
+    boxed_bytes((void *)(raw(o) + 1), number) &*& len == 0 &*& words == nil &*& aux == nil :
   len == 0 &*& words == nil &*& aux == nil;  // Other objects: only the header is used here.
 
 predicate_ctor heap_obj(list<void *> objs, fixpoint(void *, oinfo) H)(void *o) =
   header(o, o_hw(H(o))) &*&
   header_tag2(o_hw(H(o))) == 2 * class_tag(header_cid(o_hw(H(o)))) &*&
   (class_tag(header_cid(o_hw(H(o)))) == INSTANCE_TAG ? o_len(H(o)) == class_fields(header_cid(o_hw(H(o)))) : true) &*&
-  body(o, header_tag2(o_hw(H(o))), o_len(H(o)), o_aux(H(o)), o_words(H(o))) &*&
+  body(o, header_tag2(o_hw(H(o))), o_len(H(o)), o_aux(H(o)), o_number(H(o)), o_words(H(o))) &*&
   forall(o_words(H(o)), (good)(objs)) == true;
 
 predicate heap(list<void *> objs, fixpoint(void *, oinfo) H) =
@@ -305,6 +318,15 @@ fixpoint bool blob_in(fixpoint(void *, oinfo) H, void *o, uint8 *a, int l) {
 predicate blob_result(list<void *> objs, fixpoint(void *, oinfo) H, int kind, uint8 *a, int l, void *b) =
   mem(b, objs) == true &*& blob_ok(H, b, kind) == true &*& blob_in(H, b, a, l) == true;
 
+// A string can copy an independent native buffer or a slice of a live
+// heap object. The latter's bytes are already owned by the heap.
+inductive string_input = native_bytes(real, list<unsigned char>) | heap_bytes(void *);
+predicate string_source(string_input source, list<void *> objs, fixpoint(void *, oinfo) H, uint8 *p, int n) =
+  switch (source) {
+    case native_bytes(f, bs): return [f]uchars(p, n, bs);
+    case heap_bytes(b): return mem(b, objs) == true &*& blob_ok(H, b, STRINGS_OR_BYTE_ARRAYS) == true &*& blob_in(H, b, p, n) == true;
+  };
+
 // Lemmas about the model (proved in objects.gen.c).
 
 // A string or byte array taken out of the heap with its body, and back.
@@ -332,8 +354,7 @@ lemma void byte_array_close(void *s);
            o_words(H(s)) == nil &*& mem(s, objs) == true &*& has_tag(H, s, BYTE_ARRAY_TAG) == true;
   ensures [f]heap(objs, H);
 
-// The content of a readable blob is a range of the address space below
-// MAX_BLOB bytes.
+// The content of a readable blob fits in the address space and the heap model’s length bound.
 lemma void blob_facts(void *b);
   requires [?f]heap(?objs, ?H) &*& mem(b, objs) == true &*& blob_ok(H, b, STRINGS_OR_BYTE_ARRAYS) == true;
   ensures [f]heap(objs, H) &*& 0 <= blob_len(H, b) &*& blob_len(H, b) <= MAX_BLOB &*&
@@ -362,10 +383,10 @@ predicate blob_shell(void *b, int tag2, int len, list<uword> aux) =
     half_word((uint8 *)raw(b) + LAYOUT_STRING_HASH_CODE_BYTE, _) &*&
     half_word((uint8 *)raw(b) + LAYOUT_STRING_INTERNAL_LENGTH_BYTE, ?il) &*&
     (il != String_SENTINEL ?
-       aux == cons(il, nil) &*& len == il &*& il <= WORD_SIZE * MAX_OBJECT_WORDS
+       aux == cons(il, nil) &*& len == il &*& il <= WORD_SIZE * MAX_OBJECT_WORDS &*& u_character((uint8 *)raw(b) + LAYOUT_STRING_CONTENT_BYTE + il, 0)
      :
        uintptr(raw(b) + LAYOUT_STRING_EXTERNAL_LENGTH_WORD, len) &*& uintptr(raw(b) + LAYOUT_STRING_EXTERNAL_ADDRESS_WORD, ?ea) &*& len <= MAX_BLOB &*&
-       aux == cons(il, cons(ea, nil)) &*& ea + len <= UINTPTR_MAX);
+       aux == cons(il, cons(ea, nil)) &*& ea + len <= UINTPTR_MAX &*& u_character((uint8 *)ea + len, 0));
 
 predicate blob_hole(list<void *> objs, fixpoint(void *, oinfo) H, void *b) =
   header(b, o_hw(H(b))) &*& blob_shell(b, header_tag2(o_hw(H(b))), o_len(H(b)), o_aux(H(b))) &*&
@@ -399,12 +420,12 @@ lemma void good_nth(list<void *> objs, list<void *> ws, int i);
 lemma void heap_open(void *o);
   requires [?f]heap(?objs, ?H) &*& mem(o, objs) == true;
   ensures [f]heap_rest(objs, H, o) &*& [f]header(o, o_hw(H(o))) &*&
-          [f]body(o, header_tag2(o_hw(H(o))), o_len(H(o)), o_aux(H(o)), o_words(H(o))) &*&
+          [f]body(o, header_tag2(o_hw(H(o))), o_len(H(o)), o_aux(H(o)), o_number(H(o)), o_words(H(o))) &*&
           obj_facts(objs, H, o) == true &*& addr_ok(o) == true;
 
 lemma void heap_close(void *o);
   requires [?f]heap_rest(?objs, ?H, o) &*& [f]header(o, o_hw(H(o))) &*&
-           [f]body(o, header_tag2(o_hw(H(o))), o_len(H(o)), o_aux(H(o)), o_words(H(o))) &*&
+           [f]body(o, header_tag2(o_hw(H(o))), o_len(H(o)), o_aux(H(o)), o_number(H(o)), o_words(H(o))) &*&
            obj_facts(objs, H, o) == true &*& mem(o, objs) == true;
   ensures [f]heap(objs, H);
 
@@ -440,44 +461,47 @@ lemma void pointers_unfocus(void **base, int i, list<void *> ps);
 @*/
 
 // ---------------------------------------------------------------------------
-// The program's roots (src/program.h, generated by macros there): trusted
-// accessors.
+// Projected fields of the loaded program image (src/program.h).
 
-struct Program;
+typedef struct FlashAllocation_Header { uint16 size_in_pages_; } FlashAllocation_Header;
+typedef struct BytecodeList { uint8 *data_; word length_; } BytecodeList;
+struct Program {
+  FlashAllocation_Header header_;
+  Object *roots_[Program_ROOT_COUNT];
+  Smi *_builtin_class_ids[Program_BUILTIN_CLASS_IDS_COUNT];
+  BytecodeList bytecodes;
+};
+typedef struct Program FlashAllocation;
 typedef struct Program Program;
 
-//@ predicate program(Program *p; prog_ids ids);
+/*@
+fixpoint list<void *> program_roots(Program *p);
+fixpoint int image_pages(Program *p);
+fixpoint int image_bytes(Program *p) { return p == 0 ? 0 : image_pages(p) * 4096; }
+predicate image_header(Program *p;) =
+  p == 0 ? true : pointer_within_limits(&p->header_) == true &*& p->header_.size_in_pages_ |-> image_pages(p);
 
-Smi *Program_array_class_id(Program *self);
-//@ requires [?f]program(self, ?ids);
-//@ ensures [f]program(self, ids) &*& result == smi_ptr(array_cid(ids));
-Smi *Program_list_class_id(Program *self);
-//@ requires [?f]program(self, ?ids);
-//@ ensures [f]program(self, ids) &*& result == smi_ptr(list_cid(ids));
-Smi *Program_list_slice_class_id(Program *self);
-//@ requires [?f]program(self, ?ids);
-//@ ensures [f]program(self, ids) &*& result == smi_ptr(list_slice_cid(ids));
-Smi *Program_map_class_id(Program *self);
-//@ requires [?f]program(self, ?ids);
-//@ ensures [f]program(self, ids) &*& result == smi_ptr(map_cid(ids));
-Smi *Program_large_array_class_id(Program *self);
-//@ requires [?f]program(self, ?ids);
-//@ ensures [f]program(self, ids) &*& result == smi_ptr(large_array_cid(ids));
-Smi *Program_tombstone_class_id(Program *self);
-//@ requires [?f]program(self, ?ids);
-//@ ensures [f]program(self, ids) &*& result == smi_ptr(tombstone_cid(ids));
-Smi *Program_byte_array_cow_class_id(Program *self);
-//@ requires [?f]program(self, ?ids);
-//@ ensures [f]program(self, ids) &*& result == smi_ptr(byte_array_cow_cid(ids));
-Smi *Program_byte_array_slice_class_id(Program *self);
-//@ requires [?f]program(self, ?ids);
-//@ ensures [f]program(self, ids) &*& result == smi_ptr(byte_array_slice_cid(ids));
-Smi *Program_string_byte_slice_class_id(Program *self);
-//@ requires [?f]program(self, ?ids);
-//@ ensures [f]program(self, ids) &*& result == smi_ptr(string_byte_slice_cid(ids));
-Smi *Program_string_slice_class_id(Program *self);
-//@ requires [?f]program(self, ?ids);
-//@ ensures [f]program(self, ids) &*& result == smi_ptr(string_slice_cid(ids));
+fixpoint list<int> builtin_ids(Program *p);
+fixpoint prog_ids class_ids_from_table(list<int> slots) {
+  return prog_ids(
+    nth(Program_array_class_id_INDEX, slots),
+    nth(Program_list_class_id_INDEX, slots),
+    nth(Program_list_slice_class_id_INDEX, slots),
+    nth(Program_map_class_id_INDEX, slots),
+    nth(Program_large_array_class_id_INDEX, slots),
+    nth(Program_tombstone_class_id_INDEX, slots),
+    nth(Program_byte_array_cow_class_id_INDEX, slots),
+    nth(Program_byte_array_slice_class_id_INDEX, slots),
+    nth(Program_string_slice_class_id_INDEX, slots),
+    nth(Program_string_byte_slice_class_id_INDEX, slots));
+}
+predicate program_classes(Program *p; prog_ids ids) =
+  pointers(p->_builtin_class_ids, Program_BUILTIN_CLASS_IDS_COUNT, map(smi_ptr, builtin_ids(p))) &*&
+  length(builtin_ids(p)) == Program_BUILTIN_CLASS_IDS_COUNT &*& ids == class_ids_from_table(builtin_ids(p));
+predicate program(Program *p; prog_ids ids) =
+  image_header(p) &*& program_classes(p, ids) &*& pointers(p->roots_, Program_ROOT_COUNT, program_roots(p));
+@*/
+
 // null_object, true_object, false_object: roots, objects of the heap
 // (compared by the encoder, returned and stored by the decoder; never
 // read).
@@ -500,7 +524,7 @@ HeapObject *Program_false_object(Program *self);
 
 /*@
 fixpoint bool kept(fixpoint(void *, oinfo) H, fixpoint(void *, oinfo) H2, void *o) {
-  return o_hw(H2(o)) == o_hw(H(o)) && o_len(H2(o)) == o_len(H(o)) && o_aux(H2(o)) == o_aux(H(o));
+  return o_hw(H2(o)) == o_hw(H(o)) && o_len(H2(o)) == o_len(H(o)) && o_aux(H2(o)) == o_aux(H(o)) && o_number(H2(o)) == o_number(H(o));
 }
 fixpoint bool grows(list<void *> objs, fixpoint(void *, oinfo) H, list<void *> objs2, fixpoint(void *, oinfo) H2) {
   return subset(objs, objs2) && forall(objs, (kept)(H, H2));
@@ -509,7 +533,7 @@ fixpoint bool same_obj(fixpoint(void *, oinfo) H, fixpoint(void *, oinfo) H2, vo
 
 // The heap after writing field `index` of instance o.
 fixpoint fixpoint(void *, oinfo) put_field(fixpoint(void *, oinfo) H, void *o, int index, void *v) {
-  return fupdate(H, o, oinfo(o_hw(H(o)), o_len(H(o)), update(index, v, o_words(H(o))), o_aux(H(o))));
+  return fupdate(H, o, oinfo(o_hw(H(o)), o_len(H(o)), update(index, v, o_words(H(o))), o_aux(H(o)), o_number(H(o))));
 }
 
 lemma void grows_refl(list<void *> objs, fixpoint(void *, oinfo) H);
@@ -551,9 +575,12 @@ typedef struct Object Error;
 /*@
 predicate process(Process *p; Program *program, prog_ids ids);
 
-// Whether o lies in the program heap of p (Process::on_program_heap: an
-// address range).
-fixpoint bool in_program_heap(Process *p, void *o);
+// Identity and native image length of the program loaded for a process.
+fixpoint Program *loaded_program(Process *p);
+fixpoint bool in_program_heap(Process *p, void *o) {
+  return (uword)loaded_program(p) <= (uword)o &&
+         (uword)o < (uword)loaded_program(p) + image_bytes(loaded_program(p));
+}
 
 // The postcondition of mutable_byte_content: the range is in the content of
 // a live byte array outside the program heap (writable).
@@ -562,18 +589,20 @@ predicate mutable_result(list<void *> objs, fixpoint(void *, oinfo) H, Process *
   in_program_heap(process, b) == false &*& blob_in(H, b, a, l) == true;
 @*/
 
-Program *Process_program(Process *self);
-//@ requires [?f]process(self, ?prog, ?ids);
-//@ ensures [f]process(self, prog, ids) &*& result == prog &*& [_]program(prog, ids) &*& prog_ok(ids) == true;
+//@ fixpoint HeapObject *process_null(Process *p);
+HeapObject *Process_null_object(Process *self);
+//@ requires [?f]process(self, ?prog, ?ids) &*& [?g]heap(?objs, ?H);
+//@ ensures [f]process(self, prog, ids) &*& [g]heap(objs, H) &*& result == process_null(self) &*& mem(result, objs) == true;
 
-bool Process_on_program_heap(Process *self, HeapObject *object);
-//@ requires [?f]process(self, ?prog, ?ids);
-//@ ensures [f]process(self, prog, ids) &*& result == in_program_heap(self, object);
-
-// The true object is a root: an object of the heap.
+// The cached boolean roots of a process are objects of its heap.
+//@ fixpoint HeapObject *process_boolean(Process *p, bool value);
 HeapObject *Process_true_object(Process *self);
 //@ requires [?f]process(self, ?prog, ?ids) &*& [?g]heap(?objs, ?H);
-//@ ensures [f]process(self, prog, ids) &*& [g]heap(objs, H) &*& mem(result, objs) == true;
+//@ ensures [f]process(self, prog, ids) &*& [g]heap(objs, H) &*& result == process_boolean(self, true) &*& mem(result, objs) == true;
+
+HeapObject *Process_false_object(Process *self);
+//@ requires [?f]process(self, ?prog, ?ids) &*& [?g]heap(?objs, ?H);
+//@ ensures [f]process(self, prog, ids) &*& [g]heap(objs, H) &*& result == process_boolean(self, false) &*& mem(result, objs) == true;
 
 // Allocation without a GC: a new byte array of `length` bytes (internal, or
 // external with RawByteTag and malloced bytes), outside the program heap,
@@ -597,19 +626,21 @@ String *Program_permission_denied(Program *self);
 //@ ensures true;
 // (allocation_failed is one of the roots a primitive's error names for a
 // GC and a retry: ffi/interpreter_v2.render compares it.)
-//@ fixpoint String *root_allocation_failed(Program *prog);
+//@ fixpoint String *root_allocation_failed(Program *prog) { return nth(Program_ALLOCATION_FAILED_INDEX, program_roots(prog)); }
 String *Program_allocation_failed(Program *self);
-//@ requires true;
+//@ requires [_]program(self, ?ids);
 //@ ensures result == root_allocation_failed(self);
-Error *Error_from(String *string);
+// The int64 instantiation is checked against the C++ template by smi.cc.
+bool Smi_is_valid(int64 value);
 //@ requires true;
-//@ ensures true;
+//@ ensures result == smi_range(value);
 
 // The write barrier: marks the card of the object in the GC's remembered
 // set (memory outside the object model).
+//@ predicate remembered_instance(Instance *address);
 void GcMetadata_insert_into_remembered_set__Instancep(Instance *address);
 //@ requires true;
-//@ ensures true;
+//@ ensures remembered_instance(address);
 void GcMetadata_insert_into_remembered_set__Arrayp(Array *address);
 //@ requires true;
 //@ ensures true;
@@ -625,10 +656,11 @@ struct ObjectHeap;
 typedef struct ObjectHeap ObjectHeap;
 
 //@ predicate object_heap(ObjectHeap *h; Process *p);
+//@ fixpoint ObjectHeap *process_heap_address(Process *p);
 
 ObjectHeap *Process_object_heap(Process *self);
 //@ requires true;
-//@ ensures [_]object_heap(result, self);
+//@ ensures [_]object_heap(result, self) &*& result == process_heap_address(self);
 
 /*@
 // The postcondition every allocation shares: a new object r, or null.
@@ -640,26 +672,33 @@ predicate allocated(list<void *> objs, fixpoint(void *, oinfo) H, Process *p, vo
     forall(objs, (same_obj)(H, H2)) == true &*& in_program_heap(p, r) == false;
 @*/
 
-// src/objects_inline.h: the longest array a process heap holds (the page
-// size less the allocator's overhead).
-word Array_max_length_in_process(void);
-//@ requires true;
-//@ ensures 0 < result &*& result <= MAX_OBJECT_WORDS;
+#define PROCESS_ARRAY_LIMIT ((TOIT_PAGE_SIZE - 96 - Array_HEADER_SIZE) / WORD_SIZE)
 
-// A string with a copy of `length` bytes of content.
-String *Process_allocate_string__charp_word(Process *self, char *content, word length);
-/*@ requires [?f]process(self, ?prog, ?ids) &*& heap(?objs, ?H) &*& [?fc]uchars((uint8 *)content, length, ?cs) &*&
-             0 <= length &*& length <= MAX_BLOB; @*/
-/*@ ensures [f]process(self, prog, ids) &*& [fc]uchars((uint8 *)content, length, cs) &*&
-            allocated(objs, H, self, result, ?objs2, ?H2) &*&
+// Process::allocate_string(word) (src/process.cc): a string of `length`
+// bytes (internal, or external with malloced memory), outside the program
+// heap, or null and nothing changed.
+String *Process_allocate_string__word(Process *self, word length);
+//@ requires [?f]process(self, ?prog, ?ids) &*& heap(?objs, ?H) &*& 0 <= length &*& length <= MAX_BLOB;
+/*@ ensures [f]process(self, prog, ids) &*& allocated(objs, H, self, result, ?objs2, ?H2) &*&
             (result == 0 ? true : has_tag(H2, result, STRING_TAG) == true &*& blob_len(H2, result) == length); @*/
+
+/*@
+fixpoint bool string_copy_result(Program *prog, list<void *> objs, fixpoint(void *, oinfo) H,
+                          list<void *> objs2, fixpoint(void *, oinfo) H2, void *r, int n) {
+  return (uword)r % 4 == 3 ?
+    (uword)r == ((uword)root_allocation_failed(prog) | 3) && objs2 == objs && H2 == H :
+    objs2 == cons(r, objs) && !mem(r, objs) && has_tag(H2, r, STRING_TAG) &&
+    blob_len(H2, r) == n && forall(objs, (same_obj)(H, H2));
+}
+@*/
 
 // An array of `length` elements, each `filler` (null for a length outside
 // [0, Array::max_length_in_process()]).
 Array *ObjectHeap_allocate_array(ObjectHeap *self, word length, Object *filler);
 //@ requires [_]object_heap(self, ?p) &*& [?f]process(p, ?prog, ?ids) &*& heap(?objs, ?H) &*& good(objs, filler) == true;
 /*@ ensures [f]process(p, prog, ids) &*& allocated(objs, H, p, result, ?objs2, ?H2) &*&
-            (result == 0 ? true : has_tag(H2, result, ARRAY_TAG) == true &*& o_len(H2(result)) == length); @*/
+            (result == 0 ? true : has_tag(H2, result, ARRAY_TAG) == true &*& o_len(H2(result)) == length &*&
+               all_eq(o_words(H2(result)), (void *)filler) == true); @*/
 
 // An instance of class c, its fields null.
 Instance *ObjectHeap_allocate_instance(ObjectHeap *self, Smi *class_id);
@@ -682,16 +721,18 @@ Double *ObjectHeap_allocate_double(ObjectHeap *self, double value);
 LargeInteger *ObjectHeap_allocate_large_integer(ObjectHeap *self, int64 value);
 //@ requires [_]object_heap(self, ?p) &*& [?f]process(p, ?prog, ?ids) &*& heap(?objs, ?H);
 /*@ ensures [f]process(p, prog, ids) &*& allocated(objs, H, p, result, ?objs2, ?H2) &*&
-            (result == 0 ? true : has_tag(H2, result, LARGE_INTEGER_TAG) == true); @*/
+            (result == 0 ? true : has_tag(H2, result, LARGE_INTEGER_TAG) == true &*& o_number(H2(result)) == value); @*/
 // C++: src/objects.h toit::is_smi
 bool is_smi(Object *o);
 //@ requires true;
 //@ ensures result == is_smi_w((uword)o);
+//@ terminates;
 
 // C++: src/objects.h toit::is_heap_object
 bool is_heap_object(Object *o);
 //@ requires true;
 //@ ensures result == is_heap_w((uword)o);
+//@ terminates;
 
 // C++: src/objects.h toit::Smi::value (trusted: contract only)
 word Smi_value__Objectp(Object *object);
@@ -723,21 +764,25 @@ Smi *Smi_cast(Object *object);
 HeapObject *HeapObject_cast__Objectp(Object *obj);
 //@ requires true;
 //@ ensures result == obj;
+//@ terminates;
 
 // C++: src/objects.h toit::HeapObject::_raw_at
 uword *HeapObject__raw_at__(HeapObject *self);
 //@ requires 1 <= (uword)self;
 //@ ensures result == raw(self);
+//@ terminates;
 
 // C++: src/objects.h toit::HeapObject::_at
 Object *HeapObject__at(HeapObject *self, word offset);
 //@ requires 1 <= (uword)self &*& 0 <= offset &*& offset % WORD_SIZE == 0 &*& [?f]pointer((void **)raw(self) + offset / WORD_SIZE, ?v);
 //@ ensures [f]pointer((void **)raw(self) + offset / WORD_SIZE, v) &*& result == v;
+//@ terminates;
 
 // C++: src/objects.h toit::HeapObject::_word_at
 uword HeapObject__word_at(HeapObject *self, word offset);
 //@ requires 1 <= (uword)self &*& 0 <= offset &*& offset % WORD_SIZE == 0 &*& [?f]uintptr(raw(self) + offset / WORD_SIZE, ?v);
 //@ ensures [f]uintptr(raw(self) + offset / WORD_SIZE, v) &*& result == v;
+//@ terminates;
 
 // C++: src/objects.h toit::HeapObject::header
 Smi *HeapObject_header(HeapObject *self);
@@ -763,6 +808,16 @@ word Instance__offset_from(uword index);
 Object *Instance_at(Instance *self, word index);
 //@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true &*& header_tag2(o_hw(H(self))) == 2 * INSTANCE_TAG &*& 0 <= index &*& index < o_len(H(self));
 //@ ensures [f]heap(objs, H) &*& result == nth(index, o_words(H(self))) &*& good(objs, result) == true;
+
+// C++: src/heap.h toit::ObjectHeap::max_allocation_size
+word ObjectHeap_max_allocation_size(void);
+//@ requires true;
+//@ ensures result == TOIT_PAGE_SIZE - 96;
+
+// C++: src/objects_inline.h toit::Array::max_length_in_process
+word Array_max_length_in_process(void);
+//@ requires true;
+//@ ensures result == PROCESS_ARRAY_LIMIT &*& 0 < result &*& result <= MAX_OBJECT_WORDS;
 
 // C++: src/objects.h toit::Array::_offset_from
 word Array__offset_from(word index);
@@ -812,7 +867,7 @@ bool is_large_integer(Object *o);
 // C++: src/objects.h toit::HeapObject::class_tag
 TypeTag HeapObject_class_tag(HeapObject *self);
 //@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true;
-//@ ensures [f]heap(objs, H) &*& 0 <= result &*& result < 16;
+//@ ensures [f]heap(objs, H) &*& 0 <= result &*& result < 16 &*& 2 * result == header_tag2(o_hw(H(self)));
 
 // C++: src/objects.h toit::Instance::cast
 Instance *Instance_cast(Object *value);
@@ -844,20 +899,69 @@ double Double_value(Double *self);
 //@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true &*& header_tag2(o_hw(H(self))) == 2 * DOUBLE_TAG;
 //@ ensures [f]heap(objs, H);
 
-// C++: src/objects.h toit::LargeInteger::value (trusted: contract only)
+// C++: src/objects.h toit::HeapObject::_int64_at
+int64 HeapObject__int64_at(HeapObject *self, word offset);
+/*@ requires addr_ok(self) == true &*& 0 <= offset &*& offset <= 4 * WORD_SIZE &*&
+               [?f]boxed_bytes((void *)((uint8 *)raw(self) + offset), ?value); @*/
+//@ ensures [f]boxed_bytes((void *)((uint8 *)raw(self) + offset), value) &*& result == value;
+
+// C++: src/objects.h toit::LargeInteger::value
 int64 LargeInteger_value(LargeInteger *self);
 //@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true &*& header_tag2(o_hw(H(self))) == 2 * LARGE_INTEGER_TAG;
-//@ ensures [f]heap(objs, H);
+//@ ensures [f]heap(objs, H) &*& result == o_number(H(self));
+
+// C++: src/program.h toit::Program::class_id
+Smi *Program_class_id(Program *self, int index);
+//@ requires [?f]program(self, ?ids) &*& 0 <= index &*& index < Program_BUILTIN_CLASS_IDS_COUNT;
+//@ ensures [f]program(self, ids) &*& ids == class_ids_from_table(builtin_ids(self)) &*& result == smi_ptr(nth(index, builtin_ids(self)));
+
+// C++: src/program.h toit::Program::root
+Object *Program_root(Program *self, int index);
+//@ requires [?f]program(self, ?ids) &*& 0 <= index &*& index < Program_ROOT_COUNT;
+//@ ensures [f]program(self, ids) &*& result == nth(index, program_roots(self));
+
+// C++: src/objects.h toit::Object::unmark
+HeapObject *Object_unmark(Object *self);
+//@ requires (uword)self % 4 == 3;
+//@ ensures result == (HeapObject *)((uword)self - 2);
+
+// C++: src/objects.h toit::HeapObject::mark
+HeapObject *HeapObject_mark(HeapObject *self);
+//@ requires true;
+/*@ ensures (uword)result == ((uword)self | 3) &*& (uword)result % 4 == 3 &*&
+              (uword)result / 4 == (uword)self / 4; @*/
+
+// C++: src/objects.h toit::Error::from
+Error *Error_from(String *string);
+//@ requires true;
+//@ ensures (uword)result == ((uword)string | 3) &*& (uword)result % 4 == 3;
 
 // C++: src/objects.h toit::HeapObject::_raw
 uword HeapObject__raw(HeapObject *self);
 //@ requires 1 <= (uword)self;
 //@ ensures result == (uword)self - 1;
+//@ terminates;
 
 // C++: src/objects.h toit::HeapObject::_raw_at
 uword *HeapObject__raw_at__word(HeapObject *self, word offset);
-//@ requires addr_ok(self) == true &*& 0 <= offset &*& offset <= 4 * WORD_SIZE;
+//@ requires 1 <= (uword)self &*& 0 <= offset &*& (uword)self - 1 + offset <= UINTPTR_MAX;
 //@ ensures result == (uword *)((uword)self - 1 + offset);
+
+// C++: src/objects.h toit::HeapObject::_int64_at_put
+void HeapObject__int64_at_put(HeapObject *self, word offset, int64 value);
+/*@ requires addr_ok(self) == true &*& 0 <= offset &*& offset <= 4 * WORD_SIZE &*&
+               chars_((char *)raw(self) + offset, 8, _); @*/
+//@ ensures boxed_bytes((void *)((uint8 *)raw(self) + offset), value);
+
+// C++: src/objects.h toit::LargeInteger::_set_value
+void LargeInteger__set_value(LargeInteger *self, int64 value);
+//@ requires addr_ok(self) == true &*& chars_((void *)(raw(self) + 1), 8, _);
+//@ ensures boxed_bytes((void *)(raw(self) + 1), value);
+
+// C++: src/objects.h toit::LargeInteger::_initialize
+void LargeInteger__initialize(LargeInteger *self, int64 value);
+//@ requires addr_ok(self) == true &*& chars_((void *)(raw(self) + 1), 8, _);
+//@ ensures boxed_bytes((void *)(raw(self) + 1), value);
 
 // C++: src/objects.h toit::HeapObject::_half_word_at
 unsigned int HeapObject__half_word_at(HeapObject *self, word offset);
@@ -914,7 +1018,44 @@ word String_Bytes_length(String_Bytes *self);
 //@ requires [?f]self->length_ |-> ?l;
 //@ ensures [f]self->length_ |-> l &*& result == l;
 
-// C++: src/objects.h toit::ByteArray::raw_length (trusted: contract only)
+// C++: src/objects.h toit::String::MutableBytes::MutableBytes
+void String_MutableBytes_ctor(String_MutableBytes *self, String *string);
+//@ requires self->address_ |-> _ &*& self->length_ |-> _ &*& [?f]heap(?objs, ?H) &*& mem(string, objs) == true &*& has_tag(H, string, STRING_TAG) == true;
+//@ ensures self->address_ |-> blob_base(H, string) &*& self->length_ |-> blob_len(H, string) &*& [f]heap(objs, H);
+
+// C++: src/objects.h toit::String::MutableBytes::address
+uint8 *String_MutableBytes_address(String_MutableBytes *self);
+//@ requires [?f]self->address_ |-> ?a;
+//@ ensures [f]self->address_ |-> a &*& result == a;
+
+// C++: src/objects.h toit::String::MutableBytes::length
+word String_MutableBytes_length(String_MutableBytes *self);
+//@ requires [?f]self->length_ |-> ?l;
+//@ ensures [f]self->length_ |-> l &*& result == l;
+
+// C++: src/objects.h toit::String::MutableBytes::_initialize
+void String_MutableBytes__initialize(String_MutableBytes *self, char *str);
+/*@ requires [?f]self->address_ |-> ?a &*& [f]self->length_ |-> ?n &*& 0 <= n &*&
+                 uchars(a, n, _) &*& [?g]uchars((uint8 *)str, n, ?bytes); @*/
+/*@ ensures [f]self->address_ |-> a &*& [f]self->length_ |-> n &*&
+                uchars(a, n, bytes) &*& [g]uchars((uint8 *)str, n, bytes); @*/
+
+// C++: src/process.cc toit::Process::allocate_string
+String *Process_allocate_string__charp_word(Process *self, char *content, word length);
+/*@ requires [?f]process(self, ?prog, ?ids) &*& heap(?objs, ?H) &*& string_source(?source, objs, H, (uint8 *)content, length) &*&
+             0 <= length &*& length <= MAX_BLOB; @*/
+/*@ ensures [f]process(self, prog, ids) &*& string_source(source, objs, H, (uint8 *)content, length) &*&
+            allocated(objs, H, self, result, ?objs2, ?H2) &*&
+            (result == 0 ? true : has_tag(H2, result, STRING_TAG) == true &*& blob_len(H2, result) == length); @*/
+
+// C++: src/process.cc toit::Process::allocate_string_or_error
+Object *Process_allocate_string_or_error__charp_word(Process *self, char *content, word length);
+/*@ requires [?f]process(self, ?prog, ?ids) &*& heap(?objs, ?H) &*& string_source(?source, objs, H, (uint8 *)content, length) &*&
+             0 <= length &*& length <= MAX_BLOB; @*/
+/*@ ensures [f]process(self, prog, ids) &*& heap(?objs2, ?H2) &*& string_source(source, objs, H, (uint8 *)content, length) &*&
+            grows(objs, H, objs2, H2) == true &*& string_copy_result(prog, objs, H, objs2, H2, result, length) == true; @*/
+
+// C++: src/objects.h toit::ByteArray::raw_length
 word ByteArray_raw_length(ByteArray *self);
 //@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true &*& has_tag(H, self, BYTE_ARRAY_TAG) == true;
 //@ ensures [f]heap(objs, H) &*& result == o_len(H(self));
@@ -981,8 +1122,9 @@ word ByteArray_Bytes_length(ByteArray_Bytes *self);
 
 // C++: src/objects.h toit::HeapObject::_at_put
 void HeapObject__at_put(HeapObject *self, word offset, Object *value);
-//@ requires 1 <= (uword)self &*& 0 <= offset &*& offset % WORD_SIZE == 0 &*& pointer((void **)raw(self) + offset / WORD_SIZE, _);
+//@ requires 1 <= (uword)self &*& 0 <= offset &*& offset % WORD_SIZE == 0 &*& pointer_((void **)raw(self) + offset / WORD_SIZE, _);
 //@ ensures pointer((void **)raw(self) + offset / WORD_SIZE, value);
+//@ terminates;
 
 // C++: src/objects_inline.h toit::Instance::at_put
 void Instance_at_put__word_Objectp(Instance *self, word index, Object *value);
@@ -1007,6 +1149,31 @@ void Array_at_put__word_Smip(Array *self, word index, Smi *value);
 /*@ requires heap(?objs, ?H) &*& mem(self, objs) == true &*& has_tag(H, self, ARRAY_TAG) == true &*&
              0 <= index &*& index < o_len(H(self)) &*& good(objs, value) == true; @*/
 //@ ensures heap(objs, put_field(H, self, index, value)) &*& grows(objs, H, objs, put_field(H, self, index, value)) == true;
+
+// C++: src/flash_allocation.h toit::FlashAllocation::Header::size
+word FlashAllocation_Header_size(FlashAllocation_Header *self);
+//@ requires [?f]self->size_in_pages_ |-> ?pages;
+//@ ensures [f]self->size_in_pages_ |-> pages &*& result == pages * 4096;
+
+// C++: src/flash_allocation.h toit::FlashAllocation::size_no_assets
+word FlashAllocation_size_no_assets(FlashAllocation *self);
+//@ requires [?f]image_header(self) &*& self != 0;
+//@ ensures [f]image_header(self) &*& result == image_bytes(self) &*& 0 <= result;
+
+// C++: src/process.cc toit::program_image_size
+uword program_image_size(Program *program);
+//@ requires [?f]image_header(program);
+//@ ensures result == image_bytes(program) &*& [f]image_header(program);
+
+// C++: src/process.h toit::Process::program
+Program *Process_program(Process *self);
+//@ requires [?f]process(self, ?prog, ?ids);
+//@ ensures [f]process(self, prog, ids) &*& result == prog &*& [_]program(prog, ids) &*& prog_ok(ids) == true;
+
+// C++: src/process.h toit::Process::on_program_heap
+bool Process_on_program_heap(Process *self, HeapObject *object);
+//@ requires [?f]process(self, ?prog, ?ids);
+//@ ensures [f]process(self, prog, ids) &*& result == in_program_heap(self, object);
 
 // C++: src/objects_inline.h toit::HeapObject::on_program_heap
 bool HeapObject_on_program_heap(HeapObject *self, Process *process);
