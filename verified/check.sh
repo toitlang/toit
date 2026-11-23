@@ -21,11 +21,13 @@
 #   2. Escape-hatch audit against verified/TRUSTED.toml (and a cross-check
 #      with `verus --no-cheating`); writes verified/THEOREMS.txt. The leaf
 #      contracts of verified/CONTRACTS.toml against both of their sides.
-#   3. With --tests: the audit's regression test, layout check, the
-#      VeriFast proofs of the residual C++ (verified/cxx/annotated), spec
-#      differential tests, the device library's no-panic check, sandbox
-#      ctests, and (optional, when a second build exists) the red-team
-#      batteries. The residual C++ matrix runs its fast tier.
+#      No Python in the repository (verified/tools/no_python_check.sh).
+#   3. With --tests: the audit's and the no-Python check's self-tests,
+#      layout check, the VeriFast proofs of the residual C++
+#      (verified/cxx/annotated), spec differential tests, the device
+#      library's no-panic check, sandbox ctests, and (optional, when a
+#      second build exists) the red-team batteries. The residual C++ matrix
+#      runs its fast tier.
 #   4. With --slow (implies --tests): also the slow tier of the residual
 #      C++ matrix (verified/cxx/annotated/run.sh --slow: the long
 #      model-checker jobs; hours, memory-capped).
@@ -230,6 +232,13 @@ elif ! "$TOIT_BIN" run "$VERIFIED/tools/layout_table.toit" -- --check --root "$V
   fail "layout table: verified/LAYOUT.toml differs from layout.rs or its generated checks (see above)"
 fi
 
+section "No Python in the repository (verified/tools/no_python_check.sh)"
+# The tooling is Toit, shell, CMake, or Rust inside verified/. Its self-test
+# (a tracked .py or .pyc, scripts that call python) runs with --tests.
+if ! "$VERIFIED/tools/no_python_check.sh" "$REPO"; then
+  fail "Python in the repository (see above)"
+fi
+
 if [ "$RUN_TESTS" = 1 ]; then
   section "IEEE binary64 specification checks"
   z3_bin="${VERUS_Z3_PATH:-$(command -v z3)}"
@@ -247,6 +256,11 @@ if [ "$RUN_TESTS" = 1 ]; then
   section "Escape-hatch audit regression test (verified/tools/tests/trust_audit_test.sh)"
   if ! tools_ready || ! TOIT="$TOIT_BIN" "$VERIFIED/tools/tests/trust_audit_test.sh"; then
     fail "escape-hatch audit regression test"
+  fi
+
+  section "No-Python check self-test (verified/tools/no_python_check.sh --self-test)"
+  if ! "$VERIFIED/tools/no_python_check.sh" --self-test; then
+    fail "no-Python check self-test"
   fi
 
   section "Layout check"
