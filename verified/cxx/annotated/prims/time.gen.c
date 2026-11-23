@@ -40,7 +40,7 @@ lemma void clock_array_words(Array *a)
 // C++: src/primitive_core.cc toit::primitive_time
 Object *primitive_time(Process *process, Object **__args);
 //@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*& pointer(__args, ?arg);
-/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& pointer(__args, arg) &*&
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*& pointer(__args, arg) &*&
             grows(objs, H, objs2, H2) == true &*& (good(objs2, result) || (uword)result % 4 == 3); @*/
 
 // C++: src/primitive.h toit::Primitive::is_error
@@ -51,7 +51,7 @@ bool Primitive_is_error(Object *object);
 // C++: src/primitive_core.cc toit::primitive_get_real_time_clock
 Object *primitive_get_real_time_clock(Process *process, Object **__args);
 //@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*& clock_sample(?ok, ?sec, ?nsec);
-/*@ ensures [f]process(process, prog, ids) &*& heap(?final_objs, ?final_H) &*& grows(objs, H, final_objs, final_H) == true &*&
+/*@ ensures [f]process(process, prog, ids) &*& heap(?final_objs, ?final_H) &*& oom_clean(objs, H, final_objs, final_H, result) == true &*& grows(objs, H, final_objs, final_H) == true &*&
             (((uword)result == 4 * Program_ALLOCATION_FAILED_INDEX + 3 && final_objs == objs && final_H == H) ||
              (!ok && (uword)result == 4 * Program_ERROR_INDEX + 3) ||
              (ok && (!smi_range(sec) || !smi_range(nsec)) && (uword)result == ((uword)root_allocation_failed(prog) | 3)) ||
@@ -62,7 +62,7 @@ Object *primitive_get_real_time_clock(Process *process, Object **__args);
 // C++: src/primitive_core.cc toit::primitive_time
 Object *primitive_time(Process *process, Object **__args)
 //@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*& pointer(__args, ?arg);
-/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& pointer(__args, arg) &*&
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*& pointer(__args, arg) &*&
             grows(objs, H, objs2, H2) == true &*& (good(objs2, result) || (uword)result % 4 == 3); @*/
 {
   //@ grows_refl(objs, H);
@@ -91,7 +91,7 @@ bool Primitive_is_error(Object *object)
 // C++: src/primitive_core.cc toit::primitive_get_real_time_clock
 Object *primitive_get_real_time_clock(Process *process, Object **__args)
 //@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*& clock_sample(?ok, ?sec, ?nsec);
-/*@ ensures [f]process(process, prog, ids) &*& heap(?final_objs, ?final_H) &*& grows(objs, H, final_objs, final_H) == true &*&
+/*@ ensures [f]process(process, prog, ids) &*& heap(?final_objs, ?final_H) &*& oom_clean(objs, H, final_objs, final_H, result) == true &*& grows(objs, H, final_objs, final_H) == true &*&
             (((uword)result == 4 * Program_ALLOCATION_FAILED_INDEX + 3 && final_objs == objs && final_H == H) ||
              (!ok && (uword)result == 4 * Program_ERROR_INDEX + 3) ||
              (ok && (!smi_range(sec) || !smi_range(nsec)) && (uword)result == ((uword)root_allocation_failed(prog) | 3)) ||
@@ -117,6 +117,7 @@ Object *primitive_get_real_time_clock(Process *process, Object **__args)
   Object *tv_sec = Primitive_integer(time.tv_sec, process);
   //@ assert heap(?objs2, ?H2);
   //@ grows_trans(objs, H, objs1, H1, objs2, H2);
+  //@ if (objs2 != objs1) { subset_cons(result, objs); same_obj_trans(objs, H, objs1, H1, H2); }
   if (Primitive_is_error(tv_sec)) {
     return tv_sec;
   }

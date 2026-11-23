@@ -71,7 +71,7 @@ PRIMITIVE(seconds_since_epoch_local)
              pointer(__args - 5, ?x5) &*&
              pointer(__args - 6, ?x6) &*&
              good(objs, x0) && good(objs, x1) && good(objs, x2) && good(objs, x3) && good(objs, x4) && good(objs, x5) && good(objs, x6); @*/
-/*@ ensures [f]process(process, prog, ids) &*& heap(?after, ?H2) &*& grows(objs, H, after, H2) == true &*&
+/*@ ensures [f]process(process, prog, ids) &*& heap(?after, ?H2) &*& oom_clean(objs, H, after, H2, result) == true &*& grows(objs, H, after, H2) == true &*&
              pointer(__args, x0) &*&
              pointer(__args - 1, x1) &*&
              pointer(__args - 2, x2) &*&

@@ -207,7 +207,7 @@ bool Smi_is_valid32(int64 value);
 Object *primitive_time_info(Process *process, Object **__args);
 /*@ requires [?fp]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
              pointer(__args, ?a0) &*& pointer(__args - 1, ?a1) &*& good(objs, a0) == true; @*/
-/*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+/*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*& grows(objs, H, objs2, H2) == true &*&
             pointer(__args, a0) &*& pointer(__args - 1, a1); @*/
 
 // C++: src/primitive_core.cc toit::floor_div
@@ -392,7 +392,7 @@ bool Smi_is_valid32(int64 value)
 Object *primitive_time_info(Process *process, Object **__args)
 /*@ requires [?fp]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
              pointer(__args, ?a0) &*& pointer(__args - 1, ?a1) &*& good(objs, a0) == true; @*/
-/*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+/*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*& grows(objs, H, objs2, H2) == true &*&
             pointer(__args, a0) &*& pointer(__args - 1, a1); @*/
 {
   TimeFields fields;

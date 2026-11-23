@@ -1210,7 +1210,7 @@ Object *primitive_task_has_messages(Process *process, Object **__args);
 /*@ requires [?fp]process(process, ?prog, ?ids) &*& [?fh]heap(?objs, ?H) &*&
              [?fa]allocation_allowance(process, ?available) &*& [?ff]finalizer_ready(process, ?ready, ?pending, ?registered) &*&
              [?fm]mailbox(process, ?m); @*/
-/*@ ensures [fp]process(process, prog, ids) &*& [fh]heap(objs, H) &*&
+/*@ ensures [fp]process(process, prog, ids) &*& [fh]heap(objs, H) &*& oom_clean(objs, H, objs, H, result) == true &*&
             [fa]allocation_allowance(process, available) &*& [ff]finalizer_ready(process, ready, pending, registered) &*& [fm]mailbox(process, m) &*&
             (available < 0 ? (uword)result == 4 * Program_ALLOCATION_FAILED_INDEX + 3 :
              result == process_boolean(process, ready || m != 0) &*& mem(result, objs) == true); @*/
@@ -2728,7 +2728,7 @@ Object *primitive_task_has_messages(Process *process, Object **__args)
 /*@ requires [?fp]process(process, ?prog, ?ids) &*& [?fh]heap(?objs, ?H) &*&
              [?fa]allocation_allowance(process, ?available) &*& [?ff]finalizer_ready(process, ?ready, ?pending, ?registered) &*&
              [?fm]mailbox(process, ?m); @*/
-/*@ ensures [fp]process(process, prog, ids) &*& [fh]heap(objs, H) &*&
+/*@ ensures [fp]process(process, prog, ids) &*& [fh]heap(objs, H) &*& oom_clean(objs, H, objs, H, result) == true &*&
             [fa]allocation_allowance(process, available) &*& [ff]finalizer_ready(process, ready, pending, registered) &*& [fm]mailbox(process, m) &*&
             (available < 0 ? (uword)result == 4 * Program_ALLOCATION_FAILED_INDEX + 3 :
              result == process_boolean(process, ready || m != 0) &*& mem(result, objs) == true); @*/

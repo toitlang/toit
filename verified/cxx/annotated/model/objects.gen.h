@@ -568,6 +568,23 @@ lemma void same_obj_kept(list<void *> objs, fixpoint(void *, oinfo) H, fixpoint(
   requires forall(objs, (same_obj)(H, H2)) == true &*& mem(o, objs) == true;
   ensures H2(o) == H(o);
 
+lemma void same_obj_trans(list<void *> objs, fixpoint(void *, oinfo) H, list<void *> objs1, fixpoint(void *, oinfo) H1, fixpoint(void *, oinfo) H2);
+  requires forall(objs, (same_obj)(H, H1)) == true &*& subset(objs, objs1) == true &*& forall(objs1, (same_obj)(H1, H2)) == true;
+  ensures forall(objs, (same_obj)(H, H2)) == true;
+
+// The retry obligation of a C++ primitive (CONTRACTS.toml [prim_retry],
+// README "The retry obligation"): a call that fails for want of memory
+// has no visible effect, so the call after the GC completes the step.
+// Stated on the heap for every error result (a marked word, `% 4 == 3`;
+// every out-of-memory error is one), so it needs no identity of the error
+// roots: every object of the heap before the call is unchanged; new
+// objects are garbage the GC removes. The argument slots and the rest of
+// the state the primitive owns are in its contract. (An object of the heap
+// after the call is no error: heap references are tagged 01, `addr_ok`.)
+fixpoint bool oom_clean(list<void *> objs, fixpoint(void *, oinfo) H, list<void *> objs2, fixpoint(void *, oinfo) H2, void *result) {
+  return (uword)result % 4 != 3 || mem(result, objs2) || (objs2 == objs && H2 == H) || forall(objs, (same_obj)(H, H2));
+}
+
 // A blob range stays a blob range when the heap grows (the blob keeps its
 // class, length and external address).
 lemma void blob_result_grows(list<void *> objs, fixpoint(void *, oinfo) H, list<void *> objs2, fixpoint(void *, oinfo) H2, int kind, uint8 *a, int l, void *b);

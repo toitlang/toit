@@ -95,7 +95,7 @@ PRIMITIVE(byte_array_convert_to_string)
 /*@ requires [?fp]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
              pointer(__args, ?a0) &*& pointer(__args - 1, ?a1) &*& pointer(__args - 2, ?a2) &*&
              good(objs, a0) == true &*& good(objs, a1) == true &*& good(objs, a2) == true; @*/
-/*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+/*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*& grows(objs, H, objs2, H2) == true &*&
             pointer(__args, a0) &*& pointer(__args - 1, a1) &*& pointer(__args - 2, a2) &*& ((uword)result % 4 == 3 ?
               objs2 == objs && H2 == H &&
                 ((uword)result == 4 * Program_WRONG_BYTES_TYPE_INDEX + 3 ||
@@ -161,7 +161,7 @@ static word fill_utf_16(const Blob* input, ByteArray::Bytes* output)
 PRIMITIVE(string_to_utf_16)
 /*@ requires [?fp]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
              pointer(__args, ?arg) &*& good(objs, arg) == true; @*/
-/*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+/*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*& grows(objs, H, objs2, H2) == true &*&
             pointer(__args, arg) &*& ((uword)result % 4 == 3 ?
               (uword)result == 4 * Program_WRONG_OBJECT_TYPE_INDEX + 3 ||
               (uword)result == 4 * Program_OUT_OF_BOUNDS_INDEX + 3 ||
@@ -253,7 +253,7 @@ static bool fill_string_from_utf_16(const Blob* input, String* destination)
 PRIMITIVE(utf_16_to_string)
 /*@ requires [?fp]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
              pointer(__args, ?arg) &*& good(objs, arg) == true; @*/
-/*@ ensures [fp]process(process, prog, ids) &*& pointer(__args, arg) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+/*@ ensures [fp]process(process, prog, ids) &*& pointer(__args, arg) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*& grows(objs, H, objs2, H2) == true &*&
             ((uword)result % 4 == 3 ?
               (uword)result == 4 * Program_WRONG_BYTES_TYPE_INDEX + 3 ||
               (uword)result == 4 * Program_INVALID_ARGUMENT_INDEX + 3 ||

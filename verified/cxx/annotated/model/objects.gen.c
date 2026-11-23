@@ -332,6 +332,18 @@ lemma void same_obj_kept(list<void *> objs, fixpoint(void *, oinfo) H, fixpoint(
   forall_mem(o, objs, (same_obj)(H, H2));
 }
 
+lemma void same_obj_trans(list<void *> objs, fixpoint(void *, oinfo) H, list<void *> objs1, fixpoint(void *, oinfo) H1, fixpoint(void *, oinfo) H2)
+  requires forall(objs, (same_obj)(H, H1)) == true &*& subset(objs, objs1) == true &*& forall(objs1, (same_obj)(H1, H2)) == true;
+  ensures forall(objs, (same_obj)(H, H2)) == true;
+{
+  switch (objs) {
+    case nil:
+    case cons(x, xs0):
+      forall_mem(x, objs1, (same_obj)(H1, H2));
+      same_obj_trans(xs0, H, objs1, H1, H2);
+  }
+}
+
 // The other objects after a field write: unchanged.
 lemma void heap_rest_put(list<void *> xs, list<void *> objs, fixpoint(void *, oinfo) H, void *o, int index, void *v)
   requires foreach(xs, heap_obj(objs, H)) &*& mem(o, xs) == false;

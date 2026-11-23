@@ -53,14 +53,14 @@ uint64 format_quotient(uint64 value, int base);
 // C++: src/primitive_core.cc toit::format_integer
 Object *format_integer(Process *process, int64 value, int base, bool unsigned_format);
 /*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*& 2 <= base &*& base <= 36; @*/
-/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*& grows(objs, H, objs2, H2) == true &*&
             format_result(prog, objs, H, objs2, H2, result, value, base, unsigned_format); @*/
 
 // C++: src/primitive_core.cc toit::primitive_int64_to_string
 Object *primitive_int64_to_string(Process *process, Object **__args);
 /*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*& pointer(__args, ?arg) &*& good(objs, arg) == true &*&
              pointer(__args - 1, ?radix) &*& good(objs, radix) == true; @*/
-/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*& grows(objs, H, objs2, H2) == true &*&
             pointer(__args, arg) &*& pointer(__args - 1, radix) &*&
             (radix_error(H, arg, radix, false) == 0 ?
               format_result(prog, objs, H, objs2, H2, result, format_arg(H, arg), smi_val((uword)radix), false) :
@@ -69,14 +69,14 @@ Object *primitive_int64_to_string(Process *process, Object **__args);
 // C++: src/primitive_core.cc toit::primitive_uint64_to_string
 Object *primitive_uint64_to_string(Process *process, Object **__args);
 /*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*& pointer(__args, ?arg) &*& good(objs, arg) == true; @*/
-/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*& grows(objs, H, objs2, H2) == true &*&
             pointer(__args, arg) &*& ((is_smi_w((uword)arg) || has_tag(H, arg, LARGE_INTEGER_TAG)) ? format_result(prog, objs, H, objs2, H2, result, format_arg(H, arg), 10, true) :
               objs2 == objs &*& H2 == H &*& (uword)result == 4 * Program_WRONG_OBJECT_TYPE_INDEX + 3); @*/
 
 // C++: src/primitive_core.cc toit::primitive_smi_to_string_base_10
 Object *primitive_smi_to_string_base_10(Process *process, Object **__args);
 /*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*& pointer(__args, ?arg) &*& good(objs, arg) == true; @*/
-/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*& grows(objs, H, objs2, H2) == true &*&
             pointer(__args, arg) &*& (is_smi_w((uword)arg) ? format_result(prog, objs, H, objs2, H2, result, smi_val((uword)arg), 10, false) :
               objs2 == objs &*& H2 == H &*& (uword)result == 4 * Program_WRONG_OBJECT_TYPE_INDEX + 3); @*/
 
@@ -84,7 +84,7 @@ Object *primitive_smi_to_string_base_10(Process *process, Object **__args);
 Object *primitive_printf_style_int64_to_string(Process *process, Object **__args);
 /*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*& pointer(__args, ?arg) &*& good(objs, arg) == true &*&
              pointer(__args - 1, ?radix) &*& good(objs, radix) == true; @*/
-/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*& grows(objs, H, objs2, H2) == true &*&
             pointer(__args, arg) &*& pointer(__args - 1, radix) &*&
             (radix_error(H, arg, radix, true) == 0 ?
               format_result(prog, objs, H, objs2, H2, result, format_arg(H, arg), smi_val((uword)radix), true) :
@@ -113,7 +113,7 @@ uint64 format_quotient(uint64 value, int base)
 // C++: src/primitive_core.cc toit::format_integer
 Object *format_integer(Process *process, int64 value, int base, bool unsigned_format)
 /*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*& 2 <= base &*& base <= 36; @*/
-/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*& grows(objs, H, objs2, H2) == true &*&
             format_result(prog, objs, H, objs2, H2, result, value, base, unsigned_format); @*/
 {
   uint64 remaining;
@@ -178,7 +178,7 @@ Object *format_integer(Process *process, int64 value, int base, bool unsigned_fo
 Object *primitive_int64_to_string(Process *process, Object **__args)
 /*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*& pointer(__args, ?arg) &*& good(objs, arg) == true &*&
              pointer(__args - 1, ?radix) &*& good(objs, radix) == true; @*/
-/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*& grows(objs, H, objs2, H2) == true &*&
             pointer(__args, arg) &*& pointer(__args - 1, radix) &*&
             (radix_error(H, arg, radix, false) == 0 ?
               format_result(prog, objs, H, objs2, H2, result, format_arg(H, arg), smi_val((uword)radix), false) :
@@ -221,7 +221,7 @@ Object *primitive_int64_to_string(Process *process, Object **__args)
 // C++: src/primitive_core.cc toit::primitive_uint64_to_string
 Object *primitive_uint64_to_string(Process *process, Object **__args)
 /*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*& pointer(__args, ?arg) &*& good(objs, arg) == true; @*/
-/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*& grows(objs, H, objs2, H2) == true &*&
             pointer(__args, arg) &*& ((is_smi_w((uword)arg) || has_tag(H, arg, LARGE_INTEGER_TAG)) ? format_result(prog, objs, H, objs2, H2, result, format_arg(H, arg), 10, true) :
               objs2 == objs &*& H2 == H &*& (uword)result == 4 * Program_WRONG_OBJECT_TYPE_INDEX + 3); @*/
 {
@@ -244,7 +244,7 @@ Object *primitive_uint64_to_string(Process *process, Object **__args)
 // C++: src/primitive_core.cc toit::primitive_smi_to_string_base_10
 Object *primitive_smi_to_string_base_10(Process *process, Object **__args)
 /*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*& pointer(__args, ?arg) &*& good(objs, arg) == true; @*/
-/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*& grows(objs, H, objs2, H2) == true &*&
             pointer(__args, arg) &*& (is_smi_w((uword)arg) ? format_result(prog, objs, H, objs2, H2, result, smi_val((uword)arg), 10, false) :
               objs2 == objs &*& H2 == H &*& (uword)result == 4 * Program_WRONG_OBJECT_TYPE_INDEX + 3); @*/
 {
@@ -262,7 +262,7 @@ Object *primitive_smi_to_string_base_10(Process *process, Object **__args)
 Object *primitive_printf_style_int64_to_string(Process *process, Object **__args)
 /*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*& pointer(__args, ?arg) &*& good(objs, arg) == true &*&
              pointer(__args - 1, ?radix) &*& good(objs, radix) == true; @*/
-/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*& grows(objs, H, objs2, H2) == true &*&
             pointer(__args, arg) &*& pointer(__args - 1, radix) &*&
             (radix_error(H, arg, radix, true) == 0 ?
               format_result(prog, objs, H, objs2, H2, result, format_arg(H, arg), smi_val((uword)radix), true) :

@@ -87,7 +87,7 @@ Object *fixed_double_to_string(Process *process, int precision, double value);
 Object *primitive_float_to_string(Process *process, Object **__args);
 /*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
     pointer(__args, ?receiver_arg) &*& pointer(__args-1, ?precision_arg) &*& good(objs, receiver_arg) && good(objs, precision_arg); @*/
-/*@ ensures [f]process(process, prog, ids) &*& heap(?after, ?H2) &*& grows(objs, H, after, H2) == true &*&
+/*@ ensures [f]process(process, prog, ids) &*& heap(?after, ?H2) &*& oom_clean(objs, H, after, H2, result) == true &*& grows(objs, H, after, H2) == true &*&
     pointer(__args, receiver_arg) &*& pointer(__args-1, precision_arg) &*&
     (!has_tag(H, receiver_arg, DOUBLE_TAG) ? after == objs && H2 == H && (uword)result == 4*Program_WRONG_OBJECT_TYPE_INDEX+3 :
      (uword)result % 4 == 3 ? after == objs && H2 == H &&
@@ -208,7 +208,7 @@ Object *fixed_double_to_string(Process *process, int precision, double value)
 Object *primitive_float_to_string(Process *process, Object **__args)
 /*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
     pointer(__args, ?receiver_arg) &*& pointer(__args-1, ?precision_arg) &*& good(objs, receiver_arg) && good(objs, precision_arg); @*/
-/*@ ensures [f]process(process, prog, ids) &*& heap(?after, ?H2) &*& grows(objs, H, after, H2) == true &*&
+/*@ ensures [f]process(process, prog, ids) &*& heap(?after, ?H2) &*& oom_clean(objs, H, after, H2, result) == true &*& grows(objs, H, after, H2) == true &*&
     pointer(__args, receiver_arg) &*& pointer(__args-1, precision_arg) &*&
     (!has_tag(H, receiver_arg, DOUBLE_TAG) ? after == objs && H2 == H && (uword)result == 4*Program_WRONG_OBJECT_TYPE_INDEX+3 :
      (uword)result % 4 == 3 ? after == objs && H2 == H &&

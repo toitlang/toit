@@ -1785,7 +1785,7 @@ classified):
 | Class | Count | Evidence |
 |---|---|---|
 | (a) cannot fail for want of memory | 62 | the primitive's body (or its macro) has no allocation, allocating argument kind (MutableBlob, cstring) or out-of-memory error: checked by contract_check.toit (a tripwire for helpers that allocate; reviewed) |
-| (b) fails for want of memory only before any visible effect | 88 | 86 by tests/ctest/prim-retry-test.cc (below); 2 reviewed (task_new: a format-1 path needs an interpreter; encode_error: needs a scheduler thread), the arguments in the table |
+| (b) fails for want of memory only before any visible effect | 88 | 86 by tests/ctest/prim-retry-test.cc (below), 25 of them also proved with VeriFast (`oom_clean`, below); 2 reviewed (task_new: a format-1 path needs an interpreter; encode_error: needs a scheduler thread), the arguments in the table |
 | (c) violates it | 0 | |
 
 tests/ctest/prim-retry-test.cc makes every allocation of a call fail in
@@ -1807,13 +1807,39 @@ it (the timer quota counter leaks). Limits: instance allocation
 VeriFast proof); the process is format 1, so task_new's format-2 path and
 encode_error are reviewed.
 
-Not proved with VeriFast for the rendered primitives (string_write,
-byte_zap, time_info, the receive primitives): their contracts say the heap
-only grows, not "unchanged on an out-of-memory error". Stating it needs
-the error words' identity in the model (FAIL's index form against
-Error::from's pointer form, and that the roots are distinct); the test
-covers their failure points (the copy-on-write copy, the result array, the
-decoder's allocations). Estimate 1 day.
+Proved with VeriFast (evidence "verifast", LP64 and ILP32) for 25 of the
+rendered primitives: array_new, byte_array_convert_to_string,
+string_to_utf_16, utf_16_to_string, crc, float_to_string, float_parse,
+float_round, the four integer formatters, smi_divide, smi_mod,
+large_integer_divide, large_integer_mod, int_parse,
+seconds_since_epoch_local, platform, architecture, time_info, time,
+get_real_time_clock, add_finalizer and task_has_messages. Their contracts
+state `oom_clean(objs, H, objs2, H2, result)` (model/objects.render): an
+error result (a marked word; every out-of-memory error is one) leaves
+every object of the heap before the call unchanged. It is stated for every
+error, not only the out-of-memory ones, so it needs no identity of the
+error roots, and it holds for these primitives because each of their
+errors comes before any write to an existing object (most contracts
+already said so per error; get_real_time_clock needed the chain of
+`same_obj` through its second integer, `same_obj_trans`). The argument
+slots and the rest of what each contract owns (add_finalizer: the
+registered callbacks, unchanged on every error by `addition_out`) are in
+the contract. contract_check.toit checks that the definition's contract
+states `oom_clean` and that run.sh proves the rendering. Mutant
+finalizer-primitives-oom-after-effect: add_finalizer returning
+MALLOC_FAILED after the registration fails at `oom_clean`.
+
+Not proved for the other rendered primitives: string_write_to_byte_array,
+byte_zap and blit install a copy-on-write byte array's copy (a write to
+an existing instance) before a later argument check can fail with another
+error; proving that error is not an out-of-memory one needs the error
+roots to be distinct (FAIL's index form against Error::from's pointer
+form), which the model does not state (the loader supplies the roots).
+The receive primitives' contracts do not say the mailbox and the arguments
+slots are unchanged on an out-of-memory error (the wave-5 proof shows the
+message stays whole; stating the slot is a contract change of the receive
+path). The test covers their failure points (the copy-on-write copy, the
+result array, the decoder's allocations).
 
 ### The two-pass assumption
 
@@ -1920,7 +1946,8 @@ the model gaps):
   any program on a 32-bit VM.
 * **The retry obligation holds for every C++ primitive of the untrusted
   set** (no violation): 62 cannot fail for want of memory, 88 fail only
-  before any visible effect ("The retry obligation"). Close calls, all
+  before any visible effect, 25 of them proved with VeriFast for every
+  input, the others tested ("The retry obligation"). Close calls, all
   correct: timer.create takes the timer quota before its malloc and gives
   it back when the malloc fails; process_send neuters transferred byte
   arrays only after the message is allocated; register_monitor_notifier
@@ -1939,12 +1966,18 @@ the model gaps):
   ffi-allocate-string-bound. Branch-only code (not upstream).
 * **Two model gaps closed by widening the model, not the C++**: blob
   lengths (MAX_BLOB) are now per width as the Verus heap model's (2^62 - 1
-  on LP64, was 2^30 - 1), and class ids below 2^31 on LP64 and every smi
-  header on ILP32 (was 1024; CLASS_ID_BIT_SIZE = 10 is declared but unused,
-  the C++ takes any class id). Every proof and mutant verifies unchanged
-  with both, except the encoder at one place: `problematic_class_id_` is an
-  `int` (a class id of 2^31 would truncate; it needs a 4 GB class table),
-  hence the 2^31 cap on LP64.
+  on LP64, was 2^30 - 1 and then INT_MAX), and class ids below 2^31 on
+  LP64 and every smi header on ILP32 (was 1024; CLASS_ID_BIT_SIZE = 10 is
+  declared but unused, the C++ takes any class id). The encoder caps the
+  class ids at 2^31 on LP64: `problematic_class_id_` is an `int` (a class
+  id of 2^31 would truncate; it needs a 4 GB class table). Checked after
+  the merge with the collector-proof base, whose newer proofs relied on the
+  narrow model in three places, now generalized: HeapObject::class_tag and
+  the finalizer flag lemmas read a header as 16 bits (now 64 bits, and the
+  flag lemmas split a header's value into its five low bits over the rest,
+  for any width), and byte_array_is_valid_string_content /
+  byte_array_convert_to_string bounded `end - start` by the blob bound
+  (now by the int range of `end`). No C++ change.
 * No bug in the mailbox quota accounting (Process::_append_message and
   remove_first_message under the process mutex, the scheduler's lock
   around both; sizes and the restricted flag are set before the message is

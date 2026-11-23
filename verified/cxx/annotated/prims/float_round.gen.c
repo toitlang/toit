@@ -36,7 +36,7 @@ int64 decimal_round_factor(int precision);
 Object *primitive_float_round(Process *process, Object **__args);
 /*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
              pointer(__args, ?x0) &*& pointer(__args - 1, ?x1) &*& good(objs, x0) && good(objs, x1); @*/
-/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*& grows(objs, H, objs2, H2) == true &*&
             pointer(__args, x0) &*& pointer(__args - 1, x1) &*&
             (round_argument_error(H, x0, x1) != 0 ?
                objs2 == objs && H2 == H && (uword)result == 4 * round_argument_error(H, x0, x1) + 3 :
@@ -73,7 +73,7 @@ int64 decimal_round_factor(int precision)
 Object *primitive_float_round(Process *process, Object **__args)
 /*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
              pointer(__args, ?x0) &*& pointer(__args - 1, ?x1) &*& good(objs, x0) && good(objs, x1); @*/
-/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*& grows(objs, H, objs2, H2) == true &*&
             pointer(__args, x0) &*& pointer(__args - 1, x1) &*&
             (round_argument_error(H, x0, x1) != 0 ?
                objs2 == objs && H2 == H && (uword)result == 4 * round_argument_error(H, x0, x1) + 3 :

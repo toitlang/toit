@@ -314,6 +314,7 @@ check-prim-retry root/string table/Map? -> int:
   policy := (file.read-contents "$repo/$table["policy"]").to-string
   header := (file.read-contents "$repo/src/primitive.h").to-string
   test := (file.read-contents "$repo/$table["test"]").to-string
+  run-sh := (file.read-contents "$root/cxx/annotated/run.sh").to-string
   allowed := []
   (policy-names policy "UNTRUSTED_CORE" "CoreIndex::").do: allowed.add "core.$it"
   (policy-names policy "UNTRUSTED_BITMAP" "BitmapIndex::").do: allowed.add "bitmap.$it"
@@ -345,13 +346,25 @@ check-prim-retry root/string table/Map? -> int:
           if body.contains token: problem.call "$name is (a) but its body contains `$token`"
       else if kind == "b":
         evidence := entry["evidence"]
+        counts["b $evidence"] = (counts.get "b $evidence" --if-absent=: 0) + 1
         if evidence == "test" or evidence == "verifast":
           spelled := module == "core" ? "CORE($primitive)" : "\"$name\""
           if not test.contains spelled: problem.call "$name: no case $spelled in $table["test"]"
         if evidence == "verifast":
-          rendering := (file.read-contents "$root/$entry["rendering"]").to-string
-          if not rendering.contains "primitive_$primitive(": problem.call "$name: not rendered in $entry["rendering"]"
-          if not rendering.contains "oom_clean": problem.call "$name: $entry["rendering"] does not state oom_clean"
+          path := entry["rendering"]
+          rendering := (file.read-contents "$root/$path").to-string
+          // The definition (the last occurrence; VeriFast checks a
+          // prototype's contract against it) states oom_clean in its
+          // contract, and the matrix proves the rendering.
+          at := rendering.index-of --last "primitive_$primitive("
+          open := at < 0 ? -1 : rendering.index-of "\n{" at
+          if at < 0 or open < 0:
+            problem.call "$name: not rendered in $path"
+          else if not rendering[at..open].contains "oom_clean(":
+            problem.call "$name: the contract of primitive_$primitive in $path does not state oom_clean"
+          prefix := "cxx/annotated/"
+          if not (path.starts-with prefix) or not (run-sh.contains " pass \"\" $path[prefix.size..] "):
+            problem.call "$name: $path is not proved by cxx/annotated/run.sh (no `pass` entry)"
         else if evidence == "review":
           if (entry.get "why" --if-absent=: "") == "": problem.call "$name: a review needs its argument (why)"
         else if evidence != "test":
@@ -363,7 +376,8 @@ check-prim-retry root/string table/Map? -> int:
   classified.do --keys: | name |
     if not allowed.contains name: problem.call "$name is classified but not in the untrusted set"
   if failures == 0:
-    print "ok    prim_retry: $allowed.size primitives of the untrusted set classified: $(counts.get "a" --if-absent=: 0) (a), $(counts.get "b" --if-absent=: 0) (b), $(counts.get "c" --if-absent=: 0) (c)"
+    count := : | key | counts.get key --if-absent=: 0
+    print "ok    prim_retry: $allowed.size primitives of the untrusted set classified: $(count.call "a") (a), $(count.call "b") (b: $(count.call "b verifast") proved and tested, $(count.call "b test") tested, $(count.call "b review") reviewed), $(count.call "c") (c)"
   return failures
 
 /**

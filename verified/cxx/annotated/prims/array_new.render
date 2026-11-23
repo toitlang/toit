@@ -18,7 +18,7 @@ fixpoint int new_array_error(fixpoint(void *, oinfo) H, void *length) {
 PRIMITIVE(array_new)
 /*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
              pointer(__args, ?n) &*& pointer(__args - 1, ?v) &*& good(objs, n) && good(objs, v); @*/
-/*@ ensures [f]process(process, prog, ids) &*& heap(?after, ?H2) &*& pointer(__args, n) &*& pointer(__args - 1, v) &*&
+/*@ ensures [f]process(process, prog, ids) &*& heap(?after, ?H2) &*& oom_clean(objs, H, after, H2, result) == true &*& pointer(__args, n) &*& pointer(__args - 1, v) &*&
             grows(objs, H, after, H2) == true &*&
             (new_array_error(H, n) != 0 ? after == objs && H2 == H && (uword)result == 4 * new_array_error(H, n) + 3 :
              smi_val((uword)n) == 0 ? after == objs && H2 == H && result == empty_array_root(prog) :

@@ -41,7 +41,7 @@ Object *primitive_int_parse(Process *process, Object **__args);
 /*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
              pointer(__args, ?x0) &*& pointer(__args - 1, ?x1) &*& pointer(__args - 2, ?x2) &*& pointer(__args - 3, ?x3) &*&
              good(objs, x0) && good(objs, x1) && good(objs, x2) && good(objs, x3); @*/
-/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*& grows(objs, H, objs2, H2) == true &*&
             pointer(__args, x0) &*& pointer(__args - 1, x1) &*& pointer(__args - 2, x2) &*& pointer(__args - 3, x3) &*&
             ((uword)result % 4 == 3 ? objs2 == objs && H2 == H &&
               ((uword)result == 4 * Program_WRONG_BYTES_TYPE_INDEX + 3 ||
@@ -99,7 +99,7 @@ Object *primitive_int_parse(Process *process, Object **__args)
 /*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
              pointer(__args, ?x0) &*& pointer(__args - 1, ?x1) &*& pointer(__args - 2, ?x2) &*& pointer(__args - 3, ?x3) &*&
              good(objs, x0) && good(objs, x1) && good(objs, x2) && good(objs, x3); @*/
-/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*& grows(objs, H, objs2, H2) == true &*&
             pointer(__args, x0) &*& pointer(__args - 1, x1) &*& pointer(__args - 2, x2) &*& pointer(__args - 3, x3) &*&
             ((uword)result % 4 == 3 ? objs2 == objs && H2 == H &&
               ((uword)result == 4 * Program_WRONG_BYTES_TYPE_INDEX + 3 ||

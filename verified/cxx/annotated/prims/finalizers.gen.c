@@ -304,7 +304,7 @@ Object *primitive_add_finalizer(Process *process, Object **__args);
              pointer(__args - 1, ?callback) &*& good(objs, key) == true &*& good(objs, callback) == true &*&
              registered_callbacks(process_heap_address(process), ?entries); @*/
 /*@ ensures [f]process(process, prog, ids) &*& pointer(__args, key) &*& pointer(__args - 1, callback) &*&
-            heap(objs, ?H2) &*& registered_callbacks(process_heap_address(process), ?after) &*&
+            heap(objs, ?H2) &*& oom_clean(objs, H, objs, H2, result) == true &*& registered_callbacks(process_heap_address(process), ?after) &*&
             addition_out(process, H, ids, key, callback, entries, H2, after, result) == true; @*/
 
 // C++: src/objects.h toit::RootCallback::do_root
@@ -526,7 +526,7 @@ Object *primitive_add_finalizer(Process *process, Object **__args)
              pointer(__args - 1, ?callback) &*& good(objs, key) == true &*& good(objs, callback) == true &*&
              registered_callbacks(process_heap_address(process), ?entries); @*/
 /*@ ensures [f]process(process, prog, ids) &*& pointer(__args, key) &*& pointer(__args - 1, callback) &*&
-            heap(objs, ?H2) &*& registered_callbacks(process_heap_address(process), ?after) &*&
+            heap(objs, ?H2) &*& oom_clean(objs, H, objs, H2, result) == true &*& registered_callbacks(process_heap_address(process), ?after) &*&
             addition_out(process, H, ids, key, callback, entries, H2, after, result) == true; @*/
 {
   //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);

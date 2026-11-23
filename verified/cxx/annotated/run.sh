@@ -2043,6 +2043,11 @@ mutant finalizer-primitives-duplicate prims/finalizers.render src/primitive_core
   "if (already_active) FAIL(ALREADY_EXISTS);" "if (!already_active) FAIL(ALREADY_EXISTS);"
 mutant finalizer-primitives-allocation prims/finalizers.render src/primitive_core.cc "Cannot prove" "-prover z3v4.5" \
   "finalizer, make_weak)) FAIL(MALLOC_FAILED);" "finalizer, make_weak)) FAIL(ALREADY_EXISTS);"
+# The retry obligation (CONTRACTS.toml [prim_retry], `oom_clean`): an
+# out-of-memory error after the finalizer is registered and the header
+# flag set (the call after the GC would find it registered).
+mutant finalizer-primitives-oom-after-effect prims/finalizers.render src/primitive_core.cc "oom_clean" "-prover z3v4.5" \
+  "PRIMITIVE(add_finalizer)@@  return process->null_object();" "  FAIL(MALLOC_FAILED);"
 mutant finalizer-primitives-header model/byte_array_ownership.render src/objects.h "Cannot prove" "-prover z3v4.5" \
   "if (has_forwarding_address()) {\n      target = forwarding_address();" "if (false) {\n      target = forwarding_address();"
 mutant finalizer-primitives-node-kind prims/finalizers.render src/heap.cc "Cannot prove" "-prover z3v4.5" \

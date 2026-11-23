@@ -48,7 +48,7 @@ fixpoint bool division_result(Program *prog, list<void *> objs, fixpoint(void *,
 PRIMITIVE(smi_divide)
 /*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
              pointer(__args, ?x) &*& pointer(__args - 1, ?y) &*& good(objs, x) == true &*& good(objs, y) == true; @*/
-/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& pointer(__args, x) &*& pointer(__args - 1, y) &*&
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*& pointer(__args, x) &*& pointer(__args - 1, y) &*&
             grows(objs, H, objs2, H2) == true &*& division_result(prog, objs, H, objs2, H2, false, false, x, y, result) == true; @*/
 {
   //@ grows_refl(objs, H);
@@ -72,7 +72,7 @@ PRIMITIVE(smi_divide)
 PRIMITIVE(smi_mod)
 /*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
              pointer(__args, ?x) &*& pointer(__args - 1, ?y) &*& good(objs, x) == true &*& good(objs, y) == true; @*/
-/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& pointer(__args, x) &*& pointer(__args - 1, y) &*&
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*& pointer(__args, x) &*& pointer(__args - 1, y) &*&
             grows(objs, H, objs2, H2) == true &*& division_result(prog, objs, H, objs2, H2, false, true, x, y, result) == true; @*/
 {
   //@ grows_refl(objs, H);
@@ -103,7 +103,7 @@ static int64 wrapping_negate(int64 value)
 PRIMITIVE(large_integer_divide)
 /*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
              pointer(__args, ?x) &*& pointer(__args - 1, ?y) &*& good(objs, x) == true &*& good(objs, y) == true; @*/
-/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& pointer(__args, x) &*& pointer(__args - 1, y) &*&
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*& pointer(__args, x) &*& pointer(__args - 1, y) &*&
             grows(objs, H, objs2, H2) == true &*& division_result(prog, objs, H, objs2, H2, true, false, x, y, result) == true; @*/
 {
   //@ grows_refl(objs, H);
@@ -126,7 +126,7 @@ PRIMITIVE(large_integer_divide)
 PRIMITIVE(large_integer_mod)
 /*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
              pointer(__args, ?x) &*& pointer(__args - 1, ?y) &*& good(objs, x) == true &*& good(objs, y) == true; @*/
-/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& pointer(__args, x) &*& pointer(__args - 1, y) &*&
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*& pointer(__args, x) &*& pointer(__args - 1, y) &*&
             grows(objs, H, objs2, H2) == true &*& division_result(prog, objs, H, objs2, H2, true, true, x, y, result) == true; @*/
 {
   //@ grows_refl(objs, H);
