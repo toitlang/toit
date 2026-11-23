@@ -515,7 +515,7 @@ pub fn list_add(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<V
     if heap.class_tag(w, Ghost(lid)) != INSTANCE_TAG { return fail(p, heap, ROOT_INVALID_ARGUMENT); }
     if is_ro(p, w) { return fail(p, heap, ROOT_PERMISSION_DENIED); }
     let cid = heap.class_id(w, Ghost(lid));
-    if cid as i64 != p.list_class_id { return fail(p, heap, ROOT_INVALID_ARGUMENT); }
+    if cid != p.list_class_id { return fail(p, heap, ROOT_INVALID_ARGUMENT); }
     // The list has its two fields (backing, size).
     if cid >= p.class_bits.len() { return fail(p, heap, ROOT_INVALID_ARGUMENT); }
     let bits = p.class_bits.at(cid);

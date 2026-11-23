@@ -196,6 +196,15 @@ int ProgramBuilder::create_method_v2(int kind,
   ASSERT(0 <= arity && arity < 0x100);
   ASSERT(0 <= selector && selector <= V2_NO_VALUE);
   ASSERT(0 <= aux && aux <= 0xffff);
+  if (kind != V2_KIND_BLOCK && (all_bytecodes_.size() & 1) != 0) {
+    // The entries of all but blocks are odd, so that the u16 fields at odd
+    // distances before them are 2-byte aligned (format note 21): a header
+    // has an odd size, so it starts at an even offset. The pad byte ends
+    // the previous body (a body ends at the next header) and is never
+    // executed.
+    ASSERT(!v2_method_entries_.empty());
+    all_bytecodes_.push_back(V2_PAD);
+  }
   int offset = all_bytecodes_.size();
   int id = v2_method_offsets_.size();
   v2_method_offsets_.push_back(offset);

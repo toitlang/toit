@@ -16,6 +16,7 @@ enum { V2_TAG_SIZE = 4, V2_RECORD_ENTRY_SHIFT = 8 };
     logic integer u16le{L}(uint8* p) = p[0] + 256*p[1];
     predicate canonical{L}(uint8* b, integer e) =
       0 <= b[e-1] <= 4 &&
+      (b[e-1] != 3 ==> e % 2 == 1) &&
       (b[e-1] == 0 ==> u16le(b+e-7) >= u16le(b+e-5) + 2) &&
       (b[e-1] == 1 ==> u16le(b+e-5) < u16le(b+e-7) ||
                         (u16le(b+e-5) == 65535 && u16le(b+e-7) == 65535));

@@ -1,40 +1,40 @@
-# Line-A assembled-method battery Wed Nov 11 21:35:10 CET 2026
+# Line-A assembled-method battery Thu Nov 12 02:28:18 CET 2026
 [good-retnull] x{1/1} ACCEPTED->ran:   
 [good-print] x{0/0} ACCEPTED->ran: 55  
-[twin-104-loadf] x{0/0} untrusted program rejected: method 22 at bci 277 (+1): LOAD_FIELD_U 92: unchecked opcode 104 in a program not in the unchecked mode 
-[twin-105-loadfwide] x{0/0} untrusted program rejected: method 22 at bci 277 (+1): LOAD_FIELD_WIDE_U 0 0: unchecked opcode 105 in a program not in the unchecked mode 
-[twin-106-loadflocal] x{0/0} untrusted program rejected: method 22 at bci 277 (+1): LOAD_FIELD_LOCAL_U 0: unchecked opcode 106 in a program not in the unchecked mode 
-[twin-107-poploadfloc] x{0/0} untrusted program rejected: method 22 at bci 277 (+1): POP_LOAD_FIELD_LOCAL_U 0: unchecked opcode 107 in a program not in the unchecked mode 
-[twin-108-storef] x{0/0} untrusted program rejected: method 22 at bci 278 (+2): STORE_FIELD_U 0: unchecked opcode 108 in a program not in the unchecked mode 
-[twin-109-storefwide] x{0/0} untrusted program rejected: method 22 at bci 278 (+2): STORE_FIELD_WIDE_U 0 0: unchecked opcode 109 in a program not in the unchecked mode 
-[twin-110-storefpop] x{0/0} untrusted program rejected: method 22 at bci 278 (+2): STORE_FIELD_POP_U 0: unchecked opcode 110 in a program not in the unchecked mode 
-[twin-111-ivget] x{0/0} untrusted program rejected: method 22 at bci 277 (+1): INVOKE_VIRTUAL_GET_U 0 0: unchecked opcode 111 in a program not in the unchecked mode 
-[twin-112-ivset] x{0/0} untrusted program rejected: method 22 at bci 278 (+2): INVOKE_VIRTUAL_SET_U 0 0: unchecked opcode 112 in a program not in the unchecked mode 
-[twin-113-storefthis] x{0/0} untrusted program rejected: method 22 at bci 277 (+1): STORE_FIELD_THIS_U 0: unchecked opcode 113 in a program not in the unchecked mode 
+[twin-104-loadf] x{0/0} untrusted program rejected: method 22 at bci 290 (+1): LOAD_FIELD_U 92: unchecked opcode 104 in a program not in the unchecked mode 
+[twin-105-loadfwide] x{0/0} untrusted program rejected: method 22 at bci 290 (+1): LOAD_FIELD_WIDE_U 0 0: unchecked opcode 105 in a program not in the unchecked mode 
+[twin-106-loadflocal] x{0/0} untrusted program rejected: method 22 at bci 290 (+1): LOAD_FIELD_LOCAL_U 0: unchecked opcode 106 in a program not in the unchecked mode 
+[twin-107-poploadfloc] x{0/0} untrusted program rejected: method 22 at bci 290 (+1): POP_LOAD_FIELD_LOCAL_U 0: unchecked opcode 107 in a program not in the unchecked mode 
+[twin-108-storef] x{0/0} untrusted program rejected: method 22 at bci 291 (+2): STORE_FIELD_U 0: unchecked opcode 108 in a program not in the unchecked mode 
+[twin-109-storefwide] x{0/0} untrusted program rejected: method 22 at bci 291 (+2): STORE_FIELD_WIDE_U 0 0: unchecked opcode 109 in a program not in the unchecked mode 
+[twin-110-storefpop] x{0/0} untrusted program rejected: method 22 at bci 291 (+2): STORE_FIELD_POP_U 0: unchecked opcode 110 in a program not in the unchecked mode 
+[twin-111-ivget] x{0/0} untrusted program rejected: method 22 at bci 290 (+1): INVOKE_VIRTUAL_GET_U 0 0: unchecked opcode 111 in a program not in the unchecked mode 
+[twin-112-ivset] x{0/0} untrusted program rejected: method 22 at bci 291 (+2): INVOKE_VIRTUAL_SET_U 0 0: unchecked opcode 112 in a program not in the unchecked mode 
+[twin-113-storefthis] x{0/0} untrusted program rejected: method 22 at bci 290 (+1): STORE_FIELD_THIS_U 0: unchecked opcode 113 in a program not in the unchecked mode 
 [twin-after-return] x{1/1} ACCEPTED->ran:   
-[twin-branch-reached] x{0/0} untrusted program rejected: method 22 at bci 282 (+6): LOAD_FIELD_U 92: unchecked opcode 104 in a program not in the unchecked mode 
-[twin-first-insn] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): LOAD_FIELD_U 0: unchecked opcode 104 in a program not in the unchecked mode 
+[twin-branch-reached] x{0/0} untrusted program rejected: method 22 at bci 295 (+6): LOAD_FIELD_U 92: unchecked opcode 104 in a program not in the unchecked mode 
+[twin-first-insn] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): LOAD_FIELD_U 0: unchecked opcode 104 in a program not in the unchecked mode 
 [twin-as-operand-byte] x{1/1} ACCEPTED->ran:   
-[twin-branch-into-twin] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): BRANCH 4 0: successor outside the method 
-[op-114] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): bad opcode 114: invalid opcode 114 
-[op-200] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): bad opcode 200: invalid opcode 200 
-[op-255] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): bad opcode 255: invalid opcode 255 
-[op-114-ctx] x{0/0} untrusted program rejected: method 22 at bci 277 (+1): bad opcode 114: invalid opcode 114 
-[halt-deepsleep] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): HALT 2: HALT rejected with kinds [] 
-[halt-reset] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): HALT 3: HALT rejected with kinds [] 
-[halt-0] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): HALT 0: successor outside the method 
-[builtin-101-repeat] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): LOOP_REPEAT 0 0 0: LOOP_REPEAT rejected with kinds [] 
-[builtin-102-array] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): LOOP_ARRAY 0 0 0: LOOP_ARRAY rejected with kinds [] 
-[builtin-103-hashfind] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): HASH_FIND 0 0 0 0: HASH_FIND rejected with kinds [] 
-[builtin-101-operands] x{0/0} untrusted program rejected: method 22 at bci 278 (+2): LOOP_REPEAT 255 255 0: LOOP_REPEAT rejected with kinds [Val, Val] 
-[builtin-103-badargs] x{0/0} untrusted program rejected: method 22 at bci 277 (+1): HASH_FIND 255 255 255 255: HASH_FIND rejected with kinds [Val] 
-[prim-spawn] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): PRIMITIVE 0 0 0: PRIMITIVE rejected with kinds [] 
-[prim-module-oob] x{0/0} untrusted program rejected: method 22 at bci 276 (+0): PRIMITIVE 255 255 255: PRIMITIVE rejected with kinds [] 
-[mix-checked-twin] x{0/0} untrusted program rejected: method 22 at bci 277 (+1): STORE_FIELD_THIS_U 0: unchecked opcode 113 in a program not in the unchecked mode 
-[twin-105-highop] x{0/0} untrusted program rejected: method 22 at bci 277 (+1): LOAD_FIELD_WIDE_U 255 255: unchecked opcode 105 in a program not in the unchecked mode 
-[twin-111-highsel] x{0/0} untrusted program rejected: method 22 at bci 277 (+1): INVOKE_VIRTUAL_GET_U 255 255: unchecked opcode 111 in a program not in the unchecked mode 
-[table-stale-shorter] x{0/0/0/0} untrusted: format-2 program rejected: bad method kind byte (303); trusted: format-2 program rejected: bad method kind byte (303) 
-[table-stale-longer] x{0/0/0/0} untrusted: format-2 program rejected: bad method kind byte (286); trusted: format-2 program rejected: bad method kind byte (286) 
-[table-stale-by-one] x{0/0/0/0} untrusted: format-2 program rejected: bad method kind byte (286); trusted: format-2 program rejected: bad method kind byte (286) 
+[twin-branch-into-twin] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): BRANCH 4 0: successor outside the method 
+[op-114] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): bad opcode 114: invalid opcode 114 
+[op-200] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): bad opcode 200: invalid opcode 200 
+[op-255] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): bad opcode 255: invalid opcode 255 
+[op-114-ctx] x{0/0} untrusted program rejected: method 22 at bci 290 (+1): bad opcode 114: invalid opcode 114 
+[halt-deepsleep] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): HALT 2: HALT rejected with kinds [] 
+[halt-reset] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): HALT 3: HALT rejected with kinds [] 
+[halt-0] x{0/0} untrusted program rejected: method 22 at bci 291 (+2): bad opcode 255: invalid opcode 255 
+[builtin-101-repeat] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): LOOP_REPEAT 0 0 0: LOOP_REPEAT rejected with kinds [] 
+[builtin-102-array] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): LOOP_ARRAY 0 0 0: LOOP_ARRAY rejected with kinds [] 
+[builtin-103-hashfind] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): HASH_FIND 0 0 0 0: HASH_FIND rejected with kinds [] 
+[builtin-101-operands] x{0/0} untrusted program rejected: method 22 at bci 291 (+2): LOOP_REPEAT 255 255 0: LOOP_REPEAT rejected with kinds [Val, Val] 
+[builtin-103-badargs] x{0/0} untrusted program rejected: method 22 at bci 290 (+1): HASH_FIND 255 255 255 255: HASH_FIND rejected with kinds [Val] 
+[prim-spawn] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): PRIMITIVE 0 0 0: PRIMITIVE rejected with kinds [] 
+[prim-module-oob] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): PRIMITIVE 255 255 255: PRIMITIVE rejected with kinds [] 
+[mix-checked-twin] x{0/0} untrusted program rejected: method 22 at bci 290 (+1): STORE_FIELD_THIS_U 0: unchecked opcode 113 in a program not in the unchecked mode 
+[twin-105-highop] x{0/0} untrusted program rejected: method 22 at bci 290 (+1): LOAD_FIELD_WIDE_U 255 255: unchecked opcode 105 in a program not in the unchecked mode 
+[twin-111-highsel] x{0/0} untrusted program rejected: method 22 at bci 290 (+1): INVOKE_VIRTUAL_GET_U 255 255: unchecked opcode 111 in a program not in the unchecked mode 
+[table-stale-shorter] x{0/0/0/0} untrusted: format-2 program rejected: bad method kind byte (300); trusted: format-2 program rejected: bad method kind byte (300) 
+[table-stale-longer] x{0/0/0/0} untrusted: format-2 program rejected: bad method kind byte (300); trusted: format-2 program rejected: bad method kind byte (300) 
+[table-stale-by-one] x{0/0/0/0} untrusted: format-2 program rejected: bad method kind byte (300); trusted: format-2 program rejected: bad method kind byte (300) 
 [table-same-size] x{0/0/0/0} untrusted: ACCEPTED->ran: 55 ; trusted: ran: 55  
-# done Wed Nov 11 21:35:33 CET 2026
+# done Thu Nov 12 02:28:48 CET 2026

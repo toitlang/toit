@@ -310,8 +310,10 @@ pub open spec fn prog_rel(p: &crate::exec::Program, objs: Seq<HeapObj>, addr: Se
     &&& p.methods@.len() == ap.methods.len()
     &&& forall|i: int| 0 <= i < ap.methods.len() ==>
             #[trigger] ap.methods[i] == method_info(p.minfo(i), p.max_height)
-    // The method headers lie inside the bytecodes (format note 21).
+    // The method headers lie inside the bytecodes, their u16 fields at
+    // even offsets of bytecodes at an even address (format note 21).
     &&& toit_spec::v2::vprog::table_ok(p.code@, p.methods@)
+    &&& p.code.even()
     &&& p.max_height < 0x1_0000
     &&& p.dispatch@ == ap.dispatch
     &&& p.class_bits@ == ap.class_bits
@@ -336,12 +338,12 @@ pub open spec fn prog_rel(p: &crate::exec::Program, objs: Seq<HeapObj>, addr: Se
     &&& p.false_ == p.roots@[2]
     &&& p.code@.len() < 0x1000_0000
     // The builtin class ids the handlers use.
-    &&& p.smi_class_id == ap.builtin[BUILTIN_SMI as int] as i64
-    &&& p.list_class_id == ap.builtin[BUILTIN_LIST as int] as i64
-    &&& p.byte_array_slice_class_id == ap.builtin[BUILTIN_BYTE_ARRAY_SLICE as int] as i64
-    &&& p.byte_array_cow_class_id == ap.builtin[BUILTIN_BYTE_ARRAY_COW as int] as i64
-    &&& p.large_array_class_id == ap.builtin[BUILTIN_LARGE_ARRAY as int] as i64
-    &&& p.lazy_initializer_class_id == ap.builtin[BUILTIN_LAZY_INITIALIZER as int] as i64
+    &&& p.smi_class_id == ap.builtin[BUILTIN_SMI as int] as usize
+    &&& p.list_class_id == ap.builtin[BUILTIN_LIST as int] as usize
+    &&& p.byte_array_slice_class_id == ap.builtin[BUILTIN_BYTE_ARRAY_SLICE as int] as usize
+    &&& p.byte_array_cow_class_id == ap.builtin[BUILTIN_BYTE_ARRAY_COW as int] as usize
+    &&& p.large_array_class_id == ap.builtin[BUILTIN_LARGE_ARRAY as int] as usize
+    &&& p.lazy_initializer_class_id == ap.builtin[BUILTIN_LAZY_INITIALIZER as int] as usize
 }
 
 // ---------------------------------------------------------------------------

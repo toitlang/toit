@@ -159,11 +159,22 @@ pub proof fn lemma_at_index_exact<T>(base: *mut T, i: int, len: int)
     vstd::arithmetic::div_mod::lemma_small_mod((base@.addr + i * size_of::<T>()) as nat, modulus() as nat);
 }
 
+/// How many elements before a table's start its `pre` pointer is. Odd:
+/// the code table's u16 header fields lie at odd distances before the odd
+/// entries, so their offsets from `pre + entry` are even, which a 16-bit
+/// load's scaled offset can encode.
+pub const PRE: usize = 15;
+
 /// A read-only table of `T` (program data: immutable while the program
-/// runs). Owns a permission for each element.
+/// runs). Owns a permission for each element. `pre` is `ptr` moved back by
+/// `PRE` elements: `at` addresses element `i` as `pre + (i + PRE)`, so that
+/// a read at a constant negative distance from a computed index (a method
+/// header before its entry) folds into the load's offset on targets whose
+/// loads take only unsigned offsets (Xtensa).
 #[verifier::reject_recursive_types(T)]
 pub struct Table<T> {
     ptr: *mut T,
+    pre: *mut T,
     len: usize,
     perms: Tracked<Map<int, PointsTo<T>>>,
 }
@@ -171,7 +182,9 @@ pub struct Table<T> {
 impl<T> Table<T> {
     #[verifier::type_invariant]
     spec fn inv(&self) -> bool {
-        array_ok(self.perms@, self.ptr, self.len as int)
+        &&& array_ok(self.perms@, self.ptr, self.len as int)
+        &&& self.pre == at_index(self.ptr, -(PRE as int))
+        &&& self.len + PRE <= usize::MAX
     }
 }
 
@@ -203,13 +216,41 @@ impl<T: Copy> Table<T> {
         proof {
             use_type_invariant(self);
             assert(elem_ok(self.perms@, self.ptr, i as int));
+            lemma_at_index_move(self.ptr, -(PRE as int), (i + PRE) as int);
         }
-        let p = self.ptr.wrapping_add(i);
+        let p = self.pre.wrapping_add(i + PRE);
         *ptr_ref(p, Tracked(self.perms.borrow().tracked_borrow(i as int)))
     }
 }
 
 impl Table<u8> {
+    /// The table starts at an even address: a u16 at an even index is
+    /// 2-byte aligned.
+    pub closed spec fn even(&self) -> bool {
+        self.ptr@.addr % 2 == 0
+    }
+
+    /// The little-endian u16 at the even index `i` of a table at an even
+    /// address. TRUSTED (aligned load): one 16-bit load of the two bytes
+    /// the table's permissions cover (`u16::from_le`, so on any byte
+    /// order), for targets without unaligned 16-bit loads (Xtensa, the
+    /// ESP32 RISC-V cores), where the two byte loads, shift and or cost
+    /// four to six instructions (format note 21).
+    #[verifier::external_body]
+    #[inline(always)]
+    pub fn u16_at_even(&self, i: usize) -> (r: u16)
+        requires self.even(), i % 2 == 0, i + 1 < self@.len(),
+        ensures r == (self@[i as int] as u16) | ((self@[i + 1] as u16) << 8u16),
+    {
+        // SAFETY: `ptr[i..i+2)` lies in the table (the permissions cover
+        // `ptr[0..len)`), immutable while the view lives; `ptr + i` is
+        // 2-byte aligned (`ptr` and `i` are even). It is computed as
+        // `pre + (i + PRE)` (`pre` is `ptr - PRE`: `from_raw` and the type
+        // invariant), so that the header's negative distance folds into the
+        // load's offset.
+        unsafe { u16::from_le(*(self.pre.wrapping_add(i + PRE) as *const u16)) }
+    }
+
     /// The cursor at index `i` (wrapping address arithmetic; reading
     /// through it requires the index to lie in the table, `Ip::byte`).
     #[inline(always)]
@@ -751,6 +792,16 @@ pub proof fn lemma_cursor_diff<T>(base: *mut T, i: int, j: int)
 /// the tag the core does not read).
 pub open spec fn hdr_class_id(h: usize) -> usize {
     (((h as isize) >> 1usize) as usize) >> CLASS_ID_OFFSET
+}
+
+/// A header whose class id is below 2^16 is no negative smi: its class id
+/// is one logical shift (on 32-bit targets the arithmetic shift of the smi
+/// tag and the shift of the class id are two instructions).
+pub proof fn lemma_class_id_shift(h: usize)
+    ensures hdr_class_id(h) < 0x1_0000 ==> h >> 6usize == hdr_class_id(h),
+{
+    assert(CLASS_ID_OFFSET == 5);
+    assert((((((h as isize) >> 1usize) as usize) >> 5usize) < 0x1_0000) ==> h >> 6usize == ((((h as isize) >> 1usize) as usize) >> 5usize)) by (bit_vector);
 }
 
 pub open spec fn hdr_class_tag(h: usize) -> usize {
@@ -1625,7 +1676,10 @@ impl Heap {
         ensures r == self.objs()[id].class_id,
     {
         let header = self.read_header(obj, Ghost(id));
-        (((header as isize) >> 1) as usize) >> CLASS_ID_OFFSET
+        // One logical shift (a class id is below 2^16, so the header is no
+        // negative smi: `lemma_class_id_shift`).
+        proof { lemma_class_id_shift(header); }
+        header >> (CLASS_ID_OFFSET + 1)
     }
 
     /// The class tag of object `id`: the header's tag, which is its class'
@@ -2848,7 +2902,7 @@ impl<T> Table<T> {
     /// `ptr..ptr+len` must be valid, aligned and immutable while the view
     /// lives.
     pub unsafe fn from_raw(ptr: *const T, len: usize) -> Self {
-        Table { ptr: ptr as *mut T, len, perms: Tracked::assume_new() }
+        Table { ptr: ptr as *mut T, pre: (ptr as *mut T).wrapping_sub(PRE), len, perms: Tracked::assume_new() }
     }
 }
 

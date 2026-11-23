@@ -294,15 +294,19 @@ pub enum VLookup {
 }
 
 impl Machine {
-    /// The class id of a smi or object (`class_id_of`).
+    /// The class id of a smi or object (`class_id_of`), below 2^16: a word,
+    /// so that the range checks of 32-bit targets compare words, not
+    /// 64-bit integers.
     #[inline(always)]
-    pub fn class_of(&self, p: &Program, w: usize, Ghost(v): Ghost<Value>) -> (r: i64)
+    pub fn class_of(&self, p: &Program, w: usize, Ghost(v): Ghost<Value>) -> (r: usize)
         requires
             self.hrefines(p),
             w == enc(self.addr(), v),
             encodable(self.addr(), v),
             v is Smi || v is Obj,
-        ensures r == class_id_of(p1(p.ap@), as1(self.g@), v),
+        ensures
+            r == class_id_of(p1(p.ap@), as1(self.g@), v),
+            r < 0x1_0000,
     {
         proof {
             match v {
@@ -315,7 +319,7 @@ impl Machine {
             p.smi_class_id
         } else {
             let ghost id = match v { Value::Obj(id) => id as int, _ => 0 };
-            self.heap.class_id(w, Ghost(id)) as i64
+            self.heap.class_id(w, Ghost(id))
         }
     }
 
@@ -341,7 +345,7 @@ impl Machine {
         if sel < 0 {
             return VLookup::Missing;
         }
-        let index = (cid + sel) as usize;
+        let index = cid + sel as usize;
         let entry = p.dispatch.at(index);
         if entry == -1 {
             return VLookup::Missing;

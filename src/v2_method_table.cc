@@ -85,6 +85,9 @@ static V2Header v2_check_header(const uint8* bytes, word length, word entry, wor
     return V2_HEADER_BAD_KIND;
   }
   if (entry - V2MethodTable::header_size(kind_byte) != expected) return V2_HEADER_BAD_POSITION;
+  // Odd entries but for blocks: the u16 fields are 2-byte aligned (the
+  // core reads them with aligned 16-bit loads, `rec_ok`).
+  if (kind != V2_KIND_BLOCK && (entry & 1) == 0) return V2_HEADER_EVEN_ENTRY;
   if (kind == V2_KIND_METHOD || kind == V2_KIND_FIELD_ACCESSOR) {
     uint16 start = v2_read_u16_le(bytes + entry - V2_RECV_START_BACK);
     bool ok = true;

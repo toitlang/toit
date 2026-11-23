@@ -321,7 +321,7 @@ impl Machine {
     {
         let p = &env.p;
         let ghost addr = self.addr();
-        let cid = self.class_of(p, rw, Ghost(rv));
+        let cid = self.class_of(p, rw, Ghost(rv)) as i64;
         let cid = if -0x8000_0000 <= cid && cid < 0x8000_0000 && MIN_SMI <= cid && cid <= MAX_SMI { cid } else { -1 };
         // 32-bit targets: message words that are no smi are reported as -1.
         let sel = if MIN_SMI <= sel && sel <= MAX_SMI { sel } else { -1 };

@@ -1,5 +1,106 @@
 # Phase 4a progress (verified core, format 2 on x86-64)
 
+## Call speed, loop size, inline allocation (branch core/call-speed-size, 2026-11-12)
+
+Base sandbox-integration a773bcfe (compact records), sandbox-integration
+d369b967 (hardware runs, loop in IRAM) merged before the final gates.
+Nothing was flashed. Artifacts: /home/flo/work/opentoit-sandbox-artifacts/
+call-speed-size (dev/: firmware, QEMU scripts, profiles `qprof.sh`,
+`byhandler.sh`, `cmph.sh`; tools/: verification, gates, `opcount.sh`,
+`split_step.pl`; bench/opcounts.txt: dynamic opcode counts).
+
+Measurement: a benchmark-only QEMU suite (dev/qemu/progs/bench-only.toit,
+`-icount shift=0`, f2/f1 instructions; f1: richards 181,659, deltablue
+10,333, pystone 24,333, json 26,793 µs) and per-handler instruction
+profiles of QEMU traces (`qprof.sh`: TB counts, attributed to the
+handlers through the jump table). Pre-compact (16-byte records,
+device/size firmware): 0.708 / 0.994 / 0.857 / 1.076.
+
+Item 1, the Xtensa call path (format note 21, "Xtensa"):
+
+| Step | Commit | richards | deltablue | pystone | json |
+|---|---|---:|---:|---:|---:|
+| compact records as merged | a773bcfe | 0.761 | 1.064 | 0.906 | 1.108 |
+| odd entries, aligned `l16ui` fields (+1.5 KB pad bytes) | acf24c76 | 0.767 | 1.061 | 0.890 | 1.105 |
+| virtual calls take the arity from the operand | acf24c76 | 0.741 | 1.036 | 0.890 | 1.093 |
+| tables addressed through `pre` (offsets fold) | acf24c76 | 0.737 | 1.040 | 0.888 | 1.104 |
+| word class ids (no 64-bit compares on 32-bit) | b1aaa438 | 0.717 | 0.981 | 0.878 | 1.047 |
+| one-shift class id | b1aaa438 | 0.696 | 0.947 | 0.867 | 1.031 |
+
+The regression was only partly the header reads (6 instructions per u16
+field: 10 per selector check instead of 5); the rest was register
+allocation of the run loop (one more spill, moves) that the per-handler
+profiles showed. The register allocation of the 30 KB loop changes with
+every edit (QEMU deltas of ±1-3 % from unrelated changes); LLVM flags
+(split-spill-mode, misched, local interval cost, tail-dup 8/16/20)
+changed nothing beyond ±0.3 %. Host (callgrind, trusted): richards
+1,066 M, deltablue 754 M, pystone 810 M, json 1,314 M, RPC 417 M
+(EXPERIMENT-trusted.md 1,078 / 761 / 810 / 1,332 / 444). RISC-V (C6):
+selector check `lw, add, lhu` instead of `lbu, lbu, slli, or`.
+
+Item 2, size and the loop's hot part (classic ESP32 f2; IRAM matters
+since the hardware runs, the coordinator's request):
+
+| Change | Commit | toit.bin | run_loop | QEMU f2/f1 richards / deltablue / pystone / json |
+|---|---|---:|---:|---|
+| start (a773bcfe, measured here) | | 1,544,000 | 28,275 | 0.761 / 1.064 / 0.906 / 1.108 |
+| item 1 | b1aaa438 | 1,541,376 | 26,654 | 0.696 / 0.947 / 0.867 / 1.031 |
+| core at opt-level s, `run_loop` `optimize(speed)` (Xtensa only, esp nightly) | 324b0d93 | 1,537,088 | 26,127 | 0.689 / 0.935 / 0.830 / 1.011 |
+| one slow-path call site (`Ctl::Slow`, request in the machine) | 9214fcd1 | 1,529,696 | 19,030 | 0.673 / 0.917 / 0.822 / 1.002 |
+| hot/cold split (`step_cold`, flash) | 2e816470 | 1,529,968 | 12,208 | 0.720 / 0.995 / 0.919 / 1.191 |
+| inline allocation proven (item 3) | 2fecc427 | 1,530,144 | 12,351 | (final, below) |
+
+Opt levels on the classic ESP32: the core crate at s, `step::run_loop`
+(with every handler inlined into it) at speed through
+`#[optimize(speed)]`; toit_spec and toit_vmverify at z (unchanged);
+RISC-V targets at 3 (stable toolchain, no attribute). The slow paths:
+98 call sites of `slow` (22 Xtensa instructions each: the registers, the
+request and the result through memory) became one; the result of a step
+must not be passed on whole (it then lives in memory and every handler
+stores it: 40 % slower, slow1-3 in the artifacts).
+
+The split: the rare opcodes (`cold_op`, by dynamic counts of richards,
+deltablue, pystone, json, RPC, strings and map-set: the _WIDE variants,
+dynamic globals, HALT, THROW, non-local branches, TRY/UNWIND, rare
+arithmetic, PRIMITIVE) go through the loop's one call site (`Slow::Cold`)
+to `step_cold` (flash). Sections: `step::run_loop` is the hot part (renamed
+to `.iram1.toit_run_loop` by localize-libm.cmake with
+TOIT_VERIFIED_CORE_LOOP_IN_IRAM), everything else stays in `.text`
+(flash). Classic ESP32: hot 12.4 KB, cold 7.2 KB plus `slow_body` 4.4 KB;
+the firmware links with ESP_WIFI_RX_IRAM_OPT on (IRAM 129,379 of 131,072).
+C6: hot 12.4 KB (was 19.8 KB). Cost in QEMU instructions against the
+unsplit loop: richards +7 %, deltablue +9 %, pystone +12 %, json +19 %
+(primitive calls take the cold path, and in this allocation the jump
+table base is reloaded per dispatch); with PRIMITIVE hot the hot part is
+15.9 KB (does not fit with the WiFi option) at +3 / +4 / +4 / +5 %.
+
+Flash with Jaguar (dev/jag-all.txt, Jaguar compiled with this SDK): ESP32
+f2 -18,736 B against the OTA partition (start of the branch: -28,512;
+the Jaguar image crossed a 4 KB page through the pad bytes: +4,224 B),
+f1 +56,176; C6 f2 +69,392, f1 +141,008.
+
+Remaining size options (not done): the verifier left out (Kconfig
+TOIT_VERIFIED_CORE_VERIFIER=n, -29.6 KB: fits with ~11 KB), image
+off-heap rounded to a word instead of a 4 KB page (about 2 KB per image,
+here 4 KB of Jaguar), the C++ copies of ported primitives (up to 5 KB,
+each needs "never declines" proven), shared twin and _WIDE bodies (now
+in the cold flash part: flash only), the partition layout.
+
+Item 3, inline allocation on the permission model: `Runtime::bump`
+(external_body, the derivation point) hands out the permissions of the
+fresh words with `Heap::fresh_ok`; `bump_instance` and `bump_double`
+write through them (`Heap::write_fresh`) and append the object
+(`Heap::append`, `fresh::append_mem`: the heap invariant for the new
+object id), and `alloc::lemma_refines_append` proves the machine
+contract. bump_double checks the double class' tag at run time (no spec
+fact) and bump_instance class ids below 2^16 (the model's). TRUSTED.toml:
+-5 entries, +2.
+
+Proofs: core 962 -> 1007 items (spec 962 unchanged), zero admits, both
+widths (core 64-bit ~2 min, 32-bit ~1 min with 16 jobs). Two proofs of
+view.rs (`lemma_bytes_written`, `copy_content`) needed explicit hints
+after the new module contents at 32 bits.
+
 ## Hardware runs: where the time goes (branch device/hw-perf, 2026-11-12)
 
 Attribution and fixes of the format-2 gaps on the boards; details in

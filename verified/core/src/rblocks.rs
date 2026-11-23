@@ -299,7 +299,7 @@ pub fn op_invoke_block(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opc
         lemma_room_same(p, w0, m1);
         assert(sp::step(ap, g) == sp::call(ap, g1, t as int, bci + 2));
     }
-    push_call(m, r, p, t, info, bci + 2);
+    push_call(m, r, p, t, info.entry as usize, info.arity as usize, bci + 2);
     proof { lemma_matches(p, w0, m.with(*r), Ctl::Next); }
     Ctl::Next
 }

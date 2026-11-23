@@ -69,18 +69,19 @@ pub fn call_fast(m: &Machine, r: &Regs, env: &Env) -> (b: bool)
     free >= (w | m.need)
 }
 
-/// `spec::call` without finally records: a frame for `target` (its method
-/// table entry `info`), whose arguments are the top `arity` slots,
+/// `spec::call` without finally records: a frame for `target` (its entry and
+/// arity), whose arguments are the top `arity` slots,
 /// returning to `ret`. The new frame has room (`frame_room`).
 #[inline(always)]
-pub fn push_call(m: &mut Machine, r: &mut Regs, p: &Program, target: usize, info: V2Method, ret: usize)
+pub fn push_call(m: &mut Machine, r: &mut Regs, p: &Program, target: usize, entry: usize, arity: usize, ret: usize)
     requires
         m_ok(p, *old(m), *old(r)),
         old(m).fw == 0,
         old(r).sp@ - old(r).fr@ >= FRAME_WORDS + p.max_height + STACK_RESERVE,
         room_ok(p, old(m).with(*old(r))),
         target < p.methods@.len(),
-        info == p.minfo(target as int),
+        entry == p.minfo(target as int).entry as usize,
+        arity == p.minfo(target as int).arity as usize,
         !(sp::call(p.ap@, old(m).g@, target as int, ret as int) is Stuck),
     ensures
         rnext(p, *final(m), *final(r), sp::call(p.ap@, old(m).g@, target as int, ret as int)),
@@ -92,7 +93,6 @@ pub fn push_call(m: &mut Machine, r: &mut Regs, p: &Program, target: usize, info
         m0.lemma_frame(p);
         assert(p.ap@.methods[target as int] == method_info(p.minfo(target as int), p.max_height));
     }
-    let arity = info.arity as usize;
     let f = r.fr;
     let fp = r.sp.offset(arity as isize);
     let base = r.end.diff(fp);
@@ -103,9 +103,9 @@ pub fn push_call(m: &mut Machine, r: &mut Regs, p: &Program, target: usize, info
     let nf = f.offset(FRAME_WORDS as isize);
     r.fr = nf;
     r.fp = fp;
-    r.ip = p.code.cursor(info.entry as usize);
+    r.ip = p.code.cursor(entry);
     let ghost fr = Frame { method: target, ret: ret, base: base };
-    let ghost g1 = State2 { frames: g0.frames.push(fr), bci: info.entry as usize, ..g0 };
+    let ghost g1 = State2 { frames: g0.frames.push(fr), bci: entry, ..g0 };
     m.g = Ghost(g1);
     proof {
         let m1 = m.with(*r);
@@ -174,7 +174,7 @@ pub fn op_invoke_static(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, op
         proof { assert(sp::step(ap, g) == sp::call(ap, g, t as int, bci + 3)); }
         return slow0(m, r, env, Slow::Call(t, bci + 3));
     }
-    push_call(m, r, p, t, info, bci + 3);
+    push_call(m, r, p, t, info.entry as usize, arity, bci + 3);
     proof { lemma_matches(p, w0, m.with(*r), Ctl::Next); }
     Ctl::Next
 }
@@ -212,8 +212,10 @@ pub fn op_invoke_virtual(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, o
                 proof { assert(vo == sp::call(ap, g, t as int, bci + len)); }
                 return slow0(m, r, env, Slow::Call(t, bci + len));
             }
-            let info = p.method(t);
-            push_call(m, r, p, t, info, bci + len);
+            // The arity is the call's `n` (the spec is stuck otherwise):
+            // the frame base is the receiver's slot plus one.
+            proof { assert(sp::arity(ap, t as int) == n); }
+            push_call(m, r, p, t, p.entry_of(t), n, bci + len);
             proof { lemma_matches(p, w0, m.with(*r), Ctl::Next); }
             Ctl::Next
         },

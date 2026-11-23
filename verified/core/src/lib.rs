@@ -33,6 +33,7 @@
 // through verified/vmverify, which brings std on hosts and the VM's
 // allocator and panic handler on devices (vmverify/src/device.rs).
 #![no_std]
+#![cfg_attr(target_arch = "xtensa", feature(optimize_attribute))]
 #![allow(unused_parens, unused_variables, dead_code, unused_imports, unused_braces)]
 
 pub mod layout;

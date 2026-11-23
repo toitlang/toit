@@ -114,6 +114,8 @@ static void check_header() {
     CXXV_ASSERT(result == V2_HEADER_BAD_KIND, "reject every noncanonical kind byte");
   } else if (entry - expected != sizes[kind]) {
     CXXV_ASSERT(result == V2_HEADER_BAD_POSITION, "header must begin at expected offset");
+  } else if (kind != 3 && entry % 2 == 0) {
+    CXXV_ASSERT(result == V2_HEADER_EVEN_ENTRY, "every entry but a block's is odd");
   } else {
     bool valid = kind == 0 ? end - first >= 2 :
                  kind == 1 ? (first < end || (first == 65535 && end == 65535)) : true;

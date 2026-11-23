@@ -66,7 +66,9 @@ static const uint32 V2_RECORD_ARITY_MASK = 0xff;
 static const int V2_KIND_MASK = 0x3;
 static const int V2_KIND_SINGLE = 1 << 2;
 // How far before the entry the fields of a header start (u16, little
-// endian; format note 21).
+// endian; format note 21). The distances are odd and the entries of all
+// but blocks are odd: in the 2-byte aligned bytecodes every field is
+// aligned.
 static const int V2_SELECTOR_BACK = 3;
 static const int V2_RECV_START_BACK = 5;
 static const int V2_RECV_END_BACK = 7;

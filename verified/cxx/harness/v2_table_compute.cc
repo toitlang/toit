@@ -86,7 +86,8 @@ int main() {
   image = bytecodes;
   source_program.bytecodes = List<uint8>(bytecodes, image_length);
   bool eligible = image_length >= 4 && image_length < 0x1000000 &&
-                  tag[0] == 'T' && tag[1] == 'B' && tag[2] == 'C' && tag[3] == '2';
+                  tag[0] == 'T' && tag[1] == 'B' && tag[2] == 'C' && tag[3] == '2' &&
+                  (reinterpret_cast<uword>(bytecodes) & 1) == 0;
 
   uword object[4] = {2 * BYTE_ARRAY_TAG, 0, 0, RawByteTag};
   auto* array = static_cast<ByteArray*>(HeapObject::from_address(reinterpret_cast<uword>(object)));

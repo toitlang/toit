@@ -23,12 +23,14 @@
 //! `ExecProgram` and proves it).
 //!
 //! The method table is the VM's own (format note 21): a 4-byte record per
-//! method, the entry in the low 24 bits and the arity in the high 8, and
+//! method, the entry in the high 24 bits and the arity in the low 8, and
 //! the rest in the method's header, which ends at the entry. `vdecode`
 //! is the decoding the core and the verifier share (the core reads the
 //! same memory without bounds checks, under `table_ok`, which the loader
 //! checks); every method has the program's global max height, as in the
-//! loader and in the VM.
+//! loader and in the VM. The entries of all but blocks are odd, so that
+//! every u16 field of a header is 2-byte aligned (one 16-bit load on
+//! targets without unaligned loads, format note 21).
 
 use vstd::prelude::*;
 use alloc::vec::Vec;
@@ -171,11 +173,15 @@ pub open spec fn vdecode(code: Seq<u8>, recs: Seq<u32>, i: int) -> VMethod {
 /// The header of record `r` lies inside the bytecodes, before its entry,
 /// and its kind byte is canonical (0 to 4: the kind, or 4 for a method of
 /// one class or none), so that a kind is one compare of the kind byte.
+/// The entry of a method, accessor or lambda is odd: the u16 fields at
+/// the odd distances before it are at even offsets (aligned loads when
+/// the bytecodes are 2-byte aligned).
 pub open spec fn rec_ok(code: Seq<u8>, r: u32) -> bool {
     let e = rec_entry(r) as int;
     &&& 1 <= e <= code.len()
     &&& hdr_size(kind_byte(code, e)) <= e
     &&& kind_byte(code, e) <= 4
+    &&& (kind_byte(code, e) == 3 || e % 2 == 1)
 }
 
 /// Every header of the table lies inside the bytecodes, before its entry:
@@ -309,7 +315,8 @@ impl<'a> MTable<'a> {
     }
 }
 
-/// `table_ok`: every header lies inside the bytecodes, before its entry.
+/// `table_ok`: every header lies inside the bytecodes, before its entry,
+/// with a canonical kind byte; every entry but a block's is odd.
 pub fn x_table_ok(code: &[u8], recs: &[u32]) -> (r: bool)
     ensures r == table_ok(code@, recs@),
 {
@@ -325,7 +332,8 @@ pub fn x_table_ok(code: &[u8], recs: &[u32]) -> (r: bool)
             proof { assert(!rec_ok(code@, recs@[i as int])); }
             return false;
         }
-        if x_hdr_size(crate::xvec::ix(code, e - 1)) > e || crate::xvec::ix(code, e - 1) > 4 {
+        let b = crate::xvec::ix(code, e - 1);
+        if x_hdr_size(b) > e || b > 4 || (b != 3 && e % 2 == 0) {
             proof { assert(!rec_ok(code@, recs@[i as int])); }
             return false;
         }

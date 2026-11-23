@@ -24,8 +24,10 @@ static V2MethodTable* v2_fail(const char* message, word detail = -1) {
 // The table literal (format note 21), checked: every header lies inside
 // the bytecodes before its entry (the core reads headers without bounds
 // checks: `table_ok` in verified/spec/src/v2/vprog.rs, part of the
-// loader's contract `prog_rel`), the methods follow each other from the
-// tag to the end of the bytecodes with nonempty bodies, and every header
+// loader's contract `prog_rel`), every entry but a block's is odd and the
+// bytecodes are 2-byte aligned (aligned u16 loads), the methods follow
+// each other from the tag to the end of the bytecodes with nonempty
+// bodies, and every header
 // is in its canonical form (no unknown kind-byte bits, SINGLE only for a
 // method, a range of at least two classes in the long form, no empty
 // accessor range). Only what
@@ -43,6 +45,10 @@ V2MethodTable* V2MethodTable::compute(Program* program, bool* out_of_memory) {
   word length = program->bytecodes.length();
   if (!program->is_format2()) return v2_fail("missing tag");
   if (length >= V2_MAX_BYTECODES) return v2_fail("bytecodes too large");
+  // 2-byte aligned bytecodes (program heap and off-heap allocations are
+  // word aligned): with the odd entries, every u16 header field is aligned
+  // (`prog_rel` in verified/core/src/abs.rs).
+  if ((reinterpret_cast<uword>(bytes) & 1) != 0) return v2_fail("unaligned bytecodes");
   ByteArray* last = v2_last_table_literal(program);
   if (last == null) return v2_fail("no method table");
   ByteArray::Bytes literal(last);

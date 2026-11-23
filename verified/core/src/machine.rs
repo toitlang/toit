@@ -777,7 +777,7 @@ impl Machine {
     #[inline(always)]
     pub fn class_id(&self, p: &Program, v: usize) -> Option<i64> {
         if is_smi(v) {
-            Some(p.smi_class_id)
+            Some((p.smi_class_id as i64))
         } else if is_heap(v) {
             Some(smi_value(self.heap.header(v)) >> CLASS_ID_OFFSET)
         } else {
@@ -1098,7 +1098,7 @@ impl Machine {
             Some(f) => f,
         };
         let cid = smi_value(self.heap.header(recv)) >> CLASS_ID_OFFSET;
-        if cid == p.list_class_id {
+        if cid == (p.list_class_id as i64) {
             if fields < 2 { return FastAt::Fail; }
             let backing = self.field(recv, 0);
             let size = self.field(recv, 1);
@@ -1111,7 +1111,7 @@ impl Machine {
             // A list backed by a large array.
             return self.large_array_at(p, backing, size, n, is_put, value, fuel);
         }
-        if cid == p.byte_array_slice_class_id {
+        if cid == (p.byte_array_slice_class_id as i64) {
             if fields < 3 { return FastAt::Fail; }
             let data = self.field(recv, 0);
             let from = self.field(recv, 1);
@@ -1126,17 +1126,17 @@ impl Machine {
             }
             if let Some(_) = self.instance_fields(p, data) {
                 let dcid = smi_value(self.heap.header(data)) >> CLASS_ID_OFFSET;
-                if dcid != p.byte_array_cow_class_id { return FastAt::Fail; }
+                if dcid != (p.byte_array_cow_class_id as i64) { return FastAt::Fail; }
                 return self.cow_at(p, data, m as usize, is_put, value);
             }
             return FastAt::Fail;
         }
-        if cid == p.large_array_class_id {
+        if cid == (p.large_array_class_id as i64) {
             if fields < 2 { return FastAt::Fail; }
             let size = self.field(recv, 0);
             return self.large_array_at(p, recv, size, n, is_put, value, fuel);
         }
-        if cid == p.byte_array_cow_class_id {
+        if cid == (p.byte_array_cow_class_id as i64) {
             return self.cow_at(p, recv, n, is_put, value);
         }
         FastAt::Fail
@@ -1155,7 +1155,7 @@ impl Machine {
             _ => return FastAt::Fail,
         }
         let lcid = smi_value(self.heap.header(la)) >> CLASS_ID_OFFSET;
-        if lcid != p.large_array_class_id { return FastAt::Fail; }
+        if lcid != (p.large_array_class_id as i64) { return FastAt::Fail; }
         let vector = self.field(la, 1);
         if !is_smi(size) { return FastAt::Fail; }
         let size = smi_value(size);
@@ -1165,7 +1165,7 @@ impl Machine {
                 Some(vf) if vf >= 1 => {
                     let vcid = smi_value(self.heap.header(vector)) >> CLASS_ID_OFFSET;
                     let vsize = self.field(vector, 0);
-                    vcid == p.large_array_class_id && is_smi(vsize) && smi_value(vsize) < size
+                    vcid == (p.large_array_class_id as i64) && is_smi(vsize) && smi_value(vsize) < size
                 }
                 _ => false,
             }
@@ -1194,10 +1194,10 @@ impl Machine {
         }
         let fields = self.instance_fields(p, recv)?;
         let cid = smi_value(self.heap.header(recv)) >> CLASS_ID_OFFSET;
-        if cid == p.list_class_id && fields >= 2 {
+        if cid == (p.list_class_id as i64) && fields >= 2 {
             let size = self.field(recv, 1);
             if is_smi(size) { Some(smi_value(size)) } else { None }
-        } else if cid == p.byte_array_slice_class_id && fields >= 3 {
+        } else if cid == (p.byte_array_slice_class_id as i64) && fields >= 3 {
             let from = self.field(recv, 1);
             let to = self.field(recv, 2);
             if is_smi(from) && is_smi(to) && 0 <= smi_value(from) && smi_value(from) <= smi_value(to) {
@@ -1205,10 +1205,10 @@ impl Machine {
             } else {
                 None
             }
-        } else if cid == p.large_array_class_id && fields >= 1 {
+        } else if cid == (p.large_array_class_id as i64) && fields >= 1 {
             let size = self.field(recv, 0);
             if is_smi(size) { Some(smi_value(size)) } else { None }
-        } else if cid == p.byte_array_cow_class_id && fields >= 1 {
+        } else if cid == (p.byte_array_cow_class_id as i64) && fields >= 1 {
             match self.byte_array(self.field(recv, 0), false) {
                 Some((_, length)) => Some(length as i64),
                 None => None,
@@ -1383,7 +1383,7 @@ pub fn run(p: Program, rt: Runtime, globals: Globals, heap: Heap, pre: Preemptio
     let mut m = Machine {
         mem, globals, heap,
         len: 0, top: 0, ftop: 0, rtop: 0, bci: 0, base: 0, lim: 0, method: 0,
-        fw: 0, need: usize::MAX, bot,
+        fw: 0, need: usize::MAX, bot, slow_k: crate::step::Slow::Op, slow_w: 0,
         g: Ghost::assume_new(),
     };
     let env = Env { p, rt, pre, core_arities };
@@ -1563,7 +1563,7 @@ impl Machine {
         if g >= self.globals.len() { return Ctl::Stuck(stuck::TABLE_RANGE); }
         let v = self.globals.at(g);
         let lazy = is_heap(v) && self.tag(v) == INSTANCE_TAG
-            && smi_value(self.heap.header(v)) >> CLASS_ID_OFFSET == p.lazy_initializer_class_id;
+            && smi_value(self.heap.header(v)) >> CLASS_ID_OFFSET == (p.lazy_initializer_class_id as i64);
         if !lazy { return self.push_next_u(v, len); }
         if let Some(c) = self.ensure_room(env) { return c; }
         if !self.push(smi(g as i64)) || !self.push(v) { return Ctl::Stuck(stuck::LIMIT); }
@@ -2417,6 +2417,13 @@ fn run_checked(m: &mut Machine, env: &Env) -> (usize, i64) {
             }
             Ctl::Stuck(reason) => {
                 env.rt.report(V2_REPORT_STUCK, m.bci, reason);
+                m.save();
+                return (RESULT_TERMINATED, 1);
+            }
+            // Only register handlers (not the checked ones) hand a slow path
+            // to the loop.
+            Ctl::Slow => {
+                env.rt.report(V2_REPORT_STUCK, m.bci, stuck::FATAL);
                 m.save();
                 return (RESULT_TERMINATED, 1);
             }

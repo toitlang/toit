@@ -431,7 +431,8 @@ pub fn op_invoke_virtual_get(m: &mut Machine, r: &mut Regs, env: &Env, bci: usiz
                 return slow0(m, r, env, Slow::Call(t, bci + 3));
             }
             proof { w0.lemma_frame(p); }
-            push_call(m, r, p, t, info, bci + 3);
+            proof { assert(sp::arity(ap, t as int) == 1); }
+            push_call(m, r, p, t, info.entry as usize, 1, bci + 3);
             proof { lemma_matches(p, w0, m.with(*r), Ctl::Next); }
             Ctl::Next
         },
@@ -505,7 +506,8 @@ pub fn op_invoke_virtual_set(m: &mut Machine, r: &mut Regs, env: &Env, bci: usiz
                 return slow0(m, r, env, Slow::Call(t, bci + 3));
             }
             proof { w0.lemma_frame(p); }
-            push_call(m, r, p, t, info, bci + 3);
+            proof { assert(sp::arity(ap, t as int) == 2); }
+            push_call(m, r, p, t, info.entry as usize, 2, bci + 3);
             proof { lemma_matches(p, w0, m.with(*r), Ctl::Next); }
             Ctl::Next
         },

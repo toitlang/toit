@@ -2,7 +2,8 @@
 
 // Internal format-2 validation loop shared by the VM and its WP proof.
 
-enum V2Header { V2_HEADER_OK, V2_HEADER_BAD_ENTRY, V2_HEADER_BAD_KIND, V2_HEADER_BAD_POSITION, V2_HEADER_BAD_RANGE };
+enum V2Header { V2_HEADER_OK, V2_HEADER_BAD_ENTRY, V2_HEADER_BAD_KIND, V2_HEADER_BAD_POSITION, V2_HEADER_EVEN_ENTRY,
+                V2_HEADER_BAD_RANGE };
 enum V2NextHeader { V2_NEXT_OK, V2_NEXT_BAD_ENTRY, V2_NEXT_EMPTY_BODY };
 
 /*@ requires \valid_read(p+(0..3));
@@ -77,6 +78,7 @@ static const char* v2_validate_records(const uint8* bytes, word length, const ui
       case V2_HEADER_BAD_ENTRY: return v2_record_error(detail, i, "bad method entry");
       case V2_HEADER_BAD_KIND: return v2_record_error(detail, entry - 1, "bad method kind byte");
       case V2_HEADER_BAD_POSITION: return v2_record_error(detail, i, "methods do not follow each other");
+      case V2_HEADER_EVEN_ENTRY: return v2_record_error(detail, i, "even method entry");
       case V2_HEADER_BAD_RANGE: return v2_record_error(detail, entry, "bad receiver range");
       case V2_HEADER_OK: break;
     }

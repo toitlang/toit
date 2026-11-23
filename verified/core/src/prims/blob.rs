@@ -81,10 +81,10 @@ pub enum BlobArg {
 
 /// The ids and class ids the blob decoding needs.
 pub struct BlobClasses {
-    pub cow: i64,
-    pub ba_slice: i64,
-    pub str_slice: i64,
-    pub str_byte_slice: i64,
+    pub cow: usize,
+    pub ba_slice: usize,
+    pub str_slice: usize,
+    pub str_byte_slice: usize,
 }
 
 #[inline(always)]
@@ -94,8 +94,8 @@ pub fn blob_classes(p: &Program, h: &Heap) -> (r: BlobClasses)
     BlobClasses {
         cow: p.byte_array_cow_class_id,
         ba_slice: p.byte_array_slice_class_id,
-        str_slice: builtin_class(p, h, BUILTIN_STRING_SLICE) as i64,
-        str_byte_slice: builtin_class(p, h, BUILTIN_STRING_BYTE_SLICE) as i64,
+        str_slice: builtin_class(p, h, BUILTIN_STRING_SLICE),
+        str_byte_slice: builtin_class(p, h, BUILTIN_STRING_BYTE_SLICE),
     }
 }
 
@@ -215,7 +215,7 @@ pub fn blob_arg(h: &Heap, p: &Program, k: &BlobClasses, w: usize, Ghost(v): Ghos
         let cid = h.class_id(cur, Ghost(id));
         if cid >= p.class_bits.len() { return BlobArg::Fail(ROOT_WRONG_OBJECT_TYPE); }
         let fields = (((p.class_bits.at(cid) >> 5u16) & 0x7ffu16) as usize);
-        let c = cid as i64;
+        let c = cid;
         if mode != STRINGS_ONLY && c == k.cow {
             if fields < 3 { return BlobArg::Fail(ROOT_WRONG_OBJECT_TYPE); }
             proof {
@@ -930,7 +930,7 @@ fn validated_string(heap: &Heap, p: &Program, k: &BlobClasses, w: usize, Ghost(v
     let ghost id = v->Obj_0 as int;
     proof { assert(obj_model_ok(heap.objs()[id], heap.class_bits(), heap.addrs())); }
     if heap.class_tag(w, Ghost(id)) == STRING_TAG { return true; }
-    heap.class_id(w, Ghost(id)) as i64 == k.str_slice
+    heap.class_id(w, Ghost(id)) == k.str_slice
 }
 
 /// `string_add`.

@@ -1027,6 +1027,30 @@ justification = "Constructor of the Table view from C++ pointers, called only by
 [[trusted]]
 crate = "core"
 file = "src/view.rs"
+item = "Table::u16_at_even"
+kind = "external_body"
+count = 1
+justification = "ALIGNED LOAD: the little-endian u16 at an even index of a table at an even address (the bytecodes: method header fields, format note 21), one 16-bit load of the two bytes the table's permissions cover; Xtensa and the ESP32 RISC-V cores have no unaligned 16-bit loads, so the verified two-byte read costs four to six instructions on every call (TRUSTED.md section 1)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Table::u16_at_even"
+kind = "unsafe"
+count = 1
+justification = "Reads *(pre + (i + PRE)) as *const u16 = ptr + i: inside ptr[0..len) (i + 1 < len), 2-byte aligned (ptr and i even), pre == ptr - PRE (from_raw, the type invariant); u16::from_le gives the little-endian value on any byte order."
+
+[[trusted]]
+crate = "core"
+file = "src/step.rs"
+item = "split_loop"
+kind = "external_body"
+count = 1
+justification = "No contract: the configuration of the loop (split into a hot part and step_cold on devices, target_os none; whole on hosts). Its value is unknown to Verus, so step_r is verified for both (TRUSTED.md section 4)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
 item = "proven_unreachable"
 kind = "external_body"
 count = 1

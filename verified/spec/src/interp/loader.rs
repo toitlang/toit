@@ -379,6 +379,9 @@ pub fn method_table_v2(bytecodes: &[u8], recs: &[u32], global_max_height: u16) -
         if entry < x_hdr_size(b) || entry - x_hdr_size(b) != header {
             return err(format!("method {} does not follow the previous one", i));
         }
+        if b != 3 && entry % 2 == 0 {
+            return err(format!("method {} has an even entry (unaligned header fields)", i));
+        }
         let m = table.at(i);
         let (rs, re) = (m.recv_start as u32, m.recv_end as u32);
         let range_ok = match b & KIND_MASK {
@@ -497,12 +500,12 @@ mod tests {
     #[test]
     fn decodes_every_field() {
         // A method of arity 2 with selector 300, receiver range [129, 131)
-        // and a 1-byte body; a lambda capturing 3 with a 130-byte body; a
+        // and a 1-byte body; a lambda capturing 3 with a 131-byte body; a
         // field accessor for field 5 with receiver range [7, 8); a static
         // method (no selector, no receiver); a block of arity 1.
         let (b, recs) = program(&[
             (&[131, 0, 129, 0, 0x2c, 0x01, 0], 2, 1),
-            (&[3, 0, 2], 1, 130),
+            (&[3, 0, 2], 1, 131),
             (&[5, 0, 8, 0, 7, 0, 0xff, 0xff, 1], 1, 1),
             (&[0xff, 0xff, 0xff, 0xff, KIND_SINGLE], 0, 2),
             (&[3], 1, 1),
@@ -511,7 +514,7 @@ mod tests {
         assert_eq!(t.len(), 5);
         assert_eq!((t[0].arity, t[0].kind, t[0].selector, t[0].recv_start, t[0].recv_end), (2, 0, 300, 129, 131));
         assert_eq!((t[0].entry, t[0].end, t[0].max_height), (11, 12, 9));
-        assert_eq!((t[1].kind, t[1].aux, t[1].selector, t[1].recv_start, t[1].end - t[1].entry), (2, 3, 0xffff, 0xffff, 130));
+        assert_eq!((t[1].kind, t[1].aux, t[1].selector, t[1].recv_start, t[1].end - t[1].entry), (2, 3, 0xffff, 0xffff, 131));
         assert_eq!((t[2].kind, t[2].aux, t[2].recv_start, t[2].recv_end, t[2].arity, t[2].selector), (1, 5, 7, 8, 1, 0xffff));
         assert_eq!((t[3].kind, t[3].selector, t[3].recv_start, t[3].recv_end, t[3].end - t[3].entry), (0, 0xffff, 0xffff, 0xffff, 2));
         assert_eq!((t[4].kind, t[4].arity, t[4].selector, t[4].recv_start, t[4].end), (3, 1, 0xffff, 0xffff, b.len()));
@@ -535,6 +538,10 @@ mod tests {
         let (mut b, mut recs) = program(&[(&[3], 1, 1)]);
         b.insert(4, 0);
         recs[0] += 1;
+        assert!(method_table_v2(&b, &recs, 0).is_err());
+        // A method with an even entry (after a block with a 2-byte body).
+        let (b, recs) = program(&[(&[3], 1, 2), (&[0xff, 0xff, 0xff, 0xff, KIND_SINGLE], 0, 1)]);
+        assert_eq!(recs[1] >> 8, 12);
         assert!(method_table_v2(&b, &recs, 0).is_err());
         // An entry past the bytecodes.
         let (b, _) = program(&[(&[3], 1, 1)]);

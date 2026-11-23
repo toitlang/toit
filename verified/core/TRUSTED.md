@@ -15,9 +15,10 @@ permissions (section 1). What remains, all of it:
 | Kind | Items | Statement |
 |---|---|---|
 | Derivation points (the allocator and GC invariant, section 1) | `Table::from_raw`, `Globals::from_raw`, `StackMem::from_stack` (via `ffi::Runtime::stack`), `Heap::new`; the leaf contracts of the calls that may GC (section 2, 6: `gc_allocate_instance`, `gc_allocate_double`, `gc_allocate_exception`, `gc_grow_stack`, `gc_call_primitive`, the `Runtime` wrappers) and of `ffi::Allocator` (section 8), which hand out the views after them | the VM's memory is well formed now: the permissions of exactly the words, half words and bytes `view::word_val`, `str_ok`, `ba_ok`, `hdr_ok`, `array_ok` describe, with the values the heap model says (V1, V2, V5) |
+| Aligned load | `Table::u16_at_even` (a method header's u16 field, format note 21) | one 16-bit load of two bytes the table's permissions cover, at an even address (`Table::even`, checked at entry), is their little-endian combination (`u16::from_le`) |
 | Rust and target semantics | the `assume_specification`s of `pointer::wrapping_add` and `wrapping_offset`; `global size_of usize`, `size_of u8` (compile-time checked) | wrapping address arithmetic keeps the provenance; the word size |
 | vstd | `raw_ptr` axioms (`PointsTo`, `ptr_ref`, `ptr_mut_write`, `with_exposed_provenance`, `IsExposed`), `Map`, `Seq` | Verus' own trusted base. Note: a `PointsTo` grants writing; program-heap objects (read-only memory) get permissions too, and every verified write requires `!ro` (`set_field`, `set_element`, `content_*` with `writable`, `set_byte_at`, `set_string_hash_field`) |
-| Not memory | `Preemption::{word, clear, request}` (the scheduler's watermark, environment nondeterminism), `proven_unreachable`, the loader's and scheduler's `assume_new`s (section 6), the epoch (section 9), floating point (`prims/fp.rs`, the spec's uninterpreted float functions), `Accepted::trusted_program`, the semispace ownership and page metadata (`Runtime::allocation_window`, `inline_page_metadata`, section 9) | sections 6, 8, 9 |
+| Not memory | `Preemption::{word, clear, request}` (the scheduler's watermark, environment nondeterminism), `proven_unreachable`, `step::split_loop` (the loop configuration, no contract: both values verified), the loader's and scheduler's `assume_new`s (section 6), the epoch (section 9), floating point (`prims/fp.rs`, the spec's uninterpreted float functions), `Accepted::trusted_program`, the semispace ownership and page metadata (`Runtime::allocation_window`, `inline_page_metadata`, section 9) | sections 6, 8, 9 |
 | The checked loop (programs not accepted; not built on devices) | `machine.rs` (plain Rust), and its raw accessors `Heap::{header, word, word64, set_word, byte, set_byte, half_word_at}` (no ghost content: the checked loop is not verified, its run-time checks keep them in bounds) | section 4 |
 | Layout constants | src/layout.rs, checked against the C++ headers at build time (section 3) | |
 | FFI structs and trampolines | ffi.rs plain items, `cold!`, the `*_raw` trampolines | section 2, 4 |
@@ -42,7 +43,7 @@ grow: PROGRESS.md, "Proven accessors").
 
 | View | Permissions | Layout facts (the type invariant) |
 |---|---|---|
-| `Table<T>` | element `i` of `ptr[0..len)` | `array_ok`: in the address space, initialized |
+| `Table<T>` | element `i` of `ptr[0..len)` | `array_ok`: in the address space, initialized; `pre` is `ptr` moved back by `PRE` elements (`at` addresses through it, so that constant negative distances fold into load offsets on Xtensa), `len + PRE` fits a word. `u16_at_even` (trusted, section 0) reads a u16 of the bytecodes with one aligned load |
 | `Globals` | word `i` of the globals | `array_ok` |
 | `StackMem` | the array words and the top, record-top and bci header words of the Stack object | `array_ok`, `hdr_ok`; `sid()` is the array's pointer |
 | `Cursor<T>` | none (a pointer with a ghost base pointer and index) | the pointer is element `idx` of the array at `base` (`at_index`, wrapping); reads and writes take the view's permission at `idx + n`, matched by `sid() == mem.sid()` (the same array pointer, address and provenance) |

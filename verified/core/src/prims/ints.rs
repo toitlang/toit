@@ -310,8 +310,8 @@ pub fn object_class_id(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, 
     let ghost v = a.vs@[0];
     proof { lemma_word(heap, w, v); }
     let id = if w & 1 == 0 {
-        proof { assert(c.p.smi_class_id == c.p.ap@.builtin[BUILTIN_SMI as int] as i64); }
-        c.p.smi_class_id
+        proof { assert(c.p.smi_class_id == c.p.ap@.builtin[BUILTIN_SMI as int] as usize); }
+        c.p.smi_class_id as i64
     } else {
         heap.class_id(w, Ghost(v->Obj_0 as int)) as i64
     };

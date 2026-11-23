@@ -68,12 +68,12 @@ pub struct Program {
     pub null: usize,
     pub true_: usize,
     pub false_: usize,
-    pub smi_class_id: i64,
-    pub list_class_id: i64,
-    pub byte_array_slice_class_id: i64,
-    pub byte_array_cow_class_id: i64,
-    pub large_array_class_id: i64,
-    pub lazy_initializer_class_id: i64,
+    pub smi_class_id: usize,
+    pub list_class_id: usize,
+    pub byte_array_slice_class_id: usize,
+    pub byte_array_cow_class_id: usize,
+    pub large_array_class_id: usize,
+    pub lazy_initializer_class_id: usize,
     pub ap: Ghost<Program2>,
     pub cert: Ghost<Cert>,
     pub trusted: Ghost<bool>,
@@ -107,6 +107,10 @@ pub struct Machine {
     pub fw: usize,
     pub need: usize,
     pub bot: Slot,
+    /// The slow path a register handler hands to the run loop with
+    /// `Ctl::Slow`, and its word (not part of the abstraction).
+    pub slow_k: crate::step::Slow,
+    pub slow_w: usize,
     pub g: Ghost<State2>,
 }
 
@@ -120,6 +124,11 @@ pub enum Ctl {
     /// A stuck state of the spec (or an implementation limit): the process
     /// is terminated.
     Stuck(usize),
+    /// A register handler's slow path (`step::Slow`, with the instruction's
+    /// word), which the run loop runs (`step::slow`): one call site instead
+    /// of one per handler. Only register handlers return it (`rpost`); the
+    /// slow path and its word are in `Machine::slow_k`, `slow_w`.
+    Slow,
 }
 
 /// Reasons for a stuck state (`types::Stuck`), reported to stderr.
@@ -185,6 +194,13 @@ pub open spec fn ro_ok(p: &Program) -> bool {
     p.ro_start + p.ro_size <= usize::MAX
 }
 
+/// A kind byte whose kind is not a block's is not the block's kind byte.
+pub proof fn lemma_not_block(b: u8)
+    ensures (b & KIND_MASK) != 3 ==> b != 3,
+{
+    assert((b & 3u8) != 3 ==> b != 3) by (bit_vector);
+}
+
 impl Program {
     /// The abstract program.
     pub open spec fn ap(&self) -> Program2 {
@@ -196,14 +212,16 @@ impl Program {
         vdecode(self.code@, self.methods@, i)
     }
 
-    /// The method tables the loader checked (`table_ok`, `prog_rel`).
+    /// The method tables the loader checked (`table_ok`, `prog_rel`), and
+    /// the bytecodes at an even address (checked at entry, `toit_v2_run`).
     pub open spec fn mt_ok(&self) -> bool {
         &&& table_ok(self.code@, self.methods@)
         &&& self.code@.len() < MAX_TABLE
+        &&& self.code.even()
     }
 
     /// The record of method `i` and its entry, whose header lies inside
-    /// the bytecodes before it.
+    /// the bytecodes before it; odd unless the method is a block.
     #[inline(always)]
     fn record(&self, i: usize) -> (r: (u32, usize))
         requires i < self.methods@.len(), self.mt_ok(),
@@ -213,6 +231,7 @@ impl Program {
             1 <= r.1 <= self.code@.len(),
             hdr_size(kind_byte(self.code@, r.1 as int)) <= r.1,
             kind_byte(self.code@, r.1 as int) <= 4,
+            kind_byte(self.code@, r.1 as int) == 3 || r.1 % 2 == 1,
     {
         let r = self.methods.at(i);
         proof {
@@ -223,15 +242,14 @@ impl Program {
     }
 
     /// The little-endian u16 at `e - d` (a field of a header that ends at
-    /// `e`, inside the bytecodes).
+    /// the odd `e`, inside the bytecodes, at the odd distance `d`): one
+    /// aligned 16-bit load.
     #[inline(always)]
     fn u16_before(&self, e: usize, d: usize) -> (r: u16)
-        requires 2 <= d <= e, e <= self.code@.len(),
+        requires 2 <= d <= e, e <= self.code@.len(), e % 2 == 1, d % 2 == 1, self.code.even(),
         ensures r == u16_at(self.code@, e - d),
     {
-        let lo = self.code.at(e - d);
-        let hi = self.code.at(e - d + 1);
-        (lo as u16) | ((hi as u16) << 8)
+        self.code.u16_at_even(e - d)
     }
 
     /// The entry of method `i`.
@@ -288,7 +306,7 @@ impl Program {
         ensures r == self.minfo(i as int).selector,
     {
         let (_, e) = self.record(i);
-        proof { assert(hdr_size(kind_byte(self.code@, e as int)) >= 5); }
+        proof { assert(hdr_size(kind_byte(self.code@, e as int)) >= 5); lemma_not_block(kind_byte(self.code@, e as int)); }
         self.u16_before(e, SELECTOR_BACK)
     }
 
@@ -299,7 +317,7 @@ impl Program {
         ensures r == self.minfo(i as int).recv_start,
     {
         let (_, e) = self.record(i);
-        proof { assert(hdr_size(kind_byte(self.code@, e as int)) >= 5); }
+        proof { assert(hdr_size(kind_byte(self.code@, e as int)) >= 5); lemma_not_block(kind_byte(self.code@, e as int)); }
         self.u16_before(e, RECV_START_BACK)
     }
 
@@ -307,19 +325,19 @@ impl Program {
     /// or an accessor whose range starts at `rs` (not none): `cid == rs`
     /// for one class.
     #[inline(always)]
-    pub fn dispatch_recv_contains(&self, i: usize, rs: u16, cid: i64) -> (r: bool)
+    pub fn dispatch_recv_contains(&self, i: usize, rs: u16, cid: usize) -> (r: bool)
         requires
             i < self.methods@.len(), self.mt_ok(), self.minfo(i as int).kind < 2,
             rs == self.minfo(i as int).recv_start, rs != NO_VALUE,
-        ensures r == ((rs as i64) <= cid && cid < self.minfo(i as int).recv_end as i64),
+        ensures r == ((rs as int) <= cid && cid < self.minfo(i as int).recv_end as int),
     {
         let (_, e) = self.record(i);
         let b = self.code.at(e - 1);
         if b & KIND_SINGLE != 0 {
-            cid == rs as i64
+            cid == rs as usize
         } else {
-            proof { assert(hdr_size(b) >= 7); }
-            (rs as i64) <= cid && cid < self.u16_before(e, RECV_END_BACK) as i64
+            proof { assert(hdr_size(b) >= 7); lemma_not_block(b); }
+            (rs as usize) <= cid && cid < self.u16_before(e, RECV_END_BACK) as usize
         }
     }
 
@@ -337,6 +355,7 @@ impl Program {
         let b = self.code.at(e - 1);
         let k = b & KIND_MASK;
         let ghost hs = hdr_size(b);
+        proof { lemma_not_block(b); }
         let mut selector = NO_VALUE;
         let mut aux: u16 = 0;
         let mut recv_start = NO_VALUE;
