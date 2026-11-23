@@ -201,7 +201,7 @@ entry radix                 pass "" decoder/radix.c -allow_dead_code -prover z3v
 # The length checks before the inline copies: the copy leaves the input.
 mutant decoder-string-length decoder/message_decoder.render src/messaging.cc "result (63|31)\)\) cap" "$DEC_OPTS" \
   "MessageDecoder::decode_string(bool inlined)@@if (length < 0 || length > remaining()) return mark_malformed();" "if (length < 0) return mark_malformed();"
-mutant decoder-byte-array-length decoder/message_decoder.render src/messaging.cc "1073741823" "$DEC_OPTS" \
+mutant decoder-byte-array-length decoder/message_decoder.render src/messaging.cc "1073741823|div 18446744073709551615 4|div 4294967295 4" "$DEC_OPTS" \
   "MessageDecoder::decode_byte_array(bool inlined)@@if (length < 0 || length > remaining()) return mark_malformed();" "if (length < 0) return mark_malformed();"
 # The length checks before the array and map allocations: an allocation
 # larger than the input left.
@@ -346,6 +346,14 @@ mutant ffi-allocate-retries ffi/interpreter_v2.render src/interpreter_v2.cc "att
   "  for (int attempts = 1; result == null; attempts++)" \
   "SIDECAR::lambda=toit_v2_allocate_double@@  for (int attempts = 1; result == null && attempts < 4; attempts++)" \
   "  for (int attempts = 1; result == null; attempts++)"
+# The core's string allocation with wave 6's check (lengths up to
+# INTPTR_MAX): the allocator's blob bound fails (and at INTPTR_MAX
+# Process::allocate_string's `length + 1` overflowed).
+mutant ffi-allocate-string-bound ffi/interpreter_v2.render src/interpreter_v2.cc "MAX_BLOB|4611686018427387903|1073741823|Cannot prove" "$FFI_OPTS" \
+  "SOURCE::  if (length > V2_MAX_BLOB_LENGTH) return 0;\n  return reinterpret_cast<uword>(v2_process(raw_process)->allocate_string(length));" \
+  "  if (static_cast<word>(length) < 0) return 0;\n  return reinterpret_cast<uword>(v2_process(raw_process)->allocate_string(length));" \
+  "SIDECAR::  if (length > V2_MAX_BLOB_LENGTH)\n  //@ close allocated" \
+  "  if (static_cast<word>(length) < 0)\n  //@ close allocated"
 
 # The sender side of the external message handlers (wave 6): the ownership
 # of the encoded buffer and of the caller's data on every path.

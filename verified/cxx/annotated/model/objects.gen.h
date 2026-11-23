@@ -91,11 +91,18 @@ fixpoint uword *raw(void *o) { return (uword *)((uword)o - 1); }
 
 // ---------------------------------------------------------------------------
 // Headers. A header is a smi whose value is (class_id << 5) | (finalizer
-// bit << 4) | class_tag. The heap model keeps class ids in [0, 1024) (the
-// 10 bits of CLASS_ID_BIT_SIZE); negative ids are the GC's free-memory
-// pseudo objects, which the code under proof never sees.
+// bit << 4) | class_tag. The heap model keeps class ids in [0,
+// MAX_CLASS_IDS): on ILP32 every non-negative id whose header is a smi
+// (2^25), on LP64 the ids below 2^31 (the encoder keeps a problematic class
+// id in an `int`; an id of 2^31 would need a program class table, two bytes
+// per class, of 4 GB). The C++ takes any class id of the program
+// (CLASS_ID_BIT_SIZE, 10, is declared but used nowhere; the mask is the
+// whole word). Until wave 7 the model kept ids below 1024, a gap for
+// programs with more classes. Negative ids are the GC's free-memory pseudo
+// objects, which the code under proof never sees.
+#define MAX_CLASS_IDS (UINTPTR_MAX > 0xffffffff ? 0x80000000 : 0x2000000)
 
-fixpoint bool header_ok(uword hw) { return 0 <= hw && hw % 2 == 0 && hw < 65536; }
+fixpoint bool header_ok(uword hw) { return 0 <= hw && hw % 2 == 0 && hw < MAX_CLASS_IDS * 64; }
 fixpoint int header_cid(uword hw) { return hw / 64; }
 // has_class_tag compares `header_word & (CLASS_TAG_MASK << 1)` with `tag << 1`.
 fixpoint int header_tag2(uword hw) { return hw & 30; }
@@ -126,10 +133,10 @@ fixpoint int string_byte_slice_cid(prog_ids ids) { switch (ids) { case prog_ids(
 // VM reads (the copy-on-write byte array: backing, is_mutable; the slices:
 // backing, from, to).
 fixpoint bool blob_classes_ok(prog_ids ids) {
-  return 0 <= byte_array_cow_cid(ids) && byte_array_cow_cid(ids) < 1024 &&
-         0 <= byte_array_slice_cid(ids) && byte_array_slice_cid(ids) < 1024 &&
-         0 <= string_slice_cid(ids) && string_slice_cid(ids) < 1024 &&
-         0 <= string_byte_slice_cid(ids) && string_byte_slice_cid(ids) < 1024 &&
+  return 0 <= byte_array_cow_cid(ids) && byte_array_cow_cid(ids) < MAX_CLASS_IDS &&
+         0 <= byte_array_slice_cid(ids) && byte_array_slice_cid(ids) < MAX_CLASS_IDS &&
+         0 <= string_slice_cid(ids) && string_slice_cid(ids) < MAX_CLASS_IDS &&
+         0 <= string_byte_slice_cid(ids) && string_byte_slice_cid(ids) < MAX_CLASS_IDS &&
          class_tag(byte_array_cow_cid(ids)) == INSTANCE_TAG && class_fields(byte_array_cow_cid(ids)) >= 2 &&
          class_tag(byte_array_slice_cid(ids)) == INSTANCE_TAG && class_fields(byte_array_slice_cid(ids)) >= 3 &&
          class_tag(string_slice_cid(ids)) == INSTANCE_TAG && class_fields(string_slice_cid(ids)) >= 3 &&
@@ -139,12 +146,12 @@ fixpoint bool blob_classes_ok(prog_ids ids) {
 // What VerifierImpl::check_builtin_classes (src/verifier.cc) establishes
 // for an accepted program, and the class tags of the builtin classes.
 fixpoint bool prog_ok(prog_ids ids) {
-  return 0 <= array_cid(ids) && array_cid(ids) < 1024 &&
-         0 <= list_cid(ids) && list_cid(ids) < 1024 &&
-         0 <= list_slice_cid(ids) && list_slice_cid(ids) < 1024 &&
-         0 <= map_cid(ids) && map_cid(ids) < 1024 &&
-         0 <= large_array_cid(ids) && large_array_cid(ids) < 1024 &&
-         0 <= tombstone_cid(ids) && tombstone_cid(ids) < 1024 &&
+  return 0 <= array_cid(ids) && array_cid(ids) < MAX_CLASS_IDS &&
+         0 <= list_cid(ids) && list_cid(ids) < MAX_CLASS_IDS &&
+         0 <= list_slice_cid(ids) && list_slice_cid(ids) < MAX_CLASS_IDS &&
+         0 <= map_cid(ids) && map_cid(ids) < MAX_CLASS_IDS &&
+         0 <= large_array_cid(ids) && large_array_cid(ids) < MAX_CLASS_IDS &&
+         0 <= tombstone_cid(ids) && tombstone_cid(ids) < MAX_CLASS_IDS &&
          class_tag(array_cid(ids)) == ARRAY_TAG &&
          class_tag(list_cid(ids)) == INSTANCE_TAG && class_fields(list_cid(ids)) >= 2 &&
          class_tag(list_slice_cid(ids)) == INSTANCE_TAG && class_fields(list_slice_cid(ids)) >= 3 &&
@@ -176,9 +183,13 @@ fixpoint bool good(list<void *> objs, void *w) { return is_smi_w((uword)w) || me
 // The upper bound of an object's size: objects are in pages far below the
 // top of the address space (pages are at most a few hundred KB).
 #define MAX_OBJECT_WORDS 0x100000
-// The upper bound of an external blob (TRUSTED.md, "Word size": byte
-// lengths of the heap model are below 2^30).
-#define MAX_BLOB 0x3fffffff
+// The upper bound of a blob's length, per width as the Verus heap model's
+// (TRUSTED.md, "Word size": byte lengths are below 2^62 on 64-bit, 2^30 on
+// 32-bit): 2^62 - 1 on LP64, 2^30 - 1 on ILP32. Until wave 7 it was
+// 2^30 - 1 on both widths, narrower than the C++ on 64-bit (a gap); every
+// proof holds with the wider bound. The core's allocation entry points
+// check it (V2_MAX_BLOB_LENGTH, ffi/).
+#define MAX_BLOB (UINTPTR_MAX / 4)
 
 fixpoint bool addr_ok(void *o) {
   return is_heap_w((uword)o) && 1 < (uword)o &&
@@ -664,7 +675,7 @@ Array *ObjectHeap_allocate_array(ObjectHeap *self, word length, Object *filler);
 // An instance of class c, its fields null.
 Instance *ObjectHeap_allocate_instance(ObjectHeap *self, Smi *class_id);
 /*@ requires [_]object_heap(self, ?p) &*& [?f]process(p, ?prog, ?ids) &*& heap(?objs, ?H) &*&
-             (uword)class_id % 2 == 0 &*& (uword)class_id / 2 < 1024 &*& class_tag((uword)class_id / 2) == INSTANCE_TAG; @*/
+             (uword)class_id % 2 == 0 &*& (uword)class_id / 2 < MAX_CLASS_IDS &*& class_tag((uword)class_id / 2) == INSTANCE_TAG; @*/
 /*@ ensures [f]process(p, prog, ids) &*& allocated(objs, H, p, result, ?objs2, ?H2) &*&
             (result == 0 ? true :
                has_tag(H2, result, INSTANCE_TAG) == true &*& header_cid(o_hw(H2(result))) == (uword)class_id / 2 &*&
@@ -747,7 +758,7 @@ Smi *HeapObject_header(HeapObject *self);
 // C++: src/objects.h toit::HeapObject::class_id
 Smi *HeapObject_class_id(HeapObject *self);
 //@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true;
-//@ ensures [f]heap(objs, H) &*& result == smi_ptr(header_cid(o_hw(H(self)))) &*& 0 <= header_cid(o_hw(H(self))) &*& header_cid(o_hw(H(self))) < 1024 &*& is_smi_w((uword)result) && smi_val((uword)result) == header_cid(o_hw(H(self)));
+//@ ensures [f]heap(objs, H) &*& result == smi_ptr(header_cid(o_hw(H(self)))) &*& 0 <= header_cid(o_hw(H(self))) &*& header_cid(o_hw(H(self))) < MAX_CLASS_IDS &*& is_smi_w((uword)result) && smi_val((uword)result) == header_cid(o_hw(H(self)));
 
 // C++: src/objects.h toit::HeapObject::has_class_tag
 bool HeapObject_has_class_tag(HeapObject *self, TypeTag tag);

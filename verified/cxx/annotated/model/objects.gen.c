@@ -449,7 +449,7 @@ Smi *HeapObject_header(HeapObject *self)
 // C++: src/objects.h toit::HeapObject::class_id
 Smi *HeapObject_class_id(HeapObject *self)
 //@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true;
-//@ ensures [f]heap(objs, H) &*& result == smi_ptr(header_cid(o_hw(H(self)))) &*& 0 <= header_cid(o_hw(H(self))) &*& header_cid(o_hw(H(self))) < 1024 &*& is_smi_w((uword)result) && smi_val((uword)result) == header_cid(o_hw(H(self)));
+//@ ensures [f]heap(objs, H) &*& result == smi_ptr(header_cid(o_hw(H(self)))) &*& 0 <= header_cid(o_hw(H(self))) &*& header_cid(o_hw(H(self))) < MAX_CLASS_IDS &*& is_smi_w((uword)result) && smi_val((uword)result) == header_cid(o_hw(H(self)));
 {
   //@ heap_open(self);
   //@ uword hw = o_hw(H(self));

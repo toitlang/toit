@@ -126,7 +126,7 @@ name = "prim_retry"
 rendering = "cxx/annotated/ffi/interpreter_v2.gen.c"
 requires = "prim_out(fn, a, b, e) == true &*& oom_error(prog, e) == true &*& vm_equiv(b, b2) == true &*& prim_out(fn, b2, c, r) == true"
 ensures = "prim_out(fn, a, c, r) == true"
-note = "The retry protocol of the C++ primitives (v2_primitive_failed, as Interpreter::run's): a call that failed for want of memory has no effect the spec sees, so the call after the GC is a completion of the original step. TRUSTED per primitive (TRUSTED.md section 8): each must allocate before it changes anything visible. Not stated on the Verus side, where gc_call_primitive's completion clause covers the whole C++ call: an assumption the C++ wrapper alone does not establish (README, wave 6)."
+note = "The retry protocol of the C++ primitives (v2_primitive_failed, as Interpreter::run's): a call that failed for want of memory has no effect the spec sees, so the call after the GC is a completion of the original step. TRUSTED per primitive (TRUSTED.md section 8): each must allocate before it changes anything visible. Not stated on the Verus side, where gc_call_primitive's completion clause covers the whole C++ call: an assumption the C++ wrapper alone does not establish (README, wave 6). Wave 7: discharged per primitive by the [prim_retry] table below (every primitive of the untrusted set classified; checked); the lemma remains the composition (a completion from a state that differs by garbage and a GC is a completion from the original state)."
 
 [[contract]]
 name = "gc_grow_stack"
@@ -188,8 +188,8 @@ contract = "gc_allocate_instance"
 side = "requires"
 name = "class"
 verus = "c < env.p.ap@.class_bits.len()"
-verifast = "class_id < 1024"
-note = "A bound of the VeriFast model (header_ok: class ids below 1024), not of the C++, which takes any class id of the program; the Verus side bounds it by the program's class count. A gap for programs with more than 1024 classes (README, wave 6)."
+verifast = "class_id < MAX_CLASS_IDS"
+note = "The VeriFast model's class-id bound (header_ok): since wave 7 2^31 on 64-bit and 2^25 (every smi header) on 32-bit, not 1024 (wave 6's gap for programs with more than 1024 classes). A class id is an index of the program's class table, which the Verus side bounds it by; a table of 2^31 entries (4 GB) is in no image, so the clauses agree for every program."
 
 [[clause]]
 contract = "gc_allocate_instance"
@@ -490,7 +490,7 @@ verus_file = "core/src/ffi.rs"
 verus_fn = "string"
 cxx_fn = "toit_v2_try_allocate_string"
 rendering = "cxx/annotated/ffi/interpreter_v2.gen.c"
-status = "verified (VeriFast, LP64 and ILP32; wave 6) over the allocator's contract, for lengths up to the model's blob bound"
+status = "verified (VeriFast, LP64 and ILP32; wave 6) over the allocator's contract; since wave 7 for every length (no precondition, as the Verus side)"
 
 [[clause]]
 contract = "allocator_string"
@@ -499,14 +499,7 @@ name = "views"
 bridge = "heap"
 verus = ""
 verifast = "[?fp]process((Process *)raw_process, ?prog, ?ids) &*& heap(?objs, ?H)"
-
-[[clause]]
-contract = "allocator_string"
-side = "requires"
-name = "length"
-verus = "MISSING"
-verifast = "length <= MAX_BLOB"
-note = "The VeriFast model bounds a blob by 2^30 - 1 on both widths (the heap invariant: TRUSTED.md, Word size, says 2^62 on 64-bit), so the proof covers those lengths; the Verus contract has no precondition and the C++ rejects only lengths above INTPTR_MAX (`static_cast<word>(length) < 0`). Above the bound on 64-bit the C++ allocates a string the model does not describe. Also: Process::allocate_string(word) computes `length + 1` for an external string, undefined behaviour at length == INTPTR_MAX, which the check lets through (unreachable: the Rust callers pass at most twice the largest blob; README, wave 6)."
+note = "Wave 7: no length precondition on either side. The C++ returns 0 above V2_MAX_BLOB_LENGTH, the model's MAX_BLOB (2^62 - 1 on 64-bit, 2^30 - 1 on 32-bit, as the Verus heap model's MAX_BLOB_LENGTH; until wave 6 the VeriFast model bounded blobs by 2^30 on both widths and required `length <= MAX_BLOB`, a clause the Verus side lacked). The check also replaced `static_cast<word>(length) < 0`, which let INTPTR_MAX through to Process::allocate_string(word)'s `length + 1` (signed overflow; latent)."
 
 [[clause]]
 contract = "allocator_string"
@@ -530,7 +523,7 @@ verus_file = "core/src/ffi.rs"
 verus_fn = "byte_array"
 cxx_fn = "toit_v2_try_allocate_byte_array"
 rendering = "cxx/annotated/ffi/interpreter_v2.gen.c"
-status = "verified (VeriFast, LP64 and ILP32; wave 6) over the allocator's contract, for lengths up to the model's blob bound"
+status = "verified (VeriFast, LP64 and ILP32; wave 6) over the allocator's contract; since wave 7 for every length (no precondition, as the Verus side)"
 
 [[clause]]
 contract = "allocator_byte_array"
@@ -539,14 +532,7 @@ name = "views"
 bridge = "heap"
 verus = ""
 verifast = "[?fp]process((Process *)raw_process, ?prog, ?ids) &*& heap(?objs, ?H)"
-
-[[clause]]
-contract = "allocator_byte_array"
-side = "requires"
-name = "length"
-verus = "MISSING"
-verifast = "length <= MAX_BLOB"
-note = "As allocator_string's (without the `+ 1`)."
+note = "As allocator_string's: no length precondition since wave 7 (the C++ returns 0 above V2_MAX_BLOB_LENGTH, the model's MAX_BLOB)."
 
 [[clause]]
 contract = "allocator_byte_array"
@@ -708,7 +694,7 @@ contract = "allocate_instance"
 side = "requires"
 name = "class"
 verus = ""
-verifast = "(uword)class_id % 2 == 0 &*& (uword)class_id / 2 < 1024 &*& class_tag((uword)class_id / 2) == INSTANCE_TAG"
+verifast = "(uword)class_id % 2 == 0 &*& (uword)class_id / 2 < MAX_CLASS_IDS &*& class_tag((uword)class_id / 2) == INSTANCE_TAG"
 
 [[clause]]
 contract = "allocate_instance"
