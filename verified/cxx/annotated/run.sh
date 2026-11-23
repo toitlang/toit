@@ -1831,7 +1831,8 @@ array_allocation() {
   (( QUICK )) || modes+=(young-filler old-filler unmarked-old)
   for mode in "${modes[@]}"; do
     log="$ACXX_WORK/logs/process-array-allocation-$bits-$mode.log"
-    mc_run "$name:$mode" "$log" python3 heap/check_array_allocation.py "$mode" "$bits" "$CXXV_SRC" "$ACXX_WORK" \
+    mc_run "$name:$mode" "$log" "$ACXX_TOIT" run "$REPO_ROOT/verified/tools/array_allocation.toit" -- \
+      "$mode" "$bits" "$CXXV_SRC" "$ACXX_WORK" \
       ../harness/process_array_allocation.cc "$ESBMC" "${CXXV_FLAGS[@]}" -DTOIT_VERIFIED_CORE
     mc_report "$name:$mode" "" "$log" || return 1
   done
