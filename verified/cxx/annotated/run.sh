@@ -2075,7 +2075,7 @@ mutant platform-names-alloc-error model/objects.render src/process.cc "Cannot pr
 mutant platform-names-copy model/objects.render src/process.cc "Cannot prove|No matching" "" \
   "String* Process::allocate_string(const char* content, word length)@@  bytes._initialize(content);" ""
 entry heap-limits           pass "" heap/limits.gen.c -prover z3v4.5
-mutant heap-limits-mutable-range heap/limits.render src/third_party/dartino/object_memory.cc "RENDER:expected a const ChunkList range" "" \
+mutant heap-limits-mutable-range heap/limits.render src/third_party/dartino/object_memory.cc "RENDER:the linked-list range is not a variable or member" "" \
   "uword Space::size() const@@for (auto chunk : chunk_list_)" "for (auto chunk : const_cast<Space*>(this)->chunk_list_)"
 mutant heap-limits-chunk-size heap/limits.render src/third_party/dartino/object_memory.cc "Cannot prove" "-prover z3v4.5" \
   "result += chunk->size();" "result += chunk->size() / 2;"

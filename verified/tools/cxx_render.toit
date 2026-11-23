@@ -1518,8 +1518,12 @@ class Renderer:
     pointer-type := (decl["type"]["qualType"] as string).replace --all "toit::" ""
     expected := range-type == "const DoubleLinkedList<toit::Chunk>" ? "const Chunk *" : "$(element-type) *"
     body-size := (scheduler-targets or scheduler-workers) ? 2 : 1
-    if not (is-pure-lvalue range) or pointer-type != expected or block["kind"] != "CompoundStmt" or statements.size != body-size:
-      fail "$(where node): unexpected linked-list range declaration or body"
+    // A range reached through a cast or a call (e.g. a const_cast that
+    // makes a const method's list mutable) is not lowered.
+    if not (is-pure-lvalue range): fail "$(where node): the linked-list range is not a variable or member"
+    if pointer-type != expected: fail "$(where node): linked-list element of type $pointer-type, expected $expected"
+    if block["kind"] != "CompoundStmt" or statements.size != body-size:
+      fail "$(where node): unexpected linked-list range body"
     body-kinds := element-type == "Chunk" ? ["CompoundAssignOperator", "CallExpr"] : ["CXXMemberCallExpr"]
     if range-type == "DoubleLinkedList<toit::Chunk>": body-kinds = ["IfStmt", "BinaryOperator"]
     if scheduler-workers: body-kinds = ["DeclStmt"]
