@@ -13,7 +13,11 @@ trap 'rm -rf "$work"' EXIT
 cd "$work"
 log="$ACXX_WORK/logs/page-scan-wp-$1.log"
 report="$ACXX_WORK/logs/page-scan-wp-$1.json"
-frama-c -machdep "$machdep" -wp -wp-rte -wp-prover alt-ergo -wp-timeout 15 \
+# A step limit, not a time limit, decides each goal: the slowest goals
+# (record_overflow_sequence) take 6-8 s alone and timed out at 15 s with the
+# matrix running beside them. Alone they need between 100000 and 150000
+# Alt-Ergo steps; the wall-clock timeout only stops a hung prover.
+frama-c -machdep "$machdep" -wp -wp-rte -wp-prover alt-ergo -wp-steps 1000000 -wp-timeout 600 \
   -wp-cache none -wp-report-json goals.json "$ANNOTATED_DIR/heap/page_scan.c" > "$log" 2>&1
 cp goals.json "$report"
 python3 - "$report" "$log" <<'PY'
