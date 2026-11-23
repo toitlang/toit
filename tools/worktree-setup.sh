@@ -95,6 +95,27 @@ else
   fi
 fi
 
+# The C++ proof matrix (verified/cxx/annotated/run.sh) reads one FreeRTOS
+# header of the EC618 SDK (heap_stats_t); link the SDK's PLAT directory the
+# same way when the main checkout has the submodule.
+EC618_SUB=third_party/luatos-soc-ec618
+EC618_SRC="$MAIN/$EC618_SUB/PLAT"
+EC618_DST="$WT/$EC618_SUB/PLAT"
+if [ "$WT" != "$MAIN" ] && [ ! -e "$WT/$EC618_SUB/.git" ] && [ -d "$EC618_SRC" ]; then
+  want="$(git ls-tree HEAD "$EC618_SUB" | awk '{print $3}')"
+  have="$(git -C "$MAIN/$EC618_SUB" rev-parse HEAD 2> /dev/null || echo unknown)"
+  if [ "$want" != "$have" ]; then
+    echo "warning: this worktree pins $EC618_SUB at $want, the main checkout has $have."
+  fi
+  mkdir -p "$WT/$EC618_SUB"
+  if [ -L "$EC618_DST" ]; then
+    ln -sfn "$EC618_SRC" "$EC618_DST"
+  elif [ ! -e "$EC618_DST" ]; then
+    ln -s "$EC618_SRC" "$EC618_DST"
+    echo "Linked $EC618_SUB/PLAT -> $EC618_SRC"
+  fi
+fi
+
 # --- Environment ----------------------------------------------------------------
 
 ENV_LINES=("export IGNORE_SUBMODULE=1" "export IDF_PATH='$WT/$IDF_SUB'")
