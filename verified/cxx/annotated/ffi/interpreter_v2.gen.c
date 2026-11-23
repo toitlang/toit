@@ -503,7 +503,7 @@ Object *Program_cross_process_gc(Program *self);
 struct toit_v2_allocate_instance_lambda1 { Process *process; uword class_id; };
 HeapObject *toit_v2_allocate_instance_lambda1_call(struct toit_v2_allocate_instance_lambda1 *closure);
 /*@ requires [?fc]closure->process |-> ?p &*& [fc]closure->class_id |-> ?c &*& [?fp]process(p, ?prog, ?ids) &*& heap(?objs, ?H) &*&
-               c < 1024 &*& class_tag(c) == INSTANCE_TAG; @*/
+               c < MAX_CLASS_IDS &*& class_tag(c) == INSTANCE_TAG; @*/
 /*@ ensures [fc]closure->process |-> p &*& [fc]closure->class_id |-> c &*& [fp]process(p, prog, ids) &*&
               allocated(objs, H, p, result, ?objs2, ?H2) &*& (result == 0 ? true : instance_new(H2, result, c) == true); @*/
 
@@ -701,7 +701,7 @@ uword toit_v2_current_stack(void *process);
 // C++: src/interpreter_v2.cc v2_allocate
 uword v2_allocate__toit_v2_allocate_instance_lambda1(Process *process, char *reason, struct toit_v2_allocate_instance_lambda1 *allocate);
 /*@ requires [?fc]allocate->process |-> process &*& [fc]allocate->class_id |-> ?c &*& [?fp]process(process, ?prog, ?ids) &*&
-             vm(process, ?a, ?n) &*& c < 1024 &*& class_tag(c) == INSTANCE_TAG; @*/
+             vm(process, ?a, ?n) &*& c < MAX_CLASS_IDS &*& class_tag(c) == INSTANCE_TAG; @*/
 /*@ ensures [fc]allocate->process |-> process &*& [fc]allocate->class_id |-> c &*& [fp]process(process, prog, ids) &*&
             vm(process, ?b, ?n2) &*& alloc_post(process, a, n, b, n2, ?r, ?objsm, ?Hm) &*& result == (uword)r &*&
             (r == 0 ? true : instance_new(v_H(b), r, c) == true); @*/
@@ -709,7 +709,7 @@ uword v2_allocate__toit_v2_allocate_instance_lambda1(Process *process, char *rea
 // C++: src/interpreter_v2.cc toit_v2_allocate_instance
 uword toit_v2_allocate_instance(void *raw_process, uword class_id);
 /*@ requires [?fp]process((Process *)raw_process, ?prog, ?ids) &*& vm((Process *)raw_process, ?a, ?n) &*&
-             class_id < 1024 &*& class_tag(class_id) == INSTANCE_TAG; @*/
+             class_id < MAX_CLASS_IDS &*& class_tag(class_id) == INSTANCE_TAG; @*/
 /*@ ensures [fp]process((Process *)raw_process, prog, ids) &*& vm((Process *)raw_process, ?b, ?n2) &*&
             alloc_post((Process *)raw_process, a, n, b, n2, ?r, ?objsm, ?Hm) &*& result == (uword)r &*&
             (r == 0 ? true : instance_new(v_H(b), r, class_id) == true); @*/
@@ -751,13 +751,13 @@ uword toit_v2_try_allocate_array(void *raw_process, uword length, void *filler);
 
 // C++: src/interpreter_v2.cc toit_v2_try_allocate_string
 uword toit_v2_try_allocate_string(void *raw_process, uword length);
-//@ requires [?fp]process((Process *)raw_process, ?prog, ?ids) &*& heap(?objs, ?H) &*& length <= MAX_BLOB;
+//@ requires [?fp]process((Process *)raw_process, ?prog, ?ids) &*& heap(?objs, ?H);
 /*@ ensures [fp]process((Process *)raw_process, prog, ids) &*& allocated(objs, H, (Process *)raw_process, ?r, ?objs2, ?H2) &*&
             result == (uword)r &*& (r == 0 ? true : has_tag(H2, r, STRING_TAG) == true &*& blob_len(H2, r) == length); @*/
 
 // C++: src/interpreter_v2.cc toit_v2_try_allocate_byte_array
 uword toit_v2_try_allocate_byte_array(void *raw_process, uword length);
-//@ requires [?fp]process((Process *)raw_process, ?prog, ?ids) &*& heap(?objs, ?H) &*& length <= MAX_BLOB;
+//@ requires [?fp]process((Process *)raw_process, ?prog, ?ids) &*& heap(?objs, ?H);
 /*@ ensures [fp]process((Process *)raw_process, prog, ids) &*& heap(?objs2, ?H2) &*&
             (result == 0 ? objs2 == objs &*& H2 == H :
                objs2 == cons(head(objs2), objs) &*& result == (uword)head(objs2) &*& mem(head(objs2), objs) == false &*&
@@ -1251,7 +1251,7 @@ uword toit_v2_current_stack(void *process)
 // C++: src/interpreter_v2.cc v2_allocate
 uword v2_allocate__toit_v2_allocate_instance_lambda1(Process *process, char *reason, struct toit_v2_allocate_instance_lambda1 *allocate)
 /*@ requires [?fc]allocate->process |-> process &*& [fc]allocate->class_id |-> ?c &*& [?fp]process(process, ?prog, ?ids) &*&
-             vm(process, ?a, ?n) &*& c < 1024 &*& class_tag(c) == INSTANCE_TAG; @*/
+             vm(process, ?a, ?n) &*& c < MAX_CLASS_IDS &*& class_tag(c) == INSTANCE_TAG; @*/
 /*@ ensures [fc]allocate->process |-> process &*& [fc]allocate->class_id |-> c &*& [fp]process(process, prog, ids) &*&
             vm(process, ?b, ?n2) &*& alloc_post(process, a, n, b, n2, ?r, ?objsm, ?Hm) &*& result == (uword)r &*&
             (r == 0 ? true : instance_new(v_H(b), r, c) == true); @*/
@@ -1297,7 +1297,7 @@ uword v2_allocate__toit_v2_allocate_instance_lambda1(Process *process, char *rea
 // C++: the lambda at src/interpreter_v2.cc:357:54 (the closure rules)
 HeapObject *toit_v2_allocate_instance_lambda1_call(struct toit_v2_allocate_instance_lambda1 *closure)
 /*@ requires [?fc]closure->process |-> ?p &*& [fc]closure->class_id |-> ?c &*& [?fp]process(p, ?prog, ?ids) &*& heap(?objs, ?H) &*&
-               c < 1024 &*& class_tag(c) == INSTANCE_TAG; @*/
+               c < MAX_CLASS_IDS &*& class_tag(c) == INSTANCE_TAG; @*/
 /*@ ensures [fc]closure->process |-> p &*& [fc]closure->class_id |-> c &*& [fp]process(p, prog, ids) &*&
               allocated(objs, H, p, result, ?objs2, ?H2) &*& (result == 0 ? true : instance_new(H2, result, c) == true); @*/
 {
@@ -1307,7 +1307,7 @@ HeapObject *toit_v2_allocate_instance_lambda1_call(struct toit_v2_allocate_insta
 // C++: src/interpreter_v2.cc toit_v2_allocate_instance
 uword toit_v2_allocate_instance(void *raw_process, uword class_id)
 /*@ requires [?fp]process((Process *)raw_process, ?prog, ?ids) &*& vm((Process *)raw_process, ?a, ?n) &*&
-             class_id < 1024 &*& class_tag(class_id) == INSTANCE_TAG; @*/
+             class_id < MAX_CLASS_IDS &*& class_tag(class_id) == INSTANCE_TAG; @*/
 /*@ ensures [fp]process((Process *)raw_process, prog, ids) &*& vm((Process *)raw_process, ?b, ?n2) &*&
             alloc_post((Process *)raw_process, a, n, b, n2, ?r, ?objsm, ?Hm) &*& result == (uword)r &*&
             (r == 0 ? true : instance_new(v_H(b), r, class_id) == true); @*/
@@ -1425,11 +1425,12 @@ uword toit_v2_try_allocate_array(void *raw_process, uword length, void *filler)
 
 // C++: src/interpreter_v2.cc toit_v2_try_allocate_string
 uword toit_v2_try_allocate_string(void *raw_process, uword length)
-//@ requires [?fp]process((Process *)raw_process, ?prog, ?ids) &*& heap(?objs, ?H) &*& length <= MAX_BLOB;
+//@ requires [?fp]process((Process *)raw_process, ?prog, ?ids) &*& heap(?objs, ?H);
 /*@ ensures [fp]process((Process *)raw_process, prog, ids) &*& allocated(objs, H, (Process *)raw_process, ?r, ?objs2, ?H2) &*&
             result == (uword)r &*& (r == 0 ? true : has_tag(H2, r, STRING_TAG) == true &*& blob_len(H2, r) == length); @*/
 {
-  if ((word)length < 0) {
+  if (length > V2_MAX_BLOB_LENGTH) {
+    //@ close allocated(objs, H, (Process *)raw_process, 0, objs, H);
     return 0;
   }
   return (uword)Process_allocate_string__word(v2_process(raw_process), (word)length);
@@ -1437,7 +1438,7 @@ uword toit_v2_try_allocate_string(void *raw_process, uword length)
 
 // C++: src/interpreter_v2.cc toit_v2_try_allocate_byte_array
 uword toit_v2_try_allocate_byte_array(void *raw_process, uword length)
-//@ requires [?fp]process((Process *)raw_process, ?prog, ?ids) &*& heap(?objs, ?H) &*& length <= MAX_BLOB;
+//@ requires [?fp]process((Process *)raw_process, ?prog, ?ids) &*& heap(?objs, ?H);
 /*@ ensures [fp]process((Process *)raw_process, prog, ids) &*& heap(?objs2, ?H2) &*&
             (result == 0 ? objs2 == objs &*& H2 == H :
                objs2 == cons(head(objs2), objs) &*& result == (uword)head(objs2) &*& mem(head(objs2), objs) == false &*&
@@ -1445,7 +1446,7 @@ uword toit_v2_try_allocate_byte_array(void *raw_process, uword length)
                has_tag(H2, head(objs2), BYTE_ARRAY_TAG) == true &*& blob_ok(H2, head(objs2), STRINGS_OR_BYTE_ARRAYS) == true &*&
                blob_len(H2, head(objs2)) == length); @*/
 {
-  if ((word)length < 0) {
+  if (length > V2_MAX_BLOB_LENGTH) {
     return 0;
   }
   {

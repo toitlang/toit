@@ -92,7 +92,10 @@ int main() {
   string = nondet_bool();
   bool from_core = nondet_bool();
   bool force_external = !from_core && nondet_bool();
-  bool valid = length >= 0 && (!string || length < INTPTR_MAX);
+  // The core's entry points also return 0 above V2_MAX_BLOB_LENGTH (the
+  // heap models' blob bound, 2^62 - 1 or 2^30 - 1) without allocating.
+  bool valid = length >= 0 && (!string || length < INTPTR_MAX) &&
+               (!from_core || static_cast<uword>(length) <= UINTPTR_MAX / 4);
   cost = valid ? length + int(string) : -1;
   HeapObject* result;
   HeapObject* expected;
