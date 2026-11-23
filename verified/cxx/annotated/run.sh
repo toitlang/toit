@@ -314,6 +314,15 @@ mc_run() {
   local secs="$((tenths / 10)).$((tenths % 10))"
   MC_USAGE=$(awk -v s="$secs" -v r="$rss" -v v="$vm" -v c="$MC_CAP_MB" \
     'BEGIN {printf "%s s, peak %.2f GB (virtual %.2f of %.1f GB)", s, r / 1048576, v / 1048576, c / 1024}')
+  # MC_CHECK (a command line, split on spaces): when set, the job's own
+  # verdict, run after the job (outside the cap and the measurement) with
+  # LOG and the exit status appended; its exit status replaces the job's,
+  # unless the job timed out. Its output goes to LOG.
+  if [ -n "${MC_CHECK:-}" ] && [ $status -ne 124 ] && ! { [ $status -eq 137 ] && (( tenths >= MC_TIMEOUT * 10 )); }; then
+    # shellcheck disable=SC2086
+    $MC_CHECK "$log" "$status" >> "$log" 2>&1
+    status=$?
+  fi
   MC_VERDICT=fail
   if [ $status -eq 0 ]; then
     MC_VERDICT=pass
@@ -1841,17 +1850,34 @@ spawn cpp_equivalence free-list-selection LP64 64 free_list_selection --unwind 1
 spawn cpp_equivalence free-list-selection ILP32 32 free_list_selection --unwind 13
 spawn cpp_equivalence old-space-retry LP64 64 old_space_retry
 spawn cpp_equivalence old-space-retry ILP32 32 old_space_retry
+# array_allocation_verdict MODE LOG STATUS: process-array-allocation's MC_CHECK.
+array_allocation_verdict() {
+  "$ACXX_TOIT" run "$REPO_ROOT/verified/tools/array_allocation.toit" -- verdict "$@"
+}
 array_allocation() {
   local name="process-array-allocation/$1" bits="$2"
   mc_select "$name" || return 0
   source ../env.sh
-  local modes=(proof) mode log
+  local modes=(proof) mode log inc
   (( QUICK )) || modes+=(young-filler old-filler unmarked-old)
+  # verified/tools/array_allocation.toit writes the includes (heap.cc with
+  # the initializer's postcondition, the two-space heap, mutated per mode)
+  # and judges ESBMC's output: the proof must hold, each mutant mode must
+  # fail with its own violated property.
   for mode in "${modes[@]}"; do
     log="$ACXX_WORK/logs/process-array-allocation-$bits-$mode.log"
-    mc_run "$name:$mode" "$log" "$ACXX_TOIT" run "$REPO_ROOT/verified/tools/array_allocation.toit" -- \
-      "$mode" "$bits" "$CXXV_SRC" "$ACXX_WORK" \
-      ../harness/process_array_allocation.cc "$ESBMC" "${CXXV_FLAGS[@]}" -DTOIT_VERIFIED_CORE
+    inc=$(mktemp -d "$ACXX_WORK/array-allocation.XXXXXXXX")
+    if ! "$ACXX_TOIT" run "$REPO_ROOT/verified/tools/array_allocation.toit" -- \
+        prepare "$mode" "$CXXV_SRC" "$inc" > "$log" 2>&1; then
+      printf 'FAIL  %-40s the includes cannot be written, see %s\n' "$name:$mode" "$log"
+      rm -rf "$inc"
+      return 1
+    fi
+    MC_CHECK="array_allocation_verdict $mode" \
+      mc_run "$name:$mode" "$log" "$ESBMC" ../harness/process_array_allocation.cc "-I$inc" \
+        "${CXXV_FLAGS[@]}" -DTOIT_VERIFIED_CORE "-I$CXXV_SRC/third_party/dartino" \
+        --std c++11 "--$bits" "-DCXXV_WORD_BITS=$bits" --overflow-check
+    rm -rf "$inc"
     mc_report "$name:$mode" "" "$log" || return 1
   done
 }
