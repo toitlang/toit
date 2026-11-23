@@ -434,8 +434,23 @@ The GC derives its range from the whole pages inside the linker interval,
 independently of allocator initialization. The check proves exact containment
 for any aligned, positive whole-page chunk. Heap diagnostics still read the
 allocator statistics.
+
+*Unchecked linked-image results.* The passages below that mark a check
+*(unchecked)* (here, and in the memmove, metadata-fill, scheduler, thread
+and mailbox passages further down) report one-time runs of scripts that
+disassembled particular EC618 base and slot ELFs. Those images are not in
+the repository (they come from an EC618 build with the vendor SDK, which no
+gate does) and the scripts were removed on 2026-11-24 (no Python in the
+repository), so nothing checks these results any more: each is a recorded
+observation about one firmware build and is trusted, and a new base or slot
+build has none of them. The SMT models those scripts ran
+(`../cxx/annotated/heap/ec618_*.smt2`, linked below as proofs) are still
+checked by the C++ matrix (`run.sh ec618-smt`), but only as models: that a
+model is the linked Thumb code is part of the unchecked result. See the
+[annotated README](../cxx/annotated/README.md#ec618-linked-image-results-unchecked).
+
 For the final format-2 slots linked against base-v5 fingerprint
-`f0ae7c907be49d8af02ea2dbcfa6aecf`, the [GC range check](../cxx/annotated/heap/check_ec618_gc_range.py)
+`f0ae7c907be49d8af02ea2dbcfa6aecf`, the GC range check *(unchecked)*
 binds the two range literals to the base linker symbols. It compares the
 compiled rounding with whole-page containment for arbitrary 32-bit endpoints.
 Both builds cover 85 pages in `[0x443000, 0x498000)` and pass 28,672 bytes
@@ -447,22 +462,22 @@ aligned-word lookup formulas for every address in the linked heap range.
 On normal return from initialization, setup
 copies all 19 descriptor words from private stack storage into the singleton.
 This assumes serialized setup, ordinary stack storage and callee contracts.
-For this same base the [registration check](../cxx/annotated/heap/ec618_registration.py)
+For this same base the registration check *(unchecked)*
 binds the initialization flag and heap pointer to their linked writable globals.
-The [page allocation check](../cxx/annotated/heap/ec618_page_grant.py) follows the
+The page allocation check *(unchecked)* follows the
 metadata request through malloc into the registered arena. For any stable
 page occupancy it checks that the allocator returns the first seven contiguous
 free pages and zeroes them, or returns null if no such run exists. This relies
 on writable arena RAM, serialized heap publication, and exclusive access with
 accurate ownership recorded in the page descriptors. Maintaining those
 conditions across all allocator clients and checking all GC lookup callers
-remain open. The allocator ABI check also passes on this base (11 CBMC properties).
+remain open. The allocator ABI check *(unchecked)* also passed on this base (11 CBMC properties).
 
-The [linked teardown check](../cxx/annotated/heap/ec618_page_release.py)
+The linked teardown check *(unchecked)*
 covers both slots and this same base. When initial spare-chunk allocation
 fails, object-memory setup releases the metadata. When mutex allocation fails,
 it frees the spare chunk first. Normal teardown also frees the spare before
-releasing the metadata. The [linked chunk check](../cxx/annotated/heap/ec618_chunk_lifetime.py)
+releasing the metadata. The linked chunk check *(unchecked)*
 follows the spare allocation through the page-aligned request, range filter,
 bounded list of 50 rejected grants, and cleanup of that list. Widened arithmetic
 checks the complete accepted byte interval. For the null-space spare, descriptor
@@ -477,11 +492,11 @@ This requires intact, disjoint live allocations, the allocator and mutex
 contracts, ARM exclusive-access semantics, and a nonreturning fatal-error routine.
 For a live, nonempty, page-aligned chunk inside the configured heap range,
 the linked allocation and owner-change paths classify the chunk using the
-owner’s page-type byte. With a non-null owner the [fill proof](../cxx/annotated/heap/ec618_chunk_fills.py)
+owner’s page-type byte. With a non-null owner the fill proof *(unchecked)*
 checks every memset destination, length and fill value. It clears the chunk’s
 marks, overflow bits and remembered set, and writes 2 to its object-start
 entries. Clearing ownership sets the chunk’s page type to zero.
-The [space append check](../cxx/annotated/heap/ec618_chunk_append.py) follows
+The space append check *(unchecked)* follows
 owner assignment before inserting the chunk. Given a valid exclusive ring
 and a detached chunk, semispace append preserves traversal order and places
 the chunk last. Ordinary space insertion preserves size order and breaks ties
@@ -489,7 +504,7 @@ by start address. The semispace constructor initializes an empty ring; with
 an initial chunk it sets the allocation top to the chunk start, writes a
 zero-word sentinel there and sets the limit to the chunk end. These checks
 assume valid writable chunk, space and metadata storage.
-The [linked scavenge swap check](../cxx/annotated/heap/ec618_semispace_swap.py)
+The linked scavenge swap check *(unchecked)*
 follows the handoff after copying into a one-chunk temporary semispace. It
 checks that the outgoing chunk becomes a detached spare with unknown page
 type, while the persistent semispace takes the survivor, its top and its limit
@@ -499,7 +514,7 @@ the emptied temporary space skips chunk release. The watermark proof binds
 the virtual used-size call to the semispace implementation and checks both
 promotion thresholds. This requires exclusive, distinct chunk storage, valid
 space rings, an intact semispace vtable and a valid survivor allocation top.
-The [linked scavenger copy check](../cxx/annotated/heap/ec618_scavenge_copy.py)
+The linked scavenger copy check *(unchecked)*
 follows the root visitor, semispace allocation, and word-aligned base memcpy.
 For a positive word-aligned true object size and a disjoint live grant, every
 destination word receives its original source value before the source header
@@ -513,13 +528,13 @@ can publish a null result. The
 single-copy capacity step. The [capacity proof](../cxx/annotated/heap/ec618_scavenge_capacity.smt2)
 derives its initial budget for a single well-formed source page: even if every
 object survives, the sum of their disjoint extents leaves room for the sentinel
-on an empty destination page. The [linked capacity check](../cxx/annotated/heap/ec618_scavenge_capacity.py)
+on an empty destination page. The linked capacity check *(unchecked)*
 checks the one-page requests at heap and spare initialization, selection of a
 private or shared spare (including allocation failure), and the chunk bounds
 passed into both visitors. Applying the bound to every collection still
 requires valid chunk ownership throughout the heap lifetime, a source top
 with room for its sentinel, true disjoint object extents, and valid root
-slots. The [linked object-size check](../cxx/annotated/heap/ec618_object_extent.py)
+slots. The linked object-size check *(unchecked)*
 follows the fixed-size instance, array, internal byte-array, internal string,
 stack, double and large-integer constructors
 and the corresponding size reads in the collector. The
@@ -528,7 +543,7 @@ fresh object from each of these paths reports its allocated size on a
 successful young allocation. It assumes a valid, stable class table with
 representable class IDs and the expected class descriptors. Stack and string
 lengths must satisfy their constructor preconditions.
-The [external descriptor check](../cxx/annotated/heap/ec618_external_extent.py)
+The external descriptor check *(unchecked)*
 follows external string and byte-array construction, finalizer registration,
 and external byte-array resize and detach. The
 [extent proof](../cxx/annotated/heap/ec618_external_extent.smt2) checks the
@@ -539,7 +554,7 @@ of the required size, and valid queue links. The accounting writes target the
 separate process heap counters. The allocator must preserve the descriptor. Extending the
 result through subsequent mutations, covering the other object layouts,
 and tracing the entire reachable graph remain open.
-The [linked root traversal](../cxx/annotated/heap/ec618_object_roots.py)
+The linked root traversal *(unchecked)*
 follows each copied or promoted object into its type-specific scanner. Arrays
 visit each element, instances and tasks visit each payload word, and leaf
 tags return immediately. The scavenger's vtable disables both weak marking
@@ -551,7 +566,7 @@ each promoted-object step by the end of its track. These results require
 valid object partitions, stable unvisited fields, well-formed stack bounds,
 a correct bytecode interval and valid promotion tracks. Establishing these
 conditions for every collection and seeding every reachable root remain open.
-The [linked process-root check](../cxx/annotated/heap/ec618_process_roots.py)
+The linked process-root check *(unchecked)*
 binds the task, global table, external-root ring and notifier ring to their
 actual callback arguments in each slot. It follows the remembered-set call
 and all three drains, including the drain after runnable closures are visited.
@@ -564,7 +579,7 @@ appending to an empty queue. This assumes finite valid root and queue lists,
 disjoint storage, an accurate from-space partition, and callbacks that preserve
 unrelated links. Complete root registration, remembered-set coverage and the
 other finalizer implementations remain separate obligations at the linked level.
-The [linked remembered-set check](../cxx/annotated/heap/ec618_remembered_scan.py)
+The linked remembered-set check *(unchecked)*
 follows old-space card scanning, the ordinary instance-field write barrier,
 and the start byte published by a successful old-space bump allocation.
 The barrier dirties the card containing the object's header, including when
@@ -578,7 +593,7 @@ entries. Slots containing a reference to the new destination before their
 visit must already be accounted for in that card's record. Coverage of
 every mutator store and preservation of these premises through sweeping and
 compaction remain open.
-The [linked small-block allocation check](../cxx/annotated/heap/ec618_small_grant.py)
+The linked small-block allocation check *(unchecked)*
 checks rounding and first-eligible-bucket lookup for the small malloc route.
 Given an accurate bitmap and correctly classified live free blocks, the selected
 head fits the request. On a split the remainder still ends at the original
@@ -588,8 +603,9 @@ For a 28-byte descriptor that is 32 cleared bytes. This base uses the rounded
 size as its loop bound even when the allocation retains extra space, so that
 extra space has no zero-initialization guarantee. The source-harness result
 below applies to the workspace implementation, which clears the full usable
-payload. The GC gate also runs the base scheduler proof. The [port startup
-check](../cxx/annotated/heap/ec618_scheduler_port.py) follows successful
+payload. The removed GC range check also ran the base scheduler proof
+*(unchecked)*. The port startup
+check *(unchecked)* follows successful
 scheduler initialization through the priority and timer register writes,
 the linked exception stack, and SVC. It binds the hardware SysTick vector to
 the checked kernel tick and its conditional PendSV request. On EC618's
@@ -601,7 +617,7 @@ exception semantics and priority grouping, a valid current task, stable port
 configuration, and no interrupt-side allocator mutation. The linked allocation
 tag lookup reads the current task handle and checks up to 16 entries in the
 linked tag table. It returns the first matching tag, or zero for a null handle
-or missing entry. The [linked tag-update check](../cxx/annotated/heap/ec618_tag_update.py)
+or missing entry. The linked tag-update check *(unchecked)*
 follows the VM get/set wrappers and confines setter stores to that 128-byte
 table, disjoint from the registered arena and GC singleton. A serialized
 setter updates the first matching slot, otherwise uses the first empty slot,
@@ -612,13 +628,13 @@ above applies to the workspace implementation. Per-task attribution in the
 linked firmware still requires capacity for new entries, serialized updates,
 and stable task identity.
 The footprint check allows the two scans to observe different slot contents.
-The [linked small-block release check](../cxx/annotated/heap/ec618_small_release.py)
+The linked small-block release check *(unchecked)*
 follows small-block dispatch into the coalescer. Given live consistent boundary
 tags and valid free-list helper contracts, all four combinations of neighboring
 free blocks select exactly the contiguous extent to merge. Repairing the
 following boundary tag preserves its allocation flag and own block size.
 The code tests page alignment and both sentinel tags before handing a whole
-arena back to the page allocator. The [linked bucket check](../cxx/annotated/heap/ec618_free_buckets.py)
+arena back to the page allocator. The linked bucket check *(unchecked)*
 checks size-class selection for every supported aligned block size below 16 KiB.
 It follows head insertion and removal at the head, tail, middle, or sole node,
 including neighbor links, counters, and the occupancy bit. Given exclusive
@@ -644,7 +660,7 @@ with valid descriptors, base free clears exactly its status words and credits
 the released extent, including allocations at either arena edge.
 The historical EC618 allocator checks used the ELF named `ec618-base-v5.elf`
 whose manifest reports base version 4 and fingerprint `b11a03ffa2790e3009abc87587810b4b`.
-For that ELF, the [allocator ABI check](../cxx/annotated/heap/check_ec618_allocator_abi.py)
+For that ELF, the allocator ABI check *(unchecked)*
 follows the actual Thumb instructions from the libc entries to the board
 wrappers. The aligned allocation used for GC pages passes its alignment and
 size to `pvPortMemalign`. Metadata malloc passes positive sizes through and
@@ -654,7 +670,8 @@ size. Free returns immediately on null and passes other pointers to
 pointer. The [instruction model](../cxx/annotated/heap/ec618_allocator_abi.c)
 assumes a valid private caller stack, readable firmware literals and newlib
 reentrancy pointer storage. The Thumb semantics are reviewed and each base
-ELF requires its own check.
+ELF requires its own check. Nothing runs that CBMC model now: it includes
+the instructions extracted from the ELF, which the removed script wrote.
 The scheduler model assumes single-threaded boot and task exclusion during
 suspension. Allocator registration, allocation operations and the accuracy of
 per-heap statistics remain contracts.
@@ -807,10 +824,11 @@ success, growth, shrinkage and failure. The heap must be locked with a live
 direct allocation, a readable table and sentinel, maximal adjacent free
 runs and representable counters. The thread tag comes from the checked
 EC618 lookup under the scheduler assumptions above. For the
-overlapping copy, the [firmware check](../cxx/annotated/heap/check_ec618_memmove.py)
-matches the allocator's direct call and the forward Thumb instructions in
-the supplied base ELF. For that historical EC618 release ELF, the
-[instruction model](../cxx/annotated/heap/ec618_memmove.smt2) proves that
+overlapping copy, the firmware check *(unchecked, see the note on linked-image
+results above)* matched the allocator's direct call and the forward Thumb
+instructions in the supplied base ELF. For that historical EC618 release ELF, the
+[instruction model](../cxx/annotated/heap/ec618_memmove.smt2) (checked as a
+model: `run.sh ec618-smt/memmove`) proves that
 each destination byte receives its original source byte, all other bytes
 retain their values from loop entry and the loop terminates. This uses
 unsigned lower destination addresses, a representable source end, ordinary
@@ -1018,23 +1036,25 @@ inputs recorded before the swap. This check assumes completed copying and
 models mutex entry and exit. The separate semispace body proof derives the
 used-byte count from the allocation top and the sole chunk's start.
 Virtual memory commits supply contracts. For the historical EC618 allocator build, the
-[firmware fill check](../cxx/annotated/heap/check_ec618_memset.py) matches
+firmware fill check *(unchecked, see the note on linked-image results in
+section 1)* matched
 the linked calls from chunk initialization and destruction in each supplied
 VM slot to the base's Thumb memset. Its [instruction model](../cxx/annotated/heap/ec618_memset.smt2)
+(checked as a model: `run.sh ec618-smt/memset`)
 proves termination, the low byte written at each destination, and preservation
 of bytes outside the range for all 32-bit lengths, including zero. This
 assumes writable ordinary memory and the reviewed Thumb semantics. For
-page classification, the checker also matches the singleton literal and the
+page classification, the removed checker also matched the singleton literal and the
 field loads to the slot's symbols and DWARF layout. The compiled range check
 skips starts outside the heap. For a live whole-page chunk contained in the
 mapping, the [argument proof](../cxx/annotated/heap/ec618_page_classify.smt2)
 checks that the fill covers exactly the corresponding page-table bytes.
-For chunk initialization the [Thumb instruction model](../cxx/annotated/heap/ec618_chunk_fills.py)
+For chunk initialization the Thumb instruction model *(unchecked)*
 follows the initializer into the mark-bit helper and through all four fills.
 It checks each destination, exclusive end and fill byte against the mapped
 chunk. Mark bytes, overflow bits and remembered cards receive zero, and
 object-start bytes receive the sentinel 2. The mark lookahead byte lies
-outside the fill. The [linked setup check](../cxx/annotated/heap/ec618_setup_layout.py)
+outside the fill. The linked setup check *(unchecked)*
 covers the successful allocation path for a nonempty OS heap range whose
 page-rounded exclusive end fits in a word. It checks the requested byte count
 and placement of all six nonoverlapping tables within a successful grant,
@@ -1042,13 +1062,13 @@ the four eager commit calls and the initial page-type fill. The five stored
 biases recover the corresponding bases at the heap lower bound, including
 when unsigned subtraction wraps. This assumes a live metadata object, a
 private stack and ordinary writable memory for the granted bytes. The
-[firmware heap range check](../cxx/annotated/heap/ec618_heap_range.py) follows
+firmware heap range check *(unchecked)* follows
 the slot getter into the release base statistics wrapper. Before allocator
 initialization its zero fill selects the nonempty linker arena from
-`end_ap_data` to `start_up_buffer`. For that base the [registration check](../cxx/annotated/heap/ec618_registration.py)
+`end_ap_data` to `start_up_buffer`. For that base the registration check *(unchecked)*
 follows the linker arguments into the header and verifies that initialization
 places all 86 page descriptors and their sentinel inside its reserved storage.
-The [fragment check](../cxx/annotated/heap/ec618_fragments.py) follows the
+The fragment check *(unchecked)* follows the
 two registration insertions through free-list bucket selection, bitmap updates,
 arena links and allocation headers. Given a private stack, their stores preserve
 the registered bounds, descriptors and whole-page region.
@@ -1057,19 +1077,19 @@ After registration the collector reads the header bounds and reports
 heap, readable collector inputs, and helpers preserving the header bounds
 and caller-owned storage. Initialization must be serialized through heap
 publication because this build sets the initialized flag before storing the heap pointer.
-For either reported range the reservation is 28,672 bytes. The [linked page
-allocation check](../cxx/annotated/heap/ec618_page_grant.py) follows that request
+For either reported range the reservation is 28,672 bytes. The linked page
+allocation check *(unchecked)* follows that request
 from base `malloc` to `page_alloc`. For any stable occupancy of the registered
 86 pages it checks first-fit selection of seven contiguous free pages or a null
 return on exhaustion, the descriptor stores, and zeroing of exactly the selected
-run. The [linked release check](../cxx/annotated/heap/ec618_page_release.py)
+run. The linked release check *(unchecked)*
 follows metadata teardown from the singleton pointer into base firmware
 `free`. For every valid ordinary allocation head and extent in this arena, it
 checks that release clears only the run's status words, credits its byte size,
 and adjusts the free-run count for both neighbors, including arena edges.
 The caller must own a live allocation through dispatch and release. These
 checks require live writable registered RAM, accurate page ownership and
-exclusive access during allocation. The [scheduler lock check](../cxx/annotated/heap/ec618_scheduler_lock.py)
+exclusive access during allocation. The scheduler lock check *(unchecked)*
 follows the base firmware's heap lock into scheduler suspension. With the
 application vector table active, a PendSV during suspension sets a pending
 yield and restores the same task. Unlock decrements the suspension count in
@@ -1082,25 +1102,25 @@ lists, the checker follows pending-ready tasks into the queue for their
 priority, then checks one tick-helper call per deferred tick. Existing yield
 requests, newly ready tasks of equal or higher priority, and nonzero tick
 results feed the final PendSV decision. The [countdown proof](../cxx/annotated/heap/ec618_scheduler_resume.smt2)
-covers every 32-bit pending count. The [linked tick check](../cxx/annotated/heap/ec618_scheduler_tick.py)
+covers every 32-bit pending count. The linked tick check *(unchecked)*
 follows the tick increment, delayed-list exchange on wrap, timeout scan and
 ready-queue insertion. It checks that a task due on the current tick wakes,
 a later task stays delayed, and equal priorities and time slicing participate
 in the yield decision. This assumes sorted, well-formed delay lists, a valid
 cached earliest deadline, valid task priorities, and an empty retiring list
-at rollover. The [list splice proof](../cxx/annotated/heap/ec618_scheduler_lists.py)
+at rollover. The list splice proof *(unchecked)*
 symbolically executes the linked removal and insertion helpers against arbitrary
 aligned word memory. Given valid local links, it checks the two neighbor updates,
 cursor, container and count, and preservation of every other word. It includes
 empty-list insertion and singleton removal with either cursor position.
-The [startup check](../cxx/annotated/heap/ec618_scheduler_init.py) follows
+The startup check *(unchecked)* follows
 first-task registration from zero tasks and a null current task through all
 56 ready queues and five other scheduler lists. It checks every initial
 header word, publication of the two delayed-list pointers, and first ready
 queue selection. For a fresh task, the constructor detaches both embedded
 items, sets their owner to the task, and clamps its priority to 55. This
 assumes valid separate task, stack and output storage and task tracing that
-preserves the initialized list fields. The [task frame proof](../cxx/annotated/heap/ec618_task_frame.py)
+preserves the initialized list fields. The task frame proof *(unchecked)*
 follows dynamic allocation of the stack and 200-byte TCB and checks the four
 initial frame writes, saved stack pointer, and SVC restore layout. It requires
 a word-aligned stack of 18 to 65,535 words; the linked release callers must
@@ -1120,39 +1140,39 @@ from arbitrary valid occupancy of the configured 16 slots, including full-map
 replacement and exhaustion. It checks publication of the task, thread and cache
 before restoring the caller's interrupt mask. This assumes single-core PRIMASK
 semantics and no map access by NMI or fault handlers. The lifecycle harness
-models RTOS calls. The [linked semaphore check](../cxx/annotated/heap/ec618_semaphore.py)
-follows the two final format-2 slots into the ABI-checked base-v5 firmware
+models RTOS calls. The linked semaphore check *(unchecked)*
+follows the two final format-2 slots into the base-v5 firmware
 (fingerprint `f0ae7c907be49d8af02ea2dbcfa6aecf`) and checks the 80-byte dynamic
 completion semaphore starts empty with capacity one, two empty wait lists
-and unlocked counters. The [thread gate](../cxx/annotated/heap/check_ec618_threads.py)
+and unlocked counters. The thread gate *(unchecked)*
 also checks the linked stack-depth guard, clearing the published descriptor
 on failed task creation, and restoration of the worker’s allocation tag before signaling.
-The combined heap gate still requires the historical allocator layout.
+The removed combined heap check required the historical allocator layout.
 The semaphore check covers the null allocation return and that deleting
 the live dynamic queue delegates its original pointer to the allocator.
 This assumes an aligned writable grant and exclusive access during creation
 and deletion. For a live semaphore and a running scheduler the linked worker's
 zero-wait give publishes one token or returns failure if full. Join consumes
 one token on success. An empty receive rechecks the count before registering
-on the receive wait list and retries after waking. The [linked timeout check](../cxx/annotated/heap/ec618_timeout.py)
+on the receive wait list and retries after waking. The linked timeout check *(unchecked)*
 shows that join's all-ones wait always returns “still waiting” from the timeout
 helper and preserves the wait budget, regardless of tick rollover. For finite
 waits it checks expiry and remaining ticks across at most one tick-counter wrap
 between samples, assuming a coherent snapshot under the interrupt mask.
-The [linked wake check](../cxx/annotated/heap/ec618_event_wake.py) follows
+The linked wake check *(unchecked)* follows
 the first waiter into its priority's ready list or, during scheduler
 suspension, the pending-ready list. Both paths request a yield for a strictly
 higher priority. Queue unlock drains each positive signed-byte lock count up
 to the number of waiters and restores the unlocked marker. This assumes valid
 list and task ownership and representable deferred counts. The
-[registration check](../cxx/annotated/heap/ec618_event_wait.py) follows an
+registration check *(unchecked)* follows an
 indefinite join from the receive wait list through removal of the current
 task's state item from its ready list and insertion on the suspended list.
 It checks ordered insertion after existing equal keys and the complete
 splice write footprint. This assumes a finite sorted list with intact links,
 a maximal sentinel, an unlinked event item and room to increment the count.
 For one successful spawn, one worker signal and one exclusive join, the
-linked worker and join paths also have a completion-object lifetime check.
+linked worker and join paths also had a completion-object lifetime check *(unchecked)*.
 It includes a joiner that frees the semaphore and descriptor before the
 worker returns from give. The last worker queue access precedes critical
 section exit, and its self-delete path uses neither object. This assumes
@@ -1178,7 +1198,7 @@ controller before any token is enqueued, then checks exact dispatch by a
 drain with no overlapping publication. A [completion race check](../cxx/harness/ec618_mailbox_race.cc)
 interleaves one producer with one take and a final drain under ESBMC's atomic
 model. It permits repeated delivery of a generation when calls overlap.
-The [Cortex-M3 instruction check](../cxx/annotated/heap/check_ec618_mailbox.py)
+The Cortex-M3 instruction check *(unchecked)*
 checks the four mailbox update loops in the EC618 event-source object and
 in both final format-2 slot links. The checked build used the verifier,
 the Rust interpreter, and base-v5 fingerprint `f0ae7c907be49d8af02ea2dbcfa6aecf`.
