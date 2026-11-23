@@ -25,7 +25,7 @@ VM* VM::current_ = &vm;
 static Process* subject;
 static ProcessGroup* owner;
 static SystemMessage* notice;
-static bool held, active_gc, waited, destroyed, sent, discarded, disposed, delivered, peer_remains;
+static bool held, active_gc, waited, destroyed, sent, discarded, disposed, delivered, peer_remains, subject_is_boot;
 static uint8 exit_value;
 static unsigned encoded;
 
@@ -51,7 +51,8 @@ void MessageEncoder::encode_process_message(uint8* data, uint8 value) {
 void toit::observe_destroy(Process* p) {
   CXXV_ASSERT(!held && !destroyed && waited == active_gc && encoded == 1 && p == subject &&
               owner->pending_teardowns_ == 1 && !owner->is_not_linked() &&
-              owner->processes_.first() != p && scheduler.boot_process_ != p,
+              owner->processes_.first() != p && scheduler.boot_process_ != p &&
+              scheduler.boot_process_exiting_ == subject_is_boot,
               "destroy outside the lock after detaching both the group member and boot routing target");
   if (owner->processes_.first() == &peer && nondet_bool()) {
     // Another thread can complete its own exit during the unlocked destructor.
@@ -65,7 +66,7 @@ void toit::observe_destroy(Process* p) {
 }
 
 message_err_t Scheduler::send_system_message(Locker&, SystemMessage* msg) {
-  CXXV_ASSERT(held && destroyed && !sent && !disposed && msg == notice && boot_process_ != subject,
+  CXXV_ASSERT(held && destroyed && !sent && !disposed && msg == notice && boot_process_ != subject && !boot_process_exiting_,
               "route the termination notice after destruction under the scheduler lock");
   sent = true;
   return delivered ? MESSAGE_OK : MESSAGE_NO_SUCH_RECEIVER;
@@ -104,7 +105,9 @@ int main() {
   scheduler.groups_.append(owner);
   scheduler.num_processes_ = 1 + peer_remains;
   scheduler.num_run_time_limited_processes_ = 1;
-  scheduler.boot_process_ = nondet_bool() ? subject : nullptr;
+  subject_is_boot = nondet_bool();
+  scheduler.boot_process_ = subject_is_boot ? subject : nullptr;
+  scheduler.boot_process_exiting_ = false;
   subject->set_state(Process::RUNNING);
   subject->set_scheduler_thread(nullptr);
   active_gc = nondet_bool();

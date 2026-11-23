@@ -128,6 +128,10 @@ int main() {
   sender->mailbox_bytes_ = 0;
   bool sender_is_boot = nondet_bool(), receiver_is_boot = !sender_is_boot && nondet_bool();
   scheduler.boot_process_ = sender_is_boot ? sender : receiver_is_boot ? destination : nullptr;
+  // The boot process can be in its unlocked destructor: no boot process, and
+  // no default handling of the other processes' termination notices.
+  bool boot_exiting = scheduler.boot_process_ == nullptr && nondet_bool();
+  scheduler.boot_process_exiting_ = boot_exiting;
   bool system = nondet_bool(), present = nondet_bool();
   requested = system ? -1 : destination->id();
   lookup_result = present ? destination : nullptr;
@@ -144,7 +148,7 @@ int main() {
   bool delivered = attempt && !mailbox_full && (!needs_reply || existing_reply || grant_room);
   bool boot_delivery = system && scheduler.boot_process_ != nullptr;
   bool queued = delivered || (boot_delivery && !mailbox_full);
-  bool decode = system && !boot_delivery && type == SYSTEM_TERMINATED;
+  bool decode = system && !boot_delivery && type == SYSTEM_TERMINATED && !boot_exiting;
   message_err_t expected = system ? (boot_delivery && mailbox_full ? MESSAGE_QUOTA_EXCEEDED : MESSAGE_OK) : denied ? MESSAGE_PERMISSION_DENIED :
       !present ? MESSAGE_NO_SUCH_RECEIVER : delivered ? MESSAGE_OK : MESSAGE_QUOTA_EXCEEDED;
   message_err_t result = scheduler.send_message_from(sender, requested, incoming);
@@ -153,7 +157,7 @@ int main() {
               "perform only authorized delivery and wake only a receiver that took the message");
   CXXV_ASSERT(destructions == !queued, "delete every unqueued message exactly once, including a consumed system notification");
   CXXV_ASSERT(decodes == decode && shutdowns == (decode && decodable),
-              "handle termination only on the system route without a boot process and only after successful decoding");
+              "handle termination only on the system route without a boot process, live or exiting, and only after successful decoding");
   CXXV_ASSERT(other->grants_count_ == 1 + (delivered && needs_reply && !existing_reply) &&
               other->may_send_to(sender->id()) == (existing_reply || (delivered && needs_reply)),
               "give the remote group a reply grant only for an admitted RPC request");
