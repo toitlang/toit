@@ -71,6 +71,8 @@ mkdir -p "$JOBS"
 MAXJOBS="${RUN_JOBS:-$(nproc)}"
 njobs=0
 pids=()
+# Interrupted: stop the jobs (each stops its model checker, mc_run).
+trap 'trap - TERM INT HUP; kill -TERM $(jobs -p) 2> /dev/null; wait; exit 143' TERM INT HUP
 spawn() {
   while [ "$(jobs -rp | wc -l)" -ge "$MAXJOBS" ]; do wait -n; done
   ("$@") > "$JOBS/$njobs.log" 2>&1 &
@@ -232,10 +234,14 @@ mc_run() {
   echo "0 0" > "$peak"
   ( ulimit -v "$cap_kb"; exec timeout -k 30 "$MC_TIMEOUT" "$@" ) > "$log" 2>&1 &
   pid=$!
+  # Stopped (run.sh interrupted or killed with TERM): stop the model
+  # checker too; it holds memory that would no longer be reserved.
+  trap 'kill -TERM "$pid" 2> /dev/null; wait "$pid"; mem_release; exit 143' TERM INT HUP
   mc_sample "$pid" "$peak" &
   sampler=$!
   wait "$pid"
   status=$?
+  trap - TERM INT HUP
   wait "$sampler"
   end=$(date +%s%N)
   mem_release
