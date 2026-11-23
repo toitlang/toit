@@ -269,7 +269,10 @@ if [ "$RUN_TESTS" = 1 ]; then
   if ! tools_ready; then
     fail "VeriFast proofs: cannot run verified/tools/cxx_render.toit"
   else
-    TOIT="$TOIT_BIN" "$VERIFIED/cxx/annotated/run.sh" > "$LOGS/verifast.log" 2>&1
+    # run.sh's stderr stays on the terminal: a job that waits for
+    # model-checker memory (or the run for another run of this checkout)
+    # says so there while it waits.
+    TOIT="$TOIT_BIN" "$VERIFIED/cxx/annotated/run.sh" > "$LOGS/verifast.log"
     vf_status=$?
     if [ $vf_status -eq 3 ]; then
       grep '^SKIP' "$LOGS/verifast.log"
@@ -285,7 +288,7 @@ if [ "$RUN_TESTS" = 1 ]; then
     if [ "$RUN_SLOW" = 1 ]; then
       section "The slow tier of the residual C++'s model-checker jobs (run.sh --slow)"
       # Hours; memory-capped jobs, see the README's slow-tier table.
-      TOIT="$TOIT_BIN" "$VERIFIED/cxx/annotated/run.sh" --slow > "$LOGS/slow.log" 2>&1
+      TOIT="$TOIT_BIN" "$VERIFIED/cxx/annotated/run.sh" --slow > "$LOGS/slow.log"
       slow_status=$?
       grep -v '^ok' "$LOGS/slow.log" | head -60
       if [ $slow_status -eq 4 ]; then

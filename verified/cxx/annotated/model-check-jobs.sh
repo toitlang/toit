@@ -18,11 +18,11 @@
 known_noverdict core-entry/LP64 "does not finish alone with 36 GB; the harness is to be split"
 known_noverdict core-entry-checked/LP64 "does not finish alone with 36 GB; the harness is to be split"
 
-fast_cap encoder-handoff/LP64 11
-fast_cap scheduler-notify/LP64 10
-fast_cap ipc-byte-array-visit/ILP32 12
-fast_cap scheduler-worker-handoff/LP64 12
-fast_cap scheduler-target-queue/LP64 12
+fast_cap encoder-handoff/LP64 12
+fast_cap scheduler-notify/LP64 11
+fast_cap ipc-byte-array-visit/ILP32 6
+fast_cap scheduler-worker-handoff/LP64 6
+fast_cap scheduler-target-queue/LP64 5
 
 slow allocate-task/ILP32                         3  1800
 slow allocate-task/LP64                          4  1800
@@ -50,6 +50,7 @@ slow gc-metadata-layout-esp32/ILP32              3  4200
 slow gc-metadata-layout/ILP32                    3  1800
 slow gc-remembered-card/LP64                     3  2100
 slow gc-scavenge-alias/ILP32                     3  1800
+slow gc-scavenge-alias/LP64                      3  2280
 slow gc-scavenge-graph/ILP32                     3  1800
 slow gc-scavenge-graph/LP64                      4  1800
 slow gc-stack-shrink/ILP32                       3  1800
@@ -71,11 +72,10 @@ slow task-transfer/LP64                          3  1980
 slow timer-delete/LP64                           5  1800
 slow timer-dispatch/LP64                         9  1800
 # Not measured to the end yet (caps and timeouts from the last full run).
-slow free-list-selection/LP64 16 7200
+slow free-list-selection/LP64 24 7200
 slow gc-compaction-overhang/LP64 12 7200
-slow gc-metadata-layout/LP64 4 7200
-slow gc-scavenge-alias/LP64 4 7200
-slow gc-sweep-chunk/ILP32 16 14400
-slow gc-sweep-chunk/LP64 16 14400
+slow gc-metadata-layout/LP64 4 10800
+slow gc-sweep-chunk/ILP32 16 10800
+slow gc-sweep-chunk/LP64 28 10800
 slow ipc-byte-array-visit/LP64 16 7200
 slow scheduler-notify/ILP32 16 7200

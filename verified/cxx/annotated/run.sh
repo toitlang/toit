@@ -69,6 +69,9 @@ JOBS="$ACXX_WORK/logs/run-jobs"
 rm -rf "$JOBS"
 mkdir -p "$JOBS"
 MAXJOBS="${RUN_JOBS:-$(nproc)}"
+# The jobs report waiting for memory on run.sh's stderr (their own output
+# goes to their logs, printed at the end).
+exec 7>&2
 njobs=0
 pids=()
 # Interrupted: stop the jobs (each stops its model checker, mc_run).
@@ -99,6 +102,7 @@ defer() {
 # The fast tier runs every job not listed by `slow` in model-check-jobs.sh, the slow tier
 # (--slow) only those. Settings (environment; memory in GB):
 #   RUN_MEM_BUDGET    the memory of all model-checker jobs at once (40)
+#   RUN_SLOW_BUDGET   of which slow-tier jobs hold at most (the budget less 16)
 #   RUN_FAST_MEM      a fast job's cap (4)    RUN_FAST_TIMEOUT  (600 s)
 #   RUN_SLOW_MEM      a slow job's cap when its entry gives none (16)
 #   RUN_SLOW_TIMEOUT  a slow job's timeout when its entry gives none (7200 s)
@@ -153,43 +157,98 @@ mc_select() {
 }
 
 # Reserve and give back MB of the machine-wide budget. The reservations are
-# lines `PID MB` in $MC_MEMFILE; those of dead processes no longer count. A
-# job larger than the whole budget runs when nothing else holds any. The
-# jobs waiting for memory queue in $MC_MEMFILE.queue (first come, first
-# served: a large job is not starved by smaller ones that keep fitting).
+# lines `PID MB` in $MC_MEMFILE; those of dead processes no longer count.
+# Jobs waiting for memory queue first come, first served within their
+# tier, so a large job is not starved by smaller ones that keep fitting:
+# fast jobs in $MC_MEMFILE.queue, slow jobs in $MC_MEMFILE.slow-queue (lines
+# `PID`). $MC_MEMFILE.slow lists the slow jobs that hold memory. (The
+# first version had only the first two files, in these formats; it still
+# works beside this one, its jobs counting as fast.) The tiers do not wait
+# for each other the same way, so a slow-tier run of one checkout cannot
+# stall the gate of another:
+#   - a fast job waits only for earlier fast jobs and for room in the
+#     budget;
+#   - a slow job also waits while any fast job waits, and the slow jobs
+#     together hold at most RUN_SLOW_BUDGET (the budget less 16 GB), so
+#     the fast tier always has 16 GB. A slow job larger than that runs
+#     when no other slow job holds memory.
+# A job larger than the whole budget runs when nothing else holds any.
+MC_SLOW_BUDGET_MB=$(gb_to_mb "${RUN_SLOW_BUDGET:-$(awk -v b="${RUN_MEM_BUDGET:-40}" 'BEGIN {print (b > 32 ? b - 16 : b / 2)}')}")
+# live_pids FILE: the PIDs in FILE whose process still runs, in order (and
+# FILE rewritten with only those).
+live_pids() {
+  local pid live=()
+  if [ -f "$1" ]; then
+    while read -r pid; do
+      [ -n "$pid" ] && [ -e "/proc/$pid" ] && live+=("$pid")
+    done < "$1"
+  fi
+  printf '%s\n' "${live[@]}" | grep . > "$1"
+  cat "$1"
+}
 mem_acquire() {
-  local need="$1" used pid mb lines queue head
+  local need="$1" name="$2" used slow_used pid mb lines ok waited=0 said=-1 own_queue me="$BASHPID"
+  local fast_queue=() slow_queue=() slow_holders=()
+  local -A slow_pids=()
+  own_queue="$MC_MEMFILE.queue"
+  [ "$TIER" = slow ] && own_queue="$MC_MEMFILE.slow-queue"
   exec 8>> "$MC_MEMFILE.lock"
   flock 8
-  echo "$BASHPID" >> "$MC_MEMFILE.queue"
+  echo "$me" >> "$own_queue"
   exec 8>&-
   while :; do
     exec 8>> "$MC_MEMFILE.lock"
     flock 8
-    queue=()
-    while read -r pid; do
-      [ -n "$pid" ] && [ -e "/proc/$pid" ] && queue+=("$pid")
-    done < "$MC_MEMFILE.queue"
-    head="${queue[0]:-}"
+    mapfile -t fast_queue < <(live_pids "$MC_MEMFILE.queue")
+    mapfile -t slow_queue < <(live_pids "$MC_MEMFILE.slow-queue")
+    mapfile -t slow_holders < <(live_pids "$MC_MEMFILE.slow")
+    # (Rejoin the queue if an older run.sh dropped the line.)
+    if [ "$TIER" = fast ] && ! printf '%s\n' "${fast_queue[@]}" | grep -qx "$me"; then
+      echo "$me" >> "$MC_MEMFILE.queue"
+      fast_queue+=("$me")
+    fi
+    slow_pids=()
+    for pid in "${slow_holders[@]}"; do slow_pids[$pid]=1; done
     lines=()
     used=0
+    slow_used=0
     if [ -f "$MC_MEMFILE" ]; then
       while read -r pid mb; do
         [ -n "$pid" ] && [ -e "/proc/$pid" ] || continue
         lines+=("$pid $mb")
         used=$((used + mb))
+        [ -n "${slow_pids[$pid]:-}" ] && slow_used=$((slow_used + mb))
       done < "$MC_MEMFILE"
     fi
-    if [ "$head" = "$BASHPID" ] && (( used == 0 || used + need <= MC_BUDGET_MB )); then
+    ok=0
+    if [ "$TIER" = fast ]; then
+      [ "${fast_queue[0]:-}" = "$me" ] && (( used == 0 || used + need <= MC_BUDGET_MB )) && ok=1
+    elif [ "${slow_queue[0]:-}" = "$me" ] && [ ${#fast_queue[@]} -eq 0 ] \
+        && (( used == 0 || used + need <= MC_BUDGET_MB )) \
+        && (( slow_used == 0 || slow_used + need <= MC_SLOW_BUDGET_MB )); then
+      ok=1
+    fi
+    if (( ok )); then
       lines+=("$BASHPID $need")
       printf '%s\n' "${lines[@]}" > "$MC_MEMFILE"
-      printf '%s\n' "${queue[@]:1}" > "$MC_MEMFILE.queue"
+      grep -vx "$me" "$own_queue" > "$own_queue.new"
+      mv "$own_queue.new" "$own_queue"
+      [ "$TIER" = slow ] && echo "$me" >> "$MC_MEMFILE.slow"
       exec 8>&-
+      (( said >= 0 )) && printf '%s  %-40s got its %d MB after %d s\n' "$(date +%T)" "$name" "$need" "$waited" >&7
       return 0
     fi
-    printf '%s\n' "${queue[@]}" > "$MC_MEMFILE.queue"
     exec 8>&-
+    # After 30 s, say what it waits for (on run.sh's stderr), then every
+    # 10 minutes.
+    if (( waited >= 30 && (said < 0 || waited - said >= 600) )); then
+      printf '%s  %-40s waits for %d MB of model-checker memory: %d of %d MB held (%d by slow-tier jobs, at most %d); waiting: %d fast, %d slow jobs (%s)\n' \
+        "$(date +%T)" "$name" "$need" "$used" "$MC_BUDGET_MB" "$slow_used" "$MC_SLOW_BUDGET_MB" \
+        "${#fast_queue[@]}" "${#slow_queue[@]}" "$MC_MEMFILE" >&7
+      said=$waited
+    fi
     sleep 3
+    waited=$((waited + 3))
   done
 }
 mem_release() {
@@ -198,6 +257,10 @@ mem_release() {
   if [ -f "$MC_MEMFILE" ]; then
     grep -v "^$BASHPID " "$MC_MEMFILE" > "$MC_MEMFILE.new"
     mv "$MC_MEMFILE.new" "$MC_MEMFILE"
+  fi
+  if [ -f "$MC_MEMFILE.slow" ]; then
+    grep -vx "$BASHPID" "$MC_MEMFILE.slow" > "$MC_MEMFILE.slow.new"
+    mv "$MC_MEMFILE.slow.new" "$MC_MEMFILE.slow"
   fi
   exec 8>&-
 }
@@ -229,7 +292,7 @@ mc_run() {
   local name="$1" log="$2"
   shift 2
   local cap_kb=$((MC_CAP_MB * 1024)) peak="$log.peak" start end status pid sampler rss vm
-  mem_acquire "$MC_CAP_MB"
+  mem_acquire "$MC_CAP_MB" "$name"
   start=$(date +%s%N)
   echo "0 0" > "$peak"
   ( ulimit -v "$cap_kb"; exec timeout -k 30 "$MC_TIMEOUT" "$@" ) > "$log" 2>&1 &
