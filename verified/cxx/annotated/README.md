@@ -20,8 +20,141 @@ mutants' copies) goes to a directory per checkout under `work/` there
 the scratch directory was shared, and two checkouts rendering at once
 wrote the same AST dump twice ("2 definitions of toit::Instance::at_put").
 The checks run as parallel jobs: the LP64 proofs together with
-`render.sh --check`, the ILP32 proofs and the mutants after it (about 40 s
-wall on 16 cores).
+`render.sh --check`, the ILP32 proofs and the mutants after it.
+
+### Two tiers
+
+The model-checker jobs (ESBMC and CBMC harnesses under `../harness/`,
+started by `cpp_equivalence`, `ec618_cbmc` and `array_allocation` in
+`run.sh`) range from a second to more than an hour and from 0.1 to more
+than 36 GB, so the matrix has two tiers:
+
+* the fast tier, `run.sh` (and `verified/check.sh --tests`): the
+  renderings, the constant and layout checks, every VeriFast proof, the
+  mutants, the Frama-C/WP loops and every model-checker job that is not
+  listed in `model-check-jobs.sh`;
+* the slow tier, `run.sh --slow` (and `verified/check.sh --slow`, which
+  runs both): only the jobs listed by `slow` in `model-check-jobs.sh`. It
+  has its own lock, so the fast tier can run in the same checkout
+  meanwhile.
+
+Every model-checker job, in either tier, runs under a memory cap
+(`ulimit -v`) and a timeout, and holds its cap from a memory budget shared
+by all checkouts on the machine (`$ACXX_HOME/work/model-check-memory`)
+while it runs: memory, not the core count, limits how many run at once.
+Jobs waiting for memory queue first come, first served within their tier,
+but a slow-tier run of one checkout cannot stall the gate of another:
+fast jobs never wait for slow ones, slow jobs wait while any fast job
+waits, and the slow jobs together hold at most `RUN_SLOW_BUDGET` (the
+budget less 16 GB), so the fast tier always has 16 GB (a slow job larger
+than that runs when no other slow job holds memory). A job that has
+waited 30 s says on `run.sh`'s stderr what it waits for, and again every
+10 minutes. Stopping `run.sh` (TERM, INT) stops its model checkers.
+A job prints one of `ok` (its expected verdict), `FAIL` (`property
+violated`, or `error`), or `NOVERDICT` (out of time or memory, or killed
+by a signal: nothing was proved or refuted). A no-verdict is never an
+`ok`; `run.sh` exits with 1 when something failed, otherwise with 4 when
+a job gave no verdict. Settings (environment, memory in GB): 
+`RUN_MEM_BUDGET` (40), `RUN_SLOW_BUDGET` (24), `RUN_FAST_MEM` (4; `fast_cap` raises it per job),
+`RUN_FAST_TIMEOUT` (600 s), `RUN_SLOW_MEM` and `RUN_SLOW_TIMEOUT` (16,
+7200 s: for a `slow` entry without its own), `RUN_MEM_SCALE` and
+`RUN_TIME_SCALE` (scale every cap or timeout), `RUN_KNOWN_NOVERDICT=1`
+(also run the jobs known not to finish), `RUN_MC=0` (skip the model
+checkers, for VeriFast iterations). Each job's verdict, time and peak
+memory (resident and virtual, of its process tree, sampled every second)
+are appended to `$ACXX_WORK/logs/model-check-fast.tsv` or `-slow.tsv`.
+
+A job is in the slow tier when it took more than 90 s when measured. The
+measurements below (2026-11-23, 32 cores shared with unrelated work,
+up to six model-checker jobs at once, ESBMC 8.6.0) are the last record of
+each job in the `.tsv` files; "Cap then" is the cap it ran under
+(`model-check-jobs.sh` now gives each job about 1.5 times its peak
+virtual size, and 4 times its time, at least 30 minutes, as its timeout).
+Peaks are sampled once a second. A NOVERDICT row proved nothing: the
+property was neither proved nor refuted at that cap or timeout.
+
+| Job | Verdict | Time (s) | Peak resident (GB) | Peak virtual (GB) | Cap then (GB) | Note |
+|---|---|---:|---:|---:|---:|---|
+| core-entry/LP64 | NOVERDICT (known) | | | | | not run: does not finish alone with 36 GB (measured before this table); harness to be split |
+| core-entry-checked/LP64 | NOVERDICT (known) | | | | | not run: does not finish alone with 36 GB (measured before this table); harness to be split |
+| allocate-task/ILP32 | PASS | 175 | 0.8 | 1.5 | 6 |  |
+| allocate-task/LP64 | PASS | 306 | 1.4 | 2.0 | 6 |  |
+| core-entry-checked/ILP32 | PASS | 146 | 4.2 | 4.9 | 6 |  |
+| core-entry/ILP32 | PASS | 179 | 4.2 | 5.0 | 6 |  |
+| encoder-collections/LP64 | PASS | 128 | 1.6 | 2.4 | 6 |  |
+| event-notifiers/LP64 | PASS | 156 | 1.3 | 2.0 | 6 |  |
+| external-accounting-threads/ILP32 | PASS | 105 | 1.1 | 1.7 | 6 |  |
+| external-accounting-threads/LP64 | PASS | 108 | 1.1 | 1.7 | 6 |  |
+| external-blob-allocation/ILP32 | PASS | 97 | 0.7 | 1.4 | 6 |  |
+| external-blob-allocation/LP64 | PASS | 481 | 1.2 | 1.9 | 6 |  |
+| finalizer-queue/LP64 | PASS | 104 | 1.4 | 2.1 | 6 |  |
+| free-list-selection/ILP32 | PASS | 1765 | 8.3 | 9.7 | 16 |  |
+| gc-compaction-fix-roots/ILP32 | PASS | 234 | 0.9 | 1.5 | 6 |  |
+| gc-compaction-fix-roots/LP64 | PASS | 1331 | 1.4 | 2.1 | 6 |  |
+| gc-compaction-last-fit/LP64 | PASS | 274 | 1.1 | 1.7 | 6 |  |
+| gc-compaction-overhang/ILP32 | PASS | 1429 | 2.5 | 3.2 | 6 |  |
+| gc-ec618-reclaim/ILP32 | PASS | 126 | 1.2 | 1.5 | 3 |  |
+| gc-ec618-stats/ILP32 | PASS | 84 | 0.6 | 0.7 | 3 |  |
+| gc-external-finalizer-raw/LP64 | PASS | 236 | 2.4 | 3.1 | 6 |  |
+| gc-external-finalizer-string_buffer/LP64 | PASS | 256 | 2.6 | 3.2 | 6 |  |
+| gc-metadata-commit/LP64 | PASS | 797 | 0.4 | 1.0 | 6 |  |
+| gc-metadata-layout-ec618/ILP32 | PASS | 503 | 0.4 | 1.1 | 6 |  |
+| gc-metadata-layout-esp32/ILP32 | PASS | 1049 | 0.5 | 1.1 | 6 |  |
+| gc-metadata-layout/ILP32 | PASS | 162 | 0.2 | 0.8 | 6 |  |
+| gc-remembered-card/LP64 | PASS | 518 | 0.3 | 0.9 | 6 |  |
+| gc-scavenge-alias/ILP32 | PASS | 165 | 0.9 | 1.5 | 6 |  |
+| gc-scavenge-alias/LP64 | PASS | 557 | 1.2 | 1.8 | 6 |  |
+| gc-scavenge-graph/ILP32 | PASS | 146 | 0.8 | 1.4 | 6 |  |
+| gc-scavenge-graph/LP64 | PASS | 331 | 1.5 | 2.1 | 6 |  |
+| gc-stack-shrink/ILP32 | PASS | 147 | 0.8 | 1.4 | 6 |  |
+| gc-stack-shrink/LP64 | PASS | 452 | 1.4 | 2.1 | 6 |  |
+| ipc-fixed-scalar/LP64 | PASS | 232 | 2.0 | 2.7 | 6 |  |
+| ipc-byte-array-visit/LP64 | PASS | 301 | 13.1 | 14.6 | 16 |  |
+| ipc-transferred-array/LP64 | PASS | 696 | 2.3 | 3.1 | 6 |  |
+| monitor-scavenge-promoted/LP64 | PASS | 219 | 0.9 | 1.5 | 6 |  |
+| monitor-scavenge-promotion_failed/LP64 | PASS | 123 | 0.7 | 1.3 | 6 |  |
+| monitor-scavenge-young/LP64 | PASS | 117 | 0.7 | 1.3 | 6 |  |
+| process-array-allocation/LP64 | PASS | 155 | 0.5 | 1.1 | 3 | 4 modes summed |
+| scheduler-notify/ILP32 | PASS | 215 | 17.1 | 18.2 | 24 |  |
+| scheduler-spawn/ILP32 | PASS | 203 | 1.6 | 2.2 | 6 |  |
+| scheduler-spawn/LP64 | PASS | 636 | 3.4 | 4.3 | 6 |  |
+| snapshot-image-layout/LP64 | PASS | 386 | 0.4 | 1.0 | 6 |  |
+| task-all-fields/ILP32 | PASS | 172 | 0.9 | 1.5 | 6 |  |
+| task-all-fields/LP64 | PASS | 256 | 1.2 | 2.0 | 6 |  |
+| task-retry-fields/ILP32 | PASS | 319 | 1.0 | 1.7 | 6 |  |
+| task-retry-fields/LP64 | PASS | 698 | 1.8 | 2.5 | 6 |  |
+| task-transfer/LP64 | PASS | 490 | 1.0 | 1.7 | 6 |  |
+| timer-delete/LP64 | PASS | 153 | 2.2 | 2.9 | 6 |  |
+| timer-dispatch/LP64 | PASS | 203 | 4.8 | 5.6 | 6 |  |
+| free-list-selection/LP64 | NOVERDICT | 3601 | 18.9 | 21.0 | 24 | timeout after 3600 s; at a 16 GB cap out of memory after 175 s |
+| gc-compaction-overhang/LP64 | NOVERDICT | 7200 | 5.1 | 6.2 | 12 | timeout after 7200 s |
+| gc-metadata-layout/LP64 | NOVERDICT | 10800 | 0.5 | 1.1 | 4 | timeout after 10800 s |
+| gc-sweep-chunk/ILP32 | NOVERDICT | 5192 | 13.9 | 15.6 | 16 | out of memory (exit 2) |
+| gc-sweep-chunk/LP64 | NOVERDICT | 3457 | 12.9 | 15.3 | 16 | out of memory (exit 2) |
+
+**Not reproduced.** Results that rest on these jobs are claimed in this
+README or in `verified/core/TRUSTED.md`, and were not reproduced on
+2026-11-23. The claim in this README is marked where it is made;
+TRUSTED.md is not edited:
+
+* `core-entry/LP64` and `core-entry-checked/LP64` (the core's entry
+  harness on 64-bit): no verdict. Both ILP32 runs pass.
+* `gc-sweep-chunk` (TRUSTED.md's "three-card sweep fixture"): no verdict
+  on either width; out of memory at 16 GB after 58 min (LP64) and 87 min
+  (ILP32).
+* `gc-compaction-overhang/LP64` (TRUSTED.md's "overhang fixture"): no
+  verdict, out of time after 2 h at 5 GB. ILP32 passes (24 min).
+* `gc-metadata-layout/LP64` (below, "`gc-metadata-layout` checks
+  non-embedded GC setup"): no verdict, out of time after 3 h at 0.5 GB.
+  ILP32 and the EC618 and ESP32 variants pass.
+* `free-list-selection/LP64`: no verdict, out of time after 1 h at a
+  24 GB cap (19 GB resident). ILP32 passes (29 min, 8 GB).
+
+The fast tier's model-checker jobs took up to about 90 s each when
+measured with a few jobs at once; with the whole fast tier and other
+work on the machine some took up to 314 s (gc-compaction-card-rank/LP64),
+within the fast tier's 600 s timeout. Their peaks were below 2.3 GB,
+except the five with a `fast_cap` (2.4 to 7.0 GB resident).
 
 ## The rendering: generated, not hand-written
 
@@ -168,11 +301,19 @@ gives. Not proposed; reporting the front end's missing casts upstream is.
 
 ## Status
 
-`run.sh`: 40 sidecars (one the translator's self-test), 413 rendered functions (21 contract-only) and 4 closures, proved
-for LP64 and ILP32; reverted-bug and contract mutants, including an ILP32-only
-check, and 2 drift tests
-(each proof 0.1-4 s, the encoder 8 s, the decoder 10-40 s and time_info
-25-45 s on loaded cores). Lines: `metrics.sh` (C++ = the
+`run.sh`: 66 sidecars (one the translator's self-test), 591 `@render`
+functions (`metrics.sh`; the contract-only functions and the closures
+among them were not recounted), proved for LP64 and ILP32;
+reverted-bug and contract mutants, including an ILP32-only check, and
+2 drift tests. Measured 2026-11-23 and -24 on fresh work directories
+(32 cores shared with other work and with a slow-tier job): the fast
+tier 1211 checks ok, 0 FAIL, 0 NOVERDICT, in 1954 s and 1986 s wall.
+140 VeriFast proofs, median 0.8 s, 90th percentile 15 s. The long ones
+(LP64 / ILP32) are utf16-to-8 (705 / 219 s; 420 s LP64 alone),
+time_info (98 / 58 s), local_epoch (85 / 45 s), ffi (31 / 91 s), the
+decoder (18 / 80 s) and the encoder (6 / 17 s). Earlier claims of 40 s
+wall for the matrix and 0.1-4 s per proof were not reproduced.
+utf16-to-8 and its mutants are the fast tier's critical path. Lines: `metrics.sh` (C++ = the
 rendered functions' lines; annotations among them; then the hand-written C
 and annotations of the verbatim sections: trusted prototypes, predicates,
 lemmas).
@@ -1045,7 +1186,9 @@ It checks the class ID, tag, next pointer, end, dirty byte and object-start
 byte. Recording the payload start updates that same byte or the adjacent
 card, preserving neighboring metadata and the first payload word.
 
-`gc-metadata-layout` checks non-embedded GC setup for arbitrary reported heap
+(Not reproduced on LP64, 2026-11-23: `gc-metadata-layout/LP64` gave no
+verdict in 3 h, see "Two tiers"; ILP32 and the EC618 and ESP32 variants
+pass.) `gc-metadata-layout` checks non-embedded GC setup for arbitrary reported heap
 bounds. Empty intervals and unrepresentable exclusive ends fail before
 reservation. The OS model supplies a machine-word-aligned metadata reservation
 or null, and can fail each commit. The bulk-fill
@@ -2217,6 +2360,7 @@ model is revised.
   census.
 * `render.sh` (translator, both widths), `prefetch-ast.sh` (Clang dumps in
   parallel), `clang-ast.sh`, `constants-check.sh`, `mutant.sh`, `run.sh`,
-  `metrics.sh`, `vf.sh`.
+  `metrics.sh`, `vf.sh`; `model-check-jobs.sh` (the slow tier and the
+  per-job memory caps, "Two tiers").
 * `probes/`, `shim/`, `fcshim/`, `framac.sh`, `cn.sh`, `cxx-ast.sh`: the
   pilot's probes of other tools and of the C++ front end.

@@ -56,11 +56,13 @@ slow gc-scavenge-graph/LP64                      4  1800
 slow gc-stack-shrink/ILP32                       3  1800
 slow gc-stack-shrink/LP64                        4  1860
 slow ipc-fixed-scalar/LP64                       5  1800
+slow ipc-byte-array-visit/LP64                    22  1800
 slow ipc-transferred-array/LP64                  5  2820
 slow monitor-scavenge-promoted/LP64              3  1800
 slow monitor-scavenge-promotion_failed/LP64      3  1800
 slow monitor-scavenge-young/LP64                 3  1800
 slow process-array-allocation/LP64 3 3600
+slow scheduler-notify/ILP32                       24  1800
 slow scheduler-spawn/ILP32                       4  1800
 slow scheduler-spawn/LP64                        7  2580
 slow snapshot-image-layout/LP64                  3  1800
@@ -71,11 +73,12 @@ slow task-retry-fields/LP64                      4  2820
 slow task-transfer/LP64                          3  1980
 slow timer-delete/LP64                           5  1800
 slow timer-dispatch/LP64                         9  1800
-# Not measured to the end yet (caps and timeouts from the last full run).
-slow free-list-selection/LP64 24 7200
-slow gc-compaction-overhang/LP64 12 7200
+# No verdict yet when measured (the README table): out of memory at 16 GB
+# (gc-sweep-chunk) or out of time (the others). Their caps and timeouts are
+# estimates for the next attempt; a cap above RUN_SLOW_BUDGET runs when no
+# other slow job holds memory.
+slow free-list-selection/LP64 30 14400
+slow gc-compaction-overhang/LP64 10 14400
 slow gc-metadata-layout/LP64 4 10800
-slow gc-sweep-chunk/ILP32 16 10800
-slow gc-sweep-chunk/LP64 28 10800
-slow ipc-byte-array-visit/LP64 16 7200
-slow scheduler-notify/ILP32 16 7200
+slow gc-sweep-chunk/ILP32 24 14400
+slow gc-sweep-chunk/LP64 28 14400
