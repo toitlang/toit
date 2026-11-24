@@ -264,4 +264,28 @@ inline word use_lambdas(word a, word b) {
   return retry_once(2, [&]() -> word { return base; });
 }
 
+// Rule (@nested-type, wave 10): a nested class spelled without its
+// enclosing class in a sibling nested class (`Cell`, not `Holder::Cell`) is
+// the C struct the sidecar names, Holder_Cell (Clang's AST gives the type
+// as spelled).
+class Holder {
+ public:
+  class Cell {
+   public:
+    explicit Cell(word x) : v_(x) {}
+    word get() { return v_; }
+
+   private:
+    word v_;
+  };
+
+  class User {
+   public:
+    static word twice(word x) {
+      Cell cell(x);
+      return cell.get() * 2;
+    }
+  };
+};
+
 }  // namespace toit

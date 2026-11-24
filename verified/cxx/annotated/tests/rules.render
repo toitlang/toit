@@ -8,6 +8,7 @@
 @overloaded Over::f
 @modular-arguments Tagged::Tagged
 @overloaded Defaults::Defaults
+@nested-type Cell Holder::Cell
 @verbatim
 #include <stdint.h>
 #include "rules_constants.h"
@@ -35,6 +36,8 @@ struct Defaults { word x_; RuleMode mode_; word count_; bool flag_; struct Defau
 typedef struct Defaults Defaults;
 struct Later { word x_; };
 typedef struct Later Later;
+struct Holder_Cell { word v_; };
+typedef struct Holder_Cell Holder_Cell;
 // The implicit default constructor (initializes nothing).
 void plain_c_ctor(struct plain_c *self);
 //@ requires self->a |-> _;
@@ -396,3 +399,24 @@ static word retry_once(word n, F produce)
   if (result < 0) result = produce();
   return result + n;
 }
+
+@render verified/cxx/annotated/tests/rules.cc toit::Holder::Cell::Cell
+    explicit Cell(word x) : v_(x)
+    //@ requires self->v_ |-> _;
+    //@ ensures self->v_ |-> x;
+    {}
+
+@render verified/cxx/annotated/tests/rules.cc toit::Holder::Cell::get
+    word get()
+    //@ requires self->v_ |-> ?v;
+    //@ ensures self->v_ |-> v &*& result == v;
+    { return v_; }
+
+@render verified/cxx/annotated/tests/rules.cc toit::Holder::User::twice
+    static word twice(word x)
+    //@ requires 0 <= x &*& x < 1000;
+    //@ ensures result == x * 2;
+    {
+      Cell cell(x);
+      return cell.get() * 2;
+    }

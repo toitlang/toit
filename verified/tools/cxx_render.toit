@@ -215,7 +215,9 @@ A sidecar: a sequence of sections, each opened by a directive line (a
 Configuration: `@raii CLASS`, `@overloaded CLASS::NAME`,
   `@modular-arguments CLASS::CLASS` (the implicit integral conversions of
   the constructor's arguments to an unsigned parameter are the modular
-  ones C++ defines: VeriFast's truncating cast), `@expand-typedef NAME`
+  ones C++ defines: VeriFast's truncating cast), `@nested-type NAME
+  OUTER::NAME` (a class spelled NAME in a sibling nested class, as Clang's
+  AST gives it, is the C struct OUTER_NAME), `@expand-typedef NAME`
   (the typedef is written as the type it stands for on the rendering's
   target, e.g. `uhalf_word`), `@constants FILE`
   (the constant table), `@header FILE` (also write a header), `@include
@@ -228,6 +230,7 @@ class Sidecar:
   overloaded/Set := {}
   static-members/Set := {}
   modular/Set := {}
+  nested-types/Map := {:}
   expanded/Set := {}
   constants-path/string? := null
   header/string? := null
@@ -268,6 +271,10 @@ class Sidecar:
       overloaded.add words[1]
     else if directive == "modular-arguments":
       modular.add words[1]
+    else if directive == "nested-type":
+      if words.size != 3 or (words[1].contains ":") or not (words[2].ends-with "::$words[1]"):
+        fail "@nested-type NAME OUTER::NAME, not $(words[1..].join " ")"
+      nested-types[words[1]] = words[2].replace --all "::" "_"
     else if directive == "constants":
       constants-path = "$dir/$words[1]"
     else if directive == "header":
@@ -613,6 +620,10 @@ only-called node id/string parent/Map? grand/Map? -> none:
 Normalizes a C++ type spelling to C: drops `toit::`, `const`, `volatile`,
   `class`/`struct` keywords stay, references are rejected.
 */
+// The nested classes a sidecar names with `@nested-type NAME OUTER::NAME`
+// (the sidecar being rendered): a type spelled NAME is OUTER_NAME.
+NESTED-TYPES/Map := {:}
+
 c-type t/string -> string:
   // A lambda's closure type (Clang: `(lambda at FILE:LINE:COL)`) is a
   // pointer to its closure struct (the closure rules, `Closure`).
@@ -651,6 +662,7 @@ c-type t/string -> string:
       current += string.from-rune c
   if current != "": words.add current
   words = words.filter: it != "const" and it != "volatile"
+  if not NESTED-TYPES.is-empty: words = words.map: NESTED-TYPES.get it --if-absent=: it
   result := ""
   words.do: | w |
     if w == "*":
@@ -2472,6 +2484,7 @@ run invocation/cli.Invocation:
   invocation["sidecar"].do: | path/string |
     exception := catch --trace=(: it is not RenderError) --unwind=(: it is not RenderError):
       sidecar := Sidecar path
+      NESTED-TYPES = sidecar.nested-types
       unit := Unit sidecar repo cache
       texts := unit.render null
       // Other targets: the implicit conversions differ (on a 32-bit target

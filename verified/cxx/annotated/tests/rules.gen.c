@@ -33,6 +33,8 @@ struct Defaults { word x_; RuleMode mode_; word count_; bool flag_; struct Defau
 typedef struct Defaults Defaults;
 struct Later { word x_; };
 typedef struct Later Later;
+struct Holder_Cell { word v_; };
+typedef struct Holder_Cell Holder_Cell;
 // The implicit default constructor (initializes nothing).
 void plain_c_ctor(struct plain_c *self);
 //@ requires self->a |-> _;
@@ -252,6 +254,21 @@ word retry_once__use_lambdas_lambda1(word n, struct use_lambdas_lambda1 *produce
 word retry_once__use_lambdas_lambda2(word n, struct use_lambdas_lambda2 *produce);
 //@ requires [?f]produce->base |-> ?x &*& 0 <= x &*& x < 1000 &*& 0 <= n &*& n < 10;
 //@ ensures [f]produce->base |-> x &*& result == x + n;
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::Holder::Cell::Cell
+void Holder_Cell_ctor(Holder_Cell *self, word x);
+//@ requires self->v_ |-> _;
+//@ ensures self->v_ |-> x;
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::Holder::Cell::get
+word Holder_Cell_get(Holder_Cell *self);
+//@ requires self->v_ |-> ?v;
+//@ ensures self->v_ |-> v &*& result == v;
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::Holder::User::twice
+word Holder_User_twice(word x);
+//@ requires 0 <= x &*& x < 1000;
+//@ ensures result == x * 2;
 
 // C++: verified/cxx/annotated/tests/rules.cc toit::Outer::Inner::Inner
 void Outer_Inner_ctor(Outer_Inner *self, word x)
@@ -638,5 +655,31 @@ word retry_once__use_lambdas_lambda2(word n, struct use_lambdas_lambda2 *produce
     result = use_lambdas_lambda2_call(produce);
   }
   return result + n;
+}
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::Holder::Cell::Cell
+void Holder_Cell_ctor(Holder_Cell *self, word x)
+//@ requires self->v_ |-> _;
+//@ ensures self->v_ |-> x;
+{
+  self->v_ = x;
+}
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::Holder::Cell::get
+word Holder_Cell_get(Holder_Cell *self)
+//@ requires self->v_ |-> ?v;
+//@ ensures self->v_ |-> v &*& result == v;
+{
+  return self->v_;
+}
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::Holder::User::twice
+word Holder_User_twice(word x)
+//@ requires 0 <= x &*& x < 1000;
+//@ ensures result == x * 2;
+{
+  Holder_Cell cell;
+  Holder_Cell_ctor(&cell, x);
+  return Holder_Cell_get(&cell) * 2;
 }
 
