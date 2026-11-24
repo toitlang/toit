@@ -2485,6 +2485,14 @@ mutant error-roots-skip-neighbour loader/error_roots.render src/program.cc "Cann
   "j > i; j--" "j > i + 1; j--"
 mutant error-roots-heap-check loader/error_roots.render src/program.cc "Cannot prove" "" \
   "!is_heap_object(roots_[i]) ||" "false ||"
+# The unsigned integer readers (`-allow_dead_code`: the int argument's
+# round trip is dead on ILP32): the end check left out (a read past the
+# blob); the little-endian loop started one byte too high.
+entry read-bytes            pass "" prims/read_bytes.gen.c -allow_dead_code -prover z3v4.5
+mutant read-bytes-end-check prims/read_bytes.render src/primitive_core.cc "No matching|Cannot prove" "-allow_dead_code -prover z3v4.5" \
+  "PRIMITIVE(read_uint_big_endian)@@ || unsigned_offset + unsigned_width > length) {" ") {"
+mutant read-bytes-little-start prims/read_bytes.render src/primitive_core.cc "No matching|Cannot prove" "-allow_dead_code -prover z3v4.5" \
+  "PRIMITIVE(read_uint_little_endian)@@for (word i = width - 1;" "for (word i = width;"
 entry word-size             pass "" prims/word_size.gen.c
 mutant word-size-bits prims/word_size.render src/primitive_core.cc "smi_val|Cannot prove condition" "" \
   "return Smi::from(WORD_SIZE);" "return Smi::from(WORD_SIZE * 8);"

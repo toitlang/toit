@@ -11,9 +11,12 @@
 @verbatim
 #include <stdint.h>
 #include "rules_constants.h"
+//@ #include <bitops.gh>
 typedef intptr_t word;
 typedef uintptr_t uword;
 typedef unsigned int uint32;
+typedef unsigned long long uint64;
+typedef unsigned char uint8;
 struct Tagged { uword tag_; };
 typedef struct Tagged Tagged;
 struct Outer_Inner { word v_; };
@@ -33,6 +36,30 @@ typedef struct Later Later;
 void plain_c_ctor(struct plain_c *self);
 //@ requires self->a |-> _;
 //@ ensures self->a |-> _;
+
+/*@
+lemma void unsigned_of_int32(int x)
+  requires -2147483648 <= x &*& x <= 2147483647;
+  ensures x < 0 ? truncate_unsigned(x, 32) == x + 4294967296 : truncate_unsigned(x, 32) == x;
+{
+  assert pow_nat(2, N16) == 65536;
+  assert pow_nat(2, N32) == 4294967296;
+  assert int_of_nat(N32) == 32;
+  truncate_unsigned_def(x, N32);
+  assert [_]divrem(x, pow_nat(2, N32), ?q, ?r);
+  assert x == q * 4294967296 + r &*& 0 <= r &*& r < 4294967296;
+  if (x >= 0) {
+    if (q < 0) { mul_mono_l(q, -1, 4294967296); assert false; }
+    if (q > 0) { mul_mono_l(1, q, 4294967296); assert false; }
+    assert q * 4294967296 == 0;
+  } else {
+    if (q >= 0) { mul_mono_l(0, q, 4294967296); assert false; }
+    if (q < -1) { mul_mono_l(q, -2, 4294967296); assert false; }
+    assert q * 4294967296 == -4294967296;
+  }
+  assert truncate_unsigned(x, 32) == r;
+}
+@*/
 
 @prototypes
 @render verified/cxx/annotated/tests/rules.cc toit::Outer::Inner::Inner
@@ -200,6 +227,27 @@ inline int use_plain()
   struct plain_c p;
   p.a = 1;
   return p.a;
+}
+
+@render verified/cxx/annotated/tests/rules.cc toit::small_unsigned unsigned-word-conversion
+inline bool small_unsigned(int x)
+// A negative x becomes x + 2^32: not small.
+//@ requires true;
+//@ ensures result == (0 <= x && x <= 8);
+{
+  //@ unsigned_of_int32(x);
+  unsigned u = x;
+  return u <= 8;
+}
+
+@render verified/cxx/annotated/tests/rules.cc toit::shift_in truncating
+inline uint64 shift_in(uint64 v)
+// The shift discards the high byte (no overflow check).
+//@ requires true;
+//@ ensures true;
+{
+  v <<= 8;
+  return v;
 }
 
 @render verified/cxx/annotated/tests/rules.cc toit::narrow_unsigned truncating

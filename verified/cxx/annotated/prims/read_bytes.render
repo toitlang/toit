@@ -1,0 +1,161 @@
+// Copyright (C) 2026 Toit contributors.
+//
+// The integer readers of src/primitive_core.cc: read_uint_big_endian,
+// read_uint_little_endian, read_int_big_endian, read_int_little_endian
+// (ported to Rust; the C++ runs when the port declines). Each takes a
+// width and an offset from the program and reads that many bytes of a
+// string or byte array.
+//
+// Proved: the ARGS expansion (Blob decoding by the proven byte_content,
+// the int and word arguments), every read inside the blob's content, no
+// overflow or lossy conversion other than the modular ones the C++ means
+// (`truncating`, `unsigned-word-conversion`: a negative width or offset
+// becomes a large unsigned one and is rejected), the heap unchanged up to
+// the boxed result (Primitive::integer), and `oom_clean` (the retry rule:
+// the boxed result is the only allocation, the last step). Not proved:
+// which integer the bytes give.
+//
+// Self-tests (run.sh): the offset check left out; the width bound
+// widened by one.
+@include ../model/model.cfg
+@verbatim
+#include "integer.gen.h"
+#include "argument_error.gen.h"
+#include "blob_args.gen.h"
+#include "read_slice.h"
+//@ #include "../model/arith.gh"
+
+/*@
+// The unsigned value of a signed one of the same width (the conversion
+// C++ defines: modulo 2^n).
+lemma void unsigned_of_signed(int x, nat n)
+  requires -pow_nat(2, n) <= x &*& x < pow_nat(2, n);
+  ensures truncate_unsigned(x, int_of_nat(n)) == (x < 0 ? x + pow_nat(2, n) : x);
+{
+  pow2_pos(n);
+  truncate_unsigned_def(x, n);
+  assert [_]divrem(x, pow_nat(2, n), ?q, ?r);
+}
+
+// A byte of a byte range is a byte.
+lemma void uchars_nth_range(uint8 *p, int i)
+  requires [?f]uchars(p, ?n, ?cs) &*& 0 <= i &*& i < n;
+  ensures [f]uchars(p, n, cs) &*& 0 <= nth(i, cs) &*& nth(i, cs) <= 255;
+{
+  open [f]uchars(p, n, cs);
+  if (i > 0) uchars_nth_range(p + 1, i - 1); else u_character_limits(p);
+  close [f]uchars(p, n, cs);
+}
+
+lemma void pow2_32()
+  requires true;
+  ensures pow_nat(2, N31) == 2147483648 &*& int_of_nat(N31) == 31 &*& pow_nat(2, N32) == 4294967296 &*& pow_nat(2, N64) == 18446744073709551616;
+{
+  assert pow_nat(2, N8) == 256;
+  assert pow_nat(2, N16) == 65536;
+  assert pow_nat(2, N32) == 4294967296;
+  assert pow_nat(2, N31) == 2147483648;
+  assert int_of_nat(N31) == 31;
+  assert pow_nat(2, N64) == 18446744073709551616;
+}
+@*/
+@prototypes
+@render src/primitive_core.cc toit::primitive_read_uint_big_endian truncating unsigned-word-conversion
+PRIMITIVE(read_uint_big_endian)
+/*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
+             pointer(__args, ?x0) &*& pointer(__args - 1, ?x1) &*& pointer(__args - 2, ?x2) &*& pointer(__args - 3, ?x3) &*&
+             good(objs, x1) && good(objs, x2); @*/
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*& grows(objs, H, objs2, H2) == true &*&
+            pointer(__args, x0) &*& pointer(__args - 1, x1) &*& pointer(__args - 2, x2) &*& pointer(__args - 3, x3); @*/
+{
+  //@ close valid_arg(x2, objs);
+  //@ leak valid_arg(x2, objs);
+  //@ grows_refl(objs, H);
+  ARGS(Object, unused, Blob, source, int, width, word, offset);
+  //@ assert [_]blob_result(objs, H, STRINGS_OR_BYTE_ARRAYS, ?a, ?len, ?b);
+  //@ open [_]blob_result(objs, H, STRINGS_OR_BYTE_ARRAYS, a, len, b);
+  //@ blob_facts(b);
+  //@ assert len <= MAX_BLOB;
+  USE(unused);
+  //@ pow2_32();
+  //@ truncate_signed_limits(_word_width, N31);
+  //@ unsigned_of_signed(width, N32);
+  unsigned unsigned_width = width;
+  //@ unsigned_of_signed(offset, sizeof(word) == 8 ? N64 : N32);
+  uword unsigned_offset = offset;
+  //@ unsigned_of_signed(len, sizeof(word) == 8 ? N64 : N32);
+  uword length = source.length();
+  //@ assert length == len;
+  //@ if (unsigned_offset <= length && unsigned_width <= 8) { assert unsigned_offset + unsigned_width <= MAX_BLOB + 8; unsigned_of_signed(unsigned_offset + unsigned_width, sizeof(word) == 8 ? N64 : N32); }
+  // We don't need to check for <0 on unsigned values.  Can't have integer
+  // overflow when they are both constrained in size (assuming the byte
+  // array can't be close to 4Gbytes large).
+  if (unsigned_offset > length || unsigned_width > 8 || unsigned_offset + unsigned_width > length) {
+    FAIL(OUT_OF_BOUNDS);
+  }
+  uint64 value = 0;
+  //@ borrow_slice(b, a, len);
+  for (int i = 0; i < width; i++)
+  /*@ invariant source.address_ |-> a &*& source.length_ |-> len &*& validation_slice(objs, H, b, a, len) &*&
+                uchars(a, len, ?bs) &*& 0 <= i &*& i <= width &*& 0 <= value &*& value <= UINT64_MAX; @*/
+  {
+    //@ uint64 value_before = value;
+    value <<= 8;
+    //@ truncate_limits(value_before << 8, N64);
+    //@ uchars_nth_range(a, offset + i);
+    //@ bitor_limits(value, nth(offset + i, bs), N64);
+    value |= source.address()[offset + i];
+  }
+  //@ return_slice(b, a);
+  return Primitive::integer(value, process);
+}
+
+@render src/primitive_core.cc toit::primitive_read_uint_little_endian truncating unsigned-word-conversion
+PRIMITIVE(read_uint_little_endian)
+/*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
+             pointer(__args, ?x0) &*& pointer(__args - 1, ?x1) &*& pointer(__args - 2, ?x2) &*& pointer(__args - 3, ?x3) &*&
+             good(objs, x1) && good(objs, x2); @*/
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*& grows(objs, H, objs2, H2) == true &*&
+            pointer(__args, x0) &*& pointer(__args - 1, x1) &*& pointer(__args - 2, x2) &*& pointer(__args - 3, x3); @*/
+{
+  //@ close valid_arg(x2, objs);
+  //@ leak valid_arg(x2, objs);
+  //@ grows_refl(objs, H);
+  ARGS(Object, unused, Blob, source, int, width, word, offset);
+  //@ assert [_]blob_result(objs, H, STRINGS_OR_BYTE_ARRAYS, ?a, ?len, ?b);
+  //@ open [_]blob_result(objs, H, STRINGS_OR_BYTE_ARRAYS, a, len, b);
+  //@ blob_facts(b);
+  //@ assert len <= MAX_BLOB;
+  USE(unused);
+  //@ pow2_32();
+  //@ truncate_signed_limits(_word_width, N31);
+  //@ unsigned_of_signed(width, N32);
+  unsigned unsigned_width = width;
+  //@ unsigned_of_signed(offset, sizeof(word) == 8 ? N64 : N32);
+  uword unsigned_offset = offset;
+  //@ unsigned_of_signed(len, sizeof(word) == 8 ? N64 : N32);
+  uword length = source.length();
+  //@ assert length == len;
+  //@ if (unsigned_offset <= length && unsigned_width <= 8) { assert unsigned_offset + unsigned_width <= MAX_BLOB + 8; unsigned_of_signed(unsigned_offset + unsigned_width, sizeof(word) == 8 ? N64 : N32); }
+  // We don't need to check for <0 on unsigned values.  Can't have integer
+  // overflow when they are both constrained in size (assuming the byte
+  // array can't be close to 4Gbytes large).
+  if (unsigned_offset > length || unsigned_width > 8 || unsigned_offset + unsigned_width > length) {
+    FAIL(OUT_OF_BOUNDS);
+  }
+  uint64 value = 0;
+  //@ borrow_slice(b, a, len);
+  for (word i = width - 1; i >= 0; i--)
+  /*@ invariant source.address_ |-> a &*& source.length_ |-> len &*& validation_slice(objs, H, b, a, len) &*&
+                uchars(a, len, ?bs) &*& -1 <= i &*& i < width &*& 0 <= value &*& value <= UINT64_MAX; @*/
+  {
+    //@ uint64 value_before = value;
+    value <<= 8;
+    //@ truncate_limits(value_before << 8, N64);
+    //@ uchars_nth_range(a, offset + i);
+    //@ bitor_limits(value, nth(offset + i, bs), N64);
+    value |= source.address()[offset + i];
+  }
+  //@ return_slice(b, a);
+  return Primitive::integer(value, process);
+}
