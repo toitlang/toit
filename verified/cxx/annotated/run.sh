@@ -2198,13 +2198,21 @@ mutant ffi-allocate-retries ffi/interpreter_v2.render src/interpreter_v2.cc "att
   "SIDECAR::lambda=toit_v2_allocate_double@@  for (int attempts = 1; result == null && attempts < 4; attempts++)" \
   "  for (int attempts = 1; result == null; attempts++)"
 # The core's string allocation with wave 6's check (lengths up to
-# INTPTR_MAX): the allocator's blob bound fails (and at INTPTR_MAX
-# Process::allocate_string's `length + 1` overflowed).
+# INTPTR_MAX, at which Process::allocate_string's `length + 1` overflowed):
+# the check's own conversion fails first (a length above INTPTR_MAX as a
+# word: implementation-defined).
 mutant ffi-allocate-string-bound ffi/interpreter_v2.render src/interpreter_v2.cc "MAX_BLOB|4611686018427387903|1073741823|Cannot prove" "$FFI_OPTS" \
   "SOURCE::  if (length > V2_MAX_BLOB_LENGTH) return 0;\n  return reinterpret_cast<uword>(v2_process(raw_process)->allocate_string(length));" \
   "  if (static_cast<word>(length) < 0) return 0;\n  return reinterpret_cast<uword>(v2_process(raw_process)->allocate_string(length));" \
   "SIDECAR::  if (length > V2_MAX_BLOB_LENGTH)\n  //@ close allocated" \
   "  if (static_cast<word>(length) < 0)\n  //@ close allocated"
+# The same bound without the conversion (lengths up to INTPTR_MAX): the
+# allocator's blob bound (MAX_BLOB, the heap models') fails.
+mutant ffi-allocate-string-unbounded ffi/interpreter_v2.render src/interpreter_v2.cc "div 18446744073709551615 4|div 4294967295 4|4611686018427387903|1073741823" "$FFI_OPTS" \
+  "SOURCE::  if (length > V2_MAX_BLOB_LENGTH) return 0;\n  return reinterpret_cast<uword>(v2_process(raw_process)->allocate_string(length));" \
+  "  if (length > 2 * V2_MAX_BLOB_LENGTH + 1) return 0;\n  return reinterpret_cast<uword>(v2_process(raw_process)->allocate_string(length));" \
+  "SIDECAR::  if (length > V2_MAX_BLOB_LENGTH)\n  //@ close allocated" \
+  "  if (length > 2 * V2_MAX_BLOB_LENGTH + 1)\n  //@ close allocated"
 
 # The sender side of the external message handlers (wave 6): the ownership
 # of the encoded buffer and of the caller's data on every path.
