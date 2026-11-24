@@ -34,10 +34,16 @@ Object *primitive_byte_zap(Process *process, Object **__args)
 /*@ requires [?fp]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
              pointer(__args, ?a0) &*& pointer(__args - 1, ?a1) &*& good(objs, a0) == true &*& good(objs, a1) == true; @*/
 /*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+            oom_unchanged(prog, objs, H, objs2, H2, result) == true &*&
             pointer(__args, a0) &*& pointer(__args - 1, a1); @*/
 {
   MutableBlob bytes;
   Error *_mutable_blob_error_bytes;
+  //@ process_program(process);
+  //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);
+  //@ immediate_error_not_oom(prog, Program_WRONG_OBJECT_TYPE_INDEX);
+  //@ error_word(Program_OUT_OF_RANGE_INDEX);
+  //@ immediate_error_not_oom(prog, Program_OUT_OF_RANGE_INDEX);
   //@ close valid_arg(a1, objs);
   //@ leak valid_arg(a1, objs);
   Object *_raw_bytes = __args[-(0)];

@@ -174,13 +174,25 @@ static Object* blit_with_destination(Process* process, Object** __args, MutableB
              pointer(__args - 6, x7) &*&
              pointer(__args - 7, x8) &*&
              pointer(__args - 8, x9) &*&
-             pointer(__args - 9, x10) &*& (result == process_null(process) || (uword)result % 4 == 3); @*/
+             pointer(__args - 9, x10) &*& (result == process_null(process) || (uword)result % 4 == 3) &*&
+             oom_error(prog, result) == false; @*/
 {
   //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);
   //@ error_word(Program_WRONG_BYTES_TYPE_INDEX);
   //@ error_word(Program_OUT_OF_BOUNDS_INDEX);
   //@ error_word(Program_INVALID_ARGUMENT_INDEX);
   //@ error_word(Program_OUT_OF_RANGE_INDEX);
+  // The retry rule: the destination's copy-on-write copy is installed
+  // already; no error of this part is an out-of-memory one.
+  //@ process_program(process);
+  //@ immediate_error_not_oom(prog, Program_WRONG_OBJECT_TYPE_INDEX);
+  //@ immediate_error_not_oom(prog, Program_WRONG_BYTES_TYPE_INDEX);
+  //@ immediate_error_not_oom(prog, Program_OUT_OF_BOUNDS_INDEX);
+  //@ immediate_error_not_oom(prog, Program_INVALID_ARGUMENT_INDEX);
+  //@ immediate_error_not_oom(prog, Program_OUT_OF_RANGE_INDEX);
+  // (MALLOC_FAILED's word too, so that the self-test blit-oom-after-copy
+  // fails at the retry clause.)
+  //@ error_word(Program_MALLOC_FAILED_INDEX);
   ARGS(word, dest_pixel_stride, word, dest_line_stride,
        Blob, src, word, src_pixel_stride, word,  src_line_stride,
        word, pixels_per_line,
@@ -213,6 +225,8 @@ static Object* blit_with_destination(Process* process, Object** __args, MutableB
     //@ close blit_lookup(after, H2, lookup);
     //@ leak blit_lookup(after, H2, lookup);
   }
+  // The null result is an object (not a marked error).
+  //@ heap_facts(process_null(process));
   if (dest_line_stride == 0 && src_line_stride == 0) FAIL(INVALID_ARGUMENT);
   if (dest_pixel_stride < 0 && operation == ADD_16_LE) FAIL(INVALID_ARGUMENT);
   //@ open [_]mutable_result(after, H2, process, da, dl, db);
@@ -256,7 +270,8 @@ PRIMITIVE(blit)
              pointer(__args - 7, x7) &*&
              pointer(__args - 8, x8) &*&
              pointer(__args - 9, x9) &*&
-             pointer(__args - 10, x10) &*& (result == process_null(process) || (uword)result % 4 == 3); @*/
+             pointer(__args - 10, x10) &*& (result == process_null(process) || (uword)result % 4 == 3) &*&
+             oom_unchanged(prog, objs, H, after, H2, result) == true; @*/
 {
   ARGS(MutableBlob, dest);
   //@ assert heap(?after, ?H2);

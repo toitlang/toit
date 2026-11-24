@@ -167,6 +167,8 @@
 #define Program_BUILTIN_CLASS_IDS_COUNT 23
 #define Error_MAX_TAGGED_ERROR 256
 #define Program_ALLOCATION_FAILED_INDEX 7
+#define Program_FIRST_ERROR_INDEX 7
+#define Program_PERMISSION_DENIED_INDEX 25
 #define Program_ERROR_INDEX 12
 #define Program_ILLEGAL_UTF_8_INDEX 15
 #define Program_INVALID_ARGUMENT_INDEX 16

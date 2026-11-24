@@ -1,0 +1,63 @@
+// Copyright (C) 2026 Toit contributors.
+//
+// Program::has_valid_error_roots of src/program.cc: the loader's check
+// (ProcessGroup::create refuses a program for which it is false) that the
+// error roots are heap references above the immediate errors at pairwise
+// different addresses.
+//
+// Proved: the result is exactly error_roots_ok of the root table's error
+// slots, the conjunct of the model's `program` predicate
+// (model/objects.render) that the proofs of the retry rule use to tell an
+// error that asks for a GC and a retry (oom_error) from the others. It
+// only reads the root table.
+//
+// Self-tests (run.sh): the comparison with the next root left out (a root
+// equal to its neighbour would be accepted); the heap check taken out.
+@include ../model/model.cfg
+@verbatim
+#include "../model/objects.gen.h"
+
+/*@
+// A pointer stored in the root table is within the limits of its
+// provenance (VeriFast's pointer_limits), so its address is a word.
+lemma void pointers_nth_limits(void **pp, int i)
+  requires [?f]pointers(pp, ?n, ?ps) &*& 0 <= i &*& i < n;
+  ensures [f]pointers(pp, n, ps) &*& pointer_within_limits(nth(i, ps)) == true;
+{
+  open [f]pointers(pp, n, ps);
+  if (i == 0) {
+    pointer_limits(pp);
+  } else {
+    pointers_nth_limits(pp + 1, i - 1);
+  }
+  close [f]pointers(pp, n, ps);
+}
+@*/
+@prototypes
+@render src/program.cc toit::Program::has_valid_error_roots
+bool Program::has_valid_error_roots() const
+//@ requires [?f]pointers(self->roots_, Program_ROOT_COUNT, ?rs);
+//@ ensures [f]pointers(self->roots_, Program_ROOT_COUNT, rs) &*& result == error_roots_ok(drop(Program_FIRST_ERROR_INDEX, rs));
+{
+  for (int i = ROOT_COUNT - 1; i >= FIRST_ERROR_INDEX; i--)
+  /*@ invariant [f]pointers(self->roots_, Program_ROOT_COUNT, rs) &*&
+                Program_FIRST_ERROR_INDEX - 1 <= i &*& i < Program_ROOT_COUNT &*&
+                error_roots_ok(drop(i + 1, rs)) == true; @*/
+  {
+    //@ pointers_nth_limits(self->roots_, i);
+    uword root = reinterpret_cast<uword>(roots_[i]);
+    //@ drop_n_plus_one(i, rs);
+    //@ if (error_roots_ok(drop(Program_FIRST_ERROR_INDEX, rs))) error_roots_at(rs, i, i);
+    if (!is_heap_object(roots_[i]) || root < Error::MAX_TAGGED_ERROR) return false;
+    for (int j = ROOT_COUNT - 1; j > i; j--)
+    /*@ invariant [f]pointers(self->roots_, Program_ROOT_COUNT, rs) &*& i <= j &*& j < Program_ROOT_COUNT &*&
+                  addr_not_in(nth(i, rs), drop(j + 1, rs)) == true; @*/
+    {
+      //@ pointers_nth_limits(self->roots_, j);
+      //@ drop_n_plus_one(j, rs);
+      //@ if (error_roots_ok(drop(Program_FIRST_ERROR_INDEX, rs))) error_roots_at(rs, i, j);
+      if (root == reinterpret_cast<uword>(roots_[j])) return false;
+    }
+  }
+  return true;
+}

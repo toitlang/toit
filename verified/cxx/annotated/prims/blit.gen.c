@@ -98,7 +98,8 @@ Object *blit_with_destination(Process *process, Object **__args, MutableBlob *de
              pointer(__args - 6, x7) &*&
              pointer(__args - 7, x8) &*&
              pointer(__args - 8, x9) &*&
-             pointer(__args - 9, x10) &*& (result == process_null(process) || (uword)result % 4 == 3); @*/
+             pointer(__args - 9, x10) &*& (result == process_null(process) || (uword)result % 4 == 3) &*&
+             oom_error(prog, result) == false; @*/
 
 // C++: src/primitive_bitmap.cc toit::primitive_blit
 Object *primitive_blit(Process *process, Object **__args);
@@ -126,7 +127,8 @@ Object *primitive_blit(Process *process, Object **__args);
              pointer(__args - 7, x7) &*&
              pointer(__args - 8, x8) &*&
              pointer(__args - 9, x9) &*&
-             pointer(__args - 10, x10) &*& (result == process_null(process) || (uword)result % 4 == 3); @*/
+             pointer(__args - 10, x10) &*& (result == process_null(process) || (uword)result % 4 == 3) &*&
+             oom_unchanged(prog, objs, H, after, H2, result) == true; @*/
 
 // C++: src/primitive_policy.h toit::PolicyQuotas::limits_run_time
 bool PolicyQuotas_limits_run_time(PolicyQuotas *self)
@@ -280,7 +282,8 @@ Object *blit_with_destination(Process *process, Object **__args, MutableBlob *de
              pointer(__args - 6, x7) &*&
              pointer(__args - 7, x8) &*&
              pointer(__args - 8, x9) &*&
-             pointer(__args - 9, x10) &*& (result == process_null(process) || (uword)result % 4 == 3); @*/
+             pointer(__args - 9, x10) &*& (result == process_null(process) || (uword)result % 4 == 3) &*&
+             oom_error(prog, result) == false; @*/
 {
   uninitialized_t _u_src;
   Blob src;
@@ -289,6 +292,13 @@ Object *blit_with_destination(Process *process, Object **__args, MutableBlob *de
   //@ error_word(Program_OUT_OF_BOUNDS_INDEX);
   //@ error_word(Program_INVALID_ARGUMENT_INDEX);
   //@ error_word(Program_OUT_OF_RANGE_INDEX);
+  //@ process_program(process);
+  //@ immediate_error_not_oom(prog, Program_WRONG_OBJECT_TYPE_INDEX);
+  //@ immediate_error_not_oom(prog, Program_WRONG_BYTES_TYPE_INDEX);
+  //@ immediate_error_not_oom(prog, Program_OUT_OF_BOUNDS_INDEX);
+  //@ immediate_error_not_oom(prog, Program_INVALID_ARGUMENT_INDEX);
+  //@ immediate_error_not_oom(prog, Program_OUT_OF_RANGE_INDEX);
+  //@ error_word(Program_MALLOC_FAILED_INDEX);
   Object *_raw_dest_pixel_stride = __args[-(0)];
   if (!is_smi(_raw_dest_pixel_stride)) {
     return (Object *)((uword)((int)(Program_WRONG_OBJECT_TYPE_INDEX) << Error_ERROR_SHIFT) | Error_ERROR_TAG);
@@ -368,6 +378,7 @@ Object *blit_with_destination(Process *process, Object **__args, MutableBlob *de
     //@ close blit_lookup(after, H2, lookup);
     //@ leak blit_lookup(after, H2, lookup);
   }
+  //@ heap_facts(process_null(process));
   if (dest_line_stride == 0 && src_line_stride == 0) {
     return (Object *)((uword)((int)(Program_INVALID_ARGUMENT_INDEX) << Error_ERROR_SHIFT) | Error_ERROR_TAG);
   }
@@ -414,7 +425,8 @@ Object *primitive_blit(Process *process, Object **__args)
              pointer(__args - 7, x7) &*&
              pointer(__args - 8, x8) &*&
              pointer(__args - 9, x9) &*&
-             pointer(__args - 10, x10) &*& (result == process_null(process) || (uword)result % 4 == 3); @*/
+             pointer(__args - 10, x10) &*& (result == process_null(process) || (uword)result % 4 == 3) &*&
+             oom_unchanged(prog, objs, H, after, H2, result) == true; @*/
 {
   MutableBlob dest;
   Error *_mutable_blob_error_dest;

@@ -27,6 +27,7 @@
 #include "blob_args.gen.h"
 #include "../blob/mutable_byte_content.gen.h"
 //@ #include <listex.gh>
+//@ #include "../model/arith.gh"
 
 /*@
 // memmove: one region holding both ranges, or two separate chunks.
@@ -71,6 +72,7 @@ Object *primitive_string_write_to_byte_array(Process *process, Object **__args);
              pointer(__args - 3, ?a3) &*& pointer(__args - 4, ?a4) &*&
              good(objs, a0) == true &*& good(objs, a1) == true; @*/
 /*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+            oom_unchanged(prog, objs, H, objs2, H2, result) == true &*&
             pointer(__args, a0) &*& pointer(__args - 1, a1) &*& pointer(__args - 2, a2) &*&
             pointer(__args - 3, a3) &*& pointer(__args - 4, a4); @*/
 
@@ -106,6 +108,7 @@ Object *primitive_string_write_to_byte_array(Process *process, Object **__args)
              pointer(__args - 3, ?a3) &*& pointer(__args - 4, ?a4) &*&
              good(objs, a0) == true &*& good(objs, a1) == true; @*/
 /*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+            oom_unchanged(prog, objs, H, objs2, H2, result) == true &*&
             pointer(__args, a0) &*& pointer(__args - 1, a1) &*& pointer(__args - 2, a2) &*&
             pointer(__args - 3, a3) &*& pointer(__args - 4, a4); @*/
 {
@@ -114,6 +117,12 @@ Object *primitive_string_write_to_byte_array(Process *process, Object **__args)
   MutableBlob dest;
   Error *_mutable_blob_error_dest;
   //@ grows_refl(objs, H);
+  //@ process_program(process);
+  //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);
+  //@ immediate_error_not_oom(prog, Program_WRONG_OBJECT_TYPE_INDEX);
+  //@ error_word(Program_OUT_OF_BOUNDS_INDEX);
+  //@ immediate_error_not_oom(prog, Program_OUT_OF_BOUNDS_INDEX);
+  //@ if (mem(a1, objs)) heap_facts(a1);
   Object *_raw_source_bytes = __args[-(0)];
   uninitialized_t_ctor(&_u_source_bytes);
   Blob_ctor__uninitialized_tp(&source_bytes, &_u_source_bytes);

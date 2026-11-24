@@ -859,14 +859,14 @@ a = [
 # every input, by the VeriFast proof of the primitive's rendering: its
 # contract states `oom_clean` (model/objects.render: an error result
 # leaves every object of the heap before the call unchanged; stated for
-# every error, which needs no identity of the error roots). Not "verifast"
-# although rendered: string_write_to_byte_array, byte_zap and blit (a
-# copy-on-write byte array's copy is installed before a later argument
-# check can fail with another error: proving that error is not an
-# out-of-memory one needs the error roots to be distinct, which the model
-# does not state), and the receive primitives task_receive_message,
-# main_arguments and spawn_arguments (their contracts do not say the
-# mailbox and arguments slots are unchanged on an out-of-memory error).
+# every error, which needs no identity of the error roots) or
+# `oom_unchanged` (an error the retry protocol retries, `oom_error`,
+# leaves it unchanged: for string_write_to_byte_array, byte_zap and blit,
+# which install a copy-on-write byte array's copy before a later argument
+# check can fail with another error; that error is not an out-of-memory
+# one because the error roots are distinct heap references, which the
+# loader checks: ProcessGroup::create, Program::has_valid_error_roots,
+# proved in cxx/annotated/loader/error_roots.render).
 b = [
   # A new result object (or a malloced scratch buffer, freed) is the only
   # allocation, made before anything else changes.
@@ -945,13 +945,13 @@ b = [
   # allocation; the instance is switched to the copy only after it
   # succeeded, and nothing after it fails for want of memory.
   { name = "core.byte_array_replace", evidence = "test" },
-  { name = "core.string_write_to_byte_array", evidence = "test" },
+  { name = "core.string_write_to_byte_array", evidence = "verifast", rendering = "cxx/annotated/prims/string_write.gen.c" },
   { name = "core.put_uint_big_endian", evidence = "test" },
   { name = "core.put_uint_little_endian", evidence = "test" },
   { name = "core.put_float_64_little_endian", evidence = "test" },
   { name = "core.put_float_32_little_endian", evidence = "test" },
-  { name = "bitmap.byte_zap", evidence = "test" },
-  { name = "bitmap.blit", evidence = "test" },
+  { name = "bitmap.byte_zap", evidence = "verifast", rendering = "cxx/annotated/prims/byte_zap.gen.c" },
+  { name = "bitmap.blit", evidence = "verifast", rendering = "cxx/annotated/prims/blit.gen.c" },
   # Process state: the registration follows the allocation it needs, or is
   # undone when the allocation fails.
   { name = "core.add_finalizer", evidence = "verifast", rendering = "cxx/annotated/prims/finalizers.gen.c" },
