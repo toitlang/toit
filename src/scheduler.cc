@@ -306,7 +306,11 @@ message_err_t Scheduler::send_system_message(Locker& locker, SystemMessage* mess
       break;
     }
     default:
-      FATAL("unhandled system message %d", message->type());
+      // Nobody handles other system messages without a boot process, so
+      // we drop them. Processes can still send them: when the boot process
+      // has terminated, the other processes keep running until they are
+      // stopped.
+      break;
   }
 
   delete message;
