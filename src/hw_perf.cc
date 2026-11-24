@@ -40,13 +40,16 @@ struct HwPerfMode {
 
 #ifdef CONFIG_TOIT_HW_PERF_STALL_SAMPLES
 // Stall sampling: the second counter raises the profiling interrupt every
-// STALL_PERIOD stall cycles of the mode; the PC samples are the PCs the
-// performance monitor latched (INTPC), not timer ticks.
+// PERIODS[mode] events of the mode; the PC samples are the PCs the
+// performance monitor latched (INTPC), not timer ticks. The cycles mode is
+// a dense time profile (about 20 kHz at 240 MHz).
 static const HwPerfMode MODES[] = {
   { "i-stall-busy", 4, 0x0002 },   // Instruction RAM/ROM busy: flash-cache misses of code.
   { "d-stall-busy", 3, 0x0010 },   // Data RAM/ROM/XLMI busy: flash-cache misses of data.
+  { "cycles", 0, 0x0001 },         // XTPERF_CNT_CYCLES.
 };
-static const uint32 STALL_PERIOD = 1021;
+static const uint32 PERIODS[] = { 1021, 1021, 12007 };
+static volatile uint32 stall_period = 1021;
 #else
 static const HwPerfMode MODES[] = {
   { "i-stall", 4, 0x1ff },         // XTPERF_CNT_I_STALL, all.
@@ -145,14 +148,14 @@ static inline void IRAM_ATTR eri_write_(int address, uint32 value) {
 
 #ifdef CONFIG_TOIT_HW_PERF_STALL_SAMPLES
 // The profiling interrupt (level 3) of the performance monitor: PM1
-// overflowed after STALL_PERIOD stall cycles. Records the PC the monitor
+// overflowed after PERIODS[mode] events. Records the PC the monitor
 // latched at that event (ERI_PERFMON_INTPC), restarts PM1 and clears its
 // overflow status (ERI_PERFMON_PMSTAT1, write one to clear).
 static void IRAM_ATTR hw_perf_stall_isr(void* arg) {
   int core = hw_perf_core();
   uint32 pc = hw_perf_eri_read(0x101010);
   uint32 status = hw_perf_eri_read(0x101184);
-  eri_write_(0x101084, static_cast<uint32>(-static_cast<int32>(STALL_PERIOD)));
+  eri_write_(0x101084, static_cast<uint32>(-static_cast<int32>(stall_period)));
   eri_write_(0x101184, status);
   if (sampling) hw_perf_record_pc(core, pc);
 }
@@ -183,9 +186,9 @@ void IRAM_ATTR hw_perf_configure() {
   eri_write_(0x101080, 0);
   eri_write_(0x101100, tracelevel | (2 << 8) | (0x8dffu << 16));
 #ifdef CONFIG_TOIT_HW_PERF_STALL_SAMPLES
-  // PM1 starts at -STALL_PERIOD and interrupts on overflow (PMCTRL INTEN).
+  // PM1 starts at -PERIODS[mode] and interrupts on overflow (PMCTRL INTEN).
   eri_write_(0x101184, hw_perf_eri_read(0x101184));
-  eri_write_(0x101084, static_cast<uint32>(-static_cast<int32>(STALL_PERIOD)));
+  eri_write_(0x101084, static_cast<uint32>(-static_cast<int32>(stall_period)));
   eri_write_(0x101104, tracelevel | (static_cast<uint32>(mode.select) << 8) |
                        (static_cast<uint32>(mode.mask) << 16) | 1);
 #else
@@ -244,6 +247,9 @@ void IRAM_ATTR hw_perf_primitive(int module, int index, const HwPerfSample* star
 
 void hw_perf_reset() {
   mode_index = (mode_index + 1) % MODE_COUNT;
+#ifdef CONFIG_TOIT_HW_PERF_STALL_SAMPLES
+  stall_period = PERIODS[mode_index];
+#endif
   memset(counters, 0, sizeof(counters));
   memset(primitives, 0, sizeof(primitives));
   memset(primitive_overflow, 0, sizeof(primitive_overflow));
@@ -316,7 +322,7 @@ void hw_perf_dump() {
 #ifdef CONFIG_TOIT_HW_PERF_STALL_SAMPLES
     printf("[hw-pc] core %d samples %u overflow %u stall-period %u\n", core,
            static_cast<unsigned>(pc_samples[core]), static_cast<unsigned>(pc_overflow[core]),
-           static_cast<unsigned>(STALL_PERIOD));
+           static_cast<unsigned>(stall_period));
 #else
     printf("[hw-pc] core %d samples %u overflow %u\n", core, static_cast<unsigned>(pc_samples[core]),
            static_cast<unsigned>(pc_overflow[core]));

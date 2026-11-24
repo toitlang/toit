@@ -527,11 +527,12 @@ menu "Toit"
         default n
         depends on TOIT_HW_PERF && IDF_TARGET_ARCH_XTENSA
         help
-            The second counter alternates between instruction-fetch stalls
-            (Instruction RAM/ROM busy: flash-cache misses of code) and data
-            stalls (Data RAM/ROM busy: flash-cache misses of rodata and
-            program images) per Profiler.start, and raises the profiling
-            interrupt every 1,021 such cycles; the "[hw-pc]" lines then hold
-            the PCs the performance monitor latched (INTPC) instead of the
-            timer-tick samples: where the flash-cache misses are.
+            The second counter cycles per Profiler.start through
+            instruction-fetch stalls (Instruction RAM/ROM busy: flash-cache
+            misses of code), data stalls (Data RAM/ROM busy: flash-cache
+            misses of rodata and program images) and cycles, and raises the
+            profiling interrupt every 1,021 stall cycles (every 12,007
+            cycles); the "[hw-pc]" lines then hold the PCs the performance
+            monitor latched (INTPC) instead of the timer-tick samples:
+            where the flash-cache misses are, and a dense time profile.
 endmenu
