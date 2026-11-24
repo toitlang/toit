@@ -153,6 +153,7 @@ pub fn float_compare(op: u8, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOut
     requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 2,
     ensures
         prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+        completes(r.0),
         toit_spec::v2::prim_core::float_cmp_contract(c.p.ap@, op, a.vs@, old(heap).objs(),
             final(heap).objs(), ret_of(c.p, r.0, r.1@)),
 {
@@ -173,6 +174,7 @@ pub fn float_query(op: u8, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutco
     requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 1,
     ensures
         prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+        op <= 2 ==> completes(r.0),
         op <= 2 ==> toit_spec::v2::prim_core::float_classify_contract(c.p.ap@,
             toit_spec::v2::prim_core::I_FLOAT_SIGN + op, a.vs@, old(heap).objs(), final(heap).objs(),
             ret_of(c.p, r.0, r.1@)),
@@ -281,6 +283,7 @@ pub fn raw_to_float(raw32: bool, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (Pri
 pub fn compare_to(min_special: bool, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<Value>))
     requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 2,
     ensures prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+        completes(r.0),
         contract(c.p, if min_special { ix::MIN_SPECIAL_COMPARE_TO as int } else { ix::COMPARE_TO as int },
             a, old(heap), final(heap), r.0, r.1@),
 {
@@ -322,6 +325,7 @@ pub fn compare_to(min_special: bool, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: 
 pub fn dispatch(i: usize, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<Value>))
     requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)),
     ensures prim_post(c.p, old(heap), final(heap), r.0, r.1@), contract(c.p, i as int, a, old(heap), final(heap), r.0, r.1@),
+        never_falls_back_floats(i as int, a.n as int) ==> completes(r.0),
 {
     let n = a.n;
     match i {

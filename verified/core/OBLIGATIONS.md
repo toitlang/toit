@@ -220,6 +220,65 @@ Still assumed about the collector (GC-class code, trusted), for stage 1+:
   only); the device library (vmverify `device-runtime`) supplies allocator
   and panic handler; it builds for riscv32imac (PROGRESS.md "Phase 5").
 
+### Ports that never fall back (branch core/ports-never-fall-back)
+
+Proved: for the 35 (index, arity) pairs of `prims::never_falls_back`
+(prims/mod.rs, the one list; verified/CONTRACTS.toml `[unreachable]`
+repeats it and contract_check.toit checks the two agree and that each
+arity is `index::TABLE`'s) every port call completes in Rust:
+`prims::call` ensures `module == 0 && never_falls_back(index, n) ==>
+completes(r.0)` (Success or Failure, never NotPorted or NeedsGc), from
+the same ensures of the four family dispatches and of the per-primitive
+functions (`int_res`: a smi-range value is a Success; `lemma_smi_op`:
+a smi's remainder and right shift are smis; `blob_or_fail`: a
+STRINGS_ONLY decoding fails without NotPorted). `rarrays::rust_primitive_r`
+now holds the policy gate (`core_arities[index] == arity + 1`) and
+ensures: `module == 0 && gate && never_falls_back(index, arity) ==> res
+is Some`, and that `arity` (the method's) is the verifier's arity of the
+primitive (`cert.prim_arity[module][index]`, `lemma_prim_arity`, from the
+spec's `lemma_prim_facts`). `op_primitive` calls `cxx_primitive_v` only
+when `rust_primitive_r` returns None.
+
+What this rests on (no new trusted item): the C++ body of such a
+primitive runs on the verified loop only through `toit_v2_primitive`,
+which runs it only when the policy's entry has the method's arity
+(src/interpreter_v2.cc: ABSENT otherwise) and is the VM's own function
+(a denied entry is `primitive_denied`). For the VM's own entry,
+`PrimitivePolicy::initialize_core_arities` makes `core_arities[i]` that
+entry's arity plus one (`toit_v2_core_ported` is 1 for the 35), so the
+gate passes; and that arity is the list's (src/primitive.h against
+`index::TABLE`: the layout check; `index::TABLE` against the list:
+contract_check). Both are already trusted rows (TRUSTED.md: the policy
+table, `prims/index.rs` `TABLE`); the Verus statement takes the arity as
+a hypothesis (`never_falls_back(index, arity)`), so it is not assumed in
+Verus. Stated narrowly, the environment fact is: where `core_arities[I]`
+is non-zero it is `k + 1` for the listed `(I, k)` (equivalently, the
+verifier's `cert.prim_arity[0][I]` is `k`). Derived policies share their
+base's table (TRUSTED.md's existing row covers a derived policy denying
+a primitive its base allows).
+
+Other routes to these C++ bodies: the checked loop (`op_primitive_cold`,
+hosts only, unverified trusted tables), the format-1 interpreter (trusted
+format-1 programs, and untrusted ones under `-Xuntrusted_format1` /
+`TOIT_UNTRUSTED_FORMAT1=1`). Dropping the 35 C++ bodies from
+format-2-only firmware needs: no format-1 interpreter (so neither trusted
+format-1 programs nor `-Xuntrusted_format1`), no checked loop (devices
+already build without it), and their primitive-table entries kept with
+their arity but without the function, with `initialize_core_arities`
+deciding `own` for ported primitives without `original->function !=
+null` (else the gate closes and every call reaches `toit_v2_primitive`,
+which would then report the primitive absent). A link map (`nm`) of such
+a build has to confirm that nothing else references them.
+
+Not on the list, though close: `float_to_raw32` never falls back on
+64-bit words only (a raw u32 is a smi there); `string_length`,
+`string_rune_count`, `json_skip_whitespace` and `size_of_json_number`
+fall back only for lengths above MAX_SMI, unreachable but not provable
+without a string length bound in the trusted heap model (`obj_model_ok`
+bounds byte arrays, not strings: a trusted change); `string_at` declines
+invalid UTF-8 (where its C++ reads past the end; returning null there
+would make it total, a behavior change).
+
 ### Other open items
 
 - Done (branch core/size-diet): the `cold!` trampoline passes the machine

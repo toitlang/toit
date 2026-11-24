@@ -219,7 +219,7 @@ pub fn array_length(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Gho
     requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 1,
     ensures
         prim_post(c.p, old(heap), final(heap), r.0, r.1@),
-        !(r.0 is NotPorted),
+        completes(r.0),
         toit_spec::v2::prim_core::array_length_contract(c.p.ap@, a.vs@, old(heap).objs(), final(heap).objs(),
             ret_of(c.p, r.0, r.1@)),
 {
@@ -239,7 +239,7 @@ pub fn array_at(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<V
     requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 2,
     ensures
         prim_post(c.p, old(heap), final(heap), r.0, r.1@),
-        !(r.0 is NotPorted),
+        completes(r.0),
         toit_spec::v2::prim_core::array_at_contract(c.p.ap@, a.vs@, old(heap).objs(), final(heap).objs(),
             ret_of(c.p, r.0, r.1@)),
 {
@@ -267,7 +267,7 @@ pub fn array_at_put(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Gho
     requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 3,
     ensures
         prim_post(c.p, old(heap), final(heap), r.0, r.1@),
-        !(r.0 is NotPorted),
+        completes(r.0),
         toit_spec::v2::prim_core::array_at_put_contract(c.p.ap@, a.vs@, old(heap).objs(), final(heap).objs(),
             ret_of(c.p, r.0, r.1@)),
 {
@@ -436,6 +436,7 @@ pub fn array_replace(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Gh
     requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 5,
     ensures prim_post(c.p, old(heap), final(heap), r.0, r.1@),
         contract(c.p, ix::ARRAY_REPLACE as int, a, old(heap), final(heap), r.0, r.1@),
+        completes(r.0),
 {
     let dw = a.w[0];
     let did = match array_arg(heap, dw, Ghost(a.vs@[0])) {
@@ -574,6 +575,7 @@ pub fn list_add(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<V
 pub fn rebuild_hash_index(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<Value>))
     requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 2,
     ensures prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+        completes(r.0),
 {
     let p = c.p;
     let ow = a.w[0];
@@ -676,6 +678,7 @@ pub fn rebuild_hash_index(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcom
 pub fn dispatch(i: usize, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<Value>))
     requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)),
     ensures prim_post(c.p, old(heap), final(heap), r.0, r.1@), contract(c.p, i as int, a, old(heap), final(heap), r.0, r.1@),
+        never_falls_back_arrays(i as int, a.n as int) ==> completes(r.0),
 {
     let n = a.n;
     match i {

@@ -1,5 +1,25 @@
 # Phase 4a progress (verified core, format 2 on x86-64)
 
+## Ports that never fall back (branch core/ports-never-fall-back, 2026-11-24)
+
+Base d52be39e (sandbox-integration). The wave-9 audit's list of ports
+that never return NotPorted or NeedsGc (verified/cxx/annotated/README.md,
+"When the C++ behind a port runs") checked against the code: right as it
+was, 35 (16 integer, 5 array, 4 blob, 10 float); no port off the list
+cannot fall back on both word widths (`float_to_raw32` cannot on 64-bit
+only). Now proved: `prims::never_falls_back` (the list, prims/mod.rs),
+`prims::call` and the family dispatches ensure `completes` for it,
+`rarrays::rust_primitive_r` (now holding the policy gate) returns Some
+for it, and its `arity` is the verifier's `cert.prim_arity` entry (spec:
+`lemma_prim_facts` states the PRIMITIVE's arity check). What the arity
+rests on, and what dropping the C++ from format-2-only firmware needs:
+OBLIGATIONS.md, "Ports that never fall back". CONTRACTS.toml
+`[unreachable]` repeats the list for the C++ bookkeeping; contract_check
+checks it against the Verus list and counts the C++ behind the 106 ports:
+17 VeriFast-proved, 34 unreachable (smi_mod is both), 55 contract-only.
+No port extended, no device code changed but the gate's move into the
+inlined `rust_primitive_r`.
+
 ## The collector in the model, stage 0 (branch gc/stage0-spec, 2026-11-24)
 
 Base c5ee1c2c (wip/collector-proofs). Plan and pilot:
