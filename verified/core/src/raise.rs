@@ -51,6 +51,8 @@ use toit_spec::v2::sound::{wf, good, step_ok, outcome_ok};
 use toit_spec::v2::prim::{heap_extended, with_heap2, raised, completes, out_of_memory};
 #[cfg(verus_keep_ghost)]
 use toit_spec::v2::theorem::outcome;
+#[cfg(verus_keep_ghost)]
+use toit_spec::v2::gc::gc_steps;
 
 verus! {
 
@@ -76,13 +78,14 @@ pub open spec fn exception_post(p: &Program, m: Machine, g: State2, v: Value, r:
 }
 
 /// TRUSTED (TRUSTED.md, "GC and allocation"): `toit_v2_allocate_exception`
-/// (may GC). Before, the views represent `g`. After, they represent `g`
-/// with its heap extended by the encoded trace (a byte array, or nothing
-/// if encoding or allocating it failed; trace null) and the exception
-/// `exception_obj2(v, trace)` appended, the result being its address; or,
-/// if allocating the exception failed (result 0), `g` with the extended
-/// heap. The value is a program-heap object or a smi (it survives the GC
-/// unmoved).
+/// (may GC). Before, the views represent `g`. After, they represent a
+/// state `g2` that collections reach from `g`
+/// (`toit_spec::v2::gc::gc_steps`) with its heap extended by the encoded
+/// trace (a byte array, or nothing if encoding or allocating it failed;
+/// trace null) and the exception `exception_obj2(v, trace)` appended, the
+/// result being its address; or, if allocating the exception failed
+/// (result 0), `g2` with the extended heap. The value is a program-heap
+/// object or a smi (every collection keeps it: unmoved, same id).
 #[verifier::external_body]
 #[inline(always)]
 pub fn gc_allocate_exception(m: &mut Machine, env: &Env, value: usize, kind: usize, ws: [usize; 4], count: usize,
@@ -94,7 +97,8 @@ pub fn gc_allocate_exception(m: &mut Machine, env: &Env, value: usize, kind: usi
         count == vs.len(),
         msg_ok(old(m).addr(), kind, ws@, vs),
     ensures
-        exists|h2: Seq<HeapObj>, trace: Value| #[trigger] exception_post(&env.p, *final(m), g, v, r, h2, trace),
+        exists|g2: State2, h2: Seq<HeapObj>, trace: Value| gc_steps(env.p.ap@, g, g2)
+            && #[trigger] exception_post(&env.p, *final(m), g2, v, r, h2, trace),
 {
     m.allocate_exception_raw(env, value, kind, &ws, count)
 }
@@ -132,7 +136,7 @@ impl Machine {
     pub fn raise_with(&mut self, env: &Env, Ghost(src): Ghost<Machine>, value: usize, Ghost(v): Ghost<Value>,
         kind: usize, ws: [usize; 4], count: usize, Ghost(vs): Ghost<Seq<Value>>) -> (r: Ctl)
         requires
-            src.inv(&env.p),
+            src_ok(&env.p, src),
             old(self).refines(&env.p),
             shape_ok(&env.p, old(self).g@),
             source(env.p.ap@, src.g@, Outcome2::Raise(old(self).g@, v)),
@@ -152,21 +156,31 @@ impl Machine {
         self.save();
         proof { lemma_saved(p, *self); }
         let w = gc_allocate_exception(self, env, value, kind, ws, count, Ghost(g), Ghost(v), Ghost(vs));
-        let ghost (h2, trace) = choose|h2: Seq<HeapObj>, trace: Value| #[trigger] exception_post(p, *self, g, v, w, h2, trace);
-        let ghost gh = with_heap2(g, h2);
+        // The allocation collected to `g2` (`raised`'s completion after
+        // collections, `prim::raised_gc`).
+        let ghost (g2, h2, trace) = choose|g2: State2, h2: Seq<HeapObj>, trace: Value| gc_steps(ap, g, g2)
+            && #[trigger] exception_post(p, *self, g2, v, w, h2, trace);
+        let ghost gh = with_heap2(g2, h2);
+        proof {
+            toit_spec::v2::gc::lemma_gc_steps_shape(ap, g, g2);
+            assert(toit_spec::v2::gc::kept(g.heap, v));
+        }
         if w == 0 {
             reload(self, p, Ghost(gh));
             let ghost u = Unwind::Throw(out_of_memory(ap));
             let ghost o2 = sp::unwind(ap, gh, u);
             proof {
+                assert(toit_spec::v2::prim::raised_now(ap, g2, v, o2));
+                reveal(toit_spec::v2::prim::raised_gc);
+                assert(toit_spec::v2::prim::raised_gc(ap, g, v, o2));
                 assert(raised(ap, g, v, o2));
                 assert(completes(ap, Outcome2::Raise(g, v), o2));
                 assert(outcome(ap, gs, o2));
                 crate::unwind::lemma_unwind_not_raise(ap, gh, u);
-                lemma_small(p, &m0);
+                lemma_src_ok(p, m0);
                 crate::step::lemma_unchecked_ok(p, gs);
                 toit_spec::v2::theorem::lemma_outcome_ok(ap, p.cert@, p.trusted@, gs, o2);
-                lemma_shape_same(p, g, gh);
+                lemma_shape_stack(p, g, gh);
                 self.lemma_root(p, ROOT_OUT_OF_MEMORY_ERROR as int);
             }
             let oom = p.roots.at(ROOT_OUT_OF_MEMORY_ERROR);
@@ -179,14 +193,17 @@ impl Machine {
         let ghost u = Unwind::Throw(sp::new_ref2(gh));
         let ghost o2 = sp::throw_exception(ap, gh, v, trace);
         proof {
+            assert(toit_spec::v2::prim::raised_now(ap, g2, v, o2));
+            reveal(toit_spec::v2::prim::raised_gc);
+            assert(toit_spec::v2::prim::raised_gc(ap, g, v, o2));
             assert(raised(ap, g, v, o2));
             assert(completes(ap, Outcome2::Raise(g, v), o2));
             assert(outcome(ap, gs, o2));
-            lemma_small(p, &m0);
+            lemma_src_ok(p, m0);
             crate::step::lemma_unchecked_ok(p, gs);
             toit_spec::v2::theorem::lemma_outcome_ok(ap, p.cert@, p.trusted@, gs, o2);
             assert(o2 == sp::unwind(ap, g1, u));
-            lemma_shape_same(p, g, g1);
+            lemma_shape_stack(p, g, g1);
             assert(self.addr().len() == g1.heap.len());
         }
         let r = self.do_unwind(env, Unw::Throw(w), Ghost(u));

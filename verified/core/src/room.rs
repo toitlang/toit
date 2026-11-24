@@ -197,8 +197,10 @@ pub fn regain(m: &mut Machine, env: &Env, len0: usize, Ghost(m0): Ghost<Machine>
     ensures
         res matches Some(r) ==> final(m).rok(r) && crate::regs::ipok(&env.p, r)
             && crate::regs::gate_ok(&env.p, *final(m))
-            && final(m).with(r).inv(&env.p) && room_ok(&env.p, final(m).with(r)) && final(m).g == old(m).g,
+            && final(m).with(r).inv(&env.p) && room_ok(&env.p, final(m).with(r))
+            && toit_spec::v2::gc::gc_steps(env.p.ap@, old(m).g@, final(m).with(r).g@),
 {
+    proof { toit_spec::v2::gc::lemma_gc_steps_refl(env.p.ap@, m.g@); }
     if m.len < len0 {
         let c = ensure_room_all(m, env);
         if let Ctl::Stuck(reason) = c {
@@ -221,8 +223,10 @@ pub fn ensure_room_all(m: &mut Machine, env: &Env) -> (c: Ctl)
     requires old(m).inv(&env.p),
     ensures
         c == Ctl::Next || is_limit(c),
-        c == Ctl::Next ==> final(m).inv(&env.p) && room_ok(&env.p, *final(m)) && final(m).g == old(m).g,
+        c == Ctl::Next ==> final(m).inv(&env.p) && room_ok(&env.p, *final(m))
+            && toit_spec::v2::gc::gc_steps(env.p.ap@, old(m).g@, final(m).g@),
 {
+    proof { toit_spec::v2::gc::lemma_gc_steps_refl(env.p.ap@, m.g@); }
     let p = &env.p;
     let ghost ap = p.ap@;
     let ghost g = m.g@;
@@ -311,14 +315,24 @@ pub fn ensure_room_all(m: &mut Machine, env: &Env) -> (c: Ctl)
     m.save();
     proof { lemma_saved(p, *m); }
     let status = crate::step::gc_grow_stack(m, env, needed, Ghost(g));
-    reload(m, p, Ghost(g));
+    let ghost g2 = choose|g2: State2| #[trigger] crate::step::grow_post(p, *m, g, g2, needed, status);
+    reload(m, p, Ghost(g2));
     if status != V2_OK {
         return Ctl::Stuck(stuck::LIMIT);
     }
     proof {
+        crate::step::lemma_inv_gc(p, m1, *m);
         m.lemma_frame(p);
         m1.lemma_frame(p);
-        assert forall|j: int| 0 <= j < g.frames.len() implies #[trigger] frame_room(p, *m, j) by {}
+        assert(g2.frames == g.frames && g2.fins == g.fins);
+        assert(g2.stack.len() == g.stack.len());
+        assert(m.len - m.top == m1.len - m1.top);
+        assert(m.rtop == m1.rtop);
+        assert(m.len >= total);
+        assert forall|j: int| 0 <= j < g.frames.len() implies #[trigger] frame_room(p, *m, j) by {
+            assert(g2.frames[j] == g.frames[j]);
+            assert(frame_need0(p, m.g@, j) == frame_need0(p, g, j));
+        }
         assert(frame_need(p, g, n - 1) <= m.len);
     }
     Ctl::Next

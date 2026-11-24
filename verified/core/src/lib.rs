@@ -70,3 +70,5 @@ pub mod numbers;
 pub mod tail;
 pub mod raise;
 pub mod primitive;
+#[cfg(verus_keep_ghost)]
+pub mod gcbridge;

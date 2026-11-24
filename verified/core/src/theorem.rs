@@ -91,12 +91,13 @@ pub proof fn theorem_first_run(p: &Program, m: &Machine, heap0: Seq<HeapObj>, gl
 }
 
 /// Between two runs the scheduler resumes the process in the state the
-/// previous run saved: the machine the next run reloads refines the same
-/// abstract state, up to the moves of the GC. TRUSTED: the scheduler and
-/// the GC (TRUSTED.md, "Between runs").
+/// previous run saved: the machine the next run reloads refines that
+/// abstract state after collections (`toit_spec::v2::gc::gc_steps`: none,
+/// or any number; the GC of a process can run while it is suspended).
+/// TRUSTED: the scheduler and the GC (TRUSTED.md, "Between runs").
 pub open spec fn resumed(p: &Program, m1: &Machine, m2: &Machine) -> bool {
     &&& m2.refines(p)
-    &&& m2.g@ == m1.g@
+    &&& toit_spec::v2::gc::gc_steps(p.ap@, m1.g@, m2.g@)
 }
 
 /// Every later run: when a run ends preempted or yielded, the machine the
@@ -115,6 +116,15 @@ pub proof fn theorem_next_run(p: &Program, m0: &Machine, m1: &Machine, m2: &Mach
         reaches(p.ap@, s0, m2.g@),
 {
     lemma_reaches_trans(p.ap@, s0, m0.g@, m1.g@);
+    lemma_inv_gc(p, *m1, *m2);
+    lemma_advances_gc_only(p.ap@, m1.g@, m2.g@);
+    let tr = seq![m1.g@, m2.g@];
+    assert forall|i: int| 0 <= i < tr.len() - 1 implies #[trigger] advances(p.ap@, tr[i], tr[i + 1]) by {
+        assert(i == 0);
+    }
+    assert(chain(p.ap@, tr));
+    assert(tr.last() == m2.g@);
+    lemma_reaches_trans(p.ap@, s0, m1.g@, m2.g@);
 }
 
 /// `reaches` is reflexive ...

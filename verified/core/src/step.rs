@@ -55,6 +55,8 @@ use toit_spec::v2::theorem::{completion, continues, outcome};
 #[cfg(verus_keep_ghost)]
 use toit_spec::v2::prim::completes;
 #[cfg(verus_keep_ghost)]
+use toit_spec::v2::gc::gc_steps;
+#[cfg(verus_keep_ghost)]
 use toit_spec::v2::bytecodes::opcode_length2;
 #[cfg(verus_keep_ghost)]
 use toit_spec::spec_common::{u16_at, u32_at};
@@ -70,10 +72,130 @@ verus! {
 /// continues in (`theorem::outcome`: the step, a raise completed by
 /// `prim::raised`, a completed PRIMITIVE step, or a completed resource
 /// throw `prim::resource_throw`; `theorem::transition` without the size
-/// bound, which `refines` implies).
+/// bound, which `refines` implies). Garbage collections may come before
+/// and after (`toit_spec::v2::gc::gc_steps`: the calls into C++ that may
+/// collect, and the scheduler between runs).
 pub open spec fn advances(ap: Program2, g0: State2, g1: State2) -> bool {
     ||| g1 == g0
     ||| exists|o: Outcome2| #[trigger] outcome(ap, g0, o) && continues(o, g1)
+    ||| exists|ga: State2, gb: State2| #[trigger] gc_around(ap, g0, ga, gb, g1)
+}
+
+/// `advances` without collections.
+pub open spec fn advances_now(ap: Program2, g0: State2, g1: State2) -> bool {
+    ||| g1 == g0
+    ||| exists|o: Outcome2| #[trigger] outcome(ap, g0, o) && continues(o, g1)
+}
+
+/// Collections from `g0` to `ga`, a step to `gb`, collections to `g1`.
+pub open spec fn gc_around(ap: Program2, g0: State2, ga: State2, gb: State2, g1: State2) -> bool {
+    &&& gc_steps(ap, g0, ga)
+    &&& advances_now(ap, ga, gb)
+    &&& gc_steps(ap, gb, g1)
+}
+
+/// Collections around an `advances` are one `advances`.
+pub proof fn lemma_advances_gc(ap: Program2, g0: State2, ga: State2, gb: State2, g1: State2)
+    requires gc_steps(ap, g0, ga), advances(ap, ga, gb), gc_steps(ap, gb, g1),
+    ensures advances(ap, g0, g1),
+{
+    if advances_now(ap, ga, gb) {
+        assert(gc_around(ap, g0, ga, gb, g1));
+    } else {
+        let (gc, gd) = choose|gc: State2, gd: State2| #[trigger] gc_around(ap, ga, gc, gd, gb);
+        toit_spec::v2::gc::lemma_gc_steps_trans(ap, g0, ga, gc);
+        toit_spec::v2::gc::lemma_gc_steps_trans(ap, gd, gb, g1);
+        assert(gc_around(ap, g0, gc, gd, g1));
+    }
+}
+
+/// Collections alone advance.
+pub proof fn lemma_advances_gc_only(ap: Program2, g0: State2, g1: State2)
+    requires gc_steps(ap, g0, g1),
+    ensures advances(ap, g0, g1),
+{
+    toit_spec::v2::gc::lemma_gc_steps_refl(ap, g1);
+    assert(gc_around(ap, g0, g1, g1, g1));
+}
+
+/// A step from a machine `ma` whose state the collections reached from
+/// `m0`'s is a step from `m0`; so is a step followed by collections
+/// (to a machine that has the invariant).
+pub proof fn lemma_step_post_gc(p: &Program, m0: Machine, ma: Machine, mb: Machine, m1: Machine, r: Ctl)
+    requires
+        gc_steps(p.ap@, m0.g@, ma.g@),
+        step_post(p, ma, mb, r),
+        gc_steps(p.ap@, mb.g@, m1.g@),
+        (r is Next || (r is Exit && (r->Exit_0 == RESULT_PREEMPTED || r->Exit_0 == RESULT_YIELDED))) ==> m1.inv(p),
+    ensures step_post(p, m0, m1, r),
+{
+    if r is Next || (r is Exit && (r->Exit_0 == RESULT_PREEMPTED || r->Exit_0 == RESULT_YIELDED)) {
+        lemma_advances_gc(p.ap@, m0.g@, ma.g@, mb.g@, m1.g@);
+    }
+}
+
+/// The same for runs of steps.
+pub proof fn lemma_steps_post_gc(p: &Program, m0: Machine, ma: Machine, mb: Machine, m1: Machine, r: Ctl)
+    requires
+        gc_steps(p.ap@, m0.g@, ma.g@),
+        steps_post(p, ma, mb, r),
+        gc_steps(p.ap@, mb.g@, m1.g@),
+        (r is Next || (r is Exit && (r->Exit_0 == RESULT_PREEMPTED || r->Exit_0 == RESULT_YIELDED))) ==> m1.inv(p),
+    ensures steps_post(p, m0, m1, r),
+{
+    if r is Next || (r is Exit && (r->Exit_0 == RESULT_PREEMPTED || r->Exit_0 == RESULT_YIELDED)) {
+        let ap = p.ap@;
+        lemma_advances_gc_only(ap, m0.g@, ma.g@);
+        lemma_reaches_refl(ap, m0.g@);
+        lemma_reaches_step(ap, m0.g@, m0.g@, ma.g@);
+        lemma_reaches_trans(ap, m0.g@, ma.g@, mb.g@);
+        lemma_advances_gc_only(ap, mb.g@, m1.g@);
+        lemma_reaches_step(ap, m0.g@, mb.g@, m1.g@);
+    }
+}
+
+/// An allocation that collected first (`alloc::gc_alloc_post`): the step
+/// from `m0`'s state, then the collections, which commute with the
+/// allocation (`toit_spec::v2::gc::lemma_gc_steps_alloc`: the new object
+/// is a root afterwards).
+pub proof fn lemma_alloc_gc(p: &Program, m0: Machine, m1: Machine, c: Ctl, g2: State2, o: HeapObj, k: int, len: int)
+    requires
+        m0.inv(p),
+        step_ok(p.ap@, p.cert@, m0.g@),
+        sp::step(p.ap@, m0.g@) == Outcome2::Next(toit_spec::v2::gc::alloc_push(m0.g@, o, k, len)),
+        gc_steps(p.ap@, m0.g@, g2),
+        toit_spec::v2::gc::plain_obj(p.ap@, o),
+        0 <= k <= m0.g@.stack.len(),
+        c == Ctl::Next || is_limit(c),
+        c == Ctl::Next ==> m1.refines(p) && m1.g@ == toit_spec::v2::gc::alloc_push(g2, o, k, len),
+    ensures step_post(p, m0, m1, c),
+{
+    if c == Ctl::Next {
+        let ap = p.ap@;
+        let g = m0.g@;
+        let t = toit_spec::v2::gc::alloc_push(g, o, k, len);
+        lemma_small(p, &m0);
+        assert(outcome_ok(ap, p.cert@, sp::step(ap, g)));
+        assert(wf(ap, p.cert@, t));
+        assert(completes(ap, sp::step(ap, g), sp::step(ap, g)));
+        assert(outcome(ap, g, sp::step(ap, g)));
+        assert(continues(sp::step(ap, g), t));
+        assert(advances_now(ap, g, t));
+        toit_spec::v2::gc::lemma_gc_steps_alloc(ap, g, g2, o, k, len);
+        toit_spec::v2::gc::lemma_gc_steps_refl(ap, g);
+        assert(gc_around(ap, g, g, t, m1.g@));
+        toit_spec::v2::gc::lemma_gc_steps_wf(ap, p.cert@, t, m1.g@);
+    }
+}
+
+/// After collections the machine that refines the collected state has the
+/// invariant again.
+pub proof fn lemma_inv_gc(p: &Program, m0: Machine, m1: Machine)
+    requires m0.inv(p), m1.refines(p), gc_steps(p.ap@, m0.g@, m1.g@),
+    ensures m1.inv(p), toit_spec::v2::gc::gc_shape(m0.g@, m1.g@),
+{
+    lemma_small(p, &m0);
+    toit_spec::v2::gc::lemma_gc_steps_wf(p.ap@, p.cert@, m0.g@, m1.g@);
 }
 
 /// Every completion of `o` (`prim::completes`: a raise completed by
@@ -119,14 +241,30 @@ pub proof fn lemma_unchecked_ok(p: &Program, g: State2)
     if p.ap@.unchecked { trusted_field_accesses(p.ap@, g); }
 }
 
+/// The machine a step starts from (whose state its outcomes are of): one
+/// with the invariant, or a ghost machine whose state is the one that the
+/// collections of a C++ call reached before the call's effect (no machine
+/// refines that state; it has the state part of the invariant).
+pub open spec fn src_ok(p: &Program, m: Machine) -> bool {
+    ||| m.inv(p)
+    ||| accepts(p.ap@, p.cert@, p.trusted@) && wf(p.ap@, p.cert@, m.g@) && small(m.g@)
+}
+
+pub proof fn lemma_src_ok(p: &Program, m: Machine)
+    requires src_ok(p, m),
+    ensures accepts(p.ap@, p.cert@, p.trusted@), wf(p.ap@, p.cert@, m.g@), small(m.g@),
+{
+    if m.inv(p) { lemma_small(p, &m); }
+}
+
 /// A source that is not a raise is an outcome itself.
 pub proof fn lemma_source_outcome(p: &Program, m: Machine, o: Outcome2)
-    requires m.inv(p), source(p.ap@, m.g@, o), !(o is Raise),
+    requires src_ok(p, m), source(p.ap@, m.g@, o), !(o is Raise),
     ensures outcome(p.ap@, m.g@, o), toit_spec::v2::sound::outcome_ok(p.ap@, p.cert@, o), !(o is Stuck),
 {
     assert(completes(p.ap@, o, o));
     lemma_unchecked_ok(p, m.g@);
-    lemma_small(p, &m);
+    lemma_src_ok(p, m);
     toit_spec::v2::theorem::lemma_outcome_ok(p.ap@, p.cert@, p.trusted@, m.g@, o);
 }
 
@@ -152,14 +290,24 @@ pub open spec fn step_post(p: &Program, m0: Machine, m1: Machine, r: Ctl) -> boo
     }
 }
 
+/// What growing the stack leaves (`gc_grow_stack`): collections from `g`
+/// to `g2` (`toit_spec::v2::gc::gc_steps`), the views represent `g2`, and
+/// on success (`V2_OK`) at least `needed` words are free between the
+/// records and the object stack.
+pub open spec fn grow_post(p: &Program, m: Machine, g: State2, g2: State2, needed: usize, r: usize) -> bool {
+    &&& gc_steps(p.ap@, g, g2)
+    &&& reloaded(m, g2).refines(p)
+    &&& r == V2_OK ==> reloaded(m, g2).top - reloaded(m, g2).rtop >= needed
+}
+
 /// TRUSTED (TRUSTED.md, "GC and stack growth"): `toit_v2_grow_stack` (may
-/// GC). Before, the views represent `g`; after, they represent `g` again
-/// (the task has a new Stack with the frame and finally records copied to
-/// the bottom and the object stack to the top, the header updated; the GC
-/// moves objects and updates every root), and on success (`V2_OK`) at
-/// least `needed` words are free between the records and the object
-/// stack. On stack overflow or out of memory nothing changed but the GC's
-/// moves.
+/// GC). Before, the views represent `g`; after, `grow_post`: they
+/// represent a state `g2` that collections reach from `g` (the task has a
+/// new Stack with the frame and finally records copied to the bottom and
+/// the object stack to the top, the header updated; the GC renumbers
+/// objects and updates every root), and on success (`V2_OK`) at least
+/// `needed` words are free between the records and the object stack. On
+/// stack overflow or out of memory nothing changed but the collections.
 #[verifier::external_body]
 #[inline(always)]
 pub fn gc_grow_stack(m: &mut Machine, env: &Env, needed: usize, Ghost(g): Ghost<State2>) -> (r: usize)
@@ -169,8 +317,7 @@ pub fn gc_grow_stack(m: &mut Machine, env: &Env, needed: usize, Ghost(g): Ghost<
         // this bound keeps every value far below 2^31 (TRUSTED.md 9).
         needed < GROW_STACK_MAX_NEEDED,
     ensures
-        reloaded(*final(m), g).refines(&env.p),
-        r == V2_OK ==> reloaded(*final(m), g).top - reloaded(*final(m), g).rtop >= needed,
+        exists|g2: State2| #[trigger] grow_post(&env.p, *final(m), g, g2, needed, r),
 {
     m.grow_stack_raw(env, needed)
 }
@@ -196,28 +343,45 @@ pub fn grow(m: &mut Machine, env: &Env, needed: usize) -> (r: Ctl)
     m.save();
     proof { lemma_saved(p, *m); }
     let status = gc_grow_stack(m, env, needed, Ghost(g));
-    reload(m, p, Ghost(g));
+    // The collections reached `g2`; the instruction has not run.
+    let ghost g2 = choose|g2: State2| #[trigger] grow_post(p, *m, g, g2, needed, status);
+    reload(m, p, Ghost(g2));
+    let ghost m1 = *m;
+    proof {
+        lemma_inv_gc(p, m0, m1);
+        toit_spec::v2::gc::lemma_gc_steps_refl(ap, g2);
+    }
     if status == V2_OK {
+        proof { lemma_advances_gc_only(ap, g, g2); }
         return Ctl::Next;
     }
     if status == V2_STACK_OVERFLOW {
         let ghost v = ap.roots[ROOT_STACK_OVERFLOW as int];
         proof {
-            assert(toit_spec::v2::prim::resource_throw(ap, g, Outcome2::Raise(g, v)));
-            lemma_source_resource(ap, g, Outcome2::Raise(g, v));
+            assert(toit_spec::v2::prim::resource_throw(ap, g2, Outcome2::Raise(g2, v)));
+            lemma_source_resource(ap, g2, Outcome2::Raise(g2, v));
             m.lemma_root(p, ROOT_STACK_OVERFLOW as int);
-            crate::calls::lemma_shape(p, g);
+            crate::calls::lemma_shape(p, g2);
         }
         let value = p.roots.at(ROOT_STACK_OVERFLOW);
-        let ghost m1 = *m;
-        return m.raise_with(env, Ghost(m1), value, Ghost(v), V2_MESSAGE_NONE, [0, 0, 0, 0], 0, Ghost(Seq::empty()));
+        let r = m.raise_with(env, Ghost(m1), value, Ghost(v), V2_MESSAGE_NONE, [0, 0, 0, 0], 0, Ghost(Seq::empty()));
+        proof {
+            toit_spec::v2::gc::lemma_gc_steps_refl(ap, m.g@);
+            lemma_step_post_gc(p, m0, m1, *m, *m, r);
+        }
+        return r;
     }
     proof {
-        let o1 = sp::unwind(ap, g, Unwind::Throw(toit_spec::v2::prim::out_of_memory(ap)));
-        assert(toit_spec::v2::prim::resource_throw(ap, g, o1));
-        lemma_source_resource(ap, g, o1);
+        let o1 = sp::unwind(ap, g2, Unwind::Throw(toit_spec::v2::prim::out_of_memory(ap)));
+        assert(toit_spec::v2::prim::resource_throw(ap, g2, o1));
+        lemma_source_resource(ap, g2, o1);
     }
-    crate::unwind::throw_oom(m, env)
+    let r = crate::unwind::throw_oom(m, env);
+    proof {
+        toit_spec::v2::gc::lemma_gc_steps_refl(ap, m.g@);
+        lemma_step_post_gc(p, m0, m1, *m, *m, r);
+    }
+    r
 }
 
 /// Room for a call: a frame record, the callee's slots and the reserve, plus
@@ -363,13 +527,13 @@ pub proof fn lemma_matches(p: &Program, m0: Machine, m1: Machine, r: Ctl)
 /// resource throw).
 pub proof fn lemma_outcome_matches(p: &Program, m0: Machine, m1: Machine, r: Ctl, o: Outcome2)
     requires
-        m0.inv(p),
+        src_ok(p, m0),
         outcome(p.ap@, m0.g@, o),
         matches(p, o, m1, r),
     ensures step_post(p, m0, m1, r),
 {
     lemma_unchecked_ok(p, m0.g@);
-    lemma_small(p, &m0);
+    lemma_src_ok(p, m0);
     toit_spec::v2::theorem::lemma_outcome_ok(p.ap@, p.cert@, p.trusted@, m0.g@, o);
     match r {
         Ctl::Next => { assert(continues(o, m1.g@)); },
@@ -691,10 +855,16 @@ pub fn resume_with(m: &mut Machine, env: &Env, c: Ctl, ok: bool, Ghost(w0): Ghos
         return (None, c);
     }
     let ghost m1 = *m;
+    proof { toit_spec::v2::gc::lemma_gc_steps_refl(env.p.ap@, m1.g@); }
     let c2 = if ok { Ctl::Next } else { ensure_room_all(m, env) };
     if let Ctl::Next = c2 {
+        let ghost m2 = *m;
         let r = m.enter(&env.p);
-        proof { assert(m.with(r).g == m1.g); }
+        proof {
+            assert(m.with(r).g == m2.g);
+            toit_spec::v2::gc::lemma_gc_steps_refl(env.p.ap@, w0.g@);
+            lemma_steps_post_gc(&env.p, w0, w0, m1, m.with(r), Ctl::Next);
+        }
         (Some(r), c2)
     } else {
         (None, c2)

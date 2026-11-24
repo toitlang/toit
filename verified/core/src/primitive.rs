@@ -57,6 +57,8 @@ use toit_spec::v2::prim::{with_heap2, prim_success, prim_missing, completes, pla
 use toit_spec::v2::theorem::{completion, outcome};
 #[cfg(verus_keep_ghost)]
 use toit_spec::spec_common::u16_at;
+#[cfg(verus_keep_ghost)]
+use toit_spec::v2::gc::gc_steps;
 
 verus! {
 
@@ -104,15 +106,18 @@ pub open spec fn unmoved(m1: Machine, m0: Machine) -> bool {
 /// frame's parameters (object-stack positions `first..first + arity`).
 /// `V2_PRIMITIVE_ABSENT`: the policy has no such primitive of this arity,
 /// nothing ran. Otherwise it may GC and may switch the task; afterwards
-/// the status, the result and the state the views represent are a
-/// completion of the step (`prim_call_post`): the spec's PRIMITIVE
-/// protocol, with the default contract of every primitive
-/// (`prim::prim_default`) and the machine's task primitives
-/// (`prim::task_step`). The third result says whether the heap's epoch
-/// changed. The epoch contract: unchanged epoch implies that no object
-/// moved and the current task and its stack object are the same, so the
-/// stack view and every other field but the heap view stay (`unmoved`) and
-/// the state is the step's with a new heap only.
+/// there is a state `g2` that collections reach from `g`
+/// (`toit_spec::v2::gc::gc_steps`: the collections between the attempts of
+/// an allocation that failed, which change nothing else) and the status,
+/// the result and the state the views represent are a completion of the
+/// step from `g2` (`prim_call_post`): the spec's PRIMITIVE protocol, with
+/// the default contract of every primitive (`prim::prim_default`) and the
+/// machine's task primitives (`prim::task_step`). The third result says
+/// whether the heap's epoch changed. The epoch contract: unchanged epoch
+/// implies that nothing collected, no object moved and the current task
+/// and its stack object are the same, so the stack view and every other
+/// field but the heap view stay (`unmoved`) and the state is the step's
+/// with a new heap only.
 #[verifier::external_body]
 #[inline(always)]
 pub fn gc_call_primitive(m: &mut Machine, env: &Env, module: u8, index: u16, arity: usize, first: usize,
@@ -125,8 +130,9 @@ pub fn gc_call_primitive(m: &mut Machine, env: &Env, module: u8, index: u16, ari
     ensures
         r.0 == V2_PRIMITIVE_ABSENT ==> *final(m) == *old(m),
         r.0 != V2_PRIMITIVE_ABSENT ==>
-            exists|gx: State2, v: Value| #[trigger] prim_call_post(&env.p, *final(m), g, module, index, r.0, r.1, gx, v)
-                && (!r.2 ==> gx == with_heap2(g, gx.heap)),
+            exists|g2: State2, gx: State2, v: Value| gc_steps(env.p.ap@, g, g2)
+                && #[trigger] prim_call_post(&env.p, *final(m), g2, module, index, r.0, r.1, gx, v)
+                && (!r.2 ==> g2 == g && gx == with_heap2(g, gx.heap)),
         r.0 != V2_PRIMITIVE_ABSENT && !r.2 ==> unmoved(*final(m), *old(m)),
 {
     m.call_primitive_raw(env, module, index, arity, first)
@@ -159,43 +165,67 @@ pub fn prim_cxx_complete(m: &mut Machine, env: &Env, st: usize, w: usize, Ghost(
     requires
         m0.inv(&env.p), m0.g@ == g, m0.bci < 0x1000_0000,
         sp::step(env.p.ap@, g) == Outcome2::Primitive(g, module, index),
-        exists|gx: State2, v: Value| #[trigger] prim_call_post(&env.p, *old(m), g, module, index, st, w, gx, v),
+        cur_op(env.p.ap@, g) == 89,
+        exists|g2: State2, gx: State2, v: Value| gc_steps(env.p.ap@, g, g2)
+            && #[trigger] prim_call_post(&env.p, *old(m), g2, module, index, st, w, gx, v),
     ensures step_post(&env.p, m0, *final(m), r),
 {
     let p = &env.p;
     let ghost ap = p.ap@;
+    let ghost (g2, gx, v) = choose|g2: State2, gx: State2, v: Value| gc_steps(ap, g, g2)
+        && #[trigger] prim_call_post(p, *m, g2, module, index, st, w, gx, v);
+    // The source of the completion: the collected state (no machine
+    // refines it; `src_ok`).
+    let ghost ma = Machine { g: Ghost(g2), ..m0 };
     proof {
         m0.lemma_frame(p);
         lemma_shape(p, g);
+        lemma_small(p, &m0);
+        toit_spec::v2::gc::lemma_gc_steps_wf(ap, p.cert@, g, g2);
+        toit_spec::v2::gc::lemma_gc_step_primitive(ap, g, g2, module, index);
+        crate::raise::lemma_shape_stack(p, g, g2);
+        assert(src_ok(p, ma));
     }
-    let ghost (gx, v) = choose|gx: State2, v: Value| #[trigger] prim_call_post(p, *m, g, module, index, st, w, gx, v);
     reload(m, p, Ghost(gx));
     if st == V2_PRIMITIVE_SUCCESS {
-        let ghost o = prim_success(ap, g, gx.heap, v);
+        let ghost o = prim_success(ap, g2, gx.heap, v);
         proof {
-            lemma_source_completion(ap, g, module, index, o);
-            lemma_source_outcome(p, m0, o);
-            crate::raise::lemma_shape_same(p, g, gx);
+            lemma_source_completion(ap, g2, module, index, o);
+            lemma_source_outcome(p, ma, o);
+            crate::raise::lemma_shape_same(p, g2, gx);
         }
         let r = m.do_return(env, w, Ghost(v));
-        proof { lemma_outcome_matches(p, m0, *m, r, o); }
+        proof {
+            lemma_outcome_matches(p, ma, *m, r, o);
+            toit_spec::v2::gc::lemma_gc_steps_refl(ap, m.g@);
+            lemma_step_post_gc(p, m0, ma, *m, *m, r);
+        }
         return r;
     }
     if st == V2_PRIMITIVE_FAILURE {
         let ghost o = sp::next(sp::push(gx, v), 4);
         proof {
-            lemma_source_completion(ap, g, module, index, o);
-            lemma_source_outcome(p, m0, o);
+            lemma_source_completion(ap, g2, module, index, o);
+            lemma_source_outcome(p, ma, o);
         }
         let r = m.push_next(p, w, 4, Ghost(v));
-        proof { lemma_outcome_matches(p, m0, *m, r, o); }
+        proof {
+            lemma_outcome_matches(p, ma, *m, r, o);
+            toit_spec::v2::gc::lemma_gc_steps_refl(ap, m.g@);
+            lemma_step_post_gc(p, m0, ma, *m, *m, r);
+        }
         return r;
     }
     proof {
-        lemma_source_completion(ap, g, module, index, Outcome2::Raise(gx, v));
-        crate::raise::lemma_shape_same(p, g, gx);
+        lemma_source_completion(ap, g2, module, index, Outcome2::Raise(gx, v));
+        crate::raise::lemma_shape_same(p, g2, gx);
     }
-    m.raise_with(env, Ghost(m0), w, Ghost(v), V2_MESSAGE_NONE, [0, 0, 0, 0], 0, Ghost(Seq::empty()))
+    let r = m.raise_with(env, Ghost(ma), w, Ghost(v), V2_MESSAGE_NONE, [0, 0, 0, 0], 0, Ghost(Seq::empty()));
+    proof {
+        toit_spec::v2::gc::lemma_gc_steps_refl(ap, m.g@);
+        lemma_step_post_gc(p, m0, ma, *m, *m, r);
+    }
+    r
 }
 
 /// A primitive's view of an argument: a block reference is the smi that

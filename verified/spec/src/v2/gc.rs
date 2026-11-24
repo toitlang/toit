@@ -325,18 +325,6 @@ pub proof fn lemma_gc_steps_refl(p: Program2, s: State2)
     assert(tr.last() == s);
 }
 
-pub proof fn lemma_gc_steps_one(p: Program2, s: State2, s2: State2)
-    requires collection(p, s, s2),
-    ensures gc_steps(p, s, s2),
-{
-    let tr = seq![s, s2];
-    assert forall|i: int| 0 <= i < tr.len() - 1 implies #[trigger] collection(p, tr[i], tr[i + 1]) by {
-        assert(i == 0);
-    }
-    assert(gc_chain(p, tr));
-    assert(tr.last() == s2);
-}
-
 pub proof fn lemma_gc_steps_trans(p: Program2, a: State2, b: State2, c: State2)
     requires gc_steps(p, a, b), gc_steps(p, b, c),
     ensures gc_steps(p, a, c),
