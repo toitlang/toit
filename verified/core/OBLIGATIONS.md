@@ -330,6 +330,18 @@ verifier's busy samples. Requests: V1 fewer allocations (reuse the
 per-method vectors across methods, or an arena per method check); V2
 fewer instructions per bytecode.
 
+Status of V1/V2 (branch verifier/install-speed, 2026-11-24; artifacts
+install-speed/README.md): done. The checker and the certificate decoder
+build every map, successor and context in buffers kept for the whole
+verification (109,498 -> 8,252 allocations per verification of hello
+world), read single method fields from the record instead of decoding
+whole headers, and the classic ESP32 builds the verifier at opt-level s
+(+2.8 KB). On the rig board: 478 M -> 83 M instructions per install of
+a 25 KB program, verification 4.1 s -> 0.67 s (25-37 KB programs:
+0.67-0.94 s), install 5.9 s -> 2.6 s; the rest of an install is flash
+erase and write. Proofs unchanged in substance (spec 994 -> 1,025
+verified functions, THEOREMS.txt and the audit unchanged).
+
 ## 3. Spec requests from the refinement proof
 
 For verified/spec/format/PHASE4-REQUESTS.md (not edited here: owned by

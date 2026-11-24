@@ -463,6 +463,24 @@ count). Two consequences:
   MALLOC_FAILED in the system process would reboot the device, so there is
   exactly one retry: `ObjectHeap::retrying_primitive`.)
 
+### Install speed (branch verifier/install-speed)
+
+On the classic ESP32 the verification took 4-6 s, most of it in the
+allocator: the checker and the certificate decoder built every map and
+successor as fresh vectors (about 110,000 allocations per verification
+of a 25 KB program), and ESP-IDF's heap code runs from flash with a
+critical section per call; `MTable::at` decoded a whole method header
+for every field the checker read. Now the buffers (`check::XBufs`, the
+`ShippedOracle`'s fields, `x_post_into`, `x_chain_rev`,
+`x_ctx_kinds_rev`) live for the whole verification (about 8,000
+allocations), single fields come from the record (`x_arity`, `x_kind`,
+...), and the classic ESP32 builds the verifier at opt-level s (Kconfig
+`TOIT_VERIFIED_CORE_VERIFIER_OPT_LEVEL`, +2.8 KB). Rig board, five
+installs each: 0.67 s (25 KB), 0.81 s (31 KB), 0.94 s (37 KB) instead of
+4.1, 3.9, 5.8 s; peak heap within 2 KB of before. Kconfig
+`TOIT_TRACE_INSTALL_HEAP=n` traces times without the per-allocation
+heap hook. Measurements: artifacts install-speed/README.md.
+
 ## Fuzzing the entry point in-process
 
 `src/bin/toit_vmverify_fuzz.rs` calls `toit_vmverify_verify` (the C entry
