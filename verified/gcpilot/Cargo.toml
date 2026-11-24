@@ -1,0 +1,27 @@
+# Copyright (C) 2026 Toit contributors.
+#
+# GC proof pilot, route B (verified/gcpilot/README.md): the young-generation
+# copy (Cheney scavenge) written in Rust and proved with Verus. Not linked
+# into the VM.
+
+[package]
+name = "toit_gcpilot"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+vstd = { version = "=0.0.0-2026-11-01-0251", default-features = false, features = ["alloc"] }
+
+[profile.release]
+opt-level = "s"
+panic = "abort"
+codegen-units = 1
+lto = false
+debug = false
+
+[profile.dev]
+panic = "abort"
