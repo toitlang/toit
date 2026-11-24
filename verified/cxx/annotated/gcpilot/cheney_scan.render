@@ -1,0 +1,358 @@
+// Copyright (C) 2026 Toit contributors.
+//
+// GC proof pilot, route A (verified/gcpilot/README.md; not in run.sh, not in
+// the trusted lists): the scan loop of the young-generation copy,
+// `scan_copied_chunk`, proved with VeriFast against an inductive Cheney
+// invariant over the contents of a to-space chunk of any length. The
+// per-object step (HeapObject::roots_do, which reaches
+// ScavengeVisitor::do_roots, scavenge_root and clone_into_space) is an
+// ADMITTED contract here (PILOT ADMIT 1); HeapObject::size is an admitted
+// contract (PILOT ADMIT 2), as in heap/scavenge_chunk.render.
+@include ../model/model.cfg
+@verbatim
+#include "../model/objects.gen.h"
+typedef struct RootCallback { char unused; } RootCallback;
+typedef RootCallback ScavengeVisitor;
+typedef struct Chunk { uword scavenge_pointer_; } Chunk;
+
+/*@
+// A copy in to-space: its source (tagged from-space address) and the words
+// copied from it (header first), with the reference-slot mask.
+inductive cp = cp(void *src, list<void *> ws, list<bool> mask);
+fixpoint void *cp_src(cp c) { switch (c) { case cp(s, w, m): return s; } }
+fixpoint list<void *> cp_ws(cp c) { switch (c) { case cp(s, w, m): return w; } }
+fixpoint list<bool> cp_mask(cp c) { switch (c) { case cp(s, w, m): return m; } }
+
+// A copy is well formed: at least its header, which is not the sentinel,
+// and a mask per word, the header not a reference slot.
+fixpoint bool wf_cp(cp c) {
+  return length(cp_ws(c)) >= 1 && head(cp_ws(c)) != 0 && length(cp_mask(c)) == length(cp_ws(c)) && head(cp_mask(c)) == false;
+}
+fixpoint bool wf_cps(list<cp> cs) {
+  switch (cs) { case nil: return true; case cons(c, t): return wf_cp(c) && wf_cps(t); }
+}
+
+// The forwarding installed so far: source -> copy.
+inductive visit = visit(void *source, void *target);
+fixpoint void *vsrc(visit v) { switch (v) { case visit(p, q): return p; } }
+fixpoint void *vtgt(visit v) { switch (v) { case visit(p, q): return q; } }
+fixpoint void *relocate(list<visit> fwd, void *p) {
+  switch (fwd) {
+    case nil: return p;
+    case cons(v, t): return vsrc(v) == p ? vtgt(v) : relocate(t, p);
+  }
+}
+
+// The collector's from-space test (ScavengeVisitor::in_from_space).
+fixpoint bool in_from(void *p);
+// A value whose relocation is final: not a from-space reference, or one
+// whose object is already forwarded.
+fixpoint bool settled(list<visit> fwd, void *w) { return !in_from(w) || mem(w, map(vsrc, fwd)); }
+
+fixpoint bool hd_b(list<bool> m) { switch (m) { case nil: return false; case cons(b, t): return b; } }
+fixpoint list<bool> tl_b(list<bool> m) { switch (m) { case nil: return nil; case cons(b, t): return t; } }
+
+// The words of a scanned copy: its reference slots relocated.
+fixpoint list<void *> blacken(list<visit> fwd, list<void *> ws, list<bool> mask) {
+  switch (ws) {
+    case nil: return nil;
+    case cons(w, t): return cons(hd_b(mask) ? relocate(fwd, w) : w, blacken(fwd, t, tl_b(mask)));
+  }
+}
+// Every reference slot of a scanned copy is settled.
+fixpoint bool all_settled(list<visit> fwd, list<void *> ws, list<bool> mask) {
+  switch (ws) {
+    case nil: return true;
+    case cons(w, t): return (!hd_b(mask) || settled(fwd, relocate(fwd, w)) && settled(fwd, w)) && all_settled(fwd, t, tl_b(mask));
+  }
+}
+fixpoint bool all_settled_cps(list<visit> fwd, list<cp> cs) {
+  switch (cs) { case nil: return true; case cons(c, t): return all_settled(fwd, cp_ws(c), cp_mask(c)) && all_settled_cps(fwd, t); }
+}
+
+// A run of copies from word address a to e: scanned (black) or pending
+// (grey, as copied).
+predicate region(void **a, list<cp> cs, bool black, list<visit> fwd; void **e) =
+  switch (cs) {
+    case nil: return e == a;
+    case cons(c, t): return
+      pointers(a, length(cp_ws(c)), black ? blacken(fwd, cp_ws(c), cp_mask(c)) : cp_ws(c)) &*&
+      region(a + length(cp_ws(c)), t, black, fwd, e);
+  };
+
+// The visitor's and the allocator's state for the forwarding `fwd`
+// (abstract here: heap/scavenge_roots.render's `collection` is the concrete
+// slot-level version).
+predicate vstate(RootCallback *v, list<visit> fwd);
+
+// The pending copies from a to the sentinel, below the chunk limit.
+predicate pending(RootCallback *v, void **a, list<cp> gs, list<visit> fwd, uword limit) =
+  region(a, gs, false, fwd, ?e) &*& pointer(e, 0) &*& (uword)e < limit &*& limit <= UINTPTR_MAX &*&
+  0 < (uword)a &*& (uword)a < limit &*& (uword)a % sizeof(void *) == 0 &*& wf_cps(gs) == true &*& vstate(v, fwd);
+
+// fwd2 extends fwd by new entries for from-space objects not yet forwarded.
+fixpoint bool fresh_for(list<void *> olds, void *s) { return in_from(s) && !mem(s, olds); }
+predicate extension(list<visit> fwd2, list<visit> fwd, list<visit> nv) =
+  fwd2 == append(nv, fwd) &*& forall(map(vsrc, nv), (fresh_for)(map(vsrc, fwd))) == true;
+
+lemma void extension_refl(list<visit> fwd)
+  requires true;
+  ensures extension(fwd, fwd, nil);
+{
+  close extension(fwd, fwd, nil);
+}
+
+// Sources fresh for n1 ++ f1 are fresh for f1.
+lemma void fresh_mono(list<void *> xs, list<void *> n1, list<void *> f1)
+  requires forall(xs, (fresh_for)(append(n1, f1))) == true;
+  ensures forall(xs, (fresh_for)(f1)) == true;
+{
+  switch (xs) {
+    case nil:
+    case cons(x, t):
+      mem_append(x, n1, f1);
+      fresh_mono(t, n1, f1);
+  }
+}
+
+lemma void extension_trans(list<visit> f3, list<visit> f2, list<visit> f1)
+  requires extension(f3, f2, ?n2) &*& extension(f2, f1, ?n1);
+  ensures extension(f3, f1, append(n2, n1));
+{
+  open extension(f3, f2, n2);
+  open extension(f2, f1, n1);
+  append_assoc(n2, n1, f1);
+  map_append(vsrc, n2, n1);
+  map_append(vsrc, n1, f1);
+  fresh_mono(map(vsrc, n2), map(vsrc, n1), map(vsrc, f1));
+  forall_append(map(vsrc, n2), map(vsrc, n1), (fresh_for)(map(vsrc, f1)));
+  close extension(f3, f1, append(n2, n1));
+}
+
+// Relocation of a settled value is the same under an extension.
+lemma void relocate_ext(list<visit> nv, list<visit> fwd, void *w)
+  requires settled(fwd, w) == true &*& forall(map(vsrc, nv), (fresh_for)(map(vsrc, fwd))) == true;
+  ensures relocate(append(nv, fwd), w) == relocate(fwd, w) &*& settled(append(nv, fwd), w) == true;
+{
+  switch (nv) {
+    case nil:
+    case cons(v, t):
+      relocate_ext(t, fwd, w);
+      map_append(vsrc, nv, fwd);
+      map_append(vsrc, t, fwd);
+      mem_append(w, map(vsrc, t), map(vsrc, fwd));
+      mem_append(w, map(vsrc, nv), map(vsrc, fwd));
+  }
+}
+
+lemma void blacken_ext(list<visit> nv, list<visit> fwd, list<void *> ws, list<bool> mask)
+  requires all_settled(fwd, ws, mask) == true &*& forall(map(vsrc, nv), (fresh_for)(map(vsrc, fwd))) == true;
+  ensures blacken(append(nv, fwd), ws, mask) == blacken(fwd, ws, mask) &*& all_settled(append(nv, fwd), ws, mask) == true;
+{
+  switch (ws) {
+    case nil:
+    case cons(w, t):
+      if (hd_b(mask)) {
+        relocate_ext(nv, fwd, w);
+        relocate_ext(nv, fwd, relocate(fwd, w));
+      }
+      blacken_ext(nv, fwd, t, tl_b(mask));
+  }
+}
+
+// A scanned region stays scanned, with the same words, under an extension.
+lemma void region_ext(void **a, list<cp> bs, list<visit> fwd, list<visit> fwd2)
+  requires region(a, bs, true, fwd, ?e) &*& all_settled_cps(fwd, bs) == true &*& extension(fwd2, fwd, ?nv);
+  ensures region(a, bs, true, fwd2, e) &*& all_settled_cps(fwd2, bs) == true &*& extension(fwd2, fwd, nv);
+{
+  open region(a, bs, true, fwd, e);
+  open extension(fwd2, fwd, nv);
+  switch (bs) {
+    case nil:
+      close extension(fwd2, fwd, nv);
+    case cons(c, t):
+      blacken_ext(nv, fwd, cp_ws(c), cp_mask(c));
+      close extension(fwd2, fwd, nv);
+      region_ext(a + length(cp_ws(c)), t, fwd, fwd2);
+  }
+  close region(a, bs, true, fwd2, e);
+}
+
+// Appending a scanned copy at the end of a scanned region.
+lemma void region_snoc(void **a, list<cp> bs, list<visit> fwd, cp c)
+  requires region(a, bs, true, fwd, ?e) &*& pointers(e, length(cp_ws(c)), blacken(fwd, cp_ws(c), cp_mask(c)));
+  ensures region(a, append(bs, cons(c, nil)), true, fwd, e + length(cp_ws(c)));
+{
+  open region(a, bs, true, fwd, e);
+  switch (bs) {
+    case nil:
+      close region(e + length(cp_ws(c)), nil, true, fwd, e + length(cp_ws(c)));
+      close region(a, cons(c, nil), true, fwd, e + length(cp_ws(c)));
+    case cons(h, t):
+      region_snoc(a + length(cp_ws(h)), t, fwd, c);
+      close region(a, append(bs, cons(c, nil)), true, fwd, e + length(cp_ws(c)));
+  }
+}
+
+lemma void all_settled_cps_snoc(list<visit> fwd, list<cp> bs, cp c)
+  requires all_settled_cps(fwd, bs) == true &*& all_settled(fwd, cp_ws(c), cp_mask(c)) == true;
+  ensures all_settled_cps(fwd, append(bs, cons(c, nil))) == true;
+{
+  switch (bs) { case nil: case cons(h, t): all_settled_cps_snoc(fwd, t, c); }
+}
+
+lemma void wf_cps_append(list<cp> xs, list<cp> ys)
+  requires wf_cps(xs) == true &*& wf_cps(ys) == true;
+  ensures wf_cps(append(xs, ys)) == true;
+{
+  switch (xs) { case nil: case cons(h, t): wf_cps_append(t, ys); }
+}
+
+predicate object_size(HeapObject *o, Program *p; int size);
+
+// The pending run with its first word (the next header, or the sentinel)
+// split off: the scan loop's condition reads it.
+predicate rest(RootCallback *v, void **a, list<cp> gs, list<visit> fwd, uword limit) =
+  0 < (uword)a &*& (uword)a < limit &*& (uword)a % sizeof(void *) == 0 &*& limit <= UINTPTR_MAX &*& wf_cps(gs) == true &*& vstate(v, fwd) &*&
+  switch (gs) {
+    case nil: return (uword)a < limit;
+    case cons(g, t): return
+      pointers(a + 1, length(cp_ws(g)) - 1, tail(cp_ws(g))) &*& region(a + length(cp_ws(g)), t, false, fwd, ?e) &*&
+      pointer(e, 0) &*& (uword)e < limit;
+  };
+
+lemma void pending_split(RootCallback *v, void **a, list<cp> gs, list<visit> fwd, uword limit)
+  requires pending(v, a, gs, fwd, limit);
+  ensures pointer(a, ?h) &*& rest(v, a, gs, fwd, limit) &*& (h == 0) == (gs == nil) &*&
+    (gs == nil ? true : h == head(cp_ws(head(gs))));
+{
+  open pending(v, a, gs, fwd, limit);
+  open region(a, gs, false, fwd, ?e);
+  switch (gs) {
+    case nil:
+    case cons(g, t):
+      open pointers(a, length(cp_ws(g)), cp_ws(g));
+  }
+  close rest(v, a, gs, fwd, limit);
+}
+
+lemma void pending_join(RootCallback *v, void **a, list<cp> gs, list<visit> fwd, uword limit)
+  requires pointer(a, ?h) &*& rest(v, a, gs, fwd, limit) &*& (gs == nil ? h == 0 : h == head(cp_ws(head(gs))));
+  ensures pending(v, a, gs, fwd, limit);
+{
+  open rest(v, a, gs, fwd, limit);
+  switch (gs) {
+    case nil:
+      close region(a, nil, false, fwd, a);
+    case cons(g, t):
+      switch (cp_ws(g)) { case nil: case cons(w0, wt): }
+      close pointers(a, length(cp_ws(g)), cp_ws(g));
+      close region(a, gs, false, fwd, _);
+  }
+  close pending(v, a, gs, fwd, limit);
+}
+@*/
+
+// PILOT ADMIT 1: the per-object step. Scanning the first pending copy g
+// relocates its reference slots under the extended forwarding (each
+// becomes settled) and appends the copies made meanwhile, as copied, to the
+// pending run. Proved at slot level without contents in
+// heap/scavenge_roots.render (do_roots, scavenge_root); the dispatch over the
+// class tags (objects.cc) and the contents of the clones are not proved.
+void HeapObject_roots_do(HeapObject *o, Program *p, RootCallback *v);
+/*@ requires pending(v, ?a, cons(?g, ?gs), ?fwd, ?limit) &*& (uword)o == (uword)a + 1; @*/
+/*@ ensures extension(?fwd2, fwd, _) &*& pointers(a, length(cp_ws(g)), ?ws2) &*& ws2 == blacken(fwd2, cp_ws(g), cp_mask(g)) &*&
+      all_settled(fwd2, cp_ws(g), cp_mask(g)) == true &*&
+      exists<list<cp> >(?added) &*& pending(v, a + length(cp_ws(g)), append(gs, added), fwd2, limit) &*&
+      object_size(o, p, length(cp_ws(g)) * sizeof(void *)); @*/
+//@ terminates;
+// PILOT ADMIT 2: the size dispatcher reports the copy's extent.
+word HeapObject_size(HeapObject *o, Program *p);
+//@ requires object_size(o, p, ?size);
+//@ ensures result == size;
+//@ terminates;
+@prototypes
+@render src/third_party/dartino/object_memory.h toit::chunk_end_sentinel tu=src/third_party/dartino/object_memory_copying.cc
+static inline Object* chunk_end_sentinel()
+//@ requires true;
+//@ ensures result == 0;
+//@ terminates;
+{
+  return reinterpret_cast<Object*>(0);
+}
+@render src/third_party/dartino/object_memory.h toit::has_sentinel_at tu=src/third_party/dartino/object_memory_copying.cc
+static inline bool has_sentinel_at(uword address)
+//@ requires [?f]pointer((void **)address,?header);
+//@ ensures [f]pointer((void **)address,header) &*& result == (header == 0);
+//@ terminates;
+{
+  return *reinterpret_cast<Object**>(address) == chunk_end_sentinel();
+}
+@render src/objects.h toit::HeapObject::from_address tu=src/third_party/dartino/object_memory_copying.cc
+  static HeapObject* from_address(uword address)
+  //@ requires 0 < address &*& address < UINTPTR_MAX &*& address % sizeof(word) == 0;
+  //@ ensures (uword)result == address+1;
+  //@ terminates;
+  {
+    ASSERT((address & NON_SMI_TAG_MASK) == SMI_TAG);
+    return reinterpret_cast<HeapObject*>(address + HEAP_TAG);
+  }
+@render src/third_party/dartino/object_memory.h toit::Chunk::scavenge_pointer tu=src/third_party/dartino/object_memory_copying.cc
+  uword scavenge_pointer() const
+  //@ requires [?f]self->scavenge_pointer_ |-> ?p;
+  //@ ensures [f]self->scavenge_pointer_ |-> p &*& result == p;
+  //@ terminates;
+  { return scavenge_pointer_; }
+@render src/third_party/dartino/object_memory.h toit::Chunk::set_scavenge_pointer tu=src/third_party/dartino/object_memory_copying.cc
+  void set_scavenge_pointer(uword p)
+  //@ requires self->scavenge_pointer_ |-> _;
+  //@ ensures self->scavenge_pointer_ |-> p;
+  //@ terminates;
+  {
+    ASSERT(p >= start_);
+    ASSERT(p <= end_);
+    scavenge_pointer_ = p;
+  }
+@render src/third_party/dartino/object_memory_copying.cc toit::scan_copied_chunk
+static bool scan_copied_chunk(Program* program, ScavengeVisitor* visitor, Chunk* chunk)
+/*@ requires chunk->scavenge_pointer_ |-> ?first &*& pending(visitor, (void **)first, ?initial, ?fwd0, ?limit); @*/
+/*@ ensures chunk->scavenge_pointer_ |-> ?last &*& region((void **)first, ?scanned, true, ?fwd, (void **)last) &*&
+      all_settled_cps(fwd, scanned) == true &*& extension(fwd, fwd0, _) &*&
+      pending(visitor, (void **)last, nil, fwd, limit) &*& result == (first != last) &*& result == (initial != nil); @*/
+//@ terminates;
+{
+  uword start = chunk->scavenge_pointer();
+  uword current = start;
+  //@ close region((void **)first, nil, true, fwd0, (void **)first);
+  //@ extension_refl(fwd0);
+  //@ pending_split(visitor, (void **)first, initial, fwd0, limit);
+  //@ bool nonempty = initial != nil;
+  while (!has_sentinel_at(current))
+  /*@ invariant first <= current &*& region((void **)first, ?bs, true, ?fwd, (void **)current) &*&
+        all_settled_cps(fwd, bs) == true &*& extension(fwd, fwd0, _) &*&
+        pointer((void **)current, ?h) &*& rest(visitor, (void **)current, ?gs, fwd, limit) &*&
+        (h == 0) == (gs == nil) &*& (gs == nil ? true : h == head(cp_ws(head(gs)))) &*&
+        (current == first ? gs == initial : nonempty); @*/
+  //@ decreases limit - current;
+  {
+    //@ cp g = head(gs);
+    //@ open rest(visitor, (void **)current, gs, fwd, limit);
+    //@ close rest(visitor, (void **)current, gs, fwd, limit);
+    //@ pending_join(visitor, (void **)current, gs, fwd, limit);
+    HeapObject* object = HeapObject::from_address(current);
+    object->roots_do(program, visitor);
+    //@ open exists<list<cp> >(?added);
+    //@ assert extension(?fwd2, fwd, _);
+    //@ region_ext((void **)first, bs, fwd, fwd2);
+    //@ region_snoc((void **)first, bs, fwd2, g);
+    //@ all_settled_cps_snoc(fwd2, bs, g);
+    //@ extension_trans(fwd2, fwd, fwd0);
+    //@ open pending(visitor, (void **)current + length(cp_ws(g)), append(tail(gs), added), fwd2, limit);
+    //@ close pending(visitor, (void **)current + length(cp_ws(g)), append(tail(gs), added), fwd2, limit);
+    current += object->size(program);
+    //@ pending_split(visitor, (void **)current, append(tail(gs), added), fwd2, limit);
+  }
+  //@ pending_join(visitor, (void **)current, gs, fwd, limit);
+  chunk->set_scavenge_pointer(current);
+  return current != start;
+}
