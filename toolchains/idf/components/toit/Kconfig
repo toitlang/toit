@@ -314,6 +314,19 @@ menu "Toit"
             firmware's own programs are format 1 and run on the C++
             interpreter.
 
+    config TOIT_SILENT_IDF_CHECKS
+        bool "No log text for ESP-IDF's argument and state checks"
+        default y
+        depends on TOIT_VERIFIED_CORE
+        select COMPILER_OPTIMIZATION_CHECKS_SILENT
+        help
+            The ESP_RETURN_ON_* and ESP_GOTO_ON_* checks of ESP-IDF still
+            return their error codes, but no longer log why (their format
+            strings and the logging code are about 82 KB of flash). The
+            firmware with the verified core does not fit the classic ESP32's
+            OTA partition otherwise. To be revisited with ESP-IDF v5.5 and
+            its binary log mode, which keeps the text on the host.
+
     config TOIT_CXX_INTERPRETER
         bool "Link the C++ interpreter for format-1 programs" if TOIT_BYTECODE_FORMAT_2
         default y
