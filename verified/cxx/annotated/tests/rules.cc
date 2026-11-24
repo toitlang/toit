@@ -253,6 +253,10 @@ inline void store_low(uint8* p, int64 v) {
   *p = v;
 }
 
+inline word low_byte(int64 v) {
+  return (uint8) v;
+}
+
 inline word use_lambdas(word a, word b) {
   word base = a;
   word first = retry_once(1, [&]() -> word { return base + b; });

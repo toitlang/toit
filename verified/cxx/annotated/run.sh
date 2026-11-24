@@ -2616,6 +2616,14 @@ mutant byte-array-replace-length prims/put_bytes.render src/primitive_core.cc "N
   "index + length > receiver.length()" "index > receiver.length()"
 mutant byte-array-replace-oom-after-copy prims/put_bytes.render src/primitive_core.cc "Cannot prove.*oom_unchanged" "-allow_dead_code -prover z3v4.5" \
   "PRIMITIVE(byte_array_replace)@@  const uint8* source = source_object.address() + from;" "  const uint8* source = source_object.address() + from;\n  if (length == 1) FAIL(MALLOC_FAILED);"
+# byte_array_at_put and byte_array_is_raw_bytes (wave 9): the program-heap
+# check left out (the write must go outside it); the index checked only
+# against zero.
+entry byte-array-access     pass "" prims/byte_array_access.gen.c -allow_dead_code -prover z3v4.5
+mutant byte-array-at-put-program-heap prims/byte_array_access.render src/primitive_core.cc "Assertion might not hold|Cannot prove" "-allow_dead_code -prover z3v4.5" \
+  "PRIMITIVE(byte_array_at_put)@@  if (receiver->on_program_heap(process)) FAIL(PERMISSION_DENIED);\n" ""
+mutant byte-array-at-put-index prims/byte_array_access.render src/primitive_core.cc "Cannot prove|No matching" "-allow_dead_code -prover z3v4.5" \
+  "PRIMITIVE(byte_array_at_put)@@if (!bytes.is_valid_index(index)) FAIL(OUT_OF_BOUNDS);" "if (index < 0) FAIL(OUT_OF_BOUNDS);"
 entry put-float             pass "" prims/put_float.gen.c -allow_dead_code -prover z3v4.5
 mutant put-float-32-end prims/put_float.render src/primitive_core.cc "No matching|Cannot prove" "-allow_dead_code -prover z3v4.5" \
   "unsigned_offset + 4 >= length" "unsigned_offset + 2 >= length"

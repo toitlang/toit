@@ -197,7 +197,7 @@ A sidecar: a sequence of sections, each opened by a directive line (a
   variable) also use modular arithmetic, and so does a uint64 left shift
   of an explicitly converted value by a run-time count (VeriFast checks
   the count; Utils::wrapping_shift_left). An explicit uint8-to-int8
-  conversion and an implicit conversion of an int64 to a byte are
+  conversion and a conversion (implicit or explicit) of an int64 to a byte are
   modular; an int64 `>>=` by a literal on a plain variable is the
   arithmetic shift (GCC's and Clang's, C++20's), written without a shift
   of a negative value. An annotated operand of a cast, a shift or an
@@ -1082,6 +1082,11 @@ class Renderer:
           // integer readers): the modular conversion, a value above 127
           // becomes negative.
           return Expr "/*@truncating@*/($to)$(annotated-operand (expr operand) PREC-UNARY)" PREC-UNARY
+      if (kind == "CStyleCastExpr" or kind == "CXXStaticCastExpr") and truncating and operand
+          and (c-type node["type"]["qualType"]) == "uint8" and (c-type operand["type"]["qualType"]) == "int64":
+        // An explicit conversion of an int64 to a byte (byte_array_at_put's
+        // `(uint8) value`): modulo 2^8, as the implicit one above.
+        return Expr "/*@truncating@*/(uint8)$(annotated-operand (expr operand) PREC-UNARY)" PREC-UNARY
       if kind == "CXXStaticCastExpr" and truncating and operand
           and (SIGNED-INTEGERS.contains (resolve (c-type (node["type"].get "desugaredQualType" --if-absent=: node["type"]["qualType"]))))
           and (TRUNCATED.contains (resolve (c-type (operand["type"].get "desugaredQualType" --if-absent=: operand["type"]["qualType"])))):

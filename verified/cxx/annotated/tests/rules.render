@@ -296,6 +296,16 @@ inline void store_low(uint8* p, int64 v)
   *p = v;
 }
 
+@render verified/cxx/annotated/tests/rules.cc toit::low_byte truncating
+inline word low_byte(int64 v)
+//@ requires true;
+//@ ensures 0 <= result &*& result <= 255;
+{
+  //@ truncate_limits(v, N8);
+  //@ assert pow_nat(2, N8) == 256;
+  return (uint8) v;
+}
+
 @render verified/cxx/annotated/tests/rules.cc toit::narrow_unsigned truncating
 inline int narrow_unsigned(uword u)
 //@ requires true;

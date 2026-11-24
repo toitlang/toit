@@ -446,8 +446,9 @@ readers, two translator self-tests), 30 primitives prove the retry
 obligation (`oom_clean` or `oom_unchanged`). Fresh work directory
 (2026-11-24, the machine shared with other checkouts' matrices and
 slow-tier jobs): the fast tier 1265 checks ok, 0 FAIL, 0 NOVERDICT, in
-4303 s wall. Wave 9 (2026-11-24): 70 sidecars, 614 `@render` functions
+4303 s wall. Wave 9 (2026-11-24): 71 sidecars, 619 `@render` functions
 (`metrics.sh`: the signed readers, the byte-array and float writers,
+byte_array_at_put and byte_array_is_raw_bytes,
 four translator self-tests), 37 primitives prove the retry obligation;
 the fast-tier result of its fresh work directory is under "Findings"
 (wave 9) and in the commit that records it. Lines: `metrics.sh` (C++ = the
@@ -483,6 +484,7 @@ lemmas).
 | The integer readers (`prims/read_bytes.render`, wave 8; the signed ones wave 9) | read_uint_big_endian, read_uint_little_endian, read_int_big_endian, read_int_little_endian (the C++ behind the Rust ports), Utils::wrapping_shift_left | every read inside the blob for any width and offset (negative ones become large unsigned ones and are rejected), no overflow or lossy conversion but the modular ones the C++ means (`truncating`, `unsigned-word-conversion`; the sign byte's uint8-to-int8, the shift by a run-time count whose range VeriFast checks), the heap unchanged up to the boxed result, `oom_clean`; not which integer the bytes give | the Blob decoder and Primitive::integer's contracts | 78 / 114 / 5 / 43 | the end check left out (a read past the blob); the little-endian loop one byte too high; wave 9: the old `width - 1` in int before the check (LP64: overflow for INT_MIN), the big-endian loop one byte too long, the little-endian sign byte one too high |
 | The byte-array writers (`prims/put_bytes.render`, wave 9) | byte_array_replace, put_uint_big_endian, put_uint_little_endian (the C++ behind the Rust ports) | the MutableBlob decoded first (copy-on-write), the other arguments in the grown heap (`valid_arg`: is_large_integer, is_double and the Blob decoder take it); every write inside the destination's content (a writable byte array outside the program heap); byte_array_replace's legal memmove (the source may be the same byte array); no overflow or lossy conversion but the modular ones the C++ means (a value's low byte, the arithmetic shift `value >>= 8`); `grows`, `oom_unchanged` | the MutableBlob and Blob decoders' contracts, the error roots (`process`) | 52 / 141 / 5 / 45 | put_uint_little_endian's old `width - 1` (LP64), put_uint_big_endian's end check, byte_array_replace's length in the destination check, byte_array_replace reporting MALLOC_FAILED after the copy |
 | The float writers (`prims/put_float.render`, wave 9) | put_float_32_little_endian, put_float_64_little_endian | 4 (8) bytes written inside the destination's content from the float (double) local; `grows`, `oom_unchanged`; not the bytes written | memcpy's contract for a float or double local (VeriFast has no float-to-bytes lemma); VeriFast's double-to-float conversion (math.h: total, as IEC 60559 defines it) | 31 / 72 / 4 / 25 | the 32-bit writer's end check two bytes weaker (one byte weaker still fits: the C++ is one byte stricter than needed), the 64-bit writer's offset check left out |
+| Byte-array element writes (`prims/byte_array_access.render`, wave 9) | byte_array_at_put, byte_array_is_raw_bytes (the C++ behind the Rust ports: they decline for opaque byte arrays), ByteArray::Bytes::is_valid_index and at_put | the write only into the content of an internal or raw external byte array outside the program heap (asserted), at an index checked against it; an external byte array of another tag (a resource proxy) fails before its bytes are touched; the value's low byte (`truncating`, an explicit int64-to-uint8 conversion); `oom_clean`. Not byte_array_at and byte_array_length: they also read a mapped file's bytes (MappedFileTag), which the heap model has no bytes for | the object model's byte arrays | 27 / 34 / 2 / 1 | the program-heap check left out; the index checked only against zero |
 | UTF-8 (`utf8/`) | Utils::utf_8_to_16, bytes_in_utf_8_sequence, payload_from_prefix | verified (Z3) | none | 57 / 45 / 1 / 169 | 07c24665: UB shift at payload_from_prefix; without the length check: the read past the input. Also checks sizing failure, surrogate width and initialization of the second output unit. |
 | UTF-16 (`utf8/utf_16_to_8.render`) | Utils::utf_16_to_8, Utils::utf_16le_to_8, read_utf16le_unit | verified (Z3) | readable little-endian byte pairs and an optional writable byte buffer | 60 / 73 / 1 / 70 | byte order, four-byte lead, surrogate replacement, output capacity and write count |
 | Rust raw memory (`rust/`) | view.rs: string_len, string_byte; trial: field, array_length, element | verified (VeriFast Rust, host) | predicates over the words (bridge `heap`) | — | `i <= len` fails at the read |
@@ -764,8 +766,8 @@ audit).
 
 Of the 150 allowed primitives, 106 have Rust ports with proofs, 33 have
 VeriFast body proofs and 11 have ESBMC body proofs.
-Behind the 106 ports, the C++ of 15 has a VeriFast body proof (wave 9:
-7 more; below), the other 91 are contract-only. Counted by `metrics.sh`
+Behind the 106 ports, the C++ of 17 has a VeriFast body proof (wave 9:
+9 more; below), the other 89 are contract-only. Counted by `metrics.sh`
 (its last line: the primitives of CONTRACTS.toml's [prim_retry] whose
 `primitive_NAME` has a rendered, not contract-only, definition, split by
 `family` in verified/core/src/prims/mod.rs). Wave 8's "2 of the 106" was
@@ -1229,10 +1231,11 @@ read_uint_little_endian: VeriFast-verified (`prims/read_bytes.render`:
 every read inside the blob for any width and offset, no overflow or
 lossy conversion but the modular ones the C++ means, `oom_clean`), and
 (wave 9) read_int_big_endian, read_int_little_endian, byte_array_replace,
-put_uint_big_endian, put_uint_little_endian, put_float_32_little_endian
-and put_float_64_little_endian (`prims/read_bytes.render`,
+put_uint_big_endian, put_uint_little_endian, put_float_32_little_endian,
+put_float_64_little_endian, byte_array_at_put and byte_array_is_raw_bytes
+(`prims/read_bytes.render`, `prims/byte_array_access.render`,
 `prims/put_bytes.render`, `prims/put_float.render`). Memory safety of the
-C++ behind the 106 ports: 15 VeriFast-verified, 91 contract-only
+C++ behind the 106 ports: 17 VeriFast-verified, 89 contract-only
 (`metrics.sh`; 8 and 98 before wave 9).
 
 ### When the C++ behind a port runs (wave 9)
@@ -2244,7 +2247,7 @@ behind a port runs, two audits):
 * The wave-8 count "behind the 106 ports, the C++ of 2 has a VeriFast body
   proof" was an undercount (8: array_new, the four integer divisions and
   string_write_to_byte_array were already proved); `metrics.sh` counts it
-  now (15 after wave 9).
+  now (17 after wave 9).
 * Audit (ESBMC's `T()` value-initialization of aggregates, which ESBMC
   8.6 leaves nondeterministic): no harness under ../harness/ and no
   header under ../include/ value-initializes an aggregate with `T()`. The
