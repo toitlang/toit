@@ -167,7 +167,7 @@ fn method_entries(p: &VProgram, g: &XGlobal, m: usize, maps: &XMaps, trusted: bo
         }
         let len = OPCODE_LENGTHS2[op as usize] as usize;
         if !is_terminator(op) && placed.len() <= 0x10_0000 {
-            cur = infer::ok(x_post(p, &c, m, off, &placed, trusted));
+            cur = infer::ok(infer::x_post(p, &c, m, off, &placed, trusted));
         }
         prev = placed;
         off += len;

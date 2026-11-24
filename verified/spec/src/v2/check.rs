@@ -595,17 +595,6 @@ pub fn x_update(k: &Vec<XKind>, i: usize, v: XKind) -> (res: Result<Vec<XKind>, 
     Ok(r)
 }
 
-/// `pop_push(k, n, Some(v))`.
-pub fn x_pop_push(k: &Vec<XKind>, n: usize, v: XKind) -> (res: Result<Vec<XKind>, Oom>)
-    requires n <= k.len(),
-    ensures res matches Ok(r) ==> kv(r) == pop_push(kv(*k), n as int, Some(v@)),
-{
-    let mut r = x_prefix_room(k, k.len() - n, 1)?;
-    try_push(&mut r, v)?;
-    proof { assert(kv(r) =~= kv(*k).subrange(0, k.len() - n).push(v@)); }
-    Ok(r)
-}
-
 // The same operations into a buffer that the caller keeps (cleared and
 // refilled: no allocation once it has grown), for `x_post_into`.
 
@@ -1953,21 +1942,6 @@ pub fn x_hf_kinds_into(k: &Vec<XKind>, n: usize, out: &mut Vec<XKind>) -> (res: 
     Ok(())
 }
 
-/// `hf_kinds`.
-pub fn x_hf_kinds(k: &Vec<XKind>, n: usize) -> (res: Result<Vec<XKind>, Oom>)
-    requires n + 2 < k.len(),
-    ensures res matches Ok(r) ==> kv(r) == hf_kinds(kv(*k), n as int),
-{
-    let h = k.len();
-    let k1 = x_update(k, h - 1 - n, XKind::Val)?;
-    assert(kv(k1).len() == h);
-    let k2 = x_update(&k1, h - 2 - n, XKind::Val)?;
-    assert(kv(k2).len() == h);
-    let k3 = x_update(&k2, h - 3 - n, XKind::Val)?;
-    let k4 = x_push(&k3, XKind::Val)?;
-    x_push(&k4, XKind::Val)
-}
-
 pub fn x_post_misc(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>, trusted: bool, out: &mut Vec<XKind>) -> (res: Result<bool, Oom>)
     requires
         post_pre(p, m, off, k),
@@ -2047,16 +2021,7 @@ pub fn x_post_misc(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>
     }
 }
 
-/// `post`: the fall-through successor kinds.
-pub fn x_post(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>, trusted: bool) -> (res: Result<Option<Vec<XKind>>, Oom>)
-    requires post_pre(p, m, off, k), g_ok(c.g),
-    ensures res matches Ok(r) ==> post_rel(r, post(vview(p), c@, m as int, off as int, kv(*k), trusted)),
-{
-    let mut out: Vec<XKind> = Vec::new();
-    if x_post_into(p, c, m, off, k, trusted, &mut out)? { Ok(Some(out)) } else { Ok(None) }
-}
-
-/// `post` into the buffer `out` (cleared and refilled): true if there is a
+/// `post`, the fall-through successor kinds, into the buffer `out` (cleared and refilled): true if there is a
 /// successor (then in `out`).
 pub fn x_post_into(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>, trusted: bool, out: &mut Vec<XKind>) -> (res: Result<bool, Oom>)
     requires post_pre(p, m, off, k), g_ok(c.g),

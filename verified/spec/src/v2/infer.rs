@@ -68,6 +68,13 @@ pub fn ok<T>(r: Result<T, Oom>) -> T {
     }
 }
 
+/// The checker's `post` (`x_post_into`) as a fresh vector, for the
+/// inference and the encoder.
+pub fn x_post(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>, trusted: bool) -> Result<Option<Vec<XKind>>, Oom> {
+    let mut out = Vec::new();
+    if x_post_into(p, c, m, off, k, trusted, &mut out)? { Ok(Some(out)) } else { Ok(None) }
+}
+
 const KIND_BLOCK: u8 = 3;
 /// At most this many inference errors are kept (diagnostics only).
 const MAX_ERRORS: usize = 16;
