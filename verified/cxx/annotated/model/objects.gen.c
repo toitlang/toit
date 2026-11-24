@@ -1095,7 +1095,7 @@ word String_MutableBytes_length(String_MutableBytes *self)
 }
 
 // C++: src/objects.h toit::String::MutableBytes::_initialize
-void String_MutableBytes__initialize(String_MutableBytes *self, char *str)
+void String_MutableBytes__initialize__charp(String_MutableBytes *self, char *str)
 /*@ requires [?f]self->address_ |-> ?a &*& [f]self->length_ |-> ?n &*& 0 <= n &*&
                  uchars(a, n, _) &*& [?g]uchars((uint8 *)str, n, ?bytes); @*/
 /*@ ensures [f]self->address_ |-> a &*& [f]self->length_ |-> n &*&
@@ -1139,7 +1139,7 @@ String *Process_allocate_string__charp_word(Process *self, char *content, word l
   }
   @*/
   //@ assert [?share]uchars((uint8 *)content, length, ?copied);
-  String_MutableBytes__initialize(&bytes, content);
+  String_MutableBytes__initialize__charp(&bytes, content);
   //@ assert uchars(blob_base(H1, result), length, copied);
   /*@
   switch (source) {

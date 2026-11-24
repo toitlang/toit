@@ -156,6 +156,8 @@
 // src/interpreter_v2.cc: the longest blob the core's allocation makes, the
 // model's MAX_BLOB.
 #define V2_MAX_BLOB_LENGTH ((uword)(UINTPTR_MAX / 4))
+// src/primitive_core.cc: the longest string a concatenation makes.
+#define MAX_CONCATENATION_LENGTH ((word)(UINTPTR_MAX / 4))
 // src/flags.h: a debug flag, a constant in release builds (TOIT_DEPLOY,
 // the build the renderings are made for).
 #define Flags_primitives false

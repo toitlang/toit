@@ -2,7 +2,8 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-// The C++ string_at primitive on strings whose bytes are not valid UTF-8
+// The C++ string_at primitive on strings whose bytes are not valid UTF-8,
+// and concat_strings on string slices that are not slices of a string
 // (verified/cxx/annotated/README.md, "Findings", wave 10).
 //
 // Nothing validates the bytes of a string: not the string literals of a
@@ -159,6 +160,35 @@ static void test_external(Process* process) {
   }
 }
 
+// concat_strings with a string slice that is not a slice of a string (its
+// `from` above its `to`, or a wrapped object that is not a heap object).
+// Until wave 10 the primitive ignored byte_content's result: the first part
+// was concatenated as the whole string it wraps, the second as nothing (a
+// memcpy from a null pointer). Now both are WRONG_OBJECT_TYPE, as in
+// string_add.
+static void test_concat_malformed(Process* process) {
+  const uint8 abc[] = { 'a', 'b', 'c' };
+  String* s = make_string(process, abc, 3);
+  Smi* slice_class = program->string_slice_class_id();
+  Instance* reversed = process->object_heap()->allocate_instance(slice_class);
+  Instance* no_string = process->object_heap()->allocate_instance(slice_class);
+  if (reversed == null || no_string == null) FATAL("allocation failed");
+  reversed->at_put(Instance::STRING_SLICE_STRING_INDEX, s);
+  reversed->at_put(Instance::STRING_SLICE_FROM_INDEX, Smi::from(2));
+  reversed->at_put(Instance::STRING_SLICE_TO_INDEX, Smi::from(1));
+  no_string->at_put(Instance::STRING_SLICE_STRING_INDEX, Smi::from(7));
+  no_string->at_put(Instance::STRING_SLICE_FROM_INDEX, Smi::from(0));
+  no_string->at_put(Instance::STRING_SLICE_TO_INDEX, Smi::from(0));
+  for (Instance* part : { reversed, no_string }) {
+    Array* parts = Array::cast(process->object_heap()->allocate_array(2, s));
+    if (parts == null) FATAL("allocation failed");
+    parts->at_put(1, part);
+    Object* result = call(process, CORE_concat_strings, { parts });
+    EXPECT(Primitive::is_error(result) &&
+           Primitive::unmark_from_error(program, result) == program->wrong_object_type());
+  }
+}
+
 }  // namespace toit
 
 int main(int argc, char** argv) {
@@ -194,6 +224,7 @@ int main(int argc, char** argv) {
     for (word length = 1; length <= 9; length++) test_truncated(process, length);
     test_cut_slice(process);
     test_external(process);
+    test_concat_malformed(process);
     group->begin_process_teardown(process);
     delete process;
     group->finish_process_teardown();

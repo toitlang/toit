@@ -381,6 +381,7 @@ tool never guesses):
 | a local that hides another (a nested block's `encoder`; VeriFast rejects hiding) | renamed with a suffix (`encoder_1`), references by the declaration's id; annotations use the rendered name |
 | a call through a function-pointer local or parameter (`entry(process, args)`) | the C call through the pointer (its contract is the function type's) |
 | a default member initializer `-N` | written out |
+| `@nested-type NAME OUTER::NAME` (wave 10: `Bytes ot(other);` in String::MutableBytes, where Clang's AST spells the type `Bytes`) | the type spelled NAME is the struct `OUTER_NAME` (its constructor `OUTER_NAME_ctor`, its members `OUTER_NAME_m`); the second word must end in `::NAME`; only in the sidecar that names it |
 | a function template instance taking a closure (`@render FILE f lambda=ENCLOSING[#K]`) | the instance whose closure parameter has that lambda's type, as one C function `f__F_lambdaK`; the closure parameter is a pointer to the caller's struct (checked: the instance only calls it, `f()` being `F_lambdaK_call(f)`, so no copy escapes); the sidecar holds one copy of the template's text per instance |
 
 Each rule added after the pilot has a self-test in `tests/rules.cc` and
@@ -488,6 +489,7 @@ lemmas).
 | Byte-array element writes (`prims/byte_array_access.render`, wave 9) | byte_array_at_put, byte_array_is_raw_bytes (the C++ behind the Rust ports: they decline for opaque byte arrays), ByteArray::Bytes::is_valid_index and at_put | the write only into the content of an internal or raw external byte array outside the program heap (asserted), at an index checked against it; an external byte array of another tag (a resource proxy) fails before its bytes are touched; the value's low byte (`truncating`, an explicit int64-to-uint8 conversion); `oom_clean`. Not byte_array_at and byte_array_length: they also read a mapped file's bytes (MappedFileTag), which the heap model has no bytes for | the object model's byte arrays | 27 / 34 / 2 / 1 | the program-heap check left out; the index checked only against zero |
 | Allocation by size (`prims/allocating.render`, wave 10) | byte_array_new (the C++ behind the Rust port) | the int arguments' round trip (`truncating`), a non-negative length, the allocator's new byte array of that length, the memset inside its content; `grows`, `oom_clean`; the result an error with the heap unchanged or the new byte array | the allocator's contract (`Process::allocate_byte_array`) | see metrics.sh | the memset one byte late |
 | Array expansion (`prims/array_expand.render`, wave 10) | array_expand, Array::copy_from, Array::content, Array::fill, Array::at_put_no_write_barrier, Utils::min (the C++ behind the Rust port) | the copy of min(length, old_length) words reads inside `old` (old_length checked against its length) and writes inside the new array (memcpy of the words as bytes: the prelude's exact pointer/char round trips), the fill writes inside it; the result's elements are the copied prefix and the filler (all good references: the heap invariant), every old object unchanged; `grows`, `oom_clean` | the allocator's contract (`ObjectHeap::allocate_array`), the write barrier's | see metrics.sh | old_length unchecked against the old array, one word more copied |
+| String concatenation and slicing (`prims/strings.render`, wave 10) | string_add, concat_strings (the static helper and the primitive), string_slice, is_validated_string, utf_8_continuation_byte, String::MutableBytes::_initialize (both copy overloads), String::Bytes::at (the C++ behind the Rust ports) | every read inside the parts (the proven Blob decoder) and the receiver, every write inside the new string, the sum of the parts' lengths checked against MAX_CONCATENATION_LENGTH before it is added (no overflow, at most MAX_BLOB), the result's length (the sum; to - from), concat_strings' two decodings of each part equal, the primitive heap contract, `oom_clean` | the allocator's contract (`Process::allocate_string`), the Blob decoder's | see metrics.sh | the bound one byte higher (both), a failed part used, the slice's copy one byte longer |
 | Primitive `string_at` (`prims/string_at.render`, wave 10) | string_at, Utils::is_utf_8_prefix; bytes_in_utf_8_sequence and payload_from_prefix from `utf8/` | every read inside the decoded string or slice (StringOrSlice: the proven Blob decoder) for any bytes, the sequence length at most 4 before payload_from_prefix, no overflow in the decoded value, the heap unchanged; the result a smi, the null object or an error | the Blob decoder's contract | see metrics.sh | the fix reverted, either half of it taken out |
 | UTF-8 (`utf8/`) | Utils::utf_8_to_16, bytes_in_utf_8_sequence, payload_from_prefix | verified (Z3) | none | 57 / 45 / 1 / 169 | 07c24665: UB shift at payload_from_prefix; without the length check: the read past the input. Also checks sizing failure, surrogate width and initialization of the second output unit. |
 | UTF-16 (`utf8/utf_16_to_8.render`) | Utils::utf_16_to_8, Utils::utf_16le_to_8, read_utf16le_unit | verified (Z3) | readable little-endian byte pairs and an optional writable byte buffer | 60 / 73 / 1 / 70 | byte order, four-byte lead, surrogate replacement, output capacity and write count |
@@ -1291,6 +1293,19 @@ length 0); so for an opaque argument their bodies run only on an empty
 blob. byte_array_at and byte_array_length read a mapped file's bytes
 (MappedFileTag; not proved: the model has none), byte_array_at_put and
 byte_array_is_raw_bytes are proved (`prims/byte_array_access.render`).
+Wave 10 looked for the mapped files: no C++ of this tree makes a byte
+array tagged MappedFileTag (`set_external_address<T>` writes `T::tag`, and
+no class declares `TAG(MappedFile)`; the flash registry's proxies are
+RawByteTag over memory the process does not own; a snapshot's external
+byte arrays are read as RawByteTag, objects.cc). The tag is only read
+(byte_array_at, byte_array_length, the GC, interpreter_core.cc). So the
+unproved branch runs only for a byte array a program image brings with
+that tag word, and the program-heap walk (src/verifier.cc `walk_heap`)
+checks an external byte array's address range, not its tag. Whether a
+raw (not snapshot) image can be an untrusted container and carry another
+tag word, a mapped file's or a resource proxy's, was not established in
+wave 10 (for the lead: a proxy tag would make the C++ take image bytes for
+a native struct).
 
 Consequences. The C++ behind the 35 "never" ports does not run for an
 untrusted process on the default paths, so it needs no proof for the
@@ -2029,7 +2044,7 @@ classified):
 | Class | Count | Evidence |
 |---|---|---|
 | (a) cannot fail for want of memory | 62 | the primitive's body (or its macro) has no allocation, allocating argument kind (MutableBlob, cstring) or out-of-memory error: checked by contract_check.toit (a tripwire for helpers that allocate; reviewed) |
-| (b) fails for want of memory only before any visible effect | 88 | 86 by tests/ctest/prim-retry-test.cc (below), 39 of them also proved with VeriFast (`oom_clean` or `oom_unchanged`, below; 37 before wave 10, 30 before wave 9, 25 before wave 8), 47 tested only (49 before wave 10, 56 before wave 9); 2 reviewed (task_new: a format-1 path needs an interpreter; encode_error: needs a scheduler thread), the arguments in the table |
+| (b) fails for want of memory only before any visible effect | 88 | 86 by tests/ctest/prim-retry-test.cc (below), 42 of them also proved with VeriFast (`oom_clean` or `oom_unchanged`, below; 37 before wave 10, 30 before wave 9, 25 before wave 8), 44 tested only (49 before wave 10, 56 before wave 9); 2 reviewed (task_new: a format-1 path needs an interpreter; encode_error: needs a scheduler thread), the arguments in the table |
 | (c) violates it | 0 | |
 
 tests/ctest/prim-retry-test.cc makes every allocation of a call fail in
@@ -2095,7 +2110,17 @@ runs when the port's allocation does not fit (NeedsGc): byte_array_new
 (`prims/allocating.render`) and array_expand (`prims/array_expand.render`),
 both `oom_clean` (the allocation is their only failure for want of memory,
 before anything is written). Mutants byte-array-new-memset,
-array-expand-old-length, array-expand-copy-long (memory safety).
+array-expand-old-length, array-expand-copy-long (memory safety). Also
+string_add, concat_strings and string_slice (`prims/strings.render`,
+`oom_clean`; mutants concat-strings-bound, string-add-bound,
+concat-strings-failed-part, string-slice-copy-long). concat_strings
+decodes each part twice, before the allocation (to sum the lengths) and
+after it (to copy): the proof shows the second decoding gets the same
+lengths (`decoded_stable`: what byte_content decodes depends only on the
+objects it reaches, which the allocation keeps; the Blob decoder's
+contract now states its result's length as `decoded_length`), and copies
+with the new string taken out of the heap (`foreach_restrict`: the old
+objects reference only each other), so a part is never the new string.
 
 string_write_to_byte_array, byte_zap and blit install a copy-on-write byte
 array's copy (a write to an existing instance) before a later argument or
@@ -2278,6 +2303,36 @@ heap part, the tested-only retry classifications):
   `iterate_font_characters` (src/primitive_font.cc) decodes the same way;
   the font primitives are not in the untrusted set. string_rune_count and
   string_raw_at do not decode sequences.
+* **concat_strings and string_add allowed a string one byte longer than
+  the heap model's largest blob** (FIXED here, src/primitive_core.cc; an
+  off-by-one in wave 7's fix of the wrapping sum, not on upstream master,
+  which has no bound at all). MAX_CONCATENATION_LENGTH was 2^30 (2^62 on
+  64-bit) and the checks let the sum reach it; the core's MAX_BLOB_LENGTH
+  is exclusive (every byte length of its heap model is below it, so that
+  it is a smi), and so is the C++ allocator contract's MAX_BLOB. The Rust
+  ports decline a sum of exactly 2^30 by NeedsGc (the core's allocation
+  entry refuses it), and the C++ then made the string, on a 32-bit VM with
+  1 GB to spare: a string whose length is not a smi (`size` negative) and
+  outside the heap model the Rust proofs rely on. Found by the VeriFast
+  proof (`prims/strings.render`: allocate_string's `length <= MAX_BLOB`
+  failed in string_add's helper). Now 2^30 - 1 (2^62 - 1). Reachable by
+  untrusted programs in principle (a large literal and 64 references to
+  it; the ESP32 has no 1 GB). Regression test
+  tests/concat-strings-overflow-test.toit (host32: 64 references to a
+  16 MB string throw OUT_OF_RANGE; before, the C++ allocated 1 GB). Mutants
+  concat-strings-bound and string-add-bound.
+* **concat_strings ignored byte_content's result** (FIXED here). A string
+  slice that is not a slice of a string (its `from` above its `to`, or no
+  heap object in its string field: a program's own StringSlice_ can be
+  one, and the Rust port leaves such a slice to the C++) was concatenated
+  as what the failed decoding left: the whole string it wraps, or nothing,
+  copied by a memcpy from a null pointer (undefined even for 0 bytes).
+  The decoding is checked now (WRONG_OBJECT_TYPE, as in string_add; the
+  copy loop decodes again and the proof shows it gets the same lengths).
+  Not a memory-safety bug: the partial result was a range of a live string.
+  Regression test tests/ctest/prim-string-at-test.cc
+  (test_concat_malformed). Mutant concat-strings-failed-part. Upstream
+  master: the same code.
 * **put_uint_big_endian accepted width 9, an off-by-one of the initial
   commit** (FIXED here, src/primitive_core.cc, and its Rust port,
   verified/core/src/prims/blob.rs `put_endian`, which mirrored it). Not a

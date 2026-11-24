@@ -1076,7 +1076,7 @@ word String_MutableBytes_length(String_MutableBytes *self);
 //@ ensures [f]self->length_ |-> l &*& result == l;
 
 // C++: src/objects.h toit::String::MutableBytes::_initialize
-void String_MutableBytes__initialize(String_MutableBytes *self, char *str);
+void String_MutableBytes__initialize__charp(String_MutableBytes *self, char *str);
 /*@ requires [?f]self->address_ |-> ?a &*& [f]self->length_ |-> ?n &*& 0 <= n &*&
                  uchars(a, n, _) &*& [?g]uchars((uint8 *)str, n, ?bytes); @*/
 /*@ ensures [f]self->address_ |-> a &*& [f]self->length_ |-> n &*&

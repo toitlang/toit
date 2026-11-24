@@ -2653,6 +2653,20 @@ mutant array-expand-old-length prims/array_expand.render src/primitive_core.cc "
   "if (old_length < 0 || old_length > old->length()) FAIL(OUT_OF_RANGE);" "if (old_length < 0) FAIL(OUT_OF_RANGE);"
 mutant array-expand-copy-long prims/array_expand.render src/primitive_core.cc "No matching|Cannot prove" "-allow_dead_code -prover z3v4.5" \
   "new_array->copy_from(old, Utils::min(length, old_length));" "new_array->copy_from(old, Utils::min(length, old_length + 1));"
+# The string primitives behind the Rust ports (wave 10): a concatenation
+# one byte longer than MAX_CONCATENATION_LENGTH (the bound wave 10 fixed:
+# a string above the heap model's MAX_BLOB) in concat_strings and in
+# string_add; concat_strings using a part whose decoding failed (the other
+# wave-10 fix reverted); string_slice copying one byte more.
+entry strings               pass "" prims/strings.gen.c -allow_dead_code -prover z3v4.5
+mutant concat-strings-bound prims/strings.render src/primitive_core.cc "No matching|Cannot prove" "-allow_dead_code -prover z3v4.5" \
+  "if (blob.length() > MAX_CONCATENATION_LENGTH - length) FAIL(OUT_OF_RANGE);" "if (blob.length() > MAX_CONCATENATION_LENGTH + 1 - length) FAIL(OUT_OF_RANGE);"
+mutant string-add-bound prims/strings.render src/primitive_core.cc "No matching|Cannot prove" "-allow_dead_code -prover z3v4.5" \
+  "other_blob.length() > MAX_CONCATENATION_LENGTH - receiver_blob.length()) {" "other_blob.length() > MAX_CONCATENATION_LENGTH + 1 - receiver_blob.length()) {"
+mutant concat-strings-failed-part prims/strings.render src/primitive_core.cc "No matching|Cannot prove|overflow" "-allow_dead_code -prover z3v4.5" \
+  "    if (!HeapObject::cast(array->at(index))->byte_content(program, &blob, STRINGS_ONLY)) FAIL(WRONG_OBJECT_TYPE);" "    HeapObject::cast(array->at(index))->byte_content(program, &blob, STRINGS_ONLY);"
+mutant string-slice-copy-long prims/strings.render src/primitive_core.cc "No matching|Cannot prove" "-allow_dead_code -prover z3v4.5" \
+  "result_bytes._initialize(0, receiver, from, to - from);" "result_bytes._initialize(0, receiver, from, to - from + 1);"
 entry word-size             pass "" prims/word_size.gen.c
 mutant word-size-bits prims/word_size.render src/primitive_core.cc "smi_val|Cannot prove condition" "" \
   "return Smi::from(WORD_SIZE);" "return Smi::from(WORD_SIZE * 8);"

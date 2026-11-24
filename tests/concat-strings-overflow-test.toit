@@ -27,7 +27,12 @@ main:
   s := "x" * (16 * 1024 * 1024)
   array := Array_ 257 s
   expect-throw "OUT_OF_RANGE": concat-strings_ array
-  // Just above the longest concatenation (2^30 bytes).
+  // Just above the longest concatenation (2^30 - 1 bytes, a smi).
   array = Array_ 65 s
+  expect-throw "OUT_OF_RANGE": concat-strings_ array
+  // Exactly 2^30 bytes: one byte above the longest (wave 10; the bound
+  // was 2^30 itself, which made a string longer than the heap model's
+  // largest blob, its length not a smi).
+  array = Array_ 64 s
   expect-throw "OUT_OF_RANGE": concat-strings_ array
   print "done"

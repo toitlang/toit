@@ -1869,12 +1869,15 @@ static bool is_validated_string(Program* program, Object* object) {
   return heap_object->class_id() == program->string_slice_class_id();
 }
 
-// The longest string a concatenation makes (the verified core's
-// MAX_BLOB_LENGTH: 2^30 bytes on 32-bit, 2^62 on 64-bit). The lengths of
-// the parts are checked against it before they are added: on 32-bit their
-// sum wrapped (257 references to a 16 MB string), and the copy then wrote
-// far past the string allocated for the wrapped sum.
-static const word MAX_CONCATENATION_LENGTH = static_cast<word>(1) << (WORD_BIT_SIZE - 2);
+// The longest string a concatenation makes: below the verified core's
+// MAX_BLOB_LENGTH (2^30 bytes on 32-bit, 2^62 on 64-bit; every byte length
+// of its heap model is below it, so the longest is MAX_SMI bytes and its
+// length a smi). The lengths of the parts are checked against it before
+// they are added: on 32-bit their sum wrapped (257 references to a 16 MB
+// string), and the copy then wrote far past the string allocated for the
+// wrapped sum. Until wave 10 the bound was MAX_BLOB_LENGTH itself, one
+// byte too long.
+static const word MAX_CONCATENATION_LENGTH = (static_cast<word>(1) << (WORD_BIT_SIZE - 2)) - 1;
 
 static String* concat_strings(Process* process,
                               const uint8* bytes_a, word len_a,
@@ -1961,7 +1964,10 @@ PRIMITIVE(concat_strings) {
   word length = 0;
   for (word index = 0; index < array->length(); index++) {
     Blob blob;
-    HeapObject::cast(array->at(index))->byte_content(program, &blob, STRINGS_ONLY);
+    // A string slice whose fields are not a slice of a string (a program's
+    // own library can make one) is not a part. Until wave 10 its partial
+    // result was used: nothing, or the whole string it wraps.
+    if (!HeapObject::cast(array->at(index))->byte_content(program, &blob, STRINGS_ONLY)) FAIL(WRONG_OBJECT_TYPE);
     if (blob.length() > MAX_CONCATENATION_LENGTH - length) FAIL(OUT_OF_RANGE);
     length += blob.length();
   }
