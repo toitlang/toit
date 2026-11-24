@@ -76,8 +76,27 @@ pub open spec fn with_heap2(s: State2, h2: Seq<HeapObj>) -> State2 {
 /// heap; or the allocation fails and it throws the out-of-memory error
 /// itself (no exception object). Both are GC points. The reference
 /// interpreter's completion (`raise_null`: no trace, no other allocation)
-/// is one of them (`v2::sound_raise::lemma_raise_null`).
+/// is one of them (`v2::sound_raise::lemma_raise_null`). The allocation
+/// may collect first (`v2::gc::gc_steps`; the value is a smi or a
+/// program-heap object, which every collection keeps: `v2::gc::kept`).
 pub open spec fn raised(p: Program2, s: State2, value: Value, o: Outcome2) -> bool {
+    ||| exists|h2: Seq<HeapObj>, trace: Value| heap_extended(p, s.heap, h2) && good(h2, trace)
+            && o == #[trigger] throw_exception(p, with_heap2(s, h2), value, trace)
+    ||| exists|h2: Seq<HeapObj>| heap_extended(p, s.heap, h2)
+            && o == #[trigger] unwind(p, with_heap2(s, h2), Unwind::Throw(out_of_memory(p)))
+    ||| raised_gc(p, s, value, o)
+}
+
+/// The allocation of a raise collected first (opaque: only the proofs about
+/// raises look inside).
+#[verifier::opaque]
+pub open spec fn raised_gc(p: Program2, s: State2, value: Value, o: Outcome2) -> bool {
+    exists|s2: State2| #[trigger] crate::v2::gc::gc_steps(p, s, s2) && crate::v2::gc::kept(s.heap, value)
+        && raised_now(p, s2, value, o)
+}
+
+/// `raised` without a collection.
+pub open spec fn raised_now(p: Program2, s: State2, value: Value, o: Outcome2) -> bool {
     ||| exists|h2: Seq<HeapObj>, trace: Value| heap_extended(p, s.heap, h2) && good(h2, trace)
             && o == #[trigger] throw_exception(p, with_heap2(s, h2), value, trace)
     ||| exists|h2: Seq<HeapObj>| heap_extended(p, s.heap, h2)

@@ -335,16 +335,39 @@ pub proof fn lemma_raised(p: Program2, c: Cert, trusted: bool, s: State2, kt: Se
     ensures outcome_ok(p, c, Outcome2::Raise(s, v)),
 {
     assert forall|o2: Outcome2| #[trigger] raised(p, s, v, o2) implies final_ok(p, c, o2) by {
-        if exists|h2: Seq<HeapObj>, trace: Value| heap_extended(p, s.heap, h2) && good(h2, trace)
-            && o2 == #[trigger] throw_exception(p, with_heap2(s, h2), v, trace) {
-            let (h2, trace) = choose|h2: Seq<HeapObj>, trace: Value| heap_extended(p, s.heap, h2) && good(h2, trace)
-                && o2 == #[trigger] throw_exception(p, with_heap2(s, h2), v, trace);
-            lemma_throw(p, c, trusted, s, kt, h2, v, trace);
+        if raised_now(p, s, v, o2) {
+            lemma_raised_now(p, c, trusted, s, kt, v, o2);
         } else {
-            let h2 = choose|h2: Seq<HeapObj>| heap_extended(p, s.heap, h2)
-                && o2 == #[trigger] unwind(p, with_heap2(s, h2), Unwind::Throw(out_of_memory(p)));
-            lemma_throw_oom(p, c, trusted, s, kt, h2);
+            // The allocation collected first.
+            reveal(raised_gc);
+            let s2 = choose|s2: State2| #[trigger] crate::v2::gc::gc_steps(p, s, s2) && crate::v2::gc::kept(s.heap, v)
+                && raised_now(p, s2, v, o2);
+            crate::v2::gc::lemma_gc_steps_unw(p, c, s, kt, s2, v);
+            lemma_raised_now(p, c, trusted, s2, kt, v, o2);
         }
+    }
+}
+
+/// A completion of raising `v` from an unwinding state, without a
+/// collection, is good.
+proof fn lemma_raised_now(p: Program2, c: Cert, trusted: bool, s: State2, kt: Seq<Kind>, v: Value, o2: Outcome2)
+    requires
+        accepts(p, c, trusted),
+        unw_ok(p, c, s, kt),
+        s.stack.len() < 0x7000_0000,
+        good(s.heap, v),
+        raised_now(p, s, v, o2),
+    ensures final_ok(p, c, o2),
+{
+    if exists|h2: Seq<HeapObj>, trace: Value| heap_extended(p, s.heap, h2) && good(h2, trace)
+        && o2 == #[trigger] throw_exception(p, with_heap2(s, h2), v, trace) {
+        let (h2, trace) = choose|h2: Seq<HeapObj>, trace: Value| heap_extended(p, s.heap, h2) && good(h2, trace)
+            && o2 == #[trigger] throw_exception(p, with_heap2(s, h2), v, trace);
+        lemma_throw(p, c, trusted, s, kt, h2, v, trace);
+    } else {
+        let h2 = choose|h2: Seq<HeapObj>| heap_extended(p, s.heap, h2)
+            && o2 == #[trigger] unwind(p, with_heap2(s, h2), Unwind::Throw(out_of_memory(p)));
+        lemma_throw_oom(p, c, trusted, s, kt, h2);
     }
 }
 
