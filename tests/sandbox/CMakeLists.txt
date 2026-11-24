@@ -66,6 +66,9 @@ set(UNTRUSTED_RUN_TESTS
   # The verifier rejects deep sleep in untrusted programs at launch; the
   # program never runs.
   "deep-sleep|deep-sleep-main.toit|1|HALT 2.*VERIFICATION_FAILED|before deep sleep"
+  # A weak map's unreachable value is replaced by null by an old-space
+  # collection (the collector writes into a reachable object).
+  "weak-map|weak-map-main.toit|0|key=null kept=present 7"
 )
 
 foreach(entry ${UNTRUSTED_RUN_TESTS})
