@@ -69,6 +69,9 @@ set(UNTRUSTED_RUN_TESTS
   # A weak map's unreachable value is replaced by null by an old-space
   # collection (the collector writes into a reachable object).
   "weak-map|weak-map-main.toit|0|key=null kept=present 7"
+  # ByteOrder.put-uint with 9 bytes writes the same bytes in either order,
+  # through the Rust port (a fresh byte array) and the C++ (a literal).
+  "byte-order-width|byte-order-width-main.toit|0|big: \\[0, 255, 255, 255, 255, 255, 255, 255, 255\\] \\[0, 255, 255, 255, 255, 255, 255, 255, 255\\].*little: \\[255, 255, 255, 255, 255, 255, 255, 255, 0\\] \\[255, 255, 255, 255, 255, 255, 255, 255, 0\\].*eight: \\[1, 2, 3, 4, 5, 6, 7, 8\\]"
 )
 
 foreach(entry ${UNTRUSTED_RUN_TESTS})

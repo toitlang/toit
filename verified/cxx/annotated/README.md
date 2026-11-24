@@ -2219,6 +2219,33 @@ of #3378, malformed system messages of #3381) become mutants with them.
 
 ## Findings
 
+Wave 10 (the fallbacks of the allocating ports, the receive primitives'
+heap part, the tested-only retry classifications):
+
+* **put_uint_big_endian accepted width 9, an off-by-one of the initial
+  commit** (FIXED here, src/primitive_core.cc, and its Rust port,
+  verified/core/src/prims/blob.rs `put_endian`, which mirrored it). Not a
+  memory-safety bug: the bounds check used the same width, so the nine
+  bytes were inside the destination. But the ninth byte was the sign byte
+  of the arithmetic shift (`value >>= 8` on an int64: 255 for a negative
+  value), where everything else accepts 1..8 (put_uint_little_endian
+  rejects 9 and the readers too) and both Toit fallbacks of
+  lib/io/byte-order.toit write `value >>> 64`, that is 0. So
+  `BIG-ENDIAN.put-uint b 9 0 -1` wrote nine 255s while `LITTLE-ENDIAN`
+  wrote eight 255s and a 0, and a 9-byte width is not a uint the library
+  can mean (no int64 has a ninth byte; `ByteOrder.put-uint` documents no
+  width above 8). The check is now `unsigned_width > 8`: width 9 fails with
+  OUT_OF_BOUNDS and the fallback writes the 0, as in little endian. Width 0
+  stays accepted (nothing written, as the fallback does). Reachable by
+  untrusted programs (the port and the C++ for a literal destination); no
+  effect on safety. Regression tests: tests/ctest/prim-byte-order-test.cc
+  (width 9 now OUT_OF_BOUNDS for both writers) and
+  tests/sandbox/cli/byte-order-width-main.toit (`toit.run --untrusted`:
+  both byte orders, a fresh byte array through the port and a literal
+  through the C++, give the same bytes; fails without the fix). The VeriFast
+  proof (`prims/put_bytes.render`) is about the bounds and holds either way.
+  Upstream master: the same `unsigned_width > 9`.
+
 Wave 9 (the readers and writers behind the Rust ports, when the C++
 behind a port runs, two audits):
 
@@ -2255,7 +2282,7 @@ behind a port runs, two audits):
   fallback then writes the bytes with put-int32 / put-int64.
   put_uint_big_endian accepts a width of 9 (the ninth byte is the sign
   byte of the arithmetic shift); the port mirrors it, and both are inside
-  the bounds check.
+  the bounds check (wave 10: an off-by-one, fixed, see above).
 * The wave-8 count "behind the 106 ports, the C++ of 2 has a VeriFast body
   proof" was an undercount (8: array_new, the four integer divisions and
   string_write_to_byte_array were already proved); `metrics.sh` counts it

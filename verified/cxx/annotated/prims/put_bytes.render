@@ -131,11 +131,11 @@ PRIMITIVE(put_uint_big_endian)
   uword unsigned_offset = offset;
   //@ unsigned_of_signed(dl, sizeof(word) == 8 ? N64 : N32);
   uword length = dest.length();
-  //@ if (unsigned_offset <= length && unsigned_width <= 9) { unsigned_of_signed(unsigned_offset + unsigned_width, sizeof(word) == 8 ? N64 : N32); }
+  //@ if (unsigned_offset <= length && unsigned_width <= 8) { unsigned_of_signed(unsigned_offset + unsigned_width, sizeof(word) == 8 ? N64 : N32); }
   // We don't need to check for <0 on unsigned values.  Can't have integer
   // overflow when they are both constrained in size (assuming the byte
   // array can't be close to 4Gbytes large).
-  if (unsigned_offset > length || unsigned_width > 9 || unsigned_offset + unsigned_width > length) {
+  if (unsigned_offset > length || unsigned_width > 8 || unsigned_offset + unsigned_width > length) {
     FAIL(OUT_OF_BOUNDS);
   }
   //@ heap_holes_open();

@@ -1315,7 +1315,7 @@ fn put_bytes(heap: &mut Heap, c: &Ctx, b: &Blob, offset: usize, n: usize, value:
              Ghost(h0): Ghost<Heap>)
     requires
         heap_post(c.p, &h0, old(heap)), blob_ok(old(heap), b), b.c.writable(),
-        offset + n <= b.len, n <= 9,
+        offset + n <= b.len, n <= 8,
     ensures heap_post(c.p, &h0, final(heap)),
 {
     let mut v = value;
@@ -1417,8 +1417,8 @@ pub fn put_endian(big: bool, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOut
     let o = offset as usize;
     let w = width as usize;
     if big {
-        // Accepts width 9 (C++: `unsigned_width > 9`).
-        if w > 9 || o + w > dst.len { return fail(p, heap, ROOT_OUT_OF_BOUNDS); }
+        // Widths 0..8 (C++: `unsigned_width > 8`; until wave 10 both accepted 9).
+        if w > 8 || o + w > dst.len { return fail(p, heap, ROOT_OUT_OF_BOUNDS); }
     } else {
         if w == 0 || w - 1 >= 8 || o + (w - 1) >= dst.len { return fail(p, heap, ROOT_OUT_OF_BOUNDS); }
     }

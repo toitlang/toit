@@ -210,8 +210,8 @@ Object *primitive_put_uint_big_endian(Process *process, Object **__args)
   uword unsigned_offset = /*@truncating@*/(uword)offset;
   //@ unsigned_of_signed(dl, sizeof(word) == 8 ? N64 : N32);
   uword length = /*@truncating@*/(uword)MutableBlob_length(&dest);
-  //@ if (unsigned_offset <= length && unsigned_width <= 9) { unsigned_of_signed(unsigned_offset + unsigned_width, sizeof(word) == 8 ? N64 : N32); }
-  if (unsigned_offset > length || unsigned_width > 9 || /*@truncating@*/(unsigned_offset + (uword)unsigned_width) > length) {
+  //@ if (unsigned_offset <= length && unsigned_width <= 8) { unsigned_of_signed(unsigned_offset + unsigned_width, sizeof(word) == 8 ? N64 : N32); }
+  if (unsigned_offset > length || unsigned_width > 8 || /*@truncating@*/(unsigned_offset + (uword)unsigned_width) > length) {
     return (Object *)((uword)((int)(Program_OUT_OF_BOUNDS_INDEX) << Error_ERROR_SHIFT) | Error_ERROR_TAG);
   }
   //@ heap_holes_open();

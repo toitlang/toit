@@ -589,7 +589,7 @@ PRIMITIVE(put_uint_big_endian) {
   // We don't need to check for <0 on unsigned values.  Can't have integer
   // overflow when they are both constrained in size (assuming the byte
   // array can't be close to 4Gbytes large).
-  if (unsigned_offset > length || unsigned_width > 9 || unsigned_offset + unsigned_width > length) {
+  if (unsigned_offset > length || unsigned_width > 8 || unsigned_offset + unsigned_width > length) {
     FAIL(OUT_OF_BOUNDS);
   }
   for (int i = width - 1; i >= 0; i--) {

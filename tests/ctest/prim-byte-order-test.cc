@@ -15,9 +15,16 @@
 // unchecked). The undefined subtraction is caught by the VeriFast proofs
 // (prims/read_bytes.render, prims/put_bytes.render; mutants
 // read-int-width-overflow and put-uint-width-overflow); this test pins what
-// the rewritten checks do for every width: widths outside 1..8 (0..9 for
-// put_uint_big_endian, 0..8 for read_uint_*) are OUT_OF_BOUNDS, the others
-// read or write exactly the bytes they name.
+// the rewritten checks do for every width: widths outside 1..8 (0..8 for
+// put_uint_big_endian and read_uint_*) are OUT_OF_BOUNDS, the others read or
+// write exactly the bytes they name.
+//
+// Until wave 10, put_uint_big_endian also accepted width 9 (`unsigned_width
+// > 9`, an off-by-one of the initial commit; its Rust port mirrored it) and
+// wrote the arithmetic shift's sign byte as the ninth, where its
+// little-endian twin and the Toit fallback of both (lib/io/byte-order.toit:
+// `>>>`) write 0. Width 9 is OUT_OF_BOUNDS now (README "Findings", wave 10;
+// tests/sandbox/cli/byte-order-width-main.toit checks the Toit level).
 
 #include <stdint.h>
 #include <stdio.h>
@@ -146,7 +153,7 @@ static void test_reads(Process* process) {
 static void test_writes(Process* process) {
   struct Writer { int index; bool big; int max_width; };
   const Writer writers[] = {
-    { CORE_put_uint_big_endian, true, 9 },
+    { CORE_put_uint_big_endian, true, 8 },
     { CORE_put_uint_little_endian, false, 8 },
   };
   const int64 value = static_cast<int64>(0xf1e2d3c4b5a69788ULL);  // Negative.
@@ -165,12 +172,11 @@ static void test_writes(Process* process) {
           continue;
         }
         EXPECT(result == process->null_object());
-        // Byte k of the value (k = 0 the least significant), the arithmetic
-        // shift's sign bytes beyond the eighth.
+        // Byte k of the value (k = 0 the least significant).
         for (int i = 0; i < 10; i++) {
           int k = w.big ? offset + static_cast<int>(width) - 1 - i : i - offset;
           bool written = offset <= i && i < offset + width;
-          uint8 expected = !written ? PATTERN[i] : (k < 8 ? static_cast<uint8>(value >> (8 * k)) : 0xff);
+          uint8 expected = !written ? PATTERN[i] : static_cast<uint8>(value >> (8 * k));
           EXPECT(content[i] == expected);
         }
       }
