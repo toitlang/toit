@@ -26,9 +26,11 @@ Expression* return_peephole(Return* node) {
   if (node->value()->is_If()) {
     auto old_if = node->value()->as_If();
     // Push the `return` into the `if`.
+    // The new returns must leave the same block or method as the original
+    // one, so they keep its depth.
     auto new_if = zone_new<If>(old_if->condition(),
-                          zone_new<Return>(old_if->yes(), false, node->range()),
-                          zone_new<Return>(old_if->no(), false, node->range()),
+                          zone_new<Return>(old_if->yes(), node->depth(), node->range()),
+                          zone_new<Return>(old_if->no(), node->depth(), node->range()),
                           node->range());
     return new_if;
   }
