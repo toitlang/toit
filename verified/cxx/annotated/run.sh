@@ -2043,6 +2043,14 @@ mutant arguments-malformed-delivered decoder/message_decoder.render src/primitiv
 # deleted).
 mutant receive-no-give-back decoder/message_decoder.render src/primitive_core.cc "dec_back|No matching" "$DEC_OPTS" \
   "PRIMITIVE(task_receive_message)@@decoder.remove_disposing_finalizers();" "decoder.success();"
+# The retry rule's process part: a failure for want of memory that drops
+# the message, or the arguments, is rejected.
+mutant receive-oom-drops-message decoder/message_decoder.render src/primitive_core.cc "Cannot prove.*oom_error" "$DEC_OPTS" \
+  "PRIMITIVE(task_receive_message)@@      FAIL(ALLOCATION_FAILED);" \
+  "      //@ open queued(message);\n      //@ close dying(message);\n      process->remove_first_message();\n      FAIL(ALLOCATION_FAILED);"
+mutant arguments-oom-drops-slot decoder/message_decoder.render src/primitive_core.cc "Cannot prove.*oom_error" "$DEC_OPTS" \
+  "PRIMITIVE(main_arguments)@@    FAIL(ALLOCATION_FAILED);" \
+  "    process->clear_main_arguments();\n    MessageDecoder::deallocate(arguments);\n    FAIL(ALLOCATION_FAILED);"
 # One finalizer bit left set: its block is still lent.
 mutant receive-give-back-bound decoder/message_decoder.render src/messaging.cc "lent|finalized|invariant|Cannot prove|No matching" "$DEC_OPTS" \
   "MessageDecoder::remove_disposing_finalizers()@@for (unsigned i = 0; i < externals_count(); i++)" "for (unsigned i = 0; i + 1 < externals_count(); i++)"

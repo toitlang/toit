@@ -866,7 +866,13 @@ a = [
 # check can fail with another error; that error is not an out-of-memory
 # one because the error roots are distinct heap references, which the
 # loader checks: ProcessGroup::create, Program::has_valid_error_roots,
-# proved in cxx/annotated/loader/error_roots.render).
+# proved in cxx/annotated/loader/error_roots.render). The receive
+# primitives task_receive_message, main_arguments and spawn_arguments
+# stay "test": their contracts state the process part (on an oom_error
+# result the mailbox, its first message queued and whole, and the
+# arguments slot are unchanged: proved), not the heap part (the decoder's
+# contract says the heap grows, not that it writes only the objects it
+# allocates).
 b = [
   # A new result object (or a malloced scratch buffer, freed) is the only
   # allocation, made before anything else changes.
