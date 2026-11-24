@@ -192,9 +192,9 @@ static Verdicts verify(Fixture* f) {
 static bool accepted(const Verdicts& v) { return v.install || v.launch || v.format1; }
 
 // Applies `edit`, expects every path to refuse the program with `reason`
-// in its output, and undoes the edit with `undo`.
-static void expect_refused(Fixture* f, const char* name, const char* reason,
-                           const std::function<void()>& edit, const std::function<void()>& undo) {
+// in its output, and undoes the edit with `undo`. Returns the output.
+static std::string expect_refused(Fixture* f, const char* name, const char* reason,
+                                  const std::function<void()>& edit, const std::function<void()>& undo) {
   edit();
   Verdicts v = verify(f);
   undo();
@@ -204,6 +204,7 @@ static void expect_refused(Fixture* f, const char* name, const char* reason,
   bool named = v.output.find(reason) != std::string::npos;
   expect(named, reason, detail, __LINE__);
   if (!named || accepted(v)) printf("  output: %s\n", v.output.c_str());
+  return v.output;
 }
 
 #define WORD_FIELD(object, offset) \
@@ -281,6 +282,93 @@ static void test_layout(Fixture* f) {
                  [&]() { literals[last] = saved_last; });
 }
 
+// Format 2: the builtin classes have the tags and the fields the C++ VM
+// assumes, and the builtin roots their kinds
+// (V2Verifier::builtin_classes_error). A program brings its own core
+// library: its List_, Map, slices... are its own classes.
+static void test_builtin_classes(Fixture* f) {
+  Program* program = f->program;
+  // The builtin classes whose fields the C++ reads by index, and how many.
+  struct { int index; int fields; } shapes[] = {
+    { Program::byte_array_cow_class_id_INDEX, Instance::BYTE_ARRAY_COW_IS_MUTABLE_INDEX + 1 },
+    { Program::byte_array_slice_class_id_INDEX, Instance::BYTE_ARRAY_SLICE_TO_INDEX + 1 },
+    { Program::string_slice_class_id_INDEX, Instance::STRING_SLICE_TO_INDEX + 1 },
+    { Program::string_byte_slice_class_id_INDEX, Instance::STRING_BYTE_SLICE_TO_INDEX + 1 },
+    { Program::list_class_id_INDEX, Instance::LIST_SIZE_INDEX + 1 },
+    { Program::list_slice_class_id_INDEX, Instance::LIST_SLICE_TO_INDEX + 1 },
+    { Program::map_class_id_INDEX, Instance::MAP_BACKING_INDEX + 1 },
+    { Program::tombstone_class_id_INDEX, Instance::TOMBSTONE_DISTANCE_INDEX + 1 },
+    { Program::large_array_class_id_INDEX, Instance::LARGE_ARRAY_VECTOR_INDEX + 1 },
+    { Program::lazy_initializer_class_id_INDEX, 1 },
+    { Program::exception_class_id_INDEX, 2 },
+  };
+  // Every edit is refused: by the builtin check, or before it (the heap
+  // check, for a class with objects in the program heap; the method check,
+  // for a class whose fields the program's code reads or that it
+  // allocates). The fixture's code uses most of its builtin classes, so the
+  // method check refuses most edits; a program whose own library declares
+  // these classes differently and leaves them to the primitives is refused
+  // only by the builtin check. Here: the stack, large-integer and smi
+  // classes, which no Toit code allocates or reads fields of (before the
+  // builtin check the verifier accepted these three edits).
+  int named = 0;
+  int total = 0;
+  bool by_builtin_check[Program::BUILTIN_CLASS_IDS_COUNT] = { false };
+  for (int index = 0; index < Program::BUILTIN_CLASS_IDS_COUNT; index++) {
+    Smi* class_id = program->class_id(index);
+    uint16* bits = &program->class_bits.data_[Smi::value(class_id)];
+    uint16 saved = *bits;
+    int tag = saved & HeapObject::CLASS_TAG_MASK;
+    // Another tag (an instance class becomes an oddball class, every other
+    // an instance class of the same size).
+    uint16 other_tag = tag == INSTANCE_TAG ? ODDBALL_TAG : INSTANCE_TAG;
+    char name[96];
+    snprintf(name, sizeof(name), "builtin class %d with tag %d", index, other_tag);
+    std::string output = expect_refused(f, name, "program rejected",
+        [&]() { *bits = (saved & ~HeapObject::CLASS_TAG_MASK) | other_tag; },
+        [&]() { *bits = saved; });
+    total++;
+    if (output.find("builtin class") != std::string::npos) {
+      named++;
+      by_builtin_check[index] = true;
+    }
+    for (auto& shape : shapes) {
+      if (shape.index != index) continue;
+      // One field less than the VM reads: the size in words (header
+      // included) is the fields + 1.
+      uint16 smaller = (shape.fields << HeapObject::CLASS_ID_OFFSET) | tag;
+      snprintf(name, sizeof(name), "builtin class %d with %d fields", index, shape.fields - 1);
+      output = expect_refused(f, name, "program rejected", [&]() { *bits = smaller; }, [&]() { *bits = saved; });
+      total++;
+      if (output.find("builtin class") != std::string::npos) named++;
+    }
+  }
+  char counts[64];
+  snprintf(counts, sizeof(counts), "%d of %d edits", named, total);
+  printf("builtin classes: %s refused by the builtin check\n", counts);
+  expect(by_builtin_check[Program::stack_class_id_INDEX] &&
+         by_builtin_check[Program::large_integer_class_id_INDEX] &&
+         by_builtin_check[Program::smi_class_id_INDEX],
+         "another tag on the stack, large-integer and smi classes refused by the builtin check", counts, __LINE__);
+
+  // The roots the C++ reads without checks.
+  Object** roots = program->roots_;
+  struct { int index; Object* value; const char* reason; } roots_edits[] = {
+    { Program::null_object_INDEX, program->true_object(), "null, true or false" },
+    { Program::false_object_INDEX, program->null_object(), "null, true or false" },
+    { Program::empty_array_INDEX, program->null_object(), "empty_array" },
+    { Program::out_of_memory_error_INDEX, program->null_object(), "out_of_memory_error" },
+    { Program::app_sdk_version_INDEX, program->null_object(), "string root" },
+    { Program::ROOT_COUNT - 1, program->empty_array(), "string root" },
+  };
+  for (auto& edit : roots_edits) {
+    Object* saved = roots[edit.index];
+    char name[64];
+    snprintf(name, sizeof(name), "root %d", edit.index);
+    expect_refused(f, name, edit.reason, [&]() { roots[edit.index] = edit.value; }, [&]() { roots[edit.index] = saved; });
+  }
+}
+
 static void test_program(Fixture* f) {
   Verdicts original = verify(f);
   expect(accepted(original), "the original program is accepted", f->format == 2 ? "format 2" : "format 1", __LINE__);
@@ -341,6 +429,7 @@ static void test_program(Fixture* f) {
                  [&]() { *end = '\0'; });
 
   if (v2) test_layout(f);
+  if (v2) test_builtin_classes(f);
 
   // The edits were undone: the original is accepted again.
   Verdicts after = verify(f);

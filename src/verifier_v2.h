@@ -79,6 +79,13 @@ class V2Verifier {
   // verify_installed checks it before it reads anything else of the image.
   static const char* image_layout_error(const Program* program, word program_size);
 
+  // Null if the builtin class ids are classes with the tags and at least
+  // the fields the C++ VM assumes, and the builtin roots have their kinds
+  // (as the format-1 verifier checks); else the reason. The verifier
+  // checks it on every program it accepts, after the conversion checked
+  // that the roots are objects of the image.
+  static const char* builtin_classes_error(Program* program);
+
   // The install-time verdict for the program image at [memory] of
   // [program_size] bytes (written, its header not yet) with its shipped
   // [certificate] (or null), with the [metadata] its header will get: clears
