@@ -19,6 +19,10 @@
 
 #include <esp_freertos_hooks.h>
 #include <esp_timer.h>
+#ifdef CONFIG_TOIT_HW_PERF_STALL_SAMPLES
+#include <esp_intr_alloc.h>
+#include <esp_ipc.h>
+#endif
 #include <soc/soc_caps.h>
 #include <stdio.h>
 #include <string.h>
@@ -34,6 +38,19 @@ struct HwPerfMode {
   uint16 mask;
 };
 
+#ifdef CONFIG_TOIT_HW_PERF_STALL_SAMPLES
+// Stall sampling: the second counter raises the profiling interrupt every
+// PERIODS[mode] events of the mode; the PC samples are the PCs the
+// performance monitor latched (INTPC), not timer ticks. The cycles mode is
+// a dense time profile (about 20 kHz at 240 MHz).
+static const HwPerfMode MODES[] = {
+  { "i-stall-busy", 4, 0x0002 },   // Instruction RAM/ROM busy: flash-cache misses of code.
+  { "d-stall-busy", 3, 0x0010 },   // Data RAM/ROM/XLMI busy: flash-cache misses of data.
+  { "cycles", 0, 0x0001 },         // XTPERF_CNT_CYCLES.
+};
+static const uint32 PERIODS[] = { 1021, 1021, 12007 };
+static volatile uint32 stall_period = 1021;
+#else
 static const HwPerfMode MODES[] = {
   { "i-stall", 4, 0x1ff },         // XTPERF_CNT_I_STALL, all.
   { "d-stall", 3, 0x1fe },         // XTPERF_CNT_D_STALL, all.
@@ -42,6 +59,7 @@ static const HwPerfMode MODES[] = {
   { "exr-window", 5, 0x0020 },     // Window exceptions.
   { "exr-int", 5, 0x0006 },        // Interrupts (level 1 and higher).
 };
+#endif
 static const int MODE_COUNT = sizeof(MODES) / sizeof(MODES[0]);
 
 struct HwPerfCounters {
@@ -90,18 +108,7 @@ extern "C" void* volatile pxCurrentTCBs[];
 
 namespace toit {
 
-static void IRAM_ATTR hw_perf_tick() {
-  if (!sampling) return;
-  int core = hw_perf_core();
-  uint32** tcb = reinterpret_cast<uint32**>(pxCurrentTCBs[core]);
-  if (tcb == null) return;
-  uint32* frame = *tcb;  // pxTopOfStack, the first field of the TCB.
-  if (frame == null) return;
-#if defined(__XTENSA__)
-  uint32 pc = frame[1];
-#else
-  uint32 pc = frame[0];
-#endif
+static void IRAM_ATTR hw_perf_record_pc(int core, uint32 pc) {
   pc_samples[core]++;
   uint32 slot = (pc * 2654435761u) >> 22;  // 10 bits: PC_SLOTS.
   for (int i = 0; i < 8; i++) {
@@ -115,10 +122,53 @@ static void IRAM_ATTR hw_perf_tick() {
   pc_overflow[core]++;
 }
 
+static void IRAM_ATTR hw_perf_tick() {
+#ifndef CONFIG_TOIT_HW_PERF_STALL_SAMPLES
+  if (!sampling) return;
+  int core = hw_perf_core();
+  uint32** tcb = reinterpret_cast<uint32**>(pxCurrentTCBs[core]);
+  if (tcb == null) return;
+  uint32* frame = *tcb;  // pxTopOfStack, the first field of the TCB.
+  if (frame == null) return;
 #if defined(__XTENSA__)
-static inline void eri_write_(int address, uint32 value) {
+  uint32 pc = frame[1];
+#else
+  uint32 pc = frame[0];
+#endif
+  hw_perf_record_pc(core, pc);
+#endif
+}
+
+#if defined(__XTENSA__)
+static inline void IRAM_ATTR eri_write_(int address, uint32 value) {
   __asm__ volatile("wer %0, %1" : : "r"(value), "r"(address));
   __asm__ volatile("isync");
+}
+#endif
+
+#ifdef CONFIG_TOIT_HW_PERF_STALL_SAMPLES
+// The profiling interrupt (level 3) of the performance monitor: PM1
+// overflowed after PERIODS[mode] events. Records the PC the monitor
+// latched at that event (ERI_PERFMON_INTPC), restarts PM1 and clears its
+// overflow status (ERI_PERFMON_PMSTAT1, write one to clear).
+static void IRAM_ATTR hw_perf_stall_isr(void* arg) {
+  int core = hw_perf_core();
+  uint32 pc = hw_perf_eri_read(0x101010);
+  uint32 status = hw_perf_eri_read(0x101184);
+  eri_write_(0x101084, static_cast<uint32>(-static_cast<int32>(stall_period)));
+  eri_write_(0x101184, status);
+  if (sampling) hw_perf_record_pc(core, pc);
+}
+
+static intr_handle_t stall_interrupts[2];
+
+static void hw_perf_alloc_stall_interrupt(void* arg) {
+  int core = hw_perf_core();
+  if (stall_interrupts[core] != null) return;
+  esp_err_t err = esp_intr_alloc(ETS_INTERNAL_PROFILING_INTR_SOURCE,
+                                 ESP_INTR_FLAG_LEVEL3 | ESP_INTR_FLAG_IRAM,
+                                 hw_perf_stall_isr, null, &stall_interrupts[core]);
+  if (err != ESP_OK) printf("[hw-perf] core %d: no profiling interrupt (%d)\n", core, err);
 }
 #endif
 
@@ -135,9 +185,17 @@ void IRAM_ATTR hw_perf_configure() {
   uint32 tracelevel = 15 << 4;
   eri_write_(0x101080, 0);
   eri_write_(0x101100, tracelevel | (2 << 8) | (0x8dffu << 16));
+#ifdef CONFIG_TOIT_HW_PERF_STALL_SAMPLES
+  // PM1 starts at -PERIODS[mode] and interrupts on overflow (PMCTRL INTEN).
+  eri_write_(0x101184, hw_perf_eri_read(0x101184));
+  eri_write_(0x101084, static_cast<uint32>(-static_cast<int32>(stall_period)));
+  eri_write_(0x101104, tracelevel | (static_cast<uint32>(mode.select) << 8) |
+                       (static_cast<uint32>(mode.mask) << 16) | 1);
+#else
   eri_write_(0x101084, 0);
   eri_write_(0x101104, tracelevel | (static_cast<uint32>(mode.select) << 8) |
                        (static_cast<uint32>(mode.mask) << 16));
+#endif
   eri_write_(0x101000, 1);  // PGM_PMEN.
 #endif
   hw_perf_configured[core] = generation;
@@ -189,6 +247,9 @@ void IRAM_ATTR hw_perf_primitive(int module, int index, const HwPerfSample* star
 
 void hw_perf_reset() {
   mode_index = (mode_index + 1) % MODE_COUNT;
+#ifdef CONFIG_TOIT_HW_PERF_STALL_SAMPLES
+  stall_period = PERIODS[mode_index];
+#endif
   memset(counters, 0, sizeof(counters));
   memset(primitives, 0, sizeof(primitives));
   memset(primitive_overflow, 0, sizeof(primitive_overflow));
@@ -199,6 +260,14 @@ void hw_perf_reset() {
     tick_hooks_registered = true;
     for (int core = 0; core < SOC_CPU_CORES_NUM; core++) {
       esp_register_freertos_tick_hook_for_cpu(hw_perf_tick, core);
+#ifdef CONFIG_TOIT_HW_PERF_STALL_SAMPLES
+      // Internal interrupts are per core: allocate on each.
+      if (core == hw_perf_core()) {
+        hw_perf_alloc_stall_interrupt(null);
+      } else {
+        esp_ipc_call_blocking(core, hw_perf_alloc_stall_interrupt, null);
+      }
+#endif
     }
   }
   reset_time_us = esp_timer_get_time();
@@ -250,8 +319,14 @@ void hw_perf_dump() {
       printf("[hw-perf] core %d prim-overflow %u\n", core, static_cast<unsigned>(primitive_overflow[core]));
     }
     // The PC samples (hw-pc lines), twelve per line.
+#ifdef CONFIG_TOIT_HW_PERF_STALL_SAMPLES
+    printf("[hw-pc] core %d samples %u overflow %u stall-period %u\n", core,
+           static_cast<unsigned>(pc_samples[core]), static_cast<unsigned>(pc_overflow[core]),
+           static_cast<unsigned>(stall_period));
+#else
     printf("[hw-pc] core %d samples %u overflow %u\n", core, static_cast<unsigned>(pc_samples[core]),
            static_cast<unsigned>(pc_overflow[core]));
+#endif
     int on_line = 0;
     for (int i = 0; i < PC_SLOTS; i++) {
       HwPerfPc* p = &pcs[core][i];
