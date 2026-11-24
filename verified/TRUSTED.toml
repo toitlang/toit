@@ -1042,14 +1042,6 @@ justification = "Reads *(pre + (i + PRE)) as *const u16 = ptr + i: inside ptr[0.
 
 [[trusted]]
 crate = "core"
-file = "src/step.rs"
-item = "split_loop"
-kind = "external_body"
-count = 1
-justification = "No contract: the configuration of the loop (split into a hot part and step_cold on devices, target_os none; whole on hosts). Its value is unknown to Verus, so step_r is verified for both (TRUSTED.md section 4)."
-
-[[trusted]]
-crate = "core"
 file = "src/view.rs"
 item = "proven_unreachable"
 kind = "external_body"

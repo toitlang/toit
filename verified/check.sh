@@ -17,7 +17,9 @@
 # The gate for verified/: run before every merge. See verified/README.md.
 #
 #   1. Verus on verified/core and verified/spec: 0 errors required, for
-#      64-bit words (the host) and for 32-bit words (i686 target).
+#      64-bit words (the host) and for 32-bit words (i686 target); the core
+#      in both configurations of its run loop (whole, and split with the
+#      `split-loop` feature).
 #   2. Escape-hatch audit against verified/TRUSTED.toml (and a cross-check
 #      with `verus --no-cheating`); writes verified/THEOREMS.txt. The leaf
 #      contracts of verified/CONTRACTS.toml against both of their sides.
@@ -78,37 +80,48 @@ section() {
 # The core is verified with its `checked-loop` and `layout-tables` features
 # (the defaults; devices build without them, which only leaves code out:
 # verified/core/Cargo.toml) and `preempt-a-lot` (debug VM builds only).
-CRATES=(spec core)
+# `core-split` is the core once more with `split-loop` (the run loop split
+# into a hot part and `step_cold`, Kconfig TOIT_VERIFIED_CORE_SPLIT_LOOP):
+# the two configurations of the loop compile different code.
+CRATES=(spec core core-split)
 crate_args() {
   case "$1" in
     core) echo "--crate-name toit_verified_core --cfg toit_vcore_hosted --cfg feature=\"checked-loop\" --cfg feature=\"layout-tables\" --cfg feature=\"preempt-a-lot\" --extern toit_spec=$LOGS/libtoit_spec.rlib --import toit_spec=$LOGS/toit_spec.vir" ;;
+    core-split) echo "$(crate_args core) --cfg feature=\"split-loop\"" ;;
     spec) echo "--crate-name toit_spec" ;;
   esac
 }
 # Arguments of the verifying run only (not of the --no-cheating cross-check).
 crate_verify_args() {
   case "$1" in
-    core) echo "" ;;
+    core|core-split) echo "" ;;
     spec) echo "--export $LOGS/toit_spec.vir --compile -o $LOGS/libtoit_spec.rlib" ;;
   esac
+}
+# The crate's directory (core-split: verified/core).
+crate_dir() {
+  echo "$VERIFIED/${1%-split}"
 }
 
 # Runs Verus on one crate. Direct `verus` is preferred (the crates' documented
 # command); `cargo verus verify` is the fallback when only cargo-verus exists.
 verify_crate() {
   local name="$1"
-  local dir="$VERIFIED/$name"
+  local dir
+  dir="$(crate_dir "$name")"
   local log="$LOGS/$name.log"
   local args vargs
   read -r -a args <<< "$(crate_args "$name")"
   read -r -a vargs <<< "$(crate_verify_args "$name")"
+  local cargo_args=()
+  [ "$name" = core-split ] && cargo_args=(--features split-loop)
   local start end rc
   start=$(date +%s.%N)
   if command -v verus > /dev/null; then
     (cd "$dir" && verus --crate-type=lib "${args[@]}" "${vargs[@]}" src/lib.rs --time) > "$log" 2>&1
     rc=$?
   elif command -v cargo-verus > /dev/null; then
-    (cd "$dir" && cargo verus verify -- --time) > "$log" 2>&1
+    (cd "$dir" && cargo verus verify "${cargo_args[@]}" -- --time) > "$log" 2>&1
     rc=$?
   else
     fail "$name: neither verus nor cargo-verus is installed"
@@ -136,7 +149,7 @@ verify_crate() {
   if command -v verus > /dev/null; then
     (cd "$dir" && verus --crate-type=lib "${args[@]}" src/lib.rs --no-cheating --no-verify) \
       > "$LOGS/$name.nocheat.log" 2>&1
-    AUDIT_ARGS+=(--verus-no-cheating-log "$name=$LOGS/$name.nocheat.log")
+    AUDIT_ARGS+=(--verus-no-cheating-log "${name%-split}=$LOGS/$name.nocheat.log")
   fi
 }
 
@@ -153,13 +166,16 @@ done
 # This is the proof for the 32-bit host and the riscv32 devices.
 verify_crate_word32() {
   local name="$1"
-  local dir="$VERIFIED/$name"
+  local dir
+  dir="$(crate_dir "$name")"
   local log="$LOGS/$name.word32.log"
   local args=()
   case "$name" in
     spec) args=(--crate-name toit_spec --export "$LOGS/w32/toit_spec.vir" --compile -o "$LOGS/w32/libtoit_spec.rlib") ;;
-    core) args=(--crate-name toit_verified_core --cfg toit_vcore_hosted --cfg 'feature="checked-loop"' --cfg 'feature="layout-tables"' --cfg 'feature="preempt-a-lot"'
-                --extern "toit_spec=$LOGS/w32/libtoit_spec.rlib" --import "toit_spec=$LOGS/w32/toit_spec.vir") ;;
+    core|core-split)
+      args=(--crate-name toit_verified_core --cfg toit_vcore_hosted --cfg 'feature="checked-loop"' --cfg 'feature="layout-tables"' --cfg 'feature="preempt-a-lot"'
+            --extern "toit_spec=$LOGS/w32/libtoit_spec.rlib" --import "toit_spec=$LOGS/w32/toit_spec.vir")
+      [ "$name" = core-split ] && args+=(--cfg 'feature="split-loop"') ;;
   esac
   local start end rc
   start=$(date +%s.%N)

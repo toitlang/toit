@@ -64,6 +64,9 @@ infer = ["toit_spec/infer"]
 checked-loop = ["toit_verified_core/checked-loop"]
 # `preempt-a-lot`: debug VM builds (CMake, TOIT_DEBUG).
 preempt-a-lot = ["toit_verified_core/preempt-a-lot"]
+# `split-loop`: the core's run loop split into a hot and a cold part
+# (devices that place the hot part in IRAM; CMake TOIT_VERIFIED_CORE_SPLIT_LOOP).
+split-loop = ["toit_verified_core/split-loop"]
 
 [dependencies]
 toit_spec = { path = "../spec", default-features = false }

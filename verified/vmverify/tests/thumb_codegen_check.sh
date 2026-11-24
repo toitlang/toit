@@ -64,13 +64,18 @@ CFLAGS=(-mcpu=cortex-m3 -mthumb)
 failed=0
 fail() { echo "FAIL ($1): $2"; failed=1; }
 
+# Both configurations of the run loop: split (the EC618's default,
+# Makefile EC618_SPLIT_LOOP) and whole.
+for loop in split whole; do
+features=device-runtime
+[ "$loop" = split ] && features=device-runtime,split-loop
 for opt in "${LEVELS[@]}"; do
-  out="$WORK/opt$opt"
+  out="$WORK/opt$opt-$loop"
   rm -rf "$out/obj"
   mkdir -p "$out/obj"
-  echo "== device library, opt-level $opt ($TARGET)"
+  echo "== device library, opt-level $opt, $loop loop ($TARGET)"
   (cd "$VERIFIED/vmverify/staticlib" && CARGO_PROFILE_DEVICE_OPT_LEVEL="$opt" cargo build --quiet --profile device --lib \
-      --no-default-features --features device-runtime --target "$TARGET" --target-dir "$out/target") 2>&1 \
+      --no-default-features --features "$features" --target "$TARGET" --target-dir "$out/target") 2>&1 \
       | grep -v -E "no-movt|unknown and unstable feature|still passed through|consider filing|^ *\|$|^ *= " || true
   lib="$out/target/$TARGET/device/libtoit_rust.a"
   (cd "$out/obj" && "$BIN/arm-none-eabi-ar" x "$lib")
@@ -130,8 +135,9 @@ for opt in "${LEVELS[@]}"; do
     "$out/check.dis" | sort -rn | head -5 > "$out/frames.txt"
 
   if [ "$failed" = 0 ]; then
-    echo "thumb codegen ok at opt-level $opt: v7-M Thumb-2, soft float, no movw/movt relocations, no atomic helpers ($exclusive ldrex/strex linked); largest frames:"
+    echo "thumb codegen ok at opt-level $opt, $loop loop: v7-M Thumb-2, soft float, no movw/movt relocations, no atomic helpers ($exclusive ldrex/strex linked); largest frames:"
     sed 's/^/  /' "$out/frames.txt"
   fi
+done
 done
 exit $failed

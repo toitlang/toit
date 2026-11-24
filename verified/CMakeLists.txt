@@ -177,6 +177,14 @@ endif()
 if (CMAKE_BUILD_TYPE MATCHES "^(Debug|Asan|ASan|ASAN)$")
   list(APPEND VCORE_FEATURES preempt-a-lot)
 endif()
+# The run loop split into a hot part and an out-of-line cold part
+# (step::step_cold; core feature `split-loop`): for devices whose hot part
+# goes to a small IRAM (Kconfig TOIT_VERIFIED_CORE_SPLIT_LOOP: the classic
+# ESP32). Off: one loop with every handler, no step_cold in the binary.
+option(TOIT_VERIFIED_CORE_SPLIT_LOOP "Split the core's run loop into a hot and a cold part" OFF)
+if (TOIT_VERIFIED_CORE_SPLIT_LOOP)
+  list(APPEND VCORE_FEATURES split-loop)
+endif()
 list(JOIN VCORE_FEATURES "," VCORE_FEATURES_JOINED)
 set(VCORE_FEATURE_ARGS --no-default-features --features "${VCORE_FEATURES_JOINED}")
 

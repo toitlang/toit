@@ -27,6 +27,9 @@
 # (OUT_OF_MEMORY), out-of-range accesses must be proven impossible or
 # rejected.
 #
+# Both configurations of the core's run loop are checked: whole and split
+# (feature `split-loop`).
+#
 # Usage: nopanic_check.sh [OPT-LEVEL...]   (default: 3, the configured
 #   level of the core; the verifier is at z whatever the core's)
 # Needs the ESP-IDF RISC-V toolchain (riscv32-esp-elf-gcc, found in
@@ -72,23 +75,29 @@ NM="$(dirname "$GCC")/$PREFIX-nm"
 FORBIDDEN='core::panicking|core::fmt|rust_begin_unwind|toit_vmverify_panic|panic_bounds_check|slice_index_fail|slice_start_index|slice_end_index|unwrap_failed|expect_failed|handle_alloc_error|alloc_error_handler|raw_vec::handle_error|capacity_overflow|core::result::unwrap|core::option::unwrap|core::option::expect'
 
 failed=0
-for opt in "${LEVELS[@]}"; do
-  out="$WORK/opt$opt"
-  mkdir -p "$out"
-  echo "== device library, opt-level $opt ($TARGET)"
-  (cd "$VERIFIED/vmverify/staticlib" && CARGO_PROFILE_DEVICE_OPT_LEVEL="$opt" cargo build --quiet --profile device --lib \
-      --no-default-features --features device-runtime --target "$TARGET" --target-dir "$out/target")
-  "$GCC" "${CFLAGS[@]}" -Os -ffunction-sections -fdata-sections \
-    --specs=nosys.specs -Wl,--gc-sections -o "$out/check.elf" \
-    "$HERE/device_size/main.c" "$out/target/$TARGET/device/libtoit_rust.a" -lm > "$out/link.log" 2>&1 \
-    || { cat "$out/link.log" >&2; exit 1; }
-  "$NM" -C "$out/check.elf" > "$out/symbols.txt"
-  if grep -E "$FORBIDDEN" "$out/symbols.txt" > "$out/forbidden.txt"; then
-    echo "FAIL: panic or formatting machinery linked at opt-level $opt:"
-    cat "$out/forbidden.txt"
-    failed=1
-  else
-    echo "no panic paths at opt-level $opt, $TARGET ($(wc -l < "$out/symbols.txt") symbols linked)"
-  fi
+# Both configurations of the run loop: whole (the default) and split
+# (feature `split-loop`, Kconfig TOIT_VERIFIED_CORE_SPLIT_LOOP).
+for loop in whole split; do
+  features=device-runtime
+  [ "$loop" = split ] && features=device-runtime,split-loop
+  for opt in "${LEVELS[@]}"; do
+    out="$WORK/opt$opt-$loop"
+    mkdir -p "$out"
+    echo "== device library, opt-level $opt, $loop loop ($TARGET)"
+    (cd "$VERIFIED/vmverify/staticlib" && CARGO_PROFILE_DEVICE_OPT_LEVEL="$opt" cargo build --quiet --profile device --lib \
+        --no-default-features --features "$features" --target "$TARGET" --target-dir "$out/target")
+    "$GCC" "${CFLAGS[@]}" -Os -ffunction-sections -fdata-sections \
+      --specs=nosys.specs -Wl,--gc-sections -o "$out/check.elf" \
+      "$HERE/device_size/main.c" "$out/target/$TARGET/device/libtoit_rust.a" -lm > "$out/link.log" 2>&1 \
+      || { cat "$out/link.log" >&2; exit 1; }
+    "$NM" -C "$out/check.elf" > "$out/symbols.txt"
+    if grep -E "$FORBIDDEN" "$out/symbols.txt" > "$out/forbidden.txt"; then
+      echo "FAIL: panic or formatting machinery linked at opt-level $opt, $loop loop:"
+      cat "$out/forbidden.txt"
+      failed=1
+    else
+      echo "no panic paths at opt-level $opt, $loop loop, $TARGET ($(wc -l < "$out/symbols.txt") symbols linked)"
+    fi
+  done
 done
 exit $failed

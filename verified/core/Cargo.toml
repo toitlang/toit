@@ -47,6 +47,13 @@ layout-tables = []
 # Only debug VM builds (TOIT_DEBUG) have it, as the C++ interpreter, whose
 # release builds compile the test away; Verus verifies with it (check.sh).
 preempt-a-lot = []
+# `split-loop`: the run loop is split into a hot part (`step::run_loop`,
+# IRAM on the classic ESP32) and a cold part (`step::step_cold`, the
+# opcodes of `step::cold_op`, out of line). Without it every handler is in
+# the loop and `step_cold` is not compiled. Kconfig
+# TOIT_VERIFIED_CORE_SPLIT_LOOP (CMake TOIT_VERIFIED_CORE_SPLIT_LOOP);
+# Verus verifies both configurations (check.sh).
+split-loop = []
 
 [package.metadata.verus]
 verify = true

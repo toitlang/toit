@@ -43,6 +43,7 @@ device-runtime = ["toit_vmverify/device-runtime"]
 infer = ["toit_vmverify/infer"]
 checked-loop = ["toit_vmverify/checked-loop"]
 preempt-a-lot = ["toit_vmverify/preempt-a-lot"]
+split-loop = ["toit_vmverify/split-loop"]
 
 [dependencies]
 toit_vmverify = { path = "..", default-features = false }

@@ -800,9 +800,6 @@ pub enum Slow {
     /// The return with the result `w`: the task's bottom frame, a caller in
     /// a TRY (its finally code), finally records.
     Return,
-    /// A rare opcode (`cold_op`): its handler runs out of line (`step_cold`,
-    /// flash on devices), so that the run loop's hot part stays small.
-    Cold,
 }
 
 /// What a slow path starts from: the register loop's invariant and the
@@ -823,52 +820,18 @@ pub open spec fn slow_pre(p: &Program, m: Machine, r: Regs, k: Slow, w: usize, v
         Slow::Call(t, ret) => toit_spec::v2::prim::grows_stack(ap.bytecodes[r.ip@])
             && sp::step(ap, g) == sp::call(ap, g, t as int, ret as int),
         Slow::Return => sp::step(ap, g) == sp::return_from(ap, g, v) && w == enc(a, v) && encodable(a, v),
-        Slow::Cold => cold_op(ap.bytecodes[r.ip@]),
     }
 }
 
-/// The run loop's one call out of its hot part (`Ctl::Slow`): a rare
-/// opcode's handler (`step_cold`), or a handler's slow path (`slow_body`);
-/// a rare opcode's handler may itself hand on a slow path, which then runs
-/// too.
+/// Runs a slow path on the machine, out of line (the run loop's one call
+/// out of its hot part, for every register handler's Ctl::Slow; with the
+/// split loop also `step_cold` for a rare opcode's handler): writes the
+/// registers back, runs the machine's code (the raises, calls, returns,
+/// unwinding and C++ calls, which handle finally records, stack growth and
+/// preemption), and derives the registers again (`resume`).
 #[inline(never)]
 pub fn slow(m: &mut Machine, r: Regs, env: &Env, k: Slow, w: usize, Ghost(v): Ghost<Value>) -> (res: (Regs, Ctl))
     requires slow_pre(&env.p, *old(m), r, k, w, v),
-    ensures rpost(&env.p, *old(m), r, *final(m), res.0, res.1), !(res.1 is Slow),
-{
-    if let Slow::Cold = k {
-        let ghost m0 = *m;
-        let (r2, c2) = step_cold(m, r, env);
-        if let Ctl::Slow = c2 {
-            let k2 = m.slow_k;
-            let w2 = m.slow_w;
-            if let Slow::Cold = k2 {
-                // Not produced by a rare opcode's handler; the defined stop.
-                return (r2, Ctl::Stuck(stuck::LIMIT));
-            }
-            let ghost v2 = choose|v: Value| slow_pre(&env.p, *m, r2, k2, w2, v);
-            let ghost m1 = *m;
-            let (r3, c3) = slow_body(m, r2, env, k2, w2, Ghost(v2));
-            proof {
-                assert(m1.with(r2).g@ == m0.with(r).g@);
-            }
-            (r3, c3)
-        } else {
-            (r2, c2)
-        }
-    } else {
-        slow_body(m, r, env, k, w, Ghost(v))
-    }
-}
-
-/// Runs a slow path on the machine, out of line (the run loop calls it for every
-/// register handler's Ctl::Slow): writes the registers back, runs the machine's code
-/// (the raises, calls, returns, unwinding and C++ calls, which handle
-/// finally records, stack growth and preemption), and derives the
-/// registers again (`resume`).
-#[inline(never)]
-fn slow_body(m: &mut Machine, r: Regs, env: &Env, k: Slow, w: usize, Ghost(v): Ghost<Value>) -> (res: (Regs, Ctl))
-    requires slow_pre(&env.p, *old(m), r, k, w, v), !(k is Cold),
     ensures rpost(&env.p, *old(m), r, *final(m), res.0, res.1), !(res.1 is Slow),
 {
     let p = &env.p;
@@ -962,10 +925,6 @@ fn slow_body(m: &mut Machine, r: Regs, env: &Env, k: Slow, w: usize, Ghost(v): G
                 crate::unwind::lemma_return_prefix(ap, g, v);
             }
             (c, true)
-        },
-        Slow::Cold => {
-            proof { assert(false); }
-            return crate::view::proven_unreachable();
         },
     };
     let mut ok = false;
@@ -1500,22 +1459,25 @@ pub fn step_r(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
             crate::regs::set_regs(r, r2);
             c2
         },
-        1 if !split_loop() => {
+        #[cfg(not(feature = "split-loop"))]
+        1 => {
             let n = ip_u16(p, r.ip, 1);
             proof { assert(sp::step(ap, g) == sp::op_load_local(g, n as int, 3)) by { reveal(sp::step); } }
             crate::regs::op_load_local(m, r, p, n, 3)
         },
-        21 if !split_loop() => {
+        #[cfg(not(feature = "split-loop"))]
+        21 => {
             let i = ip_u16(p, r.ip, 1);
             proof { assert(sp::step(ap, g) == sp::op_load_literal(ap, g, i as int, 3)) by { reveal(sp::step); } }
             crate::regs::op_load_literal(m, r, p, i, 3)
         },
-        24 if !split_loop() => {
+        #[cfg(not(feature = "split-loop"))]
+        24 => {
             let n = r.ip.byte(1, &p.code) as usize;
             proof { assert(sp::step(ap, g) == sp::op_load_smis_0(g, n as int)) by { reveal(sp::step); } }
             crate::regs::op_load_smis_0(m, r, p, n)
         },
-        28 if !split_loop() => {
+        28 => {
             let v = ip_u32(p, r.ip, 1);
             proof {
                 assert(sp::step(ap, g) == sp::op_load_smi(ap, g, v as int, 5)) by { reveal(sp::step); }
@@ -1524,17 +1486,20 @@ pub fn step_r(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
             }
             crate::regs::op_load_smi(m, r, p, v, 5)
         },
-        31 if !split_loop() => {
+        #[cfg(not(feature = "split-loop"))]
+        31 => {
             let i = ip_u16(p, r.ip, 1);
             proof { assert(sp::step(ap, g) == sp::op_load_global(g, i as int, 3)) by { reveal(sp::step); } }
             crate::regs::op_load_global(m, r, p, i, 3)
         },
-        36 if !split_loop() => {
+        #[cfg(not(feature = "split-loop"))]
+        36 => {
             let i = ip_u16(p, r.ip, 1);
             proof { assert(sp::step(ap, g) == sp::op_store_global(g, i as int, 3)) by { reveal(sp::step); } }
             crate::regs::op_store_global(m, r, p, i, 3)
         },
-        86 if !split_loop() => {
+        #[cfg(not(feature = "split-loop"))]
+        86 => {
             if env.pre.requested() {
                 env.pre.clear();
                 m.sync(*r, &env.p);
@@ -1548,7 +1513,8 @@ pub fn step_r(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
             }
             crate::regs::op_branch(m, r, p, 1, -(d as isize), Ghost((bci - d) as usize), 3)
         },
-        87 if !split_loop() => {
+        #[cfg(not(feature = "split-loop"))]
+        87 => {
             if env.pre.requested() {
                 env.pre.clear();
                 m.sync(*r, &env.p);
@@ -1562,7 +1528,8 @@ pub fn step_r(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
             }
             crate::regs::op_branch(m, r, p, 2, -(d as isize), Ghost((bci - d) as usize), 3)
         },
-        88 if !split_loop() => {
+        #[cfg(not(feature = "split-loop"))]
+        88 => {
             if env.pre.requested() {
                 env.pre.clear();
                 m.sync(*r, &env.p);
@@ -1576,7 +1543,8 @@ pub fn step_r(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
             }
             crate::regs::op_branch(m, r, p, 3, -(d as isize), Ghost((bci - d) as usize), 3)
         },
-        59 if !split_loop() => {
+        #[cfg(not(feature = "split-loop"))]
+        59 => {
             let n = ip_u16(p, r.ip, 1);
             let sel = ip_u16(p, r.ip, 3);
             proof {
@@ -1584,120 +1552,137 @@ pub fn step_r(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
             }
             return crate::rcalls::op_invoke_virtual(m, r, env, cur_bci(p, r.ip), opcode, sel as i64, n + 1, 5);
         },
-        8 if !split_loop() => {
+        #[cfg(not(feature = "split-loop"))]
+        8 => {
             let f = ip_u16(p, r.ip, 1);
             proof { assert(sp::step(ap, g) == sp::op_load_field(ap, g, f as int, 3)) by { reveal(sp::step); } }
             return crate::rfields::op_load_field(m, r, env, cur_bci(p, r.ip), opcode, f, 3, false);
         },
-        12 if !split_loop() => {
+        #[cfg(not(feature = "split-loop"))]
+        12 => {
             let f = ip_u16(p, r.ip, 1);
             proof { assert(sp::step(ap, g) == sp::op_store_field(ap, g, f as int, 3, true)) by { reveal(sp::step); } }
             return crate::rfields::op_store_field(m, r, env, cur_bci(p, r.ip), opcode, f, 3, true, false);
         },
-        105 if !split_loop() => {
+        #[cfg(not(feature = "split-loop"))]
+        105 => {
             let f = ip_u16(p, r.ip, 1);
             proof { assert(sp::step(ap, g) == sp::op_load_field(ap, g, f as int, 3)) by { reveal(sp::step); } }
             return crate::rfields::op_load_field(m, r, env, cur_bci(p, r.ip), opcode, f, 3, true);
         },
-        109 if !split_loop() => {
+        #[cfg(not(feature = "split-loop"))]
+        109 => {
             let f = ip_u16(p, r.ip, 1);
             proof { assert(sp::step(ap, g) == sp::op_store_field(ap, g, f as int, 3, true)) by { reveal(sp::step); } }
             return crate::rfields::op_store_field(m, r, env, cur_bci(p, r.ip), opcode, f, 3, true, true);
         },
-        45 if !split_loop() => {
+        #[cfg(not(feature = "split-loop"))]
+        45 => {
             // IS_CLASS_WIDE.
             let enc = ip_u16(p, r.ip, 1);
             proof { assert(sp::step(ap, g) == sp::op_is(ap, g, enc as int, false, 3)) by { reveal(sp::step); } }
             return crate::rfields::op_is(m, r, env, cur_bci(p, r.ip), opcode, enc, false, 3);
         },
-        46 if !split_loop() => {
+        #[cfg(not(feature = "split-loop"))]
+        46 => {
             // IS_INTERFACE.
             let enc = r.ip.byte(1, &p.code) as usize;
             proof { assert(sp::step(ap, g) == sp::op_is(ap, g, enc as int, true, 2)) by { reveal(sp::step); } }
             return crate::rfields::op_is(m, r, env, cur_bci(p, r.ip), opcode, enc, true, 2);
         },
-        47 if !split_loop() => {
+        #[cfg(not(feature = "split-loop"))]
+        47 => {
             // IS_INTERFACE_WIDE.
             let enc = ip_u16(p, r.ip, 1);
             proof { assert(sp::step(ap, g) == sp::op_is(ap, g, enc as int, true, 3)) by { reveal(sp::step); } }
             return crate::rfields::op_is(m, r, env, cur_bci(p, r.ip), opcode, enc, true, 3);
         },
-        49 if !split_loop() => {
+        #[cfg(not(feature = "split-loop"))]
+        49 => {
             // AS_CLASS_WIDE.
             let enc = ip_u16(p, r.ip, 1);
             proof { assert(sp::step(ap, g) == sp::op_as(ap, g, enc as int, false, 3)) by { reveal(sp::step); } }
             return crate::rfields::op_as(m, r, env, cur_bci(p, r.ip), opcode, enc, false, 3);
         },
-        51 if !split_loop() => {
+        #[cfg(not(feature = "split-loop"))]
+        51 => {
             // AS_INTERFACE_WIDE.
             let enc = ip_u16(p, r.ip, 1);
             proof { assert(sp::step(ap, g) == sp::op_as(ap, g, enc as int, true, 3)) by { reveal(sp::step); } }
             return crate::rfields::op_as(m, r, env, cur_bci(p, r.ip), opcode, enc, true, 3);
         },
-        68 if !split_loop() => {
+        68 => {
             proof { crate::ops::lemma_step_op(p, g); }
             return crate::rops::op_invoke_arith(m, r, env, cur_bci(p, r.ip), 68);
         },
-        70 if !split_loop() => {
+        70 => {
             proof { crate::ops::lemma_step_op(p, g); }
             return crate::rops::op_invoke_arith(m, r, env, cur_bci(p, r.ip), 70);
         },
-        72 if !split_loop() => {
+        #[cfg(not(feature = "split-loop"))]
+        72 => {
             proof { crate::ops::lemma_step_op(p, g); }
             return crate::rops::op_invoke_arith(m, r, env, cur_bci(p, r.ip), 72);
         },
-        76 if !split_loop() => {
+        76 => {
             proof { crate::ops::lemma_step_op(p, g); }
             return crate::rops::op_invoke_arith(m, r, env, cur_bci(p, r.ip), 76);
         },
-        77 if !split_loop() => {
+        77 => {
             proof { crate::ops::lemma_step_op(p, g); }
             return crate::rops::op_invoke_arith(m, r, env, cur_bci(p, r.ip), 77);
         },
-        96 if !split_loop() => {
+        96 => {
             proof { crate::ops::lemma_step_op(p, g); }
             return crate::rops::op_identical(m, r, env, cur_bci(p, r.ip), 96);
         },
-        39 if !split_loop() => {
+        #[cfg(not(feature = "split-loop"))]
+        39 => {
             let k = r.ip.byte(1, &p.code) as usize;
             proof { assert(sp::step(ap, g) == sp::op_load_outer_block(g, k as int)) by { reveal(sp::step); } }
             crate::rblocks::op_load_outer_block(m, r, p, k)
         },
-        54 if !split_loop() => {
+        54 => {
             let d = ip_u16(p, r.ip, 1);
             proof {
                 assert(sp::step(ap, g) == sp::op_invoke_static_tail(ap, g, d as int)) by { reveal(sp::step); }
             }
             return crate::rblocks::op_invoke_static_tail(m, r, env, cur_bci(p, r.ip), opcode, d);
         },
-        57 if !split_loop() => {
+        #[cfg(not(feature = "split-loop"))]
+        57 => {
             proof { assert(sp::step(ap, g) == sp::op_invoke_initializer_tail(ap, g)) by { reveal(sp::step); } }
             return crate::rblocks::op_invoke_initializer_tail(m, r, env, cur_bci(p, r.ip), opcode);
         },
-        33 if !split_loop() => {
+        #[cfg(not(feature = "split-loop"))]
+        33 => {
             let i = ip_u16(p, r.ip, 1);
             proof { assert(sp::step(ap, g) == sp::op_load_global_lazy(ap, g, i as int, 3)) by { reveal(sp::step); } }
             return crate::rblocks::op_load_global_lazy(m, r, env, cur_bci(p, r.ip), opcode, i, 3);
         },
-        34 if !split_loop() => {
+        #[cfg(not(feature = "split-loop"))]
+        34 => {
             proof { assert(sp::step(ap, g) == sp::op_load_global_dynamic(ap, g)) by { reveal(sp::step); } }
             return crate::rblocks::op_load_global_dynamic(m, r, env, cur_bci(p, r.ip), opcode);
         },
-        37 if !split_loop() => {
+        #[cfg(not(feature = "split-loop"))]
+        37 => {
             proof { assert(sp::step(ap, g) == sp::op_store_global_dynamic(ap, g)) by { reveal(sp::step); } }
             return crate::rblocks::op_store_global_dynamic(m, r, env, cur_bci(p, r.ip), opcode);
         },
-        43 if !split_loop() => {
+        #[cfg(not(feature = "split-loop"))]
+        43 => {
             let c = ip_u16(p, r.ip, 1);
             proof { assert(sp::step(ap, g) == sp::op_allocate(ap, g, c as int, 3)) by { reveal(sp::step); } }
             return crate::rarrays::op_allocate(m, r, env, cur_bci(p, r.ip), 43, c, 3);
         },
-        89 if !split_loop() => {
+        89 => {
             return crate::rarrays::op_primitive(m, r, env, cur_bci(p, r.ip), 89);
         },
         // Non-local control flow (rnonlocal.rs): fast paths without
         // handlers on the way and without finally records.
-        95 if !split_loop() => {
+        #[cfg(not(feature = "split-loop"))]
+        95 => {
             let hd = r.ip.byte(1, &p.code) as usize;
             let off = ip_u32(p, r.ip, 2);
             proof {
@@ -1707,28 +1692,34 @@ pub fn step_r(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
             crate::regs::set_regs(r, r2);
             return c2;
         },
-        97 if !split_loop() => {
+        97 => {
             proof { assert(sp::step(ap, g) == sp::op_try(ap, g)) by { reveal(sp::step); } }
             let (r2, c2) = crate::rnonlocal::op_try_v(m, *r, env, cur_bci(p, r.ip), opcode);
             crate::regs::set_regs(r, r2);
             return c2;
         },
-        99 if !split_loop() => {
+        99 => {
             proof { assert(sp::step(ap, g) == sp::op_unwind(ap, g)) by { reveal(sp::step); } }
             return crate::rnonlocal::op_unwind(m, r, env, cur_bci(p, r.ip), opcode);
         },
         // Rare opcodes: the machine's handlers (`Slow::Op`). INVOKE_LAMBDA_TAIL,
         // THROW, HALT.
-        56 if !split_loop() => { return slow0(m, r, env, Slow::Op); },
-        90 if !split_loop() => { return slow0(m, r, env, Slow::Op); },
-        100 if !split_loop() => { return slow0(m, r, env, Slow::Op); },
-        // LOOP_REPEAT (proposal, format note 19).
-        1 | 8 | 12 | 21 | 24 | 28 | 31 | 33 | 34 | 36 | 37 | 39 | 43 | 45 | 46 | 47 | 49 | 51 | 54 | 56 | 57 | 59 | 68 | 70 | 72 | 76 | 77 | 86 | 87 | 88 | 89 | 90 | 95 | 96 | 97 | 99 | 100 | 105 | 109 => {
-            // The rare opcodes (`cold_op`) on devices (`split_loop`): out of
-            // line, in flash (the hot part of the loop goes to IRAM),
-            // through the loop's one call site (`slow`).
+        #[cfg(not(feature = "split-loop"))]
+        56 => { return slow0(m, r, env, Slow::Op); },
+        #[cfg(not(feature = "split-loop"))]
+        90 => { return slow0(m, r, env, Slow::Op); },
+        #[cfg(not(feature = "split-loop"))]
+        100 => { return slow0(m, r, env, Slow::Op); },
+        // With the split loop (feature `split-loop`): the rare opcodes
+        // (`cold_op`) out of line (`step_cold`), so that the loop's hot part
+        // (IRAM on the classic ESP32) stays small. The registers go through
+        // memory (the call), the request does not.
+        #[cfg(feature = "split-loop")]
+        1 | 8 | 12 | 21 | 24 | 31 | 33 | 34 | 36 | 37 | 39 | 43 | 45 | 46 | 47 | 49 | 51 | 56 | 57 | 59 | 72 | 86 | 87 | 88 | 90 | 95 | 100 | 105 | 109 => {
             proof { assert(cold_op(opcode)); }
-            return slow0(m, r, env, Slow::Cold);
+            let (r2, c2) = step_cold(m, *r, env);
+            crate::regs::set_regs(r, r2);
+            return c2;
         },
         _ => {
             // Every opcode of format 2 (below OPCODE_COUNT2, which the
@@ -1744,37 +1735,49 @@ pub fn step_r(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
     done(m, r, c, p)
 }
 
-/// Whether the run loop is split into a hot part and a cold part
-/// (`step_cold`, `cold_op`): on devices (no OS), where the hot part goes
-/// to IRAM; on hosts every handler stays in the loop (the split costs 7 to
-/// 19 percent there). Its value is unknown to the proofs (both are
-/// verified).
-#[verifier::external_body]
-#[inline(always)]
-pub fn split_loop() -> bool {
-    cfg!(target_os = "none")
-}
-
-/// The opcodes whose handlers are out of line (`step_cold`): rare in the
-/// measured workloads, so that the run loop's hot part (IRAM on devices)
-/// stays small.
+/// The opcodes whose handlers are out of line (`step_cold`) in the split
+/// loop (feature `split-loop`): the opcodes without a single execution in
+/// the device benchmarks (hwbench, perfbench; dynamic counts of a trusted
+/// format-2 build, split-option/logs/opcounts.txt) apart from a few
+/// hundred (STORE_GLOBAL_VAR_DYNAMIC, INVOKE_INITIALIZER_TAIL,
+/// NON_LOCAL_BRANCH): the _WIDE variants, dynamic and lazy wide globals,
+/// IS/AS of interfaces and wide classes, the backward conditional
+/// branches, USHR, INVOKE_LAMBDA_TAIL, THROW, HALT.
+#[cfg(feature = "split-loop")]
 pub open spec fn cold_op(op: u8) -> bool {
-    op == 1 || op == 8 || op == 12 || op == 21 || op == 24 || op == 28 || op == 31 || op == 33 || op == 34 || op == 36 || op == 37 || op == 39 || op == 43 || op == 45 || op == 46 || op == 47 || op == 49 || op == 51 || op == 54 || op == 56 || op == 57 || op == 59 || op == 68 || op == 70 || op == 72 || op == 76 || op == 77 || op == 86 || op == 87 || op == 88 || op == 89 || op == 90 || op == 95 || op == 96 || op == 97 || op == 99 || op == 100 || op == 105 || op == 109
+    op == 1 || op == 8 || op == 12 || op == 21 || op == 24 || op == 31 || op == 33 || op == 34 || op == 36 || op == 37 || op == 39 || op == 43 || op == 45 || op == 46 || op == 47 || op == 49 || op == 51 || op == 56 || op == 57 || op == 59 || op == 72 || op == 86 || op == 87 || op == 88 || op == 90 || op == 95 || op == 100 || op == 105 || op == 109
 }
 
-/// `step_c` out of line: the cold part of the loop (flash on devices).
+/// `step_c` out of line: the cold part of the split loop, with the slow
+/// path a handler hands on (so that the loop's call site needs no request
+/// in the machine).
+#[cfg(feature = "split-loop")]
 #[inline(never)]
 pub fn step_cold(m: &mut Machine, r0: Regs, env: &Env) -> (res: (Regs, Ctl))
     requires rinv(&env.p, *old(m), r0), cold_op(env.p.ap@.bytecodes[r0.ip@]),
-    ensures rpost(&env.p, *old(m), r0, *final(m), res.0, res.1),
+    ensures rpost(&env.p, *old(m), r0, *final(m), res.0, res.1), !(res.1 is Slow),
 {
+    let ghost m0 = *m;
     let mut r = r0;
     let c = step_c(m, &mut r, env);
-    (r, c)
+    if let Ctl::Slow = c {
+        let k = m.slow_k;
+        let w = m.slow_w;
+        let ghost v = choose|v: Value| slow_pre(&env.p, *m, r, k, w, v);
+        let ghost m1 = *m;
+        let (r2, c2) = slow(m, r, env, k, w, Ghost(v));
+        proof {
+            assert(m1.with(r).g@ == m0.with(r0).g@);
+        }
+        (r2, c2)
+    } else {
+        (r, c)
+    }
 }
 
 /// One step on registers for a rare opcode (`cold_op`): the arms `step_r`
-/// leaves out, which `step_cold` runs out of line.
+/// leaves out in the split loop, which `step_cold` runs out of line.
+#[cfg(feature = "split-loop")]
 #[inline(always)]
 #[verifier::spinoff_prover]
 #[verifier::rlimit(200)]
@@ -1816,15 +1819,6 @@ pub fn step_c(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
             let n = r.ip.byte(1, &p.code) as usize;
             proof { assert(sp::step(ap, g) == sp::op_load_smis_0(g, n as int)) by { reveal(sp::step); } }
             crate::regs::op_load_smis_0(m, r, p, n)
-        },
-        28 => {
-            let v = ip_u32(p, r.ip, 1);
-            proof {
-                assert(sp::step(ap, g) == sp::op_load_smi(ap, g, v as int, 5)) by { reveal(sp::step); }
-                assert(toit_spec::spec_common::smi_ok(p1(ap), v as int));
-                assert(sp::step(ap, g) == sp::next(sp::push(g, Value::Smi(v as i64)), 5));
-            }
-            crate::regs::op_load_smi(m, r, p, v, 5)
         },
         31 => {
             let i = ip_u16(p, r.ip, 1);
@@ -1936,41 +1930,14 @@ pub fn step_c(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
             proof { assert(sp::step(ap, g) == sp::op_as(ap, g, enc as int, true, 3)) by { reveal(sp::step); } }
             return crate::rfields::op_as(m, r, env, cur_bci(p, r.ip), opcode, enc, true, 3);
         },
-        68 => {
-            proof { crate::ops::lemma_step_op(p, g); }
-            return crate::rops::op_invoke_arith(m, r, env, cur_bci(p, r.ip), 68);
-        },
-        70 => {
-            proof { crate::ops::lemma_step_op(p, g); }
-            return crate::rops::op_invoke_arith(m, r, env, cur_bci(p, r.ip), 70);
-        },
         72 => {
             proof { crate::ops::lemma_step_op(p, g); }
             return crate::rops::op_invoke_arith(m, r, env, cur_bci(p, r.ip), 72);
-        },
-        76 => {
-            proof { crate::ops::lemma_step_op(p, g); }
-            return crate::rops::op_invoke_arith(m, r, env, cur_bci(p, r.ip), 76);
-        },
-        77 => {
-            proof { crate::ops::lemma_step_op(p, g); }
-            return crate::rops::op_invoke_arith(m, r, env, cur_bci(p, r.ip), 77);
-        },
-        96 => {
-            proof { crate::ops::lemma_step_op(p, g); }
-            return crate::rops::op_identical(m, r, env, cur_bci(p, r.ip), 96);
         },
         39 => {
             let k = r.ip.byte(1, &p.code) as usize;
             proof { assert(sp::step(ap, g) == sp::op_load_outer_block(g, k as int)) by { reveal(sp::step); } }
             crate::rblocks::op_load_outer_block(m, r, p, k)
-        },
-        54 => {
-            let d = ip_u16(p, r.ip, 1);
-            proof {
-                assert(sp::step(ap, g) == sp::op_invoke_static_tail(ap, g, d as int)) by { reveal(sp::step); }
-            }
-            return crate::rblocks::op_invoke_static_tail(m, r, env, cur_bci(p, r.ip), opcode, d);
         },
         57 => {
             proof { assert(sp::step(ap, g) == sp::op_invoke_initializer_tail(ap, g)) by { reveal(sp::step); } }
@@ -1994,9 +1961,6 @@ pub fn step_c(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
             proof { assert(sp::step(ap, g) == sp::op_allocate(ap, g, c as int, 3)) by { reveal(sp::step); } }
             return crate::rarrays::op_allocate(m, r, env, cur_bci(p, r.ip), 43, c, 3);
         },
-        89 => {
-            return crate::rarrays::op_primitive(m, r, env, cur_bci(p, r.ip), 89);
-        },
         // Non-local control flow (rnonlocal.rs): fast paths without
         // handlers on the way and without finally records.
         95 => {
@@ -2009,22 +1973,11 @@ pub fn step_c(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
             crate::regs::set_regs(r, r2);
             return c2;
         },
-        97 => {
-            proof { assert(sp::step(ap, g) == sp::op_try(ap, g)) by { reveal(sp::step); } }
-            let (r2, c2) = crate::rnonlocal::op_try_v(m, *r, env, cur_bci(p, r.ip), opcode);
-            crate::regs::set_regs(r, r2);
-            return c2;
-        },
-        99 => {
-            proof { assert(sp::step(ap, g) == sp::op_unwind(ap, g)) by { reveal(sp::step); } }
-            return crate::rnonlocal::op_unwind(m, r, env, cur_bci(p, r.ip), opcode);
-        },
         // Rare opcodes: the machine's handlers (`Slow::Op`). INVOKE_LAMBDA_TAIL,
         // THROW, HALT.
         56 => { return slow0(m, r, env, Slow::Op); },
         90 => { return slow0(m, r, env, Slow::Op); },
         100 => { return slow0(m, r, env, Slow::Op); },
-        // LOOP_REPEAT (proposal, format note 19).
         _ => {
             // `cold_op` lists exactly the arms above.
             proof { assert(false); }
