@@ -4,7 +4,35 @@
 #define private public
 #define protected public
 #include "objects.cc"
+#include "third_party/dartino/object_memory.h"
+namespace toit {
+#include "third_party/dartino/sweep_empty_cards.h"
+}
+alignas(256) static uword payload[96];
+#ifndef CXXV_NATIVE_FILL
+// fill_unmarked_words by its contract (sweep_empty_cards.h), which
+// Frama-C/WP proves on both widths (gc-page-scan-wp in run.sh: its
+// ensures, ensures_2 and assigns). ESBMC cannot see the word offset of the
+// integer-derived `words`, so the native loop stores each word as
+// WORD_SIZE byte updates at a symbolic offset (1560 of the 2578 versions
+// of the payload on ILP32). The model checks the contract's requirement
+// for this fixture, 32 aligned words inside the payload, then stores whole
+// words at constant indices: words[i] becomes the filler for every
+// unmarked i at or after first, and every other word keeps its value.
+static void fill_by_contract(word* words, uint32 marks, unsigned first, word filler) {
+  uword at = reinterpret_cast<uword>(words), base = reinterpret_cast<uword>(payload);
+  CXXV_ASSERT(first <= 32 && at >= base && at - base <= sizeof(payload) - 32 * sizeof(word) &&
+              (at - base) % sizeof(word) == 0, "fill 32 aligned words inside the chunk");
+  uword index = (at - base) / sizeof(word);
+  for (unsigned i = 0; i < 32; i++) {
+    bool fill = i >= first && ((marks >> i) & 1U) == 0;
+    payload[index + i] = fill ? static_cast<uword>(filler) : payload[index + i];
+  }
+}
+#define fill_unmarked_words fill_by_contract
+#endif
 #include "third_party/dartino/object_memory_mark_sweep.cc"
+#undef fill_unmarked_words
 #undef protected
 #undef private
 
@@ -12,7 +40,6 @@ using namespace toit;
 
 extern OldSpace space;
 GcMetadata GcMetadata::singleton_;
-alignas(256) static uword payload[96];
 static uint32 marks[3];
 static uint8 starts[3];
 static Chunk* installed;

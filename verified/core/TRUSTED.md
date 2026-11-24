@@ -243,8 +243,9 @@ signed int and the successor has a representable biased address. On hosts,
 the page allocator limits a chunk to 64 pages.
 The [overhang fixture](../cxx/harness/gc_compaction_overhang.cc) runs the native
 planner over three source cards with two live objects, a modeled size lookup,
-and one skipped destination. General object layouts and arbitrary-length
-sequences of destination switches still require verification. The low-level marking and layout models must still agree throughout an
+and one skipped destination. It has a verdict only on ILP32: on LP64 the model
+checker gives no verdict (verified/cxx/annotated/README.md, "No verdict").
+General object layouts and arbitrary-length sequences of destination switches still require verification. The low-level marking and layout models must still agree throughout an
 actual collection. The [compaction root walk](../cxx/annotated/heap/fix_roots.render)
 proves termination for any finite initialized root range. With stable
 page classification and aligned, representable destinations for old roots,
@@ -1013,6 +1014,8 @@ when recording an allocation. The native range test accepts the upper endpoint,
 which supplies the one-past address used in table fills. The
 [setup check](../cxx/harness/gc_metadata_layout.cc) follows a successful host
 reservation through the native accessors to the committed card tables.
+It has a verdict on ILP32 and in the EC618 and ESP32 variants; on LP64 the model
+checker gives no verdict (verified/cxx/annotated/README.md, "No verdict").
 The base space constructor installs the program and page type and starts with
 zero allocation bounds. The native semispace append sets the owner and links the
 chunk before the constructor installs the allocation window. For an empty or
@@ -1259,7 +1262,11 @@ payload intact. The [three-card sweep fixture](../cxx/harness/gc_sweep_chunk.cc)
 runs the native sweep, region encoder, and bucket insertion together.
 It checks leading, trailing, and interior gaps, an empty chunk, the byte
 count, filler words, object starts, mark clearing, and the final sentinel.
-It models the page release and supplies the bitmap and chunk.
+It models the page release and supplies the bitmap and chunk. It takes
+the filler loop `fill_unmarked_words` by its contract, which the card-scan
+proof below establishes for both widths, instead of running its body
+(ESBMC could not finish with the native loop; verified/cxx/annotated/README.md,
+"Restructured").
 The [card scan](../../src/third_party/dartino/sweep_empty_cards.h)
 authorizes releasing a whole chunk exactly when it starts at card zero and
 every mark word is zero. On a mixed card, both filler loops preserve every

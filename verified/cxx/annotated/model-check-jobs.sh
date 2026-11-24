@@ -15,9 +15,6 @@
 #   fast_cap NAME/ABI CAP-GB
 # a job of the fast tier that needs a larger cap than RUN_FAST_MEM (4 GB).
 
-known_noverdict core-entry/LP64 "does not finish alone with 36 GB; the harness is to be split"
-known_noverdict core-entry-checked/LP64 "does not finish alone with 36 GB; the harness is to be split"
-
 fast_cap encoder-handoff/LP64 12
 fast_cap scheduler-notify/LP64 11
 fast_cap ipc-byte-array-visit/ILP32 6
@@ -26,8 +23,6 @@ fast_cap scheduler-target-queue/LP64 5
 
 slow allocate-task/ILP32                         3  1800
 slow allocate-task/LP64                          4  1800
-slow core-entry-checked/ILP32                    8  1800
-slow core-entry/ILP32                            8  1800
 slow encoder-collections/LP64                    4  1800
 slow event-notifiers/LP64                        3  1800
 slow external-accounting-threads/ILP32           3  1800
@@ -73,12 +68,17 @@ slow task-retry-fields/LP64                      4  2820
 slow task-transfer/LP64                          3  1980
 slow timer-delete/LP64                           5  1800
 slow timer-dispatch/LP64                         9  1800
-# No verdict yet when measured (the README table): out of memory at 16 GB
-# (gc-sweep-chunk) or out of time (the others). Their caps and timeouts are
-# estimates for the next attempt; a cap above RUN_SLOW_BUDGET runs when no
-# other slow job holds memory.
-slow free-list-selection/LP64 30 14400
-slow gc-compaction-overhang/LP64 10 14400
-slow gc-metadata-layout/LP64 4 10800
-slow gc-sweep-chunk/ILP32 24 14400
-slow gc-sweep-chunk/LP64 28 14400
+# No verdict after the attempts of 2026-11-24 (README, "No verdict"): the
+# slow tier reports them without running them.
+known_noverdict gc-compaction-overhang/LP64 "out of time after 2 h (Bitwuzla, Boolector); see the README, No verdict"
+known_noverdict gc-metadata-layout/LP64 "out of time after 3 h (Bitwuzla), 2 h (Boolector); see the README, No verdict"
+known_noverdict free-list-selection/LP64 "out of time after 2 h, out of memory at 8-24 GB; see the README, No verdict"
+known_noverdict gc-sweep-chunk-uncounted/LP64 "the mutant gave no verdict within 600 s; not measured longer"
+# gc-sweep-chunk with fill_unmarked_words by contract and Boolector
+# (2026-11-24), and its mutants (README, "Restructured").
+slow gc-sweep-chunk/ILP32                        3  1920
+# LP64: about 75 CPU-minutes, 3.9 GB virtual (measured outside run.sh).
+slow gc-sweep-chunk/LP64                         6  18000
+slow gc-sweep-chunk-uncounted/ILP32              3  1800
+slow gc-sweep-chunk-no-sentinel/ILP32            3  1800
+slow gc-sweep-chunk-no-sentinel/LP64             5  1800

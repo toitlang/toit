@@ -11,7 +11,30 @@
 #undef private
 #include "heap.cc"
 #include "v2_method_table.cc"
+// run_v2 and v2_program_tables clear the hand-off records with memset
+// before filling them (interpreter_v2.cc, the only two calls). ESBMC's
+// byte-wise memset turns every pointer field into a conversion from bytes
+// that the solver resolves against every object: on LP64 the formula did
+// not fit in 36 GB. Model each call by its footprint only: it overwrites
+// exactly the whole record at the address with arbitrary contents (an
+// uninitialized local is nondeterministic in ESBMC), which includes the
+// zeros memset writes, so every property proved here holds for memset too.
+// ESBMC still checks the typed store: a valid, aligned, in-bounds record.
+static void* clear_record(void* address, int value, size_t bytes) {
+  CXXV_ASSERT(value == 0 && (bytes == sizeof(toit_v2_context) || bytes == sizeof(toit_v2_program)),
+              "clear exactly one whole hand-off record");
+  if (bytes == sizeof(toit_v2_context)) {
+    toit_v2_context arbitrary;
+    *static_cast<toit_v2_context*>(address) = arbitrary;
+  } else {
+    toit_v2_program arbitrary;
+    *static_cast<toit_v2_program*>(address) = arbitrary;
+  }
+  return address;
+}
+#define memset clear_record
 #include "interpreter_v2.cc"
+#undef memset
 
 using namespace toit;
 
