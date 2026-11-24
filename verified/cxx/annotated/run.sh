@@ -59,7 +59,8 @@ note() { if [ "$1" -ne 0 ]; then failures=$((failures + 1)); fi; }
 # C++ writes it).
 OPTS=(-fno-strict-aliasing -assume_left_to_right_evaluation)
 
-# Every check runs as a parallel job (at most one per core); the output is
+# Every check runs as a parallel job (at most one per core running, see
+# spawn: a job waiting for model-checker memory does not count); the output is
 # printed in order at the end. A job's exit status is its failure count.
 # Two phases: render.sh --check rewrites the 32-bit renderings (under
 # $GEN32; the committed 64-bit ones it only compares), so it runs together
@@ -77,8 +78,19 @@ njobs=0
 pids=()
 # Interrupted: stop the jobs (each stops its model checker, mc_run).
 trap 'trap - TERM INT HUP; kill -TERM $(jobs -p) 2> /dev/null; wait; exit 143' TERM INT HUP
+# A model-checker job that waits for its memory (mem_acquire; a file in
+# $JOBS/waiting while it waits) holds no core: it does not count against
+# MAXJOBS, so the VeriFast jobs behind it start meanwhile. At most MAXJOBS
+# jobs wait at once (this run's share of the machine-wide memory queue).
+mkdir -p "$JOBS/waiting"
 spawn() {
-  while [ "$(jobs -rp | wc -l)" -ge "$MAXJOBS" ]; do wait -n; done
+  local running waiting
+  while :; do
+    running=$(jobs -rp | wc -l)
+    waiting=$(find "$JOBS/waiting" -type f | wc -l)
+    (( running - waiting < MAXJOBS && waiting < MAXJOBS )) && break
+    sleep 1
+  done
   ("$@") > "$JOBS/$njobs.log" 2>&1 &
   pids+=($!)
   njobs=$((njobs + 1))
@@ -230,6 +242,7 @@ mem_acquire() {
       ok=1
     fi
     if (( ok )); then
+      rm -f "$JOBS/waiting/$me"
       lines+=("$BASHPID $need")
       printf '%s\n' "${lines[@]}" > "$MC_MEMFILE"
       grep -vx "$me" "$own_queue" > "$own_queue.new"
@@ -240,6 +253,8 @@ mem_acquire() {
       return 0
     fi
     exec 8>&-
+    # Waiting: no longer counted as a running job (spawn).
+    : > "$JOBS/waiting/$me"
     # After 30 s, say what it waits for (on run.sh's stderr), then every
     # 10 minutes.
     if (( waited >= 30 && (said < 0 || waited - said >= 600) )); then
