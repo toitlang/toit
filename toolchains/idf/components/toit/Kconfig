@@ -284,6 +284,25 @@ menu "Toit"
 
     endmenu
 
+    config TOIT_PIN_HOT_FLASH_CODE
+        bool "Place the VM's hot flash code first in flash, in a fixed order"
+        default n
+        help
+            Places the functions of TOIT_HOT_FLASH_FUNCTIONS at the start of
+            the flash-mapped code (an output section inserted before
+            .flash.text), in the order of that list, so that their flash
+            addresses, and therefore the flash-cache sets they occupy, no
+            longer depend on the size of any other code.
+
+    config TOIT_HOT_FLASH_FUNCTIONS
+        string "Hot flash functions, in order"
+        depends on TOIT_PIN_HOT_FLASH_CODE
+        default ""
+        help
+            A comma-separated list of section-name globs (the part after
+            ".text."), in the order they are placed. Empty: the list in
+            toolchains/idf/components/toit/hot_flash_functions.txt.
+
     config TOIT_VERIFIED_CORE
         bool "Verified format-2 core and verifier (Rust) for untrusted containers"
         default n
@@ -502,4 +521,17 @@ menu "Toit"
             Profiler.start without an installed profiler resets the
             counters, Profiler.stop prints them ("[hw-perf]" lines). Costs
             some 50-100 cycles per primitive call and IRAM.
+
+    config TOIT_HW_PERF_STALL_SAMPLES
+        bool "Sample the PCs of stall cycles instead of timer ticks (for measurements)"
+        default n
+        depends on TOIT_HW_PERF && IDF_TARGET_ARCH_XTENSA
+        help
+            The second counter alternates between instruction-fetch stalls
+            (Instruction RAM/ROM busy: flash-cache misses of code) and data
+            stalls (Data RAM/ROM busy: flash-cache misses of rodata and
+            program images) per Profiler.start, and raises the profiling
+            interrupt every 1,021 such cycles; the "[hw-pc]" lines then hold
+            the PCs the performance monitor latched (INTPC) instead of the
+            timer-tick samples: where the flash-cache misses are.
 endmenu

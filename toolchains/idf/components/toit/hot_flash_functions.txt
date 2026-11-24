@@ -1,0 +1,258 @@
+# Copyright (C) 2026 Toit contributors.
+#
+# The hot flash code of the classic ESP32 (Kconfig TOIT_PIN_HOT_FLASH_CODE):
+# these functions are placed first in the flash-mapped code, at 0x400d0020,
+# in this order, each with its literals (CMakeLists.txt of this component).
+#
+# Why: the ESP32's flash cache is 32 KB per CPU, two-way set-associative
+# with 32-byte lines, and serves code, rodata and the program images alike
+# (ESP32 TRM 3.3.4). Two addresses compete when they are equal modulo
+# 16 KB. Code that two hot functions keep in both ways of a set thrashes
+# as soon as one more line (code or data) maps there, so single benchmarks
+# moved by 30-100 % when unrelated code changed size. With the hot code
+# contiguous at a fixed address, at most 16 KB long per group, no two hot
+# functions of a group share a set and their sets no longer depend on any
+# other code.
+#
+# One section-name glob per line (the part after ".text."); "f1:"/"f2:"
+# restricts a line to firmware whose programs are format 1 / format 2.
+# Rust functions are matched from the crate name on (the crate hash
+# differs between builds). A name that no longer exists matches nothing.
+# Group A is the run-time path (scheduler, messaging, allocation, FreeRTOS,
+# the heap, the verified core's flash helpers / the C++ interpreter's
+# helpers), at most 11 KB per format; group B the install-time verifier.
+# The list comes from flash-cache stall samples (TOIT_HW_PERF_STALL_SAMPLES)
+# of the device benchmarks and installs; see the esp32-layout measurements
+# referenced in verified/core/PROGRESS.md.
+
+# Group A, both formats (most stall samples per byte first).
+_ZN4toit10ObjectHeap23max_external_allocationEv                          #    42 B  toit::ObjectHeap::max_external_allocation()
+_ZN4toit6Locker5enterEv                                                  #    96 B  toit::Locker::enter()
+pvTaskGetThreadLocalStoragePointer                                       #    24 B  pvTaskGetThreadLocalStoragePointer
+_ZN4toit10HeapObject11_set_headerEPNS_7ProgramEPNS_3SmiE                 #    32 B  toit::HeapObject::_set_header(toit::Program*,_toit::Smi*)
+_ZN4toit10ObjectHeap14allocate_arrayEiPNS_6ObjectE                       #    70 B  toit::ObjectHeap::allocate_array(int,_toit::Object*)
+heap_caps_get_option                                                     #    17 B  heap_caps_get_option
+xQueueSemaphoreTake                                                      #   221 B  xQueueSemaphoreTake
+_ZN4toit12TwoSpaceHeap8allocateEj                                        #    34 B  toit::TwoSpaceHeap::allocate(unsigned_int)
+_ZNK4toit10ObjectHeap19reserved_heap_bytesEv                             #    54 B  toit::ObjectHeap::reserved_heap_bytes()_const
+vTaskSetThreadLocalStoragePointer                                        #    24 B  vTaskSetThreadLocalStoragePointer
+xTaskGetCurrentTaskHandle                                                #    31 B  xTaskGetCurrentTaskHandle
+_ZN4toit7Process24allocate_string_or_errorEPKci                          #    30 B  toit::Process::allocate_string_or_error(char_const*,_int)
+_ZN4toit2OS12get_heap_tagEv                                              #    12 B  toit::OS::get_heap_tag()
+_ZN4toit6Thread7currentEv                                                #    26 B  toit::Thread::current()
+_ZNK4toit6Object12byte_contentEPNS_7ProgramEPPKhPiNS_8BlobKindE          #    25 B  toit::Object::byte_content(toit::Program*,_unsigned_char_con
+_ZN4toit7Process12peek_messageEv                                         #    39 B  toit::Process::peek_message()
+_ZN4toitL23primitive_task_transferEPNS_7ProcessEPPNS_6ObjectE            #   161 B  toit::primitive_task_transfer(toit::Process*,_toit::Object**
+_ZN4toit10ObjectHeap28allocate_internal_byte_arrayEi                     #    58 B  toit::ObjectHeap::allocate_internal_byte_array(int)
+multi_heap_get_option                                                    #    20 B  multi_heap_get_option
+_ZN4toit10ObjectHeap24allocate_internal_stringEi                         #    90 B  toit::ObjectHeap::allocate_internal_string(int)
+_ZN4toit7Process15allocate_stringEPKci                                   #    48 B  toit::Process::allocate_string(char_const*,_int)
+pvTaskIncrementMutexHeldCount                                            #    66 B  pvTaskIncrementMutexHeldCount
+_ZN4toit5ChunkD2Ev                                                       #    24 B  toit::Chunk::~Chunk()
+_ZNK4toit7Program10is_format2Ev                                          #    54 B  toit::Program::is_format2()_const
+_ZNK4toit6Object12byte_contentEPNS_7ProgramEPPKhPiNS_8BlobKindEi         #   216 B  toit::Object::byte_content(toit::Program*,_unsigned_char_con
+multi_heap_set_option                                                    #    36 B  multi_heap_set_option
+_ZN4toit5SpaceD2Ev                                                       #    18 B  toit::Space::~Space()
+_ZN4toit6String12MutableBytesC2EPS0_                                     #    35 B  toit::String::MutableBytes::MutableBytes(toit::String*)
+_ZN4toit9Scheduler25acknowledge_gc_preemptionEPNS_15SchedulerThreadE     #    34 B  toit::Scheduler::acknowledge_gc_preemption(toit::SchedulerTh
+_ZN4toitL38primitive_byte_array_convert_to_stringEPNS_7ProcessEPPNS_6ObjectE #   113 B  toit::primitive_byte_array_convert_to_string(toit::Process*,
+_ZN4toit7Process15_append_messageEPNS_13SystemMessageEi                  #    42 B  toit::Process::_append_message(toit::SystemMessage*,_int)
+_ZN4toit5Mutex9is_lockedEv$isra$0                                        #    19 B  _ZN4toit5Mutex9is_lockedEv$isra$0
+_ZN4toit12TwoSpaceHeap11do_scavengeEPNS_15ScavengeVisitorE               #   116 B  toit::TwoSpaceHeap::do_scavenge(toit::ScavengeVisitor*)
+_ZN4toit9Scheduler17send_message_fromEPNS_7ProcessEiPNS_13SystemMessageE #   217 B  toit::Scheduler::send_message_from(toit::Process*,_int,_toit
+_ZN4toit7Process15allocate_stringEi                                      #   119 B  toit::Process::allocate_string(int)
+_ZN4toit9Scheduler13process_readyERNS_6LockerEPNS_7ProcessE$part$0       #    70 B  _ZN4toit9Scheduler13process_readyERNS_6LockerEPNS_7ProcessE$
+_ZN4toitL27primitive_task_has_messagesEPNS_7ProcessEPPNS_6ObjectE        #    44 B  toit::primitive_task_has_messages(toit::Process*,_toit::Obje
+_ZN4toit2OS6signalEPNS_17ConditionVariableE                              #    10 B  toit::OS::signal(toit::ConditionVariable*)
+_ZN4toit9Scheduler13process_readyERNS_6LockerEPNS_7ProcessE              #    30 B  toit::Scheduler::process_ready(toit::Locker&,_toit::Process*
+_ZN4toit12RootCallback7do_rootEPPNS_6ObjectE                             #    18 B  toit::RootCallback::do_root(toit::Object**)
+_ZN4toit2OS12set_heap_tagEi                                              #    15 B  toit::OS::set_heap_tag(int)
+_ZN4toit10ObjectHeap2gcEb                                                #    82 B  toit::ObjectHeap::gc(bool)
+_ZN4toit9Scheduler21dequeue_ready_processEv                              #    40 B  toit::Scheduler::dequeue_ready_process()
+_ZN4toit10ObjectHeap15allocate_doubleEd                                  #    58 B  toit::ObjectHeap::allocate_double(double)
+clock_gettime                                                            #   116 B  clock_gettime
+_ZN4toit2OS18get_monotonic_timeEv                                        #    46 B  toit::OS::get_monotonic_time()
+esp_time_impl_get_time                                                   #    15 B  esp_time_impl_get_time
+_ZN4toit9SemiSpaceC2EPNS_7ProgramEPNS_5ChunkE                            #    54 B  toit::SemiSpace::SemiSpace(toit::Program*,_toit::Chunk*)
+_ZN4toit14MessageDecoder10decode_anyEv                                   #   224 B  toit::MessageDecoder::decode_any()
+_ZN4toit2OS14allocate_pagesEj                                            #    52 B  toit::OS::allocate_pages(unsigned_int)
+_ZN4toit5Mutex4lockEv$isra$0                                             #    24 B  _ZN4toit5Mutex4lockEv$isra$0
+heap_caps_set_option                                                     #    45 B  heap_caps_set_option
+xTaskPriorityDisinherit                                                  #   178 B  xTaskPriorityDisinherit
+_ZnwjRKSt9nothrow_t                                                      #    12 B  operator_new(unsigned_int,_std::nothrow_t_const&)
+_ZN4toit6Object20mutable_byte_contentEPNS_7ProcessEPNS_11MutableBlobEPPNS_5ErrorE #    37 B  toit::Object::mutable_byte_content(toit::Process*,_toit::Mut
+_ZN4toitL31primitive_smi_to_string_base_10EPNS_7ProcessEPPNS_6ObjectE    #    30 B  toit::primitive_smi_to_string_base_10(toit::Process*,_toit::
+_ZN4toit9SemiSpace6appendEPNS_5ChunkE                                    #    27 B  toit::SemiSpace::append(toit::Chunk*)
+_ZN4toit14MessageDecoder12decode_arrayEv                                 #   123 B  toit::MessageDecoder::decode_array()
+xQueueGenericSend                                                        #   203 B  xQueueGenericSend
+_ZN4toit13SystemMessageD2Ev                                              #    18 B  toit::SystemMessage::~SystemMessage()
+_ZN4toit7Process20remove_first_messageEv                                 #   143 B  toit::Process::remove_first_message()
+_ZN4toitL22primitive_process_sendEPNS_7ProcessEPPNS_6ObjectE             #   369 B  toit::primitive_process_send(toit::Process*,_toit::Object**)
+_ZN4toit10ObjectHeap36process_registered_finalizers_helperEP10LinkedFifoINS_13FinalizerNodeELi1EEPNS_12RootCallbackEPNS_14LivenessOracleEb #    65 B  toit::ObjectHeap::process_registered_finalizers_helper(Linke
+strtod                                                                   #    27 B  strtod
+_ZN4toit17ConditionVariable6signalEv                                     #    78 B  toit::ConditionVariable::signal()
+_ZN4toit7Process28append_system_message_lockedEPNS_13SystemMessageEi     #   154 B  toit::Process::append_system_message_locked(toit::SystemMess
+_ZN4toit9Scheduler27wait_for_any_gc_to_completeERNS_6LockerEPNS_7ProcessENS3_5StateE #    29 B  toit::Scheduler::wait_for_any_gc_to_complete(toit::Locker&,_
+_ZN4toitL30primitive_task_receive_messageEPNS_7ProcessEPPNS_6ObjectE     #   224 B  toit::primitive_task_receive_message(toit::Process*,_toit::O
+_ZN4toit13SystemMessage23free_data_and_externalsEv                       #    14 B  toit::SystemMessage::free_data_and_externals()
+_ZN4toit10ObjectHeap38process_registered_callback_finalizersEPNS_12RootCallbackEPNS_14LivenessOracleE #    24 B  toit::ObjectHeap::process_registered_callback_finalizers(toi
+_ZN4toitL16mailbox_has_roomEiiii                                         #    58 B  toit::mailbox_has_room(int,_int,_int,_int)
+
+# Group A, format 2 only.
+f2:_ZNK4toit5Space4sizeEv                                                #    28 B  toit::Space::size()_const
+f2:_ZN4toit9Primitive17unmark_from_errorEPNS_7ProgramEPNS_6ObjectE       #    36 B  toit::Primitive::unmark_from_error(toit::Program*,_toit::Obj
+f2:_ZN4toit2OS15get_system_timeEv                                        #    15 B  toit::OS::get_system_time()
+f2:valloc                                                                #    12 B  valloc
+f2:heap_caps_free                                                        #    68 B  heap_caps_free
+f2:_ZN4toit9SemiSpace8allocateEj                                         #    47 B  toit::SemiSpace::allocate(unsigned_int)
+f2:_ZN4toit2OS13feed_watchdogEv                                          #     5 B  toit::OS::feed_watchdog()
+f2:*18toit_verified_core7machine8cold_runbNCNvMs_B2_NtNtB4_4exec7Machine6reload0EB4_ #    17 B  toit_verified_core::machine::cold_run::<bool,_<toit_verified
+f2:_ZN4toit2OS10free_pagesEPvj                                           #    10 B  toit::OS::free_pages(void*,_unsigned_int)
+f2:toit_v2_try_allocate_array                                            #    30 B  toit_v2_try_allocate_array
+f2:heap_caps_malloc                                                      #    32 B  heap_caps_malloc
+f2:*18toit_verified_core9rnonlocal11enter_fin_r                          #   141 B  toit_verified_core::rnonlocal::enter_fin_r
+f2:heap_caps_malloc_default                                              #    83 B  heap_caps_malloc_default
+f2:heap_caps_aligned_alloc                                               #    79 B  heap_caps_aligned_alloc
+f2:*18toit_verified_core9rnonlocal15unwind_resume_v                      #   316 B  toit_verified_core::rnonlocal::unwind_resume_v
+f2:_ZN4toit10ObjectHeap23process_finalizer_queueEPNS_12RootCallbackEPNS_14LivenessOracleE #    24 B  toit::ObjectHeap::process_finalizer_queue(toit::RootCallback
+f2:_ZNK4toit8OldSpace4usedEv                                             #     8 B  toit::OldSpace::used()_const
+f2:_ZN4toit8OldSpace26start_tracking_allocationsEv                       #    19 B  toit::OldSpace::start_tracking_allocations()
+f2:_ZN4toit2OS18use_virtual_memoryEPvj                                   #     7 B  toit::OS::use_virtual_memory(void*,_unsigned_int)
+f2:_ZN4toit14MessageDecoder10read_uint8Ev                                #    27 B  toit::MessageDecoder::read_uint8()
+f2:*18toit_verified_core5prims5array9new_array                           #    66 B  toit_verified_core::prims::array::new_array
+f2:_ZN4toit9SemiSpace20has_active_finalizerEPNS_10HeapObjectE            #    25 B  toit::SemiSpace::has_active_finalizer(toit::HeapObject*)
+f2:_ZN4toit14MessageEncoderC2EPNS_7ProcessEPhNS_13MessageFormatEb        #    49 B  toit::MessageEncoder::MessageEncoder(toit::Process*,_unsigne
+f2:*18toit_verified_core5prims5float10double_res                         #    64 B  toit_verified_core::prims::float::double_res
+f2:_ZN4toit9Primitive7integerExPNS_7ProcessE                             #    39 B  toit::Primitive::integer(long_long,_toit::Process*)
+f2:_ZN4toit8OldSpace14start_scavengeEv                                   #    14 B  toit::OldSpace::start_scavenge()
+f2:_ZN4toit17ToitFinalizerNode8roots_doEPNS_12RootCallbackE              #    26 B  toit::ToitFinalizerNode::roots_do(toit::RootCallback*)
+f2:_ZN4toit9Scheduler12find_processERNS_6LockerEi                        #    38 B  toit::Scheduler::find_process(toit::Locker&,_int)
+f2:_ZN4toit6Locker5leaveEv                                               #    60 B  toit::Locker::leave()
+f2:_ZN4toit14MessageDecoderC2EPNS_7ProcessEPKhiNS_13MessageFormatE       #    29 B  toit::MessageDecoder::MessageDecoder(toit::Process*,_unsigne
+f2:_ZN4toit2OS4waitEPNS_17ConditionVariableE                             #   165 B  toit::OS::wait(toit::ConditionVariable*)
+f2:_ZN4toit9Scheduler3runEPNS_15SchedulerThreadE                         #   135 B  toit::Scheduler::run(toit::SchedulerThread*)
+f2:_ZN4toit12ObjectMemory16take_spare_chunkERNS_6LockerE                 #    58 B  toit::ObjectMemory::take_spare_chunk(toit::Locker&)
+f2:*18toit_verified_core5prims5float7num_arg                             #    86 B  toit_verified_core::prims::float::num_arg
+f2:*18toit_verified_core5prims4ints7int_arg                              #    57 B  toit_verified_core::prims::ints::int_arg
+f2:toit_v2_try_allocate_byte_array                                       #    26 B  toit_v2_try_allocate_byte_array
+f2:_ZN4toit5Space8includesEj                                             #    34 B  toit::Space::includes(unsigned_int)
+f2:*18toit_verified_core5prims4ints7int_res                              #   102 B  toit_verified_core::prims::ints::int_res
+f2:*18toit_verified_core5prims5float10double_arg                         #    52 B  toit_verified_core::prims::float::double_arg
+f2:*18toit_verified_core5prims5float17number_to_integer                  #   312 B  toit_verified_core::prims::float::number_to_integer
+f2:_ZNK4toit5Chunk19initialize_metadataEv                                #    94 B  toit::Chunk::initialize_metadata()_const
+f2:_ZN4toitL14format_integerEPNS_7ProcessExib                            #   203 B  toit::format_integer(toit::Process*,_long_long,_int,_bool)
+f2:*18toit_verified_core5rhash7probe_x                                   #   580 B  toit_verified_core::rhash::probe_x
+f2:_ZN4toit9Scheduler11policy_kindEi                                     #    44 B  toit::Scheduler::policy_kind(int)
+f2:*18toit_verified_core5prims5float10compare_to                         #   127 B  toit_verified_core::prims::float::compare_to
+f2:_ZN4toit12ProcessGroup6lookupEi                                       #    20 B  toit::ProcessGroup::lookup(int)
+f2:_ZN4toitL22primitive_tison_decodeEPNS_7ProcessEPPNS_6ObjectE          #    68 B  toit::primitive_tison_decode(toit::Process*,_toit::Object**)
+f2:_ZN4toit14MessageEncoderC2EPNS_7ProcessEPh                            #    22 B  toit::MessageEncoder::MessageEncoder(toit::Process*,_unsigne
+f2:_ZN4toit15ScavengeVisitor16clone_into_spaceINS_9SemiSpaceEEEPNS_10HeapObjectEPNS_7ProgramES4_PT_ #    44 B  toit::HeapObject*_toit::ScavengeVisitor::clone_into_space<to
+f2:_ZN4toitL19primitive_int_parseEPNS_7ProcessEPPNS_6ObjectE             #   231 B  toit::primitive_int_parse(toit::Process*,_toit::Object**)
+f2:*18toit_verified_core5prims4blob8blob_arg                             #   988 B  toit_verified_core::prims::blob::blob_arg
+f2:_ZN4toit12ObjectMemory14allocate_chunkEPNS_5SpaceEj                   #   129 B  toit::ObjectMemory::allocate_chunk(toit::Space*,_unsigned_in
+f2:*18toit_verified_core5prims4blob13blob_index_of                       #   213 B  toit_verified_core::prims::blob::blob_index_of
+f2:_ZN4toit8OldSpace5flushEv                                             #    55 B  toit::OldSpace::flush()
+f2:*9toit_spec9exec_step15x_compare_mixed                                #   348 B  toit_spec::exec_step::x_compare_mixed
+f2:_ZN4toit9SemiSpace8is_aliveEPNS_10HeapObjectE                         #    35 B  toit::SemiSpace::is_alive(toit::HeapObject*)
+f2:_ZN4toit9SemiSpace14start_scavengeEv                                  #    30 B  toit::SemiSpace::start_scavenge()
+f2:_ZN4toit14MessageEncoder12is_too_largeEv                              #    54 B  toit::MessageEncoder::is_too_large()
+f2:*18toit_verified_core5prims4blob13string_length                       #    89 B  toit_verified_core::prims::blob::string_length
+f2:_ZN4toit10ObjectHeap13iterate_rootsEPNS_12RootCallbackE               #    89 B  toit::ObjectHeap::iterate_roots(toit::RootCallback*)
+f2:*18toit_verified_core4step11resume_with                               #   163 B  toit_verified_core::step::resume_with
+f2:free                                                                  #    10 B  free
+f2:toit_v2_try_allocate_double                                           #    37 B  toit_v2_try_allocate_double
+f2:heap_caps_malloc_base                                                 #    16 B  heap_caps_malloc_base
+f2:_ZN4toit8OldSpace23allocate_from_free_listEj                          #    32 B  toit::OldSpace::allocate_from_free_list(unsigned_int)
+f2:*18toit_verified_core4step10leave_exit                                #    33 B  toit_verified_core::step::leave_exit
+f2:_ZN4toit5Utils8popcountImEEiT_                                        #    31 B  int_toit::Utils::popcount<unsigned_long>(unsigned_long)
+f2:_ZN4toit2OS7wait_usEPNS_17ConditionVariableEx                         #    16 B  toit::OS::wait_us(toit::ConditionVariable*,_long_long)
+
+# Group A, format 1 only.
+f1:_ZN4toit13SystemMessageD0Ev                                           #    20 B  toit::SystemMessage::~SystemMessage()
+f1:_ZNK4toit6Object12byte_contentEPNS_7ProgramEPNS_4BlobENS_8BlobKindE   #    37 B  toit::Object::byte_content(toit::Program*,_toit::Blob*,_toit
+f1:_ZN4toit5Stack25transfer_from_interpreterEPNS_11InterpreterE          #    62 B  toit::Stack::transfer_from_interpreter(toit::Interpreter*)
+f1:_ZN4toit11Interpreter7fast_atEPNS_7ProcessEPNS_6ObjectES4_bPS4_       #    32 B  toit::Interpreter::fast_at(toit::Process*,_toit::Object*,_to
+f1:_ZN4toit14MessageEncoderD2Ev                                          #    43 B  toit::MessageEncoder::~MessageEncoder()
+f1:_ZN4toit2OS17monotonic_gettimeEPx                                     #    86 B  toit::OS::monotonic_gettime(long_long*)
+f1:_ZdlPvj                                                               #    14 B  operator_delete(void*,_unsigned_int)
+f1:_ZNK4toit7Message16is_object_notifyEv                                 #    22 B  toit::Message::is_object_notify()_const
+f1:_ZN4toit11Interpreter11store_stackEPPNS_6ObjectENS_6MethodE           #    87 B  toit::Interpreter::store_stack(toit::Object**,_toit::Method)
+f1:_ZN4toitL29primitive_size_of_json_numberEPNS_7ProcessEPPNS_6ObjectE   #   125 B  toit::primitive_size_of_json_number(toit::Process*,_toit::Ob
+f1:_ZN4toitL19primitive_array_newEPNS_7ProcessEPPNS_6ObjectE             #    63 B  toit::primitive_array_new(toit::Process*,_toit::Object**)
+f1:_ZN4toit10ObjectHeap17allocate_instanceEPNS_3SmiE                     #    95 B  toit::ObjectHeap::allocate_instance(toit::Smi*)
+f1:_ZN4toit11Interpreter10deactivateEv                                   #     9 B  toit::Interpreter::deactivate()
+f1:_ZN4toitL23primitive_string_lengthEPNS_7ProcessEPPNS_6ObjectE         #    31 B  toit::primitive_string_length(toit::Process*,_toit::Object**
+f1:_ZN4toit9Primitive14allocate_arrayEiPNS_6ObjectEPNS_7ProcessE         #    47 B  toit::Primitive::allocate_array(int,_toit::Object*,_toit::Pr
+f1:_ZN4toitL14primitive_timeEPNS_7ProcessEPPNS_6ObjectE                  #    46 B  toit::primitive_time(toit::Process*,_toit::Object**)
+f1:_ZN4toit11Interpreter9fast_sizeEPNS_7ProcessEPNS_6ObjectEPPNS_3SmiE   #   228 B  toit::Interpreter::fast_size(toit::Process*,_toit::Object*,_
+f1:_ZN10LinkedFifoIN4toit7ProcessELi2EE12remove_firstEv                  #    28 B  LinkedFifo<toit::Process,_2>::remove_first()
+f1:_ZN4toitL18primitive_list_addEPNS_7ProcessEPPNS_6ObjectE              #   194 B  toit::primitive_list_add(toit::Process*,_toit::Object**)
+f1:_ZN4toit6Double5valueEv                                               #    42 B  toit::Double::value()
+f1:_ZN4toit5Mutex6unlockEv$isra$0                                        #    31 B  _ZN4toit5Mutex6unlockEv$isra$0
+f1:prvIdleTask                                                           #   153 B  prvIdleTask
+f1:_ZN4toit5Utils14is_valid_utf_8EPKhi                                   #   129 B  toit::Utils::is_valid_utf_8(unsigned_char_const*,_int)
+f1:_ZN4toitL30primitive_json_skip_whitespaceEPNS_7ProcessEPPNS_6ObjectE  #    79 B  toit::primitive_json_skip_whitespace(toit::Process*,_toit::O
+f1:_ZN4toit6String6equalsEPNS_6ObjectE                                   #   114 B  toit::String::equals(toit::Object*)
+f1:_ZN4toitL25primitive_number_to_floatEPNS_7ProcessEPPNS_6ObjectE       #    74 B  toit::primitive_number_to_float(toit::Process*,_toit::Object
+f1:_ZN4toitL27primitive_number_to_integerEPNS_7ProcessEPPNS_6ObjectE     #   126 B  toit::primitive_number_to_integer(toit::Process*,_toit::Obje
+f1:esp_vApplicationIdleHook                                              #    50 B  esp_vApplicationIdleHook
+f1:_ZN4toitL13primitive_armEPNS_7ProcessEPPNS_6ObjectE                   #   113 B  toit::primitive_arm(toit::Process*,_toit::Object**)
+f1:_ZN4toit11Interpreter7fast_atEPNS_7ProcessEPNS_6ObjectES4_bPS4_$part$0 #   926 B  _ZN4toit11Interpreter7fast_atEPNS_7ProcessEPNS_6ObjectES4_bP
+f1:_ZNK4toit10HeapObject4sizeEPNS_7ProgramE                              #   140 B  toit::HeapObject::size(toit::Program*)_const
+f1:_ZN4toit7Program17instance_size_forEPKNS_10HeapObjectE                #    40 B  toit::Program::instance_size_for(toit::HeapObject_const*)
+f1:_ZN4toit6String17compute_hash_codeEv                                  #    28 B  toit::String::compute_hash_code()
+f1:_ZN4toit9Scheduler29wake_worker_for_ready_processERNS_6LockerEh       #    95 B  toit::Scheduler::wake_worker_for_ready_process(toit::Locker&
+f1:_ZN4toit11Interpreter8float_opEPNS_7ProcessEPNS_6ObjectES4_PFdddE     #   103 B  toit::Interpreter::float_op(toit::Process*,_toit::Object*,_t
+f1:_ZN4toit6String17_assign_hash_codeEv                                  #    22 B  toit::String::_assign_hash_code()
+f1:_ZN4toitL19primitive_string_atEPNS_7ProcessEPPNS_6ObjectE             #   163 B  toit::primitive_string_at(toit::Process*,_toit::Object**)
+f1:_ZN4toit14MessageDecoder13read_cardinalEv                             #    22 B  toit::MessageDecoder::read_cardinal()
+f1:_ZN4toitL29primitive_count_leading_zerosEPNS_7ProcessEPPNS_6ObjectE   #    62 B  toit::primitive_count_leading_zeros(toit::Process*,_toit::Ob
+f1:_ZN4toit13PromotedTrack10initializeEPS0_jj                            #    38 B  toit::PromotedTrack::initialize(toit::PromotedTrack*,_unsign
+f1:_ZN4toit11Interpreter10load_stackEPNS_6MethodE                        #    90 B  toit::Interpreter::load_stack(toit::Method*)
+f1:_ZN4toit15ScavengeVisitor8do_rootsEPPNS_6ObjectEi                     #   162 B  toit::ScavengeVisitor::do_roots(toit::Object**,_int)
+f1:_ZN4toit14MessageEncoder12encode_arrayEPNS_5ArrayEii                  #    76 B  toit::MessageEncoder::encode_array(toit::Array*,_int,_int)
+f1:_ZN4toit9Scheduler2gcEPNS_7ProcessEbb                                 #   316 B  toit::Scheduler::gc(toit::Process*,_bool,_bool)
+f1:_ZN4toit11Interpreter15compare_numbersEPNS_6ObjectES2_                #   903 B  toit::Interpreter::compare_numbers(toit::Object*,_toit::Obje
+f1:_ZN4toitL23primitive_string_raw_atEPNS_7ProcessEPPNS_6ObjectE         #    73 B  toit::primitive_string_raw_at(toit::Process*,_toit::Object**
+f1:_ZN4toit6Object20mutable_byte_contentEPNS_7ProcessEPPhPiPPNS_5ErrorE  #    25 B  toit::Object::mutable_byte_content(toit::Process*,_unsigned_
+f1:_ZN4toitL22primitive_smi_multiplyEPNS_7ProcessEPPNS_6ObjectE          #    99 B  toit::primitive_smi_multiply(toit::Process*,_toit::Object**)
+f1:_ZN4toit5Stack23transfer_to_interpreterEPNS_11InterpreterE            #    60 B  toit::Stack::transfer_to_interpreter(toit::Interpreter*)
+f1:_ZN4toitL20primitive_compare_toEPNS_7ProcessEPPNS_6ObjectE            #    30 B  toit::primitive_compare_to(toit::Process*,_toit::Object**)
+f1:_ZN4toit8OldSpace20visit_remembered_setEPNS_15ScavengeVisitorE        #   219 B  toit::OldSpace::visit_remembered_set(toit::ScavengeVisitor*)
+f1:_ZN4toitL24primitive_process_policyEPNS_7ProcessEPPNS_6ObjectE        #    41 B  toit::primitive_process_policy(toit::Process*,_toit::Object*
+f1:_ZN10LinkedFifoIN4toit7ProcessELi2EE6appendEPS1_                      #    59 B  LinkedFifo<toit::Process,_2>::append(toit::Process*)
+f1:_ZN4toit16TimerEventSource3armEPNS_5TimerEx                           #   161 B  toit::TimerEventSource::arm(toit::Timer*,_long_long)
+f1:_ZN4toit9ByteArray11as_externalINS_8ResourceEEEPT_v                   #    24 B  toit::Resource*_toit::ByteArray::as_external<toit::Resource>
+f1:vTaskInternalSetTimeOutState                                          #    25 B  vTaskInternalSetTimeOutState
+f1:_ZN4toit14MessageEncoder14write_cardinalEj                            #    47 B  toit::MessageEncoder::write_cardinal(unsigned_int)
+f1:_ZN4toit12TwoSpaceHeap23max_external_allocationEv                     #    12 B  toit::TwoSpaceHeap::max_external_allocation()
+
+# Group B, format 2: the install-time verifier (its loop, then its
+# callees by stall samples during installs).
+f2:toit_vmverify_verify
+f2:*9toit_spec2v25check11x_post_into
+f2:*9toit_spec2v29bytecodes19exec_opcode_length2
+f2:*6MTable2at
+f2:*9toit_spec2v25check9x_bp_mask
+f2:*9toit_spec2v25check9x_sel_rep
+f2:*11RawVecInner11finish_grow*
+f2:*9toit_spec2v25check9x_pinned0
+f2:*9toit_spec2v25check8x_sel_ok
+f2:*9toit_spec2v25check8x_ctx_of
+f2:*9toit_spec2v25check10x_shape_ok
+f2:*9toit_spec2v25check15x_pop_push_into
+f2:*drop_glue*5XList*
+f2:*6MTable10recv_start
+f2:*9toit_spec2v25check7x_fnode
+f2:*9toit_spec2v25check9x_args_ok
+f2:*9toit_spec2v25check13x_entry_kinds
+f2:*11RawVecInner11try_reserve*
+f2:*9toit_spec2v25check5x_fld
+f2:*9toit_spec2v25check8x_map_is
+f2:*9toit_spec4xvec8try_push*
+f2:*9toit_spec2v25check8x_decode
+f2:*9toit_spec2v25check15x_this_field_ok
+f2:*9toit_spec2v25check15x_is_terminator
+f2:*9toit_spec2v25check15x_terminator_ok
+f2:*9toit_spec2v25check16x_method_body_ok
