@@ -888,6 +888,42 @@ pub fn x_fchain(s: &[u8], i: u32) -> (res: Result<Vec<XKind>, Oom>)
     x_reversed(&rev)
 }
 
+/// The kinds of a node table's list with top `i`, top first, into `rev`
+/// (its buffer reused): `x_fchain` without the reversed copy.
+pub fn x_fchain_rev(s: &[u8], i: u32, rev: &mut Vec<XKind>) -> (res: Result<(), Oom>)
+    ensures res is Ok ==> fchain(s@, i as int) == rev_kinds(final(rev)@),
+{
+    let ghost nodes = fnodes(s@);
+    let n = s.len() / 12;
+    assert(nodes.len() == n);
+    rev.clear();
+    let mut cur = i as usize;
+    let mut done = cur >= n;
+    while !done
+        invariant
+            nodes == fnodes(s@), nodes.len() == n,
+            done ==> chain(nodes, i as int) == rev_kinds(rev@),
+            !done ==> cur < n && chain(nodes, i as int) == chain(nodes, cur as int) + rev_kinds(rev@),
+        decreases (if done { 0int } else { cur as int + 1 }),
+    {
+        let nd = x_fnode(s, cur);
+        let ghost before = rev@;
+        let ghost par = nd.parent as int;
+        let ghost base = if par < cur { chain(nodes, par) } else { Seq::<Kind>::empty() };
+        assert(chain(nodes, cur as int) == base.push(nd.kind@));
+        try_push(rev, nd.kind)?;
+        assert(base.push(nd.kind@) + rev_kinds(before) =~= base + rev_kinds(rev@));
+        if (nd.parent as usize) < cur {
+            cur = nd.parent as usize;
+        } else {
+            assert(base + rev_kinds(rev@) =~= rev_kinds(rev@));
+            done = true;
+        }
+    }
+    proof { if i as int >= n { assert(chain(nodes, i as int) =~= rev_kinds(rev@)); } }
+    Ok(())
+}
+
 /// The kinds of `rev` in reverse order.
 pub fn x_reversed(rev: &Vec<XKind>) -> (res: Result<Vec<XKind>, Oom>)
     ensures res matches Ok(r) ==> kv(r) == rev_kinds(rev@),
@@ -1052,7 +1088,66 @@ pub fn x_ctx_kinds(c: &XCert, m: i64, depth: u32) -> (res: Result<(Option<Vec<XK
     }
 }
 
-pub fn x_wf_kinds(p: &VProgram, c: &XCert, m: i64, k: &Vec<XKind>) -> (res: Result<bool, Oom>)
+/// `x_ctx_kinds` with the kinds top first in `rev` (its buffer reused):
+/// whether the context exists, and its method.
+pub fn x_ctx_kinds_rev(c: &XCert, m: i64, depth: u32, rev: &mut Vec<XKind>) -> (res: Result<(bool, i64), Oom>)
+    requires depth >= 1,
+    ensures
+        res matches Ok(r) ==> r.1 as int == ctx_method(c@, m as int, depth as nat)
+            && (if r.0 { ctx_kinds(c@, m as int, depth as nat) == Some(rev_kinds(final(rev)@)) }
+                else { ctx_kinds(c@, m as int, depth as nat) is None }),
+{
+    let mut cur = m;
+    let mut d = depth;
+    loop
+        invariant
+            d >= 1,
+            ctx_kinds(c@, m as int, depth as nat) == ctx_kinds(c@, cur as int, d as nat),
+            ctx_method(c@, m as int, depth as nat) == ctx_method(c@, cur as int, d as nat),
+        decreases d,
+    {
+        if cur < 0 || (cur as u64) >= (c.g.n as u64) {
+            return Ok((false, -1));
+        }
+        match x_ctx_of(c, cur as usize) {
+            None => return Ok((false, -1)),
+            Some(ctx) => {
+                if d == 1 {
+                    proof { assert(ctx_method(c@, ctx.outer as int, 0) == ctx.outer as int); }
+                    x_fchain_rev(c.g.nodes, ctx.top, rev)?;
+                    return Ok((true, ctx.outer as i64));
+                }
+                cur = ctx.outer as i64;
+                d = d - 1;
+            },
+        }
+    }
+}
+
+/// `block_slot` of the list whose kinds are `rev` top first.
+pub fn x_block_slot_rev(p: &VProgram, c: &XCert, om: i64, rev: &Vec<XKind>, i: i64) -> (r: bool)
+    ensures r == block_slot(vview(p), c@, om as int, rev_kinds(rev@), i as int),
+{
+    if i < 0 || (i as u64) >= (rev.len() as u64) {
+        return false;
+    }
+    let j = rev.len() - 1 - i as usize;
+    proof { assert(rev_kinds(rev@)[i as int] == rev@[j as int]@); }
+    match vix(rev, j) {
+        XKind::Method(t) => {
+            if !(x_valid(p, t as i64) && x_kind(p, t as usize) == 3) {
+                return false;
+            }
+            match x_ctx_of(c, t as usize) {
+                Some(ctx) => ctx.outer as i64 == om && ctx.slot as i64 == i,
+                None => false,
+            }
+        },
+        _ => false,
+    }
+}
+
+pub fn x_wf_kinds(p: &VProgram, c: &XCert, m: i64, k: &Vec<XKind>, buf: &mut Vec<XKind>) -> (res: Result<bool, Oom>)
     ensures res matches Ok(r) ==> r == wf_kinds(vview(p), c@, m as int, kv(*k)),
 {
     let mut j = 0;
@@ -1069,16 +1164,14 @@ pub fn x_wf_kinds(p: &VProgram, c: &XCert, m: i64, k: &Vec<XKind>) -> (res: Resu
                         return Ok(false);
                     }
                 } else {
-                    let (fk, om) = x_ctx_kinds(c, m, d)?;
-                    match fk {
-                        None => {
-                            proof { assert(!wf_kind(vview(p), c@, m as int, kv(*k), j as int)); }
-                            return Ok(false);
-                        },
-                        Some(fk) => if !x_block_slot(p, c, om, &fk, i as i64) {
-                            proof { assert(!wf_kind(vview(p), c@, m as int, kv(*k), j as int)); }
-                            return Ok(false);
-                        },
+                    let (found, om) = x_ctx_kinds_rev(c, m, d, buf)?;
+                    if !found {
+                        proof { assert(!wf_kind(vview(p), c@, m as int, kv(*k), j as int)); }
+                        return Ok(false);
+                    }
+                    if !x_block_slot_rev(p, c, om, &*buf, i as i64) {
+                        proof { assert(!wf_kind(vview(p), c@, m as int, kv(*k), j as int)); }
+                        return Ok(false);
                     }
                 }
             },
@@ -2442,7 +2535,7 @@ pub fn x_instr_ok(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>,
     let len = exec_opcode_length2(op);
     if bci + len > i.end { return Ok(false); }
     if k.len() > i.arity as usize + i.max_height as usize { return Ok(false); }
-    if !x_wf_kinds(p, c, m as i64, k)? || !x_ctx_ok(p, c, m as i64, k)? || !x_shape_ok(p, c, m, k) {
+    if !x_wf_kinds(p, c, m as i64, k, out)? || !x_ctx_ok(p, c, m as i64, k)? || !x_shape_ok(p, c, m, k) {
         return Ok(false);
     }
     // The successor goes into `out` (a buffer of the caller).
@@ -2532,7 +2625,16 @@ pub fn x_entry_kinds(p: &VProgram, c: &XCert, m: usize) -> (res: Result<Vec<XKin
 }
 
 /// Every mapped instruction of `m` is accepted.
-pub fn x_method_body_ok(p: &VProgram, c: &XCert, m: usize, trusted: bool) -> (res: Result<bool, Oom>)
+/// Scratch buffers of the checker, kept across instructions and methods
+/// (no allocation once they have grown): the kinds of an instruction (`k`,
+/// built top first in `rev`) and its successor or other derived kinds.
+pub struct XBufs {
+    pub rev: Vec<XKind>,
+    pub k: Vec<XKind>,
+    pub post: Vec<XKind>,
+}
+
+pub fn x_method_body_ok(p: &VProgram, c: &XCert, m: usize, trusted: bool, bufs: &mut XBufs) -> (res: Result<bool, Oom>)
     requires wf_program2(vview(p)), m < p.methods@.len(), m == c.cur, c.cur < c.g.n, g_ok(c.g),
     ensures res matches Ok(r) ==> r == forall|o: int| 0 <= o < c@.maps[m as int].len() && (#[trigger] c@.maps[m as int][o]) is Some ==>
         instr_ok(vview(p), c@, m as int, o, c@.maps[m as int][o]->0, trusted),
@@ -2542,10 +2644,7 @@ pub fn x_method_body_ok(p: &VProgram, c: &XCert, m: usize, trusted: bool) -> (re
     let ghost cm = c@.maps[m as int];
     assert(cm == mapsv(c.maps));
     let mut off = 0;
-    // Each instruction's map, built in reused buffers.
-    let mut rev: Vec<XKind> = Vec::new();
-    let mut k: Vec<XKind> = Vec::new();
-    let mut kpost: Vec<XKind> = Vec::new();
+    // Each instruction's map is built in the reused buffers.
     while off < c.maps.idx.len()
         invariant
             wf_program2(vview(p)), m < p.methods@.len(), m == c.cur, c.cur < c.g.n, g_ok(c.g),
@@ -2557,11 +2656,11 @@ pub fn x_method_body_ok(p: &VProgram, c: &XCert, m: usize, trusted: bool) -> (re
     {
         let i = vix(&c.maps.idx, off);
         if i != NO_MAP {
-            x_chain_rev(&c.maps.nodes, i, &mut rev)?;
-            x_reversed_into(&rev, &mut k)?;
-            assert(kv(k) == chain(c.maps.nodes@, i as int));
-            assert(cm[off as int] == Some(kv(k)));
-            if !x_instr_ok(p, c, m, off, &k, trusted, &mut kpost)? {
+            x_chain_rev(&c.maps.nodes, i, &mut bufs.rev)?;
+            x_reversed_into(&bufs.rev, &mut bufs.k)?;
+            assert(kv(bufs.k) == chain(c.maps.nodes@, i as int));
+            assert(cm[off as int] == Some(kv(bufs.k)));
+            if !x_instr_ok(p, c, m, off, &bufs.k, trusted, &mut bufs.post)? {
                 return Ok(false);
             }
         }
@@ -2570,7 +2669,7 @@ pub fn x_method_body_ok(p: &VProgram, c: &XCert, m: usize, trusted: bool) -> (re
     Ok(true)
 }
 
-pub fn x_method_ok(p: &VProgram, c: &XCert, m: usize, trusted: bool) -> (res: Result<bool, Oom>)
+pub fn x_method_ok(p: &VProgram, c: &XCert, m: usize, trusted: bool, bufs: &mut XBufs) -> (res: Result<bool, Oom>)
     requires
         wf_program2(vview(p)), m < p.methods@.len(), c.g.n == p.methods@.len(), m == c.cur, g_ok(c.g),
     ensures res matches Ok(r) ==> r == method_ok(vview(p), c@, m as int, trusted),
@@ -2587,7 +2686,7 @@ pub fn x_method_ok(p: &VProgram, c: &XCert, m: usize, trusted: bool) -> (res: Re
     if i.kind == 3 && ctx.is_none() { return Ok(true); }
     let e = x_entry_kinds(p, c, m)?;
     if !x_map_is(c, m as i64, 0, &e)? { return Ok(false); }
-    x_method_body_ok(p, c, m, trusted)
+    x_method_body_ok(p, c, m, trusted, bufs)
 }
 
 // ---------------------------------------------------------------------------
@@ -2932,6 +3031,7 @@ pub fn verify<O: MapOracle>(p: &VProgram, g: &XGlobal, o: &mut O, trusted: bool)
     let n = p.methods.len();
     let np = g.pins.len() / 12;
     let ghost mut ms: Seq<Maps> = Seq::empty();
+    let mut bufs = XBufs { rev: Vec::new(), k: Vec::new(), post: Vec::new() };
     let mut at: usize = 0;
     let mut m: usize = 0;
     while m < n
@@ -2951,7 +3051,7 @@ pub fn verify<O: MapOracle>(p: &VProgram, g: &XGlobal, o: &mut O, trusted: bool)
         let ghost ms2 = ms.push(mm) + Seq::new((n - m - 1) as nat, |i: int| Seq::<Option<Seq<Kind>>>::empty());
         assert(ms2.len() == n);
         assert(ms2[m as int] == mm);
-        if !x_method_ok(p, &c, m, trusted)? {
+        if !x_method_ok(p, &c, m, trusted, &mut bufs)? {
             assert(!method_ok(pv, local_cert(g@, m as int, ms2[m as int]), m as int, trusted));
             return Ok((false, Ghost(ms2)));
         }

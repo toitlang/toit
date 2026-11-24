@@ -338,6 +338,11 @@ pub struct ShippedOracle<'a> {
     pub failed: bool,
     /// The last method whose maps were asked for (diagnostics).
     pub last: usize,
+    /// The decoder's buffers, kept from one method to the next: the
+    /// previous map, the successor map and the successor kinds.
+    pub b_prev: XList,
+    pub b_next: XList,
+    pub b_post: Vec<XKind>,
 }
 
 /// A map nobody can accept for a method with a non-empty body.
@@ -387,7 +392,12 @@ pub fn x_entry_list(p: &VProgram, g: &XGlobal, m: usize, nodes: &mut Vec<XNode>,
 
 impl<'a> ShippedOracle<'a> {
     pub fn new(s: &'a [u8], trusted: bool) -> ShippedOracle<'a> {
-        ShippedOracle { s, pos: 0, next: 0, trusted, failed: false, last: 0 }
+        ShippedOracle {
+            s, pos: 0, next: 0, trusted, failed: false, last: 0,
+            b_prev: XList { kinds: Vec::new(), ids: Vec::new() },
+            b_next: XList { kinds: Vec::new(), ids: Vec::new() },
+            b_post: Vec::new(),
+        }
     }
 
     /// Decodes method `m`'s maps.
@@ -403,7 +413,8 @@ impl<'a> ShippedOracle<'a> {
         let (count, q) = dec_some(x_varint(s, self.pos))?;
         let mut pos = q;
         let mut idx: Vec<u32> = match try_filled(NO_MAP, size) { Ok(v) => v, Err(_) => return Err(Dec::Oom) };
-        let mut nodes: Vec<XNode> = Vec::new();
+        // Room for the nodes of most methods (about one per two bytes).
+        let mut nodes: Vec<XNode> = match try_with_capacity(size / 2 + 4) { Ok(v) => v, Err(_) => return Err(Dec::Oom) };
         // A block that is never created is not checked: no maps.
         let empty = XMaps { idx: Vec::new(), nodes: Vec::new() };
         let c = XCert { g, cur: m, maps: &empty };
@@ -429,12 +440,20 @@ impl<'a> ShippedOracle<'a> {
         // this one (`cur`, if `have_cur`) and the buffers of the successor
         // map (`next`): swapped, not reallocated, from one instruction to
         // the next.
+        // (The buffers are the oracle's, put back after the method.)
         let mut prev = XList { kinds: Vec::new(), ids: Vec::new() };
+        core::mem::swap(&mut prev, &mut self.b_prev);
+        prev.kinds.clear();
+        prev.ids.clear();
         let mut cur: XList = x_entry_list(p, g, m, &mut nodes, limit)?;
         let mut have_cur = true;
         let mut next = XList { kinds: Vec::new(), ids: Vec::new() };
+        core::mem::swap(&mut next, &mut self.b_next);
+        next.kinds.clear();
+        next.ids.clear();
         // The successor kinds (`x_post_into`), reused too.
         let mut k2: Vec<XKind> = Vec::new();
+        core::mem::swap(&mut k2, &mut self.b_post);
         let mut off: usize = 0;
         while off < size
             invariant
@@ -532,6 +551,9 @@ impl<'a> ShippedOracle<'a> {
             }
         }
         self.pos = pos;
+        self.b_prev = prev;
+        self.b_next = next;
+        self.b_post = k2;
         Ok(XMaps { idx, nodes })
     }
 }
