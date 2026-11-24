@@ -305,6 +305,20 @@ code in flash, all perfbench workloads, classic ESP32):
   compete with code for the same cache; fewer distinct lines touched per
   call helps.
 
+Status of S1 (branch core/split-option, 2026-11-24, measure-2's R1-R3):
+the split of S1 (call-speed-size) made the C6 4-50 % slower; it is now
+the build option `split-loop` (Kconfig TOIT_VERIFIED_CORE_SPLIT_LOOP),
+off by default on every ESP32 target: the whole loop (19.1 KB) fits the
+classic ESP32's IRAM with 5.2 KB to spare and was faster there than the
+split loop over four layout-perturbed builds each (PROGRESS.md). With the
+option on, the hot part keeps the opcodes the device benchmarks execute
+(PRIMITIVE, LOAD_SMI_U32, TRY/UNWIND, IDENTICAL, MOD, DIV, SHL, XOR,
+INVOKE_STATIC_TAIL moved in) and calls `step_cold` directly (no request
+in the machine). Open: on the classic ESP32 the flash layout moves single
+benchmarks by up to 2x between builds that only shift the VM's flash code
+by a few KB (f1 as much as f2); a placement that pins the hot flash
+functions would make device numbers comparable across builds.
+
 Install-time verifier (owned with the spec): on the classic ESP32 the
 check of a 25-31 KB program executes 270-490 M instructions (about 10-16
 thousand per bytecode byte) at 2.4-2.5 cycles each; instruction-fetch

@@ -365,20 +365,19 @@ menu "Toit"
         depends on TOIT_VERIFIED_CORE
         help
             Places the core's run loop (step::run_loop: the dispatch and the
-            handlers of the frequent opcodes, 12.2 KB on the classic ESP32;
-            the rare opcodes and every slow path are out of line in
-            step::step_cold and step::slow, in flash) in IRAM and its jump
-            table in DRAM. Running it from flash thrashes the flash cache on
-            real hardware: on the classic ESP32 json, map/set and string
-            code ran 3.5-5x slower from flash than from IRAM, on the
-            ESP32-C6 1.4-1.5x (docs/format2-migration.md, "Devices: hardware
-            results"). On the C6 it costs 12 KB of heap (was 22 KB before
-            the split). The classic ESP32 with ESP_WIFI_RX_IRAM_OPT on
-            misses by 0.4 KB (split loop plus the hot C++ functions, V2_HOT);
-            without it 17.7 KB of IRAM stay free next to the loop and the
-            default TOIT_VERIFIED_CORE_IRAM_FUNCTIONS, enough for the cold
-            part too (step::step_cold, step::slow_body: 11.7 KB). So it
-            needs
+            handlers, 19.1 KB on the classic ESP32, 17.2 KB with
+            TOIT_VERIFIED_CORE_SPLIT_LOOP, where the rare opcodes are out of
+            line in step::step_cold; the slow paths are out of line in
+            step::slow) in IRAM and its jump table in DRAM. Running it from
+            flash thrashes the flash cache on real hardware: on the classic
+            ESP32 json, map/set and string code ran 3.5-5x slower from flash
+            than from IRAM, on the ESP32-C6 1.4-1.5x
+            (docs/format2-migration.md, "Devices: hardware results"). On the
+            C6 the loop takes 18.9 KB of SRAM (16.5 KB split). The classic
+            ESP32 does not link with
+            ESP_WIFI_RX_IRAM_OPT on; without it 5.2 KB of IRAM stay free
+            next to the loop and the default
+            TOIT_VERIFIED_CORE_IRAM_FUNCTIONS. So it needs
                 # CONFIG_ESP_WIFI_RX_IRAM_OPT is not set
                 CONFIG_HEAP_PLACE_FUNCTION_INTO_FLASH=y
                 CONFIG_RINGBUF_PLACE_FUNCTIONS_INTO_FLASH=y
@@ -395,12 +394,17 @@ menu "Toit"
             hardly execute (step::cold_op), so that the hot part needs less
             IRAM. Every rare opcode then costs a call (the registers through
             memory). Without it the loop holds every handler and step_cold
-            is not in the binary (9 KB less flash on the classic ESP32).
-            The whole loop is faster on the ESP32-C6 (json 0.82x, strings
-            0.77x, loop-1M 0.65x of the split loop of measure-2) and costs
-            6 KB more SRAM there; it fits the classic ESP32's IRAM too
-            (split-option/README.md has the measurements). Both
-            configurations are verified (verified/check.sh).
+            is not in the binary. The whole loop (19.1 KB on the classic
+            ESP32) fits its IRAM with 5.2 KB to spare and is as fast or
+            faster than the split loop on the classic ESP32 and the C6
+            (richards, pystone, loop-1M, calls 3-5 % on the ESP32); it
+            costs 2.4 KB more SRAM on the C6 and 0.9 KB less IRAM on the
+            ESP32 than the split loop with the cold part in IRAM. The split
+            loop with the cold part in flash (leave step_cold out of
+            TOIT_VERIFIED_CORE_IRAM_FUNCTIONS) frees another 2.8 KB of IRAM
+            on the classic ESP32. Both configurations are verified
+            (verified/check.sh); verified/core/PROGRESS.md, "Split loop as
+            a build option", has the measurements.
 
     config TOIT_VERIFIED_CORE_IRAM_FUNCTIONS
         string "More functions of the verified core for IRAM"

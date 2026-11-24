@@ -1,5 +1,78 @@
 # Phase 4a progress (verified core, format 2 on x86-64)
 
+## Split loop as a build option (branch core/split-option, 2026-11-24)
+
+Base sandbox-integration 7f7ad28e. Requests R1-R3 of device/measure-2
+(the split loop of call-speed-size made the C6 4-50 % slower). Artifacts:
+/home/flo/work/opentoit-sandbox-artifacts/split-option (README.md:
+scripts, configurations, all tables and logs).
+
+The option. `step::split_loop()` (`cfg!(target_os = "none")`, an
+external_body without contract) is gone, and with it its TRUSTED.toml
+entry (core external_body items 43 -> 42). The split is the core's Cargo
+feature `split-loop` (forwarded by vmverify and its staticlib), set by
+CMake `TOIT_VERIFIED_CORE_SPLIT_LOOP` (default OFF), Kconfig
+`TOIT_VERIFIED_CORE_SPLIT_LOOP` (default n on every ESP32 target) and
+Makefile `EC618_SPLIT_LOOP` (default ON: the EC618 keeps its earlier,
+unmeasured configuration). In `step_r` the arms of the rare opcodes carry
+`#[cfg(not(feature = "split-loop"))]` and one `#[cfg(feature =
+"split-loop")]` arm calls `step_cold`; `cold_op`, `step_cold` and `step_c`
+exist only with the feature. Both configurations are separate
+compilations, both verified: check.sh verifies the core twice (`core`,
+`core-split`) at both word sizes; nopanic_check.sh, thumb_codegen_check.sh
+and nostd_check.sh build both.
+
+| crate | 64-bit | 32-bit |
+|---|---:|---:|
+| spec | 994 verified, 0 errors | 994, 0 |
+| core (whole loop) | 1,038, 0 | 1,040, 0 |
+| core-split | 1,040, 0 | 1,042, 0 |
+| core before (7f7ad28e) | 1,041, 0 | 1,043, 0 |
+
+The split loop (R3). The cold call no longer goes through the machine:
+`step_r`'s cold arm calls `step_cold(m, *r, env)` (the registers by value,
+out of line), and `step_cold` runs a slow path its handler hands on
+(`Ctl::Slow`) itself, so it never returns `Slow`; `Slow::Cold`, the
+request store/load and the old `slow` wrapper (which copied the registers
+with ROM memcpy on Xtensa, unconditionally) are gone; `slow_body` is now
+`slow`. The hot set follows dynamic opcode counts of the device benchmarks
+(hwbench and perfbench without RPC, trusted format 2, debug host build
+with -Xtrace; split-option/logs/opcounts.txt): PRIMITIVE (in every
+benchmark: 28,063 in strings, 19,329 in json), LOAD_SMI_U32 (1,000,001 in
+loop-1M, 6,000 in gc-stress), TRY and UNWIND (20,000 each in tasks-1k),
+IDENTICAL (12,001 in tasks-1k), MOD, DIV, SHL, XOR and
+INVOKE_STATIC_TAIL moved to the hot part. Cold now: the opcodes with no
+execution in the benchmarks (the _WIDE forms, interface/wide IS/AS, wide
+lazy and dynamic globals, the conditional back branches, USHR, LAMBDA_TAIL,
+THROW, HALT) and NON_LOCAL_BRANCH, STORE_GLOBAL_VAR_DYNAMIC,
+INITIALIZER_TAIL (a few hundred). Hot part 17.2 KB (was 12.3), cold part
+2.8 KB (was 7.0) on the classic ESP32.
+
+Devices (classic ESP32 rig boards, ESP32-C6; split-option/README.md):
+
+- C6, whole loop (the default) against measure-2's split loop, means of 5
+  builds/sessions: json 0.81x, strings 0.78x, loop-1M 0.66x, tasks-1k
+  0.85x, rpc-200 0.93x, richards 0.92x; faster than the 11-12 November
+  firmware everywhere except RPC (rpc-200 1.12x: 420 vs 373 ms; C6 f1
+  moves 6 % on RPC between layouts, f2 4 %). Free heap at boot 219.7 KB
+  (split 227.7 KB in measure-2, the new split 222.0 KB). The new split
+  loop is within 0-4 % of the whole one on the C6.
+- Classic ESP32: whole loop (the default) against the new split loop over
+  four layout-perturbed builds each (same pads): the whole loop is faster
+  on the layout-insensitive benchmarks (richards 914 vs 945 ms, pystone
+  142 vs 148, loop-1M 1,674 vs 1,764, calls 531 vs 554) and equal or
+  faster in the means of all others. IRAM: whole 125,826 B used (5,246
+  free), split with the cold part in IRAM 126,750 (4,322), split with it
+  in flash 122,887. Flash with Jaguar: whole -23,104 B (measure-2 split:
+  -23,280), split -24,256. Free heap at boot 131.2 KB.
+- Layout noise on the classic ESP32: shifting the VM's flash code by 2.4,
+  6.3 or 11.1 KB (dead code at the start of `VM::VM()`) moves f1 by up to
+  -42 % (tison-2k) / +98 % (interp-1k) / +39 % (tasks-1k) and f2 alike,
+  so single builds do not compare there; the tables give means and
+  min-max over the builds.
+- Device suite (f2) on both chips: all verdicts as before; untrusted
+  install on the ESP32 5.8-7.4 s with WiFi (measure-2: 5.8-7.3 s).
+
 ## Call speed, loop size, inline allocation (branch core/call-speed-size, 2026-11-12)
 
 Base sandbox-integration a773bcfe (compact records), sandbox-integration
