@@ -56,6 +56,44 @@ It fails (non-zero exit) unless:
    `spec/tests/run_tests.sh` and `ctest -R '^tests/sandbox/'` in
    `build/host` (or `--build DIR`); skipped when there is no build.
 
+The checks are named sections: `verified/check.sh --list [--tests]
+[--slow]` prints them, `verified/check.sh --only NAME[,NAME...] [--logs
+DIR]` runs just those (exit status 3: nothing failed but a section was
+skipped). The audit reads the `verus --no-cheating` logs of section
+`verus`, so it needs `--logs` of a run that did `verus`. Each section ends
+with a line in the summary: passed, FAIL or skipped, and its time.
+
+### The whole gate in parallel: `verified/gate.sh`
+
+`verified/gate.sh [--logs DIR] [--slow] [--allow-skip]` runs the full
+merge flow of a checkout, builds included (`make sdk`, `make
+download-packages`, `ninja -C build/host`, `build_test_assets`, the ASan
+build in `build/asan`, `make TARGET=host32 sdk`), every section of
+`check.sh --tests` as `check.sh --only NAME`, and `ctest` of the host build,
+as a dependency graph run in parallel (the graph is drawn at the top of
+the script). Each part logs to `DIR/NAME.log` (default
+`build/gate/<date-time>`); the summary lists each part as passed, FAILED,
+skipped or not run (a part it needs did not pass) with its time, and the
+exit status is 0 only when every part passed. A section that check.sh
+lists but the graph lacks stops the gate before it starts. Ctest failures
+other than those in `GATE_CTEST_KNOWN_FAILURES` (default: the multicast
+test `tests/udp-reuse-port-test.toit`) fail it; "Not Run" always does.
+An interrupt stops every part (each runs in its own session; all its
+processes get TERM, then KILL after 30 s).
+
+To gate a commit without touching the current checkout:
+
+```sh
+tools/gate-commit.sh COMMIT LOG-DIR    # [--worktree DIR], gate.sh flags after LOG-DIR
+```
+
+It creates (or reuses, if clean) the worktree `<main checkout>-gate`,
+checks out COMMIT there, links the SDK sources (`tools/worktree-setup.sh
+--links-only`) and runs that commit's `verified/gate.sh --logs LOG-DIR`.
+Reuse keeps its builds and its matrix work directory; the ccache cache,
+cargo's registry, the toit package cache and the matrix tools and memory
+queue are shared with other checkouts.
+
 Reported, never failing: allowlisted items that `core/TRUSTED.md` (or
 `spec/DESIGN.md` for the spec crate) does not mention, closed and opaque
 spec fns, proof fns with an empty body and a non-trivial `ensures`,

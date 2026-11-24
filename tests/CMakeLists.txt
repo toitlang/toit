@@ -74,6 +74,15 @@ add_custom_target(build_test_assets)
 add_dependencies(check build_test_assets)
 add_dependencies(check_slow build_test_assets)
 
+# The libyaml tests `version` and `reader` (src/compiler/third_party/libyaml/
+# tests) are registered with ctest, but their directory is EXCLUDE_FROM_ALL,
+# so nothing built their executables and ctest reported them "Not Run".
+foreach(yaml_test test-version test-reader)
+  if (TARGET ${yaml_test})
+    add_dependencies(build_test_assets ${yaml_test})
+  endif()
+endforeach()
+
 
 # Create 15 flaky dummy tests, so that the strides mechanism works.
 foreach(i RANGE 15)

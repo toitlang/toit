@@ -48,19 +48,19 @@ else
   done
 fi
 
-pass=0
-fail=0
-failed=()
-for name in "${TESTS[@]}"; do
+# One program; prints its report and returns 1 when it failed. The programs
+# are independent (each writes only $OUT/<name>.*) and run in parallel.
+run_test() {
+  local name="$1" src base ok bits expected steps steps2
   src="$CRATE/tests/toit/$name.toit"
   base="$OUT/$name"
   if ! "$TOIT" compile --snapshot -o "$base.snapshot" "$src" 2> "$base.compile.err"; then
     echo "FAIL $name (compile)"
-    fail=$((fail + 1)); failed+=("$name"); continue
+    return 1
   fi
   "$TOIT" run "$base.snapshot" > "$base.vm.out" 2> "$base.vm.err"
   echo "exit $?" >> "$base.vm.out"
-  "$TOIT" run "$DUMPER" -- "$base.snapshot" "$base.dump" || { echo "FAIL $name (dump)"; fail=$((fail + 1)); failed+=("$name"); continue; }
+  "$TOIT" run "$DUMPER" -- "$base.snapshot" "$base.dump" || { echo "FAIL $name (dump)"; return 1; }
   ok=1
   for bits in 64 32; do
     "$RUNNER" --word-bits $bits --max-steps 100000000 --stats "$base.dump" > "$base.spec$bits.out" 2> "$base.spec$bits.err"
@@ -108,9 +108,31 @@ for name in "${TESTS[@]}"; do
   steps2=$(grep -o 'steps: [0-9]*, verified steps: [0-9]*' "$base.v2spec64.err" | head -1)
   if [ $ok = 1 ]; then
     echo "PASS $name (format 1: $steps; format 2: $steps2)"
+    return 0
+  fi
+  echo "FAIL $name"
+  return 1
+}
+
+# At most SPEC_TEST_JOBS programs at once (default: the core count); the
+# reports are printed in order.
+MAXJOBS="${SPEC_TEST_JOBS:-$(nproc)}"
+trap 'trap - TERM INT HUP; kill -TERM $(jobs -p) 2> /dev/null; wait; exit 143' TERM INT HUP
+for name in "${TESTS[@]}"; do
+  while [ "$(jobs -rp | wc -l)" -ge "$MAXJOBS" ]; do wait -n; done
+  rm -f "$OUT/$name.status"
+  { run_test "$name"; echo $? > "$OUT/$name.status"; } > "$OUT/$name.report" 2>&1 &
+done
+wait
+
+pass=0
+fail=0
+failed=()
+for name in "${TESTS[@]}"; do
+  cat "$OUT/$name.report"
+  if [ "$(cat "$OUT/$name.status" 2> /dev/null)" = 0 ]; then
     pass=$((pass + 1))
   else
-    echo "FAIL $name"
     fail=$((fail + 1)); failed+=("$name")
   fi
 done
