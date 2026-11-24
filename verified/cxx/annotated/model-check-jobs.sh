@@ -75,5 +75,11 @@ slow timer-dispatch/LP64                         9  1800
 slow free-list-selection/LP64 30 14400
 slow gc-compaction-overhang/LP64 10 14400
 slow gc-metadata-layout/LP64 4 10800
-slow gc-sweep-chunk/ILP32 24 14400
-slow gc-sweep-chunk/LP64 28 14400
+slow gc-sweep-chunk/LP64 6 14400
+# gc-sweep-chunk with fill_unmarked_words by contract and Boolector
+# (2026-11-24), and its mutants (README, "Restructured").
+slow gc-sweep-chunk/ILP32                        3  1920
+slow gc-sweep-chunk-uncounted/ILP32              3  1800
+slow gc-sweep-chunk-no-sentinel/ILP32            3  1800
+slow gc-sweep-chunk-no-sentinel/LP64             5  1800
+slow gc-sweep-chunk-uncounted/LP64               5  7200

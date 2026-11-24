@@ -1661,9 +1661,26 @@ spawn cpp_equivalence gc-scavenge-phases LP64 64 gc_scavenge_phases --unwind 4
 spawn cpp_equivalence gc-scavenge-phases ILP32 32 gc_scavenge_phases --unwind 4
 spawn cpp_equivalence gc-host-pages LP64 64 gc_host_pages --unwind 65
 spawn cpp_equivalence gc-host-pages ILP32 32 gc_host_pages --unwind 65
-sweep_chunk_limits=(--unwind 2 --unwindsetname object_memory_mark_sweep.cc@N@toit@S@OldSpace@sweep:2:3,sweep_empty_cards.h@N@toit@sweep_empty_cards:0:4,sweep_empty_cards.h@N@toit@fill_unmarked_words:0:33,N@toit@S@FreeList@clear:0:13,__memset_impl:0:13)
-spawn cpp_equivalence gc-sweep-chunk LP64 64 gc_sweep_chunk "${sweep_chunk_limits[@]}"
-spawn cpp_equivalence gc-sweep-chunk ILP32 32 gc_sweep_chunk "${sweep_chunk_limits[@]}"
+# The harness stores the filler words by fill_unmarked_words' contract (WP:
+# gc-page-scan-wp); Boolector, not Bitwuzla: Bitwuzla ran out of memory.
+sweep_chunk_limits=(--boolector --unwind 2 --unwindsetname object_memory_mark_sweep.cc@N@toit@S@OldSpace@sweep:2:3,sweep_empty_cards.h@N@toit@sweep_empty_cards:0:4,gc_sweep_chunk.cc@fill_by_contract:0:33,N@toit@S@FreeList@clear:0:13,__memset_impl:0:13)
+for abi in LP64 ILP32; do
+  bits=64
+  [[ "$abi" == ILP32 ]] && bits=32
+  spawn cpp_equivalence gc-sweep-chunk "$abi" "$bits" gc_sweep_chunk "${sweep_chunk_limits[@]}"
+  # Broken sweeps the fixture must reject: a marked line left out of the
+  # count, the chunk-end sentinel not repaired.
+  spawn cpp_violation gc-sweep-chunk-uncounted "$abi" "$bits" gc_sweep_chunk third_party/dartino/object_memory_mark_sweep.cc \
+    "count exactly the marked payload bytes" \
+    "      used += Utils::popcount(bits);
+      unsigned free_words_at_start" "      unsigned free_words_at_start" \
+    "${sweep_chunk_limits[@]}"
+  spawn cpp_violation gc-sweep-chunk-no-sentinel "$abi" "$bits" gc_sweep_chunk third_party/dartino/object_memory_mark_sweep.cc \
+    "restore the sentinel and clear the consumed mark table" \
+    "    *reinterpret_cast<Object**>(end - WORD_SIZE) = chunk_end_sentinel();
+" "" \
+    "${sweep_chunk_limits[@]}"
+done
 spawn cpp_equivalence gc-sweep-free-region LP64 64 gc_sweep_free_region
 spawn cpp_equivalence gc-sweep-free-region ILP32 32 gc_sweep_free_region
 spawn cpp_equivalence gc-page-fragmentation LP64 64 gc_page_fragmentation --unwind 65
