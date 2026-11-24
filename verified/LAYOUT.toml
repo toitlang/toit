@@ -123,6 +123,16 @@ verifast = "HeapObject_CLASS_TAG_MASK"
 
 [[fact]]
 kind = "header"
+name = "finalizer flag (bit of the header's smi value)"
+value64 = 4
+value32 = 4
+cxx = "HeapObject::FINALIZER_BIT_OFFSET"
+verus = "FINALIZER_BIT_OFFSET"
+verifast = "HeapObject_FINALIZER_BIT_OFFSET"
+note = "No object of a program image has the flag (verified/vmverify/src/from_vm.rs, src/verifier.cc walk_heap): the message encoder takes an external byte array with it for the owner of its memory."
+
+[[fact]]
+kind = "header"
 name = "class id shift (in the header's smi value)"
 value64 = 5
 value32 = 5

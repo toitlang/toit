@@ -450,7 +450,9 @@ PRIMITIVE(blob_index_of) {
   // Takes the byte we are searching for and duplicate it over all 16 bytes of
   // the 128 bit value.
   const uint128_t mask = _mm_set1_epi8(byte);
-  for (int i = from - last_bits; i < to; i += 16) {
+  // A word: on 64-bit hosts a blob can be longer than 2 GB (an int index
+  // would wrap and read before the blob).
+  for (word i = from - last_bits; i < to; i += 16) {
     // Load aligned to a 128 bit XMM2 register.
     uint128_t raw = *reinterpret_cast<const uint128_t*>(address + i);
     // Puts 0xff or 0x00 in the corresponding bytes depending on whether the
@@ -460,7 +462,7 @@ PRIMITIVE(blob_index_of) {
     // normal integer.  PMOVMSKB.
     int bits = _mm_movemask_epi8(comparison) & alignment_mask;
     if (bits != 0) {
-      int answer = i + __builtin_ffs(bits) - 1;
+      word answer = i + __builtin_ffs(bits) - 1;
       if (answer >= to) return Smi::from(-1);
       return Smi::from(answer);
     }

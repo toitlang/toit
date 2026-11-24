@@ -77,6 +77,162 @@ static const uint32 v2_prim_counts[] = { MODULES(V2_MODULE_COUNT) };
 #undef V2_MODULE_ARITIES
 #undef V2_MODULE_COUNT
 
+// Whether `length` elements of `element_size` bytes at `data` lie inside
+// [begin, end) and `data` has the alignment the readers need.
+static bool v2_inside(uword begin, uword end, const void* data, word length, word element_size,
+                      uword alignment) {
+  if (length < 0) return false;
+  if (length == 0) return true;  // Never read.
+  uword a = reinterpret_cast<uword>(data);
+  if ((a & (alignment - 1)) != 0 || a < begin || a >= end) return false;
+  return static_cast<uword>(length) <= (end - a) / static_cast<uword>(element_size);
+}
+
+// The tables of a program image lie inside the image, before anything
+// reads them (verified/cxx/annotated/README.md, "Findings", wave 11). A
+// program image is a Program followed by its heap and its off-heap
+// tables; the image's words are installed as they come, so every pointer
+// of the Program (the List and Table fields) is a word the image chose:
+// with the relocation bit, an offset into the image; without it, any
+// address. Everything after this reads them: is_format2 the bytecodes,
+// V2MethodTable::compute the last literal and the method table literal it
+// holds, v2_program_tables and the verifier's conversion every table
+// (verified/vmverify/src/from_vm.rs borrows them in place: "Every pointer
+// of `p` must be valid for its length"), the processes the globals.
+// Memory outside the image is neither checked by the verifier nor
+// immutable after it (a table at an absolute address in RAM could change
+// after the verdict). The snapshot reader allocates all of them inside the
+// image, so a program read from a snapshot passes. Returns null or the
+// reason.
+const char* V2Verifier::image_layout_error(const Program* program, word program_size) {
+  uword begin = reinterpret_cast<uword>(program);
+  if (program_size < static_cast<word>(sizeof(Program)) ||
+      static_cast<uword>(program_size) > ~static_cast<uword>(0) - begin) {
+    return "program size";
+  }
+  uword end = begin + program_size;
+  if (!v2_inside(begin, end, program->global_variables.array(), program->global_variables.length(),
+                 sizeof(Object*), WORD_SIZE)) {
+    return "global variables outside the image";
+  }
+  if (!v2_inside(begin, end, program->literals.array(), program->literals.length(), sizeof(Object*), WORD_SIZE)) {
+    return "literals outside the image";
+  }
+  if (!v2_inside(begin, end, program->dispatch_table.data(), program->dispatch_table.length(), sizeof(int32), 4)) {
+    return "dispatch table outside the image";
+  }
+  if (!v2_inside(begin, end, program->class_check_ids.data(), program->class_check_ids.length(), sizeof(uint16), 2)) {
+    return "class check ids outside the image";
+  }
+  if (!v2_inside(begin, end, program->interface_check_offsets.data(), program->interface_check_offsets.length(),
+                 sizeof(uint16), 2)) {
+    return "interface check offsets outside the image";
+  }
+  if (!v2_inside(begin, end, program->class_bits.data(), program->class_bits.length(), sizeof(uint16), 2)) {
+    return "class bits outside the image";
+  }
+  if (!v2_inside(begin, end, program->bytecodes.data(), program->bytecodes.length(), 1, 1)) {
+    return "bytecodes outside the image";
+  }
+  // The last literal: V2MethodTable::compute reads its header and, for a
+  // byte array, its content (the method table, format note 21).
+  int count = program->literals.length();
+  if (count > 0) {
+    Object* last = program->literals.array()[count - 1];
+    if (is_heap_object(last)) {
+      // The header and the length word.
+      void* object = reinterpret_cast<void*>(reinterpret_cast<uword>(last) - Object::HEAP_TAG);
+      if (!v2_inside(begin, end, object, 2, WORD_SIZE, WORD_SIZE)) return "last literal outside the image";
+      if (is_byte_array(last)) {
+        const ByteArray* array = ByteArray::cast(last);
+        if (array->has_external_address()) {
+          if (!v2_inside(begin, end, object, ByteArray::external_allocation_size() / WORD_SIZE, WORD_SIZE, WORD_SIZE)) {
+            return "last literal outside the image";
+          }
+          if (array->external_tag() != RawByteTag) return "method table literal is not raw bytes";
+        }
+        ByteArray::ConstBytes bytes(array);
+        if (bytes.address() == null || !v2_inside(begin, end, bytes.address(), bytes.length(), 1, 1)) {
+          return "method table literal outside the image";
+        }
+      }
+    }
+  }
+  return null;
+}
+
+// The builtin classes and roots the C++ VM uses without checks
+// (verified/cxx/annotated/README.md, "Findings", wave 11): every builtin
+// class id is a class with the tag the VM assumes for it, and the builtin
+// classes whose fields the C++ reads or writes by index (the primitives'
+// argument decoders, list_add, the message encoder, the interpreter's
+// fast paths) have at least those fields. A program brings its own core
+// library, so these are its classes; the format-2 verifier itself checks
+// only the classes the verified core allocates or dispatches on (`tables_ok`
+// in verified/spec/src/v2/verifier.rs). The same checks as the format-1
+// verifier's (src/verifier.cc check_builtin_classes). The roots are read
+// only after the verifier's conversion accepted them as objects of the
+// image (verified/vmverify/src/from_vm.rs). Returns null or the reason.
+const char* V2Verifier::builtin_classes_error(Program* program) {
+  int class_count = program->class_bits.length();
+  struct { Smi* id; int tag; int fields; const char* name; } builtins[] = {
+    { program->string_class_id(), STRING_TAG, 0, "string" },
+    { program->array_class_id(), ARRAY_TAG, 0, "array" },
+    { program->byte_array_class_id(), BYTE_ARRAY_TAG, 0, "byte array" },
+    { program->byte_array_cow_class_id(), INSTANCE_TAG, Instance::BYTE_ARRAY_COW_IS_MUTABLE_INDEX + 1, "byte array cow" },
+    { program->byte_array_slice_class_id(), INSTANCE_TAG, Instance::BYTE_ARRAY_SLICE_TO_INDEX + 1, "byte array slice" },
+    { program->string_slice_class_id(), INSTANCE_TAG, Instance::STRING_SLICE_TO_INDEX + 1, "string slice" },
+    { program->string_byte_slice_class_id(), INSTANCE_TAG, Instance::STRING_BYTE_SLICE_TO_INDEX + 1, "string byte slice" },
+    { program->list_class_id(), INSTANCE_TAG, Instance::LIST_SIZE_INDEX + 1, "list" },
+    { program->list_slice_class_id(), INSTANCE_TAG, Instance::LIST_SLICE_TO_INDEX + 1, "list slice" },
+    { program->map_class_id(), INSTANCE_TAG, Instance::MAP_BACKING_INDEX + 1, "map" },
+    { program->tombstone_class_id(), INSTANCE_TAG, Instance::TOMBSTONE_DISTANCE_INDEX + 1, "tombstone" },
+    { program->stack_class_id(), STACK_TAG, 0, "stack" },
+    { program->null_class_id(), ODDBALL_TAG, 0, "null" },
+    { program->true_class_id(), ODDBALL_TAG, 0, "true" },
+    { program->false_class_id(), ODDBALL_TAG, 0, "false" },
+    { program->object_class_id(), INSTANCE_TAG, 0, "object" },
+    { program->double_class_id(), DOUBLE_TAG, 0, "double" },
+    { program->large_integer_class_id(), LARGE_INTEGER_TAG, 0, "large integer" },
+    { program->smi_class_id(), INSTANCE_TAG, 0, "smi" },
+    { program->task_class_id(), TASK_TAG, 2, "task" },
+    { program->large_array_class_id(), INSTANCE_TAG, Instance::LARGE_ARRAY_VECTOR_INDEX + 1, "large array" },
+    { program->lazy_initializer_class_id(), INSTANCE_TAG, 1, "lazy initializer" },
+    { program->exception_class_id(), INSTANCE_TAG, 2, "exception" },
+  };
+  for (auto& b : builtins) {
+    if (!is_smi(b.id)) return "builtin class: an id is not a smi";
+    word id = Smi::value(b.id);
+    if (id < 0 || id >= class_count) return "builtin class: an id out of range";
+    int bits = program->class_bits[id];
+    if (Program::class_tag_from_class_bits(bits) != b.tag) return "builtin class: a class without the tag the VM assumes";
+    if (b.fields > 0 &&
+        Instance::fields_from_size(Program::instance_size_from_class_bits(bits)) < b.fields) {
+      return "builtin class: a class with fewer fields than the VM reads";
+    }
+  }
+  auto is_oddball_of = [&](Object* object, Smi* class_id) {
+    return is_heap_object(object) && HeapObject::cast(object)->class_id() == class_id &&
+        HeapObject::cast(object)->class_tag() == ODDBALL_TAG;
+  };
+  if (!is_oddball_of(program->null_object(), program->null_class_id()) ||
+      !is_oddball_of(program->true_object(), program->true_class_id()) ||
+      !is_oddball_of(program->false_object(), program->false_class_id())) {
+    return "builtin root: null, true or false is not the oddball of its class";
+  }
+  if (!is_array(program->empty_array()) || Array::cast(program->empty_array())->length() != 0) {
+    return "builtin root: empty_array is not an empty array";
+  }
+  if (!is_instance(program->out_of_memory_error()) ||
+      Instance::cast(program->out_of_memory_error())->class_id() != program->exception_class_id()) {
+    return "builtin root: out_of_memory_error is not an exception";
+  }
+  for (int i = Program::app_sdk_version_INDEX; i < Program::ROOT_COUNT; i++) {
+    if (!is_string(program->root(i))) return "builtin root: a string root is not a string";
+  }
+  return null;
+}
+
 const char* V2Verifier::install_verdict(const void* memory, word program_size, uint8* metadata,
                                         const uint8* certificate, word certificate_length,
                                         Process* process) {
@@ -193,6 +349,16 @@ static bool v2_verify(Program* program, const V2MethodTable* table, bool trusted
   fprintf(stderr, "verifier: %sprogram rejected: the firmware has no verifier\n", trusted ? "" : "untrusted ");
   return false;
 #else
+  // The tables the conversion borrows lie inside the image (checked before
+  // the method table was decoded on the install path; a program read from
+  // a snapshot has them there by construction).
+  const char* layout = V2Verifier::image_layout_error(program,
+      program_size >= 0 ? program_size : program->size_no_assets());
+  if (layout != null) {
+    fprintf(stderr, "verifier: %sprogram rejected: malformed program memory: %s\n",
+            trusted ? "" : "untrusted ", layout);
+    return false;
+  }
   if (certificate == null && !V2Verifier::infers()) {
     // Devices (and hosts with -Xrequire_certificate): no inference, so no
     // verdict without a shipped certificate. Rejected before the program is
@@ -228,6 +394,13 @@ static bool v2_verify(Program* program, const V2MethodTable* table, bool trusted
   }
 #endif
   if (result.code == TOIT_VMVERIFY_ACCEPTED) {
+    // The builtin classes and roots the C++ relies on (after the
+    // conversion accepted the roots as objects of the image).
+    const char* builtin = V2Verifier::builtin_classes_error(program);
+    if (builtin != null) {
+      fprintf(stderr, "verifier: %sprogram rejected: %s\n", trusted ? "" : "untrusted ", builtin);
+      return false;
+    }
     // The only place that marks a table verified (the core's verified run
     // loop relies on it: Interpreter::run_v2).
     const_cast<V2MethodTable*>(table)->mark_verified(trusted);
@@ -257,6 +430,11 @@ const char* V2Verifier::verify_installed(Program* program, word program_size, bo
                                          const uint8* certificate, word certificate_length,
                                          Process* process) {
   *no_verdict = false;
+  const char* layout = image_layout_error(program, program_size);
+  if (layout != null) {
+    fprintf(stderr, "verifier: untrusted program rejected: malformed program memory: %s\n", layout);
+    return "INVALID_SNAPSHOT";
+  }
   if (!program->is_format2()) {
     if (V2MethodTable::untrusted_format1_allowed()) {
       *no_verdict = true;
@@ -379,6 +557,10 @@ bool V2Verifier::write_canonical(Program* program, const V2MethodTable* table, c
 const char* V2Verifier::verify_installed(Program* program, word program_size, bool* no_verdict,
                                          const uint8* certificate, word certificate_length,
                                          Process* process) {
+  if (image_layout_error(program, program_size) != null) {
+    *no_verdict = false;
+    return "INVALID_SNAPSHOT";
+  }
   *no_verdict = !program->is_format2() && V2MethodTable::untrusted_format1_allowed();
   if (*no_verdict) return null;
   // Without the verifier no untrusted program can be admitted.
@@ -397,6 +579,12 @@ bool V2Verifier::certify(Program* program, const V2MethodTable* table, bool trus
 #endif  // TOIT_VERIFIED_CORE
 
 bool V2Verifier::verify(Program* program, bool trusted) {
+  const char* layout = image_layout_error(program, program->size_no_assets());
+  if (layout != null) {
+    fprintf(stderr, "verifier: %sprogram rejected: malformed program memory: %s\n",
+            trusted ? "" : "untrusted ", layout);
+    return false;
+  }
   V2MethodTable* table = V2MethodTable::compute(program);
   if (table == null) return false;
   bool result = verify(program, table, trusted);

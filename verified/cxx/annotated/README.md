@@ -1296,7 +1296,7 @@ follows the one failed allocation, so the heap is unchanged):
 | never (35) | smi_mod, smi_shift_right, smi_not, count_leading_zeros, popcount, object_class_id, the 5 smi and 5 large-integer comparisons; array_length, array_at, array_at_put, array_replace, rebuild_hash_index; string_hash_code, string_raw_at, string_compare, int_vector_equals; float_sign, float_is_nan, float_is_finite, the 5 float comparisons, compare_to, min_special_compare_to | no path returns NotPorted or NeedsGc (no allocation; results in the smi range) |
 | only when an allocation does not fit (NeedsGc) | the other integer operations (a result outside the smi range: a large integer), every float operation that returns a double (number_to_float, raw_to_float, raw32_to_float, arithmetic, sqrt, rounding), float_to_raw, number_to_integer (a large result), float_to_raw32 (ILP32 only), array_new, array_expand, string_slice, string_from_rune, string_add, byte_array_new (also every ByteArray above 2^30 - 1 bytes on ILP32, and an external one the process limit or malloc refuses) | the new-space allocation, or the external blob's, fails |
 | copy-on-write or opaque byte arrays (NotPorted) | byte_array_replace, string_write_to_byte_array, put_uint_big_endian, put_uint_little_endian, put_float_32_little_endian, put_float_64_little_endian | a destination that is a CowByteArray_ not yet copied (a byte-array literal, or a slice of one: `LITTLE-ENDIAN.put-uint16 #[0, 0] 0 1`), or opaque (below); the source of byte_array_replace and string_write if opaque |
-| opaque byte arrays (NotPorted) | byte_array_is_raw_bytes, byte_array_length, byte_array_at, byte_array_at_put, blob_hash_code, blob_equals, blob_index_of, string_rune_count, json_skip_whitespace, hash_simple_json_string, size_of_json_number, compare_simple_json_string (its first argument), read_int_big_endian, read_int_little_endian, read_uint_big_endian, read_uint_little_endian (these four also NeedsGc for a large result) | a byte array the model has no bytes for (`view.rs`: external with another tag than RawByteTag, or RawByteTag with a null address): resource proxies, mapped files, a byte array neutered by a transferring process_send (address null) |
+| opaque byte arrays (NotPorted) | byte_array_is_raw_bytes, byte_array_length, byte_array_at, byte_array_at_put, blob_hash_code, blob_equals, blob_index_of, string_rune_count, json_skip_whitespace, hash_simple_json_string, size_of_json_number, compare_simple_json_string (its first argument), read_int_big_endian, read_int_little_endian, read_uint_big_endian, read_uint_little_endian (these four also NeedsGc for a large result) | a byte array the model has no bytes for (`view.rs`: external with another tag than RawByteTag, or RawByteTag with a null address): resource proxies, a byte array neutered by a transferring process_send (address null); mapped files only from a program image, which is refused since wave 11 |
 | other | list_add | a list whose backing is not an Array (a LargeArray_: every list of more than 500 elements) |
 | | concat_strings | a malformed StringSlice_ among the parts; a sum above MAX_BLOB_LENGTH (ILP32: 2^30); the result's allocation (NeedsGc) |
 | | string_at | a byte of 0xf8 or more, or a lead byte whose sequence runs past the end (invalid UTF-8: a concatenation of a StringSlice_ that cuts a character, which a program's own library can make, is such a string; the C++ is proved since wave 10, `prims/string_at.render`) |
@@ -1304,7 +1304,9 @@ follows the one failed allocation, so the heap is unchanged):
 
 The program-level checks (a builtin class of the program without the tag
 the port expects: ints.rs, float.rs, array.rs, blob.rs) decline for every
-input of a malformed program, never for a compiled one.
+input of a malformed program, never for a compiled one. Since wave 11 the
+verifier refuses such a program (`V2Verifier::builtin_classes_error`), so
+these declines are unreachable for untrusted programs too.
 
 What the C++ then does with an opaque byte array: the primitives that
 decode it as a Blob or MutableBlob (all of the opaque rows but the four
@@ -1328,7 +1330,13 @@ checks an external byte array's address range, not its tag. Whether a
 raw (not snapshot) image can be an untrusted container and carry another
 tag word, a mapped file's or a resource proxy's, was not established in
 wave 10 (for the lead: a proxy tag would make the C++ take image bytes for
-a native struct).
+a native struct). Wave 11 established it: a flash image can (it is
+installed word for word; the format-2 conversion accepted any other tag,
+or a null address, as an opaque object), and since wave 11 such an image
+is refused at install ("Findings", wave 11). So the MappedFileTag branch
+of byte_array_at and byte_array_length is unreachable for untrusted
+programs, and the opaque byte arrays of the table above are resource
+proxies and neutered arrays only.
 
 Consequences. The C++ behind the 35 "never" ports does not run for an
 untrusted process on the default paths, so it needs no proof for the
@@ -2302,6 +2310,188 @@ of #3378, malformed system messages of #3381) become mutants with them.
 
 ## Findings
 
+Wave 11 (what the install-time checks pin in a program image; the
+argument objects of the primitives without a body proof):
+
+* **A program image could carry external byte arrays that the C++ takes
+  for native objects or reads at address 0, reachable by any untrusted
+  flash image** (FIXED here, verified/vmverify/src/from_vm.rs and
+  src/verifier.cc `walk_heap`). An image is installed word for word
+  (src/resources/image.cc, the flash registry's allocate) and verified in
+  place (`V2Verifier::install_verdict`). The format-2 conversion modeled an
+  external byte array with another tag than RawByteTag, or raw bytes at a
+  null address, as an opaque object and accepted it; the format-1 heap walk
+  checked only the address range. What the C++ then did with such a
+  literal: a resource-proxy tag makes the proxy-decoding ARGS of
+  src/primitive.h (`MAKE_UNPACKING_MACRO`: tag in range, then
+  `as_external<T>()`) take the address word for a pointer to a native
+  object of that type, for the timer and events primitives of the
+  untrusted set (`timer.arm`, `timer.delete`, `events.read_state`, ...:
+  their ESBMC checks assume "an open, correctly tagged proxy points to a
+  live native object of its declared type", which nothing established for
+  a proxy an image brings); a MappedFileTag makes byte_array_at and
+  byte_array_length read the content in place; raw bytes at address 0
+  with a nonzero length make the blob decoders return (null, length), so
+  byte_array_at and the blob primitives read from [0, length) (a neutered
+  array, the only runtime byte array without an address, has length 0).
+  A snapshot cannot express either (the snapshot reader writes RawByteTag
+  and an address in the image, objects.cc `ByteArray::read_content`). The
+  allow-list now: an external byte array of a program image has the raw
+  tag and a non-null address with its content in the image (what the
+  snapshot reader makes for the byte arrays above
+  SNAPSHOT_INTERNAL_SIZE_CUTOFF); everything else is refused at install
+  and at launch. Upstream master: no install-time verification and no
+  untrusted programs (n/a).
+* **The finalizer flag of a program-heap object came from the image or the
+  snapshot, and the message encoder hands an external byte array with it to
+  the receiver** (FIXED here, same files). The snapshot reader copies an
+  object's header word as the snapshot gives it (src/snapshot.cc
+  `read_object`), the flash image as it is, and neither verifier looked at
+  bit 4. `MessageEncoder::encode_byte_array` transfers an external byte
+  array whose `has_owned_external_memory()` holds (external and flagged):
+  for a program-heap literal above 1024 bytes the receiver would own a
+  pointer into the program image and free it, and the sender's
+  `ByteArray::neuter` would write into the program heap. Round 3's crafted
+  heap `str-finalizer-bit` (the flag on a string literal) ran; on a large
+  byte-array literal sent by `process_send` it is this. Now no object of a
+  program image may have the flag (layout.rs `FINALIZER_BIT_OFFSET`, a new
+  LAYOUT.toml fact). Upstream master: the same snapshot reader and encoder
+  (yes; upstream runs only trusted programs).
+* **The install read the program's tables wherever the image pointed**
+  (FIXED here, src/verifier_v2.cc `V2Verifier::image_layout_error`). The
+  Program's List and Table fields (bytecodes, literals, globals, dispatch
+  table, class tables) and the method table literal are words of the
+  image: with the relocation bit an offset into it, without it any
+  address. `is_format2`, `V2MethodTable::compute` (the last literal's
+  header and content), `v2_program_tables` and the conversion (which
+  borrows the tables in place; its safety comment: "Every pointer of `p`
+  must be valid for its length") read them before anything checked them,
+  so a crafted image made the install read outside the image, and a table
+  at an absolute address in RAM is neither verified memory nor immutable
+  after the verdict (the globals are copied from it at every launch). Now
+  every table, the last literal and the method table literal it holds lie
+  inside the image (raw bytes, non-null), checked first by
+  `verify_installed`, and again by `v2_verify` and
+  `V2Verifier::verify(program, trusted)` for programs read from a snapshot
+  (which has them inside by construction). Upstream master: n/a.
+* **Format-2 programs' builtin classes and roots were not checked**
+  (FIXED here, `V2Verifier::builtin_classes_error`, called when the
+  verifier accepts a program). The VeriFast model's `prog_ok`
+  (model/objects.render: "What VerifierImpl::check_builtin_classes
+  (src/verifier.cc) establishes for an accepted program"; a precondition of
+  every proof that decodes a blob, a list or a map) was established only
+  for format 1: the format-2 verifier checks the classes the verified core
+  allocates or dispatches on (`tables_ok`, verified/spec/src/v2/verifier.rs:
+  object, stack, double, smi, exception, task), not the tags and field
+  counts of List_, Map, the slices, CowByteArray_, LargeArray_, the array,
+  string and byte-array classes, nor the roots. A program brings its own
+  core library: one whose List_ has no fields and whose code never reads
+  them makes list_add write field 1 past the instance (and the decoders,
+  the encoder and the interpreter's fast paths read past slices and maps);
+  one whose array class is an instance class makes `Array::cast` read a
+  field as a length. Now the format-1 checks run for format 2 too: every
+  builtin class id is a class with its tag, the classes whose fields the
+  C++ reads have at least those fields, null, true and false are the
+  oddballs of their classes, empty_array is an empty array,
+  out_of_memory_error an exception, the string roots strings. Of the 34
+  class edits the test makes, the method or heap check refuses 31 first
+  (the fixture's code uses those classes); the stack, large-integer and smi
+  classes with another tag and six root edits were accepted before
+  (checked by running the test without the new check). Round 3's heap
+  battery: `null-as-true` and four Exception_ roots of another class
+  (`exc-as-list`, `-largearray`, `-cowbytearray`, `-rpcexception`) ran and
+  are refused now (review/red-team/round3/repro/heap-results.txt updated).
+  Upstream master: n/a (format 1 only, which has the checks).
+* Observation, fixed: blob_index_of's SSE loop (x86-64 hosts) indexed with
+  an `int`: a blob above 2 GB would wrap the index and read before the
+  blob (a word now). Unreachable for untrusted programs (the port runs the
+  C++ only for opaque, hence empty, byte arrays) and on the ESP32. No
+  regression test (it needs a 2 GB byte array). Upstream master: the same
+  code (yes).
+* Observations, not changed: float_to_raw32 converts a double outside the
+  float range to float (undefined in C++, infinity on every target; not a
+  memory access). The pilot entries `int-parse` and `int64-to-string` of
+  verified/cxx/run.sh do not parse with ESBMC 8.6 (`fpclassify` in
+  float_to_string, a line this wave did not touch).
+
+What the install-time checks require of each program-heap object that
+carries a tag or wraps native state (format 2: the conversion
+verified/vmverify/src/from_vm.rs and the verified heap check
+`x_loaded_ok_stream`, verified/spec/src/v2/heap_check.rs, run by
+`toit_vmverify_verify` for an install and a launch; format 1:
+src/verifier.cc `walk_heap`):
+
+| Object kind | Requirement | Where enforced | Wave 11 |
+|---|---|---|---|
+| every object | smi header, class id in the class table, tag equal to the class's tag | from_vm.rs `object`; walk_heap | - |
+| every object | no finalizer flag | from_vm.rs `object`; walk_heap | added |
+| external byte array | raw-bytes tag, non-null address, content inside the image | from_vm.rs (BYTE_ARRAY_TAG); walk_heap | tag and address added (range was checked) |
+| internal byte array | content inside the image | from_vm.rs `Image::bytes`; walk_heap | - |
+| string (internal, external) | content and terminator inside the image; well-formed UTF-8 | from_vm.rs `string_bytes`; heap_check `x_utf8_ok`; walk_heap | terminator added to walk_heap (format 1 had none); UTF-8 is format 2 only |
+| string hash field | nothing (any value; string_hash_code returns it, no memory depends on it) | - | - |
+| instance of a builtin wrapper class (slices, CowByteArray_, List_, ListSlice_, Map, LargeArray_, Tombstone_) | its class's field count; every field a smi or an object of the image; the fields' values are not pinned (the C++ checks them: the decoders, list_add, the encoder) | from_vm.rs, heap_check `x_loaded_obj_ok`; walk_heap | the classes' tags and field counts added for format 2 (builtin_classes_error) |
+| lambda, lazy initializer | the method id field | format 2: the verifier's method checks; walk_heap `check_heap_method_ids` | - |
+| stack | none in a program image | from_vm.rs (no STACK_TAG); walk_heap (tag not allowed) | - |
+| task | none in a program image (only the builtin task class has TASK_TAG) | heap_check (builtin task class refused), `x_task_class_ok`; walk_heap (tag not allowed) | - |
+| double, large integer | any payload (a large integer in the smi range is not refused; no memory depends on it) | from_vm.rs reads the payload inside the image | - |
+| oddball | the null, true and false roots are the oddballs of their classes | format 2: builtin_classes_error; format 1: check_builtin_classes | added for format 2 |
+| the Program's tables | inside the image | `image_layout_error` (both formats at install) | added |
+
+Tests: tests/ctest/program-image-validation-test.cc compiles a fixture
+with a 1100-byte byte-array literal and an 1100-byte string literal
+(both external), reads it as the snapshot reader does, edits one field of
+the program heap or the Program at a time, and checks that
+`V2Verifier::install_verdict` (an untrusted image's install),
+`V2Verifier::verify` (an untrusted launch) and, for a format-1 build of
+the fixture, `Verifier::verify` with the untrusted rules refuse it and name
+the reason: 12 external tags, address 0, the finalizer flag on four kinds
+of object, a string without its terminator, every table moved outside the
+image or misaligned, the method table literal with another tag, at
+address 0 or outside, 34 builtin-class edits and 6 root edits; the original
+is accepted before and after. Without the fixes the heap edits give 69
+failures (format 2 accepted every one but the missing terminator, format
+1 every one), the edits of the method table literal crash
+V2MethodTable::compute (a read at address 0), and the 3 class and 6 root
+edits above are accepted. vmverify's unit tests cover the conversion
+(`models_external_byte_arrays_as_the_core`, `rejects_the_finalizer_flag`).
+The gate runs the ctest in its ctest-host part and the unit tests in
+check.sh's vmverify section.
+
+The arguments of the 28 reachable contract-only primitives (behind the
+Rust ports, no body proof: blob_equals, blob_hash_code, blob_index_of,
+byte_array_at, byte_array_length, compare_simple_json_string,
+float_to_raw, float_to_raw32, hash_simple_json_string,
+json_skip_whitespace, large_integer_and, _or, _xor, _shift_right,
+list_add, number_to_integer, raw32_to_float, raw_to_float,
+size_of_json_number, smi_add, _and, _multiply, _or, _subtract, _xor,
+string_from_rune, string_length, string_rune_count), the message
+encoder's object walk (process_send's ESBMC proof takes the traversal as
+a contract) and the proxy decoders of the timer and events primitives,
+reviewed for every property of an argument object their memory accesses
+depend on:
+
+| Dependency | Primitives | Classification |
+|---|---|---|
+| slice bounds, the wrapped object's kind, a CowByteArray_'s backing, an external byte array's tag | the 9 Blob and StringOrSlice arguments (blob_*, compare/hash_simple_json_string, json_skip_whitespace, size_of_json_number, string_length, string_rune_count), the encoder's `encode_copy` | validated by the primitive: the proved decoders (`blob/byte_content.render`, `blob/mutable_byte_content.render`), then explicit offset checks against the decoded length |
+| the slice and CowByteArray_ classes have the fields the decoders read | the same | was missing for format 2 (`prog_ok`), now builtin_classes_error |
+| an external byte array without an address has length 0 | the same, byte_array_at, byte_array_length | runtime: the allocator and `ByteArray::neuter`; program image: was missing, now from_vm.rs / walk_heap |
+| UTF-8 structure of string contents | none of these decode sequences (string_rune_count counts lead bytes; the json primitives compare bytes); the encoder validates a restricted sender's strings itself | validated where needed (string_at, wave 10; `encode_copy`) |
+| a mapped file's or a proxy's tag and address | byte_array_at, byte_array_length (MappedFileTag), the timer and events proxy ARGS | runtime proxies are made by the C++ only (`set_external_address<T>`); program image: was missing, now refused |
+| List_ has fields 0 and 1; size against the backing's length; the backing's class; a large backing's structure | list_add | size, class and program heap validated by the primitive (`Interpreter::fast_at` checks the LargeArray_ classes, sizes and that each vector is smaller); the field count was missing for format 2, now builtin_classes_error |
+| list size against backing length, slice bounds, map backing, class ids before casts, nesting and size | the message encoder | validated by the encoder (`encode_array`, `encode_list`, `encode_map`, the nesting and size limits); the builtin classes' tags and field counts were missing for format 2, now builtin_classes_error |
+| boxed number kinds | the 15 number primitives | validated by the ARGS macros (`is_large_integer`, `is_double` by tag); no other object structure |
+| lengths fit a smi | string_length, string_rune_count, the json primitives | program image: content inside the image (from_vm.rs); runtime: the allocators' bounds |
+
+Missing and now added: the four items above (program-image byte arrays,
+the finalizer flag, the table layout, the builtin classes and roots). The
+Rust ports' `requires` clauses (verified/core/src/prims) state
+representation facts only (`heap_inv`, `heap_model_ok`, `args_rel`: one
+address per object, bodies agree with their class tags), no fact about
+library-maintained structure; the VeriFast contracts' `prog_ok` was the
+one such fact without a check (above). No body proof was added: the
+changed code is the install-time checks (C++ over Program memory, no
+model yet) and blob_index_of's SSE loop (intrinsics).
+
 Wave 10 (the fallbacks of the allocating ports, the receive primitives'
 heap part, the tested-only retry classifications):
 
@@ -2998,6 +3188,15 @@ Waves 1-2:
 ## Upstream candidates
 
 Drafts, not filed (no issue or PR has been opened).
+
+* Wave 11: upstream's snapshot reader copies an object's header word
+  (src/snapshot.cc `read_object`), finalizer flag included, and
+  `MessageEncoder::encode_byte_array` transfers an external byte array
+  with the flag: a crafted snapshot's large byte-array literal sent in a
+  message would be freed by the receiver. Upstream runs trusted
+  snapshots only; a check in the reader (refuse the flag) would close it.
+  blob_index_of's SSE loop indexes with an `int` (blobs above 2 GB on
+  x86-64 hosts). "Findings", wave 11.
 
 * Wave 7: `concat_strings` (src/primitive_core.cc, upstream
   primitive_core.cc:1767) must bound the sum of its parts' lengths (on a

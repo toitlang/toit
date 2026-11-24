@@ -17,6 +17,7 @@ static_assert((Error::ERROR_TAG) == (vf_64 ? 3 : 3), "C++ tagging: primitive err
 static_assert((HeapObject::HEADER_OFFSET / WORD_SIZE) == (vf_64 ? 0 : 0), "C++ header: header word");
 static_assert((HeapObject::CLASS_TAG_OFFSET) == (vf_64 ? 0 : 0), "C++ header: class tag shift (in the header's smi value)");
 static_assert((HeapObject::CLASS_TAG_MASK) == (vf_64 ? 15 : 15), "C++ header: class tag mask");
+static_assert((HeapObject::FINALIZER_BIT_OFFSET) == (vf_64 ? 4 : 4), "C++ header: finalizer flag (bit of the header's smi value)");
 static_assert((HeapObject::CLASS_ID_OFFSET) == (vf_64 ? 5 : 5), "C++ header: class id shift (in the header's smi value)");
 static_assert((ARRAY_TAG) == (vf_64 ? 0 : 0), "C++ class tag: array");
 static_assert((STRING_TAG) == (vf_64 ? 1 : 1), "C++ class tag: string");
@@ -65,6 +66,7 @@ static_assert((Error_ERROR_TAG) == (vf_64 ? 3 : 3), "VeriFast tagging: primitive
 static_assert((LAYOUT_HEADER_WORD) == (vf_64 ? 0 : 0), "VeriFast header: header word");
 static_assert((HeapObject_CLASS_TAG_OFFSET) == (vf_64 ? 0 : 0), "VeriFast header: class tag shift (in the header's smi value)");
 static_assert((HeapObject_CLASS_TAG_MASK) == (vf_64 ? 15 : 15), "VeriFast header: class tag mask");
+static_assert((HeapObject_FINALIZER_BIT_OFFSET) == (vf_64 ? 4 : 4), "VeriFast header: finalizer flag (bit of the header's smi value)");
 static_assert((HeapObject_CLASS_ID_OFFSET) == (vf_64 ? 5 : 5), "VeriFast header: class id shift (in the header's smi value)");
 static_assert((ARRAY_TAG) == (vf_64 ? 0 : 0), "VeriFast class tag: array");
 static_assert((STRING_TAG) == (vf_64 ? 1 : 1), "VeriFast class tag: string");

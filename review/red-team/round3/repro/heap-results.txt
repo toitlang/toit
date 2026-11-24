@@ -8,7 +8,7 @@
 [str-utf8-truncated] host:{rejected x0} asan:{rejected x0}
 [ba-content-ff] host:{(ran, exit 0) x0} asan:{(ran, exit 0) x0}
 [ba-content-mixed] host:{(ran, exit 0) x0} asan:{(ran, exit 0) x0}
-[str-finalizer-bit] host:{(ran, exit 0) x0} asan:{(ran, exit 0) x0}
+[str-finalizer-bit] host:{rejected x0} asan:{rejected x0}
 [str-class-edge-max] host:{Failed to start x0} asan:{Failed to start x0}
 [str-class-0] host:{Failed to start x0} asan:{Failed to start x0}
 [str-class-oob] host:{Failed to start x0} asan:{Failed to start x0}
@@ -30,10 +30,10 @@
 [lazy-as-mapstringify] host:{(ran, exit 0) x0} asan:{(ran, exit 0) x0}
 [lazy-as-tombstone] host:{(ran, exit 0) x0} asan:{(ran, exit 0) x0}
 [lazy-as-list] host:{Failed to start x0} asan:{Failed to start x0}
-[exc-as-list] host:{(ran, exit 0) x0} asan:{(ran, exit 0) x0}
-[exc-as-largearray] host:{(ran, exit 0) x0} asan:{(ran, exit 0) x0}
-[exc-as-cowbytearray] host:{(ran, exit 0) x0} asan:{(ran, exit 0) x0}
-[exc-as-rpcexception] host:{(ran, exit 0) x0} asan:{(ran, exit 0) x0}
+[exc-as-list] host:{rejected x0} asan:{rejected x0}
+[exc-as-largearray] host:{rejected x0} asan:{rejected x0}
+[exc-as-cowbytearray] host:{rejected x0} asan:{rejected x0}
+[exc-as-rpcexception] host:{rejected x0} asan:{rejected x0}
 [exc-as-map] host:{Failed to start x0} asan:{Failed to start x0}
 [exc-as-task] host:{Failed to start x0} asan:{Failed to start x0}
 [exc-as-stack] host:{Failed to start x0} asan:{Failed to start x0}
@@ -52,7 +52,7 @@
 [exc-field0-ref-self-msg] host:{(ran, exit 0) x0} asan:{(ran, exit 0) x0}
 [exc-share-oddballs] host:{(ran, exit 0) x0} asan:{(ran, exit 0) x0}
 [exc-field0-ref-str-oob] host:{(ran, exit 0) x0} asan:{(ran, exit 0) x0}
-[null-as-true] host:{(ran, exit 0) x0} asan:{(ran, exit 0) x0}
+[null-as-true] host:{rejected x0} asan:{rejected x0}
 [null-class-oob] host:{Failed to start x0} asan:{Failed to start x0}
 [null-as-instance] host:{Failed to start x0} asan:{Failed to start x0}
 [true-class-0] host:{Failed to start x0} asan:{Failed to start x0}

@@ -397,6 +397,14 @@ impl<'a> Objects<'a> {
         if (bits as usize) & CLASS_TAG_MASK != tag {
             return bad("object tag differs from its class's tag", offset);
         }
+        // The finalizer flag marks an external byte array or string that
+        // owns its memory (the message encoder transfers such a byte array
+        // and the receiver frees it) or a registered finalizer. No object
+        // of a program image has it (the snapshot reader copies the header
+        // word as it comes, so a crafted snapshot or image could set it).
+        if (header >> FINALIZER_BIT_OFFSET) & 1 != 0 {
+            return bad("object with the finalizer flag in the program image", offset);
+        }
         let body = match tag {
             INSTANCE_TAG | TASK_TAG => {
                 let fields = ((bits >> CLASS_ID_OFFSET) & INSTANCE_SIZE_MASK) as usize;
@@ -422,12 +430,20 @@ impl<'a> Objects<'a> {
                 ExecBody::Array(e)
             }
             BYTE_ARRAY_TAG => {
-                // The core's heap model (verified/core/TRUSTED.md V5): a byte
-                // array is `Bytes` exactly when it is internal, or external
-                // with the raw-bytes tag at a non-null address (whose content
-                // must then lie in the image); any other external byte array
-                // (a mapped file, a resource proxy) is an opaque object
-                // without contents, as `Heap::bytes_len` sees it.
+                // A byte array of a program image is internal, or external
+                // with the raw-bytes tag at a non-null address whose content
+                // lies in the image (the snapshot reader makes the byte
+                // arrays above SNAPSHOT_INTERNAL_SIZE_CUTOFF bytes so): the
+                // core's model byte arrays (verified/core/TRUSTED.md V5).
+                // Every other external byte array is refused. A resource
+                // proxy's tag would make the C++ primitives take the image's
+                // address word for a pointer to a native object (the
+                // proxy-decoding ARGS of src/primitive.h), a mapped file's
+                // would let byte_array_at read it in place, and raw bytes at
+                // a null address with a nonzero length would make the C++
+                // blob decoders read at that length from address 0 (a
+                // neutered byte array, the only runtime one without an
+                // address, has length 0).
                 let raw = self.image.word(addr, BYTE_ARRAY_LENGTH_WORD)? as isize;
                 if raw >= 0 {
                     ExecBody::Bytes(self.image.bytes(addr + BYTE_ARRAY_CONTENT_BYTE, raw as usize)?)
@@ -435,11 +451,13 @@ impl<'a> Objects<'a> {
                     let length = (-1 - raw) as usize;
                     let tag = self.image.word(addr, BYTE_ARRAY_EXTERNAL_TAG_WORD)?;
                     let content = self.image.word(addr, BYTE_ARRAY_EXTERNAL_ADDRESS_WORD)?;
-                    if tag == RAW_BYTE_TAG && content != 0 {
-                        ExecBody::Bytes(self.image.bytes(content, length)?)
-                    } else {
-                        ExecBody::Oddball
+                    if tag != RAW_BYTE_TAG {
+                        return bad("external byte array with another tag than raw bytes in the program image", offset);
                     }
+                    if content == 0 {
+                        return bad("external byte array without an address in the program image", offset);
+                    }
+                    ExecBody::Bytes(self.image.bytes(content, length)?)
                 }
             }
             STRING_TAG => {
@@ -720,12 +738,13 @@ mod tests {
             ExecBody::Bytes(b) => assert_eq!(b, &vec![4, 5, 6]),
             _ => panic!("not bytes"),
         }
-        // A mapped file or another external tag, or raw bytes without an
-        // address: opaque (TRUSTED.md V5), never bytes.
-        for (tag, content) in [(MAPPED_FILE_TAG, true), (1, true), (RAW_BYTE_TAG, false)] {
+        // A mapped file, a resource proxy (any other external tag), or raw
+        // bytes without an address: refused, whatever the address (a
+        // program image holds only raw bytes in the image).
+        for (tag, content) in [(MAPPED_FILE_TAG, true), (MAPPED_FILE_TAG, false), (1, true), (3, true),
+                               (usize::MAX, true), (RAW_BYTE_TAG, false)] {
             let f = external(tag, content);
-            let (_, heap) = f.convert().unwrap();
-            assert!(matches!(heap[1].body, ExecBody::Oddball), "tag {} content {}", tag, content);
+            assert!(f.convert().is_err(), "tag {} content {}", tag, content);
         }
         // Raw bytes whose content lies outside the image: rejected.
         let mut f = external(RAW_BYTE_TAG, true);
@@ -773,5 +792,18 @@ mod tests {
         let mut f = Fixture::new();
         f.image[3] = header(1, STACK_TAG);  // Not program data.
         assert!(f.convert().is_err());
+    }
+
+    #[test]
+    fn rejects_the_finalizer_flag() {
+        // On every kind of object of the fixture: the instance, the array
+        // and the byte array (an internal one too: no object of a program
+        // image has the flag).
+        for (at, class_id, tag) in [(0, 0, INSTANCE_TAG), (3, 1, ARRAY_TAG), (7, 2, BYTE_ARRAY_TAG)] {
+            let mut f = Fixture::new();
+            assert!(f.convert().is_ok());
+            f.image[at] = smi(((class_id << CLASS_ID_OFFSET) | (1 << FINALIZER_BIT_OFFSET) | tag) as i64);
+            assert!(f.convert().is_err(), "object at word {}", at);
+        }
     }
 }

@@ -66,6 +66,10 @@ pub const HEADER_WORD: usize = 0;
 /// Class tag: `(header smi value >> CLASS_TAG_OFFSET) & CLASS_TAG_MASK`.
 pub const CLASS_TAG_OFFSET: usize = 0;
 pub const CLASS_TAG_MASK: usize = 15;
+/// The finalizer flag: bit `FINALIZER_BIT_OFFSET` of the header's smi value
+/// (an external byte array or string with it owns its memory; no object of
+/// a program image has it: verified/vmverify/src/from_vm.rs).
+pub const FINALIZER_BIT_OFFSET: usize = 4;
 /// Class id: `header smi value >> CLASS_ID_OFFSET`.
 pub const CLASS_ID_OFFSET: usize = 5;
 /// Instance size in words: `(class_bits >> CLASS_ID_OFFSET) & INSTANCE_SIZE_MASK`.
