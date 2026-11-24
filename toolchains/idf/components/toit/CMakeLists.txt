@@ -179,12 +179,7 @@ if (CONFIG_TOIT_PIN_HOT_FLASH_CODE)
     set(toit_hot_body "")
     foreach (f IN LISTS toit_hot_functions)
         string(STRIP "${f}" f)
-        if (f MATCHES "^@align +(0x[0-9a-fA-F]+|[0-9]+)$")
-            # "@align N": the next entries start at an address that is a
-            # multiple of N (a group whose cache sets must not depend on
-            # the size of the entries before it).
-            string(APPEND toit_hot_body "    . = ALIGN(${CMAKE_MATCH_1});\n")
-        elseif (NOT f STREQUAL "")
+        if (NOT f STREQUAL "")
             # A C++ constructor or destructor (C1/C2, D0/D1/D2) emitted in a
             # comdat group has its literals in the group's section (C5/D5).
             # A literal left behind in .flash.text fails the link ("l32r:
