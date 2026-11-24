@@ -433,6 +433,8 @@ impl<'a> ShippedOracle<'a> {
         let mut cur: XList = x_entry_list(p, g, m, &mut nodes, limit)?;
         let mut have_cur = true;
         let mut next = XList { kinds: Vec::new(), ids: Vec::new() };
+        // The successor kinds (`x_post_into`), reused too.
+        let mut k2: Vec<XKind> = Vec::new();
         let mut off: usize = 0;
         while off < size
             invariant
@@ -497,12 +499,12 @@ impl<'a> ShippedOracle<'a> {
             let mut found = false;
             if !x_is_terminator(op) && cur.kinds.len() <= 0x10_0000 {
                 let c = XCert { g, cur: m, maps: &empty };
-                match x_post(p, &c, m, off, &cur.kinds, self.trusted) {
-                    Ok(Some(k2)) => {
+                match x_post_into(p, &c, m, off, &cur.kinds, self.trusted, &mut k2) {
+                    Ok(true) => {
                         x_intern_into(&cur, &k2, &mut nodes, limit, &mut next)?;
                         found = true;
                     },
-                    Ok(None) => {},
+                    Ok(false) => {},
                     Err(_) => return Err(Dec::Oom),
                 }
             }
