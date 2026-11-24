@@ -15,9 +15,6 @@
 #   fast_cap NAME/ABI CAP-GB
 # a job of the fast tier that needs a larger cap than RUN_FAST_MEM (4 GB).
 
-known_noverdict core-entry/LP64 "does not finish alone with 36 GB; the harness is to be split"
-known_noverdict core-entry-checked/LP64 "does not finish alone with 36 GB; the harness is to be split"
-
 fast_cap encoder-handoff/LP64 12
 fast_cap scheduler-notify/LP64 11
 fast_cap ipc-byte-array-visit/ILP32 6
@@ -26,8 +23,6 @@ fast_cap scheduler-target-queue/LP64 5
 
 slow allocate-task/ILP32                         3  1800
 slow allocate-task/LP64                          4  1800
-slow core-entry-checked/ILP32                    8  1800
-slow core-entry/ILP32                            8  1800
 slow encoder-collections/LP64                    4  1800
 slow event-notifiers/LP64                        3  1800
 slow external-accounting-threads/ILP32           3  1800

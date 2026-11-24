@@ -75,12 +75,8 @@ property was neither proved nor refuted at that cap or timeout.
 
 | Job | Verdict | Time (s) | Peak resident (GB) | Peak virtual (GB) | Cap then (GB) | Note |
 |---|---|---:|---:|---:|---:|---|
-| core-entry/LP64 | NOVERDICT (known) | | | | | not run: does not finish alone with 36 GB (measured before this table); harness to be split |
-| core-entry-checked/LP64 | NOVERDICT (known) | | | | | not run: does not finish alone with 36 GB (measured before this table); harness to be split |
 | allocate-task/ILP32 | PASS | 175 | 0.8 | 1.5 | 6 |  |
 | allocate-task/LP64 | PASS | 306 | 1.4 | 2.0 | 6 |  |
-| core-entry-checked/ILP32 | PASS | 146 | 4.2 | 4.9 | 6 |  |
-| core-entry/ILP32 | PASS | 179 | 4.2 | 5.0 | 6 |  |
 | encoder-collections/LP64 | PASS | 128 | 1.6 | 2.4 | 6 |  |
 | event-notifiers/LP64 | PASS | 156 | 1.3 | 2.0 | 6 |  |
 | external-accounting-threads/ILP32 | PASS | 105 | 1.1 | 1.7 | 6 |  |
@@ -137,8 +133,6 @@ README or in `verified/core/TRUSTED.md`, and were not reproduced on
 2026-11-23. The claim in this README is marked where it is made;
 TRUSTED.md is not edited:
 
-* `core-entry/LP64` and `core-entry-checked/LP64` (the core's entry
-  harness on 64-bit): no verdict. Both ILP32 runs pass.
 * `gc-sweep-chunk` (TRUSTED.md's "three-card sweep fixture"): no verdict
   on either width; out of memory at 16 GB after 58 min (LP64) and 87 min
   (ILP32).
@@ -149,6 +143,44 @@ TRUSTED.md is not edited:
   ILP32 and the EC618 and ESP32 variants pass.
 * `free-list-selection/LP64`: no verdict, out of time after 1 h at a
   24 GB cap (19 GB resident). ILP32 passes (29 min, 8 GB).
+
+**Restructured (2026-11-24).** Jobs that had no verdict and now have one,
+with what made them expensive and what changed. Times and peaks are run.sh's
+own records (`model-check-*.tsv`), measured with other agents' matrices on
+the machine:
+
+* `core-entry` and `core-entry-checked` (`../harness/core_entry.cc`, both
+  widths). Cause: `Interpreter::run_v2` and `v2_program_tables` clear the
+  `toit_v2_context` and its `toit_v2_program` with `memset` before filling
+  them. ESBMC's byte-wise memset turns every pointer field into a value
+  rebuilt from bytes: an integer-to-pointer conversion, resolved against
+  every object of the address space. That made 253 conversions on LP64
+  (133 on ILP32) and a 106 MB SMT formula for a single claim; at 2.5 GB
+  Bitwuzla, Boolector and CVC5 ran out of memory and Z3 failed (Bitwuzla
+  had not finished with 36 GB before). Fixing all of the harness's
+  nondeterministic choices (policy arities, table verification, task
+  switch) still ran out of memory at 3 GB.
+  Change: the harness replaces `memset` in `interpreter_v2.cc` (its only two
+  calls) by a model of its footprint: it asserts that the call clears one
+  whole record with 0, and overwrites exactly that record with arbitrary
+  contents. That is an over-approximation of memset (zeros are among the
+  arbitrary contents, and the footprint is the same), so the union covers
+  the old claim: the same harness assertions over the same input space,
+  now for every initial content of the records; ESBMC still checks the
+  typed store (valid, aligned, in bounds). The formula is 1.3 MB.
+  Verdicts: core-entry/LP64 457 properties in 10.6 s, peak 0.43 GB;
+  core-entry-checked/LP64 458 in 11.6 s, 0.43 GB; core-entry/ILP32 459 in
+  6.3 s, 0.36 GB; core-entry-checked/ILP32 460 in 6.3 s, 0.36 GB. All four
+  are now in the fast tier. Mutants (`cpp_violation`, both widths, 3-4 s
+  each, each must report its property violated): `core-entry-stale-epoch`
+  passes a copy of the epoch instead of the live word ("the core observes
+  this process's epoch and allocation window in place");
+  `core-entry-trusted-table` and `core-entry-checked-trusted-table` admit an
+  untrusted process to the verified loop with a table accepted only under
+  the trusted rules ("untrusted execution uses only the admitted verified or
+  checked loop"); `core-entry-no-exit-barrier` drops the remembered-set
+  barrier after the core returns ("remember the stack of the task running
+  when the core returns").
 
 The fast tier's model-checker jobs took up to about 90 s each when
 measured with a few jobs at once; with the whole fast tier and other

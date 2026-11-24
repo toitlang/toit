@@ -701,6 +701,41 @@ cpp_equivalence() {
     "--$bits" "-DCXXV_WORD_BITS=$bits" --overflow-check "$@"
   mc_report "$name" "$(grep 'properties failed' "$log")" "$log"
 }
+# cpp_violation NAME ABI BITS HARNESS FILE PROPERTY FROM TO [ESBMC OPTIONS...]:
+# a mutant of a model-checker job. Runs HARNESS on a copy of src/ (links,
+# under $ACXX_WORK/mutant-src) in which FILE (relative to src/) has its one
+# occurrence of FROM replaced by TO (literal text), and is
+# `ok` when ESBMC reports a violation of the property whose message is
+# PROPERTY; a verification that succeeds, or another violation, is a FAIL.
+# (Its row in the .tsv file records what ESBMC found: fail, property violated.)
+cpp_violation() {
+  local job="$1" name="$1/$2" bits="$3" harness="$4" file="$5" property="$6" from="$7" to="$8"
+  mc_select "$name" || return 0
+  shift 8
+  local src="$ACXX_WORK/mutant-src/$job-$bits"
+  rm -rf "$src"
+  mkdir -p "$src" && cp -rs "$REPO_ROOT/src" "$src/src" && rm "$src/src/$file" || return 1
+  FROM="$from" TO="$to" perl -0pe '$n = s/\Q$ENV{FROM}\E/$ENV{TO}/g; END { exit($n == 1 ? 0 : 1) }' \
+    "$REPO_ROOT/src/$file" > "$src/src/$file" || { echo "FAIL  $name: the mutation does not apply once to src/$file"; return 1; }
+  local CXXV_SRC="$src/src"
+  source ../env.sh
+  local log="$ACXX_WORK/logs/$job-$bits.log"
+  mc_run "$name" "$log" "$ESBMC" "../harness/$harness.cc" "${CXXV_FLAGS[@]}" --std c++11 -DTOIT_VERIFIED_CORE \
+    "--$bits" "-DCXXV_WORD_BITS=$bits" --overflow-check "$@"
+  if [ "$MC_VERDICT" = fail ] && [ "$MC_REASON" = "property violated" ] &&
+      grep -A2 '^Violated property:' "$log" | grep -qxF "  $property"; then
+    MC_VERDICT=pass
+    mc_report "$name" "violates: $property" "$log"
+  elif [ "$MC_VERDICT" = pass ]; then
+    MC_VERDICT=fail MC_REASON="the mutant verifies (expected a violation of: $property)"
+    mc_report "$name" "" "$log"
+  elif [ "$MC_VERDICT" = fail ] && [ "$MC_REASON" = "property violated" ]; then
+    MC_REASON="another property is violated (expected: $property)"
+    mc_report "$name" "" "$log"
+  else
+    mc_report "$name" "" "$log"
+  fi
+}
 finalizer_unlink_code() {
   local name="finalizer-unlink-code/$1"
   [ "$TIER" = fast ] || return 0
@@ -1670,6 +1705,27 @@ for abi in LP64 ILP32; do
   [[ "$abi" == ILP32 ]] && bits=32
   spawn cpp_equivalence core-entry "$abi" "$bits" core_entry --unwind 3
   spawn cpp_equivalence core-entry-checked "$abi" "$bits" core_entry --unwind 3 -DTOIT_VERIFIED_CORE_CHECKED_LOOP
+  # Broken hand-offs the entry harness must reject: a copy of the epoch
+  # instead of the live word, the verified loop for a table accepted only
+  # under the trusted rules, no exit barrier.
+  spawn cpp_violation core-entry-stale-epoch "$abi" "$bits" core_entry interpreter_v2.cc \
+    "the core observes this process's epoch and allocation window in place" \
+    "context.epoch = process_->object_heap()->v2_epoch_address();" \
+    "static uword stale_epoch; stale_epoch = *process_->object_heap()->v2_epoch_address(); context.epoch = &stale_epoch;" \
+    --unwind 3
+  spawn cpp_violation core-entry-trusted-table "$abi" "$bits" core_entry interpreter_v2.cc \
+    "untrusted execution uses only the admitted verified or checked loop" \
+    "bool accepted = table->runs_verified(untrusted);" "bool accepted = table->runs_verified(false);" \
+    --unwind 3
+  spawn cpp_violation core-entry-checked-trusted-table "$abi" "$bits" core_entry interpreter_v2.cc \
+    "untrusted execution uses only the admitted verified or checked loop" \
+    "bool accepted = table->runs_verified(untrusted);" "bool accepted = table->runs_verified(false);" \
+    --unwind 3 -DTOIT_VERIFIED_CORE_CHECKED_LOOP
+  spawn cpp_violation core-entry-no-exit-barrier "$abi" "$bits" core_entry interpreter_v2.cc \
+    "remember the stack of the task running when the core returns" \
+    "  GcMetadata::insert_into_remembered_set(process_->task()->stack());
+  Object** watermark" "  Object** watermark" \
+    --unwind 3
 done
 spawn cpp_equivalence gc-stack-barrier LP64 64 gc_stack_barrier
 spawn cpp_equivalence gc-stack-barrier ILP32 32 gc_stack_barrier
