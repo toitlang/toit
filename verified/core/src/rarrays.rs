@@ -327,19 +327,48 @@ pub fn put0_next_r(m: &mut Machine, r: &mut Regs, p: &Program, w: usize, Ghost(x
 // Back to the registers after a path on the machine.
 
 /// After a path that ran on the machine (`step_post` from `w0`): on `Next`
-/// the room is re-established (`ensure_room_all`) and the registers
-/// derived; otherwise the machine is the result.
+/// the room is re-established (`ensure_room_all`, unless `ok` says that it
+/// holds) and the registers derived; otherwise the machine is the result.
 #[inline(never)]
-pub fn resume_r(m: &mut Machine, r: Regs, env: &Env, c: Ctl, Ghost(w0): Ghost<Machine>) -> (res: (Regs, Ctl))
-    requires step_post(&env.p, w0, *old(m), c),
+pub fn resume_r(m: &mut Machine, r: Regs, env: &Env, c: Ctl, ok: bool, Ghost(w0): Ghost<Machine>) -> (res: (Regs, Ctl))
+    requires
+        step_post(&env.p, w0, *old(m), c),
+        ok ==> room_ok(&env.p, *old(m)),
     ensures
         res.1 == Ctl::Next ==> final(m).rok(res.0) && crate::regs::ipok(&env.p, res.0) && steps_post(&env.p, w0, final(m).with(res.0), res.1)
             && room_ok(&env.p, final(m).with(res.0)) && crate::regs::gate_ok(&env.p, *final(m)),
         res.1 != Ctl::Next ==> steps_post(&env.p, w0, *final(m), res.1),
 {
-    match crate::step::resume(m, env, c, Ghost(w0)) {
+    match crate::step::resume_with(m, env, c, ok, Ghost(w0)) {
         (Some(r2), Ctl::Next) => (r2, Ctl::Next),
         (_, c2) => (r, c2),
+    }
+}
+
+/// After a return on the machine (`Machine::do_return`) from the state
+/// `gr`, which has the frames of `w0` (a machine with room): the return
+/// popped the top frame (entering finally code or not) and the frames below
+/// keep the room they had, so only the new top frame is checked
+/// (`step::top_room_kept`), not every frame (`ensure_room_all`).
+#[inline(always)]
+fn ret_room_kept(m: &Machine, env: &Env, c: &Ctl, Ghost(w0): Ghost<Machine>, Ghost(gr): Ghost<State2>,
+    Ghost(v): Ghost<Value>) -> (ok: bool)
+    requires
+        step_post(&env.p, w0, *m, *c),
+        room_ok(&env.p, w0),
+        gr.frames == w0.g@.frames,
+        *c == Ctl::Next ==> Outcome2::Next(m.g@) == sp::return_from(env.p.ap@, gr, v),
+        m.len >= w0.len,
+    ensures ok ==> room_ok(&env.p, *m),
+{
+    if let Ctl::Next = *c {
+        proof {
+            crate::unwind::lemma_return_prefix(env.p.ap@, gr, v);
+            assert(top_kept(w0.g@, m.g@));
+        }
+        top_room_kept(m, env, Ghost(w0))
+    } else {
+        false
     }
 }
 
@@ -653,7 +682,7 @@ fn alloc_oom(m: &mut Machine, r: Regs, env: &Env, Ghost(g): Ghost<State2>, Ghost
 {
     reload(m, &env.p, Ghost(g));
     let c = crate::unwind::throw_oom(m, env);
-    resume_r(m, r, env, c, Ghost(w0))
+    resume_r(m, r, env, c, false, Ghost(w0))
 }
 
 // ---------------------------------------------------------------------------
@@ -877,6 +906,32 @@ pub fn cxx_primitive_v(m: &mut Machine, r: Regs, env: &Env, module: u8, index: u
         }
         m.g = Ghost(mc.g@);
         proof { assert(*m == mc); }
+    } else if !moved && st == V2_PRIMITIVE_FAILURE {
+        // A failure without a GC or a task switch (the task transfer to the
+        // running task, the yield): the error pushed, on the registers.
+        let ghost (gx, v) = choose|gx: State2, v: Value| #[trigger] crate::primitive::prim_call_post(p, *m, g, module, index, st, w, gx, v)
+            && (!moved ==> gx == with_heap2(g, gx.heap));
+        proof {
+            assert(reloaded(*m, gx) == (Machine { g: Ghost(gx), ..m.with(r) }));
+        }
+        m.g = Ghost(gx);
+        proof {
+            assert(m.with(r) == reloaded(*m, gx));
+            assert(m.rok(r));
+            lemma_room_same(p, w0, m.with(r));
+        }
+        let ghost o = sp::next(sp::push(gx, v), 4);
+        proof {
+            lemma_source_completion(ap, g, module, index, o);
+            lemma_source_outcome(p, w0, o);
+        }
+        let mut r2 = r;
+        let ctl = push_next(m, &mut r2, p, w, 4, Ghost(v));
+        proof {
+            lemma_outcome_matches(p, w0, m.with(r2), Ctl::Next, o);
+            lemma_room_same(p, w0, m.with(r2));
+        }
+        return (r2, ctl);
     }
     cxx_primitive_rest(m, r, env, st, w, moved, module, index, Ghost(m0), Ghost(ms))
 }
@@ -921,7 +976,7 @@ fn cxx_primitive_rest(m: &mut Machine, r: Regs, env: &Env, st: usize, w: usize, 
         m.sync(r, p);
         proof { assert(m.inv(p)); }
         let c = crate::primitive::op_prim_missing(m, env, module, index);
-        return resume_r(m, r, env, c, Ghost(w0));
+        return resume_r(m, r, env, c, false, Ghost(w0));
     }
     if !moved && (st == V2_PRIMITIVE_SUCCESS || st == V2_PRIMITIVE_FAILURE) {
         let ghost (gx, v) = choose|gx: State2, v: Value| #[trigger] crate::primitive::prim_call_post(p, *m, g, module, index, st, w, gx, v)
@@ -951,9 +1006,11 @@ fn cxx_primitive_rest(m: &mut Machine, r: Regs, env: &Env, st: usize, w: usize, 
             // A return in a TRY, with finally records, or of the bottom
             // frame: on the machine.
             m.sync_b(r2, p);
+            proof { assert(m.len == w0.len); }
             let c = m.do_return(env, w, Ghost(v));
             proof { lemma_outcome_matches(p, w0, *m, c, o); }
-            return resume_r(m, r2, env, c, Ghost(w0));
+            let ok = ret_room_kept(m, env, &c, Ghost(w0), Ghost(State2 { heap: gx.heap, ..g }), Ghost(v));
+            return resume_r(m, r2, env, c, ok, Ghost(w0));
         }
         let ghost o = sp::next(sp::push(gx, v), 4);
         proof {
@@ -969,7 +1026,7 @@ fn cxx_primitive_rest(m: &mut Machine, r: Regs, env: &Env, st: usize, w: usize, 
         return (r2, ctl);
     }
     let c = crate::primitive::prim_cxx_complete(m, env, st, w, Ghost(g), Ghost(w0), Ghost(module), Ghost(index));
-    resume_r(m, r, env, c, Ghost(w0))
+    resume_r(m, r, env, c, false, Ghost(w0))
 }
 
 /// Runs the Rust port of core primitive `index` (`prims::call`) on the
@@ -1027,9 +1084,11 @@ fn rust_primitive_r(m: &mut Machine, r: &mut Regs, env: &Env, index: u16, arity:
             // A return in a TRY, with finally records, or of the bottom
             // frame: on the machine.
             m.sync_b(*r, p);
+            proof { assert(m.len == w0.len); }
             let c = m.do_return(env, w, Ghost(v@));
             proof { lemma_outcome_matches(p, w0, *m, c, o); }
-            let (r2, c2) = resume_r(m, *r, env, c, Ghost(w0));
+            let ok = ret_room_kept(m, env, &c, Ghost(w0), Ghost(State2 { heap: h2, ..g }), Ghost(v@));
+            let (r2, c2) = resume_r(m, *r, env, c, ok, Ghost(w0));
             *r = r2;
             Some(c2)
         },

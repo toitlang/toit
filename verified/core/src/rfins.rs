@@ -18,9 +18,9 @@
 //! frame records, so a call moves them up by one frame record and a return
 //! moves them down (`Machine::push_call`, `Machine::do_return`). The
 //! register handlers' fast paths fail their checks while there are records
-//! (the gate), so these run from `step::slow`, before it writes the
-//! registers back: a call with room and no preemption request, and a
-//! return that cuts no record (the records belong to frames below the
+//! (the gate), so these run first in `step::slow` (`call_fins_r`,
+//! `ret_fins_fast`), before the machine path (`step::slow_body`): a call
+//! with room and no preemption request, and a return that cuts no record (the records belong to frames below the
 //! returning one), not of the bottom frame, the caller not in a TRY.
 
 use vstd::prelude::*;
@@ -70,7 +70,8 @@ pub fn push_call_fins(m: &mut Machine, r: &mut Regs, p: &Program, target: usize,
     let fi = m.mem.index(f);
     let fw = m.fw;
     // The records move up by one frame record.
-    m.mem.copy_within(fi, fi + FRAME_WORDS, fw);
+    proof { lemma_records_chunk(g0.fins.len() as int); }
+    m.mem.move_records(fi, fi + FRAME_WORDS, fw);
     let ghost mem1 = m.mem@;
     let fp = r.sp.offset(arity as isize);
     let base = r.end.diff(fp);
@@ -236,7 +237,8 @@ pub fn ret_fins_r(m: &mut Machine, r: &mut Regs, p: &Program, w: usize, Ghost(v)
     }
     // The records move down by one frame record (over the returning
     // frame's record).
-    m.mem.copy_within(fo, fo - FRAME_WORDS, fw);
+    proof { lemma_records_chunk(g0.fins.len() as int); }
+    m.mem.move_records(fo, fo - FRAME_WORDS, fw);
     let ghost mem1 = m.mem@;
     let s = r.fp.offset(-1);
     s.write(0, w, &mut m.mem);
@@ -285,6 +287,81 @@ pub fn ret_fins_r(m: &mut Machine, r: &mut Regs, p: &Program, w: usize, Ghost(v)
         assert(top_room(p, m1));
     }
     true
+}
+
+/// A call (`spec::call` of `target`, returning to `ret`) whose fast path
+/// failed the gate (`Slow::Call`): while finally records exist, with room
+/// for the frame and the records and no preemption request,
+/// `push_call_fins`. `false` (nothing changed) otherwise: the machine path
+/// runs (`step::slow_body`).
+#[inline(always)]
+pub fn call_fins_r(m: &mut Machine, r: &mut Regs, env: &Env, target: usize, ret: usize) -> (b: bool)
+    requires
+        crate::step::rinv(&env.p, *old(m), *old(r)),
+        sp::step(env.p.ap@, old(m).g@) == sp::call(env.p.ap@, old(m).g@, target as int, ret as int),
+    ensures
+        b ==> crate::step::rpost(&env.p, *old(m), *old(r), *final(m), *final(r), Ctl::Next),
+        !b ==> *final(m) == *old(m) && *final(r) == *old(r),
+{
+    let p = &env.p;
+    let ghost ap = p.ap@;
+    let ghost g = m.g@;
+    let ghost w0 = m.with(*r);
+    if m.fw == 0 || env.pre.requested() {
+        return false;
+    }
+    proof {
+        assert(p.max_height < 0x1_0000);
+        w0.lemma_frame(p);
+    }
+    let free = r.sp.diff(r.fr);
+    if free < FRAME_WORDS + p.max_height + STACK_RESERVE + FIN_WORDS + m.fw {
+        return false;
+    }
+    proof {
+        crate::step::lemma_small(p, &w0);
+        toit_spec::v2::sound_step::lemma_step(ap, p.cert@, p.trusted@, g);
+        assert(toit_spec::v2::sound::outcome_ok(ap, p.cert@, sp::step(ap, g)));
+    }
+    let info = p.method(target);
+    push_call_fins(m, r, p, target, info, ret);
+    proof { crate::step::lemma_matches(p, w0, m.with(*r), Ctl::Next); }
+    true
+}
+
+/// A return (`spec::return_from` with the result `w`) whose fast path
+/// failed the gate (`Slow::Return`): while finally records exist,
+/// `ret_fins_r` when it applies. `false` (nothing changed) otherwise: the
+/// machine path runs (`step::slow_body`).
+#[inline(always)]
+pub fn ret_fins_fast(m: &mut Machine, r: &mut Regs, env: &Env, w: usize, Ghost(v): Ghost<Value>) -> (b: bool)
+    requires
+        crate::step::rinv(&env.p, *old(m), *old(r)),
+        sp::step(env.p.ap@, old(m).g@) == sp::return_from(env.p.ap@, old(m).g@, v),
+        w == enc(old(m).addr(), v),
+        encodable(old(m).addr(), v),
+    ensures
+        b ==> crate::step::rpost(&env.p, *old(m), *old(r), *final(m), *final(r), Ctl::Next),
+        !b ==> *final(m) == *old(m) && *final(r) == *old(r),
+{
+    let p = &env.p;
+    let ghost ap = p.ap@;
+    let ghost g = m.g@;
+    let ghost w0 = m.with(*r);
+    if m.fw == 0 {
+        return false;
+    }
+    proof {
+        crate::step::lemma_small(p, &w0);
+        toit_spec::v2::sound_step::lemma_step(ap, p.cert@, p.trusted@, g);
+        assert(toit_spec::v2::sound::outcome_ok(ap, p.cert@, sp::step(ap, g)));
+        lemma_shape(p, g);
+    }
+    if ret_fins_r(m, r, p, w, Ghost(v)) {
+        proof { crate::step::lemma_matches(p, w0, m.with(*r), Ctl::Next); }
+        return true;
+    }
+    false
 }
 
 } // verus!

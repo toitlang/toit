@@ -1,5 +1,40 @@
 # Phase 4a progress (verified core, format 2 on x86-64)
 
+## Service calls and task switching (branch core/rpc-task-speed, 2026-11-24)
+
+Base 9d79d677 (core/split-option). Artifacts:
+/home/flo/work/opentoit-sandbox-artifacts/rpc-task-speed (README.md:
+attribution, scripts, logs, tables).
+
+Attribution. Host instruction counts (callgrind, the same task and RPC
+benchmarks) of 9d618634 (the 11-12 November f2) and the base are equal
+(per RPC 95.9 K vs 95.2 K, per ping-pong 40.4 K vs 40.3 K): none of the
+ten days of C++ changes costs instructions there. The C6's rpc-200
+regression (373 -> 420 ms) is flash layout: measure-2's unsplit firmware
+(378 ms) and the base (424 ms) run the same code, and moving FreeRTOS to
+IRAM or shifting all flash code changes rpc-200 by 7-10 % in either
+direction (f1 alike). The f2-f1 gap itself is outside the run loop (the
+loop is faster than format 1's on the C6: 225 vs 255 ms of tasks-1k):
+finally-code calls and returns through `slow` with a ROM memmove of the
+records, full room scans (`ensure_room_all`), the C++ primitive round
+trip and the try/unwind paths.
+
+Changes: no full scan after a primitive's return on the machine
+(`rarrays::ret_room_kept`); finally records moved five words per step
+(`StackMem::move_records`, no memmove); finally-code calls and returns at
+the entry of `slow` (`slow_body` is the machine part); TRY in finally code
+on the registers (`rnonlocal::try_fins`); a C++ primitive's failure
+without GC on the registers; the RPC/task helpers in the C6/S3 IRAM list.
+C6, three sessions, f2/f1: rpc-200 1.31 -> 1.14, rpc-echo-50 1.26 ->
+1.15, yield-2k 1.24 -> 1.20, tasks-1k 1.43 -> 1.18 (430 -> 355 ms);
+richards, deltablue, pystone, json equal or faster. Flash +752 B, free
+heap -3.5 KB (C6).
+
+| crate | 64-bit | 32-bit |
+|---|---:|---:|
+| core (whole loop) | 1,052 verified, 0 errors | 1,054, 0 |
+| core-split | 1,054, 0 | 1,056, 0 |
+
 ## Split loop as a build option (branch core/split-option, 2026-11-24)
 
 Base sandbox-integration 7f7ad28e. Requests R1-R3 of device/measure-2

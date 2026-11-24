@@ -159,7 +159,7 @@ static bool v2_start_task(Process* process, Stack* from_stack, Stack* to_stack, 
 // state into its stack before the call; after it, the core continues with
 // whatever task is current, after its PRIMITIVE with [to] pushed (the
 // failure path, as in format 1).
-Object* Interpreter::v2_task_transfer(Process* process, Task* to, bool detach_stack) {
+V2_HOT Object* Interpreter::v2_task_transfer(Process* process, Task* to, bool detach_stack) {
   Task* from = process->object_heap()->task();
   if (from != to) {
     if (!to->has_stack()) FAIL(ERROR);
@@ -348,7 +348,7 @@ static uword v2_allocate(Process* process, const char* reason, F allocate) {
 
 extern "C" {
 
-uword toit_v2_current_stack(void* process) {
+V2_HOT uword toit_v2_current_stack(void* process) {
   return reinterpret_cast<uword>(v2_process(process)->task()->stack());
 }
 

@@ -469,6 +469,129 @@ pub fn op_unwind(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode: u
     c
 }
 
+/// TRY while finally records exist (a TRY in finally code): `op_try`'s
+/// fast path when the records stay (`cut_fins` keeps them: the last one is
+/// not of the top frame at the TRY's block slot or above), with room for
+/// the frame, the records and the block reference and no preemption
+/// request; the try block's frame is pushed above the records
+/// (`rfins::push_call_fins`). `false` (nothing changed) otherwise: the
+/// machine's TRY, whose resume rescans every frame.
+#[inline(always)]
+fn try_fins(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode: u8) -> (b: bool)
+    requires
+        rhandler_pre(&env.p, *old(m), *old(r), bci, opcode),
+        opcode == 97,
+        bci + 1 < 0x1000_0000,
+        sp::step(env.p.ap@, old(m).g@) == sp::op_try(env.p.ap@, old(m).g@),
+    ensures
+        b ==> rpost(&env.p, *old(m), *old(r), *final(m), *final(r), Ctl::Next),
+        !b ==> *final(m) == *old(m) && *final(r) == *old(r),
+{
+    let p = &env.p;
+    if m.fw == 0 || env.pre.requested() {
+        return false;
+    }
+    let ghost ap = p.ap@;
+    let ghost g = m.g@;
+    let ghost w0 = m.with(*r);
+    let ghost n = g.frames.len() as int;
+    proof {
+        assert(outcome_ok(ap, p.cert@, sp::step(ap, g)));
+        w0.lemma_frame(p);
+        crate::unwind::lemma_try_target(p, g);
+        lemma_tries(p, g);
+        w0.lemma_at(p, 0);
+        assert(w0.ftop == FRAME_WORDS * n);
+        lemma_rec_index(n, n - 1, FRAME_HANDLER);
+        lemma_rec_index(n, n - 1, FRAME_HANDLER_BCI);
+        assert(p.max_height < 0x1_0000);
+    }
+    let fw = m.fw;
+    let free = r.sp.diff(r.fr);
+    if free < FRAME_WORDS + p.max_height + STACK_RESERVE + FIN_WORDS + fw + 1 {
+        return false;
+    }
+    let height = r.end.diff(r.sp);
+    let fo = m.mem.index(r.fr);
+    proof {
+        assert(height == g.stack.len());
+        assert(fo == FRAME_WORDS * n);
+        assert(fw == FIN_WORDS * g.fins.len());
+        assert(g.fins.len() > 0);
+        let x = g.fins.len() - 1;
+        assert(fin_rel(w0.mem@, fo as int, x, g.fins[x]));
+        lemma_fin_index(fo as int, g.fins.len() as int, x, FIN_FRAME);
+        lemma_fin_index(fo as int, g.fins.len() as int, x, FIN_HEIGHT);
+        assert(FIN_WORDS * x + FIN_FRAME == fw - FIN_WORDS + FIN_FRAME);
+        assert(FIN_WORDS * x + FIN_HEIGHT == fw - FIN_WORDS + FIN_HEIGHT);
+        assert(g.stack.len() >= 1);
+    }
+    // The last record (records are in frame and height order).
+    let lf = m.mem.read(fo + fw - FIN_WORDS + FIN_FRAME);
+    let lh = m.mem.read(fo + fw - FIN_WORDS + FIN_HEIGHT);
+    let fi = fo / FRAME_WORDS - 1;
+    if lf > fi || (lf == fi && lh >= height - 1) {
+        return false;
+    }
+    let ghost cut = sp::cut_fins(g.fins, n - 1, g.stack.len() - 1);
+    proof {
+        assert(fi == n - 1);
+        assert(lf == g.fins.last().frame);
+        assert(lh == g.fins.last().height);
+        assert(cut == g.fins);
+    }
+    let ghost tt = sp::block_target(ap, g, g.stack.len() - 1)->0;
+    let mw = at(m, r, 0);
+    proof {
+        assert(g.stack[g.stack.len() - 1] == sp::at(g, 0));
+        assert(g.stack[g.stack.len() - 1] == Value::Smi(tt as i64));
+        assert(0 <= tt < ap.methods.len());
+        lemma_smi_word_nat(tt as i64);
+        assert(mw == 2 * tt);
+        assert(mw >> 1 == mw / 2) by (bit_vector);
+    }
+    let t = mw >> 1;
+    let info = p.method(t);
+    let rr = r.fr.offset(-(FRAME_WORDS as isize));
+    proof { assert(rr@ == FRAME_WORDS * (n - 1)); }
+    rr.write(FRAME_HANDLER, height, &mut m.mem);
+    rr.write(FRAME_HANDLER_BCI, bci + 1, &mut m.mem);
+    let ghost hd = Handler { frame: fi, height: height, bci: (bci + 1) as usize };
+    let ghost s1 = State2 { tries: g.tries.push(hd), fins: cut, ..g };
+    m.g = Ghost(s1);
+    proof {
+        let m1 = m.with(*r);
+        assert forall|i: int| 0 <= i < FRAME_WORDS * n && i != FRAME_WORDS * (n - 1) + FRAME_HANDLER
+                && i != FRAME_WORDS * (n - 1) + FRAME_HANDLER_BCI
+            implies #[trigger] m1.mem@[i] == w0.mem@[i] by {}
+        crate::unwind::lemma_frames_set(w0.mem@, m1.mem@, g.frames, g.tries, hd);
+        assert forall|i: int| fo <= i < fo + fw implies #[trigger] m1.mem@[i] == w0.mem@[i] by {}
+        lemma_fins_rel_same(w0.mem@, m1.mem@, m1.ftop as int, s1.fins);
+        assert(m1.words() =~= w0.words());
+        assert(m1.method == w0.method);
+        assert(m1.refines(p));
+        lemma_room_same(p, w0, m1);
+    }
+    // The reference to the block's slot.
+    let slot = height - 1;
+    let ghost br = Value::BlockRef(fi, slot);
+    proof { assert(fi < 0x4000 && slot < MAX_STACK_LENGTH); }
+    let bw = smi_of((fi * 0x1_0000 + slot) as i64);
+    let ghost m2 = m.with(*r);
+    push_next(m, r, p, bw, 0, Ghost(br));
+    let ghost s2 = sp::push(s1, br);
+    proof {
+        assert(sp::goto(s2, bci as int) =~= s2);
+        lemma_room_same(p, m2, m.with(*r));
+        assert(sp::top_index(g) == n - 1);
+        assert(sp::op_try(ap, g) == sp::call(ap, s2, tt, g.bci + 1));
+        assert(t == tt);
+    }
+    crate::rfins::push_call_fins(m, r, p, t, info, bci + 1);
+    proof { lemma_matches(p, w0, m.with(*r), Ctl::Next); }
+    true
+}
+
 /// TRY (`spec::op_try`): the fast path, under the check of a call's fast
 /// path (`call_fast`: room, no finally records, so none is cut, and no
 /// preemption request), installs the handler, pushes the reference to the
@@ -484,6 +607,9 @@ pub fn op_try(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode: u8) 
 {
     let p = &env.p;
     if !call_fast(m, r, env) {
+        if try_fins(m, r, env, bci, opcode) {
+            return Ctl::Next;
+        }
         return slow0(m, r, env, Slow::Op);
     }
     let ghost ap = p.ap@;

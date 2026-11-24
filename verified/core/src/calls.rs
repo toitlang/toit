@@ -388,7 +388,8 @@ impl Machine {
         let f = self.ftop;
         let e = self.rtop;
         if e > f {
-            self.mem.copy_within(f, f + FRAME_WORDS, e - f);
+            proof { crate::view::lemma_records_chunk(g0.fins.len() as int); assert(e - f == crate::view::RECORD_CHUNK * g0.fins.len()); }
+            self.mem.move_records(f, f + FRAME_WORDS, e - f);
         }
         let ghost mem1 = self.mem@;
         self.mem.write(f + FRAME_METHOD, target);
@@ -563,7 +564,8 @@ impl Machine {
         let ghost k = sp::fins_popped(g).len() as int;
         let ghost m1 = *self;
         if e > ftop {
-            self.mem.copy_within(ftop, r, e - ftop);
+            proof { crate::view::lemma_records_chunk(k); assert(e - ftop == crate::view::RECORD_CHUNK * k); }
+            self.mem.move_records(ftop, r, e - ftop);
         }
         proof {
             assert forall|i: int| 0 <= i < self.mem@.len() && !(r <= i < e - FRAME_WORDS)
