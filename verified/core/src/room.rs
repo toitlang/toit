@@ -43,7 +43,7 @@ use toit_spec::v2::types::{State2, Program2, Outcome2};
 #[cfg(verus_keep_ghost)]
 use toit_spec::v2::spec as sp;
 #[cfg(verus_keep_ghost)]
-use toit_spec::v2::sound::wf;
+use toit_spec::v2::sound::{wf, bases_ok, base_step};
 #[cfg(verus_keep_ghost)]
 use toit_spec::v2::sound_instr::{lemma_instr, cur_k, cur_m};
 #[cfg(verus_keep_ghost)]
@@ -158,6 +158,28 @@ pub open spec fn top_kept(g0: State2, g1: State2) -> bool {
     &&& forall|i: int| 0 <= i < g1.frames.len() - 1 ==> #[trigger] g1.frames[i] == g0.frames[i]
 }
 
+/// Every frame's base is at most the stack's height (`bases_ok`: the bases
+/// grow with the frame index and the top frame's is at most the height).
+pub proof fn lemma_bases_below(g: State2)
+    requires bases_ok(g), g.frames.len() > 0,
+    ensures forall|fi: int| 0 <= fi < g.frames.len() ==> (#[trigger] g.frames[fi]).base <= g.stack.len(),
+{
+    assert forall|fi: int| 0 <= fi < g.frames.len() implies (#[trigger] g.frames[fi]).base <= g.stack.len() by {
+        lemma_base_le_last(g, fi);
+    }
+}
+
+proof fn lemma_base_le_last(g: State2, fi: int)
+    requires bases_ok(g), 0 <= fi < g.frames.len(),
+    ensures g.frames[fi].base <= g.frames.last().base,
+    decreases g.frames.len() - fi,
+{
+    if fi + 1 < g.frames.len() {
+        assert(base_step(g, fi));
+        lemma_base_le_last(g, fi + 1);
+    }
+}
+
 /// The registers of a machine after a GC point inside a step: `m` (the
 /// registers written back, reloaded after the GC) satisfies `inv` with its
 /// frames and records those of `m0`, a machine with room. If the stack did
@@ -210,54 +232,72 @@ pub fn ensure_room_all(m: &mut Machine, env: &Env) -> (c: Ctl)
         m.lemma_frame(p);
     }
     let n = m.ftop / FRAME_WORDS;
-    proof { assert(n == g.frames.len()); }
+    proof {
+        assert(n == g.frames.len());
+        m.lemma_frame(p);
+        lemma_bases_below(g);
+    }
+    // The largest `base + arity + FRAME_WORDS * i` of the frames `i` so far
+    // (the frame records up to and without frame `i`'s counted: one more
+    // record is added below), and the top frame's (its finally records are
+    // counted below). The bases are at most the stack's height, below the
+    // length (`lemma_bases_below`), so no bound check is needed.
     let mut need: usize = 0;
-    // The top frame's need (its records counted below).
     let mut last: usize = 0;
-    let mut i: usize = 0;
-    while i < n
+    let ftop = m.ftop;
+    let mut ri: usize = 0;
+    let ghost mut i: int = 0;
+    while ri < ftop
         invariant
             m.inv(p),
             ap == p.ap@,
             m.g@ == g,
             n == g.frames.len(),
+            ftop == m.ftop,
             m.ftop == FRAME_WORDS * n,
+            m.len < MAX_STACK_LENGTH,
             0 <= i <= n,
+            ri == FRAME_WORDS * i,
             need < 0x4_0000,
             last <= need,
-            i > 0 ==> frame_need0(p, g, i - 1) - p.max_height - STACK_RESERVE == last,
+            i > 0 ==> frame_need0(p, g, i - 1) - p.max_height - STACK_RESERVE - FRAME_WORDS == last,
             forall|fi: int| 0 <= fi < g.frames.len() ==> sp::valid_method(ap, (#[trigger] g.frames[fi]).method as int),
-            forall|j: int| 0 <= j < i ==> frame_need0(p, g, j) - p.max_height - STACK_RESERVE <= need,
+            forall|fi: int| 0 <= fi < g.frames.len() ==> (#[trigger] g.frames[fi]).base <= m.len,
+            forall|j: int| 0 <= j < i ==> frame_need0(p, g, j) - p.max_height - STACK_RESERVE - FRAME_WORDS <= need,
         decreases n - i,
     {
-        let ri = FRAME_WORDS * i;
         proof {
-            lemma_rec_index(n as int, i as int, FRAME_BASE);
-            lemma_rec_index(n as int, i as int, FRAME_METHOD);
-            assert(rec(m.mem@, i as int, FRAME_BASE) == g.frames[i as int].base);
-            assert(rec(m.mem@, i as int, FRAME_METHOD) == g.frames[i as int].method);
+            assert(i < n) by (nonlinear_arith)
+                requires ri == FRAME_WORDS * i, ri < FRAME_WORDS * n;
+            lemma_rec_index(n as int, i, FRAME_BASE);
+            lemma_rec_index(n as int, i, FRAME_METHOD);
+            assert(rec(m.mem@, i, FRAME_BASE) == g.frames[i].base);
+            assert(rec(m.mem@, i, FRAME_METHOD) == g.frames[i].method);
         }
         let base = m.mem.read(ri + FRAME_BASE);
         let method = m.mem.read(ri + FRAME_METHOD);
-        if base >= MAX_STACK_LENGTH {
-            return Ctl::Stuck(stuck::LIMIT);
-        }
         proof {
-            assert(sp::valid_method(ap, g.frames[i as int].method as int));
+            assert(sp::valid_method(ap, g.frames[i].method as int));
             assert(ap.methods[method as int] == method_info(p.minfo(method as int), p.max_height));
+            assert(base <= m.len);
         }
         let a = p.method(method).arity as usize;
-        let v = base + a + ri + FRAME_WORDS;
+        let v = base + a + ri;
         if v > need {
             need = v;
         }
         last = v;
-        i = i + 1;
+        ri = ri + FRAME_WORDS;
+        proof { i = i + 1; }
     }
-    proof { assert(p.max_height < 0x1_0000); }
+    proof {
+        assert(i == n) by (nonlinear_arith)
+            requires ri == FRAME_WORDS * i, ri >= FRAME_WORDS * n, i <= n;
+        assert(p.max_height < 0x1_0000);
+    }
     // Every frame without the finally records, the top frame with them.
-    let total0 = need + p.max_height + STACK_RESERVE;
-    let total1 = last + p.max_height + (m.rtop - m.ftop) + STACK_RESERVE;
+    let total0 = need + FRAME_WORDS + p.max_height + STACK_RESERVE;
+    let total1 = last + FRAME_WORDS + p.max_height + (m.rtop - m.ftop) + STACK_RESERVE;
     let total = if total0 > total1 { total0 } else { total1 };
     if total <= m.len {
         proof {
