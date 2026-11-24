@@ -964,3 +964,28 @@ b = [
 ]
 # (c) Violations: none found (wave 7).
 c = []
+
+# The C++ behind the Rust ports that never fall back: unreachable from
+# untrusted code (proved in Verus: the ensures of prims::call and
+# rarrays::rust_primitive_r for verified/core/src/prims/mod.rs
+# `never_falls_back`; OBLIGATIONS.md "Ports that never fall back").
+# contract_check.toit checks that this is the Verus list, with the arities
+# of verified/core/src/prims/index.rs, and counts the ports' C++ as proved,
+# unreachable or contract-only.
+[unreachable]
+theorem = "prims::never_falls_back (prims::call, rarrays::rust_primitive_r)"
+list = "core/src/prims/mod.rs"
+primitives = [
+  "core.smi_mod", "core.smi_shift_right", "core.smi_not", "core.count_leading_zeros", "core.popcount",
+  "core.object_class_id",
+  "core.smi_less_than", "core.smi_less_than_or_equal", "core.smi_greater_than",
+  "core.smi_greater_than_or_equal", "core.smi_equals",
+  "core.large_integer_less_than", "core.large_integer_less_than_or_equal", "core.large_integer_greater_than",
+  "core.large_integer_greater_than_or_equal", "core.large_integer_equals",
+  "core.array_length", "core.array_at", "core.array_at_put", "core.array_replace", "core.rebuild_hash_index",
+  "core.string_hash_code", "core.string_raw_at", "core.string_compare", "core.int_vector_equals",
+  "core.float_sign", "core.float_is_nan", "core.float_is_finite",
+  "core.float_less_than", "core.float_less_than_or_equal", "core.float_greater_than",
+  "core.float_greater_than_or_equal", "core.float_equals",
+  "core.compare_to", "core.min_special_compare_to",
+]

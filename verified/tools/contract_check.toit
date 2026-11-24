@@ -214,6 +214,7 @@ run root/string:
   gaps.do: print "gap   $it"
   failures += check-assumptions root (table.get "assumption" --if-absent=: [])
   failures += check-prim-retry root (table.get "prim_retry" --if-absent=: null)
+  failures += check-unreachable root (table.get "unreachable" --if-absent=: null) (table.get "prim_retry" --if-absent=: null)
   exit (failures == 0 ? 0 : 1)
 
 // What a primitive whose call cannot fail for want of memory must not
@@ -311,15 +312,9 @@ check-prim-retry root/string table/Map? -> int:
     print "FAIL  no [prim_retry] table"
     return 1
   repo := fs.dirname root
-  policy := (file.read-contents "$repo/$table["policy"]").to-string
-  header := (file.read-contents "$repo/src/primitive.h").to-string
   test := (file.read-contents "$repo/$table["test"]").to-string
   run-sh := (file.read-contents "$root/cxx/annotated/run.sh").to-string
-  allowed := []
-  (policy-names policy "UNTRUSTED_CORE" "CoreIndex::").do: allowed.add "core.$it"
-  (policy-names policy "UNTRUSTED_BITMAP" "BitmapIndex::").do: allowed.add "bitmap.$it"
-  (policy-names policy "WHOLE_MODULES" "MODULE_INDEX_").do: | module |
-    (module-primitives header module).do: allowed.add "$module.$it"
+  allowed := untrusted-set repo table
   sources := table["sources"]
   failures := 0
   problem := : | message |
@@ -382,6 +377,123 @@ check-prim-retry root/string table/Map? -> int:
   if failures == 0:
     count := : | key | counts.get key --if-absent=: 0
     print "ok    prim_retry: $allowed.size primitives of the untrusted set classified: $(count.call "a") (a), $(count.call "b") (b: $(count.call "b verifast") proved and tested, $(count.call "b test") tested, $(count.call "b review") reviewed), $(count.call "c") (c)"
+  return failures
+
+/**
+The C++ primitives the untrusted policy allows (src/primitive_policy.cc:
+  UNTRUSTED_CORE, UNTRUSTED_BITMAP and the whole modules of WHOLE_MODULES,
+  src/primitive.h), as `module.name`.
+*/
+untrusted-set repo/string prim-retry/Map -> List:
+  policy := (file.read-contents "$repo/$prim-retry["policy"]").to-string
+  header := (file.read-contents "$repo/src/primitive.h").to-string
+  allowed := []
+  (policy-names policy "UNTRUSTED_CORE" "CoreIndex::").do: allowed.add "core.$it"
+  (policy-names policy "UNTRUSTED_BITMAP" "BitmapIndex::").do: allowed.add "bitmap.$it"
+  (policy-names policy "WHOLE_MODULES" "MODULE_INDEX_").do: | module |
+    (module-primitives header module).do: allowed.add "$module.$it"
+  return allowed
+
+/** The lines of $text from the line starting with $start to the next line that is exactly $end. */
+text-block text/string start/string end/string -> List:
+  lines := text.split "\n"
+  result := []
+  on := false
+  lines.do: | line/string |
+    if not on and line.starts-with start: on = true
+    else if on and line == end: on = false
+    else if on: result.add line
+  return result
+
+/** The `ix::NAME` constants in $lines, lowercased, in order. */
+index-names lines/List -> List:
+  result := []
+  lines.do: | line/string |
+    i := 0
+    while true:
+      i = line.index-of "ix::" i
+      if i < 0: break
+      j := i + 4
+      k := j
+      while k < line.size and (is-identifier-char (line.at --raw k)): k++
+      result.add line[j..k].to-ascii-lower
+      i = k
+  return result
+
+/**
+Checks the [unreachable] table against the Verus list it names (the
+  `(i == ix::NAME && n == ARITY)` lines of the `never_falls_back_*` spec
+  fns): the same primitives, each with the arity of
+  verified/core/src/prims/index.rs `TABLE`, ported (`family`) and in the
+  untrusted set. Prints how the C++ behind the ports of the untrusted set
+  divides: VeriFast-proved (a rendered, not contract-only, definition of
+  primitive_NAME; as metrics.sh), unreachable from untrusted code (the
+  list, less the proved ones), contract-only (the rest).
+*/
+check-unreachable root/string table/Map? prim-retry/Map? -> int:
+  if not table or not prim-retry:
+    print "FAIL  no [unreachable] or [prim_retry] table"
+    return 1
+  failures := 0
+  problem := : | message |
+    failures++
+    print "FAIL  unreachable: $message"
+  repo := fs.dirname root
+  mod := (file.read-contents "$root/$table["list"]").to-string
+  index := (file.read-contents "$root/core/src/prims/index.rs").to-string
+  // The Verus list: name -> arity.
+  verus := {:}
+  (mod.split "\n").do: | line/string |
+    l := line.trim
+    if l.starts-with "||| (i == ix::":
+      name-end := l.index-of " && n == "
+      close := l.index-of ")" name-end
+      if name-end < 0 or close < 0:
+        problem.call "cannot read `$l` in $table["list"]"
+      else:
+        name := l["||| (i == ix::".size..name-end].to-ascii-lower
+        arity := int.parse l[name-end + " && n == ".size..close]
+        if verus.contains name: problem.call "$name listed twice in $table["list"]"
+        verus[name] = arity
+  if verus.is-empty: problem.call "no list in $table["list"]"
+  // index.rs TABLE: (b"name\0", index, arity).
+  arities := {:}
+  (index.split "\n").do: | line/string |
+    l := line.trim
+    if l.starts-with "(b\"":
+      q := l.index-of "\\0\""
+      parts := l[q + 3..].split ","
+      if q > 0 and parts.size >= 3 and (parts[2].index-of ")") > 0:
+        arities[l[3..q]] = int.parse parts[2][..parts[2].index-of ")"].trim
+  ported := index-names (text-block mod "pub fn family(" "}")
+  allowed := untrusted-set repo prim-retry
+  listed := (table["primitives"].map: it[5..])  // Without "core.".
+  table["primitives"].do: | name/string |
+    if not name.starts-with "core.": problem.call "$name: only core primitives have Rust ports"
+  listed.do: | name |
+    if not verus.contains name: problem.call "core.$name is in [unreachable] but not in the Verus list ($table["list"])"
+  verus.do: | name arity |
+    if not listed.contains name: problem.call "core.$name is in the Verus list ($table["list"]) but not in [unreachable]"
+    if (arities.get name) != arity: problem.call "core.$name: arity $arity in the Verus list, $(arities.get name) in core/src/prims/index.rs"
+    if not ported.contains name: problem.call "core.$name has no Rust port (prims::family)"
+    if not allowed.contains "core.$name": problem.call "core.$name is not in the untrusted set"
+  // The counts, as metrics.sh determines the proved C++ bodies.
+  proved := {}
+  (files-under "$root/cxx/annotated").do: | path/string |
+    if path.ends-with ".gen.c":
+      lines := (file.read-contents "$root/cxx/annotated/$path").to-string.split "\n"
+      (lines.size - 1).repeat: | i |
+        l := lines[i]
+        if l.starts-with "Object *primitive_" and l.ends-with "(Process *process, Object **__args)":
+          next := lines[i + 1]
+          if next.starts-with "/*@" or next.starts-with "//@":
+            proved.add l["Object *primitive_".size..l.index-of "("]
+  ported-untrusted := (allowed.filter: it.starts-with "core." and ported.contains it[5..]).map: it[5..]
+  n-proved := (ported-untrusted.filter: proved.contains it).size
+  n-unreachable := (ported-untrusted.filter: verus.contains it and not proved.contains it).size
+  n-both := (ported-untrusted.filter: verus.contains it and proved.contains it).size
+  if failures == 0:
+    print "ok    unreachable: $verus.size ports never fall back ($table["theorem"]); the C++ behind the $ported-untrusted.size ports of the untrusted set: $n-proved VeriFast-proved, $n-unreachable unreachable from untrusted code (proved in Verus; $n-both more are VeriFast-proved as well), $(ported-untrusted.size - n-proved - n-unreachable) contract-only"
   return failures
 
 /**
