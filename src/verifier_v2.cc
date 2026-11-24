@@ -47,6 +47,10 @@ static volatile size_t trace_install_min_free = 0;
 static int64_t trace_install_first_progress = 0;
 static int64_t trace_install_last_progress = 0;
 
+// Without TOIT_TRACE_INSTALL_HEAP (times only) there are no heap hooks: the
+// hook costs a free-size query per allocation, which inflates the time of
+// an allocation-heavy verification; the peak use is then not measured.
+#ifdef CONFIG_TOIT_TRACE_INSTALL_HEAP
 extern "C" void esp_heap_trace_alloc_hook(void* ptr, size_t size, uint32_t caps) {
   if (!trace_install_active) return;
   size_t now = heap_caps_get_free_size(MALLOC_CAP_8BIT);
@@ -54,6 +58,7 @@ extern "C" void esp_heap_trace_alloc_hook(void* ptr, size_t size, uint32_t caps)
 }
 
 extern "C" void esp_heap_trace_free_hook(void* ptr) {}
+#endif
 #endif
 
 namespace toit {

@@ -434,11 +434,22 @@ menu "Toit"
         bool "Trace install-time verifications (for measurements)"
         default n
         depends on TOIT_VERIFIED_CORE
-        select HEAP_USE_HOOKS
+        select HEAP_USE_HOOKS if TOIT_TRACE_INSTALL_HEAP
         help
             Prints the time, the free heap and the peak heap use of every
             install-time verification of an untrusted container
             ("[install-trace]" lines on the console).
+
+    config TOIT_TRACE_INSTALL_HEAP
+        bool "Measure the peak heap use of install-time verifications"
+        default y
+        depends on TOIT_TRACE_INSTALL
+        help
+            The peak use is the lowest free heap seen by a heap hook on
+            every allocation (HEAP_USE_HOOKS), which costs a free-size query
+            per allocation and so adds to the measured time (0.7 s per
+            verification before the verifier stopped allocating per
+            instruction). Off: times only, peak use 0.
 
     config TOIT_VERIFIED_CORE_INFER
         bool "Link the certificate inference (for measurements)"
