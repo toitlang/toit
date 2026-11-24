@@ -45,6 +45,7 @@ pub mod sound_field;
 pub mod sound_block;
 pub mod sound_resource;
 pub mod sound_prim_spec;
+pub mod gc;
 pub mod sound_step;
 pub mod theorem;
 pub mod vprog;

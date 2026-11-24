@@ -72,11 +72,109 @@ Open:
 
 - G-grow: done: `step::grow` is verified; `gc_grow_stack` states the
   growth contract over the views (same state, room on success).
-- G-gc: the GC preserves the abstraction (the contracts of
-  `alloc::gc_allocate_instance` and of the bridges); trusted, Phase 4
-  keeps the GC trusted.
+- G-gc: a collection is a step of the spec (`toit_spec::v2::gc`, see
+  "The collector" below), and the GC leaf contracts promise exactly
+  collections; trusted until a collector proof delivers them.
 - G-heap: `abs::heap_model_ok` (heap integrity) is maintained by the GC,
   the allocators and the C++ primitives; trusted.
+
+### The collector (stage 0 of the collector proof plan, branch gc/stage0-spec)
+
+The plan: /home/flo/work/opentoit-sandbox-artifacts/gc-proof-pilot/README.md
+(section 5). Stage 0 makes the model say what a collection does, so that
+a collector proof can discharge it.
+
+What a collection is (verified/spec/src/v2/gc.rs, `collection`; any
+number of them: `gc_steps`):
+
+1. Weak processing (`zapped`, as `WeakMapFinalizerNode::weak_processing`
+   and `zap_dead_values`): a mutable instance of the map class may be
+   reset (size and spaces left 0, index and backing null), and a value
+   slot (odd index) of an array of a map's backing (the backing list's
+   array, or the arraylets of its large array) that holds an object
+   other than a tombstone may become null. Over-approximated: the C++
+   does it only for maps with a weak finalizer (a header bit the model
+   lacks), resets only maps and nulls only values the strong marking did
+   not reach. It writes the map's four fields and reads the list's and
+   large array's without checks; the C++ verifier's
+   `check_builtin_classes` gives those classes their fields and the map
+   class the instance tag (not the task tag), which the step's guards
+   (`is_map`, `inst_field`) mirror.
+2. Compaction (`ren_ok`, `renamed`): a live set that holds the object
+   stack, the globals and the running task and is closed under references
+   (it may hold more: the collector's other roots) survives; garbage
+   disappears; the live objects are renumbered `0..n` and their
+   references renamed; the program heap and the program's constants keep
+   their ids; frames, handlers, finally records, bci and task counter
+   stay.
+
+Proven: every collection keeps `wf` (`lemma_gc_steps_wf`) and a raise's
+unwinding invariant (`lemma_gc_steps_unw`); an allocation commutes with
+collections in which the new object survives (`lemma_gc_steps_alloc`);
+a PRIMITIVE step and a double operator are the same step after them.
+
+The core against it. `refines` is unchanged: after a compaction the
+abstract heap holds only the live objects, so permissions and distinct
+addresses for every object of the model are what a collector that frees
+memory can give. (The alternative, stable ids with permissions only for a
+live set, keeps every object ever allocated in the model: its length
+passes `small`'s 2^30 objects and `Value::Obj`'s `usize` on 32-bit
+within hours of allocation, and the 32-bit core derives that bound from
+distinct addresses. Renumbering keeps it derivable.) The GC leaf
+contracts promise a state that collections reach (`alloc::gc_alloc_post`,
+`step::grow_post`, the exception and primitive contracts; none when the
+epoch is unchanged); `step::advances` allows collections before and after
+a step (`gc_around`); ALLOCATE and the double operators are the step
+followed by the collections (`step::lemma_alloc_gc`); stack growth is
+collections before the instruction; a C++ primitive is collections, then
+a completion of the collected state (its source is a ghost machine,
+`step::src_ok`); a raise's completion may collect first (spec,
+`prim::raised_gc`); between runs `theorem::resumed` assumes collections
+instead of the same state. The theorems' text is unchanged; their
+`reaches` now includes collections (THEOREMS.txt, PROGRESS.md).
+
+The two ends meet (verified/core/src/gcbridge.rs, proof only):
+`lemma_collected` takes what a collector that keeps object identities
+proves, `collected` (the pilot's contract restated for the core's model
+and a whole collection: live set with the roots, closed, the program heap
+its first `n0` objects; new tagged, distinct addresses; each live object
+well formed under them), after weak processing, and shows that numbering
+the live objects in order is a `collection` whose state the core's heap
+model represents at the collector's addresses: `heap_model_ok`, every word
+the collector left is the core's word of the renumbered object
+(`view::word_val`), the roots are the encodings of the renumbered roots,
+the program heap keeps its ids.
+
+Still assumed about the collector (GC-class code, trusted), for stage 1+:
+
+- The five restated leaf contracts and `resumed` (TRUSTED.toml): that the
+  C++ collector delivers `gc_steps`. Through `gcbridge` a proof of
+  `collected` for the real layouts (the 12 class tags, stacks, external
+  byte arrays: stage 2) discharges the abstract half.
+- The run-time half the bridge does not cover: the hand-over of the word
+  permissions of the live objects (`view::HeapMem`, the views the
+  contracts return), the remembered-set cards of every mutable object
+  (`view::Heap`'s invariant; after a scavenge every old object holding a
+  young reference must have a dirty card), the allocation window after a
+  collection (`Runtime::allocation_window`, TRUSTED.md section 9), and
+  to-space capacity (the pilot's `lemma_capacity`).
+- Roots: `collected` needs the state's roots (object stack, globals,
+  running task) in the live set; the collector's own roots (other tasks,
+  process roots, messages, resources, finalizer lists, external roots)
+  only make the live set larger. Completeness of the C++ root
+  enumeration for everything the C++ later hands to the core (a message,
+  a finalizer lambda from `next_finalizer_to_run`) is still a review item.
+- Finalizers: a Toit finalizer's lambda keeps what it reaches alive (in
+  the live set: no state change; the revived weak map reset is the weak
+  step); VM finalizers free the external memory of dead strings and byte
+  arrays (gone from the state; `gc_owns`, verified/CONTRACTS.toml). The
+  finalizer header bit is not modeled.
+- Stacks shrunk and moved during marking (`stack_copy_equiv`).
+- The program heap as a prefix: `collected` assumes the first `n0` ids are
+  exactly the read-only objects (true of `initial_state`: `heap0`, then
+  allocations outside the program heap); the core does not carry it as an
+  invariant yet, so a bridge to the live contracts needs it added to
+  `refines` (and to the loader's assumption) first.
 
 ### Obligations from Phase 3 (verified/spec/SOUNDNESS.md)
 

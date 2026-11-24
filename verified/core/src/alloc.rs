@@ -56,6 +56,8 @@ use toit_spec::v2::sound::{wf, step_ok, outcome_ok};
 use toit_spec::v2::verifier::accepts;
 #[cfg(verus_keep_ghost)]
 use toit_spec::spec_common::{class_tag, instance_field_count, new_double};
+#[cfg(verus_keep_ghost)]
+use toit_spec::v2::gc::gc_steps;
 
 verus! {
 
@@ -169,16 +171,30 @@ pub open spec fn new_instance(ap: Program2, c: int) -> HeapObj {
     }
 }
 
+/// What an allocation that may collect leaves (`gc_allocate_instance`,
+/// `gc_allocate_double`): collections from `g` to `g2`
+/// (`toit_spec::v2::gc::gc_steps`; none if the heap's epoch did not
+/// change), then the views represent `g2` with the new object `o`
+/// appended, the result being its (tagged) address; or, out of memory
+/// (result 0), `g2` itself.
+pub open spec fn gc_alloc_post(p: &Program, m: Machine, g: State2, g2: State2, o: HeapObj, r: usize, moved: bool) -> bool {
+    &&& gc_steps(p.ap@, g, g2)
+    &&& !moved ==> g2 == g
+    &&& r == 0 ==> reloaded(m, g2).refines(p)
+    &&& r != 0 ==> reloaded(m, sp::alloc2(g2, o)).refines(p) && r == enc(m.addr(), sp::new_ref2(g2))
+}
+
 /// TRUSTED (TRUSTED.md, "GC and allocation"): allocates an instance of
 /// class `c` (C++ `toit_v2_allocate_instance`, which may GC). Before, the
 /// stack view, the Stack header, the globals and the heap model represent
-/// `g`. After, they represent `g` with the new instance appended, the
-/// result being its (tagged) address; or, out of memory (result 0), `g`
-/// itself. That is: the GC moves objects and updates every root (the
-/// object stack, the globals; frame records and the header are not
-/// references and are kept) without changing the abstract state, and the
-/// allocation adds exactly the spec's object. The cached fields of the
-/// machine are stale afterwards (`reload`).
+/// `g`. After, `gc_alloc_post`: they represent a state `g2` that
+/// collections reach from `g` (garbage gone, live objects renumbered,
+/// weak maps processed; every root updated: the object stack, the
+/// globals; frame records and the header are not references and are
+/// kept) with the new instance appended, the result being its (tagged)
+/// address; or, out of memory (result 0), `g2` itself. The allocation
+/// adds exactly the spec's object. The cached fields of the machine are
+/// stale afterwards (`reload`).
 #[verifier::external_body]
 #[inline(always)]
 pub fn gc_allocate_instance(m: &mut Machine, env: &Env, c: usize, Ghost(g): Ghost<State2>) -> (r: (usize, bool))
@@ -188,9 +204,7 @@ pub fn gc_allocate_instance(m: &mut Machine, env: &Env, c: usize, Ghost(g): Ghos
         class_tag(p1(env.p.ap@), c as int) == INSTANCE_TAG,
         instance_field_count(p1(env.p.ap@), c as int) >= 0,
     ensures
-        r.0 == 0 ==> reloaded(*final(m), g).refines(&env.p),
-        r.0 != 0 ==> reloaded(*final(m), sp::alloc2(g, new_instance(env.p.ap@, c as int))).refines(&env.p)
-            && r.0 == enc(final(m).addr(), sp::new_ref2(g)),
+        exists|g2: State2| #[trigger] gc_alloc_post(&env.p, *final(m), g, g2, new_instance(env.p.ap@, c as int), r.0, r.1),
         // The epoch contract (TRUSTED.md, "Epoch"): nothing moved.
         !r.1 ==> crate::primitive::unmoved(*final(m), *old(m)),
 {
@@ -250,9 +264,7 @@ pub fn bump_double(m: &mut Machine, env: &Env, bits: u64, Ghost(r): Ghost<crate:
 pub fn gc_allocate_double(m: &mut Machine, env: &Env, bits: u64, Ghost(g): Ghost<State2>) -> (r: (usize, bool))
     requires reloaded(*old(m), g).refines(&env.p),
     ensures
-        r.0 == 0 ==> reloaded(*final(m), g).refines(&env.p),
-        r.0 != 0 ==> reloaded(*final(m), sp::alloc2(g, new_double(as1(g), p1(env.p.ap@), bits))).refines(&env.p)
-            && r.0 == enc(final(m).addr(), sp::new_ref2(g)),
+        exists|g2: State2| #[trigger] gc_alloc_post(&env.p, *final(m), g, g2, new_double(as1(g), p1(env.p.ap@), bits), r.0, r.1),
         !r.1 ==> crate::primitive::unmoved(*final(m), *old(m)),
 {
     m.allocate_double_raw(env, bits)

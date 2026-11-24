@@ -620,6 +620,8 @@ pub fn op_allocate(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode:
     m.save();
     proof { lemma_saved(p, *m); }
     let (w, moved) = gc_allocate_instance(m, env, c, Ghost(g));
+    let ghost o = new_instance(ap, c as int);
+    let ghost g2 = choose|g2: State2| #[trigger] crate::alloc::gc_alloc_post(p, *m, g, g2, o, w, moved);
     if w != 0 && !moved {
         // Nothing moved (the heap's epoch is unchanged): the registers stay.
         let ghost g1 = sp::alloc2(g, new_instance(ap, c as int));
@@ -635,30 +637,57 @@ pub fn op_allocate(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode:
         return ctl;
     }
     if w == 0 {
-        // Out of memory: the resource throw of ALLOCATE
-        // (`prim::resource_throw`), the out-of-memory error.
+        // Out of memory after the collections: the resource throw of
+        // ALLOCATE (`prim::resource_throw`) in the collected state, the
+        // out-of-memory error.
+        let ghost wa = reloaded(*m, g2);
         proof {
+            lemma_inv_gc(p, w0, wa);
             lemma_instr(ap, p.cert@, p.trusted@, g);
-            let o1 = sp::unwind(ap, g, Unwind::Throw(toit_spec::v2::prim::out_of_memory(ap)));
-            assert(toit_spec::v2::prim::resource_throw(ap, g, o1));
-            lemma_source_resource(ap, g, o1);
+            let o1 = sp::unwind(ap, g2, Unwind::Throw(toit_spec::v2::prim::out_of_memory(ap)));
+            assert(toit_spec::v2::prim::resource_throw(ap, g2, o1));
+            lemma_source_resource(ap, g2, o1);
         }
-        let (r2, ctl) = alloc_oom(m, *r, env, Ghost(g), Ghost(w0));
+        let (r2, ctl) = alloc_oom(m, *r, env, Ghost(g2), Ghost(wa));
+        proof {
+            if ctl == Ctl::Next {
+                toit_spec::v2::gc::lemma_gc_steps_refl(ap, m.with(r2).g@);
+                lemma_steps_post_gc(p, w0, wa, m.with(r2), m.with(r2), ctl);
+            } else {
+                toit_spec::v2::gc::lemma_gc_steps_refl(ap, m.g@);
+                lemma_steps_post_gc(p, w0, wa, *m, *m, ctl);
+            }
+        }
         *r = r2;
         return ctl;
     }
-    let ghost o = new_instance(ap, c as int);
-    let ghost g1 = sp::alloc2(g, o);
+    // Allocated after the collections: the step, then the collections.
+    proof { toit_spec::v2::gc::lemma_gc_steps_shape(ap, g, g2); }
+    let ghost g1 = sp::alloc2(g2, o);
     reload(m, p, Ghost(g1));
     proof { assert(m.addr().len() == g1.heap.len()); }
-    let ctl = m.push_next(p, w, len, Ghost(sp::new_ref2(g)));
-    proof { lemma_matches(p, w0, *m, ctl); }
+    let ctl = m.push_next(p, w, len, Ghost(sp::new_ref2(g2)));
+    proof {
+        toit_spec::v2::gc::lemma_gc_steps_shape(ap, g, g2);
+        assert(g2.stack.subrange(0, g2.stack.len() - 0) =~= g2.stack);
+        assert(g.stack.subrange(0, g.stack.len() - 0) =~= g.stack);
+        assert(sp::step(ap, g) == Outcome2::Next(toit_spec::v2::gc::alloc_push(g, o, 0, len as int)));
+        if ctl == Ctl::Next {
+            assert(m.g@ == toit_spec::v2::gc::alloc_push(g2, o, 0, len as int));
+        }
+        lemma_alloc_gc(p, w0, *m, ctl, g2, o, 0, len as int);
+    }
     if let Ctl::Next = ctl {
     } else {
         return ctl;
     }
+    let ghost m1 = *m;
     match regain(m, env, len0, Ghost(w0)) {
         Some(r2) => {
+            proof {
+                toit_spec::v2::gc::lemma_gc_steps_refl(ap, w0.g@);
+                lemma_step_post_gc(p, w0, w0, m1, m.with(r2), Ctl::Next);
+            }
             *r = r2;
             Ctl::Next
         },
@@ -856,6 +885,7 @@ pub fn cxx_primitive_v(m: &mut Machine, r: Regs, env: &Env, module: u8, index: u
         sp::step(env.p.ap@, old(m).g@) == Outcome2::Primitive(old(m).g@, module, index),
         arity == sp::frame_height(old(m).g@),
         r.ip@ + 4 < 0x1000_0000,
+        cur_op(env.p.ap@, old(m).g@) == 89,
     ensures rpost(&env.p, *old(m), r, *final(m), res.0, res.1),
 {
     let p = &env.p;
@@ -881,8 +911,9 @@ pub fn cxx_primitive_v(m: &mut Machine, r: Regs, env: &Env, module: u8, index: u
     let (st, w, moved) = crate::primitive::gc_call_primitive(m, env, module, index, arity, base, Ghost(g));
     let ghost mc = *m;
     if !moved && st == V2_PRIMITIVE_SUCCESS {
-        let ghost (gx, v) = choose|gx: State2, v: Value| #[trigger] crate::primitive::prim_call_post(p, *m, g, module, index, st, w, gx, v)
-            && (!moved ==> gx == with_heap2(g, gx.heap));
+        let ghost (g2, gx, v) = choose|g2: State2, gx: State2, v: Value| toit_spec::v2::gc::gc_steps(ap, g, g2)
+            && #[trigger] crate::primitive::prim_call_post(p, *m, g2, module, index, st, w, gx, v)
+            && (!moved ==> g2 == g && gx == with_heap2(g, gx.heap));
         proof {
             // Nothing moved: the reload derives the registers' machine.
             assert(reloaded(*m, gx) == (Machine { g: Ghost(gx), ..m.with(r) }));
@@ -909,8 +940,9 @@ pub fn cxx_primitive_v(m: &mut Machine, r: Regs, env: &Env, module: u8, index: u
     } else if !moved && st == V2_PRIMITIVE_FAILURE {
         // A failure without a GC or a task switch (the task transfer to the
         // running task, the yield): the error pushed, on the registers.
-        let ghost (gx, v) = choose|gx: State2, v: Value| #[trigger] crate::primitive::prim_call_post(p, *m, g, module, index, st, w, gx, v)
-            && (!moved ==> gx == with_heap2(g, gx.heap));
+        let ghost (g2, gx, v) = choose|g2: State2, gx: State2, v: Value| toit_spec::v2::gc::gc_steps(ap, g, g2)
+            && #[trigger] crate::primitive::prim_call_post(p, *m, g2, module, index, st, w, gx, v)
+            && (!moved ==> g2 == g && gx == with_heap2(g, gx.heap));
         proof {
             assert(reloaded(*m, gx) == (Machine { g: Ghost(gx), ..m.with(r) }));
         }
@@ -948,6 +980,7 @@ fn cxx_primitive_rest(m: &mut Machine, r: Regs, env: &Env, st: usize, w: usize, 
         r.sp@ >= r.fr@ + m0.fw + STACK_RESERVE,
         step_ok(env.p.ap@, env.p.cert@, m0.g@),
         sp::step(env.p.ap@, m0.g@) == Outcome2::Primitive(m0.g@, module, index),
+        cur_op(env.p.ap@, m0.g@) == 89,
         r.ip@ + 4 < 0x1000_0000,
         ms == (Machine { mem: ms.mem, ..m0 }),
         ms.mem@ == m0.mem@,
@@ -955,8 +988,9 @@ fn cxx_primitive_rest(m: &mut Machine, r: Regs, env: &Env, st: usize, w: usize, 
         crate::alloc::saved(ms.with(r)),
         st == V2_PRIMITIVE_ABSENT ==> *old(m) == ms,
         st != V2_PRIMITIVE_ABSENT ==>
-            exists|gx: State2, v: Value| #[trigger] crate::primitive::prim_call_post(&env.p, *old(m), m0.g@, module, index, st, w, gx, v)
-                && (!moved ==> gx == with_heap2(m0.g@, gx.heap)),
+            exists|g2: State2, gx: State2, v: Value| toit_spec::v2::gc::gc_steps(env.p.ap@, m0.g@, g2)
+                && #[trigger] crate::primitive::prim_call_post(&env.p, *old(m), g2, module, index, st, w, gx, v)
+                && (!moved ==> g2 == m0.g@ && gx == with_heap2(m0.g@, gx.heap)),
         st != V2_PRIMITIVE_ABSENT && !moved ==> crate::primitive::unmoved(*old(m), ms),
     ensures rpost(&env.p, m0, r, *final(m), res.0, res.1),
 {
@@ -979,8 +1013,9 @@ fn cxx_primitive_rest(m: &mut Machine, r: Regs, env: &Env, st: usize, w: usize, 
         return resume_r(m, r, env, c, false, Ghost(w0));
     }
     if !moved && (st == V2_PRIMITIVE_SUCCESS || st == V2_PRIMITIVE_FAILURE) {
-        let ghost (gx, v) = choose|gx: State2, v: Value| #[trigger] crate::primitive::prim_call_post(p, *m, g, module, index, st, w, gx, v)
-            && (!moved ==> gx == with_heap2(g, gx.heap));
+        let ghost (g2, gx, v) = choose|g2: State2, gx: State2, v: Value| toit_spec::v2::gc::gc_steps(ap, g, g2)
+            && #[trigger] crate::primitive::prim_call_post(p, *m, g2, module, index, st, w, gx, v)
+            && (!moved ==> g2 == g && gx == with_heap2(g, gx.heap));
         proof {
             // Nothing moved: the reload derives the registers' machine.
             assert(reloaded(*m, gx) == (Machine { g: Ghost(gx), ..m.with(r) }));

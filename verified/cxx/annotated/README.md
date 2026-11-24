@@ -2167,15 +2167,23 @@ path, weak maps):
   stopped; the core re-reads the heap after every collection (the epoch)
   and the verifier types stack slots, not the contents of arrays or
   instance fields, so neither memory safety nor the verifier's typing
-  depends on it. But `gc_equiv` and the spec's GC step say a collection
+  depends on it. But `gc_equiv` and the spec's GC step said a collection
   leaves every reachable object equivalent, which is false for weak maps.
   Refusing weak maps to untrusted programs is not a clean restriction:
   the SDK's ServiceResourceProxyManager_ (lib/system/services.toit) keeps
   every notifying resource proxy (network sockets, storage, discovery) in
   a Map.weak in the client process, so service resources would break.
-  Options for the lead: state weak-map zapping in the GC model (a value
-  slot of a map with the finalizer bit may become null), or make the
-  proxy manager hold its proxies otherwise.
+  MODELED since stage 0 of the collector plan (branch gc/stage0-spec,
+  verified/core/OBLIGATIONS.md "The collector"): a collection of the spec
+  (verified/spec/src/v2/gc.rs) is weak processing (a map may be reset; a
+  value slot of a map's backing array or arraylet that holds an object
+  other than a tombstone may become null) followed by a compaction
+  (garbage gone, live objects renumbered), and `gc_equiv(a, b)` means
+  that b represents a state that collections reach from a's (the `stack`
+  bridge, CONTRACTS.toml). `gc_equiv_trans`, `stack_copy_equiv` and
+  `prim_retry` hold of that relation as stated, with no weak-map
+  exception; which VeriFast proofs pass does not change (gc_equiv stays
+  uninterpreted).
 * **The error roots of a program image were not checked to be distinct**
   (a gap in the loader, now checked). The retry protocol decides by the
   root's address whether to collect and call a primitive again; an image
@@ -2305,9 +2313,11 @@ Wave 6 (the Rust/C++ boundary, `ffi/`):
   bs)`: a moving GC rewrites every reference slot to the moved object, so
   the claim was false whenever a slot held a moved object, and the proof of
   stack growth rested on it. It now says what the GC does: the VM state
-  after it (stack, heap, epoch) is `gc_equiv` to the one before (the
-  abstraction is the same, an uninterpreted relation the `stack` and `heap`
-  bridges interpret), and stack growth, the allocations and the primitive
+  after it (stack, heap, epoch) is `gc_equiv` to the one before (an
+  uninterpreted relation the `stack` and `heap` bridges interpret: since
+  stage 0 of the collector plan, the state after is one that collections
+  of the spec reach from the state before, `toit_spec::v2::gc::gc_steps`;
+  before, the same abstract state), and stack growth, the allocations and the primitive
   call are proved over that, with `stack_copy_equiv` (the old `stack`
   bridge, now a named assumption) for the copied stack.
 * **An assumption of the Verus side the C++ wrapper does not establish:

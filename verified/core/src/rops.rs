@@ -391,6 +391,8 @@ pub fn arith_double(m: &mut Machine, r: Regs, env: &Env, bci: usize, opcode: u8,
     m.save();
     proof { crate::alloc::lemma_saved(p, *m); }
     let (w, moved) = crate::alloc::gc_allocate_double(m, env, bits, Ghost(g));
+    let ghost d = new_double(as1(g), p1(ap), bits);
+    let ghost g2 = choose|g2: State2| #[trigger] crate::alloc::gc_alloc_post(p, *m, g, g2, d, w, moved);
     if w != 0 && !moved {
         // Nothing moved (the heap's epoch is unchanged): the registers stay.
         let ghost g1 = sp::alloc2(g, new_double(as1(g), p1(ap), bits));
@@ -408,31 +410,62 @@ pub fn arith_double(m: &mut Machine, r: Regs, env: &Env, bci: usize, opcode: u8,
         return (r2, Ctl::Next);
     }
     if w == 0 {
-        // Out of memory: the resource throw of a double allocation, the
-        // call of the operator's method (`prim::resource_throw`).
-        crate::alloc::reload(m, p, Ghost(g));
-        proof {
-            assert(toit_spec::v2::prim::resource_throw(ap, g, sp::operator_fallback(ap, g, opcode)));
-            lemma_source_resource(ap, g, sp::operator_fallback(ap, g, opcode));
-        }
+        // Out of memory after the collections: the resource throw of a
+        // double allocation in the collected state, the call of the
+        // operator's method (`prim::resource_throw`).
+        crate::alloc::reload(m, p, Ghost(g2));
         let ghost m1 = *m;
+        proof {
+            crate::step::lemma_inv_gc(p, w0, m1);
+            toit_spec::v2::gc::lemma_gc_steps_double(ap, g, g2, opcode);
+            crate::step::lemma_unchecked_ok(p, g2);
+            crate::step::lemma_small(p, &m1);
+            toit_spec::v2::sound_step::lemma_step(ap, p.cert@, p.trusted@, g2);
+            assert(toit_spec::v2::prim::resource_throw(ap, g2, sp::operator_fallback(ap, g2, opcode)));
+            lemma_source_resource(ap, g2, sp::operator_fallback(ap, g2, opcode));
+        }
         let c = crate::calls::fallback_src(m, env, bci, opcode);
-        proof { assert(m1.g@ == w0.g@); }
-        match crate::step::resume(m, env, c, Ghost(w0)) {
-            (Some(r2), Ctl::Next) => { return (r2, Ctl::Next); },
-            (_, c2) => { return (r, c2); },
+        proof { toit_spec::v2::gc::lemma_gc_steps_refl(ap, g); }
+        match crate::step::resume(m, env, c, Ghost(m1)) {
+            (Some(r2), Ctl::Next) => {
+                proof {
+                    toit_spec::v2::gc::lemma_gc_steps_refl(ap, m.with(r2).g@);
+                    crate::step::lemma_steps_post_gc(p, w0, m1, m.with(r2), m.with(r2), Ctl::Next);
+                }
+                return (r2, Ctl::Next);
+            },
+            (_, c2) => {
+                proof {
+                    toit_spec::v2::gc::lemma_gc_steps_refl(ap, m.g@);
+                    crate::step::lemma_steps_post_gc(p, w0, m1, *m, *m, c2);
+                }
+                return (r, c2);
+            },
         }
     }
-    let ghost g1 = sp::alloc2(g, new_double(as1(g), p1(ap), bits));
+    // Allocated after the collections: the step, then the collections.
+    let ghost g1 = sp::alloc2(g2, d);
     crate::alloc::reload(m, p, Ghost(g1));
     proof {
+        toit_spec::v2::gc::lemma_gc_steps_shape(ap, g, g2);
         assert(m.addr().len() == g1.heap.len());
         assert(sp::has_slot(g1, 1));
     }
-    let c = m.binary_next(p, w, Ghost(sp::new_ref2(g)));
-    proof { lemma_matches(p, w0, *m, c); }
+    let c = m.binary_next(p, w, Ghost(sp::new_ref2(g2)));
+    proof {
+        assert(sp::step(ap, g) == Outcome2::Next(toit_spec::v2::gc::alloc_push(g, d, 2, 1)));
+        assert(m.g@ == toit_spec::v2::gc::alloc_push(g2, d, 2, 1));
+        crate::step::lemma_alloc_gc(p, w0, *m, c, g2, d, 2, 1);
+    }
+    let ghost m2 = *m;
     match regain(m, env, len0, Ghost(w0)) {
-        Some(r2) => (r2, Ctl::Next),
+        Some(r2) => {
+            proof {
+                toit_spec::v2::gc::lemma_gc_steps_refl(ap, g);
+                crate::step::lemma_step_post_gc(p, w0, w0, m2, m.with(r2), Ctl::Next);
+            }
+            (r2, Ctl::Next)
+        },
         None => (r, Ctl::Stuck(stuck::LIMIT)),
     }
 }

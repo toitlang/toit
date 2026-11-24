@@ -10,8 +10,27 @@
 # numbers are omitted so that the diff of this file shows only claim changes.
 
 ==============================================================================
-Top-level theorems: crate core (2)
+Top-level theorems: crate core (3)
 ==============================================================================
+
+--- lemma_collected  (core/src/gcbridge.rs)
+pub proof fn lemma_collected(ap: Program2, cb: Seq<u16>, s: State2, s1: State2, live: Seq<bool>, addr2: Seq<usize>, n0: int)
+    requires
+        zapped(ap, s, s1),
+        collected(ap, cb, s1, live, addr2, n0),
+    ensures ({
+        let ren = ren_of(live);
+        let back = back_of(live);
+        let s2 = renamed(s1, ren, back);
+        let a2 = Seq::new(back.len(), |k: int| addr2[back[k]]);
+        &&& collection(ap, s, s2)
+        &&& heap_model_ok(s2.heap, a2, cb)
+        &&& forall|k: int, j: int, w: usize| 0 <= k < s2.heap.len() && crate::view::is_word(s1.heap[back[k]], j) ==>
+                (#[trigger] word_val(s2.heap[k], cb, a2, j, w) <==> word_val(s1.heap[back[k]], cb, addr2, j, w))
+        &&& enc_seq(a2, s2.stack) == enc_seq(addr2, s1.stack)
+        &&& enc_seq(a2, s2.globals) == enc_seq(addr2, s1.globals)
+        &&& forall|i: int| 0 <= i < n0 ==> #[trigger] ren[i] == i
+    }),
 
 --- theorem_first_run  (core/src/theorem.rs)
 pub proof fn theorem_first_run(p: &Program, m: &Machine, heap0: Seq<HeapObj>, globals0: Seq<Value>)
@@ -34,8 +53,45 @@ pub proof fn theorem_next_run(p: &Program, m0: &Machine, m1: &Machine, m2: &Mach
         reaches(p.ap@, s0, m2.g@),
 
 ==============================================================================
-Top-level theorems: crate spec (13)
+Top-level theorems: crate spec (20)
 ==============================================================================
+
+--- lemma_gc_steps_refl  (spec/src/v2/gc.rs)
+pub proof fn lemma_gc_steps_refl(p: Program2, s: State2)
+    ensures gc_steps(p, s, s),
+
+--- lemma_gc_steps_trans  (spec/src/v2/gc.rs)
+pub proof fn lemma_gc_steps_trans(p: Program2, a: State2, b: State2, c: State2)
+    requires gc_steps(p, a, b), gc_steps(p, b, c),
+    ensures gc_steps(p, a, c),
+
+--- lemma_gc_steps_wf  (spec/src/v2/gc.rs)
+pub proof fn lemma_gc_steps_wf(p: Program2, c: Cert, s: State2, s2: State2)
+    requires wf(p, c, s), accepted(p, c), s.heap.len() < 0x8000_0000, gc_steps(p, s, s2),
+    ensures wf(p, c, s2), gc_shape(s, s2), small(s) ==> small(s2),
+
+--- lemma_gc_steps_shape  (spec/src/v2/gc.rs)
+pub proof fn lemma_gc_steps_shape(p: Program2, s: State2, s2: State2)
+    requires gc_steps(p, s, s2),
+    ensures gc_shape(s, s2),
+
+--- lemma_gc_steps_alloc  (spec/src/v2/gc.rs)
+pub proof fn lemma_gc_steps_alloc(p: Program2, s: State2, s2: State2, o: HeapObj, k: int, len: int)
+    requires gc_steps(p, s, s2), plain_obj(p, o), 0 <= k <= s.stack.len(), p.roots.len() > 0, s.heap.len() < 0x8000_0000,
+    ensures gc_steps(p, alloc_push(s, o, k, len), alloc_push(s2, o, k, len)),
+
+--- lemma_gc_step_primitive  (spec/src/v2/gc.rs)
+pub proof fn lemma_gc_step_primitive(p: Program2, s: State2, s2: State2, module: u8, index: u16)
+    requires
+        step(p, s) == Outcome2::Primitive(s, module, index),
+        cur_op(p, s) == 89,
+        gc_shape(s, s2),
+    ensures step(p, s2) == Outcome2::Primitive(s2, module, index),
+
+--- lemma_gc_steps_double  (spec/src/v2/gc.rs)
+pub proof fn lemma_gc_steps_double(p: Program2, s: State2, s2: State2, op: u8)
+    requires crate::v2::prim::allocates_double(p, s, op), gc_steps(p, s, s2), s.heap.len() < 0x8000_0000,
+    ensures crate::v2::prim::allocates_double(p, s2, op),
 
 --- lemma_heap_ext_grows  (spec/src/v2/sound_frames.rs)
 pub proof fn lemma_heap_ext_grows(p: Program2, h: Seq<HeapObj>, h2: Seq<HeapObj>)

@@ -1394,18 +1394,34 @@ in terms of the abstraction (the leaf contracts of section 6):
 the views represent the ghost state `g`: `alloc::reloaded(m, g).refines(p)`,
 where `reloaded` re-derives the machine's cached fields (length, top, frame
 top, bci, the top frame's base and method) from the stack view and its
-header words. ASSUMED: afterwards the views represent `g` with the spec's
+header words. ASSUMED (`alloc::gc_alloc_post`): afterwards the views
+represent a state `g2` that collections reach from `g`, with the spec's
 new instance (class `c`, every field null, outside the program heap)
-appended and the result is its address; or `g` itself if the result is 0
-(out of memory). This is "the GC preserves the abstraction" (it moves
-objects and rewrites every root: object-stack slots, globals; it keeps the
-frame records and the header, possibly moving or shrinking the Stack
-object) plus "allocation appends exactly one object". The save before and
-the reload after are proven (`Machine::save`, `alloc::reload`). The other
-four state the same about the views, with the spec's object (double), the
-spec's raise completion (heap extended by the trace, `exception_obj2`
-appended, `prim::raised`), the unchanged state with room (stack growth),
-or one of the spec's PRIMITIVE completions (`theorem::completion`).
+appended, and the result is its address; or `g2` itself if the result is
+0 (out of memory). A collection (`toit_spec::v2::gc::collection`, the
+spec's statement of what a collector may do; `gc_steps` is any number of
+them, none when the heap's epoch is unchanged) is weak processing (maps
+reset, values of maps' backings nulled, as
+`WeakMapFinalizerNode::weak_processing` does) followed by a compaction:
+a live set that holds the roots of the state (object stack, globals, the
+running task) and is closed under references survives, garbage
+disappears, the live objects are renumbered `0..n` with their references
+renamed, the program heap and the program's constants keep their ids,
+and nothing else changes (frames, handlers, finally records, bci). The
+collector moves objects and rewrites every root (object-stack slots,
+globals; it keeps the frame records and the header, possibly moving or
+shrinking the Stack object); allocation appends exactly one object.
+Before stage 0 of the collector plan (OBLIGATIONS.md, "The collector")
+these contracts said the views represent `g` itself: false for a
+collector that frees memory (the model's ids would grow without bound
+past the `small` bound) and for programs with weak maps. The save before
+and the reload after are proven (`Machine::save`, `alloc::reload`). The
+other four state the same about the views, with the spec's object
+(double), the spec's raise completion (heap extended by the trace,
+`exception_obj2` appended, `prim::raised`, whose completions may collect
+first: `prim::raised_gc`), the collected state with room (stack growth,
+`step::grow_post`), or one of the spec's PRIMITIVE completions of the
+collected state (`theorem::completion`).
 
 `toit_v2_run` builds the program view from the context
 `Interpreter::run_v2` fills and checks the table sizes it relies on
@@ -1571,12 +1587,12 @@ These are all the assumptions it rests on, besides sections 1 to 5:
 | Contract | Where | Statement | Discharged by |
 |---|---|---|---|
 | Loader | `theorem::loaded`, `ffi::toit_v2_run` (`Ghost::assume_new` of `ap`, `cert`, `trusted`), `ffi::Accepted` | the program tables are an abstract program `ap` the verifier accepts with certificate `cert` (`accepts`), its heap and globals satisfy `loaded_ok`, and the first task encodes `initial_state` | the runtime fact: verified/vmverify accepted (`check::verify == accepts`, `x_loaded_ok == loaded_ok`) the program on exactly the `V2MethodTable` the process runs (`V2MethodTable::verified`, set only by `V2Verifier::verify`'s accept path, or by `V2Verifier::accept_recorded` for the table spawn decodes from a flash allocation with the install-time verdict or a host verdict-cache entry: the allocation's header checksum covers the verified bytes, verified/vmverify/README.md "Where it runs"; TRUSTED: that binding, `V2MethodTable::compute` being deterministic in the bytes); `Interpreter::run_v2` then writes `TOIT_V2_ACCEPTED` and `toit_v2_run` builds the `Accepted` token (private field), which `step::run_loop` requires, so the verified loop cannot be entered otherwise. TRUSTED: the conversion verified/vmverify/src/from_vm.rs, `prepare_process_v2` (initial frames) and `toit_v2_run` filling `Program` from the same tables |
-| Between runs | `theorem::resumed`, `machine::run` (`Ghost::assume_new` of `g`) | the scheduler resumes a preempted or yielded task in the state it saved; GC between runs moves objects but preserves the abstraction | C++ scheduler and GC (trusted); `reload` re-checks the Stack header's shape |
+| Between runs | `theorem::resumed`, `machine::run` (`Ghost::assume_new` of `g`) | the scheduler resumes a preempted or yielded task in the state it saved, after collections (`toit_spec::v2::gc::gc_steps`: the GC of the process may run while it is suspended) | C++ scheduler and GC (trusted); `reload` re-checks the Stack header's shape |
 | Heap model integrity | `abs::heap_model_ok`, `Machine::refines`, TRUSTED V2, V5 | one distinct tagged address per object; class tag and body agree; read-only objects are exactly those in the program-heap range | the GC, the allocators and the C++ primitives maintain it |
-| Allocation | `alloc::gc_allocate_instance`, `alloc::gc_allocate_double` | the views represent the state with exactly the spec's new object appended, or the state itself (out of memory) | `toit_v2_allocate_instance`/`_double` and the GC |
-| Raise | `raise::gc_allocate_exception` | the views represent the state with the heap extended (`prim::heap_extended`: the trace) and `exception_obj2(value, trace)` appended, or only extended (out of memory): `prim::raised` | `toit_v2_allocate_exception` (`ProgramOrientedEncoder`, `allocate_byte_array`, `allocate_instance`) and the GC |
-| Stack growth | `step::gc_grow_stack` | the views represent the same state, with `needed` free words on success | `toit_v2_grow_stack`, `Stack::v2_copy_to`, the GC |
-| Primitives | `primitive::gc_call_primitive` | the status, result and resulting state are one of the spec's completions of the PRIMITIVE step (`theorem::completion`): `prim_spec` (the default contract, and for the core module the precise contracts of `prim_core::core_contract` and the three examples of `prim.rs`, for arguments without block references) for each C++ primitive the policy resolves, `task_step` for task_new/task_transfer | NOT discharged per C++ primitive (section 8 lists the reviewed ones; the precise contracts of the ported indices are validated against the C++ by verified/core/tests/prim_diff.sh). The Rust ports (`prims::call`, run by `primitive::op_rust_primitive`) are proven: their outcome is a completion (`primitive::lemma_completion`), no leaf contract |
+| Allocation | `alloc::gc_allocate_instance`, `alloc::gc_allocate_double` | the views represent a state that collections reach from the one before (`gc_steps`) with exactly the spec's new object appended, or that state itself (out of memory) (`alloc::gc_alloc_post`) | `toit_v2_allocate_instance`/`_double` and the GC |
+| Raise | `raise::gc_allocate_exception` | the views represent a state that collections reach from the one before (`gc_steps`) with the heap extended (`prim::heap_extended`: the trace) and `exception_obj2(value, trace)` appended, or only extended (out of memory): `prim::raised` | `toit_v2_allocate_exception` (`ProgramOrientedEncoder`, `allocate_byte_array`, `allocate_instance`) and the GC |
+| Stack growth | `step::gc_grow_stack` | the views represent a state that collections reach from the one before (`gc_steps`), with `needed` free words on success (`step::grow_post`) | `toit_v2_grow_stack`, `Stack::v2_copy_to`, the GC |
+| Primitives | `primitive::gc_call_primitive` | after collections (`gc_steps`, the GCs between the attempts of a call that ran out of memory), the status, result and resulting state are one of the spec's completions of the PRIMITIVE step from the collected state (`theorem::completion`): `prim_spec` (the default contract, and for the core module the precise contracts of `prim_core::core_contract` and the three examples of `prim.rs`, for arguments without block references) for each C++ primitive the policy resolves, `task_step` for task_new/task_transfer | NOT discharged per C++ primitive (section 8 lists the reviewed ones; the precise contracts of the ported indices are validated against the C++ by verified/core/tests/prim_diff.sh). The Rust ports (`prims::call`, run by `primitive::op_rust_primitive`) are proven: their outcome is a completion (`primitive::lemma_completion`), no leaf contract |
 | Floating point | spec crate: `x_double_add/sub/mul` | host IEEE-754 arithmetic implements the spec's uninterpreted functions | as format 1 (shared code) |
 | Word size | `abs.rs` `global size_of usize == 8` (`target_pointer_width = "64"`) or `== 4` (`"32"`); the cfg'd constants of layout.rs; `abs::MAX_BLOB_LENGTH` | usize is the target's word; byte lengths of the heap model are below 2^62 (64-bit) or 2^30 (32-bit) | compile-time assertion in the erased build (and in Verus' own build for the target: verified/check.sh verifies both widths, the 32-bit one with `--target i686-unknown-linux-gnu`); layout constants by verified/layout_check.cc on each build; the blob bound by the heap model (lengths are non-negative words; a 32-bit address space holds no 1 GB object) |
 | Termination | `run_loop` `exec_allows_no_decreases_clause` | none claimed: a program may run forever (the scheduler preempts it) | nothing to discharge |

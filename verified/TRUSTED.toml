@@ -38,7 +38,7 @@ file = "src/alloc.rs"
 item = "gc_allocate_double"
 kind = "external_body"
 count = 1
-justification = "ASSUMED: toit_v2_allocate_double (may GC) keeps the abstract state the stack, header, globals and heap model represent and appends exactly the spec's double (spec_common::new_double) (or keeps it unchanged on out of memory); epoch unchanged implies nothing moved (the machine's fields and stack view stay); TRUSTED.md, GC and allocation, Epoch."
+justification = "ASSUMED: toit_v2_allocate_double (may GC): the stack, header, globals and heap model represent a state that collections reach from the one before (toit_spec::v2::gc::gc_steps: garbage gone, live objects renumbered, weak maps processed) with exactly the spec's double (spec_common::new_double) appended (or nothing on out of memory) (alloc::gc_alloc_post); epoch unchanged implies no collection and nothing moved (the machine's fields and stack view stay); TRUSTED.md, GC and allocation, Epoch."
 
 [[trusted]]
 crate = "core"
@@ -46,7 +46,7 @@ file = "src/alloc.rs"
 item = "gc_allocate_instance"
 kind = "external_body"
 count = 1
-justification = "ASSUMED: toit_v2_allocate_instance (may GC) keeps the abstract state the stack, header, globals and heap model represent and appends exactly the spec's null-filled instance (or keeps it unchanged on out of memory); epoch unchanged implies nothing moved (the machine's fields and stack view stay); TRUSTED.md, GC and allocation, Epoch."
+justification = "ASSUMED: toit_v2_allocate_instance (may GC): the stack, header, globals and heap model represent a state that collections reach from the one before (toit_spec::v2::gc::gc_steps: garbage gone, live objects renumbered, weak maps processed) with exactly the spec's null-filled instance appended (or nothing on out of memory) (alloc::gc_alloc_post); epoch unchanged implies no collection and nothing moved (the machine's fields and stack view stay); TRUSTED.md, GC and allocation, Epoch."
 
 [[trusted]]
 crate = "core"
@@ -606,7 +606,7 @@ file = "src/primitive.rs"
 item = "gc_call_primitive"
 kind = "external_body"
 count = 1
-justification = "ASSUMED: toit_v2_primitive (may GC, may switch the task; ABSENT without effect when the policy has no such primitive of the method's arity) ends in one of the spec's completions of the step (theorem::completion: prim_default/prim_spec for every C++ primitive of the policy, task_step for task_new/task_transfer); and the epoch contract: epoch unchanged implies no object moved and the task and its stack object are the same (the machine's fields and stack view stay, the state is the step's with a new heap); TRUSTED.md, Primitives and Epoch."
+justification = "ASSUMED: toit_v2_primitive (may GC, may switch the task; ABSENT without effect when the policy has no such primitive of the method's arity) ends, after collections (toit_spec::v2::gc::gc_steps, none when the epoch is unchanged), in one of the spec's completions of the step from the collected state (theorem::completion: prim_default/prim_spec for every C++ primitive of the policy, task_step for task_new/task_transfer); and the epoch contract: epoch unchanged implies no object moved and the task and its stack object are the same (the machine's fields and stack view stay, the state is the step's with a new heap); TRUSTED.md, Primitives and Epoch."
 
 [[trusted]]
 crate = "core"
@@ -702,7 +702,7 @@ file = "src/raise.rs"
 item = "gc_allocate_exception"
 kind = "external_body"
 count = 1
-justification = "ASSUMED: toit_v2_allocate_exception (may GC) keeps the abstract state the views represent, extends the heap by the encoded trace (prim::heap_extended) and appends exactly spec::exception_obj2(value, trace), or only extends the heap on out of memory: the spec's raise completion (prim::raised); TRUSTED.md, GC and allocation."
+justification = "ASSUMED: toit_v2_allocate_exception (may GC): the views represent a state that collections reach from the one before (toit_spec::v2::gc::gc_steps; the value, a smi or program-heap object, keeps its id), its heap extended by the encoded trace (prim::heap_extended) and appends exactly spec::exception_obj2(value, trace), or only extends the heap on out of memory: the spec's raise completion (prim::raised); TRUSTED.md, GC and allocation."
 
 [[trusted]]
 crate = "core"
@@ -710,7 +710,7 @@ file = "src/step.rs"
 item = "gc_grow_stack"
 kind = "external_body"
 count = 1
-justification = "ASSUMED: toit_v2_grow_stack (may GC) leaves the views representing the same abstract state (records copied, object stack moved, roots updated by the GC) and, on V2_OK, at least `needed` free words; TRUSTED.md, GC and stack growth."
+justification = "ASSUMED: toit_v2_grow_stack (may GC) leaves the views representing a state that collections reach from the one before (toit_spec::v2::gc::gc_steps; records copied, object stack moved, roots updated by the GC; step::grow_post) and, on V2_OK, at least `needed` free words; TRUSTED.md, GC and stack growth."
 
 [[trusted]]
 crate = "core"
