@@ -18,7 +18,7 @@ permissions (section 1). What remains, all of it:
 | Aligned load | `Table::u16_at_even` (a method header's u16 field, format note 21) | one 16-bit load of two bytes the table's permissions cover, at an even address (`Table::even`, checked at entry), is their little-endian combination (`u16::from_le`) |
 | Rust and target semantics | the `assume_specification`s of `pointer::wrapping_add` and `wrapping_offset`; `global size_of usize`, `size_of u8` (compile-time checked) | wrapping address arithmetic keeps the provenance; the word size |
 | vstd | `raw_ptr` axioms (`PointsTo`, `ptr_ref`, `ptr_mut_write`, `with_exposed_provenance`, `IsExposed`), `Map`, `Seq` | Verus' own trusted base. Note: a `PointsTo` grants writing; program-heap objects (read-only memory) get permissions too, and every verified write requires `!ro` (`set_field`, `set_element`, `content_*` with `writable`, `set_byte_at`, `set_string_hash_field`) |
-| Not memory | `Preemption::{word, clear, request}` (the scheduler's watermark, environment nondeterminism), `proven_unreachable`, `step::split_loop` (the loop configuration, no contract: both values verified), the loader's and scheduler's `assume_new`s (section 6), the epoch (section 9), floating point (`prims/fp.rs`, the spec's uninterpreted float functions), `Accepted::trusted_program`, the semispace ownership and page metadata (`Runtime::allocation_window`, `inline_page_metadata`, section 9) | sections 6, 8, 9 |
+| Not memory | `Preemption::{word, clear, request}` (the scheduler's watermark, environment nondeterminism), `proven_unreachable`, the loader's and scheduler's `assume_new`s (section 6), the epoch (section 9), floating point (`prims/fp.rs`, the spec's uninterpreted float functions), `Accepted::trusted_program`, the semispace ownership and page metadata (`Runtime::allocation_window`, `inline_page_metadata`, section 9) | sections 6, 8, 9 |
 | The checked loop (programs not accepted; not built on devices) | `machine.rs` (plain Rust), and its raw accessors `Heap::{header, word, word64, set_word, byte, set_byte, half_word_at}` (no ghost content: the checked loop is not verified, its run-time checks keep them in bounds) | section 4 |
 | Layout constants | src/layout.rs, checked against the C++ headers at build time (section 3) | |
 | FFI structs and trampolines | ffi.rs plain items, `cold!`, the `*_raw` trampolines | section 2, 4 |
@@ -1524,19 +1524,17 @@ the path. Its one use is the default arm of the verified dispatch
 check), which removes the range check before the jump table. It assumes
 nothing about the VM; it is wrong only if Verus' proof of the caller is.
 
-`step::split_loop` (performance, branch core/call-speed-size) is an
-external_body function without a contract whose body is
-`cfg!(target_os = "none")`: true on devices, false on hosts. On devices
-the handlers of the rare opcodes (`step::cold_op`) leave the run loop and
-run through its one slow-path call site in `step_cold` (flash), so that
-the hot part (`step::run_loop`, placed in IRAM) stays small; on hosts
-every handler stays in the loop (the split costs 7 to 19 percent there).
-The dispatch tests `!split_loop()` in the guards of those arms, and
-`step_cold` requires `cold_op` of the current opcode and ensures the same
-`rpost` as the in-loop handlers (it calls `step_c`). Since Verus does not
-know the value, `step_r` is verified for both: either configuration is a
-completion of the spec's step. It assumes nothing about the VM or the
-program; a wrong value can only cost speed or IRAM.
+The split of the run loop (performance) is no longer trusted: it was the
+external_body function `step::split_loop` (`cfg!(target_os = "none")`,
+branch core/call-speed-size) until branch core/split-option made it the
+core's Cargo feature `split-loop` (Kconfig TOIT_VERIFIED_CORE_SPLIT_LOOP,
+default off). With the feature the arms of the rare opcodes
+(`step::cold_op`) are compiled out of `step_r` and one arm calls
+`step_cold` (which requires `cold_op` and ensures the same `rpost` as the
+in-loop handlers); without it `step_cold` does not exist. Both
+configurations are separate compilations that Verus verifies (check.sh:
+`core` and `core-split`, 64- and 32-bit words), so nothing is assumed
+about the configuration.
 
 ## 5. The spec
 
@@ -1594,7 +1592,6 @@ of the three header words the core uses (before: any word offset);
 | `pointer::wrapping_add`, `wrapping_offset` (`assume_specification`) | Rust's wrapping pointer arithmetic did not keep the provenance or did not wrap modulo the word size | the Rust reference (`wrapping_offset`: "the resulting pointer has the same provenance"); Miri semantics |
 | Card permissions at heap entry and GC transitions | the published bias must designate the live card table, with exclusive access to the bytes covering writable process objects while the core holds the view | `Heap::write_barrier` verifies the store and its effect on existing marks using those permissions. The checked loop uses its separate raw `Heap::set_word` path. |
 | `Table::u16_at_even` (aligned load) | the target's 16-bit load is not the little-endian combination of the two bytes, or the address is not 2-byte aligned (a load exception on Xtensa; `pre + (i + PRE)` not `ptr + i`) | `u16::from_le` (byte order), the aligned-address facts in `prog_rel` checked by the loader (`V2MethodTable::compute`, `toit_v2_run`), every call on devices (an unaligned load traps), the suites on the core |
-| `step::split_loop` | none for correctness (both values are verified); a host build with `target_os = "none"` would only run slower | performance measurements (PROGRESS.md, call-speed-size) |
 | `Heap::{header, word, word64, set_word, byte, set_byte, half_word_at}` | only the checked loop; a missing run-time check there reads outside an object | ASan with programs not accepted (runtime-hardening-test) |
 | `Preemption::*` | the watermark is not the interpreter's | tests that preempt (tests/sandbox scheduling tests) |
 | `Runtime::*` (FFI wrappers), `PrimitiveRef` | a wrapper forgets to replace the stack view after a GC | `TOIT_V2_VALIDATE`, ASan |

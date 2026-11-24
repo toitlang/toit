@@ -18,7 +18,7 @@
 # devices), from the sources as they are (no patching):
 #
 # - verified/spec without `std` (the verifier, no reference interpreter),
-# - verified/core (always `no_std`),
+# - verified/core (always `no_std`), with and without `split-loop`,
 # - verified/vmverify without `std`, with `device-runtime` (the allocator
 #   and panic handler the VM supplies, src/device.rs), as the static library
 #   device firmware links (Cargo profile `device`: panic = abort, LTO),
@@ -46,9 +46,15 @@ for t in "${TARGETS[@]}"; do
   (cd "$VERIFIED/spec" && cargo build --release --lib --no-default-features --target "$t" --target-dir "$WORK/spec-target")
   echo "== verified/core, no_std ($t)"
   (cd "$VERIFIED/core" && cargo build --release --lib --target "$t" --target-dir "$WORK/core-target")
+  echo "== verified/core, no_std, split loop ($t)"
+  (cd "$VERIFIED/core" && cargo build --release --lib --features split-loop --target "$t" --target-dir "$WORK/core-target")
   echo "== verified/vmverify, no_std, device runtime ($t)"
   (cd "$VERIFIED/vmverify/staticlib" && cargo build --profile device --lib --no-default-features --features device-runtime \
       --target "$t" --target-dir "$WORK/vmverify-target")
   ls -la "$WORK/vmverify-target/$t/device/libtoit_rust.a"
+  echo "== verified/vmverify, no_std, device runtime, split loop ($t)"
+  (cd "$VERIFIED/vmverify/staticlib" && cargo build --profile device --lib --no-default-features --features device-runtime,split-loop \
+      --target "$t" --target-dir "$WORK/vmverify-target")
+  ls -la "$WORK/vmverify-target/$t/device/libtoit_rust.a"
 done
-echo "no_std build passed: spec, core and vmverify (device static library) for ${TARGETS[*]}"
+echo "no_std build passed: spec, core and vmverify (device static library), whole and split loop, for ${TARGETS[*]}"
