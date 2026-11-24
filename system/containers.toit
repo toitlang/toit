@@ -377,6 +377,11 @@ class ContainerManager extends ContainerServiceProvider implements SystemMessage
 
   system-image_/ContainerImage? := null
   done_ ::= monitor.Latch
+  // Set while boot (boot.toit) starts the boot containers one after the
+  // other: a container that is refused or stops meanwhile must not end the
+  // system before the others are started (see $end-boot).
+  booting_/bool := false
+  postponed_/bool := false  // A check was skipped while booting.
 
   constructor .image-registry .service-manager_:
     service-manager_.may-provide-services = :: | gid/int |
@@ -445,8 +450,23 @@ class ContainerManager extends ContainerServiceProvider implements SystemMessage
     if container.critical:
       if not done_.has-value: done_.set 1
       return
+    if booting_:
+      postponed_ = true
+      return
     remaining ::= containers-by-id_.size
     if remaining <= 1 and not done_.has-value: done_.set 0
+
+  /** Called by boot before it starts the boot containers. */
+  start-boot -> none:
+    booting_ = true
+
+  /**
+  Called by boot after it has started (or tried to start) every boot
+    container: the system is done if none of them is running.
+  */
+  end-boot -> none:
+    booting_ = false
+    if postponed_ and containers-by-id_.size <= 1 and not done_.has-value: done_.set 0
 
   on-container-stop_ container/Container error/int -> none:
     containers-by-id_.remove container.id
@@ -458,6 +478,9 @@ class ContainerManager extends ContainerServiceProvider implements SystemMessage
     // TODO(kasper): We are supposed to always have a running system process. Maybe
     // we can generalize this handling and support background processes that do not
     // restrict us from exiting?
+    if booting_:
+      postponed_ = true
+      return
     remaining ::= containers-by-id_.size
     if remaining <= 1 and not done_.has-value: done_.set 0
 
