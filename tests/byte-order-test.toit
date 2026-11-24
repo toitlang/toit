@@ -110,6 +110,16 @@ test-exception:
   expect-equals 0 big[1]  // No change.
   put-primitive-be unused big 9 1 42  // Write uint72, not handled by primitive.
   expect-equals 0 big[1]  // No change.
+  put-primitive-le unused big 9 1 -1  // Write uint72, not handled by primitive.
+  put-primitive-be unused big 9 1 -1  // Write uint72, not handled by primitive.
+  expect-equals (ByteArray 16) big  // No change.
+
+  // The fallback code writes 0 for the bits above the 64-bit value.
+  nine := ByteArray 9
+  BIG-ENDIAN.put-uint nine 9 0 -1
+  expect-equals #[0, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff] nine
+  LITTLE-ENDIAN.put-uint nine 9 0 -1
+  expect-equals #[0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0] nine
 
   huge := ByteArray 4096
   expect-throws: LITTLE-ENDIAN.put-int16 huge 0x3fff_ffff 0
