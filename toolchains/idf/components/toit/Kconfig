@@ -302,15 +302,17 @@ menu "Toit"
             by 30-100 % (f1 and f2 alike) when unrelated code changed size,
             and the install-time verification by 25 %. The default list
             (hot_flash_functions.txt) is the run time's flash code with the
-            largest time share per byte, 14 KB of code per bytecode format
-            (one cache way), then the whole verifier. Over four builds with
-            the code shifted by up to 11 KB the spread of most benchmarks
-            drops to a few percent and the verification takes 0.63-0.69 s
-            instead of 0.84-1.05 s (a 25 KB program); what still moves is
-            where the program images and rodata fall against this code
+            most cache misses and the largest time share per byte, 14 KB of
+            code per bytecode format (one cache way), then the whole
+            verifier. Over four builds with the code shifted by up to 11 KB
+            the spread of most format-2 benchmarks drops to 0.2-5 % (from
+            up to 78 %) and the verification of a 25 KB program takes
+            0.78-0.86 s instead of 0.84-1.05 s; what still moves is where
+            the program images and rodata fall against this code, and the
+            executed code that is not in the list
             (verified/core/PROGRESS.md, "Flash layout on the classic
-            ESP32"). Costs no flash beyond alignment; the other chips have
-            larger, more associative caches and keep it off.
+            ESP32"). Costs no flash; the other chips have larger, more
+            associative caches and keep it off.
 
     config TOIT_HOT_FLASH_FUNCTIONS
         string "Hot flash functions, in order"

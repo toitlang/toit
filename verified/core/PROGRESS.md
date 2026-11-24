@@ -1,5 +1,50 @@
 # Phase 4a progress (verified core, format 2 on x86-64)
 
+## Flash layout on the classic ESP32 (branch device/esp32-layout, 2026-11-24)
+
+Base ea78a719. Measurements and scripts:
+/home/flo/work/opentoit-sandbox-artifacts/esp32-layout/README.md.
+
+- Mechanism. The classic ESP32's flash cache is 32 KB per CPU, two-way
+  set-associative, 32-byte lines (TRM 3.3.4), in front of code, literals,
+  rodata and the program images alike; addresses equal modulo 16 KB
+  compete. New measurement option `TOIT_HW_PERF_STALL_SAMPLES`: the
+  performance monitor interrupts every 1,021 flash-busy stall cycles (or
+  12,007 cycles) and records the latched PC. The same code, data and work
+  fits the cache in one layout and misses in another (yield-2k: 0.3 M vs
+  11 M stall cycles per run; 47 % of the misses in one set holding
+  `Locker::enter` and FreeRTOS `xQueueSemaphoreTake` plus a data line):
+  conflict misses. The PAD method moves code against data only;
+  real changes also move code against code.
+- `TOIT_PIN_HOT_FLASH_CODE` (default y on the classic ESP32): an output
+  section inserted before `.flash.text` (at 0x400d0020) holds the functions
+  of toolchains/idf/components/toit/hot_flash_functions.txt in order, each
+  with its literals: group A, the run time's flash code with the largest
+  time share per byte, 14 KB of code per bytecode format (one cache way);
+  group B, the whole verifier (toit_vmverify + toit_spec, 31 KB). The
+  generated script goes right before ESP-IDF's sections.ld on the link line
+  (`toit_postprocess`); no ESP-IDF change.
+- `TOIT_VERIFIED_CORE_IRAM_FUNCTIONS` (classic ESP32) redone from cycle
+  samples with the flash code pinned: `step::slow`/`slow_body` (4.4 KB,
+  0.02 % of the time) out; ret_try_v, large_loc, probe_x, hf_at_x,
+  reload_cold, unwind_resume_v, cxx_primitive_rest, blob_arg and the
+  string/number helpers in; about 1.7 KB of IRAM free (TOIT_HW_PERF builds
+  need 0.9 KB).
+- Results (four builds with the code shifted by 0-11 KB, mean, spread
+  before -> after): format 2 rpc-200 681 (15 %) -> 460 ms (15 %), tasks-1k
+  396 (28 %) -> 244 (0.2 %), yield-2k 31.5 (75 %) -> 25.1 (0.2 %), tison-2k
+  78 (49 %) -> 61 (1.6 %), interp-1k 15.8 (78 %) -> 11.5 (1.2 %), json
+  (hwbench) 369 (18 %) -> 256 (2.5 %), map-set 174 (26 %) -> 132 (0.6 %);
+  strings still 14-18 %. f2/f1 rpc-200 1.12 (measure-3 1.38), yield 1.05
+  (1.18). Format 1 with its own list: most spreads drop too (yield 79 ->
+  1 %, interp 87 -> 2 %), tasks-1k, json-encode, set-str and tison still
+  swing. Verification (25 KB program) 0.78-0.86 s (0.84-1.05 before);
+  device suite unchanged. With the rodata and the program images shifted
+  instead (code fixed) format 2 stays steadier than before except
+  tasks-1k (38 %).
+- Not changed: the C6/S3 defaults (pinning off, their IRAM lists), the
+  core's Rust code (no proof or trust change), the ESP-IDF submodule.
+
 ## The collector in the model, stage 0 (branch gc/stage0-spec, 2026-11-24)
 
 Base c5ee1c2c (wip/collector-proofs). Plan and pilot:
