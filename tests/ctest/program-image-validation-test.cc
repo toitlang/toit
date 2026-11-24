@@ -282,6 +282,20 @@ static void test_layout(Fixture* f) {
                  [&]() { literals[last] = saved_last; });
 }
 
+static bool has_objects_of_class(Fixture* f, Smi* class_id) {
+  Program* program = f->program;
+  for (auto block : program->heap_.blocks_) {
+    uword p = reinterpret_cast<uword>(block->base());
+    uword top = reinterpret_cast<uword>(block->top());
+    while (p < top) {
+      HeapObject* object = HeapObject::from_address(p);
+      if (object->class_id() == class_id) return true;
+      p += object->size(program);
+    }
+  }
+  return false;
+}
+
 // Format 2: the builtin classes have the tags and the fields the C++ VM
 // assumes, and the builtin roots their kinds
 // (V2Verifier::builtin_classes_error). A program brings its own core
@@ -310,7 +324,8 @@ static void test_builtin_classes(Fixture* f) {
   // these classes differently and leaves them to the primitives is refused
   // only by the builtin check. Here: the stack, large-integer and smi
   // classes, which no Toit code allocates or reads fields of (before the
-  // builtin check the verifier accepted these three edits).
+  // builtin check the verifier accepted these edits; on 32-bit hosts the
+  // fixture's heap has large integers, so the heap check refuses that one).
   int named = 0;
   int total = 0;
   bool by_builtin_check[Program::BUILTIN_CLASS_IDS_COUNT] = { false };
@@ -346,9 +361,9 @@ static void test_builtin_classes(Fixture* f) {
   char counts[64];
   snprintf(counts, sizeof(counts), "%d of %d edits", named, total);
   printf("builtin classes: %s refused by the builtin check\n", counts);
-  expect(by_builtin_check[Program::stack_class_id_INDEX] &&
-         by_builtin_check[Program::large_integer_class_id_INDEX] &&
-         by_builtin_check[Program::smi_class_id_INDEX],
+  expect(by_builtin_check[Program::stack_class_id_INDEX] && by_builtin_check[Program::smi_class_id_INDEX] &&
+         (by_builtin_check[Program::large_integer_class_id_INDEX] ||
+          has_objects_of_class(f, program->large_integer_class_id())),
          "another tag on the stack, large-integer and smi classes refused by the builtin check", counts, __LINE__);
 
   // The roots the C++ reads without checks.
