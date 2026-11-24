@@ -332,6 +332,18 @@ lemma void same_obj_kept(list<void *> objs, fixpoint(void *, oinfo) H, fixpoint(
   forall_mem(o, objs, (same_obj)(H, H2));
 }
 
+lemma void same_obj_trans(list<void *> objs, fixpoint(void *, oinfo) H, list<void *> objs1, fixpoint(void *, oinfo) H1, fixpoint(void *, oinfo) H2)
+  requires forall(objs, (same_obj)(H, H1)) == true &*& subset(objs, objs1) == true &*& forall(objs1, (same_obj)(H1, H2)) == true;
+  ensures forall(objs, (same_obj)(H, H2)) == true;
+{
+  switch (objs) {
+    case nil:
+    case cons(x, xs0):
+      forall_mem(x, objs1, (same_obj)(H1, H2));
+      same_obj_trans(xs0, H, objs1, H1, H2);
+  }
+}
+
 // The other objects after a field write: unchanged.
 lemma void heap_rest_put(list<void *> xs, list<void *> objs, fixpoint(void *, oinfo) H, void *o, int index, void *v)
   requires foreach(xs, heap_obj(objs, H)) &*& mem(o, xs) == false;
@@ -477,7 +489,7 @@ Smi *HeapObject_header(HeapObject *self)
 // C++: src/objects.h toit::HeapObject::class_id
 Smi *HeapObject_class_id(HeapObject *self)
 //@ requires [?f]heap(?objs, ?H) &*& mem(self, objs) == true;
-//@ ensures [f]heap(objs, H) &*& result == smi_ptr(header_cid(o_hw(H(self)))) &*& 0 <= header_cid(o_hw(H(self))) &*& header_cid(o_hw(H(self))) < 1024 &*& is_smi_w((uword)result) && smi_val((uword)result) == header_cid(o_hw(H(self)));
+//@ ensures [f]heap(objs, H) &*& result == smi_ptr(header_cid(o_hw(H(self)))) &*& 0 <= header_cid(o_hw(H(self))) &*& header_cid(o_hw(H(self))) < MAX_CLASS_IDS &*& is_smi_w((uword)result) && smi_val((uword)result) == header_cid(o_hw(H(self)));
 {
   //@ heap_open(self);
   //@ uword hw = o_hw(H(self));
@@ -675,7 +687,7 @@ TypeTag HeapObject_class_tag(HeapObject *self)
   //@ shiftright_div(smi_val(hw), zero);
   //@ div_rem_nonneg_unique(smi_val(hw), 1, smi_val(hw), 0);
   //@ bitand_limits(hw / 2, 15, N4);
-  //@ Z value = int_of_Z_of_uintN(hw / 2, N16);
+  //@ Z value = int_of_Z_of_uintN(hw / 2, N64);
   //@ Z mask = Zdigit(Zdigit(Zdigit(Zdigit(Zsign(false), true), true), true), true);
   //@ bitand_def(hw / 2, value, 15, mask);
   //@ bitand_def(hw, Zdigit(value, false), 30, Zdigit(mask, false));

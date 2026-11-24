@@ -346,7 +346,7 @@ static bool local_fields(int64 timestamp, TimeFields* fields)
 PRIMITIVE(time_info)
 /*@ requires [?fp]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
              pointer(__args, ?a0) &*& pointer(__args - 1, ?a1) &*& good(objs, a0) == true; @*/
-/*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+/*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*& grows(objs, H, objs2, H2) == true &*&
             pointer(__args, a0) &*& pointer(__args - 1, a1); @*/
 {
   //@ grows_refl(objs, H);

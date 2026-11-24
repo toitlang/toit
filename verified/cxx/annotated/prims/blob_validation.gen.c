@@ -72,7 +72,7 @@ Object *primitive_byte_array_convert_to_string(Process *process, Object **__args
 /*@ requires [?fp]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
              pointer(__args, ?a0) &*& pointer(__args - 1, ?a1) &*& pointer(__args - 2, ?a2) &*&
              good(objs, a0) == true &*& good(objs, a1) == true &*& good(objs, a2) == true; @*/
-/*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+/*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*& grows(objs, H, objs2, H2) == true &*&
             pointer(__args, a0) &*& pointer(__args - 1, a1) &*& pointer(__args - 2, a2) &*& ((uword)result % 4 == 3 ?
               objs2 == objs && H2 == H &&
                 ((uword)result == 4 * Program_WRONG_BYTES_TYPE_INDEX + 3 ||
@@ -100,7 +100,7 @@ word fill_utf_16(Blob *input, ByteArray_Bytes *output);
 Object *primitive_string_to_utf_16(Process *process, Object **__args);
 /*@ requires [?fp]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
              pointer(__args, ?arg) &*& good(objs, arg) == true; @*/
-/*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+/*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*& grows(objs, H, objs2, H2) == true &*&
             pointer(__args, arg) &*& ((uword)result % 4 == 3 ?
               (uword)result == 4 * Program_WRONG_OBJECT_TYPE_INDEX + 3 ||
               (uword)result == 4 * Program_OUT_OF_BOUNDS_INDEX + 3 ||
@@ -128,7 +128,7 @@ bool fill_string_from_utf_16(Blob *input, String *destination);
 Object *primitive_utf_16_to_string(Process *process, Object **__args);
 /*@ requires [?fp]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
              pointer(__args, ?arg) &*& good(objs, arg) == true; @*/
-/*@ ensures [fp]process(process, prog, ids) &*& pointer(__args, arg) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+/*@ ensures [fp]process(process, prog, ids) &*& pointer(__args, arg) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*& grows(objs, H, objs2, H2) == true &*&
             ((uword)result % 4 == 3 ?
               (uword)result == 4 * Program_WRONG_BYTES_TYPE_INDEX + 3 ||
               (uword)result == 4 * Program_INVALID_ARGUMENT_INDEX + 3 ||
@@ -154,6 +154,7 @@ Object *primitive_byte_array_is_valid_string_content(Process *process, Object **
   //@ error_word(Program_WRONG_BYTES_TYPE_INDEX);
   //@ error_word(Program_OUT_OF_RANGE_INDEX);
   //@ error_word(Program_OUT_OF_BOUNDS_INDEX);
+  //@ truncate_signed_limits(smi_val((uword)a2), N31);
   Object *_raw_bytes = __args[-(0)];
   uninitialized_t_ctor(&_u_bytes);
   Blob_ctor__uninitialized_tp(&bytes, &_u_bytes);
@@ -203,7 +204,7 @@ Object *primitive_byte_array_convert_to_string(Process *process, Object **__args
 /*@ requires [?fp]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
              pointer(__args, ?a0) &*& pointer(__args - 1, ?a1) &*& pointer(__args - 2, ?a2) &*&
              good(objs, a0) == true &*& good(objs, a1) == true &*& good(objs, a2) == true; @*/
-/*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+/*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*& grows(objs, H, objs2, H2) == true &*&
             pointer(__args, a0) &*& pointer(__args - 1, a1) &*& pointer(__args - 2, a2) &*& ((uword)result % 4 == 3 ?
               objs2 == objs && H2 == H &&
                 ((uword)result == 4 * Program_WRONG_BYTES_TYPE_INDEX + 3 ||
@@ -226,6 +227,7 @@ Object *primitive_byte_array_convert_to_string(Process *process, Object **__args
   //@ error_word(Program_WRONG_BYTES_TYPE_INDEX);
   //@ error_word(Program_OUT_OF_RANGE_INDEX);
   //@ error_word(Program_OUT_OF_BOUNDS_INDEX);
+  //@ truncate_signed_limits(smi_val((uword)a2), N31);
   Object *_raw_bytes = __args[-(0)];
   uninitialized_t_ctor(&_u_bytes);
   Blob_ctor__uninitialized_tp(&bytes, &_u_bytes);
@@ -302,7 +304,7 @@ word fill_utf_16(Blob *input, ByteArray_Bytes *output)
 Object *primitive_string_to_utf_16(Process *process, Object **__args)
 /*@ requires [?fp]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
              pointer(__args, ?arg) &*& good(objs, arg) == true; @*/
-/*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+/*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*& grows(objs, H, objs2, H2) == true &*&
             pointer(__args, arg) &*& ((uword)result % 4 == 3 ?
               (uword)result == 4 * Program_WRONG_OBJECT_TYPE_INDEX + 3 ||
               (uword)result == 4 * Program_OUT_OF_BOUNDS_INDEX + 3 ||
@@ -404,7 +406,7 @@ bool fill_string_from_utf_16(Blob *input, String *destination)
 Object *primitive_utf_16_to_string(Process *process, Object **__args)
 /*@ requires [?fp]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
              pointer(__args, ?arg) &*& good(objs, arg) == true; @*/
-/*@ ensures [fp]process(process, prog, ids) &*& pointer(__args, arg) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+/*@ ensures [fp]process(process, prog, ids) &*& pointer(__args, arg) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*& grows(objs, H, objs2, H2) == true &*&
             ((uword)result % 4 == 3 ?
               (uword)result == 4 * Program_WRONG_BYTES_TYPE_INDEX + 3 ||
               (uword)result == 4 * Program_INVALID_ARGUMENT_INDEX + 3 ||

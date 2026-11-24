@@ -1981,7 +1981,7 @@ entry radix                 pass "" decoder/radix.c -allow_dead_code -prover z3v
 # The length checks before the inline copies: the copy leaves the input.
 mutant decoder-string-length decoder/message_decoder.render src/messaging.cc "result (63|31)\)\) cap" "$DEC_OPTS" \
   "MessageDecoder::decode_string(bool inlined)@@if (length < 0 || length > remaining()) return mark_malformed();" "if (length < 0) return mark_malformed();"
-mutant decoder-byte-array-length decoder/message_decoder.render src/messaging.cc "1073741823" "$DEC_OPTS" \
+mutant decoder-byte-array-length decoder/message_decoder.render src/messaging.cc "1073741823|div 18446744073709551615 4|div 4294967295 4" "$DEC_OPTS" \
   "MessageDecoder::decode_byte_array(bool inlined)@@if (length < 0 || length > remaining()) return mark_malformed();" "if (length < 0) return mark_malformed();"
 # The length checks before the array and map allocations: an allocation
 # larger than the input left.
@@ -2088,6 +2088,11 @@ mutant finalizer-primitives-duplicate prims/finalizers.render src/primitive_core
   "if (already_active) FAIL(ALREADY_EXISTS);" "if (!already_active) FAIL(ALREADY_EXISTS);"
 mutant finalizer-primitives-allocation prims/finalizers.render src/primitive_core.cc "Cannot prove" "-prover z3v4.5" \
   "finalizer, make_weak)) FAIL(MALLOC_FAILED);" "finalizer, make_weak)) FAIL(ALREADY_EXISTS);"
+# The retry obligation (CONTRACTS.toml [prim_retry], `oom_clean`): an
+# out-of-memory error after the finalizer is registered and the header
+# flag set (the call after the GC would find it registered).
+mutant finalizer-primitives-oom-after-effect prims/finalizers.render src/primitive_core.cc "oom_clean" "-prover z3v4.5" \
+  "PRIMITIVE(add_finalizer)@@  return process->null_object();" "  FAIL(MALLOC_FAILED);"
 mutant finalizer-primitives-header model/byte_array_ownership.render src/objects.h "Cannot prove" "-prover z3v4.5" \
   "if (has_forwarding_address()) {\n      target = forwarding_address();" "if (false) {\n      target = forwarding_address();"
 mutant finalizer-primitives-node-kind prims/finalizers.render src/heap.cc "Cannot prove" "-prover z3v4.5" \
@@ -2237,6 +2242,22 @@ mutant ffi-allocate-retries ffi/interpreter_v2.render src/interpreter_v2.cc "att
   "  for (int attempts = 1; result == null; attempts++)" \
   "SIDECAR::lambda=toit_v2_allocate_double@@  for (int attempts = 1; result == null && attempts < 4; attempts++)" \
   "  for (int attempts = 1; result == null; attempts++)"
+# The core's string allocation with wave 6's check (lengths up to
+# INTPTR_MAX, at which Process::allocate_string's `length + 1` overflowed):
+# the check's own conversion fails first (a length above INTPTR_MAX as a
+# word: implementation-defined).
+mutant ffi-allocate-string-bound ffi/interpreter_v2.render src/interpreter_v2.cc "MAX_BLOB|4611686018427387903|1073741823|Cannot prove" "$FFI_OPTS" \
+  "SOURCE::  if (length > V2_MAX_BLOB_LENGTH) return 0;\n  return reinterpret_cast<uword>(v2_process(raw_process)->allocate_string(length));" \
+  "  if (static_cast<word>(length) < 0) return 0;\n  return reinterpret_cast<uword>(v2_process(raw_process)->allocate_string(length));" \
+  "SIDECAR::  if (length > V2_MAX_BLOB_LENGTH)\n  //@ close allocated" \
+  "  if (static_cast<word>(length) < 0)\n  //@ close allocated"
+# The same bound without the conversion (lengths up to INTPTR_MAX): the
+# allocator's blob bound (MAX_BLOB, the heap models') fails.
+mutant ffi-allocate-string-unbounded ffi/interpreter_v2.render src/interpreter_v2.cc "div 18446744073709551615 4|div 4294967295 4|4611686018427387903|1073741823" "$FFI_OPTS" \
+  "SOURCE::  if (length > V2_MAX_BLOB_LENGTH) return 0;\n  return reinterpret_cast<uword>(v2_process(raw_process)->allocate_string(length));" \
+  "  if (length > 2 * V2_MAX_BLOB_LENGTH + 1) return 0;\n  return reinterpret_cast<uword>(v2_process(raw_process)->allocate_string(length));" \
+  "SIDECAR::  if (length > V2_MAX_BLOB_LENGTH)\n  //@ close allocated" \
+  "  if (length > 2 * V2_MAX_BLOB_LENGTH + 1)\n  //@ close allocated"
 
 # The sender side of the external message handlers (wave 6): the ownership
 # of the encoded buffer and of the caller's data on every path.

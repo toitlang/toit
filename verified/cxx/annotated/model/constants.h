@@ -153,6 +153,9 @@
 #define TOIT_V2_PRIMITIVE_FAILURE ((uword)1)
 #define TOIT_V2_PRIMITIVE_THROW ((uword)2)
 #define TOIT_V2_PRIMITIVE_ABSENT ((uword)3)
+// src/interpreter_v2.cc: the longest blob the core's allocation makes, the
+// model's MAX_BLOB.
+#define V2_MAX_BLOB_LENGTH ((uword)(UINTPTR_MAX / 4))
 // src/flags.h: a debug flag, a constant in release builds (TOIT_DEPLOY,
 // the build the renderings are made for).
 #define Flags_primitives false

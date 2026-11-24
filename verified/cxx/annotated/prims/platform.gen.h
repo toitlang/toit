@@ -43,13 +43,13 @@ Object *Process_allocate_string_or_error__charp(Process *self, char *content);
 // C++: src/primitive_core.cc toit::primitive_platform
 Object *primitive_platform(Process *process, Object **__args);
 //@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H);
-/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*& grows(objs, H, objs2, H2) == true &*&
             string_copy_result(prog, objs, H, objs2, H2, result, 5) == true; @*/
 
 // C++: src/primitive_core.cc toit::primitive_architecture
 Object *primitive_architecture(Process *process, Object **__args);
 //@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H);
-/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*& grows(objs, H, objs2, H2) == true &*&
             string_copy_result(prog, objs, H, objs2, H2, result, sizeof(word) == 8 ? 6 : 3) == true; @*/
 
 #endif

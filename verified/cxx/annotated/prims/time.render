@@ -39,7 +39,7 @@ lemma void clock_array_words(Array *a)
 @render src/primitive_core.cc toit::primitive_time
 PRIMITIVE(time)
 //@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*& pointer(__args, ?arg);
-/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& pointer(__args, arg) &*&
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*& pointer(__args, arg) &*&
             grows(objs, H, objs2, H2) == true &*& (good(objs2, result) || (uword)result % 4 == 3); @*/
 {
   //@ grows_refl(objs, H);
@@ -61,7 +61,7 @@ PRIMITIVE(time)
 @render src/primitive_core.cc toit::primitive_get_real_time_clock
 PRIMITIVE(get_real_time_clock)
 //@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*& clock_sample(?ok, ?sec, ?nsec);
-/*@ ensures [f]process(process, prog, ids) &*& heap(?final_objs, ?final_H) &*& grows(objs, H, final_objs, final_H) == true &*&
+/*@ ensures [f]process(process, prog, ids) &*& heap(?final_objs, ?final_H) &*& oom_clean(objs, H, final_objs, final_H, result) == true &*& grows(objs, H, final_objs, final_H) == true &*&
             (((uword)result == 4 * Program_ALLOCATION_FAILED_INDEX + 3 && final_objs == objs && final_H == H) ||
              (!ok && (uword)result == 4 * Program_ERROR_INDEX + 3) ||
              (ok && (!smi_range(sec) || !smi_range(nsec)) && (uword)result == ((uword)root_allocation_failed(prog) | 3)) ||
@@ -82,6 +82,9 @@ PRIMITIVE(get_real_time_clock)
   Object* tv_sec = Primitive::integer(time.tv_sec, process);
   //@ assert heap(?objs2, ?H2);
   //@ grows_trans(objs, H, objs1, H1, objs2, H2);
+  // The objects before the call are unchanged through the second
+  // integer's allocation (oom_clean).
+  //@ if (objs2 != objs1) { subset_cons(result, objs); same_obj_trans(objs, H, objs1, H1, H2); }
   if (Primitive::is_error(tv_sec)) return tv_sec;
   Object* tv_nsec = Primitive::integer(time.tv_nsec, process);
   //@ assert heap(?objs3, ?H3);

@@ -9,14 +9,33 @@
 //@ #include "../model/arith.gh"
 
 /*@
+// A header's value as its five low bits over the rest (any width: the
+// model's class ids are not limited to 16-bit headers since wave 7).
+lemma Z low_five_bits(int value)
+  requires 0 <= value &*& value <= 18446744073709551615;
+  ensures result == Zdigit(Zdigit(Zdigit(Zdigit(Zdigit(?high, ?b4), ?b3), ?b2), ?b1), ?b0) &*&
+          value == int_of_Z(result) &*& int_of_Z(high) == value / 32 &*& b4 == (value % 32 >= 16);
+{
+  div_rem_nonneg(value, 32);
+  int lo = value % 32;
+  Z high = int_of_Z_of_uintN(value / 32, N64);
+  div_rem_nonneg(lo, 2);
+  div_rem_nonneg(lo, 4);
+  div_rem_nonneg(lo, 8);
+  div_rem_nonneg(lo, 16);
+  switch (high) { case Zsign(s): case Zdigit(h0, hb): }
+  return Zdigit(Zdigit(Zdigit(Zdigit(Zdigit(high, lo >= 16), lo / 8 % 2 == 1), lo / 4 % 2 == 1), lo / 2 % 2 == 1), lo % 2 == 1);
+}
+
 lemma void finalizer_masks(int value)
-  requires 0 <= value &*& value < 32768;
+  requires 0 <= value &*& value <= 18446744073709551615;
   ensures (value | 16) == value + ((value & 16) == 0 ? 16 : 0) &*&
           (value & ~16) == value - ((value & 16) == 0 ? 0 : 16) &*&
-          0 <= (value | 16) &*& (value | 16) < 32768 &*&
-          0 <= (value & ~16) &*& (value & ~16) < 32768;
+          ((value & 16) == 0) == (value % 32 < 16);
 {
-  Z bits = Z_of_uint16(value);
+  Z bits = low_five_bits(value);
+  assert bits == Zdigit(Zdigit(Zdigit(Zdigit(Zdigit(?high, ?b4), ?b3), ?b2), ?b1), ?b0);
+  switch (high) { case Zsign(s): case Zdigit(h0, hb): }
   Z mask = Zdigit(Zdigit(Zdigit(Zdigit(Zdigit(Zsign(false), true), false), false), false), false);
   bitand_def(value, bits, 16, mask);
   bitor_def(value, bits, 16, mask);
@@ -35,7 +54,9 @@ lemma void flag_preserves_class(uword hw)
   div_rem_nonneg(hw, 2);
   int v = hw / 2;
   finalizer_masks(v);
-  Z bits = Z_of_uint16(v);
+  Z bits = low_five_bits(v);
+  assert bits == Zdigit(Zdigit(Zdigit(Zdigit(Zdigit(?high, ?b4), ?b3), ?b2), ?b1), ?b0);
+  switch (high) { case Zsign(s): case Zdigit(h0, hb): }
   Z flag = Zdigit(Zdigit(Zdigit(Zdigit(Zdigit(Zsign(false), true), false), false), false), false);
   Z tag = Zdigit(Zdigit(Zdigit(Zdigit(Zsign(false), true), true), true), true);
   bitnot_def(16, flag);
@@ -48,9 +69,7 @@ lemma void flag_preserves_class(uword hw)
   bitand_def(hw, original, 30, stored_tag);
   bitand_def(int_of_Z(set), set, 30, stored_tag);
   bitand_def(int_of_Z(clear), clear, 30, stored_tag);
-  Z_shiftright_div(original, N6);
-  Z_shiftright_div(set, N6);
-  Z_shiftright_div(clear, N6);
+  div_rem_nonneg(hw, 64);
 }
 
 fixpoint list<registration> without_key(list<registration> entries, void *key) {
@@ -285,7 +304,7 @@ Object *primitive_add_finalizer(Process *process, Object **__args);
              pointer(__args - 1, ?callback) &*& good(objs, key) == true &*& good(objs, callback) == true &*&
              registered_callbacks(process_heap_address(process), ?entries); @*/
 /*@ ensures [f]process(process, prog, ids) &*& pointer(__args, key) &*& pointer(__args - 1, callback) &*&
-            heap(objs, ?H2) &*& registered_callbacks(process_heap_address(process), ?after) &*&
+            heap(objs, ?H2) &*& oom_clean(objs, H, objs, H2, result) == true &*& registered_callbacks(process_heap_address(process), ?after) &*&
             addition_out(process, H, ids, key, callback, entries, H2, after, result) == true; @*/
 
 // C++: src/objects.h toit::RootCallback::do_root
@@ -507,7 +526,7 @@ Object *primitive_add_finalizer(Process *process, Object **__args)
              pointer(__args - 1, ?callback) &*& good(objs, key) == true &*& good(objs, callback) == true &*&
              registered_callbacks(process_heap_address(process), ?entries); @*/
 /*@ ensures [f]process(process, prog, ids) &*& pointer(__args, key) &*& pointer(__args - 1, callback) &*&
-            heap(objs, ?H2) &*& registered_callbacks(process_heap_address(process), ?after) &*&
+            heap(objs, ?H2) &*& oom_clean(objs, H, objs, H2, result) == true &*& registered_callbacks(process_heap_address(process), ?after) &*&
             addition_out(process, H, ids, key, callback, entries, H2, after, result) == true; @*/
 {
   //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);

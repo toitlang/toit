@@ -135,7 +135,7 @@ name = "prim_retry"
 rendering = "cxx/annotated/ffi/interpreter_v2.gen.c"
 requires = "prim_out(fn, a, b, e) == true &*& oom_error(prog, e) == true &*& vm_equiv(b, b2) == true &*& prim_out(fn, b2, c, r) == true"
 ensures = "prim_out(fn, a, c, r) == true"
-note = "The retry protocol of the C++ primitives (v2_primitive_failed, as Interpreter::run's): a call that failed for want of memory has no effect the spec sees, so the call after the GC is a completion of the original step. TRUSTED per primitive (TRUSTED.md section 8): each must allocate before it changes anything visible. Not stated on the Verus side, where gc_call_primitive's completion clause covers the whole C++ call: an assumption the C++ wrapper alone does not establish (README, wave 6)."
+note = "The retry protocol of the C++ primitives (v2_primitive_failed, as Interpreter::run's): a call that failed for want of memory has no effect the spec sees, so the call after the GC is a completion of the original step. Not stated on the Verus side, where gc_call_primitive's completion clause covers the whole C++ call: an assumption the C++ wrapper alone does not establish (README, wave 6). Wave 7 classified every primitive of the untrusted set ([prim_retry] below, checked by contract_check.toit). What is still assumed: (1) the composition itself, since prim_out is uninterpreted: a completion from a state that differs from a by garbage and a GC (gc_equiv, the GC's bridge) is a completion from a; (2) per primitive, that a failed call has no visible effect: PROVED for the 25 (b) primitives with evidence \"verifast\" (VeriFast, LP64 and ILP32: `oom_clean`, every object of the heap before the call unchanged after an error result, with the argument slots and the rest of what the contract owns; contract-only callees trusted as elsewhere; mutant finalizer-primitives-oom-after-effect), TESTED only for the 61 with evidence \"test\" (tests/ctest/prim-retry-test.cc: every allocation of one call per primitive made to fail in turn), REVIEWED for task_new and encode_error, and for the 62 (a) primitives (no allocation: a textual check of their bodies, not a proof that they never return an out-of-memory error)."
 
 [[contract]]
 name = "gc_grow_stack"
@@ -197,8 +197,8 @@ contract = "gc_allocate_instance"
 side = "requires"
 name = "class"
 verus = "c < env.p.ap@.class_bits.len()"
-verifast = "class_id < 1024"
-note = "A bound of the VeriFast model (header_ok: class ids below 1024), not of the C++, which takes any class id of the program; the Verus side bounds it by the program's class count. A gap for programs with more than 1024 classes (README, wave 6)."
+verifast = "class_id < MAX_CLASS_IDS"
+note = "The VeriFast model's class-id bound (header_ok): since wave 7 2^31 on 64-bit and 2^25 (every smi header) on 32-bit, not 1024 (wave 6's gap for programs with more than 1024 classes). A class id is an index of the program's class table, which the Verus side bounds it by; a table of 2^31 entries (4 GB) is in no image, so the clauses agree for every program."
 
 [[clause]]
 contract = "gc_allocate_instance"
@@ -513,7 +513,7 @@ verus_file = "core/src/ffi.rs"
 verus_fn = "string"
 cxx_fn = "toit_v2_try_allocate_string"
 rendering = "cxx/annotated/ffi/interpreter_v2.gen.c"
-status = "verified (VeriFast, LP64 and ILP32; wave 6) over the allocator's contract, for lengths up to the model's blob bound"
+status = "verified (VeriFast, LP64 and ILP32; wave 6) over the allocator's contract; since wave 7 for every length (no precondition, as the Verus side)"
 
 [[clause]]
 contract = "allocator_string"
@@ -522,14 +522,7 @@ name = "views"
 bridge = "heap"
 verus = ""
 verifast = "[?fp]process((Process *)raw_process, ?prog, ?ids) &*& heap(?objs, ?H)"
-
-[[clause]]
-contract = "allocator_string"
-side = "requires"
-name = "length"
-verus = "MISSING"
-verifast = "length <= MAX_BLOB"
-note = "The VeriFast model bounds a blob by 2^30 - 1 on ILP32 and INT_MAX on LP64. The Verus contract has no length precondition. ESBMC checks the native FFI entry and Process allocation path for every word-sized input with modeled heap constructors. Process::allocate_string rejects INTPTR_MAX before reserving a terminator. The abstract heap correspondence above MAX_BLOB remains open."
+note = "Wave 7: no length precondition on either side. The C++ returns 0 above V2_MAX_BLOB_LENGTH, the model's MAX_BLOB (2^62 - 1 on 64-bit, 2^30 - 1 on 32-bit, as the Verus heap model's MAX_BLOB_LENGTH; before, the VeriFast model bounded blobs by 2^30 - 1 on ILP32 and INT_MAX on LP64 and required `length <= MAX_BLOB`, a clause the Verus side lacked). The check also replaced `static_cast<word>(length) < 0`, which let INTPTR_MAX through to Process::allocate_string(word)'s `length + 1` (signed overflow; latent; Process::allocate_string now also rejects INTPTR_MAX itself). ESBMC checks the native FFI entry and Process allocation path for every word-sized input with modeled heap constructors (`process-blob-allocation`)."
 
 [[clause]]
 contract = "allocator_string"
@@ -553,7 +546,7 @@ verus_file = "core/src/ffi.rs"
 verus_fn = "byte_array"
 cxx_fn = "toit_v2_try_allocate_byte_array"
 rendering = "cxx/annotated/ffi/interpreter_v2.gen.c"
-status = "verified (VeriFast, LP64 and ILP32; wave 6) over the allocator's contract, for lengths up to the model's blob bound"
+status = "verified (VeriFast, LP64 and ILP32; wave 6) over the allocator's contract; since wave 7 for every length (no precondition, as the Verus side)"
 
 [[clause]]
 contract = "allocator_byte_array"
@@ -562,14 +555,7 @@ name = "views"
 bridge = "heap"
 verus = ""
 verifast = "[?fp]process((Process *)raw_process, ?prog, ?ids) &*& heap(?objs, ?H)"
-
-[[clause]]
-contract = "allocator_byte_array"
-side = "requires"
-name = "length"
-verus = "MISSING"
-verifast = "length <= MAX_BLOB"
-note = "As allocator_string's (without the `+ 1`)."
+note = "As allocator_string's: no length precondition since wave 7 (the C++ returns 0 above V2_MAX_BLOB_LENGTH, the model's MAX_BLOB)."
 
 [[clause]]
 contract = "allocator_byte_array"
@@ -731,7 +717,7 @@ contract = "allocate_instance"
 side = "requires"
 name = "class"
 verus = ""
-verifast = "(uword)class_id % 2 == 0 &*& (uword)class_id / 2 < 1024 &*& class_tag((uword)class_id / 2) == INSTANCE_TAG"
+verifast = "(uword)class_id % 2 == 0 &*& (uword)class_id / 2 < MAX_CLASS_IDS &*& class_tag((uword)class_id / 2) == INSTANCE_TAG"
 
 [[clause]]
 contract = "allocate_instance"
@@ -813,3 +799,172 @@ name = "written"
 bridge = "heap"
 verus = ""
 verifast = "heap(objs, put_field(H, self, index, value)) &*& grows(objs, H, objs, put_field(H, self, index, value)) == true"
+
+# The retry obligation of the C++ primitives ([[assumption]] prim_retry;
+# README "The retry obligation", wave 7). When a primitive fails for want
+# of memory (MALLOC_FAILED, ALLOCATION_FAILED, CROSS_PROCESS_GC), the VM
+# collects garbage and calls it again, and the core takes the calls as ONE
+# step (gc_call_primitive). That is a completion of the original step only
+# if the failed call had no visible effect: no existing object written, no
+# message sent or consumed, no resource, timer, notifier or finalizer
+# registered, no malloced memory kept or freed (unreachable new objects are
+# garbage the GC removes; so is a VM finalizer node whose object gave its
+# memory back). Every C++ primitive an untrusted program can reach is
+# classified here: directly (the 35 core, 2 bitmap, 7 timer and events
+# primitives that stay C++) or through the Rust ports' declines (the 106
+# core primitives ported to Rust call the C++ primitive when the port
+# returns NeedsGc or NotPorted, which the core proves leave the machine
+# unchanged: rarrays.rs rust_primitive_r, `res is None ==> *final(m) ==
+# *old(m)`). contract_check.toit reads the untrusted set from the policy
+# and fails on a primitive classified twice, not classified, or classified
+# but not in the set; an (a) whose body allocates; a (b) "test" without a
+# case in the ctest; a (b) "verifast" whose primitive's contract in the
+# rendering does not state `oom_clean` or whose rendering is not a `pass`
+# entry of cxx/annotated/run.sh; a (b) "review" without its argument; a
+# (c) without its fix.
+[prim_retry]
+policy = "src/primitive_policy.cc"
+test = "tests/ctest/prim-retry-test.cc"
+sources = { core = "src/primitive_core.cc", bitmap = "src/primitive_bitmap.cc", timer = "src/resources/timer.cc", events = "src/primitive_events.cc" }
+# (a) Cannot fail for want of memory: no allocation in the primitive (its
+# body is checked for allocating calls, argument kinds and errors).
+a = [
+  "core.array_at", "core.array_at_put", "core.array_length", "core.array_replace",
+  "core.blob_equals", "core.blob_hash_code", "core.blob_index_of",
+  "core.byte_array_at", "core.byte_array_at_put", "core.byte_array_is_raw_bytes", "core.byte_array_length",
+  "core.byte_array_is_valid_string_content",
+  "core.compare_to", "core.min_special_compare_to", "core.count_leading_zeros", "core.popcount",
+  "core.float_sign", "core.float_is_nan", "core.float_is_finite",
+  "core.float_less_than", "core.float_less_than_or_equal", "core.float_greater_than",
+  "core.float_greater_than_or_equal", "core.float_equals",
+  "core.large_integer_equals", "core.large_integer_less_than", "core.large_integer_less_than_or_equal",
+  "core.large_integer_greater_than", "core.large_integer_greater_than_or_equal",
+  "core.smi_not", "core.smi_shift_right",
+  "core.smi_less_than", "core.smi_less_than_or_equal", "core.smi_greater_than",
+  "core.smi_greater_than_or_equal", "core.smi_equals",
+  "core.list_add", "core.rebuild_hash_index", "core.int_vector_equals",
+  "core.object_class_id", "core.process_current_id", "core.process_system_id",
+  "core.random", "core.gc_count", "core.word_size", "core.spawn_method",
+  "core.remove_finalizer", "core.task_transfer",
+  "core.string_at", "core.string_raw_at", "core.string_compare", "core.string_hash_code",
+  "core.string_length", "core.string_rune_count",
+  "core.compare_simple_json_string", "core.hash_simple_json_string", "core.json_skip_whitespace",
+  "core.size_of_json_number",
+  "timer.arm", "timer.delete", "events.read_state", "events.unregister_monitor_notifier",
+]
+# (b) Fail for want of memory only before any visible effect. "test": the
+# ctest makes each allocation of a call fail in turn and compares the
+# arguments, the process and the malloc balance with the call before, and
+# the retry with a call that never failed. "verifast": also proved, for
+# every input, by the VeriFast proof of the primitive's rendering: its
+# contract states `oom_clean` (model/objects.render: an error result
+# leaves every object of the heap before the call unchanged; stated for
+# every error, which needs no identity of the error roots). Not "verifast"
+# although rendered: string_write_to_byte_array, byte_zap and blit (a
+# copy-on-write byte array's copy is installed before a later argument
+# check can fail with another error: proving that error is not an
+# out-of-memory one needs the error roots to be distinct, which the model
+# does not state), and the receive primitives task_receive_message,
+# main_arguments and spawn_arguments (their contracts do not say the
+# mailbox and arguments slots are unchanged on an out-of-memory error).
+b = [
+  # A new result object (or a malloced scratch buffer, freed) is the only
+  # allocation, made before anything else changes.
+  { name = "core.array_expand", evidence = "test" },
+  { name = "core.array_new", evidence = "verifast", rendering = "cxx/annotated/prims/array_new.gen.c" },
+  { name = "core.byte_array_new", evidence = "test" },
+  { name = "core.byte_array_convert_to_string", evidence = "verifast", rendering = "cxx/annotated/prims/blob_validation.gen.c" },
+  { name = "core.concat_strings", evidence = "test" },
+  { name = "core.string_add", evidence = "test" },
+  { name = "core.string_slice", evidence = "test" },
+  { name = "core.string_from_rune", evidence = "test" },
+  { name = "core.string_to_utf_16", evidence = "verifast", rendering = "cxx/annotated/prims/blob_validation.gen.c" },
+  { name = "core.utf_16_to_string", evidence = "verifast", rendering = "cxx/annotated/prims/blob_validation.gen.c" },
+  { name = "core.float_add", evidence = "test" },
+  { name = "core.float_subtract", evidence = "test" },
+  { name = "core.float_multiply", evidence = "test" },
+  { name = "core.float_divide", evidence = "test" },
+  { name = "core.float_mod", evidence = "test" },
+  { name = "core.float_unary_minus", evidence = "test" },
+  { name = "core.float_sqrt", evidence = "test" },
+  { name = "core.float_ceil", evidence = "test" },
+  { name = "core.float_floor", evidence = "test" },
+  { name = "core.float_trunc", evidence = "test" },
+  { name = "core.float_round", evidence = "verifast", rendering = "cxx/annotated/prims/float_round.gen.c" },
+  { name = "core.float_to_raw", evidence = "test" },
+  { name = "core.float_to_raw32", evidence = "test" },
+  { name = "core.float_parse", evidence = "verifast", rendering = "cxx/annotated/prims/float_parse.gen.c" },
+  { name = "core.float_to_string", evidence = "verifast", rendering = "cxx/annotated/prims/float_format.gen.c" },
+  { name = "core.number_to_float", evidence = "test" },
+  { name = "core.number_to_integer", evidence = "test" },
+  { name = "core.raw_to_float", evidence = "test" },
+  { name = "core.raw32_to_float", evidence = "test" },
+  { name = "core.int64_to_string", evidence = "verifast", rendering = "cxx/annotated/prims/format_integer.gen.c" },
+  { name = "core.uint64_to_string", evidence = "verifast", rendering = "cxx/annotated/prims/format_integer.gen.c" },
+  { name = "core.printf_style_int64_to_string", evidence = "verifast", rendering = "cxx/annotated/prims/format_integer.gen.c" },
+  { name = "core.smi_to_string_base_10", evidence = "verifast", rendering = "cxx/annotated/prims/format_integer.gen.c" },
+  { name = "core.int_parse", evidence = "verifast", rendering = "cxx/annotated/prims/int_parse.gen.c" },
+  { name = "core.large_integer_add", evidence = "test" },
+  { name = "core.large_integer_subtract", evidence = "test" },
+  { name = "core.large_integer_multiply", evidence = "test" },
+  { name = "core.large_integer_divide", evidence = "verifast", rendering = "cxx/annotated/prims/integer_division.gen.c" },
+  { name = "core.large_integer_mod", evidence = "verifast", rendering = "cxx/annotated/prims/integer_division.gen.c" },
+  { name = "core.large_integer_unary_minus", evidence = "test" },
+  { name = "core.large_integer_not", evidence = "test" },
+  { name = "core.large_integer_and", evidence = "test" },
+  { name = "core.large_integer_or", evidence = "test" },
+  { name = "core.large_integer_xor", evidence = "test" },
+  { name = "core.large_integer_shift_left", evidence = "test" },
+  { name = "core.large_integer_shift_right", evidence = "test" },
+  { name = "core.large_integer_unsigned_shift_right", evidence = "test" },
+  { name = "core.smi_add", evidence = "test" },
+  { name = "core.smi_subtract", evidence = "test" },
+  { name = "core.smi_multiply", evidence = "test" },
+  { name = "core.smi_divide", evidence = "verifast", rendering = "cxx/annotated/prims/integer_division.gen.c" },
+  { name = "core.smi_mod", evidence = "verifast", rendering = "cxx/annotated/prims/integer_division.gen.c" },
+  { name = "core.smi_unary_minus", evidence = "test" },
+  { name = "core.smi_and", evidence = "test" },
+  { name = "core.smi_or", evidence = "test" },
+  { name = "core.smi_xor", evidence = "test" },
+  { name = "core.smi_shift_left", evidence = "test" },
+  { name = "core.smi_unsigned_shift_right", evidence = "test" },
+  { name = "core.read_int_big_endian", evidence = "test" },
+  { name = "core.read_uint_big_endian", evidence = "test" },
+  { name = "core.read_int_little_endian", evidence = "test" },
+  { name = "core.read_uint_little_endian", evidence = "test" },
+  { name = "core.crc", evidence = "verifast", rendering = "cxx/annotated/prims/crc.gen.c" },
+  { name = "core.seconds_since_epoch_local", evidence = "verifast", rendering = "cxx/annotated/prims/local_epoch.gen.c" },
+  { name = "core.platform", evidence = "verifast", rendering = "cxx/annotated/prims/platform.gen.c" },
+  { name = "core.architecture", evidence = "verifast", rendering = "cxx/annotated/prims/platform.gen.c" },
+  { name = "core.time", evidence = "verifast", rendering = "cxx/annotated/prims/time.gen.c" },
+  # The result array is allocated first; the large integers of its
+  # elements after it (the array is then garbage).
+  { name = "core.get_real_time_clock", evidence = "verifast", rendering = "cxx/annotated/prims/time.gen.c" },
+  { name = "core.time_info", evidence = "verifast", rendering = "cxx/annotated/prims/time_info.gen.c" },
+  # A copy-on-write byte array's copy (MutableBlob decoding) is the only
+  # allocation; the instance is switched to the copy only after it
+  # succeeded, and nothing after it fails for want of memory.
+  { name = "core.byte_array_replace", evidence = "test" },
+  { name = "core.string_write_to_byte_array", evidence = "test" },
+  { name = "core.put_uint_big_endian", evidence = "test" },
+  { name = "core.put_uint_little_endian", evidence = "test" },
+  { name = "core.put_float_64_little_endian", evidence = "test" },
+  { name = "core.put_float_32_little_endian", evidence = "test" },
+  { name = "bitmap.byte_zap", evidence = "test" },
+  { name = "bitmap.blit", evidence = "test" },
+  # Process state: the registration follows the allocation it needs, or is
+  # undone when the allocation fails.
+  { name = "core.add_finalizer", evidence = "verifast", rendering = "cxx/annotated/prims/finalizers.gen.c" },
+  { name = "core.process_send", evidence = "test" },
+  { name = "core.task_has_messages", evidence = "verifast", rendering = "cxx/annotated/decoder/message_decoder.gen.c" },
+  { name = "core.task_receive_message", evidence = "test" },
+  { name = "core.main_arguments", evidence = "test" },
+  { name = "core.spawn_arguments", evidence = "test" },
+  { name = "timer.init", evidence = "test" },
+  { name = "timer.create", evidence = "test" },
+  { name = "events.register_monitor_notifier", evidence = "test" },
+  { name = "core.task_new", evidence = "review", why = "ObjectHeap::allocate_task allocates the stack, then the task (a failure leaves at most an unreachable stack); the format-2 path initializes only the new stack after both succeeded. Not in the ctest: the format-1 path needs an interpreter." },
+  { name = "core.encode_error", evidence = "review", why = "A MallocedBuffer (freed by its destructor on every return), the encoding (reads the heap and the stack; store_stack/load_stack do nothing for format 2), then the result byte array, the last allocation; the memcpy follows it. Not in the ctest: it needs a scheduler thread's interpreter." },
+]
+# (c) Violations: none found (wave 7).
+c = []

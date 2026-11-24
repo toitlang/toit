@@ -213,7 +213,172 @@ run root/string:
       problems.do: print "    $it"
   gaps.do: print "gap   $it"
   failures += check-assumptions root (table.get "assumption" --if-absent=: [])
+  failures += check-prim-retry root (table.get "prim_retry" --if-absent=: null)
   exit (failures == 0 ? 0 : 1)
+
+// What a primitive whose call cannot fail for want of memory must not
+// contain (comments aside): an allocation, an allocating argument kind, an
+// out-of-memory error. A tripwire, not a proof: a helper that allocates
+// is the classification's business (README, "The retry obligation").
+ALLOCATING-TOKENS ::= [
+  "ALLOCATION_FAILED", "MALLOC_FAILED", "CROSS_PROCESS_GC", "allocate", "Primitive::integer",
+  "_new", "malloc", "calloc", "realloc", "MallocedBuffer", "MutableBlob", "cstring",
+  "blob_or_string_with_terminating_null", "new ",
+]
+
+/** The names in the C array $array-name of $text (`Prefix::name` entries). */
+policy-names text/string array-name/string prefix/string -> List:
+  at := text.index-of "$(array-name)[] = {"
+  if at < 0: throw "no $array-name"
+  end := text.index-of "};" at
+  result := []
+  body := text[at..end]
+  i := 0
+  while true:
+    i = body.index-of prefix i
+    if i < 0: break
+    j := i + prefix.size
+    k := j
+    while k < body.size and (is-identifier-char (body.at --raw k)): k++
+    result.add body[j..k]
+    i = k
+  return result
+
+is-identifier-char c/int -> bool:
+  return ('a' <= c <= 'z') or ('A' <= c <= 'Z') or ('0' <= c <= '9') or c == '_'
+
+/** The primitives `PRIMITIVE(name, arity)` of `#define MODULE_<NAME>(PRIMITIVE)` in $header. */
+module-primitives header/string module/string -> List:
+  lines := header.split "\n"
+  macro := "#define MODULE_$(module.to-ascii-upper)(PRIMITIVE)"
+  at := -1
+  lines.size.repeat: if at < 0 and lines[it].starts-with macro: at = it
+  if at < 0: throw "no $macro"
+  result := []
+  i := at + 1
+  while i < lines.size and (lines[i].trim.starts-with "PRIMITIVE("):
+    l := lines[i].trim
+    result.add l["PRIMITIVE(".size..l.index-of ","]
+    i++
+  return result
+
+/** The body of `PRIMITIVE(name) {` in $text, comments removed; null if absent. */
+primitive-body text/string name/string -> string?:
+  lines := text.split "\n"
+  at := -1
+  lines.size.repeat: if at < 0 and lines[it].starts-with "PRIMITIVE($name) {": at = it
+  if at < 0:
+    // `PRIMITIVE(name) MACRO(args)`: the body is the macro's definition.
+    lines.size.repeat:
+      if at < 0 and lines[it].starts-with "PRIMITIVE($name) ": at = it
+    if at < 0: return null
+    rest := lines[at]["PRIMITIVE($name) ".size..].trim
+    paren := rest.index-of "("
+    if paren <= 0: return null
+    macro := rest[..paren]
+    start := -1
+    lines.size.repeat: if start < 0 and lines[it].starts-with "#define $macro(": start = it
+    if start < 0: return null
+    out := []
+    i := start
+    while i < lines.size:
+      out.add lines[i]
+      if not lines[i].ends-with "\\": break
+      i++
+    return out.join "\n"
+  out := []
+  i := at
+  while i < lines.size:
+    l := lines[i]
+    c := l.index-of "//"
+    out.add (c >= 0 ? l[..c] : l)
+    if l == "}": break
+    i++
+  return out.join "\n"
+
+/**
+Checks the [prim_retry] table: every C++ primitive the untrusted policy
+  allows (src/primitive_policy.cc: UNTRUSTED_CORE, UNTRUSTED_BITMAP and
+  the whole modules of WHOLE_MODULES, src/primitive.h) is classified
+  exactly once, and nothing else is: (a) cannot fail for want of memory
+  (its body has none of ALLOCATING-TOKENS), (b) fails for want of memory
+  only before any visible effect (evidence: "test", a case of the
+  prim-retry ctest; "verifast", a rendering that proves it; "review",
+  with the argument), (c) violates it (must name its fix).
+*/
+check-prim-retry root/string table/Map? -> int:
+  if not table:
+    print "FAIL  no [prim_retry] table"
+    return 1
+  repo := fs.dirname root
+  policy := (file.read-contents "$repo/$table["policy"]").to-string
+  header := (file.read-contents "$repo/src/primitive.h").to-string
+  test := (file.read-contents "$repo/$table["test"]").to-string
+  run-sh := (file.read-contents "$root/cxx/annotated/run.sh").to-string
+  allowed := []
+  (policy-names policy "UNTRUSTED_CORE" "CoreIndex::").do: allowed.add "core.$it"
+  (policy-names policy "UNTRUSTED_BITMAP" "BitmapIndex::").do: allowed.add "bitmap.$it"
+  (policy-names policy "WHOLE_MODULES" "MODULE_INDEX_").do: | module |
+    (module-primitives header module).do: allowed.add "$module.$it"
+  sources := table["sources"]
+  failures := 0
+  problem := : | message |
+    failures++
+    print "FAIL  prim_retry: $message"
+  classified := {:}
+  counts := {:}
+  ["a", "b", "c"].do: | kind |
+    (table.get kind --if-absent=: []).do: | entry |
+      name := entry is string ? entry : entry["name"]
+      if classified.contains name: problem.call "$name classified twice"
+      classified[name] = kind
+      counts[kind] = (counts.get kind --if-absent=: 0) + 1
+      if kind != "a" and entry is string: problem.call "$name ($kind) needs its evidence"
+      module := name[..name.index-of "."]
+      primitive := name[(name.index-of ".") + 1..]
+      body := null
+      if sources.contains module:
+        body = primitive-body (file.read-contents "$repo/$sources[module]").to-string primitive
+      if not body:
+        problem.call "$name: no PRIMITIVE($primitive) in $(sources.get module)"
+      else if kind == "a":
+        ALLOCATING-TOKENS.do: | token |
+          if body.contains token: problem.call "$name is (a) but its body contains `$token`"
+      else if kind == "b":
+        evidence := entry["evidence"]
+        counts["b $evidence"] = (counts.get "b $evidence" --if-absent=: 0) + 1
+        if evidence == "test" or evidence == "verifast":
+          spelled := module == "core" ? "CORE($primitive)" : "\"$name\""
+          if not test.contains spelled: problem.call "$name: no case $spelled in $table["test"]"
+        if evidence == "verifast":
+          path := entry["rendering"]
+          rendering := (file.read-contents "$root/$path").to-string
+          // The definition (the last occurrence; VeriFast checks a
+          // prototype's contract against it) states oom_clean in its
+          // contract, and the matrix proves the rendering.
+          at := rendering.index-of --last "primitive_$primitive("
+          open := at < 0 ? -1 : rendering.index-of "\n{" at
+          if at < 0 or open < 0:
+            problem.call "$name: not rendered in $path"
+          else if not rendering[at..open].contains "oom_clean(":
+            problem.call "$name: the contract of primitive_$primitive in $path does not state oom_clean"
+          prefix := "cxx/annotated/"
+          if not (path.starts-with prefix) or not (run-sh.contains " pass \"\" $path[prefix.size..] "):
+            problem.call "$name: $path is not proved by cxx/annotated/run.sh (no `pass` entry)"
+        else if evidence == "review":
+          if (entry.get "why" --if-absent=: "") == "": problem.call "$name: a review needs its argument (why)"
+        else if evidence != "test":
+          problem.call "$name: unknown evidence `$evidence`"
+      else:
+        if (entry.get "fix" --if-absent=: "") == "": problem.call "$name is (c): name its fix"
+  allowed.do: | name |
+    if not classified.contains name: problem.call "$name is allowed for untrusted programs but not classified"
+  classified.do --keys: | name |
+    if not allowed.contains name: problem.call "$name is classified but not in the untrusted set"
+  if failures == 0:
+    count := : | key | counts.get key --if-absent=: 0
+    print "ok    prim_retry: $allowed.size primitives of the untrusted set classified: $(count.call "a") (a), $(count.call "b") (b: $(count.call "b verifast") proved and tested, $(count.call "b test") tested, $(count.call "b review") reviewed), $(count.call "c") (c)"
+  return failures
 
 /**
 The lemma prototypes (`lemma ... NAME(...);`, no body) of the VeriFast

@@ -1860,9 +1860,17 @@ static bool is_validated_string(Program* program, Object* object) {
   return heap_object->class_id() == program->string_slice_class_id();
 }
 
+// The longest string a concatenation makes (the verified core's
+// MAX_BLOB_LENGTH: 2^30 bytes on 32-bit, 2^62 on 64-bit). The lengths of
+// the parts are checked against it before they are added: on 32-bit their
+// sum wrapped (257 references to a 16 MB string), and the copy then wrote
+// far past the string allocated for the wrapped sum.
+static const word MAX_CONCATENATION_LENGTH = static_cast<word>(1) << (WORD_BIT_SIZE - 2);
+
 static String* concat_strings(Process* process,
                               const uint8* bytes_a, word len_a,
                               const uint8* bytes_b, word len_b) {
+  ASSERT(len_a <= MAX_CONCATENATION_LENGTH && len_b <= MAX_CONCATENATION_LENGTH - len_a);
   String* result = process->allocate_string(len_a + len_b);
   if (result == null) return null;
   // Initialize object.
@@ -1885,6 +1893,10 @@ PRIMITIVE(string_add) {
   // These should always succeed, as the operator already checks the objects are strings.
   if (!receiver->byte_content(process->program(), &receiver_blob, STRINGS_ONLY)) FAIL(WRONG_OBJECT_TYPE);
   if (!other->byte_content(process->program(), &other_blob, STRINGS_ONLY)) FAIL(WRONG_OBJECT_TYPE);
+  if (receiver_blob.length() > MAX_CONCATENATION_LENGTH ||
+      other_blob.length() > MAX_CONCATENATION_LENGTH - receiver_blob.length()) {
+    FAIL(OUT_OF_RANGE);
+  }
   result = concat_strings(process,
                           receiver_blob.address(), receiver_blob.length(),
                           other_blob.address(), other_blob.length());
@@ -1941,6 +1953,7 @@ PRIMITIVE(concat_strings) {
   for (word index = 0; index < array->length(); index++) {
     Blob blob;
     HeapObject::cast(array->at(index))->byte_content(program, &blob, STRINGS_ONLY);
+    if (blob.length() > MAX_CONCATENATION_LENGTH - length) FAIL(OUT_OF_RANGE);
     length += blob.length();
   }
   String* result = process->allocate_string(length);

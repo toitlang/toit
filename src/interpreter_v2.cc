@@ -485,13 +485,20 @@ uword toit_v2_try_allocate_array(void* raw_process, uword length, void* filler) 
       length, static_cast<Object*>(filler)));
 }
 
+// The longest blob the core's allocation makes: the bound of both heap
+// models (below the core's MAX_BLOB_LENGTH, 2^62 on 64-bit and 2^30 on
+// 32-bit; the VeriFast model's MAX_BLOB). A longer one is left to the C++
+// primitive: the allocation returns 0, the core's port declines. The bound
+// also keeps Process::allocate_string's `length + 1` from overflowing.
+static const uword V2_MAX_BLOB_LENGTH = UINTPTR_MAX / 4;
+
 uword toit_v2_try_allocate_string(void* raw_process, uword length) {
-  if (static_cast<word>(length) < 0) return 0;
+  if (length > V2_MAX_BLOB_LENGTH) return 0;
   return reinterpret_cast<uword>(v2_process(raw_process)->allocate_string(length));
 }
 
 uword toit_v2_try_allocate_byte_array(void* raw_process, uword length) {
-  if (static_cast<word>(length) < 0) return 0;
+  if (length > V2_MAX_BLOB_LENGTH) return 0;
   return reinterpret_cast<uword>(v2_process(raw_process)->allocate_byte_array(length));
 }
 

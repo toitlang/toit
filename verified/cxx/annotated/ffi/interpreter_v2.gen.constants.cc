@@ -56,4 +56,6 @@ static_assert((TOIT_V2_PRIMITIVE_THROW) == (((uword)2)), "TOIT_V2_PRIMITIVE_THRO
 static_assert(vf_same<decltype(TOIT_V2_PRIMITIVE_THROW), decltype(((uword)2))>::value, "type of TOIT_V2_PRIMITIVE_THROW");
 static_assert((TOIT_V2_STACK_OVERFLOW) == (((uword)1)), "TOIT_V2_STACK_OVERFLOW");
 static_assert(vf_same<decltype(TOIT_V2_STACK_OVERFLOW), decltype(((uword)1))>::value, "type of TOIT_V2_STACK_OVERFLOW");
+static_assert((V2_MAX_BLOB_LENGTH) == (((uword)(UINTPTR_MAX / 4))), "V2_MAX_BLOB_LENGTH");
+static_assert(vf_same<decltype(V2_MAX_BLOB_LENGTH), decltype(((uword)(UINTPTR_MAX / 4)))>::value, "type of V2_MAX_BLOB_LENGTH");
 }  // namespace toit

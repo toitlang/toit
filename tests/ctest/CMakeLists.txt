@@ -192,3 +192,19 @@ foreach(file ${TOIT_TESTS})
     set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES WILL_FAIL TRUE)
   endif()
 endforeach()
+
+# prim-retry-test makes allocations fail: the linker routes the VM's mallocs
+# and its heap allocator through the test's wrappers. Linux (GNU ld) only;
+# the heap allocator's name is TwoSpaceHeap::allocate(uword), mangled.
+if (TARGET prim-retry-test)
+  if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    if (CMAKE_SIZEOF_VOID_P EQUAL 8)
+      set(PRIM_RETRY_HEAP_ALLOCATE _ZN4toit12TwoSpaceHeap8allocateEm)
+    else()
+      set(PRIM_RETRY_HEAP_ALLOCATE _ZN4toit12TwoSpaceHeap8allocateEj)
+    endif()
+    target_link_options(prim-retry-test PRIVATE
+      -Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free
+      -Wl,--wrap=${PRIM_RETRY_HEAP_ALLOCATE})
+  endif()
+endif()
