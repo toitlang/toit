@@ -449,9 +449,10 @@ slow-tier jobs): the fast tier 1265 checks ok, 0 FAIL, 0 NOVERDICT, in
 4303 s wall. Wave 9 (2026-11-24): 71 sidecars, 619 `@render` functions
 (`metrics.sh`: the signed readers, the byte-array and float writers,
 byte_array_at_put and byte_array_is_raw_bytes,
-four translator self-tests), 37 primitives prove the retry obligation;
-the fast-tier result of its fresh work directory is under "Findings"
-(wave 9) and in the commit that records it. Lines: `metrics.sh` (C++ = the
+five translator self-tests), 37 primitives prove the retry obligation.
+Fresh work directory (2026-11-24, the machine shared with other
+checkouts' gate runs): the fast tier 1313 checks ok, 0 FAIL, 0 NOVERDICT,
+in 2832 s wall, 61 MB left in the work directory. Lines: `metrics.sh` (C++ = the
 rendered functions' lines; annotations among them; then the hand-written C
 and annotations of the verbatim sections: trusted prototypes, predicates,
 lemmas).
@@ -1276,6 +1277,17 @@ follows the one failed allocation, so the heap is unchanged):
 The program-level checks (a builtin class of the program without the tag
 the port expects: ints.rs, float.rs, array.rs, blob.rs) decline for every
 input of a malformed program, never for a compiled one.
+
+What the C++ then does with an opaque byte array: the primitives that
+decode it as a Blob or MutableBlob (all of the opaque rows but the four
+byte_array_* ones) reject a proxy or a mapped file in the proved decoders
+(`blob/byte_content.render`, `blob/mutable_byte_content.render`: an
+external byte array other than RawByteTag is not a blob) before their
+body runs, and a neutered array decodes to an empty blob (null address,
+length 0); so for an opaque argument their bodies run only on an empty
+blob. byte_array_at and byte_array_length read a mapped file's bytes
+(MappedFileTag; not proved: the model has none), byte_array_at_put and
+byte_array_is_raw_bytes are proved (`prims/byte_array_access.render`).
 
 Consequences. The C++ behind the 35 "never" ports does not run for an
 untrusted process on the default paths, so it needs no proof for the
