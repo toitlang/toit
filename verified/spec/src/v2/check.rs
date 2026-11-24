@@ -1661,50 +1661,57 @@ pub fn x_post_outer(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind
         proof { assert(kk[h - 1 - r] == k@[h - 1 - r]@); }
         match vix(k, h - 1 - r) {
             XKind::Block(d, j) => {
-                let (fko, om): (Option<Vec<XKind>>, i64) = if d == 0 { (None, m as i64) } else { x_ctx_kinds(c, m as i64, d)? };
-                let fk: Option<&Vec<XKind>> = if d == 0 { Some(k) } else { match &fko { Some(v) => Some(v), None => None } };
+                // The frame's kinds `fk`: this frame's (`k`), or an outer
+                // context's, read top first into `out` (no copy; `out`
+                // gets the successor only at the end).
+                let (found, om): (bool, i64) = if d == 0 { (true, m as i64) } else { x_ctx_kinds_rev(c, m as i64, d, out)? };
+                let ghost fkv: Seq<Kind> = if d == 0 { kk } else { rev_kinds(out@) };
                 proof {
-                    assert(okv(match fk { Some(x) => Some(*x), None => None }) == ref_kinds(c@, m as int, kk, d as int));
+                    if found { assert(ref_kinds(c@, m as int, kk, d as int) == Some(fkv)); }
+                    else { assert(ref_kinds(c@, m as int, kk, d as int) is None); }
                     assert(om as int == ref_method(c@, m as int, d as int));
                 }
-                match fk {
-                    None => Ok(false),
-                    Some(fk) => {
-                        if !((b1 as u64) <= (j as u64) && (j as usize) < fk.len()) {
-                            return Ok(false);
-                        }
-                        let i = (j as i64 - b1) as usize;
-                        proof { assert(kv(*fk)[i as int] == fk@[i as int]@); }
-                        if op == LOAD_OUTER {
-                            if x_is_token(vix(fk, i)) { Ok(false) } else {
-                                match x_shift(vix(fk, i), d) {
-                                    Some(sk) => { x_update_into(k, h - 1, sk, out)?; Ok(true) },
-                                    None => {
-                                        proof {
-                                            let s2 = kk.update(h - 1, shift(kv(*fk)[i as int], d as int));
-                                            assert(post(pv, c@, m as int, off as int, kk, trusted) == Some(s2));
-                                            assert(!match #[trigger] s2[h - 1] {
-                                                Kind::Method(t) => 0 <= t <= u32::MAX as int,
-                                                Kind::Block(d, x) => 0 <= d <= u32::MAX as int && 0 <= x <= u32::MAX as int,
-                                                _ => true,
-                                            });
-                                        }
-                                        Ok(false)
-                                    },
+                if !found { return Ok(false); }
+                let flen = if d == 0 { h } else { out.len() };
+                if !((b1 as u64) <= (j as u64) && (j as usize) < flen) {
+                    return Ok(false);
+                }
+                let i = (j as i64 - b1) as usize;
+                let fki = if d == 0 { vix(k, i) } else { vix(out, flen - 1 - i) };
+                proof {
+                    if d == 0 { assert(fkv[i as int] == fki@); }
+                    else { assert(rev_kinds(out@)[i as int] == out@[flen - 1 - i]@); assert(fkv[i as int] == fki@); }
+                }
+                if op == LOAD_OUTER {
+                    if x_is_token(fki) { Ok(false) } else {
+                        match x_shift(fki, d) {
+                            Some(sk) => { x_update_into(k, h - 1, sk, out)?; Ok(true) },
+                            None => {
+                                proof {
+                                    let s2 = kk.update(h - 1, shift(fkv[i as int], d as int));
+                                    assert(post(pv, c@, m as int, off as int, kk, trusted) == Some(s2));
+                                    assert(!match #[trigger] s2[h - 1] {
+                                        Kind::Method(t) => 0 <= t <= u32::MAX as int,
+                                        Kind::Block(d, x) => 0 <= d <= u32::MAX as int && 0 <= x <= u32::MAX as int,
+                                        _ => true,
+                                    });
                                 }
-                            }
-                        } else if op == LOAD_OUTER_BLOCK {
-                            if x_block_slot(p, c, om, fk, i as i64) { { x_update_into(k, h - 1, XKind::Block(d, i as u32), out)?; Ok(true) } } else { Ok(false) }
-                        } else {
-                            proof { assert(kk[h - 1] == k@[h - 1]@); }
-                            if d >= 1 && x_is_plain(vix(fk, i)) && x_is_val(vix(k, h - 1)) && x_valid(p, om)
-                                    && !(i == 0 && x_pinned0(p, om as usize)) {
-                                { x_pop_push_into(k, 2, XKind::Val, out)?; Ok(true) }
-                            } else {
                                 Ok(false)
-                            }
+                            },
                         }
-                    },
+                    }
+                } else if op == LOAD_OUTER_BLOCK {
+                    let slot = if d == 0 { x_block_slot(p, c, om, k, i as i64) } else { x_block_slot_rev(p, c, om, &*out, i as i64) };
+                    proof { assert(slot == block_slot(pv, c@, om as int, fkv, i as int)); }
+                    if slot { { x_update_into(k, h - 1, XKind::Block(d, i as u32), out)?; Ok(true) } } else { Ok(false) }
+                } else {
+                    proof { assert(kk[h - 1] == k@[h - 1]@); }
+                    if d >= 1 && x_is_plain(fki) && x_is_val(vix(k, h - 1)) && x_valid(p, om)
+                            && !(i == 0 && x_pinned0(p, om as usize)) {
+                        { x_pop_push_into(k, 2, XKind::Val, out)?; Ok(true) }
+                    } else {
+                        Ok(false)
+                    }
                 }
             },
             _ => Ok(false),
