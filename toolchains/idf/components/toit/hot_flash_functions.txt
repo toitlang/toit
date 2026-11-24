@@ -267,6 +267,9 @@ f1:_ZN4toitL19primitive_string_atEPNS_7ProcessEPPNS_6ObjectE             #   163
 
 # Group B, format 2: the install-time verifier, the whole toit_vmverify
 # and toit_spec crates in their original order.
+# Group B starts at the next 16 KB boundary (0x400d4000 while group A
+# stays under 16 KB), so its cache sets do not depend on group A.
+f2:@align 0x4000
 f2:toit_vmverify_verify
 f2:*13toit_vmverify*
 f2:*9toit_spec*
