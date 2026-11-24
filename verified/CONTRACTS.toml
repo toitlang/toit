@@ -60,9 +60,14 @@ stack = [
   "Since wave 6 the VeriFast side states this over the whole state at a GC",
   "point, vm(p, v, n) with v = vmv(stack object, len, top, rtop, ft, fin, bci,",
   "bytes, heap objects, H): vm_equiv(a, b) (a == b, or gc_equiv(a, b): what",
-  "v2_gc guarantees) means that a refines g exactly when b does (the GC",
+  "v2_gc guarantees) means that when a refines g, b refines a state g2 that",
+  "collections reach from g (toit_spec::v2::gc::gc_steps: garbage gone, the",
+  "live objects renumbered, weak maps processed; none for a == b). The GC",
   "rewrites every root, the used slots among them, to the moved objects:",
-  "not a byte-wise equality); stack_copy_equiv ([[assumption]]) is the",
+  "not a byte-wise equality. Before stage 0 of the collector plan",
+  "(verified/core/OBLIGATIONS.md, The collector) it said that b refines g",
+  "itself, which a collector that frees memory or clears weak maps does",
+  "not deliver. stack_copy_equiv ([[assumption]]) is the",
   "paragraph above for a copied stack. heap_epoch owns ObjectHeap::v2_epoch_",
   "and its mathematical count n. Each native tick advances n and writes",
   "the new count modulo the word. An unchanged count excludes collection",
@@ -72,8 +77,9 @@ primitive = [
   "REVIEWED ASSUMPTION. For the C++ primitive the policy resolves (module,",
   "index) to, fn = policy_fn(policy_of(p), module, index) (the table entry",
   "whose arity is the number of arguments fn reads), prim_out(fn, a, b, raw)",
-  "on VM states a, b (stack bridge) is the spec's completion of the step:",
-  "prim_call_post(p, m', g, module, index, status, word, gx, v) for the",
+  "on VM states a, b (stack bridge) is the spec's completion of the step",
+  "from a state g2 that collections reach from a's state g (gc_steps(g, g2)):",
+  "prim_call_post(p, m', g2, module, index, status, word, gx, v) for the",
   "machine m' that b's views give, with the status and word prim_done",
   "derives from raw (SUCCESS: raw is the value; FAILURE: the unmarked error;",
   "THROW: an out-of-memory root after the retries). Each C++ primitive",
@@ -115,27 +121,34 @@ note = "The message encoder's two passes: the write pass (a buffer of the size t
 # heap, the epoch count n), and the GC's guarantee is `gc_equiv`, an
 # uninterpreted relation with three named properties ([[assumption]]
 # gc_equiv_trans, stack_copy_equiv, prim_retry below). Its bodiless lemmas
-# are the C++ half of "where permissions come from".
+# are the C++ half of "where permissions come from". Through the stack
+# bridge, gc_equiv(a, b) is the Verus side's `gc_steps` between the states
+# a and b represent (toit_spec::v2::gc: collections that free garbage,
+# renumber the live objects and process weak maps): the three properties
+# hold of it as stated, with no exception for weak maps, because weak
+# processing is part of a collection. A collector proof is to deliver
+# gc_steps (verified/core/src/gcbridge.rs: what a collector that keeps
+# object identities proves is a collection), and these three become lemmas.
 [[assumption]]
 name = "gc_equiv_trans"
 rendering = "cxx/annotated/ffi/interpreter_v2.gen.c"
 requires = "gc_equiv(a, b) == true &*& gc_equiv(b, c) == true"
 ensures = "gc_equiv(a, c) == true"
-note = "Two collections in a row preserve the abstraction (the GC's relation composes). TRUSTED: GC-class code."
+note = "Two collections in a row are collections (the GC's relation composes; on the Verus side toit_spec::v2::gc::lemma_gc_steps_trans proves it of gc_steps). TRUSTED: GC-class code."
 
 [[assumption]]
 name = "stack_copy_equiv"
 rendering = "cxx/annotated/ffi/interpreter_v2.gen.c"
 requires = "a == vmv(?s, ?len, ?top, ?rtop, ?ft, ?fin, ?bci, ?bs, ?objs, ?H) &*& same_abstraction(len, top, rtop, bs, len2, top2, rtop, bs2) == true"
 ensures = "vm_equiv(a, vmv(s2, len2, top2, rtop, ft, fin, bci, bs2, objs, H)) == true"
-note = "The `stack` bridge as a lemma: a stack copied with the same observables (records, header fields, used slots by position from the end) represents the same state; which object holds them is not observable (the core re-reads the current stack). Used by stack growth after Stack::v2_copy_to."
+note = "The `stack` bridge as a lemma: a stack copied with the same observables (records, header fields, used slots by position from the end) represents the same state (no collection: gc_steps is reflexive); which object holds them is not observable (the core re-reads the current stack). Used by stack growth after Stack::v2_copy_to."
 
 [[assumption]]
 name = "prim_retry"
 rendering = "cxx/annotated/ffi/interpreter_v2.gen.c"
 requires = "prim_out(fn, a, b, e) == true &*& oom_error(prog, e) == true &*& vm_equiv(b, b2) == true &*& prim_out(fn, b2, c, r) == true"
 ensures = "prim_out(fn, a, c, r) == true"
-note = "The retry protocol of the C++ primitives (v2_primitive_failed, as Interpreter::run's): a call that failed for want of memory has no effect the spec sees, so the call after the GC is a completion of the original step. Not stated on the Verus side, where gc_call_primitive's completion clause covers the whole C++ call: an assumption the C++ wrapper alone does not establish (README, wave 6). Wave 7 classified every primitive of the untrusted set ([prim_retry] below, checked by contract_check.toit). What is still assumed: (1) the composition itself, since prim_out is uninterpreted: a completion from a state that differs from a by garbage and a GC (gc_equiv, the GC's bridge) is a completion from a; (2) per primitive, that a failed call has no visible effect: PROVED for the 30 (b) primitives with evidence \"verifast\" (VeriFast, LP64 and ILP32: `oom_clean`, every object of the heap before the call unchanged after an error result, or, for the 3 that install a copy-on-write copy first, `oom_unchanged`, the same after an error oom_error retries, which rests on the loader-checked distinct error roots; with the argument slots and the rest of what the contract owns; contract-only callees trusted as elsewhere; mutant finalizer-primitives-oom-after-effect), TESTED only for the 56 with evidence \"test\" (tests/ctest/prim-retry-test.cc: every allocation of one call per primitive made to fail in turn), REVIEWED for task_new and encode_error, and for the 62 (a) primitives (no allocation: a textual check of their bodies, not a proof that they never return an out-of-memory error)."
+note = "The retry protocol of the C++ primitives (v2_primitive_failed, as Interpreter::run's): a call that failed for want of memory has no effect the spec sees, so the call after the GC is a completion of the original step. Not stated on the Verus side, where gc_call_primitive's completion clause covers the whole C++ call: an assumption the C++ wrapper alone does not establish (README, wave 6). Wave 7 classified every primitive of the untrusted set ([prim_retry] below, checked by contract_check.toit). What is still assumed: (1) the composition itself, since prim_out is uninterpreted: a completion from a state that collections reach from a's (gc_equiv, the GC's bridge) is a completion of the kind the primitive bridge describes (from a state that collections reach from a's: since stage 0 the Verus contract gc_call_primitive says so, so on the Verus side this composition is the transitivity of gc_steps; before, it claimed a completion from a's state itself, which a collection that frees or renumbers objects contradicts); (2) per primitive, that a failed call has no visible effect: PROVED for the 30 (b) primitives with evidence \"verifast\" (VeriFast, LP64 and ILP32: `oom_clean`, every object of the heap before the call unchanged after an error result, or, for the 3 that install a copy-on-write copy first, `oom_unchanged`, the same after an error oom_error retries, which rests on the loader-checked distinct error roots; with the argument slots and the rest of what the contract owns; contract-only callees trusted as elsewhere; mutant finalizer-primitives-oom-after-effect), TESTED only for the 56 with evidence \"test\" (tests/ctest/prim-retry-test.cc: every allocation of one call per primitive made to fail in turn), REVIEWED for task_new and encode_error, and for the 62 (a) primitives (no allocation: a textual check of their bodies, not a proof that they never return an out-of-memory error)."
 
 [[contract]]
 name = "gc_grow_stack"
@@ -163,18 +176,11 @@ note = "Not in the VeriFast contract, and not needed there: the C++ returns STAC
 [[clause]]
 contract = "gc_grow_stack"
 side = "ensures"
-name = "views"
+name = "collected, room"
 bridge = "stack"
-verus = "reloaded(*final(m), g).refines(&env.p)"
-verifast = "vm((Process *)raw_process, ?b, ?n2) &*& vm_equiv(a, b) == true &*& n <= n2"
-note = "Before wave 6 the VeriFast side said the used slots were byte for byte the same after a GC (`same_abstraction`): false for a moving GC, which rewrites every reference slot; the trusted v2_gc contract claimed it. Now the GC's guarantee is gc_equiv (the abstraction is the same), which the core's re-derivation relies on."
-
-[[clause]]
-contract = "gc_grow_stack"
-side = "ensures"
-name = "room"
-verus = "r == V2_OK ==> reloaded(*final(m), g).top - reloaded(*final(m), g).rtop >= needed"
-verifast = "(result == TOIT_V2_OK ? v_top(b) - v_rtop(b) >= needed : result == TOIT_V2_STACK_OVERFLOW || result == TOIT_V2_OUT_OF_MEMORY)"
+verus = "exists|g2: State2| #[trigger] grow_post(&env.p, *final(m), g, g2, needed, r)"
+verifast = "vm((Process *)raw_process, ?b, ?n2) &*& vm_equiv(a, b) == true &*& n <= n2 &*& (result == TOIT_V2_OK ? v_top(b) - v_rtop(b) >= needed : result == TOIT_V2_STACK_OVERFLOW || result == TOIT_V2_OUT_OF_MEMORY)"
+note = "grow_post: collections from g to g2 (toit_spec::v2::gc::gc_steps), the views represent g2, and on V2_OK the room. Before wave 6 the VeriFast side said the used slots were byte for byte the same after a GC (`same_abstraction`): false for a moving GC, which rewrites every reference slot; the trusted v2_gc contract claimed it. Now the GC's guarantee is gc_equiv (the abstraction is the same), which the core's re-derivation relies on. Since stage 0 of the collector plan (verified/core/OBLIGATIONS.md, The collector) gc_equiv means that b represents a state that collections reach from a's (garbage gone, live objects renumbered, weak maps processed), no longer the same state."
 
 [[contract]]
 name = "gc_allocate_instance"
@@ -216,20 +222,11 @@ verus = "instance_field_count(p1(env.p.ap@), c as int) >= 0"
 [[clause]]
 contract = "gc_allocate_instance"
 side = "ensures"
-name = "out of memory"
-bridge = "stack"
-verus = "r.0 == 0 ==> reloaded(*final(m), g).refines(&env.p)"
-verifast = "[fp]process((Process *)raw_process, prog, ids) &*& vm((Process *)raw_process, ?b, ?n2) &*& alloc_post((Process *)raw_process, a, n, b, n2, ?r, ?objsm, ?Hm) &*& result == (uword)r"
-note = "alloc_post: the state before the allocation is a's after the GCs (vm_equiv), with the null result nothing else; the result word is the object's address (0 for null: a non-null object has addr_ok)."
-
-[[clause]]
-contract = "gc_allocate_instance"
-side = "ensures"
-name = "appended"
+name = "collected, then appended"
 bridge = "heap"
-verus = "r.0 != 0 ==> reloaded(*final(m), sp::alloc2(g, new_instance(env.p.ap@, c as int))).refines(&env.p) && r.0 == enc(final(m).addr(), sp::new_ref2(g))"
-verifast = "(r == 0 ? true : instance_new(v_H(b), r, class_id) == true)"
-note = "With alloc_post's other branch (r appended to the heap of the state before, outside the program heap, every other object unchanged). The fields' value (null) is the allocator's, outside the model's contract of ObjectHeap::allocate_instance (src/heap.cc writes the null object): a gap of the VeriFast side."
+verus = "exists|g2: State2| #[trigger] gc_alloc_post(&env.p, *final(m), g, g2, new_instance(env.p.ap@, c as int), r.0, r.1)"
+verifast = "[fp]process((Process *)raw_process, prog, ids) &*& vm((Process *)raw_process, ?b, ?n2) &*& alloc_post((Process *)raw_process, a, n, b, n2, ?r, ?objsm, ?Hm) &*& result == (uword)r &*& (r == 0 ? true : instance_new(v_H(b), r, class_id) == true)"
+note = "gc_alloc_post: collections from g to g2 (toit_spec::v2::gc::gc_steps; none when the epoch is unchanged), then the views represent g2 with the new instance appended (result its address), or g2 itself (result 0). VeriFast: alloc_post, the state before the allocation is a's after the GCs (vm_equiv: a state collections reach, see the stack bridge), with the null result nothing else; the result word is the object's address (0 for null: a non-null object has addr_ok). With alloc_post's other branch (r appended to the heap of the state before, outside the program heap, every other object unchanged). The fields' value (null) is the allocator's, outside the model's contract of ObjectHeap::allocate_instance (src/heap.cc writes the null object): a gap of the VeriFast side."
 
 [[clause]]
 contract = "gc_allocate_instance"
@@ -257,19 +254,11 @@ verifast = "[?fp]process((Process *)raw_process, ?prog, ?ids) &*& vm((Process *)
 [[clause]]
 contract = "gc_allocate_double"
 side = "ensures"
-name = "out of memory"
-bridge = "stack"
-verus = "r.0 == 0 ==> reloaded(*final(m), g).refines(&env.p)"
-verifast = "[fp]process((Process *)raw_process, prog, ids) &*& vm((Process *)raw_process, ?b, ?n2) &*& alloc_post((Process *)raw_process, a, n, b, n2, ?r, ?objsm, ?Hm) &*& result == (uword)r"
-
-[[clause]]
-contract = "gc_allocate_double"
-side = "ensures"
-name = "appended"
+name = "collected, then appended"
 bridge = "heap"
-verus = "r.0 != 0 ==> reloaded(*final(m), sp::alloc2(g, new_double(as1(g), p1(env.p.ap@), bits))).refines(&env.p) && r.0 == enc(final(m).addr(), sp::new_ref2(g))"
-verifast = "(r == 0 ? true : has_tag(v_H(b), r, DOUBLE_TAG) == true)"
-note = "The payload (the bits) is outside the VeriFast heap model (a double's body is its header only): the C++ converts the bits with bit_cast<double> (a memcpy) and passes the double by value to the allocator, which stores it. Whether a signaling NaN keeps its bits through a double value C leaves to the implementation; review: no x87 on this path (host32 builds with -msse2 -mfpmath=sse, arguments go through memory; ESP32 has no FPU for doubles)."
+verus = "exists|g2: State2| #[trigger] gc_alloc_post(&env.p, *final(m), g, g2, new_double(as1(g), p1(env.p.ap@), bits), r.0, r.1)"
+verifast = "[fp]process((Process *)raw_process, prog, ids) &*& vm((Process *)raw_process, ?b, ?n2) &*& alloc_post((Process *)raw_process, a, n, b, n2, ?r, ?objsm, ?Hm) &*& result == (uword)r &*& (r == 0 ? true : has_tag(v_H(b), r, DOUBLE_TAG) == true)"
+note = "As gc_allocate_instance (gc_alloc_post, alloc_post). The payload (the bits) is outside the VeriFast heap model (a double's body is its header only): the C++ converts the bits with bit_cast<double> (a memcpy) and passes the double by value to the allocator, which stores it. Whether a signaling NaN keeps its bits through a double value C leaves to the implementation; review: no x87 on this path (host32 builds with -msse2 -mfpmath=sse, arguments go through memory; ESP32 has no FPU for doubles)."
 
 [[clause]]
 contract = "gc_allocate_double"
@@ -322,7 +311,7 @@ contract = "gc_allocate_exception"
 side = "ensures"
 name = "raised"
 bridge = "heap"
-verus = "exists|h2: Seq<HeapObj>, trace: Value| #[trigger] exception_post(&env.p, *final(m), g, v, r, h2, trace)"
+verus = "exists|g2: State2, h2: Seq<HeapObj>, trace: Value| gc_steps(env.p.ap@, g, g2) && #[trigger] exception_post(&env.p, *final(m), g2, v, r, h2, trace)"
 
 [[contract]]
 name = "gc_call_primitive"
@@ -379,7 +368,7 @@ contract = "gc_call_primitive"
 side = "ensures"
 name = "completion"
 bridge = "primitive"
-verus = "r.0 != V2_PRIMITIVE_ABSENT ==> exists|gx: State2, v: Value| #[trigger] prim_call_post(&env.p, *final(m), g, module, index, r.0, r.1, gx, v) && (!r.2 ==> gx == with_heap2(g, gx.heap))"
+verus = "r.0 != V2_PRIMITIVE_ABSENT ==> exists|g2: State2, gx: State2, v: Value| gc_steps(env.p.ap@, g, g2) && #[trigger] prim_call_post(&env.p, *final(m), g2, module, index, r.0, r.1, gx, v) && (!r.2 ==> g2 == g && gx == with_heap2(g, gx.heap))"
 note = "VeriFast: prim_done (in the conditional above): prim_out of the policy's function on a, from its last call `raw`, after the GCs (prim_retry), with the status and word the core gets: SUCCESS a value, FAILURE another error (unmarked), THROW an out-of-memory root after four calls."
 
 [[clause]]

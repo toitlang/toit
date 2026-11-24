@@ -1,5 +1,52 @@
 # Phase 4a progress (verified core, format 2 on x86-64)
 
+## The collector in the model, stage 0 (branch gc/stage0-spec, 2026-11-24)
+
+Base c5ee1c2c (wip/collector-proofs). Plan and pilot:
+/home/flo/work/opentoit-sandbox-artifacts/gc-proof-pilot/README.md.
+
+- Spec (verified/spec/src/v2/gc.rs): `collection`, what a collection may
+  do: weak processing (maps reset, values of maps' backings nulled, as
+  `weak_processing` does, over-approximated), then a compaction (a closed
+  live set with the roots survives, renumbered `0..n`, references renamed;
+  program heap and constants keep their ids). `gc_steps`: any number.
+  Proven: collections keep `wf` and the unwinding invariant of a raise;
+  an allocation commutes with them; PRIMITIVE and double operators are
+  the same step after them. `prim::raised` gained a completion that
+  collects first (`raised_gc`, opaque).
+- Core: the five GC leaf contracts promise collections
+  (`alloc::gc_alloc_post`, `step::grow_post`, exception, primitive; none
+  when the epoch is unchanged) instead of the same state; `advances`
+  allows collections around a step (`gc_around`); every GC point
+  re-proved (ALLOCATE and doubles: step, then collections; growth:
+  collections first; C++ primitives: collections, then a completion of the
+  collected state, via a ghost source machine, `step::src_ok`; raises:
+  `raised_gc`; `regain`/`ensure_room_all` return a collected state).
+  `refines` is unchanged (renumbering, not a partial refinement:
+  OBLIGATIONS.md "The collector").
+- Bridge (verified/core/src/gcbridge.rs, proof only): the pilot's
+  `collected` for the core's model, after weak processing, is a
+  `collection` represented by the core's heap model at the collector's
+  addresses.
+- Theorems: same text; `reaches` includes collections, `resumed` assumes
+  collections (weaker), spec `raised` has one more completion. The
+  conclusion `reaches(s0, m.g)` is weaker than before (a state reached by
+  spec steps and collections); the old one rested on contracts no
+  collector that frees memory or processes weak maps meets. For the
+  lead's decision before a merge.
+- C++ side: the `gc_equiv` family's wording (CONTRACTS.toml, annotated
+  README): gc_equiv is gc_steps; no VeriFast change.
+
+Verus: spec 1,066 (64 and 32 bit), core 1,072 / 1,074 verified (64 / 32
+bit), core-split 1,074 / 1,076, 0 errors (base: spec 1,025, core 1,056 /
+1,058, core-split 1,058 / 1,060). Trusted items: the same five GC leaf
+contracts, restated (no new item); audit, contract table, layout table
+and no-Python check pass; THEOREMS.txt: the two core theorems' text
+unchanged, eight new top-level proof fns (`gcbridge::lemma_collected`;
+the spec's `gc_steps` lemmas the core uses). VeriFast `run.sh --quick ffi`
+(LP64, ILP32) passes. Not run: the sandbox ctests (no host build in the
+worktree), the rest of the C++ matrix, the slow tier.
+
 ## Service calls and task switching, second round (branch core/rpc-task-speed-2, 2026-11-24)
 
 Base fd95ac85 (wip/collector-proofs). Artifacts:
