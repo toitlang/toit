@@ -19,11 +19,14 @@ Base ea78a719. Measurements and scripts:
 - `TOIT_PIN_HOT_FLASH_CODE` (default y on the classic ESP32): an output
   section inserted before `.flash.text` (at 0x400d0020) holds the functions
   of toolchains/idf/components/toit/hot_flash_functions.txt in order, each
-  with its literals: group A, the run time's flash code with the largest
-  time share per byte, 14 KB of code per bytecode format (one cache way);
-  group B, the whole verifier (toit_vmverify + toit_spec, 31 KB). The
-  generated script goes right before ESP-IDF's sections.ld on the link line
-  (`toit_postprocess`); no ESP-IDF change.
+  with its literals: group A, the run time's flash code, first 6 KB with
+  the most fetch misses per byte, then the largest time share per byte, 14
+  KB of code per bytecode format (one cache way); group B, the whole
+  verifier (toit_vmverify + toit_spec, 31 KB). The generated script goes
+  right before ESP-IDF's sections.ld on the link line (`toit_postprocess`);
+  no ESP-IDF change. Tried and dropped: lists from misses only (they split
+  the Rust library and the verifier: new variation), from time share only
+  (lost the yield pair), the verifier aligned to 16 KB (no steadier).
 - `TOIT_VERIFIED_CORE_IRAM_FUNCTIONS` (classic ESP32) redone from cycle
   samples with the flash code pinned: `step::slow`/`slow_body` (4.4 KB,
   0.02 % of the time) out; ret_try_v, large_loc, probe_x, hf_at_x,
