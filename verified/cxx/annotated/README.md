@@ -117,8 +117,8 @@ property was neither proved nor refuted at that cap or timeout.
 | monitor-scavenge-young/LP64 | PASS | 117 | 0.7 | 1.3 | 6 |  |
 | process-array-allocation/LP64 | PASS | 155 | 0.5 | 1.1 | 3 | 4 modes summed |
 | scheduler-notify/ILP32 | PASS | 215 | 17.1 | 18.2 | 24 |  |
-| scheduler-spawn/ILP32 | PASS | 203 | 1.6 | 2.2 | 6 |  |
-| scheduler-spawn/LP64 | PASS | 636 | 3.4 | 4.3 | 6 |  |
+| scheduler-spawn/ILP32 | PASS | 432 | 1.6 | 2.3 | 4 | 2026-11-24, wave 8 (refused announcement) |
+| scheduler-spawn/LP64 | PASS | 1383 | 3.4 | 4.3 | 7 | 2026-11-24, wave 8 (refused announcement) |
 | snapshot-image-layout/LP64 | PASS | 386 | 0.4 | 1.0 | 6 |  |
 | task-all-fields/ILP32 | PASS | 172 | 0.9 | 1.5 | 6 |  |
 | task-all-fields/LP64 | PASS | 256 | 1.2 | 2.0 | 6 |  |
