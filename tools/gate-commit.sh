@@ -109,4 +109,19 @@ cat "$LOG_DIR/commit.txt"
 "$WT/verified/gate.sh" --logs "$LOG_DIR" "$@"
 status=$?
 echo "finished: $(date -Is), exit status $status" >> "$LOG_DIR/commit.txt"
+
+# The residual C++ matrix's work directory of the gate worktree keeps its
+# logs and the model-checker timing table (a copy goes to LOG-DIR), not its
+# Clang AST dumps and mutant trees (tens of GB after a failed run; a passed
+# run removes them itself). RUN_KEEP_SCRATCH=1 / RUN_KEEP_MUTANTS=1 keep them.
+acxx_work="$(bash -c 'source "$1" > /dev/null 2>&1; echo "$ACXX_WORK"' _ "$WT/verified/cxx/annotated/env.sh")"
+if [ -n "$acxx_work" ] && [ -d "$acxx_work" ]; then
+  [ "${RUN_KEEP_SCRATCH:-0}" = 1 ] || rm -rf "$acxx_work/scratch"
+  [ "${RUN_KEEP_MUTANTS:-0}" = 1 ] || rm -rf "$acxx_work/mutants"
+  cp "$acxx_work/logs/model-check-fast.tsv" "$LOG_DIR/" 2> /dev/null
+fi
+size() { du -sh "$1" 2> /dev/null | cut -f1; }
+echo "disk left behind: builds $(size "$WT/build") in $WT/build," \
+  "matrix work directory $(size "$acxx_work") in $acxx_work, logs $(size "$LOG_DIR") in $LOG_DIR" \
+  | tee -a "$LOG_DIR/commit.txt"
 exit $status

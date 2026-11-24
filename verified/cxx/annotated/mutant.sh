@@ -35,6 +35,20 @@ TOIT_BIN="${TOIT:-$REPO_ROOT/build/host/sdk/bin/toit}"
 M="$ACXX_WORK/mutants/$name"
 rm -rf "$M"
 mkdir -p "$M/repo/src" "$M/scratch" "$M/gen32"
+# The mutant's tree goes when its verdict is out: its Clang AST dumps
+# (scratch/: the JSON AST of every translation unit the sidecar renders
+# from, for both targets, made anew from the changed tree; 90-550 MB) add
+# up to over 70 GB for the whole matrix. Its logs stay in
+# $ACXX_WORK/logs/mutants/NAME/; RUN_KEEP_MUTANTS=1 keeps the tree.
+cleanup_mutant() {
+  local keep="$ACXX_WORK/logs/mutants/$name" f
+  mkdir -p "$keep"
+  for f in "$M"/*.log; do
+    [ -f "$f" ] && cp "$f" "$keep/"
+  done
+  [ "${RUN_KEEP_MUTANTS:-0}" = 1 ] || rm -rf "$M"
+}
+trap cleanup_mutant EXIT
 for e in "$REPO_ROOT"/*; do
   [ "$(basename "$e")" = src ] || ln -s "$e" "$M/repo/$(basename "$e")"
 done

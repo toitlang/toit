@@ -2647,4 +2647,12 @@ else
 fi
 if [ "$failures" -gt 0 ]; then exit 1; fi
 if [ "$noverdicts" -gt 0 ]; then exit 4; fi
+# A successful fast-tier run leaves its logs (and the 32-bit renderings,
+# gen/, which a later filtered run's ILP32 proofs use), not its scratch:
+# render.sh's Clang AST dumps (about 1.6 GB, made anew by every run) and
+# what is left of the mutants' trees (mutant.sh removes each). Kept with
+# RUN_KEEP_SCRATCH=1.
+if [ "$TIER" = fast ] && [ "${RUN_KEEP_SCRATCH:-0}" != 1 ]; then
+  rm -rf "$ACXX_WORK/scratch" "$ACXX_WORK/mutants"
+fi
 exit 0
