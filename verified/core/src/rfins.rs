@@ -70,7 +70,8 @@ pub fn push_call_fins(m: &mut Machine, r: &mut Regs, p: &Program, target: usize,
     let fi = m.mem.index(f);
     let fw = m.fw;
     // The records move up by one frame record.
-    m.mem.copy_within(fi, fi + FRAME_WORDS, fw);
+    proof { lemma_records_chunk(g0.fins.len() as int); }
+    m.mem.move_records(fi, fi + FRAME_WORDS, fw);
     let ghost mem1 = m.mem@;
     let fp = r.sp.offset(arity as isize);
     let base = r.end.diff(fp);
@@ -236,7 +237,8 @@ pub fn ret_fins_r(m: &mut Machine, r: &mut Regs, p: &Program, w: usize, Ghost(v)
     }
     // The records move down by one frame record (over the returning
     // frame's record).
-    m.mem.copy_within(fo, fo - FRAME_WORDS, fw);
+    proof { lemma_records_chunk(g0.fins.len() as int); }
+    m.mem.move_records(fo, fo - FRAME_WORDS, fw);
     let ghost mem1 = m.mem@;
     let s = r.fp.offset(-1);
     s.write(0, w, &mut m.mem);
