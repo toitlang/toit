@@ -692,15 +692,18 @@ PRIMITIVE(read_uint_little_endian) {
 PRIMITIVE(read_int_big_endian) {
   ARGS(Object, unused, Blob, source, int, width, word, offset);
   USE(unused);
-  unsigned width_minus_1 = width - 1;  // This means size 0 is rejected.
+  // A negative width becomes a large unsigned one (`width - 1` in int
+  // overflowed for INT_MIN).
+  unsigned unsigned_width = width;
   uword unsigned_offset = offset;
   uword length = source.length();
   // We don't need to check for <0 on unsigned values.  Can't have integer
   // overflow when they are both constrained in size (assuming the byte
   // array can't be close to 4Gbytes large).
-  if (unsigned_offset > length || width_minus_1 >= 8 || unsigned_offset + width_minus_1 >= length) {
+  if (unsigned_offset > length || unsigned_width == 0 || unsigned_width > 8 || unsigned_offset + unsigned_width > length) {
     FAIL(OUT_OF_BOUNDS);
   }
+  uword width_minus_1 = unsigned_width - 1;
   int64 value = static_cast<int8>(source.address()[offset]);  // Sign extend.
   for (uword i = 1; i <= width_minus_1; i++) {
     value = Utils::wrapping_shift_left(value, 8);
@@ -712,15 +715,18 @@ PRIMITIVE(read_int_big_endian) {
 PRIMITIVE(read_int_little_endian) {
   ARGS(Object, unused, Blob, source, int, width, word, offset);
   USE(unused);
-  unsigned width_minus_1 = width - 1;  // This means size 0 is rejected.
+  // A negative width becomes a large unsigned one (`width - 1` in int
+  // overflowed for INT_MIN).
+  unsigned unsigned_width = width;
   uword unsigned_offset = offset;
   uword length = source.length();
   // We don't need to check for <0 on unsigned values.  Can't have integer
   // overflow when they are both constrained in size (assuming the byte
   // array can't be close to 4Gbytes large).
-  if (unsigned_offset > length || width_minus_1 >= 8 || unsigned_offset + width_minus_1 >= length) {
+  if (unsigned_offset > length || unsigned_width == 0 || unsigned_width > 8 || unsigned_offset + unsigned_width > length) {
     FAIL(OUT_OF_BOUNDS);
   }
+  uword width_minus_1 = unsigned_width - 1;
   int64 value = static_cast<int8>(source.address()[offset + width_minus_1]);  // Sign extend.
   for (uword i = width_minus_1; i != 0; i--) {
     value = Utils::wrapping_shift_left(value, 8);

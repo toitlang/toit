@@ -470,6 +470,10 @@ mutant closure-escapes tests/rules.render $RULES_CC "RENDER:closure parameter pr
   "static word retry_once(word n, F produce) {\n  F copy = produce;\n  word result = copy();" \
   "SIDECAR::use_lambdas#1@@  word result = produce();" "  F copy = produce;\n  word result = copy();" \
   "SIDECAR::use_lambdas#2@@  word result = produce();" "  F copy = produce;\n  word result = copy();"
+# The modular shift by a run-time count (wave 9) leaves the count to
+# VeriFast: a count one too large must be rejected.
+mutant shift-bits-count tests/rules.render $RULES_CC "Shifting by an amount" "-allow_dead_code" \
+  "static_cast<uint64>(x) << bits);" "static_cast<uint64>(x) << (bits + 1));"
 entry model                 pass "" model/objects.gen.c
 mutant program-class-id-slot model/objects.render src/program.h "Cannot prove" "" \
   "return _builtin_class_ids[index];" "return _builtin_class_ids[0];"
@@ -2584,6 +2588,16 @@ mutant read-bytes-end-check prims/read_bytes.render src/primitive_core.cc "No ma
   "PRIMITIVE(read_uint_big_endian)@@ || unsigned_offset + unsigned_width > length) {" ") {"
 mutant read-bytes-little-start prims/read_bytes.render src/primitive_core.cc "No matching|Cannot prove" "-allow_dead_code -prover z3v4.5" \
   "PRIMITIVE(read_uint_little_endian)@@for (word i = width - 1;" "for (word i = width;"
+# The signed readers (wave 9): the old `width - 1` in int before the check
+# put back (overflows for INT_MIN: LP64 only, on ILP32 an int argument is
+# a smi); the big-endian loop one byte too long; the little-endian sign
+# byte one too high.
+mutant read-int-width-overflow prims/read_bytes.render src/primitive_core.cc "LP64:underflow|overflow" "-allow_dead_code -prover z3v4.5" \
+  "PRIMITIVE(read_int_big_endian)@@  unsigned unsigned_width = width;" "  unsigned original_width_minus_1 = width - 1;\n  unsigned unsigned_width = width;"
+mutant read-int-big-loop prims/read_bytes.render src/primitive_core.cc "No matching|Cannot prove" "-allow_dead_code -prover z3v4.5" \
+  "PRIMITIVE(read_int_big_endian)@@i <= width_minus_1;" "i <= unsigned_width;"
+mutant read-int-little-sign prims/read_bytes.render src/primitive_core.cc "No matching|Cannot prove" "-allow_dead_code -prover z3v4.5" \
+  "PRIMITIVE(read_int_little_endian)@@[offset + width_minus_1]" "[offset + unsigned_width]"
 entry word-size             pass "" prims/word_size.gen.c
 mutant word-size-bits prims/word_size.render src/primitive_core.cc "smi_val|Cannot prove condition" "" \
   "return Smi::from(WORD_SIZE);" "return Smi::from(WORD_SIZE * 8);"

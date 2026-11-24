@@ -229,6 +229,18 @@ inline uint64 shift_in(uint64 v) {
   return v;
 }
 
+// Rules (wave 9): with truncating a uint64 `<<` of an explicitly converted
+// value by a count computed at run time is the modular shift (VeriFast
+// checks the count), an explicit uint8-to-int8 conversion is the modular
+// one, and an annotated operand of a cast or of a shift is parenthesized.
+inline int64 shift_bits(int64 x, int64 bits) {
+  return static_cast<int64>(static_cast<uint64>(x) << bits);
+}
+
+inline int64 sign_byte(uint8 b) {
+  return static_cast<int8>(b);
+}
+
 inline word use_lambdas(word a, word b) {
   word base = a;
   word first = retry_once(1, [&]() -> word { return base + b; });

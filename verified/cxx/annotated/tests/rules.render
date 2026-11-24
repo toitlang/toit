@@ -17,6 +17,8 @@ typedef uintptr_t uword;
 typedef unsigned int uint32;
 typedef unsigned long long uint64;
 typedef unsigned char uint8;
+typedef long long int64;
+typedef signed char int8;
 struct Tagged { uword tag_; };
 typedef struct Tagged Tagged;
 struct Outer_Inner { word v_; };
@@ -248,6 +250,26 @@ inline uint64 shift_in(uint64 v)
 {
   v <<= 8;
   return v;
+}
+
+@render verified/cxx/annotated/tests/rules.cc toit::shift_bits truncating
+inline int64 shift_bits(int64 x, int64 bits)
+// The count is checked by VeriFast (the self-test shift-bits-count widens
+// it by one), the shift is modular.
+//@ requires 0 <= bits &*& bits <= 63;
+//@ ensures true;
+{
+  return static_cast<int64>(static_cast<uint64>(x) << bits);
+}
+
+@render verified/cxx/annotated/tests/rules.cc toit::sign_byte truncating
+inline int64 sign_byte(uint8 b)
+//@ requires true;
+//@ ensures -128 <= result &*& result <= 127;
+{
+  //@ truncate_signed_limits(b, N7);
+  //@ assert pow_nat(2, N7) == 128;
+  return static_cast<int8>(b);
 }
 
 @render verified/cxx/annotated/tests/rules.cc toit::narrow_unsigned truncating
