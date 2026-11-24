@@ -345,6 +345,51 @@ rpc-task-speed/README.md). C6, f2/f1 over three sessions: rpc-200 1.31 ->
   CONFIG_FREERTOS_PLACE_FUNCTIONS_INTO_FLASH=n both get 7-8 % faster).
 - S5: not done (0.5 % of an RPC on the host).
 
+Status after branch core/rpc-task-speed-2 (2026-11-24; artifacts
+rpc-task-speed-2/README.md):
+- Where the finally-code cost comes from: every value-returning `monitor`
+  method returns with a non-local return out of the block the compiler
+  wraps it in (src/compiler/monitor.cc), through `__Monitor__.locked_`'s
+  try/finally, so the finally code (resume_, yield checks) runs with a
+  finally record and every call and return in it takes the slow path
+  (48 per task ping-pong). An SDK change (compiler: the method's own
+  returns exit the monitor block with the value; `locked_` returns it;
+  `try-await_` leaves its loop with `break`; no try for an uncontended
+  `locked_` or an empty message queue) removes them: f2 tasks-1k 350 ->
+  278 ms, equal to f1 with the same change (274 ms; f1 before 301 ms).
+  Not on this branch (artifacts sdk-monitor-nlr-v3.patch): it changes
+  compiled code of every program and needs its own review.
+- S3: the records layout is unchanged. Without the SDK change the slow
+  round trip is 6.7 % of tasks-1k; with it the finally-code calls are
+  gone from the benchmarks. Layouts weighed: finally records below the
+  frame records (frames move on every record push and pop: more words
+  moved than now, 20-35 frames deep); a gap between frame and finally
+  records (the call fast path would need a second compare); records
+  interleaved by frame (every frame index becomes a position lookup).
+  Inlining the record-aware return into RETURN alone: tasks-1k -1.6 %,
+  richards +0.5 %, run loop +274 B (not kept).
+- S4: the scan is leaner (no per-frame bound check, 10 instead of 13 x86
+  instructions per frame; tasks-1k -1.3 %). Removing it at a task switch
+  without trust needs one of: (a) a bound on the arities of all methods,
+  computed by the core once per run (the frames' arities at the measured
+  switches were 3-9, the free words 120-200, so `rtop + bound +
+  max_height + STACK_RESERVE <= top` would hold); it cannot live in the
+  Machine (the run-entry theorems and the GC contracts take arbitrary
+  machines) nor be linked to `env.p` by a type invariant (Env's fields
+  are public), so the link `bound covers env.p.methods@` has to be a
+  precondition of every function that takes the Env (about 190); (b)
+  the save side: a spec lemma that every step keeps the body of every
+  suspended Stack2 object but the running task's (prim_heap_ok already
+  says so for primitives; heap_ext only keeps "is a Stack2"), so that a
+  length recorded by the core when it suspends a task, with the room it
+  had then, still holds at the switch back. Either is a proof change of
+  its own; neither needs a trusted item.
+- C++ primitive round trip (12 per ping-pong, 22 per RPC, 2 per yield):
+  `cxx_primitive_v` saves 12 callee-saved registers on RISC-V; the C++
+  side (`toit_v2_primitive`, `v2_primitive_failed`) is rendered for the
+  C++ proofs (verified/cxx/annotated/ffi), so it was not changed here.
+  It sets the yield floor (f2/f1 1.20, 1.28 with the SDK change).
+
 Install-time verifier (owned with the spec): on the classic ESP32 the
 check of a 25-31 KB program executes 270-490 M instructions (about 10-16
 thousand per bytecode byte) at 2.4-2.5 cycles each; instruction-fetch

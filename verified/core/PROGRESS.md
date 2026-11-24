@@ -1,5 +1,36 @@
 # Phase 4a progress (verified core, format 2 on x86-64)
 
+## Service calls and task switching, second round (branch core/rpc-task-speed-2, 2026-11-24)
+
+Base fd95ac85 (wip/collector-proofs). Artifacts:
+/home/flo/work/opentoit-sandbox-artifacts/rpc-task-speed-2 (README.md).
+
+C6, f2/f1 over three sessions (head 0e0ad162): rpc-200 1.12, rpc-echo-50
+1.12, yield-2k 1.21, tasks-1k 1.18 -> 1.16; richards 0.90, deltablue
+1.01, pystone 0.96, json 1.10-1.11. Two layout-shifted builds: rpc
+1.12 / 1.04, yield 1.21 / 1.20, tasks 1.16 / 1.16.
+
+- Core: `room::ensure_room_all` without the per-frame bound check (the
+  bases are at most the stack's height, `lemma_bases_below`): 13 -> 10
+  x86 instructions per frame, tasks-1k -1.3 %, -24 B.
+- Attribution of the finally-code slow path (48 calls and returns per
+  ping-pong): value-returning `monitor` methods return through
+  `locked_`'s try/finally (the compiler's monitor block). An SDK change
+  (compiler + lib/core, artifacts sdk-monitor-nlr-v3.patch, not on the
+  branch) brings f2 tasks-1k to 278 ms against f1's 274 ms with the same
+  change (301 ms without), host ping-pong f2 36.7 K -> 27.1 K, f1 24.6 K
+  -> 21.9 K.
+- Not done, with the proved designs written up (OBLIGATIONS.md, status
+  of S2-S6): no room scan at task switches (a per-run arity bound threaded
+  with the Env, or a spec lemma that steps keep suspended stacks), S3's
+  records layout, S5; the C++ side of the primitive round trip is
+  rendered for the C++ proofs.
+
+Verus: core 1,056 / 1,058 verified (64 / 32 bit), core-split 1,058 /
+1,060, 0 errors; spec unchanged (1,025); audit passed, THEOREMS.txt
+unchanged; nostd, nopanic (riscv32, thumbv7m), thumb codegen ok; sandbox
+ctests 126/126; host ctest 1217/1220 (version, reader, udp-reuse-port).
+
 ## Service calls and task switching (branch core/rpc-task-speed, 2026-11-24)
 
 Base 9d79d677 (core/split-option). Artifacts:
