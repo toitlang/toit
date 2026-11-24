@@ -1915,6 +1915,60 @@ pub fn x_chain(nodes: &Vec<XNode>, i: u32) -> (res: Result<Vec<XKind>, Oom>)
     x_reversed(&rev)
 }
 
+/// The kinds of the list with top node `i`, top first, into `rev` (its
+/// buffer reused): `x_chain` without allocating once `rev` has grown.
+pub fn x_chain_rev(nodes: &Vec<XNode>, i: u32, rev: &mut Vec<XKind>) -> (res: Result<(), Oom>)
+    ensures res is Ok ==> chain(nodes@, i as int) == rev_kinds(final(rev)@),
+{
+    rev.clear();
+    let mut cur = i as usize;
+    let mut done = cur >= nodes.len();
+    proof { if done { assert(chain(nodes@, i as int) =~= rev_kinds(rev@)); } }
+    while !done
+        invariant
+            done ==> chain(nodes@, i as int) == rev_kinds(rev@),
+            !done ==> cur < nodes@.len() && chain(nodes@, i as int) == chain(nodes@, cur as int) + rev_kinds(rev@),
+        decreases (if done { 0int } else { cur as int + 1 }),
+    {
+        let nd = vix(nodes, cur);
+        let ghost before = rev@;
+        let ghost par = nd.parent as int;
+        let ghost base = if par < cur { chain(nodes@, par) } else { Seq::<Kind>::empty() };
+        assert(chain(nodes@, cur as int) == base.push(nd.kind@));
+        try_push(rev, nd.kind)?;
+        assert(base.push(nd.kind@) + rev_kinds(before) =~= base + rev_kinds(rev@));
+        if (nd.parent as usize) < cur {
+            cur = nd.parent as usize;
+        } else {
+            assert(base + rev_kinds(rev@) =~= rev_kinds(rev@));
+            done = true;
+        }
+    }
+    Ok(())
+}
+
+/// The kinds of `rev` in reverse order, into `r` (its buffer reused).
+pub fn x_reversed_into(rev: &Vec<XKind>, r: &mut Vec<XKind>) -> (res: Result<(), Oom>)
+    ensures res is Ok ==> kv(*final(r)) == rev_kinds(rev@),
+{
+    r.clear();
+    let mut j = rev.len();
+    proof { assert(kv(*r) =~= rev_kinds(rev@).subrange(0, 0)); }
+    while j > 0
+        invariant 0 <= j <= rev@.len(), kv(*r) =~= rev_kinds(rev@).subrange(0, (rev@.len() - j) as int),
+        decreases j,
+    {
+        j -= 1;
+        let ghost old_r = kv(*r);
+        try_push(r, vix(rev, j))?;
+        assert(kv(*r) =~= old_r.push(rev@[j as int]@));
+        assert(rev_kinds(rev@)[rev@.len() - 1 - j] == rev@[j as int]@);
+        assert(kv(*r) =~= rev_kinds(rev@).subrange(0, (rev@.len() - j) as int));
+    }
+    assert(kv(*r) =~= rev_kinds(rev@));
+    Ok(())
+}
+
 pub proof fn lemma_key(m1: int, o1: int, m2: int, o2: int)
     requires 0 <= o1 < 0x1_0000_0000, 0 <= o2 < 0x1_0000_0000, 0 <= m1, 0 <= m2,
     ensures
@@ -2376,6 +2430,9 @@ pub fn x_method_body_ok(p: &VProgram, c: &XCert, m: usize, trusted: bool) -> (re
     let ghost cm = c@.maps[m as int];
     assert(cm == mapsv(c.maps));
     let mut off = 0;
+    // Each instruction's map, built in reused buffers.
+    let mut rev: Vec<XKind> = Vec::new();
+    let mut k: Vec<XKind> = Vec::new();
     while off < c.maps.idx.len()
         invariant
             wf_program2(vview(p)), m < p.methods@.len(), m == c.cur, c.cur < c.g.n, g_ok(c.g),
@@ -2387,7 +2444,9 @@ pub fn x_method_body_ok(p: &VProgram, c: &XCert, m: usize, trusted: bool) -> (re
     {
         let i = vix(&c.maps.idx, off);
         if i != NO_MAP {
-            let k = x_chain(&c.maps.nodes, i)?;
+            x_chain_rev(&c.maps.nodes, i, &mut rev)?;
+            x_reversed_into(&rev, &mut k)?;
+            assert(kv(k) == chain(c.maps.nodes@, i as int));
             assert(cm[off as int] == Some(kv(k)));
             if !x_instr_ok(p, c, m, off, &k, trusted)? {
                 return Ok(false);
