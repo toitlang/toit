@@ -855,11 +855,8 @@ pub fn op_primitive(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode
     let arity = p.method(method).arity as usize;
     // A core primitive the policy resolves to the VM's own entry with the
     // method's arity: its Rust port, if there is one.
-    if module == 0 && (index as usize) < env.core_arities.len()
-        && env.core_arities.at(index as usize) as usize == arity + 1 {
-        if let Some(c) = rust_primitive_r(m, r, env, index, arity) {
-            return c;
-        }
+    if let Some(c) = rust_primitive_r(m, r, env, module, index, arity) {
+        return c;
     }
     // A C++ primitive (a GC point that may switch the task) or a missing
     // one; a Rust primitive that needs a GC calls its C++ primitive too.
@@ -1065,23 +1062,38 @@ fn cxx_primitive_rest(m: &mut Machine, r: Regs, env: &Env, st: usize, w: usize, 
 }
 
 /// Runs the Rust port of core primitive `index` (`prims::call`) on the
-/// frame's parameters and completes the step as the protocol says (as
-/// `primitive::op_rust_primitive`), on the registers. `None` (nothing
-/// changed) when there is no port for these arguments or an allocation did
-/// not fit.
+/// frame's parameters, where the policy resolves the primitive to the VM's
+/// own entry with the method's arity (`Env::core_arities`), and completes
+/// the step as the protocol says (as `primitive::op_rust_primitive`), on the
+/// registers. `None` (nothing changed) when the policy does not, there is no
+/// port for these arguments or an allocation did not fit: then
+/// `op_primitive` calls the C++ primitive, and only then.
+///
+/// The ports of `prims::never_falls_back` never give `None` where the
+/// policy resolves them: for such a primitive the C++ primitive does not
+/// run. The method's arity, which the port is called with, is the arity the
+/// verifier's primitive table (`cert.prim_arity`) gives the primitive.
 #[inline(always)]
-fn rust_primitive_r(m: &mut Machine, r: &mut Regs, env: &Env, index: u16, arity: usize) -> (res: Option<Ctl>)
+fn rust_primitive_r(m: &mut Machine, r: &mut Regs, env: &Env, module: u8, index: u16, arity: usize) -> (res: Option<Ctl>)
     requires
         rinv(&env.p, *old(m), *old(r)),
         old(r).sp@ >= old(r).fr@ + old(m).fw + STACK_RESERVE,
         step_ok(env.p.ap@, env.p.cert@, old(m).g@),
         cur_op(env.p.ap@, old(m).g@) == 89,
-        sp::step(env.p.ap@, old(m).g@) == Outcome2::Primitive(old(m).g@, 0, index),
+        sp::step(env.p.ap@, old(m).g@) == Outcome2::Primitive(old(m).g@, module, index),
         arity == sp::frame_height(old(m).g@),
         old(r).ip@ + 4 < 0x1000_0000,
     ensures
         res is None ==> *final(m) == *old(m) && *final(r) == *old(r),
         res matches Some(c) ==> rpost(&env.p, *old(m), *old(r), *final(m), *final(r), c),
+        // The method's arity is the verifier's arity of the primitive.
+        (module as int) < env.p.cert@.prim_arity.len()
+            && (index as int) < env.p.cert@.prim_arity[module as int].len()
+            && env.p.cert@.prim_arity[module as int][index as int] == arity as int,
+        // A port that never falls back completes the step: no C++ primitive.
+        module == 0 && (index as int) < env.core_arities@.len()
+            && env.core_arities@[index as int] as int == arity + 1
+            && prims::never_falls_back(index as int, arity as int) ==> res is Some,
 {
     let p = &env.p;
     let ghost ap = p.ap@;
@@ -1090,6 +1102,13 @@ fn rust_primitive_r(m: &mut Machine, r: &mut Regs, env: &Env, index: u16, arity:
     let ghost vs = prim_args(ap, g);
     proof {
         w0.lemma_frame(p);
+        lemma_prim_arity(p, w0, module, index, arity);
+    }
+    if !(module == 0 && (index as usize) < env.core_arities.len()
+        && env.core_arities.at(index as usize) as usize == arity + 1) {
+        return None;
+    }
+    proof {
         crate::regs::lemma_bci(p, w0);
         lemma_rust_args(p, w0, arity);
         lemma_shape(p, g);
@@ -1146,6 +1165,29 @@ fn rust_primitive_r(m: &mut Machine, r: &mut Regs, env: &Env, index: u16, arity:
         },
         _ => None,
     }
+}
+
+/// The arity of a PRIMITIVE's method, its frame height, is the arity the
+/// verifier's primitive table gives the primitive.
+proof fn lemma_prim_arity(p: &Program, m: Machine, module: u8, index: u16, arity: usize)
+    requires
+        m.inv(p),
+        cur_op(p.ap@, m.g@) == 89,
+        sp::step(p.ap@, m.g@) == Outcome2::Primitive(m.g@, module, index),
+        arity == sp::frame_height(m.g@),
+    ensures
+        (module as int) < p.cert@.prim_arity.len()
+            && (index as int) < p.cert@.prim_arity[module as int].len()
+            && p.cert@.prim_arity[module as int][index as int] == arity as int,
+{
+    let ap = p.ap@;
+    let g = m.g@;
+    reveal(wf);
+    toit_spec::v2::sound_prim::lemma_prim_facts(ap, p.cert@, p.trusted@, g);
+    toit_spec::v2::sound_instr::lemma_instr(ap, p.cert@, p.trusted@, g);
+    reveal(sp::step);
+    assert(module == ap.bytecodes[g.bci + 1]);
+    assert(index as int == u16_at(p1(ap), g.bci + 2));
 }
 
 } // verus!

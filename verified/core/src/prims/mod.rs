@@ -220,6 +220,8 @@ pub fn call(module: u8, index: u16, mem: &StackMem, at: usize, n: usize, heap: &
             prim_spec(p.ap@, module, index, vs, old(heap).objs(), final(heap).objs(), ret_of(p, r.0, r.1@)),
         // The task primitives are completed by the machine (C++).
         toit_spec::v2::prim::machine_completed(module, index) ==> r.0 is NotPorted,
+        // The ports of `never_falls_back` complete the primitive in Rust.
+        module == 0 && never_falls_back(index as int, n as int) ==> completes(r.0),
 {
     if module != 0 || n > 6 {
         return (PrimOutcome::NotPorted, Ghost(Value::Smi(0)));
@@ -349,7 +351,12 @@ pub proof fn lemma_array_at_put_refined(ap: Program2, vs: Seq<Value>, h: Seq<Hea
 /// their PRIMITIVE goes to C++ directly.
 #[inline(always)]
 pub fn family(i: usize) -> (f: u8)
-    ensures (i == 115 || i == 116) ==> f == 0,
+    ensures
+        (i == 115 || i == 116) ==> f == 0,
+        forall|n: int| #[trigger] never_falls_back_ints(i as int, n) ==> f == 1,
+        forall|n: int| #[trigger] never_falls_back_arrays(i as int, n) ==> f == 2,
+        forall|n: int| #[trigger] never_falls_back_blobs(i as int, n) ==> f == 3,
+        forall|n: int| #[trigger] never_falls_back_floats(i as int, n) ==> f == 4,
 {
     match i {
         ix::SMI_ADD
@@ -460,6 +467,78 @@ pub fn family(i: usize) -> (f: u8)
     }
 }
 
+/// The core primitives (index `i`, arity `n`) whose Rust port never falls
+/// back to the C++ primitive: with these arguments every call ends in
+/// `Success` or `Failure`, never `NotPorted` or `NeedsGc` (`prims::call`,
+/// `rarrays::rust_primitive_r`). So for an untrusted process the C++
+/// primitive behind these ports does not run (verified/core/OBLIGATIONS.md,
+/// "Ports that never fall back"). The one list: verified/tools/contract_check.toit
+/// reads it (one `(i == ix::NAME && n == ARITY)` per line) to count the C++
+/// behind these ports as unreachable from untrusted code, and checks each
+/// arity against `index::TABLE`. By family (`family`).
+pub open spec fn never_falls_back(i: int, n: int) -> bool {
+    ||| never_falls_back_ints(i, n)
+    ||| never_falls_back_arrays(i, n)
+    ||| never_falls_back_blobs(i, n)
+    ||| never_falls_back_floats(i, n)
+}
+
+/// Integers: results in the smi range, no allocation.
+pub open spec fn never_falls_back_ints(i: int, n: int) -> bool {
+    ||| (i == ix::SMI_MOD && n == 2)
+    ||| (i == ix::SMI_SHIFT_RIGHT && n == 2)
+    ||| (i == ix::SMI_NOT && n == 1)
+    ||| (i == ix::COUNT_LEADING_ZEROS && n == 1)
+    ||| (i == ix::POPCOUNT && n == 1)
+    ||| (i == ix::OBJECT_CLASS_ID && n == 1)
+    ||| (i == ix::SMI_LESS_THAN && n == 2)
+    ||| (i == ix::SMI_LESS_THAN_OR_EQUAL && n == 2)
+    ||| (i == ix::SMI_GREATER_THAN && n == 2)
+    ||| (i == ix::SMI_GREATER_THAN_OR_EQUAL && n == 2)
+    ||| (i == ix::SMI_EQUALS && n == 2)
+    ||| (i == ix::LARGE_INTEGER_LESS_THAN && n == 2)
+    ||| (i == ix::LARGE_INTEGER_LESS_THAN_OR_EQUAL && n == 2)
+    ||| (i == ix::LARGE_INTEGER_GREATER_THAN && n == 2)
+    ||| (i == ix::LARGE_INTEGER_GREATER_THAN_OR_EQUAL && n == 2)
+    ||| (i == ix::LARGE_INTEGER_EQUALS && n == 2)
+}
+
+/// Arrays: no allocation, no list backing.
+pub open spec fn never_falls_back_arrays(i: int, n: int) -> bool {
+    ||| (i == ix::ARRAY_LENGTH && n == 1)
+    ||| (i == ix::ARRAY_AT && n == 2)
+    ||| (i == ix::ARRAY_AT_PUT && n == 3)
+    ||| (i == ix::ARRAY_REPLACE && n == 5)
+    ||| (i == ix::REBUILD_HASH_INDEX && n == 2)
+}
+
+/// Strings and blobs: strings only (no opaque byte array), no allocation.
+pub open spec fn never_falls_back_blobs(i: int, n: int) -> bool {
+    ||| (i == ix::STRING_HASH_CODE && n == 1)
+    ||| (i == ix::STRING_RAW_AT && n == 2)
+    ||| (i == ix::STRING_COMPARE && n == 2)
+    ||| (i == ix::INT_VECTOR_EQUALS && n == 2)
+}
+
+/// Floats: no new double.
+pub open spec fn never_falls_back_floats(i: int, n: int) -> bool {
+    ||| (i == ix::FLOAT_SIGN && n == 1)
+    ||| (i == ix::FLOAT_IS_NAN && n == 1)
+    ||| (i == ix::FLOAT_IS_FINITE && n == 1)
+    ||| (i == ix::FLOAT_LESS_THAN && n == 2)
+    ||| (i == ix::FLOAT_LESS_THAN_OR_EQUAL && n == 2)
+    ||| (i == ix::FLOAT_GREATER_THAN && n == 2)
+    ||| (i == ix::FLOAT_GREATER_THAN_OR_EQUAL && n == 2)
+    ||| (i == ix::FLOAT_EQUALS && n == 2)
+    ||| (i == ix::COMPARE_TO && n == 2)
+    ||| (i == ix::MIN_SPECIAL_COMPARE_TO && n == 2)
+}
+
+/// A primitive outcome that completes the PRIMITIVE without C++.
+pub open spec fn completes(r: PrimOutcome) -> bool {
+    r is Success || r is Failure
+}
+
 /// The dispatch table of the core module.
 #[inline(always)]
 pub fn dispatch(index: u16, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<Value>))
@@ -470,8 +549,16 @@ pub fn dispatch(index: u16, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutc
         prim_post(c.p, old(heap), final(heap), r.0, r.1@),
         contract(c.p, index as int, a, old(heap), final(heap), r.0, r.1@),
         (index == 115 || index == 116) ==> r.0 is NotPorted,
+        never_falls_back(index as int, a.n as int) ==> completes(r.0),
 {
     let i = index as usize;
+    proof {
+        if never_falls_back(index as int, a.n as int) {
+            assert(i as int == index as int);
+            assert(never_falls_back_ints(i as int, a.n as int) || never_falls_back_arrays(i as int, a.n as int)
+                || never_falls_back_blobs(i as int, a.n as int) || never_falls_back_floats(i as int, a.n as int));
+        }
+    }
     match family(i) {
         1 => ints::dispatch(i, a, heap, c),
         2 => array::dispatch(i, a, heap, c),

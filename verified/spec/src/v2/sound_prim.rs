@@ -181,6 +181,10 @@ pub proof fn lemma_prim_facts(p: Program2, c: Cert, trusted: bool, s: State2)
         &&& k.len() == arity(p, m)
         &&& info(p, m).kind == KIND_METHOD
         &&& 0 <= index < 0x10000
+        // The verifier's primitive table (`c.prim_arity`) gives the
+        // primitive the method's arity.
+        &&& (module as int) < c.prim_arity.len() && index < c.prim_arity[module as int].len()
+        &&& c.prim_arity[module as int][index] == arity(p, m)
         &&& (module == 0 && index == PRIM_TASK_NEW ==> arity(p, m) == 1)
         &&& (module == 0 && index == PRIM_TASK_TRANSFER ==>
                 arity(p, m) == 2 && k[0] is Val && k[1] is Val && !has_receiver_range(info(p, m)))

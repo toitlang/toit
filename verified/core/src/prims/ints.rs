@@ -175,6 +175,7 @@ pub fn int_res(heap: &mut Heap, c: &Ctx, x: i64) -> (r: (PrimOutcome, Ghost<Valu
         r.0 is Success ==> int_val(final(heap).objs(), r.1@) == Some(x),
         r.0 is Success && smi_in(x) ==> *final(heap) == *old(heap) && r.1@ == Value::Smi(x),
         r.0 is NeedsGc ==> !smi_in(x),
+        smi_in(x) ==> r.0 is Success,
 {
     if MIN_SMI <= x && x <= MAX_SMI {
         let (w, v) = smi_res(heap, x);
@@ -212,6 +213,8 @@ pub fn binop(op: u8, large: bool, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (Pr
         prim_post(c.p, old(heap), final(heap), r.0, r.1@),
         !(r.0 is NotPorted) ==> int_binop_contract(c.p.ap@, op, large, a.vs@, old(heap).objs(),
             final(heap).objs(), ret_of(c.p, r.0, r.1@)),
+        // A smi receiver's remainder and right shift are smis.
+        !large && (op == MOD || op == SHR) ==> completes(r.0),
 {
     let x = match recv_arg(large, heap, a.w[0], Ghost(a.vs@[0])) {
         Some(x) => x,
@@ -223,8 +226,55 @@ pub fn binop(op: u8, large: bool, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (Pr
     };
     match int_op_exec(op, x, y) {
         Err(k) => fail(c.p, heap, k),
-        Ok(z) => int_res(heap, c, z),
+        Ok(z) => {
+            proof {
+                if !large && (op == MOD || op == SHR) {
+                    assert(smi_range(x as int));
+                    lemma_smi_op(op, x, y, z);
+                }
+            }
+            int_res(heap, c, z)
+        },
     }
+}
+
+/// The remainder and the arithmetic right shift of a smi are smis.
+pub proof fn lemma_smi_op(op: u8, x: i64, y: i64, z: i64)
+    requires
+        op == MOD || op == SHR,
+        smi_range(x as int),
+        int_op(op, x, y) == Some(z),
+    ensures smi_in(z),
+{
+    if op == MOD {
+        lemma_trem_bound(x as int, y as int);
+    } else if y >= 64 {
+    } else {
+        let s = y as u64;
+        assert(z == x >> s);
+        assert(MIN_SMI <= x <= MAX_SMI && s < 64 ==> MIN_SMI <= x >> s <= MAX_SMI) by (bit_vector);
+    }
+}
+
+/// The C remainder lies between zero and the dividend.
+pub proof fn lemma_trem_bound(a: int, b: int)
+    requires b != 0,
+    ensures
+        a >= 0 ==> 0 <= toit_spec::spec_common::trem(a, b) <= a,
+        a < 0 ==> a <= toit_spec::spec_common::trem(a, b) <= 0,
+{
+    let aa = if a >= 0 { a } else { -a };
+    let bb = if b >= 0 { b } else { -b };
+    let q = aa / bb;
+    vstd::arithmetic::div_mod::lemma_fundamental_div_mod(aa, bb);
+    vstd::arithmetic::div_mod::lemma_mod_pos_bound(aa, bb);
+    vstd::arithmetic::div_mod::lemma_div_pos_is_pos(aa, bb);
+    vstd::arithmetic::mul::lemma_mul_nonnegative(bb, q);
+    assert(toit_spec::spec_common::tdiv(a, b) == (if (a >= 0) == (b >= 0) { q } else { -q }));
+    assert(b * toit_spec::spec_common::tdiv(a, b) == (if a >= 0 { bb * q } else { -(bb * q) })) by (nonlinear_arith)
+        requires
+            bb == (if b >= 0 { b } else { -b }),
+            toit_spec::spec_common::tdiv(a, b) == (if (a >= 0) == (b >= 0) { q } else { -q });
 }
 
 /// The comparisons `smi_less_than` .. `smi_equals` and
@@ -233,7 +283,7 @@ pub fn cmpop(op: u8, large: bool, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (Pr
     requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 2,
     ensures
         prim_post(c.p, old(heap), final(heap), r.0, r.1@),
-        !(r.0 is NotPorted),
+        completes(r.0),
         int_cmp_contract(c.p.ap@, op, large, a.vs@, old(heap).objs(), final(heap).objs(), ret_of(c.p, r.0, r.1@)),
 {
     let x = match recv_arg(large, heap, a.w[0], Ghost(a.vs@[0])) {
@@ -281,6 +331,8 @@ pub fn unop(op: u8, large: bool, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (Pri
         prim_post(c.p, old(heap), final(heap), r.0, r.1@),
         !(r.0 is NotPorted) ==> int_unop_contract(c.p.ap@, op, large, a.vs@, old(heap).objs(),
             final(heap).objs(), ret_of(c.p, r.0, r.1@)),
+        // The complement of a smi and the bit counts are smis.
+        (op == NOT && !large) || op == CLZ || op == POPCOUNT ==> completes(r.0),
 {
     let x = if op >= CLZ {
         int_arg(heap, a.w[0], Ghost(a.vs@[0]))
@@ -295,6 +347,14 @@ pub fn unop(op: u8, large: bool, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (Pri
         else if op == NOT { !x }
         else if op == CLZ { (x as u64).leading_zeros() as i64 }
         else { popcount_exec(x as u64) as i64 };
+    proof {
+        if op == NOT && !large {
+            assert(smi_range(x as int));
+            assert(MIN_SMI <= x <= MAX_SMI ==> MIN_SMI <= !x <= MAX_SMI) by (bit_vector);
+        } else if op == CLZ {
+            vstd::std_specs::bits::axiom_u64_leading_zeros(x as u64);
+        }
+    }
     int_res(heap, c, z)
 }
 
@@ -324,6 +384,7 @@ pub fn object_class_id(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, 
 pub fn dispatch(i: usize, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<Value>))
     requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)),
     ensures prim_post(c.p, old(heap), final(heap), r.0, r.1@), contract(c.p, i as int, a, old(heap), final(heap), r.0, r.1@),
+        never_falls_back_ints(i as int, a.n as int) ==> completes(r.0),
 {
     let n = a.n;
     match i {

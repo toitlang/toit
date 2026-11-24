@@ -675,6 +675,7 @@ pub fn blob_or_fail(heap: &Heap, c: &Ctx, k: &BlobClasses, w: usize, Ghost(v): G
     ensures
         r is Ok ==> blob_ok(heap, &r->Ok_0),
         r is Err ==> prim_post(c.p, heap, heap, r->Err_0.0, r->Err_0.1@),
+        mode == STRINGS_ONLY && r is Err ==> r->Err_0.0 is Failure,
         (v is Obj && heap.objs()[v->Obj_0 as int].body is Str) ==> r is Ok
             && r->Ok_0.c.id() == v->Obj_0 as int && r->Ok_0.start == 0
             && r->Ok_0.len == content(heap.objs()[v->Obj_0 as int]).len(),
@@ -710,6 +711,7 @@ pub fn string_at(raw: bool, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutc
     requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 2,
     ensures
         prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+        raw ==> completes(r.0),
         ({
             let v = a.vs@[0];
             let i = a.vs@[1];
@@ -763,6 +765,7 @@ pub fn string_at(raw: bool, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutc
 pub fn string_hash_code(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<Value>))
     requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 1,
     ensures prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+        completes(r.0),
 {
     let w = a.w[0];
     let id = match string_arg(heap, w, Ghost(a.vs@[0])) {
@@ -834,6 +837,7 @@ pub fn blob_equals(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghos
 pub fn string_compare(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<Value>))
     requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 2,
     ensures prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+        completes(r.0),
 {
     if a.w[0] == a.w[1] {
         let (rw, rv) = smi_res(heap, 0);
@@ -1466,6 +1470,7 @@ pub fn put_float(f64: bool, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutc
 pub fn int_vector_equals(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<Value>))
     requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 2,
     ensures prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+        completes(r.0),
 {
     let x = match ints::int_arg(heap, a.w[0], Ghost(a.vs@[0])) {
         Some(x) => x,
@@ -1551,6 +1556,7 @@ pub fn string_from_rune(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome,
 pub fn dispatch(i: usize, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<Value>))
     requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)),
     ensures prim_post(c.p, old(heap), final(heap), r.0, r.1@), contract(c.p, i as int, a, old(heap), final(heap), r.0, r.1@),
+        never_falls_back_blobs(i as int, a.n as int) ==> completes(r.0),
 {
     let n = a.n;
     match i {
