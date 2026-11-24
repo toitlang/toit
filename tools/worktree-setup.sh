@@ -175,10 +175,8 @@ cat << EOF
 
 Done. Run tests with: (cd build/host && ctest -j\$(nproc))
 
-Known environmental ctest failures in worktrees (not regressions):
-  - version              the version test needs a git-describe version this
-                         configuration does not build (not built here).
-  - reader               not built in this configuration.
+Known environmental ctest failure in worktrees (not a regression):
   - udp-reuse-port-test  needs multicast, which the sandbox lacks; fails the
                          same way without any of the sandbox changes.
+(The libyaml tests version and reader are built by build_test_assets.)
 EOF

@@ -20,7 +20,21 @@ mutants' copies) goes to a directory per checkout under `work/` there
 the scratch directory was shared, and two checkouts rendering at once
 wrote the same AST dump twice ("2 definitions of toit::Instance::at_put").
 The checks run as parallel jobs: the LP64 proofs together with
-`render.sh --check`, the ILP32 proofs and the mutants after it.
+`render.sh --check`, the ILP32 proofs and the mutants after it. A job
+waiting for model-checker memory does not hold one of the `RUN_JOBS`
+slots (at most `RUN_JOBS` jobs wait at once).
+
+Disk: a fast-tier run needs about 8 GB of its work directory at peak
+(measured 7.3 GB, 2026-11-24; RUN_JOBS=32) and leaves about 40 MB (logs,
+`gen/`, the model-checker jobs' small directories). The bulk is Clang's
+JSON ASTs: `render.sh` dumps every translation unit for both targets into
+`scratch/` (1.6 GB, removed once the drift check passed), and each mutant
+dumps the translation units of its sidecar from its changed tree
+(90-550 MB, removed as soon as it is rendered; the rest of the mutant's
+tree, about 5 MB of links and copies, when its verdict is out; its logs
+stay in `logs/mutants/NAME/`). Without that clean-up a run left 73 GB.
+`RUN_KEEP_MUTANTS=1` and `RUN_KEEP_SCRATCH=1` keep the trees for
+debugging.
 
 ### Two tiers
 
