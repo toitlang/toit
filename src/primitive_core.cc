@@ -2177,6 +2177,14 @@ PRIMITIVE(process_send) {
     return encoder.create_error_object(process);
   }
 
+  // The life-cycle notices are created by the scheduler only. The system
+  // process trusts them, and without a boot process the payload of a
+  // TERMINATED notice becomes the exit state of the VM. The encoder frees
+  // the buffer.
+  if (type == SystemMessage::TERMINATED || type == SystemMessage::SPAWNED) {
+    FAIL(PERMISSION_DENIED);
+  }
+
   // Takes over the buffer and neutralizes the MessageEncoder.
   SystemMessage* message = _new SystemMessage(type, process->group()->id(), process->id(), &encoder);
   if (message == null) FAIL(MALLOC_FAILED);

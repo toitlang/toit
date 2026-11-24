@@ -27,6 +27,9 @@ It must be possible to encode the $message with the built-in
   message encoder. Throws "NESTING_TOO_DEEP" for deep or cyclic
   data structures or a serialization error for unserializable
   messages.
+
+Throws "PERMISSION_DENIED" for $SYSTEM-TERMINATED_ and $SYSTEM-SPAWNED_.
+  Only the VM sends these messages.
 */
 process-send_ pid/int type/int message -> bool:
   #primitive.core.process-send:

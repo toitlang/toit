@@ -4,10 +4,10 @@
 
 // MessageDecoder::decode_process_message decodes the exit value of a
 // TERMINATED system message without a process. The scheduler calls it when
-// there is no boot process. Any process can send a TERMINATED system message
-// with any content (process_send with a negative pid), so the decoder must
-// refuse everything but an integer instead of dereferencing the missing
-// process or program.
+// there is no boot process. Until process_send refused the type, any process
+// could send a TERMINATED system message with any content (with a negative
+// pid). The decoder still refuses everything but an integer instead of
+// dereferencing the missing process or program.
 
 #include <string.h>
 
@@ -51,7 +51,7 @@ static void run() {
     expect_value(buffer, value, __LINE__);
   }
 
-  // What a process can send with process_send.
+  // What a process could send with process_send.
   const uint8 negative[] = { TAG_NEGATIVE_SMI, 5 };
   expect_value(negative, -5, __LINE__);
   const uint8 int_max[] = { TAG_POSITIVE_SMI, 0xff, 0xff, 0xff, 0xff, 0x07 };
