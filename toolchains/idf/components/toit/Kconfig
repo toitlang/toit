@@ -431,7 +431,7 @@ menu "Toit"
             (docs/format2-migration.md, "Devices: hardware results"). On the
             C6 the loop takes 18.9 KB of SRAM (16.5 KB split). The classic
             ESP32 does not link with
-            ESP_WIFI_RX_IRAM_OPT on; without it 2.6 KB of IRAM stay free
+            ESP_WIFI_RX_IRAM_OPT on; without it about 1.7 KB of IRAM stay free
             next to the loop and the default
             TOIT_VERIFIED_CORE_IRAM_FUNCTIONS. So it needs
                 # CONFIG_ESP_WIFI_RX_IRAM_OPT is not set
@@ -467,12 +467,12 @@ menu "Toit"
         # The classic ESP32 (with ESP_WIFI_RX_IRAM_OPT off, see
         # TOIT_VERIFIED_CORE_LOOP_IN_IRAM): by time share per byte in
         # rpc-200, tasks-1k, yield-2k and installs with the flash code
-        # pinned (TOIT_PIN_HOT_FLASH_CODE), plus the process entry
-        # (toit_v2_run, machine::run) and the finally-code fast path
-        # (step::slow); 2.6 KB of IRAM stay free. With the split loop
+        # pinned (TOIT_PIN_HOT_FLASH_CODE), and the process entry
+        # (toit_v2_run, machine::run: in flash they cost service calls
+        # 5-15 %); about 1.7 KB of IRAM stay free. With the split loop
         # its cold part (step_cold) instead of three large helpers.
-        default "9rnonlocal8op_try_v,toit_v2_run,7machine3run,4room15ensure_room_all,7rarrays15cxx_primitive_v,5prims5array8list_add,9rnonlocal21op_non_local_return_v,5rhash14op_hash_find_v,5prims4blob20json_skip_whitespace,5prims5array9array_new,9rnonlocal9ret_try_v,5prims5array9new_array,5rhash7hf_at_x,5rhash7probe_x,7machineNtNtB6_4exec7Machine11reload_cold,9rnonlocal15unwind_resume_v,9rnonlocal11enter_fin_r,4step11resume_with,7rarrays8resume_r,7rarrays18cxx_primitive_rest,5prims5float15number_to_float,5callsNtNtB4_4exec7Machine9do_return,5callsNtNtB4_4exec7Machine9push_call,4step10leave_exit,5prims4blob10new_string,5prims4blob13string_length,5prims5float17number_to_integer,5prims5array12array_expand,5prims5float10double_res,5prims5array18rebuild_hash_index,5prims4blob14string_compare,4step4slow,4step9step_cold" if IDF_TARGET_ESP32 && TOIT_VERIFIED_CORE_LOOP_IN_IRAM && TOIT_VERIFIED_CORE_SPLIT_LOOP
-        default "9rnonlocal8op_try_v,toit_v2_run,7machine3run,4room15ensure_room_all,7rarrays15cxx_primitive_v,5prims5array8list_add,9rnonlocal21op_non_local_return_v,5rhash14op_hash_find_v,5prims4blob20json_skip_whitespace,5prims5array9array_new,9rnonlocal9ret_try_v,6arraysNtNtB4_4exec7Machine9large_loc,5prims5array9new_array,5rhash7hf_at_x,5rhash7probe_x,7machineNtNtB6_4exec7Machine11reload_cold,9rnonlocal15unwind_resume_v,9rnonlocal11enter_fin_r,4step11resume_with,7rarrays8resume_r,7rarrays18cxx_primitive_rest,5prims5float15number_to_float,5callsNtNtB4_4exec7Machine9do_return,5callsNtNtB4_4exec7Machine9push_call,4step10leave_exit,5prims4blob10new_string,5prims4blob13string_length,5prims5float17number_to_integer,5prims5array12array_expand,5prims5float10double_res,5prims4blob8blob_arg,5prims4blob10string_add,5prims5array18rebuild_hash_index,5prims4blob14string_compare,4step4slow" if IDF_TARGET_ESP32 && TOIT_VERIFIED_CORE_LOOP_IN_IRAM
+        default "9rnonlocal8op_try_v,toit_v2_run,7machine3run,4room15ensure_room_all,7rarrays15cxx_primitive_v,5prims5array8list_add,9rnonlocal21op_non_local_return_v,5rhash14op_hash_find_v,5prims4blob20json_skip_whitespace,5prims5array9array_new,9rnonlocal9ret_try_v,5prims5array9new_array,5rhash7hf_at_x,5rhash7probe_x,7machineNtNtB6_4exec7Machine11reload_cold,9rnonlocal15unwind_resume_v,9rnonlocal11enter_fin_r,4step11resume_with,7rarrays8resume_r,7rarrays18cxx_primitive_rest,5prims5float15number_to_float,5prims5float10compare_to,5prims4ints7int_arg,5prims5float7num_arg,5callsNtNtB4_4exec7Machine9do_return,5callsNtNtB4_4exec7Machine9push_call,4step10leave_exit,5prims4blob10new_string,5prims4blob13string_length,5prims5float17number_to_integer,5prims5array12array_expand,5prims5float10double_res,5prims5array18rebuild_hash_index,5prims4blob14string_compare,5prims4blob16string_hash_code,5prims4blob14byte_array_new,5prims4blob19size_of_json_number,5prims4blob13blob_index_of,5prims4blob9string_at,4step9step_cold" if IDF_TARGET_ESP32 && TOIT_VERIFIED_CORE_LOOP_IN_IRAM && TOIT_VERIFIED_CORE_SPLIT_LOOP
+        default "9rnonlocal8op_try_v,toit_v2_run,7machine3run,4room15ensure_room_all,7rarrays15cxx_primitive_v,5prims5array8list_add,9rnonlocal21op_non_local_return_v,5rhash14op_hash_find_v,5prims4blob20json_skip_whitespace,5prims5array9array_new,9rnonlocal9ret_try_v,6arraysNtNtB4_4exec7Machine9large_loc,5prims5array9new_array,5rhash7hf_at_x,5rhash7probe_x,7machineNtNtB6_4exec7Machine11reload_cold,9rnonlocal15unwind_resume_v,9rnonlocal11enter_fin_r,4step11resume_with,7rarrays8resume_r,7rarrays18cxx_primitive_rest,5prims5float15number_to_float,5prims5float10compare_to,5prims4ints7int_arg,5prims5float7num_arg,5callsNtNtB4_4exec7Machine9do_return,5callsNtNtB4_4exec7Machine9push_call,4step10leave_exit,5prims4blob10new_string,5prims4blob13string_length,5prims5float17number_to_integer,5prims5array12array_expand,5prims5float10double_res,5prims4blob8blob_arg,5prims4blob10string_add,5prims5array18rebuild_hash_index,5prims4blob14string_compare,5prims4blob16string_hash_code,5prims4blob14byte_array_new,5prims4blob19size_of_json_number,5prims4blob13blob_index_of,5prims4blob9string_at" if IDF_TARGET_ESP32 && TOIT_VERIFIED_CORE_LOOP_IN_IRAM
         # Targets with unified SRAM (C6, S3): every hot function outside
         # the loop (12 KB of heap on the C6).
         default "9rnonlocal8op_try_v,toit_v2_run,4room15ensure_room_all,7rarrays15cxx_primitive_v,7machine3run,5prims5array8list_add,9rnonlocal21op_non_local_return_v,5rhash14op_hash_find_v,5prims4blob20json_skip_whitespace,5prims5array9array_new,4step4slow,5rhash7probe_x,5rhash7hf_at_x,7rarrays18cxx_primitive_rest,9rnonlocal15unwind_resume_v,5prims4blob8blob_arg,6arraysNtNtB4_4exec7Machine9large_loc,5callsNtNtB4_4exec7Machine9do_return,4step9slow_body,7rarrays8resume_r,9rnonlocal9ret_try_v,7machineNtNtB6_4exec7Machine11reload_cold,4step10leave_exit,5callsNtNtB4_4exec7Machine9push_call,5prims5array18rebuild_hash_index,5prims4ints7int_arg,5prims4ints5binop,5prims5float7num_arg,5prims5float15number_to_float,5prims4blob13string_length" if TOIT_VERIFIED_CORE_LOOP_IN_IRAM
@@ -490,12 +490,12 @@ menu "Toit"
             flash; docs/format2-migration.md, "Devices: hardware results".
             The classic ESP32's list (2026-11-24) was redone from the cycle
             samples of TOIT_HW_PERF_STALL_SAMPLES with the flash code
-            pinned: step::slow_body (4 KB) took 0.02 % of the time on
-            average and left; the service-call, task-switch and string
-            helpers came in; 2.6 KB of IRAM stay free as a reserve (the
-            TOIT_HW_PERF builds need 0.9 KB more, the rest is room for the
-            IRAM code to grow) (verified/core/PROGRESS.md, "Flash layout on
-            the classic ESP32").
+            pinned: step::slow and slow_body (4.4 KB) took 0.02 % of the
+            time on average and left; the service-call, task-switch and
+            string helpers came in; about 1.7 KB of IRAM stay free as a
+            reserve (the TOIT_HW_PERF builds need 0.9 KB more, the rest is
+            room for the IRAM code to grow) (verified/core/PROGRESS.md,
+            "Flash layout on the classic ESP32").
 
     config TOIT_TRACE_INSTALL
         bool "Trace install-time verifications (for measurements)"
