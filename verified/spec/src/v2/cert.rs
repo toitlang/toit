@@ -414,7 +414,7 @@ impl<'a> ShippedOracle<'a> {
         let mut pos = q;
         let mut idx: Vec<u32> = match try_filled(NO_MAP, size) { Ok(v) => v, Err(_) => return Err(Dec::Oom) };
         // Room for the nodes of most methods (about one per two bytes).
-        let mut nodes: Vec<XNode> = match try_with_capacity(size / 2 + 4) { Ok(v) => v, Err(_) => return Err(Dec::Oom) };
+        let mut nodes: Vec<XNode> = match try_with_capacity(size / 8 + 4) { Ok(v) => v, Err(_) => return Err(Dec::Oom) };
         // A block that is never created is not checked: no maps.
         let empty = XMaps { idx: Vec::new(), nodes: Vec::new() };
         let c = XCert { g, cur: m, maps: &empty };
