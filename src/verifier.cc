@@ -585,6 +585,13 @@ bool VerifierImpl::walk_heap() {
         error(null, -1, "heap object at %#zx has tag %d but class %d has tag %d", p, tag, class_id, class_tag(class_id));
         return false;
       }
+      // No object of a program heap has the finalizer flag: on an external
+      // byte array it means that the array owns its memory, and the message
+      // encoder hands such memory to the receiver, which frees it.
+      if (object->has_active_finalizer()) {
+        error(null, -1, "heap object at %#zx has the finalizer flag", p);
+        return false;
+      }
       word declared = Program::instance_size_from_class_bits(program_->class_bits[class_id]);
       word size = 0;
       switch (tag) {
@@ -605,7 +612,17 @@ bool VerifierImpl::walk_heap() {
           if (array->has_external_address()) {
             size = ByteArray::external_allocation_size();
             if (static_cast<uword>(size) > remaining) { error(null, -1, "truncated external byte array at %#zx", p); return false; }
+            // Only raw bytes inside the image (what the snapshot reader
+            // makes): another tag would make the primitives take the
+            // address for a native object (a resource proxy) or read a
+            // mapped file, and a null address with a length would make the
+            // blob decoders read from address 0.
+            if (array->external_tag() != RawByteTag) {
+              error(null, -1, "external byte array at %#zx has tag %d", p, static_cast<int>(array->external_tag()));
+              return false;
+            }
             ByteArray::Bytes bytes(array);
+            if (bytes.address() == null) { error(null, -1, "external byte array at %#zx has no address", p); return false; }
             uword a = reinterpret_cast<uword>(bytes.address());
             if (bytes.length() < 0 || a < image_begin_ || a + bytes.length() > image_end_) {
               error(null, -1, "external byte array at %#zx points outside of the image", p); return false;
@@ -624,13 +641,21 @@ bool VerifierImpl::walk_heap() {
             if (static_cast<uword>(size) > remaining) { error(null, -1, "truncated external string at %#zx", p); return false; }
             String::Bytes bytes(string);
             uword a = reinterpret_cast<uword>(bytes.address());
-            if (bytes.length() < 0 || a < image_begin_ || a + bytes.length() > image_end_) {
+            // The terminator too (float_parse and the cstring arguments rely
+            // on it, as the format-2 conversion checks).
+            if (bytes.length() < 0 || a < image_begin_ || a + bytes.length() >= image_end_) {
               error(null, -1, "external string at %#zx points outside of the image", p); return false;
+            }
+            if (bytes.address()[bytes.length()] != '\0') {
+              error(null, -1, "external string at %#zx has no terminator", p); return false;
             }
           } else {
             word length = string->length();
             if (length < 0 || static_cast<uword>(length) > remaining) { error(null, -1, "string at %#zx has length %zd", p, length); return false; }
             size = String::internal_allocation_size(length);
+            if (static_cast<uword>(size) <= remaining && String::Bytes(string).address()[length] != '\0') {
+              error(null, -1, "string at %#zx has no terminator", p); return false;
+            }
           }
           break;
         }

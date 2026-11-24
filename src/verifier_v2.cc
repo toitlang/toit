@@ -77,6 +77,90 @@ static const uint32 v2_prim_counts[] = { MODULES(V2_MODULE_COUNT) };
 #undef V2_MODULE_ARITIES
 #undef V2_MODULE_COUNT
 
+// Whether `length` elements of `element_size` bytes at `data` lie inside
+// [begin, end) and `data` has the alignment the readers need.
+static bool v2_inside(uword begin, uword end, const void* data, word length, word element_size,
+                      uword alignment) {
+  if (length < 0) return false;
+  if (length == 0) return true;  // Never read.
+  uword a = reinterpret_cast<uword>(data);
+  if ((a & (alignment - 1)) != 0 || a < begin || a >= end) return false;
+  return static_cast<uword>(length) <= (end - a) / static_cast<uword>(element_size);
+}
+
+// The tables of a program image lie inside the image, before anything
+// reads them (verified/cxx/annotated/README.md, "Findings", wave 11). A
+// program image is a Program followed by its heap and its off-heap
+// tables; the image's words are installed as they come, so every pointer
+// of the Program (the List and Table fields) is a word the image chose:
+// with the relocation bit, an offset into the image; without it, any
+// address. Everything after this reads them: is_format2 the bytecodes,
+// V2MethodTable::compute the last literal and the method table literal it
+// holds, v2_program_tables and the verifier's conversion every table
+// (verified/vmverify/src/from_vm.rs borrows them in place: "Every pointer
+// of `p` must be valid for its length"), the processes the globals.
+// Memory outside the image is neither checked by the verifier nor
+// immutable after it (a table at an absolute address in RAM could change
+// after the verdict). The snapshot reader allocates all of them inside the
+// image, so a program read from a snapshot passes. Returns null or the
+// reason.
+const char* V2Verifier::image_layout_error(const Program* program, word program_size) {
+  uword begin = reinterpret_cast<uword>(program);
+  if (program_size < static_cast<word>(sizeof(Program)) ||
+      static_cast<uword>(program_size) > ~static_cast<uword>(0) - begin) {
+    return "program size";
+  }
+  uword end = begin + program_size;
+  if (!v2_inside(begin, end, program->global_variables.array(), program->global_variables.length(),
+                 sizeof(Object*), WORD_SIZE)) {
+    return "global variables outside the image";
+  }
+  if (!v2_inside(begin, end, program->literals.array(), program->literals.length(), sizeof(Object*), WORD_SIZE)) {
+    return "literals outside the image";
+  }
+  if (!v2_inside(begin, end, program->dispatch_table.data(), program->dispatch_table.length(), sizeof(int32), 4)) {
+    return "dispatch table outside the image";
+  }
+  if (!v2_inside(begin, end, program->class_check_ids.data(), program->class_check_ids.length(), sizeof(uint16), 2)) {
+    return "class check ids outside the image";
+  }
+  if (!v2_inside(begin, end, program->interface_check_offsets.data(), program->interface_check_offsets.length(),
+                 sizeof(uint16), 2)) {
+    return "interface check offsets outside the image";
+  }
+  if (!v2_inside(begin, end, program->class_bits.data(), program->class_bits.length(), sizeof(uint16), 2)) {
+    return "class bits outside the image";
+  }
+  if (!v2_inside(begin, end, program->bytecodes.data(), program->bytecodes.length(), 1, 1)) {
+    return "bytecodes outside the image";
+  }
+  // The last literal: V2MethodTable::compute reads its header and, for a
+  // byte array, its content (the method table, format note 21).
+  int count = program->literals.length();
+  if (count > 0) {
+    Object* last = program->literals.array()[count - 1];
+    if (is_heap_object(last)) {
+      // The header and the length word.
+      void* object = reinterpret_cast<void*>(reinterpret_cast<uword>(last) - Object::HEAP_TAG);
+      if (!v2_inside(begin, end, object, 2, WORD_SIZE, WORD_SIZE)) return "last literal outside the image";
+      if (is_byte_array(last)) {
+        const ByteArray* array = ByteArray::cast(last);
+        if (array->has_external_address()) {
+          if (!v2_inside(begin, end, object, ByteArray::external_allocation_size() / WORD_SIZE, WORD_SIZE, WORD_SIZE)) {
+            return "last literal outside the image";
+          }
+          if (array->external_tag() != RawByteTag) return "method table literal is not raw bytes";
+        }
+        ByteArray::ConstBytes bytes(array);
+        if (bytes.address() == null || !v2_inside(begin, end, bytes.address(), bytes.length(), 1, 1)) {
+          return "method table literal outside the image";
+        }
+      }
+    }
+  }
+  return null;
+}
+
 const char* V2Verifier::install_verdict(const void* memory, word program_size, uint8* metadata,
                                         const uint8* certificate, word certificate_length,
                                         Process* process) {
@@ -193,6 +277,16 @@ static bool v2_verify(Program* program, const V2MethodTable* table, bool trusted
   fprintf(stderr, "verifier: %sprogram rejected: the firmware has no verifier\n", trusted ? "" : "untrusted ");
   return false;
 #else
+  // The tables the conversion borrows lie inside the image (checked before
+  // the method table was decoded on the install path; a program read from
+  // a snapshot has them there by construction).
+  const char* layout = V2Verifier::image_layout_error(program,
+      program_size >= 0 ? program_size : program->size_no_assets());
+  if (layout != null) {
+    fprintf(stderr, "verifier: %sprogram rejected: malformed program memory: %s\n",
+            trusted ? "" : "untrusted ", layout);
+    return false;
+  }
   if (certificate == null && !V2Verifier::infers()) {
     // Devices (and hosts with -Xrequire_certificate): no inference, so no
     // verdict without a shipped certificate. Rejected before the program is
@@ -257,6 +351,11 @@ const char* V2Verifier::verify_installed(Program* program, word program_size, bo
                                          const uint8* certificate, word certificate_length,
                                          Process* process) {
   *no_verdict = false;
+  const char* layout = image_layout_error(program, program_size);
+  if (layout != null) {
+    fprintf(stderr, "verifier: untrusted program rejected: malformed program memory: %s\n", layout);
+    return "INVALID_SNAPSHOT";
+  }
   if (!program->is_format2()) {
     if (V2MethodTable::untrusted_format1_allowed()) {
       *no_verdict = true;
@@ -379,6 +478,10 @@ bool V2Verifier::write_canonical(Program* program, const V2MethodTable* table, c
 const char* V2Verifier::verify_installed(Program* program, word program_size, bool* no_verdict,
                                          const uint8* certificate, word certificate_length,
                                          Process* process) {
+  if (image_layout_error(program, program_size) != null) {
+    *no_verdict = false;
+    return "INVALID_SNAPSHOT";
+  }
   *no_verdict = !program->is_format2() && V2MethodTable::untrusted_format1_allowed();
   if (*no_verdict) return null;
   // Without the verifier no untrusted program can be admitted.
@@ -397,6 +500,12 @@ bool V2Verifier::certify(Program* program, const V2MethodTable* table, bool trus
 #endif  // TOIT_VERIFIED_CORE
 
 bool V2Verifier::verify(Program* program, bool trusted) {
+  const char* layout = image_layout_error(program, program->size_no_assets());
+  if (layout != null) {
+    fprintf(stderr, "verifier: %sprogram rejected: malformed program memory: %s\n",
+            trusted ? "" : "untrusted ", layout);
+    return false;
+  }
   V2MethodTable* table = V2MethodTable::compute(program);
   if (table == null) return false;
   bool result = verify(program, table, trusted);

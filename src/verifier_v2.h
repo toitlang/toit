@@ -73,6 +73,12 @@ class V2Verifier {
                                       const uint8* certificate = null, word certificate_length = 0,
                                       Process* process = null);
 
+  // Null if every table of the program image at [program] of
+  // [program_size] bytes (the List and Table fields of the Program, and
+  // the method table literal) lies inside the image; else the reason.
+  // verify_installed checks it before it reads anything else of the image.
+  static const char* image_layout_error(const Program* program, word program_size);
+
   // The install-time verdict for the program image at [memory] of
   // [program_size] bytes (written, its header not yet) with its shipped
   // [certificate] (or null), with the [metadata] its header will get: clears
