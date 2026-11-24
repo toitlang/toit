@@ -31,7 +31,8 @@ than 36 GB, so the matrix has two tiers:
 
 * the fast tier, `run.sh` (and `verified/check.sh --tests`): the
   renderings, the constant and layout checks, every VeriFast proof, the
-  mutants, the Frama-C/WP loops and every model-checker job that is not
+  mutants, the Frama-C/WP loops, the EC618 SMT models
+  (`heap/smt-models.sh`) and every model-checker job that is not
   listed in `model-check-jobs.sh`;
 * the slow tier, `run.sh --slow` (and `verified/check.sh --slow`, which
   runs both): only the jobs listed by `slow` in `model-check-jobs.sh`. It
@@ -410,160 +411,158 @@ The FFI rendering uses the release configuration with optional hardware profilin
 
 ### EC618 mailbox atomics
 
-Run `run.sh --quick ec618-mailbox` for the source-level checks. To check the
-Cortex-M3 code emitted for the event worker, pass the EC618 release build's
-event-source object to the instruction checker:
+Run `run.sh --quick ec618-mailbox` for the source-level checks.
 
-```sh
-python3 verified/cxx/annotated/heap/check_ec618_mailbox.py path/to/event_sources/uart_ec618.cc.o
-```
+The Cortex-M3 code emitted for the event worker was checked once, in the
+EC618 release build's event-source object and in both final format-2 slot
+links (after `make ec618-relocations EC618_BYTECODE_FORMAT=2`), by a script
+that has since been removed. That result is unchecked now (see [EC618
+linked-image results](#ec618-linked-image-results-unchecked)). What it
+covered: in a linked image, the resolved branch destinations and singleton
+addresses; the relocation build separately compared the relocated canonical
+body with the independently linked slot B. It checked the two publish loops,
+UART exchange and completion-bit clear, including retry branches, barriers
+and the position of the generation store and load, and followed startup,
+both producer paths, worker dispatch and queue retirement. For a relocatable
+object it checked the call relocation types, targets and branch addends, and
+bound each singleton load or store to the same symbol at offset zero. Under
+the Cortex-M exclusive-monitor and barrier semantics, each failed attempt
+preserves memory and retries, and each successful attempt implements the
+specified word update. Eventual success under contention is an additional
+hardware and scheduling assumption.
 
-After `make ec618-relocations EC618_BYTECODE_FORMAT=2`, check both final
-links in the selected EC618 build directory. For the default directory run
+The scheduler and completion-semaphore checks of the linked images were
+likewise run once, independently of the historical allocator layout,
+against the base ELF used for the slot links: both final format-2 slots
+passed against base fingerprint `f0ae7c907be49d8af02ea2dbcfa6aecf`
+(unchecked now).
 
-```sh
-python3 verified/cxx/annotated/heap/check_ec618_mailbox.py build/ec618/toit-slot-{a,b}.elf
-```
+### EC618 linked-image results (unchecked)
 
-In a linked image the checker verifies resolved branch destinations and
-singleton addresses. The relocation build separately compares the
-relocated canonical body with the independently linked slot B.
+The checks of linked EC618 images (the base firmware ELF, built from the
+vendor SDK, and the VM slot ELFs of an EC618 build) were Python scripts that
+disassembled the images with ARM GNU objdump, read symbols and DWARF with
+pyelftools, matched the Thumb instructions against expected encodings, and
+ran Z3 or CBMC on models of the matched code. The images are not in the
+repository; they come from an EC618 build (the base from the vendor SDK,
+the slots from `make ec618` with the ARM toolchain), which the matrix does
+not do. The scripts were removed on 2026-11-24 (no Python in the
+repository), and no port replaces them. Nothing
+checks the results below any more: each is a recorded observation about the
+firmware builds named here, and is trusted. A new base or slot build has
+none of them.
 
-The checker uses ARM GNU objdump and Z3 and accepts explicit paths via
-`--objdump` and `--z3`. It checks the two publish loops, UART exchange and
-completion-bit clear, including retry branches, barriers and the position
-of the generation store and load. The same gate follows startup, both producer
-paths, worker dispatch and queue retirement. For a relocatable object it
-checks the call relocation types, targets and branch addends. It binds each
-singleton load or store to the same symbol at offset zero. Under the Cortex-M exclusive-monitor and
-barrier semantics, each failed attempt preserves memory and retries, and each
-successful attempt implements the specified word update. Eventual success
-under contention is an additional hardware and scheduling assumption.
+What is still checked:
 
-The scheduler and completion-semaphore checks can also run independently of
-the historical allocator layout. Supply the same base ELF used for the slot
-links. Both final format-2 slots passed against base fingerprint
-`f0ae7c907be49d8af02ea2dbcfa6aecf`.
+- The SMT models the scripts ran on (`heap/ec618_*.smt2`: the memmove and
+  memset loops, page classification, chunk admission and append, the
+  scavenger's copy and capacity, object and external extents, object and
+  process roots, the remembered-set scan, the survivor watermark, the
+  small-block grant and release, the free-list buckets, arena return and the
+  scheduler's resume countdown). `heap/smt-models.sh` runs Z3 (of Frama-C's
+  opam switch) on each and requires its listed verdicts, in order: `run.sh
+  ec618-smt`. Two self-tests (`ec618-smt-mutant/...`, not with `--quick`)
+  make the page-classification bound and the survivor-space capacity test
+  off by one and require a changed verdict. These check the models only:
+  that a model is the linked Thumb code was the scripts' part and is
+  unchecked.
+- The source-level EC618 entries of the matrix (`gc-heap-range-ec618`,
+  `gc-metadata-layout-ec618`, `gc-ec618-*`, `ec618-thread-spawn`,
+  `ec618-thread-map`, `ec618-mailbox`, `ec618-mailbox-race`,
+  `ec618-event-worker-start`), which run on the C++ sources.
 
-```sh
-python3 verified/cxx/annotated/heap/check_ec618_threads.py path/to/base.elf build/ec618/toit-slot-{a,b}.elf
-```
+Not checked: `heap/ec618_allocator_abi.c`, the CBMC model of the allocator
+veneers, includes the instructions and addresses extracted from a base ELF
+and has no run in the matrix.
 
-### EC618 firmware allocator checks
+The recorded results (current format-2 slots against base-v5 fingerprint
+`f0ae7c907be49d8af02ea2dbcfa6aecf`, or the historical allocator ELF with
+manifest fingerprint `b11a03ffa2790e3009abc87587810b4b` where stated):
 
-For current format-2 slots, check the GC range, metadata reservation request
-and descriptor publication against the base used for linking. The same check
-validates all six table placements, the initial page-type fill, and lookup
-arithmetic. It follows the same metadata request through base heap registration
-and first-fit page allocation under the page ownership and exclusion contracts.
-It also follows normal object-memory teardown and both setup rollback paths
-to metadata release, then checks the base allocator’s release of a live page run.
-The linked chunk check covers admission, construction of the initial spare,
-owned-chunk metadata fills, space insertion, object construction and collector size reads, scavenger spare
-selection, copy capacity, copying and forwarding,
-survivor and spare handoff, and page-type clearing before chunk release. The same command
-checks small-block bucket selection, splitting and zeroing, all four
-coalescing cases, boundary-tag repair, free-list updates, and
-the return of a fully coalesced arena to the page allocator. It runs the
-scheduler proof on the same base, including SysTick and PendSV setup, and
-checks which task-tag table entries the linked allocator wrappers read and write.
+- GC range, metadata reservation request and descriptor publication against
+  the base used for linking; all six table placements, the initial page-type
+  fill and the lookup arithmetic. The same metadata request through base
+  heap registration and first-fit page allocation under the page ownership
+  and exclusion contracts. Normal object-memory teardown and both setup
+  rollback paths to metadata release, and the base allocator's release of a
+  live page run.
+- The linked chunk check: admission, construction of the initial spare,
+  owned-chunk metadata fills, space insertion, object construction and
+  collector size reads, scavenger spare selection, copy capacity, copying
+  and forwarding, survivor and spare handoff, and page-type clearing before
+  chunk release. Small-block bucket selection, splitting and zeroing, all
+  four coalescing cases, boundary-tag repair, free-list updates, and the
+  return of a fully coalesced arena to the page allocator. The scheduler
+  proof on the same base, including SysTick and PendSV setup, and which
+  task-tag table entries the linked allocator wrappers read and write.
+- memmove (historical allocator ELF): the allocator call and the forward
+  copy instructions matched, then loop initialization, termination, bounds
+  and byte preservation for every lower destination and nonwrapping source
+  range. A change in the matched code requires reviewing the instruction
+  model against the new ELF.
+- GC metadata fills, with the dynamic completion semaphore: its constructor,
+  initial queue fields, worker give, join receive and deletion path; the
+  linked count arithmetic for both possible token counts, including a second
+  give to a full semaphore; the empty receive through its event-list calls
+  and retry branches. The linked timeout helper preserves an indefinite
+  wait; for finite waits, expiry and remaining ticks against a 33-bit
+  elapsed-time model across at most one wrap between samples. The linked
+  wake and queue-unlock paths: ready and pending-ready insertion, the
+  priority comparison and the number of deferred wakes. For indefinite
+  waits, event-list insertion and the transfer from the ready list to the
+  suspended list; given a valid sorted list, equal-key ordering and every
+  word changed by the insertion. For a single worker and exclusive joiner,
+  completion-token publication, consumption and retirement, including
+  preemption immediately on critical-section exit; the linked worker's
+  remaining instructions and the joiner's queue release, descriptor release
+  and handle reset.
+- The direct branches used by chunk initialization and destruction to the
+  base memset, and the loop's byte effect for every 32-bit length. For page
+  classification, the compiled range test and fill arguments against the
+  slot's debug field layout. The chunk initializer, executed symbolically:
+  all four calls' byte values and extents against their tables. For
+  firmware setup, the page-rounded reservation size, placement of all six
+  tables, four commit calls, page-type fill and five stored biases on the
+  successful path (the heap range nonempty with a representable page-rounded
+  end). The release statistics wrapper, for the linker fallback and the
+  registered range in the historical allocator ELF: the registration
+  arithmetic, descriptor writes, both initial free-list fragment insertions,
+  bounds loads and statistics output stores, assuming serialized
+  initialization and preservation of the live allocator header by subsequent
+  heap operations. For either reported range, the seven-page request into
+  the base allocator, its compiled search against first-fit for every
+  occupancy pattern, and the descriptor writes and zero-fill extent under
+  exclusive ownership. Metadata teardown through base `free`: the status
+  changes and counter deltas for every legal ordinary page extent and
+  neighbor condition.
+- The heap lock through task suspension, the application PendSV vector and
+  suspended switch path, and the decrement on unlock. For the outermost
+  resume, the linked list operations, ready queue selection, deferred tick
+  replay count and PendSV request. Both list splice helpers decoded, with
+  their exact memory effects, including cursor repair and the embedded
+  sentinel. On first task registration, initialization of all 61 list
+  headers and publication of the delayed-list pointers; the task
+  constructor's item owners, container fields and priority clamp. The task
+  frame: the dynamic creation path, initial register slots, saved stack
+  pointer and SVC restore layout for valid word-aligned stacks of 18 to
+  65,535 words. The linked tick path: suspended tick accumulation,
+  wraparound, removing the due prefix, moving tasks to their ready queues and
+  the resulting yield decision, assuming valid scheduler objects, priorities
+  and sorted delay lists. Interrupt-side heap access remains a dependency.
+- The allocator ABI (historical allocator ELF): the linked implementations
+  of `aligned_alloc`, `malloc`, `realloc` and `free` followed to their port
+  entry points, with the arguments, the original return address, balanced
+  stack use and the early return for `free(NULL)` (11 CBMC properties).
 
-```sh
-python3 verified/cxx/annotated/heap/check_ec618_gc_range.py path/to/base.elf build/ec618/toit-slot-{a,b}.elf
-```
-
-Run the following check against the linked base ELF used by the device.
-It requires ARM GNU objdump and Z3 on PATH. The script also accepts
-`--objdump` and `--z3` paths.
-
-```sh
-python3 verified/cxx/annotated/heap/check_ec618_memmove.py build/ec618-base/base.elf
-```
-
-The checker matches the allocator call and the forward copy instructions,
-then checks loop initialization, termination, bounds and byte preservation
-for every lower destination and nonwrapping source range. A change in the
-matched code requires reviewing the instruction model against the new ELF.
-
-To check GC metadata fills, supply the base and the linked VM slot ELFs. The same gate checks the dynamic
-completion semaphore constructor, initial queue fields, worker give, join
-receive and deletion path. It checks the linked count arithmetic for both
-possible token counts, including a second give to a full semaphore, and
-follows the empty receive through its event-list calls and retry branches.
-The linked timeout helper preserves an indefinite wait. For finite waits the
-checker compares expiry and remaining ticks with a 33-bit elapsed-time model
-across at most one wrap between samples. The linked wake and queue-unlock
-checks cover ready and pending-ready insertion, the priority comparison and
-the number of deferred wakes. For indefinite waits the checker also follows
-event-list insertion and the transfer from the ready list to the suspended
-list. Given a valid sorted list, it checks equal-key ordering and every
-word changed by the insertion.
-For a single worker and exclusive joiner the gate explores completion-token
-publication, consumption and retirement, including preemption immediately
-on critical-section exit. It checks the linked worker's remaining instructions
-and the joiner's queue release, descriptor release and handle reset.
-The checker follows the direct branches used by chunk initialization and
-destruction to the base memset and proves the loop's byte effect for every
-32-bit length. For page classification it also checks the compiled range
-test and fill arguments against the slot's debug field layout. It symbolically
-executes the chunk initializer and checks all four calls' byte values and
-extents against their respective tables. For firmware setup it checks the
-page-rounded reservation size, placement of all six tables, four commit calls,
-page-type fill and five stored biases on the successful path. The supplied heap
-range must be nonempty with a representable page-rounded end. The checker
-traces the release statistics wrapper and verifies these properties for the
-linker fallback and the registered range in the historical allocator ELF
-(manifest fingerprint `b11a03ffa2790e3009abc87587810b4b`). It checks the
-registration arithmetic, descriptor writes, both initial free-list fragment
-insertions, bounds loads and statistics output stores. This assumes serialized initialization and preservation of
-the live allocator header by subsequent heap operations. For either reported range the
-checker follows the seven-page request into the base allocator, compares its
-compiled search with first-fit for every occupancy pattern, and checks the
-descriptor writes and zero-fill extent under exclusive ownership. It follows
-metadata teardown through base `free` and checks the status changes and
-counter deltas for every legal ordinary page extent and neighbor condition.
-The base check also follows the heap lock through task suspension, the
-application PendSV vector and suspended switch path, and the decrement on
-unlock. For the outermost resume it checks the linked list operations, ready
-queue selection, deferred tick replay count and PendSV request. The list
-proof decodes both splice helpers and checks their exact memory effects,
-including cursor repair and the embedded sentinel. On first task registration
-the checker verifies initialization of all 61 list headers and publication
-of the delayed-list pointers. It also checks the task constructor's item
-owners, container fields and priority clamp. The task frame check covers
-the dynamic creation path, initial register slots, saved stack pointer and
-SVC restore layout for valid word-aligned stacks of 18 to 65,535 words.
-The separate `ec618-thread-spawn` ILP32 gate extracts the current VM wrapper
-and checks admission, publication and failure cleanup under modeled RTOS calls.
-It also exercises synchronous entry, joining before or after completion,
-and immediate resource reclamation when the worker signals. It runs the
-production thread map through parent/worker switches, including worker
-completion inside the modeled RTOS task creation call.
-The `ec618-thread-map` gate checks lookup, insertion, replacement and
+The separate `ec618-thread-spawn` ILP32 gate of the matrix extracts the
+current VM wrapper and checks admission, publication and failure cleanup
+under modeled RTOS calls. It also exercises synchronous entry, joining
+before or after completion, and immediate resource reclamation when the
+worker signals. It runs the production thread map through parent/worker
+switches, including worker completion inside the modeled RTOS task creation
+call. The `ec618-thread-map` gate checks lookup, insertion, replacement and
 removal in the configured map, including cache publication at interrupt
-mask restoration. This assumes
-valid scheduler objects, priorities and sorted delay lists. The linked tick
-check covers suspended tick accumulation, wraparound, removing the due prefix,
-moving tasks to their ready queues and the resulting yield decision. Interrupt-side heap access remains a dependency. Supply
-unstripped slot ELFs with DWARF and install pyelftools. The checker accepts
-the same objdump and Z3 options.
-
-```sh
-python3 verified/cxx/annotated/heap/check_ec618_memset.py build/ec618-base/base.elf build/ec618/toit-slot-{a,b}.elf
-```
-
-The allocator ABI check uses Python with pyelftools and CBMC. It reads the
-instructions, alignment literal and port entry addresses from the supplied
-base ELF. Pass `--cbmc` to select the verifier executable.
-
-```sh
-python3 verified/cxx/annotated/heap/check_ec618_allocator_abi.py build/ec618-base/base.elf
-```
-
-The check follows the linked implementations of `aligned_alloc`, `malloc`,
-`realloc` and `free` to their port entry points. It checks the arguments, the
-original return address, balanced stack use and the early return for
-`free(NULL)`. Unsupported instructions fail verification.
+mask restoration.
 
 ### The primitives of the untrusted set
 

@@ -37,3 +37,7 @@ tedi_test.go
 /toolchains/esp32*/build/
 
 GITIGNORE/
+
+# Python bytecode (the repository has no Python outside tools/ci/: verified/tools/no_python_check.sh).
+__pycache__/
+*.py[co]

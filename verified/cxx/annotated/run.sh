@@ -11,7 +11,8 @@
 #   4. the reverted-bug self-tests (mutant.sh): each must fail where the
 #      bug is;
 #   5. the Rust raw-memory layer (VeriFast's Rust front end);
-#   6. the model-checker jobs (ESBMC, CBMC; Frama-C/WP for three loops).
+#   6. the model-checker jobs (ESBMC, CBMC; Frama-C/WP for three loops);
+#   7. Z3 on the EC618 instruction-level SMT models (heap/smt-models.sh).
 #
 # Usage: run.sh [--quick] [--slow] [FILTER]
 #   FILTER: only the entries whose name contains it. --quick: no mutants.
@@ -313,6 +314,15 @@ mc_run() {
   local secs="$((tenths / 10)).$((tenths % 10))"
   MC_USAGE=$(awk -v s="$secs" -v r="$rss" -v v="$vm" -v c="$MC_CAP_MB" \
     'BEGIN {printf "%s s, peak %.2f GB (virtual %.2f of %.1f GB)", s, r / 1048576, v / 1048576, c / 1024}')
+  # MC_CHECK (a command line, split on spaces): when set, the job's own
+  # verdict, run after the job (outside the cap and the measurement) with
+  # LOG and the exit status appended; its exit status replaces the job's,
+  # unless the job timed out. Its output goes to LOG.
+  if [ -n "${MC_CHECK:-}" ] && [ $status -ne 124 ] && ! { [ $status -eq 137 ] && (( tenths >= MC_TIMEOUT * 10 )); }; then
+    # shellcheck disable=SC2086
+    $MC_CHECK "$log" "$status" >> "$log" 2>&1
+    status=$?
+  fi
   MC_VERDICT=fail
   if [ $status -eq 0 ]; then
     MC_VERDICT=pass
@@ -915,6 +925,23 @@ ec618_arena_layout() {
     "-I$REPO_ROOT/toolchains/ec618/project/src/cmpctmalloc"
 }
 spawn ec618_arena_layout
+# The EC618 instruction-level SMT models (heap/smt-models.sh): every
+# heap/ec618_*.smt2 and every model listed there, with Z3. Their self-tests
+# (not with --quick): an off-by-one in the page-classification bound and in
+# the survivor-space capacity test must change a verdict.
+if [ "$TIER" = fast ]; then
+  for smt_name in $( (ls heap/ec618_*.smt2 | sed 's|^heap/||; s|\.smt2$||'; heap/smt-models.sh --list) | sort -u); do
+    if [[ "ec618-smt/${smt_name#ec618_}" == *"$filter"* ]]; then spawn ./heap/smt-models.sh "$smt_name"; fi
+  done
+  if [ "$QUICK" = 0 ] && [[ "ec618-smt-mutant/page-classify-bound" == *"$filter"* ]]; then
+    spawn ./heap/smt-models.sh --mutant page-classify-bound ec618_page_classify \
+      "(define-fun writes () Bool (< r3 extent))" "(define-fun writes () Bool (<= r3 extent))"
+  fi
+  if [ "$QUICK" = 0 ] && [[ "ec618-smt-mutant/scavenge-copy-capacity" == *"$filter"* ]]; then
+    spawn ./heap/smt-models.sh --mutant scavenge-copy-capacity ec618_scavenge_copy \
+      "(define-fun fits () Bool (> (word (- limit dst)) n))" "(define-fun fits () Bool (>= (word (- limit dst)) n))"
+  fi
+fi
 ec618_arena_init() {
   local name=gc-ec618-arena-init inc="$ACXX_WORK/gc-ec618-arena-init"
   [[ -n "$filter" && "$name/ILP32" != *"$filter"* ]] && return 0
@@ -1823,16 +1850,34 @@ spawn cpp_equivalence free-list-selection LP64 64 free_list_selection --unwind 1
 spawn cpp_equivalence free-list-selection ILP32 32 free_list_selection --unwind 13
 spawn cpp_equivalence old-space-retry LP64 64 old_space_retry
 spawn cpp_equivalence old-space-retry ILP32 32 old_space_retry
+# array_allocation_verdict MODE LOG STATUS: process-array-allocation's MC_CHECK.
+array_allocation_verdict() {
+  "$ACXX_TOIT" run "$REPO_ROOT/verified/tools/array_allocation.toit" -- verdict "$@"
+}
 array_allocation() {
   local name="process-array-allocation/$1" bits="$2"
   mc_select "$name" || return 0
   source ../env.sh
-  local modes=(proof) mode log
+  local modes=(proof) mode log inc
   (( QUICK )) || modes+=(young-filler old-filler unmarked-old)
+  # verified/tools/array_allocation.toit writes the includes (heap.cc with
+  # the initializer's postcondition, the two-space heap, mutated per mode)
+  # and judges ESBMC's output: the proof must hold, each mutant mode must
+  # fail with its own violated property.
   for mode in "${modes[@]}"; do
     log="$ACXX_WORK/logs/process-array-allocation-$bits-$mode.log"
-    mc_run "$name:$mode" "$log" python3 heap/check_array_allocation.py "$mode" "$bits" "$CXXV_SRC" "$ACXX_WORK" \
-      ../harness/process_array_allocation.cc "$ESBMC" "${CXXV_FLAGS[@]}" -DTOIT_VERIFIED_CORE
+    inc=$(mktemp -d "$ACXX_WORK/array-allocation.XXXXXXXX")
+    if ! "$ACXX_TOIT" run "$REPO_ROOT/verified/tools/array_allocation.toit" -- \
+        prepare "$mode" "$CXXV_SRC" "$inc" > "$log" 2>&1; then
+      printf 'FAIL  %-40s the includes cannot be written, see %s\n' "$name:$mode" "$log"
+      rm -rf "$inc"
+      return 1
+    fi
+    MC_CHECK="array_allocation_verdict $mode" \
+      mc_run "$name:$mode" "$log" "$ESBMC" ../harness/process_array_allocation.cc "-I$inc" \
+        "${CXXV_FLAGS[@]}" -DTOIT_VERIFIED_CORE "-I$CXXV_SRC/third_party/dartino" \
+        --std c++11 "--$bits" "-DCXXV_WORD_BITS=$bits" --overflow-check
+    rm -rf "$inc"
     mc_report "$name:$mode" "" "$log" || return 1
   done
 }

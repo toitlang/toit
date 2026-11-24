@@ -1,4 +1,6 @@
-; EC618 old-space remembered scanning, linked in ec618_remembered_scan.py.
+; EC618 old-space remembered scanning. The match of this model to the linked
+; slot code was checked once by a removed script and is unchecked now
+; (verified/core/TRUSTED.md, "Unchecked linked-image results").
 (set-logic QF_AUFBV)
 (define-sort W () (_ BitVec 32))
 (define-sort B () (_ BitVec 8))
@@ -135,8 +137,8 @@
 (assert (> (+ cursor size) later))
 (check-sat)
 (pop)
-; Record rebuilding by the linked ScavengeVisitor::do_roots body checked in
-; ec618_scavenge_copy.py. An ordinary untouched old slot cannot already
+; Record rebuilding by the linked ScavengeVisitor::do_roots body (matched
+; once by a removed script; unchecked now). An ordinary untouched old slot cannot already
 ; refer to the fresh to-space. A repeated visit of the same slot is also
 ; safe if the record already includes its previously established bit.
 (reset)

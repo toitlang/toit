@@ -52,3 +52,19 @@ acxx_lock() {
   fi
   export ACXX_LOCKED=1
 }
+
+# The Toit executable that runs the tools of verified/tools (TOIT, else the
+# checkout's host SDK, else the one on PATH): ACXX_TOIT, and acxx_toit ARGS...
+ACXX_TOIT="${TOIT:-$REPO_ROOT/build/host/sdk/bin/toit}"
+[ -x "$ACXX_TOIT" ] || ACXX_TOIT="$(command -v toit || echo "$ACXX_TOIT")"
+acxx_toit() {
+  "$ACXX_TOIT" "$@"
+}
+
+# wp_report NAME REPORT LOG PROPERTY...: passes when every goal of the
+# Frama-C/WP JSON report REPORT is valid, every PROPERTY is among its
+# goals and WP's output LOG has no memory model hypotheses (WP's exit
+# status alone allows unproved goals); see verified/tools/wp_report.toit.
+wp_report() {
+  acxx_toit run "$REPO_ROOT/verified/tools/wp_report.toit" -- "$@"
+}
