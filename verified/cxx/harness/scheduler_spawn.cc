@@ -14,6 +14,7 @@
 namespace toit {
 static Process* construct_process(Program*, ProcessGroup*, SystemMessage*, Method, InitialMemoryManager*);
 static void destroy_notice(SystemMessage*);
+static void destroy_child(Process*);
 #include "scheduler_spawn.inc"
 }
 
@@ -26,7 +27,7 @@ extern Program image;
 extern InitialMemoryManager memory;
 static ProcessGroup* owner;
 static int failure, attempts, registered;
-static bool held, sent, accepted, scheduled;
+static bool held, sent, accepted, scheduled, child_destroyed;
 static bool freed_termination, freed_spawned;
 static uint8 argument, copy, payload;
 
@@ -62,15 +63,27 @@ void toit::destroy_notice(SystemMessage* msg) {
     freed_spawned = true;
   }
 }
+// The child's destructor (it owns the termination notice and the initial
+// memory) runs only for a child the system process was not told of.
+void toit::destroy_child(Process* p) {
+  CXXV_ASSERT(!held && p == &child && registered && sent && !accepted && freed_spawned && !scheduled && !child_destroyed,
+              "tear down an unannounced child once, outside the lock");
+  CXXV_ASSERT(owner->processes_.first() != &child && owner->pending_teardowns_ == 1,
+              "detach the child from its group before destroying it");
+  CXXV_ASSERT(active_encoder->buffer_ == &argument && child.spawn_arguments() == nullptr,
+              "an unannounced child never received the arguments");
+  child_destroyed = true;
+}
 message_err_t Scheduler::send_system_message(Locker&, SystemMessage* msg) {
-  CXXV_ASSERT(held && registered && active_encoder->buffer_ == nullptr && child.spawn_arguments() == &argument && !sent && msg == &spawned && msg->pid() == child.id(),
-              "announce the registered child with its assigned pid");
+  CXXV_ASSERT(held && registered && active_encoder->buffer_ == &argument && child.spawn_arguments() == nullptr && !sent &&
+              msg == &spawned && msg->pid() == child.id(),
+              "announce the registered child with its assigned pid before handing it the arguments");
   sent = true;
   return accepted ? MESSAGE_OK : MESSAGE_QUOTA_EXCEEDED;
 }
 void Scheduler::new_process(Locker&, Process* p) {
-  CXXV_ASSERT(held && sent && !scheduled && p == &child && p->spawn_arguments_ == &argument,
-              "schedule the child after the notification attempt");
+  CXXV_ASSERT(held && sent && accepted && !scheduled && p == &child && p->spawn_arguments_ == &argument,
+              "schedule only an announced child, with its arguments");
   scheduled = true;
 }
 int main() {
@@ -110,20 +123,27 @@ int main() {
   encoder.transferred_[0] = array;
 
   int pid = scheduler.spawn(&image, owner, -1, Method::invalid(), &encoder, &memory);
-  bool ok = !refused && failure == 0;
+  // Constructed: both notices and the child allocated. Started: also
+  // announced to the system process.
+  bool constructed = !refused && failure == 0;
+  bool ok = constructed && accepted;
   CXXV_ASSERT(attempts == (refused ? 0 : failure == 1 ? 1 : 2), "check quota and pid exhaustion before allocating notices");
-  int expected_pid = refused ? Scheduler::QUOTA_EXCEEDED_PROCESS_ID : ok ? child.id() : Scheduler::INVALID_PROCESS_ID;
-  CXXV_ASSERT(!held && registered == ok && scheduled == ok && sent == ok &&
+  int expected_pid = ok ? child.id() : (refused || constructed) ? Scheduler::QUOTA_EXCEEDED_PROCESS_ID : Scheduler::INVALID_PROCESS_ID;
+  CXXV_ASSERT(!held && registered == constructed && sent == constructed && scheduled == ok &&
+              child_destroyed == (constructed && !accepted) && owner->pending_teardowns_ == 0 &&
               owner->processes_.first() == (ok ? &child : has_peer ? &peer : nullptr) &&
-              pid == expected_pid, "failed admission leaves no child and transfers no arguments");
+              pid == expected_pid, "failed admission or announcement leaves no child and transfers no arguments");
   CXXV_ASSERT(encoder.buffer_ == (ok ? nullptr : &argument) && child.spawn_arguments() == (ok ? &argument : nullptr) &&
-              child.main_arguments() == &copy, "move the buffer into only the admitted child's spawn slot");
+              child.main_arguments() == &copy, "move the buffer into only the started child's spawn slot");
   CXXV_ASSERT(encoder.copied_[witness] == (ok && witness < copies ? nullptr : &copy),
               "disarm each owned copy only on publication");
   bool moved = ok && transfer;
   CXXV_ASSERT(array->as_external() == (moved ? nullptr : &payload) && array->_external_length() == (moved ? 0 : length) &&
               array->has_active_finalizer() == !moved && sender.object_heap()->external_memory() ==
-              charged - (moved ? static_cast<uword>(length) : 0), "detach and refund transferred storage only on admission");
+              charged - (moved ? static_cast<uword>(length) : 0), "detach and refund transferred storage only on a start");
+  // The termination notice goes with the child: the child's destructor
+  // frees it when the child is torn down unannounced (destroy_child).
   CXXV_ASSERT(freed_termination == (!refused && (failure == 2 || failure == 3)) &&
-              freed_spawned == ((!refused && failure == 3) || (ok && !accepted)), "balance notification ownership on every allocation outcome");
+              freed_spawned == ((!refused && failure == 3) || (constructed && !accepted)),
+              "balance notification ownership on every allocation and announcement outcome");
 }

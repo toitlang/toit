@@ -102,6 +102,12 @@ class SystemMessage : public Message {
     SPAWNED = 1,
   };
 
+  // The life-cycle notices. Only the scheduler creates them
+  // (Scheduler::new_process_message): the system process trusts them, and
+  // without a boot process a TERMINATED notice decides the exit state of
+  // the VM. No process may send them, whatever its policy.
+  static bool is_scheduler_type(int type) { return type == TERMINATED || type == SPAWNED; }
+
   SystemMessage(int type, int gid, int pid, uint8* data);
   SystemMessage(int type, int gid, int pid, MessageEncoder* encoder);
   SystemMessage(int type, int gid, int pid) : type_(type), gid_(gid), pid_(pid), data_(null) {}

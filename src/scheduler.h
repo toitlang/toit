@@ -116,8 +116,9 @@ class Scheduler {
 
   // Send a message from a Toit process to the process with the given id,
   // or to the system process if the id is negative. Enforces the sender's
-  // policy (allowed targets) and the mailbox quotas. Always takes over the
-  // message.
+  // policy (allowed targets) and the mailbox quotas, and refuses the
+  // scheduler's life-cycle notices (TERMINATED, SPAWNED) from any sender
+  // (MESSAGE_PERMISSION_DENIED). Always takes over the message.
   message_err_t send_message_from(Process* sender, int process_id, SystemMessage* message);
 
   // Adds [target] to the allowed-target set of the group of the process
@@ -137,7 +138,11 @@ class Scheduler {
   // deliver the signal.
   bool signal_process(Process* sender, int target_id, Process::Signal signal);
 
-  // Takes over the arguments and the initial memory.
+  // On success, takes over the arguments and the initial memory and returns
+  // the pid. Process quota or pid exhaustion, and a SPAWNED notice the system
+  // process can't take (then nothing is started and the arguments stay with
+  // the encoder), return QUOTA_EXCEEDED_PROCESS_ID; allocation failure
+  // returns INVALID_PROCESS_ID.
   int spawn(Program* program, ProcessGroup* process_group, int priority,
             Method method, MessageEncoder* arguments, InitialMemoryManager* initial_memory);
 

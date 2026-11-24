@@ -362,6 +362,9 @@ const PrimitivePolicy* PrimitivePolicy::launchable(int kind) {
 }
 
 bool PrimitivePolicy::may_send_type(int type) const {
+  // The life-cycle notices come from the scheduler only (see
+  // Scheduler::send_message_from, which refuses them too).
+  if (SystemMessage::is_scheduler_type(type)) return false;
   if (!restricts_messaging()) return true;
   if (type >= MESSAGING_RESERVED_MESSAGE_TYPES) return true;
   switch (type) {

@@ -132,7 +132,10 @@ int main() {
   // no default handling of the other processes' termination notices.
   bool boot_exiting = scheduler.boot_process_ == nullptr && nondet_bool();
   scheduler.boot_process_exiting_ = boot_exiting;
-  bool system = nondet_bool(), present = nondet_bool();
+  // The scheduler's own notices (terminate_process, spawn) take the system
+  // route directly; every process's message goes through send_message_from.
+  bool from_scheduler = nondet_bool();
+  bool system = from_scheduler || nondet_bool(), present = nondet_bool();
   requested = system ? -1 : destination->id();
   lookup_result = present ? destination : nullptr;
   int type = nondet_int();
@@ -142,18 +145,32 @@ int main() {
   CXXV_ASSUME(incoming != nullptr);
   uint8 payload[4] = {};
   incoming->data_ = payload;
-  bool denied = restricted && !allowed && !(present && (same || receiver_is_boot));
+  // No process can send the scheduler's life-cycle notices, on any route.
+  bool forged = !from_scheduler && (type == SYSTEM_TERMINATED || type == SYSTEM_SPAWNED);
+  bool denied = forged || (restricted && !allowed && !(present && (same || receiver_is_boot)));
   bool attempt = !system && !denied && present;
   bool needs_reply = !same && other_restricted && type == SYSTEM_RPC_REQUEST && !sender_is_boot;
   bool delivered = attempt && !mailbox_full && (!needs_reply || existing_reply || grant_room);
-  bool boot_delivery = system && scheduler.boot_process_ != nullptr;
+  bool reached_system = system && !forged;
+  bool boot_delivery = reached_system && scheduler.boot_process_ != nullptr;
   bool queued = delivered || (boot_delivery && !mailbox_full);
-  bool decode = system && !boot_delivery && type == SYSTEM_TERMINATED && !boot_exiting;
-  message_err_t expected = system ? (boot_delivery && mailbox_full ? MESSAGE_QUOTA_EXCEEDED : MESSAGE_OK) : denied ? MESSAGE_PERMISSION_DENIED :
+  bool decode = reached_system && !boot_delivery && type == SYSTEM_TERMINATED && !boot_exiting;
+  message_err_t expected = forged ? MESSAGE_PERMISSION_DENIED :
+      system ? (boot_delivery && mailbox_full ? MESSAGE_QUOTA_EXCEEDED : MESSAGE_OK) : denied ? MESSAGE_PERMISSION_DENIED :
       !present ? MESSAGE_NO_SUCH_RECEIVER : delivered ? MESSAGE_OK : MESSAGE_QUOTA_EXCEEDED;
-  message_err_t result = scheduler.send_message_from(sender, requested, incoming);
+  message_err_t result;
+  if (from_scheduler) {
+    Locker locker(&scheduler_mutex);
+    result = scheduler.send_system_message(locker, incoming);
+    // Its callers delete a refused notice under the lock.
+    if (result != MESSAGE_OK) cxxv_destroy(incoming);
+  } else {
+    result = scheduler.send_message_from(sender, requested, incoming);
+  }
   CXXV_ASSERT(result == expected && !routing && !in_mailbox, "return the routing outcome after releasing both locks");
-  CXXV_ASSERT(lookups == !system && mailbox_entries == (attempt || boot_delivery) && wakes == queued,
+  CXXV_ASSERT(!forged || (lookups == 0 && mailbox_entries == 0 && decodes == 0 && destructions == 1),
+              "refuse a forged life-cycle notice before routing it");
+  CXXV_ASSERT(lookups == (!system && !forged) && mailbox_entries == (attempt || boot_delivery) && wakes == queued,
               "perform only authorized delivery and wake only a receiver that took the message");
   CXXV_ASSERT(destructions == !queued, "delete every unqueued message exactly once, including a consumed system notification");
   CXXV_ASSERT(decodes == decode && shutdowns == (decode && decodable),

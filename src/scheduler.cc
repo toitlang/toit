@@ -304,6 +304,13 @@ message_err_t Scheduler::send_message(int process_id, Message* message, bool fre
 message_err_t Scheduler::send_message_from(Process* sender, int process_id, SystemMessage* message) {
   HW_PERF_SCOPE(HWP_SEND);
   Locker locker(mutex_);
+  // A process can't forge the scheduler's life-cycle notices, on either
+  // route: without a boot process, a TERMINATED notice on the system route
+  // decides the exit state (send_system_message).
+  if (SystemMessage::is_scheduler_type(message->type())) {
+    delete message;
+    return MESSAGE_PERMISSION_DENIED;
+  }
   const PrimitivePolicy* policy = sender->policy();
   if (process_id < 0) {
     message_err_t result = send_system_message(locker, message);
@@ -448,14 +455,30 @@ int Scheduler::spawn(Program* program, ProcessGroup* process_group, int priority
     delete termination;
     return INVALID_PROCESS_ID;
   }
-  process->set_spawn_arguments(arguments->take_buffer());  // Neuters the encoder.
-
   int pid = process->id();
   spawned->set_pid(pid);
   // Send the SPAWNED message before returning from the call to spawn. This is necessary
   // to make sure the system doesn't conclude that there are no processes left just after
   // spawning, but before the spawned process starts up.
-  if (send_system_message(locker, spawned) != MESSAGE_OK) delete spawned;
+  if (send_system_message(locker, spawned) != MESSAGE_OK) {
+    // The system process would never learn of this pid, so the child must
+    // not run. Today this is unreachable: the boot process has the system
+    // policy, whose mailbox has no quota, and a SPAWNED notice is charged
+    // one message and no bytes. The child never ran and has no arguments
+    // yet (the caller's encoder keeps them, nothing is transferred); its
+    // destructor frees the termination notice and the initial memory.
+    delete spawned;
+    process_group->begin_process_teardown(process);
+    { Unlocker unlock(locker);
+      delete process;
+    }
+    // The spawning process is a member of the group and keeps it alive.
+    bool last = process_group->finish_process_teardown();
+    ASSERT(!last);
+    USE(last);
+    return QUOTA_EXCEEDED_PROCESS_ID;
+  }
+  process->set_spawn_arguments(arguments->take_buffer());  // Neuters the encoder.
   if (priority != -1) process->set_target_priority(priority);
   new_process(locker, process);
   return pid;

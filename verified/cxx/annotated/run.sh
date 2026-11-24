@@ -1562,9 +1562,10 @@ scheduler_spawn() {
   awk '/^int Scheduler::spawn\(/ { active=1; found++ }
        active { allocations += sub(/_new Process\(/,"construct_process(");
                 sub(/delete termination;/,"destroy_notice(termination);");
-                sub(/delete spawned;/,"destroy_notice(spawned);"); print }
+                spawned_releases += gsub(/delete spawned;/,"destroy_notice(spawned);");
+                teardowns += sub(/delete process;/,"destroy_child(process);"); print }
        active && /^}$/ { active=0 }
-       END { if (found != 1 || allocations != 1 || active) exit 1 }' "$REPO_ROOT/src/scheduler.cc" > "$inc/scheduler_spawn.inc" || return 1
+       END { if (found != 1 || allocations != 1 || spawned_releases != 2 || teardowns != 1 || active) exit 1 }' "$REPO_ROOT/src/scheduler.cc" > "$inc/scheduler_spawn.inc" || return 1
   cpp_equivalence scheduler-spawn "$abi" "$bits" scheduler_spawn "-I$inc" --unwind 9
 }
 spawn scheduler_spawn LP64 64
