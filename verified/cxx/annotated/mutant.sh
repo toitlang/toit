@@ -154,6 +154,9 @@ if [ "$pattern" = DRIFT ] || [[ "$pattern" == RENDER:* ]]; then
   printf 'FAIL  %-40s the changed source rendered without the expected error\n' "$name"
   exit 1
 fi
+# Rendered: VeriFast reads only annotated/ and gen32/; the AST dumps (most
+# of the tree) go before the proofs, which take most of a mutant's time.
+[ "${RUN_KEEP_MUTANTS:-0}" = 1 ] || rm -rf "$M/scratch"
 gen="${sidecar%.render}.gen.c"
 status=0
 # A `TARGET:` prefix: only that target must fail, the other must verify.

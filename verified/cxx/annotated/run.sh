@@ -378,6 +378,9 @@ render_check() {
   local f=0
   if ./render.sh --check > "$ACXX_WORK/logs/render.log" 2>&1; then
     printf 'ok    %-40s %s\n' render "$(grep -c '^ok' "$ACXX_WORK/logs/render.log") sidecars match the sources"
+    # Its AST dumps (about 1.6 GB) are not read again: nothing else uses
+    # render.sh's scratch (the next run dumps anew).
+    [ "${RUN_KEEP_SCRATCH:-0}" = 1 ] || rm -rf "$ACXX_WORK/scratch"
   else
     printf 'FAIL  %-40s\n' render
     grep -v '^ok' "$ACXX_WORK/logs/render.log" | head -20
