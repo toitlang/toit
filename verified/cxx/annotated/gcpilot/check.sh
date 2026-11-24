@@ -4,7 +4,8 @@
 # GC proof pilot, route A (verified/gcpilot/README.md): renders the pilot
 # sidecars of this directory and verifies them with VeriFast, LP64 and
 # ILP32. Not part of run.sh (the pilot's admits are not in the trusted
-# lists).
+# lists). -allow_dead_code: the promotion branch of scavenge_root is dead under
+# the pilot's precondition (and one arm of a width-dependent lemma).
 #
 # Usage: check.sh [SIDECAR...]   (default: every gcpilot/*.render)
 
@@ -20,7 +21,7 @@ for sidecar in "$@"; do
     dir="$ANNOTATED_DIR"
     [ "$target" = ILP32 ] && dir="$GEN32"
     start=$(date +%s%N)
-    out=$(cd "$dir" && "$VERIFAST" -c -target "$target" -fno-strict-aliasing -assume_left_to_right_evaluation "$gen" 2>&1)
+    out=$(cd "$dir" && "$VERIFAST" -c -target "$target" -fno-strict-aliasing -assume_left_to_right_evaluation -allow_dead_code "$gen" 2>&1)
     rc=$?
     end=$(date +%s%N)
     printf '%s %s: exit %d, %d ms: %s\n' "$gen" "$target" "$rc" $(((end - start) / 1000000)) "$(echo "$out" | tail -1)"
