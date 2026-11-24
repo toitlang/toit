@@ -125,24 +125,70 @@ property was neither proved nor refuted at that cap or timeout.
 | free-list-selection/LP64 | NOVERDICT | 3601 | 18.9 | 21.0 | 24 | timeout after 3600 s; at a 16 GB cap out of memory after 175 s |
 | gc-compaction-overhang/LP64 | NOVERDICT | 7200 | 5.1 | 6.2 | 12 | timeout after 7200 s |
 | gc-metadata-layout/LP64 | NOVERDICT | 10800 | 0.5 | 1.1 | 4 | timeout after 10800 s |
-| gc-sweep-chunk/ILP32 | NOVERDICT | 5192 | 13.9 | 15.6 | 16 | out of memory (exit 2) |
-| gc-sweep-chunk/LP64 | NOVERDICT | 3457 | 12.9 | 15.3 | 16 | out of memory (exit 2) |
+| gc-sweep-chunk/ILP32 | PASS | 478 | 1.4 | 2.0 | 6 | 2026-11-24, restructured (below); before: out of memory at 16 GB after 5192 s |
+| gc-sweep-chunk/LP64 | PASS | about 4500 (CPU) | 3.3 | 3.9 | 6 | 2026-11-24, restructured (below), measured outside run.sh (a suspend distorted the wall clock); before: out of memory at 16 GB after 3457 s |
+| gc-sweep-chunk-uncounted/ILP32 | ok (violation) | 240 | 1.4 | 2.0 | 4 | mutant |
+| gc-sweep-chunk-no-sentinel/ILP32 | ok (violation) | 429 | 1.4 | 2.0 | 4 | mutant |
+| gc-sweep-chunk-no-sentinel/LP64 | ok (violation) | 258 | 2.7 | 3.3 | 4 | mutant |
+| gc-sweep-chunk-uncounted/LP64 | NOVERDICT | 601 | 2.7 | 3.4 | 4 | mutant; timeout after 600 s, not measured longer |
 
-**Not reproduced.** Results that rest on these jobs are claimed in this
-README or in `verified/core/TRUSTED.md`, and were not reproduced on
-2026-11-23. The claim in this README is marked where it is made;
-TRUSTED.md is not edited:
+**No verdict.** These jobs still prove nothing; the results that cite
+them hold on ILP32 only, and this README and `verified/core/TRUSTED.md`
+say so where they cite them. `model-check-jobs.sh` lists them as known
+not to finish (`RUN_KNOWN_NOVERDICT=1` runs them). What was tried on
+2026-11-24 (each LP64, with the job's own unwinding bounds unless said):
 
-* `gc-sweep-chunk` (TRUSTED.md's "three-card sweep fixture"): no verdict
-  on either width; out of memory at 16 GB after 58 min (LP64) and 87 min
-  (ILP32).
-* `gc-compaction-overhang/LP64` (TRUSTED.md's "overhang fixture"): no
-  verdict, out of time after 2 h at 5 GB. ILP32 passes (24 min).
+* `gc-compaction-overhang/LP64` (TRUSTED.md's "overhang fixture"); ILP32
+  passes (24 min). The planner writes the destination table and reads the
+  mark bits through integer addresses, and the source address is the
+  only symbolic input once the object size is fixed. Bitwuzla: out of time
+  after 2 h (before); Boolector: out of time after 2 h; Bitwuzla in
+  multi-property mode: 697 of 1079 claim instances in 80 min (up to 226 s
+  each), stopped. A case split on the first object's size (one of the 15
+  values; that harness variant is kept with the measurements, not here) did not help: one
+  value alone gave no verdict in 1 h with Boolector (56 CPU-minutes) or
+  45 CPU-minutes with Bitwuzla. Z3 was stopped after 17 CPU-minutes when the attempts ended.
 * `gc-metadata-layout/LP64` (below, "`gc-metadata-layout` checks
-  non-embedded GC setup"): no verdict, out of time after 3 h at 0.5 GB.
-  ILP32 and the EC618 and ESP32 variants pass.
-* `free-list-selection/LP64`: no verdict, out of time after 1 h at a
-  24 GB cap (19 GB resident). ILP32 passes (29 min, 8 GB).
+  non-embedded GC setup"); ILP32 and the EC618 and ESP32 variants pass.
+  Bitwuzla: out of time after 3 h at 0.5 GB (before). Multi-property
+  Bitwuzla: 165 of 206 claims in 25 min, then the bounds check of the
+  harness's own witness store into the metadata reservation
+  (`check_card_write`) ran for more than an hour. That check needs the
+  commit bounds as integers through a pointer-to-integer round trip of a
+  64-bit symbolic address into a reservation of symbolic size. Restating
+  the commit bound as a proved lemma (assert, then assume) did not finish
+  in 2 h with Boolector, nor in multi-property mode with Bitwuzla (the
+  accessor claim alone took 40 min). A second lemma, the commit address as the reservation's plus
+  its offset, was not run to the end (Z3 and multi-property Bitwuzla were
+  stopped when the attempts ended).
+* `free-list-selection/LP64`; ILP32 passes (29 min, 8 GB). Three regions
+  of symbolic 64-bit size, each its own allocation, inserted and one
+  selected. Bitwuzla: out of time after 1 h at 24 GB (before);
+  multi-property Bitwuzla: 1193 of 1498 claim instances in 1 h (60 to
+  500 s each for the field accesses), out of time; Boolector: out of
+  memory at 8 GB; allocating only the part of each region the code may
+  touch (at most three words): out of memory at 8 GB with Boolector;
+  unwinding bounds tightened to what the fixture needs (the undersized
+  filler loops to 3, the first-fit walk to 4; 4732 instead of 8281
+  assignments): out of time after 2 h with Bitwuzla and with Boolector.
+  Multi-property Bitwuzla with the tightened bounds was not run. The VeriFast proof `free-list-search` (`heap/free_list.render`)
+  proves `add_region` and `get_region` for any number of regions on both
+  widths; this job is the bounded integration check on top of it.
+
+What would work, as far as these attempts show: all three are bounded
+fixtures whose cost comes from ESBMC resolving 64-bit addresses computed as
+integers against every object (the same cause as core-entry and
+gc-sweep-chunk, where removing those conversions or modelling the callee by
+its proved contract was enough). The next step on the fixtures themselves
+would be the same treatment: replace the integer-addressed metadata
+accessors (`starts_for`, `mark_bits_for`, `cumulative_mark_bits_for`) by
+models over the harness's own arrays, justified by `gc-metadata-access`
+and the VeriFast table proofs, so that the planner, the setup check and the
+region walk store through typed pointers. A scoping pilot found that a
+Rust+Verus rewrite of the collector proves the young-generation copy for
+heaps of any size without admits; the plan is to prove the collector that
+way and retire these bounded fixtures, so no more solver time went into
+them.
 
 **Restructured (2026-11-24).** Jobs that had no verdict and now have one,
 with what made them expensive and what changed. Times and peaks are run.sh's
@@ -181,6 +227,33 @@ the machine:
   checked loop"); `core-entry-no-exit-barrier` drops the remembered-set
   barrier after the core returns ("remember the stack of the task running
   when the core returns").
+* `gc-sweep-chunk` (`../harness/gc_sweep_chunk.cc`, TRUSTED.md's
+  three-card sweep fixture, both widths). Cause: the sweep addresses the
+  heap through integers (`chunk->start()` plus card offsets), so ESBMC
+  cannot see the word offset of a store and splits each word store into
+  WORD_SIZE byte updates at a symbolic offset. On ILP32, 1560 of the 2578
+  versions of the payload array came from `fill_unmarked_words`' loop
+  (`sweep_empty_cards.h`). Bitwuzla ran out of memory at 16 GB on both
+  widths; in multi-property mode it proved 370 of the 407 properties and
+  then ran out of memory at 8 GB; a case split on the shape of the gaps
+  (leading, trailing) left the formula as large (the mark bits stay
+  symbolic). Change: (1) the harness replaces `fill_unmarked_words` by its
+  contract, which Frama-C/WP proves on both widths for the same header
+  (`gc-page-scan-wp`: `fill_unmarked_words_ensures`, `_ensures_2`,
+  `_assigns`, with its run-time-error goals): the model asserts the
+  contract's precondition for this fixture (`first <= 32`, 32 aligned
+  words inside the payload) and stores whole words; (2) Boolector instead
+  of Bitwuzla. With the model alone Bitwuzla still ran out of memory at
+  3.5 GB; Boolector without the model gave no verdict in 1 h on ILP32,
+  with it ILP32 took 8 min. The union covers the old claim: the same
+  assertions over the same nondeterministic inputs; the filler loop's
+  body is proved by WP instead of being executed here. Verdicts:
+  ILP32 407 properties, 478 s, peak 1.41 GB; LP64 402 properties, about 75 CPU-minutes, peak 3.3 GB (virtual 3.9 GB), measured outside run.sh because the machine was suspended for about 6 h during the run (its wall clock read 25346 s). Mutants (each
+  must report its property violated): `gc-sweep-chunk-uncounted` leaves a
+  marked line after a gap out of the count ("count exactly the marked
+  payload bytes"; ILP32 240 s, LP64 no verdict within the fast tier's 600 s, not measured longer: it is listed as known not to finish), `gc-sweep-chunk-no-sentinel`
+  does not repair the chunk-end sentinel ("restore the sentinel and clear
+  the consumed mark table"; ILP32 429 s, LP64 258 s).
 
 The fast tier's model-checker jobs took up to about 90 s each when
 measured with a few jobs at once; with the whole fast tier and other
@@ -1221,9 +1294,9 @@ It checks the class ID, tag, next pointer, end, dirty byte and object-start
 byte. Recording the payload start updates that same byte or the adjacent
 card, preserving neighboring metadata and the first payload word.
 
-(Not reproduced on LP64, 2026-11-23: `gc-metadata-layout/LP64` gave no
-verdict in 3 h, see "Two tiers"; ILP32 and the EC618 and ESP32 variants
-pass.) `gc-metadata-layout` checks non-embedded GC setup for arbitrary reported heap
+(No verdict on LP64: `gc-metadata-layout/LP64` gave no verdict in 3 h,
+nor after the attempts of 2026-11-24, see "Two tiers", "No verdict"; ILP32
+and the EC618 and ESP32 variants pass.) `gc-metadata-layout` checks non-embedded GC setup for arbitrary reported heap
 bounds. Empty intervals and unrepresentable exclusive ends fail before
 reservation. The OS model supplies a machine-word-aligned metadata reservation
 or null, and can fail each commit. The bulk-fill
