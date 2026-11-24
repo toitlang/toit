@@ -41,10 +41,15 @@
 //! (TRUSTED.md section 9).
 
 use vstd::prelude::*;
+#[cfg(verus_keep_ghost)]
 use crate::abs::*;
+#[cfg(verus_keep_ghost)]
 use crate::view::word_val;
+#[cfg(verus_keep_ghost)]
 use toit_spec::types::{Value, HeapObj, Body};
+#[cfg(verus_keep_ghost)]
 use toit_spec::v2::types::{State2, Program2};
+#[cfg(verus_keep_ghost)]
 use toit_spec::v2::gc::*;
 
 verus! {
