@@ -260,7 +260,10 @@ stop_all() {
   done
   wait 2> /dev/null
   for p in "${PARTS[@]}"; do
-    [ "${STATE[$p]}" = running ] && STATE[$p]=interrupted
+    if [ "${STATE[$p]}" = running ]; then
+      STATE[$p]=interrupted
+      SECS[$p]=$(($(date +%s) - START[$p]))
+    fi
   done
   INTERRUPTED=1
 }
@@ -274,9 +277,23 @@ start_part() {
   rm -f "$LOGS/$p.status"
   # setsid: the part is the leader of a new session (a background child of
   # this non-interactive shell is no group leader, so setsid does not fork:
-  # $! is the session id).
-  setsid bash -c '"$0" --run-part "$1" --logs "$2"; echo $? > "$2/$1.status"' \
-    "$SELF" "$p" "$LOGS" > "$LOGS/$p.log" 2>&1 < /dev/null &
+  # $! is the session id). Its wrapper also stops the session when this
+  # driver is gone without stopping it (killed with KILL): no part
+  # outlives the gate. (It ignores TERM itself only after starting the
+  # part, which keeps the default.)
+  setsid bash -c '
+    "$0" --run-part "$1" --logs "$2" &
+    child=$!
+    trap "" TERM
+    while kill -0 "$child" 2> /dev/null; do
+      if ! kill -0 "$3" 2> /dev/null; then
+        pkill -TERM -s $$; sleep 30; pkill -KILL -s $$; exit 1
+      fi
+      sleep 2
+    done
+    wait "$child"
+    echo $? > "$2/$1.status"' \
+    "$SELF" "$p" "$LOGS" "$$" > "$LOGS/$p.log" 2>&1 < /dev/null &
   PID[$p]=$!
   echo "$(ts) start  $p"
 }
@@ -334,10 +351,11 @@ done
 total=$(($(date +%s) - RUN_START))
 echo
 echo "=== gate summary ($(git -C "$REPO" rev-parse --short HEAD 2> /dev/null), $((total / 60)) min $((total % 60)) s wall)"
+echo "logs in $LOGS"
 bad=0
 for p in "${PARTS[@]}"; do
   s="${STATE[$p]}"
-  printf '  %-20s %-12s %6s  %s\n' "$p" "$s" "${SECS[$p]:-0} s" "$LOGS/$p.log"
+  printf '  %-20s %-12s %6s  %s\n' "$p" "$s" "${SECS[$p]:-0} s" "$p.log"
   case "$s" in
     passed) ;;
     skipped) (( ALLOW_SKIP )) || bad=1 ;;

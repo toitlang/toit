@@ -448,9 +448,7 @@ sec_cxx_slow() {
   TOIT="$TOIT_BIN" "$VERIFIED/cxx/annotated/run.sh" --slow > "$LOGS/slow.log"
   local slow_status=$?
   grep -v '^ok' "$LOGS/slow.log" | head -60
-  if [ $slow_status -eq 3 ]; then
-    SECTION_SKIPPED=1
-  elif [ $slow_status -eq 4 ]; then
+  if [ $slow_status -eq 4 ]; then
     fail "slow tier: no verdict for some jobs (out of time or memory; nothing refuted)"
   elif [ $slow_status -ne 0 ]; then
     fail "slow tier: a model-checker job failed"
