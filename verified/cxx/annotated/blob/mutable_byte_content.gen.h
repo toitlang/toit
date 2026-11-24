@@ -25,6 +25,7 @@
 // Self-tests (run.sh): the depth limit of 357d1127 taken out; the program
 // heap check taken out (a read-only object would be written).
 #include "../model/objects.gen.h"
+#include "../model/retry.h"
 #include "byte_content.gen.h"
 
 // From VeriFast's bin/string.h (there: chars; uchars here).

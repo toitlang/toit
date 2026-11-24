@@ -10,7 +10,7 @@
 // different addresses.
 //
 // Proved: the result is exactly error_roots_ok of the root table's error
-// slots, the conjunct of the model's `program` predicate
+// slots, the conjunct of the model's `process` predicate
 // (model/objects.render) that the proofs of the retry rule use to tell an
 // error that asks for a GC and a retry (oom_error) from the others. It
 // only reads the root table.
@@ -18,6 +18,7 @@
 // Self-tests (run.sh): the comparison with the next root left out (a root
 // equal to its neighbour would be accepted); the heap check taken out.
 #include "../model/objects.gen.h"
+#include "../model/retry.h"
 
 /*@
 // A pointer stored in the root table is within the limits of its

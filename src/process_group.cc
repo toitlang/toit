@@ -53,7 +53,7 @@ ProcessGroup* ProcessGroup::create(int id, Program* program, AlignedMemoryBase* 
   // A primitive's failure is retried after a GC exactly when its error root
   // is one of the out-of-memory roots, so the error roots must be distinct
   // heap references (the C++ proofs of the retry rule rely on it: the
-  // `program` predicate of verified/cxx/annotated/model).
+  // `process` predicate of verified/cxx/annotated/model).
   if (program != null && !program->has_valid_error_roots()) {
     fprintf(stderr, "program refused: its error roots are not distinct heap references\n");
     delete v2_methods;

@@ -25,6 +25,7 @@ bool Object_mutable_byte_content__Processp_uint8pp_wordp_Errorpp_int(Object *sel
               pointer_((void **)content, ?oc) &*& intptr_(length, ?ol) &*& (oc0 == none || oc != none) &*& (ol0 == none || ol != none); @*/
 {
   //@ grows_refl(objs, H);
+  //@ process_program(process);
   *error = Error_from(Program_wrong_object_type(Process_program(process)));
   //@ assert pointer((void **)error, ?e0);
   //@ marked_root_not_oom(prog, Program_WRONG_OBJECT_TYPE_INDEX, e0);

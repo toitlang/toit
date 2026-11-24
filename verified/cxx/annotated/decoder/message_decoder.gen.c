@@ -53,6 +53,7 @@
 #include "../utf8/validator.gen.h"
 #include "../model/finalizer_nodes.h"
 #include "radix.h"
+#include "../model/retry.h"
 //@ #include "../model/arith.gh"
 //@ #include "../model/truncate.gh"
 

@@ -28,6 +28,7 @@
 // of stack growth, and the epoch accounting the core relies on (an
 // unchanged epoch word means nothing moved).
 #include "../model/objects.gen.h"
+#include "../model/retry.h"
 //@ #include "../model/arith.gh"
 // Verify the native field accessors here with ownership of one field and
 // require the barrier before publishing a pointer. The shared model also

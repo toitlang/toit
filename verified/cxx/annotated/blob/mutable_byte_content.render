@@ -21,6 +21,7 @@
 @header mutable_byte_content.gen.h
 @verbatim
 #include "../model/objects.gen.h"
+#include "../model/retry.h"
 #include "byte_content.gen.h"
 
 // From VeriFast's bin/string.h (there: chars; uchars here).
@@ -49,6 +50,7 @@ bool Object::mutable_byte_content(Process* process, uint8** content, word* lengt
               pointer_((void **)content, ?oc) &*& intptr_(length, ?ol) &*& (oc0 == none || oc != none) &*& (ol0 == none || ol != none); @*/
 {
   //@ grows_refl(objs, H);
+  //@ process_program(process);
   *error = Error::from(process->program()->wrong_object_type());  // Default error if we return false.
   //@ assert pointer((void **)error, ?e0);
   //@ marked_root_not_oom(prog, Program_WRONG_OBJECT_TYPE_INDEX, e0);

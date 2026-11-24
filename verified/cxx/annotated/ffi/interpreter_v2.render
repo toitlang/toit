@@ -26,6 +26,7 @@
 @include ../model/model.cfg
 @verbatim
 #include "../model/objects.gen.h"
+#include "../model/retry.h"
 //@ #include "../model/arith.gh"
 // Verify the native field accessors here with ownership of one field and
 // require the barrier before publishing a pointer. The shared model also
