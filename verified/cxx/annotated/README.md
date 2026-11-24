@@ -775,6 +775,12 @@ Behind the 106 ports, the C++ of 17 has a VeriFast body proof (wave 9:
 an undercount: array_new, the four integer divisions and
 string_write_to_byte_array, listed above with their C++ proofs, have Rust
 ports too (8 before wave 9).
+Of the 89, 34 are unreachable from untrusted code (proved in Verus:
+`prims::never_falls_back`, the ensures of `prims::call` and
+`rarrays::rust_primitive_r`; the 35th such port, smi_mod, is
+VeriFast-proved too), so 55 are contract-only and reachable. Counted by
+`contract_check.toit` (verified/check.sh section contracts), which checks
+CONTRACTS.toml `[unreachable]` against the Verus list.
 These counts classify primitive names. A port can still delegate a case
 to C++, as `list_add` does for a large-array backing
 (`verified/core/src/prims/array.rs`); which cases, per primitive, is
@@ -1237,7 +1243,8 @@ put_float_64_little_endian, byte_array_at_put and byte_array_is_raw_bytes
 (`prims/read_bytes.render`, `prims/byte_array_access.render`,
 `prims/put_bytes.render`, `prims/put_float.render`). Memory safety of the
 C++ behind the 106 ports: 17 VeriFast-verified, 89 contract-only
-(`metrics.sh`; 8 and 98 before wave 9).
+(`metrics.sh`; 8 and 98 before wave 9), of which 34 are unreachable
+from untrusted code (proved in Verus; below), leaving 55.
 
 ### When the C++ behind a port runs (wave 9)
 
@@ -1293,8 +1300,16 @@ Consequences. The C++ behind the 35 "never" ports does not run for an
 untrusted process on the default paths, so it needs no proof for the
 sandbox; it still runs for trusted format-1 programs (the C++
 interpreter) and under `-Xuntrusted_format1`, so it can leave the f2
-firmware only together with those. What would make "never falls back"
-a proved fact (not done: the Rust proofs are being rewritten elsewhere):
+firmware only together with those (verified/core/OBLIGATIONS.md, "Ports
+that never fall back", says what else that needs). Now a proved fact
+(branch core/ports-never-fall-back): `prims::never_falls_back` is the
+list (the 35 of the table, none added or removed by the check against
+the code), `prims::call` ensures that they complete in Rust and
+`rarrays::rust_primitive_r` that they do where the policy gate passes,
+with the method's arity the verifier's arity of the primitive; that
+this is the port's arity rests on src/primitive.h (the gate's table and
+the C++ entry's arity check) and the layout check, both trusted already.
+The plan was:
 (1) each family dispatch (`ints::dispatch`, `array::dispatch`,
 `blob::dispatch`, `float::dispatch`) and then `prims::dispatch` and
 `prims::call` ensure `index == I && a.n == k ==> !(r.0 is NotPorted) &&
