@@ -319,6 +319,32 @@ benchmarks by up to 2x between builds that only shift the VM's flash code
 by a few KB (f1 as much as f2); a placement that pins the hot flash
 functions would make device numbers comparable across builds.
 
+Status of S2-S6 (branch core/rpc-task-speed, 2026-11-24; artifacts
+rpc-task-speed/README.md). C6, f2/f1 over three sessions: rpc-200 1.31 ->
+1.14, yield-2k 1.24 -> 1.20, tasks-1k 1.43 -> 1.18; nothing else slower.
+- S3: the finally records still move on a call or return in finally code
+  (layout unchanged), but without `memmove` (`StackMem::move_records`,
+  five words per step: the ROM memmove was ~130 cycles per record on the
+  C6), and those calls and returns run first in `step::slow`, before the
+  machine part (`slow_body`) whose entry saves most registers. Inlining
+  them into the call handlers was 6 % faster on tasks-1k but grew the run
+  loop by 6 KB (too much for the classic ESP32's IRAM); an out-of-line
+  call from the handlers changed the loop's register allocation and was
+  slower. Open: a layout in which a frame record does not displace the
+  records (it changes `fins_rel` and the C++ stack copy).
+- S4: `ensure_room_all` no longer runs after a primitive's return on the
+  machine (top frame only, `step::top_room_kept`) nor after a TRY in
+  finally code (`rnonlocal::try_fins` on the registers): 14 -> 6 full
+  scans per ping-pong of tasks-1k. Left: one scan per task switch and per
+  process entry (another stack, which the trusted contracts do not bound;
+  a stored bound would extend them).
+- S2/S6: the flash-resident helpers PC sampling found on the RPC and task
+  paths are in the C6/S3 IRAM list (2.9 KB), the task transfer glue is
+  V2_HOT. rpc-200 moves with the flash layout by 5-15 % in f1 and f2
+  alike (FreeRTOS, scheduler and messaging run from flash; with
+  CONFIG_FREERTOS_PLACE_FUNCTIONS_INTO_FLASH=n both get 7-8 % faster).
+- S5: not done (0.5 % of an RPC on the host).
+
 Install-time verifier (owned with the spec): on the classic ESP32 the
 check of a 25-31 KB program executes 270-490 M instructions (about 10-16
 thousand per bytecode byte) at 2.4-2.5 cycles each; instruction-fetch
