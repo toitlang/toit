@@ -2629,6 +2629,30 @@ mutant put-float-32-end prims/put_float.render src/primitive_core.cc "No matchin
   "unsigned_offset + 4 >= length" "unsigned_offset + 2 >= length"
 mutant put-float-64-offset prims/put_float.render src/primitive_core.cc "No matching|Cannot prove" "-allow_dead_code -prover z3v4.5" \
   "if (unsigned_offset > length || unsigned_offset + 8 >= length) {" "if (unsigned_offset + 8 >= length) {"
+# string_at (wave 10, its C++ runs for a string that is not valid UTF-8):
+# the fix reverted (continuation bytes read as far as the lead byte
+# announces, past the string); only the end check taken out; only the
+# sequence-length check taken out (payload_from_prefix's shift).
+entry string-at             pass "" prims/string_at.gen.c -allow_dead_code -prover z3v4.5
+mutant string-at-past-end prims/string_at.render src/primitive_core.cc "No matching|Cannot prove|out of bounds" "-allow_dead_code -prover z3v4.5" \
+  "  if (n_byte_sequence > 4 || n_byte_sequence > receiver.length() - index) return process->null_object();\n" ""
+mutant string-at-end-check prims/string_at.render src/primitive_core.cc "No matching|Cannot prove|out of bounds" "-allow_dead_code -prover z3v4.5" \
+  "if (n_byte_sequence > 4 || n_byte_sequence > receiver.length() - index)" "if (n_byte_sequence > 4)"
+mutant string-at-sequence-length prims/string_at.render src/primitive_core.cc "No matching|Cannot prove|out of bounds" "-allow_dead_code -prover z3v4.5" \
+  "if (n_byte_sequence > 4 || n_byte_sequence > receiver.length() - index)" "if (n_byte_sequence > receiver.length() - index)"
+# The allocating primitives behind the Rust ports (wave 10: their C++ runs
+# when the port's allocation does not fit): byte_array_new's memset one
+# byte late (it ends past the array); array_expand without the check of
+# old_length against the old array's length (the copy reads past it), and copying one word more
+# than min(length, old_length).
+entry allocating            pass "" prims/allocating.gen.c -allow_dead_code -prover z3v4.5
+mutant byte-array-new-memset prims/allocating.render src/primitive_core.cc "No matching|Cannot prove" "-allow_dead_code -prover z3v4.5" \
+  "memset(bytes.address(), filler, length);" "memset(bytes.address() + 1, filler, length);"
+entry array-expand          pass "" prims/array_expand.gen.c -allow_dead_code -prover z3v4.5
+mutant array-expand-old-length prims/array_expand.render src/primitive_core.cc "No matching|Cannot prove" "-allow_dead_code -prover z3v4.5" \
+  "if (old_length < 0 || old_length > old->length()) FAIL(OUT_OF_RANGE);" "if (old_length < 0) FAIL(OUT_OF_RANGE);"
+mutant array-expand-copy-long prims/array_expand.render src/primitive_core.cc "No matching|Cannot prove" "-allow_dead_code -prover z3v4.5" \
+  "new_array->copy_from(old, Utils::min(length, old_length));" "new_array->copy_from(old, Utils::min(length, old_length + 1));"
 entry word-size             pass "" prims/word_size.gen.c
 mutant word-size-bits prims/word_size.render src/primitive_core.cc "smi_val|Cannot prove condition" "" \
   "return Smi::from(WORD_SIZE);" "return Smi::from(WORD_SIZE * 8);"

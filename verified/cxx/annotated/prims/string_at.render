@@ -1,0 +1,97 @@
+// Copyright (C) 2026 Toit contributors.
+//
+// PRIMITIVE(string_at) of src/primitive_core.cc (wave 10): the character
+// at a byte index of a string or string slice. Ported to Rust; the port
+// declines a string whose bytes at the index are not valid UTF-8 (a lead
+// byte of 0xf8 or above, or one whose sequence runs past the end), and
+// the C++ runs for it. Such strings exist: nothing validates the string
+// literals of a program image, and a concatenation (string_add,
+// concat_strings) copies the bytes of a string slice whose boundaries a
+// program's own library chose (README "Findings", wave 10).
+//
+// Proved: every read inside the string's content (the proven Blob
+// decoder, STRINGS_ONLY: a string or a slice of one), for any bytes; the
+// sequence length (bytes_in_utf_8_sequence, proved in utf8/) at most 4
+// before payload_from_prefix (its shift count); no overflow in the
+// decoded value; the heap unchanged; the result a smi, the null object or
+// an error.
+//
+// Self-test (run.sh): wave 10's fix reverted (the continuation bytes read
+// as far as the lead byte announces: past the end of the string).
+@include ../model/model.cfg
+@verbatim
+#include "../utf8/utf_8_to_16.gen.h"
+#include "argument_error.gen.h"
+#include "blob_args.gen.h"
+#include "read_slice.h"
+//@ #include "../model/truncate.gh"
+
+@prototypes
+@render src/utils.h toit::Utils::is_utf_8_prefix tu=src/primitive_core.cc
+  static bool is_utf_8_prefix(unsigned char c)
+  //@ requires true;
+  //@ ensures result == (c >= 0xc0);
+  {
+    // Also returns true for some illegal prefix bytes for very long sequences that are no longer legal.
+    return c >= UTF_8_PREFIX;
+  }
+
+@render src/primitive_core.cc toit::primitive_string_at truncating
+PRIMITIVE(string_at)
+/*@ requires [?fp]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
+             pointer(__args, ?a0) &*& pointer(__args - 1, ?a1) &*& good(objs, a0) && good(objs, a1); @*/
+/*@ ensures [fp]process(process, prog, ids) &*& heap(objs, H) &*& pointer(__args, a0) &*& pointer(__args - 1, a1) &*&
+            ((uword)result % 4 == 3 || is_smi_w((uword)result) || result == process_null(process)); @*/
+{
+  //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);
+  //@ error_word(Program_OUT_OF_RANGE_INDEX);
+  //@ error_word(Program_OUT_OF_BOUNDS_INDEX);
+  //@ close valid_arg(a1, objs);
+  //@ leak valid_arg(a1, objs);
+  //@ truncate_signed_limits(smi_val((uword)a1), N31);
+  //@ if (INT_MIN <= smi_val((uword)a1) && smi_val((uword)a1) <= INT_MAX) truncate_signed_id(smi_val((uword)a1), N31);
+  ARGS(StringOrSlice, receiver, int, index);
+  if (index < 0 || index >= receiver.length()) FAIL(OUT_OF_BOUNDS);
+  //@ assert [_]blob_result(objs, H, STRINGS_ONLY, ?a, ?l, ?b);
+  //@ open [_]blob_result(objs, H, STRINGS_ONLY, a, l, b);
+  //@ borrow_slice(b, a, l);
+  //@ uchars_nth_limits(a, index);
+  //@ assert uchars(a, l, ?bs0);
+  //@ bitand_pow_nat(nth(index, bs0), N8);
+  //@ div_rem_nonneg(nth(index, bs0), 256);
+  int c = receiver.address()[index] & 0xff;
+  //@ return_slice(b, a);
+  if (c <= Utils::MAX_ASCII) return Smi::from(c);
+  // Invalid index.  Return null.  This means you can still scan for ASCII characters very simply.
+  if (!Utils::is_utf_8_prefix(c)) return process->null_object();
+  int n_byte_sequence = Utils::bytes_in_utf_8_sequence(c);
+  //@ truncate_signed_id(utf8_count(c), N31);
+  // The bytes of a string are not always valid UTF-8: nothing checks the
+  // string literals of a program image, nor the boundaries of a string slice
+  // a program's own library made (a concatenation copies its bytes into a
+  // string). Read only inside the string; a lead byte of 0xf8 or above, or
+  // one whose sequence runs past the end, is not a character.
+  if (n_byte_sequence > 4 || n_byte_sequence > receiver.length() - index) return process->null_object();
+  //@ int p0 = c;
+  c = Utils::payload_from_prefix(c);
+  //@ truncate_signed_id(p0 & (mask_of(utf8_count(p0)) - 1), N31);
+  //@ int n = n_byte_sequence;
+  for (word j = 1; j < n_byte_sequence; j++)
+  /*@ invariant heap(objs, H) &*& receiver.address_ |-> a &*& receiver.length_ |-> l &*&
+                1 <= j &*& j <= n &*& 0 <= c &*& c < c_bound(n, j); @*/
+  {
+    //@ int c0 = c;
+    //@ shiftleft_def(c0, N6);
+    //@ assert int_of_nat(N6) == 6 &*& pow_nat(2, N6) == 64;
+    c <<= Utils::UTF_8_BITS_PER_BYTE;
+    //@ borrow_slice(b, a, l);
+    //@ assert uchars(a, l, ?bs);
+    //@ uchars_nth_limits(a, index + j);
+    //@ accumulate(c0, nth(index + j, bs), n, j);
+    c |= receiver.address()[index + j] & Utils::UTF_8_MASK;
+    //@ return_slice(b, a);
+  }
+  // An overlong sequence (possible in a string that is not valid UTF-8)
+  // decodes to its value, which can be ASCII.
+  return Smi::from(c);
+}

@@ -486,6 +486,9 @@ lemmas).
 | The byte-array writers (`prims/put_bytes.render`, wave 9) | byte_array_replace, put_uint_big_endian, put_uint_little_endian (the C++ behind the Rust ports) | the MutableBlob decoded first (copy-on-write), the other arguments in the grown heap (`valid_arg`: is_large_integer, is_double and the Blob decoder take it); every write inside the destination's content (a writable byte array outside the program heap); byte_array_replace's legal memmove (the source may be the same byte array); no overflow or lossy conversion but the modular ones the C++ means (a value's low byte, the arithmetic shift `value >>= 8`); `grows`, `oom_unchanged` | the MutableBlob and Blob decoders' contracts, the error roots (`process`) | 52 / 141 / 5 / 45 | put_uint_little_endian's old `width - 1` (LP64), put_uint_big_endian's end check, byte_array_replace's length in the destination check, byte_array_replace reporting MALLOC_FAILED after the copy |
 | The float writers (`prims/put_float.render`, wave 9) | put_float_32_little_endian, put_float_64_little_endian | 4 (8) bytes written inside the destination's content from the float (double) local; `grows`, `oom_unchanged`; not the bytes written | memcpy's contract for a float or double local (VeriFast has no float-to-bytes lemma); VeriFast's double-to-float conversion (math.h: total, as IEC 60559 defines it) | 31 / 72 / 4 / 25 | the 32-bit writer's end check two bytes weaker (one byte weaker still fits: the C++ is one byte stricter than needed), the 64-bit writer's offset check left out |
 | Byte-array element writes (`prims/byte_array_access.render`, wave 9) | byte_array_at_put, byte_array_is_raw_bytes (the C++ behind the Rust ports: they decline for opaque byte arrays), ByteArray::Bytes::is_valid_index and at_put | the write only into the content of an internal or raw external byte array outside the program heap (asserted), at an index checked against it; an external byte array of another tag (a resource proxy) fails before its bytes are touched; the value's low byte (`truncating`, an explicit int64-to-uint8 conversion); `oom_clean`. Not byte_array_at and byte_array_length: they also read a mapped file's bytes (MappedFileTag), which the heap model has no bytes for | the object model's byte arrays | 27 / 34 / 2 / 1 | the program-heap check left out; the index checked only against zero |
+| Allocation by size (`prims/allocating.render`, wave 10) | byte_array_new (the C++ behind the Rust port) | the int arguments' round trip (`truncating`), a non-negative length, the allocator's new byte array of that length, the memset inside its content; `grows`, `oom_clean`; the result an error with the heap unchanged or the new byte array | the allocator's contract (`Process::allocate_byte_array`) | see metrics.sh | the memset one byte late |
+| Array expansion (`prims/array_expand.render`, wave 10) | array_expand, Array::copy_from, Array::content, Array::fill, Array::at_put_no_write_barrier, Utils::min (the C++ behind the Rust port) | the copy of min(length, old_length) words reads inside `old` (old_length checked against its length) and writes inside the new array (memcpy of the words as bytes: the prelude's exact pointer/char round trips), the fill writes inside it; the result's elements are the copied prefix and the filler (all good references: the heap invariant), every old object unchanged; `grows`, `oom_clean` | the allocator's contract (`ObjectHeap::allocate_array`), the write barrier's | see metrics.sh | old_length unchecked against the old array, one word more copied |
+| Primitive `string_at` (`prims/string_at.render`, wave 10) | string_at, Utils::is_utf_8_prefix; bytes_in_utf_8_sequence and payload_from_prefix from `utf8/` | every read inside the decoded string or slice (StringOrSlice: the proven Blob decoder) for any bytes, the sequence length at most 4 before payload_from_prefix, no overflow in the decoded value, the heap unchanged; the result a smi, the null object or an error | the Blob decoder's contract | see metrics.sh | the fix reverted, either half of it taken out |
 | UTF-8 (`utf8/`) | Utils::utf_8_to_16, bytes_in_utf_8_sequence, payload_from_prefix | verified (Z3) | none | 57 / 45 / 1 / 169 | 07c24665: UB shift at payload_from_prefix; without the length check: the read past the input. Also checks sizing failure, surrogate width and initialization of the second output unit. |
 | UTF-16 (`utf8/utf_16_to_8.render`) | Utils::utf_16_to_8, Utils::utf_16le_to_8, read_utf16le_unit | verified (Z3) | readable little-endian byte pairs and an optional writable byte buffer | 60 / 73 / 1 / 70 | byte order, four-byte lead, surrogate replacement, output capacity and write count |
 | Rust raw memory (`rust/`) | view.rs: string_len, string_byte; trial: field, array_length, element | verified (VeriFast Rust, host) | predicates over the words (bridge `heap`) | — | `i <= len` fails at the read |
@@ -1271,7 +1274,7 @@ follows the one failed allocation, so the heap is unchanged):
 | opaque byte arrays (NotPorted) | byte_array_is_raw_bytes, byte_array_length, byte_array_at, byte_array_at_put, blob_hash_code, blob_equals, blob_index_of, string_rune_count, json_skip_whitespace, hash_simple_json_string, size_of_json_number, compare_simple_json_string (its first argument), read_int_big_endian, read_int_little_endian, read_uint_big_endian, read_uint_little_endian (these four also NeedsGc for a large result) | a byte array the model has no bytes for (`view.rs`: external with another tag than RawByteTag, or RawByteTag with a null address): resource proxies, mapped files, a byte array neutered by a transferring process_send (address null) |
 | other | list_add | a list whose backing is not an Array (a LargeArray_: every list of more than 500 elements) |
 | | concat_strings | a malformed StringSlice_ among the parts; a sum above MAX_BLOB_LENGTH (ILP32: 2^30); the result's allocation (NeedsGc) |
-| | string_at | a byte of 0xf8 or more, or a lead byte whose sequence runs past the end (invalid UTF-8: no producer of such strings was found) |
+| | string_at | a byte of 0xf8 or more, or a lead byte whose sequence runs past the end (invalid UTF-8: a concatenation of a StringSlice_ that cuts a character, which a program's own library can make, is such a string; the C++ is proved since wave 10, `prims/string_at.render`) |
 | | string_length, string_rune_count, json_skip_whitespace, size_of_json_number, string_add | a string longer than MAX_SMI (unreachable: the heap model bounds byte arrays, not strings, abs.rs) |
 
 The program-level checks (a builtin class of the program without the tag
@@ -2026,7 +2029,7 @@ classified):
 | Class | Count | Evidence |
 |---|---|---|
 | (a) cannot fail for want of memory | 62 | the primitive's body (or its macro) has no allocation, allocating argument kind (MutableBlob, cstring) or out-of-memory error: checked by contract_check.toit (a tripwire for helpers that allocate; reviewed) |
-| (b) fails for want of memory only before any visible effect | 88 | 86 by tests/ctest/prim-retry-test.cc (below), 37 of them also proved with VeriFast (`oom_clean` or `oom_unchanged`, below; 30 before wave 9, 25 before wave 8), 49 tested only (56 before wave 9); 2 reviewed (task_new: a format-1 path needs an interpreter; encode_error: needs a scheduler thread), the arguments in the table |
+| (b) fails for want of memory only before any visible effect | 88 | 86 by tests/ctest/prim-retry-test.cc (below), 39 of them also proved with VeriFast (`oom_clean` or `oom_unchanged`, below; 37 before wave 10, 30 before wave 9, 25 before wave 8), 47 tested only (49 before wave 10, 56 before wave 9); 2 reviewed (task_new: a format-1 path needs an interpreter; encode_error: needs a scheduler thread), the arguments in the table |
 | (c) violates it | 0 | |
 
 tests/ctest/prim-retry-test.cc makes every allocation of a call fail in
@@ -2086,6 +2089,13 @@ the null object, a heap object: `oom_unchanged` now has the disjunct
 lemma `heap_object_not_oom` proves from the heap that such a result is
 not an `oom_error`). Mutant byte-array-replace-oom-after-copy (an
 out-of-memory error after the copy-on-write copy).
+
+Wave 10 adds the allocating primitives behind the Rust ports, whose C++
+runs when the port's allocation does not fit (NeedsGc): byte_array_new
+(`prims/allocating.render`) and array_expand (`prims/array_expand.render`),
+both `oom_clean` (the allocation is their only failure for want of memory,
+before anything is written). Mutants byte-array-new-memset,
+array-expand-old-length, array-expand-copy-long (memory safety).
 
 string_write_to_byte_array, byte_zap and blit install a copy-on-write byte
 array's copy (a write to an existing instance) before a later argument or
@@ -2222,6 +2232,52 @@ of #3378, malformed system messages of #3381) become mutants with them.
 Wave 10 (the fallbacks of the allocating ports, the receive primitives'
 heap part, the tested-only retry classifications):
 
+* **string_at read past the end of a string that is not valid UTF-8,
+  reachable by untrusted programs** (FIXED here, src/primitive_core.cc;
+  reported by the agent that proved which ports never fall back). For a
+  lead byte at index i the C++ read as many continuation bytes as the lead
+  byte announced (`bytes_in_utf_8_sequence`: up to 4 for the lead bytes a
+  string can hold, 8 for 0xff, with a negative shift count in
+  `payload_from_prefix` for 0xff) without looking at the string's length;
+  the comment said "String contain only verified UTF-8". The Rust port of
+  string_at declines exactly these strings (a lead byte of 0xf8 or more, or
+  one whose sequence runs past the end) and leaves them to the C++. Such
+  strings exist in an untrusted process: the loader checks the program's
+  string literals (`heap_check.rs`, "a string literal isn't valid UTF-8"),
+  but nothing checks the strings a program makes. A program brings its own
+  library, the loader checks the builtin classes' shapes, not their code,
+  so its StringSlice_ can cut a character (the SDK's constructor checks the
+  boundaries, `StringSlice_ "a€" 0 2` in a library without the check does
+  not), and string_add or concat_strings (the Rust ports and the C++ alike)
+  copies the cut bytes into a new string. For a string "aaaaaa\xe2" (7
+  bytes: content and terminator fill the internal string's words) `t[6]`
+  read the terminator and the first byte of the next heap object and
+  returned 6 bits of it (`at=8194` on x86-64 before the fix); for an
+  external string the bytes after the malloced block. Fix: a lead byte
+  whose sequence is longer than 4 or longer than what is left of the
+  string (`n_byte_sequence > receiver.length() - index`, in word: the
+  first version of the fix, `index + n_byte_sequence` in int, can overflow
+  on a 64-bit VM for a string above 2 GB; VeriFast rejected it) gives null,
+  as a continuation byte does; the continuation index is a word. A debug
+  build's `ASSERT(c > MAX_ASCII)` (an overlong sequence, which such a string
+  can hold, ends the VM there) is gone. Proved with VeriFast
+  (`prims/string_at.render`, LP64 and ILP32: every read inside the decoded
+  string or slice for any bytes, the shift count, no overflow); mutants
+  string-at-past-end (the fix reverted), string-at-end-check,
+  string-at-sequence-length. Regression tests:
+  tests/ctest/prim-string-at-test.cc (every lead byte 0xc0..0xff at the end
+  of strings of 1 to 9 bytes, a cut slice and its concatenation, an
+  external string; 580 failures without the fix) and
+  tests/sandbox/cli/cut-slice-main.toit (`toit.run --untrusted`, compiled
+  against a copy of the library without StringSlice_'s checks,
+  run-cut-slice.cmake). An AddressSanitizer run was not made: the ASan
+  host32 configuration does not link here (mbedtls objects need ubsan
+  symbols). Upstream master: the same string_at; reachable by any program
+  that brings its own StringSlice_ (or a snapshot with an invalid literal:
+  upstream checks no literals). Observation, not changed (trusted only):
+  `iterate_font_characters` (src/primitive_font.cc) decodes the same way;
+  the font primitives are not in the untrusted set. string_rune_count and
+  string_raw_at do not decode sequences.
 * **put_uint_big_endian accepted width 9, an off-by-one of the initial
   commit** (FIXED here, src/primitive_core.cc, and its Rust port,
   verified/core/src/prims/blob.rs `put_endian`, which mirrored it). Not a

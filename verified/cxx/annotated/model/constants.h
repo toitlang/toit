@@ -191,6 +191,7 @@
 #define Utils_MIN_SURROGATE 0xd800
 #define Utils_MAX_SURROGATE 0xdfff
 #define Utils_UTF_8_PAYLOAD 0x80
+#define Utils_UTF_8_PREFIX 0xc0
 #define Utils_UTF_8_BITS_PER_BYTE 6
 #define Utils_UTF_8_MASK 0x3f
 

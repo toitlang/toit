@@ -1987,15 +1987,19 @@ PRIMITIVE(string_at) {
   // Invalid index.  Return null.  This means you can still scan for ASCII characters very simply.
   if (!Utils::is_utf_8_prefix(c)) return process->null_object();
   int n_byte_sequence = Utils::bytes_in_utf_8_sequence(c);
-  // String contain only verified UTF-8 so there are some things we can guarantee.
-  ASSERT(n_byte_sequence <= 4);
-  ASSERT(index + n_byte_sequence <= receiver.length());
+  // The bytes of a string are not always valid UTF-8: nothing checks the
+  // string literals of a program image, nor the boundaries of a string slice
+  // a program's own library made (a concatenation copies its bytes into a
+  // string). Read only inside the string; a lead byte of 0xf8 or above, or
+  // one whose sequence runs past the end, is not a character.
+  if (n_byte_sequence > 4 || n_byte_sequence > receiver.length() - index) return process->null_object();
   c = Utils::payload_from_prefix(c);
-  for (int j = 1; j < n_byte_sequence; j++) {
+  for (word j = 1; j < n_byte_sequence; j++) {
     c <<= Utils::UTF_8_BITS_PER_BYTE;
     c |= receiver.address()[index + j] & Utils::UTF_8_MASK;
   }
-  ASSERT(c > Utils::MAX_ASCII);  // Verifier has prevented overlong sequences.
+  // An overlong sequence (possible in a string that is not valid UTF-8)
+  // decodes to its value, which can be ASCII.
   return Smi::from(c);
 }
 

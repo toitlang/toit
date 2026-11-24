@@ -104,6 +104,19 @@ foreach(entry ${UNTRUSTED_RUN_TESTS})
   endforeach()
 endforeach()
 
+# A program whose own library lets a string slice cut a character makes a
+# string that is not valid UTF-8; string_at reads only inside it (wave 10).
+add_test(
+  NAME tests/sandbox/cli/cut-slice-snapshot
+  COMMAND ${CMAKE_COMMAND}
+      -DTOIT_RUN=$<TARGET_FILE:toit.run>
+      -DPROGRAM=${CMAKE_CURRENT_SOURCE_DIR}/cli/cut-slice-main.toit
+      "-DEXPECTED_OUTPUT=size=7 at=null.*size=14 at=null"
+      -DTMP=${CMAKE_CURRENT_BINARY_DIR}/cli-cut-slice
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/run-cut-slice.cmake
+  )
+set_tests_properties(tests/sandbox/cli/cut-slice-snapshot PROPERTIES TIMEOUT 60 ENVIRONMENT "TOIT_BYTECODE_FORMAT=2")
+
 # FORMAT-1-ONLY (docs/format2-migration.md): delete with format 1.
 # A format-1 snapshot is refused as an untrusted container by default, and
 # runs (on the C++ interpreter) when format 1 is allowed.
