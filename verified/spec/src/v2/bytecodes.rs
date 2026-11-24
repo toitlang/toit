@@ -178,23 +178,17 @@ pub open spec fn opcode_length2(op: u8) -> int {
 pub fn exec_opcode_length2(op: u8) -> (r: usize)
     ensures r == opcode_length2(op), 1 <= r <= 6,
 {
-    if op == 1 || op == 8 || op == 12 || op == 21 || op == 27 || op == 31 || op == 33
-        || op == 36 || op == 43 || op == 45 || op == 47 || op == 49 || op == 51
-        || op == 53 || op == 54 || op == 60 || op == 61 || op == 80
-        || (81 <= op && op <= 88) || op == 105 || op == 109 || op == 111 || op == 112 {
-        3
-    } else if op == 28 || op == 29 || op == 59 || op == 103 {
-        5
-    } else if op == 58 || op == 89 || op == 101 || op == 102 {
-        4
-    } else if op == 95 {
-        6
-    } else if (14 <= op && op <= 19) || op == 22 || op == 23 || op == 25 || op == 34
-        || op == 37 || op == 41 || op == 56 || op == 57 || (62 <= op && op <= 79)
-        || (90 <= op && op <= 93) || op == 96 || op == 97 || op == 99 {
-        1
-    } else {
-        2
+    // One match (a table lookup once compiled; the chain of compares of
+    // `opcode_length2` cost the verifier a dozen compares per instruction).
+    match op {
+        14 | 15 | 16 | 17 | 18 | 19 | 22 | 23 | 25 | 34 | 37 | 41 | 56 | 57 | 62 | 63 | 64 | 65 | 66 | 67 | 68 | 69
+            | 70 | 71 | 72 | 73 | 74 | 75 | 76 | 77 | 78 | 79 | 90 | 91 | 92 | 93 | 96 | 97 | 99 => 1,
+        1 | 8 | 12 | 21 | 27 | 31 | 33 | 36 | 43 | 45 | 47 | 49 | 51 | 53 | 54 | 60 | 61 | 80 | 81 | 82 | 83 | 84
+            | 85 | 86 | 87 | 88 | 105 | 109 | 111 | 112 => 3,
+        58 | 89 | 101 | 102 => 4,
+        28 | 29 | 59 | 103 => 5,
+        95 => 6,
+        _ => 2,
     }
 }
 
