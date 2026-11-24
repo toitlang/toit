@@ -24,6 +24,10 @@ class __Monitor__:
   Yields until the $condition block returns true.
   This should be called from a  locked method.
   The condition is not allowed to change the state, only query it.
+
+  The monitor is released while waiting. It is owned again when this method
+    returns or throws, also after a timeout or a cancelation, which might have
+    to wait for another task to leave the monitor.
   */
   await [condition]:
     result := try-await_ Task_.current.deadline condition
@@ -38,6 +42,10 @@ class __Monitor__:
 
   This should be called from a locked method.
   The condition is not allowed to change the state, only query it.
+
+  The monitor is released while waiting. It is owned again when this method
+    returns or throws, also after a timeout or a cancelation, which might have
+    to wait for another task to leave the monitor.
   */
   try-await --deadline/int? [condition]:
     task-deadline := Task_.current.deadline
@@ -102,6 +110,16 @@ class __Monitor__:
         await_ self
     finally:
       if timer: self.release-timer_ timer
+      // After a timeout or a cancelation we don't own the monitor, and another
+      // task might. The rest of the locked method must run with the monitor,
+      // and locked_ releases it when the method ends, so we take it back.
+      // We can't leave without it, so we wait for it without a deadline and
+      // without checking for cancelation. The task stays canceled.
+      while not identical self owner_:
+        if owner_:
+          wait_ self
+        else:
+          owner_ = self
     return result
 
   locked_ [block]:
