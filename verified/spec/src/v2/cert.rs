@@ -282,6 +282,51 @@ pub fn x_intern(l: &XList, k2: &Vec<XKind>, nodes: &mut Vec<XNode>, limit: usize
     Ok(r)
 }
 
+/// `out` becomes the first `n` slots of `l` (sharing its nodes); `out`'s
+/// buffers are reused, so that the walk allocates only while they grow.
+pub fn x_list_prefix_into(l: &XList, n: usize, out: &mut XList) -> (res: Result<(), Dec>)
+    requires list_ok(l), n <= l.kinds@.len(),
+    ensures res is Ok ==> list_ok(&*final(out)) && final(out).kinds@.len() == n,
+{
+    out.kinds.clear();
+    out.ids.clear();
+    let mut i = 0;
+    while i < n
+        invariant list_ok(l), n <= l.kinds@.len(), 0 <= i <= n, out.kinds@.len() == i, out.ids@.len() == i,
+        decreases n - i,
+    {
+        dec_push(&mut out.kinds, vix(&l.kinds, i))?;
+        dec_push(&mut out.ids, vix(&l.ids, i))?;
+        i += 1;
+    }
+    Ok(())
+}
+
+/// `x_intern` into `out` (its buffers reused).
+pub fn x_intern_into(l: &XList, k2: &Vec<XKind>, nodes: &mut Vec<XNode>, limit: usize, out: &mut XList) -> (res: Result<(), Dec>)
+    requires list_ok(l), limit < EMPTY_MAP as usize,
+    ensures res is Ok ==> list_ok(&*final(out)),
+{
+    if k2.len() > MAX_KINDS { return Err(Dec::Bad); }
+    let mut c = 0;
+    while c < l.kinds.len() && c < k2.len() && x_kind_eq(vix(&l.kinds, c), vix(k2, c))
+        invariant list_ok(l), 0 <= c <= l.kinds@.len(), c <= k2@.len(),
+        decreases k2@.len() - c,
+    {
+        c += 1;
+    }
+    x_list_prefix_into(l, c, out)?;
+    let mut i = c;
+    while i < k2.len()
+        invariant list_ok(&*out), c <= i <= k2@.len(), k2@.len() <= MAX_KINDS, out.kinds@.len() == i, limit < EMPTY_MAP as usize,
+        decreases k2@.len() - i,
+    {
+        x_list_push(out, nodes, vix(k2, i), limit)?;
+        i += 1;
+    }
+    Ok(())
+}
+
 /// The maps of the methods, decoded from the stream one method at a time
 /// in method order.
 pub struct ShippedOracle<'a> {
@@ -380,15 +425,21 @@ impl<'a> ShippedOracle<'a> {
             have = true;
             left = left - 1;
         }
+        // The map placed at the previous instruction, the map placed at
+        // this one (`cur`, if `have_cur`) and the buffers of the successor
+        // map (`next`): swapped, not reallocated, from one instruction to
+        // the next.
         let mut prev = XList { kinds: Vec::new(), ids: Vec::new() };
-        let mut cur: Option<XList> = Some(x_entry_list(p, g, m, &mut nodes, limit)?);
+        let mut cur: XList = x_entry_list(p, g, m, &mut nodes, limit)?;
+        let mut have_cur = true;
+        let mut next = XList { kinds: Vec::new(), ids: Vec::new() };
         let mut off: usize = 0;
         while off < size
             invariant
                 wf_program2(vview(p)), g_ok(g), m < p.methods@.len(), g.n == p.methods@.len(),
                 entry == vinfo(p, m as int).entry, end == vinfo(p, m as int).end, entry < end <= p.bytecodes@.len(),
                 size == end - entry, idx@.len() == size, pos <= s@.len(),
-                list_ok(&prev), match cur { Some(l) => list_ok(&l), None => true },
+                list_ok(&prev), list_ok(&cur), list_ok(&next),
                 limit < EMPTY_MAP as usize, have ==> e <= u32::MAX as usize,
             decreases (if off <= size { size - off } else { 0 }), (if have { 1int } else { 0int }) + left as int,
         {
@@ -408,11 +459,10 @@ impl<'a> ShippedOracle<'a> {
                 }
                 continue;
             }
-            let placed: XList;
             if have && e == off {
                 let (l, q) = x_read_map(s, pos, &prev, &mut nodes, limit)?;
                 pos = q;
-                placed = l;
+                cur = l;
                 if left > 0 {
                     let (d, q) = dec_some(x_varint(s, pos))?;
                     pos = q;
@@ -422,44 +472,46 @@ impl<'a> ShippedOracle<'a> {
                 } else {
                     have = false;
                 }
-            } else {
-                match cur {
-                    Some(l) => { placed = l; },
-                    None => {
-                        if !have { break; }
-                        // Jump to the next shipped map.
-                        off = e;
-                        cur = None;
-                        continue;
-                    },
-                }
+            } else if !have_cur {
+                if !have { break; }
+                // Jump to the next shipped map.
+                off = e;
+                continue;
             }
-            cur = None;
-            vput(&mut idx, off, x_top(&placed));
+            // `cur` is the map placed at `off`.
+            have_cur = false;
+            vput(&mut idx, off, x_top(&cur));
             let bci = entry + off;
             let op = ix(p.bytecodes, bci);
             if op >= OPCODE_COUNT2 {
-                prev = placed;
+                core::mem::swap(&mut prev, &mut cur);
                 off = off + 1;
                 continue;
             }
             let len = exec_opcode_length2(op);
             if len > end - bci {
-                prev = placed;
+                core::mem::swap(&mut prev, &mut cur);
                 off = off + 1;
                 continue;
             }
-            if !x_is_terminator(op) && placed.kinds.len() <= 0x10_0000 {
+            let mut found = false;
+            if !x_is_terminator(op) && cur.kinds.len() <= 0x10_0000 {
                 let c = XCert { g, cur: m, maps: &empty };
-                match x_post(p, &c, m, off, &placed.kinds, self.trusted) {
+                match x_post(p, &c, m, off, &cur.kinds, self.trusted) {
                     Ok(Some(k2)) => {
-                        cur = Some(x_intern(&placed, &k2, &mut nodes, limit)?);
+                        x_intern_into(&cur, &k2, &mut nodes, limit, &mut next)?;
+                        found = true;
                     },
                     Ok(None) => {},
                     Err(_) => return Err(Dec::Oom),
                 }
             }
-            prev = placed;
+            // The placed map becomes `prev`, the successor (if any) `cur`.
+            core::mem::swap(&mut prev, &mut cur);
+            if found {
+                core::mem::swap(&mut cur, &mut next);
+                have_cur = true;
+            }
             off = off + len;
         }
         // The shipped maps past the end are read (and ignored).
