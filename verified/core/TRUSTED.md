@@ -1367,9 +1367,13 @@ Assumptions behind the views:
   the model: INVOKE_AT/AT_PUT/SIZE call their methods (format 1 reads
   mapped files in place; same result through the primitive), and the
   Rust primitives return `NotPorted` for them (`prims::blob::ByteArg`,
-  `BlobArg::NotPorted`), so the C++ primitive handles them. The program
-  image follows the same rule (verified/vmverify/src/from_vm.rs models an
-  external byte array without raw bytes as an opaque object). A C++
+  `BlobArg::NotPorted`), so the C++ primitive handles them. A program
+  image holds no opaque byte arrays: since wave 11 of the C++ proofs
+  (verified/cxx/annotated/README.md, "Findings") the conversion
+  (verified/vmverify/src/from_vm.rs) refuses an external byte array with
+  another tag or a null address, and any object with the finalizer flag,
+  so opaque ones are made at run time only (resource proxies by the C++,
+  neutered arrays by `process_send`). A C++
   primitive that neuters a byte array (`process_send` clears the address)
   turns a model byte array into an opaque one, which `prim_heap_ok`
   allows (the class stays).
