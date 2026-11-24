@@ -189,6 +189,13 @@ fixpoint int64 o_number(oinfo i) { switch (i) { case oinfo(hw, l, ws, ax, n): re
 
 fixpoint bool good(list<void *> objs, void *w) { return is_smi_w((uword)w) || mem(w, objs); }
 
+// A primitive's argument stays a VM value across a copy-on-write allocation
+// by an earlier argument of the same ARGS expansion: a value of the heap
+// at entry (`entry_objs`), which the current heap contains. The type tests
+// an ARGS expansion calls (is_large_integer, is_double, the Blob decoder,
+// Primitive::return_not_a_smi) take this form as well as `good`.
+predicate valid_arg(void *value, list<void *> entry_objs) = good(entry_objs, value) == true;
+
 // The upper bound of an object's size: objects are in pages far below the
 // top of the address space (pages are at most a few hundred KB).
 #define MAX_OBJECT_WORDS 0x100000
@@ -886,8 +893,8 @@ bool is_byte_array(Object *o);
 
 // C++: src/objects.h toit::is_double
 bool is_double(Object *o);
-//@ requires [?f]heap(?objs, ?H) &*& good(objs, o) == true;
-//@ ensures [f]heap(objs, H) &*& result == has_tag(H, o, DOUBLE_TAG);
+//@ requires [?f]heap(?objs, ?H) &*& good(objs, o) ? true : [_]valid_arg(o, ?entry) &*& subset(entry, objs) == true;
+//@ ensures [f]heap(objs, H) &*& good(objs, o) == true &*& result == has_tag(H, o, DOUBLE_TAG);
 
 // C++: src/objects.h toit::is_string
 bool is_string(Object *o);
@@ -896,8 +903,8 @@ bool is_string(Object *o);
 
 // C++: src/objects.h toit::is_large_integer
 bool is_large_integer(Object *o);
-//@ requires [?f]heap(?objs, ?H) &*& good(objs, o) == true;
-//@ ensures [f]heap(objs, H) &*& result == has_tag(H, o, LARGE_INTEGER_TAG);
+//@ requires [?f]heap(?objs, ?H) &*& good(objs, o) ? true : [_]valid_arg(o, ?entry) &*& subset(entry, objs) == true;
+//@ ensures [f]heap(objs, H) &*& good(objs, o) == true &*& result == has_tag(H, o, LARGE_INTEGER_TAG);
 
 // C++: src/objects.h toit::HeapObject::class_tag
 TypeTag HeapObject_class_tag(HeapObject *self);

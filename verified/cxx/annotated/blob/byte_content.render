@@ -151,13 +151,17 @@ bool Object::byte_content(Program* program, const uint8** content, word* length,
 
 @render src/objects.cc toit::Object::byte_content type=bool(Program*,Blob*,BlobKind)const
 bool Object::byte_content(Program* program, Blob* blob, BlobKind strings_only) const
-/*@ requires [_]program(program, ?ids) &*& prog_ok(ids) == true &*& [?f]heap(?objs, ?H) &*& good(objs, self) == true &*&
+// The argument: a value of the current heap, or of the heap at the entry of
+// an ARGS expansion that an earlier MutableBlob argument grew (valid_arg).
+/*@ requires [_]program(program, ?ids) &*& prog_ok(ids) == true &*& [?f]heap(?objs, ?H) &*&
+             (good(objs, self) ? true : [_]valid_arg(self, ?entry) &*& subset(entry, objs) == true) &*&
              blob->address_ |-> _ &*& blob->length_ |-> _ &*&
              (strings_only == STRINGS_OR_BYTE_ARRAYS || strings_only == STRINGS_ONLY); @*/
-/*@ ensures [f]heap(objs, H) &*& blob->address_ |-> ?a &*& blob->length_ |-> ?l &*&
+/*@ ensures [f]heap(objs, H) &*& good(objs, self) == true &*& blob->address_ |-> ?a &*& blob->length_ |-> ?l &*&
             result ? [_]blob_result(objs, H, strings_only, a, l, ?b) &*&
             ((has_tag(H, self, STRING_TAG) || has_tag(H, self, BYTE_ARRAY_TAG)) ? b == self && a == blob_base(H, self) && l == blob_len(H, self) : true) : true; @*/
 {
+  //@ if (!good(objs, self)) { assert [_]valid_arg(self, ?e); open [_]valid_arg(self, e); mem_subset(self, e, objs); }
   const uint8* content = null;
   word length = 0;
   bool result = byte_content(program, &content, &length, strings_only);

@@ -1,0 +1,95 @@
+// Copyright (C) 2026 Toit contributors.
+//
+// byte_array_at_put and byte_array_is_raw_bytes of src/primitive_core.cc
+// (ported to Rust; the C++ runs when the port declines: an opaque byte
+// array, i.e. external with another tag than RawByteTag, or RawByteTag
+// with a null address after a transferring send).
+//
+// Proved: the ARGS expansion (ByteArray, int, int64), the write of
+// byte_array_at_put only into the content of a byte array that is not on
+// the program heap and is internal or raw external (an external one of
+// another tag, a resource proxy, fails with WRONG_OBJECT_TYPE before its
+// bytes are touched), the index checked against the content, no overflow
+// or lossy conversion but the modular store of the value's low byte
+// (`truncating`), the heap's objects unchanged, `oom_clean`. Not proved:
+// byte_array_at and byte_array_length, which also read a mapped file's
+// bytes (MappedFileTag): the heap model has no bytes for them.
+//
+// Self-tests (run.sh): the program-heap check left out; the index check
+// one too weak.
+@include ../model/model.cfg
+@verbatim
+#include "../model/objects.gen.h"
+#include "argument_error.gen.h"
+//@ #include "../model/arith.gh"
+@prototypes
+@render src/objects.h toit::ByteArray::Bytes::is_valid_index tu=src/primitive_core.cc
+    bool is_valid_index(word index)
+    //@ requires [?f]self->length_ |-> ?l;
+    //@ ensures [f]self->length_ |-> l &*& result == (0 <= index && index < l);
+    {
+      return index >= 0 && index < length();
+    }
+
+@render src/objects.h toit::ByteArray::Bytes::at_put tu=src/primitive_core.cc
+    void at_put(word index, uint8 value)
+    //@ requires [?f]self->address_ |-> ?a &*& [f]self->length_ |-> ?l &*& 0 <= index &*& index < l &*& uchars(a, l, ?cs);
+    //@ ensures [f]self->address_ |-> a &*& [f]self->length_ |-> l &*& uchars(a, l, _);
+    {
+      ASSERT(index >= 0 && index < length());
+      //@ uchars_split(a, index);
+      //@ open uchars(a + index, l - index, _);
+      *(address() + index) = value;
+      //@ close uchars(a + index, l - index, _);
+      //@ uchars_join(a);
+    }
+
+@render src/primitive_core.cc toit::primitive_byte_array_is_raw_bytes
+PRIMITIVE(byte_array_is_raw_bytes)
+/*@ requires [?fp]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
+             pointer(__args, ?x0) &*& good(objs, x0) == true; @*/
+/*@ ensures [fp]process(process, prog, ids) &*& heap(objs, H) &*& oom_clean(objs, H, objs, H, result) == true &*&
+            pointer(__args, x0); @*/
+{
+  //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);
+  ARGS(ByteArray, byte_array);
+  bool result = (!byte_array->has_external_address()) || byte_array->external_tag() == RawByteTag;
+  return BOOL(result);
+}
+
+@render src/primitive_core.cc toit::primitive_byte_array_at_put truncating
+PRIMITIVE(byte_array_at_put)
+/*@ requires [?fp]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
+             pointer(__args, ?x0) &*& pointer(__args - 1, ?x1) &*& pointer(__args - 2, ?x2) &*&
+             good(objs, x0) && good(objs, x1) && good(objs, x2); @*/
+/*@ ensures [fp]process(process, prog, ids) &*& heap(objs, ?H2) &*& oom_clean(objs, H, objs, H2, result) == true &*&
+            grows(objs, H, objs, H2) == true &*&
+            pointer(__args, x0) &*& pointer(__args - 1, x1) &*& pointer(__args - 2, x2); @*/
+{
+  //@ grows_refl(objs, H);
+  //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);
+  //@ error_word(Program_OUT_OF_RANGE_INDEX);
+  //@ error_word(Program_OUT_OF_BOUNDS_INDEX);
+  //@ error_word(Program_PERMISSION_DENIED_INDEX);
+  //@ close valid_arg(x1, objs);
+  //@ leak valid_arg(x1, objs);
+  ARGS(ByteArray, receiver, int, index, int64, value);
+  //@ good_heap(objs, receiver);
+  // Byte arrays on the program heap are shared and read-only.
+  if (receiver->on_program_heap(process)) FAIL(PERMISSION_DENIED);
+  if (!receiver->has_external_address() || receiver->external_tag() == RawByteTag) {
+    ByteArray::Bytes bytes(receiver);
+    if (!bytes.is_valid_index(index)) FAIL(OUT_OF_BOUNDS);
+    //@ blob_facts(receiver);
+    //@ heap_holes_open();
+    //@ blob_take(receiver);
+    //@ truncate_limits(value, N8);
+    // The write goes to a byte array outside the program heap.
+    //@ assert in_program_heap(process, receiver) == false;
+    bytes.at_put(index, (uint8) value);
+    //@ blob_give(receiver);
+    //@ heap_holes_close();
+    return Smi::from((uint8) value);
+  }
+  FAIL(WRONG_OBJECT_TYPE);
+}

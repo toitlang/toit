@@ -10,12 +10,6 @@
 // Shared error path for the ARGS macro's integer conversion.
 #include "../model/objects.gen.h"
 //@ #include "../model/arith.gh"
-
-// A primitive's decoded arguments remain VM values across a copy-on-write
-// allocation by an earlier argument in the same ARGS expansion.
-/*@
-predicate valid_arg(void *value, list<void *> entry_objs) = good(entry_objs, value) == true;
-@*/
 // C++: src/primitive.cc toit::Primitive::return_not_a_smi
 Object *Primitive_return_not_a_smi(Process *process, Object *value);
 //@ requires [?f]heap(?objs, ?H) &*& [_]valid_arg(value, ?entry_objs) &*& subset(entry_objs, objs) == true;

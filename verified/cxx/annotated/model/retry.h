@@ -135,9 +135,22 @@ fixpoint bool other_error(Program *prog, Object *raw) {
 // proofs rest on the loader's error_roots_ok (the `program` predicate):
 // an error other than the three out-of-memory ones decodes to another
 // root.
+// A result that is an object of the heap after the call (the null object
+// the byte-array writers return; wave 9) is not a marked error either, as
+// in oom_clean: heap_object_not_oom below proves it from the heap.
 fixpoint bool oom_unchanged(Program *prog, list<void *> objs, fixpoint(void *, oinfo) H,
                             list<void *> objs2, fixpoint(void *, oinfo) H2, void *result) {
-  return !oom_error(prog, result) || (objs2 == objs && H2 == H) || forall(objs, (same_obj)(H, H2));
+  return !oom_error(prog, result) || mem(result, objs2) || (objs2 == objs && H2 == H) || forall(objs, (same_obj)(H, H2));
+}
+
+// An object of the heap is not a marked error: its word has the heap tag
+// (addr_ok), so the disjunct `mem(result, objs2)` of oom_unchanged implies
+// `!oom_error(prog, result)`.
+lemma void heap_object_not_oom(Program *prog, void *o)
+  requires [?f]heap(?objs, ?H) &*& mem(o, objs) == true;
+  ensures [f]heap(objs, H) &*& oom_error(prog, o) == false;
+{
+  heap_facts(o);
 }
 
 // An immediate error naming error root `index` (FAIL), or a marked error

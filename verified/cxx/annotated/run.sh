@@ -470,6 +470,10 @@ mutant closure-escapes tests/rules.render $RULES_CC "RENDER:closure parameter pr
   "static word retry_once(word n, F produce) {\n  F copy = produce;\n  word result = copy();" \
   "SIDECAR::use_lambdas#1@@  word result = produce();" "  F copy = produce;\n  word result = copy();" \
   "SIDECAR::use_lambdas#2@@  word result = produce();" "  F copy = produce;\n  word result = copy();"
+# The modular shift by a run-time count (wave 9) leaves the count to
+# VeriFast: a count one too large must be rejected.
+mutant shift-bits-count tests/rules.render $RULES_CC "Shifting by an amount" "-allow_dead_code" \
+  "static_cast<uint64>(x) << bits);" "static_cast<uint64>(x) << (bits + 1));"
 entry model                 pass "" model/objects.gen.c
 mutant program-class-id-slot model/objects.render src/program.h "Cannot prove" "" \
   "return _builtin_class_ids[index];" "return _builtin_class_ids[0];"
@@ -2584,6 +2588,47 @@ mutant read-bytes-end-check prims/read_bytes.render src/primitive_core.cc "No ma
   "PRIMITIVE(read_uint_big_endian)@@ || unsigned_offset + unsigned_width > length) {" ") {"
 mutant read-bytes-little-start prims/read_bytes.render src/primitive_core.cc "No matching|Cannot prove" "-allow_dead_code -prover z3v4.5" \
   "PRIMITIVE(read_uint_little_endian)@@for (word i = width - 1;" "for (word i = width;"
+# The signed readers (wave 9): the old `width - 1` in int before the check
+# put back (overflows for INT_MIN: LP64 only, on ILP32 an int argument is
+# a smi); the big-endian loop one byte too long; the little-endian sign
+# byte one too high.
+mutant read-int-width-overflow prims/read_bytes.render src/primitive_core.cc "LP64:underflow|overflow" "-allow_dead_code -prover z3v4.5" \
+  "PRIMITIVE(read_int_big_endian)@@  unsigned unsigned_width = width;" "  unsigned original_width_minus_1 = width - 1;\n  unsigned unsigned_width = width;"
+mutant read-int-big-loop prims/read_bytes.render src/primitive_core.cc "No matching|Cannot prove" "-allow_dead_code -prover z3v4.5" \
+  "PRIMITIVE(read_int_big_endian)@@i <= width_minus_1;" "i <= unsigned_width;"
+mutant read-int-little-sign prims/read_bytes.render src/primitive_core.cc "No matching|Cannot prove" "-allow_dead_code -prover z3v4.5" \
+  "PRIMITIVE(read_int_little_endian)@@[offset + width_minus_1]" "[offset + unsigned_width]"
+# The byte-array writers (wave 9; `-allow_dead_code`: the int argument's
+# round trip is dead on ILP32): put_uint_little_endian's old `width - 1`
+# before the check (LP64 only, as the readers'); put_uint_big_endian's end
+# check left out; byte_array_replace's destination check without the
+# length; byte_array_replace reporting an out-of-memory error after the
+# copy (the retry rule); the 32-bit float writer's end check one byte too
+# weak (+ 2: the C++ is one byte stricter than needed, + 3 still fits);
+# the 64-bit float writer's offset check left out (a negative offset
+# wraps around).
+entry put-bytes             pass "" prims/put_bytes.gen.c -allow_dead_code -prover z3v4.5
+mutant put-uint-width-overflow prims/put_bytes.render src/primitive_core.cc "LP64:underflow|overflow" "-allow_dead_code -prover z3v4.5" \
+  "PRIMITIVE(put_uint_little_endian)@@  unsigned unsigned_width = width;" "  unsigned original_width_minus_1 = width - 1;\n  unsigned unsigned_width = width;"
+mutant put-uint-big-end-check prims/put_bytes.render src/primitive_core.cc "No matching|Cannot prove" "-allow_dead_code -prover z3v4.5" \
+  "PRIMITIVE(put_uint_big_endian)@@ || unsigned_offset + unsigned_width > length) {" ") {"
+mutant byte-array-replace-length prims/put_bytes.render src/primitive_core.cc "No matching|Cannot prove" "-allow_dead_code -prover z3v4.5" \
+  "index + length > receiver.length()" "index > receiver.length()"
+mutant byte-array-replace-oom-after-copy prims/put_bytes.render src/primitive_core.cc "Cannot prove.*oom_unchanged" "-allow_dead_code -prover z3v4.5" \
+  "PRIMITIVE(byte_array_replace)@@  const uint8* source = source_object.address() + from;" "  const uint8* source = source_object.address() + from;\n  if (length == 1) FAIL(MALLOC_FAILED);"
+# byte_array_at_put and byte_array_is_raw_bytes (wave 9): the program-heap
+# check left out (the write must go outside it); the index checked only
+# against zero.
+entry byte-array-access     pass "" prims/byte_array_access.gen.c -allow_dead_code -prover z3v4.5
+mutant byte-array-at-put-program-heap prims/byte_array_access.render src/primitive_core.cc "Assertion might not hold|Cannot prove" "-allow_dead_code -prover z3v4.5" \
+  "PRIMITIVE(byte_array_at_put)@@  if (receiver->on_program_heap(process)) FAIL(PERMISSION_DENIED);\n" ""
+mutant byte-array-at-put-index prims/byte_array_access.render src/primitive_core.cc "Cannot prove|No matching" "-allow_dead_code -prover z3v4.5" \
+  "PRIMITIVE(byte_array_at_put)@@if (!bytes.is_valid_index(index)) FAIL(OUT_OF_BOUNDS);" "if (index < 0) FAIL(OUT_OF_BOUNDS);"
+entry put-float             pass "" prims/put_float.gen.c -allow_dead_code -prover z3v4.5
+mutant put-float-32-end prims/put_float.render src/primitive_core.cc "No matching|Cannot prove" "-allow_dead_code -prover z3v4.5" \
+  "unsigned_offset + 4 >= length" "unsigned_offset + 2 >= length"
+mutant put-float-64-offset prims/put_float.render src/primitive_core.cc "No matching|Cannot prove" "-allow_dead_code -prover z3v4.5" \
+  "if (unsigned_offset > length || unsigned_offset + 8 >= length) {" "if (unsigned_offset + 8 >= length) {"
 entry word-size             pass "" prims/word_size.gen.c
 mutant word-size-bits prims/word_size.render src/primitive_core.cc "smi_val|Cannot prove condition" "" \
   "return Smi::from(WORD_SIZE);" "return Smi::from(WORD_SIZE * 8);"

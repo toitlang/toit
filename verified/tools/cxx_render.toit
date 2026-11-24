@@ -194,7 +194,14 @@ A sidecar: a sequence of sections, each opened by a directive line (a
   explicit static_cast narrowing a signed integer (os_localtime's
   `static_cast<time_t>`). Explicit casts between int64 and uint64 and a
   uint64 left shift by a literal in [0, 63] (also `<<=` on a plain
-  variable) also use modular arithmetic.
+  variable) also use modular arithmetic, and so does a uint64 left shift
+  of an explicitly converted value by a run-time count (VeriFast checks
+  the count; Utils::wrapping_shift_left). An explicit uint8-to-int8
+  conversion and a conversion (implicit or explicit) of an int64 to a byte are
+  modular; an int64 `>>=` by a literal on a plain variable is the
+  arithmetic shift (GCC's and Clang's, C++20's), written without a shift
+  of a negative value. An annotated operand of a cast, a shift or an
+  additive operator is parenthesized (VeriFast's parser).
   A plain uword variable’s `+=` uses the same modular sum as `+`.
   `unsigned-word-conversion` renders an implicit conversion from
   `word` to `uword` modulo the target word size, and one from `int` to
@@ -940,6 +947,23 @@ class Renderer:
     if e.prec < min: return "($e.text)"
     return e.text
 
+  // As $wrap, and an expression that starts with a VeriFast annotation (a
+  // modular operation, `/*@truncating@*/(...)`) is parenthesized too:
+  // VeriFast parses one only where an expression starts, not as the
+  // operand of a cast or of a binary operator.
+  annotated-operand e/Expr min/int -> string:
+    if e.text.starts-with "/*@": return "($e.text)"
+    return wrap e min
+
+  // As $wrap, for the operand of a binary operator: VeriFast does not parse
+  // an annotated expression (`/*@truncating@*/(T)x`, `/*@truncating@*/(a +
+  // b)`) as an operand of a shift, additive or multiplicative operator
+  // (precedence $min of 11 and more; it does as one of a comparison, a
+  // bitwise or a logical operator), so there it is parenthesized.
+  binary-operand e/Expr min/int op-prec/int -> string:
+    if (e.text.starts-with "/*@") and op-prec >= BINARY-PREC["<<"]: return "($e.text)"
+    return wrap e min
+
   callee-name node/Map -> string:
     while node["kind"] == "ImplicitCastExpr" or node["kind"] == "ParenExpr":
       node = (inner node)[0]
@@ -1016,6 +1040,14 @@ class Renderer:
       if unsigned-word-conversion and cast == "IntegralCast" and target-type == "unsigned int" and (c-type kids[0]["type"]["qualType"]) == "int" and (strip-parens kids[0])["kind"] != "IntegerLiteral":
         // The same for an int converted to unsigned (modulo 2^32).
         return Expr "/*@truncating@*/(unsigned int)$(wrap (expr kids[0]) PREC-UNARY)" PREC-UNARY
+      if cast == "IntegralCast" and truncating and (target-type == "uint8" or target-type == "unsigned char")
+          and (c-type kids[0]["type"]["qualType"]) == "int64"
+          and (strip-parens kids[0])["kind"] != "IntegerLiteral":
+        // `truncating`: the conversion of an int64 to a byte (a store of
+        // its low byte, put_uint_*) is modulo 2^8, as C++ defines it for
+        // every unsigned target. (Narrower sources, blit's int bytes, stay
+        // checked for range.)
+        return Expr "/*@truncating@*/(uint8)$(annotated-operand (expr kids[0]) PREC-UNARY)" PREC-UNARY
       if cast == "IntegralCast" and truncating and (SIGNED-TARGETS.contains target-type) and (UNSIGNED-WORDS.contains (resolve (c-type kids[0]["type"]["qualType"]))):
         // `truncating`: so is the conversion of an unsigned word or 64-bit
         // integer to word or int64 (a value above the signed range becomes
@@ -1028,7 +1060,7 @@ class Renderer:
       if cast == "NullToPointer":
         return Expr "0" PREC-PRIMARY
       if WRITTEN-CASTS.contains cast:
-        return Expr "($(c-type node["type"]["qualType"]))$(wrap (expr kids[0]) PREC-UNARY)" PREC-UNARY
+        return Expr "($(c-type node["type"]["qualType"]))$(annotated-operand (expr kids[0]) PREC-UNARY)" PREC-UNARY
       fail "$(where node): implicit conversion $cast not supported"
     if kind == "CStyleCastExpr" or kind == "CXXStaticCastExpr" or kind == "CXXReinterpretCastExpr" or kind == "CXXFunctionalCastExpr" or kind == "CXXConstCastExpr":
       // (Clang puts the conversion of a static_cast to a typedef into an
@@ -1044,7 +1076,17 @@ class Renderer:
         to := c-type node["type"]["qualType"]
         from := c-type operand["type"]["qualType"]
         if (to == "uint64" and from == "int64") or (to == "int64" and from == "uint64"):
-          return Expr "/*@truncating@*/($to)$(wrap (expr operand) PREC-UNARY)" PREC-UNARY
+          return Expr "/*@truncating@*/($to)$(annotated-operand (expr operand) PREC-UNARY)" PREC-UNARY
+        if (to == "int8" and from == "uint8") or (to == "signed char" and from == "unsigned char"):
+          // A byte read as a signed one (the sign extension of the signed
+          // integer readers): the modular conversion, a value above 127
+          // becomes negative.
+          return Expr "/*@truncating@*/($to)$(annotated-operand (expr operand) PREC-UNARY)" PREC-UNARY
+      if (kind == "CStyleCastExpr" or kind == "CXXStaticCastExpr") and truncating and operand
+          and (c-type node["type"]["qualType"]) == "uint8" and (c-type operand["type"]["qualType"]) == "int64":
+        // An explicit conversion of an int64 to a byte (byte_array_at_put's
+        // `(uint8) value`): modulo 2^8, as the implicit one above.
+        return Expr "/*@truncating@*/(uint8)$(annotated-operand (expr operand) PREC-UNARY)" PREC-UNARY
       if kind == "CXXStaticCastExpr" and truncating and operand
           and (SIGNED-INTEGERS.contains (resolve (c-type (node["type"].get "desugaredQualType" --if-absent=: node["type"]["qualType"]))))
           and (TRUNCATED.contains (resolve (c-type (operand["type"].get "desugaredQualType" --if-absent=: operand["type"]["qualType"])))):
@@ -1192,9 +1234,30 @@ class Renderer:
         count := int.parse kids[1]["value"]
         if 0 <= count and count < 64:
           return Expr "/*@truncating@*/($(wrap (expr kids[0]) p) << $count)" PREC-PRIMARY
+      if truncating and op == "<<" and (c-type node["type"]["qualType"]) == "uint64" and kids[1]["kind"] != "IntegerLiteral"
+          and (strip-parens kids[0])["kind"] == "CXXStaticCastExpr":
+        // The same shift by a count computed at run time, of an explicitly
+        // converted value (the bit pattern of a signed integer:
+        // Utils::wrapping_shift_left): VeriFast checks that the count is in
+        // [0, 63] (a shift by a negative count or by the width or more is
+        // undefined), the shift itself is modular. (Other shifts by a
+        // variable count stay checked for overflow: crc's mask.)
+        return Expr "/*@truncating@*/($(binary-operand (expr kids[0]) p p) << $(wrap (expr kids[1]) p + 1))" PREC-PRIMARY
       if truncating and op == "-" and (c-type node["type"]["qualType"]) == "uword":
         // Unsigned address differences wrap at the target word width.
-        return Expr "/*@truncating@*/($(wrap (expr kids[0]) p) - $(wrap (expr kids[1]) p + 1))" PREC-PRIMARY
+        return Expr "/*@truncating@*/($(binary-operand (expr kids[0]) p p) - $(binary-operand (expr kids[1]) (p + 1) p))" PREC-PRIMARY
+      if truncating and op == ">>=" and kids[0]["kind"] == "DeclRefExpr" and (c-type node["type"]["qualType"]) == "int64" and kids[1]["kind"] == "IntegerLiteral":
+        // An arithmetic right shift of a signed value (put_uint_*'s
+        // `value >>= 8`): implementation-defined in C++11 for a negative
+        // value, sign-extending in GCC and Clang (and standardized so in
+        // C++20); VeriFast refuses it. Written as the same floor division
+        // without it: `x >> c` for x >= 0, `-1 - ((-1 - x) >> c)` below
+        // (no overflow: -1 - x is in [0, INT64_MAX]). A plain variable:
+        // the lvalue is evaluated more than once.
+        count := int.parse kids[1]["value"]
+        if 0 <= count and count < 64:
+          v := (expr kids[0]).text
+          return Expr "$v = $v >= 0 ? $v >> $count : -1 - ((-1 - $v) >> $count)" PREC-ASSIGN
       if truncating and op == "<<=" and kids[0]["kind"] == "DeclRefExpr" and (c-type node["type"]["qualType"]) == "uint64" and kids[1]["kind"] == "IntegerLiteral":
         // The compound form of the modular uint64 shift by a literal (a
         // plain variable: the lvalue is evaluated twice).
@@ -1209,11 +1272,11 @@ class Renderer:
         return Expr "$lhs = /*@truncating@*/($lhs + $rhs)" PREC-ASSIGN
       if truncating and op == "+" and {"uint64", "uword"}.contains (c-type node["type"]["qualType"]):
         // Unsigned sums wrap at their declared width, including biased metadata addresses.
-        sum := "/*@truncating@*/($(wrap (expr kids[0]) p) + $(wrap (expr kids[1]) p + 1))"
+        sum := "/*@truncating@*/($(binary-operand (expr kids[0]) p p) + $(binary-operand (expr kids[1]) (p + 1) p))"
         return Expr sum p
       if p == PREC-ASSIGN:
         return Expr "$(wrap (expr kids[0]) PREC-UNARY) $op $(wrap (expr kids[1]) PREC-ASSIGN)" p
-      return Expr "$(wrap (expr kids[0]) p) $op $(wrap (expr kids[1]) p + 1)" p
+      return Expr "$(binary-operand (expr kids[0]) p p) $op $(binary-operand (expr kids[1]) (p + 1) p)" p
     if kind == "UnaryOperator":
       op := node["opcode"]
       if node.get "isPostfix": return Expr "$(wrap (expr kids[0]) PREC-PRIMARY)$op" PREC-PRIMARY

@@ -60,7 +60,16 @@ lemma void pow2_32()
   assert int_of_nat(N31) == 31;
   assert pow_nat(2, N64) == 18446744073709551616;
 }
+
+lemma void pow2_63()
+  requires true;
+  ensures pow_nat(2, N63) == 9223372036854775808;
+{
+  assert pow_nat(2, N32) == 4294967296;
+  assert pow_nat(2, N63) == 9223372036854775808;
+}
 @*/
+typedef signed char int8;
 // C++: src/primitive_core.cc toit::primitive_read_uint_big_endian
 Object *primitive_read_uint_big_endian(Process *process, Object **__args);
 /*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
@@ -71,6 +80,27 @@ Object *primitive_read_uint_big_endian(Process *process, Object **__args);
 
 // C++: src/primitive_core.cc toit::primitive_read_uint_little_endian
 Object *primitive_read_uint_little_endian(Process *process, Object **__args);
+/*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
+             pointer(__args, ?x0) &*& pointer(__args - 1, ?x1) &*& pointer(__args - 2, ?x2) &*& pointer(__args - 3, ?x3) &*&
+             good(objs, x1) && good(objs, x2); @*/
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*& grows(objs, H, objs2, H2) == true &*&
+            pointer(__args, x0) &*& pointer(__args - 1, x1) &*& pointer(__args - 2, x2) &*& pointer(__args - 3, x3); @*/
+
+// C++: src/utils.h toit::Utils::wrapping_shift_left
+int64 Utils_wrapping_shift_left(int64 x, int64 bits);
+//@ requires 0 <= bits &*& bits <= 63;
+//@ ensures true;
+
+// C++: src/primitive_core.cc toit::primitive_read_int_big_endian
+Object *primitive_read_int_big_endian(Process *process, Object **__args);
+/*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
+             pointer(__args, ?x0) &*& pointer(__args - 1, ?x1) &*& pointer(__args - 2, ?x2) &*& pointer(__args - 3, ?x3) &*&
+             good(objs, x1) && good(objs, x2); @*/
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*& grows(objs, H, objs2, H2) == true &*&
+            pointer(__args, x0) &*& pointer(__args - 1, x1) &*& pointer(__args - 2, x2) &*& pointer(__args - 3, x3); @*/
+
+// C++: src/primitive_core.cc toit::primitive_read_int_little_endian
+Object *primitive_read_int_little_endian(Process *process, Object **__args);
 /*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
              pointer(__args, ?x0) &*& pointer(__args - 1, ?x1) &*& pointer(__args - 2, ?x2) &*& pointer(__args - 3, ?x3) &*&
              good(objs, x1) && good(objs, x2); @*/
@@ -213,5 +243,157 @@ Object *primitive_read_uint_little_endian(Process *process, Object **__args)
   }
   //@ return_slice(b, a);
   return Primitive_integer(/*@truncating@*/(int64)value, process);
+}
+
+// C++: src/utils.h toit::Utils::wrapping_shift_left
+int64 Utils_wrapping_shift_left(int64 x, int64 bits)
+//@ requires 0 <= bits &*& bits <= 63;
+//@ ensures true;
+{
+  return /*@truncating@*/(int64)(/*@truncating@*/((/*@truncating@*/(uint64)x) << bits));
+}
+
+// C++: src/primitive_core.cc toit::primitive_read_int_big_endian
+Object *primitive_read_int_big_endian(Process *process, Object **__args)
+/*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
+             pointer(__args, ?x0) &*& pointer(__args - 1, ?x1) &*& pointer(__args - 2, ?x2) &*& pointer(__args - 3, ?x3) &*&
+             good(objs, x1) && good(objs, x2); @*/
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*& grows(objs, H, objs2, H2) == true &*&
+            pointer(__args, x0) &*& pointer(__args - 1, x1) &*& pointer(__args - 2, x2) &*& pointer(__args - 3, x3); @*/
+{
+  uninitialized_t _u_source;
+  Blob source;
+  //@ close valid_arg(x2, objs);
+  //@ leak valid_arg(x2, objs);
+  //@ grows_refl(objs, H);
+  Object *unused = __args[-(0)];
+  Object *_raw_source = __args[-(1)];
+  uninitialized_t_ctor(&_u_source);
+  Blob_ctor__uninitialized_tp(&source, &_u_source);
+  if (!Object_byte_content__Programp_Blobp_BlobKind(_raw_source, Process_program(process), &source, STRINGS_OR_BYTE_ARRAYS)) {
+    return (Object *)((uword)((int)(Program_WRONG_BYTES_TYPE_INDEX) << Error_ERROR_SHIFT) | Error_ERROR_TAG);
+  }
+  Object *_raw_width = __args[-(2)];
+  if (!is_smi(_raw_width)) {
+    return Primitive_return_not_a_smi(process, _raw_width);
+  }
+  word _word_width = Smi_value__Objectp(_raw_width);
+  int width = /*@truncating@*/(int)_word_width;
+  if ((word)width != _word_width) {
+    return (Object *)((uword)((int)(Program_OUT_OF_RANGE_INDEX) << Error_ERROR_SHIFT) | Error_ERROR_TAG);
+  }
+  Object *_raw_offset = __args[-(3)];
+  if (!is_smi(_raw_offset)) {
+    return (Object *)((uword)((int)(Program_WRONG_OBJECT_TYPE_INDEX) << Error_ERROR_SHIFT) | Error_ERROR_TAG);
+  }
+  word offset = Smi_value__Objectp(_raw_offset);
+  //@ assert [_]blob_result(objs, H, STRINGS_OR_BYTE_ARRAYS, ?a, ?len, ?b);
+  //@ open [_]blob_result(objs, H, STRINGS_OR_BYTE_ARRAYS, a, len, b);
+  //@ blob_facts(b);
+  //@ assert len <= MAX_BLOB;
+  (void)(unused);
+  //@ pow2_32();
+  //@ truncate_signed_limits(_word_width, N31);
+  //@ unsigned_of_signed(width, N32);
+  unsigned int unsigned_width = /*@truncating@*/(unsigned int)width;
+  //@ unsigned_of_signed(offset, sizeof(word) == 8 ? N64 : N32);
+  uword unsigned_offset = /*@truncating@*/(uword)offset;
+  //@ unsigned_of_signed(len, sizeof(word) == 8 ? N64 : N32);
+  uword length = /*@truncating@*/(uword)Blob_length(&source);
+  //@ assert length == len;
+  //@ if (unsigned_offset <= length && unsigned_width <= 8) { assert unsigned_offset + unsigned_width <= MAX_BLOB + 8; unsigned_of_signed(unsigned_offset + unsigned_width, sizeof(word) == 8 ? N64 : N32); }
+  if (unsigned_offset > length || unsigned_width == 0 || unsigned_width > 8 || /*@truncating@*/(unsigned_offset + (uword)unsigned_width) > length) {
+    return (Object *)((uword)((int)(Program_OUT_OF_BOUNDS_INDEX) << Error_ERROR_SHIFT) | Error_ERROR_TAG);
+  }
+  uword width_minus_1 = (uword)(unsigned_width - 1);
+  //@ borrow_slice(b, a, len);
+  //@ uchars_nth_range(a, offset);
+  int64 value = (int64)(/*@truncating@*/(int8)Blob_address(&source)[offset]);
+  //@ pow2_63();
+  for (uword i = 1; i <= width_minus_1; i++)
+  /*@ invariant source.address_ |-> a &*& source.length_ |-> len &*& validation_slice(objs, H, b, a, len) &*&
+                uchars(a, len, ?bs) &*& 1 <= i &*& i <= width_minus_1 + 1; @*/
+  {
+    value = Utils_wrapping_shift_left(value, 8);
+    //@ unsigned_of_signed(offset + i, sizeof(word) == 8 ? N64 : N32);
+    //@ uchars_nth_range(a, offset + i);
+    //@ bitor_signed_limits(value, nth(offset + i, bs), N63);
+    value |= (int64)Blob_address(&source)[/*@truncating@*/((/*@truncating@*/(uword)offset) + i)];
+  }
+  //@ return_slice(b, a);
+  return Primitive_integer(value, process);
+}
+
+// C++: src/primitive_core.cc toit::primitive_read_int_little_endian
+Object *primitive_read_int_little_endian(Process *process, Object **__args)
+/*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
+             pointer(__args, ?x0) &*& pointer(__args - 1, ?x1) &*& pointer(__args - 2, ?x2) &*& pointer(__args - 3, ?x3) &*&
+             good(objs, x1) && good(objs, x2); @*/
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*& grows(objs, H, objs2, H2) == true &*&
+            pointer(__args, x0) &*& pointer(__args - 1, x1) &*& pointer(__args - 2, x2) &*& pointer(__args - 3, x3); @*/
+{
+  uninitialized_t _u_source;
+  Blob source;
+  //@ close valid_arg(x2, objs);
+  //@ leak valid_arg(x2, objs);
+  //@ grows_refl(objs, H);
+  Object *unused = __args[-(0)];
+  Object *_raw_source = __args[-(1)];
+  uninitialized_t_ctor(&_u_source);
+  Blob_ctor__uninitialized_tp(&source, &_u_source);
+  if (!Object_byte_content__Programp_Blobp_BlobKind(_raw_source, Process_program(process), &source, STRINGS_OR_BYTE_ARRAYS)) {
+    return (Object *)((uword)((int)(Program_WRONG_BYTES_TYPE_INDEX) << Error_ERROR_SHIFT) | Error_ERROR_TAG);
+  }
+  Object *_raw_width = __args[-(2)];
+  if (!is_smi(_raw_width)) {
+    return Primitive_return_not_a_smi(process, _raw_width);
+  }
+  word _word_width = Smi_value__Objectp(_raw_width);
+  int width = /*@truncating@*/(int)_word_width;
+  if ((word)width != _word_width) {
+    return (Object *)((uword)((int)(Program_OUT_OF_RANGE_INDEX) << Error_ERROR_SHIFT) | Error_ERROR_TAG);
+  }
+  Object *_raw_offset = __args[-(3)];
+  if (!is_smi(_raw_offset)) {
+    return (Object *)((uword)((int)(Program_WRONG_OBJECT_TYPE_INDEX) << Error_ERROR_SHIFT) | Error_ERROR_TAG);
+  }
+  word offset = Smi_value__Objectp(_raw_offset);
+  //@ assert [_]blob_result(objs, H, STRINGS_OR_BYTE_ARRAYS, ?a, ?len, ?b);
+  //@ open [_]blob_result(objs, H, STRINGS_OR_BYTE_ARRAYS, a, len, b);
+  //@ blob_facts(b);
+  //@ assert len <= MAX_BLOB;
+  (void)(unused);
+  //@ pow2_32();
+  //@ truncate_signed_limits(_word_width, N31);
+  //@ unsigned_of_signed(width, N32);
+  unsigned int unsigned_width = /*@truncating@*/(unsigned int)width;
+  //@ unsigned_of_signed(offset, sizeof(word) == 8 ? N64 : N32);
+  uword unsigned_offset = /*@truncating@*/(uword)offset;
+  //@ unsigned_of_signed(len, sizeof(word) == 8 ? N64 : N32);
+  uword length = /*@truncating@*/(uword)Blob_length(&source);
+  //@ assert length == len;
+  //@ if (unsigned_offset <= length && unsigned_width <= 8) { assert unsigned_offset + unsigned_width <= MAX_BLOB + 8; unsigned_of_signed(unsigned_offset + unsigned_width, sizeof(word) == 8 ? N64 : N32); }
+  if (unsigned_offset > length || unsigned_width == 0 || unsigned_width > 8 || /*@truncating@*/(unsigned_offset + (uword)unsigned_width) > length) {
+    return (Object *)((uword)((int)(Program_OUT_OF_BOUNDS_INDEX) << Error_ERROR_SHIFT) | Error_ERROR_TAG);
+  }
+  uword width_minus_1 = (uword)(unsigned_width - 1);
+  //@ borrow_slice(b, a, len);
+  //@ unsigned_of_signed(offset + width_minus_1, sizeof(word) == 8 ? N64 : N32);
+  //@ uchars_nth_range(a, offset + width_minus_1);
+  int64 value = (int64)(/*@truncating@*/(int8)Blob_address(&source)[/*@truncating@*/((/*@truncating@*/(uword)offset) + width_minus_1)]);
+  //@ pow2_63();
+  for (uword i = width_minus_1; i != 0; i--)
+  /*@ invariant source.address_ |-> a &*& source.length_ |-> len &*& validation_slice(objs, H, b, a, len) &*&
+                uchars(a, len, ?bs) &*& 0 <= i &*& i <= width_minus_1; @*/
+  {
+    value = Utils_wrapping_shift_left(value, 8);
+    //@ unsigned_of_signed(offset + i, sizeof(word) == 8 ? N64 : N32);
+    //@ unsigned_of_signed(offset + i - 1, sizeof(word) == 8 ? N64 : N32);
+    //@ uchars_nth_range(a, offset + i - 1);
+    //@ bitor_signed_limits(value, nth(offset + i - 1, bs), N63);
+    value |= (int64)Blob_address(&source)[/*@truncating@*/((/*@truncating@*/((/*@truncating@*/(uword)offset) + i)) - 1)];
+  }
+  //@ return_slice(b, a);
+  return Primitive_integer(value, process);
 }
 
