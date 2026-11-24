@@ -459,7 +459,10 @@ in 2832 s wall, 61 MB left in the work directory. Wave 10 (2026-11-24):
 77 sidecars, 669 `@render` functions (`metrics.sh`: string_at, the
 allocating, string, float and integer primitives behind the Rust ports,
 three translator self-tests), 63 primitives prove the retry obligation,
-the C++ behind 44 of the 106 ports is VeriFast-proved. Lines: `metrics.sh` (C++ = the
+the C++ behind 44 of the 106 ports is VeriFast-proved. Fresh work
+directory (2026-11-24, the machine shared with other checkouts' runs):
+the fast tier 1363 checks ok, 0 FAIL, 0 NOVERDICT, in 1384 s wall, 62 MB
+left in the work directory. Lines: `metrics.sh` (C++ = the
 rendered functions' lines; annotations among them; then the hand-written C
 and annotations of the verbatim sections: trusted prototypes, predicates,
 lemmas).
