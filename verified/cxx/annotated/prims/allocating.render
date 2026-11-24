@@ -1,0 +1,65 @@
+// Copyright (C) 2026 Toit contributors.
+//
+// The allocating primitives of src/primitive_core.cc that take a size from
+// the program (wave 10): byte_array_new. Each is ported to Rust; its C++
+// runs when the port's allocation does not fit (NeedsGc: the C++ collects
+// garbage and retries) or the port declines (README "When the C++ behind a
+// port runs").
+//
+// Proved: memory safety (every write inside the new object), no overflow
+// or lossy conversion but the modular ones the C++ means (`truncating`:
+// an int argument's round trip), the primitive heap contract (`grows`),
+// the result (a new object of the requested size, or an error with the
+// heap unchanged), and the retry rule `oom_clean`.
+//
+// Self-tests (run.sh): byte_array_new's memset one byte late.
+@include ../model/model.cfg
+@verbatim
+#include "../model/objects.gen.h"
+#include "argument_error.gen.h"
+#include <stddef.h>
+//@ #include "../model/arith.gh"
+//@ #include "../model/truncate.gh"
+
+void *memset(void *array, int value, size_t size);
+//@ requires uchars_(array, size, _);
+//@ ensures uchars(array, size, _) &*& result == array;
+
+@prototypes
+@render src/primitive_core.cc toit::primitive_byte_array_new truncating
+PRIMITIVE(byte_array_new)
+/*@ requires [?fp]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
+             pointer(__args, ?a0) &*& pointer(__args - 1, ?a1) &*& good(objs, a0) && good(objs, a1); @*/
+/*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+            oom_clean(objs, H, objs2, H2, result) == true &*&
+            pointer(__args, a0) &*& pointer(__args - 1, a1) &*&
+            ((uword)result % 4 == 3 ? objs2 == objs && H2 == H :
+              !mem(result, objs) && mem(result, objs2) && has_tag(H2, result, BYTE_ARRAY_TAG) &&
+              blob_len(H2, result) == smi_val((uword)a0)); @*/
+{
+  //@ grows_refl(objs, H);
+  //@ error_word(Program_OUT_OF_BOUNDS_INDEX);
+  //@ error_word(Program_OUT_OF_RANGE_INDEX);
+  //@ error_word(Program_ALLOCATION_FAILED_INDEX);
+  //@ close valid_arg(a0, objs);
+  //@ leak valid_arg(a0, objs);
+  //@ close valid_arg(a1, objs);
+  //@ leak valid_arg(a1, objs);
+  //@ truncate_signed_limits(smi_val((uword)a0), N31);
+  //@ if (INT_MIN <= smi_val((uword)a0) && smi_val((uword)a0) <= INT_MAX) truncate_signed_id(smi_val((uword)a0), N31);
+  ARGS(int, length, int, filler);
+  if (length < 0) FAIL(OUT_OF_BOUNDS);
+  ByteArray* result = process->allocate_byte_array(length);
+  if (result == null) FAIL(ALLOCATION_FAILED);
+  //@ assert heap(cons(result, objs), ?H2);
+  //@ grows_alloc(objs, H, result, H2);
+  if (filler != 0) {
+    ByteArray::Bytes bytes(result);
+    //@ heap_holes_open();
+    //@ blob_take(result);
+    memset(bytes.address(), filler, length);
+    //@ blob_give(result);
+    //@ heap_holes_close();
+  }
+  return result;
+}

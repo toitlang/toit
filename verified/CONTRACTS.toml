@@ -866,9 +866,9 @@ a = [
 b = [
   # A new result object (or a malloced scratch buffer, freed) is the only
   # allocation, made before anything else changes.
-  { name = "core.array_expand", evidence = "test" },
+  { name = "core.array_expand", evidence = "verifast", rendering = "cxx/annotated/prims/array_expand.gen.c" },
   { name = "core.array_new", evidence = "verifast", rendering = "cxx/annotated/prims/array_new.gen.c" },
-  { name = "core.byte_array_new", evidence = "test" },
+  { name = "core.byte_array_new", evidence = "verifast", rendering = "cxx/annotated/prims/allocating.gen.c" },
   { name = "core.byte_array_convert_to_string", evidence = "verifast", rendering = "cxx/annotated/prims/blob_validation.gen.c" },
   { name = "core.concat_strings", evidence = "test" },
   { name = "core.string_add", evidence = "test" },
