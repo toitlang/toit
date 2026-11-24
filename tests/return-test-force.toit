@@ -66,6 +66,31 @@ monitor Mon:
     call-fun:: x++
     return x
 
+  test4:
+    for i := 0; i < 0; i++:
+      throw "bad"
+    return 499
+
+  test5:
+    while (return 499):
+      throw "bad"
+
+  test6:
+    (return 499) or (throw "bad")
+
+  test7:
+    (return 499) and (throw "bad")
+
+  test8:
+    try:
+      return 499
+    finally:
+
+  test9 -> int:
+    try:
+      throw "caught"
+    finally:
+
 // Test, that return followed by a delimiter works.
 testA x:
   if x == 1:
@@ -86,4 +111,13 @@ main:
   expect-equals 499 ((Mon).test1 true)
   expect-equals 499 ((Mon).test2 true)
   expect-equals 499 ((Mon).test3 498)
+  mon := Mon
+  expect-equals 499 mon.test4
+  expect-equals 499 mon.test5
+  expect-equals 499 mon.test6
+  expect-equals 499 mon.test7
+  expect-equals 499 mon.test8
+  expect-equals "caught" (catch: mon.test9)
+  // The monitor is unlocked after each of the calls.
+  expect-equals 499 (mon.test1 true)
   testA 1

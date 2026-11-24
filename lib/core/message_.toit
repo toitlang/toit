@@ -79,6 +79,8 @@ If we're already processing messages in another task, there is
 */
 process-messages_:
   if is-processing-messages_: return
+  // Without messages the loop below would do nothing (and need no try).
+  if not task-has-messages_: return
   is-processing-messages_ = true
 
   try:

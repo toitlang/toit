@@ -61,13 +61,16 @@ class __Monitor__:
     if not identical self owner_: throw "must own monitor to await"
     owner_ = null
 
+    // The loop ends with `break`, not `return`, so the try block completes
+    // without a non-local return through the finally code.
+    result := false
     try:
       is-non-critical ::= self.critical-count_ == 0
       first := true
       while true:
         // Check for task cancelation and timeout.
         if is-non-critical and self.is-canceled_: throw CANCELED-ERROR
-        if deadline and Time.monotonic-us >= deadline: return false
+        if deadline and Time.monotonic-us >= deadline: break
         if not owner_:
           // Re-take the lock.
           owner_ = self
@@ -75,7 +78,9 @@ class __Monitor__:
           // and even block and the task may get canceled in the process. We need to check
           // for the timeout and cancelation notifications before blocking again, because
           // otherwise the notifications will have been lost.
-          if condition.call: return true
+          if condition.call:
+            result = true
+            break
           // Unlock the mutex while we sleep, but we are not preempted before we
           // yield, so we get the chance to resume waiters without being interrupted.
           owner_ = null
@@ -90,13 +95,14 @@ class __Monitor__:
           // have been notified while evaluating the condition in which case it would be wrong
           // to just block and wait for the next notification.
           if is-non-critical and self.is-canceled_: throw CANCELED-ERROR
-          if deadline and Time.monotonic-us >= deadline: return false
+          if deadline and Time.monotonic-us >= deadline: break
         // Wait until notified. When we get back the monitor might be owned by
         // someone else.
         if timer: timer.arm deadline
         await_ self
     finally:
       if timer: self.release-timer_ timer
+    return result
 
   locked_ [block]:
     self := Task_.current
@@ -109,24 +115,34 @@ class __Monitor__:
         timer = self.acquire-timer_ this
 
     is-non-critical ::= self.critical-count_ == 0
-    try:
-      while true:
-        // Check for task cancelation and timeout.
-        if is-non-critical and self.is-canceled_: throw CANCELED-ERROR
-        if deadline and Time.monotonic-us >= deadline: throw DEADLINE-EXCEEDED-ERROR
-        // If the monitor isn't owned by anyone at this point, we are ready
-        // to take it.
-        if not owner_: break
-        // Wait until notified. When we get back the monitor might be owned by
-        // someone else.
-        if timer: timer.arm deadline
-        wait_ self
-    finally:
-      if timer: self.release-timer_ timer
+    if not owner_:
+      // Not owned: the loop below would only check for cancelation (there
+      // is no deadline and no timer), so it needs no try.
+      if is-non-critical and self.is-canceled_: throw CANCELED-ERROR
+    else:
+      try:
+        while true:
+          // Check for task cancelation and timeout.
+          if is-non-critical and self.is-canceled_: throw CANCELED-ERROR
+          if deadline and Time.monotonic-us >= deadline: throw DEADLINE-EXCEEDED-ERROR
+          // If the monitor isn't owned by anyone at this point, we are ready
+          // to take it.
+          if not owner_: break
+          // Wait until notified. When we get back the monitor might be owned by
+          // someone else.
+          if timer: timer.arm deadline
+          wait_ self
+      finally:
+        if timer: self.release-timer_ timer
 
     owner_ = self  // Take lock.
+    // The block's value is the monitor method's result (the compiler turns
+    // the method's returns into exits of the block, see monitor.cc): kept
+    // in a local so that the try block completes without a non-local
+    // return.
+    result := null
     try:
-      block.call
+      result = block.call
     finally:
       owner_ = null
       // State may have changed as part of running the locked method.
@@ -135,6 +151,7 @@ class __Monitor__:
       // the calling task starve the others.
       if is-non-critical and (not identical self self.next-running_ or task-has-messages_):
         yield
+    return result
 
   wait_ self:
     // Add self to end of waiters list.
