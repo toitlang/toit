@@ -6,6 +6,7 @@
 
 #include <string.h>
 //@ #include "arith.gh"
+#include "retry.h"
 
 struct Process { Program *program_; uword program_heap_size_; };
 
@@ -25,7 +26,18 @@ predicate process(Process *p; Program *prog, prog_ids ids) =
   p->program_ |-> prog &*& prog == loaded_program(p) &*&
   p->program_heap_size_ |-> ?n &*&
   n == image_bytes(prog) &*&
-  [_]program(prog, ids) &*& prog_ok(ids) == true;
+  [_]program(prog, ids) &*& prog_ok(ids) == true &*&
+  // The loader refused a program whose error roots are not error_roots_ok
+  // (ProcessGroup::create, Program::has_valid_error_roots: retry.h).
+  error_roots_ok(drop(Program_FIRST_ERROR_INDEX, program_roots(prog))) == true;
+
+lemma void process_program(Process *p)
+  requires [?f]process(p, ?prog, ?ids);
+  ensures [f]process(p, prog, ids) &*& [_]program(prog, ids) &*& error_roots_ok(drop(Program_FIRST_ERROR_INDEX, program_roots(prog))) == true;
+{
+  open [f]process(p, prog, ids);
+  close [f]process(p, prog, ids);
+}
 @*/
 
 /*@
@@ -848,7 +860,7 @@ HeapObject *HeapObject_mark(HeapObject *self)
 // C++: src/objects.h toit::Error::from
 Error *Error_from(String *string)
 //@ requires true;
-//@ ensures (uword)result == ((uword)string | 3) &*& (uword)result % 4 == 3;
+//@ ensures (uword)result == ((uword)string | 3) &*& (uword)result % 4 == 3 &*& (uword)result / 4 == (uword)string / 4;
 {
   return (Error *)HeapObject_mark(string);
 }

@@ -26,6 +26,7 @@
 @include ../model/model.cfg
 @verbatim
 #include "../model/objects.gen.h"
+#include "../model/retry.h"
 //@ #include "../model/arith.gh"
 // Verify the native field accessors here with ownership of one field and
 // require the barrier before publishing a pointer. The shared model also
@@ -200,32 +201,7 @@ fixpoint int prim_arity(void *fn);
 // argument (carried from the caller: C has no ghost parameters).
 predicate prim_frame(int first) = true;
 
-// A marked error (Primitive::is_error), the value it stands for
-// (Primitive::unmark_from_error), the roots that ask for a GC and a
-// retry.
-fixpoint bool is_marked(Object *raw) { return (uword)raw % 4 == 3; }
-fixpoint Object *unmarked(Program *prog, Object *raw) {
-  return (uword)raw < Error_MAX_TAGGED_ERROR
-      ? nth((uword)raw / 4 < Program_ROOT_COUNT ? (uword)raw / 4 : Program_INVALID_ARGUMENT_INDEX, program_roots(prog))
-      : (Object *)((uword)raw - 2);
-}
-fixpoint Object *root_malloc_failed(Program *prog) { return nth(Program_MALLOC_FAILED_INDEX, program_roots(prog)); }
-fixpoint Object *root_cross_process_gc(Program *prog) { return nth(Program_CROSS_PROCESS_GC_INDEX, program_roots(prog)); }
-// (VeriFast's C pointer comparison: a true `p == q` means the same address,
-// a false one different pointers. In the VM, one address space, the two
-// coincide for these roots; the core gets THROW for the first and FAILURE
-// for the second.)
-fixpoint bool oom_error(Program *prog, Object *raw) {
-  return is_marked(raw) &&
-         ((uword)unmarked(prog, raw) == (uword)root_malloc_failed(prog) ||
-          (uword)unmarked(prog, raw) == (uword)root_allocation_failed(prog) ||
-          (uword)unmarked(prog, raw) == (uword)root_cross_process_gc(prog));
-}
-fixpoint bool other_error(Program *prog, Object *raw) {
-  return is_marked(raw) &&
-         unmarked(prog, raw) != root_malloc_failed(prog) && unmarked(prog, raw) != root_allocation_failed(prog) &&
-         unmarked(prog, raw) != root_cross_process_gc(prog);
-}
+// is_marked, unmarked, oom_error, other_error: model/objects.render.
 
 // The postcondition of an allocation that may collect: the state before
 // the allocation (`with_heap(b, objsm, Hm)`) is a's after the GCs, at

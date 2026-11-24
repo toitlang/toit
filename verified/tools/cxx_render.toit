@@ -193,10 +193,12 @@ A sidecar: a sequence of sections, each opened by a directive line (a
   C++20 standardizes), for code that checks the result; so is an
   explicit static_cast narrowing a signed integer (os_localtime's
   `static_cast<time_t>`). Explicit casts between int64 and uint64 and a
-  uint64 left shift by a literal in [0, 63] also use modular arithmetic.
+  uint64 left shift by a literal in [0, 63] (also `<<=` on a plain
+  variable) also use modular arithmetic.
   A plain uword variable’s `+=` uses the same modular sum as `+`.
   `unsigned-word-conversion` renders an implicit conversion from
-  `word` to `uword` modulo the target word size.
+  `word` to `uword` modulo the target word size, and one from `int` to
+  `unsigned int` modulo 2^32.
   A statement-level `static_assert` is checked again using the rendered types.
   A discarded relaxed fetch_add on std::atomic<uint64> with a uword charge
   maps to the modeled atomic operation.
@@ -1011,6 +1013,9 @@ class Renderer:
       target-type := c-type node["type"]["qualType"]
       if unsigned-word-conversion and cast == "IntegralCast" and target-type == "uword" and (c-type kids[0]["type"]["qualType"]) == "word":
         return Expr "/*@truncating@*/(uword)$(wrap (expr kids[0]) PREC-UNARY)" PREC-UNARY
+      if unsigned-word-conversion and cast == "IntegralCast" and target-type == "unsigned int" and (c-type kids[0]["type"]["qualType"]) == "int" and (strip-parens kids[0])["kind"] != "IntegerLiteral":
+        // The same for an int converted to unsigned (modulo 2^32).
+        return Expr "/*@truncating@*/(unsigned int)$(wrap (expr kids[0]) PREC-UNARY)" PREC-UNARY
       if cast == "IntegralCast" and truncating and (SIGNED-TARGETS.contains target-type) and (UNSIGNED-WORDS.contains (resolve (c-type kids[0]["type"]["qualType"]))):
         // `truncating`: so is the conversion of an unsigned word or 64-bit
         // integer to word or int64 (a value above the signed range becomes
@@ -1190,6 +1195,13 @@ class Renderer:
       if truncating and op == "-" and (c-type node["type"]["qualType"]) == "uword":
         // Unsigned address differences wrap at the target word width.
         return Expr "/*@truncating@*/($(wrap (expr kids[0]) p) - $(wrap (expr kids[1]) p + 1))" PREC-PRIMARY
+      if truncating and op == "<<=" and kids[0]["kind"] == "DeclRefExpr" and (c-type node["type"]["qualType"]) == "uint64" and kids[1]["kind"] == "IntegerLiteral":
+        // The compound form of the modular uint64 shift by a literal (a
+        // plain variable: the lvalue is evaluated twice).
+        count := int.parse kids[1]["value"]
+        if 0 <= count and count < 64:
+          lhs := (expr kids[0]).text
+          return Expr "$lhs = /*@truncating@*/($lhs << $count)" PREC-ASSIGN
       if truncating and op == "+=" and kids[0]["kind"] == "DeclRefExpr" and (c-type node["type"]["qualType"]) == "uword" and (canonical node["computeResultType"]) == (canonical node["type"]):
         // Expanding a plain word variable preserves evaluation of the lvalue and the modular sum.
         lhs := (expr kids[0]).text

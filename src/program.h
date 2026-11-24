@@ -125,6 +125,17 @@ class Program : public FlashAllocation {
 
   Object* root(int index) const { ASSERT(index >= 0 && index < ROOT_COUNT); return roots_[index]; }
 
+  // The error roots are the last ones, ALLOCATION_FAILED first.
+  static const int FIRST_ERROR_INDEX = ALLOCATION_FAILED_INDEX;
+
+  // Whether the error roots are heap references above the immediate errors
+  // (a marked root decodes to itself: Primitive::unmark_from_error) at
+  // pairwise different addresses. The retry protocol of the C++ primitives tells an out-of-memory failure
+  // (MALLOC_FAILED, ALLOCATION_FAILED, CROSS_PROCESS_GC) from the others by
+  // the identity of its root (v2_primitive_failed, Interpreter::run), so
+  // ProcessGroup::create refuses an image for which this is false.
+  bool has_valid_error_roots() const;
+
   #define DECLARE_ROOT_ACCESSOR(type, name) type* name() const { return static_cast<type*>(roots_[name##_INDEX]); }
   #define DECLARE_ERROR_ACCESSOR(name, upper_name) String* name() const { return static_cast<String*>(roots_[upper_name##_INDEX]); }
   PROGRAM_ROOTS(DECLARE_ROOT_ACCESSOR)

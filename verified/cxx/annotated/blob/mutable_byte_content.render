@@ -21,6 +21,7 @@
 @header mutable_byte_content.gen.h
 @verbatim
 #include "../model/objects.gen.h"
+#include "../model/retry.h"
 #include "byte_content.gen.h"
 
 // From VeriFast's bin/string.h (there: chars; uchars here).
@@ -44,14 +45,20 @@ bool Object::mutable_byte_content(Process* process, uint8** content, word* lengt
              0 <= depth &*& depth <= Object_MAX_BYTE_CONTENT_DEPTH; @*/
 /*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
             pointer((void **)error, ?err) &*& (uword)err % 4 == 3 &*&
+            (!oom_error(prog, err) || (!result && objs2 == objs && H2 == H && !has_tag(H, self, BYTE_ARRAY_TAG))) &*&
             result ? *content |-> ?a &*& *length |-> ?l &*& [_]mutable_result(objs2, H2, process, a, l, _) :
               pointer_((void **)content, ?oc) &*& intptr_(length, ?ol) &*& (oc0 == none || oc != none) &*& (ol0 == none || ol != none); @*/
 {
   //@ grows_refl(objs, H);
+  //@ process_program(process);
   *error = Error::from(process->program()->wrong_object_type());  // Default error if we return false.
+  //@ assert pointer((void **)error, ?e0);
+  //@ marked_root_not_oom(prog, Program_WRONG_OBJECT_TYPE_INDEX, e0);
   // Objects on the program heap are shared and read-only.
   if (is_heap_object(this) && HeapObject::cast(this)->on_program_heap(process)) {
     *error = Error::from(process->program()->permission_denied());
+    //@ assert pointer((void **)error, ?e1);
+    //@ marked_root_not_oom(prog, Program_PERMISSION_DENIED_INDEX, e1);
     return false;
   }
   if (is_byte_array(this)) {
@@ -158,6 +165,7 @@ bool Object::mutable_byte_content(Process* process, uint8** content, word* lengt
              pointer_((void **)content, ?oc0) &*& intptr_(length, ?ol0) &*& pointer_((void **)error, _); @*/
 /*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
             pointer((void **)error, ?err) &*& (uword)err % 4 == 3 &*&
+            (!oom_error(prog, err) || (!result && objs2 == objs && H2 == H && !has_tag(H, self, BYTE_ARRAY_TAG))) &*&
             result ? *content |-> ?a &*& *length |-> ?l &*& [_]mutable_result(objs2, H2, process, a, l, _) :
               pointer_((void **)content, ?oc) &*& intptr_(length, ?ol) &*& (oc0 == none || oc != none) &*& (ol0 == none || ol != none); @*/
 {
@@ -170,6 +178,7 @@ bool Object::mutable_byte_content(Process* process, MutableBlob* blob, Error** e
              blob->address_ |-> _ &*& blob->length_ |-> _ &*& pointer_((void **)error, _); @*/
 /*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
             pointer((void **)error, ?err) &*& (uword)err % 4 == 3 &*& blob->address_ |-> ?a &*& blob->length_ |-> ?l &*&
+            (!oom_error(prog, err) || (!result && objs2 == objs && H2 == H && !has_tag(H, self, BYTE_ARRAY_TAG))) &*&
             result ? [_]mutable_result(objs2, H2, process, a, l, _) : true; @*/
 {
   uint8* content = null;

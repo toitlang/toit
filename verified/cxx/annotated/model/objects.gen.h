@@ -510,8 +510,11 @@ fixpoint prog_ids class_ids_from_table(list<int> slots) {
 predicate program_classes(Program *p; prog_ids ids) =
   pointers(p->_builtin_class_ids, Program_BUILTIN_CLASS_IDS_COUNT, map(smi_ptr, builtin_ids(p))) &*&
   length(builtin_ids(p)) == Program_BUILTIN_CLASS_IDS_COUNT &*& ids == class_ids_from_table(builtin_ids(p));
+// (The loader-checked facts of a process's program's error roots are in
+// the process predicate's body and model/retry.h, wave 8.)
 predicate program(Program *p; prog_ids ids) =
   image_header(p) &*& program_classes(p, ids) &*& pointers(p->roots_, Program_ROOT_COUNT, program_roots(p));
+
 @*/
 
 // null_object, true_object, false_object: roots, objects of the heap
@@ -646,19 +649,22 @@ ByteArray *Process_allocate_byte_array(Process *self, word length, bool force_ex
               blob_len(H2, result) == length &*& in_program_heap(self, result) == false; @*/
 
 // The error roots of src/program.h and Error::from (a tagged pointer):
-// stored as the error result only.
+// stored as the error result only. Each named accessor reads its slot of
+// the root table (the ESBMC check error-roots compares every one of
+// ERROR_STRINGS with its slot, on both widths).
 String *Program_wrong_object_type(Program *self);
-//@ requires true;
-//@ ensures true;
+//@ requires [_]program(self, ?ids);
+//@ ensures result == nth(Program_WRONG_OBJECT_TYPE_INDEX, program_roots(self));
 String *Program_permission_denied(Program *self);
-//@ requires true;
-//@ ensures true;
+//@ requires [_]program(self, ?ids);
+//@ ensures result == nth(Program_PERMISSION_DENIED_INDEX, program_roots(self));
 // (allocation_failed is one of the roots a primitive's error names for a
 // GC and a retry: ffi/interpreter_v2.render compares it.)
 //@ fixpoint String *root_allocation_failed(Program *prog) { return nth(Program_ALLOCATION_FAILED_INDEX, program_roots(prog)); }
 String *Program_allocation_failed(Program *self);
 //@ requires [_]program(self, ?ids);
 //@ ensures result == root_allocation_failed(self);
+
 // The int64 instantiation is checked against the C++ template by smi.cc.
 bool Smi_is_valid(int64 value);
 //@ requires true;
@@ -963,7 +969,7 @@ HeapObject *HeapObject_mark(HeapObject *self);
 // C++: src/objects.h toit::Error::from
 Error *Error_from(String *string);
 //@ requires true;
-//@ ensures (uword)result == ((uword)string | 3) &*& (uword)result % 4 == 3;
+//@ ensures (uword)result == ((uword)string | 3) &*& (uword)result % 4 == 3 &*& (uword)result / 4 == (uword)string / 4;
 
 // C++: src/objects.h toit::HeapObject::_raw
 uword HeapObject__raw(HeapObject *self);

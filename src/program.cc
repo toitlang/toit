@@ -23,6 +23,21 @@ int Program::absolute_bci_from_bcp(uint8* bcp) const {
   return bcp - bytecodes.data();
 }
 
+static_assert(Program::FIRST_ERROR_INDEX == Program::app_sdk_info_INDEX + 1, "the error roots follow the other roots");
+
+bool Program::has_valid_error_roots() const {
+  // Counting down, the roots above i are known to be valid and distinct
+  // when root i is checked (verified/cxx/annotated/loader/error_roots.render).
+  for (int i = ROOT_COUNT - 1; i >= FIRST_ERROR_INDEX; i--) {
+    uword root = reinterpret_cast<uword>(roots_[i]);
+    if (!is_heap_object(roots_[i]) || root < Error::MAX_TAGGED_ERROR) return false;
+    for (int j = ROOT_COUNT - 1; j > i; j--) {
+      if (root == reinterpret_cast<uword>(roots_[j])) return false;
+    }
+  }
+  return true;
+}
+
 #ifndef TOIT_FREERTOS
 
 void Program::write(SnapshotWriter* st) {

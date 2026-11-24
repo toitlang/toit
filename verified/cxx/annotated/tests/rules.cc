@@ -216,6 +216,19 @@ static word retry_once(word n, F produce) {
   return result + n;
 }
 
+// Rules (wave 8): with unsigned-word-conversion an int converted to
+// unsigned is modulo 2^32 (a literal stays a literal); with truncating a
+// uint64 `<<=` by a literal is the modular shift.
+inline bool small_unsigned(int x) {
+  unsigned u = x;
+  return u <= 8;
+}
+
+inline uint64 shift_in(uint64 v) {
+  v <<= 8;
+  return v;
+}
+
 inline word use_lambdas(word a, word b) {
   word base = a;
   word first = retry_once(1, [&]() -> word { return base + b; });

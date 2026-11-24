@@ -354,14 +354,18 @@ check-prim-retry root/string table/Map? -> int:
           path := entry["rendering"]
           rendering := (file.read-contents "$root/$path").to-string
           // The definition (the last occurrence; VeriFast checks a
-          // prototype's contract against it) states oom_clean in its
-          // contract, and the matrix proves the rendering.
+          // prototype's contract against it) states oom_clean (every
+          // error leaves the heap unchanged) or oom_unchanged (every
+          // error that asks for a GC and a retry does: the retry
+          // protocol's oom_error, which rests on the loader's distinct
+          // error roots) in its contract, and the matrix proves the
+          // rendering.
           at := rendering.index-of --last "primitive_$primitive("
           open := at < 0 ? -1 : rendering.index-of "\n{" at
           if at < 0 or open < 0:
             problem.call "$name: not rendered in $path"
-          else if not rendering[at..open].contains "oom_clean(":
-            problem.call "$name: the contract of primitive_$primitive in $path does not state oom_clean"
+          else if not (rendering[at..open].contains "oom_clean(") and not (rendering[at..open].contains "oom_unchanged("):
+            problem.call "$name: the contract of primitive_$primitive in $path states neither oom_clean nor oom_unchanged"
           prefix := "cxx/annotated/"
           if not (path.starts-with prefix) or not (run-sh.contains " pass \"\" $path[prefix.size..] "):
             problem.call "$name: $path is not proved by cxx/annotated/run.sh (no `pass` entry)"

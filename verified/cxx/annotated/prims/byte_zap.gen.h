@@ -43,6 +43,7 @@ Object *primitive_byte_zap(Process *process, Object **__args);
 /*@ requires [?fp]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
              pointer(__args, ?a0) &*& pointer(__args - 1, ?a1) &*& good(objs, a0) == true &*& good(objs, a1) == true; @*/
 /*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+            oom_unchanged(prog, objs, H, objs2, H2, result) == true &*&
             pointer(__args, a0) &*& pointer(__args - 1, a1); @*/
 
 #endif

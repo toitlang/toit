@@ -53,6 +53,7 @@
 #include "../utf8/validator.gen.h"
 #include "../model/finalizer_nodes.h"
 #include "radix.h"
+#include "../model/retry.h"
 //@ #include "../model/arith.gh"
 //@ #include "../model/truncate.gh"
 
@@ -1173,13 +1174,15 @@ void Process_clear_spawn_arguments(Process *self);
 Object *primitive_main_arguments(Process *process, Object **__args);
 /*@ requires process != 0 &*& [?fp]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*& main_args(process, ?a) &*& (a == 0 ? true : msg_whole(a)); @*/
 /*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows_class(objs, H, objs2, H2) == true &*&
-            main_args(process, ?a2) &*& (a2 == 0 ? true : msg_whole(a2)); @*/
+            main_args(process, ?a2) &*& (a2 == 0 ? true : msg_whole(a2)) &*&
+            (oom_error(prog, result) == false || a2 == a); @*/
 
 // C++: src/primitive_core.cc toit::primitive_spawn_arguments
 Object *primitive_spawn_arguments(Process *process, Object **__args);
 /*@ requires process != 0 &*& [?fp]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*& spawn_args(process, ?a) &*& (a == 0 ? true : msg_whole(a)); @*/
 /*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows_class(objs, H, objs2, H2) == true &*&
-            spawn_args(process, ?a2) &*& (a2 == 0 ? true : msg_whole(a2)); @*/
+            spawn_args(process, ?a2) &*& (a2 == 0 ? true : msg_whole(a2)) &*&
+            (oom_error(prog, result) == false || a2 == a); @*/
 
 // C++: src/heap.h toit::ObjectHeap::program
 Program *ObjectHeap_program(ObjectHeap *self);
@@ -1221,7 +1224,8 @@ Object *primitive_task_receive_message(Process *process, Object **__args);
              finalizer_ready(process, ?ready, ?pending, ?registered) &*& live_closures(objs, pending) == true &*& mailbox(process, ?m) &*& (m == 0 ? true : queued(m)); @*/
 /*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows_class(objs, H, objs2, H2) == true &*&
             finalizer_ready(process, _, tail(pending), ready && keep_callback(head(pending)) ? cons(head(pending), registered) : registered) &*&
-            live_closures(objs2, tail(pending)) == true &*& (ready ? result == closure_of(head(pending)) : true) &*& mailbox(process, ?m2) &*& (m2 == 0 ? true : queued(m2)); @*/
+            live_closures(objs2, tail(pending)) == true &*& (ready ? result == closure_of(head(pending)) : true) &*& mailbox(process, ?m2) &*& (m2 == 0 ? true : queued(m2)) &*&
+            (oom_error(prog, result) == false || m2 == m); @*/
 
 // C++: src/messaging.cc toit::NestingTracker::NestingTracker
 void NestingTracker_ctor(NestingTracker *self, int *nesting)
@@ -2573,9 +2577,13 @@ void Process_clear_spawn_arguments(Process *self)
 Object *primitive_main_arguments(Process *process, Object **__args)
 /*@ requires process != 0 &*& [?fp]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*& main_args(process, ?a) &*& (a == 0 ? true : msg_whole(a)); @*/
 /*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows_class(objs, H, objs2, H2) == true &*&
-            main_args(process, ?a2) &*& (a2 == 0 ? true : msg_whole(a2)); @*/
+            main_args(process, ?a2) &*& (a2 == 0 ? true : msg_whole(a2)) &*&
+            (oom_error(prog, result) == false || a2 == a); @*/
 {
   MessageDecoder decoder;
+  //@ process_program(process);
+  //@ error_word(Program_INVALID_ARGUMENT_INDEX);
+  //@ immediate_error_not_oom(prog, Program_INVALID_ARGUMENT_INDEX);
   uint8 *arguments = Process_main_arguments(process);
   //@ grows_refl(objs, H);
   //@ grows_class_of_grows(objs, H, objs, H);
@@ -2587,6 +2595,7 @@ Object *primitive_main_arguments(Process *process, Object **__args)
   MessageDecoder_ctor__Processp_uint8p(&decoder, process, arguments);
   Object *decoded = MessageDecoder_decode(&decoder);
   //@ assert heap(?objs1, ?H1);
+  //@ if (mem(decoded, objs1)) heap_facts(decoded);
   if (MessageDecoder_allocation_failed(&decoder)) {
     MessageDecoder_remove_disposing_finalizers(&decoder);
     //@ receive_give_back(&decoder, arguments, objs, H, objs1, H1);
@@ -2617,9 +2626,13 @@ Object *primitive_main_arguments(Process *process, Object **__args)
 Object *primitive_spawn_arguments(Process *process, Object **__args)
 /*@ requires process != 0 &*& [?fp]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*& spawn_args(process, ?a) &*& (a == 0 ? true : msg_whole(a)); @*/
 /*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows_class(objs, H, objs2, H2) == true &*&
-            spawn_args(process, ?a2) &*& (a2 == 0 ? true : msg_whole(a2)); @*/
+            spawn_args(process, ?a2) &*& (a2 == 0 ? true : msg_whole(a2)) &*&
+            (oom_error(prog, result) == false || a2 == a); @*/
 {
   MessageDecoder decoder;
+  //@ process_program(process);
+  //@ error_word(Program_INVALID_ARGUMENT_INDEX);
+  //@ immediate_error_not_oom(prog, Program_INVALID_ARGUMENT_INDEX);
   uint8 *arguments = Process_spawn_arguments(process);
   //@ grows_refl(objs, H);
   //@ grows_class_of_grows(objs, H, objs, H);
@@ -2631,6 +2644,7 @@ Object *primitive_spawn_arguments(Process *process, Object **__args)
   MessageDecoder_ctor__Processp_uint8p(&decoder, process, arguments);
   Object *decoded = MessageDecoder_decode(&decoder);
   //@ assert heap(?objs1, ?H1);
+  //@ if (mem(decoded, objs1)) heap_facts(decoded);
   if (MessageDecoder_allocation_failed(&decoder)) {
     MessageDecoder_remove_disposing_finalizers(&decoder);
     //@ receive_give_back(&decoder, arguments, objs, H, objs1, H1);
@@ -2752,8 +2766,10 @@ Object *primitive_task_receive_message(Process *process, Object **__args)
              finalizer_ready(process, ?ready, ?pending, ?registered) &*& live_closures(objs, pending) == true &*& mailbox(process, ?m) &*& (m == 0 ? true : queued(m)); @*/
 /*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows_class(objs, H, objs2, H2) == true &*&
             finalizer_ready(process, _, tail(pending), ready && keep_callback(head(pending)) ? cons(head(pending), registered) : registered) &*&
-            live_closures(objs2, tail(pending)) == true &*& (ready ? result == closure_of(head(pending)) : true) &*& mailbox(process, ?m2) &*& (m2 == 0 ? true : queued(m2)); @*/
+            live_closures(objs2, tail(pending)) == true &*& (ready ? result == closure_of(head(pending)) : true) &*& mailbox(process, ?m2) &*& (m2 == 0 ? true : queued(m2)) &*&
+            (oom_error(prog, result) == false || m2 == m); @*/
 {
+  //@ process_program(process);
   //@ grows_refl(objs, H);
   //@ grows_class_of_grows(objs, H, objs, H);
   ObjectHeap *heap = Process_object_heap(process);
@@ -2767,18 +2783,21 @@ Object *primitive_task_receive_message(Process *process, Object **__args)
   //@ open queued(message);
   MessageType message_type = Message_message_type(message);
   Object *result = Process_null_object(process);
+  //@ heap_facts(process_null(process));
   if ((int)message_type == (int)MESSAGE_MONITOR_NOTIFY) {
     ObjectNotifyMessage *object_notify = (ObjectNotifyMessage *)message;
     ObjectNotifier *notifier = ObjectNotifyMessage_object_notifier(object_notify);
     if (notifier != 0) {
       result = ObjectNotifier_object(notifier);
     }
+    //@ if (mem(result, objs)) heap_facts(result);
     //@ close dying(message);
   } else if ((int)message_type == (int)MESSAGE_SYSTEM) {
     MessageDecoder decoder;
     Array *array = ObjectHeap_allocate_array(Process_object_heap(process), 4, Smi_from(0));
     //@ open allocated(objs, H, process, array, ?objsA, ?HA);
     //@ if (array == 0) close queued(message); else grows_alloc(objs, H, array, HA);
+    //@ if (array != 0) heap_facts(array);
     if (array == 0) {
       return (Object *)((uword)((int)(Program_ALLOCATION_FAILED_INDEX) << Error_ERROR_SHIFT) | Error_ERROR_TAG);
     }

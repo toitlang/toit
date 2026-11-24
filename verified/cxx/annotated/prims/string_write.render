@@ -25,6 +25,7 @@
 #include "blob_args.gen.h"
 #include "../blob/mutable_byte_content.gen.h"
 //@ #include <listex.gh>
+//@ #include "../model/arith.gh"
 
 /*@
 // memmove: one region holding both ranges, or two separate chunks.
@@ -73,10 +74,20 @@ PRIMITIVE(string_write_to_byte_array)
              pointer(__args - 3, ?a3) &*& pointer(__args - 4, ?a4) &*&
              good(objs, a0) == true &*& good(objs, a1) == true; @*/
 /*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+            oom_unchanged(prog, objs, H, objs2, H2, result) == true &*&
             pointer(__args, a0) &*& pointer(__args - 1, a1) &*& pointer(__args - 2, a2) &*&
             pointer(__args - 3, a3) &*& pointer(__args - 4, a4); @*/
 {
   //@ grows_refl(objs, H);
+  // The retry rule: the destination's copy-on-write copy can be installed
+  // (mutable_byte_content) before a later argument or range check fails;
+  // those errors are not out-of-memory ones (the loader's error roots).
+  //@ process_program(process);
+  //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);
+  //@ immediate_error_not_oom(prog, Program_WRONG_OBJECT_TYPE_INDEX);
+  //@ error_word(Program_OUT_OF_BOUNDS_INDEX);
+  //@ immediate_error_not_oom(prog, Program_OUT_OF_BOUNDS_INDEX);
+  //@ if (mem(a1, objs)) heap_facts(a1);
   ARGS(Blob, source_bytes, MutableBlob, dest, word, from, word, to, word, dest_index);
   //@ assert [_]blob_result(objs, H, STRINGS_OR_BYTE_ARRAYS, ?sa, ?sl, ?bs);
   //@ assert heap(?objs2, ?H2) &*& [_]mutable_result(objs2, H2, process, ?da, ?dl, ?bd);

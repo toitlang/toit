@@ -113,8 +113,8 @@ property was neither proved nor refuted at that cap or timeout.
 | monitor-scavenge-young/LP64 | PASS | 117 | 0.7 | 1.3 | 6 |  |
 | process-array-allocation/LP64 | PASS | 155 | 0.5 | 1.1 | 3 | 4 modes summed |
 | scheduler-notify/ILP32 | PASS | 215 | 17.1 | 18.2 | 24 |  |
-| scheduler-spawn/ILP32 | PASS | 203 | 1.6 | 2.2 | 6 |  |
-| scheduler-spawn/LP64 | PASS | 636 | 3.4 | 4.3 | 6 |  |
+| scheduler-spawn/ILP32 | PASS | 432 | 1.6 | 2.3 | 4 | 2026-11-24, wave 8 (refused announcement) |
+| scheduler-spawn/LP64 | PASS | 1383 | 3.4 | 4.3 | 7 | 2026-11-24, wave 8 (refused announcement) |
 | snapshot-image-layout/LP64 | PASS | 386 | 0.4 | 1.0 | 6 |  |
 | task-all-fields/ILP32 | PASS | 172 | 0.9 | 1.5 | 6 |  |
 | task-all-fields/LP64 | PASS | 256 | 1.2 | 2.0 | 6 |  |
@@ -426,7 +426,13 @@ obligation (`oom_clean`, "The retry obligation"). After the merge of wave
 7 (2026-11-24, fresh work directory, the main checkout's matrix running
 at the same time): the fast tier 1215 checks ok, 0 FAIL, 0 NOVERDICT, in
 1484 s wall (mutant ffi-allocate-string-unbounded added after that run,
-checked on its own). Lines: `metrics.sh` (C++ = the
+checked on its own). Wave 8 (2026-11-24): 68 sidecars, 596 `@render`
+functions (`metrics.sh`: the loader's error-root check, the integer
+readers, two translator self-tests), 30 primitives prove the retry
+obligation (`oom_clean` or `oom_unchanged`). Fresh work directory
+(2026-11-24, the machine shared with other checkouts' matrices and
+slow-tier jobs): the fast tier 1265 checks ok, 0 FAIL, 0 NOVERDICT, in
+4303 s wall. Lines: `metrics.sh` (C++ = the
 rendered functions' lines; annotations among them; then the hand-written C
 and annotations of the verbatim sections: trusted prototypes, predicates,
 lemmas).
@@ -440,13 +446,13 @@ lemmas).
 | MutableBlob decoding (`blob/mutable_byte_content.render`) | Object::mutable_byte_content (5-argument, 4-argument, MutableBlob), MutableBlob ctor; model: Instance::at_put (with the heap update), HeapObject::_at_put, on_program_heap, heap growth and blob hole lemmas | verified: a successful result lies in the content of ONE live byte array (internal or raw external) outside the program heap; the heap only grows (the copy-on-write branch allocates, copies the immutable content with a legal memcpy and stores the new backing and `true`); recursion bounded | the allocator (`Process::allocate_byte_array`: a fresh byte array of the asked length outside the program heap, nothing else changed), `Process::on_program_heap` (an address range: `in_program_heap`), the true object is a heap object, the write barrier (card table outside the model), the error roots | 76 / 54 / 4 / 2 | 357d1127 reverted here too: the recursive call; without the program-heap check: `in_program_heap == false`; without the external tag check (both decoders): `blob_ok` |
 | Message encoder (`encoder/`) | encode_any (all branches), encode_array, encode_list, encode_map, encode_copy (inline, out-of-line copy with its malloc and terminator), encode_byte_array (transfer, deduplication), reserve_external, is_too_large, size, total_size, encoding_for_size, encoding_tison, the writers write_uint8/cardinal/pointer/uint32/uint64, TisonEncoder::encode and payload_size, NestingTracker ctor/dtor; the cardinal's byte bound (`cardinal.c`, Z3) | verified: memory safety (reads inside objects, blob copies inside the blob found by the proven byte_content, writes inside the buffer, the tables copied_/transferred_ written below MESSAGING_ENCODING_MAX_EXTERNALS), no overflow or lossy conversion on either width (cursor_ + external_bytes_ stays below the limit plus ENC_SLACK = 32), heap read-only | **ONE assumption: `two_pass_room`** (below); contract only: `Process::policy`, `PrimitivePolicy::restricts_messaging`, HeapTagScope, `bit_cast`; the malloced copies are leaked into the table (ownership not modelled) | 334 / 230 / 51 / 116 | f708ad5d: count (underflow at `to - from`), read past the backing (loop bound), map past the backing; the 32-bit size fix weakened in encode_copy and in the transfer (the size bound fails; on ILP32 the sum overflows); one reservation too many (the table bound fails); the terminator read from the content (memcpy past the blob) |
 | Message decoder (`decoder/`) | TisonDecoder::decode (tison_decode's untrusted input), MessageDecoder::decode (IPC), decode_any (the switch, every tag), decode_string, decode_byte_array (both inline: copies; out of line: IPC blocks), decode_array, decode_map, decode_double, decode_large_integer, decode_integer (wave 4: canonical integers), decode_external_data and decode_rpc_request_external (wave 4: the external message handlers; the data handed out is an out-of-line block of the message or a malloced copy, `ext_data`), read_uint8/cardinal/cardinal_64/uint32/uint64/pointer, register_external, success, decoding_tison, overflown, remaining, externals_count, mark_malformed, mark_allocation_failed, NestingTracker; the digits' bound (`radix.c`, Z3); model: Array::at_put, Instance::at_put(Smi*), Smi::zero, the allocator's contracts | verified: for any input bytes (TISON) every read is inside the input (past the end the readers return 0), the cursor stays below the length + 16 on both widths, every length is checked against what is left before the copy or the allocation of that size (`length <= cap - c`, asserted), the recursion is bounded (64), a cardinal fits 64 bits and a length the word, integers are canonical (a large integer only outside the smi range: the allocator contract requires it), the externals table is written below its bound (the FATAL), the heap only grows (new objects; the new array's elements and the map's fields written), a success is a good reference and TISON consumed its input exactly; a failure leaves a well-formed heap | TISON: none beyond the model and the allocator; IPC: **two named assumptions, `ipc_room` and `ipc_external`** (below); contract only: the allocator (CONTRACTS.toml, C++-only contracts), `bit_cast`, `fail`, `Array::max_length_in_process` | 587 / 619 / 70 / 694 | seventeen checks taken out, each rejected on both widths unless noted: the length checks before the inline string and byte-array copies, before the array and map allocations, the nesting limit (#3362), the fixed-size readers' bound (read_uint64; read_uint8 in the header), read_cardinal_64's size check (#3362) and digit check (wave 3), read_cardinal's word check (ILP32 only: dead on LP64), the two smi magnitude checks and decode_integer's smi range check, decode_external_data's two inline length checks (wave 4), the externals table bound |
-| Receive path (`decoder/`, wave 5: the ownership of the out-of-line blocks) | the primitives task_receive_message, main_arguments, spawn_arguments (every path: finalizer to run, no message, monitor notification, system message decoded / allocation failure / malformed / allocation of the result array failed); MessageDecoder's three constructors (delegating, default member initializers), allocation_failed, malformed_input, register_external_allocations, remove_disposing_finalizers, deallocate (static, and the recursive walk); SystemMessage's destructor, free_data_and_externals, free_data_but_keep_externals, data/type/gid/pid; the decoder's out-of-line branches, read_pointer, register_external and mark_allocation_failed with ownership | verified: no leak and no double free of a message's buffer and blocks on every path. The message (`msg_whole`) owns its buffer and its blocks; read_pointer hands out block j of the message (in order), a decoder for a process lends it to the object it allocates (`finalized`: the VM finalizer frees it), keeps it when the allocation fails; on a failure remove_disposing_finalizers takes every lent block back (the message is whole again: retried or deleted), on a success every block was lent and only the buffer is freed; deallocate frees each block once and all of them. The primitive heap contract up to finalizer bits (`grows_class`: classes and lengths kept) | **the IPC assumptions, now seven narrow ones** (`ipc_begin`, `ipc_room`, `ipc_pointer`, `ipc_external`, `ipc_length`, `ipc_end`; none creates ownership) and the GC's `gc_owns` (CONTRACTS.toml); contract only: the mailbox and the arguments slots of a process (`mailbox`, `queued`, `dying`, `main_args`, `spawn_args`: a queued system message owns encoded data, its type, gid and pid are smis), `HeapObject::clear_has_active_finalizer` (gives the block back: the GC side, which 05159afd fixed), the allocator's external string and byte array, register_external_allocation, callback root validity, virtual callback dispatch, native node deletion, ObjectNotifier | (in the decoder's row) | receive-malformed-delivered and arguments-malformed-delivered (the 05159afd fix taken out: `st != MALFORMED` fails), receive-no-give-back, receive-give-back-bound (one finalizer bit left), arguments-drop-leak, receive-success-free-all (blocks freed under the objects), decoder-unregistered-block, deallocate-double-free, deallocate-leak |
+| Receive path (`decoder/`, wave 5: the ownership of the out-of-line blocks) | the primitives task_receive_message, main_arguments, spawn_arguments (every path: finalizer to run, no message, monitor notification, system message decoded / allocation failure / malformed / allocation of the result array failed); MessageDecoder's three constructors (delegating, default member initializers), allocation_failed, malformed_input, register_external_allocations, remove_disposing_finalizers, deallocate (static, and the recursive walk); SystemMessage's destructor, free_data_and_externals, free_data_but_keep_externals, data/type/gid/pid; the decoder's out-of-line branches, read_pointer, register_external and mark_allocation_failed with ownership | verified: no leak and no double free of a message's buffer and blocks on every path. The message (`msg_whole`) owns its buffer and its blocks; read_pointer hands out block j of the message (in order), a decoder for a process lends it to the object it allocates (`finalized`: the VM finalizer frees it), keeps it when the allocation fails; on a failure remove_disposing_finalizers takes every lent block back (the message is whole again: retried or deleted), on a success every block was lent and only the buffer is freed; deallocate frees each block once and all of them. The primitive heap contract up to finalizer bits (`grows_class`: classes and lengths kept). Since wave 8: a result the retry protocol retries (`oom_error`) leaves the mailbox (its first message queued and whole) or the arguments slot unchanged | **the IPC assumptions, now seven narrow ones** (`ipc_begin`, `ipc_room`, `ipc_pointer`, `ipc_external`, `ipc_length`, `ipc_end`; none creates ownership) and the GC's `gc_owns` (CONTRACTS.toml); contract only: the mailbox and the arguments slots of a process (`mailbox`, `queued`, `dying`, `main_args`, `spawn_args`: a queued system message owns encoded data, its type, gid and pid are smis), `HeapObject::clear_has_active_finalizer` (gives the block back: the GC side, which 05159afd fixed), the allocator's external string and byte array, register_external_allocation, callback root validity, virtual callback dispatch, native node deletion, ObjectNotifier | (in the decoder's row) | receive-malformed-delivered and arguments-malformed-delivered (the 05159afd fix taken out: `st != MALFORMED` fails), receive-no-give-back, receive-give-back-bound (one finalizer bit left), arguments-drop-leak, receive-success-free-all (blocks freed under the objects), decoder-unregistered-block, deallocate-double-free, deallocate-leak, receive-oom-drops-message, arguments-oom-drops-slot |
 | The Rust/C++ boundary (`ffi/interpreter_v2.render`, wave 6; stack growth since wave 1, formerly `grow/`) | toit_v2_grow_stack, Stack::v2_copy_to, Stack::v2_set_records; toit_v2_allocate_instance and toit_v2_allocate_double with their lambdas and the two instances of `v2_allocate` (closure rules); toit_v2_try_allocate_large_integer, _double, _array, _string, _byte_array; toit_v2_current_stack, ObjectHeap::task, Task::stack and Task::set_stack; toit_v2_primitive and v2_primitive_failed (the retry protocol), Primitive::unmark_from_error; v2_process | verified against both sides of CONTRACTS.toml's gc_grow_stack, gc_allocate_instance, gc_allocate_double, gc_call_primitive and allocator_* (contract_check.toit compares every conjunct): the VM state at a GC point is `vm(p, v, n)` (stack object, header fields, bytes, heap, epoch count), the GC's guarantee `gc_equiv`; at most three collections per call (the loop bounds), so an unchanged epoch word means nothing moved (the core keeps its views on that); a primitive runs only with its table arity on its frame's slots, the retry re-reads the current stack after each GC; the results are the allocator's objects (`alloc_post`) or the primitive's completion (`prim_done`) with the status and word the core gets | **three named assumptions** (`gc_equiv_trans`, `stack_copy_equiv`: the `stack` bridge as a lemma, `prim_retry`: a call that failed for want of memory has no visible effect, classified per primitive since wave 7, "The retry obligation"); contract only: Scheduler::gc (at most one collection, `gc_equiv` or nothing), the allocator (the model's, plus Process::allocate_string(word)), allocate_stack, the policy table (`PrimitivePolicy::at`: an entry's arity is what its function reads), the primitives (function type `Primitive_Entry`: prim_out, at most PRIM_EPOCHS task switches, an out-of-memory failure leaves the stack alone), v2_validate (debug aid), the write barrier | 332 / 322 / 35 / 374 | grow-stack-unbounded, grow-stack-word-range; ffi-primitive-arity (the arity check: the primitive's precondition fails), ffi-primitive-stale-stack (the stack read before the GC: the arguments' address is not the current stack's), ffi-primitive-retries and ffi-allocate-retries (a loop bound: more collections than the epoch accounting allows); wave 7: ffi-allocate-string-bound (wave 6's check back: its conversion of a length above INTPTR_MAX fails) and ffi-allocate-string-unbounded (lengths up to INTPTR_MAX let through: the allocator's blob bound fails), and no length precondition on the string and byte-array entry points any more |
 | Array initialization (`ffi/array_init.render`) | `Array::_initialize_no_write_barrier`, both slot writers and the length setter | from uninitialized storage, sets the length and initializes every slot to the supplied filler | allocation of the fresh object and its header | see metrics.sh | skip the last slot |
 | The external handlers' sender side (`sender/external_send.render`, wave 6) | ExternalSystemMessageHandler::send_ (data and encoder), reply_rpc; the encoder they use: the one-argument constructor, the destructor, take_buffer, encode_bytes_external, encode_rpc_reply_external, reserve_external, write_uint8/cardinal/pointer, size, encoding_for_size/tison; SystemMessage's constructor from an encoder (with its base class) and free_data_but_keep_externals | verified: the encoded buffer is freed once or handed over inside the message, the caller's data (a malloced block) goes to the receiver with a sent message, is freed on a failure with free_on_failure and stays the caller's otherwise, on every path (no message allocated, no receiver, quota); the write pass fits the buffer the size pass measured (exact byte counts: `card_len`, `reply_size`; no assumption), memory safety, no overflow, both widths | contract only: the scheduler's send_message (queues the message, or deletes it with free_on_failure, or gives it back), the message's allocation and deletion (only without a buffer: its references are the caller's), the process and VM accessors, strnlen; an external handler's encoder transfers nothing (neuter: `requires false`) | 166 / 145 / 64 / 256 | sender-encoder-owns-buffer (the fix reverted), sender-free-callers-data, sender-delete-with-buffer |
-| Primitive `string_write_to_byte_array` (`prims/`) | the primitive with the ARGS/FAIL expansion (Blob and MutableBlob decoding by the proven byte_content / mutable_byte_content, word arguments), Blob/MutableBlob constructors and accessors | verified: the primitive heap contract in VeriFast terms (the heap only grows, objects keep class, length and external address), the copy inside the two contents (source: a string or byte array; destination: a writable byte array outside the program heap; the source range survives the destination's copy-on-write), legal memmove | none beyond the model and blob units | 21 / 59 / 7 / 22 | af4ba7ab: memcpy fails at its precondition; verifies with the two byte arrays assumed distinct |
+| Primitive `string_write_to_byte_array` (`prims/`) | the primitive with the ARGS/FAIL expansion (Blob and MutableBlob decoding by the proven byte_content / mutable_byte_content, word arguments), Blob/MutableBlob constructors and accessors | verified: the primitive heap contract in VeriFast terms (the heap only grows, objects keep class, length and external address), the copy inside the two contents (source: a string or byte array; destination: a writable byte array outside the program heap; the source range survives the destination's copy-on-write), legal memmove, and the retry rule (`oom_unchanged`, wave 8: an out-of-memory error leaves every old object unchanged) | the loader's error_roots_ok (the `process` predicate) | 15 / 60 / 4 / 21 | af4ba7ab: memcpy fails at its precondition; verifies with the two byte arrays assumed distinct; string-write-oom-after-copy |
 | Primitive `time_info` (`prims/time_info.render`, wave 4) | the primitive with the ARGS expansion (int64 and bool), floor_div, floor_mod, is_leap_year, days_from_civil, weekday_from_days, utc_fields, os_localtime, equivalent_year, local_fields, Smi::is_valid32; model: Array::at_put(Smi*) | verified: for every int64 timestamp no signed overflow and no lossy conversion (coarse bounds of every step, lemmas per step so that the proof sees bounds, not division equations), every stored field a smi, the primitive heap contract; not the correctness of the dates | the C library's `localtime_r` (fields in their C11 ranges), memset of the struct, the implicit constructors (do nothing), `Process::false_object`, `fail` (UNREACHABLE) | 135 / 72 / 32 / 109 | the red-team round 4 overflow reverted (`days * SECONDS_PER_DAY` underflows); local_fields without its year check (the shift overflows); the primitive without its year check (not a smi; on ILP32 the conversion to word) |
-| Primitive bitmap `byte_zap` (`prims/byte_zap.render`) | the primitive with the ARGS expansion (MutableBlob by the proven decoder; the int argument with its round-trip check, `truncating`), MutableBlob ctor and accessors | verified: the primitive heap contract, the memset covers exactly the destination's range in a writable byte array, a smi result | the shared argument-error proof | 12 / 24 / 4 / 2 | one byte past the end: the memset fails |
+| Primitive bitmap `byte_zap` (`prims/byte_zap.render`) | the primitive with the ARGS expansion (MutableBlob by the proven decoder; the int argument with its round-trip check, `truncating`), MutableBlob ctor and accessors | verified: the primitive heap contract, the memset covers exactly the destination's range in a writable byte array, a smi result, the retry rule (`oom_unchanged`, wave 8) | the shared argument-error proof, the loader's error_roots_ok | 12 / 30 / 4 / 2 | one byte past the end: the memset fails; byte-zap-oom-after-copy |
 | Integer argument failure (`prims/argument_error.render`) | `Primitive::return_not_a_smi` | exact tagged error for a large integer or another VM value; preserves the heap | object model | 8 / 7 / 1 / 14 | return the type error for a large integer |
 | Primitive `byte_array_is_valid_string_content` | Blob and integer arguments, range check and validator call | the validator receives a readable slice; the heap and argument slots are preserved; the result is a live heap reference or a tagged error | boolean roots | 13 / 34 / 7 / 6 | omit the upper bound |
 | Process IDs (`prims/process_ids.render`) | two primitives, ID assignment and three accessors | exact current and boot IDs, permanent exhaustion at the representable limit | live process ID, VM singleton and scheduler lock | 26 / 16 / 10 / 17 | restart after exhaustion, weaken upper bound, change current ID, change absent boot ID |
@@ -455,6 +461,8 @@ lemmas).
 | External memory accounting (`verified/cxx/harness/external_accounting.cc`) | `ObjectHeap::external_memory`, `register_external_allocation`, `unregister_external_allocation` | ESBMC checks the deployed C++ with arbitrary starting counters. A registration adds exactly the requested bytes to the current count and the lifetime count (modulo 2^64). A release subtracts only from the current count. The unsigned reading preserves the entire word. | nonnegative sizes, sufficient registered bytes for a release, room in the unsigned current count for a registration, and ESBMC's atomic operations. The single-operation proof starts from arbitrary counters and also checks the empty-heap constructor. A separate two-thread harness checks every modeled interleaving of one registration with one release, with enough initial bytes and remaining capacity for either order. | — | native signed-limit crossing and release (`tests/ctest/heap-limits-test.cc`); replacing the atomic addition with a load and store loses an update in the two-thread harness |
 | GC counts (`prims/gc_count.render`) | primitive, two accessors, counter increment and collection accounting | exact counter selection, updates for each collection type, rollover | live process heap with valid counters and the collection type returned by the collector | 25 / 13 / 4 / 7 | skip rollover, omit compacting collections from the full count, return the wrong counter |
 | Primitive `word_size` | complete body | the returned smi encodes the target word size in bytes | Smi::from | 4 / 2 / 1 / 0 | return bits |
+| The loader's error roots (`loader/error_roots.render`, wave 8) | Program::has_valid_error_roots | the result is exactly `error_roots_ok` of the root table's error slots (heap references at or above MAX_TAGGED_ERROR, pairwise different addresses); ProcessGroup::create refuses a program for which it is false, which gives the `process` predicate its conjunct (a process's program passed the check) | VeriFast's pointer_limits for the stored roots | 13 / 13 / 1 / 16 | the comparison with the next root left out; the heap check taken out |
+| The integer readers (`prims/read_bytes.render`, wave 8) | read_uint_big_endian, read_uint_little_endian (the C++ behind the Rust ports) | every read inside the blob for any width and offset (negative ones become large unsigned ones and are rejected), no overflow or lossy conversion but the modular ones the C++ means (`truncating`, `unsigned-word-conversion`), the heap unchanged up to the boxed result, `oom_clean`; not which integer the bytes give | the Blob decoder and Primitive::integer's contracts | 36 / 54 / 4 / 35 | the end check left out (a read past the blob); the little-endian loop one byte too high |
 | UTF-8 (`utf8/`) | Utils::utf_8_to_16, bytes_in_utf_8_sequence, payload_from_prefix | verified (Z3) | none | 57 / 45 / 1 / 169 | 07c24665: UB shift at payload_from_prefix; without the length check: the read past the input. Also checks sizing failure, surrogate width and initialization of the second output unit. |
 | UTF-16 (`utf8/utf_16_to_8.render`) | Utils::utf_16_to_8, Utils::utf_16le_to_8, read_utf16le_unit | verified (Z3) | readable little-endian byte pairs and an optional writable byte buffer | 60 / 73 / 1 / 70 | byte order, four-byte lead, surrogate replacement, output capacity and write count |
 | Rust raw memory (`rust/`) | view.rs: string_len, string_byte; trial: field, array_length, element | verified (VeriFast Rust, host) | predicates over the words (bridge `heap`) | — | `i <= len` fails at the read |
@@ -692,13 +700,13 @@ audit).
 
 | Primitive (C++) | Status | What is proved |
 |---|---|---|
-| `task_receive_message` | VeriFast-verified (wave 5) | Message ownership on every path and the heap contract up to finalizer bits. A pending callback takes priority over the mailbox. The proof identifies its closure and the resulting runnable and registered lists. |
+| `task_receive_message` | VeriFast-verified (wave 5) | Message ownership on every path and the heap contract up to finalizer bits. A pending callback takes priority over the mailbox. The proof identifies its closure and the resulting runnable and registered lists. Since wave 8 an out-of-memory result leaves the mailbox unchanged (its first message queued and whole). |
 | `main_arguments`, `spawn_arguments` | VeriFast-verified (wave 5) | as task_receive_message |
 | `task_has_messages` | VeriFast-verified | negative allocation allowance returns the exact marked allocation error. Otherwise the result is the process boolean for a runnable finalizer or a nonempty mailbox. The heap and mailbox are preserved. The rendered readiness accessor checks the runnable queue’s head. The allowance, mailbox peek and cached boolean accessors supply the other observations. |
 | `random` | VeriFast-verified | returns the low 28 bits of the xorshift128+ output as a nonnegative Smi. The proof covers both state words, the exact seeded transition, and the modular sum. The seed-copy proof covers every buffer length, including partial words, and preserves the input. On the entropy-mixer path the first draw either fills the seed or triggers a full fallback fill. The entropy provider and the EC618 hardware path remain trusted. |
 | `get_real_time_clock` | VeriFast-verified | a successful call returns a fresh two-element array containing the sampled seconds and nanoseconds in order, including boxed values. Covers array allocation failure, clock failure, and failure to box either integer. Assumes the OS clock and shared allocation contracts. The checked Linux ABIs use signed long for both fields. |
 | `time_info` | VeriFast-verified (wave 4) | no overflow or lossy conversion for any int64, fields smis |
-| `bitmap.byte_zap` | VeriFast-verified | the memset inside one writable byte array |
+| `bitmap.byte_zap` | VeriFast-verified | the memset inside one writable byte array; the retry rule (`oom_unchanged`, wave 8) |
 | `process_send` | ESBMC-verified | Checks argument errors, policy and boot-target checks, both encoding passes, quota and allocation failures, publication, mailbox charges and delivery results. The traversal contract assumes the same byte counts on both passes. General correspondence between the input graph, encoded bytes and transferred owners remains open. |
 | `byte_array_is_valid_string_content` | VeriFast-verified | argument decoding, slice bounds, read-only validation and preserved heap |
 | `platform`, `architecture` | VeriFast-verified | the Linux x86 and x86-64 providers return terminated literals. Each primitive allocates a fresh string of the provider's length or returns the marked allocation error. The shared copy checks the destination contains exactly the source bytes before restoring the heap invariant, for both internal and external strings. Allocation by length and the C library remain contracts. |
@@ -724,7 +732,7 @@ audit).
 | `float_parse` | VeriFast-verified | The entire selected slice must be consumed. Direct string suffixes use the string’s trailing NUL. Other inputs use a terminated copy which is freed on both parser outcomes. The proof covers argument and slice checks, the unsigned input to `isspace`, buffer bounds, embedded NUL rejection, and boxing or a marked error. Numeric conversion and character classification use libc contracts. The image loader checks the trailing NUL for internal and external strings. The allocator and GC supply this invariant for runtime strings. |
 | `float_to_string` | VeriFast-verified | Checks the receiver, special values and precision branches. Fixed-precision formatting retries once and frees the temporary buffer on success and failure. The shortest writer checks Dragonbox’s returned components, extracts up to 17 digits and emits a terminated string within 26 bytes in every notation. Numerical conversion relies on Dragonbox and libc. The proof covers memory safety and result or error representation. |
 | `utf_16_to_string` | VeriFast-verified | Checks the input byte slice and its even length, computes the UTF-8 size, and checks it fits a Smi before allocation. On LP64 the full possible expansion fits. On ILP32 an unrepresentable result length yields OUT_OF_BOUNDS. Success returns a fresh string containing exactly the encoding of the bytes read by the writing pass. Allocation failure and a changed output length produce marked errors. Preservation of the original input bytes across allocation remains open. |
-| `bitmap.blit` | VeriFast-verified | Decodes all eleven arguments. Copy-on-write destination allocation preserves the remaining references. Each pixel borrows and returns its source, optional lookup and writable destination slices in order, allowing overlap. The loops terminate, stay within both buffers and reject excess work before the first pixel for either an uninterrupted-run quota or a total CPU quota. ESBMC also checks all six pixel results and preservation of unrelated bytes. The shared heap, allocator and live process-policy reference supply their contracts. |
+| `bitmap.blit` | VeriFast-verified | Decodes all eleven arguments. Copy-on-write destination allocation preserves the remaining references. Each pixel borrows and returns its source, optional lookup and writable destination slices in order, allowing overlap. The loops terminate, stay within both buffers and reject excess work before the first pixel for either an uninterrupted-run quota or a total CPU quota. ESBMC also checks all six pixel results and preservation of unrelated bytes. The shared heap, allocator and live process-policy reference supply their contracts. The retry rule (`oom_unchanged`, wave 8). |
 | `events.register_monitor_notifier`, `events.unregister_monitor_notifier` | ESBMC-verified | The native bodies check proxy representation and tag, group membership and the event source. Registration rejects closed proxies and propagates monitor allocation failure. Unregistration accepts closed, correctly typed proxies without a callback. A live, matching pair calls the owning source exactly once with the original arguments. |
 | Event monitor lifetime | ESBMC-verified | The native registration and cancellation bodies create a monitor and reusable message, replace the object, or roll back after either allocation fails. From an empty root list and mailbox, the gate checks exact root membership, immediate sends on nonzero resource state and cleanup before or after dequeue, with leak checking. Allocation uses symbolic failure and placement construction at a stable address. Cancellation runs under the source mutex, and the modeled scheduler publishes to a live receiver through the native mailbox. The separate monitor-scavenge gate verifies the callback used in the lifetime check for a two-word young object and space for one copy. The native visitor forwards its monitor and optional global alias. The native receive primitive, with no runnable finalizers, reads the surviving object or returns program null after cancellation. The monitor-scavenge checks use the native size calculation on a valid class table and cover successful promotion, young copying and failed promotion. They check preservation of an outstanding old-space GC request, creation of one on fallback, and each alias’s remembered-set flag. Source extent, allocation outcomes and root visitation order are assumed. |
 | `events.read_state` | ESBMC-verified | Rejects invalid or closed proxies and mismatched groups before acquiring the mutex. The native read returns the sampled mask and clears the state inside the critical section. The primitive preserves both argument slots and returns the tagged bits of the sampled mask. Exact numeric representation requires the mask to fit a Smi on ILP32. |
@@ -736,6 +744,8 @@ audit).
 
 Of the 150 allowed primitives, 106 have Rust ports with proofs, 33 have
 VeriFast body proofs and 11 have ESBMC body proofs.
+Behind the 106 ports, the C++ of 2 has a VeriFast body proof (wave 8;
+below), the other 104 are contract-only.
 These counts classify primitive names. A port can still delegate a case
 to C++, as `list_add` does for a large-array backing
 (`verified/core/src/prims/array.rs`). Body proofs also rely on the
@@ -883,7 +893,11 @@ contracts. Direct routes cover
 present and absent destinations, old grants, same-group and boot-process
 exceptions, and mailbox or grant refusal. System routes cover delivery to
 the boot process, a full boot mailbox and consumption without a boot
-process, including the decoded termination value. Every unqueued message
+process, including the decoded termination value. Since wave 8 a
+process's TERMINATED or SPAWNED notice is refused on either route before any
+lookup, delivery or decoding, and the scheduler's own notices take the
+system route directly (send_system_message, as terminate_process and
+spawn call it). Every unqueued message
 reaches one delete. Destruction of the encoded payload remains a separate
 obligation at the scheduler boundary. The receive-path VeriFast proof
 checks the destructor and deallocation walk given the IPC encoding and
@@ -1183,7 +1197,12 @@ Since wave 7 every one of the 150 also has its retry classification
 Rust-verified ones for their C++ primitive, which runs when the port
 declines: that C++ is reachable by untrusted programs too (the
 concat_strings overflow of "Findings" was in it). Their C++ bodies are
-otherwise contract-only.
+otherwise contract-only, except (wave 8) read_uint_big_endian and
+read_uint_little_endian: VeriFast-verified (`prims/read_bytes.render`:
+every read inside the blob for any width and offset, no overflow or
+lossy conversion but the modular ones the C++ means, `oom_clean`). Memory
+safety of the C++ behind the 106 ports: 2 VeriFast-verified, 104
+contract-only (106 contract-only before wave 8).
 
 ### Young-space allocation
 
@@ -1441,7 +1460,10 @@ copy count and up to one transferred external byte array. Its assertions
 cover the sender's charge and finalizer flag, the child's argument slots,
 and ownership of the encoder buffer on admission and refusal. The group
 starts with zero or one peer. Child construction, notification delivery
-and scheduling use contracts.
+and scheduling use contracts. Since wave 8 a rejected notification tears the
+constructed child down (out of its group, destroyed outside the lock, the
+notice released once) and leaves the arguments in the encoder; only an
+accepted one schedules the child with its arguments.
 
 The format-2 boundary represents the current task and its stack as
 mutable process state. After a collection the caller must read both
@@ -1894,7 +1916,7 @@ classified):
 | Class | Count | Evidence |
 |---|---|---|
 | (a) cannot fail for want of memory | 62 | the primitive's body (or its macro) has no allocation, allocating argument kind (MutableBlob, cstring) or out-of-memory error: checked by contract_check.toit (a tripwire for helpers that allocate; reviewed) |
-| (b) fails for want of memory only before any visible effect | 88 | 86 by tests/ctest/prim-retry-test.cc (below), 25 of them also proved with VeriFast (`oom_clean`, below); 2 reviewed (task_new: a format-1 path needs an interpreter; encode_error: needs a scheduler thread), the arguments in the table |
+| (b) fails for want of memory only before any visible effect | 88 | 86 by tests/ctest/prim-retry-test.cc (below), 30 of them also proved with VeriFast (`oom_clean` or `oom_unchanged`, below; 25 before wave 8), 56 tested only (61 before); 2 reviewed (task_new: a format-1 path needs an interpreter; encode_error: needs a scheduler thread), the arguments in the table |
 | (c) violates it | 0 | |
 
 tests/ctest/prim-retry-test.cc makes every allocation of a call fail in
@@ -1938,17 +1960,62 @@ states `oom_clean` and that run.sh proves the rendering. Mutant
 finalizer-primitives-oom-after-effect: add_finalizer returning
 MALLOC_FAILED after the registration fails at `oom_clean`.
 
-Not proved for the other rendered primitives: string_write_to_byte_array,
-byte_zap and blit install a copy-on-write byte array's copy (a write to
-an existing instance) before a later argument check can fail with another
-error; proving that error is not an out-of-memory one needs the error
-roots to be distinct (FAIL's index form against Error::from's pointer
-form), which the model does not state (the loader supplies the roots).
-The receive primitives' contracts do not say the mailbox and the arguments
-slots are unchanged on an out-of-memory error (the wave-5 proof shows the
-message stays whole; stating the slot is a contract change of the receive
-path). The test covers their failure points (the copy-on-write copy, the
-result array, the decoder's allocations).
+Wave 8 adds five: string_write_to_byte_array, byte_zap and blit
+(`oom_unchanged`, below) and read_uint_big_endian, read_uint_little_endian
+(`oom_clean`; their C++ runs when the Rust port declines,
+`prims/read_bytes.render`).
+
+string_write_to_byte_array, byte_zap and blit install a copy-on-write byte
+array's copy (a write to an existing instance) before a later argument or
+range check can fail with another error, so `oom_clean` does not hold.
+They state `oom_unchanged(prog, objs, H, objs2, H2, result)`
+(model/objects.render): a result the retry protocol retries,
+`oom_error` (moved from ffi/interpreter_v2.render to the model, the same
+definition: a marked error that decodes to MALLOC_FAILED's,
+ALLOCATION_FAILED's or CROSS_PROCESS_GC's root by address), leaves every
+object of the heap before the call unchanged. Proving that the other
+errors are not out-of-memory ones needs the error roots to be distinct:
+FAIL(OUT_OF_BOUNDS) decodes to the OUT_OF_BOUNDS root, Error::from of a
+root decodes to that root only if the root is a heap reference above the
+immediate errors. Decision (wave 8): a model fact checked where the
+program is loaded, not an assumption. The `process` predicate's body
+(objects.gen.c; `process_program` hands it out) states
+`error_roots_ok(drop(Program_FIRST_ERROR_INDEX, program_roots(prog)))`
+(the error roots are heap references at or above `Error::MAX_TAGGED_ERROR`
+at pairwise different addresses), ProcessGroup::create refuses a program
+for which `Program::has_valid_error_roots` (src/program.cc) is false, and
+VeriFast proves that this function returns exactly `error_roots_ok` of the
+root table (`loader/error_roots.render`, LP64 and ILP32; mutants
+error-roots-skip-neighbour, error-roots-heap-check). The definitions and lemmas
+are in model/retry.h, included only by the renderings that use them: in
+objects.gen.h, which every rendering includes, they made the unrelated
+utf16-to-8 proof fail (Z3's search depends on the declarations in
+scope; it failed on ILP32 with the lemmas there, and on LP64 with the
+fixpoints in the `program` predicate). Regression test
+tests/ctest/program-error-roots-test.cc: a compiled program passes, each of
+the 378 pairs of equal error roots, a smi, a low address and a word tagged as a marked error is
+refused by the check, and ProcessGroup::create refuses the samples. The
+lemmas `immediate_error_not_oom` and `marked_root_not_oom` give the facts a
+proof needs; the named accessors (`Program_wrong_object_type`,
+`Program_permission_denied`) now state their slots (checked against the
+native accessors by the ESBMC error-roots harness), Error::from the marked
+word's quotient. Object::mutable_byte_content states the same retry fact:
+an out-of-memory error comes only from a call that changed nothing on a
+non-byte-array (its copy-on-write allocation), so the slice case that
+fails after an inner copy reports WRONG_OBJECT_TYPE. Mutants (an
+out-of-memory error after the copy): mutable-byte-content-oom-after-copy,
+string-write-oom-after-copy, byte-zap-oom-after-copy, blit-oom-after-copy.
+
+The receive primitives (decision, wave 8): their contracts now state that a
+result `oom_error` retries leaves the mailbox (the same first message,
+queued and whole again) or the arguments slot (`a2 == a`) unchanged, and
+every other result is an object or another error (proved; mutants
+receive-oom-drops-message, arguments-oom-drops-slot). Their retry evidence
+stays "test": the heap part would need the decoder's contracts to say that
+it writes only the objects it allocates and that remove_disposing_finalizers
+clears only their finalizer bits (they say the heap grows and keeps
+classes). The test covers their failure points (the result array, the
+decoder's allocations).
 
 ### The two-pass assumption
 
@@ -2029,6 +2096,86 @@ of #3378, malformed system messages of #3381) become mutants with them.
 
 
 ## Findings
+
+Wave 8 (the scheduler review's two findings, the error roots, the receive
+path, weak maps):
+
+* **A trusted process could forge the scheduler's TERMINATED (and
+  SPAWNED) notices and end the VM with an exit code of its choice**
+  (FIXED here, src/scheduler.cc, src/primitive_policy.cc). process_send
+  with a negative pid routes a message to the system process
+  (Scheduler::send_message_from, then send_system_message); sandboxed
+  senders were stopped by `may_send_type`, trusted ones were not. The
+  system process takes a TERMINATED notice as the termination of the
+  sender (its gid and pid) with the payload as exit value; without a boot
+  process the default handling makes the payload the VM's exit state. A
+  trusted application container ending the VM with 42:
+  `process-send_ -1 SYSTEM-TERMINATED_ 42` (toit.run exits with 42).
+  Rule: the life-cycle notices originate only from the scheduler
+  (Scheduler::new_process_message). send_message_from refuses both types
+  from every sender on both routes (MESSAGE_PERMISSION_DENIED, the
+  primitive throws PERMISSION_DENIED; the check comes after the encoding,
+  so the existing tests that use type 0 to provoke an encoding error keep
+  their error). Regression test
+  tests/sandbox/trusted-forge-life-cycle-test.toit (exits 42 without the
+  fix). ESBMC `scheduler-delivery` checks
+  the refusal before any lookup or delivery, and the scheduler's own
+  route (send_system_message with the termination decoding) separately.
+  Upstream master: the same route, open to every process (there is no
+  policy there).
+* **Scheduler::spawn started a child whose SPAWNED notice the system
+  process refused** (latent: unreachable today; now handled). The notice
+  is refused only by the boot process's mailbox admission; the boot
+  process has the system policy, whose quotas are all zero (no limit), the
+  notice is charged one message and no bytes and is not restricted, so
+  `mailbox_has_room` fails only at a counter of INTPTR_MAX messages, more
+  than the address space can hold. Instead of relying on that, spawn now
+  tears the child down before it ever ran (out of its group, destroyed
+  outside the scheduler lock: its destructor frees the termination notice
+  and the initial memory) and returns QUOTA_EXCEEDED_PROCESS_ID; the
+  arguments are taken from the encoder only after the notice is queued,
+  so a refused spawn transfers nothing. ESBMC `scheduler-spawn` (slow
+  tier) checks both outcomes of the announcement: an accepted notice
+  schedules the child with its arguments, a refused one destroys it with
+  the arguments still in the encoder and the notice released once.
+* **Map.weak lets an untrusted program observe the collector write into
+  a reachable object** (a model gap, not a memory-safety bug; not
+  changed). add_finalizer on a Map (allowed untrusted, CoreIndex::
+  add_finalizer) registers a WeakMapFinalizerNode; at every old-space
+  mark-sweep the marker skips the map's backing
+  (MarkingVisitor::skip_marking) and WeakMapFinalizerNode::weak_processing
+  writes the program's null into each value slot of the backing (or of a
+  large array's arraylets) whose value is not otherwise reachable, and
+  resets an unreachable weak map's size, spaces-left, index and backing.
+  tests/sandbox/cli/weak-map-main.toit (`toit.run --untrusted`) observes a
+  value become null. The writes are of valid references (null, smi 0)
+  into in-bounds slots of objects the collector owns while the mutator is
+  stopped; the core re-reads the heap after every collection (the epoch)
+  and the verifier types stack slots, not the contents of arrays or
+  instance fields, so neither memory safety nor the verifier's typing
+  depends on it. But `gc_equiv` and the spec's GC step say a collection
+  leaves every reachable object equivalent, which is false for weak maps.
+  Refusing weak maps to untrusted programs is not a clean restriction:
+  the SDK's ServiceResourceProxyManager_ (lib/system/services.toit) keeps
+  every notifying resource proxy (network sockets, storage, discovery) in
+  a Map.weak in the client process, so service resources would break.
+  Options for the lead: state weak-map zapping in the GC model (a value
+  slot of a map with the finalizer bit may become null), or make the
+  proxy manager hold its proxies otherwise.
+* **The error roots of a program image were not checked to be distinct**
+  (a gap in the loader, now checked). The retry protocol decides by the
+  root's address whether to collect and call a primitive again; an image
+  with, say, WRONG_OBJECT_TYPE's root equal to ALLOCATION_FAILED's made a
+  failure after a copy-on-write copy (string_write_to_byte_array, byte_zap,
+  blit) a retried one. Compiled images have distinct roots; the format-2
+  verifier did not check it. ProcessGroup::create now refuses such an
+  image ("The retry obligation").
+* Observation, not fixed (trusted programs only): read_int_big_endian and
+  read_int_little_endian compute `width - 1` in `int`, which overflows
+  (undefined) for width INT_MIN; the Rust port rejects a negative width
+  before the C++ runs, so untrusted programs cannot reach it, and the
+  unsigned result would be rejected anyway. Their proof needs a rule for
+  Utils::wrapping_shift_left's variable shift count (not attempted).
 
 Wave 7 (the retry obligation, the C++ behind the Rust primitives' declines,
 the model gaps):
@@ -2643,12 +2790,25 @@ model is revised.
   policy reads, HeapTagScope, the
   program roots, `fail`. Each is still compared with its source when it is
   a `@render ... trusted`; the others are plain prototypes.
+* The link between the loader's check and the `process` predicate (wave
+  8): the predicate's `error_roots_ok` for its program (the error roots are distinct heap
+  references above the immediate errors) is what
+  `Program::has_valid_error_roots` returns (proved,
+  `loader/error_roots.render`), and ProcessGroup::create refuses a program
+  for which it is false; that every process runs a program that went
+  through ProcessGroup::create (its group's program) is reviewed, not
+  proved, like the other facts the loader supplies (the page count, the
+  class-id table).
 * Everything not attempted (table above).
 
 ## Files
 
 * `model/`: the object model (`objects.render`, generated `objects.gen.h/.c`),
-  the constant table, `arith.gh` (shift and mask lemmas), `model.cfg`.
+  the constant table, `arith.gh` (shift and mask lemmas), `model.cfg`,
+  `retry.h` (wave 8: the retry protocol's `oom_error`, `oom_unchanged`
+  and the loader-checked error-root facts, for the renderings that use
+  them).
+* `loader/error_roots.render` (wave 8): the loader's error-root check.
 * `encoder/`, `decoder/`, `ffi/`, `prims/`, `utf8/`: the targets (sidecar
   and generated files); `encoder/cardinal.h`/`.c` (the cardinal's byte
   bound, proved with Z3 so that the encoder verifies with the default

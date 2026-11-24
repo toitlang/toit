@@ -9,9 +9,12 @@
 // `render.sh --check` reports.
 #include <stdint.h>
 #include "rules_constants.h"
+//@ #include <bitops.gh>
 typedef intptr_t word;
 typedef uintptr_t uword;
 typedef unsigned int uint32;
+typedef unsigned long long uint64;
+typedef unsigned char uint8;
 struct Tagged { uword tag_; };
 typedef struct Tagged Tagged;
 struct Outer_Inner { word v_; };
@@ -31,13 +34,37 @@ typedef struct Later Later;
 void plain_c_ctor(struct plain_c *self);
 //@ requires self->a |-> _;
 //@ ensures self->a |-> _;
-// C++: the lambda at verified/cxx/annotated/tests/rules.cc:221:30 (the closure rules)
+
+/*@
+lemma void unsigned_of_int32(int x)
+  requires -2147483648 <= x &*& x <= 2147483647;
+  ensures x < 0 ? truncate_unsigned(x, 32) == x + 4294967296 : truncate_unsigned(x, 32) == x;
+{
+  assert pow_nat(2, N16) == 65536;
+  assert pow_nat(2, N32) == 4294967296;
+  assert int_of_nat(N32) == 32;
+  truncate_unsigned_def(x, N32);
+  assert [_]divrem(x, pow_nat(2, N32), ?q, ?r);
+  assert x == q * 4294967296 + r &*& 0 <= r &*& r < 4294967296;
+  if (x >= 0) {
+    if (q < 0) { mul_mono_l(q, -1, 4294967296); assert false; }
+    if (q > 0) { mul_mono_l(1, q, 4294967296); assert false; }
+    assert q * 4294967296 == 0;
+  } else {
+    if (q >= 0) { mul_mono_l(0, q, 4294967296); assert false; }
+    if (q < -1) { mul_mono_l(q, -2, 4294967296); assert false; }
+    assert q * 4294967296 == -4294967296;
+  }
+  assert truncate_unsigned(x, 32) == r;
+}
+@*/
+// C++: the lambda at verified/cxx/annotated/tests/rules.cc:234:30 (the closure rules)
 struct use_lambdas_lambda1 { word base; word b; };
 word use_lambdas_lambda1_call(struct use_lambdas_lambda1 *closure);
 //@ requires [?f]closure->base |-> ?x &*& [f]closure->b |-> ?y &*& 0 <= x &*& x < 100 &*& 0 <= y &*& y < 100;
 //@ ensures [f]closure->base |-> x &*& [f]closure->b |-> y &*& result == x + y;
 
-// C++: the lambda at verified/cxx/annotated/tests/rules.cc:223:24 (the closure rules)
+// C++: the lambda at verified/cxx/annotated/tests/rules.cc:236:24 (the closure rules)
 struct use_lambdas_lambda2 { word base; };
 word use_lambdas_lambda2_call(struct use_lambdas_lambda2 *closure);
 //@ requires [?f]closure->base |-> ?x &*& 0 <= x &*& x < 1000;
@@ -137,6 +164,16 @@ bool fits_narrow(int x);
 int use_plain(void);
 //@ requires true;
 //@ ensures result == 1;
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::small_unsigned
+bool small_unsigned(int x);
+//@ requires true;
+//@ ensures result == (0 <= x && x <= 8);
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::shift_in
+uint64 shift_in(uint64 v);
+//@ requires true;
+//@ ensures true;
 
 // C++: verified/cxx/annotated/tests/rules.cc toit::narrow_unsigned
 int narrow_unsigned(uword u);
@@ -381,6 +418,25 @@ int use_plain(void)
   return p.a;
 }
 
+// C++: verified/cxx/annotated/tests/rules.cc toit::small_unsigned
+bool small_unsigned(int x)
+//@ requires true;
+//@ ensures result == (0 <= x && x <= 8);
+{
+  //@ unsigned_of_int32(x);
+  unsigned int u = /*@truncating@*/(unsigned int)x;
+  return u <= 8;
+}
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::shift_in
+uint64 shift_in(uint64 v)
+//@ requires true;
+//@ ensures true;
+{
+  v = /*@truncating@*/(v << 8);
+  return v;
+}
+
 // C++: verified/cxx/annotated/tests/rules.cc toit::narrow_unsigned
 int narrow_unsigned(uword u)
 //@ requires true;
@@ -449,7 +505,7 @@ word count_up(word n)
   return total;
 }
 
-// C++: the lambda at verified/cxx/annotated/tests/rules.cc:221:30 (the closure rules)
+// C++: the lambda at verified/cxx/annotated/tests/rules.cc:234:30 (the closure rules)
 word use_lambdas_lambda1_call(struct use_lambdas_lambda1 *closure)
 //@ requires [?f]closure->base |-> ?x &*& [f]closure->b |-> ?y &*& 0 <= x &*& x < 100 &*& 0 <= y &*& y < 100;
 //@ ensures [f]closure->base |-> x &*& [f]closure->b |-> y &*& result == x + y;
@@ -457,7 +513,7 @@ word use_lambdas_lambda1_call(struct use_lambdas_lambda1 *closure)
   return closure->base + closure->b;
 }
 
-// C++: the lambda at verified/cxx/annotated/tests/rules.cc:223:24 (the closure rules)
+// C++: the lambda at verified/cxx/annotated/tests/rules.cc:236:24 (the closure rules)
 word use_lambdas_lambda2_call(struct use_lambdas_lambda2 *closure)
 //@ requires [?f]closure->base |-> ?x &*& 0 <= x &*& x < 1000;
 //@ ensures [f]closure->base |-> x &*& result == x;

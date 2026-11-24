@@ -54,6 +54,7 @@
 #include "../utf8/validator.gen.h"
 #include "../model/finalizer_nodes.h"
 #include "radix.h"
+#include "../model/retry.h"
 //@ #include "../model/arith.gh"
 //@ #include "../model/truncate.gh"
 
@@ -2019,8 +2020,15 @@ void Process::set_spawn_arguments(uint8* arguments)
 PRIMITIVE(main_arguments)
 /*@ requires process != 0 &*& [?fp]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*& main_args(process, ?a) &*& (a == 0 ? true : msg_whole(a)); @*/
 /*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows_class(objs, H, objs2, H2) == true &*&
-            main_args(process, ?a2) &*& (a2 == 0 ? true : msg_whole(a2)); @*/
+            main_args(process, ?a2) &*& (a2 == 0 ? true : msg_whole(a2)) &*&
+            (oom_error(prog, result) == false || a2 == a); @*/
 {
+  // The retry rule's part of the process: a failure for want of memory
+  // leaves the arguments slot (and the message in it whole); the other
+  // results are not out-of-memory errors.
+  //@ process_program(process);
+  //@ error_word(Program_INVALID_ARGUMENT_INDEX);
+  //@ immediate_error_not_oom(prog, Program_INVALID_ARGUMENT_INDEX);
   uint8* arguments = process->main_arguments();
   //@ grows_refl(objs, H);
   //@ grows_class_of_grows(objs, H, objs, H);
@@ -2031,6 +2039,7 @@ PRIMITIVE(main_arguments)
   MessageDecoder decoder(process, arguments);
   Object* decoded = decoder.decode();
   //@ assert heap(?objs1, ?H1);
+  //@ if (mem(decoded, objs1)) heap_facts(decoded);
   if (decoder.allocation_failed()) {
     decoder.remove_disposing_finalizers();
     //@ receive_give_back(&decoder, arguments, objs, H, objs1, H1);
@@ -2063,8 +2072,13 @@ PRIMITIVE(main_arguments)
 PRIMITIVE(spawn_arguments)
 /*@ requires process != 0 &*& [?fp]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*& spawn_args(process, ?a) &*& (a == 0 ? true : msg_whole(a)); @*/
 /*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows_class(objs, H, objs2, H2) == true &*&
-            spawn_args(process, ?a2) &*& (a2 == 0 ? true : msg_whole(a2)); @*/
+            spawn_args(process, ?a2) &*& (a2 == 0 ? true : msg_whole(a2)) &*&
+            (oom_error(prog, result) == false || a2 == a); @*/
 {
+  // As main_arguments.
+  //@ process_program(process);
+  //@ error_word(Program_INVALID_ARGUMENT_INDEX);
+  //@ immediate_error_not_oom(prog, Program_INVALID_ARGUMENT_INDEX);
   uint8* arguments = process->spawn_arguments();
   //@ grows_refl(objs, H);
   //@ grows_class_of_grows(objs, H, objs, H);
@@ -2075,6 +2089,7 @@ PRIMITIVE(spawn_arguments)
   MessageDecoder decoder(process, arguments);
   Object* decoded = decoder.decode();
   //@ assert heap(?objs1, ?H1);
+  //@ if (mem(decoded, objs1)) heap_facts(decoded);
   if (decoder.allocation_failed()) {
     decoder.remove_disposing_finalizers();
     //@ receive_give_back(&decoder, arguments, objs, H, objs1, H1);
@@ -2189,8 +2204,13 @@ PRIMITIVE(task_receive_message)
              finalizer_ready(process, ?ready, ?pending, ?registered) &*& live_closures(objs, pending) == true &*& mailbox(process, ?m) &*& (m == 0 ? true : queued(m)); @*/
 /*@ ensures [fp]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows_class(objs, H, objs2, H2) == true &*&
             finalizer_ready(process, _, tail(pending), ready && keep_callback(head(pending)) ? cons(head(pending), registered) : registered) &*&
-            live_closures(objs2, tail(pending)) == true &*& (ready ? result == closure_of(head(pending)) : true) &*& mailbox(process, ?m2) &*& (m2 == 0 ? true : queued(m2)); @*/
+            live_closures(objs2, tail(pending)) == true &*& (ready ? result == closure_of(head(pending)) : true) &*& mailbox(process, ?m2) &*& (m2 == 0 ? true : queued(m2)) &*&
+            (oom_error(prog, result) == false || m2 == m); @*/
 {
+  // The retry rule's part of the process: a failure for want of memory
+  // leaves the mailbox (its first message queued and whole again); every
+  // other result is an object, not a marked error.
+  //@ process_program(process);
   //@ grows_refl(objs, H);
   //@ grows_class_of_grows(objs, H, objs, H);
   ObjectHeap* heap = process->object_heap();
@@ -2205,16 +2225,19 @@ PRIMITIVE(task_receive_message)
   //@ open queued(message);
   MessageType message_type = message->message_type();
   Object* result = process->null_object();
+  //@ heap_facts(process_null(process));
 
   if (message_type == MESSAGE_MONITOR_NOTIFY) {
     ObjectNotifyMessage* object_notify = static_cast<ObjectNotifyMessage*>(message);
     ObjectNotifier* notifier = object_notify->object_notifier();
     if (notifier != null) result = notifier->object();
+    //@ if (mem(result, objs)) heap_facts(result);
     //@ close dying(message);
   } else if (message_type == MESSAGE_SYSTEM) {
     Array* array = process->object_heap()->allocate_array(4, Smi::from(0));
     //@ open allocated(objs, H, process, array, ?objsA, ?HA);
     //@ if (array == 0) close queued(message); else grows_alloc(objs, H, array, HA);
+    //@ if (array != 0) heap_facts(array);
     if (array == null) FAIL(ALLOCATION_FAILED);
     SystemMessage* system_message = static_cast<SystemMessage*>(message);
     //@ assert message->data_ |-> ?d;

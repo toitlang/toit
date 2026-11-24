@@ -1597,9 +1597,10 @@ scheduler_spawn() {
   awk '/^int Scheduler::spawn\(/ { active=1; found++ }
        active { allocations += sub(/_new Process\(/,"construct_process(");
                 sub(/delete termination;/,"destroy_notice(termination);");
-                sub(/delete spawned;/,"destroy_notice(spawned);"); print }
+                spawned_releases += gsub(/delete spawned;/,"destroy_notice(spawned);");
+                teardowns += sub(/delete process;/,"destroy_child(process);"); print }
        active && /^}$/ { active=0 }
-       END { if (found != 1 || allocations != 1 || active) exit 1 }' "$REPO_ROOT/src/scheduler.cc" > "$inc/scheduler_spawn.inc" || return 1
+       END { if (found != 1 || allocations != 1 || spawned_releases != 2 || teardowns != 1 || active) exit 1 }' "$REPO_ROOT/src/scheduler.cc" > "$inc/scheduler_spawn.inc" || return 1
   cpp_equivalence scheduler-spawn "$abi" "$bits" scheduler_spawn "-I$inc" --unwind 9
 }
 spawn scheduler_spawn LP64 64
@@ -2115,6 +2116,14 @@ mutant arguments-malformed-delivered decoder/message_decoder.render src/primitiv
 # deleted).
 mutant receive-no-give-back decoder/message_decoder.render src/primitive_core.cc "dec_back|No matching" "$DEC_OPTS" \
   "PRIMITIVE(task_receive_message)@@decoder.remove_disposing_finalizers();" "decoder.success();"
+# The retry rule's process part: a failure for want of memory that drops
+# the message, or the arguments, is rejected.
+mutant receive-oom-drops-message decoder/message_decoder.render src/primitive_core.cc "Cannot prove.*oom_error" "$DEC_OPTS" \
+  "PRIMITIVE(task_receive_message)@@      FAIL(ALLOCATION_FAILED);" \
+  "      //@ open queued(message);\n      //@ close dying(message);\n      process->remove_first_message();\n      FAIL(ALLOCATION_FAILED);"
+mutant arguments-oom-drops-slot decoder/message_decoder.render src/primitive_core.cc "Cannot prove.*oom_error" "$DEC_OPTS" \
+  "PRIMITIVE(main_arguments)@@    FAIL(ALLOCATION_FAILED);" \
+  "    process->clear_main_arguments();\n    MessageDecoder::deallocate(arguments);\n    FAIL(ALLOCATION_FAILED);"
 # One finalizer bit left set: its block is still lent.
 mutant receive-give-back-bound decoder/message_decoder.render src/messaging.cc "lent|finalized|invariant|Cannot prove|No matching" "$DEC_OPTS" \
   "MessageDecoder::remove_disposing_finalizers()@@for (unsigned i = 0; i < externals_count(); i++)" "for (unsigned i = 0; i + 1 < externals_count(); i++)"
@@ -2365,6 +2374,10 @@ mutant string-write-af4ba7ab-disjoint prims/string_write.render src/primitive_co
   "  //@ if (bs != bd) blob_take(bs);" "  //@ assume(bs != bd);\n  //@ blob_take(bs);" \
   "    close mm_pre(mm_two, d, s, to - from);\n" "" \
   "    open mm_post(_, _, _, _);\n    uchars_join(s);" "    uchars_join(s);"
+# The retry rule (oom_unchanged): an out-of-memory error after the
+# destination's copy-on-write copy is installed is rejected.
+mutant string-write-oom-after-copy prims/string_write.render src/primitive_core.cc "Cannot prove.*oom" "-prover z3v4.5" \
+  "dest.length() - dest_index) FAIL(OUT_OF_BOUNDS);" "dest.length() - dest_index) FAIL(ALLOCATION_FAILED);"
 
 entry blob-args             pass "" prims/blob_args.gen.c
 entry primitive-integer     pass "" prims/integer.gen.c -prover z3v4.5
@@ -2537,6 +2550,22 @@ mutant spawn-method-tag prims/spawn_method.render src/program.h "Cannot prove" "
   "bytecodes.data()[3] == '2'" "bytecodes.data()[3] == '1'"
 mutant spawn-method-legacy prims/spawn_method.render src/primitive_core.cc "Cannot prove" "-prover z3v4.5" \
   "PRIMITIVE(spawn_method)@@      : -1;" "      : 0;"
+# The loader's check of the error roots (the `program` predicate's
+# error_roots_ok): the comparison with the next root left out; the heap
+# check taken out.
+entry error-roots           pass "" loader/error_roots.gen.c
+mutant error-roots-skip-neighbour loader/error_roots.render src/program.cc "Cannot prove" "" \
+  "j > i; j--" "j > i + 1; j--"
+mutant error-roots-heap-check loader/error_roots.render src/program.cc "Cannot prove" "" \
+  "!is_heap_object(roots_[i]) ||" "false ||"
+# The unsigned integer readers (`-allow_dead_code`: the int argument's
+# round trip is dead on ILP32): the end check left out (a read past the
+# blob); the little-endian loop started one byte too high.
+entry read-bytes            pass "" prims/read_bytes.gen.c -allow_dead_code -prover z3v4.5
+mutant read-bytes-end-check prims/read_bytes.render src/primitive_core.cc "No matching|Cannot prove" "-allow_dead_code -prover z3v4.5" \
+  "PRIMITIVE(read_uint_big_endian)@@ || unsigned_offset + unsigned_width > length) {" ") {"
+mutant read-bytes-little-start prims/read_bytes.render src/primitive_core.cc "No matching|Cannot prove" "-allow_dead_code -prover z3v4.5" \
+  "PRIMITIVE(read_uint_little_endian)@@for (word i = width - 1;" "for (word i = width;"
 entry word-size             pass "" prims/word_size.gen.c
 mutant word-size-bits prims/word_size.render src/primitive_core.cc "smi_val|Cannot prove condition" "" \
   "return Smi::from(WORD_SIZE);" "return Smi::from(WORD_SIZE * 8);"
@@ -2567,6 +2596,11 @@ entry byte-zap              pass "" prims/byte_zap.gen.c -allow_dead_code -prove
 # One byte past the destination: the memset fails.
 mutant byte-zap-past-end prims/byte_zap.render src/primitive_bitmap.cc "uchars|No matching" "-allow_dead_code -prover z3v4.5" \
   "  memset(bytes.address(), value, bytes.length());" "  memset(bytes.address(), value, bytes.length() + 1);"
+# The retry rule: an out-of-memory error after the copy-on-write copy.
+mutant byte-zap-oom-after-copy prims/byte_zap.render src/primitive_bitmap.cc "Cannot prove.*oom" "-allow_dead_code -prover z3v4.5" \
+  "ARGS(MutableBlob, bytes, int, value);" "ARGS(MutableBlob, bytes, int, value);\n  if (value == 1) FAIL(MALLOC_FAILED);"
+mutant blit-oom-after-copy prims/blit.render src/primitive_bitmap.cc "Cannot prove.*oom" "-allow_dead_code -prover redux" \
+  "if (!fits) FAIL(OUT_OF_RANGE);" "if (!fits) FAIL(MALLOC_FAILED);"
 
 # time_info and its calendar (red-team round 4). `-allow_dead_code`: the
 # time_t round trip check of os_localtime is dead on LP64; UNREACHABLE.
@@ -2600,6 +2634,10 @@ entry mutable-byte-content  pass "" blob/mutable_byte_content.gen.c -allow_dead_
 # 357d1127 reverted in mutable_byte_content: the recursive call fails.
 mutant mutable-byte-content-357d1127 blob/mutable_byte_content.render src/objects_runtime.cc "depth" "-allow_dead_code -prover z3v4.5" \
   "  if (depth >= MAX_BYTE_CONTENT_DEPTH) return false;\n" ""
+# The retry rule: an out-of-memory error after the copy is installed.
+mutant mutable-byte-content-oom-after-copy blob/mutable_byte_content.render src/objects_runtime.cc "Cannot prove.*oom_error" "-allow_dead_code -prover z3v4.5" \
+  "    return new_backing->mutable_byte_content(process, content, length, error);" \
+  "    bool ok = new_backing->mutable_byte_content(process, content, length, error);\n    if (!ok) *error = Error::from(program->allocation_failed());\n    return ok;"
 # Without the program-heap check a read-only object is written.
 mutant mutable-byte-content-program-heap blob/mutable_byte_content.render src/objects_runtime.cc "in_program_heap|mutable_result" "-allow_dead_code -prover z3v4.5" \
   "  if (is_heap_object(this) && HeapObject::cast(this)->on_program_heap(process)) {" "  if (false) {"
