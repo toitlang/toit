@@ -154,7 +154,19 @@ host_locked() {
   flock "$HOST/.check-build.lock" "$@"
 }
 
+# An existing build directory is configured again first: the version the
+# binaries carry (git describe, computed at configure time) must be the
+# checkout's, as the one ctest's gold files get when check.sh's sandbox
+# section reconfigures (a reused worktree at another commit otherwise
+# tests binaries that carry the previous commit's version).
+reconfigure() {
+  [ -f "$1/CMakeCache.txt" ] || return 0
+  cmake "$1" > /dev/null
+}
 part_host-sdk() {
+  if [ -f "$HOST/CMakeCache.txt" ]; then
+    host_locked cmake "$HOST" > /dev/null || return 1
+  fi
   host_locked make sdk
 }
 part_host-tests-build() {
@@ -171,7 +183,7 @@ part_asan-build() {
       "-DCMAKE_CXX_FLAGS=-fsanitize=address,undefined -fno-omit-frame-pointer -g" \
       "-DCMAKE_EXE_LINKER_FLAGS=-fsanitize=address,undefined" || return 1
   fi
-  ASAN_OPTIONS=detect_leaks=0 ninja -C "$dir" build_tools
+  reconfigure "$dir" && ASAN_OPTIONS=detect_leaks=0 ninja -C "$dir" build_tools
 }
 # `make TARGET=host32 sdk` without its `host-tools` step (ninja build_tools
 # in build/host: done by host-sdk, and it would run a second ninja there
@@ -180,7 +192,8 @@ part_host32-build() {
   if [ ! -f "$REPO/build/host32/CMakeCache.txt" ]; then
     make TARGET=host32 build/host32/CMakeCache.txt || return 1
   fi
-  ninja -C "$REPO/build/host32" build_tools && ninja -C "$REPO/build/host32" build_version_file
+  reconfigure "$REPO/build/host32" \
+    && ninja -C "$REPO/build/host32" build_tools && ninja -C "$REPO/build/host32" build_version_file
 }
 part_ctest-host() {
   local out="$LOGS/ctest-host.out" rc
