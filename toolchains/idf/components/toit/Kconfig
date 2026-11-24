@@ -351,6 +351,7 @@ menu "Toit"
 
     config TOIT_VERIFIED_CORE_VERIFIER_OPT_LEVEL
         string "Rust opt-level of the install-time verifier (empty: z)"
+        default "s" if IDF_TARGET_ESP32
         default ""
         depends on TOIT_VERIFIED_CORE_VERIFIER
         help
@@ -358,6 +359,11 @@ menu "Toit"
             size (opt-level z, verified/vmverify/staticlib/Cargo.toml);
             3 or s here trade flash for install time
             (docs/format2-migration.md, "Devices: hardware results").
+            The classic ESP32 defaults to s: its verification (from flash,
+            with a 32 KB cache) took 0.66 s instead of 0.93 s for a 25 KB
+            program (c-map 0.87 s instead of 1.21 s) for 2.8 KB of flash;
+            3 was slower than s (0.82 s, +12.8 KB): more code, more cache
+            misses (artifacts install-speed/README.md).
 
     config TOIT_VERIFIED_CORE_LOOP_IN_IRAM
         bool "Run the verified core's loop from IRAM"
