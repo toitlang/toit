@@ -115,7 +115,7 @@ for opt in "${LEVELS[@]}"; do
     | awk '$2 ~ /^[TtWw]$/ {print $3}' | sort -u > "$out/rust-functions.txt"
 
   movw="$(awk '$3 ~ /MOVW|MOVT/' "$out/relocs.txt" | wc -l)"
-  [ "$movw" = 0 ] || { awk '$3 ~ /MOVW|MOVT/' "$out/relocs.txt" | head -5; fail movw "$movw movw/movt relocations linked"; }
+  [ "$movw" = 0 ] || { awk '$3 ~ /MOVW|MOVT/' "$out/relocs.txt" | awk "NR <= 5"; fail movw "$movw movw/movt relocations linked"; }
 
   awk 'NR == FNR { rust[$1] = 1; next }
        /^[0-9a-f]+ <.*>:$/ { fn = substr($2, 2, length($2) - 3); next }
@@ -132,7 +132,7 @@ for opt in "${LEVELS[@]}"; do
   awk '/^[0-9a-f]+ <.*>:$/ { fn = $2; seen = 0; next }
        !seen && $2 ~ /^sub(\.w)?$/ && $3 ~ /^sp,/ {
          n = $0; sub(/.*#/, "", n); sub(/[^0-9].*/, "", n); print n + 0, fn; seen = 1 }' \
-    "$out/check.dis" | sort -rn | head -5 > "$out/frames.txt"
+    "$out/check.dis" | sort -rn | awk "NR <= 5" > "$out/frames.txt"
 
   if [ "$failed" = 0 ]; then
     echo "thumb codegen ok at opt-level $opt, $loop loop: v7-M Thumb-2, soft float, no movw/movt relocations, no atomic helpers ($exclusive ldrex/strex linked); largest frames:"
