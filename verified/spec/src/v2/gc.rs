@@ -61,7 +61,7 @@ use crate::v2::sound_upto::*;
 #[cfg(verus_only)]
 use crate::v2::sound_raise::lemma_unw_heap;
 #[cfg(verus_only)]
-use crate::spec_common::{builtin, class_id_ok, class_id_of, MAP_CLASS, LIST_CLASS, LARGE_ARRAY_CLASS, TOMBSTONE_CLASS};
+use crate::spec_common::{builtin, class_id_ok, class_id_of, is_double, MAP_CLASS, LIST_CLASS, LARGE_ARRAY_CLASS, TOMBSTONE_CLASS};
 
 verus! {
 
@@ -928,16 +928,16 @@ pub proof fn lemma_collection_unw(p: Program2, c: Cert, s: State2, kt: Seq<Kind>
 
 /// Collections keep the invariant, the shape and the model's bounds.
 pub proof fn lemma_gc_steps_wf(p: Program2, c: Cert, s: State2, s2: State2)
-    requires wf(p, c, s), accepted(p, c), small(s), gc_steps(p, s, s2),
-    ensures wf(p, c, s2), small(s2), gc_shape(s, s2),
+    requires wf(p, c, s), accepted(p, c), s.heap.len() < 0x8000_0000, gc_steps(p, s, s2),
+    ensures wf(p, c, s2), gc_shape(s, s2), small(s) ==> small(s2),
 {
     let tr = choose|tr: Seq<State2>| #[trigger] gc_chain(p, tr) && tr.len() >= 1 && tr[0] == s && tr.last() == s2;
     lemma_chain_wf(p, c, tr, tr.len() as int);
 }
 
 proof fn lemma_chain_wf(p: Program2, c: Cert, tr: Seq<State2>, n: int)
-    requires gc_chain(p, tr), 1 <= n <= tr.len(), wf(p, c, tr[0]), accepted(p, c), small(tr[0]),
-    ensures wf(p, c, tr[n - 1]), small(tr[n - 1]), gc_shape(tr[0], tr[n - 1]),
+    requires gc_chain(p, tr), 1 <= n <= tr.len(), wf(p, c, tr[0]), accepted(p, c), tr[0].heap.len() < 0x8000_0000,
+    ensures wf(p, c, tr[n - 1]), gc_shape(tr[0], tr[n - 1]),
     decreases n,
 {
     if n > 1 {
@@ -986,6 +986,283 @@ proof fn lemma_chain_shape(p: Program2, tr: Seq<State2>, n: int)
         lemma_chain_shape(p, tr, n - 1);
         { let i = n - 2; assert(collection(p, tr[i], tr[i + 1])); assert(i + 1 == n - 1); }
         let (s1, ren, back) = choose|s1: State2, ren: Seq<int>, back: Seq<int>| #[trigger] gc_by(p, tr[n - 2], s1, ren, back, tr[n - 1]);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Steps and collections.
+
+/// An allocation step: `k` slots dropped, `o` appended to the heap, its
+/// reference pushed, the bci advanced by `len` (ALLOCATE: `k == 0`; a
+/// double result of an operator: `k == 2`).
+pub open spec fn alloc_push(s: State2, o: HeapObj, k: int, len: int) -> State2 {
+    State2 {
+        heap: s.heap.push(o),
+        stack: s.stack.subrange(0, s.stack.len() - k).push(Value::Obj(s.heap.len() as usize)),
+        bci: (s.bci + len) as usize,
+        ..s
+    }
+}
+
+/// A new object whose values are smis or null (a new instance, a double).
+pub open spec fn plain_obj(p: Program2, o: HeapObj) -> bool {
+    &&& !o.ro
+    &&& forall|j: int| 0 <= j < obj_vals(o).len() ==> (#[trigger] obj_vals(o)[j] is Smi || obj_vals(o)[j] == null2(p))
+}
+
+/// Weak processing of the old objects does not depend on new ones.
+proof fn lemma_weak_change_push(p: Program2, h: Seq<HeapObj>, o: HeapObj, i: int, o2: HeapObj)
+    requires weak_change(p, h, i, o2), 0 <= i < h.len(),
+    ensures weak_change(p, h.push(o), i, o2),
+{
+    let h2 = h.push(o);
+    assert(h2[i] == h[i]);
+    if !(o2 == h[i]) && !(is_map(p, h[i]) && o2 == reset_map(p, h[i])) {
+        let m = choose|m: int| #[trigger] backing_array(p, h, m, i);
+        assert(h2[m] == h[m]);
+        let backing = h[m].body->Instance_0[MAP_BACKING_INDEX];
+        let lc = builtin(p1(p), LIST_CLASS);
+        let lac = builtin(p1(p), LARGE_ARRAY_CLASS);
+        match backing {
+            Value::Obj(bid) => { assert(h2[bid as int] == h[bid as int]); },
+            _ => {},
+        }
+        assert(inst_field(h2, backing, lc, LIST_ARRAY_INDEX) == inst_field(h, backing, lc, LIST_ARRAY_INDEX));
+        let arr = inst_field(h, backing, lc, LIST_ARRAY_INDEX)->Some_0;
+        match arr {
+            Value::Obj(aid) => { assert(h2[aid as int] == h[aid as int]); },
+            _ => {},
+        }
+        assert(inst_field(h2, arr, lac, LARGE_ARRAY_VECTOR_INDEX) == inst_field(h, arr, lac, LARGE_ARRAY_VECTOR_INDEX));
+        match inst_field(h, arr, lac, LARGE_ARRAY_VECTOR_INDEX) {
+            Some(Value::Obj(vid)) => { assert(h2[vid as int] == h[vid as int]); },
+            _ => {},
+        }
+        assert(backing_array(p, h2, m, i));
+        let e = h[i].body->Array_0;
+        let e2 = o2.body->Array_0;
+        assert forall|j: int| 0 <= j < e.len() implies {
+            ||| #[trigger] e2[j] == e[j]
+            ||| j % 2 == 1 && e2[j] == null2(p) && match e[j] {
+                    Value::Obj(id) => (id as int) < h2.len()
+                        && h2[id as int].class_id as int != builtin(p1(p), TOMBSTONE_CLASS),
+                    _ => false,
+                }
+        } by {
+            match e[j] {
+                Value::Obj(id) => { if (id as int) < h.len() { assert(h2[id as int] == h[id as int]); } },
+                _ => {},
+            }
+        }
+        assert(zapped_elems(p, h2, e, e2));
+    }
+}
+
+/// An allocation commutes with a collection in which the new object
+/// survives: collecting and then allocating is allocating and then
+/// collecting.
+pub proof fn lemma_collection_alloc(p: Program2, s: State2, s2: State2, o: HeapObj, k: int, len: int)
+    requires collection(p, s, s2), plain_obj(p, o), 0 <= k <= s.stack.len(), p.roots.len() > 0, s.heap.len() < 0x8000_0000,
+    ensures collection(p, alloc_push(s, o, k, len), alloc_push(s2, o, k, len)),
+{
+    let (s1, ren, back) = choose|s1: State2, ren: Seq<int>, back: Seq<int>| #[trigger] gc_by(p, s, s1, ren, back, s2);
+    let n = s.heap.len() as int;
+    let t = alloc_push(s, o, k, len);
+    let t1 = alloc_push(s1, o, k, len);
+    let t2 = alloc_push(s2, o, k, len);
+    let ren2 = ren.push(back.len() as int);
+    let back2 = back.push(n);
+    assert(n as usize as int == n);
+    assert(s2.heap.len() == back.len() && back.len() <= n);
+    // Weak processing.
+    assert(t1.stack == t.stack);
+    assert(t1 == (State2 { heap: t1.heap, ..t }));
+    assert forall|i: int| 0 <= i < t.heap.len() implies #[trigger] weak_change(p, t.heap, i, t1.heap[i]) by {
+        if i < n {
+            assert(weak_change(p, s.heap, i, s1.heap[i]));
+            lemma_weak_change_push(p, s.heap, o, i, s1.heap[i]);
+            assert(t.heap == s.heap.push(o));
+        }
+    }
+    assert(zapped(p, t, t1));
+    // The compaction, with the new object last.
+    let h = s1.heap;
+    let h1 = t1.heap;
+    assert forall|i: int| #[trigger] live(ren2, i) implies (0 <= i < n && live(ren, i)) || i == n by {}
+    assert forall|i: int| 0 <= i < n implies #[trigger] live(ren2, i) == live(ren, i) && ren2[i] == ren[i] by {}
+    assert forall|k2: int| 0 <= k2 < back2.len() implies live(ren2, #[trigger] back2[k2]) && ren2[back2[k2]] == k2 by {
+        if k2 < back.len() { assert(live(ren, back[k2])); }
+    }
+    assert forall|i: int| #[trigger] live(ren2, i) implies ren2[i] < back2.len() && back2[ren2[i]] == i by {
+        if i < n { assert(live(ren, i)); }
+    }
+    assert forall|i: int| 0 <= i < h1.len() && (#[trigger] h1[i]).ro implies ren2[i] == i by {
+        if i < n { assert(h1[i] == h[i]); }
+    }
+    assert(fixed(ren, p.roots[0]));
+    assert forall|i: int| 0 <= i < p.roots.len() implies fixed(ren2, #[trigger] p.roots[i]) by {
+        assert(fixed(ren, p.roots[i]));
+    }
+    assert forall|i: int| 0 <= i < p.literals.len() implies fixed(ren2, #[trigger] p.literals[i]) by {
+        assert(fixed(ren, p.literals[i]));
+    }
+    assert forall|j: int| 0 <= j < t1.stack.len() implies val_live(ren2, #[trigger] t1.stack[j]) by {
+        if j < t1.stack.len() - 1 {
+            assert(t1.stack[j] == s1.stack[j]);
+            assert(val_live(ren, s1.stack[j]));
+        } else {
+            assert(t1.stack[j] == Value::Obj(n as usize));
+            assert(ren2[n] == back.len());
+        }
+    }
+    assert forall|j: int| 0 <= j < t1.globals.len() implies val_live(ren2, #[trigger] t1.globals[j]) by {
+        assert(val_live(ren, s1.globals[j]));
+    }
+    assert(live(ren, s1.task as int));
+    assert forall|i: int| #[trigger] live(ren2, i) implies refs_live(ren2, h1, i) by {
+        if i < n {
+            assert(live(ren, i));
+            assert(refs_live(ren, h, i));
+            assert(h1[i] == h[i]);
+            assert forall|j: int| 0 <= j < obj_vals(h1[i]).len() implies val_live(ren2, #[trigger] obj_vals(h1[i])[j]) by {
+                assert(val_live(ren, obj_vals(h[i])[j]));
+            }
+        } else {
+            assert(h1[i] == o);
+            assert forall|j: int| 0 <= j < obj_vals(h1[i]).len() implies val_live(ren2, #[trigger] obj_vals(h1[i])[j]) by {
+                assert(obj_vals(o)[j] is Smi || obj_vals(o)[j] == null2(p));
+            }
+        }
+    }
+    assert(ren_ok(p, t1, ren2, back2));
+    // The renamed state is the allocation after the collection.
+    let r = renamed(t1, ren2, back2);
+    assert forall|i: int| #[trigger] live(ren, i) implies ren_obj(ren2, h[i]) == ren_obj(ren, h[i]) by {
+        assert(refs_live(ren, h, i));
+        let vs = obj_vals(h[i]);
+        assert(ren_vals(ren2, vs) =~= ren_vals(ren, vs)) by {
+            assert forall|j: int| 0 <= j < vs.len() implies ren_val(ren2, vs[j]) == ren_val(ren, vs[j]) by {
+                assert(val_live(ren, vs[j]));
+            }
+        }
+    }
+    assert(ren_obj(ren2, o) == o) by {
+        let vs = obj_vals(o);
+        assert(ren_vals(ren2, vs) =~= vs) by {
+            assert forall|j: int| 0 <= j < vs.len() implies ren_val(ren2, vs[j]) == vs[j] by {
+                if vs[j] == null2(p) { lemma_ren_fixed(ren2, null2(p)); }
+            }
+        }
+    }
+    assert(r.heap =~= t2.heap) by {
+        assert forall|k2: int| 0 <= k2 < r.heap.len() implies r.heap[k2] == t2.heap[k2] by {
+            if k2 < back.len() {
+                assert(live(ren, back[k2]));
+                assert(h1[back[k2]] == h[back[k2]]);
+            }
+        }
+    }
+    assert(s2.heap.len() == back.len());
+    assert(r.stack =~= t2.stack) by {
+        assert forall|j: int| 0 <= j < r.stack.len() implies r.stack[j] == t2.stack[j] by {
+            if j < r.stack.len() - 1 {
+                assert(t1.stack[j] == s1.stack[j]);
+                assert(val_live(ren, s1.stack[j]));
+                assert(s2.stack[j] == ren_val(ren, s1.stack[j]));
+                assert(t2.stack[j] == s2.stack[j]);
+            } else {
+                assert(t1.stack[j] == Value::Obj(n as usize));
+                assert(ren2[n] == back.len());
+                assert(t2.stack[j] == Value::Obj(s2.heap.len() as usize));
+            }
+        }
+    }
+    assert(r.globals =~= t2.globals) by {
+        assert forall|j: int| 0 <= j < r.globals.len() implies r.globals[j] == t2.globals[j] by {
+            assert(val_live(ren, s1.globals[j]));
+        }
+    }
+    assert(r == t2);
+    assert(gc_by(p, t, t1, ren2, back2, t2));
+}
+
+/// The same for any number of collections.
+pub proof fn lemma_gc_steps_alloc(p: Program2, s: State2, s2: State2, o: HeapObj, k: int, len: int)
+    requires gc_steps(p, s, s2), plain_obj(p, o), 0 <= k <= s.stack.len(), p.roots.len() > 0, s.heap.len() < 0x8000_0000,
+    ensures gc_steps(p, alloc_push(s, o, k, len), alloc_push(s2, o, k, len)),
+{
+    let tr = choose|tr: Seq<State2>| #[trigger] gc_chain(p, tr) && tr.len() >= 1 && tr[0] == s && tr.last() == s2;
+    let tr2 = Seq::new(tr.len(), |i: int| alloc_push(tr[i], o, k, len));
+    assert forall|i: int| 0 <= i < tr2.len() - 1 implies #[trigger] collection(p, tr2[i], tr2[i + 1]) by {
+        assert(collection(p, tr[i], tr[i + 1]));
+        lemma_chain_shape(p, tr, i + 1);
+        lemma_collection_alloc(p, tr[i], tr[i + 1], o, k, len);
+    }
+    assert(gc_chain(p, tr2));
+    assert(tr2.last() == alloc_push(s2, o, k, len));
+}
+
+/// A PRIMITIVE step is the same step after collections.
+pub proof fn lemma_gc_step_primitive(p: Program2, s: State2, s2: State2, module: u8, index: u16)
+    requires
+        step(p, s) == Outcome2::Primitive(s, module, index),
+        cur_op(p, s) == 89,
+        gc_shape(s, s2),
+    ensures step(p, s2) == Outcome2::Primitive(s2, module, index),
+{
+    reveal(step);
+    assert(instruction_ok(p, s2) == instruction_ok(p, s));
+    assert(frame_height(s2) == frame_height(s));
+}
+
+/// The operands of a double operator stay doubles after a collection.
+proof fn lemma_collection_double(p: Program2, s: State2, s2: State2, j: int)
+    requires collection(p, s, s2), 0 <= j < s.stack.len(), is_double(as1(s), s.stack[j]), s.heap.len() < 0x8000_0000,
+    ensures is_double(as1(s2), s2.stack[j]),
+{
+    let (s1, ren, back) = choose|s1: State2, ren: Seq<int>, back: Seq<int>| #[trigger] gc_by(p, s, s1, ren, back, s2);
+    let v = s.stack[j];
+    let id = v->Obj_0 as int;
+    assert(weak_change(p, s.heap, id, s1.heap[id]));
+    assert(s1.heap[id] == s.heap[id]);
+    assert(s1.stack[j] == v);
+    assert(val_live(ren, v));
+    assert(live(ren, id));
+    assert(back[ren[id]] == id);
+    assert(s2.stack[j] == ren_val(ren, v));
+    assert(0 <= ren[id] < back.len());
+    assert(ren[id] < 0x8000_0000);
+    assert(ren[id] as usize as int == ren[id]);
+    assert(s2.heap[ren[id]] == ren_obj(ren, s1.heap[back[ren[id]]]));
+    assert(s2.heap[ren[id]].body is Double);
+}
+
+/// A double operator stays one after collections.
+pub proof fn lemma_gc_steps_double(p: Program2, s: State2, s2: State2, op: u8)
+    requires crate::v2::prim::allocates_double(p, s, op), gc_steps(p, s, s2), s.heap.len() < 0x8000_0000,
+    ensures crate::v2::prim::allocates_double(p, s2, op),
+{
+    let tr = choose|tr: Seq<State2>| #[trigger] gc_chain(p, tr) && tr.len() >= 1 && tr[0] == s && tr.last() == s2;
+    lemma_chain_double(p, tr, op, tr.len() as int);
+}
+
+proof fn lemma_chain_double(p: Program2, tr: Seq<State2>, op: u8, n: int)
+    requires gc_chain(p, tr), 1 <= n <= tr.len(), crate::v2::prim::allocates_double(p, tr[0], op), tr[0].heap.len() < 0x8000_0000,
+    ensures crate::v2::prim::allocates_double(p, tr[n - 1], op),
+    decreases n,
+{
+    if n > 1 {
+        lemma_chain_double(p, tr, op, n - 1);
+        lemma_chain_shape(p, tr, n - 1);
+        let i = n - 2;
+        assert(collection(p, tr[i], tr[i + 1]));
+        let (a, b) = (tr[i], tr[i + 1]);
+        let (s1, ren, back) = choose|s1: State2, ren: Seq<int>, back: Seq<int>| #[trigger] gc_by(p, a, s1, ren, back, b);
+        assert(b.stack.len() == a.stack.len() && b.frames == a.frames);
+        let l = a.stack.len() as int;
+        lemma_collection_double(p, a, b, l - 2);
+        lemma_collection_double(p, a, b, l - 1);
+        assert(at(b, 1) == b.stack[l - 2] && at(b, 0) == b.stack[l - 1]);
     }
 }
 
