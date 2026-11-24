@@ -493,7 +493,7 @@ check-unreachable root/string table/Map? prim-retry/Map? -> int:
   n-unreachable := (ported-untrusted.filter: verus.contains it and not proved.contains it).size
   n-both := (ported-untrusted.filter: verus.contains it and proved.contains it).size
   if failures == 0:
-    print "ok    unreachable: $verus.size ports never fall back ($table["theorem"]); the C++ behind the $ported-untrusted.size ports of the untrusted set: $n-proved VeriFast-proved, $n-unreachable unreachable from untrusted code (proved in Verus; $n-both more are VeriFast-proved as well), $(ported-untrusted.size - n-proved - n-unreachable) contract-only"
+    print "ok    unreachable: $verus.size ports never fall back ($table["theorem"]); the C++ behind the $ported-untrusted.size ports of the untrusted set: $n-proved VeriFast-proved, $n-unreachable unreachable from untrusted code (proved in Verus; of the list, $n-both counted as VeriFast-proved), $(ported-untrusted.size - n-proved - n-unreachable) contract-only"
   return failures
 
 /**
