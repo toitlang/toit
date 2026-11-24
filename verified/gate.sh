@@ -17,14 +17,24 @@
 # The whole gate of this checkout, builds included, as a dependency graph
 # run in parallel:
 #
-#   host-sdk ─┬─ host-tests-build ─┬─ layout-check, sandbox-ctests ── ctest-host
-#             │                    │
-#             ├─ host32-build ─────┼─ redteam4-C
-#   asan-build┼────────────────────┴─ redteam3-*, redteam4-{A,B,D,E,F}
-#             ├─ cxx, spec-tests, vmverify, contracts, layout-table,
-#             │  audit-test, redteam4-A-cert
-#   verus ────┴─ audit
-#   verus32, ieee, no-python, no-python-self-test, nopanic, ec618-*: no deps
+#   part                                       needs
+#   host-sdk, asan-build, verus, verus32,      -
+#     ieee, no-python, no-python-self-test,
+#     nopanic, ec618-nopanic, ec618-codegen
+#   host-tests-build, host32-build             host-sdk
+#   cxx, spec-tests, vmverify, contracts,      host-sdk
+#     layout-table, audit-test, redteam4-A-cert
+#   audit                                      host-sdk, verus
+#   layout-check, sandbox-ctests               host-tests-build
+#   redteam3-heap, redteam3-asm,               host-sdk, asan-build
+#     redteam4-{A,B,D,E,F}
+#   redteam4-C                                 host-sdk, host32-build
+#   ctest-host                                 host-tests-build, layout-check,
+#                                              sandbox-ctests
+#
+# (The table DEPS below is what runs.) The critical path is host-sdk, then
+# cxx (the residual C++ matrix: tens of minutes, bounded by the machine-wide
+# model-checker memory budget and its longest VeriFast proofs).
 #
 # The builds are those of the serial flow (`make sdk`; `make
 # download-packages`; `ninja -C build/host`; `ninja -C build/host
@@ -92,18 +102,25 @@ CTEST_KNOWN_FAILURES="${GATE_CTEST_KNOWN_FAILURES-tests/udp-reuse-port-test.toit
 
 # --- The graph ------------------------------------------------------------------
 
-# Parts that are not check.sh sections, and the dependencies of every part.
+# Parts that are not check.sh sections, and the dependencies of every part:
+# NAME, the part needs NAME to have passed (else it does not run); ~NAME,
+# it only runs after NAME, whatever NAME's result (a failure there must not
+# hide this part's result).
 BUILD_PARTS=(host-sdk host-tests-build asan-build host32-build)
 declare -A DEPS=(
   [host-sdk]=""
   [host-tests-build]="host-sdk"
   [asan-build]=""
   [host32-build]="host-sdk"
-  [ctest-host]="host-tests-build layout-check sandbox-ctests"
+  # After the sections that write into build/host (ninja, cmake): ctest
+  # reads its test lists at start.
+  [ctest-host]="host-tests-build ~layout-check ~sandbox-ctests"
   # check.sh sections.
   [verus]=""
   [verus32]=""
-  [audit]="verus host-sdk"
+  # The audit reads the `verus --no-cheating` logs section verus writes
+  # (also when a proof fails, as in a serial check.sh run).
+  [audit]="~verus host-sdk"
   [contracts]="host-sdk"
   [layout-table]="host-sdk"
   [no-python]=""
@@ -222,7 +239,7 @@ if [ ${#missing[@]} -ne 0 ]; then
 fi
 for p in "${PARTS[@]}"; do
   for d in ${DEPS[$p]}; do
-    printf '%s\n' "${PARTS[@]}" | grep -qxF "$d" || { echo "gate: $p depends on $d, which is not a part" >&2; exit 2; }
+    printf '%s\n' "${PARTS[@]}" | grep -qxF "${d#\~}" || { echo "gate: $p depends on ${d#\~}, which is not a part" >&2; exit 2; }
   done
 done
 
@@ -328,6 +345,11 @@ while (( ! INTERRUPTED )); do
       pending)
         ready=1
         for d in ${DEPS[$p]}; do
+          if [ "${d:0:1}" = "~" ]; then
+            # Order only.
+            case "${STATE[${d#\~}]}" in pending|running) ready=0 ;; esac
+            continue
+          fi
           case "${STATE[$d]}" in
             passed) ;;
             pending|running) ready=0 ;;
