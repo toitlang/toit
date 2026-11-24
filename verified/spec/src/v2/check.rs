@@ -289,7 +289,7 @@ pub open spec fn bp_mask(g: &XGlobal, m: int) -> u32 {
 pub fn x_bp_mask(g: &XGlobal, m: usize) -> (r: u32)
     ensures r == bp_mask(g, m as int),
 {
-    if m < g.methods.len() && g.methods.at(m).kind == 3 { 0 } else { x_fld(g.mw, 4, m, 0) }
+    if m < g.methods.len() && g.methods.kind(m) == 3 { 0 } else { x_fld(g.mw, 4, m, 0) }
 }
 
 pub open spec fn bp_view(g: &XGlobal, m: int) -> Seq<bool> {
@@ -676,7 +676,7 @@ pub fn x_is_ref(k: XKind) -> (r: bool)
 pub fn x_bp_arity(g: &XGlobal, m: usize) -> (r: usize)
     ensures r == bp_view(g, m as int).len(),
 {
-    if m < g.methods.len() { g.methods.at(m).arity as usize } else { 0 }
+    if m < g.methods.len() { g.methods.arity(m) as usize } else { 0 }
 }
 
 /// `c@.block_params[m].len()` for a method `m < g.n`.
@@ -761,7 +761,7 @@ pub fn x_ctx_of(c: &XCert, t: usize) -> (r: Option<XCtx>)
 {
     let g = c.g;
     if t >= g.n { return None; }
-    if !(t < g.methods.len() && g.methods.at(t).kind == 3) { return None; }
+    if !(t < g.methods.len() && g.methods.kind(t) == 3) { return None; }
     let w = x_fld(g.mw, 4, t, 0);
     if w == 0 || ((w - 1) as usize) >= g.crec.len() / 12 { return None; }
     let j = (w - 1) as usize;
@@ -903,7 +903,7 @@ pub fn x_block_slot(p: &VProgram, c: &XCert, om: i64, fk: &Vec<XKind>, i: i64) -
     proof { assert(kv(*fk)[i as int] == fk@[i as int]@); }
     match vix(fk, i as usize) {
         XKind::Method(t) => {
-            if !(x_valid(p, t as i64) && x_info(p, t as usize).kind == 3) {
+            if !(x_valid(p, t as i64) && x_kind(p, t as usize) == 3) {
                 return false;
             }
             match x_ctx_of(c, t as usize) {
@@ -924,7 +924,7 @@ pub fn x_block_slot_u(p: &VProgram, c: &XCert, om: i64, fk: &Vec<XKind>, i: usiz
     proof { assert(kv(*fk)[i as int] == fk@[i as int]@); }
     match vix(fk, i) {
         XKind::Method(t) => {
-            if !(x_valid(p, t as i64) && x_info(p, t as usize).kind == 3) {
+            if !(x_valid(p, t as i64) && x_kind(p, t as usize) == 3) {
                 return false;
             }
             match x_ctx_of(c, t as usize) {
@@ -1178,7 +1178,7 @@ pub fn x_pinned0(p: &VProgram, m: usize) -> (r: bool)
     requires m < p.methods@.len(),
     ensures r == pinned0(vview(p), m as int),
 {
-    x_info(p, m).recv_start != 0xffff || x_info(p, m).kind == 3
+    x_recv_start(p, m) != 0xffff || x_kind(p, m) == 3
 }
 
 pub fn x_writable(p: &VProgram, m: usize, k: &Vec<XKind>, i: usize, v: XKind) -> (r: bool)
@@ -1198,7 +1198,7 @@ pub fn x_leaves0(p: &VProgram, m: usize, h: usize, n: usize) -> (r: bool)
     requires m < p.methods@.len(),
     ensures r == leaves0(vview(p), m as int, h as int, n as int),
 {
-    !(x_pinned0(p, m) && x_info(p, m).arity >= 1) || (n < h && h - n >= 1)
+    !(x_pinned0(p, m) && x_arity(p, m) >= 1) || (n < h && h - n >= 1)
 }
 
 pub fn x_args_ok(c: &XCert, t: usize, k: &Vec<XKind>, n: usize) -> (r: bool)
@@ -1271,7 +1271,7 @@ pub fn x_sel_ok(p: &VProgram, c: &XCert, sel: i64, n: usize, k: &Vec<XKind>) -> 
     if !x_valid(p, r) { return false; }
     let ru = r as usize;
     proof { assert(ru as int == r as int); }
-    x_info(p, ru).arity as usize == n && x_args_ok(c, ru, k, n)
+    x_arity(p, ru) as usize == n && x_args_ok(c, ru, k, n)
 }
 
 pub fn x_typecheck_index_ok(p: &VProgram, op: u8, enc: i64) -> (r: bool)
@@ -1410,7 +1410,7 @@ pub fn x_decode(p: &VProgram, m: usize, off: usize) -> (r: (usize, u8, usize, i6
         &&& (len >= 3 ==> w1 as int == w1_of(pv, m as int, off as int))
     }),
 {
-    let bci = x_info(p, m).entry + off;
+    let bci = x_entry(p, m) + off;
     let raw = ix(p.bytecodes, bci);
     proof { lemma_base_op(raw); }
     let op = exec_base_op(raw);
@@ -1661,9 +1661,9 @@ pub fn x_post_calls(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind
     let h = k.len();
     if op == INVOKE_STATIC {
         let t = x_dispatch_target(p, w1);
-        if x_valid(p, t) && x_args_ok(c, t as usize, k, x_info(p, t as usize).arity as usize)
-            && x_leaves0(p, m, h, x_info(p, t as usize).arity as usize) {
-            let a = x_info(p, t as usize).arity as usize;
+        if x_valid(p, t) && x_args_ok(c, t as usize, k, x_arity(p, t as usize) as usize)
+            && x_leaves0(p, m, h, x_arity(p, t as usize) as usize) {
+            let a = x_arity(p, t as usize) as usize;
             Ok(Some(x_pop_push(k, a, XKind::Val)?))
         } else { Ok(None) }
     } else if op == INVOKE_BLOCK {
@@ -1787,8 +1787,8 @@ pub fn x_post_misc(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>
         if x_value_operands(k, 1) { Ok(Some(x_prefix(k, h - 1)?)) } else { Ok(None) }
     } else if op == PRIMITIVE {
         let index = x_u16(p, bci + 2);
-        let a = x_info(p, m).arity as usize;
-        if !(h == a && x_info(p, m).kind == 0) { return Ok(None); }
+        let a = x_arity(p, m) as usize;
+        if !(h == a && x_kind(p, m) == 0) { return Ok(None); }
         if !((b1 as usize) < c.g.prim_arity.len() && (index as usize) < ix_ref(c.g.prim_arity, b1 as usize).len()
             && vix(ix_ref(c.g.prim_arity, b1 as usize), index as usize) as usize == a) {
             return Ok(None);
@@ -1797,14 +1797,14 @@ pub fn x_post_misc(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>
         if b1 == 0 && index == X_PRIM_TASK_TRANSFER as i64 {
             if a != 2 { return Ok(None); }
             proof { assert(kv(*k)[0] == k@[0]@); assert(kv(*k)[1] == k@[1]@); }
-            if !(x_is_plain(vix(k, 0)) && x_is_plain(vix(k, 1)) && x_info(p, m).recv_start == 0xffff) { return Ok(None); }
+            if !(x_is_plain(vix(k, 0)) && x_is_plain(vix(k, 1)) && x_recv_start(p, m) == 0xffff) { return Ok(None); }
         }
         Ok(Some(x_push(k, XKind::Val)?))
     } else if op == TRY {
         if 1 <= h && x_block_slot(p, c, m as i64, k, (h - 1) as i64) {
             let t = match vix(k, h - 1) { XKind::Method(t) => t, _ => 0 };
             proof { assert(kv(*k)[h - 1] == k@[h - 1]@); assert(kind_method(kv(*k)[h - 1]) == t as int); }
-            if x_info(p, t as usize).arity == 1 && x_ctx_ok_upto(p, c, m as i64, k, h - 1)? {
+            if x_arity(p, t as usize) == 1 && x_ctx_ok_upto(p, c, m as i64, k, h - 1)? {
                 let mut k3 = x_prefix_room(k, h, 3)?;
                 let ghost k0 = kv(k3);
                 try_push(&mut k3, XKind::Val)?;
@@ -1850,7 +1850,7 @@ pub fn x_post(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>, tru
     requires post_pre(p, m, off, k), g_ok(c.g),
     ensures res matches Ok(r) ==> post_rel(r, post(vview(p), c@, m as int, off as int, kv(*k), trusted)),
 {
-    let raw = ix(p.bytecodes, x_info(p, m).entry + off);
+    let raw = ix(p.bytecodes, x_entry(p, m) + off);
     proof { lemma_base_op(raw); }
     let op = exec_base_op(raw);
     if op == LOAD_LOCAL || op == LOAD_LOCAL_WIDE || (LOAD_LOCAL_0 <= op && op <= LOAD_LOCAL_5)
@@ -2161,7 +2161,7 @@ pub fn x_terminator_ok(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XK
     } else if op == INVOKE_STATIC_TAIL {
         let t = x_dispatch_target(p, w1);
         if !x_valid(p, t) { return Ok(false); }
-        let a = x_info(p, t as usize).arity as usize;
+        let a = x_arity(p, t as usize) as usize;
         if !x_args_ok(c, t as usize, k, a) { return Ok(false); }
         let mut j = h - a;
         while j < h
@@ -2181,7 +2181,7 @@ pub fn x_terminator_ok(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XK
         }
         Ok(true)
     } else if op == INVOKE_LAMBDA_TAIL {
-        if !(x_info(p, m).kind == 0 && h == x_info(p, m).arity as usize && h >= 1) { return Ok(false); }
+        if !(x_kind(p, m) == 0 && h == x_arity(p, m) as usize && h >= 1) { return Ok(false); }
         let mut i = 0;
         while i < h
             invariant h == k.len(), 0 <= i <= h, kk == kv(*k), forall|ii: int| 0 <= ii < i ==> is_val(#[trigger] kk[ii]),
@@ -2247,8 +2247,8 @@ pub fn x_shape_ok(p: &VProgram, c: &XCert, m: usize, k: &Vec<XKind>) -> (r: bool
     requires m < p.methods@.len(),
     ensures r == shape_ok(vview(p), c@, m as int, kv(*k)),
 {
-    if x_pinned0(p, m) && x_info(p, m).arity >= 1 && k.len() < 1 { return false; }
-    if x_info(p, m).kind == 3 {
+    if x_pinned0(p, m) && x_arity(p, m) >= 1 && k.len() < 1 { return false; }
+    if x_kind(p, m) == 3 {
         if k.len() < 1 { return false; }
         proof { assert(kv(*k)[0] == k@[0]@); }
         match x_ctx_of(c, m) {
@@ -2322,7 +2322,7 @@ pub fn x_entry_kinds(p: &VProgram, c: &XCert, m: usize) -> (res: Result<Vec<XKin
     requires m < p.methods@.len(),
     ensures res matches Ok(r) ==> kv(r) == entry_kinds(vview(p), c@, m as int),
 {
-    let a = x_info(p, m).arity as usize;
+    let a = x_arity(p, m) as usize;
     let ghost e = entry_kinds(vview(p), c@, m as int);
     let mut r: Vec<XKind> = try_with_capacity(a)?;
     let mut i = 0;
@@ -2333,7 +2333,7 @@ pub fn x_entry_kinds(p: &VProgram, c: &XCert, m: usize) -> (res: Result<Vec<XKin
     {
         let ghost before = r@;
         let ghost before_k = kv(r);
-        if x_info(p, m).kind == 3 {
+        if x_kind(p, m) == 3 {
             if i == 0 {
                 match x_ctx_of(c, m) {
                     Some(ctx) => try_push(&mut r, XKind::Block(1, ctx.slot))?,
@@ -2442,7 +2442,7 @@ pub fn x_entry_ok(p: &VProgram, c: &XCert, k: usize, a: u8) -> (r: bool)
     ensures r == entry_ok(vview(p), c@, k as int, a as int),
 {
     let e = x_entry_method(p, k);
-    x_valid(p, e) && x_info(p, e as usize).kind == 0 && x_info(p, e as usize).arity == a
+    x_valid(p, e) && x_kind(p, e as usize) == 0 && x_arity(p, e as usize) == a
         && x_no_block_params(c, e as usize)
 }
 
@@ -2473,7 +2473,7 @@ pub fn x_method_table_ok(p: &VProgram, c: &XCert, m: usize) -> (r: bool)
     if x_bp_len(c, m) != i.arity as usize { return false; }
     if i.selector != 0xffff {
         let r = x_sel_rep(c, s);
-        if !(x_valid(p, r) && x_info(p, r as usize).arity == i.arity
+        if !(x_valid(p, r) && x_arity(p, r as usize) == i.arity
             && x_bp_eq(c, r as usize, m)
             && x_row_fits(p, s)) {
             return false;

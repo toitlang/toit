@@ -307,6 +307,51 @@ impl<'a> MTable<'a> {
         }
     }
 
+    /// The arity of method `i`: its record alone (`at` decodes the whole
+    /// header and the next record; the checker mostly needs one field).
+    #[inline(always)]
+    pub fn arity(&self, i: usize) -> (r: u8)
+        requires i < self@.len(),
+        ensures r == self@[i as int].arity,
+    {
+        (crate::xvec::ix(self.recs, i) & RECORD_ARITY_MASK) as u8
+    }
+
+    /// The entry of method `i`.
+    #[inline(always)]
+    pub fn entry(&self, i: usize) -> (r: u32)
+        requires i < self@.len(),
+        ensures r == self@[i as int].entry, r < 0x100_0000,
+    {
+        let r = crate::xvec::ix(self.recs, i);
+        proof { assert(r >> RECORD_ENTRY_SHIFT < 0x100_0000) by (bit_vector); }
+        r >> RECORD_ENTRY_SHIFT
+    }
+
+    /// The kind of method `i`: one byte of its header.
+    pub fn kind(&self, i: usize) -> (r: u8)
+        requires i < self@.len(),
+        ensures r == self@[i as int].kind,
+    {
+        let r = crate::xvec::ix(self.recs, i);
+        let e = (r >> RECORD_ENTRY_SHIFT) as usize;
+        proof { assert(r >> RECORD_ENTRY_SHIFT < 0x100_0000) by (bit_vector); }
+        x_byte_before(self.code, e, 1) & KIND_MASK
+    }
+
+    /// The receiver range start of method `i` (0xffff for blocks and
+    /// lambdas).
+    pub fn recv_start(&self, i: usize) -> (r: u16)
+        requires i < self@.len(),
+        ensures r == self@[i as int].recv_start,
+    {
+        let r = crate::xvec::ix(self.recs, i);
+        let e = (r >> RECORD_ENTRY_SHIFT) as usize;
+        proof { assert(r >> RECORD_ENTRY_SHIFT < 0x100_0000) by (bit_vector); }
+        let k = x_byte_before(self.code, e, 1) & KIND_MASK;
+        if k < 2 { x_u16_before(self.code, e, RECV_START_BACK) } else { 0xffff }
+    }
+
     /// Method `i`, if there is one.
     pub fn get(&self, i: usize) -> (r: Option<VMethod>)
         ensures r is Some <==> i < self@.len(), r is Some ==> r->0 == self@[i as int],
@@ -417,6 +462,40 @@ pub fn x_info(p: &VProgram, m: usize) -> (r: MethodInfo)
         entry: v.entry as usize,
         end: v.end(),
     }
+}
+
+/// `vinfo(p, m).arity`, from the record alone.
+#[inline(always)]
+pub fn x_arity(p: &VProgram, m: usize) -> (r: u8)
+    requires m < p.methods@.len(),
+    ensures r == vinfo(p, m as int).arity,
+{
+    p.methods.arity(m)
+}
+
+/// `vinfo(p, m).kind`.
+pub fn x_kind(p: &VProgram, m: usize) -> (r: u8)
+    requires m < p.methods@.len(),
+    ensures r == vinfo(p, m as int).kind,
+{
+    p.methods.kind(m)
+}
+
+/// `vinfo(p, m).entry`.
+#[inline(always)]
+pub fn x_entry(p: &VProgram, m: usize) -> (r: usize)
+    requires m < p.methods@.len(),
+    ensures r == vinfo(p, m as int).entry, r < 0x100_0000,
+{
+    p.methods.entry(m) as usize
+}
+
+/// `vinfo(p, m).recv_start`.
+pub fn x_recv_start(p: &VProgram, m: usize) -> (r: u16)
+    requires m < p.methods@.len(),
+    ensures r == vinfo(p, m as int).recv_start,
+{
+    p.methods.recv_start(m)
 }
 
 /// The method table of an `ExecProgram` in the VM's layout (its records
