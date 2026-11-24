@@ -15,6 +15,7 @@
 
 // src/top.h.
 #define WORD_SIZE ((int)sizeof(word))
+#define LARGE_INT_BIT_SIZE 64
 #define BYTE_BIT_SIZE 8
 #define GcMetadata_NEW_SPACE_POINTERS ((uint8)1)
 #define CANNOT_RESIZE 1
@@ -177,6 +178,7 @@
 #define Program_ALREADY_EXISTS_INDEX 10
 #define Program_MALLOC_FAILED_INDEX 17
 #define Program_CROSS_PROCESS_GC_INDEX 18
+#define Program_NEGATIVE_ARGUMENT_INDEX 19
 #define Program_OUT_OF_BOUNDS_INDEX 20
 #define Program_OUT_OF_RANGE_INDEX 21
 #define Program_WRONG_OBJECT_TYPE_INDEX 30

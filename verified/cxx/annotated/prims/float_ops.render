@@ -1,0 +1,191 @@
+// Copyright (C) 2026 Toit contributors.
+//
+// The float primitives of src/primitive_core.cc that box a double (wave
+// 10): float_unary_minus, float_add, float_subtract, float_multiply,
+// float_divide, float_mod, float_sqrt, float_ceil, float_floor,
+// float_trunc and number_to_float. Each is ported to Rust; its C++ runs
+// when the port's allocation of the double does not fit (NeedsGc; README
+// "When the C++ behind a port runs").
+//
+// Proved: the argument decoding (a double, or for number_to_float a smi,
+// a large integer or a double; WRONG_OBJECT_TYPE otherwise), the result a
+// new double or the allocation-failure error with the heap unchanged, the
+// primitive heap contract (`grows`) and the retry rule `oom_clean`. Not
+// the value: binary64 arithmetic and the libm functions are contracts
+// (`requires true; ensures true;`: they touch no memory).
+//
+// Self-test (run.sh): float_add returning the receiver's raw word after the
+// allocation (a result neither an error nor the new double).
+@include ../model/model.cfg
+@verbatim
+#include <math.h>
+#include "boxed_double.gen.h"
+#include "argument_error.gen.h"
+
+// Scalar libm calls (libm, trusted): they read and write no memory.
+double fmod(double x, double y);
+  //@ requires true;
+  //@ ensures true;
+double sqrt(double x);
+  //@ requires true;
+  //@ ensures true;
+double ceil(double x);
+  //@ requires true;
+  //@ ensures true;
+double floor(double x);
+  //@ requires true;
+  //@ ensures true;
+double trunc(double x);
+  //@ requires true;
+  //@ ensures true;
+
+/*@
+// The result of a primitive that boxes one double.
+fixpoint bool boxed_result(list<void *> objs, fixpoint(void *, oinfo) H, list<void *> objs2, fixpoint(void *, oinfo) H2, void *result) {
+  return (uword)result % 4 == 3 ? objs2 == objs && H2 == H :
+    objs2 == cons(result, objs) && !mem(result, objs) && has_tag(H2, result, DOUBLE_TAG);
+}
+@*/
+
+@prototypes
+@render src/primitive_core.cc toit::primitive_float_unary_minus
+PRIMITIVE(float_unary_minus)
+//@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*& pointer(__args, ?x0) &*& good(objs, x0) == true;
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*&
+            grows(objs, H, objs2, H2) == true &*& pointer(__args, x0) &*& boxed_result(objs, H, objs2, H2, result) == true; @*/
+{
+  //@ grows_refl(objs, H);
+  //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);
+  ARGS(double, receiver);
+  return Primitive::allocate_double(-receiver, process);
+}
+
+@render src/primitive_core.cc toit::primitive_float_add
+PRIMITIVE(float_add)
+/*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
+             pointer(__args, ?x0) &*& pointer(__args - 1, ?x1) &*& good(objs, x0) && good(objs, x1); @*/
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*&
+            grows(objs, H, objs2, H2) == true &*& pointer(__args, x0) &*& pointer(__args - 1, x1) &*&
+            boxed_result(objs, H, objs2, H2, result) == true; @*/
+{
+  //@ grows_refl(objs, H);
+  //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);
+  ARGS(double, receiver, double, arg);
+  return Primitive::allocate_double(receiver + arg, process);
+}
+
+@render src/primitive_core.cc toit::primitive_float_subtract
+PRIMITIVE(float_subtract)
+/*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
+             pointer(__args, ?x0) &*& pointer(__args - 1, ?x1) &*& good(objs, x0) && good(objs, x1); @*/
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*&
+            grows(objs, H, objs2, H2) == true &*& pointer(__args, x0) &*& pointer(__args - 1, x1) &*&
+            boxed_result(objs, H, objs2, H2, result) == true; @*/
+{
+  //@ grows_refl(objs, H);
+  //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);
+  ARGS(double, receiver, double, arg);
+  return Primitive::allocate_double(receiver - arg, process);
+}
+
+@render src/primitive_core.cc toit::primitive_float_multiply
+PRIMITIVE(float_multiply)
+/*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
+             pointer(__args, ?x0) &*& pointer(__args - 1, ?x1) &*& good(objs, x0) && good(objs, x1); @*/
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*&
+            grows(objs, H, objs2, H2) == true &*& pointer(__args, x0) &*& pointer(__args - 1, x1) &*&
+            boxed_result(objs, H, objs2, H2, result) == true; @*/
+{
+  //@ grows_refl(objs, H);
+  //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);
+  ARGS(double, receiver, double, arg);
+  return Primitive::allocate_double(receiver * arg, process);
+}
+
+@render src/primitive_core.cc toit::primitive_float_divide
+PRIMITIVE(float_divide)
+/*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
+             pointer(__args, ?x0) &*& pointer(__args - 1, ?x1) &*& good(objs, x0) && good(objs, x1); @*/
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*&
+            grows(objs, H, objs2, H2) == true &*& pointer(__args, x0) &*& pointer(__args - 1, x1) &*&
+            boxed_result(objs, H, objs2, H2, result) == true; @*/
+{
+  //@ grows_refl(objs, H);
+  //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);
+  ARGS(double, receiver, double, arg);
+  return Primitive::allocate_double(receiver / arg, process);
+}
+
+@render src/primitive_core.cc toit::primitive_float_mod
+PRIMITIVE(float_mod)
+/*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
+             pointer(__args, ?x0) &*& pointer(__args - 1, ?x1) &*& good(objs, x0) && good(objs, x1); @*/
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*&
+            grows(objs, H, objs2, H2) == true &*& pointer(__args, x0) &*& pointer(__args - 1, x1) &*&
+            boxed_result(objs, H, objs2, H2, result) == true; @*/
+{
+  //@ grows_refl(objs, H);
+  //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);
+  ARGS(double, receiver, double, arg);
+  return Primitive::allocate_double(fmod(receiver, arg), process);
+}
+
+@render src/primitive_core.cc toit::primitive_float_sqrt
+PRIMITIVE(float_sqrt)
+//@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*& pointer(__args, ?x0) &*& good(objs, x0) == true;
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*&
+            grows(objs, H, objs2, H2) == true &*& pointer(__args, x0) &*& boxed_result(objs, H, objs2, H2, result) == true; @*/
+{
+  //@ grows_refl(objs, H);
+  //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);
+  ARGS(double, receiver);
+  return Primitive::allocate_double(sqrt(receiver), process);
+}
+
+@render src/primitive_core.cc toit::primitive_float_ceil
+PRIMITIVE(float_ceil)
+//@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*& pointer(__args, ?x0) &*& good(objs, x0) == true;
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*&
+            grows(objs, H, objs2, H2) == true &*& pointer(__args, x0) &*& boxed_result(objs, H, objs2, H2, result) == true; @*/
+{
+  //@ grows_refl(objs, H);
+  //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);
+  ARGS(double, receiver);
+  return Primitive::allocate_double(ceil(receiver), process);
+}
+
+@render src/primitive_core.cc toit::primitive_float_floor
+PRIMITIVE(float_floor)
+//@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*& pointer(__args, ?x0) &*& good(objs, x0) == true;
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*&
+            grows(objs, H, objs2, H2) == true &*& pointer(__args, x0) &*& boxed_result(objs, H, objs2, H2, result) == true; @*/
+{
+  //@ grows_refl(objs, H);
+  //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);
+  ARGS(double, receiver);
+  return Primitive::allocate_double(floor(receiver), process);
+}
+
+@render src/primitive_core.cc toit::primitive_float_trunc
+PRIMITIVE(float_trunc)
+//@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*& pointer(__args, ?x0) &*& good(objs, x0) == true;
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*&
+            grows(objs, H, objs2, H2) == true &*& pointer(__args, x0) &*& boxed_result(objs, H, objs2, H2, result) == true; @*/
+{
+  //@ grows_refl(objs, H);
+  //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);
+  ARGS(double, receiver);
+  return Primitive::allocate_double(trunc(receiver), process);
+}
+
+@render src/primitive_core.cc toit::primitive_number_to_float
+PRIMITIVE(number_to_float)
+//@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*& pointer(__args, ?x0) &*& good(objs, x0) == true;
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& oom_clean(objs, H, objs2, H2, result) == true &*&
+            grows(objs, H, objs2, H2) == true &*& pointer(__args, x0) &*& boxed_result(objs, H, objs2, H2, result) == true; @*/
+{
+  //@ grows_refl(objs, H);
+  //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);
+  ARGS(to_double, value);
+  return Primitive::allocate_double(value, process);
+}

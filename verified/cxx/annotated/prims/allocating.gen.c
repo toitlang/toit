@@ -16,7 +16,7 @@
 // the result (a new object of the requested size, or an error with the
 // heap unchanged), and the retry rule `oom_clean`.
 //
-// Self-tests (run.sh): byte_array_new's memset one byte too long.
+// Self-tests (run.sh): byte_array_new's memset one byte late.
 #include "../model/objects.gen.h"
 #include "argument_error.gen.h"
 #include <stddef.h>

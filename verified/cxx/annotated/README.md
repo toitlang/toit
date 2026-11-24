@@ -381,6 +381,8 @@ tool never guesses):
 | a local that hides another (a nested block's `encoder`; VeriFast rejects hiding) | renamed with a suffix (`encoder_1`), references by the declaration's id; annotations use the rendered name |
 | a call through a function-pointer local or parameter (`entry(process, args)`) | the C call through the pointer (its contract is the function type's) |
 | a default member initializer `-N` | written out |
+| `@render ... truncating`, a uint64 `-` or `*` whose right operand is an explicit cast (wave 10: Utils::wrapping_sub, wrapping_mul, wrapping_negate) | VeriFast's truncating operator (modulo 2^64, as C++ defines unsigned arithmetic); other uint64 differences and products stay checked |
+| `@render ... truncating`, an explicit `static_cast<uint64>` of a word (wave 10: smi_unsigned_shift_right) | the modular conversion, as for an int64 |
 | `@nested-type NAME OUTER::NAME` (wave 10: `Bytes ot(other);` in String::MutableBytes, where Clang's AST spells the type `Bytes`) | the type spelled NAME is the struct `OUTER_NAME` (its constructor `OUTER_NAME_ctor`, its members `OUTER_NAME_m`); the second word must end in `::NAME`; only in the sidecar that names it |
 | a function template instance taking a closure (`@render FILE f lambda=ENCLOSING[#K]`) | the instance whose closure parameter has that lambda's type, as one C function `f__F_lambdaK`; the closure parameter is a pointer to the caller's struct (checked: the instance only calls it, `f()` being `F_lambdaK_call(f)`, so no copy escapes); the sidecar holds one copy of the template's text per instance |
 
@@ -453,7 +455,11 @@ byte_array_at_put and byte_array_is_raw_bytes,
 five translator self-tests), 37 primitives prove the retry obligation.
 Fresh work directory (2026-11-24, the machine shared with other
 checkouts' gate runs): the fast tier 1313 checks ok, 0 FAIL, 0 NOVERDICT,
-in 2832 s wall, 61 MB left in the work directory. Lines: `metrics.sh` (C++ = the
+in 2832 s wall, 61 MB left in the work directory. Wave 10 (2026-11-24):
+77 sidecars, 669 `@render` functions (`metrics.sh`: string_at, the
+allocating, string, float and integer primitives behind the Rust ports,
+three translator self-tests), 63 primitives prove the retry obligation,
+the C++ behind 44 of the 106 ports is VeriFast-proved. Lines: `metrics.sh` (C++ = the
 rendered functions' lines; annotations among them; then the hand-written C
 and annotations of the verbatim sections: trusted prototypes, predicates,
 lemmas).
@@ -490,6 +496,8 @@ lemmas).
 | Allocation by size (`prims/allocating.render`, wave 10) | byte_array_new (the C++ behind the Rust port) | the int arguments' round trip (`truncating`), a non-negative length, the allocator's new byte array of that length, the memset inside its content; `grows`, `oom_clean`; the result an error with the heap unchanged or the new byte array | the allocator's contract (`Process::allocate_byte_array`) | see metrics.sh | the memset one byte late |
 | Array expansion (`prims/array_expand.render`, wave 10) | array_expand, Array::copy_from, Array::content, Array::fill, Array::at_put_no_write_barrier, Utils::min (the C++ behind the Rust port) | the copy of min(length, old_length) words reads inside `old` (old_length checked against its length) and writes inside the new array (memcpy of the words as bytes: the prelude's exact pointer/char round trips), the fill writes inside it; the result's elements are the copied prefix and the filler (all good references: the heap invariant), every old object unchanged; `grows`, `oom_clean` | the allocator's contract (`ObjectHeap::allocate_array`), the write barrier's | see metrics.sh | old_length unchecked against the old array, one word more copied |
 | String concatenation and slicing (`prims/strings.render`, wave 10) | string_add, concat_strings (the static helper and the primitive), string_slice, is_validated_string, utf_8_continuation_byte, String::MutableBytes::_initialize (both copy overloads), String::Bytes::at (the C++ behind the Rust ports) | every read inside the parts (the proven Blob decoder) and the receiver, every write inside the new string, the sum of the parts' lengths checked against MAX_CONCATENATION_LENGTH before it is added (no overflow, at most MAX_BLOB), the result's length (the sum; to - from), concat_strings' two decodings of each part equal, the primitive heap contract, `oom_clean` | the allocator's contract (`Process::allocate_string`), the Blob decoder's | see metrics.sh | the bound one byte higher (both), a failed part used, the slice's copy one byte longer |
+| Boxed doubles (`prims/float_ops.render`, wave 10) | the eleven float primitives that box one double (the C++ behind the Rust ports) | the argument decoding (double, or smi / large integer / double for number_to_float), the result a new double or the allocation-failure error with the heap unchanged, `grows`, `oom_clean`; not the value | binary64 arithmetic, libm's fmod, sqrt, ceil, floor, trunc (contracts `requires true; ensures true`: no memory), the allocator's double | see metrics.sh | float_add returning its receiver |
+| Integer arithmetic (`prims/int_ops.render`, wave 10) | ten integer primitives and Utils::wrapping_add, _sub, _mul, _negate, _shift_left (the C++ behind the Rust ports) | the argument decoding, the modular uint64 arithmetic of the wrapping helpers (`truncating`), every shift count in [0, 63], the result a good reference (Primitive::integer: a smi or a new large integer) or an error with the heap unchanged, `grows`, `oom_clean`; not which integer | Primitive::integer's proof and the allocator's contract | see metrics.sh | a shift count unchecked (two) |
 | Primitive `string_at` (`prims/string_at.render`, wave 10) | string_at, Utils::is_utf_8_prefix; bytes_in_utf_8_sequence and payload_from_prefix from `utf8/` | every read inside the decoded string or slice (StringOrSlice: the proven Blob decoder) for any bytes, the sequence length at most 4 before payload_from_prefix, no overflow in the decoded value, the heap unchanged; the result a smi, the null object or an error | the Blob decoder's contract | see metrics.sh | the fix reverted, either half of it taken out |
 | UTF-8 (`utf8/`) | Utils::utf_8_to_16, bytes_in_utf_8_sequence, payload_from_prefix | verified (Z3) | none | 57 / 45 / 1 / 169 | 07c24665: UB shift at payload_from_prefix; without the length check: the read past the input. Also checks sizing failure, surrogate width and initialization of the second output unit. |
 | UTF-16 (`utf8/utf_16_to_8.render`) | Utils::utf_16_to_8, Utils::utf_16le_to_8, read_utf16le_unit | verified (Z3) | readable little-endian byte pairs and an optional writable byte buffer | 60 / 73 / 1 / 70 | byte order, four-byte lead, surrogate replacement, output capacity and write count |
@@ -772,18 +780,18 @@ audit).
 
 Of the 150 allowed primitives, 106 have Rust ports with proofs, 33 have
 VeriFast body proofs and 11 have ESBMC body proofs.
-Behind the 106 ports, the C++ of 17 has a VeriFast body proof (wave 9:
-9 more; below), the other 89 are contract-only. Counted by `metrics.sh`
+Behind the 106 ports, the C++ of 44 has a VeriFast body proof (wave 9:
+9 more; wave 10: 27 more, below), the other 62 are contract-only. Counted by `metrics.sh`
 (its last line: the primitives of CONTRACTS.toml's [prim_retry] whose
 `primitive_NAME` has a rendered, not contract-only, definition, split by
 `family` in verified/core/src/prims/mod.rs). Wave 8's "2 of the 106" was
 an undercount: array_new, the four integer divisions and
 string_write_to_byte_array, listed above with their C++ proofs, have Rust
 ports too (8 before wave 9).
-Of the 89, 34 are unreachable from untrusted code (proved in Verus:
+Of the 62, 34 are unreachable from untrusted code (proved in Verus:
 `prims::never_falls_back`, the ensures of `prims::call` and
 `rarrays::rust_primitive_r`; the 35th such port, smi_mod, is
-VeriFast-proved too), so 55 are contract-only and reachable. Counted by
+VeriFast-proved too), so 28 are contract-only and reachable (55 before wave 10). Counted by
 `contract_check.toit` (verified/check.sh section contracts), which checks
 CONTRACTS.toml `[unreachable]` against the Verus list.
 These counts classify primitive names. A port can still delegate a case
@@ -1247,9 +1255,14 @@ put_uint_big_endian, put_uint_little_endian, put_float_32_little_endian,
 put_float_64_little_endian, byte_array_at_put and byte_array_is_raw_bytes
 (`prims/read_bytes.render`, `prims/byte_array_access.render`,
 `prims/put_bytes.render`, `prims/put_float.render`). Memory safety of the
-C++ behind the 106 ports: 17 VeriFast-verified, 89 contract-only
-(`metrics.sh`; 8 and 98 before wave 9), of which 34 are unreachable
-from untrusted code (proved in Verus; below), leaving 55.
+C++ behind the 106 ports: 44 VeriFast-verified, 62 contract-only
+(`metrics.sh`; 17 and 89 before wave 10, 8 and 98 before wave 9), of
+which 34 are unreachable from untrusted code (proved in Verus; below),
+leaving 28 (55 before wave 10). Wave 10 added byte_array_new,
+array_expand, string_at, string_add, concat_strings, string_slice, the
+eleven boxed-double float primitives and ten integer primitives
+(`prims/allocating.render`, `array_expand.render`, `string_at.render`,
+`strings.render`, `float_ops.render`, `int_ops.render`).
 
 ### When the C++ behind a port runs (wave 9)
 
@@ -2059,7 +2072,7 @@ classified):
 | Class | Count | Evidence |
 |---|---|---|
 | (a) cannot fail for want of memory | 62 | the primitive's body (or its macro) has no allocation, allocating argument kind (MutableBlob, cstring) or out-of-memory error: checked by contract_check.toit (a tripwire for helpers that allocate; reviewed) |
-| (b) fails for want of memory only before any visible effect | 88 | 86 by tests/ctest/prim-retry-test.cc (below), 42 of them also proved with VeriFast (`oom_clean` or `oom_unchanged`, below; 37 before wave 10, 30 before wave 9, 25 before wave 8), 44 tested only (49 before wave 10, 56 before wave 9); 2 reviewed (task_new: a format-1 path needs an interpreter; encode_error: needs a scheduler thread), the arguments in the table |
+| (b) fails for want of memory only before any visible effect | 88 | 86 by tests/ctest/prim-retry-test.cc (below), 63 of them also proved with VeriFast (`oom_clean` or `oom_unchanged`, below; 37 before wave 10, 30 before wave 9, 25 before wave 8), 23 tested only (49 before wave 10, 56 before wave 9); 2 reviewed (task_new: a format-1 path needs an interpreter; encode_error: needs a scheduler thread), the arguments in the table |
 | (c) violates it | 0 | |
 
 tests/ctest/prim-retry-test.cc makes every allocation of a call fail in
@@ -2136,6 +2149,23 @@ objects it reaches, which the allocation keeps; the Blob decoder's
 contract now states its result's length as `decoded_length`), and copies
 with the new string taken out of the heap (`foreach_restrict`: the old
 objects reference only each other), so a part is never the new string.
+Also the eleven float primitives that box a double (`prims/float_ops.render`:
+float_unary_minus, float_add, float_subtract, float_multiply,
+float_divide, float_mod, float_sqrt, float_ceil, float_floor, float_trunc,
+number_to_float) and ten integer primitives whose result may be a large
+integer (`prims/int_ops.render`: large_integer_add, _subtract, _multiply,
+_unary_minus, _not, _shift_left, _unsigned_shift_right, smi_unary_minus,
+smi_shift_left, smi_unsigned_shift_right), all `oom_clean`; mutants
+float-add-returns-receiver, smi-shift-left-count,
+large-integer-unsigned-shift-count. Still tested only (23): the bitwise
+and/or/xor primitives (VeriFast needs a range lemma between a call's
+result and the operator, and bitops.gh's `bitxor_signed_limits` states
+`|`, not `^`), large_integer_shift_right (an arithmetic shift by a
+run-time count: no rendering rule yet), smi_add, smi_subtract,
+smi_multiply (`goto`, `__builtin_mul_overflow`: no rendering rules),
+the four raw float conversions and number_to_integer (bit_cast and the
+double-to-int64 conversion), string_from_rune (array initializers), and
+the message, timer and notifier primitives (below).
 
 string_write_to_byte_array, byte_zap and blit install a copy-on-write byte
 array's copy (a write to an existing instance) before a later argument or
@@ -3141,7 +3171,9 @@ model is revised.
   memset: the bytes they touch); since wave 9 memcpy from a float or
   double local (`prims/put_float.render`: VeriFast has no lemma turning a
   float's chunk into bytes) and VeriFast's own double-to-float conversion
-  (total, as IEC 60559 defines it).
+  (total, as IEC 60559 defines it); since wave 10 libm's fmod, sqrt,
+  ceil, floor and trunc (`prims/float_ops.render`: `requires true; ensures
+  true;`, they touch no memory; float_round's `round` was the first).
 * The bridges `stack` and `heap` (CONTRACTS.toml): that the predicates are
   what the allocator and GC establish (TRUSTED.md V2).
 * The contract-only functions: `Double::value`,

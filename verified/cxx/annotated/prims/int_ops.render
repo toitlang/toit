@@ -1,0 +1,278 @@
+// Copyright (C) 2026 Toit contributors.
+//
+// Integer primitives of src/primitive_core.cc whose result may be a large
+// integer (wave 10): smi_unary_minus, smi_and, smi_or, smi_shift_left,
+// smi_unsigned_shift_right, large_integer_add, large_integer_subtract,
+// large_integer_multiply, large_integer_unary_minus, large_integer_not,
+// large_integer_and, large_integer_or, large_integer_shift_left and
+// large_integer_unsigned_shift_right, with the wrapping helpers of
+// src/utils.h. Each is ported to Rust; its C++ runs when the port's
+// allocation of a large integer does not fit (NeedsGc; README "When the
+// C++ behind a port runs").
+//
+// Proved: the argument decoding (WRONG_OBJECT_TYPE, OUT_OF_RANGE for an
+// int64 that is not one, NEGATIVE_ARGUMENT for a negative shift), no
+// overflow or lossy conversion but the modular ones the C++ means (the
+// wrapping helpers' uint64 arithmetic, `truncating`; the casts between
+// int64 and uint64), every shift count in [0, 63], the result an error
+// with the heap unchanged or a good reference (the proven
+// Primitive::integer: a smi or a new large integer), the primitive heap
+// contract (`grows`) and the retry rule `oom_clean`. Not which integer.
+//
+// Self-tests (run.sh): smi_shift_left without its check of the count
+// against 64; large_integer_unsigned_shift_right without its check of the
+// count against LARGE_INT_BIT_SIZE.
+@include ../model/model.cfg
+@verbatim
+#include "integer.gen.h"
+#include "argument_error.gen.h"
+//@ #include "../model/truncate.gh"
+
+/*@
+// The result of an integer primitive.
+fixpoint bool int_result(list<void *> objs, fixpoint(void *, oinfo) H, list<void *> objs2, fixpoint(void *, oinfo) H2, void *result) {
+  return (uword)result % 4 == 3 ? objs2 == objs && H2 == H : good(objs2, result);
+}
+
+lemma void int_pows()
+  requires true;
+  ensures pow_nat(2, N63) == 9223372036854775808;
+{
+  assert pow_nat(2, N16) == 65536;
+  assert pow_nat(2, N32) == 4294967296;
+  assert pow_nat(2, N63) == 9223372036854775808;
+}
+
+@*/
+
+@prototypes
+@render src/utils.h toit::Utils::wrapping_add tu=src/primitive_core.cc truncating
+  static inline int64 wrapping_add(int64 x, int64 y)
+  //@ requires true;
+  //@ ensures true;
+  {
+    return static_cast<int64>(static_cast<uint64>(x) + static_cast<uint64>(y));
+  }
+
+@render src/utils.h toit::Utils::wrapping_sub tu=src/primitive_core.cc truncating
+  static inline int64 wrapping_sub(int64 x, int64 y)
+  //@ requires true;
+  //@ ensures true;
+  {
+    return static_cast<int64>(static_cast<uint64>(x) - static_cast<uint64>(y));
+  }
+
+@render src/utils.h toit::Utils::wrapping_mul tu=src/primitive_core.cc truncating
+  static inline int64 wrapping_mul(int64 x, int64 y)
+  //@ requires true;
+  //@ ensures true;
+  {
+    return static_cast<int64>(static_cast<uint64>(x) * static_cast<uint64>(y));
+  }
+
+@render src/utils.h toit::Utils::wrapping_negate tu=src/primitive_core.cc truncating
+  static inline int64 wrapping_negate(int64 x)
+  //@ requires true;
+  //@ ensures true;
+  {
+    return static_cast<int64>(0 - static_cast<uint64>(x));
+  }
+
+@render src/utils.h toit::Utils::wrapping_shift_left tu=src/primitive_core.cc truncating
+  static inline int64 wrapping_shift_left(int64 x, int64 bits)
+  //@ requires 0 <= bits &*& bits <= 63;
+  //@ ensures true;
+  {
+    return static_cast<int64>(static_cast<uint64>(x) << bits);
+  }
+
+@render src/primitive_core.cc toit::primitive_large_integer_add
+PRIMITIVE(large_integer_add)
+/*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
+             pointer(__args, ?x0) &*& pointer(__args - 1, ?x1) &*& good(objs, x0) && good(objs, x1); @*/
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+            oom_clean(objs, H, objs2, H2, result) == true &*& pointer(__args, x0) &*& pointer(__args - 1, x1) &*&
+            int_result(objs, H, objs2, H2, result) == true; @*/
+{
+  //@ grows_refl(objs, H);
+  //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);
+  //@ int_pows();
+  ARGS(LargeInteger, receiver, Object, arg);
+  int64 result = receiver->value();
+  if (is_smi(arg)) result = Utils::wrapping_add(result, Smi::value(arg));
+  else if (is_large_integer(arg)) result = Utils::wrapping_add(result, LargeInteger::cast(arg)->value());
+  else FAIL(WRONG_OBJECT_TYPE);
+  return Primitive::integer(result, process);
+}
+
+@render src/primitive_core.cc toit::primitive_large_integer_subtract
+PRIMITIVE(large_integer_subtract)
+/*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
+             pointer(__args, ?x0) &*& pointer(__args - 1, ?x1) &*& good(objs, x0) && good(objs, x1); @*/
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+            oom_clean(objs, H, objs2, H2, result) == true &*& pointer(__args, x0) &*& pointer(__args - 1, x1) &*&
+            int_result(objs, H, objs2, H2, result) == true; @*/
+{
+  //@ grows_refl(objs, H);
+  //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);
+  //@ int_pows();
+  ARGS(LargeInteger, receiver, Object, arg);
+  int64 result = receiver->value();
+  if (is_smi(arg)) result = Utils::wrapping_sub(result, Smi::value(arg));
+  else if (is_large_integer(arg)) result = Utils::wrapping_sub(result, LargeInteger::cast(arg)->value());
+  else FAIL(WRONG_OBJECT_TYPE);
+  return Primitive::integer(result, process);
+}
+
+@render src/primitive_core.cc toit::primitive_large_integer_multiply
+PRIMITIVE(large_integer_multiply)
+/*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
+             pointer(__args, ?x0) &*& pointer(__args - 1, ?x1) &*& good(objs, x0) && good(objs, x1); @*/
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+            oom_clean(objs, H, objs2, H2, result) == true &*& pointer(__args, x0) &*& pointer(__args - 1, x1) &*&
+            int_result(objs, H, objs2, H2, result) == true; @*/
+{
+  //@ grows_refl(objs, H);
+  //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);
+  //@ int_pows();
+  ARGS(LargeInteger, receiver, Object, arg);
+  int64 result = receiver->value();
+  if (is_smi(arg)) result = Utils::wrapping_mul(result, Smi::value(arg));
+  else if (is_large_integer(arg)) result = Utils::wrapping_mul(result, LargeInteger::cast(arg)->value());
+  else FAIL(WRONG_OBJECT_TYPE);
+  return Primitive::integer(result, process);
+}
+
+@render src/primitive_core.cc toit::primitive_large_integer_unary_minus
+PRIMITIVE(large_integer_unary_minus)
+//@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*& pointer(__args, ?x0) &*& good(objs, x0) == true;
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+            oom_clean(objs, H, objs2, H2, result) == true &*& pointer(__args, x0) &*& int_result(objs, H, objs2, H2, result) == true; @*/
+{
+  //@ grows_refl(objs, H);
+  //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);
+  //@ int_pows();
+  ARGS(LargeInteger, receiver);
+  return Primitive::integer(Utils::wrapping_negate(receiver->value()), process);
+}
+
+@render src/primitive_core.cc toit::primitive_large_integer_not
+PRIMITIVE(large_integer_not)
+//@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*& pointer(__args, ?x0) &*& good(objs, x0) == true;
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+            oom_clean(objs, H, objs2, H2, result) == true &*& pointer(__args, x0) &*& int_result(objs, H, objs2, H2, result) == true; @*/
+{
+  //@ grows_refl(objs, H);
+  //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);
+  //@ int_pows();
+  ARGS(LargeInteger, receiver);
+  return Primitive::integer(~receiver->value(), process);
+}
+
+
+
+@render src/primitive_core.cc toit::primitive_large_integer_shift_left
+PRIMITIVE(large_integer_shift_left)
+/*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
+             pointer(__args, ?x0) &*& pointer(__args - 1, ?x1) &*& good(objs, x0) && good(objs, x1); @*/
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+            oom_clean(objs, H, objs2, H2, result) == true &*& pointer(__args, x0) &*& pointer(__args - 1, x1) &*&
+            int_result(objs, H, objs2, H2, result) == true; @*/
+{
+  //@ grows_refl(objs, H);
+  //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);
+  //@ int_pows();
+  //@ error_word(Program_NEGATIVE_ARGUMENT_INDEX);
+  //@ close valid_arg(x1, objs);
+  //@ leak valid_arg(x1, objs);
+  ARGS(LargeInteger, receiver, int64, number_of_bits);
+  if (number_of_bits < 0) FAIL(NEGATIVE_ARGUMENT);
+  if (number_of_bits >= LARGE_INT_BIT_SIZE) return Primitive::integer(0, process);
+  return Primitive::integer(Utils::wrapping_shift_left(receiver->value(), number_of_bits), process);
+}
+
+@render src/primitive_core.cc toit::primitive_large_integer_unsigned_shift_right truncating
+PRIMITIVE(large_integer_unsigned_shift_right)
+/*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
+             pointer(__args, ?x0) &*& pointer(__args - 1, ?x1) &*& good(objs, x0) && good(objs, x1); @*/
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+            oom_clean(objs, H, objs2, H2, result) == true &*& pointer(__args, x0) &*& pointer(__args - 1, x1) &*&
+            int_result(objs, H, objs2, H2, result) == true; @*/
+{
+  //@ grows_refl(objs, H);
+  //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);
+  //@ int_pows();
+  //@ error_word(Program_NEGATIVE_ARGUMENT_INDEX);
+  //@ close valid_arg(x1, objs);
+  //@ leak valid_arg(x1, objs);
+  ARGS(LargeInteger, receiver, int64, bits_to_shift);
+  if (bits_to_shift < 0) FAIL(NEGATIVE_ARGUMENT);
+  if (bits_to_shift >= LARGE_INT_BIT_SIZE) return Smi::from(0);
+  uint64 value = static_cast<uint64>(receiver->value());
+  int64 result = static_cast<int64>(value >> bits_to_shift);
+  return Primitive::integer(result, process);
+}
+
+@render src/primitive_core.cc toit::primitive_smi_unary_minus
+PRIMITIVE(smi_unary_minus)
+//@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*& pointer(__args, ?x0) &*& good(objs, x0) == true;
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+            oom_clean(objs, H, objs2, H2, result) == true &*& pointer(__args, x0) &*& int_result(objs, H, objs2, H2, result) == true; @*/
+{
+  //@ grows_refl(objs, H);
+  //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);
+  //@ int_pows();
+  ARGS(Object, receiver);
+  if (!is_smi(receiver)) FAIL(WRONG_OBJECT_TYPE);
+  // We can't assume that `-x` is still a smi, as -MIN_SMI_VALUE > MAX_SMI_VALUE.
+  // However, it must fit a `word` as smis are smaller than words.
+  word value = Smi::value(receiver);
+  return Primitive::integer(-value, process);
+}
+
+
+
+@render src/primitive_core.cc toit::primitive_smi_unsigned_shift_right truncating
+PRIMITIVE(smi_unsigned_shift_right)
+/*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
+             pointer(__args, ?x0) &*& pointer(__args - 1, ?x1) &*& good(objs, x0) && good(objs, x1); @*/
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+            oom_clean(objs, H, objs2, H2, result) == true &*& pointer(__args, x0) &*& pointer(__args - 1, x1) &*&
+            int_result(objs, H, objs2, H2, result) == true; @*/
+{
+  //@ grows_refl(objs, H);
+  //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);
+  //@ int_pows();
+  //@ error_word(Program_NEGATIVE_ARGUMENT_INDEX);
+  //@ close valid_arg(x1, objs);
+  //@ leak valid_arg(x1, objs);
+  ARGS(Object, receiver, int64, bits_to_shift);
+  if (!is_smi(receiver)) FAIL(WRONG_OBJECT_TYPE);
+  if (bits_to_shift < 0) FAIL(NEGATIVE_ARGUMENT);
+  if (bits_to_shift >= 64) return Smi::zero();
+  uint64 value = static_cast<uint64>(Smi::value(receiver));
+  int64 result = static_cast<int64>(value >> bits_to_shift);
+  return Primitive::integer(result, process);
+}
+
+@render src/primitive_core.cc toit::primitive_smi_shift_left
+PRIMITIVE(smi_shift_left)
+/*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
+             pointer(__args, ?x0) &*& pointer(__args - 1, ?x1) &*& good(objs, x0) && good(objs, x1); @*/
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+            oom_clean(objs, H, objs2, H2, result) == true &*& pointer(__args, x0) &*& pointer(__args - 1, x1) &*&
+            int_result(objs, H, objs2, H2, result) == true; @*/
+{
+  //@ grows_refl(objs, H);
+  //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);
+  //@ int_pows();
+  //@ error_word(Program_NEGATIVE_ARGUMENT_INDEX);
+  //@ close valid_arg(x1, objs);
+  //@ leak valid_arg(x1, objs);
+  ARGS(Object, receiver, int64, number_of_bits);
+  if (!is_smi(receiver)) FAIL(WRONG_OBJECT_TYPE);
+  if (number_of_bits < 0) FAIL(NEGATIVE_ARGUMENT);
+  if (number_of_bits >= 64) return Smi::zero();
+  int64 value = Smi::value(receiver);
+  return Primitive::integer(Utils::wrapping_shift_left(value, number_of_bits), process);
+}

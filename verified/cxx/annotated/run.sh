@@ -2667,6 +2667,19 @@ mutant concat-strings-failed-part prims/strings.render src/primitive_core.cc "No
   "    if (!HeapObject::cast(array->at(index))->byte_content(program, &blob, STRINGS_ONLY)) FAIL(WRONG_OBJECT_TYPE);" "    HeapObject::cast(array->at(index))->byte_content(program, &blob, STRINGS_ONLY);"
 mutant string-slice-copy-long prims/strings.render src/primitive_core.cc "No matching|Cannot prove" "-allow_dead_code -prover z3v4.5" \
   "result_bytes._initialize(0, receiver, from, to - from);" "result_bytes._initialize(0, receiver, from, to - from + 1);"
+# The boxed-double float primitives and the integer primitives behind the
+# Rust ports (wave 10): float_add returning its receiver instead of the
+# new double (the result must be new); smi_shift_left without its check
+# of the count against 64 and large_integer_unsigned_shift_right without
+# its check against LARGE_INT_BIT_SIZE (a shift by 64 or more).
+entry float-ops             pass "" prims/float_ops.gen.c -allow_dead_code -prover z3v4.5
+mutant float-add-returns-receiver prims/float_ops.render src/primitive_core.cc "Cannot prove" "-allow_dead_code -prover z3v4.5" \
+  "  return Primitive::allocate_double(receiver + arg, process);" "  Primitive::allocate_double(receiver + arg, process);\n  return _raw_receiver;"
+entry int-ops               pass "" prims/int_ops.gen.c -allow_dead_code -prover z3v4.5
+mutant smi-shift-left-count prims/int_ops.render src/primitive_core.cc "Cannot prove|overflow" "-allow_dead_code -prover z3v4.5" \
+  "PRIMITIVE(smi_shift_left)@@  if (number_of_bits >= 64) return Smi::zero();\n" ""
+mutant large-integer-unsigned-shift-count prims/int_ops.render src/primitive_core.cc "Cannot prove|overflow|shift" "-allow_dead_code -prover z3v4.5" \
+  "  if (bits_to_shift >= LARGE_INT_BIT_SIZE) return Smi::from(0);\n" ""
 entry word-size             pass "" prims/word_size.gen.c
 mutant word-size-bits prims/word_size.render src/primitive_core.cc "smi_val|Cannot prove condition" "" \
   "return Smi::from(WORD_SIZE);" "return Smi::from(WORD_SIZE * 8);"
