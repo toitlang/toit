@@ -12,6 +12,7 @@
 #include <stdint.h>
 #include "rules_constants.h"
 //@ #include <bitops.gh>
+//@ #include "../model/arith.gh"
 typedef intptr_t word;
 typedef uintptr_t uword;
 typedef unsigned int uint32;
@@ -270,6 +271,29 @@ inline int64 sign_byte(uint8 b)
   //@ truncate_signed_limits(b, N7);
   //@ assert pow_nat(2, N7) == 128;
   return static_cast<int8>(b);
+}
+
+@render verified/cxx/annotated/tests/rules.cc toit::shift_down truncating
+inline int64 shift_down(int64 v)
+// The floor of v / 256, for a negative v too (the arithmetic shift).
+//@ requires true;
+//@ ensures v >= 0 ? result == v / 256 : result < 0 &*& result * 256 <= v &*& v < result * 256 + 256;
+{
+  //@ assert pow_nat(2, N8) == 256;
+  //@ if (v < 0) { shiftright_div(-1 - v, N8); div_rem_nonneg(-1 - v, 256); }
+  //@ if (v >= 0) shiftright_div(v, N8);
+  v >>= 8;
+  return v;
+}
+
+@render verified/cxx/annotated/tests/rules.cc toit::store_low truncating
+inline void store_low(uint8* p, int64 v)
+//@ requires *p |-> _;
+//@ ensures *p |-> ?b &*& 0 <= b &*& b <= 255;
+{
+  //@ truncate_limits(v, N8);
+  //@ assert pow_nat(2, N8) == 256;
+  *p = v;
 }
 
 @render verified/cxx/annotated/tests/rules.cc toit::narrow_unsigned truncating

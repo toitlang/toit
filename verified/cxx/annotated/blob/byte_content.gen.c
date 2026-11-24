@@ -115,15 +115,17 @@ bool Object_byte_content__Programp_uint8pp_wordp_BlobKind(Object *self, Program 
 
 // C++: src/objects.cc toit::Object::byte_content
 bool Object_byte_content__Programp_Blobp_BlobKind(Object *self, Program *program, Blob *blob, BlobKind strings_only)
-/*@ requires [_]program(program, ?ids) &*& prog_ok(ids) == true &*& [?f]heap(?objs, ?H) &*& good(objs, self) == true &*&
+/*@ requires [_]program(program, ?ids) &*& prog_ok(ids) == true &*& [?f]heap(?objs, ?H) &*&
+             (good(objs, self) ? true : [_]valid_arg(self, ?entry) &*& subset(entry, objs) == true) &*&
              blob->address_ |-> _ &*& blob->length_ |-> _ &*&
              (strings_only == STRINGS_OR_BYTE_ARRAYS || strings_only == STRINGS_ONLY); @*/
-/*@ ensures [f]heap(objs, H) &*& blob->address_ |-> ?a &*& blob->length_ |-> ?l &*&
+/*@ ensures [f]heap(objs, H) &*& good(objs, self) == true &*& blob->address_ |-> ?a &*& blob->length_ |-> ?l &*&
             result ? [_]blob_result(objs, H, strings_only, a, l, ?b) &*&
             ((has_tag(H, self, STRING_TAG) || has_tag(H, self, BYTE_ARRAY_TAG)) ? b == self && a == blob_base(H, self) && l == blob_len(H, self) : true) : true; @*/
 {
   uint8 *content;
   word length;
+  //@ if (!good(objs, self)) { assert [_]valid_arg(self, ?e); open [_]valid_arg(self, e); mem_subset(self, e, objs); }
   content = 0;
   length = 0;
   bool result = Object_byte_content__Programp_uint8pp_wordp_BlobKind(self, program, &content, &length, strings_only);

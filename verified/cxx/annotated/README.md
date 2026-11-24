@@ -446,7 +446,11 @@ readers, two translator self-tests), 30 primitives prove the retry
 obligation (`oom_clean` or `oom_unchanged`). Fresh work directory
 (2026-11-24, the machine shared with other checkouts' matrices and
 slow-tier jobs): the fast tier 1265 checks ok, 0 FAIL, 0 NOVERDICT, in
-4303 s wall. Lines: `metrics.sh` (C++ = the
+4303 s wall. Wave 9 (2026-11-24): 70 sidecars, 614 `@render` functions
+(`metrics.sh`: the signed readers, the byte-array and float writers,
+four translator self-tests), 37 primitives prove the retry obligation;
+the fast-tier result of its fresh work directory is under "Findings"
+(wave 9) and in the commit that records it. Lines: `metrics.sh` (C++ = the
 rendered functions' lines; annotations among them; then the hand-written C
 and annotations of the verbatim sections: trusted prototypes, predicates,
 lemmas).
@@ -476,7 +480,9 @@ lemmas).
 | GC counts (`prims/gc_count.render`) | primitive, two accessors, counter increment and collection accounting | exact counter selection, updates for each collection type, rollover | live process heap with valid counters and the collection type returned by the collector | 25 / 13 / 4 / 7 | skip rollover, omit compacting collections from the full count, return the wrong counter |
 | Primitive `word_size` | complete body | the returned smi encodes the target word size in bytes | Smi::from | 4 / 2 / 1 / 0 | return bits |
 | The loader's error roots (`loader/error_roots.render`, wave 8) | Program::has_valid_error_roots | the result is exactly `error_roots_ok` of the root table's error slots (heap references at or above MAX_TAGGED_ERROR, pairwise different addresses); ProcessGroup::create refuses a program for which it is false, which gives the `process` predicate its conjunct (a process's program passed the check) | VeriFast's pointer_limits for the stored roots | 13 / 13 / 1 / 16 | the comparison with the next root left out; the heap check taken out |
-| The integer readers (`prims/read_bytes.render`, wave 8) | read_uint_big_endian, read_uint_little_endian (the C++ behind the Rust ports) | every read inside the blob for any width and offset (negative ones become large unsigned ones and are rejected), no overflow or lossy conversion but the modular ones the C++ means (`truncating`, `unsigned-word-conversion`), the heap unchanged up to the boxed result, `oom_clean`; not which integer the bytes give | the Blob decoder and Primitive::integer's contracts | 36 / 54 / 4 / 35 | the end check left out (a read past the blob); the little-endian loop one byte too high |
+| The integer readers (`prims/read_bytes.render`, wave 8; the signed ones wave 9) | read_uint_big_endian, read_uint_little_endian, read_int_big_endian, read_int_little_endian (the C++ behind the Rust ports), Utils::wrapping_shift_left | every read inside the blob for any width and offset (negative ones become large unsigned ones and are rejected), no overflow or lossy conversion but the modular ones the C++ means (`truncating`, `unsigned-word-conversion`; the sign byte's uint8-to-int8, the shift by a run-time count whose range VeriFast checks), the heap unchanged up to the boxed result, `oom_clean`; not which integer the bytes give | the Blob decoder and Primitive::integer's contracts | 78 / 114 / 5 / 43 | the end check left out (a read past the blob); the little-endian loop one byte too high; wave 9: the old `width - 1` in int before the check (LP64: overflow for INT_MIN), the big-endian loop one byte too long, the little-endian sign byte one too high |
+| The byte-array writers (`prims/put_bytes.render`, wave 9) | byte_array_replace, put_uint_big_endian, put_uint_little_endian (the C++ behind the Rust ports) | the MutableBlob decoded first (copy-on-write), the other arguments in the grown heap (`valid_arg`: is_large_integer, is_double and the Blob decoder take it); every write inside the destination's content (a writable byte array outside the program heap); byte_array_replace's legal memmove (the source may be the same byte array); no overflow or lossy conversion but the modular ones the C++ means (a value's low byte, the arithmetic shift `value >>= 8`); `grows`, `oom_unchanged` | the MutableBlob and Blob decoders' contracts, the error roots (`process`) | 52 / 141 / 5 / 45 | put_uint_little_endian's old `width - 1` (LP64), put_uint_big_endian's end check, byte_array_replace's length in the destination check, byte_array_replace reporting MALLOC_FAILED after the copy |
+| The float writers (`prims/put_float.render`, wave 9) | put_float_32_little_endian, put_float_64_little_endian | 4 (8) bytes written inside the destination's content from the float (double) local; `grows`, `oom_unchanged`; not the bytes written | memcpy's contract for a float or double local (VeriFast has no float-to-bytes lemma); VeriFast's double-to-float conversion (math.h: total, as IEC 60559 defines it) | 31 / 72 / 4 / 25 | the 32-bit writer's end check two bytes weaker (one byte weaker still fits: the C++ is one byte stricter than needed), the 64-bit writer's offset check left out |
 | UTF-8 (`utf8/`) | Utils::utf_8_to_16, bytes_in_utf_8_sequence, payload_from_prefix | verified (Z3) | none | 57 / 45 / 1 / 169 | 07c24665: UB shift at payload_from_prefix; without the length check: the read past the input. Also checks sizing failure, surrogate width and initialization of the second output unit. |
 | UTF-16 (`utf8/utf_16_to_8.render`) | Utils::utf_16_to_8, Utils::utf_16le_to_8, read_utf16le_unit | verified (Z3) | readable little-endian byte pairs and an optional writable byte buffer | 60 / 73 / 1 / 70 | byte order, four-byte lead, surrogate replacement, output capacity and write count |
 | Rust raw memory (`rust/`) | view.rs: string_len, string_byte; trial: field, array_length, element | verified (VeriFast Rust, host) | predicates over the words (bridge `heap`) | — | `i <= len` fails at the read |
@@ -758,11 +764,18 @@ audit).
 
 Of the 150 allowed primitives, 106 have Rust ports with proofs, 33 have
 VeriFast body proofs and 11 have ESBMC body proofs.
-Behind the 106 ports, the C++ of 2 has a VeriFast body proof (wave 8;
-below), the other 104 are contract-only.
+Behind the 106 ports, the C++ of 15 has a VeriFast body proof (wave 9:
+7 more; below), the other 91 are contract-only. Counted by `metrics.sh`
+(its last line: the primitives of CONTRACTS.toml's [prim_retry] whose
+`primitive_NAME` has a rendered, not contract-only, definition, split by
+`family` in verified/core/src/prims/mod.rs). Wave 8's "2 of the 106" was
+an undercount: array_new, the four integer divisions and
+string_write_to_byte_array, listed above with their C++ proofs, have Rust
+ports too (8 before wave 9).
 These counts classify primitive names. A port can still delegate a case
 to C++, as `list_add` does for a large-array backing
-(`verified/core/src/prims/array.rs`). Body proofs also rely on the
+(`verified/core/src/prims/array.rs`); which cases, per primitive, is
+"When the C++ behind a port runs" below. Body proofs also rely on the
 contracts of their callees, including the allocator.
 
 `process-send-body` runs the production primitive and message constructors on
@@ -1214,9 +1227,77 @@ concat_strings overflow of "Findings" was in it). Their C++ bodies are
 otherwise contract-only, except (wave 8) read_uint_big_endian and
 read_uint_little_endian: VeriFast-verified (`prims/read_bytes.render`:
 every read inside the blob for any width and offset, no overflow or
-lossy conversion but the modular ones the C++ means, `oom_clean`). Memory
-safety of the C++ behind the 106 ports: 2 VeriFast-verified, 104
-contract-only (106 contract-only before wave 8).
+lossy conversion but the modular ones the C++ means, `oom_clean`), and
+(wave 9) read_int_big_endian, read_int_little_endian, byte_array_replace,
+put_uint_big_endian, put_uint_little_endian, put_float_32_little_endian
+and put_float_64_little_endian (`prims/read_bytes.render`,
+`prims/put_bytes.render`, `prims/put_float.render`). Memory safety of the
+C++ behind the 106 ports: 15 VeriFast-verified, 91 contract-only
+(`metrics.sh`; 8 and 98 before wave 9).
+
+### When the C++ behind a port runs (wave 9)
+
+For an untrusted process the core calls a port first, and its C++
+primitive only when the port returns `NotPorted` or `NeedsGc`
+(`rarrays.rs`: `op_primitive`, `rust_primitive_r` maps both to `None`,
+then `cxx_primitive_v`, which collects garbage and retries in C++). The
+port is called only where the policy's core arity table says the policy
+resolves the primitive to the VM's own entry with the method's arity
+(`PrimitivePolicy::initialize_core_arities`), so the arity mismatches and
+the family guards of `prims::call` and the family dispatches are not
+reached from `op_primitive` (every ported arity matches src/primitive.h).
+Other routes to the C++ for an untrusted process: none on the default
+paths (ProcessGroup::create and the registry's spawn verify an untrusted
+format-2 table under the untrusted rules, so it runs on the verified loop;
+the checked loop, `machine.rs` `op_primitive_cold`, calls C++ for every
+primitive but runs only unverified tables, never an untrusted process's),
+and every C++ primitive under `-Xuntrusted_format1` /
+`TOIT_UNTRUSTED_FORMAT1=1` (format-1 untrusted programs on the C++
+interpreter: an opt-in for hosts).
+
+Per primitive (read from verified/core/src/prims/{ints,array,blob,float}.rs
+and the allocator, `ffi.rs`; no port allocates twice, and every `NeedsGc`
+follows the one failed allocation, so the heap is unchanged):
+
+| Falls back | Primitives | When |
+|---|---|---|
+| never (35) | smi_mod, smi_shift_right, smi_not, count_leading_zeros, popcount, object_class_id, the 5 smi and 5 large-integer comparisons; array_length, array_at, array_at_put, array_replace, rebuild_hash_index; string_hash_code, string_raw_at, string_compare, int_vector_equals; float_sign, float_is_nan, float_is_finite, the 5 float comparisons, compare_to, min_special_compare_to | no path returns NotPorted or NeedsGc (no allocation; results in the smi range) |
+| only when an allocation does not fit (NeedsGc) | the other integer operations (a result outside the smi range: a large integer), every float operation that returns a double (number_to_float, raw_to_float, raw32_to_float, arithmetic, sqrt, rounding), float_to_raw, number_to_integer (a large result), float_to_raw32 (ILP32 only), array_new, array_expand, string_slice, string_from_rune, string_add, byte_array_new (also every ByteArray above 2^30 - 1 bytes on ILP32, and an external one the process limit or malloc refuses) | the new-space allocation, or the external blob's, fails |
+| copy-on-write or opaque byte arrays (NotPorted) | byte_array_replace, string_write_to_byte_array, put_uint_big_endian, put_uint_little_endian, put_float_32_little_endian, put_float_64_little_endian | a destination that is a CowByteArray_ not yet copied (a byte-array literal, or a slice of one: `LITTLE-ENDIAN.put-uint16 #[0, 0] 0 1`), or opaque (below); the source of byte_array_replace and string_write if opaque |
+| opaque byte arrays (NotPorted) | byte_array_is_raw_bytes, byte_array_length, byte_array_at, byte_array_at_put, blob_hash_code, blob_equals, blob_index_of, string_rune_count, json_skip_whitespace, hash_simple_json_string, size_of_json_number, compare_simple_json_string (its first argument), read_int_big_endian, read_int_little_endian, read_uint_big_endian, read_uint_little_endian (these four also NeedsGc for a large result) | a byte array the model has no bytes for (`view.rs`: external with another tag than RawByteTag, or RawByteTag with a null address): resource proxies, mapped files, a byte array neutered by a transferring process_send (address null) |
+| other | list_add | a list whose backing is not an Array (a LargeArray_: every list of more than 500 elements) |
+| | concat_strings | a malformed StringSlice_ among the parts; a sum above MAX_BLOB_LENGTH (ILP32: 2^30); the result's allocation (NeedsGc) |
+| | string_at | a byte of 0xf8 or more, or a lead byte whose sequence runs past the end (invalid UTF-8: no producer of such strings was found) |
+| | string_length, string_rune_count, json_skip_whitespace, size_of_json_number, string_add | a string longer than MAX_SMI (unreachable: the heap model bounds byte arrays, not strings, abs.rs) |
+
+The program-level checks (a builtin class of the program without the tag
+the port expects: ints.rs, float.rs, array.rs, blob.rs) decline for every
+input of a malformed program, never for a compiled one.
+
+Consequences. The C++ behind the 35 "never" ports does not run for an
+untrusted process on the default paths, so it needs no proof for the
+sandbox; it still runs for trusted format-1 programs (the C++
+interpreter) and under `-Xuntrusted_format1`, so it can leave the f2
+firmware only together with those. What would make "never falls back"
+a proved fact (not done: the Rust proofs are being rewritten elsewhere):
+(1) each family dispatch (`ints::dispatch`, `array::dispatch`,
+`blob::dispatch`, `float::dispatch`) and then `prims::dispatch` and
+`prims::call` ensure `index == I && a.n == k ==> !(r.0 is NotPorted) &&
+!(r.0 is NeedsGc)` for the 35 indices; most bodies give it directly
+(cmpop and array_length/at/at_put already ensure `!(r.0 is NotPorted)`,
+object_class_id `r.0 is Success`; NeedsGc is excluded wherever the
+per-primitive `core_contract` has no OutOfMemory branch), the integer
+ones need `int_res` to ensure `smi_in(x) ==> r.0 is Success` and range
+lemmas (trem, `>>`, `!`, clz and popcount at most 64), string_compare and
+string_raw_at need `blob_or_fail` to forward blob_arg's
+`mode == STRINGS_ONLY ==> !(r is NotPorted)`; (2) an invariant of the
+core's environment that `core_arities[i]` is 0 or the port's arity plus
+one (supplied by C++ today, trusted), so that `rust_primitive_r` returns
+`Some` for them. The other 71 ports fall back as the table says; for
+those the C++ is reachable by untrusted programs and its proof matters:
+wave 9 proved the readers' and writers' C++ (the byte-array rows above:
+the cheapest to trigger, a byte-array literal suffices, and the ones that
+write memory at offsets the program chooses).
 
 ### Young-space allocation
 
@@ -1930,7 +2011,7 @@ classified):
 | Class | Count | Evidence |
 |---|---|---|
 | (a) cannot fail for want of memory | 62 | the primitive's body (or its macro) has no allocation, allocating argument kind (MutableBlob, cstring) or out-of-memory error: checked by contract_check.toit (a tripwire for helpers that allocate; reviewed) |
-| (b) fails for want of memory only before any visible effect | 88 | 86 by tests/ctest/prim-retry-test.cc (below), 30 of them also proved with VeriFast (`oom_clean` or `oom_unchanged`, below; 25 before wave 8), 56 tested only (61 before); 2 reviewed (task_new: a format-1 path needs an interpreter; encode_error: needs a scheduler thread), the arguments in the table |
+| (b) fails for want of memory only before any visible effect | 88 | 86 by tests/ctest/prim-retry-test.cc (below), 37 of them also proved with VeriFast (`oom_clean` or `oom_unchanged`, below; 30 before wave 9, 25 before wave 8), 49 tested only (56 before wave 9); 2 reviewed (task_new: a format-1 path needs an interpreter; encode_error: needs a scheduler thread), the arguments in the table |
 | (c) violates it | 0 | |
 
 tests/ctest/prim-retry-test.cc makes every allocation of a call fail in
@@ -1978,6 +2059,18 @@ Wave 8 adds five: string_write_to_byte_array, byte_zap and blit
 (`oom_unchanged`, below) and read_uint_big_endian, read_uint_little_endian
 (`oom_clean`; their C++ runs when the Rust port declines,
 `prims/read_bytes.render`).
+
+Wave 9 adds seven, all C++ behind Rust ports: read_int_big_endian and
+read_int_little_endian (`oom_clean`, `prims/read_bytes.render`), and the
+writers byte_array_replace, put_uint_big_endian, put_uint_little_endian
+(`prims/put_bytes.render`), put_float_32_little_endian and
+put_float_64_little_endian (`prims/put_float.render`), which decode a
+MutableBlob first and so state `oom_unchanged`. Their success result is
+the null object, a heap object: `oom_unchanged` now has the disjunct
+`mem(result, objs2)` that `oom_clean` already had (model/retry.h; the
+lemma `heap_object_not_oom` proves from the heap that such a result is
+not an `oom_error`). Mutant byte-array-replace-oom-after-copy (an
+out-of-memory error after the copy-on-write copy).
 
 string_write_to_byte_array, byte_zap and blit install a copy-on-write byte
 array's copy (a write to an existing instance) before a later argument or
@@ -2111,6 +2204,84 @@ of #3378, malformed system messages of #3381) become mutants with them.
 
 ## Findings
 
+Wave 9 (the readers and writers behind the Rust ports, when the C++
+behind a port runs, two audits):
+
+* **read_int_big_endian, read_int_little_endian and
+  put_uint_little_endian computed `width - 1` in int before checking the
+  width: undefined behaviour for INT32_MIN, reachable by untrusted
+  programs on 64-bit VMs** (FIXED here, src/primitive_core.cc). Wave 8
+  observed it for the readers and called it unreachable for untrusted
+  programs because "the Rust port rejects a negative width first"; it does
+  not: every byte-array port decodes the byte array first and returns
+  `NotPorted` for a copy-on-write destination not yet copied or an opaque
+  byte array, leaving the width to the C++ (`blob.rs` `read_endian`,
+  `put_endian`; "When the C++ behind a port runs"). So
+  `LITTLE-ENDIAN.put-uint #[0, 0] -2147483648 0 0` (a byte-array literal is
+  a CowByteArray_) runs the C++ with width INT32_MIN in an untrusted
+  process; on ILP32 (the ESP32) an int argument is a smi and INT32_MIN is
+  not one. In practice the compilers wrap and the width is rejected
+  anyway; the fix makes it defined: the three check `unsigned_width == 0 ||
+  unsigned_width > 8` on the unsigned width, as the unsigned readers do,
+  and compute `width - 1` after the check. VeriFast proves all three
+  (`prims/read_bytes.render`, `prims/put_bytes.render`); mutants
+  read-int-width-overflow and put-uint-width-overflow put the old
+  subtraction back and fail on LP64 (and verify on ILP32, where it cannot
+  overflow). Regression test tests/ctest/prim-byte-order-test.cc: the six
+  integer readers and writers called directly with every width from
+  INT32_MIN to INT32_MAX that matters and every offset around a 10-byte
+  array (results and bytes written; the undefined subtraction itself shows
+  only under the proofs or a sanitizer). Upstream master: the same three
+  primitives.
+* Observation, not changed: put_float_32_little_endian and
+  put_float_64_little_endian reject the exact fit (`offset + 4 >= length`:
+  an offset of length - 4 fails with OUT_OF_BOUNDS though the 4 bytes fit;
+  the Rust port mirrors it). Not a safety issue: lib/io/byte-order.toit's
+  fallback then writes the bytes with put-int32 / put-int64.
+  put_uint_big_endian accepts a width of 9 (the ninth byte is the sign
+  byte of the arithmetic shift); the port mirrors it, and both are inside
+  the bounds check.
+* The wave-8 count "behind the 106 ports, the C++ of 2 has a VeriFast body
+  proof" was an undercount (8: array_new, the four integer divisions and
+  string_write_to_byte_array were already proved); `metrics.sh` counts it
+  now (15 after wave 9).
+* Audit (ESBMC's `T()` value-initialization of aggregates, which ESBMC
+  8.6 leaves nondeterministic): no harness under ../harness/ and no
+  header under ../include/ value-initializes an aggregate with `T()`. The
+  fourteen `T()` there are placement news of the intrusive list types
+  and their elements (MessageFIFO, FinalizerNodeFifo, ObjectNotifierList,
+  ProcessListFromProcessGroup, ProcessListFromScheduler and its
+  ReadyLink, ProcessGroupList, SchedulerThreadList, TimerList) and of the
+  harness's own Ec618EventSource: classes with user-provided constructors
+  (LinkedListElement sets `next_` to null, LinkedFifo `tail_` to the
+  anchor, DoubleLinkedListElement both links to itself), so value
+  initialization calls the constructor, which sets every field. The
+  harnesses' zeroing uses `T x = {}` and `T{}`. src/ was scanned too
+  (`_new T()`, `= T()`, `return T()`): none. Harmless, nothing changed.
+* Audit (system message types): neither an untrusted nor a trusted
+  process can crash the VM or the system process with a system message on
+  this branch. process_send on the system route (a negative pid) refuses
+  TERMINATED and SPAWNED from every sender (wave 8); a trusted sender may
+  send any other int type, a sandboxed one 2 (TRACE), 3, 4, 5, 7 and 64 or
+  more (`PrimitivePolicy::may_send_type`). Without a boot process
+  (Scheduler::terminate_process clears `boot_process_` before the boot
+  process's destructor runs, with the scheduler unlocked, and the VM keeps
+  running other processes until terminate_execution stops them) the
+  default handling of send_system_message drops every type but TERMINATED
+  (the `FATAL("unhandled system message")` of upstream was replaced by a
+  drop on this branch, 6e064fc7); ESBMC `scheduler-delivery` checks every
+  int type on both routes with no boot process, live or exiting. In the
+  system process the container manager's `unreachable` (system/
+  containers.toit) is behind the per-type handler map (it is registered
+  for 0, 1 and 2 only), and MessageProcessor_.invoke-handler catches every
+  exception of a handler and drops unregistered types with a warning.
+  Upstream master still has the FATAL: any process that sends a system
+  message other than TERMINATED or SPAWNED while there is no boot process
+  ends the VM, e.g. a process printing an uncaught exception's trace
+  (lib/system/trace.toit: `process-send_ -1 SYSTEM-TRACE_ ...`) while the
+  boot process is being torn down. Not reproduced on upstream (no build of
+  it here); for the lead's upstream list.
+
 Wave 8 (the scheduler review's two findings, the error roots, the receive
 path, weak maps):
 
@@ -2184,7 +2355,8 @@ path, weak maps):
   blit) a retried one. Compiled images have distinct roots; the format-2
   verifier did not check it. ProcessGroup::create now refuses such an
   image ("The retry obligation").
-* Observation, not fixed (trusted programs only): read_int_big_endian and
+* (Wave 9: fixed, and reachable by untrusted programs after all, see
+  wave 9 above.) Observation, not fixed (trusted programs only): read_int_big_endian and
   read_int_little_endian compute `width - 1` in `int`, which overflows
   (undefined) for width INT_MIN; the Rust port rejects a negative width
   before the C++ runs, so untrusted programs cannot reach it, and the
@@ -2782,7 +2954,16 @@ model is revised.
 
 * VeriFast itself; Clang's AST (the translator prints what Clang parsed);
   the translator's rules (small, documented, each an error when not
-  applicable).
+  applicable). Among them the implementation-defined behaviour the C++
+  relies on, as GCC and Clang define it (and C++20 standardizes): the
+  modular conversions of `truncating` and `unsigned-word-conversion`, and
+  since wave 9 the arithmetic right shift of a negative int64 (rendered as
+  the same floor division without a negative shift).
+* The C library's contracts as the sidecars state them (memcpy, memmove,
+  memset: the bytes they touch); since wave 9 memcpy from a float or
+  double local (`prims/put_float.render`: VeriFast has no lemma turning a
+  float's chunk into bytes) and VeriFast's own double-to-float conversion
+  (total, as IEC 60559 defines it).
 * The bridges `stack` and `heap` (CONTRACTS.toml): that the predicates are
   what the allocator and GC establish (TRUSTED.md V2).
 * The contract-only functions: `Double::value`,

@@ -661,9 +661,10 @@ bool is_byte_array(Object *o)
 
 // C++: src/objects.h toit::is_double
 bool is_double(Object *o)
-//@ requires [?f]heap(?objs, ?H) &*& good(objs, o) == true;
-//@ ensures [f]heap(objs, H) &*& result == has_tag(H, o, DOUBLE_TAG);
+//@ requires [?f]heap(?objs, ?H) &*& good(objs, o) ? true : [_]valid_arg(o, ?entry) &*& subset(entry, objs) == true;
+//@ ensures [f]heap(objs, H) &*& good(objs, o) == true &*& result == has_tag(H, o, DOUBLE_TAG);
 {
+  //@ if (!good(objs, o)) { assert [_]valid_arg(o, ?e); open [_]valid_arg(o, e); mem_subset(o, e, objs); }
   //@ if (is_heap_w((uword)o)) good_heap(objs, o);
   return is_heap_object(o) && HeapObject_has_class_tag(HeapObject_cast__Objectp(o), DOUBLE_TAG);
 }
@@ -679,9 +680,10 @@ bool is_string(Object *o)
 
 // C++: src/objects.h toit::is_large_integer
 bool is_large_integer(Object *o)
-//@ requires [?f]heap(?objs, ?H) &*& good(objs, o) == true;
-//@ ensures [f]heap(objs, H) &*& result == has_tag(H, o, LARGE_INTEGER_TAG);
+//@ requires [?f]heap(?objs, ?H) &*& good(objs, o) ? true : [_]valid_arg(o, ?entry) &*& subset(entry, objs) == true;
+//@ ensures [f]heap(objs, H) &*& good(objs, o) == true &*& result == has_tag(H, o, LARGE_INTEGER_TAG);
 {
+  //@ if (!good(objs, o)) { assert [_]valid_arg(o, ?e); open [_]valid_arg(o, e); mem_subset(o, e, objs); }
   //@ if (is_heap_w((uword)o)) good_heap(objs, o);
   return is_heap_object(o) && HeapObject_has_class_tag(HeapObject_cast__Objectp(o), LARGE_INTEGER_TAG);
 }

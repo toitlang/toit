@@ -39,3 +39,25 @@ for f in "${files[@]}"; do
     END { printf "%-30s %8d %8d %8d %8d %8d\n", name, fns, cpp, ra, vc, va }
   ' "$f"
 done
+
+# The primitives of the untrusted set (CONTRACTS.toml [prim_retry]) whose C++
+# body has a VeriFast proof (a rendered, not contract-only, definition of
+# primitive_NAME), split by whether the core has a Rust port
+# (verified/core/src/prims/mod.rs `family`: the C++ then runs when the port
+# declines). Printed for the whole matrix (no SIDECAR given).
+if [ $# -eq 0 ]; then
+  untrusted=$(awk '/^\[prim_retry\]/ { on = 1; next } /^\[/ { on = 0 } on && !/^ *#/' ../../CONTRACTS.toml \
+    | grep -o '"\(core\|bitmap\|timer\|events\)\.[a-z0-9_]*"' | sed 's/"[a-z]*\.\([a-z0-9_]*\)"/\1/' | sort -u)
+  ported=$(sed -n '/pub fn family/,/^}/p' ../../core/src/prims/mod.rs | grep -o 'ix::[A-Z0-9_]*' | sed 's/ix:://' | tr 'A-Z' 'a-z' | sort -u)
+  proved=$(cat */*.gen.c | grep -A1 '^Object \*primitive_[a-z0-9_]*(Process \*process, Object \*\*__args)$' \
+    | grep -B1 '^/\*@\|^//@' | grep -o 'primitive_[a-z0-9_]*' | sed 's/^primitive_//' | sort -u)
+  count() { if [ -z "$1" ]; then echo 0; else echo "$1" | wc -l; fi; }
+  in_set=$(comm -12 <(echo "$untrusted") <(echo "$proved"))
+  n_untrusted=$(count "$untrusted")
+  n_ported=$(count "$(comm -12 <(echo "$untrusted") <(echo "$ported"))")
+  n_ported_proved=$(count "$(comm -12 <(echo "$in_set") <(echo "$ported"))")
+  n_cxx_proved=$(count "$(comm -23 <(echo "$in_set") <(echo "$ported"))")
+  echo
+  echo "untrusted primitives: $n_untrusted; with a Rust port: $n_ported (C++ body VeriFast-proved: $n_ported_proved," \
+    "contract-only: $((n_ported - n_ported_proved))); C++ only: $((n_untrusted - n_ported)) (VeriFast-proved: $n_cxx_proved)"
+fi

@@ -194,7 +194,14 @@ A sidecar: a sequence of sections, each opened by a directive line (a
   explicit static_cast narrowing a signed integer (os_localtime's
   `static_cast<time_t>`). Explicit casts between int64 and uint64 and a
   uint64 left shift by a literal in [0, 63] (also `<<=` on a plain
-  variable) also use modular arithmetic.
+  variable) also use modular arithmetic, and so does a uint64 left shift
+  of an explicitly converted value by a run-time count (VeriFast checks
+  the count; Utils::wrapping_shift_left). An explicit uint8-to-int8
+  conversion and an implicit conversion of an int64 to a byte are
+  modular; an int64 `>>=` by a literal on a plain variable is the
+  arithmetic shift (GCC's and Clang's, C++20's), written without a shift
+  of a negative value. An annotated operand of a cast, a shift or an
+  additive operator is parenthesized (VeriFast's parser).
   A plain uword variable’s `+=` uses the same modular sum as `+`.
   `unsigned-word-conversion` renders an implicit conversion from
   `word` to `uword` modulo the target word size, and one from `int` to
@@ -1033,6 +1040,14 @@ class Renderer:
       if unsigned-word-conversion and cast == "IntegralCast" and target-type == "unsigned int" and (c-type kids[0]["type"]["qualType"]) == "int" and (strip-parens kids[0])["kind"] != "IntegerLiteral":
         // The same for an int converted to unsigned (modulo 2^32).
         return Expr "/*@truncating@*/(unsigned int)$(wrap (expr kids[0]) PREC-UNARY)" PREC-UNARY
+      if cast == "IntegralCast" and truncating and (target-type == "uint8" or target-type == "unsigned char")
+          and (c-type kids[0]["type"]["qualType"]) == "int64"
+          and (strip-parens kids[0])["kind"] != "IntegerLiteral":
+        // `truncating`: the conversion of an int64 to a byte (a store of
+        // its low byte, put_uint_*) is modulo 2^8, as C++ defines it for
+        // every unsigned target. (Narrower sources, blit's int bytes, stay
+        // checked for range.)
+        return Expr "/*@truncating@*/(uint8)$(annotated-operand (expr kids[0]) PREC-UNARY)" PREC-UNARY
       if cast == "IntegralCast" and truncating and (SIGNED-TARGETS.contains target-type) and (UNSIGNED-WORDS.contains (resolve (c-type kids[0]["type"]["qualType"]))):
         // `truncating`: so is the conversion of an unsigned word or 64-bit
         // integer to word or int64 (a value above the signed range becomes
@@ -1226,6 +1241,18 @@ class Renderer:
       if truncating and op == "-" and (c-type node["type"]["qualType"]) == "uword":
         // Unsigned address differences wrap at the target word width.
         return Expr "/*@truncating@*/($(binary-operand (expr kids[0]) p p) - $(binary-operand (expr kids[1]) (p + 1) p))" PREC-PRIMARY
+      if truncating and op == ">>=" and kids[0]["kind"] == "DeclRefExpr" and (c-type node["type"]["qualType"]) == "int64" and kids[1]["kind"] == "IntegerLiteral":
+        // An arithmetic right shift of a signed value (put_uint_*'s
+        // `value >>= 8`): implementation-defined in C++11 for a negative
+        // value, sign-extending in GCC and Clang (and standardized so in
+        // C++20); VeriFast refuses it. Written as the same floor division
+        // without it: `x >> c` for x >= 0, `-1 - ((-1 - x) >> c)` below
+        // (no overflow: -1 - x is in [0, INT64_MAX]). A plain variable:
+        // the lvalue is evaluated more than once.
+        count := int.parse kids[1]["value"]
+        if 0 <= count and count < 64:
+          v := (expr kids[0]).text
+          return Expr "$v = $v >= 0 ? $v >> $count : -1 - ((-1 - $v) >> $count)" PREC-ASSIGN
       if truncating and op == "<<=" and kids[0]["kind"] == "DeclRefExpr" and (c-type node["type"]["qualType"]) == "uint64" and kids[1]["kind"] == "IntegerLiteral":
         // The compound form of the modular uint64 shift by a literal (a
         // plain variable: the lvalue is evaluated twice).

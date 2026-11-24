@@ -241,6 +241,18 @@ inline int64 sign_byte(uint8 b) {
   return static_cast<int8>(b);
 }
 
+// Rules (wave 9): with truncating an int64 `>>=` by a literal is the
+// arithmetic (sign-extending) shift, and a signed integer stored into a
+// byte keeps its low byte.
+inline int64 shift_down(int64 v) {
+  v >>= 8;
+  return v;
+}
+
+inline void store_low(uint8* p, int64 v) {
+  *p = v;
+}
+
 inline word use_lambdas(word a, word b) {
   word base = a;
   word first = retry_once(1, [&]() -> word { return base + b; });

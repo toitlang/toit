@@ -4,6 +4,12 @@
 
 #include "mutable_byte_content.gen.h"
 
+// From VeriFast's bin/string.h (there: chars; uchars here). In the C file
+// only: the includers of the header that copy declare their own (the float
+// writers copy from a float local, put_float.render).
+void *memcpy(void *array, void *array0, size_t count);
+//@ requires uchars_(array, count, _) &*& [?f]uchars(array0, count, ?cs0);
+//@ ensures uchars(array, count, cs0) &*& [f]uchars(array0, count, cs0) &*& result == array;
 // C++: src/objects.h toit::MutableBlob::MutableBlob
 void MutableBlob_ctor__uint8p_word(MutableBlob *self, uint8 *address, word length)
 //@ requires self->address_ |-> _ &*& self->length_ |-> _;

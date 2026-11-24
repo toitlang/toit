@@ -10,6 +10,7 @@
 #include <stdint.h>
 #include "rules_constants.h"
 //@ #include <bitops.gh>
+//@ #include "../model/arith.gh"
 typedef intptr_t word;
 typedef uintptr_t uword;
 typedef unsigned int uint32;
@@ -60,13 +61,13 @@ lemma void unsigned_of_int32(int x)
   assert truncate_unsigned(x, 32) == r;
 }
 @*/
-// C++: the lambda at verified/cxx/annotated/tests/rules.cc:246:30 (the closure rules)
+// C++: the lambda at verified/cxx/annotated/tests/rules.cc:258:30 (the closure rules)
 struct use_lambdas_lambda1 { word base; word b; };
 word use_lambdas_lambda1_call(struct use_lambdas_lambda1 *closure);
 //@ requires [?f]closure->base |-> ?x &*& [f]closure->b |-> ?y &*& 0 <= x &*& x < 100 &*& 0 <= y &*& y < 100;
 //@ ensures [f]closure->base |-> x &*& [f]closure->b |-> y &*& result == x + y;
 
-// C++: the lambda at verified/cxx/annotated/tests/rules.cc:248:24 (the closure rules)
+// C++: the lambda at verified/cxx/annotated/tests/rules.cc:260:24 (the closure rules)
 struct use_lambdas_lambda2 { word base; };
 word use_lambdas_lambda2_call(struct use_lambdas_lambda2 *closure);
 //@ requires [?f]closure->base |-> ?x &*& 0 <= x &*& x < 1000;
@@ -186,6 +187,16 @@ int64 shift_bits(int64 x, int64 bits);
 int64 sign_byte(uint8 b);
 //@ requires true;
 //@ ensures -128 <= result &*& result <= 127;
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::shift_down
+int64 shift_down(int64 v);
+//@ requires true;
+//@ ensures v >= 0 ? result == v / 256 : result < 0 &*& result * 256 <= v &*& v < result * 256 + 256;
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::store_low
+void store_low(uint8 *p, int64 v);
+//@ requires *p |-> _;
+//@ ensures *p |-> ?b &*& 0 <= b &*& b <= 255;
 
 // C++: verified/cxx/annotated/tests/rules.cc toit::narrow_unsigned
 int narrow_unsigned(uword u);
@@ -467,6 +478,28 @@ int64 sign_byte(uint8 b)
   return (int64)(/*@truncating@*/(int8)b);
 }
 
+// C++: verified/cxx/annotated/tests/rules.cc toit::shift_down
+int64 shift_down(int64 v)
+//@ requires true;
+//@ ensures v >= 0 ? result == v / 256 : result < 0 &*& result * 256 <= v &*& v < result * 256 + 256;
+{
+  //@ assert pow_nat(2, N8) == 256;
+  //@ if (v < 0) { shiftright_div(-1 - v, N8); div_rem_nonneg(-1 - v, 256); }
+  //@ if (v >= 0) shiftright_div(v, N8);
+  v = v >= 0 ? v >> 8 : -1 - ((-1 - v) >> 8);
+  return v;
+}
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::store_low
+void store_low(uint8 *p, int64 v)
+//@ requires *p |-> _;
+//@ ensures *p |-> ?b &*& 0 <= b &*& b <= 255;
+{
+  //@ truncate_limits(v, N8);
+  //@ assert pow_nat(2, N8) == 256;
+  *p = /*@truncating@*/(uint8)v;
+}
+
 // C++: verified/cxx/annotated/tests/rules.cc toit::narrow_unsigned
 int narrow_unsigned(uword u)
 //@ requires true;
@@ -535,7 +568,7 @@ word count_up(word n)
   return total;
 }
 
-// C++: the lambda at verified/cxx/annotated/tests/rules.cc:246:30 (the closure rules)
+// C++: the lambda at verified/cxx/annotated/tests/rules.cc:258:30 (the closure rules)
 word use_lambdas_lambda1_call(struct use_lambdas_lambda1 *closure)
 //@ requires [?f]closure->base |-> ?x &*& [f]closure->b |-> ?y &*& 0 <= x &*& x < 100 &*& 0 <= y &*& y < 100;
 //@ ensures [f]closure->base |-> x &*& [f]closure->b |-> y &*& result == x + y;
@@ -543,7 +576,7 @@ word use_lambdas_lambda1_call(struct use_lambdas_lambda1 *closure)
   return closure->base + closure->b;
 }
 
-// C++: the lambda at verified/cxx/annotated/tests/rules.cc:248:24 (the closure rules)
+// C++: the lambda at verified/cxx/annotated/tests/rules.cc:260:24 (the closure rules)
 word use_lambdas_lambda2_call(struct use_lambdas_lambda2 *closure)
 //@ requires [?f]closure->base |-> ?x &*& 0 <= x &*& x < 1000;
 //@ ensures [f]closure->base |-> x &*& result == x;

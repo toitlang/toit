@@ -50,6 +50,12 @@ predicate mm_post(mm_mode m, uint8 *dst, uint8 *src, int n) =
 void *memmove(void *dest, void *src, size_t count);
 //@ requires mm_pre(?m, dest, src, count);
 //@ ensures mm_post(m, dest, src, count) &*& result == dest;
+// From VeriFast's bin/string.h (there: chars; uchars here), for the
+// self-tests that put af4ba7ab's memcpy back (the mutable decoder's header
+// no longer declares it, wave 9).
+void *memcpy(void *array, void *array0, size_t count);
+//@ requires uchars_(array, count, _) &*& [?f]uchars(array0, count, ?cs0);
+//@ ensures uchars(array, count, cs0) &*& [f]uchars(array0, count, cs0) &*& result == array;
 // C++: src/objects.h toit::MutableBlob::MutableBlob
 void MutableBlob_ctor__(MutableBlob *self);
 //@ requires self->address_ |-> _ &*& self->length_ |-> _;

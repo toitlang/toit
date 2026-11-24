@@ -602,15 +602,18 @@ PRIMITIVE(put_uint_big_endian) {
 PRIMITIVE(put_uint_little_endian) {
   ARGS(Object, unused, MutableBlob, dest, int, width, word, offset, int64, value);
   USE(unused);
-  unsigned width_minus_1 = width - 1;  // This means width 0 is rejected.
+  // A negative width becomes a large unsigned one (`width - 1` in int
+  // overflowed for INT_MIN).
+  unsigned unsigned_width = width;
   uword unsigned_offset = offset;
   uword length = dest.length();
   // We don't need to check for <0 on unsigned values.  Can't have integer
   // overflow when they are both constrained in size (assuming the byte
   // array can't be close to 4Gbytes large).
-  if (unsigned_offset > length || width_minus_1 >= 8 || unsigned_offset + width_minus_1 >= length) {
+  if (unsigned_offset > length || unsigned_width == 0 || unsigned_width > 8 || unsigned_offset + unsigned_width > length) {
     FAIL(OUT_OF_BOUNDS);
   }
+  uword width_minus_1 = unsigned_width - 1;
   for (uword i = 0; i <= width_minus_1; i++) {
     dest.address()[offset + i] = value;
     value >>= 8;
