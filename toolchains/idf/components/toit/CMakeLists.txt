@@ -186,6 +186,19 @@ function(toit_postprocess)
             COMMAND ${DEVICE_COMPILE_ENV} ${TOIT} compile --snapshot -O2 -o ${CMAKE_BINARY_DIR}/system.snapshot ${BOOT_PROJECT_ROOT_ARGS} ${BOOT}
             VERBATIM)
 
+    # The message index of dictionary logging (Kconfig TOIT_LOG_DICT_INDEX,
+    # tools/esp_log_dict.toit).
+    set(LOG_DICT_ARGS "")
+    if (CONFIG_TOIT_LOG_DICT_INDEX)
+        add_custom_command(
+                TARGET firmware
+                POST_BUILD
+                COMMAND "${TOIT}" tool esp log-dict index
+                        "--output=${EXECUTABLE_NAME}.dlog" "${EXECUTABLE_NAME}.elf"
+                VERBATIM)
+        set(LOG_DICT_ARGS "--log-dict.index=${EXECUTABLE_NAME}.dlog")
+    endif()
+
     add_custom_command(
             TARGET firmware
             POST_BUILD
@@ -201,6 +214,7 @@ function(toit_postprocess)
                     "--flashing.json=flasher_args.json"
                     "--system.snapshot=${SYSTEM_SNAPSHOT}"
                     "--bytecode-formats=${TOIT_DEVICE_BYTECODE_FORMATS}"
+                    ${LOG_DICT_ARGS}
             COMMAND echo envelope: created
     )
 

@@ -71,6 +71,9 @@ AR-ENTRY-ESP32-BOOTLOADER-BIN ::= "\$bootloader.bin"
 AR-ENTRY-ESP32-PARTITIONS-BIN ::= "\$partitions.bin"
 AR-ENTRY-ESP32-OTADATA-BIN    ::= "\$otadata.bin"
 AR-ENTRY-ESP32-FLASHING-JSON  ::= "\$flashing.json"
+// The message index of dictionary logging (tools/esp_log_dict.toit), if the
+// firmware was built with it.
+AR-ENTRY-ESP32-LOG-DICT       ::= "\$log-dict"
 
 AR-ENTRY-ESP32-FILE-MAP ::= {
   "firmware.bin"    : AR-ENTRY-ESP32-FIRMWARE-BIN,
@@ -79,6 +82,7 @@ AR-ENTRY-ESP32-FILE-MAP ::= {
   "partitions.bin"  : AR-ENTRY-ESP32-PARTITIONS-BIN,
   "otadata.bin"     : AR-ENTRY-ESP32-OTADATA-BIN,
   "flashing.json"   : AR-ENTRY-ESP32-FLASHING-JSON,
+  "log-dict.index"  : AR-ENTRY-ESP32-LOG-DICT,
 }
 
 // Host AR entries.
@@ -756,6 +760,8 @@ extract-cmd -> cli.Command:
           you must specify the correct memory offset for the partition.
         - elf: the ELF file of the executable. This is typically used
           for debugging.
+        - log-dict: the message index of dictionary logging (see
+          'toit tool esp log-dict'), if the firmware has one.
         - ubjson: a UBJSON encoding of the sections of the image.
         - image: the complete flash image (bootloader, partitions, and app).
           Can be flashed to address 0x0 using 'esptool', or run on QEMU/Wokwi.
@@ -805,7 +811,7 @@ extract-cmd -> cli.Command:
             --help="Set the output file."
             --required,
         cli.OptionPath "config",
-        cli.OptionEnum "format" ["binary", "elf", "ubjson", "image", "qemu", "tar"]
+        cli.OptionEnum "format" ["binary", "elf", "log-dict", "ubjson", "image", "qemu", "tar"]
             --help="Set the output format."
             --default="binary",
         cli.OptionPath "partitions"
@@ -865,6 +871,12 @@ extract-esp32 -> none
     if not config-encoded.is-empty:
       ui.emit --warning "Config is ignored when extracting elf file."
     write-file output-path --ui=ui: it.write (envelope.entries.get AR-ENTRY-ESP32-FIRMWARE-ELF)
+    return
+
+  if format == "log-dict":
+    index := envelope.entries.get AR-ENTRY-ESP32-LOG-DICT
+    if not index: ui.abort "The envelope has no log-dict index."
+    write-file output-path --ui=ui: it.write index
     return
 
   if format == "qemu" or format == "image":

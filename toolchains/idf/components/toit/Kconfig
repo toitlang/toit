@@ -33,6 +33,19 @@ menu "Toit"
             and the base name of the file becomes the name of the assets. The asset will be encoded as ubjson.
             As an example 'config.json' would become the config asset.
 
+    config TOIT_LOG_DICT_INDEX
+        bool "Add the message index of dictionary logging to the envelope"
+        default y if LOG_CHECK_MESSAGES_DICT || LOG_DICT_ESP_LOG
+        default n
+        help
+            With the dictionary-logging patch of ESP-IDF (LOG_CHECK_MESSAGES_DICT,
+            LOG_DICT_ESP_LOG), ESP-IDF prints message ids and raw arguments
+            instead of messages. This adds the index that turns them back
+            into messages (the "log-dict.index" entry, built from the ELF
+            file by "toit tool esp log-dict index") to the firmware envelope;
+            "toit tool esp log-dict decode --envelope=..." reads it. Without
+            it, the decoder needs the envelope's ELF file.
+
     config TOIT_BYTE_DISPLAY
         bool "Include primitives for byte-oriented (true-color or 256-shade gray) displays"
         default "y"

@@ -27,6 +27,7 @@ import .assets as assets
 import .kebabify as kebabify
 import .snapshot-to-image as snapshot-to-image
 import .stacktrace as stacktrace
+import .esp-log-dict as esp-log-dict
 import .system-message as system-message
 import .info as info
 import .toitdoc as toitdoc
@@ -291,6 +292,7 @@ main args/List:
   tool-command.add esp-command
 
   esp-command.add stacktrace.build-command
+  esp-command.add esp-log-dict.build-command
 
   toitdoc-command := toitdoc.build-command
       --toit-from-args=toit-from-args
