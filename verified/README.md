@@ -29,7 +29,7 @@ directory of this repository.
 
 ## The gate: `verified/check.sh`
 
-Run before every merge that touches `verified/` (about 20 s):
+Run before every merge that touches `verified/` (a few minutes; with `--tests` tens of minutes, see below):
 
 ```sh
 verified/check.sh            # Verus + escape-hatch audit
@@ -90,9 +90,22 @@ tools/gate-commit.sh COMMIT LOG-DIR    # [--worktree DIR], gate.sh flags after L
 It creates (or reuses, if clean) the worktree `<main checkout>-gate`,
 checks out COMMIT there, links the SDK sources (`tools/worktree-setup.sh
 --links-only`) and runs that commit's `verified/gate.sh --logs LOG-DIR`.
-Reuse keeps its builds and its matrix work directory; the ccache cache,
-cargo's registry, the toit package cache and the matrix tools and memory
-queue are shared with other checkouts.
+Reuse keeps its builds (incremental after the first run; each build
+directory is configured again first, so the binaries carry the commit's
+version); the ccache cache, cargo's registry, the toit package cache and
+the matrix tools and memory queue are shared with other checkouts.
+Afterwards the matrix's work directory keeps only its logs, changes the
+gate made to tracked files (`THEOREMS.txt`: the commit's copy is stale)
+are saved as `LOG-DIR/worktree-changes.diff` and undone, and the disk use
+left behind is printed (about 4 GB of builds; the matrix needs about 8 GB
+at peak, see `cxx/annotated/README.md`).
+
+Measured 2026-11-24 on the shared 32-core machine (load 20-85): the
+serial flow (builds, `check.sh --tests`, `ctest`) took 118 min, of which
+the residual C++ matrix 73; `gate.sh` took 47 min in a fresh worktree and
+31 min in a reused one, the matrix being the critical path (everything
+else is done within 8 min). The matrix's time depends mostly on the
+machine-wide model-checker memory budget other checkouts' runs share.
 
 Reported, never failing: allowlisted items that `core/TRUSTED.md` (or
 `spec/DESIGN.md` for the spec crate) does not mention, closed and opaque

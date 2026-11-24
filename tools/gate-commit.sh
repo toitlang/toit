@@ -32,6 +32,12 @@
 # Not shared: the build directories, the 32-bit Verus libraries
 # (build/verus-*), the matrix's renderings and logs.
 #
+# Afterwards the matrix's work directory keeps only its logs (the
+# model-checker timing table is copied to LOG-DIR); changes the gate made
+# to tracked files (THEOREMS.txt) are kept as LOG-DIR/worktree-changes.diff
+# and undone. The disk use left behind is printed. Disk: about 4 GB of
+# builds in the gate worktree, about 8 GB of matrix work directory at peak.
+#
 # Usage: tools/gate-commit.sh [--worktree DIR] COMMIT LOG-DIR [GATE-ARGS...]
 #   DIR defaults to <main checkout>-gate next to the main checkout.
 #   GATE-ARGS go to verified/gate.sh (--slow, --allow-skip).
