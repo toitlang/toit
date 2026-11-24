@@ -840,7 +840,7 @@ pub fn diagnose(p: &VProgram, global: &Global, m: usize, trusted: bool) -> (Opti
     for (off, &top) in maps.idx.iter().enumerate() {
         if top == NO_MAP { continue; }
         let k = ok(x_chain(&maps.nodes, top));
-        if !ok(x_instr_ok(p, &c, m, off, &k, trusted, &mut Vec::new())) {
+        if !ok(x_instr_ok(p, &c, m, x_info(p, m), off, &k, trusted, &mut Vec::new())) {
             return (Some(off), format!("rejected by the checker with kinds {:?}", k));
         }
     }

@@ -2519,11 +2519,11 @@ pub fn x_shape_ok(p: &VProgram, c: &XCert, m: usize, k: &Vec<XKind>) -> (r: bool
     }
 }
 
-pub fn x_instr_ok(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>, trusted: bool, out: &mut Vec<XKind>) -> (res: Result<bool, Oom>)
-    requires wf_program2(vview(p)), m < p.methods@.len(), g_ok(c.g),
+pub fn x_instr_ok(p: &VProgram, c: &XCert, m: usize, i: MethodInfo, off: usize, k: &Vec<XKind>, trusted: bool, out: &mut Vec<XKind>) -> (res: Result<bool, Oom>)
+    requires wf_program2(vview(p)), m < p.methods@.len(), g_ok(c.g), i == vinfo(p, m as int),
     ensures res matches Ok(r) ==> r == instr_ok(vview(p), c@, m as int, off as int, kv(*k), trusted),
 {
-    let i = x_info(p, m);
+    // `i`: the method's info, decoded once per method by the caller.
     if !(off < i.end - i.entry) { return Ok(false); }
     let bci = i.entry + off;
     let raw = ix(p.bytecodes, bci);
@@ -2645,9 +2645,11 @@ pub fn x_method_body_ok(p: &VProgram, c: &XCert, m: usize, trusted: bool, bufs: 
     assert(cm == mapsv(c.maps));
     let mut off = 0;
     // Each instruction's map is built in the reused buffers.
+    let info = x_info(p, m);
     while off < c.maps.idx.len()
         invariant
             wf_program2(vview(p)), m < p.methods@.len(), m == c.cur, c.cur < c.g.n, g_ok(c.g),
+            info == vinfo(p, m as int),
             cm == c@.maps[m as int], cm == mapsv(c.maps),
             0 <= off <= c.maps.idx@.len(),
             forall|o: int| 0 <= o < off && (#[trigger] c@.maps[m as int][o]) is Some ==>
@@ -2660,7 +2662,7 @@ pub fn x_method_body_ok(p: &VProgram, c: &XCert, m: usize, trusted: bool, bufs: 
             x_reversed_into(&bufs.rev, &mut bufs.k)?;
             assert(kv(bufs.k) == chain(c.maps.nodes@, i as int));
             assert(cm[off as int] == Some(kv(bufs.k)));
-            if !x_instr_ok(p, c, m, off, &bufs.k, trusted, &mut bufs.post)? {
+            if !x_instr_ok(p, c, m, info, off, &bufs.k, trusted, &mut bufs.post)? {
                 return Ok(false);
             }
         }
