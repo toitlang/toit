@@ -420,3 +420,27 @@ static word retry_once(word n, F produce)
       Cell cell(x);
       return cell.get() * 2;
     }
+
+@render verified/cxx/annotated/tests/rules.cc toit::wrap_sub truncating
+inline int64 wrap_sub(int64 x, int64 y)
+//@ requires true;
+//@ ensures true;
+{
+  return static_cast<int64>(static_cast<uint64>(x) - static_cast<uint64>(y));
+}
+
+@render verified/cxx/annotated/tests/rules.cc toit::wrap_mul truncating
+inline int64 wrap_mul(int64 x, int64 y)
+//@ requires true;
+//@ ensures true;
+{
+  return static_cast<int64>(static_cast<uint64>(x) * static_cast<uint64>(y));
+}
+
+@render verified/cxx/annotated/tests/rules.cc toit::word_bits truncating
+inline uint64 word_bits(word w)
+//@ requires true;
+//@ ensures true;
+{
+  return static_cast<uint64>(w);
+}

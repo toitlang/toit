@@ -270,6 +270,21 @@ word Holder_User_twice(word x);
 //@ requires 0 <= x &*& x < 1000;
 //@ ensures result == x * 2;
 
+// C++: verified/cxx/annotated/tests/rules.cc toit::wrap_sub
+int64 wrap_sub(int64 x, int64 y);
+//@ requires true;
+//@ ensures true;
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::wrap_mul
+int64 wrap_mul(int64 x, int64 y);
+//@ requires true;
+//@ ensures true;
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::word_bits
+uint64 word_bits(word w);
+//@ requires true;
+//@ ensures true;
+
 // C++: verified/cxx/annotated/tests/rules.cc toit::Outer::Inner::Inner
 void Outer_Inner_ctor(Outer_Inner *self, word x)
 //@ requires self->v_ |-> _ &*& x < 100;
@@ -681,5 +696,29 @@ word Holder_User_twice(word x)
   Holder_Cell cell;
   Holder_Cell_ctor(&cell, x);
   return Holder_Cell_get(&cell) * 2;
+}
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::wrap_sub
+int64 wrap_sub(int64 x, int64 y)
+//@ requires true;
+//@ ensures true;
+{
+  return /*@truncating@*/(int64)(/*@truncating@*/((/*@truncating@*/(uint64)x) - (/*@truncating@*/(uint64)y)));
+}
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::wrap_mul
+int64 wrap_mul(int64 x, int64 y)
+//@ requires true;
+//@ ensures true;
+{
+  return /*@truncating@*/(int64)(/*@truncating@*/((/*@truncating@*/(uint64)x) * (/*@truncating@*/(uint64)y)));
+}
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::word_bits
+uint64 word_bits(word w)
+//@ requires true;
+//@ ensures true;
+{
+  return /*@truncating@*/(uint64)w;
 }
 

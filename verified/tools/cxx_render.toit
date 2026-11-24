@@ -196,7 +196,9 @@ A sidecar: a sequence of sections, each opened by a directive line (a
   uint64 left shift by a literal in [0, 63] (also `<<=` on a plain
   variable) also use modular arithmetic, and so does a uint64 left shift
   of an explicitly converted value by a run-time count (VeriFast checks
-  the count; Utils::wrapping_shift_left). An explicit uint8-to-int8
+  the count; Utils::wrapping_shift_left). A uint64 `-` or `*` whose right operand
+  is an explicit cast is modular too (Utils::wrapping_sub, wrapping_mul,
+  wrapping_negate), and so is an explicit cast of a word to uint64. An explicit uint8-to-int8
   conversion and a conversion (implicit or explicit) of an int64 to a byte are
   modular; an int64 `>>=` by a literal on a plain variable is the
   arithmetic shift (GCC's and Clang's, C++20's), written without a shift
@@ -1087,7 +1089,9 @@ class Renderer:
         // converts the finished checksum back to a signed VM integer.
         to := c-type node["type"]["qualType"]
         from := c-type operand["type"]["qualType"]
-        if (to == "uint64" and from == "int64") or (to == "int64" and from == "uint64"):
+        // (Also a smi's value, a word, as its uint64 bit pattern: the
+        // unsigned shifts smi_unsigned_shift_right.)
+        if (to == "uint64" and from == "int64") or (to == "int64" and from == "uint64") or (to == "uint64" and from == "word"):
           return Expr "/*@truncating@*/($to)$(annotated-operand (expr operand) PREC-UNARY)" PREC-UNARY
         if (to == "int8" and from == "uint8") or (to == "signed char" and from == "unsigned char"):
           // A byte read as a signed one (the sign extension of the signed
@@ -1255,6 +1259,14 @@ class Renderer:
         // undefined), the shift itself is modular. (Other shifts by a
         // variable count stay checked for overflow: crc's mask.)
         return Expr "/*@truncating@*/($(binary-operand (expr kids[0]) p p) << $(wrap (expr kids[1]) p + 1))" PREC-PRIMARY
+      if truncating and (op == "-" or op == "*") and (c-type node["type"]["qualType"]) == "uint64"
+          and (strip-parens kids[1])["kind"] == "CXXStaticCastExpr":
+        // The uint64 difference or product of an explicitly converted
+        // value (Utils::wrapping_sub, wrapping_mul, wrapping_negate: the
+        // bit patterns of signed integers): modulo 2^64, as C++ defines
+        // unsigned arithmetic. (Other uint64 differences and products stay
+        // checked for overflow.)
+        return Expr "/*@truncating@*/($(binary-operand (expr kids[0]) p p) $op $(binary-operand (expr kids[1]) (p + 1) p))" PREC-PRIMARY
       if truncating and op == "-" and (c-type node["type"]["qualType"]) == "uword":
         // Unsigned address differences wrap at the target word width.
         return Expr "/*@truncating@*/($(binary-operand (expr kids[0]) p p) - $(binary-operand (expr kids[1]) (p + 1) p))" PREC-PRIMARY

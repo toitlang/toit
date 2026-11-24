@@ -288,4 +288,20 @@ class Holder {
   };
 };
 
+// Rules (wave 10, `truncating`): the uint64 difference and product of
+// explicitly converted values wrap modulo 2^64 (Utils::wrapping_sub,
+// wrapping_mul, wrapping_negate); a word converted to uint64 is its bit
+// pattern (smi_unsigned_shift_right).
+inline int64 wrap_sub(int64 x, int64 y) {
+  return static_cast<int64>(static_cast<uint64>(x) - static_cast<uint64>(y));
+}
+
+inline int64 wrap_mul(int64 x, int64 y) {
+  return static_cast<int64>(static_cast<uint64>(x) * static_cast<uint64>(y));
+}
+
+inline uint64 word_bits(word w) {
+  return static_cast<uint64>(w);
+}
+
 }  // namespace toit
