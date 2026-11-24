@@ -180,12 +180,13 @@ if (CONFIG_TOIT_PIN_HOT_FLASH_CODE)
     foreach (f IN LISTS toit_hot_functions)
         string(STRIP "${f}" f)
         if (NOT f STREQUAL "")
-            # A C++ constructor or destructor emitted as an alias of its
-            # complete-object variant (C2/D2) has its literals in the
-            # section of the comdat group (C5/D5).
+            # A C++ constructor or destructor (C1/C2, D0/D1/D2) emitted in a
+            # comdat group has its literals in the group's section (C5/D5).
+            # A literal left behind in .flash.text fails the link ("l32r:
+            # literal placed after use"): remove such an entry.
             set(lit "")
-            if (f MATCHES "[CD]2E")
-                string(REGEX REPLACE "([CD])2E" "\\15E" f5 "${f}")
+            if (f MATCHES "[CD][0-2]E")
+                string(REGEX REPLACE "([CD])[0-2]E" "\\15E" f5 "${f}")
                 set(lit " .literal.${f5}")
             endif()
             string(APPEND toit_hot_body "    *(.literal.${f} .literal.${f}.* .literal.${f}$*${lit})\n    *(.text.${f} .text.${f}.* .text.${f}$*)\n")
