@@ -906,6 +906,32 @@ pub fn cxx_primitive_v(m: &mut Machine, r: Regs, env: &Env, module: u8, index: u
         }
         m.g = Ghost(mc.g@);
         proof { assert(*m == mc); }
+    } else if !moved && st == V2_PRIMITIVE_FAILURE {
+        // A failure without a GC or a task switch (the task transfer to the
+        // running task, the yield): the error pushed, on the registers.
+        let ghost (gx, v) = choose|gx: State2, v: Value| #[trigger] crate::primitive::prim_call_post(p, *m, g, module, index, st, w, gx, v)
+            && (!moved ==> gx == with_heap2(g, gx.heap));
+        proof {
+            assert(reloaded(*m, gx) == (Machine { g: Ghost(gx), ..m.with(r) }));
+        }
+        m.g = Ghost(gx);
+        proof {
+            assert(m.with(r) == reloaded(*m, gx));
+            assert(m.rok(r));
+            lemma_room_same(p, w0, m.with(r));
+        }
+        let ghost o = sp::next(sp::push(gx, v), 4);
+        proof {
+            lemma_source_completion(ap, g, module, index, o);
+            lemma_source_outcome(p, w0, o);
+        }
+        let mut r2 = r;
+        let ctl = push_next(m, &mut r2, p, w, 4, Ghost(v));
+        proof {
+            lemma_outcome_matches(p, w0, m.with(r2), Ctl::Next, o);
+            lemma_room_same(p, w0, m.with(r2));
+        }
+        return (r2, ctl);
     }
     cxx_primitive_rest(m, r, env, st, w, moved, module, index, Ghost(m0), Ghost(ms))
 }
