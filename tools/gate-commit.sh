@@ -110,6 +110,17 @@ cat "$LOG_DIR/commit.txt"
 status=$?
 echo "finished: $(date -Is), exit status $status" >> "$LOG_DIR/commit.txt"
 
+# Files the gate itself rewrites (check.sh's audit writes
+# verified/THEOREMS.txt): a difference means the commit's copy is stale.
+# Kept as a diff in LOG-DIR; the gate worktree goes back to the commit.
+if [ -n "$(git -C "$WT" status --porcelain --untracked-files=no)" ]; then
+  git -C "$WT" diff > "$LOG_DIR/worktree-changes.diff"
+  echo "note: the gate changed tracked files (the commit's copies are stale):" \
+    "$(git -C "$WT" diff --name-only | tr '\n' ' ')see $LOG_DIR/worktree-changes.diff" \
+    | tee -a "$LOG_DIR/commit.txt"
+  git -C "$WT" checkout --quiet -- .
+fi
+
 # The residual C++ matrix's work directory of the gate worktree keeps its
 # logs and the model-checker timing table (a copy goes to LOG-DIR), not its
 # Clang AST dumps and mutant trees (tens of GB after a failed run; a passed
