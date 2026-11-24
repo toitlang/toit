@@ -324,7 +324,10 @@ at the same time): the fast tier 1215 checks ok, 0 FAIL, 0 NOVERDICT, in
 checked on its own). Wave 8 (2026-11-24): 68 sidecars, 596 `@render`
 functions (`metrics.sh`: the loader's error-root check, the integer
 readers, two translator self-tests), 30 primitives prove the retry
-obligation (`oom_clean` or `oom_unchanged`); FAST_TIER_RESULT. Lines: `metrics.sh` (C++ = the
+obligation (`oom_clean` or `oom_unchanged`). Fresh work directory
+(2026-11-24, the machine shared with other checkouts' matrices and
+slow-tier jobs): the fast tier 1265 checks ok, 0 FAIL, 0 NOVERDICT, in
+4303 s wall. Lines: `metrics.sh` (C++ = the
 rendered functions' lines; annotations among them; then the hand-written C
 and annotations of the verbatim sections: trusted prototypes, predicates,
 lemmas).
@@ -2696,7 +2699,11 @@ model is revised.
 ## Files
 
 * `model/`: the object model (`objects.render`, generated `objects.gen.h/.c`),
-  the constant table, `arith.gh` (shift and mask lemmas), `model.cfg`.
+  the constant table, `arith.gh` (shift and mask lemmas), `model.cfg`,
+  `retry.h` (wave 8: the retry protocol's `oom_error`, `oom_unchanged`
+  and the loader-checked error-root facts, for the renderings that use
+  them).
+* `loader/error_roots.render` (wave 8): the loader's error-root check.
 * `encoder/`, `decoder/`, `ffi/`, `prims/`, `utf8/`: the targets (sidecar
   and generated files); `encoder/cardinal.h`/`.c` (the cardinal's byte
   bound, proved with Z3 so that the encoder verifies with the default
