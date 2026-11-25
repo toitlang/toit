@@ -1530,6 +1530,17 @@ uword toit_v2_primitive(void *raw_process, uword module, uword index, uword arit
   //@ close prim_frame(first_argument);
   Object *result = entry(process, Stack_v2_slot_address(stack, (word)first_argument));
   if (Primitive_is_error(result)) {
+    Program *program = Process_program(process);
+    v2_validate(process, "primitive failure");
+    Object *error = Primitive_unmark_from_error(program, result);
+    if (error != Program_malloc_failed(program) && error != Program_allocation_failed(program) && error != Program_cross_process_gc(program)) {
+      ObjectHeap_leave_primitive(Process_object_heap(process));
+      *result_out = (uword)error;
+      //@ assert vm(process, ?bf, ?nf);
+      //@ if (epoch_word(nf) == epoch_word(n)) epoch_unchanged(n, nf);
+      //@ close prim_done(prog, entry, a, n, bf, nf, TOIT_V2_PRIMITIVE_FAILURE, (uword)error, result);
+      return TOIT_V2_PRIMITIVE_FAILURE;
+    }
     //@ close ghost_start(a, n);
     return v2_primitive_failed(process, entry, first_argument, result, result_out);
   }

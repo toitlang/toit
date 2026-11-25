@@ -556,6 +556,19 @@ V2_HOT uword toit_v2_primitive(void* raw_process, uword module, uword index, uwo
   Object* result = entry(process, stack->v2_slot_address(first_argument));
   HW_PERF_PRIMITIVE_END(hw_perf_start, module, index);
   if (Primitive::is_error(result)) {
+    // A plain failure (not an allocation failure that asks for a GC and a
+    // retry) completes here: the transfer to another task and the yield
+    // return through it (rpc-task-speed-3). The GC-and-retry protocol is
+    // out of line.
+    Program* program = process->program();
+    v2_validate(process, "primitive failure");
+    Object* error = Primitive::unmark_from_error(program, result);
+    if (error != program->malloc_failed() && error != program->allocation_failed() &&
+        error != program->cross_process_gc()) {
+      process->object_heap()->leave_primitive();
+      *result_out = reinterpret_cast<uword>(error);
+      return TOIT_V2_PRIMITIVE_FAILURE;
+    }
     return v2_primitive_failed(process, entry, first_argument, result, result_out);
   }
   process->object_heap()->leave_primitive();
