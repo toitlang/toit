@@ -240,8 +240,8 @@ class RpcBroker implements SystemMessageHandler_ SystemMessageOutOfMemoryHandler
   static OUT-OF-MEMORY-RETRY-MAX-DELAY-MS ::= 1_000
 
   // How long a processing task tries to answer with an out-of-memory error
-  // (send-out-of-memory-reply_), or to get its next request, while this
-  // process is out of memory, before it gives up.
+  // (send-out-of-memory-reply_) while this process is out of memory, before
+  // it gives up.
   static OUT-OF-MEMORY-GIVE-UP-MS ::= 10_000
 
   /**
@@ -468,7 +468,6 @@ monitor RpcRequestQueue_:
         // locked when the requests are being dequeued.
         assert: identical processing-tasks_[task-index] Task.current
         try:
-          failing-since/int? := null
           while not Task.current.is-canceled:
             next/RpcRequest_? := null
             exception := catch --unwind=(: not is-out-of-memory-error_ it):
@@ -476,20 +475,16 @@ monitor RpcRequestQueue_:
             if exception:
               // Out of memory (it could not grow its stack, or it got the
               // error of the message processing). A request that it
-              // dequeued before that is still processed. Otherwise it lets
-              // the other tasks run, which may free memory, and tries
-              // again; after RpcBroker.OUT-OF-MEMORY-GIVE-UP-MS the error
-              // ends the task (and, uncaught, the process), as it did
-              // before, instead of spinning forever.
+              // marked before that is still processed. Otherwise it lets
+              // the other tasks run, which may free memory, and tries again.
+              // If it can't even yield (it can't grow its stack for the
+              // call), no other task gets to run and free memory: the error
+              // ends the task, and with it the process, as it did before.
               next = processing-requests_[task-index]
               if not next:
-                now := Time.monotonic-us
-                if not failing-since: failing-since = now
-                if now - failing-since > RpcBroker.OUT-OF-MEMORY-GIVE-UP-MS * 1_000:
-                  throw exception
-                catch: yield
+                stuck := catch: yield
+                if stuck: throw exception
                 continue
-            failing-since = null
             if not next: break
             try:
               // Doesn't unwind, except when this process runs out of
