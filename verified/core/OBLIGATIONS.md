@@ -547,6 +547,39 @@ rpc-task-speed-2/README.md):
   C++ proofs (verified/cxx/annotated/ffi), so it was not changed here.
   It sets the yield floor (f2/f1 1.20, 1.28 with the SDK change).
 
+Status after branch core/rpc-task-speed-3 (2026-11-25; artifacts
+rpc-task-speed-3/README.md). C6, f2/f1 over three sessions: rpc-200
+1.04 (1.01-1.04 over three layouts), rpc-echo-50 1.06, yield-2k 1.27 ->
+1.17, tasks-1k 1.01 -> 0.95; richards 0.89 -> 0.90.
+- C++ primitive round trip: `toit_v2_primitive` completes a plain
+  failure itself (the retry protocol `v2_primitive_failed` only for the
+  three errors that ask for a GC; VeriFast rendering updated, contracts
+  unchanged). The PRIMITIVE handler calls the C++ primitive from the run
+  loop (`rarrays::cxx_call`) and keeps no register across the call: after
+  an unmoved call the registers are derived again from the Stack header
+  and the top frame's record (`regs_reloaded`); kept across it, they took
+  callee-saved registers in the whole loop and calls and returns reloaded
+  the bytecodes' address (measured: +1-2 % on call-heavy benchmarks). A
+  success or failure of a Rust port and of an unmoved C++ primitive share
+  one completion (`complete_r`). Yield's floor: one round trip through
+  `toit_v2_primitive` for `task_has_messages` and one for the transfer to
+  the running task, which does nothing; an SDK change that skips the
+  latter gives 1.12 (both formats faster; not on the branch). No Rust
+  port is possible for the C++ primitives on these paths without a new
+  trusted item (they need the message queue, the scheduler, the clock or
+  the running task's identity).
+- S4: no scan after a task switch in a run that switches often: a bound
+  on all methods' arities (`room::Abound`, a local of `run_loop` passed
+  to the PRIMITIVE handler; `abound_ok` in the four functions on that
+  path) is computed by the core after four full scans in a run, and then
+  `rtop + bound + max_height + STACK_RESERVE <= top` gives the room
+  (`room_by_bound`). The save-side alternative (b) needs the stack's
+  length, which the GC changes for suspended stacks and no contract
+  states: not available without a trusted word. Left: the scans at
+  process entry (two per service call), since the bound lives for one
+  run.
+- S3, S5: unchanged.
+
 Install-time verifier (owned with the spec): on the classic ESP32 the
 check of a 25-31 KB program executes 270-490 M instructions (about 10-16
 thousand per bytecode byte) at 2.4-2.5 cycles each; instruction-fetch
