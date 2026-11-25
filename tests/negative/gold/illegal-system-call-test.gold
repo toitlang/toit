@@ -4,10 +4,10 @@ As check failed: null is not a ServiceResource.
   2: ServiceManager_.<lambda>  <sdk>/system/services.toit:777:15
   3: RpcRequest_.process.<block> <sdk>/rpc/broker.toit:290:26
   4: RpcRequest_.process       <sdk>/rpc/broker.toit:287:3
-  5: RpcRequestQueue_.ensure-processing-task_.<lambda>.<block>.<block>.<block> <sdk>/rpc/broker.toit:498:22
+  5: RpcRequestQueue_.ensure-processing-task_.<lambda>.<block>.<block>.<block> <sdk>/rpc/broker.toit:495:22
   6: catch.<block>             <sdk>/core/exceptions.toit:124:10
   7: catch                     <sdk>/core/exceptions.toit:122:1
   8: catch                     <sdk>/core/exceptions.toit:85:10
-  9: RpcRequestQueue_.ensure-processing-task_.<lambda>.<block>.<block> <sdk>/rpc/broker.toit:497:25
- 10: RpcRequestQueue_.ensure-processing-task_.<lambda>.<block> <sdk>/rpc/broker.toit:468:9
- 11: RpcRequestQueue_.ensure-processing-task_.<lambda> <sdk>/rpc/broker.toit:463:85
+  9: RpcRequestQueue_.ensure-processing-task_.<lambda>.<block>.<block> <sdk>/rpc/broker.toit:494:25
+ 10: RpcRequestQueue_.ensure-processing-task_.<lambda>.<block> <sdk>/rpc/broker.toit:470:9
+ 11: RpcRequestQueue_.ensure-processing-task_.<lambda> <sdk>/rpc/broker.toit:465:85
