@@ -1661,15 +1661,13 @@ spawn cpp_equivalence program-class-ids-native ILP32 32 program_class_ids
 # ../harness/install_image_checks.cc): image_layout_error's null result
 # puts every table inside the image and reads nothing outside it
 # (install-image-layout, slow tier); builtin_classes_error reads the class
-# bits only at checked ids (install-image-classes). Mutant: the range check
-# against the class count taken out (a read past the table).
+# bits only at checked ids (install-image-classes). No ESBMC mutant: the
+# range check taken out or one too weak gave no verdict in 600 s (the
+# VeriFast mutants builtin-classes-* cover the check).
 spawn cpp_equivalence install-image-layout LP64 64 install_image_checks -DCXXV_PART=1 --boolector
 spawn cpp_equivalence install-image-layout ILP32 32 install_image_checks -DCXXV_PART=1 --boolector
 spawn cpp_equivalence install-image-classes LP64 64 install_image_checks -DCXXV_PART=2 --boolector
 spawn cpp_equivalence install-image-classes ILP32 32 install_image_checks -DCXXV_PART=2 --boolector
-spawn cpp_violation install-image-classes-range LP64 64 install_image_checks verifier_v2.cc \
-  "dereference failure: Access to object out of bounds" \
-  "id < 0 || id >= program->class_bits.length()" "id < 0" -DCXXV_PART=2 --boolector
 spawn cpp_equivalence blit-pixel LP64 64 blit_pixel
 spawn cpp_equivalence blit-pixel ILP32 32 blit_pixel
 spawn cpp_equivalence chunk-iterator LP64 64 chunk_iterator
@@ -2725,6 +2723,21 @@ mutant float-raw32-range prims/float_raw.render src/primitive_core.cc "Cannot pr
 mutant float-raw-returns-argument prims/float_raw.render src/primitive_core.cc "Cannot prove" "-allow_dead_code -prover z3v4.5" \
   "  double value = bit_cast<double>(raw);\n  return Primitive::allocate_double(value, process);" \
   "  double value = bit_cast<double>(raw);\n  Primitive::allocate_double(value, process);\n  return _raw_raw;"
+# Blob primitives behind the ports (wave 12): json_skip_whitespace's loop
+# one byte past the end.
+entry blob-helpers          pass "" prims/blob_helpers.gen.c -allow_dead_code -prover z3v4.5
+mutant blob-helpers-json-end prims/blob_helpers.render src/primitive_core.cc "Cannot prove|No matching" "-allow_dead_code -prover z3v4.5" \
+  "for ( ; i < bytes.length(); i++)" "for ( ; i <= bytes.length(); i++)"
+# The hashing blob primitives (wave 12): hash_simple_json_string hashing
+# one byte past the closing quote.
+entry blob-hash             pass "" prims/blob_hash.gen.c -allow_dead_code -prover z3v4.5
+mutant blob-hash-json-past-quote prims/blob_hash.render src/primitive_core.cc "Cannot prove|No matching" "-allow_dead_code -prover z3v4.5" \
+  "                                                i - offset);" "                                                i - offset + 1);"
+# string_from_rune (wave 12): the four-byte branch allocating one byte
+# more than its buffer holds.
+entry string-from-rune      pass "" prims/string_from_rune.gen.c -allow_dead_code -prover z3v4.5
+mutant string-from-rune-length prims/string_from_rune.render src/primitive_core.cc "No matching|Cannot prove" "-allow_dead_code -prover z3v4.5" \
+  "result = process->allocate_string(buffer, 4);" "result = process->allocate_string(buffer, 5);"
 entry word-size             pass "" prims/word_size.gen.c
 mutant word-size-bits prims/word_size.render src/primitive_core.cc "smi_val|Cannot prove condition" "" \
   "return Smi::from(WORD_SIZE);" "return Smi::from(WORD_SIZE * 8);"

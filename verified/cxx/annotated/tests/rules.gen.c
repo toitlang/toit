@@ -331,6 +331,16 @@ int64 raw_bits(double d);
 //@ requires true;
 //@ ensures true;
 
+// C++: verified/cxx/annotated/tests/rules.cc toit::first_of_two
+int first_of_two(int x);
+//@ requires 0 <= x &*& x < 100;
+//@ ensures true;
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::hash_step
+uint16 hash_step(uint16 h, char c);
+//@ requires true;
+//@ ensures true;
+
 // C++: verified/cxx/annotated/tests/rules.cc toit::clamp_add
 word clamp_add(word x, word y);
 //@ requires 0 <= x &*& x < 1000;
@@ -796,6 +806,25 @@ int64 raw_bits(double d)
 {
   long raw = bit_cast_int64__double(d);
   return raw;
+}
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::first_of_two
+int first_of_two(int x)
+//@ requires 0 <= x &*& x < 100;
+//@ ensures true;
+{
+  char buffer[2] = { /*@truncating@*/(char)x, /*@truncating@*/(char)(x + 200) };
+  return (int)buffer[0];
+}
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::hash_step
+uint16 hash_step(uint16 h, char c)
+//@ requires true;
+//@ ensures true;
+{
+  //@ assert int_of_nat(N8) == 8 && pow_nat(2, N8) == 256;
+  //@ truncate_limits(c, N8);
+  return /*@truncating@*/(uint16)(31 * (int)h + (int)(/*@truncating@*/(uint8)c));
 }
 
 // C++: verified/cxx/annotated/tests/rules.cc toit::clamp_add

@@ -502,6 +502,25 @@ inline int64 raw_bits(double d)
   return raw;
 }
 
+@render verified/cxx/annotated/tests/rules.cc toit::first_of_two truncating
+inline int first_of_two(int x)
+//@ requires 0 <= x &*& x < 100;
+//@ ensures true;
+{
+  char buffer[] = { static_cast<char>(x), static_cast<char>(x + 200) };
+  return buffer[0];
+}
+
+@render verified/cxx/annotated/tests/rules.cc toit::hash_step truncating
+inline uint16 hash_step(uint16 h, char c)
+//@ requires true;
+//@ ensures true;
+{
+  //@ assert int_of_nat(N8) == 8 && pow_nat(2, N8) == 256;
+  //@ truncate_limits(c, N8);
+  return 31 * h + static_cast<uint8>(c);
+}
+
 @render verified/cxx/annotated/tests/rules.cc toit::clamp_add
 inline word clamp_add(word x, word y)
 //@ requires 0 <= x &*& x < 1000;

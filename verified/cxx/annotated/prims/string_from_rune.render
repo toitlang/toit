@@ -1,0 +1,110 @@
+// Copyright (C) 2026 Toit contributors.
+//
+// PRIMITIVE(string_from_rune) of src/primitive_core.cc (wave 12; tested
+// only before): the string of one Unicode scalar value. Ported to Rust;
+// its C++ runs when the port's allocation of the string does not fit
+// (NeedsGc; README "When the C++ behind a port runs").
+//
+// Proved: the int argument's round trip (`truncating`), INVALID_ARGUMENT
+// outside [0, MAX_UNICODE] and for a surrogate, the UTF-8 bytes in a local
+// array of the sequence's length (the translator's array-initializer
+// rule; each byte the modular conversion of its int, `truncating`), the
+// proven Process::allocate_string copying exactly those bytes, the result
+// a new string of that length or the allocation-failure error with the
+// heap unchanged, `grows` and the retry rule `oom_clean`. Not that the
+// bytes are the rune's encoding.
+//
+// Self-test (run.sh): the four-byte branch allocating one byte more than
+// its buffer holds (a read past the array).
+@include ../model/model.cfg
+@verbatim
+#include "argument_error.gen.h"
+//@ #include "../model/truncate.gh"
+
+/*@
+// The result: the allocation-failure error with the heap unchanged, or a
+// new string of 1 to 4 bytes.
+fixpoint bool rune_result(Program *prog, list<void *> objs, fixpoint(void *, oinfo) H,
+                          list<void *> objs2, fixpoint(void *, oinfo) H2, void *r) {
+  return (uword)r % 4 == 3 ? objs2 == objs && H2 == H :
+    objs2 == cons(r, objs) && !mem(r, objs) && has_tag(H2, r, STRING_TAG) &&
+    1 <= blob_len(H2, r) && blob_len(H2, r) <= 4 && forall(objs, (same_obj)(H, H2));
+}
+@*/
+
+@prototypes
+@render src/primitive_core.cc toit::primitive_string_from_rune truncating
+PRIMITIVE(string_from_rune)
+//@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*& pointer(__args, ?x0) &*& good(objs, x0) == true;
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+            oom_clean(objs, H, objs2, H2, result) == true &*& pointer(__args, x0) &*&
+            rune_result(prog, objs, H, objs2, H2, result) == true; @*/
+{
+  //@ grows_refl(objs, H);
+  //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);
+  //@ error_word(Program_INVALID_ARGUMENT_INDEX);
+  //@ error_word(Program_OUT_OF_RANGE_INDEX);
+  //@ error_word(Program_ALLOCATION_FAILED_INDEX);
+  //@ close valid_arg(x0, objs);
+  //@ leak valid_arg(x0, objs);
+  ARGS(int, rune);
+  if (rune < 0 || rune > Utils::MAX_UNICODE) FAIL(INVALID_ARGUMENT);
+  // Don't allow surrogates.
+  if (Utils::MIN_SURROGATE <= rune && rune <= Utils::MAX_SURROGATE) FAIL(INVALID_ARGUMENT);
+  String* result;
+  if (rune <= 0x7F) {
+    char buffer[] = { static_cast<char>(rune) };
+    //@ chars_to_uchars(buffer);
+    //@ assert uchars((uint8 *)buffer, 1, ?bs);
+    //@ close string_source(native_bytes(1, bs), objs, H, (uint8 *)buffer, 1);
+    result = process->allocate_string(buffer, 1);
+    //@ open string_source(native_bytes(1, bs), objs, H, (uint8 *)buffer, 1);
+    //@ open allocated(objs, H, process, result, ?objs1, ?H1);
+    //@ if (result == 0) grows_refl(objs, H); else grows_alloc(objs, H, result, H1);
+    //@ uchars_to_chars((uint8 *)buffer);
+  } else if (rune <= 0x7FF) {
+    char buffer[] = {
+      static_cast<char>(0xC0 | (rune >> 6)),
+      static_cast<char>(0x80 | (rune & 0x3F)),
+    };
+    //@ chars_to_uchars(buffer);
+    //@ assert uchars((uint8 *)buffer, 2, ?bs);
+    //@ close string_source(native_bytes(1, bs), objs, H, (uint8 *)buffer, 2);
+    result = process->allocate_string(buffer, 2);
+    //@ open string_source(native_bytes(1, bs), objs, H, (uint8 *)buffer, 2);
+    //@ open allocated(objs, H, process, result, ?objs1, ?H1);
+    //@ if (result == 0) grows_refl(objs, H); else grows_alloc(objs, H, result, H1);
+    //@ uchars_to_chars((uint8 *)buffer);
+  } else if (rune <= 0xFFFF) {
+    char buffer[] = {
+      static_cast<char>(0xE0 | (rune >> 12)),
+      static_cast<char>(0x80 | ((rune >> 6)  & 0x3F)),
+      static_cast<char>(0x80 | (rune & 0x3F)),
+    };
+    //@ chars_to_uchars(buffer);
+    //@ assert uchars((uint8 *)buffer, 3, ?bs);
+    //@ close string_source(native_bytes(1, bs), objs, H, (uint8 *)buffer, 3);
+    result = process->allocate_string(buffer, 3);
+    //@ open string_source(native_bytes(1, bs), objs, H, (uint8 *)buffer, 3);
+    //@ open allocated(objs, H, process, result, ?objs1, ?H1);
+    //@ if (result == 0) grows_refl(objs, H); else grows_alloc(objs, H, result, H1);
+    //@ uchars_to_chars((uint8 *)buffer);
+  } else {
+    char buffer[] = {
+      static_cast<char>(0xF0 | (rune >> 18)),
+      static_cast<char>(0x80 | ((rune >> 12)  & 0x3F)),
+      static_cast<char>(0x80 | ((rune >> 6)  & 0x3F)),
+      static_cast<char>(0x80 | (rune & 0x3F)),
+    };
+    //@ chars_to_uchars(buffer);
+    //@ assert uchars((uint8 *)buffer, 4, ?bs);
+    //@ close string_source(native_bytes(1, bs), objs, H, (uint8 *)buffer, 4);
+    result = process->allocate_string(buffer, 4);
+    //@ open string_source(native_bytes(1, bs), objs, H, (uint8 *)buffer, 4);
+    //@ open allocated(objs, H, process, result, ?objs1, ?H1);
+    //@ if (result == 0) grows_refl(objs, H); else grows_alloc(objs, H, result, H1);
+    //@ uchars_to_chars((uint8 *)buffer);
+  }
+  if (result == null) FAIL(ALLOCATION_FAILED);
+  return result;
+}

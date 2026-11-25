@@ -1,0 +1,106 @@
+// Copyright (C) 2026 Toit contributors.
+//
+// The hashing blob primitives of src/primitive_core.cc behind Rust ports,
+// contract-only before (wave 12): blob_hash_code and
+// hash_simple_json_string, with String::compute_hash_code_for (src/
+// objects.cc). Their ports decline an opaque byte array (a resource proxy,
+// a neutered array), for which the proved Blob decoder fails or gives an
+// empty blob (README "When the C++ behind a port runs"). Proved here for
+// every argument.
+//
+// Proved: the argument decoding (the proven Blob decoder;
+// hash_simple_json_string's offset a word, INVALID_ARGUMENT when
+// negative), every read inside the decoded string or byte array's content
+// (the hash reads the slice it is given: the whole blob, or the bytes
+// between the offset and the closing quote), the hash's modular uint16
+// arithmetic (`truncating`: C++ defines the conversion to an unsigned
+// type), the result a smi or an error; the heap unchanged. Not which hash.
+//
+// Self-test (run.sh): hash_simple_json_string hashing one byte past the
+// closing quote.
+@include ../model/model.cfg
+@verbatim
+#include "argument_error.gen.h"
+#include "blob_args.gen.h"
+#include "read_slice.h"
+
+@prototypes
+@render src/objects.cc toit::String::compute_hash_code_for params=2 truncating
+uint16 String::compute_hash_code_for(const char* str, word str_len)
+//@ requires [?f]chars(str, str_len, ?cs) &*& 0 <= str_len;
+//@ ensures [f]chars(str, str_len, cs);
+{
+  // Trivial computation of hash code for string.
+  //@ assert int_of_nat(N16) == 16 && pow_nat(2, N16) == 65536;
+  //@ truncate_limits(str_len, N16);
+  uint16 hash = str_len;
+  for (word index = 0; index < str_len; index++)
+  //@ invariant [f]chars(str, str_len, cs) &*& 0 <= index &*& 0 <= hash &*& hash <= 65535;
+  {
+    // The sign of 'char' is implementation dependent.
+    // Force the value to be unsigned to have a deterministic hash.
+    //@ assert int_of_nat(N8) == 8 && pow_nat(2, N8) == 256 && int_of_nat(N16) == 16 && pow_nat(2, N16) == 65536;
+    //@ truncate_limits(nth(index, cs), N8);
+    //@ int h0 = hash;
+    //@ int b0 = truncate_unsigned(nth(index, cs), 8);
+    hash = 31 * hash + static_cast<uint8>(str[index]);
+    //@ truncate_limits(31 * h0 + b0, N16);
+  }
+  return hash != NO_HASH_CODE ? hash : 0;
+}
+
+@render src/primitive_core.cc toit::primitive_blob_hash_code
+PRIMITIVE(blob_hash_code)
+//@ requires [?fp]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*& pointer(__args, ?a0) &*& good(objs, a0) == true;
+//@ ensures [fp]process(process, prog, ids) &*& heap(objs, H) &*& pointer(__args, a0) &*& (is_smi_w((uword)result) || (uword)result % 4 == 3);
+{
+  //@ error_word(Program_WRONG_BYTES_TYPE_INDEX);
+  ARGS(Blob, receiver);
+  //@ assert [_]blob_result(objs, H, STRINGS_OR_BYTE_ARRAYS, ?a, ?l, ?b);
+  //@ open [_]blob_result(objs, H, STRINGS_OR_BYTE_ARRAYS, a, l, b);
+  //@ blob_facts(b);
+  //@ borrow_slice(b, a, l);
+  //@ uchars_to_chars(a);
+  auto hash = String::compute_hash_code_for(reinterpret_cast<const char*>(receiver.address()),
+                                            receiver.length());
+  //@ chars_to_uchars((char *)a);
+  //@ return_slice(b, a);
+  return Smi::from(hash);
+}
+
+@render src/primitive_core.cc toit::primitive_hash_simple_json_string
+PRIMITIVE(hash_simple_json_string)
+/*@ requires [?fp]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
+             pointer(__args, ?a0) &*& pointer(__args - 1, ?a1) &*& good(objs, a0) && good(objs, a1); @*/
+/*@ ensures [fp]process(process, prog, ids) &*& heap(objs, H) &*& pointer(__args, a0) &*& pointer(__args - 1, a1) &*&
+            (is_smi_w((uword)result) || (uword)result % 4 == 3); @*/
+{
+  //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);
+  //@ error_word(Program_INVALID_ARGUMENT_INDEX);
+  //@ error_word(Program_WRONG_BYTES_TYPE_INDEX);
+  //@ close valid_arg(a1, objs);
+  //@ leak valid_arg(a1, objs);
+  ARGS(Blob, bytes, word, offset);
+  if (offset < 0) FAIL(INVALID_ARGUMENT);
+  //@ assert [_]blob_result(objs, H, STRINGS_OR_BYTE_ARRAYS, ?a, ?l, ?b);
+  //@ open [_]blob_result(objs, H, STRINGS_OR_BYTE_ARRAYS, a, l, b);
+  //@ blob_facts(b);
+  for (word i = offset; i < bytes.length(); i++)
+  //@ invariant heap(objs, H) &*& bytes.address_ |-> a &*& bytes.length_ |-> l &*& offset <= i;
+  {
+    //@ borrow_slice(b, a, l);
+    uint8 c = bytes.address()[i];
+    //@ return_slice(b, a);
+    if (c == '\\') return Smi::from(-1);
+    if (c == '"') {
+      //@ borrow_slice(b, a + offset, i - offset);
+      //@ uchars_to_chars(a + offset);
+      auto hash = String::compute_hash_code_for(reinterpret_cast<const char*>(bytes.address() + offset),
+                                                i - offset);
+      //@ chars_to_uchars((char *)(a + offset));
+      //@ return_slice(b, a + offset);
+      return Smi::from(hash);
+    }
+  }
+  return Smi::from(-1);
+}

@@ -732,7 +732,7 @@ UNSIGNED-WORDS ::= {"uword", "unsigned long", "unsigned int", "uintptr_t", "uint
 SIGNED-TARGETS ::= {"word", "int64"}
 // The target types (typedefs resolved) of a `truncating` explicit signed
 // narrowing.
-SIGNED-INTEGERS ::= {"short", "int", "long", "long long", "word", "intptr_t", "int64"}
+SIGNED-INTEGERS ::= {"char", "short", "int", "long", "long long", "word", "intptr_t", "int64"}
 WRITTEN-CASTS ::= {"IntegralCast", "IntegralToPointer", "PointerToIntegral",
                    "BitCast", "IntegralToFloating", "FloatingToIntegral",
                    "FloatingCast", "ToVoid"}
@@ -1065,6 +1065,13 @@ class Renderer:
       if unsigned-word-conversion and cast == "IntegralCast" and target-type == "unsigned int" and (c-type kids[0]["type"]["qualType"]) == "int" and (strip-parens kids[0])["kind"] != "IntegerLiteral":
         // The same for an int converted to unsigned (modulo 2^32).
         return Expr "/*@truncating@*/(unsigned int)$(wrap (expr kids[0]) PREC-UNARY)" PREC-UNARY
+      if cast == "IntegralCast" and truncating and (target-type == "uint16" or target-type == "unsigned short")
+          and (["int", "word", "long", "long long"].contains (resolve (c-type kids[0]["type"]["qualType"])))
+          and (strip-parens kids[0])["kind"] != "IntegerLiteral":
+        // `truncating`: the implicit conversion of an int or a word to a
+        // uint16 is modulo 2^16, as C++ defines it for every unsigned target
+        // (String::compute_hash_code_for's hash, wave 12).
+        return Expr "/*@truncating@*/(uint16)$(annotated-operand (expr kids[0]) PREC-UNARY)" PREC-UNARY
       if cast == "IntegralCast" and truncating and (target-type == "uint8" or target-type == "unsigned char")
           and (c-type kids[0]["type"]["qualType"]) == "int64"
           and (strip-parens kids[0])["kind"] != "IntegerLiteral":
@@ -1104,10 +1111,12 @@ class Renderer:
         // unsigned shifts smi_unsigned_shift_right.)
         if (to == "uint64" and from == "int64") or (to == "int64" and from == "uint64") or (to == "uint64" and from == "word"):
           return Expr "/*@truncating@*/($to)$(annotated-operand (expr operand) PREC-UNARY)" PREC-UNARY
-        if (to == "int8" and from == "uint8") or (to == "signed char" and from == "unsigned char"):
+        if (to == "int8" and from == "uint8") or (to == "signed char" and from == "unsigned char")
+            or (to == "uint8" and from == "char"):
           // A byte read as a signed one (the sign extension of the signed
           // integer readers): the modular conversion, a value above 127
-          // becomes negative.
+          // becomes negative; and a char read as a byte (wave 12:
+          // String::compute_hash_code_for), a negative one becomes its byte.
           return Expr "/*@truncating@*/($to)$(annotated-operand (expr operand) PREC-UNARY)" PREC-UNARY
       if (kind == "CStyleCastExpr" or kind == "CXXStaticCastExpr") and truncating and operand
           and (c-type node["type"]["qualType"]) == "uint8" and (c-type operand["type"]["qualType"]) == "int64":
@@ -1786,6 +1795,29 @@ class Renderer:
       if not hoisted.contains decl["id"]: emit indent "struct timespec $name;"
       emit indent "$(name).tv_sec = 0;"
       emit indent "$(name).tv_nsec = 0;"
+      return
+    if init and init["kind"] == "InitListExpr" and decl["type"]["qualType"].ends-with "]":
+      // `char buffer[] = { e0, e1 };` (string_from_rune, wave 12): an array
+      // of a scalar type whose every element the list gives, as the same C
+      // initializer with the length written. C++ evaluates an initializer
+      // list left to right, C in an unspecified order, so the elements must
+      // be free of side effects (no assignment, no call). Elements a list
+      // leaves out (zero-initialized) or of a class type are an error.
+      qual := decl["type"]["qualType"]
+      open := qual.index-of "["
+      element := c-type qual[..open].trim
+      count := int.parse qual[open + 1..qual.size - 1]
+      elements := inner init
+      if elements.size != count or (elements.any: it["kind"] == "ImplicitValueInitExpr"):
+        fail "$(where decl): an array initializer that does not give every element"
+      if not (["char", "unsigned char", "uint8", "int", "word", "uword"].contains element):
+        fail "$(where decl): an array of $element initialized by a list"
+      if hoisted.contains decl["id"]: fail "$(where decl): an initialized array whose address is taken"
+      if (modifies-anything init) or (has-kind init "CallExpr") or (has-kind init "CXXMemberCallExpr"):
+        fail "$(where decl): an array initializer with side effects"
+      name := local-name decl
+      values := elements.map: wrap (expr it) PREC-ASSIGN
+      emit indent "$element $(name)[$count] = { $(values.join ", ") };"
       return
     if init and init["kind"] == "CXXConstructExpr" and not (is-method-copy init):
       name := local-name decl
