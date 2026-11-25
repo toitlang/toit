@@ -51,13 +51,97 @@ static int64_t trace_install_last_progress = 0;
 // hook costs a free-size query per allocation, which inflates the time of
 // an allocation-heavy verification; the peak use is then not measured.
 #ifdef CONFIG_TOIT_TRACE_INSTALL_HEAP
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+
+// The allocations of the installing task during a traced verification (other
+// tasks, e.g. WiFi on the other core, are not counted): the number of
+// requests, how many were 1 KB or more, the largest one, the peak of the
+// task's live bytes, and the failed requests (the largest one and the
+// largest free block when it failed).
+static void* volatile trace_install_task = null;
+static const int TRACE_INSTALL_SLOTS = 512;
+static void* trace_install_ptr[TRACE_INSTALL_SLOTS];
+static uint32_t trace_install_size[TRACE_INSTALL_SLOTS];
+static int trace_install_used = 0;
+static uint32_t trace_install_allocs, trace_install_1k, trace_install_2k, trace_install_4k;
+static uint32_t trace_install_largest, trace_install_live, trace_install_live_peak, trace_install_untracked;
+static uint32_t trace_install_failed, trace_install_failed_largest, trace_install_failed_block;
+
+static bool trace_install_mine() {
+  return trace_install_active && xTaskGetCurrentTaskHandle() == trace_install_task;
+}
+
+static int trace_install_find(void* ptr) {
+  for (int i = 0; i < trace_install_used; i++) {
+    if (trace_install_ptr[i] == ptr) return i;
+  }
+  return -1;
+}
+
 extern "C" void esp_heap_trace_alloc_hook(void* ptr, size_t size, uint32_t caps) {
   if (!trace_install_active) return;
   size_t now = heap_caps_get_free_size(MALLOC_CAP_8BIT);
   if (now < trace_install_min_free) trace_install_min_free = now;
+  if (!trace_install_mine()) return;
+  trace_install_allocs++;
+  if (size >= 1024) trace_install_1k++;
+  if (size >= 2048) trace_install_2k++;
+  if (size >= 4096) trace_install_4k++;
+  if (size > trace_install_largest) trace_install_largest = size;
+  int i = trace_install_find(ptr);  // A reallocation in place.
+  if (i >= 0) {
+    trace_install_live += size - trace_install_size[i];
+    trace_install_size[i] = size;
+  } else if (trace_install_used < TRACE_INSTALL_SLOTS) {
+    trace_install_ptr[trace_install_used] = ptr;
+    trace_install_size[trace_install_used] = size;
+    trace_install_used++;
+    trace_install_live += size;
+  } else {
+    trace_install_untracked++;
+  }
+  if (trace_install_live > trace_install_live_peak) trace_install_live_peak = trace_install_live;
 }
 
-extern "C" void esp_heap_trace_free_hook(void* ptr) {}
+extern "C" void esp_heap_trace_free_hook(void* ptr) {
+  if (!trace_install_mine()) return;
+  int i = trace_install_find(ptr);
+  if (i < 0) return;  // Allocated before the verification.
+  trace_install_live -= trace_install_size[i];
+  trace_install_used--;
+  trace_install_ptr[i] = trace_install_ptr[trace_install_used];
+  trace_install_size[i] = trace_install_size[trace_install_used];
+}
+
+static void trace_install_failed_alloc(size_t size, uint32_t caps, const char* function_name) {
+  if (!trace_install_mine()) return;
+  trace_install_failed++;
+  if (size > trace_install_failed_largest) {
+    trace_install_failed_largest = size;
+    trace_install_failed_block = heap_caps_get_largest_free_block(caps);
+  }
+}
+
+static void trace_install_heap_start() {
+  heap_caps_register_failed_alloc_callback(&trace_install_failed_alloc);
+  trace_install_task = xTaskGetCurrentTaskHandle();
+  trace_install_used = 0;
+  trace_install_allocs = trace_install_1k = trace_install_2k = trace_install_4k = 0;
+  trace_install_largest = trace_install_live = trace_install_live_peak = trace_install_untracked = 0;
+  trace_install_failed = trace_install_failed_largest = trace_install_failed_block = 0;
+}
+
+static void trace_install_heap_print() {
+  printf("[install-trace] heap: %u requests (%u >= 1 KB, %u >= 2 KB, %u >= 4 KB), largest %u B,"
+         " live peak %u B, still live %u B (%d blocks), untracked %u; %u failed (largest %u B, largest free block then %u B)\n",
+         static_cast<unsigned>(trace_install_allocs), static_cast<unsigned>(trace_install_1k),
+         static_cast<unsigned>(trace_install_2k), static_cast<unsigned>(trace_install_4k),
+         static_cast<unsigned>(trace_install_largest), static_cast<unsigned>(trace_install_live_peak),
+         static_cast<unsigned>(trace_install_live), trace_install_used,
+         static_cast<unsigned>(trace_install_untracked), static_cast<unsigned>(trace_install_failed),
+         static_cast<unsigned>(trace_install_failed_largest), static_cast<unsigned>(trace_install_failed_block));
+}
 #endif
 #endif
 
@@ -450,6 +534,9 @@ const char* V2Verifier::verify_installed(Program* program, word program_size, bo
   size_t trace_free = heap_caps_get_free_size(MALLOC_CAP_8BIT);
   size_t trace_largest = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
   trace_install_min_free = trace_free;
+#ifdef CONFIG_TOIT_TRACE_INSTALL_HEAP
+  trace_install_heap_start();
+#endif
   trace_install_active = true;
   int64 trace_start = esp_timer_get_time();
   trace_install_first_progress = 0;
@@ -487,6 +574,9 @@ const char* V2Verifier::verify_installed(Program* program, word program_size, bo
            static_cast<long long>(trace_install_last_progress - trace_install_first_progress),
            static_cast<long long>(trace_end - trace_install_last_progress));
   }
+#ifdef CONFIG_TOIT_TRACE_INSTALL_HEAP
+  trace_install_heap_print();
+#endif
 #endif
   delete table;
   if (accepted) return null;
