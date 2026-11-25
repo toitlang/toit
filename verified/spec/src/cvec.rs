@@ -19,8 +19,10 @@
 //! size (4 bytes per bytecode byte for the map index, 16 per kind node),
 //! and growing a vector copies it into a block twice as large while the
 //! old one is still allocated. A `CVec` never asks for more than one chunk
-//! at a time and never copies its elements. Verified on top of the trusted
-//! accessors of `xvec` (no new trusted code): push and read only.
+//! at a time and never copies its elements; it is built with a `CBuild`
+//! (whole chunks plus a block that is a plain vector, so that a push is a
+//! vector push) and then only read. Verified on top of the trusted
+//! accessors of `xvec` (no new trusted code).
 
 use vstd::prelude::*;
 use alloc::vec::Vec;
@@ -67,73 +69,10 @@ proof fn lemma_flat_move<T>(full: Seq<Vec<T>>, t: Vec<T>, empty: Seq<T>)
     assert(a =~= b);
 }
 
-/// Appending to the tail appends to the elements.
-proof fn lemma_flat_push<T>(full: Seq<Vec<T>>, tail: Seq<T>, x: T)
-    ensures flat(full, tail.push(x)) == flat(full, tail).push(x),
-{
-    let a = flat(full, tail.push(x));
-    let b = flat(full, tail).push(x);
-    assert forall|i: int| 0 <= i < a.len() implies #[trigger] a[i] == b[i] by {
-        if i >= CHUNK * full.len() && i < CHUNK * full.len() + tail.len() {
-            assert(tail.push(x)[i - CHUNK * full.len()] == tail[i - CHUNK * full.len()]);
-        }
-    }
-    assert(a =~= b);
-}
-
-/// Makes room for one more element in `tail`: a full tail moves to the full
-/// chunks (a new tail with room for a chunk takes its place); a tail with
-/// no room left (`room` is what was asked for when it was allocated) moves
-/// to a larger one (twice the room, at most a chunk), so that no tail is
-/// ever more than a chunk. On `Err(Oom)` the elements are unspecified, the
-/// shape is kept.
-fn make_room<T: Copy>(full: &mut Vec<Vec<T>>, tail: &mut Vec<T>, room: &mut usize) -> (r: Result<(), Oom>)
-    requires chunks_full(old(full)@), old(tail)@.len() <= *old(room) <= CHUNK,
-    ensures
-        chunks_full(final(full)@), final(tail)@.len() <= *final(room) <= CHUNK,
-        CHUNK * final(full)@.len() + final(tail)@.len() <= CHUNK * old(full)@.len() + old(tail)@.len(),
-        r is Ok ==> final(tail)@.len() < *final(room)
-            && flat(final(full)@, final(tail)@) == flat(old(full)@, old(tail)@),
-{
-    if tail.len() < *room { return Ok(()); }
-    if tail.len() == CHUNK {
-        let ghost f0 = full@;
-        let ghost t0 = *tail;
-        let mut t: Vec<T> = try_with_capacity(CHUNK)?;
-        core::mem::swap(&mut t, tail);
-        *room = CHUNK;
-        match try_push(full, t) {
-            Ok(()) => {},
-            Err(e) => return Err(e),
-        }
-        proof { lemma_flat_move(f0, t0, tail@); }
-        return Ok(());
-    }
-    // A partial tail without room: copy it into a larger one.
-    let r2 = if *room < 2 { 4 } else if *room < CHUNK / 2 { 2 * *room } else { CHUNK };
-    let mut t: Vec<T> = try_with_capacity(r2)?;
-    let mut i: usize = 0;
-    while i < tail.len()
-        invariant i <= tail@.len() < r2 <= CHUNK, t@ == tail@.subrange(0, i as int),
-            tail@.len() <= *room <= CHUNK, chunks_full(full@), full@ == old(full)@, tail@ == old(tail)@,
-        decreases tail@.len() - i,
-    {
-        try_push(&mut t, vix(tail, i))?;
-        proof { assert(tail@.subrange(0, i + 1) =~= tail@.subrange(0, i as int).push(tail@[i as int])); }
-        i += 1;
-    }
-    proof { assert(tail@.subrange(0, tail@.len() as int) =~= tail@); }
-    core::mem::swap(&mut t, tail);
-    *room = r2;
-    Ok(())
-}
-
-/// The full chunks (`CHUNK` elements each) and the last, partial one, which
-/// was allocated with room for `room` elements.
+/// The full chunks (`CHUNK` elements each) and the last, partial one.
 pub struct CVec<T> {
     full: Vec<Vec<T>>,
     tail: Vec<T>,
-    room: usize,
     len: usize,
 }
 
@@ -141,7 +80,7 @@ impl<T> CVec<T> {
     #[verifier::type_invariant]
     spec fn inv(&self) -> bool {
         &&& chunks_full(self.full@)
-        &&& self.tail@.len() <= self.room <= CHUNK
+        &&& self.tail@.len() <= CHUNK
         &&& self.len == CHUNK * self.full@.len() + self.tail@.len()
     }
 
@@ -153,22 +92,11 @@ impl<T> CVec<T> {
     pub fn new() -> (r: CVec<T>)
         ensures r@ == Seq::<T>::empty(),
     {
-        let r = CVec { full: Vec::new(), tail: Vec::new(), room: 0, len: 0 };
+        let r = CVec { full: Vec::new(), tail: Vec::new(), len: 0 };
         proof { assert(r.spec_view() =~= Seq::<T>::empty()); }
         r
     }
 
-    /// An empty sequence whose first chunk has room for `n` elements (at
-    /// most a chunk), or `Err(Oom)`.
-    pub fn try_with_room(n: usize) -> (r: Result<CVec<T>, Oom>)
-        ensures r matches Ok(v) ==> v@ == Seq::<T>::empty(),
-    {
-        let n = if n < CHUNK { n } else { CHUNK };
-        let tail: Vec<T> = try_with_capacity(n)?;
-        let r = CVec { full: Vec::new(), tail, room: n, len: 0 };
-        proof { assert(r.spec_view() =~= Seq::<T>::empty()); }
-        Ok(r)
-    }
 
     #[inline(always)]
     pub fn len(&self) -> (r: usize)
@@ -186,6 +114,10 @@ impl<T> CVec<T> {
         ensures r == self@[i as int],
     {
         proof { use_type_invariant(self); }
+        // Most methods' maps fit one chunk.
+        if self.full.len() == 0 {
+            return vix(&self.tail, i);
+        }
         let j = i / CHUNK;
         let k = i % CHUNK;
         if j < self.full.len() {
@@ -205,77 +137,178 @@ impl<T> CVec<T> {
 }
 
 impl<T: Copy> CVec<T> {
-    /// Appends `x`, or `Err(Oom)` if an allocation failed (then the
-    /// sequence's contents are unspecified: callers give up on `Oom`).
-    pub fn try_push(&mut self, x: T) -> (r: Result<(), Oom>)
-        ensures r is Ok ==> final(self)@ == old(self)@.push(x),
-    {
-        let ghost s0 = self@;
-        let r = self.try_fill_to(x, 1, true);
-        proof { if r is Ok { assert(self@ =~= s0.push(x)); } }
-        r
-    }
-
-    /// Appends copies of `x` until there are `n` elements (`n` more if
-    /// `more`), or `Err(Oom)` (contents unspecified).
-    pub fn try_fill_to(&mut self, x: T, n: usize, more: bool) -> (r: Result<(), Oom>)
-        requires more || old(self)@.len() <= n,
-        ensures
-            r is Ok ==> final(self)@ == old(self)@ + Seq::new(
-                (if more { n as int } else { n - old(self)@.len() }) as nat, |i: int| x),
-    {
-        // Taken out of `self` (its fields are borrowed below), put back.
-        let mut me = CVec::new();
-        core::mem::swap(&mut me, self);
-        let (v, r) = Self::filled(me, x, n, more);
-        *self = v;
-        r
-    }
-
+    /// `v` followed by the elements of `c` (at most a chunk), for a `v`
+    /// whose length is a multiple of `CHUNK`: `c` becomes the tail, no
+    /// copy. `Err(Oom)`: contents unspecified, the length a multiple of
+    /// `CHUNK` and not more than the two together.
     #[allow(non_shorthand_field_patterns)]
-    fn filled(v: CVec<T>, x: T, n: usize, more: bool) -> (r: (CVec<T>, Result<(), Oom>))
-        requires more || v@.len() <= n,
+    pub fn append_block(v: CVec<T>, c: Vec<T>) -> (r: (CVec<T>, Result<(), Oom>))
+        requires (v@.len() as int) % (CHUNK as int) == 0, c@.len() <= CHUNK,
         ensures
-            r.1 is Ok ==> r.0@ == v@ + Seq::new(
-                (if more { n as int } else { n - v@.len() }) as nat, |i: int| x),
+            r.1 is Ok ==> r.0@ == v@ + c@,
+            r.1 is Err ==> (r.0@.len() as int) % (CHUNK as int) == 0 && r.0@.len() <= v@.len() + c@.len(),
     {
         proof { use_type_invariant(&v); }
-        let ghost s0 = v@;
-        let CVec { mut full, mut tail, mut room, mut len } = v;
-        let target = if more {
-            if len > usize::MAX - n { return (CVec { full, tail, room, len }, Err(Oom)); }
-            len + n
-        } else { n };
-        proof { assert(s0 =~= s0 + Seq::new(0, |i: int| x)); }
-        while len < target
-            invariant
-                chunks_full(full@), tail@.len() <= room <= CHUNK, len == CHUNK * full@.len() + tail@.len(),
-                s0.len() <= len <= target,
-                flat(full@, tail@) == s0 + Seq::new((len - s0.len()) as nat, |i: int| x),
-            decreases target - len,
-        {
-            let ghost before = flat(full@, tail@);
-            match make_room(&mut full, &mut tail, &mut room) {
+        let ghost v0 = v@;
+        let CVec { mut full, mut tail, len } = v;
+        proof {
+            vstd::arithmetic::div_mod::lemma_mod_multiples_vanish(full@.len() as int, tail@.len() as int, CHUNK as int);
+            assert(tail@.len() == 0 || tail@.len() == CHUNK);
+        }
+        if len > usize::MAX - c.len() {
+            proof { assert(flat(full@, tail@).len() == len); }
+            return (CVec { full, tail, len }, Err(Oom));
+        }
+        if tail.len() == CHUNK {
+            let ghost f0 = full@;
+            let ghost t0 = tail;
+            let mut t: Vec<T> = Vec::new();
+            core::mem::swap(&mut t, &mut tail);
+            match try_push(&mut full, t) {
                 Ok(()) => {},
                 Err(e) => {
-                    let n2 = CHUNK * full.len() + tail.len();
-                    return (CVec { full, tail, room, len: n2 }, Err(e));
+                    let n = CHUNK * full.len();
+                    proof {
+                        assert(flat(full@, tail@).len() == n);
+                        vstd::arithmetic::div_mod::lemma_mod_multiples_vanish(full@.len() as int, 0, CHUNK as int);
+                    }
+                    return (CVec { full, tail, len: n }, Err(e));
                 },
             }
-            proof { assert(flat(full@, tail@).len() == before.len()); }
-            let ghost f1 = full@;
-            let ghost t1 = tail@;
-            match try_push(&mut tail, x) {
-                Ok(()) => {},
-                Err(e) => return (CVec { full, tail, room, len }, Err(e)),
-            }
-            proof {
-                lemma_flat_push(f1, t1, x);
-                assert(flat(full@, tail@) =~= s0 + Seq::new((len + 1 - s0.len()) as nat, |i: int| x));
-            }
-            len = len + 1;
+            proof { lemma_flat_move(f0, t0, tail@); }
         }
-        (CVec { full, tail, room, len }, Ok(()))
+        let cl = c.len();
+        let ghost f1 = full@;
+        let ghost cv = c@;
+        let r = CVec { full, tail: c, len: len + cl };
+        proof { lemma_flat_tail(f1, cv); }
+        (r, Ok(()))
+    }
+}
+
+/// The elements of the full chunks `full` and then of `t` are those of the
+/// full chunks followed by `t`.
+proof fn lemma_flat_tail<T>(full: Seq<Vec<T>>, t: Seq<T>)
+    ensures flat(full, t) == flat(full, Seq::<T>::empty()) + t,
+{
+    let a = flat(full, t);
+    let b = flat(full, Seq::<T>::empty()) + t;
+    assert forall|i: int| 0 <= i < a.len() implies #[trigger] a[i] == b[i] by {}
+    assert(a =~= b);
+}
+
+/// A sequence being built by pushes (the decoder's maps): the whole chunks
+/// so far and a block of at most a chunk, a plain vector, so that a push is
+/// a vector push (`CVec::try_push` takes the sequence out of `&mut` first).
+pub struct CBuild<T> {
+    pub done: CVec<T>,
+    pub blk: Vec<T>,
+}
+
+impl<T: Copy> CBuild<T> {
+    pub open spec fn ok(&self) -> bool {
+        &&& (self.done@.len() as int) % (CHUNK as int) == 0
+        &&& self.blk@.len() <= CHUNK
+        &&& self.done@.len() + self.blk@.len() < usize::MAX
+    }
+
+    /// The elements so far.
+    pub open spec fn items(&self) -> Seq<T> {
+        self.done@ + self.blk@
+    }
+
+    /// An empty sequence whose first block has room for `n` elements (at
+    /// most a chunk), or `Err(Oom)`.
+    pub fn try_new(n: usize) -> (r: Result<CBuild<T>, Oom>)
+        ensures r matches Ok(b) ==> b.ok() && b.items() == Seq::<T>::empty(),
+    {
+        let n = if n < CHUNK { n } else { CHUNK };
+        let blk: Vec<T> = try_with_capacity(n)?;
+        let b = CBuild { done: CVec::new(), blk };
+        proof { assert(b.items() =~= Seq::<T>::empty()); }
+        Ok(b)
+    }
+
+    #[inline(always)]
+    pub fn len(&self) -> (r: usize)
+        requires self.ok(),
+        ensures r == self.items().len(),
+    {
+        self.done.len() + self.blk.len()
+    }
+
+    /// Appends `x`, or `Err(Oom)` (contents unspecified).
+    #[inline(always)]
+    pub fn try_push(&mut self, x: T) -> (r: Result<(), Oom>)
+        requires old(self).ok(),
+        ensures final(self).ok(), r is Ok ==> final(self).items() == old(self).items().push(x),
+    {
+        if self.blk.len() == CHUNK {
+            self.flush()?;
+        }
+        if self.done.len() + self.blk.len() >= usize::MAX - 1 { return Err(Oom); }
+        let ghost s1 = self.items();
+        let ghost b1 = self.blk@;
+        try_push(&mut self.blk, x)?;
+        proof { assert(self.items() =~= s1.push(x)); }
+        Ok(())
+    }
+
+    /// Moves the full block to the chunks.
+    fn flush(&mut self) -> (r: Result<(), Oom>)
+        requires old(self).ok(), old(self).blk@.len() == CHUNK,
+        ensures
+            final(self).ok(),
+            r is Ok ==> final(self).items() == old(self).items() && final(self).blk@.len() == 0,
+    {
+        let mut b: Vec<T> = try_with_capacity(CHUNK)?;
+        core::mem::swap(&mut b, &mut self.blk);
+        let mut d = CVec::new();
+        core::mem::swap(&mut d, &mut self.done);
+        let (d2, r) = CVec::append_block(d, b);
+        self.done = d2;
+        proof {
+            if r is Ok {
+                assert(self.done@.len() == old(self).done@.len() + CHUNK);
+                vstd::arithmetic::div_mod::lemma_mod_multiples_vanish(1, old(self).done@.len() as int, CHUNK as int);
+                assert(self.items() =~= old(self).items());
+            }
+        }
+        r
+    }
+
+    /// Appends copies of `x` until there are `n` elements, or `Err(Oom)`.
+    pub fn try_fill_to(&mut self, x: T, n: usize) -> (r: Result<(), Oom>)
+        requires old(self).ok(), old(self).items().len() <= n,
+        ensures
+            final(self).ok(),
+            r is Ok ==> final(self).items() == old(self).items() + Seq::new((n - old(self).items().len()) as nat, |i: int| x),
+    {
+        let ghost s0 = self.items();
+        proof { assert(s0 =~= s0 + Seq::new(0, |i: int| x)); }
+        while self.len() < n
+            invariant
+                self.ok(), s0.len() <= self.items().len() <= n,
+                self.items() == s0 + Seq::new((self.items().len() - s0.len()) as nat, |i: int| x),
+            decreases n - self.items().len(),
+        {
+            self.try_push(x)?;
+            proof { assert(self.items() =~= s0 + Seq::new((self.items().len() - s0.len()) as nat, |i: int| x)); }
+        }
+        Ok(())
+    }
+
+    /// The sequence built, or `Err(Oom)`.
+    #[allow(non_shorthand_field_patterns)]
+    pub fn try_finish(self) -> (r: Result<CVec<T>, Oom>)
+        requires self.ok(),
+        ensures r matches Ok(v) ==> v@ == self.items(),
+    {
+        let ghost s = self.items();
+        let CBuild { done, blk } = self;
+        let (v, r) = CVec::append_block(done, blk);
+        r?;
+        Ok(v)
     }
 }
 

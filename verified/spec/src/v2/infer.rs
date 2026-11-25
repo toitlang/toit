@@ -70,9 +70,9 @@ pub fn ok<T>(r: Result<T, Oom>) -> T {
 
 /// The elements of `v` in chunks.
 fn cvec_of<T: Copy>(v: &[T]) -> CVec<T> {
-    let mut c = CVec::new();
-    for &x in v { ok(c.try_push(x)); }
-    c
+    let mut b = ok(crate::cvec::CBuild::try_new(v.len()));
+    for &x in v { ok(b.try_push(x)); }
+    ok(b.try_finish())
 }
 
 /// The checker's form of the maps of one method.
