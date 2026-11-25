@@ -25,6 +25,7 @@ boot container-manager/ContainerManager -> int:
   // Always start the system image which is technically already
   // running. This allows the container manager to correctly keep
   // track of the number of running processes.
+  container-manager.start-boot
   container-manager.system-image.load.start
   container-manager.images.do: | image/ContainerImage |
     if image.run-boot:
@@ -35,4 +36,9 @@ boot container-manager/ContainerManager -> int:
       exception := catch: image.load.start
       if exception:
         print-on-stderr_ "Failed to start container $image.id: $exception"
+  // Only now, with every boot container started (or refused), may the
+  // system end because none is running: a refused first container (for
+  // example a format-1 image in flash after an update to a format-2
+  // firmware) used to end the boot before the others were started.
+  container-manager.end-boot
   return container-manager.wait-until-done
