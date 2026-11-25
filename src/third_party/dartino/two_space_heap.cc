@@ -7,6 +7,7 @@
 #include "../../flags.h"
 #include "../../heap.h"
 #include "../../objects.h"
+#include "../../process.h"
 #include "two_space_heap.h"
 #include "mark_sweep.h"
 
@@ -28,7 +29,13 @@ TwoSpaceHeap::~TwoSpaceHeap() {
 }
 
 word TwoSpaceHeap::max_external_allocation() {
-  return process_heap_->max_external_allocation();
+  word result = process_heap_->max_external_allocation();
+  // The heap of a sandboxed process leaves the sandbox heap floor of the
+  // system heap free (Process::sandbox_heap_room).
+  Process* owner = process_heap_->owner();
+  if (owner == null || result < 0) return result;
+  word room = owner->sandbox_heap_room();
+  return (room >= 0 && room < result) ? room : result;
 }
 
 Process* TwoSpaceHeap::process() {

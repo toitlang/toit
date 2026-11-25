@@ -14,6 +14,7 @@
 // directory of this repository.
 
 #include "entropy_mixer.h"
+#include "flags.h"
 #include "heap.h"
 #include "heap_report.h"
 #include "interpreter.h"
@@ -24,6 +25,11 @@
 #include "resource.h"
 #include "scheduler.h"
 #include "vm.h"
+
+#ifdef TOIT_ESP32
+#include <esp_heap_caps.h>
+#include <sdkconfig.h>
+#endif
 
 namespace toit {
 
@@ -261,6 +267,29 @@ Object* Process::allocate_string_or_error(const char* content, word length) {
 
 String* Process::allocate_string(const char* content) {
   return allocate_string(content, strlen(content));
+}
+
+word Process::sandbox_heap_room() {
+#if defined(TOIT_ESP32)
+  const word floor = static_cast<word>(CONFIG_TOIT_SANDBOX_HEAP_FLOOR_KB) * KB;
+#elif defined(TOIT_FREERTOS)
+  const word floor = 0;
+#else
+  const word floor = Flags::sandbox_heap_floor;
+#endif
+  if (floor <= 0 || !policy_->is_untrusted()) return -1;
+#if defined(TOIT_ESP32)
+  // The memory the system process and the install-time verifier allocate
+  // from (heap pages, malloc).
+  word free = static_cast<word>(heap_caps_get_free_size(MALLOC_CAP_8BIT));
+#else
+  // Host: a simulated system heap of -Xsandbox_system_heap bytes that holds
+  // only this process's heap (for tests).
+  uword reserved = object_heap_.reserved_heap_bytes();
+  word system = Flags::sandbox_system_heap;
+  word free = reserved >= static_cast<uword>(system) ? 0 : system - static_cast<word>(reserved);
+#endif
+  return free > floor ? free - floor : 0;
 }
 
 ByteArray* Process::allocate_byte_array(word length, bool force_external) {

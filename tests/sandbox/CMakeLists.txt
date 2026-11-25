@@ -15,6 +15,7 @@ set(TOOL_TESTS
   "tests/sandbox/boot-refused-test.toit"
   "tests/sandbox/verdict-epoch-test.toit"
   "tests/sandbox/invalid-utf-8-literal-test.toit"
+  "tests/sandbox/heap-floor-test.toit"
 )
 file(GLOB SANDBOX_TESTS RELATIVE ${TOIT_SDK_SOURCE_DIR} "*-test.toit")
 

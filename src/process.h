@@ -241,6 +241,21 @@ class Process : public ProcessListFromProcessGroup::Element,
     object_heap_.set_max_heap_size(bytes);
   }
 
+  // The bytes the heap of this process may still take from the system heap
+  // before only the sandbox heap floor is left free, or -1 if no floor
+  // applies (to trusted processes, or without a floor). The floor keeps
+  // memory free for the system process and the trusted containers (the
+  // install-time verifier runs in the system process): sandboxed heaps
+  // (their pages and external allocations) don't grow into it.
+  word sandbox_heap_room();
+
+  // Whether an external allocation of [size] bytes leaves the sandbox heap
+  // floor free (see [sandbox_heap_room]).
+  bool sandbox_floor_allows(word size) {
+    word room = sandbox_heap_room();
+    return room < 0 || size <= room;
+  }
+
   bool should_allow_external_allocation(word size) {
     word max = object_heap_.max_external_allocation();
     bool result = size >= 0 && size <= max;
@@ -472,6 +487,11 @@ class AllocationManager {
   uint8* alloc(word length) {
     ASSERT(ptr_ == null);
     bool ok = always_allow_external_ || process_->should_allow_external_allocation(length);
+    if (ok && !always_allow_external_ && !process_->sandbox_floor_allows(length)) {
+      // As at the limit of the process: the primitive collects and retries.
+      process_->object_heap()->set_last_allocation_result(ObjectHeap::ALLOCATION_HIT_LIMIT);
+      ok = false;
+    }
     if (!ok) {
       return null;
     }

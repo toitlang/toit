@@ -499,6 +499,20 @@ menu "Toit"
             room for the IRAM code to grow) (verified/core/PROGRESS.md,
             "Flash layout on the classic ESP32").
 
+    config TOIT_SANDBOX_HEAP_FLOOR_KB
+        int "Free heap (KB) that sandboxed containers must leave to the system"
+        default 32
+        range 0 1024
+        help
+            The heap of a sandboxed (untrusted) container doesn't grow (new
+            heap pages, external byte arrays and strings) when that would
+            leave less than this much free in the system heap: the memory
+            is kept for the system process (the install-time verifier runs
+            in it, it needs up to 26 KB for the programs measured) and the
+            trusted containers. A sandboxed container that needs more gets
+            OUT_OF_MEMORY, as at its heap quota. 0 turns the floor off
+            (docs/sandbox-policy.md, "Quotas").
+
     config TOIT_TRACE_INSTALL
         bool "Trace install-time verifications (for measurements)"
         default n
