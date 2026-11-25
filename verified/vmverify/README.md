@@ -426,15 +426,19 @@ artifacts memory-pressure):
 
 | program | requests | largest request before -> now | requests >= 4 KB | peak use |
 |---|---:|---|---:|---:|
-| a-hello (801 methods) | 8,282 | 3,456 B (node arena) -> 3,220 B (method-table literal) | 0 | 13.9 KB |
-| c-map (986 methods, a 1,826-byte method) | 10,355 | 7,424 B (node arena growing) -> 3,960 B | 3 -> 0 | 22.6-24.4 KB |
-| g-big (1,050 methods) | 11,415 | 4,216 B (method-table literal) | 1 | 17.2 KB |
+| a-hello (801 methods) | 8,282 -> 8,079 | 3,456 B (node arena) -> 3,220 B (method-table literal) | 0 | 13.9-14.8 -> 12.6-13.4 KB |
+| c-map (986 methods, a 1,826-byte method) | 10,355 -> 10,107 | 7,424 B (node arena growing) -> 3,960 B | 3 -> 0 | 22.6-24.2 -> 22.7-25.9 KB |
+| g-big (1,050 methods) | 11,415 -> 11,192 | 4,216 B (method-table literal) | 1 | 17.2 KB |
 
 The per-method maps (`XMaps`: the map index, 4 bytes per bytecode byte,
 and the kind nodes, 16 bytes each) are kept in chunks of 64 elements
-(`toit_spec::cvec::CVec`, verified, built on the `xvec` accessors): a
-method of any size needs blocks of at most 1 KB, and a growing node arena
-no longer copies itself into a block twice as large. What remains above
+(`toit_spec::cvec::CVec`, verified, built on the `xvec` accessors; the
+decoder builds them in a `CBuild`, whole chunks plus a plain-vector
+block, so that a push costs what a vector push costs): a method of any
+size needs blocks of at most 1 KB, and a growing node arena no longer
+copies itself into a block twice as large. Same speed as the vectors
+(x86-64: a-hello 2.75 ms vs 2.74 ms, 55.7 M vs 54.1 M instructions). What
+remains above
 1 KB: the copy of each byte-array literal the heap check gets
 (`ExecBody::Bytes`; the largest is usually the method-table literal, 4
 bytes per method), the converted literals (16 bytes per literal), the
@@ -448,7 +452,13 @@ instead of after a verification that failed half-way. An
 `OUT_OF_MEMORY` is not a verdict: the installer reports it as the error
 `OUT_OF_MEMORY` (a rejected program is `VERIFICATION_FAILED`), and the
 console says "verifier: out of memory: the untrusted program was not
-verified (no verdict)".
+verified (no verdict)". The system's image writer
+(system/flash/image_writer.toit) tries such a commit three more times
+(after 250, 500, 750 ms). In a soak with a sandboxed worker whose heap
+swings by tens of KB, the installs that still fail ran out of memory at
+requests of at most 1 KB with under 1 KB free in the whole heap: the other
+container's heap grew during the verification (exhaustion, not
+fragmentation); a heap quota for sandboxed containers would bound it.
 
 ### Install time with a shipped certificate (devices)
 

@@ -1,5 +1,43 @@
 # Phase 4a progress (verified core, format 2 on x86-64)
 
+## Memory pressure on the classic ESP32 (branch device/memory-pressure, 2026-11-25)
+
+Base 67e28c2d (wip/collector-proofs). Artifacts:
+/home/flo/work/opentoit-sandbox-artifacts/memory-pressure (README.md).
+
+- Task stacks: a format-2 task starts with the program's maximal height
+  plus 132 words (at most 256; format 1 keeps 64), measured from the
+  libraries' short tasks (they need 104-147 words at a maximal height of
+  18; with 64 words every task grew twice, 64 -> 96 -> 144). Classic
+  ESP32, soak worker: 9.6-10.0 KB allocated per iteration -> 6.8-7.2 KB
+  (format 1: 6.9 KB), minor GCs per iteration 3.3-3.5 -> 2.5-2.65 (f1
+  2.50). Speed within the layout noise (richards, deltablue, pystone,
+  tasks-1k, yield 1.00; json-decode +6 %, strings -4 %). No core or spec
+  constant changed (the core checks room after every task switch).
+- Verifier memory: the per-method maps in chunks of at most 1 KB
+  (`toit_spec::cvec::CVec`, built by the decoder in a `CBuild`; verified
+  on the `xvec` accessors, no new trusted code); largest request of c-map
+  7,424 -> 3,960 B, no request of 4 KB or more for a-hello and c-map
+  (g-big: its method-table literal's copy, 4,216 B); x86-64 instructions
+  per verification within 3 % of the base, fewer allocations. Before an
+  install-time verification on a device with under 48 KB free or a 16 KB
+  largest block, the commit primitive collects every process's garbage
+  first; the system's image writer retries a commit that ran out of
+  memory three times. In the traced soak every remaining failure was a
+  request of at most 1 KB with under 1 KB free: exhaustion by the other
+  containers' heaps during the verification, not fragmentation.
+  Verus: spec 1,066 -> 1,081 (the new module), core and core-split
+  unchanged, both widths; audit and THEOREMS.txt unchanged.
+- Device verification wall time: a-hello 0.96-1.13 s vs 0.81-0.86 s over
+  three code layouts (time-only builds), although the hw-perf counters of
+  the commit primitive (instructions, cycles) are the same as the base's:
+  the verifying thread is off the CPU for longer; cause open.
+- Soaks: f2 one worker 2 h: no reset, crash or stuck worker, installs
+  42/16 (all out of memory); f2 two workers: one worker stuck (the RPC
+  liveness item of esp32-final); f1 1 h: one system-process OOM restart.
+- Open: the slow-tier ESBMC job `task-all-fields` (OBLIGATIONS.md, "Other
+  open items").
+
 ## Service calls and task switching, third round (branch core/rpc-task-speed-3, 2026-11-25)
 
 Base 5496da57 (wip/collector-proofs). Artifacts:
