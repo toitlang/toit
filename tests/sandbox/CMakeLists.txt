@@ -149,3 +149,15 @@ foreach(variant refused allowed)
     )
   set_tests_properties(${test_name} PROPERTIES TIMEOUT 40 ENVIRONMENT "${env}")
 endforeach()
+
+# The verification epoch (verified/verification-epoch.cmake): the build's
+# epoch is the one of the sources, and the gate that records it fails when
+# an input of the install-time checks changes (its self-test).
+add_test(
+  NAME tests/sandbox/verification-epoch-gate
+  COMMAND ${CMAKE_COMMAND}
+      -DWORK=${CMAKE_CURRENT_BINARY_DIR}/verification-epoch-self-test
+      -DEXPECTED_EPOCH=${TOIT_VERIFICATION_EPOCH}
+      -P ${TOIT_SDK_SOURCE_DIR}/verified/tools/verification-epoch-self-test.cmake
+  )
+set_tests_properties(tests/sandbox/verification-epoch-gate PROPERTIES TIMEOUT 60)

@@ -23,8 +23,11 @@
 #   2. Escape-hatch audit against verified/TRUSTED.toml (and a cross-check
 #      with `verus --no-cheating`); writes verified/THEOREMS.txt. The leaf
 #      contracts of verified/CONTRACTS.toml against both of their sides.
-#      No Python in the repository (verified/tools/no_python_check.sh).
-#   3. With --tests: the audit's and the no-Python check's self-tests,
+#      No Python in the repository (verified/tools/no_python_check.sh). The
+#      recorded verification epoch is the one of the sources
+#      (verified/verification-epoch.cmake).
+#   3. With --tests: the self-tests of the audit, the no-Python check and
+#      the verification-epoch gate,
 #      layout check, the VeriFast proofs of the residual C++
 #      (verified/cxx/annotated), spec differential tests, the device
 #      library's no-panic check, sandbox ctests, and (optional, when a
@@ -75,8 +78,8 @@ done
 
 # The sections, in the order they run. Those after TEST_SECTIONS need
 # --tests, `cxx-slow` needs --slow.
-BASE_SECTIONS=(verus verus32 audit contracts layout-table no-python)
-TEST_SECTIONS=(ieee audit-test no-python-self-test layout-check cxx cxx-slow spec-tests vmverify
+BASE_SECTIONS=(verus verus32 audit contracts layout-table no-python epoch)
+TEST_SECTIONS=(ieee audit-test no-python-self-test epoch-self-test layout-check cxx cxx-slow spec-tests vmverify
                nopanic ec618-nopanic ec618-codegen sandbox-ctests
                redteam3-heap redteam3-asm
                redteam4-A redteam4-A-cert redteam4-B redteam4-C redteam4-D redteam4-E redteam4-F)
@@ -366,6 +369,17 @@ sec_no_python() {
   fi
 }
 
+sec_epoch() {
+  section "Verification epoch (verified/verification-epoch.cmake)"
+  # The epoch of install-time verdicts is computed from the sources of the
+  # checks; a change of it (every installed untrusted container then needs a
+  # reinstall after the firmware update) must be recorded in the change that
+  # causes it.
+  if ! cmake -DMODE=check -P "$VERIFIED/verification-epoch.cmake"; then
+    fail "verification epoch: an input of the install-time checks changed (see above)"
+  fi
+}
+
 sec_ieee() {
   section "IEEE binary64 specification checks"
   local z3_bin="${VERUS_Z3_PATH:-$(command -v z3)}" query result
@@ -392,6 +406,13 @@ sec_no_python_self_test() {
   section "No-Python check self-test (verified/tools/no_python_check.sh --self-test)"
   if ! "$VERIFIED/tools/no_python_check.sh" --self-test; then
     fail "no-Python check self-test"
+  fi
+}
+
+sec_epoch_self_test() {
+  section "Verification-epoch gate self-test (verified/tools/verification-epoch-self-test.cmake)"
+  if ! cmake -DWORK="$LOGS/epoch-self-test" -P "$VERIFIED/tools/verification-epoch-self-test.cmake"; then
+    fail "verification-epoch gate self-test"
   fi
 }
 

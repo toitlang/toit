@@ -20,6 +20,7 @@
 #   part                                       needs
 #   host-sdk, asan-build, verus, verus32,      -
 #     ieee, no-python, no-python-self-test,
+#     epoch, epoch-self-test,
 #     nopanic, ec618-nopanic, ec618-codegen
 #   host-tests-build, host32-build             host-sdk
 #   cxx, spec-tests, vmverify, contracts,      host-sdk
@@ -124,9 +125,11 @@ declare -A DEPS=(
   [contracts]="host-sdk"
   [layout-table]="host-sdk"
   [no-python]=""
+  [epoch]=""
   [ieee]=""
   [audit-test]="host-sdk"
   [no-python-self-test]=""
+  [epoch-self-test]=""
   [layout-check]="host-tests-build"
   [cxx]="host-sdk"
   [cxx-slow]="host-sdk"
