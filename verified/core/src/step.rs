@@ -1169,9 +1169,11 @@ fn done(m: &mut Machine, r: &Regs, c: Ctl, p: &Program) -> (c2: Ctl)
 #[inline(always)]
 #[verifier::spinoff_prover]
 #[verifier::rlimit(200)]
-pub fn step_r(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
-    requires rinv(&env.p, *old(m), *old(r)),
-    ensures rpost(&env.p, *old(m), *old(r), *final(m), *final(r), c),
+pub fn step_r(m: &mut Machine, r: &mut Regs, env: &Env, ab: &mut crate::room::Abound) -> (c: Ctl)
+    requires rinv(&env.p, *old(m), *old(r)), crate::room::abound_ok(&env.p, *old(ab)),
+    ensures
+        rpost(&env.p, *old(m), *old(r), *final(m), *final(r), c),
+        crate::room::abound_ok(&env.p, *final(ab)),
 {
     let p = &env.p;
     let ghost ap = p.ap@;
@@ -1834,7 +1836,7 @@ pub fn step_r(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
             return crate::rarrays::op_allocate(m, r, env, cur_bci(p, r.ip), 43, c, 3);
         },
         89 => {
-            return crate::rarrays::op_primitive(m, r, env, cur_bci(p, r.ip), 89);
+            return crate::rarrays::op_primitive(m, r, env, cur_bci(p, r.ip), 89, ab);
         },
         // Non-local control flow (rnonlocal.rs): fast paths without
         // handlers on the way and without finally records.
@@ -2274,14 +2276,18 @@ pub fn run_loop(m: &mut Machine, env: &Env, accepted: &crate::ffi::Accepted) -> 
         },
     };
 
+    // A bound on the methods' arities, computed when this run switches
+    // tasks often (`room::room_after_switch`).
+    let mut ab = crate::room::Abound { bound: crate::room::ABOUND_NONE, scans: 0 };
     loop
         invariant
             rinv(&env.p, *m, r),
             m0 == *old(m),
             reaches(env.p.ap@, m0.g@, m.g@),
+            crate::room::abound_ok(&env.p, ab),
     {
         let ghost before = m.with(r);
-        let ctl = step_r(m, &mut r, env);
+        let ctl = step_r(m, &mut r, env, &mut ab);
         match ctl {
             Ctl::Next => {
                 proof { lemma_rstep_reaches(&env.p, m0.g@, before, m.with(r), ctl); }

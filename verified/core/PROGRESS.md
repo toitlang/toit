@@ -1,5 +1,42 @@
 # Phase 4a progress (verified core, format 2 on x86-64)
 
+## Service calls and task switching, third round (branch core/rpc-task-speed-3, 2026-11-25)
+
+Base 5496da57 (wip/collector-proofs). Artifacts:
+/home/flo/work/opentoit-sandbox-artifacts/rpc-task-speed-3 (README.md).
+
+C6, f2/f1 over three sessions (code head ae2058ba): rpc-200 1.04,
+rpc-echo-50 1.06, yield-2k 1.27 -> 1.17, tasks-1k 1.01 -> 0.95;
+richards 0.90, deltablue 1.00, pystone 0.95, json 1.09-1.10. Two
+layout-shifted builds: rpc 1.01 / 1.02, yield 1.17 / 1.17, tasks 0.95 /
+0.95.
+
+- `toit_v2_primitive` completes a plain failure inline (C++, the
+  rendering for VeriFast updated, `run.sh --quick ffi` passes, contracts
+  unchanged): yield -2 %.
+- The C++ primitive call inline in the run loop with the registers
+  derived again from the Stack header afterwards (`cxx_call`,
+  `regs_reloaded`, `complete_r` shared with the Rust ports;
+  `cxx_primitive_v` gone): yield-2k 26.1 -> 24.0 ms with the previous
+  change, tasks-1k -1.7 %, run loop -324 B on RISC-V; richards +1.4 %
+  (the null word spilled). Variants that kept the registers across the
+  call cost +1-2 % on calls and returns (README).
+- The room after a task switch in constant time from a per-run arity
+  bound (`room::Abound`, `compute_abound`, `room_by_bound`,
+  `room_after_switch`): tasks-1k 273.2 -> 261.4 ms. The save-side
+  alternative needs the suspended stack's length, which the GC changes:
+  not without a trusted word.
+- SDK finding (not on the branch, sdk-yield-self.patch): `yield` without
+  the transfer to the running task (a no-op primitive): yield-2k f1 20.4
+  -> 15.4, f2 24.0 -> 17.3 ms (1.12).
+
+Verus: core 1,089 / 1,091 verified (64 / 32 bit), core-split 1,091 /
+1,093, 0 errors; spec unchanged (1,066); audit passed; THEOREMS.txt:
+`Program::arity_of` no longer an unused entry point; nostd, nopanic
+(riscv32, thumbv7m), thumb codegen ok; no epoch input changed; sandbox
+ctests 135/135; host ctest 1234/1236 (udp-reuse-port; tls2-test timed
+out once and passed on rerun).
+
 ## Ports that never fall back (branch core/ports-never-fall-back, 2026-11-24)
 
 Base d52be39e (sandbox-integration). The wave-9 audit's list of ports

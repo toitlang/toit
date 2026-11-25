@@ -69,6 +69,8 @@ use toit_spec::v2::prim::{with_heap2, prim_success, prim_args};
 #[cfg(verus_keep_ghost)]
 use toit_spec::v2::bytecodes::opcode_length2;
 #[cfg(verus_keep_ghost)]
+use toit_spec::v2::theorem::outcome;
+#[cfg(verus_keep_ghost)]
 use toit_spec::spec_common::{smi, u16_at, elements};
 
 verus! {
@@ -822,12 +824,15 @@ pub fn ret_r(m: &mut Machine, r: &mut Regs, p: &Program, w: usize, Ghost(v): Gho
 /// by the protocol): a Rust primitive on the registers, anything else on
 /// the machine.
 #[inline(always)]
-pub fn op_primitive(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode: u8) -> (c: Ctl)
+pub fn op_primitive(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode: u8, ab: &mut Abound) -> (c: Ctl)
     requires
         rhandler_pre(&env.p, *old(m), *old(r), bci, opcode),
         opcode == 89,
         bci + 4 < 0x1000_0000,
-    ensures rpost(&env.p, *old(m), *old(r), *final(m), *final(r), c),
+        abound_ok(&env.p, *old(ab)),
+    ensures
+        rpost(&env.p, *old(m), *old(r), *final(m), *final(r), c),
+        abound_ok(&env.p, *final(ab)),
 {
     let p = &env.p;
     let ghost ap = p.ap@;
@@ -853,47 +858,179 @@ pub fn op_primitive(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode
         assert(ap.methods[method as int] == method_info(p.minfo(method as int), p.max_height));
     }
     let arity = p.method(method).arity as usize;
+    let ghost m0 = *m;
+    let ghost r0 = *r;
     // A core primitive the policy resolves to the VM's own entry with the
-    // method's arity: its Rust port, if there is one.
-    if let Some(c) = rust_primitive_r(m, r, env, module, index, arity) {
-        return c;
-    }
-    // A C++ primitive (a GC point that may switch the task) or a missing
-    // one; a Rust primitive that needs a GC calls its C++ primitive too.
-    let (r2, c) = cxx_primitive_v(m, *r, env, module, index, arity);
-    set_regs(r, r2);
-    c
+    // method's arity: its Rust port, if there is one. Otherwise (and when
+    // the port declines) the C++ primitive: a GC point that may switch the
+    // task, or a missing one. Either one's success or failure is completed
+    // by the same code (`complete_r`, one copy in the run loop); everything
+    // else after the C++ call by `cxx_primitive_rest`.
+    let (success, w, gv) = match rust_primitive_r(m, &*r, env, module, index, arity) {
+        Some(t) => t,
+        None => {
+            let (st, w, moved, Ghost(ms)) = cxx_call(m, *r, env, module, index, arity);
+            if moved || !(st == V2_PRIMITIVE_SUCCESS || st == V2_PRIMITIVE_FAILURE) {
+                let (r2, c) = cxx_primitive_rest(m, Ghost(r0), env, st, w, moved, module, index, Ghost(m0), Ghost(ms), ab);
+                set_regs(r, r2);
+                return c;
+            }
+            let ghost (g2, gx, v) = choose|g2: State2, gx: State2, v: Value| toit_spec::v2::gc::gc_steps(ap, g, g2)
+                && #[trigger] crate::primitive::prim_call_post(p, *m, g2, module, index, st, w, gx, v)
+                && (!moved ==> g2 == g && gx == with_heap2(g, gx.heap));
+            proof {
+                // Nothing moved: the reload derives the registers' machine.
+                assert(reloaded(*m, gx) == (Machine { g: Ghost(gx), ..m.with(*r) }));
+            }
+            m.g = Ghost(gx);
+            proof {
+                assert(m.with(*r) == reloaded(*m, gx));
+                assert(m.rok(*r));
+                lemma_room_same(p, w0, m.with(*r));
+                crate::raise::lemma_shape_same(p, g, gx);
+                if st == V2_PRIMITIVE_SUCCESS {
+                    let o = prim_success(ap, g, gx.heap, v);
+                    lemma_source_completion(ap, g, module, index, o);
+                    lemma_source_outcome(p, w0, o);
+                } else {
+                    let o = sp::next(sp::push(gx, v), 4);
+                    lemma_source_completion(ap, g, module, index, o);
+                    lemma_source_outcome(p, w0, o);
+                }
+                assert(prim_returned(p, m0, r0, *m, st == V2_PRIMITIVE_SUCCESS, w, v));
+                assert(crate::alloc::saved(m.with(r0)));
+            }
+            // The registers from the Stack header: not kept across the call.
+            let r2 = regs_reloaded(m, p, Ghost(r0));
+            set_regs(r, r2);
+            proof {
+                assert(m.with(*r) == m.with(r0));
+                assert(prim_returned(p, m0, *r, *m, st == V2_PRIMITIVE_SUCCESS, w, v));
+            }
+            (st == V2_PRIMITIVE_SUCCESS, w, Ghost(v))
+        },
+    };
+    complete_r(m, r, env, success, w, gv, Ghost(m0), Ghost(r0))
 }
 
-/// Calls the C++ primitive `(module, index)` of the process' policy
-/// (`primitive::gc_call_primitive`) and completes the step: when the heap's
-/// epoch is unchanged (nothing moved, the usual case) and the primitive
-/// succeeded, its return on the registers, as for a Rust primitive;
-/// everything else in `cxx_primitive_rest`. Out of line, the registers by
-/// value. Only the Stack header is written before the call (what C++ and a
-/// GC read); the machine's fields stay stale, the registers describe it,
-/// so little lives across the call.
-#[inline(never)]
-pub fn cxx_primitive_v(m: &mut Machine, r: Regs, env: &Env, module: u8, index: u16, arity: usize) -> (res: (Regs, Ctl))
+/// A primitive of the PRIMITIVE step from `m0` (registers `r`) returned
+/// without moving anything: `m` is the registers' machine with the heap
+/// (and the Stack header) the primitive left, and its result `w` (value
+/// `v`) completes the step with a return from the frame (`success`) or a
+/// push (`complete_r`).
+pub open spec fn prim_returned(p: &Program, m0: Machine, r: Regs, m: Machine, success: bool, w: usize, v: Value) -> bool {
+    let ap = p.ap@;
+    let g = m0.g@;
+    let g1 = m.g@;
+    &&& m_ok(p, m, r)
+    &&& m.fw == m0.fw
+    &&& m.len == m0.len
+    &&& room_ok(p, m.with(r))
+    &&& shape_ok(p, g1)
+    &&& g1 == with_heap2(g, g1.heap)
+    &&& w == enc(m.addr(), v)
+    &&& encodable(m.addr(), v)
+    &&& success ==> outcome(ap, g, prim_success(ap, g, g1.heap, v))
+    &&& !success ==> outcome(ap, g, sp::next(sp::push(g1, v), 4))
+}
+
+/// Completes a PRIMITIVE step whose primitive returned (`prim_returned`):
+/// a success returns the result from the frame on the registers (or, in a
+/// TRY, with finally records, of the bottom frame, on the machine), a
+/// failure pushes it and continues after the instruction.
+#[inline(always)]
+fn complete_r(m: &mut Machine, r: &mut Regs, env: &Env, success: bool, w: usize, Ghost(v): Ghost<Value>,
+    Ghost(m0): Ghost<Machine>, Ghost(r0): Ghost<Regs>) -> (c: Ctl)
     requires
-        rinv(&env.p, *old(m), r),
-        r.sp@ >= r.fr@ + old(m).fw + STACK_RESERVE,
-        step_ok(env.p.ap@, env.p.cert@, old(m).g@),
-        sp::step(env.p.ap@, old(m).g@) == Outcome2::Primitive(old(m).g@, module, index),
-        arity == sp::frame_height(old(m).g@),
-        r.ip@ + 4 < 0x1000_0000,
-        cur_op(env.p.ap@, old(m).g@) == 89,
-    ensures rpost(&env.p, *old(m), r, *final(m), res.0, res.1),
+        rinv(&env.p, m0, r0),
+        r0.sp@ >= r0.fr@ + m0.fw + STACK_RESERVE,
+        cur_op(env.p.ap@, m0.g@) == 89,
+        r0.ip@ + 4 < 0x1000_0000,
+        same_regs(*old(r), r0),
+        prim_returned(&env.p, m0, *old(r), *old(m), success, w, v),
+    ensures rpost(&env.p, m0, r0, *final(m), *final(r), c),
 {
     let p = &env.p;
     let ghost ap = p.ap@;
-    let ghost g = m.g@;
-    let ghost m0 = *m;
-    let ghost w0 = m.with(r);
+    let ghost g = m0.g@;
+    let ghost g1 = m.g@;
+    let ghost w0 = m0.with(r0);
     proof {
         w0.lemma_frame(p);
         crate::regs::lemma_bci(p, w0);
         lemma_shape(p, g);
+    }
+    if success {
+        let ghost o = prim_success(ap, g, g1.heap, v);
+        proof {
+            lemma_unchecked_ok(p, g);
+            lemma_src_ok(p, w0);
+            toit_spec::v2::theorem::lemma_outcome_ok(ap, p.cert@, p.trusted@, g, o);
+            assert(o == sp::return_from(ap, g1, v));
+        }
+        if ret_r(m, r, p, w, Ghost(v)) {
+            proof { lemma_outcome_matches(p, w0, m.with(*r), Ctl::Next, o); }
+            return Ctl::Next;
+        }
+        // A return in a TRY, with finally records, or of the bottom
+        // frame: on the machine.
+        m.sync_b(*r, p);
+        proof { assert(m.len == w0.len); }
+        let c = m.do_return(env, w, Ghost(v));
+        proof { lemma_outcome_matches(p, w0, *m, c, o); }
+        let ok = ret_room_kept(m, env, &c, Ghost(w0), Ghost(g1), Ghost(v));
+        let (r2, c2) = resume_r(m, *r, env, c, ok, Ghost(w0));
+        *r = r2;
+        c2
+    } else {
+        let ghost o = sp::next(sp::push(g1, v), 4);
+        let ctl = push_next(m, r, p, w, 4, Ghost(v));
+        proof {
+            lemma_outcome_matches(p, w0, m.with(*r), Ctl::Next, o);
+            lemma_room_same(p, w0, m.with(*r));
+        }
+        ctl
+    }
+}
+
+/// The C++ call of a PRIMITIVE (`op_primitive`): writes the Stack header
+/// (what C++ and a GC read; the machine's fields stay stale, the registers
+/// describe it) and calls the C++ primitive (`primitive::gc_call_primitive`).
+/// `ms` is the machine with the header written, the one the call's
+/// contract starts from. Inlined into the run loop, whose registers live in
+/// callee-saved registers anyway: out of line (`cxx_primitive_v` before
+/// rpc-task-speed-3) it saved twelve of them on RISC-V and passed the
+/// registers through memory both ways.
+#[inline(always)]
+pub fn cxx_call(m: &mut Machine, r: Regs, env: &Env, module: u8, index: u16, arity: usize)
+    -> (res: (usize, usize, bool, Ghost<Machine>))
+    requires
+        rinv(&env.p, *old(m), r),
+        sp::step(env.p.ap@, old(m).g@) == Outcome2::Primitive(old(m).g@, module, index),
+        arity == sp::frame_height(old(m).g@),
+    ensures ({
+        let (st, w, moved, ms) = (res.0, res.1, res.2, res.3@);
+        let g = old(m).g@;
+        &&& ms == (Machine { mem: ms.mem, ..*old(m) })
+        &&& ms.mem@ == old(m).mem@
+        &&& ms.mem.sid() == old(m).mem.sid()
+        &&& crate::alloc::saved(ms.with(r))
+        &&& reloaded(ms, g) == reloaded(ms.with(r), g)
+        &&& reloaded(ms, g).refines(&env.p)
+        &&& st == V2_PRIMITIVE_ABSENT ==> *final(m) == ms
+        &&& st != V2_PRIMITIVE_ABSENT ==>
+            exists|g2: State2, gx: State2, v: Value| toit_spec::v2::gc::gc_steps(env.p.ap@, g, g2)
+                && #[trigger] crate::primitive::prim_call_post(&env.p, *final(m), g2, module, index, st, w, gx, v)
+                && (!moved ==> g2 == g && gx == with_heap2(g, gx.heap))
+        &&& st != V2_PRIMITIVE_ABSENT && !moved ==> crate::primitive::unmoved(*final(m), ms)
+    }),
+{
+    let p = &env.p;
+    let ghost g = m.g@;
+    let ghost w0 = m.with(r);
+    proof {
+        w0.lemma_frame(p);
+        crate::regs::lemma_bci(p, w0);
     }
     m.save_r(&r, p);
     let ghost ms = *m;
@@ -906,73 +1043,67 @@ pub fn cxx_primitive_v(m: &mut Machine, r: Regs, env: &Env, module: u8, index: u
     let base = r.end.diff(r.fp);
     proof { assert(base == w0.base); }
     let (st, w, moved) = crate::primitive::gc_call_primitive(m, env, module, index, arity, base, Ghost(g));
-    let ghost mc = *m;
-    if !moved && st == V2_PRIMITIVE_SUCCESS {
-        let ghost (g2, gx, v) = choose|g2: State2, gx: State2, v: Value| toit_spec::v2::gc::gc_steps(ap, g, g2)
-            && #[trigger] crate::primitive::prim_call_post(p, *m, g2, module, index, st, w, gx, v)
-            && (!moved ==> g2 == g && gx == with_heap2(g, gx.heap));
-        proof {
-            // Nothing moved: the reload derives the registers' machine.
-            assert(reloaded(*m, gx) == (Machine { g: Ghost(gx), ..m.with(r) }));
-        }
-        m.g = Ghost(gx);
-        proof {
-            assert(m.with(r) == reloaded(*m, gx));
-            assert(m.rok(r));
-            lemma_room_same(p, w0, m.with(r));
-        }
-        let ghost o = prim_success(ap, g, gx.heap, v);
-        proof {
-            lemma_source_completion(ap, g, module, index, o);
-            lemma_source_outcome(p, w0, o);
-            crate::raise::lemma_shape_same(p, g, gx);
-        }
-        let mut r2 = r;
-        if ret_r(m, &mut r2, p, w, Ghost(v)) {
-            proof { lemma_outcome_matches(p, w0, m.with(r2), Ctl::Next, o); }
-            return (r2, Ctl::Next);
-        }
-        m.g = Ghost(mc.g@);
-        proof { assert(*m == mc); }
-    } else if !moved && st == V2_PRIMITIVE_FAILURE {
-        // A failure without a GC or a task switch (the task transfer to the
-        // running task, the yield): the error pushed, on the registers.
-        let ghost (g2, gx, v) = choose|g2: State2, gx: State2, v: Value| toit_spec::v2::gc::gc_steps(ap, g, g2)
-            && #[trigger] crate::primitive::prim_call_post(p, *m, g2, module, index, st, w, gx, v)
-            && (!moved ==> g2 == g && gx == with_heap2(g, gx.heap));
-        proof {
-            assert(reloaded(*m, gx) == (Machine { g: Ghost(gx), ..m.with(r) }));
-        }
-        m.g = Ghost(gx);
-        proof {
-            assert(m.with(r) == reloaded(*m, gx));
-            assert(m.rok(r));
-            lemma_room_same(p, w0, m.with(r));
-        }
-        let ghost o = sp::next(sp::push(gx, v), 4);
-        proof {
-            lemma_source_completion(ap, g, module, index, o);
-            lemma_source_outcome(p, w0, o);
-        }
-        let mut r2 = r;
-        let ctl = push_next(m, &mut r2, p, w, 4, Ghost(v));
-        proof {
-            lemma_outcome_matches(p, w0, m.with(r2), Ctl::Next, o);
-            lemma_room_same(p, w0, m.with(r2));
-        }
-        return (r2, ctl);
-    }
-    cxx_primitive_rest(m, r, env, st, w, moved, module, index, Ghost(m0), Ghost(ms))
+    (st, w, moved, Ghost(ms))
 }
 
-/// The rest of `cxx_primitive_v` after the call: a missing primitive, a
-/// failure, a throw, anything after a GC or a task switch, and a return the
-/// registers cannot do (in a TRY, with finally records, of the bottom
-/// frame). Out of line: these paths keep the call's fast path lean.
-#[inline(never)]
-fn cxx_primitive_rest(m: &mut Machine, r: Regs, env: &Env, st: usize, w: usize, moved: bool,
-    module: u8, index: u16, Ghost(m0): Ghost<Machine>, Ghost(ms): Ghost<Machine>) -> (res: (Regs, Ctl))
+/// Registers that describe the same machine: the same positions in the
+/// same views.
+pub open spec fn same_regs(a: Regs, b: Regs) -> bool {
+    &&& a.sp@ == b.sp@ && a.sp.sid() == b.sp.sid()
+    &&& a.fp@ == b.fp@ && a.fp.sid() == b.fp.sid()
+    &&& a.fr@ == b.fr@ && a.fr.sid() == b.fr.sid()
+    &&& a.end@ == b.end@ && a.end.sid() == b.end.sid()
+    &&& a.ip@ == b.ip@ && a.ip.sid() == b.ip.sid()
+}
+
+/// The registers `r` of a machine saved in the Stack header (`save_r`),
+/// derived again from the header and the top frame's record (as
+/// `alloc::reload` derives the machine). After a C++ call the run loop
+/// takes its registers from here rather than keeping them across the call:
+/// otherwise they would need callee-saved registers in the whole loop
+/// (rpc-task-speed-3: the calls and returns then reloaded the bytecodes'
+/// address from the stack frame).
+#[inline(always)]
+fn regs_reloaded(m: &Machine, p: &Program, Ghost(r): Ghost<Regs>) -> (r2: Regs)
     requires
+        m.rok(r), ipok(p, r), m.with(r).refines(p), crate::alloc::saved(m.with(r)),
+    ensures same_regs(r2, r),
+{
+    let ghost mr = m.with(r);
+    proof {
+        lemma_saved(p, mr);
+        assert(crate::alloc::reloaded(mr, mr.g@) == mr);
+        mr.lemma_frame(p);
+        lemma_rec_index(mr.g@.frames.len() as int, mr.g@.frames.len() - 1, FRAME_BASE);
+    }
+    let len = m.mem.len();
+    let top = m.mem.header(STACK_TOP_WORD);
+    let word = m.mem.header(STACK_RECORD_TOP_WORD);
+    let ftop = word >> 16usize;
+    let base = m.mem.read(ftop - FRAME_WORDS + FRAME_BASE);
+    let bci = m.mem.header(STACK_BCI_WORD);
+    Regs {
+        sp: m.mem.slot(top),
+        fp: m.mem.slot(len - base),
+        fr: m.mem.slot(ftop),
+        end: m.mem.slot(len),
+        ip: p.code.cursor(bci),
+    }
+}
+
+/// The rest of a C++ PRIMITIVE after the call (`cxx_call`): a missing
+/// primitive, a throw, anything after a GC or a task switch (a success or
+/// failure that moved nothing is `complete_r`'s). Out of line: these paths
+/// keep the call's fast path lean. `r` (ghost: the run loop keeps no
+/// register across the call) are the registers before the call; the result
+/// has the registers to continue with on `Next` (and placeholders when the
+/// run loop stops).
+#[inline(never)]
+fn cxx_primitive_rest(m: &mut Machine, Ghost(r): Ghost<Regs>, env: &Env, st: usize, w: usize, moved: bool,
+    module: u8, index: u16, Ghost(m0): Ghost<Machine>, Ghost(ms): Ghost<Machine>, ab: &mut Abound) -> (res: (Regs, Ctl))
+    requires
+        abound_ok(&env.p, *old(ab)),
+        moved || !(st == V2_PRIMITIVE_SUCCESS || st == V2_PRIMITIVE_FAILURE),
         rinv(&env.p, m0, r),
         r.sp@ >= r.fr@ + m0.fw + STACK_RESERVE,
         step_ok(env.p.ap@, env.p.cert@, m0.g@),
@@ -989,7 +1120,9 @@ fn cxx_primitive_rest(m: &mut Machine, r: Regs, env: &Env, st: usize, w: usize, 
                 && #[trigger] crate::primitive::prim_call_post(&env.p, *old(m), g2, module, index, st, w, gx, v)
                 && (!moved ==> g2 == m0.g@ && gx == with_heap2(m0.g@, gx.heap)),
         st != V2_PRIMITIVE_ABSENT && !moved ==> crate::primitive::unmoved(*old(m), ms),
-    ensures rpost(&env.p, m0, r, *final(m), res.0, res.1),
+    ensures
+        rpost(&env.p, m0, r, *final(m), res.0, res.1),
+        abound_ok(&env.p, *final(ab)),
 {
     let p = &env.p;
     let ghost ap = p.ap@;
@@ -1004,69 +1137,44 @@ fn cxx_primitive_rest(m: &mut Machine, r: Regs, env: &Env, st: usize, w: usize, 
         lemma_saved(p, ms.with(r));
     }
     if st == V2_PRIMITIVE_ABSENT {
-        m.sync(r, p);
+        let rd = regs_reloaded(m, p, Ghost(r));
+        proof { assert(m.with(rd) == m.with(r)); }
+        m.sync(rd, p);
         proof { assert(m.inv(p)); }
         let c = crate::primitive::op_prim_missing(m, env, module, index);
-        return resume_r(m, r, env, c, false, Ghost(w0));
-    }
-    if !moved && (st == V2_PRIMITIVE_SUCCESS || st == V2_PRIMITIVE_FAILURE) {
-        let ghost (g2, gx, v) = choose|g2: State2, gx: State2, v: Value| toit_spec::v2::gc::gc_steps(ap, g, g2)
-            && #[trigger] crate::primitive::prim_call_post(p, *m, g2, module, index, st, w, gx, v)
-            && (!moved ==> g2 == g && gx == with_heap2(g, gx.heap));
-        proof {
-            // Nothing moved: the reload derives the registers' machine.
-            assert(reloaded(*m, gx) == (Machine { g: Ghost(gx), ..m.with(r) }));
-        }
-        m.g = Ghost(gx);
-        proof {
-            assert(m.with(r) == reloaded(*m, gx));
-            assert(m.rok(r));
-            lemma_room_same(p, w0, m.with(r));
-        }
-        if st == V2_PRIMITIVE_SUCCESS {
-            let ghost o = prim_success(ap, g, gx.heap, v);
-            proof {
-                lemma_source_completion(ap, g, module, index, o);
-                lemma_source_outcome(p, w0, o);
-                crate::raise::lemma_shape_same(p, g, gx);
-            }
-            let mut r2 = r;
-            if ret_r(m, &mut r2, p, w, Ghost(v)) {
-                proof { lemma_outcome_matches(p, w0, m.with(r2), Ctl::Next, o); }
-                return (r2, Ctl::Next);
-            }
-            // A return in a TRY, with finally records, or of the bottom
-            // frame: on the machine.
-            m.sync_b(r2, p);
-            proof { assert(m.len == w0.len); }
-            let c = m.do_return(env, w, Ghost(v));
-            proof { lemma_outcome_matches(p, w0, *m, c, o); }
-            let ok = ret_room_kept(m, env, &c, Ghost(w0), Ghost(State2 { heap: gx.heap, ..g }), Ghost(v));
-            return resume_r(m, r2, env, c, ok, Ghost(w0));
-        }
-        let ghost o = sp::next(sp::push(gx, v), 4);
-        proof {
-            lemma_source_completion(ap, g, module, index, o);
-            lemma_source_outcome(p, w0, o);
-        }
-        let mut r2 = r;
-        let ctl = push_next(m, &mut r2, p, w, 4, Ghost(v));
-        proof {
-            lemma_outcome_matches(p, w0, m.with(r2), Ctl::Next, o);
-            lemma_room_same(p, w0, m.with(r2));
-        }
-        return (r2, ctl);
+        let (r2, c2) = resume_with(m, env, c, false, Ghost(w0));
+        return or_placeholder(m, p, r2, c2);
     }
     let c = crate::primitive::prim_cxx_complete(m, env, st, w, Ghost(g), Ghost(w0), Ghost(module), Ghost(index));
-    resume_r(m, r, env, c, false, Ghost(w0))
+    // After a task switch (or a GC) the room of every frame, from the
+    // arity bound of this run when there is one, else by a scan.
+    let ok = room_after_switch(m, p, &c, ab);
+    let (r2, c2) = resume_with(m, env, c, ok, Ghost(w0));
+    or_placeholder(m, p, r2, c2)
+}
+
+/// The registers `resume_with` gave, or (when the run loop stops: then no
+/// register is read again) placeholders that do not depend on the
+/// registers before the call.
+#[inline(always)]
+fn or_placeholder(m: &Machine, p: &Program, r: Option<Regs>, c: Ctl) -> (res: (Regs, Ctl))
+    ensures
+        res.1 == c,
+        r matches Some(r1) ==> res.0 == r1,
+{
+    match r {
+        Some(r1) => (r1, c),
+        None => (Regs { sp: m.mem.slot(0), fp: m.mem.slot(0), fr: m.mem.slot(0), end: m.mem.slot(0), ip: p.code.cursor(0) }, c),
+    }
 }
 
 /// Runs the Rust port of core primitive `index` (`prims::call`) on the
 /// frame's parameters, where the policy resolves the primitive to the VM's
-/// own entry with the method's arity (`Env::core_arities`), and completes
-/// the step as the protocol says (as `primitive::op_rust_primitive`), on the
-/// registers. `None` (nothing changed) when the policy does not, there is no
-/// port for these arguments or an allocation did not fit: then
+/// own entry with the method's arity (`Env::core_arities`): `Some` with
+/// whether it succeeded and its result, which `complete_r` completes the
+/// step with as the protocol says (as `primitive::op_rust_primitive`), on
+/// the registers. `None` (nothing changed) when the policy does not, there
+/// is no port for these arguments or an allocation did not fit: then
 /// `op_primitive` calls the C++ primitive, and only then.
 ///
 /// The ports of `prims::never_falls_back` never give `None` where the
@@ -1074,18 +1182,19 @@ fn cxx_primitive_rest(m: &mut Machine, r: Regs, env: &Env, st: usize, w: usize, 
 /// run. The method's arity, which the port is called with, is the arity the
 /// verifier's primitive table (`cert.prim_arity`) gives the primitive.
 #[inline(always)]
-fn rust_primitive_r(m: &mut Machine, r: &mut Regs, env: &Env, module: u8, index: u16, arity: usize) -> (res: Option<Ctl>)
+fn rust_primitive_r(m: &mut Machine, r: &Regs, env: &Env, module: u8, index: u16, arity: usize)
+    -> (res: Option<(bool, usize, Ghost<Value>)>)
     requires
-        rinv(&env.p, *old(m), *old(r)),
-        old(r).sp@ >= old(r).fr@ + old(m).fw + STACK_RESERVE,
+        rinv(&env.p, *old(m), *r),
+        r.sp@ >= r.fr@ + old(m).fw + STACK_RESERVE,
         step_ok(env.p.ap@, env.p.cert@, old(m).g@),
         cur_op(env.p.ap@, old(m).g@) == 89,
         sp::step(env.p.ap@, old(m).g@) == Outcome2::Primitive(old(m).g@, module, index),
         arity == sp::frame_height(old(m).g@),
-        old(r).ip@ + 4 < 0x1000_0000,
+        r.ip@ + 4 < 0x1000_0000,
     ensures
-        res is None ==> *final(m) == *old(m) && *final(r) == *old(r),
-        res matches Some(c) ==> rpost(&env.p, *old(m), *old(r), *final(m), *final(r), c),
+        res is None ==> *final(m) == *old(m),
+        res matches Some((success, w, v)) ==> prim_returned(&env.p, *old(m), *r, *final(m), success, w, v@),
         // The method's arity is the verifier's arity of the primitive.
         (module as int) < env.p.cert@.prim_arity.len()
             && (index as int) < env.p.cert@.prim_arity[module as int].len()
@@ -1099,6 +1208,7 @@ fn rust_primitive_r(m: &mut Machine, r: &mut Regs, env: &Env, module: u8, index:
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost w0 = m.with(*r);
+    let ghost m0 = *m;
     let ghost vs = prim_args(ap, g);
     proof {
         w0.lemma_frame(p);
@@ -1130,21 +1240,9 @@ fn rust_primitive_r(m: &mut Machine, r: &mut Regs, env: &Env, module: u8, index:
                 lemma_source_completion(ap, g, 0, index, o);
                 lemma_source_outcome(p, w0, o);
                 lemma_room_same(p, w0, m.with(*r));
+                assert(prim_returned(p, m0, *r, *m, true, w, v@));
             }
-            if ret_r(m, r, p, w, Ghost(v@)) {
-                proof { lemma_outcome_matches(p, w0, m.with(*r), Ctl::Next, o); }
-                return Some(Ctl::Next);
-            }
-            // A return in a TRY, with finally records, or of the bottom
-            // frame: on the machine.
-            m.sync_b(*r, p);
-            proof { assert(m.len == w0.len); }
-            let c = m.do_return(env, w, Ghost(v@));
-            proof { lemma_outcome_matches(p, w0, *m, c, o); }
-            let ok = ret_room_kept(m, env, &c, Ghost(w0), Ghost(State2 { heap: h2, ..g }), Ghost(v@));
-            let (r2, c2) = resume_r(m, *r, env, c, ok, Ghost(w0));
-            *r = r2;
-            Some(c2)
+            Some((true, w, v))
         },
         PrimOutcome::Failure(w) => {
             let ghost h2 = m.heap.objs();
@@ -1153,15 +1251,13 @@ fn rust_primitive_r(m: &mut Machine, r: &mut Regs, env: &Env, module: u8, index:
             proof {
                 lemma_refines_heap(p, w0, m.with(*r));
                 lemma_completion(p, g, index, h2, PrimRet::Failure(v@), vs);
+                crate::raise::lemma_shape_same(p, g, m.g@);
                 lemma_source_completion(ap, g, 0, index, o);
                 lemma_source_outcome(p, w0, o);
-            }
-            let ctl = push_next(m, r, p, w, 4, Ghost(v@));
-            proof {
-                lemma_outcome_matches(p, w0, m.with(*r), Ctl::Next, o);
                 lemma_room_same(p, w0, m.with(*r));
+                assert(prim_returned(p, m0, *r, *m, false, w, v@));
             }
-            Some(ctl)
+            Some((false, w, v))
         },
         _ => None,
     }
