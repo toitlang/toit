@@ -480,7 +480,10 @@ translator
 self-tests), 77 primitives prove the retry obligation, the C++ behind 62
 of the 106 ports is VeriFast-proved, and the ESBMC harness
 install_image_checks.cc checks the native install-time checks.
-@@FASTTIER@@ Lines: `metrics.sh` (C++ = the
+Fresh work directory (2026-11-25, RUN_JOBS=8, after the merge of
+wip/collector-proofs at 5497a73c): the fast tier 1413 checks ok, 0 FAIL, 0
+NOVERDICT, in 3474 s wall, 62 MB left in the work directory. Lines:
+`metrics.sh` (C++ = the
 rendered functions' lines; annotations among them; then the hand-written C
 and annotations of the verbatim sections: trusted prototypes, predicates,
 lemmas).
