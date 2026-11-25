@@ -337,6 +337,20 @@ trusted policy (only its quotas are used). Running a container from an
 unflagged image untrusted is up to the caller. Existing images are
 unaffected.
 
+Host firmware (run-image, `boot.sh`): the flash registry does not survive
+a restart, so run-image backs up every installed image in
+`installed-images/` and reinstalls it at the next start through the
+containers service, like a fresh install. The backup keeps the flags and
+the data the image was committed with and the image as it was written,
+with its shipped certificate: an untrusted image is verified again and
+flagged untrusted again. It keeps no verdict. Backups of older builds
+have no flags; they are reinstalled untrusted (verified, and sandboxed or
+not installed). A backup whose metadata doesn't match its image is not
+reinstalled. Refused backups are reported on stderr and stay in place
+(`containers.uninstall` deletes them); see `InstalledImageBackup` in
+`system/extensions/host/run-image.toit` and
+`tests/envelope/installed-flags-test.toit`.
+
 ## Verification at launch
 
 Every program that is started with the untrusted policy is checked by the

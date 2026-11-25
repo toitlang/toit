@@ -48,7 +48,7 @@ class EnvelopeTest:
 
     run-program_ [toit-bin, "compile", "--snapshot", "--output", path, source-path]
 
-  install --name/string --snapshot-path/string --boot/bool=true --assets/Map?=null -> none:
+  install --name/string --snapshot-path/string --boot/bool=true --critical/bool=false --assets/Map?=null -> none:
     trigger := boot ? "boot" : "none"
     cmd := [
       toit-bin, "tool", "firmware",
@@ -56,6 +56,7 @@ class EnvelopeTest:
       "container", "install", name, snapshot-path,
       "--trigger", trigger,
     ]
+    if critical: cmd.add "--critical"
     if assets:
       tmp-assets-path := "$tmp-dir/__tmp__.assets"
       run-program_ [toit-bin, "tool", "assets", "create", "--assets", tmp-assets-path]
@@ -71,10 +72,10 @@ class EnvelopeTest:
     file.write-contents --path=tmp-source-path source
     install --name=name --source-path=tmp-source-path --boot=boot
 
-  install --name/string --source-path/string --boot/bool=true --assets/Map?=null -> none:
+  install --name/string --source-path/string --boot/bool=true --critical/bool=false --assets/Map?=null -> none:
     tmp-snapshot-path := "$tmp-dir/__tmp__.snapshot"
     compile --path=tmp-snapshot-path --source-path=source-path
-    install --name=name --snapshot-path=tmp-snapshot-path --boot=boot --assets=assets
+    install --name=name --snapshot-path=tmp-snapshot-path --boot=boot --critical=critical --assets=assets
 
   extract --path/string --format/string="binary" --config/ByteArray?=null -> none:
     cmd := [toit-bin, "tool", "firmware", "-e", envelope, "extract", "--format", format, "-o", path]
