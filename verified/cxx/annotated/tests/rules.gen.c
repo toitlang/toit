@@ -63,6 +63,37 @@ lemma void unsigned_of_int32(int x)
   assert truncate_unsigned(x, 32) == r;
 }
 @*/
+
+// Wave 12: bit_cast of a double (contract only), List<uint16> and the
+// arithmetic shift's helper.
+int64 bit_cast_int64__double(double src);
+//@ requires true;
+//@ ensures true;
+typedef unsigned short uint16;
+typedef struct List_uint16 { uint16 *data_; word length_; } List_uint16;
+word List_uint16_length(List_uint16 *self)
+//@ requires [?f]self->length_ |-> ?n;
+//@ ensures [f]self->length_ |-> n &*& result == n;
+{ return self->length_; }
+uint16 *List_uint16_data(List_uint16 *self)
+//@ requires [?f]self->data_ |-> ?p;
+//@ ensures [f]self->data_ |-> p &*& result == p;
+{ return self->data_; }
+int64 asr_int64(int64 x, int64 n)
+//@ requires 0 <= n &*& n < 64;
+//@ ensures true;
+{
+  if (x >= 0) {
+    //@ shiftright_div(x, nat_of_int(n));
+    //@ pow2_pos(nat_of_int(n));
+    //@ div_rem_nonneg(x, pow_nat(2, nat_of_int(n)));
+    return (int64)((uint64)x >> n);
+  }
+  //@ shiftright_div(-1 - x, nat_of_int(n));
+  //@ pow2_pos(nat_of_int(n));
+  //@ div_rem_nonneg(-1 - x, pow_nat(2, nat_of_int(n)));
+  return -1 - (int64)((uint64)(-1 - x) >> n);
+}
 // C++: the lambda at verified/cxx/annotated/tests/rules.cc:262:30 (the closure rules)
 struct use_lambdas_lambda1 { word base; word b; };
 word use_lambdas_lambda1_call(struct use_lambdas_lambda1 *closure);
@@ -284,6 +315,26 @@ int64 wrap_mul(int64 x, int64 y);
 uint64 word_bits(word w);
 //@ requires true;
 //@ ensures true;
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::first_bits
+word first_bits(List_uint16 *list);
+//@ requires [?f]list->length_ |-> ?n &*& [f]list->data_ |-> ?d &*& [f]ushorts(d, n, ?vs);
+//@ ensures [f]list->length_ |-> n &*& [f]list->data_ |-> d &*& [f]ushorts(d, n, vs) &*& result == (n > 0 ? nth(0, vs) : 0);
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::shift_signed
+int64 shift_signed(int64 x, int64 n);
+//@ requires 0 <= n &*& n < 64;
+//@ ensures true;
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::raw_bits
+int64 raw_bits(double d);
+//@ requires true;
+//@ ensures true;
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::clamp_add
+word clamp_add(word x, word y);
+//@ requires 0 <= x &*& x < 1000;
+//@ ensures x <= result &*& result <= x + 100;
 
 // C++: verified/cxx/annotated/tests/rules.cc toit::Outer::Inner::Inner
 void Outer_Inner_ctor(Outer_Inner *self, word x)
@@ -720,5 +771,47 @@ uint64 word_bits(word w)
 //@ ensures true;
 {
   return /*@truncating@*/(uint64)w;
+}
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::first_bits
+word first_bits(List_uint16 *list)
+//@ requires [?f]list->length_ |-> ?n &*& [f]list->data_ |-> ?d &*& [f]ushorts(d, n, ?vs);
+//@ ensures [f]list->length_ |-> n &*& [f]list->data_ |-> d &*& [f]ushorts(d, n, vs) &*& result == (n > 0 ? nth(0, vs) : 0);
+{
+  return (word)(List_uint16_length(list) > 0 ? (int)List_uint16_data(list)[0] : 0);
+}
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::shift_signed
+int64 shift_signed(int64 x, int64 n)
+//@ requires 0 <= n &*& n < 64;
+//@ ensures true;
+{
+  return asr_int64(x, n);
+}
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::raw_bits
+int64 raw_bits(double d)
+//@ requires true;
+//@ ensures true;
+{
+  long raw = bit_cast_int64__double(d);
+  return raw;
+}
+
+// C++: verified/cxx/annotated/tests/rules.cc toit::clamp_add
+word clamp_add(word x, word y)
+//@ requires 0 <= x &*& x < 1000;
+//@ ensures x <= result &*& result <= x + 100;
+{
+  if (y > 0) {
+    word other = y;
+    if (other > 100) {
+      goto big;
+    }
+    return x + other;
+  }
+  big: ;
+  word other_1 = 100;
+  return x + other_1;
 }
 

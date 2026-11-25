@@ -1657,6 +1657,19 @@ spawn cpp_equivalence program-heap-native LP64 64 program_heap
 spawn cpp_equivalence program-heap-native ILP32 32 program_heap
 spawn cpp_equivalence program-class-ids-native LP64 64 program_class_ids
 spawn cpp_equivalence program-class-ids-native ILP32 32 program_class_ids
+# The install-time checks of a program image, native (wave 12,
+# ../harness/install_image_checks.cc): image_layout_error's null result
+# puts every table inside the image and reads nothing outside it
+# (install-image-layout, slow tier); builtin_classes_error reads the class
+# bits only at checked ids (install-image-classes). Mutant: the range check
+# against the class count taken out (a read past the table).
+spawn cpp_equivalence install-image-layout LP64 64 install_image_checks -DCXXV_PART=1 --boolector
+spawn cpp_equivalence install-image-layout ILP32 32 install_image_checks -DCXXV_PART=1 --boolector
+spawn cpp_equivalence install-image-classes LP64 64 install_image_checks -DCXXV_PART=2 --boolector
+spawn cpp_equivalence install-image-classes ILP32 32 install_image_checks -DCXXV_PART=2 --boolector
+spawn cpp_violation install-image-classes-range LP64 64 install_image_checks verifier_v2.cc \
+  "dereference failure: Access to object out of bounds" \
+  "id < 0 || id >= program->class_bits.length()" "id < 0" -DCXXV_PART=2 --boolector
 spawn cpp_equivalence blit-pixel LP64 64 blit_pixel
 spawn cpp_equivalence blit-pixel ILP32 32 blit_pixel
 spawn cpp_equivalence chunk-iterator LP64 64 chunk_iterator
@@ -2580,6 +2593,19 @@ mutant error-roots-skip-neighbour loader/error_roots.render src/program.cc "Cann
   "j > i; j--" "j > i + 1; j--"
 mutant error-roots-heap-check loader/error_roots.render src/program.cc "Cannot prove" "" \
   "!is_heap_object(roots_[i]) ||" "false ||"
+# The install-time check of the builtin classes (wave 12: what the model's
+# prog_ok rests on): the field check made vacuous; the header bound left
+# out (an id up to the class count, a word); the list class checked with
+# another tag; the range check one too weak (a read past the class bits).
+entry builtin-classes         pass "" loader/builtin_classes.gen.c
+mutant builtin-classes-fields loader/builtin_classes.render src/verifier_v2.cc "Cannot prove" "" \
+  "instance_size_from_class_bits(bits)) < fields)" "instance_size_from_class_bits(bits)) < 0)"
+mutant builtin-classes-header loader/builtin_classes.render src/verifier_v2.cc "Cannot prove" "" \
+  "  if (id > (Smi::MAX_SMI32_VALUE >> HeapObject::CLASS_ID_OFFSET)) return \"builtin class: an id too large for a header\";\n" ""
+mutant builtin-classes-tag loader/builtin_classes.render src/verifier_v2.cc "Cannot prove" "" \
+  "program->list_class_id(), INSTANCE_TAG," "program->list_class_id(), ODDBALL_TAG,"
+mutant builtin-classes-range loader/builtin_classes.render src/verifier_v2.cc "Cannot prove" "" \
+  "id >= program->class_bits.length()" "id > program->class_bits.length()"
 # The unsigned integer readers (`-allow_dead_code`: the int argument's
 # round trip is dead on ILP32): the end check left out (a read past the
 # blob); the little-endian loop started one byte too high.

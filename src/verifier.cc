@@ -498,12 +498,14 @@ bool VerifierImpl::check_builtin_classes() {
   };
   for (auto& b : builtins) {
     if (!is_smi(b.id)) { error(null, -1, "builtin class id %s is not a smi", b.name); ok = false; continue; }
-    int id = Smi::value(b.id);
+    // A word: on 64-bit an id of 2^32 + k read as an int would be k
+    // (verified/cxx/annotated/README.md, "Findings", wave 12).
+    word id = Smi::value(b.id);
     if (id < 0 || id >= class_count_) {
-      error(null, -1, "builtin class id %s (%d) out of range", b.name, id);
+      error(null, -1, "builtin class id %s (%" PRIdPTR ") out of range", b.name, id);
       ok = false;
     } else if (class_tag(id) != b.tag) {
-      error(null, -1, "builtin class %s (%d) has tag %d, expected %d", b.name, id, class_tag(id), b.tag);
+      error(null, -1, "builtin class %s (%" PRIdPTR ") has tag %d, expected %d", b.name, id, class_tag(id), b.tag);
       ok = false;
     }
   }

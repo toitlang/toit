@@ -280,4 +280,10 @@
 #define ObjectHeap_ALLOCATION_HIT_LIMIT 1
 #define ObjectHeap__UNLIMITED_EXPANSION ((word)0x7fffffff)
 
+// The class bits (src/program.h; wave 12, loader/builtin_classes.render).
+#define Program_CLASS_TAG_MASK 15
+#define Program_INSTANCE_SIZE_MASK 2047
+#define Instance_TOMBSTONE_DISTANCE_INDEX ((word)0)
+#define Instance_LARGE_ARRAY_VECTOR_INDEX ((word)1)
+
 #endif

@@ -305,3 +305,46 @@ inline uint64 word_bits(word w) {
 }
 
 }  // namespace toit
+
+// (Included here, not at the top: the earlier rules' line numbers, which
+// their renderings cite, stay.)
+#include "utils.h"
+
+namespace toit {
+
+// Rules (wave 12): a member of List<uint16> is one of the C struct
+// List_uint16 (the class bits table, loader/builtin_classes.render);
+// under `truncating`, an int64 `>>` by a count computed at run time is a
+// call of asr_int64 (the arithmetic shift, written without a shift of a
+// negative value; large_integer_shift_right).
+inline word first_bits(const List<uint16>* list) {
+  return list->length() > 0 ? list->data()[0] : 0;
+}
+
+inline int64 shift_signed(int64 x, int64 n) {
+  return x >> n;
+}
+
+// Rule (wave 12): a local declared `auto` from bit_cast has the type its
+// template argument names (Clang spells it as bit_cast's enable_if return
+// type; float_to_raw).
+inline int64 raw_bits(double d) {
+  auto raw = bit_cast<int64>(d);
+  return raw;
+}
+
+// Rule (wave 12): a goto and its label, written as is (smi_add); in a
+// function with a goto no local reuses a name (VeriFast takes the second
+// `other` for one that hides the first).
+inline word clamp_add(word x, word y) {
+  if (y > 0) {
+    word other = y;
+    if (other > 100) goto big;
+    return x + other;
+  }
+  big:
+  word other = 100;
+  return x + other;
+}
+
+}  // namespace toit

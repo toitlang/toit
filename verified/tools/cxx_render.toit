@@ -552,6 +552,13 @@ collect-lambdas node out/List --statement/Map?=null --parent-kind/string="" --in
     statement = null
   collect-lambdas (inner m) out --statement=statement --parent-kind=kind
 
+/** Whether the AST $node has a node of $kind. */
+has-kind node kind/string -> bool:
+  if node is List: return (node as List).any: has-kind it kind
+  if node is not Map: return false
+  if (node.get "kind") == kind: return true
+  return has-kind (node.get "inner" --if-absent=: []) kind
+
 // The 1-based line and column of a byte offset (Clang's columns count bytes).
 line-col source/string offset/int -> string:
   line := 1
@@ -643,6 +650,8 @@ c-type t/string -> string:
   if t == "__size_t": t = "size_t"
   // A nested class `A::B` is the C struct `A_B`.
   t = t.replace --all "::" "_"
+  // The class bits table's list (wave 12; mangle-member names its members).
+  t = t.replace --all "List<uint16>" "List_uint16"
   // A const reference is passed by value (the rendering rule for
   // parameters such as bit_cast's `const From&`); another reference is a
   // pointer (`T&` is `T *`; the argument is passed by address, a use of
@@ -760,6 +769,7 @@ class Renderer:
   param-names := {}
   reference-params := {}  // Parameters of a reference type (pointers in C).
   hoisted := {}  // The ids of the locals declared at the start of their block.
+  unique-locals := false  // A function with a goto: every local gets its own name.
   // A stack of scopes, each a list of [class, name] of locals with a
   // destructor.
   raii-scopes := []
@@ -823,6 +833,7 @@ class Renderer:
   mangle-member class-name/string name/string param-types/List -> string:
     // Clang names the instantiated list base for an inherited FIFO method.
     if class-name == "List<uint8>": class-name = "BytecodeList"
+    if class-name == "List<uint16>": class-name = "List_uint16"
     if class-name == "LinkedList<Process , 2>": class-name = "LinkedList_SchedulerProcess"
     if class-name == "LinkedList<FinalizerNode>": class-name = "LinkedList_FinalizerNode"
     if class-name == "Program_Table<Object * >": class-name = "Program_ObjectTable"
@@ -1282,6 +1293,14 @@ class Renderer:
         if 0 <= count and count < 64:
           v := (expr kids[0]).text
           return Expr "$v = $v >= 0 ? $v >> $count : -1 - ((-1 - $v) >> $count)" PREC-ASSIGN
+      if truncating and op == ">>" and (c-type node["type"]["qualType"]) == "int64" and kids[1]["kind"] != "IntegerLiteral":
+        // The arithmetic right shift of a signed 64-bit value by a count
+        // computed at run time (large_integer_shift_right, wave 12): a
+        // call of asr_int64, which the sidecar defines as the same floor
+        // division without a shift of a negative value (as the `>>=` by a
+        // literal above) and whose contract makes VeriFast check the count
+        // in [0, 63]. A call evaluates the value once.
+        return Expr "asr_int64($(wrap (expr kids[0]) PREC-ASSIGN), $(wrap (expr kids[1]) PREC-ASSIGN))" PREC-PRIMARY
       if truncating and op == "<<=" and kids[0]["kind"] == "DeclRefExpr" and (c-type node["type"]["qualType"]) == "uint64" and kids[1]["kind"] == "IntegerLiteral":
         // The compound form of the modular uint64 shift by a literal (a
         // plain variable: the lvalue is evaluated twice).
@@ -1527,6 +1546,22 @@ class Renderer:
         switch-item items[i] (indent + 1) item-next
       ghosts-up-to end (indent + 1)
       emit indent "}"
+    else if kind == "GotoStmt":
+      // A forward or backward jump to a label of the function (smi_add,
+      // wave 12): written as is; VeriFast verifies each path
+      // through the label. The label's name is the token after `goto` (the
+      // AST gives only its declaration's id). Not out of a scope with a
+      // destructor (it would be skipped).
+      if is-macro-range node: fail "$(where node): goto in a macro"
+      if not live-destructors.is-empty: fail "$(where node): goto out of a scope with a destructor"
+      words := tokenize source[begin-offset node..(end-offset node) + (end-token-length node)]
+      if words.size != 2 or (words[0] as Token).text != "goto": fail "$(where node): unexpected goto spelling"
+      emit indent "goto $((words[1] as Token).text);"
+    else if kind == "LabelStmt":
+      // `L: S`: an empty statement carries the label (C before C23 does not
+      // allow a label on a declaration), then S.
+      emit indent "$(node["name"]): ;"
+      stmt kids[0] indent next
     else if kind == "BreakStmt":
       emit indent "break;"
     else if kind == "ContinueStmt":
@@ -1713,7 +1748,7 @@ class Renderer:
     id := decl["id"]
     if local-names.contains id: return local-names[id]
     name := decl["name"]
-    visible := : | n/string | (param-names.contains n) or (name-scopes.any: | s/Set | s.contains n)
+    visible := : | n/string | (param-names.contains n) or (name-scopes.any: | s/Set | s.contains n) or (unique-locals and locals.contains n)
     if visible.call name:
       n := 1
       while visible.call "$(name)_$n": n++
@@ -1725,7 +1760,13 @@ class Renderer:
 
   var-decl-text decl/Map -> string:
     name := local-name decl
-    type := c-type decl["type"]["qualType"]
+    qual := decl["type"]["qualType"]
+    // `auto v = bit_cast<T>(x);` (float_to_raw, wave 12): Clang spells the
+    // local's type as bit_cast's return type, `typename
+    // std::enable_if<..., T>::type`; the local is a T (the desugared type).
+    if qual.starts-with "typename std::enable_if<" and decl["type"].contains "desugaredQualType":
+      qual = decl["type"]["desugaredQualType"]
+    type := c-type qual
     kids := inner decl
     if kids.is-empty: return declarator type name
     init := kids[0]
@@ -1970,6 +2011,10 @@ class Renderer:
             emit 1 "self->$field = $(default-init-value value);"
           else:
             emit 1 "self->$field = $(wrap (expr value) PREC-ASSIGN);"
+    // VeriFast takes a local declared after a label as hiding every local
+    // of the same name declared before it in the function (smi_add's two
+    // `other`s): in a function with a goto, no local reuses a name.
+    unique-locals = has-kind body-node "GotoStmt"
     block-contents body-node 1
     lines.add "}"
 

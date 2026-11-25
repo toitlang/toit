@@ -2310,6 +2310,52 @@ of #3378, malformed system messages of #3381) become mutants with them.
 
 ## Findings
 
+Wave 12 (the install-time checks proved, the tested-only retry
+classifications, the reachable contract-only fallbacks):
+
+* **The install-time check of the builtin classes accepted a builtin class
+  id that no object header can hold** (FIXED here, src/verifier_v2.cc
+  `builtin_class_error`; found by the VeriFast proof of
+  `V2Verifier::builtin_classes_error`, `loader/builtin_classes.render`).
+  An object's header is a smi holding the class id above the class tag
+  and the finalizer bit (`HeapObject::_set_header`), so on a 32-bit VM a
+  class id is below 2^25; the check (and the verifier's conversion before
+  it) bounded a builtin id only by the class count. A program with more
+  than 2^25 classes (a class-bits table of 64 MB and a dispatch table of
+  at least 128 MB inside the image) could name a builtin class, say its
+  array class, that every array allocation then gives a header whose
+  class id field overflows the smi. The model's `prog_ok` states ids below
+  `MAX_CLASS_IDS` (2^25 on ILP32, 2^31 on LP64: the C++ keeps class ids in
+  ints), and the proof failed there. Now every builtin id is at most
+  `Smi::MAX_SMI32_VALUE >> CLASS_ID_OFFSET` (the 32-bit header's bound, on
+  both word sizes). Not reachable on the ESP32 (flash of at most 16 MB);
+  on a 32-bit host in principle. Regression test:
+  tests/ctest/program-image-validation-test.cc (each of the 23 builtin ids
+  set to 2^25 is refused with "too large for a header", called directly:
+  the conversion refuses an id at or above the class count first).
+  Mutant builtin-classes-header. Upstream master: no install-time
+  verification and no format 2 (n/a).
+* **The format-1 verifier read a builtin class id as an `int`: on a 64-bit
+  VM an id of 2^32 + k passed as k** (FIXED here, src/verifier.cc
+  `check_builtin_classes`; found while comparing it with the format-2
+  check above). `int id = Smi::value(b.id)` truncated the smi's value, so
+  the range and tag checks looked at class k while the VM then used the
+  real id (`class_bits[2^32 + k]`: a read far past the class table, e.g.
+  in `Program::instance_size_for`). Reachable by an untrusted format-1
+  image on a 64-bit host with `-Xuntrusted_format1` (an opt-in; the
+  format-2 conversion compares the whole id with the class count, and the
+  devices are 32-bit). Now a word. Regression test:
+  tests/ctest/program-image-validation-test.cc ("builtin class id above
+  2^32": accepted by the format-1 check before the fix). Upstream master:
+  no src/verifier.cc (n/a).
+* `builtin_classes_error` was restructured for the proof (the same checks
+  in the same order and the same messages): one call of a static helper
+  per builtin class instead of a table of anonymous structs walked by a
+  range-for (no rendering rule for either), and the roots' half moved to
+  `V2Verifier::builtin_roots_error` (v2_verify calls it after the classes
+  passed: its reads presuppose the classes' facts, and its lambda with
+  parameters has no rendering rule).
+
 Wave 11 (what the install-time checks pin in a program image; the
 argument objects of the primitives without a body proof):
 

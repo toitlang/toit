@@ -161,7 +161,29 @@ const char* V2Verifier::image_layout_error(const Program* program, word program_
   return null;
 }
 
-// The builtin classes and roots the C++ VM uses without checks
+// One builtin class (V2Verifier::builtin_classes_error): [class_id] is the
+// id of a class of the program that an object header can hold, the class
+// has [tag], and, for a positive [fields], at least that many fields.
+// Returns null or the reason. Proved with VeriFast
+// (verified/cxx/annotated/loader/builtin_classes.render).
+static const char* builtin_class_error(const Program* program, Smi* class_id, int tag, int fields) {
+  if (!is_smi(class_id)) return "builtin class: an id is not a smi";
+  word id = Smi::value(class_id);
+  // An object's header is a smi holding the class id above the class tag
+  // and the finalizer bit (HeapObject::_set_header): on 32-bit not every
+  // id below the class count fits. The bound of a 32-bit header on every
+  // word size (2^25 classes; the C++ also keeps class ids in ints).
+  if (id > (Smi::MAX_SMI32_VALUE >> HeapObject::CLASS_ID_OFFSET)) return "builtin class: an id too large for a header";
+  if (id < 0 || id >= program->class_bits.length()) return "builtin class: an id out of range";
+  int bits = program->class_bits.data()[id];
+  if (Program::class_tag_from_class_bits(bits) != tag) return "builtin class: a class without the tag the VM assumes";
+  if (fields > 0 && Instance::fields_from_size(Program::instance_size_from_class_bits(bits)) < fields) {
+    return "builtin class: a class with fewer fields than the VM reads";
+  }
+  return null;
+}
+
+// The builtin classes the C++ VM uses without checks
 // (verified/cxx/annotated/README.md, "Findings", wave 11): every builtin
 // class id is a class with the tag the VM assumes for it, and the builtin
 // classes whose fields the C++ reads or writes by index (the primitives'
@@ -170,51 +192,74 @@ const char* V2Verifier::image_layout_error(const Program* program, word program_
 // library, so these are its classes; the format-2 verifier itself checks
 // only the classes the verified core allocates or dispatches on (`tables_ok`
 // in verified/spec/src/v2/verifier.rs). The same checks as the format-1
-// verifier's (src/verifier.cc check_builtin_classes). The roots are read
-// only after the verifier's conversion accepted them as objects of the
-// image (verified/vmverify/src/from_vm.rs). Returns null or the reason.
+// verifier's (src/verifier.cc check_builtin_classes). What an accepted
+// program gets is the VeriFast model's `prog_ok` (verified/cxx/annotated/
+// model/objects.render; proved: loader/builtin_classes.render). Returns
+// null or the reason.
 const char* V2Verifier::builtin_classes_error(Program* program) {
-  int class_count = program->class_bits.length();
-  struct { Smi* id; int tag; int fields; const char* name; } builtins[] = {
-    { program->string_class_id(), STRING_TAG, 0, "string" },
-    { program->array_class_id(), ARRAY_TAG, 0, "array" },
-    { program->byte_array_class_id(), BYTE_ARRAY_TAG, 0, "byte array" },
-    { program->byte_array_cow_class_id(), INSTANCE_TAG, Instance::BYTE_ARRAY_COW_IS_MUTABLE_INDEX + 1, "byte array cow" },
-    { program->byte_array_slice_class_id(), INSTANCE_TAG, Instance::BYTE_ARRAY_SLICE_TO_INDEX + 1, "byte array slice" },
-    { program->string_slice_class_id(), INSTANCE_TAG, Instance::STRING_SLICE_TO_INDEX + 1, "string slice" },
-    { program->string_byte_slice_class_id(), INSTANCE_TAG, Instance::STRING_BYTE_SLICE_TO_INDEX + 1, "string byte slice" },
-    { program->list_class_id(), INSTANCE_TAG, Instance::LIST_SIZE_INDEX + 1, "list" },
-    { program->list_slice_class_id(), INSTANCE_TAG, Instance::LIST_SLICE_TO_INDEX + 1, "list slice" },
-    { program->map_class_id(), INSTANCE_TAG, Instance::MAP_BACKING_INDEX + 1, "map" },
-    { program->tombstone_class_id(), INSTANCE_TAG, Instance::TOMBSTONE_DISTANCE_INDEX + 1, "tombstone" },
-    { program->stack_class_id(), STACK_TAG, 0, "stack" },
-    { program->null_class_id(), ODDBALL_TAG, 0, "null" },
-    { program->true_class_id(), ODDBALL_TAG, 0, "true" },
-    { program->false_class_id(), ODDBALL_TAG, 0, "false" },
-    { program->object_class_id(), INSTANCE_TAG, 0, "object" },
-    { program->double_class_id(), DOUBLE_TAG, 0, "double" },
-    { program->large_integer_class_id(), LARGE_INTEGER_TAG, 0, "large integer" },
-    { program->smi_class_id(), INSTANCE_TAG, 0, "smi" },
-    { program->task_class_id(), TASK_TAG, 2, "task" },
-    { program->large_array_class_id(), INSTANCE_TAG, Instance::LARGE_ARRAY_VECTOR_INDEX + 1, "large array" },
-    { program->lazy_initializer_class_id(), INSTANCE_TAG, 1, "lazy initializer" },
-    { program->exception_class_id(), INSTANCE_TAG, 2, "exception" },
-  };
-  for (auto& b : builtins) {
-    if (!is_smi(b.id)) return "builtin class: an id is not a smi";
-    word id = Smi::value(b.id);
-    if (id < 0 || id >= class_count) return "builtin class: an id out of range";
-    int bits = program->class_bits[id];
-    if (Program::class_tag_from_class_bits(bits) != b.tag) return "builtin class: a class without the tag the VM assumes";
-    if (b.fields > 0 &&
-        Instance::fields_from_size(Program::instance_size_from_class_bits(bits)) < b.fields) {
-      return "builtin class: a class with fewer fields than the VM reads";
-    }
+  const char* error = builtin_class_error(program, program->string_class_id(), STRING_TAG, 0);
+  if (error == null) error = builtin_class_error(program, program->array_class_id(), ARRAY_TAG, 0);
+  if (error == null) error = builtin_class_error(program, program->byte_array_class_id(), BYTE_ARRAY_TAG, 0);
+  if (error == null) {
+    error = builtin_class_error(program, program->byte_array_cow_class_id(), INSTANCE_TAG,
+                                Instance::BYTE_ARRAY_COW_IS_MUTABLE_INDEX + 1);
   }
-  auto is_oddball_of = [&](Object* object, Smi* class_id) {
-    return is_heap_object(object) && HeapObject::cast(object)->class_id() == class_id &&
-        HeapObject::cast(object)->class_tag() == ODDBALL_TAG;
-  };
+  if (error == null) {
+    error = builtin_class_error(program, program->byte_array_slice_class_id(), INSTANCE_TAG,
+                                Instance::BYTE_ARRAY_SLICE_TO_INDEX + 1);
+  }
+  if (error == null) {
+    error = builtin_class_error(program, program->string_slice_class_id(), INSTANCE_TAG,
+                                Instance::STRING_SLICE_TO_INDEX + 1);
+  }
+  if (error == null) {
+    error = builtin_class_error(program, program->string_byte_slice_class_id(), INSTANCE_TAG,
+                                Instance::STRING_BYTE_SLICE_TO_INDEX + 1);
+  }
+  if (error == null) {
+    error = builtin_class_error(program, program->list_class_id(), INSTANCE_TAG, Instance::LIST_SIZE_INDEX + 1);
+  }
+  if (error == null) {
+    error = builtin_class_error(program, program->list_slice_class_id(), INSTANCE_TAG,
+                                Instance::LIST_SLICE_TO_INDEX + 1);
+  }
+  if (error == null) {
+    error = builtin_class_error(program, program->map_class_id(), INSTANCE_TAG, Instance::MAP_BACKING_INDEX + 1);
+  }
+  if (error == null) {
+    error = builtin_class_error(program, program->tombstone_class_id(), INSTANCE_TAG,
+                                Instance::TOMBSTONE_DISTANCE_INDEX + 1);
+  }
+  if (error == null) error = builtin_class_error(program, program->stack_class_id(), STACK_TAG, 0);
+  if (error == null) error = builtin_class_error(program, program->null_class_id(), ODDBALL_TAG, 0);
+  if (error == null) error = builtin_class_error(program, program->true_class_id(), ODDBALL_TAG, 0);
+  if (error == null) error = builtin_class_error(program, program->false_class_id(), ODDBALL_TAG, 0);
+  if (error == null) error = builtin_class_error(program, program->object_class_id(), INSTANCE_TAG, 0);
+  if (error == null) error = builtin_class_error(program, program->double_class_id(), DOUBLE_TAG, 0);
+  if (error == null) error = builtin_class_error(program, program->large_integer_class_id(), LARGE_INTEGER_TAG, 0);
+  if (error == null) error = builtin_class_error(program, program->smi_class_id(), INSTANCE_TAG, 0);
+  if (error == null) error = builtin_class_error(program, program->task_class_id(), TASK_TAG, 2);
+  if (error == null) {
+    error = builtin_class_error(program, program->large_array_class_id(), INSTANCE_TAG,
+                                Instance::LARGE_ARRAY_VECTOR_INDEX + 1);
+  }
+  if (error == null) error = builtin_class_error(program, program->lazy_initializer_class_id(), INSTANCE_TAG, 1);
+  if (error == null) error = builtin_class_error(program, program->exception_class_id(), INSTANCE_TAG, 2);
+  return error;
+}
+
+// Whether [object] is the oddball of the class [class_id].
+static bool is_oddball_of(Object* object, Smi* class_id) {
+  return is_heap_object(object) && HeapObject::cast(object)->class_id() == class_id &&
+      HeapObject::cast(object)->class_tag() == ODDBALL_TAG;
+}
+
+// The builtin roots the C++ VM uses without checks have their kinds (as
+// the format-1 verifier checks). The roots are read only after the
+// verifier's conversion accepted them as objects of the image
+// (verified/vmverify/src/from_vm.rs) and builtin_classes_error the
+// classes. Returns null or the reason.
+const char* V2Verifier::builtin_roots_error(Program* program) {
   if (!is_oddball_of(program->null_object(), program->null_class_id()) ||
       !is_oddball_of(program->true_object(), program->true_class_id()) ||
       !is_oddball_of(program->false_object(), program->false_class_id())) {
@@ -397,6 +442,7 @@ static bool v2_verify(Program* program, const V2MethodTable* table, bool trusted
     // The builtin classes and roots the C++ relies on (after the
     // conversion accepted the roots as objects of the image).
     const char* builtin = V2Verifier::builtin_classes_error(program);
+    if (builtin == null) builtin = V2Verifier::builtin_roots_error(program);
     if (builtin != null) {
       fprintf(stderr, "verifier: %sprogram rejected: %s\n", trusted ? "" : "untrusted ", builtin);
       return false;

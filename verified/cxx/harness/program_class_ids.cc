@@ -75,6 +75,22 @@ int main() {
   CHECK_MODEL_CLASS_ID(byte_array_slice_class_id);
   CHECK_MODEL_CLASS_ID(string_byte_slice_class_id);
   CHECK_MODEL_CLASS_ID(string_slice_class_id);
+  // Wave 12: the indices of the other getters (the install-time check of
+  // every builtin class, loader/builtin_classes.render, states each getter
+  // as its slot of model/program_class_ids.h).
+  CHECK_MODEL_CLASS_ID(string_class_id);
+  CHECK_MODEL_CLASS_ID(byte_array_class_id);
+  CHECK_MODEL_CLASS_ID(stack_class_id);
+  CHECK_MODEL_CLASS_ID(null_class_id);
+  CHECK_MODEL_CLASS_ID(true_class_id);
+  CHECK_MODEL_CLASS_ID(false_class_id);
+  CHECK_MODEL_CLASS_ID(object_class_id);
+  CHECK_MODEL_CLASS_ID(double_class_id);
+  CHECK_MODEL_CLASS_ID(large_integer_class_id);
+  CHECK_MODEL_CLASS_ID(smi_class_id);
+  CHECK_MODEL_CLASS_ID(task_class_id);
+  CHECK_MODEL_CLASS_ID(lazy_initializer_class_id);
+  CHECK_MODEL_CLASS_ID(exception_class_id);
 #undef CHECK_MODEL_CLASS_ID
 #undef Program_class_id
 }

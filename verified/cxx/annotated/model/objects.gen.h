@@ -150,8 +150,14 @@ fixpoint bool blob_classes_ok(prog_ids ids) {
          class_tag(string_byte_slice_cid(ids)) == INSTANCE_TAG && class_fields(string_byte_slice_cid(ids)) >= 3;
 }
 
-// What VerifierImpl::check_builtin_classes (src/verifier.cc) establishes
-// for an accepted program, and the class tags of the builtin classes.
+// The class tags and field counts of the builtin classes the C++ reads,
+// as the verifier establishes them for every program it accepts: for
+// format 2 (the untrusted programs) V2Verifier::builtin_classes_error
+// (src/verifier_v2.cc, called by v2_verify for an install and a launch;
+// proved: loader/builtin_classes.render, a null result gives prog_ok of
+// the program's builtin class ids, with class_tag and class_fields the
+// program's class bits), for format 1 VerifierImpl::check_builtin_classes
+// (src/verifier.cc; reviewed).
 fixpoint bool prog_ok(prog_ids ids) {
   return 0 <= array_cid(ids) && array_cid(ids) < MAX_CLASS_IDS &&
          0 <= list_cid(ids) && list_cid(ids) < MAX_CLASS_IDS &&
@@ -484,11 +490,15 @@ lemma void pointers_unfocus(void **base, int i, list<void *> ps);
 
 typedef struct FlashAllocation_Header { uint16 size_in_pages_; } FlashAllocation_Header;
 typedef struct BytecodeList { uint8 *data_; word length_; } BytecodeList;
+// List<uint16> (src/utils.h): the class bits table (wave 12, the
+// install-time check of the builtin classes, loader/builtin_classes.render).
+typedef struct List_uint16 { uint16 *data_; word length_; } List_uint16;
 struct Program {
   FlashAllocation_Header header_;
   Object *roots_[Program_ROOT_COUNT];
   Smi *_builtin_class_ids[Program_BUILTIN_CLASS_IDS_COUNT];
   BytecodeList bytecodes;
+  List_uint16 class_bits;
 };
 typedef struct Program FlashAllocation;
 typedef struct Program Program;
