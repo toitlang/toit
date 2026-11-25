@@ -220,6 +220,24 @@ program. A value of 0 means unlimited. Defaults of the untrusted policy:
 | total CPU time (`cpu_budget_us`) | unlimited | unlimited | `Scheduler::tick` |
 | allowed-target set (`max_send_grants`) | 64 | 64 | `ProcessGroup::grant_send_to` |
 
+On a device the heap quota alone does not keep memory for the system: the
+128 KB default is more than a classic ESP32 has free with WiFi up (about 75
+KB), so a sandbox could grow until the system had less than 1 KB free, and
+an install's verification (in the system process) ran out of memory. A
+sandboxed process's heap therefore also leaves a floor of the system heap
+free: it doesn't take new heap pages (`TwoSpaceHeap::max_external_allocation`)
+or external byte arrays and strings (`AllocationManager::alloc`) when that
+would leave less than `CONFIG_TOIT_SANDBOX_HEAP_FLOOR_KB` (default 32 KB,
+0 turns it off) free in the system heap (`heap_caps_get_free_size`). A
+sandbox that needs more gets `OUT_OF_MEMORY` as at its quota (after the
+usual collections). The floor is checked when the sandbox grows: memory it
+already holds isn't taken back, so trusted code that later needs more
+(WiFi coming up) can still find less free. Not covered by the floor: the
+messages a sandbox has queued in other processes' mailboxes and its
+resources (bounded by the quotas above). On the host the floor works on a
+simulated system heap (`-Xsandbox_heap_floor`, `-Xsandbox_system_heap`;
+tests/sandbox/heap-floor-test.toit).
+
 The per-sender mailbox quotas protect every receiver, including the
 system process and trusted providers, from being flooded by a sandbox. An
 untrusted sender gets `QUOTA_EXCEEDED`; for a trusted sender a message to a
@@ -251,19 +269,51 @@ its processing tasks); they stop early when the client cancels the call
 processes is unchanged, except that a reply that can't be serialized or
 exceeds a quota fails the call instead of terminating the provider.
 
-A reply can also be lost at the client: the task that processes the
-messages takes the decoded reply from the mailbox and then runs the reply
-handler (`Rpc.on-message`), which needs stack and may need to grow it. If
-the client is out of memory there, the reply is gone. The exception used
-to be swallowed with the other handler exceptions, and the caller waited
-forever (the soak workers on a small device; tests/rpc-reply-oom-test.toit).
-Now an `OUT_OF_MEMORY` of the reply handler goes to the processing task,
-as the `OUT_OF_MEMORY` of a message that can't be decoded does. That task
-is usually the caller itself (it processes messages while it waits), so
-the call fails with `OUT_OF_MEMORY`; if another task processed the reply,
-that task gets the exception and the caller still waits until its own
-timeout. Requests lost the same way at the provider (its request handler
-out of memory) also leave the caller waiting until its timeout.
+A request or reply can also be lost to memory exhaustion at the receiver:
+the task that processes the messages takes the decoded message from the
+mailbox and then runs its handler (`Rpc.on-message` for a reply,
+`RpcBroker.on-message` for a request), which needs stack and may need to
+grow it or allocate. Before, a handler that ran out of memory lost the
+message (the exception was swallowed with the other handler exceptions), and
+the caller waited forever (the soak workers on a small device; since
+1a19d3df only the caller itself got the error, not when another task
+processed the reply, and lost requests stayed lost). Now
+(`process-messages_` in `lib/core/message_.toit`):
+
+| Where | Out of memory in | What happens | What the caller observes |
+|---|---|---|---|
+| client | the reply handler | the reply is kept (`deferred-message_`) and handled again, first, by the next message processing; the task that processes the messages gets `OUT_OF_MEMORY` | its reply, once memory is back; if it is the processing task itself (it processes messages while it waits), the call fails with `OUT_OF_MEMORY` |
+| provider | the request handler, before the request is enqueued | an `OUT_OF_MEMORY` error reply, sent from a preallocated reply list (`RpcBroker.on-out-of-memory`); if even that message can't be allocated, the request is kept and handled again as above | the call fails with `OUT_OF_MEMORY` (or gets its reply) |
+| provider | the request handler, after the request was enqueued | nothing more: the request is processed (the broker records the last enqueued request, so a kept request is not enqueued twice) | its reply |
+| provider | building or sending the reply (processing task) | the full reply is retried with the backoff of a full mailbox for 5 s, then an `OUT_OF_MEMORY` error reply is retried (at most 1 s apart) for 10 s (`RpcBroker.send-out-of-memory-reply_`) | its reply, or `OUT_OF_MEMORY`; no reply only if the provider can't allocate a short message for 15 s |
+| either | the processing itself, before the handler ran (decode, the handler's first frame) | a message that can't be decoded stays in the mailbox (VM, unchanged); one that was taken is kept as above | as above |
+
+While a message is kept, the other messages stay in the mailbox (as behind
+one that can't be decoded), and every message processing ends with an
+out-of-memory error for the task that processes the messages, so a process
+with a kept message can't go to sleep: the message is either handled or the
+process's tasks learn that it is out of memory. A task that yields or
+suspends while other tasks of its process run leaves the error to them (it
+is not thrown into it): a task that caught the error and waited again would
+otherwise spin without letting the tasks run that may free memory. A task
+that ends doesn't end the process with the error (`Task_.evaluate_`).
+The exception of a handler that fails for another reason is traced as
+before, but the trace now goes to the system process directly while the
+process processes its messages (`send-trace-message` in
+`lib/system/trace.toit`): its lookup of the trace service was an RPC call,
+whose reply only the message processing it was part of could have taken
+from the mailbox, so the process stopped processing messages for good
+(tests/trace-in-message-handler-test.toit).
+
+None of these paths can be driven by a sandboxed client: the handlers drop
+malformed messages without throwing, so they only fail when the receiver
+is out of memory; a kept message is handled again with bounded work; the
+provider's retries hold one processing task (of the 8 a sandboxed client
+may use) for at most 15 s; and the system process never gets there, since
+it restarts the device when it is out of memory. Exempting replies from the
+quotas was rejected for the reasons below; a reply that a trusted provider
+can't deliver to a sandbox's full mailbox is still dropped (the sandbox
+doesn't process its messages).
 
 Exempting replies from the quotas was rejected: the VM can't tell a reply
 from a forged `SYSTEM_RPC_REPLY` (`forge-rpc-reply`), so an exemption
