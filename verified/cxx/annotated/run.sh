@@ -2348,6 +2348,12 @@ mutant ffi-gc-dispatch-retry-barrier ffi/interpreter_v2.render src/interpreter_v
 # that nothing moved).
 mutant ffi-primitive-retries ffi/interpreter_v2.render src/interpreter_v2.cc "attempts|<= 4|invariant|Cannot prove" "$FFI_OPTS" \
   "    if (attempts > 3) {" "    if (attempts > 4) {"
+# The plain-failure path of toit_v2_primitive (rpc-task-speed-3) without
+# its allocation_failed comparison: an allocation failure, which asks for
+# a GC and a retry, completed as an ordinary failure.
+mutant ffi-primitive-plain-failure ffi/interpreter_v2.render src/interpreter_v2.cc "Cannot prove" "$FFI_OPTS" \
+  "    if (error != program->malloc_failed() && error != program->allocation_failed() &&" \
+  "    if (error != program->malloc_failed() &&"
 # The allocation retry loop without its bound (both instances of the
 # template): unbounded collections, the epoch could wrap.
 mutant ffi-allocate-retries ffi/interpreter_v2.render src/interpreter_v2.cc "attempts|<= 4|n \+ 3|invariant|Cannot prove" "$FFI_OPTS" \
