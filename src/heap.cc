@@ -116,7 +116,7 @@ bool InitialMemoryManager::can_allocate_task(Program* program) {
   int bits = program->class_bits[index];
   if (Program::class_tag_from_class_bits(bits) != TASK_TAG) return false;
   word task_size = Program::instance_size_from_class_bits(bits);
-  word stack_size = Stack::allocation_size(Stack::initial_length());
+  word stack_size = Stack::allocation_size(Stack::initial_length(program));
   return task_size >= Instance::allocation_size(Task::ID_INDEX + 1) &&
          stack_size + task_size + SENTINEL_SIZE <= TOIT_PAGE_SIZE;
 }
@@ -281,7 +281,7 @@ Task* ObjectHeap::allocate_task() {
     return null;
   }
   // First allocate the stack.
-  Stack* stack = allocate_stack(Stack::initial_length());
+  Stack* stack = allocate_stack(Stack::initial_length(program()));
   if (stack == null) return null;  // Allocation failure.
   // Then allocate the task.
   Smi* task_id = program()->task_class_id();

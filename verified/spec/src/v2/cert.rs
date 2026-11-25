@@ -42,6 +42,7 @@
 use vstd::prelude::*;
 use alloc::vec::Vec;
 use crate::xvec::*;
+use crate::cvec::{CBuild, CHUNK};
 use crate::types::*;
 use crate::v2::check::*;
 use crate::v2::verifier::*;
@@ -244,23 +245,23 @@ pub fn x_list_prefix(l: &XList, n: usize) -> (res: Result<XList, Dec>)
 
 /// Pushes kind `k` on `l` as a new node of `nodes`; `Dec::Bad` if `nodes`
 /// is full (`limit`).
-pub fn x_list_push(l: &mut XList, nodes: &mut Vec<XNode>, k: XKind, limit: usize) -> (r: Result<(), Dec>)
-    requires list_ok(&*old(l)), old(l).kinds@.len() < MAX_KINDS, limit < EMPTY_MAP as usize,
-    ensures r is Ok ==> list_ok(&*final(l)) && final(l).kinds@.len() == old(l).kinds@.len() + 1,
+pub fn x_list_push(l: &mut XList, nodes: &mut CBuild<XNode>, k: XKind, limit: usize) -> (r: Result<(), Dec>)
+    requires list_ok(&*old(l)), old(l).kinds@.len() < MAX_KINDS, limit < EMPTY_MAP as usize, old(nodes).ok(),
+    ensures final(nodes).ok(), r is Ok ==> list_ok(&*final(l)) && final(l).kinds@.len() == old(l).kinds@.len() + 1,
 {
     let id = nodes.len();
     if id >= limit { return Err(Dec::Bad); }
     let parent = if l.ids.len() == 0 { id as u32 } else { vix(&l.ids, l.ids.len() - 1) };
-    dec_push(nodes, XNode { parent, kind: k })?;
+    match nodes.try_push(XNode { parent, kind: k }) { Ok(()) => {}, Err(_) => return Err(Dec::Oom) }
     dec_push(&mut l.kinds, k)?;
     dec_push(&mut l.ids, id as u32)?;
     Ok(())
 }
 
 /// The list of kinds `k2`, sharing the longest common prefix with `l`.
-pub fn x_intern(l: &XList, k2: &Vec<XKind>, nodes: &mut Vec<XNode>, limit: usize) -> (res: Result<XList, Dec>)
-    requires list_ok(l), limit < EMPTY_MAP as usize,
-    ensures res matches Ok(r) ==> list_ok(&r),
+pub fn x_intern(l: &XList, k2: &Vec<XKind>, nodes: &mut CBuild<XNode>, limit: usize) -> (res: Result<XList, Dec>)
+    requires list_ok(l), limit < EMPTY_MAP as usize, old(nodes).ok(),
+    ensures final(nodes).ok(), res matches Ok(r) ==> list_ok(&r),
 {
     if k2.len() > MAX_KINDS { return Err(Dec::Bad); }
     let mut c = 0;
@@ -273,7 +274,7 @@ pub fn x_intern(l: &XList, k2: &Vec<XKind>, nodes: &mut Vec<XNode>, limit: usize
     let mut r = x_list_prefix(l, c)?;
     let mut i = c;
     while i < k2.len()
-        invariant list_ok(&r), c <= i <= k2@.len(), k2@.len() <= MAX_KINDS, r.kinds@.len() == i, limit < EMPTY_MAP as usize,
+        invariant list_ok(&r), c <= i <= k2@.len(), k2@.len() <= MAX_KINDS, r.kinds@.len() == i, limit < EMPTY_MAP as usize, nodes.ok(),
         decreases k2@.len() - i,
     {
         x_list_push(&mut r, nodes, vix(k2, i), limit)?;
@@ -303,9 +304,9 @@ pub fn x_list_prefix_into(l: &XList, n: usize, out: &mut XList) -> (res: Result<
 }
 
 /// `x_intern` into `out` (its buffers reused).
-pub fn x_intern_into(l: &XList, k2: &Vec<XKind>, nodes: &mut Vec<XNode>, limit: usize, out: &mut XList) -> (res: Result<(), Dec>)
-    requires list_ok(l), limit < EMPTY_MAP as usize,
-    ensures res is Ok ==> list_ok(&*final(out)),
+pub fn x_intern_into(l: &XList, k2: &Vec<XKind>, nodes: &mut CBuild<XNode>, limit: usize, out: &mut XList) -> (res: Result<(), Dec>)
+    requires list_ok(l), limit < EMPTY_MAP as usize, old(nodes).ok(),
+    ensures final(nodes).ok(), res is Ok ==> list_ok(&*final(out)),
 {
     if k2.len() > MAX_KINDS { return Err(Dec::Bad); }
     let mut c = 0;
@@ -318,7 +319,7 @@ pub fn x_intern_into(l: &XList, k2: &Vec<XKind>, nodes: &mut Vec<XNode>, limit: 
     x_list_prefix_into(l, c, out)?;
     let mut i = c;
     while i < k2.len()
-        invariant list_ok(&*out), c <= i <= k2@.len(), k2@.len() <= MAX_KINDS, out.kinds@.len() == i, limit < EMPTY_MAP as usize,
+        invariant list_ok(&*out), c <= i <= k2@.len(), k2@.len() <= MAX_KINDS, out.kinds@.len() == i, limit < EMPTY_MAP as usize, nodes.ok(),
         decreases k2@.len() - i,
     {
         x_list_push(out, nodes, vix(k2, i), limit)?;
@@ -347,14 +348,23 @@ pub struct ShippedOracle<'a> {
 
 /// A map nobody can accept for a method with a non-empty body.
 pub fn x_bad_maps() -> (r: XMaps) {
-    XMaps { idx: Vec::new(), nodes: Vec::new() }
+    XMaps { idx: CVec::new(), nodes: CVec::new() }
+}
+
+/// The maps the decoder built.
+fn x_built(idx: CBuild<u32>, nodes: CBuild<XNode>) -> (r: Result<XMaps, Dec>)
+    requires idx.ok(), nodes.ok(),
+{
+    let idx = match idx.try_finish() { Ok(v) => v, Err(_) => return Err(Dec::Oom) };
+    let nodes = match nodes.try_finish() { Ok(v) => v, Err(_) => return Err(Dec::Oom) };
+    Ok(XMaps { idx, nodes })
 }
 
 /// Reads the next shipped map: drop `d` slots of `prev`, push the kinds
 /// that follow. Returns the list and the position after it.
-pub fn x_read_map(s: &[u8], pos: usize, prev: &XList, nodes: &mut Vec<XNode>, limit: usize) -> (r: Result<(XList, usize), Dec>)
-    requires list_ok(prev), limit < EMPTY_MAP as usize,
-    ensures r matches Ok((l, q)) ==> list_ok(&l) && pos < q <= s@.len(),
+pub fn x_read_map(s: &[u8], pos: usize, prev: &XList, nodes: &mut CBuild<XNode>, limit: usize) -> (r: Result<(XList, usize), Dec>)
+    requires list_ok(prev), limit < EMPTY_MAP as usize, old(nodes).ok(),
+    ensures final(nodes).ok(), r matches Ok((l, q)) ==> list_ok(&l) && pos < q <= s@.len(),
 {
     let (d, q) = dec_some(x_varint(s, pos))?;
     let (n, q) = dec_some(x_varint(s, q))?;
@@ -367,7 +377,7 @@ pub fn x_read_map(s: &[u8], pos: usize, prev: &XList, nodes: &mut Vec<XNode>, li
     while i < n as usize
         invariant
             list_ok(&l), l.kinds@.len() == keep + i, keep + n as usize <= MAX_KINDS, 0 <= i <= n as usize,
-            pos < q <= s@.len(), limit < EMPTY_MAP as usize,
+            pos < q <= s@.len(), limit < EMPTY_MAP as usize, nodes.ok(),
         decreases n as usize - i,
     {
         let (k, q2) = dec_some(x_read_kind(s, q))?;
@@ -379,11 +389,11 @@ pub fn x_read_map(s: &[u8], pos: usize, prev: &XList, nodes: &mut Vec<XNode>, li
 }
 
 /// The kinds at the entry of method `m` as a list.
-pub fn x_entry_list(p: &VProgram, g: &XGlobal, m: usize, nodes: &mut Vec<XNode>, limit: usize) -> (r: Result<XList, Dec>)
-    requires m < p.methods@.len(), limit < EMPTY_MAP as usize,
-    ensures r matches Ok(r) ==> list_ok(&r),
+pub fn x_entry_list(p: &VProgram, g: &XGlobal, m: usize, nodes: &mut CBuild<XNode>, limit: usize) -> (r: Result<XList, Dec>)
+    requires m < p.methods@.len(), limit < EMPTY_MAP as usize, old(nodes).ok(),
+    ensures final(nodes).ok(), r matches Ok(r) ==> list_ok(&r),
 {
-    let empty = XMaps { idx: Vec::new(), nodes: Vec::new() };
+    let empty = XMaps { idx: CVec::new(), nodes: CVec::new() };
     let c = XCert { g, cur: m, maps: &empty };
     let e = match x_entry_kinds(p, &c, m) { Ok(e) => e, Err(_) => return Err(Dec::Oom) };
     let l = XList { kinds: Vec::new(), ids: Vec::new() };
@@ -412,16 +422,20 @@ impl<'a> ShippedOracle<'a> {
         let s = self.s;
         let (count, q) = dec_some(x_varint(s, self.pos))?;
         let mut pos = q;
-        let mut idx: Vec<u32> = match try_filled(NO_MAP, size) { Ok(v) => v, Err(_) => return Err(Dec::Oom) };
-        // Room for the nodes of most methods (about one per two bytes).
-        let mut nodes: Vec<XNode> = match try_with_capacity(size / 8 + 4) { Ok(v) => v, Err(_) => return Err(Dec::Oom) };
+        // The map index grows with the walk (the offsets it places maps at
+        // increase): `NO_MAP` up to an offset, then its map.
+        let mut idx: CBuild<u32> = match CBuild::try_new(size) { Ok(v) => v, Err(_) => return Err(Dec::Oom) };
+        // A whole chunk for the nodes (a smaller first block would grow past
+        // a chunk when it fills).
+        let mut nodes: CBuild<XNode> = match CBuild::try_new(CHUNK) { Ok(v) => v, Err(_) => return Err(Dec::Oom) };
         // A block that is never created is not checked: no maps.
-        let empty = XMaps { idx: Vec::new(), nodes: Vec::new() };
+        let empty = XMaps { idx: CVec::new(), nodes: CVec::new() };
         let c = XCert { g, cur: m, maps: &empty };
         if info.kind == 3 && x_ctx_of(&c, m).is_none() {
             if count != 0 { return Err(Dec::Bad); }
+            if idx.try_fill_to(NO_MAP, size).is_err() { return Err(Dec::Oom); }
             self.pos = pos;
-            return Ok(XMaps { idx, nodes });
+            return x_built(idx, nodes);
         }
         // The node budget: well above what compiled code needs (infer.rs).
         let limit: usize = if size < 0x0100_0000 { size * 16 + 4096 } else { 0x1000_0000 };
@@ -459,7 +473,7 @@ impl<'a> ShippedOracle<'a> {
             invariant
                 wf_program2(vview(p)), g_ok(g), m < p.methods@.len(), g.n == p.methods@.len(),
                 entry == vinfo(p, m as int).entry, end == vinfo(p, m as int).end, entry < end <= p.bytecodes@.len(),
-                size == end - entry, idx@.len() == size, pos <= s@.len(),
+                size == end - entry, idx.ok(), nodes.ok(), idx.items().len() <= size, idx.items().len() <= off, pos <= s@.len(),
                 list_ok(&prev), list_ok(&cur), list_ok(&next),
                 limit < EMPTY_MAP as usize, have ==> e <= u32::MAX as usize,
             decreases (if off <= size { size - off } else { 0 }), (if have { 1int } else { 0int }) + left as int,
@@ -501,7 +515,8 @@ impl<'a> ShippedOracle<'a> {
             }
             // `cur` is the map placed at `off`.
             have_cur = false;
-            vput(&mut idx, off, x_top(&cur));
+            if idx.try_fill_to(NO_MAP, off).is_err() { return Err(Dec::Oom); }
+            if idx.try_push(x_top(&cur)).is_err() { return Err(Dec::Oom); }
             let bci = entry + off;
             let op = ix(p.bytecodes, bci);
             if op >= OPCODE_COUNT2 {
@@ -537,7 +552,7 @@ impl<'a> ShippedOracle<'a> {
         }
         // The shipped maps past the end are read (and ignored).
         while have || left > 0
-            invariant pos <= s@.len(), list_ok(&prev), limit < EMPTY_MAP as usize,
+            invariant pos <= s@.len(), list_ok(&prev), limit < EMPTY_MAP as usize, idx.ok(), nodes.ok(), idx.items().len() <= size,
             decreases (if have { 1int } else { 0int }) + left as int,
         {
             let (_, q) = x_read_map(s, pos, &prev, &mut nodes, limit)?;
@@ -550,11 +565,12 @@ impl<'a> ShippedOracle<'a> {
                 have = false;
             }
         }
+        if idx.try_fill_to(NO_MAP, size).is_err() { return Err(Dec::Oom); }
         self.pos = pos;
         self.b_prev = prev;
         self.b_next = next;
         self.b_post = k2;
-        Ok(XMaps { idx, nodes })
+        x_built(idx, nodes)
     }
 }
 

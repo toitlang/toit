@@ -32,10 +32,20 @@ int main() {
   bool in_table = (raw & 1) == 0 && index >= 0 && index < count;
   uint16 bits = nondet_ushort();
   if (in_table) classes[index] = bits;
+  // Either format; the initial stack length of format 2 depends on the
+  // program's maximal height (any value).
+  uint8 tag[4] = {'T', 'B', 'C', '2'};
+  if (!nondet_bool()) tag[0] = 0;
+  image.bytecodes = List<uint8>(tag, sizeof(tag));
+  int height = nondet_int();
+  image.set_global_max_stack_height(height);
+  word initial = Stack::initial_length(&image);
+  CXXV_ASSERT(initial >= Stack::initial_length() && initial <= Stack::V2_MAX_INITIAL_LENGTH,
+              "the initial stack length is bounded");
 
   bool admitted = InitialMemoryManager::can_allocate_task(&image);
   word task_words = bits >> HeapObject::CLASS_ID_OFFSET;
-  word stack_words = Stack::allocation_size(Stack::initial_length()) / WORD_SIZE;
+  word stack_words = Stack::allocation_size(initial) / WORD_SIZE;
   bool valid = in_table && (bits & Program::CLASS_TAG_MASK) == TASK_TAG &&
                task_words >= Instance::HEADER_SIZE / WORD_SIZE + Task::ID_INDEX + 1;
   CXXV_ASSERT(admitted == (valid && stack_words + task_words < TOIT_PAGE_SIZE / WORD_SIZE),

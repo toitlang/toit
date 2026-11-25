@@ -415,6 +415,56 @@ Further reductions if needed: the contexts' kinds could share nodes like
 the maps (half of the global part), and the heap's id map could be a
 bitmap over the image.
 
+### Fragmented heaps (devices)
+
+On a device the verifier often runs while other containers keep the heap
+fragmented (the classic ESP32 with WiFi up: 20-60 KB free, the largest
+block 4-20 KB). What matters there is the largest single request, not only
+the peak. Measured on the device (classic ESP32, Kconfig
+`TOIT_TRACE_INSTALL_HEAP`, which counts the installing task's requests;
+artifacts memory-pressure):
+
+| program | requests | largest request before -> now | requests >= 4 KB | peak use |
+|---|---:|---|---:|---:|
+| a-hello (801 methods) | 8,282 -> 8,079 | 3,456 B (node arena) -> 3,220 B (method-table literal) | 0 | 13.9-14.8 -> 12.6-13.4 KB |
+| c-map (986 methods, a 1,826-byte method) | 10,355 -> 10,107 | 7,424 B (node arena growing) -> 3,960 B | 3 -> 0 | 22.6-24.2 -> 22.7-25.9 KB |
+| g-big (1,050 methods) | 11,415 -> 11,192 | 4,216 B (method-table literal) | 1 | 17.2 KB |
+
+The per-method maps (`XMaps`: the map index, 4 bytes per bytecode byte,
+and the kind nodes, 16 bytes each) are kept in chunks of 64 elements
+(`toit_spec::cvec::CVec`, verified, built on the `xvec` accessors; the
+decoder builds them in a `CBuild`, whole chunks plus a plain-vector
+block, so that a push costs what a vector push costs): a method of any
+size needs blocks of at most 1 KB, and a growing node arena no longer
+copies itself into a block twice as large. Same speed as the vectors
+(x86-64: a-hello 2.75 ms vs 2.74 ms, 55.7 M vs 54.1 M instructions). On
+the classic ESP32 the verification time is dominated by flash-cache
+misses, above all in the allocator's flash functions (a malloc costs
+28-33 us; about 8 allocator calls per method), so it depends on where the
+verifier's hot functions lie relative to them: the new code first made
+a-hello 0.82 -> 1.15 s, until the hottest verifier functions were placed
+first in the pinned group B (toolchains/idf/components/toit/
+hot_flash_functions.txt; 0.84 s, base 0.86 s). What remains above 1 KB: the copy of each byte-array literal the heap check gets
+(`ExecBody::Bytes`; the largest is usually the method-table literal, 4
+bytes per method), the converted literals (16 bytes per literal), the
+object-id table (2 KB for 150-250 objects).
+
+Before an install-time verification starts, `V2Verifier::verify_installed`
+checks the free heap; below 48 KB free or a 16 KB largest block it returns
+`OUT_OF_MEMORY` at once, so that the commit primitive collects every
+process's garbage (`CROSS_PROCESS_GC`) and verifies on the collected heap,
+instead of after a verification that failed half-way. An
+`OUT_OF_MEMORY` is not a verdict: the installer reports it as the error
+`OUT_OF_MEMORY` (a rejected program is `VERIFICATION_FAILED`), and the
+console says "verifier: out of memory: the untrusted program was not
+verified (no verdict)". The system's image writer
+(system/flash/image_writer.toit) tries such a commit three more times
+(after 250, 500, 750 ms). In a soak with a sandboxed worker whose heap
+swings by tens of KB, the installs that still fail ran out of memory at
+requests of at most 1 KB with under 1 KB free in the whole heap: the other
+container's heap grew during the verification (exhaustion, not
+fragmentation); a heap quota for sandboxed containers would bound it.
+
 ### Install time with a shipped certificate (devices)
 
 With a shipped certificate the global part is read in place from the

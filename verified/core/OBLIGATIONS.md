@@ -286,6 +286,25 @@ would make it total, a behavior change).
 - GC safety of words held across a GC point in the checked handlers is by
   review (the verified handlers hold none: a GC point re-derives every
   word from the model).
+- Done (branch device/memory-pressure): the slow-tier ESBMC job
+  `task-all-fields` (verified/cxx/harness/allocate_task.cc with
+  `-DCXXV_SYMBOLIC_FIELDS`) reported an invalid-pointer sentinel write in
+  the young-space stack allocation once the initial stack length depended
+  on the program. Cause: ESBMC loses the pointer's object through the bit
+  mask of `HeapObject::_align` applied to a non-constant size (the write
+  was aligned and in bounds; a reduced model shows the in-bounds
+  assertion passing and the invalid-pointer check failing). The rounding
+  in `Stack::allocation_size` was the identity and is removed (with a
+  static_assert); both widths pass. The harness takes the expected
+  length from `Stack::allocation_size` itself, so a wrong reservation
+  size is not caught there (a one-word-short mutant passes); the stack
+  length mutants are caught.
+- Device memory (branch device/memory-pressure): the largest requests of
+  an install-time verification above 1 KB are the heap check's copy of
+  each byte-array literal (`ExecBody::Bytes`; the method-table literal, 4
+  bytes per method), the converted literals (16 bytes each) and the object
+  id table (2 KB). Bounding them needs a spec change (`ExecBody` and
+  `VProgram::literals` in chunks).
 
 ### Device size requests (branch device/certificate-and-size)
 

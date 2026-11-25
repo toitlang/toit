@@ -114,8 +114,8 @@ impl Interner {
 }
 
 fn kinds_at(maps: &XMaps, off: usize) -> Option<Vec<XKind>> {
-    match maps.idx.get(off) {
-        Some(&top) if top != NO_MAP => Some(infer::ok(x_chain(&maps.nodes, top))),
+    match (off < maps.idx.len()).then(|| maps.idx.at(off)) {
+        Some(top) if top != NO_MAP => Some(infer::ok(x_chain(&maps.nodes, top))),
         _ => None,
     }
 }
@@ -134,7 +134,7 @@ fn method_entries(p: &VProgram, g: &XGlobal, m: usize, maps: &XMaps, trusted: bo
     let (entry, end) = (info.entry as usize, info.end());
     if !(entry < end && end <= p.bytecodes.len()) { return out; }
     let size = end - entry;
-    let empty = XMaps { idx: Vec::new(), nodes: Vec::new() };
+    let empty = XMaps { idx: CVec::new(), nodes: CVec::new() };
     let c = XCert { g, cur: m, maps: &empty };
     if info.kind == 3 && x_ctx_of(&c, m).is_none() { return out; }
     let mut cur: Option<Vec<XKind>> = Some(infer::ok(x_entry_kinds(p, &c, m)));
@@ -152,7 +152,7 @@ fn method_entries(p: &VProgram, g: &XGlobal, m: usize, maps: &XMaps, trusted: bo
             }
             (None, Some(c)) => c,
             (None, None) => {
-                match (off + 1..size).find(|&o| maps.idx.get(o).is_some_and(|t| *t != NO_MAP)) {
+                match (off + 1..size).find(|&o| o < maps.idx.len() && maps.idx.at(o) != NO_MAP) {
                     Some(o) => { off = o; continue; }
                     None => break,
                 }

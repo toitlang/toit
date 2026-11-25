@@ -33,6 +33,7 @@
 extern crate alloc;
 
 pub mod xvec;
+pub mod cvec;
 pub mod types;
 pub mod bytecodes;
 pub mod spec_common;

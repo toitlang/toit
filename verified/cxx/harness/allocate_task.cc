@@ -38,6 +38,8 @@ using namespace toit;
 extern Process caller;
 extern Program image;
 GcMetadata GcMetadata::singleton_;
+// The initial stack length of the program's format (Stack::initial_length).
+static word expected_length;
 
 #ifdef CXXV_SYMBOLIC_FIELDS
 static Object** expected_fields;
@@ -51,7 +53,7 @@ static unsigned payload_fills;
 namespace toit {
 template<> inline void Utils::fill_words<Object*>(Object** base, uword count, Object* value) {
   ++payload_fills;
-  CXXV_ASSERT(base == expected_slots && count == static_cast<uword>(Stack::initial_length()) && value == nullptr,
+  CXXV_ASSERT(base == expected_slots && count == static_cast<uword>(expected_length) && value == nullptr,
               "initialize exactly the reserved format-2 stack slots");
 }
 }  // namespace toit
@@ -92,7 +94,8 @@ int main() {
   auto* heap = &local_heap;
   CXXV_ASSERT(heap->two_space_heap_.process_heap_ == heap, "retry queries the owning object heap");
   auto* space = heap->two_space_heap_.new_space();
-  const word stack_words = Stack::allocation_size(Stack::initial_length()) / WORD_SIZE;
+  expected_length = Stack::initial_length(&image);
+  const word stack_words = Stack::allocation_size(expected_length) / WORD_SIZE;
   const word page_words = TOIT_PAGE_SIZE / WORD_SIZE;
   static uword storage[2 * page_words];
   uword start = reinterpret_cast<uword>(storage);
@@ -170,7 +173,7 @@ int main() {
               "mark only the directly allocated old stack and the published task");
   if (has_stack) {
     CXXV_ASSERT(stack->has_class_tag(STACK_TAG) && stack->class_id() == image.stack_class_id() &&
-                stack->length() == Stack::initial_length() && stack->top() == stack->length() &&
+                stack->length() == expected_length && stack->top() == stack->length() &&
                 stack->try_top() == stack->length() && !stack->pending_stack_check_method().is_valid() &&
                 !stack->is_guard_zone_touched(), "initialize an empty stack with intact guards");
   }

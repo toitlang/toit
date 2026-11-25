@@ -1,5 +1,67 @@
 # Phase 4a progress (verified core, format 2 on x86-64)
 
+## Memory pressure on the classic ESP32 (branch device/memory-pressure, 2026-11-25)
+
+Base 67e28c2d (wip/collector-proofs). Artifacts:
+/home/flo/work/opentoit-sandbox-artifacts/memory-pressure (README.md).
+
+- Task stacks: a format-2 task starts with the program's maximal height
+  plus 132 words (at most 256; format 1 keeps 64), measured from the
+  libraries' short tasks (they need 104-147 words at a maximal height of
+  18; with 64 words every task grew twice, 64 -> 96 -> 144). Classic
+  ESP32, soak worker: 9.6-10.0 KB allocated per iteration -> 6.8-7.2 KB
+  (format 1: 6.9 KB), minor GCs per iteration 3.3-3.5 -> 2.5-2.65 (f1
+  2.50). Speed within the layout noise (richards, deltablue, pystone,
+  tasks-1k, yield 1.00; json-decode +6 %, strings -4 %). No core or spec
+  constant changed (the core checks room after every task switch).
+- Verifier memory: the per-method maps in chunks of at most 1 KB
+  (`toit_spec::cvec::CVec`, built by the decoder in a `CBuild`; verified
+  on the `xvec` accessors, no new trusted code); largest request of c-map
+  7,424 -> 3,960 B, no request of 4 KB or more for a-hello and c-map
+  (g-big: its method-table literal's copy, 4,216 B); x86-64 instructions
+  per verification within 3 % of the base, fewer allocations. Before an
+  install-time verification on a device with under 48 KB free or a 16 KB
+  largest block, the commit primitive collects every process's garbage
+  first; the system's image writer retries a commit that ran out of
+  memory three times. In the traced soak every remaining failure was a
+  request of at most 1 KB with under 1 KB free: exhaustion by the other
+  containers' heaps during the verification, not fragmentation.
+  Verus: spec 1,066 -> 1,081 (the new module), core and core-split
+  unchanged, both widths; audit and THEOREMS.txt unchanged.
+- Device verification wall time: bisected on the device (time-only
+  builds, three layouts each) to the chunked maps (34896a5a: a-hello
+  0.82 -> 1.15 s; the garbage collection first, the retry and the trace
+  add nothing). Not more work (x86-64 instructions +3 %, device
+  allocations +2.5 %) but flash-cache conflicts: the verifier calls the
+  allocator about 8 times per method, a malloc costs 28-33 us (its
+  functions miss in the cache), and the new code moved the verifier's hot
+  functions onto the allocator's cache sets (the same commit with the
+  verifier group shifted by 8 KB: 0.84 s). Fix: the verifier's 44 hottest
+  functions (9 KB) first in the pinned group B, right after the
+  allocator's functions at the end of group A (hot_flash_functions.txt).
+  a-hello / c-map / g-big: 0.84 / 1.08 / 1.17 s (base 0.86 / 1.04 /
+  1.24); unpinned code shifted by 2400 / 6272 B: 0.77 / 0.86 / 1.00 and
+  0.70 / 0.89 / 1.00 (base 0.83 / 1.14 / 1.27, 0.81 / 1.05 / 1.16). The
+  layout still dominates: with all pinned code shifted by 1536 / 6272 B
+  the base takes 0.53-0.57 s and the fix 0.88-0.89 s (a second layout
+  factor, not the allocator overlap, which is the same as at the
+  default; open).
+- Soaks: f2 one worker 2 h: no reset, crash or stuck worker, installs
+  42/16 (all out of memory); f2 two workers (does not fit with WiFi,
+  free down to 3 KB): installs 23/37, one worker stuck (the RPC liveness
+  item of esp32-final), one restart by the scheduler's dead-lock check
+  (system process stalled 10 s in a WiFi connect); f1 1 h: one
+  system-process OOM restart.
+- The slow-tier ESBMC job `task-all-fields` failed (invalid-pointer
+  sentinel write) once the stack length depended on the program: the bit
+  mask of `_align` in `Stack::allocation_size` hid from ESBMC that the
+  address stays in its chunk (reproduced in a 50-line model with ESBMC
+  8.6.0: in-bounds assertion passes, invalid-pointer check fails; both
+  pass without the mask or with a constant length). The rounding was the
+  identity (HEADER_SIZE is whole words, now asserted) and is gone; the job
+  passes on both widths, and mutants (format 1's length for a format-2
+  task, one slot not cleared) still fail.
+
 ## Service calls and task switching, third round (branch core/rpc-task-speed-3, 2026-11-25)
 
 Base 5496da57 (wip/collector-proofs). Artifacts:

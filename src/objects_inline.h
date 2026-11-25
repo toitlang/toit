@@ -36,6 +36,13 @@ word Stack::max_length() {
   return (ObjectHeap::max_allocation_size() - HEADER_SIZE) / WORD_SIZE;
 }
 
+inline word Stack::initial_length(const Program* program) {
+  if (!program->is_format2()) return initial_length();
+  word height = program->global_max_stack_height();
+  if (height < 0 || height > V2_MAX_INITIAL_LENGTH - V2_INITIAL_LENGTH_ABOVE_HEIGHT) return V2_MAX_INITIAL_LENGTH;
+  return height + V2_INITIAL_LENGTH_ABOVE_HEIGHT;
+}
+
 inline void Stack::v2_initialize_new_task(Object* code) {
   word len = length();
   ASSERT(len >= V2_FRAME_WORDS + 1);

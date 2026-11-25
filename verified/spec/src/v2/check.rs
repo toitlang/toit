@@ -42,6 +42,7 @@
 use vstd::prelude::*;
 use alloc::vec::Vec;
 use crate::xvec::*;
+pub use crate::cvec::CVec;
 use crate::types::*;
 use crate::v2::types::*;
 use crate::v2::spec::*;
@@ -134,10 +135,11 @@ pub const NO_MAP: u32 = 0xffff_ffff;
 pub const EMPTY_MAP: u32 = 0xffff_fffe;
 
 /// The maps of one method: `idx[off]` is `NO_MAP` or the top node of the
-/// map at offset `off`.
+/// map at offset `off`. In chunks (`CVec`): a large method's maps need no
+/// contiguous block of their size.
 pub struct XMaps {
-    pub idx: Vec<u32>,
-    pub nodes: Vec<XNode>,
+    pub idx: CVec<u32>,
+    pub nodes: CVec<XNode>,
 }
 
 /// The certificate a method is checked against: the global part, and the
@@ -2062,7 +2064,7 @@ pub open spec fn rev_kinds(r: Seq<XKind>) -> Seq<Kind> {
 }
 
 /// The kinds of the list with top node `i` (`chain`), bottom first.
-pub fn x_chain(nodes: &Vec<XNode>, i: u32) -> (res: Result<Vec<XKind>, Oom>)
+pub fn x_chain(nodes: &CVec<XNode>, i: u32) -> (res: Result<Vec<XKind>, Oom>)
     ensures res matches Ok(r) ==> kv(r) == chain(nodes@, i as int),
 {
     // The kinds from the top down, then reversed.
@@ -2075,7 +2077,7 @@ pub fn x_chain(nodes: &Vec<XNode>, i: u32) -> (res: Result<Vec<XKind>, Oom>)
             !done ==> cur < nodes@.len() && chain(nodes@, i as int) == chain(nodes@, cur as int) + rev_kinds(rev@),
         decreases (if done { 0int } else { cur as int + 1 }),
     {
-        let nd = vix(nodes, cur);
+        let nd = nodes.at(cur);
         let ghost before = rev@;
         let ghost par = nd.parent as int;
         let ghost base = if par < cur { chain(nodes@, par) } else { Seq::<Kind>::empty() };
@@ -2094,7 +2096,7 @@ pub fn x_chain(nodes: &Vec<XNode>, i: u32) -> (res: Result<Vec<XKind>, Oom>)
 
 /// The kinds of the list with top node `i`, top first, into `rev` (its
 /// buffer reused): `x_chain` without allocating once `rev` has grown.
-pub fn x_chain_rev(nodes: &Vec<XNode>, i: u32, rev: &mut Vec<XKind>) -> (res: Result<(), Oom>)
+pub fn x_chain_rev(nodes: &CVec<XNode>, i: u32, rev: &mut Vec<XKind>) -> (res: Result<(), Oom>)
     ensures res is Ok ==> chain(nodes@, i as int) == rev_kinds(final(rev)@),
 {
     rev.clear();
@@ -2107,7 +2109,7 @@ pub fn x_chain_rev(nodes: &Vec<XNode>, i: u32, rev: &mut Vec<XKind>) -> (res: Re
             !done ==> cur < nodes@.len() && chain(nodes@, i as int) == chain(nodes@, cur as int) + rev_kinds(rev@),
         decreases (if done { 0int } else { cur as int + 1 }),
     {
-        let nd = vix(nodes, cur);
+        let nd = nodes.at(cur);
         let ghost before = rev@;
         let ghost par = nd.parent as int;
         let ghost base = if par < cur { chain(nodes@, par) } else { Seq::<Kind>::empty() };
@@ -2242,7 +2244,7 @@ pub fn x_map_at(c: &XCert, m: i64, off: i64) -> (res: Result<Option<Vec<XKind>>,
             return Ok(None);
         }
         assert(cc.maps[m as int][off as int] == map_view(c.maps, off as int));
-        let i = vix(&c.maps.idx, off as usize);
+        let i = c.maps.idx.at(off as usize);
         if i == NO_MAP {
             Ok(None)
         } else {
@@ -2278,7 +2280,7 @@ pub fn x_map_at(c: &XCert, m: i64, off: i64) -> (res: Result<Option<Vec<XKind>>,
 }
 
 /// `chain(nodes, i) == kv(k)`, without building the chain.
-pub fn x_chain_is(nodes: &Vec<XNode>, i: u32, k: &Vec<XKind>) -> (r: bool)
+pub fn x_chain_is(nodes: &CVec<XNode>, i: u32, k: &Vec<XKind>) -> (r: bool)
     ensures r == (chain(nodes@, i as int) == kv(*k)),
 {
     let ghost s = kv(*k);
@@ -2301,7 +2303,7 @@ pub fn x_chain_is(nodes: &Vec<XNode>, i: u32, k: &Vec<XKind>) -> (r: bool)
                 && (chain(nodes@, i as int) == s) == (chain(nodes@, cur as int) == s.subrange(0, j as int)),
         decreases (if done { 0int } else { cur as int + 1 }),
     {
-        let nd = vix(nodes, cur);
+        let nd = nodes.at(cur);
         let ghost par = nd.parent as int;
         let ghost base = if par < cur { chain(nodes@, par) } else { Seq::<Kind>::empty() };
         assert(chain(nodes@, cur as int) == base.push(nd.kind@));
@@ -2359,7 +2361,7 @@ pub fn x_map_is(c: &XCert, m: i64, off: i64, k: &Vec<XKind>) -> (res: Result<boo
             return Ok(false);
         }
         assert(cc.maps[m as int][off as int] == map_view(c.maps, off as int));
-        let i = vix(&c.maps.idx, off as usize);
+        let i = c.maps.idx.at(off as usize);
         if i == NO_MAP { return Ok(false); }
         return Ok(x_chain_is(&c.maps.nodes, i, k));
     }
@@ -2628,7 +2630,7 @@ pub fn x_method_body_ok(p: &VProgram, c: &XCert, m: usize, trusted: bool, bufs: 
                 instr_ok(vview(p), c@, m as int, o, c@.maps[m as int][o]->0, trusted),
         decreases c.maps.idx@.len() - off,
     {
-        let i = vix(&c.maps.idx, off);
+        let i = c.maps.idx.at(off);
         if i != NO_MAP {
             x_chain_rev(&c.maps.nodes, i, &mut bufs.rev)?;
             x_reversed_into(&bufs.rev, &mut bufs.k)?;
@@ -2948,7 +2950,7 @@ pub fn x_pins_agree(g: &XGlobal, m: usize, maps: &XMaps, at: usize) -> (res: Res
             proof { assert(!pin_agrees(g, i as int, mapsv(maps))); }
             return Ok(None);
         }
-        let top = vix(&maps.idx, off as usize);
+        let top = maps.idx.at(off as usize);
         proof { assert(mapsv(maps)[off as int] == map_view(maps, off as int)); }
         if top == NO_MAP {
             proof { assert(!pin_agrees(g, i as int, mapsv(maps))); }
@@ -2999,7 +3001,7 @@ pub fn verify<O: MapOracle>(p: &VProgram, g: &XGlobal, o: &mut O, trusted: bool)
     if p.unchecked && !trusted { return Ok((false, Ghost(pad))); }
     if g.n != p.methods.len() { return Ok((false, Ghost(pad))); }
     if !x_g_ok(g) { return Ok((false, Ghost(pad))); }
-    let empty = XMaps { idx: Vec::new(), nodes: Vec::new() };
+    let empty = XMaps { idx: CVec::new(), nodes: CVec::new() };
     let tc = XCert { g, cur: g.n, maps: &empty };
     if !x_tables_ok(p, &tc)? { return Ok((false, Ghost(pad))); }
     let n = p.methods.len();

@@ -194,7 +194,7 @@ fn disassemble(p: &VProgram, global: &infer::Global, m: usize, trusted: bool) {
         let len = OPCODE_LENGTHS2.get(op as usize).copied().unwrap_or(1) as usize;
         let operands: Vec<String> = (1..len).filter(|i| bci + i < p.bytecodes.len()).map(|i| p.bytecodes[bci + i].to_string()).collect();
         let off = bci - entry;
-        let map = maps.idx.get(off).filter(|t| **t != check::NO_MAP).and_then(|t| check::x_chain(&maps.nodes, *t).ok());
+        let map = (off < maps.idx.len()).then(|| maps.idx.at(off)).filter(|t| *t != check::NO_MAP).and_then(|t| check::x_chain(&maps.nodes, t).ok());
         let extra = if op == 53 || op == 54 {
             let d = p.bytecodes[bci + 1] as usize | (p.bytecodes[bci + 2] as usize) << 8;
             format!(" -> {}", p.dispatch.get(d).copied().unwrap_or(-2))

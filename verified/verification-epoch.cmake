@@ -34,8 +34,7 @@
 #   - what the verified core assumes of an accepted program (the loader
 #     theorem and the FFI entry that takes the verdict);
 #   - the C++ install-time validation (src/verifier_v2.cc: image_layout_error,
-#     builtin_classes_error, builtin_roots_error, install_verdict; the
-#     method-table decoder) and
+#     builtin_classes_error, install_verdict; the method-table decoder) and
 #     the layouts and tables it reads (Program, objects and tags, the
 #     primitive arities, the opcode table), and the binding of the verdict
 #     to the image (src/flash_allocation.*: the checksum, the certificate
@@ -64,7 +63,7 @@ set(TOIT_VERIFICATION_EPOCH_MANUAL 1)
 
 # The digest of the inputs at the last review (MODE=update writes it); its
 # first 8 digits are the epoch.
-set(TOIT_VERIFICATION_EPOCH_RECORDED "613c17c4923499e8c35fd966abbd17f755a00d9c2d5025b81d8fa3c450407e42")
+set(TOIT_VERIFICATION_EPOCH_RECORDED "3cda06b380e605df6d4e23b0d5f2b6c664b6c8e9240f68dedfbb980f1de10467")
 
 # Paths relative to the repository root; a pattern with a '*' is a recursive
 # glob and must match a file, any other path must exist.
