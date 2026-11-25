@@ -82,3 +82,9 @@ slow gc-sweep-chunk/LP64                         6  18000
 slow gc-sweep-chunk-uncounted/ILP32              3  1800
 slow gc-sweep-chunk-no-sentinel/ILP32            3  1800
 slow gc-sweep-chunk-no-sentinel/LP64             5  1800
+# The native image layout check (wave 12, ../harness/install_image_checks.cc
+# part 1): ILP32 389 s (measured outside run.sh, 2026-11-25; the LP64 run
+# stayed below 1 GB resident);
+# LP64 no verdict in 1800 s with Boolector.
+slow install-image-layout/ILP32                  3  1800
+known_noverdict install-image-layout/LP64 "no verdict within 1800 s (Boolector, 2026-11-25); ILP32 passes"

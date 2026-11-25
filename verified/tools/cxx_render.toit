@@ -552,6 +552,13 @@ collect-lambdas node out/List --statement/Map?=null --parent-kind/string="" --in
     statement = null
   collect-lambdas (inner m) out --statement=statement --parent-kind=kind
 
+/** Whether the AST $node has a node of $kind. */
+has-kind node kind/string -> bool:
+  if node is List: return (node as List).any: has-kind it kind
+  if node is not Map: return false
+  if (node.get "kind") == kind: return true
+  return has-kind (node.get "inner" --if-absent=: []) kind
+
 // The 1-based line and column of a byte offset (Clang's columns count bytes).
 line-col source/string offset/int -> string:
   line := 1
@@ -643,6 +650,8 @@ c-type t/string -> string:
   if t == "__size_t": t = "size_t"
   // A nested class `A::B` is the C struct `A_B`.
   t = t.replace --all "::" "_"
+  // The class bits table's list (wave 12; mangle-member names its members).
+  t = t.replace --all "List<uint16>" "List_uint16"
   // A const reference is passed by value (the rendering rule for
   // parameters such as bit_cast's `const From&`); another reference is a
   // pointer (`T&` is `T *`; the argument is passed by address, a use of
@@ -723,7 +732,7 @@ UNSIGNED-WORDS ::= {"uword", "unsigned long", "unsigned int", "uintptr_t", "uint
 SIGNED-TARGETS ::= {"word", "int64"}
 // The target types (typedefs resolved) of a `truncating` explicit signed
 // narrowing.
-SIGNED-INTEGERS ::= {"short", "int", "long", "long long", "word", "intptr_t", "int64"}
+SIGNED-INTEGERS ::= {"char", "short", "int", "long", "long long", "word", "intptr_t", "int64"}
 WRITTEN-CASTS ::= {"IntegralCast", "IntegralToPointer", "PointerToIntegral",
                    "BitCast", "IntegralToFloating", "FloatingToIntegral",
                    "FloatingCast", "ToVoid"}
@@ -760,6 +769,7 @@ class Renderer:
   param-names := {}
   reference-params := {}  // Parameters of a reference type (pointers in C).
   hoisted := {}  // The ids of the locals declared at the start of their block.
+  unique-locals := false  // A function with a goto: every local gets its own name.
   // A stack of scopes, each a list of [class, name] of locals with a
   // destructor.
   raii-scopes := []
@@ -823,6 +833,7 @@ class Renderer:
   mangle-member class-name/string name/string param-types/List -> string:
     // Clang names the instantiated list base for an inherited FIFO method.
     if class-name == "List<uint8>": class-name = "BytecodeList"
+    if class-name == "List<uint16>": class-name = "List_uint16"
     if class-name == "LinkedList<Process , 2>": class-name = "LinkedList_SchedulerProcess"
     if class-name == "LinkedList<FinalizerNode>": class-name = "LinkedList_FinalizerNode"
     if class-name == "Program_Table<Object * >": class-name = "Program_ObjectTable"
@@ -1054,6 +1065,13 @@ class Renderer:
       if unsigned-word-conversion and cast == "IntegralCast" and target-type == "unsigned int" and (c-type kids[0]["type"]["qualType"]) == "int" and (strip-parens kids[0])["kind"] != "IntegerLiteral":
         // The same for an int converted to unsigned (modulo 2^32).
         return Expr "/*@truncating@*/(unsigned int)$(wrap (expr kids[0]) PREC-UNARY)" PREC-UNARY
+      if cast == "IntegralCast" and truncating and (target-type == "uint16" or target-type == "unsigned short")
+          and (["int", "word", "long", "long long"].contains (resolve (c-type kids[0]["type"]["qualType"])))
+          and (strip-parens kids[0])["kind"] != "IntegerLiteral":
+        // `truncating`: the implicit conversion of an int or a word to a
+        // uint16 is modulo 2^16, as C++ defines it for every unsigned target
+        // (String::compute_hash_code_for's hash, wave 12).
+        return Expr "/*@truncating@*/(uint16)$(annotated-operand (expr kids[0]) PREC-UNARY)" PREC-UNARY
       if cast == "IntegralCast" and truncating and (target-type == "uint8" or target-type == "unsigned char")
           and (c-type kids[0]["type"]["qualType"]) == "int64"
           and (strip-parens kids[0])["kind"] != "IntegerLiteral":
@@ -1093,10 +1111,12 @@ class Renderer:
         // unsigned shifts smi_unsigned_shift_right.)
         if (to == "uint64" and from == "int64") or (to == "int64" and from == "uint64") or (to == "uint64" and from == "word"):
           return Expr "/*@truncating@*/($to)$(annotated-operand (expr operand) PREC-UNARY)" PREC-UNARY
-        if (to == "int8" and from == "uint8") or (to == "signed char" and from == "unsigned char"):
+        if (to == "int8" and from == "uint8") or (to == "signed char" and from == "unsigned char")
+            or (to == "uint8" and from == "char"):
           // A byte read as a signed one (the sign extension of the signed
           // integer readers): the modular conversion, a value above 127
-          // becomes negative.
+          // becomes negative; and a char read as a byte (wave 12:
+          // String::compute_hash_code_for), a negative one becomes its byte.
           return Expr "/*@truncating@*/($to)$(annotated-operand (expr operand) PREC-UNARY)" PREC-UNARY
       if (kind == "CStyleCastExpr" or kind == "CXXStaticCastExpr") and truncating and operand
           and (c-type node["type"]["qualType"]) == "uint8" and (c-type operand["type"]["qualType"]) == "int64":
@@ -1282,6 +1302,14 @@ class Renderer:
         if 0 <= count and count < 64:
           v := (expr kids[0]).text
           return Expr "$v = $v >= 0 ? $v >> $count : -1 - ((-1 - $v) >> $count)" PREC-ASSIGN
+      if truncating and op == ">>" and (c-type node["type"]["qualType"]) == "int64" and kids[1]["kind"] != "IntegerLiteral":
+        // The arithmetic right shift of a signed 64-bit value by a count
+        // computed at run time (large_integer_shift_right, wave 12): a
+        // call of asr_int64, which the sidecar defines as the same floor
+        // division without a shift of a negative value (as the `>>=` by a
+        // literal above) and whose contract makes VeriFast check the count
+        // in [0, 63]. A call evaluates the value once.
+        return Expr "asr_int64($(wrap (expr kids[0]) PREC-ASSIGN), $(wrap (expr kids[1]) PREC-ASSIGN))" PREC-PRIMARY
       if truncating and op == "<<=" and kids[0]["kind"] == "DeclRefExpr" and (c-type node["type"]["qualType"]) == "uint64" and kids[1]["kind"] == "IntegerLiteral":
         // The compound form of the modular uint64 shift by a literal (a
         // plain variable: the lvalue is evaluated twice).
@@ -1527,6 +1555,22 @@ class Renderer:
         switch-item items[i] (indent + 1) item-next
       ghosts-up-to end (indent + 1)
       emit indent "}"
+    else if kind == "GotoStmt":
+      // A forward or backward jump to a label of the function (smi_add,
+      // wave 12): written as is; VeriFast verifies each path
+      // through the label. The label's name is the token after `goto` (the
+      // AST gives only its declaration's id). Not out of a scope with a
+      // destructor (it would be skipped).
+      if is-macro-range node: fail "$(where node): goto in a macro"
+      if not live-destructors.is-empty: fail "$(where node): goto out of a scope with a destructor"
+      words := tokenize source[begin-offset node..(end-offset node) + (end-token-length node)]
+      if words.size != 2 or (words[0] as Token).text != "goto": fail "$(where node): unexpected goto spelling"
+      emit indent "goto $((words[1] as Token).text);"
+    else if kind == "LabelStmt":
+      // `L: S`: an empty statement carries the label (C before C23 does not
+      // allow a label on a declaration), then S.
+      emit indent "$(node["name"]): ;"
+      stmt kids[0] indent next
     else if kind == "BreakStmt":
       emit indent "break;"
     else if kind == "ContinueStmt":
@@ -1713,7 +1757,7 @@ class Renderer:
     id := decl["id"]
     if local-names.contains id: return local-names[id]
     name := decl["name"]
-    visible := : | n/string | (param-names.contains n) or (name-scopes.any: | s/Set | s.contains n)
+    visible := : | n/string | (param-names.contains n) or (name-scopes.any: | s/Set | s.contains n) or (unique-locals and locals.contains n)
     if visible.call name:
       n := 1
       while visible.call "$(name)_$n": n++
@@ -1725,7 +1769,13 @@ class Renderer:
 
   var-decl-text decl/Map -> string:
     name := local-name decl
-    type := c-type decl["type"]["qualType"]
+    qual := decl["type"]["qualType"]
+    // `auto v = bit_cast<T>(x);` (float_to_raw, wave 12): Clang spells the
+    // local's type as bit_cast's return type, `typename
+    // std::enable_if<..., T>::type`; the local is a T (the desugared type).
+    if qual.starts-with "typename std::enable_if<" and decl["type"].contains "desugaredQualType":
+      qual = decl["type"]["desugaredQualType"]
+    type := c-type qual
     kids := inner decl
     if kids.is-empty: return declarator type name
     init := kids[0]
@@ -1745,6 +1795,29 @@ class Renderer:
       if not hoisted.contains decl["id"]: emit indent "struct timespec $name;"
       emit indent "$(name).tv_sec = 0;"
       emit indent "$(name).tv_nsec = 0;"
+      return
+    if init and init["kind"] == "InitListExpr" and decl["type"]["qualType"].ends-with "]":
+      // `char buffer[] = { e0, e1 };` (string_from_rune, wave 12): an array
+      // of a scalar type whose every element the list gives, as the same C
+      // initializer with the length written. C++ evaluates an initializer
+      // list left to right, C in an unspecified order, so the elements must
+      // be free of side effects (no assignment, no call). Elements a list
+      // leaves out (zero-initialized) or of a class type are an error.
+      qual := decl["type"]["qualType"]
+      open := qual.index-of "["
+      element := c-type qual[..open].trim
+      count := int.parse qual[open + 1..qual.size - 1]
+      elements := inner init
+      if elements.size != count or (elements.any: it["kind"] == "ImplicitValueInitExpr"):
+        fail "$(where decl): an array initializer that does not give every element"
+      if not (["char", "unsigned char", "uint8", "int", "word", "uword"].contains element):
+        fail "$(where decl): an array of $element initialized by a list"
+      if hoisted.contains decl["id"]: fail "$(where decl): an initialized array whose address is taken"
+      if (modifies-anything init) or (has-kind init "CallExpr") or (has-kind init "CXXMemberCallExpr"):
+        fail "$(where decl): an array initializer with side effects"
+      name := local-name decl
+      values := elements.map: wrap (expr it) PREC-ASSIGN
+      emit indent "$element $(name)[$count] = { $(values.join ", ") };"
       return
     if init and init["kind"] == "CXXConstructExpr" and not (is-method-copy init):
       name := local-name decl
@@ -1970,6 +2043,10 @@ class Renderer:
             emit 1 "self->$field = $(default-init-value value);"
           else:
             emit 1 "self->$field = $(wrap (expr value) PREC-ASSIGN);"
+    // VeriFast takes a local declared after a label as hiding every local
+    // of the same name declared before it in the function (smi_add's two
+    // `other`s): in a function with a goto, no local reuses a name.
+    unique-locals = has-kind body-node "GotoStmt"
     block-contents body-node 1
     lines.add "}"
 

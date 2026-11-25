@@ -80,11 +80,15 @@ class V2Verifier {
   static const char* image_layout_error(const Program* program, word program_size);
 
   // Null if the builtin class ids are classes with the tags and at least
-  // the fields the C++ VM assumes, and the builtin roots have their kinds
-  // (as the format-1 verifier checks); else the reason. The verifier
-  // checks it on every program it accepts, after the conversion checked
-  // that the roots are objects of the image.
+  // the fields the C++ VM assumes (as the format-1 verifier checks); else
+  // the reason. The verifier checks it on every program it accepts.
   static const char* builtin_classes_error(Program* program);
+
+  // Null if the builtin roots have their kinds (as the format-1 verifier
+  // checks); else the reason. The verifier checks it on every program it
+  // accepts, after the conversion checked that the roots are objects of the
+  // image and builtin_classes_error accepted the classes.
+  static const char* builtin_roots_error(Program* program);
 
   // The install-time verdict for the program image at [memory] of
   // [program_size] bytes (written, its header not yet) with its shipped

@@ -1,0 +1,375 @@
+// Copyright (C) 2026 Toit contributors.
+//
+// V2Verifier::builtin_classes_error of src/verifier_v2.cc (wave 12): the
+// install-time check (v2_verify runs it on every format-2 program it
+// accepts, at an install and at a launch) that the builtin class ids are
+// classes of the program with the tags and at least the fields the C++
+// VM assumes.
+//
+// Proved: it reads only the builtin class id table and the class bits
+// table at the ids it checked against the table's length (the image
+// layout check, V2Verifier::image_layout_error, put the table inside the
+// image before), and a null result gives `builtin_classes_ok` of the ids
+// and the class bits: every one of the 23 ids is a smi naming a class of
+// the table that an object header and an int can hold, with its tag and
+// fields. `prog_ok_from_check` turns that into the model's `prog_ok`
+// (model/objects.render) of the program's ids, given that the model's
+// class_tag and class_fields are the program's class bits for the
+// builtin ids (`classes_agree`: what the uninterpreted functions mean, the
+// heap bridge's part: the allocator and the GC write an object's tag and
+// size from the class bits).
+//
+// Self-tests (run.sh): the field check left out; the header bound left
+// out (ILP32 only: on LP64 the int bound covers it); one getter's tag
+// changed; the range check's upper bound left out.
+@include ../model/model.cfg
+@verbatim
+#include "../model/objects.gen.h"
+//@ #include "../model/arith.gh"
+
+// The getters of the builtin class ids (src/program.h,
+// DECLARE_BUILTIN_CLASS_ID_ACCESSOR: macro-generated, so not rendered):
+// each returns its slot of the table. ESBMC checks every native getter
+// against its slot and every index of model/program_class_ids.h against
+// the getter (../harness/program_class_ids.cc, both widths). The model's
+// aliases (calls of Program::class_id, whose contract presupposes the
+// checked table) are replaced here by contracts over the raw table.
+#undef Program_string_class_id
+#undef Program_array_class_id
+#undef Program_byte_array_class_id
+#undef Program_byte_array_cow_class_id
+#undef Program_byte_array_slice_class_id
+#undef Program_string_slice_class_id
+#undef Program_string_byte_slice_class_id
+#undef Program_list_class_id
+#undef Program_list_slice_class_id
+#undef Program_map_class_id
+#undef Program_tombstone_class_id
+#undef Program_stack_class_id
+#undef Program_null_class_id
+#undef Program_true_class_id
+#undef Program_false_class_id
+#undef Program_object_class_id
+#undef Program_double_class_id
+#undef Program_large_integer_class_id
+#undef Program_smi_class_id
+#undef Program_task_class_id
+#undef Program_large_array_class_id
+#undef Program_lazy_initializer_class_id
+#undef Program_exception_class_id
+Smi *Program_string_class_id(Program *self);
+//@ requires [?f]pointers(self->_builtin_class_ids, Program_BUILTIN_CLASS_IDS_COUNT, ?ws);
+//@ ensures [f]pointers(self->_builtin_class_ids, Program_BUILTIN_CLASS_IDS_COUNT, ws) &*& result == nth(Program_string_class_id_INDEX, ws);
+Smi *Program_array_class_id(Program *self);
+//@ requires [?f]pointers(self->_builtin_class_ids, Program_BUILTIN_CLASS_IDS_COUNT, ?ws);
+//@ ensures [f]pointers(self->_builtin_class_ids, Program_BUILTIN_CLASS_IDS_COUNT, ws) &*& result == nth(Program_array_class_id_INDEX, ws);
+Smi *Program_byte_array_class_id(Program *self);
+//@ requires [?f]pointers(self->_builtin_class_ids, Program_BUILTIN_CLASS_IDS_COUNT, ?ws);
+//@ ensures [f]pointers(self->_builtin_class_ids, Program_BUILTIN_CLASS_IDS_COUNT, ws) &*& result == nth(Program_byte_array_class_id_INDEX, ws);
+Smi *Program_byte_array_cow_class_id(Program *self);
+//@ requires [?f]pointers(self->_builtin_class_ids, Program_BUILTIN_CLASS_IDS_COUNT, ?ws);
+//@ ensures [f]pointers(self->_builtin_class_ids, Program_BUILTIN_CLASS_IDS_COUNT, ws) &*& result == nth(Program_byte_array_cow_class_id_INDEX, ws);
+Smi *Program_byte_array_slice_class_id(Program *self);
+//@ requires [?f]pointers(self->_builtin_class_ids, Program_BUILTIN_CLASS_IDS_COUNT, ?ws);
+//@ ensures [f]pointers(self->_builtin_class_ids, Program_BUILTIN_CLASS_IDS_COUNT, ws) &*& result == nth(Program_byte_array_slice_class_id_INDEX, ws);
+Smi *Program_string_slice_class_id(Program *self);
+//@ requires [?f]pointers(self->_builtin_class_ids, Program_BUILTIN_CLASS_IDS_COUNT, ?ws);
+//@ ensures [f]pointers(self->_builtin_class_ids, Program_BUILTIN_CLASS_IDS_COUNT, ws) &*& result == nth(Program_string_slice_class_id_INDEX, ws);
+Smi *Program_string_byte_slice_class_id(Program *self);
+//@ requires [?f]pointers(self->_builtin_class_ids, Program_BUILTIN_CLASS_IDS_COUNT, ?ws);
+//@ ensures [f]pointers(self->_builtin_class_ids, Program_BUILTIN_CLASS_IDS_COUNT, ws) &*& result == nth(Program_string_byte_slice_class_id_INDEX, ws);
+Smi *Program_list_class_id(Program *self);
+//@ requires [?f]pointers(self->_builtin_class_ids, Program_BUILTIN_CLASS_IDS_COUNT, ?ws);
+//@ ensures [f]pointers(self->_builtin_class_ids, Program_BUILTIN_CLASS_IDS_COUNT, ws) &*& result == nth(Program_list_class_id_INDEX, ws);
+Smi *Program_list_slice_class_id(Program *self);
+//@ requires [?f]pointers(self->_builtin_class_ids, Program_BUILTIN_CLASS_IDS_COUNT, ?ws);
+//@ ensures [f]pointers(self->_builtin_class_ids, Program_BUILTIN_CLASS_IDS_COUNT, ws) &*& result == nth(Program_list_slice_class_id_INDEX, ws);
+Smi *Program_map_class_id(Program *self);
+//@ requires [?f]pointers(self->_builtin_class_ids, Program_BUILTIN_CLASS_IDS_COUNT, ?ws);
+//@ ensures [f]pointers(self->_builtin_class_ids, Program_BUILTIN_CLASS_IDS_COUNT, ws) &*& result == nth(Program_map_class_id_INDEX, ws);
+Smi *Program_tombstone_class_id(Program *self);
+//@ requires [?f]pointers(self->_builtin_class_ids, Program_BUILTIN_CLASS_IDS_COUNT, ?ws);
+//@ ensures [f]pointers(self->_builtin_class_ids, Program_BUILTIN_CLASS_IDS_COUNT, ws) &*& result == nth(Program_tombstone_class_id_INDEX, ws);
+Smi *Program_stack_class_id(Program *self);
+//@ requires [?f]pointers(self->_builtin_class_ids, Program_BUILTIN_CLASS_IDS_COUNT, ?ws);
+//@ ensures [f]pointers(self->_builtin_class_ids, Program_BUILTIN_CLASS_IDS_COUNT, ws) &*& result == nth(Program_stack_class_id_INDEX, ws);
+Smi *Program_null_class_id(Program *self);
+//@ requires [?f]pointers(self->_builtin_class_ids, Program_BUILTIN_CLASS_IDS_COUNT, ?ws);
+//@ ensures [f]pointers(self->_builtin_class_ids, Program_BUILTIN_CLASS_IDS_COUNT, ws) &*& result == nth(Program_null_class_id_INDEX, ws);
+Smi *Program_true_class_id(Program *self);
+//@ requires [?f]pointers(self->_builtin_class_ids, Program_BUILTIN_CLASS_IDS_COUNT, ?ws);
+//@ ensures [f]pointers(self->_builtin_class_ids, Program_BUILTIN_CLASS_IDS_COUNT, ws) &*& result == nth(Program_true_class_id_INDEX, ws);
+Smi *Program_false_class_id(Program *self);
+//@ requires [?f]pointers(self->_builtin_class_ids, Program_BUILTIN_CLASS_IDS_COUNT, ?ws);
+//@ ensures [f]pointers(self->_builtin_class_ids, Program_BUILTIN_CLASS_IDS_COUNT, ws) &*& result == nth(Program_false_class_id_INDEX, ws);
+Smi *Program_object_class_id(Program *self);
+//@ requires [?f]pointers(self->_builtin_class_ids, Program_BUILTIN_CLASS_IDS_COUNT, ?ws);
+//@ ensures [f]pointers(self->_builtin_class_ids, Program_BUILTIN_CLASS_IDS_COUNT, ws) &*& result == nth(Program_object_class_id_INDEX, ws);
+Smi *Program_double_class_id(Program *self);
+//@ requires [?f]pointers(self->_builtin_class_ids, Program_BUILTIN_CLASS_IDS_COUNT, ?ws);
+//@ ensures [f]pointers(self->_builtin_class_ids, Program_BUILTIN_CLASS_IDS_COUNT, ws) &*& result == nth(Program_double_class_id_INDEX, ws);
+Smi *Program_large_integer_class_id(Program *self);
+//@ requires [?f]pointers(self->_builtin_class_ids, Program_BUILTIN_CLASS_IDS_COUNT, ?ws);
+//@ ensures [f]pointers(self->_builtin_class_ids, Program_BUILTIN_CLASS_IDS_COUNT, ws) &*& result == nth(Program_large_integer_class_id_INDEX, ws);
+Smi *Program_smi_class_id(Program *self);
+//@ requires [?f]pointers(self->_builtin_class_ids, Program_BUILTIN_CLASS_IDS_COUNT, ?ws);
+//@ ensures [f]pointers(self->_builtin_class_ids, Program_BUILTIN_CLASS_IDS_COUNT, ws) &*& result == nth(Program_smi_class_id_INDEX, ws);
+Smi *Program_task_class_id(Program *self);
+//@ requires [?f]pointers(self->_builtin_class_ids, Program_BUILTIN_CLASS_IDS_COUNT, ?ws);
+//@ ensures [f]pointers(self->_builtin_class_ids, Program_BUILTIN_CLASS_IDS_COUNT, ws) &*& result == nth(Program_task_class_id_INDEX, ws);
+Smi *Program_large_array_class_id(Program *self);
+//@ requires [?f]pointers(self->_builtin_class_ids, Program_BUILTIN_CLASS_IDS_COUNT, ?ws);
+//@ ensures [f]pointers(self->_builtin_class_ids, Program_BUILTIN_CLASS_IDS_COUNT, ws) &*& result == nth(Program_large_array_class_id_INDEX, ws);
+Smi *Program_lazy_initializer_class_id(Program *self);
+//@ requires [?f]pointers(self->_builtin_class_ids, Program_BUILTIN_CLASS_IDS_COUNT, ?ws);
+//@ ensures [f]pointers(self->_builtin_class_ids, Program_BUILTIN_CLASS_IDS_COUNT, ws) &*& result == nth(Program_lazy_initializer_class_id_INDEX, ws);
+Smi *Program_exception_class_id(Program *self);
+//@ requires [?f]pointers(self->_builtin_class_ids, Program_BUILTIN_CLASS_IDS_COUNT, ?ws);
+//@ ensures [f]pointers(self->_builtin_class_ids, Program_BUILTIN_CLASS_IDS_COUNT, ws) &*& result == nth(Program_exception_class_id_INDEX, ws);
+
+/*@
+// The class bits table of a program (src/program.h `class_bits`: one
+// uint16 per class).
+predicate class_bits_table(Program *p; list<unsigned short> bits) =
+  p->class_bits.data_ |-> ?d &*& p->class_bits.length_ |-> ?n &*& ushorts(d, n, bits) &*& n == length(bits);
+
+// The tag and the field count of a class (Program::class_tag_from_class_bits,
+// Instance::fields_from_size of Program::instance_size_from_class_bits).
+fixpoint int bits_tag(int bits) { return bits % 16; }
+fixpoint int bits_words(int bits) { return bits / 32 % 2048; }
+fixpoint int bits_fields(int bits) { return bits_words(bits) - 1; }
+
+fixpoint int word_smi(void *w) { return smi_val((uword)w); }
+
+// What builtin_class_error accepts.
+fixpoint bool builtin_class_ok(void *w, list<unsigned short> bits, int tag, int fields) {
+  return is_smi_w((uword)w) && 0 <= word_smi(w) && word_smi(w) < length(bits) &&
+         word_smi(w) < MAX_CLASS_IDS &&
+         bits_tag(nth(word_smi(w), bits)) == tag &&
+         (fields > 0 ? bits_fields(nth(word_smi(w), bits)) >= fields : true);
+}
+
+// What builtin_classes_error accepts: the 23 builtin classes.
+fixpoint bool builtin_classes_ok(list<void *> ws, list<unsigned short> bits) {
+  return
+    builtin_class_ok(nth(Program_string_class_id_INDEX, ws), bits, STRING_TAG, 0) &&
+    builtin_class_ok(nth(Program_array_class_id_INDEX, ws), bits, ARRAY_TAG, 0) &&
+    builtin_class_ok(nth(Program_byte_array_class_id_INDEX, ws), bits, BYTE_ARRAY_TAG, 0) &&
+    builtin_class_ok(nth(Program_byte_array_cow_class_id_INDEX, ws), bits, INSTANCE_TAG, Instance_BYTE_ARRAY_COW_IS_MUTABLE_INDEX + 1) &&
+    builtin_class_ok(nth(Program_byte_array_slice_class_id_INDEX, ws), bits, INSTANCE_TAG, Instance_BYTE_ARRAY_SLICE_TO_INDEX + 1) &&
+    builtin_class_ok(nth(Program_string_slice_class_id_INDEX, ws), bits, INSTANCE_TAG, Instance_STRING_SLICE_TO_INDEX + 1) &&
+    builtin_class_ok(nth(Program_string_byte_slice_class_id_INDEX, ws), bits, INSTANCE_TAG, Instance_STRING_BYTE_SLICE_TO_INDEX + 1) &&
+    builtin_class_ok(nth(Program_list_class_id_INDEX, ws), bits, INSTANCE_TAG, Instance_LIST_SIZE_INDEX + 1) &&
+    builtin_class_ok(nth(Program_list_slice_class_id_INDEX, ws), bits, INSTANCE_TAG, Instance_LIST_SLICE_TO_INDEX + 1) &&
+    builtin_class_ok(nth(Program_map_class_id_INDEX, ws), bits, INSTANCE_TAG, Instance_MAP_BACKING_INDEX + 1) &&
+    builtin_class_ok(nth(Program_tombstone_class_id_INDEX, ws), bits, INSTANCE_TAG, Instance_TOMBSTONE_DISTANCE_INDEX + 1) &&
+    builtin_class_ok(nth(Program_stack_class_id_INDEX, ws), bits, STACK_TAG, 0) &&
+    builtin_class_ok(nth(Program_null_class_id_INDEX, ws), bits, ODDBALL_TAG, 0) &&
+    builtin_class_ok(nth(Program_true_class_id_INDEX, ws), bits, ODDBALL_TAG, 0) &&
+    builtin_class_ok(nth(Program_false_class_id_INDEX, ws), bits, ODDBALL_TAG, 0) &&
+    builtin_class_ok(nth(Program_object_class_id_INDEX, ws), bits, INSTANCE_TAG, 0) &&
+    builtin_class_ok(nth(Program_double_class_id_INDEX, ws), bits, DOUBLE_TAG, 0) &&
+    builtin_class_ok(nth(Program_large_integer_class_id_INDEX, ws), bits, LARGE_INTEGER_TAG, 0) &&
+    builtin_class_ok(nth(Program_smi_class_id_INDEX, ws), bits, INSTANCE_TAG, 0) &&
+    builtin_class_ok(nth(Program_task_class_id_INDEX, ws), bits, TASK_TAG, 2) &&
+    builtin_class_ok(nth(Program_large_array_class_id_INDEX, ws), bits, INSTANCE_TAG, Instance_LARGE_ARRAY_VECTOR_INDEX + 1) &&
+    builtin_class_ok(nth(Program_lazy_initializer_class_id_INDEX, ws), bits, INSTANCE_TAG, 1) &&
+    builtin_class_ok(nth(Program_exception_class_id_INDEX, ws), bits, INSTANCE_TAG, 2);
+}
+
+// The model's class_tag and class_fields (uninterpreted: "the program's
+// classes", one program per proof) are the class bits of the program, for
+// the builtin classes prog_ok names.
+fixpoint bool class_agrees(int cid, list<unsigned short> bits) {
+  return class_tag(cid) == bits_tag(nth(cid, bits)) && class_fields(cid) == bits_fields(nth(cid, bits));
+}
+fixpoint bool classes_agree(prog_ids ids, list<unsigned short> bits) {
+  return class_agrees(array_cid(ids), bits) && class_agrees(list_cid(ids), bits) &&
+         class_agrees(list_slice_cid(ids), bits) && class_agrees(map_cid(ids), bits) &&
+         class_agrees(large_array_cid(ids), bits) && class_agrees(tombstone_cid(ids), bits) &&
+         class_agrees(byte_array_cow_cid(ids), bits) && class_agrees(byte_array_slice_cid(ids), bits) &&
+         class_agrees(string_slice_cid(ids), bits) && class_agrees(string_byte_slice_cid(ids), bits);
+}
+
+// Instance::fields_from_size of a size of k words (header included).
+lemma void size_fields(int k)
+  requires 0 <= k &*& k <= 2048;
+  ensures (k * WORD_SIZE - WORD_SIZE) / WORD_SIZE == k - 1;
+{
+  if (k == 0) {
+    div_rem(-WORD_SIZE, WORD_SIZE);
+  } else {
+    mul_mono_l(1, k, WORD_SIZE);
+    div_rem_nonneg_unique(k * WORD_SIZE - WORD_SIZE, WORD_SIZE, k - 1, 0);
+  }
+}
+
+// An element of a uint16 table is a uint16.
+lemma void ushorts_nth_limits(unsigned short *p, int i)
+  requires [?f]ushorts(p, ?n, ?vs) &*& 0 <= i &*& i < n;
+  ensures [f]ushorts(p, n, vs) &*& 0 <= nth(i, vs) &*& nth(i, vs) <= 0xffff;
+{
+  open [f]ushorts(p, n, vs);
+  if (i == 0) {
+    u_short_integer_limits(p);
+  } else {
+    ushorts_nth_limits(p + 1, i - 1);
+  }
+  close [f]ushorts(p, n, vs);
+}
+
+lemma void nth_map_word_smi(int i, list<void *> ws)
+  requires 0 <= i &*& i < length(ws);
+  ensures nth(i, map(word_smi, ws)) == word_smi(nth(i, ws));
+{
+  switch (ws) {
+    case nil:
+    case cons(w, rest): if (i > 0) nth_map_word_smi(i - 1, rest);
+  }
+}
+
+// A null result of builtin_classes_error gives prog_ok of the program's
+// builtin class ids (the smi values of the table's words).
+lemma void prog_ok_from_check(list<void *> ws, list<unsigned short> bits)
+  requires length(ws) == Program_BUILTIN_CLASS_IDS_COUNT &*& builtin_classes_ok(ws, bits) == true &*&
+           classes_agree(class_ids_from_table(map(word_smi, ws)), bits) == true;
+  ensures prog_ok(class_ids_from_table(map(word_smi, ws))) == true;
+{
+  nth_map_word_smi(Program_array_class_id_INDEX, ws);
+  nth_map_word_smi(Program_list_class_id_INDEX, ws);
+  nth_map_word_smi(Program_list_slice_class_id_INDEX, ws);
+  nth_map_word_smi(Program_map_class_id_INDEX, ws);
+  nth_map_word_smi(Program_large_array_class_id_INDEX, ws);
+  nth_map_word_smi(Program_tombstone_class_id_INDEX, ws);
+  nth_map_word_smi(Program_byte_array_cow_class_id_INDEX, ws);
+  nth_map_word_smi(Program_byte_array_slice_class_id_INDEX, ws);
+  nth_map_word_smi(Program_string_slice_class_id_INDEX, ws);
+  nth_map_word_smi(Program_string_byte_slice_class_id_INDEX, ws);
+}
+@*/
+
+// The projections of the two const List<uint16> accessors of src/utils.h.
+word List_uint16_length(List_uint16 *self)
+//@ requires [?f]self->length_ |-> ?n;
+//@ ensures [f]self->length_ |-> n &*& result == n;
+{ return self->length_; }
+uint16 *List_uint16_data(List_uint16 *self)
+//@ requires [?f]self->data_ |-> ?p;
+//@ ensures [f]self->data_ |-> p &*& result == p;
+{ return self->data_; }
+
+@prototypes
+@render src/program.h toit::Program::class_tag_from_class_bits tu=src/verifier_v2.cc
+  static inline TypeTag class_tag_from_class_bits(int class_bits)
+  //@ requires 0 <= class_bits &*& class_bits <= 0xffff;
+  //@ ensures result == bits_tag(class_bits);
+  {
+    //@ bitand_pow_nat(class_bits, N4);
+    return static_cast<TypeTag>(class_bits & CLASS_TAG_MASK);
+  }
+
+@render src/program.h toit::Program::instance_size_from_class_bits tu=src/verifier_v2.cc
+  static inline int instance_size_from_class_bits(int class_bits)
+  //@ requires 0 <= class_bits &*& class_bits <= 0xffff;
+  //@ ensures result == bits_words(class_bits) * WORD_SIZE &*& 0 <= result &*& result <= 2048 * WORD_SIZE;
+  {
+    //@ shiftright_div(class_bits, N5);
+    //@ div_rem_nonneg(class_bits, 32);
+    //@ div_rem_nonneg(class_bits / 32, 2048);
+    //@ bitand_pow_nat(class_bits / 32, N11);
+    //@ mul_mono_l(0, class_bits / 32 % 2048, WORD_SIZE);
+    //@ mul_mono_l(class_bits / 32 % 2048, 2048, WORD_SIZE);
+    return ((class_bits >> HeapObject::CLASS_ID_OFFSET) & INSTANCE_SIZE_MASK) * WORD_SIZE;
+  }
+
+@render src/objects.h toit::Instance::fields_from_size tu=src/verifier_v2.cc
+  static word fields_from_size(word instance_size)
+  //@ requires 0 <= instance_size &*& instance_size <= 2048 * WORD_SIZE;
+  //@ ensures result == (instance_size - WORD_SIZE) / WORD_SIZE;
+  {
+    return (instance_size - HEADER_SIZE) / WORD_SIZE;
+  }
+
+@render src/verifier_v2.cc toit::builtin_class_error
+static const char* builtin_class_error(const Program* program, Smi* class_id, int tag, int fields)
+//@ requires [?f]class_bits_table(program, ?cbits);
+//@ ensures [f]class_bits_table(program, cbits) &*& result == 0 ? builtin_class_ok(class_id, cbits, tag, fields) == true : true;
+{
+  if (!is_smi(class_id)) return "builtin class: an id is not a smi";
+  word id = Smi::value(class_id);
+  // An object's header is a smi holding the class id above the class tag
+  // and the finalizer bit (HeapObject::_set_header): on 32-bit not every
+  // id below the class count fits. The bound of a 32-bit header on every
+  // word size (2^25 classes; the C++ also keeps class ids in ints).
+  //@ assert pow_nat(2, N5) == 32 && int_of_nat(N5) == 5;
+  //@ shiftright_div(Smi_MAX_SMI32_VALUE, N5);
+  if (id > (Smi::MAX_SMI32_VALUE >> HeapObject::CLASS_ID_OFFSET)) return "builtin class: an id too large for a header";
+  //@ open class_bits_table(program, cbits);
+  if (id < 0 || id >= program->class_bits.length()) return "builtin class: an id out of range";
+  //@ ushorts_nth_limits(program->class_bits.data_, id);
+  int bits = program->class_bits.data()[id];
+  if (Program::class_tag_from_class_bits(bits) != tag) return "builtin class: a class without the tag the VM assumes";
+  //@ div_rem_nonneg(bits, 32);
+  //@ div_rem_nonneg(bits / 32, 2048);
+  //@ size_fields(bits_words(bits));
+  if (fields > 0 && Instance::fields_from_size(Program::instance_size_from_class_bits(bits)) < fields) {
+    return "builtin class: a class with fewer fields than the VM reads";
+  }
+  return null;
+}
+
+@render src/verifier_v2.cc toit::V2Verifier::builtin_classes_error
+const char* V2Verifier::builtin_classes_error(Program* program)
+//@ requires [?f]pointers(program->_builtin_class_ids, Program_BUILTIN_CLASS_IDS_COUNT, ?ws) &*& [?g]class_bits_table(program, ?cbits);
+//@ ensures [f]pointers(program->_builtin_class_ids, Program_BUILTIN_CLASS_IDS_COUNT, ws) &*& [g]class_bits_table(program, cbits) &*& result == 0 ? builtin_classes_ok(ws, cbits) == true : true;
+{
+  const char* error = builtin_class_error(program, program->string_class_id(), STRING_TAG, 0);
+  if (error == null) error = builtin_class_error(program, program->array_class_id(), ARRAY_TAG, 0);
+  if (error == null) error = builtin_class_error(program, program->byte_array_class_id(), BYTE_ARRAY_TAG, 0);
+  if (error == null) {
+    error = builtin_class_error(program, program->byte_array_cow_class_id(), INSTANCE_TAG,
+                                Instance::BYTE_ARRAY_COW_IS_MUTABLE_INDEX + 1);
+  }
+  if (error == null) {
+    error = builtin_class_error(program, program->byte_array_slice_class_id(), INSTANCE_TAG,
+                                Instance::BYTE_ARRAY_SLICE_TO_INDEX + 1);
+  }
+  if (error == null) {
+    error = builtin_class_error(program, program->string_slice_class_id(), INSTANCE_TAG,
+                                Instance::STRING_SLICE_TO_INDEX + 1);
+  }
+  if (error == null) {
+    error = builtin_class_error(program, program->string_byte_slice_class_id(), INSTANCE_TAG,
+                                Instance::STRING_BYTE_SLICE_TO_INDEX + 1);
+  }
+  if (error == null) {
+    error = builtin_class_error(program, program->list_class_id(), INSTANCE_TAG, Instance::LIST_SIZE_INDEX + 1);
+  }
+  if (error == null) {
+    error = builtin_class_error(program, program->list_slice_class_id(), INSTANCE_TAG,
+                                Instance::LIST_SLICE_TO_INDEX + 1);
+  }
+  if (error == null) {
+    error = builtin_class_error(program, program->map_class_id(), INSTANCE_TAG, Instance::MAP_BACKING_INDEX + 1);
+  }
+  if (error == null) {
+    error = builtin_class_error(program, program->tombstone_class_id(), INSTANCE_TAG,
+                                Instance::TOMBSTONE_DISTANCE_INDEX + 1);
+  }
+  if (error == null) error = builtin_class_error(program, program->stack_class_id(), STACK_TAG, 0);
+  if (error == null) error = builtin_class_error(program, program->null_class_id(), ODDBALL_TAG, 0);
+  if (error == null) error = builtin_class_error(program, program->true_class_id(), ODDBALL_TAG, 0);
+  if (error == null) error = builtin_class_error(program, program->false_class_id(), ODDBALL_TAG, 0);
+  if (error == null) error = builtin_class_error(program, program->object_class_id(), INSTANCE_TAG, 0);
+  if (error == null) error = builtin_class_error(program, program->double_class_id(), DOUBLE_TAG, 0);
+  if (error == null) error = builtin_class_error(program, program->large_integer_class_id(), LARGE_INTEGER_TAG, 0);
+  if (error == null) error = builtin_class_error(program, program->smi_class_id(), INSTANCE_TAG, 0);
+  if (error == null) error = builtin_class_error(program, program->task_class_id(), TASK_TAG, 2);
+  if (error == null) {
+    error = builtin_class_error(program, program->large_array_class_id(), INSTANCE_TAG,
+                                Instance::LARGE_ARRAY_VECTOR_INDEX + 1);
+  }
+  if (error == null) error = builtin_class_error(program, program->lazy_initializer_class_id(), INSTANCE_TAG, 1);
+  if (error == null) error = builtin_class_error(program, program->exception_class_id(), INSTANCE_TAG, 2);
+  return error;
+}

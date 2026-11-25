@@ -194,6 +194,8 @@
 #define Utils_MAX_THREE_BYTE_UNICODE 0xffff
 #define Utils_MIN_SURROGATE 0xd800
 #define Utils_MAX_SURROGATE 0xdfff
+#define Utils_MAX_UNICODE 0x10ffff
+#define String_NO_HASH_CODE ((uint16)0xFFFF)
 #define Utils_UTF_8_PAYLOAD 0x80
 #define Utils_UTF_8_PREFIX 0xc0
 #define Utils_UTF_8_BITS_PER_BYTE 6
@@ -279,5 +281,11 @@
 #define ObjectHeap_ALLOCATION_SUCCESS 0
 #define ObjectHeap_ALLOCATION_HIT_LIMIT 1
 #define ObjectHeap__UNLIMITED_EXPANSION ((word)0x7fffffff)
+
+// The class bits (src/program.h; wave 12, loader/builtin_classes.render).
+#define Program_CLASS_TAG_MASK 15
+#define Program_INSTANCE_SIZE_MASK 2047
+#define Instance_TOMBSTONE_DISTANCE_INDEX ((word)0)
+#define Instance_LARGE_ARRAY_VECTOR_INDEX ((word)1)
 
 #endif

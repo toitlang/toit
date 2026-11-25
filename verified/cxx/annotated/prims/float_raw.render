@@ -1,0 +1,159 @@
+// Copyright (C) 2026 Toit contributors.
+//
+// The raw float conversions of src/primitive_core.cc (wave 12; tested
+// only before): float_to_raw, float_to_raw32, raw_to_float,
+// raw32_to_float. Each is ported to Rust; its C++ runs when the port's
+// allocation (a large integer, a double) does not fit (NeedsGc; README
+// "When the C++ behind a port runs").
+//
+// Proved: the argument decoding (a double; an int64 for the raw ones,
+// raw32_to_float's OUT_OF_RANGE above 32 bits: the modular int64-to-uint64
+// conversion and the shift, `truncating`, so that its uint32 conversion
+// is exact), the result an error with the heap unchanged, a new double or
+// a good reference (the proven Primitive::integer), the primitive heap
+// contract (`grows`) and the retry rule `oom_clean`. Not the values:
+// bit_cast (a memcpy of the value between a float type and an integer
+// type: VeriFast has no lemma turning a float's chunk into bytes) is a
+// contract, as in the encoder and the decoder; the conversions between
+// double and float are VeriFast's. float_to_raw32's double-to-float
+// conversion of a value outside float's finite range is
+// implementation-defined, not undefined, where float has infinities (C++
+// [conv.double]: the value lies between two adjacent float values, the
+// largest finite one and infinity), as on every target (IEC 60559, which
+// rounds to one of them); VeriFast's conversion is total. Not
+// number_to_integer: VeriFast 26.10 has no double-to-integer conversion
+// (no `vf__int128_t_of_double`) and its double comparisons are
+// uninterpreted (`ensures true`), so the C++'s range check before the
+// conversion cannot be connected to it.
+//
+// Self-tests (run.sh): raw32_to_float without its 32-bit check (the
+// conversion to uint32 lossy); raw_to_float returning its argument's raw
+// word after the allocation (neither an error nor the new double).
+@include ../model/model.cfg
+@verbatim
+#include <math.h>
+#include "boxed_double.gen.h"
+#include "integer.gen.h"
+#include "argument_error.gen.h"
+//@ #include "../model/arith.gh"
+
+// src/utils.h bit_cast (memcpy of the value between same-sized types;
+// contract only, as the encoder's and the decoder's instances), named by
+// their template arguments as written or, for a deduced one, by its type
+// (an int64 is `long` on LP64 and `long long` on ILP32).
+int64 bit_cast_int64__double(double src);
+//@ requires true;
+//@ ensures true;
+uint32 bit_cast_uint32__float(float src);
+//@ requires true;
+//@ ensures true;
+double bit_cast_double__long(int64 src);
+//@ requires true;
+//@ ensures true;
+double bit_cast_double__longlong(int64 src);
+//@ requires true;
+//@ ensures true;
+float bit_cast_float__unsignedint(uint32 src);
+//@ requires true;
+//@ ensures true;
+
+/*@
+// An int64's bits as a uint64 (`truncating`: the modular conversion).
+lemma void unsigned_of_int64(int x)
+  requires -9223372036854775808 <= x &*& x <= 9223372036854775807;
+  ensures x < 0 ? truncate_unsigned(x, 64) == x + 18446744073709551616 : truncate_unsigned(x, 64) == x;
+{
+  assert pow_nat(2, N16) == 65536;
+  assert pow_nat(2, N32) == 4294967296;
+  assert pow_nat(2, N64) == 18446744073709551616;
+  assert int_of_nat(N64) == 64;
+  truncate_unsigned_def(x, N64);
+  assert [_]divrem(x, pow_nat(2, N64), ?q, ?r);
+  assert x == q * 18446744073709551616 + r &*& 0 <= r &*& r < 18446744073709551616;
+  if (x >= 0) {
+    if (q < 0) { mul_mono_l(q, -1, 18446744073709551616); assert false; }
+    if (q > 0) { mul_mono_l(1, q, 18446744073709551616); assert false; }
+    assert q * 18446744073709551616 == 0;
+  } else {
+    if (q >= 0) { mul_mono_l(0, q, 18446744073709551616); assert false; }
+    if (q < -1) { mul_mono_l(q, -2, 18446744073709551616); assert false; }
+    assert q * 18446744073709551616 == -18446744073709551616;
+  }
+  assert truncate_unsigned(x, 64) == r;
+}
+
+// The result of an integer primitive.
+fixpoint bool int_result(list<void *> objs, fixpoint(void *, oinfo) H, list<void *> objs2, fixpoint(void *, oinfo) H2, void *result) {
+  return (uword)result % 4 == 3 ? objs2 == objs && H2 == H : good(objs2, result);
+}
+
+// The result of a primitive that boxes one double.
+fixpoint bool boxed_result(list<void *> objs, fixpoint(void *, oinfo) H, list<void *> objs2, fixpoint(void *, oinfo) H2, void *result) {
+  return (uword)result % 4 == 3 ? objs2 == objs && H2 == H :
+    objs2 == cons(result, objs) && !mem(result, objs) && has_tag(H2, result, DOUBLE_TAG);
+}
+@*/
+
+@prototypes
+@render src/primitive_core.cc toit::primitive_float_to_raw
+PRIMITIVE(float_to_raw)
+//@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*& pointer(__args, ?x0) &*& good(objs, x0) == true;
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+            oom_clean(objs, H, objs2, H2, result) == true &*& pointer(__args, x0) &*& int_result(objs, H, objs2, H2, result) == true; @*/
+{
+  //@ grows_refl(objs, H);
+  //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);
+  ARGS(double, receiver)
+  auto raw = bit_cast<int64>(receiver);
+  return Primitive::integer(raw, process);
+}
+
+@render src/primitive_core.cc toit::primitive_float_to_raw32
+PRIMITIVE(float_to_raw32)
+//@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*& pointer(__args, ?x0) &*& good(objs, x0) == true;
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+            oom_clean(objs, H, objs2, H2, result) == true &*& pointer(__args, x0) &*& int_result(objs, H, objs2, H2, result) == true; @*/
+{
+  //@ grows_refl(objs, H);
+  //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);
+  ARGS(double, receiver)
+  auto raw = bit_cast<uint32>(static_cast<float>(receiver));
+  return Primitive::integer(raw, process);
+}
+
+@render src/primitive_core.cc toit::primitive_raw_to_float
+PRIMITIVE(raw_to_float)
+//@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*& pointer(__args, ?x0) &*& good(objs, x0) == true;
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+            oom_clean(objs, H, objs2, H2, result) == true &*& pointer(__args, x0) &*& boxed_result(objs, H, objs2, H2, result) == true; @*/
+{
+  //@ grows_refl(objs, H);
+  //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);
+  //@ close valid_arg(x0, objs);
+  //@ leak valid_arg(x0, objs);
+  ARGS(int64, raw)
+  double value = bit_cast<double>(raw);
+  return Primitive::allocate_double(value, process);
+}
+
+@render src/primitive_core.cc toit::primitive_raw32_to_float truncating
+PRIMITIVE(raw32_to_float)
+//@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*& pointer(__args, ?x0) &*& good(objs, x0) == true;
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+            oom_clean(objs, H, objs2, H2, result) == true &*& pointer(__args, x0) &*& boxed_result(objs, H, objs2, H2, result) == true; @*/
+{
+  //@ grows_refl(objs, H);
+  //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);
+  //@ error_word(Program_OUT_OF_RANGE_INDEX);
+  //@ close valid_arg(x0, objs);
+  //@ leak valid_arg(x0, objs);
+  ARGS(int64, raw)
+  //@ unsigned_of_int64(raw);
+  //@ assert pow_nat(2, N32) == 4294967296 && int_of_nat(N32) == 32;
+  //@ int u = raw < 0 ? raw + 18446744073709551616 : raw;
+  //@ shiftright_div(u, N32);
+  //@ div_rem_nonneg(u, pow_nat(2, N32));
+  if ((static_cast<uint64>(raw) >> 32) != 0) FAIL(OUT_OF_RANGE);
+  double value = bit_cast<float>(static_cast<uint32>(raw));
+  return Primitive::allocate_double(value, process);
+}

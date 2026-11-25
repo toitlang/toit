@@ -366,6 +366,27 @@ static void test_builtin_classes(Fixture* f) {
           has_objects_of_class(f, program->large_integer_class_id())),
          "another tag on the stack, large-integer and smi classes refused by the builtin check", counts, __LINE__);
 
+  // A builtin class id that no object header can hold (the header is a smi
+  // with the id above the tag and the finalizer bit; the check takes the
+  // 32-bit bound on every word size). A program with more than 2^25
+  // classes could name one; the verifier's conversion
+  // refuses an id at or above the class count first, so the check is
+  // called directly here.
+  {
+    Smi** ids = program->_builtin_class_ids;
+    for (int index = 0; index < Program::BUILTIN_CLASS_IDS_COUNT; index++) {
+      Smi* saved = ids[index];
+      ids[index] = Smi::from((Smi::MAX_SMI32_VALUE >> HeapObject::CLASS_ID_OFFSET) + 1);
+      const char* error = V2Verifier::builtin_classes_error(program);
+      ids[index] = saved;
+      char name[64];
+      snprintf(name, sizeof(name), "builtin class id %d too large for a header", index);
+      expect(error != null && strstr(error, "too large for a header") != null, "refused", name, __LINE__);
+    }
+    expect(V2Verifier::builtin_classes_error(program) == null, "the original classes are accepted", "", __LINE__);
+    expect(V2Verifier::builtin_roots_error(program) == null, "the original roots are accepted", "", __LINE__);
+  }
+
   // The roots the C++ reads without checks.
   Object** roots = program->roots_;
   struct { int index; Object* value; const char* reason; } roots_edits[] = {
@@ -442,6 +463,19 @@ static void test_program(Fixture* f) {
   expect_refused(f, "external string without terminator", terminator_reason,
                  [&]() { *end = 'x'; },
                  [&]() { *end = '\0'; });
+
+  // A builtin class id of 2^32 plus a valid id (64-bit only): the format-1
+  // check read the smi's value as an int, so it checked the valid id and
+  // the VM then used the large one (README "Findings", wave 12).
+  if (sizeof(word) == 8) {
+    Smi** ids = f->program->_builtin_class_ids;
+    int index = Program::large_integer_class_id_INDEX;
+    Smi* saved = ids[index];
+    word wrapped = Smi::value(saved) + (static_cast<word>(1) << 32);
+    expect_refused(f, "builtin class id above 2^32", v2 ? "builtin class" : "out of range",
+                   [&]() { ids[index] = Smi::from(wrapped); },
+                   [&]() { ids[index] = saved; });
+  }
 
   if (v2) test_layout(f);
   if (v2) test_builtin_classes(f);

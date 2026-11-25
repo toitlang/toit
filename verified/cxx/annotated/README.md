@@ -137,6 +137,8 @@ property was neither proved nor refuted at that cap or timeout.
 | task-transfer/LP64 | PASS | 490 | 1.0 | 1.7 | 6 |  |
 | timer-delete/LP64 | PASS | 153 | 2.2 | 2.9 | 6 |  |
 | timer-dispatch/LP64 | PASS | 203 | 4.8 | 5.6 | 6 |  |
+| install-image-layout/ILP32 | PASS | 389 | not recorded | not recorded | 12 | 2026-11-25, wave 12, measured outside run.sh |
+| install-image-layout/LP64 | NOVERDICT | 1800 | 0.9 | not recorded | 12 | 2026-11-25, wave 12, measured outside run.sh; timeout after 1800 s (Boolector) |
 | free-list-selection/LP64 | NOVERDICT | 3601 | 18.9 | 21.0 | 24 | timeout after 3600 s; at a 16 GB cap out of memory after 175 s |
 | gc-compaction-overhang/LP64 | NOVERDICT | 7200 | 5.1 | 6.2 | 12 | timeout after 7200 s |
 | gc-metadata-layout/LP64 | NOVERDICT | 10800 | 0.5 | 1.1 | 4 | timeout after 10800 s |
@@ -385,6 +387,13 @@ tool never guesses):
 | `@render ... truncating`, an explicit `static_cast<uint64>` of a word (wave 10: smi_unsigned_shift_right) | the modular conversion, as for an int64 |
 | `@nested-type NAME OUTER::NAME` (wave 10: `Bytes ot(other);` in String::MutableBytes, where Clang's AST spells the type `Bytes`) | the type spelled NAME is the struct `OUTER_NAME` (its constructor `OUTER_NAME_ctor`, its members `OUTER_NAME_m`); the second word must end in `::NAME`; only in the sidecar that names it |
 | a function template instance taking a closure (`@render FILE f lambda=ENCLOSING[#K]`) | the instance whose closure parameter has that lambda's type, as one C function `f__F_lambdaK`; the closure parameter is a pointer to the caller's struct (checked: the instance only calls it, `f()` being `F_lambdaK_call(f)`, so no copy escapes); the sidecar holds one copy of the template's text per instance |
+| a member of `List<uint16>` (wave 12: the class bits table) | `List_uint16_m(&list, ...)`, the type `List_uint16` (like `List<uint8>`'s BytecodeList); the projections are the sidecar's |
+| `@render ... truncating`, an int64 `>>` by a run-time count (wave 12: large_integer_shift_right) | `asr_int64(x, n)`, which the sidecar defines as the floor division without a shift of a negative value (as the `>>=` by a literal above; GCC's and Clang's arithmetic shift) and whose contract makes VeriFast check the count in [0, 63]; x evaluated once |
+| `goto L;` and `L: S` (wave 12: smi_add) | written as is (`L: ;` then S: C before C23 allows no label on a declaration); a goto out of a scope with a destructor or in a macro is an error; in a function with a goto no local reuses a name (VeriFast takes a later one for one that hides it) |
+| `auto v = bit_cast<T>(x);` (wave 12: float_to_raw) | the local is a T: Clang's spelling of its type is bit_cast's return type `typename std::enable_if<..., T>::type`, its desugared type T |
+| `T a[] = { e0, ..., en };` of a scalar T with every element given (wave 12: string_from_rune) | `T a[n+1] = { e0, ..., en };` (C's initializer); the elements must have no side effects (no assignment, no call: C leaves their order unspecified, C++ evaluates them left to right) |
+| `@render ... truncating`, an explicit `static_cast<char>` of an int (wave 12) | the modular conversion (char joined the signed targets of the narrowing rule above) |
+| `@render ... truncating`, an implicit conversion of an int or a word to uint16, an explicit `static_cast<uint8>` of a char (wave 12: String::compute_hash_code_for) | the modular conversions C++ defines for unsigned targets |
 
 Each rule added after the pilot has a self-test in `tests/rules.cc` and
 `tests/rules.render` (rendered, compared with the committed
@@ -462,7 +471,19 @@ three translator self-tests), 63 primitives prove the retry obligation,
 the C++ behind 44 of the 106 ports is VeriFast-proved. Fresh work
 directory (2026-11-24, the machine shared with other checkouts' runs):
 the fast tier 1363 checks ok, 0 FAIL, 0 NOVERDICT, in 1384 s wall, 62 MB
-left in the work directory. Lines: `metrics.sh` (C++ = the
+left in the work directory. Wave 12 (2026-11-25): 83 sidecars, 701
+`@render` functions (`metrics.sh`: the install-time check of the builtin
+classes, the bitwise and additive integer primitives, the raw float
+conversions, string_from_rune, the blob primitives string_length,
+json_skip_whitespace, blob_hash_code and hash_simple_json_string, six
+translator
+self-tests), 77 primitives prove the retry obligation, the C++ behind 62
+of the 106 ports is VeriFast-proved, and the ESBMC harness
+install_image_checks.cc checks the native install-time checks.
+Fresh work directory (2026-11-25, RUN_JOBS=8, after the merge of
+wip/collector-proofs at 5497a73c): the fast tier 1413 checks ok, 0 FAIL, 0
+NOVERDICT, in 3474 s wall, 62 MB left in the work directory. Lines:
+`metrics.sh` (C++ = the
 rendered functions' lines; annotations among them; then the hand-written C
 and annotations of the verbatim sections: trusted prototypes, predicates,
 lemmas).
@@ -492,6 +513,8 @@ lemmas).
 | GC counts (`prims/gc_count.render`) | primitive, two accessors, counter increment and collection accounting | exact counter selection, updates for each collection type, rollover | live process heap with valid counters and the collection type returned by the collector | 25 / 13 / 4 / 7 | skip rollover, omit compacting collections from the full count, return the wrong counter |
 | Primitive `word_size` | complete body | the returned smi encodes the target word size in bytes | Smi::from | 4 / 2 / 1 / 0 | return bits |
 | The loader's error roots (`loader/error_roots.render`, wave 8) | Program::has_valid_error_roots | the result is exactly `error_roots_ok` of the root table's error slots (heap references at or above MAX_TAGGED_ERROR, pairwise different addresses); ProcessGroup::create refuses a program for which it is false, which gives the `process` predicate its conjunct (a process's program passed the check) | VeriFast's pointer_limits for the stored roots | 13 / 13 / 1 / 16 | the comparison with the next root left out; the heap check taken out |
+| The install-time check of the builtin classes (`loader/builtin_classes.render`, wave 12) | V2Verifier::builtin_classes_error and its helper builtin_class_error, Program::class_tag_from_class_bits, Program::instance_size_from_class_bits, Instance::fields_from_size | reads only the builtin class id table and the class bits at ids it checked against the table's length; a null result is `builtin_classes_ok` of the 23 ids (each a smi naming a class of the table that a 32-bit header can hold, with its tag and at least its fields); `prog_ok_from_check` (a proved lemma) gives `prog_ok` of the program's ids from it and `classes_agree` | the 23 builtin-id getters (macro-generated: contracts over the raw table, checked by ESBMC `program-class-ids-native` against the native getters and model/program_class_ids.h's indices, both widths); `classes_agree`: the model's class_tag and class_fields are the program's class bits (the heap bridge's meaning); the List<uint16> projections | 77 / 24 / 51 / 171 | the field check vacuous, the header bound left out, the list class with another tag, the range check one too weak |
+| The install-time checks, native (`../harness/install_image_checks.cc`, wave 12) | image_layout_error (part 1), builtin_classes_error (part 2), ESBMC on LP64 and ILP32 | part 1: for tables at any offset from the image and arbitrary words in it, a null result puts every table and the method table literal inside the image with the readers' alignment, and no read leaves the image; part 2: the class bits are read only at checked ids | table pointers made by pointer arithmetic on the image and literal words not read from the Program's own fields (ESBMC's integer/pointer model: harness comment); builtin_roots_error not covered (no verdict in 30 minutes) | — | none: install-image-classes-range (the range check taken out, or one too weak) gave no verdict in 600 s on either width; the VeriFast mutants builtin-classes-* cover the check |
 | The integer readers (`prims/read_bytes.render`, wave 8; the signed ones wave 9) | read_uint_big_endian, read_uint_little_endian, read_int_big_endian, read_int_little_endian (the C++ behind the Rust ports), Utils::wrapping_shift_left | every read inside the blob for any width and offset (negative ones become large unsigned ones and are rejected), no overflow or lossy conversion but the modular ones the C++ means (`truncating`, `unsigned-word-conversion`; the sign byte's uint8-to-int8, the shift by a run-time count whose range VeriFast checks), the heap unchanged up to the boxed result, `oom_clean`; not which integer the bytes give | the Blob decoder and Primitive::integer's contracts | 78 / 114 / 5 / 43 | the end check left out (a read past the blob); the little-endian loop one byte too high; wave 9: the old `width - 1` in int before the check (LP64: overflow for INT_MIN), the big-endian loop one byte too long, the little-endian sign byte one too high |
 | The byte-array writers (`prims/put_bytes.render`, wave 9) | byte_array_replace, put_uint_big_endian, put_uint_little_endian (the C++ behind the Rust ports) | the MutableBlob decoded first (copy-on-write), the other arguments in the grown heap (`valid_arg`: is_large_integer, is_double and the Blob decoder take it); every write inside the destination's content (a writable byte array outside the program heap); byte_array_replace's legal memmove (the source may be the same byte array); no overflow or lossy conversion but the modular ones the C++ means (a value's low byte, the arithmetic shift `value >>= 8`); `grows`, `oom_unchanged` | the MutableBlob and Blob decoders' contracts, the error roots (`process`) | 52 / 141 / 5 / 45 | put_uint_little_endian's old `width - 1` (LP64), put_uint_big_endian's end check, byte_array_replace's length in the destination check, byte_array_replace reporting MALLOC_FAILED after the copy |
 | The float writers (`prims/put_float.render`, wave 9) | put_float_32_little_endian, put_float_64_little_endian | 4 (8) bytes written inside the destination's content from the float (double) local; `grows`, `oom_unchanged`; not the bytes written | memcpy's contract for a float or double local (VeriFast has no float-to-bytes lemma); VeriFast's double-to-float conversion (math.h: total, as IEC 60559 defines it) | 31 / 72 / 4 / 25 | the 32-bit writer's end check two bytes weaker (one byte weaker still fits: the C++ is one byte stricter than needed), the 64-bit writer's offset check left out |
@@ -501,6 +524,11 @@ lemmas).
 | String concatenation and slicing (`prims/strings.render`, wave 10) | string_add, concat_strings (the static helper and the primitive), string_slice, is_validated_string, utf_8_continuation_byte, String::MutableBytes::_initialize (both copy overloads), String::Bytes::at (the C++ behind the Rust ports) | every read inside the parts (the proven Blob decoder) and the receiver, every write inside the new string, the sum of the parts' lengths checked against MAX_CONCATENATION_LENGTH before it is added (no overflow, at most MAX_BLOB), the result's length (the sum; to - from), concat_strings' two decodings of each part equal, the primitive heap contract, `oom_clean` | the allocator's contract (`Process::allocate_string`), the Blob decoder's | see metrics.sh | the bound one byte higher (both), a failed part used, the slice's copy one byte longer |
 | Boxed doubles (`prims/float_ops.render`, wave 10) | the eleven float primitives that box one double (the C++ behind the Rust ports) | the argument decoding (double, or smi / large integer / double for number_to_float), the result a new double or the allocation-failure error with the heap unchanged, `grows`, `oom_clean`; not the value | binary64 arithmetic, libm's fmod, sqrt, ceil, floor, trunc (contracts `requires true; ensures true`: no memory), the allocator's double | see metrics.sh | float_add returning its receiver |
 | Integer arithmetic (`prims/int_ops.render`, wave 10) | ten integer primitives and Utils::wrapping_add, _sub, _mul, _negate, _shift_left (the C++ behind the Rust ports) | the argument decoding, the modular uint64 arithmetic of the wrapping helpers (`truncating`), every shift count in [0, 63], the result a good reference (Primitive::integer: a smi or a new large integer) or an error with the heap unchanged, `grows`, `oom_clean`; not which integer | Primitive::integer's proof and the allocator's contract | see metrics.sh | a shift count unchecked (two) |
+| Bitwise and additive integers (`prims/int_bits.render`, wave 12) | smi_and, smi_or, smi_xor, large_integer_and, large_integer_or, large_integer_xor, smi_add, smi_subtract, large_integer_shift_right, Utils::wrapping_add, wrapping_sub (the C++ behind the Rust ports) | the argument decoding, a bitwise operation of two smis a smi and of two int64s an int64 (the range lemma of `^` proved from the Z definitions: bitops.gh's `bitxor_signed_limits` states `|`), smi_add's `goto overflow` (both paths), every shift count in [0, 63] (asr_int64), the result a good reference or an error with the heap unchanged, `grows`, `oom_clean`; not which integer | Primitive::integer's proof, the allocator's contract | 93 / 106 / 9 / 170 | the shift count check left out, smi_xor's large path stored in a smi |
+| Raw float conversions (`prims/float_raw.render`, wave 12) | float_to_raw, float_to_raw32, raw_to_float, raw32_to_float (the C++ behind the Rust ports) | the argument decoding, raw32_to_float's 32-bit check (the modular conversion and shift, so that the uint32 conversion is exact), the result a new double, a good reference or an error with the heap unchanged, `grows`, `oom_clean`; not the values | bit_cast (contract only, as in the encoder and decoder), VeriFast's double/float conversions, Primitive::integer and the allocator's double | 25 / 30 / 9 / 47 | raw32's range check left out, raw_to_float returning its argument |
+| Primitive `string_from_rune` (`prims/string_from_rune.render`, wave 12) | string_from_rune (the C++ behind the Rust port) | the int argument's round trip, INVALID_ARGUMENT outside [0, MAX_UNICODE] and for a surrogate, the bytes in a local array of the sequence's length (the array-initializer rule; each byte the modular int-to-char conversion), the proven Process::allocate_string copying exactly that array, the result a new string of 1 to 4 bytes or the allocation-failure error with the heap unchanged, `grows`, `oom_clean`; not that the bytes are the encoding | the allocator's contract (`Process::allocate_string(word)`) | see metrics.sh | the four-byte branch allocating 5 bytes |
+| Blob primitives (`prims/blob_helpers.render`, wave 12) | string_length, json_skip_whitespace (the C++ behind the Rust ports) | the proven StringOrSlice and Blob decoders, every read inside the decoded content, the result a smi (a length, an index in [offset, length]) or an error; the heap unchanged | the decoders' contracts | see metrics.sh | json_skip_whitespace's loop one byte past the end |
+| Hashing blob primitives (`prims/blob_hash.render`, wave 12) | blob_hash_code, hash_simple_json_string, String::compute_hash_code_for (the C++ behind the Rust ports) | the proven Blob decoder, every read inside the decoded content (the hash reads the slice it is given: the blob, or the bytes from the offset to the closing quote), the hash's modular uint16 arithmetic (`truncating`), the result a smi or an error; the heap unchanged; not which hash | the decoder's contract | see metrics.sh | hash_simple_json_string hashing one byte past the quote |
 | Primitive `string_at` (`prims/string_at.render`, wave 10) | string_at, Utils::is_utf_8_prefix; bytes_in_utf_8_sequence and payload_from_prefix from `utf8/` | every read inside the decoded string or slice (StringOrSlice: the proven Blob decoder) for any bytes, the sequence length at most 4 before payload_from_prefix, no overflow in the decoded value, the heap unchanged; the result a smi, the null object or an error | the Blob decoder's contract | see metrics.sh | the fix reverted, either half of it taken out |
 | UTF-8 (`utf8/`) | Utils::utf_8_to_16, bytes_in_utf_8_sequence, payload_from_prefix | verified (Z3) | none | 57 / 45 / 1 / 169 | 07c24665: UB shift at payload_from_prefix; without the length check: the read past the input. Also checks sizing failure, surrogate width and initialization of the second output unit. |
 | UTF-16 (`utf8/utf_16_to_8.render`) | Utils::utf_16_to_8, Utils::utf_16le_to_8, read_utf16le_unit | verified (Z3) | readable little-endian byte pairs and an optional writable byte buffer | 60 / 73 / 1 / 70 | byte order, four-byte lead, surrogate replacement, output capacity and write count |
@@ -783,18 +811,21 @@ audit).
 
 Of the 150 allowed primitives, 106 have Rust ports with proofs, 33 have
 VeriFast body proofs and 11 have ESBMC body proofs.
-Behind the 106 ports, the C++ of 44 has a VeriFast body proof (wave 9:
-9 more; wave 10: 27 more, below), the other 62 are contract-only. Counted by `metrics.sh`
+Behind the 106 ports, the C++ of 62 has a VeriFast body proof (wave 9:
+9 more; wave 10: 27 more; wave 12: 18 more, below), the other 44 are
+contract-only. Counted by `metrics.sh`
 (its last line: the primitives of CONTRACTS.toml's [prim_retry] whose
 `primitive_NAME` has a rendered, not contract-only, definition, split by
 `family` in verified/core/src/prims/mod.rs). Wave 8's "2 of the 106" was
 an undercount: array_new, the four integer divisions and
 string_write_to_byte_array, listed above with their C++ proofs, have Rust
 ports too (8 before wave 9).
-Of the 62, 34 are unreachable from untrusted code (proved in Verus:
+Of the 44, 34 are unreachable from untrusted code (proved in Verus:
 `prims::never_falls_back`, the ensures of `prims::call` and
 `rarrays::rust_primitive_r`; the 35th such port, smi_mod, is
-VeriFast-proved too), so 28 are contract-only and reachable (55 before wave 10). Counted by
+VeriFast-proved too), so 10 are contract-only and reachable (28 before
+wave 12, 55 before wave 10; the list and what blocks each: "The
+reachable contract-only fallbacks (wave 12)" below). Counted by
 `contract_check.toit` (verified/check.sh section contracts), which checks
 CONTRACTS.toml `[unreachable]` against the Verus list.
 These counts classify primitive names. A port can still delegate a case
@@ -1258,14 +1289,37 @@ put_uint_big_endian, put_uint_little_endian, put_float_32_little_endian,
 put_float_64_little_endian, byte_array_at_put and byte_array_is_raw_bytes
 (`prims/read_bytes.render`, `prims/byte_array_access.render`,
 `prims/put_bytes.render`, `prims/put_float.render`). Memory safety of the
-C++ behind the 106 ports: 44 VeriFast-verified, 62 contract-only
-(`metrics.sh`; 17 and 89 before wave 10, 8 and 98 before wave 9), of
-which 34 are unreachable from untrusted code (proved in Verus; below),
-leaving 28 (55 before wave 10). Wave 10 added byte_array_new,
+C++ behind the 106 ports: 62 VeriFast-verified, 44 contract-only
+(`metrics.sh`; 44 and 62 before wave 12, 17 and 89 before wave 10, 8 and
+98 before wave 9), of which 34 are unreachable from untrusted code
+(proved in Verus; below), leaving 10 (28 before wave 12, 55 before wave
+10). Wave 10 added byte_array_new,
 array_expand, string_at, string_add, concat_strings, string_slice, the
 eleven boxed-double float primitives and ten integer primitives
 (`prims/allocating.render`, `array_expand.render`, `string_at.render`,
-`strings.render`, `float_ops.render`, `int_ops.render`).
+`strings.render`, `float_ops.render`, `int_ops.render`). Wave 12 added
+nine integer primitives (`prims/int_bits.render`), the four raw float
+conversions (`prims/float_raw.render`), string_from_rune
+(`prims/string_from_rune.render`), blob_hash_code and
+hash_simple_json_string (`prims/blob_hash.render`), string_length and
+json_skip_whitespace (`prims/blob_helpers.render`).
+
+### The reachable contract-only fallbacks (wave 12)
+
+The 10 primitives behind Rust ports whose C++ an untrusted program can
+reach and that have no body proof, grouped by what blocks each (the
+fallback conditions are "When the C++ behind a port runs" below):
+
+| Blocker | Primitives |
+|---|---|
+| a loop over the blob's bytes with a C library call or a helper not yet rendered: `memcmp`/`memchr` contracts, `String::compute_hash_code_for` (a uint16 modular hash: the narrowing of `31 * hash + byte` to uint16 needs a `truncating` rule for int to uint16), `String::equals`; with an opaque argument (the ports' only fallback) the proved decoders give the bodies an empty blob or fail | blob_equals, compare_simple_json_string |
+| `static const` locals (no rendering rule; its loop is over pointers into the blob) | size_of_json_number |
+| intrinsics: blob_index_of's SSE loop (x86-64 hosts) | blob_index_of |
+| reads outside the blob by design: string_rune_count's word-sized aligned loads read the bytes before and after the blob in the same word (they cannot fault, AddressSanitizer builds count byte by byte); the model has no chunk for them | string_rune_count |
+| a branch the model has no bytes for, unreachable for untrusted programs: byte_array_at and byte_array_length read a MappedFileTag byte array in place. Verified again (wave 12): no C++ makes one (src/ only reads the tag: heap_roots.cc, interpreter_core.cc, the two primitives), and the format-2 conversion refuses every external byte array of a program image whose tag is not RawByteTag (verified/vmverify/src/from_vm.rs, BYTE_ARRAY_TAG), as walk_heap does for format 1. Their other branches are byte_array_at_put's (proved, `prims/byte_array_access.render`); a proof of the two would need the MappedFileTag case as a precondition the model cannot discharge, so they stay contract-only | byte_array_at, byte_array_length |
+| `Interpreter::fast_at` on a LargeArray_ backing (the arraylets' classes and sizes) | list_add |
+| VeriFast's floating point (no double-to-integer conversion, uninterpreted comparisons) | number_to_integer |
+| `__builtin_mul_overflow`, and the parity of a product through the modular conversions to a word and to an address | smi_multiply |
 
 ### When the C++ behind a port runs (wave 9)
 
@@ -2083,7 +2137,7 @@ classified):
 | Class | Count | Evidence |
 |---|---|---|
 | (a) cannot fail for want of memory | 62 | the primitive's body (or its macro) has no allocation, allocating argument kind (MutableBlob, cstring) or out-of-memory error: checked by contract_check.toit (a tripwire for helpers that allocate; reviewed) |
-| (b) fails for want of memory only before any visible effect | 88 | 86 by tests/ctest/prim-retry-test.cc (below), 63 of them also proved with VeriFast (`oom_clean` or `oom_unchanged`, below; 37 before wave 10, 30 before wave 9, 25 before wave 8), 23 tested only (49 before wave 10, 56 before wave 9); 2 reviewed (task_new: a format-1 path needs an interpreter; encode_error: needs a scheduler thread), the arguments in the table |
+| (b) fails for want of memory only before any visible effect | 88 | 86 by tests/ctest/prim-retry-test.cc (below), 77 of them also proved with VeriFast (`oom_clean` or `oom_unchanged`, below; 63 before wave 12, 37 before wave 10, 30 before wave 9, 25 before wave 8), 9 tested only (23 before wave 12, 49 before wave 10, 56 before wave 9); 2 reviewed (task_new: a format-1 path needs an interpreter; encode_error: needs a scheduler thread), the arguments in the table |
 | (c) violates it | 0 | |
 
 tests/ctest/prim-retry-test.cc makes every allocation of a call fail in
@@ -2177,6 +2231,33 @@ smi_multiply (`goto`, `__builtin_mul_overflow`: no rendering rules),
 the four raw float conversions and number_to_integer (bit_cast and the
 double-to-int64 conversion), string_from_rune (array initializers), and
 the message, timer and notifier primitives (below).
+
+Wave 12 adds fourteen, all C++ behind Rust ports and all `oom_clean`:
+smi_and, smi_or, smi_xor, large_integer_and, large_integer_or,
+large_integer_xor, smi_add, smi_subtract and large_integer_shift_right
+(`prims/int_bits.render`: the signed range of `^` proved from VeriFast's
+Z definitions; smi_add's `goto overflow` by the translator's goto and
+label rules; the arithmetic shift by a run-time count by its asr_int64
+rule), float_to_raw, float_to_raw32, raw_to_float and raw32_to_float
+(`prims/float_raw.render`) and string_from_rune
+(`prims/string_from_rune.render`: the translator's array-initializer
+rule). Mutants int-bits-shift-count,
+int-bits-xor-smi, float-raw32-range, float-raw-returns-argument,
+string-from-rune-length. Still
+tested only (9), with what blocks each: smi_multiply
+(`__builtin_mul_overflow` has no rule, and its success path returns the
+product as a tagged word: the parity of a product through the modular
+conversions to a word and back to an address, `truncate_signed` and
+`truncate_unsigned`, for which VeriFast's library has no lemma),
+number_to_integer (VeriFast 26.10 has no double-to-integer conversion,
+no `vf__int128_t_of_double`, and its double comparisons are
+uninterpreted, so the C++'s range check cannot be connected to the
+conversion), the
+receive primitives (below; the decoder's contracts), and the message,
+timer and notifier primitives (scheduler contracts: process_send,
+timer.init, timer.create, events.register_monitor_notifier; the ESBMC
+body checks of the README's primitive table cover their failure
+paths, not as `oom_clean`).
 
 string_write_to_byte_array, byte_zap and blit install a copy-on-write byte
 array's copy (a write to an existing instance) before a later argument or
@@ -2309,6 +2390,52 @@ of #3378, malformed system messages of #3381) become mutants with them.
 
 
 ## Findings
+
+Wave 12 (the install-time checks proved, the tested-only retry
+classifications, the reachable contract-only fallbacks):
+
+* **The install-time check of the builtin classes accepted a builtin class
+  id that no object header can hold** (FIXED here, src/verifier_v2.cc
+  `builtin_class_error`; found by the VeriFast proof of
+  `V2Verifier::builtin_classes_error`, `loader/builtin_classes.render`).
+  An object's header is a smi holding the class id above the class tag
+  and the finalizer bit (`HeapObject::_set_header`), so on a 32-bit VM a
+  class id is below 2^25; the check (and the verifier's conversion before
+  it) bounded a builtin id only by the class count. A program with more
+  than 2^25 classes (a class-bits table of 64 MB and a dispatch table of
+  at least 128 MB inside the image) could name a builtin class, say its
+  array class, that every array allocation then gives a header whose
+  class id field overflows the smi. The model's `prog_ok` states ids below
+  `MAX_CLASS_IDS` (2^25 on ILP32, 2^31 on LP64: the C++ keeps class ids in
+  ints), and the proof failed there. Now every builtin id is at most
+  `Smi::MAX_SMI32_VALUE >> CLASS_ID_OFFSET` (the 32-bit header's bound, on
+  both word sizes). Not reachable on the ESP32 (flash of at most 16 MB);
+  on a 32-bit host in principle. Regression test:
+  tests/ctest/program-image-validation-test.cc (each of the 23 builtin ids
+  set to 2^25 is refused with "too large for a header", called directly:
+  the conversion refuses an id at or above the class count first).
+  Mutant builtin-classes-header. Upstream master: no install-time
+  verification and no format 2 (n/a).
+* **The format-1 verifier read a builtin class id as an `int`: on a 64-bit
+  VM an id of 2^32 + k passed as k** (FIXED here, src/verifier.cc
+  `check_builtin_classes`; found while comparing it with the format-2
+  check above). `int id = Smi::value(b.id)` truncated the smi's value, so
+  the range and tag checks looked at class k while the VM then used the
+  real id (`class_bits[2^32 + k]`: a read far past the class table, e.g.
+  in `Program::instance_size_for`). Reachable by an untrusted format-1
+  image on a 64-bit host with `-Xuntrusted_format1` (an opt-in; the
+  format-2 conversion compares the whole id with the class count, and the
+  devices are 32-bit). Now a word. Regression test:
+  tests/ctest/program-image-validation-test.cc ("builtin class id above
+  2^32": accepted by the format-1 check before the fix). Upstream master:
+  no src/verifier.cc (n/a).
+* `builtin_classes_error` was restructured for the proof (the same checks
+  in the same order and the same messages): one call of a static helper
+  per builtin class instead of a table of anonymous structs walked by a
+  range-for (no rendering rule for either), and the roots' half moved to
+  `V2Verifier::builtin_roots_error` (v2_verify calls it after the classes
+  passed: its reads presuppose the classes' facts, and its lambda with
+  parameters has no rendering rule).
 
 Wave 11 (what the install-time checks pin in a program image; the
 argument objects of the primitives without a body proof):
@@ -3397,6 +3524,30 @@ model is revised.
   policy reads, HeapTagScope, the
   program roots, `fail`. Each is still compared with its source when it is
   a `@render ... trusted`; the others are plain prototypes.
+* Wave 12's trusted specifications (each with why there is no proved
+  alternative): the 23 builtin-class-id getters of
+  `loader/builtin_classes.render` (`result == nth(INDEX, ws)` over the raw
+  table: the getters are generated by a macro, so the translator cannot
+  compare their text; ESBMC `program-class-ids-native` checks every
+  native getter against its slot and every index on both widths);
+  `classes_agree` in `prog_ok_from_check` (the model's uninterpreted
+  `class_tag` and `class_fields` are the program's class bits for the
+  builtin classes: what those functions stand for, the heap bridge's
+  part; making them defined would change the heap predicate every proof
+  uses); the bit_cast instances of `prims/float_raw.render` (`requires
+  true; ensures true;`, as the encoder's and decoder's: VeriFast has no
+  lemma between a float's chunk and its bytes); the translator's
+  rendering of an int64 `>>` by a run-time count as `asr_int64` (the
+  arithmetic shift GCC and Clang define, written as the floor division
+  without a shift of a negative value: the same trust as wave 9's `>>=`
+  by a literal); the List<uint16> projections (`List_uint16_length`,
+  `List_uint16_data`, hand-written like the BytecodeList ones).
+* The link between the install-time check of the builtin classes and
+  `prog_ok` in the `process` predicate (wave 12): what
+  `V2Verifier::builtin_classes_error` returns is proved
+  (`loader/builtin_classes.render`), and v2_verify refuses a program for
+  which it is not null; that every untrusted process runs a program
+  v2_verify accepted is reviewed, as for the error roots below.
 * The link between the loader's check and the `process` predicate (wave
   8): the predicate's `error_roots_ok` for its program (the error roots are distinct heap
   references above the immediate errors) is what
@@ -3416,6 +3567,9 @@ model is revised.
   and the loader-checked error-root facts, for the renderings that use
   them).
 * `loader/error_roots.render` (wave 8): the loader's error-root check.
+* `loader/builtin_classes.render` (wave 12): the install-time check of the
+  builtin classes (what `prog_ok` rests on); its native counterpart and
+  image_layout_error's are `../harness/install_image_checks.cc` (ESBMC).
 * `encoder/`, `decoder/`, `ffi/`, `prims/`, `utf8/`: the targets (sidecar
   and generated files); `encoder/cardinal.h`/`.c` (the cardinal's byte
   bound, proved with Z3 so that the encoder verifies with the default
