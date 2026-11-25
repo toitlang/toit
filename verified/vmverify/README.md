@@ -437,9 +437,14 @@ decoder builds them in a `CBuild`, whole chunks plus a plain-vector
 block, so that a push costs what a vector push costs): a method of any
 size needs blocks of at most 1 KB, and a growing node arena no longer
 copies itself into a block twice as large. Same speed as the vectors
-(x86-64: a-hello 2.75 ms vs 2.74 ms, 55.7 M vs 54.1 M instructions). What
-remains above
-1 KB: the copy of each byte-array literal the heap check gets
+(x86-64: a-hello 2.75 ms vs 2.74 ms, 55.7 M vs 54.1 M instructions). On
+the classic ESP32 the verification time is dominated by flash-cache
+misses, above all in the allocator's flash functions (a malloc costs
+28-33 us; about 8 allocator calls per method), so it depends on where the
+verifier's hot functions lie relative to them: the new code first made
+a-hello 0.82 -> 1.15 s, until the hottest verifier functions were placed
+first in the pinned group B (toolchains/idf/components/toit/
+hot_flash_functions.txt; 0.84 s, base 0.86 s). What remains above 1 KB: the copy of each byte-array literal the heap check gets
 (`ExecBody::Bytes`; the largest is usually the method-table literal, 4
 bytes per method), the converted literals (16 bytes per literal), the
 object-id table (2 KB for 150-250 objects).

@@ -286,18 +286,19 @@ would make it total, a behavior change).
 - GC safety of words held across a GC point in the checked handlers is by
   review (the verified handlers hold none: a GC point re-derives every
   word from the model).
-- Open (branch device/memory-pressure): the slow-tier ESBMC job
+- Done (branch device/memory-pressure): the slow-tier ESBMC job
   `task-all-fields` (verified/cxx/harness/allocate_task.cc with
-  `-DCXXV_SYMBOLIC_FIELDS`, LP64 and ILP32) reports an invalid-pointer
-  sentinel write in the young-space stack allocation since
-  `ObjectHeap::allocate_task` reads the program's format to choose the
-  initial stack length. Bisected on a copy of the base: the base passes;
-  any read of `program()->is_format2()` in `allocate_task` before the
-  stack is allocated makes it fail, also with format 1 assumed (the
-  64-word stack of the base). `allocate-task`, `task-retry-fields`,
-  `initial-task-capacity`, `task-new`, `task-start` and `task-id-exhaustion`
-  pass. Not resolved: whether this is a modelling artifact of the
-  harness (its program's tables are a local array) or a real property.
+  `-DCXXV_SYMBOLIC_FIELDS`) reported an invalid-pointer sentinel write in
+  the young-space stack allocation once the initial stack length depended
+  on the program. Cause: ESBMC loses the pointer's object through the bit
+  mask of `HeapObject::_align` applied to a non-constant size (the write
+  was aligned and in bounds; a reduced model shows the in-bounds
+  assertion passing and the invalid-pointer check failing). The rounding
+  in `Stack::allocation_size` was the identity and is removed (with a
+  static_assert); both widths pass. The harness takes the expected
+  length from `Stack::allocation_size` itself, so a wrong reservation
+  size is not caught there (a one-word-short mutant passes); the stack
+  length mutants are caught.
 - Device memory (branch device/memory-pressure): the largest requests of
   an install-time verification above 1 KB are the heap check's copy of
   each byte-array literal (`ExecBody::Bytes`; the method-table literal, 4
