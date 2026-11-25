@@ -417,7 +417,10 @@ programs move to bytecode format 2, whose verifier is written in Rust
 (`verified/`) and verified against the bytecode specification, for the
 host and for install time on the device. The device verifies an image once,
 when it is installed, and keeps the verdict in the flash allocation
-metadata. Until then, untrusted containers are a host-only feature.
+metadata, with the verification epoch of the firmware that computed it
+(verified/verification-epoch.cmake): a firmware with other install-time
+checks refuses the image until it is reinstalled. Until then, untrusted
+containers are a host-only feature.
 
 ## Known gaps
 
@@ -431,7 +434,12 @@ metadata. Until then, untrusted containers are a host-only feature.
   the C++ interpreter hardening and the unproven C++ verifier; a bug there
   lets a malicious snapshot bypass the primitive table.
 - Untrusted images are verified once at install with the shipped
-  certificate and the verdict is recorded; nothing has run on real
+  certificate and the verdict is recorded with the verification epoch;
+  after a firmware update that changes the install-time checks, installed
+  untrusted containers are refused until they are reinstalled (the
+  certificate is not kept, so the device cannot verify them again). The
+  epoch says which checks ran, not that they are right: a bug in checks
+  that did not change survives an update. Nothing has run on real
   hardware yet (see "Open for devices").
 - A sandbox can make the system process print a warning for every
   unhandled message it sends, and print and trace as fast as the system

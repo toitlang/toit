@@ -213,7 +213,9 @@ erasing the block before the header is written; verified/vmverify/README.md
    keep verdicts with the allocation.
 
 Spawning from flash never looks for the block (it is gone): images flagged
-untrusted carry the install-time verdict; others started untrusted are
+untrusted carry the install-time verdict (taken only if it is of the
+running firmware's verification epoch, verified/verification-epoch.cmake;
+else the image is refused until it is reinstalled); others started untrusted are
 verified on spawn, which on hosts infers (`FlashRegistry::is_verified`
 caches the verdict) and on devices rejects.
 

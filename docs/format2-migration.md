@@ -156,6 +156,20 @@ the old warning (format-2 snapshot, format-1 system). The other targets
 (C3, S2, S3, P4) keep format 1 and record `[1]`; the EC618 records `[1]`
 by default and `[2]` with `make ec618 EC618_BYTECODE_FORMAT=2`.
 
+Installed untrusted containers and firmware updates: an update that keeps
+the system uuid and the programs partition's mapping address keeps the
+installed containers (/home/flo/work/opentoit-sandbox-artifacts/s3-ota-soak, "OTA with containers
+installed"). An untrusted one runs on its install-time verdict only if
+the verdict was recorded with the new firmware's verification epoch
+(verified/verification-epoch.cmake: a hash, at build time, of the sources
+of the install-time checks and of the contract they establish, kept in the
+allocation header under its checksum). Otherwise it is refused like an
+image without a verdict (`VERIFICATION_FAILED`, "verdict of verification
+epoch X, not Y: reinstall it" on the console), the boot goes on, and it
+stays installed until it is reinstalled; the device cannot verify it again
+(the certificate is not kept). Trusted containers and the envelope's
+bundled containers are not affected (they have no verdict).
+
 ### The method table in flash
 
 A format-2 process group needs the method table (16 bytes per method,

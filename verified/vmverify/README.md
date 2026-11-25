@@ -130,10 +130,21 @@ Every untrusted launch, before any bytecode runs:
   sets it), and the header checksum of such an allocation covers the
   program's bytes too (the whole allocation without assets), so the
   verdict is bound to the bytes it was computed on: any change makes the
-  allocation invalid (it is no longer listed and cannot start). Spawn
-  takes the verdict instead of verifying (`V2Verifier::accept_recorded`
+  allocation invalid (it is no longer listed and cannot start). The
+  verdict is also bound to the checks that computed it: the header
+  records the VM's verification epoch with it (the last four bytes of the
+  header's system uuid field, under the checksum;
+  verified/verification-epoch.cmake computes the epoch at build time from
+  the sources of the install-time checks and of the contract they
+  establish). Spawn takes a verdict of its own epoch instead of verifying
+  (`FlashAllocation::program_verified`; `V2Verifier::accept_recorded`
   marks the table it decodes from those bytes) and refuses a flagged
-  format-2 image without one. Cost of the binding: a CRC-32 of the image
+  format-2 image without one, or with a verdict of another epoch
+  (`VERIFICATION_FAILED`, the epochs on stderr; the image stays installed
+  until it is reinstalled): after a firmware update that keeps the
+  installed containers but changes the checks, no container runs on the
+  old firmware's verdict. Test: tests/sandbox/verdict-epoch-test.toit,
+  tests/ctest/verdict-epoch-test.cc. Cost of the binding: a CRC-32 of the image
   on each lookup of the allocation (`FlashAllocation::is_valid`; Utils'
   nibble-table CRC, about 1 ms per 60 KB on the host, estimated several
   ms on an ESP32-C6). Test: tests/sandbox/install-verdict-test.toit

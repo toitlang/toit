@@ -91,9 +91,11 @@ class V2Verifier {
   // [certificate] (or null), with the [metadata] its header will get: clears
   // the verdict bit the installer may have set (only the VM sets it), and
   // for an image flagged untrusted verifies the program (verify_installed)
-  // and sets the bit if it is accepted. Returns null or the error to fail
-  // the commit with. Called by the commit paths (image.writer-commit,
-  // flash_registry.allocate) in [process] (see verify_installed).
+  // and sets the bit if it is accepted (the header then records this VM's
+  // verification epoch with it: FlashAllocation::Header). Returns null or
+  // the error to fail the commit with. Called by the commit paths
+  // (image.writer-commit, flash_registry.allocate) in [process] (see
+  // verify_installed).
   //
   // An allocation failure of the method table or the verifier returns
   // OUT_OF_MEMORY (the string "OUT_OF_MEMORY"): the commit primitives then
@@ -106,10 +108,12 @@ class V2Verifier {
                                      const uint8* certificate = null, word certificate_length = 0,
                                      Process* process = null);
 
-  // Marks [table], decoded from the bytes of an allocation with the
-  // install-time verdict, as accepted with the untrusted rules (the verdict
-  // and the bytes are bound by the allocation's checksum). Also for the
-  // host's verdict cache (FlashRegistry::is_verified).
+  // Marks [table], decoded from the bytes of an allocation with an
+  // install-time verdict of the current verification epoch
+  // (FlashAllocation::program_verified), as accepted with the untrusted
+  // rules (the verdict, its epoch and the bytes are bound by the
+  // allocation's checksum). Also for the host's verdict cache
+  // (FlashRegistry::is_verified).
   static void accept_recorded(const V2MethodTable* table);
 
   // Test support (verified/tools/vmverify_differential.toit): writes the
