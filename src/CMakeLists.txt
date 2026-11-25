@@ -208,6 +208,22 @@ set_source_files_properties(interpreter_core.cc PROPERTIES COMPILE_OPTIONS "-O3;
 set_source_files_properties(interpreter_run.cc PROPERTIES COMPILE_OPTIONS "-O3;${TOIT_INTERPRETER_FLAGS};$ENV{LOCAL_INTERPRETER_CXXFLAGS}")
 set_source_files_properties(utils.cc PROPERTIES COMPILE_FLAGS "-DTOIT_MODEL=\"\\\"${TOIT_MODEL}\\\"\" -DVM_GIT_INFO=\"\\\"${VM_GIT_INFO}\\\"\" -DVM_GIT_VERSION=\"\\\"${TOIT_GIT_VERSION}\\\"\"")
 
+# The verification epoch (verified/verification-epoch.cmake): recorded with
+# every install-time verdict and compared when an image is started. Computed
+# from the sources of the install-time checks; an edit of one of them
+# reconfigures the build, which recompiles flash_allocation.cc with the new
+# epoch.
+include("${CMAKE_CURRENT_SOURCE_DIR}/../verified/verification-epoch.cmake")
+get_filename_component(TOIT_VERIFICATION_EPOCH_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
+toit_verification_epoch("${TOIT_VERIFICATION_EPOCH_ROOT}" TOIT_VERIFICATION_EPOCH TOIT_VERIFICATION_EPOCH_DIGEST
+                        TOIT_VERIFICATION_EPOCH_FILES CONFIGURE_DEPENDS)
+list(TRANSFORM TOIT_VERIFICATION_EPOCH_FILES PREPEND "${TOIT_VERIFICATION_EPOCH_ROOT}/")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+             ${TOIT_VERIFICATION_EPOCH_FILES} "${TOIT_VERIFICATION_EPOCH_ROOT}/verified/verification-epoch.cmake")
+set(TOIT_VERIFICATION_EPOCH "${TOIT_VERIFICATION_EPOCH}" PARENT_SCOPE)
+set_source_files_properties(flash_allocation.cc PROPERTIES
+                            COMPILE_DEFINITIONS "TOIT_VERIFICATION_EPOCH=0x${TOIT_VERIFICATION_EPOCH}u")
+
 set(GEN_DIR "${PROJECT_BINARY_DIR}/generated")
 
 # The embedded programs are first-party (trusted) code: in format 2 they get

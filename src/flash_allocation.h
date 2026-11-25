@@ -47,7 +47,15 @@ class FlashAllocation {
     // allocation also covers the program's bytes (compute_checksum), so the
     // verdict holds exactly for the bytes it was computed on: if they
     // change, the allocation is no longer valid.
+    // The verdict holds for the checks that computed it: the header of such
+    // an allocation records the verification epoch of the VM that set the
+    // bit (verification_epoch()) in the last EPOCH_SIZE bytes of uuid_,
+    // where other allocations repeat the system uuid; only the first
+    // UUID_SIZE - EPOCH_SIZE bytes of the system uuid are compared then
+    // (is_valid). The checksum covers the epoch as every other header byte.
+    // A verdict of another epoch is no verdict (program_verified).
     static const int FLAGS_PROGRAM_VERIFIED_MASK = 1 << 6;
+    static const unsigned EPOCH_SIZE = 4;
     static const unsigned ID_SIZE = UUID_SIZE;
     static const unsigned METADATA_SIZE = 5;  // Picked for 16 byte alignment.
 
@@ -67,6 +75,10 @@ class FlashAllocation {
     uint8 uuid_[UUID_SIZE];
 
     bool is_valid(bool embedded) const;
+    // Whether the header carries the verdict bit (and so an epoch).
+    bool has_verdict_bit() const {
+      return type_ == FLASH_ALLOCATION_TYPE_PROGRAM && (metadata_[0] & FLAGS_PROGRAM_VERIFIED_MASK) != 0;
+    }
     uint8 type() const { return type_; }
     const uint8* metadata() const { return metadata_; }
     uint32 compute_checksum(const void* memory) const;
@@ -110,12 +122,25 @@ class FlashAllocation {
     return (program_flags() & Header::FLAGS_PROGRAM_UNTRUSTED_MASK) != 0;
   }
 
-  // Whether the program carries the install-time verdict (see
-  // Header::FLAGS_PROGRAM_VERIFIED_MASK). Meaningful for a valid allocation
-  // only: validity checks the bytes the verdict is bound to.
-  bool program_verified() const {
-    return (program_flags() & Header::FLAGS_PROGRAM_VERIFIED_MASK) != 0;
-  }
+  // Whether the program carries an install-time verdict of the current
+  // verification epoch (see Header::FLAGS_PROGRAM_VERIFIED_MASK). A verdict
+  // recorded with another epoch (by a firmware whose install-time checks
+  // differ) is no verdict. Meaningful for a valid allocation only: validity
+  // checks the bytes the verdict is bound to.
+  bool program_verified() const;
+
+  // Whether the program has the verdict bit, of whatever epoch (for the
+  // message when program_verified() is false).
+  bool program_has_verdict_bit() const { return header_.has_verdict_bit(); }
+
+  // The verification epoch recorded with the verdict bit (if
+  // program_has_verdict_bit()).
+  uint32 program_verdict_epoch() const;
+
+  // The verification epoch of this VM: it identifies the install-time
+  // checks and the interpreter contract they establish. Computed at build
+  // time from the sources that define them (verified/verification-epoch.cmake).
+  static uint32 verification_epoch();
 
   // Get the total size of the appended program assets if any.
   int program_assets_size(uint8** bytes, word* length) const;

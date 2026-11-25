@@ -55,8 +55,7 @@ uint32 FlashAllocation::Header::compute_checksum(const void* memory) const {
   // A program with the install-time verdict: the program's bytes after the
   // header (the whole allocation without the appended assets) are covered
   // too, which binds the verdict to the bytes that were verified.
-  if (type_ == FLASH_ALLOCATION_TYPE_PROGRAM &&
-      (metadata_[0] & FLAGS_PROGRAM_VERIFIED_MASK) != 0) {
+  if (has_verdict_bit()) {
     word size = size_in_pages_ << FLASH_PAGE_SIZE_LOG2;
     crc = Utils::crc32(crc, reinterpret_cast<const uint8*>(memory) + sizeof(Header), size - sizeof(Header));
   }
@@ -78,6 +77,11 @@ FlashAllocation::Header::Header(const void* memory,
     memcpy(uuid_, DATA_UUID, sizeof(uuid_));
   } else {
     memcpy(uuid_, EmbeddedData::uuid(), sizeof(uuid_));
+  }
+  if (has_verdict_bit()) {
+    // Only the VM writes headers, and only install_verdict sets the bit: the
+    // epoch is this VM's.
+    Utils::write_unaligned_uint32_le(&uuid_[UUID_SIZE - EPOCH_SIZE], verification_epoch());
   }
   checksum_ = compute_checksum(memory);
 }
@@ -101,7 +105,28 @@ bool FlashAllocation::Header::is_valid(bool embedded) const {
     }
   }
   if (type_ != FLASH_ALLOCATION_TYPE_PROGRAM) return false;
-  return memcmp(uuid_, EmbeddedData::uuid(), UUID_SIZE) == 0;
+  // A program with the verdict bit has its epoch in the last bytes of uuid_
+  // (FLAGS_PROGRAM_VERIFIED_MASK). Embedded programs never get a verdict.
+  word compared = (!embedded && has_verdict_bit()) ? UUID_SIZE - EPOCH_SIZE : UUID_SIZE;
+  return memcmp(uuid_, EmbeddedData::uuid(), compared) == 0;
+}
+
+uint32 FlashAllocation::verification_epoch() {
+  // Set for this file by src/CMakeLists.txt (verified/verification-epoch.cmake).
+#ifndef TOIT_VERIFICATION_EPOCH
+#error "TOIT_VERIFICATION_EPOCH is not defined (src/CMakeLists.txt)"
+#endif
+  return TOIT_VERIFICATION_EPOCH;
+}
+
+uint32 FlashAllocation::program_verdict_epoch() const {
+  return Utils::read_unaligned_uint32_le(&header_.uuid_[UUID_SIZE - Header::EPOCH_SIZE]);
+}
+
+bool FlashAllocation::program_verified() const {
+  // An embedded program (checksum 0, is_valid_embedded) has no verdict: its
+  // header comes from the firmware's build, not from install_verdict.
+  return program_has_verdict_bit() && header_.checksum_ != 0 && program_verdict_epoch() == verification_epoch();
 }
 
 bool FlashAllocation::commit(const void* memory, word size, const Header* header) {

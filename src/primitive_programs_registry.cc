@@ -122,16 +122,26 @@ PRIMITIVE(spawn) {
   if (policy->is_untrusted()) {
     // The install-time verdict (flash_allocation.h): the allocation is
     // valid, so its checksum still covers exactly the bytes that were
-    // verified. An image flagged untrusted without a verdict never starts
-    // (unless it is format 1 and -Xuntrusted_format1 allows that). Images
-    // without the flag that are started untrusted (the caller's choice)
-    // are verified now; the host remembers that verdict until the
-    // allocation is written again (FlashRegistry::is_verified).
+    // verified, and the verdict is of this VM's verification epoch (a
+    // verdict of another epoch, recorded by a firmware with other
+    // install-time checks, is no verdict). An image flagged untrusted
+    // without a verdict never starts (unless it is format 1 and
+    // -Xuntrusted_format1 allows that); it stays installed until it is
+    // reinstalled or removed. Images without the flag that are started
+    // untrusted (the caller's choice) are verified now; the host remembers
+    // that verdict until the allocation is written again
+    // (FlashRegistry::is_verified).
     bool recorded = program->is_format2() && allocation->program_verified();
     if (!recorded && allocation->program_untrusted() && program->is_format2()) {
       delete v2_methods;
       PrimitivePolicy::release(policy);
-      fprintf(stderr, "untrusted image without an install-time verdict\n");
+      if (allocation->program_has_verdict_bit()) {
+        fprintf(stderr, "untrusted image: verdict of verification epoch %08x, not %08x: reinstall it\n",
+                static_cast<unsigned>(allocation->program_verdict_epoch()),
+                static_cast<unsigned>(FlashAllocation::verification_epoch()));
+      } else {
+        fprintf(stderr, "untrusted image without an install-time verdict\n");
+      }
       String* error = process->allocate_string("VERIFICATION_FAILED");
       if (error == null) FAIL(ALLOCATION_FAILED);
       return Error::from(error);
