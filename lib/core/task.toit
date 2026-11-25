@@ -50,8 +50,13 @@ The Toit programming language is cooperatively scheduled, so it is important
   opportunity to run.
 */
 yield:
-  process-messages_
-  task-transfer-to_ Task_.current.next-running_ false
+  self := Task_.current
+  next := self.next-running_
+  // With other running tasks, an out-of-memory error of the message
+  // processing is left to them (see Task_.suspend_), so that this task
+  // still lets them run.
+  process-messages_ --out-of-memory-error=(identical self next)
+  task-transfer-to_ self.next-running_ false
 
 // ----------------------------------------------------------------------------
 
@@ -275,7 +280,12 @@ class Task_ implements Task:
       // Process messages now. We do this before we determine
       // if the process is done to allow new tasks to spin
       // up as part of the processing and impact the decision.
-      evaluate-and-trace_: process-messages_
+      // A message that can't be handled for lack of memory is kept
+      // (process-messages_): this task is done, so the error doesn't
+      // concern it, and the message is handled again by the other running
+      // tasks or the loop below.
+      evaluate-and-trace_:
+        catch --unwind=(: not is-out-of-memory-error_ it): process-messages_
 
       // If no services are defined and only background tasks are
       // alive at this point, we terminate the process gracefully.
@@ -291,7 +301,10 @@ class Task_ implements Task:
       task-count_ = task-count
       task-background_ = task-background
       while identical this previous-running_:
-        __yield__
+        // Sleeps until a message comes, unless a message is kept to be
+        // handled again: then it is handled right away (an out-of-memory
+        // error ends the process, as an uncaught exception does).
+        if not deferred-message_: __yield__
         evaluate-and-trace_: process-messages_
 
       // Mark this task as terminated and unlink it from the
@@ -346,7 +359,13 @@ class Task_ implements Task:
   suspend_:
     state_ = STATE-SUSPENDING
     while true:
-      process-messages_
+      // With other running tasks, an out-of-memory error of the message
+      // processing (a message that can't be decoded or handled for lack of
+      // memory stays in the mailbox or is kept) is left to them: they
+      // process the messages again when they yield or suspend, and they
+      // may free memory. Thrown here, the error could make a task that
+      // catches it and waits again spin without letting them run.
+      process-messages_ --out-of-memory-error=(identical this previous-running_)
       // Check if we got resumed through the message processing.
       if state_ == STATE-RUNNING: return this
       // If this task not the only task left, we unlink it from

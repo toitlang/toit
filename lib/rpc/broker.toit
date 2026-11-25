@@ -15,7 +15,7 @@
 
 import rpc show RpcSerializable
 
-class RpcBroker implements SystemMessageHandler_:
+class RpcBroker implements SystemMessageHandler_ SystemMessageOutOfMemoryHandler_:
   static MAX-TASKS/int     ::= 16
   static MAX-REQUESTS/int? ::= 64
   // A single sandboxed (untrusted) process can't take up the whole request
@@ -81,16 +81,55 @@ class RpcBroker implements SystemMessageHandler_:
     name/int := message[1]
     arguments := message[2]
 
-    send-exception-reply :=: | exception |
-      // Runs in the task that processes the messages, so it must not
-      // block: no retries.
-      send-reply-now_ pid [ id, true, exception, null ]
-      return
+    // The message processing hands a request whose handler ran out of
+    // memory to this handler again (process-messages_). If the earlier
+    // attempt ran out of memory after it enqueued the request, the request
+    // will be processed and answered: it must not be enqueued twice.
+    if is-retrying-rpc-message_ and queue_.was-last-added pid id: return
 
     procedure := procedures_.get name
-    if not procedure: send-exception-reply.call "No such procedure registered: $name"
+    if not procedure:
+      send-reply-now_ pid [ id, true, "No such procedure registered: $name", null ]
+      return
     request := RpcRequest_ pid gid id arguments procedure --limited=(is-untrusted_ pid)
-    if not queue_.add request: send-exception-reply.call "Cannot enqueue more requests"
+    if not queue_.add request:
+      send-reply-now_ pid [ id, true, "Cannot enqueue more requests", null ]
+
+  /**
+  Completes the request of the $message from $pid whose $on-message ran out
+    of memory: unless the request was enqueued before that (it will be
+    answered), the client gets an OUT_OF_MEMORY error reply instead of
+    waiting for a reply forever.
+
+  Throws if this process can't allocate the message for the reply; the
+    message processing then keeps the request and handles it again later.
+  */
+  on-out-of-memory type/int gid/int pid/int message/any -> none:
+    if type != SYSTEM-RPC-REQUEST_: return
+    if message is not List or message.size < 1 or message[0] is not int: return
+    id/int := message[0]
+    if queue_.was-last-added pid id: return
+    send-out-of-memory-reply-now_ pid id
+
+  // The reply to a request that this process can't accept or answer for
+  // lack of memory. Allocated up front, so that sending it needs no object
+  // allocation. Only the task that processes the messages uses it (one at
+  // a time); the processing tasks build their own (send-reply_).
+  out-of-memory-reply_/List ::= [0, true, "OUT_OF_MEMORY", null]
+
+  /**
+  Sends the out-of-memory error reply to the request $id of $pid without
+    blocking.
+  Throws if this process can't allocate the message: the caller then keeps
+    the request to handle it again later.
+  */
+  send-out-of-memory-reply-now_ pid/int id/int -> none:
+    reply := out-of-memory-reply_
+    reply[0] = id
+    exception := catch: process-send_ pid SYSTEM-RPC-REPLY_ reply
+    // A full mailbox (a restricted sender only) or another error: dropped,
+    // as send-reply-now_ does.
+    if is-out-of-memory-error_ exception: throw "OUT_OF_MEMORY"
 
   // The policy kind of sandboxed processes (ContainerService.POLICY-UNTRUSTED).
   static POLICY-UNTRUSTED_ ::= 2
@@ -155,25 +194,81 @@ class RpcBroker implements SystemMessageHandler_:
   static send-reply_ pid/int reply/List -> none:
     exception := catch: process-send_ pid SYSTEM-RPC-REPLY_ reply
     if not exception: return
-    if exception == "QUOTA_EXCEEDED" and is-restricted_:
+    out-of-memory := is-out-of-memory-error_ exception
+    if out-of-memory or (exception == "QUOTA_EXCEEDED" and is-restricted_):
       deadline := Time.monotonic-us + REPLY-RETRY-MS * 1_000
       delay-ms := 1
       while Time.monotonic-us < deadline:
         if Task.current.is-canceled: return
-        canceled := catch: sleep --ms=delay-ms
-        if canceled: return
+        if not pause_ delay-ms: return
         delay-ms = min REPLY-RETRY-MAX-DELAY-MS (delay-ms * 2)
         exception = catch: process-send_ pid SYSTEM-RPC-REPLY_ reply
         if not exception: return
-        if exception != "QUOTA_EXCEEDED": break
-    send-reply-now_ pid [ reply[0], true, exception.stringify, null ]
+        out-of-memory = is-out-of-memory-error_ exception
+        if not out-of-memory and exception != "QUOTA_EXCEEDED": break
+    if out-of-memory:
+      send-out-of-memory-reply_ pid reply[0]
+      return
+    error := catch: send-reply-now_ pid [ reply[0], true, exception.stringify, null ]
+    if error: send-out-of-memory-reply_ pid reply[0]
 
   /**
   Sends the $reply to an RPC request to $pid without blocking and drops
-    it if it can't be sent.
+    it if it can't be sent, unless this process is out of memory.
+
+  Throws if this process can't allocate the message.
   */
   static send-reply-now_ pid/int reply/List -> none:
-    catch: process-send_ pid SYSTEM-RPC-REPLY_ reply
+    exception := catch: process-send_ pid SYSTEM-RPC-REPLY_ reply
+    if is-out-of-memory-error_ exception: throw "OUT_OF_MEMORY"
+
+  /**
+  Waits $delay-ms between two attempts to send a reply. Returns false if the
+    task was canceled.
+
+  Yields instead when there is no memory for the timer of the sleep: the
+    tasks that can free memory must get to run.
+  */
+  static pause_ delay-ms/int -> bool:
+    exception := catch: sleep --ms=delay-ms
+    if not exception: return true
+    if not is-out-of-memory-error_ exception: return false
+    catch: yield
+    return not Task.current.is-canceled
+
+  // The longest wait between two attempts of send-out-of-memory-reply_.
+  static OUT-OF-MEMORY-RETRY-MAX-DELAY-MS ::= 1_000
+
+  // How long a processing task tries to answer with an out-of-memory error
+  // (send-out-of-memory-reply_), or to get its next request, while this
+  // process is out of memory, before it gives up.
+  static OUT-OF-MEMORY-GIVE-UP-MS ::= 10_000
+
+  /**
+  Sends the out-of-memory error reply to the request $id of $pid from a
+    processing task, when this process could not build or send the reply.
+
+  Tries until the reply is sent, the client is gone (the send returns
+    false), the request is canceled, the send fails for another reason
+    than memory (a full mailbox, see $send-reply_), or for
+    $OUT-OF-MEMORY-GIVE-UP-MS: the client must not wait for a reply that
+    never comes. The attempts are at most
+    $OUT-OF-MEMORY-RETRY-MAX-DELAY-MS apart; each one is a small, fixed
+    amount of work. A client can't keep this going: it only runs while this
+    process can't allocate a few bytes, and a sandboxed client's messages
+    and heap are bounded by its quotas. The system process never gets here:
+    it restarts the device when it is out of memory.
+  */
+  static send-out-of-memory-reply_ pid/int id/int -> none:
+    delay-ms := 1
+    deadline := Time.monotonic-us + OUT-OF-MEMORY-GIVE-UP-MS * 1_000
+    while Time.monotonic-us < deadline:
+      exception := catch:
+        process-send_ pid SYSTEM-RPC-REPLY_ [ id, true, "OUT_OF_MEMORY", null ]
+      if not exception or not is-out-of-memory-error_ exception: return
+      if Task.current.is-canceled: return
+      if not pause_ delay-ms: return
+      delay-ms = min OUT-OF-MEMORY-RETRY-MAX-DELAY-MS (delay-ms * 2)
 
 class RpcRequest_:
   next/RpcRequest_? := null
@@ -197,12 +292,18 @@ class RpcRequest_:
     finally: | is-exception exception |
       // If we get an exception, we send back a string representation of
       // it to avoid running into issues with unserializable exceptions.
-      reply := is-exception
-          ? [ id, true, exception.value.stringify, exception.trace ]
-          : [ id, false, result ]
+      reply/List? := null
+      catch:
+        reply = is-exception
+            ? [ id, true, exception.value.stringify, exception.trace ]
+            : [ id, false, result ]
       // Doesn't throw: a client that makes the reply fail can't take
       // down the processing task (and with it this process).
-      RpcBroker.send-reply_ pid reply
+      if reply:
+        RpcBroker.send-reply_ pid reply
+      else:
+        // Out of memory: the client gets the error instead of no reply.
+        RpcBroker.send-out-of-memory-reply_ pid id
       return  // Stops any unwinding.
 
 monitor RpcRequestQueue_:
@@ -228,17 +329,49 @@ monitor RpcRequestQueue_:
     processing-requests_ = List max-tasks
     processing-tasks_ = List max-tasks
 
+  // The client and id of the request that was enqueued last (see
+  // $was-last-added).
+  last-added-pid_/int := -1
+  last-added-id_/int := -1
+
+  /**
+  Whether the request that was enqueued last is the request $id of $pid.
+
+  The broker asks after its handler ran out of memory, to know whether the
+    request was enqueued before that (then it will be processed).
+  */
+  was-last-added pid/int id/int -> bool:
+    return last-added-pid_ == pid and last-added-id_ == id
+
+  /**
+  Enqueues the $request and returns true, or returns false if the queue is
+    full.
+
+  If this process runs out of memory, the request either is not enqueued
+    (then this method throws), or it is enqueued and $was-last-added says
+    so. An enqueued request always has a processing task: when none runs,
+    one is started before the request is enqueued.
+  */
   add request/RpcRequest_ -> bool:
+    pid := request.pid
+    id := request.id
+    limited := request.limited
     if unprocessed_ >= RpcBroker.MAX-REQUESTS
-        or (request.limited and
-            (unprocessed-by-pid_.get request.pid --if-absent=: 0) >= RpcBroker.MAX-REQUESTS-PER-UNTRUSTED-PROCESS):
+        or (limited and
+            (unprocessed-by-pid_.get pid --if-absent=: 0) >= RpcBroker.MAX-REQUESTS-PER-UNTRUSTED-PROCESS):
       // It should not be necessary to ask for more processing tasks here,
       // but we do it (defensively) anyway to guard against issues in the
       // bookkeeping of unprocessed requests and processing tasks.
       ensure-processing-task_
       return false
 
-    // Enqueue the new request in the linked list.
+    // The processing tasks end when they are idle. Without one, a request
+    // that is enqueued when no task can be started would stay in the queue
+    // until the next request comes.
+    if tasks_ == 0: ensure-processing-task_ --at-least-one
+
+    // Enqueue the new request in the linked list. The enqueued request is
+    // recorded right after it is linked in, with no call in between.
     last := last_
     if last:
       last.next = request
@@ -246,9 +379,16 @@ monitor RpcRequestQueue_:
     else:
       first_ = last_ = request
     unprocessed_++
-    if request.limited: unprocessed-by-pid_.update request.pid --init=0: it + 1
+    last-added-pid_ = pid
+    last-added-id_ = id
 
-    ensure-processing-task_
+    // Running out of memory from here on leaves the request enqueued: the
+    // count of a sandboxed sender is then one too low until the request has
+    // been processed (decrement_ handles that), and the tasks that run
+    // process the queue.
+    catch --unwind=(: not is-out-of-memory-error_ it):
+      if limited: unprocessed-by-pid_.update pid --init=0: it + 1
+      ensure-processing-task_
     return true
 
   // Static, so it doesn't take the monitor lock: it is called both with and
@@ -311,12 +451,14 @@ monitor RpcRequestQueue_:
       if request and predicate.call request:
         processing-tasks_[it].cancel
 
-  ensure-processing-task_ -> none:
+  ensure-processing-task_ --at-least-one/bool=false -> none:
     // If there are requests that could be processed by spawning more tasks,
     // we do that now. To avoid spending too much memory on tasks, we prefer
     // to keep some requests unprocessed and enqueued.
-    while unprocessed_ > tasks_ and tasks_ < processing-tasks_.size:
-      tasks_++
+    // A task is only counted once it exists: a task that can't be created
+    // for lack of memory must not count as processing the queue.
+    while (unprocessed_ > tasks_ or (at-least-one and tasks_ == 0))
+        and tasks_ < processing-tasks_.size:
       task-index := processing-tasks_.index-of null
       processing-tasks_[task-index] = task --name="RPC processing task" --background::
         // The task code runs outside the monitor, so the monitor
@@ -324,11 +466,37 @@ monitor RpcRequestQueue_:
         // locked when the requests are being dequeued.
         assert: identical processing-tasks_[task-index] Task.current
         try:
+          failing-since/int? := null
           while not Task.current.is-canceled:
-            next := remove-first task-index
+            next/RpcRequest_? := null
+            exception := catch --unwind=(: not is-out-of-memory-error_ it):
+              next = remove-first task-index
+            if exception:
+              // Out of memory (it could not grow its stack, or it got the
+              // error of the message processing). A request that it
+              // dequeued before that is still processed. Otherwise it lets
+              // the other tasks run, which may free memory, and tries
+              // again; after RpcBroker.OUT-OF-MEMORY-GIVE-UP-MS the error
+              // ends the task (and, uncaught, the process), as it did
+              // before, instead of spinning forever.
+              next = processing-requests_[task-index]
+              if not next:
+                now := Time.monotonic-us
+                if not failing-since: failing-since = now
+                if now - failing-since > RpcBroker.OUT-OF-MEMORY-GIVE-UP-MS * 1_000:
+                  throw exception
+                catch: yield
+                continue
+            failing-since = null
             if not next: break
             try:
-              next.process
+              // Doesn't unwind, except when this process runs out of
+              // memory before it could start to answer: the request is
+              // then failed with that error (an uncaught exception would
+              // end this process).
+              failed := catch --unwind=(: not is-out-of-memory-error_ it):
+                next.process
+              if failed: RpcBroker.send-out-of-memory-reply_ next.pid next.id
             finally:
               // This doesn't have to be in a finally-block because the call
               // to 'next.process' never unwinds, but being a little bit
@@ -339,4 +507,8 @@ monitor RpcRequestQueue_:
         finally:
           processing-tasks_[task-index] = null
           tasks_--
-          ensure-processing-task_
+          // Out of memory: the tasks that run (or the next request) take
+          // over; an exception would end this process.
+          catch --unwind=(: not is-out-of-memory-error_ it):
+            ensure-processing-task_
+      tasks_++
