@@ -25,6 +25,9 @@ import .reservation
 IMAGE-WORD-SIZE  ::= system.BYTES-PER-WORD
 IMAGE-CHUNK-SIZE ::= (system.BITS-PER-WORD + 1) * IMAGE-WORD-SIZE
 
+COMMIT-OUT-OF-MEMORY-RETRIES_ ::= 3
+COMMIT-OUT-OF-MEMORY-DELAY-MS_ ::= 250
+
 class ContainerImageWriter extends ServiceResource:
   reservation_/FlashReservation? := ?
   // The size of the reservation: the pages after the committed allocation
@@ -60,7 +63,17 @@ class ContainerImageWriter extends ServiceResource:
       if partial-chunk-fill_ > 0: throw "Incomplete image"
       metadata := #[flags, 0, 0, 0, 0]
       LITTLE-ENDIAN.put-uint32 metadata 1 data
-      image-writer-commit_ image_ metadata
+      // The install-time verification of an untrusted image may run out
+      // of memory (OUT_OF_MEMORY: no verdict, nothing written yet) while
+      // other containers' heaps are large; they shrink again at their
+      // next collection, so the commit is tried again a few times.
+      attempt := 0
+      while true:
+        exception := catch --unwind=(: it != "OUT_OF_MEMORY" or attempt >= COMMIT-OUT-OF-MEMORY-RETRIES_):
+          image-writer-commit_ image_ metadata
+        if not exception: break
+        attempt++
+        sleep --ms=COMMIT-OUT-OF-MEMORY-DELAY-MS_ * attempt
       return FlashAllocation reservation_.offset
     finally:
       close
