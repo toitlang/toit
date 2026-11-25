@@ -411,16 +411,18 @@ monitor RpcRequestQueue_:
           return null
         continue
 
-      // Dequeue the first request from the linked list.
-      next := request.next
-      if identical last_ request: last_ = next
-      first_ = next
-
       // Mark the request as being processed by the task with the
       // given index while still holding the monitor lock. This
       // ensures that the returned request can be canceled even
-      // though it isn't in the linked list anymore.
+      // though it isn't in the linked list anymore. Done before the
+      // request is dequeued, with the calls: if this process runs out of
+      // memory here, the request is still in the queue or marked.
+      next := request.next
       processing-requests_[task-index] = request
+
+      // Dequeue the first request from the linked list.
+      if identical last_ request: last_ = next
+      first_ = next
       return request
 
   cancel [predicate] -> none:
