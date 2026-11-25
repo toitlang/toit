@@ -2716,6 +2716,15 @@ mutant int-bits-shift-count prims/int_bits.render src/primitive_core.cc "Cannot 
 mutant int-bits-xor-smi prims/int_bits.render src/primitive_core.cc "Cannot prove|overflow" "-allow_dead_code -prover z3v4.5" \
   "return Primitive::integer(((int64) receiver) ^ LargeInteger::cast(arg)->value() , process);" \
   "return Smi::from(((int64) receiver) ^ LargeInteger::cast(arg)->value());"
+# The raw float conversions (wave 12): raw32_to_float without its 32-bit
+# check (its uint32 conversion lossy); raw_to_float returning its
+# argument's raw word after the allocation.
+entry float-raw             pass "" prims/float_raw.gen.c -allow_dead_code -prover z3v4.5
+mutant float-raw32-range prims/float_raw.render src/primitive_core.cc "Cannot prove|overflow" "-allow_dead_code -prover z3v4.5" \
+  "  if ((static_cast<uint64>(raw) >> 32) != 0) FAIL(OUT_OF_RANGE);\n" ""
+mutant float-raw-returns-argument prims/float_raw.render src/primitive_core.cc "Cannot prove" "-allow_dead_code -prover z3v4.5" \
+  "  double value = bit_cast<double>(raw);\n  return Primitive::allocate_double(value, process);" \
+  "  double value = bit_cast<double>(raw);\n  Primitive::allocate_double(value, process);\n  return _raw_raw;"
 entry word-size             pass "" prims/word_size.gen.c
 mutant word-size-bits prims/word_size.render src/primitive_core.cc "smi_val|Cannot prove condition" "" \
   "return Smi::from(WORD_SIZE);" "return Smi::from(WORD_SIZE * 8);"
