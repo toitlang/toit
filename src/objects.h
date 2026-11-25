@@ -1012,7 +1012,23 @@ class Stack : public HeapObject {
   // A null callback requests only the count.
   int frames_do(Program* program, FrameCallback* cb);
 
+  // The length of a new task's stack in format 1.
   static INLINE word initial_length() { return 64; }
+  // The length of a new task's stack in [program] (objects_inline.h). In
+  // format 2 every call needs the program's maximal height (the verifier's
+  // bound on every frame's height) plus a frame record, the reserve and a
+  // finally record free above the records (verified/core/src/room.rs), and
+  // frame records are V2_FRAME_WORDS words, so a new task needs more than
+  // format 1's 64 words before it runs its body: the length is the maximal
+  // height plus V2_INITIAL_LENGTH_ABOVE_HEIGHT words, at most
+  // V2_MAX_INITIAL_LENGTH. 132 is what the common short task of the
+  // libraries needs at its deepest call (measured: an empty task 104
+  // words at a maximal height of 18, a task that sets a latch 144-147,
+  // the soak worker's tasks 121-147), so that it never grows its stack;
+  // a task that goes deeper grows it as before.
+  static inline word initial_length(const Program* program);
+  static const word V2_INITIAL_LENGTH_ABOVE_HEIGHT = 132;
+  static const word V2_MAX_INITIAL_LENGTH = 256;
   static INLINE word max_length();
 
   // Format 2 (the verified core, interpreter_v2.cc and verified/core).
