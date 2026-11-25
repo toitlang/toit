@@ -33,8 +33,11 @@ Base 67e28c2d (wip/collector-proofs). Artifacts:
   the commit primitive (instructions, cycles) are the same as the base's:
   the verifying thread is off the CPU for longer; cause open.
 - Soaks: f2 one worker 2 h: no reset, crash or stuck worker, installs
-  42/16 (all out of memory); f2 two workers: one worker stuck (the RPC
-  liveness item of esp32-final); f1 1 h: one system-process OOM restart.
+  42/16 (all out of memory); f2 two workers (does not fit with WiFi,
+  free down to 3 KB): installs 23/37, one worker stuck (the RPC liveness
+  item of esp32-final), one restart by the scheduler's dead-lock check
+  (system process stalled 10 s in a WiFi connect); f1 1 h: one
+  system-process OOM restart.
 - Open: the slow-tier ESBMC job `task-all-fields` (OBLIGATIONS.md, "Other
   open items").
 
