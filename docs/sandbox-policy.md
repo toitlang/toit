@@ -286,6 +286,7 @@ processed the reply, and lost requests stayed lost). Now
 | provider | the request handler, before the request is enqueued | an `OUT_OF_MEMORY` error reply, sent from a preallocated reply list (`RpcBroker.on-out-of-memory`); if even that message can't be allocated, the request is kept and handled again as above | the call fails with `OUT_OF_MEMORY` (or gets its reply) |
 | provider | the request handler, after the request was enqueued | nothing more: the request is processed (the broker records the last enqueued request, so a kept request is not enqueued twice) | its reply |
 | provider | building or sending the reply (processing task) | the full reply is retried with the backoff of a full mailbox for 5 s, then an `OUT_OF_MEMORY` error reply is retried (at most 1 s apart) for 10 s (`RpcBroker.send-out-of-memory-reply_`) | its reply, or `OUT_OF_MEMORY`; no reply only if the provider can't allocate a short message for 15 s |
+| provider | taking the next request from the queue (processing task) | marks the request as being processed before it unlinks it; on the error it yields and tries again | its reply |
 | either | the processing itself, before the handler ran (decode, the handler's first frame) | a message that can't be decoded stays in the mailbox (VM, unchanged); one that was taken is kept as above | as above |
 
 While a message is kept, the other messages stay in the mailbox (as behind
@@ -314,6 +315,18 @@ it restarts the device when it is out of memory. Exempting replies from the
 quotas was rejected for the reasons below; a reply that a trusted provider
 can't deliver to a sandbox's full mailbox is still dropped (the sandbox
 doesn't process its messages).
+
+What is left: a process can still run out of memory so thoroughly that none
+of its tasks can make a call (a task's stack can't grow, and the memory is
+held by a task that can't run). Its RPC processing task then ends with the
+error (and the process with it, as before), or the process stays stuck
+until memory comes back from elsewhere. A stress program (a provider at a
+100 KB heap limit that is out of memory about 900 times per 1000 calls,
+opentoit-sandbox-artifacts/liveness/progs/host/rpc-provider-oom-stress.toit)
+lost a call in every run before (26 of 26); now no call is lost, 84 of 100
+runs complete, in 9 the provider process ends and in 7 it stays stuck for
+more than 20 s. Ending the process is visible to service clients
+(`NO_SUCH_PROCESS`); being stuck is not.
 
 Exempting replies from the quotas was rejected: the VM can't tell a reply
 from a forged `SYSTEM_RPC_REPLY` (`forge-rpc-reply`), so an exemption
