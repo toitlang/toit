@@ -87,4 +87,9 @@ slow gc-sweep-chunk-no-sentinel/LP64             5  1800
 # stayed below 1 GB resident);
 # LP64 no verdict in 1800 s with Boolector.
 slow install-image-layout/ILP32                  3  1800
+
+# 121 s alone, 325-330 s inside a gate run, and no verdict within the fast
+# tier's 600 s when the machine was loaded (gate of e11f847d, 2026-11-26):
+# by the 90 s rule a slow job. Peak 1.5 GB virtual.
+slow gc-current-task/LP64 3 1800
 known_noverdict install-image-layout/LP64 "no verdict within 1800 s (Boolector, 2026-11-25); ILP32 passes"
