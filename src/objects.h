@@ -1129,7 +1129,11 @@ class Stack : public HeapObject {
     return static_cast<const Stack*>(stack);
   }
 
-  static word allocation_size(word length) { return  _align(HEADER_SIZE + length * WORD_SIZE); }
+  // Whole words, so no rounding with _align (HEADER_SIZE is a multiple of
+  // WORD_SIZE, asserted below). The bit mask of _align made ESBMC lose track
+  // of the chunk an allocation with a program-dependent length lies in
+  // (Stack::initial_length(program); harness allocate_task, task-all-fields).
+  static word allocation_size(word length) { return HEADER_SIZE + length * WORD_SIZE; }
   static void allocation_size(word length, int* word_count, int* extra_bytes) {
     ASSERT(length > 0);
     *word_count = HEADER_SIZE / WORD_SIZE + length;
@@ -1162,6 +1166,7 @@ class Stack : public HeapObject {
   static const word PENDING_STACK_CHECK_METHOD_OFFSET = TRY_TOP_OFFSET + WORD_SIZE;
   static const word GUARD_ZONE_OFFSET = PENDING_STACK_CHECK_METHOD_OFFSET + WORD_SIZE;
   static const word HEADER_SIZE = GUARD_ZONE_OFFSET + GUARD_ZONE_SIZE;
+  static_assert(HEADER_SIZE % WORD_SIZE == 0, "allocation_size needs no rounding");
 
   word shrink_v2_for_gc(word top, int max_height, bool aggressive, RootCallback* cb);
 
