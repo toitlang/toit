@@ -251,6 +251,20 @@ its processing tasks); they stop early when the client cancels the call
 processes is unchanged, except that a reply that can't be serialized or
 exceeds a quota fails the call instead of terminating the provider.
 
+A reply can also be lost at the client: the task that processes the
+messages takes the decoded reply from the mailbox and then runs the reply
+handler (`Rpc.on-message`), which needs stack and may need to grow it. If
+the client is out of memory there, the reply is gone. The exception used
+to be swallowed with the other handler exceptions, and the caller waited
+forever (the soak workers on a small device; tests/rpc-reply-oom-test.toit).
+Now an `OUT_OF_MEMORY` of the reply handler goes to the processing task,
+as the `OUT_OF_MEMORY` of a message that can't be decoded does. That task
+is usually the caller itself (it processes messages while it waits), so
+the call fails with `OUT_OF_MEMORY`; if another task processed the reply,
+that task gets the exception and the caller still waits until its own
+timeout. Requests lost the same way at the provider (its request handler
+out of memory) also leave the caller waiting until its timeout.
+
 Exempting replies from the quotas was rejected: the VM can't tell a reply
 from a forged `SYSTEM_RPC_REPLY` (`forge-rpc-reply`), so an exemption
 would let a sandbox queue unbounded memory in any receiver it may send
