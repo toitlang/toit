@@ -63,7 +63,7 @@ set(TOIT_VERIFICATION_EPOCH_MANUAL 1)
 
 # The digest of the inputs at the last review (MODE=update writes it); its
 # first 8 digits are the epoch.
-set(TOIT_VERIFICATION_EPOCH_RECORDED "0def457d97310203f78ad6ca645bed0ff7d822e86ee1463a5cd2c8fd35529c89")
+set(TOIT_VERIFICATION_EPOCH_RECORDED "76716c086e8a53e1bb75cfd7563b333fd84d5d1f67404e216412dd1380669a14")
 
 # Paths relative to the repository root; a pattern with a '*' is a recursive
 # glob and must match a file, any other path must exist.

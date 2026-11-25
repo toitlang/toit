@@ -30,6 +30,7 @@
 
 #ifdef TOIT_ESP32
 #include <sdkconfig.h>
+#include <esp_heap_caps.h>
 #endif
 #ifdef CONFIG_TOIT_TRACE_INSTALL
 #include <esp_heap_caps.h>
@@ -492,6 +493,11 @@ static bool v2_verify(Program* program, const V2MethodTable* table, bool trusted
   }
   if (out_of_memory != null) *out_of_memory = result.code == TOIT_VMVERIFY_OUT_OF_MEMORY;
   const char* kind = trusted ? "" : "untrusted ";
+  if (result.code == TOIT_VMVERIFY_OUT_OF_MEMORY) {
+    // Not a verdict on the program: it may be accepted with more free memory.
+    fprintf(stderr, "verifier: out of memory: the %sprogram was not verified (no verdict)\n", kind);
+    return false;
+  }
   if (result.method >= 0 && table->is_valid(result.method)) {
     word bci = table->at(result.method).entry + (result.offset >= 0 ? result.offset : 0);
     fprintf(stderr, "verifier: %sprogram rejected: method %" PRIdPTR " at bci %" PRIdPTR " (+%" PRIdPTR "): %s\n",
@@ -510,6 +516,26 @@ static bool v2_verify(Program* program, const V2MethodTable* table, bool trusted
 #endif  // TOIT_NO_V2_VERIFIER
 }
 
+// Whether the heap is too fragmented or too full to start an install-time
+// verification without collecting garbage first. A verification of a 25-37
+// KB program peaks at 12-25 KB of heap (verified/vmverify/README.md,
+// "Memory"); below these bounds a collection of every process (which gives
+// their free Toit heap pages back) usually makes it fit. Devices only: hosts
+// have plenty.
+static const word V2_INSTALL_MIN_FREE = 48 * KB;
+static const word V2_INSTALL_MIN_LARGEST = 16 * KB;
+
+static bool v2_install_memory_low() {
+#ifdef TOIT_ESP32
+  return heap_caps_get_free_size(MALLOC_CAP_8BIT) < static_cast<size_t>(V2_INSTALL_MIN_FREE) ||
+         heap_caps_get_largest_free_block(MALLOC_CAP_8BIT) < static_cast<size_t>(V2_INSTALL_MIN_LARGEST);
+#else
+  USE(V2_INSTALL_MIN_FREE);
+  USE(V2_INSTALL_MIN_LARGEST);
+  return false;
+#endif
+}
+
 const char* V2Verifier::verify_installed(Program* program, word program_size, bool* no_verdict,
                                          const uint8* certificate, word certificate_length,
                                          Process* process) {
@@ -526,6 +552,13 @@ const char* V2Verifier::verify_installed(Program* program, word program_size, bo
     }
     fprintf(stderr, "untrusted images must be in bytecode format 2 (use -Xuntrusted_format1 to allow format 1)\n");
     return "FORMAT_2_REQUIRED";
+  }
+  if (process != null && !process->object_heap()->retrying_primitive() && v2_install_memory_low()) {
+    // Little free memory: the commit primitive collects every process's
+    // garbage and calls us again (the OUT_OF_MEMORY protocol of
+    // install_verdict) before the verification starts, instead of after
+    // a verification that ran out of memory half-way.
+    return OUT_OF_MEMORY;
   }
   bool out_of_memory = false;
 #ifdef CONFIG_TOIT_TRACE_INSTALL
