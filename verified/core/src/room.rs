@@ -29,7 +29,12 @@
 //! contracts keep the abstract state, not the length), a task switch
 //! (another task's stack), and an unwinding entering finally code (one more
 //! finally record). After those, `ensure_room_all` re-establishes it: a
-//! scan of the frame records and, if needed, stack growth.
+//! scan of the frame records and, if needed, stack growth. After a task
+//! switch, a run that switches often checks it in constant time instead,
+//! from a bound on all methods' arities that it computes once
+//! (`room_after_switch`); the trusted contracts say nothing about another
+//! task's stack length (the GC shrinks suspended stacks), so the room is
+//! checked, not remembered.
 
 use vstd::prelude::*;
 use crate::layout::*;
@@ -178,6 +183,139 @@ proof fn lemma_base_le_last(g: State2, fi: int)
         assert(base_step(g, fi));
         lemma_base_le_last(g, fi + 1);
     }
+}
+
+/// A bound on the arity of every method of the program, which the core
+/// computes at most once per run (`room_after_switch`): `bound` is one when
+/// it is below `ABOUND_NONE`; `scans` counts the full scans after task
+/// switches until then. A local of the run loop: it holds no stack.
+pub struct Abound {
+    pub bound: usize,
+    pub scans: usize,
+}
+
+/// No bound yet (an arity is a byte).
+pub const ABOUND_NONE: usize = 0x100;
+
+/// The full scans after task switches in one run before the bound is
+/// computed (a pass over the method table): a run that switches tasks this
+/// often usually switches many more times (a service call switches about
+/// once per run and never computes it).
+pub const ABOUND_SCANS: usize = 4;
+
+pub open spec fn abound_ok(p: &Program, a: Abound) -> bool {
+    a.bound < ABOUND_NONE ==>
+        forall|i: int| 0 <= i < p.ap@.methods.len() ==> (#[trigger] p.ap@.methods[i]).arity <= a.bound
+}
+
+/// The largest arity of the program's methods: one pass over the method
+/// records (their low byte).
+pub fn compute_abound(m: &Machine, p: &Program) -> (b: usize)
+    requires m.inv(p),
+    ensures
+        b < ABOUND_NONE,
+        abound_ok(p, Abound { bound: b, scans: 0 }),
+{
+    let ghost ap = p.ap@;
+    proof { assert(p.mt_ok()); }
+    let n = p.methods.len();
+    let mut b: usize = 0;
+    let mut i: usize = 0;
+    while i < n
+        invariant
+            n == p.methods@.len(),
+            n == ap.methods.len(),
+            ap == p.ap@,
+            p.mt_ok(),
+            i <= n,
+            b < ABOUND_NONE,
+            forall|j: int| 0 <= j < ap.methods.len() ==>
+                #[trigger] ap.methods[j] == method_info(p.minfo(j), p.max_height),
+            forall|j: int| 0 <= j < i ==> (#[trigger] ap.methods[j]).arity <= b,
+        decreases n - i,
+    {
+        let a = p.arity_of(i);
+        proof { assert(ap.methods[i as int].arity == p.minfo(i as int).arity); }
+        if a > b {
+            b = a;
+        }
+        i = i + 1;
+    }
+    b
+}
+
+/// The room of every frame from a bound on the arities (`abound_ok`), in
+/// constant time instead of `ensure_room_all`'s scan: a frame's base is at
+/// most the stack's height (`lemma_bases_below`) and its record ends at or
+/// below `ftop`, so `rtop + bound + max_height + STACK_RESERVE <= top`
+/// gives every frame its room, the top frame's with the finally records.
+#[inline(always)]
+pub fn room_by_bound(m: &Machine, p: &Program, a: &Abound) -> (b: bool)
+    requires m.inv(p), abound_ok(p, *a),
+    ensures b ==> room_ok(p, *m),
+{
+    let ghost ap = p.ap@;
+    let ghost g = m.g@;
+    proof {
+        crate::calls::lemma_shape(p, g);
+        m.lemma_frame(p);
+        lemma_bases_below(g);
+        assert(p.max_height < 0x1_0000);
+    }
+    if a.bound >= ABOUND_NONE {
+        return false;
+    }
+    if m.rtop + a.bound + p.max_height + STACK_RESERVE > m.top {
+        return false;
+    }
+    proof {
+        let n = g.frames.len();
+        assert(m.ftop == FRAME_WORDS * n);
+        assert forall|i: int| 0 <= i < n implies #[trigger] frame_room(p, *m, i) by {
+            let f = g.frames[i];
+            assert(sp::valid_method(ap, f.method as int));
+            assert(ap.methods[f.method as int].arity <= a.bound);
+            assert(f.base <= g.stack.len());
+            assert(FRAME_WORDS * (i + 1) <= FRAME_WORDS * n) by (nonlinear_arith)
+                requires 0 <= i < n;
+        }
+        if g.fins.len() > 0 {
+            let f = g.frames[n - 1];
+            assert(sp::valid_method(ap, f.method as int));
+            assert(ap.methods[f.method as int].arity <= a.bound);
+            assert(f.base <= g.stack.len());
+            assert(frame_need(p, g, n - 1) <= m.len);
+        }
+    }
+    true
+}
+
+/// After a step on the machine that may have switched the task (a C++
+/// primitive that moved the heap's epoch): whether the room of every frame
+/// is known without a scan (`room_by_bound`). Counts the full scans that
+/// follow otherwise; after `ABOUND_SCANS` of them in a run the bound is
+/// computed.
+pub fn room_after_switch(m: &Machine, p: &Program, c: &Ctl, a: &mut Abound) -> (ok: bool)
+    requires *c == Ctl::Next ==> m.inv(p), abound_ok(p, *old(a)),
+    ensures (ok ==> room_ok(p, *m)), abound_ok(p, *final(a)),
+{
+    if let Ctl::Next = *c {
+    } else {
+        return false;
+    }
+    if room_by_bound(m, p, a) {
+        return true;
+    }
+    if a.scans < ABOUND_SCANS {
+        a.scans = a.scans + 1;
+        return false;
+    }
+    if a.bound >= ABOUND_NONE {
+        let b = compute_abound(m, p);
+        *a = Abound { bound: b, scans: a.scans };
+        return room_by_bound(m, p, a);
+    }
+    false
 }
 
 /// The registers of a machine after a GC point inside a step: `m` (the

@@ -214,13 +214,8 @@ Top-level theorems: crate vmverify (0)
 ==============================================================================
 
 ==============================================================================
-Verified exec entry points: crate core (4)
+Verified exec entry points: crate core (3)
 ==============================================================================
-
---- Program::arity_of  (core/src/exec.rs)
-pub fn arity_of(&self, i: usize) -> (r: usize)
-    requires i < self.methods@.len(), self.mt_ok(),
-    ensures r == self.minfo(i as int).arity as usize,
 
 --- Program::kind_byte_of  (core/src/exec.rs)
 pub fn kind_byte_of(&self, i: usize) -> (r: u8)

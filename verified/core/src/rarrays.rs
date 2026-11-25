@@ -824,12 +824,15 @@ pub fn ret_r(m: &mut Machine, r: &mut Regs, p: &Program, w: usize, Ghost(v): Gho
 /// by the protocol): a Rust primitive on the registers, anything else on
 /// the machine.
 #[inline(always)]
-pub fn op_primitive(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode: u8) -> (c: Ctl)
+pub fn op_primitive(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode: u8, ab: &mut Abound) -> (c: Ctl)
     requires
         rhandler_pre(&env.p, *old(m), *old(r), bci, opcode),
         opcode == 89,
         bci + 4 < 0x1000_0000,
-    ensures rpost(&env.p, *old(m), *old(r), *final(m), *final(r), c),
+        abound_ok(&env.p, *old(ab)),
+    ensures
+        rpost(&env.p, *old(m), *old(r), *final(m), *final(r), c),
+        abound_ok(&env.p, *final(ab)),
 {
     let p = &env.p;
     let ghost ap = p.ap@;
@@ -868,7 +871,7 @@ pub fn op_primitive(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode
         None => {
             let (st, w, moved, Ghost(ms)) = cxx_call(m, *r, env, module, index, arity);
             if moved || !(st == V2_PRIMITIVE_SUCCESS || st == V2_PRIMITIVE_FAILURE) {
-                let (r2, c) = cxx_primitive_rest(m, Ghost(r0), env, st, w, moved, module, index, Ghost(m0), Ghost(ms));
+                let (r2, c) = cxx_primitive_rest(m, Ghost(r0), env, st, w, moved, module, index, Ghost(m0), Ghost(ms), ab);
                 set_regs(r, r2);
                 return c;
             }
@@ -1097,8 +1100,9 @@ fn regs_reloaded(m: &Machine, p: &Program, Ghost(r): Ghost<Regs>) -> (r2: Regs)
 /// run loop stops).
 #[inline(never)]
 fn cxx_primitive_rest(m: &mut Machine, Ghost(r): Ghost<Regs>, env: &Env, st: usize, w: usize, moved: bool,
-    module: u8, index: u16, Ghost(m0): Ghost<Machine>, Ghost(ms): Ghost<Machine>) -> (res: (Regs, Ctl))
+    module: u8, index: u16, Ghost(m0): Ghost<Machine>, Ghost(ms): Ghost<Machine>, ab: &mut Abound) -> (res: (Regs, Ctl))
     requires
+        abound_ok(&env.p, *old(ab)),
         moved || !(st == V2_PRIMITIVE_SUCCESS || st == V2_PRIMITIVE_FAILURE),
         rinv(&env.p, m0, r),
         r.sp@ >= r.fr@ + m0.fw + STACK_RESERVE,
@@ -1116,7 +1120,9 @@ fn cxx_primitive_rest(m: &mut Machine, Ghost(r): Ghost<Regs>, env: &Env, st: usi
                 && #[trigger] crate::primitive::prim_call_post(&env.p, *old(m), g2, module, index, st, w, gx, v)
                 && (!moved ==> g2 == m0.g@ && gx == with_heap2(m0.g@, gx.heap)),
         st != V2_PRIMITIVE_ABSENT && !moved ==> crate::primitive::unmoved(*old(m), ms),
-    ensures rpost(&env.p, m0, r, *final(m), res.0, res.1),
+    ensures
+        rpost(&env.p, m0, r, *final(m), res.0, res.1),
+        abound_ok(&env.p, *final(ab)),
 {
     let p = &env.p;
     let ghost ap = p.ap@;
@@ -1140,7 +1146,10 @@ fn cxx_primitive_rest(m: &mut Machine, Ghost(r): Ghost<Regs>, env: &Env, st: usi
         return or_placeholder(m, p, r2, c2);
     }
     let c = crate::primitive::prim_cxx_complete(m, env, st, w, Ghost(g), Ghost(w0), Ghost(module), Ghost(index));
-    let (r2, c2) = resume_with(m, env, c, false, Ghost(w0));
+    // After a task switch (or a GC) the room of every frame, from the
+    // arity bound of this run when there is one, else by a scan.
+    let ok = room_after_switch(m, p, &c, ab);
+    let (r2, c2) = resume_with(m, env, c, ok, Ghost(w0));
     or_placeholder(m, p, r2, c2)
 }
 
