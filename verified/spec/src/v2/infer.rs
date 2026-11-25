@@ -68,6 +68,18 @@ pub fn ok<T>(r: Result<T, Oom>) -> T {
     }
 }
 
+/// The elements of `v` in chunks.
+fn cvec_of<T: Copy>(v: &[T]) -> CVec<T> {
+    let mut c = CVec::new();
+    for &x in v { ok(c.try_push(x)); }
+    c
+}
+
+/// The checker's form of the maps of one method.
+fn xmaps(maps: &Maps) -> XMaps {
+    XMaps { idx: cvec_of(&maps.idx), nodes: cvec_of(&maps.nodes) }
+}
+
 /// The checker's `post` (`x_post_into`) as a fresh vector, for the
 /// inference and the encoder.
 pub fn x_post(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>, trusted: bool) -> Result<Option<Vec<XKind>>, Oom> {
@@ -368,7 +380,7 @@ fn analyze<F: Facts>(p: &VProgram, f: &mut F, m: usize, trusted: bool) -> Result
     let size = end - entry;
     let limit = info.arity as usize + p.max_height as usize;
     let origins = f.tracks_origins();
-    let empty = XMaps { idx: Vec::new(), nodes: Vec::new() };
+    let empty = XMaps { idx: CVec::new(), nodes: CVec::new() };
     let mut maps = Maps {
         idx: vec![NO_MAP; size],
         nodes: Vec::new(),
@@ -629,7 +641,7 @@ fn analyze<F: Facts>(p: &VProgram, f: &mut F, m: usize, trusted: bool) -> Result
 /// `m` that are passed on unchanged for block parameters.
 fn mark_args<F: Facts>(p: &VProgram, f: &mut F, m: usize, t: usize, k: &[XKind], org: &[u8], n: usize) {
     if n > k.len() { return; }
-    let empty = XMaps { idx: Vec::new(), nodes: Vec::new() };
+    let empty = XMaps { idx: CVec::new(), nodes: CVec::new() };
     for x in 0..n {
         let i = k.len() - n + x;
         if matches!(k[i], XKind::Block(..) | XKind::Param) {
@@ -749,7 +761,9 @@ pub fn infer_global(p: &VProgram, global_count: u64, prim_arity: Vec<Vec<u8>>, t
                         for t in want {
                             if let Some(&top) = maps.idx.get(t) {
                                 if top != NO_MAP && t <= u32::MAX as usize {
-                                    pins.push((m as u32, t as u32, ok(x_chain(&maps.nodes, top))));
+                                    let (mut k, mut ids) = (Vec::new(), Vec::new());
+                                    maps.read(t, &mut k, &mut ids);
+                                    pins.push((m as u32, t as u32, k));
                                 }
                             }
                         }
@@ -810,10 +824,10 @@ impl<'a> MapOracle for Oracle<'a> {
     fn method_maps(&mut self, _p: &VProgram, _g: &XGlobal, m: usize) -> Result<XMaps, Oom> {
         self.last = Some(m);
         Ok(match self.maps(m) {
-            Ok(maps) => XMaps { idx: maps.idx, nodes: maps.nodes },
+            Ok(maps) => xmaps(&maps),
             Err(_) => {
                 let size = method(self.p, m).map(|i| i.end().saturating_sub(i.entry as usize)).unwrap_or(0);
-                XMaps { idx: vec![NO_MAP; size.min(self.p.bytecodes.len())], nodes: Vec::new() }
+                XMaps { idx: cvec_of(&vec![NO_MAP; size.min(self.p.bytecodes.len())]), nodes: CVec::new() }
             }
         })
     }
@@ -837,14 +851,15 @@ pub fn diagnose(p: &VProgram, global: &Global, m: usize, trusted: bool) -> (Opti
     let mut o = Oracle::new(p, global, trusted);
     let maps = match o.maps(m) {
         Err((off, msg)) => return (Some(off), msg),
-        Ok(maps) => XMaps { idx: maps.idx, nodes: maps.nodes },
+        Ok(maps) => xmaps(&maps),
     };
     let g = global.g.view(p.methods);
     if !o.wf || m >= p.methods.len() || !x_g_ok(&g) || global.g.n != p.methods.len() {
         return (None, String::from("malformed tables or certificate"));
     }
     let c = XCert { g: &g, cur: m, maps: &maps };
-    for (off, &top) in maps.idx.iter().enumerate() {
+    for off in 0..maps.idx.len() {
+        let top = maps.idx.at(off);
         if top == NO_MAP { continue; }
         let k = ok(x_chain(&maps.nodes, top));
         if !ok(x_instr_ok(p, &c, m, x_info(p, m), off, &k, trusted, &mut Vec::new())) {

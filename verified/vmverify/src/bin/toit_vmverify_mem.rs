@@ -44,7 +44,8 @@ impl<'a> MapOracle for Sized<'a> {
         let t = Instant::now();
         let r = self.inner.method_maps(p, g, m)?;
         self.ns += t.elapsed().as_nanos() as u64;
-        let bytes = r.idx.capacity() * 4 + r.nodes.capacity() * std::mem::size_of::<check::XNode>();
+        // The elements (the chunks hold at most a chunk more).
+        let bytes = r.idx.len() * 4 + r.nodes.len() * std::mem::size_of::<check::XNode>();
         if bytes > self.max_maps {
             self.max_maps = bytes;
             self.max_method = m;
