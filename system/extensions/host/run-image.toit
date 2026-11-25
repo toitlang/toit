@@ -446,6 +446,43 @@ add-image path/string existing-uuids/Set --run-boot/bool --run-critical/bool -> 
   install-image_ (file.read-contents path) --run-boot=run-boot --run-critical=run-critical
 
 /**
+Installs the image $path of the firmware (from the startup-images or the
+  bundled-images directory, see `extract-host` in tools/firmware.toit) with
+  the flags the envelope gives the container, which are in the header of
+  the image, as on a device. (Older builds installed every startup image,
+  run-boot or run-critical, as both.) An image of the startup directory
+  ($is-startup) without a readable header is installed run-boot and
+  run-critical.
+*/
+add-firmware-image path/string existing-uuids/Set --is-startup/bool -> none:
+  if is-in-flash_ path existing-uuids: return
+  image := file.read-contents path
+  flags := image-header-flags_ image
+  if not flags:
+    flags = is-startup ? ContainerService.FLAG-RUN-BOOT | ContainerService.FLAG-RUN-CRITICAL : 0
+  install-image_ image
+      --run-boot=(flags & ContainerService.FLAG-RUN-BOOT != 0)
+      --run-critical=(flags & ContainerService.FLAG-RUN-CRITICAL != 0)
+      // The envelope has no untrusted containers; a flagged header is
+      // honored all the same (the image is verified).
+      --untrusted=(flags & ContainerService.FLAG-UNTRUSTED != 0)
+
+/**
+The flags in the header of the relocatable $image (the metadata byte of
+  `ImageHeader` in tools/firmware.toit), or null if it has no header.
+
+A relocatable image starts with the relocation bits of its first chunk;
+  the header follows.
+*/
+image-header-flags_ image/ByteArray -> int?:
+  HEADER-MARKER ::= 0xdeadface
+  METADATA-OFFSET ::= 24
+  header := IMAGE-WORD-SIZE
+  if image.size <= header + METADATA-OFFSET: return null
+  if (io.LITTLE-ENDIAN.uint32 image header) != HEADER-MARKER: return null
+  return image[header + METADATA-OFFSET]
+
+/**
 Reinstalls the image of the backup $path (see $InstalledImageBackup) with
   the flags and the data it was installed with.
 
@@ -504,7 +541,9 @@ handle-arguments arguments/List container-manager/RunImageContainerManager -> no
   // startup-images/
   // bundled-images/
   // installed-images/
-  // The startup-images should be marked as "boot" and "critical".
+  // The startup-images are the run-boot or run-critical containers of the
+  // envelope; the flags of the startup and the bundled images are in their
+  // headers (see $add-firmware-image).
   // The installed-images are backups (see $InstalledImageBackup).
   startup-dir := "$active-dir/$STARTUP-DIR-NAME"
   bundled-dir := "$active-dir/$BUNDLED-DIR-NAME"
@@ -523,6 +562,6 @@ handle-arguments arguments/List container-manager/RunImageContainerManager -> no
           if dir == installed-dir:
             add-installed-image path existing-uuids
           else:
-            add-image path existing-uuids --run-boot=is-startup-dir --run-critical=is-startup-dir
+            add-firmware-image path existing-uuids --is-startup=is-startup-dir
       finally:
         stream.close

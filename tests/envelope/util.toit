@@ -48,7 +48,14 @@ class EnvelopeTest:
 
     run-program_ [toit-bin, "compile", "--snapshot", "--output", path, source-path]
 
-  install --name/string --snapshot-path/string --boot/bool=true --critical/bool=false --assets/Map?=null -> none:
+  /**
+  Installs the container $name in the envelope.
+
+  Boot containers are critical by default: the tests end the boot script by
+    exiting from a boot container with an exit code (see exit-codes.toit),
+    which only ends the system if the container is critical.
+  */
+  install --name/string --snapshot-path/string --boot/bool=true --critical/bool=boot --assets/Map?=null -> none:
     trigger := boot ? "boot" : "none"
     cmd := [
       toit-bin, "tool", "firmware",
@@ -67,12 +74,12 @@ class EnvelopeTest:
       cmd.add-all ["--assets", tmp-assets-path]
     run-program_ cmd
 
-  install --name/string --source/string --boot/bool=true -> none:
+  install --name/string --source/string --boot/bool=true --critical/bool=boot -> none:
     tmp-source-path := "$tmp-dir/__tmp__.toit"
     file.write-contents --path=tmp-source-path source
-    install --name=name --source-path=tmp-source-path --boot=boot
+    install --name=name --source-path=tmp-source-path --boot=boot --critical=critical
 
-  install --name/string --source-path/string --boot/bool=true --critical/bool=false --assets/Map?=null -> none:
+  install --name/string --source-path/string --boot/bool=true --critical/bool=boot --assets/Map?=null -> none:
     tmp-snapshot-path := "$tmp-dir/__tmp__.snapshot"
     compile --path=tmp-snapshot-path --source-path=source-path
     install --name=name --snapshot-path=tmp-snapshot-path --boot=boot --critical=critical --assets=assets

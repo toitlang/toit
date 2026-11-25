@@ -49,7 +49,7 @@ REJECTED-SOURCE ::= """
 
 main args:
   with-test args: | test/EnvelopeTest |
-    test.install --name="installer" --source-path="./installed-flags-source.toit" --critical
+    test.install --name="installer" --source-path="./installed-flags-source.toit"
     test.extract-to-dir --dir-path=test.tmp-dir
 
     untrusted := build-image test "untrusted" (probe-source "untrusted")
