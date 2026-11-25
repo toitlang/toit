@@ -19,6 +19,7 @@ import host.file
 import host.directory
 import io
 
+import system.api.containers show ContainerService
 import system.base.firmware show FirmwareServiceProviderBase FirmwareWriter
 import system.containers
 import system.services
@@ -260,6 +261,8 @@ class RunImageContainerImageWriter extends ContainerImageWriter:
   commit --flags/int --data/int -> FlashAllocation:
     result := super --flags=flags --data=data
     container-manager_.on-committed-image_ result.id relocatable-image[..offset_]
+        --flags=flags
+        --data=data
     relocatable-image = null
     return result
 
@@ -277,14 +280,17 @@ class RunImageContainerManager extends ContainerManager:
       return RunImageContainerImageWriter this client reservation
     return ContainerImageWriter this client reservation
 
-  // Called from the image writer.
-  on-committed-image_ id/Uuid image/ByteArray -> none:
+  // Called from the image writer, with the flags and data the image was
+  // committed with.
+  on-committed-image_ id/Uuid image/ByteArray --flags/int --data/int -> none:
     assert: ota-dir-active_ != null
     if not save-to-fs_: return
     dir := "$ota-dir-active_/$INSTALLED-DIR-NAME"
     directory.mkdir --recursive dir
-    path := "$dir/$id"
-    if not file.is-file path: file.write-contents --path=path image
+    // The latest commit of an image determines its flags and data, so its
+    // backup replaces any older one.
+    backup := InstalledImageBackup --image=image --flags=flags --data=data
+    file.write-contents --path="$dir/$id" backup.encode
 
   // Override the default implementation.
   uninstall-image id/Uuid -> none:
@@ -343,20 +349,97 @@ main arguments:
 
   exit (boot container-manager)
 
-add-image path/string existing-uuids/Set --run-boot/bool --run-critical/bool -> none:
+/**
+The backup of an image installed through the containers service.
+
+The flash registry of a host does not survive a restart, so run-image
+  keeps a backup of every installed image in the $INSTALLED-DIR-NAME
+  directory and installs it again at the next start.
+
+A backup is $MAGIC_, the size of the metadata (4 bytes, little endian),
+  the metadata (a UBJSON map with the "flags" and the "data" the image was
+  committed with, and the "sha256" of the image), and the image.
+
+Older builds wrote the image alone. An image doesn't start with the magic:
+  its first bytes are the relocation bits of the image header.
+*/
+class InstalledImageBackup:
+  static MAGIC_ ::= #['T', 'I', 'I', 'B', 'A', 'K', '0', '1']
+
+  image/ByteArray
+  flags/int
+  data/int
+
+  constructor --.image --.flags --.data:
+
+  /**
+  Decodes the backup $bytes.
+
+  A backup of an older build (without $MAGIC_) has no flags and no data.
+  Throws if the metadata can't be read or doesn't match the image.
+  */
+  static decode bytes/ByteArray -> InstalledImageBackup:
+    if bytes.size < MAGIC_.size or bytes[..MAGIC_.size] != MAGIC_:
+      return InstalledImageBackup --image=bytes --flags=0 --data=0
+    header-size := MAGIC_.size + 4
+    if bytes.size < header-size: throw "CORRUPT_BACKUP"
+    metadata-size := io.LITTLE-ENDIAN.uint32 bytes MAGIC_.size
+    if metadata-size > bytes.size - header-size: throw "CORRUPT_BACKUP"
+    metadata := null
+    exception := catch:
+      metadata = ubjson.decode bytes[header-size..header-size + metadata-size]
+    if exception or metadata is not Map: throw "CORRUPT_BACKUP"
+    flags := metadata.get "flags"
+    data := metadata.get "data"
+    sha := metadata.get "sha256"
+    if flags is not int or data is not int or sha is not ByteArray: throw "CORRUPT_BACKUP"
+    image := bytes[header-size + metadata-size..]
+    if (sha256.sha256 image) != sha: throw "CORRUPT_BACKUP"
+    return InstalledImageBackup --image=image --flags=flags --data=data
+
+  encode -> ByteArray:
+    metadata := ubjson.encode {
+      "flags": flags,
+      "data": data,
+      "sha256": sha256.sha256 image,
+    }
+    header := ByteArray MAGIC_.size + 4
+    header.replace 0 MAGIC_
+    io.LITTLE-ENDIAN.put-uint32 header MAGIC_.size metadata.size
+    return header + metadata + image
+
+is-in-flash_ path/string existing-uuids/Set -> bool:
   path = path.replace --all "\\" "/"
   last-separator := path.index-of --last "/"
   last-segment := path[last-separator + 1..]
   file-uuid/Uuid? := Uuid.parse last-segment --if-error=: null
+  return file-uuid != null and existing-uuids.contains file-uuid
 
-  if file-uuid and existing-uuids.contains file-uuid:
-    // Already in the flash.
-    return
+add-image path/string existing-uuids/Set --run-boot/bool --run-critical/bool -> none:
+  if is-in-flash_ path existing-uuids: return
+  install-image_ (file.read-contents path) --run-boot=run-boot --run-critical=run-critical
 
-  image-data := file.read-contents path
+/**
+Installs the image of the backup $path (see $InstalledImageBackup) with the
+  flags and the data it was installed with.
+
+A backup that can't be installed is reported and doesn't stop the start.
+*/
+add-installed-image path/string existing-uuids/Set -> none:
+  if is-in-flash_ path existing-uuids: return
+  exception := catch:
+    backup := InstalledImageBackup.decode (file.read-contents path)
+    install-image_ backup.image
+        --run-boot=(backup.flags & ContainerService.FLAG-RUN-BOOT != 0)
+        --run-critical=(backup.flags & ContainerService.FLAG-RUN-CRITICAL != 0)
+        --data=backup.data
+  if exception:
+    print-on-stderr_ "Not installing the installed image $path: $exception"
+
+install-image_ image-data/ByteArray --run-boot/bool --run-critical/bool --data/int=0 -> none:
   writer := containers.ContainerImageWriter image-data.size
   writer.write image-data
-  writer.commit --run-boot=run-boot --run-critical=run-critical
+  writer.commit --run-boot=run-boot --run-critical=run-critical --data=data
 
 handle-arguments arguments/List container-manager/RunImageContainerManager -> none:
   existing-uuids/Set := {}
@@ -384,6 +467,7 @@ handle-arguments arguments/List container-manager/RunImageContainerManager -> no
   // bundled-images/
   // installed-images/
   // The startup-images should be marked as "boot" and "critical".
+  // The installed-images are backups (see $InstalledImageBackup).
   startup-dir := "$active-dir/$STARTUP-DIR-NAME"
   bundled-dir := "$active-dir/$BUNDLED-DIR-NAME"
   installed-dir := "$active-dir/$INSTALLED-DIR-NAME"
@@ -398,6 +482,9 @@ handle-arguments arguments/List container-manager/RunImageContainerManager -> no
         while file-name/string? := stream.next:
           path := "$dir/$file-name"
           if not file.is-file path: continue
-          add-image path existing-uuids --run-boot=is-startup-dir --run-critical=is-startup-dir
+          if dir == installed-dir:
+            add-installed-image path existing-uuids
+          else:
+            add-image path existing-uuids --run-boot=is-startup-dir --run-critical=is-startup-dir
       finally:
         stream.close
