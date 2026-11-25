@@ -2706,6 +2706,16 @@ mutant smi-shift-left-count prims/int_ops.render src/primitive_core.cc "Cannot p
   "PRIMITIVE(smi_shift_left)@@  if (number_of_bits >= 64) return Smi::zero();\n" ""
 mutant large-integer-unsigned-shift-count prims/int_ops.render src/primitive_core.cc "Cannot prove|overflow|shift" "-allow_dead_code -prover z3v4.5" \
   "  if (bits_to_shift >= LARGE_INT_BIT_SIZE) return Smi::from(0);\n" ""
+# The bitwise operators, smi_subtract and large_integer_shift_right (wave
+# 12): large_integer_shift_right without its check of the count against
+# LARGE_INT_BIT_SIZE (asr_int64's count); smi_xor storing the result of the
+# large path in a smi (not a smi; on ILP32 not even a word).
+entry int-bits              pass "" prims/int_bits.gen.c -allow_dead_code -prover z3v4.5
+mutant int-bits-shift-count prims/int_bits.render src/primitive_core.cc "Cannot prove|overflow|shift" "-allow_dead_code -prover z3v4.5" \
+  "  if (bits_to_shift >= LARGE_INT_BIT_SIZE) return Primitive::integer(receiver->value() < 0 ? -1 : 0, process);\n" ""
+mutant int-bits-xor-smi prims/int_bits.render src/primitive_core.cc "Cannot prove|overflow" "-allow_dead_code -prover z3v4.5" \
+  "return Primitive::integer(((int64) receiver) ^ LargeInteger::cast(arg)->value() , process);" \
+  "return Smi::from(((int64) receiver) ^ LargeInteger::cast(arg)->value());"
 entry word-size             pass "" prims/word_size.gen.c
 mutant word-size-bits prims/word_size.render src/primitive_core.cc "smi_val|Cannot prove condition" "" \
   "return Smi::from(WORD_SIZE);" "return Smi::from(WORD_SIZE * 8);"

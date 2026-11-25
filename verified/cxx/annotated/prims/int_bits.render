@@ -1,0 +1,439 @@
+// Copyright (C) 2026 Toit contributors.
+//
+// The integer primitives of src/primitive_core.cc that waves 10 and 11
+// left tested only (wave 12): smi_and, smi_or, smi_xor, large_integer_and,
+// large_integer_or, large_integer_xor (the bitwise operators: VeriFast's
+// library has no correct range lemma for `^`, bitops.gh's
+// bitxor_signed_limits states `|`; proved here from the Z definitions),
+// smi_subtract, smi_add (its `goto overflow`: the translator's goto and
+// label rules), and large_integer_shift_right (an arithmetic right shift
+// by a run-time count: the translator's rule renders it as asr_int64
+// below). Not smi_multiply: __builtin_mul_overflow has no rule, and its
+// success path needs the parity of the product's modular conversions to
+// a word and back to an address (truncate_signed, truncate_unsigned), for
+// which VeriFast's library has no lemma. Each is ported to Rust; its C++ runs when the port's allocation
+// of a large integer does not fit (NeedsGc; README "When the C++ behind a
+// port runs").
+//
+// Proved: the argument decoding (WRONG_OBJECT_TYPE, NEGATIVE_ARGUMENT for
+// a negative shift), no overflow or lossy conversion (a bitwise operation
+// of two smis is a smi, of two int64s an int64; the wrapping helpers'
+// modular uint64 arithmetic, `truncating`), every shift count in [0, 63],
+// the result an error with the heap unchanged or a good reference (the
+// proven Primitive::integer or Smi::from), the primitive heap contract
+// (`grows`) and the retry rule `oom_clean`. Not which integer.
+//
+// Self-tests (run.sh): large_integer_shift_right without its check of the
+// count against LARGE_INT_BIT_SIZE; smi_xor with the result of the large
+// path stored in a smi (Smi::from of an int64).
+@include ../model/model.cfg
+@verbatim
+#include "integer.gen.h"
+#include "argument_error.gen.h"
+//@ #include "../model/truncate.gh"
+
+/*@
+// The result of an integer primitive.
+fixpoint bool int_result(list<void *> objs, fixpoint(void *, oinfo) H, list<void *> objs2, fixpoint(void *, oinfo) H2, void *result) {
+  return (uword)result % 4 == 3 ? objs2 == objs && H2 == H : good(objs2, result);
+}
+
+lemma void int_pows()
+  requires true;
+  ensures pow_nat(2, N63) == 9223372036854775808;
+{
+  assert pow_nat(2, N16) == 65536;
+  assert pow_nat(2, N32) == 4294967296;
+  assert pow_nat(2, N63) == 9223372036854775808;
+}
+
+// The bits of a smi's value (smi_range: [-2^n, 2^n)).
+fixpoint nat smi_bits() { return UINTPTR_MAX > 0xffffffff ? nat_predecessor(N63) : nat_predecessor(N31); }
+
+lemma void smi_pow()
+  requires true;
+  ensures pow_nat(2, smi_bits()) == UINTPTR_MAX / 4 + 1;
+{
+  assert pow_nat(2, N16) == 65536;
+  assert pow_nat(2, N32) == 4294967296;
+  assert pow_nat(2, N31) == 2147483648;
+  assert pow_nat(2, nat_predecessor(N31)) == 1073741824;
+  assert pow_nat(2, N63) == 9223372036854775808;
+  assert pow_nat(2, nat_predecessor(N63)) == 4611686018427387904;
+}
+
+// The value of a smi word is in the smi range (before Smi::value says so:
+// the range lemmas of an operator whose operand is that call).
+lemma void smi_val_range(uword w)
+  requires 0 <= w &*& w <= UINTPTR_MAX;
+  ensures smi_range(smi_val(w)) == true;
+{
+  div_rem(signed_of(w), 2);
+}
+
+// The number of a large integer is an int64 (before LargeInteger::value
+// says so: the range lemmas of an operator whose operand is that call).
+lemma void large_number_range(void *o)
+  requires [?f]heap(?objs, ?H) &*& mem(o, objs) == true &*& header_tag2(o_hw(H(o))) == 2 * LARGE_INTEGER_TAG;
+  ensures [f]heap(objs, H) &*& -9223372036854775808 <= o_number(H(o)) &*& o_number(H(o)) <= 9223372036854775807;
+{
+  heap_open(o);
+  open [f]body(o, _, _, _, _, _);
+  open [f]boxed_bytes(?p, _);
+  chars_to_integers_(p, 8, true, 1);
+  open [f]integers_(p, 8, true, 1, ?vs);
+  int_pows();
+  assert int_of_nat(N63) == 63;
+  shiftleft_def(1, N63);
+  integer__limits(p);
+  close [f]integers_(p, 8, true, 1, vs);
+  integers__to_chars(p);
+  close [f]boxed_bytes(p, o_number(H(o)));
+  close [f]body(o, 2 * LARGE_INTEGER_TAG, o_len(H(o)), o_aux(H(o)), o_number(H(o)), nil);
+  heap_close(o);
+}
+
+// ~z as an integer.
+lemma void Z_not_value(Z z)
+  requires true;
+  ensures int_of_Z(Z_not(z)) == -1 - int_of_Z(z);
+{
+  switch (z) {
+    case Zsign(b):
+    case Zdigit(z0, b0): Z_not_value(z0);
+  }
+}
+
+// ~a ^ b == ~(a ^ b).
+lemma void Z_xor_not_left(Z a, Z b)
+  requires true;
+  ensures int_of_Z(Z_xor(Z_not(a), b)) == -1 - int_of_Z(Z_xor(a, b));
+{
+  switch (a) {
+    case Zsign(s):
+      Z_not_value(b);
+    case Zdigit(a0, ba):
+      switch (b) {
+        case Zsign(t):
+          Z_not_value(a);
+          Z_not_value(Z_not(a));
+        case Zdigit(b0, bb):
+          Z_xor_not_left(a0, b0);
+      }
+  }
+}
+
+// a ^ ~b == ~(a ^ b).
+lemma void Z_xor_not_right(Z a, Z b)
+  requires true;
+  ensures int_of_Z(Z_xor(a, Z_not(b))) == -1 - int_of_Z(Z_xor(a, b));
+{
+  switch (a) {
+    case Zsign(s):
+      Z_not_value(b);
+      Z_not_value(Z_not(b));
+    case Zdigit(a0, ba):
+      switch (b) {
+        case Zsign(t):
+          Z_not_value(a);
+        case Zdigit(b0, bb):
+          Z_xor_not_right(a0, b0);
+      }
+  }
+}
+
+// A Z for an integer of 64 bits.
+lemma Z Z_of_int64(int x)
+  requires -9223372036854775808 <= x &*& x <= 9223372036854775807;
+  ensures int_of_Z(result) == x &*& x < 0 ? result == Z_not(Z_of_uintN(-1 - x, N64)) &*& int_of_Z(Z_of_uintN(-1 - x, N64)) == -1 - x : result == Z_of_uintN(x, N64);
+{
+  int_pows();
+  assert pow_nat(2, N64) == 18446744073709551616;
+  if (x < 0) {
+    Z z = int_of_Z_of_uintN(-1 - x, N64);
+    Z_not_value(z);
+    return Z_not(z);
+  } else {
+    return int_of_Z_of_uintN(x, N64);
+  }
+}
+
+// The signed range lemma of `^` (bitops.gh's bitxor_signed_limits states
+// it for `|`).
+lemma void xor_signed_limits(int x, int y, nat n)
+  requires -pow_nat(2, n) <= x &*& x < pow_nat(2, n) &*& -pow_nat(2, n) <= y &*& y < pow_nat(2, n) &*&
+           pow_nat(2, n) <= 9223372036854775808;
+  ensures -pow_nat(2, n) <= (x ^ y) &*& (x ^ y) < pow_nat(2, n);
+{
+  Z zx = Z_of_int64(x);
+  Z zy = Z_of_int64(y);
+  bitxor_def(x, zx, y, zy);
+  if (x < 0) {
+    Z zx0 = Z_of_uintN(-1 - x, N64);
+    if (y < 0) {
+      Z zy0 = Z_of_uintN(-1 - y, N64);
+      Z_xor_not_left(zx0, Z_not(zy0));
+      Z_xor_not_right(zx0, zy0);
+      bitxor_def(-1 - x, zx0, -1 - y, zy0);
+      bitxor_limits(-1 - x, -1 - y, n);
+    } else {
+      Z_xor_not_left(zx0, zy);
+      bitxor_def(-1 - x, zx0, y, zy);
+      bitxor_limits(-1 - x, y, n);
+    }
+  } else {
+    if (y < 0) {
+      Z zy0 = Z_of_uintN(-1 - y, N64);
+      Z_xor_not_right(zx, zy0);
+      bitxor_def(x, zx, -1 - y, zy0);
+      bitxor_limits(x, -1 - y, n);
+    } else {
+      bitxor_limits(x, y, n);
+    }
+  }
+}
+@*/
+
+// An arithmetic right shift of a signed 64-bit value by a count computed
+// at run time (the translator's rendering of `x >> n` for an int64 x under
+// `truncating`): implementation-defined in C++11 for a negative x,
+// sign-extending in GCC and Clang (and standardized so in C++20); VeriFast
+// refuses a shift of a negative value. The same floor division without it.
+int64 asr_int64(int64 x, int64 n)
+//@ requires 0 <= n &*& n < 64;
+//@ ensures true;
+{
+  if (x >= 0) {
+    //@ shiftright_div(x, nat_of_int(n));
+    //@ pow2_pos(nat_of_int(n));
+    //@ div_rem_nonneg(x, pow_nat(2, nat_of_int(n)));
+    return (int64)((uint64)x >> n);
+  }
+  //@ shiftright_div(-1 - x, nat_of_int(n));
+  //@ pow2_pos(nat_of_int(n));
+  //@ div_rem_nonneg(-1 - x, pow_nat(2, nat_of_int(n)));
+  return -1 - (int64)((uint64)(-1 - x) >> n);
+}
+
+@prototypes
+@render src/primitive_core.cc toit::primitive_smi_and
+PRIMITIVE(smi_and)
+/*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
+             pointer(__args, ?x0) &*& pointer(__args - 1, ?x1) &*& good(objs, x0) && good(objs, x1); @*/
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+            oom_clean(objs, H, objs2, H2, result) == true &*& pointer(__args, x0) &*& pointer(__args - 1, x1) &*&
+            int_result(objs, H, objs2, H2, result) == true; @*/
+{
+  //@ grows_refl(objs, H);
+  //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);
+  //@ int_pows();
+  //@ smi_pow();
+  ARGS(word, receiver, Object, arg);
+  //@ if (is_smi_w((uword)arg)) bitand_signed_limits(receiver, smi_val((uword)arg), smi_bits());
+  if (is_smi(arg)) return Smi::from(receiver & Smi::value(arg));
+  if (!is_large_integer(arg)) FAIL(WRONG_OBJECT_TYPE);
+  //@ large_number_range(arg);
+  //@ bitand_signed_limits(receiver, o_number(H(arg)), N63);
+  return Primitive::integer(((int64) receiver) & LargeInteger::cast(arg)->value() , process);
+}
+
+@render src/primitive_core.cc toit::primitive_smi_or
+PRIMITIVE(smi_or)
+/*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
+             pointer(__args, ?x0) &*& pointer(__args - 1, ?x1) &*& good(objs, x0) && good(objs, x1); @*/
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+            oom_clean(objs, H, objs2, H2, result) == true &*& pointer(__args, x0) &*& pointer(__args - 1, x1) &*&
+            int_result(objs, H, objs2, H2, result) == true; @*/
+{
+  //@ grows_refl(objs, H);
+  //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);
+  //@ int_pows();
+  //@ smi_pow();
+  ARGS(word, receiver, Object, arg);
+  //@ if (is_smi_w((uword)arg)) { pointer_limits(__args - 1); smi_val_range((uword)arg); bitor_signed_limits(receiver, smi_val((uword)arg), smi_bits()); }
+  if (is_smi(arg)) return Smi::from(receiver | Smi::value(arg));
+  if (!is_large_integer(arg)) FAIL(WRONG_OBJECT_TYPE);
+  //@ large_number_range(arg);
+  //@ bitor_signed_limits(receiver, o_number(H(arg)), N63);
+  return Primitive::integer(((int64) receiver) | LargeInteger::cast(arg)->value() , process);
+}
+
+@render src/primitive_core.cc toit::primitive_smi_xor
+PRIMITIVE(smi_xor)
+/*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
+             pointer(__args, ?x0) &*& pointer(__args - 1, ?x1) &*& good(objs, x0) && good(objs, x1); @*/
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+            oom_clean(objs, H, objs2, H2, result) == true &*& pointer(__args, x0) &*& pointer(__args - 1, x1) &*&
+            int_result(objs, H, objs2, H2, result) == true; @*/
+{
+  //@ grows_refl(objs, H);
+  //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);
+  //@ int_pows();
+  //@ smi_pow();
+  ARGS(word, receiver, Object, arg);
+  //@ if (is_smi_w((uword)arg)) { pointer_limits(__args - 1); smi_val_range((uword)arg); xor_signed_limits(receiver, smi_val((uword)arg), smi_bits()); }
+  if (is_smi(arg)) return Smi::from(receiver ^ Smi::value(arg));
+  if (!is_large_integer(arg)) FAIL(WRONG_OBJECT_TYPE);
+  //@ large_number_range(arg);
+  //@ xor_signed_limits(receiver, o_number(H(arg)), N63);
+  return Primitive::integer(((int64) receiver) ^ LargeInteger::cast(arg)->value() , process);
+}
+
+@render src/primitive_core.cc toit::primitive_large_integer_and
+PRIMITIVE(large_integer_and)
+/*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
+             pointer(__args, ?x0) &*& pointer(__args - 1, ?x1) &*& good(objs, x0) && good(objs, x1); @*/
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+            oom_clean(objs, H, objs2, H2, result) == true &*& pointer(__args, x0) &*& pointer(__args - 1, x1) &*&
+            int_result(objs, H, objs2, H2, result) == true; @*/
+{
+  //@ grows_refl(objs, H);
+  //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);
+  //@ int_pows();
+  ARGS(LargeInteger, receiver, Object, arg);
+  int64 result = receiver->value();
+  if (is_smi(arg)) {
+    //@ pointer_limits(__args - 1);
+    //@ smi_val_range((uword)arg);
+    //@ bitand_signed_limits(result, smi_val((uword)arg), N63);
+    result &= Smi::value(arg);
+  } else if (is_large_integer(arg)) {
+    //@ large_number_range(arg);
+    //@ bitand_signed_limits(result, o_number(H(arg)), N63);
+    result &= LargeInteger::cast(arg)->value();
+  } else FAIL(WRONG_OBJECT_TYPE);
+  return Primitive::integer(result, process);
+}
+
+@render src/primitive_core.cc toit::primitive_large_integer_or
+PRIMITIVE(large_integer_or)
+/*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
+             pointer(__args, ?x0) &*& pointer(__args - 1, ?x1) &*& good(objs, x0) && good(objs, x1); @*/
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+            oom_clean(objs, H, objs2, H2, result) == true &*& pointer(__args, x0) &*& pointer(__args - 1, x1) &*&
+            int_result(objs, H, objs2, H2, result) == true; @*/
+{
+  //@ grows_refl(objs, H);
+  //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);
+  //@ int_pows();
+  ARGS(LargeInteger, receiver, Object, arg);
+  int64 result = receiver->value();
+  if (is_smi(arg)) {
+    //@ pointer_limits(__args - 1);
+    //@ smi_val_range((uword)arg);
+    //@ bitor_signed_limits(result, smi_val((uword)arg), N63);
+    result |= Smi::value(arg);
+  } else if (is_large_integer(arg)) {
+    //@ large_number_range(arg);
+    //@ bitor_signed_limits(result, o_number(H(arg)), N63);
+    result |= LargeInteger::cast(arg)->value();
+  } else FAIL(WRONG_OBJECT_TYPE);
+  return Primitive::integer(result, process);
+}
+
+@render src/primitive_core.cc toit::primitive_large_integer_xor
+PRIMITIVE(large_integer_xor)
+/*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
+             pointer(__args, ?x0) &*& pointer(__args - 1, ?x1) &*& good(objs, x0) && good(objs, x1); @*/
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+            oom_clean(objs, H, objs2, H2, result) == true &*& pointer(__args, x0) &*& pointer(__args - 1, x1) &*&
+            int_result(objs, H, objs2, H2, result) == true; @*/
+{
+  //@ grows_refl(objs, H);
+  //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);
+  //@ int_pows();
+  ARGS(LargeInteger, receiver, Object, arg);
+  int64 result = receiver->value();
+  if (is_smi(arg)) {
+    //@ pointer_limits(__args - 1);
+    //@ smi_val_range((uword)arg);
+    //@ xor_signed_limits(result, smi_val((uword)arg), N63);
+    result ^= Smi::value(arg);
+  } else if (is_large_integer(arg)) {
+    //@ large_number_range(arg);
+    //@ xor_signed_limits(result, o_number(H(arg)), N63);
+    result ^= LargeInteger::cast(arg)->value();
+  } else FAIL(WRONG_OBJECT_TYPE);
+  return Primitive::integer(result, process);
+}
+
+@render src/primitive_core.cc toit::primitive_large_integer_shift_right truncating
+PRIMITIVE(large_integer_shift_right)
+/*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
+             pointer(__args, ?x0) &*& pointer(__args - 1, ?x1) &*& good(objs, x0) && good(objs, x1); @*/
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+            oom_clean(objs, H, objs2, H2, result) == true &*& pointer(__args, x0) &*& pointer(__args - 1, x1) &*&
+            int_result(objs, H, objs2, H2, result) == true; @*/
+{
+  //@ grows_refl(objs, H);
+  //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);
+  //@ int_pows();
+  //@ error_word(Program_NEGATIVE_ARGUMENT_INDEX);
+  //@ close valid_arg(x1, objs);
+  //@ leak valid_arg(x1, objs);
+  ARGS(LargeInteger, receiver, int64, bits_to_shift);
+  if (bits_to_shift < 0) FAIL(NEGATIVE_ARGUMENT);
+  if (bits_to_shift >= LARGE_INT_BIT_SIZE) return Primitive::integer(receiver->value() < 0 ? -1 : 0, process);
+  return Primitive::integer(receiver->value() >> bits_to_shift, process);
+}
+
+@render src/utils.h toit::Utils::wrapping_sub tu=src/primitive_core.cc truncating
+  static inline int64 wrapping_sub(int64 x, int64 y)
+  //@ requires true;
+  //@ ensures true;
+  {
+    return static_cast<int64>(static_cast<uint64>(x) - static_cast<uint64>(y));
+  }
+
+@render src/utils.h toit::Utils::wrapping_add tu=src/primitive_core.cc truncating
+  static inline int64 wrapping_add(int64 x, int64 y)
+  //@ requires true;
+  //@ ensures true;
+  {
+    return static_cast<int64>(static_cast<uint64>(x) + static_cast<uint64>(y));
+  }
+
+@render src/primitive_core.cc toit::primitive_smi_add
+PRIMITIVE(smi_add)
+/*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
+             pointer(__args, ?x0) &*& pointer(__args - 1, ?x1) &*& good(objs, x0) && good(objs, x1); @*/
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+            oom_clean(objs, H, objs2, H2, result) == true &*& pointer(__args, x0) &*& pointer(__args - 1, x1) &*&
+            int_result(objs, H, objs2, H2, result) == true; @*/
+{
+  //@ grows_refl(objs, H);
+  //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);
+  //@ int_pows();
+  ARGS(word, receiver, Object, arg);
+  if (is_smi(arg)) {
+    word other = Smi::value(arg);
+    if ((receiver > 0) && (other > Smi::MAX_SMI_VALUE - receiver)) goto overflow;
+    if ((receiver < 0) && (other < Smi::MIN_SMI_VALUE - receiver)) goto overflow;
+    return Smi::from(receiver + other);
+  }
+  if (!is_large_integer(arg)) FAIL(WRONG_OBJECT_TYPE);
+  overflow:
+  int64 other = is_smi(arg) ? (int64) Smi::value(arg) : LargeInteger::cast(arg)->value();
+  return Primitive::integer(Utils::wrapping_add(receiver, other), process);
+}
+
+@render src/primitive_core.cc toit::primitive_smi_subtract
+PRIMITIVE(smi_subtract)
+/*@ requires [?f]process(process, ?prog, ?ids) &*& heap(?objs, ?H) &*&
+             pointer(__args, ?x0) &*& pointer(__args - 1, ?x1) &*& good(objs, x0) && good(objs, x1); @*/
+/*@ ensures [f]process(process, prog, ids) &*& heap(?objs2, ?H2) &*& grows(objs, H, objs2, H2) == true &*&
+            oom_clean(objs, H, objs2, H2, result) == true &*& pointer(__args, x0) &*& pointer(__args - 1, x1) &*&
+            int_result(objs, H, objs2, H2, result) == true; @*/
+{
+  //@ grows_refl(objs, H);
+  //@ error_word(Program_WRONG_OBJECT_TYPE_INDEX);
+  //@ int_pows();
+  ARGS(word, receiver, Object, arg);
+  if (is_smi(arg)) {
+    // Smis have fewer bits than words, so the difference fits a word.
+    return Primitive::integer(static_cast<int64>(receiver) - Smi::value(arg), process);
+  }
+  if (!is_large_integer(arg)) FAIL(WRONG_OBJECT_TYPE);
+  int64 other = LargeInteger::cast(arg)->value();
+  return Primitive::integer(Utils::wrapping_sub(receiver, other), process);
+}
