@@ -156,7 +156,15 @@ monitor MessageProcessor_:
     // must not unwind the task that happens to process the messages: that
     // would let any process that can send to us kill one of our tasks (and
     // with it this process).
-    catch --trace: handler.on-message type gid pid arguments
+    exception := catch --trace: handler.on-message type gid pid arguments
+    // A reply handler that ran out of memory (it could not grow its stack or
+    // allocate) has lost the reply: it was already taken from the mailbox.
+    // The exception goes to the task that processes the messages, as the
+    // OUT_OF_MEMORY of a message that can't be decoded does: that task is
+    // often the caller that waits for this reply, which would otherwise wait
+    // forever. The reply handler drops malformed replies without throwing,
+    // so it only fails when this process is out of memory.
+    if type == SYSTEM-RPC-REPLY_ and exception == "OUT_OF_MEMORY": throw exception
 
   run message/Array_ -> bool:
     if message_ or not task_: return false
