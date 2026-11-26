@@ -683,16 +683,22 @@ bound). `wf` is re-established after every step from the
 spec's `step_ok` (preservation is the verifier's soundness proof).
 
 End-to-end theorem (`src/theorem.rs`). The verified run loop has
-`requires inv` and `ensures run_post` (never a stuck state of the spec,
-never a fatal path; preempted/yielded only with `inv` again).
+`requires inv` and `ensures run_post` (preempted/yielded only with `inv`
+again and a state reached from the run's start; the other results end the
+process and are not constrained: that a step reports a stuck result only
+for the resource limit is `step_post`, internal to the loop).
 `theorem_first_run`: for an accepted, loaded program whose first task
 encodes `initial_state`, `inv` holds (from the spec's `theorem_initial`).
 `theorem_next_run`: after a preempted or yielded run, a resumed machine
-satisfies `inv` again. Since Verus checks that every exec function meets
-its precondition (every memory access goes through a view whose
-precondition bounds it), this means: for any number of runs and steps,
-the core never fails a view bounds precondition and never takes a fatal
-path, given the contracts of TRUSTED.md section 6.
+satisfies `inv` again. `theorem_process` (`src/process.rs`) composes the
+two by induction over the runs of a process. Verus checks that every
+verified call meets its callee's precondition (every memory access goes
+through a view whose precondition bounds it); `run_loop` itself is called
+from plain Rust (`machine::run`), so that its precondition holds on every
+run is these theorems plus the trusted glue that establishes `loaded` and
+`resumed`. Together: for any number of runs and steps, the core never
+fails a view bounds precondition, given the contracts of TRUSTED.md
+section 6.
 
 The hypotheses of `theorem_first_run` are what the VM establishes before
 the core runs a program: at every untrusted launch (and for any program

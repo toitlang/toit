@@ -1496,7 +1496,8 @@ their base's). TRUSTED: the table agrees with the policy (a C++ fact like
 the policy itself; the spec does not model policies, so the proof does not
 depend on it, but the sandbox does: a denied primitive must not run as
 Rust). Otherwise, and when the port returns `NotPorted` or `NeedsGc`, the
-C++ primitive path (`toit_v2_lookup_primitive`, `toit_v2_call_primitive`)
+C++ primitive path (`toit_v2_primitive`, src/interpreter_v2.cc: the policy
+lookup and the call in one entry)
 calls the `PrimitiveEntry` of the process' policy with the arguments on
 the object stack, as the C++ interpreter does; it collects garbage and
 retries on allocation failure. The core theorem assumes the leaf contract
@@ -1585,7 +1586,8 @@ the core from the spec, all outside the spec's model:
 
 `src/theorem.rs` proves that the verified run loop's precondition
 (`Machine::inv`: refines a well-formed state of an accepted program)
-holds on every run, and every opcode of format 2 has a verified handler.
+holds on every run (`src/process.rs`, `theorem_process`: by induction over
+the runs of a process), and every opcode of format 2 has a verified handler.
 These are all the assumptions it rests on, besides sections 1 to 5:
 
 | Contract | Where | Statement | Discharged by |

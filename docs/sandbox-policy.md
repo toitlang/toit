@@ -595,8 +595,9 @@ The container manager forgets a container whose start failed; a refused
 run-critical container ends the system with exit code 1 (so `toit run
 --untrusted` exits with 1), and `boot` keeps booting the other images.
 
-Builds without the verifier (FreeRTOS devices) refuse all untrusted
-programs.
+Builds without a verifier refuse all untrusted programs: on devices,
+firmware without the verified core (`TOIT_VERIFIED_CORE`, off in the
+default configuration).
 
 Format-2 programs are verified by the Rust verifier (verified/vmverify),
 which also checks the loader's contract (`loaded_ok`, proven check
@@ -642,7 +643,7 @@ mechanism. `tests/sandbox/cli/` holds programs run directly with
 
 ## Open for devices
 
-Devices can't run untrusted programs yet:
+Devices can't run untrusted programs in format 1:
 
 - The structural verifier (`src/verifier.cc`) is host-only. It uses the STL
   (`std::vector`, `std::unordered_map`, `std::string`) and allocates with
@@ -662,17 +663,24 @@ host and for install time on the device. The device verifies an image once,
 when it is installed, and keeps the verdict in the flash allocation
 metadata, with the verification epoch of the firmware that computed it
 (verified/verification-epoch.cmake): a firmware with other install-time
-checks refuses the image until it is reinstalled. Until then, untrusted
-containers are a host-only feature.
+checks refuses the image until it is reinstalled. This is implemented:
+untrusted installs in format 2 run on the ESP32-C6, the classic ESP32 and
+the ESP32-S3 with firmware built with the verified core
+(docs/format2-migration.md).
 
 ## Known gaps
 
 - Format 2 (the default for untrusted containers): the verifier is proven
-  sound against the bytecode specification and the interpreter is proven
-  to follow it (verified/spec/SOUNDNESS.md, verified/core/TRUSTED.md);
-  what remains unproven is the trusted list in verified/TRUSTED.toml and
-  the C++ the sandbox can reach (primitives that stay in C++, the glue to
-  the allocator, GC and scheduler, the program loader).
+  sound against the bytecode specification, and the interpreter is proven
+  to follow it under the leaf contracts of the C++ it calls (allocation,
+  stack growth, exception allocation, C++ primitives), the loader's and
+  the scheduler's contracts and the collector's (verified/spec/SOUNDNESS.md,
+  verified/core/TRUSTED.md section 6; the statement and its trusted base:
+  docs/sandbox-guarantee.md). What remains unproven is the trusted list in
+  verified/TRUSTED.toml and the C++ the sandbox can reach (primitives that
+  stay in C++, the glue to the allocator, GC and scheduler, the program
+  loader), and the policy itself (which primitives exist, the quotas): the
+  spec does not model it.
 - Format 1 untrusted containers (`-Xuntrusted_format1`, host only) rely on
   the C++ interpreter hardening and the unproven C++ verifier; a bug there
   lets a malicious snapshot bypass the primitive table.

@@ -2,11 +2,12 @@
 
 This document describes the machine-checked soundness proof of the
 structural verifier of the revised bytecode format (format 2). The proof
-is in Verus, in `src/v2/`. It contains no `assume`, `admit`,
-`external_body` or `assume_specification`. The whole crate verifies in
-about 20 s wall time: `verification results:: 718 verified, 0 errors`
-about 25 s wall time: `verification results:: 736 verified, 0 errors`
-(`verus --crate-type=lib src/lib.rs`).
+is in Verus, in `src/v2/`. Its proof functions contain no `assume`,
+`admit`, `external_body` or `assume_specification`; the executable
+verifier uses the trusted accessors of `src/xvec.rs` (verified/TRUSTED.toml).
+The whole crate verifies in about 50 s wall time (2026-11-26:
+`verification results:: 1081 verified, 0 errors`, `verus
+--crate-type=lib src/lib.rs`).
 
 ## The theorem
 
@@ -16,8 +17,9 @@ about 25 s wall time: `verification results:: 736 verified, 0 errors`
 pub proof fn theorem_soundness(p, c, trusted, heap0, globals0, s)
     requires
         accepts(p, c, trusted),             // the verifier accepts p with certificate c
+        !p.unchecked,                       // not the unchecked mode of trusted programs
         loaded_ok(p, c, heap0, globals0),   // the loader's contract
-        reachable(p, heap0, globals0, s),   // s is reachable in any number of transitions
+        reachable(p, heap0, globals0, s),   // s is reachable in any number of transitions (no GC)
     ensures
         !(step(p, s) is Stuck),
         forall|s1, module, index, o|
@@ -26,6 +28,12 @@ pub proof fn theorem_soundness(p, c, trusted, heap0, globals0, s)
         forall|o| outcome(p, s, o) ==> !(o is Stuck) && !(o is Raise),
         machine_objects_ok(p, s),
 ```
+
+`reachable` is a run of the spec's transitions without garbage
+collections. The states the core runs in are reached with collections
+(`v2::gc::gc_steps`); for them the same conclusion is
+`theorem_process` in verified/core/src/process.rs, through the invariant
+`wf`, which collections keep (`v2::gc::lemma_gc_steps_wf`).
 
 In words: every state reachable from the initial state of an accepted,
 correctly loaded program makes a step that is not stuck, every

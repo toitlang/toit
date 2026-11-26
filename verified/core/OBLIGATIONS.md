@@ -12,9 +12,17 @@ Current result: see PROGRESS.md (core verified count and time).
 The end-to-end theorem (`src/theorem.rs`): for an accepted, loaded
 program the verified run loop's precondition (`Machine::inv`: the machine
 refines a well-formed state of an accepted program) holds on the first run
-and on every later run; the run loop (`step::run_loop`, verified) never
-fails a view precondition, never reports a stuck state of the spec and
-takes no fatal path. It rests on the contracts of TRUSTED.md section 6:
+and on every later run, and `src/process.rs` composes the two over any
+number of runs (`theorem_process`, which also gives every state a run
+starts in the conclusion of the spec's soundness theorem). The run loop
+(`step::run_loop`, verified) never fails a view precondition; each step
+reports a stuck result only for the resource limit (`step_post`), but its
+exported contract `run_post` constrains only the preempted and yielded
+results (the fatal path for a wrapping program-heap range and the limit
+exits satisfy it trivially). The precondition of `run_loop` is not checked
+at its call site (`machine::run`, plain Rust): that the runtime machine
+satisfies `loaded` and `resumed` is the trusted glue of TRUSTED.md
+section 6. It rests on the contracts of TRUSTED.md section 6:
 the leaf contracts of the C++ calls (allocation, exception allocation,
 stack growth, C++ primitives), each stated as an instance of a spec
 transition, the heap model, the loader and the scheduler. Every opcode of
@@ -179,12 +187,13 @@ Still assumed about the collector (GC-class code, trusted), for stage 1+:
 ### Obligations from Phase 3 (verified/spec/SOUNDNESS.md)
 
 - S1 primitives: every allowed primitive satisfies `prim_heap_ok` and has
-  the arity of verified/spec/src/v2/prim_arity.rs. 106 of the 143 allowed
-  primitives are ported to Rust, proven against `prim_spec` (`prims::call`,
+  the arity of verified/spec/src/v2/prim_arity.rs. 106 of the 150 allowed
+  primitives (141 core, 2 bitmap, 4 timer, 3 events) are ported to Rust, proven against `prim_spec` (`prims::call`,
   TRUSTED.md section 8) and run by the verified PRIMITIVE handler for
   every program on the verified loop (untrusted programs); the
-  remaining 37 (task, message, time, encoding and formatting primitives,
-  bitmap) are reviewed C++ (TRUSTED.md section 8).
+  remaining 44 (task, message, time, encoding and formatting primitives,
+  bitmap, timer, events) stay in C++ (status per primitive:
+  verified/cxx/annotated/README.md) (TRUSTED.md section 8).
 - S2 loader: `theorem::loaded` (the tables are an accepted program with
   `loaded_ok`, the first task encodes `initial_state`). Discharged for
   untrusted launches by verified/vmverify (`check::verify == accepts`,
