@@ -15,10 +15,10 @@ EXPECTED="$HERE/repro/asm-results.txt"
 mkdir -p "$OUT"; : > "$RES"
 FILTER='primitive\.h\|always evaluates'
 
-reason () { echo "$1" | grep -oiE "untrusted program rejected: [^;]*|VERIFICATION_FAILED|INVALID_SNAPSHOT|PERMISSION_DENIED|AddressSanitizer|runtime error:|SUMMARY: (Address|Undefined)|FATAL|assertion|\bstuck\b|Segmentation|SIGSEGV|STACK_OVERFLOW|Out of memory" | head -1; }
+reason () { echo "$1" | grep -oiE "untrusted program rejected: [^;]*|VERIFICATION_FAILED|INVALID_SNAPSHOT|AddressSanitizer|runtime error:|SUMMARY: (Address|Undefined)|FATAL|assertion|\bstuck\b|Segmentation|SIGSEGV|STACK_OVERFLOW|Out of memory" | head -1; }
 
 run_asm () {
-  local name="$1"; local asm="$2"
+  local name="$1"; local asm="$2"; local want="${3:-}"
   local snap="$OUT/$name.snapshot"
   if ! $ASM patch "$BASE" "$snap" main "$asm" >/dev/null 2>"$OUT/$name.err"; then
     echo "[$name] ASM-ERROR: $(grep -v 'always evaluates' "$OUT/$name.err" | head -1)" | tee -a "$RES"; return
@@ -30,6 +30,14 @@ run_asm () {
   [ -z "$hr" ] && hr="ACCEPTED->ran: $(echo "$ho" | tr '\n' ' ' | cut -c1-40)"
   local flag=""
   echo "$ao" | grep -qiE "AddressSanitizer|runtime error:|SUMMARY: (Address|Undef)|assertion|FATAL|SIGSEGV|Segmentation" && flag="  <<< SANITIZER/CRASH"
+  # A case with an expected output must be accepted and print it, on both
+  # builds (a check of the run, not only of the recorded verdict).
+  if [ -n "$want" ]; then
+    if [ -n "$(reason "$ho")" ] || [ "$(echo "$ho" | tr '\n' ' ')" != "$want " ] \
+        || [ "$(echo "$ao" | tr '\n' ' ')" != "$want " ]; then
+      flag="$flag  <<< UNEXPECTED (want the output: $want)"
+    fi
+  fi
   printf '[%s] x{%s/%s} %s %s\n' "$name" "$hx" "$ax" "$hr" "$flag" | tee -a "$RES"
 }
 
@@ -68,7 +76,11 @@ run_asm branch-neg       'LOAD_SMI_0; BRANCH_IF_FALSE Lx; Lx:; RETURN_NULL'
 # --- primitives ---
 run_asm prim-module-oob  'PRIMITIVE 255 65535; RETURN_NULL'
 run_asm prim-idx-oob     'PRIMITIVE 0 65535; RETURN_NULL'
-run_asm prim-denied      'PRIMITIVE 0 0; RETURN_NULL'
+# write_on_stdout (core 0, arity 2, denied for untrusted) from main (arity
+# 0): accepted since 2026-11-26 (T2: a denied primitive is completed by the
+# core with PERMISSION_DENIED, nothing runs; before, the arity check against
+# the full table rejected it); main prints the failure value.
+run_asm prim-denied      'PRIMITIVE 0 0; INVOKE_STATIC @print; RETURN_NULL' 'PERMISSION_DENIED'
 # --- control-flow merge: height mismatch ---
 run_asm merge-height     'LOAD_SMI_0; BRANCH_IF_FALSE Le; LOAD_SMI_1; LOAD_SMI_1; Le:; RETURN_NULL'
 run_asm merge-height2    'LOAD_SMI_0; BRANCH_IF_FALSE Le; LOAD_SMI_1; Le:; INVOKE_ADD; RETURN_NULL'

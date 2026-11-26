@@ -796,6 +796,22 @@ spawn cpp_equivalence v2-table-bounds LP64 64 v2_table_bounds
 spawn cpp_equivalence v2-table-bounds ILP32 32 v2_table_bounds
 spawn cpp_equivalence v2-table-install LP64 64 v2_table_install --memory-leak-check
 spawn cpp_equivalence v2-table-install ILP32 32 v2_table_install --memory-leak-check
+# The verdict binding (V2MethodTable::runs_verified, exact match since
+# 2026-11-26): the earlier rule, under which a verdict of the untrusted rules
+# also admitted a trusted process, and a rule that takes any verdict for any
+# process must both violate the harness's property.
+for abi in LP64 ILP32; do
+  bits=64
+  [[ "$abi" == ILP32 ]] && bits=32
+  spawn cpp_violation v2-table-install-untrusted-verdict-trusted "$abi" "$bits" v2_table_install interpreter_v2.h \
+    "a verdict admits only a process of the policy it was computed for" \
+    "return verified_ == (untrusted ? 1u : 2u);" "return verified_ == 1 || (verified_ == 2 && !untrusted);" \
+    --memory-leak-check
+  spawn cpp_violation v2-table-install-any-verdict "$abi" "$bits" v2_table_install interpreter_v2.h \
+    "a verdict admits only a process of the policy it was computed for" \
+    "return verified_ == (untrusted ? 1u : 2u);" "return verified_ != 0;" \
+    --memory-leak-check
+done
 spawn cpp_equivalence v2-table-compute LP64 64 v2_table_compute
 spawn cpp_equivalence v2-table-compute ILP32 32 v2_table_compute
 spawn cpp_equivalence event-notifiers LP64 64 event_notifiers

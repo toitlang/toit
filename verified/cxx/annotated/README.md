@@ -1139,8 +1139,13 @@ copies unaligned records into owned storage. ESBMC checks an arbitrary
 byte of any permitted record count, the bytecode view, optional
 allocation-failure reporting, and release of owned memory on failure or
 destruction. The new table starts unverified. After `mark_verified`,
-`runs_verified` admits an untrusted process only for a table accepted
-under untrusted rules. The harness models libc's
+`runs_verified` admits a process only for a verdict of its own policy:
+an untrusted process only for a table accepted under the untrusted rules
+and table, a trusted process only for one accepted under the trusted
+ones (exact match since 2026-11-26; before, an untrusted verdict also
+admitted a trusted process, which the verified loop must not do now that
+it gets the process' own policy table; mutants
+v2-table-install-untrusted-verdict-trusted and v2-table-install-any-verdict). The harness models libc's
 `memcpy` at the observed byte and checks the copy extent and separation.
 It models the null outcome of nonthrowing scalar allocation explicitly
 and invokes the native destructor before releasing the table storage.
