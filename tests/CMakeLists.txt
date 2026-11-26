@@ -23,6 +23,8 @@ set(ALL_TESTS ${TOIT_TESTS} ${TOIT_SLOW_TESTS} ${TOIT_FORCE_TESTS} ${TOIT_NO_BOO
 
 toit_project(tests "${CMAKE_CURRENT_LIST_DIR}")
 toit_project(esp32_tests "${CMAKE_CURRENT_LIST_DIR}/hw/esp32")
+# The tests of the sandbox network services use the http package.
+toit_project(sandbox_net_tests "${CMAKE_CURRENT_LIST_DIR}/sandbox/net")
 
 include(ProcessorCount)
 ProcessorCount(NUM_CPU)

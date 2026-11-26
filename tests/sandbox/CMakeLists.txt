@@ -44,6 +44,23 @@ foreach(file ${SANDBOX_TESTS})
   endif()
 endforeach()
 
+# The sandbox network services (experimental, docs/sandbox-policy.md,
+# "Network access"). The tests are their own project (they use the http
+# package); the system process trusts the local TLS servers' certificate.
+file(GLOB SANDBOX_NET_TESTS RELATIVE ${TOIT_SDK_SOURCE_DIR} "net/*-test.toit")
+foreach(file ${SANDBOX_NET_TESTS})
+  if("${file}" IN_LIST TOIT_SKIP_TESTS)
+    continue()
+  endif()
+  add_test(
+    NAME ${file}
+    COMMAND $<TARGET_FILE:toit.run> ${file}
+    WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
+    )
+  set_tests_properties(${file} PROPERTIES TIMEOUT 90 ENVIRONMENT
+      "TOIT_BYTECODE_FORMAT=2;TOIT_V2_UNCHECKED=0;TOIT_SANDBOX_NETWORK_ROOTS=${CMAKE_CURRENT_SOURCE_DIR}/net/test-root.pem")
+endforeach()
+
 # The sandbox tests start their untrusted containers from their own image,
 # so the whole test is compiled in format 2 (TOIT_BYTECODE_FORMAT=2): the
 # untrusted containers (and the trusted drivers) run on the verified core.

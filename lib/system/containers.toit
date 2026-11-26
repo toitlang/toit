@@ -11,6 +11,7 @@ import uuid
 import monitor
 
 import system.api.containers show ContainerService ContainerServiceClient
+import system.api.sandbox-network show network-policy-list
 import system.services show ServiceResourceProxy ServiceHandler ServiceSelector
 
 _client_ /ContainerServiceClient ::=
@@ -75,6 +76,11 @@ A sandboxed container can only use the services in $services (a list of
   accept sandboxed clients. Service discovery and printing are always
   available. Without $services, a sandbox can use no other service. The
   list doesn't restrict trusted containers.
+
+The $network policy (experimental) says which destinations a sandbox may
+  reach through the sandbox network services, which it must be allowed to
+  use in $services, and how much (see `network-policy-list` in the
+  system.api.sandbox-network library for the keys).
 */
 start id/uuid.Uuid arguments/any=[] -> Container
     --on-event/Lambda?=null
@@ -82,11 +88,12 @@ start id/uuid.Uuid arguments/any=[] -> Container
     --untrusted/bool=false
     --quotas/Map?=null
     --may-provide-services/bool=false
-    --services/List?=null:
+    --services/List?=null
+    --network/Map?=null:
   policy/any := null
-  if untrusted or quotas or may-provide-services or services:
+  if untrusted or quotas or may-provide-services or services or network:
     kind := untrusted ? ContainerService.POLICY-UNTRUSTED : ContainerService.POLICY-TRUSTED
-    if quotas or may-provide-services or services:
+    if quotas or may-provide-services or services or network:
       quotas = quotas or {:}
       policy = [
         kind,
@@ -100,8 +107,10 @@ start id/uuid.Uuid arguments/any=[] -> Container
         quotas.get "cpu-ms" --if-absent=: -1,
         may-provide-services ? ContainerService.POLICY-GRANT-PROVIDE-SERVICES : 0,
       ]
-      if services:
-        policy.add (services.map: it is ServiceSelector ? (it as ServiceSelector).uuid : it)
+      if services or network:
+        policy.add ((services or []).map: it is ServiceSelector ? (it as ServiceSelector).uuid : it)
+      if network:
+        policy.add (network-policy-list network)
     else:
       policy = kind
   image/List? := _client_.load-image id

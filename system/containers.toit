@@ -32,6 +32,7 @@ import .flash.registry
 import .flash.reservation
 import .out-of-memory
 import .services
+import .sandbox-network.policy show NetworkGrant
 
 class Container:
   image/ContainerImage ::= ?
@@ -53,6 +54,12 @@ class Container:
     the system by failing.
   */
   critical/bool := false
+
+  /**
+  The network policy of a sandboxed container (experimental, see
+    $ContainerService.POLICY-NETWORK-INDEX), or null if it has none.
+  */
+  network-grant/NetworkGrant? := null
 
   constructor .image .gid_:
 
@@ -79,6 +86,9 @@ class Container:
     validated := null
     try:
       validated = policy-for_ policy --image-untrusted=image.untrusted
+      network := ContainerService.POLICY-NETWORK-INDEX
+      if validated is Array_ and validated.size > network:
+        network-grant = NetworkGrant validated[network]
     finally: | is-exception exception |
       // A malformed policy refuses the container like the VM does: the
       // manager must not wait for it.
@@ -124,10 +134,12 @@ class Container:
     if kind != ContainerService.POLICY-TRUSTED and kind != ContainerService.POLICY-UNTRUSTED:
       throw "INVALID_ARGUMENT"
     if policy is List:
-      if policy.size > ContainerService.POLICY-SERVICES-INDEX + 1: throw "INVALID_ARGUMENT"
+      if policy.size > ContainerService.POLICY-NETWORK-INDEX + 1: throw "INVALID_ARGUMENT"
       for i := 0; i < policy.size; i++:
         if i == ContainerService.POLICY-SERVICES-INDEX:
           validate-service-list_ policy[i]
+        else if i == ContainerService.POLICY-NETWORK-INDEX:
+          continue  // Parsed when the container starts.
         else if policy[i] is not int:
           throw "WRONG_OBJECT_TYPE"
       return Array_.from policy
