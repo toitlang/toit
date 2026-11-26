@@ -54,6 +54,7 @@ use crate::prims::{self, PrimOutcome};
 use crate::primitive::{lemma_rust_args, lemma_refines_heap, lemma_completion, lemma_source_completion,
     norm_args, args_at};
 use toit_spec::v2::prim::PrimRet;
+use toit_spec::v2::verifier::{X_PRIM_DENIED, X_PRIM_ABSENT};
 use toit_spec::types::{Value, HeapObj, Body, Unwind, Frame};
 use toit_spec::v2::types::{State2, Program2, Outcome2};
 #[cfg(verus_keep_ghost)]
@@ -866,7 +867,20 @@ pub fn op_primitive(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode
     // task, or a missing one. Either one's success or failure is completed
     // by the same code (`complete_r`, one copy in the run loop); everything
     // else after the C++ call by `cxx_primitive_rest`.
-    let (success, w, gv) = match rust_primitive_r(m, &*r, env, module, index, arity) {
+    // The process' policy (the verifier's table): a primitive it does not
+    // have at all (its module denied as a whole) raises
+    // PRIMITIVE_LOOKUP_FAILED without calling anything.
+    let e = p.policy_entry(module, index);
+    if e == X_PRIM_ABSENT {
+        proof { lemma_prim_arity(p, w0, module, index, arity); }
+        m.sync(*r, p);
+        let c = crate::primitive::op_prim_missing(m, env, module, index);
+        let (r2, c2) = resume_with(m, env, c, false, Ghost(w0));
+        let (r3, c3) = or_placeholder(m, p, r2, c2);
+        set_regs(r, r3);
+        return c3;
+    }
+    let (success, w, gv) = match rust_primitive_r(m, &*r, env, module, index, arity, e) {
         Some(t) => t,
         None => {
             let (st, w, moved, Ghost(ms)) = cxx_call(m, *r, env, module, index, arity);
@@ -1005,6 +1019,7 @@ fn complete_r(m: &mut Machine, r: &mut Regs, env: &Env, success: bool, w: usize,
 pub fn cxx_call(m: &mut Machine, r: Regs, env: &Env, module: u8, index: u16, arity: usize)
     -> (res: (usize, usize, bool, Ghost<Machine>))
     requires
+        toit_spec::v2::verifier::prim_allowed(env.p.cert@.prim_arity, module as int, index as int),
         rinv(&env.p, *old(m), r),
         sp::step(env.p.ap@, old(m).g@) == Outcome2::Primitive(old(m).g@, module, index),
         arity == sp::frame_height(old(m).g@),
@@ -1168,23 +1183,30 @@ fn or_placeholder(m: &Machine, p: &Program, r: Option<Regs>, c: Ctl) -> (res: (R
     }
 }
 
-/// Runs the Rust port of core primitive `index` (`prims::call`) on the
-/// frame's parameters, where the policy resolves the primitive to the VM's
-/// own entry with the method's arity (`Env::core_arities`): `Some` with
-/// whether it succeeded and its result, which `complete_r` completes the
-/// step with as the protocol says (as `primitive::op_rust_primitive`), on
-/// the registers. `None` (nothing changed) when the policy does not, there
-/// is no port for these arguments or an allocation did not fit: then
-/// `op_primitive` calls the C++ primitive, and only then.
+/// Completes a PRIMITIVE without the C++ primitive where it can: a
+/// primitive the process' policy denies (`Program::policy_entry`, the
+/// verifier's table) is not called at all, the step fails with
+/// PERMISSION_DENIED (`prim::prim_denied`); a core primitive the policy
+/// allows runs as its Rust port (`prims::call`) on the frame's parameters.
+/// `Some` with whether it succeeded and its result, which `complete_r`
+/// completes the step with as the protocol says, on the registers. `None`
+/// (nothing changed) for an allowed primitive without a port for these
+/// arguments, or when an allocation did not fit: then `op_primitive` calls
+/// the C++ primitive, and only then.
 ///
-/// The ports of `prims::never_falls_back` never give `None` where the
-/// policy resolves them: for such a primitive the C++ primitive does not
-/// run. The method's arity, which the port is called with, is the arity the
-/// verifier's primitive table (`cert.prim_arity`) gives the primitive.
+/// The ports of `prims::never_falls_back` never give `None`: for such a
+/// primitive the C++ primitive does not run. The method's arity, which the
+/// port is called with, is the arity the verifier's primitive table
+/// (`cert.prim_arity`) gives the primitive.
 #[inline(always)]
-fn rust_primitive_r(m: &mut Machine, r: &Regs, env: &Env, module: u8, index: u16, arity: usize)
+fn rust_primitive_r(m: &mut Machine, r: &Regs, env: &Env, module: u8, index: u16, arity: usize, e: u8)
     -> (res: Option<(bool, usize, Ghost<Value>)>)
     requires
+        // The policy's entry of the primitive (`Program::policy_entry`).
+        e != X_PRIM_ABSENT,
+        e != X_PRIM_DENIED ==> toit_spec::v2::verifier::prim_allowed(env.p.cert@.prim_arity, module as int, index as int)
+            && env.p.cert@.prim_arity[module as int][index as int] == e as int,
+        e == X_PRIM_DENIED ==> env.p.cert@.prim_arity[module as int][index as int] == -1,
         rinv(&env.p, *old(m), *r),
         r.sp@ >= r.fr@ + old(m).fw + STACK_RESERVE,
         step_ok(env.p.ap@, env.p.cert@, old(m).g@),
@@ -1195,14 +1217,12 @@ fn rust_primitive_r(m: &mut Machine, r: &Regs, env: &Env, module: u8, index: u16
     ensures
         res is None ==> *final(m) == *old(m),
         res matches Some((success, w, v)) ==> prim_returned(&env.p, *old(m), *r, *final(m), success, w, v@),
-        // The method's arity is the verifier's arity of the primitive.
-        (module as int) < env.p.cert@.prim_arity.len()
-            && (index as int) < env.p.cert@.prim_arity[module as int].len()
+        // Left to the C++ primitive only for a primitive the policy allows,
+        // with the method's arity.
+        res is None ==> toit_spec::v2::verifier::prim_allowed(env.p.cert@.prim_arity, module as int, index as int)
             && env.p.cert@.prim_arity[module as int][index as int] == arity as int,
         // A port that never falls back completes the step: no C++ primitive.
-        module == 0 && (index as int) < env.core_arities@.len()
-            && env.core_arities@[index as int] as int == arity + 1
-            && prims::never_falls_back(index as int, arity as int) ==> res is Some,
+        module == 0 && prims::never_falls_back(index as int, arity as int) ==> res is Some,
 {
     let p = &env.p;
     let ghost ap = p.ap@;
@@ -1214,8 +1234,26 @@ fn rust_primitive_r(m: &mut Machine, r: &Regs, env: &Env, module: u8, index: u16
         w0.lemma_frame(p);
         lemma_prim_arity(p, w0, module, index, arity);
     }
-    if !(module == 0 && (index as usize) < env.core_arities.len()
-        && env.core_arities.at(index as usize) as usize == arity + 1) {
+    if e == X_PRIM_DENIED {
+        // Denied by the policy: not called; PERMISSION_DENIED.
+        let ghost v = ap.roots[ROOT_PERMISSION_DENIED as int];
+        proof {
+            assert(ap.roots.len() == 35);
+            w0.lemma_root(p, ROOT_PERMISSION_DENIED as int);
+            crate::regs::lemma_bci(p, w0);
+            lemma_shape(p, g);
+            let o = toit_spec::v2::prim::prim_denied(ap, g);
+            assert(o == sp::next(sp::push(g, v), 4)) by {
+                assert(with_heap2(g, g.heap) == g);
+            }
+            lemma_source_completion(ap, g, module, index, o);
+            lemma_source_outcome(p, w0, o);
+            assert(g == with_heap2(g, g.heap));
+            assert(prim_returned(p, m0, *r, *m, false, p.roots@[ROOT_PERMISSION_DENIED as int], v));
+        }
+        return Some((false, p.roots.at(ROOT_PERMISSION_DENIED), Ghost(v)));
+    }
+    if !(module == 0 && prims::family(index as usize) != 0) {
         return None;
     }
     proof {
@@ -1264,7 +1302,7 @@ fn rust_primitive_r(m: &mut Machine, r: &Regs, env: &Env, module: u8, index: u16
 }
 
 /// The arity of a PRIMITIVE's method, its frame height, is the arity the
-/// verifier's primitive table gives the primitive.
+/// verifier's primitive table gives the primitive, or the table denies it.
 proof fn lemma_prim_arity(p: &Program, m: Machine, module: u8, index: u16, arity: usize)
     requires
         m.inv(p),
@@ -1274,7 +1312,7 @@ proof fn lemma_prim_arity(p: &Program, m: Machine, module: u8, index: u16, arity
     ensures
         (module as int) < p.cert@.prim_arity.len()
             && (index as int) < p.cert@.prim_arity[module as int].len()
-            && p.cert@.prim_arity[module as int][index as int] == arity as int,
+            && toit_spec::v2::verifier::prim_listed(p.cert@.prim_arity, module as int, index as int, arity as int),
 {
     let ap = p.ap@;
     let g = m.g@;

@@ -13,36 +13,29 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-//! The executable structural verifier, one method at a time:
-//! `verify(p, g, oracle, trusted)` is proven to return exactly
-//! `pins_sorted(g) && split_ok(vview(p), g@, ms, trusted)` for the maps
-//! `ms` the oracle yields (zero `assume`/`admit`); `v2::split` proves that
-//! `split_ok` implies `accepts` of the assembled certificate and that
-//! every accepted certificate splits.
-//!
-//! The program is borrowed (`v2::vprog::VProgram`). The certificate's
-//! global part (`XGlobal`: block-parameter masks, contexts, selector
-//! representatives, pins) is small; the maps of one method at a time come
-//! from a `MapOracle` (`v2::infer`, untrusted) as lists of kinds sharing
-//! their bottoms (`XMaps`), and are dropped after the method. The checker
-//! does not recurse and allocates only the kinds of the instruction it
-//! checks and of its successors.
+//! The executable checks of the structural verifier: the views of the
+//! certificate's global part as byte tables (`XGlobal`, read in place), the
+//! per-instruction checks (`x_post_into`, the transfer function;
+//! `x_wf_kinds`, `x_ctx_ok`, `x_shape_ok`, `x_terminator_ok`) and the table
+//! checks (`x_tables_ok`), each proven to compute its specification in
+//! `v2::verifier` against `XCert`'s view, the global part with the pins as
+//! its only maps (`tables_cert`). `v2::walk` runs them over each method in
+//! one walk (zero `assume`/`admit`).
 //!
 //! `x_post` is exact except for one corner: a LOAD_OUTER whose depth sum
 //! does not fit a u32 yields a kind no certificate can hold; `x_post` then
-//! returns `None` (`post_rel`), and `x_instr_ok` still agrees with
-//! `instr_ok` because no map can equal such a successor.
+//! returns `None` (`post_rel`), and the walk rejects: no map can equal
+//! such a successor.
 //!
 //! No panic paths (devices: verified/vmverify/README.md, "No panics on
 //! devices"): elements are read through `crate::xvec`'s accessors (the
 //! index is a proven precondition), and the functions that allocate return
 //! `Result<_, Oom>`: `Err(Oom)` when an allocation failed, otherwise the
-//! exact result above. `verify` passes `Oom` up; the verdict rejects.
+//! exact result above; the verdict rejects on `Oom`.
 
 use vstd::prelude::*;
 use alloc::vec::Vec;
 use crate::xvec::*;
-pub use crate::cvec::CVec;
 use crate::types::*;
 use crate::v2::types::*;
 use crate::v2::spec::*;
@@ -134,20 +127,11 @@ pub const NO_MAP: u32 = 0xffff_ffff;
 /// The empty map (any index past the nodes, other than `NO_MAP`).
 pub const EMPTY_MAP: u32 = 0xffff_fffe;
 
-/// The maps of one method: `idx[off]` is `NO_MAP` or the top node of the
-/// map at offset `off`. In chunks (`CVec`): a large method's maps need no
-/// contiguous block of their size.
-pub struct XMaps {
-    pub idx: CVec<u32>,
-    pub nodes: CVec<XNode>,
-}
-
-/// The certificate a method is checked against: the global part, and the
-/// maps of method `cur` (`cur >= g.n`: the tables, pins only).
+/// The certificate the instructions are checked against: the global part,
+/// with the pins as the only maps (`tables_cert`). The maps of the method
+/// being checked are ghost state of the walk (`v2::walk`).
 pub struct XCert<'a> {
     pub g: &'a XGlobal<'a>,
-    pub cur: usize,
-    pub maps: &'a XMaps,
 }
 
 pub open spec fn kv(k: Vec<XKind>) -> Seq<Kind> {
@@ -168,14 +152,6 @@ pub open spec fn chain(nodes: Seq<XNode>, i: int) -> Seq<Kind>
         let par = nodes[i].parent as int;
         (if par < i { chain(nodes, par) } else { Seq::empty() }).push(nodes[i].kind@)
     }
-}
-
-pub open spec fn map_view(x: &XMaps, o: int) -> Option<Seq<Kind>> {
-    if x.idx@[o] == NO_MAP { None } else { Some(chain(x.nodes@, x.idx@[o] as int)) }
-}
-
-pub open spec fn mapsv(x: &XMaps) -> Maps {
-    Seq::new(x.idx@.len(), |o: int| map_view(x, o))
 }
 
 // ---------------------------------------------------------------------------
@@ -414,7 +390,7 @@ impl<'a> View for XGlobal<'a> {
             contexts: Seq::new(self.n as nat, |t: int| ctx_view(self, t)),
             sel_rep: Seq::new(0xffff, |s: int| sel_view(self, s)),
             global_count: self.global_count as int,
-            prim_arity: self.prim_arity@.map_values(|v: Vec<u8>| v@.map_values(|a: u8| a as int)),
+            prim_arity: self.prim_arity@.map_values(|v: Vec<u8>| v@.map_values(|a: u8| prim_entry(a))),
             pins: |m: int, o: int| pin_view(self, m, o),
         }
     }
@@ -423,7 +399,7 @@ impl<'a> View for XGlobal<'a> {
 impl<'a> View for XCert<'a> {
     type V = Cert;
     open spec fn view(&self) -> Cert {
-        if self.cur < self.g.n { local_cert(self.g@, self.cur as int, mapsv(self.maps)) } else { tables_cert(self.g@) }
+        tables_cert(self.g@)
     }
 }
 
@@ -443,37 +419,6 @@ pub open spec fn kind_repr(k: Kind) -> bool {
         _ => true,
     }
 }
-
-pub proof fn lemma_chain_repr(nodes: Seq<XNode>, i: int)
-    ensures representable(chain(nodes, i)),
-    decreases i,
-{
-    if 0 <= i < nodes.len() {
-        let par = nodes[i].parent as int;
-        if par < i { lemma_chain_repr(nodes, par); }
-        let s = chain(nodes, i);
-        let b = if par < i { chain(nodes, par) } else { Seq::empty() };
-        assert(s == b.push(nodes[i].kind@));
-        assert forall|j: int| 0 <= j < s.len() implies kind_repr(#[trigger] s[j]) by {
-            if j < b.len() { assert(s[j] == b[j]); assert(kind_repr(b[j])); }
-        }
-    }
-}
-
-pub proof fn lemma_map_repr(c: &XCert, m: int, o: int)
-    ensures map_at(c@, m, o) is Some ==> representable(map_at(c@, m, o)->0),
-{
-    if map_at(c@, m, o) is Some {
-        if c.cur < c.g.n && m == c.cur {
-            lemma_chain_repr(c.maps.nodes@, c.maps.idx@[o] as int);
-        } else {
-            let g = c.g;
-            let i = choose|i: int| 0 <= i < npins(g) && #[trigger] pin_m(g, i) == m && pin_off(g, i) == o;
-            lemma_chain_repr(fnodes(g.nodes@), pin_top(g, i) as int);
-        }
-    }
-}
-
 
 /// `x_post`'s result: exact, except that a kind the certificate cannot
 /// hold is reported as `None`.
@@ -844,6 +789,80 @@ pub fn x_ctx_of(c: &XCert, t: usize) -> (r: Option<XCtx>)
     Some(h)
 }
 
+/// `fchain(s, i) == kv(k)[0..n]`, without building the chain.
+pub fn x_fchain_is(s: &[u8], i: u32, k: &Vec<XKind>, n: usize) -> (r: bool)
+    requires n <= k@.len(),
+    ensures r == (fchain(s@, i as int) == kv(*k).subrange(0, n as int)),
+{
+    let ghost nodes = fnodes(s@);
+    let ghost t = kv(*k).subrange(0, n as int);
+    let len = s.len() / 12;
+    assert(nodes.len() == len);
+    let mut j = n;
+    let mut cur = i as usize;
+    let mut done = cur >= len;
+    proof {
+        assert(t.subrange(0, j as int) =~= t);
+        if done {
+            assert(chain(nodes, i as int) =~= Seq::<Kind>::empty());
+            if j > 0 { assert(t.len() > 0); }
+            else { assert(t =~= Seq::<Kind>::empty()); }
+        }
+    }
+    while !done
+        invariant
+            nodes == fnodes(s@), nodes.len() == len, n <= k@.len(),
+            0 <= j <= n, t == kv(*k).subrange(0, n as int),
+            done ==> (chain(nodes, i as int) == t) == (j == 0),
+            !done ==> cur < len
+                && (chain(nodes, i as int) == t) == (chain(nodes, cur as int) == t.subrange(0, j as int)),
+        decreases (if done { 0int } else { cur as int + 1 }),
+    {
+        let nd = x_fnode(s, cur);
+        let ghost par = nd.parent as int;
+        let ghost base = if par < cur { chain(nodes, par) } else { Seq::<Kind>::empty() };
+        assert(chain(nodes, cur as int) == base.push(nd.kind@));
+        if j == 0 {
+            assert(chain(nodes, cur as int).len() > 0);
+            assert(chain(nodes, cur as int) != t.subrange(0, 0));
+            return false;
+        }
+        assert(t[j - 1] == k@[j - 1]@);
+        if !x_kind_eq(nd.kind, vix(k, j - 1)) {
+            proof {
+                assert(chain(nodes, cur as int)[base.len() as int] == nd.kind@);
+                if chain(nodes, cur as int) == t.subrange(0, j as int) {
+                    assert(base.len() == j - 1);
+                    assert(t.subrange(0, j as int)[j - 1] == t[j - 1]);
+                }
+            }
+            return false;
+        }
+        proof {
+            let full = chain(nodes, cur as int);
+            let pre = t.subrange(0, j as int);
+            if base == t.subrange(0, j - 1) {
+                assert(full =~= pre);
+            }
+            if full == pre {
+                assert(base =~= full.drop_last());
+                assert(pre.drop_last() =~= t.subrange(0, j - 1));
+            }
+        }
+        j -= 1;
+        if (nd.parent as usize) < cur {
+            cur = nd.parent as usize;
+        } else {
+            proof {
+                if j == 0 { assert(t.subrange(0, 0) =~= Seq::<Kind>::empty()); }
+                else { assert(t.subrange(0, j as int).len() > 0); }
+            }
+            done = true;
+        }
+    }
+    j == 0
+}
+
 /// The kinds of a node table's list with top `i` (`fchain`), bottom first.
 pub fn x_fchain(s: &[u8], i: u32) -> (res: Result<Vec<XKind>, Oom>)
     ensures res matches Ok(r) ==> kv(r) == fchain(s@, i as int),
@@ -1186,25 +1205,8 @@ pub fn x_ctx_ok_at(p: &VProgram, c: &XCert, m: i64, k: &Vec<XKind>, i: usize) ->
     proof { assert(kv(*k)[i as int] == k@[i as int]@); assert(kind_method(kv(*k)[i as int]) == t as int); }
     match x_ctx_of(c, t as usize) {
         Some(ctx) => {
-            let ck = &x_fchain(c.g.nodes, ctx.top)?;
-            if ck.len() != i + 1 {
-                proof { assert(kv(*k).subrange(0, i + 1).len() != kv(*ck).len()); }
-                return Ok(false);
-            }
-            let mut j = 0;
-            while j <= i
-                invariant ck.len() == i + 1, i < k.len(), 0 <= j <= i + 1,
-                    forall|jj: int| 0 <= jj < j ==> (#[trigger] k@[jj])@ == ck@[jj]@,
-                decreases i + 1 - j,
-            {
-                if !x_kind_eq(vix(k, j), vix(ck, j)) {
-                    proof { assert(kv(*k).subrange(0, i + 1)[j as int] != kv(*ck)[j as int]); }
-                    return Ok(false);
-                }
-                j += 1;
-            }
-            proof { assert(kv(*k).subrange(0, i + 1) =~= kv(*ck)); }
-            Ok(true)
+            // Compared in place (no copy of the context's kinds).
+            Ok(x_fchain_is(c.g.nodes, ctx.top, k, i + 1))
         },
         None => Ok(true),
     }
@@ -1968,7 +1970,9 @@ pub fn x_post_misc(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>
         let a = x_arity(p, m) as usize;
         if !(h == a && x_kind(p, m) == 0) { return Ok(false); }
         if !((b1 as usize) < c.g.prim_arity.len() && (index as usize) < ix_ref(c.g.prim_arity, b1 as usize).len()
-            && vix(ix_ref(c.g.prim_arity, b1 as usize), index as usize) as usize == a) {
+            && (vix(ix_ref(c.g.prim_arity, b1 as usize), index as usize) == X_PRIM_DENIED
+                || vix(ix_ref(c.g.prim_arity, b1 as usize), index as usize) == X_PRIM_ABSENT
+                || vix(ix_ref(c.g.prim_arity, b1 as usize), index as usize) as usize == a)) {
             return Ok(false);
         }
         if b1 == 0 && index == X_PRIM_TASK_NEW as i64 && a != 1 { return Ok(false); }
@@ -2063,91 +2067,6 @@ pub open spec fn rev_kinds(r: Seq<XKind>) -> Seq<Kind> {
     Seq::new(r.len(), |j: int| r[r.len() - 1 - j]@)
 }
 
-/// The kinds of the list with top node `i` (`chain`), bottom first.
-pub fn x_chain(nodes: &CVec<XNode>, i: u32) -> (res: Result<Vec<XKind>, Oom>)
-    ensures res matches Ok(r) ==> kv(r) == chain(nodes@, i as int),
-{
-    // The kinds from the top down, then reversed.
-    let mut rev: Vec<XKind> = Vec::new();
-    let mut cur = i as usize;
-    let mut done = cur >= nodes.len();
-    while !done
-        invariant
-            done ==> chain(nodes@, i as int) == rev_kinds(rev@),
-            !done ==> cur < nodes@.len() && chain(nodes@, i as int) == chain(nodes@, cur as int) + rev_kinds(rev@),
-        decreases (if done { 0int } else { cur as int + 1 }),
-    {
-        let nd = nodes.at(cur);
-        let ghost before = rev@;
-        let ghost par = nd.parent as int;
-        let ghost base = if par < cur { chain(nodes@, par) } else { Seq::<Kind>::empty() };
-        assert(chain(nodes@, cur as int) == base.push(nd.kind@));
-        try_push(&mut rev, nd.kind)?;
-        assert(base.push(nd.kind@) + rev_kinds(before) =~= base + rev_kinds(rev@));
-        if (nd.parent as usize) < cur {
-            cur = nd.parent as usize;
-        } else {
-            assert(base + rev_kinds(rev@) =~= rev_kinds(rev@));
-            done = true;
-        }
-    }
-    x_reversed(&rev)
-}
-
-/// The kinds of the list with top node `i`, top first, into `rev` (its
-/// buffer reused): `x_chain` without allocating once `rev` has grown.
-pub fn x_chain_rev(nodes: &CVec<XNode>, i: u32, rev: &mut Vec<XKind>) -> (res: Result<(), Oom>)
-    ensures res is Ok ==> chain(nodes@, i as int) == rev_kinds(final(rev)@),
-{
-    rev.clear();
-    let mut cur = i as usize;
-    let mut done = cur >= nodes.len();
-    proof { if done { assert(chain(nodes@, i as int) =~= rev_kinds(rev@)); } }
-    while !done
-        invariant
-            done ==> chain(nodes@, i as int) == rev_kinds(rev@),
-            !done ==> cur < nodes@.len() && chain(nodes@, i as int) == chain(nodes@, cur as int) + rev_kinds(rev@),
-        decreases (if done { 0int } else { cur as int + 1 }),
-    {
-        let nd = nodes.at(cur);
-        let ghost before = rev@;
-        let ghost par = nd.parent as int;
-        let ghost base = if par < cur { chain(nodes@, par) } else { Seq::<Kind>::empty() };
-        assert(chain(nodes@, cur as int) == base.push(nd.kind@));
-        try_push(rev, nd.kind)?;
-        assert(base.push(nd.kind@) + rev_kinds(before) =~= base + rev_kinds(rev@));
-        if (nd.parent as usize) < cur {
-            cur = nd.parent as usize;
-        } else {
-            assert(base + rev_kinds(rev@) =~= rev_kinds(rev@));
-            done = true;
-        }
-    }
-    Ok(())
-}
-
-/// The kinds of `rev` in reverse order, into `r` (its buffer reused).
-pub fn x_reversed_into(rev: &Vec<XKind>, r: &mut Vec<XKind>) -> (res: Result<(), Oom>)
-    ensures res is Ok ==> kv(*final(r)) == rev_kinds(rev@),
-{
-    r.clear();
-    let mut j = rev.len();
-    proof { assert(kv(*r) =~= rev_kinds(rev@).subrange(0, 0)); }
-    while j > 0
-        invariant 0 <= j <= rev@.len(), kv(*r) =~= rev_kinds(rev@).subrange(0, (rev@.len() - j) as int),
-        decreases j,
-    {
-        j -= 1;
-        let ghost old_r = kv(*r);
-        try_push(r, vix(rev, j))?;
-        assert(kv(*r) =~= old_r.push(rev@[j as int]@));
-        assert(rev_kinds(rev@)[rev@.len() - 1 - j] == rev@[j as int]@);
-        assert(kv(*r) =~= rev_kinds(rev@).subrange(0, (rev@.len() - j) as int));
-    }
-    assert(kv(*r) =~= rev_kinds(rev@));
-    Ok(())
-}
-
 pub proof fn lemma_key(m1: int, o1: int, m2: int, o2: int)
     requires 0 <= o1 < 0x1_0000_0000, 0 <= o2 < 0x1_0000_0000, 0 <= m1, 0 <= m2,
     ensures
@@ -2238,133 +2157,35 @@ pub fn x_map_at(c: &XCert, m: i64, off: i64) -> (res: Result<Option<Vec<XKind>>,
         return Ok(None);
     }
     assert(cc.maps.len() == c.g.n);
-    if c.cur < c.g.n && m as usize == c.cur {
-        assert(cc.maps[m as int] == mapsv(c.maps));
-        if (off as u64) >= (c.maps.idx.len() as u64) {
-            return Ok(None);
-        }
-        assert(cc.maps[m as int][off as int] == map_view(c.maps, off as int));
-        let i = c.maps.idx.at(off as usize);
-        if i == NO_MAP {
-            Ok(None)
-        } else {
-            let k = x_chain(&c.maps.nodes, i)?;
+    assert(cc.maps[m as int] == pin_maps(c.g@)[m as int]);
+    if off >= 0x1000_0000 {
+        assert(cc.maps[m as int].len() == PIN_SPAN);
+        return Ok(None);
+    }
+    if m > 0xffff_ffff {
+        // Pins are of methods below 2^32.
+        assert(!has_pin(c.g, m as int, off as int));
+        return Ok(None);
+    }
+    assert(cc.maps[m as int][off as int] == pin_at(c.g@, m as int, off as int));
+    assert(pin_at(c.g@, m as int, off as int) == pin_view(c.g, m as int, off as int));
+    match x_pin_find(c.g, m as u32, off as u32) {
+        Some(i) => {
+            let k = x_fchain(c.g.nodes, x_fld(c.g.pins, 12, i, 8))?;
+            assert(pin_view(c.g, m as int, off as int) == Some(kv(k)));
+            assert(cc.maps[m as int][off as int] == Some(kv(k)));
+            assert(0 <= off < cc.maps[m as int].len());
             assert(map_at(cc, m as int, off as int) == Some(kv(k)));
             Ok(Some(k))
-        }
-    } else {
-        assert(cc.maps[m as int] == pin_maps(c.g@)[m as int]);
-        if off >= 0x1000_0000 {
-            assert(cc.maps[m as int].len() == PIN_SPAN);
-            return Ok(None);
-        }
-        if m > 0xffff_ffff {
-            // Pins are of methods below 2^32.
-            assert(!has_pin(c.g, m as int, off as int));
-            return Ok(None);
-        }
-        assert(cc.maps[m as int][off as int] == pin_at(c.g@, m as int, off as int));
-        assert(pin_at(c.g@, m as int, off as int) == pin_view(c.g, m as int, off as int));
-        match x_pin_find(c.g, m as u32, off as u32) {
-            Some(i) => {
-                let k = x_fchain(c.g.nodes, x_fld(c.g.pins, 12, i, 8))?;
-                assert(pin_view(c.g, m as int, off as int) == Some(kv(k)));
-                assert(cc.maps[m as int][off as int] == Some(kv(k)));
-                assert(0 <= off < cc.maps[m as int].len());
-                assert(map_at(cc, m as int, off as int) == Some(kv(k)));
-                Ok(Some(k))
-            },
-            None => Ok(None),
-        }
+        },
+        None => Ok(None),
     }
-}
-
-/// `chain(nodes, i) == kv(k)`, without building the chain.
-pub fn x_chain_is(nodes: &CVec<XNode>, i: u32, k: &Vec<XKind>) -> (r: bool)
-    ensures r == (chain(nodes@, i as int) == kv(*k)),
-{
-    let ghost s = kv(*k);
-    let mut j = k.len();
-    let mut cur = i as usize;
-    let mut done = cur >= nodes.len();
-    proof {
-        assert(s.subrange(0, j as int) =~= s);
-        if done {
-            assert(chain(nodes@, i as int) =~= Seq::<Kind>::empty());
-            if j > 0 { assert(s.len() > 0); }
-            else { assert(s =~= Seq::<Kind>::empty()); }
-        }
-    }
-    while !done
-        invariant
-            0 <= j <= k@.len(), s == kv(*k),
-            done ==> (chain(nodes@, i as int) == s) == (j == 0),
-            !done ==> cur < nodes@.len()
-                && (chain(nodes@, i as int) == s) == (chain(nodes@, cur as int) == s.subrange(0, j as int)),
-        decreases (if done { 0int } else { cur as int + 1 }),
-    {
-        let nd = nodes.at(cur);
-        let ghost par = nd.parent as int;
-        let ghost base = if par < cur { chain(nodes@, par) } else { Seq::<Kind>::empty() };
-        assert(chain(nodes@, cur as int) == base.push(nd.kind@));
-        if j == 0 {
-            assert(chain(nodes@, cur as int).len() > 0);
-            assert(chain(nodes@, cur as int) != s.subrange(0, 0));
-            return false;
-        }
-        assert(s[j - 1] == k@[j - 1]@);
-        if !x_kind_eq(nd.kind, vix(k, j - 1)) {
-            proof {
-                assert(chain(nodes@, cur as int)[base.len() as int] == nd.kind@);
-                if chain(nodes@, cur as int) == s.subrange(0, j as int) {
-                    assert(base.len() == j - 1);
-                    assert(s.subrange(0, j as int)[j - 1] == s[j - 1]);
-                }
-            }
-            return false;
-        }
-        proof {
-            let full = chain(nodes@, cur as int);
-            let pre = s.subrange(0, j as int);
-            if base == s.subrange(0, j - 1) {
-                assert(full =~= pre);
-            }
-            if full == pre {
-                assert(base =~= full.drop_last());
-                assert(pre.drop_last() =~= s.subrange(0, j - 1));
-            }
-        }
-        j -= 1;
-        if (nd.parent as usize) < cur {
-            cur = nd.parent as usize;
-        } else {
-            proof {
-                if j == 0 { assert(s.subrange(0, 0) =~= Seq::<Kind>::empty()); }
-                else { assert(s.subrange(0, j as int).len() > 0); }
-            }
-            done = true;
-        }
-    }
-    j == 0
 }
 
 pub fn x_map_is(c: &XCert, m: i64, off: i64, k: &Vec<XKind>) -> (res: Result<bool, Oom>)
     requires g_ok(c.g),
     ensures res matches Ok(r) ==> r == (map_at(c@, m as int, off as int) == Some(kv(*k))),
 {
-    let ghost cc = c@;
-    if c.cur < c.g.n && m >= 0 && (m as u64) < (c.g.n as u64) && m as usize == c.cur && off >= 0 {
-        // The current method's maps: compare in place.
-        assert(cc.maps.len() == c.g.n);
-        assert(cc.maps[m as int] == mapsv(c.maps));
-        if (off as u64) >= (c.maps.idx.len() as u64) {
-            return Ok(false);
-        }
-        assert(cc.maps[m as int][off as int] == map_view(c.maps, off as int));
-        let i = c.maps.idx.at(off as usize);
-        if i == NO_MAP { return Ok(false); }
-        return Ok(x_chain_is(&c.maps.nodes, i, k));
-    }
     match x_map_at(c, m, off)? {
         Some(k2) => Ok(x_kinds_eq(&k2, k)),
         None => Ok(false),
@@ -2493,178 +2314,6 @@ pub fn x_shape_ok(p: &VProgram, c: &XCert, m: usize, k: &Vec<XKind>) -> (r: bool
     }
 }
 
-pub fn x_instr_ok(p: &VProgram, c: &XCert, m: usize, i: MethodInfo, off: usize, k: &Vec<XKind>, trusted: bool, out: &mut Vec<XKind>) -> (res: Result<bool, Oom>)
-    requires wf_program2(vview(p)), m < p.methods@.len(), g_ok(c.g), i == vinfo(p, m as int),
-    ensures res matches Ok(r) ==> r == instr_ok(vview(p), c@, m as int, off as int, kv(*k), trusted),
-{
-    // `i`: the method's info, decoded once per method by the caller.
-    if !(off < i.end - i.entry) { return Ok(false); }
-    let bci = i.entry + off;
-    let raw = ix(p.bytecodes, bci);
-    if raw >= OPCODE_COUNT2 { return Ok(false); }
-    // The unchecked twins only in the unchecked mode (format note 20).
-    if exec_is_twin(raw) && !p.unchecked { return Ok(false); }
-    proof { lemma_base_op(raw); }
-    let op = exec_base_op(raw);
-    let len = exec_opcode_length2(op);
-    if bci + len > i.end { return Ok(false); }
-    if k.len() > i.arity as usize + i.max_height as usize { return Ok(false); }
-    if !x_wf_kinds(p, c, m as i64, k, out)? || !x_ctx_ok(p, c, m as i64, k)? || !x_shape_ok(p, c, m, k) {
-        return Ok(false);
-    }
-    // The successor goes into `out` (a buffer of the caller).
-    let has_post = x_post_into(p, c, m, off, k, trusted, out)?;
-    proof { lemma_map_repr(c, m as int, (off + len) as int); }
-    if x_is_terminator(op) {
-        if !x_terminator_ok(p, c, m, off, k)? { return Ok(false); }
-    } else if !has_post {
-        return Ok(false);
-    }
-    if has_post {
-        if !x_map_is(c, m as i64, (off + len) as i64, &*out)? { return Ok(false); }
-    }
-    if BRANCH <= op && op <= BRANCH_BACK_IF_NOT_NULL {
-        let w1 = x_u16(p, bci + 1);
-        let t = if op <= BRANCH_IF_NOT_NULL { off as i64 + w1 } else { off as i64 - w1 };
-        if op <= BRANCH_IF_NOT_NULL && w1 <= 0 { return Ok(false); }
-        if op == BRANCH || op == BRANCH_BACK {
-            if !x_map_is(c, m as i64, t, k)? { return Ok(false); }
-        } else {
-            if k.len() < 1 { return Ok(false); }
-            x_prefix_into(k, k.len() - 1, out)?;
-            if !x_map_is(c, m as i64, t, &*out)? { return Ok(false); }
-        }
-    }
-    if op == LOOP_REPEAT || op == LOOP_ARRAY {
-        // `post` accepted the operands (`loop_ok`).
-        let w1 = x_u16(p, bci + 1);
-        let lc = ix(p.bytecodes, bci + 3) as usize;
-        let kt = x_loop_kinds(k, lc, lc + 1)?;
-        if !x_map_is(c, m as i64, off as i64 - w1, &kt)? { return Ok(false); }
-    }
-    if op == HASH_FIND {
-        let w1 = x_u16(p, bci + 1);
-        if w1 <= 0 { return Ok(false); }
-        let kt = x_push(k, XKind::Val)?;
-        if !x_map_is(c, m as i64, off as i64 + w1, &kt)? { return Ok(false); }
-    }
-    Ok(true)
-}
-
-pub fn x_entry_kinds(p: &VProgram, c: &XCert, m: usize) -> (res: Result<Vec<XKind>, Oom>)
-    requires m < p.methods@.len(),
-    ensures res matches Ok(r) ==> kv(r) == entry_kinds(vview(p), c@, m as int),
-{
-    let a = x_arity(p, m) as usize;
-    let ghost e = entry_kinds(vview(p), c@, m as int);
-    let mut r: Vec<XKind> = try_with_capacity(a)?;
-    let mut i = 0;
-    while i < a
-        invariant m < p.methods@.len(), a == vinfo(p, m as int).arity, e == entry_kinds(vview(p), c@, m as int),
-            0 <= i <= a, r.len() == i, forall|ii: int| 0 <= ii < i ==> #[trigger] kv(r)[ii] == e[ii],
-        decreases a - i,
-    {
-        let ghost before = r@;
-        let ghost before_k = kv(r);
-        if x_kind(p, m) == 3 {
-            if i == 0 {
-                match x_ctx_of(c, m) {
-                    Some(ctx) => try_push(&mut r, XKind::Block(1, ctx.slot))?,
-                    None => try_push(&mut r, XKind::Param)?,
-                }
-            } else {
-                try_push(&mut r, XKind::Val)?;
-            }
-        } else if x_is_block_param(c, m, i) {
-            try_push(&mut r, XKind::Param)?;
-        } else {
-            try_push(&mut r, XKind::Val)?;
-        }
-        proof {
-            assert(kv(r)[i as int] == r@[i as int]@);
-            assert(kv(r)[i as int] == e[i as int]);
-            assert forall|ii: int| 0 <= ii < i + 1 implies #[trigger] kv(r)[ii] == e[ii] by {
-                if ii < i {
-                    assert(r@[ii] == before[ii]);
-                    assert(kv(r)[ii] == r@[ii]@);
-                    assert(before_k[ii] == before[ii]@);
-                    assert(before_k[ii] == e[ii]);
-                }
-            }
-        }
-        i += 1;
-    }
-    proof { assert(kv(r) =~= e); }
-    Ok(r)
-}
-
-/// Every mapped instruction of `m` is accepted.
-/// Scratch buffers of the checker, kept across instructions and methods
-/// (no allocation once they have grown): the kinds of an instruction (`k`,
-/// built top first in `rev`) and its successor or other derived kinds.
-pub struct XBufs {
-    pub rev: Vec<XKind>,
-    pub k: Vec<XKind>,
-    pub post: Vec<XKind>,
-}
-
-pub fn x_method_body_ok(p: &VProgram, c: &XCert, m: usize, trusted: bool, bufs: &mut XBufs) -> (res: Result<bool, Oom>)
-    requires wf_program2(vview(p)), m < p.methods@.len(), m == c.cur, c.cur < c.g.n, g_ok(c.g),
-    ensures res matches Ok(r) ==> r == forall|o: int| 0 <= o < c@.maps[m as int].len() && (#[trigger] c@.maps[m as int][o]) is Some ==>
-        instr_ok(vview(p), c@, m as int, o, c@.maps[m as int][o]->0, trusted),
-{
-    // Only the name matters here (x_instr_ok decides it).
-    hide(instr_ok);
-    let ghost cm = c@.maps[m as int];
-    assert(cm == mapsv(c.maps));
-    let mut off = 0;
-    // Each instruction's map is built in the reused buffers.
-    let info = x_info(p, m);
-    while off < c.maps.idx.len()
-        invariant
-            wf_program2(vview(p)), m < p.methods@.len(), m == c.cur, c.cur < c.g.n, g_ok(c.g),
-            info == vinfo(p, m as int),
-            cm == c@.maps[m as int], cm == mapsv(c.maps),
-            0 <= off <= c.maps.idx@.len(),
-            forall|o: int| 0 <= o < off && (#[trigger] c@.maps[m as int][o]) is Some ==>
-                instr_ok(vview(p), c@, m as int, o, c@.maps[m as int][o]->0, trusted),
-        decreases c.maps.idx@.len() - off,
-    {
-        let i = c.maps.idx.at(off);
-        if i != NO_MAP {
-            x_chain_rev(&c.maps.nodes, i, &mut bufs.rev)?;
-            x_reversed_into(&bufs.rev, &mut bufs.k)?;
-            assert(kv(bufs.k) == chain(c.maps.nodes@, i as int));
-            assert(cm[off as int] == Some(kv(bufs.k)));
-            if !x_instr_ok(p, c, m, info, off, &bufs.k, trusted, &mut bufs.post)? {
-                return Ok(false);
-            }
-        }
-        off += 1;
-    }
-    Ok(true)
-}
-
-pub fn x_method_ok(p: &VProgram, c: &XCert, m: usize, trusted: bool, bufs: &mut XBufs) -> (res: Result<bool, Oom>)
-    requires
-        wf_program2(vview(p)), m < p.methods@.len(), c.g.n == p.methods@.len(), m == c.cur, g_ok(c.g),
-    ensures res matches Ok(r) ==> r == method_ok(vview(p), c@, m as int, trusted),
-{
-    let ghost cc = c@;
-    assert(cc.maps[m as int] == mapsv(c.maps));
-    let i = x_info(p, m);
-    if !(i.entry < i.end && i.end <= p.bytecodes.len()) { return Ok(false); }
-    if c.maps.idx.len() != i.end - i.entry { return Ok(false); }
-    if x_bp_len(c, m) != i.arity as usize { return Ok(false); }
-    let ctx = x_ctx_of(c, m);
-    assert(cc.contexts[m as int] == ctx_of(cc, m as int));
-    if ctx.is_some() && i.kind != 3 { return Ok(false); }
-    if i.kind == 3 && ctx.is_none() { return Ok(true); }
-    let e = x_entry_kinds(p, c, m)?;
-    if !x_map_is(c, m as i64, 0, &e)? { return Ok(false); }
-    x_method_body_ok(p, c, m, trusted, bufs)
-}
-
 // ---------------------------------------------------------------------------
 // Tables.
 
@@ -2737,7 +2386,7 @@ pub fn x_method_table_ok(p: &VProgram, c: &XCert, m: usize) -> (r: bool)
 }
 
 pub fn x_tables_ok(p: &VProgram, c: &XCert) -> (res: Result<bool, Oom>)
-    requires wf_program2(vview(p)), c.cur >= c.g.n, g_ok(c.g),
+    requires wf_program2(vview(p)), g_ok(c.g),
     ensures res matches Ok(r) ==> r == tables_ok(vview(p), c@),
 {
     let ghost pv = vview(p);
@@ -2907,169 +2556,9 @@ pub fn x_g_ok(g: &XGlobal) -> (r: bool)
     x_sel_sorted(g) && x_pins_sorted(g)
 }
 
-/// Computes the maps of a method for the checker (untrusted: `v2::infer`
-/// or the decoder of a shipped certificate, `v2::cert`; the checker
-/// decides whatever it returns). `Err(Oom)`: out of memory.
-pub trait MapOracle {
-    fn method_maps(&mut self, p: &VProgram, g: &XGlobal, m: usize) -> Result<XMaps, Oom>
-        requires wf_program2(vview(p)), g_ok(g), m < p.methods@.len(), g.n == p.methods@.len();
-}
-
 /// Pin `i` agrees with the maps `mm`.
 pub open spec fn pin_agrees(g: &XGlobal, i: int, mm: Maps) -> bool {
     (pin_off(g, i) as int) < mm.len() && mm[pin_off(g, i) as int] == Some(pin_kinds(g, i))
-}
-
-/// The pins of method `m` (from `pins[at]` on, where the pins of the
-/// methods below `m` end) agree with its maps. Returns where the pins of
-/// `m` end, or `None` if one disagrees.
-pub fn x_pins_agree(g: &XGlobal, m: usize, maps: &XMaps, at: usize) -> (res: Result<Option<usize>, Oom>)
-    requires
-        pins_sorted(g), at <= npins(g),
-        forall|i: int| at <= i < npins(g) ==> #[trigger] pin_m(g, i) >= m,
-    ensures
-        res matches Ok(r) ==> match r {
-            Some(e) => at <= e <= npins(g)
-                && (forall|i: int| e <= i < npins(g) ==> #[trigger] pin_m(g, i) > m)
-                && (forall|i: int| at <= i < e ==> #[trigger] pin_m(g, i) == m && pin_agrees(g, i, mapsv(maps))),
-            None => exists|i: int| 0 <= i < npins(g) && #[trigger] pin_m(g, i) == m && !pin_agrees(g, i, mapsv(maps)),
-        },
-{
-    let n = g.pins.len() / 12;
-    let mut i = at;
-    while i < n && x_fld(g.pins, 12, i, 0) as usize == m
-        invariant
-            pins_sorted(g), at <= i <= n, n == npins(g),
-            forall|j: int| at <= j < npins(g) ==> #[trigger] pin_m(g, j) >= m,
-            forall|j: int| at <= j < i ==> #[trigger] pin_m(g, j) == m && pin_agrees(g, j, mapsv(maps)),
-        decreases n - i,
-    {
-        let off = x_fld(g.pins, 12, i, 4);
-        proof { assert(pin_m(g, i as int) == m); assert(pin_off(g, i as int) == off); }
-        if (off as usize) >= maps.idx.len() {
-            proof { assert(!pin_agrees(g, i as int, mapsv(maps))); }
-            return Ok(None);
-        }
-        let top = maps.idx.at(off as usize);
-        proof { assert(mapsv(maps)[off as int] == map_view(maps, off as int)); }
-        if top == NO_MAP {
-            proof { assert(!pin_agrees(g, i as int, mapsv(maps))); }
-            return Ok(None);
-        }
-        let k = x_chain(&maps.nodes, top)?;
-        let pk = x_fchain(g.nodes, x_fld(g.pins, 12, i, 8))?;
-        proof { assert(kv(pk) == pin_kinds(g, i as int)); assert(mapsv(maps)[off as int] == Some(kv(k))); }
-        if !x_kinds_eq(&k, &pk) {
-            proof { assert(!pin_agrees(g, i as int, mapsv(maps))); }
-            return Ok(None);
-        }
-        proof {
-            assert(pin_agrees(g, i as int, mapsv(maps)));
-            // The invariant for i + 1 (stated explicitly: without it the
-            // proof was unstable under `cargo verus verify`).
-            assert forall|j: int| at <= j < i + 1 implies #[trigger] pin_m(g, j) == m && pin_agrees(g, j, mapsv(maps)) by {
-                if j == i as int { assert(pin_m(g, i as int) == m); }
-            }
-        }
-        i += 1;
-    }
-    proof {
-        if i < n { assert(pin_m(g, i as int) >= m); assert(pin_m(g, i as int) as usize != m); assert(pin_m(g, i as int) > m); }
-        assert forall|j: int| i <= j < npins(g) implies #[trigger] pin_m(g, j) > m by {
-            if j > i {
-                lemma_key(pin_m(g, i as int) as int, pin_off(g, i as int) as int, pin_m(g, j) as int, pin_off(g, j) as int);
-                assert(pin_key(g, i as int) < pin_key(g, j));
-            }
-        }
-    }
-    Ok(Some(i))
-}
-
-/// The structural verifier, one method at a time: the global part of the
-/// certificate is `g`, the maps of each method come from `o` and are
-/// dropped after the method is checked. Returns exactly whether the sorted
-/// tables are sorted and `split_ok` holds for the maps it was given (`ms`),
-/// or `Err(Oom)` if an allocation failed; by `v2::split`, `split_ok`
-/// implies `accepts` of the assembled certificate, and an accepted
-/// certificate always splits.
-pub fn verify<O: MapOracle>(p: &VProgram, g: &XGlobal, o: &mut O, trusted: bool) -> (res: Result<(bool, Ghost<Seq<Maps>>), Oom>)
-    ensures res matches Ok(r) ==> r.0 == (g_ok(g) && split_ok(vview(p), g@, r.1@, trusted)),
-{
-    let ghost pv = vview(p);
-    let ghost pad = Seq::new(g.n as nat, |m: int| Seq::<Option<Seq<Kind>>>::empty());
-    if !x_wf_program2(p) { return Ok((false, Ghost(pad))); }
-    if p.unchecked && !trusted { return Ok((false, Ghost(pad))); }
-    if g.n != p.methods.len() { return Ok((false, Ghost(pad))); }
-    if !x_g_ok(g) { return Ok((false, Ghost(pad))); }
-    let empty = XMaps { idx: CVec::new(), nodes: CVec::new() };
-    let tc = XCert { g, cur: g.n, maps: &empty };
-    if !x_tables_ok(p, &tc)? { return Ok((false, Ghost(pad))); }
-    let n = p.methods.len();
-    let np = g.pins.len() / 12;
-    let ghost mut ms: Seq<Maps> = Seq::empty();
-    let mut bufs = XBufs { rev: Vec::new(), k: Vec::new(), post: Vec::new() };
-    let mut at: usize = 0;
-    let mut m: usize = 0;
-    while m < n
-        invariant
-            pv == vview(p), wf_program2(pv), n == p.methods@.len(), g.n == n, n < 0x1000_0000, g_ok(g),
-            np == npins(g),
-            tables_ok(pv, tables_cert(g@)),
-            0 <= m <= n, ms.len() == m, at <= np,
-            forall|mm: int| 0 <= mm < m ==> #[trigger] method_ok(pv, local_cert(g@, mm, ms[mm]), mm, trusted),
-            forall|i: int| 0 <= i < at ==> #[trigger] pin_m(g, i) < m && pin_agrees(g, i, ms[pin_m(g, i) as int]),
-            forall|i: int| at <= i < np ==> #[trigger] pin_m(g, i) >= m,
-        decreases n - m,
-    {
-        let maps = o.method_maps(p, g, m)?;
-        let c = XCert { g, cur: m, maps: &maps };
-        let ghost mm = mapsv(&maps);
-        let ghost ms2 = ms.push(mm) + Seq::new((n - m - 1) as nat, |i: int| Seq::<Option<Seq<Kind>>>::empty());
-        assert(ms2.len() == n);
-        assert(ms2[m as int] == mm);
-        if !x_method_ok(p, &c, m, trusted, &mut bufs)? {
-            assert(!method_ok(pv, local_cert(g@, m as int, ms2[m as int]), m as int, trusted));
-            return Ok((false, Ghost(ms2)));
-        }
-        match x_pins_agree(g, m, &maps, at)? {
-            None => {
-                proof {
-                    let i = choose|i: int| 0 <= i < npins(g) && #[trigger] pin_m(g, i) == m && !pin_agrees(g, i, mapsv(&maps));
-                    lemma_pin_agree_witness(g, i, ms2);
-                }
-                return Ok((false, Ghost(ms2)));
-            },
-            Some(e) => {
-                proof {
-                    ms = ms.push(mm);
-                    assert forall|i: int| 0 <= i < e implies #[trigger] pin_m(g, i) < m + 1 && pin_agrees(g, i, ms[pin_m(g, i) as int]) by {
-                        if i >= at { assert(pin_m(g, i) == m); }
-                    }
-                }
-                at = e;
-            },
-        }
-        m += 1;
-    }
-    if at < np {
-        // A pin of a method that does not exist.
-        proof {
-            lemma_pin_unique(g, at as int);
-            assert(pin_at(g@, pin_m(g, at as int) as int, pin_off(g, at as int) as int) is Some);
-        }
-        return Ok((false, Ghost(ms)));
-    }
-    proof {
-        let gv = g@;
-        assert forall|m2: int, o2: int| #[trigger] pin_at(gv, m2, o2) is Some implies
-            0 <= m2 < ms.len() && 0 <= o2 < ms[m2].len() && ms[m2][o2] == pin_at(gv, m2, o2) by {
-            let i = choose|i: int| 0 <= i < npins(g) && #[trigger] pin_m(g, i) == m2 && pin_off(g, i) == o2;
-            lemma_pin_unique(g, i);
-            if i >= at { assert(pin_m(g, i) >= n); }
-            assert(pin_agrees(g, i, ms[pin_m(g, i) as int]));
-        }
-    }
-    Ok((true, Ghost(ms)))
 }
 
 /// With sorted pins, the pin view at a pin's key is that pin.
@@ -3094,17 +2583,6 @@ pub proof fn lemma_sel_unique(g: &XGlobal, i: int)
     let j = choose|j: int| 0 <= j < nsel(g) && #[trigger] sel_key(g, j) == sel_key(g, i);
     if j < i { assert(sel_key(g, j) < sel_key(g, i)); }
     if j > i { assert(sel_key(g, i) < sel_key(g, j)); }
-}
-
-/// A pin of method `m` that disagrees with `ms[m]` breaks `pins_agree`.
-pub proof fn lemma_pin_agree_witness(g: &XGlobal, i: int, ms: Seq<Maps>)
-    requires
-        pins_sorted(g), 0 <= i < npins(g), (pin_m(g, i) as int) < ms.len(),
-        !pin_agrees(g, i, ms[pin_m(g, i) as int]),
-    ensures !pins_agree(g@, ms),
-{
-    lemma_pin_unique(g, i);
-    assert(pin_at(g@, pin_m(g, i) as int, pin_off(g, i) as int) == Some(pin_kinds(g, i)));
 }
 
 

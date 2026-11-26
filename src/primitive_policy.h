@@ -70,6 +70,7 @@ class PrimitivePolicy {
 
   static const PrimitivePolicy* system() { return &system_; }
   static const PrimitivePolicy* trusted() { return &trusted_; }
+  static const PrimitivePolicy* untrusted() { return &untrusted_; }
 
   // Returns the standard policy for the given kind, or null if the kind is
   // not a launchable kind (the system policy can not be requested).
@@ -124,14 +125,33 @@ class PrimitivePolicy {
     return &tables_[module][index];
   }
 
-  // The core primitives (module 0) this policy resolves to the VM's own
-  // entries, for the verified core, which runs their Rust ports
-  // (verified/core/src/prims) instead: entry [i] is the arity of core
-  // primitive i plus one, or 0 if the policy denies it, does not resolve it
-  // to the VM's entry, or the core has no Rust port of it (then its
-  // PRIMITIVE goes to C++ directly). [core_arities_length] entries.
-  const uint8* core_arities() const { return core_arities_; }
-  unsigned core_arities_length() const { return core_arities_length_; }
+  // The primitive table the format-2 verifier checks the programs of this
+  // policy against (verified/spec, `Cert::prim_arity`; the verdict is
+  // computed with it), which the verified core also gets
+  // (toit_v2_context): it runs a primitive only if the table allows it,
+  // and completes a PRIMITIVE of a denied or absent one itself (PERMISSION_DENIED
+  // or PRIMITIVE_LOOKUP_FAILED) without calling anything:
+  // module by module (verifier_counts() entries per module), the arity
+  // from primitive.h of every primitive the policy allows, VERIFIER_DENIED
+  // for the other ones of a partly allowed module (core, bitmap) and
+  // VERIFIER_ABSENT for the modules it denies as a whole. It does not depend on which modules the platform
+  // links (a primitive the platform lacks fails at run time), so a host
+  // computes the table a device verifies with. Standard policies only;
+  // derived policies share their base's.
+  // A primitive the policy denies (its PRIMITIVE fails with
+  // PERMISSION_DENIED) and one it does not have at all (its module is denied
+  // as a whole: PRIMITIVE_LOOKUP_FAILED). No primitive has these arities.
+  static const uint8 VERIFIER_DENIED = 0xff;
+  static const uint8 VERIFIER_ABSENT = 0xfe;
+  const uint8* verifier_arities() const { return verifier_arities_of(kind_); }
+  // The table of the standard policy of [kind] (usable before set_up: the
+  // toolchain's certificate producer runs without a VM).
+  static const uint8* verifier_arities_of(Kind kind);
+  static const uint32* verifier_counts();
+  // The index of each module's first entry.
+  static const uint32* verifier_starts();
+  static unsigned verifier_module_count() { return Primitive::MODULE_COUNT; }
+  static unsigned verifier_arities_length();
 
  private:
   PrimitivePolicy() {}
@@ -141,12 +161,9 @@ class PrimitivePolicy {
   PolicyQuotas quotas_ = {};
   const PrimitiveEntry* tables_[Primitive::MODULE_COUNT] = {};
   unsigned lengths_[Primitive::MODULE_COUNT] = {};
-  const uint8* core_arities_ = null;
-  unsigned core_arities_length_ = 0;
 
   void initialize_all(Kind kind);
   void initialize_untrusted();
-  void initialize_core_arities(uint8* table);
 
   static PrimitivePolicy system_;
   static PrimitivePolicy trusted_;

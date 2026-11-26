@@ -300,12 +300,14 @@ The shipped certificate of a format-2 program: what the device's verifier
 */
 class Certificate:
   static MAGIC / int ::= 0x5452_4354  // "TCRT".
-  static HEADER-SIZE / int ::= 60
+  static HEADER-SIZE / int ::= 64
   static SECTION-NAMES / List ::= ["method words", "contexts", "selectors", "pins", "nodes", "maps"]
 
   bytes / ByteArray
   version / int := -1
   method-count / int := -1
+  // The identity of the primitive table (the policy) it was made for.
+  policy / int := -1
   // Per section: [offset, length].
   sections / List := []
 
@@ -313,7 +315,8 @@ class Certificate:
     if bytes.size >= HEADER-SIZE and (LITTLE-ENDIAN.uint32 bytes 0) == MAGIC:
       version = LITTLE-ENDIAN.uint32 bytes 4
       method-count = LITTLE-ENDIAN.uint32 bytes 8
-      sections = List SECTION-NAMES.size: [LITTLE-ENDIAN.uint32 bytes (12 + 8 * it), LITTLE-ENDIAN.uint32 bytes (16 + 8 * it)]
+      policy = LITTLE-ENDIAN.uint32 bytes 12
+      sections = List SECTION-NAMES.size: [LITTLE-ENDIAN.uint32 bytes (16 + 8 * it), LITTLE-ENDIAN.uint32 bytes (20 + 8 * it)]
 
   is-valid -> bool:
     return version >= 0
@@ -321,7 +324,7 @@ class Certificate:
   stringify -> string:
     if not is-valid: return "certificate: $bytes.size bytes (malformed header)"
     parts := List SECTION-NAMES.size: "$SECTION-NAMES[it] $sections[it][1]"
-    return "certificate: $bytes.size bytes, version $version, $method-count methods ($(parts.join ", "))"
+    return "certificate: $bytes.size bytes, version $version, $method-count methods, policy $(%08x policy) ($(parts.join ", "))"
 
 class ProgramHeader:
   block-count32 /int

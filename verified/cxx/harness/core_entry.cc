@@ -48,7 +48,19 @@ static uword initial_epoch;
 static bool accepted, called, switch_task;
 static Task* next_task;
 static int64 result_value;
-static uint8 arities[] = {1, 0};
+// The verifier tables of the policies (src/primitive_policy.cc, not
+// linked here): one module of two primitives, the untrusted policy denying
+// the second.
+static uint8 untrusted_arities[] = {1, PrimitivePolicy::VERIFIER_DENIED};
+static uint8 full_arities[] = {1, 0};
+static uint32 policy_counts[] = {2};
+static uint32 policy_starts[] = {0};
+const uint8* PrimitivePolicy::verifier_arities_of(Kind kind) {
+  return kind == UNTRUSTED ? untrusted_arities : full_arities;
+}
+const uint32* PrimitivePolicy::verifier_counts() { return policy_counts; }
+const uint32* PrimitivePolicy::verifier_starts() { return policy_starts; }
+unsigned PrimitivePolicy::verifier_arities_length() { return sizeof(full_arities); }
 static uint8 bytecodes[] = {'T', 'B', 'C', '2', 0};
 static uint32 records[] = {0};
 static Object* globals[2];
@@ -77,9 +89,10 @@ extern "C" uword toit_v2_run(toit_v2_context* ctx) {
   CXXV_ASSERT(ctx->accepted == (accepted ? TOIT_V2_ACCEPTED : 0) && ctx->unchecked == 0 &&
               (accepted || V2MethodTable::checked_loop_linked()),
               "untrusted execution uses only the admitted verified or checked loop");
-  CXXV_ASSERT(ctx->core_arities == sandbox_policy.core_arities_ &&
-              ctx->core_arities_length == (sandbox_policy.core_arities_ == nullptr ? 0 : sizeof(arities)),
-              "expose the active policy's primitive arities");
+  CXXV_ASSERT(ctx->policy_arities == untrusted_arities && ctx->policy_arities_length == sizeof(untrusted_arities) &&
+              ctx->policy_counts == policy_counts && ctx->policy_starts == policy_starts &&
+              ctx->policy_modules == Primitive::MODULE_COUNT,
+              "expose the active policy's verifier table, the one its verdict was computed with");
   CXXV_ASSERT(ctx->program.bytecodes == bytecodes && ctx->program.bytecodes_length == sizeof(bytecodes) &&
               ctx->program.methods == records && ctx->program.methods_length == 1 &&
               ctx->program.globals == reinterpret_cast<uword*>(globals) && ctx->program.globals_length == 2,
@@ -102,8 +115,6 @@ extern "C" uword toit_v2_run(toit_v2_context* ctx) {
 int main() {
   static_assert(WORD_BIT_SIZE == CXXV_WORD_BITS, "target word width");
   sandbox_policy.kind_ = PrimitivePolicy::UNTRUSTED;
-  sandbox_policy.core_arities_ = nondet_bool() ? arities : nullptr;
-  sandbox_policy.core_arities_length_ = sizeof(arities);
   new (&child) Process(nullptr, &group, nullptr);
   interpreter.process_ = &child;
   interpreter.watermark_.store(nullptr);

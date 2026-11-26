@@ -223,6 +223,64 @@ static const uint16 UNTRUSTED_BITMAP[] = {
   BitmapIndex::byte_zap,
 };
 
+// The verifier's primitive tables (verifier_arities): every primitive's
+// arity from primitive.h, module by module, and the untrusted policy's,
+// where the core and bitmap primitives outside UNTRUSTED_CORE and
+// UNTRUSTED_BITMAP are VERIFIER_DENIED (PERMISSION_DENIED, as the policy's
+// denying entries) and every module but these and the whole modules timer
+// and events is VERIFIER_ABSENT (PRIMITIVE_LOOKUP_FAILED, as a module the
+// policy has no table for).
+#define VERIFIER_ARITY_ONE(name, arity) arity,
+#define VERIFIER_MODULE_ARITIES(name, entries) entries(VERIFIER_ARITY_ONE)
+#define VERIFIER_MODULE_COUNT(name, entries) 0 entries(MODULE_PRIMITIVE_COUNT_ONE),
+static const uint8 all_verifier_arities[] = { MODULES(VERIFIER_MODULE_ARITIES) };
+static const uint32 verifier_module_counts[] = { MODULES(VERIFIER_MODULE_COUNT) };
+#undef VERIFIER_ARITY_ONE
+#undef VERIFIER_MODULE_ARITIES
+#undef VERIFIER_MODULE_COUNT
+static const unsigned VERIFIER_ARITIES_LENGTH = ARRAY_SIZE(all_verifier_arities);
+static uint8 untrusted_verifier_arities[VERIFIER_ARITIES_LENGTH];
+
+// The index of the first primitive of [module] in the verifier's tables.
+static unsigned verifier_module_start(unsigned module) {
+  unsigned start = 0;
+  for (unsigned i = 0; i < module; i++) start += verifier_module_counts[i];
+  return start;
+}
+
+static void build_untrusted_verifier_arities() {
+  for (unsigned i = 0; i < VERIFIER_ARITIES_LENGTH; i++) {
+    // No primitive has an arity that marks a denied or absent one.
+    ASSERT(all_verifier_arities[i] < PrimitivePolicy::VERIFIER_ABSENT);
+    untrusted_verifier_arities[i] = PrimitivePolicy::VERIFIER_ABSENT;
+  }
+  // The partly allowed modules: denied unless listed.
+  static const unsigned PARTLY[] = { MODULE_INDEX_core, MODULE_INDEX_bitmap };
+  for (unsigned i = 0; i < ARRAY_SIZE(PARTLY); i++) {
+    unsigned start = verifier_module_start(PARTLY[i]);
+    for (unsigned j = 0; j < verifier_module_counts[PARTLY[i]]; j++) {
+      untrusted_verifier_arities[start + j] = PrimitivePolicy::VERIFIER_DENIED;
+    }
+  }
+  unsigned core = verifier_module_start(MODULE_INDEX_core);
+  for (unsigned i = 0; i < ARRAY_SIZE(UNTRUSTED_CORE); i++) {
+    unsigned at = core + UNTRUSTED_CORE[i];
+    untrusted_verifier_arities[at] = all_verifier_arities[at];
+  }
+  unsigned bitmap = verifier_module_start(MODULE_INDEX_bitmap);
+  for (unsigned i = 0; i < ARRAY_SIZE(UNTRUSTED_BITMAP); i++) {
+    unsigned at = bitmap + UNTRUSTED_BITMAP[i];
+    untrusted_verifier_arities[at] = all_verifier_arities[at];
+  }
+  static const unsigned WHOLE[] = { MODULE_INDEX_timer, MODULE_INDEX_events };
+  for (unsigned i = 0; i < ARRAY_SIZE(WHOLE); i++) {
+    unsigned start = verifier_module_start(WHOLE[i]);
+    for (unsigned j = 0; j < verifier_module_counts[WHOLE[i]]; j++) {
+      untrusted_verifier_arities[start + j] = all_verifier_arities[start + j];
+    }
+  }
+}
+
 // Policy-owned tables for the partially allowed modules. Denied entries keep
 // the arity of the real primitive, so the interpreter finds the arguments,
 // but point to [primitive_denied].
@@ -278,28 +336,6 @@ PrimitivePolicy PrimitivePolicy::system_;
 PrimitivePolicy PrimitivePolicy::trusted_;
 PrimitivePolicy PrimitivePolicy::untrusted_;
 
-// The core arities of the standard policies (core_arities()); derived
-// policies share their base's.
-static uint8 system_core_arities[CORE_COUNT];
-static uint8 trusted_core_arities[CORE_COUNT];
-static uint8 untrusted_core_arities[CORE_COUNT];
-
-void PrimitivePolicy::initialize_core_arities(uint8* table) {
-  unsigned length = lengths_[MODULE_INDEX_core];
-  for (unsigned i = 0; i < CORE_COUNT; i++) {
-    const PrimitiveEntry* original = Primitive::at(MODULE_INDEX_core, i);
-    bool own = i < length && original != null && original->function != null &&
-        tables_[MODULE_INDEX_core][i].function == original->function;
-#ifdef TOIT_VERIFIED_CORE
-    own = own && toit_v2_core_ported(i) != 0;
-#endif
-    ASSERT(original == null || (0 <= original->arity && original->arity < 255));
-    table[i] = own ? static_cast<uint8>(original->arity + 1) : 0;
-  }
-  core_arities_ = table;
-  core_arities_length_ = CORE_COUNT;
-}
-
 void PrimitivePolicy::initialize_all(Kind kind) {
   kind_ = kind;
   owned_ = false;
@@ -348,9 +384,37 @@ void PrimitivePolicy::set_up() {
   system_.initialize_all(SYSTEM);
   trusted_.initialize_all(TRUSTED);
   untrusted_.initialize_untrusted();
-  system_.initialize_core_arities(system_core_arities);
-  trusted_.initialize_core_arities(trusted_core_arities);
-  untrusted_.initialize_core_arities(untrusted_core_arities);
+  verifier_arities_of(UNTRUSTED);  // Builds the tables before any process runs.
+}
+
+static bool untrusted_verifier_built = false;
+static uint32 verifier_module_starts[Primitive::MODULE_COUNT];
+
+static void build_verifier_tables() {
+  if (untrusted_verifier_built) return;
+  for (unsigned m = 0; m < Primitive::MODULE_COUNT; m++) {
+    verifier_module_starts[m] = verifier_module_start(m);
+  }
+  build_untrusted_verifier_arities();
+  untrusted_verifier_built = true;
+}
+
+const uint8* PrimitivePolicy::verifier_arities_of(Kind kind) {
+  build_verifier_tables();
+  return kind == UNTRUSTED ? untrusted_verifier_arities : all_verifier_arities;
+}
+
+const uint32* PrimitivePolicy::verifier_starts() {
+  build_verifier_tables();
+  return verifier_module_starts;
+}
+
+const uint32* PrimitivePolicy::verifier_counts() {
+  return verifier_module_counts;
+}
+
+unsigned PrimitivePolicy::verifier_arities_length() {
+  return VERIFIER_ARITIES_LENGTH;
 }
 
 const PrimitivePolicy* PrimitivePolicy::launchable(int kind) {

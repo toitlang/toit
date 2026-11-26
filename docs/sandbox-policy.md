@@ -35,6 +35,30 @@ module and the index. For the untrusted policy:
   table. Denied entries keep the arity of the real primitive (so the
   interpreter finds the arguments) and fail with `PERMISSION_DENIED`.
 
+For format-2 programs (since 2026-11-26) the same decision is made from the
+policy's verifier table (`PrimitivePolicy::verifier_arities`: the arity of
+every allowed primitive, `VERIFIER_DENIED` for the denied entries of core
+and bitmap, `VERIFIER_ABSENT` for the modules denied as a whole), and it is
+part of the proof:
+
+- the install-time verifier checks every `PRIMITIVE` against that table
+  (allowed with the method's arity, denied or absent; any other primitive
+  or arity is rejected), and the certificate's header names the table it
+  was made for (another policy's certificate is rejected up front);
+- the verified core gets the same table and runs a primitive (its Rust
+  port or the C++ entry) only where the table allows it; a denied one
+  fails with `PERMISSION_DENIED` and an absent one throws
+  `PRIMITIVE_LOOKUP_FAILED` without any call, as before. Verus proves that
+  no other primitive runs (docs/sandbox-guarantee.md, clause 6);
+- a verdict is used only for a process of the policy it was computed for
+  (`V2MethodTable::runs_verified`), and the verification epoch hashes the
+  policy tables (src/primitive_policy.*), so a firmware with another
+  allowed set does not take old verdicts.
+
+Programs do contain calls of denied primitives (the core library's `print`
+tries `write_on_stdout` first), so they are accepted and completed with the
+denial, not rejected.
+
 ### Allowed set (untrusted)
 
 - core, measured set (what the core library needs): `add_finalizer`,

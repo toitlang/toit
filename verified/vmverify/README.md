@@ -18,9 +18,10 @@ directory of this repository.
 # The format-2 verifier in the VM
 
 Untrusted programs are verified by the structural verifier of format 2
-(verified/spec: `v2::check::verify`, proven to decide `split_ok`, the
-per-method form of the specification's `accepts`; `theorem_soundness_split`
-in `v2/split.rs`) before any of their bytecode runs. This crate runs that
+(verified/spec: `v2::cert::verify_shipped`, the single-pass checker
+`v2::walk`, proven to accept only if `split_ok` holds, the per-method form
+of the specification's `accepts`; `theorem_soundness_split` in
+`v2/split.rs`) before any of their bytecode runs. This crate runs that
 verifier inside the VM, on the program **as the VM will execute it**: the
 abstract program is the tables the verified core gets, borrowed in place,
 not a second parse of the snapshot bytes. Its memory is bounded by the
@@ -199,7 +200,7 @@ Trusted format-2 programs are verified only with `-Xverify`/`TOIT_VERIFY`
 | File | Role |
 |---|---|
 | `src/from_vm.rs` | Views VM memory as the abstract program: the tables are borrowed as slices (`Converted::program()`/`split()` give a `VProgram`; the `V2Method` array is viewed as `VMethod`, whose layout is asserted equal at compile time); the 23 builtin class ids are decoded; roots, globals, literals are converted to values and followed breadth first through the program image (work list, no recursion), one object at a time (`Objects`, a `heap_check::ObjStream`). An object's kind is its header's class tag, which must equal its class's tag; an instance has its class's field count (`class_bits`), as the core's `instance_fields` reads it; strings and byte arrays (internal or external) must lie in the image. A string must have a NUL at its declared end, also inside the image. An external byte array must have the raw-bytes tag and a non-null address, and no object may have the finalizer flag (as the snapshot reader makes them: verified/cxx/annotated/README.md, "Findings", wave 11). Every read is bounds-checked against `[program_heap_start, +program_heap_size)`; the tables are inside the image (`V2Verifier::image_layout_error`, checked by the C++ before the conversion). |
-| `src/verify.rs` | The verdict, the duties of spec/SOUNDNESS.md "What the VM checks outside the verifier": `x_wf_program2` (the inference and the heap check require it); the proven `heap_check::x_loaded_ok_stream` over the converted objects (accepts only if their heap satisfies `loaded_ok`), and the conversion must complete without error; the untrusted `infer::infer_global`, whose trusted fields (`global_count` = the globals' count, `prim_arity` = the VM's table) are set here; and the proven `check::verify` with the inference's oracle (= `g_ok && split_ok`, which implies `accepts` of the assembled certificate, untrusted rules), or with a shipped certificate the proven `cert::verify_shipped` (true only if a certificate with these trusted fields is accepted). The rest is diagnostics. |
+| `src/verify.rs` | The verdict, the duties of spec/SOUNDNESS.md "What the VM checks outside the verifier": `x_wf_program2` (the inference and the heap check require it); the proven `heap_check::x_loaded_ok_stream` over the converted objects (accepts only if their heap satisfies `loaded_ok`), and the conversion must complete without error; the untrusted `infer::infer_global`, whose trusted fields (`global_count` = the globals' count, `prim_arity` = the primitive table of the program's policy) are set here; and the proven `cert::verify_shipped` on the shipped certificate, or on hosts on the inference's certificate encoded (true only if a certificate with these trusted fields is accepted). The rest is diagnostics. |
 | `src/ffi.rs` | C ABI; panics reject (hosts). |
 | `src/counting.rs`, `src/clock.rs` | Counting allocator and phase times (measurement; hosts). |
 
@@ -356,10 +357,9 @@ are the loader's, not counted):
   57 KB of its 66 KB) and a few words; the global part stays in the
   certificate. The inference kept the global part in RAM (16.7 KB for hello
   world, 210 KB for the CLI) plus its working sets.
-* **Time.** 2.4-3.4x faster. The shipped path computes each instruction's
-  successor kinds twice (the decoder places them, the proven checker
-  recomputes and compares them); a fused decoder-checker would remove the
-  second pass (not done: it needs a proof about the decoder's maps).
+* **Time.** 2.4-3.4x faster (2026-11-11, two passes). Since 2026-11-26 the
+  checker is a single proven pass (see "Single-pass checker" below):
+  another 2.2x fewer instructions.
 * **Code size** (host x86-64, text of the release static library by
   symbol, `nm`): built without `infer` the library has no `v2::infer`,
   `v2::gbuf` or `v2::encode` code, and `v2::check` shrinks from 45.5 KB to
@@ -431,13 +431,13 @@ artifacts memory-pressure):
 | g-big (1,050 methods) | 11,415 -> 11,192 | 4,216 B (method-table literal) | 1 | 17.2 KB |
 
 The per-method maps (`XMaps`: the map index, 4 bytes per bytecode byte,
-and the kind nodes, 16 bytes each) are kept in chunks of 64 elements
-(`toit_spec::cvec::CVec`, verified, built on the `xvec` accessors; the
-decoder builds them in a `CBuild`, whole chunks plus a plain-vector
-block, so that a push costs what a vector push costs): a method of any
-size needs blocks of at most 1 KB, and a growing node arena no longer
-copies itself into a block twice as large. Same speed as the vectors
-(x86-64: a-hello 2.75 ms vs 2.74 ms, 55.7 M vs 54.1 M instructions). On
+and the kind nodes, 16 bytes each) were kept in chunks of 64 elements
+(`toit_spec::cvec::CVec`) so that a method of any size needed blocks of
+at most 1 KB. Since the single-pass checker (2026-11-26) there are no
+per-method maps and no node arena at all (`cvec.rs` is gone): the walk
+keeps the current kinds, the pending forward obligations and the kinds at
+backward targets (a bitmap from a scan of the opcodes says where), in
+buffers reused from method to method. On
 the classic ESP32 the verification time is dominated by flash-cache
 misses, above all in the allocator's flash functions (a malloc costs
 28-33 us; about 8 allocator calls per method), so it depends on where the
@@ -537,10 +537,62 @@ for every field the checker read. Now the buffers (`check::XBufs`, the
 allocations), single fields come from the record (`x_arity`, `x_kind`,
 ...), and the classic ESP32 builds the verifier at opt-level s (Kconfig
 `TOIT_VERIFIED_CORE_VERIFIER_OPT_LEVEL`, +2.8 KB). Rig board, five
-installs each: 0.67 s (25 KB), 0.81 s (31 KB), 0.94 s (37 KB) instead of
+installs each (the two-pass checker; the single-pass walk below
+replaced it and needs about 50 allocations): 0.67 s (25 KB), 0.81 s (31 KB), 0.94 s (37 KB) instead of
 4.1, 3.9, 5.8 s; peak heap within 2 KB of before. Kconfig
 `TOIT_TRACE_INSTALL_HEAP=n` traces times without the per-allocation
 heap hook. Measurements: artifacts install-speed/README.md.
+
+### Single-pass checker (branch verifier/single-pass, 2026-11-26)
+
+`cert::verify_shipped` checks each method of a shipped certificate in one
+proven walk (`v2::walk`; spec/SOUNDNESS.md, "The executable verifier"):
+the maps the two-pass checker decoded and then checked are ghost state,
+the walk keeps only the current kinds, the pending forward obligations and
+the kinds at backward targets. Removed with the two-pass path:
+`check::verify` and its `MapOracle`, `XMaps`, the stream decoder with its
+node arena (`ShippedOracle`, `XList`), the chained-map lookups and
+`cvec.rs` (about 1,500 lines). The certificate is version 2: its header
+names the primitive table it was made for (`cert::policy_id`), and a
+certificate of another version or policy is rejected up front with that
+reason. The verifier checks every PRIMITIVE against the primitive table of
+the program's policy (`PrimitivePolicy::verifier_arities`), and the core
+gets the same table (spec/SOUNDNESS.md, docs/sandbox-guarantee.md clause
+6).
+
+Host, x86-64, one verification on the dumped tables of the format-3
+study's programs (verified/certdiff `verify`; callgrind on the measured
+function; peak = Rust heap high-water mark of the checker; artifacts
+single-pass/logs/measure.txt):
+
+| Program | two-pass instructions | single-pass | ratio | allocations | peak heap |
+|---|---:|---:|---:|---:|---:|
+| a-hello | 29.24 M | 13.11 M | 2.23 | 8,434 -> 48 | 8.1 -> 8.7 KB |
+| c-map | 35.57 M | 15.95 M | 2.23 | 10,456 -> 50 | 18.2 -> 8.8 KB |
+| g-big | 43.06 M | 19.22 M | 2.24 | 11,493 -> 63 | 9.7 -> 9.1 KB |
+| opbench (trusted) | 45.11 M | 20.56 M | 2.19 | 12,625 -> 62 | 8.1 -> 9.0 KB |
+| taskbench (trusted) | 36.04 M | 15.99 M | 2.25 | 10,054 -> 51 | 8.1 -> 9.1 KB |
+| ESP32 system image (trusted) | 75.40 M | 33.57 M | 2.25 | 20,481 -> 51 | 9.7 -> 9.1 KB |
+
+Device library (`tests/device_size.sh s`, fat LTO, linked text + rodata;
+the verifier is the checker, heap check, other spec code and this crate):
+
+| Target | before | after | verifier before -> after |
+|---|---:|---:|---:|
+| riscv32imac | 76,328 B | 73,696 B (-2,632) | 27,082 -> 23,388 B (-3,694) |
+| thumbv7m | 67,906 B | 64,800 B (-3,106) | 23,256 -> 19,638 B (-3,618) |
+
+(The core's run loop grew by 0.7-1.1 KB: the policy-table lookup and the
+denied-primitive completion; `PrimitivePolicy::core_arities` is gone from
+the C++.) Classic ESP32 f2 firmware (measure-3's configuration): toit.bin
+1,463,792 -> 1,461,632 B, the pinned verifier code (hot flash group B)
+49,013 -> 45,527 B, IRAM +948 B (the run loop), DRAM +992 B (artifacts
+single-pass/logs/firmware-esp32.txt). Agreement: before the two-pass checker was removed, both checked
+60,000 mutants (5,000 certificate and 5,000 method-body mutants of each
+program): every verdict equal (artifacts single-pass/logs/cross-v1-*.txt).
+Not measured here: device time (the lead's run) and the hand-tuned
+incremental context checks of the format-3 study's prototype (about 15 %
+fewer instructions, not done).
 
 ## Fuzzing the entry point in-process
 
