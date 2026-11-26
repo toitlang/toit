@@ -160,11 +160,6 @@ class V2MethodTable {
   // Whether the table uses the program's table literal (no RAM copy).
   bool in_literal() const { return !owned_; }
 
-  // Whether untrusted containers may be in format 1 (and run on the C++
-  // interpreter): -Xuntrusted_format1 or TOIT_UNTRUSTED_FORMAT1=1. By
-  // default untrusted containers must be in format 2.
-  static bool untrusted_format1_allowed();
-
   const uint32* records() const { return records_; }
   word length() const { return length_; }
 

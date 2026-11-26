@@ -37,12 +37,14 @@ OBLIGATIONS.md. Trusted base: TRUSTED.md and verified/TRUSTED.toml.
   format 2: the core keeps the stack object up to date itself.
 - Untrusted containers must be format 2: programs-registry spawn and
   snapshot launch refuse a format-1 program under the untrusted policy
-  with `FORMAT_2_REQUIRED`. `-Xuntrusted_format1` or
-  `TOIT_UNTRUSTED_FORMAT1=1` allows format 1 again (then it runs on the
-  C++ interpreter). **Default: format 2 required.**
+  with `FORMAT_2_REQUIRED`, and so does the install of an image flagged
+  untrusted. **Every build: format 2 required** (the flag
+  `-Xuntrusted_format1` / `TOIT_UNTRUSTED_FORMAT1=1`, which ran untrusted
+  format-1 programs on the C++ interpreter, was removed).
 - With the CMake option `TOIT_VERIFIED_CORE` off (default off for
   embedded and cross builds, or without cargo) the VM builds without the
-  core and refuses to run format-2 programs. It is on by default for
+  core and refuses to run format-2 programs, and so every untrusted
+  container. It is on by default for
   64-bit hosts and for 32-bit x86 Linux hosts (toolchains/host32.cmake:
   Rust target `i686-unknown-linux-gnu`); ESP32-C6/H2 firmware gets it with
   the menuconfig option `TOIT_VERIFIED_CORE` (Rust target

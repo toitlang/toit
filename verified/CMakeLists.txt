@@ -19,7 +19,8 @@
 # embedded and cross builds) links the core into toit_vm; it runs every
 # format-2 program (src/interpreter_v2.cc). Without cargo the option is
 # ignored with a warning, so the C++-only build keeps working (and refuses
-# format-2 programs).
+# format-2 programs, and so every untrusted container: untrusted programs
+# must be in format 2).
 #
 # Targets:
 #   toit_verified_core         imported static library (built with cargo):
@@ -102,7 +103,8 @@ endif()
 
 find_program(TOIT_CARGO cargo)
 if (NOT TOIT_CARGO)
-  message(WARNING "TOIT_VERIFIED_CORE is ON but cargo was not found; building without the verified core.")
+  message(WARNING "TOIT_VERIFIED_CORE is ON but cargo was not found; building without the verified core: "
+                  "this VM refuses every format-2 program and every untrusted container.")
   return()
 endif()
 set(TOIT_VERIFIED_CORE_ENABLED ON CACHE INTERNAL "")

@@ -494,11 +494,17 @@ section at this commit.
   verified and run with full privilege.
 * **Hardware faults** (bit flips, glitching, power), and attacks on the
   flash outside the image.
-* **Builds outside the scope**: firmware without the verified core; the
-  `-Xuntrusted_format1` flag or `TOIT_UNTRUSTED_FORMAT1=1`, which runs
-  untrusted format-1 programs on the unverified C++ interpreter; host
-  builds where cargo was missing (they build without the core with a
-  warning).
+* **Builds without the verified core** (firmware built without
+  `TOIT_VERIFIED_CORE`, host builds where cargo was missing: they build
+  without the core with a warning) run no untrusted program, so there is
+  nothing for the claim to cover: they refuse every untrusted container,
+  format 1 with `FORMAT_2_REQUIRED` and format 2 because they can neither
+  verify nor run it. No build runs an untrusted format-1 program: install,
+  spawn and launch refuse it with `FORMAT_2_REQUIRED`. (The flag
+  `-Xuntrusted_format1` and the variable `TOIT_UNTRUSTED_FORMAT1=1`, which
+  ran such programs on the unverified C++ interpreter, were removed; the
+  negative tests are `tests/sandbox/cli/format1-*-snapshot` and
+  `tests/sandbox/boot-refused-test.toit`.)
 * **Functional correctness** of the program's execution with respect to
   the Toit language.
 
@@ -578,7 +584,7 @@ the effort. Sizes: small (hours to a day), days, weeks.
 
 | # | Item | Buys in the wording | Size | Depends on | Kind |
 |---|---|---|---|---|---|
-| 1 | Remove `-Xuntrusted_format1` / `TOIT_UNTRUSTED_FORMAT1` from release builds (or entirely); make a host build without the core fail instead of warn | drops "unless configured otherwise" | small | owner decision | code removal |
+| 1 | Done: `-Xuntrusted_format1` / `TOIT_UNTRUSTED_FORMAT1` removed from every build (untrusted format-1 programs are refused at install, spawn and launch); a build without the core refuses every untrusted program (it still builds, with a warning, when cargo is missing) | drops "unless configured otherwise" | small | – | code removal |
 | 2 | Decide whether the verified core is the default for device firmware (`TOIT_VERIFIED_CORE`) | the claim applies to the shipped firmware, not a variant | small (decision), size issue on classic ESP32 | none | decision |
 | 3 | Check the allowed primitive set in the verifier: give `accepts` the policy's primitive set, reject a PRIMITIVE of a denied primitive at install time | "can call only the primitives of its policy" becomes a theorem; removes the `core_arities` trust (a denied primitive cannot reach the Rust port) | days | new epoch (installed images must be reinstalled) | proof, verifier change |
 | 4 | Strengthen `prim_heap_ok`: read-only objects and the `ro` flag unchanged | "never modifies read-only program data" becomes a theorem for primitives too (C++ primitives assumed, Rust ports proved) | small to days | new epoch | spec change |
@@ -604,8 +610,10 @@ the effort. Sizes: small (hours to a day), days, weeks.
   rewritten in Verus first (claim (iii)).
 * Whether to accept a new verification epoch for items 3 and 4 (every
   installed untrusted container must be reinstalled).
-* Whether to remove the format-1 untrusted path (item 1) and make the
-  verified core the device default (item 2).
+* Whether to make the verified core the device default (item 2; the
+  format-1 untrusted path of item 1 is removed), and whether a host build
+  that finds no cargo should fail instead of building without the core
+  (such a build refuses every untrusted program either way).
 * Whether to change the bytecode, certificate or message format where
   section 5 says it would remove an item (8, 9, 12).
 * Whether trusted containers running unverified on the same core are

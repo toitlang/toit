@@ -268,10 +268,10 @@ a primitive its base allows).
 
 Other routes to these C++ bodies: the checked loop (`op_primitive_cold`,
 hosts only, unverified trusted tables), the format-1 interpreter (trusted
-format-1 programs, and untrusted ones under `-Xuntrusted_format1` /
-`TOIT_UNTRUSTED_FORMAT1=1`). Dropping the 35 C++ bodies from
-format-2-only firmware needs: no format-1 interpreter (so neither trusted
-format-1 programs nor `-Xuntrusted_format1`), no checked loop (devices
+format-1 programs only: untrusted format-1 programs are refused by every
+build since `-Xuntrusted_format1` was removed). Dropping the 35 C++ bodies
+from format-2-only firmware needs: no format-1 interpreter (so no trusted
+format-1 programs), no checked loop (devices
 already build without it), and their primitive-table entries kept with
 their arity but without the function, with `initialize_core_arities`
 deciding `own` for ported primitives without `original->function !=

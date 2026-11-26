@@ -114,11 +114,11 @@ PRIMITIVE(spawn) {
   // untrusted (the verdict is in the allocation, see below), else here.
   // Trusted containers from flash keep running unverified.
   // Untrusted containers run on the verified core, which runs format-2
-  // programs only. -Xuntrusted_format1 (or TOIT_UNTRUSTED_FORMAT1=1) keeps
-  // running format-1 untrusted containers on the C++ interpreter.
-  if (policy->is_untrusted() && !program->is_format2() && !V2MethodTable::untrusted_format1_allowed()) {
+  // programs only: a format-1 untrusted container is refused in every build
+  // (never run on the unverified C++ interpreter).
+  if (policy->is_untrusted() && !program->is_format2()) {
     PrimitivePolicy::release(policy);
-    fprintf(stderr, "untrusted containers must be in bytecode format 2 (use -Xuntrusted_format1 to allow format 1)\n");
+    fprintf(stderr, "untrusted containers must be in bytecode format 2\n");
     String* error = process->allocate_string("FORMAT_2_REQUIRED");
     if (error == null) FAIL(ALLOCATION_FAILED);
     return Error::from(error);
@@ -141,8 +141,7 @@ PRIMITIVE(spawn) {
     // verified, and the verdict is of this VM's verification epoch (a
     // verdict of another epoch, recorded by a firmware with other
     // install-time checks, is no verdict). An image flagged untrusted
-    // without a verdict never starts (unless it is format 1 and
-    // -Xuntrusted_format1 allows that); it stays installed until it is
+    // without a verdict never starts; it stays installed until it is
     // reinstalled or removed. Images without the flag that are started
     // untrusted (the caller's choice) are verified now; the host remembers
     // that verdict until the allocation is written again

@@ -151,9 +151,9 @@ static void test_system_uuid_still_checked() {
 }
 
 static void test_without_verdict() {
-  // Untrusted without the verdict bit (as install_verdict leaves a format-1
-  // image under -Xuntrusted_format1), and trusted: the whole system uuid,
-  // no epoch, no verdict.
+  // Untrusted without the verdict bit (a format-1 image left by a firmware
+  // that allowed untrusted format 1), and trusted: the whole system uuid, no
+  // epoch, no verdict.
   int flag_sets[] = { UNTRUSTED, 0 };
   for (int flags : flag_sets) {
     FlashAllocation* allocation = commit(fresh_memory(), FLASH_ALLOCATION_TYPE_PROGRAM, flags);

@@ -370,11 +370,9 @@ const char* V2Verifier::install_verdict(const void* memory, word program_size, u
   if ((metadata[0] & FlashAllocation::Header::FLAGS_PROGRAM_UNTRUSTED_MASK) == 0) return null;
   FlashRegistry::flush();
   Program* program = reinterpret_cast<Program*>(const_cast<void*>(memory));
-  bool no_verdict = false;
-  const char* error = verify_installed(program, program_size, &no_verdict, certificate, certificate_length,
-                                       process);
+  const char* error = verify_installed(program, program_size, certificate, certificate_length, process);
   if (error != null) return error;
-  if (!no_verdict) metadata[0] |= FlashAllocation::Header::FLAGS_PROGRAM_VERIFIED_MASK;
+  metadata[0] |= FlashAllocation::Header::FLAGS_PROGRAM_VERIFIED_MASK;
   return null;
 }
 
@@ -582,21 +580,16 @@ static bool v2_install_memory_low() {
 #endif
 }
 
-const char* V2Verifier::verify_installed(Program* program, word program_size, bool* no_verdict,
+const char* V2Verifier::verify_installed(Program* program, word program_size,
                                          const uint8* certificate, word certificate_length,
                                          Process* process) {
-  *no_verdict = false;
   const char* layout = image_layout_error(program, program_size);
   if (layout != null) {
     fprintf(stderr, "verifier: untrusted program rejected: malformed program memory: %s\n", layout);
     return "INVALID_SNAPSHOT";
   }
   if (!program->is_format2()) {
-    if (V2MethodTable::untrusted_format1_allowed()) {
-      *no_verdict = true;
-      return null;
-    }
-    fprintf(stderr, "untrusted images must be in bytecode format 2 (use -Xuntrusted_format1 to allow format 1)\n");
+    fprintf(stderr, "untrusted images must be in bytecode format 2\n");
     return "FORMAT_2_REQUIRED";
   }
   if (process != null && !process->object_heap()->retrying_primitive() && v2_install_memory_low()) {
@@ -723,15 +716,10 @@ bool V2Verifier::write_canonical(Program* program, const V2MethodTable* table, c
   return false;
 }
 
-const char* V2Verifier::verify_installed(Program* program, word program_size, bool* no_verdict,
+const char* V2Verifier::verify_installed(Program* program, word program_size,
                                          const uint8* certificate, word certificate_length,
                                          Process* process) {
-  if (image_layout_error(program, program_size) != null) {
-    *no_verdict = false;
-    return "INVALID_SNAPSHOT";
-  }
-  *no_verdict = !program->is_format2() && V2MethodTable::untrusted_format1_allowed();
-  if (*no_verdict) return null;
+  if (image_layout_error(program, program_size) != null) return "INVALID_SNAPSHOT";
   // Without the verifier no untrusted program can be admitted.
   return program->is_format2() ? "VERIFICATION_FAILED" : "FORMAT_2_REQUIRED";
 }

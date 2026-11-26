@@ -104,9 +104,9 @@ PRIMITIVE(launch) {
   // programs are always verified with the untrusted rules (no HALT 2/3);
   // trusted ones only with -Xverify/TOIT_VERIFY. A rejected program never
   // runs.
-  // Untrusted programs run on the verified core: format 2 only, unless
-  // format 1 is explicitly allowed (interpreter_v2.h).
-  if (policy->is_untrusted() && !program->is_format2() && !V2MethodTable::untrusted_format1_allowed()) {
+  // Untrusted programs run on the verified core: format 2 only, in every
+  // build.
+  if (policy->is_untrusted() && !program->is_format2()) {
     image.release();
     return launch_error(process, "FORMAT_2_REQUIRED");
   }

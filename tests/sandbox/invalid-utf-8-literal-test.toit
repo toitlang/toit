@@ -5,23 +5,16 @@
 // This test patches string literals of a compiled snapshot so that they
 // aren't valid UTF-8 and runs it as an untrusted container.
 //
-// In format 2 (the default for untrusted programs), the verifier checks the
-// string literals at launch (the loader's contract `loaded_ok`, verified/spec
-// heap_check.rs): the patched program is rejected and never runs.
+// Untrusted programs are in format 2: the verifier checks the string
+// literals at launch (the loader's contract `loaded_ok`, verified/spec
+// heap_check.rs), so the patched program is rejected and never runs.
 //
 // A crafted program can still hold strings that aren't valid UTF-8 at run
 // time: a string slice with crafted bounds (crafted bytecode can store its
-// final fields) can cut a sequence, and string-add copies it. Format-1
-// untrusted programs (allowed with TOIT_UNTRUSTED_FORMAT1=1) are checked by
-// the structural verifier, which doesn't look at literals. The patched
-// format-1 program checks that the VM copes with such strings:
-// - string-to-utf-16 must not read past a string whose last byte announces
-//   more bytes (0xff: seven),
-// - the object encoder must not walk before a string of continuation bytes
-//   (reached through encode-error; encode-object is denied for untrusted
-//   programs),
-// - such strings can't be sent to another process (the receivers rely on
-//   valid strings), in particular not to the system process.
+// final fields) can cut a sequence, and string-add copies it. That the VM
+// copes with such strings is tested with cut slices by
+// tests/sandbox/cli/invalid-strings-main.toit (this test did it with a
+// patched format-1 program while untrusted format 1 could be allowed).
 
 import expect show *
 import host.file
@@ -113,19 +106,3 @@ main args:
     expect (rejected.output.contains "a string literal isn't valid UTF-8")
     expect (rejected.output.contains "VERIFICATION_FAILED")
     expect-not (rejected.output.contains "utf-16 units")
-
-    // FORMAT-1-ONLY from here (docs/format2-migration.md).
-    // Format 1: the strings reach the primitives.
-    environment = {"TOIT_BYTECODE_FORMAT": "1", "TOIT_UNTRUSTED_FORMAT1": "1"}
-    patched = compile-patched run compiler dir --format=1 --environment=environment
-    result := run-process [run, "--untrusted", patched] --timeout-ms=60_000 --environment=environment
-    print result.output
-    expect-equals 0 result.exit-code
-    // 16 units; the last byte is the replacement character, not whatever
-    // followed the string in memory.
-    expect (result.output.contains "utf-16 units: 16 last: fffd")
-    expect (result.output.contains "encoded: ")
-    expect (result.output.contains "encode-object: PERMISSION_DENIED")
-    expect (result.output.contains "send to system: WRONG_OBJECT_TYPE")
-    expect (result.output.contains "send nested: WRONG_OBJECT_TYPE")
-    expect (result.output.contains "done")

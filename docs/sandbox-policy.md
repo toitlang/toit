@@ -607,8 +607,8 @@ or code points above U+10FFFF). A program with such a literal is rejected
 with "a string literal isn't valid UTF-8". The check is one pass over the
 string bytes: 436 bytes of device code, and no measurable time next to
 the rest of the verification (the heap check of the toit CLI, 4024
-objects, takes about 0.25 ms). Format-1 programs, which run untrusted
-only with `-Xuntrusted_format1`, are not checked for it. Strings that
+objects, takes about 0.25 ms). Format-1 programs are never run untrusted
+(every build refuses them with `FORMAT_2_REQUIRED`). Strings that
 aren't valid UTF-8 can still arise at run time from string slices with
 crafted bounds (crafted bytecode can store the fields of a `StringSlice_`);
 the primitives and the message encoder cope with them (see "Threats
@@ -616,9 +616,17 @@ tested").
 
 ## Field accesses
 
-The verifier does not prove the receivers of field accesses, so the
-interpreter checks every field access of an untrusted process at run time,
-in every build. Such processes run with their own dispatch table, which
+Untrusted processes run format 2 on the verified core, whose field
+accesses are proved in bounds for every program the verifier accepts
+(docs/sandbox-guarantee.md). The rest of this section is about the C++
+interpreter, which no longer runs untrusted processes (format 1 is refused
+for them; the format-1 test, field-access-test.toit, was removed with the
+flag `-Xuntrusted_format1` that allowed it).
+
+The format-1 structural verifier did not prove the receivers of field
+accesses, so the C++ interpreter checks every field access of an untrusted
+process at run time, in every build. Such processes run with their own
+dispatch table, which
 sends the seven field bytecodes (`LOAD_FIELD`, `LOAD_FIELD_WIDE`,
 `LOAD_FIELD_LOCAL`, `POP_LOAD_FIELD_LOCAL`, `STORE_FIELD`,
 `STORE_FIELD_WIDE`, `STORE_FIELD_POP`) to entries that check that the
@@ -641,9 +649,10 @@ code); the driver then checks that the sibling still answers requests.
 mechanism. `tests/sandbox/cli/` holds programs run directly with
 `toit.run --untrusted`, from source and from a snapshot.
 
-## Open for devices
+## Format 1 on devices (history)
 
-Devices can't run untrusted programs in format 1:
+No build runs untrusted programs in format 1 any more (the host's
+`-Xuntrusted_format1` was removed as well). Devices never could:
 
 - The structural verifier (`src/verifier.cc`) is host-only. It uses the STL
   (`std::vector`, `std::unordered_map`, `std::string`) and allocates with
@@ -681,17 +690,20 @@ the ESP32-S3 with firmware built with the verified core
   stay in C++, the glue to the allocator, GC and scheduler, the program
   loader), and the policy itself (which primitives exist, the quotas): the
   spec does not model it.
-- Format 1 untrusted containers (`-Xuntrusted_format1`, host only) rely on
-  the C++ interpreter hardening and the unproven C++ verifier; a bug there
-  lets a malicious snapshot bypass the primitive table.
+- Untrusted containers in format 1 are refused by every build (install,
+  spawn and launch fail with `FORMAT_2_REQUIRED`), so the C++ interpreter
+  hardening and the unproven C++ verifier are not part of the sandbox. The
+  host flag `-Xuntrusted_format1` / `TOIT_UNTRUSTED_FORMAT1=1` that ran
+  them on the C++ interpreter was removed; a build without the verified
+  core refuses every untrusted container.
 - Untrusted images are verified once at install with the shipped
   certificate and the verdict is recorded with the verification epoch;
   after a firmware update that changes the install-time checks, installed
   untrusted containers are refused until they are reinstalled (the
   certificate is not kept, so the device cannot verify them again). The
   epoch says which checks ran, not that they are right: a bug in checks
-  that did not change survives an update. Nothing has run on real
-  hardware yet (see "Open for devices").
+  that did not change survives an update. Untrusted installs run on real
+  hardware (see "Format 1 on devices (history)").
 - A sandbox can make the system process print a warning for every
   unhandled message it sends, and print and trace as fast as the system
   process writes (rate bounded only by the mailbox quota and the system
@@ -765,7 +777,7 @@ and must be updated when the gap is closed.
 | Uncharged native memory: resource groups from `timer.init` in a loop, adding and removing a finalizer in a loop, `remove_finalizer` on an external byte array | charged to the container or bounded | `resource-group-churn`, tests/`finalizer-churn-test`, tests/`remove-finalizer-external-test` | fixed: 64 bytes of VM memory per call; 200 MB per 5M finalizer toggles; the external memory leaked; `get_generic_resource_group` had the same problem and is no longer allowed (`core-get-generic-resource-group`) | |
 | Keep a scheduler thread inside a primitive (a kill only takes effect when it returns): `process_send` of a shared object graph, `bitmap.blit` with zero strides | the primitive stops early | `message-shared-graph`, `blit-unbounded-work` | fixed: days and hours per call; the other C++ primitives of the untrusted set are linear in their quota-bounded arguments (docs/sandbox-primitive-audit.md) | |
 | Read what other processes freed | new memory is cleared | tests/`off-heap-byte-array-cleared-test` | fixed: `create_off_heap_byte_array` returned uninitialized malloc memory (99% of the bytes still held freed data); it is no longer allowed for untrusted programs (`core-external-byte-array`), and large `ByteArray`s are cleared (`cli/large-byte-array`) | |
-| Send strings that aren't valid UTF-8 (crafted literals or string slices) to receivers that rely on valid ones; over-read with them | crafted literals rejected at launch; strings from crafted slices refused when sent, conversions stay inside the string | `invalid-utf-8-literal` | fixed: delivered to the system process; `string-to-utf-16` read up to 7 bytes past the string. The literals of format-2 programs are now checked at launch (`loaded_ok`); the run-time checks use a format-1 program | |
+| Send strings that aren't valid UTF-8 (crafted literals or string slices) to receivers that rely on valid ones; over-read with them | crafted literals rejected at launch; strings from crafted slices refused when sent, conversions stay inside the string | `invalid-utf-8-literal`, `cli/invalid-strings-snapshot` | fixed: delivered to the system process; `string-to-utf-16` read up to 7 bytes past the string. The literals of format-2 programs are now checked at launch (`loaded_ok`); the run-time checks make the strings with cut string slices (they used a format-1 program while untrusted format 1 could be allowed) | |
 | Create processes or groups; write flash | denied | `core-spawn`, `quota-processes`, `system-container-service`, `system-storage-service`, `module-flash-registry` | holds; no other path found | |
 | Starve the scheduler: tight loop, the longest primitives on 16 MB objects (15 ms on the host), recursion, 100 yielding tasks | the sibling and the system process answer within a few ms | `scheduler-starvation` | holds (also with the VM pinned to one core); run-time limit and CPU budget: `quota-run-time`, `quota-cpu-budget` | |
 | Raise the own priority | denied | `core-process-set-priority` | holds; no other path found | |
