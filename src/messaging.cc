@@ -100,6 +100,29 @@ void MessageEncoder::encode_process_message(uint8* buffer, uint8 value) {
   ASSERT(encoder.size() <= MESSAGING_PROCESS_MESSAGE_SIZE);
 }
 
+uint8* MessageEncoder::encode_rpc_error_reply(int id, const char* error, word* size) {
+  ASSERT(id >= 0);
+  word length = strlen(error);
+  ASSERT(length <= RPC_ERROR_REPLY_MAX_ERROR);
+  uint8* buffer = unvoid_cast<uint8*>(malloc(RPC_ERROR_REPLY_MAX_SIZE));
+  if (buffer == null) return null;
+  MessageEncoder encoder(null, buffer);
+  encoder.write_uint8(TAG_ARRAY);
+  encoder.write_cardinal(4);
+  encoder.write_uint8(TAG_POSITIVE_SMI);
+  encoder.write_cardinal(id);
+  encoder.write_uint8(TAG_TRUE);
+  encoder.write_uint8(TAG_STRING_INLINE);
+  encoder.write_cardinal(length);
+  memcpy(&buffer[encoder.cursor_], error, length);
+  encoder.cursor_ += length;
+  encoder.write_uint8(TAG_NULL);
+  ASSERT(encoder.size() <= RPC_ERROR_REPLY_MAX_SIZE);
+  *size = encoder.size();
+  encoder.take_buffer();  // Don't free the buffer in the destructor.
+  return buffer;
+}
+
 MessageEncoder::~MessageEncoder() {
   for (unsigned i = 0; i < copied_count_; i++) {
     free(copied_[i]);
@@ -579,6 +602,17 @@ bool MessageDecoder::decode_process_message(const uint8* buffer, int* value) {
   if (!decoder.success() || magnitude > INT_MAX) return false;
   int result = static_cast<int>(magnitude);
   *value = (tag == TAG_POSITIVE_SMI) ? result : -result;
+  return true;
+}
+
+bool MessageDecoder::decode_rpc_reply_id(const uint8* buffer, int* id) {
+  MessageDecoder decoder(null, buffer);
+  if (decoder.read_uint8() != TAG_ARRAY) return false;
+  decoder.read_cardinal();
+  if (decoder.read_uint8() != TAG_POSITIVE_SMI) return false;
+  uword value = decoder.read_cardinal();
+  if (!decoder.success() || value > INT_MAX) return false;
+  *id = static_cast<int>(value);
   return true;
 }
 

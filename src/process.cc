@@ -434,13 +434,21 @@ bool Process::append_system_message_locked(SystemMessage* system, int reply_to) 
   // fills its mailbox with its own messages still gets its replies.
   const PolicyQuotas& quotas = policy_->quotas();
   const word factor = PolicyQuotas::RECEIVER_FACTOR;
-  if (!mailbox_has_room(mailbox_count_, 1, quotas.max_mailbox_messages, factor)) return false;
-  if (!mailbox_has_room(mailbox_bytes_, size, quotas.max_mailbox_bytes, factor)) return false;
+  bool room = mailbox_has_room(mailbox_count_, 1, quotas.max_mailbox_messages, factor) &&
+      mailbox_has_room(mailbox_bytes_, size, quotas.max_mailbox_bytes, factor);
   // Quotas of a messaging-restricted sender. They protect every receiver,
   // including the system process, from being flooded by sandboxed code.
-  if (system->is_restricted()) {
-    if (!mailbox_has_room(restricted_count_, 1, system->restricted_max_count(), 1)) return false;
-    if (!mailbox_has_room(restricted_bytes_, size, system->restricted_max_bytes(), 1)) return false;
+  if (room && system->is_restricted()) {
+    room = mailbox_has_room(restricted_count_, 1, system->restricted_max_count(), 1) &&
+        mailbox_has_room(restricted_bytes_, size, system->restricted_max_bytes(), 1);
+  }
+  // The sandbox heap floor: the memory of a message to or from a sandbox.
+  if (room) room = message_floor_allows_locked(system, size);
+  if (!room) {
+    // A refused reply would leave the sandboxed caller waiting: it gets an
+    // error reply instead, if there is room for one.
+    if (reply_to < 0) queue_reply_notice_locked(system);
+    return false;
   }
   // A grant belongs to a delivered request. Linking a message into the
   // FIFO and charging the admitted counters cannot fail after this point.
@@ -451,8 +459,84 @@ bool Process::append_system_message_locked(SystemMessage* system, int reply_to) 
   }
   mailbox_count_++;
   mailbox_bytes_ += size;
+  charge_simulated_message_locked(system, size);
   messages_.append(system);
   return true;
+}
+
+bool Process::is_floor_charged(SystemMessage* system) const {
+  return policy_->is_untrusted() || system->is_restricted();
+}
+
+bool Process::message_floor_allows_locked(SystemMessage* system, word size) {
+  if (!is_floor_charged(system)) return true;
+  const word floor = sandbox_heap_floor();
+  if (floor <= 0) return true;
+  // A sandboxed receiver with an empty mailbox takes a message from a
+  // trusted sender anyway: it runs then, and gets the error replies of the
+  // replies it was refused (queue_reply_notice_locked). Messaging-restricted
+  // senders get the refusal.
+  if (!system->is_restricted() && mailbox_count_ == 0) return true;
+#ifdef TOIT_FREERTOS
+  // The message is allocated: what is free is what is left.
+  return system_free_bytes() >= floor;
+#else
+  return system_free_bytes() >= floor + size;
+#endif
+}
+
+void Process::charge_simulated_message_locked(SystemMessage* system, word size) {
+#ifndef TOIT_FREERTOS
+  if (is_floor_charged(system)) simulated_sandbox_bytes += size;
+#endif
+}
+
+void Process::uncharge_simulated_message_locked(SystemMessage* system, word size) {
+#ifndef TOIT_FREERTOS
+  if (is_floor_charged(system)) simulated_sandbox_bytes -= size;
+#endif
+}
+
+void Process::queue_reply_notice_locked(SystemMessage* refused) {
+  // Only RPC replies from unrestricted senders to a sandbox: restricted
+  // senders learn of the refusal (QUOTA_EXCEEDED) and handle it.
+  if (!policy_->is_untrusted() || refused->is_restricted() ||
+      refused->type() != SYSTEM_RPC_REPLY || refused->data() == null) {
+    return;
+  }
+  int id;
+  if (!MessageDecoder::decode_rpc_reply_id(refused->data(), &id)) return;
+  // The error replies may exceed the mailbox quotas and the floor by a
+  // small, fixed amount: REPLY_NOTICE_ALLOWANCE replies beyond the quotas,
+  // REPLY_NOTICE_FLOOR_RESERVE bytes below the floor (for all sandboxes).
+  const PolicyQuotas& quotas = policy_->quotas();
+  const word factor = PolicyQuotas::RECEIVER_FACTOR;
+  const word max_size = MessageEncoder::RPC_ERROR_REPLY_MAX_SIZE;
+  word count_quota = quotas.max_mailbox_messages;
+  word bytes_quota = quotas.max_mailbox_bytes;
+  if (count_quota > 0 && count_quota <= (INTPTR_MAX - REPLY_NOTICE_ALLOWANCE) / factor &&
+      mailbox_count_ >= count_quota * factor + REPLY_NOTICE_ALLOWANCE) {
+    return;
+  }
+  if (bytes_quota > 0 && bytes_quota <= (INTPTR_MAX - REPLY_NOTICE_ALLOWANCE * max_size) / factor &&
+      mailbox_bytes_ > bytes_quota * factor + (REPLY_NOTICE_ALLOWANCE - 1) * max_size) {
+    return;
+  }
+  const word floor = sandbox_heap_floor();
+  if (floor > 0 && system_free_bytes() < floor - REPLY_NOTICE_FLOOR_RESERVE + max_size) return;
+  word size = 0;
+  uint8* data = MessageEncoder::encode_rpc_error_reply(id, "QUOTA_EXCEEDED", &size);
+  if (data == null) return;
+  SystemMessage* notice = _new SystemMessage(SYSTEM_RPC_REPLY, refused->gid(), refused->pid(), data);
+  if (notice == null) {
+    free(data);
+    return;
+  }
+  notice->set_size(size);
+  mailbox_count_++;
+  mailbox_bytes_ += size;
+  charge_simulated_message_locked(notice, size);
+  messages_.append(notice);
 }
 
 bool Process::has_messages() {
@@ -476,6 +560,7 @@ void Process::remove_first_message() {
     word size = system->size();
     mailbox_count_--;
     mailbox_bytes_ -= size;
+    uncharge_simulated_message_locked(system, size);
     if (system->is_restricted()) {
       restricted_count_--;
       restricted_bytes_ -= size;

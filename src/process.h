@@ -400,6 +400,34 @@ class Process : public ProcessListFromProcessGroup::Element,
   // receiver's group permission to reply if the message is accepted.
   bool _append_message(SystemMessage* message, int reply_to = -1);
   bool append_system_message_locked(SystemMessage* message, int reply_to);
+
+  // The memory of a message is charged to the sandbox heap floor if the
+  // message is queued at a sandbox or comes from one (messaging-restricted
+  // sender): such a message is refused when it would leave less than the
+  // floor free (message_floor_allows_locked), except a message from an
+  // unrestricted sender to a sandbox with an empty mailbox. Before, these
+  // messages were bounded only by the mailbox quotas (on a device 128 KB per
+  // sandboxed receiver, more than the free heap), outside the floor.
+  bool is_floor_charged(SystemMessage* message) const;
+  bool message_floor_allows_locked(SystemMessage* message, word size);
+  // Host: the bytes of the floor-charged messages are part of the simulated
+  // system heap (see system_free_bytes).
+  void charge_simulated_message_locked(SystemMessage* message, word size);
+  void uncharge_simulated_message_locked(SystemMessage* message, word size);
+
+  // An RPC reply from an unrestricted sender (the system process, a trusted
+  // provider) that this sandboxed process's mailbox refuses (quota or
+  // floor) is replaced by an error reply ([id, true, "QUOTA_EXCEEDED",
+  // null], MessageEncoder::encode_rpc_error_reply), so the call fails
+  // instead of waiting forever. The error replies may exceed the quotas by
+  // REPLY_NOTICE_ALLOWANCE replies and the floor by
+  // REPLY_NOTICE_FLOOR_RESERVE bytes; beyond that, a refused reply is
+  // dropped as before. The refused reply itself stays with the sender (the
+  // send returns false and the sender drops it).
+  static const word REPLY_NOTICE_ALLOWANCE = 8;
+  static const word REPLY_NOTICE_FLOOR_RESERVE = 1024;
+  void queue_reply_notice_locked(SystemMessage* refused);
+
   void _ensure_random_seeded();
 
   int const id_;

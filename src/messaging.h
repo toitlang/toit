@@ -208,6 +208,16 @@ class MessageEncoder {
 
   static void encode_process_message(uint8* buffer, uint8 value);
 
+  // The largest encoding of encode_rpc_error_reply with an error of
+  // RPC_ERROR_REPLY_MAX_ERROR bytes.
+  static const int RPC_ERROR_REPLY_MAX_ERROR = 32;
+  static const int RPC_ERROR_REPLY_MAX_SIZE = 16 + RPC_ERROR_REPLY_MAX_ERROR;
+  // Encodes the RPC error reply [id, true, error, null] (the form of
+  // RpcBroker's exception replies) into a new malloced buffer and stores
+  // its size in [size]. [id] must be nonnegative and [error] at most
+  // RPC_ERROR_REPLY_MAX_ERROR bytes. Returns null if malloc fails.
+  static uint8* encode_rpc_error_reply(int id, const char* error, word* size);
+
   word size() const { return cursor_; }
   // The encoded size plus the size of all out-of-line data.
   word total_size() const { return cursor_ + external_bytes_; }
@@ -357,6 +367,12 @@ class MessageDecoder {
       : MessageDecoder(process, buffer, INT_MAX, MESSAGE_FORMAT_IPC) {}
 
   static bool decode_process_message(const uint8* buffer, int* value);
+
+  // Reads the id of an RPC reply ([id, ...], a nonnegative smi) from the
+  // start of the encoding [buffer] of a message from an unrestricted sender
+  // (the encoder made it, so the reads stay inside it). Returns false if
+  // the encoding doesn't start that way.
+  static bool decode_rpc_reply_id(const uint8* buffer, int* id);
 
   bool success() const { return status_ == DECODE_SUCCESS; }
   bool allocation_failed() const { return status_ == DECODE_ALLOCATION_FAILED; }
