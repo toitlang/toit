@@ -814,6 +814,18 @@ for abi in LP64 ILP32; do
 done
 spawn cpp_equivalence v2-table-compute LP64 64 v2_table_compute
 spawn cpp_equivalence v2-table-compute ILP32 32 v2_table_compute
+# The tag rule of format 3 (note 23): the previous version's tag accepted, and
+# the format-3 tag counted as stale, must both violate the harness.
+for abi in LP64 ILP32; do
+  bits=64
+  [[ "$abi" == ILP32 ]] && bits=32
+  spawn cpp_violation v2-table-compute-old-tag "$abi" "$bits" v2_table_compute program.h \
+    "the format-3 tag rule" \
+    "bytecodes.data()[2] == 'C' && bytecodes.data()[3] == '3';" "bytecodes.data()[2] == 'C' && bytecodes.data()[3] == '2';"
+  spawn cpp_violation v2-table-compute-stale-current "$abi" "$bits" v2_table_compute program.h \
+    "another TBC digit is a stale tag (the format error)" \
+    "'0' <= tag[3] && tag[3] <= '9' && tag[3] != '3';" "'0' <= tag[3] && tag[3] <= '9';"
+done
 spawn cpp_equivalence event-notifiers LP64 64 event_notifiers
 spawn cpp_equivalence event-notifiers ILP32 32 event_notifiers
 spawn cpp_equivalence event-read-state LP64 64 event_read_state
@@ -1320,6 +1332,14 @@ spawn cpp_equivalence encoder-frames ILP32 32 encoder_frames --unwind 9
 spawn cpp_equivalence encoder-frames-freertos ILP32 32 encoder_frames --unwind 9 -DCXXV_FREERTOS_TRACE
 spawn cpp_equivalence v2-frame-walk LP64 64 v2_frame_walk
 spawn cpp_equivalence v2-frame-walk ILP32 32 v2_frame_walk
+# The frame top is the whole try-top word since format 3, step 3: the walk
+# with the old packed decoding (frame top in the upper half) miscounts.
+spawn cpp_violation v2-frame-walk-packed-top LP64 64 v2_frame_walk objects.h \
+  "count-only walk needs no bytecodes or callback" \
+  "word v2_frame_top() const { return v2_frame_top_word(); }" "word v2_frame_top() const { return v2_frame_top_word() >> 16; }"
+spawn cpp_violation v2-frame-walk-packed-top ILP32 32 v2_frame_walk objects.h \
+  "count-only walk needs no bytecodes or callback" \
+  "word v2_frame_top() const { return v2_frame_top_word(); }" "word v2_frame_top() const { return v2_frame_top_word() >> 16; }"
 spawn cpp_equivalence stack-records LP64 64 stack_records
 spawn cpp_equivalence stack-records ILP32 32 stack_records
 spawn cpp_equivalence task-stack-init LP64 64 task_stack_init
@@ -1352,6 +1372,16 @@ instance_allocation() {
 }
 spawn cpp_equivalence fresh-stack LP64 64 fresh_stack --unwind 10
 spawn cpp_equivalence fresh-stack ILP32 32 fresh_stack --unwind 10
+# With the previous version's tag a format-2 reservation is not recognized
+# (format note 23) and its slots stay uninitialized: the harness must bite.
+spawn cpp_violation fresh-stack-old-tag LP64 64 fresh_stack program.h \
+  "initialize all slots on every successful format-2 reservation" \
+  "bytecodes.data()[2] == 'C' && bytecodes.data()[3] == '3';" "bytecodes.data()[2] == 'C' && bytecodes.data()[3] == '2';" \
+  --unwind 10
+spawn cpp_violation fresh-stack-old-tag ILP32 32 fresh_stack program.h \
+  "initialize all slots on every successful format-2 reservation" \
+  "bytecodes.data()[2] == 'C' && bytecodes.data()[3] == '3';" "bytecodes.data()[2] == 'C' && bytecodes.data()[3] == '2';" \
+  --unwind 10
 spawn instance_allocation instance-allocation LP64 64 instance_allocation
 spawn instance_allocation instance-allocation ILP32 32 instance_allocation
 spawn instance_allocation task-all-fields LP64 64 allocate_task -DCXXV_SYMBOLIC_FIELDS --unwind 10
@@ -1847,6 +1877,26 @@ spawn cpp_equivalence snapshot-image-layout LP64 64 snapshot_image_layout
 spawn cpp_equivalence snapshot-image-layout ILP32 32 snapshot_image_layout
 spawn gc_stack_scan_entry LP64 64
 spawn gc_stack_scan_entry ILP32 32
+# The format-3 tag: with the previous version's tag the image is not a
+# format-2 program for roots_do, which then skips the format-2 shrinking and
+# scan of the live slice (format note 23).
+gc_stack_scan_entry_old_tag() {
+  local abi="$1" bits="$2"
+  [[ -n "$filter" && "gc-stack-scan-entry-old-tag/$abi" != *"$filter"* ]] && return 0
+  local inc="$ACXX_WORK/gc-stack-scan-entry-old-tag-$bits"
+  mkdir -p "$inc" || return 1
+  awk '/^void Stack::roots_do\(Program\* program, RootCallback\* cb\) \{$/ { active=1; found++ }
+       active { print }
+       active && /^}$/ { active=0 }
+       END { if (found != 1 || active) exit 1 }' \
+    "$REPO_ROOT/src/objects.cc" > "$inc/stack_roots_do.inc" || return 1
+  cpp_violation gc-stack-scan-entry-old-tag "$abi" "$bits" gc_stack_scan_entry program.h \
+    "scan precisely the relocated live slice after shrinking" \
+    "bytecodes.data()[2] == 'C' && bytecodes.data()[3] == '3';" "bytecodes.data()[2] == 'C' && bytecodes.data()[3] == '2';" \
+    "-I$inc" --unwind 9
+}
+spawn gc_stack_scan_entry_old_tag LP64 64
+spawn gc_stack_scan_entry_old_tag ILP32 32
 spawn cpp_equivalence gc-stack-shrink LP64 64 gc_stack_shrink --unwind 2
 spawn cpp_equivalence gc-stack-shrink ILP32 32 gc_stack_shrink --unwind 2
 spawn cpp_equivalence gc-root-iterator LP64 64 gc_root_iterator

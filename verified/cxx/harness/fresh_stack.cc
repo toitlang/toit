@@ -53,7 +53,7 @@ int main() {
   image.class_bits = List<uint16>(classes, cid + 1);
   image.set_stack_class_id(Smi::from(cid));
   bool format2 = nondet_bool();
-  uint8 code[] = {'T', 'B', 'C', static_cast<uint8>(format2 ? '2' : '1')};
+  uint8 code[] = {'T', 'B', 'C', static_cast<uint8>(format2 ? '3' : 'x')};
   image.bytecodes = List<uint8>(code, 4);
   ObjectHeap heap(&image, nullptr, nullptr, nullptr, nullptr);
   length = nondet_word();

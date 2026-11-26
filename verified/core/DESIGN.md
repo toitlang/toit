@@ -9,8 +9,10 @@ OBLIGATIONS.md. Trusted base: TRUSTED.md and verified/TRUSTED.toml.
 
 ## 1. Format dispatch
 
-- A program is format 2 iff its bytecodes start with the tag `TBC2`
-  (`Program::is_format2`). The compiler emits format 2 by default on
+- A program is format 2 iff its bytecodes start with the tag `TBC3`
+  (`Program::is_format2`; the core's format, version 3 since format
+  note 23; `TBC` with another digit is a stale image, refused where
+  programs start, `Program::has_stale_v2_tag`). The compiler emits format 2 by default on
   builds with the core (docs/format2-migration.md; format 1 with
   `-Xbytecode_format=1`, `TOIT_BYTECODE_FORMAT=1` or a build configured
   with `-DTOIT_BYTECODE_FORMAT=1`), and always for `--untrusted`.

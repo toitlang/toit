@@ -85,8 +85,16 @@ int main() {
   uint8* bytecodes = image_length == 0 && nondet_bool() ? nullptr : tag;
   image = bytecodes;
   source_program.bytecodes = List<uint8>(bytecodes, image_length);
-  bool eligible = image_length >= 4 && image_length < 0x1000000 &&
-                  tag[0] == 'T' && tag[1] == 'B' && tag[2] == 'C' && tag[3] == '2' &&
+  // The verified core's tag is TBC3 (format 3, Program::is_format2); a
+  // TBC tag with another digit is an image of another version, which
+  // compute refuses like any image without the tag ("missing tag") and
+  // ProcessGroup::create refuses with the format error
+  // (Program::has_stale_v2_tag).
+  bool tbc = image_length >= 4 && tag[0] == 'T' && tag[1] == 'B' && tag[2] == 'C';
+  bool stale = tbc && '0' <= tag[3] && tag[3] <= '9' && tag[3] != '3';
+  CXXV_ASSERT(source_program.is_format2() == (tbc && tag[3] == '3'), "the format-3 tag rule");
+  CXXV_ASSERT(source_program.has_stale_v2_tag() == stale, "another TBC digit is a stale tag (the format error)");
+  bool eligible = image_length < 0x1000000 && tbc && tag[3] == '3' &&
                   (reinterpret_cast<uword>(bytecodes) & 1) == 0;
 
   uword object[4] = {2 * BYTE_ARRAY_TAG, 0, 0, RawByteTag};

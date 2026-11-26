@@ -63,7 +63,7 @@ int main() {
   code[0] = 'T';
   code[1] = 'B';
   code[2] = 'C';
-  code[3] = '2';
+  code[3] = '3';  // The verified core's tag (format 3, Program::is_format2).
   image.bytecodes = List<uint8>(code, bytecode_length);
   height = nondet_int();
   image.set_global_max_stack_height(height);
