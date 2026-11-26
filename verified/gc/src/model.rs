@@ -41,8 +41,12 @@ pub enum AVal {
     Raw(usize),
 }
 
+/// An object: its words, the class bits of its class (from the class table:
+/// instance sizes) and the stack array word of the VM build (stacks).
 pub struct AObj {
     pub words: Seq<AVal>,
+    pub cbits: u16,
+    pub sw: int,
 }
 
 /// The machine word of a value under the address map `a` (the core's
@@ -90,8 +94,16 @@ pub struct Ctx {
     pub ftab: *mut usize,
     pub nf: usize,
     pub pw: usize,
-    /// The table's contents.
+    /// The class table (the program's class bits) and its length.
+    pub ctab: *mut u16,
+    pub ncls: usize,
+    /// The word of a stack object where its array starts (`Stack::
+    /// HEADER_SIZE / WORD_SIZE`, larger in debug builds).
+    pub sw: usize,
+    /// The from-space table's contents.
     pub fss: Ghost<Seq<usize>>,
+    /// The class table's contents.
+    pub cbs: Ghost<Seq<u16>>,
 }
 
 /// The pointer to address `s` with the heap's provenance.
@@ -123,6 +135,9 @@ pub open spec fn ctx_ok(c: Ctx) -> bool {
     &&& c.fss@.len() == c.nf
     &&& 2 <= c.pw <= 0x10_0000
     &&& c.nf <= 0x1_0000
+    &&& c.cbs@.len() == c.ncls
+    &&& c.ncls <= 0x1_0000
+    &&& STACK_MIN_ARRAY_WORD <= c.sw <= 0x100
 }
 
 /// The from-space table is well formed (checked at run time by
@@ -192,6 +207,7 @@ pub open spec fn heap_ok(c: Ctx, h: H) -> bool {
     &&& h.addr.len() == n
     &&& n < 0x4000_0000
     &&& forall|j: int| 0 <= j < n ==> #[trigger] obj_ok(obj(h, j))
+    &&& forall|j: int| 0 <= j < n ==> #[trigger] cls_ok(c, obj(h, j))
     &&& forall|j: int| 0 <= j < n ==> #[trigger] slots_ok(c, h, j)
     &&& forall|j: int| #[trigger] from(h, j) ==> 0 <= j < n && fobj_ok(c, h, j)
     &&& forall|j1: int, j2: int| from(h, j1) && from(h, j2) && j1 != j2 ==> #[trigger] fdisjoint(h, j1, j2)

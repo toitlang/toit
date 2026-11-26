@@ -367,6 +367,8 @@ pub proof fn lemma_objs(c: Ctx, h: H, st: St, t: Tos, rptr: *mut usize, rv: Seq<
         assert(closed(h, st, rv[i]));
         assert(slot_ok(c, n, rv[i]));
     }
+    assert(bk_ok(h, st));
+    assert(st.addr2.len() == n);
 }
 
 /// The statement's objects survive a change that keeps the bookkeeping, the
@@ -446,7 +448,7 @@ pub fn collect<S: PageSource>(c: &Ctx, src: &mut S, rptr: *mut usize, rlen: usiz
                               Ghost(h): Ghost<H>, Ghost(rv): Ghost<Seq<AVal>>,
                               Tracked(st): Tracked<&mut St>, Tracked(ro): Tracked<&Ro>) -> (r: Result<Window, GcError>)
     requires
-        ctx_ok(*c), ftab_ok(*c, ro.ftp), heap_ok(*c, h), others_ok(h, ro.others),
+        ctx_ok(*c), ftab_ok(*c, ro.ftp), heap_ok(*c, h), others_ok(h, ro.others), ctab_ok(*c, ro.ctp),
         from_ok(*c, h, old(st).fp),
         rv.len() == rlen, roots_in(*c, h, old(st).rp, rptr, rv),
         ttab@.addr + tcap * W <= usize::MAX, tused@.addr + tcap * W <= usize::MAX,

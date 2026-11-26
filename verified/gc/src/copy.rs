@@ -415,7 +415,7 @@ pub fn copy<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, fstart: usize, off
                            Ghost(ri): Ghost<int>,
                            Tracked(st): Tracked<&mut St>, Tracked(ro): Tracked<&Ro>) -> (r: usize)
     requires
-        ctx_ok(*c), fpages_ok(*c), heap_ok(*c, h), others_ok(h, ro.others),
+        ctx_ok(*c), fpages_ok(*c), heap_ok(*c, h), others_ok(h, ro.others), ctab_ok(*c, ro.ctp),
         inv(*c, h, *old(st), *old(t), ks, kc, rv), roots_ok(*c, h, *old(st), rptr, rv, ri),
         src_ok(*c, *old(src), *old(t)),
         from(h, j), !copied(*old(st), j), fstart == fs(*c, fpg(h, j)), off == foff(h, j),
@@ -446,7 +446,7 @@ pub fn copy<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, fstart: usize, off
         }
     }
     let fpage = c.base.with_addr(fstart);
-    let (sz, _lo, _hi) = obj_layout(fpage, off, Ghost(pg), Tracked(&st.fp), Ghost(o), Ghost(pw));
+    let (sz, _lo, _hi) = obj_layout(c, fpage, off, Ghost(pg), Tracked(&st.fp), Ghost(o), Ghost(pw), Tracked(&ro.ctp));
     proof {
         lemma_capacity(*c, h, s0, t0, j);
     }

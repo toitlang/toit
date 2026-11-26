@@ -86,7 +86,7 @@ pub fn forward<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, w: usize,
                               Ghost(ri): Ghost<int>,
                               Tracked(st): Tracked<&mut St>, Tracked(ro): Tracked<&Ro>) -> (r: usize)
     requires
-        ctx_ok(*c), fpages_ok(*c), ftab_ok(*c, ro.ftp), heap_ok(*c, h), others_ok(h, ro.others),
+        ctx_ok(*c), fpages_ok(*c), ftab_ok(*c, ro.ftp), heap_ok(*c, h), others_ok(h, ro.others), ctab_ok(*c, ro.ctp),
         inv(*c, h, *old(st), *old(t), ks, kc, rv), roots_ok(*c, h, *old(st), rptr, rv, ri),
         src_ok(*c, *old(src), *old(t)),
         w == enc(h.addr, v), slot_ok(*c, h.objs.len() as int, v),
@@ -377,7 +377,7 @@ pub fn scan_object<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, sstart: usi
                               Ghost(rptr): Ghost<*mut usize>, Ghost(rv): Ghost<Seq<AVal>>,
                               Tracked(st): Tracked<&mut St>, Tracked(ro): Tracked<&Ro>) -> (sz: usize)
     requires
-        ctx_ok(*c), fpages_ok(*c), ftab_ok(*c, ro.ftp), heap_ok(*c, h), others_ok(h, ro.others),
+        ctx_ok(*c), fpages_ok(*c), ftab_ok(*c, ro.ftp), heap_ok(*c, h), others_ok(h, ro.others), ctab_ok(*c, ro.ctp),
         inv(*c, h, *old(st), *old(t), ks, 0, rv), roots_ok(*c, h, *old(st), rptr, rv, rv.len() as int),
         src_ok(*c, *old(src), *old(t)),
         0 <= ks < old(st).order.len(), old(st).tloc[ks] == (sp, so as int), sstart == old(st).tss[sp],
@@ -409,7 +409,7 @@ pub fn scan_object<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, sstart: usi
         }
     }
     let tpage = c.base.with_addr(sstart);
-    let (sz, lo, hi) = obj_layout(tpage, so, Ghost(sp), Tracked(&st.tp), Ghost(o), Ghost(pw));
+    let (sz, lo, hi) = obj_layout(c, tpage, so, Ghost(sp), Tracked(&st.tp), Ghost(o), Ghost(pw), Tracked(&ro.ctp));
     proof {
         assert forall|i: int| 0 <= i < lo implies !is_ref(o, i) by {}
         lemma_to_raw(*c, h, s0, ks, 0, lo as int);
@@ -417,7 +417,7 @@ pub fn scan_object<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, sstart: usi
     let mut i = lo;
     while i < hi
         invariant
-            ctx_ok(*c), fpages_ok(*c), ftab_ok(*c, ro.ftp), heap_ok(*c, h), others_ok(h, ro.others),
+            ctx_ok(*c), fpages_ok(*c), ftab_ok(*c, ro.ftp), heap_ok(*c, h), others_ok(h, ro.others), ctab_ok(*c, ro.ctp),
             inv(*c, h, *st, *t, ks, i as int, rv), roots_ok(*c, h, *st, rptr, rv, rl),
             src_ok(*c, *src, *t),
             grows(h, s0, *st), s0.addr2.len() == h.objs.len(),
@@ -500,7 +500,7 @@ pub fn do_roots<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, rptr: *mut usi
                            Ghost(h): Ghost<H>, Ghost(rv): Ghost<Seq<AVal>>,
                            Tracked(st): Tracked<&mut St>, Tracked(ro): Tracked<&Ro>)
     requires
-        ctx_ok(*c), fpages_ok(*c), ftab_ok(*c, ro.ftp), heap_ok(*c, h), others_ok(h, ro.others),
+        ctx_ok(*c), fpages_ok(*c), ftab_ok(*c, ro.ftp), heap_ok(*c, h), others_ok(h, ro.others), ctab_ok(*c, ro.ctp),
         inv(*c, h, *old(st), *old(t), 0, 0, rv), roots_ok(*c, h, *old(st), rptr, rv, 0),
         src_ok(*c, *old(src), *old(t)), rv.len() == rlen,
     ensures
@@ -511,7 +511,7 @@ pub fn do_roots<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, rptr: *mut usi
     let mut i: usize = 0;
     while i < rlen
         invariant
-            ctx_ok(*c), fpages_ok(*c), ftab_ok(*c, ro.ftp), heap_ok(*c, h), others_ok(h, ro.others),
+            ctx_ok(*c), fpages_ok(*c), ftab_ok(*c, ro.ftp), heap_ok(*c, h), others_ok(h, ro.others), ctab_ok(*c, ro.ctp),
             inv(*c, h, *st, *t, 0, 0, rv), roots_ok(*c, h, *st, rptr, rv, i as int),
             src_ok(*c, *src, *t), rv.len() == rlen, i <= rlen,
             t.ttab == old(t).ttab, t.tused == old(t).tused, t.tcap == old(t).tcap,
@@ -562,7 +562,7 @@ pub fn scan<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, Ghost(h): Ghost<H>
                        Ghost(rv): Ghost<Seq<AVal>>,
                        Tracked(st): Tracked<&mut St>, Tracked(ro): Tracked<&Ro>)
     requires
-        ctx_ok(*c), fpages_ok(*c), ftab_ok(*c, ro.ftp), heap_ok(*c, h), others_ok(h, ro.others),
+        ctx_ok(*c), fpages_ok(*c), ftab_ok(*c, ro.ftp), heap_ok(*c, h), others_ok(h, ro.others), ctab_ok(*c, ro.ctp),
         inv(*c, h, *old(st), *old(t), 0, 0, rv), roots_ok(*c, h, *old(st), rptr, rv, rv.len() as int),
         src_ok(*c, *old(src), *old(t)),
     ensures
@@ -585,7 +585,7 @@ pub fn scan<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, Ghost(h): Ghost<H>
     let ghost mut ks: int = 0;
     while !(sp + 1 == t.tn && so == t.top)
         invariant
-            ctx_ok(*c), fpages_ok(*c), ftab_ok(*c, ro.ftp), heap_ok(*c, h), others_ok(h, ro.others),
+            ctx_ok(*c), fpages_ok(*c), ftab_ok(*c, ro.ftp), heap_ok(*c, h), others_ok(h, ro.others), ctab_ok(*c, ro.ctp),
             inv(*c, h, *st, *t, ks, 0, rv), roots_ok(*c, h, *st, rptr, rv, rl), rl == rv.len(),
             src_ok(*c, *src, *t),
             t.ttab == old(t).ttab, t.tused == old(t).tused, t.tcap == old(t).tcap,
