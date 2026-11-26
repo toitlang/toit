@@ -28,10 +28,15 @@ into the VM yet (M5). The C++ prototype it ports is `src/sandbox_gc.cc`.
   from-space pages for the largest object, `reserve_pages`.
 - `src/shrink.rs`: stack shrinking after the copy (`cimg`, `shrink_stacks`),
   `same_abstraction`.
+- `src/weak.rs`: live weak maps: their index and backing hidden before the
+  trace (`hide_maps`), the weak pass (dead values of a surviving map's
+  backing array nulled, fields given back; dead maps reset), `trace`
+  (hide, roots, scan, weak pass, scan).
 - `src/bridge.rs` (Verus only): `collected` implies the core's
   `gcbridge::collected` and a collection of the spec; from the core's state
   with the C++ roots (M3); with the finalizer pass, the reset weak maps
-  being the spec's `zapped` (M4).
+  being the spec's `zapped` (M4); with the weak pass, zapped backing arrays
+  too (`lemma_spec_collection_core_w`).
 - `tests/collect.rs`: concrete heaps in the VM's layouts, checked against an
   independent reference (reachability, isomorphism up to renumbering, page
   structure).
