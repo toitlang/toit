@@ -364,6 +364,8 @@ void TwoSpaceHeap::enable_copying_gc() {
   ASSERT(old_space_.is_empty());
   copying_ = true;
 #ifndef TOIT_FREERTOS
+  const char* budget = getenv("TOIT_SANDBOX_GC_BUDGET");
+  if (budget != null && atol(budget) > 0) copying_page_budget_ = static_cast<uword>(atol(budget));
   const char* stress = getenv("TOIT_SANDBOX_GC_STRESS");
   if (stress != null) {
     long window = atol(stress);
@@ -397,6 +399,10 @@ uword TwoSpaceHeap::copying_allocate_slow(uword size) {
       return result;
     }
   }
+  if (copying_page_budget_ != 0 && copying_pages_since_gc_ >= copying_page_budget_ &&
+      !process_heap_->retrying_primitive()) {
+    return 0;  // Collect before growing further.
+  }
   word room = max_external_allocation();
   if (room < TOIT_PAGE_SIZE) return 0;  // Over the limit (-1) or too close: collect.
   if (!semi_space_.chunk_list_.is_empty()) {
@@ -408,6 +414,7 @@ uword TwoSpaceHeap::copying_allocate_slow(uword size) {
     report_malloc_failed();
     return 0;
   }
+  copying_pages_since_gc_++;
   semi_space_.chunk_list_.append(chunk);
   semi_space_.top_ = chunk->start();
   semi_space_.limit_ = chunk->end();
@@ -491,6 +498,7 @@ GcType TwoSpaceHeap::collect(bool try_hard) {
     total_bytes_allocated_.fetch_add(new_space_used(), std::memory_order_relaxed);
     SandboxCopyingCollector collector(this);
     collector.collect();
+    copying_pages_since_gc_ = 0;
     copying_cut_window();
     total_bytes_allocated_.fetch_sub(new_space_used(), std::memory_order_relaxed);
     if (stats) {

@@ -154,6 +154,10 @@ class TwoSpaceHeap {
   // collection (every primitive that allocates then goes through the GC and
   // retry protocol). 0: off.
   uword copying_stress_window_ = 0;
+  // Measurement knob (TOIT_SANDBOX_GC_BUDGET): collect after this many new pages
+  // since the last collection even below the heap limit. 0: only the limit.
+  uword copying_page_budget_ = 0;
+  uword copying_pages_since_gc_ = 0;
   void copying_cut_window();
   // Allocated at the first collection when TOIT_GC_STATS is set (hosts only).
   GcStats* stats_ = null;
