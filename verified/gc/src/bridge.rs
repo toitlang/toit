@@ -48,6 +48,7 @@ use toit_spec::v2::types::{State2, Program2};
 use toit_spec::v2::gc::{obj_vals, zapped, collection, renamed, is_map, reset_map};
 use toit_spec::v2::spec::null2;
 use crate::fin::*;
+use crate::shrink::cimg;
 use toit_verified_core::abs::{obj_model_ok, heap_model_ok, encodable, enc_seq};
 use toit_verified_core::view::{word_val, is_word};
 use toit_verified_core::gcbridge;
@@ -323,7 +324,19 @@ pub proof fn lemma_bridge(ap: Program2, cb: Seq<u16>, s1: State2, n0: int,
         assert(obj_ok(obj(h, i)));
         assert(0 <= k < size(h, i));
         assert(collected_objs(c, h, st, rptr, rv, rvp, w.pages as int));
-        assert(st.tp[(cpg(st, i), coff(st, i) + k)].value() == wval(obj(h, i), st.addr2, k));
+        assert(st.tp[(cpg(st, i), coff(st, i) + k)].value() == wval(cimg(c, obj(h, i)), st.addr2, k));
+        if k > 0 {
+            // Not a stack: its spec object has words beyond the header.
+            assert(obj_model_ok(sh[i], cb, h.addr));
+            assert(is_word(sh[i], 0));
+            assert(word_rep(sh[i], h.objs[i], cb, n, 0));
+            assert(word_val(sh[i], cb, h.addr, 0, wval(h.objs[i], h.addr, 0)));
+            assert(h.objs[i].words[0] is Raw);
+            lemma_htag(hdr(obj(h, i)));
+            assert(htag(hdr(obj(h, i))) != STACK_TAG);
+        }
+        crate::shrink::lemma_cimg_word(c, obj(h, i), k);
+        assert(wval(cimg(c, obj(h, i)), st.addr2, k) == wval(obj(h, i), st.addr2, k));
     }
 }
 

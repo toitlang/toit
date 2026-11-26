@@ -517,7 +517,7 @@ pub fn place<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, sz: usize, Ghost(
                 }
             }
             assert forall|p: int| 0 <= p < t.tn - 1 implies #[trigger] s2.tup[p].is_init() && s2.tup[p].value() == s2.tus[p] by {
-                if p < tn0 - 1 { assert(s0.tup[p].is_init() && s0.tup[p].value() == s0.tus[p]); }
+                if p < tn0 - 1 { assert(tpages_ok(*c, h, s0, t0)); assert(s0.tup[p].is_init()); assert(s0.tup[p].value() == s0.tus[p]); }
             }
             assert forall|q: (int, int)| s0.tp.contains_key(q) && q != (tn0 - 1, t0.top as int) implies
                 #[trigger] s2.tp[q] == s0.tp[q] by {
@@ -539,7 +539,9 @@ pub fn place<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, sz: usize, Ghost(
                 assert(s0.tp[(p, s0.tus[p])].is_init());
             }
             assert forall|p: int| 0 <= p < t.tn - 1 implies #[trigger] s2.tup[p].is_init() && s2.tup[p].value() == s2.tus[p] by {
-                assert(s0.tup[p].is_init() && s0.tup[p].value() == s0.tus[p]);
+                assert(tpages_ok(*c, h, s0, t0));
+                assert(s0.tup[p].is_init());
+                assert(s0.tup[p].value() == s0.tus[p]);
             }
             assert forall|p: int, k: int| 0 <= p < t.tn && 0 <= k < c.pw implies
                 #[trigger] wperm_ok(s2.tp, (p, k), tptr(*c, s2, p), k) by {

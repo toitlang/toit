@@ -34,8 +34,10 @@ use crate::*;
 use crate::model::*;
 use crate::layout::*;
 use crate::cheney::*;
+#[cfg(verus_keep_ghost)]
 use crate::tail::filler_word;
 use crate::collect::tab_at;
+use crate::statement::*;
 #[cfg(verus_keep_ghost)]
 use crate::copy::lemma_from_obj;
 
@@ -142,6 +144,21 @@ proof fn lemma_holds_ext(tp: Map<(int, int), PointsTo<usize>>, pg: int, so: int,
     ensures holds(tp, pg, so, page, n, v2),
 {
     assert(Seq::new(n as nat, v1) =~= Seq::new(n as nat, v2));
+}
+
+/// `holds` from its words.
+proof fn lemma_holds_intro(tp: Map<(int, int), PointsTo<usize>>, pg: int, so: int, page: *mut usize, n: int, v: spec_fn(int) -> usize)
+    requires
+        n >= 0,
+        forall|q: int| 0 <= q < n ==> #[trigger] wperm_ok(tp, (pg, so + q), page, so + q) && tp[(pg, so + q)].is_init()
+            && tp[(pg, so + q)].value() == v(q),
+    ensures holds(tp, pg, so, page, n, v),
+{
+    let vs = Seq::new(n as nat, v);
+    assert forall|q: int| 0 <= q < vs.len() implies #[trigger] wperm_ok(tp, (pg, so + q), page, so + q)
+        && tp[(pg, so + q)].is_init() && tp[(pg, so + q)].value() == vs[q] by {
+        assert(wperm_ok(tp, (pg, so + q), page, so + q));
+    }
 }
 
 /// One word written.
@@ -376,6 +393,18 @@ pub fn shrink_one(c: &Ctx, page: *mut usize, so: usize, Ghost(pg): Ghost<int>, G
 }
 
 
+/// The to-space window of a to-space state.
+pub open spec fn win(t: Tos) -> Window { Window { pages: t.tn, top: t.top } }
+
+/// The to-space pages and tables as the statement gives them, with the
+/// tables' capacity.
+pub open spec fn tabs_ok(c: Ctx, h: H, st: St, t: Tos) -> bool {
+    &&& collected_pages(c, h, st, t.ttab, t.tused, win(t))
+    &&& t.tn <= t.tcap
+    &&& t.ttab@.addr + t.tcap * W <= usize::MAX
+    &&& t.tused@.addr + t.tcap * W <= usize::MAX
+}
+
 /// The words of the copies: copy `kk`'s are `obj`'s (or, for `kk < ks`,
 /// its shrunk image's) under the new address map.
 pub open spec fn copies_words(c: Ctx, h: H, st: St, ks: int) -> bool {
@@ -400,7 +429,7 @@ pub open spec fn walk_ok(c: Ctx, h: H, s0: St, st: St, t: Tos, ks: int) -> bool 
 fn shrink_copy(c: &Ctx, t: &Tos, sstart: usize, sp: usize, so: usize, Ghost(h): Ghost<H>, Ghost(s0): Ghost<St>, Ghost(ks): Ghost<int>,
                Tracked(st): Tracked<&mut St>, Tracked(ctp): Tracked<&Map<int, PointsTo<u16>>>) -> (sz: usize)
     requires
-        ctx_ok(*c), heap_ok(*c, h), ctab_ok(*c, *ctp), bk_ok(h, s0), tcopies_ok(*c, h, s0, *t), tpages_ok(*c, h, s0, *t),
+        ctx_ok(*c), heap_ok(*c, h), ctab_ok(*c, *ctp), bk_ok(h, s0), tcopies_ok(*c, h, s0, *t), tabs_ok(*c, h, s0, *t),
         t.tn >= 1, 0 <= ks < s0.order.len(), 0 <= sp < t.tn, sstart == s0.tss[sp as int],
         s0.tloc[ks] == (sp as int, so as int),
         walk_ok(*c, h, s0, *old(st), *t, ks),
@@ -458,11 +487,7 @@ fn shrink_copy(c: &Ctx, t: &Tos, sstart: usize, sp: usize, so: usize, Ghost(h): 
     if (hd >> 1) & 15 == STACK_TAG {
         proof {
             assert(o.sw == c.sw);
-            assert(holds(st.tp, pg, so as int, page, lay(o).size, |q: int| wval(o, st.addr2, q))) by {
-                let vs = Seq::new(lay(o).size as nat, |q: int| wval(o, st.addr2, q));
-                assert forall|q: int| 0 <= q < vs.len() implies #[trigger] wperm_ok(st.tp, (pg, so + q), page, so + q)
-                    && st.tp[(pg, so + q)].is_init() && st.tp[(pg, so + q)].value() == vs[q] by {}
-            }
+            lemma_holds_intro(st.tp, pg, so as int, page, lay(o).size, |q: int| wval(o, st.addr2, q));
         }
         shrink_one(c, page, so, Ghost(pg), Ghost(o), Ghost(st.addr2), Tracked(&mut st.tp));
     } else {
@@ -515,22 +540,39 @@ fn shrink_copy(c: &Ctx, t: &Tos, sstart: usize, sp: usize, so: usize, Ghost(h): 
 }
 /// Shrinks every copied stack (`shrink_one`), walking the to-space pages
 /// copy by copy as the scan does. Only the copies' words change.
-pub fn shrink_stacks(c: &Ctx, t: &Tos, Ghost(h): Ghost<H>, Tracked(st): Tracked<&mut St>,
+pub fn shrink_stacks(c: &Ctx, t: &Tos, Ghost(h): Ghost<H>, Ghost(rptr): Ghost<*mut usize>, Ghost(rv): Ghost<Seq<AVal>>,
+                     Ghost(rvp): Ghost<Seq<AVal>>, Tracked(st): Tracked<&mut St>,
                      Tracked(ctp): Tracked<&Map<int, PointsTo<u16>>>)
     requires
         ctx_ok(*c), heap_ok(*c, h), ctab_ok(*c, *ctp), bk_ok(h, *old(st)),
-        tcopies_ok(*c, h, *old(st), *t), tpages_ok(*c, h, *old(st), *t), t.tn >= 1,
-        copies_words(*c, h, *old(st), 0),
+        tcopies_ok(*c, h, *old(st), *t), tabs_ok(*c, h, *old(st), *t), t.tn >= 1,
+        collected_pre(*c, h, *old(st), rptr, rv, rvp, t.ttab, t.tused, win(*t)),
     ensures
         *final(st) == (St { tp: final(st).tp, ..*old(st) }),
         final(st).tp.dom() == old(st).tp.dom(),
         forall|p: int, k: int| 0 <= p < t.tn && 0 <= k < c.pw ==> #[trigger] wperm_ok(final(st).tp, (p, k), tptr(*c, *old(st), p), k),
         forall|q: (int, int)| 0 <= q.0 < t.tn && q.1 >= old(st).tus[q.0] ==> #[trigger] final(st).tp[q] == old(st).tp[q],
-        copies_words(*c, h, *final(st), old(st).order.len() as int),
+        collected(*c, h, *final(st), rptr, rv, rvp, t.ttab, t.tused, win(*t)),
 {
     let ghost s0 = *st;
     let ghost n = s0.order.len() as int;
     proof { lemma_w(); }
+    proof {
+        // The copies' words by copy index.
+        assert forall|kk: int, i: int| 0 <= kk < s0.order.len() && 0 <= i < tsz(h, s0, kk) implies
+            (#[trigger] s0.tp[tkey(s0, kk, i)]).is_init()
+            && s0.tp[tkey(s0, kk, i)].value() == wval(if kk < 0 { cimg(*c, obj(h, s0.order[kk])) } else { obj(h, s0.order[kk]) }, s0.addr2, i) by {
+            let j = s0.order[kk];
+            assert(copied(s0, j) && s0.pos[j] == kk);
+            assert(tkey(s0, kk, i) == (cpg(s0, j), coff(s0, j) + i));
+            assert(s0.tp[(cpg(s0, j), coff(s0, j) + i)].is_init());
+        }
+        assert forall|p: int, k: int| 0 <= p < t.tn && 0 <= k < c.pw implies #[trigger] wperm_ok(st.tp, (p, k), tptr(*c, s0, p), k) by {
+            assert(wperm_ok(s0.tp, (p, k), ppage(*c, s0.tss[p] as int), k));
+        }
+        assert(walk_ok(*c, h, s0, *st, *t, 0));
+        assert(wperm_ok(st.ttp, 0, t.ttab, 0));
+    }
     let mut sstart = tab_at(t.ttab, 0, Ghost(t.tcap as int), Tracked(&st.ttp));
     let mut sp: usize = 0;
     let mut so: usize = 0;
@@ -542,7 +584,7 @@ pub fn shrink_stacks(c: &Ctx, t: &Tos, Ghost(h): Ghost<H>, Tracked(st): Tracked<
     }
     while !(sp + 1 == t.tn && so == t.top)
         invariant
-            ctx_ok(*c), heap_ok(*c, h), ctab_ok(*c, *ctp), bk_ok(h, s0), tcopies_ok(*c, h, s0, *t), tpages_ok(*c, h, s0, *t),
+            ctx_ok(*c), heap_ok(*c, h), ctab_ok(*c, *ctp), bk_ok(h, s0), tcopies_ok(*c, h, s0, *t), tabs_ok(*c, h, s0, *t),
             t.tn >= 1, n == s0.order.len(),
             walk_ok(*c, h, s0, *st, *t, ks),
             0 <= sp < t.tn, sstart == s0.tss[sp as int],
@@ -562,7 +604,7 @@ pub fn shrink_stacks(c: &Ctx, t: &Tos, Ghost(h): Ghost<H>, Tracked(st): Tracked<
             proof {
                 assert((sp as int) < (t.tn as int) - 1);
                 assert(wperm_ok(st.tup, sp as int, t.tused, sp as int));
-                assert(tpages_ok(*c, h, s0, *t));
+                assert(tabs_ok(*c, h, s0, *t));
                 assert(s0.tup[sp as int].is_init());
                 assert(s0.tup[sp as int].value() == s0.tus[sp as int]);
                 assert(st.tup == s0.tup);
@@ -607,6 +649,159 @@ pub fn shrink_stacks(c: &Ctx, t: &Tos, Ghost(h): Ghost<H>, Tracked(st): Tracked<
             assert(s0.tus[t.tn - 1] == t.top);
             assert(false);
         }
+        let s3 = *st;
+        assert(walk_ok(*c, h, s0, s3, *t, n));
+        assert forall|j: int, k: int| 0 <= j < h.objs.len() && copied(s3, j) && 0 <= k < size(h, j) implies
+            (#[trigger] s3.tp[(cpg(s3, j), coff(s3, j) + k)]).is_init()
+            && s3.tp[(cpg(s3, j), coff(s3, j) + k)].value() == wval(cimg(*c, obj(h, j)), s3.addr2, k) by {
+            let kk = s0.pos[j];
+            assert(copied(s0, j));
+            assert(s0.order[kk] == j);
+            assert(tkey(s3, kk, k) == (cpg(s3, j), coff(s3, j) + k));
+            assert(s3.tp[tkey(s3, kk, k)].is_init());
+        }
+        assert(s3.pos == s0.pos && s3.tloc == s0.tloc && s3.addr2 == s0.addr2 && s3.rp == s0.rp && s3.tss == s0.tss && s3.tus == s0.tus);
+        assert(objs_core(*c, h, s0, rptr, rv, rvp, t.tn as int));
+        lemma_core_same(*c, h, s0, s3, rptr, rv, rvp, t.tn as int);
+        assert forall|p: int| 0 <= p < t.tn implies #[trigger] s3.tp[(p, s3.tus[p])].is_init() && s3.tp[(p, s3.tus[p])].value() == 0 by {
+            assert(s3.tp[(p, s0.tus[p])] == s0.tp[(p, s0.tus[p])]);
+        }
+        assert forall|p: int, k: int| 0 <= p < t.tn && 0 <= k < c.pw implies #[trigger] wperm_ok(s3.tp, (p, k), ppage(*c, s3.tss[p] as int), k) by {
+            assert(wperm_ok(s3.tp, (p, k), tptr(*c, s0, p), k));
+        }
+        assert(collected_pages(*c, h, s3, t.ttab, t.tused, win(*t)));
+    }
+}
+
+
+/// `objs_core` does not read the to-space words.
+pub proof fn lemma_core_same(c: Ctx, h: H, s0: St, s1: St, rptr: *mut usize, rv: Seq<AVal>, rvp: Seq<AVal>, tn: int)
+    requires objs_core(c, h, s0, rptr, rv, rvp, tn), s1 == (St { tp: s1.tp, ..s0 }),
+    ensures objs_core(c, h, s1, rptr, rv, rvp, tn),
+{
+    let n = h.objs.len() as int;
+    assert forall|j: int| #[trigger] copied(s1, j) == copied(s0, j) by {}
+    assert forall|j: int| #[trigger] live(h, s1, j) == live(h, s0, j) by {}
+    assert forall|v: AVal| #[trigger] val_live(h, s1, v) == val_live(h, s0, v) by {}
+    assert forall|j: int| #[trigger] cpg(s1, j) == cpg(s0, j) && coff(s1, j) == coff(s0, j) by {}
+    assert forall|j: int| 0 <= j < n implies (from(h, j) && reachable(h, rv, j) ==> #[trigger] copied(s1, j))
+        && (copied(s1, j) ==> from(h, j) && reachable(h, rvp, j)) by {
+        assert(copied(s0, j) == copied(s1, j));
+    }
+    assert forall|j: int, k: int| 0 <= j < n && live(h, s1, j) && is_ref(obj(h, j), k)
+        implies val_live(h, s1, #[trigger] obj(h, j).words[k]) by {
+        assert(live(h, s0, j));
+        assert(val_live(h, s0, obj(h, j).words[k]));
+    }
+    assert forall|j: int| 0 <= j < n && #[trigger] copied(s1, j) implies
+        0 <= cpg(s1, j) < tn && 0 <= coff(s1, j) && coff(s1, j) + size(h, j) <= s1.tus[cpg(s1, j)]
+        && s1.addr2[j] == s1.tss[cpg(s1, j)] + coff(s1, j) * W + 1 by {
+        assert(copied(s0, j));
+    }
+    assert forall|j1: int, j2: int| 0 <= j1 < n && 0 <= j2 < n && copied(s1, j1) && copied(s1, j2) && j1 != j2
+        && #[trigger] cpg(s1, j1) == #[trigger] cpg(s1, j2) implies
+        coff(s1, j1) + size(h, j1) <= coff(s1, j2) || coff(s1, j2) + size(h, j2) <= coff(s1, j1) by {
+        assert(cpg(s0, j1) == cpg(s0, j2));
+    }
+    assert forall|j: int| 0 <= j < n && live(h, s1, j) implies #[trigger] s1.addr2[j] % 4 == 1 by {
+        assert(live(h, s0, j));
+    }
+    assert forall|j1: int, j2: int| 0 <= j1 < n && 0 <= j2 < n && live(h, s1, j1) && live(h, s1, j2) && j1 != j2
+        implies #[trigger] s1.addr2[j1] != #[trigger] s1.addr2[j2] by {
+        assert(live(h, s0, j1) && live(h, s0, j2));
+    }
+    assert forall|i: int| 0 <= i < rv.len() implies #[trigger] wperm_ok(s1.rp, i, rptr, i) && s1.rp[i].is_init()
+        && s1.rp[i].value() == enc(s1.addr2, rv[i]) && val_live(h, s1, rv[i]) by {
+        assert(wperm_ok(s0.rp, i, rptr, i));
+        assert(val_live(h, s0, rv[i]));
+    }
+}
+
+
+/// `bk_ok` and `tcopies_ok` read neither the words nor the tables.
+pub proof fn lemma_bk_tcopies_same(c: Ctx, h: H, s0: St, s1: St, t0: Tos, t1: Tos)
+    requires
+        bk_ok(h, s0), tcopies_ok(c, h, s0, t0),
+        s1.order == s0.order, s1.pos == s0.pos, s1.addr2 == s0.addr2, s1.tloc == s0.tloc, s1.tss == s0.tss, s1.tus == s0.tus,
+        t1.tn == t0.tn, t1.top == t0.top,
+    ensures bk_ok(h, s1), tcopies_ok(c, h, s1, t1),
+{
+    let n = s0.order.len() as int;
+    assert forall|j: int| #[trigger] copied(s1, j) == copied(s0, j) by {}
+    assert forall|k: int| #[trigger] taddr(s1, k) == taddr(s0, k) by {}
+    assert forall|k: int| #[trigger] tsz(h, s1, k) == tsz(h, s0, k) && tpg(s1, k) == tpg(s0, k) && toff(s1, k) == toff(s0, k)
+        && tend(h, s1, k) == tend(h, s0, k) by {}
+    assert forall|k: int| 0 <= k < n implies from(h, #[trigger] s1.order[k]) && s1.pos.contains_key(s1.order[k]) && s1.pos[s1.order[k]] == k by {
+        assert(from(h, s0.order[k]));
+    }
+    assert forall|j: int| #[trigger] copied(s1, j) implies 0 <= s1.pos[j] < n && s1.order[s1.pos[j]] == j by {
+        assert(copied(s0, j));
+    }
+    assert forall|j: int| 0 <= j < h.objs.len() implies #[trigger] s1.addr2[j] ==
+        (if copied(s1, j) { taddr(s1, s1.pos[j]) } else { h.addr[j] }) by {
+        assert(s0.addr2[j] == (if copied(s0, j) { taddr(s0, s0.pos[j]) } else { h.addr[j] }));
+    }
+    assert(bk_ok(h, s1));
+    assert forall|k: int| 0 <= k < n - 1 implies #[trigger] s1.tloc[k + 1] == succ(h, s1, k, t1.tn as int) by {
+        assert(s0.tloc[k + 1] == succ(h, s0, k, t0.tn as int));
+    }
+    assert forall|k: int| 0 <= k < n implies 0 <= #[trigger] tpg(s1, k) < t1.tn && 0 <= toff(s1, k) && tend(h, s1, k) <= s1.tus[tpg(s1, k)] by {
+        assert(0 <= tpg(s0, k) < t0.tn);
+    }
+    assert forall|k1: int, k2: int| 0 <= k1 < k2 < n implies #[trigger] before(h, s1, k1, k2) by {
+        assert(before(h, s0, k1, k2));
+    }
+    if n > 0 {
+        assert(tpg(s0, n - 1) == t0.tn - 1 && tend(h, s0, n - 1) == t0.top);
+    }
+}
+
+/// The end of a collection: shrink the copied stacks (none if nothing
+/// survived), from the statement before shrinking to the statement.
+pub fn shrink_end(c: &Ctx, t: &Tos, survived: bool, Ghost(h): Ghost<H>, Ghost(s0): Ghost<St>, Ghost(t0): Ghost<Tos>,
+                  Ghost(rptr): Ghost<*mut usize>, Ghost(rv): Ghost<Seq<AVal>>, Ghost(rvp): Ghost<Seq<AVal>>,
+                  Tracked(st): Tracked<&mut St>, Tracked(ctp): Tracked<&Map<int, PointsTo<u16>>>)
+    requires
+        ctx_ok(*c), heap_ok(*c, h), ctab_ok(*c, *ctp),
+        collected_pre(*c, h, *old(st), rptr, rv, rvp, t.ttab, t.tused, win(*t)),
+        t.tn <= t.tcap, t.ttab@.addr + t.tcap * W <= usize::MAX, t.tused@.addr + t.tcap * W <= usize::MAX,
+        survived <==> t0.tn > 0,
+        survived ==> bk_ok(h, s0) && tcopies_ok(*c, h, s0, t0)
+            && old(st).order == s0.order && old(st).pos == s0.pos && old(st).addr2 == s0.addr2 && old(st).tloc == s0.tloc
+            && old(st).tss == s0.tss && old(st).tus == s0.tus && t.tn == t0.tn && t.top == t0.top,
+        !survived ==> forall|j: int| !(#[trigger] copied(*old(st), j)),
+    ensures
+        *final(st) == (St { tp: final(st).tp, ..*old(st) }),
+        collected(*c, h, *final(st), rptr, rv, rvp, t.ttab, t.tused, win(*t)),
+{
+    if survived {
+        proof {
+            lemma_bk_tcopies_same(*c, h, s0, *st, t0, *t);
+            assert(tabs_ok(*c, h, *st, *t));
+        }
+        shrink_stacks(c, t, Ghost(h), Ghost(rptr), Ghost(rv), Ghost(rvp), Tracked(st), Tracked(ctp));
+    } else {
+        proof {
+            let s = *st;
+            assert forall|j: int, k: int| 0 <= j < h.objs.len() && copied(s, j) && 0 <= k < size(h, j) implies
+                (#[trigger] s.tp[(cpg(s, j), coff(s, j) + k)]).is_init()
+                && s.tp[(cpg(s, j), coff(s, j) + k)].value() == wval(cimg(*c, obj(h, j)), s.addr2, k) by {
+                assert(!copied(s, j));
+            }
+        }
+    }
+}
+
+
+/// Shrinking keeps a stack's header, and an object that is no stack.
+pub proof fn lemma_cimg_word(c: Ctx, o: AObj, k: int)
+    requires obj_ok(o), 0 <= k < o.words.len(), k == 0 || htag(hdr(o)) != STACK_TAG,
+    ensures cimg(c, o).words[k] == o.words[k], cimg(c, o).words.len() == o.words.len(),
+{
+    if red(c, o) > 0 {
+        assert(htag(hdr(o)) == STACK_TAG);
+        assert(STACK_MIN_ARRAY_WORD <= o.sw);
+        assert(k == 0);
     }
 }
 

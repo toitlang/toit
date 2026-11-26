@@ -21,6 +21,7 @@
 
 #include "flags.h"
 #include "heap.h"
+#include "interpreter.h"
 #include "objects_inline.h"
 #include "os.h"
 #include "primitive_policy.h"
@@ -653,6 +654,13 @@ void TwoSpaceHeap::dump_copying_heap(const char* phase) {
   fseek(file, count_position, SEEK_SET);
   write_u64(file, writer.count);
   fseek(file, end, SEEK_SET);
+  // The room a shrunk stack keeps above its records (Stack::shrink_v2_for_gc):
+  // the proved collector's Ctx::smin.
+  word height = program_->global_max_stack_height();
+  uint64 smin = (program_->is_format2() && height >= 0)
+      ? static_cast<uint64>(2 * height + RESERVED_STACK_FOR_CALLS + Stack::V2_FRAME_WORDS + Stack::V2_STACK_RESERVE)
+      : static_cast<uint64>(UINTPTR_MAX);
+  write_u64(file, smin);
   fclose(file);
 }
 #endif

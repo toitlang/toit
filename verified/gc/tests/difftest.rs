@@ -71,6 +71,9 @@ struct Dump {
     /// registered callback finalizers, 1 the queue, 2 the VM finalizers;
     /// kind 0 Toit, 1 weak map, 4 VM.
     nodes: Vec<[usize; 5]>,
+    /// The room a shrunk stack keeps (`Ctx::smin`; usize::MAX in dumps
+    /// without it: no shrinking).
+    smin: usize,
 }
 
 fn read_dump(path: &Path) -> Option<Dump> {
@@ -108,7 +111,8 @@ fn read_dump(path: &Path) -> Option<Dump> {
             nodes.push(n);
         }
     }
-    Some(Dump { sw, null, cb, pages, roots, nodes })
+    let smin = if pos < data.len() { u64_at(&mut pos) as usize } else { usize::MAX };
+    Some(Dump { sw, null, cb, pages, roots, nodes, smin })
 }
 
 impl Dump {
@@ -200,6 +204,8 @@ struct Stats {
     words: usize,
     zapped: usize,
     shrunk: usize,
+    // Stacks the proved collector shrank (a filler after the copy).
+    rust_shrunk: usize,
     // The reservation question: from-space pages, to-space pages taken,
     // and the page counts of candidate bounds.
     from_pages: usize,
@@ -323,7 +329,7 @@ fn diff(before: &Dump, after: &Dump, stats: &mut Stats) -> Result<(), String> {
     let ncb = order.iter().filter(|&&i| before.nodes[i][0] != 2).count();
     let nn = order.len();
     let c = Ctx { base: arena.base(), ftab: ftab.as_mut_ptr(), nf, pw, ctab: cb.as_mut_ptr(), ncls: cb.len(), sw: before.sw,
-                  null: before.null, nullid: Ghost::assume_new(), fused: fusedw.as_mut_ptr(), tail, fss: Ghost::assume_new(), cbs: Ghost::assume_new() };
+                  null: before.null, nullid: Ghost::assume_new(), fused: fusedw.as_mut_ptr(), tail, smin: before.smin, fss: Ghost::assume_new(), cbs: Ghost::assume_new() };
     let mut src = Source { arena: &mut arena, reserved: 0, taken: vec![], asked: 0 };
     let r = collect(&c, &mut src, roots.as_mut_ptr(), roots.len(), ttab.as_mut_ptr(), tused.as_mut_ptr(), tcap,
                     nodew.as_mut_ptr(), ncb, nn,
@@ -430,6 +436,7 @@ fn diff(before: &Dump, after: &Dump, stats: &mut Stats) -> Result<(), String> {
             let d = size - csize;
             if lo - clo != d || hi - chi != d { return Err("stack shrunk unevenly".into()); }
             if d > 0 { stats.shrunk += 1; }
+            if arena.read(ra + size * W) == usize::MAX - 107 { stats.rust_shrunk += 1; }
             for k in 0..clo {
                 if k == 2 || k == 3 { continue; } // Length and top.
                 if rword(ra + k * W) != aword(ca + k * W) { return Err(format!("stack word {}", k)); }

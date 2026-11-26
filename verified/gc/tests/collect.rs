@@ -249,7 +249,8 @@ fn large(x: u64) -> Obj {
 /// object stack `values` above it.
 fn stack(sw: usize, top: usize, values: Vec<V>) -> Obj {
     let len = top + values.len();
-    let mut w = vec![hdr(CLS_STACK, 7), V::Raw(0), V::Raw(len), V::Raw(top), V::Raw(top | (top << 16)), V::Raw(17)];
+    let rt = top / 4;  // The records: the low quarter of the free area.
+    let mut w = vec![hdr(CLS_STACK, 7), V::Raw(0), V::Raw(len), V::Raw(top), V::Raw(rt | (rt << 16)), V::Raw(17)];
     while w.len() < sw { w.push(V::Raw(0xcaad_abe7)); }
     for k in 0..top { w.push(V::Raw(k * 3 + 1)); }
     w.extend(values);
@@ -275,6 +276,8 @@ struct Heap {
     nodes: Vec<(usize, V, V)>,
     /// Give the collector the pages' used words (the tail bound).
     tail: bool,
+    /// The room a shrunk stack keeps (`Ctx::smin`; usize::MAX: none).
+    smin: usize,
 }
 
 fn enc(h: &Heap, v: &V) -> usize {
@@ -326,7 +329,7 @@ fn build(arena: &mut Arena, objs: Vec<Obj>, nprog: usize, roots: Vec<V>, sw: usi
         };
         addr[i] = a + 1;
     }
-    let mut h = Heap { objs, nprog, addr, fpages, roots, sw, nodes: vec![], tail: false };
+    let mut h = Heap { objs, nprog, addr, fpages, roots, sw, nodes: vec![], tail: false, smin: usize::MAX };
     for (i, o) in h.objs.iter().enumerate() {
         let a = h.addr[i] - 1;
         for (k, v) in o.words.iter().enumerate() {
@@ -461,7 +464,7 @@ fn run(arena: &mut Arena, h: &Heap, tcap_extra: isize, refuse: bool) -> Result<(
     let before: Vec<usize> = arena.words.clone();
     let roots_before = rootw.clone();
     let c = Ctx { base: arena.base(), ftab: ftab.as_mut_ptr(), nf, pw, ctab: cb.as_mut_ptr(), ncls: cb.len(), sw: h.sw,
-                  null: NULL, nullid: Ghost::assume_new(), fused: fused.as_mut_ptr(), tail: h.tail, fss: Ghost::assume_new(), cbs: Ghost::assume_new() };
+                  null: NULL, nullid: Ghost::assume_new(), fused: fused.as_mut_ptr(), tail: h.tail, smin: h.smin, fss: Ghost::assume_new(), cbs: Ghost::assume_new() };
     let mut src = Source { arena, reserved: 0, taken: 0, refuse, asked: 0 };
     let r = collect(&c, &mut src, rootw.as_mut_ptr(), rootw.len(), ttab.as_mut_ptr(), tused.as_mut_ptr(), tcap,
                     nodew.as_mut_ptr(), ncb, h.nodes.len(),
@@ -503,6 +506,7 @@ fn check(arena: &Arena, cb: &[u16], h: &Heap, rootw: &[usize], nodew: &[usize], 
         let mut off = 0;
         while off < tused[p] {
             let a = ttab[p] + off * W;
+            if arena.read(a) == FILLER { off += 1; continue; }
             copies.insert(a + 1);
             off += size_at(arena, cb, h.sw, a);
         }
@@ -557,7 +561,7 @@ fn check(arena: &Arena, cb: &[u16], h: &Heap, rootw: &[usize], nodew: &[usize], 
             continue;
         }
         map.insert(j, na);
-        let o = &objs[j];
+        let o = &shrunk(&objs[j], h.smin);
         let a = na - 1;
         assert_eq!(size_at(arena, cb, h.sw, a), o.words.len(), "size of {}", j);
         for (k, v) in o.words.iter().enumerate() {
@@ -859,6 +863,7 @@ fn random_graphs() {
         let mut arena = Arena::new(1200, pw);
         let mut h = build(&mut arena, objs, nprog, roots, sw, &mut rng, seed % 2 == 0);
         h.tail = seed % 3 != 0;
+        h.smin = [usize::MAX, 0, 3, 17][(seed % 4) as usize];
         run(&mut arena, &h, 0, false).ok().unwrap();
     }
 }
@@ -926,6 +931,7 @@ fn random_finalizers() {
         let mut arena = Arena::new(1200, pw);
         let mut h = build(&mut arena, objs, nprog, roots, SW, &mut rng, seed % 2 == 0);
         h.tail = seed % 2 == 1;
+        h.smin = [usize::MAX, 0, 5][(seed % 3) as usize];
         let mut nodes = vec![];
         let mut active = vec![];
         let mut keys = HashSet::new();
@@ -948,4 +954,54 @@ fn random_finalizers() {
         add_nodes(&mut arena, &mut h, nodes, &active);
         run(&mut arena, &h, 0, false).ok().unwrap();
     }
+}
+
+/// The C++ one-word filler (`FreeListRegion::single_free_word_header()`).
+const FILLER: usize = usize::MAX - 107;
+
+fn rawv(v: &V) -> usize {
+    match v { V::Smi(w) | V::Raw(w) => *w, V::Ref(_) => panic!("reference in a header word") }
+}
+
+/// The words a collection takes from a stack (src/objects.cc,
+/// `Stack::shrink_v2_for_gc`, written out again as an oracle).
+fn stack_red(o: &Obj, smin: usize) -> usize {
+    if (rawv(&o.words[0]) >> 1) & 15 != 7 { return 0; }
+    let (len, top, rt) = (rawv(&o.words[2]), rawv(&o.words[3]), rawv(&o.words[4]) & 0xffff);
+    if top <= rt || top - rt <= smin { return 0; }
+    let d = top - rt - smin;
+    if d >= 8 && top > len / 2 { d } else { 0 }
+}
+
+/// The copy of `o` after shrinking (its words up to its new size).
+fn shrunk(o: &Obj, smin: usize) -> Obj {
+    let d = stack_red(o, smin);
+    if d == 0 { return o.clone(); }
+    let sw = o.lo - rawv(&o.words[3]);
+    let (len, top) = (rawv(&o.words[2]), rawv(&o.words[3]));
+    let mut w: Vec<V> = o.words[..sw + top - d].to_vec();
+    w[2] = V::Raw(len - d);
+    w[3] = V::Raw(top - d);
+    w.extend(o.words[sw + top..sw + len].iter().cloned());
+    Obj { words: w, lo: sw + top - d, hi: sw + len - d }
+}
+
+#[test]
+fn stack_shrinking() {
+    // A stack of length 43 with top 40 (records: 10 words) and room 5: the
+    // collection takes 25 words (the object stack moves down, length 18,
+    // top 15, fillers in the 25 words given up); a stack whose top is not
+    // above half its length keeps its length.
+    let mut arena = Arena::new(64, PW * 4);
+    let objs = vec![
+        inst(vec![V::Ref(1), V::Ref(3)]),                                  // 0: root holder
+        stack(SW, 40, vec![V::Ref(2), V::Smi(6), V::Ref(0)]),              // 1: shrinks
+        inst(vec![V::Smi(2)]),                                             // 2
+        stack(SW, 12, vec![V::Ref(2); 30]),                                // 3: top 12 <= 42 / 2: stays
+    ];
+    let mut h = heap(&mut arena, objs, 0, vec![V::Ref(0)]);
+    h.smin = 5;
+    assert_eq!(stack_red(&h.objs[1], 5), 25);
+    assert_eq!(stack_red(&h.objs[3], 5), 0);
+    run(&mut arena, &h, 0, false).ok().unwrap();
 }

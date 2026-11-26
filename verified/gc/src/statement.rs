@@ -27,6 +27,7 @@ use crate::copy::*;
 use crate::collect::*;
 use crate::fin::*;
 use crate::tail::*;
+use crate::shrink::*;
 
 verus! {
 
@@ -184,8 +185,32 @@ pub open spec fn collected(c: Ctx, h: H, st: St, rptr: *mut usize, rv: Seq<AVal>
     &&& collected_pages(c, h, st, ttab, tused, w)
 }
 
-/// The objects, the copies and the roots after the collection.
+/// The objects, the copies and the roots after the collection: the copies'
+/// words are their objects' (stacks shrunk: `shrink::cimg`) under the new
+/// address map.
 pub open spec fn collected_objs(c: Ctx, h: H, st: St, rptr: *mut usize, rv: Seq<AVal>, rvp: Seq<AVal>, tn: int) -> bool {
+    &&& objs_core(c, h, st, rptr, rv, rvp, tn)
+    &&& forall|j: int, k: int| 0 <= j < h.objs.len() && copied(st, j) && 0 <= k < size(h, j) ==>
+            (#[trigger] st.tp[(cpg(st, j), coff(st, j) + k)]).is_init()
+            && st.tp[(cpg(st, j), coff(st, j) + k)].value() == wval(cimg(c, obj(h, j)), st.addr2, k)
+}
+
+/// Before stack shrinking: the copies' words are their objects'.
+pub open spec fn objs_pre(c: Ctx, h: H, st: St, rptr: *mut usize, rv: Seq<AVal>, rvp: Seq<AVal>, tn: int) -> bool {
+    &&& objs_core(c, h, st, rptr, rv, rvp, tn)
+    &&& forall|j: int, k: int| 0 <= j < h.objs.len() && copied(st, j) && 0 <= k < size(h, j) ==>
+            (#[trigger] st.tp[(cpg(st, j), coff(st, j) + k)]).is_init()
+            && st.tp[(cpg(st, j), coff(st, j) + k)].value() == wval(obj(h, j), st.addr2, k)
+}
+
+pub open spec fn collected_pre(c: Ctx, h: H, st: St, rptr: *mut usize, rv: Seq<AVal>, rvp: Seq<AVal>, ttab: *mut usize,
+                               tused: *mut usize, w: Window) -> bool {
+    &&& objs_pre(c, h, st, rptr, rv, rvp, w.pages as int)
+    &&& collected_pages(c, h, st, ttab, tused, w)
+}
+
+/// The objects and the roots after the collection (the copies' places).
+pub open spec fn objs_core(c: Ctx, h: H, st: St, rptr: *mut usize, rv: Seq<AVal>, rvp: Seq<AVal>, tn: int) -> bool {
     let n = h.objs.len() as int;
     // The objects.
     &&& st.addr2.len() == n
@@ -204,9 +229,6 @@ pub open spec fn collected_objs(c: Ctx, h: H, st: St, rptr: *mut usize, rv: Seq<
     &&& forall|j1: int, j2: int| 0 <= j1 < n && 0 <= j2 < n && copied(st, j1) && copied(st, j2) && j1 != j2
             && #[trigger] cpg(st, j1) == #[trigger] cpg(st, j2) ==>
             coff(st, j1) + size(h, j1) <= coff(st, j2) || coff(st, j2) + size(h, j2) <= coff(st, j1)
-    &&& forall|j: int, k: int| 0 <= j < n && copied(st, j) && 0 <= k < size(h, j) ==>
-            (#[trigger] st.tp[(cpg(st, j), coff(st, j) + k)]).is_init()
-            && st.tp[(cpg(st, j), coff(st, j) + k)].value() == wval(obj(h, j), st.addr2, k)
     // The roots.
     &&& forall|i: int| 0 <= i < rv.len() ==> #[trigger] wperm_ok(st.rp, i, rptr, i) && st.rp[i].is_init()
             && st.rp[i].value() == enc(st.addr2, rv[i]) && val_live(h, st, rv[i])
@@ -263,7 +285,7 @@ pub proof fn lemma_objs(c: Ctx, h: H, st: St, t: Tos, rptr: *mut usize, rv: Seq<
     requires
         ctx_ok(c), fpages_ok(c), heap_ok(c, h),
         inv(c, h, st, t, st.order.len() as int, 0, rvp), roots_ok(c, h, st, rptr, rv, rv.len() as int),
-    ensures collected_objs(c, h, st, rptr, rv, rvp, t.tn as int),
+    ensures objs_pre(c, h, st, rptr, rv, rvp, t.tn as int),
 {
     let n = h.objs.len() as int;
     let nc = st.order.len() as int;
@@ -379,13 +401,13 @@ pub proof fn lemma_objs(c: Ctx, h: H, st: St, t: Tos, rptr: *mut usize, rv: Seq<
 /// roots and the copies' words and pages.
 pub proof fn lemma_objs_frame(c: Ctx, h: H, s0: St, s1: St, rptr: *mut usize, rv: Seq<AVal>, rvp: Seq<AVal>, tn0: int, tn1: int)
     requires
-        collected_objs(c, h, s0, rptr, rv, rvp, tn0), tn0 <= tn1,
+        objs_pre(c, h, s0, rptr, rv, rvp, tn0), tn0 <= tn1,
         s1.addr2 == s0.addr2, s1.pos == s0.pos, s1.tloc == s0.tloc, s1.rp == s0.rp,
         forall|j: int| 0 <= j < h.objs.len() && #[trigger] copied(s0, j) ==>
             s1.tss[cpg(s0, j)] == s0.tss[cpg(s0, j)] && s1.tus[cpg(s0, j)] == s0.tus[cpg(s0, j)],
         forall|j: int, k: int| 0 <= j < h.objs.len() && copied(s0, j) && 0 <= k < size(h, j) ==>
             #[trigger] s1.tp[(cpg(s0, j), coff(s0, j) + k)] == s0.tp[(cpg(s0, j), coff(s0, j) + k)],
-    ensures collected_objs(c, h, s1, rptr, rv, rvp, tn1),
+    ensures objs_pre(c, h, s1, rptr, rv, rvp, tn1),
 {
     let n = h.objs.len() as int;
     assert forall|j: int| #[trigger] copied(s1, j) == copied(s0, j) by {}
@@ -536,6 +558,7 @@ pub fn collect<S: PageSource>(c: &Ctx, src: &mut S, rptr: *mut usize, rlen: usiz
     let ghost main = mainr@;
     let ghost s0 = *st;
     let ghost t0 = t;
+    let survived = t.tn > 0;
     proof {
         lemma_objs(*c, hf, s0, t0, rptr, rv, rvp);
         lemma_copies_bound(*c, hf, s0, t0);
@@ -640,10 +663,22 @@ pub fn collect<S: PageSource>(c: &Ctx, src: &mut S, rptr: *mut usize, rlen: usiz
         }
         assert(fshape(*c, s2.fp));
         assert(collected_pages(*c, hf, s2, ttab, tused, w));
-        assert(collected(*c, hf, s2, rptr, rv, rvp, ttab, tused, w));
+        assert(collected_pre(*c, hf, s2, rptr, rv, rvp, ttab, tused, w));
         assert(s2.pos == s0.pos && s2.addr2 == s0.addr2);
         lemma_fin_done_same(*c, h, hf, s0, s2, rv, nodes, *nm, ncb as int, nn as int, main);
     }
+    // The copied stacks shrunk.
+    let ghost s2e = *st;
+    proof {
+        if t0.tn == 0 {
+            assert forall|j: int| !(#[trigger] copied(s2e, j)) by {
+                if copied(s2e, j) { assert(copied(s0, j)); assert(0 <= s0.pos[j] < s0.order.len()); }
+            }
+        }
+        assert(tpages_ok(*c, hf, s0, t0));
+    }
+    shrink_end(c, &t, survived, Ghost(hf), Ghost(s0), Ghost(t0), Ghost(rptr), Ghost(rv), Ghost(rvp), Tracked(st), Tracked(&ro.ctp));
+    proof { lemma_fin_done_same(*c, h, hf, s2e, *st, rv, nodes, *nm, ncb as int, nn as int, main); }
     proof { assert(heap_ok(*c, hf)); }
     Ok(w)
 }
