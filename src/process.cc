@@ -329,6 +329,18 @@ int Process::message_count() {
   return count;
 }
 
+void Process::publish_heap_stats() {
+  heap_stats_requested_ = false;
+  // An external process (a ProcessRunner) has no Toit heap.
+  if (program_ == null) return;
+  heap_stats_.bytes_allocated = object_heap_.bytes_allocated();
+  heap_stats_.bytes_reserved = object_heap_.bytes_reserved();
+  heap_stats_.total_bytes_allocated = object_heap_.total_bytes_allocated();
+  heap_stats_.gc_count = object_heap_.gc_count(NEW_SPACE_GC);
+  heap_stats_.full_gc_count = object_heap_.gc_count(FULL_GC);
+  heap_stats_.full_compacting_gc_count = object_heap_.gc_count(COMPACTING_GC);
+}
+
 #ifdef TOIT_EC618
 extern "C" int32_t rngGenRandom(uint8_t rand[24]);
 #endif
