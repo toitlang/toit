@@ -223,30 +223,70 @@ program. A value of 0 means unlimited. Defaults of the untrusted policy:
 On a device the heap quota alone does not keep memory for the system: the
 128 KB default is more than a classic ESP32 has free with WiFi up (about 75
 KB), so a sandbox could grow until the system had less than 1 KB free, and
-an install's verification (in the system process) ran out of memory. A
-sandboxed process's heap therefore also leaves a floor of the system heap
-free: it doesn't take new heap pages (`TwoSpaceHeap::max_external_allocation`)
-or external byte arrays and strings (`AllocationManager::alloc`) when that
-would leave less than `CONFIG_TOIT_SANDBOX_HEAP_FLOOR_KB` (default 32 KB,
-0 turns it off) free in the system heap (`heap_caps_get_free_size`). A
-sandbox that needs more gets `OUT_OF_MEMORY` as at its quota (after the
-usual collections). The floor is checked when the sandbox grows: memory it
+an install's verification (in the system process) ran out of memory. The
+sandboxes therefore leave memory of the system heap free, in levels of the
+free system heap (`heap_caps_get_free_size`; classic ESP32 defaults), from
+the top:
+
+| Free system heap | What stops there | Kconfig (host flag) |
+|---|---|---|
+| floor + growth headroom + start (48 KB) | a sandboxed container doesn't start, after a collection of every process (`Process::sandbox_start_check`) | `CONFIG_TOIT_SANDBOX_START_KB` = 16 (`-Xsandbox_start_bytes`) |
+| floor + growth headroom (32 KB, the growth mark) | the heaps of sandboxes stop growing: no new heap pages (`TwoSpaceHeap::max_external_allocation`), external byte arrays or strings (`AllocationManager::alloc`); the sandbox gets `OUT_OF_MEMORY` as at its quota, after the usual collections (`Process::sandbox_heap_room`) | `CONFIG_TOIT_SANDBOX_GROWTH_HEADROOM_KB` = 16 (`-Xsandbox_growth_headroom`) |
+| floor (16 KB) | messages queued at sandboxes or sent by them are refused (`Process::message_floor_allows_locked`); nothing sandboxed takes the last 16 KB | `CONFIG_TOIT_SANDBOX_HEAP_FLOOR_KB` = 16, 0 turns all of this off (`-Xsandbox_heap_floor`) |
+
+The order is the point: the heap growth of sandboxes alone never brings
+the system heap into the range where their own messages are refused (the
+headroom between the growth mark and the floor is kept for them), and a
+sandbox starts only where it can still run: after the start, the growth
+mark is free. A sandbox that has grown can keep another from starting,
+but only with memory it holds live: the collection before the refusal
+takes back its free pages. Before (floor-confirm round, 2026-11-26), the three
+were one number, 32 KB, with the start 16 KB above it: a sandbox's heap
+grew until the system heap was at the floor, after which the message
+check (free >= floor after the message is allocated) refused most of its
+own sends and no other sandbox could start. On a classic ESP32 with WiFi
+one worker got 87 % of its RPC calls refused (-71 % throughput against the
+round before the floor) and 52 of 55 installed programs were refused at
+start. The growth mark stays at 32 KB, which the install-time verifier
+needs (up to 26 KB for the programs measured; the commit also stops
+sandboxes when it still runs out of memory, see below); the floor itself
+is 16 KB. The start first needed only the floor plus a start (32 KB, the
+growth mark): in a two-worker device run the collection freed just
+enough, an installed program started at the growth mark, couldn't grow
+past its first page and got stuck out of memory in its message
+processing, and the trusted controller that waited for it stopped
+reporting; hence the start above the growth mark. With these levels one
+worker with WiFi ran at 0.97 of its RPC throughput before the floor (2 h),
+325 of its 522,862 sends refused (one burst while WiFi came up) and 56 of
+57 installed programs started and ran (numbers in
+opentoit-sandbox-artifacts/floor-fix/README.md).
+
+The levels are checked when a sandbox grows, sends or starts: memory it
 already holds isn't taken back, so trusted code that later needs more
 (WiFi coming up) can still find less free (see "When the system process
-itself can't allocate" below for what happens then). On the host the floor
-works on a simulated system heap (`-Xsandbox_heap_floor`,
-`-Xsandbox_system_heap`) that holds the heaps of all sandboxed processes
-(each counts itself when it grows and is removed when it ends) and the
-messages charged to the floor (tests/sandbox/heap-floor-test.toit).
+itself can't allocate" below for what happens then). The free-memory query
+costs about 1.6 us on a classic ESP32 (`heap_caps_get_free_size` sums the
+free counters of the registered heaps without a lock), once per message to
+or from a sandbox and per growth of a sandbox's heap: under 0.2 % of an
+RPC call (2.5 ms at best between sandbox and trusted provider); it is not
+cached. On the host the levels work on a simulated system heap
+(`-Xsandbox_heap_floor`, `-Xsandbox_system_heap`) that holds the heaps of
+all sandboxed processes (each counts itself when it grows and after its
+collections, and is removed when it ends) and the messages charged to the
+floor (tests/sandbox/heap-floor-test.toit).
 
-The floor also applies to:
+In detail:
 
 - **Starting a sandboxed container.** `programs_registry.spawn` (and
   `snapshot.launch` on the host) refuses a sandboxed start with
   `QUOTA_EXCEEDED`, before allocating anything, when the system heap has
-  less free than the floor plus what a start needs
+  less free than the growth mark plus what a start needs
   (`CONFIG_TOIT_SANDBOX_START_KB`, default 16; host `-Xsandbox_start_bytes`)
-  (`Process::sandbox_start_allowed`). Before, the initial heap page, method
+  (`Process::sandbox_start_check`). Short of memory, the primitive first
+  fails with `CROSS_PROCESS_GC`: every process is collected (the sandboxes
+  give their free heap pages back) and the start is tried once more; only
+  then is it refused. A start never stops another sandbox. Before, the
+  initial heap page, method
   table, globals, process and group of a (re)started sandbox were taken
   however little was left: in a two-worker device run a worker that kept
   dying of `OUT_OF_MEMORY` was restarted 4 times in 5 seconds with the
@@ -275,7 +315,13 @@ The floor also applies to:
   allocations, the tag of message buffers) appeared and stayed just before
   the trusted controller ran out of memory, most likely its replies queued
   at a worker that kept a message it could not handle while it kept
-  calling. Test: tests/sandbox/reply-to-full-sandbox-test.toit.
+  calling. Test: tests/sandbox/reply-to-full-sandbox-test.toit. A refused
+  send triggers no collection: a sandbox's own heap is collected when it
+  needs room, and below the growth mark only memory the sandbox doesn't
+  hold (messages, the trusted side, a WiFi transient) keeps the system heap
+  under the floor. On the device (one worker, 2 h), the worker's sends
+  were refused only in one burst while WiFi came up (325 of 522,862);
+  shorter runs saw 0 to 5,829 at the first connect.
 
 Still not covered: a sandbox's resources (bounded by the quotas above and
 the resource-group limit).
@@ -313,9 +359,9 @@ system code fails the request after one more attempt 100 ms later
 
 | Request | Primitives | The requester gets | What is undone |
 |---|---|---|---|
-| start a container (`containers.start`, also at boot) | `programs-registry.spawn` | `OUT_OF_MEMORY`: the container is refused (`Container.start`); at boot it is refused like one the verifier rejects and the other boot containers start (before: a restart, which booted again); a refused run-critical container still ends the system | nothing to undo: a failed spawn frees what it allocated |
+| start a container (`containers.start`) | `programs-registry.spawn` | `OUT_OF_MEMORY`: the container is refused (`Container.start`); a refused run-critical container still ends the system. Not at boot: a boot container that can't be started for lack of memory ends the system with exit value 1 (`system/boot.toit`, no retry), which restarts a device, so that a firmware that isn't validated yet is rolled back (tests/sandbox/boot-oom-test.toit; for a while it was refused like one the verifier rejects, and the device kept running without it) | nothing to undo: a failed spawn frees what it allocated |
 | open an image writer | `flash.reserve-hole`, `image.writer-create` | `OUT_OF_MEMORY` | the registry's hole is adjusted only after the reservation exists; the reservation is closed if the writer can't be created |
-| commit an image | `image.writer-commit` (tried 4 times, as for the verifier's `OUT_OF_MEMORY`), then `flash.get-header-page` | `OUT_OF_MEMORY` | a committed allocation whose header page can't be read back has its header page erased (`FlashAllocation.committed`): no valid allocation unknown to the registry is left in flash |
+| commit an image | `image.writer-commit` (tried 4 times, as for the verifier's `OUT_OF_MEMORY`, then with sandboxes stopped, see below), then `flash.get-header-page` | `OUT_OF_MEMORY` | a committed allocation whose header page can't be read back has its header page erased (`FlashAllocation.committed`): no valid allocation unknown to the registry is left in flash |
 | storage regions and flash buckets | `flash.reserve-hole`, `flash.allocate`, `flash.get-header-page`, `flash.get-all-pages`, `flash.grant-access`, `flash.partition-find` | the call throws (`OUT_OF_MEMORY`, `MALLOC_FAILED` or `ALLOCATION_FAILED`) | as above; a bucket's cached entries change only after the new allocation is written (before, a failed set left the new value in the cache) |
 | WiFi connect, establish and scan (the network service) | `wifi.init`, `connect`, `establish`, `setup-ip`, `set-hostname`, `get-ip`, `init-scan`, `start-scan`, `read-scan`, `ap-info` (the driver's `ESP_ERR_NO_MEM` included) | `OUT_OF_MEMORY` (connect, establish) or `MALLOC_FAILED`/`ALLOCATION_FAILED` (scan): the connect fails, the device keeps running | a registered resource is unregistered, the driver and the netif are deinitialized by the failing primitive; `NetworkState.up` disconnects a module whose connect failed; a read scan whose records were taken has lost them |
 
@@ -328,7 +374,8 @@ container allocating until refused: 6 and 12 restarts).
 
 Sandboxed containers lose first: for requests of trusted code and the
 system's own operations (the WiFi connect and establish, the start of a
-trusted container, opening an image writer; never the start of a sandbox),
+trusted container, opening an image writer and committing it; never the
+start of a sandbox),
 `with-out-of-memory-retry_ --relieve` stops the running sandboxed
 containers one at a time after the retry failed, the one reserving the
 most memory first (`ContainerManager.evict-sandbox_`; a critical
@@ -347,7 +394,11 @@ first), and relief for the system process's own Toit allocations (its
 objects, the RPC broker, DNS lookups in the system process), which still
 restart the device. Host test: tests/sandbox/system-oom-relief-test.toit
 (with the container start failing twice, a running sandbox is stopped and
-the trusted start succeeds; before, it failed). The WiFi part is compiled
+the trusted start succeeds; before, it failed; with the commit failing in
+all four tries, the same: commit:16). The commit relief came with the
+floor-fix round: with three workers every install had failed in the
+verifier at commit (7 of 7, `out of memory: not verified`), the opening of
+the writer having relief but not the commit. The WiFi part is compiled
 for the ESP32 only.
 
 Every other allocation failure of the system process (its own objects, the
@@ -701,6 +752,17 @@ the ESP32-S3 with firmware built with the verified core
 - Native allocations made on behalf of a process (message buffers, timers,
   finalizer nodes) are bounded by the quotas but not charged to its heap;
   resource groups are bounded (64 per sandboxed process).
+- A sandbox can get stuck out of memory and stay so: its heap at the
+  growth mark, a call whose reply was dropped (beyond the error-reply
+  allowance) or a message it can't decode, and nothing that ends it (the
+  run-time limit only ends a process that runs). On a classic ESP32 with
+  two sandboxed workers (2 h), one worker stalled this way after 22
+  minutes and held its memory to the end; the trusted side was not
+  affected, but a trusted owner that waits for such a sandbox without a
+  timeout waits forever (an earlier start rule let an installed program
+  start at the growth mark and stall, and the soak controller waiting for
+  it stopped). Not done: ending a sandbox whose allocations keep failing
+  for a while.
 - A kill takes effect only after the running primitive returns. The C++
   primitives of the untrusted set are audited to be bounded by their
   quota-bounded arguments (docs/sandbox-primitive-audit.md); the Rust ports
