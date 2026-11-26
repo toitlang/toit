@@ -2,8 +2,8 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-// The certificate of the local TLS servers (also in test-root.pem, which the
-// system process trusts in the tests) and its key (only here).
+// The certificate of the local TLS servers and its key. The sandboxes register
+// the certificate as their root with the sandbox network provider.
 // Copied from tests/tls-server-cert-test.toit: CN=localhost, self-signed.
 
 TEST-CERTIFICATE ::= """

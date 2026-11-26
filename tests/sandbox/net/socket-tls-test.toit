@@ -23,7 +23,10 @@ import .test-certificate
 main args:
   run-test args --roles={
     "tls": :: | arguments/Map |
-      network := sandbox.open.with-tls
+      base := sandbox.open
+      // The provider has no roots: the sandbox brings the one it trusts.
+      base.add-root-certificate TEST-CERTIFICATE
+      network := base.with-tls
       socket := network.tcp-connect "localhost" arguments["port"]
       socket.out.write "secret"
       expect-equals "secret" socket.in.read.to-string
@@ -33,7 +36,9 @@ main args:
       socket.close,
 
     "wrong-name": :: | arguments/Map |
-      network := sandbox.open.with-tls
+      base := sandbox.open
+      base.add-root-certificate TEST-CERTIFICATE
+      network := base.with-tls
       expect-equals "TLS_FAILED" (catch: network.tcp-connect "127.0.0.1" arguments["port"]),
   }:
     certificate := tls.Certificate (x509.Certificate.parse TEST-CERTIFICATE) TEST-KEY

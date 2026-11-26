@@ -15,7 +15,7 @@
 
 /**
 Variant H of the sandbox network services (experimental): HTTP/1.1
-  requests, made by the system process, to URLs the container's network
+  requests, made by the provider, to URLs the container's network
   policy allows (host, port and path).
 
 A small HTTP client of its own (one request per connection, no
@@ -53,13 +53,14 @@ class SandboxHttpServiceProvider extends SandboxNetworkProvider:
       if stream is not HttpConnection: throw "INVALID_ARGUMENT"
       return (stream as HttpConnection).response
     if index != SandboxHttpService.REQUEST-INDEX: throw "INVALID_ARGUMENT"
-    if arguments is not List or arguments.size != 4: throw "WRONG_OBJECT_TYPE"
+    if arguments is not List or arguments.size != 5: throw "WRONG_OBJECT_TYPE"
     method := arguments[0]
     url := arguments[1]
     headers := arguments[2]
     length := arguments[3]
+    ids := arguments[4]
     if method is not string or url is not string or headers is not List
-        or (length != null and length is not int):
+        or (length != null and length is not int) or (ids != null and ids is not List):
       throw "WRONG_OBJECT_TYPE"
     if length and length < 0: throw "INVALID_ARGUMENT"
     if not is-token_ method MAX-METHOD-SIZE: throw "INVALID_ARGUMENT"
@@ -77,8 +78,10 @@ class SandboxHttpServiceProvider extends SandboxNetworkProvider:
       head += "Content-Length: $length\r\n\r\n"
     else:
       head += "Transfer-Encoding: chunked\r\n\r\n"
+    roots := parsed[0] ? (core.tls-roots client ids grant host port --path=path) : []
     return open-stream_ grant:
       HttpConnection this client core grant host port parsed[0]
+          --roots=roots
           --head=head
           --content-length=length
           --head-request=(method == "HEAD")
@@ -154,11 +157,19 @@ class HttpConnection extends SandboxConnection:
   response_/List? := null
 
   constructor provider client core grant host port secure/bool
+      --roots/List
       --head/string --content-length/int? --head-request/bool:
     head_ = head
     content-length_ = content-length
     no-body_ = head-request
-    super provider client core grant host port secure --deadline-ms=grant.timeout-ms
+    timeout := grant.timeout-ms
+    super provider client core grant host port secure --roots=roots
+        --deadline-ms=(timeout == 0 ? null : timeout)
+
+  // The response-bytes limit of the policy (0: none).
+  too-large_ size/int -> bool:
+    limit := grant.response-bytes
+    return limit != 0 and size > limit
 
   response -> List?:
     if response_: return response_
@@ -220,7 +231,7 @@ class HttpConnection extends SandboxConnection:
       read-chunked_ in
     else if length := header_ headers "content-length":
       size := int.parse length --if-error=: throw "HTTP_PROTOCOL_ERROR"
-      if size > grant.response-bytes: throw "RESPONSE_TOO_LARGE"
+      if too-large_ size: throw "RESPONSE_TOO_LARGE"
       read-sized_ in size
     else:
       read-sized_ in null
@@ -252,7 +263,7 @@ class HttpConnection extends SandboxConnection:
         if size != null: throw "CONNECTION_FAILED"
         return
       received += data.size
-      if received > grant.response-bytes: throw "RESPONSE_TOO_LARGE"
+      if too-large_ received: throw "RESPONSE_TOO_LARGE"
       deliver_ data
 
   read-chunked_ in/io.Reader -> none:
@@ -268,7 +279,7 @@ class HttpConnection extends SandboxConnection:
         while not (read-line_ in 0).is-empty: null
         return
       received += size
-      if received > grant.response-bytes: throw "RESPONSE_TOO_LARGE"
+      if too-large_ received: throw "RESPONSE_TOO_LARGE"
       while size > 0:
         data := in.read --max-size=(min size CHUNK-SIZE)
         if not data: throw "CONNECTION_FAILED"

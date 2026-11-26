@@ -32,7 +32,6 @@ import .flash.registry
 import .flash.reservation
 import .out-of-memory
 import .services
-import .sandbox-network.policy show NetworkGrant
 
 class Container:
   image/ContainerImage ::= ?
@@ -54,12 +53,6 @@ class Container:
     the system by failing.
   */
   critical/bool := false
-
-  /**
-  The network policy of a sandboxed container (experimental, see
-    $ContainerService.POLICY-NETWORK-INDEX), or null if it has none.
-  */
-  network-grant/NetworkGrant? := null
 
   constructor .image .gid_:
 
@@ -86,9 +79,6 @@ class Container:
     validated := null
     try:
       validated = policy-for_ policy --image-untrusted=image.untrusted
-      network := ContainerService.POLICY-NETWORK-INDEX
-      if validated is Array_ and validated.size > network:
-        network-grant = NetworkGrant validated[network]
     finally: | is-exception exception |
       // A malformed policy refuses the container like the VM does: the
       // manager must not wait for it.
@@ -139,19 +129,35 @@ class Container:
         if i == ContainerService.POLICY-SERVICES-INDEX:
           validate-service-list_ policy[i]
         else if i == ContainerService.POLICY-NETWORK-INDEX:
-          continue  // Parsed when the container starts.
+          validate-network-policy_ policy[i]
         else if policy[i] is not int:
           throw "WRONG_OBJECT_TYPE"
       return Array_.from policy
     return policy
 
   /**
-  The services a sandboxed container may use (see
-    $ContainerService.POLICY-SERVICES-INDEX), from its validated policy.
+  Whether a sandboxed container may use the service with the given $uuid
+    (see $ContainerService.POLICY-SERVICES-INDEX): it is on the list of its
+    policy, the list is $ContainerService.ALL-SERVICES, or it is one of the
+    sandbox network services and the container has a network policy.
   */
-  services -> List:
-    index := ContainerService.POLICY-SERVICES-INDEX
-    if policy is not Array_ or policy.size <= index: return []
+  may-use-service uuid/string -> bool:
+    services := policy-entry_ ContainerService.POLICY-SERVICES-INDEX
+    if services == ContainerService.ALL-SERVICES: return true
+    if services and services.contains uuid: return true
+    return network-policy != null and NETWORK-SERVICE-UUIDS_.contains uuid
+
+  /**
+  The network policy of a sandboxed container (experimental, see
+    $ContainerService.POLICY-NETWORK-INDEX), as given at start (checked for
+    its shape and size only), or null. The sandbox network services read
+    it ($ContainerService.NETWORK-POLICY-INDEX).
+  */
+  network-policy -> any:
+    return policy-entry_ ContainerService.POLICY-NETWORK-INDEX
+
+  policy-entry_ index/int -> any:
+    if policy is not Array_ or policy.size <= index: return null
     return policy[index]
 
   stop -> none:
@@ -356,6 +362,9 @@ abstract class ContainerServiceProvider extends ServiceProvider
     if index == ContainerService.IMAGE-WRITER-COMMIT-INDEX:
       writer ::= (resource client arguments[0]) as ContainerImageWriter
       return (image-writer-commit writer arguments[1] arguments[2]).to-byte-array
+    if index == ContainerService.NETWORK-POLICY-INDEX:
+      if arguments is not int: throw "WRONG_OBJECT_TYPE"
+      return network-policy-of arguments
     if index == ContainerService.NOTIFY-BACKGROUND-STATE-CHANGED-INDEX:
       return send-container-event --gid=gid
           system-containers.Container.EVENT-BACKGROUND-STATE-CHANGE
@@ -367,6 +376,11 @@ abstract class ContainerServiceProvider extends ServiceProvider
   abstract add-flash-image allocation/FlashAllocation -> ContainerImage
   abstract lookup-image id/uuid.Uuid -> ContainerImage?
   abstract send-container-event --gid/int event-kind/int event-value/any -> none
+  /** The network policy of the container with the group id $gid, or null. */
+  abstract network-policy-of gid/int -> any
+
+  network-policy gid/int -> any:
+    return network-policy-of gid
 
   list-images -> List:
     names := {:}
@@ -464,7 +478,7 @@ class ContainerManager extends ContainerServiceProvider implements SystemMessage
       container != null and container.may-provide-services
     service-manager_.may-use-service = :: | gid/int uuid/string |
       container/Container? := lookup-container gid
-      container != null and container.services.contains uuid
+      container != null and container.may-use-service uuid
     set-system-message-handler_ SYSTEM-TERMINATED_ this
     set-system-message-handler_ SYSTEM-SPAWNED_ this
     set-system-message-handler_ SYSTEM-TRACE_ this
@@ -612,6 +626,10 @@ class ContainerManager extends ContainerServiceProvider implements SystemMessage
   send-container-event --gid/int event-kind/int event-value/any -> none:
     container/Container? := lookup-container gid
     if container: container.send-event [event-kind, event-value]
+
+  network-policy-of gid/int -> any:
+    container/Container? := lookup-container gid
+    return container and container.network-policy
 
 trace-using-print message/ByteArray --from=0 --to=message.size:
   // Print a trace message on output so that that you can easily decode.

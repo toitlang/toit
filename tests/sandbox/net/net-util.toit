@@ -22,31 +22,57 @@ import net
 import net.tcp
 import tls
 import system.containers
-import system.api.sandbox-network show SandboxSocketService SandboxHttpService
+import system.api.sandbox-network show SandboxSocketService SandboxHttpService SandboxNetworkClient
+import ....services.sandbox-network.provider show run-sandbox-network
 
 SOCKET-SERVICE ::= SandboxSocketService.SELECTOR.uuid
 HTTP-SERVICE ::= SandboxHttpService.SELECTOR.uuid
 
 /**
-Runs the test: in the driver, calls $driver; in a sandbox, calls the block
-  of $roles for its role with the arguments map. A sandbox that throws
-  exits with 1 (uncaught exception).
+Runs the test: in the driver, starts the sandbox network provider (a
+  trusted container from this image, unless $provider is false) and calls
+  $driver; in a sandbox, calls the block of $roles for its role with the
+  arguments map. A sandbox that throws exits with 1 (uncaught exception).
 */
-run-test args/any --roles/Map [driver] -> none:
+run-test args/any --roles/Map --provider/bool=true [driver] -> none:
   if args is Map:
-    (roles[args["role"]]).call args
+    role := args["role"]
+    if role == PROVIDER-ROLE:
+      run-sandbox-network
+      return
+    (roles[role]).call args
     return
+  container := provider ? start-provider : null
   driver.call
+  if container: container.stop
   print "OK"
+
+PROVIDER-ROLE ::= "network-provider"
+
+/**
+Starts the sandbox network provider as a trusted container (with a heap
+  quota) and waits until it serves.
+*/
+start-provider --heap/int=4_000_000 -> containers.Container:
+  container := containers.start containers.current {"role": PROVIDER-ROLE}
+      --quotas={"heap": heap}
+  wait-for-provider
+  return container
+
+wait-for-provider -> none:
+  [SandboxSocketService.SELECTOR, SandboxHttpService.SELECTOR].do: | selector |
+    client := SandboxNetworkClient selector
+    client.open --timeout=(Duration --s=5)
+    client.close
 
 /**
 Starts a sandbox from this image with the given $role and $arguments and
   waits for it. Returns its exit code.
 */
-run-sandbox role/string arguments/Map={:} --services/List=[SOCKET-SERVICE, HTTP-SERVICE] --network/Map?=null --quotas/Map?=null -> int:
+run-sandbox role/string arguments/Map={:} --services/any=null --network/any=null --quotas/Map?=null -> int:
   return (start-sandbox role arguments --services=services --network=network --quotas=quotas).wait
 
-start-sandbox role/string arguments/Map={:} --services/List=[SOCKET-SERVICE, HTTP-SERVICE] --network/Map?=null --quotas/Map?=null -> containers.Container:
+start-sandbox role/string arguments/Map={:} --services/any=null --network/any=null --quotas/Map?=null -> containers.Container:
   all := {"role": role}
   arguments.do: | key value | all[key] = value
   return containers.start containers.current all
@@ -55,7 +81,7 @@ start-sandbox role/string arguments/Map={:} --services/List=[SOCKET-SERVICE, HTT
       --network=network
       --quotas=quotas
 
-expect-sandbox role/string arguments/Map={:} --services/List=[SOCKET-SERVICE, HTTP-SERVICE] --network/Map?=null --quotas/Map?=null -> none:
+expect-sandbox role/string arguments/Map={:} --services/any=null --network/any=null --quotas/Map?=null -> none:
   code := run-sandbox role arguments --services=services --network=network --quotas=quotas
   print "sandbox $role: exit $code"
   if code != 0: throw "sandbox $role exited with $code"

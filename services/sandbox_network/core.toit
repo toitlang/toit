@@ -14,54 +14,104 @@
 // directory of this repository.
 
 /**
-The part of the sandbox network services (experimental) that both
+The part of the sandbox network provider (experimental) that both
   variants share: connections that are made, read and written in the
   background, so that no request of a sandbox waits for the network in one
-  of the system process's RPC tasks.
+  of the provider's RPC tasks; the network policies of the clients'
+  containers; the clients' root certificates.
+
+The provider is a trusted container (see main.toit). It learns the group
+  id of every request from the VM (the `--gid` of a service call, which the
+  sender can't choose; group ids are never reused), and asks the system
+  process for the network policy of that group once ($SandboxNetworkCore.grant).
 
 A connection is a notifiable service resource: it is closed (and its
   socket with it) when the client closes it, closes its service client, or
-  ends (stopped, killed or evicted), through the services framework.
+  ends (stopped, killed or evicted), through the services framework, which
+  watches the client's process.
 
-Bounds per connection: one chunk ($CHUNK-SIZE) read ahead and one chunk
-  waiting to be written, three tasks, the socket (and with TLS, the TLS
-  session). Per container: the policy's connection limit. In total:
-  $SandboxNetworkCore.MAX-CONNECTIONS connections, and one TLS handshake at
-  a time.
+Bounds per connection: three chunks of $CHUNK-SIZE (one read ahead, one
+  handed out and not yet acknowledged, one to write), three tasks, the
+  socket (and with TLS, the TLS session). Per container: the policy's
+  connection limit. In total: $SandboxNetworkCore.MAX-CONNECTIONS
+  connections and one TLS handshake at a time; these bounds stay with every
+  policy, also "all".
 */
 
 import monitor
 import net
 import tls
+import system.containers
+import rpc.broker
 import system.services show ServiceProvider ServiceHandler ServiceResource
 import system.api.sandbox-network show CHUNK-SIZE STATE-CONNECTING STATE-OPEN
-    STATE-INDEX READ-INDEX WRITE-INDEX CLOSE-WRITE-INDEX
+    STATE-INDEX READ-INDEX WRITE-INDEX CLOSE-WRITE-INDEX ADD-ROOT-INDEX STATS-INDEX
 
 import .policy
+import .roots
 
-/** What the services of both variants share in the system process. */
+/** What the services of both variants share. */
 class SandboxNetworkCore:
-  /** Connections of all sandboxes together. */
+  /** Connections of all clients together. */
   static MAX-CONNECTIONS ::= 8
+  /** Containers whose policy is kept when they have no connection. */
+  static MAX-CACHED-GRANTS ::= 32
   static CONNECT-TIMEOUT-MS ::= 10_000
   static HANDSHAKE-TIMEOUT-MS ::= 15_000
 
-  /** Called with a group id; returns its $NetworkGrant or null. */
-  grant-for_/Lambda
   network_/net.Client? := null
   connections_/int := 0
-  // TLS handshakes need the most memory (in the system process), so they
-  // take turns.
+  // TLS handshakes need the most memory, so they take turns.
   handshakes_ ::= monitor.Semaphore --count=1
+  // The policies by group id, false for a group without one, most recently
+  // used last. A grant also holds the limiter state of its container, so it
+  // stays while the container has connections.
+  grants_/Map ::= {:}
+  // Looks up the network policy of a group (the system process).
+  policy-lookup_/Lambda
 
-  constructor --grant-for/Lambda:
-    grant-for_ = grant-for
+  roots ::= RootStore
+  client-roots_/Map ::= {:}  // Map<int, ClientRoots>, by client id.
 
-  /** The network policy of the container of $gid; throws NETWORK_DENIED. */
+  constructor --policy-lookup/Lambda=(:: | gid | containers.network-policy --gid=gid):
+    policy-lookup_ = policy-lookup
+
+  /**
+  The network policy of the container of $gid; throws NETWORK_DENIED if it
+    has none. Asks the system process once per container (while the
+    container's grant is cached).
+  */
   grant gid/int -> NetworkGrant:
-    result := grant-for_.call gid
+    result := grants_.get gid
+    if result != null:
+      // Most recently used last.
+      grants_.remove gid
+      grants_[gid] = result
+    else:
+      policy := policy-lookup_.call gid
+      result = false
+      if policy != null:
+        catch: result = NetworkGrant policy
+      evict-grants_
+      grants_[gid] = result
     if result is not NetworkGrant: throw "NETWORK_DENIED"
     return result
+
+  evict-grants_ -> none:
+    if grants_.size < MAX-CACHED-GRANTS: return
+    victim := null
+    grants_.do: | gid grant |
+      if not victim and (grant is not NetworkGrant or grant.connections == 0): victim = gid
+    if victim != null: grants_.remove victim
+
+  /** The roots of the client with the given id. */
+  roots-of client/int -> ClientRoots:
+    return client-roots_.get client --init=: ClientRoots roots
+
+  client-closed client/int -> none:
+    client-roots_.get client --if-present=: | r/ClientRoots |
+      r.release
+      client-roots_.remove client
 
   network -> net.Client:
     if not network_: network_ = net.open
@@ -71,16 +121,17 @@ class SandboxNetworkCore:
   Resolves $host (or parses it, if it is an IPv4 address) and returns the
     first address the $grant allows at $port. Throws CONNECT_FAILED,
     whether the name can't be resolved or resolves to addresses that are
-    not allowed: the sandbox doesn't learn which internal names exist.
+    not allowed: the sandbox doesn't learn which internal names exist. An
+    address the client gave that isn't allowed is NETWORK_DENIED.
   */
   resolve host/string port/int grant/NetworkGrant -> net.IpAddress:
     literal := parse-ipv4 host
-    candidates/List? := null
     if literal:
-      candidates = [net.IpAddress literal]
-    else:
-      catch: candidates = network.resolve host
-      if not candidates: throw "CONNECT_FAILED"
+      if not grant.address-allowed literal port: throw "NETWORK_DENIED"
+      return net.IpAddress literal
+    candidates/List? := null
+    catch: candidates = network.resolve host
+    if not candidates: throw "CONNECT_FAILED"
     candidates.do: | address/net.IpAddress |
       if grant.address-allowed address.to-byte-array port: return address
     throw "CONNECT_FAILED"
@@ -102,9 +153,25 @@ class SandboxNetworkCore:
     finally:
       handshakes_.up
 
+  /**
+  The roots a TLS connection of $client may verify with: the client's roots
+    with the given $ids (all if null), restricted to the ones the policy
+    pins for the destination. Throws NETWORK_DENIED if the policy requires a
+    pin and no rule for the destination has one.
+  */
+  tls-roots client/int ids/List? grant/NetworkGrant host/string port/int --path/string? -> List:
+    pins := grant.pins-for host port --path=path
+    if pins and pins.is-empty: throw "NETWORK_DENIED"
+    selected := (roots-of client).select ids
+    if not pins: return selected
+    return selected.filter: | entry/RootEntry | pins.contains entry.hash
+
+  stats -> List:
+    return roots.stats + [connections_]
+
 /**
-A stream to a destination, made and transferred by tasks of the system
-  process. Subclasses frame the data (HTTP).
+A stream to a destination, made and transferred by tasks of the provider.
+  Subclasses frame the data (HTTP).
 */
 class SandboxConnection extends ServiceResource:
   core/SandboxNetworkCore
@@ -112,6 +179,7 @@ class SandboxConnection extends ServiceResource:
   host/string
   port/int
   use-tls/bool
+  roots_/List                  // The RootEntry objects for TLS.
 
   socket_ := null              // A tcp.Socket or tls.Socket.
   connected_/bool := false
@@ -134,7 +202,9 @@ class SandboxConnection extends ServiceResource:
     $SandboxNetworkProvider.open-stream_).
   */
   constructor provider/ServiceProvider client/int .core .grant .host .port .use-tls
+      --roots/List=[]
       --deadline-ms/int?=null:
+    roots_ = roots
     super provider client --notifiable
     tasks_.add (task --background:: run_)
     if deadline-ms:
@@ -144,6 +214,9 @@ class SandboxConnection extends ServiceResource:
 
   run_ -> none:
     exception := catch:
+      // Without a root the verification can't succeed (the provider has
+      // none of its own).
+      if use-tls and roots_.is-empty: throw "TLS_FAILED"
       address := core.resolve host port grant
       raw := null
       connect-error := catch:
@@ -154,7 +227,8 @@ class SandboxConnection extends ServiceResource:
       raw.no-delay = true
       socket_ = raw
       if use-tls:
-        secure := tls.Socket.client raw --server-name=host
+        certificates := roots_.map: | entry/RootEntry | entry.parsed
+        secure := tls.Socket.client raw --server-name=host --root-certificates=certificates
         socket_ = secure
         handshake-error := catch: core.handshake: secure.handshake
         if handshake-error: throw "TLS_FAILED"
@@ -332,9 +406,12 @@ abstract class SandboxNetworkProvider extends ServiceProvider implements Service
     super name --major=0 --minor=1
 
   // The provider exists for sandboxes; which of them may use it is up to
-  // the service allow-list of their containers.
+  // the service list (or the network policy) of their containers.
   accepts-untrusted-clients -> bool:
     return true
+
+  on-closed client/int -> none:
+    core.client-closed client
 
   handle index/int arguments/any --gid/int --client/int -> any:
     if index == READ-INDEX:
@@ -348,6 +425,15 @@ abstract class SandboxNetworkProvider extends ServiceProvider implements Service
       return (stream_ client arguments[0]).write arguments[1] arguments[2]
     if index == STATE-INDEX: return (stream_ client arguments).state
     if index == CLOSE-WRITE-INDEX: return (stream_ client arguments).close-write
+    if index == ADD-ROOT-INDEX:
+      if arguments is not List or arguments.size != 3 or arguments[0] is not int
+          or arguments[1] is not int or arguments[2] is not ByteArray:
+        throw "WRONG_OBJECT_TYPE"
+      return (core.roots-of client).add arguments[0] arguments[1] arguments[2]
+    if index == STATS-INDEX:
+      // Which roots other clients registered is no business of a sandbox.
+      if broker.RpcBroker.is-untrusted_ (pid --client=client): throw "PERMISSION_DENIED"
+      return core.stats
     return handle-open index arguments --gid=gid --client=client
 
   abstract handle-open index/int arguments/any --gid/int --client/int -> any

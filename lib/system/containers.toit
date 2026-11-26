@@ -17,6 +17,14 @@ import system.services show ServiceResourceProxy ServiceHandler ServiceSelector
 _client_ /ContainerServiceClient ::=
     (ContainerServiceClient).open as ContainerServiceClient
 
+/**
+Returns the network policy of the container with the group id $gid, as it
+  was given when the container was started, or null (for the sandbox
+  network services; see $ContainerService.NETWORK-POLICY-INDEX).
+*/
+network-policy --gid/int -> any:
+  return _client_.network-policy gid
+
 images -> List:
   return _client_.list-images
 
@@ -74,13 +82,19 @@ A sandboxed container can only use the services in $services (a list of
   service uuids, strings, or $ServiceSelector objects; at most
   $ContainerService.MAX-POLICY-SERVICES), and only if their providers
   accept sandboxed clients. Service discovery and printing are always
-  available. Without $services, a sandbox can use no other service. The
-  list doesn't restrict trusted containers.
+  available. Without $services (the default), a sandbox can use no other
+  service; with $services set to "all" ($ContainerService.ALL-SERVICES) it
+  can use every provider that accepts sandboxed clients. The list doesn't
+  restrict trusted containers.
 
 The $network policy (experimental) says which destinations a sandbox may
-  reach through the sandbox network services, which it must be allowed to
-  use in $services, and how much (see `network-policy-list` in the
-  system.api.sandbox-network library for the keys).
+  reach through the sandbox network services, and how much: "all" (every
+  destination, no limits), "public" (every public address, no limits), a
+  list of rules (these destinations, no limits), or a map of rules and
+  limits (see `network-policy-list` in the system.api.sandbox-network
+  library). A container with a network policy may use the sandbox network
+  services without listing them in $services. Without $network (the
+  default), it has no network.
 */
 start id/uuid.Uuid arguments/any=[] -> Container
     --on-event/Lambda?=null
@@ -88,8 +102,8 @@ start id/uuid.Uuid arguments/any=[] -> Container
     --untrusted/bool=false
     --quotas/Map?=null
     --may-provide-services/bool=false
-    --services/List?=null
-    --network/Map?=null:
+    --services/any=null
+    --network/any=null:
   policy/any := null
   if untrusted or quotas or may-provide-services or services or network:
     kind := untrusted ? ContainerService.POLICY-UNTRUSTED : ContainerService.POLICY-TRUSTED
@@ -108,7 +122,10 @@ start id/uuid.Uuid arguments/any=[] -> Container
         may-provide-services ? ContainerService.POLICY-GRANT-PROVIDE-SERVICES : 0,
       ]
       if services or network:
-        policy.add ((services or []).map: it is ServiceSelector ? (it as ServiceSelector).uuid : it)
+        if services is string:
+          policy.add services
+        else:
+          policy.add ((services or []).map: it is ServiceSelector ? (it as ServiceSelector).uuid : it)
       if network:
         policy.add (network-policy-list network)
     else:

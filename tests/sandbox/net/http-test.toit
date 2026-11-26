@@ -68,6 +68,7 @@ main args:
 
     "https": :: | arguments/Map |
       client := sandbox-http.open
+      client.add-root-certificate TEST-CERTIFICATE
       response := client.get "https://localhost:$arguments["port"]/small"
       expect-equals 200 response.status-code
       expect-equals "hello" response.body.read-all.to-string

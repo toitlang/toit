@@ -6,15 +6,14 @@
 TCP and TLS sockets for sandboxed containers (experimental).
 
 A sandbox can't use the network primitives. This library gets its sockets
-  from the system's sandbox socket service, which connects only to the
-  destinations of the container's network policy and runs TLS itself (with
-  the system's root certificates). The container must be started with the
-  service on its service list and a network policy:
+  from the sandbox socket service of the sandbox network provider (a
+  trusted container), which connects only to the destinations of the
+  container's network policy and runs TLS itself, with the root
+  certificates the sandbox registers ($SandboxNetwork.add-root-certificate).
+  The container must be started with a network policy:
 
 ```
-containers.start id --untrusted
-    --services=[SandboxSocketService.SELECTOR]
-    --network={"allow": ["api.example.com:443"]}
+containers.start id --untrusted --network=["api.example.com:443"]
 ```
 
 The sockets implement $tcp.Socket, so code written for sockets works on
@@ -29,6 +28,7 @@ main:
   // Plain HTTP over a service socket.
   client := http.Client network
   // HTTPS: the service runs TLS, the http library only HTTP.
+  network.add-root-certificate certificate-roots.ISRG-ROOT-X1
   client = http.Client network.with-tls
   response := client.get --uri="http://api.example.com:443/status"
 ```
@@ -37,19 +37,23 @@ main:
 import io
 import net
 import net.tcp
+import tls
 import system.api.sandbox-network show *
 
-service_/SandboxNetworkClient? ::= (SandboxNetworkClient SandboxSocketService.SELECTOR).open
-    --if-absent=: null
-
 /**
-Opens the sandbox network. Throws if the container may not use the
-  sandbox socket service.
+Opens the sandbox network: a session with the sandbox socket service.
+
+Throws "Sandbox network unavailable" if the container may not use the
+  service or the provider doesn't run; waits up to $timeout for it (for
+  sandboxes that start before the provider). If the provider ends, the
+  session's calls fail and a new session is needed (and its roots must be
+  registered again).
 */
-open -> SandboxNetwork:
-  client := service_
-  if not client: throw "Sandbox network unavailable"
-  return SandboxNetwork.internal_ client --tls=false
+open --timeout/Duration=(Duration --ms=100) -> SandboxNetwork:
+  client := (SandboxNetworkClient SandboxSocketService.SELECTOR).open
+      --timeout=timeout
+      --if-absent=: throw "Sandbox network unavailable"
+  return SandboxNetwork.internal_ client --tls=false --roots=null
 
 /**
 A network interface for TCP connections through the sandbox socket
@@ -59,17 +63,33 @@ A network interface for TCP connections through the sandbox socket
 class SandboxNetwork implements tcp.Interface:
   client_/SandboxNetworkClient
   tls_/bool
+  roots_/List?
 
-  constructor.internal_ .client_ --tls/bool:
+  constructor.internal_ .client_ --tls/bool --roots/List?:
     tls_ = tls
+    roots_ = roots
+
+  /**
+  Registers a root certificate for this session's TLS connections and
+    returns its id. The $root is a $tls.RootCertificate (for example one
+    of the certificate-roots package), or its DER or PEM bytes or text. At
+    most $MAX-CLIENT-ROOTS roots of $MAX-CLIENT-ROOT-BYTES together.
+  */
+  add-root-certificate root/any -> int:
+    return client_.add-root (root-bytes root)
 
   /**
   Returns an interface whose $tcp-connect opens TLS connections, run by
     the service, which verifies the server's certificate for the host name
-    against the system's root certificates.
+    with the roots registered with $add-root-certificate: the ones with the
+    ids in $roots, or all of them.
   */
-  with-tls -> SandboxNetwork:
-    return SandboxNetwork.internal_ client_ --tls
+  with-tls --roots/List?=null -> SandboxNetwork:
+    return SandboxNetwork.internal_ client_ --tls --roots=roots
+
+  /** Ends the session: its connections and roots. */
+  close -> none:
+    client_.close
 
   /**
   Connects to $host (a name or an IPv4 address) at $port.
@@ -80,7 +100,7 @@ class SandboxNetwork implements tcp.Interface:
     can't be made.
   */
   tcp-connect host/string port/int -> SandboxSocket:
-    handle := client_.connect host port tls_
+    handle := client_.connect host port tls_ roots_
     socket := SandboxSocket.internal_ client_ handle --peer=(net.SocketAddress (ip-of_ host) port)
     try:
       socket.wait-connected

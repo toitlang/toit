@@ -10,7 +10,7 @@ interface ContainerService:
   static SELECTOR ::= ServiceSelector
       --uuid="358ee529-45a4-409e-8fab-7a28f71e5c51"
       --major=0
-      --minor=8
+      --minor=9
 
   static FLAG-RUN-BOOT     /int ::= 1 << 0
   static FLAG-RUN-CRITICAL /int ::= 1 << 1
@@ -32,17 +32,23 @@ interface ContainerService:
   // (see TAG-UNTRUSTED-PROVIDER in the system.services library).
   static POLICY-GRANT-PROVIDE-SERVICES /int ::= 1 << 0
   // A policy list holds the services a sandboxed container may use at this
-  // index: a list of service uuids (strings). A sandbox discovers and opens
-  // only providers of these services that accept sandboxed clients, and
-  // the service discovery and print services, which are always available.
-  // Missing or empty: no other service. The VM ignores the entry.
+  // index: a list of service uuids (strings), or $ALL-SERVICES. A sandbox
+  // discovers and opens only providers of these services that accept
+  // sandboxed clients, and the service discovery and print services, which
+  // are always available. Missing or empty: no other service (the default).
+  // A container with a network policy may also use the sandbox network
+  // services. The VM ignores the entry.
   static POLICY-SERVICES-INDEX /int ::= 10
+  // The services entry that lets a sandbox use every provider that accepts
+  // sandboxed clients.
+  static ALL-SERVICES /string ::= "all"
   // The most service uuids a policy may list, and their largest size.
   static MAX-POLICY-SERVICES /int ::= 16
   static MAX-POLICY-SERVICE-SIZE /int ::= 64
   // A policy list holds the network policy of a sandboxed container at
   // this index (experimental, see the system.api.sandbox-network library).
-  // The VM ignores the entry.
+  // The system process checks its shape and size and keeps it for the
+  // sandbox network services ($NETWORK-POLICY-INDEX). The VM ignores it.
   static POLICY-NETWORK-INDEX /int ::= 11
 
   list-images -> List
@@ -79,6 +85,15 @@ interface ContainerService:
 
   notify-background-state-changed new-state/any -> none
   static NOTIFY-BACKGROUND-STATE-CHANGED-INDEX /int ::= 8
+
+  /**
+  Returns the network policy of the container with the group id $gid as it
+    was given at start (see $POLICY-NETWORK-INDEX), or null. For the
+    sandbox network services, which learn the group id of each request from
+    the VM. Sandboxes can't use this service.
+  */
+  network-policy gid/int -> any
+  static NETWORK-POLICY-INDEX /int ::= 9
 
 class ContainerServiceClient extends ServiceClient implements ContainerService:
   static SELECTOR ::= ContainerService.SELECTOR
@@ -119,3 +134,6 @@ class ContainerServiceClient extends ServiceClient implements ContainerService:
 
   notify-background-state-changed new-state/bool -> none:
     invoke_ ContainerService.NOTIFY-BACKGROUND-STATE-CHANGED-INDEX new-state
+
+  network-policy gid/int -> any:
+    return invoke_ ContainerService.NETWORK-POLICY-INDEX gid

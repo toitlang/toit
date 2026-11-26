@@ -5,16 +5,15 @@
 /**
 HTTP requests for sandboxed containers (experimental).
 
-The requests are made by the system's sandbox HTTP service, which only
-  sends them to the URLs (host, port and path) of the container's network
-  policy, and runs TLS for https URLs with the system's root certificates.
-  The container must be started with the service on its service list and
-  a network policy:
+The requests are made by the sandbox HTTP service of the sandbox network
+  provider (a trusted container), which only sends them to the URLs (host,
+  port and path) of the container's network policy, and runs TLS for https
+  URLs with the root certificates the sandbox registers
+  ($SandboxHttpClient.add-root-certificate). The container must be started
+  with a network policy:
 
 ```
-containers.start id --untrusted
-    --services=[SandboxHttpService.SELECTOR]
-    --network={"allow": ["api.example.com:443/v1/"]}
+containers.start id --untrusted --network={"allow": ["api.example.com:443/v1/"]}
 ```
 
 ```
@@ -22,6 +21,7 @@ import net.sandbox-http
 
 main:
   client := sandbox-http.open
+  client.add-root-certificate certificate-roots.ISRG-ROOT-X1
   response := client.get "https://api.example.com/v1/status"
   print response.status-code
   print response.body.read-all.to-string
@@ -35,22 +35,33 @@ Redirects are not followed: a 3xx response is returned, and a new request
 import io
 import system.api.sandbox-network show *
 
-service_/SandboxNetworkClient? ::= (SandboxNetworkClient SandboxHttpService.SELECTOR).open
-    --if-absent=: null
-
 /**
-Opens the sandbox HTTP client. Throws if the container may not use the
-  sandbox HTTP service.
+Opens a session with the sandbox HTTP service. Throws "Sandbox HTTP
+  unavailable" if the container may not use the service or the provider
+  doesn't run; waits up to $timeout for it.
 */
-open -> SandboxHttpClient:
-  client := service_
-  if not client: throw "Sandbox HTTP unavailable"
+open --timeout/Duration=(Duration --ms=100) -> SandboxHttpClient:
+  client := (SandboxNetworkClient SandboxHttpService.SELECTOR).open
+      --timeout=timeout
+      --if-absent=: throw "Sandbox HTTP unavailable"
   return SandboxHttpClient.internal_ client
 
 class SandboxHttpClient:
   client_/SandboxNetworkClient
 
   constructor.internal_ .client_:
+
+  /**
+  Registers a root certificate for this session's https requests and
+    returns its id (see `SandboxNetwork.add-root-certificate` in the
+    net.sandbox library).
+  */
+  add-root-certificate root/any -> int:
+    return client_.add-root (root-bytes root)
+
+  /** Ends the session: its connections and roots. */
+  close -> none:
+    client_.close
 
   get url/string --headers/Map?=null -> SandboxResponse:
     return request "GET" url --headers=headers
@@ -76,7 +87,8 @@ class SandboxHttpClient:
   request method/string url/string -> SandboxResponse
       --headers/Map?=null
       --body/any=null
-      --content-length/int?=null:
+      --content-length/int?=null
+      --roots/List?=null:
     flat := []
     if headers: headers.do: | name value | flat.add name; flat.add value
     reader/io.Reader? := null
@@ -88,7 +100,7 @@ class SandboxHttpClient:
       reader = io.Reader (ByteArray.from data)
     else if content-length == null:
       content-length = 0
-    handle := client_.request method url flat content-length
+    handle := client_.request method url flat content-length roots
     stream := SandboxHttpStream_ client_ handle
     try:
       if reader:

@@ -37,7 +37,9 @@ main args:
 
     "tls": :: | arguments/Map |
       port := arguments["port"]
-      client := http.Client sandbox.open.with-tls
+      network := sandbox.open
+      network.add-root-certificate TEST-CERTIFICATE
+      client := http.Client network.with-tls
       response := client.get --uri="http://localhost:$port/small"
       expect-equals 200 response.status-code
       expect-equals "hello" response.body.read-all.to-string

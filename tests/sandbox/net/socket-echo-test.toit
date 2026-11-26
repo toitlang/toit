@@ -59,8 +59,9 @@ main args:
       socket.close,
 
     "not-listed": :: | arguments/Map |
-      // The service isn't on the container's service list: the sandbox
-      // doesn't discover it and can't open it without discovery either.
+      // Neither a network policy nor the service on the service list: the
+      // sandbox doesn't discover the provider and the VM doesn't let it send
+      // the open request to the provider's pid.
       expect-equals "Sandbox network unavailable" (catch: sandbox.open)
       ids := arguments["ids"]
       expect-equals "PERMISSION_DENIED"
@@ -80,8 +81,8 @@ main args:
         --network={"allow": ["localhost:$port"]}
     expect-sandbox "rebinding-listed" {"port": port}
         --network={"allow": ["localhost:$port", "127.0.0.1:$port"]}
+    // The provider runs in its own container: only the VM's send grant
+    // (from discovery) lets a sandbox reach it.
     expect-sandbox "not-listed" {"port": port, "ids": provider-ids SOCKET-SERVICE}
-        --services=[HTTP-SERVICE]
-        --network={"allow": ["127.0.0.1:$port"]}
-    expect-sandbox "no-policy" {"port": port}
+    expect-sandbox "no-policy" {"port": port} --services=[SOCKET-SERVICE]
     server.close

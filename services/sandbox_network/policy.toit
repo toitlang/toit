@@ -18,47 +18,54 @@ The network policy of a sandboxed container (experimental): which
   destinations it may connect to, and how much it may use the network.
 
 This file is the whole policy decision and limiter of the sandbox network
-  services (system/sandbox_network/): it does no I/O, and everything a
+  provider (services/sandbox_network/): it does no I/O, and everything a
   sandbox can reach goes through $NetworkGrant.allows (before a name is
-  resolved), $NetworkGrant.address-allowed (for the address the service
-  resolved), $NetworkGrant.open-connection and $NetworkGrant.take-bytes.
+  resolved), $NetworkGrant.address-allowed (for the address the provider
+  resolved), $NetworkGrant.pins-for (the roots a TLS connection may verify
+  with), $NetworkGrant.open-connection and $NetworkGrant.take-bytes.
 
-The policy is given by whoever starts the container, as entry
-  $POLICY-NETWORK-INDEX of the launch policy (see
-  `containers.start --network`):
+The policy is given by whoever starts the container, as entry 11 of the
+  launch policy (`containers.start --network`); the system process checks
+  its shape and size and hands it to the provider. It is "all" (every
+  destination, no limits), "public" (every public address, no limits), or
 
 ```
 [rules, connections, attempts-per-minute, bytes-per-second, bytes-per-day,
- response-bytes, timeout-ms]
+ response-bytes, timeout-ms, require-pins]
 ```
 
-Each limit is an int; -1 (or a missing entry) means the default below.
+Each limit is an int; -1 (or a missing entry) means the default below, 0
+  means no limit. require-pins is 1 or 0.
 
-A rule is a string `HOST:PORTS` or `HOST:PORTS/PATH`:
+A rule is a string `HOST:PORTS`, `HOST:PORTS/PATH`, optionally followed by
+  `#PIN`:
 - HOST is a DNS name (`api.example.com`), a name with a wildcard first
   label (`*.example.com`, which matches `a.example.com` and
   `a.b.example.com` but not `example.com`), or an IPv4 address.
 - PORTS is a port (`443`) or a range (`8000-8099`).
 - PATH (optional, starting with `/`) only applies to HTTP requests
   (variant H): the request path must start with it. Rules with a PATH
-  never allow sockets (variant S), because the service can't see what a
+  never allow sockets (variant S), because the provider can't see what a
   socket client sends.
+- PIN is the SHA-256 of the DER form of a root certificate (64 hex
+  digits): a TLS connection the rule allows may only verify with that
+  root.
 
 Addresses that aren't public (loopback, private, link-local, carrier-grade
   NAT, multicast, reserved; see $is-public-address) are only allowed if a
   rule names the address itself (an IPv4 HOST) and covers the port: a name
-  that is allowed but resolves to such an address is denied.
+  that is allowed but resolves to such an address is denied. "all" allows
+  them; "public" doesn't.
 */
 
-POLICY-NETWORK-INDEX ::= 11
+NETWORK-ALL ::= "all"
+NETWORK-PUBLIC ::= "public"
 
 MAX-RULES ::= 16
-MAX-RULE-SIZE ::= 128
+MAX-RULE-SIZE ::= 192
 MAX-HOST-SIZE ::= 253
 
 // Defaults and upper bounds of the limits, in the order of the policy list.
-LIMIT-NAMES_ ::= ["connections", "attempts-per-minute", "bytes-per-second",
-                  "bytes-per-day", "response-bytes", "timeout-ms"]
 LIMIT-DEFAULTS_ ::= [2, 20, 16 * 1024, 10 * 1024 * 1024, 1024 * 1024, 30_000]
 LIMIT-MIN_ ::= [1, 1, 1024, 1, 1, 100]
 LIMIT-MAX_ ::= [8, 600, 1024 * 1024, 1 << 30, 1 << 30, 300_000]
@@ -69,8 +76,9 @@ class Rule_:
   from/int
   to/int
   path/string?
+  pin/ByteArray?         // SHA-256 of a root certificate's DER form.
 
-  constructor .host .ip .from .to .path:
+  constructor .host .ip .from .to .path .pin:
 
   matches-host name/string -> bool:
     if host.starts-with "*.": return name.ends-with host[1..] and name.size > host.size - 1
@@ -81,21 +89,27 @@ class Rule_:
 
   covers-path path-or-null/string? -> bool:
     if not path: return true
-    if not path-or-null: return false  // Sockets: the service can't check.
+    if not path-or-null: return false  // Sockets: the provider can't check.
     return path-or-null.starts-with path
 
+  matches name/string port/int path/string? -> bool:
+    return (matches-host name) and (covers-port port) and (covers-path path)
+
 class NetworkGrant:
-  rules_/List
-  max-connections/int
-  attempts-per-minute/int
-  bytes-per-second/int
-  bytes-per-day/int
-  response-bytes/int
-  timeout-ms/int
+  // Null for "all" and "public".
+  rules_/List?
+  all_/bool := false
+  max-connections/int        // 0: no limit of the policy.
+  attempts-per-minute/int    // 0: no limit.
+  bytes-per-second/int       // 0: no limit.
+  bytes-per-day/int          // 0: no limit.
+  response-bytes/int         // 0: no limit.
+  timeout-ms/int             // 0: no limit.
+  require-pins/bool := false
 
   // Limiter state.
   connections_/int := 0
-  attempt-credit-us_/int := ?  // At most one minute; an attempt costs 60 s / limit.
+  attempt-credit-us_/int := 60_000_000  // At most a minute; an attempt costs 60 s / limit.
   attempt-time-us_/int := ?
   byte-credit_/int := ?        // In bytes * 1_000_000; at most one second of bytes.
   byte-time-us_/int := ?
@@ -105,26 +119,34 @@ class NetworkGrant:
   static DAY-US_ ::= 24 * 3600 * 1_000_000
 
   /**
-  Parses the network entry of a launch policy. Throws INVALID_ARGUMENT or
-    WRONG_OBJECT_TYPE if it is malformed. The result is kept in the system
-    process while the container lives; its size is bounded by $MAX-RULES
-    and $MAX-RULE-SIZE.
+  Parses a network policy. Throws INVALID_ARGUMENT or WRONG_OBJECT_TYPE if
+    it is malformed. Its size is bounded by $MAX-RULES and $MAX-RULE-SIZE.
   */
   constructor policy/any:
-    if policy is not List or policy.is-empty or policy.size > 1 + LIMIT-NAMES_.size:
-      throw "INVALID_ARGUMENT"
-    rules := policy[0]
-    if rules is not List: throw "WRONG_OBJECT_TYPE"
-    if rules.size > MAX-RULES: throw "INVALID_ARGUMENT"
-    rules_ = rules.map: parse-rule_ it
-    limits := List LIMIT-NAMES_.size: | i |
-      value := i + 1 < policy.size ? policy[i + 1] : -1
-      if value is not int: throw "WRONG_OBJECT_TYPE"
-      if value == -1:
-        LIMIT-DEFAULTS_[i]
-      else:
-        if not LIMIT-MIN_[i] <= value <= LIMIT-MAX_[i]: throw "INVALID_ARGUMENT"
-        value
+    limits/List := ?
+    if policy == NETWORK-ALL or policy == NETWORK-PUBLIC:
+      rules_ = null
+      all_ = policy == NETWORK-ALL
+      limits = [0, 0, 0, 0, 0, 0]
+    else:
+      if policy is not List or policy.is-empty or policy.size > 8: throw "INVALID_ARGUMENT"
+      rules := policy[0]
+      if rules is not List: throw "WRONG_OBJECT_TYPE"
+      if rules.size > MAX-RULES: throw "INVALID_ARGUMENT"
+      rules_ = rules.map: parse-rule_ it
+      limits = List 6: | i |
+        value := i + 1 < policy.size ? policy[i + 1] : -1
+        if value is not int: throw "WRONG_OBJECT_TYPE"
+        if value == -1:
+          LIMIT-DEFAULTS_[i]
+        else if value == 0:
+          0
+        else:
+          if not LIMIT-MIN_[i] <= value <= LIMIT-MAX_[i]: throw "INVALID_ARGUMENT"
+          value
+      pins := policy.size > 7 ? policy[7] : 0
+      if pins is not int: throw "WRONG_OBJECT_TYPE"
+      require-pins = pins != 0
     max-connections = limits[0]
     attempts-per-minute = limits[1]
     bytes-per-second = limits[2]
@@ -132,11 +154,14 @@ class NetworkGrant:
     response-bytes = limits[4]
     timeout-ms = limits[5]
     now := Time.monotonic-us
-    attempt-credit-us_ = 60_000_000
     attempt-time-us_ = now
     byte-credit_ = bytes-per-second * 1_000_000
     byte-time-us_ = now
     day-start-us_ = now
+
+  /** Whether the grant has no limits: the provider skips the limiter. */
+  is-unlimited -> bool:
+    return bytes-per-second == 0 and bytes-per-day == 0
 
   /**
   Whether a rule allows connecting to $host (a name or an IPv4 address, as
@@ -144,22 +169,44 @@ class NetworkGrant:
     path, for sockets null. This is decided before the name is resolved.
   */
   allows host/string port/int --path/string? -> bool:
-    if not is-valid-host_ host: return false
+    if not is-valid-host_ host or not 1 <= port <= 65535: return false
     if path and not is-plain-path_ path: return false
+    rules := rules_
+    if not rules: return true
     name := host.to-ascii-lower
-    return rules_.any: | rule/Rule_ |
-      (rule.matches-host name) and (rule.covers-port port) and (rule.covers-path path)
+    return rules.any: | rule/Rule_ | rule.matches name port path
 
   /**
-  Whether the service may connect to the $address (4 bytes) at $port that
+  Whether the provider may connect to the $address (4 bytes) at $port that
     it resolved for an allowed name: public addresses are allowed, others
-    only if a rule names them.
+    only if a rule names them (or the policy is "all").
   */
   address-allowed address/ByteArray port/int -> bool:
     if address.size != 4: return false
-    if is-public-address address: return true
-    return rules_.any: | rule/Rule_ |
+    if all_ or is-public-address address: return true
+    rules := rules_
+    if not rules: return false
+    return rules.any: | rule/Rule_ |
       rule.ip == address and (rule.covers-port port)
+
+  /**
+  The roots a TLS connection to $host at $port (and $path) may verify with:
+    null if any root of the client will do, otherwise the list of pinned
+    SHA-256 fingerprints (empty: TLS isn't allowed, because the policy
+    requires pins and no matching rule has one).
+  */
+  pins-for host/string port/int --path/string? -> List?:
+    rules := rules_
+    if not rules: return null
+    name := host.to-ascii-lower
+    pins := []
+    unpinned := false
+    rules.do: | rule/Rule_ |
+      if rule.matches name port path:
+        if rule.pin: pins.add rule.pin
+        else: unpinned = true
+    if unpinned and not require-pins: return null
+    return pins
 
   /**
   Takes a connection: throws NETWORK_QUOTA_EXCEEDED if the container has
@@ -167,13 +214,15 @@ class NetworkGrant:
     the last minute. Every call counts as an attempt.
   */
   open-connection -> none:
-    now := Time.monotonic-us
-    attempt-credit-us_ = min 60_000_000 (attempt-credit-us_ + now - attempt-time-us_)
-    attempt-time-us_ = now
-    cost := 60_000_000 / attempts-per-minute
-    if attempt-credit-us_ < cost or connections_ >= max-connections:
+    if max-connections != 0 and connections_ >= max-connections:
       throw "NETWORK_QUOTA_EXCEEDED"
-    attempt-credit-us_ -= cost
+    if attempts-per-minute != 0:
+      now := Time.monotonic-us
+      attempt-credit-us_ = min 60_000_000 (attempt-credit-us_ + now - attempt-time-us_)
+      attempt-time-us_ = now
+      cost := 60_000_000 / attempts-per-minute
+      if attempt-credit-us_ < cost: throw "NETWORK_QUOTA_EXCEEDED"
+      attempt-credit-us_ -= cost
     connections_++
 
   /** Gives back a connection taken with $open-connection. */
@@ -188,12 +237,15 @@ class NetworkGrant:
     $bytes-per-second (with a burst of one second).
   */
   take-bytes n/int -> int:
+    if bytes-per-day == 0 and bytes-per-second == 0: return 0
     now := Time.monotonic-us
-    if now - day-start-us_ >= DAY-US_:
-      day-start-us_ = now
-      day-bytes_ = 0
-    if day-bytes_ + n > bytes-per-day: throw "NETWORK_QUOTA_EXCEEDED"
-    day-bytes_ += n
+    if bytes-per-day != 0:
+      if now - day-start-us_ >= DAY-US_:
+        day-start-us_ = now
+        day-bytes_ = 0
+      if day-bytes_ + n > bytes-per-day: throw "NETWORK_QUOTA_EXCEEDED"
+      day-bytes_ += n
+    if bytes-per-second == 0: return 0
     capacity := bytes-per-second * 1_000_000
     byte-credit_ = min capacity (byte-credit_ + (now - byte-time-us_) * bytes-per-second)
     byte-time-us_ = now
@@ -203,6 +255,7 @@ class NetworkGrant:
 
   connections -> int:
     return connections_
+
 
 /**
 Whether the IPv4 $address is a public unicast address: not in 0/8, 10/8,
@@ -243,6 +296,11 @@ parse-ipv4 host/string -> ByteArray?:
 parse-rule_ rule/any -> Rule_:
   if rule is not string: throw "WRONG_OBJECT_TYPE"
   if rule.size > MAX-RULE-SIZE: throw "INVALID_ARGUMENT"
+  pin/ByteArray? := null
+  hash := rule.index-of "#"
+  if hash >= 0:
+    pin = parse-pin_ rule[hash + 1..]
+    rule = rule[..hash]
   path/string? := null
   slash := rule.index-of "/"
   if slash >= 0:
@@ -260,7 +318,17 @@ parse-rule_ rule/any -> Rule_:
   wildcard := host.starts-with "*."
   if not is-valid-host_ (wildcard ? host[2..] : host): throw "INVALID_ARGUMENT"
   ip := wildcard ? null : parse-ipv4 host
-  return Rule_ host ip from to path
+  return Rule_ host ip from to path pin
+
+// 64 hex digits: the SHA-256 of a root certificate.
+parse-pin_ text/string -> ByteArray:
+  if text.size != 64: throw "INVALID_ARGUMENT"
+  result := ByteArray 32
+  text.do --runes: | c |
+    if not ('0' <= c <= '9' or 'a' <= c <= 'f' or 'A' <= c <= 'F'): throw "INVALID_ARGUMENT"
+  for i := 0; i < 32; i++:
+    result[i] = int.parse text[i * 2..i * 2 + 2] --radix=16
+  return result
 
 parse-port_ text/string -> int:
   if text.is-empty or text.size > 5: throw "INVALID_ARGUMENT"
