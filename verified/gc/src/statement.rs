@@ -506,7 +506,8 @@ pub fn collect<S: PageSource>(c: &Ctx, src: &mut S, rptr: *mut usize, rlen: usiz
         assert(roots_ok(*c, h, s, rptr, rv, 0));
     }
     do_roots(c, src, &mut t, rptr, rlen, Ghost(h), Ghost(rv), Tracked(st), Tracked(ro));
-    scan(c, src, &mut t, Ghost(h), Ghost(rptr), Ghost(rv), Tracked(st), Tracked(ro));
+    proof { if t.tn >= 1 { assert(scan_pos(h, *st, t, 0, 0, 0)); } }
+    scan(c, src, &mut t, 0, 0, Ghost(0int), Ghost(h), Ghost(rptr), Ghost(rv), Tracked(st), Tracked(ro));
     let ghost s0 = *st;
     let ghost t0 = t;
     proof {

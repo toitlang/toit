@@ -556,15 +556,60 @@ pub fn do_roots<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, rptr: *mut usi
     }
 }
 
+/// The scan position (page `sp`, offset `so`) for copy `ks`: at its start,
+/// or at the end of a closed page with it at the start of the next; at the
+/// copy pointer once every copy is scanned.
+pub open spec fn scan_pos(h: H, st: St, t: Tos, sp: int, so: int, ks: int) -> bool {
+    &&& 0 <= sp < t.tn
+    &&& 0 <= so <= st.tus[sp]
+    &&& ks == st.order.len() ==> sp + 1 == t.tn && so == t.top
+    &&& ks < st.order.len() ==> st.tloc[ks] == (sp, so) || (so == st.tus[sp] && sp + 1 < t.tn && st.tloc[ks] == (sp + 1, 0int))
+}
+
+/// After a phase that copied more objects, the scan resumes where it
+/// stopped: at the copy pointer of then (`tn0` pages, `top0` used words of
+/// the last), with copy `n0` (the first copied since) next.
+pub proof fn lemma_scan_resume(c: Ctx, h: H, st: St, t: Tos, n0: int, tn0: int, top0: int)
+    requires
+        heap_ok(c, h), bk_ok(h, st), tcopies_ok(c, h, st, t), tpages_ok(c, h, st, t),
+        1 <= tn0 <= t.tn, 1 <= n0 <= st.order.len(),
+        tpg(st, n0 - 1) == tn0 - 1, tend(h, st, n0 - 1) == top0,
+        n0 == st.order.len() ==> t.tn == tn0 && t.top == top0,
+    ensures scan_pos(h, st, t, tn0 - 1, top0, n0),
+{
+    assert(0 <= tpg(st, n0 - 1) < t.tn && tend(h, st, n0 - 1) <= st.tus[tpg(st, n0 - 1)]);
+    let k = n0 - 1;
+    assert(0 <= toff(st, k));
+    assert(top0 <= st.tus[tn0 - 1]);
+    if n0 < st.order.len() {
+        assert(st.tloc[k + 1] == succ(h, st, k, t.tn as int));
+        if tend(h, st, k) == st.tus[tpg(st, k)] && tpg(st, k) + 1 < t.tn {
+            assert(st.tloc[n0] == (tn0, 0int));
+        } else {
+            assert(st.tloc[n0] == (tn0 - 1, top0));
+        }
+    }
+    assert(0 <= tn0 - 1 < t.tn);
+    assert(tpg(st, k) == tn0 - 1);
+    assert(tend(h, st, k) <= st.tus[tpg(st, k)]);
+    assert(tsz(h, st, k) >= 0) by { lemma_from_obj(c, h, st.order[k]); }
+    assert(0 <= top0 <= st.tus[tn0 - 1]);
+    assert(n0 == st.order.len() ==> tn0 - 1 + 1 == t.tn && top0 == t.top);
+}
+
 /// The scan (the C++ `scan`): walks the copies in to-space page by page,
 /// visiting their reference slots, until it reaches the copy pointer.
-pub fn scan<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, Ghost(h): Ghost<H>, Ghost(rptr): Ghost<*mut usize>,
+pub fn scan<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, sp0: usize, so0: usize, Ghost(ks0): Ghost<int>,
+                       Ghost(h): Ghost<H>, Ghost(rptr): Ghost<*mut usize>,
                        Ghost(rv): Ghost<Seq<AVal>>,
                        Tracked(st): Tracked<&mut St>, Tracked(ro): Tracked<&Ro>)
     requires
         ctx_ok(*c), fpages_ok(*c), ftab_ok(*c, ro.ftp), heap_ok(*c, h), others_ok(h, ro.others), ctab_ok(*c, ro.ctp),
-        inv(*c, h, *old(st), *old(t), 0, 0, rv), roots_ok(*c, h, *old(st), rptr, rv, rv.len() as int),
+        inv(*c, h, *old(st), *old(t), ks0, 0, rv), roots_ok(*c, h, *old(st), rptr, rv, rv.len() as int),
         src_ok(*c, *old(src), *old(t)),
+        0 <= ks0 <= old(st).order.len(),
+        old(t).tn == 0 ==> ks0 == 0,
+        old(t).tn >= 1 ==> scan_pos(h, *old(st), *old(t), sp0 as int, so0 as int, ks0),
     ensures
         inv(*c, h, *final(st), *final(t), final(st).order.len() as int, 0, rv),
         roots_ok(*c, h, *final(st), rptr, rv, rv.len() as int),
@@ -576,13 +621,13 @@ pub fn scan<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, Ghost(h): Ghost<H>
     }
     let ghost rl = rv.len() as int;
     proof {
-        assert(wperm_ok(st.ttp, 0, t.ttab, 0));
-        assert(st.ttp[0].is_init());
+        assert(wperm_ok(st.ttp, sp0 as int, t.ttab, sp0 as int));
+        assert(st.ttp[sp0 as int].is_init());
     }
-    let mut sstart = tab_at(t.ttab, 0, Ghost(t.tcap as int), Tracked(&st.ttp));
-    let mut sp: usize = 0;
-    let mut so: usize = 0;
-    let ghost mut ks: int = 0;
+    let mut sstart = tab_at(t.ttab, sp0, Ghost(t.tcap as int), Tracked(&st.ttp));
+    let mut sp: usize = sp0;
+    let mut so: usize = so0;
+    let ghost mut ks: int = ks0;
     while !(sp + 1 == t.tn && so == t.top)
         invariant
             ctx_ok(*c), fpages_ok(*c), ftab_ok(*c, ro.ftp), heap_ok(*c, h), others_ok(h, ro.others), ctab_ok(*c, ro.ctp),
