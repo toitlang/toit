@@ -88,6 +88,7 @@ run-driver:
   untrusted := containers.start containers.current
       {ROLE-KEY: "untrusted", "provider-pid": first-pid}
       --untrusted
+      --services=[PidService.SELECTOR.uuid]
   // Let the untrusted container discover and use the first provider.
   sleep --ms=1_000
   first.stop

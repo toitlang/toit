@@ -76,7 +76,13 @@ class Container:
 
   start arguments/any=image.default-arguments --policy/any=null -> none:
     if pids_: throw "Already started"
-    validated := policy-for_ policy --image-untrusted=image.untrusted
+    validated := null
+    try:
+      validated = policy-for_ policy --image-untrusted=image.untrusted
+    finally: | is-exception exception |
+      // A malformed policy refuses the container like the VM does: the
+      // manager must not wait for it.
+      if is-exception: image.manager.on-container-refused_ this
     kind := validated is Array_ ? validated[0] : validated
     explicitly-untrusted := policy != null and kind == ContainerService.POLICY-UNTRUSTED
     this.policy = validated
@@ -118,10 +124,23 @@ class Container:
     if kind != ContainerService.POLICY-TRUSTED and kind != ContainerService.POLICY-UNTRUSTED:
       throw "INVALID_ARGUMENT"
     if policy is List:
-      if policy.size > ContainerService.POLICY-GRANTS-INDEX + 1: throw "INVALID_ARGUMENT"
-      policy.do: if it is not int: throw "WRONG_OBJECT_TYPE"
+      if policy.size > ContainerService.POLICY-SERVICES-INDEX + 1: throw "INVALID_ARGUMENT"
+      for i := 0; i < policy.size; i++:
+        if i == ContainerService.POLICY-SERVICES-INDEX:
+          validate-service-list_ policy[i]
+        else if policy[i] is not int:
+          throw "WRONG_OBJECT_TYPE"
       return Array_.from policy
     return policy
+
+  /**
+  The services a sandboxed container may use (see
+    $ContainerService.POLICY-SERVICES-INDEX), from its validated policy.
+  */
+  services -> List:
+    index := ContainerService.POLICY-SERVICES-INDEX
+    if policy is not Array_ or policy.size <= index: return []
+    return policy[index]
 
   stop -> none:
     if not pids_: throw "Not started"
@@ -431,6 +450,9 @@ class ContainerManager extends ContainerServiceProvider implements SystemMessage
     service-manager_.may-provide-services = :: | gid/int |
       container/Container? := lookup-container gid
       container != null and container.may-provide-services
+    service-manager_.may-use-service = :: | gid/int uuid/string |
+      container/Container? := lookup-container gid
+      container != null and container.services.contains uuid
     set-system-message-handler_ SYSTEM-TERMINATED_ this
     set-system-message-handler_ SYSTEM-SPAWNED_ this
     set-system-message-handler_ SYSTEM-TRACE_ this

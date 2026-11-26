@@ -3,10 +3,17 @@
 // be found in the tests/LICENSE file.
 
 import .sandbox
+import system.api.containers show ContainerService
 import system.containers
 
-// The container service of the system process rejects sandboxed
-// clients, so they can't start or stop containers.
+// Sandboxed clients don't discover the container service of the system
+// process, and it rejects them when they open it without discovery, so
+// they can't start or stop containers.
 main args:
-  sandbox-test args --error="PERMISSION_DENIED": | arguments/Map |
-    containers.images
+  sandbox-test args --error="PERMISSION_DENIED"
+      --prepare=(:: | _ | {"ids": provider-ids ContainerService.SELECTOR.uuid}):
+    | arguments/Map |
+    exception := catch: containers.images
+    if exception != "Cannot find service": throw "DISCOVERED: $exception"
+    ids := arguments["ids"]
+    open-without-discovery ids[0] ids[1] ContainerService.SELECTOR

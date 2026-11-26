@@ -11,7 +11,7 @@ import uuid
 import monitor
 
 import system.api.containers show ContainerService ContainerServiceClient
-import system.services show ServiceResourceProxy ServiceHandler
+import system.services show ServiceResourceProxy ServiceHandler ServiceSelector
 
 _client_ /ContainerServiceClient ::=
     (ContainerServiceClient).open as ContainerServiceClient
@@ -68,17 +68,25 @@ A sandboxed container can't register service providers, unless
   selectors never match them,
   and other sandboxes never discover them. Trusted containers can always
   register providers.
+
+A sandboxed container can only use the services in $services (a list of
+  service uuids, strings, or $ServiceSelector objects; at most
+  $ContainerService.MAX-POLICY-SERVICES), and only if their providers
+  accept sandboxed clients. Service discovery and printing are always
+  available. Without $services, a sandbox can use no other service. The
+  list doesn't restrict trusted containers.
 */
 start id/uuid.Uuid arguments/any=[] -> Container
     --on-event/Lambda?=null
     --on-stopped/Lambda?=null
     --untrusted/bool=false
     --quotas/Map?=null
-    --may-provide-services/bool=false:
+    --may-provide-services/bool=false
+    --services/List?=null:
   policy/any := null
-  if untrusted or quotas or may-provide-services:
+  if untrusted or quotas or may-provide-services or services:
     kind := untrusted ? ContainerService.POLICY-UNTRUSTED : ContainerService.POLICY-TRUSTED
-    if quotas or may-provide-services:
+    if quotas or may-provide-services or services:
       quotas = quotas or {:}
       policy = [
         kind,
@@ -92,6 +100,8 @@ start id/uuid.Uuid arguments/any=[] -> Container
         quotas.get "cpu-ms" --if-absent=: -1,
         may-provide-services ? ContainerService.POLICY-GRANT-PROVIDE-SERVICES : 0,
       ]
+      if services:
+        policy.add (services.map: it is ServiceSelector ? (it as ServiceSelector).uuid : it)
     else:
       policy = kind
   image/List? := _client_.load-image id

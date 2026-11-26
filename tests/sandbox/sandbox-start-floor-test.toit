@@ -80,6 +80,7 @@ main args:
   // sandbox can't start (it needs 150 KB above the floor), a trusted
   // container can.
   holder := containers.start containers.current {"role": "hold"} --untrusted --quotas={"heap": 2_000_000}
+      --services=[ReadyService.SELECTOR.uuid]
   print "holder ready: \$(provider.latch.get)"
   print "small while held: \$(start "small" --untrusted)"
   print "trusted while held: \$(start "small" --untrusted=false)"
@@ -105,6 +106,7 @@ start role/string --untrusted/bool -> any:
   exception := catch:
     container := containers.start containers.current {"role": role}
         --untrusted=untrusted
+        --services=[ReadyService.SELECTOR.uuid]
         --quotas={"heap": 2_000_000}
     return container.wait
   return exception

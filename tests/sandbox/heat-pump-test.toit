@@ -190,6 +190,7 @@ run-driver:
 
   controller := containers.start containers.current controller-arguments
       --untrusted
+      --services=[HeatPumpService.SELECTOR.uuid]
   expect-equals 0 controller.wait
 
   // The controller reached the heat pump...

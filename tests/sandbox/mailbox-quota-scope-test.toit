@@ -82,8 +82,10 @@ run-driver:
   ]
   provider-pids
   a := containers.start containers.current {ROLE-KEY: "a"} --untrusted --quotas=QUOTAS
+      --services=[StuckService.SELECTOR.uuid]
   expect-equals 0 a.wait
   b := containers.start containers.current {ROLE-KEY: "b"} --untrusted --quotas=QUOTAS
+      --services=[StuckService.SELECTOR.uuid]
   expect-equals 0 b.wait
   providers.do: it.stop
   print "OK"

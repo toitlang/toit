@@ -4,8 +4,15 @@
 
 import .sandbox
 import system.storage
+import system.api.storage show StorageService
 
-// The storage service of the system process rejects sandboxed clients.
+// Sandboxed clients don't discover the storage service of the system
+// process, and it rejects them when they open it without discovery.
 main args:
-  sandbox-test args --error="PERMISSION_DENIED": | arguments/Map |
-    storage.Bucket.open --ram "sandbox"
+  sandbox-test args --error="PERMISSION_DENIED"
+      --prepare=(:: | _ | {"ids": provider-ids StorageService.SELECTOR.uuid}):
+    | arguments/Map |
+    exception := catch: storage.Bucket.open --ram "sandbox"
+    if exception != "UNSUPPORTED": throw "DISCOVERED: $exception"
+    ids := arguments["ids"]
+    open-without-discovery ids[0] ids[1] StorageService.SELECTOR

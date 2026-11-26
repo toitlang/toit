@@ -96,6 +96,7 @@ run-driver:
   expect-equals SMALL (trusted.make SMALL).size
 
   sandboxed := containers.start containers.current {ROLE-KEY: "client"} --untrusted
+      --services=[SizeService.SELECTOR.uuid]
   expect-equals 0 sandboxed.wait
   expect-not p-stopped
   // The trusted client still gets service; a trusted client that asks for

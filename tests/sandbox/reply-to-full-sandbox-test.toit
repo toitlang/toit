@@ -72,6 +72,7 @@ main args:
   messages := int.parse args[1]
   container := containers.start containers.current {"size": size}
       --untrusted
+      --services=[TestService.SELECTOR.uuid]
       --quotas={"mailbox-messages": messages}
   container.wait
   provider.uninstall
