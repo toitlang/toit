@@ -828,4 +828,165 @@ pub fn fin_node<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, nptr: *mut usi
     Ghost(hr)
 }
 
+/// How the finalizer pass changed object `x`: not at all, or killed as the
+/// key of a node (a Toit finalizer's: its bit cleared; a weak map's: reset
+/// too).
+pub open spec fn changed_ok(c: Ctx, h0: H, h: H, nodes: Seq<Node>, upto: int, x: int) -> bool {
+    ||| obj(h, x) == obj(h0, x)
+    ||| exists|m: int| 0 <= m < upto && #[trigger] nodes[m].key == AVal::Ref(x) && nodes[m].kind <= KIND_WEAK_QUEUED
+            && obj(h, x) == killed(obj(h0, x), c.nullid@, nodes[m].kind != KIND_TOIT)
+}
+
+/// The registered and queued callback nodes `0..ncb` (the C++ lists in
+/// order): `fin_node` for each.
+pub fn fin_pass<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, nptr: *mut usize, ncb: usize, nn: usize,
+                               Ghost(h0): Ghost<H>, Ghost(nodes): Ghost<Seq<Node>>,
+                               Ghost(main): Ghost<Set<int>>, Ghost(n0): Ghost<int>,
+                               Ghost(rptr): Ghost<*mut usize>, Ghost(rv): Ghost<Seq<AVal>>, Ghost(rvp): Ghost<Seq<AVal>>,
+                               Tracked(st): Tracked<&mut St>, Tracked(ro): Tracked<&Ro>,
+                               Tracked(np): Tracked<&mut Map<int, PointsTo<usize>>>) -> (r: Ghost<H>)
+    requires
+        ctx_ok(*c), fpages_ok(*c), ftab_ok(*c, ro.ftp), heap_ok(*c, h0), others_ok(h0, ro.others), ctab_ok(*c, ro.ctp),
+        inv(*c, h0, *old(st), *old(t), n0, 0, rvp), roots_ok(*c, h0, *old(st), rptr, rv, rv.len() as int),
+        src_ok(*c, *old(src), *old(t)),
+        0 <= n0 <= old(st).order.len(),
+        forall|j: int| #[trigger] main.contains(j) ==> copied(*old(st), j),
+        ncb <= nn, nodes.len() == nn,
+        forall|m: int| 0 <= m < ncb ==> (#[trigger] nodes[m]).kind <= KIND_WEAK_QUEUED,
+        forall|m: int| 0 <= m < nn ==> slot_ok(*c, h0.objs.len() as int, (#[trigger] nodes[m]).key)
+            && slot_ok(*c, h0.objs.len() as int, nodes[m].lam),
+        rvp == fin_roots(rv, nodes),
+        nodes_mem(*old(np), nptr, nn as int),
+        forall|m: int| 0 <= m < nn ==> #[trigger] node_in(*old(np), h0, nodes[m], m),
+    ensures
+        heap_from(*c, h0, r@), heap_ok(*c, r@), others_ok(r@, ro.others),
+        inv(*c, r@, *final(st), *final(t), n0, 0, rvp), roots_ok(*c, r@, *final(st), rptr, rv, rv.len() as int),
+        src_ok(*c, *final(src), *final(t)),
+        grows(h0, *old(st), *final(st)), final(st).addr2.len() == old(st).addr2.len(),
+        forall|x: int| 0 <= x < h0.objs.len() ==> #[trigger] changed_ok(*c, h0, r@, nodes, ncb as int, x),
+        forall|m: int| 0 <= m < ncb ==> #[trigger] node_out(*c, h0, r@, *final(st), main, *final(np), nodes[m], m),
+        forall|m: int| ncb <= m < nn ==> #[trigger] node_in(*final(np), h0, nodes[m], m),
+        nodes_mem(*final(np), nptr, nn as int),
+        final(t).ttab == old(t).ttab, final(t).tused == old(t).tused, final(t).tcap == old(t).tcap,
+{
+    let ghost s0 = *st;
+    let ghost mut hc = h0;
+    let mut i: usize = 0;
+    proof {
+        lemma_grows_refl(h0, s0);
+        assert forall|x: int| 0 <= x < h0.objs.len() implies #[trigger] obj(hc, x) == obj(h0, x) || !active(obj(hc, x)) by {}
+        assert forall|x: int| 0 <= x < h0.objs.len() implies #[trigger] changed_ok(*c, h0, hc, nodes, 0, x) by {}
+    }
+    while i < ncb
+        invariant
+            ctx_ok(*c), fpages_ok(*c), ftab_ok(*c, ro.ftp), heap_ok(*c, h0), ctab_ok(*c, ro.ctp),
+            heap_from(*c, h0, hc), heap_ok(*c, hc), others_ok(hc, ro.others),
+            inv(*c, hc, *st, *t, n0, 0, rvp), roots_ok(*c, hc, *st, rptr, rv, rv.len() as int),
+            src_ok(*c, *src, *t),
+            0 <= n0 <= st.order.len(), i <= ncb, ncb <= nn, nodes.len() == nn,
+            forall|j: int| #[trigger] main.contains(j) ==> copied(*st, j),
+            grows(h0, s0, *st), st.addr2.len() == s0.addr2.len(), s0.addr2.len() == h0.objs.len(),
+            forall|m: int| 0 <= m < ncb ==> (#[trigger] nodes[m]).kind <= KIND_WEAK_QUEUED,
+            forall|m: int| 0 <= m < nn ==> slot_ok(*c, h0.objs.len() as int, (#[trigger] nodes[m]).key)
+                && slot_ok(*c, h0.objs.len() as int, nodes[m].lam),
+            rvp == fin_roots(rv, nodes),
+            nodes_mem(*np, nptr, nn as int),
+            forall|m: int| i <= m < nn ==> #[trigger] node_in(*np, h0, nodes[m], m),
+            forall|m: int| 0 <= m < i ==> #[trigger] node_out(*c, h0, hc, *st, main, *np, nodes[m], m),
+            forall|x: int| 0 <= x < h0.objs.len() ==> #[trigger] changed_ok(*c, h0, hc, nodes, i as int, x),
+            t.ttab == old(t).ttab, t.tused == old(t).tused, t.tcap == old(t).tcap,
+        decreases ncb - i,
+    {
+        let ghost s1 = *st;
+        let ghost h1 = hc;
+        let ghost np1 = *np;
+        proof {
+            assert(node_in(*np, h0, nodes[i as int], i as int));
+            assert(h1.objs.len() == h0.objs.len());
+        }
+        let r = fin_node(c, src, t, nptr, i, nn, Ghost(h0), Ghost(hc), Ghost(nodes), Ghost(main), Ghost(n0), Ghost(rptr),
+                         Ghost(rv), Ghost(rvp), Tracked(st), Tracked(ro), Tracked(np));
+        proof {
+            let s2 = *st;
+            let h2 = r@;
+            assert(bk_ok(h1, s1));
+            lemma_grows_trans(h0, s0, s1, s2);
+            assert forall|j: int| #[trigger] main.contains(j) implies copied(s2, j) by {
+                assert(copied(s1, j));
+            }
+            assert forall|m: int| 0 <= m < i + 1 implies #[trigger] node_out(*c, h0, h2, s2, main, *np, nodes[m], m) by {
+                if m < i {
+                    assert(node_out(*c, h0, h1, s1, main, np1, nodes[m], m));
+                    assert(np[4 * m] == np1[4 * m] && np[4 * m + 1] == np1[4 * m + 1]);
+                    assert(np[4 * m + 2] == np1[4 * m + 2] && np[4 * m + 3] == np1[4 * m + 3]);
+                    assert forall|x: int| 0 <= x < h0.objs.len() implies (#[trigger] obj(h0, x)).words.len() >= 1 by {
+                        assert(obj_ok(obj(h0, x)));
+                    }
+                    lemma_fate_frame(*c, h0, h1, s1, h2, s2, main, nodes[m], np1[4 * m + 3].value(),
+                                     np1[4 * m + 1].value(), np1[4 * m + 2].value());
+                }
+            }
+            assert forall|m: int| i + 1 <= m < nn implies #[trigger] node_in(*np, h0, nodes[m], m) by {
+                assert(node_in(np1, h0, nodes[m], m));
+                assert(np[4 * m] == np1[4 * m] && np[4 * m + 1] == np1[4 * m + 1] && np[4 * m + 2] == np1[4 * m + 2]);
+            }
+            assert forall|x: int| 0 <= x < h0.objs.len() implies #[trigger] changed_ok(*c, h0, h2, nodes, i + 1, x) by {
+                if obj(h2, x) != obj(h1, x) {
+                    assert(nodes[i as int].key == AVal::Ref(x));
+                } else {
+                    assert(changed_ok(*c, h0, h1, nodes, i as int, x));
+                    if obj(h1, x) != obj(h0, x) {
+                        let m = choose|m: int| 0 <= m < i && #[trigger] nodes[m].key == AVal::Ref(x) && nodes[m].kind <= KIND_WEAK_QUEUED
+                            && obj(h1, x) == killed(obj(h0, x), c.nullid@, nodes[m].kind != KIND_TOIT);
+                        assert(0 <= m < i + 1 && nodes[m].key == AVal::Ref(x));
+                    }
+                }
+            }
+            hc = h2;
+        }
+        i += 1;
+    }
+    Ghost(hc)
+}
+
+/// One VM finalizer node (`VmFinalizerNode::weak_processing`): keep it with
+/// its key forwarded if the key survived, free the key's external memory
+/// (verdict `FREE`, done by the C++) if it died, delete it if the key has
+/// no finalizer bit.
+pub fn vm_node(c: &Ctx, nptr: *mut usize, i: usize, nn: usize, Ghost(h): Ghost<H>, Ghost(nodes): Ghost<Seq<Node>>,
+               Ghost(t): Ghost<Tos>, Ghost(ks): Ghost<int>, Ghost(rvp): Ghost<Seq<AVal>>,
+               Tracked(st): Tracked<&St>, Tracked(ro): Tracked<&Ro>, Tracked(np): Tracked<&mut Map<int, PointsTo<usize>>>)
+    requires
+        ctx_ok(*c), fpages_ok(*c), ftab_ok(*c, ro.ftp), heap_ok(*c, h),
+        inv(*c, h, *st, t, ks, 0, rvp),
+        i < nn, nodes.len() == nn, nodes[i as int].kind == KIND_VM,
+        slot_ok(*c, h.objs.len() as int, nodes[i as int].key),
+        nodes_mem(*old(np), nptr, nn as int),
+        old(np)[4 * i as int].is_init() && old(np)[4 * i as int].value() == KIND_VM,
+        old(np)[4 * i + 1].is_init() && old(np)[4 * i + 1].value() == enc(h.addr, nodes[i as int].key),
+        old(np)[4 * i + 2].is_init(),
+    ensures
+        nodes_mem(*final(np), nptr, nn as int),
+        forall|q: int| !(4 * i <= q < 4 * i + 4) ==> #[trigger] final(np)[q] == old(np)[q],
+        final(np)[4 * i as int].is_init() && final(np)[4 * i as int].value() == KIND_VM,
+        final(np)[4 * i + 1].is_init() && final(np)[4 * i + 2].is_init() && final(np)[4 * i + 3].is_init(),
+        ({
+            let kv = nodes[i as int].key;
+            let d = final(np)[4 * i + 3].value();
+            let kw = final(np)[4 * i + 1].value();
+            ||| (d == KEEP && key_active(h, kv) && val_live(h, *st, kv) && kw == enc(st.addr2, kv))
+            ||| (d == DELETE && !key_active(h, kv))
+            ||| (d == FREE && key_active(h, kv) && key_dead(h, *st, kv))
+        }),
+{
+    let ghost kv = nodes[i as int].key;
+    let kw = nword(nptr, 4 * i + 1, Ghost(nn as int), Tracked(&*np));
+    let (dead, act, _s, _off, cur) = key_status(c, kw, Ghost(h), Ghost(kv), Ghost(t), Ghost(ks), Ghost(0int), Ghost(rvp),
+                                               Tracked(st), Tracked(ro));
+    let verdict = if !act { DELETE } else if dead { FREE } else { KEEP };
+    let k2 = if !act || dead { kw } else { cur };
+    set_nword(nptr, 4 * i + 1, k2, Ghost(nn as int), Tracked(np));
+    set_nword(nptr, 4 * i + 3, verdict, Ghost(nn as int), Tracked(np));
+}
+
 } // verus!
