@@ -97,6 +97,7 @@ class SandboxCopyingCollector : public RootCallback, public LivenessOracle {
   uword to_pages() const { return to_pages_; }
   uword copied_bytes() const { return copied_bytes_; }
   uword waste() const { return waste_; }
+  bool is_from_space(HeapObject* object) const { return in_from_space(object); }
 
   // RootCallback.
   void do_roots(Object** roots, word length) override {
@@ -159,6 +160,9 @@ class SandboxCopyingCollector : public RootCallback, public LivenessOracle {
   void forward_weak_container(Object** slot);
   void forward_elements(Array* array);
   void free_from_space();
+#ifndef TOIT_FREERTOS
+  void verify_and_poison();
+#endif
 };
 
 void SandboxCopyingCollector::detach_from_space() {
@@ -322,6 +326,66 @@ void SandboxCopyingCollector::forward_elements(Array* array) {
   }
 }
 
+#ifndef TOIT_FREERTOS
+// TOIT_SANDBOX_GC_VERIFY=1 (hosts only, a test of the C++ root enumeration,
+// verified/gc/TRUSTED.md section 5): after a collection, no root slot the
+// runtime holds (iterate_roots, the finalizer nodes) and no reference slot
+// of any object of the new heap may point into from-space; then the
+// from-space pages are overwritten with a poison word before they are
+// freed, so that a pointer the enumeration missed reads garbage.
+class FromSpaceCheck : public RootCallback {
+ public:
+  FromSpaceCheck(SandboxCopyingCollector* collector, const char* where) : collector_(collector), where_(where) {}
+  void do_roots(Object** roots, word length) override {
+    for (word i = 0; i < length; i++) {
+      Object* value = roots[i];
+      if (is_heap_object(value) && collector_->is_from_space(HeapObject::cast(value))) {
+        FATAL("sandbox copying GC: %s slot %p still points into from-space (%p)", where_, roots + i, value);
+      }
+    }
+  }
+  bool shrink_stacks() const override { return false; }
+  bool skip_marking(HeapObject* object) const override { return false; }
+
+ private:
+  SandboxCopyingCollector* collector_;
+  const char* where_;
+};
+
+static bool gc_verify_enabled() {
+  static int enabled = -1;
+  if (enabled < 0) {
+    const char* value = getenv("TOIT_SANDBOX_GC_VERIFY");
+    enabled = (value != null && value[0] != '0') ? 1 : 0;
+  }
+  return enabled == 1;
+}
+
+void SandboxCopyingCollector::verify_and_poison() {
+  if (!gc_verify_enabled()) return;
+  ObjectHeap* roots = heap_->process_heap_;
+  FromSpaceCheck root_check(this, "root");
+  roots->iterate_roots(&root_check);
+  FromSpaceCheck finalizer_check(this, "finalizer");
+  roots->iterate_finalization_roots(&finalizer_check);
+  FromSpaceCheck heap_check(this, "heap");
+  for (auto chunk : space_->chunk_list_) {
+    uword top = chunk == space_->chunk_list_.last() ? space_->top_ : chunk->end();
+    uword current = chunk->start();
+    while (current < top && !has_sentinel_at(current)) {
+      HeapObject* object = HeapObject::from_address(current);
+      object->roots_do(program_, &heap_check);
+      current += object->size(program_);
+    }
+  }
+  for (auto chunk : from_) {
+    for (uword p = chunk->start(); p < chunk->end(); p += WORD_SIZE) {
+      *reinterpret_cast<uword*>(p) = static_cast<uword>(0xb1b1b1b1b1b1b1b1ULL);
+    }
+  }
+}
+#endif
+
 void SandboxCopyingCollector::free_from_space() {
   while (Chunk* chunk = from_.remove_first()) {
     ObjectMemory::free_chunk(chunk);
@@ -345,6 +409,9 @@ void SandboxCopyingCollector::collect() {
   roots->process_registered_vm_finalizers(this, this);
   scan();
 
+#ifndef TOIT_FREERTOS
+  verify_and_poison();
+#endif
   free_from_space();
 
   if (space_->chunk_list_.is_empty()) {
