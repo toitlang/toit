@@ -331,9 +331,9 @@ pub open spec fn place_frame(s0: St, s1: St) -> bool {
 /// page gets its sentinel and its used words in the table). Returns the
 /// offset in the (new) last page.
 pub fn place<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, sz: usize, Ghost(h): Ghost<H>,
-                        Tracked(st): Tracked<&mut St>, Tracked(others): Tracked<&Map<int, PointsTo<usize>>>) -> (off: usize)
+                        Tracked(st): Tracked<&mut St>, Tracked(ro): Tracked<&Ro>) -> (off: usize)
     requires
-        ctx_ok(*c), heap_ok(*c, h), others_ok(h, *others),
+        ctx_ok(*c), heap_ok(*c, h), others_ok(h, ro.others),
         tpages_ok(*c, h, *old(st), *old(t)),
         1 <= sz <= c.pw - 1,
         old(src).pw() == c.pw, old(src).prov() == c.base@.provenance,
@@ -401,7 +401,7 @@ pub fn place<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, sz: usize, Ghost(
                 assert(s0.tss[p] % W == 0 && s0.tss[p] + pbytes(*c) < usize::MAX);
             }
             lemma_page_apart_all(&mut np, tn0, s as int, &st.tp, s1.tss, tn0, c.pw as int, c.base@.provenance);
-            lemma_page_apart_others(&mut np, tn0, s as int, others, h, h.objs.len() as int, c.pw as int, c.base@.provenance);
+            lemma_page_apart_others(&mut np, tn0, s as int, &ro.others, h, h.objs.len() as int, c.pw as int, c.base@.provenance);
             st.tp.tracked_union_prefer_right(np);
         }
         proof {

@@ -444,10 +444,9 @@ pub open spec fn roots_in(c: Ctx, h: H, rp: Map<int, PointsTo<usize>>, rptr: *mu
 pub fn collect<S: PageSource>(c: &Ctx, src: &mut S, rptr: *mut usize, rlen: usize,
                               ttab: *mut usize, tused: *mut usize, tcap: usize,
                               Ghost(h): Ghost<H>, Ghost(rv): Ghost<Seq<AVal>>,
-                              Tracked(st): Tracked<&mut St>, Tracked(others): Tracked<&Map<int, PointsTo<usize>>>,
-                              Tracked(ftp): Tracked<&Map<int, PointsTo<usize>>>) -> (r: Result<Window, GcError>)
+                              Tracked(st): Tracked<&mut St>, Tracked(ro): Tracked<&Ro>) -> (r: Result<Window, GcError>)
     requires
-        ctx_ok(*c), ftab_ok(*c, *ftp), heap_ok(*c, h), others_ok(h, *others),
+        ctx_ok(*c), ftab_ok(*c, ro.ftp), heap_ok(*c, h), others_ok(h, ro.others),
         from_ok(*c, h, old(st).fp),
         rv.len() == rlen, roots_in(*c, h, old(st).rp, rptr, rv),
         ttab@.addr + tcap * W <= usize::MAX, tused@.addr + tcap * W <= usize::MAX,
@@ -461,7 +460,7 @@ pub fn collect<S: PageSource>(c: &Ctx, src: &mut S, rptr: *mut usize, rlen: usiz
         },
         final(src).pw() == c.pw, final(src).prov() == c.base@.provenance,
 {
-    if !check_ftab(c, Tracked(ftp)) {
+    if !check_ftab(c, Tracked(&ro.ftp)) {
         return Err(GcError::BadFromTable);
     }
     if tcap < 2 * c.nf + 1 {
@@ -504,8 +503,8 @@ pub fn collect<S: PageSource>(c: &Ctx, src: &mut S, rptr: *mut usize, rlen: usiz
         }
         assert(roots_ok(*c, h, s, rptr, rv, 0));
     }
-    do_roots(c, src, &mut t, rptr, rlen, Ghost(h), Ghost(rv), Tracked(st), Tracked(others), Tracked(ftp));
-    scan(c, src, &mut t, Ghost(h), Ghost(rptr), Ghost(rv), Tracked(st), Tracked(others), Tracked(ftp));
+    do_roots(c, src, &mut t, rptr, rlen, Ghost(h), Ghost(rv), Tracked(st), Tracked(ro));
+    scan(c, src, &mut t, Ghost(h), Ghost(rptr), Ghost(rv), Tracked(st), Tracked(ro));
     let ghost s0 = *st;
     let ghost t0 = t;
     proof {
@@ -518,7 +517,7 @@ pub fn collect<S: PageSource>(c: &Ctx, src: &mut S, rptr: *mut usize, rlen: usiz
         let (s, perms) = src.take(Ghost(0int));
         proof {
             let tracked mut np = perms.get();
-            lemma_page_apart_others(&mut np, 0, s as int, others, h, h.objs.len() as int, c.pw as int, c.base@.provenance);
+            lemma_page_apart_others(&mut np, 0, s as int, &ro.others, h, h.objs.len() as int, c.pw as int, c.base@.provenance);
             st.tp.tracked_union_prefer_right(np);
             assert(wperm_ok(st.ttp, 0, t.ttab, 0));
         }

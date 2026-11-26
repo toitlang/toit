@@ -413,9 +413,9 @@ pub fn copy<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, fstart: usize, off
                            Ghost(h): Ghost<H>, Ghost(j): Ghost<int>, Ghost(ks): Ghost<int>, Ghost(kc): Ghost<int>,
                            Ghost(par): Ghost<(int, int)>, Ghost(rptr): Ghost<*mut usize>, Ghost(rv): Ghost<Seq<AVal>>,
                            Ghost(ri): Ghost<int>,
-                           Tracked(st): Tracked<&mut St>, Tracked(others): Tracked<&Map<int, PointsTo<usize>>>) -> (r: usize)
+                           Tracked(st): Tracked<&mut St>, Tracked(ro): Tracked<&Ro>) -> (r: usize)
     requires
-        ctx_ok(*c), fpages_ok(*c), heap_ok(*c, h), others_ok(h, *others),
+        ctx_ok(*c), fpages_ok(*c), heap_ok(*c, h), others_ok(h, ro.others),
         inv(*c, h, *old(st), *old(t), ks, kc, rv), roots_ok(*c, h, *old(st), rptr, rv, ri),
         src_ok(*c, *old(src), *old(t)),
         from(h, j), !copied(*old(st), j), fstart == fs(*c, fpg(h, j)), off == foff(h, j),
@@ -450,7 +450,7 @@ pub fn copy<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, fstart: usize, off
     proof {
         lemma_capacity(*c, h, s0, t0, j);
     }
-    let toff = place(c, src, t, sz, Ghost(h), Tracked(st), Tracked(others));
+    let toff = place(c, src, t, sz, Ghost(h), Tracked(st), Tracked(ro));
     let ghost sp = *st;
     let ghost tn1 = t.tn as int;
     let tpage = c.base.with_addr(t.cur);

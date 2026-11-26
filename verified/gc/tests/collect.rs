@@ -259,7 +259,7 @@ fn run(arena: &mut Arena, h: &Heap, tcap_extra: isize, refuse: bool) -> Result<(
     let c = Ctx { base: arena.base(), ftab: ftab.as_mut_ptr(), nf, pw, fss: Ghost::assume_new() };
     let mut src = Source { arena, reserved: 0, taken: 0, refuse };
     let r = collect(&c, &mut src, rootw.as_mut_ptr(), rootw.len(), ttab.as_mut_ptr(), tused.as_mut_ptr(), tcap,
-                    Ghost::assume_new(), Ghost::assume_new(), Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new());
+                    Ghost::assume_new(), Ghost::assume_new(), Tracked::assume_new(), Tracked::assume_new());
     let taken = src.taken;
     match r {
         Err(e) => {

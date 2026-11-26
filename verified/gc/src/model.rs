@@ -226,6 +226,16 @@ pub open spec fn from_ok(c: Ctx, h: H, fp: Map<(int, int), PointsTo<usize>>) -> 
             (#[trigger] fp[fkey(h, j, k)]).is_init() && fp[fkey(h, j, k)].value() == wval(obj(h, j), h.addr, k)
 }
 
+/// The read-only inputs of a collection: the header permissions of the
+/// objects outside from-space (`others_ok`, ghost witnesses only), the
+/// permissions of the from-space table (`space::ftab_ok`) and of the class
+/// table (`layout::ctab_ok`).
+pub tracked struct Ro {
+    pub tracked others: Map<int, PointsTo<usize>>,
+    pub tracked ftp: Map<int, PointsTo<usize>>,
+    pub tracked ctp: Map<int, PointsTo<u16>>,
+}
+
 /// The header permissions of the objects outside from-space (the program
 /// heap). The collector reads none of them: they only show that the pages
 /// it takes do not hold such an object (`vstd`'s `PointsTo::is_disjoint`).

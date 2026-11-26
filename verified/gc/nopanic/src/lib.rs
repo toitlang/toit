@@ -57,7 +57,7 @@ pub extern "C" fn toit_gc_collect(base: *mut usize, ftab: *mut usize, nf: usize,
     let c = Ctx { base, ftab, nf, pw, fss: Ghost::assume_new() };
     let mut src = ExternPages;
     match collect(&c, &mut src, roots, nroots, ttab, tused, tcap,
-                  Ghost::assume_new(), Ghost::assume_new(), Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new()) {
+                  Ghost::assume_new(), Ghost::assume_new(), Tracked::assume_new(), Tracked::assume_new()) {
         Ok(w) => {
             unsafe { *top = w.top; }
             w.pages
