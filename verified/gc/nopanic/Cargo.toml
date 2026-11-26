@@ -1,0 +1,42 @@
+# Copyright (C) 2026 Toit contributors.
+#
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation; version
+# 2.1 only.
+#
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# Lesser General Public License for more details.
+#
+# The license can be found in the file `LICENSE` in the top level
+# directory of this repository.
+
+# A C entry point around the collector, with the page source behind
+# extern functions: the shape of the M5 FFI. Built by ../check.sh only to
+# show that the collector links no panic machinery on a device target and
+# to measure its code size. Not linked into the VM.
+
+[package]
+name = "toit_gc_nopanic"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+toit_gc = { path = ".." }
+vstd = { version = "=0.0.0-2026-11-01-0251", default-features = false }
+
+[profile.release]
+opt-level = "s"
+panic = "abort"
+codegen-units = 1
+lto = true
+debug = false
+
+[profile.dev]
+panic = "abort"

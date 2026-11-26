@@ -27,7 +27,7 @@ publish = false
 crate-type = ["rlib"]
 
 [dependencies]
-vstd = { version = "=0.0.0-2026-11-01-0251", default-features = false, features = ["alloc"] }
+vstd = { version = "=0.0.0-2026-11-01-0251", default-features = false }
 
 [profile.release]
 opt-level = "s"

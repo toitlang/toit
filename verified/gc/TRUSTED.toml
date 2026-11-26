@@ -1,0 +1,31 @@
+# Copyright (C) 2026 Toit contributors.
+#
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation; version
+# 2.1 only.
+#
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# Lesser General Public License for more details.
+#
+# The license can be found in the file `LICENSE` in the top level
+# directory of this repository.
+
+# Allowlist of the Verus escape hatches in verified/gc (the proved
+# collector), in the format of verified/TRUSTED.toml. The crate is not yet
+# in verified/tools/trust_audit.toit's crate list (it is not linked into
+# the VM before milestone M5); verified/gc/check.sh --only audit checks
+# this list (counts per file and kind) and cross-checks it with
+# `verus --no-cheating`. TRUSTED.md explains every item and the trusted
+# boundaries that are not escape hatches (the page source, the entry
+# preconditions). This list must only shrink.
+
+[[trusted]]
+crate = "gc"
+file = "src/lib.rs"
+item = "size_of"
+kind = "global_layout"
+count = 2
+justification = "usize is the target's word: 8 bytes for target_pointer_width 64, 4 for 32 (one declaration each, as verified/core/src/abs.rs); Verus checks each with a compile-time assertion for the target it verifies for, and check.sh verifies both widths."
