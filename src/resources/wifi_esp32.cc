@@ -479,8 +479,20 @@ esp_err_t WifiResourceGroup::start_scan(bool passive, int channel, uint32_t peri
 
 MODULE_IMPLEMENTATION(wifi, MODULE_WIFI)
 
+// The WiFi primitives run in the system process for its clients (the network
+// service). The WiFi driver needs about 65 KB to come up, and sandboxed
+// heaps may have taken that: an allocation failure (also the driver's,
+// ESP_ERR_NO_MEM) fails the call (OUT_OF_MEMORY in the system code, see
+// ObjectHeap::set_allocation_failure_recoverable), and the connect fails,
+// instead of restarting the device. They leave nothing behind when they
+// fail: a resource that was registered is unregistered, the driver and the
+// netif are deinitialized; a read scan whose records were taken has lost
+// them (the scan reports fewer networks).
+#define RECOVERABLE_ALLOCATION_FAILURE process->object_heap()->set_allocation_failure_recoverable()
+
 PRIMITIVE(init) {
   ARGS(bool, ap);
+  RECOVERABLE_ALLOCATION_FAILURE;
 
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + WIFI_MALLOC_TAG);
   ByteArray* proxy = process->object_heap()->allocate_proxy();
@@ -586,6 +598,7 @@ PRIMITIVE(close) {
 
 PRIMITIVE(connect) {
   ARGS(WifiResourceGroup, group, cstring, ssid, cstring, password);
+  RECOVERABLE_ALLOCATION_FAILURE;
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + WIFI_MALLOC_TAG);
 
   if (ssid == null || password == null) {
@@ -612,6 +625,7 @@ PRIMITIVE(connect) {
 
 PRIMITIVE(establish) {
   ARGS(WifiResourceGroup, group, cstring, ssid, cstring, password, bool, broadcast, int, channel);
+  RECOVERABLE_ALLOCATION_FAILURE;
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + WIFI_MALLOC_TAG);
 
   if (ssid == null || password == null) {
@@ -638,6 +652,7 @@ PRIMITIVE(establish) {
 
 PRIMITIVE(setup_ip) {
   ARGS(WifiResourceGroup, group);
+  RECOVERABLE_ALLOCATION_FAILURE;
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + WIFI_MALLOC_TAG);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
@@ -684,6 +699,7 @@ PRIMITIVE(disconnect_reason) {
 
 PRIMITIVE(get_ip) {
   ARGS(WifiResourceGroup, group, int, index);
+  RECOVERABLE_ALLOCATION_FAILURE;
   if (index < 0 || index >= WifiResourceGroup::NUMBER_OF_ADDRESSES) {
     FAIL(INVALID_ARGUMENT);
   }
@@ -701,6 +717,7 @@ PRIMITIVE(get_ip) {
 
 PRIMITIVE(init_scan) {
   ARGS(WifiResourceGroup, group)
+  RECOVERABLE_ALLOCATION_FAILURE;
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
@@ -722,6 +739,7 @@ PRIMITIVE(init_scan) {
 
 PRIMITIVE(start_scan) {
   ARGS(WifiResourceGroup, group, int, channel, bool, passive, int, period_ms);
+  RECOVERABLE_ALLOCATION_FAILURE;
 
   esp_err_t ret = group->start_scan(passive, channel, period_ms);
   if (ret != ESP_OK) {
@@ -733,6 +751,7 @@ PRIMITIVE(start_scan) {
 
 PRIMITIVE(read_scan) {
   ARGS(WifiResourceGroup, group);
+  RECOVERABLE_ALLOCATION_FAILURE;
 
   uint16_t count;
   esp_err_t ret = esp_wifi_scan_get_ap_num(&count);
@@ -777,6 +796,7 @@ PRIMITIVE(read_scan) {
 
 PRIMITIVE(set_hostname) {
   ARGS(WifiResourceGroup, group, cstring, hostname);
+  RECOVERABLE_ALLOCATION_FAILURE;
 
   if (strlen(hostname) > 32) FAIL(INVALID_ARGUMENT);
 
@@ -788,6 +808,7 @@ PRIMITIVE(set_hostname) {
 
 PRIMITIVE(ap_info) {
   ARGS(WifiResourceGroup, group);
+  RECOVERABLE_ALLOCATION_FAILURE;
 
   wifi_ap_record_t ap_record;
   esp_err_t ret = esp_wifi_sta_get_ap_info(&ap_record);

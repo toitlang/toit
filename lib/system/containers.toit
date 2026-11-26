@@ -38,6 +38,14 @@ Exit code of a sandboxed container process that tried to deep sleep or
 EXIT-DEVICE-HALT ::= 242
 
 /**
+Exit code of a sandboxed container that the system stopped because a
+  request of trusted code (for example a WiFi connect or a container start)
+  or an operation of the system ran out of memory: sandboxed containers
+  lose first.
+*/
+EXIT-EVICTED ::= 243
+
+/**
 Starts a new container from the image with the given $id.
 
 If $untrusted is true, the container runs with the untrusted (sandbox)

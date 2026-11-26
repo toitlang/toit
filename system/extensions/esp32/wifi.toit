@@ -34,6 +34,7 @@ import system.services show ServiceResource
 import system.base.network show NetworkModule NetworkResource NetworkState
 
 import ..shared.network-base
+import ...out-of-memory show with-out-of-memory-retry_
 
 // Keep in sync with the definitions in WifiResourceGroup.
 OWN-ADDRESS-INDEX_        ::= 0
@@ -89,7 +90,11 @@ class WifiServiceProvider extends NetworkServiceProviderBase implements udp.Inte
     if not ssid or ssid.is-empty: throw "wifi ssid not provided"
     password/string := effective.get wifi.CONFIG-PASSWORD --if-absent=: ""
 
-    module ::= (state_.up: WifiModule.sta this ssid password) as WifiModule
+    // The WiFi driver needs about 65 KB to come up: if the system process
+    // is out of memory, sandboxed containers are stopped, and then the
+    // connect fails with OUT_OF_MEMORY (the WiFi primitives fail instead
+    // of restarting the device, src/resources/wifi_esp32.cc).
+    module ::= (with-out-of-memory-retry_ --relieve: state_.up: WifiModule.sta this ssid password) as WifiModule
     try:
       if module.ap:
         throw "wifi already established in AP mode"
@@ -124,7 +129,8 @@ class WifiServiceProvider extends NetworkServiceProviderBase implements udp.Inte
       throw "wifi channel must be between 1 and 13"
     broadcast/bool := config.get wifi.CONFIG-BROADCAST --if-absent=: true
 
-    module ::= (state_.up: WifiModule.ap this ssid password broadcast channel) as WifiModule
+    // As for connect.
+    module ::= (with-out-of-memory-retry_ --relieve: state_.up: WifiModule.ap this ssid password broadcast channel) as WifiModule
     try:
       if not module.ap:
         throw "wifi already connected in STA mode"

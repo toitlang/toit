@@ -20,6 +20,7 @@ import monitor
 import encoding.base64
 import encoding.tison
 
+import system
 import system.assets
 import system.services show ServiceHandler ServiceProvider ServiceResource
 import system.api.containers show ContainerService
@@ -83,8 +84,10 @@ class Container:
     pids_ = {}
     try:
       // A system process out of memory fails the start (the spawn leaves
-      // nothing behind) instead of restarting the device.
-      pids_.add (with-out-of-memory-retry_: image.spawn this arguments)
+      // nothing behind) instead of restarting the device. For a trusted
+      // container, sandboxed containers are stopped first.
+      relieve := kind != ContainerService.POLICY-UNTRUSTED
+      pids_.add (with-out-of-memory-retry_ --relieve=relieve: image.spawn this arguments)
     finally: | is-exception exception |
       // The VM refused to run the program (for example because the
       // verifier rejected an untrusted program). It never ran, so the
@@ -123,10 +126,43 @@ class Container:
   stop -> none:
     if not pids_: throw "Not started"
     if pids_.is-empty: return
+    stop_ 0
+
+  stop_ code/int -> none:
     pids_.do: container-kill-pid_ it
     pids_.clear
-    image.manager.on-container-stop_ this 0
-    resources.do: it.on-container-stop 0
+    image.manager.on-container-stop_ this code
+    resources.do: it.on-container-stop code
+
+  /** Whether this container runs with the untrusted (sandbox) policy. */
+  is-sandboxed -> bool:
+    kind := policy is Array_ ? policy[0] : policy
+    return kind == ContainerService.POLICY-UNTRUSTED
+
+  /** Whether this container's processes run. */
+  is-running -> bool:
+    return pids_ != null and not pids_.is-empty
+
+  /**
+  The bytes the heaps of this container's processes reserve, or 0 if they
+    can't be read.
+  */
+  reserved-memory -> int:
+    total := 0
+    pids_.do: | pid/int |
+      catch:
+        stats := system.process-stats gid_ pid
+        if stats: total += stats[system.STATS-INDEX-RESERVED-MEMORY]
+    return total
+
+  /**
+  Stops this sandboxed container to free memory for the system process
+    (see $with-out-of-memory-retry_). Its clients see the exit code
+    $system-containers.EXIT-EVICTED.
+  */
+  evict_ -> none:
+    if not is-running: return
+    stop_ system-containers.EXIT-EVICTED
 
   send-event event/any:
     if not pids_: throw "Not started"
@@ -344,10 +380,10 @@ abstract class ContainerServiceProvider extends ServiceProvider
     relocated-size := size - (size / IMAGE-CHUNK-SIZE) * IMAGE-WORD-SIZE
     // A system process out of memory fails the request instead of
     // restarting the device; the reservation doesn't outlive a failure.
-    reservation := with-out-of-memory-retry_: image-registry.reserve relocated-size
+    reservation := with-out-of-memory-retry_ --relieve: image-registry.reserve relocated-size
     if not reservation: throw "No space left in flash"
     try:
-      return with-out-of-memory-retry_: create-container-image-writer_ client reservation
+      return with-out-of-memory-retry_ --relieve: create-container-image-writer_ client reservation
     finally: | is-exception _ |
       if is-exception: reservation.close
 
@@ -398,6 +434,7 @@ class ContainerManager extends ContainerServiceProvider implements SystemMessage
     set-system-message-handler_ SYSTEM-TERMINATED_ this
     set-system-message-handler_ SYSTEM-SPAWNED_ this
     set-system-message-handler_ SYSTEM-TRACE_ this
+    out-of-memory-relief_ = :: evict-sandbox_
 
     image-registry.do: | allocation/FlashAllocation |
       if allocation.type != FLASH-ALLOCATION-TYPE-PROGRAM: continue.do
@@ -438,6 +475,26 @@ class ContainerManager extends ContainerServiceProvider implements SystemMessage
     image := ContainerImageFlash this allocation
     register-image image
     return image
+
+  /**
+  Stops the running sandboxed container that reserves the most memory, so
+    that a request of trusted code or an operation of the system that ran
+    out of memory can succeed ($out-of-memory-relief_). Returns false if no
+    sandboxed container runs. Critical containers are never stopped.
+  */
+  evict-sandbox_ -> bool:
+    victim/Container? := null
+    most := -1
+    containers-by-id_.do: | gid/int container/Container |
+      if container.is-sandboxed and container.is-running and not container.critical:
+        reserved := container.reserved-memory
+        if reserved > most:
+          victim = container
+          most = reserved
+    if not victim: return false
+    catch: print_ "[out of memory in system process: stopping sandboxed container $victim.id ($most bytes)]"
+    victim.evict_
+    return true
 
   // TODO(kasper): Not so happy with this name.
   wait-until-done -> int:

@@ -20,6 +20,7 @@ set(TOOL_TESTS
   "tests/sandbox/system-oom-request-test.toit"
   "tests/sandbox/sandbox-start-floor-test.toit"
   "tests/sandbox/reply-to-full-sandbox-test.toit"
+  "tests/sandbox/system-oom-relief-test.toit"
 )
 file(GLOB SANDBOX_TESTS RELATIVE ${TOIT_SDK_SOURCE_DIR} "*-test.toit")
 

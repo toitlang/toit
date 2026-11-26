@@ -37,11 +37,35 @@ Calls $block. If it fails because the system process is out of memory
   it once more. Throws "OUT_OF_MEMORY" if that fails for lack of memory too.
 
 The $block must leave nothing behind when it fails.
+
+With $relieve (for requests of trusted code and the system's own
+  operations, never for starting a sandbox), sandboxed containers lose
+  before the request fails: if the second attempt fails too, the sandboxed
+  containers are stopped one at a time ($out-of-memory-relief_, the one
+  holding the most memory first), each followed by another attempt, until
+  the block succeeds or none is left. Asking the sandboxes to give memory
+  back is already done before: each failed allocation was tried again
+  after a collection of every process.
 */
-with-out-of-memory-retry_ [block] -> any:
+with-out-of-memory-retry_ --relieve/bool=false [block] -> any:
   catch --unwind=(: not is-out-of-memory-error_ it):
     return block.call
   sleep --ms=OUT-OF-MEMORY-RETRY-DELAY-MS_
   catch --unwind=(: not is-out-of-memory-error_ it):
     return block.call
+  if relieve:
+    while true:
+      relief := out-of-memory-relief_
+      if not relief or not relief.call: break
+      // The stopped container's memory is freed when its processes end.
+      sleep --ms=OUT-OF-MEMORY-RETRY-DELAY-MS_
+      catch --unwind=(: not is-out-of-memory-error_ it):
+        return block.call
   throw "OUT_OF_MEMORY"
+
+/**
+Stops one sandboxed container to free memory for the system process and
+  returns true, or returns false if no sandboxed container can be stopped.
+  Installed by the container manager.
+*/
+out-of-memory-relief_/Lambda? := null
