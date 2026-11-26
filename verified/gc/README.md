@@ -1,7 +1,7 @@
 # verified/gc: the proved copying collector for sandboxed processes
 
 A page-granular Cheney copy in Rust, verified with Verus 0.2026.11.02 for
-64- and 32-bit words: milestones M1 and M2 of the plan in
+64- and 32-bit words: milestones M1 to M4 of the plan in
 `opentoit-sandbox-artifacts/gc-stage1/README.md` (section 6). Not linked
 into the VM yet (M5). The C++ prototype it ports is `src/sandbox_gc.cc`.
 
@@ -21,8 +21,13 @@ into the VM yet (M5). The C++ prototype it ports is `src/sandbox_gc.cc`.
   to-space pages.
 - `src/statement.rs`: the driver `collect` and its contract `collected`,
   the top-level statement; reachability.
+- `src/fin.rs`: the finalizer pass (M4): finalizer nodes and their fates,
+  killing a dead key (finalizer bit cleared, a weak map reset), the
+  callback and queued nodes, the VM nodes; `fin_done`.
 - `src/bridge.rs` (Verus only): `collected` implies the core's
-  `gcbridge::collected` and a collection of the spec.
+  `gcbridge::collected` and a collection of the spec; from the core's state
+  with the C++ roots (M3); with the finalizer pass, the reset weak maps
+  being the spec's `zapped` (M4).
 - `tests/collect.rs`: concrete heaps in the VM's layouts, checked against an
   independent reference (reachability, isomorphism up to renumbering, page
   structure).

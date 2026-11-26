@@ -19,6 +19,8 @@ are not escape hatches. The list must only shrink.
 | The entry (section 2) | the preconditions of `statement::collect` | the heap is well formed and the caller hands over exactly the permissions it describes |
 | Layout facts (section 4) | `layout.rs`: the sizes and reference slots of the VM's objects | the shared constants are proved equal to the core's (`bridge::lemma_layout_constants`; LAYOUT.toml checks those against the C++); the size rules the core does not have (string and byte array sizes, external objects, stacks) are checked against the C++ `HeapObject::size` by the differential test |
 | The bridge's hypotheses (section 3) | the preconditions of `bridge::lemma_bridge` | the collector's heap represents the spec's (proved for the VM's layouts from a structural description, `lemma_rep_vm`), the roots include the state's, the core's heap invariant |
+| The C++ root obligation (section 5) | `sandbox_gc_roots`: the root array and the finalizer nodes are every reference the C++ holds into the process heap | one statement about the C++ runtime (proposed CONTRACTS.toml text); checked empirically by `TOIT_SANDBOX_GC_VERIFY` (from-space checked and poisoned after every collection) |
+| The finalizer pass (section 6) | the C++ acts on the verdicts; `weak_keys_maps`; the null object | the node array is what the C++ lists hold; the C++ unlinks, queues and frees as the verdicts say; weak-map keys are maps; `Ctx::null` is the program's null |
 | Not verified | `nopanic/` (a C entry point: `unsafe` extern calls, `assume_new` for the ghost arguments), `tests/` | measurement and tests only; nothing in the VM |
 
 What is checked at run time instead of trusted: the from-space table (word
@@ -129,8 +131,14 @@ hypotheses, which the integration must discharge:
 - The program's roots and literals are program-heap constants
   (`gcbridge::ro_const`, as the core's `collected` asks).
 
-No weak processing in M1: the bridge uses `zapped(ap, s, s)`. M4 (weak
-maps) replaces it with the collector's own zapping, which `zapped` allows.
+Weak processing (M4): `lemma_spec_collection_fin` and
+`lemma_spec_collection_core_fin` take the heap after the finalizer pass;
+the spec state after weak processing is `fin_state` (the weak maps the
+collector reset are `gc::reset_map`, every other object unchanged: a
+cleared finalizer bit is not part of a spec object), proved `zapped` from
+the state. Their extra hypotheses are in section 6. Instead of `rep` they
+take `obj_struct` of every object (the VM's layout), from which they derive
+`rep` of the heap after the pass.
 
 ## 4. Layout facts (`layout.rs`)
 
@@ -216,3 +224,43 @@ the new heap points into from-space, and then overwrites from-space with a
 poison word, so that a reference the enumeration missed reads garbage
 (and, under ASan, use-after-free once the pages are freed). Runs:
 README, section M3.
+
+## 6. The finalizer pass (milestone M4)
+
+`statement::collect` takes the finalizer nodes as an array of four words
+per node (kind, key, lambda, verdict): first the callback nodes (`ncb`:
+the registered callback finalizers, kinds 0 Toit and 1 weak map, then the
+queue, kinds 2 and 3), then the VM finalizers (kind 4), in the order of the
+C++ lists. It proves, besides `collected` for the heap after the pass,
+`fin::fin_done`: every node has its fate (`fin::fate`) and the heap after
+the pass is the old one with the dead keys killed (`fin::changed_ok`). What
+the C++ must do, and what the bridge assumes:
+
+- The nodes are the C++ lists' nodes with their kinds (part of
+  `sandbox_gc_roots`, section 5: the node keys and lambdas are roots
+  through the node array, not the root array).
+- The C++ acts on the verdicts: KEEP writes the key and lambda words back
+  into the node; QUEUE (a registered Toit finalizer whose key died: the
+  collector has cleared the key's finalizer bit and nulled the key word)
+  moves the node to the queue with the key and lambda words; DELETE unlinks
+  and deletes the node (for a dead weak map the collector has already
+  reset the map and cleared its bit); FREE (a VM finalizer whose key died
+  with its bit set) frees the key's external memory
+  (`VmFinalizerNode::free_external_memory`) and deletes the node. The
+  collector decides; the freeing and the list surgery are C++.
+- `Ctx::null` is the address of the program's null object, `Ctx::nullid`
+  its id; the bridge assumes `null2(ap) == Value::Obj(nullid)` (the spec's
+  null is the program's first root).
+- `bridge::weak_keys_maps`: the key of every callback node other than a
+  registered Toit finalizer, if in from-space, is a map (`gc::is_map`).
+  `add_finalizer` (src/primitive_core.cc) registers a weak-map node only
+  for an instance of the map class outside the program heap; a queued
+  Toit finalizer's key is null (`ToitFinalizerNode::weak_processing`), so
+  not in from-space. `is_map`'s other conditions (not the task class, at
+  least four fields) are the verifier's `check_builtin_classes`.
+
+Not done: zapping the values of live weak maps (`zap_dead_values`). The
+proved collector traces a live weak map's fields like any instance's, so it
+keeps values the C++ prototype nulls; `zapped` allows that (an object may
+stay as it is), so the statement holds; the difference is memory retained
+until the map drops the entry. The differential test counts it.
