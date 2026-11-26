@@ -1013,13 +1013,36 @@ Process* Scheduler::find_process(Locker& locker, int pid) {
   return null;
 }
 
-void Scheduler::iterate_process_chunks(void* context, process_chunk_callback_t* callback) {
+namespace {
+
+struct ProcessChunkWalk {
+  void* context;
+  Scheduler::ProcessChunkCallback* callback;
+  const Scheduler::ProcessChunkOwner* owner;
+};
+
+void forward_process_chunk(void* context, Process* process, uword address, uword size) {
+  auto walk = static_cast<ProcessChunkWalk*>(context);
+  walk->callback(walk->context, walk->owner, address, size);
+}
+
+}  // namespace
+
+void Scheduler::iterate_process_chunks(void* context, ProcessChunkCallback* callback) {
   Locker locker(mutex_);
   for (ProcessGroup* group : groups_) {
     ProcessListFromProcessGroup& processes = group->processes();
     for (auto it : processes) {
-      if (it->program() == null) continue;  // External process.
-      it->object_heap()->iterate_chunks(context, callback);
+      Program* program = it->program();
+      if (program == null) continue;  // External process.
+      // The callback gets a copy of what it may need to know about the
+      // process: the process can be deleted once the lock is released.
+      ProcessChunkOwner owner;
+      owner.pid = it->id();
+      owner.is_boot_process = it == boot_process_;
+      memcpy(owner.program_id, program->id(), UUID_SIZE);
+      ProcessChunkWalk walk = { context, callback, &owner };
+      it->object_heap()->iterate_chunks(&walk, forward_process_chunk);
     }
   }
 }
