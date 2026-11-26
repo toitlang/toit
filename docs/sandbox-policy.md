@@ -238,6 +238,23 @@ resources (bounded by the quotas above). On the host the floor works on a
 simulated system heap (`-Xsandbox_heap_floor`, `-Xsandbox_system_heap`;
 tests/sandbox/heap-floor-test.toit).
 
+An allocation that still fails after the collections prints a heap report
+(`report_allocation_failure` in `src/out_of_memory.cc`; on a device
+`OS::heap_summary_report` walks the whole heap and prints for about 100 ms;
+on the host it is one `Out of memory process` line). A sandbox at its quota
+or at the floor can fail allocations continuously, and each failure printed
+a full report (397 in one device run, followed by a hang). The reports of
+every process group but the system process's are therefore rate-limited:
+the first failure is reported, then at most one report per group every 10
+seconds; the failures in between are only counted, and the next report is
+preceded by `[out of memory: N more failed allocations of process group G
+since its last heap report]`. The system process is always reported
+(tests/sandbox/oom-report-rate-test.toit, tests/ctest/out-of-memory-report-limiter-test.cc).
+The report's walk of the processes copies what it prints (pid, program id)
+under the scheduler lock: it used to print from process pointers after the
+lock was released and read a process that had terminated meanwhile (a
+LoadProhibited crash on a device; tests/ctest/process-chunk-walk-test.cc).
+
 The per-sender mailbox quotas protect every receiver, including the
 system process and trusted providers, from being flooded by a sandbox. An
 untrusted sender gets `QUOTA_EXCEEDED`; for a trusted sender a message to a

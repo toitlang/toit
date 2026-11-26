@@ -475,7 +475,7 @@ Object *Program_malloc_failed(Program *self);
 Object *Program_cross_process_gc(Program *self);
 //@ requires [_]program(self, ?ids);
 //@ ensures result == root_cross_process_gc(self);
-// C++: the lambda at src/interpreter_v2.cc:357:54 (the closure rules)
+// C++: the lambda at src/interpreter_v2.cc:350:54 (the closure rules)
 struct toit_v2_allocate_instance_lambda1 { Process *process; uword class_id; };
 HeapObject *toit_v2_allocate_instance_lambda1_call(struct toit_v2_allocate_instance_lambda1 *closure);
 /*@ requires [?fc]closure->process |-> ?p &*& [fc]closure->class_id |-> ?c &*& [?fp]process(p, ?prog, ?ids) &*& heap(?objs, ?H) &*&
@@ -483,7 +483,7 @@ HeapObject *toit_v2_allocate_instance_lambda1_call(struct toit_v2_allocate_insta
 /*@ ensures [fc]closure->process |-> p &*& [fc]closure->class_id |-> c &*& [fp]process(p, prog, ids) &*&
               allocated(objs, H, p, result, ?objs2, ?H2) &*& (result == 0 ? true : instance_new(H2, result, c) == true); @*/
 
-// C++: the lambda at src/interpreter_v2.cc:421:52 (the closure rules)
+// C++: the lambda at src/interpreter_v2.cc:414:52 (the closure rules)
 struct toit_v2_allocate_double_lambda1 { Process *process; double value; };
 HeapObject *toit_v2_allocate_double_lambda1_call(struct toit_v2_allocate_double_lambda1 *closure);
 //@ requires [?fc]closure->process |-> ?p &*& [fc]closure->value |-> ?v &*& [?fp]process(p, ?prog, ?ids) &*& heap(?objs, ?H);
@@ -1270,7 +1270,7 @@ uword v2_allocate__toit_v2_allocate_instance_lambda1(Process *process, char *rea
   return (uword)result;
 }
 
-// C++: the lambda at src/interpreter_v2.cc:357:54 (the closure rules)
+// C++: the lambda at src/interpreter_v2.cc:350:54 (the closure rules)
 HeapObject *toit_v2_allocate_instance_lambda1_call(struct toit_v2_allocate_instance_lambda1 *closure)
 /*@ requires [?fc]closure->process |-> ?p &*& [fc]closure->class_id |-> ?c &*& [?fp]process(p, ?prog, ?ids) &*& heap(?objs, ?H) &*&
                c < MAX_CLASS_IDS &*& class_tag(c) == INSTANCE_TAG; @*/
@@ -1341,7 +1341,7 @@ uword v2_allocate__toit_v2_allocate_double_lambda1(Process *process, char *reaso
   return (uword)result;
 }
 
-// C++: the lambda at src/interpreter_v2.cc:421:52 (the closure rules)
+// C++: the lambda at src/interpreter_v2.cc:414:52 (the closure rules)
 HeapObject *toit_v2_allocate_double_lambda1_call(struct toit_v2_allocate_double_lambda1 *closure)
 //@ requires [?fc]closure->process |-> ?p &*& [fc]closure->value |-> ?v &*& [?fp]process(p, ?prog, ?ids) &*& heap(?objs, ?H);
 /*@ ensures [fc]closure->process |-> p &*& [fc]closure->value |-> v &*& [fp]process(p, prog, ids) &*&

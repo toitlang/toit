@@ -18,6 +18,7 @@
 #include "linked.h"
 #include "interpreter_v2.h"
 #include "method_entries.h"
+#include "out_of_memory.h"
 #include "primitive_policy.h"
 #include "process.h"
 #include "top.h"
@@ -81,6 +82,10 @@ class ProcessGroup : public ProcessGroupList::Element {
 
   ProcessListFromProcessGroup& processes() { return processes_; }
 
+  // The rate limit of the group's out-of-memory reports. Must be used with
+  // the scheduler lock held.
+  OutOfMemoryReportLimiter* out_of_memory_report_limiter() { return &out_of_memory_report_limiter_; }
+
  private:
   const int id_;
   Program* const program_;
@@ -100,6 +105,8 @@ class ProcessGroup : public ProcessGroupList::Element {
   // The granted target pids. Allocated on the first grant.
   int* grants_ = null;
   word grants_count_ = 0;
+
+  OutOfMemoryReportLimiter out_of_memory_report_limiter_;
 
   ProcessGroup(int id, Program* program, AlignedMemoryBase* memory, const PrimitivePolicy* policy);
 

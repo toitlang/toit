@@ -191,6 +191,13 @@ class Scheduler {
   // Returns the id of the boot process, or INVALID_PROCESS_ID if there is none.
   int boot_process_id();
 
+  // Whether an allocation of [process] that failed after the collections
+  // gets a full heap report now: always for the system process, else at
+  // most once per OutOfMemoryReportLimiter::INTERVAL_US per process group.
+  // If so, [suppressed] is set to the number of failures of the group that
+  // were not reported since its last report.
+  bool should_report_allocation_failure(Process* process, word* suppressed);
+
   // The owner of the heap chunks that [iterate_process_chunks] reports,
   // copied under the scheduler lock. A process can be deleted as soon as
   // the lock is released (Scheduler::terminate_process unlocks around the

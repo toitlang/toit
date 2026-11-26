@@ -1243,6 +1243,16 @@ Process* Scheduler::find_process(Locker& locker, int pid) {
   return null;
 }
 
+bool Scheduler::should_report_allocation_failure(Process* process, word* suppressed) {
+  int64 now = OS::get_monotonic_time();
+  Locker locker(mutex_);
+  if (process == boot_process_) {
+    *suppressed = 0;
+    return true;
+  }
+  return process->group()->out_of_memory_report_limiter()->should_report(now, suppressed);
+}
+
 namespace {
 
 struct ProcessChunkWalk {

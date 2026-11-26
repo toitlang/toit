@@ -18,6 +18,7 @@
 #include "flags.h"
 #include "heap_report.h"
 #include "objects_inline.h"
+#include "out_of_memory.h"
 #include "printing.h"
 #include "process.h"
 #include "scheduler.h"
@@ -115,14 +116,7 @@ Object** Interpreter::gc(
     int parameter2) {
   ASSERT(attempts >= 1 && attempts <= 3);  // Allocation attempts.
   if (attempts == 3) {
-    static const int BUFFER_SIZE = 50;
-    char buffer[BUFFER_SIZE];
-    snprintf(buffer, BUFFER_SIZE, "out of memory in %s %d:%d", reason, parameter1, parameter2);
-    buffer[BUFFER_SIZE - 1] = '\0';
-    OS::heap_summary_report(0, buffer, process_);
-    if (VM::current()->scheduler()->is_boot_process(process_)) {
-      OS::out_of_memory("Out of memory in system process");
-    }
+    report_allocation_failure(process_, reason, parameter1, parameter2);
     return sp;
   }
   store_stack(sp);

@@ -31,6 +31,7 @@
 #include "hw_perf.h"
 #include "interpreter.h"
 #include "objects_inline.h"
+#include "out_of_memory.h"
 #include "process.h"
 #include "process_group.h"
 #include "program.h"
@@ -303,15 +304,7 @@ static void v2_validate(Process* process, const char* where) {
 #endif
 
 static void v2_report_allocation_failure(Process* process, const char* reason, word parameter1, word parameter2) {
-  static const int BUFFER_SIZE = 50;
-  char buffer[BUFFER_SIZE];
-  snprintf(buffer, BUFFER_SIZE, "out of memory in %s %" PRIdPTR ":%" PRIdPTR,
-           reason, parameter1, parameter2);
-  buffer[BUFFER_SIZE - 1] = '\0';
-  OS::heap_summary_report(0, buffer, process);
-  if (VM::current()->scheduler()->is_boot_process(process)) {
-    OS::out_of_memory("Out of memory in system process");
-  }
+  report_allocation_failure(process, reason, parameter1, parameter2);
 }
 
 // As Interpreter::gc, without moving the interpreter's stack pointers (the
