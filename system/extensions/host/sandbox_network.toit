@@ -19,6 +19,7 @@ import tls
 
 import ...containers
 import ...sandbox-network.core
+import ...sandbox-network.http-service
 import ...sandbox-network.socket-service
 
 /**
@@ -35,5 +36,6 @@ install-sandbox-network manager/ContainerManager -> none:
     container := manager.lookup-container gid
     container and container.network-grant
   (SandboxSocketServiceProvider core).install
+  (SandboxHttpServiceProvider core).install
 
 ROOTS-VARIABLE ::= "TOIT_SANDBOX_NETWORK_ROOTS"

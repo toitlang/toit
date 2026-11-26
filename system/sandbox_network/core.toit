@@ -224,6 +224,9 @@ class SandboxConnection extends ServiceResource:
     if error_ or closed_: return
     if exception == DEADLINE-EXCEEDED-ERROR: exception = "TIMEOUT"
     if not KNOWN-ERRORS_.contains exception:
+      // The details are for the console, not for the sandbox. A sandbox
+      // causes at most one line per connection attempt.
+      catch: print_ "[sandbox network: $host:$port: $exception]"
       exception = connected_ ? "CONNECTION_FAILED" : "CONNECT_FAILED"
     error_ = exception
     close-socket_

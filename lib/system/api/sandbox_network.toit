@@ -176,7 +176,7 @@ class SandboxStream extends ServiceResourceProxy:
     changed_.raise
 
   /**
-  Calls $block until it returns a value other than 0 or false, waiting for
+  Calls $block until it returns a value other than 0, false or null, waiting for
     a change of the stream between the calls.
   */
   wait-for [block] -> any:
@@ -184,7 +184,7 @@ class SandboxStream extends ServiceResourceProxy:
       if is-closed: throw "ALREADY_CLOSED"
       seen := changes_
       result := block.call
-      if result != 0 and result != false: return result
+      if result != 0 and result != false and result != null: return result
       catch --unwind=(: it != DEADLINE-EXCEEDED-ERROR):
         with-timeout --ms=POLL-MS:
           changed_.wait: changes_ != seen
