@@ -235,4 +235,196 @@ pub proof fn lemma_spec_collection(ap: Program2, cb: Seq<u16>, s: State2, n0: in
     gcbridge::lemma_collected(ap, cb, s, s, live_seq(h, st), st.addr2, n0);
 }
 
+// ---------------------------------------------------------------------------
+// The VM's layouts (milestone M2): `rep` from the objects' structure.
+
+/// The layout facts the collector shares with the core are the core's
+/// (verified/core/src/layout.rs, which verified/LAYOUT.toml checks against
+/// the C++ headers).
+pub proof fn lemma_layout_constants()
+    ensures
+        W == toit_verified_core::layout::WORD_SIZE,
+        ARRAY_TAG == toit_verified_core::layout::ARRAY_TAG,
+        STRING_TAG == toit_verified_core::layout::STRING_TAG,
+        INSTANCE_TAG == toit_verified_core::layout::INSTANCE_TAG,
+        ODDBALL_TAG == toit_verified_core::layout::ODDBALL_TAG,
+        DOUBLE_TAG == toit_verified_core::layout::DOUBLE_TAG,
+        BYTE_ARRAY_TAG == toit_verified_core::layout::BYTE_ARRAY_TAG,
+        LARGE_INTEGER_TAG == toit_verified_core::layout::LARGE_INTEGER_TAG,
+        STACK_TAG == toit_verified_core::layout::STACK_TAG,
+        TASK_TAG == toit_verified_core::layout::TASK_TAG,
+        ARRAY_LENGTH_WORD == toit_verified_core::layout::ARRAY_LENGTH_WORD,
+        ARRAY_ELEMENTS_WORD == toit_verified_core::layout::ARRAY_ELEMENTS_WORD,
+        INSTANCE_FIELDS_WORD == toit_verified_core::layout::INSTANCE_FIELDS_WORD,
+        STACK_LENGTH_WORD == toit_verified_core::layout::STACK_LENGTH_WORD,
+        STACK_TOP_WORD == toit_verified_core::layout::STACK_TOP_WORD,
+        VALUE_WORDS == toit_verified_core::layout::VALUE_WORDS,
+        1 == toit_verified_core::layout::DOUBLE_VALUE_WORD,
+        1 == toit_verified_core::layout::LARGE_INTEGER_VALUE_WORD,
+        1 == toit_verified_core::layout::BYTE_ARRAY_LENGTH_WORD,
+        CONTENT_BYTE == toit_verified_core::layout::BYTE_ARRAY_CONTENT_BYTE,
+        CONTENT_BYTE == toit_verified_core::layout::STRING_CONTENT_BYTE,
+        STRING_SENTINEL == toit_verified_core::layout::STRING_SENTINEL,
+        STRING_LENGTH_SHIFT == 8 * (toit_verified_core::layout::STRING_INTERNAL_LENGTH_BYTE - toit_verified_core::layout::WORD_SIZE),
+        EXTERNAL_WORDS == toit_verified_core::layout::STRING_EXTERNAL_ADDRESS_WORD + 1,
+        EXTERNAL_WORDS == toit_verified_core::layout::BYTE_ARRAY_EXTERNAL_TAG_WORD + 1,
+        STACK_MIN_ARRAY_WORD == toit_verified_core::layout::STACK_BCI_WORD + 1,
+        toit_verified_core::layout::CLASS_ID_OFFSET == 5,
+        toit_verified_core::layout::INSTANCE_SIZE_MASK == 0x7ff,
+{
+}
+
+/// The collector's value of a spec value (the core's `abs::enc` as a word:
+/// objects by id, smis and block references as their words).
+pub open spec fn aval(v: Value) -> AVal {
+    match v {
+        Value::Obj(id) => AVal::Ref(id as int),
+        Value::Smi(i) => AVal::Raw(toit_verified_core::abs::smi_word(i)),
+        Value::BlockRef(f, s) => AVal::Raw(toit_verified_core::abs::block_word(f, s)),
+        _ => AVal::Raw(0),
+    }
+}
+
+/// The collector's object `a` is the spec object `o` in the VM's layout:
+/// its header encodes the object's class (the core's header clause of
+/// `view::word_val`); an instance's fields, an array's length and elements,
+/// a double's or large integer's payload words are the words the core
+/// models; the references of a stack's object stack are among its
+/// reference slots. Strings, byte arrays and oddballs: the header only
+/// (their other words are raw, the core models them through `HeapMem`'s
+/// byte and half-word permissions).
+pub open spec fn obj_struct(o: HeapObj, a: AObj, cb: Seq<u16>) -> bool {
+    &&& a.words.len() >= 1
+    &&& a.words[0] is Raw
+    &&& toit_verified_core::view::hdr_class_id(raw(a.words[0])) == o.class_id
+    &&& (o.class_id as int) < cb.len()
+    &&& toit_verified_core::view::hdr_class_tag(raw(a.words[0])) == (cb[o.class_id as int] & 0xf) as usize
+    &&& a.cbits == cb[o.class_id as int]
+    &&& match o.body {
+        Body::Instance(f) => forall|i: int| 0 <= i < f.len() ==> #[trigger] a.words[1 + i] == aval(f[i]),
+        Body::Array(e) => a.words[1] == AVal::Raw(e.len() as usize)
+            && forall|i: int| 0 <= i < e.len() ==> #[trigger] a.words[2 + i] == aval(e[i]),
+        Body::Double(_) | Body::LargeInt(_) => forall|j: int| 0 <= j < VALUE_WORDS ==>
+            #[trigger] a.words[1 + j] == AVal::Raw(toit_verified_core::view::value_word(toit_verified_core::view::value64(o), j)),
+        Body::Stack(w, _) => forall|j: int| 0 <= j < w.len() && (#[trigger] w[j]) is Obj ==>
+            exists|k: int| is_ref(a, k) && #[trigger] a.words[k] == AVal::Ref(w[j]->Obj_0 as int),
+        Body::Stack2(w, _, _, _, _) => forall|j: int| 0 <= j < w.len() && (#[trigger] w[j]) is Obj ==>
+            exists|k: int| is_ref(a, k) && #[trigger] a.words[k] == AVal::Ref(w[j]->Obj_0 as int),
+        _ => true,
+    }
+}
+
+/// The core's class tag of a header is the collector's.
+pub proof fn lemma_htag(h: usize)
+    ensures toit_verified_core::view::hdr_class_tag(h) == htag(h),
+{
+    assert(toit_verified_core::layout::CLASS_TAG_MASK == 15);
+    assert((((h as isize) >> 1usize) as usize) & 15usize == (h >> 1usize) & 15usize) by (bit_vector);
+}
+
+/// An encodable value's word is the same in both encodings.
+pub proof fn lemma_aval_enc(addr: Seq<usize>, v: Value)
+    requires encodable(addr, v),
+    ensures wval(AObj { words: seq![aval(v)], cbits: 0, sw: 0 }, addr, 0) == toit_verified_core::abs::enc(addr, v),
+{
+}
+
+/// A word the core models of an object in the VM's layout is the core's
+/// word of it under every address map.
+pub proof fn lemma_struct_words(o: HeapObj, a: AObj, cb: Seq<u16>, n: int, z: Seq<usize>)
+    requires
+        obj_struct(o, a, cb), obj_ok(a),
+        obj_model_ok(o, cb, z), z.len() == n,
+    ensures obj_rep(o, a, cb, n),
+{
+    let h = raw(a.words[0]);
+    let cid = o.class_id as int;
+    lemma_htag(h);
+    lemma_layout_constants();
+    let l = lay(a);
+    // The kind of the object decides its layout.
+    match o.body {
+        Body::Instance(f) => {
+            assert(htag(h) == INSTANCE_TAG || htag(h) == TASK_TAG);
+            assert(l.lo == 1 && l.hi == isize_bits(a.cbits) && l.size == a.words.len());
+            assert(f.len() == toit_verified_core::abs::ifc_bits(cb, cid));
+            assert(isize_bits(a.cbits) == toit_verified_core::abs::ifc_bits(cb, cid) + 1) by {
+                let b = cb[cid];
+                assert(((b >> 5u16) & 0x7ffu16) as int == ((b >> 5u16) & 0x7ffu16) as int);
+            }
+        },
+        Body::Array(e) => {
+            assert(htag(h) == ARRAY_TAG);
+            assert(l.lo == 2 && l.hi == 2 + e.len());
+        },
+        Body::Double(_) => {
+            assert(htag(h) == DOUBLE_TAG);
+            assert(l.size == 1 + VALUE_WORDS);
+        },
+        Body::LargeInt(_) => {
+            assert(htag(h) == LARGE_INTEGER_TAG);
+            assert(l.size == 1 + VALUE_WORDS);
+        },
+        _ => {},
+    }
+    assert forall|j: int| 0 <= j < obj_vals(o).len() && (#[trigger] obj_vals(o)[j]) is Obj implies
+        exists|k: int| is_ref(a, k) && #[trigger] a.words[k] == AVal::Ref(obj_vals(o)[j]->Obj_0 as int) by {
+        match o.body {
+            Body::Instance(f) => {
+                assert(a.words[1 + j] == aval(f[j]));
+                assert(is_ref(a, 1 + j));
+            },
+            Body::Array(e) => {
+                assert(a.words[2 + j] == aval(e[j]));
+                assert(is_ref(a, 2 + j));
+            },
+            _ => {},
+        }
+    }
+    assert forall|k: int| #[trigger] toit_verified_core::view::is_word(o, k) implies 0 <= k < a.words.len() && word_rep(o, a, cb, n, k) by {
+        assert forall|addr: Seq<usize>| addr.len() == n implies #[trigger] word_val(o, cb, addr, k, wval(a, addr, k)) by {
+            lemma_obj_model_addr(o, cb, z, addr);
+            if k > 0 {
+                match o.body {
+                    Body::Instance(f) => {
+                        assert(encodable(addr, f[k - 1]));
+                        assert(a.words[1 + (k - 1)] == aval(f[k - 1]));
+                        lemma_aval_enc(addr, f[k - 1]);
+                    },
+                    Body::Array(e) => {
+                        if k >= 2 {
+                            assert(encodable(addr, e[k - 2]));
+                            assert(a.words[2 + (k - 2)] == aval(e[k - 2]));
+                            lemma_aval_enc(addr, e[k - 2]);
+                        }
+                    },
+                    Body::Double(_) | Body::LargeInt(_) => {
+                        assert(a.words[1 + (k - 1)] == AVal::Raw(toit_verified_core::view::value_word(toit_verified_core::view::value64(o), k - 1)));
+                    },
+                    _ => {},
+                }
+            }
+        }
+    }
+}
+
+/// `rep` for heaps in the VM's layout: each object of the collector's heap
+/// is its spec object in the VM's layout (and agrees with that layout), and
+/// the spec heap is the core's well-formed heap model.
+pub proof fn lemma_rep_vm(sh: Seq<HeapObj>, h: H, cb: Seq<u16>, addr: Seq<usize>)
+    requires
+        h.objs.len() == sh.len(),
+        heap_model_ok(sh, addr, cb),
+        forall|i: int| 0 <= i < sh.len() ==> #[trigger] obj_struct(sh[i], h.objs[i], cb) && obj_ok(h.objs[i]),
+    ensures rep(sh, h, cb),
+{
+    let n = sh.len() as int;
+    assert forall|i: int| 0 <= i < n implies #[trigger] obj_rep(sh[i], h.objs[i], cb, n) by {
+        assert(obj_model_ok(sh[i], cb, addr));
+        assert(obj_struct(sh[i], h.objs[i], cb));
+        assert(obj_ok(h.objs[i]));
+        lemma_struct_words(sh[i], h.objs[i], cb, n, addr);
+    }
+}
+
 } // verus!
