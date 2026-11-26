@@ -186,6 +186,10 @@ if (NOT "${TOIT_VM_CLANG}" STREQUAL "" AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     set_target_properties(toit_vm PROPERTIES
         C_COMPILER_LAUNCHER "${toit_clang_launcher}"
         CXX_COMPILER_LAUNCHER "${toit_clang_launcher}")
+    # The launcher decides the clang options: recompile when it changes.
+    get_target_property(toit_vm_sources toit_vm SOURCES)
+    set_source_files_properties(${toit_vm_sources} TARGET_DIRECTORY toit_vm
+        PROPERTIES OBJECT_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/clang-launcher.sh")
 endif()
 
 # The hot flash code (Kconfig TOIT_PIN_HOT_FLASH_CODE): an output section
