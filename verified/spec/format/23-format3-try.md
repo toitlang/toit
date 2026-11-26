@@ -232,7 +232,9 @@ The invariant (`sound.rs`):
   0 otherwise. `frames_rel` relates it to `Frame::handler` directly (no
   handler stack, no `callees_ok`).
 * No finally records: `rtop`, `FIN_WORDS` and the `FIN_*` words, the
-  gate (`fw`, `need`, `bot`), rfins.rs, `fin_cut`, `cut_records`,
+  gate's record words `fw` (`need` and `bot` are constants of the
+  program now: a call's room plus one word for TRY's block reference, and
+  the first frame), rfins.rs, `fin_cut`, `cut_records`,
   `pop_records`, `fins_rel` and the record moves of calls and returns
   are gone. The Stack object's record word holds the frame top only.
 * TRY is a block call with the flag (the room check of a call), RETURN
@@ -250,6 +252,21 @@ The invariant (`sound.rs`):
   counts finally records.
 * `Machine::reload_cold` (trusted) checks `ftop % FRAME_WORDS == 0`
   and `ftop <= top`; no record region.
+* The checked loop (trusted plain Rust, programs not accepted at launch)
+  cannot tell a token word from a smi, as it cannot tell a block
+  reference from one: it decodes the words and checks what they name
+  (the frame exists; heights and bcis are checked where they are used),
+  so a forged or copied token there is a different, memory-safe step (a
+  forged normal token continues after UNWIND, a copied exception token
+  rethrows) where the spec is stuck. TRUSTED.md section 4 states this
+  exception; red-team round 5 (battery T) exercises it on the normal and
+  the ASan build.
+* Initial task stacks: a call's check no longer keeps a finally record
+  of slack (5 words) but one word, so a task needs 4 words less at its
+  deepest call: the libraries' short tasks need 116, 126 and 129 words at
+  a maximal height of 18 (were 121, 130, 133; measured as in note 22).
+  `Stack::V2_INITIAL_LENGTH_ABOVE_HEIGHT` is 114 (was 118), with the same
+  three words of margin.
 
 ### Compiler
 

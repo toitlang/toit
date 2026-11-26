@@ -1,5 +1,56 @@
 # Phase 4a progress (verified core, format 2 on x86-64)
 
+## Format 3, step 3: TRY as a flagged block call (branch format3/try, 2026-11-26)
+
+TRY calls the try block with the handler flag in its frame record (the
+fourth word: 1 for a try block, 0 otherwise); a try block's return, and
+an unwinding that pops it, continue in the caller's finally code with
+four slots: the value, two token words, the reason. The tokens hold the
+pending unwinding (normal, throw, return to a frame, branch to a frame,
+bci and height); UNWIND resumes it. No finally records, no record moves,
+no gate for them (verified/spec/format/23-format3-try.md). Image tag
+`TBC3`; images with another `TBC` digit are refused where programs start.
+
+Proofs: spec 1079, core 1060, core-split 1062 (32-bit 1079, 1062, 1064)
+verified, 0 errors (base ceadf1bdf: 1096, 1103, 1105; 32-bit 1096, 1105,
+1107). Theorem statements unchanged in text or stronger (THEOREMS.txt:
+`lemma_replace_frame_slots` lost `!has_handler(s)`, `x_throw_null` lost
+the finally-record bound). Deleted finally-record machinery: rfins.rs
+(367 lines), `fins_rel`, `cut_records`, `pop_records`, the record moves
+in view.rs and calls.rs, the spec's `fin_ok`, `try_ok`, `fins_ok`,
+`cut_fins`, `fins_popped`, `fin_matches`; diff of verified/spec/src
++848 / -1,447 lines, verified/core/src +1,246 / -3,028. No new trusted
+item, no new external_body; trusted texts changed: `StackMem::from_stack`
+(frame-top header word), `Runtime::grow_stack` (frame records copied),
+the checked loop's exception for the provenance of block references and
+tokens (TRUSTED.md section 4).
+
+Against ceadf1bdf (the merge of wip/collector-proofs this branch starts
+from; artifacts format3-try):
+
+| | base | step 3 | |
+|---|---:|---:|---:|
+| words needed at the deepest call: short / latch / longest task (H 18) | 121 / 130 / 133 | 116 / 126 / 129 | -4 |
+| `V2_INITIAL_LENGTH_ABOVE_HEIGHT` | 118 | 114 | |
+| bytes allocated: empty / sum / string task | 1,320 / 1,352 / 1,488 | 1,288 / 1,320 / 1,456 | -2.4 % |
+| soak worker: tasks part / whole iteration | 4,496 / 9,951 | 4,400 / 9,698 | -2.1 % / -2.5 % |
+| host Ir: richards / deltablue / pystone / json | 105.21 M / 7.264 M / 17.31 M / 21.11 M | 106.88 M / 7.425 M / 17.61 M / 21.41 M | +1.6 / +2.2 / +1.8 / +1.4 % |
+| host Ir: calls / tasks / yield / RPC | 64.61 M / 25,981 / 947 / 79,511 | 65.80 M / 26,238 / 969 / 80,450 | +1.9 / +1.0 / +2.3 / +1.2 % |
+| classic ESP32: run loop / `.iram0.text` / IRAM free | 20,211 / 129,415 / 630 | 20,023 / 128,655 / 1,390 | -188 / -760 / +760 B |
+| classic ESP32 toit.bin | 1,461,680 | 1,460,240 | -1,440 B |
+| device library (opt s): riscv32 / thumbv7m | 73,684 / 65,730 | 72,144 / 63,980 | -1,540 / -1,750 B |
+| bytecodes (seven programs) | | | +12 to +14 B each |
+
+The host instruction counts rose by 1-2 % in programs without any
+try/finally: the run loop's code is the same or shorter on those paths
+(the call and return fast paths are unchanged instruction for
+instruction in the source), but LLVM's register assignment at the
+dispatch sites changed: an instruction-level callgrind of `calls` shows
+the same handlers with extra register-to-register moves before the
+dispatch jump (e.g. five in INVOKE_STATIC's fast path, where the base had
+one), six instructions more per iteration in all. On the classic ESP32
+the loop got smaller. Not investigated further (owner decision).
+
 ## Format 3, step 2: four-word frame records (branch format3/branches-frames, 2026-11-26)
 
 Frame records are method, return bci, base and the handler word (0, or

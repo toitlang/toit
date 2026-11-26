@@ -58,8 +58,7 @@ heap range, remembered-set bias, `&watermark_`, flags) and calls
 with the contract of `Interpreter::run`:
 
 - On entry the current task's Stack object holds the task state (object
-  stack, frame and finally records, top, record top, bci and the number
-  of finally records); on return it holds the
+  stack, frame records, top, frame top and bci); on return it holds the
   state to continue from. The core never holds the state elsewhere across
   a return or a GC point.
 - It returns `PREEMPTED` (watermark set: checked after a call has set up
@@ -99,19 +98,19 @@ registers (`regs::Regs`), the rest of the machine behind a pointer.
   it by `&mut` (its address never escapes, so LLVM keeps the fields in
   registers), out-of-line paths take and return it by value
   (`regs::set_regs` copies a returned value field by field). Everything
-  else (the views, the length, the gate below, the ghost state) is the
+  else (the views, the length, the fast paths' constants, the ghost state)
+  is the
   `Machine` behind `&mut`. Slot `n` is `sp[n]`: one load relative to the
   top.
-- Abstraction: the machine's fields `top`, `lim`, `base`, `ftop`, `rtop`,
-  `bci` and `method` are stale while the loop runs; `m.with(r)` is the
-  machine the registers describe (the record top is `fr + m.fw`, the top
-  frame's method the method word of its frame record, so calls and
+- Abstraction: the machine's fields `top`, `lim`, `base`, `ftop`, `bci`
+  and `method` are stale while the loop runs; `m.with(r)` is the machine
+  the registers describe (the top frame's method the method word of its frame record, so calls and
   returns store no method), and the abstraction of the pair is
   `m.with(r).refines(p)`: the refinement relation of section 9 unchanged.
-  `m.sync(r)` writes the registers back, `m.enter(p)` sets the gate and
-  derives them. Every register handler proves `rpost`: on `Next`,
+  `m.sync(r)` writes the registers back, `m.enter(p)` sets the fast
+  paths' constants and derives them. Every register handler proves `rpost`: on `Next`,
   `m1.with(r1)` refines the spec's next state (`step_post` of the machine
-  form), plus the room and the gate.
+  form), plus the room and the constants.
 - Dispatch: `step_r`, one `match` arm with a constant opcode per opcode
   (no range patterns: they cost a second switch) and a default arm proven
   unreachable, so LLVM duplicates the 6-instruction dispatch into the
@@ -127,9 +126,9 @@ registers (`regs::Regs`), the rest of the machine behind a pointer.
   derives the registers again (`step::resume`: the room, then
   `Machine::enter`). The machine-form code is what is cold or rare: the
   raises (`Raise`, `Invalid`, `As`, `Lookup`: `raise.rs`, one copy of each
-  message), calls with stack growth, preemption or finally records
-  (`Call`: `step::ensure_room`, `Machine::push_call`), returns of the
-  bottom frame, into a TRY or with finally records (`Return`:
+  message), calls with stack growth or preemption (`Call`:
+  `step::ensure_room`, `Machine::push_call`), returns of the bottom frame
+  (`Return`:
   `Machine::do_return`), the C++ primitives (`Prim`:
   `primitive::op_primitive_cxx`) and the whole handlers of the opcodes in
   `step::machine_op` (`Op`: LOAD_GLOBAL_VAR_LAZY(_WIDE), the tail calls,
@@ -138,31 +137,26 @@ registers (`regs::Regs`), the rest of the machine behind a pointer.
   they exist, and `step::step_machine` dispatches the rest). The machine's
   step over all opcodes (`step_m`, 25 KB on devices) and the machine
   handlers that duplicated the register handlers are gone.
-- Finally records in the register loop: they exist only during an
-  unwinding's finally code. The registers hold the frame top; the
-  machine's gate (`regs::gate_ok`, set by `Machine::enter`) holds the
-  record words `fw`, the room a call's fast path needs (`need`, all ones
-  while there are records) and the lowest frame top of a return's fast path
-  (`bot`, the end of the array while there are records). So the calls and
-  returns that would move records fail their existing check (`free >=
-  (watermark |  (`free >=
-  (watermark | need)`, `bot < fr`, `view::Cursor::lt`, which is also the
-  bottom-frame test) and go to `step::slow`, which runs a call with room
-  and a return that cuts no record on the registers (rfins.rs: the records
-  move up or down by one frame record) before it falls back to the
-  machine; the instructions inside a frame do not look at the records. A
-  non-local return or branch that meets a handler on the way enters its
-  finally code on the registers too (`rnonlocal::pop_to` stops there,
-  `enter_fin_r` writes the first record; branch core/trusted-integration).
-  The room (`room::room_ok`) is every
-  frame's without the records and the top frame's with them: after a stack
-  overflow, at the maximal stack length, every frame's room with the
-  records counted may not exist while format 1 still runs the finally
-  code. After a machine path that kept the frames below the top (a call, a
-  return, an unwinding) `step::top_room_kept` checks the top frame only;
-  `resume` scans every frame after the others (branch
-  experiment/trusted-fast). A call keeps one finally record of slack (`ensure_room`, the
-  gate's `need`) so that a frame can always enter its finally code.
+- Try/finally in the register loop (format note 23): TRY is a block call
+  under the call's fast-path check (`rnonlocal::op_try`; the check keeps one
+  word of slack, `need`, because TRY pushes the block reference before
+  the call); a return tests the returning frame's handler word and, for a
+  try block, enters its caller's finally code out of line
+  (`rnonlocal::ret_try_v`); UNWIND pops the four slots when token word B
+  is the smi 0 (a normal completion) and otherwise resumes a non-local
+  return or branch on the registers (`unwind_resume_v`, exceptions on the
+  machine). A non-local return or branch that meets a try block on the
+  way enters its caller's finally code on the registers too
+  (`rnonlocal::pop_to` stops there, `enter_fin_r` pops it and pushes the
+  four slots). The finally slots are within the frame's room (the
+  verifier counts them in the TRY's successor map), so none of these paths
+  rescans the room (`room::room_ok`: every frame's). After a machine path
+  that kept the frames below the top (a call, a return, an unwinding)
+  `step::top_room_kept` checks the top frame only; `resume` scans every
+  frame after the others (branch experiment/trusted-fast). Until format 3
+  the finally records followed the frame records and moved on every call
+  and return in finally code (rfins.rs and a gate that made those calls
+  and returns fail their fast paths).
 - Preemption at calls is merged into the room check, as the C++
   interpreter merges it into its stack-limit check: a call takes the fast
   path iff `free >= (watermark | need)`; the watermark is null while the
@@ -181,8 +175,8 @@ The task's existing `Stack` heap object holds both stacks, so stack
 growth, GC root scanning and C++ primitives work as before:
 
 ```
-array index:  0 ........... ftop ........ rtop        top ............. len-1
-              [ frame records ][ finally rec. ][  free  ][ object stack, top first ]
+array index:  0 ........... ftop          top ............. len-1
+              [ frame records ][  free  ][ object stack, top first ]
 ```
 
 - Object stack: `array[top..len)`, growing down; object-stack position
@@ -198,93 +192,65 @@ array index:  0 ........... ftop ........ rtop        top ............. len-1
   get a word of their own.
 - Frame records: `array[0..ftop)`, growing up, `FRAME_WORDS` = 4 words
   each (method index, return bci, base = object-stack position of the
-  first argument, and the frame's handler word: 0 for no TRY handler,
-  else the height of its TRY), frame `fi` at `4 * fi` (block references
-  and C++ rely on that). The handler's bci is not stored (format 3,
-  verified/spec/format/22-format3-branches-frames.md): a frame has a
-  handler only while it is suspended in its TRY, and then the record above
-  it is the try block's, whose return bci is the handler's bci and whose
-  base is the handler's height (`sound::try_ok`; the core's
-  `calls::callees_ok`, part of `shape0`). A return from the try block
-  takes the bci from its own record; the unwinding loops (`do_unwind`,
-  `pop_to`, the checked loop's `unwind_cold`) keep the return bci of the
-  frame they popped last. The height stays in the record so that the
-  state between TRY's handler and its call (spec `op_try`'s `s1`) is
-  representable. Until format 3 the record had a fifth word, the handler's
-  bci; until Phase 5 the handler was one word `height | bci << 32`.
-- Finally records (format note 17, `State2.fins`): `array[ftop..rtop)`,
-  right after the frame records, `FIN_WORDS` = 5 words each: the frame
-  running the finally code, the height of its three slots, the resumed
-  unwinding (`kind + 4 * frame`: kind 0 throw, 1 return, 2 branch) and the
-  branch target's bci and height (else 0, 0). The token slot of the finally code
-  holds the smi index of its record. Entering finally code with an
-  unwinding writes a record at `rtop` (the handler word is cleared as for a
-  normal completion); UNWIND checks record `k` (`fin_matches`) and sets
-  `rtop` to it; TRY drops the frame's stale records (`cut_fins`). A call
-  moves the records up by one frame record (`memmove`, only when there are
-  records: during an unwinding's finally code); a return, an unwinding
-  that pops a frame and a tail call drop the popped frame's records (they
-  are last, `fins_popped`) and a return or pop moves the rest down by one
-  frame record (one memmove of the whole region; the sizes of the two
-  kinds of record are independent: 4 and 5 words since format 3). They
-  are rare.
-- Records hold no object references (the value of a pending exception or
-  non-local return is the finally code's first slot), so the GC never
-  looks at them. The Stack header's try-top word holds `rtop | ftop << 16`
-  (record top and frame top, `STACK_FRAME_TOP_SHIFT`), the
-  pending-stack-check word the bci (until Phase 5: try-top `rtop` and
-  `bci | fins << 32`, which needs 64-bit words). C++ reads them through
-  `Stack::v2_record_top()`, `v2_frame_top()`, `v2_fin_count()` and
-  `v2_bci()`; the format-1 paths that use `try_top()` directly never see a
-  format-2 stack (the GC's shrinking and `v2_copy_to` keep `[0,
-  v2_record_top())`). Alternatives: a separate header word (changes format
-  1's Stack layout and every stack's size), records in the frame records
-  themselves (one per frame: unsound for try/finally inside finally code,
-  note 17).
+  first argument, and the handler word: 1 for a try block, 0 otherwise;
+  format note 23), frame `fi` at `4 * fi` (block references and C++ rely on
+  that). A try block's return, or an unwinding that pops it, continues the
+  frame below at the try block's return bci with the object stack cut to
+  the try block's base, the finally code's four slots pushed (`calls.rs`
+  `enter_finally_v`, `rnonlocal::enter_fin_r_opt`). Until format 3, step 3
+  the word was the height of the frame's own TRY (and until step 2 a fifth
+  word held the handler's bci).
+- The pending unwinding of a finally code is in its two token slots (the
+  object stack: value, token word A, token word B, reason): A is the target
+  frame and height of a non-local return or branch as a block reference's
+  word, B is `bci * 4 + kind` (`abs::token_a`, `token_b`). There are no
+  finally records (format note 17's records followed the frame records and
+  moved on every call and return in finally code). The Stack header's
+  try-top word holds the frame top, the pending-stack-check word the bci.
+  C++ reads them through `Stack::v2_frame_top()` and `v2_bci()`; the
+  format-1 paths that use `try_top()` directly never see a format-2 stack
+  (the GC's shrinking and `v2_copy_to` keep `[0, v2_frame_top())`).
 - Room: before every call the core requires
-  `FRAME_WORDS + global_max_height + STACK_RESERVE + FIN_WORDS` free words
-  (the last a finally record of slack, section 2a) between the records and
+  `FRAME_WORDS + global_max_height + STACK_RESERVE` free words between the
+  frame records and
   the object stack and otherwise grows the stack
   (`toit_v2_grow_stack`: a new, larger Stack, records copied to the bottom
   and the object stack to the top). Growth past `Stack::max_length()`
   throws `STACK_OVERFLOW`. The verified loop's invariant carries the room
   (`room::room_ok`): every frame `i` can grow to its method's arity plus
   the global maximal height (the verifier's bound on every frame's height,
-  `instr_ok`) and leave `STACK_RESERVE` words above the frame records up to
-  `i` and all finally records:
-  `base_i + arity_i + max_height + 5 (i + 1) + 8 <= len`, and for the top
-  frame also with `+ 5 |fins|` (section 2a). A call
+  `instr_ok`, which covers a TRY's finally slots) and leave `STACK_RESERVE`
+  words above the frame records up to `i`:
+  `base_i + arity_i + max_height + 4 (i + 1) + 8 <= len`. A call
   checks once (the line above) and so establishes the new frame's room;
   returns and pops keep it; the top frame then always has at least
   `STACK_RESERVE` free words (`room::lemma_room_top`), so no push is
   checked. Per-method maximal heights would make the bound tighter (less
   stack memory), not the check cheaper; the format's global height is
   enough. What breaks the room: a GC that shrank the stack (the shrink in
-  `Stack::roots_do` keeps room only above the current top), a task switch,
-  and an unwinding entering finally code (one more record). After those,
+  `Stack::roots_do` keeps room only above the current top) and a task
+  switch. After those,
   `room::ensure_room_all` scans the frame records and grows the stack if needed (a GC point that keeps
   the state; failing growth stops with `LIMIT`, out of memory); after a GC
   point a register handler only scans when the length shrank
   (`room::regain`), and `step::resume` checks after every path on the
   machine. The machine's code (checked loop and slow paths) keeps its own
-  run-time checks: entering finally code
-  with an unwinding needs the record and three slots (the run-time check
-  stops with `LIMIT` otherwise).
+  run-time checks.
 - Shrinking (GC, `Stack::roots_do`) moves the object stack down and keeps
   the records and the reserve.
-- Task switches: a suspended task's records stay in its Stack object (the
-  core saves `rtop` and the count before the `task_transfer` primitive and
-  reloads them from the new current task); a new task starts with none.
-- Proofs: `Machine::refines` relates `State2.fins` to the records
-  (`abs::fins_rel`, `rtop == ftop + 4 * fins.len()`). The record handling
-  of calls, returns (`calls.rs`: `push_call`, `pop_records`,
-  `cut_records`) and of THROW, TRY, UNWIND, NON_LOCAL_RETURN and
+- Task switches: a suspended task's frame records and object stack (with
+  any pending unwinding in token slots) stay in its Stack object; a new
+  task starts with no frames.
+- Proofs: `Machine::refines` relates the frame records to `State2.frames`
+  (`abs::frames_rel`, the handler word to `Frame::handler`) and the token
+  words to `Value::Token` (`abs::enc`). Calls, returns (`calls.rs`:
+  `push_call`, `pop_frame_v`, `do_return`, `enter_finally_v`) and THROW, TRY, UNWIND, NON_LOCAL_RETURN and
   NON_LOCAL_BRANCH (`unwind.rs`, one inlined unwinding loop for all of
   them) is verified; machine.rs keeps checked copies for
   programs not accepted at launch (the checked loop), which must stay in
   step with the verified ones.
 - Block references are smis `frame << 16 | slot` (slot = object-stack
-  position below 2^16, frame below 2^16 / 5 < 2^14: the smi is below 2^30
+  position below 2^16, frame below 2^16 / 4 = 2^14: the smi is below 2^30
   and fits 31-bit smis); `Stack::max_length() < 2^16` is checked by the
   layout check.
 
@@ -315,10 +281,9 @@ are `view::HalfWord`.
 Every C++ function the core calls (src/interpreter_v2.h), with the
 precondition the core discharges. "MAY GC" functions take the stack view
 by `&mut` and replace it; before each the core stores top, frame top and
-bci with the number of finally records into the Stack object
-(`Machine::save`), after each it re-derives all cached state from the
-current task's stack (`Machine::reload`, which also re-checks top, record
-top, the finally-record count and length).
+bci into the Stack object (`Machine::save`), after each it re-derives all
+cached state from the current task's stack (`Machine::reload`, which also
+re-checks top, frame top and length).
 
 | Function | MAY GC | Precondition discharged by the core | Result |
 |---|---|---|---|
@@ -327,9 +292,9 @@ top, the finally-record count and length).
 | `toit_v2_allocate_double(process, bits)` | yes | state saved | double, or 0 |
 | `toit_v2_allocate_array(process, length, filler)` | yes | filler is a smi, null or a program-heap object (survives GC); state saved | array, or 0 (also for length > max) |
 | `toit_v2_allocate_exception(process, value, kind, words, count)` | yes | value is a program-heap object (failure literal or root); `count <= 4`; the words are read only before the first GC point; state saved (the trace is encoded from the saved stack) | `Exception_` with trace, or 0 |
-| `toit_v2_grow_stack(process, needed)` | yes | state saved (record top and finally-record count included) | OK, STACK_OVERFLOW or OUT_OF_MEMORY; on OK the task has a new stack with the frame and finally records copied and `needed` free words above them |
+| `toit_v2_grow_stack(process, needed)` | yes | state saved | OK, STACK_OVERFLOW or OUT_OF_MEMORY; on OK the task has a new stack with the frame records copied and `needed` free words above them |
 | `toit_v2_lookup_primitive(process, module, index, &entry, &arity)` | no | none (bounds-checked in the policy) | FOUND or MISSING |
-| `toit_v2_call_primitive(process, entry, arity, first, &result)` | yes, may switch task | `entry` came from lookup; `arity` equals the primitive's arity and the method's; the arguments are object-stack positions `first..first+arity` of the current frame; state saved | SUCCESS (result), FAILURE (error value, pushed) or THROW (raise it); after a task switch the new task's Stack holds its records (none for a new task) |
+| `toit_v2_call_primitive(process, entry, arity, first, &result)` | yes, may switch task | `entry` came from lookup; `arity` equals the primitive's arity and the method's; the arguments are object-stack positions `first..first+arity` of the current frame; state saved | SUCCESS (result), FAILURE (error value, pushed) or THROW (raise it); after a task switch the new task's Stack holds its frame records (none for a new task) |
 | `toit_v2_report(process, kind, bci, detail)` | no | none | message on stderr |
 
 The C++ primitive path is unverified and outside the security boundary
@@ -607,8 +572,8 @@ the slow paths and for finally code.
 
 ### Size diet (2026-11-11, branch core/size-diet)
 
-Section 2a ("One body per opcode", "Finally records in the register
-loop"); progression: PROGRESS.md. Device sizes of the Rust library,
+Section 2a ("One body per opcode"; the finally records of that time are
+gone since format 3, step 3); progression: PROGRESS.md. Device sizes of the Rust library,
 riscv32imac, linked with --gc-sections (verified/vmverify/tests/
 device_size.sh, device features), text by component in bytes; Ir as in
 the previous table (artifacts core-size: `devsize/`, `ir/results.txt`):
@@ -654,10 +619,10 @@ Abstraction (`src/abs.rs`, `Machine::refines` in `src/exec.rs`). The
 machine carries a ghost `State2` (`Machine::g`); `refines` relates it to
 memory in the direction abstract to concrete, which is a function:
 `enc(addr, v)` is the word of value `v` (smis `v << 1`, objects their
-address in the heap model, block references the smi `f << 16 | slot`),
-the object-stack words are `enc` of `g.stack`, the frame records
-`mem[4*fi..]` hold `g.frames` and the handler words `g.tries`
-(`frames_rel`), the globals are `enc` of `g.globals`, the heap model is
+address in the heap model, block references the smi `f << 16 | slot`,
+the words of an unwinding token `token_a`/`token_b`), the object-stack
+words are `enc` of `g.stack`, the frame records `mem[4*fi..]` hold
+`g.frames` with their handler flags (`frames_rel`), the globals are `enc` of `g.globals`, the heap model is
 `g.heap`, and the cached top-frame fields agree. Reading a state off the
 words is not a function (a block reference and a smi can be the same
 word; addresses change at every GC), which is why the design keeps the

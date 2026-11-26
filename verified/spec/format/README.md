@@ -1,4 +1,4 @@
-# The revised bytecode format (format 2)
+# The revised bytecode format (format 2, now version 3)
 
 Phase 2 of `07-verified-sandbox-plan.md`. Format 2 is the bytecode format
 of the verified core. It is specified in `src/v2` (Verus), produced by the
@@ -18,7 +18,7 @@ on the spec and on the soundness obligations, and the cost.
 | 1 | [method-table](01-method-table.md) | Method ids are indices into a method table decoded from method headers that carry the body length, the receiver range and the accessor's field. |
 | 2 | [frame-stack](02-frame-stack.md) | Return addresses live on a separate frame stack; the object stack holds only values; every local access is bounded by the frame. |
 | 3 | [block-references](03-block-references.md) | A block reference is `(frame, slot)`, no salt; non-local return and branch name their frame through it. |
-| 4 | [try](04-try.md) | One `TRY` instruction with a handler stack; the finally code gets an unforgeable unwinding token; `UNWIND` resumes it (the token became a finally record's index in note 17). |
+| 4 | [try](04-try.md) | One `TRY` instruction with a handler stack; the finally code gets an unforgeable unwinding token; `UNWIND` resumes it (the token became a finally record's index in note 17, and the pending unwinding the finally code's token slots in note 23). |
 | 5 | [raised-failures](05-raised-failures.md) | Lookup, as-check, code-invocation, invalid-program and primitive-lookup failures are exceptions raised by the machine. |
 | 6 | [tail-calls](06-tail-calls.md) | Tail calls replace the top frame; no height/arity operands. |
 | 7 | [field-access](07-field-access.md) | Field access is checked; `LOAD_FIELD_THIS`/`STORE_FIELD_THIS` are unchecked, backed by the method's declared receiver range, a receiver check at static calls and a dispatch-table check. |
@@ -30,12 +30,13 @@ on the spec and on the soundness obligations, and the cost.
 | 13 | [encoding](13-encoding.md) | Smaller operand changes, opcode numbering, no silent wrapping. |
 | 14 | [rejected](14-rejected.md) | Candidates rejected or deferred: block masks in headers, unique frame ids, runtime dispatch bounds, shipped stack maps. |
 | 15 | [header](15-header.md) | The method header is two bytes plus LEB128 fields (5.2 bytes on average instead of 16); format 2 is 4.2 % smaller than format 1. |
-| 17 | [finally-records](17-finally-records.md) | A pending unwinding is a record next to the handlers (no heap token, no allocation); the token is its smi index; UNWIND checks it belongs to the frame. Replaces note 4's heap token. |
+| 17 | [finally-records](17-finally-records.md) | A pending unwinding is a record next to the handlers (no heap token, no allocation); the token is its smi index; UNWIND checks it belongs to the frame. Replaces note 4's heap token; replaced by note 23 (tokens in slots). |
 | 16 | [hash-find](16-hash-find.md) | Recommendation: bring `HASH_FIND` back in Phase 4 as a non-re-entrant verified built-in; decide a `REPEAT` instruction on the same benchmark; keep HASH_DO and ARRAY_DO out. |
 | 18 | [shipped-certificate](18-shipped-certificate.md) | The toolchain ships the verifier's certificate (bundle member, trailing image block); the device reads its tables in place, decodes one method's maps at a time and only checks (`cert::verify_shipped`, proven); the installer may drop it. Decides note 14's "shipped stack maps". |
 | 19 | [builtins-proposal](19-builtins-proposal.md) | **Proposal, not decided** (branch proposal/builtins): LOOP_REPEAT, LOOP_ARRAY and HASH_FIND as bounded, non-reentrant steps that never write the heap, whose loops stay in the bytecode; specified, verified, proven (no new trusted item) and measured per built-in for the owner's decision. |
 | 20 | [unchecked-twins](20-unchecked-twins.md) | **Experiment, not decided** (branch experiment/trusted-fast): the unchecked twins of the field accesses (opcodes 104..113) for trusted programs, replacing the unchecked mode flag; untrusted programs keep the checked opcodes and cannot use the twins. |
 | 22 | [format3-branches-frames](22-format3-branches-frames.md) | Format 3, steps 1 and 2: two-byte short forms of the five branches the compiler emits (BRANCH_S .. BRANCH_IF_NOT_NULL_S, BRANCH_BACK_S; the compiler relaxes branches to a fixpoint), and four-word frame records (the handler bci is the try block's return bci). The image keeps the tag TBC2 until the package is complete. |
+| 23 | [format3-try](23-format3-try.md) | Format 3, step 3: TRY is a block call whose frame carries the handler flag; the pending unwinding lives in the finally code's two token slots (four slots: value, two token words, reason); no handler stack, no finally records. The image tag becomes TBC3. |
 
 ## Verifier versus run time
 

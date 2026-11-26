@@ -45,7 +45,7 @@ grow: PROGRESS.md, "Proven accessors").
 |---|---|---|
 | `Table<T>` | element `i` of `ptr[0..len)` | `array_ok`: in the address space, initialized; `pre` is `ptr` moved back by `PRE` elements (`at` addresses through it, so that constant negative distances fold into load offsets on Xtensa), `len + PRE` fits a word. `u16_at_even` (trusted, section 0) reads a u16 of the bytecodes with one aligned load |
 | `Globals` | word `i` of the globals | `array_ok` |
-| `StackMem` | the array words and the top, record-top and bci header words of the Stack object | `array_ok`, `hdr_ok`; `sid()` is the array's pointer |
+| `StackMem` | the array words and the top, frame-top and bci header words of the Stack object | `array_ok`, `hdr_ok`; `sid()` is the array's pointer |
 | `Cursor<T>` | none (a pointer with a ghost base pointer and index) | the pointer is element `idx` of the array at `base` (`at_index`, wrapping); reads and writes take the view's permission at `idx + n`, matched by `sid() == mem.sid()` (the same array pointer, address and provenance) |
 | `Heap` (`HeapMem`) | per object: its header word, an instance's fields, an array's length and elements, a double's or large integer's payload words (key: object id, word index); a string's length and hash half words (`HalfWord`: u32, u16 on 32-bit targets) and its external length and address words; a byte array's length, tag and address words; the content bytes of strings and model byte arrays (key: object id, index); the content pointer per blob; the heap's default exposed provenance and the per-object provenance for newly allocated words (`IsExposed`) | `word_val` (header: class id and the class' tag; fields; length; elements as `abs::enc`; payload words), `str_ok` (internal or external string), `ba_ok` (V5: internal, raw external at a non-null address, or opaque), the content bytes equal the model's content |
 | `Heap` (`CardBytes`) | write permission for one byte per distinct writable-object card, with the card table’s exposed provenance | `card_ok` relates each permission to its physical address under the VM-supplied bias. Verified field and array stores initialize the destination byte with the mark. An object is marked afterwards exactly when it was already marked or shares that card. Array copy has the same effect for a nonempty range and preserves all marks for an empty range. |
@@ -1383,7 +1383,7 @@ Assumptions behind the views:
 `Runtime` wraps the C++ functions of src/interpreter_v2.h. Each function
 that may GC takes the only `StackMem` by `&mut` and replaces it with a
 fresh view of the current task's stack; the caller has stored its state
-(top, record top, bci and finally-record count) into the Stack object
+(top, frame top and bci) into the Stack object
 first (`Machine::save`) and
 re-derives everything after (`Machine::reload`). The full contract, with
 the precondition the core discharges for each function, is in DESIGN.md,
@@ -1411,7 +1411,7 @@ a live set that holds the roots of the state (object stack, globals, the
 running task) and is closed under references survives, garbage
 disappears, the live objects are renumbered `0..n` with their references
 renamed, the program heap and the program's constants keep their ids,
-and nothing else changes (frames, handlers, finally records, bci). The
+and nothing else changes (frames, bci). The
 collector moves objects and rewrites every root (object-stack slots,
 globals; it keeps the frame records and the header, possibly moving or
 shrinking the Stack object); allocation appends exactly one object.
@@ -1456,7 +1456,8 @@ Publishing a grown stack requires the instance write barrier before the
 field store. The collector contract still supplies ownership of these
 fields and the live stack's header and payload on return. The growth proof
 now checks both native record-header stores. Decoding the packed word
-recovers the frame top, record top and finally count. Reading the stored
+recovers the frame top (format 3, step 3: the word holds the frame top
+alone). Reading the stored
 bytecode index recovers every signed word, including negative indices. A
 separate [record-header check](../cxx/harness/stack_records.cc) checks the
 same round trip directly on the native stack layout. The
@@ -1530,8 +1531,15 @@ outside `verus!`. They run only programs the launch did not verify (a
 trusted format-2 program without -Xverify; no `ffi::Accepted` token).
 They follow the spec function of the same name; every spec stuck state is
 a run-time check, so a wrong program terminates the process ("verified
-core: stuck state ..."), it does not crash the VM. That this is true is
-tested (sandbox tests, the untrusted suite), not proven. The verified loop
+core: stuck state ..."), it does not crash the VM, with one exception: the
+provenance of block references and of unwinding tokens (format note 23),
+which are smis in memory. A smi where the spec has a block reference or a
+token is decoded and what it names is checked (the frame exists, the
+slot, height and bci are in range where they are used), so the step is a
+different, memory-safe one (a forged normal-completion token continues
+after UNWIND, a copied exception token rethrows; red-team round 5,
+battery T). That this is true is tested (sandbox tests, the untrusted
+suite, review/red-team/round5), not proven. The verified loop
 uses none of them: its only plain-Rust callees are the `*_raw` FFI
 trampolines of the leaf contracts and the `cold!` trampoline. Without the
 Cargo feature `checked-loop` (devices) the checked loop is not compiled:
@@ -1577,8 +1585,8 @@ the core from the spec, all outside the spec's model:
 
 - (Now spec transitions, `prim::resource_throw`.) Allocation can fail:
   out of memory throws the preallocated `OUT_OF_MEMORY` error. Unwinding
-  itself allocates nothing (finally records live in the task's stack,
-  format note 17).
+  itself allocates nothing (the pending unwinding lives in the finally
+  code's token slots, format note 23).
 - (Now the spec's oracle step, `prim::raised`.) The exception the machine
   raises carries a stack trace and the format-1 failure message.
 - Preemption (not a spec transition: the machine leaves the loop in a
@@ -1719,5 +1727,5 @@ fast. None of them is reachable by an untrusted program.
 | Item | Where | Statement | Why it holds / what catches it | Untrusted programs |
 |---|---|---|---|---|
 | Inline allocation | `Runtime::allocation_window`, `inline_page_metadata` | The VM supplies the owned semispace window and its top and limit slots. For a successful allocation it supplies write permission for a missing card byte. A shared card retains its existing permission and value. On 64-bit targets the object-count bound remains assumed at the model limit. Below that limit, allocation on an already owned card uses no page-metadata assumption. | The allocator checks that the entire remaining semispace window is disjoint from the read-only program heap before writing the object or its sentinel. Verus proves the new address differs from each live header using exclusive word permissions. On 32-bit targets, the number of distinct word-aligned headers whose exclusive end fits in the address space proves that the resulting heap contains fewer than 2^30 objects. It retains the semispace provenance of the allocated words, reindexes exactly the instance or double words into the heap, proves the heap invariant after the append, and preserves existing objects, addresses, content pointers and card marks. The proof establishes that the next word contains the chunk-end sentinel. The layout checker compares its value with the C++ heap walker’s sentinel. | yes, for instance allocation and double boxing |
-| Range of `needed` (stack growth) | `step::gc_grow_stack` (requires `needed < GROW_STACK_MAX_NEEDED` = 2^20, discharged at both callers: `step::ensure_room` passes a frame record, the maximal height (< 2^16), the reserve and a finally record; `room::ensure_room_all` less than 2^19), `toit_v2_grow_stack` | the contract held only for `needed` below 2^63 (2^31 on 32-bit): C++ casts it to `word`. Now the precondition bounds it and C++ rejects `needed > Stack::max_length()` explicitly (a stack overflow, which is the truth: no stack has that many free words) before any cast | review; both sides changed (review finding of the coordinator) | yes |
+| Range of `needed` (stack growth) | `step::gc_grow_stack` (requires `needed < GROW_STACK_MAX_NEEDED` = 2^20, discharged at both callers: `step::ensure_room` passes a frame record, the maximal height (< 2^16) and the reserve; `room::ensure_room_all` less than 2^19), `toit_v2_grow_stack` | the contract held only for `needed` below 2^63 (2^31 on 32-bit): C++ casts it to `word`. Now the precondition bounds it and C++ rejects `needed > Stack::max_length()` explicitly (a stack overflow, which is the truth: no stack has that many free words) before any cast | review; both sides changed (review finding of the coordinator) | yes |
 | Ported core primitives | `prims::family` (in the core since 2026-11-26; before, `toit_v2_core_ported` and the policies' core arities) | none for correctness: an allowed core primitive without a Rust port goes to C++ directly; either way the step is a completion of the spec's PRIMITIVE (the C++ primitive and its port are the same primitive) | performance only | yes |

@@ -53,7 +53,7 @@ shared machine-form code of the slow paths, `step::slow`):
 | collections | INVOKE_AT, INVOKE_AT_PUT, INVOKE_SIZE on arrays, lists (array- and large-array-backed), byte arrays, slices, copy-on-write byte arrays, large arrays (`fast_at` with fuel, `fast_size`), else the virtual call | rarrays.rs, arrays.rs | slots |
 | allocation | ALLOCATE(_WIDE), out of memory (resource throw) | rarrays.rs, alloc.rs, unwind.rs | class range, instantiable, the reload checks after the GC |
 | halt | HALT 0..3 | halt.rs | slot |
-| tail calls | INVOKE_STATIC_TAIL, INVOKE_LAMBDA_TAIL, INVOKE_INITIALIZER_TAIL (`replace_frame`; lambda method id, kind, captures and initializer id checked at run time as the spec checks them) | rblocks.rs, tail.rs | frame height, receiver, handler of the frame |
+| tail calls | INVOKE_STATIC_TAIL, INVOKE_LAMBDA_TAIL, INVOKE_INITIALIZER_TAIL (`replace_frame`; lambda method id, kind, captures and initializer id checked at run time as the spec checks them) | rblocks.rs, tail.rs | frame height, receiver |
 | raise | every raised failure (`Outcome2::Raise` completed by `prim::raised`: exception allocation, then the verified unwinding; out of memory: throw of roots[4]) with format 1's message words | raise.rs | the exception class check (from the spec's not-stuck completion) |
 | resources | stack growth (`grow`), stack overflow (raise of roots[28]), out of memory in ALLOCATE and double arithmetic: `prim::resource_throw` | step.rs, unwind.rs, ops.rs | the reload checks after growth |
 | primitives | PRIMITIVE: the policy's core arities, the Rust ports (`prims::call`, no GC point, no save/reload) for 106 core primitives, else lookup, arity, C++ call; completion by status (`theorem::completion`) | rarrays.rs, primitive.rs, prims/ | the frame-height check |
@@ -69,6 +69,23 @@ shared machine-form code of the slow paths, `step::slow`):
   `ret_try_r`, `enter_fin_r` take it as a parameter). Trusted and
   unchanged in text: the checked loop and `Machine::reload_cold` (whose
   record-size check was corrected for finally records of another size).
+
+### Format 3, step 3 (format note 23)
+
+- TRY is a block call with the handler flag (`unwind::op_try`,
+  `rnonlocal::op_try`, `Machine::push_call(_, _, _, 1)`); a try block's
+  return and an unwinding past it enter the finally code of the frame below
+  (`calls::do_return`, `enter_finally_v`, `unwind::do_unwind`,
+  `rnonlocal::pop_to`, `ret_try_r`, `enter_fin_r_opt`); UNWIND decodes the
+  two token words (`unwind::prep_unwind`, `rnonlocal::op_unwind`,
+  `unwind_resume_v`, `abs::token_a`, `token_b`, `lemma_token_words`).
+  Proven for both widths; no finally records, no gate for them, no record
+  moves. Trusted and changed in text: the checked loop's TRY, UNWIND,
+  return and unwinding loop (`machine.rs`; like block references, it
+  decodes token words from smis and checks what it resumes: the frame
+  exists, heights and bcis are checked by the unwinding loop and the next
+  instruction's fetch) and `Machine::reload_cold` (one frame-record region:
+  `ftop % FRAME_WORDS == 0`, `ftop <= top`).
 
 ## 2. Open obligations
 
@@ -128,8 +145,7 @@ number of them: `gc_steps`):
    (it may hold more: the collector's other roots) survives; garbage
    disappears; the live objects are renumbered `0..n` and their
    references renamed; the program heap and the program's constants keep
-   their ids; frames, handlers, finally records, bci and task counter
-   stay.
+   their ids; frames, bci and task counter stay.
 
 Proven: every collection keeps `wf` (`lemma_gc_steps_wf`) and a raise's
 unwinding invariant (`lemma_gc_steps_unw`); an allocation commutes with
@@ -241,8 +257,9 @@ Still assumed about the collector (GC-class code, trusted), for stage 1+:
   (DESIGN.md section 3a; verified/check.sh runs Verus for the host and for
   `i686-unknown-linux-gnu`). The handler and the finally-record target
   are two words each (5-word records; since format 3 the frame record is
-  4 words, the handler's bci being the try block's return bci), the Stack header packs `rtop |
-  ftop << 16`, block references are `frame << 16 | slot`.
+  4 words, the handler's bci being the try block's return bci; since
+  step 3 there are no finally records and the header holds the frame top
+  alone), the Stack header packed `rtop | ftop << 16`, block references are `frame << 16 | slot`.
 - Done (Phase 5): the core is `no_std` + alloc (vstd without std, rlib
   only); the device library (vmverify `device-runtime`) supplies allocator
   and panic handler; it builds for riscv32imac (PROGRESS.md "Phase 5").
@@ -495,7 +512,8 @@ code in flash, all perfbench workloads, classic ESP32):
   ESP32 (service calls 1.02 s -> 0.71 s, format 1 0.56 s); with every
   one in IRAM (a firmware without Bluetooth, for the room) 200 service
   calls took 0.54 s, json 0.36 s (format 1: 0.56 / 0.44 s).
-- S3: the finally records move on every call and return
+- S3 (gone since format 3, step 3, note 23: no finally records): the
+  finally records move on every call and return
   (`Machine::call`, calls.rs `copy_within(f, f + FRAME_WORDS, e - f)`,
   `pop_frame_record`): inside any `try` (monitors, service handlers, task
   code) each call does a ROM memmove of all records above the frames. It
@@ -537,7 +555,8 @@ functions would make device numbers comparable across builds.
 Status of S2-S6 (branch core/rpc-task-speed, 2026-11-24; artifacts
 rpc-task-speed/README.md). C6, f2/f1 over three sessions: rpc-200 1.31 ->
 1.14, yield-2k 1.24 -> 1.20, tasks-1k 1.43 -> 1.18; nothing else slower.
-- S3: the finally records still move on a call or return in finally code
+- S3 (gone since format 3, step 3): the finally records still move on a
+  call or return in finally code
   (layout unchanged), but without `memmove` (`StackMem::move_records`,
   five words per step: the ROM memmove was ~130 cycles per record on the
   C6), and those calls and returns run first in `step::slow`, before the

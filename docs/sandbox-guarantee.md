@@ -149,9 +149,9 @@ stack object.
 
 **`Machine::refines(p)`** (`verified/core/src/exec.rs`): the concrete
 machine represents its ghost state `g`: the object-stack words are the
-encodings of `g.stack` under the heap model's addresses, the frame and
-handler records encode `g.frames`, `g.tries`, the finally records
-`g.fins`, the globals are the encodings of `g.globals`, the heap model
+encodings of `g.stack` under the heap model's addresses (a finally
+code's pending unwinding included: two token slots, format note 23), the
+frame records encode `g.frames` with their try-block flags, the globals are the encodings of `g.globals`, the heap model
 (`heap_model_ok`: one distinct tagged address per object, class and body
 agree) is `g.heap`, read-only objects are exactly those in the
 program-heap address range, the program tables are related to the
@@ -316,9 +316,11 @@ flash outside its image, or the hardware.
   and for 32-bit words (`--target i686-unknown-linux-gnu`, the stand-in
   for the 32-bit devices), the core in both configurations of its run
   loop (`verified/check.sh` sections `verus`, `verus32`). Counts after
-  branch prims/trust-round: spec 1090 verified (both widths), core 1102
-  (64-bit) and 1104 (32-bit), core-split 1104 (64-bit) and 1106 (32-bit),
-  0 errors (before: core 1092/1094, core-split 1094/1096).
+  format 3, step 3 (branch format3/try): spec 1079 verified (both widths),
+  core 1060 (64-bit) and 1062 (32-bit), core-split 1062 (64-bit) and 1064
+  (32-bit), 0 errors (before, at ceadf1bdf: spec 1096, core 1103/1105,
+  core-split 1105/1107; fewer items because the finally-record machinery
+  is gone).
 * The C++ proofs run for LP64 and ILP32 on Clang's AST of the host
   build (section 2.1).
 * Devices with untrusted installs exercised: ESP32-C6 (RISC-V), classic
