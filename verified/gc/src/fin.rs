@@ -38,6 +38,7 @@ use crate::space::*;
 use crate::cheney::*;
 use crate::copy::*;
 use crate::collect::*;
+use crate::statement::{val_live, live};
 
 verus! {
 
@@ -65,10 +66,10 @@ pub open spec fn same_shape(c: Ctx, n: int, o: AObj, o2: AObj) -> bool {
 
 /// The invariant holds for the heap with an uncopied from-space object
 /// replaced by one of the same shape whose words are in from-space.
-pub proof fn lemma_modify(c: Ctx, h: H, st: St, st2: St, t: Tos, ks: int, kc: int, rv: Seq<AVal>,
+pub proof fn lemma_modify(c: Ctx, h: H, st: St, st2: St, t: Tos, ks: int, kc: int, rv: Seq<AVal>, rvp: Seq<AVal>,
                           rptr: *mut usize, ri: int, j: int, o2: AObj)
     requires
-        ctx_ok(c), heap_ok(c, h), inv(c, h, st, t, ks, kc, rv), roots_ok(c, h, st, rptr, rv, ri),
+        ctx_ok(c), heap_ok(c, h), inv(c, h, st, t, ks, kc, rvp), roots_ok(c, h, st, rptr, rv, ri),
         from(h, j), !copied(st, j),
         same_shape(c, h.objs.len() as int, obj(h, j), o2),
         st2.tp == st.tp, st2.rp == st.rp, st2.ttp == st.ttp, st2.tup == st.tup, st2.order == st.order,
@@ -81,7 +82,7 @@ pub proof fn lemma_modify(c: Ctx, h: H, st: St, st2: St, t: Tos, ks: int, kc: in
     ensures ({
         let h2 = with_obj(h, j, o2);
         &&& heap_ok(c, h2)
-        &&& inv(c, h2, st2, t, ks, kc, rv)
+        &&& inv(c, h2, st2, t, ks, kc, rvp)
         &&& roots_ok(c, h2, st2, rptr, rv, ri)
         &&& forall|x: int| #[trigger] size(h2, x) == size(h, x)
     }),
@@ -203,12 +204,12 @@ pub proof fn lemma_modify(c: Ctx, h: H, st: St, st2: St, t: Tos, ks: int, kc: in
         assert(extent(c, h2, x) == extent(c, h, x));
     }
     assert(cap_ok(c, h2, st2, t));
-    assert forall|k: int| 0 <= k < nc implies #[trigger] parent_ok(h2, st2, rv, k) by {
-        assert(parent_ok(h, st, rv, k));
+    assert forall|k: int| 0 <= k < nc implies #[trigger] parent_ok(h2, st2, rvp, k) by {
+        assert(parent_ok(h, st, rvp, k));
         let p = st.parent[k].0;
         if p >= 0 { assert(obj(h2, st.order[p]) == obj(h, st.order[p])); }
     }
-    assert(par_ok(h2, st2, rv));
+    assert(par_ok(h2, st2, rvp));
     assert forall|i: int| 0 <= i < rv.len() implies #[trigger] slot_ok(c, h2.objs.len() as int, rv[i]) by {
         assert(slot_ok(c, n, rv[i]));
     }
@@ -278,7 +279,7 @@ pub open spec fn key_active(h: H, v: AVal) -> bool {
 /// finalizers (no object of a program image has the bit: LAYOUT.toml).
 pub fn key_status(c: &Ctx, w: usize, Ghost(h): Ghost<H>, Ghost(v): Ghost<AVal>, Ghost(t): Ghost<Tos>,
                   Ghost(ks): Ghost<int>, Ghost(kc): Ghost<int>, Ghost(rv): Ghost<Seq<AVal>>,
-                  Tracked(st): Tracked<&St>, Tracked(ro): Tracked<&Ro>) -> (r: (bool, bool, usize, usize))
+                  Tracked(st): Tracked<&St>, Tracked(ro): Tracked<&Ro>) -> (r: (bool, bool, usize, usize, usize))
     requires
         ctx_ok(*c), fpages_ok(*c), ftab_ok(*c, ro.ftp), heap_ok(*c, h),
         inv(*c, h, *st, t, ks, kc, rv),
@@ -287,6 +288,7 @@ pub fn key_status(c: &Ctx, w: usize, Ghost(h): Ghost<H>, Ghost(v): Ghost<AVal>, 
         r.0 == key_dead(h, *st, v),
         r.1 == key_active(h, v),
         r.0 ==> v is Ref && r.2 == fs(*c, fpg(h, v->Ref_0)) && r.3 == foff(h, v->Ref_0),
+        !r.0 ==> r.4 == enc(st.addr2, v),
 {
     let ghost j = match v { AVal::Ref(j) => j, _ => -1 };
     proof {
@@ -345,21 +347,23 @@ pub fn key_status(c: &Ctx, w: usize, Ghost(h): Ghost<H>, Ghost(v): Ghost<AVal>, 
                 }
                 let copy = c.base.with_addr(hd - 1);
                 let ch = rd(copy, 0, Ghost((tpg(*st, k), toff(*st, k))), Tracked(&st.tp));
-                (false, (ch / 32) % 2 == 1, s, off)
+                (false, (ch / 32) % 2 == 1, s, off, hd)
             } else {
-                (true, (hd / 32) % 2 == 1, s, off)
+                (true, (hd / 32) % 2 == 1, s, off, w)
             }
         } else {
             proof {
                 if j >= 0 && from(h, j) { assert(in_fpage(*c, fpg(h, j), w)); assert(false); }
             }
-            (false, false, 0, 0)
+            proof { if j >= 0 { assert(st.addr2[j] == h.addr[j]); } }
+            (false, false, 0, 0, w)
         }
     } else {
         proof {
             if j >= 0 && from(h, j) { assert(false); }
+            if j >= 0 { assert(st.addr2[j] == h.addr[j]); }
         }
-        (false, false, 0, 0)
+        (false, false, 0, 0, w)
     }
 }
 
@@ -427,16 +431,16 @@ pub proof fn lemma_killed_shape(c: Ctx, h: H, j: int, rst: bool)
 /// Kills the dead key `j` (an uncopied from-space object with its finalizer
 /// bit, at offset `off` of the page at `s`): `killed`, in from-space.
 pub fn kill_key(c: &Ctx, s: usize, off: usize, rst: bool, Ghost(h): Ghost<H>, Ghost(j): Ghost<int>, Ghost(t): Ghost<Tos>,
-                Ghost(ks): Ghost<int>, Ghost(kc): Ghost<int>, Ghost(rv): Ghost<Seq<AVal>>, Ghost(rptr): Ghost<*mut usize>,
-                Ghost(ri): Ghost<int>, Tracked(st): Tracked<&mut St>, Tracked(ro): Tracked<&Ro>)
+                Ghost(ks): Ghost<int>, Ghost(kc): Ghost<int>, Ghost(rv): Ghost<Seq<AVal>>, Ghost(rvp): Ghost<Seq<AVal>>,
+                Ghost(rptr): Ghost<*mut usize>, Ghost(ri): Ghost<int>, Tracked(st): Tracked<&mut St>, Tracked(ro): Tracked<&Ro>)
     requires
         ctx_ok(*c), fpages_ok(*c), heap_ok(*c, h), ctab_ok(*c, ro.ctp),
-        inv(*c, h, *old(st), t, ks, kc, rv), roots_ok(*c, h, *old(st), rptr, rv, ri),
+        inv(*c, h, *old(st), t, ks, kc, rvp), roots_ok(*c, h, *old(st), rptr, rv, ri),
         from(h, j), !copied(*old(st), j), active(obj(h, j)), s == fs(*c, fpg(h, j)), off == foff(h, j),
     ensures ({
         let h2 = with_obj(h, j, killed(obj(h, j), c.nullid@, rst));
         &&& heap_ok(*c, h2)
-        &&& inv(*c, h2, *final(st), t, ks, kc, rv)
+        &&& inv(*c, h2, *final(st), t, ks, kc, rvp)
         &&& roots_ok(*c, h2, *final(st), rptr, rv, ri)
         &&& forall|x: int| #[trigger] size(h2, x) == size(h, x)
         &&& final(st).tp == old(st).tp && final(st).rp == old(st).rp && final(st).ttp == old(st).ttp
@@ -512,7 +516,132 @@ pub fn kill_key(c: &Ctx, s: usize, off: usize, rst: bool, Ghost(h): Ghost<H>, Gh
                 assert(o2.words[k] == o.words[k]);
             }
         }
-        lemma_modify(*c, h, s0, s2, t, ks, kc, rv, rptr, ri, j, o2);
+        lemma_modify(*c, h, s0, s2, t, ks, kc, rv, rvp, rptr, ri, j, o2);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The finalizer nodes.
+
+/// Node kinds: a registered Toit finalizer, a registered weak map, the same
+/// two in the queue of runnable finalizers, a VM finalizer.
+pub const KIND_TOIT: usize = 0;
+pub const KIND_WEAK: usize = 1;
+pub const KIND_TOIT_QUEUED: usize = 2;
+pub const KIND_WEAK_QUEUED: usize = 3;
+pub const KIND_VM: usize = 4;
+
+/// Verdicts: keep the node (its key and lambda forwarded), move it to the
+/// queue (a Toit finalizer whose key died: its lambda runs), delete it,
+/// free the key's external memory and delete it (a VM finalizer whose key
+/// died).
+pub const KEEP: usize = 0;
+pub const QUEUE: usize = 1;
+pub const DELETE: usize = 2;
+pub const FREE: usize = 3;
+
+/// A node: its kind, the values of its key and lambda (`Raw(0)` for a VM
+/// finalizer's lambda).
+pub struct Node {
+    pub kind: usize,
+    pub key: AVal,
+    pub lam: AVal,
+}
+
+/// The node array: four words per node (kind, key, lambda, verdict).
+pub open spec fn nodes_mem(np: Map<int, PointsTo<usize>>, nptr: *mut usize, nn: int) -> bool {
+    &&& nptr@.addr + 4 * nn * W <= usize::MAX
+    &&& forall|m: int| 0 <= m < 4 * nn ==> #[trigger] wperm_ok(np, m, nptr, m)
+}
+
+/// Node `i`'s words as the C++ wrote them.
+pub open spec fn node_in(np: Map<int, PointsTo<usize>>, h: H, nd: Node, i: int) -> bool {
+    &&& np[4 * i].is_init() && np[4 * i].value() == nd.kind
+    &&& np[4 * i + 1].is_init() && np[4 * i + 1].value() == enc(h.addr, nd.key)
+    &&& np[4 * i + 2].is_init() && np[4 * i + 2].value() == enc(h.addr, nd.lam)
+}
+
+/// A key that was dead after the first scan: a from-space object no strong
+/// root reaches (`main`: the objects copied by then).
+pub open spec fn dead_main(h: H, v: AVal, main: Set<int>) -> bool {
+    match v {
+        AVal::Ref(j) => from(h, j) && !main.contains(j),
+        _ => false,
+    }
+}
+
+/// The fate of a node (heap `h0` before the finalizer pass, `h` and `st`
+/// after): verdict `d`, key word `kw`, lambda word `lw`.
+pub open spec fn fate(c: Ctx, h0: H, h: H, st: St, main: Set<int>, nd: Node, d: usize, kw: usize, lw: usize) -> bool {
+    let kv = nd.key;
+    let lv = nd.lam;
+    if nd.kind == KIND_TOIT_QUEUED {
+        d == KEEP && val_live(h, st, kv) && kw == enc(st.addr2, kv) && val_live(h, st, lv) && lw == enc(st.addr2, lv)
+    } else if nd.kind == KIND_VM {
+        ||| (d == KEEP && key_active(h, kv) && val_live(h, st, kv) && kw == enc(st.addr2, kv))
+        ||| (d == DELETE && !key_active(h, kv))
+        ||| (d == FREE && key_active(h, kv) && key_dead(h, st, kv))
+    } else {
+        ||| (d == KEEP && key_active(h, kv) && val_live(h, st, kv) && kw == enc(st.addr2, kv)
+                && val_live(h, st, lv) && lw == enc(st.addr2, lv))
+        ||| (d == DELETE && !key_active(h, kv))
+        ||| (d == QUEUE && nd.kind == KIND_TOIT && dead_main(h0, kv, main) && key_active(h0, kv)
+                && obj(h, kv->Ref_0) == killed(obj(h0, kv->Ref_0), c.nullid@, false)
+                && kw == c.null && val_live(h, st, lv) && lw == enc(st.addr2, lv))
+        ||| (d == DELETE && nd.kind != KIND_TOIT && dead_main(h0, kv, main) && key_active(h0, kv)
+                && obj(h, kv->Ref_0) == killed(obj(h0, kv->Ref_0), c.nullid@, true))
+    }
+}
+
+pub open spec fn node_out(c: Ctx, h0: H, h: H, st: St, main: Set<int>, np: Map<int, PointsTo<usize>>, nd: Node, i: int) -> bool {
+    &&& np[4 * i].is_init() && np[4 * i].value() == nd.kind
+    &&& np[4 * i + 1].is_init() && np[4 * i + 2].is_init() && np[4 * i + 3].is_init()
+    &&& fate(c, h0, h, st, main, nd, np[4 * i + 3].value(), np[4 * i + 1].value(), np[4 * i + 2].value())
+}
+
+/// The heap during the finalizer pass: the objects of `h0`, some killed
+/// (and then without their finalizer bit).
+pub open spec fn heap_from(c: Ctx, h0: H, h: H) -> bool {
+    &&& h.loc == h0.loc && h.addr == h0.addr && h.objs.len() == h0.objs.len()
+    &&& forall|x: int| 0 <= x < h.objs.len() ==> #[trigger] obj(h, x) == obj(h0, x) || !active(obj(h, x))
+}
+
+/// A fate stays true when the state grows and a dead active key is killed.
+pub proof fn lemma_fate_frame(c: Ctx, h0: H, h: H, st: St, h2: H, st2: St, main: Set<int>, nd: Node, d: usize, kw: usize, lw: usize)
+    requires
+        fate(c, h0, h, st, main, nd, d, kw, lw), nd.kind != KIND_VM,
+        grows(h, st, st2), st.addr2.len() == h.objs.len(),
+        st2.addr2.len() == st.addr2.len(),
+        h2.loc == h.loc, h2.addr == h.addr, h2.objs.len() == h.objs.len(),
+        forall|x: int| 0 <= x < h.objs.len() && #[trigger] obj(h2, x) != obj(h, x) ==> active(obj(h, x)) && from(h, x) && !copied(st, x),
+        forall|x: int| 0 <= x < h0.objs.len() ==> (#[trigger] obj(h0, x)).words.len() >= 1,
+        h0.objs.len() == h.objs.len(),
+        nd.key matches AVal::Ref(j) ==> 0 <= j < h.objs.len(),
+        nd.lam matches AVal::Ref(j) ==> 0 <= j < h.objs.len(),
+    ensures fate(c, h0, h2, st2, main, nd, d, kw, lw),
+{
+    assert forall|v: AVal| #[trigger] val_live(h, st, v) implies val_live(h2, st2, v) && enc(st2.addr2, v) == enc(st.addr2, v) by {
+        if v is Ref {
+            let j = v->Ref_0;
+            if copied(st, j) { assert(copied(st2, j)); }
+            assert(st2.addr2[j] == st.addr2[j]);
+        }
+    }
+    if nd.key is Ref {
+        let j = nd.key->Ref_0;
+        if key_active(h, nd.key) && val_live(h, st, nd.key) {
+            assert(obj(h2, j) == obj(h, j));
+        }
+        if !key_active(h, nd.key) && from(h, j) {
+            assert(obj(h2, j) == obj(h, j));
+        }
+        if d == QUEUE && nd.kind == KIND_TOIT && dead_main(h0, nd.key, main) && key_active(h0, nd.key) {
+            lemma_clear_bit(hdr(obj(h0, j)));
+            assert(obj(h0, j).words.len() >= 1);
+            assert(hdr(obj(h, j)) == (hdr(obj(h0, j)) - 32) as usize);
+            assert(!active(obj(h, j)));
+            assert(obj(h2, j) == obj(h, j));
+        }
     }
 }
 
