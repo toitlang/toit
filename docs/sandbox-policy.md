@@ -512,6 +512,23 @@ runs complete, in 9 the provider process ends and in 7 it stays stuck for
 more than 20 s. Ending the process is visible to service clients
 (`NO_SUCH_PROCESS`); being stuck is not.
 
+On the verified core a `try` can fail before its finally code exists: the
+TRY instruction checks the room for the call of the try's block first, and
+when the stack can't grow (out of memory at the quota, or a stack
+overflow) it raises the error without running the finally code (format 1
+links the try first, so its finally code runs). Code that changes some
+state right before a `try` and restores it in the finally code keeps the
+change then. A monitor's locked method took its lock that way: an RPC
+worker at its heap quota kept the lock of its pending calls, the reply
+handler waited for it inside the message processing, whose flag was set
+the same way and stayed set, and the worker yielded forever with the reply
+in its mailbox (three scheduler threads at 100 % CPU, no
+`OUT_OF_MEMORY`). The lock, the message processing flag, `critical-do`'s
+critical count and deadline and `with-deadline_`'s deadline are now
+changed inside their `try`
+(tests/sandbox/try-entry-overflow-test.toit; opentoit-sandbox-artifacts/quota-livelock).
+SDK code that changes state for the duration of a `try` must do the same.
+
 Exempting replies from the quotas was rejected: the VM can't tell a reply
 from a forged `SYSTEM_RPC_REPLY` (`forge-rpc-reply`), so an exemption
 would let a sandbox queue unbounded memory in any receiver it may send
