@@ -396,4 +396,257 @@ pub fn hide_maps(c: &Ctx, t: &Tos, nptr: *mut usize, ncb: usize, nn: usize, Ghos
     (Ghost(hc), Ghost(nc))
 }
 
+
+/// `x` is the array of the list `bkv` (a weak map's backing): an instance
+/// of the list class whose field 0 is `x`.
+pub open spec fn backing(c: Ctx, h: H, bkv: AVal, x: int) -> bool {
+    &&& bkv is Ref
+    &&& from(h, bkv->Ref_0)
+    &&& htag(hdr(obj(h, bkv->Ref_0))) == INSTANCE_TAG && hcid(hdr(obj(h, bkv->Ref_0))) == c.list_cid
+    &&& lay(obj(h, bkv->Ref_0)).lo == 1 && lay(obj(h, bkv->Ref_0)).hi >= 2
+    &&& obj(h, bkv->Ref_0).words[1] == AVal::Ref(x)
+}
+
+/// Array `o2` is `o` with some values nulled: element slots at odd indices
+/// (`zap_dead_values`) that held an object other than a tombstone.
+pub open spec fn zapped_arr(c: Ctx, h: H, o: AObj, o2: AObj) -> bool {
+    &&& htag(hdr(o)) == ARRAY_TAG
+    &&& o2.words.len() == o.words.len() && o2.cbits == o.cbits && o2.sw == o.sw
+    &&& forall|k: int| 0 <= k < o.words.len() ==> #[trigger] o2.words[k] == o.words[k]
+            || (2 <= k && (k - 2) % 2 == 1 && o2.words[k] == AVal::Ref(c.nullid@) && o.words[k] is Ref
+                && 0 <= o.words[k]->Ref_0 < h.objs.len() && hcid(hdr(obj(h, o.words[k]->Ref_0))) != c.tomb_cid)
+}
+
+/// Nulls the dead values of the uncopied from-space array `a` (at offset
+/// `off` of the page starting at `s`): the odd elements holding an
+/// uncopied from-space object that is not a tombstone.
+pub fn zap_array(c: &Ctx, t: &Tos, s: usize, off: usize, Ghost(h): Ghost<H>, Ghost(a): Ghost<int>, Ghost(ks): Ghost<int>,
+                 Ghost(rptr): Ghost<*mut usize>, Ghost(rv): Ghost<Seq<AVal>>, Ghost(rvp): Ghost<Seq<AVal>>,
+                 Tracked(st): Tracked<&mut St>, Tracked(ro): Tracked<&Ro>) -> (r: (bool, Ghost<H>))
+    requires
+        ctx_ok(*c), fpages_ok(*c), ftab_ok(*c, ro.ftp), heap_ok(*c, h), others_ok(h, ro.others), ctab_ok(*c, ro.ctp),
+        inv(*c, h, *old(st), *t, ks, 0, rvp), roots_ok(*c, h, *old(st), rptr, rv, rv.len() as int),
+        0 <= ks <= old(st).order.len(),
+        from(h, a), !copied(*old(st), a), s == fs(*c, fpg(h, a)), off == foff(h, a), htag(hdr(obj(h, a))) == ARRAY_TAG,
+    ensures ({
+        let h2 = r.1@;
+        &&& heap_ok(*c, h2) && others_ok(h2, ro.others)
+        &&& inv(*c, h2, *final(st), *t, ks, 0, rvp) && roots_ok(*c, h2, *final(st), rptr, rv, rv.len() as int)
+        &&& *final(st) == (St { fp: final(st).fp, ..*old(st) })
+        &&& h2.loc == h.loc && h2.addr == h.addr && h2.objs.len() == h.objs.len()
+        &&& forall|x: int| 0 <= x < h.objs.len() && x != a ==> #[trigger] obj(h2, x) == obj(h, x)
+        &&& zapped_arr(*c, h, obj(h, a), obj(h2, a))
+    }),
+{
+    let ghost s0 = *st;
+    let ghost o = obj(h, a);
+    let ghost pg = fpg(h, a);
+    proof {
+        lemma_w();
+        lemma_from_obj(*c, h, a);
+        assert(lay(o).lo == 2);
+        assert(o.words[1] is Raw);
+        assert(s0.fp[fkey(h, a, 1)].is_init());
+    }
+    let len = fword(c, s, off, 1, Ghost(h), Ghost(a), Tracked(&st.fp));
+    let ghost mut hc = h;
+    let mut zapped = false;
+    let mut i: usize = 1;
+    proof {
+        assert(len == raw(o.words[1]));
+        assert(lay(o).size == 2 + len && lay(o).hi == 2 + len);
+        assert forall|k: int| 0 <= k < o.words.len() implies #[trigger] obj(hc, a).words[k] == o.words[k] || false by {}
+    }
+    while i < len
+        invariant
+            ctx_ok(*c), fpages_ok(*c), ftab_ok(*c, ro.ftp), heap_ok(*c, h), ctab_ok(*c, ro.ctp),
+            heap_ok(*c, hc), others_ok(hc, ro.others),
+            inv(*c, hc, *st, *t, ks, 0, rvp), roots_ok(*c, hc, *st, rptr, rv, rv.len() as int),
+            0 <= ks <= st.order.len(),
+            *st == (St { fp: st.fp, ..s0 }),
+            hc.loc == h.loc && hc.addr == h.addr && hc.objs.len() == h.objs.len(),
+            forall|x: int| 0 <= x < h.objs.len() && x != a ==> #[trigger] obj(hc, x) == obj(h, x),
+            from(h, a), !copied(*st, a), s == fs(*c, fpg(h, a)), off == foff(h, a), o == obj(h, a),
+            pg == fpg(h, a),
+            htag(hdr(o)) == ARRAY_TAG, lay(o).size == 2 + len, lay(o).lo == 2, lay(o).hi == 2 + len, len == raw(o.words[1]),
+            1 <= i <= len + 1, i % 2 == 1, len < c.pw,
+            lay(obj(hc, a)) == lay(o), hdr(obj(hc, a)) == hdr(o), obj(hc, a).words[1] == o.words[1],
+            zapped_arr(*c, h, o, obj(hc, a)),
+            forall|k: int| 2 + i <= k < o.words.len() ==> #[trigger] obj(hc, a).words[k] == o.words[k],
+        decreases len + 1 - i,
+    {
+        let ghost oc = obj(hc, a);
+        let ghost k = (2 + i) as int;
+        proof {
+            assert(hc.loc == h.loc);
+            lemma_from_obj(*c, hc, a);
+            assert(oc.words[k] == o.words[k]);
+            assert(slots_ok(*c, hc, a));
+            assert(lay(oc).lo <= k < lay(oc).hi);
+            assert(slot_ok(*c, hc.objs.len() as int, oc.words[k]));
+            assert(st.fp[fkey(hc, a, k)].is_init());
+            assert(fkey(hc, a, k) == fkey(h, a, k));
+        }
+        let w = fword(c, s, off, 2 + i, Ghost(hc), Ghost(a), Tracked(&st.fp));
+        let (dv, _av, sv, offv, _cv) = key_status(c, w, Ghost(hc), Ghost(oc.words[k]), Ghost(*t), Ghost(ks), Ghost(0int), Ghost(rvp),
+                                                 Tracked(&*st), Tracked(ro));
+        if dv {
+            let ghost y = oc.words[k]->Ref_0;
+            proof {
+                lemma_from_obj(*c, hc, y);
+                assert(obj(hc, y).words[0] is Raw);
+                assert(st.fp[fkey(hc, y, 0)].is_init());
+            }
+            let hv = fword(c, sv, offv, 0, Ghost(hc), Ghost(y), Tracked(&st.fp));
+            if (hv >> 6) != c.tomb_cid {
+                let ghost s1 = *st;
+                let ghost o2 = AObj { words: oc.words.update(k, AVal::Ref(c.nullid@)), ..oc };
+                proof {
+                    lemma_from_obj(*c, h, a);
+                    assert(fpg(hc, a) == pg && foff(hc, a) == foff(h, a));
+                    assert(fs(*c, pg) + pbytes(*c) < usize::MAX);
+                    assert(fkey(hc, a, k) == (pg, off + k));
+                    assert(wperm_ok(st.fp, (pg, off + k), fptr(*c, pg), off + k));
+                    assert((off + k) * W <= pbytes(*c)) by (nonlinear_arith) requires off + k <= c.pw, W >= 1;
+                }
+                let fpage = c.base.with_addr(s);
+                wr(fpage, off + 2 + i, c.null, Ghost((pg, off + k)), Tracked(&mut st.fp));
+                proof {
+                    let s2 = *st;
+                    assert(o2.words.len() == oc.words.len() && o2.words[0] == oc.words[0] && o2.words[1] == oc.words[1]);
+                    assert(hdr(o2) == hdr(oc));
+                    assert(lay(o2) == lay(oc));
+                    assert(obj_ok(oc) && cls_ok(*c, oc));
+                    assert forall|q: int| lay(o2).lo <= q < lay(o2).hi implies #[trigger] slot_ok(*c, hc.objs.len() as int, o2.words[q]) by {
+                        if q != k { assert(slot_ok(*c, hc.objs.len() as int, oc.words[q])); }
+                    }
+                    assert forall|q: int| 0 <= q < lay(o2).size && !(lay(o2).lo <= q < lay(o2).hi) implies #[trigger] o2.words[q] is Raw by {
+                        assert(oc.words[q] is Raw);
+                    }
+                    assert(same_shape(*c, hc.objs.len() as int, oc, o2));
+                    assert forall|pi: int, q: int| 0 <= pi < c.nf && 0 <= q < c.pw implies #[trigger] wperm_ok(s2.fp, (pi, q), fptr(*c, pi), q) by {
+                        assert(wperm_ok(s1.fp, (pi, q), fptr(*c, pi), q));
+                    }
+                    assert forall|q: (int, int)| !(q.0 == fpg(hc, a) && foff(hc, a) <= q.1 < foff(hc, a) + size(hc, a)) implies
+                        #[trigger] s2.fp[q] == s1.fp[q] by {}
+                    assert forall|q: int| 0 <= q < size(hc, a) implies (#[trigger] s2.fp[fkey(hc, a, q)]).is_init()
+                        && s2.fp[fkey(hc, a, q)].value() == wval(o2, hc.addr, q) by {
+                        assert(fkey(hc, a, q) == (pg, off + q));
+                        if q != k {
+                            assert(s1.fp[fkey(hc, a, q)].is_init());
+                            assert(s2.fp[fkey(hc, a, q)] == s1.fp[fkey(hc, a, q)]);
+                        }
+                    }
+                    lemma_modify(*c, hc, s1, s2, *t, ks, 0, rv, rvp, rptr, rv.len() as int, a, o2);
+                    let h2 = with_obj(hc, a, o2);
+                    assert forall|x: int| 0 <= x < h2.objs.len() && !from(h2, x) implies #[trigger] ro.others.contains_key(x)
+                        && ro.others[x].ptr()@.addr == h2.addr[x] - 1 by {
+                        assert(ro.others.contains_key(x) && ro.others[x].ptr()@.addr == hc.addr[x] - 1);
+                    }
+                    assert(hdr(obj(h, y)) == hdr(obj(hc, y))) by {
+                        if y == a { assert(hdr(obj(hc, a)) == hdr(o)); }
+                    }
+                    assert forall|q: int| 0 <= q < o.words.len() implies #[trigger] o2.words[q] == o.words[q]
+                        || (2 <= q && (q - 2) % 2 == 1 && o2.words[q] == AVal::Ref(c.nullid@) && o.words[q] is Ref
+                            && 0 <= o.words[q]->Ref_0 < h.objs.len() && hcid(hdr(obj(h, o.words[q]->Ref_0))) != c.tomb_cid) by {
+                        if q != k { assert(oc.words[q] == o.words[q] || (2 <= q && (q - 2) % 2 == 1 && oc.words[q] == AVal::Ref(c.nullid@)
+                            && o.words[q] is Ref && 0 <= o.words[q]->Ref_0 < h.objs.len() && hcid(hdr(obj(h, o.words[q]->Ref_0))) != c.tomb_cid)); }
+                    }
+                    assert forall|x: int| 0 <= x < h.objs.len() && x != a implies #[trigger] obj(h2, x) == obj(h, x) by {
+                        assert(obj(hc, x) == obj(h, x));
+                    }
+                    assert forall|q: int| 2 + i + 2 <= q < o.words.len() implies #[trigger] obj(h2, a).words[q] == o.words[q] by {
+                        assert(oc.words[q] == o.words[q]);
+                    }
+                    hc = h2;
+                }
+                zapped = true;
+            }
+        }
+        i = i + 2;
+    }
+    (zapped, Ghost(hc))
+}
+
+
+/// The zapping of a live weak map whose backing (list) is `bkv`: if the
+/// list and its array are uncopied from-space objects of the list class
+/// and an array, the array's dead values are nulled (`zap_array`).
+pub fn zap_backing(c: &Ctx, t: &Tos, bkw: usize, Ghost(h): Ghost<H>, Ghost(bkv): Ghost<AVal>, Ghost(ks): Ghost<int>,
+                   Ghost(rptr): Ghost<*mut usize>, Ghost(rv): Ghost<Seq<AVal>>, Ghost(rvp): Ghost<Seq<AVal>>,
+                   Tracked(st): Tracked<&mut St>, Tracked(ro): Tracked<&Ro>) -> (r: (bool, Ghost<H>))
+    requires
+        ctx_ok(*c), fpages_ok(*c), ftab_ok(*c, ro.ftp), heap_ok(*c, h), others_ok(h, ro.others), ctab_ok(*c, ro.ctp),
+        inv(*c, h, *old(st), *t, ks, 0, rvp), roots_ok(*c, h, *old(st), rptr, rv, rv.len() as int),
+        0 <= ks <= old(st).order.len(),
+        bkw == enc(h.addr, bkv), slot_ok(*c, h.objs.len() as int, bkv),
+    ensures ({
+        let h2 = r.1@;
+        &&& heap_ok(*c, h2) && others_ok(h2, ro.others)
+        &&& inv(*c, h2, *final(st), *t, ks, 0, rvp) && roots_ok(*c, h2, *final(st), rptr, rv, rv.len() as int)
+        &&& *final(st) == (St { fp: final(st).fp, ..*old(st) })
+        &&& h2.loc == h.loc && h2.addr == h.addr && h2.objs.len() == h.objs.len()
+        &&& forall|x: int| 0 <= x < h.objs.len() ==> #[trigger] obj(h2, x) == obj(h, x)
+                || (from(h, x) && !copied(*old(st), x) && backing(*c, h, bkv, x) && zapped_arr(*c, h, obj(h, x), obj(h2, x)))
+    }),
+{
+    let (dl, _al, s, off, _cl) = key_status(c, bkw, Ghost(h), Ghost(bkv), Ghost(*t), Ghost(ks), Ghost(0int), Ghost(rvp),
+                                           Tracked(&*st), Tracked(ro));
+    if !dl {
+        return (false, Ghost(h));
+    }
+    let ghost l = bkv->Ref_0;
+    let ghost ol = obj(h, l);
+    let ghost pg = fpg(h, l);
+    proof {
+        lemma_w();
+        lemma_from_obj(*c, h, l);
+        assert(ol.words[0] is Raw);
+        assert(st.fp[fkey(h, l, 0)].is_init());
+    }
+    let hd = fword(c, s, off, 0, Ghost(h), Ghost(l), Tracked(&st.fp));
+    if (hd >> 1) & 15 != INSTANCE_TAG || (hd >> 6) != c.list_cid {
+        return (false, Ghost(h));
+    }
+    proof {
+        assert(fs(*c, pg) + pbytes(*c) < usize::MAX);
+        assert forall|k: int| 0 <= k < lay(ol).size && #[trigger] ol.words[k] is Raw implies
+            wperm_ok(st.fp, (pg, off + k), fptr(*c, pg), off + k) && st.fp[(pg, off + k)].is_init()
+            && st.fp[(pg, off + k)].value() == raw(ol.words[k]) by {
+            assert(fkey(h, l, k) == (pg, off + k));
+            assert(st.fp[fkey(h, l, k)].is_init());
+        }
+    }
+    let lpage = c.base.with_addr(s);
+    let (_sz, lo, hi) = obj_layout(c, lpage, off, Ghost(pg), Tracked(&st.fp), Ghost(ol), Ghost(c.pw as int), Tracked(&ro.ctp));
+    if !(lo == 1 && hi >= 2) {
+        return (false, Ghost(h));
+    }
+    proof {
+        assert(st.fp[fkey(h, l, 1)].is_init());
+        assert(slots_ok(*c, h, l));
+        assert(slot_ok(*c, h.objs.len() as int, ol.words[1]));
+    }
+    let aw = fword(c, s, off, 1, Ghost(h), Ghost(l), Tracked(&st.fp));
+    let (da, _aa, sa, offa, _ca) = key_status(c, aw, Ghost(h), Ghost(ol.words[1]), Ghost(*t), Ghost(ks), Ghost(0int), Ghost(rvp),
+                                             Tracked(&*st), Tracked(ro));
+    if !da {
+        return (false, Ghost(h));
+    }
+    let ghost a = ol.words[1]->Ref_0;
+    proof {
+        lemma_from_obj(*c, h, a);
+        assert(obj(h, a).words[0] is Raw);
+        assert(st.fp[fkey(h, a, 0)].is_init());
+    }
+    let ha = fword(c, sa, offa, 0, Ghost(h), Ghost(a), Tracked(&st.fp));
+    if (ha >> 1) & 15 != ARRAY_TAG {
+        return (false, Ghost(h));
+    }
+    proof {
+        assert(backing(*c, h, bkv, a));
+    }
+    zap_array(c, t, sa, offa, Ghost(h), Ghost(a), Ghost(ks), Ghost(rptr), Ghost(rv), Ghost(rvp), Tracked(st), Tracked(ro))
+}
+
 } // verus!
