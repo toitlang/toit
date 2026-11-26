@@ -30,8 +30,12 @@
 //! and for any address map: every reference the spec object holds is in a
 //! reference slot of the collector's object, and every word the core
 //! models (`view::is_word`) is the core's word of it (`view::word_val`).
-//! M1's layout is not the VM's, so `rep` is a hypothesis here; milestone
-//! M2 (the VM's layouts) proves it for the real object layouts.
+//! `lemma_rep_vm` proves `rep` for the VM's layouts (milestone M2) from a
+//! structural description of each object (`obj_struct`: its header, an
+//! instance's fields, an array's length and elements, a payload, a stack's
+//! references) and the core's `heap_model_ok`; `lemma_layout_constants`
+//! proves the layout facts the collector shares with the core equal to
+//! the core's.
 
 use vstd::prelude::*;
 use crate::*;
@@ -116,7 +120,7 @@ proof fn lemma_val_live(h: H, st: St, rv: Seq<AVal>, v: Value)
 }
 
 /// THE BRIDGE. The collector's statement, for a heap that represents the
-/// spec state `s1`'s heap (the state after weak processing; M1 does none,
+/// spec state `s1`'s heap (the state after weak processing; there is none before M4,
 /// so `s1` is the state before the collection) whose from-space is exactly
 /// the non-program heap and whose roots include the state's, implies the
 /// core's `gcbridge::collected` with the live set (outside from-space or
@@ -199,7 +203,7 @@ pub proof fn lemma_bridge(ap: Program2, cb: Seq<u16>, s1: State2, n0: int,
 /// the live objects (the core's `gcbridge::lemma_collected`) gives a state
 /// `s2` with `collection(ap, s, s2)` that the core's heap model represents
 /// at the collector's addresses, with every modelled word of every object
-/// equal to the collector's word of it. (M1 does no weak processing, so
+/// equal to the collector's word of it. (No weak processing before M4, so
 /// the state before weak processing is `s` itself: `zapped(ap, s, s)`.)
 pub proof fn lemma_spec_collection(ap: Program2, cb: Seq<u16>, s: State2, n0: int,
                                    c: Ctx, h: H, st: St, rptr: *mut usize, rv: Seq<AVal>, ttab: *mut usize, tused: *mut usize,

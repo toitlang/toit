@@ -17,7 +17,8 @@ are not escape hatches. The list must only shrink.
 | vstd | `raw_ptr` axioms: `PointsTo`, `ptr_ref`, `ptr_mut_write`, the specifications of `<*mut T>::addr` and `<*mut T>::with_addr`, `PointsTo::is_disjoint`; `Map`, `Seq`, `Set` | Verus' own trusted base. The crate has no `assume_specification` of its own: unlike the core (`wrapping_add`), word pointers are `base.with_addr(base.addr() + i * W)`, with vstd's specifications, and the arithmetic is proved not to wrap |
 | The page source (section 1) | `space::PageSource`: its contract | what every implementation must guarantee; the crate has none |
 | The entry (section 2) | the preconditions of `statement::collect` | the heap is well formed and the caller hands over exactly the permissions it describes |
-| The bridge's hypotheses (section 3) | the preconditions of `bridge::lemma_bridge` | the collector's heap represents the spec's, the roots include the state's, the core's heap invariant |
+| Layout facts (section 4) | `layout.rs`: the sizes and reference slots of the VM's objects | the shared constants are proved equal to the core's (`bridge::lemma_layout_constants`; LAYOUT.toml checks those against the C++); the size rules the core does not have (string and byte array sizes, external objects, stacks) are checked against the C++ `HeapObject::size` by the differential test |
+| The bridge's hypotheses (section 3) | the preconditions of `bridge::lemma_bridge` | the collector's heap represents the spec's (proved for the VM's layouts from a structural description, `lemma_rep_vm`), the roots include the state's, the core's heap invariant |
 | Not verified | `nopanic/` (a C entry point: `unsafe` extern calls, `assume_new` for the ghost arguments), `tests/` | measurement and tests only; nothing in the VM |
 
 What is checked at run time instead of trusted: the from-space table (word
@@ -91,6 +92,11 @@ of the heap. Until then they are the caller's obligations:
   completeness (every reference the C++ will later hand to the core is in a
   root the collector was given) is milestone M3's obligation, stated at the
   bridge (section 3).
+- `ctab_ok`: the class table's permissions (`ncls` 16-bit entries, the
+  program's class bits); `cls_ok` for every object: its class id is in the
+  table, its ghost class bits are that entry, its ghost stack array word is
+  the context's `sw` (`Stack::HEADER_SIZE / WORD_SIZE`, which C++ passes:
+  10 or 14 words, larger in debug builds).
 - The to-space tables' permissions (`tcap` words each).
 - The page source's `pw()` and `prov()` agree with the context.
 
@@ -107,9 +113,13 @@ hypotheses, which the integration must discharge:
   same ids; every reference a spec object holds (`obj_vals`) is in a
   reference slot of the collector's object; every word the core models
   (`view::is_word`) is the core's word of the object (`view::word_val`)
-  under any address map. With M1's layout (not the VM's) this is a
-  hypothesis; M2 proves it for the VM's layouts from the object
-  description.
+  under any address map. `lemma_rep_vm` proves it for the VM's layouts
+  from `obj_struct` (each object's header encodes its class; an
+  instance's fields, an array's length and elements, a double's or large
+  integer's payload are its words in the core's encoding; a stack's
+  references are in its object stack) and the core's `heap_model_ok`.
+  `obj_struct` is what the entry derivation (M5) must give together with
+  `heap_ok`.
 - `heap_model_ok(s.heap, h.addr, cb)` and `ro <==> i < n0`: the core's heap
   invariant before the collection (`abs::heap_model_ok`, the program heap
   first).
@@ -121,3 +131,29 @@ hypotheses, which the integration must discharge:
 
 No weak processing in M1: the bridge uses `zapped(ap, s, s)`. M4 (weak
 maps) replaces it with the collector's own zapping, which `zapped` allows.
+
+## 4. Layout facts (`layout.rs`)
+
+The collector reads object sizes and reference slots as the C++
+`HeapObject::size` and `roots_do` compute them (the table in layout.rs).
+Little-endian targets only (the string length half word's position in
+word 1; layout.rs has no big-endian definitions, so such a build does not
+compile). How each fact is tied to the VM:
+
+- Class tags, the header's class id and tag fields, the array, instance,
+  stack, byte array, double and large integer word offsets, the content
+  offset of strings and byte arrays, the string sentinel, the external
+  objects' last word, the instance size field of the class bits: proved
+  equal to verified/core/src/layout.rs (`bridge::lemma_layout_constants`),
+  which verified/LAYOUT.toml checks against the C++ headers for both word
+  sizes.
+- The size rules the core does not need (an internal string has a
+  terminating zero byte, `align(content + length + 1)`; an internal byte
+  array `align(content + length)`; external strings and byte arrays 4
+  words; a stack `sw + length` with its array at `sw`): checked against the
+  C++ on every object the differential test compares (tests/difftest.rs:
+  the size and reference slots of the proved collector's copy and of the
+  C++ prototype's copy must agree, on heaps of real programs, 64-bit and
+  32-bit with 4 kB pages).
+- The stack array word `sw` is a run-time parameter (`Ctx::sw`), as the
+  core's `Runtime::array_word`.
