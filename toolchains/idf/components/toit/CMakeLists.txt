@@ -81,11 +81,6 @@ if (CONFIG_TOIT_VERIFIED_CORE)
       set(TOIT_VERIFIED_CORE_RUST_TARGET "riscv32imac-unknown-none-elf" CACHE STRING "" FORCE)
     endif()
     set(TOIT_VERIFIED_CORE_OPT_LEVEL "${CONFIG_TOIT_VERIFIED_CORE_OPT_LEVEL}" CACHE STRING "" FORCE)
-    if (CONFIG_TOIT_VERIFIED_CORE_VERIFIER)
-        set(TOIT_VERIFIED_CORE_VERIFIER ON CACHE BOOL "" FORCE)
-    else()
-        set(TOIT_VERIFIED_CORE_VERIFIER OFF CACHE BOOL "" FORCE)
-    endif()
     if (CONFIG_TOIT_VERIFIED_CORE_LOOP_IN_IRAM)
         set(TOIT_VERIFIED_CORE_LOOP_IN_IRAM ON CACHE BOOL "" FORCE)
     else()
@@ -110,6 +105,15 @@ if (CONFIG_TOIT_VERIFIED_CORE)
     endif()
 else()
     set(TOIT_VERIFIED_CORE OFF CACHE BOOL "" FORCE)
+endif()
+# Sandboxed (untrusted) containers (Kconfig TOIT_SANDBOX, which needs the
+# verified core): the verifier, the untrusted policy and the C++ only
+# sandboxed processes reach. Off, the firmware refuses untrusted installs
+# and launches (verified/CMakeLists.txt).
+if (CONFIG_TOIT_SANDBOX)
+    set(TOIT_SANDBOX ON CACHE BOOL "" FORCE)
+else()
+    set(TOIT_SANDBOX OFF CACHE BOOL "" FORCE)
 endif()
 
 # The bytecode format of the firmware's own programs (the system snapshot
@@ -242,7 +246,9 @@ if (CONFIG_TOIT_PIN_HOT_FLASH_CODE)
         # '#' starts a comment; "f1:"/"f2:" restricts a line to firmware
         # whose programs are format 1 / format 2 (the hot C++ helpers
         # differ: format 2 has the verified core's, format 1 the C++
-        # interpreter's).
+        # interpreter's); "f2v:" to format-2 firmware with the install-time
+        # verifier (Kconfig TOIT_SANDBOX), so that a firmware without it
+        # does not name the verifier's functions.
         set(toit_hot_file "${CMAKE_CURRENT_LIST_DIR}/hot_flash_functions.txt")
         set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${toit_hot_file}")
         file(STRINGS "${toit_hot_file}" toit_hot_lines)
@@ -250,11 +256,14 @@ if (CONFIG_TOIT_PIN_HOT_FLASH_CODE)
         foreach (line IN LISTS toit_hot_lines)
             string(REGEX REPLACE "#.*" "" line "${line}")
             string(STRIP "${line}" line)
-            if (line MATCHES "^f([12]):(.*)$")
+            if (line MATCHES "^f([12])(v?):(.*)$")
                 if (NOT CMAKE_MATCH_1 STREQUAL "${TOIT_BYTECODE_FORMAT}")
                     continue()
                 endif()
-                set(line "${CMAKE_MATCH_2}")
+                if (CMAKE_MATCH_2 STREQUAL "v" AND NOT CONFIG_TOIT_SANDBOX)
+                    continue()
+                endif()
+                set(line "${CMAKE_MATCH_3}")
                 string(STRIP "${line}" line)
             endif()
             if (NOT line STREQUAL "")

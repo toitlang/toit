@@ -54,6 +54,9 @@ static const unsigned CORE_COUNT = 0 MODULE_CORE(PRIMITIVE_COUNT);
 static const unsigned BITMAP_COUNT = 0 MODULE_BITMAP(PRIMITIVE_COUNT);
 #undef PRIMITIVE_COUNT
 
+#ifndef TOIT_NO_SANDBOX
+// The untrusted policy's tables (not in a VM without sandboxes).
+
 // The core primitives an untrusted program may call. This is the measured
 // set the core library needs (see docs/sandbox-policy.md) plus the remaining
 // pure, process-local primitives and read-only clock access. Anything that
@@ -222,6 +225,7 @@ static const uint16 UNTRUSTED_BITMAP[] = {
   BitmapIndex::blit,
   BitmapIndex::byte_zap,
 };
+#endif  // TOIT_NO_SANDBOX
 
 // The verifier's primitive tables (verifier_arities): every primitive's
 // arity from primitive.h, module by module, and the untrusted policy's,
@@ -239,7 +243,6 @@ static const uint32 verifier_module_counts[] = { MODULES(VERIFIER_MODULE_COUNT) 
 #undef VERIFIER_MODULE_ARITIES
 #undef VERIFIER_MODULE_COUNT
 static const unsigned VERIFIER_ARITIES_LENGTH = ARRAY_SIZE(all_verifier_arities);
-static uint8 untrusted_verifier_arities[VERIFIER_ARITIES_LENGTH];
 
 // The index of the first primitive of [module] in the verifier's tables.
 static unsigned verifier_module_start(unsigned module) {
@@ -247,6 +250,9 @@ static unsigned verifier_module_start(unsigned module) {
   for (unsigned i = 0; i < module; i++) start += verifier_module_counts[i];
   return start;
 }
+
+#ifndef TOIT_NO_SANDBOX
+static uint8 untrusted_verifier_arities[VERIFIER_ARITIES_LENGTH];
 
 static void build_untrusted_verifier_arities() {
   for (unsigned i = 0; i < VERIFIER_ARITIES_LENGTH; i++) {
@@ -329,12 +335,15 @@ static const PolicyQuotas UNTRUSTED_QUOTAS = {
   0,                            // cpu_budget_us.
   64,                           // max_send_grants.
 };
+#endif  // TOIT_NO_SANDBOX
 
 }  // namespace
 
 PrimitivePolicy PrimitivePolicy::system_;
 PrimitivePolicy PrimitivePolicy::trusted_;
+#ifndef TOIT_NO_SANDBOX
 PrimitivePolicy PrimitivePolicy::untrusted_;
+#endif
 
 void PrimitivePolicy::initialize_all(Kind kind) {
   kind_ = kind;
@@ -347,6 +356,7 @@ void PrimitivePolicy::initialize_all(Kind kind) {
   }
 }
 
+#ifndef TOIT_NO_SANDBOX
 void PrimitivePolicy::initialize_untrusted() {
   kind_ = UNTRUSTED;
   owned_ = false;
@@ -378,30 +388,42 @@ void PrimitivePolicy::initialize_untrusted() {
     lengths_[module] = table ? Primitive::count(module) : 0;
   }
 }
+#endif  // TOIT_NO_SANDBOX
 
 void PrimitivePolicy::set_up() {
   static_assert(MODULE_INDEX_COUNT == Primitive::MODULE_COUNT, "Inconsistent module count");
   system_.initialize_all(SYSTEM);
   trusted_.initialize_all(TRUSTED);
+#ifndef TOIT_NO_SANDBOX
   untrusted_.initialize_untrusted();
-  verifier_arities_of(UNTRUSTED);  // Builds the tables before any process runs.
+#endif
+  verifier_starts();  // Builds the tables before any process runs.
 }
 
-static bool untrusted_verifier_built = false;
+static bool verifier_tables_built = false;
 static uint32 verifier_module_starts[Primitive::MODULE_COUNT];
 
 static void build_verifier_tables() {
-  if (untrusted_verifier_built) return;
+  if (verifier_tables_built) return;
   for (unsigned m = 0; m < Primitive::MODULE_COUNT; m++) {
     verifier_module_starts[m] = verifier_module_start(m);
   }
+#ifndef TOIT_NO_SANDBOX
   build_untrusted_verifier_arities();
-  untrusted_verifier_built = true;
+#endif
+  verifier_tables_built = true;
 }
 
 const uint8* PrimitivePolicy::verifier_arities_of(Kind kind) {
   build_verifier_tables();
+#ifdef TOIT_NO_SANDBOX
+  // No untrusted table: nothing is verified for the untrusted policy (the
+  // verifier is not linked, and no certificate is made for it).
+  ASSERT(kind != UNTRUSTED);
+  return all_verifier_arities;
+#else
   return kind == UNTRUSTED ? untrusted_verifier_arities : all_verifier_arities;
+#endif
 }
 
 const uint32* PrimitivePolicy::verifier_starts() {
@@ -420,7 +442,9 @@ unsigned PrimitivePolicy::verifier_arities_length() {
 const PrimitivePolicy* PrimitivePolicy::launchable(int kind) {
   switch (kind) {
     case TRUSTED: return &trusted_;
+#ifndef TOIT_NO_SANDBOX
     case UNTRUSTED: return &untrusted_;
+#endif
     default: return null;
   }
 }
@@ -452,6 +476,8 @@ static bool read_quota(Array* array, int index, word* out, word scale, word max)
 }
 
 bool PrimitivePolicy::describes_untrusted(Object* description) {
+  // Without sandboxes from_description refuses the untrusted kind.
+  if (!SANDBOX_SUPPORTED) return false;
   if (is_array(description)) {
     Array* array = Array::cast(description);
     if (array->length() < 1) return false;
@@ -460,12 +486,27 @@ bool PrimitivePolicy::describes_untrusted(Object* description) {
   return is_smi(description) && Smi::value(description) == UNTRUSTED;
 }
 
+// The error of a launch request for a kind that is not launchable:
+// SANDBOX_NOT_SUPPORTED for the untrusted kind in a VM without sandboxes,
+// else INVALID_ARGUMENT.
+static Object* not_launchable_error(word kind, Process* process) {
+  if (SANDBOX_SUPPORTED || kind != PrimitivePolicy::UNTRUSTED) {
+    return Primitive::mark_as_error(process->program()->invalid_argument());
+  }
+  fprintf(stderr, "untrusted container refused: this firmware has no sandbox support (TOIT_SANDBOX)\n");
+  String* message = process->allocate_string(SANDBOX_NOT_SUPPORTED_ERROR);
+  if (message == null) {
+    return reinterpret_cast<Object*>((Program::ALLOCATION_FAILED_INDEX << Error::ERROR_SHIFT) | Error::ERROR_TAG);
+  }
+  return Error::from(message);
+}
+
 const PrimitivePolicy* PrimitivePolicy::from_description(Object* description, Process* process, Object** error) {
   Program* program = process->program();
   *error = null;
   if (is_smi(description)) {
     const PrimitivePolicy* result = launchable(Smi::value(description));
-    if (result == null) *error = Primitive::mark_as_error(program->invalid_argument());
+    if (result == null) *error = not_launchable_error(Smi::value(description), process);
     return result;
   }
   if (!is_array(description)) {
@@ -479,7 +520,7 @@ const PrimitivePolicy* PrimitivePolicy::from_description(Object* description, Pr
   }
   const PrimitivePolicy* base = launchable(Smi::value(array->at(0)));
   if (base == null) {
-    *error = Primitive::mark_as_error(program->invalid_argument());
+    *error = not_launchable_error(Smi::value(array->at(0)), process);
     return null;
   }
   PolicyQuotas quotas = base->quotas_;

@@ -15,7 +15,8 @@
 # other code.
 #
 # One section-name glob per line (the part after ".text."); "f1:"/"f2:"
-# restricts a line to firmware whose programs are format 1 / format 2.
+# restricts a line to firmware whose programs are format 1 / format 2,
+# "f2v:" to format-2 firmware with the verifier (Kconfig TOIT_SANDBOX).
 # Rust functions are matched from the crate name on (the crate hash
 # differs between builds). A name that no longer exists matches nothing.
 # Group A is the flash code the run time executes (scheduler, messaging,
@@ -279,46 +280,51 @@ f1:_ZN4toitL19primitive_string_atEPNS_7ProcessEPPNS_6ObjectE             #   163
 # evict each other when the rest of the verifier changes size; then the
 # two large hot functions, then the rest of toit_vmverify and toit_spec in
 # their original order.
-f2:*9toit_spec2v24walk12x_place_step                                     #  single-pass checker (2026-11-26): its out-of-line
-f2:*9toit_spec2v24walk10x_read_map                                       #  functions in the riscv32 fat-LTO build (the walk
-f2:*9toit_spec2v24walk10x_next_map                                       #  itself is inlined into toit_vmverify_verify)
-f2:*9toit_spec2v24walk10x_seg_push
-f2:*9toit_spec2v24walk8x_seg_eq
-f2:*9toit_spec2v24walk6x_find
-f2:*9toit_spec4xvec8try_pushNtNtNtB4_2v24walk4PendEB4_
-f2:*9toit_spec4xvec8try_pushNtNtNtB4_2v25check5XKindEB4_                  #    60 B  toit_spec::xvec::try_push::<toit_spec::v2::check::XKind>
+f2v:*9toit_spec2v24walk12x_place_step                                     #  single-pass checker (2026-11-26): its out-of-line
+f2v:*9toit_spec2v24walk10x_read_map                                       #  functions in the riscv32 fat-LTO build (the walk
+f2v:*9toit_spec2v24walk10x_next_map                                       #  itself is inlined into toit_vmverify_verify)
+f2v:*9toit_spec2v24walk10x_seg_push
+f2v:*9toit_spec2v24walk8x_seg_eq
+f2v:*9toit_spec2v24walk6x_find
+f2v:*9toit_spec4xvec8try_pushNtNtNtB4_2v24walk4PendEB4_
+f2v:*9toit_spec4xvec8try_pushNtNtNtB4_2v25check5XKindEB4_                  #    60 B  toit_spec::xvec::try_push::<toit_spec::v2::check::XKind>
 f2:*9toit_spec9exec_step15x_compare_mixed                                 #   348 B  toit_spec::exec_step::x_compare_mixed
-f2:*9toit_spec2v25check5x_fld                                             #    89 B  toit_spec::v2::check::x_fld
-f2:*9toit_spec2v25check9x_kind_eq                                         #    88 B  toit_spec::v2::check::x_kind_eq
-f2:*9toit_spec2v25check7x_fnode                                           #   152 B  toit_spec::v2::check::x_fnode
-f2:*9toit_spec2v25vprogNtB5_6MTable2at                                    #   558 B  <toit_spec::v2::vprog::MTable>::at
-f2:*9toit_spec2v25check8x_ctx_of                                          #   229 B  toit_spec::v2::check::x_ctx_of
-f2:*9toit_spec2v25check9x_bp_mask                                         #   103 B  toit_spec::v2::check::x_bp_mask
-f2:*9toit_spec2v25check9x_sel_rep                                         #   133 B  toit_spec::v2::check::x_sel_rep
-f2:*9toit_spec2v25check8x_sel_ok                                          #   164 B  toit_spec::v2::check::x_sel_ok
-f2:*9toit_spec2v29bytecodes19exec_opcode_length2                          #    31 B  toit_spec::v2::bytecodes::exec_opcode_length2
-f2:*9toit_spec2v25check8x_decode                                          #   130 B  toit_spec::v2::check::x_decode
-f2:*9toit_spec4xvec8try_pushmEB4_                                         #    46 B  toit_spec::xvec::try_push::<u32>
-f2:*9toit_spec2v25check9x_args_ok                                         #   120 B  toit_spec::v2::check::x_args_ok
-f2:*9toit_spec2v25check15x_pop_push_into                                  #    66 B  toit_spec::v2::check::x_pop_push_into
-f2:*9toit_spec2v25vprogNtB5_6MTable10recv_start                           #   107 B  <toit_spec::v2::vprog::MTable>::recv_start
-f2:*9toit_spec2v25check11x_push_into                                      #    61 B  toit_spec::v2::check::x_push_into
-f2:*9toit_spec2v25check15x_ctx_kinds_rev                                  #   181 B  toit_spec::v2::check::x_ctx_kinds_rev
-f2:*9toit_spec2v25check9x_pinned0                                         #    78 B  toit_spec::v2::check::x_pinned0
-f2:*9toit_spec2v25check10x_shape_ok                                       #   125 B  toit_spec::v2::check::x_shape_ok
-f2:*9toit_spec2v25check15x_terminator_ok                                  #   863 B  toit_spec::v2::check::x_terminator_ok
-f2:*9toit_spec2v25check16x_is_block_param                                 #    62 B  toit_spec::v2::check::x_is_block_param
-f2:*9toit_spec2v25check15x_is_terminator                                  #    53 B  toit_spec::v2::check::x_is_terminator
-f2:*9toit_spec2v25check16x_block_slot_rev                                 #   142 B  toit_spec::v2::check::x_block_slot_rev
-f2:*9toit_spec4xvec17try_with_capacityNtNtNtB4_2v25check5XKindEB4_        #    70 B  toit_spec::xvec::try_with_capacity::<toit_spec::v2::check::XKind>
-f2:*9toit_spec2v25check12x_block_slot                                     #   149 B  toit_spec::v2::check::x_block_slot
-f2:*9toit_spec2v25check10x_reversed                                       #   115 B  toit_spec::v2::check::x_reversed
-f2:*9toit_spec2v25check15x_this_field_ok                                  #   142 B  toit_spec::v2::check::x_this_field_ok
-f2:*9toit_spec2v25check13x_ctx_ok_upto                                    #   317 B  toit_spec::v2::check::x_ctx_ok_upto
-f2:*9toit_spec2v25check10x_writable                                       #   192 B  toit_spec::v2::check::x_writable
-f2:*9toit_spec2v25check8x_fchain                                          #   115 B  toit_spec::v2::check::x_fchain
-f2:*9toit_spec4xvec17try_with_capacitymEB4_                               #    70 B  toit_spec::xvec::try_with_capacity::<u32>
-f2:*9toit_spec2v25check11x_post_into
-f2:toit_vmverify_verify
-f2:*13toit_vmverify*
-f2:*9toit_spec*
+f2v:*9toit_spec2v25check5x_fld                                             #    89 B  toit_spec::v2::check::x_fld
+f2v:*9toit_spec2v25check9x_kind_eq                                         #    88 B  toit_spec::v2::check::x_kind_eq
+f2v:*9toit_spec2v25check7x_fnode                                           #   152 B  toit_spec::v2::check::x_fnode
+f2v:*9toit_spec2v25vprogNtB5_6MTable2at                                    #   558 B  <toit_spec::v2::vprog::MTable>::at
+f2v:*9toit_spec2v25check8x_ctx_of                                          #   229 B  toit_spec::v2::check::x_ctx_of
+f2v:*9toit_spec2v25check9x_bp_mask                                         #   103 B  toit_spec::v2::check::x_bp_mask
+f2v:*9toit_spec2v25check9x_sel_rep                                         #   133 B  toit_spec::v2::check::x_sel_rep
+f2v:*9toit_spec2v25check8x_sel_ok                                          #   164 B  toit_spec::v2::check::x_sel_ok
+f2v:*9toit_spec2v29bytecodes19exec_opcode_length2                          #    31 B  toit_spec::v2::bytecodes::exec_opcode_length2
+f2v:*9toit_spec2v25check8x_decode                                          #   130 B  toit_spec::v2::check::x_decode
+f2v:*9toit_spec4xvec8try_pushmEB4_                                         #    46 B  toit_spec::xvec::try_push::<u32>
+f2v:*9toit_spec2v25check9x_args_ok                                         #   120 B  toit_spec::v2::check::x_args_ok
+f2v:*9toit_spec2v25check15x_pop_push_into                                  #    66 B  toit_spec::v2::check::x_pop_push_into
+f2v:*9toit_spec2v25vprogNtB5_6MTable10recv_start                           #   107 B  <toit_spec::v2::vprog::MTable>::recv_start
+f2v:*9toit_spec2v25check11x_push_into                                      #    61 B  toit_spec::v2::check::x_push_into
+f2v:*9toit_spec2v25check15x_ctx_kinds_rev                                  #   181 B  toit_spec::v2::check::x_ctx_kinds_rev
+f2v:*9toit_spec2v25check9x_pinned0                                         #    78 B  toit_spec::v2::check::x_pinned0
+f2v:*9toit_spec2v25check10x_shape_ok                                       #   125 B  toit_spec::v2::check::x_shape_ok
+f2v:*9toit_spec2v25check15x_terminator_ok                                  #   863 B  toit_spec::v2::check::x_terminator_ok
+f2v:*9toit_spec2v25check16x_is_block_param                                 #    62 B  toit_spec::v2::check::x_is_block_param
+f2v:*9toit_spec2v25check15x_is_terminator                                  #    53 B  toit_spec::v2::check::x_is_terminator
+f2v:*9toit_spec2v25check16x_block_slot_rev                                 #   142 B  toit_spec::v2::check::x_block_slot_rev
+f2v:*9toit_spec4xvec17try_with_capacityNtNtNtB4_2v25check5XKindEB4_        #    70 B  toit_spec::xvec::try_with_capacity::<toit_spec::v2::check::XKind>
+f2v:*9toit_spec2v25check12x_block_slot                                     #   149 B  toit_spec::v2::check::x_block_slot
+f2v:*9toit_spec2v25check10x_reversed                                       #   115 B  toit_spec::v2::check::x_reversed
+f2v:*9toit_spec2v25check15x_this_field_ok                                  #   142 B  toit_spec::v2::check::x_this_field_ok
+f2v:*9toit_spec2v25check13x_ctx_ok_upto                                    #   317 B  toit_spec::v2::check::x_ctx_ok_upto
+f2v:*9toit_spec2v25check10x_writable                                       #   192 B  toit_spec::v2::check::x_writable
+f2v:*9toit_spec2v25check8x_fchain                                          #   115 B  toit_spec::v2::check::x_fchain
+f2v:*9toit_spec4xvec17try_with_capacitymEB4_                               #    70 B  toit_spec::xvec::try_with_capacity::<u32>
+f2v:*9toit_spec2v25check11x_post_into
+f2v:toit_vmverify_verify
+f2v:*13toit_vmverify*
+f2v:*9toit_spec*
+# The two spec functions the verified core calls too (x_compare_mixed above,
+# x_int_double: in the glob just before when the verifier is linked), so
+# that a firmware without the verifier (TOIT_SANDBOX off) still pins them
+# right after group A.
+f2:*9toit_spec9exec_step12x_int_double

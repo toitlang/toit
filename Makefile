@@ -262,8 +262,10 @@ EC618_BYTECODE_FORMAT ?= 1
 EC618_BUILD_DIR ?= $(BUILD)/ec618
 EC618_RUST_OPT_LEVEL ?= 3
 EC618_CXX_INTERPRETER ?= OFF
-# OFF leaves the format-2 verifier out (no untrusted installs).
-EC618_VERIFIER ?= ON
+# Sandboxed (untrusted) containers (CMake/Kconfig TOIT_SANDBOX): ON links
+# the format-2 verifier and the untrusted policy; OFF (the default, as on
+# the ESP32) refuses untrusted installs and launches.
+EC618_SANDBOX ?= OFF
 # The core's run loop split into a hot and a cold part (CMake
 # TOIT_VERIFIED_CORE_SPLIT_LOOP); ON keeps the EC618's earlier (unmeasured)
 # configuration.
@@ -271,7 +273,7 @@ EC618_SPLIT_LOOP ?= ON
 ifeq ($(EC618_BYTECODE_FORMAT),2)
 EC618_CMAKE_FORMAT_FLAGS = -DTOIT_VERIFIED_CORE=ON -DTOIT_BYTECODE_FORMAT=2 \
 	-DTOIT_CXX_INTERPRETER=$(EC618_CXX_INTERPRETER) -DTOIT_VERIFIED_CORE_OPT_LEVEL=$(EC618_RUST_OPT_LEVEL) \
-	-DTOIT_VERIFIED_CORE_VERIFIER=$(EC618_VERIFIER) -DTOIT_VERIFIED_CORE_SPLIT_LOOP=$(EC618_SPLIT_LOOP)
+	-DTOIT_SANDBOX=$(EC618_SANDBOX) -DTOIT_VERIFIED_CORE_SPLIT_LOOP=$(EC618_SPLIT_LOOP)
 EC618_NINJA_TARGETS = toit_verified_core_build
 # Outside --whole-archive: compiler_builtins must only fill what libgcc and
 # the base leave open.

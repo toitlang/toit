@@ -324,14 +324,15 @@ menu "Toit"
             toolchains/idf/components/toit/hot_flash_functions.txt.
 
     config TOIT_VERIFIED_CORE
-        bool "Verified format-2 core and verifier (Rust) for untrusted containers"
+        bool "Verified format-2 core (Rust)"
         default n
         depends on IDF_TARGET_ESP32C6 || IDF_TARGET_ESP32H2 || IDF_TARGET_ESP32 || IDF_TARGET_ESP32S3
         help
-            Links the Verus-verified interpreter core and the format-2 verifier
-            (verified/vmverify, a no_std Rust static library built with cargo)
-            into the firmware, so that format-2 programs run on the core and
-            untrusted containers can be verified at install time.
+            Links the Verus-verified interpreter core (verified/vmverify, a
+            no_std Rust static library built with cargo) into the firmware,
+            so that format-2 programs run on the core. With TOIT_SANDBOX the
+            library's format-2 verifier is linked too, so that untrusted
+            containers can be verified at install time.
             RISC-V parts with the A extension (ESP32-C6, H2) need
             `rustup target add riscv32imac-unknown-none-elf`; the classic
             ESP32 and the S3 (Xtensa) need the Toit Xtensa Rust toolchain,
@@ -377,16 +378,23 @@ menu "Toit"
             interpreter's IRAM, and the firmware then refuses format-1
             programs. Always linked if the firmware's programs are format 1.
 
-    config TOIT_VERIFIED_CORE_VERIFIER
-        bool "Link the verifier for untrusted containers"
-        default y
+    config TOIT_SANDBOX
+        bool "Sandboxed (untrusted) containers"
+        default n
         depends on TOIT_VERIFIED_CORE
         help
-            The format-2 verifier checks untrusted containers with their
-            shipped certificates when they are installed. Firmware that never
-            installs untrusted containers (all its programs are first-party
-            and run as trusted) can leave it out to save about 27 KB of flash
-            on the classic ESP32; every untrusted install is then rejected.
+            Lets the firmware install and run untrusted (sandboxed)
+            containers: links the format-2 verifier, which checks them with
+            their shipped certificates when they are installed, the
+            untrusted policy's primitive tables, and the code only sandboxed
+            processes reach (messaging restrictions, heap floor, restart
+            damping). Trusted (first-party) containers run the same way
+            with or without it, on the same verified core.
+            Without it every untrusted install and launch is refused with
+            SANDBOX_NOT_SUPPORTED. On the classic ESP32 it costs about
+            35 KB of flash and 2.8 KB of static RAM (docs/sandbox-policy.md,
+            "Firmware without sandboxes"); select it only for devices that
+            run third-party code.
 
     config TOIT_VERIFIED_CORE_OPT_LEVEL
         string "Rust opt-level of the verified core (3, s or z)"
@@ -406,7 +414,7 @@ menu "Toit"
         string "Rust opt-level of the install-time verifier (empty: z)"
         default "s" if IDF_TARGET_ESP32
         default ""
-        depends on TOIT_VERIFIED_CORE_VERIFIER
+        depends on TOIT_SANDBOX
         help
             The verifier (and the spec functions it runs) is compiled for
             size (opt-level z, verified/vmverify/staticlib/Cargo.toml);
@@ -512,7 +520,8 @@ menu "Toit"
             in it, it needs up to 26 KB for the programs measured) and the
             trusted containers. A sandboxed container that needs more gets
             OUT_OF_MEMORY, as at its heap quota. 0 turns the floor off
-            (docs/sandbox-policy.md, "Quotas").
+            (docs/sandbox-policy.md, "Quotas"). No effect without
+            TOIT_SANDBOX.
 
     config TOIT_HEARTBEAT_S
         int "Print a heartbeat line every N seconds (diagnostic; 0 = off)"
@@ -537,12 +546,13 @@ menu "Toit"
             first heap pages, method table and bookkeeping); otherwise the
             start fails with QUOTA_EXCEEDED. A program whose sandboxed
             runs keep running out of memory is restarted with a growing
-            delay (docs/sandbox-policy.md, "Quotas").
+            delay (docs/sandbox-policy.md, "Quotas"). No effect without
+            TOIT_SANDBOX.
 
     config TOIT_TRACE_INSTALL
         bool "Trace install-time verifications (for measurements)"
         default n
-        depends on TOIT_VERIFIED_CORE
+        depends on TOIT_SANDBOX
         select HEAP_USE_HOOKS if TOIT_TRACE_INSTALL_HEAP
         help
             Prints the time, the free heap and the peak heap use of every

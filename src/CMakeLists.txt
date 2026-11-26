@@ -290,11 +290,14 @@ endif()
 target_include_directories(toit_vm PRIVATE "${TOIT_SDK_SOURCE_DIR}/third_party/dragonbox/include")
 
 # The Verus-verified interpreter core (see verified/CMakeLists.txt).
+# Without sandboxes (CMake/Kconfig TOIT_SANDBOX, or no verified core) the
+# VM refuses untrusted containers and leaves their code out
+# (src/primitive_policy.h, SANDBOX_SUPPORTED).
+if (NOT TOIT_SANDBOX_ENABLED)
+  target_compile_definitions(toit_vm PUBLIC TOIT_NO_SANDBOX)
+endif()
 if (TOIT_VERIFIED_CORE_ENABLED)
   target_compile_definitions(toit_vm PRIVATE TOIT_VERIFIED_CORE)
-  if (NOT TOIT_VERIFIED_CORE_VERIFIER_ENABLED)
-    target_compile_definitions(toit_vm PRIVATE TOIT_NO_V2_VERIFIER)
-  endif()
   if (TOIT_VERIFIED_CORE_INFER_ENABLED)
     target_compile_definitions(toit_vm PRIVATE TOIT_VERIFIED_CORE_INFER)
   endif()

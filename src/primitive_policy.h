@@ -22,6 +22,22 @@ namespace toit {
 
 class Process;
 
+// Whether this VM runs sandboxed (untrusted) containers (CMake TOIT_SANDBOX,
+// Kconfig TOIT_SANDBOX; docs/sandbox-policy.md, "Firmware without
+// sandboxes"). Without it the untrusted policy does not exist: a launch or
+// an install that asks for it is refused with SANDBOX_NOT_SUPPORTED, the
+// verifier is not linked, and every check of the untrusted kind below is a
+// constant false, so the compiler drops the sandbox-only code behind it.
+#ifdef TOIT_NO_SANDBOX
+static const bool SANDBOX_SUPPORTED = false;
+#else
+static const bool SANDBOX_SUPPORTED = true;
+#endif
+
+// The error of a launch or an install of an untrusted container in a VM
+// without sandboxes (keep in sync with lib/system/containers.toit).
+static const char* const SANDBOX_NOT_SUPPORTED_ERROR = "SANDBOX_NOT_SUPPORTED";
+
 // Exit values used when the VM terminates a sandboxed process because it
 // violated its policy. Keep in sync with lib/system/containers.toit.
 static const int SANDBOX_EXIT_CPU_BUDGET = 241;
@@ -70,10 +86,10 @@ class PrimitivePolicy {
 
   static const PrimitivePolicy* system() { return &system_; }
   static const PrimitivePolicy* trusted() { return &trusted_; }
-  static const PrimitivePolicy* untrusted() { return &untrusted_; }
 
   // Returns the standard policy for the given kind, or null if the kind is
-  // not a launchable kind (the system policy can not be requested).
+  // not a launchable kind (the system policy can not be requested; without
+  // sandboxes, neither can the untrusted one).
   static const PrimitivePolicy* launchable(int kind);
 
   // Creates a policy for a launch request. The [description] is either
@@ -86,11 +102,13 @@ class PrimitivePolicy {
   // system process enforces (ContainerService.POLICY-GRANTS-INDEX in
   // lib/system/api/containers.toit). Returns null and sets [error] to an error object if the
   // description is invalid. If a new policy is allocated the caller owns it
-  // (see [is_owned]) and must hand it to a ProcessGroup.
+  // (see [is_owned]) and must hand it to a ProcessGroup. Without sandboxes
+  // the untrusted kind is refused with the error SANDBOX_NOT_SUPPORTED.
   static const PrimitivePolicy* from_description(Object* description, Process* process, Object** error);
 
   // Whether the policy [description] (as for from_description) asks for
-  // the untrusted kind. Allocates nothing.
+  // the untrusted kind. Allocates nothing. Always false without sandboxes
+  // (from_description then refuses the kind).
   static bool describes_untrusted(Object* description);
 
   // Deletes the policy if it is owned (not one of the standard policies).
@@ -98,16 +116,16 @@ class PrimitivePolicy {
 
   Kind kind() const { return kind_; }
   bool is_system() const { return kind_ == SYSTEM; }
-  bool is_untrusted() const { return kind_ == UNTRUSTED; }
+  bool is_untrusted() const { return SANDBOX_SUPPORTED && kind_ == UNTRUSTED; }
   bool is_owned() const { return owned_; }
 
   // Whether messages from processes with this policy are restricted to the
   // system process, the own group and granted targets, and to the RPC
   // message types.
-  bool restricts_messaging() const { return kind_ == UNTRUSTED; }
+  bool restricts_messaging() const { return is_untrusted(); }
 
   // Whether HALT 2 (deep sleep) and HALT 3 (reset) may act on the device.
-  bool may_halt_device() const { return kind_ != UNTRUSTED; }
+  bool may_halt_device() const { return !is_untrusted(); }
 
   // Whether a process with this policy may send a message of the given type.
   bool may_send_type(int type) const;
@@ -163,11 +181,13 @@ class PrimitivePolicy {
   unsigned lengths_[Primitive::MODULE_COUNT] = {};
 
   void initialize_all(Kind kind);
-  void initialize_untrusted();
 
   static PrimitivePolicy system_;
   static PrimitivePolicy trusted_;
+#ifndef TOIT_NO_SANDBOX
+  void initialize_untrusted();
   static PrimitivePolicy untrusted_;
+#endif
 };
 
 } // namespace toit

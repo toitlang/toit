@@ -87,15 +87,21 @@ option(TOIT_VERIFIED_CORE_INFER "Link the certificate inference (hosts)" ${TOIT_
 # (ProcessGroup::create refuses the others) and do not link it.
 option(TOIT_VERIFIED_CORE_CHECKED_LOOP "Link the checked run loop of the core (hosts)" ${TOIT_VERIFIED_CORE_INFER_DEFAULT})
 
-# The format-2 verifier for installs of untrusted containers (vmverify's
-# toit_vmverify_verify and verified/spec's checker; about 27 KB of flash on
-# the classic ESP32). Firmware that never installs untrusted containers can
-# leave it out (Kconfig TOIT_VERIFIED_CORE_VERIFIER): every untrusted
-# install is then rejected, and the linker drops the Rust verifier.
-option(TOIT_VERIFIED_CORE_VERIFIER "Link the format-2 verifier (untrusted installs)" ON)
+# Sandboxed (untrusted) containers (docs/sandbox-policy.md, "Firmware without
+# sandboxes"): the format-2 verifier for their installs and launches
+# (vmverify's toit_vmverify_verify and verified/spec's checker, about 35 KB
+# of flash on the classic ESP32), the untrusted policy's primitive tables,
+# and the C++ that only sandboxed processes reach. Off, the VM refuses every
+# untrusted install and launch (SANDBOX_NOT_SUPPORTED), the linker drops
+# the Rust verifier, and trusted programs run as before on the same core.
+# On by default for hosts (the SDK makes the certificates of untrusted
+# programs and runs the sandbox tests); devices take it from Kconfig
+# TOIT_SANDBOX (default off). Needs the verified core: without it there are
+# no sandboxes either.
+option(TOIT_SANDBOX "Support sandboxed (untrusted) containers" ON)
 
 set(TOIT_VERIFIED_CORE_ENABLED OFF CACHE INTERNAL "")
-set(TOIT_VERIFIED_CORE_VERIFIER_ENABLED OFF CACHE INTERNAL "")
+set(TOIT_SANDBOX_ENABLED OFF CACHE INTERNAL "")
 set(TOIT_VERIFIED_CORE_INFER_ENABLED OFF CACHE INTERNAL "")
 set(TOIT_VERIFIED_CORE_CHECKED_LOOP_ENABLED OFF CACHE INTERNAL "")
 if (NOT TOIT_VERIFIED_CORE)
@@ -109,7 +115,7 @@ if (NOT TOIT_CARGO)
   return()
 endif()
 set(TOIT_VERIFIED_CORE_ENABLED ON CACHE INTERNAL "")
-set(TOIT_VERIFIED_CORE_VERIFIER_ENABLED ${TOIT_VERIFIED_CORE_VERIFIER} CACHE INTERNAL "")
+set(TOIT_SANDBOX_ENABLED ${TOIT_SANDBOX} CACHE INTERNAL "")
 set(TOIT_VERIFIED_CORE_INFER_ENABLED ${TOIT_VERIFIED_CORE_INFER} CACHE INTERNAL "")
 set(TOIT_VERIFIED_CORE_CHECKED_LOOP_ENABLED ${TOIT_VERIFIED_CORE_CHECKED_LOOP} CACHE INTERNAL "")
 
