@@ -212,7 +212,7 @@ program. A value of 0 means unlimited. Defaults of the untrusted policy:
 | heap per process (`max_heap_bytes`) | 64 MB | 128 KB | `Process` constructor; `set_max_heap_size` is denied, and for trusted policies with a cap it can't raise the cap |
 | messages a sender may have queued in one mailbox (`max_mailbox_messages`) | 256 | 256 | `Process::_append_message` |
 | bytes a sender may have queued in one mailbox (`max_mailbox_bytes`) | 1 MB | 32 KB | `Process::_append_message` |
-| total mailbox of an untrusted process | 4 x the two above | 4 x the two above | `Process::_append_message` |
+| total mailbox of an untrusted process | 4 x the two above, and the sandbox heap floor | 4 x the two above, and the floor | `Process::_append_message` |
 | message size (`max_message_bytes`) | 256 KB | 8 KB | `process_send` |
 | live timers per process (`max_timers`) | 64 | 64 | `timer.create` |
 | live processes per group (`max_processes`) | 1 | 1 | `Scheduler::spawn` |
@@ -232,11 +232,53 @@ would leave less than `CONFIG_TOIT_SANDBOX_HEAP_FLOOR_KB` (default 32 KB,
 sandbox that needs more gets `OUT_OF_MEMORY` as at its quota (after the
 usual collections). The floor is checked when the sandbox grows: memory it
 already holds isn't taken back, so trusted code that later needs more
-(WiFi coming up) can still find less free. Not covered by the floor: the
-messages a sandbox has queued in other processes' mailboxes and its
-resources (bounded by the quotas above). On the host the floor works on a
-simulated system heap (`-Xsandbox_heap_floor`, `-Xsandbox_system_heap`;
-tests/sandbox/heap-floor-test.toit).
+(WiFi coming up) can still find less free (see "When the system process
+itself can't allocate" below for what happens then). On the host the floor
+works on a simulated system heap (`-Xsandbox_heap_floor`,
+`-Xsandbox_system_heap`) that holds the heaps of all sandboxed processes
+(each counts itself when it grows and is removed when it ends) and the
+messages charged to the floor (tests/sandbox/heap-floor-test.toit).
+
+The floor also applies to:
+
+- **Starting a sandboxed container.** `programs_registry.spawn` (and
+  `snapshot.launch` on the host) refuses a sandboxed start with
+  `QUOTA_EXCEEDED`, before allocating anything, when the system heap has
+  less free than the floor plus what a start needs
+  (`CONFIG_TOIT_SANDBOX_START_KB`, default 16; host `-Xsandbox_start_bytes`)
+  (`Process::sandbox_start_allowed`). Before, the initial heap page, method
+  table, globals, process and group of a (re)started sandbox were taken
+  however little was left: in a two-worker device run a worker that kept
+  dying of `OUT_OF_MEMORY` was restarted 4 times in 5 seconds with the
+  system heap at 1-5 KB. A program whose sandboxed runs keep dying after
+  running out of memory (a run that ends with a nonzero exit value after an
+  allocation of its group failed) is also restarted with a delay: its next
+  sandboxed start is refused for 1 s after the end of such a run, doubling
+  for each such run in a row up to 32 s, reset after 60 s without one
+  (`SandboxRestartDamper` in `src/out_of_memory.h`, keyed by the program
+  id). A run that handles its out-of-memory errors and ends normally doesn't
+  count. Each refusal prints `[sandbox start refused: ...]` with the reason.
+  Trusted containers are not affected. Test:
+  tests/sandbox/sandbox-start-floor-test.toit.
+- **Messages to and from sandboxes.** A message queued at a sandboxed
+  process, or sent by one (a messaging-restricted sender), is refused when
+  it would leave less than the floor free
+  (`Process::message_floor_allows_locked`), except a message from a trusted
+  sender to a sandbox whose mailbox is empty (so the sandbox runs and
+  learns of what it lost, see "Replies that can't be sent"). The sender
+  gets the outcome of a full mailbox: `QUOTA_EXCEEDED` for a sandboxed
+  sender, a dropped message (`process_send` returns false) for a trusted
+  one. Before, these messages were bounded only by the mailbox quotas
+  above (on a device 4 x 32 KB from trusted senders per sandboxed
+  receiver, more than the free heap with WiFi up); in the two-worker device
+  runs 27-37 KB of message buffers (~220-byte "external byte array"
+  allocations, the tag of message buffers) appeared and stayed just before
+  the trusted controller ran out of memory, most likely its replies queued
+  at a worker that kept a message it could not handle while it kept
+  calling. Test: tests/sandbox/reply-to-full-sandbox-test.toit.
+
+Still not covered: a sandbox's resources (bounded by the quotas above and
+the resource-group limit).
 
 An allocation that still fails after the collections prints a heap report
 (`report_allocation_failure` in `src/out_of_memory.cc`; on a device
@@ -275,6 +317,38 @@ system code fails the request after one more attempt 100 ms later
 | open an image writer | `flash.reserve-hole`, `image.writer-create` | `OUT_OF_MEMORY` | the registry's hole is adjusted only after the reservation exists; the reservation is closed if the writer can't be created |
 | commit an image | `image.writer-commit` (tried 4 times, as for the verifier's `OUT_OF_MEMORY`), then `flash.get-header-page` | `OUT_OF_MEMORY` | a committed allocation whose header page can't be read back has its header page erased (`FlashAllocation.committed`): no valid allocation unknown to the registry is left in flash |
 | storage regions and flash buckets | `flash.reserve-hole`, `flash.allocate`, `flash.get-header-page`, `flash.get-all-pages`, `flash.grant-access`, `flash.partition-find` | the call throws (`OUT_OF_MEMORY`, `MALLOC_FAILED` or `ALLOCATION_FAILED`) | as above; a bucket's cached entries change only after the new allocation is written (before, a failed set left the new value in the cache) |
+| WiFi connect, establish and scan (the network service) | `wifi.init`, `connect`, `establish`, `setup-ip`, `set-hostname`, `get-ip`, `init-scan`, `start-scan`, `read-scan`, `ap-info` (the driver's `ESP_ERR_NO_MEM` included) | `OUT_OF_MEMORY` (connect, establish) or `MALLOC_FAILED`/`ALLOCATION_FAILED` (scan): the connect fails, the device keeps running | a registered resource is unregistered, the driver and the netif are deinitialized by the failing primitive; `NetworkState.up` disconnects a module whose connect failed; a read scan whose records were taken has lost them |
+
+The WiFi driver needs about 65 KB to come up (63 KB free with WiFi up on a
+classic ESP32, 128 KB before). A fixed floor can't cover that transient:
+when sandboxes have grown before WiFi connects, the driver's allocations
+failed and the system process restarted the device at every boot's first
+WiFi connect (device runs with three workers, or one worker and a
+container allocating until refused: 6 and 12 restarts).
+
+Sandboxed containers lose first: for requests of trusted code and the
+system's own operations (the WiFi connect and establish, the start of a
+trusted container, opening an image writer; never the start of a sandbox),
+`with-out-of-memory-retry_ --relieve` stops the running sandboxed
+containers one at a time after the retry failed, the one reserving the
+most memory first (`ContainerManager.evict-sandbox_`; a critical
+container never), each followed by another attempt, and fails the request
+only when none is left (`[out of memory in system process: stopping
+sandboxed container G (N bytes)]`). The clients of a stopped sandbox see
+the exit code 243 (`containers.EXIT-EVICTED`). A trusted controller that
+restarts it is refused while the memory is short (the start floor above).
+Asking the sandboxes to give memory back before stopping one needs no
+request: each failed allocation was already tried again after a
+collection of every process (which returns their free old-space pages).
+Not done: restarting the stopped sandboxes when the operation is over
+(left to their trusted owner, which the start floor and the restart delay
+pace), stopping by an explicit priority (there is none; the largest goes
+first), and relief for the system process's own Toit allocations (its
+objects, the RPC broker, DNS lookups in the system process), which still
+restart the device. Host test: tests/sandbox/system-oom-relief-test.toit
+(with the container start failing twice, a running sandbox is stopped and
+the trusted start succeeds; before, it failed). The WiFi part is compiled
+for the ESP32 only.
 
 Every other allocation failure of the system process (its own objects, the
 RPC broker's messages, the services' bookkeeping) still restarts the
@@ -284,11 +358,38 @@ test: tests/sandbox/system-oom-request-test.toit, with
 allocation attempts at a site of the system process; before, the VM
 aborted.
 
+Silence at the limit: two device runs at the limit ended without output
+and without a dead-lock reboot. The only hang detector on the classic
+ESP32 is the dead-lock check of the scheduler's tick (a process running
+for 10 s without progress), which runs on the main task under the
+scheduler lock; no watchdog is armed (`OS::feed_watchdog` does nothing
+there, the task watchdog is not initialized, the interrupt watchdog is
+off). So a silence is either a live device whose printing containers ended
+(the trusted controller died of `OUT_OF_MEMORY`, and the memory it freed
+ended the sandboxes' failures and their reports) or a hang that keeps the
+tick from running (the scheduler lock held by a blocked thread, or the
+main task's core starved by the higher-priority WiFi, lwIP or event-loop
+tasks); a primitive of the system process that blocks forever (an ESP-IDF
+WiFi call waiting for a WiFi task that failed to allocate, in
+`wifi-close_` -> `WifiResourceGroup::tear_down` -> `esp_wifi_stop`)
+would be caught by the tick, unless the tick itself is blocked.
+`CONFIG_TOIT_HEARTBEAT_S=N` (default 0) prints a heartbeat line every N
+seconds from the tick and every process end, so a device run can tell
+these apart.
+
+The heap report of an allocation that failed in a primitive names the
+primitive (`out of memory in primitive M:I`, module and index of
+`src/primitive.h`); format 2 printed `0:0` for every primitive before
+(`v2_primitive_failed` didn't pass them on). On the host the one-line
+report prints the marker too.
+
 The per-sender mailbox quotas protect every receiver, including the
 system process and trusted providers, from being flooded by a sandbox. An
 untrusted sender gets `QUOTA_EXCEEDED`; for a trusted sender a message to a
 full sandboxed mailbox is dropped (`process_send` returns false), so a
-sandbox can't make the system process throw. The per-sender quotas are
+sandbox can't make the system process throw (an RPC reply is replaced by an
+error reply, see below). The sandbox heap floor bounds these messages
+further (see "Quotas"). The per-sender quotas are
 enforced per receiver on the messages of all sandboxed senders together
 (see "Threats tested" below).
 
@@ -303,7 +404,7 @@ process. What a client whose reply can't be sent observes:
 | Provider | Why the reply can't be sent | What the provider does | What the client observes |
 |---|---|---|---|
 | any | it can't be serialized, or it exceeds the provider's `max_message_bytes` (trusted containers can have that quota too) | sends a short exception reply with the error | the call fails (`QUOTA_EXCEEDED`, `SERIALIZATION_FAILED`, ...) |
-| trusted | the client is a sandbox and its mailbox is full | the VM drops the reply (unchanged) | no reply: the call waits until the client's own timeout cancels it |
+| trusted | the client is a sandbox and its mailbox refuses the reply (full, or the sandbox heap floor) | nothing: the send returns false, the provider is never blocked; the VM queues an error reply `[id, true, "QUOTA_EXCEEDED", null]` in its place (`Process::queue_reply_notice_locked`, the id read from the refused reply); these may exceed the quotas by 8 and the floor by 1 KB (all sandboxes together); beyond that the reply is dropped as before | the call fails with `QUOTA_EXCEEDED` once the client processes its messages (before: no reply, the call waited until its own timeout); only beyond the allowance it still waits |
 | sandboxed (granted to provide services) | the mailbox share of sandboxed senders at the client is full (the provider's own messages, or another sandbox's) | retries with an exponential backoff (1 ms to 100 ms) for 5 s, then sends the exception reply, then drops it | the real reply, once the client processes its messages; after 5 s the call fails with `QUOTA_EXCEEDED`, or, if the share is still full, waits until its own timeout |
 | sandboxed | the reply exceeds the provider's quotas | the same: a sandbox can't tell a reply that is too large from one to a full mailbox (both `QUOTA_EXCEEDED`) | the call fails with `QUOTA_EXCEEDED` after 5 s |
 
@@ -361,8 +462,11 @@ it restarts the device when it is out of memory (except in the primitives
 of the requests it serves for others, whose failure fails the request: see
 "When the system process itself can't allocate" above). Exempting replies from the
 quotas was rejected for the reasons below; a reply that a trusted provider
-can't deliver to a sandbox's full mailbox is still dropped (the sandbox
-doesn't process its messages).
+can't deliver to a sandbox's full mailbox is replaced by a small error
+reply within a fixed allowance (the table above), so the sandbox's call
+fails instead of waiting, and the trusted side's replies can't pile up
+behind a sandbox that doesn't process its messages (the quotas and the
+floor bound them; the provider's send never blocks).
 
 What is left: a process can still run out of memory so thoroughly that none
 of its tasks can make a call (a task's stack can't grow, and the memory is
