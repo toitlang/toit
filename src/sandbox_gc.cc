@@ -481,7 +481,7 @@ void GcStats::record_copying(uword from_pages, uword to_pages, uword copied, uwo
 
 #ifndef TOIT_FREERTOS
 // With TOIT_GC_DUMP=DIR, every copying collection writes the heap before it
-// (DIR/gc-PID-N-before.bin) and after it (-after.bin), up to
+// (DIR/gc-OSPID-PID-N-before.bin) and after it (-after.bin), up to
 // TOIT_GC_DUMP_MAX (default 50) collections per process: the pages, the
 // root values (ObjectHeap::iterate_roots) and what is needed to read the
 // objects (word size, page bytes, the stack array word, the null object's
@@ -521,6 +521,14 @@ static void write_u64(FILE* file, uint64 v) {
   fwrite(&v, sizeof(v), 1, file);
 }
 
+static int os_pid() {
+#if defined(TOIT_LINUX)
+  return static_cast<int>(getpid());
+#else
+  return 0;
+#endif
+}
+
 static int gc_dump_max() {
   const char* max = getenv("TOIT_GC_DUMP_MAX");
   return max != null ? atoi(max) : 50;
@@ -531,8 +539,8 @@ void TwoSpaceHeap::dump_copying_heap(const char* phase) {
   if (dir == null || copying_dump_count_ >= gc_dump_max()) return;
   Process* owner = process();
   char path[512];
-  snprintf(path, sizeof(path), "%s/gc-%d-%d-%s.bin", dir, owner != null ? owner->id() : -1,
-           copying_dump_count_, phase);
+  snprintf(path, sizeof(path), "%s/gc-%d-%d-%d-%s.bin", dir, os_pid(),
+           owner != null ? owner->id() : -1, copying_dump_count_, phase);
   FILE* file = fopen(path, "wb");
   if (file == null) return;
   semi_space_.flush();
