@@ -16,10 +16,13 @@ and on every later run, and `src/process.rs` composes the two over any
 number of runs (`theorem_process`, which also gives every state a run
 starts in the conclusion of the spec's soundness theorem). The run loop
 (`step::run_loop`, verified) never fails a view precondition; each step
-reports a stuck result only for the resource limit (`step_post`), but its
-exported contract `run_post` constrains only the preempted and yielded
-results (the fatal path for a wrapping program-heap range and the limit
-exits satisfy it trivially). The precondition of `run_loop` is not checked
+reports a stuck result only for the resource limit (`step_post`), and
+since 2026-11-26 (branch prims/trust-round) its exported contract
+`run_post` says so for the run: `run_loop`'s ghost third result
+(`RunEnd`) is an exit of a step or the reason of the run's one stuck
+report, which is `stuck::LIMIT` or, before the first instruction,
+`stuck::FATAL` for a program-heap range that wraps around (`stop_ok`).
+The precondition of `run_loop` is not checked
 at its call site (`machine::run`, plain Rust): that the runtime machine
 satisfies `loaded` and `resumed` is the trusted glue of TRUSTED.md
 section 6. It rests on the contracts of TRUSTED.md section 6:
@@ -198,7 +201,9 @@ Still assumed about the collector (GC-class code, trusted), for stage 1+:
 
 ### Obligations from Phase 3 (verified/spec/SOUNDNESS.md)
 
-- S1 primitives: every allowed primitive satisfies `prim_heap_ok` and has
+- S1 primitives: every allowed primitive satisfies `prim_heap_ok` (which
+  since 2026-11-26 also keeps every read-only object and `ro` flag:
+  proved for the Rust ports, assumed of the C++ primitives) and has
   the arity of verified/spec/src/v2/prim_arity.rs. 106 of the 150 allowed
   primitives (141 core, 2 bitmap, 4 timer, 3 events) are ported to Rust, proven against `prim_spec` (`prims::call`,
   TRUSTED.md section 8) and run by the verified PRIMITIVE handler for
@@ -244,7 +249,11 @@ Still assumed about the collector (GC-class code, trusted), for stage 1+:
 
 ### Ports that never fall back (branch core/ports-never-fall-back)
 
-Proved: for the 35 (index, arity) pairs of `prims::never_falls_back`
+Proved: for the 45 (index, arity) pairs of `prims::never_falls_back` (35
+before branch prims/trust-round added list_add, the four byte-array
+accessors byte_array_is_raw_bytes, byte_array_length, byte_array_at,
+byte_array_at_put, and string_rune_count, blob_equals, blob_index_of,
+compare_simple_json_string, size_of_json_number)
 (prims/mod.rs, the one list; verified/CONTRACTS.toml `[unreachable]`
 repeats it and contract_check.toit checks the two agree and that each
 arity is `index::TABLE`'s) every port call completes in Rust:
@@ -298,11 +307,14 @@ which would then report the primitive absent). A link map (`nm`) of such
 a build has to confirm that nothing else references them.
 
 Not on the list, though close: `float_to_raw32` never falls back on
-64-bit words only (a raw u32 is a smi there); `string_length`,
-`string_rune_count`, `json_skip_whitespace` and `size_of_json_number`
-fall back only for lengths above MAX_SMI, unreachable but not provable
-without a string length bound in the trusted heap model (`obj_model_ok`
-bounds byte arrays, not strings: a trusted change); `string_at` declines
+64-bit words only (a raw u32 is a smi there); `string_length` and
+`json_skip_whitespace` fall back for lengths above MAX_SMI, unreachable
+but not provable without a string length bound in the trusted heap model
+(`obj_model_ok` bounds byte arrays, not strings: a trusted change), and
+for a neutered byte array (json_skip_whitespace; both C++ bodies are
+VeriFast-proved); `string_rune_count` and `size_of_json_number` now fail
+with OUT_OF_RANGE there instead (branch prims/trust-round: the C++ made
+the count a smi unchecked); `string_at` declines
 invalid UTF-8 (where its C++ reads past the end; returning null there
 would make it total, a behavior change).
 

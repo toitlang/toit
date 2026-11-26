@@ -39,6 +39,29 @@ verify twins-trusted-rules      0 --trusted --no-certificate "$WORK/Ac-twins-t.s
 "$R" --certify --trusted "$WORK/Ac-twins-t.snapshot" -o "$WORK/Ac-twins-trustedcert.snapshot" 2>/dev/null
 verify twins-trustedcert-untrusted 1 --require-certificate "$WORK/Ac-twins-trustedcert.snapshot"
 verify twins-trustedcert-trusted   0 --trusted --require-certificate "$WORK/Ac-twins-trustedcert.snapshot"
+# T2 (2026-11-26): a certificate names the primitive table of the policy it
+# was made for (header version 2, policy id), and a verdict counts only for
+# that policy. repro/prims.toit calls spawn and write_on_stdout, which the
+# trusted policy allows and the untrusted one denies: its untrusted
+# certificate must not be taken under the trusted rules and a trusted
+# certificate not under the untrusted ones, also when the program is run
+# (not only verified). (The in-memory verdict, V2MethodTable::runs_verified,
+# is checked by tests/ctest/v2-verdict-policy-test.cc.)
+compile_u "$HERE/repro/prims.toit" "$WORK/Ac-prims-u.snapshot"
+"$R" --certify --trusted "$WORK/Ac-prims-u.snapshot" -o "$WORK/Ac-prims-trustedcert.snapshot" 2>/dev/null
+verify prims-untrustedcert-untrusted 0 --require-certificate "$WORK/Ac-prims-u.snapshot"
+verify prims-untrustedcert-trusted   1 --trusted --require-certificate "$WORK/Ac-prims-u.snapshot"
+verify prims-trustedcert-trusted     0 --trusted --require-certificate "$WORK/Ac-prims-trustedcert.snapshot"
+verify prims-trustedcert-untrusted   1 --require-certificate "$WORK/Ac-prims-trustedcert.snapshot"
+# Refused for the policy, up front (the certificate's header), not by chance.
+for name in prims-untrustedcert-trusted prims-trustedcert-untrusted; do
+  grep -q "certificate made for another primitive policy" "$WORK/$name.err" \
+    || { echo "[$name] MISMATCH: not refused for its policy" | tee -a "$RES"; status=1; }
+done
+"$R" --untrusted "$WORK/Ac-prims-trustedcert.snapshot" >/dev/null 2>"$WORK/prims-trustedcert-run.err"; got=$?
+tag="OK"; { [ "$got" = 0 ] || ! grep -q "another primitive policy" "$WORK/prims-trustedcert-run.err"; } && { tag="MISMATCH"; status=1; }
+printf '[%s] exit=%s want=%s %s  %s\n' prims-trustedcert-run-untrusted "$got" 1 "$tag" \
+  "$(grep -oiE 'shipped certificate[^\"]*' "$WORK/prims-trustedcert-run.err" | head -1)" | tee -a "$RES"
 # Corrupt the certificate body (4 bytes past the TCRT magic).
 off=$(grep -abo TCRT "$WORK/Ac-edges-u.snapshot" | head -1 | cut -d: -f1)
 if [ -n "$off" ]; then

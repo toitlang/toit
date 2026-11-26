@@ -74,9 +74,15 @@ pub enum BlobArg {
     /// Not a blob: fail with this root.
     Fail(usize),
     /// A case C++ handles: an immutable copy-on-write receiver of a mutable
-    /// blob, or a byte array the model treats as opaque (a mapped file or a
-    /// resource proxy, TRUSTED.md V5).
+    /// blob, or (as a mutable blob) a byte array a transferring send
+    /// neutered.
     NotPorted,
+    /// An empty blob outside the model: a byte array the model treats as
+    /// opaque (TRUSTED.md V5) that is raw bytes of length 0 at a null
+    /// address (a transferring send neutered it; the C++ decodes it to an
+    /// empty blob), or an empty slice of one. Only for a mode other than
+    /// MUTABLE.
+    Empty,
 }
 
 /// The ids and class ids the blob decoding needs.
@@ -132,6 +138,26 @@ fn apply_ranges(base: Content, froms: &[i64; 8], tos: &[i64; 8], has: &[bool; 8]
     Some(Blob { c: base, start, len })
 }
 
+/// The slice ranges `has/froms/tos[0..depth]` applied to an empty blob
+/// (`apply_ranges` of a base of length 0): each must be `0..0`.
+fn empty_ranges(froms: &[i64; 8], tos: &[i64; 8], has: &[bool; 8], depth: usize) -> (r: bool)
+    requires depth <= MAX_BYTE_CONTENT_DEPTH,
+{
+    let mut d = depth;
+    while d > 0
+        invariant
+            d <= depth, depth <= MAX_BYTE_CONTENT_DEPTH,
+            froms@.len() == 8, tos@.len() == 8, has@.len() == 8,
+        decreases d,
+    {
+        d -= 1;
+        let i = d & 7;
+        assert(i == d) by (bit_vector) requires i == d & 7, d < 8;
+        if has[i] && !(froms[i] == 0 && tos[i] == 0) { return false; }
+    }
+    true
+}
+
 /// `Object::byte_content` (`mode` STRINGS_ONLY or STRINGS_OR_BYTE_ARRAYS)
 /// and `Object::mutable_byte_content` (`mode` MUTABLE).
 pub fn blob_arg(h: &Heap, p: &Program, k: &BlobClasses, w: usize, Ghost(v): Ghost<Value>, mode: u8) -> (r: BlobArg)
@@ -142,6 +168,8 @@ pub fn blob_arg(h: &Heap, p: &Program, k: &BlobClasses, w: usize, Ghost(v): Ghos
         r is Ok ==> blob_ok(h, &r->Ok_0) && (mode == MUTABLE ==> r->Ok_0.c.writable()),
         r is Fail ==> r->Fail_0 == ROOT_WRONG_OBJECT_TYPE || r->Fail_0 == ROOT_PERMISSION_DENIED,
         mode == STRINGS_ONLY ==> !(r is NotPorted),
+        mode != MUTABLE ==> !(r is NotPorted),
+        r is Empty ==> mode == STRINGS_OR_BYTE_ARRAYS,
         (mode != MUTABLE && v is Obj && h.objs()[v->Obj_0 as int].body is Str) ==> r is Ok
             && r->Ok_0.c.id() == v->Obj_0 as int && r->Ok_0.start == 0
             && r->Ok_0.len == content(h.objs()[v->Obj_0 as int]).len(),
@@ -202,9 +230,21 @@ pub fn blob_arg(h: &Heap, p: &Program, k: &BlobClasses, w: usize, Ghost(v): Ghos
         }
         if tag == BYTE_ARRAY_TAG {
             if mode == STRINGS_ONLY { return BlobArg::Fail(ROOT_WRONG_OBJECT_TYPE); }
-            // Only the model's byte arrays (V5); C++ handles the opaque ones
-            // (mapped files, resource proxies).
-            if h.bytes_len(cur, Ghost(id)).is_none() { return BlobArg::NotPorted; }
+            // Only the model's byte arrays (V5). Of the opaque ones, a byte
+            // array that is not raw bytes (a resource proxy, a mapped file) is
+            // not a blob for the C++ either (`byte_content` and
+            // `mutable_byte_content` refuse an external tag other than
+            // RawByteTag). A raw one with a null address (a byte array a
+            // transferring send neutered: length 0) is an empty blob for the
+            // C++, its slices empty ones; where the C++ would read bytes at the
+            // null address (a non-zero length, which nothing makes) the port
+            // fails. As a mutable blob C++ handles it (an empty destination).
+            if h.bytes_len(cur, Ghost(id)).is_none() {
+                let (etag, elen) = h.opaque_tag_len(cur, Ghost(id));
+                if etag != RAW_BYTE_TAG || elen != 0 { return BlobArg::Fail(ROOT_WRONG_OBJECT_TYPE); }
+                if mode == MUTABLE { return BlobArg::NotPorted; }
+                return if empty_ranges(&froms, &tos, &has, depth) { BlobArg::Empty } else { BlobArg::Fail(ROOT_WRONG_OBJECT_TYPE) };
+            }
             let base = h.byte_array_content(cur, Ghost(id), mode == MUTABLE);
             return match apply_ranges(base, &froms, &tos, &has, depth) {
                 Some(b) => BlobArg::Ok(b),
@@ -429,9 +469,10 @@ pub enum ByteArg {
     Bytes(Ghost<int>),
     /// Not a byte array: the primitive fails with WRONG_OBJECT_TYPE.
     Not,
-    /// A byte array the model treats as opaque (TRUSTED.md V5: a mapped file
-    /// or a resource proxy): C++ handles it (`NotPorted`).
-    Opaque,
+    /// A byte array the model treats as opaque (TRUSTED.md V5: a resource
+    /// proxy, a byte array a transferring send neutered, a mapped file): its
+    /// object id (`Heap::opaque_tag_len` reads its tag and length).
+    Opaque(Ghost<int>),
 }
 
 /// A `ByteArray` argument.
@@ -444,6 +485,14 @@ pub fn byte_array_arg(h: &Heap, w: usize, Ghost(v): Ghost<Value>) -> (r: ByteArg
         r is Bytes == (v is Obj && h.objs()[v->Obj_0 as int].body is Bytes),
         r is Bytes ==> r->Bytes_0@ == v->Obj_0 as int && 0 <= r->Bytes_0@ < h.objs().len()
             && w == h.addrs()[r->Bytes_0@] && h.addrs().len() == h.objs().len(),
+        r is Opaque ==> ({
+            let id = r->Opaque_0@;
+            &&& v is Obj && id == v->Obj_0 as int && 0 <= id < h.objs().len()
+            &&& w == h.addrs()[id] && h.addrs().len() == h.objs().len()
+            &&& (h.objs()[id].class_id as int) < h.class_bits().len()
+            &&& (h.class_bits()[h.objs()[id].class_id as int] & 0xf) as usize == BYTE_ARRAY_TAG
+            &&& !(h.objs()[id].body is Bytes)
+        }),
 {
     proof { lemma_word(h, w, v); }
     if w & 1 == 0 { return ByteArg::Not; }
@@ -452,7 +501,7 @@ pub fn byte_array_arg(h: &Heap, w: usize, Ghost(v): Ghost<Value>) -> (r: ByteArg
         assert(obj_model_ok(h.objs()[id], h.class_bits(), h.addrs()));
     }
     if h.class_tag(w, Ghost(id)) != BYTE_ARRAY_TAG { return ByteArg::Not; }
-    if h.bytes_len(w, Ghost(id)).is_none() { return ByteArg::Opaque; }
+    if h.bytes_len(w, Ghost(id)).is_none() { return ByteArg::Opaque(Ghost(id)); }
     ByteArg::Bytes(Ghost(id))
 }
 
@@ -464,16 +513,32 @@ pub fn not_ported() -> (r: (PrimOutcome, Ghost<Value>))
     (PrimOutcome::NotPorted, Ghost(Value::Smi(0)))
 }
 
-/// `byte_array_is_raw_bytes`, `byte_array_length`.
+/// `byte_array_is_raw_bytes`, `byte_array_length`. Never falls back to
+/// C++: an opaque byte array (external, not raw bytes at a non-null
+/// address) is read as the C++ reads it, through its tag and length words.
 pub fn byte_array_info(length: bool, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<Value>))
     requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 1,
     ensures prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+        completes(r.0),
 {
     let w = a.w[0];
     let id = match byte_array_arg(heap, w, Ghost(a.vs@[0])) {
         ByteArg::Bytes(id) => id,
         ByteArg::Not => return fail(c.p, heap, ROOT_WRONG_OBJECT_TYPE),
-        ByteArg::Opaque => return not_ported(),
+        ByteArg::Opaque(oid) => {
+            let (tag, len) = heap.opaque_tag_len(w, oid);
+            // `!has_external_address() || external_tag() == RawByteTag`.
+            if !length { return ok_bool(c.p, heap, tag == RAW_BYTE_TAG); }
+            // The C++ reads the length of a raw (here: neutered by a
+            // transferring send, length 0) or mapped-file byte array; a
+            // resource proxy fails.
+            if tag != RAW_BYTE_TAG && tag != MAPPED_FILE_TAG { return fail(c.p, heap, ROOT_WRONG_OBJECT_TYPE); }
+            // No byte array is longer than MAX_SMI (the C++ makes its length
+            // a smi unchecked).
+            if len > MAX_SMI as usize { return fail(c.p, heap, ROOT_OUT_OF_RANGE); }
+            let (rw, rv) = smi_res(heap, len as i64);
+            return ok(c.p, heap, rw, rv);
+        },
     };
     // A byte array of the model has raw bytes (internal, or external with
     // the raw-bytes tag: V5).
@@ -482,9 +547,36 @@ pub fn byte_array_info(length: bool, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: 
     }
     let ct = heap.byte_array_content(w, id, false);
     let n = ct.len();
-    if n > MAX_SMI as usize { return not_ported(); }
+    // Not reached: the model's byte arrays are shorter than MAX_BLOB_LENGTH
+    // (MAX_SMI + 1).
+    if n > MAX_SMI as usize { return fail(c.p, heap, ROOT_OUT_OF_RANGE); }
     let (rw, rv) = smi_res(heap, n as i64);
     ok(c.p, heap, rw, rv)
+}
+
+/// `byte_array_at` and `byte_array_at_put` of an opaque byte array (`id`)
+/// after the arguments were decoded: no byte to read or write. The C++
+/// takes the bytes of a raw byte array (here: neutered by a transferring
+/// send, length 0: every index is out of bounds) and reads those of a
+/// mapped file; it fails for a resource proxy. Where it would touch bytes
+/// the model does not have (a raw one with a null address and a non-zero
+/// length, which nothing makes; a mapped file, which nothing makes and an
+/// image may not contain: from_vm.rs) the port fails with
+/// WRONG_OBJECT_TYPE.
+fn opaque_at(heap: &Heap, c: &Ctx, w: usize, Ghost(id): Ghost<int>, i: i64, put: bool) -> (r: (PrimOutcome, Ghost<Value>))
+    requires
+        heap_inv(c.p, heap),
+        0 <= id < heap.objs().len(),
+        w == heap.addrs()[id] && heap.addrs().len() == heap.objs().len(),
+        (heap.objs()[id].class_id as int) < heap.class_bits().len(),
+        (heap.class_bits()[heap.objs()[id].class_id as int] & 0xf) as usize == BYTE_ARRAY_TAG,
+        !(heap.objs()[id].body is Bytes),
+    ensures r.0 is Failure, prim_post(c.p, heap, heap, r.0, r.1@),
+{
+    let (tag, len) = heap.opaque_tag_len(w, Ghost(id));
+    if tag != RAW_BYTE_TAG && (put || tag != MAPPED_FILE_TAG) { return fail(c.p, heap, ROOT_WRONG_OBJECT_TYPE); }
+    if i < 0 || i as u64 >= len as u64 { return fail(c.p, heap, ROOT_OUT_OF_BOUNDS); }
+    fail(c.p, heap, ROOT_WRONG_OBJECT_TYPE)
 }
 
 /// `byte_array_at`.
@@ -492,6 +584,7 @@ pub fn byte_array_at(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Gh
     requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 2,
     ensures
         prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+        completes(r.0),
         !(r.0 is NotPorted) ==> toit_spec::v2::prim_core::byte_array_at_contract(c.p.ap@, a.vs@, old(heap).objs(), final(heap).objs(),
             ret_of(c.p, r.0, r.1@)),
 {
@@ -499,7 +592,12 @@ pub fn byte_array_at(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Gh
     let id = match byte_array_arg(heap, w, Ghost(a.vs@[0])) {
         ByteArg::Bytes(id) => id,
         ByteArg::Not => return fail(c.p, heap, ROOT_WRONG_OBJECT_TYPE),
-        ByteArg::Opaque => return not_ported(),
+        ByteArg::Opaque(oid) => {
+            return match int32_arg(heap, a.w[1], Ghost(a.vs@[1])) {
+                Ok(i) => opaque_at(heap, c, w, oid, i, false),
+                Err(k) => fail(c.p, heap, k),
+            };
+        },
     };
     let i = match int32_arg(heap, a.w[1], Ghost(a.vs@[1])) {
         Ok(i) => i,
@@ -517,6 +615,7 @@ pub fn byte_array_at_put(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome
     requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 3,
     ensures
         prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+        completes(r.0),
         !(r.0 is NotPorted) ==> toit_spec::v2::prim_core::byte_array_at_put_contract(c.p.ap@, a.vs@, old(heap).objs(), final(heap).objs(),
             ret_of(c.p, r.0, r.1@)),
 {
@@ -524,7 +623,16 @@ pub fn byte_array_at_put(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome
     let id = match byte_array_arg(heap, w, Ghost(a.vs@[0])) {
         ByteArg::Bytes(id) => id,
         ByteArg::Not => return fail(c.p, heap, ROOT_WRONG_OBJECT_TYPE),
-        ByteArg::Opaque => return not_ported(),
+        ByteArg::Opaque(oid) => {
+            // The arguments in the C++ order, then the program-heap check.
+            let i = match int32_arg(heap, a.w[1], Ghost(a.vs@[1])) {
+                Ok(i) => i,
+                Err(k) => return fail(c.p, heap, k),
+            };
+            if ints::int_arg(heap, a.w[2], Ghost(a.vs@[2])).is_none() { return fail(c.p, heap, ROOT_WRONG_OBJECT_TYPE); }
+            if is_ro(c.p, w) { return fail(c.p, heap, ROOT_PERMISSION_DENIED); }
+            return opaque_at(heap, c, w, oid, i, true);
+        },
     };
     let i = match int32_arg(heap, a.w[1], Ghost(a.vs@[1])) {
         Ok(i) => i,
@@ -607,7 +715,7 @@ pub fn byte_array_replace(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcom
     let dst = match blob_arg(heap, p, &k, a.w[0], Ghost(a.vs@[0]), MUTABLE) {
         BlobArg::Ok(b) => b,
         BlobArg::Fail(e) => return fail(p, heap, e),
-        BlobArg::NotPorted => return (PrimOutcome::NotPorted, Ghost(Value::Smi(0))),
+        BlobArg::NotPorted | BlobArg::Empty => return (PrimOutcome::NotPorted, Ghost(Value::Smi(0))),
     };
     let index = match int32_arg(heap, a.w[1], Ghost(a.vs@[1])) {
         Ok(i) => i,
@@ -616,7 +724,7 @@ pub fn byte_array_replace(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcom
     let src = match blob_arg(heap, p, &k, a.w[2], Ghost(a.vs@[2]), STRINGS_OR_BYTE_ARRAYS) {
         BlobArg::Ok(b) => b,
         BlobArg::Fail(_) => return fail(p, heap, ROOT_WRONG_BYTES_TYPE),
-        BlobArg::NotPorted => return not_ported(),
+        BlobArg::NotPorted | BlobArg::Empty => return not_ported(),
     };
     let from = match int32_arg(heap, a.w[3], Ghost(a.vs@[3])) {
         Ok(i) => i,
@@ -683,7 +791,28 @@ pub fn blob_or_fail(heap: &Heap, c: &Ctx, k: &BlobClasses, w: usize, Ghost(v): G
     match blob_arg(heap, c.p, k, w, Ghost(v), mode) {
         BlobArg::Ok(b) => Ok(b),
         BlobArg::Fail(_) => Err(fail(c.p, heap, err)),
-        BlobArg::NotPorted => Err(not_ported()),
+        BlobArg::NotPorted | BlobArg::Empty => Err(not_ported()),
+    }
+}
+
+/// A STRINGS_OR_BYTE_ARRAYS blob argument that may be the empty blob
+/// outside the model (`BlobArg::Empty`: a byte array a transferring send
+/// neutered, or an empty slice of one): `Some` blob of the model, `None`
+/// for the empty one, or the failure with root `err`. Never C++.
+pub fn blob_or_empty(heap: &Heap, c: &Ctx, k: &BlobClasses, w: usize, Ghost(v): Ghost<Value>, err: usize)
+    -> (r: Result<Option<Blob>, (PrimOutcome, Ghost<Value>)>)
+    requires
+        heap_inv(c.p, heap), err < ROOT_COUNT,
+        w == enc(heap.addrs(), v), good(heap.objs(), v), encodable(heap.addrs(), v),
+    ensures
+        r is Ok && r->Ok_0 is Some ==> blob_ok(heap, &r->Ok_0->Some_0),
+        r is Err ==> prim_post(c.p, heap, heap, r->Err_0.0, r->Err_0.1@) && r->Err_0.0 is Failure,
+{
+    match blob_arg(heap, c.p, k, w, Ghost(v), STRINGS_OR_BYTE_ARRAYS) {
+        BlobArg::Ok(b) => Ok(Some(b)),
+        BlobArg::Empty => Ok(None),
+        // `NotPorted` is only for a mutable blob (`blob_arg`).
+        BlobArg::Fail(_) | BlobArg::NotPorted => Err(fail(c.p, heap, err)),
     }
 }
 
@@ -808,29 +937,38 @@ pub fn blob_hash_code(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, G
 pub fn blob_equals(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<Value>))
     requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 2,
     ensures prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+        completes(r.0),
 {
     if a.w[0] == a.w[1] {
         // `String::equals` of the same string; the same object is equal to
         // itself as a blob too, if it is one.
         let k = blob_classes(c.p, heap);
-        return match blob_arg(heap, c.p, &k, a.w[0], Ghost(a.vs@[0]), STRINGS_OR_BYTE_ARRAYS) {
-            BlobArg::Ok(_) => ok_bool(c.p, heap, true),
-            BlobArg::Fail(_) => fail(c.p, heap, ROOT_WRONG_OBJECT_TYPE),
-            BlobArg::NotPorted => not_ported(),
+        return match blob_or_empty(heap, c, &k, a.w[0], Ghost(a.vs@[0]), ROOT_WRONG_OBJECT_TYPE) {
+            Ok(_) => ok_bool(c.p, heap, true),
+            Err(r) => r,
         };
     }
     let k = blob_classes(c.p, heap);
-    let x = match blob_or_fail(heap, c, &k, a.w[0], Ghost(a.vs@[0]), STRINGS_OR_BYTE_ARRAYS, ROOT_WRONG_OBJECT_TYPE) {
+    let x = match blob_or_empty(heap, c, &k, a.w[0], Ghost(a.vs@[0]), ROOT_WRONG_OBJECT_TYPE) {
         Ok(b) => b,
         Err(r) => return r,
     };
-    let y = match blob_or_fail(heap, c, &k, a.w[1], Ghost(a.vs@[1]), STRINGS_OR_BYTE_ARRAYS, ROOT_WRONG_OBJECT_TYPE) {
+    let y = match blob_or_empty(heap, c, &k, a.w[1], Ghost(a.vs@[1]), ROOT_WRONG_OBJECT_TYPE) {
         Ok(b) => b,
         Err(r) => return r,
     };
-    if x.len != y.len { return ok_bool(c.p, heap, false); }
-    let eq = blob_eq(heap, &x, 0, &y, 0, x.len);
-    ok_bool(c.p, heap, eq)
+    // An empty blob outside the model (a neutered byte array) equals
+    // exactly the empty blobs.
+    match (x, y) {
+        (Some(x), Some(y)) => {
+            if x.len != y.len { return ok_bool(c.p, heap, false); }
+            let eq = blob_eq(heap, &x, 0, &y, 0, x.len);
+            ok_bool(c.p, heap, eq)
+        },
+        (Some(x), None) => ok_bool(c.p, heap, x.len == 0),
+        (None, Some(y)) => ok_bool(c.p, heap, y.len == 0),
+        (None, None) => ok_bool(c.p, heap, true),
+    }
 }
 
 /// `string_compare`.
@@ -862,9 +1000,10 @@ pub fn string_compare(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, G
 pub fn blob_index_of(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<Value>))
     requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 4,
     ensures prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+        completes(r.0),
 {
     let k = blob_classes(c.p, heap);
-    let b = match blob_or_fail(heap, c, &k, a.w[0], Ghost(a.vs@[0]), STRINGS_OR_BYTE_ARRAYS, ROOT_WRONG_BYTES_TYPE) {
+    let b = match blob_or_empty(heap, c, &k, a.w[0], Ghost(a.vs@[0]), ROOT_WRONG_BYTES_TYPE) {
         Ok(b) => b,
         Err(r) => return r,
     };
@@ -879,6 +1018,15 @@ pub fn blob_index_of(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Gh
     let to = match word_arg(heap, a.w[3], Ghost(a.vs@[3])) {
         Some(n) => n,
         None => return fail(c.p, heap, ROOT_WRONG_OBJECT_TYPE),
+    };
+    let b = match b {
+        Some(b) => b,
+        // An empty blob (a neutered byte array): only `0..0`, without a match.
+        None => {
+            if !(from == 0 && to == 0) { return fail(c.p, heap, ROOT_OUT_OF_BOUNDS); }
+            let (rw, rv) = smi_res(heap, -1);
+            return ok(c.p, heap, rw, rv);
+        },
     };
     if !(0 <= from && from <= to && to as usize <= b.len) { return fail(c.p, heap, ROOT_OUT_OF_BOUNDS); }
     let needle = (x & 0xff) as u8;
@@ -902,11 +1050,17 @@ pub fn blob_index_of(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Gh
 pub fn string_rune_count(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<Value>))
     requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 1,
     ensures prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+        completes(r.0),
 {
     let k = blob_classes(c.p, heap);
-    let b = match blob_or_fail(heap, c, &k, a.w[0], Ghost(a.vs@[0]), STRINGS_OR_BYTE_ARRAYS, ROOT_WRONG_BYTES_TYPE) {
+    let b = match blob_or_empty(heap, c, &k, a.w[0], Ghost(a.vs@[0]), ROOT_WRONG_BYTES_TYPE) {
         Ok(b) => b,
         Err(r) => return r,
+    };
+    let b = match b {
+        Some(b) => b,
+        // A neutered byte array: no runes.
+        None => { let (rw, rv) = smi_res(heap, 0); return ok(c.p, heap, rw, rv); },
     };
     let mut n: usize = 0;
     let mut i: usize = 0;
@@ -917,7 +1071,8 @@ pub fn string_rune_count(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome
         if blob_at(heap, &b, i) & 0xc0 != 0x80 { n += 1; }
         i += 1;
     }
-    if n > MAX_SMI as usize { return (PrimOutcome::NotPorted, Ghost(Value::Smi(0))); }
+    // No blob is that long (the C++ makes the count a smi unchecked).
+    if n > MAX_SMI as usize { return fail(c.p, heap, ROOT_OUT_OF_RANGE); }
     let (rw, rv) = smi_res(heap, n as i64);
     ok(c.p, heap, rw, rv)
 }
@@ -1139,7 +1294,7 @@ pub fn string_write_to_byte_array(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (Pr
     let dst = match blob_arg(heap, p, &k, a.w[1], Ghost(a.vs@[1]), MUTABLE) {
         BlobArg::Ok(b) => b,
         BlobArg::Fail(e) => return fail(p, heap, e),
-        BlobArg::NotPorted => return (PrimOutcome::NotPorted, Ghost(Value::Smi(0))),
+        BlobArg::NotPorted | BlobArg::Empty => return (PrimOutcome::NotPorted, Ghost(Value::Smi(0))),
     };
     let from = match word_arg(heap, a.w[2], Ghost(a.vs@[2])) {
         Some(n) => n,
@@ -1240,9 +1395,10 @@ pub fn hash_simple_json_string(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimO
 pub fn compare_simple_json_string(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<Value>))
     requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 3,
     ensures prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+        completes(r.0),
 {
     let k = blob_classes(c.p, heap);
-    let b = match blob_or_fail(heap, c, &k, a.w[0], Ghost(a.vs@[0]), STRINGS_OR_BYTE_ARRAYS, ROOT_WRONG_BYTES_TYPE) {
+    let b = match blob_or_empty(heap, c, &k, a.w[0], Ghost(a.vs@[0]), ROOT_WRONG_BYTES_TYPE) {
         Ok(b) => b,
         Err(r) => return r,
     };
@@ -1255,6 +1411,11 @@ pub fn compare_simple_json_string(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (Pr
         Err(r) => return r,
     };
     if offset < 0 { return fail(c.p, heap, ROOT_INVALID_ARGUMENT); }
+    let b = match b {
+        Some(b) => b,
+        // An empty blob (a neutered byte array): `string.length() >= -offset`.
+        None => return ok_bool(c.p, heap, false),
+    };
     // `string.length() >= bytes.length() - offset` (signed).
     let o = offset as usize;
     if o >= b.len || s.len >= b.len - o { return ok_bool(c.p, heap, false); }
@@ -1277,15 +1438,21 @@ pub fn compare_simple_json_string(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (Pr
 pub fn size_of_json_number(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<Value>))
     requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 2,
     ensures prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+        completes(r.0),
 {
     let k = blob_classes(c.p, heap);
-    let b = match blob_or_fail(heap, c, &k, a.w[0], Ghost(a.vs@[0]), STRINGS_OR_BYTE_ARRAYS, ROOT_WRONG_BYTES_TYPE) {
+    let b = match blob_or_empty(heap, c, &k, a.w[0], Ghost(a.vs@[0]), ROOT_WRONG_BYTES_TYPE) {
         Ok(b) => b,
         Err(r) => return r,
     };
     let offset = match word_arg(heap, a.w[1], Ghost(a.vs@[1])) {
         Some(n) => n,
         None => return fail(c.p, heap, ROOT_WRONG_OBJECT_TYPE),
+    };
+    let b = match b {
+        Some(b) => b,
+        // An empty blob (a neutered byte array): `offset >= -1` always.
+        None => return fail(c.p, heap, ROOT_INVALID_ARGUMENT),
     };
     // `offset >= bytes.length() - 1` (signed).
     if offset < 0 || b.len == 0 || offset as usize >= b.len - 1 { return fail(c.p, heap, ROOT_INVALID_ARGUMENT); }
@@ -1303,7 +1470,8 @@ pub fn size_of_json_number(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutco
         if (0x4020u32 >> bit) & 1 != 0 { is_float = true; }
         i += 1;
     }
-    if i > MAX_SMI as usize { return (PrimOutcome::NotPorted, Ghost(Value::Smi(0))); }
+    // No blob is that long (the C++ makes the length a smi unchecked).
+    if i > MAX_SMI as usize { return fail(c.p, heap, ROOT_OUT_OF_RANGE); }
     let n = i as i64;
     let (rw, rv) = smi_res(heap, if is_float { -n } else { n });
     ok(c.p, heap, rw, rv)
@@ -1403,7 +1571,7 @@ pub fn put_endian(big: bool, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOut
     let dst = match blob_arg(heap, p, &k, a.w[1], Ghost(a.vs@[1]), MUTABLE) {
         BlobArg::Ok(b) => b,
         BlobArg::Fail(e) => return fail(p, heap, e),
-        BlobArg::NotPorted => return (PrimOutcome::NotPorted, Ghost(Value::Smi(0))),
+        BlobArg::NotPorted | BlobArg::Empty => return (PrimOutcome::NotPorted, Ghost(Value::Smi(0))),
     };
     let width = match int32_arg(heap, a.w[2], Ghost(a.vs@[2])) {
         Ok(x) => x,
@@ -1445,7 +1613,7 @@ pub fn put_float(f64: bool, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutc
     let dst = match blob_arg(heap, p, &k, a.w[1], Ghost(a.vs@[1]), MUTABLE) {
         BlobArg::Ok(b) => b,
         BlobArg::Fail(e) => return fail(p, heap, e),
-        BlobArg::NotPorted => return (PrimOutcome::NotPorted, Ghost(Value::Smi(0))),
+        BlobArg::NotPorted | BlobArg::Empty => return (PrimOutcome::NotPorted, Ghost(Value::Smi(0))),
     };
     let offset = match word_arg(heap, a.w[2], Ghost(a.vs@[2])) {
         Some(x) => x,

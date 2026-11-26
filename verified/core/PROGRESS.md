@@ -80,6 +80,86 @@ Proofs (after the merge with wip/collector-proofs 25a01a7de): spec 1096, core 10
 (32-bit: 1096, 1095, 1097) verified, 0 errors; before the merge 1087, 1092, 1094; no new trusted item, no
 theorem statement changed.
 
+## Primitive trust round (branch prims/trust-round, 2026-11-26)
+
+Base 25a01a7de (wip/collector-proofs). Roadmap items 4, 5, 6 of
+docs/sandbox-guarantee.md.
+
+- Item 4, read-only objects: `sound::prim_heap_ok` keeps every read-only
+  object (`h[i].ro ==> h2[i] == h[i]`) and every `ro` flag. The 106 Rust
+  ports are proved against it: the heap-update lemmas of `prims`
+  (`lemma_post_update`, `lemma_post_content`, `array::lemma_post_set_*`)
+  require a mutable object, and `view::content_ok` says a writable
+  content view is of a mutable object (every caller already knew it). For
+  the C++ primitives it is part of the assumed contract
+  (`gc_call_primitive`, TRUSTED.toml's justification names it); the
+  evidence per primitive is docs/sandbox-guarantee.md section 2.4. The
+  VeriFast renderings model program-heap membership (`in_program_heap`;
+  the writers' destinations come from the proved `mutable_byte_content`,
+  `byte_array_at_put` asserts it at the write) but abstract byte contents
+  (`uchars(.., _)`) and own program-heap objects like any other, so no C++
+  proof can state the clause as a postcondition without a model change.
+  Hardening tests: tests/sandbox/cli/program-heap-write-main.toit (every
+  writer aimed at program-heap bytes, a copy-on-write wrapper claiming to
+  be mutable over them, string literals: refused, unchanged; the C++
+  copy-on-write path writes a fresh copy). Spec and core counts unchanged
+  (spec 1090, core 1092/1094, core-split 1094/1096 at 64/32 bits);
+  THEOREMS.txt unchanged; new epoch (spec crate and view.rs).
+- Item 5, how a run stops: `step::run_loop` returns a ghost third result
+  `RunEnd` (`Exit`: an exit of a step; `Stuck(reason)`: the reason of the
+  run's one stuck report, all made by `leave_stuck`), and `run_post` now
+  says that a stuck report is `stuck::LIMIT` or, before the first
+  instruction, `stuck::FATAL` for a program-heap range that wraps
+  (`stop_ok`), with the result `(RESULT_TERMINATED, 1)`. The states part
+  is `run_states`, which `theorem_next_run` and `process::scheduled` use
+  (unchanged in meaning). `machine::run` drops the ghost result. What
+  remains: the wrap check itself (a run stops with FATAL if the program
+  heap's range wraps the address space, which the C++ allocation of an
+  image never gives). No new trusted item; theorem.rs is an epoch input.
+- Item 6, fallbacks: `prims::never_falls_back` 35 -> 40 ports. list_add
+  handles a large-array backing in Rust (`array::large_slot`: the arraylet
+  of element n through at most 8 nested vectors, as the C++
+  `Interpreter::fast_at` but bounded; else INVALID_ARGUMENT, which the
+  Toit code handles by growing the list). The C++ recursed once per large
+  array of a chain of decreasing sizes: a program's own core library can
+  make a chain of 10^6 (final fields are assignable in bytecode), and
+  list_add on it crashed the VM (native stack overflow; reproduced on the
+  host, segmentation fault; regression test
+  tests/sandbox/cli/large-array-chain-main.toit, compiled against a
+  patched copy of the library by run-patched-lib.cmake). The C++
+  `fast_at` keeps the unbounded recursion for format-1 programs and the
+  C++ interpreter (trusted only). byte_array_is_raw_bytes,
+  byte_array_length, byte_array_at and byte_array_at_put read an opaque
+  byte array through its tag and length words (`Heap::opaque_tag_len`, a
+  verified accessor of view.rs) as the C++ does: a neutered array (raw,
+  null address, length 0) and a resource proxy give the C++ results
+  (tests/sandbox/cli/opaque-byte-array-main.toit, identical output with
+  the binary before); where the C++ would read bytes the model does not
+  have (a mapped file, which nothing makes, or a raw array with a null
+  address and a non-zero length) the port fails with WRONG_OBJECT_TYPE.
+  The blob decoding of the ports (`blob::blob_arg`) fails for an opaque
+  byte array that is not raw bytes, as the C++ decoders do, so the blob
+  primitives fall back for opaque arguments only on a neutered array.
+  contract_check: the C++ behind the 106 ports 62 VeriFast-proved, 37
+  unreachable, 7 contract-only (was 62/34/10). Retry rules unchanged
+  (77 proved, 62 textual, 9 tested, 2 reviewed). Core 1092 -> 1098
+  (64-bit).
+- Item 6, second step: `never_falls_back` 40 -> 45. A byte array a
+  transferring send neutered (raw bytes of length 0 at a null address)
+  and the empty slices of one decode to `BlobArg::Empty`, the empty blob
+  the C++ decoders give (non-mutable modes; a raw one with a null address
+  and a non-zero length, which nothing makes, fails); blob_equals,
+  blob_index_of, compare_simple_json_string, size_of_json_number and
+  string_rune_count handle it (`blob_or_empty`) and fail with
+  OUT_OF_RANGE for a count above MAX_SMI (no blob is that long; the C++
+  made it a smi unchecked). Same results as the C++ for the neutered array
+  and a proxy (tests/sandbox/cli/opaque-byte-array-main.toit, output
+  identical with the binary before this branch). contract_check: 62
+  VeriFast-proved, 42 unreachable, 2 contract-only (number_to_integer,
+  smi_multiply: after an allocation that did not fit, the C++ primitive
+  runs; VeriFast floating point and `__builtin_mul_overflow` block their
+  proofs).
+
 ## Memory pressure on the classic ESP32 (branch device/memory-pressure, 2026-11-25)
 
 Base 67e28c2d (wip/collector-proofs). Artifacts:

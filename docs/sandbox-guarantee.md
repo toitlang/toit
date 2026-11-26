@@ -26,7 +26,9 @@ way: a theorem, its hypotheses, and its trusted computing base (TCB).
 
 Every number is computed from the repository at commit `cab636881`
 (2026-11-26) plus the commit that adds this document and
-`verified/core/src/process.rs`. Where a number comes from a document
+`verified/core/src/process.rs`. Branch prims/trust-round (2026-11-26)
+updated the numbers and statements of roadmap items 4, 5 and 6 (sections
+1.2, 1.3, 1.5, 2.4, 2.7, 5, 6, 7). Where a number comes from a document
 rather than from code, the document is named.
 
 Contents:
@@ -173,11 +175,21 @@ then renames the live objects to `0..n` (the live set contains the
 state's roots and is closed under references) and drops the rest;
 nothing else changes. Collections keep `wf` (`lemma_gc_steps_wf`).
 
-**`run_post(p, m0, m1, r)`** (`step.rs`): if the run returns preempted
-or yielded, `m1.inv(p)` and `reaches(ap, m0.g, m1.g)`. The run loop
+**`run_post(p, m0, m1, r, e)`** (`step.rs`): if the run returns
+preempted or yielded, `m1.inv(p)` and `reaches(ap, m0.g, m1.g)`
+(`run_states`); and if it ended with a stuck report (`e` is
+`RunEnd::Stuck(reason)`, the ghost third result of `run_loop`: the
+reason the one `V2_REPORT_STUCK` call of a run passes), the result is
+`(RESULT_TERMINATED, 1)` and `stop_ok(p, reason)`: the reason is the
+resource limit `stuck::LIMIT`, or `stuck::FATAL` for a program heap
+whose address range wraps around (`!ro_ok(p)`, checked before the first
+instruction; the C++ loader never makes one). So a run never stops on a
+stuck state of the spec (since 2026-11-26, branch prims/trust-round;
+before, only `step_post` said so, roadmap item 5). The run loop
 (`step::run_loop`, `requires old(m).inv(&env.p)`, `ensures
-run_post(...)`) is a verified exec function; every other result ends the
-process.
+run_post(&env.p, *old(m), *final(m), (r.0, r.1), r.2@)`) is a verified
+exec function; every other result ends the process (an exit of a step:
+`RunEnd::Exit`). The theorems between runs use `run_states`.
 
 **`theorem_soundness`** (`verified/spec/src/v2/theorem.rs`): if
 `accepts(p, c, trusted)`, `!p.unchecked`, `loaded_ok(p, c, heap0,
@@ -204,8 +216,9 @@ yielded, and `resumed(p, m1, m2)`, then `m2.inv(p)` and
 document): for machines `ms[0..n]` (the start of each run), `es` and
 `rs` (the end and result of each run) with
 * `loaded(p, ms[0], heap0, globals0)`,
-* for every run `i < n - 1`: `ms[i].inv(p) ==> run_post(p, ms[i], es[i], rs[i])`
-  (exactly `run_loop`'s contract), `rs[i]` preempted or yielded, and
+* for every run `i < n - 1`: `ms[i].inv(p) ==> run_states(p, ms[i], es[i], rs[i])`
+  (the states part of `run_loop`'s contract `run_post`), `rs[i]`
+  preempted or yielded, and
   `resumed(p, es[i], ms[i + 1])`,
 * `!p.ap.unchecked` (implied by `accepts` for every untrusted program),
 
@@ -233,7 +246,11 @@ What the theorem gives about what an untrusted program can reach:
   read-only program heap.
 * **Read-only data.** Bytecode cannot write the program heap (the spec's
   stores fail on read-only objects; the core's verified writes require
-  `!ro`). See section 3 for primitives.
+  `!ro`), and since 2026-11-26 (branch prims/trust-round) neither can a
+  primitive within its contract: `prim_heap_ok` keeps every read-only
+  object unchanged and every object's `ro` flag. The 106 Rust ports are
+  proved against it; for the C++ primitives it is part of their assumed
+  contract (section 2.4, "Read-only objects").
 * **Machine-owned state.** It cannot read or write a task's stack field
   or id, and no primitive may create stack or task objects or change
   the machine-owned fields (`prim_heap_ok`); the machine's own task
@@ -242,9 +259,9 @@ What the theorem gives about what an untrusted program can reach:
   PRIMITIVE instruction. The spec treats a primitive as an oracle: any
   result within its contract (`prim_spec`; the default contract
   `prim_default`: objects are only added, classes do not change, the
-  machine's objects are not touched, every object stays well formed, the
-  result is a value of the new heap, out-of-memory results are resource
-  errors). The theorem holds whatever a primitive does within that
+  machine's objects are not touched, read-only objects are not changed,
+  every object stays well formed, the result is a value of the new heap,
+  out-of-memory results are resource errors). The theorem holds whatever a primitive does within that
   contract.
 
 * **Which primitives the program can call** (a theorem since 2026-11-26).
@@ -258,7 +275,11 @@ What the theorem gives about what an untrusted program can reach:
   PERMISSION_DENIED and an absent one with PRIMITIVE_LOOKUP_FAILED itself.
   Programs do contain calls of denied primitives (the core library's
   `print` tries `write_on_stdout` and falls back to the system process),
-  so they are completed, not rejected. What remains trusted is that the
+  so they are completed, not rejected: the theorem is "only allowed
+  primitives run", not "a program with a call of a denied primitive is
+  rejected" (a denied or absent primitive is accepted with any arity; an
+  index past the VM's table is rejected; the red-team batteries check the
+  run-time denial, review/red-team/round4/ATTEMPTS.txt). What remains trusted is that the
   table lists the policy as intended (one C++ function makes it from the
   lists above) and that index (m, i) names the C++ table's primitive at
   (m, i) (section 2.4).
@@ -294,9 +315,10 @@ flash outside its image, or the hardware.
 * Verus checks the spec and core crates for 64-bit words (x86-64 host)
   and for 32-bit words (`--target i686-unknown-linux-gnu`, the stand-in
   for the 32-bit devices), the core in both configurations of its run
-  loop (`verified/check.sh` sections `verus`, `verus32`). Counts at this
-  commit: spec 1090 verified (both widths), core 1092 (64-bit) and 1094
-  (32-bit), core-split 1094 (64-bit) and 1096 (32-bit), 0 errors.
+  loop (`verified/check.sh` sections `verus`, `verus32`). Counts after
+  branch prims/trust-round: spec 1090 verified (both widths), core 1102
+  (64-bit) and 1104 (32-bit), core-split 1104 (64-bit) and 1106 (32-bit),
+  0 errors (before: core 1092/1094, core-split 1094/1096).
 * The C++ proofs run for LP64 and ILP32 on Clang's AST of the host
   build (section 2.1).
 * Devices with untrusted installs exercised: ESP32-C6 (RISC-V), classic
@@ -436,7 +458,8 @@ section at this commit.
 | Messages | VeriFast: encoder, decoder, receive ownership, sender | 7 decoder assumptions (`ipc_begin`, `ipc_room`, `ipc_pointer`, `ipc_external`, `ipc_length`, `ipc_end`, `gc_owns`), `two_pass_room` (encoder), the encoders of `process_send` and spawn |
 | Install-time checks | VeriFast: `builtin_classes_error`, `has_valid_error_roots`; ESBMC: image checks part 2 (both widths), part 1 (`image_layout_error`) on ILP32 only; Frama-C/WP: the record validation loop; Verus: the whole verifier (`cert::verify_shipped` accepts only if `accepts` holds: the single-pass `v2::walk`; `x_loaded_ok == loaded_ok`) | `builtin_roots_error` (no verdict in 30 min); `image_layout_error` on LP64 (no verdict); that every untrusted process runs a table that passed `v2_verify` (reviewed) |
 | FFI glue | VeriFast: `interpreter_v2` glue; ESBMC: core entry (bounded) | `gc_allocate_exception` and the exception encoder (not rendered) |
-| Primitives (150 in the untrusted set) | 106 are ported to Rust and proved in Verus against `prim_spec`; of their C++ fallbacks, 62 are proved with VeriFast and 34 are proved unreachable from untrusted code; of the 44 primitives that stay in C++, 33 are VeriFast-proved and 11 have bounded ESBMC body checks | 10 reachable contract-only fallbacks (`blob_equals`, `blob_index_of`, `byte_array_at`, `byte_array_length`, `compare_simple_json_string`, `list_add`, `number_to_integer`, `size_of_json_number`, `smi_multiply`, `string_rune_count`); open parts of proved ones (`process_send`'s graph correspondence, byte preservation in three string conversions) |
+| Primitives (150 in the untrusted set) | 106 are ported to Rust and proved in Verus against `prim_spec`; of their C++ fallbacks, 62 are proved with VeriFast and 42 are proved unreachable from untrusted code (the list `prims::never_falls_back` has 45 ports, 3 of them with VeriFast-proved C++ too; 35 and 34 before branch prims/trust-round); of the 44 primitives that stay in C++, 33 are VeriFast-proved and 11 have bounded ESBMC body checks | 2 reachable contract-only fallbacks (`number_to_integer`, `smi_multiply`, both only after an allocation that did not fit; 10 before branch prims/trust-round, which made the ports of `blob_equals`, `blob_index_of`, `byte_array_at`, `byte_array_length`, `compare_simple_json_string`, `list_add`, `size_of_json_number` and `string_rune_count` total, the `list_add` one fixing a VM crash in the C++ `Interpreter::fast_at`); open parts of proved ones (`process_send`'s graph correspondence, byte preservation in three string conversions) |
+| Read-only objects (`prim_heap_ok` keeps them, since 2026-11-26) | the 106 Rust ports (Verus: every heap update of a port goes through `prims::lemma_post_update`/`lemma_post_content`/`array::lemma_post_set_*`, which require a mutable object, and a writable content view is of a mutable object, `view::content_ok`); write-site facts of the VeriFast proofs: the destination of `byte_zap`, `blit`, `byte_array_replace`, `string_write_to_byte_array`, `put_uint_big_endian`, `put_uint_little_endian`, `put_float_32_little_endian` and `put_float_64_little_endian` comes from the proved `mutable_byte_content` (`mutable_result`: outside the program heap, also the copy-on-write wrapper it switches to its copy), `byte_array_at_put` asserts it at the write (a mutant leaves the check out), `add_finalizer`/`remove_finalizer` leave program-heap keys alone | an assumption for every C++ primitive: VeriFast's heap model abstracts byte contents (`uchars(.., _)`) and owns program-heap objects like any other, so no C++ proof states "the program heap is unchanged" as a postcondition; the write-site facts cover the writes those proofs show, and the other proved C++ bodies write no existing object (they read and allocate). Without a write-site proof: `process_send` (neuters only byte arrays with an active finalizer, which no program-heap object has: the loader refuses the flag, `add_finalizer` refuses program-heap keys), `timer.delete` and the events primitives (resource proxies only, which an image cannot contain: `from_vm.rs` refuses external byte arrays not tagged RawByteTag), `task_new`/`task_transfer` (machine-completed: `task_step`, not the primitive contract). Hardening tests: `tests/sandbox/cli/program-heap-write-main.toit` (every writer aimed at program-heap bytes and string literals: refused, unchanged) |
 | Retry rule (a primitive that ran out of memory, a GC, the retry: one completion) | 77 of the 150 by VeriFast (`oom_clean`, `oom_unchanged`) | 62 by a textual check ("cannot fail for want of memory", not a proof), 9 by test only, 2 by review; the composition itself is the assumption `prim_retry` |
 | The policy table | contract table checks it covers the same 150 primitives as the retry classification; since 2026-11-26 the core runs a primitive only where the verifier table of the policy allows it (proven) | `PrimitivePolicy::verifier_arities` lists the policy as intended (made by one function from `UNTRUSTED_CORE`, `UNTRUSTED_BITMAP` and the whole modules); index (m, i) names the C++ table's primitive at (m, i) (`PrimitivePolicy::at`, `build_partial_table`: an allowed entry is the VM's own); reviewed and tested |
 
@@ -490,9 +513,12 @@ section at this commit.
   claim holds for any such choice.
 * **Primitives are an oracle.** The theorem is "the interpreter is safe
   whatever the primitives do within their contract"; the contract says
-  nothing about read-only objects (`prim_heap_ok` keeps classes and
-  machine objects, not the `ro` contents), nor about effects outside
-  the heap.
+  nothing about effects outside the heap. Since 2026-11-26 it keeps the
+  read-only objects (`prim_heap_ok`); before, it kept classes and machine
+  objects but not the contents of the program heap. The theorem's
+  quantification over a PRIMITIVE's completions narrowed accordingly: a
+  completion that changes a read-only object is no longer among them,
+  which for a C++ primitive is an assumption (section 2.4).
 * **The bridge to real memory** is `refines`, with the heap model
   (`heap_model_ok`, `view::word_val`, the layout facts) tied to the C++
   object layout by `verified/LAYOUT.toml` and `layout_check.cc` (host
@@ -618,9 +644,9 @@ the effort. Sizes: small (hours to a day), days, weeks.
 | 1 | Done: `-Xuntrusted_format1` / `TOIT_UNTRUSTED_FORMAT1` removed from every build (untrusted format-1 programs are refused at install, spawn and launch); a build without the core refuses every untrusted program (it still builds, with a warning, when cargo is missing) | drops "unless configured otherwise" | small | – | code removal |
 | 2 | Decide whether the verified core is the default for device firmware (`TOIT_VERIFIED_CORE`) | the claim applies to the shipped firmware, not a variant | small (decision), size issue on classic ESP32 | none | decision |
 | 3 | ~~Check the allowed primitive set in the verifier~~ **Done 2026-11-26** (branch verifier/single-pass): `accepts` checks every PRIMITIVE against the policy's table (allowed with the arity, denied or absent: programs contain denied calls by design, so they are completed with PERMISSION_DENIED or PRIMITIVE_LOOKUP_FAILED by the core, not rejected); the core runs a primitive only where the table allows it (`prim_allowed` required by `gc_call_primitive` and `prims::call`) | "can call only the primitives of its policy" is a theorem; the `core_arities` trust is gone (replaced by `policy_rel`: the core gets the table the verdict was computed with) | days | new epoch | proof, verifier change |
-| 4 | Strengthen `prim_heap_ok`: read-only objects and the `ro` flag unchanged | "never modifies read-only program data" becomes a theorem for primitives too (C++ primitives assumed, Rust ports proved) | small to days | new epoch | spec change |
-| 5 | Export what `step_post` already proves into `run_post`: a run never stops on a spec-stuck state, only on the resource limit | the theorem says the defensive checks never fire, not only that every reported state is fine | small | `run_loop` change | proof |
-| 6 | The 10 reachable contract-only fallbacks, the 9 test-only and 2 review-only retry rules | "every primitive an untrusted program can reach is proved against its contract" | days to weeks | none | proof, or code removal (port to Rust, or make the fallback unreachable) |
+| 4 | ~~Strengthen `prim_heap_ok`: read-only objects and the `ro` flag unchanged~~ **Done 2026-11-26** (branch prims/trust-round): `prim_heap_ok` keeps every read-only object and every `ro` flag; the 106 Rust ports are proved against it, for the C++ primitives it is part of the assumed contract (section 2.4); hardening tests of the refusal. Not exported as a run-level theorem: that needs the program heap as a fixed prefix of read-only objects referring only to read-only objects (an invariant `refines` and `loaded` do not carry yet) to cross collections, and suspended stacks and tasks known to be mutable for `task_step` | "never modifies read-only program data" holds for primitives within their contract (C++ primitives assumed, Rust ports proved) | small | new epoch (taken on the branch) | spec change |
+| 5 | ~~Export what `step_post` already proves into `run_post`: a run never stops on a spec-stuck state, only on the resource limit~~ **Done 2026-11-26** (branch prims/trust-round): `run_loop` returns a ghost `RunEnd` (an exit of a step, or the reason of its one stuck report) and `run_post` says a stuck report is `stuck::LIMIT`, or `stuck::FATAL` before the first instruction for a program heap whose address range wraps (`stop_ok`); what remains is that wrap check, which the C++ loader's allocation never triggers | the theorem says the defensive checks never fire, not only that every reported state is fine | small | `run_loop` change | proof |
+| 6 | The reachable contract-only fallbacks (10; 2 since branch prims/trust-round: eight ports made total, `number_to_integer` and `smi_multiply` remain, blocked by VeriFast floating point and `__builtin_mul_overflow`), the 9 test-only and 2 review-only retry rules (unchanged) | "every primitive an untrusted program can reach is proved against its contract" | days to weeks | none | proof, or code removal (port to Rust, or make the fallback unreachable) |
 | 6a | ~~Make the epoch's inputs the whole contract the core assumes~~ **Done 2026-11-26**: `abs.rs`, `exec.rs`, `view.rs`, `layout.rs`, `src/interpreter_v2.cc` and `src/primitive_policy.*` are inputs | "a verdict is used only by the checks and contract that computed it" without a manual step | small | one epoch change | gate |
 | 6b | Run the layout check on device builds (or generate the device constants from the target headers) | removes "device layout from the i686 check" | days | device toolchains in the gate | gate |
 | 7 | Run the Xtensa code-generation check in the gate; record its rules (FFI of at most 6 words, no over-aligned locals) in TRUSTED.md | the Xtensa compiler item from "checked once" to "checked on every change" | small | toolchain in the gate machine | gate |
@@ -639,9 +665,10 @@ the effort. Sizes: small (hours to a day), days, weeks.
   FreeRTOS, the hardware. (seL4 and CompCert name theirs the same way.)
 * Whether the collector stays "trusted GC-class code" (claim (ii)) or is
   rewritten in Verus first (claim (iii)).
-* Whether to accept a new verification epoch for item 4 (item 3 took one
-  on 2026-11-26, approved; every
-  installed untrusted container must be reinstalled).
+* Whether to accept the new verification epoch of item 4 (branch
+  prims/trust-round changes the spec crate and `view.rs`, both epoch
+  inputs; item 3 took one on 2026-11-26, approved; every installed
+  untrusted container must be reinstalled).
 * Whether to make the verified core the device default (item 2; the
   format-1 untrusted path of item 1 is removed), and whether a host build
   that finds no cargo should fail instead of building without the core
@@ -661,8 +688,9 @@ Between prose and theorems:
    path". `run_post` constrains only preempted and yielded results. The
    step-level contract (`step_post`) does restrict stuck results to the
    resource limit, but that is not exported, and `run_loop` has a fatal
-   path (a program-heap range that wraps). Not changed here: theorem.rs
-   is an input of the verification epoch (roadmap item 5).
+   path (a program-heap range that wraps). Fixed 2026-11-26 (branch
+   prims/trust-round, roadmap item 5): `run_post` now says it, with the
+   wrap check as the one other stuck report, and the comment says so.
 2. The same comment says the composition holds "for any number of runs
    and steps" without a theorem; now `theorem_process`.
 3. `verified/spec/SOUNDNESS.md` showed the theorem without the

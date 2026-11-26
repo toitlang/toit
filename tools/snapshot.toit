@@ -155,7 +155,7 @@ class Program:
   method-info-for id/int -> MethodInfo:
     return method-info-for id: throw "Unknown method"
 
-  method-info-for id/int [failure] -> MethodInfo:
+  method-info-for id/int [failure] -> MethodInfo?:
     return method-table_.get id --if-absent=(: failure.call id)
 
   method-name-for id/int -> string:

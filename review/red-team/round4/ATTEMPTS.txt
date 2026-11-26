@@ -46,6 +46,27 @@ Assembler battery (34): review/red-team/round4/battery-A.sh -> repro/asmA-result
  - halt-deepsleep/reset/0: trusted-only HALTs -> REJECTED "HALT rejected"/"successor outside the method".
  - builtin-101/102/103 + adversarial operands (5): LOOP_REPEAT/LOOP_ARRAY/HASH_FIND -> REJECTED "<op> rejected with kinds [...]" (allowed, but the kind/height lattice rejects the crafted operands).
  - prim-spawn / prim-module-oob: denied/out-of-range PRIMITIVE -> REJECTED "PRIMITIVE rejected".
+   2026-11-26 (T2, branch verifier/redteam-t2): the verifier now checks
+   PRIMITIVE against the untrusted policy's table and accepts a denied
+   primitive (any arity), which the core completes with PERMISSION_DENIED
+   without calling anything. prim-spawn was core 0 (write_on_stdout/2, not
+   spawn) from main (arity 0); it is now prim-stdout-arity0, and prim-spawn
+   is core 101 (spawn/3) from main; both print the failure value and the
+   battery requires "PERMISSION_DENIED" on both builds -> ACCEPTED->ran:
+   PERMISSION_DENIED. prim-module-oob, prim-idx-oob (0 65535) and
+   prim-absent-idx-oob (tcp 65535) name no primitive of the VM's table ->
+   still REJECTED. prims-* (repro/prims.toit, 7 + 2 + 1 lines): spawn and
+   write_on_stdout with the right arity and (assembled) a wrong one, tcp.close
+   (module denied as a whole) with the right and a wrong arity, each in a
+   method whose body is the PRIMITIVE with a failure block: denied ->
+   "failed PERMISSION_DENIED" / PERMISSION_DENIED, LEAK not printed;
+   absent -> PRIMITIVE_LOOKUP_FAILED thrown (caught by main); the same
+   program with its shipped certificate only (TOIT_REQUIRE_CERTIFICATE=1)
+   gives the same; trusted, spawn reaches the C++ (INVALID_ARGUMENT).
+   A-cert: prims-* certificate cases (another policy's certificate refused,
+   for --verify and for a run), and tests/ctest/v2-verdict-policy-test.cc
+   (a verdict for one policy never runs a process of the other:
+   V2MethodTable::runs_verified's exact match).
  - mix-checked-twin, twin-105-highop, twin-111-highsel: twins among valid ops / with extreme operands -> REJECTED "unchecked opcode N".
  No crash or sanitizer trip on any case.
 

@@ -92,4 +92,9 @@ slow install-image-layout/ILP32                  3  1800
 # tier's 600 s when the machine was loaded (gate of e11f847d, 2026-11-26):
 # by the 90 s rule a slow job. Peak 1.5 GB virtual.
 slow gc-current-task/LP64 3 1800
+
+# 1,100 s alone on a loaded machine (load 30-58, 2026-11-26), 335 properties,
+# peak 0.61 GB resident (1.24 GB virtual); no verdict within the fast tier's
+# 600 s in two gate runs that day (b51967f0, 25a01a7d). ILP32 stays fast.
+slow byte-array-initialization/LP64 3 4400
 known_noverdict install-image-layout/LP64 "no verdict within 1800 s (Boolector, 2026-11-25); ILP32 passes"

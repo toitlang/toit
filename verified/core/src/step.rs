@@ -2221,13 +2221,44 @@ pub fn step_c(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
 // ---------------------------------------------------------------------------
 // The run loop.
 
-/// What a run guarantees when it returns: if the process continues later
+/// How a run ended besides its result (ghost: `run_loop`'s third result):
+/// at an exit of one of its steps (`Ctl::Exit`: preempted, yielded, or the
+/// process ends: exit, uncaught exception, task end, deep sleep, reset),
+/// or with a stuck report of the given reason (`V2_REPORT_STUCK`, the one
+/// call of `leave_stuck`; the run then returns `(RESULT_TERMINATED, 1)`).
+pub enum RunEnd {
+    Exit,
+    Stuck(usize),
+}
+
+/// The stuck reports a run may make: the resource limit (`stuck::LIMIT`,
+/// the defined out-of-memory stop: room on the object stack, a smi or
+/// table encoding limit; the only stuck result `step_post` allows), and
+/// the fatal path for a program heap whose address range wraps around the
+/// address space (`!ro_ok`, checked before the first instruction; the C++
+/// loader never makes one). Never a stuck state of the spec.
+pub open spec fn stop_ok(p: &Program, reason: usize) -> bool {
+    reason == stuck::LIMIT || (reason == stuck::FATAL && !ro_ok(p))
+}
+
+/// The states part of `run_post`: if the process continues later
 /// (preempted or yielded), the saved machine refines a well-formed state
-/// the spec reaches from the state it started in. Any other result ends
-/// the process (exit, uncaught exception, task end, deep sleep, reset, or
-/// out of memory); a stuck state of the spec is never reported.
-pub open spec fn run_post(p: &Program, m0: Machine, m1: Machine, r: (usize, i64)) -> bool {
+/// the spec reaches from the state it started in (what the theorems
+/// between runs use: `theorem::theorem_next_run`, `process::scheduled`).
+pub open spec fn run_states(p: &Program, m0: Machine, m1: Machine, r: (usize, i64)) -> bool {
     &&& (r.0 == RESULT_PREEMPTED || r.0 == RESULT_YIELDED) ==> m1.inv(p) && reaches(p.ap@, m0.g@, m1.g@)
+}
+
+/// What a run guarantees when it returns, with how it ended (`e`): if the
+/// process continues later (preempted or yielded), the saved machine
+/// refines a well-formed state the spec reaches from the state it started
+/// in (`run_states`); any other result ends the process (exit, uncaught
+/// exception, task end, deep sleep, reset, or out of memory). A run stops
+/// on a stuck report only for the resource limit or the wrapping program
+/// heap (`stop_ok`): a stuck state of the spec is never reported.
+pub open spec fn run_post(p: &Program, m0: Machine, m1: Machine, r: (usize, i64), e: RunEnd) -> bool {
+    &&& run_states(p, m0, m1, r)
+    &&& e is Stuck ==> r == (RESULT_TERMINATED, 1i64) && stop_ok(p, e->Stuck_0)
 }
 
 /// `g1` is reachable from `g0` by spec transitions (the reflexive and
@@ -2311,18 +2342,16 @@ proof fn lemma_rstep_reaches(p: &Program, g0: State2, m0: Machine, m1: Machine, 
 /// claimed.
 #[verifier::exec_allows_no_decreases_clause]
 #[cfg_attr(target_arch = "xtensa", optimize(speed))]
-pub fn run_loop(m: &mut Machine, env: &Env, accepted: &crate::ffi::Accepted) -> (r: (usize, i64))
+pub fn run_loop(m: &mut Machine, env: &Env, accepted: &crate::ffi::Accepted) -> (r: (usize, i64, Ghost<RunEnd>))
     requires old(m).inv(&env.p),
-    ensures run_post(&env.p, *old(m), *final(m), r),
+    ensures run_post(&env.p, *old(m), *final(m), (r.0, r.1), r.2@),
 {
     let ghost m0 = *m;
     proof { lemma_reaches_refl(env.p.ap@, m.g@); }
     // The program heap's range (a C++ allocation) does not wrap around
     // (`ro_ok`); checked once per run.
     if env.p.ro_start > usize::MAX - env.p.ro_size {
-        env.rt.report(V2_REPORT_STUCK, m.bci, stuck::FATAL);
-        m.save();
-        return (RESULT_TERMINATED, 1);
+        return leave_stuck(m, env, stuck::FATAL, Ghost(m0));
     }
     // The room of every frame (room.rs), checked once per run, and the
     // registers: locals of this function, in machine registers.
@@ -2335,13 +2364,10 @@ pub fn run_loop(m: &mut Machine, env: &Env, accepted: &crate::ffi::Accepted) -> 
                     lemma_rstep_reaches(&env.p, m0.g@, m0, *m, Ctl::Exit(state, value));
                 }
             }
-            return (state as usize, value);
+            return (state as usize, value, Ghost(RunEnd::Exit));
         },
-        (_, c) => {
-            env.rt.report(V2_REPORT_STUCK, m.bci, stuck::LIMIT);
-            m.save();
-            return (RESULT_TERMINATED, 1);
-        },
+        // A stuck result of `resume` is the limit (`steps_post`).
+        (_, _) => { return leave_stuck(m, env, stuck::LIMIT, Ghost(m0)); },
     };
 
     // A bound on the methods' arities, computed when this run switches
@@ -2390,11 +2416,11 @@ pub fn run_loop(m: &mut Machine, env: &Env, accepted: &crate::ffi::Accepted) -> 
 /// Leaves the run loop after a step that exits: the machine is saved.
 #[inline(never)]
 fn leave_exit(m: &mut Machine, state: u32, value: i64, Ghost(m0): Ghost<Machine>, Ghost(before): Ghost<Machine>,
-              Ghost(p): Ghost<&Program>) -> (r: (usize, i64))
+              Ghost(p): Ghost<&Program>) -> (r: (usize, i64, Ghost<RunEnd>))
     requires
         step_post(p, before, *old(m), Ctl::Exit(state, value)) || steps_post(p, before, *old(m), Ctl::Exit(state, value)),
         reaches(p.ap@, m0.g@, before.g@),
-    ensures run_post(p, m0, *final(m), r),
+    ensures run_post(p, m0, *final(m), (r.0, r.1), r.2@),
 {
     proof {
         if state == RESULT_PREEMPTED || state == RESULT_YIELDED {
@@ -2408,21 +2434,24 @@ fn leave_exit(m: &mut Machine, state: u32, value: i64, Ghost(m0): Ghost<Machine>
             assert(m.inv(p));
             assert(reaches(p.ap@, m0.g@, m.g@));
         }
-        assert(run_post(p, m0, *m, (state as usize, value)));
+        assert(run_post(p, m0, *m, (state as usize, value), RunEnd::Exit));
     }
-    (state as usize, value)
+    (state as usize, value, Ghost(RunEnd::Exit))
 }
 
-/// Leaves the run loop after a step that is stuck (out of room): the
-/// machine is saved.
+/// Leaves the run loop with a stuck report (`V2_REPORT_STUCK` with
+/// `reason`, the only one a run makes): after a step that is out of room
+/// (the limit), or before the first instruction for a program heap whose
+/// range wraps. The machine is saved.
 #[inline(never)]
-fn leave_stuck(m: &mut Machine, env: &Env, reason: usize, Ghost(m0): Ghost<Machine>) -> (r: (usize, i64))
-    ensures run_post(&env.p, m0, *final(m), r),
+fn leave_stuck(m: &mut Machine, env: &Env, reason: usize, Ghost(m0): Ghost<Machine>) -> (r: (usize, i64, Ghost<RunEnd>))
+    requires stop_ok(&env.p, reason),
+    ensures run_post(&env.p, m0, *final(m), (r.0, r.1), r.2@),
 {
     env.rt.report(V2_REPORT_STUCK, m.bci, reason);
     m.save();
-    assert(run_post(&env.p, m0, *m, (RESULT_TERMINATED, 1i64)));
-    (RESULT_TERMINATED, 1)
+    assert(run_post(&env.p, m0, *m, (RESULT_TERMINATED, 1i64), RunEnd::Stuck(reason)));
+    (RESULT_TERMINATED, 1, Ghost(RunEnd::Stuck(reason)))
 }
 
 } // verus!

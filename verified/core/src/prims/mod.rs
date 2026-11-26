@@ -512,14 +512,27 @@ pub open spec fn never_falls_back_arrays(i: int, n: int) -> bool {
     ||| (i == ix::ARRAY_AT_PUT && n == 3)
     ||| (i == ix::ARRAY_REPLACE && n == 5)
     ||| (i == ix::REBUILD_HASH_INDEX && n == 2)
+    ||| (i == ix::LIST_ADD && n == 2)
 }
 
-/// Strings and blobs: strings only (no opaque byte array), no allocation.
+/// Strings and blobs without allocation: strings only, or blobs where an
+/// opaque byte array is a failure (a resource proxy) or the empty blob (a
+/// neutered one), as for the C++; the byte-array accessors, which read an
+/// opaque byte array's tag and length as the C++ does.
 pub open spec fn never_falls_back_blobs(i: int, n: int) -> bool {
     ||| (i == ix::STRING_HASH_CODE && n == 1)
     ||| (i == ix::STRING_RAW_AT && n == 2)
     ||| (i == ix::STRING_COMPARE && n == 2)
     ||| (i == ix::INT_VECTOR_EQUALS && n == 2)
+    ||| (i == ix::BYTE_ARRAY_IS_RAW_BYTES && n == 1)
+    ||| (i == ix::BYTE_ARRAY_LENGTH && n == 1)
+    ||| (i == ix::BYTE_ARRAY_AT && n == 2)
+    ||| (i == ix::BYTE_ARRAY_AT_PUT && n == 3)
+    ||| (i == ix::STRING_RUNE_COUNT && n == 1)
+    ||| (i == ix::BLOB_EQUALS && n == 2)
+    ||| (i == ix::BLOB_INDEX_OF && n == 4)
+    ||| (i == ix::COMPARE_SIMPLE_JSON_STRING && n == 3)
+    ||| (i == ix::SIZE_OF_JSON_NUMBER && n == 2)
 }
 
 /// Floats: no new double.
@@ -1011,9 +1024,10 @@ pub proof fn lemma_post_append(p: &Program, h0: &Heap, h1: &Heap, r: usize)
     assert(a1.subrange(0, a0.len() as int) =~= a0);
 }
 
-/// Replacing object `id` by `o2` (same class, read-only flag and kind of
-/// body, same instance length, good contents, task fields kept) keeps the
-/// heap invariant.
+/// Replacing a mutable object `id` by `o2` (same class, read-only flag and
+/// kind of body, same instance length, good contents, task fields kept)
+/// keeps the heap invariant. A read-only object (the program heap) cannot
+/// be replaced: `prim_heap_ok` keeps it unchanged.
 pub proof fn lemma_post_update(p: &Program, h0: &Heap, h1: &Heap, id: int, o2: HeapObj)
     requires
         heap_inv(p, h0),
@@ -1025,6 +1039,7 @@ pub proof fn lemma_post_update(p: &Program, h0: &Heap, h1: &Heap, id: int, o2: H
             let o = h0.objs()[id];
             &&& o2.class_id == o.class_id
             &&& o2.ro == o.ro
+            &&& !o.ro
             &&& (o2.body is Instance) == (o.body is Instance)
             &&& (o2.body is Array) == (o.body is Array)
             &&& !(o.body is Stack2) && !(o2.body is Stack2) && !(o2.body is Stack)
@@ -1092,13 +1107,14 @@ pub proof fn lemma_post_update(p: &Program, h0: &Heap, h1: &Heap, id: int, o2: H
     }
 }
 
-/// A body of bytes: replacing the bytes of a string or byte array keeps
-/// the heap invariant.
+/// A body of bytes: replacing the bytes of a mutable string or byte array
+/// keeps the heap invariant.
 pub proof fn lemma_post_content(p: &Program, h0: &Heap, h1: &Heap, id: int, s: Seq<u8>)
     requires
         heap_inv(p, h0),
         0 <= id < h0.objs().len(),
         is_blob(h0.objs()[id]),
+        !h0.objs()[id].ro,
         h1.objs() == h0.objs().update(id, with_content(h0.objs()[id], s)),
         h0.objs()[id].body is Bytes ==> s.len() == content(h0.objs()[id]).len(),
         h1.addrs() == h0.addrs(),

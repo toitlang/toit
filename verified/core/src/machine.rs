@@ -1418,7 +1418,10 @@ pub fn run(p: Program, rt: Runtime, globals: Globals, heap: Heap, pre: Preemptio
         &mut m.globals as *mut Globals, &mut m.heap as *mut Heap,
     ));
     match accepted {
-        Some(token) => crate::step::run_loop(&mut m, &env, &token),
+        Some(token) => {
+            let (state, value, _) = crate::step::run_loop(&mut m, &env, &token);
+            (state, value)
+        },
         #[cfg(feature = "checked-loop")]
         None => run_checked(&mut m, &env),
         // Without the checked loop (devices) a program the launch did not

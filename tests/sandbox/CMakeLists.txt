@@ -77,6 +77,13 @@ set(UNTRUSTED_RUN_TESTS
   "weak-map|weak-map-main.toit|0|key=null kept=present 7"
   # ByteOrder.put-uint with 9 bytes writes the same bytes in either order,
   # through the Rust port (a fresh byte array) and the C++ (a literal).
+  # The primitives that write into an existing object refuse a program-heap
+  # (read-only) destination and leave it unchanged (hardening tests of the
+  # read-only part of the primitive contract, docs/sandbox-guarantee.md).
+  "program-heap-write|program-heap-write-main.toit|0|byte_array_at_put raw: PERMISSION_DENIED unchanged.*byte_zap raw: PERMISSION_DENIED unchanged.*blit raw: PERMISSION_DENIED unchanged.*put_uint_big_endian copy: null unchanged copied.*add_finalizer raw: WRONG_OBJECT_TYPE unchanged.*string unchanged.*failures: 0|CHANGED|NOT COPIED"
+  # The byte-array primitives read a neutered byte array and a resource
+  # proxy as the C++ did (their ports never fall back to it).
+  "opaque-byte-array|opaque-byte-array-main.toit|0|neutered: raw=true length=0 at=OUT_OF_BOUNDS put=OUT_OF_BOUNDS index-of=-1 equals-empty=true.*neutered: runes=0 json-number=INVALID_ARGUMENT json-string=false.*proxy: raw=false length=WRONG_OBJECT_TYPE at=WRONG_OBJECT_TYPE put=WRONG_OBJECT_TYPE index-of=WRONG_BYTES_TYPE equals-empty=WRONG_OBJECT_TYPE.*proxy: runes=WRONG_BYTES_TYPE json-number=WRONG_BYTES_TYPE json-string=WRONG_BYTES_TYPE.*done"
   "byte-order-width|byte-order-width-main.toit|0|big: \\[0, 255, 255, 255, 255, 255, 255, 255, 255\\] \\[0, 255, 255, 255, 255, 255, 255, 255, 255\\].*little: \\[255, 255, 255, 255, 255, 255, 255, 255, 0\\] \\[255, 255, 255, 255, 255, 255, 255, 255, 0\\].*eight: \\[1, 2, 3, 4, 5, 6, 7, 8\\]"
 )
 
@@ -136,6 +143,26 @@ add_test(
       -P ${CMAKE_CURRENT_SOURCE_DIR}/run-cut-slice.cmake
   )
 set_tests_properties(tests/sandbox/cli/invalid-strings-snapshot PROPERTIES TIMEOUT 60 ENVIRONMENT "TOIT_BYTECODE_FORMAT=2")
+
+# A list backed by a deep chain of large arrays, made by the program's own
+# (patched) core library: list_add used to crash the VM in the C++
+# Interpreter::fast_at (native stack overflow); the Rust port bounds the
+# nesting (verified/core/src/prims/array.rs, large_slot), and so does
+# fast_at now (tests/large-array-depth-test.toit).
+add_test(
+  NAME tests/sandbox/cli/large-array-chain-snapshot
+  COMMAND ${CMAKE_COMMAND}
+      -DTOIT_RUN=$<TARGET_FILE:toit.run>
+      -DPROGRAM=${CMAKE_CURRENT_SOURCE_DIR}/cli/large-array-chain-main.toit
+      -DLIB_DIR=${TOIT_SDK_SOURCE_DIR}/lib
+      "-DPATCH_FROM=  size_ /int ::= 0\n  vector_ /Array_ ::= ?"
+      "-DPATCH_TO=  size_ /int := 0\n  vector_ /Array_ := ?"
+      -DARGS=1000000
+      "-DEXPECTED_OUTPUT=chain of 1000000 built.*add: STACK_OVERFLOW.*short chain: size=1 first=7.*survived"
+      -DTMP=${CMAKE_CURRENT_BINARY_DIR}/cli-large-array-chain
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/run-patched-lib.cmake
+  )
+set_tests_properties(tests/sandbox/cli/large-array-chain-snapshot PROPERTIES TIMEOUT 120 ENVIRONMENT "TOIT_BYTECODE_FORMAT=2")
 
 # FORMAT-1-ONLY (docs/format2-migration.md): delete with format 1.
 # A format-1 snapshot is refused as an untrusted container in every build:

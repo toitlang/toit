@@ -14,8 +14,8 @@
 // directory of this repository.
 
 //! Array primitives: `array_length`, `array_at`, `array_at_put`,
-//! `array_new`, `array_expand`, `array_replace`, `list_add` (small-array
-//! backing; the large-array case stays in C++), `rebuild_hash_index`
+//! `array_new`, `array_expand`, `array_replace`, `list_add` (small- and
+//! large-array backings), `rebuild_hash_index`
 //! (src/primitive_core.cc).
 //!
 //! Arrays are in the heap model (`abs::obj_model_ok`: the array tag is
@@ -165,10 +165,12 @@ pub proof fn lemma_field_good(p: &Program, h: &Heap, id: int, i: int)
     assert(good(h.objs(), f[i]));
 }
 
-/// Writing a value of the heap into an array keeps the heap invariant.
+/// Writing a value of the heap into a mutable array keeps the heap
+/// invariant.
 pub proof fn lemma_post_set_element(p: &Program, h0: &Heap, h1: &Heap, id: int, i: int, v: Value)
     requires
         heap_inv(p, h0), 0 <= id < h0.objs().len(), h0.objs()[id].body is Array,
+        !h0.objs()[id].ro,
         0 <= i < h0.objs()[id].body->Array_0.len(),
         good(h0.objs(), v), encodable(h0.addrs(), v),
         h1.objs() == h0.objs().update(id, HeapObj {
@@ -187,11 +189,12 @@ pub proof fn lemma_post_set_element(p: &Program, h0: &Heap, h1: &Heap, id: int, 
     lemma_post_update(p, h0, h1, id, o2);
 }
 
-/// Writing a value of the heap into field `i` of an instance of a class
-/// other than the task class keeps the heap invariant.
+/// Writing a value of the heap into field `i` of a mutable instance of a
+/// class other than the task class keeps the heap invariant.
 pub proof fn lemma_post_set_field(p: &Program, h0: &Heap, h1: &Heap, id: int, i: int, v: Value)
     requires
         heap_inv(p, h0), 0 <= id < h0.objs().len(), h0.objs()[id].body is Instance,
+        !h0.objs()[id].ro,
         0 <= i < h0.objs()[id].body->Instance_0.len(),
         h0.objs()[id].class_id as int != task_class(p.ap@),
         good(h0.objs(), v), encodable(h0.addrs(), v),
@@ -493,13 +496,147 @@ pub fn array_replace(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Gh
     (PrimOutcome::Success(nw), nv)
 }
 
-/// `list_add` with a small-array backing: stores `value` at `size` and
-/// increments the list's size. A list with a large-array backing goes to
-/// C++ (NotPorted); anything else fails with INVALID_ARGUMENT (the Toit
-/// code then grows the list).
+/// The number of nested vectors `large_slot` follows: a large array below
+/// 2^30 elements nests at most four deep (500^4 > 2^30).
+pub const LARGE_SLOT_FUEL: usize = 8;
+
+/// `v` (word `w`) is an instance of the large-array class (`LargeArray_`)
+/// with its two fields (size, vector): its object id.
+#[inline(always)]
+pub fn large_array_arg(h: &Heap, p: &Program, w: usize, Ghost(v): Ghost<Value>) -> (r: Option<Ghost<int>>)
+    requires
+        heap_inv(p, h),
+        w == enc(h.addrs(), v), good(h.objs(), v), encodable(h.addrs(), v),
+    ensures
+        r is Some ==> v is Obj && r->Some_0@ == v->Obj_0 as int
+            && 0 <= r->Some_0@ < h.objs().len() && w == h.addrs()[r->Some_0@]
+            && h.addrs().len() == h.objs().len()
+            && h.objs()[r->Some_0@].body is Instance
+            && h.objs()[r->Some_0@].body->Instance_0.len() >= 2
+            && h.objs()[r->Some_0@].class_id as int != task_class(p.ap@),
+{
+    proof { lemma_word(h, w, v); }
+    if w & 1 == 0 { return None; }
+    let ghost id = v->Obj_0 as int;
+    proof {
+        assert(heap_model_ok(h.objs(), h.addrs(), h.class_bits()));
+        assert(obj_model_ok(h.objs()[id], h.class_bits(), h.addrs()));
+        assert(prog_rel(p, h.objs(), h.addrs()));
+        assert(task_class_ok(p.ap@));
+    }
+    if h.class_tag(w, Ghost(id)) != INSTANCE_TAG { return None; }
+    let cid = h.class_id(w, Ghost(id));
+    if cid != p.large_array_class_id { return None; }
+    if cid >= p.class_bits.len() { return None; }
+    let bits = p.class_bits.at(cid);
+    let fields = ((bits >> 5u16) & 0x7ffu16) as usize;
+    if fields < 3 { return None; }
+    proof {
+        assert(h.objs()[id].body->Instance_0.len() == ifc_bits(h.class_bits(), cid as int));
+        // The class has the instance tag, the task class the task tag.
+        assert(class_tag(p1(p.ap@), task_class(p.ap@)) == TASK_TAG);
+        assert(class_tag(p1(p.ap@), cid as int) == h.class_bits()[cid as int] & 0xf);
+    }
+    Some(Ghost(id))
+}
+
+/// The slot of element `n` of the large array `v` (word `w`), as
+/// `Interpreter::fast_at` finds it for `list_add`: the arraylet (an array:
+/// its word and id) and the index in it. `None` where the C++ `fast_at`
+/// fails, and also below `fuel` nested vectors: the C++ followed a chain of
+/// large arrays of decreasing sizes without a bound, so a program whose
+/// own library made a deep one overflowed the native stack (a VM crash;
+/// the C++ now gives up after 8 nested vectors, one more than this);
+/// real large arrays nest at most four deep. `list_add` then fails with
+/// INVALID_ARGUMENT and its Toit code grows the list.
+pub fn large_slot(h: &Heap, p: &Program, w: usize, Ghost(v): Ghost<Value>, n: usize, fuel: usize)
+    -> (r: Option<(usize, Ghost<int>, usize)>)
+    requires
+        heap_inv(p, h),
+        w == enc(h.addrs(), v), good(h.objs(), v), encodable(h.addrs(), v),
+    ensures
+        r is Some ==> ({
+            let (aw, aid, j) = r->Some_0;
+            &&& 0 <= aid@ < h.objs().len()
+            &&& h.addrs().len() == h.objs().len()
+            &&& aw == h.addrs()[aid@]
+            &&& h.objs()[aid@].body is Array
+            &&& j < h.objs()[aid@].body->Array_0.len()
+        }),
+    decreases fuel,
+{
+    let id = match large_array_arg(h, p, w, Ghost(v)) {
+        Some(id) => id,
+        None => return None,
+    };
+    proof {
+        lemma_field_good(p, h, id@, 0);
+        lemma_field_good(p, h, id@, 1);
+    }
+    let size_w = h.field(w, 0, id);
+    let ghost sv = h.objs()[id@].body->Instance_0[0];
+    let vector = h.field(w, 1, id);
+    let ghost vv = h.objs()[id@].body->Instance_0[1];
+    let size = match word_arg(h, size_w, Ghost(sv)) {
+        Some(x) => x,
+        None => return None,
+    };
+    if size < 0 || (n as u64) >= (size as u64) { return None; }
+    if fuel == 0 { return None; }
+    let idx = n / 500;
+    // The arraylet: element `n / 500` of the vector, an array or (for very
+    // large arrays) a smaller large array.
+    let (arraylet, Ghost(alv)) = match array_arg(h, vector, Ghost(vv)) {
+        Some(vid) => {
+            proof { assert(obj_model_ok(h.objs()[vid@], h.class_bits(), h.addrs())); }
+            let vlen = h.array_length(vector, vid);
+            if idx >= vlen { return None; }
+            proof { lemma_element_good(p, h, vid@, idx as int); }
+            (h.element(vector, idx, vid), Ghost(h.objs()[vid@].body->Array_0[idx as int]))
+        },
+        None => {
+            let vid = match large_array_arg(h, p, vector, Ghost(vv)) {
+                Some(vid) => vid,
+                None => return None,
+            };
+            proof { lemma_field_good(p, h, vid@, 0); }
+            let vs_w = h.field(vector, 0, vid);
+            let ghost vsv = h.objs()[vid@].body->Instance_0[0];
+            match word_arg(h, vs_w, Ghost(vsv)) {
+                Some(vs) => { if vs >= size { return None; } },
+                None => return None,
+            }
+            let (aw2, aid2, i2) = match large_slot(h, p, vector, Ghost(vv), idx, fuel - 1) {
+                Some(x) => x,
+                None => return None,
+            };
+            proof { lemma_element_good(p, h, aid2@, i2 as int); }
+            (h.element(aw2, i2, aid2), Ghost(h.objs()[aid2@].body->Array_0[i2 as int]))
+        },
+    };
+    let aid = match array_arg(h, arraylet, Ghost(alv)) {
+        Some(aid) => aid,
+        None => return None,
+    };
+    proof { assert(obj_model_ok(h.objs()[aid@], h.class_bits(), h.addrs())); }
+    let alen = h.array_length(arraylet, aid);
+    let j = n % 500;
+    if j >= alen { return None; }
+    Some((arraylet, aid, j))
+}
+
+/// `list_add`: stores `value` at `size` and increments the list's size.
+/// With a small-array backing directly; with a large-array backing in the
+/// arraylet `large_slot` finds (as the C++ `Interpreter::fast_at`, but with
+/// a bound on the nesting). Anything else fails with INVALID_ARGUMENT (the
+/// Toit code then grows the list; the C++ also stores into the other kinds
+/// `fast_at` knows, a list, a byte array or slice, which only a program's
+/// own library makes a list's backing, with the same effect as the Toit
+/// code's). Never falls back to C++.
 pub fn list_add(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<Value>))
     requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 2,
     ensures prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+        completes(r.0),
 {
     let p = c.p;
     let w = a.w[0];
@@ -534,7 +671,7 @@ pub fn list_add(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<V
     let ghost bv = heap.objs()[lid].body->Instance_0[0];
     let aid = match array_arg(heap, backing, Ghost(bv)) {
         Some(id) => id,
-        None => return (PrimOutcome::NotPorted, Ghost(Value::Smi(0))),
+        None => return list_add_large(a, heap, c, w, Ghost(lid), backing, Ghost(bv)),
     };
     let size_w = heap.field(w, 1, Ghost(lid));
     let ghost sv = heap.objs()[lid].body->Instance_0[1];
@@ -564,6 +701,68 @@ pub fn list_add(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<V
     heap.set_element(backing, size as usize, a.w[1], aid, Ghost(v));
     proof {
         lemma_post_set_element(p, &h1, heap, aid@, size as int, v);
+        lemma_post_trans(p, &h0, &h1, heap);
+    }
+    let (rw, rv) = root(p, heap, ROOT_NULL);
+    (PrimOutcome::Success(rw), rv)
+}
+
+/// `list_add` of a list (`w`, object `lid`, mutable, of the list class with
+/// its two fields) whose backing (`backing`, value `bv`) is not an array:
+/// the C++ large-array case (`Smi::is_valid(size + 1)`, then
+/// `Interpreter::fast_at(process, backing, size, true, &value)`, then the
+/// size), for a `LargeArray_` backing.
+fn list_add_large(a: &Args, heap: &mut Heap, c: &Ctx, w: usize, Ghost(lid): Ghost<int>,
+    backing: usize, Ghost(bv): Ghost<Value>) -> (r: (PrimOutcome, Ghost<Value>))
+    requires
+        heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 2,
+        0 <= lid < old(heap).objs().len(),
+        old(heap).addrs().len() == old(heap).objs().len(),
+        w == old(heap).addrs()[lid],
+        old(heap).objs()[lid].body is Instance,
+        old(heap).objs()[lid].body->Instance_0.len() >= 2,
+        old(heap).objs()[lid].class_id as int != task_class(c.p.ap@),
+        !old(heap).objs()[lid].ro,
+        bv == old(heap).objs()[lid].body->Instance_0[0],
+        backing == enc(old(heap).addrs(), bv),
+    ensures prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+        completes(r.0),
+{
+    let p = c.p;
+    proof {
+        lemma_field_good(p, heap, lid, 0);
+        lemma_field_good(p, heap, lid, 1);
+    }
+    let size_w = heap.field(w, 1, Ghost(lid));
+    let ghost sv = heap.objs()[lid].body->Instance_0[1];
+    let size = match word_arg(heap, size_w, Ghost(sv)) {
+        Some(n) => n,
+        None => return fail(p, heap, ROOT_INVALID_ARGUMENT),
+    };
+    // `Smi::is_valid(size + 1)`, then `fast_at` fails for a negative index.
+    if size >= MAX_SMI as i64 || size < 0 { return fail(p, heap, ROOT_INVALID_ARGUMENT); }
+    let (aw, aid, j) = match large_slot(heap, p, backing, Ghost(bv), size as usize, LARGE_SLOT_FUEL) {
+        Some(x) => x,
+        None => return fail(p, heap, ROOT_INVALID_ARGUMENT),
+    };
+    // Objects on the program heap are read-only (`fast_at` fails for a put).
+    proof {
+        assert(obj_model_ok(heap.objs()[aid@], heap.class_bits(), heap.addrs()));
+        assert(heap.objs()[aid@].ro == in_ro(p, heap.addrs()[aid@]));
+    }
+    if is_ro(p, aw) { return fail(p, heap, ROOT_INVALID_ARGUMENT); }
+    let ghost h0 = *heap;
+    let ghost v = a.vs@[1];
+    heap.set_element(aw, j, a.w[1], aid, Ghost(v));
+    let ghost h1 = *heap;
+    proof {
+        lemma_post_set_element(p, &h0, &h1, aid@, j as int, v);
+        assert(h1.objs()[lid] == h0.objs()[lid]);
+    }
+    let (nw, nv) = smi_res(heap, size + 1);
+    heap.set_field(w, 1, nw, Ghost(lid), nv);
+    proof {
+        lemma_post_set_field(p, &h1, heap, lid, 1, nv@);
         lemma_post_trans(p, &h0, &h1, heap);
     }
     let (rw, rv) = root(p, heap, ROOT_NULL);

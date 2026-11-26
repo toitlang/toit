@@ -1658,7 +1658,7 @@ What the proofs rest on:
 
 | Item | Where | Assumption |
 |---|---|---|
-| Number and blob accessors | `Heap::double_bits`, `large_int`, `bytes_len`, `string_content`, `byte_array_content`, `string_hash_field`, `set_string_hash_field` (section 1) | verified since branch core/proven-accessors against the heap's permissions; what remains is the layout the derivation point states (`word_val`, `str_ok`, `ba_ok`, V5) |
+| Number and blob accessors | `Heap::double_bits`, `large_int`, `bytes_len`, `opaque_tag_len` (since branch prims/trust-round: the tag and length words of an opaque byte array, values the model does not constrain), `string_content`, `byte_array_content`, `string_hash_field`, `set_string_hash_field` (section 1) | verified since branch core/proven-accessors against the heap's permissions; what remains is the layout the derivation point states (`word_val`, `str_ok`, `ba_ok`, V5) |
 | Content views | `Content`, `Heap::content_at/set/copy/fill` | verified: a view carries the object's content pointer (`content_ok`), which the accessors and allocation keep; a heap after a GC point relates no content pointer to the old ones, so a view cannot be used across one (proven, not reviewed). Content fill verifies each byte store against its permission. The optimized x86-64 host build lowers this loop to libc `memset`, so native execution still relies on that implementation. Content copy verifies each read and write, including overlapping ranges of the same object |
 | Array primitives | `prims/array.rs` | The call contracts specify the shared empty-array root, contents of fresh and expanded arrays, and slice replacement using the original source elements even for overlapping ranges. They fix the error roots for invalid lengths, indices, and read-only destinations. The [native array creation proof](../cxx/annotated/prims/array_new.render) calls the object-heap constructor. Its [C++ allocation check](../cxx/harness/process_array_allocation.cc) proves length validation, reservation size, header and element initialization for fresh storage. The same check follows the native two-space retry and verifies the old array’s remembered card before initialization. The [native barrier proof](../cxx/annotated/heap/remembered_card.render) derives the card address from the published table base and heap bounds. Ownership of the reserved words and the live card byte across collection remains a separate obligation. |
 | Array memmove | `Heap::array_copy` | Each copied word gets its original source value, all other words retain their values, and a nonempty copy marks the destination card |
@@ -1671,7 +1671,11 @@ What the proofs rest on:
 ### Primitives that stay in C++, and the contract the proof relies on
 
 The theorem needs every allowed primitive to satisfy `prim_default`
-(`prim_heap_ok`: objects are only added, keep their class, machine-owned
+(`prim_heap_ok`: objects are only added, keep their class, read-only
+objects (the program heap) are unchanged and keep their `ro` flag (since
+2026-11-26, branch prims/trust-round: proved for the Rust ports, assumed
+of the C++ ones; the per-primitive evidence is docs/sandbox-guarantee.md
+section 2.4, "Read-only objects"), machine-owned
 objects (suspended stacks, tasks' stack and id fields) are untouched,
 every object stays well formed with good references; results are good
 values; out of memory is a resource error) and the arity of

@@ -53,11 +53,11 @@ verus! {
 
 /// A process as the scheduler drives it, up to the start of run
 /// `ms.len() - 1`. Run `i` starts with machine `ms[i]` and returns `rs[i]`
-/// with machine `es[i]`; what is known about that return is the run loop's
-/// contract (`step::run_loop`: `run_post` whenever its precondition
-/// `inv` held). The run ended preempted or yielded, and the scheduler
-/// resumed the process in `ms[i + 1]` (`theorem::resumed`, the trusted
-/// contract between runs).
+/// with machine `es[i]`; what is known about that return is the states
+/// part of the run loop's contract (`step::run_loop`: `run_post`, whose
+/// `run_states` part holds whenever its precondition `inv` held). The
+/// run ended preempted or yielded, and the scheduler resumed the process
+/// in `ms[i + 1]` (`theorem::resumed`, the trusted contract between runs).
 pub open spec fn scheduled(p: &Program, ms: Seq<Machine>, es: Seq<Machine>, rs: Seq<(usize, i64)>) -> bool {
     &&& ms.len() >= 1
     &&& es.len() + 1 == ms.len()
@@ -68,7 +68,7 @@ pub open spec fn scheduled(p: &Program, ms: Seq<Machine>, es: Seq<Machine>, rs: 
 /// Run `i` of `scheduled`: the run loop's contract, a preemption or yield,
 /// and the scheduler's resumption.
 pub open spec fn run_ok(p: &Program, m0: Machine, m1: Machine, r: (usize, i64), m2: Machine) -> bool {
-    &&& m0.inv(p) ==> run_post(p, m0, m1, r)
+    &&& m0.inv(p) ==> run_states(p, m0, m1, r)
     &&& r.0 == RESULT_PREEMPTED || r.0 == RESULT_YIELDED
     &&& resumed(p, &m1, &m2)
 }
