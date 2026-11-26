@@ -309,6 +309,60 @@ pending unwinding, as Toit specifies.
   token slots (the earlier unwinding is dropped, as when the finally code
   throws).
 
+### Resource failures at TRY
+
+Language level: if execution reaches `try`, the `finally` clause runs,
+also when entering the try block fails for lack of stack or memory. Format
+1 behaves so (LINK installs the handler in the frame's reserved height;
+only the separate block call can fail), and the idiom `acquire; try: ...
+finally: release` relies on it (verified/core/PROGRESS.md and
+artifacts quota-livelock: `locked_` leaked a monitor lock and a sandboxed
+RPC worker spun when its TRY could not grow the stack at the heap quota;
+the first version of this step raised such errors at the TRY, before the
+try block existed).
+
+* Spec: `prim::resource_state(p, s)`: the resource throws of a TRY
+  (`prim::resource_throw`: the out-of-memory error thrown, the
+  stack-overflow error raised) start in the try block, the state
+  `op_try` enters (block reference pushed, flagged frame pushed), not in
+  `s`; for every other instruction they start in `s` as before. The
+  unwinding of the error pops the flagged frame first and so enters the
+  TRY's finally code with a pending throw. `sound_resource::
+  lemma_try_resource_finally` states this for every resource throw at a
+  TRY of an accepted program: the throw starts in the try block, whose
+  frame is flagged, returns to the instruction after the TRY and has the
+  TRY's height as its base, and the unwinding of any exception from that
+  state (also after the heap changed: the exception's allocation, a
+  collection) is `enter_finally` of the TRY's frame. `lemma_resource`
+  proves the throws keep the invariant (`lemma_resource_state`: the
+  entered state is well formed; the TRY step's lemma now also states that
+  `op_try` enters the block).
+* Core: `unwind::op_try` checks the room of the call plus the block
+  reference (the register path's gate already had the extra word; the
+  machine path missed it, so a TRY could enter a try block without its
+  room, and the next room scan near the stack's limit ended the process
+  with `LIMIT`). Without room it calls `try_grow`: the stack grows and the
+  TRY runs again, or, when the stack cannot grow, `enter_try_block` pushes
+  the block reference and the flagged frame (five words, which the
+  frame's reserve always has; a run-time check stops with `LIMIT`
+  otherwise) and the error is raised (`raise_with`) or thrown
+  (`do_unwind`) from there. Entering the finally code needs no room of its
+  own: its four slots are part of the enclosing method's height (the
+  verifier counts them in the TRY's successor map) and the try block's
+  frame record and slot are popped first. `step::grow` and `ensure_room`
+  now exclude TRY (their resource throws start in `s`). The checked loop
+  (`machine.rs`) does the same (`try_grow_cold`).
+* Alternative (b), reserving the try block's room in the enclosing
+  method so that TRY cannot fail at all, was not taken: the room model has
+  one global maximal height H, so every frame of a method with a TRY (or
+  every frame) would reserve a second frame (4 + H + 8 words, about 30),
+  and the call check would need a per-callee constant (a load on the call
+  path) or a doubled global one; (a) costs nothing on the TRY's fast path.
+* Tests: tests/sandbox/try-finally-resource-test.toit (the naive idiom at
+  every depth and word offset around the stack overflow and with the heap
+  at the quota, untrusted, host and host32; it fails on the base and on
+  the first version of this step), tests/sandbox/try-entry-overflow-test.toit.
+
 ## Deviations from the study
 
 * Four slots instead of five (the token words pack frame, height, bci
@@ -319,8 +373,11 @@ pending unwinding, as Toit specifies.
   would then have given a forged smi pair a meaning).
 * The TRY opcode stays (one byte, no operand) instead of becoming an
   INVOKE_BLOCK variant: the block reference to the top slot is implicit.
-* A raise of TRY (bad operand) no longer enters TRY's own finally code
-  (the study's "reordered").
+* A raise of TRY for a bad operand (not a block, wrong arity: stuck-like,
+  never in an accepted program) does not enter TRY's own finally code (the
+  study's "reordered"). A resource failure at TRY does (above, "Resource
+  failures at TRY"): that part of the first version's deviation is
+  withdrawn.
 
 ## Spec and obligations
 

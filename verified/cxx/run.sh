@@ -50,6 +50,11 @@ slow=(
   "encoder-mutant|fail|message-encoder-bounds|verified/cxx/esbmc.sh verified/cxx/harness/message_encoder.cc --unwind 3 --unwindsetname N@toit@S@MessageEncoder@encode_array:0:5,N@toit@S@MessageEncoder@encode_map:0:5,N@toit@S@MessageEncoder@write_cardinal:0:11 -DCXXV_NO_WRITE_PASS -DCXXV_COLLECTION=0 -DCXXV_BACKING=0 -DCXXV_ARRAY=1"
   "int-parse|pass|-|verified/cxx/esbmc.sh verified/cxx/harness/int_parse.cc --unwind 2 --unwindsetname primitive_core.cc@N@toit@parse_short_decimal:0:19,int_parse.cc@parse_reference:0:19 --overflow-check -DCXXV_BLOB_KIND=2 -DCXXV_MAX_BLOB=19"
   "int64-to-string|pass|-|verified/cxx/esbmc.sh verified/cxx/harness/int64_to_string.cc --unwind 72 --overflow-check"
+  # grow-stack: no verdict within 60 minutes (Bitwuzla, about 4 GB) at
+  # ceadf1bdf (4,054 VCCs, 2,016 after simplification) and after format 3,
+  # step 3 (3,935 / 1,957), 2026-11-26; the pilot table records no result in
+  # 28 minutes. The VeriFast proof of toit_v2_grow_stack
+  # (annotated/ffi/interpreter_v2.render) covers the function.
   "grow-stack|pass|-|verified/cxx/esbmc.sh verified/cxx/harness/grow_stack.cc --unwind 7 --unwindsetname __memcpy_impl:0:30 --overflow-check -DCXXV_MAX_LENGTH=3 -DCXXV_NEEDED_MAX=3"
   # Not run at all: Frama-C/WP (89 of 96 goals, see the write-up),
   # string_write.cc (ESBMC crashes on it: tool defect T3).

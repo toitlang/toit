@@ -736,7 +736,15 @@ impl Machine {
     /// a frame for `target`, whose arguments are the top `arity` slots.
     #[inline(always)]
     pub fn call_h(&mut self, env: &Env, target: usize, ret: usize, handler: usize) -> Ctl {
-        let p = &env.p;
+        match self.frame_h(&env.p, target, ret, handler) {
+            Ctl::Next => Self::preempt_point(env),
+            c => c,
+        }
+    }
+
+    /// `call_h` without the preemption point.
+    #[inline(always)]
+    pub fn frame_h(&mut self, p: &Program, target: usize, ret: usize, handler: usize) -> Ctl {
         if target >= p.methods.len() { return Ctl::Stuck(stuck::NOT_METHOD); }
         let info = p.method(target);
         let arity = info.arity as usize;
@@ -754,7 +762,7 @@ impl Machine {
         self.base = base;
         self.lim = self.len - base;
         self.bci = info.entry as usize;
-        Self::preempt_point(env)
+        Ctl::Next
     }
 
     /// `spec::call`.
@@ -1531,8 +1539,10 @@ impl Machine {
                 self.binary_result(p.boolean(r))
             }
             op::TRY => {
-                if let Some(c) = self.ensure_room(env) { return c; }
-                self.op_try(env)
+                // Without room for the call: `try_grow` (format note 23).
+                let needed = FRAME_WORDS + p.max_height + STACK_RESERVE + 1;
+                if self.top - self.ftop < needed { return self.try_grow(env, needed); }
+                self.op_try(env, true)
             }
             op::LOAD_FIELD_THIS => self.op_load_field_this(p, b1!()),
             op::UNWIND => self.op_unwind(env),
@@ -2016,7 +2026,7 @@ impl Machine {
     }
 
     #[inline(always)]
-    fn op_try(&mut self, env: &Env) -> Ctl {
+    fn op_try(&mut self, env: &Env, preempt: bool) -> Ctl {
         let p = &env.p;
         if !self.has_slot(0) || self.ftop < FRAME_WORDS { return Ctl::Stuck(stuck::STACK_RANGE); }
         let height = self.len - self.top;
@@ -2030,8 +2040,35 @@ impl Machine {
                 if !self.push(Self::block_value(fi, slot)) { return Ctl::Stuck(stuck::LIMIT); }
                 let ret = self.bci + 1;
                 // The try block (format note 23).
-                self.call_h(env, t, ret, 1)
+                if preempt { self.call_h(env, t, ret, 1) } else { self.frame_h(p, t, ret, 1) }
             }
+        }
+    }
+
+    /// TRY without room for its call (`unwind::try_grow` of the verified
+    /// loop): grows the stack (the TRY runs again), or enters the try block
+    /// and raises the error there, so that the TRY's finally code runs
+    /// (`prim::resource_state`). Cold path: runs out of line on a copy of
+    /// the machine (see `cold!`).
+    #[inline(always)]
+    fn try_grow(&mut self, env: &Env, needed: usize) -> Ctl {
+        cold!(self, |m| m.try_grow_cold(env, needed))
+    }
+
+    #[inline(never)]
+    fn try_grow_cold(&mut self, env: &Env, needed: usize) -> Ctl {
+        self.save();
+        let status = env.rt.grow_stack(&mut self.mem, needed);
+        if !self.reload(&env.p) { return Ctl::Stuck(stuck::FATAL); }
+        if status == V2_OK { return Ctl::Next; }
+        match self.op_try(env, false) {
+            Ctl::Next => {},
+            c => return c,
+        }
+        if status == V2_STACK_OVERFLOW {
+            self.raise_value(env, env.p.roots.at(ROOT_STACK_OVERFLOW))
+        } else {
+            self.unwind(env, Unwinding::Throw(env.p.roots.at(ROOT_OUT_OF_MEMORY_ERROR)))
         }
     }
 

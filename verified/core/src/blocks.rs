@@ -182,6 +182,7 @@ pub fn op_invoke_block(m: &mut Machine, env: &Env, bci: usize, opcode: u8, n: us
     requires
         handler_pre(&env.p, *old(m), bci, opcode),
         toit_spec::v2::prim::grows_stack(opcode),
+        opcode != 97,
         sp::step(env.p.ap@, old(m).g@) == sp::op_invoke_block(env.p.ap@, old(m).g@, n as int),
         bci + 2 < 0x1000_0000,
     ensures step_post(&env.p, *old(m), *final(m), r),

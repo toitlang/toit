@@ -332,6 +332,9 @@ pub fn grow(m: &mut Machine, env: &Env, needed: usize) -> (r: Ctl)
         old(m).inv(&env.p),
         needed < GROW_STACK_MAX_NEEDED,
         toit_spec::v2::prim::grows_stack(env.p.ap@.bytecodes[old(m).bci as int]),
+        // TRY grows its stack itself (`unwind::try_grow`: its resource throws
+        // start in the try block).
+        toit_spec::v2::bytecodes::base_op(env.p.ap@.bytecodes[old(m).bci as int]) != 97,
         old(m).bci < 0x1000_0000,
     ensures step_post(&env.p, *old(m), *final(m), r),
 {
@@ -393,6 +396,7 @@ pub fn ensure_room(m: &mut Machine, env: &Env) -> (r: Option<Ctl>)
     requires
         old(m).inv(&env.p),
         toit_spec::v2::prim::grows_stack(env.p.ap@.bytecodes[old(m).bci as int]),
+        toit_spec::v2::bytecodes::base_op(env.p.ap@.bytecodes[old(m).bci as int]) != 97,
         old(m).bci < 0x1000_0000,
     ensures
         r is None ==> *final(m) == *old(m) && final(m).top - final(m).ftop >= FRAME_WORDS + STACK_RESERVE,
@@ -1002,6 +1006,7 @@ pub open spec fn slow_pre(p: &Program, m: Machine, r: Regs, k: Slow, w: usize, v
         Slow::Lookup(sel) => sp::step(ap, g) == sp::raise(ap, g, sp::LOOKUP_FAILED)
             && w == enc(a, v) && encodable(a, v) && (v is Smi || v is Obj) && -0x8000_0000 <= sel < 0x8000_0000,
         Slow::Call(t, ret) => toit_spec::v2::prim::grows_stack(ap.bytecodes[r.ip@])
+            && ap.bytecodes[r.ip@] != 97
             && sp::step(ap, g) == sp::call(ap, g, t as int, ret as int),
         Slow::Return => sp::step(ap, g) == sp::return_from(ap, g, v) && w == enc(a, v) && encodable(a, v),
     }

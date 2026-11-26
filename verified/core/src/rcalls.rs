@@ -144,6 +144,7 @@ pub fn op_invoke_static(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, op
     requires
         rhandler_pre(&env.p, *old(m), *old(r), bci, opcode),
         toit_spec::v2::prim::grows_stack(opcode),
+        opcode != 97,
         sp::step(env.p.ap@, old(m).g@) == sp::call_static(env.p.ap@, old(m).g@, sp::dispatch_target(env.p.ap@, d as int), 3),
         bci + 3 < 0x1000_0000,
     ensures rpost(&env.p, *old(m), *old(r), *final(m), *final(r), c),
@@ -191,6 +192,7 @@ pub fn op_invoke_virtual(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, o
     requires
         rhandler_pre(&env.p, *old(m), *old(r), bci, opcode),
         toit_spec::v2::prim::grows_stack(opcode),
+        opcode != 97,
         sp::step(env.p.ap@, old(m).g@) == sp::invoke_virtual(env.p.ap@, old(m).g@, sel as int, n as int, len as int),
         -0x8000_0000 <= sel < 0x8000_0000,
         bci + len < 0x1000_0000,

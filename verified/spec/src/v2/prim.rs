@@ -153,6 +153,25 @@ pub open spec fn allocates_double(p: Program2, s: State2, op: u8) -> bool {
     &&& crate::spec_helpers::are_floats(as1(s), at(s, 1), at(s, 0))
 }
 
+/// The state a resource throw starts from: `s`, except at a TRY that calls
+/// its try block (`op_try` is `Next`): there the try block's frame, with
+/// the handler flag, is entered first and the error is raised in it, so
+/// that unwinding runs the TRY's finally code. Language level: a resource
+/// failure never skips a finally whose try was reached (format 1's LINK
+/// installs the handler before the block call, which alone can fail; the
+/// library's `acquire; try: ... finally: release` relies on it). The
+/// size bound keeps the entered state within `small` (the machine's
+/// states always are).
+pub open spec fn resource_state(p: Program2, s: State2) -> State2 {
+    let b = s.bci as int;
+    if 0 <= b < p.bytecodes.len() && base_op(p.bytecodes[b]) == TRY && op_try(p, s) is Next
+        && (op_try(p, s)->Next_0).stack.len() < 0x4000_0000 && (op_try(p, s)->Next_0).frames.len() < 0x4000_0000 {
+        op_try(p, s)->Next_0
+    } else {
+        s
+    }
+}
+
 /// The resource throws in state `s`: what the machine may do instead of
 /// the step when a resource the abstract machine does not bound runs out.
 /// They exist only at these instructions:
@@ -166,15 +185,18 @@ pub open spec fn allocates_double(p: Program2, s: State2, op: u8) -> bool {
 ///
 /// A primitive's own resource failure is a completion of PRIMITIVE
 /// (`PrimRet::OutOfMemory`); a raise's is a completion of the raise
-/// (`raised`). Each alternative starts from `s` itself: the instruction
-/// has not run (stack growth and allocation happen before any change).
+/// (`raised`). Each alternative starts from `resource_state(p, s)`: `s`
+/// itself (the instruction has not run: stack growth and allocation happen
+/// before any change), except at TRY, where it starts in the try block
+/// (format note 23, "Resource failures at TRY").
 pub open spec fn resource_throw(p: Program2, s: State2, o: Outcome2) -> bool {
     let b = s.bci as int;
     let op = base_op(p.bytecodes[b]);
+    let s0 = resource_state(p, s);
     &&& 0 <= b < p.bytecodes.len()
     &&& {
-        ||| (grows_stack(op) || allocates_instance(op)) && o == unwind(p, s, Unwind::Throw(out_of_memory(p)))
-        ||| grows_stack(op) && o == Outcome2::Raise(s, p.roots[ROOT_STACK_OVERFLOW])
+        ||| (grows_stack(op) || allocates_instance(op)) && o == unwind(p, s0, Unwind::Throw(out_of_memory(p)))
+        ||| grows_stack(op) && o == Outcome2::Raise(s0, p.roots[ROOT_STACK_OVERFLOW])
         ||| allocates_double(p, s, op) && o == operator_fallback(p, s, op)
     }
 }

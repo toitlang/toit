@@ -4,6 +4,24 @@ One entry per change of `src/v2/spec.rs`, `src/v2/prim.rs`, `src/v2/types.rs`
 or the verifier's rules (`src/v2/verifier.rs`) that an implementation of
 the spec (the verified core, the VM's loader) must follow. Newest first.
 
+## 2026-11-26: resource failures at TRY run the finally code (format 3, step 3)
+
+What (note 23, "Resource failures at TRY"): `prim::resource_throw` at a
+TRY starts in `prim::resource_state(p, s)`, the try block's entry (the
+state `op_try` enters), instead of in `s`: the out-of-memory error thrown
+and the stack-overflow error raised when the stack cannot grow for the try
+block unwind into the TRY's own finally code. Every other instruction is
+unchanged. Language level: a resource failure never skips a finally whose
+try was reached (`sound_resource::lemma_try_resource_finally`).
+
+Why: the idiom `acquire; try: ... finally: release` leaked the state when
+the failure landed on the TRY (a monitor lock at the heap quota, artifacts
+quota-livelock); format 1 runs the finally code there.
+
+Implementations: the core's `unwind::op_try`/`try_grow` and the checked
+loop's `try_grow_cold` enter the try block's frame before raising; the
+room check of TRY includes the block reference.
+
 ## 2026-11-26: TRY as a flagged block call, tokens in slots (format 3, step 3)
 
 What (note 23): the image tag is `TBC3`. TRY calls its try block with

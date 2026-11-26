@@ -573,28 +573,25 @@ pub proof fn lemma_try_target(p: &Program, g: State2)
     assert(sp::block_target(ap, g, g.stack.len() - 1) == Some(tt));
 }
 
-/// TRY: calls the try block, whose method is the top slot, with a
-/// reference to that slot, as a try block (format note 23).
+/// Pushes the reference to the block's slot and the try block's frame
+/// (with the handler flag), without the room check of a call and without
+/// the preemption point: `spec::op_try`'s next state. `false` (LIMIT) if
+/// the five words are not free.
 #[inline(always)]
-pub fn op_try(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: Ctl)
+pub fn enter_try_block(m: &mut Machine, p: &Program, bci: usize) -> (ok: bool)
     requires
-        handler_pre(&env.p, *old(m), bci, opcode),
-        toit_spec::v2::prim::grows_stack(opcode),
-        sp::step(env.p.ap@, old(m).g@) == sp::op_try(env.p.ap@, old(m).g@),
-        cur_op(env.p.ap@, old(m).g@) == 97,
+        old(m).inv(p),
+        cur_op(p.ap@, old(m).g@) == 97,
+        old(m).bci == bci, old(m).g@.bci == bci,
         bci + 1 < 0x1000_0000,
-    ensures step_post(&env.p, *old(m), *final(m), r),
+    ensures
+        ok ==> final(m).refines(p) && sp::op_try(p.ap@, old(m).g@) == Outcome2::Next(final(m).g@),
+        final(m).len == old(m).len,
 {
-    if let Some(c) = ensure_room(m, env) {
-        return c;
-    }
-    let p = &env.p;
     let ghost ap = p.ap@;
     let ghost g = m.g@;
-    let ghost m0 = *m;
     let ghost n = g.frames.len() as int;
     proof {
-        assert(outcome_ok(ap, p.cert@, sp::step(ap, g)));
         m.lemma_frame(p);
         lemma_try_target(p, g);
         lemma_frames_wf(p, g);
@@ -624,15 +621,146 @@ pub fn op_try(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: Ctl)
     proof { assert(fi < 0x4000 && slot < MAX_STACK_LENGTH); }
     let w = smi_of((fi * 0x1_0000 + slot) as i64);
     if !m.push_val(p, w, Ghost(br)) {
-        return Ctl::Stuck(stuck::LIMIT);
+        return false;
+    }
+    if m.top - m.ftop < FRAME_WORDS {
+        return false;
     }
     proof {
         assert(sp::top_index(g) == n - 1);
         assert(sp::op_try(ap, g) == sp::try_call(ap, sp::push(g, br), tt, g.bci + 1));
         assert(t == tt);
     }
-    let r = m.push_call(env, t, bci + 1, 1);
+    m.push_frame(p, t, bci + 1, 1);
+    true
+}
+
+/// TRY: calls the try block, whose method is the top slot, with a
+/// reference to that slot, as a try block (format note 23). Without room
+/// for the call, the stack grows (and the TRY runs again); if it cannot,
+/// the error is raised in the try block (`prim::resource_state`), so the
+/// TRY's finally code runs.
+#[inline(always)]
+pub fn op_try(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: Ctl)
+    requires
+        handler_pre(&env.p, *old(m), bci, opcode),
+        toit_spec::v2::prim::grows_stack(opcode),
+        sp::step(env.p.ap@, old(m).g@) == sp::op_try(env.p.ap@, old(m).g@),
+        cur_op(env.p.ap@, old(m).g@) == 97,
+        bci + 1 < 0x1000_0000,
+    ensures step_post(&env.p, *old(m), *final(m), r),
+{
+    proof { assert(env.p.max_height < 0x1_0000); }
+    // A call's room and the block reference TRY pushes first (as the
+    // register path's gate, `regs::gate_ok`), so that the try block's
+    // frame has its room (`room::room_ok`).
+    let needed = FRAME_WORDS + env.p.max_height + STACK_RESERVE + 1;
+    if m.top - m.ftop < needed {
+        return try_grow(m, env, bci, needed);
+    }
+    let p = &env.p;
+    let ghost ap = p.ap@;
+    let ghost g = m.g@;
+    let ghost m0 = *m;
+    proof { assert(outcome_ok(ap, p.cert@, sp::step(ap, g))); }
+    if !enter_try_block(m, p, bci) {
+        return Ctl::Stuck(stuck::LIMIT);
+    }
+    let r = if env.pre.requested() {
+        env.pre.clear();
+        Ctl::Exit(RESULT_PREEMPTED as u32, 0)
+    } else {
+        Ctl::Next
+    };
     proof { lemma_matches(p, m0, *m, r); }
+    r
+}
+
+/// TRY without room for the call: grows the stack (a GC point; the TRY
+/// runs again), or, if it cannot grow, raises the stack-overflow error or
+/// throws the out-of-memory error from the try block's frame
+/// (`prim::resource_state`, format note 23: the finally code runs).
+#[inline(never)]
+pub fn try_grow(m: &mut Machine, env: &Env, bci: usize, needed: usize) -> (r: Ctl)
+    requires
+        old(m).inv(&env.p),
+        needed < GROW_STACK_MAX_NEEDED,
+        cur_op(env.p.ap@, old(m).g@) == 97,
+        old(m).bci == bci, old(m).g@.bci == bci,
+        bci + 1 < 0x1000_0000,
+    ensures step_post(&env.p, *old(m), *final(m), r),
+{
+    let p = &env.p;
+    let ghost ap = p.ap@;
+    let ghost g = m.g@;
+    let ghost m0 = *m;
+    proof {
+        lemma_instr(ap, p.cert@, p.trusted@, g);
+        assert(toit_spec::v2::prim::grows_stack(ap.bytecodes[g.bci as int]));
+    }
+    m.save();
+    proof { crate::alloc::lemma_saved(p, *m); }
+    let status = gc_grow_stack(m, env, needed, Ghost(g));
+    // The collections reached `g2`; the instruction has not run.
+    let ghost g2 = choose|g2: State2| #[trigger] grow_post(p, *m, g, g2, needed, status);
+    crate::alloc::reload(m, p, Ghost(g2));
+    let ghost m1 = *m;
+    proof {
+        lemma_inv_gc(p, m0, m1);
+        toit_spec::v2::gc::lemma_gc_steps_refl(ap, g2);
+    }
+    if status == V2_OK {
+        proof { lemma_advances_gc_only(ap, g, g2); }
+        return Ctl::Next;
+    }
+    // The try block is entered first (the resource throw's state).
+    if !enter_try_block(m, p, bci) {
+        return Ctl::Stuck(stuck::LIMIT);
+    }
+    let ghost s1 = m.g@;
+    proof {
+        lemma_small(p, &m1);
+        lemma_small(p, &*m);
+        toit_spec::v2::sound_call_ops::lemma_step_try(ap, p.cert@, p.trusted@, g2);
+        assert(sp::step(ap, g2) == sp::op_try(ap, g2)) by { reveal(sp::step); }
+        assert(toit_spec::v2::prim::resource_state(ap, g2) == s1);
+        assert(wf(ap, p.cert@, s1));
+        lemma_shape(p, s1);
+    }
+    if status == V2_STACK_OVERFLOW {
+        let ghost v = ap.roots[ROOT_STACK_OVERFLOW as int];
+        proof {
+            assert(toit_spec::v2::prim::resource_throw(ap, g2, Outcome2::Raise(s1, v)));
+            lemma_source_resource(ap, g2, Outcome2::Raise(s1, v));
+            m.lemma_root(p, ROOT_STACK_OVERFLOW as int);
+        }
+        let value = p.roots.at(ROOT_STACK_OVERFLOW);
+        let r = m.raise_with(env, Ghost(m1), value, Ghost(v), V2_MESSAGE_NONE, [0, 0, 0, 0], 0, Ghost(Seq::empty()));
+        proof {
+            toit_spec::v2::gc::lemma_gc_steps_refl(ap, m.g@);
+            lemma_step_post_gc(p, m0, m1, *m, *m, r);
+        }
+        return r;
+    }
+    let ghost u = Unwind::Throw(ap.roots[ROOT_OUT_OF_MEMORY_ERROR as int]);
+    let ghost o1 = sp::unwind(ap, s1, u);
+    proof {
+        m.lemma_root(p, ROOT_OUT_OF_MEMORY_ERROR as int);
+        assert(toit_spec::v2::prim::resource_throw(ap, g2, o1));
+        lemma_source_resource(ap, g2, o1);
+        lemma_unwind_not_raise(ap, s1, u);
+        lemma_source_outcome(p, m1, o1);
+        assert(ap.roots.len() == 35);
+        assert(p.roots@[ROOT_OUT_OF_MEMORY_ERROR as int] == enc(m.addr(), ap.roots[ROOT_OUT_OF_MEMORY_ERROR as int])
+            && const_ok(s1.heap, ap.roots[ROOT_OUT_OF_MEMORY_ERROR as int]));
+    }
+    let w = p.roots.at(ROOT_OUT_OF_MEMORY_ERROR);
+    let r = m.do_unwind(env, Unw::Throw(w), Ghost(u));
+    proof {
+        lemma_outcome_matches(p, m1, *m, r, o1);
+        toit_spec::v2::gc::lemma_gc_steps_refl(ap, m.g@);
+        lemma_step_post_gc(p, m0, m1, *m, *m, r);
+    }
     r
 }
 

@@ -316,8 +316,8 @@ flash outside its image, or the hardware.
   and for 32-bit words (`--target i686-unknown-linux-gnu`, the stand-in
   for the 32-bit devices), the core in both configurations of its run
   loop (`verified/check.sh` sections `verus`, `verus32`). Counts after
-  format 3, step 3 (branch format3/try): spec 1079 verified (both widths),
-  core 1060 (64-bit) and 1062 (32-bit), core-split 1062 (64-bit) and 1064
+  format 3, step 3 (branch format3/try): spec 1081 verified (both widths),
+  core 1063 (64-bit) and 1065 (32-bit), core-split 1065 (64-bit) and 1067
   (32-bit), 0 errors (before, at ceadf1bdf: spec 1096, core 1103/1105,
   core-split 1105/1107; fewer items because the finally-record machinery
   is gone).

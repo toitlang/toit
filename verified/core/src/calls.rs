@@ -256,7 +256,29 @@ impl Machine {
              else { sp::try_call(env.p.ap@, old(self).g@, target as int, ret as int) }) == Outcome2::Next(final(self).g@),
             final(self).len == old(self).len,
     {
-        let p = &env.p;
+        self.push_frame(&env.p, target, ret, handler);
+        if env.pre.requested() {
+            env.pre.clear();
+            return Ctl::Exit(RESULT_PREEMPTED as u32, 0);
+        }
+        Ctl::Next
+    }
+
+    /// `push_call` without the preemption point.
+    #[inline(always)]
+    pub fn push_frame(&mut self, p: &Program, target: usize, ret: usize, handler: usize)
+        requires
+            old(self).refines(p),
+            !(sp::call(p.ap@, old(self).g@, target as int, ret as int) is Stuck),
+            old(self).top - old(self).ftop >= FRAME_WORDS,
+            handler <= 1,
+        ensures
+            final(self).refines(p),
+            (if handler == 0 { sp::call(p.ap@, old(self).g@, target as int, ret as int) }
+             else { sp::try_call(p.ap@, old(self).g@, target as int, ret as int) }) == Outcome2::Next(final(self).g@),
+            final(self).len == old(self).len,
+            final(self).addr() == old(self).addr(),
+    {
         let ghost m0 = *self;
         let ghost g0 = self.g@;
         proof { self.lemma_frame(p); }
@@ -299,11 +321,6 @@ impl Machine {
                 assert(fr == Frame { handler: false, ..fr });
             }
         }
-        if env.pre.requested() {
-            env.pre.clear();
-            return Ctl::Exit(RESULT_PREEMPTED as u32, 0);
-        }
-        Ctl::Next
     }
 
     /// Pops the top frame (`spec::pop_frame`): the caller becomes the top
@@ -522,6 +539,7 @@ pub fn do_invoke_virtual(m: &mut Machine, env: &Env, bci: usize, opcode: u8, sel
     requires
         handler_pre(&env.p, *old(m), bci, opcode),
         toit_spec::v2::prim::grows_stack(opcode),
+        opcode != 97,
         source(env.p.ap@, old(m).g@, sp::invoke_virtual(env.p.ap@, old(m).g@, sel as int, n as int, len as int)),
         -0x8000_0000 <= sel < 0x8000_0000,
         bci + len < 0x1000_0000,
@@ -562,6 +580,7 @@ pub fn fallback_src(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: C
     requires
         handler_pre(&env.p, *old(m), bci, opcode),
         toit_spec::v2::prim::grows_stack(opcode),
+        opcode != 97,
         62 <= opcode <= 79,
         source(env.p.ap@, old(m).g@, sp::operator_fallback(env.p.ap@, old(m).g@, opcode)),
         bci + 1 < 0x1000_0000,

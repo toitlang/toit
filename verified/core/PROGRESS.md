@@ -11,11 +11,27 @@ bci and height); UNWIND resumes it. No finally records, no record moves,
 no gate for them (verified/spec/format/23-format3-try.md). Image tag
 `TBC3`; images with another `TBC` digit are refused where programs start.
 
-Proofs: spec 1079, core 1060, core-split 1062 (32-bit 1079, 1062, 1064)
+Resource failures at TRY (requirement after the quota livelock): a TRY
+whose try block cannot get its stack room now enters the try block first
+and raises the stack-overflow or out-of-memory error there, so the TRY's
+finally code runs, as in format 1 (spec `prim::resource_state`, lemma
+`sound_resource::lemma_try_resource_finally`; core `unwind::try_grow`,
+checked loop `try_grow_cold`). The machine path's room check of TRY now
+counts the block reference (it did not, so near the stack's limit a TRY
+could enter a try block without its room and the next room scan ended
+the process with `LIMIT`). tests/sandbox/try-finally-resource-test.toit
+runs the naive `flag = true; try: ... finally: flag = false` at every
+depth and word offset around the overflow and with the heap at the
+quota, on host and host32; it fails on the base (the flag leaks) and on
+the first version of this step (`LIMIT`).
+
+Proofs: spec 1081, core 1063, core-split 1065 (32-bit 1081, 1065, 1067)
 verified, 0 errors (base ceadf1bdf: 1096, 1103, 1105; 32-bit 1096, 1105,
 1107). Theorem statements unchanged in text or stronger (THEOREMS.txt:
 `lemma_replace_frame_slots` lost `!has_handler(s)`, `x_throw_null` lost
-the finally-record bound). Deleted finally-record machinery: rfins.rs
+the finally-record bound; new: `lemma_try_resource_finally`); the
+theorem's set of resource throws changed at TRY only (they start in the
+try block). Deleted finally-record machinery: rfins.rs
 (367 lines), `fins_rel`, `cut_records`, `pop_records`, the record moves
 in view.rs and calls.rs, the spec's `fin_ok`, `try_ok`, `fins_ok`,
 `cut_fins`, `fins_popped`, `fin_matches`; diff of verified/spec/src

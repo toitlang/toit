@@ -690,7 +690,7 @@ pub proof fn lemma_try_call(p: Program2, c: Cert, trusted: bool, s: State2, tt: 
 #[verifier::spinoff_prover]
 pub proof fn lemma_step_try(p: Program2, c: Cert, trusted: bool, s: State2)
     requires accepts(p, c, trusted), wf(p, c, s), small(s), cur_op(p, s) == TRY,
-    ensures step_ok(p, c, s),
+    ensures step_ok(p, c, s), op_try(p, s) is Next,
 {
     lemma_instr(p, c, trusted, s);
     let m = cur_m(s);
