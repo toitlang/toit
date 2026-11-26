@@ -611,6 +611,30 @@ pub fn verify_shipped(p: &VProgram, cert: &[u8], global_count: u64, prim_arity: 
         Some(x) => x,
         None => return Ok((false, 0)),
     };
+    let (ok, at, Ghost(ms)) = crate::v2::walk::walk(p, &g, maps, trusted, &mut crate::v2::walk::NoProgress)?;
+    if ok {
+        proof {
+            lemma_split_sound(vview(p), g@, ms, trusted);
+            let c = with_maps(g@, ms);
+            assert(c.global_count == global_count as int);
+            assert(c.prim_arity == prim_view(prim_arity@));
+        }
+    }
+    Ok((ok, at))
+}
+
+/// The two-pass checker (decode the maps, then `check::verify`): the
+/// differential test's reference until the old path is removed.
+pub fn verify_shipped_two_pass(p: &VProgram, cert: &[u8], global_count: u64, prim_arity: &[Vec<u8>], trusted: bool)
+    -> (res: Result<(bool, usize), Oom>)
+    ensures
+        res matches Ok(r) ==> (r.0 ==> exists|c: Cert| accepts(vview(p), c, trusted) && #[trigger] c.global_count == global_count as int
+            && c.prim_arity == prim_view(prim_arity@)),
+{
+    let (g, maps) = match parse_cert(p, cert, global_count, prim_arity) {
+        Some(x) => x,
+        None => return Ok((false, 0)),
+    };
     let mut o = ShippedOracle::new(maps, trusted);
     let (ok, Ghost(ms)) = verify(p, &g, &mut o, trusted)?;
     if ok {

@@ -15,8 +15,8 @@
 
 //! Install-time verification with progress reports (verified/vmverify/
 //! README.md, "Install time"): `verify_shipped_progress` is
-//! `v2::cert::verify_shipped` with a callback before each method's maps
-//! are read, so the VM can tell its scheduler that the (non-preemptible)
+//! `v2::cert::verify_shipped` with a callback before each method is
+//! checked, so the VM can tell its scheduler that the (non-preemptible)
 //! verification is making progress. Same proof, same postcondition: the
 //! callback only gets the method index and its `Progress` value, which the
 //! verdict does not depend on.
@@ -24,36 +24,13 @@
 use vstd::prelude::*;
 use alloc::vec::Vec;
 use crate::xvec::*;
-use crate::v2::check::*;
 use crate::v2::cert::*;
 use crate::v2::verifier::*;
 use crate::v2::split::*;
 use crate::v2::vprog::*;
-#[cfg(verus_only)]
-use crate::v2::exec::wf_program2;
+pub use crate::v2::walk::Progress;
 
 verus! {
-
-/// What the checker reports between methods (implemented by the VM's glue:
-/// verified/vmverify/src/verify.rs).
-pub trait Progress {
-    /// Called before the maps of method `m` are read, so once per method in
-    /// order, before the method is checked.
-    fn method(&mut self, m: usize);
-}
-
-/// `ShippedOracle` with a progress report per method.
-pub struct ProgressOracle<'a, P: Progress> {
-    pub inner: ShippedOracle<'a>,
-    pub progress: P,
-}
-
-impl<'a, P: Progress> MapOracle for ProgressOracle<'a, P> {
-    fn method_maps(&mut self, p: &VProgram, g: &XGlobal, m: usize) -> Result<XMaps, Oom> {
-        self.progress.method(m);
-        self.inner.method_maps(p, g, m)
-    }
-}
 
 /// `verify_shipped` (cert.rs) with `progress` told before each method: the
 /// verdict on program `p` with the shipped certificate `cert` is true only
@@ -71,8 +48,8 @@ pub fn verify_shipped_progress<P: Progress>(p: &VProgram, cert: &[u8], global_co
         Some(x) => x,
         None => return Ok((false, 0)),
     };
-    let mut o = ProgressOracle { inner: ShippedOracle::new(maps, trusted), progress };
-    let (ok, Ghost(ms)) = verify(p, &g, &mut o, trusted)?;
+    let mut progress = progress;
+    let (ok, at, Ghost(ms)) = crate::v2::walk::walk(p, &g, maps, trusted, &mut progress)?;
     if ok {
         proof {
             lemma_split_sound(vview(p), g@, ms, trusted);
@@ -81,7 +58,7 @@ pub fn verify_shipped_progress<P: Progress>(p: &VProgram, cert: &[u8], global_co
             assert(c.prim_arity == prim_view(prim_arity@));
         }
     }
-    Ok((ok, o.inner.last))
+    Ok((ok, at))
 }
 
 } // verus!
