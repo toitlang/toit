@@ -80,6 +80,20 @@ int main() {
   word count_limit = nondet_word(), byte_limit = nondet_word();
   policy.quotas_.max_mailbox_messages = count_limit;
   policy.quotas_.max_mailbox_bytes = byte_limit;
+  // The sandbox heap floor (host: on the simulated system heap). A message
+  // to a sandbox or from a messaging-restricted sender is charged to it.
+  bool sandboxed_receiver = nondet_bool();
+  policy.kind_ = sandboxed_receiver ? PrimitivePolicy::UNTRUSTED : PrimitivePolicy::TRUSTED;
+  int floor = nondet_int(), system_heap = nondet_int();
+  word simulated = nondet_word();
+  CXXV_ASSUME(simulated >= 0 && (size < 0 || simulated <= INTPTR_MAX - size));
+  Flags::sandbox_heap_floor = floor;
+  Flags::sandbox_system_heap = system_heap;
+  simulated_sandbox_bytes = simulated;
+  word free = simulated >= system_heap ? 0 : system_heap - simulated;
+  bool charged = sandboxed_receiver || restricted;
+  bool floor_room = !charged || floor <= 0 || (!restricted && count == 0) ||
+                    (free >= floor && free - floor >= size);
 
   int capacity = nondet_int(), grants = nondet_int();
   CXXV_ASSUME(0 <= grants && grants <= capacity && capacity <= 2);
@@ -96,7 +110,7 @@ int main() {
                                    fits(restricted_bytes, size, sender_bytes, 1)));
   bool admitted = receiver._append_message(message, reply_to);
   bool needs_grant = reply_to >= 0 && !had_grant;
-  bool expected = room && (!needs_grant || (grants < capacity && group->grants_ != nullptr));
+  bool expected = room && floor_room && (!needs_grant || (grants < capacity && group->grants_ != nullptr));
   CXXV_ASSERT(admitted == expected && !held && acquisitions == 1 && released == nullptr,
               "admit exactly when mailbox and requested reply grant permit, retaining ownership on rejection");
   CXXV_ASSERT(group->grants_count_ == grants + (admitted && needs_grant) &&
@@ -104,8 +118,10 @@ int main() {
               "publish a new reply grant only with a delivered request");
   CXXV_ASSERT((grants == 0 || group->grants_[0] == 13) && (grants < 2 || group->grants_[1] == 17),
               "preserve every existing grant");
-  CXXV_ASSERT(room || group->grants_ == (has_storage ? grants_storage : nullptr),
-              "mailbox rejection does not allocate grant storage");
+  CXXV_ASSERT((room && floor_room) || group->grants_ == (has_storage ? grants_storage : nullptr),
+              "mailbox or floor rejection does not allocate grant storage");
+  CXXV_ASSERT(simulated_sandbox_bytes == simulated + (admitted && charged && system_heap > 0 ? size : 0),
+              "charge an admitted message to the simulated system heap exactly when it is floor-charged");
   CXXV_ASSERT(receiver.mailbox_count_ == (admitted ? count + 1 : count) &&
               receiver.mailbox_bytes_ == (admitted ? bytes + size : bytes) &&
               receiver.restricted_count_ == (admitted && restricted ? restricted_count + 1 : restricted_count) &&

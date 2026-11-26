@@ -345,7 +345,7 @@ bool Process::sandbox_start_allowed(const uint8* program_id) {
   { Locker locker(OS::process_mutex());
     delay_us = sandbox_restart_damper.delay_us(program_id, OS::get_monotonic_time());
   }
-  if (free >= floor + start && delay_us == 0) return true;
+  if (free >= floor && free - floor >= start && delay_us == 0) return true;
 #ifdef TOIT_FREERTOS
   FILE* out = stdout;
 #else
@@ -356,7 +356,7 @@ bool Process::sandbox_start_allowed(const uint8* program_id) {
             static_cast<int>(delay_us / 1000));
   } else {
     fprintf(out, "[sandbox start refused: %d KB free, the floor and a start need %d KB]\n",
-            static_cast<int>(free / KB), static_cast<int>((floor + start) / KB));
+            static_cast<int>(free / KB), static_cast<int>((static_cast<int64>(floor) + start) / KB));
   }
   return false;
 }
@@ -481,19 +481,21 @@ bool Process::message_floor_allows_locked(SystemMessage* system, word size) {
   // The message is allocated: what is free is what is left.
   return system_free_bytes() >= floor;
 #else
-  return system_free_bytes() >= floor + size;
+  word free = system_free_bytes();
+  return free >= floor && free - floor >= size;
 #endif
 }
 
 void Process::charge_simulated_message_locked(SystemMessage* system, word size) {
 #ifndef TOIT_FREERTOS
-  if (is_floor_charged(system)) simulated_sandbox_bytes += size;
+  // Only while the system heap is simulated (-Xsandbox_system_heap).
+  if (Flags::sandbox_system_heap > 0 && is_floor_charged(system)) simulated_sandbox_bytes += size;
 #endif
 }
 
 void Process::uncharge_simulated_message_locked(SystemMessage* system, word size) {
 #ifndef TOIT_FREERTOS
-  if (is_floor_charged(system)) simulated_sandbox_bytes -= size;
+  if (Flags::sandbox_system_heap > 0 && is_floor_charged(system)) simulated_sandbox_bytes -= size;
 #endif
 }
 
