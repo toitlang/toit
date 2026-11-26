@@ -49,11 +49,14 @@ class FlashRegistry:
     result := slot.offset
     // Make sure we can erase the slot before we return it.
     if (flash-registry-erase_ result size) < size: throw "Unable to erase flash at $result"
+    // Reserve before the hole slot is adjusted: if the system process is out
+    // of memory, the reservation throws and the hole stays as it was.
+    reservation := FlashReservation result size
     // Remember to adjust the hole slot so that future calls to this method
     // will not return an overlapping region.
     slot.offset += size
     slot.size -= size
-    return FlashReservation result size
+    return reservation
 
   /**
   Allocates the $reservation.
@@ -72,9 +75,10 @@ class FlashRegistry:
     try:
       offset := reservation.offset
       flash-registry-allocate_ offset size type id.to-byte-array metadata content
+      // Undone if the system process is out of memory (FlashAllocation.committed).
       allocation := size == reservation.size
-          ? FlashAllocation offset size
-          : FlashAllocation offset
+          ? FlashAllocation.committed offset size
+          : FlashAllocation.committed offset
       allocations_[offset] = allocation
       release-tail allocation reservation.size
       return allocation

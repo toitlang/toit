@@ -67,14 +67,17 @@ class ContainerImageWriter extends ServiceResource:
       // of memory (OUT_OF_MEMORY: no verdict, nothing written yet) while
       // other containers' heaps are large; they shrink again at their
       // next collection, so the commit is tried again a few times.
+      // The same for the system process out of memory in the primitive
+      // (ALLOCATION_FAILED: the verdict's error message; nothing written).
       attempt := 0
       while true:
-        exception := catch --unwind=(: it != "OUT_OF_MEMORY" or attempt >= COMMIT-OUT-OF-MEMORY-RETRIES_):
+        exception := catch --unwind=(: not is-out-of-memory-error_ it):
           image-writer-commit_ image_ metadata
         if not exception: break
+        if attempt >= COMMIT-OUT-OF-MEMORY-RETRIES_: throw "OUT_OF_MEMORY"
         attempt++
         sleep --ms=COMMIT-OUT-OF-MEMORY-DELAY-MS_ * attempt
-      return FlashAllocation reservation_.offset
+      return FlashAllocation.committed reservation_.offset
     finally:
       close
 

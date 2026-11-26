@@ -22,6 +22,7 @@
 #include "verifier_v2.h"
 #include "flash_registry.h"
 #include "embedded_data.h"
+#include "out_of_memory.h"
 #include "scheduler.h"
 #include "verifier.h"
 #include "vm.h"
@@ -41,6 +42,10 @@ PRIMITIVE(spawn) {
   // process decides the policy of the new process group.
   PRIVILEGED;
   ARGS(int, offset, int, group_id, Object, arguments, Object, policy_description);
+  // The system process starts a container for a client (or at boot): an
+  // allocation failure fails the start (Container.start) instead of
+  // restarting the device. A failed call leaves nothing behind.
+  process->object_heap()->set_allocation_failure_recoverable();
 
   const FlashAllocation* allocation = FlashRegistry::allocation(offset);
   if (!allocation) FAIL(OUT_OF_BOUNDS);
@@ -87,7 +92,9 @@ PRIMITIVE(spawn) {
   }
 
   InitialMemoryManager initial_memory_manager;
-  if (!initial_memory_manager.allocate()) FAIL(ALLOCATION_FAILED);
+  if (inject_system_allocation_failure(process, "spawn") || !initial_memory_manager.allocate()) {
+    FAIL(ALLOCATION_FAILED);
+  }
 
   Object* policy_error = null;
   const PrimitivePolicy* policy = PrimitivePolicy::from_description(policy_description, process, &policy_error);

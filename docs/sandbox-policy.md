@@ -255,6 +255,35 @@ under the scheduler lock: it used to print from process pointers after the
 lock was released and read a process that had terminated meanwhile (a
 LoadProhibited crash on a device; tests/ctest/process-chunk-walk-test.cc).
 
+When the system process itself can't allocate after the collections, it
+restarts the device (`Out of memory in system process`, `OS::out_of_memory`;
+the host VM aborts). In the 8-hour device soaks that was the main cause of
+restarts, every time in starting an installed container right after an
+install (format 1: `out of memory in primitive 34:1`, programs-registry
+`spawn`; format 2 likewise). The primitives the system process calls while
+it serves a request for another process now fail instead: they mark their
+call (`ObjectHeap::set_allocation_failure_recoverable`), and an allocation
+failure of a marked call, after the usual collections and the last attempt,
+throws an out-of-memory error into the system code
+(`[out of memory in system process: the operation fails, no restart]`). The
+system code fails the request after one more attempt 100 ms later
+(`with-out-of-memory-retry_`, `system/out_of_memory.toit`):
+
+| Request | Primitives | The requester gets | What is undone |
+|---|---|---|---|
+| start a container (`containers.start`, also at boot) | `programs-registry.spawn` | `OUT_OF_MEMORY`: the container is refused (`Container.start`); at boot it is refused like one the verifier rejects and the other boot containers start (before: a restart, which booted again); a refused run-critical container still ends the system | nothing to undo: a failed spawn frees what it allocated |
+| open an image writer | `flash.reserve-hole`, `image.writer-create` | `OUT_OF_MEMORY` | the registry's hole is adjusted only after the reservation exists; the reservation is closed if the writer can't be created |
+| commit an image | `image.writer-commit` (tried 4 times, as for the verifier's `OUT_OF_MEMORY`), then `flash.get-header-page` | `OUT_OF_MEMORY` | a committed allocation whose header page can't be read back has its header page erased (`FlashAllocation.committed`): no valid allocation unknown to the registry is left in flash |
+| storage regions and flash buckets | `flash.reserve-hole`, `flash.allocate`, `flash.get-header-page`, `flash.get-all-pages`, `flash.grant-access`, `flash.partition-find` | the call throws (`OUT_OF_MEMORY`, `MALLOC_FAILED` or `ALLOCATION_FAILED`) | as above; a bucket's cached entries change only after the new allocation is written (before, a failed set left the new value in the cache) |
+
+Every other allocation failure of the system process (its own objects, the
+RPC broker's messages, the services' bookkeeping) still restarts the
+device: there the system process can't continue in a known state. Host
+test: tests/sandbox/system-oom-request-test.toit, with
+`-Xinject_system_oom=SITE:N` (host only), which fails the next N
+allocation attempts at a site of the system process; before, the VM
+aborted.
+
 The per-sender mailbox quotas protect every receiver, including the
 system process and trusted providers, from being flooded by a sandbox. An
 untrusted sender gets `QUOTA_EXCEEDED`; for a trusted sender a message to a
@@ -328,7 +357,9 @@ malformed messages without throwing, so they only fail when the receiver
 is out of memory; a kept message is handled again with bounded work; the
 provider's retries hold one processing task (of the 8 a sandboxed client
 may use) for at most 15 s; and the system process never gets there, since
-it restarts the device when it is out of memory. Exempting replies from the
+it restarts the device when it is out of memory (except in the primitives
+of the requests it serves for others, whose failure fails the request: see
+"When the system process itself can't allocate" above). Exempting replies from the
 quotas was rejected for the reasons below; a reply that a trusted provider
 can't deliver to a sandbox's full mailbox is still dropped (the sandbox
 doesn't process its messages).

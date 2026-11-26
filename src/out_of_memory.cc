@@ -17,7 +17,10 @@
 
 #include <inttypes.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
+#include "flags.h"
 #include "os.h"
 #include "process.h"
 #include "process_group.h"
@@ -47,9 +50,54 @@ void report_allocation_failure(Process* process, const char* reason, word parame
     buffer[BUFFER_SIZE - 1] = '\0';
     OS::heap_summary_report(0, buffer, process);
   }
-  if (is_system) {
-    OS::out_of_memory("Out of memory in system process");
+  if (!is_system) return;
+  if (process->object_heap()->allocation_failure_recoverable()) {
+    // A primitive the system process serves for another process (see
+    // ObjectHeap::set_allocation_failure_recoverable): its last attempt
+    // follows, and if that fails too, the operation fails with
+    // OUT_OF_MEMORY for the system code that called it, which fails the
+    // request.
+#ifdef TOIT_FREERTOS
+    printf(
+#else
+    fprintf(stderr,
+#endif
+           "[out of memory in system process: the operation fails, no restart]\n");
+    return;
   }
+  OS::out_of_memory("Out of memory in system process");
 }
+
+#ifdef TOIT_FREERTOS
+
+bool inject_system_allocation_failure(Process* process, const char* site) {
+  return false;
+}
+
+#else
+
+bool inject_system_allocation_failure(Process* process, const char* site) {
+  const char* spec = Flags::inject_system_oom;
+  if (spec == null) return false;
+  // Only the system process calls the primitives with injection sites, and
+  // it runs on one thread at a time.
+  static const int SITE_SIZE = 32;
+  static char injected_site[SITE_SIZE];
+  static int remaining = -1;
+  if (remaining < 0) {
+    const char* colon = strchr(spec, ':');
+    if (colon == null || colon - spec >= SITE_SIZE) FATAL("-Xinject_system_oom: expected SITE:N, got '%s'", spec);
+    memcpy(injected_site, spec, colon - spec);
+    injected_site[colon - spec] = '\0';
+    remaining = atoi(colon + 1);
+    if (remaining < 0) FATAL("-Xinject_system_oom: negative count");
+  }
+  if (remaining == 0 || strcmp(site, injected_site) != 0) return false;
+  if (!VM::current()->scheduler()->is_boot_process(process)) return false;
+  remaining--;
+  return true;
+}
+
+#endif
 
 } // namespace toit

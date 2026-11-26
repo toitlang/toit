@@ -100,17 +100,17 @@ class FlashBucket:
 
   update_ --extend/bool [block] -> none:
     entries := cache-entries_
-    if not entries:
-      if not extend: return
-      entries = {:}
-      cache-entries_ = entries
-    block.call entries
+    if not entries and not extend: return
+    // The change is made on a copy: if the new allocation can't be written
+    // (no space, or the system process is out of memory), the request
+    // fails and the cache still matches the flash.
+    updated := {:}
+    if entries: entries.do: | key value | updated[key] = value
+    block.call updated
     existing := cache-allocation_
-    if entries.is-empty:
-      cache-entries_ = null
-      cache-allocation_ = null
-    else:
-      encoded := assets.encode entries
+    allocation/FlashAllocation? := null
+    if not updated.is-empty:
+      encoded := assets.encode updated
       size := FLASH-ALLOCATION-HEADER-SIZE + encoded.size
       reservation := registry.reserve size
       if not reservation: throw "OUT_OF_SPACE"
@@ -120,11 +120,13 @@ class FlashBucket:
         flash-write-non-header-pages_ reservation.offset encoded[cutoff..]
       else:
         cutoff = encoded.size
-      cache-allocation_ = registry.allocate reservation
+      allocation = registry.allocate reservation
           --type=FLASH-ALLOCATION-TYPE-REGION
           --id=id
           --metadata=metadata
           --content=encoded[..cutoff]
+    cache-entries_ = updated.is-empty ? null : updated
+    cache-allocation_ = allocation
     if existing: registry.free existing
 
   static find-allocation_ --id/Uuid --registry/FlashRegistry -> FlashAllocation?:

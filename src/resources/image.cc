@@ -18,6 +18,7 @@
 #include "../primitive.h"
 #include "../process.h"
 #include "../os.h"
+#include "../out_of_memory.h"
 #include "../flash_registry.h"
 #include "../verifier_v2.h"
 
@@ -35,6 +36,11 @@ PRIMITIVE(current_id) {
 
 PRIMITIVE(writer_create) {
   ARGS(int, offset, int, byte_size);
+  // The system process writes an image for a client: an allocation failure
+  // fails the request (ContainerServiceProvider.image-writer-open) instead
+  // of restarting the device. A failed call leaves nothing behind (the
+  // erased pages are reserved).
+  process->object_heap()->set_allocation_failure_recoverable();
   if (offset < 0 || offset + byte_size > FlashRegistry::allocations_size()) FAIL(OUT_OF_BOUNDS);
 
   ByteArray* result = process->object_heap()->allocate_proxy();
@@ -95,6 +101,10 @@ PRIMITIVE(writer_write) {
 
 PRIMITIVE(writer_commit) {
   ARGS(ImageOutputStream, output, Blob, metadata_blob);
+  // As writer_create. The allocations come before the header is written
+  // (the error message of a verdict), so a failed call commits nothing.
+  process->object_heap()->set_allocation_failure_recoverable();
+  if (inject_system_allocation_failure(process, "commit")) FAIL(ALLOCATION_FAILED);
   uint8 metadata[FlashAllocation::Header::METADATA_SIZE];
   if (metadata_blob.length() != sizeof(metadata)) FAIL(INVALID_ARGUMENT);
   memcpy(metadata, metadata_blob.address(), sizeof(metadata));

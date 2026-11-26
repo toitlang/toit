@@ -63,8 +63,17 @@ class OutOfMemoryReportLimiter {
 // third failed attempt of the interpreters' retry loops, Interpreter::gc and
 // v2_gc): a heap report (rate-limited for every process but the system
 // process, see OutOfMemoryReportLimiter), and for the system process the
-// restart of the device (OS::out_of_memory). [reason], [parameter1] and
-// [parameter2] name the failing operation in the report.
+// restart of the device (OS::out_of_memory), unless the failing primitive
+// declared its failure recoverable (ObjectHeap::set_allocation_failure_recoverable):
+// then the primitive's last attempt follows and, if it fails too, the
+// primitive throws OUT_OF_MEMORY in the system process. [reason],
+// [parameter1] and [parameter2] name the failing operation in the report.
 void report_allocation_failure(Process* process, const char* reason, word parameter1, word parameter2);
+
+// Test hook, host only: whether the allocation at [site] fails in the system
+// process. With -Xinject_system_oom=SITE:N the next N attempts at SITE fail
+// (the sites: spawn, commit, header-page, reserve; one attempt sequence of
+// a primitive is 4 calls). Always false on devices.
+bool inject_system_allocation_failure(Process* process, const char* site);
 
 } // namespace toit

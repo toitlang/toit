@@ -15,6 +15,7 @@
 
 import uuid show *
 
+import ..out-of-memory
 import .region
 import .registry
 
@@ -57,6 +58,24 @@ class FlashAllocation implements FlashRegion:
     from := FLASH-ALLOCATION-HEADER-ID-OFFSET
     to := from + FLASH-ALLOCATION-HEADER-ID-SIZE
     id = Uuid header-page_[from..to]
+
+  /**
+  The allocation at $offset, whose header was just written (by
+    image.writer-commit or flash.allocate).
+
+  If the system process is out of memory (the header page's proxy), the
+    allocation is undone: its header page is erased, which invalidates it,
+    and the call throws OUT_OF_MEMORY. Its pages become a hole again at the
+    next scan of the registry ($FlashRegistry.reserve scans when no hole
+    fits). Without that, the request that wrote it would fail while the
+    allocation stayed valid in flash, unknown to the registry until the next
+    boot (an image installed twice, a bucket with a stale copy).
+  */
+  static committed offset/int size/int=-1 -> FlashAllocation:
+    catch --unwind=(: not is-out-of-memory-error_ it):
+      return with-out-of-memory-retry_: FlashAllocation offset size
+    flash-registry-erase_ offset FLASH-REGISTRY-PAGE-SIZE
+    throw "OUT_OF_MEMORY"
 
   size -> int:
     if size_ == -1: size_ = flash-registry-get-size_ offset
