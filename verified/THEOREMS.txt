@@ -10,7 +10,7 @@
 # numbers are omitted so that the diff of this file shows only claim changes.
 
 ==============================================================================
-Top-level theorems: crate core (3)
+Top-level theorems: crate core (2)
 ==============================================================================
 
 --- lemma_collected  (core/src/gcbridge.rs)
@@ -32,25 +32,24 @@ pub proof fn lemma_collected(ap: Program2, cb: Seq<u16>, s: State2, s1: State2, 
         &&& forall|i: int| 0 <= i < n0 ==> #[trigger] ren[i] == i
     }),
 
---- theorem_first_run  (core/src/theorem.rs)
-pub proof fn theorem_first_run(p: &Program, m: &Machine, heap0: Seq<HeapObj>, globals0: Seq<Value>)
-    requires loaded(p, m, heap0, globals0),
-    ensures
-        m.inv(p),
-        reaches(p.ap@, initial_state(p.ap@, heap0, globals0), m.g@),
-
---- theorem_next_run  (core/src/theorem.rs)
-pub proof fn theorem_next_run(p: &Program, m0: &Machine, m1: &Machine, m2: &Machine, r: (usize, i64),
-    s0: State2)
+--- theorem_process  (core/src/process.rs)
+pub proof fn theorem_process(p: &Program, heap0: Seq<HeapObj>, globals0: Seq<Value>,
+    ms: Seq<Machine>, es: Seq<Machine>, rs: Seq<(usize, i64)>, i: int)
     requires
-        m0.inv(p),
-        reaches(p.ap@, s0, m0.g@),
-        run_post(p, *m0, *m1, r),
-        r.0 == RESULT_PREEMPTED || r.0 == RESULT_YIELDED,
-        resumed(p, m1, m2),
+        scheduled(p, ms, es, rs),
+        loaded(p, &ms[0], heap0, globals0),
+        !p.ap@.unchecked,
+        0 <= i < ms.len(),
     ensures
-        m2.inv(p),
-        reaches(p.ap@, s0, m2.g@),
+        ms[i].inv(p),
+        reaches(p.ap@, initial_state(p.ap@, heap0, globals0), ms[i].g@),
+        !(sp::step(p.ap@, ms[i].g@) is Stuck),
+        forall|s1: State2, module: u8, index: u16, o: Outcome2|
+            sp::step(p.ap@, ms[i].g@) == Outcome2::Primitive(s1, module, index)
+                && #[trigger] completion(p.ap@, s1, module, index, o)
+                ==> !(o is Stuck),
+        forall|o: Outcome2| #[trigger] outcome(p.ap@, ms[i].g@, o) ==> !(o is Stuck) && !(o is Raise),
+        machine_objects_ok(p.ap@, ms[i].g@),
 
 ==============================================================================
 Top-level theorems: crate spec (20)
