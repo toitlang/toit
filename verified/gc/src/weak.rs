@@ -649,4 +649,299 @@ pub fn zap_backing(c: &Ctx, t: &Tos, bkw: usize, Ghost(h): Ghost<H>, Ghost(bkv):
     zap_array(c, t, sa, offa, Ghost(h), Ghost(a), Ghost(ks), Ghost(rptr), Ghost(rv), Ghost(rvp), Tracked(st), Tracked(ro))
 }
 
+
+/// Whether the copy at address `a` (copy `pos[j]`) was made before the
+/// main scan ended (copy index below `n0`): its page and offset come before
+/// the main scan's end `(tn0 - 1, top0)` (a search over the to-space table).
+pub fn copy_scanned(c: &Ctx, t: &Tos, a: usize, tn0: usize, top0: usize, Ghost(h): Ghost<H>, Ghost(j): Ghost<int>,
+                    Ghost(n0): Ghost<int>, Tracked(st): Tracked<&St>) -> (r: bool)
+    requires
+        ctx_ok(*c), heap_ok(*c, h), bk_ok(h, *st), tcopies_ok(*c, h, *st, *t), tpages_ok(*c, h, *st, *t),
+        copied(*st, j), a == st.addr2[j], 0 <= n0 <= st.order.len(), tn0 <= t.tn,
+        n0 == 0 ==> tn0 == 0,
+        n0 >= 1 ==> tn0 >= 1 && tpg(*st, n0 - 1) == tn0 - 1 && tend(h, *st, n0 - 1) == top0,
+    ensures r == (st.pos[j] < n0),
+{
+    let ghost k = st.pos[j];
+    proof {
+        lemma_w();
+        assert(0 <= k < st.order.len() && st.order[k] == j);
+        lemma_from_obj(*c, h, j);
+        assert(0 <= tpg(*st, k) < t.tn && 0 <= toff(*st, k) && tend(h, *st, k) <= st.tus[tpg(*st, k)]);
+        assert(st.tus[tpg(*st, k)] <= c.pw - 1);
+        assert(a == taddr(*st, k));
+    }
+    if tn0 == 0 {
+        return false;
+    }
+    let pb = page_bytes(c);
+    let mut p: usize = 0;
+    while p < t.tn
+        invariant
+            ctx_ok(*c), heap_ok(*c, h), bk_ok(h, *st), tcopies_ok(*c, h, *st, *t), tpages_ok(*c, h, *st, *t),
+            copied(*st, j), a == st.addr2[j], k == st.pos[j], 0 <= k < st.order.len(), st.order[k] == j,
+            0 <= tpg(*st, k) < t.tn, 0 <= toff(*st, k), tend(h, *st, k) <= st.tus[tpg(*st, k)], st.tus[tpg(*st, k)] <= c.pw - 1,
+            a == taddr(*st, k), size(h, j) >= 1, pb == pbytes(*c),
+            0 <= n0 <= st.order.len(), 1 <= tn0 <= t.tn, n0 >= 1, tpg(*st, n0 - 1) == tn0 - 1, tend(h, *st, n0 - 1) == top0,
+            p <= t.tn,
+            forall|q: int| 0 <= q < p ==> !(st.tss[q] < a && a < st.tss[q] + pbytes(*c)),
+        decreases t.tn - p,
+    {
+        proof {
+            assert(wperm_ok(st.ttp, p as int, t.ttab, p as int));
+            assert(st.ttp[p as int].is_init() && st.ttp[p as int].value() == st.tss[p as int]);
+            assert(st.tss[p as int] + pbytes(*c) < usize::MAX);
+        }
+        let s = tab_at(t.ttab, p, Ghost(t.tcap as int), Tracked(&st.ttp));
+        if s < a && a - s < pb {
+            let off = (a - 1 - s) / W;
+            proof {
+                let q = tpg(*st, k);
+                let s2 = st.tss[q];
+                assert(toff(*st, k) < c.pw);
+                assert(toff(*st, k) * W < pbytes(*c)) by (nonlinear_arith) requires toff(*st, k) < c.pw, W >= 1;
+                if p as int != q {
+                    if (p as int) < q { assert(pages_apart(st.tss[p as int] as int, st.tss[q] as int, c.pw as int)); }
+                    else { assert(pages_apart(st.tss[q] as int, st.tss[p as int] as int, c.pw as int)); }
+                    assert(false);
+                }
+                lemma_offset(s as int, toff(*st, k));
+                assert(off == toff(*st, k));
+                let kk = n0 - 1;
+                lemma_from_obj(*c, h, st.order[kk]);
+                assert(tsz(h, *st, kk) >= 1 && tsz(h, *st, k) >= 1);
+                if k < n0 {
+                    if k < kk { assert(before(h, *st, k, kk)); }
+                } else {
+                    assert(before(h, *st, kk, k));
+                }
+            }
+            return p + 1 < tn0 || (p + 1 == tn0 && off < top0);
+        }
+        p += 1;
+    }
+    proof {
+        let q = tpg(*st, k);
+        assert(toff(*st, k) * W < pbytes(*c)) by (nonlinear_arith) requires toff(*st, k) < c.pw, W >= 1;
+        assert(!(st.tss[q] < a && a < st.tss[q] + pbytes(*c)));
+        assert(false);
+    }
+    false
+}
+
+
+/// The invariant after a copied weak map gets its hidden fields back: the
+/// heap's object `j` (copy `k`) becomes `o2` (words 3 and 4 replaced; they
+/// were raw words, so no copy has them as its parent) and the copy's words
+/// 3 and 4 hold `o2`'s under the address map their position needs (closed
+/// if processed).
+pub proof fn lemma_restore(c: Ctx, h: H, st: St, st2: St, t: Tos, ks: int, kc: int, rv: Seq<AVal>, rvp: Seq<AVal>,
+                           rptr: *mut usize, ri: int, j: int, o2: AObj)
+    requires
+        ctx_ok(c), heap_ok(c, h), inv(c, h, st, t, ks, kc, rvp), roots_ok(c, h, st, rptr, rv, ri),
+        0 <= ks <= st.order.len(), ks < st.order.len() || kc == 0,
+        from(h, j), copied(st, j),
+        same_shape(c, h.objs.len() as int, obj(h, j), o2), o2.words.len() == obj(h, j).words.len(),
+        lay(obj(h, j)).lo <= 3, 5 <= lay(obj(h, j)).hi,
+        obj(h, j).words[3] is Raw, obj(h, j).words[4] is Raw,
+        forall|i: int| 0 <= i < o2.words.len() && i != 3 && i != 4 ==> #[trigger] o2.words[i] == obj(h, j).words[i],
+        processed(st.pos[j], 3, ks, kc) ==> closed(h, st, o2.words[3]),
+        processed(st.pos[j], 4, ks, kc) ==> closed(h, st, o2.words[4]),
+        st2 == (St { tp: st2.tp, ..st }), st2.tp.dom() == st.tp.dom(),
+        forall|q: (int, int)| q != tkey(st, st.pos[j], 3) && q != tkey(st, st.pos[j], 4) ==> #[trigger] st2.tp[q] == st.tp[q],
+        st2.tp[tkey(st, st.pos[j], 3)].ptr() == st.tp[tkey(st, st.pos[j], 3)].ptr(),
+        st2.tp[tkey(st, st.pos[j], 4)].ptr() == st.tp[tkey(st, st.pos[j], 4)].ptr(),
+        st2.tp[tkey(st, st.pos[j], 3)].is_init(), st2.tp[tkey(st, st.pos[j], 4)].is_init(),
+        st2.tp[tkey(st, st.pos[j], 3)].value() == wval(o2, amap(h, st, st.pos[j], 3, ks, kc), 3),
+        st2.tp[tkey(st, st.pos[j], 4)].value() == wval(o2, amap(h, st, st.pos[j], 4, ks, kc), 4),
+    ensures ({
+        let h2 = with_obj(h, j, o2);
+        &&& heap_ok(c, h2)
+        &&& inv(c, h2, st2, t, ks, kc, rvp)
+        &&& roots_ok(c, h2, st2, rptr, rv, ri)
+        &&& forall|x: int| #[trigger] size(h2, x) == size(h, x)
+    }),
+{
+    let h2 = with_obj(h, j, o2);
+    let n = h.objs.len() as int;
+    let nc = st.order.len() as int;
+    let k = st.pos[j];
+    let o = obj(h, j);
+    lemma_from_obj(c, h, j);
+    assert(0 <= k < nc && st.order[k] == j);
+    assert forall|x: int| #[trigger] size(h2, x) == size(h, x) by {
+        if x == j { assert(obj(h2, x) == o2); }
+    }
+    assert forall|x: int| #[trigger] from(h2, x) == from(h, x) by {}
+    // The heap.
+    assert forall|x: int| 0 <= x < n implies #[trigger] obj_ok(obj(h2, x)) by {
+        if x != j { assert(obj_ok(obj(h, x))); }
+    }
+    assert forall|x: int| 0 <= x < n implies #[trigger] cls_ok(c, obj(h2, x)) by {
+        if x != j { assert(cls_ok(c, obj(h, x))); }
+    }
+    assert forall|x: int| 0 <= x < n implies #[trigger] slots_ok(c, h2, x) by {
+        if x != j { assert(slots_ok(c, h, x)); assert(obj(h2, x) == obj(h, x)); }
+    }
+    assert forall|x: int| #[trigger] from(h2, x) implies 0 <= x < n && fobj_ok(c, h2, x) by {
+        assert(fobj_ok(c, h, x));
+        assert(size(h2, x) == size(h, x));
+    }
+    assert forall|x1: int, x2: int| from(h2, x1) && from(h2, x2) && x1 != x2 implies #[trigger] fdisjoint(h2, x1, x2) by {
+        assert(fdisjoint(h, x1, x2));
+        assert(size(h2, x1) == size(h, x1) && size(h2, x2) == size(h, x2));
+    }
+    assert forall|x: int, q: int| 0 <= x < n && !from(h2, x) && lay(obj(h2, x)).lo <= q < lay(obj(h2, x)).hi implies
+        #[trigger] prog_ref_ok(h2, obj(h2, x).words[q]) by {
+        assert(x != j);
+        assert(prog_ref_ok(h, obj(h, x).words[q]));
+    }
+    assert(heap_ok(c, h2));
+    // The parts that do not read to-space words, for st2 under h.
+    lemma_frame_tp(c, h, st, st2, t, rvp);
+    // Then under h2.
+    assert forall|q: int| 0 <= q < nc implies from(h2, #[trigger] st2.order[q]) && st2.pos.contains_key(st2.order[q])
+        && st2.pos[st2.order[q]] == q by {
+        assert(from(h, st.order[q]));
+    }
+    assert forall|x: int| 0 <= x < h2.objs.len() implies #[trigger] st2.addr2[x] ==
+        (if copied(st2, x) { taddr(st2, st2.pos[x]) } else { h2.addr[x] }) by {
+        assert(st.addr2[x] == (if copied(st, x) { taddr(st, st.pos[x]) } else { h.addr[x] }));
+    }
+    assert(bk_ok(h2, st2));
+    assert forall|x: int, q: int| from(h2, x) && !copied(st2, x) && 0 <= q < size(h2, x) implies
+        (#[trigger] st2.fp[fkey(h2, x, q)]).is_init() && st2.fp[fkey(h2, x, q)].value() == wval(obj(h2, x), h2.addr, q) by {
+        assert(x != j);
+        assert(st.fp[fkey(h, x, q)].is_init());
+    }
+    assert forall|x: int| from(h2, x) && #[trigger] copied(st2, x) implies
+        st2.fp[fkey(h2, x, 0)].is_init() && st2.fp[fkey(h2, x, 0)].value() == st2.addr2[x] by {
+        assert(copied(st, x));
+        assert(st.fp[fkey(h, x, 0)].is_init());
+    }
+    assert(from_inv(c, h2, st2));
+    assert forall|q: int| 0 <= q < nc implies #[trigger] tsz(h2, st2, q) == tsz(h, st, q) by {}
+    assert forall|q: int| 0 <= q < nc - 1 implies #[trigger] st2.tloc[q + 1] == succ(h2, st2, q, t.tn as int) by {
+        assert(st.tloc[q + 1] == succ(h, st, q, t.tn as int));
+        assert(tsz(h2, st2, q) == tsz(h, st, q));
+    }
+    assert forall|q: int| 0 <= q < nc implies 0 <= #[trigger] tpg(st2, q) < t.tn && 0 <= toff(st2, q)
+        && tend(h2, st2, q) <= st2.tus[tpg(st2, q)] by {
+        assert(0 <= tpg(st, q) < t.tn && 0 <= toff(st, q) && tend(h, st, q) <= st.tus[tpg(st, q)]);
+    }
+    assert forall|k1: int, k2: int| 0 <= k1 < k2 < nc implies #[trigger] before(h2, st2, k1, k2) by {
+        assert(before(h, st, k1, k2));
+        assert(tsz(h2, st2, k1) == tsz(h, st, k1));
+    }
+    if nc > 0 { assert(tsz(h2, st2, nc - 1) == tsz(h, st, nc - 1)); }
+    assert(tcopies_ok(c, h2, st2, t));
+    // The to-space pages: the changed words are inside copy k, below its
+    // page's used words.
+    assert(0 <= tpg(st, k) < t.tn && 0 <= toff(st, k) && tend(h, st, k) <= st.tus[tpg(st, k)]);
+    let key3 = tkey(st, k, 3);
+    let key4 = tkey(st, k, 4);
+    assert(size(h, j) >= 5);
+    assert forall|p: int, q: int| 0 <= p < t.tn && 0 <= q < c.pw implies #[trigger] wperm_ok(st2.tp, (p, q), tptr(c, st2, p), q) by {
+        assert(wperm_ok(st.tp, (p, q), tptr(c, st, p), q));
+    }
+    assert forall|q: (int, int)| #[trigger] st2.tp.contains_key(q) implies 0 <= q.0 < t.tn by {
+        assert(st.tp.contains_key(q));
+    }
+    assert forall|p: int| 0 <= p < t.tn - 1 implies #[trigger] st2.tp[(p, st2.tus[p])].is_init() && st2.tp[(p, st2.tus[p])].value() == 0 by {
+        assert(st.tp[(p, st.tus[p])].is_init() && st.tp[(p, st.tus[p])].value() == 0);
+        assert((p, st.tus[p]) != key3 && (p, st.tus[p]) != key4);
+    }
+    assert forall|p: int, x: int| 0 <= p < t.tn && 0 <= x < h2.objs.len() && !from(h2, x) implies
+        #[trigger] outside(st2.tss[p] as int, #[trigger] h2.addr[x] as int, c.pw as int) by {
+        assert(outside(st.tss[p] as int, h.addr[x] as int, c.pw as int));
+    }
+    assert forall|p: int| 0 <= p < t.tcap implies #[trigger] wperm_ok(st2.ttp, p, t.ttab, p) by {
+        assert(wperm_ok(st.ttp, p, t.ttab, p));
+    }
+    assert forall|p: int| 0 <= p < t.tcap implies #[trigger] wperm_ok(st2.tup, p, t.tused, p) by {
+        assert(wperm_ok(st.tup, p, t.tused, p));
+    }
+    assert forall|p: int| 0 <= p < t.tn implies #[trigger] st2.ttp[p].is_init() && st2.ttp[p].value() == st2.tss[p] by {
+        assert(st.ttp[p].is_init() && st.ttp[p].value() == st.tss[p]);
+    }
+    assert forall|p: int| 0 <= p < t.tn - 1 implies #[trigger] st2.tup[p].is_init() && st2.tup[p].value() == st2.tus[p] by {
+        assert(st.tup[p].is_init() && st.tup[p].value() == st.tus[p]);
+    }
+    assert forall|p: int| 0 <= p < t.tn implies 0 <= #[trigger] st2.tus[p] <= c.pw - 1 by { assert(0 <= st.tus[p] <= c.pw - 1); }
+    assert forall|p: int| 0 <= p < t.tn implies #[trigger] st2.tss[p] % W == 0 && st2.tss[p] + pbytes(c) < usize::MAX by {
+        assert(st.tss[p] % W == 0 && st.tss[p] + pbytes(c) < usize::MAX);
+    }
+    assert forall|p: int, q: int| 0 <= p < q < t.tn implies #[trigger] pages_apart(st2.tss[p] as int, st2.tss[q] as int, c.pw as int) by {
+        assert(pages_apart(st.tss[p] as int, st.tss[q] as int, c.pw as int));
+    }
+    assert(tpages_ok(c, h, st, t));
+    assert(st2.tss.len() == t.tn && st2.tus.len() == t.tn && t.tn <= t.tcap);
+    assert(t.tn > 0 ==> st2.tus[t.tn - 1] == t.top && t.cur == st2.tss[t.tn - 1]);
+    assert(tpages_ok(c, h2, st2, t));
+    // The copies' words.
+    assert forall|kk: int, i: int| 0 <= kk < nc && 0 <= i < tsz(h2, st2, kk) implies
+        (#[trigger] st2.tp[tkey(st2, kk, i)]).is_init()
+        && st2.tp[tkey(st2, kk, i)].value() == wval(obj(h2, st2.order[kk]), amap(h2, st2, kk, i, ks, kc), i) by {
+        assert(st.tp[tkey(st, kk, i)].is_init());
+        if kk != k {
+            lemma_tkeys(c, h, st, t, kk, i, k, 3);
+            lemma_tkeys(c, h, st, t, kk, i, k, 4);
+            assert(st.order[kk] != j);
+            assert(obj(h2, st.order[kk]) == obj(h, st.order[kk]));
+        } else if i != 3 && i != 4 {
+            lemma_tkeys(c, h, st, t, kk, i, k, 3);
+            lemma_tkeys(c, h, st, t, kk, i, k, 4);
+            assert(o2.words[i] == o.words[i]);
+        }
+    }
+    assert forall|kk: int, i: int| 0 <= kk < nc && 0 <= i < tsz(h2, st2, kk) && processed(kk, i, ks, kc)
+        && is_ref(obj(h2, st2.order[kk]), i) implies closed(h2, st2, #[trigger] obj(h2, st2.order[kk]).words[i]) by {
+        if kk != k {
+            assert(st.order[kk] != j);
+            assert(obj(h2, st.order[kk]) == obj(h, st.order[kk]));
+            assert(closed(h, st, obj(h, st.order[kk]).words[i]));
+        } else if i != 3 && i != 4 {
+            assert(o2.words[i] == o.words[i]);
+            assert(closed(h, st, o.words[i]));
+        }
+    }
+    assert(to_inv(c, h2, st2, ks, kc));
+    assert forall|x: int| #[trigger] from(h2, x) && !copied(st2, x) implies st2.used.disjoint(extent(c, h2, x)) by {
+        assert(st.used.disjoint(extent(c, h, x)));
+        assert(extent(c, h2, x) == extent(c, h, x));
+    }
+    assert forall|x: int| #[trigger] from(h2, x) implies size(h2, x) <= t.mx@ by {
+        assert(size(h, x) <= t.mx@);
+    }
+    assert(cap_ok(c, h2, st2, t));
+    assert forall|q: int| 0 <= q < nc implies #[trigger] parent_ok(h2, st2, rvp, q) by {
+        assert(parent_ok(h, st, rvp, q));
+        let p = st.parent[q].0;
+        let s = st.parent[q].1;
+        if p >= 0 {
+            if st.order[p] == j {
+                assert(o.words[s] == AVal::Ref(st.order[q]));
+                assert(s != 3 && s != 4);
+                assert(o2.words[s] == o.words[s]);
+            } else {
+                assert(obj(h2, st.order[p]) == obj(h, st.order[p]));
+            }
+        }
+    }
+    assert(par_ok(h2, st2, rvp));
+    assert forall|i: int| 0 <= i < rv.len() implies #[trigger] slot_ok(c, h2.objs.len() as int, rv[i]) by {
+        assert(slot_ok(c, n, rv[i]));
+    }
+    assert forall|i: int| 0 <= i < rv.len() implies (#[trigger] st2.rp[i]).is_init()
+        && st2.rp[i].value() == enc(if i < ri { st2.addr2 } else { h2.addr }, rv[i]) by {
+        assert(st.rp[i].is_init());
+    }
+    assert forall|i: int| 0 <= i < ri implies closed(h2, st2, #[trigger] rv[i]) by {
+        assert(closed(h, st, rv[i]));
+    }
+    assert forall|i: int| 0 <= i < rv.len() implies #[trigger] wperm_ok(st2.rp, i, rptr, i) by {
+        assert(wperm_ok(st.rp, i, rptr, i));
+    }
+}
+
 } // verus!
