@@ -2280,7 +2280,9 @@ abstract class HashedInsertionOrderedCollection_:
       minimum
       1 << (64 - enough.count-leading-zeros)
 
-    index-spaces-left_ = (new-index-size * 0.85).to-int
+    // 85% of the index, rounded down (with integers: multiplying a small
+    // integer with a float is slow).
+    index-spaces-left_ = new-index-size * 17 / 20
     if index-spaces-left_ <= old-size: index-spaces-left_ = old-size + 1
     // Found large enough index size.
     return new-index-size
