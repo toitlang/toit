@@ -608,6 +608,9 @@ artifacts measure-3; sandbox-optional/README.md has the per-item list):
 
 Of the flash, 34.8 KB is the verifier (Rust and its C++ glue, most of
 it pinned flash code on the classic ESP32), 3.5 KB sandbox-only C++. On
+the ESP32-C6 the option saves 31.5 KB of flash and 2.8 KB of static RAM;
+the default format-1 firmware (no core, so no sandboxes either) 4.5 KB
+of flash and 2.8 KB of static RAM. On
 the host the trusted benchmarks run the same number of instructions
 (richards, yield, task ping-pong; RPC within the GC's run-to-run
 variation).
