@@ -402,6 +402,11 @@ Interpreter::Result Interpreter::run() {
   // On EC618 (no data cache), place the dispatch table in RAM for fast access.
 #ifdef TOIT_EC618
   static void* unchecked_dispatch_table[] __attribute__((section(".data"))) = {
+#elif defined(__clang__) && defined(TOIT_FREERTOS)
+  // GCC keeps this never-written table in .data (internal RAM); clang makes
+  // it a constant and puts it into flash (rodata), behind the flash cache.
+  // ESP-IDF places .dram1.* in internal RAM.
+  static void* unchecked_dispatch_table[] __attribute__((section(".dram1.toit_dispatch"))) = {
 #else
   static void* unchecked_dispatch_table[] = {
 #endif
