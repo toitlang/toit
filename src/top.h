@@ -177,7 +177,9 @@ static const int TOIT_PAGE_SIZE_LOG2_32 = 12;  // Page size 4kB.
 // keep it small to fit constrained memory. On 32-bit host builds we have
 // plenty of memory, so use the larger 64-bit page size to give Toit stacks
 // the same headroom as the 64-bit build.
-#if defined(BUILD_64) || !defined(TOIT_FREERTOS)
+// TOIT_HOST_SMALL_PAGES: a 32-bit host build with the devices' 4 kB pages
+// (measurements of the collectors, src/sandbox_gc.h).
+#if defined(BUILD_64) || (!defined(TOIT_FREERTOS) && !defined(TOIT_HOST_SMALL_PAGES))
 static const int TOIT_PAGE_SIZE_LOG2 = TOIT_PAGE_SIZE_LOG2_64;
 #else
 static const int TOIT_PAGE_SIZE_LOG2 = TOIT_PAGE_SIZE_LOG2_32;
