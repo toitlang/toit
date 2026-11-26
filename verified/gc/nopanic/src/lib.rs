@@ -53,11 +53,11 @@ impl PageSource for ExternPages {
 #[no_mangle]
 pub extern "C" fn toit_gc_collect(base: *mut usize, ftab: *mut usize, nf: usize, pw: usize,
                                   ctab: *mut u16, ncls: usize, sw: usize, null: usize,
-                                  fused: *mut usize, tail: bool, smin: usize,
+                                  fused: *mut usize, tail: bool, smin: usize, map_cid: usize, list_cid: usize, tomb_cid: usize,
                                   nodes: *mut usize, ncb: usize, nn: usize,
                                   roots: *mut usize, nroots: usize,
                                   ttab: *mut usize, tused: *mut usize, tcap: usize, top: *mut usize) -> usize {
-    let c = Ctx { base, ftab, nf, pw, ctab, ncls, sw, null, nullid: Ghost::assume_new(), fused, tail, smin, fss: Ghost::assume_new(), cbs: Ghost::assume_new() };
+    let c = Ctx { base, ftab, nf, pw, ctab, ncls, sw, null, nullid: Ghost::assume_new(), fused, tail, smin, map_cid, list_cid, tomb_cid, fss: Ghost::assume_new(), cbs: Ghost::assume_new() };
     let mut src = ExternPages;
     match collect(&c, &mut src, roots, nroots, ttab, tused, tcap, nodes, ncb, nn,
                   Ghost::assume_new(), Ghost::assume_new(), Ghost::assume_new(), Tracked::assume_new(), Tracked::assume_new(),

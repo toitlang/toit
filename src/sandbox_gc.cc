@@ -661,6 +661,10 @@ void TwoSpaceHeap::dump_copying_heap(const char* phase) {
       ? static_cast<uint64>(2 * height + RESERVED_STACK_FOR_CALLS + Stack::V2_FRAME_WORDS + Stack::V2_STACK_RESERVE)
       : static_cast<uint64>(UINTPTR_MAX);
   write_u64(file, smin);
+  // The class ids of maps, lists and tombstones (weak maps).
+  write_u64(file, Smi::value(program_->map_class_id()));
+  write_u64(file, Smi::value(program_->list_class_id()));
+  write_u64(file, Smi::value(program_->tombstone_class_id()));
   fclose(file);
 }
 #endif

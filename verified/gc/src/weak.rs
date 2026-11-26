@@ -543,6 +543,7 @@ pub fn zap_array(c: &Ctx, t: &Tos, s: usize, off: usize, Ghost(h): Ghost<H>, Gho
                         && ro.others[x].ptr()@.addr == h2.addr[x] - 1 by {
                         assert(ro.others.contains_key(x) && ro.others[x].ptr()@.addr == hc.addr[x] - 1);
                     }
+                    assert(others_ok(h2, ro.others));
                     assert(hdr(obj(h, y)) == hdr(obj(hc, y))) by {
                         if y == a { assert(hdr(obj(hc, a)) == hdr(o)); }
                     }
@@ -1366,6 +1367,7 @@ pub fn weak_pass<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, nptr: *mut us
             && final(t).rs == old(t).rs && final(t).mx == old(t).mx && old(t).tn <= final(t).tn
         &&& weak_ok(*c, hs, hw, nodes2, nodesw, ncb as int)
         &&& nodes_mem(*final(np), nptr, nn as int)
+        &&& forall|y: int| #![trigger size(hw, y)] 0 <= y < hs.objs.len() ==> size(hw, y) == size(hs, y)
         &&& forall|q: int| !mark_word(q, ncb as int) ==> #[trigger] final(np)[q] == old(np)[q]
         &&& forall|m: int| 0 <= m < ncb ==> (#[trigger] final(np)[6 * m + 3]).is_init()
                 && (final(np)[6 * m + 3].value() == ZAPPED) == nodesw[m].zap
@@ -1682,6 +1684,130 @@ pub proof fn lemma_wstep(c: Ctx, h: H, hs: H, h1: H, h2: H, nodes: Seq<Node>, no
                 }
             }
         }
+}
+
+
+/// The tracing of a collection: hide the weak maps' fields, copy what the
+/// roots reach (`do_roots`, `scan`), the weak pass, and scan what it copied.
+pub fn trace<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, rptr: *mut usize, rlen: usize,
+                            nptr: *mut usize, ncb: usize, nn: usize,
+                            Ghost(h): Ghost<H>, Ghost(rv): Ghost<Seq<AVal>>, Ghost(nodes): Ghost<Seq<Node>>,
+                            Tracked(st): Tracked<&mut St>, Tracked(ro): Tracked<&Ro>,
+                            Tracked(nm): Tracked<&mut Map<int, PointsTo<usize>>>)
+    -> (r: (Ghost<H>, Ghost<Seq<Node>>, Ghost<H>, Ghost<Seq<Node>>))
+    requires
+        ctx_ok(*c), fpages_ok(*c), ftab_ok(*c, ro.ftp), heap_ok(*c, h), others_ok(h, ro.others), ctab_ok(*c, ro.ctp),
+        inv(*c, h, *old(st), *old(t), 0, 0, fin_roots(rv, nodes)), roots_ok(*c, h, *old(st), rptr, rv, 0),
+        old(st).order.len() == 0, rv.len() == rlen,
+        src_ok(*c, *old(src), *old(t)),
+        c.map_cid != c.list_cid,
+        ncb <= nn, nodes.len() == nn,
+        forall|m: int| 0 <= m < ncb ==> (#[trigger] nodes[m]).kind <= KIND_WEAK_QUEUED,
+        forall|m: int| 0 <= m < nn ==> slot_ok(*c, h.objs.len() as int, (#[trigger] nodes[m]).key)
+            && slot_ok(*c, h.objs.len() as int, nodes[m].lam) && !nodes[m].hid && !nodes[m].zap,
+        nodes_mem(*old(nm), nptr, nn as int),
+        forall|m: int| 0 <= m < nn ==> #[trigger] node_in(*old(nm), h, nodes[m], m),
+        keys_ok(h, nodes, ncb as int),
+    ensures ({
+        let hs = r.0@;
+        let nodes2 = r.1@;
+        let hw = r.2@;
+        let nodesw = r.3@;
+        &&& heap_ok(*c, hw) && others_ok(hw, ro.others)
+        &&& inv(*c, hw, *final(st), *final(t), final(st).order.len() as int, 0, fin_roots(rv, nodesw))
+        &&& roots_ok(*c, hw, *final(st), rptr, rv, rv.len() as int)
+        &&& src_ok(*c, *final(src), *final(t))
+        &&& final(t).ttab == old(t).ttab && final(t).tused == old(t).tused && final(t).tcap == old(t).tcap
+            && final(t).rs == old(t).rs && final(t).mx == old(t).mx
+        &&& hide_ok(*c, h, hs, nodes, nodes2, ncb as int)
+        &&& weak_ok(*c, hs, hw, nodes2, nodesw, ncb as int)
+        &&& nodesw.len() == nn
+        &&& nodes_mem(*final(nm), nptr, nn as int)
+        &&& forall|m: int| 0 <= m < nn ==> #[trigger] node_in(*final(nm), hw, nodesw[m], m)
+        &&& forall|m: int| 0 <= m < nn ==> (#[trigger] nodesw[m]).key == nodes[m].key && nodesw[m].lam == nodes[m].lam
+                && nodesw[m].kind == nodes[m].kind
+    }),
+{
+    let ghost rvp0 = fin_roots(rv, nodes);
+    let ghost nm0 = *nm;
+    let (hsr, n2r) = hide_maps(c, &*t, nptr, ncb, nn, Ghost(h), Ghost(nodes), Ghost(rptr), Ghost(rv), Ghost(rvp0),
+                               Tracked(st), Tracked(ro), Tracked(nm));
+    let ghost hs = hsr@;
+    let ghost nodes2 = n2r@;
+    let ghost rvp = fin_roots(rv, nodes2);
+    let ghost nm1 = *nm;
+    proof { lemma_inv_rvp(*c, hs, *st, *t, rvp0, rvp); }
+    do_roots(c, src, t, rptr, rlen, Ghost(hs), Ghost(rv), Ghost(rvp), Tracked(st), Tracked(ro));
+    proof { if t.tn >= 1 { assert(scan_pos(hs, *st, *t, 0, 0, 0)); } }
+    scan(c, src, t, 0, 0, Ghost(0int), Ghost(hs), Ghost(rptr), Ghost(rv), Ghost(rvp), Tracked(st), Tracked(ro));
+    let tn0 = t.tn;
+    let top0 = t.top;
+    let ghost sm = *st;
+    let ghost n0 = sm.order.len() as int;
+    proof {
+        assert(tcopies_ok(*c, hs, sm, *t));
+        assert forall|m: int| 0 <= m < ncb implies (#[trigger] nm[6 * m + 1]).is_init() && nm[6 * m + 1].value() == enc(h.addr, nodes[m].key) by {
+            assert(node_in(nm0, h, nodes[m], m));
+            assert(nm[6 * m] == nm0[6 * m]);
+            assert(nm[6 * m + 1] == nm0[6 * m + 1]);
+        }
+    }
+    let (hwr, nwr) = weak_pass(c, src, t, nptr, ncb, nn, tn0, top0, Ghost(h), Ghost(hs), Ghost(nodes), Ghost(nodes2), Ghost(n0),
+                               Ghost(rptr), Ghost(rv), Ghost(rvp), Tracked(st), Tracked(ro), Tracked(nm));
+    let ghost hw = hwr@;
+    let ghost nodesw = nwr@;
+    let ghost sf = *st;
+    if tn0 >= 1 {
+        proof {
+            assert(n0 >= 1);
+            assert(sf.order[n0 - 1] == sm.order[n0 - 1] && sf.tloc[n0 - 1] == sm.tloc[n0 - 1]);
+            lemma_from_obj(*c, hs, sm.order[n0 - 1]);
+            assert(size(hw, sm.order[n0 - 1]) == size(hs, sm.order[n0 - 1]));
+            assert(tsz(hw, sf, n0 - 1) == tsz(hs, sm, n0 - 1));
+            assert(tpg(sm, n0 - 1) == tn0 - 1 && tend(hs, sm, n0 - 1) == top0);
+            if n0 == sf.order.len() {
+                assert(tpg(sf, n0 - 1) == t.tn - 1 && tend(hw, sf, n0 - 1) == t.top);
+            }
+            lemma_scan_resume(*c, hw, sf, *t, n0, tn0 as int, top0 as int);
+        }
+        scan(c, src, t, tn0 - 1, top0, Ghost(n0), Ghost(hw), Ghost(rptr), Ghost(rv), Ghost(rvp), Tracked(st), Tracked(ro));
+    } else {
+        proof {
+            assert(n0 == 0);
+            if t.tn >= 1 { assert(scan_pos(hw, sf, *t, 0, 0, 0)); }
+        }
+        scan(c, src, t, 0, 0, Ghost(0int), Ghost(hw), Ghost(rptr), Ghost(rv), Ghost(rvp), Tracked(st), Tracked(ro));
+    }
+    proof {
+        assert(fin_roots(rv, nodesw) =~= rvp) by {
+            assert forall|q: int| 0 <= q < rvp.len() implies #[trigger] fin_roots(rv, nodesw)[q] == rvp[q] by {
+                if q >= rv.len() {
+                    let m = (q - rv.len()) / 4;
+                    assert(nodesw[m] == (Node { zap: nodesw[m].zap, ..nodes2[m] }));
+                }
+            }
+        }
+        assert forall|m: int| 0 <= m < nn implies #[trigger] nodesw[m].key == nodes[m].key && nodesw[m].lam == nodes[m].lam
+            && nodesw[m].kind == nodes[m].kind by {
+            assert(nodesw[m] == (Node { zap: nodesw[m].zap, ..nodes2[m] }));
+            assert(nodes2[m] == (Node { ix: nodes2[m].ix, bk: nodes2[m].bk, hid: nodes2[m].hid, ..nodes[m] }));
+        }
+        assert forall|m: int| 0 <= m < nn implies #[trigger] node_in(*nm, hw, nodesw[m], m) by {
+            assert(node_in(nm0, h, nodes[m], m));
+            assert(nodesw[m] == (Node { zap: nodesw[m].zap, ..nodes2[m] }));
+            assert(nodes2[m] == (Node { ix: nodes2[m].ix, bk: nodes2[m].bk, hid: nodes2[m].hid, ..nodes[m] }));
+            assert(!mark_word(6 * m, ncb as int) && !mark_word(6 * m + 1, ncb as int) && !mark_word(6 * m + 2, ncb as int));
+            assert(nm[6 * m] == nm1[6 * m] && nm[6 * m + 1] == nm1[6 * m + 1] && nm[6 * m + 2] == nm1[6 * m + 2]);
+            assert(nm1[6 * m] == nm0[6 * m] && nm1[6 * m + 1] == nm0[6 * m + 1] && nm1[6 * m + 2] == nm0[6 * m + 2]);
+            if m >= ncb {
+                assert(!mark_word(6 * m + 3, ncb as int));
+                assert(nm[6 * m + 3] == nm1[6 * m + 3]);
+                assert(nm1[6 * m + 3] == nm0[6 * m + 3]);
+                assert(!nodesw[m].zap);
+            }
+        }
+    }
+    (Ghost(hs), Ghost(nodes2), Ghost(hw), Ghost(nodesw))
 }
 
 } // verus!

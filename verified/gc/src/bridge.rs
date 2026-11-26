@@ -49,6 +49,9 @@ use toit_spec::v2::gc::{obj_vals, zapped, collection, renamed, is_map, reset_map
 use toit_spec::v2::spec::null2;
 use crate::fin::*;
 use crate::shrink::cimg;
+use crate::weak::*;
+#[cfg(verus_keep_ghost)]
+use crate::copy::lemma_from_obj;
 use toit_verified_core::abs::{obj_model_ok, heap_model_ok, encodable, enc_seq};
 use toit_verified_core::view::{word_val, is_word};
 use toit_verified_core::gcbridge;
@@ -971,6 +974,426 @@ pub proof fn lemma_spec_collection_core_fin(ap: Program2, cb: Seq<u16>, s: State
         if ap.literals[i] is Obj { assert(s0.heap[ap.literals[i]->Obj_0 as int].ro == s.heap[ap.literals[i]->Obj_0 as int].ro); }
     }
     lemma_spec_collection_fin(ap, cb, s0, n0, c, h, hf, st, rptr, rv, nodes, nm, ncb, nn, main, ttab, tused, w);
+}
+
+
+// ---------------------------------------------------------------------------
+// Live weak maps (zapping, `weak.rs`).
+
+/// A zapped array in the spec: the elements the collector nulled are null.
+pub open spec fn zap_spec(ap: Program2, o: HeapObj, a: AObj, a2: AObj) -> HeapObj {
+    let e = o.body->Array_0;
+    HeapObj { body: Body::Array(Seq::new(e.len(), |q: int| if a2.words[2 + q] != a.words[2 + q] { null2(ap) } else { e[q] })), ..o }
+}
+
+/// The spec heap after the collection's weak processing: maps the
+/// collector reset are reset maps, arrays it zapped are zapped arrays.
+pub open spec fn fin_heap_w(ap: Program2, c: Ctx, sh: Seq<HeapObj>, h: H, hf: H) -> Seq<HeapObj> {
+    Seq::new(sh.len(), |i: int|
+        if is_map(ap, sh[i]) && obj(hf, i) != obj(h, i) && obj(hf, i) == killed(obj(h, i), c.nullid@, true) {
+            reset_map(ap, sh[i])
+        } else if sh[i].body is Array && obj(hf, i) != obj(h, i) {
+            zap_spec(ap, sh[i], obj(h, i), obj(hf, i))
+        } else {
+            sh[i]
+        })
+}
+
+pub open spec fn fin_state_w(ap: Program2, c: Ctx, s: State2, h: H, hf: H) -> State2 {
+    State2 { heap: fin_heap_w(ap, c, s.heap, h, hf), ..s }
+}
+
+/// The class ids the collector compares are the program's builtins.
+pub open spec fn cids_ok(ap: Program2, c: Ctx) -> bool {
+    &&& c.list_cid as int == toit_spec::spec_common::builtin(toit_spec::v2::types::p1(ap), toit_spec::spec_common::LIST_CLASS)
+    &&& c.tomb_cid as int == toit_spec::spec_common::builtin(toit_spec::v2::types::p1(ap), toit_spec::spec_common::TOMBSTONE_CLASS)
+}
+
+/// A header's class id as the collector reads it is the core's.
+pub proof fn lemma_hcid(o: HeapObj, a: AObj, cb: Seq<u16>)
+    requires obj_struct(o, a, cb),
+    ensures hcid(hdr(a)) == o.class_id,
+{
+    toit_verified_core::view::lemma_class_id_shift(raw(a.words[0]));
+}
+
+/// The value of a reference word.
+pub proof fn lemma_aval_ref(v: Value, y: int)
+    requires aval(v) == AVal::Ref(y),
+    ensures v == Value::Obj(y as usize), 0 <= y,
+{
+}
+
+/// A zapped array is the spec's zapped array, represented by the collector's.
+pub proof fn lemma_struct_zap(ap: Program2, cb: Seq<u16>, c: Ctx, h: H, s: State2, x: int, a2: AObj, addr: Seq<usize>)
+    requires
+        heap_ok(c, h), h.objs.len() == s.heap.len(), 0 <= x < s.heap.len(),
+        forall|i: int| 0 <= i < s.heap.len() ==> #[trigger] obj_struct(s.heap[i], h.objs[i], cb),
+        heap_model_ok(s.heap, addr, cb), addr.len() == s.heap.len(),
+        s.heap[x].body is Array,
+        zapped_arr(c, h, obj(h, x), a2), obj_ok(a2), lay(a2) == lay(obj(h, x)),
+        null2(ap) == Value::Obj(c.nullid@ as usize), cids_ok(ap, c),
+    ensures ({
+        let o2 = zap_spec(ap, s.heap[x], obj(h, x), a2);
+        &&& obj_struct(o2, a2, cb)
+        &&& obj_model_ok(o2, cb, addr)
+        &&& toit_spec::v2::gc::zapped_elems(ap, s.heap, s.heap[x].body->Array_0, o2.body->Array_0)
+    }),
+{
+    let o = s.heap[x];
+    let a = obj(h, x);
+    let e = o.body->Array_0;
+    let o2 = zap_spec(ap, o, a, a2);
+    let e2 = o2.body->Array_0;
+    assert(obj_struct(o, a, cb));
+    assert(obj_model_ok(o, cb, addr));
+    assert(toit_verified_core::abs::addrs_ok(s.heap, addr));
+    assert(c.nullid@ < h.objs.len());
+    assert(a.words[1] == AVal::Raw(e.len() as usize));
+    assert(obj_ok(a));
+    assert(a.words.len() >= 2);
+    assert(a2.words[0] == a.words[0] && a2.words[1] == a.words[1]);
+    assert(aval(null2(ap)) == AVal::Ref(c.nullid@));
+    assert forall|q: int| 0 <= q < e.len() implies #[trigger] a2.words[2 + q] == aval(e2[q]) by {
+        assert(a.words[2 + q] == aval(e[q]));
+    }
+    assert(obj_struct(o2, a2, cb));
+    assert forall|q: int| 0 <= q < e2.len() implies #[trigger] toit_verified_core::abs::encodable(addr, e2[q]) by {
+        assert(toit_verified_core::abs::encodable(addr, e[q]));
+    }
+    assert(obj_model_ok(o2, cb, addr));
+    assert forall|q: int| 0 <= q < e.len() implies {
+        ||| #[trigger] e2[q] == e[q]
+        ||| q % 2 == 1 && e2[q] == null2(ap) && match e[q] {
+                Value::Obj(id) => (id as int) < s.heap.len()
+                    && s.heap[id as int].class_id as int != toit_spec::spec_common::builtin(toit_spec::v2::types::p1(ap), toit_spec::spec_common::TOMBSTONE_CLASS),
+                _ => false,
+            }
+    } by {
+        if a2.words[2 + q] != a.words[2 + q] {
+            let k = 2 + q;
+            assert(a2.words[k] == a.words[k] || (2 <= k && (k - 2) % 2 == 1 && a2.words[k] == AVal::Ref(c.nullid@) && a.words[k] is Ref
+                && 0 <= a.words[k]->Ref_0 < h.objs.len() && hcid(hdr(obj(h, a.words[k]->Ref_0))) != c.tomb_cid));
+            let y = a.words[k]->Ref_0;
+            assert(a.words[2 + q] == aval(e[q]));
+            lemma_aval_ref(e[q], y);
+            assert(obj_struct(s.heap[y], h.objs[y], cb));
+            lemma_hcid(s.heap[y], h.objs[y], cb);
+        }
+    }
+}
+
+/// The map of a hidden node's backing list is a map of the spec whose
+/// backing array is `x`.
+pub proof fn lemma_backing(ap: Program2, cb: Seq<u16>, c: Ctx, h: H, hs: H, s: State2, nodes: Seq<Node>, nodes2: Seq<Node>,
+                           ncb: int, m: int, x: int)
+    requires
+        heap_ok(c, h), h.objs.len() == s.heap.len(),
+        forall|i: int| 0 <= i < s.heap.len() ==> #[trigger] obj_struct(s.heap[i], h.objs[i], cb),
+        heap_model_ok(s.heap, h.addr, cb),
+        heap_ok(c, hs),
+        hide_ok(c, h, hs, nodes, nodes2, ncb), 0 <= m < nodes.len(), nodes2[m].hid,
+        0 <= ncb <= nodes.len(),
+        backing(c, hs, nodes2[m].bk, x), 0 <= x < s.heap.len(), s.heap[x].body is Array,
+        weak_keys_maps(ap, s, h, nodes, ncb), cids_ok(ap, c), c.map_cid != c.list_cid,
+    ensures toit_spec::v2::gc::backing_array(ap, s.heap, nodes[m].key->Ref_0 as int, x),
+{
+    let mk = nodes[m].key->Ref_0;
+    let l = nodes2[m].bk->Ref_0;
+    let om = obj(h, mk);
+    assert(nodes2[m] == (Node { ix: nodes2[m].ix, bk: nodes2[m].bk, hid: nodes2[m].hid, ..nodes[m] }));
+    assert(from(h, mk) && weak_map(c, om) && nodes2[m].bk == om.words[4]);
+    assert(is_map(ap, s.heap[mk]));
+    let f = s.heap[mk].body->Instance_0;
+    assert(obj_struct(s.heap[mk], om, cb));
+    let q3: int = 3;
+    assert(om.words[1 + q3] == aval(f[q3]));
+    lemma_aval_ref(f[3], l);
+    lemma_from_obj(c, hs, l);
+    // The list is h's object (lists are no hidden maps).
+    assert(obj(hs, l) == obj(h, l)) by {
+        if obj(hs, l) != obj(h, l) {
+            let m2 = choose|m2: int| 0 <= m2 < ncb && (#[trigger] nodes2[m2]).hid && nodes[m2].key == AVal::Ref(l);
+            assert(nodes2[m2].hid && 0 <= m2 < nodes.len());
+            assert(nodes[m2].key->Ref_0 == l);
+            assert(weak_map(c, obj(h, l)) && obj(hs, l) == hidden(obj(h, l)));
+            assert(hdr(obj(hs, l)) == hdr(obj(h, l)));
+            assert(hidden(obj(h, l)).words[0] == obj(h, l).words[0]);
+            assert(false);
+        }
+    }
+    let ol = obj(h, l);
+    lemma_from_obj(c, h, l);
+    assert(obj_struct(s.heap[l], ol, cb));
+    lemma_hcid(s.heap[l], ol, cb);
+    assert(obj_model_ok(s.heap[l], cb, h.addr));
+    lemma_htag(hdr(ol));
+    assert(s.heap[l].body is Instance);
+    let fl = s.heap[l].body->Instance_0;
+    let cid = s.heap[l].class_id as int;
+    assert(fl.len() == toit_verified_core::abs::ifc_bits(cb, cid));
+    assert(isize_bits(ol.cbits) == toit_verified_core::abs::ifc_bits(cb, cid) + 1) by {
+        let b = cb[cid];
+        assert(((b >> 5u16) & 0x7ffu16) as int == ((b >> 5u16) & 0x7ffu16) as int);
+    }
+    assert(fl.len() >= 1);
+    let q0: int = 0;
+    assert(ol.words[1 + q0] == aval(fl[q0]));
+    lemma_aval_ref(fl[0], x);
+}
+
+/// The spec heap after the collection (hiding, the weak pass, the
+/// finalizer pass) is represented by the collector's, and its weak
+/// processing is the spec's.
+pub proof fn lemma_fin_rep_w(ap: Program2, cb: Seq<u16>, s: State2, c: Ctx, h: H, hs: H, hw: H, hf: H, st: St, rv: Seq<AVal>,
+                             nodes: Seq<Node>, nodes2: Seq<Node>, nodesw: Seq<Node>, nm: Map<int, PointsTo<usize>>,
+                             ncb: int, nn: int, main: Set<int>)
+    requires
+        heap_ok(c, h), heap_ok(c, hs), heap_ok(c, hw), heap_ok(c, hf),
+        hide_ok(c, h, hs, nodes, nodes2, ncb), weak_ok(c, hs, hw, nodes2, nodesw, ncb),
+        fin_done(c, hw, hf, st, rv, nodesw, nm, ncb, nn, main),
+        nodesw.len() == nodes.len(),
+        forall|m: int| 0 <= m < nodes.len() ==> (#[trigger] nodesw[m]).key == nodes[m].key && nodesw[m].kind == nodes[m].kind,
+        keys_ok(h, nodes, ncb), c.map_cid != c.list_cid, 0 <= ncb <= nodes.len(),
+        h.objs.len() == s.heap.len(),
+        forall|i: int| 0 <= i < s.heap.len() ==> #[trigger] obj_struct(s.heap[i], h.objs[i], cb),
+        heap_model_ok(s.heap, h.addr, cb),
+        null2(ap) == Value::Obj(c.nullid@ as usize),
+        forall|i: int| 0 <= i < s.heap.len() && #[trigger] from(h, i) ==> !s.heap[i].ro,
+        weak_keys_maps(ap, s, h, nodes, ncb), cids_ok(ap, c),
+    ensures ({
+        let s1 = fin_state_w(ap, c, s, h, hf);
+        &&& zapped(ap, s, s1)
+        &&& rep(s1.heap, hf, cb)
+        &&& heap_model_ok(s1.heap, hf.addr, cb)
+        &&& forall|i: int| 0 <= i < s.heap.len() ==> (#[trigger] s1.heap[i]).ro == s.heap[i].ro
+        &&& forall|i: int| 0 <= i < s.heap.len() && !is_map(ap, s.heap[i]) && !(s.heap[i].body is Array) ==> #[trigger] s1.heap[i] == s.heap[i]
+    }),
+{
+    let s1 = fin_state_w(ap, c, s, h, hf);
+    let sh = s.heap;
+    let n = sh.len() as int;
+    assert forall|i: int| 0 <= i < n implies #[trigger] obj_struct(s1.heap[i], hf.objs[i], cb) && obj_ok(hf.objs[i])
+        && obj_model_ok(s1.heap[i], cb, hf.addr)
+        && toit_spec::v2::gc::weak_change(ap, sh, i, s1.heap[i]) by {
+        let o = obj(h, i);
+        assert(obj_struct(sh[i], o, cb));
+        assert(obj_model_ok(sh[i], cb, h.addr));
+        assert(obj_ok(obj(hf, i)) && obj_ok(o));
+        assert(toit_verified_core::abs::addrs_ok(sh, h.addr));
+        assert(c.nullid@ < h.addr.len());
+        assert(changed_ok(c, hw, hf, nodesw, ncb, main, i));
+        assert(wchanged(c, hs, hw, nodes2, ncb, i));
+        let hidm = exists|m: int| 0 <= m < ncb && (#[trigger] nodes2[m]).hid && nodes[m].key == AVal::Ref(i);
+        if obj(hf, i) == o {
+            assert(s1.heap[i] == sh[i]);
+        } else if hidm {
+            // A hidden weak map: restored (then unchanged) or reset.
+            let m = choose|m: int| 0 <= m < ncb && (#[trigger] nodes2[m]).hid && nodes[m].key == AVal::Ref(i);
+            assert(nodes2[m] == (Node { ix: nodes2[m].ix, bk: nodes2[m].bk, hid: nodes2[m].hid, ..nodes[m] }));
+            assert(from(h, i) && weak_map(c, o) && obj(hs, i) == hidden(o) && nodes2[m].ix == o.words[3] && nodes2[m].bk == o.words[4]);
+            assert(nodes2[m].key == AVal::Ref(i));
+            assert(is_map(ap, sh[i]));
+            lemma_from_obj(c, h, i);
+            assert(unhide(hidden(o), nodes2[m].ix, nodes2[m].bk) == o) by { assert(unhide(hidden(o), nodes2[m].ix, nodes2[m].bk).words =~= o.words); }
+            assert(lay(hidden(o)) == lay(o)) by { assert(hidden(o).words[0] == o.words[0] && hidden(o).words.len() == o.words.len()); }
+            assert(killed(hidden(o), c.nullid@, true) == killed(o, c.nullid@, true)) by {
+                if resettable(o) { assert(reset(hidden(o), c.nullid@).words =~= reset(o, c.nullid@).words); }
+            }
+            let ow = obj(hw, i);
+            assert(ow == o || ow == killed(o, c.nullid@, true));
+            lemma_struct_reset(ap, sh[i], o, cb, h.addr, c.nullid@);
+            if ow == o {
+                // Changed by the finalizer pass: killed as a key (its node's kind is a weak map's: reset).
+                let m2 = choose|m2: int| 0 <= m2 < ncb && #[trigger] nodesw[m2].key == AVal::Ref(i) && nodesw[m2].kind <= KIND_WEAK_QUEUED
+                    && obj(hf, i) == killed(obj(hw, i), c.nullid@, nodesw[m2].kind != KIND_TOIT);
+                assert(nodes[m2].key == nodes[m].key);
+                assert(m2 == m);
+                assert(nodesw[m2].kind != KIND_TOIT);
+                assert(obj(hf, i) == killed(o, c.nullid@, true));
+            } else {
+                lemma_clear_bit(hdr(o));
+                assert(hdr(killed(o, c.nullid@, true)) == (hdr(o) - 32) as usize) by {
+                    if resettable(o) { assert(hdr(reset(o, c.nullid@)) == hdr(o)); }
+                }
+                assert(!active(ow));
+                assert(obj(hf, i) == ow);
+            }
+            assert(s1.heap[i] == reset_map(ap, sh[i]));
+        } else if obj(hw, i) != obj(hs, i) {
+            // A zapped array.
+            assert(obj(hs, i) == o);
+            let m = choose|m: int| 0 <= m < ncb && (#[trigger] nodes2[m]).hid && backing(c, hs, nodes2[m].bk, i);
+            assert(from(hs, i) && zapped_arr(c, hs, obj(hs, i), obj(hw, i)));
+            assert(htag(hdr(o)) == ARRAY_TAG);
+            assert(obj(hf, i) == obj(hw, i)) by {
+                if obj(hf, i) != obj(hw, i) {
+                    let m2 = choose|m2: int| 0 <= m2 < ncb && #[trigger] nodesw[m2].key == AVal::Ref(i) && nodesw[m2].kind <= KIND_WEAK_QUEUED
+                        && obj(hf, i) == killed(obj(hw, i), c.nullid@, nodesw[m2].kind != KIND_TOIT);
+                    assert(nodes[m2].key == AVal::Ref(i) && from(h, i));
+                    assert(htag(hdr(obj(h, i))) == INSTANCE_TAG);
+                    assert(false);
+                }
+            }
+            lemma_htag(hdr(o));
+            assert(sh[i].body is Array);
+            assert(!is_map(ap, sh[i]));
+            assert(s1.heap[i] == zap_spec(ap, sh[i], o, obj(hf, i)));
+            assert(obj(hf, i).words[0] == o.words[0] && obj(hf, i).words[1] == o.words[1] && obj(hf, i).words.len() == o.words.len()) by {
+                assert(o.words.len() >= 2);
+            }
+            assert(lay(obj(hf, i)) == lay(o));
+            assert forall|y: int| 0 <= y < hs.objs.len() implies #[trigger] hcid(hdr(obj(hs, y))) == hcid(hdr(obj(h, y))) by {
+                if obj(hs, y) != obj(h, y) {
+                    let m3 = choose|m3: int| 0 <= m3 < ncb && (#[trigger] nodes2[m3]).hid && nodes[m3].key == AVal::Ref(y);
+                    assert(obj(hs, y) == hidden(obj(h, y)));
+                    assert(hidden(obj(h, y)).words[0] == obj(h, y).words[0]);
+                }
+            }
+            assert(zapped_arr(c, h, o, obj(hf, i))) by {
+                assert forall|k: int| 0 <= k < o.words.len() implies #[trigger] obj(hf, i).words[k] == o.words[k]
+                    || (2 <= k && (k - 2) % 2 == 1 && obj(hf, i).words[k] == AVal::Ref(c.nullid@) && o.words[k] is Ref
+                        && 0 <= o.words[k]->Ref_0 < h.objs.len() && hcid(hdr(obj(h, o.words[k]->Ref_0))) != c.tomb_cid) by {
+                    if obj(hf, i).words[k] != o.words[k] {
+                        let y = o.words[k]->Ref_0;
+                        assert(hcid(hdr(obj(hs, y))) == hcid(hdr(obj(h, y))));
+                    }
+                }
+            }
+            lemma_struct_zap(ap, cb, c, h, s, i, obj(hf, i), h.addr);
+            lemma_backing(ap, cb, c, h, hs, s, nodes, nodes2, ncb, m, i);
+            assert(!sh[i].ro);
+        } else {
+            // Neither hidden nor zapped: a key killed by the finalizer pass.
+            assert(obj(hw, i) == o) by {
+                if obj(hs, i) != o {
+                    let m3 = choose|m3: int| 0 <= m3 < ncb && (#[trigger] nodes2[m3]).hid && nodes[m3].key == AVal::Ref(i);
+                    assert(false);
+                }
+            }
+            let m = choose|m: int| 0 <= m < ncb && #[trigger] nodesw[m].key == AVal::Ref(i) && nodesw[m].kind <= KIND_WEAK_QUEUED
+                && obj(hf, i) == killed(obj(hw, i), c.nullid@, nodesw[m].kind != KIND_TOIT);
+            assert(active(o) && from(h, i));
+            assert(nodes[m].key == AVal::Ref(i) && nodes[m].kind == nodesw[m].kind);
+            lemma_htag(hdr(o));
+            assert(htag(hdr(o)) == INSTANCE_TAG);
+            assert(!(sh[i].body is Array));
+            if is_map(ap, sh[i]) {
+                lemma_struct_reset(ap, sh[i], o, cb, h.addr, c.nullid@);
+                if obj(hf, i) == killed(o, c.nullid@, true) {
+                    assert(s1.heap[i] == reset_map(ap, sh[i]));
+                } else {
+                    assert(nodes[m].kind == KIND_TOIT);
+                    assert(s1.heap[i] == sh[i]);
+                    lemma_struct_cleared(sh[i], o, cb);
+                }
+            } else {
+                assert(s1.heap[i] == sh[i]);
+                if nodes[m].kind != KIND_TOIT {
+                    assert(nodes[m].key is Ref && nodes[m].key->Ref_0 == i);
+                    assert(is_map(ap, sh[i]));
+                }
+                assert(obj(hf, i) == cleared(o));
+                lemma_struct_cleared(sh[i], o, cb);
+            }
+        }
+    }
+    assert(toit_verified_core::abs::addrs_ok(sh, h.addr));
+    assert(hf.addr == h.addr && s1.heap.len() == n);
+    assert(toit_verified_core::abs::addrs_ok(s1.heap, hf.addr));
+    assert forall|i: int| 0 <= i < s1.heap.len() implies #[trigger] obj_model_ok(s1.heap[i], cb, hf.addr) by {
+        assert(obj_struct(s1.heap[i], hf.objs[i], cb));
+    }
+    assert(heap_model_ok(s1.heap, hf.addr, cb));
+    lemma_rep_vm(s1.heap, hf, cb, hf.addr);
+    assert(zapped(ap, s, s1)) by {
+        assert(s1 == (State2 { heap: s1.heap, ..s }));
+        assert forall|i: int| 0 <= i < n implies #[trigger] toit_spec::v2::gc::weak_change(ap, sh, i, s1.heap[i]) by {
+            assert(obj_struct(s1.heap[i], hf.objs[i], cb));
+        }
+    }
+}
+
+
+/// THE BRIDGE (collections with hidden weak maps, the weak pass and the
+/// finalizer pass; `statement::collect`'s result): for the core's state `s`
+/// at a collection point, with the C++ roots starting with the running task
+/// and the globals and the process heap in the VM's layout representing the
+/// saved state, the collector's result renumbered is a collection of the
+/// spec from the saved state; its weak processing (reset maps, zapped
+/// arrays) is the spec's `zapped`.
+pub proof fn lemma_spec_collection_core_w(ap: Program2, cb: Seq<u16>, s: State2, n0: int,
+                                          c: Ctx, h: H, hs: H, hw: H, hf: H, st: St, rptr: *mut usize, rv: Seq<AVal>,
+                                          nodes: Seq<Node>, nodes2: Seq<Node>, nodesw: Seq<Node>, nm: Map<int, PointsTo<usize>>,
+                                          ncb: int, nn: int, main: Set<int>, ttab: *mut usize, tused: *mut usize, w: Window)
+    requires
+        heap_ok(c, h), heap_ok(c, hs), heap_ok(c, hw), heap_ok(c, hf),
+        hide_ok(c, h, hs, nodes, nodes2, ncb), weak_ok(c, hs, hw, nodes2, nodesw, ncb),
+        collected(c, hf, st, rptr, rv, fin_roots(rv, nodesw), ttab, tused, w),
+        fin_done(c, hw, hf, st, rv, nodesw, nm, ncb, nn, main),
+        nodesw.len() == nodes.len(),
+        forall|m: int| 0 <= m < nodes.len() ==> (#[trigger] nodesw[m]).key == nodes[m].key && nodesw[m].kind == nodes[m].kind,
+        keys_ok(h, nodes, ncb), c.map_cid != c.list_cid, 0 <= ncb <= nodes.len(),
+        toit_spec::v2::sound::running_ok(ap, s),
+        roots_core(s, rv),
+        h.objs.len() == s.heap.len(),
+        forall|i: int| 0 <= i < s.heap.len() ==> #[trigger] obj_struct(saved(s).heap[i], h.objs[i], cb),
+        heap_model_ok(s.heap, h.addr, cb),
+        0 <= n0 <= s.heap.len(),
+        forall|i: int| 0 <= i < s.heap.len() ==> (#[trigger] s.heap[i].ro <==> i < n0),
+        forall|i: int| 0 <= i < s.heap.len() ==> (#[trigger] from(h, i) <==> i >= n0),
+        forall|i: int| 0 <= i < ap.roots.len() ==> gcbridge::ro_const(s.heap, #[trigger] ap.roots[i]),
+        forall|i: int| 0 <= i < ap.literals.len() ==> gcbridge::ro_const(s.heap, #[trigger] ap.literals[i]),
+        null2(ap) == Value::Obj(c.nullid@ as usize),
+        weak_keys_maps(ap, saved(s), h, nodes, ncb), cids_ok(ap, c),
+    ensures ({
+        let s1 = fin_state_w(ap, c, saved(s), h, hf);
+        let lv = live_seq(hf, st);
+        let ren = gcbridge::ren_of(lv);
+        let back = gcbridge::back_of(lv);
+        let s2 = renamed(s1, ren, back);
+        let a2 = Seq::new(back.len(), |k: int| st.addr2[back[k]]);
+        &&& zapped(ap, saved(s), s1)
+        &&& collection(ap, saved(s), s2)
+        &&& heap_model_ok(s2.heap, a2, cb)
+        &&& enc_seq(a2, s2.stack) == enc_seq(st.addr2, s.stack)
+        &&& enc_seq(a2, s2.globals) == enc_seq(st.addr2, s.globals)
+    }),
+{
+    let s0 = saved(s);
+    let t = s.task as int;
+    let sid = running_stack(s);
+    lemma_saved_model(ap, s, h.addr, cb);
+    assert forall|i: int| 0 <= i < s0.heap.len() && #[trigger] from(h, i) implies !s0.heap[i].ro by {
+        assert(s0.heap[i].ro == s.heap[i].ro);
+    }
+    lemma_fin_rep_w(ap, cb, s0, c, h, hs, hw, hf, st, rv, nodes, nodes2, nodesw, nm, ncb, nn, main);
+    let s1 = fin_state_w(ap, c, s0, h, hf);
+    // The task and its stack object are neither maps nor arrays.
+    assert(!is_map(ap, s0.heap[t]));
+    assert(s0.heap[sid].body is Stack2);
+    assert(!is_map(ap, s0.heap[sid]));
+    assert(s1.heap[t] == s0.heap[t] && s1.heap[sid] == s0.heap[sid]);
+    assert(obj_rep(s1.heap[t], hf.objs[t], cb, hf.objs.len() as int));
+    assert(obj_rep(s1.heap[sid], hf.objs[sid], cb, hf.objs.len() as int));
+    lemma_roots_core_live(ap, cb, s, c, hf, st, rptr, rv, fin_roots(rv, nodesw), w.pages as int);
+    assert(state_live(s1, hf, st));
+    assert forall|i: int| 0 <= i < s1.heap.len() implies (#[trigger] s1.heap[i].ro <==> i < n0) by {
+        assert(s1.heap[i].ro == s0.heap[i].ro && s0.heap[i].ro == s.heap[i].ro);
+    }
+    assert forall|i: int| 0 <= i < s1.heap.len() implies (#[trigger] from(hf, i) <==> i >= n0) by {
+        assert(from(h, i) == from(hf, i));
+    }
+    assert forall|i: int| 0 <= i < ap.roots.len() implies gcbridge::ro_const(s1.heap, #[trigger] ap.roots[i]) by {
+        assert(gcbridge::ro_const(s.heap, ap.roots[i]));
+        if ap.roots[i] is Obj { assert(s1.heap[ap.roots[i]->Obj_0 as int].ro == s.heap[ap.roots[i]->Obj_0 as int].ro); }
+    }
+    assert forall|i: int| 0 <= i < ap.literals.len() implies gcbridge::ro_const(s1.heap, #[trigger] ap.literals[i]) by {
+        assert(gcbridge::ro_const(s.heap, ap.literals[i]));
+        if ap.literals[i] is Obj { assert(s1.heap[ap.literals[i]->Obj_0 as int].ro == s.heap[ap.literals[i]->Obj_0 as int].ro); }
+    }
+    lemma_bridge(ap, cb, s1, n0, c, hf, st, rptr, rv, fin_roots(rv, nodesw), ttab, tused, w);
+    gcbridge::lemma_collected(ap, cb, s0, s1, live_seq(hf, st), st.addr2, n0);
 }
 
 } // verus!

@@ -28,6 +28,7 @@ use crate::collect::*;
 use crate::fin::*;
 use crate::tail::*;
 use crate::shrink::*;
+use crate::weak::*;
 
 verus! {
 
@@ -480,6 +481,7 @@ pub fn collect<S: PageSource>(c: &Ctx, src: &mut S, rptr: *mut usize, rlen: usiz
         ctx_ok(*c), ftab_ok(*c, ro.ftp), heap_ok(*c, h), others_ok(h, ro.others), ctab_ok(*c, ro.ctp),
         from_ok(*c, h, old(st).fp),
         tail_ok(*c, h, old(st).fp, ro.fup),
+        c.map_cid != c.list_cid, keys_ok(h, nodes, ncb as int),
         rv.len() == rlen, roots_in(*c, h, old(st).rp, rptr, rv),
         ttab@.addr + tcap * W <= usize::MAX, tused@.addr + tcap * W <= usize::MAX,
         forall|p: int| 0 <= p < tcap ==> #[trigger] wperm_ok(old(st).ttp, p, ttab, p),
@@ -488,14 +490,18 @@ pub fn collect<S: PageSource>(c: &Ctx, src: &mut S, rptr: *mut usize, rlen: usiz
         forall|m: int| 0 <= m < ncb ==> (#[trigger] nodes[m]).kind <= KIND_WEAK_QUEUED,
         forall|m: int| ncb <= m < nn ==> (#[trigger] nodes[m]).kind == KIND_VM,
         forall|m: int| 0 <= m < nn ==> slot_ok(*c, h.objs.len() as int, (#[trigger] nodes[m]).key)
-            && slot_ok(*c, h.objs.len() as int, nodes[m].lam),
+            && slot_ok(*c, h.objs.len() as int, nodes[m].lam) && !nodes[m].hid && !nodes[m].zap,
         nodes_mem(*old(nm), nptr, nn as int),
         forall|m: int| 0 <= m < nn ==> #[trigger] node_in(*old(nm), h, nodes[m], m),
         old(src).pw() == c.pw, old(src).prov() == c.base@.provenance,
     ensures
         match r {
-            Ok(w) => exists|hf: H, main: Set<int>| heap_ok(*c, hf) && collected(*c, hf, *final(st), rptr, rv, fin_roots(rv, nodes), ttab, tused, w)
-                && #[trigger] fin_done(*c, h, hf, *final(st), rv, nodes, *final(nm), ncb as int, nn as int, main),
+            Ok(w) => exists|hs: H, nodes2: Seq<Node>, hw: H, nodesw: Seq<Node>, hf: H, main: Set<int>|
+                #![trigger weak_ok(*c, hs, hw, nodes2, nodesw, ncb as int), fin_done(*c, hw, hf, *final(st), rv, nodesw, *final(nm), ncb as int, nn as int, main)]
+                hide_ok(*c, h, hs, nodes, nodes2, ncb as int) && weak_ok(*c, hs, hw, nodes2, nodesw, ncb as int)
+                && heap_ok(*c, hw) && heap_ok(*c, hf) && collected(*c, hf, *final(st), rptr, rv, fin_roots(rv, nodesw), ttab, tused, w)
+                && fin_done(*c, hw, hf, *final(st), rv, nodesw, *final(nm), ncb as int, nn as int, main)
+                && nodesw.len() == nn && (forall|m: int| 0 <= m < nn ==> (#[trigger] nodesw[m]).key == nodes[m].key && nodesw[m].lam == nodes[m].lam && nodesw[m].kind == nodes[m].kind),
             Err(_) => *final(st) == *old(st) && *final(nm) == *old(nm),
         },
         final(src).pw() == c.pw, final(src).prov() == c.base@.provenance,
@@ -527,7 +533,7 @@ pub fn collect<S: PageSource>(c: &Ctx, src: &mut S, rptr: *mut usize, rlen: usiz
         st.tss = Seq::empty();
         st.tus = Seq::empty();
     }
-    let ghost rvp = fin_roots(rv, nodes);
+    let ghost rvp0 = fin_roots(rv, nodes);
     let mut t = Tos { ttab, tused, tcap, rs, mx: Ghost(mx as int), tn: 0, top: 0, cur: 0 };
     proof {
         let s = *st;
@@ -538,7 +544,7 @@ pub fn collect<S: PageSource>(c: &Ctx, src: &mut S, rptr: *mut usize, rlen: usiz
         assert(to_inv(*c, h, s, 0, 0));
         assert(set_int_range(0, c.nf * c.pw).len() >= 0);
         assert(cap_ok(*c, h, s, t));
-        assert(par_ok(h, s, rvp));
+        assert(par_ok(h, s, rvp0));
         assert(s.rp == old(st).rp);
         assert forall|i: int| 0 <= i < rv.len() implies (#[trigger] s.rp[i]).is_init()
             && s.rp[i].value() == enc(if i < 0 { s.addr2 } else { h.addr }, rv[i]) by {
@@ -549,10 +555,14 @@ pub fn collect<S: PageSource>(c: &Ctx, src: &mut S, rptr: *mut usize, rlen: usiz
         }
         assert(roots_ok(*c, h, s, rptr, rv, 0));
     }
-    do_roots(c, src, &mut t, rptr, rlen, Ghost(h), Ghost(rv), Ghost(rvp), Tracked(st), Tracked(ro));
-    proof { if t.tn >= 1 { assert(scan_pos(h, *st, t, 0, 0, 0)); } }
-    scan(c, src, &mut t, 0, 0, Ghost(0int), Ghost(h), Ghost(rptr), Ghost(rv), Ghost(rvp), Tracked(st), Tracked(ro));
-    let (hfr, mainr) = fin_phase(c, src, &mut t, nptr, ncb, nn, Ghost(h), Ghost(rv), Ghost(rvp), Ghost(nodes), Ghost(rptr),
+    let (hsr, n2r, hwr, nwr) = trace(c, src, &mut t, rptr, rlen, nptr, ncb, nn, Ghost(h), Ghost(rv), Ghost(nodes),
+                                     Tracked(st), Tracked(ro), Tracked(nm));
+    let ghost hs = hsr@;
+    let ghost nodes2 = n2r@;
+    let ghost hw = hwr@;
+    let ghost nodesw = nwr@;
+    let ghost rvp = fin_roots(rv, nodesw);
+    let (hfr, mainr) = fin_phase(c, src, &mut t, nptr, ncb, nn, Ghost(hw), Ghost(rv), Ghost(rvp), Ghost(nodesw), Ghost(rptr),
                                  Tracked(st), Tracked(ro), Tracked(nm));
     let ghost hf = hfr@;
     let ghost main = mainr@;
@@ -665,7 +675,7 @@ pub fn collect<S: PageSource>(c: &Ctx, src: &mut S, rptr: *mut usize, rlen: usiz
         assert(collected_pages(*c, hf, s2, ttab, tused, w));
         assert(collected_pre(*c, hf, s2, rptr, rv, rvp, ttab, tused, w));
         assert(s2.pos == s0.pos && s2.addr2 == s0.addr2);
-        lemma_fin_done_same(*c, h, hf, s0, s2, rv, nodes, *nm, ncb as int, nn as int, main);
+        lemma_fin_done_same(*c, hw, hf, s0, s2, rv, nodesw, *nm, ncb as int, nn as int, main);
     }
     // The copied stacks shrunk.
     let ghost s2e = *st;
@@ -678,7 +688,7 @@ pub fn collect<S: PageSource>(c: &Ctx, src: &mut S, rptr: *mut usize, rlen: usiz
         assert(tpages_ok(*c, hf, s0, t0));
     }
     shrink_end(c, &t, survived, Ghost(hf), Ghost(s0), Ghost(t0), Ghost(rptr), Ghost(rv), Ghost(rvp), Tracked(st), Tracked(&ro.ctp));
-    proof { lemma_fin_done_same(*c, h, hf, s2e, *st, rv, nodes, *nm, ncb as int, nn as int, main); }
+    proof { lemma_fin_done_same(*c, hw, hf, s2e, *st, rv, nodesw, *nm, ncb as int, nn as int, main); }
     proof { assert(heap_ok(*c, hf)); }
     Ok(w)
 }

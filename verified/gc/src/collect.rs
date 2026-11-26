@@ -354,6 +354,10 @@ pub proof fn lemma_scan_write(c: Ctx, h: H, s2: St, s3: St, t: Tos, ks: int, i: 
     assert forall|q: (int, int)| #[trigger] s3.tp.contains_key(q) implies 0 <= q.0 < t.tn by {
         assert(s2.tp.contains_key(q));
     }
+    assert(tpages_ok(c, h, s2, t));
+    assert(s3.tss.len() == t.tn && s3.tus.len() == t.tn && t.tn <= t.tcap);
+    assert(t.tn > 0 ==> s3.tus[t.tn - 1] == t.top && t.cur == s3.tss[t.tn - 1]);
+    assert forall|p: int| 0 <= p < t.tn implies 0 <= #[trigger] s3.tus[p] <= c.pw - 1 by { assert(0 <= s2.tus[p] <= c.pw - 1); }
     assert(tpages_ok(c, h, s3, t));
     // The to-space words.
     assert forall|kk: int, i2: int| 0 <= kk < n && 0 <= i2 < tsz(h, s3, kk) implies

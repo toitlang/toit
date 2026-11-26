@@ -74,6 +74,9 @@ struct Dump {
     /// The room a shrunk stack keeps (`Ctx::smin`; usize::MAX in dumps
     /// without it: no shrinking).
     smin: usize,
+    /// The class ids of maps, lists and tombstones (usize::MAX if absent: no
+    /// weak maps hidden).
+    cids: [usize; 3],
 }
 
 fn read_dump(path: &Path) -> Option<Dump> {
@@ -112,7 +115,9 @@ fn read_dump(path: &Path) -> Option<Dump> {
         }
     }
     let smin = if pos < data.len() { u64_at(&mut pos) as usize } else { usize::MAX };
-    Some(Dump { sw, null, cb, pages, roots, nodes, smin })
+    let mut cids = [usize::MAX; 3];
+    for k in 0..3 { if pos < data.len() { cids[k] = u64_at(&mut pos) as usize; } }
+    Some(Dump { sw, null, cb, pages, roots, nodes, smin, cids })
 }
 
 impl Dump {
@@ -329,7 +334,7 @@ fn diff(before: &Dump, after: &Dump, stats: &mut Stats) -> Result<(), String> {
     let ncb = order.iter().filter(|&&i| before.nodes[i][0] != 2).count();
     let nn = order.len();
     let c = Ctx { base: arena.base(), ftab: ftab.as_mut_ptr(), nf, pw, ctab: cb.as_mut_ptr(), ncls: cb.len(), sw: before.sw,
-                  null: before.null, nullid: Ghost::assume_new(), fused: fusedw.as_mut_ptr(), tail, smin: before.smin, fss: Ghost::assume_new(), cbs: Ghost::assume_new() };
+                  null: before.null, nullid: Ghost::assume_new(), fused: fusedw.as_mut_ptr(), tail, smin: before.smin, map_cid: before.cids[0], list_cid: before.cids[1], tomb_cid: before.cids[2], fss: Ghost::assume_new(), cbs: Ghost::assume_new() };
     let mut src = Source { arena: &mut arena, reserved: 0, taken: vec![], asked: 0 };
     let r = collect(&c, &mut src, roots.as_mut_ptr(), roots.len(), ttab.as_mut_ptr(), tused.as_mut_ptr(), tcap,
                     nodew.as_mut_ptr(), ncb, nn,
@@ -394,7 +399,7 @@ fn diff(before: &Dump, after: &Dump, stats: &mut Stats) -> Result<(), String> {
         stats.nodes += 1;
         stats.verdicts[d.min(4)] += 1;
         if cpp == 5 { stats.weak_zap_queued += 1; }
-        let expect = if cpp == 5 { 0 } else { cpp };
+        let expect = if cpp == 5 { if before.cids[0] == usize::MAX { 0 } else { 1 } } else { cpp };
         if d != expect {
             // A key the C++ prototype found dead that is reachable through a
             // weak map's fields (traced strongly here) is the one expected
@@ -414,7 +419,9 @@ fn diff(before: &Dump, after: &Dump, stats: &mut Stats) -> Result<(), String> {
             }
             1 => {
                 let x = a.unwrap();
-                if nodew[6 * m + 1] != x[3] { return Err(what("key", format!("{:#x}, C++ {:#x}", nodew[6 * m + 1], x[3]))); }
+                if n[1] == 1 {
+                    pair(nodew[6 * m + 1], x[3], &mut work, stats).map_err(|e| what("key", e))?;
+                } else                 if nodew[6 * m + 1] != x[3] { return Err(what("key", format!("{:#x}, C++ {:#x}", nodew[6 * m + 1], x[3]))); }
                 pair(nodew[6 * m + 2], x[4], &mut work, stats).map_err(|e| what("lambda", e))?;
             }
             _ => {}

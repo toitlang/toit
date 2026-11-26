@@ -162,11 +162,17 @@ const CLS_STACK: usize = 5;
 const CLS_ODDBALL: usize = 6;
 const CLS_TASK: usize = 7;
 const CLS_INST: usize = 8;
+const CLS_MAP: usize = CLS_INST + MAX_FIELDS + 1;
+const CLS_LIST: usize = CLS_INST + MAX_FIELDS + 2;
+const CLS_TOMB: usize = CLS_INST + MAX_FIELDS + 3;
 const MAX_FIELDS: usize = 24;
 const TASK_FIELDS: usize = 3;
 
 fn class_table() -> Vec<u16> {
-    let mut cb = vec![0u16; CLS_INST + MAX_FIELDS + 1];
+    let mut cb = vec![0u16; CLS_TOMB + 1];
+    cb[CLS_MAP] = (5 << 5) | 2;
+    cb[CLS_LIST] = (3 << 5) | 2;
+    cb[CLS_TOMB] = (2 << 5) | 2;
     cb[CLS_ARRAY] = 0;
     cb[CLS_STRING] = 1;
     cb[CLS_BYTES] = 5;
@@ -383,12 +389,67 @@ fn closure(objs: &[Obj], nprog: usize, start: impl IntoIterator<Item = usize>) -
 /// after the finalizer pass (dead keys killed), and the copies.
 fn expected(h: &Heap) -> (Vec<usize>, Vec<Obj>, HashSet<usize>) {
     let roots = h.roots.iter().filter_map(|v| if let V::Ref(i) = v { Some(*i) } else { None });
-    let mut copied = closure(&h.objs, h.nprog, roots);
     let mut objs = h.objs.clone();
-    let mut verdicts = vec![];
     let from = |v: &V| matches!(v, V::Ref(i) if *i >= h.nprog);
     let idx = |v: &V| if let V::Ref(i) = v { *i } else { usize::MAX };
-    for (kind, key, lam) in &h.nodes {
+    let cid = |o: &Obj| if let V::Raw(hd) = o.words[0] { hd >> 6 } else { usize::MAX };
+    let tag = |o: &Obj| if let V::Raw(hd) = o.words[0] { (hd >> 1) & 15 } else { usize::MAX };
+    // Hide the index and backing of the weak maps with a node
+    // (src/heap_roots.cc: their fields are not traced by the main scan).
+    let mut hidden: Vec<Option<(V, V)>> = vec![None; h.nodes.len()];
+    for (n, (kind, key, _)) in h.nodes.iter().enumerate() {
+        if (*kind == 1 || *kind == 3) && from(key) {
+            let k = idx(key);
+            let o = &objs[k];
+            if header_bit(o) && cid(o) == CLS_MAP && tag(o) == 2 && o.lo == 1 && o.hi >= 5 {
+                hidden[n] = Some((o.words[3].clone(), o.words[4].clone()));
+                objs[k].words[3] = V::Raw(0);
+                objs[k].words[4] = V::Raw(0);
+            }
+        }
+    }
+    let mut copied = closure(&objs, h.nprog, roots);
+    // The weak pass: zap the dead values of each surviving hidden map, give
+    // its fields back; reset each dead one.
+    let mut zapped = vec![false; h.nodes.len()];
+    for (n, (_, key, _)) in h.nodes.iter().enumerate() {
+        let Some((ix, bk)) = hidden[n].clone() else { continue };
+        let k = idx(key);
+        if copied.contains(&k) {
+            if from(&bk) && !copied.contains(&idx(&bk)) {
+                let l = idx(&bk);
+                if cid(&objs[l]) == CLS_LIST && tag(&objs[l]) == 2 && objs[l].lo == 1 && objs[l].hi >= 2 {
+                    let av = objs[l].words[1].clone();
+                    if from(&av) && !copied.contains(&idx(&av)) && tag(&objs[idx(&av)]) == 0 {
+                        let a = idx(&av);
+                        let len = objs[a].hi - 2;
+                        let mut i = 1;
+                        while i < len {
+                            let v = objs[a].words[2 + i].clone();
+                            if from(&v) && !copied.contains(&idx(&v)) && cid(&objs[idx(&v)]) != CLS_TOMB {
+                                objs[a].words[2 + i] = V::Raw(NULL);
+                                zapped[n] = true;
+                            }
+                            i += 2;
+                        }
+                    }
+                }
+            }
+            if from(&ix) { copied.insert(idx(&ix)); }
+            if from(&bk) { copied.insert(idx(&bk)); }
+            objs[k].words[3] = ix;
+            objs[k].words[4] = bk;
+        } else {
+            if let V::Raw(hd) = objs[k].words[0] { objs[k].words[0] = V::Raw(hd & !FBIT); }
+            objs[k].words[1] = V::Raw(0);
+            objs[k].words[2] = V::Raw(0);
+            objs[k].words[3] = V::Raw(NULL);
+            objs[k].words[4] = V::Raw(NULL);
+        }
+    }
+    let mut copied = closure(&objs, h.nprog, copied);
+    let mut verdicts = vec![];
+    for (n, (kind, key, lam)) in h.nodes.iter().enumerate() {
         if *kind == 4 { continue; }
         let active = from(key) && header_bit(&objs[idx(key)]);
         let alive = !from(key) || copied.contains(&idx(key));
@@ -399,7 +460,7 @@ fn expected(h: &Heap) -> (Vec<usize>, Vec<Obj>, HashSet<usize>) {
         } else if !active {
             verdicts.push(2);
         } else if alive {
-            verdicts.push(0);
+            verdicts.push(if *kind == 1 && zapped[n] { 1 } else { 0 });
             if from(lam) { copied.insert(idx(lam)); }
         } else if *kind == 0 {
             verdicts.push(1);
@@ -464,7 +525,7 @@ fn run(arena: &mut Arena, h: &Heap, tcap_extra: isize, refuse: bool) -> Result<(
     let before: Vec<usize> = arena.words.clone();
     let roots_before = rootw.clone();
     let c = Ctx { base: arena.base(), ftab: ftab.as_mut_ptr(), nf, pw, ctab: cb.as_mut_ptr(), ncls: cb.len(), sw: h.sw,
-                  null: NULL, nullid: Ghost::assume_new(), fused: fused.as_mut_ptr(), tail: h.tail, smin: h.smin, fss: Ghost::assume_new(), cbs: Ghost::assume_new() };
+                  null: NULL, nullid: Ghost::assume_new(), fused: fused.as_mut_ptr(), tail: h.tail, smin: h.smin, map_cid: CLS_MAP, list_cid: CLS_LIST, tomb_cid: CLS_TOMB, fss: Ghost::assume_new(), cbs: Ghost::assume_new() };
     let mut src = Source { arena, reserved: 0, taken: 0, refuse, asked: 0 };
     let r = collect(&c, &mut src, rootw.as_mut_ptr(), rootw.len(), ttab.as_mut_ptr(), tused.as_mut_ptr(), tcap,
                     nodew.as_mut_ptr(), ncb, h.nodes.len(),
@@ -513,6 +574,12 @@ fn check(arena: &Arena, cb: &[u16], h: &Heap, rootw: &[usize], nodew: &[usize], 
         assert_eq!(off, tused[p], "objects end at the used words of page {}", p);
     }
     let (verdicts, objs, live) = expected(h);
+    if std::env::var("WDBG").is_ok() {
+        let rc: HashSet<usize> = (h.nprog..h.objs.len()).filter(|i| arena.read(h.addr[*i] - 1) % 2 == 1).collect();
+        let mut only_o: Vec<_> = live.difference(&rc).cloned().collect(); only_o.sort();
+        let mut only_r: Vec<_> = rc.difference(&live).cloned().collect(); only_r.sort();
+        eprintln!("oracle only {:?} rust only {:?} verdicts {:?} rust {:?}", only_o, only_r, verdicts, (0..h.nodes.len()).map(|n| nodew[6 * n + 3]).collect::<Vec<_>>());
+    }
     assert_eq!(copies.len(), live.len(), "copies vs expected survivors");
     // The nodes: verdicts, and the slots to walk from.
     let mut q = VecDeque::new();
@@ -530,6 +597,10 @@ fn check(arena: &Arena, cb: &[u16], h: &Heap, rootw: &[usize], nodew: &[usize], 
             0 => {
                 start(key, nodew[6 * n + 1], format!("key of node {}", n), &mut q);
                 if *kind != 4 { start(lam, nodew[6 * n + 2], format!("lambda of node {}", n), &mut q); }
+            }
+            1 if *kind == 1 => {
+                start(key, nodew[6 * n + 1], format!("key of zapped map node {}", n), &mut q);
+                start(lam, nodew[6 * n + 2], format!("lambda of node {}", n), &mut q);
             }
             1 => {
                 assert_eq!(nodew[6 * n + 1], NULL, "key of queued node {}", n);
@@ -1004,4 +1075,100 @@ fn stack_shrinking() {
     assert_eq!(stack_red(&h.objs[1], 5), 25);
     assert_eq!(stack_red(&h.objs[3], 5), 0);
     run(&mut arena, &h, 0, false).ok().unwrap();
+}
+
+// ---------------------------------------------------------------------------
+// Weak maps.
+
+fn map_obj(ix: V, bk: V) -> Obj {
+    Obj { words: vec![hdr(CLS_MAP, 2), V::Smi(6), V::Smi(0), ix, bk], lo: 1, hi: 5 }
+}
+
+fn list_obj(a: V) -> Obj {
+    Obj { words: vec![hdr(CLS_LIST, 2), a, V::Smi(6)], lo: 1, hi: 3 }
+}
+
+fn tomb_obj() -> Obj {
+    Obj { words: vec![hdr(CLS_TOMB, 2), V::Smi(0)], lo: 1, hi: 2 }
+}
+
+#[test]
+fn weak_maps() {
+    let mut arena = Arena::new(64, PW * 2);
+    let objs = vec![
+        oddball(),                                                             // 0: program heap
+        inst(vec![V::Ref(2), V::Ref(6)]),                                      // 1: root holder: map, value 1
+        map_obj(V::Ref(3), V::Ref(4)),                                         // 2: live weak map
+        arr(vec![V::Smi(0), V::Smi(2)]),                                       // 3: its index
+        list_obj(V::Ref(5)),                                                   // 4: its backing list
+        arr(vec![V::Ref(7), V::Ref(6), V::Ref(8), V::Ref(9), V::Ref(10), V::Ref(11)]), // 5: entries
+        inst(vec![V::Smi(2)]),                                                 // 6: value 1 (alive)
+        inst(vec![V::Smi(4)]),                                                 // 7: key 1
+        inst(vec![V::Smi(6)]),                                                 // 8: key 2
+        inst(vec![V::Smi(8)]),                                                 // 9: value 2 (dead: zapped)
+        inst(vec![V::Smi(10)]),                                                // 10: key 3
+        tomb_obj(),                                                            // 11: a tombstone value (kept)
+        map_obj(V::Ref(13), V::Ref(14)),                                       // 12: dead weak map (reset)
+        arr(vec![V::Smi(0)]),                                                  // 13
+        list_obj(V::Ref(15)),                                                  // 14
+        arr(vec![V::Ref(7), V::Ref(9)]),                                       // 15
+        inst(vec![V::Smi(12)]),                                                // 16: the maps' lambda
+    ];
+    let mut h = heap(&mut arena, objs, 1, vec![V::Ref(1), V::Ref(0)]);
+    let nodes = vec![
+        (1, V::Ref(2), V::Ref(16)),   // QUEUE (zapped, key kept)
+        (1, V::Ref(12), V::Ref(16)),  // DELETE (dead map reset)
+    ];
+    add_nodes(&mut arena, &mut h, nodes, &[true, true]);
+    let (verdicts, objs, _) = expected(&h);
+    assert_eq!(verdicts, vec![1, 2]);
+    assert_eq!(objs[5].words[2 + 3], V::Raw(NULL));
+    assert_eq!(objs[5].words[2 + 5], V::Ref(11));
+    run(&mut arena, &h, 0, false).ok().unwrap();
+}
+
+#[test]
+fn random_weak_maps() {
+    for seed in 1..300u64 {
+        let mut rng = Rng(seed * 0x6c62_272e_07bb_0142 + 3);
+        let pw = [64, 128][rng.below(2)];
+        let n0 = 3 + rng.below(40);
+        let nprog = 1;
+        let nr = rng.below(4);
+        let (mut objs, mut roots) = random_heap(&mut rng, n0, nprog, nr, 6, SW);
+        let nmaps = 1 + rng.below(4);
+        let mut keys = vec![];
+        for _ in 0..nmaps {
+            let base = objs.len();
+            let entries = 2 * (1 + rng.below(4));
+            let mut elems = vec![];
+            for e in 0..entries {
+                let v = match rng.below(5) {
+                    0 => V::Smi(2),
+                    1 => V::Ref(base + 3),                       // the tombstone below
+                    _ => V::Ref(rng.below(base + 4)),
+                };
+                elems.push(if e % 2 == 0 { V::Ref(rng.below(base)) } else { v });
+            }
+            objs.push(map_obj(if rng.below(2) == 0 { V::Ref(base + 2) } else { V::Smi(0) }, V::Ref(base + 1))); // base
+            objs.push(list_obj(V::Ref(base + 2)));                                                          // base + 1
+            objs.push(arr(elems));                                                                          // base + 2
+            objs.push(tomb_obj());                                                                          // base + 3
+            keys.push(base);
+            if rng.below(2) == 0 { roots.push(V::Ref(base)); }
+            if rng.below(3) == 0 { let r = nprog + rng.below(n0 - nprog); objs[r] = inst(vec![V::Ref(base), V::Smi(0)]); }
+        }
+        let mut arena = Arena::new(1200, pw);
+        let mut h = build(&mut arena, objs, nprog, roots, SW, &mut rng, seed % 2 == 0);
+        h.smin = [usize::MAX, 3][(seed % 2) as usize];
+        let mut nodes = vec![];
+        let mut active = vec![];
+        for &k in &keys {
+            nodes.push((if rng.below(3) == 0 { 3 } else { 1 }, V::Ref(k), V::Ref(rng.below(n0))));
+            active.push(rng.below(6) != 0);
+        }
+        add_nodes(&mut arena, &mut h, nodes, &active);
+        if std::env::var("WDBG").is_ok() { eprintln!("seed {} nodes {:?} objs {:?}", seed, h.nodes, h.objs.iter().enumerate().map(|(i, o)| (i, o.words.clone())).collect::<Vec<_>>()); }
+        run(&mut arena, &h, 0, false).ok().unwrap();
+    }
 }
