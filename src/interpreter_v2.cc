@@ -21,6 +21,7 @@
 #include "interpreter_v2.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "bytecodes.h"
@@ -585,11 +586,23 @@ void toit_v2_report(void* raw_process, uword kind, uword bci, uword detail) {
       fprintf(stderr, "verified core: the bottom frame returned at bci %d: terminating the process\n",
               static_cast<int>(bci));
       break;
-    case TOIT_V2_REPORT_TRACE:
+    case TOIT_V2_REPORT_TRACE: {
       // Like Interpreter::trace, but with the format-2 opcode number (see
-      // verified/tools/compare_trace.toit).
-      printf("[%6d] #%d\n", static_cast<int>(bci), static_cast<int>(detail));
+      // verified/tools/compare_trace.toit). With TOIT_V2_TRACE_PROCESS set
+      // (format-3 study, verified/format3-study) each line also names the
+      // process and its program, so that traces of several processes can
+      // be told apart.
+      static int with_process = -1;
+      if (with_process < 0) with_process = getenv("TOIT_V2_TRACE_PROCESS") != null ? 1 : 0;
+      if (with_process) {
+        Process* process = reinterpret_cast<Process*>(raw_process);
+        printf("[%6d] #%d p%d g%x\n", static_cast<int>(bci), static_cast<int>(detail), process->id(),
+               static_cast<unsigned>(reinterpret_cast<uword>(process->program()) & 0xffffff));
+      } else {
+        printf("[%6d] #%d\n", static_cast<int>(bci), static_cast<int>(detail));
+      }
       break;
+    }
   }
 }
 

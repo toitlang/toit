@@ -1,0 +1,27 @@
+# Copyright (C) 2026 Toit contributors.
+#
+# Format-3 design study (branch study/format3): statistics of format-2
+# programs and traces, certificate size options and an UNPROVED prototype
+# of a single-pass certificate checker. Host tool only: not built by the
+# VM, not part of the verification epoch, never linked into a device.
+# See README.md.
+
+[package]
+name = "format3_study"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "f3study"
+path = "src/main.rs"
+
+[dependencies]
+toit_spec = { path = "../spec", default-features = false, features = ["std", "infer"] }
+toit_vmverify = { path = "../vmverify", default-features = false, features = ["std", "infer"] }
+toit_verified_core = { path = "../core", default-features = false }
+
+[profile.release]
+panic = "unwind"
+opt-level = 3
+debug = "line-tables-only"
