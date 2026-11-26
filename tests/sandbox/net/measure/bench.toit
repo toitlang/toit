@@ -37,7 +37,7 @@ SIZE ::= 100 * 1024
 main args:
   if args is Map:
     if args["role"] == PROVIDER-ROLE:
-      run-sandbox-network
+      run-sandbox-network --network=args["network"]
       return
     run-client args
     return
@@ -49,11 +49,6 @@ main args:
   port := server.port
   live := args.contains "live"
   // Without "sample" or "live" no sampling (for instruction counts).
-  provider := start-provider
-  provider-pid := (provider-ids SOCKET-SERVICE)[0]
-  sample := live or args.contains "sample"
-  peak := sample ? (PeakSampler 0 SYSTEM-PROCESS-ID_ --live=live) : null
-  provider-peak := sample ? (PeakSampler provider.gid provider-pid --live=live) : null
   policy := args.contains "all" ? "all" : {
         "allow": ["127.0.0.1:$port"],
         "connections": 8,
@@ -62,10 +57,15 @@ main args:
         "bytes-per-day": 1 << 30,
         "response-bytes": 1 << 20,
       }
+  provider := start-provider --network=policy
+  provider-pid := (provider-ids SOCKET-SERVICE)[0]
+  sample := live or args.contains "sample"
+  peak := sample ? (PeakSampler 0 SYSTEM-PROCESS-ID_ --live=live) : null
+  provider-peak := sample ? (PeakSampler provider.gid provider-pid --live=live) : null
   container := containers.start containers.current
       {"role": "client", "mode": mode, "op": op, "n": n, "port": port, "trusted": trusted, "live": live}
       --untrusted=(mode != "direct" and not trusted)
-      --network=policy
+      --services="all"
   code := container.wait
   if peak:
     peak.stop

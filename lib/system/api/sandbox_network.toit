@@ -10,11 +10,12 @@ Two variants: $SandboxSocketService (TCP and TLS streams to allowed
   (HTTP requests to allowed destinations, used by the net.sandbox-http
   library). Both are provided by a trusted container (the sandbox network
   provider, services/sandbox_network/ in the SDK sources), not by the
-  system process. A sandbox reaches them when its container has a network
-  policy (`containers.start --network`, see $network-policy-list) or lists
-  them (`containers.start --services`); the provider checks every
-  destination against the network policy, which it gets from the system
-  process for the group id the VM attaches to each request.
+  system process, and only on devices where it is installed. A sandbox
+  reaches them when it may use them (`containers.start --services="all"`,
+  or the two selectors); the provider checks every destination against its
+  network policy (its own configuration, see $network-policy-list), and
+  keeps the policy's limits per client container, by the group id the VM
+  attaches to each request.
 
 TLS: the provider has no root certificates of its own. A client registers
   the roots it trusts with its session ($ADD-ROOT-INDEX); they are used
@@ -49,7 +50,8 @@ MAX-CLIENT-ROOTS ::= 4
 MAX-CLIENT-ROOT-BYTES ::= 8192
 
 /**
-Converts a network policy to the form of the launch policy.
+Converts a network policy to the form the provider's policy decision
+  takes.
 
 The $policy is one of:
 - $NETWORK-ALL ("all"): every destination, private and loopback
@@ -81,9 +83,6 @@ A rule is `HOST:PORTS`, `HOST:PORTS/PATH`, optionally followed by
   with that root (the client still supplies the certificate). Addresses
   that aren't public (loopback, private, link-local) are only reachable
   through a rule that names the address itself.
-
-A container with a network policy may use the sandbox network services
-  without listing them in its services.
 */
 network-policy-list policy/any -> any:
   if policy is string: return policy

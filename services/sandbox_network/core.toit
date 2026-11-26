@@ -17,13 +17,17 @@
 The part of the sandbox network provider (experimental) that both
   variants share: connections that are made, read and written in the
   background, so that no request of a sandbox waits for the network in one
-  of the provider's RPC tasks; the network policies of the clients'
-  containers; the clients' root certificates.
+  of the provider's RPC tasks; the limits of the clients' containers; the
+  clients' root certificates.
 
-The provider is a trusted container (see main.toit). It learns the group
-  id of every request from the VM (the `--gid` of a service call, which the
-  sender can't choose; group ids are never reused), and asks the system
-  process for the network policy of that group once ($SandboxNetworkCore.grant).
+The provider is a trusted container (see main.toit). Its network policy
+  is its own configuration and applies to every client; the limits of the
+  policy are kept per client container. It learns the group id of every
+  request from the VM (the `--gid` of a service call, which the sender
+  can't choose; group ids are never reused). The policy of a group comes
+  from $SandboxNetworkCore.grant's lookup, which returns the provider's
+  policy for every group: the place where policies per container could
+  come back.
 
 A connection is a notifiable service resource: it is closed (and its
   socket with it) when the client closes it, closes its service client, or
@@ -41,7 +45,6 @@ Bounds per connection: three chunks of $CHUNK-SIZE (one read ahead, one
 import monitor
 import net
 import tls
-import system.containers
 import rpc.broker
 import system.services show ServiceProvider ServiceHandler ServiceResource
 import system.api.sandbox-network show CHUNK-SIZE STATE-CONNECTING STATE-OPEN
@@ -63,23 +66,29 @@ class SandboxNetworkCore:
   connections_/int := 0
   // TLS handshakes need the most memory, so they take turns.
   handshakes_ ::= monitor.Semaphore --count=1
-  // The policies by group id, false for a group without one, most recently
-  // used last. A grant also holds the limiter state of its container, so it
-  // stays while the container has connections.
+  // The grants by group id (false for a group without a policy), most
+  // recently used last. A grant holds the parsed policy and the limiter
+  // state of its container, so it stays while the container has
+  // connections.
   grants_/Map ::= {:}
-  // Looks up the network policy of a group (the system process).
+  // Returns the network policy of a group (see `network-policy-list`).
   policy-lookup_/Lambda
 
   roots ::= RootStore
   client-roots_/Map ::= {:}  // Map<int, ClientRoots>, by client id.
 
-  constructor --policy-lookup/Lambda=(:: | gid | containers.network-policy --gid=gid):
-    policy-lookup_ = policy-lookup
+  /**
+  Creates the core with the network $policy that applies to every client
+    (in the form of `network-policy-list`; null: no network). Throws if the
+    policy is malformed.
+  */
+  constructor --policy/any:
+    if policy != null: NetworkGrant policy  // Check it now.
+    policy-lookup_ = :: | gid | policy
 
   /**
-  The network policy of the container of $gid; throws NETWORK_DENIED if it
-    has none. Asks the system process once per container (while the
-    container's grant is cached).
+  The network policy, with the limiter state, of the container of $gid;
+    throws NETWORK_DENIED if there is no policy.
   */
   grant gid/int -> NetworkGrant:
     result := grants_.get gid
@@ -194,7 +203,7 @@ class SandboxConnection extends ServiceResource:
   out-closing_/bool := false
   client-waits_/bool := false  // The client waits for a notification.
   signal_ ::= monitor.Signal   // Changes for the tasks.
-  tasks_/List := []
+  deadline-task_/Task? := null
 
   /**
   Starts connecting. The caller checked the destination with
@@ -206,23 +215,40 @@ class SandboxConnection extends ServiceResource:
       --deadline-ms/int?=null:
     roots_ = roots
     super provider client --notifiable
-    tasks_.add (task --background:: run_)
+    // The tasks end by themselves when the stream closes (the socket's
+    // close ends a read or write; a connect in progress finishes and sees
+    // that the stream closed): canceling a connect would leave its socket
+    // open in the TCP module.
+    task --background:: run_
     if deadline-ms:
-      tasks_.add (task --background::
+      deadline-task_ = (task --background::
         sleep --ms=deadline-ms
         fail_ "TIMEOUT")
 
   run_ -> none:
+    raw := null
+    try:
+      run-connection_: raw = it
+    finally:
+      // Closed (and this task canceled) while connecting: the socket may
+      // not have reached $socket_.
+      if closed_ and raw: catch: raw.close
+
+  run-connection_ [connected] -> none:
     exception := catch:
       // Without a root the verification can't succeed (the provider has
       // none of its own).
       if use-tls and roots_.is-empty: throw "TLS_FAILED"
       address := core.resolve host port grant
+      if closed_: return
       raw := null
       connect-error := catch:
         with-timeout --ms=SandboxNetworkCore.CONNECT-TIMEOUT-MS:
           raw = core.network.tcp-connect (net.SocketAddress address port)
+          connected.call raw
       if connect-error: throw "CONNECT_FAILED"
+      // Closed while connecting: $run_ closes the socket.
+      if closed_: return
       // The client's writes are chunks already; don't delay them.
       raw.no-delay = true
       socket_ = raw
@@ -234,7 +260,8 @@ class SandboxConnection extends ServiceResource:
         if handshake-error: throw "TLS_FAILED"
       connected_ = true
       changed_
-      tasks_.add (task --background:: writer_)
+      if closed_: return
+      task --background:: writer_
       reader_
     if exception: fail_ exception
 
@@ -331,9 +358,7 @@ class SandboxConnection extends ServiceResource:
     closed_ = true
     signal_.raise
     close-socket_
-    // A task may be the caller (a failing request closes from the task).
-    current := Task.current
-    tasks_.do: | t/Task | if t != current: t.cancel
+    if deadline-task_ and deadline-task_ != Task.current: deadline-task_.cancel
     core.close-connection grant
 
   // The stream calls of the clients.
@@ -406,7 +431,7 @@ abstract class SandboxNetworkProvider extends ServiceProvider implements Service
     super name --major=0 --minor=1
 
   // The provider exists for sandboxes; which of them may use it is up to
-  // the service list (or the network policy) of their containers.
+  // the service list of their containers.
   accepts-untrusted-clients -> bool:
     return true
 

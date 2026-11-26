@@ -86,5 +86,5 @@ main args:
         --network={"allow": ["127.0.0.1:$port"], "timeout-ms": 1000}
     expect-sandbox "connections" {"port": port}
         --network={"allow": ["127.0.0.1:$port"], "connections": 1}
-    expect-sandbox "not-listed" {"ids": provider-ids HTTP-SERVICE}
+    expect-sandbox "not-listed" {"ids": provider-ids HTTP-SERVICE} --services=[]
     server.close

@@ -124,41 +124,26 @@ class Container:
     if kind != ContainerService.POLICY-TRUSTED and kind != ContainerService.POLICY-UNTRUSTED:
       throw "INVALID_ARGUMENT"
     if policy is List:
-      if policy.size > ContainerService.POLICY-NETWORK-INDEX + 1: throw "INVALID_ARGUMENT"
+      if policy.size > ContainerService.POLICY-SERVICES-INDEX + 1: throw "INVALID_ARGUMENT"
       for i := 0; i < policy.size; i++:
         if i == ContainerService.POLICY-SERVICES-INDEX:
           validate-service-list_ policy[i]
-        else if i == ContainerService.POLICY-NETWORK-INDEX:
-          validate-network-policy_ policy[i]
         else if policy[i] is not int:
           throw "WRONG_OBJECT_TYPE"
       return Array_.from policy
     return policy
 
   /**
-  Whether a sandboxed container may use the service with the given $uuid
-    (see $ContainerService.POLICY-SERVICES-INDEX): it is on the list of its
-    policy, the list is $ContainerService.ALL-SERVICES, or it is one of the
-    sandbox network services and the container has a network policy.
+  Whether a sandboxed container may use the service with the given $uuid:
+    it is on the services list of its policy, or the list is
+    $ContainerService.ALL-SERVICES (see
+    $ContainerService.POLICY-SERVICES-INDEX).
   */
   may-use-service uuid/string -> bool:
-    services := policy-entry_ ContainerService.POLICY-SERVICES-INDEX
-    if services == ContainerService.ALL-SERVICES: return true
-    if services and services.contains uuid: return true
-    return network-policy != null and NETWORK-SERVICE-UUIDS_.contains uuid
-
-  /**
-  The network policy of a sandboxed container (experimental, see
-    $ContainerService.POLICY-NETWORK-INDEX), as given at start (checked for
-    its shape and size only), or null. The sandbox network services read
-    it ($ContainerService.NETWORK-POLICY-INDEX).
-  */
-  network-policy -> any:
-    return policy-entry_ ContainerService.POLICY-NETWORK-INDEX
-
-  policy-entry_ index/int -> any:
-    if policy is not Array_ or policy.size <= index: return null
-    return policy[index]
+    index := ContainerService.POLICY-SERVICES-INDEX
+    if policy is not Array_ or policy.size <= index: return false
+    services := policy[index]
+    return services == ContainerService.ALL-SERVICES or services.contains uuid
 
   stop -> none:
     if not pids_: throw "Not started"
@@ -362,9 +347,6 @@ abstract class ContainerServiceProvider extends ServiceProvider
     if index == ContainerService.IMAGE-WRITER-COMMIT-INDEX:
       writer ::= (resource client arguments[0]) as ContainerImageWriter
       return (image-writer-commit writer arguments[1] arguments[2]).to-byte-array
-    if index == ContainerService.NETWORK-POLICY-INDEX:
-      if arguments is not int: throw "WRONG_OBJECT_TYPE"
-      return network-policy-of arguments
     if index == ContainerService.NOTIFY-BACKGROUND-STATE-CHANGED-INDEX:
       return send-container-event --gid=gid
           system-containers.Container.EVENT-BACKGROUND-STATE-CHANGE
@@ -376,11 +358,6 @@ abstract class ContainerServiceProvider extends ServiceProvider
   abstract add-flash-image allocation/FlashAllocation -> ContainerImage
   abstract lookup-image id/uuid.Uuid -> ContainerImage?
   abstract send-container-event --gid/int event-kind/int event-value/any -> none
-  /** The network policy of the container with the group id $gid, or null. */
-  abstract network-policy-of gid/int -> any
-
-  network-policy gid/int -> any:
-    return network-policy-of gid
 
   list-images -> List:
     names := {:}
@@ -626,10 +603,6 @@ class ContainerManager extends ContainerServiceProvider implements SystemMessage
   send-container-event --gid/int event-kind/int event-value/any -> none:
     container/Container? := lookup-container gid
     if container: container.send-event [event-kind, event-value]
-
-  network-policy-of gid/int -> any:
-    container/Container? := lookup-container gid
-    return container and container.network-policy
 
 trace-using-print message/ByteArray --from=0 --to=message.size:
   // Print a trace message on output so that that you can easily decode.

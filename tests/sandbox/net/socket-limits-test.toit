@@ -96,9 +96,9 @@ main args:
         --network={"allow": allow, "connections": 8}
     server.wait-open 8
     expect-sandbox "one" {"port": port, "expected": "NETWORK_QUOTA_EXCEEDED"}
-        --network={"allow": allow}
+        --network={"allow": allow, "connections": 8}
     holder.stop
     server.wait-open 0
     expect-sandbox "one" {"port": port, "expected": null}
-        --network={"allow": allow}
+        --network={"allow": allow, "connections": 8}
     server.close

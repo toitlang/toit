@@ -13,6 +13,8 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+import system.api.sandbox-network show network-policy-list
+
 import .core
 import .http-service
 import .socket-service
@@ -21,12 +23,16 @@ import .socket-service
 Installs the sandbox network services (variant S with $socket, variant H
   with $http) in this process and serves them until the process ends.
 
+The $network policy applies to every client: "all", "public", a list of
+  rules, or a map of rules and limits (see `network-policy-list` in the
+  system.api.sandbox-network library); null allows nothing. The limits are
+  kept per client container.
+
 The process must run as a trusted container: it uses the network itself
-  (sockets, DNS, TLS) and asks the system process for the network policies
-  of its clients' containers.
+  (sockets, DNS, TLS).
 */
-run-sandbox-network --socket/bool=true --http/bool=true -> none:
-  core := SandboxNetworkCore
+run-sandbox-network --network/any --socket/bool=true --http/bool=true -> none:
+  core := SandboxNetworkCore --policy=(network == null ? null : network-policy-list network)
   if socket: (SandboxSocketServiceProvider core).install
   if http: (SandboxHttpServiceProvider core).install
   // The providers serve requests in tasks of their own; keep the process.

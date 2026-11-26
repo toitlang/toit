@@ -18,7 +18,6 @@ import system.services show ServiceProvider ServiceHandler ServiceResource TAG-U
 import system.api.service-discovery show ServiceDiscoveryService
 import system.api.print show PrintService
 import system.api.containers show ContainerService
-import system.api.sandbox-network show SandboxSocketService SandboxHttpService NETWORK-ALL NETWORK-PUBLIC MAX-NETWORK-RULES MAX-NETWORK-RULE-SIZE MAX-NETWORK-SETTINGS
 
 /**
 Services with this tag that are provided by the system process are only
@@ -388,7 +387,8 @@ class SandboxPrintServiceProvider extends ServiceProvider implements PrintServic
 
 /**
 Checks the services list of a launch policy (see
-  $ContainerService.POLICY-SERVICES-INDEX): a list of at most
+  $ContainerService.POLICY-SERVICES-INDEX): $ContainerService.ALL-SERVICES
+  or a list of at most
   $ContainerService.MAX-POLICY-SERVICES non-empty strings of at most
   $ContainerService.MAX-POLICY-SERVICE-SIZE bytes. The list is kept in the
   system process for as long as the container lives.
@@ -401,36 +401,6 @@ validate-service-list_ services/any -> none:
     if uuid is not string: throw "WRONG_OBJECT_TYPE"
     if uuid.is-empty or uuid.size > ContainerService.MAX-POLICY-SERVICE-SIZE:
       throw "INVALID_ARGUMENT"
-
-/**
-The sandbox network services (experimental): a container with a network
-  policy may use them without listing them.
-*/
-NETWORK-SERVICE-UUIDS_ ::= [
-  SandboxSocketService.SELECTOR.uuid,
-  SandboxHttpService.SELECTOR.uuid,
-]
-
-/**
-Checks the shape and size of the network policy of a launch policy (see
-  $ContainerService.POLICY-NETWORK-INDEX); the sandbox network services
-  interpret it. It is $NETWORK-ALL, $NETWORK-PUBLIC, or a list of a list of
-  at most $MAX-NETWORK-RULES rules (strings of at most
-  $MAX-NETWORK-RULE-SIZE bytes) followed by at most
-  $MAX-NETWORK-SETTINGS integers.
-*/
-validate-network-policy_ policy/any -> none:
-  if policy == NETWORK-ALL or policy == NETWORK-PUBLIC: return
-  if policy is not List: throw "WRONG_OBJECT_TYPE"
-  if policy.is-empty or policy.size > 1 + MAX-NETWORK-SETTINGS: throw "INVALID_ARGUMENT"
-  rules := policy[0]
-  if rules is not List: throw "WRONG_OBJECT_TYPE"
-  if rules.size > MAX-NETWORK-RULES: throw "INVALID_ARGUMENT"
-  rules.do: | rule |
-    if rule is not string: throw "WRONG_OBJECT_TYPE"
-    if rule.size > MAX-NETWORK-RULE-SIZE: throw "INVALID_ARGUMENT"
-  for i := 1; i < policy.size; i++:
-    if policy[i] is not int: throw "WRONG_OBJECT_TYPE"
 
 /**
 Returns the policy kind of the process with the given $pid, or -1 if

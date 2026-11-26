@@ -28,7 +28,7 @@ class FakeProvider extends ServiceProvider implements ServiceHandler:
     return null
 
 main args:
-  run-test args --no-provider --roles={
+  run-test args --roles={
     "unavailable": :: | arguments/Map |
       start := Time.monotonic-us
       expect-equals "Sandbox network unavailable" (catch: sandbox.open)
@@ -67,21 +67,21 @@ main args:
     port := server.port
     network := ["127.0.0.1:$port"]
 
-    expect-sandbox "unavailable" --network=network
+    expect-sandbox "unavailable"
 
-    late := start-sandbox "late" {"port": port} --network=network
+    late := start-sandbox "late" {"port": port}
     sleep --ms=500
-    provider := start-provider
+    provider := start-provider --network=network
     expect-equals 0 late.wait
 
-    restart := start-sandbox "restart" {"port": port} --network=network
+    restart := start-sandbox "restart" {"port": port}
     server.wait-open 1
     sleep --ms=500  // Let the first echo finish.
     provider.stop
     server.wait-open 0
-    provider = start-provider
+    provider = start-provider --network=network
     expect-equals 0 restart.wait
 
-    expect-sandbox "look-alike" --network=network
+    expect-sandbox "look-alike"
     provider.stop
     server.close

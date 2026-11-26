@@ -59,16 +59,16 @@ main args:
       socket.close,
 
     "not-listed": :: | arguments/Map |
-      // Neither a network policy nor the service on the service list: the
-      // sandbox doesn't discover the provider and the VM doesn't let it send
-      // the open request to the provider's pid.
+      // The service isn't on the service list: the sandbox doesn't discover
+      // the provider and the VM doesn't let it send the open request to the
+      // provider's pid.
       expect-equals "Sandbox network unavailable" (catch: sandbox.open)
       ids := arguments["ids"]
       expect-equals "PERMISSION_DENIED"
           catch: open-without-discovery ids[0] ids[1] SandboxSocketService.SELECTOR,
 
     "no-policy": :: | arguments/Map |
-      // On the list, but without a network policy.
+      // On the list, but the provider has no policy.
       expect-equals "NETWORK_DENIED" (catch: sandbox.open.tcp-connect "127.0.0.1" arguments["port"]),
   }:
     server := EchoServer
@@ -83,6 +83,7 @@ main args:
         --network={"allow": ["localhost:$port", "127.0.0.1:$port"]}
     // The provider runs in its own container: only the VM's send grant
     // (from discovery) lets a sandbox reach it.
-    expect-sandbox "not-listed" {"port": port, "ids": provider-ids SOCKET-SERVICE}
-    expect-sandbox "no-policy" {"port": port} --services=[SOCKET-SERVICE]
+    expect-sandbox "not-listed" {"port": port, "ids": provider-ids SOCKET-SERVICE} --services=[]
+    // A provider without a policy allows nothing.
+    expect-sandbox "no-policy" {"port": port} --network=NO-POLICY --services=[SOCKET-SERVICE]
     server.close

@@ -3,13 +3,13 @@
 // be found in the tests/LICENSE file.
 
 /**
-The one-word network policies and the policy lookup per container:
-- "all": every destination (loopback included), no limits, and the
-  network services without listing them;
+The provider's one-word network policies and its limits per container:
+- "all": every destination (loopback included), no limits;
 - "public": every public address, nothing internal;
 - a list of rules: these destinations, no limits;
-- two sandboxes with different policies at the same time, each held to its
-  own (the provider looks the policy up by the group id the VM gives it).
+- one policy for all sandboxes, its limits kept per container: two
+  sandboxes at the same time each get their own connection limit (the
+  provider tells them apart by the group id the VM gives it).
 */
 
 import expect show *
@@ -53,26 +53,27 @@ main args:
       socket.close
       expect-equals "NETWORK_DENIED" (catch: network.tcp-connect "127.0.0.1" arguments["other-port"]),
 
-    "own-policy": :: | arguments/Map |
+    "own-limit": :: | arguments/Map |
       network := sandbox.open
-      // Both sandboxes run at the same time.
-      sleep --ms=300
-      (network.tcp-connect "127.0.0.1" arguments["allowed"]).close
-      expect-equals "NETWORK_DENIED" (catch: network.tcp-connect "127.0.0.1" arguments["denied"])
-      sleep --ms=300,
+      // Both sandboxes hold their one connection at the same time.
+      socket := network.tcp-connect "127.0.0.1" arguments["port"]
+      expect-equals "NETWORK_QUOTA_EXCEEDED" (catch: network.tcp-connect "127.0.0.1" arguments["port"])
+      sleep --ms=500
+      socket.close,
   }:
     server := EchoServer
     other := EchoServer
     http-server := HttpServer
     port := server.port
-    expect-sandbox "all" {"port": port, "http-port": http-server.port} --network="all"
+    // The one short argument a sandbox needs: --services="all".
+    expect-sandbox "all" {"port": port, "http-port": http-server.port} --network="all" --services="all"
     expect-sandbox "public" {"port": port} --network="public"
     expect-sandbox "unlimited" {"port": port, "other-port": other.port}
         --network=["127.0.0.1:$port"]
-    a := start-sandbox "own-policy" {"allowed": port, "denied": other.port}
-        --network=["127.0.0.1:$port"]
-    b := start-sandbox "own-policy" {"allowed": other.port, "denied": port}
-        --network=["127.0.0.1:$other.port"]
+    limited := {"allow": ["127.0.0.1:$port"], "connections": 1}
+    a := start-sandbox "own-limit" {"port": port} --network=limited
+    b := start-sandbox "own-limit" {"port": port} --network=limited
+    server.wait-open 2
     expect-equals 0 a.wait
     expect-equals 0 b.wait
     server.close

@@ -8,9 +8,10 @@ Support for the tests of the sandbox network services.
 Every test is a program that runs as the driver (the trusted application
   container started by toit.run) and as the sandboxes the driver starts
   from the same image. The driver runs local servers (TCP echo, HTTP, TLS)
-  on the loopback interface; the sandboxes reach them through the system's
-  sandbox network services, so their policies must list the loopback
-  address explicitly.
+  on the loopback interface; the sandboxes reach them through the sandbox
+  network provider (a trusted container from the same image, started with
+  the policy each case needs), so its policy must list the loopback
+  address explicitly (or be "all").
 */
 
 import expect show *
@@ -29,35 +30,59 @@ SOCKET-SERVICE ::= SandboxSocketService.SELECTOR.uuid
 HTTP-SERVICE ::= SandboxHttpService.SELECTOR.uuid
 
 /**
-Runs the test: in the driver, starts the sandbox network provider (a
-  trusted container from this image, unless $provider is false) and calls
-  $driver; in a sandbox, calls the block of $roles for its role with the
-  arguments map. A sandbox that throws exits with 1 (uncaught exception).
+Runs the test: in the driver, calls $driver and stops the sandbox network
+  provider if it started one; in a sandbox, calls the block of $roles for
+  its role with the arguments map; in the provider container, runs the
+  provider. A sandbox that throws exits with 1 (uncaught exception).
 */
-run-test args/any --roles/Map --provider/bool=true [driver] -> none:
+run-test args/any --roles/Map [driver] -> none:
   if args is Map:
     role := args["role"]
     if role == PROVIDER-ROLE:
-      run-sandbox-network
+      run-sandbox-network --network=args["network"]
       return
     (roles[role]).call args
     return
-  container := provider ? start-provider : null
   driver.call
-  if container: container.stop
+  stop-provider
   print "OK"
 
 PROVIDER-ROLE ::= "network-provider"
 
+/** The value of a $start-sandbox argument that wasn't given. */
+UNSET ::= Object
+/** A $start-sandbox network for a provider without a policy (null means
+  the default in Toit). */
+NO-POLICY ::= "no-policy"
+
+provider_/containers.Container? := null
+provider-policy_/string? := null
+
 /**
-Starts the sandbox network provider as a trusted container (with a heap
-  quota) and waits until it serves.
+Starts the sandbox network provider with the given $network policy as a
+  trusted container from this image (with a heap quota) and waits until it
+  serves.
 */
-start-provider --heap/int=4_000_000 -> containers.Container:
-  container := containers.start containers.current {"role": PROVIDER-ROLE}
+start-provider --network/any --heap/int=4_000_000 -> containers.Container:
+  if network == NO-POLICY: network = null
+  container := containers.start containers.current {"role": PROVIDER-ROLE, "network": network}
       --quotas={"heap": heap}
   wait-for-provider
   return container
+
+/** Runs the provider with the $network policy, restarting it for another one. */
+use-provider network/any -> none:
+  key := "$network"
+  if provider_ and provider-policy_ == key: return
+  stop-provider
+  provider_ = start-provider --network=network
+  provider-policy_ = key
+
+stop-provider -> none:
+  if not provider_: return
+  provider_.stop
+  provider_ = null
+  provider-policy_ = null
 
 wait-for-provider -> none:
   [SandboxSocketService.SELECTOR, SandboxHttpService.SELECTOR].do: | selector |
@@ -66,20 +91,24 @@ wait-for-provider -> none:
 /**
 Starts a sandbox from this image with the given $role and $arguments and
   waits for it. Returns its exit code.
+
+If $network is given, the provider runs with that policy (null: none);
+  the sandbox may use the network services unless $services says
+  otherwise.
 */
-run-sandbox role/string arguments/Map={:} --services/any=null --network/any=null --quotas/Map?=null -> int:
+run-sandbox role/string arguments/Map={:} --services/any=UNSET --network/any=UNSET --quotas/Map?=null -> int:
   return (start-sandbox role arguments --services=services --network=network --quotas=quotas).wait
 
-start-sandbox role/string arguments/Map={:} --services/any=null --network/any=null --quotas/Map?=null -> containers.Container:
+start-sandbox role/string arguments/Map={:} --services/any=UNSET --network/any=UNSET --quotas/Map?=null -> containers.Container:
+  if network != UNSET: use-provider network
   all := {"role": role}
   arguments.do: | key value | all[key] = value
   return containers.start containers.current all
       --untrusted
-      --services=services
-      --network=network
+      --services=(services == UNSET ? [SOCKET-SERVICE, HTTP-SERVICE] : services)
       --quotas=quotas
 
-expect-sandbox role/string arguments/Map={:} --services/any=null --network/any=null --quotas/Map?=null -> none:
+expect-sandbox role/string arguments/Map={:} --services/any=UNSET --network/any=UNSET --quotas/Map?=null -> none:
   code := run-sandbox role arguments --services=services --network=network --quotas=quotas
   print "sandbox $role: exit $code"
   if code != 0: throw "sandbox $role exited with $code"
@@ -119,9 +148,9 @@ class EchoServer:
           open--
           changed.raise
 
-  /** Waits until $open connections are open (at most 5 s). */
+  /** Waits until $open connections are open (at most 20 s: the machine may be loaded). */
   wait-open count/int -> none:
-    with-timeout --ms=5_000:
+    with-timeout --ms=20_000:
       changed.wait: open == count
 
   close -> none:

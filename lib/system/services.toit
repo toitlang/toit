@@ -827,9 +827,11 @@ class ServiceManager_ implements SystemMessageHandler_:
     // (sandboxes don't discover other sandboxes' services).
     if not provider.accepts-untrusted-clients and broker.RpcBroker.is-untrusted_ pid:
       throw "PERMISSION_DENIED"
-    // The allow-list of a sandbox's container (system process only).
+    // The allow-list of a sandbox's container (system process only; only
+    // its providers that accept sandboxes need the check, so other opens
+    // pay nothing for it).
     check := untrusted-open-check_
-    if check and broker.RpcBroker.is-untrusted_ pid:
+    if check and provider.accepts-untrusted-clients and broker.RpcBroker.is-untrusted_ pid:
       if not (gid and (check.call gid uuid) == true): throw "PERMISSION_DENIED"
 
     // Every open client takes memory in this process until the client

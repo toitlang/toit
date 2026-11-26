@@ -8,12 +8,12 @@ TCP and TLS sockets for sandboxed containers (experimental).
 A sandbox can't use the network primitives. This library gets its sockets
   from the sandbox socket service of the sandbox network provider (a
   trusted container), which connects only to the destinations of the
-  container's network policy and runs TLS itself, with the root
+  provider's network policy and runs TLS itself, with the root
   certificates the sandbox registers ($SandboxNetwork.add-root-certificate).
-  The container must be started with a network policy:
+  The provider must be installed, and the sandbox may use its services:
 
 ```
-containers.start id --untrusted --network=["api.example.com:443"]
+containers.start id --untrusted --services="all"
 ```
 
 The sockets implement $tcp.Socket, so code written for sockets works on
@@ -92,7 +92,7 @@ class SandboxNetwork implements tcp.Interface:
   /**
   Connects to $host (a name or an IPv4 address) at $port.
 
-  Throws NETWORK_DENIED if the container's network policy doesn't allow
+  Throws NETWORK_DENIED if the provider's network policy doesn't allow
     it, NETWORK_QUOTA_EXCEEDED if the container has too many connections or made
     too many attempts, CONNECT_FAILED or TLS_FAILED if the connection
     can't be made.

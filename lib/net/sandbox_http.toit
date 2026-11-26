@@ -7,13 +7,13 @@ HTTP requests for sandboxed containers (experimental).
 
 The requests are made by the sandbox HTTP service of the sandbox network
   provider (a trusted container), which only sends them to the URLs (host,
-  port and path) of the container's network policy, and runs TLS for https
+  port and path) of its network policy, and runs TLS for https
   URLs with the root certificates the sandbox registers
   ($SandboxHttpClient.add-root-certificate). The container must be started
-  with a network policy:
+  so that it may use the provider's services:
 
 ```
-containers.start id --untrusted --network={"allow": ["api.example.com:443/v1/"]}
+containers.start id --untrusted --services="all"
 ```
 
 ```
