@@ -1643,13 +1643,17 @@ proof fn lemma_step_operators(p: Program2, s: State2)
 }
 
 proof fn lemma_step_branches(p: Program2, s: State2)
-    requires instruction_ok(p, s), BRANCH <= op_at(p, s) <= BRANCH_BACK_IF_NOT_NULL,
+    requires instruction_ok(p, s), BRANCH <= op_at(p, s) <= BRANCH_BACK_IF_NOT_NULL || BRANCH_S <= op_at(p, s) <= BRANCH_BACK_S,
     ensures
         op_at(p, s) <= BRANCH_IF_NOT_NULL && w1_at(p, s) == 0 ==> step(p, s) == stuck(Stuck::BadBranch),
         op_at(p, s) <= BRANCH_IF_NOT_NULL && w1_at(p, s) != 0 ==>
             step(p, s) == op_branch(p, s, op_at(p, s) - BRANCH, s.bci + w1_at(p, s), 3),
-        op_at(p, s) >= BRANCH_BACK ==>
+        BRANCH_BACK <= op_at(p, s) <= BRANCH_BACK_IF_NOT_NULL ==>
             step(p, s) == op_branch(p, s, op_at(p, s) - BRANCH_BACK, s.bci - w1_at(p, s), 3),
+        BRANCH_S <= op_at(p, s) <= BRANCH_IF_NOT_NULL_S && b1_at(p, s) == 0 ==> step(p, s) == stuck(Stuck::BadBranch),
+        BRANCH_S <= op_at(p, s) <= BRANCH_IF_NOT_NULL_S && b1_at(p, s) != 0 ==>
+            step(p, s) == op_branch(p, s, op_at(p, s) - BRANCH_S, s.bci + b1_at(p, s), 2),
+        op_at(p, s) == BRANCH_BACK_S ==> step(p, s) == op_branch(p, s, 0, s.bci - b1_at(p, s), 2),
 {
     reveal(step);
 }
@@ -1862,15 +1866,24 @@ fn x_step_operators(p: &ExecProgram, s: &mut ExecState, op: u8, _len: usize, _b1
     }
 }
 
-fn x_step_branches(p: &ExecProgram, s: &mut ExecState, op: u8, len: usize, _b1: usize, w1: usize) -> (r: ExecOutcome2)
+fn x_step_branches(p: &ExecProgram, s: &mut ExecState, op: u8, len: usize, b1: usize, w1: usize) -> (r: ExecOutcome2)
     requires
-        decoded(p, old(s), op, len, _b1, w1),
-        BRANCH <= op <= BRANCH_BACK_IF_NOT_NULL,
+        decoded(p, old(s), op, len, b1, w1),
+        BRANCH <= op <= BRANCH_BACK_IF_NOT_NULL || BRANCH_S <= op <= BRANCH_BACK_S,
     ensures matches2(step(pview2(p), view2(old(s))), r, view2(final(s))),
 {
     proof { lemma_step_branches(pview2(p), view2(s)); }
     let bci = s.bci;
-    if op <= BRANCH_IF_NOT_NULL {
+    if op >= BRANCH_S {
+        // The short branches (format note 22): a one-byte distance.
+        if op == BRANCH_BACK_S {
+            x_branch(p, s, 0, bci as i64 - b1 as i64, len)
+        } else if b1 == 0 {
+            ExecOutcome2::Stuck(Stuck::BadBranch)
+        } else {
+            x_branch(p, s, op - BRANCH_S, bci as i64 + b1 as i64, len)
+        }
+    } else if op <= BRANCH_IF_NOT_NULL {
         if w1 == 0 {
             return ExecOutcome2::Stuck(Stuck::BadBranch);
         }
@@ -2049,7 +2062,7 @@ pub fn step_verified(p: &ExecProgram, s: &mut ExecState) -> (r: Option<ExecOutco
         Some(x_step_calls(p, s, op, len, b1, w1))
     } else if INVOKE_EQ <= op && op <= INVOKE_MOD {
         Some(x_step_operators(p, s, op, len, b1, w1))
-    } else if BRANCH <= op && op <= BRANCH_BACK_IF_NOT_NULL {
+    } else if (BRANCH <= op && op <= BRANCH_BACK_IF_NOT_NULL) || (BRANCH_S <= op && op <= BRANCH_BACK_S) {
         Some(x_step_branches(p, s, op, len, b1, w1))
     } else if op == LOOP_REPEAT {
         Some(x_step_loops(p, s, op, len, b1, w1))

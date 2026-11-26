@@ -18,6 +18,10 @@ import .sandbox-util show *
 BRANCH ::= 81
 BRANCH-IF-TRUE ::= 82
 BRANCH-IF-FALSE ::= 83
+// The short forms (format 3, verified/spec/format/22-format3-branches-frames.md).
+BRANCH-S ::= 114
+BRANCH-IF-TRUE-S ::= 115
+BRANCH-IF-FALSE-S ::= 116
 
 // The programs print the marker before anything else, so it shows up in the
 // output if they run at all. The sources build it from two parts, so that
@@ -115,7 +119,9 @@ test-patched-branch run/string snap/string dir/string -> none:
   expect-equals 0 result.exit-code
   coverage := file.read-contents coverage-file
 
+  // Most branches have the short form (one distance byte).
   branch-bci := -1
+  short := false
   for i := 0; i < bytecodes.size - 3; i++:
     if coverage[i] != 1: continue
     op := bytecodes[i]
@@ -124,11 +130,16 @@ test-patched-branch run/string snap/string dir/string -> none:
       if offset != 0:
         branch-bci = i
         break
+    if op == BRANCH-S or op == BRANCH-IF-TRUE-S or op == BRANCH-IF-FALSE-S:
+      if bytecodes[i + 1] != 0:
+        branch-bci = i
+        short = true
+        break
   expect branch-bci >= 0
 
   patched := snapshot-bytes.copy
   patched[blob-offset + branch-bci + 1] = 0
-  patched[blob-offset + branch-bci + 2] = 0
+  if not short: patched[blob-offset + branch-bci + 2] = 0
   patched-snap := "$dir/patched.snapshot"
   file.write-contents patched --path=patched-snap
 
@@ -136,4 +147,4 @@ test-patched-branch run/string snap/string dir/string -> none:
   expect-refused result "VERIFICATION_FAILED"
   // The verifier names the rejected instruction with its operands.
   expect (result.output.contains "BRANCH")
-  expect (result.output.contains " 0 0: ")
+  expect (result.output.contains (short ? " 0: " : " 0 0: "))

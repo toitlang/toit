@@ -4,6 +4,23 @@ One entry per change of `src/v2/spec.rs`, `src/v2/prim.rs`, `src/v2/types.rs`
 or the verifier's rules (`src/v2/verifier.rs`) that an implementation of
 the spec (the verified core, the VM's loader) must follow. Newest first.
 
+## 2026-11-26: short branches (format 3, step 1)
+
+What (note 22): opcodes BRANCH_S (114), BRANCH_IF_TRUE_S (115),
+BRANCH_IF_FALSE_S (116), BRANCH_IF_NOT_NULL_S (117) and BRANCH_BACK_S (118),
+two bytes each (opcode, one-byte distance); `OPCODE_COUNT2` is 119.
+
+* `spec.rs` `step`: the forward short branches are `op_branch(kind, bci +
+  b1)`, stuck on `b1 == 0`; BRANCH_BACK_S is `op_branch(0, bci - b1)`.
+* `verifier.rs`: `is_branch`, `is_terminator`, `branch_kind`, `post` and
+  `terminator_ok` learn the short forms (`is_short_branch`,
+  `is_fwd_branch`, `is_uncond_branch`, `is_cond_branch`); `instr_ok`
+  checks the target at `branch_target` with the distance `branch_dist`.
+  Programs without the new opcodes are accepted exactly as before; the
+  theorem is unchanged.
+* An implementation must decode the five opcodes (the core does, verified;
+  `V2_OPCODE_LENGTHS`; the disassembler and the assembler).
+
 ## 2026-11-11 (branch experiment/trusted-fast only, not decided): unchecked twins
 
 What (note 20): opcodes 104..113, the unchecked twins of the field

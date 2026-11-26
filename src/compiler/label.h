@@ -120,6 +120,17 @@ class AbsoluteUse {
   bool has_relative_position() const { return position_ <= 0; }
   bool has_absolute_position() const { return !has_relative_position(); }
 
+  int relative_position() const {
+    ASSERT(has_relative_position());
+    return -position_;
+  }
+
+  // The relative position moves (the code before it shrank).
+  void relocate(int relative_position) {
+    ASSERT(has_relative_position());
+    position_ = -relative_position;
+  }
+
   void make_absolute(int absolute_entry_bci) {
     ASSERT(has_relative_position());
     int relative_position = -position_;
@@ -160,6 +171,10 @@ class AbsoluteReference {
   }
 
   List<AbsoluteUse*> absolute_uses() const { return absolute_uses_; }
+
+  int relative_position() const { return relative_position_; }
+  // The label moves (the code before it shrank).
+  void relocate(int relative_position) { relative_position_ = relative_position; }
 
  private:
   int relative_position_;

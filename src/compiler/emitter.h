@@ -200,6 +200,21 @@ class Emitter {
   void intrinsic_hash_find();
   void intrinsic_hash_do();
 
+  // Format 3 (verified/spec/format/22-format3-branches-frames.md): replaces
+  // every BRANCH .. BRANCH_IF_NOT_NULL and BRANCH_BACK whose distance fits a
+  // byte by its two-byte short form, and recomputes every distance in the
+  // code (branches, loop steps, HASH_FIND). Distances only shrink when
+  // instructions do, so the fixpoint is found by starting with every
+  // candidate short and making long the ones that do not fit, until none
+  // changes. The positions of the absolute uses and references move with
+  // the code; other recorded positions go through [relocated]. Call once,
+  // after the last instruction.
+  void relax_branches();
+  // The position after [relax_branches] of the code at [position] before
+  // it (an instruction boundary, the end, or an operand of an instruction
+  // that keeps its size).
+  int relocated(int position) const;
+
   List<AbsoluteReference> build_absolute_references() { return absolute_references_.build(); }
   List<AbsoluteUse*> build_absolute_uses() { return absolute_uses_.build(); }
 
@@ -222,6 +237,9 @@ class Emitter {
   unsigned last_bound_;
 
   ExpressionStack stack_;
+
+  // Old position -> new position, after [relax_branches] (empty before).
+  std::vector<int> relocation_;
 
   word extend(word value);
 

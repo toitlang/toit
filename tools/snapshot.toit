@@ -744,6 +744,8 @@ class ToitMethod:
       line += " T$(bci + (method.uint16 bci + 1))"
     else if format == OP-SB-SB or format == OP-SB:
       line += " T$(bci - (method.uint16 bci + 1))"
+    else if format == OP-BB:
+      line += " T$(bci - index)"
     else if format == OP-SB-BS:
       line += " T$(bci - (method.uint16 bci + 1)) S$(method.bytecodes[bci + 3])"
     else if format == OP-SF-BS-BS:
@@ -972,6 +974,7 @@ OP-SB    ::= 31  // Format 2.
 OP-BU-WR ::= 32  // Format 2.
 OP-SB-BS ::= 33  // Format 2 (proposal, note 19): branch back, then a slot.
 OP-SF-BS-BS ::= 34  // Format 2 (proposal, note 19): branch forward, then two slots.
+OP-BB    ::= 35  // Format 3 (note 22): a one-byte backward distance.
 
 class Bytecode:
   name        ::= ""
@@ -1209,6 +1212,12 @@ BYTE-CODES-V2 ::= [
   Bytecode "INVOKE_VIRTUAL_GET_U"       3 OP-SO "invoke virtual get (unchecked)",
   Bytecode "INVOKE_VIRTUAL_SET_U"       3 OP-SO "invoke virtual set (unchecked)",
   Bytecode "STORE_FIELD_THIS_U"         2 OP-BU "store field this (unchecked)",
+  // Format 3: the short branches (verified/spec/format/22-format3-branches-frames.md).
+  Bytecode "BRANCH_S"                   2 OP-BF "branch (short)",
+  Bytecode "BRANCH_IF_TRUE_S"           2 OP-BF "branch if true (short)",
+  Bytecode "BRANCH_IF_FALSE_S"          2 OP-BF "branch if false (short)",
+  Bytecode "BRANCH_IF_NOT_NULL_S"       2 OP-BF "branch if not null (short)",
+  Bytecode "BRANCH_BACK_S"              2 OP-BB "branch back (short)",
 ]
 
 

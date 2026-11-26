@@ -17,6 +17,7 @@
 #include "bytecode_format.h"
 #include "../objects_inline.h"
 #include "../interpreter.h"
+#include "../interpreter_v2.h"
 #include "limits.h"
 
 namespace toit {
@@ -68,6 +69,138 @@ inline void Emitter::emit_uint32(uint32 value) {
 
 List<uint8> Emitter::bytecodes() {
   return builder_.build();
+}
+
+int Emitter::relocated(int position) const {
+  if (relocation_.empty()) return position;
+  ASSERT(0 <= position && position < static_cast<int>(relocation_.size()));
+  return relocation_[position];
+}
+
+void Emitter::relax_branches() {
+  ASSERT(is_format2());
+  ASSERT(relocation_.empty());
+  int length = builder_.length();
+  // The instructions: start, length, and for the ones with a distance the
+  // index of the target instruction (or -1).
+  struct Instruction {
+    int start;
+    int length;
+    int target;      // Index into `instructions` (the end is index `count`).
+    bool candidate;  // A branch with a short form (BRANCH .. BRANCH_IF_NOT_NULL, BRANCH_BACK).
+    bool is_short;
+  };
+  std::vector<Instruction> instructions;
+  std::vector<int> index_at(length + 1, -1);
+  for (int i = 0; i < length;) {
+    int opcode = builder_[i];
+    ASSERT(opcode < V2_OPCODE_COUNT);
+    int len = V2_OPCODE_LENGTHS[opcode];
+    ASSERT(i + len <= length);
+    index_at[i] = instructions.size();
+    instructions.push_back({ i, len, -1, false, false });
+    i += len;
+  }
+  int count = instructions.size();
+  index_at[length] = count;
+  bool any = false;
+  for (auto& instruction : instructions) {
+    int i = instruction.start;
+    int opcode = builder_[i];
+    bool forward;
+    if (BRANCH <= opcode && opcode <= BRANCH_IF_NOT_NULL) {
+      forward = true;
+    } else if (BRANCH_BACK <= opcode && opcode <= BRANCH_BACK_IF_NOT_NULL) {
+      forward = false;
+    } else if (opcode == V2_LOOP_REPEAT || opcode == V2_LOOP_ARRAY) {
+      forward = false;
+    } else if (opcode == V2_HASH_FIND) {
+      forward = true;
+    } else {
+      continue;
+    }
+    int distance = builder_[i + 1] | (builder_[i + 2] << 8);
+    int target = forward ? i + distance : i - distance;
+    ASSERT(0 <= target && target <= length && index_at[target] >= 0);
+    instruction.target = index_at[target];
+    // A forward distance 0 (a label never bound) stays as it is: the
+    // verifier rejects it.
+    instruction.candidate = (BRANCH <= opcode && opcode <= BRANCH_BACK) && (distance > 0 || !forward);
+    instruction.is_short = instruction.candidate;
+    any = any || instruction.candidate;
+  }
+  if (!any) return;
+  // New starts, for the current choice of short branches.
+  std::vector<int> starts(count + 1);
+  auto layout = [&]() {
+    int position = 0;
+    for (int j = 0; j < count; j++) {
+      starts[j] = position;
+      position += instructions[j].is_short ? 2 : instructions[j].length;
+    }
+    starts[count] = position;
+  };
+  bool changed = true;
+  while (changed) {
+    changed = false;
+    layout();
+    for (int j = 0; j < count; j++) {
+      auto& instruction = instructions[j];
+      if (!instruction.is_short) continue;
+      int distance = starts[instruction.target] - starts[j];
+      if (distance < 0) distance = -distance;
+      if (distance > MAX_BYTECODE_VALUE) {
+        instruction.is_short = false;
+        changed = true;
+      }
+    }
+  }
+  // Every short branch fits with the final layout (the last pass changed
+  // nothing). Rewrite the code.
+  ListBuilder<uint8> code;
+  relocation_.assign(length + 1, 0);
+  for (int j = 0; j < count; j++) {
+    auto& instruction = instructions[j];
+    int i = instruction.start;
+    int opcode = builder_[i];
+    for (int k = 0; k < instruction.length; k++) {
+      // A short branch's second byte is its operand; positions inside it
+      // are never recorded.
+      relocation_[i + k] = starts[j] + (instruction.is_short ? std::min(k, 1) : k);
+    }
+    if (instruction.target < 0) {
+      for (int k = 0; k < instruction.length; k++) code.add(builder_[i + k]);
+      continue;
+    }
+    int distance = starts[instruction.target] - starts[j];
+    if (distance < 0) distance = -distance;
+    if (instruction.is_short) {
+      ASSERT(0 <= distance && distance <= MAX_BYTECODE_VALUE);
+      ASSERT(opcode == BRANCH_BACK || distance > 0);
+      code.add(opcode == BRANCH_BACK ? V2_BRANCH_BACK_S : V2_BRANCH_S + (opcode - BRANCH));
+      code.add(distance);
+    } else {
+      if (distance > MAX_USHORT_VALUE) FATAL("branch distance does not fit 16 bits");
+      code.add(opcode);
+      code.add(distance & 0xff);
+      code.add(distance >> 8);
+      for (int k = 3; k < instruction.length; k++) code.add(builder_[i + k]);
+    }
+  }
+  relocation_[length] = starts[count];
+  ASSERT(code.length() == starts[count]);
+  builder_ = code;
+  // The positions recorded during the emission.
+  for (int j = 0; j < absolute_uses_.length(); j++) {
+    AbsoluteUse* use = absolute_uses_[j];
+    use->relocate(relocated(use->relative_position()));
+  }
+  for (int j = 0; j < absolute_references_.length(); j++) {
+    auto& reference = absolute_references_[j];
+    reference.relocate(relocated(reference.relative_position()));
+  }
+  opcode_positions_.clear();
+  last_bound_ = 0;
 }
 
 inline void Emitter::emit_possibly_wide(Opcode op, word value) {

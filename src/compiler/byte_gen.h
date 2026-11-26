@@ -81,6 +81,7 @@ class ByteGen : private ir::Visitor {
   bool is_declared_this(ir::Expression* node);
   // Format 2: appends a terminator if control could fall off the end.
   void terminate_body();
+  void relax_branches();
   // Format 2: the intrinsics are generated as bytecode loops or not at all.
   void generate_intrinsic_v2(ir::PrimitiveInvocation* node);
   // Proposal (format note 19): `find-body_` with HASH_FIND.

@@ -47,7 +47,7 @@ use toit_spec::v2::sound::{wf, small, step_ok, outcome_ok, cur_op};
 #[cfg(verus_keep_ghost)]
 use toit_spec::v2::sound_instr::{lemma_instr, lemma_at_good, cur_k, cur_m, cur_off};
 #[cfg(verus_keep_ghost)]
-use toit_spec::v2::verifier::{accepts, value_operands, instr_ok, is_branch, map_at, w1_of, bk_of, is_loop, loop_operands, loop_ok, post, hf_ok};
+use toit_spec::v2::verifier::{accepts, value_operands, instr_ok, is_branch, map_at, w1_of, b1_of, bk_of, is_loop, loop_operands, loop_ok, post, hf_ok};
 #[cfg(verus_keep_ghost)]
 use toit_spec::v2::types::p1;
 #[cfg(verus_keep_ghost)]
@@ -572,7 +572,7 @@ proof fn lemma_local_post(p: &Program, m0: Machine, m1: Machine, r: Ctl)
 proof fn lemma_branch_cond(p: &Program, g: State2)
     requires
         accepts(p.ap@, p.cert@, p.trusted@), wf(p.ap@, p.cert@, g),
-        ({ let op = cur_op(p.ap@, g); (82 <= op <= 84) || (86 <= op <= 88) }),
+        ({ let op = cur_op(p.ap@, g); (82 <= op <= 84) || (86 <= op <= 88) || (115 <= op <= 117) }),
     ensures !(sp::at(g, 0) is BlockRef),
 {
     let ap = p.ap@;
@@ -601,6 +601,25 @@ proof fn lemma_back_branch(p: &Program, g: State2)
     assert(instr_ok(ap, c, mi, off, k, p.trusted@));
     assert(is_branch(cur_op(ap, g)));
     assert(map_at(c, mi, off - w1_of(ap, mi, off)) is Some);
+}
+
+/// BRANCH_BACK_S (format note 22) stays at or after the method's entry.
+proof fn lemma_back_branch_s(p: &Program, g: State2)
+    requires
+        accepts(p.ap@, p.cert@, p.trusted@), wf(p.ap@, p.cert@, g),
+        cur_op(p.ap@, g) == 118,
+    ensures
+        p.ap@.bytecodes[g.bci + 1] <= g.bci,
+{
+    let ap = p.ap@;
+    let c = p.cert@;
+    lemma_instr(ap, c, p.trusted@, g);
+    let mi = cur_m(g);
+    let off = cur_off(ap, g);
+    let k = cur_k(ap, c, g);
+    assert(instr_ok(ap, c, mi, off, k, p.trusted@));
+    assert(is_branch(cur_op(ap, g)));
+    assert(map_at(c, mi, off - b1_of(ap, mi, off)) is Some);
 }
 
 /// The operands of a loop step are values and its backward branch stays at
@@ -1348,6 +1367,55 @@ pub fn step_r(m: &mut Machine, r: &mut Regs, env: &Env, ab: &mut crate::room::Ab
             }
             crate::regs::op_branch(m, r, p, 0, -(d as isize), Ghost((bci - d) as usize), 3)
         },
+        // The short branches (format note 22): a one-byte distance.
+        114 => {
+            let d = r.ip.byte(1, &p.code) as usize;
+            proof {
+                assert(sp::step(ap, g) == (if d == 0 { sp::stuck(toit_spec::types::Stuck::BadBranch) }
+                    else { sp::op_branch(ap, g, 0, bci + d, 2) })) by { reveal(sp::step); }
+            }
+            crate::regs::op_branch(m, r, p, 0, d as isize, Ghost((bci + d) as usize), 2)
+        },
+        115 => {
+            let d = r.ip.byte(1, &p.code) as usize;
+            proof {
+                assert(sp::step(ap, g) == (if d == 0 { sp::stuck(toit_spec::types::Stuck::BadBranch) }
+                    else { sp::op_branch(ap, g, 1, bci + d, 2) })) by { reveal(sp::step); }
+                lemma_branch_cond(p, g);
+            }
+            crate::regs::op_branch(m, r, p, 1, d as isize, Ghost((bci + d) as usize), 2)
+        },
+        116 => {
+            let d = r.ip.byte(1, &p.code) as usize;
+            proof {
+                assert(sp::step(ap, g) == (if d == 0 { sp::stuck(toit_spec::types::Stuck::BadBranch) }
+                    else { sp::op_branch(ap, g, 2, bci + d, 2) })) by { reveal(sp::step); }
+                lemma_branch_cond(p, g);
+            }
+            crate::regs::op_branch(m, r, p, 2, d as isize, Ghost((bci + d) as usize), 2)
+        },
+        117 => {
+            let d = r.ip.byte(1, &p.code) as usize;
+            proof {
+                assert(sp::step(ap, g) == (if d == 0 { sp::stuck(toit_spec::types::Stuck::BadBranch) }
+                    else { sp::op_branch(ap, g, 3, bci + d, 2) })) by { reveal(sp::step); }
+                lemma_branch_cond(p, g);
+            }
+            crate::regs::op_branch(m, r, p, 3, d as isize, Ghost((bci + d) as usize), 2)
+        },
+        118 => {
+            if env.pre.requested() {
+                env.pre.clear();
+                m.sync(*r, &env.p);
+                return Ctl::Exit(RESULT_PREEMPTED as u32, 0);
+            }
+            let d = r.ip.byte(1, &p.code) as usize;
+            proof {
+                assert(sp::step(ap, g) == sp::op_branch(ap, g, 0, bci - d, 2)) by { reveal(sp::step); }
+                lemma_back_branch_s(p, g);
+            }
+            crate::regs::op_branch(m, r, p, 0, -(d as isize), Ghost((bci - d) as usize), 2)
+        },
         53 => {
             let d = ip_u16(p, r.ip, 1);
             proof {
@@ -1883,7 +1951,7 @@ pub fn step_r(m: &mut Machine, r: &mut Regs, env: &Env, ab: &mut crate::room::Ab
         _ => {
             // Every opcode of format 2 (below OPCODE_COUNT2, which the
             // instruction check of the spec requires) has an arm.
-            proof { assert(opcode < 114); assert(false); }
+            proof { assert(opcode < 119); assert(false); }
             return crate::view::proven_unreachable();
         },
     };

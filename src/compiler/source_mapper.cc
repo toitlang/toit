@@ -143,6 +143,10 @@ void SourceMapper::MethodMapper::register_as_check(ir::Typecheck* check, int byt
   source_mapper()->register_as_check(check, method_index_, bytecode_offset);
 }
 
+void SourceMapper::MethodMapper::relocate(const std::function<int(int)>& relocated) {
+  source_mapper()->relocate(method_index_, relocated);
+}
+
 void SourceMapper::visit_selectors(SourceInfoCollector* collector) {
   collector->write_int(selectors_.size());
   for (auto location_id : selectors_.keys()) {
@@ -482,6 +486,7 @@ void SourceMapper::register_expression(ir::Expression* expression, int method_in
   expression_positions_[expression] = std::pair<int, int>(method_index, bytecode_offset);
   ASSERT(method_index >= 0);
   auto& method_data = source_information_[method_index];
+  method_data.expressions.push_back(expression);
   auto range = expression->range();
   auto location = manager_->compute_location(range.from());
   method_data.bytecode_positions[bytecode_offset] = {
@@ -494,6 +499,22 @@ void SourceMapper::register_as_check(ir::Typecheck* check, int method_index, int
   ASSERT(method_index >= 0);
   auto& method_data = source_information_[method_index];
   method_data.as_class_names[bytecode_offset] = check->type_name().c_str();
+}
+
+void SourceMapper::relocate(int method_index, const std::function<int(int)>& relocated) {
+  ASSERT(method_index >= 0);
+  auto& method_data = source_information_[method_index];
+  std::map<int, FilePosition> positions;
+  for (const auto& pair : method_data.bytecode_positions) positions[relocated(pair.first)] = pair.second;
+  method_data.bytecode_positions = positions;
+  std::map<int, const char*> names;
+  for (const auto& pair : method_data.as_class_names) names[relocated(pair.first)] = pair.second;
+  method_data.as_class_names = names;
+  for (auto expression : method_data.expressions) {
+    auto& entry = expression_positions_[expression];
+    ASSERT(entry.first == method_index);
+    entry.second = relocated(entry.second);
+  }
 }
 
 void SourceMapper::extract_holder_information(ir::Class* holder,

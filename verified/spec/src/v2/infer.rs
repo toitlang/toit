@@ -518,9 +518,10 @@ fn analyze<F: Facts>(p: &VProgram, f: &mut F, m: usize, trusted: bool) -> Result
             let c = XCert { g: &f.g().view(p.methods), cur: m, maps: &empty };
             let post = ok(x_post(p, &c, m, off, &k, trusted));
             let term = matches!(op, RETURN | RETURN_NULL | THROW | BRANCH | BRANCH_BACK | INVOKE_STATIC_TAIL
-                | INVOKE_LAMBDA_TAIL | INVOKE_INITIALIZER_TAIL | NON_LOCAL_RETURN | NON_LOCAL_BRANCH);
+                | INVOKE_LAMBDA_TAIL | INVOKE_INITIALIZER_TAIL | NON_LOCAL_RETURN | NON_LOCAL_BRANCH
+                | BRANCH_S | BRANCH_BACK_S);
             let term_ok = if term {
-                Some(matches!(op, BRANCH | BRANCH_BACK | NON_LOCAL_BRANCH) || ok(x_terminator_ok(p, &c, m, off, &k)))
+                Some(matches!(op, BRANCH | BRANCH_BACK | BRANCH_S | BRANCH_BACK_S | NON_LOCAL_BRANCH) || ok(x_terminator_ok(p, &c, m, off, &k)))
             } else {
                 None
             };
@@ -536,10 +537,13 @@ fn analyze<F: Facts>(p: &VProgram, f: &mut F, m: usize, trusted: bool) -> Result
             let o2 = if origins { transfer_origins(p, bci, &org, &k, &k2) } else { vec![NO_ORIGIN; k2.len()] };
             succ.push((off + len, k2, o2));
         }
-        if (BRANCH..=BRANCH_BACK_IF_NOT_NULL).contains(&op) {
-            let w = u16_at(p, bci + 1).unwrap_or(0);
-            let t = if op <= BRANCH_IF_NOT_NULL { off.checked_add(w) } else { off.checked_sub(w) };
-            let cond = !(op == BRANCH || op == BRANCH_BACK);
+        if (BRANCH..=BRANCH_BACK_IF_NOT_NULL).contains(&op) || (BRANCH_S..=BRANCH_BACK_S).contains(&op) {
+            // A short branch (format note 22) has a one-byte distance.
+            let short = op >= BRANCH_S;
+            let w = if short { byte_at(p, bci + 1).unwrap_or(0) } else { u16_at(p, bci + 1).unwrap_or(0) };
+            let fwd = op <= BRANCH_IF_NOT_NULL || (short && op <= BRANCH_IF_NOT_NULL_S);
+            let t = if fwd { off.checked_add(w) } else { off.checked_sub(w) };
+            let cond = !(op == BRANCH || op == BRANCH_BACK || op == BRANCH_S || op == BRANCH_BACK_S);
             if h < cond as usize {
                 return Err((off, "branch without condition".into()));
             }

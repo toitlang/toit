@@ -64,6 +64,7 @@ int ByteGen::assemble_function(ir::Method* function,
 
   visit(function);
   terminate_body();
+  relax_branches();
 
   auto bytecodes = emitter.bytecodes();
   int max_height = emitter.max_height();
@@ -136,6 +137,7 @@ int ByteGen::_assemble_nested_function(Node* body,
   visit_for_value(body);
   __ ret();
   terminate_body();
+  relax_branches();
 
   List<uint8> bytecodes = nested_emitter.bytecodes();
   int max_height = nested_emitter.max_height();
@@ -199,6 +201,17 @@ bool ByteGen::is_declared_this(Expression* node) {
   if (ref->block_depth() != 0) return false;
   if (!ref->target()->is_Parameter()) return false;
   return ref->target()->as_Parameter()->index() == 0;
+}
+
+void ByteGen::relax_branches() {
+  if (!is_format2()) return;
+  // Format 3 (verified/spec/format/22-format3-branches-frames.md): the
+  // short branches. The recorded source positions move with the code.
+  emitter()->relax_branches();
+  auto emitter = this->emitter();
+  if (method_mapper_.is_valid()) {
+    method_mapper_.relocate([emitter](int position) { return emitter->relocated(position); });
+  }
 }
 
 void ByteGen::terminate_body() {

@@ -76,7 +76,14 @@ static const int V2_ACCESSOR_AUX_BACK = 9;
 static const int V2_LAMBDA_AUX_BACK = 3;
 // Format-2 bytecodes are shorter than this (entries have 24 bits).
 static const int V2_MAX_BYTECODES = 0x1000000;
-static const int V2_OPCODE_COUNT = 114;
+static const int V2_OPCODE_COUNT = 119;
+// The short branches of format 3 (verified/spec/format/22-format3-branches-frames.md):
+// BRANCH .. BRANCH_IF_NOT_NULL and BRANCH_BACK with a one-byte distance.
+static const int V2_BRANCH_S = 114;
+static const int V2_BRANCH_IF_TRUE_S = 115;
+static const int V2_BRANCH_IF_FALSE_S = 116;
+static const int V2_BRANCH_IF_NOT_NULL_S = 117;
+static const int V2_BRANCH_BACK_S = 118;
 static const int V2_PRIMITIVE_LENGTH = 4;
 // Literals 0..7: true, false and the five failure values (format note 5).
 static const int V2_FAILURE_LITERALS = 7;
@@ -100,6 +107,7 @@ static const uint8 V2_OPCODE_LENGTHS[V2_OPCODE_COUNT] = {
   4, 1, 1, 1, 1, 2, 6, 1, 1, 2, 1, 2,        // 89..100
   4, 4, 5,                                   // 101..103: LOOP_REPEAT, LOOP_ARRAY, HASH_FIND (proposal, note 19)
   2, 3, 2, 2, 2, 3, 2, 3, 3, 2,              // 104..113: the unchecked twins of the field accesses (note 20)
+  2, 2, 2, 2, 2,                             // 114..118: the short branches (format 3, note 22)
 };
 
 // The method table of a format-2 program, owned by its process group

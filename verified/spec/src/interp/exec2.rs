@@ -702,6 +702,12 @@ impl Machine {
             BRANCH_BACK | BRANCH_BACK_IF_TRUE | BRANCH_BACK_IF_FALSE | BRANCH_BACK_IF_NOT_NULL => {
                 self.op2_branch(op - BRANCH_BACK, bci as i64 - w1 as i64, len)
             }
+            // The short branches (format note 22): a one-byte distance.
+            BRANCH_S | BRANCH_IF_TRUE_S | BRANCH_IF_FALSE_S | BRANCH_IF_NOT_NULL_S => {
+                if b1 == 0 { return Err(BadBranch); }
+                self.op2_branch(op - BRANCH_S, bci as i64 + b1 as i64, len)
+            }
+            BRANCH_BACK_S => self.op2_branch(0, bci as i64 - b1 as i64, len),
             PRIMITIVE => {
                 if self.frame_height() != info.arity as usize { return Err(StackRange); }
                 Ok(Step::Primitive(self.p.bytecodes[bci + 1], self.u16_at(bci + 2) as u16))

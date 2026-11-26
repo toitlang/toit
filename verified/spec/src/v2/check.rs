@@ -1961,7 +1961,8 @@ pub fn x_post_misc(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>
 {
     let (bci, op, len, b1, w1) = x_decode(p, m, off);
     let h = k.len();
-    if (BRANCH_IF_TRUE <= op && op <= BRANCH_IF_NOT_NULL) || (BRANCH_BACK_IF_TRUE <= op && op <= BRANCH_BACK_IF_NOT_NULL) {
+    if (BRANCH_IF_TRUE <= op && op <= BRANCH_IF_NOT_NULL) || (BRANCH_BACK_IF_TRUE <= op && op <= BRANCH_BACK_IF_NOT_NULL)
+        || (BRANCH_IF_TRUE_S <= op && op <= BRANCH_IF_NOT_NULL_S) {
         if x_value_operands(k, 1) { { x_prefix_into(k, h - 1, out)?; Ok(true) } } else { Ok(false) }
     } else if op == PRIMITIVE {
         let index = x_u16(p, bci + 2);
@@ -2057,6 +2058,7 @@ pub fn x_is_terminator(op: u8) -> (r: bool)
     op == RETURN || op == RETURN_NULL || op == THROW || op == BRANCH || op == BRANCH_BACK
         || op == INVOKE_STATIC_TAIL || op == INVOKE_LAMBDA_TAIL || op == INVOKE_INITIALIZER_TAIL
         || op == NON_LOCAL_RETURN || op == NON_LOCAL_BRANCH
+        || op == BRANCH_S || op == BRANCH_BACK_S
 }
 
 pub open spec fn rev_kinds(r: Seq<XKind>) -> Seq<Kind> {
@@ -2469,7 +2471,7 @@ pub fn x_terminator_ok(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XK
             },
             _ => Ok(false),
         }
-    } else if op == BRANCH || op == BRANCH_BACK {
+    } else if op == BRANCH || op == BRANCH_BACK || op == BRANCH_S || op == BRANCH_BACK_S {
         Ok(true)
     } else {
         Ok(false)
@@ -2523,11 +2525,14 @@ pub fn x_instr_ok(p: &VProgram, c: &XCert, m: usize, i: MethodInfo, off: usize, 
     if has_post {
         if !x_map_is(c, m as i64, (off + len) as i64, &*out)? { return Ok(false); }
     }
-    if BRANCH <= op && op <= BRANCH_BACK_IF_NOT_NULL {
-        let w1 = x_u16(p, bci + 1);
-        let t = if op <= BRANCH_IF_NOT_NULL { off as i64 + w1 } else { off as i64 - w1 };
-        if op <= BRANCH_IF_NOT_NULL && w1 <= 0 { return Ok(false); }
-        if op == BRANCH || op == BRANCH_BACK {
+    if (BRANCH <= op && op <= BRANCH_BACK_IF_NOT_NULL) || (BRANCH_S <= op && op <= BRANCH_BACK_S) {
+        // The distance: a u16, or one byte for a short branch (note 22).
+        let short = BRANCH_S <= op;
+        let w1 = if short { ix(p.bytecodes, bci + 1) as i64 } else { x_u16(p, bci + 1) };
+        let fwd = op <= BRANCH_IF_NOT_NULL || (short && op <= BRANCH_IF_NOT_NULL_S);
+        let t = if fwd { off as i64 + w1 } else { off as i64 - w1 };
+        if fwd && w1 <= 0 { return Ok(false); }
+        if op == BRANCH || op == BRANCH_BACK || op == BRANCH_S || op == BRANCH_BACK_S {
             if !x_map_is(c, m as i64, t, k)? { return Ok(false); }
         } else {
             if k.len() < 1 { return Ok(false); }

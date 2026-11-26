@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include <functional>
 #include <string>
 #include <map>
 #include <vector>
@@ -58,6 +59,11 @@ class SourceMapper {
     void register_call(ir::Call* call, int bytecode_offset);
     void register_call(ir::ReferenceGlobal* call, int bytecode_offset);
     void register_as_check(ir::Typecheck* check, int bytecode_offset);
+
+    // The method's code moved (format 3: the short branches,
+    // Emitter::relax_branches): every recorded offset becomes [relocated] of
+    // it.
+    void relocate(const std::function<int(int)>& relocated);
 
     MethodMapper register_lambda(ir::Code* code) {
       return source_mapper()->register_lambda(method_index_, code);
@@ -153,6 +159,8 @@ class SourceMapper {
     // bytecodes.
     std::map<int, FilePosition> bytecode_positions;
     std::map<int, const char*> as_class_names;
+    // The expressions registered with an offset in this method.
+    std::vector<ir::Expression*> expressions;
   };
 
   struct ClassEntry {
@@ -207,6 +215,7 @@ class SourceMapper {
                                  Source::Range range);
   void register_expression(ir::Expression* expression, int method_id, int bytecode_offset);
   void register_as_check(ir::Typecheck* check, int method_id, int bytecode_offset);
+  void relocate(int method_index, const std::function<int(int)>& relocated);
 
   std::vector<MethodEntry> source_information_;
   Map<ir::Class*, ClassEntry> class_information_;

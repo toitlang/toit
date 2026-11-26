@@ -41,6 +41,9 @@ namespace compiler {
 // indices into the method table (the order of the methods in the bytecodes),
 // method headers are 2 bytes plus LEB128-encoded fields and carry the body
 // length, and the bytecodes start with a 4-byte tag.
+// Format 3, step 1 (verified/spec/format/22-format3-branches-frames.md):
+// the short branches V2_BRANCH_S .. V2_BRANCH_BACK_S (interpreter_v2.h),
+// chosen by Emitter::relax_branches; the tag stays TBC2.
 int bytecode_format();
 void set_bytecode_format(int format);
 

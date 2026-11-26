@@ -35,7 +35,7 @@ bc-of name/string -> Bytecode:
 
 // operand layout: list of {bytes, kind} where kind is "u"=unsigned immediate,
 // "bf"=1-byte forward branch, "sf"=2-byte forward branch, "sb"=2-byte backward
-// branch.  Derived from the instruction size and format.
+// branch, "bb"=1-byte backward branch (format 3).  Derived from the instruction size and format.
 operand-plan bc/Bytecode -> List:
   f := bc.format
   total := bc.size - 1   // operand bytes
@@ -43,6 +43,7 @@ operand-plan bc/Bytecode -> List:
   if f == OP-SF: return [[2, "sf"]]
   if f == OP-SB: return [[2, "sb"]]
   if f == OP-BF: return [[1, "bf"]]
+  if f == OP-BB: return [[1, "bb"]]                 // format 3: short branch back
   if f == OP-BU-WR: return [[1, "u"], [4, "u"]]     // non-local branch: height + (frames,target)
   if f == OP-BU-SU: return [[1, "u"], [2, "u"]]     // primitive: module + index
   if f == OP-BS-SO: return [[1, "u"], [2, "u"]]
@@ -125,6 +126,10 @@ assemble asm/string -> ByteArray:
       else if kind == "bf":
         target := parse-token ins.ops[oi] labels
         val = target - ins.bci
+        oi++
+      else if kind == "bb":
+        target := parse-token ins.ops[oi] labels
+        val = ins.bci - target
         oi++
       else if kind == "sb":
         target := parse-token ins.ops[oi] labels

@@ -1640,6 +1640,11 @@ pub open spec fn step(p: Program2, s: State2) -> Outcome2 {
             if w1 == 0 { stuck(Stuck::BadBranch) } else { op_branch(p, s, op - BRANCH, bci + w1, len) }
         }
         else if BRANCH_BACK <= op && op <= BRANCH_BACK_IF_NOT_NULL { op_branch(p, s, op - BRANCH_BACK, bci - w1, len) }
+        // The short branches (format note 22): a one-byte distance.
+        else if BRANCH_S <= op && op <= BRANCH_IF_NOT_NULL_S {
+            if b1 == 0 { stuck(Stuck::BadBranch) } else { op_branch(p, s, op - BRANCH_S, bci + b1, len) }
+        }
+        else if op == BRANCH_BACK_S { op_branch(p, s, 0, bci - b1, len) }
         else if op == PRIMITIVE {
             if frame_height(s) != arity(p, top(s).method as int) {
                 stuck(Stuck::StackRange)

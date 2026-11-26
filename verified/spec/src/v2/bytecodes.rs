@@ -30,7 +30,10 @@
 //!   INTRINSIC_ARRAY_DO, INTRINSIC_HASH_FIND, INTRINSIC_HASH_DO;
 //! * proposal (branch proposal/builtins, format note 19): LOOP_REPEAT (101)
 //!   and LOOP_ARRAY (102), the bounded steps of `repeat` and `Array.do`,
-//!   and HASH_FIND (103), one probe of a hashed collection's index.
+//!   and HASH_FIND (103), one probe of a hashed collection's index;
+//! * format 3 (format note 22): the short branches BRANCH_S ..
+//!   BRANCH_IF_NOT_NULL_S and BRANCH_BACK_S (114..118), the branches with a
+//!   one-byte distance.
 
 use vstd::prelude::*;
 pub use crate::bytecodes::{
@@ -104,7 +107,18 @@ pub const INVOKE_VIRTUAL_GET_U: u8 = 111;
 pub const INVOKE_VIRTUAL_SET_U: u8 = 112;
 pub const STORE_FIELD_THIS_U: u8 = 113;
 
-pub const OPCODE_COUNT2: u8 = 114;
+/// The short branches (format 3, format note 22): BRANCH_S ..
+/// BRANCH_IF_NOT_NULL_S (114..117) and BRANCH_BACK_S (118) are BRANCH ..
+/// BRANCH_IF_NOT_NULL and BRANCH_BACK with a one-byte distance (2 bytes
+/// instead of 3). The backward conditional branches have no short form
+/// (the compiler does not emit them).
+pub const BRANCH_S: u8 = 114;
+pub const BRANCH_IF_TRUE_S: u8 = 115;
+pub const BRANCH_IF_FALSE_S: u8 = 116;
+pub const BRANCH_IF_NOT_NULL_S: u8 = 117;
+pub const BRANCH_BACK_S: u8 = 118;
+
+pub const OPCODE_COUNT2: u8 = 119;
 
 /// An unchecked twin (format note 20).
 pub open spec fn is_twin(op: u8) -> bool {
@@ -195,7 +209,7 @@ pub fn exec_opcode_length2(op: u8) -> (r: usize)
 } // verus!
 
 /// Opcode names of format 2, in opcode order.
-pub const OPCODE_NAMES2: [&str; 114] = [
+pub const OPCODE_NAMES2: [&str; 119] = [
     "LOAD_LOCAL", "LOAD_LOCAL_WIDE", "POP_LOAD_LOCAL", "STORE_LOCAL", "STORE_LOCAL_POP",
     "LOAD_OUTER", "STORE_OUTER", "LOAD_FIELD", "LOAD_FIELD_WIDE", "LOAD_FIELD_LOCAL",
     "POP_LOAD_FIELD_LOCAL", "STORE_FIELD", "STORE_FIELD_WIDE", "STORE_FIELD_POP",
@@ -221,10 +235,11 @@ pub const OPCODE_NAMES2: [&str; 114] = [
     "LOAD_FIELD_U", "LOAD_FIELD_WIDE_U", "LOAD_FIELD_LOCAL_U", "POP_LOAD_FIELD_LOCAL_U",
     "STORE_FIELD_U", "STORE_FIELD_WIDE_U", "STORE_FIELD_POP_U", "INVOKE_VIRTUAL_GET_U",
     "INVOKE_VIRTUAL_SET_U", "STORE_FIELD_THIS_U",
+    "BRANCH_S", "BRANCH_IF_TRUE_S", "BRANCH_IF_FALSE_S", "BRANCH_IF_NOT_NULL_S", "BRANCH_BACK_S",
 ];
 
 /// Lengths of format 2 in opcode order.
-pub const OPCODE_LENGTHS2: [u8; 114] = [
+pub const OPCODE_LENGTHS2: [u8; 119] = [
     2, 3, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 3, 2, // 0..13
     1, 1, 1, 1, 1, 1, // LOAD_LOCAL_0..5
     2, 3, 1, 1, 2, 1, 2, 3, 5, 5, // 20..29
@@ -241,4 +256,5 @@ pub const OPCODE_LENGTHS2: [u8; 114] = [
     4, // 102: LOOP_ARRAY
     5, // 103: HASH_FIND
     2, 3, 2, 2, 2, 3, 2, 3, 3, 2, // 104..113: the unchecked twins (note 20)
+    2, 2, 2, 2, 2, // 114..118: the short branches (note 22)
 ];

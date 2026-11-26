@@ -7,6 +7,18 @@ every program on host builds; the next step deletes the C++ interpreter and
 format 1. Artifacts and scripts:
 /home/flo/work/opentoit-sandbox-artifacts/format2-default.
 
+## Format 3 (naming)
+
+Format 3 is the package of format changes the format-3 study recommended
+(verified/spec/format/22-format3-branches-frames.md): short branches (step
+1) and four-word frame records (step 2) so far. Until the package is
+complete the image keeps the tag `TBC2`, the compiler flag stays
+`-Xbytecode_format=2` and the tools report format 2: step 1 only adds
+opcodes (every format-2 program means the same) and step 2 changes no
+bytecode, so a new tag would only reject programs that are still correct.
+The tag becomes `TBC3` with the TRY step, which changes the meaning of
+existing code. Each step changes the verification epoch.
+
 ## The default and how to switch back
 
 | What | Default now | Format 1 |

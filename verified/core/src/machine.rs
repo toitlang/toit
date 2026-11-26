@@ -134,10 +134,14 @@ pub mod op {
     pub const LOOP_REPEAT: u8 = 101;
     pub const LOOP_ARRAY: u8 = 102;
     pub const HASH_FIND: u8 = 103;
+    /// The short branches (format 3, verified/spec/format/22-format3-branches-frames.md).
+    pub const BRANCH_S: u8 = 114;
+    pub const BRANCH_IF_NOT_NULL_S: u8 = 117;
+    pub const BRANCH_BACK_S: u8 = 118;
 }
 
 /// Instruction lengths in opcode order (OPCODE_LENGTHS2).
-pub const OPCODE_LENGTHS: [u8; 114] = [
+pub const OPCODE_LENGTHS: [u8; 119] = [
     2, 3, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 3, 2,
     1, 1, 1, 1, 1, 1,
     2, 3, 1, 1, 2, 1, 2, 3, 5, 5,
@@ -152,6 +156,7 @@ pub const OPCODE_LENGTHS: [u8; 114] = [
     4, 1, 1, 1, 1, 2, 6, 1, 1, 2, 1, 2,
     4, 4, 5,
     2, 3, 2, 2, 2, 3, 2, 3, 3, 2,
+    2, 2, 2, 2, 2,
 ];
 
 pub fn opcode_length(op: u8) -> usize {
@@ -2549,6 +2554,20 @@ impl Machine {
                 let d = w1!();
                 if d > bci { return Ctl::Stuck(stuck::BAD_BRANCH); }
                 self.c_branch(p, (opcode - op::BRANCH_BACK) as usize, bci - d, len!())
+            }
+            op::BRANCH_S..=op::BRANCH_IF_NOT_NULL_S => {
+                let d = b1!();
+                if d == 0 { return Ctl::Stuck(stuck::BAD_BRANCH); }
+                self.c_branch(p, (opcode - op::BRANCH_S) as usize, bci + d, len!())
+            }
+            op::BRANCH_BACK_S => {
+                if env.pre.requested() {
+                    env.pre.clear();
+                    return Ctl::Exit(RESULT_PREEMPTED as u32, 0);
+                }
+                let d = b1!();
+                if d > bci { return Ctl::Stuck(stuck::BAD_BRANCH); }
+                self.c_branch(p, 0, bci - d, len!())
             }
             _ => self.dispatch_unverified(env, bci, opcode),
         }

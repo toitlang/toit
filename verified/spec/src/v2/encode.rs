@@ -122,7 +122,8 @@ fn kinds_at(maps: &XMaps, off: usize) -> Option<Vec<XKind>> {
 
 fn is_terminator(op: u8) -> bool {
     matches!(op, RETURN | RETURN_NULL | THROW | BRANCH | BRANCH_BACK | INVOKE_STATIC_TAIL
-        | INVOKE_LAMBDA_TAIL | INVOKE_INITIALIZER_TAIL | NON_LOCAL_RETURN | NON_LOCAL_BRANCH)
+        | INVOKE_LAMBDA_TAIL | INVOKE_INITIALIZER_TAIL | NON_LOCAL_RETURN | NON_LOCAL_BRANCH
+        | BRANCH_S | BRANCH_BACK_S)
 }
 
 /// The stream entries of method `m` with maps `maps`: (offset, slots

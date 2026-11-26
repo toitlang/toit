@@ -425,6 +425,9 @@ int main() {
     { "OP_TRY", LINK },
     { "OP_LOAD_FIELD_THIS", UNLINK },
     { "OP_STORE_FIELD_THIS", NON_LOCAL_RETURN_WIDE },
+    { "OP_BRANCH_S", V2_BRANCH_S },
+    { "OP_BRANCH_IF_NOT_NULL_S", V2_BRANCH_IF_NOT_NULL_S },
+    { "OP_BRANCH_BACK_S", V2_BRANCH_BACK_S },
   };
 
   // Facts without a named constant.
@@ -448,7 +451,8 @@ int main() {
     failures++;
   }
   if (LOAD_LOCAL_5 - LOAD_LOCAL_0 != 5 || BRANCH_BACK_IF_NOT_NULL - BRANCH_BACK != 3 ||
-      BRANCH_IF_NOT_NULL - BRANCH != 3 || INVOKE_AT_PUT - INVOKE_EQ != 17) {
+      BRANCH_IF_NOT_NULL - BRANCH != 3 || INVOKE_AT_PUT - INVOKE_EQ != 17 ||
+      V2_BRANCH_IF_NOT_NULL_S - V2_BRANCH_S != 3 || V2_BRANCH_BACK_S != V2_BRANCH_S + 4) {
     printf("FAIL: opcode ranges\n");
     failures++;
   }

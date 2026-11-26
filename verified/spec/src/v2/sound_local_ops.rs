@@ -866,12 +866,30 @@ pub proof fn lemma_step_as_local(p: Program2, c: Cert, trusted: bool, s: State2)
 // ---------------------------------------------------------------------------
 // Branches and HALT.
 
+/// The step of a branch, long or short (format note 22), at its decoded
+/// distance `d`.
+#[verifier::spinoff_prover]
+proof fn lemma_step_is_branch(p: Program2, s: State2, d: int, target: int)
+    requires
+        instruction_ok(p, s),
+        is_branch(cur_op(p, s)),
+        is_short_branch(cur_op(p, s)) ==> d == byte2(p, s.bci + 1),
+        !is_short_branch(cur_op(p, s)) ==> d == u16_at(p1(p), s.bci + 1),
+        is_fwd_branch(cur_op(p, s)) ==> d > 0 && target == s.bci + d,
+        !is_fwd_branch(cur_op(p, s)) ==> target == s.bci - d,
+    ensures
+        step(p, s) == op_branch(p, s, branch_kind(cur_op(p, s)), target, opcode_length2(cur_op(p, s))),
+{
+    reveal(step);
+}
+
 #[verifier::spinoff_prover]
 #[verifier::rlimit(30)]
 pub proof fn lemma_step_branch(p: Program2, c: Cert, trusted: bool, s: State2)
     requires
         accepts(p, c, trusted), wf(p, c, s), small(s),
-        BRANCH <= cur_op(p, s) && cur_op(p, s) <= BRANCH_BACK_IF_NOT_NULL,
+        (BRANCH <= cur_op(p, s) && cur_op(p, s) <= BRANCH_BACK_IF_NOT_NULL)
+            || (BRANCH_S <= cur_op(p, s) && cur_op(p, s) <= BRANCH_BACK_S),
     ensures step_ok(p, c, s),
 {
     lemma_instr(p, c, trusted, s);
@@ -880,17 +898,22 @@ pub proof fn lemma_step_branch(p: Program2, c: Cert, trusted: bool, s: State2)
     let off = cur_off(p, s);
     let k = cur_k(p, c, s);
     let h = k.len() as int;
-    let w1 = w1_of(p, m, off);
-    let fwd = op <= BRANCH_IF_NOT_NULL;
-    let kind = if fwd { op - BRANCH } else { op - BRANCH_BACK };
-    let toff = if fwd { off + w1 } else { off - w1 };
+    // A short branch (format note 22) has a one-byte distance.
+    let d = branch_dist(p, m, off);
+    let len = opcode_length2(op);
+    let fwd = is_fwd_branch(op);
+    let kind = branch_kind(op);
+    let toff = branch_target(p, m, off);
     let target = info(p, m).entry + toff;
+    assert(len == if is_short_branch(op) { 2int } else { 3int }) by { reveal_with_fuel(opcode_length2, 1); }
     assert(is_branch(op));
-    assert(fwd ==> w1 > 0);
+    assert(fwd ==> d > 0);
+    assert(kind == 0 <==> is_uncond_branch(op));
     let kt = if kind == 0 { k } else { k.drop_last() };
     assert(map_at(c, m, toff) == Some(kt));
     lemma_map_bound(p, c, trusted, m, toff);
-    assert(step(p, s) == op_branch(p, s, kind, target, 3)) by { reveal(step); }
+    assert(toff == if fwd { off + d } else { off - d });
+    lemma_step_is_branch(p, s, d, target);
     if kind == 0 {
         assert(k.subrange(0, k.len() - 0) =~= k);
         assert(s.stack.subrange(0, s.stack.len() - 0) =~= s.stack);
@@ -903,7 +926,7 @@ pub proof fn lemma_step_branch(p: Program2, c: Cert, trusted: bool, s: State2)
             lemma_drop(p, c, trusted, s, goto(drop(s, 1), target), 1);
         } else {
             assert(post(p, c, m, off, k, trusted) == Some(k.drop_last()));
-            lemma_drop(p, c, trusted, s, goto(drop(s, 1), s.bci + 3), 1);
+            lemma_drop(p, c, trusted, s, goto(drop(s, 1), s.bci + len), 1);
         }
     }
 }
@@ -1115,7 +1138,7 @@ pub proof fn lemma_step_local(p: Program2, c: Cert, trusted: bool, s: State2)
         lemma_step_is_as(p, c, trusted, s);
     } else if op == AS_LOCAL {
         lemma_step_as_local(p, c, trusted, s);
-    } else if BRANCH <= op && op <= BRANCH_BACK_IF_NOT_NULL {
+    } else if (BRANCH <= op && op <= BRANCH_BACK_IF_NOT_NULL) || (BRANCH_S <= op && op <= BRANCH_BACK_S) {
         lemma_step_branch(p, c, trusted, s);
     } else if op == IDENTICAL {
         lemma_step_identical(p, c, trusted, s);

@@ -396,7 +396,42 @@ pub open spec fn this_store_ok(p: Program2, m: int, f: int) -> bool {
 }
 
 pub open spec fn branch_kind(op: u8) -> int {
-    if BRANCH <= op && op <= BRANCH_IF_NOT_NULL { op - BRANCH } else { op - BRANCH_BACK }
+    if BRANCH <= op && op <= BRANCH_IF_NOT_NULL { op - BRANCH }
+    else if BRANCH_S <= op && op <= BRANCH_IF_NOT_NULL_S { op - BRANCH_S }
+    else if op == BRANCH_BACK_S { 0 }
+    else { op - BRANCH_BACK }
+}
+
+/// A short branch (format note 22): a one-byte distance.
+pub open spec fn is_short_branch(op: u8) -> bool {
+    BRANCH_S <= op && op <= BRANCH_BACK_S
+}
+
+/// A forward branch, long or short.
+pub open spec fn is_fwd_branch(op: u8) -> bool {
+    (BRANCH <= op && op <= BRANCH_IF_NOT_NULL) || (BRANCH_S <= op && op <= BRANCH_IF_NOT_NULL_S)
+}
+
+/// An unconditional branch (a terminator), long or short.
+pub open spec fn is_uncond_branch(op: u8) -> bool {
+    op == BRANCH || op == BRANCH_BACK || op == BRANCH_S || op == BRANCH_BACK_S
+}
+
+/// A conditional branch: it pops the condition, a value.
+pub open spec fn is_cond_branch(op: u8) -> bool {
+    (BRANCH_IF_TRUE <= op && op <= BRANCH_IF_NOT_NULL) || (BRANCH_BACK_IF_TRUE <= op && op <= BRANCH_BACK_IF_NOT_NULL)
+        || (BRANCH_IF_TRUE_S <= op && op <= BRANCH_IF_NOT_NULL_S)
+}
+
+/// The distance operand of the branch at offset `off` of `m`: one byte for
+/// a short branch, a u16 otherwise.
+pub open spec fn branch_dist(p: Program2, m: int, off: int) -> int {
+    if is_short_branch(op_of(p, m, off)) { b1_of(p, m, off) } else { w1_of(p, m, off) }
+}
+
+/// The target offset of the branch at offset `off` of `m`.
+pub open spec fn branch_target(p: Program2, m: int, off: int) -> int {
+    if is_fwd_branch(op_of(p, m, off)) { off + branch_dist(p, m, off) } else { off - branch_dist(p, m, off) }
 }
 
 /// Byte `j` of the instruction at offset `off` of `m`.
@@ -578,7 +613,7 @@ pub open spec fn post(p: Program2, c: Cert, m: int, off: int, k: Seq<Kind>, trus
         } else { None }
     } else if op == IDENTICAL {
         if value_operands(k, 2) && leaves0(p, m, h, 2) { Some(pop_push(k, 2, Some(Kind::Val))) } else { None }
-    } else if (BRANCH_IF_TRUE <= op && op <= BRANCH_IF_NOT_NULL) || (BRANCH_BACK_IF_TRUE <= op && op <= BRANCH_BACK_IF_NOT_NULL) {
+    } else if is_cond_branch(op) {
         if value_operands(k, 1) { Some(k.drop_last()) } else { None }
     } else if op == PRIMITIVE {
         // On an empty expression stack: the arguments are exactly the
@@ -627,10 +662,11 @@ pub open spec fn is_terminator(op: u8) -> bool {
     op == RETURN || op == RETURN_NULL || op == THROW || op == BRANCH || op == BRANCH_BACK
         || op == INVOKE_STATIC_TAIL || op == INVOKE_LAMBDA_TAIL || op == INVOKE_INITIALIZER_TAIL
         || op == NON_LOCAL_RETURN || op == NON_LOCAL_BRANCH
+        || op == BRANCH_S || op == BRANCH_BACK_S
 }
 
 pub open spec fn is_branch(op: u8) -> bool {
-    BRANCH <= op && op <= BRANCH_BACK_IF_NOT_NULL
+    (BRANCH <= op && op <= BRANCH_BACK_IF_NOT_NULL) || is_short_branch(op)
 }
 
 /// The frame shape every map of `m` keeps: a pinned parameter 0 stays,
@@ -682,7 +718,7 @@ pub open spec fn terminator_ok(p: Program2, c: Cert, m: int, off: int, k: Seq<Ki
             },
             _ => false,
         }
-    } else if op == BRANCH || op == BRANCH_BACK {
+    } else if is_uncond_branch(op) {
         true
     } else {
         false
@@ -713,9 +749,8 @@ pub open spec fn instr_ok(p: Program2, c: Cert, m: int, off: int, k: Seq<Kind>, 
             None => true,
         }
     &&& if is_branch(op) {
-            let t = if op <= BRANCH_IF_NOT_NULL { off + w1 } else { off - w1 };
-            (op <= BRANCH_IF_NOT_NULL ==> w1 > 0)
-                && map_at(c, m, t) == Some(if op == BRANCH || op == BRANCH_BACK { k } else { k.drop_last() })
+            (is_fwd_branch(op) ==> branch_dist(p, m, off) > 0)
+                && map_at(c, m, branch_target(p, m, off)) == Some(if is_uncond_branch(op) { k } else { k.drop_last() })
         } else { true }
     &&& if is_loop(op) {
             let (lc, lb, lx, ly) = loop_operands(p, m, off);

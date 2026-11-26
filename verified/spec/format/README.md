@@ -35,6 +35,7 @@ on the spec and on the soundness obligations, and the cost.
 | 18 | [shipped-certificate](18-shipped-certificate.md) | The toolchain ships the verifier's certificate (bundle member, trailing image block); the device reads its tables in place, decodes one method's maps at a time and only checks (`cert::verify_shipped`, proven); the installer may drop it. Decides note 14's "shipped stack maps". |
 | 19 | [builtins-proposal](19-builtins-proposal.md) | **Proposal, not decided** (branch proposal/builtins): LOOP_REPEAT, LOOP_ARRAY and HASH_FIND as bounded, non-reentrant steps that never write the heap, whose loops stay in the bytecode; specified, verified, proven (no new trusted item) and measured per built-in for the owner's decision. |
 | 20 | [unchecked-twins](20-unchecked-twins.md) | **Experiment, not decided** (branch experiment/trusted-fast): the unchecked twins of the field accesses (opcodes 104..113) for trusted programs, replacing the unchecked mode flag; untrusted programs keep the checked opcodes and cannot use the twins. |
+| 22 | [format3-branches-frames](22-format3-branches-frames.md) | Format 3, steps 1 and 2: two-byte short forms of the five branches the compiler emits (BRANCH_S .. BRANCH_IF_NOT_NULL_S, BRANCH_BACK_S; the compiler relaxes branches to a fixpoint), and four-word frame records (the handler bci is the try block's return bci). The image keeps the tag TBC2 until the package is complete. |
 
 ## Verifier versus run time
 
