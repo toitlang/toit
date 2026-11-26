@@ -133,8 +133,11 @@ class __Monitor__:
       resume_ --state-changed
       // To guarantee some level of fairness, we yield to avoid letting
       // the calling task starve the others.
-      if is-non-critical and (not identical self self.next-running_ or task-has-messages_):
-        yield
+      if is-non-critical:
+        if not identical self self.next-running_:
+          yield-to-next_
+        else if task-has-messages_:
+          yield
 
   wait_ self:
     // Add self to end of waiters list.
@@ -183,8 +186,7 @@ class __Monitor__:
   suspend_ self:
     try:
       self.monitor_ = this
-      next := self.suspend_
-      task-transfer-to_ next false
+      self.suspend_
     finally:
       self.monitor_ = null
 
