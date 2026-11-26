@@ -515,9 +515,10 @@ pub open spec fn never_falls_back_arrays(i: int, n: int) -> bool {
     ||| (i == ix::LIST_ADD && n == 2)
 }
 
-/// Strings and blobs: strings only (no opaque byte array), no allocation;
-/// the byte-array accessors, which read an opaque byte array's tag and
-/// length as the C++ does.
+/// Strings and blobs without allocation: strings only, or blobs where an
+/// opaque byte array is a failure (a resource proxy) or the empty blob (a
+/// neutered one), as for the C++; the byte-array accessors, which read an
+/// opaque byte array's tag and length as the C++ does.
 pub open spec fn never_falls_back_blobs(i: int, n: int) -> bool {
     ||| (i == ix::STRING_HASH_CODE && n == 1)
     ||| (i == ix::STRING_RAW_AT && n == 2)
@@ -527,6 +528,11 @@ pub open spec fn never_falls_back_blobs(i: int, n: int) -> bool {
     ||| (i == ix::BYTE_ARRAY_LENGTH && n == 1)
     ||| (i == ix::BYTE_ARRAY_AT && n == 2)
     ||| (i == ix::BYTE_ARRAY_AT_PUT && n == 3)
+    ||| (i == ix::STRING_RUNE_COUNT && n == 1)
+    ||| (i == ix::BLOB_EQUALS && n == 2)
+    ||| (i == ix::BLOB_INDEX_OF && n == 4)
+    ||| (i == ix::COMPARE_SIMPLE_JSON_STRING && n == 3)
+    ||| (i == ix::SIZE_OF_JSON_NUMBER && n == 2)
 }
 
 /// Floats: no new double.

@@ -994,6 +994,8 @@ primitives = [
   "core.list_add",
   "core.string_hash_code", "core.string_raw_at", "core.string_compare", "core.int_vector_equals",
   "core.byte_array_is_raw_bytes", "core.byte_array_length", "core.byte_array_at", "core.byte_array_at_put",
+  "core.string_rune_count", "core.blob_equals", "core.blob_index_of", "core.compare_simple_json_string",
+  "core.size_of_json_number",
   "core.float_sign", "core.float_is_nan", "core.float_is_finite",
   "core.float_less_than", "core.float_less_than_or_equal", "core.float_greater_than",
   "core.float_greater_than_or_equal", "core.float_equals",

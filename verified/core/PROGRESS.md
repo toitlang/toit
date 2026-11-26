@@ -64,6 +64,21 @@ docs/sandbox-guarantee.md.
   unreachable, 7 contract-only (was 62/34/10). Retry rules unchanged
   (77 proved, 62 textual, 9 tested, 2 reviewed). Core 1092 -> 1098
   (64-bit).
+- Item 6, second step: `never_falls_back` 40 -> 45. A byte array a
+  transferring send neutered (raw bytes of length 0 at a null address)
+  and the empty slices of one decode to `BlobArg::Empty`, the empty blob
+  the C++ decoders give (non-mutable modes; a raw one with a null address
+  and a non-zero length, which nothing makes, fails); blob_equals,
+  blob_index_of, compare_simple_json_string, size_of_json_number and
+  string_rune_count handle it (`blob_or_empty`) and fail with
+  OUT_OF_RANGE for a count above MAX_SMI (no blob is that long; the C++
+  made it a smi unchecked). Same results as the C++ for the neutered array
+  and a proxy (tests/sandbox/cli/opaque-byte-array-main.toit, output
+  identical with the binary before this branch). contract_check: 62
+  VeriFast-proved, 42 unreachable, 2 contract-only (number_to_integer,
+  smi_multiply: after an allocation that did not fit, the C++ primitive
+  runs; VeriFast floating point and `__builtin_mul_overflow` block their
+  proofs).
 
 ## Memory pressure on the classic ESP32 (branch device/memory-pressure, 2026-11-25)
 

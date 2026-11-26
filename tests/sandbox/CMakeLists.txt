@@ -83,7 +83,7 @@ set(UNTRUSTED_RUN_TESTS
   "program-heap-write|program-heap-write-main.toit|0|byte_array_at_put raw: PERMISSION_DENIED unchanged.*byte_zap raw: PERMISSION_DENIED unchanged.*blit raw: PERMISSION_DENIED unchanged.*put_uint_big_endian copy: null unchanged copied.*add_finalizer raw: WRONG_OBJECT_TYPE unchanged.*string unchanged.*failures: 0|CHANGED|NOT COPIED"
   # The byte-array primitives read a neutered byte array and a resource
   # proxy as the C++ did (their ports never fall back to it).
-  "opaque-byte-array|opaque-byte-array-main.toit|0|neutered: raw=true length=0 at=OUT_OF_BOUNDS put=OUT_OF_BOUNDS index-of=-1 equals-empty=true.*proxy: raw=false length=WRONG_OBJECT_TYPE at=WRONG_OBJECT_TYPE put=WRONG_OBJECT_TYPE index-of=WRONG_BYTES_TYPE equals-empty=WRONG_OBJECT_TYPE.*done"
+  "opaque-byte-array|opaque-byte-array-main.toit|0|neutered: raw=true length=0 at=OUT_OF_BOUNDS put=OUT_OF_BOUNDS index-of=-1 equals-empty=true.*neutered: runes=0 json-number=INVALID_ARGUMENT json-string=false.*proxy: raw=false length=WRONG_OBJECT_TYPE at=WRONG_OBJECT_TYPE put=WRONG_OBJECT_TYPE index-of=WRONG_BYTES_TYPE equals-empty=WRONG_OBJECT_TYPE.*proxy: runes=WRONG_BYTES_TYPE json-number=WRONG_BYTES_TYPE json-string=WRONG_BYTES_TYPE.*done"
   "byte-order-width|byte-order-width-main.toit|0|big: \\[0, 255, 255, 255, 255, 255, 255, 255, 255\\] \\[0, 255, 255, 255, 255, 255, 255, 255, 255\\].*little: \\[255, 255, 255, 255, 255, 255, 255, 255, 0\\] \\[255, 255, 255, 255, 255, 255, 255, 255, 0\\].*eight: \\[1, 2, 3, 4, 5, 6, 7, 8\\]"
 )
 

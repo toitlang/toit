@@ -236,10 +236,11 @@ Still assumed about the collector (GC-class code, trusted), for stage 1+:
 
 ### Ports that never fall back (branch core/ports-never-fall-back)
 
-Proved: for the 40 (index, arity) pairs of `prims::never_falls_back` (35
-before branch prims/trust-round added list_add and the four byte-array
+Proved: for the 45 (index, arity) pairs of `prims::never_falls_back` (35
+before branch prims/trust-round added list_add, the four byte-array
 accessors byte_array_is_raw_bytes, byte_array_length, byte_array_at,
-byte_array_at_put)
+byte_array_at_put, and string_rune_count, blob_equals, blob_index_of,
+compare_simple_json_string, size_of_json_number)
 (prims/mod.rs, the one list; verified/CONTRACTS.toml `[unreachable]`
 repeats it and contract_check.toit checks the two agree and that each
 arity is `index::TABLE`'s) every port call completes in Rust:
@@ -293,11 +294,14 @@ which would then report the primitive absent). A link map (`nm`) of such
 a build has to confirm that nothing else references them.
 
 Not on the list, though close: `float_to_raw32` never falls back on
-64-bit words only (a raw u32 is a smi there); `string_length`,
-`string_rune_count`, `json_skip_whitespace` and `size_of_json_number`
-fall back only for lengths above MAX_SMI, unreachable but not provable
-without a string length bound in the trusted heap model (`obj_model_ok`
-bounds byte arrays, not strings: a trusted change); `string_at` declines
+64-bit words only (a raw u32 is a smi there); `string_length` and
+`json_skip_whitespace` fall back for lengths above MAX_SMI, unreachable
+but not provable without a string length bound in the trusted heap model
+(`obj_model_ok` bounds byte arrays, not strings: a trusted change), and
+for a neutered byte array (json_skip_whitespace; both C++ bodies are
+VeriFast-proved); `string_rune_count` and `size_of_json_number` now fail
+with OUT_OF_RANGE there instead (branch prims/trust-round: the C++ made
+the count a smi unchecked); `string_at` declines
 invalid UTF-8 (where its C++ reads past the end; returning null there
 would make it total, a behavior change).
 
