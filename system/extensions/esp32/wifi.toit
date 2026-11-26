@@ -36,6 +36,11 @@ import system.base.network show NetworkModule NetworkResource NetworkState
 import ..shared.network-base
 import ...out-of-memory show with-out-of-memory-retry_
 
+// The free system heap the WiFi connect makes room for, by stopping
+// sandboxed containers, after its first attempt ran out of memory: what the
+// driver needs to come up (about 65 KB on a classic ESP32).
+WIFI-RELIEF-FREE_ ::= 64 * 1024
+
 // Keep in sync with the definitions in WifiResourceGroup.
 OWN-ADDRESS-INDEX_        ::= 0
 MAIN-DNS-ADDRESS-INDEX_   ::= 1
@@ -93,8 +98,11 @@ class WifiServiceProvider extends NetworkServiceProviderBase implements udp.Inte
     // The WiFi driver needs about 65 KB to come up: if the system process
     // is out of memory, sandboxed containers are stopped, and then the
     // connect fails with OUT_OF_MEMORY (the WiFi primitives fail instead
-    // of restarting the device, src/resources/wifi_esp32.cc).
-    module ::= (with-out-of-memory-retry_ --relieve: state_.up: WifiModule.sta this ssid password) as WifiModule
+    // of restarting the device, src/resources/wifi_esp32.cc). A failed
+    // driver initialization keeps some of its memory (ESP-IDF: "Failed to
+    // deinit Wi-Fi driver"), so after the first failure the sandboxes are
+    // stopped until WIFI-RELIEF-FREE_ is free, before the next attempt.
+    module ::= (with-out-of-memory-retry_ --relieve --relieve-until-free=WIFI-RELIEF-FREE_: state_.up: WifiModule.sta this ssid password) as WifiModule
     try:
       if module.ap:
         throw "wifi already established in AP mode"

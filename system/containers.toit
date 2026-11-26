@@ -441,6 +441,7 @@ class ContainerManager extends ContainerServiceProvider implements SystemMessage
     set-system-message-handler_ SYSTEM-SPAWNED_ this
     set-system-message-handler_ SYSTEM-TRACE_ this
     out-of-memory-relief_ = :: evict-sandbox_
+    relief-stats_.size  // Allocates it now, not when memory is short.
 
     image-registry.do: | allocation/FlashAllocation |
       if allocation.type != FLASH-ALLOCATION-TYPE-PROGRAM: continue.do

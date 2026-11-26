@@ -370,7 +370,13 @@ classic ESP32, 128 KB before). A fixed floor can't cover that transient:
 when sandboxes have grown before WiFi connects, the driver's allocations
 failed and the system process restarted the device at every boot's first
 WiFi connect (device runs with three workers, or one worker and a
-container allocating until refused: 6 and 12 restarts).
+container allocating until refused: 6 and 12 restarts). A failed driver
+initialization also keeps memory (ESP-IDF: `wifi_init: Failed to deinit
+Wi-Fi driver (0x3001)`): with three workers, five failed attempts (the
+first, the retry, one after each stopped sandbox) left about 70 KB with no
+sandbox running, and WiFi failed for good. So the WiFi connect stops
+sandboxes already before its second attempt, until 64 KB are free
+(`with-out-of-memory-retry_ --relieve-until-free`, `WIFI-RELIEF-FREE_`).
 
 Sandboxed containers lose first: for requests of trusted code and the
 system's own operations (the WiFi connect and establish, the start of a
