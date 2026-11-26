@@ -235,11 +235,14 @@ fn diff(before: &Dump, after: &Dump, stats: &mut Stats) -> Result<(), String> {
     let tcap = 2 * nf + 1;
     let mut ttab = vec![0usize; tcap];
     let mut tused = vec![0usize; tcap];
+    let mut nodew = vec![0usize; 1];
     let c = Ctx { base: arena.base(), ftab: ftab.as_mut_ptr(), nf, pw, ctab: cb.as_mut_ptr(), ncls: cb.len(), sw: before.sw,
-                  fss: Ghost::assume_new(), cbs: Ghost::assume_new() };
+                  null: before.null, nullid: Ghost::assume_new(), fss: Ghost::assume_new(), cbs: Ghost::assume_new() };
     let mut src = Source { arena: &mut arena, reserved: 0, taken: vec![] };
     let r = collect(&c, &mut src, roots.as_mut_ptr(), roots.len(), ttab.as_mut_ptr(), tused.as_mut_ptr(), tcap,
-                    Ghost::assume_new(), Ghost::assume_new(), Tracked::assume_new(), Tracked::assume_new());
+                    nodew.as_mut_ptr(), 0, 0,
+                    Ghost::assume_new(), Ghost::assume_new(), Ghost::assume_new(), Tracked::assume_new(), Tracked::assume_new(),
+                    Tracked::assume_new());
     let taken = src.taken.clone();
     let w = r.map_err(|_| "the collection did not start".to_string())?;
     if w.pages > tcap { return Err("too many pages".into()); }

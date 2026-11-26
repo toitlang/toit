@@ -267,6 +267,9 @@ struct Heap {
     fpages: Vec<usize>,
     roots: Vec<V>,
     sw: usize,
+    /// Finalizer nodes (kind, key, lambda): callback and queued nodes first,
+    /// then VM finalizers.
+    nodes: Vec<(usize, V, V)>,
 }
 
 fn enc(h: &Heap, v: &V) -> usize {
@@ -318,7 +321,7 @@ fn build(arena: &mut Arena, objs: Vec<Obj>, nprog: usize, roots: Vec<V>, sw: usi
         };
         addr[i] = a + 1;
     }
-    let mut h = Heap { objs, nprog, addr, fpages, roots, sw };
+    let mut h = Heap { objs, nprog, addr, fpages, roots, sw, nodes: vec![] };
     for (i, o) in h.objs.iter().enumerate() {
         let a = h.addr[i] - 1;
         for (k, v) in o.words.iter().enumerate() {
@@ -329,24 +332,230 @@ fn build(arena: &mut Arena, objs: Vec<Obj>, nprog: usize, roots: Vec<V>, sw: usi
     h
 }
 
-/// The from-space objects reachable from the roots.
-fn reachable(h: &Heap) -> HashSet<usize> {
-    let mut seen = HashSet::new();
-    let mut q = VecDeque::new();
-    for r in &h.roots {
-        if let V::Ref(i) = r { q.push_back(*i); }
+
+const NULL: usize = 0x11; // the null object's address in these tests (outside every page)
+const FBIT: usize = 32; // the finalizer bit of a header word
+
+/// Adds finalizer nodes; the keys of the active ones get the finalizer bit.
+fn add_nodes(arena: &mut Arena, h: &mut Heap, nodes: Vec<(usize, V, V)>, active: &[bool]) {
+    for (n, (_, key, _)) in nodes.iter().enumerate() {
+        if let V::Ref(k) = key {
+            if active[n] {
+                if let V::Raw(hd) = h.objs[*k].words[0] {
+                    h.objs[*k].words[0] = V::Raw(hd | FBIT);
+                    arena.write(h.addr[*k] - 1, hd | FBIT);
+                }
+            }
+        }
     }
+    h.nodes = nodes;
+}
+
+fn header_bit(o: &Obj) -> bool {
+    matches!(o.words[0], V::Raw(hd) if hd & FBIT != 0)
+}
+
+/// The from-space objects reachable from `start` in `objs`.
+fn closure(objs: &[Obj], nprog: usize, start: impl IntoIterator<Item = usize>) -> HashSet<usize> {
+    let mut seen = HashSet::new();
+    let mut q: VecDeque<usize> = start.into_iter().collect();
     while let Some(i) = q.pop_front() {
         if !seen.insert(i) { continue; }
-        let o = &h.objs[i];
+        let o = &objs[i];
         for v in &o.words[o.lo..o.hi] {
             if let V::Ref(j) = v { q.push_back(*j); }
         }
     }
-    seen.retain(|i| *i >= h.nprog);
+    seen.retain(|i| *i >= nprog);
     seen
 }
 
+/// The expected result, written out from src/heap_roots.cc (without the
+/// zapping of live weak maps' values): the verdict of each node, the heap
+/// after the finalizer pass (dead keys killed), and the copies.
+fn expected(h: &Heap) -> (Vec<usize>, Vec<Obj>, HashSet<usize>) {
+    let roots = h.roots.iter().filter_map(|v| if let V::Ref(i) = v { Some(*i) } else { None });
+    let mut copied = closure(&h.objs, h.nprog, roots);
+    let mut objs = h.objs.clone();
+    let mut verdicts = vec![];
+    let from = |v: &V| matches!(v, V::Ref(i) if *i >= h.nprog);
+    let idx = |v: &V| if let V::Ref(i) = v { *i } else { usize::MAX };
+    for (kind, key, lam) in &h.nodes {
+        if *kind == 4 { continue; }
+        let active = from(key) && header_bit(&objs[idx(key)]);
+        let alive = !from(key) || copied.contains(&idx(key));
+        if *kind == 2 {
+            verdicts.push(0);
+            if from(key) { copied.insert(idx(key)); }
+            if from(lam) { copied.insert(idx(lam)); }
+        } else if !active {
+            verdicts.push(2);
+        } else if alive {
+            verdicts.push(0);
+            if from(lam) { copied.insert(idx(lam)); }
+        } else if *kind == 0 {
+            verdicts.push(1);
+            let k = idx(key);
+            if let V::Raw(hd) = objs[k].words[0] { objs[k].words[0] = V::Raw(hd & !FBIT); }
+            if from(lam) { copied.insert(idx(lam)); }
+        } else {
+            verdicts.push(2);
+            let k = idx(key);
+            if let V::Raw(hd) = objs[k].words[0] { objs[k].words[0] = V::Raw(hd & !FBIT); }
+            if objs[k].lo == 1 && objs[k].hi >= 5 {
+                objs[k].words[1] = V::Raw(0);
+                objs[k].words[2] = V::Raw(0);
+                objs[k].words[3] = V::Raw(NULL);
+                objs[k].words[4] = V::Raw(NULL);
+            }
+        }
+    }
+    let copied = closure(&objs, h.nprog, copied);
+    for (kind, key, _) in &h.nodes {
+        if *kind != 4 { continue; }
+        let active = from(key) && header_bit(&objs[idx(key)]);
+        verdicts.push(if !active { 2 } else if copied.contains(&idx(key)) { 0 } else { 3 });
+    }
+    (verdicts, objs, copied)
+}
+
+/// The from-space objects reachable from the roots.
+fn reachable(h: &Heap) -> HashSet<usize> {
+    let roots = h.roots.iter().filter_map(|v| if let V::Ref(i) = v { Some(*i) } else { None });
+    closure(&h.objs, h.nprog, roots)
+}
+
+/// Runs a collection and checks it.
+fn run(arena: &mut Arena, h: &Heap, tcap_extra: isize, refuse: bool) -> Result<(Window, Vec<usize>, Vec<usize>), GcError> {
+    let pw = arena.pw;
+    let nf = h.fpages.len();
+    let mut cb = class_table();
+    let mut ftab = h.fpages.clone();
+    let mut rootw: Vec<usize> = h.roots.iter().map(|v| enc(h, v)).collect();
+    let tcap = ((2 * nf + 1) as isize + tcap_extra).max(0) as usize;
+    let mut ttab = vec![0usize; tcap.max(1)];
+    let mut tused = vec![0usize; tcap.max(1)];
+    let ncb = h.nodes.iter().filter(|n| n.0 != 4).count();
+    let mut nodew: Vec<usize> = vec![];
+    for (kind, key, lam) in &h.nodes {
+        nodew.extend([*kind, enc(h, key), enc(h, lam), 99]);
+    }
+    nodew.push(0);
+    let nodes_before = nodew.clone();
+    let before: Vec<usize> = arena.words.clone();
+    let roots_before = rootw.clone();
+    let c = Ctx { base: arena.base(), ftab: ftab.as_mut_ptr(), nf, pw, ctab: cb.as_mut_ptr(), ncls: cb.len(), sw: h.sw,
+                  null: NULL, nullid: Ghost::assume_new(), fss: Ghost::assume_new(), cbs: Ghost::assume_new() };
+    let mut src = Source { arena, reserved: 0, taken: 0, refuse };
+    let r = collect(&c, &mut src, rootw.as_mut_ptr(), rootw.len(), ttab.as_mut_ptr(), tused.as_mut_ptr(), tcap,
+                    nodew.as_mut_ptr(), ncb, h.nodes.len(),
+                    Ghost::assume_new(), Ghost::assume_new(), Ghost::assume_new(), Tracked::assume_new(), Tracked::assume_new(),
+                    Tracked::assume_new());
+    let taken = src.taken;
+    match r {
+        Err(e) => {
+            // Nothing changed.
+            assert_eq!(taken, 0);
+            assert!(arena.words == before, "memory changed on failure");
+            assert_eq!(rootw, roots_before, "roots changed on failure");
+            assert_eq!(nodew, nodes_before, "nodes changed on failure");
+            Err(e)
+        }
+        Ok(w) => {
+            check(arena, &cb, h, &rootw, &nodew, &ttab[..w.pages], &tused[..w.pages], &w, taken);
+            let (a, b) = (ttab[..w.pages].to_vec(), tused[..w.pages].to_vec());
+            Ok((w, a, b))
+        }
+    }
+}
+
+fn check(arena: &Arena, cb: &[u16], h: &Heap, rootw: &[usize], nodew: &[usize], ttab: &[usize], tused: &[usize], w: &Window,
+         taken: usize) {
+    let pw = arena.pw;
+    let nf = h.fpages.len();
+    assert!(w.pages >= 1 && w.pages <= 2 * nf + 1, "pages {} for nf {}", w.pages, nf);
+    assert_eq!(w.pages, taken);
+    assert_eq!(tused[w.pages - 1], w.top);
+    // Parse the to-space pages.
+    let mut copies = HashSet::new();
+    for p in 0..w.pages {
+        assert!(tused[p] <= pw - 1);
+        assert_eq!(arena.read(ttab[p] + tused[p] * W), 0, "sentinel of page {}", p);
+        let mut off = 0;
+        while off < tused[p] {
+            let a = ttab[p] + off * W;
+            copies.insert(a + 1);
+            off += size_at(arena, cb, h.sw, a);
+        }
+        assert_eq!(off, tused[p], "objects end at the used words of page {}", p);
+    }
+    let (verdicts, objs, live) = expected(h);
+    assert_eq!(copies.len(), live.len(), "copies vs expected survivors");
+    // The nodes: verdicts, and the slots to walk from.
+    let mut q = VecDeque::new();
+    let mut start = |v: &V, word: usize, what: String, q: &mut VecDeque<(usize, usize)>| match v {
+        V::Ref(j) if *j >= h.nprog => {
+            assert!(copies.contains(&word), "{} not to a copy", what);
+            q.push_back((*j, word));
+        }
+        _ => assert_eq!(word, enc(h, v), "{} changed", what),
+    };
+    for (n, (kind, key, lam)) in h.nodes.iter().enumerate() {
+        let d = nodew[4 * n + 3];
+        assert_eq!(d, verdicts[n], "verdict of node {} (kind {})", n, kind);
+        match d {
+            0 => {
+                start(key, nodew[4 * n + 1], format!("key of node {}", n), &mut q);
+                if *kind != 4 { start(lam, nodew[4 * n + 2], format!("lambda of node {}", n), &mut q); }
+            }
+            1 => {
+                assert_eq!(nodew[4 * n + 1], NULL, "key of queued node {}", n);
+                start(lam, nodew[4 * n + 2], format!("lambda of node {}", n), &mut q);
+            }
+            _ => {}
+        }
+        // A killed key: its words in from-space are the killed object's.
+        if let V::Ref(k) = key {
+            if *k >= h.nprog && (d == 1 || (d == 2 && *kind != 4 && header_bit(&h.objs[*k]) && !header_bit(&objs[*k]))) {
+                let a = h.addr[*k] - 1;
+                let hd = arena.read(a);
+                if hd % 2 == 0 {
+                    for (i, v) in objs[*k].words.iter().enumerate() {
+                        if i < 5 { assert_eq!(arena.read(a + i * W), enc(h, v), "word {} of killed key {}", i, k); }
+                    }
+                }
+            }
+        }
+    }
+    for (i, v) in h.roots.iter().enumerate() {
+        start(v, rootw[i], format!("root {}", i), &mut q);
+    }
+    // Compare the graphs (against the heap after the finalizer pass).
+    let mut map: HashMap<usize, usize> = HashMap::new(); // old index -> new address
+    while let Some((j, na)) = q.pop_front() {
+        if let Some(prev) = map.get(&j) {
+            assert_eq!(*prev, na, "object {} copied twice", j);
+            continue;
+        }
+        map.insert(j, na);
+        let o = &objs[j];
+        let a = na - 1;
+        assert_eq!(size_at(arena, cb, h.sw, a), o.words.len(), "size of {}", j);
+        for (k, v) in o.words.iter().enumerate() {
+            let word = arena.read(a + k * W);
+            match v {
+                V::Ref(t) if *t >= h.nprog && k >= o.lo && k < o.hi => {
+                    assert!(copies.contains(&word), "word {} of {} not to a copy", k, j);
+                    q.push_back((*t, word));
+                }
+                _ => assert_eq!(word, enc(h, v), "word {} of {}", k, j),
+            }
+        }
+    }
+    assert_eq!(map.len(), live.len());
+    let targets: HashSet<usize> = map.values().cloned().collect();
+    assert_eq!(targets.len(), map.len(), "distinct copies");
+}
 /// The size in words of the object at `a` (untagged) in to-space: the C++
 /// `HeapObject::size`, written out again (an oracle independent of the
 /// verified code).
@@ -370,98 +579,6 @@ fn size_at(arena: &Arena, cb: &[u16], sw: usize, a: usize) -> usize {
         7 => sw + arena.read(a + 2 * W),
         _ => panic!("bad tag {}", tag),
     }
-}
-
-/// Runs a collection and checks it.
-fn run(arena: &mut Arena, h: &Heap, tcap_extra: isize, refuse: bool) -> Result<(Window, Vec<usize>, Vec<usize>), GcError> {
-    let pw = arena.pw;
-    let nf = h.fpages.len();
-    let mut cb = class_table();
-    let mut ftab = h.fpages.clone();
-    let mut rootw: Vec<usize> = h.roots.iter().map(|v| enc(h, v)).collect();
-    let tcap = ((2 * nf + 1) as isize + tcap_extra).max(0) as usize;
-    let mut ttab = vec![0usize; tcap.max(1)];
-    let mut tused = vec![0usize; tcap.max(1)];
-    let before: Vec<usize> = arena.words.clone();
-    let roots_before = rootw.clone();
-    let c = Ctx { base: arena.base(), ftab: ftab.as_mut_ptr(), nf, pw, ctab: cb.as_mut_ptr(), ncls: cb.len(), sw: h.sw,
-                  fss: Ghost::assume_new(), cbs: Ghost::assume_new() };
-    let mut src = Source { arena, reserved: 0, taken: 0, refuse };
-    let r = collect(&c, &mut src, rootw.as_mut_ptr(), rootw.len(), ttab.as_mut_ptr(), tused.as_mut_ptr(), tcap,
-                    Ghost::assume_new(), Ghost::assume_new(), Tracked::assume_new(), Tracked::assume_new());
-    let taken = src.taken;
-    match r {
-        Err(e) => {
-            // Nothing changed.
-            assert_eq!(taken, 0);
-            assert!(arena.words == before, "memory changed on failure");
-            assert_eq!(rootw, roots_before, "roots changed on failure");
-            Err(e)
-        }
-        Ok(w) => {
-            check(arena, &cb, h, &rootw, &ttab[..w.pages], &tused[..w.pages], &w, taken);
-            let (a, b) = (ttab[..w.pages].to_vec(), tused[..w.pages].to_vec());
-            Ok((w, a, b))
-        }
-    }
-}
-
-fn check(arena: &Arena, cb: &[u16], h: &Heap, rootw: &[usize], ttab: &[usize], tused: &[usize], w: &Window, taken: usize) {
-    let pw = arena.pw;
-    let nf = h.fpages.len();
-    assert!(w.pages >= 1 && w.pages <= 2 * nf + 1, "pages {} for nf {}", w.pages, nf);
-    assert_eq!(w.pages, taken);
-    assert_eq!(tused[w.pages - 1], w.top);
-    // Parse the to-space pages.
-    let mut copies = HashSet::new();
-    for p in 0..w.pages {
-        assert!(tused[p] <= pw - 1);
-        assert_eq!(arena.read(ttab[p] + tused[p] * W), 0, "sentinel of page {}", p);
-        let mut off = 0;
-        while off < tused[p] {
-            let a = ttab[p] + off * W;
-            copies.insert(a + 1);
-            off += size_at(arena, cb, h.sw, a);
-        }
-        assert_eq!(off, tused[p], "objects end at the used words of page {}", p);
-    }
-    let live = reachable(h);
-    assert_eq!(copies.len(), live.len(), "copies vs reachable from-space objects");
-    // Compare the graphs from the roots.
-    let mut map: HashMap<usize, usize> = HashMap::new(); // old index -> new address
-    let mut q = VecDeque::new();
-    for (i, v) in h.roots.iter().enumerate() {
-        match v {
-            V::Ref(j) if *j >= h.nprog => {
-                assert!(copies.contains(&rootw[i]), "root {} not to a copy", i);
-                q.push_back((*j, rootw[i]));
-            }
-            _ => assert_eq!(rootw[i], enc(h, v), "root {} changed", i),
-        }
-    }
-    while let Some((j, na)) = q.pop_front() {
-        if let Some(prev) = map.get(&j) {
-            assert_eq!(*prev, na, "object {} copied twice", j);
-            continue;
-        }
-        map.insert(j, na);
-        let o = &h.objs[j];
-        let a = na - 1;
-        assert_eq!(size_at(arena, cb, h.sw, a), o.words.len(), "size of {}", j);
-        for (k, v) in o.words.iter().enumerate() {
-            let word = arena.read(a + k * W);
-            match v {
-                V::Ref(t) if *t >= h.nprog => {
-                    assert!(copies.contains(&word), "word {} of {} not to a copy", k, j);
-                    q.push_back((*t, word));
-                }
-                _ => assert_eq!(word, enc(h, v), "word {} of {}", k, j),
-            }
-        }
-    }
-    assert_eq!(map.len(), live.len());
-    let targets: HashSet<usize> = map.values().cloned().collect();
-    assert_eq!(targets.len(), map.len(), "distinct copies");
 }
 
 // ---------------------------------------------------------------------------
@@ -692,6 +809,92 @@ fn random_graphs() {
         let (objs, roots) = random_heap(&mut rng, n, nprog, nroots, maxw, sw);
         let mut arena = Arena::new(1200, pw);
         let h = build(&mut arena, objs, nprog, roots, sw, &mut rng, seed % 2 == 0);
+        run(&mut arena, &h, 0, false).ok().unwrap();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Finalizers.
+
+#[test]
+fn finalizers() {
+    let mut arena = Arena::new(64, PW);
+    let objs = vec![
+        oddball(),                                                  // 0: program heap
+        inst(vec![V::Ref(2), V::Ref(3)]),                           // 1: root holder
+        inst(vec![V::Smi(2)]),                                      // 2: live key (Toit finalizer)
+        inst(vec![V::Ref(9), V::Smi(0), V::Ref(4), V::Ref(5)]),     // 3: live weak map
+        arr(vec![V::Smi(4)]),                                       // 4
+        arr(vec![V::Ref(6)]),                                       // 5
+        inst(vec![V::Smi(6)]),                                      // 6
+        inst(vec![V::Smi(8)]),                                      // 7: dead key (Toit finalizer)
+        inst(vec![V::Ref(8), V::Ref(12)]),                          // 8: its lambda (revived), refers to the dead map
+        bytes_ext(100, 0),                                          // 9: live VM key
+        bytes_ext(200, 0),                                          // 10: dead VM key
+        inst(vec![V::Smi(10)]),                                     // 11: inactive key
+        inst(vec![V::Ref(13), V::Smi(2), V::Ref(4), V::Ref(13)]),   // 12: dead weak map (revived by 8)
+        arr(vec![V::Smi(12)]),                                      // 13
+        inst(vec![V::Ref(14)]),                                     // 14: lambda of the live key
+        bytes_ext(300, 0),                                          // 15: VM key reached only from a queued lambda
+        inst(vec![V::Ref(15)]),                                     // 16: queued node's lambda
+        inst(vec![V::Smi(14)]),                                     // 17: queued node's key (otherwise dead)
+    ];
+    let mut h = heap(&mut arena, objs, 1, vec![V::Ref(1), V::Ref(0)]);
+    let nodes = vec![
+        (0, V::Ref(2), V::Ref(14)),   // KEEP
+        (1, V::Ref(3), V::Ref(14)),   // KEEP (weak map traced strongly)
+        (0, V::Ref(7), V::Ref(8)),    // QUEUE: key dead, lambda revived
+        (0, V::Ref(11), V::Ref(14)),  // DELETE: no finalizer bit
+        (1, V::Ref(12), V::Ref(14)),  // DELETE: dead weak map, reset
+        (2, V::Ref(17), V::Ref(16)),  // queued: KEEP, both forwarded
+        (4, V::Ref(9), V::Smi(0)),    // KEEP
+        (4, V::Ref(10), V::Smi(0)),   // FREE
+        (4, V::Ref(15), V::Smi(0)),   // KEEP: reached from a queued lambda
+    ];
+    let active = [true, true, true, false, true, false, true, true, true];
+    add_nodes(&mut arena, &mut h, nodes, &active);
+    run(&mut arena, &h, 0, false).ok().unwrap();
+}
+
+#[test]
+fn random_finalizers() {
+    for seed in 1..400u64 {
+        let mut rng = Rng(seed * 0x2545_f491_4f6c_dd1d + 7);
+        let pw = [32, 64, 128][rng.below(3)];
+        let n = 2 + rng.below(120);
+        let nprog = 1 + rng.below(4.min(n - 1));
+        let nroots = rng.below(6);
+        let maxw = 3 + rng.below(pw - 4);
+        let (mut objs, roots) = random_heap(&mut rng, n, nprog, nroots, maxw, SW);
+        // Some weak maps: instances with at least four fields.
+        for i in nprog..n {
+            if rng.below(6) == 0 {
+                let k = 4 + rng.below(3);
+                objs[i] = inst((0..k).map(|_| value(&mut rng, n, n)).collect());
+            }
+        }
+        let mut arena = Arena::new(1200, pw);
+        let mut h = build(&mut arena, objs, nprog, roots, SW, &mut rng, seed % 2 == 0);
+        let mut nodes = vec![];
+        let mut active = vec![];
+        let mut keys = HashSet::new();
+        for _ in 0..rng.below(10) {
+            let k = nprog + rng.below(n - nprog);
+            if !keys.insert(k) { continue; }
+            let is_weak = h.objs[k].lo == 1 && h.objs[k].hi >= 5;
+            let kind = if is_weak && rng.below(2) == 0 { 1 } else { [0, 0, 2, 3][rng.below(4)] };
+            let kind = if kind == 3 && !is_weak { 0 } else { kind };
+            let lam = value(&mut rng, n, n);
+            nodes.push((kind, V::Ref(k), lam));
+            active.push(rng.below(5) != 0);
+        }
+        for _ in 0..rng.below(4) {
+            let k = nprog + rng.below(n - nprog);
+            if !keys.insert(k) { continue; }
+            nodes.push((4, V::Ref(k), V::Smi(0)));
+            active.push(rng.below(5) != 0);
+        }
+        add_nodes(&mut arena, &mut h, nodes, &active);
         run(&mut arena, &h, 0, false).ok().unwrap();
     }
 }

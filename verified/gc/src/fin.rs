@@ -38,6 +38,7 @@ use crate::space::*;
 use crate::cheney::*;
 use crate::copy::*;
 use crate::collect::*;
+#[cfg(verus_keep_ghost)]
 use crate::statement::{val_live, live, reachable};
 
 verus! {
