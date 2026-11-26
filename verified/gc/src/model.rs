@@ -111,6 +111,10 @@ pub struct Ctx {
     /// `2 * global_max_stack_height + RESERVED_STACK_FOR_CALLS +
     /// V2_FRAME_WORDS + V2_STACK_RESERVE`; usize::MAX: no shrinking).
     pub smin: usize,
+    /// The class ids of maps, lists and tombstones (weak maps, `weak.rs`).
+    pub map_cid: usize,
+    pub list_cid: usize,
+    pub tomb_cid: usize,
     /// The from-space table's contents.
     pub fss: Ghost<Seq<usize>>,
     /// The class table's contents.

@@ -553,7 +553,17 @@ pub struct Node {
     /// (node words 4 and 5; `Raw(0)` otherwise).
     pub ix: AVal,
     pub bk: AVal,
+    /// Its key's index and backing were hidden (`weak::hide_maps`).
+    pub hid: bool,
+    /// The live weak map's values were zapped (`weak::weak_pass`): the node
+    /// goes to the queue with its key.
+    pub zap: bool,
 }
+
+/// Marks in a node's verdict word during a collection: its weak map is
+/// hidden; its live weak map was zapped.
+pub const HIDDEN: usize = 5;
+pub const ZAPPED: usize = 6;
 
 /// The node array: six words per node (kind, key, lambda, verdict, and two words for a weak map's hidden fields).
 pub open spec fn nodes_mem(np: Map<int, PointsTo<usize>>, nptr: *mut usize, nn: int) -> bool {
@@ -566,6 +576,7 @@ pub open spec fn node_in(np: Map<int, PointsTo<usize>>, h: H, nd: Node, i: int) 
     &&& np[6 * i].is_init() && np[6 * i].value() == nd.kind
     &&& np[6 * i + 1].is_init() && np[6 * i + 1].value() == enc(h.addr, nd.key)
     &&& np[6 * i + 2].is_init() && np[6 * i + 2].value() == enc(h.addr, nd.lam)
+    &&& np[6 * i + 3].is_init() && (np[6 * i + 3].value() == ZAPPED) == nd.zap
 }
 
 /// A key that was dead after the first scan: a from-space object no strong
@@ -589,8 +600,8 @@ pub open spec fn fate(c: Ctx, h0: H, h: H, st: St, main: Set<int>, nd: Node, d: 
         ||| (d == DELETE && !key_active(h, kv))
         ||| (d == FREE && key_active(h, kv) && key_dead(h, st, kv))
     } else {
-        ||| (d == KEEP && key_active(h, kv) && val_live(h, st, kv) && kw == enc(st.addr2, kv)
-                && val_live(h, st, lv) && lw == enc(st.addr2, lv))
+        ||| (d == (if nd.kind == KIND_WEAK && nd.zap { QUEUE } else { KEEP }) && key_active(h, kv) && val_live(h, st, kv)
+                && kw == enc(st.addr2, kv) && val_live(h, st, lv) && lw == enc(st.addr2, lv))
         ||| (d == DELETE && !key_active(h, kv))
         ||| (d == QUEUE && nd.kind == KIND_TOIT && dead_main(h0, kv, main) && key_active(h0, kv)
                 && obj(h, kv->Ref_0) == killed(obj(h0, kv->Ref_0), c.nullid@, false)
@@ -686,7 +697,7 @@ pub open spec fn fin_roots(rv: Seq<AVal>, nodes: Seq<Node>) -> Seq<AVal> {
 }
 
 #[inline(always)]
-fn nword(nptr: *mut usize, m: usize, Ghost(nn): Ghost<int>, Tracked(np): Tracked<&Map<int, PointsTo<usize>>>) -> (v: usize)
+pub fn nword(nptr: *mut usize, m: usize, Ghost(nn): Ghost<int>, Tracked(np): Tracked<&Map<int, PointsTo<usize>>>) -> (v: usize)
     requires nodes_mem(*np, nptr, nn), 0 <= m < 6 * nn, np[m as int].is_init(),
     ensures v == np[m as int].value(),
 {
@@ -699,7 +710,7 @@ fn nword(nptr: *mut usize, m: usize, Ghost(nn): Ghost<int>, Tracked(np): Tracked
 }
 
 #[inline(always)]
-fn set_nword(nptr: *mut usize, m: usize, v: usize, Ghost(nn): Ghost<int>, Tracked(np): Tracked<&mut Map<int, PointsTo<usize>>>)
+pub fn set_nword(nptr: *mut usize, m: usize, v: usize, Ghost(nn): Ghost<int>, Tracked(np): Tracked<&mut Map<int, PointsTo<usize>>>)
     requires nodes_mem(*old(np), nptr, nn), 0 <= m < 6 * nn,
     ensures
         nodes_mem(*final(np), nptr, nn),
@@ -766,6 +777,7 @@ pub fn fin_node<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, nptr: *mut usi
     let kind = nword(nptr, 6 * i, Ghost(nn as int), Tracked(&*np));
     let kw = nword(nptr, 6 * i + 1, Ghost(nn as int), Tracked(&*np));
     let lw = nword(nptr, 6 * i + 2, Ghost(nn as int), Tracked(&*np));
+    let mk = nword(nptr, 6 * i + 3, Ghost(nn as int), Tracked(&*np));
     let (dead, act, s, off, cur) = key_status(c, kw, Ghost(h), Ghost(nd.key), Ghost(*t), Ghost(n0), Ghost(0int), Ghost(rvp),
                                              Tracked(&*st), Tracked(ro));
     let ghost mut hr = h;
@@ -798,7 +810,7 @@ pub fn fin_node<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, nptr: *mut usi
         }
         k2 = cur;
         l2 = b;
-        verdict = KEEP;
+        verdict = if kind == KIND_WEAK && mk == ZAPPED { QUEUE } else { KEEP };
     } else if kind == KIND_TOIT {
         let ghost j = nd.key->Ref_0;
         proof {
