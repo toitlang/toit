@@ -360,6 +360,10 @@ int Stack::v2_frames_skip_ = 2;
 thread_local int Stack::v2_frames_skip_ = 2;
 #endif
 
+void Stack::set_v2_frames_skip(int skip) {
+  v2_frames_skip_ = skip;
+}
+
 // Enumerate the top location, followed by the return locations stored in
 // successive frames. The bottom frame's return is not a call site.
 class V2FrameWalker {

@@ -367,7 +367,7 @@ uword toit_v2_allocate_exception(void* raw_process, uword raw_value, uword messa
     Stack* stack = process->task()->stack();
     Object* const* elements = reinterpret_cast<Object* const*>(words);
     if (count > TOIT_V2_MESSAGE_MAX_WORDS) count = 0;
-    Stack::v2_frames_skip_ = 0;
+    Stack::set_v2_frames_skip(0);
     bool success;
     if (message_kind == TOIT_V2_MESSAGE_WORD && count == 1) {
       success = encoder.encode_error(value, elements[0], stack);
@@ -381,7 +381,7 @@ uword toit_v2_allocate_exception(void* raw_process, uword raw_value, uword messa
     } else {
       success = encoder.encode_error(value, "", stack);
     }
-    Stack::v2_frames_skip_ = 2;
+    Stack::set_v2_frames_skip(2);
     if (success) {
       word size = buffer.size();
       uword bytes = v2_allocate(process, "'raising'", [&]() -> HeapObject* {
