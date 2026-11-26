@@ -72,8 +72,8 @@ int main() {
     CXXV_ASSERT(!table->runs_verified(untrusted_process), "a fresh table cannot authorize the verified loop");
     bool trusted_rules = nondet_bool();
     table->mark_verified(trusted_rules);
-    CXXV_ASSERT(table->runs_verified(untrusted_process) == (!untrusted_process || !trusted_rules),
-                "an untrusted process requires acceptance under the untrusted rules");
+    CXXV_ASSERT(table->runs_verified(untrusted_process) == (untrusted_process != trusted_rules),
+                "a verdict runs only processes of its own policy (untrusted rules: untrusted processes)");
     bool aligned = (reinterpret_cast<uword>(records) & 3) == 0;
     CXXV_ASSERT(table->in_literal() == aligned, "borrow aligned records and own the unaligned copy");
     const uint8* installed = reinterpret_cast<const uint8*>(table->records());

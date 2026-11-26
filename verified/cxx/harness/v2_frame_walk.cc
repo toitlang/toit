@@ -66,7 +66,7 @@ int main() {
       int record = frames - depth;
       CXXV_ASSERT(record > 0 && record < frames, "return location is in a live non-bottom frame");
       expected = nondet_int();
-      words[Stack::HEADER_SIZE / WORD_SIZE + record * 5 + 1] = static_cast<uword>(expected);
+      words[Stack::HEADER_SIZE / WORD_SIZE + record * Stack::V2_FRAME_WORDS + Stack::V2_FRAME_RET] = static_cast<uword>(expected);
     }
   }
 
