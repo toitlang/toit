@@ -536,7 +536,7 @@ process. What a client whose reply can't be sent observes:
 | Provider | Why the reply can't be sent | What the provider does | What the client observes |
 |---|---|---|---|
 | any | it can't be serialized, or it exceeds the provider's `max_message_bytes` (trusted containers can have that quota too) | sends a short exception reply with the error | the call fails (`QUOTA_EXCEEDED`, `SERIALIZATION_FAILED`, ...) |
-| trusted | the client is a sandbox and its mailbox refuses the reply (full, or the sandbox heap floor) | nothing: the send returns false, the provider is never blocked; the VM queues an error reply `[id, true, "QUOTA_EXCEEDED", null]` in its place (`Process::queue_reply_notice_locked`, the id read from the refused reply); these may exceed the quotas by 8 and the floor by 1 KB (all sandboxes together); beyond that the reply is dropped as before | the call fails with `QUOTA_EXCEEDED` once the client processes its messages (before: no reply, the call waited until its own timeout); only beyond the allowance it still waits |
+| trusted | the client is a sandbox and its mailbox refuses the reply (full, or the sandbox heap floor) | nothing: the send returns false, the provider is never blocked; the VM queues an error reply `[id, true, "QUOTA_EXCEEDED", null]` in its place (`Process::queue_reply_notice_locked`, the id read from the refused reply); these may exceed the quotas by 8 and the floor by 1 KB (all sandboxes together); beyond that the sandbox is ended with exit code 244 (`containers.EXIT-REPLY-LOST`, `Process::lose_reply_locked`; before: the reply was dropped) | the call fails with `QUOTA_EXCEEDED` once the client processes its messages (before: no reply, the call waited until its own timeout); beyond the allowance the sandbox ends (244) and its trusted owner sees the exit code (before: the call waited forever; a device worker waited 98 minutes); tests/sandbox/reply-lost-test.toit |
 | sandboxed (granted to provide services) | the mailbox share of sandboxed senders at the client is full (the provider's own messages, or another sandbox's) | retries with an exponential backoff (1 ms to 100 ms) for 5 s, then sends the exception reply, then drops it | the real reply, once the client processes its messages; after 5 s the call fails with `QUOTA_EXCEEDED`, or, if the share is still full, waits until its own timeout |
 | sandboxed | the reply exceeds the provider's quotas | the same: a sandbox can't tell a reply that is too large from one to a full mailbox (both `QUOTA_EXCEEDED`) | the call fails with `QUOTA_EXCEEDED` after 5 s |
 
@@ -1136,17 +1136,17 @@ the ESP32-S3 with firmware built with the verified core
 - Native allocations made on behalf of a process (message buffers, timers,
   finalizer nodes) are bounded by the quotas but not charged to its heap;
   resource groups are bounded (64 per sandboxed process).
-- A sandbox can get stuck out of memory and stay so: its heap at the
-  growth mark, a call whose reply was dropped (beyond the error-reply
-  allowance) or a message it can't decode, and nothing that ends it (the
-  run-time limit only ends a process that runs). On a classic ESP32 with
-  two sandboxed workers (2 h), one worker stalled this way after 22
-  minutes and held its memory to the end; the trusted side was not
-  affected, but a trusted owner that waits for such a sandbox without a
-  timeout waits forever (an earlier start rule let an installed program
-  start at the growth mark and stall, and the soak controller waiting for
-  it stopped). Not done: ending a sandbox whose allocations keep failing
-  for a while.
+- A sandbox can get stuck out of memory: its heap at the growth mark and
+  a message it can't decode, with nothing that ends it (the run-time limit
+  only ends a process that runs). The stall seen on a classic ESP32 with
+  two sandboxed workers (one worker idle for 98 minutes, holding its
+  memory) was a call whose reply had been dropped beyond the error-reply
+  allowance: such a sandbox is now ended (exit code 244, see "Replies that
+  can't be sent"). A trusted owner that waits for a sandbox without a
+  timeout still waits as long as the sandbox lives. Not done: ending a
+  sandbox whose allocations keep failing for a while (the stall seen was
+  idle, without failing allocations, so that rule would not have caught
+  it).
 - A kill takes effect only after the running primitive returns. The C++
   primitives of the untrusted set are audited to be bounded by their
   quota-bounded arguments (docs/sandbox-primitive-audit.md); the Rust ports

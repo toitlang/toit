@@ -210,11 +210,12 @@ SystemMessage* Process::take_termination_message(uint8 result) {
   // dies without a trace is seen.
   printf("[process %d (group %d) exited: %d]\n", id(), group_->id(), static_cast<int>(result));
 #endif
-  // A sandboxed run that dies after its group ran out of memory delays the
-  // next sandboxed start of its program (called under the scheduler lock,
-  // which guards the group's report limiter).
+  // A sandboxed run that dies after its group ran out of memory, or that was
+  // ended because a reply to it was lost (which happens when memory is
+  // short), delays the next sandboxed start of its program (called under
+  // the scheduler lock, which guards the group's report limiter).
   if (result != 0 && program_ != null && policy_->is_untrusted() &&
-      group_->out_of_memory_report_limiter()->has_reported()) {
+      (result == SANDBOX_EXIT_REPLY_LOST || group_->out_of_memory_report_limiter()->has_reported())) {
     Locker locker(OS::process_mutex());
     sandbox_restart_damper.note_failed_run(program_->id(), OS::get_monotonic_time());
   }
@@ -550,6 +551,9 @@ void Process::queue_reply_notice_locked(SystemMessage* refused) {
   }
   int id;
   if (!MessageDecoder::decode_rpc_reply_id(refused->data(), &id)) return;
+  // A reply that gets neither delivered nor replaced by an error reply
+  // would leave its call waiting forever (a sandbox waited 98 minutes in a
+  // device run): the sandbox is ended instead (lose_reply_locked).
   // The error replies may exceed the mailbox quotas and the floor by a
   // small, fixed amount: REPLY_NOTICE_ALLOWANCE replies beyond the quotas,
   // REPLY_NOTICE_FLOOR_RESERVE bytes below the floor (for all sandboxes).
@@ -560,20 +564,29 @@ void Process::queue_reply_notice_locked(SystemMessage* refused) {
   word bytes_quota = quotas.max_mailbox_bytes;
   if (count_quota > 0 && count_quota <= (INTPTR_MAX - REPLY_NOTICE_ALLOWANCE) / factor &&
       mailbox_count_ >= count_quota * factor + REPLY_NOTICE_ALLOWANCE) {
+    lose_reply_locked(id);
     return;
   }
   if (bytes_quota > 0 && bytes_quota <= (INTPTR_MAX - REPLY_NOTICE_ALLOWANCE * max_size) / factor &&
       mailbox_bytes_ > bytes_quota * factor + (REPLY_NOTICE_ALLOWANCE - 1) * max_size) {
+    lose_reply_locked(id);
     return;
   }
   const word floor = sandbox_heap_floor();
-  if (floor > 0 && system_free_bytes() < floor - REPLY_NOTICE_FLOOR_RESERVE + max_size) return;
+  if (floor > 0 && system_free_bytes() < floor - REPLY_NOTICE_FLOOR_RESERVE + max_size) {
+    lose_reply_locked(id);
+    return;
+  }
   word size = 0;
   uint8* data = MessageEncoder::encode_rpc_error_reply(id, "QUOTA_EXCEEDED", &size);
-  if (data == null) return;
+  if (data == null) {
+    lose_reply_locked(id);
+    return;
+  }
   SystemMessage* notice = _new SystemMessage(SYSTEM_RPC_REPLY, refused->gid(), refused->pid(), data);
   if (notice == null) {
     free(data);
+    lose_reply_locked(id);
     return;
   }
   notice->set_size(size);
@@ -581,6 +594,18 @@ void Process::queue_reply_notice_locked(SystemMessage* refused) {
   mailbox_bytes_ += size;
   charge_simulated_message_locked(notice, size);
   messages_.append(notice);
+}
+
+void Process::lose_reply_locked(int id) {
+  if (signals() & KILL) return;
+#ifdef TOIT_FREERTOS
+  printf(
+#else
+  fprintf(stderr,
+#endif
+         "[sandbox %d (group %d) ended: the reply to its call %d could not be delivered]\n",
+         this->id(), group_->id(), id);
+  kill_for_policy(SANDBOX_EXIT_REPLY_LOST);
 }
 
 bool Process::has_messages() {

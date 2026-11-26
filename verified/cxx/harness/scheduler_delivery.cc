@@ -24,6 +24,7 @@ static Process* lookup_result;
 static SystemMessage* incoming;
 static int requested;
 static unsigned lookups, decodes, shutdowns, wakes, destructions, mailbox_entries;
+static unsigned kill_wakes;
 static bool routing, in_mailbox;
 static int exit_value;
 static bool decodable;
@@ -78,6 +79,16 @@ void Scheduler::terminate_execution(Locker& lock, ExitState exit) {
 }
 
 void Scheduler::process_ready(Locker& lock, Process* process) {
+  // A sandbox whose refused reply was lost was ended (Process::lose_reply_locked):
+  // the scheduler wakes it to take the kill, without a message.
+  if (process == destination && (process->signals() & Process::KILL) &&
+      process->messages_.tail_ != static_cast<MessageFIFO::Element*>(incoming)) {
+    CXXV_ASSERT(lock.mutex() == &scheduler_mutex && routing && !in_mailbox && kill_wakes == 0 &&
+                process->policy()->is_untrusted() && process->kill_exit_value() == SANDBOX_EXIT_REPLY_LOST,
+                "wake a sandbox ended for a lost reply once, under the scheduler lock");
+    ++kill_wakes;
+    return;
+  }
   CXXV_ASSERT(lock.mutex() == &scheduler_mutex && routing && !in_mailbox &&
               process == (requested < 0 ? scheduler.boot_process_ : destination) &&
               process->messages_.tail_ == static_cast<MessageFIFO::Element*>(incoming),
@@ -172,6 +183,8 @@ int main() {
               "refuse a forged life-cycle notice before routing it");
   CXXV_ASSERT(lookups == (!system && !forged) && mailbox_entries == (attempt || boot_delivery) && wakes == queued,
               "perform only authorized delivery and wake only a receiver that took the message");
+  CXXV_ASSERT(kill_wakes == 0 || (!queued && expected == MESSAGE_QUOTA_EXCEEDED),
+              "wake an ended sandbox only after its reply was refused");
   CXXV_ASSERT(destructions == !queued, "delete every unqueued message exactly once, including a consumed system notification");
   CXXV_ASSERT(decodes == decode && shutdowns == (decode && decodable),
               "handle termination only on the system route without a boot process, live or exiting, and only after successful decoding");

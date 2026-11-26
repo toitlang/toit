@@ -46,6 +46,13 @@ Exit code of a sandboxed container that the system stopped because a
 EXIT-EVICTED ::= 243
 
 /**
+Exit code of a sandboxed container that the VM ended because an RPC reply
+  to it could be neither delivered (its mailbox or the memory floor refused
+  it) nor replaced by an error reply: its call would have waited forever.
+*/
+EXIT-REPLY-LOST ::= 244
+
+/**
 Starts a new container from the image with the given $id.
 
 If $untrusted is true, the container runs with the untrusted (sandbox)

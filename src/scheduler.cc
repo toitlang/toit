@@ -349,6 +349,9 @@ message_err_t Scheduler::send_message_from(Process* sender, int process_id, Syst
                            sender != boot_process_;
   if (!receiver->_append_message(message, needs_reply_grant ? sender->id() : -1)) {
     delete message;
+    // A sandbox whose refused reply was lost was ended: it must run to take
+    // the kill (Process::lose_reply_locked).
+    if (receiver->signals() & Process::KILL) process_ready(locker, receiver);
     return MESSAGE_QUOTA_EXCEEDED;
   }
   process_ready(locker, receiver);

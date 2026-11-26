@@ -55,6 +55,13 @@ class UnparsedRootCertificate: public UnparsedRootCertificateList::Element {
 typedef LinkedList<Process, 1> ProcessListFromProcessGroup;
 typedef LinkedFifo<Process, 2> ProcessListFromScheduler;
 
+// The exit value of a sandboxed process whose RPC reply could be neither
+// delivered nor replaced by an error reply (Process::lose_reply_locked).
+// Next to the policy exit values of primitive_policy.h (241-243; that file
+// is an input of the verification epoch). Keep in sync with
+// lib/system/containers.toit.
+static const int SANDBOX_EXIT_REPLY_LOST = 244;
+
 class Process : public ProcessListFromProcessGroup::Element,
                 public ProcessListFromScheduler::Element {
  public:
@@ -489,12 +496,17 @@ class Process : public ProcessListFromProcessGroup::Element,
   // null], MessageEncoder::encode_rpc_error_reply), so the call fails
   // instead of waiting forever. The error replies may exceed the quotas by
   // REPLY_NOTICE_ALLOWANCE replies and the floor by
-  // REPLY_NOTICE_FLOOR_RESERVE bytes; beyond that, a refused reply is
-  // dropped as before. The refused reply itself stays with the sender (the
+  // REPLY_NOTICE_FLOOR_RESERVE bytes; beyond that the sandbox is ended
+  // (lose_reply_locked). The refused reply itself stays with the sender (the
   // send returns false and the sender drops it).
   static const word REPLY_NOTICE_ALLOWANCE = 8;
   static const word REPLY_NOTICE_FLOOR_RESERVE = 1024;
   void queue_reply_notice_locked(SystemMessage* refused);
+  // Ends this sandboxed process (SANDBOX_EXIT_REPLY_LOST) because a reply to
+  // its call [id] was refused and no error reply could take its place: the
+  // call would wait forever. The scheduler wakes it to take the kill
+  // (Scheduler::send_message_from). Called with both locks held.
+  void lose_reply_locked(int id);
 
   void _ensure_random_seeded();
 
