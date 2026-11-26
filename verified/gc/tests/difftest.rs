@@ -226,6 +226,7 @@ struct Stats {
     tail_dumps: usize,
     tail_skipped: usize,
     reserved_proved: usize,
+    analysis: Analysis,
     max_proved_minus_nf: isize,
     max_largest_permille: usize,
     // The finalizer nodes: compared, by the proved collector's verdict
@@ -481,6 +482,7 @@ fn diff(before: &Dump, after: &Dump, stats: &mut Stats) -> Result<(), String> {
     stats.max_to_over_from_permille = stats.max_to_over_from_permille.max(w.pages * 1000 / nf);
     stats.max_object_words = stats.max_object_words.max(maxw);
     stats.pairs += 1;
+    if std::env::var("TOIT_GC_ANALYSIS").is_ok() { analyze(before, live_words, &mut stats.analysis); }
     Ok(())
 }
 
@@ -539,4 +541,56 @@ fn largest(before: &Dump, pord: &[usize], pw: usize, bword: &dyn Fn(usize) -> us
         }
     }
     m
+}
+
+/// Object sizes and live fractions of the dumps (TOIT_GC_ANALYSIS=1 with
+/// TOIT_GC_DIFF=DIR): for the reserve comparison of the README.
+#[derive(Default, Debug)]
+struct Analysis {
+    collections: usize,
+    // From-space objects by size relative to a page: <= 1/8, <= 1/4, <= 1/2, > 1/2 (count, words).
+    by_size: [(usize, usize); 4],
+    // The largest object of each tag (words) and how many objects of each
+    // tag are above 1/4 and 1/8 of a page.
+    max_by_tag: [usize; 9],
+    above_quarter_by_tag: [usize; 9],
+    above_eighth_by_tag: [usize; 9],
+    stack_max: usize,
+    // Live fraction (copied words / used from-space words) per collection,
+    // in tenths: histogram.
+    live_tenths: [usize; 11],
+    live_words: usize,
+    used_words: usize,
+}
+
+fn analyze(before: &Dump, live_words: usize, a: &mut Analysis) {
+    let pw = before.pages[0].bytes / W;
+    let word = |x: usize| before.word(x).unwrap();
+    let mut used = 0usize;
+    for pg in &before.pages {
+        let lim = (pg.used / W).min(pw - 1);
+        let mut off = 0;
+        while off < lim {
+            let w = pg.words[off];
+            if w == usize::MAX - 107 { off += 1; continue; }
+            if w == 0 || w % 2 != 0 || (w >> 1) & 15 > 8 { break; }
+            let tag = (w >> 1) & 15;
+            let (sz, _, _) = layout(&word, &before.cb, before.sw, pg.start + off * W);
+            if sz == 0 || off + sz > lim { break; }
+            let b = if sz * 8 <= pw { 0 } else if sz * 4 <= pw { 1 } else if sz * 2 <= pw { 2 } else { 3 };
+            a.by_size[b].0 += 1;
+            a.by_size[b].1 += sz;
+            a.max_by_tag[tag] = a.max_by_tag[tag].max(sz);
+            if sz * 4 > pw { a.above_quarter_by_tag[tag] += 1; }
+            if sz * 8 > pw { a.above_eighth_by_tag[tag] += 1; }
+            if tag == 7 { a.stack_max = a.stack_max.max(sz); }
+            off += sz;
+        }
+        used += off;
+    }
+    a.collections += 1;
+    a.live_words += live_words;
+    a.used_words += used;
+    let t = if used == 0 { 0 } else { (live_words * 10 / used).min(10) };
+    a.live_tenths[t] += 1;
 }
