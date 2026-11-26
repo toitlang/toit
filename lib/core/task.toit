@@ -51,6 +51,17 @@ The Toit programming language is cooperatively scheduled, so it is important
 */
 yield:
   process-messages_
+  // Without other running tasks, the transfer would be to this task, which
+  // does nothing.
+  self := Task_.current
+  if not identical self self.next-running_:
+    task-transfer-to_ self.next-running_ false
+
+// Like $yield, for a caller that has just seen another running task. It
+// transfers without checking: the next running task is another task, unless
+// the messages changed that, and then the transfer does nothing.
+yield-to-next_ -> none:
+  process-messages_
   task-transfer-to_ Task_.current.next-running_ false
 
 // ----------------------------------------------------------------------------
@@ -343,17 +354,21 @@ class Task_ implements Task:
           write-on-stdout_ "Uncaught exception: " false
           print_ value
 
-  suspend_:
+  // Suspends this task, which must be the running one, and returns when it
+  // has been resumed and runs again.
+  suspend_ -> none:
     state_ = STATE-SUSPENDING
     while true:
       process-messages_
       // Check if we got resumed through the message processing.
-      if state_ == STATE-RUNNING: return this
+      if state_ == STATE-RUNNING: return
       // If this task not the only task left, we unlink it from
-      // the linked list of running tasks and mark it suspended.
+      // the linked list of running tasks, mark it suspended and
+      // transfer to the next running task.
       if not identical this previous-running_:
         state_ = STATE-SUSPENDED
-        return unlink_
+        task-transfer-to_ unlink_ false
+        return
       // This task is the only task left. We keep it in the
       // suspending state and tell the system to wake us up when
       // new messages arrive.
