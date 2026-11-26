@@ -83,11 +83,17 @@ class Container:
     critical = image.run-critical and not explicitly-untrusted
     pids_ = {}
     try:
-      // A system process out of memory fails the start (the spawn leaves
-      // nothing behind) instead of restarting the device. For a trusted
-      // container, sandboxed containers are stopped first.
-      relieve := kind != ContainerService.POLICY-UNTRUSTED
-      pids_.add (with-out-of-memory-retry_ --relieve=relieve: image.spawn this arguments)
+      if image.manager.booting_:
+        // At boot, a container the system process can't start for lack of
+        // memory restarts the device (system/boot.toit): a firmware that
+        // isn't validated yet is then rolled back.
+        pids_.add (image.spawn this arguments)
+      else:
+        // A system process out of memory fails the start (the spawn leaves
+        // nothing behind) instead of restarting the device. For a trusted
+        // container, sandboxed containers are stopped first.
+        relieve := kind != ContainerService.POLICY-UNTRUSTED
+        pids_.add (with-out-of-memory-retry_ --relieve=relieve: image.spawn this arguments)
     finally: | is-exception exception |
       // The VM refused to run the program (for example because the
       // verifier rejected an untrusted program). It never ran, so the
@@ -435,6 +441,7 @@ class ContainerManager extends ContainerServiceProvider implements SystemMessage
     set-system-message-handler_ SYSTEM-SPAWNED_ this
     set-system-message-handler_ SYSTEM-TRACE_ this
     out-of-memory-relief_ = :: evict-sandbox_
+    relief-stats_.size  // Allocates it now, not when memory is short.
 
     image-registry.do: | allocation/FlashAllocation |
       if allocation.type != FLASH-ALLOCATION-TYPE-PROGRAM: continue.do

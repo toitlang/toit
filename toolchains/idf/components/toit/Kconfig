@@ -510,17 +510,32 @@ menu "Toit"
 
     config TOIT_SANDBOX_HEAP_FLOOR_KB
         int "Free heap (KB) that sandboxed containers must leave to the system"
-        default 32
+        default 16
         range 0 1024
         help
-            The heap of a sandboxed (untrusted) container doesn't grow (new
-            heap pages, external byte arrays and strings) when that would
-            leave less than this much free in the system heap: the memory
-            is kept for the system process (the install-time verifier runs
-            in it, it needs up to 26 KB for the programs measured) and the
-            trusted containers. A sandboxed container that needs more gets
-            OUT_OF_MEMORY, as at its heap quota. 0 turns the floor off
-            (docs/sandbox-policy.md, "Quotas"). No effect without
+            Sandboxed (untrusted) containers don't take the last this much
+            of the system heap: a message queued at a sandbox or sent by one
+            is refused when it would leave less free (QUOTA_EXCEEDED for a
+            sandboxed sender), their heaps stop growing
+            TOIT_SANDBOX_GROWTH_HEADROOM_KB above it, and a sandboxed
+            container starts only if TOIT_SANDBOX_START_KB more are free.
+            The memory is kept for the system process and the trusted
+            containers. 0 turns the floor off (docs/sandbox-policy.md,
+            "Quotas"). No effect without TOIT_SANDBOX.
+
+    config TOIT_SANDBOX_GROWTH_HEADROOM_KB
+        int "Free heap (KB) above the floor that sandboxed heaps leave"
+        default 16
+        range 0 1024
+        help
+            The heap of a sandboxed container doesn't grow (new heap pages,
+            external byte arrays and strings) when that would leave less
+            than TOIT_SANDBOX_HEAP_FLOOR_KB plus this much free in the system
+            heap; it gets OUT_OF_MEMORY, as at its heap quota. The headroom
+            keeps the growth of sandboxes from refusing their own messages
+            (docs/sandbox-policy.md, "Quotas"). With the defaults the
+            heaps leave 32 KB: the install-time verifier (system process)
+            needs up to 26 KB for the programs measured. No effect without
             TOIT_SANDBOX.
 
     config TOIT_HEARTBEAT_S
@@ -537,14 +552,16 @@ menu "Toit"
             armed) stops it. For device runs only.
 
     config TOIT_SANDBOX_START_KB
-        int "Free heap (KB) above the floor that starting a sandboxed container needs"
+        int "Free heap (KB) above the growth mark that starting a sandboxed container needs"
         default 16
         range 0 1024
         help
             A sandboxed container is started only if the system heap has
-            at least this much free above TOIT_SANDBOX_HEAP_FLOOR_KB (its
-            first heap pages, method table and bookkeeping); otherwise the
-            start fails with QUOTA_EXCEEDED. A program whose sandboxed
+            at least this much free above TOIT_SANDBOX_HEAP_FLOOR_KB plus
+            TOIT_SANDBOX_GROWTH_HEADROOM_KB (its first heap pages, method
+            table and bookkeeping; a sandbox started lower could not grow),
+            after a collection of every process when it hasn't; otherwise
+            the start fails with QUOTA_EXCEEDED. A program whose sandboxed
             runs keep running out of memory is restarted with a growing
             delay (docs/sandbox-policy.md, "Quotas"). No effect without
             TOIT_SANDBOX.

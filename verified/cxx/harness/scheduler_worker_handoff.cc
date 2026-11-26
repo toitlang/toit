@@ -12,6 +12,7 @@
 namespace toit {
 static void handoff_finished();
 static uint8* read_preemption_header(Interpreter*);
+static void publish_heap_stats(Process*);
 #include "scheduler_worker_handoff.inc"
 }
 
@@ -36,6 +37,7 @@ static unsigned watchdogs;
 Mutex* OS::process_mutex_ = &mailbox;
 extern SystemMessage message;
 static bool held, external, finished, executed, mailbox_held;
+static bool published, requested;
 static bool initial_barrier, peer_gc, kill_during, messaged, ready, terminated;
 static uint8 initial_signals, kill_code;
 static int64 result_value;
@@ -64,6 +66,16 @@ void Scheduler::notify_profiler(Locker& lock, int change) {
 
 static bool unbound() {
   return !subject->scheduler_thread() && !worker.interpreter()->process();
+}
+
+// Scheduler::process_stats reads the heap numbers the process published when
+// it stopped: they must be read from its heap while no collector is in it,
+// on the worker that ran it, under the scheduler lock.
+void toit::publish_heap_stats(Process* process) {
+  CXXV_ASSERT(held && process == subject && requested && !in_collector && !published && unbound() &&
+              subject->state() == Process::RUNNING,
+              "publish the heap statistics once, when asked, from the stopped process, before a collector may take it");
+  published = true;
 }
 
 void Locker::enter() {
@@ -264,7 +276,7 @@ void OS::signal(ConditionVariable* cv) {
 }
 
 void toit::handoff_finished() {
-  CXXV_ASSERT(held && unbound() && !finished && scheduler.ready_count_ == with_peer &&
+  CXXV_ASSERT(held && unbound() && !finished && published == requested && scheduler.ready_count_ == with_peer &&
               scheduler.ready_queue(Process::PRIORITY_CRITICAL).first() == (with_peer ? &next_ready : nullptr),
               "finish one dispatch under lock with its original queue entry consumed");
   finished = true;
@@ -316,6 +328,9 @@ int main() {
   subject->run_timestamp_ = -1;
   subject->set_state(Process::SCHEDULED);
   subject->set_idle_since_gc(external || nondet_bool());
+  // process_stats may have asked the running process for its heap numbers.
+  requested = nondet_bool();
+  subject->heap_stats_requested_ = requested;
   new (&scheduler.threads_) SchedulerThreadList();
   scheduler.threads_.prepend(&worker);
   scheduler.gc_condition_ = &condition;

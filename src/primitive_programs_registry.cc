@@ -77,10 +77,15 @@ PRIMITIVE(spawn) {
   // A sandboxed container starts only if the system heap keeps the sandbox
   // heap floor free after what the container needs to start, and not while
   // its program waits for a restart after running out of memory
-  // (Process::sandbox_start_allowed). Checked before anything is allocated:
-  // a refused start takes no memory.
-  if (PrimitivePolicy::describes_untrusted(policy_description) && !Process::sandbox_start_allowed(program->id())) {
-    FAIL(QUOTA_EXCEEDED);
+  // (Process::sandbox_start_check). Checked before anything is allocated:
+  // a refused start takes no memory. When memory is short, every process's
+  // garbage is collected first (the sandboxes give their free heap pages
+  // back) and the start is tried once more.
+  if (PrimitivePolicy::describes_untrusted(policy_description)) {
+    bool retrying = process->object_heap()->retrying_primitive();
+    Process::SandboxStart start = Process::sandbox_start_check(program->id(), retrying);
+    if (start == Process::SANDBOX_START_SHORT_OF_MEMORY && !retrying) FAIL(CROSS_PROCESS_GC);
+    if (start != Process::SANDBOX_START_ALLOWED) FAIL(QUOTA_EXCEEDED);
   }
 
   word message_size = 0;

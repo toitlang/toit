@@ -58,10 +58,13 @@ PRIMITIVE(launch) {
   }
 
   // As for programs_registry.spawn: a sandboxed container starts only with
-  // room above the sandbox heap floor (Process::sandbox_start_allowed).
-  if (PrimitivePolicy::describes_untrusted(policy_description) &&
-      !Process::sandbox_start_allowed(program_id.address())) {
-    FAIL(QUOTA_EXCEEDED);
+  // room above the sandbox heap floor (Process::sandbox_start_check), after
+  // a collection of every process's garbage when memory is short.
+  if (PrimitivePolicy::describes_untrusted(policy_description)) {
+    bool retrying = process->object_heap()->retrying_primitive();
+    Process::SandboxStart start = Process::sandbox_start_check(program_id.address(), retrying);
+    if (start == Process::SANDBOX_START_SHORT_OF_MEMORY && !retrying) FAIL(CROSS_PROCESS_GC);
+    if (start != Process::SANDBOX_START_ALLOWED) FAIL(QUOTA_EXCEEDED);
   }
 
   Object* policy_error = null;

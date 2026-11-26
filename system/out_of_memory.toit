@@ -13,6 +13,8 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+import system
+
 /**
 The system process out of memory while it serves a request.
 
@@ -46,10 +48,22 @@ With $relieve (for requests of trusted code and the system's own
   the block succeeds or none is left. Asking the sandboxes to give memory
   back is already done before: each failed allocation was tried again
   after a collection of every process.
+
+With $relieve-until-free (and $relieve), the sandboxed containers are
+  stopped already before the second attempt, until the system heap has that
+  many bytes free (for the WiFi connect, whose failed attempts keep memory).
 */
-with-out-of-memory-retry_ --relieve/bool=false [block] -> any:
+with-out-of-memory-retry_ --relieve/bool=false --relieve-until-free/int?=null [block] -> any:
   catch --unwind=(: not is-out-of-memory-error_ it):
     return block.call
+  if relieve and relieve-until-free:
+    // An operation whose failed attempts are costly (the WiFi driver keeps
+    // memory of a failed initialization) stops sandboxes before its second
+    // attempt, until the system heap has $relieve-until-free bytes free.
+    while (system.process-stats relief-stats_)[system.STATS-INDEX-SYSTEM-FREE-MEMORY] < relieve-until-free:
+      relief := out-of-memory-relief_
+      if not relief or not relief.call: break
+      sleep --ms=OUT-OF-MEMORY-RETRY-DELAY-MS_
   sleep --ms=OUT-OF-MEMORY-RETRY-DELAY-MS_
   catch --unwind=(: not is-out-of-memory-error_ it):
     return block.call
@@ -62,6 +76,9 @@ with-out-of-memory-retry_ --relieve/bool=false [block] -> any:
       catch --unwind=(: not is-out-of-memory-error_ it):
         return block.call
   throw "OUT_OF_MEMORY"
+
+// Preallocated: the system process is out of memory when it reads it.
+relief-stats_ ::= List system.STATS-INDEX-SYSTEM-FREE-MEMORY + 1
 
 /**
 Stops one sandboxed container to free memory for the system process and

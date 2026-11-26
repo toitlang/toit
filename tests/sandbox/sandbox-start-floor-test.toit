@@ -3,23 +3,29 @@
 // be found in the tests/LICENSE file.
 
 /**
-Tests that the sandbox heap floor applies to starting a sandboxed container,
-  and that a sandboxed program that keeps running out of memory is restarted
-  with a growing delay.
+Tests the sandbox heap floor at the start of a sandboxed container: the
+  order of the floor's levels, the collection before a refusal, and the
+  growing delay of a sandboxed program that keeps running out of memory.
 
-Before, the floor was checked only when a sandboxed heap grew: a sandboxed
-  container that was started (or restarted after it died of OUT_OF_MEMORY)
-  took its initial memory however little the system had left. On a device a
-  worker was restarted 4 times in 5 seconds, each time with a new initial
-  heap, while the system heap was at 1-5 KB.
+The levels of the free system heap (docs/sandbox-policy.md, "Quotas"):
+  messages of sandboxes stop at the floor, sandboxed heaps stop growing at
+  the floor plus the growth headroom (the growth mark), and a sandboxed
+  start needs the growth mark plus the start bytes. Here (host, simulated
+  system heap of 600 KB, 200 KB floor, 100 KB headroom, 100 KB start):
+  heaps stop growing at 300 KB free, a start needs 400 KB.
 
-Now (on the host with a simulated system heap of 600 KB, a 400 KB floor and
-  -Xsandbox_start_bytes=150000): a sandbox starts while nothing holds the
-  heap; a second one is refused with QUOTA_EXCEEDED while a first holds
-  about 100 KB (a trusted container still starts); after the first stopped,
-  it starts again. A sandboxed run that ran out of memory makes the next
-  sandboxed start of its program wait 1 s after the failure, the next one 2
-  s. Without the floor nothing changes: every start is admitted.
+- A sandbox that grows as far as it can holds less than 300 KB (before,
+  sandboxed heaps grew down to the floor itself). Messages queued at it
+  (50 KB, from the trusted driver) still go below the growth mark, down to
+  the floor. A sandboxed start is refused with QUOTA_EXCEEDED, after a
+  collection that can't free what the holder keeps; a trusted container
+  starts. After the holder stopped, the sandbox starts again.
+- A sandbox that grew and dropped what it held (its heap pages are free,
+  but not given back): the start collects every process's garbage first
+  and then starts. Before, it was refused.
+- A sandboxed run that ran out of memory makes the next sandboxed start of
+  its program wait 1 s after the failure, the next one 2 s.
+- Without the floor nothing changes: every start is admitted.
 */
 
 import expect show *
@@ -27,6 +33,7 @@ import .sandbox-util show *
 
 PROGRAM ::= """
 import monitor
+import system
 import system.containers
 import system.services show ServiceSelector ServiceProvider ServiceHandler ServiceClient
 
@@ -35,32 +42,35 @@ interface ReadyService:
       --uuid="3d0a8c6e-6a51-4c0f-9f1e-1c2b7a4e5d60"
       --major=1
       --minor=0
-  ready size/int -> none
+  ready size/int pid/int -> none
   static READY-INDEX ::= 0
 
 class ReadyClient extends ServiceClient implements ReadyService:
   static SELECTOR ::= ReadyService.SELECTOR
   constructor selector/ServiceSelector=SELECTOR:
     super selector
-  ready size/int -> none:
-    invoke_ ReadyService.READY-INDEX size
+  ready size/int pid/int -> none:
+    invoke_ ReadyService.READY-INDEX [size, pid]
 
 class ReadyProvider extends ServiceProvider implements ServiceHandler:
-  latch := monitor.Latch
+  channel := monitor.Channel 1
   constructor:
     super "test/ready" --major=1 --minor=0
     provides ReadyService.SELECTOR --handler=this
   accepts-untrusted-clients -> bool:
     return true
   handle index/int arguments/any --gid/int --client/int -> any:
-    latch.set arguments
+    channel.send arguments
     return null
+
+SPIN-MS ::= 5_000
 
 main args:
   if args is Map:
     role := args["role"]
     if role == "small": return
-    if role == "hold": hold
+    if role == "hold": hold --keep
+    if role == "garbage": hold --no-keep
     if role == "die": die
     return
   floor := args.size > 0
@@ -76,16 +86,28 @@ main args:
 
   print "small: \$(start "small" --untrusted)"
 
-  // A sandbox holds about 100 KB of the 200 KB above the floor: the next
-  // sandbox can't start (it needs 150 KB above the floor), a trusted
-  // container can.
-  holder := containers.start containers.current {"role": "hold"} --untrusted --quotas={"heap": 2_000_000}
-  print "holder ready: \$(provider.latch.get)"
+  // A sandbox holds as much as it can: less than the growth mark leaves.
+  holder := start-holder "hold"
+  ready := provider.channel.receive
+  print "holder ready: \$(ready[0] > 150 and ready[0] <= 300)"
+  // A sandboxed start is refused, a trusted one isn't.
   print "small while held: \$(start "small" --untrusted)"
   print "trusted while held: \$(start "small" --untrusted=false)"
-  holder.stop
-  holder.wait
+  // Messages queued at the holder go below the growth mark (it spins and
+  // doesn't take them).
+  print "filled: \$(fill ready[1])"
+  provider.channel.receive  // Done spinning.
+  stop holder ready[1]
   print "small after: \$(start "small" --untrusted)"
+
+  // A sandbox grew and dropped it: the start collects its garbage first.
+  garbage := start-holder "garbage"
+  ready = provider.channel.receive
+  sleep --ms=200  // It drops what it held.
+  print "garbage ready: \$(ready[0] > 150 and ready[0] <= 300)"
+  print "small after collecting: \$(start "small" --untrusted)"
+  provider.channel.receive
+  stop garbage ready[1]
 
   // A sandboxed run that runs out of memory: the next start waits 1 s.
   print "die 1: \$(start "die" --untrusted)"
@@ -109,13 +131,52 @@ start role/string --untrusted/bool -> any:
     return container.wait
   return exception
 
-/** Grows the heap by about 100 KB, tells the driver, and keeps it. */
-hold -> none:
+/**
+Stops the [container] and waits until its process [pid] is gone (the
+  container's stop doesn't wait for that).
+*/
+stop container/containers.Container pid/int -> none:
+  container.stop
+  container.wait
+  while system.process-stats container.gid pid: sleep --ms=10
+
+start-holder role/string -> containers.Container:
+  return containers.start containers.current {"role": role}
+      --untrusted
+      --quotas={"heap": 2_000_000, "run-time-ms": 10_000}
+
+/** Queues five 10 KB messages at the process [pid]; returns how many it took. */
+fill pid/int -> int:
+  sent := 0
+  5.repeat:
+    if process-send_ pid 100 (ByteArray 10_000): sent++
+  return sent
+
+/**
+Grows the heap in 1 KB byte arrays until it can't, tells the driver how
+  many it kept (it drops 80, so that it can call and take the messages)
+  and its pid, spins for a while without taking messages or allocating, and
+  tells the driver again.
+  Keeps the arrays if \$keep, else drops them first.
+*/
+hold --keep/bool -> none:
   client := ReadyClient
   client.open
   list := []
-  100.repeat: list.add (ByteArray 1_000)
-  client.ready list.size
+  catch: while true: list.add (ByteArray 1_000)
+  // Room for the calls below and for the messages it takes.
+  80.repeat: if not list.is-empty: list.remove-last
+  size := list.size
+  client.ready size Process.current.id
+  // Dropped after the call, so that no collection gives the pages back
+  // before the driver starts the next sandbox (it spins without
+  // allocating).
+  if not keep: list = []
+  deadline := Time.monotonic-us + SPIN-MS * 1_000
+  while Time.monotonic-us < deadline: null
+  // Done: the driver stops it (a process that spins is only killed when it
+  // is preempted).
+  client.ready -1 Process.current.id
   sleep --ms=60_000
   print list.size
 
@@ -125,7 +186,8 @@ die -> none:
   while true: list.add (ByteArray 1_000)
 """
 
-FLAGS ::= ["-Xsandbox_heap_floor=400000", "-Xsandbox_system_heap=600000", "-Xsandbox_start_bytes=150000"]
+FLAGS ::= ["-Xsandbox_heap_floor=200000", "-Xsandbox_system_heap=600000", "-Xsandbox_growth_headroom=100000",
+         "-Xsandbox_start_bytes=100000"]
 
 main args:
   toit-run := args[0]
@@ -136,10 +198,13 @@ main args:
     output := run toit-run source FLAGS ["floor"]
     expect-equals [
       "small: 0",
-      "holder ready: 100",
+      "holder ready: true",
       "small while held: QUOTA_EXCEEDED",
       "trusted while held: 0",
+      "filled: 5",
       "small after: 0",
+      "garbage ready: true",
+      "small after collecting: 0",
       "die 1: 1",
       "die 1 again: QUOTA_EXCEEDED",
       "die 2: 1",
@@ -165,6 +230,6 @@ outcomes output/string -> List:
   result := []
   output.split "\n": | line/string |
     if line.starts-with "small" or line.starts-with "holder" or line.starts-with "trusted"
-        or line.starts-with "die":
+        or line.starts-with "die" or line.starts-with "filled" or line.starts-with "garbage":
       result.add line
   return result

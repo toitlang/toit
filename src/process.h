@@ -123,7 +123,12 @@ class Process : public ProcessListFromProcessGroup::Element,
   // Garbage collection operation for runtime objects.
   GcType gc(bool try_hard) {
     ASSERT(program() != null);  // Should not call GC on external processes.
-    return object_heap()->gc(try_hard);
+    GcType type = object_heap()->gc(try_hard);
+#ifndef TOIT_FREERTOS
+    // Host: a collection may give heap pages back.
+    count_simulated_heap();
+#endif
+    return type;
   }
 
   bool idle_since_gc() const { return idle_since_gc_; }
@@ -149,6 +154,33 @@ class Process : public ProcessListFromProcessGroup::Element,
   Message* peek_message();
   void remove_first_message();
   int message_count();
+
+  // The heap statistics of this process that Scheduler::process_stats
+  // reports to other processes (system.process-stats), guarded by the
+  // scheduler lock. The heap of a process changes without that lock, on the
+  // thread that runs the process (allocation, its own collections) and on a
+  // collector that has suspended it; a scavenge empties the new space's
+  // chunk list for a moment. So the heap of another process is read only
+  // while no thread runs or collects it (publish_heap_stats). While it does,
+  // process_stats reports the numbers published before and asks for new
+  // ones: the process publishes them the next time it stops running
+  // (run_process), so that a process that is never idle when asked doesn't
+  // report old numbers forever. Publishing reads the heap (walks the chunk
+  // lists), so it is done only when asked.
+  struct HeapStats {
+    int64 bytes_allocated = 0;
+    int64 bytes_reserved = 0;
+    int64 total_bytes_allocated = 0;
+    int gc_count = 0;
+    int full_gc_count = 0;
+    int full_compacting_gc_count = 0;
+  };
+  // Reads the heap. Called under the scheduler lock by the thread that runs
+  // the process, or while the process is idle or scheduled.
+  void publish_heap_stats();
+  const HeapStats& heap_stats() const { return heap_stats_; }
+  void request_heap_stats() { heap_stats_requested_ = true; }
+  bool heap_stats_requested() const { return heap_stats_requested_; }
 
   SystemMessage* take_termination_message(uint8 result);
 
@@ -241,36 +273,72 @@ class Process : public ProcessListFromProcessGroup::Element,
     object_heap_.set_max_heap_size(bytes);
   }
 
+  // The sandbox limits are levels of the free system heap, ordered so that
+  // the heap growth of sandboxes can't push the system into the range where
+  // their own messages are refused, and a sandbox doesn't start where it
+  // couldn't grow (docs/sandbox-policy.md, "Quotas"), from the top:
+  //   floor + growth headroom + start: a sandboxed container may start, after
+  //       a collection of every process (sandbox_start_check);
+  //   floor + growth headroom: sandboxed heaps stop growing (heap pages and
+  //       external allocations: sandbox_heap_room);
+  //   floor: messages to and from sandboxes are refused below it
+  //       (message_floor_allows_locked); nothing sandboxed takes the floor.
+  // Before, the heap growth stopped at the floor itself, so a sandbox that
+  // had grown could no longer send, and no other sandbox could start.
+
   // The bytes the heap of this process may still take from the system heap
-  // before only the sandbox heap floor is left free, or -1 if no floor
-  // applies (to trusted processes, or without a floor). The floor keeps
+  // before only the floor and the growth headroom are left free, or -1 if no
+  // floor applies (to trusted processes, or without a floor). The floor keeps
   // memory free for the system process and the trusted containers (the
   // install-time verifier runs in the system process): sandboxed heaps
-  // (their pages and external allocations) don't grow into it.
+  // (their pages and external allocations) don't grow into it, nor into the
+  // headroom above it, which is kept for the messages of sandboxes.
   word sandbox_heap_room();
 
   // The sandbox heap floor in bytes (CONFIG_TOIT_SANDBOX_HEAP_FLOOR_KB, host
   // -Xsandbox_heap_floor), 0 if there is none.
   static word sandbox_heap_floor();
 
+  // The free bytes above the floor that the heap growth of sandboxes leaves
+  // (CONFIG_TOIT_SANDBOX_GROWTH_HEADROOM_KB, host
+  // -Xsandbox_growth_headroom).
+  static word sandbox_growth_headroom();
+
+  // The free bytes above the growth mark (the floor and the growth headroom)
+  // that starting a sandboxed container needs
+  // (its first heap pages, method table and bookkeeping:
+  // CONFIG_TOIT_SANDBOX_START_KB, host -Xsandbox_start_bytes).
+  static word sandbox_start_bytes();
+
   // The free bytes of the system heap (host: of the simulated system heap,
   // -Xsandbox_system_heap, which holds the heaps of the sandboxed processes).
   static word system_free_bytes();
 
+  enum SandboxStart {
+    SANDBOX_START_ALLOWED,
+    // The system heap has less free than the growth mark plus a start.
+    SANDBOX_START_SHORT_OF_MEMORY,
+    // The program waits for its restart delay.
+    SANDBOX_START_DELAYED,
+  };
+
   // Whether a sandboxed process of the program [program_id] (its uuid) may
-  // be started now. Without a
-  // floor, always. With one, the system heap must keep the floor free after
-  // what a sandboxed process needs to start (its first heap pages, method
-  // table and bookkeeping: CONFIG_TOIT_SANDBOX_START_KB, host
-  // -Xsandbox_start_bytes), and a program whose sandboxed runs recently
-  // ran out of memory waits for its restart delay (SandboxRestartDamper,
-  // out_of_memory.h). Prints the reason of a refusal. Before, the floor was
+  // be started now. Without a floor, always. With one, the system heap must
+  // keep the growth mark (floor + growth headroom) free after what a
+  // sandboxed process needs to start
+  // (sandbox_start_bytes), and a program whose sandboxed runs recently ran
+  // out of memory waits for its restart delay (SandboxRestartDamper,
+  // out_of_memory.h). Prints the reason of a refusal (a shortage of memory
+  // only if [report_short_of_memory]). The callers (programs_registry.spawn,
+  // snapshot.launch) first collect every process's garbage when memory is
+  // short (CROSS_PROCESS_GC: the sandboxes give their free heap pages back)
+  // and refuse the start only if it is still short. Before, the floor was
   // checked only when a sandboxed heap grew: every (re)start of a sandbox
   // took its initial memory even at the floor.
-  static bool sandbox_start_allowed(const uint8* program_id);
+  static SandboxStart sandbox_start_check(const uint8* program_id, bool report_short_of_memory);
 
   // Whether an external allocation of [size] bytes leaves the sandbox heap
-  // floor free (see [sandbox_heap_room]).
+  // floor and the growth headroom free (see [sandbox_heap_room]).
   bool sandbox_floor_allows(word size) {
     word room = sandbox_heap_room();
     return room < 0 || size <= room;
@@ -447,9 +515,11 @@ class Process : public ProcessListFromProcessGroup::Element,
 
 #ifndef TOIT_FREERTOS
   // Host: the bytes of this sandboxed process's heap counted in the
-  // simulated system heap (see system_free_bytes), updated by the process
-  // itself when its heap grows (sandbox_heap_room).
+  // simulated system heap (see system_free_bytes), updated when its heap
+  // grows (sandbox_heap_room) and after each of its collections
+  // (count_simulated_heap).
   word simulated_heap_bytes_ = 0;
+  void count_simulated_heap();
 #endif
 
   word timer_count_ = 0;
@@ -491,6 +561,8 @@ class Process : public ProcessListFromProcessGroup::Element,
 
   bool construction_failed_ = false;
   bool idle_since_gc_ = true;
+  HeapStats heap_stats_;
+  bool heap_stats_requested_ = false;
 
   UnparsedRootCertificateList root_certificates_;
 

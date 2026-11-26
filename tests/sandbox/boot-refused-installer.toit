@@ -5,7 +5,7 @@
 // The child program of boot-refused-test.toit:
 //   install IMAGE: installs IMAGE in the flash registry flagged untrusted
 //     and with FLAG-RUN-BOOT, and prints its id.
-//   install-trusted IMAGE: the same without the untrusted flag.
+//   install-trusted IMAGE: the same, not flagged untrusted (boot-oom-test).
 //   app: prints a marker (the program the VM boots after the boot
 //     containers from flash have been started).
 
