@@ -46,6 +46,8 @@ use toit_spec::v2::theorem::{completion, outcome, machine_objects_ok, lemma_outc
     lemma_machine_objects};
 #[cfg(verus_keep_ghost)]
 use toit_spec::v2::prim::initial_state;
+#[cfg(verus_keep_ghost)]
+use toit_spec::v2::verifier::prim_listed;
 
 verus! {
 
@@ -102,6 +104,16 @@ pub proof fn theorem_process(p: &Program, heap0: Seq<HeapObj>, globals0: Seq<Val
                 ==> !(o is Stuck),
         forall|o: Outcome2| #[trigger] outcome(p.ap@, ms[i].g@, o) ==> !(o is Stuck) && !(o is Raise),
         machine_objects_ok(p.ap@, ms[i].g@),
+        // Confinement to the policy: a PRIMITIVE step names a primitive the
+        // verified table (the policy's, `p.policy`) allows with the frame's
+        // arity, one it denies, or one it does not have; the core runs a
+        // primitive (C++: `gc_call_primitive`; Rust: `prims::call`) only if
+        // the table allows it (both require `prim_allowed`) and completes a
+        // denied one with `prim_denied` (PERMISSION_DENIED) and an absent one
+        // with PRIMITIVE_LOOKUP_FAILED, calling nothing.
+        sp::step(p.ap@, ms[i].g@) is Primitive ==>
+            prim_listed(p.cert@.prim_arity, (sp::step(p.ap@, ms[i].g@)->Primitive_1) as int,
+                (sp::step(p.ap@, ms[i].g@)->Primitive_2) as int, sp::frame_height(ms[i].g@)),
 {
     lemma_process_inv(p, heap0, globals0, ms, es, rs, i);
     let ap = p.ap@;
@@ -111,6 +123,7 @@ pub proof fn theorem_process(p: &Program, heap0: Seq<HeapObj>, globals0: Seq<Val
     assert(unchecked_ok(ap, g));
     toit_spec::v2::sound_step::lemma_step(ap, c, p.trusted@, g);
     lemma_machine_objects(ap, c, g);
+    assert(step_ok(ap, c, g));
     assert forall|s1: State2, module: u8, index: u16, o: Outcome2|
         sp::step(ap, g) == Outcome2::Primitive(s1, module, index) && #[trigger] completion(ap, s1, module, index, o)
             implies !(o is Stuck) by {

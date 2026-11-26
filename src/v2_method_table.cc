@@ -24,7 +24,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "flags.h"
 #include "objects_inline.h"
 #include "program.h"
 
@@ -198,12 +197,6 @@ V2MethodTable* V2MethodTable::install(const uint8* records, uword count, const u
     if (out_of_memory != null) *out_of_memory = true;
   }
   return table;
-}
-
-bool V2MethodTable::untrusted_format1_allowed() {
-  if (Flags::untrusted_format1) return true;
-  const char* env = getenv("TOIT_UNTRUSTED_FORMAT1");
-  return env != null && strcmp(env, "1") == 0;
 }
 
 word V2MethodTable::entry_method(Program* program, int entry_point_index) const {

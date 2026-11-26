@@ -5,6 +5,7 @@
 # Runs PROGRAM with 'toit.run --untrusted', either from source or compiled
 # to a snapshot first (MODE), and checks the exit code and the output.
 # If UNEXPECTED_OUTPUT is not empty, the output must not match it.
+# RUN_FLAGS (optional): -X flags given to toit.run before --untrusted.
 
 if(MODE STREQUAL "snapshot")
   file(MAKE_DIRECTORY "${TMP}")
@@ -24,7 +25,7 @@ else()
 endif()
 
 execute_process(
-  COMMAND "${TOIT_RUN}" --untrusted "${TARGET}"
+  COMMAND "${TOIT_RUN}" ${RUN_FLAGS} --untrusted "${TARGET}"
   RESULT_VARIABLE result
   OUTPUT_VARIABLE stdout
   ERROR_VARIABLE stderr

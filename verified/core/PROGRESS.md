@@ -1,5 +1,39 @@
 # Phase 4a progress (verified core, format 2 on x86-64)
 
+## Format 3, step 1: short branches (branch format3/branches-frames, 2026-11-26)
+
+Five two-byte branch opcodes, BRANCH_S .. BRANCH_IF_NOT_NULL_S (114..117)
+and BRANCH_BACK_S (118), chosen by the compiler's branch relaxation
+(verified/spec/format/22-format3-branches-frames.md). Merged with
+wip/collector-proofs 25a01a7de, which contains verifier/single-pass (the single-pass checker `v2::walk` learned the short
+forms: its branch obligations, the forward distance check and the scan for
+backward targets). Measurements: /home/flo/work/opentoit-sandbox-artifacts/format3-impl.
+
+Bytecodes (host compiler, `bytecodes` of the program dump):
+
+| program | base | step 1 | |
+|---|---:|---:|---:|
+| esp32-system (classic ESP32 system image) | 69,020 | 66,932 | -3.0 % |
+| a-hello / c-map / g-big (untrusted) | 26,949 / 32,622 / 38,223 | 26,075 / 31,686 / 36,955 | -3.2 / -2.9 / -3.3 % |
+| opbench / taskbench / cgbench (trusted) | 42,049 / 32,524 / 40,829 | 40,698 / 31,490 / 39,470 | -3.2 / -3.2 / -3.3 % |
+
+Host instructions (callgrind, trusted, per iteration): richards -1.7 %,
+deltablue -1.2 %, pystone -0.9 %, json -0.9 %, calls 0.0 %, tasks -1.4 %,
+yield -1.3 %, RPC -1.0 % (one byte fewer to fetch per taken branch and a
+smaller code footprint; logs/cgrun-base.txt, cgrun-stepA.txt).
+
+Classic ESP32 firmware (f2, hardware-free build): the run loop 19,446 ->
+19,658 bytes (+212 for the five handlers, all in the hot part of both
+loop configurations), `.iram0.text` 128,323 -> 128,535, IRAM free 1,722 ->
+1,510 bytes; toit.bin 1,463,792 -> 1,464,352. Device library (Rust, opt
+s, LTO): riscv32 76,328 -> 74,984 bytes, thumbv7m 67,906 -> 68,136 (the
+per-component split moves with LTO's inlining; the totals are the
+comparable number).
+
+Proofs (after the merge with wip/collector-proofs 25a01a7de): spec 1096, core 1093, core-split 1095
+(32-bit: 1096, 1095, 1097) verified, 0 errors; before the merge 1087, 1092, 1094; no new trusted item, no
+theorem statement changed.
+
 ## Memory pressure on the classic ESP32 (branch device/memory-pressure, 2026-11-25)
 
 Base 67e28c2d (wip/collector-proofs). Artifacts:

@@ -37,12 +37,14 @@ OBLIGATIONS.md. Trusted base: TRUSTED.md and verified/TRUSTED.toml.
   format 2: the core keeps the stack object up to date itself.
 - Untrusted containers must be format 2: programs-registry spawn and
   snapshot launch refuse a format-1 program under the untrusted policy
-  with `FORMAT_2_REQUIRED`. `-Xuntrusted_format1` or
-  `TOIT_UNTRUSTED_FORMAT1=1` allows format 1 again (then it runs on the
-  C++ interpreter). **Default: format 2 required.**
+  with `FORMAT_2_REQUIRED`, and so does the install of an image flagged
+  untrusted. **Every build: format 2 required** (the flag
+  `-Xuntrusted_format1` / `TOIT_UNTRUSTED_FORMAT1=1`, which ran untrusted
+  format-1 programs on the C++ interpreter, was removed).
 - With the CMake option `TOIT_VERIFIED_CORE` off (default off for
   embedded and cross builds, or without cargo) the VM builds without the
-  core and refuses to run format-2 programs. It is on by default for
+  core and refuses to run format-2 programs, and so every untrusted
+  container. It is on by default for
   64-bit hosts and for 32-bit x86 Linux hosts (toolchains/host32.cmake:
   Rust target `i686-unknown-linux-gnu`); ESP32-C6/H2 firmware gets it with
   the menuconfig option `TOIT_VERIFIED_CORE` (Rust target
@@ -325,10 +327,11 @@ top, the finally-record count and length).
 The C++ primitive path is unverified and outside the security boundary
 (TRUSTED.md section 2). Ported primitives: src/prims (TRUSTED.md section
 8, PROGRESS.md "Primitives"): the verified PRIMITIVE handler runs the
-Rust port (`prims::call`) of a core primitive when
-`toit_v2_context::core_arities[index] == arity + 1` (the policy resolves
-the VM's own primitive with the method's arity; a table lookup, no C++
-call), without saving and reloading the machine (no GC point); their only
+Rust port (`prims::call`) of a core primitive when the policy's verifier
+table (`toit_v2_context::policy_arities`, `Program::policy`) allows it
+(a table lookup, no C++ call; a denied primitive completes with
+PERMISSION_DENIED, an absent one with PRIMITIVE_LOOKUP_FAILED, in the
+core), without saving and reloading the machine (no GC point); their only
 C++ helpers are `toit_v2_try_allocate_*` (no GC). `NotPorted` and
 `NeedsGc` (heap unchanged) fall back to lookup and call above, which
 collect and retry. 106 of the 143 allowed primitives of

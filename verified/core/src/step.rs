@@ -247,12 +247,12 @@ pub proof fn lemma_unchecked_ok(p: &Program, g: State2)
 /// refines that state; it has the state part of the invariant).
 pub open spec fn src_ok(p: &Program, m: Machine) -> bool {
     ||| m.inv(p)
-    ||| accepts(p.ap@, p.cert@, p.trusted@) && wf(p.ap@, p.cert@, m.g@) && small(m.g@)
+    ||| accepts(p.ap@, p.cert@, p.trusted@) && crate::exec::policy_rel(p) && wf(p.ap@, p.cert@, m.g@) && small(m.g@)
 }
 
 pub proof fn lemma_src_ok(p: &Program, m: Machine)
     requires src_ok(p, m),
-    ensures accepts(p.ap@, p.cert@, p.trusted@), wf(p.ap@, p.cert@, m.g@), small(m.g@),
+    ensures accepts(p.ap@, p.cert@, p.trusted@), crate::exec::policy_rel(p), wf(p.ap@, p.cert@, m.g@), small(m.g@),
 {
     if m.inv(p) { lemma_small(p, &m); }
 }

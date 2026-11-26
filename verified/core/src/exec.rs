@@ -29,7 +29,9 @@ use crate::view::*;
 use crate::abs::*;
 use toit_spec::types::{Value, Frame, Handler, HeapObj};
 use toit_spec::v2::types::{State2, Program2, Outcome2};
-use toit_spec::v2::verifier::Cert;
+use toit_spec::v2::verifier::{Cert, X_PRIM_DENIED, X_PRIM_ABSENT};
+#[cfg(verus_keep_ghost)]
+use toit_spec::v2::verifier::{prim_allowed, prim_entry};
 use toit_spec::v2::vprog::x_hdr_size;
 #[cfg(verus_keep_ghost)]
 use toit_spec::v2::vprog::{vdecode, u16_at, table_ok, rec_ok, rec_entry, hdr_size, kind_byte};
@@ -58,6 +60,14 @@ pub struct Program {
     pub builtin: Table<usize>,
     pub roots: Table<usize>,
     pub literals: Table<usize>,
+    /// The verifier table of the process' policy
+    /// (`PrimitivePolicy::verifier_arities`): module by module, the arity
+    /// of every primitive the policy allows, `X_PRIM_DENIED` for the others;
+    /// module `m` has `policy_counts[m]` entries from `policy_starts[m]`
+    /// on. The verdict was computed with it (`policy_rel`).
+    pub policy: Table<u8>,
+    pub policy_counts: Table<u32>,
+    pub policy_starts: Table<u32>,
     pub ro_start: usize,
     pub ro_size: usize,
     pub max_height: usize,
@@ -167,11 +177,6 @@ pub struct Env {
     pub p: Program,
     pub rt: Runtime,
     pub pre: Preemption,
-    /// The core primitives the process' policy resolves to the VM's own: entry
-    /// `i` is the arity of core primitive `i` plus one, else 0
-    /// (`PrimitivePolicy::core_arities`). The core runs the Rust port
-    /// (`prims::call`) of such a primitive.
-    pub core_arities: Table<u8>,
 }
 
 /// `Smi::from(v)`.
@@ -192,6 +197,57 @@ pub open spec fn in_ro(p: &Program, a: usize) -> bool {
 /// run, `step::run_loop`), so that the program-heap test is one compare.
 pub open spec fn ro_ok(p: &Program) -> bool {
     p.ro_start + p.ro_size <= usize::MAX
+}
+
+/// The policy table the core reads (`Program::policy`) is the certificate's
+/// primitive table (`Cert::prim_arity`), the one the verdict was computed
+/// with: the loader's contract (`theorem::loaded`), like the other tables.
+pub open spec fn policy_rel(p: &Program) -> bool {
+    let pa = p.cert@.prim_arity;
+    &&& p.policy_counts@.len() == pa.len()
+    &&& p.policy_starts@.len() == pa.len()
+    &&& forall|m: int| 0 <= m < pa.len() ==> {
+        &&& (#[trigger] p.policy_counts@[m]) as int == pa[m].len()
+        &&& p.policy_starts@[m] as int + p.policy_counts@[m] as int <= p.policy@.len()
+        &&& forall|i: int| 0 <= i < pa[m].len() ==>
+                #[trigger] pa[m][i] == prim_entry(p.policy@[p.policy_starts@[m] as int + i])
+    }
+}
+
+impl Program {
+    /// The policy's entry of primitive `(module, index)`: its arity if the
+    /// policy allows it, `X_PRIM_DENIED` if it denies it, `X_PRIM_ABSENT` if
+    /// the policy has no such primitive (or the table has no such entry).
+    pub fn policy_entry(&self, module: u8, index: u16) -> (e: u8)
+        requires policy_rel(self),
+        ensures ({
+            let pa = self.cert@.prim_arity;
+            let listed = 0 <= module < pa.len() && 0 <= index < pa[module as int].len();
+            &&& e != X_PRIM_DENIED && e != X_PRIM_ABSENT ==> prim_allowed(pa, module as int, index as int)
+                    && pa[module as int][index as int] == e as int
+            &&& e == X_PRIM_DENIED ==> listed && pa[module as int][index as int] == -1
+            &&& e == X_PRIM_ABSENT ==> listed ==> pa[module as int][index as int] == -2
+        }),
+    {
+        let m = module as usize;
+        if m >= self.policy_starts.len() { return X_PRIM_ABSENT; }
+        let n = self.policy_counts.at(m) as usize;
+        if index as usize >= n { return X_PRIM_ABSENT; }
+        let s = self.policy_starts.at(m) as usize;
+        let _len = self.policy.len();
+        proof {
+            let pa = self.cert@.prim_arity;
+            assert(0 <= m < pa.len());
+            assert(self.policy_counts@[m as int] as int == pa[m as int].len());
+            assert(self.policy_starts@[m as int] as int + self.policy_counts@[m as int] as int <= self.policy@.len());
+        }
+        let e = self.policy.at(s + index as usize);
+        proof {
+            let pa = self.cert@.prim_arity;
+            assert(pa[m as int][index as int] == prim_entry(self.policy@[s as int + index as int]));
+        }
+        e
+    }
 }
 
 /// A kind byte whose kind is not a block's is not the block's kind byte.
@@ -475,6 +531,7 @@ impl Machine {
     pub open spec fn inv(&self, p: &Program) -> bool {
         &&& self.refines(p)
         &&& accepts(p.ap@, p.cert@, p.trusted@)
+        &&& policy_rel(p)
         &&& wf(p.ap@, p.cert@, self.g@)
     }
 

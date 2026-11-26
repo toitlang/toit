@@ -241,14 +241,19 @@ the same ensures of the four family dispatches and of the per-primitive
 functions (`int_res`: a smi-range value is a Success; `lemma_smi_op`:
 a smi's remainder and right shift are smis; `blob_or_fail`: a
 STRINGS_ONLY decoding fails without NotPorted). `rarrays::rust_primitive_r`
-now holds the policy gate (`core_arities[index] == arity + 1`) and
-ensures: `module == 0 && gate && never_falls_back(index, arity) ==> res
-is Some`, and that `arity` (the method's) is the verifier's arity of the
-primitive (`cert.prim_arity[module][index]`, `lemma_prim_arity`, from the
-spec's `lemma_prim_facts`). `op_primitive` calls `cxx_primitive_v` only
-when `rust_primitive_r` returns None.
+(since 2026-11-26 gated by the policy's verifier table, `Program::policy`,
+which is the certificate's primitive table) ensures: `module == 0 &&
+never_falls_back(index, arity) ==> res is Some` (a denied primitive
+completes with PERMISSION_DENIED, an allowed one runs its port), and that
+when it returns None the primitive is allowed with the method's arity
+(`prim_allowed`, `cert.prim_arity[module][index] == arity`).
+`op_primitive` calls the C++ primitive only when `rust_primitive_r`
+returns None.
 
-What this rests on (no new trusted item): the C++ body of such a
+What this rests on (no new trusted item; the paragraph describes the
+gate before 2026-11-26, the core arities, which the verifier table
+replaced: now nothing about the gate is assumed beyond the table being
+the certificate's, `policy_rel`): the C++ body of such a
 primitive runs on the verified loop only through `toit_v2_primitive`,
 which runs it only when the policy's entry has the method's arity
 (src/interpreter_v2.cc: ABSENT otherwise) and is the VM's own function
@@ -268,10 +273,10 @@ a primitive its base allows).
 
 Other routes to these C++ bodies: the checked loop (`op_primitive_cold`,
 hosts only, unverified trusted tables), the format-1 interpreter (trusted
-format-1 programs, and untrusted ones under `-Xuntrusted_format1` /
-`TOIT_UNTRUSTED_FORMAT1=1`). Dropping the 35 C++ bodies from
-format-2-only firmware needs: no format-1 interpreter (so neither trusted
-format-1 programs nor `-Xuntrusted_format1`), no checked loop (devices
+format-1 programs only: untrusted format-1 programs are refused by every
+build since `-Xuntrusted_format1` was removed). Dropping the 35 C++ bodies
+from format-2-only firmware needs: no format-1 interpreter (so no trusted
+format-1 programs), no checked loop (devices
 already build without it), and their primitive-table entries kept with
 their arity but without the function, with `initialize_core_arities`
 deciding `own` for ported primitives without `original->function !=

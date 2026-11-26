@@ -1336,10 +1336,10 @@ Other routes to the C++ for an untrusted process: none on the default
 paths (ProcessGroup::create and the registry's spawn verify an untrusted
 format-2 table under the untrusted rules, so it runs on the verified loop;
 the checked loop, `machine.rs` `op_primitive_cold`, calls C++ for every
-primitive but runs only unverified tables, never an untrusted process's),
-and every C++ primitive under `-Xuntrusted_format1` /
-`TOIT_UNTRUSTED_FORMAT1=1` (format-1 untrusted programs on the C++
-interpreter: an opt-in for hosts).
+primitive but runs only unverified tables, never an untrusted process's).
+Format-1 untrusted programs, which would reach every C++ primitive on the
+C++ interpreter, are refused by every build (the host opt-in
+`-Xuntrusted_format1` / `TOIT_UNTRUSTED_FORMAT1=1` was removed).
 
 Per primitive (read from verified/core/src/prims/{ints,array,blob,float}.rs
 and the allocator, `ffi.rs`; no port allocates twice, and every `NeedsGc`
@@ -1395,8 +1395,9 @@ proxies and neutered arrays only.
 Consequences. The C++ behind the 35 "never" ports does not run for an
 untrusted process on the default paths, so it needs no proof for the
 sandbox; it still runs for trusted format-1 programs (the C++
-interpreter) and under `-Xuntrusted_format1`, so it can leave the f2
-firmware only together with those (verified/core/OBLIGATIONS.md, "Ports
+interpreter), so it can leave the f2 firmware only together with them
+(`-Xuntrusted_format1`, the other route, was removed;
+verified/core/OBLIGATIONS.md, "Ports
 that never fall back", says what else that needs). Now a proved fact
 (branch core/ports-never-fall-back): `prims::never_falls_back` is the
 list (the 35 of the table, none added or removed by the check against
@@ -2423,7 +2424,8 @@ classifications, the reachable contract-only fallbacks):
   the range and tag checks looked at class k while the VM then used the
   real id (`class_bits[2^32 + k]`: a read far past the class table, e.g.
   in `Program::instance_size_for`). Reachable by an untrusted format-1
-  image on a 64-bit host with `-Xuntrusted_format1` (an opt-in; the
+  image on a 64-bit host with `-Xuntrusted_format1` (an opt-in, since
+  removed: untrusted format 1 is refused by every build; the
   format-2 conversion compares the whole id with the class count, and the
   devices are 32-bit). Now a word. Regression test:
   tests/ctest/program-image-validation-test.cc ("builtin class id above

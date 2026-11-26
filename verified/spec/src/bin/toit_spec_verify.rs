@@ -24,9 +24,7 @@
 
 use std::time::Instant;
 use toit_spec::interp::loader;
-use toit_spec::v2::check;
 use toit_spec::v2::infer;
-use toit_spec::v2::check::MapOracle;
 use toit_spec::v2::vprog::{self, VProgram};
 
 fn main() {
@@ -107,7 +105,7 @@ fn main() {
     // the proven checker of shipped certificates, as a device checks it.
     let t3 = Instant::now();
     let shipped = toit_spec::v2::encode::encode(p, &global, trusted).map(|(bytes, sizes)| {
-        let (ok, at) = infer::ok(toit_spec::v2::cert::verify_shipped(p, &bytes, loaded.globals.len() as u64, &prim_arity, trusted));
+        let (ok, at, _) = infer::ok(toit_spec::v2::cert::verify_shipped(p, &bytes, loaded.globals.len() as u64, &prim_arity, trusted));
         (ok, at, sizes)
     });
     let t_shipped = t3.elapsed();
@@ -124,7 +122,7 @@ fn main() {
     if !ok && global.errors.is_empty() {
         match at {
             None => reasons.push("tables rejected".into()),
-            Some(m) => {
+            Some((m, _)) => {
                 let name = p.methods.get(m).and_then(|i| loaded.names.method_at(i.entry as usize))
                     .map(|(_, _, n)| n.to_string()).unwrap_or_default();
                 let (off, why) = infer::diagnose(p, &global, m, trusted);
@@ -185,8 +183,7 @@ fn disassemble(p: &VProgram, global: &infer::Global, m: usize, trusted: bool) {
     let ctx = if info.kind == 3 { g.ctx(m).map(|(o, s, top)| (o, s, g.list(top))) } else { None };
     println!("method {}: arity {} kind {} max_height {} selector {} recv {}..{} block params {:#x} ctx {:?}", m, info.arity, info.kind,
         p.max_height, info.selector, info.recv_start, info.recv_end, bp, ctx);
-    let gv = g.view(p.methods);
-    let maps = infer::ok(infer::Oracle::new(p, global, trusted).method_maps(p, &gv, m));
+    let maps = infer::Oracle::new(p, global, trusted).method_maps(m);
     let (entry, end) = (info.entry as usize, info.end());
     let mut bci = entry;
     while bci < end {
@@ -194,7 +191,7 @@ fn disassemble(p: &VProgram, global: &infer::Global, m: usize, trusted: bool) {
         let len = OPCODE_LENGTHS2.get(op as usize).copied().unwrap_or(1) as usize;
         let operands: Vec<String> = (1..len).filter(|i| bci + i < p.bytecodes.len()).map(|i| p.bytecodes[bci + i].to_string()).collect();
         let off = bci - entry;
-        let map = (off < maps.idx.len()).then(|| maps.idx.at(off)).filter(|t| *t != check::NO_MAP).and_then(|t| check::x_chain(&maps.nodes, t).ok());
+        let map = maps.as_ref().and_then(|maps| maps.kinds(off));
         let extra = if op == 53 || op == 54 {
             let d = p.bytecodes[bci + 1] as usize | (p.bytecodes[bci + 2] as usize) << 8;
             format!(" -> {}", p.dispatch.get(d).copied().unwrap_or(-2))

@@ -1,4 +1,4 @@
-# Assembled-method battery Thu Nov 12 02:27:26 CET 2026
+# Assembled-method battery Thu Nov 26 14:52:56 CET 2026
 [good-retnull] x{1/1} ACCEPTED->ran:   
 [good-print55] x{0/0} ACCEPTED->ran: 55  
 [good-return-val] x{1/1} ACCEPTED->ran:   
@@ -28,7 +28,7 @@
 [branch-neg] x{1/1} ACCEPTED->ran:   
 [prim-module-oob] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): PRIMITIVE 255 255 255: PRIMITIVE rejected with kinds [] 
 [prim-idx-oob] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): PRIMITIVE 0 255 255: PRIMITIVE rejected with kinds [] 
-[prim-denied] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): PRIMITIVE 0 0 0: PRIMITIVE rejected with kinds [] 
+[prim-denied] x{1/1} ACCEPTED->ran:   
 [merge-height] x{0/0} untrusted program rejected: method 22 at bci 295 (+6): RETURN_NULL: incompatible kinds at merge: [] and [Val, Val] 
 [merge-height2] x{0/0} untrusted program rejected: method 22 at bci 294 (+5): INVOKE_ADD: incompatible kinds at merge: [] and [Val] 
 [loop-grow-stack] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): LOAD_SMI_0: incompatible kinds at merge: [] and [Val] 
@@ -67,4 +67,4 @@
 [loadlit-wide-oob] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): LOAD_LITERAL_WIDE 232 253: LOAD_LITERAL_WIDE rejected with kinds [] 
 [allocate-oob] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): ALLOCATE 250: ALLOCATE rejected with kinds [] 
 [invokevirt-oob] x{0/0} untrusted program rejected: method 22 at bci 290 (+1): INVOKE_VIRTUAL 0 232 253: INVOKE_VIRTUAL rejected with kinds [Val] 
-# done Thu Nov 12 02:28:18 CET 2026
+# done Thu Nov 26 14:54:32 CET 2026

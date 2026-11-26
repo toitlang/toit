@@ -69,8 +69,11 @@ pub struct Context {
     pub watermark: *const AtomicUsize,
     pub preempt_a_lot: usize,
     pub accepted: usize,
-    pub core_arities: *const u8,
-    pub core_arities_length: usize,
+    pub policy_arities: *const u8,
+    pub policy_arities_length: usize,
+    pub policy_counts: *const u32,
+    pub policy_starts: *const u32,
+    pub policy_modules: usize,
     pub epoch: *const usize,
     pub unchecked: usize,
     pub new_space_top: *mut usize,
@@ -101,7 +104,7 @@ extern "C" {
 verus! {
 
 /// Evidence that the launch-time verifier (verified/vmverify, the proven
-/// `check::verify` and `x_loaded_ok`) accepted the program on the tables
+/// `cert::verify_shipped` and `x_loaded_ok`) accepted the program on the tables
 /// the core runs: the verified run loop (`step::run_loop`) takes it. Its
 /// field is private to this module, so the only way to get one is
 /// `toit_v2_run` seeing `TOIT_V2_ACCEPTED`, which `Interpreter::run_v2`
@@ -831,15 +834,6 @@ impl Runtime {
     }
 }
 
-/// Whether core primitive `index` has a Rust port (`prims::family`). The
-/// policies leave the primitives without one out of their core arities
-/// (PrimitivePolicy::initialize_core_arities), so that their PRIMITIVE goes
-/// to C++ without trying the Rust dispatch first. Performance only: either
-/// way the primitive's step is a completion of the spec's PRIMITIVE.
-#[no_mangle]
-pub extern "C" fn toit_v2_core_ported(index: usize) -> usize {
-    (crate::prims::family(index) != 0) as usize
-}
 
 /// Runs the current format-2 process until it is preempted, yields,
 /// terminates, or halts the device; see Interpreter::run.
@@ -873,6 +867,12 @@ pub unsafe extern "C" fn toit_v2_run(context: *mut Context) -> usize {
         builtin: Table::from_raw(p.builtin_class_ids, BUILTIN_COUNT),
         roots: Table::from_raw(p.roots, ROOT_COUNT),
         literals: Table::from_raw(p.literals, p.literals_length),
+        // The verifier table of the process' policy
+        // (PrimitivePolicy::verifier_arities), the one the verdict was
+        // computed with: a primitive runs only if it allows it.
+        policy: Table::from_raw(c.policy_arities, if c.policy_arities.is_null() { 0 } else { c.policy_arities_length }),
+        policy_counts: Table::from_raw(c.policy_counts, if c.policy_counts.is_null() { 0 } else { c.policy_modules }),
+        policy_starts: Table::from_raw(c.policy_starts, if c.policy_starts.is_null() { 0 } else { c.policy_modules }),
         ro_start: p.program_heap_start,
         ro_size: p.program_heap_size,
         max_height: p.global_max_height,
@@ -898,9 +898,6 @@ pub unsafe extern "C" fn toit_v2_run(context: *mut Context) -> usize {
     let globals = Globals::from_raw(p.globals, p.globals_length);
     let heap = Heap::new(p.remembered_set_bias);
     let preemption = Preemption::from_raw(c.watermark);
-    // The policy's core arities (PrimitivePolicy::core_arities): the core
-    // primitives it resolves to the VM's own, which the core runs as Rust.
-    let core_arities = Table::from_raw(c.core_arities, if c.core_arities.is_null() { 0 } else { c.core_arities_length });
     // The verified run loop needs an `Accepted` token, which exists only
     // here and only for a context whose table the launch-time verifier
     // accepted (TOIT_V2_ACCEPTED, set by Interpreter::run_v2 from
@@ -915,7 +912,7 @@ pub unsafe extern "C" fn toit_v2_run(context: *mut Context) -> usize {
     } else {
         None
     };
-    let (state, value) = crate::machine::run(program, runtime, globals, heap, preemption, core_arities, accepted);
+    let (state, value) = crate::machine::run(program, runtime, globals, heap, preemption, accepted);
     c.result_state = state;
     c.result_value = value;
     state
@@ -1001,8 +998,11 @@ const STRUCT_LAYOUT: &[(&[u8], usize)] = &[
     (b"CONTEXT_watermark\0", core::mem::offset_of!(Context, watermark)),
     (b"CONTEXT_preempt_a_lot\0", core::mem::offset_of!(Context, preempt_a_lot)),
     (b"CONTEXT_accepted\0", core::mem::offset_of!(Context, accepted)),
-    (b"CONTEXT_core_arities\0", core::mem::offset_of!(Context, core_arities)),
-    (b"CONTEXT_core_arities_length\0", core::mem::offset_of!(Context, core_arities_length)),
+    (b"CONTEXT_policy_arities\0", core::mem::offset_of!(Context, policy_arities)),
+    (b"CONTEXT_policy_arities_length\0", core::mem::offset_of!(Context, policy_arities_length)),
+    (b"CONTEXT_policy_counts\0", core::mem::offset_of!(Context, policy_counts)),
+    (b"CONTEXT_policy_starts\0", core::mem::offset_of!(Context, policy_starts)),
+    (b"CONTEXT_policy_modules\0", core::mem::offset_of!(Context, policy_modules)),
     (b"CONTEXT_epoch\0", core::mem::offset_of!(Context, epoch)),
     (b"CONTEXT_unchecked\0", core::mem::offset_of!(Context, unchecked)),
     (b"CONTEXT_new_space_top\0", core::mem::offset_of!(Context, new_space_top)),

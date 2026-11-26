@@ -15,7 +15,8 @@
 
 //! Certificate inference for the structural verifier (untrusted).
 //!
-//! Computes a certificate for `v2::check::verify` by abstract
+//! Computes a certificate for the checker of shipped certificates
+//! (`v2::cert::verify_shipped`, encoded by `v2::encode`) by abstract
 //! interpretation with the verified transfer function `x_post`. Nothing
 //! here is trusted: the checker decides whatever this produces, and a
 //! wrong certificate can only make it reject.
@@ -31,12 +32,12 @@
 //!    context; non-local branches seed the maps of outer methods. Every
 //!    method's maps are computed and dropped right away; only the global
 //!    facts survive a method.
-//! 2. `Oracle` (a `check::MapOracle`) recomputes one method's maps at a
-//!    time for the checker, with the global part frozen.
+//! 2. `Oracle` recomputes one method's maps at a time for the encoder,
+//!    with the global part frozen.
 //!
 //! Per method the analysis is a worklist over instruction offsets, lowest
 //! offset first; the map at an offset is a node of a list of kinds that
-//! shares its bottom with the maps it came from (`XMaps`); the origins
+//! shares its bottom with the maps it came from; the origins
 //! the global phase tracks are lists of the same shape in their own arena.
 //! A method costs about 9 bytes per bytecode byte plus 16 bytes per kind
 //! node and 5 per origin node, within budgets (`node_budget`).
@@ -66,18 +67,6 @@ pub fn ok<T>(r: Result<T, Oom>) -> T {
         Ok(x) => x,
         Err(_) => panic!("out of memory"),
     }
-}
-
-/// The elements of `v` in chunks.
-fn cvec_of<T: Copy>(v: &[T]) -> CVec<T> {
-    let mut b = ok(crate::cvec::CBuild::try_new(v.len()));
-    for &x in v { ok(b.try_push(x)); }
-    ok(b.try_finish())
-}
-
-/// The checker's form of the maps of one method.
-fn xmaps(maps: &Maps) -> XMaps {
-    XMaps { idx: cvec_of(&maps.idx), nodes: cvec_of(&maps.nodes) }
 }
 
 /// The checker's `post` (`x_post_into`) as a fresh vector, for the
@@ -257,7 +246,7 @@ impl<'a> Facts for Frozen<'a> {
 }
 
 /// The maps of one method under construction.
-struct Maps {
+pub struct Maps {
     /// Per offset: the top node of its kinds, or `NO_MAP`.
     idx: Vec<u32>,
     nodes: Vec<XNode>,
@@ -301,6 +290,14 @@ fn walk<T: Copy>(top: u32, len: usize, parent: impl Fn(usize) -> u32, value: imp
 }
 
 impl Maps {
+    /// The kinds of the map at `off`, bottom first, if there is one.
+    pub fn kinds(&self, off: usize) -> Option<Vec<XKind>> {
+        if self.idx.get(off).copied().unwrap_or(NO_MAP) == NO_MAP { return None; }
+        let (mut k, mut ids) = (Vec::new(), Vec::new());
+        self.read(off, &mut k, &mut ids);
+        Some(k)
+    }
+
     /// The kinds and node ids of the map at `off`, bottom first.
     fn read(&self, off: usize, k: &mut Vec<XKind>, ids: &mut Vec<u32>) {
         let top = self.idx.get(off).copied().unwrap_or(NO_MAP);
@@ -380,7 +377,6 @@ fn analyze<F: Facts>(p: &VProgram, f: &mut F, m: usize, trusted: bool) -> Result
     let size = end - entry;
     let limit = info.arity as usize + p.max_height as usize;
     let origins = f.tracks_origins();
-    let empty = XMaps { idx: CVec::new(), nodes: CVec::new() };
     let mut maps = Maps {
         idx: vec![NO_MAP; size],
         nodes: Vec::new(),
@@ -397,8 +393,8 @@ fn analyze<F: Facts>(p: &VProgram, f: &mut F, m: usize, trusted: bool) -> Result
     let mut lo = 0usize;
     // The entry map.
     let e = {
-        let c = XCert { g: &f.g().view(p.methods), cur: m, maps: &empty };
-        ok(x_entry_kinds(p, &c, m))
+        let c = XCert { g: &f.g().view(p.methods) };
+        { let mut e = Vec::new(); ok(crate::v2::walk::x_entry_into(p, &c, m, &mut e)); e }
     };
     if e.len() > limit {
         return Err((0, "too many parameters".into()));
@@ -478,7 +474,7 @@ fn analyze<F: Facts>(p: &VProgram, f: &mut F, m: usize, trusted: bool) -> Result
                     };
                     if let Some((n, sel)) = ns {
                         if sel < 0xffff {
-                            let r = x_sel_rep(&XCert { g: &f.g().view(p.methods), cur: m, maps: &empty }, sel);
+                            let r = x_sel_rep(&XCert { g: &f.g().view(p.methods) }, sel);
                             if r >= 0 {
                                 if let Some(ri) = method(p, r as usize) {
                                     if ri.arity as usize == n {
@@ -495,7 +491,7 @@ fn analyze<F: Facts>(p: &VProgram, f: &mut F, m: usize, trusted: bool) -> Result
         if op == NON_LOCAL_BRANCH && h >= 1 {
             if let XKind::Block(d, j) = k[h - 1] {
                 if d >= 1 {
-                    let c = XCert { g: &f.g().view(p.methods), cur: m, maps: &empty };
+                    let c = XCert { g: &f.g().view(p.methods) };
                     let (fk, om) = ok(x_ctx_kinds(&c, m as i64, d));
                     let hd = byte_at(p, bci + 1).unwrap_or(usize::MAX);
                     let target = u16_at(p, bci + 2).zip(u16_at(p, bci + 4)).map(|(lo, hi)| lo | hi << 16);
@@ -515,7 +511,7 @@ fn analyze<F: Facts>(p: &VProgram, f: &mut F, m: usize, trusted: bool) -> Result
             return Err((off, "frame too high".into()));
         }
         let (post, term_ok) = {
-            let c = XCert { g: &f.g().view(p.methods), cur: m, maps: &empty };
+            let c = XCert { g: &f.g().view(p.methods) };
             let post = ok(x_post(p, &c, m, off, &k, trusted));
             let term = matches!(op, RETURN | RETURN_NULL | THROW | BRANCH | BRANCH_BACK | INVOKE_STATIC_TAIL
                 | INVOKE_LAMBDA_TAIL | INVOKE_INITIALIZER_TAIL | NON_LOCAL_RETURN | NON_LOCAL_BRANCH
@@ -645,13 +641,12 @@ fn analyze<F: Facts>(p: &VProgram, f: &mut F, m: usize, trusted: bool) -> Result
 /// `m` that are passed on unchanged for block parameters.
 fn mark_args<F: Facts>(p: &VProgram, f: &mut F, m: usize, t: usize, k: &[XKind], org: &[u8], n: usize) {
     if n > k.len() { return; }
-    let empty = XMaps { idx: CVec::new(), nodes: CVec::new() };
     for x in 0..n {
         let i = k.len() - n + x;
         if matches!(k[i], XKind::Block(..) | XKind::Param) {
             f.mark(t, x);
         } else if k[i] == XKind::Val && org.get(i).is_some_and(|o| *o != NO_ORIGIN)
-            && x_is_block_param(&XCert { g: &f.g().view(p.methods), cur: m, maps: &empty }, t, x) {
+            && x_is_block_param(&XCert { g: &f.g().view(p.methods) }, t, x) {
             f.mark(m, org[i] as usize);
         }
     }
@@ -824,26 +819,22 @@ impl<'a> Oracle<'a> {
     }
 }
 
-impl<'a> MapOracle for Oracle<'a> {
-    fn method_maps(&mut self, _p: &VProgram, _g: &XGlobal, m: usize) -> Result<XMaps, Oom> {
+impl<'a> Oracle<'a> {
+    /// The maps of method `m` for the encoder, `None` if the inference has
+    /// none (the method's maps stay empty and the checker rejects it).
+    pub fn method_maps(&mut self, m: usize) -> Option<Maps> {
         self.last = Some(m);
-        Ok(match self.maps(m) {
-            Ok(maps) => xmaps(&maps),
-            Err(_) => {
-                let size = method(self.p, m).map(|i| i.end().saturating_sub(i.entry as usize)).unwrap_or(0);
-                XMaps { idx: cvec_of(&vec![NO_MAP; size.min(self.p.bytecodes.len())]), nodes: CVec::new() }
-            }
-        })
+        self.maps(m).ok()
     }
 }
 
-/// The verdict of the proven checker (`check::verify`) on the certificate
-/// of `global`, and the method it stopped at when it rejected one.
-pub fn check(p: &VProgram, global: &Global, trusted: bool) -> (bool, Option<usize>) {
-    let mut o = Oracle::new(p, global, trusted);
-    let g = global.g.view(p.methods);
-    let (ok, _) = ok(crate::v2::check::verify(p, &g, &mut o, trusted));
-    (ok, if ok { None } else { o.last })
+/// The verdict of the proven checker (`cert::verify_shipped`) on the
+/// encoded certificate of `global`, and the method and offset it stopped
+/// at when it rejected it (`None`: the certificate could not be encoded).
+pub fn check(p: &VProgram, global: &Global, trusted: bool) -> (bool, Option<(usize, usize)>) {
+    let Ok((cert, _)) = crate::v2::encode::encode(p, global, trusted) else { return (false, None) };
+    let (accepted, m, off) = ok(crate::v2::cert::verify_shipped(p, &cert, global.g.global_count, &global.g.prim_arity, trusted));
+    (accepted, if accepted { None } else { Some((m, off)) })
 }
 
 /// Why method `m` is rejected: the offset of the first instruction the
@@ -855,30 +846,20 @@ pub fn diagnose(p: &VProgram, global: &Global, m: usize, trusted: bool) -> (Opti
     let mut o = Oracle::new(p, global, trusted);
     let maps = match o.maps(m) {
         Err((off, msg)) => return (Some(off), msg),
-        Ok(maps) => xmaps(&maps),
+        Ok(maps) => maps,
     };
-    let g = global.g.view(p.methods);
-    if !o.wf || m >= p.methods.len() || !x_g_ok(&g) || global.g.n != p.methods.len() {
-        return (None, String::from("malformed tables or certificate"));
-    }
-    let c = XCert { g: &g, cur: m, maps: &maps };
-    for off in 0..maps.idx.len() {
-        let top = maps.idx.at(off);
-        if top == NO_MAP { continue; }
-        let k = ok(x_chain(&maps.nodes, top));
-        if !ok(x_instr_ok(p, &c, m, x_info(p, m), off, &k, trusted, &mut Vec::new())) {
-            return (Some(off), format!("rejected by the checker with kinds {:?}", k));
+    match check(p, global, trusted) {
+        (false, Some((at, off))) if at == m => {
+            let kinds = maps.kinds(off).map(|k| format!(" with kinds {:?}", k)).unwrap_or_default();
+            (Some(off), format!("rejected by the checker{}", kinds))
         }
-    }
-    let at = global.g.pin_list().iter().filter(|x| (x.0 as usize) < m).count();
-    match ok(x_pins_agree(&g, m, &maps, at)) {
-        None => (None, String::from("a pinned map differs from the method's map")),
-        Some(_) => (None, String::from("entry kinds or certificate shape rejected by the checker")),
+        (false, None) => (None, String::from("the certificate could not be encoded")),
+        _ => (None, String::from("entry kinds, pins or certificate shape rejected by the checker")),
     }
 }
 
 /// Infers and checks a program given as an `ExecProgram` (the dump path)
-/// with the verifier's generated primitive table: `check::verify`'s
+/// with the verifier's generated primitive table: `cert::verify_shipped`'s
 /// verdict (the heap is not checked here).
 pub fn verify_exec(e: &crate::types::ExecProgram, global_count: u64, trusted: bool) -> bool {
     let h = max_height_of(e);

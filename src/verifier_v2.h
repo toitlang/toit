@@ -15,8 +15,9 @@
 
 #pragma once
 
-// The structural verifier of format 2 (verified/spec, `check::verify`,
-// proven equal to the specification's `accepts`), linked from Rust
+// The structural verifier of format 2 (verified/spec, `cert::verify_shipped`,
+// proven to accept only programs the specification's `accepts` accepts,
+// with the primitive table of the program's policy), linked from Rust
 // (verified/vmverify). It reads the program from the tables the verified
 // core executes (v2_program_tables), not from the snapshot bytes: one
 // description of the program for both. See verified/vmverify/README.md.
@@ -63,13 +64,12 @@ class V2Verifier {
   // accepted the program with the untrusted rules (the caller records the
   // verdict in the allocation: FlashAllocation::program_verified), else
   // the error to fail with (VERIFICATION_FAILED, INVALID_SNAPSHOT or
-  // FORMAT_2_REQUIRED). A format-1 program gets no verdict and is not an
-  // error when -Xuntrusted_format1 allows it ([*no_verdict] is set).
+  // FORMAT_2_REQUIRED: untrusted programs are never in format 1).
   // The verification runs inside one primitive of [process] (if not null)
   // and reports its progress to the scheduler before each method
   // (Process::note_progress), so a long verification is not taken for a
   // dead-lock (verified/vmverify/README.md, "Install time").
-  static const char* verify_installed(Program* program, word program_size, bool* no_verdict,
+  static const char* verify_installed(Program* program, word program_size,
                                       const uint8* certificate = null, word certificate_length = 0,
                                       Process* process = null);
 
@@ -122,8 +122,10 @@ class V2Verifier {
 
   // Test support (verified/tools/vmverify_differential.toit): writes the
   // canonical form of the abstract program the verifier builds from VM
-  // memory to [path].
-  static bool write_canonical(Program* program, const V2MethodTable* table, const char* path);
+  // memory to [path], with the full primitive table, or with the untrusted
+  // policy's if [policy_table].
+  static bool write_canonical(Program* program, const V2MethodTable* table, const char* path,
+                              bool policy_table = false);
 
   // The toolchain's producer of shipped certificates (hosts): infers the
   // certificate of [program], checks it as the device will, and returns it

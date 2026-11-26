@@ -168,11 +168,6 @@ class V2MethodTable {
   // Whether the table uses the program's table literal (no RAM copy).
   bool in_literal() const { return !owned_; }
 
-  // Whether untrusted containers may be in format 1 (and run on the C++
-  // interpreter): -Xuntrusted_format1 or TOIT_UNTRUSTED_FORMAT1=1. By
-  // default untrusted containers must be in format 2.
-  static bool untrusted_format1_allowed();
-
   const uint32* records() const { return records_; }
   word length() const { return length_; }
 
@@ -200,17 +195,20 @@ class V2MethodTable {
 
   // The launch-time verifier (V2Verifier::verify, verified/vmverify)
   // accepted the program on exactly this table: 0 not verified, 1 under
-  // the untrusted rules, 2 under the trusted rules. Set only by the
-  // verifier's accept path; the verified run loop of the core runs only
-  // for a table it accepted (Interpreter::run_v2, TOIT_V2_ACCEPTED).
+  // the untrusted rules and the untrusted policy's primitive table, 2 under
+  // the trusted rules and the trusted policy's table
+  // (PrimitivePolicy::verifier_arities). Set only by the verifier's accept
+  // path; the verified run loop of the core runs only for a table it
+  // accepted (Interpreter::run_v2, TOIT_V2_ACCEPTED).
   uword verified() const { return verified_; }
   void mark_verified(bool trusted) { verified_ = trusted ? 2 : 1; }
 
   // Whether a process with this table runs on the verified loop: accepted
-  // under the untrusted rules, or under the trusted rules for a trusted
-  // process.
+  // for the process' own policy. The verdict is bound to the policy whose
+  // primitive table it was computed with: a verdict for one policy is never
+  // used for a process of another.
   bool runs_verified(bool untrusted) const {
-    return verified_ == 1 || (verified_ == 2 && !untrusted);
+    return verified_ == (untrusted ? 1u : 2u);
   }
 
   // Whether the core's checked loop is linked (TOIT_VERIFIED_CORE_CHECKED_LOOP,
@@ -310,11 +308,18 @@ struct toit_v2_context {
   // guarantees instead of run-time checks; otherwise it runs the checked
   // handlers (verified/core/DESIGN.md, "Accepted programs").
   uword accepted;
-  // PrimitivePolicy::core_arities of the process' policy: entry i is the arity
-  // of core primitive i plus one if the policy resolves it to the VM's own
-  // primitive (the core may run its Rust port), else 0.
-  const uint8* core_arities;
-  uword core_arities_length;
+  // PrimitivePolicy::verifier_arities of the process' policy, the table its
+  // verdict was computed with: module by module (policy_counts[m] entries
+  // of module m from policy_starts[m] on, policy_modules modules), the
+  // arity of every primitive the policy allows, VERIFIER_DENIED for the
+  // others. The core runs a primitive (its Rust port or toit_v2_primitive)
+  // only if the table allows it, and completes a PRIMITIVE of a denied one
+  // itself (PERMISSION_DENIED).
+  const uint8* policy_arities;
+  uword policy_arities_length;
+  const uint32* policy_counts;
+  const uint32* policy_starts;
+  uword policy_modules;
   // ObjectHeap::v2_epoch_address of the process: the core compares it around
   // C++ primitive calls (toit_v2_primitive).
   const uword* epoch;
@@ -376,8 +381,6 @@ static const uword TOIT_V2_REPORT_TRACE = 3;
 // Implemented by the core (verified/core/src/ffi.rs).
 #ifdef TOIT_VERIFIED_CORE
 uword toit_v2_run(toit_v2_context* context);
-// Whether core primitive `index` has a Rust port in the core.
-uword toit_v2_core_ported(uword index);
 uword toit_vcore_layout_count();
 bool toit_vcore_layout_entry(uword i, const char** name, uword* value);
 uword toit_vcore_opcode_length(uword opcode);

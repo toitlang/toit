@@ -1381,7 +1381,7 @@ fn compare_num(a: Num, b: Num) -> u8 {
 /// verification, else on the checked handlers (`run_checked`). TRUSTED glue:
 /// the ghost state is the one the run loop's precondition names
 /// (theorem.rs); `reload` checks the stack object.
-pub fn run(p: Program, rt: Runtime, globals: Globals, heap: Heap, pre: Preemption, core_arities: Table<u8>,
+pub fn run(p: Program, rt: Runtime, globals: Globals, heap: Heap, pre: Preemption,
            accepted: Option<crate::ffi::Accepted>) -> (usize, i64) {
     let mem = rt.stack();
     let bot = mem.slot(0);
@@ -1391,7 +1391,7 @@ pub fn run(p: Program, rt: Runtime, globals: Globals, heap: Heap, pre: Preemptio
         fw: 0, need: usize::MAX, bot, slow_k: crate::step::Slow::Op, slow_w: 0,
         g: Ghost::assume_new(),
     };
-    let env = Env { p, rt, pre, core_arities };
+    let env = Env { p, rt, pre };
     if !m.reload(&env.p) || m.ftop < FRAME_WORDS {
         env.rt.report(V2_REPORT_STUCK, m.bci, stuck::FATAL);
         return (RESULT_TERMINATED, 1);

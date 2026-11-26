@@ -141,10 +141,11 @@ Commit 4f488c84 had the switch (sdkconfigs and the CI step that installs
 the Rust targets); 7c716b70 reverted it. The Xtensa toolchain is not a
 blocker any more:
 verified/XTENSA-RUST-EVALUATION.md and XTENSA-RUST-FIXES.md show that the
-esp-rs toolchain (`cargo +esp`, 1.99.0.0) builds the core for the classic
-ESP32 and that our code triggers none of its known wrong-code bugs
+esp-rs toolchain (1.99.0.0) builds the core for the classic ESP32 and
+that our code triggers none of its known wrong-code bugs
 (verified/vmverify/tests/xtensa_codegen_check.sh, to rerun on every
-toolchain update).
+toolchain update). The firmware now uses the Toit fork of that toolchain
+with those bugs fixed (`cargo +toit-esp`, docs/xtensa-rust-toolchain.md).
 
 The switches (toolchains/idf/components/toit/Kconfig):
 
@@ -980,11 +981,11 @@ lowers them to the built-ins of note 19 or to their Toit fallback.
 
 Marked `FORMAT-1-ONLY` in the source:
 
-- tests/sandbox/field-access-test.toit, runtime-hardening-test.toit
-  (C++ interpreter hardening), verify-reject-test.toit (C++ verifier);
-- the format-1 half of tests/sandbox/invalid-utf-8-literal-test.toit;
-- tests/sandbox/cli/format1-{refused,allowed}-snapshot
-  (tests/sandbox/CMakeLists.txt);
+- tests/sandbox/runtime-hardening-test.toit (C++ interpreter hardening),
+  verify-reject-test.toit (C++ verifier);
+- tests/sandbox/cli/format1-{refused,old-variable,old-flag}-snapshot
+  (tests/sandbox/CMakeLists.txt) and tests/sandbox/boot-refused-test.toit
+  (untrusted format-1 programs are refused);
 - tests-toitp-bytecode-match-test (tests/toitp/bytecode_lister.cc against
   the `BYTE-CODES` table of tools/snapshot.toit).
 
@@ -1003,12 +1004,12 @@ format-1 code is mixed with shared code):
 | Area | Files | Lines | Effort |
 |---|---|---|---|
 | C++ interpreter | src/interpreter_run.cc (all but `run_v2` hand-off, 2,329), interpreter_core.cc (`hash_do`, `fast_size`: ~145 of 439; `fast_at`, `compare_numbers` stay for primitives), interpreter.cc (~250 of 328), interpreter.h (~150; FRAME_SIZE, LINK_*_SLOT, UNWIND_REASON move to the compiler), method_entries.cc/.h (313, users process_group.cc, primitive_core.cc), objects.cc/objects_runtime.cc/objects.h Stack helpers (~115 est), primitive_core.cc spawn/task branches (~32), printing.cc (~215, only for `Interpreter::trace`) | ~3,560 | 3-4 d (replace `Method` handles by method indices in Process/Program/scheduler) |
-| C++ verifier and hardening | src/verifier.cc (~2,100 of 2,234), verifier.h (~60), toit_run.cc `--verify` format-1 paths, `--fuzz`, `--dump` (~150), `FORMAT_2_REQUIRED`/`untrusted_format1` gating (~45 in primitive_programs_registry.cc, primitive_snapshot.cc, verifier_v2.cc, interpreter_v2.cc/.h), `TOIT_CHECKED_FIELD_ACCESS` | ~2,360 | 1-2 d |
+| C++ verifier and hardening | src/verifier.cc (~2,100 of 2,234), verifier.h (~60), toit_run.cc `--verify` format-1 paths, `--fuzz`, `--dump` (~150), `FORMAT_2_REQUIRED` gating (in primitive_programs_registry.cc, primitive_snapshot.cc, verifier_v2.cc), `TOIT_CHECKED_FIELD_ACCESS` | ~2,360 | 1-2 d |
 | Snapshot and program | program.h `frame_marker`, entry `Method` accessors (~25); snapshot/image code is format-neutral; bump the envelope version | ~25 | 0.5 d |
 | Compiler | emitter.cc (15 format checks), program_builder.cc (8), byte_gen.cc (6), compiler.cc, toitc.cc: ~200 lines of format-1 emission kept as the propagator's IR; only the user-facing selection goes (`-Xbytecode_format=1`, `TOIT_BYTECODE_FORMAT=1`, the CMake variable: ~35) | keep ~200 | 0.5 d |
 | Tools | tools/snapshot.toit format-1 header and `BYTE-CODES` (~140), needed by dump_types and the propagation tests while `--propagate` writes format 1 | keep | 0 |
 | Tests | the FORMAT-1-ONLY list above (~560 lines) | ~560 | 0.5 d |
-| Flags | `untrusted_format1`/`TOIT_UNTRUSTED_FORMAT1`, `TOIT_VERIFY_VERBOSE`; `bytecode_format` becomes internal | | with the above |
+| Flags | `TOIT_VERIFY_VERBOSE` (`untrusted_format1`/`TOIT_UNTRUSTED_FORMAT1` already removed); `bytecode_format` becomes internal | | with the above |
 | Devices | the classic ESP32, the C6 and the EC618 build without the C++ interpreter (`TOIT_CXX_INTERPRETER=n`, `EC618_BYTECODE_FORMAT=2`); C3, S2, S3 and P4 still link it (format 1) | | see Devices, "Other targets" |
 
 The VM side is about 5,950 lines. Deleting them on hosts is 6-8

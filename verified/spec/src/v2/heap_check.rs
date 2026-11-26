@@ -22,7 +22,7 @@
 //! every string holds well-formed UTF-8 (one linear pass over the string
 //! bytes; primitives are not yet proven to keep it, so it is a fact about
 //! the loaded heap, not part of the invariant `wf`).
-//! The VM can run it on an untrusted launch next to `check::verify`.
+//! The VM runs it on an untrusted launch next to `cert::verify_shipped`.
 //! `check_heap` (plain Rust) only wraps it for `toit_spec_verify` and
 //! words the rejection.
 

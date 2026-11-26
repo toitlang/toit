@@ -111,6 +111,7 @@ static void print_verify_usage() {
       "  --emit-bytecodes=<f>   Write the raw program bytecodes to the file and exit.\n"
       "  --emit-coverage=<f>    Write per-byte reachability (1=opcode, 2=operand) and exit.\n"
       "  --emit-canonical=<f>   Format 2: write the verifier's abstract program (canonical form) and exit.\n"
+      "  --emit-canonical-policy=<f>  As --emit-canonical, with the untrusted policy's primitive table.\n"
       "  --no-certificate       Format 2: ignore a shipped certificate (infer one).\n"
       "  --require-certificate  Format 2: reject without a shipped certificate (as devices do).\n");
 }
@@ -129,6 +130,7 @@ static int verify_snapshot(int argc, char** argv) {
   const char* emit_bytecodes = null;
   const char* emit_coverage = null;
   const char* emit_canonical = null;
+  bool canonical_policy = false;
   const char* path = null;
   bool use_certificate = true;
   bool require_certificate = false;
@@ -152,6 +154,10 @@ static int verify_snapshot(int argc, char** argv) {
     else if (strncmp(argv[i], "--emit-bytecodes=", 17) == 0) emit_bytecodes = argv[i] + 17;
     else if (strncmp(argv[i], "--emit-coverage=", 16) == 0) emit_coverage = argv[i] + 16;
     else if (strncmp(argv[i], "--emit-canonical=", 17) == 0) emit_canonical = argv[i] + 17;
+    else if (strncmp(argv[i], "--emit-canonical-policy=", 24) == 0) {
+      emit_canonical = argv[i] + 24;
+      canonical_policy = true;
+    }
     else if (strcmp(argv[i], "--no-certificate") == 0) use_certificate = false;
     else if (strcmp(argv[i], "--require-certificate") == 0) require_certificate = true;
     else if (argv[i][0] == '-') {
@@ -202,7 +208,7 @@ static int verify_snapshot(int argc, char** argv) {
     // builds from VM memory (verified/tools/vmverify_differential.toit).
     V2MethodTable* table = program->is_format2() ? V2MethodTable::compute(program) : null;
     if (table == null) { fprintf(stderr, "not a well-formed format-2 program\n"); return 1; }
-    bool ok = V2Verifier::write_canonical(program, table, emit_canonical);
+    bool ok = V2Verifier::write_canonical(program, table, emit_canonical, canonical_policy);
     delete table;
     return ok ? 0 : 1;
   }
@@ -384,8 +390,9 @@ static int verify_snapshot(int argc, char** argv) {
 // The toolchain's producer of shipped certificates (format 2 note 18,
 // verified/spec/format/18-shipped-certificate.md):
 //   toit.run --certify [--trusted] <snapshot> [-o <out>]
-// infers the certificate of the format-2 program in the snapshot bundle,
-// checks it as a device will, and writes the bundle with the certificate
+// infers the certificate of the format-2 program in the snapshot bundle for
+// the untrusted policy (its rules and primitive table; --trusted: the
+// trusted ones), checks it as a device will, and writes the bundle with the certificate
 // member to <out> (default: in place). Returns 0 on success, 1 if the program
 // has no accepted certificate, 2 for usage errors. Called by toit.compile
 // for format-2 snapshots.

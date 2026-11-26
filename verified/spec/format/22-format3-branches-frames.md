@@ -96,6 +96,12 @@ whose distance shrinks.
   form, the u16 otherwise) and `branch_target`. The checker (`check.rs`:
   `x_post_misc`, `x_is_terminator`, `x_terminator_ok`, `x_instr_ok`) and
   the certificate inference (`infer.rs`) and encoder (`encode.rs`) follow.
+  The single-pass checker (`walk.rs`, merged from verifier/single-pass)
+  uses the verifier's `branch_target`; its `branch_kinds` and `local_ok`
+  use `is_uncond_branch` and `branch_dist`; the walk's branch obligations
+  (`x_obls`) and its forward-distance check take the one-byte distance;
+  its scan for backward targets (`x_back_targets`, a hint whose omissions
+  only reject) recognises BRANCH_BACK_S.
 * Soundness: `lemma_step_branch` covers the short forms with the same
   proof (the distance and the length are parameters); the family of
   `sound_instr.rs` includes 114..118. The core's register handlers

@@ -7,7 +7,6 @@
 # The tests of the structural verifier and the interpreter hardening fork
 # toit.run and toit.compile, so they take both as arguments.
 set(TOOL_TESTS
-  "tests/sandbox/field-access-test.toit"
   "tests/sandbox/runtime-hardening-test.toit"
   "tests/sandbox/verify-reject-test.toit"
   "tests/sandbox/verify-launch-test.toit"
@@ -53,8 +52,7 @@ endforeach()
 # the tool tests' child compilers inherit that. A program that is only run
 # untrusted uses the user-facing switch instead (toit.run --untrusted, also
 # for writing the snapshot: run-untrusted.cmake).
-# Untrusted containers must be in format 2 unless -Xuntrusted_format1 or
-# TOIT_UNTRUSTED_FORMAT1=1 is given (verified/core/DESIGN.md).
+# Untrusted containers must be in format 2 (verified/core/DESIGN.md).
 
 # Programs run directly as untrusted containers with 'toit.run --untrusted'.
 set(UNTRUSTED_RUN_TESTS
@@ -125,20 +123,32 @@ add_test(
   )
 set_tests_properties(tests/sandbox/cli/cut-slice-snapshot PROPERTIES TIMEOUT 60 ENVIRONMENT "TOIT_BYTECODE_FORMAT=2")
 
+# Strings that are not valid UTF-8, made the same way, given to the
+# primitives and the message encoder (the run-time half of
+# invalid-utf-8-literal-test.toit).
+add_test(
+  NAME tests/sandbox/cli/invalid-strings-snapshot
+  COMMAND ${CMAKE_COMMAND}
+      -DTOIT_RUN=$<TARGET_FILE:toit.run>
+      -DPROGRAM=${CMAKE_CURRENT_SOURCE_DIR}/cli/invalid-strings-main.toit
+      "-DEXPECTED_OUTPUT=utf-16 units: 7 last: fffd.*encoded: [0-9]+.*encode-object: PERMISSION_DENIED.*send to system: WRONG_OBJECT_TYPE.*send nested: WRONG_OBJECT_TYPE.*done"
+      -DTMP=${CMAKE_CURRENT_BINARY_DIR}/cli-invalid-strings
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/run-cut-slice.cmake
+  )
+set_tests_properties(tests/sandbox/cli/invalid-strings-snapshot PROPERTIES TIMEOUT 60 ENVIRONMENT "TOIT_BYTECODE_FORMAT=2")
+
 # FORMAT-1-ONLY (docs/format2-migration.md): delete with format 1.
-# A format-1 snapshot is refused as an untrusted container by default, and
-# runs (on the C++ interpreter) when format 1 is allowed.
-foreach(variant refused allowed)
-  if(variant STREQUAL "refused")
-    set(env "TOIT_BYTECODE_FORMAT=1")
-    set(exit_code 1)
-    set(output "FORMAT_2_REQUIRED")
-    set(unexpected "hello from the sandbox")
-  else()
+# A format-1 snapshot is refused as an untrusted container in every build:
+# untrusted programs never run on the C++ interpreter. The flag and the
+# variable that used to allow it (-Xuntrusted_format1,
+# TOIT_UNTRUSTED_FORMAT1=1) no longer exist and change nothing.
+foreach(variant refused old-variable old-flag)
+  set(env "TOIT_BYTECODE_FORMAT=1")
+  set(run_flags "")
+  if(variant STREQUAL "old-variable")
     set(env "TOIT_BYTECODE_FORMAT=1;TOIT_UNTRUSTED_FORMAT1=1")
-    set(exit_code 0)
-    set(output "hello from the sandbox")
-    set(unexpected "")
+  elseif(variant STREQUAL "old-flag")
+    set(run_flags "-Xuntrusted_format1")
   endif()
   set(test_name "tests/sandbox/cli/format1-${variant}-snapshot")
   add_test(
@@ -147,9 +157,10 @@ foreach(variant refused allowed)
         -DTOIT_RUN=$<TARGET_FILE:toit.run>
         -DPROGRAM=${CMAKE_CURRENT_SOURCE_DIR}/cli/print-main.toit
         -DMODE=snapshot
-        -DEXPECTED_EXIT=${exit_code}
-        "-DEXPECTED_OUTPUT=${output}"
-        "-DUNEXPECTED_OUTPUT=${unexpected}"
+        -DRUN_FLAGS=${run_flags}
+        -DEXPECTED_EXIT=1
+        "-DEXPECTED_OUTPUT=FORMAT_2_REQUIRED"
+        "-DUNEXPECTED_OUTPUT=hello from the sandbox"
         -DTMP=${CMAKE_CURRENT_BINARY_DIR}/cli-format1-${variant}
         -P ${CMAKE_CURRENT_SOURCE_DIR}/run-untrusted.cmake
     )

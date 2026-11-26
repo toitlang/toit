@@ -22,7 +22,11 @@ namespace toit {
 
 // Resource pool of a static set of resources. When manipulated, the global
 // system lock will be taken.
-template<typename T, T Invalid>
+// Invalid, the value returned when no resource is available, is an int
+// converted to T: for an ESP-IDF enum it is typically -1, outside the
+// enumeration's range, and such a conversion is not a constant expression
+// (clang rejects it as a template argument of type T).
+template<typename T, int Invalid>
 class ResourcePool {
  public:
   template<typename... Ts>
@@ -51,7 +55,7 @@ class ResourcePool {
         return element->value;
       }
     }
-    return Invalid;
+    return static_cast<T>(Invalid);
   }
 
   // Take a given resource from the pool. Returns false if it's not available.

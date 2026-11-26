@@ -16,8 +16,11 @@
 
 # Checks the classic-ESP32 (Xtensa) build of the device library for the
 # code patterns of the known wrong-code bugs of the esp-rs toolchain
-# (verified/XTENSA-RUST-FIXES.md). Builds the library as the firmware does
-# (`cargo +esp`, profile `device`, -Zbuild-std, -C save-temps) and fails if
+# (verified/XTENSA-RUST-FIXES.md). The Toit toolchain fixes them
+# (docs/xtensa-rust-toolchain.md); the check stays as a guard for other
+# toolchains and for regressions. Builds the library as the firmware does
+# (`cargo +toit-esp`, profile `device`, -Zbuild-std, -C save-temps) and
+# fails if
 #
 #   llvm#140 / rust#284  a stack object is aligned above 16 bytes (IR), or
 #                        any instruction but entry/movsp writes a1 (asm);
@@ -33,20 +36,26 @@
 #                        commuting the operands of an add.
 #
 # Usage: xtensa_codegen_check.sh [OPT-LEVEL]   (default 3; s and z too)
-# Needs the esp toolchain (espup) and its xtensa-esp-elf GCC (objdump).
+# Needs the rustup toolchain XTENSA_RUST_TOOLCHAIN (default toit-esp) and
+# ESP-IDF's xtensa-esp-elf GCC (objdump; on the PATH or in ~/.espressif).
 
 set -euo pipefail
 OPT="${1:-3}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VMVERIFY="$(cd "$HERE/.." && pwd)"
 OUT="${OUT:-$VMVERIFY/target/xtensa-check-$OPT}"
-GCC_BIN="$(ls -d "$HOME"/.rustup/toolchains/esp/xtensa-esp-elf/*/xtensa-esp-elf/bin | head -1)"
+TOOLCHAIN="${XTENSA_RUST_TOOLCHAIN:-toit-esp}"
+if command -v xtensa-esp32-elf-objdump > /dev/null; then
+  GCC_BIN="$(dirname "$(command -v xtensa-esp32-elf-objdump)")"
+else
+  GCC_BIN="$(ls -d "$HOME"/.espressif/tools/xtensa-esp-elf/*/xtensa-esp-elf/bin | sort -V | tail -n 1)"
+fi
 OBJDUMP="$GCC_BIN/xtensa-esp32-elf-objdump"
 LLVM_DIS="${LLVM_DIS:-$(command -v llvm-dis || true)}"
 mkdir -p "$OUT"
 start=$(date +%s)
 (cd "$VMVERIFY/staticlib" && PATH="$GCC_BIN:$PATH" CARGO_PROFILE_DEVICE_OPT_LEVEL="$OPT" RUSTFLAGS="-C save-temps" \
-  cargo +esp build --quiet --profile device --no-default-features --features device-runtime \
+  cargo "+$TOOLCHAIN" build --quiet --profile device --no-default-features --features device-runtime \
     -Zbuild-std=core,alloc --target xtensa-esp32-none-elf --target-dir "$OUT/target")
 LIB="$OUT/target/xtensa-esp32-none-elf/device/libtoit_rust.a"
 rm -rf "$OUT/obj" "$OUT/bc"

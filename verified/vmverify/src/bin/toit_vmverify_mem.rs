@@ -19,40 +19,18 @@
 //! The program is loaded with the reference loader first (in the VM the
 //! tables are the VM's own memory, borrowed); the measurement covers what
 //! the verification itself allocates: the heap check, the global phase of
-//! the inference, the per-method maps the checker asks for, the checker,
+//! the inference, its encoded certificate checked by the checker of shipped
+//! certificates (largest-maps: 0, the maps are encoded),
 //! and `x_loaded_ok`. Prints one line per program.
 //!
 //! Usage: toit_vmverify_mem [--trusted] [--runs N] <dump>...
 
 use std::time::Instant;
 use toit_spec::interp::loader;
-use toit_spec::v2::check::{self, MapOracle, XGlobal, XMaps};
-use toit_spec::v2::vprog::VProgram;
+// (No oracle any more: the inference's maps reach the checker as the
+// encoded certificate.)
 use toit_spec::v2::{cert, encode, heap_check, infer, vprog};
 use toit_vmverify::counting;
-
-/// The oracle, recording the largest maps it handed out.
-struct Sized<'a> {
-    inner: infer::Oracle<'a>,
-    max_maps: usize,
-    max_method: usize,
-    ns: u64,
-}
-
-impl<'a> MapOracle for Sized<'a> {
-    fn method_maps(&mut self, p: &VProgram, g: &XGlobal, m: usize) -> Result<XMaps, toit_spec::xvec::Oom> {
-        let t = Instant::now();
-        let r = self.inner.method_maps(p, g, m)?;
-        self.ns += t.elapsed().as_nanos() as u64;
-        // The elements (the chunks hold at most a chunk more).
-        let bytes = r.idx.len() * 4 + r.nodes.len() * std::mem::size_of::<check::XNode>();
-        if bytes > self.max_maps {
-            self.max_maps = bytes;
-            self.max_method = m;
-        }
-        Ok(r)
-    }
-}
 
 fn main() {
     let mut trusted = false;
@@ -90,27 +68,30 @@ fn main() {
             let peak1 = counting::peak_since(base);
             let base2 = counting::start_peak();
             let t1 = Instant::now();
-            let mut o = Sized { inner: infer::Oracle::new(p, &global, trusted), max_maps: 0, max_method: 0, ns: 0 };
-            let gv = global.g.view(p.methods);
-            let (ok, _) = infer::ok(check::verify(p, &gv, &mut o, trusted));
+            let te = Instant::now();
+            let ok = match encode::encode(p, &global, trusted) {
+                Ok((bytes, _)) => infer::ok(cert::verify_shipped(p, &bytes, global.g.global_count, &global.g.prim_arity, trusted)).0,
+                Err(_) => false,
+            };
+            let encode_ns = te.elapsed().as_nanos() as u64;
             let loaded_ok = heap_check::x_loaded_ok(p, global.g.global_count, &loaded.heap, &loaded.globals);
             let t2 = Instant::now();
             let peak2 = counting::peak_since(base2);
             let peak = peak1.max(base2 - base + peak2);
             if std::env::var("MEM_DEBUG").is_ok() {
                 let g = &global.g;
-                eprintln!("phase 1 peak {} global {} phase 2 peak above global {}; global phase {:.1} ms, maps for the checker {:.1} ms", peak1, global_bytes, peak2, (t1 - t0).as_secs_f64() * 1e3, o.ns as f64 / 1e6);
+                eprintln!("phase 1 peak {} global {} phase 2 peak above global {}; global phase {:.1} ms, encode and check {:.1} ms", peak1, global_bytes, peak2, (t1 - t0).as_secs_f64() * 1e3, encode_ns as f64 / 1e6);
                 eprintln!("  mw {} crec {} sel {} pins {} nodes {} seeds {} rounds {} errors {:?}", g.mw.len(), g.crec.len(),
                     g.sel.len(), g.pins.len(), g.nodes.len(), global.seeds.len(), global.rounds, global.errors);
             }
-            let infer_ms = (t1 - t0).as_secs_f64() * 1e3 + o.ns as f64 / 1e6;
-            let check_ms = (t2 - t1).as_secs_f64() * 1e3 - o.ns as f64 / 1e6;
+            let infer_ms = (t1 - t0).as_secs_f64() * 1e3;
+            let check_ms = (t2 - t1).as_secs_f64() * 1e3;
             let total = (t2 - t0).as_secs_f64() * 1e3;
             if best.map_or(true, |b| total < b.2) {
                 best = Some((infer_ms, check_ms, total));
                 line = format!("{} {} {} {} {} {} {} {:.1} {:.1} {:.1} {}",
                     std::path::Path::new(&path).file_name().unwrap().to_string_lossy(),
-                    p.bytecodes.len(), p.methods.len(), largest, global_bytes, o.max_maps, peak,
+                    p.bytecodes.len(), p.methods.len(), largest, global_bytes, 0, peak,
                     infer_ms, check_ms, total,
                     if ok && loaded_ok && heap_ok { "accepted" } else { "rejected" });
             }
@@ -126,7 +107,7 @@ fn main() {
                 for _ in 0..runs {
                     let base = counting::start_peak();
                     let t0 = Instant::now();
-                    let (ok, _) = infer::ok(cert::verify_shipped(p, &bytes, loaded.globals.len() as u64, &prim_arity, trusted));
+                    let (ok, _, _) = infer::ok(cert::verify_shipped(p, &bytes, loaded.globals.len() as u64, &prim_arity, trusted));
                     let ms = t0.elapsed().as_secs_f64() * 1e3;
                     let peak = counting::peak_since(base);
                     if best.map_or(true, |b| ms < b.0) { best = Some((ms, peak, ok)); }

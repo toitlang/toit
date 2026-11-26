@@ -16,20 +16,23 @@
 //! TRUSTED: the verdict. Accepts exactly when the two proven checks of
 //! SOUNDNESS.md accept, on the program converted from VM memory:
 //!
-//! * `check::verify(p, g, oracle, trusted)`, proven to return exactly
-//!   `pins_sorted(g) && split_ok(vview(p), g@, ms, trusted)` for the maps
-//!   `ms` the oracle gave it; `split_ok` implies `accepts(vview(p),
-//!   with_maps(g@, ms), trusted)` (`v2::split::lemma_split_sound`);
+//! * `cert::verify_shipped(p, cert, global_count, prim_arity, trusted)`
+//!   (with progress reports: `progress::verify_shipped_progress`), proven to
+//!   return true only if some certificate `c` with these trusted fields is
+//!   accepted (`accepts(vview(p), c, trusted)`): the single-pass checker
+//!   `v2::walk` establishes `split_ok(vview(p), g@, ms, trusted)` for ghost
+//!   maps `ms`, and `v2::split::lemma_split_sound` gives `accepts` of
+//!   `with_maps(g@, ms)`;
 //! * `heap_check::x_loaded_ok_stream(p, objects, global_count, globals)`,
 //!   which accepts only if the heap the converted objects form satisfies
 //!   `loaded_ok` for every certificate with that global count, so for
-//!   `with_maps(g@, ms)` as well. The objects are checked one at a time as
+//!   that `c` as well. The objects are checked one at a time as
 //!   `from_vm` converts them (none is kept); the conversion must also end
 //!   without error with every object found converted (`complete`).
 //!
-//! So `theorem_soundness_split` (= `theorem_soundness` for that assembled
-//! certificate) applies. The global part `g` comes from the untrusted
-//! inference, except its trusted fields (`global_count`, `prim_arity`),
+//! So `theorem_soundness` applies to `c`. The certificate comes from the
+//! untrusted toolchain (shipped) or, on hosts, the untrusted inference
+//! (encoded and checked the same way), except its trusted fields (`global_count`, `prim_arity`),
 //! which are set here from the program's globals and the VM's table.
 //! `x_wf_program2` runs first (the inference needs it). Everything after
 //! the verdict is diagnostics.
@@ -45,10 +48,6 @@ use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use toit_spec::v2::check;
-#[cfg(feature = "infer")]
-use toit_spec::v2::check::{MapOracle, XGlobal, XMaps};
-#[cfg(feature = "infer")]
-use toit_spec::xvec::Oom;
 use toit_spec::v2::vprog::VProgram;
 use crate::clock::Clock;
 use toit_spec::v2::{cert, heap_check};
@@ -99,23 +98,6 @@ impl Verdict {
 
     pub fn out_of_memory() -> Verdict {
         Verdict::new(OUT_OF_MEMORY, Cow::Borrowed("out of memory"))
-    }
-}
-
-/// The inference's oracle, timed.
-#[cfg(feature = "infer")]
-struct Timed<'a> {
-    inner: infer::Oracle<'a>,
-    ns: u64,
-}
-
-#[cfg(feature = "infer")]
-impl<'a> MapOracle for Timed<'a> {
-    fn method_maps(&mut self, p: &VProgram, g: &XGlobal, m: usize) -> Result<XMaps, Oom> {
-        let t = Clock::start();
-        let r = self.inner.method_maps(p, g, m);
-        self.ns += t.ns();
-        r
     }
 }
 
@@ -173,8 +155,8 @@ pub fn verify(c: &mut Converted, trusted: bool, cert: Option<&[u8]>, progress: V
             mem_trace!("shipped certificate checked");
             let check_ns = t.ns();
             let mut v = match verdict {
-                Ok((true, _)) => Verdict::new(ACCEPTED, Cow::Borrowed("")),
-                Ok((false, at)) => diagnose_shipped(p, cert, at, global_count, prim_arity, trusted),
+                Ok((true, _, _)) => Verdict::new(ACCEPTED, Cow::Borrowed("")),
+                Ok((false, at, off)) => diagnose_shipped(p, cert, at, off, global_count, prim_arity, trusted),
                 Err(_) => Verdict::out_of_memory(),
             };
             v.check_ns = check_ns;
@@ -200,16 +182,21 @@ fn verify_inferred(p: &VProgram, global_count: u64, prim_arity: Vec<Vec<u8>>, tr
     // globals against this count) are the inference's inputs.
     let global = infer::infer_global(p, global_count, prim_arity, trusted);
     let mut infer_ns = t.ns();
+    // The certificate as the toolchain ships it (the encoder computes each
+    // method's maps), checked by the proven checker of shipped
+    // certificates as a device checks it.
     let t = Clock::start();
-    let mut oracle = Timed { inner: infer::Oracle::new(p, &global, trusted), ns: 0 };
-    let g = global.g.view(p.methods);
-    let verdict = check::verify(p, &g, &mut oracle, trusted);
-    let at = oracle.inner.last;
-    let check_ns = t.ns().saturating_sub(oracle.ns);
-    infer_ns += oracle.ns;
+    let encoded = toit_spec::v2::encode::encode(p, &global, trusted);
+    infer_ns += t.ns();
+    let t = Clock::start();
+    let verdict = match &encoded {
+        Ok((cert, _)) => cert::verify_shipped(p, cert, global.g.global_count, &global.g.prim_arity, trusted),
+        Err(_) => Ok((false, p.methods.len(), 0)),
+    };
+    let check_ns = t.ns();
     let mut v = match verdict {
-        Ok((true, _)) => Verdict::new(ACCEPTED, Cow::Borrowed("")),
-        Ok((false, _)) => diagnose(p, &global, at, trusted),
+        Ok((true, _, _)) => Verdict::new(ACCEPTED, Cow::Borrowed("")),
+        Ok((false, at, _)) => diagnose(p, &global, at, trusted),
         Err(_) => Verdict::out_of_memory(),
     };
     v.infer_ns = infer_ns;
@@ -217,35 +204,50 @@ fn verify_inferred(p: &VProgram, global_count: u64, prim_arity: Vec<Vec<u8>>, tr
     v
 }
 
+/// What `cert::x_header_error` reports, in words.
+pub fn header_error_text(code: u32) -> &'static str {
+    match code {
+        cert::HEADER_OK => "certificate header accepted",
+        cert::HEADER_MALFORMED => "malformed certificate (no certificate header)",
+        cert::HEADER_VERSION => "certificate of another format version (this verifier reads version 2)",
+        cert::HEADER_METHODS => "certificate of another program (method count)",
+        cert::HEADER_POLICY => "certificate made for another primitive policy",
+        _ => "malformed certificate (a section outside the certificate)",
+    }
+}
+
 /// Why the shipped certificate was rejected (diagnostics only): the method
 /// the checker stopped at, and on hosts what the inference says about it.
-fn diagnose_shipped(p: &VProgram, cert: &[u8], at: usize, global_count: u64, prim_arity: Vec<Vec<u8>>, trusted: bool) -> Verdict {
-    let parsed = cert::parse_cert(p, cert, global_count, &prim_arity).is_some();
-    if !parsed {
-        return Verdict::new(CERTIFICATE, "malformed certificate (header or sections)".into());
+fn diagnose_shipped(p: &VProgram, cert: &[u8], at: usize, off: usize, global_count: u64, prim_arity: Vec<Vec<u8>>, trusted: bool) -> Verdict {
+    let header = cert::x_header_error(cert, p.methods.len(), &prim_arity);
+    if header != cert::HEADER_OK {
+        return Verdict::new(CERTIFICATE, Cow::Borrowed(header_error_text(header)));
     }
     #[cfg(feature = "infer")]
     {
         crate::counting::stop_failing();
         let global = infer::infer_global(p, global_count, prim_arity, trusted);
-        if !infer::check(p, &global, trusted).0 {
-            let mut v = diagnose(p, &global, infer::check(p, &global, trusted).1, trusted);
+        if let (false, at2) = infer::check(p, &global, trusted) {
+            let mut v = diagnose(p, &global, at2.map(|x| x.0).unwrap_or(p.methods.len()), trusted);
             v.message = format!("{} (shipped certificate rejected at method {})", v.message, at).into();
             return v;
         }
     }
     #[cfg(not(feature = "infer"))]
     let _ = trusted;
-    let mut v = Verdict::new(CERTIFICATE, text!("the shipped certificate is rejected", "the shipped certificate is rejected (method {})", at));
-    v.method = at as isize;
+    let mut v = Verdict::new(CERTIFICATE, text!("the shipped certificate is rejected", "the shipped certificate is rejected (method {} +{})", at, off));
+    if at < p.methods.len() {
+        v.method = at as isize;
+        v.offset = off as isize;
+    }
     v
 }
 
-/// Why `check::verify` rejected (called only after it did): `at` is the
-/// last method it asked maps for.
+/// Why the checker rejected the inferred certificate (called only after it
+/// did): `m` is the method it stopped at (the method count: the tables).
 #[cfg(feature = "infer")]
-fn diagnose(p: &VProgram, global: &infer::Global, at: Option<usize>, trusted: bool) -> Verdict {
-    let Some(m) = at else {
+fn diagnose(p: &VProgram, global: &infer::Global, m: usize, trusted: bool) -> Verdict {
+    if m >= p.methods.len() {
         let mut v = Verdict::new(TABLES, "program tables (tables_ok)".into());
         if let Some((m, off, msg)) = global.errors.first() {
             v.message = format!("program tables (tables_ok); inference: method {} +{}: {}", m, off, msg).into();

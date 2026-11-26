@@ -20,6 +20,11 @@ cmake_policy(SET CMP0079 NEW)
 set(TOIT_SYSTEM_NAME "esp32")
 
 set(TOIT_INTERPRETER_FLAGS "-fno-crossjumping;-fno-tree-tail-merge" CACHE STRING "toit interpreter flags")
+if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    # ESP-IDF built with clang (IDF_TOOLCHAIN=clang, experimental): clang
+    # has no such options (clang-launcher.sh drops them likewise).
+    set(TOIT_INTERPRETER_FLAGS "")
+endif()
 
 # If TOIT_SDK_DIR is not set, do it now.
 if (NOT TOIT_SDK_DIR)
@@ -29,20 +34,48 @@ set(TOIT_SDK_DIR ${TOIT_SDK_DIR} PARENT_SCOPE)
 set(TOIT ${TOIT_SDK_DIR}/bin/toit)
 set(CMAKE_BUILD_TYPE Release)
 
+# The Rust toolchain of the Xtensa chips (classic ESP32, ESP32-S3): the Toit
+# fork of the esp-rs toolchain, built from github.com/toitlang/rust and
+# installed as a rustup toolchain (docs/xtensa-rust-toolchain.md). The build
+# fails unless that toolchain reports the pinned release; an empty
+# TOIT_XTENSA_RUST_RELEASE accepts any (for trying another build).
+set(TOIT_XTENSA_RUST_TOOLCHAIN "toit-esp" CACHE STRING
+    "rustup toolchain for the Xtensa chips (docs/xtensa-rust-toolchain.md)")
+set(TOIT_XTENSA_RUST_RELEASE "toit-esp-1.99.0.0-1" CACHE STRING
+    "Release the Xtensa Rust toolchain must report in rustc -V (empty: any)")
+function(toit_check_xtensa_rust_toolchain)
+  set(hint "Build and install it with toit/build.sh of https://github.com/toitlang/rust, tag ${TOIT_XTENSA_RUST_RELEASE} (docs/xtensa-rust-toolchain.md).")
+  find_program(TOIT_RUSTUP rustup)
+  if (NOT TOIT_RUSTUP)
+    message(FATAL_ERROR "The verified core for ${IDF_TARGET} needs the rustup toolchain '${TOIT_XTENSA_RUST_TOOLCHAIN}', but rustup was not found. ${hint}")
+  endif()
+  execute_process(COMMAND "${TOIT_RUSTUP}" run "${TOIT_XTENSA_RUST_TOOLCHAIN}" rustc -V
+                  OUTPUT_VARIABLE version ERROR_VARIABLE error RESULT_VARIABLE result
+                  OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_STRIP_TRAILING_WHITESPACE)
+  if (NOT result EQUAL 0)
+    message(FATAL_ERROR "The verified core for ${IDF_TARGET} needs the rustup toolchain '${TOIT_XTENSA_RUST_TOOLCHAIN}', which is not installed (${error}). ${hint}")
+  endif()
+  if (TOIT_XTENSA_RUST_RELEASE AND NOT version MATCHES "\\(${TOIT_XTENSA_RUST_RELEASE}\\)$")
+    message(FATAL_ERROR "The rustup toolchain '${TOIT_XTENSA_RUST_TOOLCHAIN}' is '${version}', not the pinned release ${TOIT_XTENSA_RUST_RELEASE}. ${hint} (-DTOIT_XTENSA_RUST_RELEASE= accepts any release.)")
+  endif()
+  message(STATUS "Xtensa Rust toolchain: ${TOIT_XTENSA_RUST_TOOLCHAIN}, ${version}")
+endfunction()
+
 # The verified core (verified/CMakeLists.txt): off unless selected in
-# menuconfig; only RISC-V parts with atomics (see Kconfig).
+# menuconfig; RISC-V parts with atomics and the Xtensa chips (see Kconfig).
 if (CONFIG_TOIT_VERIFIED_CORE)
     set(TOIT_VERIFIED_CORE ON CACHE BOOL "" FORCE)
-    if (CONFIG_IDF_TARGET_ESP32)
-      # Experiment (verified/XTENSA-RUST-FIXES.md): the esp-rs fork.
-      set(TOIT_VERIFIED_CORE_RUST_TARGET "xtensa-esp32-none-elf" CACHE STRING "" FORCE)
-      set(TOIT_VERIFIED_CORE_CARGO_TOOLCHAIN "+esp" CACHE STRING "" FORCE)
-      set(TOIT_VERIFIED_CORE_CARGO_ARGS "-Zbuild-std=core,alloc" CACHE STRING "" FORCE)
-    elseif (CONFIG_IDF_TARGET_ESP32S3)
-      # Xtensa LX7 with the same esp-rs fork (docs/format2-migration.md,
-      # "Devices: hardware results").
-      set(TOIT_VERIFIED_CORE_RUST_TARGET "xtensa-esp32s3-none-elf" CACHE STRING "" FORCE)
-      set(TOIT_VERIFIED_CORE_CARGO_TOOLCHAIN "+esp" CACHE STRING "" FORCE)
+    if (CONFIG_IDF_TARGET_ESP32 OR CONFIG_IDF_TARGET_ESP32S3)
+      # The Xtensa chips: the Toit fork of the esp-rs Rust toolchain
+      # (docs/xtensa-rust-toolchain.md), with no prebuilt `core`
+      # (-Zbuild-std).
+      toit_check_xtensa_rust_toolchain()
+      if (CONFIG_IDF_TARGET_ESP32)
+        set(TOIT_VERIFIED_CORE_RUST_TARGET "xtensa-esp32-none-elf" CACHE STRING "" FORCE)
+      else()
+        set(TOIT_VERIFIED_CORE_RUST_TARGET "xtensa-esp32s3-none-elf" CACHE STRING "" FORCE)
+      endif()
+      set(TOIT_VERIFIED_CORE_CARGO_TOOLCHAIN "+${TOIT_XTENSA_RUST_TOOLCHAIN}" CACHE STRING "" FORCE)
       set(TOIT_VERIFIED_CORE_CARGO_ARGS "-Zbuild-std=core,alloc" CACHE STRING "" FORCE)
     else()
       set(TOIT_VERIFIED_CORE_RUST_TARGET "riscv32imac-unknown-none-elf" CACHE STRING "" FORCE)
@@ -121,7 +154,13 @@ target_compile_definitions(toit_vm PUBLIC
         -DRAW)
 
 if (CONFIG_IDF_TARGET_ARCH_XTENSA)
-    set(TOIT_ARCH_COMPILE_OPTIONS -mlongcalls)
+    if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        set(TOIT_ARCH_COMPILE_OPTIONS -mlongcalls)
+    else()
+        # clang (IDF_TOOLCHAIN=clang) has no -mlongcalls: its Xtensa backend
+        # always calls through a literal (l32r + callx8).
+        set(TOIT_ARCH_COMPILE_OPTIONS "")
+    endif()
 else()
     set(TOIT_ARCH_COMPILE_OPTIONS -fpermissive -Wno-error=all)
 endif()
@@ -130,9 +169,56 @@ endif()
 # -Wextra combined with -Werror=all causes the Toit code to not compile.
 target_compile_options(toit_vm PRIVATE
         -fjump-tables                   # idf (cmake) sets no-jump-tables which was not set by make.
-        -ftree-switch-conversion        # idf (cmake) sets no-tree-switch-conversion which was not set by make.
         ${TOIT_ARCH_COMPILE_OPTIONS}
         )
+if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    # idf (cmake) sets no-tree-switch-conversion which was not set by make.
+    # (GCC only; clang has no such option: ESP-IDF built with
+    # IDF_TOOLCHAIN=clang.)
+    target_compile_options(toit_vm PRIVATE -ftree-switch-conversion)
+elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    # Diagnostics clang has in -Wall/-Werror=all and GCC has not (the same
+    # as clang-launcher.sh): empty structs in ESP-IDF's extern "C" headers,
+    # unused private fields, the one variable-length array, ESP-IDF's DPORT
+    # register macros (they redeclare one function with different error
+    # attributes; clang keeps the first).
+    target_compile_options(toit_vm PRIVATE
+        -Wno-extern-c-compat -Wno-error=unused-private-field -Wno-vla-cxx-extension
+        -Wno-ignored-attributes)
+    if (CONFIG_IDF_TARGET_ARCH_XTENSA)
+        # No frame pointer (clang keeps one by default on Xtensa): with one,
+        # a call with stack arguments leaves SP not 16-byte aligned in the
+        # callee (espressif/llvm-project#142; see clang-launcher.sh).
+        target_compile_options(toit_vm PRIVATE -fomit-frame-pointer)
+    endif()
+endif()
+
+# Experimental: the VM's own C and C++ (toit_vm) compiled with Espressif's
+# clang (esp-clang) while ESP-IDF and its components stay on GCC.
+# TOIT_VM_CLANG (CMake variable, or the environment variable of that name
+# when configuring) is the bin directory of an esp-clang release; unset (the
+# default) nothing changes. clang-launcher.sh rewrites each GCC command line
+# of the target for clang (GCC's libstdc++ and newlib headers, the same
+# target CPU, 16-bit wchar_t; see there). Without effect when ESP-IDF
+# itself is built with clang (IDF_TOOLCHAIN=clang).
+if (NOT DEFINED TOIT_VM_CLANG)
+    set(TOIT_VM_CLANG "$ENV{TOIT_VM_CLANG}")
+endif()
+if (NOT "${TOIT_VM_CLANG}" STREQUAL "" AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    if (NOT EXISTS "${TOIT_VM_CLANG}/clang++")
+        message(FATAL_ERROR "TOIT_VM_CLANG=${TOIT_VM_CLANG} has no clang++")
+    endif()
+    message(STATUS "Compiling the Toit VM with ${TOIT_VM_CLANG}/clang++")
+    set(toit_clang_launcher
+        "${CMAKE_CURRENT_LIST_DIR}/clang-launcher.sh" "${TOIT_VM_CLANG}" "${CMAKE_BINARY_DIR}/toit_vm_clang")
+    set_target_properties(toit_vm PROPERTIES
+        C_COMPILER_LAUNCHER "${toit_clang_launcher}"
+        CXX_COMPILER_LAUNCHER "${toit_clang_launcher}")
+    # The launcher decides the clang options: recompile when it changes.
+    get_target_property(toit_vm_sources toit_vm SOURCES)
+    set_source_files_properties(${toit_vm_sources} TARGET_DIRECTORY toit_vm
+        PROPERTIES OBJECT_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/clang-launcher.sh")
+endif()
 
 # The hot flash code (Kconfig TOIT_PIN_HOT_FLASH_CODE): an output section
 # inserted before ESP-IDF's .flash.text, so at the start of the

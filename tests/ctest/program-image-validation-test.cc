@@ -12,13 +12,13 @@
 // installed as they are (src/resources/image.cc). Both are checked by the
 // format-2 verifier's conversion of the program memory
 // (verified/vmverify/src/from_vm.rs) before the program can run; format-1
-// programs (-Xuntrusted_format1) by the C++ verifier's heap walk
-// (src/verifier.cc walk_heap). The allow-list for an external byte array:
-// the raw-bytes tag, a non-null address, the content inside the image; for
-// every object: no finalizer flag (on an external byte array it says that
-// the array owns its memory, and the message encoder hands such memory to
-// the receiver, which frees it); for strings: a terminator inside the
-// image.
+// programs (never run untrusted; toit.run --verify) by the C++ verifier's
+// heap walk (src/verifier.cc walk_heap). The allow-list for an external byte
+// array: the raw-bytes tag, a non-null address, the content inside the
+// image; for every object: no finalizer flag (on an external byte array it
+// says that the array owns its memory, and the message encoder hands such
+// memory to the receiver, which frees it); for strings: a terminator inside
+// the image.
 //
 // The test compiles the fixture, reads it into memory as the snapshot
 // reader does, edits one field of the program heap at a time and checks

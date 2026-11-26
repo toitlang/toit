@@ -125,6 +125,8 @@ pub fn gc_call_primitive(m: &mut Machine, env: &Env, module: u8, index: u16, ari
     requires
         reloaded(*old(m), g).refines(&env.p),
         sp::step(env.p.ap@, g) == Outcome2::Primitive(g, module, index),
+        // Only a primitive the verified table (the policy's) allows.
+        toit_spec::v2::verifier::prim_allowed(env.p.cert@.prim_arity, module as int, index as int),
         first == sp::base(g),
         arity == sp::frame_height(g),
     ensures

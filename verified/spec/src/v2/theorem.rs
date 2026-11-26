@@ -57,13 +57,16 @@ use crate::v2::prim::*;
 verus! {
 
 /// The outcomes a PRIMITIVE `(module, index)` step to state `s` may
-/// complete with (the protocol of `v2::prim`): a missing (unimplemented or
-/// denied) primitive; the continuation after a call that returned a heap
-/// and result the primitive's contract allows (`prim_returns`: success,
-/// failure, out of memory); and the task primitives, which the machine
-/// completes itself (task creation and switching).
+/// complete with (the protocol of `v2::prim`): a missing (unimplemented)
+/// primitive; a primitive the policy denies (`prim_denied`: not called, it
+/// fails with PERMISSION_DENIED); the continuation after a call that
+/// returned a heap and result the primitive's contract allows
+/// (`prim_returns`: success, failure, out of memory); and the task
+/// primitives, which the machine completes itself (task creation and
+/// switching).
 pub open spec fn completion(p: Program2, s: State2, module: u8, index: u16, o: Outcome2) -> bool {
     ||| o == prim_missing(p, s)
+    ||| o == prim_denied(p, s)
     ||| exists|h2: Seq<HeapObj>, r: PrimRet| #[trigger] prim_returns(p, s, module, index, h2, r)
             && o == prim_complete(p, s, h2, r)
     ||| machine_completed(module, index) && o == task_step(p, s, index)
@@ -202,6 +205,9 @@ pub proof fn lemma_completion_ok(p: Program2, c: Cert, s: State2, module: u8, in
         lemma_prim_spec_default(p, module, index, prim_args(p, s), s.heap, h2, r);
         assert(outcome_ok(p, c, prim_complete(p, s, h2, r)));
     }
+    if o == prim_denied(p, s) {
+        assert(outcome_ok(p, c, prim_denied(p, s)));
+    }
 }
 
 /// The objects the machine gives a meaning the program cannot see: every
@@ -247,6 +253,14 @@ pub proof fn theorem_soundness(p: Program2, c: Cert, trusted: bool, heap0: Seq<H
                 ==> !(o is Stuck),
         forall|o: Outcome2| #[trigger] outcome(p, s, o) ==> !(o is Stuck) && !(o is Raise),
         machine_objects_ok(p, s),
+        // Confinement to the policy: a PRIMITIVE step names a primitive the
+        // certificate's table (the policy's) allows with the frame's arity,
+        // or one it denies, whose only completion the machine takes is
+        // `prim_denied` (verified/core: `gc_call_primitive` and
+        // `prims::call`, the only ways to run a primitive, require
+        // `prim_allowed`).
+        step(p, s) is Primitive ==> prim_listed(c.prim_arity, (step(p, s)->Primitive_1) as int,
+            (step(p, s)->Primitive_2) as int, frame_height(s)),
 {
     lemma_reachable_wf(p, c, trusted, heap0, globals0, s);
     lemma_machine_objects(p, c, s);

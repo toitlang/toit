@@ -19,7 +19,8 @@
 # embedded and cross builds) links the core into toit_vm; it runs every
 # format-2 program (src/interpreter_v2.cc). Without cargo the option is
 # ignored with a warning, so the C++-only build keeps working (and refuses
-# format-2 programs).
+# format-2 programs, and so every untrusted container: untrusted programs
+# must be in format 2).
 #
 # Targets:
 #   toit_verified_core         imported static library (built with cargo):
@@ -60,9 +61,10 @@ endif()
 option(TOIT_VERIFIED_CORE "Run format-2 programs on the Verus-verified Rust core" ${TOIT_VERIFIED_CORE_DEFAULT})
 set(TOIT_VERIFIED_CORE_RUST_TARGET "${TOIT_VERIFIED_CORE_RUST_TARGET_DEFAULT}" CACHE STRING
     "Rust target triple of the verified core (empty: the host)")
-# Experiment (verified/XTENSA-RUST-FIXES.md): the classic ESP32 has no
-# upstream Rust target; the esp-rs fork (`cargo +esp`) builds `core` and
-# `alloc` from source (-Zbuild-std).
+# The Xtensa chips have no upstream Rust target: the Toit fork of the esp-rs
+# toolchain (`cargo +toit-esp`, docs/xtensa-rust-toolchain.md) builds `core`
+# and `alloc` from source (-Zbuild-std); toolchains/idf/components/toit sets
+# both values.
 set(TOIT_VERIFIED_CORE_CARGO_TOOLCHAIN "" CACHE STRING
     "rustup toolchain for the verified core, with the plus (empty: the default)")
 set(TOIT_VERIFIED_CORE_CARGO_ARGS "" CACHE STRING
@@ -102,7 +104,8 @@ endif()
 
 find_program(TOIT_CARGO cargo)
 if (NOT TOIT_CARGO)
-  message(WARNING "TOIT_VERIFIED_CORE is ON but cargo was not found; building without the verified core.")
+  message(WARNING "TOIT_VERIFIED_CORE is ON but cargo was not found; building without the verified core: "
+                  "this VM refuses every format-2 program and every untrusted container.")
   return()
 endif()
 set(TOIT_VERIFIED_CORE_ENABLED ON CACHE INTERNAL "")

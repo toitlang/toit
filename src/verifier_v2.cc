@@ -21,6 +21,7 @@
 
 #include "interpreter_v2.h"
 #include "primitive.h"
+#include "primitive_policy.h"
 #include "program.h"
 #include "flash_allocation.h"
 #include "flash_registry.h"
@@ -149,18 +150,6 @@ static void trace_install_heap_print() {
 namespace toit {
 
 const char* const V2Verifier::OUT_OF_MEMORY = "OUT_OF_MEMORY";
-
-// The VM's primitive table, from the same declarations the primitives are
-// compiled from (primitive.h): the verifier checks every PRIMITIVE
-// instruction against these arities.
-#define V2_ARITY_ONE(name, arity) arity,
-#define V2_MODULE_ARITIES(name, entries) entries(V2_ARITY_ONE)
-#define V2_MODULE_COUNT(name, entries) 0 entries(MODULE_PRIMITIVE_COUNT_ONE),
-static const uint8 v2_prim_arities[] = { MODULES(V2_MODULE_ARITIES) };
-static const uint32 v2_prim_counts[] = { MODULES(V2_MODULE_COUNT) };
-#undef V2_ARITY_ONE
-#undef V2_MODULE_ARITIES
-#undef V2_MODULE_COUNT
 
 // Whether `length` elements of `element_size` bytes at `data` lie inside
 // [begin, end) and `data` has the alignment the readers need.
@@ -370,11 +359,9 @@ const char* V2Verifier::install_verdict(const void* memory, word program_size, u
   if ((metadata[0] & FlashAllocation::Header::FLAGS_PROGRAM_UNTRUSTED_MASK) == 0) return null;
   FlashRegistry::flush();
   Program* program = reinterpret_cast<Program*>(const_cast<void*>(memory));
-  bool no_verdict = false;
-  const char* error = verify_installed(program, program_size, &no_verdict, certificate, certificate_length,
-                                       process);
+  const char* error = verify_installed(program, program_size, certificate, certificate_length, process);
   if (error != null) return error;
-  if (!no_verdict) metadata[0] |= FlashAllocation::Header::FLAGS_PROGRAM_VERIFIED_MASK;
+  metadata[0] |= FlashAllocation::Header::FLAGS_PROGRAM_VERIFIED_MASK;
   return null;
 }
 
@@ -400,10 +387,15 @@ static void v2_input(Program* program, const V2MethodTable* table, bool trusted,
   // written yet.
   if (program_size >= 0) tables->program_heap_size = program_size;
   input->program = tables;
-  input->prim_counts = v2_prim_counts;
-  input->prim_module_count = ARRAY_SIZE(v2_prim_counts);
-  input->prim_arities = v2_prim_arities;
-  input->prim_arities_length = ARRAY_SIZE(v2_prim_arities);
+  // The primitive table of the policy the verdict is for (trusted rules:
+  // the trusted policy, every primitive; else the untrusted policy's
+  // allowed set, the others marked denied): the verifier accepts a
+  // PRIMITIVE only for an allowed primitive of the method's arity, and the
+  // certificate's header must name this table.
+  input->prim_counts = PrimitivePolicy::verifier_counts();
+  input->prim_module_count = PrimitivePolicy::verifier_module_count();
+  input->prim_arities = PrimitivePolicy::verifier_arities_of(trusted ? PrimitivePolicy::TRUSTED : PrimitivePolicy::UNTRUSTED);
+  input->prim_arities_length = PrimitivePolicy::verifier_arities_length();
   input->trusted = trusted ? 1 : 0;
   input->certificate = certificate;
   input->certificate_length = certificate == null ? 0 : certificate_length;
@@ -582,21 +574,16 @@ static bool v2_install_memory_low() {
 #endif
 }
 
-const char* V2Verifier::verify_installed(Program* program, word program_size, bool* no_verdict,
+const char* V2Verifier::verify_installed(Program* program, word program_size,
                                          const uint8* certificate, word certificate_length,
                                          Process* process) {
-  *no_verdict = false;
   const char* layout = image_layout_error(program, program_size);
   if (layout != null) {
     fprintf(stderr, "verifier: untrusted program rejected: malformed program memory: %s\n", layout);
     return "INVALID_SNAPSHOT";
   }
   if (!program->is_format2()) {
-    if (V2MethodTable::untrusted_format1_allowed()) {
-      *no_verdict = true;
-      return null;
-    }
-    fprintf(stderr, "untrusted images must be in bytecode format 2 (use -Xuntrusted_format1 to allow format 1)\n");
+    fprintf(stderr, "untrusted images must be in bytecode format 2\n");
     return "FORMAT_2_REQUIRED";
   }
   if (process != null && !process->object_heap()->retrying_primitive() && v2_install_memory_low()) {
@@ -666,10 +653,14 @@ void V2Verifier::accept_recorded(const V2MethodTable* table) {
   const_cast<V2MethodTable*>(table)->mark_verified(false);
 }
 
-bool V2Verifier::write_canonical(Program* program, const V2MethodTable* table, const char* path) {
+bool V2Verifier::write_canonical(Program* program, const V2MethodTable* table, const char* path,
+                                 bool policy_table) {
   toit_v2_program tables;
   toit_vmverify_input input;
   v2_input(program, table, false, &tables, &input);
+  // The full primitive table (as the dump side has it), or the untrusted
+  // policy's (test data for the policy checks, verified/certdiff).
+  if (!policy_table) input.prim_arities = PrimitivePolicy::verifier_arities_of(PrimitivePolicy::TRUSTED);
   return toit_vmverify_canonical(&input, path) == 0;
 }
 
@@ -713,25 +704,19 @@ bool V2Verifier::is_available() { return false; }
 
 bool V2Verifier::verify(Program* program, const V2MethodTable* table, bool trusted,
                         const uint8* certificate, word certificate_length) {
-  USE(v2_prim_arities);
-  USE(v2_prim_counts);
   fprintf(stderr, "verifier: format-2 programs need the verified core (TOIT_VERIFIED_CORE)\n");
   return false;
 }
 
-bool V2Verifier::write_canonical(Program* program, const V2MethodTable* table, const char* path) {
+bool V2Verifier::write_canonical(Program* program, const V2MethodTable* table, const char* path,
+                                 bool policy_table) {
   return false;
 }
 
-const char* V2Verifier::verify_installed(Program* program, word program_size, bool* no_verdict,
+const char* V2Verifier::verify_installed(Program* program, word program_size,
                                          const uint8* certificate, word certificate_length,
                                          Process* process) {
-  if (image_layout_error(program, program_size) != null) {
-    *no_verdict = false;
-    return "INVALID_SNAPSHOT";
-  }
-  *no_verdict = !program->is_format2() && V2MethodTable::untrusted_format1_allowed();
-  if (*no_verdict) return null;
+  if (image_layout_error(program, program_size) != null) return "INVALID_SNAPSHOT";
   // Without the verifier no untrusted program can be admitted.
   return program->is_format2() ? "VERIFICATION_FAILED" : "FORMAT_2_REQUIRED";
 }

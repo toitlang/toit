@@ -27,15 +27,15 @@
 #   OPT-LEVEL: 3, s or z. notaildup: without the -tail-dup-size flag of
 #   verified/vmverify/.cargo/config.toml.
 #   DEVICE_SIZE_ARCH=xtensa: the classic ESP32 (xtensa-esp32-none-elf with
-#   the esp-rs fork, `cargo +esp -Zbuild-std`, ESP-IDF's xtensa GCC;
-#   verified/XTENSA-RUST-FIXES.md). DEVICE_SIZE_ARCH=arm: the EC618
+#   the Toit Xtensa toolchain, `cargo +toit-esp -Zbuild-std`, ESP-IDF's
+#   xtensa GCC; docs/xtensa-rust-toolchain.md). DEVICE_SIZE_ARCH=arm: the EC618
 #   (thumbv7m-none-eabi, Cortex-M3; the SDK-pinned GNU Arm toolchain from
 #   EC618_GCC_PATH or xmake's gnu_rm package, else arm-none-eabi-gcc on the
 #   PATH). DEVICE_SIZE_LTO=false: without LTO (one object per crate, as
 #   before the staticlib package).
 # Needs the ESP-IDF RISC-V toolchain (riscv32-esp-elf-gcc, found in
 # ~/.espressif/tools or on the PATH) and the riscv32imac Rust target (or,
-# for Xtensa, the esp toolchain and ESP-IDF's xtensa-esp32-elf-gcc; for
+# for Xtensa, the toit-esp toolchain and ESP-IDF's xtensa-esp32-elf-gcc; for
 # arm, the thumbv7m-none-eabi Rust target).
 
 set -euo pipefail
@@ -67,7 +67,7 @@ case "$ARCH" in
     TARGET=xtensa-esp32-none-elf
     PREFIX=xtensa-esp32-elf
     CFLAGS=(-mlongcalls)
-    DEFAULT_CARGO_ARGS="+esp -Zbuild-std=core,alloc"
+    DEFAULT_CARGO_ARGS="+toit-esp -Zbuild-std=core,alloc"
     ;;
   arm)
     TARGET=thumbv7m-none-eabi

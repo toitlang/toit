@@ -51,12 +51,18 @@ The Toit programming language is cooperatively scheduled, so it is important
 */
 yield:
   self := Task_.current
-  next := self.next-running_
-  // With other running tasks, an out-of-memory error of the message
-  // processing is left to them (see Task_.suspend_), so that this task
-  // still lets them run.
-  process-messages_ --out-of-memory-error=(identical self next)
-  task-transfer-to_ self.next-running_ false
+  if not identical self self.next-running_:
+    // With other running tasks, an out-of-memory error of the message
+    // processing is left to them (see Task_.suspend_), so that this task
+    // still lets them run.
+    process-messages_ --out-of-memory-error=false
+    task-transfer-to_ self.next-running_ false
+  else:
+    process-messages_
+    // The transfer to this task would do nothing. The messages may have
+    // resumed other tasks, though.
+    if not identical self self.next-running_:
+      task-transfer-to_ self.next-running_ false
 
 // ----------------------------------------------------------------------------
 
@@ -356,7 +362,9 @@ class Task_ implements Task:
           write-on-stdout_ "Uncaught exception: " false
           print_ value
 
-  suspend_:
+  // Suspends this task, which must be the running one, and returns when it
+  // has been resumed and runs again.
+  suspend_ -> none:
     state_ = STATE-SUSPENDING
     while true:
       // With other running tasks, an out-of-memory error of the message
@@ -367,12 +375,14 @@ class Task_ implements Task:
       // catches it and waits again spin without letting them run.
       process-messages_ --out-of-memory-error=(identical this previous-running_)
       // Check if we got resumed through the message processing.
-      if state_ == STATE-RUNNING: return this
+      if state_ == STATE-RUNNING: return
       // If this task not the only task left, we unlink it from
-      // the linked list of running tasks and mark it suspended.
+      // the linked list of running tasks, mark it suspended and
+      // transfer to the next running task.
       if not identical this previous-running_:
         state_ = STATE-SUSPENDED
-        return unlink_
+        task-transfer-to_ unlink_ false
+        return
       // This task is the only task left. We keep it in the
       // suspending state and tell the system to wake us up when
       // new messages arrive.

@@ -54,6 +54,8 @@ pub mod split;
 pub mod check;
 #[allow(unused_variables)]
 pub mod cert;
+#[allow(unused_variables)]
+pub mod walk;
 #[cfg(all(not(verus_keep_ghost), feature = "infer"))]
 pub mod infer;
 #[cfg(all(not(verus_keep_ghost), feature = "infer"))]

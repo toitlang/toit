@@ -32,7 +32,12 @@
 #     and its check) and the verifier glue that converts VM memory and runs
 #     it (verified/vmverify);
 #   - what the verified core assumes of an accepted program (the loader
-#     theorem and the FFI entry that takes the verdict);
+#     theorem and the FFI entry that takes the verdict; the relation of the
+#     machine to the abstract program, prog_rel in abs.rs, refines and inv
+#     in exec.rs, the views and layouts of view.rs and layout.rs; and the
+#     C++ that fills the core's context, src/interpreter_v2.cc);
+#   - the primitive table of each policy the verdict is computed with
+#     (src/primitive_policy.*: PrimitivePolicy::verifier_arities);
 #   - the C++ install-time validation (src/verifier_v2.cc: image_layout_error,
 #     builtin_classes_error, install_verdict; the method-table decoder) and
 #     the layouts and tables it reads (Program, objects and tags, the
@@ -63,7 +68,7 @@ set(TOIT_VERIFICATION_EPOCH_MANUAL 1)
 
 # The digest of the inputs at the last review (MODE=update writes it); its
 # first 8 digits are the epoch.
-set(TOIT_VERIFICATION_EPOCH_RECORDED "6e0aea82d0d734b484b74b6c965d9a38632647c331372c58583d1571a3f276dc")
+set(TOIT_VERIFICATION_EPOCH_RECORDED "eb7ca88ebccaf3c64dfa6544cfde182e9e2d7a7acfadfb1fc8b30d8db13253b1")
 
 # Paths relative to the repository root; a pattern with a '*' is a recursive
 # glob and must match a file, any other path must exist.
@@ -74,12 +79,19 @@ set(TOIT_VERIFICATION_EPOCH_INPUTS
   verified/vmverify/src/*.rs
   verified/core/src/theorem.rs
   verified/core/src/ffi.rs
+  verified/core/src/abs.rs
+  verified/core/src/exec.rs
+  verified/core/src/view.rs
+  verified/core/src/layout.rs
   src/verifier_v2.cc
   src/verifier_v2.h
   src/v2_method_table.cc
   src/v2_compute_method_table.h
   src/v2_validate_records.h
   src/interpreter_v2.h
+  src/interpreter_v2.cc
+  src/primitive_policy.h
+  src/primitive_policy.cc
   src/program.h
   src/objects.h
   src/tags.h

@@ -1,4 +1,4 @@
-# Line-A assembled-method battery Thu Nov 26 13:27:28 CET 2026
+# Line-A assembled-method battery Thu Nov 26 14:54:32 CET 2026
 [good-retnull] x{1/1} ACCEPTED->ran:   
 [good-print] x{0/0} ACCEPTED->ran: 55  
 [twin-104-loadf] x{0/0} untrusted program rejected: method 22 at bci 290 (+1): LOAD_FIELD_U 92: unchecked opcode 104 in a program not in the unchecked mode 
@@ -37,7 +37,7 @@
 [builtin-103-hashfind] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): HASH_FIND 0 0 0 0: HASH_FIND rejected with kinds [] 
 [builtin-101-operands] x{0/0} untrusted program rejected: method 22 at bci 291 (+2): LOOP_REPEAT 255 255 0: LOOP_REPEAT rejected with kinds [Val, Val] 
 [builtin-103-badargs] x{0/0} untrusted program rejected: method 22 at bci 290 (+1): HASH_FIND 255 255 255 255: HASH_FIND rejected with kinds [Val] 
-[prim-spawn] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): PRIMITIVE 0 0 0: PRIMITIVE rejected with kinds [] 
+[prim-spawn] x{1/1} ACCEPTED->ran:   
 [prim-module-oob] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): PRIMITIVE 255 255 255: PRIMITIVE rejected with kinds [] 
 [mix-checked-twin] x{0/0} untrusted program rejected: method 22 at bci 290 (+1): STORE_FIELD_THIS_U 0: unchecked opcode 113 in a program not in the unchecked mode 
 [twin-105-highop] x{0/0} untrusted program rejected: method 22 at bci 290 (+1): LOAD_FIELD_WIDE_U 255 255: unchecked opcode 105 in a program not in the unchecked mode 
@@ -46,4 +46,4 @@
 [table-stale-longer] x{0/0/0/0} untrusted: format-2 program rejected: bad method kind byte (300); trusted: format-2 program rejected: bad method kind byte (300) 
 [table-stale-by-one] x{0/0/0/0} untrusted: format-2 program rejected: bad method kind byte (300); trusted: format-2 program rejected: bad method kind byte (300) 
 [table-same-size] x{0/0/0/0} untrusted: ACCEPTED->ran: 55 ; trusted: ran: 55  
-# done Thu Nov 26 13:30:51 CET 2026
+# done Thu Nov 26 14:55:47 CET 2026
