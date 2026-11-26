@@ -68,12 +68,20 @@ The stream calls common to both variants (method indexes).
 
 $STATE-INDEX: `state handle -> int`: $STATE-CONNECTING or $STATE-OPEN;
   throws the stream's error (a short string such as "CONNECT_FAILED").
-$READ-INDEX: `read handle -> any`: a byte array of at most $CHUNK-SIZE
-  bytes, null at the end of the stream, or 0 if there is nothing to read
-  yet; throws the stream's error.
-$WRITE-INDEX: `write handle data/ByteArray -> bool`: false if the stream
-  can't take the data yet; throws the stream's error.
+$READ-INDEX: `read handle received/int -> any`: a byte array of at most
+  $CHUNK-SIZE bytes, null at the end of the stream, or 0 if there is
+  nothing to read yet; throws the stream's error. $received is the number
+  of bytes the client received so far: it acknowledges the previous chunk,
+  which is sent again if its reply was lost.
+$WRITE-INDEX: `write handle offset/int data/ByteArray -> bool`: false if the
+  stream can't take the data yet; throws the stream's error. $offset is
+  the position of the data in what the client sent, so a retried write
+  isn't taken twice.
 $CLOSE-WRITE-INDEX: `close-write handle -> none`: ends the data sent.
+
+All calls may be repeated after a lost reply (QUOTA_EXCEEDED from the
+  client's own message quotas): the limits of the services fail with
+  NETWORK_QUOTA_EXCEEDED instead.
 */
 STATE-INDEX ::= 1
 READ-INDEX ::= 2
@@ -93,7 +101,7 @@ interface SandboxSocketService:
 
   Returns the stream handle at once; the connection is made in the
     background (see $STATE-INDEX). Throws NETWORK_DENIED if the network
-    policy doesn't allow the destination and QUOTA_EXCEEDED if the
+    policy doesn't allow the destination and NETWORK_QUOTA_EXCEEDED if the
     container has too many connections or made too many attempts.
   */
   connect host/string port/int tls/bool -> int
@@ -128,8 +136,18 @@ interface SandboxHttpService:
 
 /** A client of one of the sandbox network services. */
 class SandboxNetworkClient extends ServiceClient:
+  /**
+  The calls of all clients of this process (for measurements). Every call
+    is two messages: the request and the reply.
+  */
+  static calls/int := 0
+
   constructor selector/ServiceSelector:
     super selector
+
+  invoke_ index/int arguments/any -> any:
+    calls++
+    return super index arguments
 
   connect host/string port/int tls/bool -> int:
     return invoke_ SandboxSocketService.CONNECT-INDEX [host, port, tls]
@@ -140,11 +158,11 @@ class SandboxNetworkClient extends ServiceClient:
   state handle/int -> int:
     return invoke_ STATE-INDEX handle
 
-  read handle/int -> any:
-    return invoke_ READ-INDEX handle
+  read handle/int received/int -> any:
+    return invoke_ READ-INDEX [handle, received]
 
-  write handle/int data/ByteArray -> bool:
-    return invoke_ WRITE-INDEX [handle, data]
+  write handle/int offset/int data/ByteArray -> bool:
+    return invoke_ WRITE-INDEX [handle, offset, data]
 
   close-write handle/int -> none:
     invoke_ CLOSE-WRITE-INDEX handle
@@ -158,12 +176,22 @@ The client side of a stream of a sandbox network service.
 Waits for the service's notifications when the stream has nothing to read
   or can't take data. A notification can be lost (the sandbox's mailbox is
   full), so a wait also ends after $POLL-MS and the call is tried again.
+  A call whose request or reply doesn't fit the sandbox's message quotas
+  (QUOTA_EXCEEDED) is tried again as well, at most $MAX-RETRIES times in a
+  row.
 */
 class SandboxStream extends ServiceResourceProxy:
   static POLL-MS ::= 500
+  static MAX-RETRIES ::= 20
+  /** The notifications of all streams of this process (for measurements). */
+  static notifications/int := 0
+  /** The calls tried again after QUOTA_EXCEEDED (for measurements and tests). */
+  static retried/int := 0
 
   changes_/int := 0
   changed_ ::= monitor.Signal
+  received_/int := 0
+  sent_/int := 0
 
   constructor client/SandboxNetworkClient handle/int:
     super client handle
@@ -172,6 +200,7 @@ class SandboxStream extends ServiceResourceProxy:
     return client_ as SandboxNetworkClient
 
   on-notified_ notification/any -> none:
+    notifications++
     changes_++
     changed_.raise
 
@@ -180,10 +209,18 @@ class SandboxStream extends ServiceResourceProxy:
     a change of the stream between the calls.
   */
   wait-for [block] -> any:
+    retries := 0
     while true:
       if is-closed: throw "ALREADY_CLOSED"
       seen := changes_
-      result := block.call
+      result := null
+      exception := catch --unwind=(: it != "QUOTA_EXCEEDED" or retries >= MAX-RETRIES):
+        result = block.call
+      if exception:
+        retries++
+        retried++
+      else:
+        retries = 0
       if result != 0 and result != false and result != null: return result
       catch --unwind=(: it != DEADLINE-EXCEEDED-ERROR):
         with-timeout --ms=POLL-MS:
@@ -196,13 +233,24 @@ class SandboxStream extends ServiceResourceProxy:
   /** Reads the next chunk; null at the end of the stream. */
   read-chunk -> ByteArray?:
     result := wait-for:
-      chunk := network.read handle_
+      chunk := network.read handle_ received_
       chunk == null ? -1 : chunk
-    return result == -1 ? null : result
+    if result == -1: return null
+    received_ += result.size
+    return result
 
   /** Sends $data (at most $CHUNK-SIZE bytes). */
   write-chunk data/ByteArray -> none:
-    wait-for: network.write handle_ data
+    // Sending a large byte array hands its storage over to the receiver,
+    // so every attempt sends a copy: a refused or rejected attempt must
+    // be repeated with the same bytes.
+    wait-for: network.write handle_ sent_ data.copy
+    sent_ += data.size
+
+  // Closing the resource is one more call.
+  close -> none:
+    if not is-closed: SandboxNetworkClient.calls++
+    super
 
   /** Ends the data sent on the stream. */
   end-writes -> none:

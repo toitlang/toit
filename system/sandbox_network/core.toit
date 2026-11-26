@@ -86,7 +86,7 @@ class SandboxNetworkCore:
     throw "CONNECT_FAILED"
 
   open-connection grant/NetworkGrant -> none:
-    if connections_ >= MAX-CONNECTIONS: throw "QUOTA_EXCEEDED"
+    if connections_ >= MAX-CONNECTIONS: throw "NETWORK_QUOTA_EXCEEDED"
     grant.open-connection
     connections_++
 
@@ -118,6 +118,9 @@ class SandboxConnection extends ServiceResource:
   error_/string? := null
   closed_/bool := false
   in_/ByteArray? := null       // Read ahead, not yet taken by the client.
+  unacked_/ByteArray? := null  // Handed out, not yet acknowledged.
+  acked_/int := 0              // Bytes the client acknowledged receiving.
+  accepted_/int := 0           // Bytes taken from the client.
   in-ended_/bool := false
   out_/ByteArray? := null      // Taken from the client, not yet written.
   out-closing_/bool := false
@@ -147,6 +150,8 @@ class SandboxConnection extends ServiceResource:
         with-timeout --ms=SandboxNetworkCore.CONNECT-TIMEOUT-MS:
           raw = core.network.tcp-connect (net.SocketAddress address port)
       if connect-error: throw "CONNECT_FAILED"
+      // The client's writes are chunks already; don't delay them.
+      raw.no-delay = true
       socket_ = raw
       if use-tls:
         secure := tls.Socket.client raw --server-name=host
@@ -185,12 +190,16 @@ class SandboxConnection extends ServiceResource:
         return
       deliver_ data
 
-  /** Hands $data to the client when it took the previous chunk. */
+  /**
+  Hands $data to the client: appended to the chunk the client hasn't taken
+    yet if both fit in a chunk, so a client that is slower than the network
+    takes full chunks; otherwise when the client took the previous chunk.
+  */
   deliver_ data/ByteArray -> none:
     throttle_ data.size
-    signal_.wait: in_ == null or closed_
+    signal_.wait: closed_ or in_ == null or in_.size + data.size <= CHUNK-SIZE
     if closed_: return
-    in_ = data
+    in_ = in_ ? in_ + data : data
     changed_
 
   /** Ends the data for the client. */
@@ -233,7 +242,7 @@ class SandboxConnection extends ServiceResource:
     changed_
 
   static KNOWN-ERRORS_ ::= {
-    "NETWORK_DENIED", "QUOTA_EXCEEDED", "CONNECT_FAILED", "TLS_FAILED",
+    "NETWORK_DENIED", "NETWORK_QUOTA_EXCEEDED", "CONNECT_FAILED", "TLS_FAILED",
     "TIMEOUT", "CONNECTION_FAILED", "RESPONSE_TOO_LARGE", "HTTP_PROTOCOL_ERROR",
     "INVALID_ARGUMENT",
   }
@@ -261,24 +270,49 @@ class SandboxConnection extends ServiceResource:
     client-waits_ = true
     return STATE-CONNECTING
 
-  read -> any:
+  /**
+  Returns the next chunk for a client that has received $received bytes.
+
+  A reply can be lost (refused by the client's full mailbox; the client
+    gets QUOTA_EXCEEDED instead), so the chunk handed out stays until the
+    next read acknowledges it, and a read that doesn't is answered with
+    the same chunk again.
+  */
+  read received/int -> any:
+    if unacked_:
+      if received == acked_: return unacked_.copy
+      if received != acked_ + unacked_.size: throw "INVALID_ARGUMENT"
+      unacked_ = null
+      acked_ = received
+    else if received != acked_:
+      throw "INVALID_ARGUMENT"
     if in_:
-      result := in_
+      unacked_ = in_
       in_ = null
       signal_.raise
-      return result
+      // Sending a large byte array hands its storage over to the receiver,
+      // so the reply gets a copy.
+      return unacked_.copy
     if in-ended_: return null
     if error_: throw error_
     client-waits_ = true
     return 0
 
-  write data/ByteArray -> bool:
+  /**
+  Takes $data, which starts at byte $offset of what the client sent.
+    A chunk that was taken already (the client retries after a lost reply)
+    is not taken again.
+  */
+  write offset/int data/ByteArray -> bool:
     if error_: throw error_
-    if out-closing_ or data.size > CHUNK-SIZE: throw "INVALID_ARGUMENT"
+    if offset + data.size <= accepted_ and offset >= 0: return true
+    if offset != accepted_ or out-closing_ or data.size > CHUNK-SIZE:
+      throw "INVALID_ARGUMENT"
     if out_:
       client-waits_ = true
       return false
     out_ = data
+    accepted_ += data.size
     signal_.raise
     return true
 
@@ -303,11 +337,15 @@ abstract class SandboxNetworkProvider extends ServiceProvider implements Service
     return true
 
   handle index/int arguments/any --gid/int --client/int -> any:
-    if index == READ-INDEX: return (stream_ client arguments).read
-    if index == WRITE-INDEX:
-      if arguments is not List or arguments.size != 2 or arguments[1] is not ByteArray:
+    if index == READ-INDEX:
+      if arguments is not List or arguments.size != 2 or arguments[1] is not int:
         throw "WRONG_OBJECT_TYPE"
-      return (stream_ client arguments[0]).write arguments[1]
+      return (stream_ client arguments[0]).read arguments[1]
+    if index == WRITE-INDEX:
+      if arguments is not List or arguments.size != 3 or arguments[1] is not int
+          or arguments[2] is not ByteArray:
+        throw "WRONG_OBJECT_TYPE"
+      return (stream_ client arguments[0]).write arguments[1] arguments[2]
     if index == STATE-INDEX: return (stream_ client arguments).state
     if index == CLOSE-WRITE-INDEX: return (stream_ client arguments).close-write
     return handle-open index arguments --gid=gid --client=client

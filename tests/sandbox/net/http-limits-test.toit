@@ -64,7 +64,7 @@ main args:
       client := sandbox-http.open
       // An open response holds its connection.
       a := client.get "$base/small"
-      expect-equals "QUOTA_EXCEEDED" (catch: client.get "$base/small")
+      expect-equals "NETWORK_QUOTA_EXCEEDED" (catch: client.get "$base/small")
       a.close
       b := client.get "$base/small"
       expect-equals "hello" b.body.read-all.to-string

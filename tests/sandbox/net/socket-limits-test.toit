@@ -19,7 +19,7 @@ main args:
       port := arguments["port"]
       a := network.tcp-connect "127.0.0.1" port
       b := network.tcp-connect "127.0.0.1" port
-      expect-equals "QUOTA_EXCEEDED" (catch: network.tcp-connect "127.0.0.1" port)
+      expect-equals "NETWORK_QUOTA_EXCEEDED" (catch: network.tcp-connect "127.0.0.1" port)
       a.close
       c := network.tcp-connect "127.0.0.1" port
       c.out.write "c"
@@ -34,7 +34,7 @@ main args:
       // Denied requests are no attempts.
       expect-equals "NETWORK_DENIED" (catch: network.tcp-connect "127.0.0.1" port + 1)
       // The fourth attempt in a minute is refused.
-      expect-equals "QUOTA_EXCEEDED" (catch: network.tcp-connect "127.0.0.1" port),
+      expect-equals "NETWORK_QUOTA_EXCEEDED" (catch: network.tcp-connect "127.0.0.1" port),
 
     "rate": :: | arguments/Map |
       network := sandbox.open
@@ -42,8 +42,11 @@ main args:
       start := Time.monotonic-us
       data := pattern 8192
       task:: socket.out.write data
-      received := 0
-      while received < data.size: received += socket.in.read.size
+      // The writes wait for the service (the rate): the bytes must arrive
+      // unchanged.
+      received := ByteArray 0
+      while received.size < data.size: received += socket.in.read
+      expect-equals data received
       elapsed-ms := (Time.monotonic-us - start) / 1000
       print "16 KB at 4 KB/s: $elapsed-ms ms"
       // 16 KB in both directions together, with a burst of 4 KB: at least
@@ -58,14 +61,14 @@ main args:
       // The echo takes the day's total over 6000 bytes.
       exception := catch:
         while socket.in.read: null
-      expect-equals "QUOTA_EXCEEDED" exception
+      expect-equals "NETWORK_QUOTA_EXCEEDED" exception
       socket.close
       // The day's bytes are used up for new connections too.
       socket = network.tcp-connect "127.0.0.1" arguments["port"]
       exception = catch:
         socket.out.write (pattern 4096)
         socket.in.read
-      expect-equals "QUOTA_EXCEEDED" exception,
+      expect-equals "NETWORK_QUOTA_EXCEEDED" exception,
 
     "hold": :: | arguments/Map |
       network := sandbox.open
@@ -92,7 +95,7 @@ main args:
     holder := start-sandbox "hold" {"port": port, "count": 8}
         --network={"allow": allow, "connections": 8}
     server.wait-open 8
-    expect-sandbox "one" {"port": port, "expected": "QUOTA_EXCEEDED"}
+    expect-sandbox "one" {"port": port, "expected": "NETWORK_QUOTA_EXCEEDED"}
         --network={"allow": allow}
     holder.stop
     server.wait-open 0

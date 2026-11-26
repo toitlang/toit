@@ -68,7 +68,7 @@ class SandboxHttpClient:
     $io.Reader; a reader is sent chunked, unless $content-length is given.
 
   Throws NETWORK_DENIED if the network policy doesn't allow the URL,
-    QUOTA_EXCEEDED if the container has too many connections or made too
+    NETWORK_QUOTA_EXCEEDED if the container has too many connections or made too
     many attempts, INVALID_ARGUMENT for headers the service sets (Host,
     Content-Length, ...), and CONNECT_FAILED, TLS_FAILED, TIMEOUT,
     HTTP_PROTOCOL_ERROR when the request fails.

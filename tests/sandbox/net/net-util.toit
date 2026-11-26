@@ -43,19 +43,20 @@ run-test args/any --roles/Map [driver] -> none:
 Starts a sandbox from this image with the given $role and $arguments and
   waits for it. Returns its exit code.
 */
-run-sandbox role/string arguments/Map={:} --services/List=[SOCKET-SERVICE, HTTP-SERVICE] --network/Map?=null -> int:
-  return (start-sandbox role arguments --services=services --network=network).wait
+run-sandbox role/string arguments/Map={:} --services/List=[SOCKET-SERVICE, HTTP-SERVICE] --network/Map?=null --quotas/Map?=null -> int:
+  return (start-sandbox role arguments --services=services --network=network --quotas=quotas).wait
 
-start-sandbox role/string arguments/Map={:} --services/List=[SOCKET-SERVICE, HTTP-SERVICE] --network/Map?=null -> containers.Container:
+start-sandbox role/string arguments/Map={:} --services/List=[SOCKET-SERVICE, HTTP-SERVICE] --network/Map?=null --quotas/Map?=null -> containers.Container:
   all := {"role": role}
   arguments.do: | key value | all[key] = value
   return containers.start containers.current all
       --untrusted
       --services=services
       --network=network
+      --quotas=quotas
 
-expect-sandbox role/string arguments/Map={:} --services/List=[SOCKET-SERVICE, HTTP-SERVICE] --network/Map?=null -> none:
-  code := run-sandbox role arguments --services=services --network=network
+expect-sandbox role/string arguments/Map={:} --services/List=[SOCKET-SERVICE, HTTP-SERVICE] --network/Map?=null --quotas/Map?=null -> none:
+  code := run-sandbox role arguments --services=services --network=network --quotas=quotas
   print "sandbox $role: exit $code"
   if code != 0: throw "sandbox $role exited with $code"
 
@@ -124,6 +125,7 @@ class HttpServer:
   port/int
   requests/int := 0
   task_/Task? := null
+  patterns_ ::= {:}  // The server's cost stays out of the measurements.
 
   constructor --certificate/tls.Certificate?=null:
     network_ = net.open
@@ -145,6 +147,7 @@ class HttpServer:
     query := request.query
     n := int.parse (query.parameters.get "n" --if-absent=: "0")
     if path.starts-with "/small":
+      writer.headers.set "Content-Length" "5"
       writer.out.write "hello"
     else if path.starts-with "/echo":
       writer.out.write request.body.read-all
@@ -154,10 +157,10 @@ class HttpServer:
       writer.out.write "$size"
     else if path.starts-with "/big":
       writer.headers.set "Content-Length" "$n"
-      data := pattern n
+      data := patterns_.get n --init=: pattern n
       List.chunk-up 0 n 4096: | from to _ | writer.out.write data[from..to]
     else if path.starts-with "/chunked":
-      data := pattern n
+      data := patterns_.get n --init=: pattern n
       List.chunk-up 0 n 1000: | from to _ | writer.out.write data[from..to]
     else if path.starts-with "/redirect":
       writer.redirect http.STATUS-FOUND "/small"

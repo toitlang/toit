@@ -75,7 +75,7 @@ class SandboxNetwork implements tcp.Interface:
   Connects to $host (a name or an IPv4 address) at $port.
 
   Throws NETWORK_DENIED if the container's network policy doesn't allow
-    it, QUOTA_EXCEEDED if the container has too many connections or made
+    it, NETWORK_QUOTA_EXCEEDED if the container has too many connections or made
     too many attempts, CONNECT_FAILED or TLS_FAILED if the connection
     can't be made.
   */

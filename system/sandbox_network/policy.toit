@@ -162,7 +162,7 @@ class NetworkGrant:
       rule.ip == address and (rule.covers-port port)
 
   /**
-  Takes a connection: throws QUOTA_EXCEEDED if the container has
+  Takes a connection: throws NETWORK_QUOTA_EXCEEDED if the container has
     $max-connections open or tried more than $attempts-per-minute times in
     the last minute. Every call counts as an attempt.
   */
@@ -172,7 +172,7 @@ class NetworkGrant:
     attempt-time-us_ = now
     cost := 60_000_000 / attempts-per-minute
     if attempt-credit-us_ < cost or connections_ >= max-connections:
-      throw "QUOTA_EXCEEDED"
+      throw "NETWORK_QUOTA_EXCEEDED"
     attempt-credit-us_ -= cost
     connections_++
 
@@ -181,7 +181,7 @@ class NetworkGrant:
     connections_--
 
   /**
-  Accounts for $n bytes sent or received. Throws QUOTA_EXCEEDED if that
+  Accounts for $n bytes sent or received. Throws NETWORK_QUOTA_EXCEEDED if that
     exceeds $bytes-per-day in the current day (the first day starts when the
     grant is created). Returns how many milliseconds the caller must wait
     before it transfers them, so that the rate stays below
@@ -192,7 +192,7 @@ class NetworkGrant:
     if now - day-start-us_ >= DAY-US_:
       day-start-us_ = now
       day-bytes_ = 0
-    if day-bytes_ + n > bytes-per-day: throw "QUOTA_EXCEEDED"
+    if day-bytes_ + n > bytes-per-day: throw "NETWORK_QUOTA_EXCEEDED"
     day-bytes_ += n
     capacity := bytes-per-second * 1_000_000
     byte-credit_ = min capacity (byte-credit_ + (now - byte-time-us_) * bytes-per-second)
