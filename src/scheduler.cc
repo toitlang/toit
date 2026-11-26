@@ -567,6 +567,20 @@ Object* Scheduler::process_stats(Array* array, int group_id, int process_id, Pro
   if (group == null) return calling_process->null_object();
   Process* subject_process = group->lookup(process_id);
   if (subject_process == null) return calling_process->null_object();  // Process not found.
+  // Another process's heap is read only while no thread runs or collects
+  // it: a collector suspends an idle or scheduled process under this lock
+  // (gc_suspend_process), and a process runs only after run_process set it to
+  // running under this lock. Otherwise the numbers are those the process
+  // published before, and it publishes new ones when it next stops running
+  // (run_process). Reading a process that was scavenging crashed a device
+  // (its new space had no chunk for a moment).
+  Process::State state = subject_process->state();
+  if (subject_process == calling_process || state == Process::IDLE || state == Process::SCHEDULED) {
+    subject_process->publish_heap_stats();
+  } else {
+    subject_process->request_heap_stats();
+  }
+  const Process::HeapStats& heap = subject_process->heap_stats();
   uword length = array->length();
 #ifdef TOIT_ESP32
   multi_heap_info_t info;
@@ -583,10 +597,10 @@ Object* Scheduler::process_stats(Array* array, int group_id, int process_id, Pro
   switch (length) {
     default:
     case 11:
-      array->at_put(10, Smi::from(subject_process->gc_count(COMPACTING_GC)));
+      array->at_put(10, Smi::from(heap.full_compacting_gc_count));
       [[fallthrough]];
     case 10:
-      array->at_put(9, Smi::from(subject_process->gc_count(FULL_GC)));
+      array->at_put(9, Smi::from(heap.full_gc_count));
       [[fallthrough]];
     case 9:
       array->at_put(8, Smi::from(Utils::min(max, info.largest_free_block)));
@@ -601,7 +615,7 @@ Object* Scheduler::process_stats(Array* array, int group_id, int process_id, Pro
       array->at_put(5, Smi::from(group_id));
       [[fallthrough]];
     case 5: {
-      Object* total = Primitive::integer(subject_process->object_heap()->total_bytes_allocated(), calling_process);
+      Object* total = Primitive::integer(heap.total_bytes_allocated, calling_process);
       if (Primitive::is_error(total)) return total;
       array->at_put(4, total);
     }
@@ -610,13 +624,13 @@ Object* Scheduler::process_stats(Array* array, int group_id, int process_id, Pro
       array->at_put(3, Smi::from(subject_process->message_count()));
       [[fallthrough]];
     case 3:
-      array->at_put(2, Smi::from(subject_process->object_heap()->bytes_reserved()));
+      array->at_put(2, Smi::from(heap.bytes_reserved));
       [[fallthrough]];
     case 2:
-      array->at_put(1, Smi::from(subject_process->object_heap()->bytes_allocated()));
+      array->at_put(1, Smi::from(heap.bytes_allocated));
       [[fallthrough]];
     case 1:
-      array->at_put(0, Smi::from(subject_process->gc_count(NEW_SPACE_GC)));
+      array->at_put(0, Smi::from(heap.gc_count));
       [[fallthrough]];
     case 0:
       (void)0;  // Do nothing.
@@ -659,6 +673,10 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
 
   process->clear_run_timestamp();
   process->set_scheduler_thread(null);
+  // For process_stats, if it asked while the process ran: the process's
+  // heap as it stopped (it still counts as running, and this thread holds
+  // the lock).
+  if (process->heap_stats_requested()) process->publish_heap_stats();
 
   while (result.state() != Interpreter::Result::TERMINATED) {
     uint32 signals = process->signals();

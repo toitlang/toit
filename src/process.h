@@ -138,6 +138,33 @@ class Process : public ProcessListFromProcessGroup::Element,
   void remove_first_message();
   int message_count();
 
+  // The heap statistics of this process that Scheduler::process_stats
+  // reports to other processes (system.process-stats), guarded by the
+  // scheduler lock. The heap of a process changes without that lock, on the
+  // thread that runs the process (allocation, its own collections) and on a
+  // collector that has suspended it; a scavenge empties the new space's
+  // chunk list for a moment. So the heap of another process is read only
+  // while no thread runs or collects it (publish_heap_stats). While it does,
+  // process_stats reports the numbers published before and asks for new
+  // ones: the process publishes them the next time it stops running
+  // (run_process), so that a process that is never idle when asked doesn't
+  // report old numbers forever. Publishing reads the heap (walks the chunk
+  // lists), so it is done only when asked.
+  struct HeapStats {
+    int64 bytes_allocated = 0;
+    int64 bytes_reserved = 0;
+    int64 total_bytes_allocated = 0;
+    int gc_count = 0;
+    int full_gc_count = 0;
+    int full_compacting_gc_count = 0;
+  };
+  // Reads the heap. Called under the scheduler lock by the thread that runs
+  // the process, or while the process is idle or scheduled.
+  void publish_heap_stats();
+  const HeapStats& heap_stats() const { return heap_stats_; }
+  void request_heap_stats() { heap_stats_requested_ = true; }
+  bool heap_stats_requested() const { return heap_stats_requested_; }
+
   SystemMessage* take_termination_message(uint8 result);
 
   uint64 random();
@@ -340,6 +367,8 @@ class Process : public ProcessListFromProcessGroup::Element,
 
   bool construction_failed_ = false;
   bool idle_since_gc_ = true;
+  HeapStats heap_stats_;
+  bool heap_stats_requested_ = false;
 
   UnparsedRootCertificateList root_certificates_;
 
