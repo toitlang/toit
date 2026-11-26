@@ -747,8 +747,9 @@ void v2_validate(Process *process, char *where);
 //@ ensures true;
 
 // C++: src/interpreter_v2.cc v2_primitive_failed
-uword v2_primitive_failed(Process *process, Primitive_Entry *entry, uword first_argument, Object *result, uword *result_out);
+uword v2_primitive_failed(Process *process, Primitive_Entry *entry, uword module, uword index, uword first_argument, Object *result, uword *result_out);
 /*@ requires [?fp]process(process, ?prog, ?ids) &*& ghost_start(?a, ?n) &*& vm(process, ?b, ?nb) &*& *result_out |-> _ &*&
+             module < 256 &*& index < 65536 &*&
              is_Primitive_Entry(entry) == true &*& prim_out(entry, a, b, result) == true &*& is_marked(result) == true &*&
              first_argument + prim_arity(entry) <= v_len(a) - v_top(a) &*& first_argument < v_len(a) - v_top(a) + v_rtop(a) &*& 0 <= prim_arity(entry) &*&
              0 <= n &*& n <= nb &*& nb <= n + PRIM_EPOCHS &*& (nb == n || oom_error(prog, result) ? nb == n &*& same_stack(a, b) == true : true); @*/
@@ -1434,8 +1435,9 @@ uword toit_v2_try_allocate_byte_array(void *raw_process, uword length)
 }
 
 // C++: src/interpreter_v2.cc v2_primitive_failed
-uword v2_primitive_failed(Process *process, Primitive_Entry *entry, uword first_argument, Object *result, uword *result_out)
+uword v2_primitive_failed(Process *process, Primitive_Entry *entry, uword module, uword index, uword first_argument, Object *result, uword *result_out)
 /*@ requires [?fp]process(process, ?prog, ?ids) &*& ghost_start(?a, ?n) &*& vm(process, ?b, ?nb) &*& *result_out |-> _ &*&
+             module < 256 &*& index < 65536 &*&
              is_Primitive_Entry(entry) == true &*& prim_out(entry, a, b, result) == true &*& is_marked(result) == true &*&
              first_argument + prim_arity(entry) <= v_len(a) - v_top(a) &*& first_argument < v_len(a) - v_top(a) + v_rtop(a) &*& 0 <= prim_arity(entry) &*&
              0 <= n &*& n <= nb &*& nb <= n + PRIM_EPOCHS &*& (nb == n || oom_error(prog, result) ? nb == n &*& same_stack(a, b) == true : true); @*/
@@ -1480,7 +1482,7 @@ uword v2_primitive_failed(Process *process, Primitive_Entry *entry, uword first_
       //@ close prim_done(prog, entry, a, n, bc, nc, TOIT_V2_PRIMITIVE_THROW, (uword)unmarked(prog, raw), raw);
       return TOIT_V2_PRIMITIVE_THROW;
     }
-    v2_gc(process, malloc_failed, attempts, force_cross_process, "primitive", 0, 0);
+    v2_gc(process, malloc_failed, attempts, force_cross_process, "primitive", (word)module, (word)index);
     //@ leak gc_action(_, _, _, _, _, _, _);
     //@ assert vm(process, ?bg, ?ng);
     //@ same_frames_trans(a, bc, bg);
@@ -1542,7 +1544,7 @@ uword toit_v2_primitive(void *raw_process, uword module, uword index, uword arit
       return TOIT_V2_PRIMITIVE_FAILURE;
     }
     //@ close ghost_start(a, n);
-    return v2_primitive_failed(process, entry, first_argument, result, result_out);
+    return v2_primitive_failed(process, entry, module, index, first_argument, result, result_out);
   }
   ObjectHeap_leave_primitive(Process_object_heap(process));
   *result_out = (uword)result;

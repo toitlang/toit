@@ -499,7 +499,8 @@ uword toit_v2_try_allocate_byte_array(void* raw_process, uword length) {
 // error [result] (the C++ interpreter's loop after its first call). Out of
 // line: the common call returns a value or a failure without collecting.
 static __attribute__((noinline)) V2_HOT uword v2_primitive_failed(
-    Process* process, Primitive::Entry* entry, uword first_argument, Object* result, uword* result_out) {
+    Process* process, Primitive::Entry* entry, uword module, uword index, uword first_argument, Object* result,
+    uword* result_out) {
   Program* program = process->program();
   v2_validate(process, "primitive failure");
   for (int attempts = 1; true; attempts++) {
@@ -523,7 +524,8 @@ static __attribute__((noinline)) V2_HOT uword v2_primitive_failed(
       *result_out = reinterpret_cast<uword>(result);
       return TOIT_V2_PRIMITIVE_THROW;
     }
-    v2_gc(process, malloc_failed, attempts, force_cross_process, "primitive");
+    v2_gc(process, malloc_failed, attempts, force_cross_process, "primitive",
+          static_cast<word>(module), static_cast<word>(index));
     Stack* stack = process->task()->stack();
     // A moving collection can replace the stack and clear its old card.
     GcMetadata::insert_into_remembered_set(stack);
@@ -562,7 +564,7 @@ V2_HOT uword toit_v2_primitive(void* raw_process, uword module, uword index, uwo
       *result_out = reinterpret_cast<uword>(error);
       return TOIT_V2_PRIMITIVE_FAILURE;
     }
-    return v2_primitive_failed(process, entry, first_argument, result, result_out);
+    return v2_primitive_failed(process, entry, module, index, first_argument, result, result_out);
   }
   process->object_heap()->leave_primitive();
   *result_out = reinterpret_cast<uword>(result);

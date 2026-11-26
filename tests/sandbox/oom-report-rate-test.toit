@@ -55,3 +55,8 @@ main args:
     // One report per container (two process groups).
     expect-equals 2 reports.size
     expect-not (reports[0].starts-with reports[1][..reports[1].index-of ":"])
+    // The report names the primitive that failed (module:index). Format 2
+    // reported "primitive 0:0" for every primitive before.
+    reports.do: | report/string |
+      expect (report.contains "(out of memory in primitive ")
+      expect-not (report.contains "primitive 0:0)")
