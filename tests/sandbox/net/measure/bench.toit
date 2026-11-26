@@ -28,11 +28,17 @@ import system
 import system.containers
 import system.api.sandbox-network show SandboxNetworkClient SandboxStream
 import ..net-util
+import ..test-certificate
+import ...sandbox show provider-ids
+import .....services.sandbox-network.provider show run-sandbox-network
 
 SIZE ::= 100 * 1024
 
 main args:
   if args is Map:
+    if args["role"] == PROVIDER-ROLE:
+      run-sandbox-network
+      return
     run-client args
     return
   mode := args[0]
@@ -43,12 +49,12 @@ main args:
   port := server.port
   live := args.contains "live"
   // Without "sample" or "live" no sampling (for instruction counts).
-  peak := (live or args.contains "sample") ? (PeakSampler 0 SYSTEM-PROCESS-ID_ --live=live) : null
-  container := containers.start containers.current
-      {"role": "client", "mode": mode, "op": op, "n": n, "port": port, "trusted": trusted, "live": live}
-      --untrusted=(mode != "direct" and not trusted)
-      --services=[SOCKET-SERVICE, HTTP-SERVICE]
-      --network={
+  provider := start-provider
+  provider-pid := (provider-ids SOCKET-SERVICE)[0]
+  sample := live or args.contains "sample"
+  peak := sample ? (PeakSampler 0 SYSTEM-PROCESS-ID_ --live=live) : null
+  provider-peak := sample ? (PeakSampler provider.gid provider-pid --live=live) : null
+  policy := args.contains "all" ? "all" : {
         "allow": ["127.0.0.1:$port"],
         "connections": 8,
         "attempts-per-minute": 600,
@@ -56,12 +62,19 @@ main args:
         "bytes-per-day": 1 << 30,
         "response-bytes": 1 << 20,
       }
+  container := containers.start containers.current
+      {"role": "client", "mode": mode, "op": op, "n": n, "port": port, "trusted": trusted, "live": live}
+      --untrusted=(mode != "direct" and not trusted)
+      --network=policy
   code := container.wait
   if peak:
     peak.stop
     print "system process: heap allocated $peak.base-allocated -> peak $peak.max-allocated (+$(peak.max-allocated - peak.base-allocated)), reserved $peak.base-reserved -> peak $peak.max-reserved"
+    provider-peak.stop
+    print "provider process: heap allocated $provider-peak.base-allocated -> peak $provider-peak.max-allocated (+$(provider-peak.max-allocated - provider-peak.base-allocated)), reserved $provider-peak.base-reserved -> peak $provider-peak.max-reserved"
   print "server requests: $server.requests"
   server.close
+  provider.stop
   exit code
 
 class PeakSampler:
@@ -95,7 +108,16 @@ run-client args/Map -> none:
   path := op == "download" ? "/big?n=$SIZE" : "/small"
   expected := op == "download" ? SIZE : 5
   start := Time.monotonic-us
-  if mode == "s-http" or mode == "direct":
+  if op == "roots":
+    // n sessions that register the same two roots, kept for a moment.
+    sessions := List n: | i |
+      network := sandbox.open
+      network.add-root-certificate TEST-CERTIFICATE
+      network.add-root-certificate OTHER-CERTIFICATE
+      network
+    sleep --ms=300
+    sessions.do: it.close
+  else if mode == "s-http" or mode == "direct":
     network := mode == "direct" ? net.open : sandbox.open
     client := http.Client network
     n.repeat:
