@@ -270,6 +270,7 @@ fn diff(before: &Dump, after: &Dump, stats: &mut Stats) -> Result<(), String> {
     let rel = |v: usize| if before.in_pages(v) { new_addr(v) } else { v };
     let mut order: Vec<usize> = (0..before.nodes.len()).collect();
     order.sort_by_key(|&i| before.nodes[i][0]);
+    let mut fusedw = vec![0usize; nf.max(1)];
     let mut nodew = vec![];
     for &i in &order {
         let n = before.nodes[i];
@@ -280,7 +281,7 @@ fn diff(before: &Dump, after: &Dump, stats: &mut Stats) -> Result<(), String> {
     let ncb = order.iter().filter(|&&i| before.nodes[i][0] != 2).count();
     let nn = order.len();
     let c = Ctx { base: arena.base(), ftab: ftab.as_mut_ptr(), nf, pw, ctab: cb.as_mut_ptr(), ncls: cb.len(), sw: before.sw,
-                  null: before.null, nullid: Ghost::assume_new(), fss: Ghost::assume_new(), cbs: Ghost::assume_new() };
+                  null: before.null, nullid: Ghost::assume_new(), fused: fusedw.as_mut_ptr(), tail: false, fss: Ghost::assume_new(), cbs: Ghost::assume_new() };
     let mut src = Source { arena: &mut arena, reserved: 0, taken: vec![] };
     let r = collect(&c, &mut src, roots.as_mut_ptr(), roots.len(), ttab.as_mut_ptr(), tused.as_mut_ptr(), tcap,
                     nodew.as_mut_ptr(), ncb, nn,

@@ -97,7 +97,7 @@ pub fn forward<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, w: usize,
         src_ok(*c, *final(src), *final(t)),
         grows(h, *old(st), *final(st)),
         r == enc(final(st).addr2, v), closed(h, *final(st), v),
-        final(t).ttab == old(t).ttab, final(t).tused == old(t).tused, final(t).tcap == old(t).tcap,
+        final(t).ttab == old(t).ttab, final(t).tused == old(t).tused, final(t).tcap == old(t).tcap, final(t).rs == old(t).rs, final(t).mx == old(t).mx,
 {
     let ghost s0 = *st;
     let ghost n = h.objs.len() as int;
@@ -386,7 +386,7 @@ pub fn scan_object<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, sstart: usi
         src_ok(*c, *final(src), *final(t)),
         grows(h, *old(st), *final(st)),
         sz == tsz(h, *old(st), ks),
-        final(t).ttab == old(t).ttab, final(t).tused == old(t).tused, final(t).tcap == old(t).tcap,
+        final(t).ttab == old(t).ttab, final(t).tused == old(t).tused, final(t).tcap == old(t).tcap, final(t).rs == old(t).rs, final(t).mx == old(t).mx,
         old(t).tn <= final(t).tn,
 {
     let ghost s0 = *st;
@@ -426,7 +426,7 @@ pub fn scan_object<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, sstart: usi
             st.tloc[ks] == (sp, so as int), st.order[ks] == jo, st.tss[sp] == sstart, tpage == ppage(*c, sstart as int),
             sz == tsz(h, s0, ks), so + sz <= c.pw - 1, sstart + pbytes(*c) < usize::MAX,
             0 <= sp < t.tn,
-            t.ttab == old(t).ttab, t.tused == old(t).tused, t.tcap == old(t).tcap, old(t).tn <= t.tn,
+            t.ttab == old(t).ttab, t.tused == old(t).tused, t.tcap == old(t).tcap, t.rs == old(t).rs, t.mx == old(t).mx, old(t).tn <= t.tn,
         decreases hi - i,
     {
         let ghost s1 = *st;
@@ -507,7 +507,7 @@ pub fn do_roots<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, rptr: *mut usi
     ensures
         inv(*c, h, *final(st), *final(t), 0, 0, rvp), roots_ok(*c, h, *final(st), rptr, rv, rlen as int),
         src_ok(*c, *final(src), *final(t)),
-        final(t).ttab == old(t).ttab, final(t).tused == old(t).tused, final(t).tcap == old(t).tcap,
+        final(t).ttab == old(t).ttab, final(t).tused == old(t).tused, final(t).tcap == old(t).tcap, final(t).rs == old(t).rs, final(t).mx == old(t).mx,
 {
     let mut i: usize = 0;
     while i < rlen
@@ -516,7 +516,7 @@ pub fn do_roots<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, rptr: *mut usi
             inv(*c, h, *st, *t, 0, 0, rvp), roots_ok(*c, h, *st, rptr, rv, i as int),
             src_ok(*c, *src, *t), rv.len() == rlen, i <= rlen,
             rv.len() <= rvp.len(), forall|k: int| 0 <= k < rv.len() ==> #[trigger] rvp[k] == rv[k],
-            t.ttab == old(t).ttab, t.tused == old(t).tused, t.tcap == old(t).tcap,
+            t.ttab == old(t).ttab, t.tused == old(t).tused, t.tcap == old(t).tcap, t.rs == old(t).rs, t.mx == old(t).mx,
         decreases rlen - i,
     {
         proof {
@@ -617,7 +617,7 @@ pub fn scan<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, sp0: usize, so0: u
         grows(h, *old(st), *final(st)), final(st).addr2.len() == old(st).addr2.len(),
         roots_ok(*c, h, *final(st), rptr, rv, rv.len() as int),
         src_ok(*c, *final(src), *final(t)),
-        final(t).ttab == old(t).ttab, final(t).tused == old(t).tused, final(t).tcap == old(t).tcap,
+        final(t).ttab == old(t).ttab, final(t).tused == old(t).tused, final(t).tcap == old(t).tcap, final(t).rs == old(t).rs, final(t).mx == old(t).mx,
 {
     let ghost s_in = *st;
     proof { lemma_grows_refl(h, s_in); assert(bk_ok(h, s_in)); }
@@ -638,7 +638,7 @@ pub fn scan<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, sp0: usize, so0: u
             ctx_ok(*c), fpages_ok(*c), ftab_ok(*c, ro.ftp), heap_ok(*c, h), others_ok(h, ro.others), ctab_ok(*c, ro.ctp),
             inv(*c, h, *st, *t, ks, 0, rvp), roots_ok(*c, h, *st, rptr, rv, rl), rl == rv.len(),
             src_ok(*c, *src, *t),
-            t.ttab == old(t).ttab, t.tused == old(t).tused, t.tcap == old(t).tcap,
+            t.ttab == old(t).ttab, t.tused == old(t).tused, t.tcap == old(t).tcap, t.rs == old(t).rs, t.mx == old(t).mx,
             t.tn >= 1, 0 <= sp < t.tn, sstart == st.tss[sp as int],
             0 <= ks <= st.order.len(), so <= st.tus[sp as int],
             grows(h, s_in, *st), st.addr2.len() == s_in.addr2.len(), s_in.addr2.len() == h.objs.len(),

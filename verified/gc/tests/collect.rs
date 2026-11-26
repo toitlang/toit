@@ -96,10 +96,13 @@ struct Source<'a> {
     taken: usize,
     /// Fail every reservation (the failure case).
     refuse: bool,
+    /// The pages asked for.
+    asked: usize,
 }
 
 impl<'a> PageSource for Source<'a> {
     fn reserve(&mut self, n: usize) -> bool {
+        self.asked = n;
         if self.refuse || self.arena.free.len() < n {
             return false;
         }
@@ -270,6 +273,8 @@ struct Heap {
     /// Finalizer nodes (kind, key, lambda): callback and queued nodes first,
     /// then VM finalizers.
     nodes: Vec<(usize, V, V)>,
+    /// Give the collector the pages' used words (the tail bound).
+    tail: bool,
 }
 
 fn enc(h: &Heap, v: &V) -> usize {
@@ -321,7 +326,7 @@ fn build(arena: &mut Arena, objs: Vec<Obj>, nprog: usize, roots: Vec<V>, sw: usi
         };
         addr[i] = a + 1;
     }
-    let mut h = Heap { objs, nprog, addr, fpages, roots, sw, nodes: vec![] };
+    let mut h = Heap { objs, nprog, addr, fpages, roots, sw, nodes: vec![], tail: false };
     for (i, o) in h.objs.iter().enumerate() {
         let a = h.addr[i] - 1;
         for (k, v) in o.words.iter().enumerate() {
@@ -442,16 +447,28 @@ fn run(arena: &mut Arena, h: &Heap, tcap_extra: isize, refuse: bool) -> Result<(
     }
     nodew.push(0);
     let nodes_before = nodew.clone();
+    // The used words of each from-space page and the largest object (an
+    // oracle for the tail bound).
+    let mut fused = vec![0usize; nf.max(1)];
+    let mut mx = 1usize;
+    for (i, o) in h.objs.iter().enumerate().skip(h.nprog) {
+        let a = h.addr[i] - 1;
+        let p = h.fpages.iter().position(|s| a >= *s && a < *s + pw * W).unwrap();
+        fused[p] = fused[p].max((a - h.fpages[p]) / W + o.words.len());
+        mx = mx.max(o.words.len());
+    }
+    let rs = if h.tail { (2 * nf + 1).min(nf * pw / (pw - mx) + 1) } else { 2 * nf + 1 };
     let before: Vec<usize> = arena.words.clone();
     let roots_before = rootw.clone();
     let c = Ctx { base: arena.base(), ftab: ftab.as_mut_ptr(), nf, pw, ctab: cb.as_mut_ptr(), ncls: cb.len(), sw: h.sw,
-                  null: NULL, nullid: Ghost::assume_new(), fss: Ghost::assume_new(), cbs: Ghost::assume_new() };
-    let mut src = Source { arena, reserved: 0, taken: 0, refuse };
+                  null: NULL, nullid: Ghost::assume_new(), fused: fused.as_mut_ptr(), tail: h.tail, fss: Ghost::assume_new(), cbs: Ghost::assume_new() };
+    let mut src = Source { arena, reserved: 0, taken: 0, refuse, asked: 0 };
     let r = collect(&c, &mut src, rootw.as_mut_ptr(), rootw.len(), ttab.as_mut_ptr(), tused.as_mut_ptr(), tcap,
                     nodew.as_mut_ptr(), ncb, h.nodes.len(),
                     Ghost::assume_new(), Ghost::assume_new(), Ghost::assume_new(), Tracked::assume_new(), Tracked::assume_new(),
                     Tracked::assume_new());
     let taken = src.taken;
+    let asked = src.asked;
     match r {
         Err(e) => {
             // Nothing changed.
@@ -462,6 +479,8 @@ fn run(arena: &mut Arena, h: &Heap, tcap_extra: isize, refuse: bool) -> Result<(
             Err(e)
         }
         Ok(w) => {
+            assert!(taken <= rs, "{} pages taken, reservation {}", taken, rs);
+            assert_eq!(asked, rs, "reservation");
             check(arena, &cb, h, &rootw, &nodew, &ttab[..w.pages], &tused[..w.pages], &w, taken);
             let (a, b) = (ttab[..w.pages].to_vec(), tused[..w.pages].to_vec());
             Ok((w, a, b))
@@ -750,8 +769,38 @@ fn worst_case_placement() {
             objs.push(inst(vec![next]));
         }
     }
-    let h = heap(&mut arena, objs, 0, vec![V::Ref(0)]);
+    let h = heap(&mut arena, objs.clone(), 0, vec![V::Ref(0)]);
     run(&mut arena, &h, 0, false).ok().unwrap();
+    let mut arena = Arena::new(400, PW);
+    let mut h = heap(&mut arena, objs, 0, vec![V::Ref(0)]);
+    // With the tail bound (largest object 16 words of 32): at most
+    // floor(nf * 32 / 16) + 1 = 2 nf + 1 pages, the same here.
+    h.tail = true;
+    run(&mut arena, &h, 0, false).ok().unwrap();
+}
+
+#[test]
+fn tail_bound_small_objects() {
+    // Survivors of at most 4 words in pages of 32: the tail bound reserves
+    // floor(nf * 32 / 28) + 1 pages instead of 2 nf + 1, and the collection
+    // fits (the test source refuses a take beyond the reservation).
+    let mut rng = Rng(11);
+    for _ in 0..50 {
+        let n = 20 + rng.below(200);
+        let mut objs = vec![];
+        for i in 0..n {
+            let next = if i + 1 < n { V::Ref(i + 1) } else { V::Smi(0) };
+            match rng.below(3) {
+                0 => objs.push(inst(vec![next])),
+                1 => objs.push(arr(vec![next, V::Smi(4)])),
+                _ => objs.push(inst(vec![next, V::Ref(rng.below(n)), V::Smi(2)])),
+            }
+        }
+        let mut arena = Arena::new(600, PW);
+        let mut h = build(&mut arena, objs, 0, vec![V::Ref(0)], SW, &mut rng, true);
+        h.tail = true;
+        run(&mut arena, &h, 0, false).ok().unwrap();
+    }
 }
 
 #[test]
@@ -808,7 +857,8 @@ fn random_graphs() {
         let maxw = 3 + rng.below(pw - 4);
         let (objs, roots) = random_heap(&mut rng, n, nprog, nroots, maxw, sw);
         let mut arena = Arena::new(1200, pw);
-        let h = build(&mut arena, objs, nprog, roots, sw, &mut rng, seed % 2 == 0);
+        let mut h = build(&mut arena, objs, nprog, roots, sw, &mut rng, seed % 2 == 0);
+        h.tail = seed % 3 != 0;
         run(&mut arena, &h, 0, false).ok().unwrap();
     }
 }
@@ -875,6 +925,7 @@ fn random_finalizers() {
         }
         let mut arena = Arena::new(1200, pw);
         let mut h = build(&mut arena, objs, nprog, roots, SW, &mut rng, seed % 2 == 0);
+        h.tail = seed % 2 == 1;
         let mut nodes = vec![];
         let mut active = vec![];
         let mut keys = HashSet::new();

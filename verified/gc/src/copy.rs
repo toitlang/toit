@@ -65,6 +65,8 @@ pub open spec fn copy_step(c: Ctx, h: H, s0: St, s1: St, t0: Tos, t1: Tos, j: in
     &&& forall|q: (int, int)| s0.tp.contains_key(q) && q != (t0.tn - 1, t0.top as int)
             && !(q.0 == t1.tn - 1 && off <= q.1 < off + sz) ==> #[trigger] s1.tp[q] == s0.tp[q]
     &&& (t1.tn - 1) * c.pw <= 2 * s1.words - t1.top
+    &&& t1.rs == t0.rs && t1.mx == t0.mx
+    &&& (t1.tn - 1) * (c.pw - t1.mx@) + t1.top <= s1.words
 }
 
 // ---------------------------------------------------------------------------
@@ -426,7 +428,7 @@ pub fn copy<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, fstart: usize, off
         src_ok(*c, *final(src), *final(t)),
         grows(h, *old(st), *final(st)),
         copied(*final(st), j), r == final(st).addr2[j],
-        final(t).ttab == old(t).ttab, final(t).tused == old(t).tused, final(t).tcap == old(t).tcap,
+        final(t).ttab == old(t).ttab, final(t).tused == old(t).tused, final(t).tcap == old(t).tcap, final(t).rs == old(t).rs, final(t).mx == old(t).mx,
 {
     let ghost s0 = *st;
     let ghost t0 = *t;

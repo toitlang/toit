@@ -26,6 +26,7 @@ use crate::cheney::*;
 use crate::copy::*;
 use crate::collect::*;
 use crate::fin::*;
+use crate::tail::*;
 
 verus! {
 
@@ -456,6 +457,7 @@ pub fn collect<S: PageSource>(c: &Ctx, src: &mut S, rptr: *mut usize, rlen: usiz
     requires
         ctx_ok(*c), ftab_ok(*c, ro.ftp), heap_ok(*c, h), others_ok(h, ro.others), ctab_ok(*c, ro.ctp),
         from_ok(*c, h, old(st).fp),
+        tail_ok(*c, h, ro.fup),
         rv.len() == rlen, roots_in(*c, h, old(st).rp, rptr, rv),
         ttab@.addr + tcap * W <= usize::MAX, tused@.addr + tcap * W <= usize::MAX,
         forall|p: int| 0 <= p < tcap ==> #[trigger] wperm_ok(old(st).ttp, p, ttab, p),
@@ -479,10 +481,15 @@ pub fn collect<S: PageSource>(c: &Ctx, src: &mut S, rptr: *mut usize, rlen: usiz
     if !check_ftab(c, Tracked(&ro.ftp)) {
         return Err(GcError::BadFromTable);
     }
-    if tcap < 2 * c.nf + 1 {
+    // The reservation: the tail bound from the largest from-space object
+    // when the caller gave the pages' used words, else 2 nf + 1.
+    let mx = if c.tail { max_size(c, Ghost(h), Tracked(&st.fp), Tracked(&ro.fup), Tracked(&ro.ftp), Tracked(&ro.ctp)) } else { c.pw - 1 };
+    proof { if !c.tail { assert forall|j: int| #[trigger] from(h, j) implies size(h, j) <= mx by { lemma_from_obj(*c, h, j); } } }
+    let rs = reserve_pages(c, mx);
+    if tcap < rs {
         return Err(GcError::SmallTable);
     }
-    if !src.reserve(2 * c.nf + 1) {
+    if !src.reserve(rs) {
         return Err(GcError::NoReservation);
     }
     proof {
@@ -499,7 +506,7 @@ pub fn collect<S: PageSource>(c: &Ctx, src: &mut S, rptr: *mut usize, rlen: usiz
         st.tus = Seq::empty();
     }
     let ghost rvp = fin_roots(rv, nodes);
-    let mut t = Tos { ttab, tused, tcap, tn: 0, top: 0, cur: 0 };
+    let mut t = Tos { ttab, tused, tcap, rs, mx: Ghost(mx as int), tn: 0, top: 0, cur: 0 };
     proof {
         let s = *st;
         assert(bk_ok(h, s));
@@ -671,7 +678,7 @@ pub fn fin_phase<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, nptr: *mut us
         &&& roots_ok(*c, hf, *final(st), rptr, rv, rv.len() as int)
         &&& src_ok(*c, *final(src), *final(t))
         &&& fin_done(*c, h, hf, *final(st), rv, nodes, *final(nm), ncb as int, nn as int, main)
-        &&& final(t).ttab == old(t).ttab && final(t).tused == old(t).tused && final(t).tcap == old(t).tcap
+        &&& final(t).ttab == old(t).ttab && final(t).tused == old(t).tused && final(t).tcap == old(t).tcap && final(t).rs == old(t).rs && final(t).mx == old(t).mx
     }),
 {
     // The finalizers (src/heap_roots.cc, in the order of the C++ prototype):

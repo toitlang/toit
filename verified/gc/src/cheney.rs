@@ -42,6 +42,10 @@ pub struct Tos {
     pub ttab: *mut usize,
     pub tused: *mut usize,
     pub tcap: usize,
+    /// The pages reserved (`tail::reserve_pages`) and the size bound they
+    /// rest on (no from-space object is larger than `mx` words).
+    pub rs: usize,
+    pub mx: Ghost<int>,
     pub tn: usize,
     pub top: usize,
     pub cur: usize,
@@ -203,6 +207,10 @@ pub open spec fn cap_ok(c: Ctx, h: H, st: St, t: Tos) -> bool {
     &&& st.order.len() <= st.words
     &&& t.tn == 0 ==> st.words == 0
     &&& t.tn >= 1 ==> (t.tn - 1) * c.pw <= 2 * st.words - t.top
+    &&& 1 <= t.mx@ <= c.pw - 1
+    &&& forall|j: int| #[trigger] from(h, j) ==> size(h, j) <= t.mx@
+    &&& 1 <= t.rs && (t.rs >= 2 * c.nf + 1 || t.rs * (c.pw - t.mx@) > c.nf * c.pw)
+    &&& t.tn >= 1 ==> (t.tn - 1) * (c.pw - t.mx@) + t.top <= st.words
 }
 
 /// To-space contents: each copy holds its object's words, encoded under the
@@ -260,8 +268,8 @@ pub open spec fn inv(c: Ctx, h: H, st: St, t: Tos, ks: int, kc: int, rv: Seq<AVa
 pub open spec fn src_ok<S: PageSource>(c: Ctx, src: S, t: Tos) -> bool {
     &&& src.pw() == c.pw
     &&& src.prov() == c.base@.provenance
-    &&& src.reserved() >= 2 * c.nf + 1 - t.tn
-    &&& t.tcap >= 2 * c.nf + 1
+    &&& src.reserved() >= t.rs - t.tn
+    &&& t.tcap >= t.rs
 }
 
 /// What a step of the collector keeps of the state before it.
@@ -337,15 +345,18 @@ pub fn place<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, sz: usize, Ghost(
         tpages_ok(*c, h, *old(st), *old(t)),
         1 <= sz <= c.pw - 1,
         old(src).pw() == c.pw, old(src).prov() == c.base@.provenance,
-        old(src).reserved() >= 2 * c.nf + 1 - old(t).tn,
-        old(t).tcap >= 2 * c.nf + 1,
+        old(src).reserved() >= old(t).rs - old(t).tn,
+        old(t).tcap >= old(t).rs,
+        1 <= old(t).mx@ <= c.pw - 1, sz <= old(t).mx@,
+        1 <= old(t).rs && (old(t).rs >= 2 * c.nf + 1 || old(t).rs * (c.pw - old(t).mx@) > c.nf * c.pw),
+        old(t).tn >= 1 ==> (old(t).tn - 1) * (c.pw - old(t).mx@) + old(t).top <= old(st).words,
         old(st).words + sz <= c.nf * c.pw,
         old(t).tn == 0 ==> old(st).words == 0,
         old(t).tn >= 1 ==> (old(t).tn - 1) * c.pw <= 2 * old(st).words - old(t).top,
     ensures
         tpages_ok(*c, h, *final(st), *final(t)),
         place_frame(*old(st), *final(st)),
-        final(t).ttab == old(t).ttab, final(t).tused == old(t).tused, final(t).tcap == old(t).tcap,
+        final(t).ttab == old(t).ttab, final(t).tused == old(t).tused, final(t).tcap == old(t).tcap, final(t).rs == old(t).rs, final(t).mx == old(t).mx,
         final(t).tn >= 1, final(t).top == off + sz, off + sz <= c.pw - 1,
         (final(t).tn == old(t).tn && off == old(t).top && old(t).tn >= 1
             && final(st).tss == old(st).tss && final(st).tus == old(st).tus.update(old(t).tn - 1, off + sz))
@@ -354,8 +365,9 @@ pub fn place<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, sz: usize, Ghost(
         forall|q: (int, int)| old(st).tp.contains_key(q) && q != (old(t).tn - 1, old(t).top as int) ==> #[trigger] final(st).tp[q] == old(st).tp[q],
         final(t).tn == old(t).tn ==> final(st).tp == old(st).tp,
         final(src).pw() == c.pw, final(src).prov() == c.base@.provenance,
-        final(src).reserved() >= 2 * c.nf + 1 - final(t).tn,
+        final(src).reserved() >= final(t).rs - final(t).tn,
         (final(t).tn - 1) * c.pw <= 2 * (old(st).words + sz) - final(t).top,
+        (final(t).tn - 1) * (c.pw - final(t).mx@) + final(t).top <= old(st).words + sz,
 {
     let ghost s0 = *st;
     let ghost t0 = *t;
@@ -373,6 +385,19 @@ pub fn place<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, sz: usize, Ghost(
             assert(tn0 * pw <= 2 * w + sz);
             assert(tn0 < 2 * c.nf) by (nonlinear_arith)
                 requires tn0 * pw <= 2 * w + sz, w + sz <= c.nf * pw, sz >= 1, pw >= 1;
+            // And it lasts for the tail bound: every closed page holds at least pw - mx words.
+            let mx = t0.mx@;
+            let rs = t0.rs as int;
+            if tn0 >= 1 {
+                assert(tn0 * (pw - mx) <= w) by (nonlinear_arith)
+                    requires (tn0 - 1) * (pw - mx) + t0.top <= w, t0.top + sz >= pw, sz <= mx;
+            }
+            assert(tn0 * (pw - mx) <= w) by (nonlinear_arith) requires tn0 == 0 || tn0 * (pw - mx) <= w, w >= 0;
+            if rs < 2 * c.nf + 1 {
+                assert(tn0 < rs) by (nonlinear_arith)
+                    requires tn0 * (pw - mx) <= w, w + sz <= c.nf * pw, sz >= 1, rs * (pw - mx) > c.nf * pw, pw - mx >= 1;
+            }
+            assert(tn0 < rs);
         }
         if t.tn > 0 {
             // Close the last page: its sentinel word and its used words.

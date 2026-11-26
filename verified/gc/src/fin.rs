@@ -748,7 +748,7 @@ pub fn fin_node<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, nptr: *mut usi
         node_out(*c, h0, r@, *final(st), main, *final(np), nodes[i as int], i as int),
         nodes_mem(*final(np), nptr, nn as int),
         forall|q: int| !(4 * i <= q < 4 * i + 4) ==> #[trigger] final(np)[q] == old(np)[q],
-        final(t).ttab == old(t).ttab, final(t).tused == old(t).tused, final(t).tcap == old(t).tcap,
+        final(t).ttab == old(t).ttab, final(t).tused == old(t).tused, final(t).tcap == old(t).tcap, final(t).rs == old(t).rs, final(t).mx == old(t).mx,
 {
     let ghost nd = nodes[i as int];
     let ghost s0 = *st;
@@ -870,7 +870,7 @@ pub fn fin_pass<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, nptr: *mut usi
         forall|m: int| 0 <= m < ncb ==> #[trigger] node_out(*c, h0, r@, *final(st), main, *final(np), nodes[m], m),
         forall|m: int| ncb <= m < nn ==> #[trigger] node_in(*final(np), h0, nodes[m], m),
         nodes_mem(*final(np), nptr, nn as int),
-        final(t).ttab == old(t).ttab, final(t).tused == old(t).tused, final(t).tcap == old(t).tcap,
+        final(t).ttab == old(t).ttab, final(t).tused == old(t).tused, final(t).tcap == old(t).tcap, final(t).rs == old(t).rs, final(t).mx == old(t).mx,
 {
     let ghost s0 = *st;
     let ghost mut hc = h0;
@@ -897,7 +897,7 @@ pub fn fin_pass<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, nptr: *mut usi
             forall|m: int| i <= m < nn ==> #[trigger] node_in(*np, h0, nodes[m], m),
             forall|m: int| 0 <= m < i ==> #[trigger] node_out(*c, h0, hc, *st, main, *np, nodes[m], m),
             forall|x: int| 0 <= x < h0.objs.len() ==> #[trigger] changed_ok(*c, h0, hc, nodes, i as int, main, x),
-            t.ttab == old(t).ttab, t.tused == old(t).tused, t.tcap == old(t).tcap,
+            t.ttab == old(t).ttab, t.tused == old(t).tused, t.tcap == old(t).tcap, t.rs == old(t).rs, t.mx == old(t).mx,
         decreases ncb - i,
     {
         let ghost s1 = *st;

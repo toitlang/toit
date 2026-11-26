@@ -103,6 +103,10 @@ pub struct Ctx {
     /// The null object's address (the program heap's) and its id.
     pub null: usize,
     pub nullid: Ghost<int>,
+    /// The used words of each from-space page (`nf` words) and whether to
+    /// use them for the tail bound of the reservation (`tail::tail_ok`).
+    pub fused: *mut usize,
+    pub tail: bool,
     /// The from-space table's contents.
     pub fss: Ghost<Seq<usize>>,
     /// The class table's contents.
@@ -254,6 +258,7 @@ pub tracked struct Ro {
     pub tracked others: Map<int, PointsTo<usize>>,
     pub tracked ftp: Map<int, PointsTo<usize>>,
     pub tracked ctp: Map<int, PointsTo<u16>>,
+    pub tracked fup: Map<int, PointsTo<usize>>,
 }
 
 /// The header permissions of the objects outside from-space (the program
