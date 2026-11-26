@@ -411,18 +411,18 @@ pub proof fn lemma_copy_par(c: Ctx, h: H, s0: St, s1: St, t0: Tos, t1: Tos, j: i
 /// Returns its new address.
 pub fn copy<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, fstart: usize, off: usize,
                            Ghost(h): Ghost<H>, Ghost(j): Ghost<int>, Ghost(ks): Ghost<int>, Ghost(kc): Ghost<int>,
-                           Ghost(par): Ghost<(int, int)>, Ghost(rptr): Ghost<*mut usize>, Ghost(rv): Ghost<Seq<AVal>>,
+                           Ghost(par): Ghost<(int, int)>, Ghost(rptr): Ghost<*mut usize>, Ghost(rv): Ghost<Seq<AVal>>, Ghost(rvp): Ghost<Seq<AVal>>,
                            Ghost(ri): Ghost<int>,
                            Tracked(st): Tracked<&mut St>, Tracked(ro): Tracked<&Ro>) -> (r: usize)
     requires
         ctx_ok(*c), fpages_ok(*c), heap_ok(*c, h), others_ok(h, ro.others), ctab_ok(*c, ro.ctp),
-        inv(*c, h, *old(st), *old(t), ks, kc, rv), roots_ok(*c, h, *old(st), rptr, rv, ri),
+        inv(*c, h, *old(st), *old(t), ks, kc, rvp), roots_ok(*c, h, *old(st), rptr, rv, ri),
         src_ok(*c, *old(src), *old(t)),
         from(h, j), !copied(*old(st), j), fstart == fs(*c, fpg(h, j)), off == foff(h, j),
         0 <= ks <= old(st).order.len(), ks < old(st).order.len() || kc == 0,
-        new_parent_ok(h, *old(st), rv, j, par),
+        new_parent_ok(h, *old(st), rvp, j, par),
     ensures
-        inv(*c, h, *final(st), *final(t), ks, kc, rv), roots_ok(*c, h, *final(st), rptr, rv, ri),
+        inv(*c, h, *final(st), *final(t), ks, kc, rvp), roots_ok(*c, h, *final(st), rptr, rv, ri),
         src_ok(*c, *final(src), *final(t)),
         grows(h, *old(st), *final(st)),
         copied(*final(st), j), r == final(st).addr2[j],
@@ -544,7 +544,7 @@ pub fn copy<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, fstart: usize, off
         lemma_copy_tcopies(*c, h, s0, s1, t0, *t, j, par);
         lemma_copy_to(*c, h, s0, s1, t0, *t, j, par, ks, kc);
         lemma_copy_cap(*c, h, s0, s1, t0, *t, j, par);
-        lemma_copy_par(*c, h, s0, s1, t0, *t, j, par, rv);
+        lemma_copy_par(*c, h, s0, s1, t0, *t, j, par, rvp);
         lemma_copy_roots(*c, h, s0, s1, rptr, rv, ri);
         assert(s1.addr2[j] == na);
     }
