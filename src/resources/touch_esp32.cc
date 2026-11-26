@@ -34,7 +34,7 @@
 
 namespace toit {
 
-static constexpr touch_pad_t kInvalidTouchPad = static_cast<touch_pad_t>(-1);
+static const touch_pad_t kInvalidTouchPad = static_cast<touch_pad_t>(-1);
 
 #ifdef CONFIG_IDF_TARGET_ESP32
 

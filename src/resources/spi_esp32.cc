@@ -52,7 +52,7 @@ static_assert(kSpiControllerMaxDevicesPerHost * (SOC_SPI_PERIPH_NUM - 1) <=
 
 const spi_host_device_t kInvalidHostDevice = spi_host_device_t(-1);
 
-static ResourcePool<spi_host_device_t, kInvalidHostDevice> spi_host_devices(
+static ResourcePool<spi_host_device_t, -1> spi_host_devices(
   // SPI1_HOST is typically reserved for flash and spiram.
   SPI2_HOST
 #if SOC_SPI_PERIPH_NUM > 2

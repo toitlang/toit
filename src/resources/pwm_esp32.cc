@@ -45,7 +45,7 @@ namespace toit {
 //   signals for other purposes as well."
 
 const ledc_timer_t kInvalidLedcTimer = ledc_timer_t(-1);
-static ResourcePool<ledc_timer_t, kInvalidLedcTimer> ledc_timers(
+static ResourcePool<ledc_timer_t, -1> ledc_timers(
     LEDC_TIMER_0, LEDC_TIMER_1, LEDC_TIMER_2, LEDC_TIMER_3
 );
 
@@ -54,7 +54,7 @@ static ResourcePool<ledc_timer_t, kInvalidLedcTimer> ledc_timers(
 #endif
 
 const ledc_channel_t kInvalidLedcChannel = ledc_channel_t(-1);
-static ResourcePool<ledc_channel_t, kInvalidLedcChannel> ledc_channels(
+static ResourcePool<ledc_channel_t, -1> ledc_channels(
     LEDC_CHANNEL_0,
     LEDC_CHANNEL_1,
     LEDC_CHANNEL_2,

@@ -1118,6 +1118,15 @@ class Stack : public HeapObject {
 #else
   static thread_local int v2_frames_skip_;
 #endif
+  // Sets v2_frames_skip_. With clang, other translation units go through a
+  // function of objects.cc instead of the variable: clang's Xtensa backend
+  // marks an undefined thread-local symbol as NOTYPE, not TLS, and GNU ld
+  // then rejects the reference ("mismatches non-TLS reference").
+#if defined(__clang__) && !defined(TOIT_EC618)
+  static void set_v2_frames_skip(int skip);
+#else
+  static void set_v2_frames_skip(int skip) { v2_frames_skip_ = skip; }
+#endif
 
   static Stack* cast(Object* stack) {
     ASSERT(is_stack(stack));
