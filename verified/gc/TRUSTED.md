@@ -21,6 +21,7 @@ are not escape hatches. The list must only shrink.
 | The bridge's hypotheses (section 3) | the preconditions of `bridge::lemma_bridge` | the collector's heap represents the spec's (proved for the VM's layouts from a structural description, `lemma_rep_vm`), the roots include the state's, the core's heap invariant |
 | The C++ root obligation (section 5) | `sandbox_gc_roots`: the root array and the finalizer nodes are every reference the C++ holds into the process heap | one statement about the C++ runtime (proposed CONTRACTS.toml text); checked empirically by `TOIT_SANDBOX_GC_VERIFY` (from-space checked and poisoned after every collection) |
 | The finalizer pass (section 6) | the C++ acts on the verdicts; `weak_keys_maps`; the null object | the node array is what the C++ lists hold; the C++ unlinks, queues and frees as the verdicts say; weak-map keys are maps; `Ctx::null` is the program's null |
+| The tail bound and stack shrinking (section 7) | `tail::tiled` when `Ctx::tail`; `Ctx::smin`; `stack_copy_equiv` | the C++ gives each from-space page's used words and they are tiled by objects and one-word fillers; `smin` only decides how much a stack shrinks (any value is safe); the core reads a shrunk stack as the same state (the existing CONTRACTS.toml assumption) |
 | Not verified | `nopanic/` (a C entry point: `unsafe` extern calls, `assume_new` for the ghost arguments), `tests/` | measurement and tests only; nothing in the VM |
 
 What is checked at run time instead of trusted: the from-space table (word
@@ -264,3 +265,35 @@ proved collector traces a live weak map's fields like any instance's, so it
 keeps values the C++ prototype nulls; `zapped` allows that (an object may
 stay as it is), so the statement holds; the difference is memory retained
 until the map drops the entry. The differential test counts it.
+
+## 7. The tail bound and stack shrinking
+
+**Tail bound** (`tail.rs`). With `Ctx::tail` the collection first walks
+every from-space page from offset 0 to its used words (`Ctx::fused`, one
+word per page) and takes the largest object `mx`; it then reserves
+`min(2 nf + 1, floor(nf * pw / (pw - mx)) + 1)` pages and is proved never to
+take more (every closed page holds at least `pw - mx` words). Trusted:
+`tail::tiled`, part of the entry derivation: the objects (and the C++
+one-word fillers a stack shrunk in place leaves) tile each page up to its
+used words. The C++ knows them: they are the previous collection's
+`tused` table, the allocation top for the page being allocated in. If
+`tiled` were false the bound could be exceeded mid-collection, so it is
+not a mere hint; without `Ctx::tail` the reservation is `2 nf + 1` and
+needs nothing.
+
+**Stack shrinking** (`shrink.rs`). After the copy and the finalizer pass
+every copied stack is shrunk in place by the C++ rule
+(`Stack::shrink_v2_for_gc`, `shrink_stacks()`): records stay, the object
+stack moves down by `d`, length and top drop by `d`, one-word fillers fill
+the `d` words given up. `collected` says the copies' words are
+`shrink::cimg`'s. `Ctx::smin` (the C++ passes `2 *
+global_max_stack_height + RESERVED_STACK_FOR_CALLS + V2_FRAME_WORDS +
+V2_STACK_RESERVE`) only sets how much is taken; any value is safe for the
+statement. What the core needs, that the shrunk stack is the same state
+for it, is `stack_copy_equiv` (verified/CONTRACTS.toml), already an
+assumption for stack growth: the collector proves its premise
+`same_abstraction` for every shrunk copy (`lemma_same_abstraction`: same
+record top, records equal, the object stack equal counted from the end,
+the other header words equal) and relies on it; it discharges nothing new.
+The spec and the bridge are unaffected (the core models no stack word but
+the header).
