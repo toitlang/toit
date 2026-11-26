@@ -100,6 +100,9 @@ pub struct Ctx {
     /// The word of a stack object where its array starts (`Stack::
     /// HEADER_SIZE / WORD_SIZE`, larger in debug builds).
     pub sw: usize,
+    /// The null object's address (the program heap's) and its id.
+    pub null: usize,
+    pub nullid: Ghost<int>,
     /// The from-space table's contents.
     pub fss: Ghost<Seq<usize>>,
     /// The class table's contents.
@@ -216,6 +219,7 @@ pub open spec fn heap_ok(c: Ctx, h: H) -> bool {
             ==> #[trigger] h.addr[j1] != #[trigger] h.addr[j2]
     &&& forall|j: int, k: int| 0 <= j < n && !from(h, j) && lay(obj(h, j)).lo <= k < lay(obj(h, j)).hi ==>
             #[trigger] prog_ref_ok(h, obj(h, j).words[k])
+    &&& 0 <= c.nullid@ < n && !from(h, c.nullid@) && h.addr[c.nullid@] == c.null
 }
 
 /// The program heap (the objects outside from-space, read-only) does not
