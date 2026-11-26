@@ -260,11 +260,28 @@ the C++ must do, and what the bridge assumes:
   not in from-space. `is_map`'s other conditions (not the task class, at
   least four fields) are the verifier's `check_builtin_classes`.
 
-Not done: zapping the values of live weak maps (`zap_dead_values`). The
-proved collector traces a live weak map's fields like any instance's, so it
-keeps values the C++ prototype nulls; `zapped` allows that (an object may
-stay as it is), so the statement holds; the difference is memory retained
-until the map drops the entry. The differential test counts it.
+**Live weak maps** (`weak.rs`): before the trace the index and backing of
+each weak-map node's key (an active-bit instance of `Ctx::map_cid` with at
+least four fields) are moved into the node's words 4 and 5; after the main
+scan each surviving map's backing array (its list, of `Ctx::list_cid`, and
+the list's array, both uncopied) has every odd element that is an
+uncopied from-space object not of `Ctx::tomb_cid` nulled, and its fields go
+back (encoded for its copy's place: `weak::copy_scanned`); a dead map is
+reset. A zapped live map's node gets verdict QUEUE with its key kept (the
+C++ moves it to the queue). The statement names the hidden heap and the
+heap after this pass (`weak::hide_ok`, `weak::weak_ok`); a dead key is one
+the strong roots don't reach in the heap after the weak pass. What it adds
+to the trusted inputs:
+
+- `weak::keys_ok`: the callback nodes' keys in from-space are distinct
+  instances (`add_finalizer` refuses a key whose finalizer bit is set and
+  takes only instances; a queued Toit finalizer's key is null).
+- `Ctx::map_cid`, `list_cid`, `tomb_cid` are the program's map, list and
+  tombstone classes, `map_cid != list_cid`; the bridge assumes
+  `bridge::cids_ok` (list and tombstone ids are the spec's builtins; the map
+  class enters through `weak_keys_maps`).
+- A large-array backing (the list's array a `LargeArray`) is traced
+  strongly: allowed by `zapped`, a memory difference against the C++.
 
 ## 7. The tail bound and stack shrinking
 
