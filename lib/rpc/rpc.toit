@@ -52,36 +52,39 @@ class RpcException_:
   trace/any
   constructor .exception .trace:
 
+/** An outstanding call: the process it went to, and its result once known. */
+class RpcCall_:
+  pid/int
+  result/any := RpcSynchronizer_.EMPTY
+
+  constructor .pid:
+
 monitor RpcSynchronizer_:
   static EMPTY ::= Object
 
-  map_/Map ::= {:}
-  pids_/Map ::= {:}
+  calls_/Map ::= {:}
   id_/int := 0
 
   send pid/int [send] -> any:
     id := id_
     id_ = id > 0x3fff_ffff ? 0 : id + 1
 
-    map := map_
-    result/any := EMPTY
+    // Negative destinations are aliases for the system process.
+    // Replies carry its actual PID, not the alias used to submit the request.
+    call := RpcCall_ (pid < 0 ? SYSTEM-PROCESS-ID_ : pid)
+    calls := calls_
     try:
-      map[id] = EMPTY
-      // Negative destinations are aliases for the system process.
-      // Replies carry its actual PID, not the alias used to submit the request.
-      pids_[id] = pid < 0 ? SYSTEM-PROCESS-ID_ : pid
+      calls[id] = call
       // Lock is kept during the non-blocking send.
       if send.call id pid:
-        await:
-          result = map[id]
-          not identical EMPTY result
+        await: not identical EMPTY call.result
     finally: | is-exception exception |
-      map.remove id
-      pids_.remove id
+      calls.remove id
       if is-exception:
         if exception.value == DEADLINE-EXCEEDED-ERROR or Task.current.is-canceled:
           process-send_ pid SYSTEM-RPC-CANCEL_ [ id ]
 
+    result := call.result
     if result is not RpcException_:
       if not identical EMPTY result: return result
       throw "NO_SUCH_PROCESS"
@@ -92,20 +95,20 @@ monitor RpcSynchronizer_:
     throw exception
 
   peer-terminated pid/int -> none:
-    pids_.do: | id/int target/int |
-      if target == pid and identical EMPTY map_[id]:
-        map_[id] = RpcException_ "NO_SUCH_PROCESS" null
+    calls_.do: | id/int call/RpcCall_ |
+      if call.pid == pid and identical EMPTY call.result:
+        call.result = RpcException_ "NO_SUCH_PROCESS" null
 
   expects id/int pid/int -> bool:
-    return (pids_.get id) == pid
+    call/RpcCall_? := calls_.get id
+    return call != null and call.pid == pid
 
   receive id/int pid/int value/any -> none:
-    if (pids_.get id) != pid: return
-    map_.update id --if-absent=(: return): | existing |
-      // Unless the existing value indicates that we are ready to receive
-      // the result of the RPC call, we discard it.
-      if not identical EMPTY existing: return
-      value
+    call/RpcCall_? := calls_.get id
+    if not call or call.pid != pid: return
+    // Unless the existing value indicates that we are ready to receive
+    // the result of the RPC call, we discard it.
+    if identical EMPTY call.result: call.result = value
 
 /**
 Objects that are RPC-serializable can be serialized to a RPC-compatible
