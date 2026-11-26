@@ -201,7 +201,79 @@ pub open spec fn cap_ok(c: Ctx, h: H, st: St, t: Tos) -> bool {
     &&& st.used.subset_of(set_int_range(0, c.nf * c.pw))
     &&& forall|j: int| #[trigger] from(h, j) && !copied(st, j) ==> st.used.disjoint(extent(c, h, j))
     &&& st.order.len() <= st.words
+    &&& t.tn == 0 ==> st.words == 0
     &&& t.tn >= 1 ==> (t.tn - 1) * c.pw <= 2 * st.words - t.top
+}
+
+/// To-space contents: each copy holds its object's words, encoded under the
+/// new address map where processed and the old one elsewhere; processed
+/// reference slots are closed.
+pub open spec fn to_inv(c: Ctx, h: H, st: St, ks: int, kc: int) -> bool {
+    let n = st.order.len() as int;
+    &&& forall|kk: int, i: int| 0 <= kk < n && 0 <= i < tsz(h, st, kk) ==>
+            (#[trigger] st.tp[tkey(st, kk, i)]).is_init()
+            && st.tp[tkey(st, kk, i)].value() == wval(obj(h, st.order[kk]), amap(h, st, kk, i, ks, kc), i)
+    &&& forall|kk: int, i: int| 0 <= kk < n && 0 <= i < tsz(h, st, kk) && processed(kk, i, ks, kc)
+            && is_ref(obj(h, st.order[kk]), i) ==> closed(h, st, #[trigger] obj(h, st.order[kk]).words[i])
+}
+
+/// Copy `k` was made for a root or for a reference slot of an earlier copy.
+pub open spec fn parent_ok(h: H, st: St, rv: Seq<AVal>, k: int) -> bool {
+    let p = st.parent[k].0;
+    let s = st.parent[k].1;
+    if p < 0 {
+        0 <= -1 - p < rv.len() && rv[-1 - p] == AVal::Ref(st.order[k])
+    } else {
+        p < k && is_ref(obj(h, st.order[p]), s) && obj(h, st.order[p]).words[s] == AVal::Ref(st.order[k])
+    }
+}
+
+pub open spec fn par_ok(h: H, st: St, rv: Seq<AVal>) -> bool {
+    &&& st.parent.len() == st.order.len()
+    &&& forall|k: int| 0 <= k < st.order.len() ==> #[trigger] parent_ok(h, st, rv, k)
+}
+
+/// The roots: an array of `rv.len()` words holding the root values; the
+/// first `ri` are processed (encoded under the new address map, closed).
+pub open spec fn roots_ok(c: Ctx, h: H, st: St, rptr: *mut usize, rv: Seq<AVal>, ri: int) -> bool {
+    &&& rptr@.addr + rv.len() * W <= usize::MAX
+    &&& 0 <= ri <= rv.len()
+    &&& forall|i: int| 0 <= i < rv.len() ==> #[trigger] slot_ok(c, h.objs.len() as int, rv[i])
+    &&& forall|i: int| 0 <= i < rv.len() ==> #[trigger] wperm_ok(st.rp, i, rptr, i)
+    &&& forall|i: int| 0 <= i < rv.len() ==> (#[trigger] st.rp[i]).is_init()
+            && st.rp[i].value() == enc(if i < ri { st.addr2 } else { h.addr }, rv[i])
+    &&& forall|i: int| 0 <= i < ri ==> closed(h, st, #[trigger] rv[i])
+}
+
+/// The Cheney invariant with the scan at word `kc` of copy `ks`.
+pub open spec fn inv(c: Ctx, h: H, st: St, t: Tos, ks: int, kc: int, rv: Seq<AVal>) -> bool {
+    &&& bk_ok(h, st)
+    &&& from_inv(c, h, st)
+    &&& tcopies_ok(c, h, st, t)
+    &&& tpages_ok(c, h, st, t)
+    &&& to_inv(c, h, st, ks, kc)
+    &&& cap_ok(c, h, st, t)
+    &&& par_ok(h, st, rv)
+}
+
+/// The page source's state during a collection.
+pub open spec fn src_ok<S: PageSource>(c: Ctx, src: S, t: Tos) -> bool {
+    &&& src.pw() == c.pw
+    &&& src.prov() == c.base@.provenance
+    &&& src.reserved() >= 2 * c.nf + 1 - t.tn
+    &&& t.tcap >= 2 * c.nf + 1
+}
+
+/// What a step of the collector keeps of the state before it.
+pub open spec fn grows(h: H, s0: St, s1: St) -> bool {
+    let n0 = s0.order.len() as int;
+    &&& n0 <= s1.order.len()
+    &&& forall|k: int| 0 <= k < n0 ==> #[trigger] s1.order[k] == s0.order[k]
+    &&& forall|k: int| 0 <= k < n0 ==> #[trigger] s1.tloc[k] == s0.tloc[k]
+    &&& forall|k: int| 0 <= k < n0 ==> #[trigger] s1.parent[k] == s0.parent[k]
+    &&& forall|j: int| #[trigger] copied(s0, j) ==> copied(s1, j) && s1.pos[j] == s0.pos[j]
+    &&& forall|j: int| 0 <= j < s0.addr2.len() && (copied(s0, j) || !from(h, j)) ==> #[trigger] s1.addr2[j] == s0.addr2[j]
+    &&& s1.rp == s0.rp
 }
 
 // ---------------------------------------------------------------------------
@@ -224,7 +296,7 @@ pub open spec fn place_frame(s0: St, s1: St) -> bool {
 /// sentinel word, else in a new page from the page source (the old last
 /// page gets its sentinel and its used words in the table). Returns the
 /// offset in the (new) last page.
-fn place<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, sz: usize, Ghost(h): Ghost<H>,
+pub fn place<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, sz: usize, Ghost(h): Ghost<H>,
                         Tracked(st): Tracked<&mut St>, Tracked(others): Tracked<&Map<int, PointsTo<usize>>>) -> (off: usize)
     requires
         ctx_ok(*c), heap_ok(*c, h), others_ok(h, *others),
@@ -376,7 +448,14 @@ fn place<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, sz: usize, Ghost(h): 
                 assert(wperm_ok(s0.tup, p, t.tused, p));
             }
             assert forall|p: int| 0 <= p < t.tn implies #[trigger] s2.ttp[p].is_init() && s2.ttp[p].value() == s2.tss[p] by {
-                if p < tn0 { assert(s0.ttp[p].is_init() && s0.ttp[p].value() == s0.tss[p]); }
+                if p < tn0 {
+                    assert(s1.ttp == s0.ttp);
+                    assert(s2.ttp[p] == s1.ttp[p]);
+                    assert(tpages_ok(*c, h, s0, t0));
+                    assert(0 <= p < t0.tn);
+                    assert(s0.ttp[p].is_init());
+                    assert(s0.ttp[p].value() == s0.tss[p]);
+                }
             }
             assert forall|p: int| 0 <= p < t.tn - 1 implies #[trigger] s2.tup[p].is_init() && s2.tup[p].value() == s2.tus[p] by {
                 if p < tn0 - 1 { assert(s0.tup[p].is_init() && s0.tup[p].value() == s0.tus[p]); }
