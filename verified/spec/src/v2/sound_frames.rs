@@ -154,18 +154,11 @@ pub proof fn lemma_conf_heap(p: Program2, c: Cert, s: State2, h2: Seq<HeapObj>, 
         },
         Kind::Token => {
             match v {
-                Value::Smi(kk) => if v != null2(p) {
-                    assert(s2.fins[kk as int] == s.fins[kk as int]);
-                    match s.fins[kk as int].resume {
-                        Resume::Branch(f, bci, hb) => {
-                            assert(kinds_of(p, c, s2, f as int) == kinds_of(p, c, s, f as int));
-                            assert(frame_kinds_from(p, c, s2, fi, kf, f as int) == frame_kinds_from(p, c, s, fi, kf, f as int));
-                            assert(fmethod(s2, f as int) == fmethod(s, f as int));
-                            assert(fbase(s2, f as int) == fbase(s, f as int));
-
-                        },
-                        _ => {},
-                    }
+                Value::Token(false, Pending::Branch(f, bci, hb), _, _) => {
+                    assert(kinds_of(p, c, s2, f as int) == kinds_of(p, c, s, f as int));
+                    assert(frame_kinds_from(p, c, s2, fi, kf, f as int) == frame_kinds_from(p, c, s, fi, kf, f as int));
+                    assert(fmethod(s2, f as int) == fmethod(s, f as int));
+                    assert(fbase(s2, f as int) == fbase(s, f as int));
                 },
                 _ => {},
             }
@@ -198,8 +191,6 @@ pub proof fn lemma_wf_task_heap(p: Program2, c: Cert, s: State2, h2: Seq<HeapObj
     assert forall|fi: int| 0 <= fi && fi + 1 < s2.frames.len() implies #[trigger] base_step(s2, fi) by {
         assert(base_step(s, fi));
     }
-    assert(s2.tries == s.tries && s2.fins == s.fins);
-    assert(fins_ok(s2));
     assert forall|fi: int| 0 <= fi < s2.frames.len() implies #[trigger] frame_ok(p, c, s2, fi) by {
         assert(frame_ok(p, c, s, fi));
         assert(kinds_of(p, c, s2, fi) == kinds_of(p, c, s, fi));
@@ -222,14 +213,11 @@ pub proof fn lemma_wf_task_heap(p: Program2, c: Cert, s: State2, h2: Seq<HeapObj
             assert(class_id_of(p1(p), as1(s2), r) == class_id_of(p1(p), as1(s), r));
         }
     }
-    assert forall|x: int| 0 <= x < s2.tries.len() implies #[trigger] try_ok(s2, x) by {
-        assert(try_ok(s, x));
-    }
 }
 
 /// Frames `0..=fi` look the same in `s` and `s2`: same frames (frame
 /// `fi + 1`'s return address and base too, if `fi` is not the top), same
-/// slots, same handlers; the heap only grew.
+/// slots, same try blocks above them; the heap only grew.
 pub open spec fn same_below(s: State2, s2: State2, fi: int) -> bool {
     &&& 0 <= fi && fi + 1 < s.frames.len() && fi + 1 < s2.frames.len()
     &&& forall|g: int| 0 <= g <= fi ==> #[trigger] s2.frames[g] == s.frames[g]
@@ -240,129 +228,12 @@ pub open spec fn same_below(s: State2, s2: State2, fi: int) -> bool {
     &&& forall|x: int| 0 <= x < s.frames[fi + 1].base ==> #[trigger] s2.stack[x] == s.stack[x]
     &&& forall|g: int| 0 <= g <= fi ==> #[trigger] try_frame(s2, g) == try_frame(s, g)
     &&& heap_grows(s.heap, s2.heap)
-    &&& fins_kept(s, s2, fi + 1, 0)
 }
-
-/// The finally records of frames below `fi`, and those of frame `fi`
-/// below height `lim`, are the same in `s2` (at the same index).
-pub open spec fn fins_kept(s: State2, s2: State2, fi: int, lim: int) -> bool {
-    forall|k: int| #![trigger s.fins[k]] 0 <= k < s.fins.len() && fin_below(s.fins[k], fi, lim)
-        ==> k < s2.fins.len() && s2.fins[k] == s.fins[k]
-}
-
-/// Record `f` belongs to a frame below `fi`, or to `fi` below `lim`.
-pub open spec fn fin_below(f: Fin, fi: int, lim: int) -> bool {
-    (f.frame as int) < fi || (f.frame as int == fi && (f.height as int) < lim)
-}
-
-pub proof fn lemma_fins_kept_mono(s: State2, s2: State2, fi: int, lim: int, fi2: int, lim2: int)
-    requires fins_kept(s, s2, fi, lim), fi2 < fi || (fi2 == fi && (lim2 <= lim || lim2 <= 0)),
-    ensures fins_kept(s, s2, fi2, lim2),
-{
-    assert forall|k: int| #![trigger s.fins[k]] 0 <= k < s.fins.len() && fin_below(s.fins[k], fi2, lim2)
-        implies k < s2.fins.len() && s2.fins[k] == s.fins[k] by {
-        assert(fin_below(s.fins[k], fi, lim));
-    }
-}
-
-/// The records `cut_fins(_, g, lim)` drops.
-pub open spec fn cut_pred(f: Fin, g: int, lim: int) -> bool {
-    f.frame as int > g || (f.frame as int == g && f.height as int >= lim)
-}
-
-/// `cut_fins` keeps a prefix, drops only records it may drop, and stops
-/// at one it may not.
-pub proof fn lemma_cut_fins(fins: Seq<Fin>, g: int, lim: int)
-    ensures ({
-        let r = cut_fins(fins, g, lim);
-        &&& r.len() <= fins.len()
-        &&& r == fins.subrange(0, r.len() as int)
-        &&& forall|k: int| r.len() <= k < fins.len() ==> cut_pred(#[trigger] fins[k], g, lim)
-        &&& r.len() > 0 ==> !cut_pred(r.last(), g, lim)
-    }),
-    decreases fins.len(),
-{
-    if fins.len() > 0 && cut_pred(fins.last(), g, lim) {
-        lemma_cut_fins(fins.drop_last(), g, lim);
-        let r = cut_fins(fins.drop_last(), g, lim);
-        assert(cut_fins(fins, g, lim) == r);
-        assert forall|k: int| r.len() <= k < fins.len() implies cut_pred(#[trigger] fins[k], g, lim) by {
-            if k < fins.len() - 1 { assert(fins[k] == fins.drop_last()[k]); }
-        }
-        assert(fins.drop_last().subrange(0, r.len() as int) =~= fins.subrange(0, r.len() as int));
-    } else {
-        assert(fins.subrange(0, fins.len() as int) =~= fins);
-    }
-}
-
-/// Cutting records keeps the ones it may not drop (at the same index).
-pub proof fn lemma_cut_kept(s: State2, s2: State2, g: int, lim: int)
-    requires s2.fins == cut_fins(s.fins, g, lim),
-    ensures fins_kept(s, s2, g, lim), s2.fins.len() <= s.fins.len(),
-{
-    lemma_cut_fins(s.fins, g, lim);
-    let r = s2.fins;
-    assert forall|k: int| #![trigger s.fins[k]] 0 <= k < s.fins.len() && fin_below(s.fins[k], g, lim)
-        implies k < s2.fins.len() && s2.fins[k] == s.fins[k] by {
-        if k >= r.len() {
-            assert(cut_pred(s.fins[k], g, lim));
-        }
-        assert(r[k] == s.fins.subrange(0, r.len() as int)[k]);
-    }
-}
-
-/// Cutting ordered records at `(g, lim)` with `g` the top frame keeps them
-/// ordered; the records left of frame `g` are below `lim`.
-pub proof fn lemma_cut_ok(s: State2, s2: State2, g: int, lim: int)
-    requires
-        fins_ok(s),
-        s2.fins == cut_fins(s.fins, g, lim),
-        s2.tries == s.tries,
-        g == s.frames.len() - 1,
-        s2.frames.len() == g + 1 || (s2.frames.len() == g && lim <= 0),
-    ensures
-        fins_ok(s2),
-        forall|k: int| 0 <= k < s2.fins.len() && (#[trigger] s2.fins[k]).frame as int == g ==> (s2.fins[k].height as int) < lim,
-{
-    lemma_cut_fins(s.fins, g, lim);
-    let r = s2.fins;
-    assert forall|k: int| 0 <= k < r.len() implies #[trigger] r[k] == s.fins[k] by {
-        assert(r[k] == s.fins.subrange(0, r.len() as int)[k]);
-    }
-    assert forall|a: int, b: int| 0 <= a < b < r.len() implies fin_lt(#[trigger] r[a], #[trigger] r[b]) by {
-        assert(r[a] == s.fins[a] && r[b] == s.fins[b]);
-    }
-    assert forall|x: int, k: int| 0 <= x < s2.tries.len() && 0 <= k < r.len()
-        && (#[trigger] r[k]).frame == (#[trigger] s2.tries[x]).frame implies
-        r[k].height < s2.tries[x].height by {
-        assert(r[k] == s.fins[k]);
-    }
-    assert forall|k: int| 0 <= k < r.len() && (#[trigger] r[k]).frame as int == g implies (r[k].height as int) < lim by {
-        let l = r.len() - 1;
-        assert(r[l] == r.last());
-        assert(r[l] == s.fins[l]);
-        assert(s.fins[l].frame < s.frames.len());
-        if k < l {
-            assert(fin_lt(r[k], r[l]));
-        }
-    }
-    assert forall|k: int| 0 <= k < r.len() implies (#[trigger] r[k]).frame < s2.frames.len() by {
-        assert(r[k] == s.fins[k]);
-        assert(s.fins[k].frame < s.frames.len());
-    }
-}
-
-/// Unchanged records are kept.
-pub proof fn lemma_fins_kept_same(s: State2, s2: State2, fi: int, lim: int)
-    requires s2.fins == s.fins,
-    ensures fins_kept(s, s2, fi, lim),
-{}
 
 pub proof fn lemma_same_below_down(s: State2, s2: State2, fi: int, g: int)
     requires same_below(s, s2, fi), 0 <= g <= fi, bases_ok(s),
     ensures same_below(s, s2, g),
 {
-    lemma_fins_kept_mono(s, s2, fi + 1, 0, g + 1, 0);
     assert(s2.frames[g + 1] == s.frames[g + 1] || g + 1 == fi + 1);
     assert(s.frames[g + 1].base <= s.frames[fi + 1].base) by {
         lemma_bases_mono(s, g + 1, fi + 1);
@@ -494,17 +365,20 @@ pub proof fn lemma_conf_below(p: Program2, c: Cert, s: State2, s2: State2, fi: i
         },
         Kind::Token => {
             match v {
-                Value::Smi(kk) => if v != null2(p) {
-                    assert(s2.fins[kk as int] == s.fins[kk as int]);
-                    match s.fins[kk as int].resume {
-                        Resume::Branch(f, bci, hb) => {
+                Value::Token(second, d, _, _) => {
+                    lemma_kinds_below(p, c, s, s2, fi, fi);
+                    if second {
+                        lemma_limit_below(s, fi, fi + 1);
+                        assert(s2.stack[fbase(s, fi) + j - 1] == s.stack[fbase(s, fi) + j - 1]);
+                    }
+                    match d {
+                        Pending::Branch(f, bci, hb) => if !second {
                             if (f as int) < fi {
                                 lemma_kinds_below(p, c, s, s2, f as int, fi);
                             } else if f as int == fi {
                                 assert(s2.frames[fi] == s.frames[fi]);
                             }
                             assert(frame_kinds_from(p, c, s2, fi, kf, f as int) == frame_kinds_from(p, c, s, fi, kf, f as int));
-
                         },
                         _ => {},
                     }

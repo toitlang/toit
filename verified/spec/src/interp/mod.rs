@@ -97,6 +97,15 @@ impl std::fmt::Debug for Value {
             Value::Block(h) => write!(f, "block:{}", h),
             Value::Link(h) => write!(f, "link:{}", h),
             Value::BlockRef(fr, slot) => write!(f, "block:{}/{}", fr, slot),
+            Value::Token(second, d, fr, h) => {
+                let d = match d {
+                    Pending::Normal => "normal".to_string(),
+                    Pending::Throw => "throw".to_string(),
+                    Pending::Return(t) => format!("return:{}", t),
+                    Pending::Branch(t, b, th) => format!("branch:{}/{}/{}", t, b, th),
+                };
+                write!(f, "token{}:{}@{}/{}", if *second { 2 } else { 1 }, d, fr, h)
+            }
         }
     }
 }
@@ -198,7 +207,7 @@ impl Machine {
         let mut m = Machine {
             p: program,
             s: ExecState { heap, globals, stack: Vec::new(), try_h: 0, bci: 0, task, next_task_id: 1,
-                frames: Vec::new(), tries: Vec::new(), fins: Vec::new() },
+                frames: Vec::new() },
             format: 1,
             names,
             world: system::World::new(args),

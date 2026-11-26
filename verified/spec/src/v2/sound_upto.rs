@@ -42,7 +42,6 @@ pub open spec fn same_upto(s: State2, s2: State2, fi: int, n: int) -> bool {
     &&& limit(s2, fi) <= s2.stack.len()
     &&& forall|x: int| 0 <= x < fbase(s, fi) + n ==> #[trigger] s2.stack[x] == s.stack[x]
     &&& heap_grows(s.heap, s2.heap)
-    &&& fins_kept(s, s2, fi, fbase(s, fi) + n - 1)
 }
 
 pub proof fn lemma_upto_kinds(p: Program2, c: Cert, s: State2, s2: State2, fi: int, n: int, f: int)
@@ -150,17 +149,17 @@ pub proof fn lemma_conf_upto(p: Program2, c: Cert, s: State2, s2: State2, fi: in
         },
         Kind::Token => {
             match v {
-                Value::Smi(kk) => if v != null2(p) {
-                    assert(s2.fins[kk as int] == s.fins[kk as int]);
-                    match s.fins[kk as int].resume {
-                        Resume::Branch(f, bci, hb) => {
+                Value::Token(second, d, _, _) => {
+                    assert(s2.frames[fi] == s.frames[fi]);
+                    if second {
+                        assert(s2.stack[fbase(s, fi) + j - 1] == s.stack[fbase(s, fi) + j - 1]);
+                    }
+                    match d {
+                        Pending::Branch(f, bci, hb) => if !second {
                             if (f as int) < fi {
                                 lemma_upto_kinds(p, c, s, s2, fi, n, f as int);
-                            } else if f as int == fi {
-                                assert(s2.frames[fi] == s.frames[fi]);
                             }
                             assert(frame_kinds_from(p, c, s2, fi, kf, f as int) == frame_kinds_from(p, c, s, fi, kf, f as int));
-
                         },
                         _ => {},
                     }
@@ -184,9 +183,11 @@ pub proof fn lemma_conf_kf(p: Program2, c: Cert, s: State2, fi: int, kf: Seq<Kin
     match k {
         Kind::Token => {
             match v {
-                Value::Smi(kk) => if v != null2(p) {
-                    match s.fins[kk as int].resume {
-                        Resume::Branch(f, bci, hb) => {
+                Value::Token(false, d, _, _) => {
+                    assert(kf2[j - 1] == kf2.subrange(0, j)[j - 1]);
+                    assert(kf[j - 1] == kf.subrange(0, j)[j - 1]);
+                    match d {
+                        Pending::Branch(f, bci, hb) => {
                             if f as int == fi {
                                 let m = fmethod(s, fi);
                                 let t = map_at(c, m, bci as int - info(p, m).entry)->0;
@@ -194,7 +195,6 @@ pub proof fn lemma_conf_kf(p: Program2, c: Cert, s: State2, fi: int, kf: Seq<Kin
                                 assert(kf2.subrange(0, t.len() as int) =~= kf2.subrange(0, j).subrange(0, t.len() as int));
                                 assert(kf.subrange(0, t.len() as int) =~= kf.subrange(0, j).subrange(0, t.len() as int));
                             }
-
                         },
                         _ => {},
                     }
@@ -211,7 +211,6 @@ pub proof fn lemma_below_upto(s: State2, s2: State2, fi: int)
     requires same_below(s, s2, fi), bases_ok(s),
     ensures same_upto(s, s2, fi, slots(s, fi)),
 {
-    lemma_fins_kept_mono(s, s2, fi + 1, 0, fi, fbase(s, fi) + slots(s, fi) - 1);
     lemma_limit_below(s, fi, fi + 1);
     lemma_base_le_len(s, fi + 1);
 }
@@ -240,11 +239,11 @@ pub proof fn lemma_obj_ok_mono(p: Program2, c: Cert, h: Seq<HeapObj>, h2: Seq<He
                 assert(good(h, e[i]));
             }
         },
-        Body::Stack2(w, fr, tr, fins, b) => {
+        Body::Stack2(w, fr, b) => {
             if fr.len() > 0 {
-                let ss = susp_state(h, w, fr, tr, fins, b);
+                let ss = susp_state(h, w, fr, b);
                 lemma_wf_task_heap(p, c, ss, h2);
-                assert(with_heap(ss, h2) == susp_state(h2, w, fr, tr, fins, b));
+                assert(with_heap(ss, h2) == susp_state(h2, w, fr, b));
             }
         },
         _ => {},

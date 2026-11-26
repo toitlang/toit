@@ -43,7 +43,6 @@ pub open spec fn tail_state(p: Program2, s: State2, t: int, args: Seq<Value>) ->
     State2 {
         stack: s.stack.subrange(0, base(s)) + args,
         frames: s.frames.update(top_index(s), Frame { method: t as usize, ..top(s) }),
-        fins: fins_popped(s),
         bci: info(p, t).entry,
         ..s
     }
@@ -53,10 +52,9 @@ pub open spec fn tail_state(p: Program2, s: State2, t: int, args: Seq<Value>) ->
 // `Machine::replace_frame(target, from, n, extra)`): the new arguments are
 // `n` slots of the old frame from object-stack position `from`, then the
 // captures. Nothing else in the tail-call steps needs restating: their
-// checks are the core's in the same order, a frame with an active handler
-// is `Stuck(BadFrame)`, the frame keeps `ret` and `base`, and the frame's
-// finally records go (`fins_popped`). The core's `ensure_room` before the
-// three opcodes is a resource point (`prim::grows_stack`).
+// checks are the core's in the same order, and the frame keeps `ret`, `base`
+// and its try-block flag (format note 23). The core's `ensure_room` before
+// the three opcodes is a resource point (`prim::grows_stack`).
 
 /// The arguments of a tail call as the machine moves them.
 pub open spec fn moved_args(s: State2, from: int, n: int, cap: Seq<Value>) -> Seq<Value> {
@@ -83,7 +81,6 @@ pub proof fn lemma_tail_moved(s: State2, a: int, user: int, cap: Seq<Value>)
 /// slots follow from the frame's base, then the captures.
 pub proof fn lemma_replace_frame_slots(p: Program2, s: State2, t: int, from: int, n: int, cap: Seq<Value>)
     requires
-        !has_handler(s),
         0 <= base(s) <= s.stack.len(), 0 <= from, 0 <= n, from + n <= s.stack.len(),
     ensures ({
         let s2 = tail_state(p, s, t, moved_args(s, from, n, cap));
@@ -122,10 +119,11 @@ pub proof fn lemma_tail_shape(p: Program2, c: Cert, trusted: bool, s: State2, t:
         &&& top_i(s2) == t0
         &&& s2.heap == s.heap
         &&& s2.globals == s.globals
-        &&& s2.tries == s.tries
         &&& forall|g: int| 0 <= g < t0 ==> #[trigger] s2.frames[g] == s.frames[g]
         &&& s2.frames[t0].ret == s.frames[t0].ret
         &&& s2.frames[t0].base == s.frames[t0].base
+        &&& s2.frames[t0].handler == s.frames[t0].handler
+        &&& s2.frames[0].handler == s.frames[0].handler
         &&& fmethod(s2, t0) == t
         &&& fbase(s2, t0) == b
         &&& base(s) == b
@@ -136,7 +134,6 @@ pub proof fn lemma_tail_shape(p: Program2, c: Cert, trusted: bool, s: State2, t:
         &&& forall|x: int| 0 <= x < arity(p, t) ==> #[trigger] s2.stack[b + x] == args[x]
         &&& bases_ok(s2)
         &&& (t0 > 0 ==> same_below(s, s2, t0 - 1))
-        &&& fins_ok(s2)
     }),
 {
     let s2 = tail_state(p, s, t, args);
@@ -144,10 +141,6 @@ pub proof fn lemma_tail_shape(p: Program2, c: Cert, trusted: bool, s: State2, t:
     let b = fbase(s, t0);
     lemma_wf_parts(p, c, s);
     lemma_task_basics(p, c, s);
-    assert(fins_ok(s)) by { reveal(wf_task); }
-    lemma_cut_kept(s, s2, t0, 0);
-    assert(s2.tries == s.tries);
-    lemma_cut_ok(s, s2, t0, 0);
     assert(p.methods.len() < 0x1000_0000);
     assert(s2.frames[t0] == Frame { method: t as usize, ..s.frames[t0] });
     assert(forall|g: int| 0 <= g < t0 ==> #[trigger] s2.frames[g] == s.frames[g]);
@@ -161,9 +154,7 @@ pub proof fn lemma_tail_shape(p: Program2, c: Cert, trusted: bool, s: State2, t:
     if t0 > 0 {
         lemma_base_le_len(s, t0);
         assert(same_below(s, s2, t0 - 1)) by {
-            assert forall|g: int| 0 <= g <= t0 - 1 implies #[trigger] try_frame(s2, g) == try_frame(s, g) by {
-                assert(s2.tries == s.tries);
-            }
+            assert forall|g: int| 0 <= g <= t0 - 1 implies #[trigger] try_frame(s2, g) == try_frame(s, g) by {}
             lemma_heap_ext_refl(p, s.heap);
         }
     }
@@ -208,13 +199,6 @@ pub proof fn lemma_tail(p: Program2, c: Cert, trusted: bool, s: State2, t: int, 
                 assert(s2.stack[b + j] == args[j]);
             }
             assert(pinned_ok(p, s2, t0));
-        }
-    }
-    assert forall|x: int| 0 <= x < s2.tries.len() implies #[trigger] try_ok(s2, x) by {
-        assert(try_ok(s, x));
-        let g = s.tries[x].frame as int;
-        if g + 1 < t0 {
-            assert(s2.frames[g + 1] == s.frames[g + 1]);
         }
     }
     assert(wf_task(p, c, s2)) by { reveal(wf_task); }

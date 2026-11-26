@@ -15,14 +15,14 @@
 
 //! Abstract state of the format-2 machine.
 //!
-//! Values, heap objects, frames, handlers and unwindings are shared with
+//! Values, heap objects, frames and unwindings are shared with
 //! format 1 (`crate::types`). The differences: the program has a method
 //! table instead of a method-start bitmap, and the state has a frame stack
-//! and a handler stack next to the object stack. The object stack holds
-//! only values (smis, references, block references).
+//! next to the object stack. The object stack holds only values (smis,
+//! references, block references, unwinding tokens).
 //!
 //! The exec layer is the same `ExecProgram`/`ExecState` as for format 1
-//! (with the `methods`, `frames` and `tries` fields filled in); `view2` and
+//! (with the `methods` and `frames` fields filled in); `view2` and
 //! `pview2` are their format-2 views.
 
 use vstd::prelude::*;
@@ -61,11 +61,6 @@ pub struct State2 {
     pub stack: Seq<Value>,
     /// Frame stack, bottom first. The top frame is the running method.
     pub frames: Seq<Frame>,
-    /// Active try handlers, oldest first; their frames are non-decreasing.
-    pub tries: Seq<Handler>,
-    /// Records of the finally codes entered by an unwinding, oldest first
-    /// (format note 17). An unwinding token is the index of its record.
-    pub fins: Seq<Fin>,
     /// Absolute bci of the next instruction, inside the top frame's method.
     pub bci: usize,
     pub task: usize,
@@ -125,8 +120,6 @@ pub open spec fn view2(s: &ExecState) -> State2 {
         globals: s.globals@,
         stack: s.stack@,
         frames: s.frames@,
-        tries: s.tries@,
-        fins: s.fins@,
         bci: s.bci,
         task: s.task,
         next_task_id: s.next_task_id,

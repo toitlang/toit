@@ -107,8 +107,6 @@ pub open spec fn wf_state2(s: State2) -> bool {
     &&& s.stack.len() < 0x1_0000_0000_0000
     &&& s.heap.len() < 0x1_0000_0000_0000
     &&& s.frames.len() < 0x1_0000_0000_0000
-    &&& s.tries.len() < 0x1_0000_0000_0000
-    &&& s.fins.len() < 0x1_0000_0000_0000
     &&& s.bci < 0x1000_0000
 }
 
@@ -118,8 +116,6 @@ pub open spec fn small(s: State2) -> bool {
     &&& s.stack.len() < 0x100_0000_0000_0000
     &&& s.heap.len() < 0x100_0000_0000_0000
     &&& s.frames.len() < 0x100_0000_0000_0000
-    &&& s.tries.len() < 0x100_0000_0000_0000
-    &&& s.fins.len() < 0x100_0000_0000_0000
 }
 
 pub open spec fn wf_exec_state2(s: &ExecState) -> bool {
@@ -403,118 +399,68 @@ pub fn x_call(p: &ExecProgram, s: &mut ExecState, target: i64, ret: usize) -> (r
         return ExecOutcome2::Stuck(Stuck::StackRange);
     }
     let base = s.stack.len() - a;
-    s.frames.push(Frame { method: target as usize, ret, base });
+    s.frames.push(Frame { method: target as usize, ret, base, handler: false });
     s.bci = info.entry;
     ExecOutcome2::Next
 }
 
-pub fn x_has_handler(s: &ExecState) -> (r: bool)
-    ensures r == has_handler(view2(s)),
-{
-    s.tries.len() > 0 && s.frames.len() > 0 && s.tries[s.tries.len() - 1].frame == s.frames.len() - 1
-}
-
-pub proof fn lemma_cut_fins_len(fins: Seq<Fin>, g: int, lim: int)
-    ensures cut_fins(fins, g, lim).len() <= fins.len(),
-    decreases fins.len(),
-{
-    if fins.len() > 0 {
-        lemma_cut_fins_len(fins.drop_last(), g, lim);
-    }
-}
-
-/// The last record is one `cut_fins(_, g, lim)` drops.
-pub fn x_fin_cut_here(s: &ExecState, g: usize, lim: usize) -> (r: bool)
-    ensures r == (s.fins@.len() > 0 && (s.fins@.last().frame as int > g as int
-        || (s.fins@.last().frame as int == g as int && s.fins@.last().height as int >= lim as int))),
-{
-    let n = s.fins.len();
-    if n == 0 {
-        return false;
-    }
-    let last = s.fins[n - 1];
-    last.frame > g || (last.frame == g && last.height >= lim)
-}
-
-/// Drops the trailing records `cut_fins` drops.
-pub fn x_cut_fins(s: &mut ExecState, g: usize, lim: usize)
-    ensures
-        view2(final(s)) == (State2 { fins: cut_fins(view2(old(s)).fins, g as int, lim as int), ..view2(old(s)) }),
-        final(s).fins.len() <= old(s).fins.len(),
-{
-    let ghost s0 = view2(s);
-    let ghost f0 = s.fins@;
-    while x_fin_cut_here(s, g, lim)
-        invariant
-            view2(s) == (State2 { fins: s.fins@, ..s0 }),
-            cut_fins(s.fins@, g as int, lim as int) == cut_fins(f0, g as int, lim as int),
-            s.fins.len() <= f0.len(),
-            f0 == s0.fins,
-        decreases s.fins.len(),
-    {
-        let ghost before = s.fins@;
-        s.fins.pop();
-        proof {
-            assert(s.fins@ =~= before.drop_last());
-            assert(cut_fins(before, g as int, lim as int) == cut_fins(before.drop_last(), g as int, lim as int));
-        }
-    }
-    proof { assert(cut_fins(s.fins@, g as int, lim as int) == s.fins@); }
-}
-
-/// Enters the finally code of handler `h`.
-pub fn x_enter_finally(p: &ExecProgram, s: &mut ExecState, h: Handler, u: Option<Unwind>) -> (r: ExecOutcome2)
-    requires
-        wf_program2(pview2(p)), old(s).tries.len() > 0, old(s).fins.len() < 0x1_0000_0000_0000,
-    ensures matches2(enter_finally(pview2(p), view2(old(s)), h, u), r, view2(final(s))),
-{
-    let ghost s0 = view2(s);
-    let b = x_base(s);
-    if !(b <= h.height && h.height <= s.stack.len()) {
-        return ExecOutcome2::Stuck(Stuck::StackRange);
-    }
-    s.stack.truncate(h.height);
-    s.tries.pop();
-    s.bci = h.bci;
-    let ghost s1 = view2(s);
-    proof {
-        assert(s1.stack =~= s0.stack.subrange(0, h.height as int));
-        assert(s1.tries =~= s0.tries.drop_last());
-    }
-    match u {
-        None => {
-            let n = x_null(p);
-            x_push(s, n);
-            x_push(s, n);
-            x_push(s, Value::Smi(-1));
-            ExecOutcome2::Next
-        },
-        Some(w) => {
-            let token = Value::Smi(s.fins.len() as i64);
-            let (value, reason, resume): (Value, i64, Resume) = match w {
-                Unwind::Throw(v) => (v, -2, Resume::Throw),
-                Unwind::Return(f, v) => (v, -1, Resume::Return(f)),
-                Unwind::Branch(f, bci, hb) => (x_null(p), -1, Resume::Branch(f, bci, hb)),
-            };
-            s.fins.push(Fin { frame: h.frame, height: h.height, resume });
-            x_push(s, value);
-            x_push(s, token);
-            x_push(s, Value::Smi(reason));
-            ExecOutcome2::Next
-        },
-    }
-}
-
-/// Returns `result` from the top frame.
-pub fn x_return(p: &ExecProgram, s: &mut ExecState, result: Value) -> (r: ExecOutcome2)
-    requires wf_program2(pview2(p)), old(s).fins.len() < 0x1_0000_0000_0000,
-    ensures matches2(return_from(pview2(p), view2(old(s)), result), r, view2(final(s))),
+/// Enters the finally code at `bci` of the top frame, the object stack cut
+/// to `h` (format note 23).
+pub fn x_enter_finally(p: &ExecProgram, s: &mut ExecState, h: usize, bci: usize, u: Option<Unwind>) -> (r: ExecOutcome2)
+    requires wf_program2(pview2(p)),
+    ensures matches2(enter_finally(pview2(p), view2(old(s)), h as int, bci as int, u), r, view2(final(s))),
 {
     let ghost s0 = view2(s);
     if s.frames.len() == 0 {
         return ExecOutcome2::Stuck(Stuck::BadFrame);
     }
-    if x_has_handler(s) {
+    let b = x_base(s);
+    if !(b <= h && h <= s.stack.len()) {
+        return ExecOutcome2::Stuck(Stuck::StackRange);
+    }
+    let g = s.frames.len() - 1;
+    s.stack.truncate(h);
+    s.bci = bci;
+    let ghost s1 = view2(s);
+    proof {
+        assert(s1.stack =~= s0.stack.subrange(0, h as int));
+    }
+    let (value, reason, d): (Value, i64, Pending) = match u {
+        None => (x_null(p), -1, Pending::Normal),
+        Some(Unwind::Throw(v)) => (v, -2, Pending::Throw),
+        Some(Unwind::Return(f, v)) => (v, -1, Pending::Return(f)),
+        Some(Unwind::Branch(f, nb, hb)) => (x_null(p), -1, Pending::Branch(f, nb, hb)),
+    };
+    x_push(s, value);
+    x_push(s, Value::Token(false, d, g, h));
+    x_push(s, Value::Token(true, d, g, h));
+    x_push(s, Value::Smi(reason));
+    proof { assert(crate::spec_common::smi(reason as int) == Value::Smi(reason)); }
+    ExecOutcome2::Next
+}
+
+/// Pops the top frame (`pop_frame`), with its slots.
+pub fn x_pop_frame(s: &mut ExecState)
+    requires old(s).frames.len() > 0, old(s).frames@.last().base <= old(s).stack.len(),
+    ensures view2(final(s)) == pop_frame(view2(old(s))),
+{
+    let ghost s0 = view2(s);
+    let f = s.frames[s.frames.len() - 1];
+    s.stack.truncate(f.base);
+    s.frames.pop();
+    proof {
+        assert(view2(s).stack =~= pop_frame(s0).stack);
+        assert(view2(s).frames =~= pop_frame(s0).frames);
+    }
+}
+
+/// Returns `result` from the top frame.
+pub fn x_return(p: &ExecProgram, s: &mut ExecState, result: Value) -> (r: ExecOutcome2)
+    requires wf_program2(pview2(p)),
+    ensures matches2(return_from(pview2(p), view2(old(s)), result), r, view2(final(s))),
+{
+    let ghost s0 = view2(s);
+    if s.frames.len() == 0 {
         return ExecOutcome2::Stuck(Stuck::BadFrame);
     }
     if s.frames.len() == 1 {
@@ -524,7 +470,10 @@ pub fn x_return(p: &ExecProgram, s: &mut ExecState, result: Value) -> (r: ExecOu
     if f.base > s.stack.len() {
         return ExecOutcome2::Stuck(Stuck::StackRange);
     }
-    x_cut_fins(s, s.frames.len() - 1, 0);
+    if f.handler {
+        x_pop_frame(s);
+        return x_enter_finally(p, s, f.base, f.ret, None);
+    }
     s.stack.truncate(f.base);
     s.stack.push(result);
     s.frames.pop();
@@ -534,23 +483,17 @@ pub fn x_return(p: &ExecProgram, s: &mut ExecState, result: Value) -> (r: ExecOu
         assert(s1.stack =~= s0.stack.subrange(0, f.base as int).push(result));
         assert(s1.frames =~= s0.frames.drop_last());
     }
-    if x_has_handler(s) {
-        let h = s.tries[s.tries.len() - 1];
-        x_enter_finally(p, s, h, None)
-    } else {
-        ExecOutcome2::Next
-    }
+    ExecOutcome2::Next
 }
 
 /// Unwinds the frame stack.
 pub fn x_unwind(p: &ExecProgram, s: &mut ExecState, u: Unwind) -> (r: ExecOutcome2)
-    requires wf_program2(pview2(p)), old(s).fins.len() < 0x1_0000_0000_0000,
+    requires wf_program2(pview2(p)),
     ensures matches2(unwind(pview2(p), view2(old(s)), u), r, view2(final(s))),
 {
     loop
         invariant
             wf_program2(pview2(p)),
-            s.fins.len() < 0x1_0000_0000_0000,
             unwind(pview2(p), view2(s), u) == unwind(pview2(p), view2(old(s)), u),
         decreases s.frames.len(),
     {
@@ -560,10 +503,6 @@ pub fn x_unwind(p: &ExecProgram, s: &mut ExecState, u: Unwind) -> (r: ExecOutcom
                 Unwind::Throw(v) => ExecOutcome2::Uncaught(v),
                 _ => ExecOutcome2::Stuck(Stuck::BadFrame),
             };
-        }
-        if x_has_handler(s) {
-            let h = s.tries[s.tries.len() - 1];
-            return x_enter_finally(p, s, h, Some(u));
         }
         let fi = s.frames.len() - 1;
         let f = s.frames[fi];
@@ -589,13 +528,9 @@ pub fn x_unwind(p: &ExecProgram, s: &mut ExecState, u: Unwind) -> (r: ExecOutcom
             },
             Unwind::Throw(_) => {},
         }
-        x_cut_fins(s, fi, 0);
-        s.stack.truncate(f.base);
-        s.frames.pop();
-        proof {
-            assert(view2(s).stack =~= pop_frame(s0).stack);
-            assert(view2(s).frames =~= pop_frame(s0).frames);
-            assert(view2(s) == pop_frame(s0));
+        x_pop_frame(s);
+        if f.handler {
+            return x_enter_finally(p, s, f.base, f.ret, Some(u));
         }
     }
 }
@@ -613,7 +548,7 @@ pub fn x_raise(p: &ExecProgram, s: &mut ExecState, k: usize) -> (r: ExecOutcome2
 /// The reference completion of `Raise(s, value)`: an `Exception_` with the
 /// value and a null trace, allocated at the end of the heap; then unwinds.
 pub fn x_throw_null(p: &ExecProgram, s: &mut ExecState, value: Value) -> (r: ExecOutcome2)
-    requires wf_program2(pview2(p)), old(s).fins.len() < 0x1_0000_0000_0000,
+    requires wf_program2(pview2(p)),
     ensures matches2(throw_exception(pview2(p), view2(old(s)), value, null2(pview2(p))), r, view2(final(s))),
 {
     let ghost s0 = view2(s);
@@ -699,7 +634,7 @@ pub fn x_find_method(p: &ExecProgram, s: &ExecState, recv: Value, sel: i64) -> (
 pub fn x_invoke_virtual(p: &ExecProgram, s: &mut ExecState, sel: i64, n: usize, len: usize) -> (r: ExecOutcome2)
     requires
         wf_program2(pview2(p)), old(s).bci < 0x1000_0000, -0x1_0000_0000 < sel < 0x1_0000_0000,
-        n <= 0x1_0000, len <= 6, old(s).fins.len() < 0x1_0000_0000_0000,
+        n <= 0x1_0000, len <= 6,
     ensures matches2(invoke_virtual(pview2(p), view2(old(s)), sel as int, n as int, len as int), r, view2(final(s))),
 {
     if !(1 <= n && x_has_slot(s, n - 1)) {
@@ -743,7 +678,7 @@ pub fn x_receiver_check(p: &ExecProgram, s: &ExecState, t: usize) -> (r: Option<
 }
 
 pub fn x_call_static(p: &ExecProgram, s: &mut ExecState, t: i64, len: usize) -> (r: ExecOutcome2)
-    requires wf_program2(pview2(p)), old(s).bci < 0x1000_0000, len <= 6, old(s).fins.len() < 0x1_0000_0000_0000,
+    requires wf_program2(pview2(p)), old(s).bci < 0x1000_0000, len <= 6,
     ensures matches2(call_static(pview2(p), view2(old(s)), t as int, len as int), r, view2(final(s))),
 {
     if !x_valid_method(p, t) {
@@ -780,12 +715,8 @@ pub fn x_replace_frame(p: &ExecProgram, s: &mut ExecState, target: usize, args: 
     ensures matches2(replace_frame(pview2(p), view2(old(s)), target as int, args@), r, view2(final(s))),
 {
     let ghost s0 = view2(s);
-    if x_has_handler(s) {
-        return ExecOutcome2::Stuck(Stuck::BadFrame);
-    }
     let fi = s.frames.len() - 1;
     let f = s.frames[fi];
-    x_cut_fins(s, fi, 0);
     let ghost sc = view2(s);
     s.stack.truncate(f.base);
     let mut i: usize = 0;
@@ -800,7 +731,7 @@ pub fn x_replace_frame(p: &ExecProgram, s: &mut ExecState, target: usize, args: 
         i = i + 1;
         proof { assert(s.stack@ =~= s0.stack.subrange(0, f.base as int) + args@.subrange(0, i as int)); }
     }
-    s.frames.set(fi, Frame { method: target, ret: f.ret, base: f.base });
+    s.frames.set(fi, Frame { method: target, ret: f.ret, base: f.base, handler: f.handler });
     s.bci = p.methods[target].entry;
     proof {
         assert(args@.subrange(0, args@.len() as int) =~= args@);
@@ -987,7 +918,7 @@ pub fn x_binary_result(s: &mut ExecState, v: Value) -> (r: ExecOutcome2)
 }
 
 pub fn x_operator_fallback(p: &ExecProgram, s: &mut ExecState, op: u8) -> (r: ExecOutcome2)
-    requires wf_program2(pview2(p)), old(s).bci < 0x1000_0000, INVOKE_EQ <= op <= INVOKE_AT_PUT, old(s).fins.len() < 0x1_0000_0000_0000,
+    requires wf_program2(pview2(p)), old(s).bci < 0x1000_0000, INVOKE_EQ <= op <= INVOKE_AT_PUT,
     ensures matches2(operator_fallback(pview2(p), view2(old(s)), op), r, view2(final(s))),
 {
     let n: usize = if op == INVOKE_AT_PUT { 3 } else { 2 };
@@ -1424,13 +1355,6 @@ pub fn x_try(p: &ExecProgram, s: &mut ExecState) -> (r: ExecOutcome2)
     let bci = s.bci;
     let slot = height - 1;
     let target = x_block_target(p, s, slot);
-    x_cut_fins(s, fi, height - 1);
-    s.tries.push(Handler { frame: fi, height, bci: bci + 1 });
-    let ghost s1 = view2(s);
-    proof {
-        assert(s1 == (State2 { tries: s0.tries.push(Handler { frame: fi, height, bci: (bci + 1) as usize }),
-            fins: cut_fins(s0.fins, top_index(s0), s0.stack.len() - 1), ..s0 }));
-    }
     match target {
         None => x_raise(p, s, 3),
         Some(t) => {
@@ -1438,7 +1362,18 @@ pub fn x_try(p: &ExecProgram, s: &mut ExecState) -> (r: ExecOutcome2)
                 return x_raise(p, s, 2);
             }
             x_push(s, Value::BlockRef(fi, slot));
-            x_call(p, s, t as i64, bci + 1)
+            let ghost s1 = view2(s);
+            let r = x_call(p, s, t as i64, bci + 1);
+            match r {
+                ExecOutcome2::Next => {
+                    let n = s.frames.len() - 1;
+                    let fr = s.frames[n];
+                    s.frames.set(n, Frame { handler: true, ..fr });
+                    proof { assert(view2(s).frames =~= flag_top(call(pview2(p), s1, t as int, bci + 1)->Next_0).frames); }
+                    r
+                },
+                _ => r,
+            }
         },
     }
 }
@@ -1448,36 +1383,30 @@ pub fn x_unwind_op(p: &ExecProgram, s: &mut ExecState) -> (r: ExecOutcome2)
     ensures matches2(op_unwind(pview2(p), view2(old(s))), r, view2(final(s))),
 {
     let ghost s0 = view2(s);
-    if !x_has_slot(s, 2) {
+    if !x_has_slot(s, 3) {
         return ExecOutcome2::Stuck(Stuck::StackRange);
     }
-    let token = x_at(s, 1);
-    let value = x_at(s, 2);
-    x_drop(s, 3);
-    if x_value_eq(token, x_null(p)) {
-        return x_next(s, 1);
-    }
-    match token {
-        Value::Smi(k) => {
-            if 0 <= k && (k as u64) < (s.fins.len() as u64) {
-                let fin = s.fins[k as usize];
-                if s.frames.len() > 0 && fin.frame == s.frames.len() - 1 && fin.height == s.stack.len() {
-                    let u = match fin.resume {
-                        Resume::Throw => Unwind::Throw(value),
-                        Resume::Return(f) => Unwind::Return(f, value),
-                        Resume::Branch(f, bci, hb) => Unwind::Branch(f, bci, hb),
-                    };
-                    s.fins.truncate(k as usize);
-                    proof { assert(view2(s).fins =~= s0.fins.subrange(0, k as int)); }
-                    x_unwind(p, s, u)
-                } else {
-                    ExecOutcome2::Stuck(Stuck::NotUnwind)
-                }
+    let wb = x_at(s, 1);
+    let wa = x_at(s, 2);
+    let value = x_at(s, 3);
+    let d = match wa {
+        Value::Token(false, d, g, h) => {
+            if x_value_eq(wb, Value::Token(true, d, g, h)) && s.frames.len() > 0 && g == s.frames.len() - 1
+                && s.stack.len() >= 4 && h == s.stack.len() - 4 {
+                d
             } else {
-                ExecOutcome2::Stuck(Stuck::NotUnwind)
+                return ExecOutcome2::Stuck(Stuck::NotUnwind);
             }
         },
-        _ => ExecOutcome2::Stuck(Stuck::NotUnwind),
+        _ => { return ExecOutcome2::Stuck(Stuck::NotUnwind); },
+    };
+    proof { assert(token_at(s0) == Some(d)); }
+    x_drop(s, 4);
+    match d {
+        Pending::Normal => x_next(s, 1),
+        Pending::Throw => x_unwind(p, s, Unwind::Throw(value)),
+        Pending::Return(f) => x_unwind(p, s, Unwind::Return(f, value)),
+        Pending::Branch(f, bci, hb) => x_unwind(p, s, Unwind::Branch(f, bci, hb)),
     }
 }
 

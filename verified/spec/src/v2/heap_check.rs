@@ -189,7 +189,7 @@ pub fn x_loaded_obj_ok(p: &VProgram, Ghost(h): Ghost<Seq<HeapObj>>, n: usize, o:
             r
         },
         ExecBody::Stack(_, _) => false,
-        ExecBody::Stack2(_, _, _, _, _) => false,
+        ExecBody::Stack2(_, _, _) => false,
         ExecBody::Str(s) => {
             let u = x_utf8_ok(s.as_slice());
             proof { assert(o@.body == Body::Str(s@)); }

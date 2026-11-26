@@ -254,7 +254,7 @@ pub proof fn lemma_vcall_found(p: Program2, c: Cert, trusted: bool, s: State2, t
     }
     assert(s2.stack[fbase(s2, tn)] == at(s, n - 1));
     assert(receiver_ok(p, s2, tn));
-    assert(call_args(p, c, s, t, ret));
+    assert(call_args(p, c, s, t, ret, false));
     lemma_call(p, c, trusted, s, s, t, ret, false);
     assert(call(p, s, t, ret) == Outcome2::Next(s2));
 }

@@ -18,8 +18,9 @@
 //!
 //! An unwinding state (`unw_ok`) is a state whose frames below the top are
 //! well formed, and whose top frame's first slots conform to known kinds
-//! `kt`; if the top frame has a handler, its finally code starts with
-//! `kt` and the finally triple.
+//! `kt`. If the top frame is a try block, the frame below it is suspended
+//! in its TRY (`frame_ok`): popping the try block enters its finally code
+//! (`lemma_finally`).
 
 use vstd::prelude::*;
 use crate::types::*;
@@ -35,13 +36,6 @@ use crate::spec_common::{class_id_ok, class_id_of, smi};
 
 verus! {
 
-pub open spec fn handler_ok(s: State2, x: int) -> bool {
-    let h = s.tries[x];
-    &&& 0 <= h.frame as int <= top_i(s)
-    &&& (x > 0 ==> s.tries[x - 1].frame < h.frame)
-    &&& ((h.frame as int) < top_i(s) ==> try_ok(s, x))
-}
-
 /// The receiver condition of the top frame when its first `n` slots are
 /// known.
 pub open spec fn top_receiver_ok(p: Program2, s: State2, n: int) -> bool {
@@ -56,8 +50,10 @@ pub open spec fn top_receiver_ok(p: Program2, s: State2, n: int) -> bool {
     }
 }
 
+/// The map of a finally code whose TRY had the kinds `kt`: the value, the
+/// two token words and the reason above them (format note 23).
 pub open spec fn finally_kinds(kt: Seq<Kind>) -> Seq<Kind> {
-    kt.push(Kind::Val).push(Kind::Token).push(Kind::Val)
+    kt.push(Kind::Val).push(Kind::Token).push(Kind::Token).push(Kind::Val)
 }
 
 pub open spec fn unw_ok(p: Program2, c: Cert, s: State2, kt: Seq<Kind>) -> bool {
@@ -68,12 +64,11 @@ pub open spec fn unw_ok(p: Program2, c: Cert, s: State2, kt: Seq<Kind>) -> bool 
     &&& globals_ok(c, s)
     &&& consts_ok(p, s.heap)
     &&& running_ok(p, s)
-    &&& fins_ok(s)
     &&& s.frames.len() > 0
+    &&& !s.frames[0].handler
     &&& bases_ok(s)
     &&& roomy(s)
     &&& forall|fi: int| 0 <= fi < t ==> #[trigger] frame_ok(p, c, s, fi)
-    &&& forall|x: int| 0 <= x < s.tries.len() ==> #[trigger] handler_ok(s, x)
     &&& valid_method(p, m)
     &&& !dead_block(p, c, m)
     &&& b + kt.len() <= s.stack.len()
@@ -81,18 +76,12 @@ pub open spec fn unw_ok(p: Program2, c: Cert, s: State2, kt: Seq<Kind>) -> bool 
     &&& forall|j: int| 0 <= j < kt.len() ==> #[trigger] wf_kind(p, c, m, kt, j)
     &&& (pinned0(p, m) && arity(p, m) >= 1 ==> kt.len() >= 1)
     &&& top_receiver_ok(p, s, kt.len() as int)
-    &&& (has_handler(s) ==> {
-            let h = s.tries.last();
-            &&& h.height as int == b + kt.len()
-            &&& info(p, m).entry <= h.bci
-            &&& map_at(c, m, h.bci - info(p, m).entry) == Some(finally_kinds(kt))
-        })
 }
 
 /// The unwinding `u` can complete from the top frame (a token there would
-/// be at slot `kt.len() + 1`).
+/// have its first word at slot `kt.len() + 1`).
 pub open spec fn unw_arg_ok(p: Program2, c: Cert, s: State2, kt: Seq<Kind>, u: Unwind) -> bool {
-    &&& pending_ok(p, c, s, top_i(s), kt, kt.len() as int + 1, resume_of(u))
+    &&& pending_ok(p, c, s, top_i(s), kt, kt.len() as int + 1, pending_of(Some(u)))
     &&& unwind_value_ok(s.heap, u)
 }
 
@@ -105,43 +94,10 @@ pub open spec fn unwind_value_ok(heap: Seq<HeapObj>, u: Unwind) -> bool {
     }
 }
 
-pub proof fn lemma_handlers_lt_top(s: State2, x: int)
-    requires
-        forall|y: int| 0 <= y < s.tries.len() ==> #[trigger] handler_ok(s, y),
-        !has_handler(s), 0 <= x < s.tries.len(), s.frames.len() > 0,
-    ensures (s.tries[x].frame as int) < top_i(s),
-    decreases s.tries.len() - x,
-{
-    assert(handler_ok(s, x));
-    if x + 1 < s.tries.len() {
-        lemma_handlers_lt_top(s, x + 1);
-        assert(handler_ok(s, x + 1));
-    } else {
-        assert(s.tries.last() == s.tries[x]);
-    }
-}
-
-/// A frame with a handler has the last one, when the frames above have none.
-pub proof fn lemma_last_handler(s: State2, g: int, x: int)
-    requires
-        forall|y: int| 0 <= y < s.tries.len() ==> #[trigger] handler_ok(s, y),
-        0 <= x < s.tries.len(), s.tries[x].frame as int == g,
-        forall|y: int| 0 <= y < s.tries.len() ==> (#[trigger] s.tries[y]).frame as int <= g,
-    ensures x == s.tries.len() - 1,
-{
-    if x + 1 < s.tries.len() {
-        assert(handler_ok(s, x + 1));
-        assert(s.tries[x + 1].frame as int <= g);
-    }
-}
-
-/// A well-formed state is an unwinding state of its top frame's kinds,
-/// without a handler at the top.
+/// A well-formed state is an unwinding state of its top frame's kinds.
 pub proof fn lemma_wf_unw(p: Program2, c: Cert, trusted: bool, s: State2)
     requires accepts(p, c, trusted), wf(p, c, s), small(s),
-    ensures
-        unw_ok(p, c, s, kinds_of(p, c, s, top_i(s))),
-        !has_handler(s),
+    ensures unw_ok(p, c, s, kinds_of(p, c, s, top_i(s))),
 {
     let t = top_i(s);
     let kt = kinds_of(p, c, s, t);
@@ -149,16 +105,9 @@ pub proof fn lemma_wf_unw(p: Program2, c: Cert, trusted: bool, s: State2)
     lemma_task_basics(p, c, s);
     lemma_top_kinds(p, c, s);
     assert(frame_ok(p, c, s, t)) by { reveal(wf_task); }
-    assert(fins_ok(s)) by { reveal(wf_task); }
+    assert(!s.frames[0].handler) by { reveal(wf_task); }
     reveal(frame_ok);
     assert forall|fi: int| 0 <= fi < t implies #[trigger] frame_ok(p, c, s, fi) by { reveal(wf_task); }
-    assert forall|x: int| 0 <= x < s.tries.len() implies #[trigger] handler_ok(s, x) by {
-        assert(try_ok(s, x));
-        if x > 0 { assert(try_ok(s, x - 1)); }
-    }
-    if has_handler(s) {
-        assert(try_ok(s, s.tries.len() - 1));
-    }
     lemma_map_instr(p, c, trusted, fmethod(s, t), foff(p, s, t));
     assert forall|j: int| 0 <= j < kt.len() implies #[trigger] wf_kind(p, c, fmethod(s, t), kt, j) by {}
 }
@@ -166,109 +115,132 @@ pub proof fn lemma_wf_unw(p: Program2, c: Cert, trusted: bool, s: State2)
 // ---------------------------------------------------------------------------
 // Entering finally code.
 
-pub open spec fn finally_state(p: Program2, s: State2, h: Handler, uo: Option<Unwind>) -> State2 {
-    match enter_finally(p, s, h, uo) {
-        Outcome2::Next(s2) => s2,
-        _ => s,
+/// The frame below a try block is suspended in its TRY: its map at the try
+/// block's return bci is the finally code's, its kinds and the four slots.
+pub proof fn lemma_try_frame_map(p: Program2, c: Cert, s: State2, g: int)
+    requires frame_ok(p, c, s, g), bases_ok(s), 0 <= g, g + 1 < s.frames.len(), s.frames[g + 1].handler,
+    ensures
+        fmap(p, c, s, g) == finally_kinds(kinds_of(p, c, s, g)),
+        foff(p, s, g) == s.frames[g + 1].ret - info(p, fmethod(s, g)).entry,
+        map_at(c, fmethod(s, g), foff(p, s, g)) == Some(finally_kinds(kinds_of(p, c, s, g))),
+{
+    reveal(frame_ok);
+    assert(try_frame(s, g));
+    let k = fmap(p, c, s, g);
+    let n = slots(s, g);
+    assert(base_step(s, g));
+    assert(k.len() == n + 4);
+    let kf = finally_kinds(kinds_of(p, c, s, g));
+    assert(kf.len() == k.len());
+    assert forall|i: int| 0 <= i < k.len() implies k[i] == kf[i] by {
+        if i < n {
+            assert(kf[i] == kinds_of(p, c, s, g)[i]);
+        } else if i == n {
+            assert(k[n] is Val);
+        } else if i == n + 1 || i == n + 2 {
+            assert(k[i] is Token);
+        } else {
+            assert(k[n + 3] is Val);
+        }
     }
+    assert(fmap(p, c, s, g) =~= kf);
 }
 
-pub proof fn lemma_finally(p: Program2, c: Cert, trusted: bool, s: State2, kt: Seq<Kind>, uo: Option<Unwind>)
+/// Entering the finally code of the frame below the try block on top of
+/// `s` (`s1` is `s` with the try block popped, an unwinding state of the
+/// frame's kinds `k1`), normally or with the unwinding `u`.
+pub proof fn lemma_finally(p: Program2, c: Cert, trusted: bool, s: State2, kt: Seq<Kind>, s1: State2, k1: Seq<Kind>, uo: Option<Unwind>)
     requires
         accepts(p, c, trusted),
         unw_ok(p, c, s, kt),
-        has_handler(s),
-        match uo { Some(u) => unw_arg_ok(p, c, s, kt, u), None => true },
-    ensures outcome_ok(p, c, enter_finally(p, s, s.tries.last(), uo)),
+        s.frames.len() > 1,
+        top(s).handler,
+        s1 == pop_frame(s),
+        k1 == kinds_of(p, c, s, top_i(s) - 1),
+        unw_ok(p, c, s1, k1),
+        match uo { Some(u) => unw_arg_ok(p, c, s1, k1, u), None => true },
+    ensures outcome_ok(p, c, enter_finally(p, s1, top(s).base as int, top(s).ret as int, uo)),
 {
-    let t = top_i(s);
-    let b = fbase(s, t);
-    let m = fmethod(s, t);
-    let h = s.tries.last();
-    let kf = finally_kinds(kt);
-    let s1 = State2 { stack: s.stack.subrange(0, h.height as int), tries: s.tries.drop_last(), bci: h.bci, ..s };
-    assert(base(s) <= h.height as int <= s.stack.len());
-    // The records and the three pushed values.
-    let (fins2, value, token, reason): (Seq<Fin>, Value, Value, Value) = match uo {
-        None => (s.fins, null2(p), null2(p), smi(-1)),
-        Some(w) => {
-            (s.fins.push(Fin { frame: h.frame, height: h.height, resume: resume_of(w) }),
-             value_of(p, w),
-             smi(s.fins.len() as int),
-             smi(match w { Unwind::Throw(_) => -2int, _ => -1int }))
-        },
-    };
-    let s2 = State2 { fins: fins2, stack: s1.stack.push(value).push(token).push(reason), ..s1 };
-    assert(enter_finally(p, s, h, uo) == Outcome2::Next(s2));
-    assert(s2.heap == s.heap);
-    lemma_heap_ext_refl(p, s.heap);
-    lemma_globals_heap(c, s, s.heap);
+    let t0 = top_i(s);
+    let t = t0 - 1;
+    let b = fbase(s1, t);
+    let m = fmethod(s1, t);
+    let hh = top(s).base as int;
+    let hbci = top(s).ret as int;
+    let kf = finally_kinds(k1);
+    assert(s.frames[t0] == top(s));
+    assert(frame_ok(p, c, s, t));
+    lemma_try_frame_map(p, c, s, t);
+    assert(fmethod(s, t) == m);
+    assert(fbase(s, t) == b);
+    let n = slots(s, t);
+    assert(k1.len() == n) by { reveal(frame_ok); }
+    assert(hh == b + k1.len());
+    assert(s1.stack.len() == hh);
+    assert(top_i(s1) == t);
+    assert(base(s1) == b);
+    let s1c = State2 { stack: s1.stack.subrange(0, hh), bci: hbci as usize, ..s1 };
+    let d = pending_of(uo);
+    let gu = t as usize;
+    let tok_a = Value::Token(false, d, gu, hh as usize);
+    let tok_b = Value::Token(true, d, gu, hh as usize);
+    let value = value_of(p, uo);
+    let reason = smi(reason_of(uo));
+    let s2 = push(push(push(push(s1c, value), tok_a), tok_b), reason);
+    assert(enter_finally(p, s1, hh, hbci, uo) == Outcome2::Next(s2));
+    assert(s2.heap == s1.heap);
+    lemma_heap_ext_refl(p, s1.heap);
+    lemma_globals_heap(c, s1, s1.heap);
     assert(running_ok(p, s2));
     // Frames.
-    assert(s2.frames == s.frames);
-    assert(s2.tries == s.tries.drop_last());
+    assert(s2.frames == s1.frames);
     assert(top_i(s2) == t);
-    assert(s2.stack.len() == b + kt.len() + 3);
+    assert(s2.stack.len() == b + k1.len() + 4);
+    assert(info(p, m).entry <= hbci);
     assert(fmap(p, c, s2, t) == kf);
     assert(kinds_of(p, c, s2, t) =~= kf);
     assert(bases_ok(s2)) by {
         assert forall|fi: int| 0 <= fi && fi + 1 < s2.frames.len() implies #[trigger] base_step(s2, fi) by {
-            assert(base_step(s, fi));
+            assert(base_step(s1, fi));
         }
-    }
-    // Handlers below the top are unchanged; the top's is gone.
-    assert forall|x: int| 0 <= x < s2.tries.len() implies ((#[trigger] s2.tries[x]).frame as int) < t by {
-        assert(handler_ok(s, x));
-        assert(handler_ok(s, x + 1));
-        assert(s2.tries[x] == s.tries[x]);
-        if x + 1 == s.tries.len() - 1 {}
-        lemma_handler_increasing(s, x, s.tries.len() - 1);
     }
     assert(!try_frame(s2, t));
     if t > 0 {
-        assert(same_below(s, s2, t - 1)) by {
-            assert forall|g: int| 0 <= g <= t - 1 implies #[trigger] try_frame(s2, g) == try_frame(s, g) by {
-                if try_frame(s, g) {
-                    let x = choose|x: int| 0 <= x < s.tries.len() && (#[trigger] s.tries[x]).frame as int == g;
-                    assert(x != s.tries.len() - 1);
-                    assert(s2.tries[x] == s.tries[x]);
-                }
-                if try_frame(s2, g) {
-                    let x = choose|x: int| 0 <= x < s2.tries.len() && (#[trigger] s2.tries[x]).frame as int == g;
-                    assert(s2.tries[x] == s.tries[x]);
-                }
-            }
-            assert forall|x: int| 0 <= x < s.frames[t].base implies #[trigger] s2.stack[x] == s.stack[x] by {}
+        assert(same_below(s1, s2, t - 1)) by {
+            assert forall|g: int| 0 <= g <= t - 1 implies #[trigger] try_frame(s2, g) == try_frame(s1, g) by {}
+            assert forall|x: int| 0 <= x < s1.frames[t].base implies #[trigger] s2.stack[x] == s1.stack[x] by {}
         }
     }
     let mi = info(p, m);
-    lemma_map_instr(p, c, trusted, m, h.bci - mi.entry);
+    lemma_map_instr(p, c, trusted, m, hbci - mi.entry);
     // The top frame.
     assert forall|j: int| 0 <= j < kf.len() implies
         #[trigger] conf(p, c, s2, t, kinds_of(p, c, s2, t), j, kinds_of(p, c, s2, t)[j], s2.stack[fbase(s2, t) + j]) by {
-        if j < kt.len() {
-            assert(conf(p, c, s, t, kt, j, kt[j], s.stack[b + j]));
-            assert(wf_kind(p, c, m, kt, j));
-            assert(same_upto(s, s2, t, kt.len() as int));
-            lemma_conf_upto(p, c, s, s2, t, kt.len() as int, kt, j, kt[j], s.stack[b + j]);
-            assert(kf.subrange(0, j) =~= kt.subrange(0, j));
-            lemma_conf_kf(p, c, s2, t, kt, kf, j, kt[j], s.stack[b + j]);
-            assert(s2.stack[b + j] == s.stack[b + j]);
+        if j < k1.len() {
+            assert(conf(p, c, s1, t, k1, j, k1[j], s1.stack[b + j]));
+            assert(wf_kind(p, c, m, k1, j));
+            assert(same_upto(s1, s2, t, k1.len() as int));
+            lemma_conf_upto(p, c, s1, s2, t, k1.len() as int, k1, j, k1[j], s1.stack[b + j]);
+            assert(kf.subrange(0, j) =~= k1.subrange(0, j));
+            lemma_conf_kf(p, c, s2, t, k1, kf, j, k1[j], s1.stack[b + j]);
+            assert(s2.stack[b + j] == s1.stack[b + j]);
         } else {
             reveal(conf);
-            if j == kt.len() {
+            if j == k1.len() {
                 assert(s2.stack[b + j] == value);
-                assert(good(s.heap, null2(p)));
-            } else if j == kt.len() + 1 {
-                assert(s2.stack[b + j] == token);
+                assert(good(s1.heap, null2(p)));
+            } else if j == k1.len() + 1 {
+                assert(s2.stack[b + j] == tok_a);
+                assert(kf[j - 1] == Kind::Val);
                 match uo {
-                    None => {},
+                    None => { reveal(pending_ok); },
                     Some(w) => {
-                        assert(s2.fins[s.fins.len() as int] == Fin { frame: h.frame, height: h.height, resume: resume_of(w) });
-                        lemma_pending_finally(p, c, trusted, s, s2, kt, w);
-                        assert(fin_ok(p, c, s2, t, kinds_of(p, c, s2, t), j, s.fins.len() as int));
+                        lemma_pending_finally(p, c, trusted, s1, s2, k1, w);
                     },
                 }
+            } else if j == k1.len() + 2 {
+                assert(s2.stack[b + j] == tok_b);
+                assert(s2.stack[b + j - 1] == tok_a);
             } else {
                 assert(s2.stack[b + j] == reason);
             }
@@ -277,81 +249,24 @@ pub proof fn lemma_finally(p: Program2, c: Cert, trusted: bool, s: State2, kt: S
     assert(frame_ok(p, c, s2, t)) by {
         reveal(frame_ok);
         assert(frame_shape_ok(p, c, s2, t));
-        let r = s.stack[b];
+        let r = s1.stack[b];
         if (mi.kind == KIND_METHOD || mi.kind == KIND_FIELD_ACCESSOR) && has_receiver_range(mi) && arity(p, m) >= 1 {
             assert(s2.stack[b] == r);
             match r {
-                Value::Obj(id) => { assert(s2.heap[id as int].class_id == s.heap[id as int].class_id); },
+                Value::Obj(id) => { assert(s2.heap[id as int].class_id == s1.heap[id as int].class_id); },
                 _ => {},
             }
-            assert(class_id_of(p1(p), as1(s2), r) == class_id_of(p1(p), as1(s), r));
+            assert(class_id_of(p1(p), as1(s2), r) == class_id_of(p1(p), as1(s1), r));
         }
     }
     assert forall|fi: int| 0 <= fi < s2.frames.len() implies #[trigger] frame_ok(p, c, s2, fi) by {
         if fi < t {
-            lemma_same_below_down(s, s2, t - 1, fi);
-            lemma_frame_below_unw(p, c, s, s2, fi);
+            lemma_same_below_down(s1, s2, t - 1, fi);
+            lemma_frame_below_unw(p, c, s1, s2, fi);
         }
     }
-    assert forall|x: int| 0 <= x < s2.tries.len() implies #[trigger] try_ok(s2, x) by {
-        assert(handler_ok(s, x));
-        assert(s2.tries[x] == s.tries[x]);
-        assert((s.tries[x].frame as int) < t);
-    }
-    lemma_fins_finally(s, s2, uo);
+    assert(s2.frames[0] == s1.frames[0]);
     assert(wf(p, c, s2)) by { reveal(wf); reveal(wf_task); }
-}
-
-/// Entering a finally code keeps the records ordered: a new record of the
-/// top frame is above the frame's other records (below the TRY).
-pub proof fn lemma_fins_finally(s: State2, s2: State2, uo: Option<Unwind>)
-    requires
-        fins_ok(s), has_handler(s), s.frames.len() > 0,
-        forall|z: int| 0 <= z < s.tries.len() ==> #[trigger] handler_ok(s, z),
-        s2.frames == s.frames,
-        s2.tries == s.tries.drop_last(),
-        s2.fins == match uo {
-            None => s.fins,
-            Some(w) => s.fins.push(Fin { frame: s.tries.last().frame, height: s.tries.last().height, resume: resume_of(w) }),
-        },
-    ensures fins_ok(s2),
-{
-    let h = s.tries.last();
-    let xl = s.tries.len() - 1;
-    assert forall|x: int, k: int| 0 <= x < s2.tries.len() && 0 <= k < s2.fins.len()
-        && (#[trigger] s2.fins[k]).frame == (#[trigger] s2.tries[x]).frame implies
-        s2.fins[k].height < s2.tries[x].height by {
-        assert(s2.tries[x] == s.tries[x]);
-        if k < s.fins.len() {
-            assert(s2.fins[k] == s.fins[k]);
-        } else {
-            lemma_handler_increasing(s, x, xl);
-        }
-    }
-    assert forall|a: int, b: int| 0 <= a < b < s2.fins.len() implies fin_lt(#[trigger] s2.fins[a], #[trigger] s2.fins[b]) by {
-        if b < s.fins.len() {
-            assert(s2.fins[a] == s.fins[a] && s2.fins[b] == s.fins[b]);
-        } else {
-            assert(s2.fins[a] == s.fins[a]);
-            assert(s.fins[a].frame < s.frames.len());
-            if s.fins[a].frame == h.frame {
-                assert(s.fins[a].height < s.tries[xl].height);
-            }
-        }
-    }
-}
-
-pub proof fn lemma_handler_increasing(s: State2, x: int, y: int)
-    requires
-        forall|z: int| 0 <= z < s.tries.len() ==> #[trigger] handler_ok(s, z),
-        0 <= x < y < s.tries.len(),
-    ensures s.tries[x].frame < s.tries[y].frame,
-    decreases y - x,
-{
-    assert(handler_ok(s, y));
-    if x + 1 < y {
-        lemma_handler_increasing(s, x, y - 1);
-    }
 }
 
 /// A lower frame of an unwinding state stays well formed (as in
@@ -398,7 +313,7 @@ pub proof fn lemma_pending_finally(p: Program2, c: Cert, trusted: bool, s: State
         s2.frames == s.frames,
         top_i(s) > 0 ==> same_below(s, s2, top_i(s) - 1),
         kinds_of(p, c, s2, top_i(s)) == finally_kinds(kt),
-    ensures pending_ok(p, c, s2, top_i(s), kinds_of(p, c, s2, top_i(s)), kt.len() as int + 1, resume_of(w)),
+    ensures pending_ok(p, c, s2, top_i(s), kinds_of(p, c, s2, top_i(s)), kt.len() as int + 1, pending_of(Some(w))),
 {
     reveal(pending_ok);
     let t = top_i(s);

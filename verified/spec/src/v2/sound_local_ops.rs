@@ -45,8 +45,6 @@ pub open spec fn lframe0(p: Program2, c: Cert, s: State2, s2: State2, k2: Seq<Ki
     let b = cur_b(s);
     let m = cur_m(s);
     &&& s2.frames == s.frames
-    &&& s2.tries == s.tries
-    &&& s2.fins == s.fins
     &&& s2.task == s.task
     &&& info(p, m).entry <= s2.bci
     &&& map_at(c, m, s2.bci - info(p, m).entry) == Some(k2)
@@ -82,6 +80,7 @@ pub proof fn lemma_lgen(p: Program2, c: Cert, trusted: bool, s: State2, s2: Stat
             #[trigger] unchanged(p, c, s, s2, k2, j) || conf(p, c, s2, top_i(s), k2, j, k2[j], s2.stack[cur_b(s) + j]),
         forall|j: int| q <= j < k2.len() && #[trigger] unchanged(p, c, s, s2, k2, j) && k2[j] is Token ==>
             k2.subrange(0, j) == cur_k(p, c, s).subrange(0, j),
+        forall|j: int| q <= j < k2.len() && (#[trigger] k2[j]) is Token ==> unchanged(p, c, s, s2, k2, j),
     ensures wf(p, c, s2),
 {
     lemma_instr(p, c, trusted, s);
@@ -106,6 +105,12 @@ pub proof fn lemma_lgen(p: Program2, c: Cert, trusted: bool, s: State2, s2: Stat
                 assert(k2[x] == k[x]);
             }
             assert(k2.subrange(0, j) =~= k.subrange(0, j));
+        }
+    }
+    assert forall|j: int| 0 <= j < k2.len() && (#[trigger] k2[j]) is Token implies unchanged(p, c, s, s2, k2, j) by {
+        if j < q {
+            assert(s2.stack[b + j] == s.stack[b + j]);
+            assert(k2[j] == k[j]);
         }
     }
     assert(local_step(p, c, s, s2, k2));
@@ -213,8 +218,6 @@ pub proof fn lemma_pop_push(p: Program2, c: Cert, trusted: bool, s: State2, s2: 
         0 <= n <= cur_k(p, c, s).len(),
         n == 0 || leaves0(p, cur_m(s), cur_k(p, c, s).len() as int, n),
         s2.frames == s.frames,
-        s2.tries == s.tries,
-        s2.fins == s.fins,
         s2.task == s.task,
         s2.heap == s.heap,
         s2.globals == s.globals,
@@ -267,8 +270,6 @@ pub proof fn lemma_drop(p: Program2, c: Cert, trusted: bool, s: State2, s2: Stat
         wf(p, c, s),
         0 <= n <= cur_k(p, c, s).len(),
         s2.frames == s.frames,
-        s2.tries == s.tries,
-        s2.fins == s.fins,
         s2.task == s.task,
         s2.heap == s.heap,
         globals_ok(c, s2),
@@ -973,8 +974,6 @@ pub proof fn lemma_loop_taken(p: Program2, c: Cert, trusted: bool, s: State2, s2
         good(s.heap, vc),
         good(s.heap, v),
         s2.frames == s.frames,
-        s2.tries == s.tries,
-        s2.fins == s.fins,
         s2.task == s.task,
         s2.heap == s.heap,
         s2.globals == s.globals,

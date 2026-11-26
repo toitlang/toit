@@ -20,8 +20,8 @@
 //! `c`) is described by the certificate: every frame's slots conform to
 //! the stack map at the frame's current offset, block references point to
 //! live block slots whose frames have their contexts' kinds, unwinding
-//! tokens hold unwindings that can complete, handlers sit at TRY sites,
-//! and the heap, globals and program constants hold only values. The
+//! tokens hold unwindings that can complete, try blocks return to TRY
+//! sites, and the heap, globals and program constants hold only values. The
 //! suspended tasks in the heap satisfy the same invariant.
 
 use vstd::prelude::*;
@@ -63,10 +63,9 @@ pub open spec fn basic_obj_ok(p: Program2, heap: Seq<HeapObj>, o: HeapObj) -> bo
 }
 
 /// The state of a suspended task, as a machine state (only the stack,
-/// frames, handlers, finally records, bci and heap are used by the task
-/// invariant).
-pub open spec fn susp_state(heap: Seq<HeapObj>, w: Seq<Value>, fr: Seq<Frame>, tr: Seq<Handler>, fins: Seq<Fin>, bci: usize) -> State2 {
-    State2 { heap: heap, globals: Seq::empty(), stack: w, frames: fr, tries: tr, fins: fins, bci: bci, task: 0, next_task_id: 0 }
+/// frames, bci and heap are used by the task invariant).
+pub open spec fn susp_state(heap: Seq<HeapObj>, w: Seq<Value>, fr: Seq<Frame>, bci: usize) -> State2 {
+    State2 { heap: heap, globals: Seq::empty(), stack: w, frames: fr, bci: bci, task: 0, next_task_id: 0 }
 }
 
 /// A suspended task is at a task_transfer PRIMITIVE.
@@ -80,11 +79,11 @@ pub open spec fn at_transfer(p: Program2, s: State2) -> bool {
 
 /// A suspended task: never ran (its code is a value), or a well-formed
 /// task stopped at task_transfer.
-pub open spec fn susp_ok(p: Program2, c: Cert, heap: Seq<HeapObj>, w: Seq<Value>, fr: Seq<Frame>, tr: Seq<Handler>, fins: Seq<Fin>, bci: usize) -> bool {
+pub open spec fn susp_ok(p: Program2, c: Cert, heap: Seq<HeapObj>, w: Seq<Value>, fr: Seq<Frame>, bci: usize) -> bool {
     if fr.len() == 0 {
         w.len() >= 1 ==> good(heap, w[0])
     } else {
-        wf_task(p, c, susp_state(heap, w, fr, tr, fins, bci)) && at_transfer(p, susp_state(heap, w, fr, tr, fins, bci))
+        wf_task(p, c, susp_state(heap, w, fr, bci)) && at_transfer(p, susp_state(heap, w, fr, bci))
     }
 }
 
@@ -126,7 +125,7 @@ pub open spec fn obj_ok(p: Program2, c: Cert, heap: Seq<HeapObj>, o: HeapObj) ->
     &&& basic_obj_ok(p, heap, o)
     &&& o.class_id as int == task_class(p) ==> task_obj_ok(heap, o)
     &&& match o.body {
-        Body::Stack2(w, fr, tr, fins, b) => susp_ok(p, c, heap, w, fr, tr, fins, b),
+        Body::Stack2(w, fr, b) => susp_ok(p, c, heap, w, fr, b),
         _ => true,
     }
 }
@@ -181,9 +180,9 @@ pub open spec fn kinds_of(p: Program2, c: Cert, s: State2, fi: int) -> Seq<Kind>
     fmap(p, c, s, fi).subrange(0, slots(s, fi))
 }
 
-/// Frame `g` is suspended in a TRY (its handler is installed).
+/// Frame `g` is suspended in a TRY: the frame above it is a try block.
 pub open spec fn try_frame(s: State2, g: int) -> bool {
-    exists|x: int| 0 <= x < s.tries.len() && (#[trigger] s.tries[x]).frame as int == g
+    g + 1 < s.frames.len() && s.frames[g + 1].handler
 }
 
 pub open spec fn base_step(s: State2, fi: int) -> bool {
@@ -206,7 +205,7 @@ pub open spec fn frame_shape_ok(p: Program2, c: Cert, s: State2, fi: int) -> boo
         fmap(p, c, s, fi).len() == n
     } else if try_frame(s, fi) {
         let k = fmap(p, c, s, fi);
-        k.len() == n + 3 && k[n] is Val && k[n + 1] is Token && k[n + 2] is Val
+        k.len() == n + 4 && k[n] is Val && k[n + 1] is Token && k[n + 2] is Token && k[n + 3] is Val
     } else {
         let k = fmap(p, c, s, fi);
         k.len() == n + 1 && k[n] is Val
@@ -246,16 +245,17 @@ pub open spec fn frame_kinds_from(p: Program2, c: Cert, s: State2, g: int, kg: S
     if f == g { kg } else { kinds_of(p, c, s, f) }
 }
 
-/// The unwinding a token in slot `i` of frame `g` resumes can complete:
-/// non-local returns and branches target frames at or below `g`, a
-/// branch a mapped offset whose map is a prefix of the target frame's
-/// kinds (below the token for frame `g` itself).
+/// The unwinding a token whose first word is in slot `i` of frame `g`
+/// resumes can complete: non-local returns and branches target frames at
+/// or below `g`, a branch a mapped offset whose map is a prefix of the
+/// target frame's kinds (below the token for frame `g` itself).
 #[verifier::opaque]
-pub open spec fn pending_ok(p: Program2, c: Cert, s: State2, g: int, kg: Seq<Kind>, i: int, u: Resume) -> bool {
+pub open spec fn pending_ok(p: Program2, c: Cert, s: State2, g: int, kg: Seq<Kind>, i: int, u: Pending) -> bool {
     match u {
-        Resume::Throw => true,
-        Resume::Return(f) => (f as int) <= g,
-        Resume::Branch(f, bci, hb) => {
+        Pending::Normal => true,
+        Pending::Throw => true,
+        Pending::Return(f) => (f as int) <= g,
+        Pending::Branch(f, bci, hb) => {
             let fi = f as int;
             let m = fmethod(s, fi);
             let off = bci as int - info(p, m).entry;
@@ -276,6 +276,11 @@ pub open spec fn pending_ok(p: Program2, c: Cert, s: State2, g: int, kg: Seq<Kin
 }
 
 /// Value `v` in slot `j` of frame `fi` conforms to kind `k`.
+///
+/// A token slot (format note 23) holds a word of a token of its frame,
+/// made for its position: the first word right above the value slot
+/// (which is not a token slot), with an unwinding that can complete; the
+/// second word right above the first word of the same token.
 #[verifier::opaque]
 pub open spec fn conf(p: Program2, c: Cert, s: State2, fi: int, kf: Seq<Kind>, j: int, k: Kind, v: Value) -> bool {
     match k {
@@ -303,21 +308,22 @@ pub open spec fn conf(p: Program2, c: Cert, s: State2, fi: int, kf: Seq<Kind>, j
                 && good_ref(p, c, s, f as int, slot as int),
             _ => false,
         },
-        Kind::Token => v == null2(p) || match v {
-            Value::Smi(k) => fin_ok(p, c, s, fi, kf, j, k as int),
+        Kind::Token => match v {
+            Value::Token(second, d, g, h) => {
+                &&& g as int == fi
+                &&& 1 <= j
+                &&& if second {
+                    &&& h as int + 2 == fbase(s, fi) + j
+                    &&& s.stack[fbase(s, fi) + j - 1] == Value::Token(false, d, g, h)
+                } else {
+                    &&& h as int + 1 == fbase(s, fi) + j
+                    &&& !(kf[j - 1] is Token)
+                    &&& pending_ok(p, c, s, fi, kf, j, d)
+                }
+            },
             _ => false,
         },
     }
-}
-
-/// The token in slot `j` of frame `fi` names finally record `k`: a record
-/// of the frame whose token slot it is, with an unwinding that can
-/// complete.
-pub open spec fn fin_ok(p: Program2, c: Cert, s: State2, fi: int, kf: Seq<Kind>, j: int, k: int) -> bool {
-    &&& 0 <= k < s.fins.len()
-    &&& s.fins[k].frame as int == fi
-    &&& s.fins[k].height as int + 1 == fbase(s, fi) + j
-    &&& pending_ok(p, c, s, fi, kf, j, s.fins[k].resume)
 }
 
 pub open spec fn frame_conf(p: Program2, c: Cert, s: State2, fi: int) -> bool {
@@ -350,41 +356,14 @@ pub open spec fn frame_ok(p: Program2, c: Cert, s: State2, fi: int) -> bool {
     &&& pinned_ok(p, s, fi)
 }
 
-/// Handler `x` belongs to a frame suspended in its TRY: the frame above is
-/// the try block, returning to the finally code.
-pub open spec fn try_ok(s: State2, x: int) -> bool {
-    let h = s.tries[x];
-    let g = h.frame as int;
-    &&& 0 <= g && g + 1 < s.frames.len()
-    &&& s.frames[g + 1].ret == h.bci
-    &&& s.frames[g + 1].base == h.height
-    &&& (x > 0 ==> s.tries[x - 1].frame < h.frame)
-}
-
-/// Finally record `a` comes before `b`: by frame, then by height.
-pub open spec fn fin_lt(a: Fin, b: Fin) -> bool {
-    a.frame < b.frame || (a.frame == b.frame && a.height < b.height)
-}
-
-/// The finally records belong to live frames and are ordered by frame and
-/// height; the records of a frame suspended in a TRY are below the TRY's
-/// height (so entering its finally code keeps the order).
-pub open spec fn fins_ok(s: State2) -> bool {
-    &&& forall|k: int| 0 <= k < s.fins.len() ==> (#[trigger] s.fins[k]).frame < s.frames.len()
-    &&& forall|a: int, b: int| 0 <= a < b < s.fins.len() ==> fin_lt(#[trigger] s.fins[a], #[trigger] s.fins[b])
-    &&& forall|x: int, k: int| 0 <= x < s.tries.len() && 0 <= k < s.fins.len()
-            && (#[trigger] s.fins[k]).frame == (#[trigger] s.tries[x]).frame ==>
-            s.fins[k].height < s.tries[x].height
-}
-
-/// The task part of the invariant (also for suspended tasks).
+/// The task part of the invariant (also for suspended tasks). The bottom
+/// frame is not a try block (it has no frame below to enter).
 #[verifier::opaque]
 pub open spec fn wf_task(p: Program2, c: Cert, s: State2) -> bool {
     &&& s.frames.len() > 0
     &&& bases_ok(s)
     &&& forall|fi: int| 0 <= fi < s.frames.len() ==> #[trigger] frame_ok(p, c, s, fi)
-    &&& forall|x: int| 0 <= x < s.tries.len() ==> #[trigger] try_ok(s, x)
-    &&& fins_ok(s)
+    &&& !s.frames[0].handler
 }
 
 pub open spec fn globals_ok(c: Cert, s: State2) -> bool {
@@ -414,16 +393,12 @@ pub open spec fn roomy(s: State2) -> bool {
     &&& s.heap.len() < 0x8000_0000
     &&& s.stack.len() < 0x8000_0000
     &&& s.frames.len() < 0x8000_0000
-    &&& s.tries.len() < 0x8000_0000
-    &&& s.fins.len() < 0x8000_0000
 }
 
 pub open spec fn small(s: State2) -> bool {
     &&& s.heap.len() < 0x4000_0000
     &&& s.stack.len() < 0x4000_0000
     &&& s.frames.len() < 0x4000_0000
-    &&& s.tries.len() < 0x4000_0000
-    &&& s.fins.len() < 0x4000_0000
 }
 
 /// The program `p` with certificate `c` is accepted.

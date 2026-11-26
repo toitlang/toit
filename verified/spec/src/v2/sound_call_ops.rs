@@ -49,7 +49,7 @@ pub proof fn lemma_good_ref_top(p: Program2, c: Cert, trusted: bool, s: State2, 
         kinds_of(p, c, s, top_i(s))[j] == Kind::Block(0, i),
         i < s1.stack.len() - arity(p, t) - fbase(s, top_i(s)),
     ensures ({
-        let s2 = call_state(p, s1, t, ret);
+        let s2 = call_state_h(p, s1, t, ret, is_try);
         let t0 = top_i(s);
         let b = fbase(s, t0);
         &&& 0 <= i
@@ -62,7 +62,7 @@ pub proof fn lemma_good_ref_top(p: Program2, c: Cert, trusted: bool, s: State2, 
     }),
 {
     reveal(good_ref);
-    let s2 = call_state(p, s1, t, ret);
+    let s2 = call_state_h(p, s1, t, ret, is_try);
     let t0 = top_i(s);
     let b = fbase(s, t0);
     let m = fmethod(s, t0);
@@ -100,7 +100,7 @@ pub proof fn lemma_ref_below(p: Program2, c: Cert, trusted: bool, s: State2, s1:
         ref_ok(s, f, slot),
         good_ref(p, c, s, f, slot),
     ensures ({
-        let s2 = call_state(p, s1, t, ret);
+        let s2 = call_state_h(p, s1, t, ret, is_try);
         &&& ref_ok(s2, f, slot)
         &&& good_ref(p, c, s2, f, slot)
         &&& fbase(s2, f) == fbase(s, f)
@@ -109,7 +109,7 @@ pub proof fn lemma_ref_below(p: Program2, c: Cert, trusted: bool, s: State2, s1:
     }),
 {
     reveal(good_ref);
-    let s2 = call_state(p, s1, t, ret);
+    let s2 = call_state_h(p, s1, t, ret, is_try);
     let t0 = top_i(s);
     lemma_call_shape(p, c, trusted, s, s1, t, ret, is_try);
     lemma_wf_parts(p, c, s);
@@ -135,12 +135,12 @@ pub proof fn lemma_arg_ref(p: Program2, c: Cert, trusted: bool, s: State2, s1: S
         0 <= x < arity(p, t),
         s1.stack[s1.stack.len() - arity(p, t) + x] == s.stack[fbase(s, top_i(s)) + j],
     ensures ({
-        let s2 = call_state(p, s1, t, ret);
+        let s2 = call_state_h(p, s1, t, ret, is_try);
         let tn = top_i(s2);
         conf(p, c, s2, tn, kinds_of(p, c, s2, tn), x, Kind::Param, s2.stack[fbase(s2, tn) + x])
     }),
 {
-    let s2 = call_state(p, s1, t, ret);
+    let s2 = call_state_h(p, s1, t, ret, is_try);
     let t0 = top_i(s);
     let k = kinds_of(p, c, s, t0);
     let n = k.len() - 1 - j;
@@ -280,7 +280,7 @@ pub proof fn lemma_invoke_static_call(p: Program2, c: Cert, trusted: bool, s: St
     }
     assert(fmethod(s2, tn) == t);
     assert(receiver_ok(p, s2, tn));
-    assert(call_args(p, c, s, t, ret));
+    assert(call_args(p, c, s, t, ret, false));
     lemma_call(p, c, trusted, s, s, t, ret, false);
 }
 
@@ -381,7 +381,7 @@ pub proof fn lemma_lazy_call(p: Program2, c: Cert, trusted: bool, s: State2, g: 
     }
     assert(fmethod(s2, tn) == e);
     assert(receiver_ok(p, s2, tn));
-    assert(call_args(p, c, s1, e, ret));
+    assert(call_args(p, c, s1, e, ret, false));
     lemma_call(p, c, trusted, s, s1, e, ret, false);
 }
 
@@ -439,10 +439,10 @@ pub proof fn lemma_step_lazy(p: Program2, c: Cert, trusted: bool, s: State2)
 
 /// The callee's own reference (entry kind `Block(1, ctx.slot)`) conforms.
 #[verifier::spinoff_prover]
-pub proof fn lemma_self_ref(p: Program2, c: Cert, s1: State2, t: int, ret: int, f: int, slot: int)
+pub proof fn lemma_self_ref(p: Program2, c: Cert, s1: State2, t: int, ret: int, is_try: bool, f: int, slot: int)
     requires
         ({
-            let s2 = call_state(p, s1, t, ret);
+            let s2 = call_state_h(p, s1, t, ret, is_try);
             let tn = top_i(s2);
             &&& 0 <= f < tn
             &&& s1.frames.len() >= 1
@@ -462,12 +462,12 @@ pub proof fn lemma_self_ref(p: Program2, c: Cert, s1: State2, t: int, ret: int, 
             &&& info(p, t).kind == KIND_BLOCK
         }),
     ensures ({
-        let s2 = call_state(p, s1, t, ret);
+        let s2 = call_state_h(p, s1, t, ret, is_try);
         let tn = top_i(s2);
         conf(p, c, s2, tn, kinds_of(p, c, s2, tn), 0, entry_kinds(p, c, t)[0], s2.stack[fbase(s2, tn)])
     }),
 {
-    let s2 = call_state(p, s1, t, ret);
+    let s2 = call_state_h(p, s1, t, ret, is_try);
     let tn = top_i(s2);
     let ctx = ctx_of(c, t)->0;
     assert(entry_kinds(p, c, t)[0] == Kind::Block(1, ctx.slot));
@@ -539,7 +539,7 @@ pub proof fn lemma_invoke_block_call(p: Program2, c: Cert, trusted: bool, s: Sta
     } else {
         lemma_ref_below(p, c, trusted, s, s1, tt, ret, false, f, slot);
     }
-    lemma_self_ref(p, c, s1, tt, ret, f, slot);
+    lemma_self_ref(p, c, s1, tt, ret, false, f, slot);
     assert forall|x: int| 0 <= x < a implies
         #[trigger] conf(p, c, s2, tn, kinds_of(p, c, s2, tn), x, entry_kinds(p, c, tt)[x], s2.stack[fbase(s2, tn) + x]) by {
         if x > 0 {
@@ -552,7 +552,7 @@ pub proof fn lemma_invoke_block_call(p: Program2, c: Cert, trusted: bool, s: Sta
     }
     assert(fmethod(s2, tn) == tt);
     assert(receiver_ok(p, s2, tn));
-    assert(call_args(p, c, s1, tt, ret));
+    assert(call_args(p, c, s1, tt, ret, false));
     lemma_call(p, c, trusted, s, s1, tt, ret, false);
 }
 
@@ -634,12 +634,10 @@ pub proof fn lemma_try_call(p: Program2, c: Cert, trusted: bool, s: State2, tt: 
         ctx_ok_upto(p, c, cur_m(s), cur_k(p, c, s), cur_k(p, c, s).len() - 1),
         tt == kind_method(cur_k(p, c, s)[cur_k(p, c, s).len() - 1]),
         arity(p, tt) == 1,
-        map_at(c, cur_m(s), cur_off(p, s) + 1) == Some(cur_k(p, c, s).push(Kind::Val).push(Kind::Token).push(Kind::Val)),
+        map_at(c, cur_m(s), cur_off(p, s) + 1) == Some(cur_k(p, c, s).push(Kind::Val).push(Kind::Token).push(Kind::Token).push(Kind::Val)),
     ensures ({
-        let hd = Handler { frame: top_index(s) as usize, height: s.stack.len() as usize, bci: (s.bci + 1) as usize };
-        let s1 = State2 { tries: s.tries.push(hd), fins: cut_fins(s.fins, top_index(s), s.stack.len() - 1), ..s };
         let slot = s.stack.len() - 1;
-        wf(p, c, call_state(p, push(s1, Value::BlockRef(top_index(s) as usize, slot as usize)), tt, s.bci + 1))
+        wf(p, c, call_state_h(p, push(s, Value::BlockRef(top_index(s) as usize, slot as usize)), tt, s.bci + 1, true))
     }),
 {
     lemma_instr(p, c, trusted, s);
@@ -648,10 +646,8 @@ pub proof fn lemma_try_call(p: Program2, c: Cert, trusted: bool, s: State2, tt: 
     let k = cur_k(p, c, s);
     let b = cur_b(s);
     let h = k.len() as int;
-    let hd = Handler { frame: top_index(s) as usize, height: s.stack.len() as usize, bci: (s.bci + 1) as usize };
-    let s0 = State2 { tries: s.tries.push(hd), fins: cut_fins(s.fins, top_index(s), s.stack.len() - 1), ..s };
     let slot = s.stack.len() - 1;
-    let s1 = push(s0, Value::BlockRef(top_index(s) as usize, slot as usize));
+    let s1 = push(s, Value::BlockRef(top_index(s) as usize, slot as usize));
     let ret = s.bci + 1;
     let nb = s.stack.len() as int;
     assert(valid_method(p, tt) && ctx_of(c, tt) is Some);
@@ -660,14 +656,13 @@ pub proof fn lemma_try_call(p: Program2, c: Cert, trusted: bool, s: State2, tt: 
     assert(ctx.outer == m && ctx.slot == h - 1);
     lemma_heap_ext_refl(p, s.heap);
     assert(s1.stack.len() - arity(p, tt) == nb);
-    assert(new_handler(s, nb, ret) == hd);
-    let kr = k.push(Kind::Val).push(Kind::Token).push(Kind::Val);
+    let kr = k.push(Kind::Val).push(Kind::Token).push(Kind::Token).push(Kind::Val);
     assert(kr.subrange(0, h) =~= k.subrange(0, h));
     assert(ret - info(p, m).entry == cur_off(p, s) + 1);
     assert(forall|x: int| 0 <= x < nb ==> #[trigger] s1.stack[x] == s.stack[x]);
     assert(globals_ok(c, s1));
     assert(call_pre(p, c, s, s1, tt, ret, true));
-    let s2 = call_state(p, s1, tt, ret);
+    let s2 = call_state_h(p, s1, tt, ret, true);
     lemma_call_shape(p, c, trusted, s, s1, tt, ret, true);
     let tn = t0 + 1;
     // The reference to the block's slot.
@@ -681,14 +676,14 @@ pub proof fn lemma_try_call(p: Program2, c: Cert, trusted: bool, s: State2, tt: 
     assert(good_ref(p, c, s2, t0, slot)) by { reveal(good_ref); }
     assert(k2[ctx.slot] == Kind::Method(tt));
     assert(s1.stack[nb] == Value::BlockRef(t0 as usize, slot as usize));
-    lemma_self_ref(p, c, s1, tt, ret, t0, slot);
+    lemma_self_ref(p, c, s1, tt, ret, true, t0, slot);
     assert forall|x: int| 0 <= x < arity(p, tt) implies
         #[trigger] conf(p, c, s2, tn, kinds_of(p, c, s2, tn), x, entry_kinds(p, c, tt)[x], s2.stack[fbase(s2, tn) + x]) by {
         assert(x == 0);
     }
     assert(fmethod(s2, tn) == tt);
     assert(receiver_ok(p, s2, tn));
-    assert(call_args(p, c, s1, tt, ret));
+    assert(call_args(p, c, s1, tt, ret, true));
     lemma_call(p, c, trusted, s, s1, tt, ret, true);
 }
 
@@ -709,11 +704,19 @@ pub proof fn lemma_step_try(p: Program2, c: Cert, trusted: bool, s: State2)
     assert(post(p, c, m, off, k, trusted) is Some);
     let tt = kind_method(k[h - 1]);
     assert(1 <= h && block_slot(p, c, m, k, h - 1) && arity(p, tt) == 1 && ctx_ok_upto(p, c, m, k, h - 1));
-    assert(map_at(c, m, off + 1) == Some(k.push(Kind::Val).push(Kind::Token).push(Kind::Val)));
+    assert(map_at(c, m, off + 1) == Some(k.push(Kind::Val).push(Kind::Token).push(Kind::Token).push(Kind::Val)));
     assert(step(p, s) == op_try(p, s)) by { reveal(step); }
     lemma_slot_method(p, c, trusted, s, t0, h - 1);
     assert(block_target(p, s, s.stack.len() - 1) == Some(tt));
     lemma_try_call(p, c, trusted, s, tt);
+    let slot = s.stack.len() - 1;
+    let s1 = push(s, Value::BlockRef(top_index(s) as usize, slot as usize));
+    assert(call(p, s1, tt, s.bci + 1) == Outcome2::Next(call_state(p, s1, tt, s.bci + 1)));
+    let cs = call_state(p, s1, tt, s.bci + 1);
+    let ch = call_state_h(p, s1, tt, s.bci + 1, true);
+    assert(flag_top(cs).frames =~= ch.frames);
+    assert(flag_top(cs) == ch);
+    assert(op_try(p, s) == Outcome2::Next(call_state_h(p, s1, tt, s.bci + 1, true)));
 }
 
 // ---------------------------------------------------------------------------
