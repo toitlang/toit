@@ -20,6 +20,11 @@ cmake_policy(SET CMP0079 NEW)
 set(TOIT_SYSTEM_NAME "esp32")
 
 set(TOIT_INTERPRETER_FLAGS "-fno-crossjumping;-fno-tree-tail-merge" CACHE STRING "toit interpreter flags")
+if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    # ESP-IDF built with clang (IDF_TOOLCHAIN=clang, experimental): clang
+    # has no such options (clang-launcher.sh drops them likewise).
+    set(TOIT_INTERPRETER_FLAGS "")
+endif()
 
 # If TOIT_SDK_DIR is not set, do it now.
 if (NOT TOIT_SDK_DIR)
@@ -130,9 +135,43 @@ endif()
 # -Wextra combined with -Werror=all causes the Toit code to not compile.
 target_compile_options(toit_vm PRIVATE
         -fjump-tables                   # idf (cmake) sets no-jump-tables which was not set by make.
-        -ftree-switch-conversion        # idf (cmake) sets no-tree-switch-conversion which was not set by make.
         ${TOIT_ARCH_COMPILE_OPTIONS}
         )
+if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    # idf (cmake) sets no-tree-switch-conversion which was not set by make.
+    # (GCC only; clang has no such option: ESP-IDF built with
+    # IDF_TOOLCHAIN=clang.)
+    target_compile_options(toit_vm PRIVATE -ftree-switch-conversion)
+elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    # Diagnostics clang has in -Wall/-Werror=all and GCC has not (the same
+    # as clang-launcher.sh): empty structs in ESP-IDF's extern "C" headers,
+    # unused private fields, the one variable-length array.
+    target_compile_options(toit_vm PRIVATE
+        -Wno-extern-c-compat -Wno-error=unused-private-field -Wno-vla-cxx-extension)
+endif()
+
+# Experimental: the VM's own C and C++ (toit_vm) compiled with Espressif's
+# clang (esp-clang) while ESP-IDF and its components stay on GCC.
+# TOIT_VM_CLANG (CMake variable, or the environment variable of that name
+# when configuring) is the bin directory of an esp-clang release; unset (the
+# default) nothing changes. clang-launcher.sh rewrites each GCC command line
+# of the target for clang (GCC's libstdc++ and newlib headers, the same
+# target CPU, 16-bit wchar_t; see there). Without effect when ESP-IDF
+# itself is built with clang (IDF_TOOLCHAIN=clang).
+if (NOT DEFINED TOIT_VM_CLANG)
+    set(TOIT_VM_CLANG "$ENV{TOIT_VM_CLANG}")
+endif()
+if (NOT "${TOIT_VM_CLANG}" STREQUAL "" AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    if (NOT EXISTS "${TOIT_VM_CLANG}/clang++")
+        message(FATAL_ERROR "TOIT_VM_CLANG=${TOIT_VM_CLANG} has no clang++")
+    endif()
+    message(STATUS "Compiling the Toit VM with ${TOIT_VM_CLANG}/clang++")
+    set(toit_clang_launcher
+        "${CMAKE_CURRENT_LIST_DIR}/clang-launcher.sh" "${TOIT_VM_CLANG}" "${CMAKE_BINARY_DIR}/toit_vm_clang")
+    set_target_properties(toit_vm PROPERTIES
+        C_COMPILER_LAUNCHER "${toit_clang_launcher}"
+        CXX_COMPILER_LAUNCHER "${toit_clang_launcher}")
+endif()
 
 # The hot flash code (Kconfig TOIT_PIN_HOT_FLASH_CODE): an output section
 # inserted before ESP-IDF's .flash.text, so at the start of the
