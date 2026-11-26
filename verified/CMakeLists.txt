@@ -61,9 +61,10 @@ endif()
 option(TOIT_VERIFIED_CORE "Run format-2 programs on the Verus-verified Rust core" ${TOIT_VERIFIED_CORE_DEFAULT})
 set(TOIT_VERIFIED_CORE_RUST_TARGET "${TOIT_VERIFIED_CORE_RUST_TARGET_DEFAULT}" CACHE STRING
     "Rust target triple of the verified core (empty: the host)")
-# Experiment (verified/XTENSA-RUST-FIXES.md): the classic ESP32 has no
-# upstream Rust target; the esp-rs fork (`cargo +esp`) builds `core` and
-# `alloc` from source (-Zbuild-std).
+# The Xtensa chips have no upstream Rust target: the Toit fork of the esp-rs
+# toolchain (`cargo +toit-esp`, docs/xtensa-rust-toolchain.md) builds `core`
+# and `alloc` from source (-Zbuild-std); toolchains/idf/components/toit sets
+# both values.
 set(TOIT_VERIFIED_CORE_CARGO_TOOLCHAIN "" CACHE STRING
     "rustup toolchain for the verified core, with the plus (empty: the default)")
 set(TOIT_VERIFIED_CORE_CARGO_ARGS "" CACHE STRING
