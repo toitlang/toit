@@ -1,2 +1,7 @@
 task-test: operand bci 8338: 0x0c -> 0x01
 verified core: stuck state 8 at bci 8337: terminating the process
+
+Rebuilt 2026-11-26 for format 3 (regenerate.sh): Task_.initialize-entry-task_
+of tests/task-test.toit replaced by STORE_FIELD_THIS 1 (the task's id).
+Expected: the verifier rejects it (this_store_ok, R5); the control with
+field 5 verifies.

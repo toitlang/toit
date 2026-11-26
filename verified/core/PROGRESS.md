@@ -25,8 +25,10 @@ item, no new external_body; trusted texts changed: `StackMem::from_stack`
 the checked loop's exception for the provenance of block references and
 tokens (TRUSTED.md section 4).
 
-Against ceadf1bdf (the merge of wip/collector-proofs this branch starts
-from; artifacts format3-try):
+Against the base (memory and device library: ceadf1bdf, where this branch
+starts; host instructions and firmware: 746bf39b0, wip/collector-proofs
+after the merge into this branch, which measures the same as ceadf1bdf on
+the host; artifacts format3-try):
 
 | | base | step 3 | |
 |---|---:|---:|---:|
@@ -34,22 +36,54 @@ from; artifacts format3-try):
 | `V2_INITIAL_LENGTH_ABOVE_HEIGHT` | 118 | 114 | |
 | bytes allocated: empty / sum / string task | 1,320 / 1,352 / 1,488 | 1,288 / 1,320 / 1,456 | -2.4 % |
 | soak worker: tasks part / whole iteration | 4,496 / 9,951 | 4,400 / 9,698 | -2.1 % / -2.5 % |
-| host Ir: richards / deltablue / pystone / json | 105.21 M / 7.264 M / 17.31 M / 21.11 M | 106.88 M / 7.425 M / 17.61 M / 21.41 M | +1.6 / +2.2 / +1.8 / +1.4 % |
-| host Ir: calls / tasks / yield / RPC | 64.61 M / 25,981 / 947 / 79,511 | 65.80 M / 26,238 / 969 / 80,450 | +1.9 / +1.0 / +2.3 / +1.2 % |
-| classic ESP32: run loop / `.iram0.text` / IRAM free | 20,211 / 129,415 / 630 | 20,023 / 128,655 / 1,390 | -188 / -760 / +760 B |
-| classic ESP32 toit.bin | 1,461,680 | 1,460,240 | -1,440 B |
+| host Ir per try/finally, normal completion (net of the loop) | 299 | 293 | -2 % |
+| host Ir per `return` through a finally (net) | 412 | 341 | -17 % |
+| host Ir per throw and catch (net) | 15,115 | 13,288 | -12 % |
+| host Ir per two nested try/finally (net) | 573 | 559 | -2 % |
+| host Ir per `break` out of a block through a finally (net) | 626 | 553 | -12 % |
+| host Ir: richards / deltablue / pystone / json | 105.21 M / 7.264 M / 17.30 M / 21.11 M | 106.89 M / 7.422 M / 17.62 M / 21.41 M | +1.6 / +2.2 / +1.8 / +1.4 % |
+| host Ir: calls / tasks / yield / RPC | 64.61 M / 25,980 / 946 / 79,978 | 65.80 M / 26,239 / 965 / 79,322 | +1.9 / +1.0 / +2.0 / -0.8 % |
+| classic ESP32: run loop / `.iram0.text` / IRAM free | 20,211 / 129,351 / 694 | 19,967 / 128,375 / 1,670 | -244 / -976 / +976 B |
+| classic ESP32 toit.bin | 1,423,424 | 1,421,728 | -1,696 B |
+| ESP32-C6: run loop / `.iram0.text` / toit.bin | 19,284 / 173,956 / 1,559,776 | 19,024 / 172,102 / 1,557,680 | -260 / -1,854 / -2,096 B |
 | device library (opt s): riscv32 / thumbv7m | 73,684 / 65,730 | 72,144 / 63,980 | -1,540 / -1,750 B |
 | bytecodes (seven programs) | | | +12 to +14 B each |
 
-The host instruction counts rose by 1-2 % in programs without any
-try/finally: the run loop's code is the same or shorter on those paths
-(the call and return fast paths are unchanged instruction for
-instruction in the source), but LLVM's register assignment at the
-dispatch sites changed: an instruction-level callgrind of `calls` shows
-the same handlers with extra register-to-register moves before the
-dispatch jump (e.g. five in INVOKE_STATIC's fast path, where the base had
-one), six instructions more per iteration in all. On the classic ESP32
-the loop got smaller. Not investigated further (owner decision).
+Try paths (progs/trybench.toit, 10,000 operations per iteration, minus
+the same loop calling an empty method): the mechanism is cheaper as
+designed where an unwinding runs (non-local return, break, throw: no
+finally record written, checked and moved), about even for a normal
+completion (TRY was a block call before too; the finally code now gets
+four slots instead of three). A first build was slower on every try path
+(normal +39 Ir): `enter_fin_r` had been made out of line for size, which
+made the return into finally code a call with the registers in memory
+(40 Ir instead of 13); inlining it again (as before) gave the numbers
+above and recovered tasks (+2.5 % -> +1.0 %) and RPC.
+
+Programs without try/finally: +1.4 to +2.2 % host instructions, a
+register-allocation effect of LLVM on x86-64, not new work. The LLVM IR
+of the run loop has the same loop-carried values in both (5 pointer phis
+at the dispatch: sp, fp, frame-record top, end, ip), the same frame size
+(0x228, six callee-saved registers) and a near-identical number of blocks
+and calls; the call and return fast paths are the same in the source.
+The difference is which register holds the object-stack top: the base
+keeps it in rbp, step 3 in r8, which the handlers also use for
+temporaries, so INVOKE_STATIC's fast path ends with five register moves
+instead of one and ADD with one more (instruction-level callgrind of
+`calls`: +6 moves, +2 stack accesses, -2 other instructions per
+iteration; the `base` loop of trybench +6 Ir). Remedies tried, none
+recovers the base: the try helpers `#[cold]` (no change), padding the
+`Machine` struct to its old size (no change), the base's read order in
+RETURN (no change), UNWIND out of line (+65 %: the registers go to
+memory), TRY and the return into finally code inlined into the loop
+(+20 %), codegen-units = 1 (+2.7 % on calls). On the devices the run
+loop got smaller on both targets with the same dispatch sequence (Xtensa:
+l32ui, addx4, l32i.n, jx; RISC-V: lbu, slli, add, lw, jr; 171 and 152
+dispatch sites), the same frames (Xtensa `entry a1, 0x170`, RISC-V 336
+bytes) and equal or fewer stack accesses (Xtensa 1,124 / 213 loads /
+stores vs 1,125 / 234; RISC-V 680 / 150 vs 685 / 146); on Xtensa 35 of
+the dispatch sites are preceded by a register move (base 18).
+Instruction counts there need the hardware.
 
 ## Format 3, step 2: four-word frame records (branch format3/branches-frames, 2026-11-26)
 

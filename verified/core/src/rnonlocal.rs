@@ -769,7 +769,7 @@ pub fn ret_try_r(m: &mut Machine, r: &mut Regs, env: &Env, Ghost(v): Ghost<Value
 /// pushes the finally code's four slots (format note 23); the code
 /// continues at the try block's return bci. The slots fit: the popped
 /// frame's record and slots are free.
-#[inline(never)]
+#[inline(always)]
 pub fn enter_fin_r(m: &mut Machine, r: &mut Regs, p: &Program, u: Option<Unw>, Ghost(gu): Ghost<Option<Unwind>>)
     requires
         m_ok(p, *old(m), *old(r)),

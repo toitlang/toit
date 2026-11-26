@@ -17,7 +17,14 @@
 # Regression test for the fuzz findings (verified/core/fuzz/findings): the
 # VM's verifier (`toit.run --verify`) must handle every reproducer without
 # a panic (PHASE4-REQUESTS.md R6), and reject the ones it must reject:
-# infer-panic-* (malformed method tables) and r5-* (task fields).
+# infer-panic-* (malformed method tables), r5-* and task-stack-field-store
+# (task fields), with the verifier's own rejection ("untrusted program
+# rejected: method ..."). Every reproducer must reach the verifier: an image
+# the VM refuses before verifying it (another format version, a method table
+# the loader rejects) fails the check, so that a format change cannot turn
+# the reproducers into images that pass without testing anything (they did
+# until 2026-11-26: the TBC2 images were rejected for "no method table";
+# verified/core/fuzz/findings/regenerate.sh rebuilds them).
 #
 # Usage: findings.sh [TOIT_RUN]
 
@@ -41,9 +48,21 @@ for f in "$FINDINGS"/*.snapshot; do
     failures=$((failures + 1))
     continue
   fi
+  if grep -q "is not supported by this VM\|format-2 program rejected:\|INVALID_SNAPSHOT\|Not a valid snapshot" <<< "$out"; then
+    echo "FAIL $name: refused before the verifier ran (regenerate.sh rebuilds the reproducers)"
+    echo "$out" | head -5
+    failures=$((failures + 1))
+    continue
+  fi
+  if ! grep -q "^VERIFIED \|^REJECTED " <<< "$out"; then
+    echo "FAIL $name: no verifier verdict"
+    echo "$out" | head -5
+    failures=$((failures + 1))
+    continue
+  fi
   case "$name" in
-    infer-panic-*|r5-*)
-      if [ "$rc" -ne 1 ] || ! grep -q "rejected" <<< "$out"; then
+    infer-panic-*|r5-*|task-stack-field-store)
+      if [ "$rc" -ne 1 ] || ! grep -q "untrusted program rejected: method " <<< "$out"; then
         echo "FAIL $name: expected a rejection (exit code $rc)"
         echo "$out" | head -5
         failures=$((failures + 1))

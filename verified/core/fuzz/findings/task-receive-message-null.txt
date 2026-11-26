@@ -1,0 +1,4 @@
+Launch fuzz 2026-11-10 (commit cec3d9e5b): the C++ primitive
+task_receive_message dereferenced NULL without a pending message.
+Rebuilt 2026-11-26 for format 3 (regenerate.sh) from
+task-receive-message-null.toit. Expected: verified; it prints "null".

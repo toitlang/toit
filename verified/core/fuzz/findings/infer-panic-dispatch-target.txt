@@ -5,3 +5,10 @@ index out of bounds: the len is 929 but the index is 933
 note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
 verifier: untrusted program rejected: verifier failure: verifier failed
 Failed to start container e3d23bc9-8172-5dc5-bdbb-f8f9b93e5031: VERIFICATION_FAILED
+
+Rebuilt 2026-11-26 for format 3 (regenerate.sh): the original mutation
+above applied to a TBC2 image whose layout is gone. The image is now
+tests/map-test.toit with `main` replaced by INVOKE_STATIC 65535: a dispatch
+index whose target is not a method (past the table; the current
+dispatch tables have no -1 holes). Expected: the verifier rejects it
+("INVOKE_STATIC rejected", the rule valid_method(dispatch_target)).

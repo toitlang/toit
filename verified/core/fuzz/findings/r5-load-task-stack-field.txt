@@ -1,2 +1,7 @@
 list-test: operand bci 18354: 0x0c -> 0x00
 verified core: stuck state 8 at bci 18353: terminating the process
+
+Rebuilt 2026-11-26 for format 3 (regenerate.sh): Task_.initialize-entry-task_
+of tests/list-test.toit replaced by LOAD_FIELD_THIS 0 (the task's Stack).
+Expected: the verifier rejects it (this_load_ok, R5); the control with
+field 5 verifies.

@@ -5,3 +5,10 @@ index out of bounds: the len is 0 but the index is 0
 note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
 verifier: untrusted program rejected: verifier failure: verifier failed
 Failed to start container ced44d85-d3ff-5da9-b07e-cdebd16facea: VERIFICATION_FAILED
+
+Rebuilt 2026-11-26 for format 3 (regenerate.sh). An empty body can no
+longer reach the verifier: the VM's method-table computation refuses it
+first ("format-2 program rejected: empty method body"). Nearest construct:
+Task_.initialize-entry-task_ of tests/task-test.toit with a body of one
+byte that is no opcode (0xff), so the verifier meets a method without a
+valid instruction at its first offset. Expected: "bad opcode 255".

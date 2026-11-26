@@ -462,6 +462,24 @@ What they amount to (verified/core/TRUSTED.md section 0 and 6):
   devices (`V2MethodTable::trusted_on_verified_loop`). A miscompiled
   trusted program can corrupt the VM, including untrusted processes'
   memory: **trusted containers and the system program are in the TCB.**
+  Known behaviours of ill-typed trusted code (none of them reachable by
+  an untrusted program, which the verifier must accept first):
+  * On the verified loop (the default for trusted programs), an
+    ill-typed program can crash the VM: for example `LOAD_NULL; TRY`
+    (a TRY whose operand is no block) faults in `rnonlocal::op_try`
+    (SIGSEGV; red-team round 5, format note 23).
+  * On the checked loop (`machine.rs`, trusted programs with
+    `TOIT_TRUSTED_CHECKED_LOOP`; not built on devices), every stuck state
+    of the spec is a run-time check except the provenance of block
+    references and unwinding tokens, which are smis in memory: a smi where
+    the spec has one is decoded and what it names is checked, so the step
+    is a different but memory-safe one (a forged normal-completion token
+    continues after UNWIND, a copied exception token rethrows;
+    verified/core/TRUSTED.md section 4). This concerns trusted programs
+    only: for a verified (untrusted) program the verifier's kinds exclude
+    these states (a token or block slot cannot be written, copied or
+    forged: `Kind::Token`, the TRY/UNWIND rules), and the theorem covers
+    it.
 
 ### 2.4 C++ that the claim assumes
 
