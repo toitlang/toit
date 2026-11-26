@@ -126,7 +126,13 @@ target_compile_definitions(toit_vm PUBLIC
         -DRAW)
 
 if (CONFIG_IDF_TARGET_ARCH_XTENSA)
-    set(TOIT_ARCH_COMPILE_OPTIONS -mlongcalls)
+    if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        set(TOIT_ARCH_COMPILE_OPTIONS -mlongcalls)
+    else()
+        # clang (IDF_TOOLCHAIN=clang) has no -mlongcalls: its Xtensa backend
+        # always calls through a literal (l32r + callx8).
+        set(TOIT_ARCH_COMPILE_OPTIONS "")
+    endif()
 else()
     set(TOIT_ARCH_COMPILE_OPTIONS -fpermissive -Wno-error=all)
 endif()
@@ -145,9 +151,12 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
 elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     # Diagnostics clang has in -Wall/-Werror=all and GCC has not (the same
     # as clang-launcher.sh): empty structs in ESP-IDF's extern "C" headers,
-    # unused private fields, the one variable-length array.
+    # unused private fields, the one variable-length array, ESP-IDF's DPORT
+    # register macros (they redeclare one function with different error
+    # attributes; clang keeps the first).
     target_compile_options(toit_vm PRIVATE
-        -Wno-extern-c-compat -Wno-error=unused-private-field -Wno-vla-cxx-extension)
+        -Wno-extern-c-compat -Wno-error=unused-private-field -Wno-vla-cxx-extension
+        -Wno-ignored-attributes)
 endif()
 
 # Experimental: the VM's own C and C++ (toit_vm) compiled with Espressif's

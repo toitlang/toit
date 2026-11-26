@@ -27,6 +27,7 @@
 #   C and C++ library headers as the rest of the firmware, which links
 #   GCC's libstdc++ and newlib;
 # - -fshort-wchar: GCC's wchar_t is 16 bits on these targets, clang's 32;
+# - Xtensa: constructors in .ctors, as GCC (-fno-use-init-array);
 # - GCC options that clang does not have are dropped (the list below), and
 #   TOIT_VM_CLANG_OPT (environment, for example -Oz) replaces -Os;
 # - ccache is used when it is on the PATH.
@@ -51,6 +52,10 @@ case ${GCC##*/} in
   riscv32-esp-elf-*) TARGET_ARGS=(--target=riscv32-esp-elf) ;;
   *) echo "clang-launcher.sh: unknown compiler $GCC" >&2; exit 1 ;;
 esac
+# ESP-IDF's Xtensa linker scripts run the constructors of .ctors only (its
+# GCC emits .ctors); clang 22 emits .init_array by default, which the
+# linker then drops as unused: the static constructors never run.
+case ${GCC##*/} in xtensa-*) TARGET_ARGS+=(-fno-use-init-array) ;; esac
 
 # The options that select GCC's multilib (and so its include directories).
 MULTILIB_ARGS=()
@@ -101,6 +106,9 @@ if command -v ccache > /dev/null 2>&1 && [ "${TOIT_VM_CLANG_CCACHE:-1}" = 1 ]; t
 fi
 # Diagnostics clang has in -Wall/-Werror=all and GCC has not (as in
 # CMakeLists.txt for IDF_TOOLCHAIN=clang): empty structs in ESP-IDF's
-# extern "C" headers, unused private fields, the one variable-length array.
-WARNING_ARGS=(-Wno-extern-c-compat -Wno-error=unused-private-field -Wno-vla-cxx-extension)
+# extern "C" headers, unused private fields, the one variable-length array,
+# ESP-IDF's DPORT register macros (they redeclare one function with
+# different error attributes; clang keeps the first).
+WARNING_ARGS=(-Wno-extern-c-compat -Wno-error=unused-private-field -Wno-vla-cxx-extension
+  -Wno-ignored-attributes)
 exec "${LAUNCH[@]+"${LAUNCH[@]}"}" "$CLANG" "${TARGET_ARGS[@]}" -fshort-wchar "@$RSP" "${ARGS[@]}" "${WARNING_ARGS[@]}" ${TOIT_VM_CLANG_FLAGS:-}
