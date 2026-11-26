@@ -18,7 +18,15 @@ send-trace-message message/ByteArray -> none:
   unhandled/ByteArray? := message
   try:
     service := service_
-    if service:
+    if is-processing-messages_:
+      // The trace service is called through RPC. While this process is
+      // processing its messages (for example when a system message handler
+      // threw), the reply could only be taken from the mailbox by the
+      // message processing that is waiting for the call: the call would wait
+      // forever, and so would every task of this process. Such traces go to
+      // the system process directly.
+      service = null
+    else if service:
       unhandled = service.handle-trace message
     else:
       service = (TraceServiceClient).open --if-absent=: null
