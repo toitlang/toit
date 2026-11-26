@@ -457,7 +457,7 @@ pub fn collect<S: PageSource>(c: &Ctx, src: &mut S, rptr: *mut usize, rlen: usiz
     requires
         ctx_ok(*c), ftab_ok(*c, ro.ftp), heap_ok(*c, h), others_ok(h, ro.others), ctab_ok(*c, ro.ctp),
         from_ok(*c, h, old(st).fp),
-        tail_ok(*c, h, ro.fup),
+        tail_ok(*c, h, old(st).fp, ro.fup),
         rv.len() == rlen, roots_in(*c, h, old(st).rp, rptr, rv),
         ttab@.addr + tcap * W <= usize::MAX, tused@.addr + tcap * W <= usize::MAX,
         forall|p: int| 0 <= p < tcap ==> #[trigger] wperm_ok(old(st).ttp, p, ttab, p),

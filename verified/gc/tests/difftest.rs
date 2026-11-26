@@ -57,6 +57,7 @@ const VALUE_WORDS: usize = 2;
 struct Page {
     start: usize,
     bytes: usize,
+    used: usize,
     words: Vec<usize>,
 }
 
@@ -91,10 +92,10 @@ fn read_dump(path: &Path) -> Option<Dump> {
     for _ in 0..npages {
         let start = u64_at(&mut pos) as usize;
         let bytes = u64_at(&mut pos) as usize;
-        let _used = u64_at(&mut pos);
+        let used = u64_at(&mut pos) as usize;
         let words = data[pos..pos + bytes].chunks(W).map(|c| usize::from_le_bytes(c.try_into().unwrap())).collect();
         pos += bytes;
-        pages.push(Page { start, bytes, words });
+        pages.push(Page { start, bytes, used, words });
     }
     let nroots = u64_at(&mut pos) as usize;
     let roots = (0..nroots).map(|_| u64_at(&mut pos) as usize).collect();
@@ -171,10 +172,12 @@ struct Source<'a> {
     arena: &'a mut Arena,
     reserved: usize,
     taken: Vec<usize>,
+    asked: usize,
 }
 
 impl<'a> PageSource for Source<'a> {
     fn reserve(&mut self, n: usize) -> bool {
+        self.asked = n;
         if self.arena.free.len() < n { return false; }
         self.reserved = n;
         true
@@ -207,6 +210,13 @@ struct Stats {
     max_object_words: usize,
     reserved_2nf: usize,
     reserved_tail: usize,
+    // The proved tail bound (tail::reserve_pages): dumps it applied to, and
+    // the pages it reserved.
+    tail_dumps: usize,
+    tail_skipped: usize,
+    reserved_proved: usize,
+    max_proved_minus_nf: isize,
+    max_largest_permille: usize,
     // The finalizer nodes: compared, by the proved collector's verdict
     // (KEEP, QUEUE, DELETE, FREE), live weak maps the C++ prototype zapped
     // and queued, verdicts that differ only through a weak map's fields.
@@ -226,6 +236,7 @@ fn diff(before: &Dump, after: &Dump, stats: &mut Stats) -> Result<(), String> {
     // From-space: the pages in address order at arena pages 0..nf.
     let mut order: Vec<usize> = (0..nf).collect();
     order.sort_by_key(|&i| before.pages[i].start);
+    let pord = order.clone();
     let mut ftab = vec![];
     let mut reloc: Vec<(usize, usize)> = vec![]; // (old start, new start)
     for (k, &i) in order.iter().enumerate() {
@@ -270,7 +281,38 @@ fn diff(before: &Dump, after: &Dump, stats: &mut Stats) -> Result<(), String> {
     let rel = |v: usize| if before.in_pages(v) { new_addr(v) } else { v };
     let mut order: Vec<usize> = (0..before.nodes.len()).collect();
     order.sort_by_key(|&i| before.nodes[i][0]);
+    // The used words of each from-space page for the tail bound: the
+    // objects from offset 0 up to the dump's used bytes or the sentinel (a
+    // zero header word). Used only if every reachable object starts at
+    // one of these offsets (else the dump is not parsed that way).
     let mut fusedw = vec![0usize; nf.max(1)];
+    let mut starts = std::collections::HashSet::new();
+    for (k, &i) in pord.iter().enumerate() {
+        let pg = &before.pages[i];
+        let lim = (pg.used / W).min(pw - 1);
+        let mut off = 0;
+        while off < lim && pg.words[off] == usize::MAX - 107 { off += 1; }  // One-word fillers.
+        while off < lim && pg.words[off] != 0 && pg.words[off] % 2 == 0 && (pg.words[off] >> 1) & 15 <= 8 {
+            starts.insert(pg.start + off * W + 1);
+            let (sz, _, _) = layout(&bword, &before.cb, before.sw, pg.start + off * W);
+            if sz == 0 || off + sz > lim { break; }
+            off += sz;
+            while off < lim && pg.words[off] == usize::MAX - 107 { off += 1; }
+        }
+        fusedw[k] = off;
+    }
+    let tail = seen.iter().all(|r| starts.contains(r));
+    if !tail && std::env::var("TAILDBG").is_ok() {
+        let r = seen.iter().find(|r| !starts.contains(r)).unwrap();
+        for (k, &i) in pord.iter().enumerate() {
+            let pg = &before.pages[i];
+            if *r > pg.start && *r < pg.start + pg.bytes {
+                let stop = fusedw[k];
+                eprintln!("TAILDBG obj off {} page used {} stop {} word {:#x} next {:#x} {:#x}", (r - 1 - pg.start) / W, pg.used / W, stop, pg.words[stop], pg.words[stop + 1], pg.words[stop + 2]);
+            }
+        }
+    }
+    if tail { stats.tail_dumps += 1; } else { stats.tail_skipped += 1; }
     let mut nodew = vec![];
     for &i in &order {
         let n = before.nodes[i];
@@ -281,13 +323,16 @@ fn diff(before: &Dump, after: &Dump, stats: &mut Stats) -> Result<(), String> {
     let ncb = order.iter().filter(|&&i| before.nodes[i][0] != 2).count();
     let nn = order.len();
     let c = Ctx { base: arena.base(), ftab: ftab.as_mut_ptr(), nf, pw, ctab: cb.as_mut_ptr(), ncls: cb.len(), sw: before.sw,
-                  null: before.null, nullid: Ghost::assume_new(), fused: fusedw.as_mut_ptr(), tail: false, fss: Ghost::assume_new(), cbs: Ghost::assume_new() };
-    let mut src = Source { arena: &mut arena, reserved: 0, taken: vec![] };
+                  null: before.null, nullid: Ghost::assume_new(), fused: fusedw.as_mut_ptr(), tail, fss: Ghost::assume_new(), cbs: Ghost::assume_new() };
+    let mut src = Source { arena: &mut arena, reserved: 0, taken: vec![], asked: 0 };
     let r = collect(&c, &mut src, roots.as_mut_ptr(), roots.len(), ttab.as_mut_ptr(), tused.as_mut_ptr(), tcap,
                     nodew.as_mut_ptr(), ncb, nn,
                     Ghost::assume_new(), Ghost::assume_new(), Ghost::assume_new(), Tracked::assume_new(), Tracked::assume_new(),
                     Tracked::assume_new());
     let taken = src.taken.clone();
+    stats.reserved_proved += src.asked;
+    stats.max_proved_minus_nf = stats.max_proved_minus_nf.max(src.asked as isize - nf as isize);
+    if tail { stats.max_largest_permille = stats.max_largest_permille.max(largest(&before, &pord, pw, &bword) * 1000 / pw); }
     let w = r.map_err(|_| "the collection did not start".to_string())?;
     if w.pages > tcap { return Err("too many pages".into()); }
     let in_rust = |v: usize| v % 2 == 1 && taken.iter().any(|p| v > *p && v < *p + bytes);
@@ -459,4 +504,25 @@ fn differential() {
     for f in &failures { eprintln!("MISMATCH {}", f); }
     assert!(failures.is_empty(), "{} mismatches", failures.len());
     assert!(stats.pairs > 0, "no dumps of this word size under {}", dir);
+}
+
+/// The largest object of the dump's from-space pages (the tail bound's
+/// `mx`, as the oracle sees it).
+fn largest(before: &Dump, pord: &[usize], pw: usize, bword: &dyn Fn(usize) -> usize) -> usize {
+    let mut m = 1;
+    for &i in pord {
+        let pg = &before.pages[i];
+        let lim = (pg.used / W).min(pw - 1);
+        let mut off = 0;
+        while off < lim {
+            let w = pg.words[off];
+            if w == usize::MAX - 107 { off += 1; continue; }
+            if w == 0 || w % 2 != 0 || (w >> 1) & 15 > 8 { break; }
+            let (sz, _, _) = layout(bword, &before.cb, before.sw, pg.start + off * W);
+            if sz == 0 || off + sz > lim { break; }
+            m = m.max(sz);
+            off += sz;
+        }
+    }
+    m
 }

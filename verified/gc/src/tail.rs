@@ -47,42 +47,75 @@ pub open spec fn obj_at(h: H, p: int, o: int) -> bool {
     exists|j: int| #[trigger] from(h, j) && fpg(h, j) == p && foff(h, j) == o
 }
 
-/// The from-space objects tile each page from offset 0 up to its used
-/// words: they end at or below the used words, a non-empty page has an
-/// object at offset 0, and every object is followed by another or ends at
+/// The C++ one-word filler (`FreeListRegion::single_free_word_header()`:
+/// class id -2, tag `SINGLE_FREE_WORD_TAG` 10, as a smi): what the C++
+/// writes over the words a stack shrunk in place gave up.
+pub open spec fn filler_word() -> usize { (usize::MAX - 107) as usize }
+
+/// Word `o` of from-space page `p` is a one-word filler.
+pub open spec fn filler(fp: Map<(int, int), PointsTo<usize>>, p: int, o: int) -> bool {
+    fp[(p, o)].is_init() && fp[(p, o)].value() == filler_word()
+}
+
+/// Offset `o` of page `p` is strictly inside a from-space object.
+pub open spec fn inside(h: H, p: int, o: int) -> bool {
+    exists|j: int| #[trigger] from(h, j) && fpg(h, j) == p && foff(h, j) < o < foff(h, j) + size(h, j)
+}
+
+/// An object or a filler starts at offset `o` of page `p`.
+pub open spec fn start_ok(h: H, fp: Map<(int, int), PointsTo<usize>>, p: int, o: int) -> bool {
+    obj_at(h, p, o) || filler(fp, p, o)
+}
+
+/// The from-space objects and one-word fillers tile each page from offset
+/// 0 up to its used words: objects end at or below the used words, a
+/// non-empty page starts with an object or a filler, and every object and
+/// every filler outside objects is followed by an object, a filler, or
 /// the used words. (The C++ semi-space allocates by bumping a chunk's top;
-/// part of the entry derivation, M5.)
-pub open spec fn tiled(c: Ctx, h: H, fup: Map<int, PointsTo<usize>>) -> bool {
+/// fillers come only from stacks shrunk in place. Part of the entry
+/// derivation, M5.)
+pub open spec fn tiled(c: Ctx, h: H, fp: Map<(int, int), PointsTo<usize>>, fup: Map<int, PointsTo<usize>>) -> bool {
     &&& forall|j: int| #[trigger] from(h, j) ==> foff(h, j) + size(h, j) <= fend(fup, fpg(h, j))
-    &&& forall|p: int| 0 <= p < c.nf && fend(fup, p) > 0 ==> #[trigger] obj_at(h, p, 0)
+    &&& forall|p: int| 0 <= p < c.nf && fend(fup, p) > 0 ==> #[trigger] start_ok(h, fp, p, 0)
     &&& forall|j: int| #[trigger] from(h, j) ==>
-            foff(h, j) + size(h, j) == fend(fup, fpg(h, j)) || obj_at(h, fpg(h, j), foff(h, j) + size(h, j))
+            foff(h, j) + size(h, j) == fend(fup, fpg(h, j)) || start_ok(h, fp, fpg(h, j), foff(h, j) + size(h, j))
+    &&& forall|p: int, o: int| 0 <= p < c.nf && 0 <= o < fend(fup, p) && #[trigger] filler(fp, p, o)
+            && !obj_at(h, p, o) && !inside(h, p, o) ==> o + 1 == fend(fup, p) || start_ok(h, fp, p, o + 1)
 }
 
 /// What the collection needs of the tail bound (`Ctx::tail`).
-pub open spec fn tail_ok(c: Ctx, h: H, fup: Map<int, PointsTo<usize>>) -> bool {
-    c.tail ==> fused_ok(c, fup) && tiled(c, h, fup)
+pub open spec fn tail_ok(c: Ctx, h: H, fp: Map<(int, int), PointsTo<usize>>, fup: Map<int, PointsTo<usize>>) -> bool {
+    c.tail ==> fused_ok(c, fup) && tiled(c, h, fp, fup)
+}
+
+/// The filler word is no object header (its tag, 10, has no layout).
+pub proof fn lemma_filler_tag()
+    ensures htag(filler_word()) == 10,
+{
+    assert(((usize::MAX - 107) as usize >> 1usize) & 15usize == 10usize) by (bit_vector);
 }
 
 /// The largest from-space object (in words; at least 1): walks every
-/// from-space page from offset 0 to its used words, object by object.
+/// from-space page from offset 0 to its used words, object by object,
+/// stepping over fillers.
 pub fn max_size(c: &Ctx, Ghost(h): Ghost<H>, Tracked(fp): Tracked<&Map<(int, int), PointsTo<usize>>>,
                 Tracked(fup): Tracked<&Map<int, PointsTo<usize>>>, Tracked(ftp): Tracked<&Map<int, PointsTo<usize>>>,
                 Tracked(ctp): Tracked<&Map<int, PointsTo<u16>>>) -> (m: usize)
     requires
         ctx_ok(*c), fpages_ok(*c), ftab_ok(*c, *ftp), heap_ok(*c, h), ctab_ok(*c, *ctp), from_ok(*c, h, *fp),
-        fused_ok(*c, *fup), tiled(*c, h, *fup),
+        fused_ok(*c, *fup), tiled(*c, h, *fp, *fup),
     ensures
         1 <= m <= c.pw - 1,
         forall|j: int| #[trigger] from(h, j) ==> size(h, j) <= m,
 {
-    proof { lemma_w(); }
+    proof { lemma_w(); lemma_filler_tag(); }
+    let fw: usize = usize::MAX - 107;
     let mut m: usize = 1;
     let mut p: usize = 0;
     while p < c.nf
         invariant
             ctx_ok(*c), fpages_ok(*c), ftab_ok(*c, *ftp), heap_ok(*c, h), ctab_ok(*c, *ctp), from_ok(*c, h, *fp),
-            fused_ok(*c, *fup), tiled(*c, h, *fup),
+            fused_ok(*c, *fup), tiled(*c, h, *fp, *fup), fw == filler_word(), htag(filler_word()) == 10,
             0 <= p <= c.nf, 1 <= m <= c.pw - 1,
             forall|j: int| #[trigger] from(h, j) && fpg(h, j) < p ==> size(h, j) <= m,
         decreases c.nf - p,
@@ -99,51 +132,95 @@ pub fn max_size(c: &Ctx, Ghost(h): Ghost<H>, Tracked(fp): Tracked<&Map<(int, int
             assert(fstart == fs(*c, pg));
             assert(fs(*c, pg) + pbytes(*c) < usize::MAX);
             assert(e == fend(*fup, pg) && e <= c.pw - 1);
+            if e > 0 { assert(start_ok(h, *fp, pg, 0)); }
         }
         let mut o: usize = 0;
         while o < e
             invariant
                 ctx_ok(*c), fpages_ok(*c), heap_ok(*c, h), ctab_ok(*c, *ctp), from_ok(*c, h, *fp),
-                fused_ok(*c, *fup), tiled(*c, h, *fup),
+                fused_ok(*c, *fup), tiled(*c, h, *fp, *fup), fw == filler_word(), htag(filler_word()) == 10,
                 0 <= pg < c.nf, pg == p, e == fend(*fup, pg), e <= c.pw - 1,
                 fstart == fs(*c, pg), fpage == fptr(*c, pg), fs(*c, pg) + pbytes(*c) < usize::MAX,
-                o <= e, o < e ==> obj_at(h, pg, o as int),
+                o <= e, o < e ==> start_ok(h, *fp, pg, o as int),
                 1 <= m <= c.pw - 1,
                 forall|j: int| #[trigger] from(h, j) && fpg(h, j) < pg ==> size(h, j) <= m,
-                forall|j: int| #[trigger] from(h, j) && fpg(h, j) == pg && foff(h, j) < o ==> size(h, j) <= m,
+                forall|j: int| #[trigger] from(h, j) && fpg(h, j) == pg && foff(h, j) < o ==>
+                    size(h, j) <= m && foff(h, j) + size(h, j) <= o,
             decreases e - o,
         {
-            let ghost j = choose|j: int| #[trigger] from(h, j) && fpg(h, j) == pg && foff(h, j) == o;
-            let ghost ob = obj(h, j);
-            proof {
-                lemma_from_obj(*c, h, j);
-                assert forall|k: int| 0 <= k < lay(ob).size && #[trigger] ob.words[k] is Raw implies
-                    wperm_ok(*fp, (pg, o + k), fpage, o + k) && fp[(pg, o + k)].is_init()
-                    && fp[(pg, o + k)].value() == raw(ob.words[k]) by {
-                    assert(fkey(h, j, k) == (pg, o + k));
-                    assert(fp[fkey(h, j, k)].is_init());
-                }
-                assert(c.base.with_addr(fstart) == fptr(*c, pg));
-                assert(fpage@.addr + c.pw * W <= usize::MAX);
-            }
-            let (sz, _lo, _hi) = obj_layout(c, fpage, o, Ghost(pg), Tracked(fp), Ghost(ob), Ghost(c.pw as int), Tracked(ctp));
-            if sz > m {
-                m = sz;
-            }
             let ghost o0 = o as int;
-            o = o + sz;
             proof {
-                assert(sz == size(h, j) && 1 <= sz <= c.pw - 1);
-                assert(foff(h, j) + size(h, j) <= fend(*fup, pg));
-                assert forall|k: int| #[trigger] from(h, k) && fpg(h, k) == pg && foff(h, k) < o implies size(h, k) <= m by {
-                    if foff(h, k) >= o0 && k != j {
-                        assert(fdisjoint(h, j, k));
-                        lemma_from_obj(*c, h, k);
+                assert(fpage@.addr + c.pw * W <= usize::MAX);
+                assert(c.base.with_addr(fstart) == fptr(*c, pg));
+                assert(wperm_ok(*fp, (pg, o0), fpage, o0));
+                if obj_at(h, pg, o0) {
+                    let j = choose|j: int| #[trigger] from(h, j) && fpg(h, j) == pg && foff(h, j) == o0;
+                    lemma_from_obj(*c, h, j);
+                    assert(fkey(h, j, 0) == (pg, o0));
+                    assert(fp[fkey(h, j, 0)].is_init());
+                }
+                assert(o * W <= c.pw * W) by (nonlinear_arith) requires o <= c.pw, W >= 1;
+            }
+            let hd = rd(fpage, o, Ghost((pg, o0)), Tracked(fp));
+            if hd == fw {
+                // A filler word: no object starts here (its tag has no layout)
+                // or covers it.
+                proof {
+                    if obj_at(h, pg, o0) {
+                        let j = choose|j: int| #[trigger] from(h, j) && fpg(h, j) == pg && foff(h, j) == o0;
+                        lemma_from_obj(*c, h, j);
+                        assert(fkey(h, j, 0) == (pg, o0));
+                        assert(obj(h, j).words[0] is Raw);
+                        assert(hd == raw(obj(h, j).words[0]));
+                        assert(htag(hdr(obj(h, j))) == 10);
+                        assert(false);
+                    }
+                    if inside(h, pg, o0) {
+                        let k = choose|k: int| #[trigger] from(h, k) && fpg(h, k) == pg && foff(h, k) < o0 < foff(h, k) + size(h, k);
+                        assert(false);
+                    }
+                    assert(filler(*fp, pg, o0));
+                }
+                o = o + 1;
+                proof {
+                    assert forall|k: int| #[trigger] from(h, k) && fpg(h, k) == pg && foff(h, k) < o implies
+                        size(h, k) <= m && foff(h, k) + size(h, k) <= o by {
+                        if foff(h, k) == o0 { assert(obj_at(h, pg, o0)); }
                     }
                 }
-                if o < e {
-                    assert(from(h, j));
-                    assert(foff(h, j) + size(h, j) == fend(*fup, fpg(h, j)) || obj_at(h, fpg(h, j), foff(h, j) + size(h, j)));
+            } else {
+                proof { assert(!filler(*fp, pg, o0)); assert(obj_at(h, pg, o0)); }
+                let ghost j = choose|j: int| #[trigger] from(h, j) && fpg(h, j) == pg && foff(h, j) == o0;
+                let ghost ob = obj(h, j);
+                proof {
+                    lemma_from_obj(*c, h, j);
+                    assert forall|k: int| 0 <= k < lay(ob).size && #[trigger] ob.words[k] is Raw implies
+                        wperm_ok(*fp, (pg, o + k), fpage, o + k) && fp[(pg, o + k)].is_init()
+                        && fp[(pg, o + k)].value() == raw(ob.words[k]) by {
+                        assert(fkey(h, j, k) == (pg, o + k));
+                        assert(fp[fkey(h, j, k)].is_init());
+                    }
+                }
+                let (sz, _lo, _hi) = obj_layout(c, fpage, o, Ghost(pg), Tracked(fp), Ghost(ob), Ghost(c.pw as int), Tracked(ctp));
+                if sz > m {
+                    m = sz;
+                }
+                o = o + sz;
+                proof {
+                    assert(sz == size(h, j) && 1 <= sz <= c.pw - 1);
+                    assert(foff(h, j) + size(h, j) <= fend(*fup, pg));
+                    assert forall|k: int| #[trigger] from(h, k) && fpg(h, k) == pg && foff(h, k) < o implies
+                        size(h, k) <= m && foff(h, k) + size(h, k) <= o by {
+                        if foff(h, k) >= o0 && k != j {
+                            assert(fdisjoint(h, j, k));
+                            lemma_from_obj(*c, h, k);
+                        }
+                    }
+                    if o < e {
+                        assert(from(h, j));
+                        assert(foff(h, j) + size(h, j) == fend(*fup, fpg(h, j))
+                            || start_ok(h, *fp, fpg(h, j), foff(h, j) + size(h, j)));
+                    }
                 }
             }
         }
@@ -164,6 +241,7 @@ pub fn max_size(c: &Ctx, Ghost(h): Ghost<H>, Tracked(fp): Tracked<&Map<(int, int
     }
     m
 }
+
 
 /// The pages a collection may take when no from-space object is larger
 /// than `mx` words: `floor(nf * pw / (pw - mx)) + 1`, at most `2 * nf + 1`.
