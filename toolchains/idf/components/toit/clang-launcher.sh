@@ -27,8 +27,8 @@
 #   C and C++ library headers as the rest of the firmware, which links
 #   GCC's libstdc++ and newlib;
 # - -fshort-wchar: GCC's wchar_t is 16 bits on these targets, clang's 32;
-# - Xtensa: constructors in .ctors, as GCC (-fno-use-init-array), and no
-#   frame pointer (-fomit-frame-pointer, see below);
+# - Xtensa: constructors in .ctors, as GCC (-Xclang -fno-use-init-array),
+#   and no frame pointer (-fomit-frame-pointer, see below);
 # - GCC options that clang does not have are dropped (the list below), and
 #   TOIT_VM_CLANG_OPT (environment, for example -Oz) replaces -Os;
 # - ccache is used when it is on the PATH.
@@ -55,13 +55,15 @@ case ${GCC##*/} in
 esac
 # ESP-IDF's Xtensa linker scripts run the constructors of .ctors only (its
 # GCC emits .ctors); clang 22 emits .init_array by default, which the
-# linker then drops as unused: the static constructors never run.
+# linker then drops as unused: the static constructors never run. (The
+# driver ignores a plain -fno-use-init-array for this bare-metal target:
+# "argument unused"; it has to go to the compiler proper.)
 # clang keeps a frame pointer by default on Xtensa; in such a function a
 # call with arguments on the stack moves SP by their size rounded to 4
 # only (espressif/llvm-project#142), so the callee runs with SP not 16-byte
 # aligned. Without the frame pointer the outgoing arguments are in the
 # fixed frame and SP does not move (and a7 is free; GCC has none either).
-case ${GCC##*/} in xtensa-*) TARGET_ARGS+=(-fno-use-init-array -fomit-frame-pointer) ;; esac
+case ${GCC##*/} in xtensa-*) TARGET_ARGS+=(-Xclang -fno-use-init-array -fomit-frame-pointer) ;; esac
 
 # The options that select GCC's multilib (and so its include directories).
 MULTILIB_ARGS=()
