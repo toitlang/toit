@@ -146,6 +146,8 @@ ObjectHeap::ObjectHeap(Program* program, Process* owner, Chunk* initial_chunk, O
     , global_variables_(global_variables)
     , mutex_(mutex) {
   if (!initial_chunk) return;
+  // Opt-in (src/sandbox_gc.h): a sandboxed process may use the copying collector.
+  if (owner != null && sandbox_copying_gc_wanted(owner)) two_space_heap_.enable_copying_gc();
   task_ = allocate_task();
   ASSERT(task_);  // ProcessGroup::create checked both objects fit on the initial page.
   // Currently the heap is empty and it has one block allocated for objects.
@@ -338,7 +340,7 @@ void ObjectHeap::record_gc(GcType type) {
 
 GcType ObjectHeap::gc(bool try_hard) {
   Locker locker(mutex_);
-  GcType type = two_space_heap_.collect_new_space(try_hard);
+  GcType type = two_space_heap_.collect(try_hard);
   record_gc(type);
   advance_v2_epoch();
   if (type != NEW_SPACE_GC) {

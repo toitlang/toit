@@ -164,7 +164,8 @@ uword SemiSpace::allocate(uword size) {
 }
 
 uword SemiSpace::used() const {
-  ASSERT(chunk_list_.first() == chunk_list_.last());
+  // The current (last) chunk; the copying mode of sandboxed processes
+  // (src/sandbox_gc.h) counts its earlier pages itself.
   return (top() - chunk_list_.last()->start());
 }
 

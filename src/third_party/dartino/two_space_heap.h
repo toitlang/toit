@@ -9,6 +9,7 @@
 #include "../../objects.h"
 #include "object_memory.h"
 #include "gc_metadata.h"
+#include "../../sandbox_gc.h"
 
 namespace toit {
 
@@ -41,8 +42,21 @@ class TwoSpaceHeap {
 
   // Allocate raw object. Returns null if new space is full.
   inline uword allocate_new_space(uword size) {
-    return semi_space_.try_allocate(size);
+    uword result = semi_space_.try_allocate(size);
+    // The copying mode of sandboxed processes (src/sandbox_gc.h) grows its
+    // single space by a page before asking for a collection.
+    if (result == 0 && copying_) result = copying_allocate_slow(size);
+    return result;
   }
+
+  // Sandboxed processes only (src/sandbox_gc.h): the whole heap is one
+  // copying space of pages, every collection copies all live objects.
+  void enable_copying_gc();
+  bool is_copying() const { return copying_; }
+
+  // The entry of every collection (ObjectHeap::gc): dispatches to the
+  // copying collector or the generational one and records statistics.
+  GcType collect(bool try_hard);
 
   SemiSpace* new_space() { return &semi_space_; }
   const SemiSpace* new_space() const { return &semi_space_; }
@@ -93,7 +107,12 @@ class TwoSpaceHeap {
   }
 
   // Returns the number of bytes allocated in the space.
-  word used() const { return old_space_.used() + semi_space_.used(); }
+  word used() const { return old_space_.used() + new_space_used(); }
+
+  // The used bytes of the new space (in copying mode: of all its pages).
+  word new_space_used() const {
+    return copying_ ? copying_closed_used_ + semi_space_.used() : semi_space_.used();
+  }
 
   HeapObject* new_space_allocation_failure(uword size);
 
@@ -119,9 +138,25 @@ class TwoSpaceHeap {
 
  private:
   friend class ScavengeVisitor;
+  friend class SandboxCopyingCollector;
 
   void do_scavenge(ScavengeVisitor* visitor);
   void record_direct_old_allocation(uword address, uword size);
+
+  // Copying mode (src/sandbox_gc.cc): a new page for an allocation that does
+  // not fit the current one, within the heap limit; 0 asks for a collection.
+  uword copying_allocate_slow(uword size);
+  bool copying_ = false;
+  // Bytes used in the pages of the copying space before the current one.
+  uword copying_closed_used_ = 0;
+  // Test only (TOIT_SANDBOX_GC_STRESS): the allocation window is cut to this
+  // many bytes, and an allocation beyond it outside a retry asks for a
+  // collection (every primitive that allocates then goes through the GC and
+  // retry protocol). 0: off.
+  uword copying_stress_window_ = 0;
+  void copying_cut_window();
+  // Allocated at the first collection when TOIT_GC_STATS is set (hosts only).
+  GcStats* stats_ = null;
 
   Program* program_;
   ObjectHeap* process_heap_;

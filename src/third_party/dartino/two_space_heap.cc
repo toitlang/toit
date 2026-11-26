@@ -23,6 +23,10 @@ TwoSpaceHeap::TwoSpaceHeap(Program* program, ObjectHeap* process_heap, Chunk* ch
 }
 
 TwoSpaceHeap::~TwoSpaceHeap() {
+  if (stats_ != null) {
+    stats_->print(this);
+    delete stats_;
+  }
   // This chunk was removed from the semispace during scavenging, so neither
   // space's destructor owns it anymore.
   if (spare_chunk_) ObjectMemory::free_chunk(spare_chunk_);
@@ -57,6 +61,11 @@ static const uword MINIMUM_POST_GC_SPACE = TOIT_PAGE_SIZE >> 1;
 #endif
 
 HeapObject* TwoSpaceHeap::new_space_allocation_failure(uword size) {
+  if (copying_) {
+    // Sandboxed copying mode (src/sandbox_gc.cc): no old space to fall back on.
+    uword result = copying_allocate_slow(size);
+    return result == 0 ? null : HeapObject::from_address(result);
+  }
   if (size >= MINIMUM_POST_GC_SPACE) {
     large_allocation_failed_ = true;
   }
@@ -324,6 +333,8 @@ GcType TwoSpaceHeap::collect_new_space(bool try_hard) {
         static_cast<int>(end - start));
   }
 
+  if (stats_ != null) stats_->record_scavenge(to_used, old_space()->used() - old_used);
+
   ASSERT(from_used >= to_used);
   // Find out how much garbage was found.
   word progress = (from_used - to_used) - (old_space()->used() - old_used);
@@ -340,7 +351,7 @@ GcType TwoSpaceHeap::collect_new_space(bool try_hard) {
 
 uint64 TwoSpaceHeap::total_bytes_allocated() const {
   uint64 result = total_bytes_allocated_.load(std::memory_order_relaxed);
-  result += new_space()->used();
+  result += new_space_used();
   return result;
 }
 
@@ -373,7 +384,11 @@ GcType TwoSpaceHeap::collect_old_space(bool force_compact) {
   uword old_used = old_space()->used();
   uword old_external = process_heap_->external_memory();
 
+  uint64 full_start = stats_ != null ? GcStats::instructions() : 0;
   bool compacted = perform_garbage_collection(force_compact);
+  if (stats_ != null) {
+    stats_->record_full(compacted, GcStats::instructions() - full_start, old_space()->used(), old_space()->size());
+  }
 
   if (Flags::tracegc) {
     uint64 end = OS::get_monotonic_time();
