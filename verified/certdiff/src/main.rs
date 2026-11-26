@@ -21,11 +21,20 @@
 //!                                        (callgrind: --toggle-collect='*measure_*'),
 //!                                        allocations, peak heap
 //!   certdiff cross TABLES N [SEED]       N certificate mutants and N method-body
-//!                                        mutants: the single-pass checker against
-//!                                        the two-pass checker (verdicts must agree)
+//!                                        mutants: verdicts (the two-pass checker
+//!                                        they were compared with until commit
+//!                                        a45b3ded8 is gone; "differ" counts out of
+//!                                        memory now)
 //!
-//! MODE: `walk` (cert::verify_shipped, the single-pass checker) or `two-pass`
-//! (cert::verify_shipped_two_pass, the reference while it exists).
+//!   certdiff policy TABLES              every PRIMITIVE of an allowed primitive
+//!                                        turned into a denied one of the same
+//!                                        arity: rejected under the policy table
+//!                                        of TABLES, accepted under the full table
+//!   certdiff header TABLES              certificate headers of another version,
+//!                                        policy or method count: rejected, with
+//!                                        the header error naming why
+//!
+//! MODE: `walk` (cert::verify_shipped, the single-pass checker).
 
 mod load;
 
@@ -43,13 +52,13 @@ fn measure_walk(p: &VProgram, c: &[u8], gc: u64, pa: &[Vec<u8>], t: bool) -> V {
     cert::verify_shipped(p, c, gc, pa, t).ok().map(|r| r.0)
 }
 
-#[inline(never)]
-fn measure_two_pass(p: &VProgram, c: &[u8], gc: u64, pa: &[Vec<u8>], t: bool) -> V {
-    cert::verify_shipped_two_pass(p, c, gc, pa, t).ok().map(|r| r.0)
-}
-
 fn certificate(l: &load::Loaded, p: &VProgram) -> Vec<u8> {
     encode::certify(p, l.global_count, l.prim_arity.clone(), l.trusted).expect("certify").0
+}
+
+/// The full primitive table (every primitive allowed), from src/primitive.h.
+fn full_table() -> Vec<Vec<u8>> {
+    toit_spec::v2::prim_arity::PRIM_TABLE.iter().map(|(_, prims)| prims.iter().map(|(_, a)| *a).collect()).collect()
 }
 
 struct Rng(u64);
@@ -92,7 +101,6 @@ fn main() {
                 for _ in 0..runs {
                     ok = match mode {
                         "walk" => measure_walk(&p, &c, l.global_count, &l.prim_arity, l.trusted),
-                        "two-pass" => measure_two_pass(&p, &c, l.global_count, &l.prim_arity, l.trusted),
                         _ => panic!("mode"),
                     };
                 }
@@ -110,8 +118,7 @@ fn main() {
             let seed: u64 = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(0x9e3779b97f4a7c15);
             let c = certificate(&l, &p);
             let a = measure_walk(&p, &c, l.global_count, &l.prim_arity, l.trusted);
-            let b = measure_two_pass(&p, &c, l.global_count, &l.prim_arity, l.trusted);
-            println!("unmutated: walk {:?} two-pass {:?}", a, b);
+            println!("unmutated: walk {:?}", a);
             let mut rng = Rng(seed | 1);
             let header = cert::CERT_HEADER_SIZE;
             let (mut agree, mut differ, mut accepted) = (0, 0, 0);
@@ -124,11 +131,7 @@ fn main() {
                     mutate_byte(&mut m[at], r);
                 }
                 let a = measure_walk(&p, &m, l.global_count, &l.prim_arity, l.trusted);
-                let b = measure_two_pass(&p, &m, l.global_count, &l.prim_arity, l.trusted);
-                if a == b { agree += 1; } else {
-                    differ += 1;
-                    println!("certificate mutant {}: walk {:?} two-pass {:?}", i, a, b);
-                }
+                if a.is_none() { differ += 1; println!("certificate mutant {}: out of memory", i); } else { agree += 1; }
                 if a == Some(true) { accepted += 1; }
             }
             println!("certificate mutants {}: agree {} differ {} (accepted {})", mutants, agree, differ, accepted);
@@ -145,12 +148,7 @@ fn main() {
                 let mut q = l.program();
                 q.bytecodes = &code;
                 let a = measure_walk(&q, &c, l.global_count, &l.prim_arity, l.trusted);
-                let b = measure_two_pass(&q, &c, l.global_count, &l.prim_arity, l.trusted);
-                if a == b { agree += 1; } else {
-                    differ += 1;
-                    println!("code mutant {} (method {} byte {} entry {} {} -> {}): walk {:?} two-pass {:?}",
-                        i, mi, at, v.entry, p.bytecodes[at], code[at], a, b);
-                }
+                if a.is_none() { differ += 1; println!("code mutant {}: out of memory", i); } else { agree += 1; }
                 if a == Some(true) { accepted += 1; }
             }
             println!("code mutants {}: agree {} differ {} (accepted {})", mutants, agree, differ, accepted);

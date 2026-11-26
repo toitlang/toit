@@ -666,9 +666,11 @@ pub fn x_next_map(s: &[u8], pos: usize, e: usize, left: u32) -> (r: Result<(usiz
 /// `local_ok` of the instruction at `off` with kinds `k` against `c@`, and
 /// its successor in `out`.
 pub fn x_check_local(p: &VProgram, c: &XCert, m: usize, i: MethodInfo, off: usize, k: &Vec<XKind>, trusted: bool,
-    out: &mut Vec<XKind>, buf: &mut Vec<XKind>) -> (res: Result<(bool, u8, usize), Oom>)
+    out: &mut Vec<XKind>, buf: &mut Vec<XKind>, cache: &mut OuterCache, shape: ShapeFacts) -> (res: Result<(bool, u8, usize), Oom>)
     requires wf_program2(vview(p)), m < p.methods@.len(), g_ok(c.g), i == vinfo(p, m as int),
+        cache_ok(vview(p), c@, m as int, *old(cache)), shape_facts(vview(p), c@, m as int, shape),
     ensures
+        cache_ok(vview(p), c@, m as int, *final(cache)),
         res matches Ok((ok, op, len)) ==> (ok ==> {
             let pv = vview(p);
             &&& local_ok(pv, c@, m as int, off as int, kv(*k), trusted)
@@ -691,7 +693,8 @@ pub fn x_check_local(p: &VProgram, c: &XCert, m: usize, i: MethodInfo, off: usiz
     let len = exec_opcode_length2(op);
     if bci + len > i.end { return Ok((false, 0, 0)); }
     if k.len() > i.arity as usize + i.max_height as usize { return Ok((false, 0, 0)); }
-    if !x_wf_kinds(p, c, m as i64, k, buf)? || !x_ctx_ok(p, c, m as i64, k)? || !x_shape_ok(p, c, m, k) {
+    if !x_shape_fast(Ghost(vview(p)), Ghost(c@), Ghost(m as int), k, shape) || !x_wf_kinds_c(p, c, m as i64, k, buf, cache)?
+        || !x_ctx_ok(p, c, m as i64, k)? {
         return Ok((false, 0, 0));
     }
     let has_post = x_post_into(p, c, m, off, k, trusted, out)?;
@@ -1197,6 +1200,9 @@ pub fn walk_method(w: &mut Walker, p: &VProgram, g: &XGlobal, s: &[u8], pos0: us
     x_entry_into(p, &c, m, &mut k)?;
     let ghost entry = kv(k);
     let any_back = x_back_targets(p, info.entry, size, &mut back)?;
+    // Facts of the method the instruction checks use.
+    let shape = match x_shape_facts(p, &c, m) { Some(s) => s, None => return Ok((None, Ghost(mm))) };
+    let mut cache = OuterCache { valid: false, d: 0, i: 0 };
     let bound = info.arity as usize + info.max_height as usize;
     let mut left = count;
     let mut have = false;
@@ -1230,6 +1236,7 @@ pub fn walk_method(w: &mut Walker, p: &VProgram, g: &XGlobal, s: &[u8], pos0: us
             forall|i: int| 0 <= i < at0 ==> #[trigger] pin_m(g, i) < m,
             forall|i: int| at0 <= i < at ==> #[trigger] pin_m(g, i) == m && pin_agrees(g, i, mm),
             forall|i: int| at <= i < np ==> #[trigger] pin_m(g, i) >= m,
+            cache_ok(pvw, c@, m as int, cache), shape_facts(pvw, c@, m as int, shape),
             pos <= s@.len(), e <= u32::MAX, !have ==> left == 0,
         decreases (if off <= size { size - off } else { 0 }), (if have { 1int } else { 0int }) + left as int,
     {
@@ -1278,7 +1285,7 @@ pub fn walk_method(w: &mut Walker, p: &VProgram, g: &XGlobal, s: &[u8], pos0: us
         }
         // The kinds `k` are placed at `off`; the instruction is checked.
         let (op, len, at2, Ghost(mm2)) = match x_place_step(p, g, &c, m, info, trusted, off, &k, &mut out, &mut buf,
-            &mut arena, &mut pend, &mut pend2, &mut saved, &back, any_back, &mut pmin, at,
+            &mut arena, &mut pend, &mut pend2, &mut saved, &back, any_back, &mut pmin, at, &mut cache, shape,
             Ghost(mm), Ghost(entry), Ghost(size as int), Ghost(at0 as int))? {
             Some(x) => x,
             None => { w.off = off; return Ok((None, Ghost(mm))); },
@@ -1351,9 +1358,11 @@ pub fn walk_method(w: &mut Walker, p: &VProgram, g: &XGlobal, s: &[u8], pos0: us
 pub fn x_place_step(p: &VProgram, g: &XGlobal, c: &XCert, m: usize, info: MethodInfo, trusted: bool, off: usize,
     k: &Vec<XKind>, out: &mut Vec<XKind>, buf: &mut Vec<XKind>, arena: &mut Vec<XKind>, pend: &mut Vec<Pend>,
     pend2: &mut Vec<Pend>, saved: &mut Vec<Pend>, back: &Vec<u32>, any_back: bool, pmin: &mut usize, at: usize,
+    cache: &mut OuterCache, shape: ShapeFacts,
     Ghost(mm): Ghost<Maps>, Ghost(entry): Ghost<Seq<Kind>>, Ghost(size): Ghost<int>, Ghost(at0): Ghost<int>)
     -> (res: Result<Option<(u8, usize, usize, Ghost<Maps>)>, Oom>)
     requires
+        cache_ok(vview(p), c@, m as int, *old(cache)), shape_facts(vview(p), c@, m as int, shape),
         wf_program2(vview(p)), g_ok(g), m < p.methods@.len(), g.n == p.methods@.len(),
         info == vinfo(p, m as int), info.entry < info.end <= p.bytecodes.len(), size == info.end - info.entry,
         c@ == tables_cert(g@), c.g == g,
@@ -1365,6 +1374,7 @@ pub fn x_place_step(p: &VProgram, g: &XGlobal, c: &XCert, m: usize, info: Method
         forall|i: int| at0 <= i < at ==> #[trigger] pin_m(g, i) == m && pin_agrees(g, i, mm),
         forall|i: int| at <= i < npins(g) ==> #[trigger] pin_m(g, i) >= m,
     ensures
+        cache_ok(vview(p), c@, m as int, *final(cache)),
         match res {
             Ok(Some((op, len, at2, mm2))) => {
                 &&& winv(vview(p), g@, m as int, trusted, size, mm2@, pview(final(pend)@, final(arena)@),
@@ -1444,7 +1454,7 @@ pub fn x_place_step(p: &VProgram, g: &XGlobal, c: &XCert, m: usize, info: Method
         }
     }
     // The instruction.
-    let (ok, op, len) = x_check_local(p, c, m, info, off, k, trusted, out, buf)?;
+    let (ok, op, len) = x_check_local(p, c, m, info, off, k, trusted, out, buf, cache, shape)?;
     if !ok { return Ok(None); }
     let ghost pv2 = pview(pend@, arena@);
     let ghost sv2 = pview(saved@, arena@);
@@ -1568,4 +1578,120 @@ pub fn walk<P: Progress>(p: &VProgram, g: &XGlobal, s: &[u8], trusted: bool, pro
     Ok((true, n, 0, Ghost(ms)))
 }
 
+
+// ---------------------------------------------------------------------------
+// Per-method facts that make the per-instruction checks cheaper.
+
+/// A block reference `Block(d, i)` with `d != 0` in a frame of `m` is well
+/// formed (`wf_kind`): a fact of the method, the depth and the slot only.
+pub open spec fn outer_ok(p: Program2, c: Cert, m: int, d: int, i: int) -> bool {
+    d > 0 && match ctx_kinds(c, m, d as nat) {
+        Some(fk) => block_slot(p, c, ctx_method(c, m, d as nat), fk, i),
+        None => false,
+    }
+}
+
+/// The last outer block reference the walk of a method found well formed
+/// (a block method's own reference, slot 0, is in every frame of it).
+#[derive(Clone, Copy)]
+pub struct OuterCache {
+    pub valid: bool,
+    pub d: u32,
+    pub i: u32,
+}
+
+pub open spec fn cache_ok(p: Program2, c: Cert, m: int, x: OuterCache) -> bool {
+    x.valid ==> outer_ok(p, c, m, x.d as int, x.i as int)
+}
+
+/// `check::x_wf_kinds`, with the last outer reference found well formed
+/// cached in `cache`.
+pub fn x_wf_kinds_c(p: &VProgram, c: &XCert, m: i64, k: &Vec<XKind>, buf: &mut Vec<XKind>, cache: &mut OuterCache)
+    -> (res: Result<bool, Oom>)
+    requires cache_ok(vview(p), c@, m as int, *old(cache)),
+    ensures
+        cache_ok(vview(p), c@, m as int, *final(cache)),
+        res matches Ok(r) ==> r == wf_kinds(vview(p), c@, m as int, kv(*k)),
+{
+    let mut j = 0;
+    while j < k.len()
+        invariant
+            0 <= j <= k.len(), cache_ok(vview(p), c@, m as int, *cache),
+            forall|jj: int| 0 <= jj < j ==> #[trigger] wf_kind(vview(p), c@, m as int, kv(*k), jj),
+        decreases k.len() - j,
+    {
+        proof { assert(kv(*k)[j as int] == k@[j as int]@); }
+        match vix(k, j) {
+            XKind::Block(d, i) => {
+                if d == 0 {
+                    if !((i as usize) < j && x_block_slot(p, c, m, k, i as i64)) {
+                        proof { assert(!wf_kind(vview(p), c@, m as int, kv(*k), j as int)); }
+                        return Ok(false);
+                    }
+                } else if !(cache.valid && cache.d == d && cache.i == i) {
+                    let (found, om) = x_ctx_kinds_rev(c, m, d, buf)?;
+                    if !found {
+                        proof { assert(!wf_kind(vview(p), c@, m as int, kv(*k), j as int)); }
+                        return Ok(false);
+                    }
+                    if !x_block_slot_rev(p, c, om, &*buf, i as i64) {
+                        proof { assert(!wf_kind(vview(p), c@, m as int, kv(*k), j as int)); }
+                        return Ok(false);
+                    }
+                    *cache = OuterCache { valid: true, d, i };
+                }
+            },
+            _ => {},
+        }
+        proof { assert(wf_kind(vview(p), c@, m as int, kv(*k), j as int)); }
+        j += 1;
+    }
+    Ok(true)
+}
+
+/// The facts of `shape_ok` that depend on the method only.
+#[derive(Clone, Copy)]
+pub struct ShapeFacts {
+    pub need1: bool,
+    pub block: bool,
+    pub b0: XKind,
+}
+
+pub open spec fn shape_facts(p: Program2, c: Cert, m: int, f: ShapeFacts) -> bool {
+    &&& f.need1 == (pinned0(p, m) && arity(p, m) >= 1)
+    &&& f.block == (info(p, m).kind == KIND_BLOCK)
+    &&& f.block ==> match ctx_of(c, m) { Some(ctx) => f.b0@ == Kind::Block(1, ctx.slot), None => false }
+}
+
+/// `shape_facts` of `m`, or `None` for a block method without a context.
+pub fn x_shape_facts(p: &VProgram, c: &XCert, m: usize) -> (r: Option<ShapeFacts>)
+    requires m < p.methods@.len(),
+    ensures r matches Some(f) ==> shape_facts(vview(p), c@, m as int, f),
+{
+    let need1 = x_pinned0(p, m) && x_arity(p, m) >= 1;
+    if x_kind(p, m) == 3 {
+        match x_ctx_of(c, m) {
+            Some(ctx) => Some(ShapeFacts { need1, block: true, b0: XKind::Block(1, ctx.slot) }),
+            None => None,
+        }
+    } else {
+        Some(ShapeFacts { need1, block: false, b0: XKind::Val })
+    }
+}
+
+/// `shape_ok` from the method's `shape_facts`.
+pub fn x_shape_fast(Ghost(pv): Ghost<Program2>, Ghost(cv): Ghost<Cert>, Ghost(m): Ghost<int>, k: &Vec<XKind>, f: ShapeFacts)
+    -> (r: bool)
+    requires shape_facts(pv, cv, m, f),
+    ensures r == shape_ok(pv, cv, m, kv(*k)),
+{
+    if f.need1 && k.len() < 1 { return false; }
+    if f.block {
+        if k.len() < 1 { return false; }
+        proof { assert(kv(*k)[0] == k@[0]@); }
+        x_kind_eq(vix(k, 0), f.b0)
+    } else {
+        true
+    }
+}
 } // verus!

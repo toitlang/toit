@@ -789,6 +789,80 @@ pub fn x_ctx_of(c: &XCert, t: usize) -> (r: Option<XCtx>)
     Some(h)
 }
 
+/// `fchain(s, i) == kv(k)[0..n]`, without building the chain.
+pub fn x_fchain_is(s: &[u8], i: u32, k: &Vec<XKind>, n: usize) -> (r: bool)
+    requires n <= k@.len(),
+    ensures r == (fchain(s@, i as int) == kv(*k).subrange(0, n as int)),
+{
+    let ghost nodes = fnodes(s@);
+    let ghost t = kv(*k).subrange(0, n as int);
+    let len = s.len() / 12;
+    assert(nodes.len() == len);
+    let mut j = n;
+    let mut cur = i as usize;
+    let mut done = cur >= len;
+    proof {
+        assert(t.subrange(0, j as int) =~= t);
+        if done {
+            assert(chain(nodes, i as int) =~= Seq::<Kind>::empty());
+            if j > 0 { assert(t.len() > 0); }
+            else { assert(t =~= Seq::<Kind>::empty()); }
+        }
+    }
+    while !done
+        invariant
+            nodes == fnodes(s@), nodes.len() == len, n <= k@.len(),
+            0 <= j <= n, t == kv(*k).subrange(0, n as int),
+            done ==> (chain(nodes, i as int) == t) == (j == 0),
+            !done ==> cur < len
+                && (chain(nodes, i as int) == t) == (chain(nodes, cur as int) == t.subrange(0, j as int)),
+        decreases (if done { 0int } else { cur as int + 1 }),
+    {
+        let nd = x_fnode(s, cur);
+        let ghost par = nd.parent as int;
+        let ghost base = if par < cur { chain(nodes, par) } else { Seq::<Kind>::empty() };
+        assert(chain(nodes, cur as int) == base.push(nd.kind@));
+        if j == 0 {
+            assert(chain(nodes, cur as int).len() > 0);
+            assert(chain(nodes, cur as int) != t.subrange(0, 0));
+            return false;
+        }
+        assert(t[j - 1] == k@[j - 1]@);
+        if !x_kind_eq(nd.kind, vix(k, j - 1)) {
+            proof {
+                assert(chain(nodes, cur as int)[base.len() as int] == nd.kind@);
+                if chain(nodes, cur as int) == t.subrange(0, j as int) {
+                    assert(base.len() == j - 1);
+                    assert(t.subrange(0, j as int)[j - 1] == t[j - 1]);
+                }
+            }
+            return false;
+        }
+        proof {
+            let full = chain(nodes, cur as int);
+            let pre = t.subrange(0, j as int);
+            if base == t.subrange(0, j - 1) {
+                assert(full =~= pre);
+            }
+            if full == pre {
+                assert(base =~= full.drop_last());
+                assert(pre.drop_last() =~= t.subrange(0, j - 1));
+            }
+        }
+        j -= 1;
+        if (nd.parent as usize) < cur {
+            cur = nd.parent as usize;
+        } else {
+            proof {
+                if j == 0 { assert(t.subrange(0, 0) =~= Seq::<Kind>::empty()); }
+                else { assert(t.subrange(0, j as int).len() > 0); }
+            }
+            done = true;
+        }
+    }
+    j == 0
+}
+
 /// The kinds of a node table's list with top `i` (`fchain`), bottom first.
 pub fn x_fchain(s: &[u8], i: u32) -> (res: Result<Vec<XKind>, Oom>)
     ensures res matches Ok(r) ==> kv(r) == fchain(s@, i as int),
@@ -1131,25 +1205,8 @@ pub fn x_ctx_ok_at(p: &VProgram, c: &XCert, m: i64, k: &Vec<XKind>, i: usize) ->
     proof { assert(kv(*k)[i as int] == k@[i as int]@); assert(kind_method(kv(*k)[i as int]) == t as int); }
     match x_ctx_of(c, t as usize) {
         Some(ctx) => {
-            let ck = &x_fchain(c.g.nodes, ctx.top)?;
-            if ck.len() != i + 1 {
-                proof { assert(kv(*k).subrange(0, i + 1).len() != kv(*ck).len()); }
-                return Ok(false);
-            }
-            let mut j = 0;
-            while j <= i
-                invariant ck.len() == i + 1, i < k.len(), 0 <= j <= i + 1,
-                    forall|jj: int| 0 <= jj < j ==> (#[trigger] k@[jj])@ == ck@[jj]@,
-                decreases i + 1 - j,
-            {
-                if !x_kind_eq(vix(k, j), vix(ck, j)) {
-                    proof { assert(kv(*k).subrange(0, i + 1)[j as int] != kv(*ck)[j as int]); }
-                    return Ok(false);
-                }
-                j += 1;
-            }
-            proof { assert(kv(*k).subrange(0, i + 1) =~= kv(*ck)); }
-            Ok(true)
+            // Compared in place (no copy of the context's kinds).
+            Ok(x_fchain_is(c.g.nodes, ctx.top, k, i + 1))
         },
         None => Ok(true),
     }
