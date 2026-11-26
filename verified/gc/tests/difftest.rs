@@ -19,7 +19,8 @@
 //! With TOIT_GC_DUMP=DIR the VM writes, around every copying collection of
 //! a sandboxed process, the heap before it and after it (src/sandbox_gc.cc,
 //! `TwoSpaceHeap::dump_copying_heap`): pages, root values, class bits, the
-//! stack array word, the null object's address. With TOIT_GC_DIFF=DIR this
+//! stack array word, the null object's address, the finalizer nodes (list,
+//! kind, node, key, lambda). With TOIT_GC_DIFF=DIR this
 //! test reads every `*-before.bin` under DIR (dumps of this word size),
 //! copies its pages into an arena (relocating the references of the
 //! objects reachable from the roots), runs the proved collector, and walks
@@ -28,7 +29,13 @@
 //! the C++ prototype are expected and counted: it shrinks stacks (the object
 //! stack moves down; the proved collector does not shrink), and it zaps the
 //! values of weak maps no one else reached (null where the proved
-//! collector, which has no weak processing before M4, keeps the reference).
+//! collector, which traces live weak maps strongly, keeps the reference;
+//! such a map the C++ prototype also queues, the proved collector keeps).
+//! The finalizer nodes go to the proved collector in the order of the C++
+//! lists; its verdicts must equal the C++ ones (where the node is after
+//! the collection), and the slots of kept and queued nodes are walked like
+//! roots. A verdict that differs only because a key is reachable through a
+//! weak map's fields would be counted (weak_divergent), not failed.
 //! Without TOIT_GC_DIFF the test does nothing.
 
 use std::collections::HashMap;
@@ -59,6 +66,10 @@ struct Dump {
     cb: Vec<u16>,
     pages: Vec<Page>,
     roots: Vec<usize>,
+    /// The finalizer nodes: (list, kind, node, key, lambda); list 0 the
+    /// registered callback finalizers, 1 the queue, 2 the VM finalizers;
+    /// kind 0 Toit, 1 weak map, 4 VM.
+    nodes: Vec<[usize; 5]>,
 }
 
 fn read_dump(path: &Path) -> Option<Dump> {
@@ -87,7 +98,16 @@ fn read_dump(path: &Path) -> Option<Dump> {
     }
     let nroots = u64_at(&mut pos) as usize;
     let roots = (0..nroots).map(|_| u64_at(&mut pos) as usize).collect();
-    Some(Dump { sw, null, cb, pages, roots })
+    let mut nodes = vec![];
+    if pos < data.len() {
+        let nn = u64_at(&mut pos) as usize;
+        for _ in 0..nn {
+            let mut n = [0usize; 5];
+            for x in n.iter_mut() { *x = u64_at(&mut pos) as usize; }
+            nodes.push(n);
+        }
+    }
+    Some(Dump { sw, null, cb, pages, roots, nodes })
 }
 
 impl Dump {
@@ -187,6 +207,13 @@ struct Stats {
     max_object_words: usize,
     reserved_2nf: usize,
     reserved_tail: usize,
+    // The finalizer nodes: compared, by the proved collector's verdict
+    // (KEEP, QUEUE, DELETE, FREE), live weak maps the C++ prototype zapped
+    // and queued, verdicts that differ only through a weak map's fields.
+    nodes: usize,
+    verdicts: [usize; 5],
+    weak_zap_queued: usize,
+    weak_divergent: usize,
 }
 
 /// Runs the proved collector on `before` and compares with `after`.
@@ -218,6 +245,9 @@ fn diff(before: &Dump, after: &Dump, stats: &mut Stats) -> Result<(), String> {
     let bword = |a: usize| before.word(a).unwrap();
     let mut seen = std::collections::HashSet::new();
     let mut work: Vec<usize> = before.roots.iter().filter(|r| before.in_pages(**r)).cloned().collect();
+    for n in &before.nodes {
+        for v in [n[3], n[4]] { if before.in_pages(v) { work.push(v); } }
+    }
     while let Some(r) = work.pop() {
         if !seen.insert(r) { continue; }
         let a = r - 1;
@@ -235,12 +265,25 @@ fn diff(before: &Dump, after: &Dump, stats: &mut Stats) -> Result<(), String> {
     let tcap = 2 * nf + 1;
     let mut ttab = vec![0usize; tcap];
     let mut tused = vec![0usize; tcap];
-    let mut nodew = vec![0usize; 1];
+    // The nodes for the proved collector: the registered callback
+    // finalizers (kinds 0, 1), the queue (kinds 2, 3), the VM finalizers.
+    let rel = |v: usize| if before.in_pages(v) { new_addr(v) } else { v };
+    let mut order: Vec<usize> = (0..before.nodes.len()).collect();
+    order.sort_by_key(|&i| before.nodes[i][0]);
+    let mut nodew = vec![];
+    for &i in &order {
+        let n = before.nodes[i];
+        let kind = if n[0] == 1 { n[1] + 2 } else { n[1] };
+        nodew.extend([kind, rel(n[3]), if n[0] == 2 { 0 } else { rel(n[4]) }, 99]);
+    }
+    nodew.push(0);
+    let ncb = order.iter().filter(|&&i| before.nodes[i][0] != 2).count();
+    let nn = order.len();
     let c = Ctx { base: arena.base(), ftab: ftab.as_mut_ptr(), nf, pw, ctab: cb.as_mut_ptr(), ncls: cb.len(), sw: before.sw,
                   null: before.null, nullid: Ghost::assume_new(), fss: Ghost::assume_new(), cbs: Ghost::assume_new() };
     let mut src = Source { arena: &mut arena, reserved: 0, taken: vec![] };
     let r = collect(&c, &mut src, roots.as_mut_ptr(), roots.len(), ttab.as_mut_ptr(), tused.as_mut_ptr(), tcap,
-                    nodew.as_mut_ptr(), 0, 0,
+                    nodew.as_mut_ptr(), ncb, nn,
                     Ghost::assume_new(), Ghost::assume_new(), Ghost::assume_new(), Tracked::assume_new(), Tracked::assume_new(),
                     Tracked::assume_new());
     let taken = src.taken.clone();
@@ -275,6 +318,55 @@ fn diff(before: &Dump, after: &Dump, stats: &mut Stats) -> Result<(), String> {
     };
     for (i, (rv, cv)) in roots.iter().zip(after.roots.iter()).enumerate() {
         pair(*rv, *cv, &mut work, stats).map_err(|e| format!("root {}: {}", i, e))?;
+    }
+    // The finalizer nodes: the C++ verdict from where the node is after the
+    // collection (by its address), the proved collector's from its verdict
+    // word; the slots of kept and queued nodes are walked like roots.
+    let after_nodes: HashMap<usize, [usize; 5]> = after.nodes.iter().map(|n| (n[2], *n)).collect();
+    let has_weak = before.nodes.iter().any(|n| n[1] == 1);
+    for (m, &i) in order.iter().enumerate() {
+        let n = before.nodes[i];
+        let d = nodew[4 * m + 3];
+        let a = after_nodes.get(&n[2]);
+        let fbit = before.word(n[3] - 1).map_or(false, |h| h & 32 != 0);
+        // 0 KEEP, 1 QUEUE, 2 DELETE, 3 FREE; 5: a live weak map the C++
+        // prototype zapped and queued (kept by the proved collector, which
+        // traces weak maps strongly).
+        let cpp = match (n[0], a) {
+            (0, Some(x)) if x[0] == 0 => 0,
+            (0, Some(_)) => if n[1] == 0 { 1 } else { 5 },
+            (_, Some(_)) => 0,
+            (2, None) => if fbit { 3 } else { 2 },
+            (_, None) => 2,
+        };
+        stats.nodes += 1;
+        stats.verdicts[d.min(4)] += 1;
+        if cpp == 5 { stats.weak_zap_queued += 1; }
+        let expect = if cpp == 5 { 0 } else { cpp };
+        if d != expect {
+            // A key the C++ prototype found dead that is reachable through a
+            // weak map's fields (traced strongly here) is the one expected
+            // difference.
+            if d == 0 && has_weak && (cpp == 1 || cpp == 3 || (cpp == 2 && fbit)) {
+                stats.weak_divergent += 1;
+                continue;
+            }
+            return Err(format!("node {} (list {} kind {}): verdict {}, C++ {}", m, n[0], n[1], d, cpp));
+        }
+        let what = |s: &str, e: String| format!("{} of node {}: {}", s, m, e);
+        match d {
+            0 => {
+                let x = a.unwrap();
+                pair(nodew[4 * m + 1], x[3], &mut work, stats).map_err(|e| what("key", e))?;
+                if n[0] != 2 { pair(nodew[4 * m + 2], x[4], &mut work, stats).map_err(|e| what("lambda", e))?; }
+            }
+            1 => {
+                let x = a.unwrap();
+                if nodew[4 * m + 1] != x[3] { return Err(what("key", format!("{:#x}, C++ {:#x}", nodew[4 * m + 1], x[3]))); }
+                pair(nodew[4 * m + 2], x[4], &mut work, stats).map_err(|e| what("lambda", e))?;
+            }
+            _ => {}
+        }
     }
     while let Some((rv, cv)) = work.pop() {
         let (ra, ca) = (rv - 1, cv - 1);

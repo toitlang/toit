@@ -635,6 +635,24 @@ void TwoSpaceHeap::dump_copying_heap(const char* phase) {
   RootRecorder roots(file);
   process_heap_->iterate_roots(&roots);
   roots.write();
+  // The finalizer nodes: list, kind, node, key, lambda (null for VM nodes).
+  long count_position = ftell(file);
+  uint64 zero = 0;
+  fwrite(&zero, sizeof(zero), 1, file);
+  struct NodeWriter { FILE* file; uint64 count; } writer = { file, 0 };
+  process_heap_->dump_finalizer_nodes(&writer, [](void* context, int list, int kind, void* node, Object* key, Object* lambda) {
+    auto w = static_cast<NodeWriter*>(context);
+    write_u64(w->file, list);
+    write_u64(w->file, kind);
+    write_u64(w->file, reinterpret_cast<uword>(node));
+    write_u64(w->file, reinterpret_cast<uword>(key));
+    write_u64(w->file, reinterpret_cast<uword>(lambda));
+    w->count++;
+  });
+  long end = ftell(file);
+  fseek(file, count_position, SEEK_SET);
+  write_u64(file, writer.count);
+  fseek(file, end, SEEK_SET);
   fclose(file);
 }
 #endif

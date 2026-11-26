@@ -84,6 +84,13 @@ class ObjectHeap {
   void process_registered_vm_finalizers(RootCallback* cb, LivenessOracle* oracle);
 
   void iterate_finalization_roots(RootCallback* cb);
+#ifndef TOIT_FREERTOS
+  // The heap dumps of the differential test (src/sandbox_gc.cc, TOIT_GC_DUMP):
+  // calls [f] for every finalizer node: list (0 registered callback, 1
+  // runnable, 2 VM), kind (0 Toit, 1 weak map, 4 VM), the node, its key and
+  // lambda.
+  void dump_finalizer_nodes(void* context, void (*f)(void* context, int list, int kind, void* node, Object* key, Object* lambda));
+#endif
 
   Program* program() const { return program_; }
 

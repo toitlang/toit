@@ -387,6 +387,22 @@ void ObjectHeap::process_registered_finalizers_helper(FinalizerNodeFifo* list, R
   });
 }
 
+#ifndef TOIT_FREERTOS
+void ObjectHeap::dump_finalizer_nodes(void* context, void (*f)(void* context, int list, int kind, void* node, Object* key, Object* lambda)) {
+  for (auto node : registered_callback_finalizers_) {
+    auto callable = static_cast<CallableFinalizerNode*>(node);
+    f(context, 0, callable->keep_after_callback() ? 1 : 0, node, node->key(), callable->lambda());
+  }
+  for (auto node : runnable_finalizers_) {
+    auto callable = static_cast<CallableFinalizerNode*>(node);
+    f(context, 1, callable->keep_after_callback() ? 1 : 0, node, node->key(), callable->lambda());
+  }
+  for (auto node : registered_vm_finalizers_) {
+    f(context, 2, 4, node, node->key(), null);
+  }
+}
+#endif
+
 void ObjectHeap::iterate_finalization_roots(RootCallback* cb) {
   for (auto finalizer : registered_callback_finalizers_) finalizer->roots_do(cb);
   for (auto finalizer : registered_vm_finalizers_) finalizer->roots_do(cb);
