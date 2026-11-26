@@ -185,8 +185,8 @@ container lives):
 The default is the empty list: the allow-list is strictness by default,
 and one word away from the earlier behaviour: `--services="all"`
 (`ContainerService.ALL-SERVICES`) lets the sandbox use every provider that
-accepts sandboxed clients. A container with a network policy may also use
-the sandbox network services without listing them (see "Network access").
+accepts sandboxed clients (for example the sandbox network provider, see
+"Network access").
 A sandbox discovers exactly the providers that accept sandboxed clients
 and whose service it may use, plus the service discovery and sandbox print
 services, which every sandbox may use
@@ -196,10 +196,11 @@ wait for a provider that registers later), so a sandbox gets the send
 grant only for providers it may use. A sandbox that sends the open request
 to another provider's pid without discovery (as its own core library
 could) is stopped by the VM, which has no grant for that pid. The
-providers in the system process are reachable without a grant, so they
-check the list when a sandbox opens them
-(`ServiceManager_.untrusted-open-check_`, set by the system process):
-`PERMISSION_DENIED`. System services that refuse sandboxes are no longer
+providers in the system process are reachable without a grant, so the
+list can't protect them: the system process refuses to register a
+provider of its own that serves sandboxes unless every sandbox may use it
+(only discovery and printing do), so a check at open isn't needed (an
+earlier version had one in every program's services library). System services that refuse sandboxes are no longer
 discovered by them either (before, discovery returned them and opening
 failed); opening them without discovery still fails with
 `PERMISSION_DENIED`. The list doesn't restrict trusted containers. Tests:
@@ -209,7 +210,7 @@ open without discovery, waiting discoveries, malformed lists),
 services when they aren't on the list).
 
 A start request with a malformed policy (a services list that is too long
-or has entries that aren't strings, or a malformed network policy) is
+or has entries that aren't strings) is
 refused before the container runs (`INVALID_ARGUMENT`,
 `WRONG_OBJECT_TYPE`). Before, a malformed policy left the container in
 the container manager, so the system never ended.
@@ -596,8 +597,9 @@ The quota keys are "heap", "mailbox-messages", "mailbox-bytes",
 Quotas can also be given for trusted containers. `--may-provide-services`
 grants an untrusted container to register service providers (see
 "Providing services is a privilege"), `--services` lists the services it
-may use (see "The service list of a container"), and `--network` gives
-it a network policy (experimental, see "Network access").
+may use (see "The service list of a container"; "all" for every provider
+that serves sandboxes, such as the experimental network provider, see
+"Network access").
 
 Device: containers are started by `system/containers.toit` through
 `programs_registry.spawn`, which takes the policy as its last argument.
@@ -709,30 +711,38 @@ process):
   redirects (the client gets the 3xx; a request to the location is checked
   like any other). One request per connection.
 
-**What the system process holds.** Only the policy: `containers.start
---network=...` puts it at entry 11 of the launch policy; the system process
-checks its shape and size (16 rules of at most 192 bytes and 7 integers, or
-one of the words below) and keeps it with the container. A container with a
-network policy may use the two network services without listing them in
-`--services`. None of the network code is in the system image (its
-bytecode grew by 696 bytes over e859da6e for the allow-list and the policy
-storage).
+**Opt-in, at no cost otherwise.** The provider is not part of the firmware:
+it is installed like any container on devices whose sandboxes need the
+network (the commands are in its main.toit; a container installed in the
+envelope reads its policy from its asset "network", one started by a
+trusted program from its arguments, `{"network": "public"}`). The system
+process holds nothing for it: no network code, no policy. A device that
+runs no sandbox pays only for the service list (same ESP32 system image
+size as before it, 330 bytes of bytecode inside the last page; ordinary
+programs unchanged; trusted discovery as fast as before;
+opentoit-sandbox-artifacts/sandbox-network/README.md has the table).
 
-**Identity.** Every service call carries the group id of its sender,
-filled in by the VM (`--gid` of `ServiceHandler.handle`); group ids are
-never reused while the device runs. The provider asks the system process
-once per container for the network policy of that group
-(`ContainerService.NETWORK-POLICY-INDEX`; the container service refuses
-sandboxed clients, so only trusted containers can read policies) and keeps
-the parsed policy with the container's limiter state (at most 32
-containers without connections; the policy of a group never changes). A
-sandbox can't name another group, and it can't reach the provider without
-the VM's send grant, which only discovery issues, and discovery only for
-containers that may use the service.
+**Access.** A sandbox uses the provider when it may use its services:
+`containers.start id --untrusted --services="all"`, or the two service
+selectors. Without them (the default) it doesn't discover the provider,
+and the VM refuses its messages to the provider's pid (only discovery
+issues that grant).
 
-**Policies.** The default is no network. One word gives the common cases:
+**One policy for all sandboxes.** The policy is the provider's
+configuration and applies to every client; its limits are kept per client
+container. Every service call carries the group id of its sender, filled
+in by the VM (`--gid` of `ServiceHandler.handle`), which a sandbox can't
+choose and which is never reused while the device runs; the provider keeps
+a grant (the parsed policy and the limiter state) per group (at most 32
+groups without connections). Its policy lookup, group id -> policy, is
+where policies per container could come back (an earlier version had the
+system process keep one per container; it cost a 4 KB page of the system
+image).
 
-| `--network=` | destinations | limits | the owner gives up |
+**Policies.** Without a policy the provider allows nothing. One word gives
+the common cases:
+
+| provider policy | destinations | limits | the owner gives up |
 |---|---|---|---|
 | `"all"` | every host and port, loopback and the local network included | none | the device's own networking when the sandbox saturates the link (only the provider's bounds remain); data volume and cost; reachability of local-network hosts and services on the device itself |
 | `"public"` | every public address, any port | none | link saturation, data volume; local hosts stay unreachable |
@@ -837,10 +847,11 @@ with the network primitives) would shrink that.
 
 Tests (host, local servers only, `tests/sandbox/net/`, a separate project
 with the http package; the tests start the provider container from their
-own image with a heap quota): allowed and denied destinations, the
-rebinding case, the service list and the VM's grant for a provider
-outside the system process, every limit, the one-word policies, two
-sandboxes with different policies at the same time, cleanup when a
+own image with the policy each case needs and a heap quota): allowed and
+denied destinations, the rebinding case, the service list and the VM's
+grant for a provider outside the system process, every limit, the
+one-word policies, limits kept per container under one policy, cleanup
+when a
 sandbox stops, ends or throws, 1 MB transfers, TLS with the sandbox's
 roots (two sandboxes with different roots at the same server, dedup,
 pins), the http package over variant S, HTTP requests with bodies of known
@@ -849,11 +860,10 @@ and the timeout, lost replies, the provider missing, starting late and
 restarting mid-stream, a look-alike provider, and a flooding sandbox next
 to a trusted client of the trusted network service.
 
-Open: who supplies the policy (the device owner at start, or a manifest
-in the program that the owner approves), UDP and listening sockets as
-separate grants, whether to keep both variants, connection reuse for
-variant H, and the provider's start at boot and its heap quota on a
-device.
+Open: policies per container (the provider's lookup is the seam), UDP
+and listening sockets as separate grants, connection reuse for variant H,
+and bundling the provider (run-boot) and its heap quota on devices that
+ship sandboxes. Both variants stay (owner's decision).
 
 ## Tests
 
