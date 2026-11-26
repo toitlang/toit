@@ -57,7 +57,15 @@ part of the proof:
 
 Programs do contain calls of denied primitives (the core library's `print`
 tries `write_on_stdout` first), so they are accepted and completed with the
-denial, not rejected.
+denial, not rejected: what is proven is that only allowed primitives run,
+not that an accepted program contains no call of a denied one. A denied or
+absent primitive is accepted with any arity (the core reads none of its
+arguments); an index past the VM's primitive table names no primitive and
+is rejected at install. Until 2026-11-26 the install-time check compared
+arities with the full table, which rejected some crafted denied calls by
+their arity (red-team batteries prim-denied, prim-spawn); they are now
+accepted, and the batteries check at run time that the program sees
+PERMISSION_DENIED and that nothing ran (review/red-team/round4/ATTEMPTS.txt).
 
 ### Allowed set (untrusted)
 

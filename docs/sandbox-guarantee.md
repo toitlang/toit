@@ -258,7 +258,11 @@ What the theorem gives about what an untrusted program can reach:
   PERMISSION_DENIED and an absent one with PRIMITIVE_LOOKUP_FAILED itself.
   Programs do contain calls of denied primitives (the core library's
   `print` tries `write_on_stdout` and falls back to the system process),
-  so they are completed, not rejected. What remains trusted is that the
+  so they are completed, not rejected: the theorem is "only allowed
+  primitives run", not "a program with a call of a denied primitive is
+  rejected" (a denied or absent primitive is accepted with any arity; an
+  index past the VM's table is rejected; the red-team batteries check the
+  run-time denial, review/red-team/round4/ATTEMPTS.txt). What remains trusted is that the
   table lists the policy as intended (one C++ function makes it from the
   lists above) and that index (m, i) names the C++ table's primitive at
   (m, i) (section 2.4).

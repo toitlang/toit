@@ -140,6 +140,19 @@ both builds. 6 families, all aimed at verifier-vs-machine disagreement.
   primitives (3): module/index out of range, valid-but-denied. -> "PRIMITIVE
      rejected with kinds []" (the arity/validity gate; the allowed-set gate is
      separate at run time, as round 2 noted).
+     2026-11-26 (T2): valid-but-denied (prim-denied: write_on_stdout/2 from
+     main, arity 0) is accepted now: the verifier checks the untrusted
+     policy's table, where a denied primitive is accepted with any arity and
+     the core completes it with PERMISSION_DENIED, calling nothing. The case
+     prints the failure value and the battery requires "PERMISSION_DENIED"
+     on both builds. The two out-of-range cases are still rejected.
+     Same day: tools/snapshot.toit's method-info-for [failure] returns
+     MethodInfo? (it threw a type error when a method had no name, which
+     made the assembler unable to patch methods after the first unnamed
+     one); the assembler's "Condition always evaluates to true" warning is
+     gone with it, so the recorded first line of the two ASM-ERROR cases
+     (empty-body, loadlocal-high: the assembler refuses them) is now its
+     actual error, "EXCEPTION error.".
   control-flow merges (4): height mismatch at a merge, stack-growing loop,
      block-ref-vs-value and method-id-vs-value and value-vs-initializer in the
      same slot then used. -> "incompatible kinds at merge: [..] and [..]" or

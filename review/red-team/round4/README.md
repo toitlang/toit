@@ -21,8 +21,8 @@ Each takes `HOSTRUN` (normal build), `ASANRUN` (build/asan), `HOST32`
 
 | Battery | Line | What it does |
 |---|---|---|
-| `battery-A.sh` | A | splices twins (104..113), builtins (101..103), trusted HALTs and out-of-range opcodes into an untrusted method (assembler) — every one rejected with a named rule; an inconsistent method table (`asm --stale-table`, format note 21) refused at load, untrusted and trusted |
-| `battery-A-cert.sh` | A | device-path `--verify --require-certificate`: a trusted cert can't make untrusted rules accept twins; corrupt/short/wrong-count certs rejected |
+| `battery-A.sh` | A | splices twins (104..113), builtins (101..103), trusted HALTs and out-of-range opcodes into an untrusted method (assembler) — every one rejected with a named rule; an inconsistent method table (`asm --stale-table`, format note 21) refused at load, untrusted and trusted; since 2026-11-26 (T2) also denied and absent primitives (assembled and in repro/prims.toit): accepted, and the run must print PERMISSION_DENIED / PRIMITIVE_LOOKUP_FAILED on both builds; indices past the VM's table rejected |
+| `battery-A-cert.sh` | A | device-path `--verify --require-certificate`: a trusted cert can't make untrusted rules accept twins; corrupt/short/wrong-count certs rejected; another policy's certificate refused (T2, prims-*) |
 | `battery-B.sh` | B | certificate structural mutations (magic/version/count/sections/maps) rejected or safe under ASan; pathological programs verify in bounded time, 64 KB body limit enforced |
 | `battery-C.sh` | C | 31 word-size-edge programs, host64 output == host32 output |
 | `battery-D.sh` | D | 31 adversarial runtime collections driving the builtins and C++ primitives (rebuild_hash_index, array_*, blit, slices) — ASan clean |

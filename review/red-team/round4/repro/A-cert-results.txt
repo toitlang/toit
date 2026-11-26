@@ -4,7 +4,12 @@
 [twins-trusted-rules] exit=0 want=0 OK  
 [twins-trustedcert-untrusted] exit=1 want=1 OK  rejected
 [twins-trustedcert-trusted] exit=0 want=0 OK  
+[prims-untrustedcert-untrusted] exit=0 want=0 OK  
+[prims-untrustedcert-trusted] exit=1 want=1 OK  rejected
+[prims-trustedcert-trusted] exit=0 want=0 OK  
+[prims-trustedcert-untrusted] exit=1 want=1 OK  rejected
+[prims-trustedcert-run-untrusted] exit=1 want=1 OK  shipped certificate: certificate made for another primitive policy
 [cert-body-corrupt-require] exit=1 want=1 OK  rejected
 [cert-body-corrupt-default] exit=1 want=1 OK  rejected
 [cert-count-zero-require] exit=1 want=1 OK  rejected
-# done Wed Nov 11 18:34:22 CET 2026
+# done Thu Nov 26 15:08:28 CET 2026

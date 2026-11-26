@@ -1,4 +1,4 @@
-# Line-A assembled-method battery Thu Nov 12 02:28:18 CET 2026
+# Line-A assembled-method battery Thu Nov 26 15:24:26 CET 2026
 [good-retnull] x{1/1} ACCEPTED->ran:   
 [good-print] x{0/0} ACCEPTED->ran: 55  
 [twin-104-loadf] x{0/0} untrusted program rejected: method 22 at bci 290 (+1): LOAD_FIELD_U 92: unchecked opcode 104 in a program not in the unchecked mode 
@@ -28,8 +28,11 @@
 [builtin-103-hashfind] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): HASH_FIND 0 0 0 0: HASH_FIND rejected with kinds [] 
 [builtin-101-operands] x{0/0} untrusted program rejected: method 22 at bci 291 (+2): LOOP_REPEAT 255 255 0: LOOP_REPEAT rejected with kinds [Val, Val] 
 [builtin-103-badargs] x{0/0} untrusted program rejected: method 22 at bci 290 (+1): HASH_FIND 255 255 255 255: HASH_FIND rejected with kinds [Val] 
-[prim-spawn] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): PRIMITIVE 0 0 0: PRIMITIVE rejected with kinds [] 
+[prim-spawn] x{0/0} ACCEPTED->ran: PERMISSION_DENIED  
+[prim-stdout-arity0] x{0/0} ACCEPTED->ran: PERMISSION_DENIED  
 [prim-module-oob] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): PRIMITIVE 255 255 255: PRIMITIVE rejected with kinds [] 
+[prim-idx-oob] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): PRIMITIVE 0 255 255: PRIMITIVE rejected with kinds [] 
+[prim-absent-idx-oob] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): PRIMITIVE 2 255 255: PRIMITIVE rejected with kinds [] 
 [mix-checked-twin] x{0/0} untrusted program rejected: method 22 at bci 290 (+1): STORE_FIELD_THIS_U 0: unchecked opcode 113 in a program not in the unchecked mode 
 [twin-105-highop] x{0/0} untrusted program rejected: method 22 at bci 290 (+1): LOAD_FIELD_WIDE_U 255 255: unchecked opcode 105 in a program not in the unchecked mode 
 [twin-111-highsel] x{0/0} untrusted program rejected: method 22 at bci 290 (+1): INVOKE_VIRTUAL_GET_U 255 255: unchecked opcode 111 in a program not in the unchecked mode 
@@ -37,4 +40,16 @@
 [table-stale-longer] x{0/0/0/0} untrusted: format-2 program rejected: bad method kind byte (300); trusted: format-2 program rejected: bad method kind byte (300) 
 [table-stale-by-one] x{0/0/0/0} untrusted: format-2 program rejected: bad method kind byte (300); trusted: format-2 program rejected: bad method kind byte (300) 
 [table-same-size] x{0/0/0/0} untrusted: ACCEPTED->ran: 55 ; trusted: ran: 55  
-# done Thu Nov 12 02:28:48 CET 2026
+[prims-spawn] x{0/0} ran: spawn: failed PERMISSION_DENIED 
+[prims-stdout] x{0/0} ran: stdout: failed PERMISSION_DENIED 
+[prims-tcp-absent] x{0/0} ran: tcp: PRIMITIVE_LOOKUP_FAILED 
+[prims-done] x{0/0} ran: done 
+[prims-spawn-arity-1] x{0/0} ran: spawn-arity-1: PERMISSION_DENIED 
+[prims-stdout-arity-0] x{0/0} ran: stdout-arity-0: PERMISSION_DENIED 
+[prims-tcp-absent-arity-5] x{0/0} ran: tcp-arity-5: PRIMITIVE_LOOKUP_FAILED 
+[prims-cert-spawn] x{0/0} ran: spawn: failed PERMISSION_DENIED 
+[prims-cert-stdout] x{0/0} ran: stdout: failed PERMISSION_DENIED 
+[prims-cert-tcp-absent] x{0/0} ran: tcp: PRIMITIVE_LOOKUP_FAILED 
+[prims-cert-done] x{0/0} ran: done 
+[prims-trusted-spawn] x{0/0} ran: spawn: failed INVALID_ARGUMENT 
+# done Thu Nov 26 15:25:36 CET 2026
