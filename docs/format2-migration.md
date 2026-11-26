@@ -129,10 +129,11 @@ Commit 4f488c84 had the switch (sdkconfigs and the CI step that installs
 the Rust targets); 7c716b70 reverted it. The Xtensa toolchain is not a
 blocker any more:
 verified/XTENSA-RUST-EVALUATION.md and XTENSA-RUST-FIXES.md show that the
-esp-rs toolchain (`cargo +esp`, 1.99.0.0) builds the core for the classic
-ESP32 and that our code triggers none of its known wrong-code bugs
+esp-rs toolchain (1.99.0.0) builds the core for the classic ESP32 and
+that our code triggers none of its known wrong-code bugs
 (verified/vmverify/tests/xtensa_codegen_check.sh, to rerun on every
-toolchain update).
+toolchain update). The firmware now uses the Toit fork of that toolchain
+with those bugs fixed (`cargo +toit-esp`, docs/xtensa-rust-toolchain.md).
 
 The switches (toolchains/idf/components/toit/Kconfig):
 

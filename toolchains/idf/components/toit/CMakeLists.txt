@@ -29,20 +29,48 @@ set(TOIT_SDK_DIR ${TOIT_SDK_DIR} PARENT_SCOPE)
 set(TOIT ${TOIT_SDK_DIR}/bin/toit)
 set(CMAKE_BUILD_TYPE Release)
 
+# The Rust toolchain of the Xtensa chips (classic ESP32, ESP32-S3): the Toit
+# fork of the esp-rs toolchain, built from github.com/toitlang/rust and
+# installed as a rustup toolchain (docs/xtensa-rust-toolchain.md). The build
+# fails unless that toolchain reports the pinned release; an empty
+# TOIT_XTENSA_RUST_RELEASE accepts any (for trying another build).
+set(TOIT_XTENSA_RUST_TOOLCHAIN "toit-esp" CACHE STRING
+    "rustup toolchain for the Xtensa chips (docs/xtensa-rust-toolchain.md)")
+set(TOIT_XTENSA_RUST_RELEASE "toit-esp-1.99.0.0-1" CACHE STRING
+    "Release the Xtensa Rust toolchain must report in rustc -V (empty: any)")
+function(toit_check_xtensa_rust_toolchain)
+  set(hint "Build and install it with toit/build.sh of https://github.com/toitlang/rust, tag ${TOIT_XTENSA_RUST_RELEASE} (docs/xtensa-rust-toolchain.md).")
+  find_program(TOIT_RUSTUP rustup)
+  if (NOT TOIT_RUSTUP)
+    message(FATAL_ERROR "The verified core for ${IDF_TARGET} needs the rustup toolchain '${TOIT_XTENSA_RUST_TOOLCHAIN}', but rustup was not found. ${hint}")
+  endif()
+  execute_process(COMMAND "${TOIT_RUSTUP}" run "${TOIT_XTENSA_RUST_TOOLCHAIN}" rustc -V
+                  OUTPUT_VARIABLE version ERROR_VARIABLE error RESULT_VARIABLE result
+                  OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_STRIP_TRAILING_WHITESPACE)
+  if (NOT result EQUAL 0)
+    message(FATAL_ERROR "The verified core for ${IDF_TARGET} needs the rustup toolchain '${TOIT_XTENSA_RUST_TOOLCHAIN}', which is not installed (${error}). ${hint}")
+  endif()
+  if (TOIT_XTENSA_RUST_RELEASE AND NOT version MATCHES "\\(${TOIT_XTENSA_RUST_RELEASE}\\)$")
+    message(FATAL_ERROR "The rustup toolchain '${TOIT_XTENSA_RUST_TOOLCHAIN}' is '${version}', not the pinned release ${TOIT_XTENSA_RUST_RELEASE}. ${hint} (-DTOIT_XTENSA_RUST_RELEASE= accepts any release.)")
+  endif()
+  message(STATUS "Xtensa Rust toolchain: ${TOIT_XTENSA_RUST_TOOLCHAIN}, ${version}")
+endfunction()
+
 # The verified core (verified/CMakeLists.txt): off unless selected in
-# menuconfig; only RISC-V parts with atomics (see Kconfig).
+# menuconfig; RISC-V parts with atomics and the Xtensa chips (see Kconfig).
 if (CONFIG_TOIT_VERIFIED_CORE)
     set(TOIT_VERIFIED_CORE ON CACHE BOOL "" FORCE)
-    if (CONFIG_IDF_TARGET_ESP32)
-      # Experiment (verified/XTENSA-RUST-FIXES.md): the esp-rs fork.
-      set(TOIT_VERIFIED_CORE_RUST_TARGET "xtensa-esp32-none-elf" CACHE STRING "" FORCE)
-      set(TOIT_VERIFIED_CORE_CARGO_TOOLCHAIN "+esp" CACHE STRING "" FORCE)
-      set(TOIT_VERIFIED_CORE_CARGO_ARGS "-Zbuild-std=core,alloc" CACHE STRING "" FORCE)
-    elseif (CONFIG_IDF_TARGET_ESP32S3)
-      # Xtensa LX7 with the same esp-rs fork (docs/format2-migration.md,
-      # "Devices: hardware results").
-      set(TOIT_VERIFIED_CORE_RUST_TARGET "xtensa-esp32s3-none-elf" CACHE STRING "" FORCE)
-      set(TOIT_VERIFIED_CORE_CARGO_TOOLCHAIN "+esp" CACHE STRING "" FORCE)
+    if (CONFIG_IDF_TARGET_ESP32 OR CONFIG_IDF_TARGET_ESP32S3)
+      # The Xtensa chips: the Toit fork of the esp-rs Rust toolchain
+      # (docs/xtensa-rust-toolchain.md), with no prebuilt `core`
+      # (-Zbuild-std).
+      toit_check_xtensa_rust_toolchain()
+      if (CONFIG_IDF_TARGET_ESP32)
+        set(TOIT_VERIFIED_CORE_RUST_TARGET "xtensa-esp32-none-elf" CACHE STRING "" FORCE)
+      else()
+        set(TOIT_VERIFIED_CORE_RUST_TARGET "xtensa-esp32s3-none-elf" CACHE STRING "" FORCE)
+      endif()
+      set(TOIT_VERIFIED_CORE_CARGO_TOOLCHAIN "+${TOIT_XTENSA_RUST_TOOLCHAIN}" CACHE STRING "" FORCE)
       set(TOIT_VERIFIED_CORE_CARGO_ARGS "-Zbuild-std=core,alloc" CACHE STRING "" FORCE)
     else()
       set(TOIT_VERIFIED_CORE_RUST_TARGET "riscv32imac-unknown-none-elf" CACHE STRING "" FORCE)
