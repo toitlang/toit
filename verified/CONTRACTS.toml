@@ -340,6 +340,14 @@ note = "VeriFast: the module and index fit the policy's `unsigned` parameters (t
 [[clause]]
 contract = "gc_call_primitive"
 side = "requires"
+name = "allowed"
+verus = "toit_spec::v2::verifier::prim_allowed(env.p.cert@.prim_arity, module as int, index as int)"
+verifast = ""
+note = "Since 2026-11-26 (T2): the core calls the C++ only for a primitive the policy's verifier table allows (every call site proves it from the context's policy table, policy_rel), so what TRUSTED.md assumes of a C++ primitive is assumed only of the allowed ones. Nothing for VeriFast to prove: the C++ looks the primitive up in the policy's own table (PrimitivePolicy::at) either way."
+
+[[clause]]
+contract = "gc_call_primitive"
+side = "requires"
 name = "first"
 bridge = "stack"
 verus = "first == sp::base(g)"

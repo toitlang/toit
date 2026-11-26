@@ -200,10 +200,14 @@ V2_HOT Interpreter::Result Interpreter::run_v2() {
     FATAL("format-2 program not verified and no checked loop");
   }
   context.accepted = accepted ? TOIT_V2_ACCEPTED : (trusted ? TOIT_V2_TRUSTED : 0);
-  // The core runs the Rust port of a core primitive only where the policy
-  // resolves it to the VM's own primitive (never a denying stub).
-  context.core_arities = process_->policy()->core_arities();
-  context.core_arities_length = context.core_arities == null ? 0 : process_->policy()->core_arities_length();
+  // The verifier table of the process' policy, the one its verdict was
+  // computed with (V2MethodTable::runs_verified takes a verdict only for the
+  // process' own policy): the core runs only the primitives it allows.
+  context.policy_arities = process_->policy()->verifier_arities();
+  context.policy_arities_length = PrimitivePolicy::verifier_arities_length();
+  context.policy_counts = PrimitivePolicy::verifier_counts();
+  context.policy_starts = PrimitivePolicy::verifier_starts();
+  context.policy_modules = PrimitivePolicy::verifier_module_count();
   context.epoch = process_->object_heap()->v2_epoch_address();
   context.new_space_top = process_->object_heap()->v2_new_space_top_address();
   context.new_space_limit = process_->object_heap()->v2_new_space_limit_address();

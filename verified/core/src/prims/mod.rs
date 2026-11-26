@@ -208,6 +208,8 @@ pub struct Ctx<'a> {
 pub fn call(module: u8, index: u16, mem: &StackMem, at: usize, n: usize, heap: &mut Heap,
             p: &Program, al: &Allocator, Ghost(vs): Ghost<Seq<Value>>) -> (r: (PrimOutcome, Ghost<Value>))
     requires
+        // Only a primitive the verified table (the policy's) allows.
+        toit_spec::v2::verifier::prim_allowed(p.cert@.prim_arity, module as int, index as int),
         heap_inv(p, old(heap)),
         args_ok(mem, at as int, old(heap), vs),
         n == vs.len(),

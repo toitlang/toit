@@ -419,14 +419,6 @@ justification = "Rust declaration of a C++ function of src/interpreter_v2.cc (ex
 [[trusted]]
 crate = "core"
 file = "src/ffi.rs"
-item = "toit_v2_core_ported"
-kind = "plain_rust_item"
-count = 1
-justification = "Performance only: whether a core primitive has a Rust port (prims::family), for the policies' core arities; either path is a completion of PRIMITIVE (TRUSTED.md 9)."
-
-[[trusted]]
-crate = "core"
-file = "src/ffi.rs"
 item = "toit_v2_current_stack"
 kind = "plain_rust_item"
 count = 1
@@ -462,7 +454,7 @@ file = "src/ffi.rs"
 item = "toit_v2_run"
 kind = "assume_new"
 count = 3
-justification = "The abstract program, certificate and verifier mode of the loaded program: the loader's contract (S2), named by the run loop's precondition (theorem.rs); ghost only."
+justification = "The abstract program, certificate and verifier mode of the loaded program: the loader's contract (S2), named by the run loop's precondition (theorem.rs); ghost only. The certificate's primitive table is the one the verdict was computed with, the verifier table of the process' policy (PrimitivePolicy::verifier_arities; V2MethodTable::runs_verified takes a verdict only for the policy it was computed for), and the context's policy table, which the core reads to decide whether a primitive runs, is that table (theorem::loaded: policy_rel)."
 
 [[trusted]]
 crate = "core"
@@ -606,7 +598,7 @@ file = "src/primitive.rs"
 item = "gc_call_primitive"
 kind = "external_body"
 count = 1
-justification = "ASSUMED: toit_v2_primitive (may GC, may switch the task; ABSENT without effect when the policy has no such primitive of the method's arity) ends, after collections (toit_spec::v2::gc::gc_steps, none when the epoch is unchanged), in one of the spec's completions of the step from the collected state (theorem::completion: prim_default/prim_spec for every C++ primitive of the policy, task_step for task_new/task_transfer); and the epoch contract: epoch unchanged implies no object moved and the task and its stack object are the same (the machine's fields and stack view stay, the state is the step's with a new heap); TRUSTED.md, Primitives and Epoch."
+justification = "ASSUMED: toit_v2_primitive (may GC, may switch the task; ABSENT without effect when the policy has no such primitive of the method's arity) ends, after collections (toit_spec::v2::gc::gc_steps, none when the epoch is unchanged), in one of the spec's completions of the step from the collected state (theorem::completion: prim_default/prim_spec, task_step for task_new/task_transfer), only for a primitive the verified table allows (the contract requires prim_allowed(cert.prim_arity, module, index), which every call site proves: nothing is assumed of a primitive the policy denies); and the epoch contract: epoch unchanged implies no object moved and the task and its stack object are the same (the machine's fields and stack view stay, the state is the step's with a new heap); TRUSTED.md, Primitives and Epoch."
 
 [[trusted]]
 crate = "core"

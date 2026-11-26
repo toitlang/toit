@@ -204,12 +204,24 @@ fn verify_inferred(p: &VProgram, global_count: u64, prim_arity: Vec<Vec<u8>>, tr
     v
 }
 
+/// What `cert::x_header_error` reports, in words.
+pub fn header_error_text(code: u32) -> &'static str {
+    match code {
+        cert::HEADER_OK => "certificate header accepted",
+        cert::HEADER_MALFORMED => "malformed certificate (no certificate header)",
+        cert::HEADER_VERSION => "certificate of another format version (this verifier reads version 2)",
+        cert::HEADER_METHODS => "certificate of another program (method count)",
+        cert::HEADER_POLICY => "certificate made for another primitive policy",
+        _ => "malformed certificate (a section outside the certificate)",
+    }
+}
+
 /// Why the shipped certificate was rejected (diagnostics only): the method
 /// the checker stopped at, and on hosts what the inference says about it.
 fn diagnose_shipped(p: &VProgram, cert: &[u8], at: usize, off: usize, global_count: u64, prim_arity: Vec<Vec<u8>>, trusted: bool) -> Verdict {
-    let parsed = cert::parse_cert(p, cert, global_count, &prim_arity).is_some();
-    if !parsed {
-        return Verdict::new(CERTIFICATE, "malformed certificate (header or sections)".into());
+    let header = cert::x_header_error(cert, p.methods.len(), &prim_arity);
+    if header != cert::HEADER_OK {
+        return Verdict::new(CERTIFICATE, Cow::Borrowed(header_error_text(header)));
     }
     #[cfg(feature = "infer")]
     {

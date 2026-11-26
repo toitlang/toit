@@ -390,7 +390,7 @@ impl<'a> View for XGlobal<'a> {
             contexts: Seq::new(self.n as nat, |t: int| ctx_view(self, t)),
             sel_rep: Seq::new(0xffff, |s: int| sel_view(self, s)),
             global_count: self.global_count as int,
-            prim_arity: self.prim_arity@.map_values(|v: Vec<u8>| v@.map_values(|a: u8| a as int)),
+            prim_arity: self.prim_arity@.map_values(|v: Vec<u8>| v@.map_values(|a: u8| prim_entry(a))),
             pins: |m: int, o: int| pin_view(self, m, o),
         }
     }
@@ -1970,7 +1970,9 @@ pub fn x_post_misc(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>
         let a = x_arity(p, m) as usize;
         if !(h == a && x_kind(p, m) == 0) { return Ok(false); }
         if !((b1 as usize) < c.g.prim_arity.len() && (index as usize) < ix_ref(c.g.prim_arity, b1 as usize).len()
-            && vix(ix_ref(c.g.prim_arity, b1 as usize), index as usize) as usize == a) {
+            && (vix(ix_ref(c.g.prim_arity, b1 as usize), index as usize) == X_PRIM_DENIED
+                || vix(ix_ref(c.g.prim_arity, b1 as usize), index as usize) == X_PRIM_ABSENT
+                || vix(ix_ref(c.g.prim_arity, b1 as usize), index as usize) as usize == a)) {
             return Ok(false);
         }
         if b1 == 0 && index == X_PRIM_TASK_NEW as i64 && a != 1 { return Ok(false); }

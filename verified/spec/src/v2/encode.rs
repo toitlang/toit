@@ -221,6 +221,8 @@ pub fn encode(p: &VProgram, global: &Global, trusted: bool) -> Result<(Vec<u8>, 
     push32(&mut out, CERT_MAGIC);
     push32(&mut out, CERT_VERSION);
     push32(&mut out, n as u32);
+    // The primitive table (policy) the certificate is made for.
+    push32(&mut out, policy_id(&g.prim_arity));
     let mut at = CERT_HEADER_SIZE;
     for s in sections {
         push32(&mut out, at as u32);

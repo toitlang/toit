@@ -37,8 +37,12 @@
 //! * `sel_rep[s]`: one method with selector offset `s` (or -1): all methods
 //!   with the same selector agree on arity and block parameters;
 //! * `global_count`: the number of globals of the program;
-//! * `prim_arity`: the VM's primitive table (not inferred: the arities the
-//!   primitives are implemented for, from `src/primitive.h`).
+//! * `prim_arity`: the primitive table of the program's policy (not
+//!   inferred, a trusted input: the arities from `src/primitive.h` of the
+//!   primitives the policy allows, -1 for the ones it denies). A PRIMITIVE
+//!   is accepted only for an allowed primitive of the method's arity, so
+//!   an accepted program calls only the policy's primitives
+//!   (`theorem::theorem_soundness`, `prim_allowed`).
 //!
 //! The rules are local: each mapped instruction is checked against its
 //! map and the maps of its successors. See SOUNDNESS.md for the invariant
@@ -88,9 +92,35 @@ pub struct Cert {
     pub contexts: Seq<Option<Context>>,
     pub sel_rep: Seq<int>,
     pub global_count: int,
-    /// The VM's primitive table: the arity of primitive `index` of module
-    /// `module` (trusted input, `v2::prim_arity`).
+    /// The primitive table of the program's policy: the arity of primitive
+    /// `index` of module `module` if the policy allows it, -1 if it denies
+    /// it (its PRIMITIVE fails with PERMISSION_DENIED), -2 if the policy has
+    /// no such primitive (its module denied as a whole: the PRIMITIVE raises
+    /// PRIMITIVE_LOOKUP_FAILED) (trusted input: `PrimitivePolicy::verifier_arities`, from the
+    /// arities of src/primitive.h, `v2::prim_arity`).
     pub prim_arity: Seq<Seq<int>>,
+}
+
+/// A primitive the table allows: present and not denied.
+pub open spec fn prim_allowed(pa: Seq<Seq<int>>, module: int, index: int) -> bool {
+    0 <= module < pa.len() && 0 <= index < pa[module].len() && pa[module][index] >= 0
+}
+
+/// The table lists the primitive: allowed with arity `a`, denied (-1) or
+/// absent (-2).
+pub open spec fn prim_listed(pa: Seq<Seq<int>>, module: int, index: int, a: int) -> bool {
+    0 <= module < pa.len() && 0 <= index < pa[module].len()
+        && (pa[module][index] == a || pa[module][index] == -1 || pa[module][index] == -2)
+}
+
+/// The byte that marks a denied primitive in the executable table.
+pub const X_PRIM_DENIED: u8 = 0xff;
+/// The byte that marks a primitive the policy does not have at all.
+pub const X_PRIM_ABSENT: u8 = 0xfe;
+
+/// An entry of the executable table as the abstract table has it.
+pub open spec fn prim_entry(a: u8) -> int {
+    if a == X_PRIM_DENIED { -1 } else if a == X_PRIM_ABSENT { -2 } else { a as int }
 }
 
 /// The core primitive module and the task primitives completed by the
@@ -587,7 +617,11 @@ pub open spec fn post(p: Program2, c: Cert, m: int, off: int, k: Seq<Kind>, trus
         let index = u16_at(p1(p), instr_at(p, m, off) + 2);
         if h == arity(p, m) && info(p, m).kind == KIND_METHOD
             && 0 <= module < c.prim_arity.len() && 0 <= index < c.prim_arity[module].len()
-            && c.prim_arity[module][index] == arity(p, m)
+            // Allowed by the policy with the method's arity, denied (-1) or
+            // absent (-2): a denied or absent primitive is not called; its
+            // PRIMITIVE fails with PERMISSION_DENIED (`prim::prim_denied`) or
+            // raises PRIMITIVE_LOOKUP_FAILED (`prim::prim_missing`).
+            && prim_listed(c.prim_arity, module, index, arity(p, m))
             && (module == PRIM_CORE && index == PRIM_TASK_NEW ==> arity(p, m) == 1)
             // A new task resumes the transferring frame with fresh arguments
             // (`v2::prim::resume`): its parameters must be plain values.

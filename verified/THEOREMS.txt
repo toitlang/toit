@@ -50,6 +50,16 @@ pub proof fn theorem_process(p: &Program, heap0: Seq<HeapObj>, globals0: Seq<Val
                 ==> !(o is Stuck),
         forall|o: Outcome2| #[trigger] outcome(p.ap@, ms[i].g@, o) ==> !(o is Stuck) && !(o is Raise),
         machine_objects_ok(p.ap@, ms[i].g@),
+        // Confinement to the policy: a PRIMITIVE step names a primitive the
+        // verified table (the policy's, `p.policy`) allows with the frame's
+        // arity, one it denies, or one it does not have; the core runs a
+        // primitive (C++: `gc_call_primitive`; Rust: `prims::call`) only if
+        // the table allows it (both require `prim_allowed`) and completes a
+        // denied one with `prim_denied` (PERMISSION_DENIED) and an absent one
+        // with PRIMITIVE_LOOKUP_FAILED, calling nothing.
+        sp::step(p.ap@, ms[i].g@) is Primitive ==>
+            prim_listed(p.cert@.prim_arity, (sp::step(p.ap@, ms[i].g@)->Primitive_1) as int,
+                (sp::step(p.ap@, ms[i].g@)->Primitive_2) as int, sp::frame_height(ms[i].g@)),
 
 ==============================================================================
 Top-level theorems: crate spec (20)
@@ -201,6 +211,8 @@ pub proof fn theorem_soundness_split(p: Program2, g: GCert, ms: Seq<Maps>, trust
             step(p, s) == Outcome2::Primitive(s1, module, index) && #[trigger] completion(p, s1, module, index, o)
                 ==> !(o is Stuck),
         machine_objects_ok(p, s),
+        step(p, s) is Primitive ==> prim_listed(g.prim_arity, (step(p, s)->Primitive_1) as int,
+            (step(p, s)->Primitive_2) as int, frame_height(s)),
 
 --- theorem_initial  (spec/src/v2/theorem.rs)
 pub proof fn theorem_initial(p: Program2, c: Cert, trusted: bool, heap0: Seq<HeapObj>, globals0: Seq<Value>)
@@ -245,7 +257,7 @@ fn clone(&self) -> (r: Self)
     ensures r == *self,
 
 ==============================================================================
-Verified exec entry points: crate spec (13)
+Verified exec entry points: crate spec (15)
 ==============================================================================
 
 --- step_verified  (spec/src/exec_step.rs)
@@ -275,6 +287,15 @@ pub fn verify_shipped(p: &VProgram, cert: &[u8], global_count: u64, prim_arity: 
 --- x_class_count  (spec/src/v2/check.rs)
 pub fn x_class_count(p: &VProgram) -> (r: usize)
     ensures r as int == class_count(vview(p)),
+
+--- x_wf_kinds  (spec/src/v2/check.rs)
+pub fn x_wf_kinds(p: &VProgram, c: &XCert, m: i64, k: &Vec<XKind>, buf: &mut Vec<XKind>) -> (res: Result<bool, Oom>)
+    ensures res matches Ok(r) ==> r == wf_kinds(vview(p), c@, m as int, kv(*k)),
+
+--- x_shape_ok  (spec/src/v2/check.rs)
+pub fn x_shape_ok(p: &VProgram, c: &XCert, m: usize, k: &Vec<XKind>) -> (r: bool)
+    requires m < p.methods@.len(),
+    ensures r == shape_ok(vview(p), c@, m as int, kv(*k)),
 
 --- x_frame_height  (spec/src/v2/exec.rs)
 pub fn x_frame_height(s: &ExecState) -> (r: i64)

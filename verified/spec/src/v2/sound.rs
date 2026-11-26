@@ -572,6 +572,7 @@ pub open spec fn completions_ok(p: Program2, c: Cert, s: State2, module: u8, ind
     &&& forall|h2: Seq<HeapObj>, r: crate::v2::prim::PrimRet| crate::v2::prim::prim_default(p, s.heap, h2, r) ==>
             outcome_ok(p, c, #[trigger] crate::v2::prim::prim_complete(p, s, h2, r))
     &&& outcome_ok(p, c, crate::v2::prim::prim_missing(p, s))
+    &&& outcome_ok(p, c, crate::v2::prim::prim_denied(p, s))
     &&& (crate::v2::prim::machine_completed(module, index) ==>
             outcome_ok(p, c, crate::v2::prim::task_step(p, s, index)))
 }
@@ -591,11 +592,13 @@ pub open spec fn cur_op(p: Program2, s: State2) -> u8 {
 }
 
 /// A step from `s` is not stuck, keeps the invariant, and every completion
-/// of a PRIMITIVE does too.
+/// of a PRIMITIVE does too; a PRIMITIVE names a primitive the certificate's
+/// table (the policy's) allows with the frame's arity, or denies.
 pub open spec fn step_ok(p: Program2, c: Cert, s: State2) -> bool {
     &&& outcome_ok(p, c, step(p, s))
     &&& match step(p, s) {
-        Outcome2::Primitive(s2, module, index) => completions_ok(p, c, s2, module, index),
+        Outcome2::Primitive(s2, module, index) => completions_ok(p, c, s2, module, index)
+            && s2 == s && prim_listed(c.prim_arity, module as int, index as int, frame_height(s2)),
         _ => true,
     }
 }

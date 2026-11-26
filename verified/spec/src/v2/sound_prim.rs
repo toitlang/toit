@@ -181,10 +181,10 @@ pub proof fn lemma_prim_facts(p: Program2, c: Cert, trusted: bool, s: State2)
         &&& k.len() == arity(p, m)
         &&& info(p, m).kind == KIND_METHOD
         &&& 0 <= index < 0x10000
-        // The verifier's primitive table (`c.prim_arity`) gives the
-        // primitive the method's arity.
+        // The verifier's primitive table (`c.prim_arity`, the policy's)
+        // gives the primitive the method's arity, or denies it (-1).
         &&& (module as int) < c.prim_arity.len() && index < c.prim_arity[module as int].len()
-        &&& c.prim_arity[module as int][index] == arity(p, m)
+        &&& prim_listed(c.prim_arity, module as int, index as int, arity(p, m))
         &&& (module == 0 && index == PRIM_TASK_NEW ==> arity(p, m) == 1)
         &&& (module == 0 && index == PRIM_TASK_TRANSFER ==>
                 arity(p, m) == 2 && k[0] is Val && k[1] is Val && !has_receiver_range(info(p, m)))
@@ -771,6 +771,13 @@ pub proof fn lemma_completions(p: Program2, c: Cert, trusted: bool, s: State2)
     }
     lemma_raise(p, c, trusted, s, PRIMITIVE_LOOKUP_FAILED);
     lemma_wf_parts(p, c, s);
+    // A denied primitive: PERMISSION_DENIED, the heap unchanged.
+    reveal(wf);
+    assert(p.roots.len() == 35);
+    assert(good(s.heap, p.roots[ROOT_PERMISSION_DENIED]));
+    crate::v2::sound_prim_spec::lemma_prim_heap_refl(p, c, s.heap);
+    assert(prim_default(p, s.heap, s.heap, PrimRet::Failure(p.roots[ROOT_PERMISSION_DENIED])));
+    assert(prim_complete(p, s, s.heap, PrimRet::Failure(p.roots[ROOT_PERMISSION_DENIED])) == prim_denied(p, s));
     lemma_task_basics(p, c, s);
     if module == 0 && index as int == PRIM_TASK_NEW {
         lemma_task_new(p, c, trusted, s);
@@ -815,6 +822,7 @@ pub proof fn lemma_step_prim(p: Program2, c: Cert, trusted: bool, s: State2)
         reveal(step);
     }
     lemma_completions(p, c, trusted, s);
+    assert(prim_listed(c.prim_arity, module as int, index as int, frame_height(s)));
 }
 
 // ---------------------------------------------------------------------------

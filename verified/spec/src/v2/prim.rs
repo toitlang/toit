@@ -199,6 +199,14 @@ pub open spec fn prim_missing(p: Program2, s: State2) -> Outcome2 {
     raise(p, s, PRIMITIVE_LOOKUP_FAILED)
 }
 
+/// A primitive the policy denies (its entry in the verifier's table is -1):
+/// the machine does not call it; the PRIMITIVE fails with PERMISSION_DENIED
+/// (pushed, execution continues after the instruction), the heap
+/// unchanged, as the C++ policy's denying entry did.
+pub open spec fn prim_denied(p: Program2, s: State2) -> Outcome2 {
+    prim_failure(s, s.heap, p.roots[ROOT_PERMISSION_DENIED])
+}
+
 pub open spec fn wrong_object_type(p: Program2) -> Value {
     p.roots[30]
 }

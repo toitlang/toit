@@ -15,8 +15,9 @@
 
 #pragma once
 
-// The structural verifier of format 2 (verified/spec, `check::verify`,
-// proven equal to the specification's `accepts`), linked from Rust
+// The structural verifier of format 2 (verified/spec, `cert::verify_shipped`,
+// proven to accept only programs the specification's `accepts` accepts,
+// with the primitive table of the program's policy), linked from Rust
 // (verified/vmverify). It reads the program from the tables the verified
 // core executes (v2_program_tables), not from the snapshot bytes: one
 // description of the program for both. See verified/vmverify/README.md.
@@ -122,8 +123,10 @@ class V2Verifier {
 
   // Test support (verified/tools/vmverify_differential.toit): writes the
   // canonical form of the abstract program the verifier builds from VM
-  // memory to [path].
-  static bool write_canonical(Program* program, const V2MethodTable* table, const char* path);
+  // memory to [path], with the full primitive table, or with the untrusted
+  // policy's if [policy_table].
+  static bool write_canonical(Program* program, const V2MethodTable* table, const char* path,
+                              bool policy_table = false);
 
   // The toolchain's producer of shipped certificates (hosts): infers the
   // certificate of [program], checks it as the device will, and returns it

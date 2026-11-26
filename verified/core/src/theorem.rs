@@ -74,6 +74,9 @@ verus! {
 /// (verified/vmverify for untrusted launches; TRUSTED.md, "Loader").
 pub open spec fn loaded(p: &Program, m: &Machine, heap0: Seq<HeapObj>, globals0: Seq<Value>) -> bool {
     &&& accepts(p.ap@, p.cert@, p.trusted@)
+    // The policy table the core reads is the one the verdict was computed
+    // with (the certificate's primitive table).
+    &&& crate::exec::policy_rel(p)
     &&& loaded_ok(p.ap@, p.cert@, heap0, globals0)
     &&& m.refines(p)
     &&& m.g@ == initial_state(p.ap@, heap0, globals0)

@@ -51,9 +51,13 @@ verus! {
 
 /// "TCRT", little endian.
 pub const CERT_MAGIC: u32 = 0x5452_4354;
-pub const CERT_VERSION: u32 = 1;
-/// Magic, version, method count, and six sections (offset, length).
-pub const CERT_HEADER_SIZE: usize = 60;
+/// The format version: 2 adds the primitive policy to the header.
+pub const CERT_VERSION: u32 = 2;
+/// Magic, version, method count, policy, and six sections (offset,
+/// length).
+pub const CERT_HEADER_SIZE: usize = 64;
+/// The byte offset of the first section entry in the header.
+pub const CERT_SECTIONS: usize = 16;
 /// The sections, in header order.
 pub const SEC_MW: usize = 0;
 pub const SEC_CREC: usize = 1;
@@ -69,8 +73,8 @@ pub const MAX_KINDS: usize = 0x1_0000;
 pub fn x_section<'a>(s: &'a [u8], i: usize) -> (r: Option<&'a [u8]>)
     requires i < 6,
 {
-    let off = x_rd(s, 12 + 8 * i) as usize;
-    let len = x_rd(s, 16 + 8 * i) as usize;
+    let off = x_rd(s, CERT_SECTIONS + 8 * i) as usize;
+    let len = x_rd(s, CERT_SECTIONS + 4 + 8 * i) as usize;
     if off <= s.len() && len <= s.len() - off {
         Some(subslice(s, off, off + len))
     } else {
@@ -78,8 +82,81 @@ pub fn x_section<'a>(s: &'a [u8], i: usize) -> (r: Option<&'a [u8]>)
     }
 }
 
-/// The global part of a shipped certificate and its maps stream; the
-/// trusted fields are the caller's.
+
+/// What is wrong with a certificate's header (`x_header_error`).
+pub const HEADER_OK: u32 = 0;
+/// Too short for a header, or not a certificate (magic).
+pub const HEADER_MALFORMED: u32 = 1;
+/// Another format version.
+pub const HEADER_VERSION: u32 = 2;
+/// Made for a program with another number of methods.
+pub const HEADER_METHODS: u32 = 3;
+/// Made for another primitive policy (`policy_id`).
+pub const HEADER_POLICY: u32 = 4;
+/// A section outside the certificate.
+pub const HEADER_SECTIONS: u32 = 5;
+
+/// One FNV-1a step.
+fn x_fnv(h: u32, b: u8) -> (r: u32) {
+    (((h ^ (b as u32)) as u64 * 0x0100_0193u64) % 0x1_0000_0000u64) as u32
+}
+
+fn x_fnv_word(h: u32, x: u64) -> (r: u32) {
+    let w = x % 0x1_0000_0000u64;
+    let h = x_fnv(h, (w % 256) as u8);
+    let h = x_fnv(h, ((w / 0x100) % 256) as u8);
+    let h = x_fnv(h, ((w / 0x1_0000) % 256) as u8);
+    x_fnv(h, ((w / 0x100_0000) % 256) as u8)
+}
+
+/// The identity of a primitive table (the verifier's `prim_arity`, a
+/// policy's allowed primitives): 32-bit FNV-1a over the number of modules
+/// and, per module, its number of primitives and their arities
+/// (`X_PRIM_DENIED` for a denied one). Recorded in the header of the
+/// certificates made for the table; the checker rejects a certificate
+/// made for another table up front (`HEADER_POLICY`). Not part of the
+/// soundness argument: the table the verdict is computed with is the one
+/// the caller passes.
+pub fn policy_id(prim_arity: &[Vec<u8>]) -> (r: u32) {
+    let mut h = x_fnv_word(0x811c_9dc5u32, prim_arity.len() as u64);
+    let mut i = 0;
+    while i < prim_arity.len()
+        decreases prim_arity.len() - i,
+    {
+        let row = ix_ref(prim_arity, i);
+        h = x_fnv_word(h, row.len() as u64);
+        let mut j = 0;
+        while j < row.len()
+            decreases row.len() - j,
+        {
+            h = x_fnv(h, vix(row, j));
+            j += 1;
+        }
+        i += 1;
+    }
+    h
+}
+
+/// Why the header of `cert` does not fit a program of `methods` methods
+/// checked with the primitive table `prim_arity`, or `HEADER_OK`.
+pub fn x_header_error(cert: &[u8], methods: usize, prim_arity: &[Vec<u8>]) -> (r: u32) {
+    if cert.len() < CERT_HEADER_SIZE || x_rd(cert, 0) != CERT_MAGIC { return HEADER_MALFORMED; }
+    if x_rd(cert, 4) != CERT_VERSION { return HEADER_VERSION; }
+    if x_rd(cert, 8) as usize != methods { return HEADER_METHODS; }
+    if x_rd(cert, 12) != policy_id(prim_arity) { return HEADER_POLICY; }
+    let mut i = 0;
+    while i < 6
+        decreases 6 - i,
+    {
+        if x_section(cert, i).is_none() { return HEADER_SECTIONS; }
+        i += 1;
+    }
+    HEADER_OK
+}
+
+/// The global part of a shipped certificate and its maps stream, if its
+/// header fits the program and the primitive table; the trusted fields
+/// are the caller's.
 pub fn parse_cert<'a>(p: &VProgram<'a>, cert: &'a [u8], global_count: u64, prim_arity: &'a [Vec<u8>])
     -> (r: Option<(XGlobal<'a>, &'a [u8])>)
     ensures
@@ -88,9 +165,10 @@ pub fn parse_cert<'a>(p: &VProgram<'a>, cert: &'a [u8], global_count: u64, prim_
             None => true,
         },
 {
-    if cert.len() < CERT_HEADER_SIZE { return None; }
-    if x_rd(cert, 0) != CERT_MAGIC || x_rd(cert, 4) != CERT_VERSION { return None; }
-    if x_rd(cert, 8) as usize != p.methods.len() { return None; }
+    // The header: this format version, made for this program's method
+    // count and for this primitive table (`HEADER_POLICY`: the certificate
+    // of another policy is rejected before anything else is read).
+    if x_header_error(cert, p.methods.len(), prim_arity) != HEADER_OK { return None; }
     let mw = x_section(cert, SEC_MW)?;
     let crec = x_section(cert, SEC_CREC)?;
     let sel = x_section(cert, SEC_SEL)?;
@@ -181,7 +259,7 @@ pub fn x_read_kind(s: &[u8], pos: usize) -> (r: Option<(XKind, usize)>)
 }
 
 pub open spec fn prim_view(prim_arity: Seq<Vec<u8>>) -> Seq<Seq<int>> {
-    prim_arity.map_values(|v: Vec<u8>| v@.map_values(|a: u8| a as int))
+    prim_arity.map_values(|v: Vec<u8>| v@.map_values(|a: u8| prim_entry(a)))
 }
 
 /// The verdict on program `p` with the shipped certificate `cert`: true
