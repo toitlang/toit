@@ -276,6 +276,53 @@ pub proof fn lemma_frame_tp(c: Ctx, h: H, s2: St, s3: St, t: Tos, rv: Seq<AVal>)
     }
 }
 
+/// The page part of the invariant depends only on the page fields.
+pub proof fn lemma_tpages_frame(c: Ctx, h: H, s1: St, s2: St, t: Tos)
+    requires
+        tpages_ok(c, h, s1, t),
+        s2.tp == s1.tp, s2.ttp == s1.ttp, s2.tup == s1.tup, s2.tss == s1.tss, s2.tus == s1.tus,
+    ensures tpages_ok(c, h, s2, t),
+{
+    let tn = t.tn as int;
+    assert forall|p: int| 0 <= p < tn implies 0 <= #[trigger] s2.tus[p] <= c.pw - 1 by {
+        assert(0 <= s1.tus[p] <= c.pw - 1);
+    }
+    assert forall|p: int| 0 <= p < tn implies #[trigger] s2.tss[p] % W == 0 && s2.tss[p] + pbytes(c) < usize::MAX by {
+        assert(s1.tss[p] % W == 0 && s1.tss[p] + pbytes(c) < usize::MAX);
+    }
+    assert forall|p: int, q: int| 0 <= p < q < tn implies #[trigger] pages_apart(s2.tss[p] as int, s2.tss[q] as int, c.pw as int) by {
+        assert(pages_apart(s1.tss[p] as int, s1.tss[q] as int, c.pw as int));
+    }
+    assert forall|p: int, j: int| 0 <= p < tn && 0 <= j < h.objs.len() && !from(h, j) implies
+        #[trigger] outside(s2.tss[p] as int, #[trigger] h.addr[j] as int, c.pw as int) by {
+        assert(outside(s1.tss[p] as int, h.addr[j] as int, c.pw as int));
+    }
+    assert forall|p: int, k: int| 0 <= p < tn && 0 <= k < c.pw implies #[trigger] wperm_ok(s2.tp, (p, k), tptr(c, s2, p), k) by {
+        assert(wperm_ok(s1.tp, (p, k), tptr(c, s1, p), k));
+    }
+    assert forall|q: (int, int)| #[trigger] s2.tp.contains_key(q) implies 0 <= q.0 < tn by {
+        assert(s1.tp.contains_key(q));
+    }
+    assert forall|p: int| 0 <= p < tn - 1 implies #[trigger] s2.tp[(p, s2.tus[p])].is_init() && s2.tp[(p, s2.tus[p])].value() == 0 by {
+        assert(s1.tp[(p, s1.tus[p])].is_init());
+        assert(s1.tp[(p, s1.tus[p])].value() == 0);
+    }
+    assert forall|p: int| 0 <= p < t.tcap implies #[trigger] wperm_ok(s2.ttp, p, t.ttab, p) by {
+        assert(wperm_ok(s1.ttp, p, t.ttab, p));
+    }
+    assert forall|p: int| 0 <= p < t.tcap implies #[trigger] wperm_ok(s2.tup, p, t.tused, p) by {
+        assert(wperm_ok(s1.tup, p, t.tused, p));
+    }
+    assert forall|p: int| 0 <= p < tn implies #[trigger] s2.ttp[p].is_init() && s2.ttp[p].value() == s2.tss[p] by {
+        assert(s1.ttp[p].is_init());
+        assert(s1.ttp[p].value() == s1.tss[p]);
+    }
+    assert forall|p: int| 0 <= p < tn - 1 implies #[trigger] s2.tup[p].is_init() && s2.tup[p].value() == s2.tus[p] by {
+        assert(s1.tup[p].is_init());
+        assert(s1.tup[p].value() == s1.tus[p]);
+    }
+}
+
 /// Writing the processed word of reference slot `i` of copy `ks` moves the
 /// scan one word on.
 pub proof fn lemma_scan_write(c: Ctx, h: H, s2: St, s3: St, t: Tos, ks: int, i: int, rv: Seq<AVal>, v: AVal)
@@ -326,7 +373,7 @@ pub proof fn lemma_scan_write(c: Ctx, h: H, s2: St, s3: St, t: Tos, ks: int, i: 
 
 /// Scans copy `ks` (at offset `so` of the to-space page starting at
 /// `sstart`): visits its reference slots. Returns its size.
-fn scan_object<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, sstart: usize, so: usize,
+pub fn scan_object<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, sstart: usize, so: usize,
                               Ghost(h): Ghost<H>, Ghost(ks): Ghost<int>, Ghost(sp): Ghost<int>,
                               Ghost(rptr): Ghost<*mut usize>, Ghost(rv): Ghost<Seq<AVal>>,
                               Tracked(st): Tracked<&mut St>, Tracked(others): Tracked<&Map<int, PointsTo<usize>>>,
@@ -451,7 +498,7 @@ fn tab_at(tab: *mut usize, p: usize, Ghost(tcap): Ghost<int>, Tracked(perms): Tr
 
 /// The root loop (the C++ `iterate_roots` with `do_roots`): forwards every
 /// root word in place.
-fn do_roots<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, rptr: *mut usize, rlen: usize,
+pub fn do_roots<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, rptr: *mut usize, rlen: usize,
                            Ghost(h): Ghost<H>, Ghost(rv): Ghost<Seq<AVal>>,
                            Tracked(st): Tracked<&mut St>, Tracked(others): Tracked<&Map<int, PointsTo<usize>>>,
                            Tracked(ftp): Tracked<&Map<int, PointsTo<usize>>>)
@@ -496,11 +543,7 @@ fn do_roots<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, rptr: *mut usize, 
                     assert(s1.tp[tkey(s1, kk, i2)].is_init());
                 }
             }
-            assert(tpages_ok(*c, h, s2, *t)) by {
-                assert forall|p: int, k: int| 0 <= p < t.tn && 0 <= k < c.pw implies #[trigger] wperm_ok(s2.tp, (p, k), tptr(*c, s2, p), k) by {
-                    assert(wperm_ok(s1.tp, (p, k), tptr(*c, s1, p), k));
-                }
-            }
+            lemma_tpages_frame(*c, h, s1, s2, *t);
             assert forall|k: int| 0 <= k < rv.len() implies #[trigger] wperm_ok(s2.rp, k, rptr, k) by {
                 assert(wperm_ok(s1.rp, k, rptr, k));
             }
@@ -518,7 +561,7 @@ fn do_roots<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, rptr: *mut usize, 
 
 /// The scan (the C++ `scan`): walks the copies in to-space page by page,
 /// visiting their reference slots, until it reaches the copy pointer.
-fn scan<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, Ghost(h): Ghost<H>, Ghost(rptr): Ghost<*mut usize>,
+pub fn scan<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, Ghost(h): Ghost<H>, Ghost(rptr): Ghost<*mut usize>,
                        Ghost(rv): Ghost<Seq<AVal>>,
                        Tracked(st): Tracked<&mut St>, Tracked(others): Tracked<&Map<int, PointsTo<usize>>>,
                        Tracked(ftp): Tracked<&Map<int, PointsTo<usize>>>)
