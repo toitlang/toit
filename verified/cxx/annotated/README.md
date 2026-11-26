@@ -1321,9 +1321,11 @@ branch prims/trust-round byte_array_at, byte_array_length and list_add
 are no longer among them: their ports never fall back (the opaque byte
 arrays read through their tag and length words; list_add's large-array
 backing in Rust, with a bound on the nesting that the C++
-`Interpreter::fast_at` lacked: a deep chain of large arrays made by a
+`Interpreter::fast_at` lacked until branch fix/fast-at-depth (it now gives
+up after 8 nested vectors): a deep chain of large arrays made by a
 program's own library overflowed the native stack, a VM crash; regression
-test tests/sandbox/cli/large-array-chain-main.toit). Nor are blob_equals,
+tests tests/sandbox/cli/large-array-chain-main.toit and
+tests/large-array-depth-test.toit). Nor are blob_equals,
 blob_index_of, compare_simple_json_string, size_of_json_number and
 string_rune_count: their ports take a byte array a transferring send
 neutered (raw bytes of length 0 at a null address, and empty slices of
@@ -2630,7 +2632,7 @@ depend on:
 | an external byte array without an address has length 0 | the same, byte_array_at, byte_array_length | runtime: the allocator and `ByteArray::neuter`; program image: was missing, now from_vm.rs / walk_heap |
 | UTF-8 structure of string contents | none of these decode sequences (string_rune_count counts lead bytes; the json primitives compare bytes); the encoder validates a restricted sender's strings itself | validated where needed (string_at, wave 10; `encode_copy`) |
 | a mapped file's or a proxy's tag and address | byte_array_at, byte_array_length (MappedFileTag), the timer and events proxy ARGS | runtime proxies are made by the C++ only (`set_external_address<T>`); program image: was missing, now refused |
-| List_ has fields 0 and 1; size against the backing's length; the backing's class; a large backing's structure | list_add | size, class and program heap validated by the primitive (`Interpreter::fast_at` checks the LargeArray_ classes, sizes and that each vector is smaller); the field count was missing for format 2, now builtin_classes_error |
+| List_ has fields 0 and 1; size against the backing's length; the backing's class; a large backing's structure | list_add | size, class and program heap validated by the primitive (`Interpreter::fast_at` checks the LargeArray_ classes, sizes and that each vector is smaller, and gives up after 8 nested vectors); the field count was missing for format 2, now builtin_classes_error |
 | list size against backing length, slice bounds, map backing, class ids before casts, nesting and size | the message encoder | validated by the encoder (`encode_array`, `encode_list`, `encode_map`, the nesting and size limits); the builtin classes' tags and field counts were missing for format 2, now builtin_classes_error |
 | boxed number kinds | the 15 number primitives | validated by the ARGS macros (`is_large_integer`, `is_double` by tag); no other object structure |
 | lengths fit a smi | string_length, string_rune_count, the json primitives | program image: content inside the image (from_vm.rs); runtime: the allocators' bounds |

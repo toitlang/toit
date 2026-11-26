@@ -21,9 +21,17 @@
 
 namespace toit {
 
+// The vector of a large array is a large array itself if it has more than
+// ARRAYLET_SIZE entries. Each level divides the size by ARRAYLET_SIZE, so
+// even a large array whose size is the largest Smi has fewer levels than
+// this. The vector is an ordinary field, though, and the fast path gives up
+// on deeper nesting instead of recursing without bound.
+static const int MAX_LARGE_ARRAY_DEPTH = 8;
+
 // Perform a fast at. Return whether the fast at was performed. The return
-// value is in the value parameter.
-bool Interpreter::fast_at(Process* process, Object* receiver, Object* arg, bool is_put, Object** value) {
+// value is in the value parameter. The depth is the number of large arrays
+// whose vector led to the receiver.
+bool Interpreter::fast_at(Process* process, Object* receiver, Object* arg, bool is_put, Object** value, int depth) {
   if (!is_smi(arg)) return false;
 
   word n = Smi::value(arg);
@@ -100,6 +108,7 @@ bool Interpreter::fast_at(Process* process, Object* receiver, Object* arg, bool 
       if (!is_array(vector_object)) {
         // Very large arrays have a large array as vector. Require it to be
         // smaller than this one, so that the recursion terminates.
+        if (depth >= MAX_LARGE_ARRAY_DEPTH) return false;
         if (!is_instance(vector_object)) return false;
         Instance* vector = Instance::cast(vector_object);
         if (vector->class_id() != program->large_array_class_id()) return false;
@@ -107,7 +116,7 @@ bool Interpreter::fast_at(Process* process, Object* receiver, Object* arg, bool 
         if (!is_smi(vector_size) || Smi::value(vector_size) >= size) return false;
       }
       Object* arraylet;
-      if (!fast_at(process, vector_object, Smi::from(n / Array::ARRAYLET_SIZE), /* is_put = */ false, &arraylet)) {
+      if (!fast_at(process, vector_object, Smi::from(n / Array::ARRAYLET_SIZE), /* is_put = */ false, &arraylet, depth + 1)) {
         return false;
       }
       if (!is_array(arraylet)) return false;
