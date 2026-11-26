@@ -51,6 +51,7 @@ pub mod space;
 pub mod cheney;
 pub mod copy;
 pub mod collect;
+pub mod statement;
 #[cfg(all(verus_keep_ghost, toit_gc_bridge))]
 pub mod bridge;
 
