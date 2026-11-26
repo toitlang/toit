@@ -754,15 +754,6 @@ class ServiceManager_ implements SystemMessageHandler_:
   static instance := ServiceManager_
   static uninitialized/bool := true
 
-  /**
-  Called with the group id of a sandboxed client and the uuid of a service
-    it opens; returns whether its container may use the service. Set by the
-    system process, whose providers sandboxes can reach without discovery
-    (system/services.toit). In other processes the VM enforces the
-    discovery grant instead.
-  */
-  static untrusted-open-check_/Lambda? := null
-
   broker_/broker.RpcBroker ::= broker.RpcBroker
 
   clients_/Map ::= {:}              // Map<int, int>
@@ -774,8 +765,8 @@ class ServiceManager_ implements SystemMessageHandler_:
 
   constructor:
     TerminationObserver_.instance.manager = this
-    broker_.register-procedure RPC-SERVICES-OPEN_:: | arguments gid pid |
-      open pid arguments[0] arguments[1] arguments[2] arguments[3] --gid=gid
+    broker_.register-procedure RPC-SERVICES-OPEN_:: | arguments _ pid |
+      open pid arguments[0] arguments[1] arguments[2] arguments[3]
     broker_.register-procedure RPC-SERVICES-CLOSE_:: | arguments _ pid |
       check-client-owner_ arguments pid
       close arguments
@@ -819,7 +810,7 @@ class ServiceManager_ implements SystemMessageHandler_:
     _client_.unlisten id
     providers_.remove id
 
-  open pid/int id/int uuid/string major/int minor/int --gid/int?=null -> List:
+  open pid/int id/int uuid/string major/int minor/int -> List:
     provider/ServiceProvider? ::= providers_.get id
     if not provider: throw "Unknown service:$id"
     service := provider._validate_ uuid major minor
@@ -827,12 +818,6 @@ class ServiceManager_ implements SystemMessageHandler_:
     // (sandboxes don't discover other sandboxes' services).
     if not provider.accepts-untrusted-clients and broker.RpcBroker.is-untrusted_ pid:
       throw "PERMISSION_DENIED"
-    // The allow-list of a sandbox's container (system process only; only
-    // its providers that accept sandboxes need the check, so other opens
-    // pay nothing for it).
-    check := untrusted-open-check_
-    if check and provider.accepts-untrusted-clients and broker.RpcBroker.is-untrusted_ pid:
-      if not (gid and (check.call gid uuid) == true): throw "PERMISSION_DENIED"
 
     // Every open client takes memory in this process until the client
     // closes it, so a sandbox may only have a bounded number of them.

@@ -14,7 +14,7 @@
 // directory of this repository.
 
 import monitor
-import system.services show ServiceProvider ServiceHandler ServiceResource TAG-UNTRUSTED-PROVIDER ServiceManager_
+import system.services show ServiceProvider ServiceHandler ServiceResource TAG-UNTRUSTED-PROVIDER
 import system.api.service-discovery show ServiceDiscoveryService
 import system.api.print show PrintService
 import system.api.containers show ContainerService
@@ -86,22 +86,15 @@ class SystemServiceManager extends ServiceProvider
   static MAX-UNTRUSTED-TAGS ::= 8
 
   /**
-  Called with the group id of a sandboxed process that registers a
-    service; returns whether its launch policy grants it to provide
-    services (see $ContainerService.POLICY-GRANT-PROVIDE-SERVICES). Set
-    by the container manager. Without it, sandboxes can't provide
-    services.
+  Called with the group id of a sandboxed process; returns its container
+    (a `Container` of system/containers.toit) or null. Set by the container
+    manager. The container says whether its launch policy grants it to
+    provide services (see $ContainerService.POLICY-GRANT-PROVIDE-SERVICES)
+    and which services it may use (see
+    $ContainerService.POLICY-SERVICES-INDEX). Without it, sandboxes can't
+    provide services and can only use the services in $ALWAYS-AVAILABLE.
   */
-  may-provide-services/Lambda? := null
-
-  /**
-  Called with the group id of a sandboxed process and a service uuid;
-    returns whether the launch policy of its container lists the service
-    (see $ContainerService.POLICY-SERVICES-INDEX). Set by the container
-    manager. Without it, sandboxes can only use the services in
-    $ALWAYS-AVAILABLE.
-  */
-  may-use-service/Lambda? := null
+  container-of/Lambda? := null
 
   /** The services every sandbox may use: discovery and printing. */
   static ALWAYS-AVAILABLE ::= [
@@ -114,11 +107,6 @@ class SystemServiceManager extends ServiceProvider
     provides ServiceDiscoveryService.SELECTOR --handler=this --id=0
     install
     (SandboxPrintServiceProvider).install
-    // Sandboxes can send messages to the system process without
-    // discovering its providers first, so the providers in this process
-    // check the allow-list when a sandbox opens them as well.
-    ServiceManager_.untrusted-open-check_ = :: | gid/int uuid/string |
-      sandbox-may-use_ gid uuid
 
   /**
   Whether the sandboxed process group $gid may use the service with the
@@ -127,8 +115,9 @@ class SystemServiceManager extends ServiceProvider
   */
   sandbox-may-use_ gid/int uuid/string -> bool:
     if ALWAYS-AVAILABLE.contains uuid: return true
-    check := may-use-service
-    return check != null and (check.call gid uuid) == true
+    lookup := container-of
+    container := lookup ? lookup.call gid : null
+    return container != null and container.may-use-service uuid
 
   // Every process needs service discovery, sandboxed ones included.
   accepts-untrusted-clients -> bool:
@@ -168,12 +157,20 @@ class SystemServiceManager extends ServiceProvider
       throw "WRONG_OBJECT_TYPE"
     if service-tags and (service-tags.any: it is not string): throw "WRONG_OBJECT_TYPE"
 
+    // A sandbox reaches the providers of the system process without the
+    // send grant that discovery hands out, so the service list can't
+    // protect them: the ones that serve sandboxes must be meant for every
+    // sandbox.
+    if accepts-untrusted and pid == Process.current.id and not ALWAYS-AVAILABLE.contains uuid:
+      throw "a system service for sandboxes must be always available"
+
     untrusted := is-untrusted_ pid
     if untrusted:
       // Providing services is a privilege: a sandbox could otherwise offer
       // services that trusted clients expect from trusted providers.
-      grant := may-provide-services
-      if not (grant and (grant.call gid)): throw "SERVICE_REGISTRATION_DENIED"
+      lookup := container-of
+      container := lookup ? lookup.call gid : null
+      if not (container and container.may-provide-services): throw "SERVICE_REGISTRATION_DENIED"
       if uuid.size > MAX-UNTRUSTED-STRING-SIZE or service-name.size > MAX-UNTRUSTED-STRING-SIZE:
         throw "INVALID_ARGUMENT"
       if service-tags and (service-tags.size > MAX-UNTRUSTED-TAGS
@@ -278,8 +275,10 @@ class SystemServiceManager extends ServiceProvider
   Sandboxed ($untrusted) clients only discover providers that serve them
     (that accept sandboxed clients), and only if their container may use
     the service ($allowed, see $sandbox-may-use_). The providers in the
-    system process are reachable without discovery; they check the same
-    when a sandbox opens them (see $ServiceManager_.untrusted-open-check_).
+    system process are reachable without discovery (no send grant is
+    needed for the system process), so the only ones that accept sandboxed
+    clients are the ones every sandbox may use ($ALWAYS-AVAILABLE; see
+    $listen).
     Other clients don't discover the system services that only exist for
     sandboxed clients.
   */

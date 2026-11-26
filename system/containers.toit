@@ -450,12 +450,7 @@ class ContainerManager extends ContainerServiceProvider implements SystemMessage
   postponed_/bool := false  // A check was skipped while booting.
 
   constructor .image-registry .service-manager_:
-    service-manager_.may-provide-services = :: | gid/int |
-      container/Container? := lookup-container gid
-      container != null and container.may-provide-services
-    service-manager_.may-use-service = :: | gid/int uuid/string |
-      container/Container? := lookup-container gid
-      container != null and container.may-use-service uuid
+    service-manager_.container-of = :: | gid/int | lookup-container gid
     set-system-message-handler_ SYSTEM-TERMINATED_ this
     set-system-message-handler_ SYSTEM-SPAWNED_ this
     set-system-message-handler_ SYSTEM-TRACE_ this
