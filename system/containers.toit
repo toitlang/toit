@@ -29,6 +29,7 @@ import .flash.allocation
 import .flash.image-writer
 import .flash.registry
 import .flash.reservation
+import .out-of-memory
 import .services
 
 class Container:
@@ -81,7 +82,9 @@ class Container:
     critical = image.run-critical and not explicitly-untrusted
     pids_ = {}
     try:
-      pids_.add (image.spawn this arguments)
+      // A system process out of memory fails the start (the spawn leaves
+      // nothing behind) instead of restarting the device.
+      pids_.add (with-out-of-memory-retry_: image.spawn this arguments)
     finally: | is-exception exception |
       // The VM refused to run the program (for example because the
       // verifier rejected an untrusted program). It never ran, so the
@@ -339,9 +342,14 @@ abstract class ContainerServiceProvider extends ServiceProvider
 
   image-writer-open client/int size/int -> ServiceResource:
     relocated-size := size - (size / IMAGE-CHUNK-SIZE) * IMAGE-WORD-SIZE
-    reservation := image-registry.reserve relocated-size
+    // A system process out of memory fails the request instead of
+    // restarting the device; the reservation doesn't outlive a failure.
+    reservation := with-out-of-memory-retry_: image-registry.reserve relocated-size
     if not reservation: throw "No space left in flash"
-    return create-container-image-writer_ client reservation
+    try:
+      return with-out-of-memory-retry_: create-container-image-writer_ client reservation
+    finally: | is-exception _ |
+      if is-exception: reservation.close
 
   /**
   Creates a new container image writer service resource.

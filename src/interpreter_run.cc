@@ -1345,6 +1345,11 @@ Interpreter::Result Interpreter::run() {
         }
 
         if (attempts > 3) {
+          // The primitive call ends here, as in the other exits (and as in
+          // v2_primitive_failed): the retry state and the recoverable
+          // marking of the failure (ObjectHeap::leave_primitive) must not
+          // outlive it.
+          process_->object_heap()->leave_primitive();
           sp = push_error(sp, result, "");
           goto THROW_IMPLEMENTATION;
         }

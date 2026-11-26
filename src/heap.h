@@ -183,8 +183,19 @@ class ObjectHeap {
 
   bool retrying_primitive() const { return retrying_primitive_; }
 
+  // Declares that an allocation failure of the current primitive call leaves
+  // nothing behind and that the system process's callers of the primitive
+  // handle its OUT_OF_MEMORY: when the system process runs out of memory in
+  // it, the call fails (after the usual collections) instead of restarting
+  // the device (report_allocation_failure). Set by the primitives the system
+  // process serves for others (starting a container, writing an image, the
+  // flash registry), at their start; cleared when the primitive call ends.
+  void set_allocation_failure_recoverable() { allocation_failure_recoverable_ = true; }
+  bool allocation_failure_recoverable() const { return allocation_failure_recoverable_; }
+
   INLINE void leave_primitive() {
     retrying_primitive_ = false;
+    allocation_failure_recoverable_ = false;
     if (limit_ != pending_limit_) install_heap_limit();
   }
 
@@ -211,6 +222,7 @@ class ObjectHeap {
   void install_heap_limit();
 
   bool retrying_primitive_ = false;
+  bool allocation_failure_recoverable_ = false;
   AllocationResult last_allocation_result_ = ALLOCATION_SUCCESS;
 
   void process_registered_finalizers_helper(FinalizerNodeFifo* list, RootCallback* cb, LivenessOracle* oracle, bool in_closure_queue);

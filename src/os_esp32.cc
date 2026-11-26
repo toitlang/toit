@@ -713,7 +713,7 @@ class HeapSummaryPage {
     memset(void_cast(counts_), 0, sizeof counts_);
     users_ = 0;
     largest_free_ = 0;
-    owning_process_ = null;
+    owning_pid_ = -1;
   }
 
   int register_user(uword tag, uword size) {
@@ -765,7 +765,7 @@ class HeapSummaryPage {
     return "unknown";
   }
 
-  void set_owning_process(Process* process) { owning_process_ = process; }
+  void set_owning_pid(int pid) { owning_pid_ = pid; }
 
  private:
   uword address_;
@@ -777,13 +777,13 @@ class HeapSummaryPage {
   uint16 counts_[NUMBER_OF_MALLOC_TAGS];
   uint16 largest_free_;
   uint16 largest_allocation_;
-  Process* owning_process_;
+  int owning_pid_;
 };
 
 class HeapSummaryCollector {
  public:
   HeapSummaryCollector(word max_pages, Process* current_process)
-      : current_process_(current_process)
+      : current_pid_(current_process == null ? -1 : current_process->id())
       , max_pages_(max_pages) {
     if (max_pages > 0) {
       pages_ = _new HeapSummaryPage[max_pages];
@@ -792,7 +792,7 @@ class HeapSummaryCollector {
     memset(void_cast(sizes_), 0, sizeof sizes_);
     memset(void_cast(counts_), 0, sizeof counts_);
     memset(void_cast(toit_memory_), 0, sizeof toit_memory_);
-    memset(void_cast(processes_), 0, sizeof processes_);
+    memset(void_cast(owners_used_), 0, sizeof owners_used_);
   }
 
   word allocation_requirement() {
@@ -830,26 +830,33 @@ class HeapSummaryCollector {
     counts_[type]++;
   }
 
+  // Attributes the Toit heap pages to their processes. The walk holds the
+  // scheduler lock and copies what the report prints (pid, program id,
+  // whether it is the system process): a process may terminate and be
+  // deleted as soon as the lock is released, so nothing here keeps a
+  // pointer to it (printing a process's program after the walk read freed
+  // memory: LoadProhibited on devices).
   void identify_processes() {
     VM::current()->scheduler()->iterate_process_chunks(this, chunk_callback);
   }
 
-  static void chunk_callback(void* context, Process* process, uword address, uword size) {
-    reinterpret_cast<HeapSummaryCollector*>(context)->chunk_callback(process, address, size);
+  static void chunk_callback(void* context, const Scheduler::ProcessChunkOwner* owner, uword address, uword size) {
+    reinterpret_cast<HeapSummaryCollector*>(context)->chunk_callback(owner, address, size);
   }
 
-  void chunk_callback(Process* process, uword address, uword size) {
+  void chunk_callback(const Scheduler::ProcessChunkOwner* owner, uword address, uword size) {
     for (int i = 0; i < MAX_PROCESSES; i++) {
-      if (processes_[i] == null || processes_[i] == process) {
+      if (!owners_used_[i] || owners_[i].pid == owner->pid) {
         toit_memory_[i] += size;
-        processes_[i] = process;
+        owners_[i] = *owner;
+        owners_used_[i] = true;
         break;
       }
     }
     while (size >= TOIT_PAGE_SIZE) {
       for (int i = 0; i < max_pages_; i++) {
         if (pages_[i].matches(reinterpret_cast<void*>(address))) {
-          pages_[i].set_owning_process(process);
+          pages_[i].set_owning_pid(owner->pid);
         }
       }
       size -= TOIT_PAGE_SIZE;
@@ -888,11 +895,11 @@ class HeapSummaryCollector {
       }
       if (i == TOIT_HEAP_MALLOC_TAG) {
         for (int j = 0; j < MAX_PROCESSES; j++) {
-          if (processes_[j]) {
-            const uint8* uuid = processes_[j]->program()->id();
+          if (owners_used_[j]) {
+            const uint8* uuid = owners_[j].program_id;
             char uuid_buffer[37];
-            bool is_system = VM::current()->scheduler()->is_boot_process(processes_[j]);
-            bool is_current = current_process_ == processes_[j];
+            bool is_system = owners_[j].is_boot_process;
+            bool is_current = current_pid_ == owners_[j].pid;
             sprintf(uuid_buffer, "%08x-%04x-%04x-%04x-%04x%08x",
                 static_cast<int>(Utils::read_unaligned_uint32_be(uuid)),
                 static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 4)),
@@ -904,7 +911,7 @@ class HeapSummaryCollector {
                 static_cast<int>(toit_memory_[j]),
                 static_cast<int>(toit_memory_[j] / TOIT_PAGE_SIZE),
                 is_system ? "system " : is_current ? "current" : "other  ",
-                processes_[j]->id(),
+                owners_[j].pid,
                 uuid_buffer);
           }
         }
@@ -949,8 +956,9 @@ class HeapSummaryCollector {
   uword sizes_[NUMBER_OF_MALLOC_TAGS];
   uword counts_[NUMBER_OF_MALLOC_TAGS];
   uword toit_memory_[MAX_PROCESSES];
-  Process* processes_[MAX_PROCESSES];
-  Process* current_process_;
+  Scheduler::ProcessChunkOwner owners_[MAX_PROCESSES];
+  bool owners_used_[MAX_PROCESSES];
+  const int current_pid_;
   const word max_pages_;
   word dropped_pages_ = 0;
   bool out_of_memory_ = false;

@@ -191,7 +191,32 @@ class Scheduler {
   // Returns the id of the boot process, or INVALID_PROCESS_ID if there is none.
   int boot_process_id();
 
-  void iterate_process_chunks(void* context, process_chunk_callback_t callback);
+  // Whether an allocation of [process] that failed after the collections
+  // gets a full heap report now: always for the system process, else at
+  // most once per OutOfMemoryReportLimiter::INTERVAL_US per process group.
+  // If so, [suppressed] is set to the number of failures of the group that
+  // were not reported since its last report.
+  bool should_report_allocation_failure(Process* process, word* suppressed);
+
+  // The owner of the heap chunks that [iterate_process_chunks] reports,
+  // copied under the scheduler lock. A process can be deleted as soon as
+  // the lock is released (Scheduler::terminate_process unlocks around the
+  // deletion, and its process group and program can go with it), so a walk
+  // must not keep pointers to the process or its program.
+  struct ProcessChunkOwner {
+    int pid;
+    bool is_boot_process;
+    uint8 program_id[UUID_SIZE];
+  };
+  typedef void ProcessChunkCallback(void* context, const ProcessChunkOwner* owner, uword address, uword size);
+
+  // Calls [callback] for every heap chunk of every process, holding the
+  // scheduler lock (and each process's heap lock while its chunks are
+  // reported). The callback runs with the locks held: it must not allocate,
+  // print or take the scheduler lock. Doesn't allocate. Must not be called
+  // with a lock of a higher level than the scheduler's held (a thread that
+  // holds the scheduler lock may call it: the Locker is reentrant).
+  void iterate_process_chunks(void* context, ProcessChunkCallback* callback);
 
  private:
   // Introduce a new process to the scheduler. The scheduler will not terminate until

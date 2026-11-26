@@ -20,6 +20,7 @@
 
 #include "process.h"
 #include "objects_inline.h"
+#include "out_of_memory.h"
 #include "program.h"
 #include "verifier_v2.h"
 
@@ -37,6 +38,15 @@
 namespace toit {
 
 MODULE_IMPLEMENTATION(flash, MODULE_FLASH_REGISTRY)
+
+// The flash registry primitives that allocate are called by the system
+// process while it serves requests for other processes (installing an image,
+// opening a storage region or bucket): an allocation failure fails the call
+// (OUT_OF_MEMORY in the system code, see
+// ObjectHeap::set_allocation_failure_recoverable) instead of restarting the
+// device. None of them leaves anything behind when it fails: they allocate
+// before they change anything, or (allocate) before the header is written.
+#define RECOVERABLE_ALLOCATION_FAILURE process->object_heap()->set_allocation_failure_recoverable()
 
 #if !defined(TOIT_ESP32) && !defined(TOIT_EC618)
 static std::unordered_map<std::string, word*> partitions;
@@ -114,8 +124,9 @@ PRIMITIVE(get_size) {
 PRIMITIVE(get_header_page) {
   PRIVILEGED;
   ARGS(word, offset);
+  RECOVERABLE_ALLOCATION_FAILURE;
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) FAIL(ALLOCATION_FAILED);
+  if (proxy == null || inject_system_allocation_failure(process, "header-page")) FAIL(ALLOCATION_FAILED);
   const FlashAllocation* allocation = FlashRegistry::allocation(offset);
   // Not normally possible, may indicate a bug or a worn flash chip.
   if (!allocation) FAIL(FILE_NOT_FOUND);
@@ -128,6 +139,7 @@ PRIMITIVE(get_header_page) {
 PRIMITIVE(get_all_pages) {
   PRIVILEGED;
   ARGS(word, offset);
+  RECOVERABLE_ALLOCATION_FAILURE;
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
   const FlashAllocation* allocation = FlashRegistry::allocation(offset);
@@ -161,10 +173,13 @@ PRIMITIVE(write_non_header_pages) {
 PRIMITIVE(reserve_hole) {
   PRIVILEGED;
   ARGS(word, offset, word, size);
+  RECOVERABLE_ALLOCATION_FAILURE;
   ASSERT(Utils::is_aligned(offset, FLASH_PAGE_SIZE));
   ASSERT(Utils::is_aligned(size, FLASH_PAGE_SIZE));
   if (size == 0) FAIL(INVALID_ARGUMENT);
-  Reservation* reservation = _new Reservation(offset, size);
+  Reservation* reservation = inject_system_allocation_failure(process, "reserve")
+      ? null
+      : _new Reservation(offset, size);
   if (reservation == null) FAIL(MALLOC_FAILED);
 
   // Check whether reservation overlaps with existing reservations.
@@ -207,6 +222,7 @@ PRIMITIVE(erase_flash_registry) {
 PRIMITIVE(allocate) {
   PRIVILEGED;
   ARGS(word, offset, word, size, int, type, Blob, id, Blob, metadata, Blob, content);
+  RECOVERABLE_ALLOCATION_FAILURE;
   for (auto reservation : reservations) {
     int reserved_offset = reservation->left();
     if (reserved_offset < offset) continue;
@@ -292,6 +308,7 @@ PRIMITIVE(allocate) {
 PRIMITIVE(grant_access) {
   PRIVILEGED;
   ARGS(int, client, int, handle, uword, offset, uword, size, bool, writable);
+  RECOVERABLE_ALLOCATION_FAILURE;
   RegionGrant* grant = _new RegionGrant(client, handle, offset, size, writable);
   if (!grant) FAIL(MALLOC_FAILED);
   Locker locker(OS::global_mutex());
@@ -330,6 +347,7 @@ PRIMITIVE(revoke_access) {
 PRIMITIVE(partition_find) {
   PRIVILEGED;
   ARGS(cstring, path, int, type, uword, size);
+  RECOVERABLE_ALLOCATION_FAILURE;
 #ifdef TOIT_EC618
   USE(path); USE(type); USE(size);
   // EC618 doesn't use ESP-style partitions.

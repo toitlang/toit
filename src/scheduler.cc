@@ -1243,13 +1243,46 @@ Process* Scheduler::find_process(Locker& locker, int pid) {
   return null;
 }
 
-void Scheduler::iterate_process_chunks(void* context, process_chunk_callback_t* callback) {
+bool Scheduler::should_report_allocation_failure(Process* process, word* suppressed) {
+  int64 now = OS::get_monotonic_time();
+  Locker locker(mutex_);
+  if (process == boot_process_) {
+    *suppressed = 0;
+    return true;
+  }
+  return process->group()->out_of_memory_report_limiter()->should_report(now, suppressed);
+}
+
+namespace {
+
+struct ProcessChunkWalk {
+  void* context;
+  Scheduler::ProcessChunkCallback* callback;
+  const Scheduler::ProcessChunkOwner* owner;
+};
+
+void forward_process_chunk(void* context, Process* process, uword address, uword size) {
+  auto walk = static_cast<ProcessChunkWalk*>(context);
+  walk->callback(walk->context, walk->owner, address, size);
+}
+
+}  // namespace
+
+void Scheduler::iterate_process_chunks(void* context, ProcessChunkCallback* callback) {
   Locker locker(mutex_);
   for (ProcessGroup* group : groups_) {
     ProcessListFromProcessGroup& processes = group->processes();
     for (auto it : processes) {
-      if (it->program() == null) continue;  // External process.
-      it->object_heap()->iterate_chunks(context, callback);
+      Program* program = it->program();
+      if (program == null) continue;  // External process.
+      // The processes in the groups' lists are alive while the lock is held
+      // (begin_process_teardown unlinks a process before it is deleted).
+      ProcessChunkOwner owner;
+      owner.pid = it->id();
+      owner.is_boot_process = it == boot_process_;
+      memcpy(owner.program_id, program->id(), UUID_SIZE);
+      ProcessChunkWalk walk = { context, callback, &owner };
+      it->object_heap()->iterate_chunks(&walk, forward_process_chunk);
     }
   }
 }
