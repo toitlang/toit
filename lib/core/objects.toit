@@ -239,9 +239,9 @@ class LazyInitializer_:
       // Add to the blocked queue.
       (id-or-tasks_ as LazyInitializerBlockedTasks_).add blocked
 
-    // Suspend the task.
-    next := blocked.suspend_
-    task-transfer-to_ next false
+    // Suspend the task. Task_.suspend_ transfers to the next running task
+    // and returns when this task runs again.
+    blocked.suspend_
 
   /**
   Resumes all blocked tasks and removes them from the linked list.

@@ -218,8 +218,7 @@ class __Monitor__:
   suspend_ self:
     try:
       self.monitor_ = this
-      next := self.suspend_
-      task-transfer-to_ next false
+      self.suspend_
     finally:
       self.monitor_ = null
 
