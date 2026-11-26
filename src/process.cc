@@ -305,6 +305,31 @@ word Process::sandbox_heap_floor() {
 #endif
 }
 
+word Process::sandbox_growth_headroom() {
+  const word start = sandbox_start_bytes();
+#if defined(TOIT_ESP32)
+  static_assert(CONFIG_TOIT_SANDBOX_GROWTH_HEADROOM_KB >= CONFIG_TOIT_SANDBOX_START_KB,
+                "the heap growth of sandboxes must leave room for a start");
+  const word headroom = static_cast<word>(CONFIG_TOIT_SANDBOX_GROWTH_HEADROOM_KB) * KB;
+#elif defined(TOIT_FREERTOS)
+  const word headroom = 0;
+#else
+  const word headroom = Flags::sandbox_growth_headroom > 0 ? Flags::sandbox_growth_headroom : 0;
+#endif
+  // The order of the levels holds for any configuration.
+  return headroom > start ? headroom : start;
+}
+
+word Process::sandbox_start_bytes() {
+#if defined(TOIT_ESP32)
+  return static_cast<word>(CONFIG_TOIT_SANDBOX_START_KB) * KB;
+#elif defined(TOIT_FREERTOS)
+  return 0;
+#else
+  return Flags::sandbox_start_bytes > 0 ? Flags::sandbox_start_bytes : 0;
+#endif
+}
+
 word Process::system_free_bytes() {
 #if defined(TOIT_ESP32)
   // The memory the system process and the install-time verifier allocate
@@ -327,43 +352,54 @@ word Process::sandbox_heap_room() {
 #ifndef TOIT_FREERTOS
   // Count this process's heap as it is now (the others as they last
   // counted themselves).
+  count_simulated_heap();
+#endif
+  // Growth stops at the floor plus the headroom (see process.h).
+  const word mark = floor + sandbox_growth_headroom();
+  word free = system_free_bytes();
+  return free > mark ? free - mark : 0;
+}
+
+#ifndef TOIT_FREERTOS
+void Process::count_simulated_heap() {
+  // Only sandboxed heaps, and only while the system heap is simulated.
+  if (Flags::sandbox_system_heap <= 0 || !policy_->is_untrusted()) return;
   word reserved = static_cast<word>(Utils::min(object_heap_.reserved_heap_bytes(), static_cast<uword>(INTPTR_MAX / 4)));
   simulated_sandbox_bytes += reserved - simulated_heap_bytes_;
   simulated_heap_bytes_ = reserved;
-#endif
-  word free = system_free_bytes();
-  return free > floor ? free - floor : 0;
 }
-
-bool Process::sandbox_start_allowed(const uint8* program_id) {
-  const word floor = sandbox_heap_floor();
-  if (floor <= 0) return true;
-#if defined(TOIT_ESP32)
-  const word start = static_cast<word>(CONFIG_TOIT_SANDBOX_START_KB) * KB;
-#elif defined(TOIT_FREERTOS)
-  const word start = 0;
-#else
-  const word start = Flags::sandbox_start_bytes > 0 ? Flags::sandbox_start_bytes : 0;
 #endif
+
+Process::SandboxStart Process::sandbox_start_check(const uint8* program_id, bool report_short_of_memory) {
+  const word floor = sandbox_heap_floor();
+  if (floor <= 0) return SANDBOX_START_ALLOWED;
+  const word start = sandbox_start_bytes();
   word free = system_free_bytes();
   int64 delay_us;
   { Locker locker(OS::process_mutex());
     delay_us = sandbox_restart_damper.delay_us(program_id, OS::get_monotonic_time());
   }
-  if (free >= floor && free - floor >= start && delay_us == 0) return true;
+  SandboxStart verdict = SANDBOX_START_ALLOWED;
+  if (delay_us > 0) {
+    verdict = SANDBOX_START_DELAYED;
+  } else if (free < floor || free - floor < start) {
+    verdict = SANDBOX_START_SHORT_OF_MEMORY;
+  }
+  if (verdict == SANDBOX_START_ALLOWED) return verdict;
+  if (verdict == SANDBOX_START_SHORT_OF_MEMORY && !report_short_of_memory) return verdict;
 #ifdef TOIT_FREERTOS
   FILE* out = stdout;
 #else
   FILE* out = stderr;
 #endif
-  if (delay_us > 0) {
+  if (verdict == SANDBOX_START_DELAYED) {
     fprintf(out, "[sandbox start refused: its last run ran out of memory, next start in %d ms]\n",
             static_cast<int>(delay_us / 1000));
   } else {
     fprintf(out, "[sandbox start refused: %d KB free, the floor and a start need %d KB]\n",
             static_cast<int>(free / KB), static_cast<int>((static_cast<int64>(floor) + start) / KB));
   }
-  return false;
+  return verdict;
 }
 
 ByteArray* Process::allocate_byte_array(word length, bool force_external) {

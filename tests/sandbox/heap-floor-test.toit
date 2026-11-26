@@ -9,11 +9,14 @@ Tests the sandbox heap floor: the heap of a sandboxed container doesn't grow
   system process and needs it).
 
 On the host the floor works on a simulated system heap (-Xsandbox_system_heap,
-  each sandboxed process alone in it): with a 600 KB system heap and a 400
-  KB floor, a sandboxed container can't take more than 200 KB, although its
-  heap quota is 2 MB, neither in heap pages nor in external byte arrays. A
-  trusted container with the same quota is not limited, and without the
-  floor the sandboxed container gets its quota.
+  here each sandboxed process alone in it): with a 600 KB system heap, a 400
+  KB floor and a growth headroom of 100 KB above it (the room kept for the
+  messages of sandboxes and for starting sandboxes), a sandboxed container
+  can't take more than 100 KB, although its heap quota is 2 MB, neither in
+  heap pages nor in external byte arrays (before the headroom, sandboxed
+  heaps grew to the floor itself: 200 KB here). A trusted container with the
+  same quota is not limited, and without the floor the sandboxed container
+  gets its quota.
 
 Before the floor, a sandboxed container on a device could grow until the
   system had less than 1 KB free (memory-pressure soak, an untrusted
@@ -58,9 +61,10 @@ main args:
   with-tmp-directory: | dir |
     source := "$dir/heap-floor-main.toit"
     write-file source PROGRAM
-    floor := run toit-run source ["-Xsandbox_heap_floor=400000", "-Xsandbox_system_heap=600000"]
+    floor := run toit-run source ["-Xsandbox_heap_floor=400000", "-Xsandbox_system_heap=600000",
+        "-Xsandbox_growth_headroom=100000"]
     // Sandboxed: [heap pages, external]; then trusted.
-    expect floor[0] < 200
+    expect floor[0] < 100
     expect floor[0] > 20
     expect (floor[1] == "OUT_OF_MEMORY" or floor[1] == "ALLOCATION_FAILED")
     expect-equals 1000 floor[2]

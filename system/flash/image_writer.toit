@@ -21,6 +21,7 @@ import system.services show ServiceProvider ServiceResource
 import .allocation
 import .registry
 import .reservation
+import ..out-of-memory
 
 IMAGE-WORD-SIZE  ::= system.BYTES-PER-WORD
 IMAGE-CHUNK-SIZE ::= (system.BITS-PER-WORD + 1) * IMAGE-WORD-SIZE
@@ -69,12 +70,21 @@ class ContainerImageWriter extends ServiceResource:
       // next collection, so the commit is tried again a few times.
       // The same for the system process out of memory in the primitive
       // (ALLOCATION_FAILED: the verdict's error message; nothing written).
+      // Then sandboxed containers lose before the install fails, as for
+      // opening the writer: they are stopped one at a time, the one
+      // reserving the most memory first, each followed by another attempt
+      // ($out-of-memory-relief_). Only trusted code installs images.
       attempt := 0
       while true:
         exception := catch --unwind=(: not is-out-of-memory-error_ it):
           image-writer-commit_ image_ metadata
         if not exception: break
-        if attempt >= COMMIT-OUT-OF-MEMORY-RETRIES_: throw "OUT_OF_MEMORY"
+        if attempt >= COMMIT-OUT-OF-MEMORY-RETRIES_:
+          relief := out-of-memory-relief_
+          if not relief or not relief.call: throw "OUT_OF_MEMORY"
+          // The stopped container's memory is freed when its processes end.
+          sleep --ms=OUT-OF-MEMORY-RETRY-DELAY-MS_
+          continue
         attempt++
         sleep --ms=COMMIT-OUT-OF-MEMORY-DELAY-MS_ * attempt
       return FlashAllocation.committed reservation_.offset

@@ -20,7 +20,9 @@
 // retry): before, the trusted start failed with OUT_OF_MEMORY while the
 // sandbox kept running; now the sandbox is stopped and the start succeeds.
 // The start of a sandboxed container never stops other sandboxes
-// (system-oom-request-test, whose image is installed untrusted).
+// (system-oom-request-test, whose image is installed untrusted). The commit
+// of an install (trusted code installs) also stops sandboxes after its
+// retries (-Xinject_system_oom=commit:16).
 
 import expect show *
 import system
@@ -49,6 +51,14 @@ main args:
     output = drive dir run image "spawn:8"
     expect-equals ["exit: 0", "sandbox: 243", "system alive"] (outcomes output)
     expect (output.contains "[out of memory in system process: stopping sandboxed container ")
+
+    // The commit of the install (the install-time verification of an
+    // untrusted image runs in it) fails in all four tries (attempt sequences
+    // of 4): the sandbox is stopped and the fifth works. Before, the install
+    // failed with OUT_OF_MEMORY while the sandbox kept running.
+    output = drive dir run image "commit:16"
+    expect-equals ["exit: 0", "sandbox: 243", "system alive"] (outcomes output)
+    expect (output.contains "[out of memory in system process: stopping sandboxed container ")
   print "system-oom-relief-test OK"
 
 drive dir/string run/string image/string injection/string? -> string:
@@ -74,6 +84,7 @@ outcomes output/string -> List:
   result := []
   output.split "\n": | line/string |
     if line.starts-with "exit: " or line.starts-with "start failed: " or line.starts-with "sandbox: "
+        or line.starts-with "install failed: "
         or line == "system alive":
       result.add line
   return result
