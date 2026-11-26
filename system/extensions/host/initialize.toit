@@ -16,6 +16,7 @@
 import system.services show ServiceProvider
 
 import .network
+import .sandbox-network
 import .storage
 
 import ...containers
@@ -27,4 +28,6 @@ initialize-host -> ContainerManager:
   service-manager ::= SystemServiceManager
   (NetworkServiceProvider).install
   (StorageServiceProviderHost registry).install
-  return ContainerManager registry service-manager
+  manager := ContainerManager registry service-manager
+  install-sandbox-network manager
+  return manager
