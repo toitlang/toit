@@ -645,4 +645,187 @@ pub proof fn lemma_fate_frame(c: Ctx, h0: H, h: H, st: St, h2: H, st2: St, main:
     }
 }
 
+/// Killing a key keeps the heap one of the finalizer pass, and the program
+/// heap's header permissions.
+pub proof fn lemma_killed_heap(c: Ctx, h0: H, h: H, j: int, rst: bool, others: Map<int, PointsTo<usize>>)
+    requires ctx_ok(c), heap_ok(c, h), heap_from(c, h0, h), from(h, j), active(obj(h, j)), others_ok(h, others),
+    ensures ({
+        let h2 = with_obj(h, j, killed(obj(h, j), c.nullid@, rst));
+        &&& heap_from(c, h0, h2)
+        &&& others_ok(h2, others)
+        &&& !active(obj(h2, j))
+    }),
+{
+    let o = obj(h, j);
+    let h2 = with_obj(h, j, killed(o, c.nullid@, rst));
+    lemma_from_obj(c, h, j);
+    lemma_clear_bit(hdr(o));
+    assert(o.words.len() >= 1);
+    if rst && resettable(o) { assert(hdr(reset(o, c.nullid@)) == hdr(o)); }
+    assert(hdr(obj(h2, j)) == (hdr(o) - 32) as usize);
+    assert forall|x: int| 0 <= x < h2.objs.len() implies #[trigger] obj(h2, x) == obj(h0, x) || !active(obj(h2, x)) by {
+        if x != j { assert(obj(h, x) == obj(h0, x) || !active(obj(h, x))); }
+    }
+    assert forall|x: int| 0 <= x < h2.objs.len() && !from(h2, x) implies #[trigger] others.contains_key(x) && others[x].ptr()@.addr == h2.addr[x] - 1 by {
+        assert(others.contains_key(x) && others[x].ptr()@.addr == h.addr[x] - 1);
+    }
+}
+
+/// The roots of the parents of the finalizer pass: the root array's values,
+/// then each node's key and lambda.
+pub open spec fn fin_roots(rv: Seq<AVal>, nodes: Seq<Node>) -> Seq<AVal> {
+    rv + Seq::new(2 * nodes.len(), |m: int| if m % 2 == 0 { nodes[m / 2].key } else { nodes[m / 2].lam })
+}
+
+#[inline(always)]
+fn nword(nptr: *mut usize, m: usize, Ghost(nn): Ghost<int>, Tracked(np): Tracked<&Map<int, PointsTo<usize>>>) -> (v: usize)
+    requires nodes_mem(*np, nptr, nn), 0 <= m < 4 * nn, np[m as int].is_init(),
+    ensures v == np[m as int].value(),
+{
+    proof {
+        lemma_w();
+        assert(wperm_ok(*np, m as int, nptr, m as int));
+        assert(m * W <= 4 * nn * W) by (nonlinear_arith) requires m <= 4 * nn, W >= 1;
+    }
+    rd(nptr, m, Ghost(m as int), Tracked(np))
+}
+
+#[inline(always)]
+fn set_nword(nptr: *mut usize, m: usize, v: usize, Ghost(nn): Ghost<int>, Tracked(np): Tracked<&mut Map<int, PointsTo<usize>>>)
+    requires nodes_mem(*old(np), nptr, nn), 0 <= m < 4 * nn,
+    ensures
+        nodes_mem(*final(np), nptr, nn),
+        final(np)[m as int].is_init(), final(np)[m as int].value() == v,
+        forall|q: int| q != m ==> #[trigger] final(np)[q] == old(np)[q],
+{
+    proof {
+        lemma_w();
+        assert(wperm_ok(*np, m as int, nptr, m as int));
+        assert(m * W <= 4 * nn * W) by (nonlinear_arith) requires m <= 4 * nn, W >= 1;
+    }
+    let ghost np0 = *np;
+    wr(nptr, m, v, Ghost(m as int), Tracked(np));
+    proof {
+        assert forall|q: int| 0 <= q < 4 * nn implies #[trigger] wperm_ok(*np, q, nptr, q) by {
+            assert(wperm_ok(np0, q, nptr, q));
+        }
+    }
+}
+
+/// One registered or queued callback node (`ToitFinalizerNode` and
+/// `WeakMapFinalizerNode::weak_processing`, without the zapping of a live
+/// weak map's values: before that is done, weak maps are traced as
+/// strong maps). Returns the heap after it.
+pub fn fin_node<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, nptr: *mut usize, i: usize, nn: usize,
+                               Ghost(h0): Ghost<H>, Ghost(h): Ghost<H>, Ghost(nodes): Ghost<Seq<Node>>,
+                               Ghost(main): Ghost<Set<int>>, Ghost(n0): Ghost<int>,
+                               Ghost(rptr): Ghost<*mut usize>, Ghost(rv): Ghost<Seq<AVal>>, Ghost(rvp): Ghost<Seq<AVal>>,
+                               Tracked(st): Tracked<&mut St>, Tracked(ro): Tracked<&Ro>,
+                               Tracked(np): Tracked<&mut Map<int, PointsTo<usize>>>) -> (r: Ghost<H>)
+    requires
+        ctx_ok(*c), fpages_ok(*c), ftab_ok(*c, ro.ftp), heap_ok(*c, h), others_ok(h, ro.others), ctab_ok(*c, ro.ctp),
+        inv(*c, h, *old(st), *old(t), n0, 0, rvp), roots_ok(*c, h, *old(st), rptr, rv, rv.len() as int),
+        src_ok(*c, *old(src), *old(t)),
+        0 <= n0 <= old(st).order.len(),
+        heap_from(*c, h0, h),
+        forall|j: int| #[trigger] main.contains(j) ==> copied(*old(st), j),
+        i < nn, nodes.len() == nn, nodes[i as int].kind <= KIND_WEAK_QUEUED,
+        slot_ok(*c, h.objs.len() as int, nodes[i as int].key), slot_ok(*c, h.objs.len() as int, nodes[i as int].lam),
+        rvp == fin_roots(rv, nodes),
+        nodes_mem(*old(np), nptr, nn as int), node_in(*old(np), h0, nodes[i as int], i as int),
+    ensures
+        heap_from(*c, h0, r@), heap_ok(*c, r@), others_ok(r@, ro.others),
+        inv(*c, r@, *final(st), *final(t), n0, 0, rvp), roots_ok(*c, r@, *final(st), rptr, rv, rv.len() as int),
+        src_ok(*c, *final(src), *final(t)),
+        grows(h, *old(st), *final(st)), final(st).addr2.len() == old(st).addr2.len(),
+        forall|x: int| 0 <= x < h.objs.len() && #[trigger] obj(r@, x) != obj(h, x) ==>
+            active(obj(h, x)) && from(h, x) && !copied(*old(st), x)
+            && nodes[i as int].key == AVal::Ref(x) && obj(h, x) == obj(h0, x)
+            && obj(r@, x) == killed(obj(h0, x), c.nullid@, nodes[i as int].kind != KIND_TOIT),
+        node_out(*c, h0, r@, *final(st), main, *final(np), nodes[i as int], i as int),
+        nodes_mem(*final(np), nptr, nn as int),
+        forall|q: int| !(4 * i <= q < 4 * i + 4) ==> #[trigger] final(np)[q] == old(np)[q],
+        final(t).ttab == old(t).ttab, final(t).tused == old(t).tused, final(t).tcap == old(t).tcap,
+{
+    let ghost nd = nodes[i as int];
+    let ghost s0 = *st;
+    let ghost n = h.objs.len() as int;
+    let ghost ki = rv.len() + 2 * i;
+    proof {
+        assert(rvp[ki] == nd.key && rvp[ki + 1] == nd.lam);
+        assert(h.addr == h0.addr);
+    }
+    let kind = nword(nptr, 4 * i, Ghost(nn as int), Tracked(&*np));
+    let kw = nword(nptr, 4 * i + 1, Ghost(nn as int), Tracked(&*np));
+    let lw = nword(nptr, 4 * i + 2, Ghost(nn as int), Tracked(&*np));
+    let (dead, act, s, off, cur) = key_status(c, kw, Ghost(h), Ghost(nd.key), Ghost(*t), Ghost(n0), Ghost(0int), Ghost(rvp),
+                                             Tracked(&*st), Tracked(ro));
+    let ghost mut hr = h;
+    let k2: usize;
+    let l2: usize;
+    let verdict: usize;
+    if kind == KIND_TOIT_QUEUED {
+        let a = forward(c, src, t, kw, Ghost(h), Ghost(nd.key), Ghost(n0), Ghost(0int), Ghost((-1 - ki, 0int)), Ghost(rptr),
+                        Ghost(rv), Ghost(rvp), Ghost(rv.len() as int), Tracked(st), Tracked(ro));
+        let ghost s1 = *st;
+        let b = forward(c, src, t, lw, Ghost(h), Ghost(nd.lam), Ghost(n0), Ghost(0int), Ghost((-1 - (ki + 1), 0int)), Ghost(rptr),
+                        Ghost(rv), Ghost(rvp), Ghost(rv.len() as int), Tracked(st), Tracked(ro));
+        proof {
+            assert(bk_ok(h, s0) && bk_ok(h, s1));
+            lemma_grows_trans(h, s0, s1, *st);
+            if nd.key is Ref { assert(st.addr2[nd.key->Ref_0] == s1.addr2[nd.key->Ref_0]); if copied(s1, nd.key->Ref_0) { assert(copied(*st, nd.key->Ref_0)); } }
+        }
+        k2 = a;
+        l2 = b;
+        verdict = KEEP;
+    } else if !act {
+        k2 = kw;
+        l2 = lw;
+        verdict = DELETE;
+    } else if !dead {
+        let b = forward(c, src, t, lw, Ghost(h), Ghost(nd.lam), Ghost(n0), Ghost(0int), Ghost((-1 - (ki + 1), 0int)), Ghost(rptr),
+                        Ghost(rv), Ghost(rvp), Ghost(rv.len() as int), Tracked(st), Tracked(ro));
+        proof {
+            if nd.key is Ref { assert(st.addr2[nd.key->Ref_0] == s0.addr2[nd.key->Ref_0]); if copied(s0, nd.key->Ref_0) { assert(copied(*st, nd.key->Ref_0)); } }
+        }
+        k2 = cur;
+        l2 = b;
+        verdict = KEEP;
+    } else if kind == KIND_TOIT {
+        let ghost j = nd.key->Ref_0;
+        proof {
+            assert(obj(h, j) == obj(h0, j));
+        }
+        kill_key(c, s, off, false, Ghost(h), Ghost(j), Ghost(*t), Ghost(n0), Ghost(0int), Ghost(rv), Ghost(rvp), Ghost(rptr),
+                 Ghost(rv.len() as int), Tracked(st), Tracked(ro));
+        proof { lemma_killed_heap(*c, h0, h, j, false, ro.others); }
+        proof { hr = with_obj(h, j, killed(obj(h, j), c.nullid@, false)); }
+        let ghost s1 = *st;
+        let b = forward(c, src, t, lw, Ghost(hr), Ghost(nd.lam), Ghost(n0), Ghost(0int), Ghost((-1 - (ki + 1), 0int)), Ghost(rptr),
+                        Ghost(rv), Ghost(rvp), Ghost(rv.len() as int), Tracked(st), Tracked(ro));
+        k2 = c.null;
+        l2 = b;
+        verdict = QUEUE;
+    } else {
+        let ghost j = nd.key->Ref_0;
+        proof {
+            assert(obj(h, j) == obj(h0, j));
+        }
+        kill_key(c, s, off, true, Ghost(h), Ghost(j), Ghost(*t), Ghost(n0), Ghost(0int), Ghost(rv), Ghost(rvp), Ghost(rptr),
+                 Ghost(rv.len() as int), Tracked(st), Tracked(ro));
+        proof { lemma_killed_heap(*c, h0, h, j, true, ro.others); }
+        proof { hr = with_obj(h, j, killed(obj(h, j), c.nullid@, true)); }
+        k2 = kw;
+        l2 = lw;
+        verdict = DELETE;
+    }
+    set_nword(nptr, 4 * i + 1, k2, Ghost(nn as int), Tracked(np));
+    set_nword(nptr, 4 * i + 2, l2, Ghost(nn as int), Tracked(np));
+    set_nword(nptr, 4 * i + 3, verdict, Ghost(nn as int), Tracked(np));
+    proof {
+        assert(np[4 * i as int].value() == nd.kind);
+    }
+    Ghost(hr)
+}
+
 } // verus!
