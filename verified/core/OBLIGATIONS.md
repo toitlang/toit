@@ -16,10 +16,13 @@ and on every later run, and `src/process.rs` composes the two over any
 number of runs (`theorem_process`, which also gives every state a run
 starts in the conclusion of the spec's soundness theorem). The run loop
 (`step::run_loop`, verified) never fails a view precondition; each step
-reports a stuck result only for the resource limit (`step_post`), but its
-exported contract `run_post` constrains only the preempted and yielded
-results (the fatal path for a wrapping program-heap range and the limit
-exits satisfy it trivially). The precondition of `run_loop` is not checked
+reports a stuck result only for the resource limit (`step_post`), and
+since 2026-11-26 (branch prims/trust-round) its exported contract
+`run_post` says so for the run: `run_loop`'s ghost third result
+(`RunEnd`) is an exit of a step or the reason of the run's one stuck
+report, which is `stuck::LIMIT` or, before the first instruction,
+`stuck::FATAL` for a program-heap range that wraps around (`stop_ok`).
+The precondition of `run_loop` is not checked
 at its call site (`machine::run`, plain Rust): that the runtime machine
 satisfies `loaded` and `resumed` is the trusted glue of TRUSTED.md
 section 6. It rests on the contracts of TRUSTED.md section 6:

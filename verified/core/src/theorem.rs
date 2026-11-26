@@ -22,15 +22,19 @@
 //! postcondition. The run loop is such a function:
 //!
 //! ```text
-//! pub fn step::run_loop(m: &mut Machine, env: &Env, accepted: &ffi::Accepted) -> (r: (usize, i64))
+//! pub fn step::run_loop(m: &mut Machine, env: &Env, accepted: &ffi::Accepted) -> (r: (usize, i64, Ghost<RunEnd>))
 //!     requires old(m).inv(&env.p),
-//!     ensures run_post(&env.p, *old(m), *final(m), r),
+//!     ensures run_post(&env.p, *old(m), *final(m), (r.0, r.1), r.2@),
 //! ```
 //!
 //! `Machine::inv` is "the machine refines a well-formed state of an
 //! accepted program" (exec.rs: `refines && accepts && wf`). `run_post`
-//! says the loop never reports a stuck state of the spec and never takes a
-//! fatal path; it returns preempted or yielded only with the machine
+//! says the loop never reports a stuck state of the spec: it stops on a
+//! stuck report only for the resource limit (`stuck::LIMIT`) or, before
+//! the first instruction, for a program heap whose address range wraps
+//! (`step::stop_ok`; the ghost result `RunEnd` says which report a run
+//! made; until 2026-11-26 this sentence claimed it without `run_post`
+//! saying it). It returns preempted or yielded only with the machine
 //! refining a well-formed state that the spec reaches from the start
 //! state (`step::advances`: the spec's completed outcomes,
 //! `theorem::outcome`: the step, raises completed by `prim::raised`,
@@ -111,7 +115,7 @@ pub proof fn theorem_next_run(p: &Program, m0: &Machine, m1: &Machine, m2: &Mach
     requires
         m0.inv(p),
         reaches(p.ap@, s0, m0.g@),
-        run_post(p, *m0, *m1, r),
+        run_states(p, *m0, *m1, r),
         r.0 == RESULT_PREEMPTED || r.0 == RESULT_YIELDED,
         resumed(p, m1, m2),
     ensures

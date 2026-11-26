@@ -25,6 +25,17 @@ docs/sandbox-guarantee.md.
   copy-on-write path writes a fresh copy). Spec and core counts unchanged
   (spec 1090, core 1092/1094, core-split 1094/1096 at 64/32 bits);
   THEOREMS.txt unchanged; new epoch (spec crate and view.rs).
+- Item 5, how a run stops: `step::run_loop` returns a ghost third result
+  `RunEnd` (`Exit`: an exit of a step; `Stuck(reason)`: the reason of the
+  run's one stuck report, all made by `leave_stuck`), and `run_post` now
+  says that a stuck report is `stuck::LIMIT` or, before the first
+  instruction, `stuck::FATAL` for a program-heap range that wraps
+  (`stop_ok`), with the result `(RESULT_TERMINATED, 1)`. The states part
+  is `run_states`, which `theorem_next_run` and `process::scheduled` use
+  (unchanged in meaning). `machine::run` drops the ghost result. What
+  remains: the wrap check itself (a run stops with FATAL if the program
+  heap's range wraps the address space, which the C++ allocation of an
+  image never gives). No new trusted item; theorem.rs is an epoch input.
 
 ## Memory pressure on the classic ESP32 (branch device/memory-pressure, 2026-11-25)
 

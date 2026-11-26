@@ -173,11 +173,21 @@ then renames the live objects to `0..n` (the live set contains the
 state's roots and is closed under references) and drops the rest;
 nothing else changes. Collections keep `wf` (`lemma_gc_steps_wf`).
 
-**`run_post(p, m0, m1, r)`** (`step.rs`): if the run returns preempted
-or yielded, `m1.inv(p)` and `reaches(ap, m0.g, m1.g)`. The run loop
+**`run_post(p, m0, m1, r, e)`** (`step.rs`): if the run returns
+preempted or yielded, `m1.inv(p)` and `reaches(ap, m0.g, m1.g)`
+(`run_states`); and if it ended with a stuck report (`e` is
+`RunEnd::Stuck(reason)`, the ghost third result of `run_loop`: the
+reason the one `V2_REPORT_STUCK` call of a run passes), the result is
+`(RESULT_TERMINATED, 1)` and `stop_ok(p, reason)`: the reason is the
+resource limit `stuck::LIMIT`, or `stuck::FATAL` for a program heap
+whose address range wraps around (`!ro_ok(p)`, checked before the first
+instruction; the C++ loader never makes one). So a run never stops on a
+stuck state of the spec (since 2026-11-26, branch prims/trust-round;
+before, only `step_post` said so, roadmap item 5). The run loop
 (`step::run_loop`, `requires old(m).inv(&env.p)`, `ensures
-run_post(...)`) is a verified exec function; every other result ends the
-process.
+run_post(&env.p, *old(m), *final(m), (r.0, r.1), r.2@)`) is a verified
+exec function; every other result ends the process (an exit of a step:
+`RunEnd::Exit`). The theorems between runs use `run_states`.
 
 **`theorem_soundness`** (`verified/spec/src/v2/theorem.rs`): if
 `accepts(p, c, trusted)`, `!p.unchecked`, `loaded_ok(p, c, heap0,
@@ -204,8 +214,9 @@ yielded, and `resumed(p, m1, m2)`, then `m2.inv(p)` and
 document): for machines `ms[0..n]` (the start of each run), `es` and
 `rs` (the end and result of each run) with
 * `loaded(p, ms[0], heap0, globals0)`,
-* for every run `i < n - 1`: `ms[i].inv(p) ==> run_post(p, ms[i], es[i], rs[i])`
-  (exactly `run_loop`'s contract), `rs[i]` preempted or yielded, and
+* for every run `i < n - 1`: `ms[i].inv(p) ==> run_states(p, ms[i], es[i], rs[i])`
+  (the states part of `run_loop`'s contract `run_post`), `rs[i]`
+  preempted or yielded, and
   `resumed(p, es[i], ms[i + 1])`,
 * `!p.ap.unchecked` (implied by `accepts` for every untrusted program),
 
@@ -627,7 +638,7 @@ the effort. Sizes: small (hours to a day), days, weeks.
 | 2 | Decide whether the verified core is the default for device firmware (`TOIT_VERIFIED_CORE`) | the claim applies to the shipped firmware, not a variant | small (decision), size issue on classic ESP32 | none | decision |
 | 3 | ~~Check the allowed primitive set in the verifier~~ **Done 2026-11-26** (branch verifier/single-pass): `accepts` checks every PRIMITIVE against the policy's table (allowed with the arity, denied or absent: programs contain denied calls by design, so they are completed with PERMISSION_DENIED or PRIMITIVE_LOOKUP_FAILED by the core, not rejected); the core runs a primitive only where the table allows it (`prim_allowed` required by `gc_call_primitive` and `prims::call`) | "can call only the primitives of its policy" is a theorem; the `core_arities` trust is gone (replaced by `policy_rel`: the core gets the table the verdict was computed with) | days | new epoch | proof, verifier change |
 | 4 | ~~Strengthen `prim_heap_ok`: read-only objects and the `ro` flag unchanged~~ **Done 2026-11-26** (branch prims/trust-round): `prim_heap_ok` keeps every read-only object and every `ro` flag; the 106 Rust ports are proved against it, for the C++ primitives it is part of the assumed contract (section 2.4); hardening tests of the refusal. Not exported as a run-level theorem: that needs the program heap as a fixed prefix of read-only objects referring only to read-only objects (an invariant `refines` and `loaded` do not carry yet) to cross collections, and suspended stacks and tasks known to be mutable for `task_step` | "never modifies read-only program data" holds for primitives within their contract (C++ primitives assumed, Rust ports proved) | small | new epoch (taken on the branch) | spec change |
-| 5 | Export what `step_post` already proves into `run_post`: a run never stops on a spec-stuck state, only on the resource limit | the theorem says the defensive checks never fire, not only that every reported state is fine | small | `run_loop` change | proof |
+| 5 | ~~Export what `step_post` already proves into `run_post`: a run never stops on a spec-stuck state, only on the resource limit~~ **Done 2026-11-26** (branch prims/trust-round): `run_loop` returns a ghost `RunEnd` (an exit of a step, or the reason of its one stuck report) and `run_post` says a stuck report is `stuck::LIMIT`, or `stuck::FATAL` before the first instruction for a program heap whose address range wraps (`stop_ok`); what remains is that wrap check, which the C++ loader's allocation never triggers | the theorem says the defensive checks never fire, not only that every reported state is fine | small | `run_loop` change | proof |
 | 6 | The 10 reachable contract-only fallbacks, the 9 test-only and 2 review-only retry rules | "every primitive an untrusted program can reach is proved against its contract" | days to weeks | none | proof, or code removal (port to Rust, or make the fallback unreachable) |
 | 6a | ~~Make the epoch's inputs the whole contract the core assumes~~ **Done 2026-11-26**: `abs.rs`, `exec.rs`, `view.rs`, `layout.rs`, `src/interpreter_v2.cc` and `src/primitive_policy.*` are inputs | "a verdict is used only by the checks and contract that computed it" without a manual step | small | one epoch change | gate |
 | 6b | Run the layout check on device builds (or generate the device constants from the target headers) | removes "device layout from the i686 check" | days | device toolchains in the gate | gate |
@@ -670,8 +681,9 @@ Between prose and theorems:
    path". `run_post` constrains only preempted and yielded results. The
    step-level contract (`step_post`) does restrict stuck results to the
    resource limit, but that is not exported, and `run_loop` has a fatal
-   path (a program-heap range that wraps). Not changed here: theorem.rs
-   is an input of the verification epoch (roadmap item 5).
+   path (a program-heap range that wraps). Fixed 2026-11-26 (branch
+   prims/trust-round, roadmap item 5): `run_post` now says it, with the
+   wrap check as the one other stuck report, and the comment says so.
 2. The same comment says the composition holds "for any number of runs
    and steps" without a theorem; now `theorem_process`.
 3. `verified/spec/SOUNDNESS.md` showed the theorem without the
