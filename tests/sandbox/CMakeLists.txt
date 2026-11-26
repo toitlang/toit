@@ -13,6 +13,7 @@ set(TOOL_TESTS
   "tests/sandbox/verify-launch-test.toit"
   "tests/sandbox/install-verdict-test.toit"
   "tests/sandbox/boot-refused-test.toit"
+  "tests/sandbox/boot-oom-test.toit"
   "tests/sandbox/verdict-epoch-test.toit"
   "tests/sandbox/invalid-utf-8-literal-test.toit"
   "tests/sandbox/heap-floor-test.toit"

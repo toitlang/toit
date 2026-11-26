@@ -34,6 +34,14 @@ boot container-manager/ContainerManager -> int:
       // booting. The container manager decides whether the refusal is
       // fatal (see ContainerManager.on-container-refused_).
       exception := catch: image.load.start
+      if exception and is-out-of-memory-error_ exception:
+        // The system process ran out of memory starting a boot container:
+        // the system ends with an error, which restarts a device, as when
+        // the system process runs out of memory elsewhere. A firmware that
+        // isn't validated yet is rolled back then (the previous one may
+        // boot); refusing the container instead could keep it.
+        print-on-stderr_ "[out of memory in system process: starting boot container $image.id failed; ending the system]"
+        return 1
       if exception:
         print-on-stderr_ "Failed to start container $image.id: $exception"
   // Only now, with every boot container started (or refused), may the
