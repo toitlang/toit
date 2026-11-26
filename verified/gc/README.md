@@ -24,6 +24,10 @@ into the VM yet (M5). The C++ prototype it ports is `src/sandbox_gc.cc`.
 - `src/fin.rs`: the finalizer pass (M4): finalizer nodes and their fates,
   killing a dead key (finalizer bit cleared, a weak map reset), the
   callback and queued nodes, the VM nodes; `fin_done`.
+- `src/tail.rs`: the tail bound of the reservation: a pass over the
+  from-space pages for the largest object, `reserve_pages`.
+- `src/shrink.rs`: stack shrinking after the copy (`cimg`, `shrink_stacks`),
+  `same_abstraction`.
 - `src/bridge.rs` (Verus only): `collected` implies the core's
   `gcbridge::collected` and a collection of the spec; from the core's state
   with the C++ roots (M3); with the finalizer pass, the reset weak maps
