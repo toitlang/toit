@@ -513,6 +513,19 @@ menu "Toit"
             OUT_OF_MEMORY, as at its heap quota. 0 turns the floor off
             (docs/sandbox-policy.md, "Quotas").
 
+    config TOIT_HEARTBEAT_S
+        int "Print a heartbeat line every N seconds (diagnostic; 0 = off)"
+        default 0
+        range 0 3600
+        help
+            The scheduler's tick prints "[heartbeat] t=... free=...
+            largest=... processes=..." every N seconds, and every process
+            end is printed ("[process P (group G) exited: CODE]"). A device
+            that only stopped printing (its printing containers ended) keeps
+            printing the heartbeat; a hang that blocks the tick (and with it
+            the dead-lock check, the only hang detector: no watchdog is
+            armed) stops it. For device runs only.
+
     config TOIT_SANDBOX_START_KB
         int "Free heap (KB) above the floor that starting a sandboxed container needs"
         default 16

@@ -205,6 +205,11 @@ void Process::set_spawn_arguments(SnapshotBundle system, SnapshotBundle applicat
 #endif
 
 SystemMessage* Process::take_termination_message(uint8 result) {
+#if defined(TOIT_ESP32) && CONFIG_TOIT_HEARTBEAT_S > 0
+  // Diagnostic (with the heartbeat): every process end, so a container that
+  // dies without a trace is seen.
+  printf("[process %d (group %d) exited: %d]\n", id(), group_->id(), static_cast<int>(result));
+#endif
   // A sandboxed run that dies after its group ran out of memory delays the
   // next sandboxed start of its program (called under the scheduler lock,
   // which guards the group's report limiter).

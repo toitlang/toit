@@ -32,6 +32,11 @@
 #include <freertos/FreeRTOS.h>
 #endif  // TOIT_FREERTOS
 
+#ifdef TOIT_ESP32
+#include <esp_heap_caps.h>
+#include <sdkconfig.h>
+#endif
+
 
 namespace toit {
 
@@ -1121,6 +1126,20 @@ void Scheduler::tick(Locker& locker, int64 now) {
   // A healthy CPU-bound process need not return to the scheduler. The tick
   // thread must keep platform watchdogs alive in that case as well.
   OS::feed_watchdog();
+#if defined(TOIT_ESP32) && CONFIG_TOIT_HEARTBEAT_S > 0
+  // A diagnostic heartbeat (Kconfig TOIT_HEARTBEAT_S): a device that only
+  // stopped printing (its printing containers ended) keeps printing it; a
+  // hang that blocks the tick (and with it the dead-lock check) doesn't.
+  static int64 next_heartbeat_us = 0;
+  if (now >= next_heartbeat_us) {
+    next_heartbeat_us = now + static_cast<int64>(CONFIG_TOIT_HEARTBEAT_S) * 1000000;
+    printf("[heartbeat] t=%ds free=%d largest=%d processes=%d\n",
+           static_cast<int>(now / 1000000),
+           static_cast<int>(heap_caps_get_free_size(MALLOC_CAP_8BIT)),
+           static_cast<int>(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)),
+           num_processes_);
+  }
+#endif
   tick_schedule(locker, now, true);
 
   int first_non_empty_ready_queue = NUMBER_OF_READY_QUEUES;
