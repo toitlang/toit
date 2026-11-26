@@ -3,9 +3,10 @@
 // be found in the tests/LICENSE file.
 
 // Run with 'toit run --untrusted'. Finally code entered by an unwinding
-// (verified/spec/format/17-finally-records.md) keeps a finally record in
-// the task's stack: the records must survive calls, stack growth, GC and
-// task switches, and nested try/finally inside finally code.
+// keeps the pending unwinding in its own slots (format 3, two token words:
+// verified/spec/format/23-format3-try.md; before, a finally record,
+// 17-finally-records.md): it must survive calls, stack growth, GC and task
+// switches, and nested try/finally inside finally code.
 
 deep n/int -> int:
   if n == 0: return 0

@@ -28,7 +28,7 @@
 #   audit                                      host-sdk, verus
 #   layout-check, sandbox-ctests               host-tests-build
 #   redteam3-heap, redteam3-asm,               host-sdk, asan-build
-#     redteam4-{A,B,D,E,F}
+#     redteam4-{A,B,D,E,F}, redteam5-T
 #   redteam4-C                                 host-sdk, host32-build
 #   ctest-host                                 host-tests-build, layout-check,
 #                                              sandbox-ctests
@@ -148,6 +148,7 @@ declare -A DEPS=(
   [redteam4-D]="host-sdk asan-build"
   [redteam4-E]="host-sdk asan-build"
   [redteam4-F]="host-sdk asan-build"
+  [redteam5-T]="host-sdk asan-build"
 )
 
 # Writes into build/host take check.sh's lock of that directory (its

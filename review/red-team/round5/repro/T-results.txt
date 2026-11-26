@@ -1,0 +1,49 @@
+# Line-T try/finally battery Thu Nov 26 18:25:37 CET 2026
+[good-try] x{0/0/0/0} untrusted: ran: 4; trusted: ran: 4
+[good-reason] x{0/0/0/0} untrusted: ran: 4 -1 null; trusted: ran: 4 -1 null
+[t-good] x{0/0/0/0} untrusted: ran: x; trusted: ran: x
+[t-reason] x{0/0/0/0} untrusted: ran: -2 x; trusted: ran: -2 x
+[t-throw-in-finally] x{0/0/0/0} untrusted: ran: 9; trusted: ran: 9
+[forge-normal] x{0/0/1/1} untrusted: reject: untrusted program rejected: UNWIND: UNWIND rejected with kinds [Val, Val, Val, Val]; trusted: ran: 
+[forge-throw] x{0/0/0/0} untrusted: reject: untrusted program rejected: UNWIND: UNWIND rejected with kinds [Val, Val, Val, Val]; trusted: ran: Uncaught exception: LOOKUP_FAILED
+[forge-return] x{0/0/1/1} untrusted: reject: untrusted program rejected: UNWIND: UNWIND rejected with kinds [Val, Val, Val, Val]; trusted: ran: 
+[forge-branch] x{0/0/1/1} untrusted: reject: untrusted program rejected: UNWIND: UNWIND rejected with kinds [Val, Val, Val, Val]; trusted: ran: 
+[forge-null] x{0/0/0/0} untrusted: reject: untrusted program rejected: UNWIND: UNWIND rejected with kinds [Val, Val, Val, Val]; trusted: ran: verified core: stuck state 21 at bci 423: terminating the process
+[forge-method] x{0/0/0/0} untrusted: reject: untrusted program rejected: UNWIND: UNWIND rejected with kinds [Val, Method(30), Method(30), Val]; trusted: ran: verified core: stuck state 21 at bci 431: terminating the process
+[forge-b] x{0/0/0/0} untrusted: reject: untrusted program rejected: UNWIND: UNWIND rejected with kinds [Method(30), Val, Token, Val, Val]; trusted: ran: 4
+[forge-both] x{0/0/0/0} untrusted: reject: untrusted program rejected: UNWIND: UNWIND rejected with kinds [Method(30), Val, Val, Val, Val]; trusted: ran: 4
+[store-a] x{0/0/0/0} untrusted: reject: untrusted program rejected: STORE_LOCAL 3: STORE_LOCAL rejected with kinds [Method(30), Val, Token, Token, Val, Val]; trusted: ran: 4
+[store-b] x{0/0/0/0} untrusted: reject: untrusted program rejected: STORE_LOCAL_POP 2: STORE_LOCAL_POP rejected with kinds [Method(30), Val, Token, Token, Val, Val]; trusted: ran: 4 Uncaught exception: LOOKUP_FAILED
+[store-reason] x{0/0/0/0} untrusted: ran: 4; trusted: ran: 4
+[dup-b] x{0/0/0/0} untrusted: reject: untrusted program rejected: LOAD_LOCAL_1: LOAD_LOCAL_1 rejected with kinds [Method(30), Val, Token, Token, Val]; trusted: ran: 4
+[dup-a] x{0/0/0/0} untrusted: reject: untrusted program rejected: LOAD_LOCAL_2: LOAD_LOCAL_2 rejected with kinds [Method(30), Val, Token, Token, Val]; trusted: ran: 4
+[dup-pop-load] x{0/0/0/0} untrusted: reject: untrusted program rejected: POP_LOAD_LOCAL 2: POP_LOAD_LOCAL rejected with kinds [Method(30), Val, Token, Token, Val, Val]; trusted: ran: 4
+[dup-wide] x{0/0/0/0} untrusted: reject: untrusted program rejected: LOAD_LOCAL_WIDE 1 0: LOAD_LOCAL_WIDE rejected with kinds [Method(30), Val, Token, Token, Val]; trusted: ran: 4
+[dup-unwind] x{0/0/0/0} untrusted: reject: untrusted program rejected: LOAD_LOCAL_3: LOAD_LOCAL_3 rejected with kinds [Method(30), Val, Token, Token, Val, Val]; trusted: ran: 4
+[unwind-twice] x{0/0/0/0} untrusted: reject: untrusted program rejected: UNWIND: UNWIND rejected with kinds [Method(30)]; trusted: ran: 4 verified core: stuck state 1 at bci 426: terminating the process
+[unwind-off-top] x{0/0/0/0} untrusted: reject: untrusted program rejected: UNWIND: UNWIND rejected with kinds [Method(30), Val, Token, Token, Val, Val]; trusted: ran: 4 verified core: stuck state 21 at bci 426: terminating the process
+[mix-two-tries] x{0/0/0/0} untrusted: reject: untrusted program rejected: TRY: TRY rejected with kinds [Method(30), Val, Token, Token, Val, Method(30)]; trusted: ran: 4 4 verified core: stuck state 21 at bci 434: terminating the process
+[nested-reuse] x{0/0/0/0} untrusted: reject: untrusted program rejected: TRY: TRY rejected with kinds [Method(30), Val, Token, Token, Val, Method(30)]; trusted: ran: 4 4
+[token-argument] x{0/0/0/0} untrusted: reject: untrusted program rejected: INVOKE_STATIC 141 2: INVOKE_STATIC rejected with kinds [Method(30), Val, Token, Token]; trusted: ran: 4 0
+[token-return] x{0/0/0/0} untrusted: reject: untrusted program rejected: RETURN: RETURN rejected with kinds [Method(30), Val, Token, Token]; trusted: ran: 4
+[token-throw] x{0/0/0/0} untrusted: reject: untrusted program rejected: THROW: THROW rejected with kinds [Method(30), Val, Token, Token]; trusted: ran: 4 Uncaught exception: LOOKUP_FAILED
+[token-identical] x{0/0/0/0} untrusted: reject: untrusted program rejected: IDENTICAL: IDENTICAL rejected with kinds [Method(30), Val, Token, Token, Val]; trusted: ran: 4 verified core: stuck state 1 at bci 431: terminating the process
+[token-branch] x{0/0/0/0} untrusted: reject: untrusted program rejected: BRANCH_IF_FALSE 3 0: BRANCH_IF_FALSE rejected with kinds [Method(30), Val, Token, Token]; trusted: ran: 4
+[token-store-global] x{0/0/0/0} untrusted: reject: untrusted program rejected: STORE_GLOBAL_VAR 0: STORE_GLOBAL_VAR rejected with kinds [Method(30), Val, Token, Token]; trusted: ran: 4
+[jump-in] x{0/0/0/0} untrusted: reject: untrusted program rejected: UNWIND: incompatible kinds at merge: [Method(30), Val, Val, Val, Val] and [Method(30), Val, Token, Token, Val]; trusted: ran: 4
+[jump-out-merge] x{0/0/0/0} untrusted: reject: untrusted program rejected: UNWIND: incompatible kinds at merge: [Method(30), Val, Token, Token, Val] and [Method(30), Val, Val, Val, Val]; trusted: ran: 4
+[jump-out-pop] x{0/0/0/0} untrusted: reject: untrusted program rejected: POP 4: incompatible kinds at merge: [Method(30), Val, Token, Token, Val] and [Method(30), Val, Val, Val, Val]; trusted: ran: 4
+[jump-back] x{0/0/0/0} untrusted: reject: untrusted program rejected: POP 4: incompatible kinds at merge: [Method(30), Val, Val, Val, Val] and [Method(30), Val, Token, Token, Val]; trusted: ran: 4
+[leave-pop] x{0/0/0/0} untrusted: ran: 4 1; trusted: ran: 4 1
+[t-leave-pop] x{0/0/0/0} untrusted: ran: null; trusted: ran: null
+[t-leave-return] x{0/0/0/0} untrusted: ran: null; trusted: ran: null
+[t-forge-normal] x{0/0/0/0} untrusted: reject: untrusted program rejected: UNWIND: UNWIND rejected with kinds [Method(32), Val, Val, Val, Val]; trusted: ran: null
+[t-store-b] x{0/0/0/0} untrusted: reject: untrusted program rejected: STORE_LOCAL_POP 2: STORE_LOCAL_POP rejected with kinds [Method(32), Val, Token, Token, Val, Val]; trusted: ran: null
+[t-dup-unwind] x{0/0/0/0} untrusted: reject: untrusted program rejected: LOAD_LOCAL_3: LOAD_LOCAL_3 rejected with kinds [Method(32), Val, Token, Token, Val, Val]; trusted: ran: x
+[try-smi] x{0/0/0/0} untrusted: reject: untrusted program rejected: TRY: TRY rejected with kinds [Val]; trusted: ran: ---- Received a Toit system message. Executing the command below will make it human readable: ---- jag decode WyNVBVVYU1
+[try-null] x{0/0/0/0} untrusted: reject: untrusted program rejected: TRY: TRY rejected with kinds [Val]; trusted: ran: ---- Received a Toit system message. Executing the command below will make it human readable: ---- jag decode WyNVBVVYU1
+[try-foreign-block] x{0/0/0/0} untrusted: reject: untrusted program rejected: TRY: TRY rejected with kinds [Method(26)]; trusted: ran: 2
+[try-other-method] x{0/0/0/0} untrusted: reject: untrusted program rejected: TRY: TRY rejected with kinds [Method(28)]; trusted: ran: ---- Received a Toit system message. Executing the command below will make it human readable: ---- jag decode WyNVBVVYU1
+[try-empty-stack] x{0/0/0/0} untrusted: reject: untrusted program rejected: TRY: TRY rejected with kinds []; trusted: ran: verified core: stuck state 1 at bci 419: terminating the process
+[unwind-short] x{0/0/0/0} untrusted: reject: untrusted program rejected: UNWIND: UNWIND rejected with kinds [Val, Val]; trusted: ran: verified core: stuck state 1 at bci 421: terminating the process
+# done Thu Nov 26 18:26:57 CET 2026

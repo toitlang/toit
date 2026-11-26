@@ -82,7 +82,8 @@ BASE_SECTIONS=(verus verus32 audit contracts layout-table no-python epoch)
 TEST_SECTIONS=(ieee audit-test no-python-self-test epoch-self-test layout-check cxx cxx-slow spec-tests vmverify
                nopanic ec618-nopanic ec618-codegen sandbox-ctests
                redteam3-heap redteam3-asm
-               redteam4-A redteam4-A-cert redteam4-B redteam4-C redteam4-D redteam4-E redteam4-F)
+               redteam4-A redteam4-A-cert redteam4-B redteam4-C redteam4-D redteam4-E redteam4-F
+               redteam5-T)
 selected_sections() {
   printf '%s\n' "${BASE_SECTIONS[@]}"
   if [ "$RUN_TESTS" = 1 ]; then
@@ -673,6 +674,30 @@ sec_redteam4_C() { redteam4 C; }
 sec_redteam4_D() { redteam4 D; }
 sec_redteam4_E() { redteam4 E; }
 sec_redteam4_F() { redteam4 F; }
+
+# Red-team round 5 (review/red-team/round5): the try/finally of format 3,
+# step 3 (T: forged, copied, overwritten and misplaced token words, jumps
+# into and out of finally code), untrusted (every ill-typed case rejected,
+# the well-typed ones with their output) and trusted on the checked loop (no
+# crash), on the normal and the ASan build. Skipped without build/asan.
+sec_redteam5_T() {
+  section "Red-team round-5 battery T (review/red-team/round5/battery-T.sh)"
+  local rt5="$REPO/review/red-team/round5"
+  local normal="$BUILD_DIR/sdk/lib/toit/bin/toit.run"
+  local asan="$REPO/build/asan/sdk/lib/toit/bin/toit.run"
+  local log="$LOGS/battery-rt5-T.log"
+  if [ ! -x "$rt5/battery-T.sh" ] || [ ! -x "$normal" ]; then
+    skip "no round-5 battery or no toit.run in $BUILD_DIR"
+    return
+  fi
+  [ -x "$asan" ] || { skip "line T: no ASan build at $asan"; return; }
+  if HOSTRUN="$normal" ASANRUN="$asan" WORK="$LOGS/rt5-T" "$rt5/battery-T.sh" > "$log" 2>&1; then
+    echo "round5-T: $(tail -1 "$log")"
+  else
+    tail -20 "$log"
+    fail "red-team round-5 battery T"
+  fi
+}
 
 for s in "${SECTIONS[@]}"; do
   before=${#FAILURES[@]}

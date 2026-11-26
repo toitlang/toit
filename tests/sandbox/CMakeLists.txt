@@ -14,6 +14,7 @@ set(TOOL_TESTS
   "tests/sandbox/boot-refused-test.toit"
   "tests/sandbox/verdict-epoch-test.toit"
   "tests/sandbox/invalid-utf-8-literal-test.toit"
+  "tests/sandbox/stale-tag-test.toit"
   "tests/sandbox/heap-floor-test.toit"
   "tests/sandbox/oom-report-rate-test.toit"
   "tests/sandbox/system-oom-request-test.toit"
@@ -66,9 +67,11 @@ set(UNTRUSTED_RUN_TESTS
   # explicit external and off-heap constructors are denied.
   "large-byte-array|large-byte-array-main.toit|0|100: size=100 zero=true last=42 filled=7.*10000: size=10000 zero=true last=42 filled=7.*1000000: size=1000000 zero=true last=42 filled=7.*buffer: hello.*external: PERMISSION_DENIED.*off-heap: PERMISSION_DENIED"
   "uncaught|uncaught-main.toit|1|PERMISSION_DENIED"
-  # Finally records (unwinding without heap tokens) across calls, stack
-  # growth, GC and task switches.
+  # Pending unwindings (format 3: the token slots of the finally code, no
+  # heap objects) across calls, stack growth, GC and task switches.
   "finally-records|finally-records-main.toit|0|0: 2000 boom.*2: 2000 boom.*r=1 \\[inner\\].*loop=100000.*finally records done"
+  # The try/finally cases of format 3 (tests/try-tokens-test.toit), untrusted.
+  "try-tokens|../../try-tokens-test.toit|0|try tokens done"
   # The verifier rejects deep sleep in untrusted programs at launch; the
   # program never runs.
   "deep-sleep|deep-sleep-main.toit|1|HALT 2.*VERIFICATION_FAILED|before deep sleep"
