@@ -193,8 +193,6 @@ a client throws `PERMISSION_DENIED`. The choice is sent with the
 registration, and discovery returns a provider outside the system process
 to an untrusted client only if it opts in, so the client gets no grant for
 a provider that doesn't serve it (and can't send it messages of any type).
-Providers in the system process are reachable anyway; discovery returns
-them, and opening them fails with `PERMISSION_DENIED` unless they opt in.
 Service discovery and the sandbox print service opt in; the container,
 storage, network and other system services do not, so an untrusted
 container can't start containers, use storage or open sockets. A trusted
@@ -203,6 +201,51 @@ container that wants to serve sandboxes overrides
 
 Before, providers outside the system process accepted untrusted clients
 unless they opted out; only system services were opt-in.
+
+### The service list of a container
+
+Opting in makes a provider reachable for sandboxes in general; which
+sandbox may use which service is up to whoever starts it. The launch
+policy lists the services a sandboxed container may use, as service uuids
+(entry 10 of the policy list, `ContainerService.POLICY-SERVICES-INDEX`; at
+most 16 uuids of at most 64 bytes, kept in the system process while the
+container lives):
+
+    containers.start image-id arguments --untrusted
+        --services=[HeatPumpService.SELECTOR, "8c3f6d2e-..."]
+
+The default is the empty list: the allow-list is strictness by default,
+and one word away from the earlier behaviour: `--services="all"`
+(`ContainerService.ALL-SERVICES`) lets the sandbox use every provider that
+accepts sandboxed clients (for example the sandbox network provider, see
+"Network access").
+A sandbox discovers exactly the providers that accept sandboxed clients
+and whose service it may use, plus the service discovery and sandbox print
+services, which every sandbox may use
+(`SystemServiceManager.ALWAYS-AVAILABLE`). The system process checks this
+at discovery (`SystemServiceManager.discover`, also for discoveries that
+wait for a provider that registers later), so a sandbox gets the send
+grant only for providers it may use. A sandbox that sends the open request
+to another provider's pid without discovery (as its own core library
+could) is stopped by the VM, which has no grant for that pid. The
+providers in the system process are reachable without a grant, so the
+list can't protect them: the system process refuses to register a
+provider of its own that serves sandboxes unless every sandbox may use it
+(only discovery and printing do), so a check at open isn't needed (an
+earlier version had one in every program's services library). System services that refuse sandboxes are no longer
+discovered by them either (before, discovery returned them and opening
+failed); opening them without discovery still fails with
+`PERMISSION_DENIED`. The list doesn't restrict trusted containers. Tests:
+`service-allow-list` (two sandboxes with different lists, no list, the
+open without discovery, waiting discoveries, malformed lists),
+`system-*-service`, `net/socket-echo` and `net/http-limits` (the network
+services when they aren't on the list).
+
+A start request with a malformed policy (a services list that is too long
+or has entries that aren't strings) is
+refused before the container runs (`INVALID_ARGUMENT`,
+`WRONG_OBJECT_TYPE`). Before, a malformed policy left the container in
+the container manager, so the system never ended.
 
 ### Providing services is a privilege
 
@@ -748,7 +791,10 @@ The quota keys are "heap", "mailbox-messages", "mailbox-bytes",
 "message-bytes", "timers", "processes", "run-time-ms" and "cpu-ms".
 Quotas can also be given for trusted containers. `--may-provide-services`
 grants an untrusted container to register service providers (see
-"Providing services is a privilege").
+"Providing services is a privilege"), `--services` lists the services it
+may use (see "The service list of a container"; "all" for every provider
+that serves sandboxes, such as the experimental network provider, see
+"Network access").
 
 Device: containers are started by `system/containers.toit` through
 `programs_registry.spawn`, which takes the policy as its last argument.
@@ -831,6 +877,188 @@ inlining them. A failing access throws `INVALID_PROGRAM`. Other processes
 use the unchecked table and don't pay for the check. Builds configured with
 `TOIT_CHECKED_FIELD_ACCESS` in the environment check the field accesses of
 every process.
+
+## Network access (experimental)
+
+A sandbox can't call any socket, TLS or DNS primitive, and the network
+service refuses sandboxed clients. Sandboxes get the network through the
+**sandbox network provider**: an installable program
+(`services/sandbox_network/main.toit`) that runs as an ordinary trusted
+container, uses the trusted `net` and `tls` libraries itself, and offers
+two services, as an experiment to compare
+(opentoit-sandbox-artifacts/sandbox-network/README.md has the design and
+the measurements; an earlier version ran the services in the system
+process):
+
+- **Variant S** (`SandboxSocketService`, library `net.sandbox`): TCP
+  streams, `connect(host, port, tls)` then read, write, close-write. With
+  `tls` the provider runs TLS and verifies the server for the host name
+  with the root certificates the sandbox registered (below); the sandbox
+  can't turn verification off. `net.sandbox` presents the streams as
+  `tcp.Socket`s; the unchanged HTTP client of the http package runs on them
+  (HTTPS: the provider does TLS, the http library HTTP).
+- **Variant H** (`SandboxHttpService`, library `net.sandbox-http`):
+  HTTP/1.1 requests made by the provider, bodies streamed in both
+  directions. The provider writes the request line and the framing headers
+  itself (Host, Connection, Content-Length, Transfer-Encoding; a client
+  can't set them), parses the response head with bounds (32 headers, 4
+  KB), limits the response body and the request time, and follows no
+  redirects (the client gets the 3xx; a request to the location is checked
+  like any other). One request per connection.
+
+**Opt-in, at no cost otherwise.** The provider is not part of the firmware:
+it is installed like any container on devices whose sandboxes need the
+network (the commands are in its main.toit; a container installed in the
+envelope reads its policy from its asset "network", one started by a
+trusted program from its arguments, `{"network": "public"}`). The system
+process holds nothing for it: no network code, no policy. A device that
+runs no sandbox pays only for the service list (same ESP32 system image
+size as before it, 330 bytes of bytecode inside the last page; ordinary
+programs unchanged; trusted discovery as fast as before;
+opentoit-sandbox-artifacts/sandbox-network/README.md has the table).
+
+**Access.** A sandbox uses the provider when it may use its services:
+`containers.start id --untrusted --services="all"`, or the two service
+selectors. Without them (the default) it doesn't discover the provider,
+and the VM refuses its messages to the provider's pid (only discovery
+issues that grant).
+
+**One policy for all sandboxes.** The policy is the provider's
+configuration and applies to every client; its limits are kept per client
+container. Every service call carries the group id of its sender, filled
+in by the VM (`--gid` of `ServiceHandler.handle`), which a sandbox can't
+choose and which is never reused while the device runs; the provider keeps
+a grant (the parsed policy and the limiter state) per group (at most 32
+groups without connections). Its policy lookup, group id -> policy, is
+where policies per container could come back (an earlier version had the
+system process keep one per container; it cost a 4 KB page of the system
+image).
+
+**Policies.** Without a policy the provider allows nothing. One word gives
+the common cases:
+
+| provider policy | destinations | limits | the owner gives up |
+|---|---|---|---|
+| `"all"` | every host and port, loopback and the local network included | none | the device's own networking when the sandbox saturates the link (only the provider's bounds remain); data volume and cost; reachability of local-network hosts and services on the device itself |
+| `"public"` | every public address, any port | none | link saturation, data volume; local hosts stay unreachable |
+| `["host:443", "*.example.com:8000-8099"]` | these | none | link saturation and volume towards these hosts |
+| `{"allow": [...], "connections": 2, ...}` | these | per container: connections (default 2), attempts per minute (20), bytes per second (16 KB, both directions, one second of burst), bytes per day (10 MB), HTTP response size (1 MB) and time (30 s); 0 for none | little: the limits are the contract |
+
+Without limits the provider skips the limiter (no bookkeeping per chunk).
+What stays with every policy, "all" included, protects the provider
+itself: 8 connections of all clients together, three chunks of 4 KB per
+connection (one read ahead, one handed out and not yet acknowledged, one
+to write), one TLS handshake at a time, 32 headers and 4 KB of head per
+HTTP message, 4 roots of 8 KB per client session, and the services
+framework's bounds (8 unprocessed requests and 32 open clients per
+sandboxed process). Start the provider with a heap quota
+(`containers.start ... --quotas={"heap": ...}`) to bound its heap as a
+whole.
+
+A rule is `HOST:PORTS`, `HOST:PORTS/PATH`, optionally `#PIN`: HOST an
+exact name, `*.suffix` or an IPv4 address, PORTS a port or a range, PATH a
+prefix for HTTP requests (rules with a PATH never allow sockets: the
+provider can't see what a socket client sends), PIN the SHA-256 of a root
+certificate's DER form. The provider resolves names itself and connects to
+the address it resolved; the client never supplies an address unless an
+address rule (or "all") lists it. Addresses that aren't public (loopback,
+private, link-local, carrier-grade NAT, multicast, reserved) are only
+reachable through a rule that names the address: an allowed name that
+resolves to one is refused (the DNS rebinding case). The decision is
+`services/sandbox_network/policy.toit`, without I/O, the one file to review
+for the policy.
+
+**Root certificates.** Root certificates take a lot of space, so Toit
+programs bring their own. The provider has none and installs none in its
+process. A client registers the roots it trusts with its session
+(`add-root-certificate`, a `tls.RootCertificate` of the certificate-roots
+package or DER/PEM bytes; uploaded in chunks; at most 4 roots of 8 KB per
+session, freed when the session closes). They are passed to that client's
+TLS connections only (`--root-certificates`), so one sandbox's roots never
+decide another client's verification; identical roots of several clients
+are stored once (by SHA-256, counted) and parsed (by mbedTLS, in the
+provider) when a connection first uses them. A policy rule can pin the
+root (`#PIN`): the connection may then only verify with that root (the
+certificate still comes from the sandbox), and `"require-pins": true`
+refuses TLS to destinations whose rule has no pin. The trust argument:
+client-chosen roots only decide whom the sandbox trusts for its own
+traffic; the owner's guarantee (which destinations, how much) doesn't
+depend on them, and with a pin the owner also fixes the server's identity.
+The exposure: the provider parses certificate bytes the sandbox chose
+(X.509 in mbedTLS, in the provider's process, not the system's), as it
+parses the server's certificates anyway; the sizes are bounded.
+
+**Errors.** Short strings: `NETWORK_DENIED` (the request itself isn't
+allowed, decided before anything is resolved), `NETWORK_QUOTA_EXCEEDED`
+(the policy's or the provider's limits), `CONNECT_FAILED` (whether the
+name didn't resolve, resolved to an address the policy doesn't allow, or
+the connection failed: the sandbox doesn't learn which internal names
+exist), `TLS_FAILED`, `TIMEOUT`, `CONNECTION_FAILED`,
+`RESPONSE_TOO_LARGE`, `HTTP_PROTOCOL_ERROR`, `INVALID_ARGUMENT`. Other
+failures are printed on the console with the destination. A plain
+`QUOTA_EXCEEDED` always means that the sandbox's own message quotas
+refused a request or reply: the stream calls can be repeated (a read
+acknowledges the bytes received, a write gives its offset), and the
+client libraries repeat them.
+
+**Data path.** No call of a sandbox waits for the network in one of the
+provider's RPC tasks: tasks of the provider connect, read and write, and
+the calls hand over one chunk (4 KB, half the device's message size quota)
+or say that there is none yet; the client is notified when that changes
+(and polls every 500 ms in case its full mailbox refused the
+notification). One hop per call (sandbox to provider): the sockets are
+primitives in the provider's process (on the host; on the ESP32 the WiFi
+service proxies only addresses and DNS, so a name resolution is one more
+call from the provider to the system process). The policy lookup is one
+call from the provider to the system process per container, not per
+connection.
+
+**Lifecycle.** Without the provider, a sandbox's `open` fails with
+"Sandbox network unavailable" after its timeout (100 ms by default;
+`open --timeout` for sandboxes that start first, for example at boot). A
+connection is a service resource of the provider: it is closed when the
+client closes it or its session, or ends (stopped, killed, evicted, an
+uncaught exception): the services framework watches the client process
+across processes. When the provider ends (crash, restart), the sandbox's
+calls fail (`NO_SUCH_PROCESS`) and it opens a new session (the client
+libraries try again while discovery still returns the ended provider);
+its roots must be registered again; the limiter state starts over. A
+sandbox can't register a look-alike provider: providing services is a
+privilege, and granted sandbox providers are never discovered by
+sandboxes. A trusted container could register one; trusted containers are
+trusted.
+
+**Isolation.** The provider is trusted and not verified: it is in the
+trusted base like every trusted container. It is isolated from the system
+process as trusted processes are from each other: separate heaps and
+messaging only, so a bug in its HTTP parser at the Toit level breaks or
+corrupts only the provider (and the clients' streams), not the system
+process or other containers. It runs on the C++ interpreter (or format 2
+unverified) with all non-privileged primitives, so a bug in a C++
+primitive it calls (sockets, TLS, X.509) is still the VM's; it can't use
+privileged primitives (start containers, grant sends). Running first-party
+containers like this one verified (format 2 with the untrusted rules, but
+with the network primitives) would shrink that.
+
+Tests (host, local servers only, `tests/sandbox/net/`, a separate project
+with the http package; the tests start the provider container from their
+own image with the policy each case needs and a heap quota): allowed and
+denied destinations, the rebinding case, the service list and the VM's
+grant for a provider outside the system process, every limit, the
+one-word policies, limits kept per container under one policy, cleanup
+when a
+sandbox stops, ends or throws, 1 MB transfers, TLS with the sandbox's
+roots (two sandboxes with different roots at the same server, dedup,
+pins), the http package over variant S, HTTP requests with bodies of known
+and unknown length, refused paths and headers, the response size limit
+and the timeout, lost replies, the provider missing, starting late and
+restarting mid-stream, a look-alike provider, and a flooding sandbox next
+to a trusted client of the trusted network service.
+
+Open: policies per container (the provider's lookup is the seam), UDP
+and listening sockets as separate grants, connection reuse for variant H,
+and bundling the provider (run-boot) and its heap quota on devices that
+ship sandboxes. Both variants stay (owner's decision).
 
 ## Tests
 
@@ -992,5 +1220,8 @@ and must be updated when the gap is closed.
 | Probe pids and observe process lifetimes through the discovery service's `watch` | no information about processes it may not talk to | `watch-pid-probe` | gap: a watch of a missing pid is answered at once with a termination notification, a watch of a live process reports its termination | accepted for now: see "Open questions", `watch` reveals pid liveness |
 | Provide a service a trusted client expects before the trusted provider is up | trusted clients don't use sandbox providers | `provider-denied`, `service-squat`, `provider-grant` | fixed: without a trusted provider a plain selector opened the sandbox's. Registration is now refused unless the launch policy grants it, and granted providers are only discovered by trusted clients that opt in | |
 | Reach a trusted container's service by its uuid | only services meant for sandboxes | `heat-pump` | fixed: providers outside the system process accepted sandboxed clients unless they opted out. Serving sandboxes is now opt-in for every provider, and discovery doesn't return (or grant) providers that don't opt in | |
+| Use a service that accepts sandboxes but isn't on the container's service list: by discovery, by sending to the provider's pid directly, by opening a provider in the system process directly | not discovered; `PERMISSION_DENIED` from the VM (no grant) or from the system process | `service-allow-list`, `net/socket-echo`, `net/http-limits` | holds (new mechanism) | |
+| Reach internal hosts through the sandbox network: an allowed name that resolves to a private or loopback address, an address instead of the allowed name, paths with dot segments or encoded dots, headers that change the framing; another sandbox's roots or policy | `CONNECT_FAILED`, `NETWORK_DENIED`, `INVALID_ARGUMENT`, `TLS_FAILED` | `net/socket-echo`, `net/http-limits`, `net/roots`, `net/policy-modes` | holds (experimental provider) | |
+| Exhaust the sandbox network provider: many connections, attempts, bytes, roots, a flood of calls next to a trusted network client | `NETWORK_QUOTA_EXCEEDED`; the trusted client's round trips stay at a few ms | `net/socket-limits`, `net/roots`, `net/flood` | holds (experimental provider) | |
 | Flood the console through traces and prints | bounded output | | gap, not tested (the host's stdout is fast): every valid trace payload (up to the message size cap) is printed base64-encoded, and every unhandled message type prints a warning; on a device with a UART console this keeps the system process busy | a per-client budget for service calls: docs/sandbox-service-limits.md |
 | Timing and counting side channels | | | accepted: `Time.monotonic-us` shows the load of the machine; the own pid tells how many processes were created since boot | |

@@ -17,6 +17,7 @@ Every test is a program that runs in three roles, all from the same image:
 
 import expect show *
 import monitor
+import rpc
 import system.containers
 import system.services show ServiceSelector ServiceProvider ServiceHandler ServiceClient
 import system.api.service-discovery show ServiceDiscoveryServiceClient
@@ -139,7 +140,8 @@ The untrusted container runs with the untrusted policy and the given
   $quotas. If $trusted is true, it runs with the trusted policy and the
   given $quotas instead (for the quotas that only apply to code that has
   the corresponding primitives). If $provide-services is true, its launch
-  policy grants it to register service providers.
+  policy grants it to register service providers. The untrusted container may use the
+  sibling's service and the services in $services (uuids).
 
 If $prepare is not null, it is called in the driver (with the client of
   the sibling) before the untrusted container is started, and the map it
@@ -157,6 +159,7 @@ sandbox-test arguments/any -> none
     --quotas/Map?=null
     --trusted/bool=false
     --provide-services/bool=false
+    --services/List=[]
     --busy-sibling-ms/int?=null
     --prepare/Lambda?=null
     --during/Lambda?=null
@@ -170,7 +173,7 @@ sandbox-test arguments/any -> none
       run-attack arguments attack
       return
     throw "Unknown role: $role"
-  run-driver --error=error --exit=exit --refused=refused --quotas=quotas --trusted=trusted --provide-services=provide-services --busy-sibling-ms=busy-sibling-ms --prepare=prepare --during=during
+  run-driver --error=error --exit=exit --refused=refused --quotas=quotas --trusted=trusted --provide-services=provide-services --services=services --busy-sibling-ms=busy-sibling-ms --prepare=prepare --during=during
 
 run-attack arguments/Map [attack] -> none:
   exception := catch: attack.call arguments
@@ -187,7 +190,7 @@ run-attack arguments/Map [attack] -> none:
   print "attack failed as expected: $exception"
   exit EXIT-ATTACK-FAILED
 
-run-driver --error/any --exit/int --refused/string? --quotas/Map? --trusted/bool --provide-services/bool --busy-sibling-ms/int? --prepare/Lambda? --during/Lambda? -> none:
+run-driver --error/any --exit/int --refused/string? --quotas/Map? --trusted/bool --provide-services/bool --services/List --busy-sibling-ms/int? --prepare/Lambda? --during/Lambda? -> none:
   sibling-stopped := false
   sibling := containers.start containers.current {ROLE-KEY: ROLE-SIBLING}
       --on-stopped=:: sibling-stopped = true
@@ -210,6 +213,7 @@ run-driver --error/any --exit/int --refused/string? --quotas/Map? --trusted/bool
           --untrusted=(not trusted)
           --quotas=quotas
           --may-provide-services=provide-services
+          --services=([SiblingService.SELECTOR.uuid] + services)
           --on-stopped=:: throw "refused container stopped"
     expect-equals refused exception
   else:
@@ -217,6 +221,7 @@ run-driver --error/any --exit/int --refused/string? --quotas/Map? --trusted/bool
         --untrusted=(not trusted)
         --quotas=quotas
         --may-provide-services=provide-services
+        --services=([SiblingService.SELECTOR.uuid] + services)
     during-done := monitor.Latch
     if during:
       task::
@@ -258,3 +263,29 @@ discover-pid uuid/string -> int:
     throw "Service not found: $uuid"
   finally:
     discovery.close
+
+/**
+Returns the process id and the service id of the first provider of the
+  service with the given $uuid, as a trusted client discovers it. For the
+  driver: a sandbox that knows them can try to open the service without
+  discovering it ($open-without-discovery).
+*/
+provider-ids uuid/string -> List:
+  discovery := ServiceDiscoveryServiceClient
+  discovery.open
+  try:
+    result := discovery.discover uuid --wait=false
+    services := result[0]
+    if not services: throw "Service not found: $uuid"
+    return [services[0], services[1]]
+  finally:
+    discovery.close
+
+/**
+Opens the service with the given $id and $selector at the process with
+  the given $pid by sending the open request directly, without discovery.
+  A sandbox's own core library could do the same.
+*/
+open-without-discovery pid/int id/int selector/ServiceSelector -> any:
+  // RPC-SERVICES-OPEN_ in the system.services library.
+  return rpc.invoke pid 300 [id, selector.uuid, selector.major, selector.minor]

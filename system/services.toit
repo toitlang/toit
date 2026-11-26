@@ -46,8 +46,11 @@ class DiscoveryResource extends ServiceResource:
   untrusted/bool
   // Whether the waiting process opted in to providers in sandboxes.
   untrusted-providers/bool
+  // Whether the waiting process may use the service (see
+  // $SystemServiceManager.sandbox-may-use_); always true for trusted ones.
+  allowed/bool
 
-  constructor .uuid .manager client/int --.pid --.untrusted --.untrusted-providers:
+  constructor .uuid .manager client/int --.pid --.untrusted --.untrusted-providers --.allowed:
     super manager client --notifiable
     manager.waiting-by-pid_.update pid --init=0: it + 1
 
@@ -83,19 +86,38 @@ class SystemServiceManager extends ServiceProvider
   static MAX-UNTRUSTED-TAGS ::= 8
 
   /**
-  Called with the group id of a sandboxed process that registers a
-    service; returns whether its launch policy grants it to provide
-    services (see $ContainerService.POLICY-GRANT-PROVIDE-SERVICES). Set
-    by the container manager. Without it, sandboxes can't provide
-    services.
+  Called with the group id of a sandboxed process; returns its container
+    (a `Container` of system/containers.toit) or null. Set by the container
+    manager. The container says whether its launch policy grants it to
+    provide services (see $ContainerService.POLICY-GRANT-PROVIDE-SERVICES)
+    and which services it may use (see
+    $ContainerService.POLICY-SERVICES-INDEX). Without it, sandboxes can't
+    provide services and can only use the services in $ALWAYS-AVAILABLE.
   */
-  may-provide-services/Lambda? := null
+  container-of/Lambda? := null
+
+  /** The services every sandbox may use: discovery and printing. */
+  static ALWAYS-AVAILABLE ::= [
+    ServiceDiscoveryService.SELECTOR.uuid,
+    PrintService.SELECTOR.uuid,
+  ]
 
   constructor:
     super "system/service-discovery" --major=0 --minor=1 --patch=1
     provides ServiceDiscoveryService.SELECTOR --handler=this --id=0
     install
     (SandboxPrintServiceProvider).install
+
+  /**
+  Whether the sandboxed process group $gid may use the service with the
+    given $uuid: the service is always available or on the allow-list of
+    its container.
+  */
+  sandbox-may-use_ gid/int uuid/string -> bool:
+    if ALWAYS-AVAILABLE.contains uuid: return true
+    lookup := container-of
+    container := lookup ? lookup.call gid : null
+    return container != null and container.may-use-service uuid
 
   // Every process needs service discovery, sandboxed ones included.
   accepts-untrusted-clients -> bool:
@@ -106,7 +128,7 @@ class SystemServiceManager extends ServiceProvider
     if index == ServiceDiscoveryService.DISCOVER-INDEX:
       // Older clients don't send the opt-in for providers in sandboxes.
       untrusted-providers := arguments.size > 2 and arguments[2] == true
-      return discover arguments[0] --wait=arguments[1] client --pid=pid
+      return discover arguments[0] --wait=arguments[1] client --pid=pid --gid=gid
           --untrusted-providers=untrusted-providers
     if index == ServiceDiscoveryService.WATCH-INDEX:
       return watch pid arguments
@@ -135,12 +157,20 @@ class SystemServiceManager extends ServiceProvider
       throw "WRONG_OBJECT_TYPE"
     if service-tags and (service-tags.any: it is not string): throw "WRONG_OBJECT_TYPE"
 
+    // A sandbox reaches the providers of the system process without the
+    // send grant that discovery hands out, so the service list can't
+    // protect them: the ones that serve sandboxes must be meant for every
+    // sandbox.
+    if accepts-untrusted and pid == Process.current.id and not ALWAYS-AVAILABLE.contains uuid:
+      throw "a system service for sandboxes must be always available"
+
     untrusted := is-untrusted_ pid
     if untrusted:
       // Providing services is a privilege: a sandbox could otherwise offer
       // services that trusted clients expect from trusted providers.
-      grant := may-provide-services
-      if not (grant and (grant.call gid)): throw "SERVICE_REGISTRATION_DENIED"
+      lookup := container-of
+      container := lookup ? lookup.call gid : null
+      if not (container and container.may-provide-services): throw "SERVICE_REGISTRATION_DENIED"
       if uuid.size > MAX-UNTRUSTED-STRING-SIZE or service-name.size > MAX-UNTRUSTED-STRING-SIZE:
         throw "INVALID_ARGUMENT"
       if service-tags and (service-tags.size > MAX-UNTRUSTED-TAGS
@@ -181,7 +211,7 @@ class SystemServiceManager extends ServiceProvider
     // If anyone is waiting for this service, signal them.
     waiting_.get uuid --if-present=: | resources/List |
       resources.do: | resource/DiscoveryResource |
-        if is-visible_ service --untrusted=resource.untrusted --untrusted-providers=resource.untrusted-providers:
+        if is-visible_ service --untrusted=resource.untrusted --untrusted-providers=resource.untrusted-providers --allowed=resource.allowed:
           resource.notify_ (array-of-services_ [service])
 
     // Register the process as a service manager and signal
@@ -204,10 +234,12 @@ class SystemServiceManager extends ServiceProvider
     if not services.is-empty: return
     services-by-pid_.remove pid
 
-  discover uuid/string --wait/bool client/int --pid/int --untrusted-providers/bool -> List:
+  discover uuid/string --wait/bool client/int --pid/int --gid/int --untrusted-providers/bool -> List:
     services/List? := null
     resource-serialized := null
     untrusted := is-untrusted_ pid
+    // A sandbox only discovers the services its container may use.
+    allowed := not untrusted or (sandbox-may-use_ gid uuid)
     if wait:
       if untrusted:
         if uuid.size > MAX-UNTRUSTED-STRING-SIZE: throw "INVALID_ARGUMENT"
@@ -217,12 +249,13 @@ class SystemServiceManager extends ServiceProvider
           --pid=pid
           --untrusted=untrusted
           --untrusted-providers=untrusted-providers
+          --allowed=allowed
       (waiting_.get uuid --init=: []).add resource
       resource-serialized = resource.serialize-for-rpc
     services = services-by-uuid_.get uuid
     if services:
       services = services.filter: | service/DiscoverableService |
-        is-visible_ service --untrusted=untrusted --untrusted-providers=untrusted-providers
+        is-visible_ service --untrusted=untrusted --untrusted-providers=untrusted-providers --allowed=allowed
       if untrusted:
         // Discovery is how a sandboxed process gets the capability to send
         // messages to a provider: grant it for every discovered provider.
@@ -239,18 +272,22 @@ class SystemServiceManager extends ServiceProvider
     ($untrusted-providers): plain selectors never get them, not even when
     no trusted provider of the service runs.
 
-  Sandboxed ($untrusted) clients only discover providers that serve them.
-    The providers in the system process are reachable anyway and refuse a
-    client that they don't serve with a clear error when it opens them.
+  Sandboxed ($untrusted) clients only discover providers that serve them
+    (that accept sandboxed clients), and only if their container may use
+    the service ($allowed, see $sandbox-may-use_). The providers in the
+    system process are reachable without discovery (no send grant is
+    needed for the system process), so the only ones that accept sandboxed
+    clients are the ones every sandbox may use ($ALWAYS-AVAILABLE; see
+    $listen).
     Other clients don't discover the system services that only exist for
     sandboxed clients.
   */
-  static is-visible_ service/DiscoverableService --untrusted/bool --untrusted-providers/bool -> bool:
+  static is-visible_ service/DiscoverableService --untrusted/bool --untrusted-providers/bool --allowed/bool -> bool:
     tags := service.tags
     if tags and tags.contains TAG-UNTRUSTED-PROVIDER:
       if untrusted or not untrusted-providers: return false
     in-system-process := service.pid == Process.current.id
-    if untrusted: return in-system-process or service.accepts-untrusted
+    if untrusted: return allowed and service.accepts-untrusted
     return not (in-system-process and tags and tags.contains TAG-SANDBOX-ONLY)
 
   static is-untrusted_ pid/int -> bool:
@@ -346,6 +383,23 @@ class SandboxPrintServiceProvider extends ServiceProvider implements PrintServic
       while end > 0 and (message.at --raw end) & 0xc0 == 0x80: end--
       message = message[..end] + "..."
     write-on-stdout_ message true
+
+/**
+Checks the services list of a launch policy (see
+  $ContainerService.POLICY-SERVICES-INDEX): $ContainerService.ALL-SERVICES
+  or a list of at most
+  $ContainerService.MAX-POLICY-SERVICES non-empty strings of at most
+  $ContainerService.MAX-POLICY-SERVICE-SIZE bytes. The list is kept in the
+  system process for as long as the container lives.
+*/
+validate-service-list_ services/any -> none:
+  if services == ContainerService.ALL-SERVICES: return
+  if services is not List: throw "WRONG_OBJECT_TYPE"
+  if services.size > ContainerService.MAX-POLICY-SERVICES: throw "INVALID_ARGUMENT"
+  services.do: | uuid |
+    if uuid is not string: throw "WRONG_OBJECT_TYPE"
+    if uuid.is-empty or uuid.size > ContainerService.MAX-POLICY-SERVICE-SIZE:
+      throw "INVALID_ARGUMENT"
 
 /**
 Returns the policy kind of the process with the given $pid, or -1 if

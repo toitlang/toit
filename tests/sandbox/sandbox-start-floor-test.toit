@@ -127,6 +127,7 @@ start role/string --untrusted/bool -> any:
   exception := catch:
     container := containers.start containers.current {"role": role}
         --untrusted=untrusted
+        --services=[ReadyService.SELECTOR.uuid]
         --quotas={"heap": 2_000_000}
     return container.wait
   return exception
@@ -143,6 +144,7 @@ stop container/containers.Container pid/int -> none:
 start-holder role/string -> containers.Container:
   return containers.start containers.current {"role": role}
       --untrusted
+      --services=[ReadyService.SELECTOR.uuid]
       --quotas={"heap": 2_000_000, "run-time-ms": 10_000}
 
 /** Queues five 10 KB messages at the process [pid]; returns how many it took. */

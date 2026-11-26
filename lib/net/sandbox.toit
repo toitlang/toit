@@ -1,0 +1,174 @@
+// Copyright (C) 2026 Toit contributors.
+// Use of this source code is governed by an MIT-style license that can be
+// found in the lib/LICENSE file.
+
+/**
+TCP and TLS sockets for sandboxed containers (experimental).
+
+A sandbox can't use the network primitives. This library gets its sockets
+  from the sandbox socket service of the sandbox network provider (a
+  trusted container), which connects only to the destinations of the
+  provider's network policy and runs TLS itself, with the root
+  certificates the sandbox registers ($SandboxNetwork.add-root-certificate).
+  The provider must be installed, and the sandbox may use its services:
+
+```
+containers.start id --untrusted --services="all"
+```
+
+The sockets implement $tcp.Socket, so code written for sockets works on
+  them, for example the HTTP client of the http package:
+
+```
+import http
+import net.sandbox
+
+main:
+  network := sandbox.open
+  // Plain HTTP over a service socket.
+  client := http.Client network
+  // HTTPS: the service runs TLS, the http library only HTTP.
+  network.add-root-certificate certificate-roots.ISRG-ROOT-X1
+  client = http.Client network.with-tls
+  response := client.get --uri="http://api.example.com:443/status"
+```
+*/
+
+import io
+import net
+import net.tcp
+import tls
+import system.api.sandbox-network show *
+
+/**
+Opens the sandbox network: a session with the sandbox socket service.
+
+Throws "Sandbox network unavailable" if the container may not use the
+  service or the provider doesn't run; waits up to $timeout for it (for
+  sandboxes that start before the provider). If the provider ends, the
+  session's calls fail and a new session is needed (and its roots must be
+  registered again).
+*/
+open --timeout/Duration=(Duration --ms=100) -> SandboxNetwork:
+  client := open-session SandboxSocketService.SELECTOR timeout "Sandbox network unavailable"
+  return SandboxNetwork.internal_ client --tls=false --roots=null
+
+/**
+A network interface for TCP connections through the sandbox socket
+  service. Without TLS, $tcp-connect opens plain TCP connections; the
+  interface returned by $with-tls opens TLS connections instead.
+*/
+class SandboxNetwork implements tcp.Interface:
+  client_/SandboxNetworkClient
+  tls_/bool
+  roots_/List?
+
+  constructor.internal_ .client_ --tls/bool --roots/List?:
+    tls_ = tls
+    roots_ = roots
+
+  /**
+  Registers a root certificate for this session's TLS connections and
+    returns its id. The $root is a $tls.RootCertificate (for example one
+    of the certificate-roots package), or its DER or PEM bytes or text. At
+    most $MAX-CLIENT-ROOTS roots of $MAX-CLIENT-ROOT-BYTES together.
+  */
+  add-root-certificate root/any -> int:
+    return client_.add-root (root-bytes root)
+
+  /**
+  Returns an interface whose $tcp-connect opens TLS connections, run by
+    the service, which verifies the server's certificate for the host name
+    with the roots registered with $add-root-certificate: the ones with the
+    ids in $roots, or all of them.
+  */
+  with-tls --roots/List?=null -> SandboxNetwork:
+    return SandboxNetwork.internal_ client_ --tls --roots=roots
+
+  /** Ends the session: its connections and roots. */
+  close -> none:
+    client_.close
+
+  /**
+  Connects to $host (a name or an IPv4 address) at $port.
+
+  Throws NETWORK_DENIED if the provider's network policy doesn't allow
+    it, NETWORK_QUOTA_EXCEEDED if the container has too many connections or made
+    too many attempts, CONNECT_FAILED or TLS_FAILED if the connection
+    can't be made.
+  */
+  tcp-connect host/string port/int -> SandboxSocket:
+    handle := client_.connect host port tls_ roots_
+    socket := SandboxSocket.internal_ client_ handle --peer=(net.SocketAddress (ip-of_ host) port)
+    try:
+      socket.wait-connected
+      return socket
+    finally: | is-exception _ |
+      if is-exception: socket.close
+
+  tcp-connect address/net.SocketAddress -> SandboxSocket:
+    return tcp-connect address.ip.stringify address.port
+
+  /** Sandboxes can't listen. */
+  tcp-listen port/int -> tcp.ServerSocket:
+    throw "UNSUPPORTED"
+
+  static ip-of_ host/string -> net.IpAddress:
+    catch: return net.IpAddress.parse host
+    return net.IpAddress #[0, 0, 0, 0]
+
+/**
+A TCP socket of the sandbox socket service.
+
+It doesn't reveal addresses: the local address is 0.0.0.0:0 and the peer
+  address has the address of the host if it was given as an address,
+  0.0.0.0 otherwise.
+*/
+class SandboxSocket extends SandboxStream with io.CloseableInMixin io.CloseableOutMixin implements tcp.Socket:
+  peer-address/net.SocketAddress
+
+  constructor.internal_ client/SandboxNetworkClient handle/int --peer/net.SocketAddress:
+    peer-address = peer
+    super client handle
+
+  local-address -> net.SocketAddress:
+    return net.SocketAddress (net.IpAddress #[0, 0, 0, 0]) 0
+
+  no-delay -> bool:
+    return true
+
+  no-delay= value/bool -> none:
+
+  mtu -> int:
+    return CHUNK-SIZE
+
+  read -> ByteArray?:
+    return read_
+
+  read_ -> ByteArray?:
+    if is-closed: return null
+    return read-chunk
+
+  write data/io.Data from/int=0 to/int=data.byte-size -> int:
+    return try-write_ data from to
+
+  try-write_ data/io.Data from/int to/int -> int:
+    size := min (to - from) CHUNK-SIZE
+    if size == 0: return 0
+    chunk := ByteArray size
+    data.write-to-byte-array chunk --at=0 from (from + size)
+    write-chunk chunk
+    return size
+
+  close-write -> none:
+    out.close
+
+  close-writer_ -> none:
+    if not is-closed: end-writes
+
+  close-reader_ -> none:
+
+  close -> none:
+    mark-reader-closed_
+    mark-writer-closed_
+    super

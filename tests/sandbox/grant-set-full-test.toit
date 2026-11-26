@@ -104,6 +104,7 @@ run-driver:
 
   untrusted := containers.start containers.current {ROLE-KEY: "untrusted"}
       --untrusted
+      --services=[PidService.ANCHOR-SELECTOR.uuid, PidService.CROWD-SELECTOR.uuid]
   expect-equals 0 untrusted.wait
 
   anchor.stop

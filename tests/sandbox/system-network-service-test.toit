@@ -4,8 +4,15 @@
 
 import .sandbox
 import net
+import system.api.network show NetworkService
 
-// The network service of the system process rejects sandboxed clients.
+// Sandboxed clients don't discover the network service of the system
+// process, and it rejects them when they open it without discovery.
 main args:
-  sandbox-test args --error="PERMISSION_DENIED": | arguments/Map |
-    net.open
+  sandbox-test args --error="PERMISSION_DENIED"
+      --prepare=(:: | _ | {"ids": provider-ids NetworkService.SELECTOR.uuid}):
+    | arguments/Map |
+    exception := catch: net.open
+    if exception != "Network unavailable": throw "DISCOVERED: $exception"
+    ids := arguments["ids"]
+    open-without-discovery ids[0] ids[1] NetworkService.SELECTOR

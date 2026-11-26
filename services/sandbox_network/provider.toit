@@ -1,0 +1,39 @@
+// Copyright (C) 2026 Toit contributors.
+//
+// This library is free software; you can redistribute it and/or
+// modify it under the terms of the GNU Lesser General Public
+// License as published by the Free Software Foundation; version
+// 2.1 only.
+//
+// This library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+// Lesser General Public License for more details.
+//
+// The license can be found in the file `LICENSE` in the top level
+// directory of this repository.
+
+import system.api.sandbox-network show network-policy-list
+
+import .core
+import .http-service
+import .socket-service
+
+/**
+Installs the sandbox network services (variant S with $socket, variant H
+  with $http) in this process and serves them until the process ends.
+
+The $network policy applies to every client: "all", "public", a list of
+  rules, or a map of rules and limits (see `network-policy-list` in the
+  system.api.sandbox-network library); null allows nothing. The limits are
+  kept per client container.
+
+The process must run as a trusted container: it uses the network itself
+  (sockets, DNS, TLS).
+*/
+run-sandbox-network --network/any --socket/bool=true --http/bool=true -> none:
+  core := SandboxNetworkCore --policy=(network == null ? null : network-policy-list network)
+  if socket: (SandboxSocketServiceProvider core).install
+  if http: (SandboxHttpServiceProvider core).install
+  // The providers serve requests in tasks of their own; keep the process.
+  while true: sleep --ms=1_000_000

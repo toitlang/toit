@@ -10,7 +10,7 @@ interface ContainerService:
   static SELECTOR ::= ServiceSelector
       --uuid="358ee529-45a4-409e-8fab-7a28f71e5c51"
       --major=0
-      --minor=7
+      --minor=8
 
   static FLAG-RUN-BOOT     /int ::= 1 << 0
   static FLAG-RUN-CRITICAL /int ::= 1 << 1
@@ -31,6 +31,19 @@ interface ContainerService:
   // providers. They are only discovered by trusted clients that opt in
   // (see TAG-UNTRUSTED-PROVIDER in the system.services library).
   static POLICY-GRANT-PROVIDE-SERVICES /int ::= 1 << 0
+  // A policy list holds the services a sandboxed container may use at this
+  // index: a list of service uuids (strings), or $ALL-SERVICES. A sandbox
+  // discovers and opens only providers of these services that accept
+  // sandboxed clients, and the service discovery and print services, which
+  // are always available. Missing or empty: no other service (the
+  // default). The VM ignores the entry.
+  static POLICY-SERVICES-INDEX /int ::= 10
+  // The services entry that lets a sandbox use every provider that accepts
+  // sandboxed clients.
+  static ALL-SERVICES /string ::= "all"
+  // The most service uuids a policy may list, and their largest size.
+  static MAX-POLICY-SERVICES /int ::= 16
+  static MAX-POLICY-SERVICE-SIZE /int ::= 64
 
   list-images -> List
   static LIST-IMAGES-INDEX /int ::= 0
