@@ -446,7 +446,7 @@ fn run(arena: &mut Arena, h: &Heap, tcap_extra: isize, refuse: bool) -> Result<(
     let ncb = h.nodes.iter().filter(|n| n.0 != 4).count();
     let mut nodew: Vec<usize> = vec![];
     for (kind, key, lam) in &h.nodes {
-        nodew.extend([*kind, enc(h, key), enc(h, lam), 99]);
+        nodew.extend([*kind, enc(h, key), enc(h, lam), 99, 0, 0]);
     }
     nodew.push(0);
     let nodes_before = nodew.clone();
@@ -524,16 +524,16 @@ fn check(arena: &Arena, cb: &[u16], h: &Heap, rootw: &[usize], nodew: &[usize], 
         _ => assert_eq!(word, enc(h, v), "{} changed", what),
     };
     for (n, (kind, key, lam)) in h.nodes.iter().enumerate() {
-        let d = nodew[4 * n + 3];
+        let d = nodew[6 * n + 3];
         assert_eq!(d, verdicts[n], "verdict of node {} (kind {})", n, kind);
         match d {
             0 => {
-                start(key, nodew[4 * n + 1], format!("key of node {}", n), &mut q);
-                if *kind != 4 { start(lam, nodew[4 * n + 2], format!("lambda of node {}", n), &mut q); }
+                start(key, nodew[6 * n + 1], format!("key of node {}", n), &mut q);
+                if *kind != 4 { start(lam, nodew[6 * n + 2], format!("lambda of node {}", n), &mut q); }
             }
             1 => {
-                assert_eq!(nodew[4 * n + 1], NULL, "key of queued node {}", n);
-                start(lam, nodew[4 * n + 2], format!("lambda of node {}", n), &mut q);
+                assert_eq!(nodew[6 * n + 1], NULL, "key of queued node {}", n);
+                start(lam, nodew[6 * n + 2], format!("lambda of node {}", n), &mut q);
             }
             _ => {}
         }

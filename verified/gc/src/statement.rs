@@ -776,8 +776,8 @@ pub fn fin_phase<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, nptr: *mut us
             assert forall|x: int| 0 <= x < h.objs.len() implies (#[trigger] obj(h, x)).words.len() >= 1 by {
                 assert(obj_ok(obj(h, x)));
             }
-            lemma_fate_frame(*c, h, hf, sf, hf, ss, main, nodes[m], nm[4 * m + 3].value(), nm[4 * m + 1].value(),
-                             nm[4 * m + 2].value());
+            lemma_fate_frame(*c, h, hf, sf, hf, ss, main, nodes[m], nm[6 * m + 3].value(), nm[6 * m + 1].value(),
+                             nm[6 * m + 2].value());
         }
     }
     let mut i: usize = ncb;
@@ -802,13 +802,13 @@ pub fn fin_phase<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, nptr: *mut us
             assert forall|m: int| 0 <= m < i + 1 implies #[trigger] node_out(*c, h, hf, ss, main, *nm, nodes[m], m) by {
                 if m < i {
                     assert(node_out(*c, h, hf, ss, main, nm1, nodes[m], m));
-                    assert(nm[4 * m] == nm1[4 * m] && nm[4 * m + 1] == nm1[4 * m + 1]);
-                    assert(nm[4 * m + 2] == nm1[4 * m + 2] && nm[4 * m + 3] == nm1[4 * m + 3]);
+                    assert(nm[6 * m] == nm1[6 * m] && nm[6 * m + 1] == nm1[6 * m + 1]);
+                    assert(nm[6 * m + 2] == nm1[6 * m + 2] && nm[6 * m + 3] == nm1[6 * m + 3]);
                 }
             }
             assert forall|m: int| i + 1 <= m < nn implies #[trigger] node_in(*nm, h, nodes[m], m) by {
                 assert(node_in(nm1, h, nodes[m], m));
-                assert(nm[4 * m] == nm1[4 * m] && nm[4 * m + 1] == nm1[4 * m + 1] && nm[4 * m + 2] == nm1[4 * m + 2]);
+                assert(nm[6 * m] == nm1[6 * m] && nm[6 * m + 1] == nm1[6 * m + 1] && nm[6 * m + 2] == nm1[6 * m + 2]);
             }
         }
         i += 1;

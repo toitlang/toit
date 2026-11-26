@@ -323,7 +323,7 @@ fn diff(before: &Dump, after: &Dump, stats: &mut Stats) -> Result<(), String> {
     for &i in &order {
         let n = before.nodes[i];
         let kind = if n[0] == 1 { n[1] + 2 } else { n[1] };
-        nodew.extend([kind, rel(n[3]), if n[0] == 2 { 0 } else { rel(n[4]) }, 99]);
+        nodew.extend([kind, rel(n[3]), if n[0] == 2 { 0 } else { rel(n[4]) }, 99, 0, 0]);
     }
     nodew.push(0);
     let ncb = order.iter().filter(|&&i| before.nodes[i][0] != 2).count();
@@ -378,7 +378,7 @@ fn diff(before: &Dump, after: &Dump, stats: &mut Stats) -> Result<(), String> {
     let has_weak = before.nodes.iter().any(|n| n[1] == 1);
     for (m, &i) in order.iter().enumerate() {
         let n = before.nodes[i];
-        let d = nodew[4 * m + 3];
+        let d = nodew[6 * m + 3];
         let a = after_nodes.get(&n[2]);
         let fbit = before.word(n[3] - 1).map_or(false, |h| h & 32 != 0);
         // 0 KEEP, 1 QUEUE, 2 DELETE, 3 FREE; 5: a live weak map the C++
@@ -409,13 +409,13 @@ fn diff(before: &Dump, after: &Dump, stats: &mut Stats) -> Result<(), String> {
         match d {
             0 => {
                 let x = a.unwrap();
-                pair(nodew[4 * m + 1], x[3], &mut work, stats).map_err(|e| what("key", e))?;
-                if n[0] != 2 { pair(nodew[4 * m + 2], x[4], &mut work, stats).map_err(|e| what("lambda", e))?; }
+                pair(nodew[6 * m + 1], x[3], &mut work, stats).map_err(|e| what("key", e))?;
+                if n[0] != 2 { pair(nodew[6 * m + 2], x[4], &mut work, stats).map_err(|e| what("lambda", e))?; }
             }
             1 => {
                 let x = a.unwrap();
-                if nodew[4 * m + 1] != x[3] { return Err(what("key", format!("{:#x}, C++ {:#x}", nodew[4 * m + 1], x[3]))); }
-                pair(nodew[4 * m + 2], x[4], &mut work, stats).map_err(|e| what("lambda", e))?;
+                if nodew[6 * m + 1] != x[3] { return Err(what("key", format!("{:#x}, C++ {:#x}", nodew[6 * m + 1], x[3]))); }
+                pair(nodew[6 * m + 2], x[4], &mut work, stats).map_err(|e| what("lambda", e))?;
             }
             _ => {}
         }

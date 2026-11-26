@@ -549,19 +549,23 @@ pub struct Node {
     pub kind: usize,
     pub key: AVal,
     pub lam: AVal,
+    /// A live weak map's index and backing fields while they are hidden
+    /// (node words 4 and 5; `Raw(0)` otherwise).
+    pub ix: AVal,
+    pub bk: AVal,
 }
 
-/// The node array: four words per node (kind, key, lambda, verdict).
+/// The node array: six words per node (kind, key, lambda, verdict, and two words for a weak map's hidden fields).
 pub open spec fn nodes_mem(np: Map<int, PointsTo<usize>>, nptr: *mut usize, nn: int) -> bool {
-    &&& nptr@.addr + 4 * nn * W <= usize::MAX
-    &&& forall|m: int| 0 <= m < 4 * nn ==> #[trigger] wperm_ok(np, m, nptr, m)
+    &&& nptr@.addr + 6 * nn * W <= usize::MAX
+    &&& forall|m: int| 0 <= m < 6 * nn ==> #[trigger] wperm_ok(np, m, nptr, m)
 }
 
 /// Node `i`'s words as the C++ wrote them.
 pub open spec fn node_in(np: Map<int, PointsTo<usize>>, h: H, nd: Node, i: int) -> bool {
-    &&& np[4 * i].is_init() && np[4 * i].value() == nd.kind
-    &&& np[4 * i + 1].is_init() && np[4 * i + 1].value() == enc(h.addr, nd.key)
-    &&& np[4 * i + 2].is_init() && np[4 * i + 2].value() == enc(h.addr, nd.lam)
+    &&& np[6 * i].is_init() && np[6 * i].value() == nd.kind
+    &&& np[6 * i + 1].is_init() && np[6 * i + 1].value() == enc(h.addr, nd.key)
+    &&& np[6 * i + 2].is_init() && np[6 * i + 2].value() == enc(h.addr, nd.lam)
 }
 
 /// A key that was dead after the first scan: a from-space object no strong
@@ -597,9 +601,9 @@ pub open spec fn fate(c: Ctx, h0: H, h: H, st: St, main: Set<int>, nd: Node, d: 
 }
 
 pub open spec fn node_out(c: Ctx, h0: H, h: H, st: St, main: Set<int>, np: Map<int, PointsTo<usize>>, nd: Node, i: int) -> bool {
-    &&& np[4 * i].is_init() && np[4 * i].value() == nd.kind
-    &&& np[4 * i + 1].is_init() && np[4 * i + 2].is_init() && np[4 * i + 3].is_init()
-    &&& fate(c, h0, h, st, main, nd, np[4 * i + 3].value(), np[4 * i + 1].value(), np[4 * i + 2].value())
+    &&& np[6 * i].is_init() && np[6 * i].value() == nd.kind
+    &&& np[6 * i + 1].is_init() && np[6 * i + 2].is_init() && np[6 * i + 3].is_init()
+    &&& fate(c, h0, h, st, main, nd, np[6 * i + 3].value(), np[6 * i + 1].value(), np[6 * i + 2].value())
 }
 
 /// The heap during the finalizer pass: the objects of `h0`, some killed
@@ -677,25 +681,26 @@ pub proof fn lemma_killed_heap(c: Ctx, h0: H, h: H, j: int, rst: bool, others: M
 /// The roots of the parents of the finalizer pass: the root array's values,
 /// then each node's key and lambda.
 pub open spec fn fin_roots(rv: Seq<AVal>, nodes: Seq<Node>) -> Seq<AVal> {
-    rv + Seq::new(2 * nodes.len(), |m: int| if m % 2 == 0 { nodes[m / 2].key } else { nodes[m / 2].lam })
+    rv + Seq::new(4 * nodes.len(), |m: int|
+        if m % 4 == 0 { nodes[m / 4].key } else if m % 4 == 1 { nodes[m / 4].lam } else if m % 4 == 2 { nodes[m / 4].ix } else { nodes[m / 4].bk })
 }
 
 #[inline(always)]
 fn nword(nptr: *mut usize, m: usize, Ghost(nn): Ghost<int>, Tracked(np): Tracked<&Map<int, PointsTo<usize>>>) -> (v: usize)
-    requires nodes_mem(*np, nptr, nn), 0 <= m < 4 * nn, np[m as int].is_init(),
+    requires nodes_mem(*np, nptr, nn), 0 <= m < 6 * nn, np[m as int].is_init(),
     ensures v == np[m as int].value(),
 {
     proof {
         lemma_w();
         assert(wperm_ok(*np, m as int, nptr, m as int));
-        assert(m * W <= 4 * nn * W) by (nonlinear_arith) requires m <= 4 * nn, W >= 1;
+        assert(m * W <= 6 * nn * W) by (nonlinear_arith) requires m <= 6 * nn, W >= 1;
     }
     rd(nptr, m, Ghost(m as int), Tracked(np))
 }
 
 #[inline(always)]
 fn set_nword(nptr: *mut usize, m: usize, v: usize, Ghost(nn): Ghost<int>, Tracked(np): Tracked<&mut Map<int, PointsTo<usize>>>)
-    requires nodes_mem(*old(np), nptr, nn), 0 <= m < 4 * nn,
+    requires nodes_mem(*old(np), nptr, nn), 0 <= m < 6 * nn,
     ensures
         nodes_mem(*final(np), nptr, nn),
         final(np)[m as int].is_init(), final(np)[m as int].value() == v,
@@ -704,12 +709,12 @@ fn set_nword(nptr: *mut usize, m: usize, v: usize, Ghost(nn): Ghost<int>, Tracke
     proof {
         lemma_w();
         assert(wperm_ok(*np, m as int, nptr, m as int));
-        assert(m * W <= 4 * nn * W) by (nonlinear_arith) requires m <= 4 * nn, W >= 1;
+        assert(m * W <= 6 * nn * W) by (nonlinear_arith) requires m <= 6 * nn, W >= 1;
     }
     let ghost np0 = *np;
     wr(nptr, m, v, Ghost(m as int), Tracked(np));
     proof {
-        assert forall|q: int| 0 <= q < 4 * nn implies #[trigger] wperm_ok(*np, q, nptr, q) by {
+        assert forall|q: int| 0 <= q < 6 * nn implies #[trigger] wperm_ok(*np, q, nptr, q) by {
             assert(wperm_ok(np0, q, nptr, q));
         }
     }
@@ -747,20 +752,20 @@ pub fn fin_node<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, nptr: *mut usi
             && obj(r@, x) == killed(obj(h0, x), c.nullid@, nodes[i as int].kind != KIND_TOIT),
         node_out(*c, h0, r@, *final(st), main, *final(np), nodes[i as int], i as int),
         nodes_mem(*final(np), nptr, nn as int),
-        forall|q: int| !(4 * i <= q < 4 * i + 4) ==> #[trigger] final(np)[q] == old(np)[q],
+        forall|q: int| !(6 * i <= q < 6 * i + 6) ==> #[trigger] final(np)[q] == old(np)[q],
         final(t).ttab == old(t).ttab, final(t).tused == old(t).tused, final(t).tcap == old(t).tcap, final(t).rs == old(t).rs, final(t).mx == old(t).mx,
 {
     let ghost nd = nodes[i as int];
     let ghost s0 = *st;
     let ghost n = h.objs.len() as int;
-    let ghost ki = rv.len() + 2 * i;
+    let ghost ki = rv.len() + 4 * i;
     proof {
         assert(rvp[ki] == nd.key && rvp[ki + 1] == nd.lam);
         assert(h.addr == h0.addr);
     }
-    let kind = nword(nptr, 4 * i, Ghost(nn as int), Tracked(&*np));
-    let kw = nword(nptr, 4 * i + 1, Ghost(nn as int), Tracked(&*np));
-    let lw = nword(nptr, 4 * i + 2, Ghost(nn as int), Tracked(&*np));
+    let kind = nword(nptr, 6 * i, Ghost(nn as int), Tracked(&*np));
+    let kw = nword(nptr, 6 * i + 1, Ghost(nn as int), Tracked(&*np));
+    let lw = nword(nptr, 6 * i + 2, Ghost(nn as int), Tracked(&*np));
     let (dead, act, s, off, cur) = key_status(c, kw, Ghost(h), Ghost(nd.key), Ghost(*t), Ghost(n0), Ghost(0int), Ghost(rvp),
                                              Tracked(&*st), Tracked(ro));
     let ghost mut hr = h;
@@ -822,11 +827,11 @@ pub fn fin_node<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, nptr: *mut usi
         l2 = lw;
         verdict = DELETE;
     }
-    set_nword(nptr, 4 * i + 1, k2, Ghost(nn as int), Tracked(np));
-    set_nword(nptr, 4 * i + 2, l2, Ghost(nn as int), Tracked(np));
-    set_nword(nptr, 4 * i + 3, verdict, Ghost(nn as int), Tracked(np));
+    set_nword(nptr, 6 * i + 1, k2, Ghost(nn as int), Tracked(np));
+    set_nword(nptr, 6 * i + 2, l2, Ghost(nn as int), Tracked(np));
+    set_nword(nptr, 6 * i + 3, verdict, Ghost(nn as int), Tracked(np));
     proof {
-        assert(np[4 * i as int].value() == nd.kind);
+        assert(np[6 * i as int].value() == nd.kind);
     }
     Ghost(hr)
 }
@@ -920,18 +925,18 @@ pub fn fin_pass<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, nptr: *mut usi
             assert forall|m: int| 0 <= m < i + 1 implies #[trigger] node_out(*c, h0, h2, s2, main, *np, nodes[m], m) by {
                 if m < i {
                     assert(node_out(*c, h0, h1, s1, main, np1, nodes[m], m));
-                    assert(np[4 * m] == np1[4 * m] && np[4 * m + 1] == np1[4 * m + 1]);
-                    assert(np[4 * m + 2] == np1[4 * m + 2] && np[4 * m + 3] == np1[4 * m + 3]);
+                    assert(np[6 * m] == np1[6 * m] && np[6 * m + 1] == np1[6 * m + 1]);
+                    assert(np[6 * m + 2] == np1[6 * m + 2] && np[6 * m + 3] == np1[6 * m + 3]);
                     assert forall|x: int| 0 <= x < h0.objs.len() implies (#[trigger] obj(h0, x)).words.len() >= 1 by {
                         assert(obj_ok(obj(h0, x)));
                     }
-                    lemma_fate_frame(*c, h0, h1, s1, h2, s2, main, nodes[m], np1[4 * m + 3].value(),
-                                     np1[4 * m + 1].value(), np1[4 * m + 2].value());
+                    lemma_fate_frame(*c, h0, h1, s1, h2, s2, main, nodes[m], np1[6 * m + 3].value(),
+                                     np1[6 * m + 1].value(), np1[6 * m + 2].value());
                 }
             }
             assert forall|m: int| i + 1 <= m < nn implies #[trigger] node_in(*np, h0, nodes[m], m) by {
                 assert(node_in(np1, h0, nodes[m], m));
-                assert(np[4 * m] == np1[4 * m] && np[4 * m + 1] == np1[4 * m + 1] && np[4 * m + 2] == np1[4 * m + 2]);
+                assert(np[6 * m] == np1[6 * m] && np[6 * m + 1] == np1[6 * m + 1] && np[6 * m + 2] == np1[6 * m + 2]);
             }
             assert forall|x: int| 0 <= x < h0.objs.len() implies #[trigger] changed_ok(*c, h0, h2, nodes, i + 1, main, x) by {
                 if obj(h2, x) != obj(h1, x) {
@@ -967,31 +972,31 @@ pub fn vm_node(c: &Ctx, nptr: *mut usize, i: usize, nn: usize, Ghost(h): Ghost<H
         i < nn, nodes.len() == nn, nodes[i as int].kind == KIND_VM,
         slot_ok(*c, h.objs.len() as int, nodes[i as int].key),
         nodes_mem(*old(np), nptr, nn as int),
-        old(np)[4 * i as int].is_init() && old(np)[4 * i as int].value() == KIND_VM,
-        old(np)[4 * i + 1].is_init() && old(np)[4 * i + 1].value() == enc(h.addr, nodes[i as int].key),
-        old(np)[4 * i + 2].is_init(),
+        old(np)[6 * i as int].is_init() && old(np)[6 * i as int].value() == KIND_VM,
+        old(np)[6 * i + 1].is_init() && old(np)[6 * i + 1].value() == enc(h.addr, nodes[i as int].key),
+        old(np)[6 * i + 2].is_init(),
     ensures
         nodes_mem(*final(np), nptr, nn as int),
-        forall|q: int| !(4 * i <= q < 4 * i + 4) ==> #[trigger] final(np)[q] == old(np)[q],
-        final(np)[4 * i as int].is_init() && final(np)[4 * i as int].value() == KIND_VM,
-        final(np)[4 * i + 1].is_init() && final(np)[4 * i + 2].is_init() && final(np)[4 * i + 3].is_init(),
+        forall|q: int| !(6 * i <= q < 6 * i + 6) ==> #[trigger] final(np)[q] == old(np)[q],
+        final(np)[6 * i as int].is_init() && final(np)[6 * i as int].value() == KIND_VM,
+        final(np)[6 * i + 1].is_init() && final(np)[6 * i + 2].is_init() && final(np)[6 * i + 3].is_init(),
         ({
             let kv = nodes[i as int].key;
-            let d = final(np)[4 * i + 3].value();
-            let kw = final(np)[4 * i + 1].value();
+            let d = final(np)[6 * i + 3].value();
+            let kw = final(np)[6 * i + 1].value();
             ||| (d == KEEP && key_active(h, kv) && val_live(h, *st, kv) && kw == enc(st.addr2, kv))
             ||| (d == DELETE && !key_active(h, kv))
             ||| (d == FREE && key_active(h, kv) && key_dead(h, *st, kv))
         }),
 {
     let ghost kv = nodes[i as int].key;
-    let kw = nword(nptr, 4 * i + 1, Ghost(nn as int), Tracked(&*np));
+    let kw = nword(nptr, 6 * i + 1, Ghost(nn as int), Tracked(&*np));
     let (dead, act, _s, _off, cur) = key_status(c, kw, Ghost(h), Ghost(kv), Ghost(t), Ghost(ks), Ghost(0int), Ghost(rvp),
                                                Tracked(st), Tracked(ro));
     let verdict = if !act { DELETE } else if dead { FREE } else { KEEP };
     let k2 = if !act || dead { kw } else { cur };
-    set_nword(nptr, 4 * i + 1, k2, Ghost(nn as int), Tracked(np));
-    set_nword(nptr, 4 * i + 3, verdict, Ghost(nn as int), Tracked(np));
+    set_nword(nptr, 6 * i + 1, k2, Ghost(nn as int), Tracked(np));
+    set_nword(nptr, 6 * i + 3, verdict, Ghost(nn as int), Tracked(np));
 }
 
 /// After the finalizer pass and the collection (`statement::collect`):
@@ -1030,7 +1035,7 @@ pub proof fn lemma_fin_done_same(c: Ctx, h: H, hf: H, st: St, st2: St, rv: Seq<A
 {
     assert forall|m: int| 0 <= m < nn implies #[trigger] node_out(c, h, hf, st2, main, nm, nodes[m], m) by {
         assert(node_out(c, h, hf, st, main, nm, nodes[m], m));
-        lemma_fate_same(c, h, hf, st, st2, main, nodes[m], nm[4 * m + 3].value(), nm[4 * m + 1].value(), nm[4 * m + 2].value());
+        lemma_fate_same(c, h, hf, st, st2, main, nodes[m], nm[6 * m + 3].value(), nm[6 * m + 1].value(), nm[6 * m + 2].value());
     }
 }
 
