@@ -82,9 +82,21 @@ size (32 or 64 bits):
 5. **No deep sleep, no reset.** An untrusted program cannot halt the
    device into deep sleep or reset it through bytecode (`accepts` with
    `trusted == false` rejects HALT 2 and 3).
+6. **Only the primitives of its policy.** Every PRIMITIVE step of *P* names
+   a primitive that the primitive table of its policy (the table the
+   verdict was computed with, `PrimitivePolicy::verifier_arities`) allows
+   with the frame's arity, denies or does not have; the core runs a
+   primitive, its C++ entry or its Rust port, only if the table allows it,
+   and completes a denied one with PERMISSION_DENIED and an absent one
+   with PRIMITIVE_LOOKUP_FAILED without calling anything (since
+   2026-11-26, branch verifier/single-pass).
 
-Clauses 1, 2 and 4 are one Verus theorem, `theorem_process`
-(`verified/core/src/process.rs`, listed in `verified/THEOREMS.txt`).
+Clauses 1, 2, 4 and 6 are one Verus theorem, `theorem_process`
+(`verified/core/src/process.rs`, listed in `verified/THEOREMS.txt`;
+clause 6 is its conclusion `prim_listed` together with the
+preconditions `prim_allowed` of the core's only two ways to run a
+primitive, `primitive::gc_call_primitive` and `prims::call`, which Verus
+proves at every call).
 Clause 3 is not a separate theorem: it is what Verus establishes for
 every verified exec function, among them `step::run_loop`, whose contract
 `theorem_process` uses. Clause 5 is part of `accepts`.
@@ -108,10 +120,13 @@ representatives, dispatch entries, method table, interface-check
 offsets, the builtin classes and entry points the machine uses), every
 method satisfies the per-instruction rules against its stack maps
 (`method_ok`), and the unchecked mode is used only if `trusted`.
-On the device, `cert::verify_shipped` (a verified exec function) returns
-"accepted" only if some `c` with the shipped global count and primitive
-table satisfies `accepts(vview(p), c, trusted)`; `vview(p)` is the
-abstract view of the tables vmverify read from VM memory.
+On the device, `cert::verify_shipped` (a verified exec function, the
+single-pass checker `v2::walk`) returns "accepted" only if some `c` with
+the program's global count and the primitive table of its policy
+satisfies `accepts(vview(p), c, trusted)`; `vview(p)` is the abstract view
+of the tables vmverify read from VM memory. `accepts` takes a PRIMITIVE
+only for a primitive that table lists (`prim_listed`: allowed with the
+method's arity, denied, or absent).
 
 **`loaded_ok(p, c, heap0, globals0)`** (`verified/spec/src/v2/sound.rs`):
 the program heap is well formed (every object's class exists, instances
@@ -168,8 +183,11 @@ process.
 `accepts(p, c, trusted)`, `!p.unchecked`, `loaded_ok(p, c, heap0,
 globals0)` and `reachable(p, heap0, globals0, s)`, then the step from
 `s` is not stuck, no completion of a PRIMITIVE step from `s` is stuck,
-no outcome of `s` is stuck or an uncompleted raise, and
-`machine_objects_ok(p, s)`. `reachable` is a run of `transition`s
+no outcome of `s` is stuck or an uncompleted raise,
+`machine_objects_ok(p, s)`, and a PRIMITIVE step names a primitive the
+certificate's table lists (`prim_listed`; the completions of a PRIMITIVE
+include `prim_denied`, the PERMISSION_DENIED failure of a denied
+primitive). `reachable` is a run of `transition`s
 (outcomes that continue, within the memory bound `small`) **without
 garbage collections**. `theorem_soundness_split` is the same for the
 streaming checker's certificate representation; `lemma_split_complete`
@@ -192,8 +210,10 @@ document): for machines `ms[0..n]` (the start of each run), `es` and
 * `!p.ap.unchecked` (implied by `accepts` for every untrusted program),
 
 every `ms[i]` satisfies `inv(p)`, its state is reached from the initial
-state (`reaches`), and that state has the four properties
-`theorem_soundness` gives a reachable state. Before this theorem, the
+state (`reaches`), and that state has the five properties
+`theorem_soundness` gives a reachable state. Since 2026-11-26 `loaded`
+also says that the policy table the core reads (`Program::policy`) is the
+certificate's primitive table (`policy_rel`), and `inv` carries it. Before this theorem, the
 composition over any number of runs was stated only in prose
 (theorem.rs: "for any number of runs and steps"), and
 `theorem_soundness` covered only collection-free runs; the bridge is
@@ -227,16 +247,23 @@ What the theorem gives about what an untrusted program can reach:
   errors). The theorem holds whatever a primitive does within that
   contract.
 
-What is enforced by code but **not** part of the theorem:
+* **Which primitives the program can call** (a theorem since 2026-11-26).
+  The untrusted policy allows 150 primitives (141 of the core module, 2
+  bitmap, the 4 timer and 3 events primitives; `src/primitive_policy.cc`,
+  counted from `UNTRUSTED_CORE`, `UNTRUSTED_BITMAP` and the whole-module
+  list). The verifier checks every PRIMITIVE against that table
+  (`PrimitivePolicy::verifier_arities`: allowed with the method's arity,
+  denied, or absent), the core gets the same table and runs a primitive
+  only where it allows it (proven), and completes a denied one with
+  PERMISSION_DENIED and an absent one with PRIMITIVE_LOOKUP_FAILED itself.
+  Programs do contain calls of denied primitives (the core library's
+  `print` tries `write_on_stdout` and falls back to the system process),
+  so they are completed, not rejected. What remains trusted is that the
+  table lists the policy as intended (one C++ function makes it from the
+  lists above) and that index (m, i) names the C++ table's primitive at
+  (m, i) (section 2.4).
 
-* **Which primitives exist for the program.** The untrusted policy
-  allows 150 primitives (141 of the core module, 2 bitmap, the 4 timer
-  and 3 events primitives; `src/primitive_policy.cc`, counted from
-  `UNTRUSTED_CORE`, `UNTRUSTED_BITMAP` and the whole-module list) and
-  denies the rest at run time (`PrimitivePolicy::at`, `primitive_denied`,
-  `toit_v2_primitive` in `src/interpreter_v2.cc`). The spec does not model
-  policies (verified/core/TRUSTED.md, section 8). The verifier checks
-  primitive arities against the full table, not the allowed set.
+What is enforced by code but **not** part of the theorem:
 * **What primitives do outside the heap** (time, timers, events,
   messages): not in the spec at all.
 * **Messaging and services.** The message-type and target gate, send
@@ -268,8 +295,8 @@ flash outside its image, or the hardware.
   and for 32-bit words (`--target i686-unknown-linux-gnu`, the stand-in
   for the 32-bit devices), the core in both configurations of its run
   loop (`verified/check.sh` sections `verus`, `verus32`). Counts at this
-  commit: spec 1081 verified, core 1091 (64-bit) and 1093 (32-bit),
-  core-split 1093 (64-bit), 0 errors.
+  commit: spec 1090 verified (both widths), core 1092 (64-bit) and 1094
+  (32-bit), core-split 1094 (64-bit) and 1096 (32-bit), 0 errors.
 * The C++ proofs run for LP64 and ILP32 on Clang's AST of the host
   build (section 2.1).
 * Devices with untrusted installs exercised: ESP32-C6 (RISC-V), classic
@@ -363,9 +390,12 @@ What they amount to (verified/core/TRUSTED.md section 0 and 6):
   `prepare_process_v2` building the initial state.
   Not machine-checked either: that `from_vm.rs`'s object numbering is the
   one `Heap::new` and `prog_rel` use; that the context's `unchecked`
-  field is 0 for untrusted processes; that `core_arities` agrees with
-  the policy (confinement-critical: a denied primitive must not run as
-  its Rust port).
+  field is 0 for untrusted processes; that the context's policy table is
+  the one the verdict was computed with (`policy_rel` in `loaded`; until
+  2026-11-26 the trusted fact here was that `core_arities` agrees with
+  the policy, on which confinement rested: a denied primitive must not
+  run as its Rust port; now the proof shows that no primitive runs unless
+  the verified table allows it).
 * **Between runs** (`machine::run`'s `assume_new` of the ghost state): the
   scheduler resumes the state it saved, after collections, and nothing
   but collections touches a suspended process' state.
@@ -376,11 +406,11 @@ What they amount to (verified/core/TRUSTED.md section 0 and 6):
   following the target's C ABI.
 * **The verification epoch** (installed verdicts are valid only under the
   epoch that computed them) hashes the spec crate, vmverify, the core's
-  `theorem.rs` and `ffi.rs` and the C++ install-time checks, but not the
-  core's `abs.rs` (`prog_rel`), `exec.rs` (`refines`, `inv`), `view.rs`,
-  `layout.rs` or `src/interpreter_v2.cc`: a change there that changes
-  what the core assumes of an accepted program would not invalidate old
-  verdicts unless the manual component is bumped.
+  `theorem.rs`, `ffi.rs`, `abs.rs` (`prog_rel`), `exec.rs` (`refines`,
+  `inv`, `policy_rel`), `view.rs` and `layout.rs`, the C++ install-time
+  checks, `src/interpreter_v2.cc` (the context the core gets) and
+  `src/primitive_policy.*` (the policies' verifier tables); since
+  2026-11-26 (roadmap item 6a).
 * **Not memory**: preemption watermark, floating point (`prims/fp.rs`,
   the spec's uninterpreted float functions), the word size, pointer
   arithmetic provenance (`assume_specification` of `wrapping_add`,
@@ -404,11 +434,11 @@ section at this commit.
 | Allocator | VeriFast: semispace, young allocation, free lists, remembered cards, limits; ESBMC fixtures | raw space and its relation to the abstract heap (establishing `heap_model_ok`), address-to-metadata mapping, OS page providers, contract-only `allocate_instance`, `allocate_double`, `allocate_large_integer` |
 | Scheduler | VeriFast: ready queue, workers, targets; ESBMC (bounded): GC barrier, delivery, teardown, spawn, notify, timer dispatch | `resumed` as a whole; notifier locking and lifetime; locks and the OS modelled at call boundaries |
 | Messages | VeriFast: encoder, decoder, receive ownership, sender | 7 decoder assumptions (`ipc_begin`, `ipc_room`, `ipc_pointer`, `ipc_external`, `ipc_length`, `ipc_end`, `gc_owns`), `two_pass_room` (encoder), the encoders of `process_send` and spawn |
-| Install-time checks | VeriFast: `builtin_classes_error`, `has_valid_error_roots`; ESBMC: image checks part 2 (both widths), part 1 (`image_layout_error`) on ILP32 only; Frama-C/WP: the record validation loop; Verus: the whole verifier (`check::verify == accepts`, `x_loaded_ok == loaded_ok`) | `builtin_roots_error` (no verdict in 30 min); `image_layout_error` on LP64 (no verdict); that every untrusted process runs a table that passed `v2_verify` (reviewed) |
+| Install-time checks | VeriFast: `builtin_classes_error`, `has_valid_error_roots`; ESBMC: image checks part 2 (both widths), part 1 (`image_layout_error`) on ILP32 only; Frama-C/WP: the record validation loop; Verus: the whole verifier (`cert::verify_shipped` accepts only if `accepts` holds: the single-pass `v2::walk`; `x_loaded_ok == loaded_ok`) | `builtin_roots_error` (no verdict in 30 min); `image_layout_error` on LP64 (no verdict); that every untrusted process runs a table that passed `v2_verify` (reviewed) |
 | FFI glue | VeriFast: `interpreter_v2` glue; ESBMC: core entry (bounded) | `gc_allocate_exception` and the exception encoder (not rendered) |
 | Primitives (150 in the untrusted set) | 106 are ported to Rust and proved in Verus against `prim_spec`; of their C++ fallbacks, 62 are proved with VeriFast and 34 are proved unreachable from untrusted code; of the 44 primitives that stay in C++, 33 are VeriFast-proved and 11 have bounded ESBMC body checks | 10 reachable contract-only fallbacks (`blob_equals`, `blob_index_of`, `byte_array_at`, `byte_array_length`, `compare_simple_json_string`, `list_add`, `number_to_integer`, `size_of_json_number`, `smi_multiply`, `string_rune_count`); open parts of proved ones (`process_send`'s graph correspondence, byte preservation in three string conversions) |
 | Retry rule (a primitive that ran out of memory, a GC, the retry: one completion) | 77 of the 150 by VeriFast (`oom_clean`, `oom_unchanged`) | 62 by a textual check ("cannot fail for want of memory", not a proof), 9 by test only, 2 by review; the composition itself is the assumption `prim_retry` |
-| The policy table | contract table checks it covers the same 150 primitives as the retry classification | `PrimitivePolicy::at`, `build_partial_table`, `core_arities` (a denied primitive must not run as Rust): reviewed and tested |
+| The policy table | contract table checks it covers the same 150 primitives as the retry classification; since 2026-11-26 the core runs a primitive only where the verifier table of the policy allows it (proven) | `PrimitivePolicy::verifier_arities` lists the policy as intended (made by one function from `UNTRUSTED_CORE`, `UNTRUSTED_BITMAP` and the whole modules); index (m, i) names the C++ table's primitive at (m, i) (`PrimitivePolicy::at`, `build_partial_table`: an allowed entry is the VM's own); reviewed and tested |
 
 ### 2.5 Assumptions and trusted specifications
 
@@ -539,10 +569,11 @@ name the model it is relative to, list every assumption.
 > calls (garbage collector, allocator, scheduler, program loader and the
 > C++ primitives), which are proved only in part, and assumes the proof
 > tools, compilers, operating system and hardware, and the firmware's
-> own trusted programs. Which primitives a
-> program may call, and its memory, message and time quotas, are
-> enforced and tested but not proved. Availability and side channels are
-> not covered.
+> own trusted programs. It is also machine-checked that the program can
+> call only the primitives its policy allows (relative to the policy's
+> table, which the firmware computes from the policy). Its memory,
+> message and time quotas are enforced and tested but not proved.
+> Availability and side channels are not covered.
 
 **(ii) After the finite list of section 5: items 1 to 10, 12 and 13.**
 
@@ -580,11 +611,11 @@ the effort. Sizes: small (hours to a day), days, weeks.
 |---|---|---|---|---|---|
 | 1 | Remove `-Xuntrusted_format1` / `TOIT_UNTRUSTED_FORMAT1` from release builds (or entirely); make a host build without the core fail instead of warn | drops "unless configured otherwise" | small | owner decision | code removal |
 | 2 | Decide whether the verified core is the default for device firmware (`TOIT_VERIFIED_CORE`) | the claim applies to the shipped firmware, not a variant | small (decision), size issue on classic ESP32 | none | decision |
-| 3 | Check the allowed primitive set in the verifier: give `accepts` the policy's primitive set, reject a PRIMITIVE of a denied primitive at install time | "can call only the primitives of its policy" becomes a theorem; removes the `core_arities` trust (a denied primitive cannot reach the Rust port) | days | new epoch (installed images must be reinstalled) | proof, verifier change |
+| 3 | ~~Check the allowed primitive set in the verifier~~ **Done 2026-11-26** (branch verifier/single-pass): `accepts` checks every PRIMITIVE against the policy's table (allowed with the arity, denied or absent: programs contain denied calls by design, so they are completed with PERMISSION_DENIED or PRIMITIVE_LOOKUP_FAILED by the core, not rejected); the core runs a primitive only where the table allows it (`prim_allowed` required by `gc_call_primitive` and `prims::call`) | "can call only the primitives of its policy" is a theorem; the `core_arities` trust is gone (replaced by `policy_rel`: the core gets the table the verdict was computed with) | days | new epoch | proof, verifier change |
 | 4 | Strengthen `prim_heap_ok`: read-only objects and the `ro` flag unchanged | "never modifies read-only program data" becomes a theorem for primitives too (C++ primitives assumed, Rust ports proved) | small to days | new epoch | spec change |
 | 5 | Export what `step_post` already proves into `run_post`: a run never stops on a spec-stuck state, only on the resource limit | the theorem says the defensive checks never fire, not only that every reported state is fine | small | `run_loop` change | proof |
 | 6 | The 10 reachable contract-only fallbacks, the 9 test-only and 2 review-only retry rules | "every primitive an untrusted program can reach is proved against its contract" | days to weeks | none | proof, or code removal (port to Rust, or make the fallback unreachable) |
-| 6a | Make the epoch's inputs the whole contract the core assumes (add `abs.rs`, `exec.rs`, `view.rs`, `layout.rs`, `src/interpreter_v2.cc`, or move those definitions into an input) | "a verdict is used only by the checks and contract that computed it" without a manual step | small | one epoch change | gate |
+| 6a | ~~Make the epoch's inputs the whole contract the core assumes~~ **Done 2026-11-26**: `abs.rs`, `exec.rs`, `view.rs`, `layout.rs`, `src/interpreter_v2.cc` and `src/primitive_policy.*` are inputs | "a verdict is used only by the checks and contract that computed it" without a manual step | small | one epoch change | gate |
 | 6b | Run the layout check on device builds (or generate the device constants from the target headers) | removes "device layout from the i686 check" | days | device toolchains in the gate | gate |
 | 7 | Run the Xtensa code-generation check in the gate; record its rules (FFI of at most 6 words, no over-aligned locals) in TRUSTED.md | the Xtensa compiler item from "checked once" to "checked on every change" | small | toolchain in the gate machine | gate |
 | 8 | Close the install-time checks: prove `builtin_roots_error`; get a verdict for `install-image-layout` on LP64 or move the layout check into vmverify (Verus) | "the install-time checks are proved" without word-size qualification | days | none | proof; a format change could make the layout check part of the Rust verifier and remove the C++ check |
@@ -602,7 +633,8 @@ the effort. Sizes: small (hours to a day), days, weeks.
   FreeRTOS, the hardware. (seL4 and CompCert name theirs the same way.)
 * Whether the collector stays "trusted GC-class code" (claim (ii)) or is
   rewritten in Verus first (claim (iii)).
-* Whether to accept a new verification epoch for items 3 and 4 (every
+* Whether to accept a new verification epoch for item 4 (item 3 took one
+  on 2026-11-26, approved; every
   installed untrusted container must be reinstalled).
 * Whether to remove the format-1 untrusted path (item 1) and make the
   verified core the device default (item 2).

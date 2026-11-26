@@ -51,12 +51,13 @@ flash.
 * **Link the inference into toit.compile.** toit.compile does not link the
   VM (snapshot reader, `V2MethodTable`, `v2_program_tables`) or the Rust
   library. Chosen instead: toit.compile writes the snapshot, then runs
-  `toit.run --certify --trusted <snapshot>` (next to it), which loads the
-  snapshot exactly as the VM does, infers, encodes, checks the result with
+  `toit.run --certify <snapshot>` (next to it), which loads the snapshot
+  exactly as the VM does, infers, encodes, checks the result with
   `verify_shipped`, and rewrites the bundle with the certificate.
-  `-Xcertificate=false` skips it. The trusted rules give the same
-  certificate for programs without HALT 2/3 and one for the system
-  programs; the device checks with the rules of the program's policy.
+  `-Xcertificate=false` skips it. Since version 2 the certificate is made
+  for a policy: the untrusted policy's rules and primitive table (`toit.run
+  --certify --trusted`: the trusted ones), whose identity its header
+  records; the device checks it with the untrusted policy's.
 * **Ship maps at every instruction.** Hello world has 11,155 mapped
   instructions; only 214 need shipping (1.9 %). The decoder recomputes the
   rest with the verified transfer function `x_post`.
@@ -74,14 +75,24 @@ All numbers in the tables are 32-bit little endian. Every read is total:
 a word outside its table reads as 0, so any bytes have a meaning, and
 `rd`/`fld` in `v2/check.rs` are the specification of the reads.
 
-Header (60 bytes):
+Header (64 bytes, version 2 since 2026-11-26):
 
 | Offset | Field |
 |---|---|
 | 0 | magic `0x54524354` ("TCRT") |
-| 4 | version, 1 |
+| 4 | version, 2 |
 | 8 | number of methods (must equal the program's) |
-| 12 + 8i | section i: offset (from the certificate start), length |
+| 12 | policy: the identity of the primitive table the certificate was made for (`cert::policy_id`: 32-bit FNV-1a over the number of modules and, per module, its number of primitives and their arities, 0xff for a denied and 0xfe for an absent primitive) |
+| 16 + 8i | section i: offset (from the certificate start), length |
+
+The checker reads the header first (`cert::x_header_error`) and rejects a
+certificate of another version, of another method count, made for
+another primitive table (policy) or with a section outside it, before it
+reads anything else, with the reason (vmverify: "certificate made for
+another primitive policy" and so on). The policy is part of the header
+only to reject early with a clear message: the verdict is computed with
+the table the device passes (the one of the program's policy), whatever
+the header says.
 
 Sections (4-byte aligned in what the encoder writes; the decoder does not
 need alignment):
@@ -97,7 +108,7 @@ need alignment):
 
 The checker's views of these tables are exactly the abstract certificate's
 global part (`impl View for XGlobal`, `v2/check.rs`); the proofs of
-`check::verify` are over those views. The sorted tables are checked to be
+the walk (`v2/walk.rs`) are over those views. The sorted tables are checked to be
 sorted once (`x_g_ok`), which the binary searches need.
 
 Maps stream, per method: `count`, then `count` entries of
@@ -112,16 +123,20 @@ bits are a tag: 0 value / block parameter / token (rest 0, 1, 2), 1 method
 (rest = id), 2 block of depth 0 (rest = slot), 3 block of the depth that
 follows as another number (rest = slot).
 
-Decoding one method (`ShippedOracle::decode`): a block method without a
-context has no maps (`count` must be 0). Otherwise walk from offset 0 with
-the entry kinds: at each offset place the shipped map if one is given
-there, else the successor kinds of the previous instruction (`x_post`, the
-checker's own transfer function), else jump to the next shipped offset;
-step by the instruction's length (by 1 past an invalid opcode or an
-instruction crossing the end; then nothing falls through). Shipped maps
-behind the walk are read and ignored. The maps share nodes; a node budget
-of 16 per bytecode byte plus 4096 bounds what a malformed stream can make
-the decoder allocate. The encoder (`v2/encode.rs`, host) walks each method
+Checking one method (`v2::walk::walk_method`, the single-pass checker
+since 2026-11-26): a block method without a context has no maps (`count`
+must be 0). Otherwise walk from offset 0 with the entry kinds: at each
+offset place the shipped map if one is given there (it must equal the
+successor kinds of the previous instruction if that one falls through),
+else those successor kinds (`x_post`, the checker's own transfer
+function), else jump to the next shipped offset; check the instruction on
+the placed kinds and step by its length (an invalid opcode or an
+instruction crossing the end rejects). Forward branch and HASH_FIND
+targets are compared when the walk places them, backward targets against
+the kinds kept when the walk passed them. Shipped maps behind the walk are
+read and ignored; a shipped list longer than the method's frame bound
+rejects (that bounds what a malformed stream can make the checker
+allocate). The encoder (`v2/encode.rs`, host) walks each method
 the same way and ships a map exactly where the inferred map differs from
 what the walk would place.
 
@@ -131,25 +146,27 @@ what the walk would place.
 
 ```rust
 pub fn verify_shipped(p: &VProgram, cert: &[u8], global_count: u64,
-                      prim_arity: &[Vec<u8>], trusted: bool) -> (r: (bool, usize))
+                      prim_arity: &[Vec<u8>], trusted: bool) -> (r: Result<(bool, usize, usize), Oom>)
     ensures
-        r.0 ==> exists|c: Cert| accepts(vview(p), c, trusted)
+        r matches Ok(r) ==> r.0 ==> exists|c: Cert| accepts(vview(p), c, trusted)
             && c.global_count == global_count as int
             && c.prim_arity == prim_view(prim_arity@),
 ```
 
-It parses the header into an `XGlobal` that borrows the certificate's
-sections, hands it with a `ShippedOracle` (the stream decoder, a
-`MapOracle`) to `check::verify`, which is proven to return exactly
-`g_ok(g) && split_ok(vview(p), g@, ms, trusted)` for the maps `ms` the
-oracle produced, and `lemma_split_sound` turns `split_ok` into `accepts`
-of `with_maps(g@, ms)`. The trusted fields (the globals' count, the VM's
-primitive table) are the caller's, not the certificate's; the heap check
+It checks the header, makes an `XGlobal` that borrows the certificate's
+sections and hands it with the maps stream to `v2::walk::walk`, which is
+proven to return true only if `g_ok(g) && split_ok(vview(p), g@, ms,
+trusted)` holds for the ghost maps `ms` it builds while it walks; and
+`lemma_split_sound` turns `split_ok` into `accepts` of `with_maps(g@, ms)`.
+(Until 2026-11-26 a decoder produced the maps first and `check::verify`
+checked them: two passes.) The trusted fields (the globals' count, the
+primitive table of the program's policy) are the caller's, not the
+certificate's; the heap check
 (`x_loaded_ok_stream`) proves `loaded_ok` for every certificate with that
 global count, so `theorem_soundness` applies to the witness.
 
-Soundness does not depend on the decoder computing anything in
-particular: whatever maps it produces are checked. Completeness for
+Soundness does not depend on the stream's decoding computing anything in
+particular: the walk checks every instruction it places. Completeness for
 compiler output is tested (below), not proven.
 
 ## Where it lives
@@ -221,15 +238,15 @@ caches the verdict) and on devices rejects.
 
 ## Versioning
 
-The header's version (1) changes with any change of the encoding or of
-the meaning of the tables; a device rejects a certificate whose magic or
+The header's version (2; 1 had no policy field) changes with any change
+of the encoding or of the meaning of the tables; a device rejects a certificate whose magic or
 version it does not know (and then an untrusted program without a usable
 certificate). The certificate is computed from the program as the VM loads
 it, so it also depends on the bytecode format and the primitive table;
 both are part of the SDK version recorded in the bundle. A program
 installed with a certificate the device cannot read is rejected, never
-run unverified; re-certifying needs only the snapshot (`toit.run --certify
---trusted`).
+run unverified; re-certifying needs only the snapshot (`toit.run
+--certify`).
 
 ## Sizes and cost
 

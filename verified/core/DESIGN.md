@@ -325,10 +325,11 @@ top, the finally-record count and length).
 The C++ primitive path is unverified and outside the security boundary
 (TRUSTED.md section 2). Ported primitives: src/prims (TRUSTED.md section
 8, PROGRESS.md "Primitives"): the verified PRIMITIVE handler runs the
-Rust port (`prims::call`) of a core primitive when
-`toit_v2_context::core_arities[index] == arity + 1` (the policy resolves
-the VM's own primitive with the method's arity; a table lookup, no C++
-call), without saving and reloading the machine (no GC point); their only
+Rust port (`prims::call`) of a core primitive when the policy's verifier
+table (`toit_v2_context::policy_arities`, `Program::policy`) allows it
+(a table lookup, no C++ call; a denied primitive completes with
+PERMISSION_DENIED, an absent one with PRIMITIVE_LOOKUP_FAILED, in the
+core), without saving and reloading the machine (no GC point); their only
 C++ helpers are `toit_v2_try_allocate_*` (no GC). `NotPorted` and
 `NeedsGc` (heap unchanged) fall back to lookup and call above, which
 collect and retry. 106 of the 143 allowed primitives of

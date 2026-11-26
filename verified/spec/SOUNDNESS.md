@@ -6,7 +6,7 @@ is in Verus, in `src/v2/`. Its proof functions contain no `assume`,
 `admit`, `external_body` or `assume_specification`; the executable
 verifier uses the trusted accessors of `src/xvec.rs` (verified/TRUSTED.toml).
 The whole crate verifies in about 50 s wall time (2026-11-26:
-`verification results:: 1081 verified, 0 errors`, `verus
+`verification results:: 1090 verified, 0 errors`, `verus
 --crate-type=lib src/lib.rs`).
 
 ## The theorem
@@ -27,6 +27,8 @@ pub proof fn theorem_soundness(p, c, trusted, heap0, globals0, s)
                 && completion(p, s1, module, index, o) ==> !(o is Stuck),
         forall|o| outcome(p, s, o) ==> !(o is Stuck) && !(o is Raise),
         machine_objects_ok(p, s),
+        step(p, s) is Primitive ==>          // confinement to the policy
+            prim_listed(c.prim_arity, module, index, frame_height(s)),
 ```
 
 `reachable` is a run of the spec's transitions without garbage
@@ -45,7 +47,15 @@ keep the meaning it gives them (`machine_objects_ok`): every task's stack
 field refers to a stack object (or is the smi 0 once the task has
 terminated), its id is a smi, and the running task's stack field refers
 to a stack object. See "Machine-interpreted objects" below for the other
-objects the VM interprets. The defined failures are ordinary outcomes, not
+objects the VM interprets. And every PRIMITIVE step names a primitive
+that the certificate's primitive table, the table of the program's
+policy, allows with the frame's arity, denies (-1) or does not have
+(-2) (`prim_listed`); the verified core runs a primitive (the C++ entry
+or its Rust port) only if the table allows it (`gc_call_primitive` and
+`prims::call` require `prim_allowed`, proven at every call) and
+completes a denied one with `prim_denied` (PERMISSION_DENIED) and an
+absent one with `prim_missing` (PRIMITIVE_LOOKUP_FAILED), calling
+nothing: a program can only call the primitives of its policy. The defined failures are ordinary outcomes, not
 stuck ones:
 
 * machine-raised exceptions (`raise`, an oracle step `Outcome2::Raise`
@@ -54,8 +64,12 @@ stuck ones:
   its allocation fails): lookup failure, as-check failure, code
   invocation failure (wrong block/lambda argument count), invalid program
   (run-time checked method ids, field indices, read-only objects, dynamic
-  global indices, lambda captures), and missing, unimplemented or denied
-  primitives (PRIMITIVE_LOOKUP_FAILED);
+  global indices, lambda captures), and missing or unimplemented
+  primitives and the modules the policy denies as a whole
+  (PRIMITIVE_LOOKUP_FAILED);
+* a primitive the policy denies: the PRIMITIVE fails with
+  PERMISSION_DENIED (`prim::prim_denied`, the error pushed, the heap
+  unchanged), and nothing is called;
 * resource throws (`prim::resource_throw`), only where the machine grows
   its stack (calls, virtual calls, operators, tail calls, TRY, lazy
   globals: out of memory or stack overflow), allocates an instance
@@ -91,7 +105,7 @@ lemmas).
 * `initial_state(p, heap0, globals0)` (`v2/prim.rs`): one frame of
   `__entry__main` with the main task on the stack.
 * `completion(p, s, module, index, o)` (`theorem.rs`, the PRIMITIVE
-  protocol of `prim.rs`): `o` is `prim_missing(p, s)`, or
+  protocol of `prim.rs`): `o` is `prim_missing(p, s)`, `prim_denied(p, s)`, or
   `prim_complete(p, s, h2, r)` for a heap `h2` and result `r`
   (`Success(v)`: return `v`; `Failure(v)`: push `v`, continue after the
   PRIMITIVE; `OutOfMemory(v)`: raise the resource error `v`) with
@@ -135,7 +149,7 @@ Each hypothesis is an obligation on the implementation.
    `v2/heap_check.rs::x_loaded_ok(p, c, heap, globals)` (Verus) is proven
    to return exactly `loaded_ok(pview2(p), c@, heap, globals)`
    (`x_loaded_heap_ok` the heap part, `loaded_heap_ok`); the VM can run
-   it at an untrusted launch next to `check::verify`. What remains
+   it at an untrusted launch next to `cert::verify_shipped`. What remains
    trusted is that the VM's loader hands the check the heap and globals
    the machine then runs on (the view of the loaded snapshot).
 2. **Primitives: `prim_heap_ok(p, h, h2)`** (`v2/sound.rs`), quantified
@@ -152,8 +166,13 @@ Each hypothesis is an obligation on the implementation.
    a value of `h2` (`good`). Every primitive in the allowed set must be
    shown to satisfy this. The arguments a primitive receives are the
    frame's parameters (`prim_args`); the verifier checks the arity
-   against the VM's primitive table `c.prim_arity` (`v2/prim_arity.rs`,
-   generated from `src/primitive.h`), which must match the VM.
+   against the primitive table of the program's policy `c.prim_arity`
+   (`PrimitivePolicy::verifier_arities`: the arities of `src/primitive.h`
+   for the allowed primitives, -1 for denied, -2 for absent ones; the
+   host tools use `v2/prim_arity.rs`, generated from the same header),
+   which must match the VM. Only allowed primitives are ever called
+   (verified/core), so the contract is needed for the policy's primitives
+   only.
 3. **Memory bound: `small(s)`** (`v2/sound.rs`): fewer than 2^30 heap
    objects, stack slots, frames and handlers. It is not an assumption
    that memory never runs out: `transition` only leads to `small`
@@ -284,7 +303,8 @@ left unproven, no admits). Outside it:
 * the loader contract (hypothesis 1) is checked by the verified
   `x_loaded_ok`; that its input is the machine's loaded heap is trusted;
 * every allowed primitive must be shown to satisfy `prim_heap_ok`
-  (hypothesis 2), and `prim_arity.rs` must match the VM's table;
+  (hypothesis 2), and the policy's table (`verifier_arities`) must list
+  each primitive with the arity its implementation reads;
 * the memory bound (hypothesis 3) must be enforced by the implementation;
 * the theorem is about the abstract step `spec.rs`; that it matches the
   C++ VM is established by differential testing (DESIGN.md), and the
@@ -295,38 +315,63 @@ left unproven, no admits). Outside it:
 
 ## The executable verifier
 
-`v2/check.rs::verify(p, g, oracle, trusted)` is the streaming checker. It
-takes the program as borrowed tables (`v2/vprog.rs::VProgram`, viewed as
-`Program2` by `vview`; `vprogram_of` proves `vview` equal to `pview2` for an
-`ExecProgram`), the certificate's global part `g` (`XGlobal`, viewed as a
+`v2/cert.rs::verify_shipped(p, cert, global_count, prim_arity, trusted)`
+checks a shipped certificate (format/18). It takes the program as borrowed
+tables (`v2/vprog.rs::VProgram`, viewed as `Program2` by `vview`;
+`vprogram_of` proves `vview` equal to `pview2` for an `ExecProgram`) and
+reads the certificate's global part in place (`XGlobal`, viewed as a
 `GCert`; byte tables borrowed from the certificate, selector records and
-pins strictly sorted, looked up by binary search), and a
-`MapOracle` that yields the maps of one method at a time (`XMaps`: maps as
-lists of kinds sharing their bottoms). It checks the tables, then each
-method in order against its maps and the pins, and drops the maps. It is
-proven to return exactly
+pins strictly sorted, looked up by binary search). The header names the
+format version (2) and the primitive policy the certificate was made for
+(`policy_id` of the primitive table); a certificate of another version or
+policy is rejected before anything else is read.
+
+The maps stream is checked by the single-pass checker
+`v2/walk.rs::walk(p, g, s, trusted, progress)`: one forward walk per
+method. At each offset the walk places the kinds of the instruction (the
+previous instruction's successor, or a shipped map, which must then be
+that successor), checks the instruction on them with the per-instruction
+functions of `v2/check.rs` (`x_post_into`, `x_wf_kinds`, `x_ctx_ok`,
+`x_shape_ok`, `x_terminator_ok`, each proven to compute its
+specification in `v2/verifier.rs`), and records what later instructions
+need: the kinds a forward branch or HASH_FIND requires at its target
+(pending, compared when the walk places the target) and the kinds at the
+targets of backward branches and loop steps (kept when the walk places
+them; a scan of the opcodes before the walk says where). The maps of the
+method are ghost state (`mm`); the walk's invariant (`winv`) says that
+every placed instruction is accepted and each of its obligations
+(`obl`: the fall-through successor, a branch target, a loop target,
+HASH_FIND's miss target) holds in `mm`, is pending, or is the fall-through
+into the offset the walk is at. A method is accepted when no fall-through
+leaves its body, nothing is pending and its pins agree; then
+`method_ok(p, local_cert(g, m, mm), m, trusted)` holds
+(`lemma_winv_done`; the instruction rules are checked against the pins
+only, `tables_cert(g)`, and `lemma_local_mono` carries them over). `walk`
+is proven to return true only if
 
     g_ok(g) && split_ok(vview(p), g@, ms, trusted)
 
-where `ms` (ghost) are the maps the oracle gave it; by `lemma_split_sound`
-the certificate `with_maps(g@, ms)` is accepted. The oracle (the inference,
-or the decoder of a shipped certificate) is untrusted: whatever it yields is
-decided. `v2/cert.rs::verify_shipped(p, cert, global_count, prim_arity,
-trusted)` runs it on a shipped certificate (format/18): the global part read
-in place from the certificate bytes, the maps decoded one method at a time
-from its stream; it is proven to return true only if some certificate with
-that global count and primitive table is accepted. The checker uses loops only
-(no recursion over the program size).
+for the ghost maps `ms` of all methods; by `lemma_split_sound` the
+certificate `with_maps(g@, ms)` is accepted, so `verify_shipped` returns
+true only if some certificate with the given global count and primitive
+table is accepted. Which offsets keep kinds for backward targets is a
+hint (a backward target without kept kinds rejects); nothing about the
+stream's decoding needs to be correct for soundness. The checker uses
+loops only (no recursion over the program size).
 
-Out of memory: the checker and the decoder allocate fallibly
-(`xvec::try_push` and friends) and return `Err(Oom)` when an allocation
-fails; every result above holds for `Ok` (`res matches Ok(r) ==> ...`), and
-the verdict rejects on `Err` (vmverify's OUT_OF_MEMORY). So the exactness of
-`verify` is "exact unless it ran out of memory"; soundness only needs the
-`Ok(true)` direction and is unaffected. Element accesses go through
-`xvec`'s unchecked accessors, whose index preconditions Verus proves: the
-device library has no panic path (verified/vmverify/README.md, "No panics
-on devices").
+The walk replaced (2026-11-26) a two-pass checker (`check::verify` with a
+`MapOracle`: the stream decoded into per-method maps first, then checked
+against them, proven to decide `split_ok` exactly). The two agreed on
+60,000 mutants of six programs (verified/certdiff); the single pass needs
+2.2x fewer host instructions and under 1 % of the allocations
+(vmverify/README.md, "Single-pass checker").
+
+Out of memory: the checker allocates fallibly (`xvec::try_push` and
+friends) and returns `Err(Oom)` when an allocation fails; every result
+above holds for `Ok`, and the verdict rejects on `Err` (vmverify's
+OUT_OF_MEMORY). Element accesses go through `xvec`'s unchecked accessors,
+whose index preconditions Verus proves: the device library has no panic
+path (verified/vmverify/README.md, "No panics on devices").
 
 `heap_check::x_loaded_ok_stream(p, objects, global_count, globals)`
 checks the loader's contract one object at a time as an `ObjStream` yields
@@ -338,10 +383,12 @@ is the same for a heap in memory (proven equal to `loaded_ok`).
 
 `toit_spec_verify` (`src/bin/toit_spec_verify.rs`) loads a dumped format-2
 program, computes the global part (`infer::infer_global`, untrusted),
-runs `verify` with the inference's oracle and `x_loaded_ok`, and prints the
+encodes the inference's certificate, checks it with `verify_shipped` and
+`x_loaded_ok`, and prints the
 verdict, rejection reasons and the referenced primitives (`--time` adds
 timings). The VM (verified/vmverify) does the same on its own memory, with
 `x_loaded_ok_stream`. Inference can only cause rejections.
+
 
 ## Changes made for the proof
 
@@ -417,7 +464,7 @@ method (`frame_ok`), so unreachable bytes are never decoded by the
 machine; the VM's only other decoder of format-2 code, the stack-trace
 walk (`Stack::v2_frames_do`), decodes the current instruction with bounds
 checks. The loader's per-instruction sweep is therefore redundant once
-`check::verify` runs, and its extra rejections are harmless strictness;
+`cert::verify_shipped` runs, and its extra rejections are harmless strictness;
 the VM-linking work should drop it for verified launches (or keep it
 knowing it rejects programs the verifier accepts).
 
@@ -431,10 +478,11 @@ What the VM must still do outside the verifier, and nothing else:
    re-checks every consistency property it needs (`wf_program2`,
    `tables_ok`, `method_ok`, including `entry < end <= len`); what it
    cannot check is that the decoded table is the one the machine uses.
-2. Give the verifier the VM's primitive arities (`g.prim_arity`,
-   `v2/prim_arity.rs` generated from src/primitive.h) and the program's
-   global count, and run `check::verify(p, g, oracle, trusted)` with
-   `trusted = false` for an untrusted launch.
+2. Give the verifier the primitive table of the program's policy
+   (`g.prim_arity`, `PrimitivePolicy::verifier_arities`) and the
+   program's global count, and run `cert::verify_shipped` with `trusted =
+   false` for an untrusted launch; hand the core the same table
+   (`toit_v2_context::policy_arities`, `theorem::loaded`'s `policy_rel`).
 3. Run `heap_check::x_loaded_ok_stream` on the loaded program heap (one
    object at a time) and globals.
 4. Enforce the memory bound (hypothesis 3) and the primitive contract
