@@ -512,14 +512,21 @@ pub open spec fn never_falls_back_arrays(i: int, n: int) -> bool {
     ||| (i == ix::ARRAY_AT_PUT && n == 3)
     ||| (i == ix::ARRAY_REPLACE && n == 5)
     ||| (i == ix::REBUILD_HASH_INDEX && n == 2)
+    ||| (i == ix::LIST_ADD && n == 2)
 }
 
-/// Strings and blobs: strings only (no opaque byte array), no allocation.
+/// Strings and blobs: strings only (no opaque byte array), no allocation;
+/// the byte-array accessors, which read an opaque byte array's tag and
+/// length as the C++ does.
 pub open spec fn never_falls_back_blobs(i: int, n: int) -> bool {
     ||| (i == ix::STRING_HASH_CODE && n == 1)
     ||| (i == ix::STRING_RAW_AT && n == 2)
     ||| (i == ix::STRING_COMPARE && n == 2)
     ||| (i == ix::INT_VECTOR_EQUALS && n == 2)
+    ||| (i == ix::BYTE_ARRAY_IS_RAW_BYTES && n == 1)
+    ||| (i == ix::BYTE_ARRAY_LENGTH && n == 1)
+    ||| (i == ix::BYTE_ARRAY_AT && n == 2)
+    ||| (i == ix::BYTE_ARRAY_AT_PUT && n == 3)
 }
 
 /// Floats: no new double.

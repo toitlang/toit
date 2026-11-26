@@ -820,17 +820,19 @@ contract-only. Counted by `metrics.sh`
 an undercount: array_new, the four integer divisions and
 string_write_to_byte_array, listed above with their C++ proofs, have Rust
 ports too (8 before wave 9).
-Of the 44, 34 are unreachable from untrusted code (proved in Verus:
+Of the 44, 37 are unreachable from untrusted code (proved in Verus:
 `prims::never_falls_back`, the ensures of `prims::call` and
-`rarrays::rust_primitive_r`; the 35th such port, smi_mod, is
-VeriFast-proved too), so 10 are contract-only and reachable (28 before
-wave 12, 55 before wave 10; the list and what blocks each: "The
-reachable contract-only fallbacks (wave 12)" below). Counted by
+`rarrays::rust_primitive_r`; the list has 40 ports: smi_mod,
+byte_array_is_raw_bytes and byte_array_at_put are VeriFast-proved too),
+so 7 are contract-only and reachable (10 before branch
+prims/trust-round, 28 before wave 12, 55 before wave 10; the list and
+what blocks each: "The reachable contract-only fallbacks (wave 12)"
+below). Counted by
 `contract_check.toit` (verified/check.sh section contracts), which checks
 CONTRACTS.toml `[unreachable]` against the Verus list.
 These counts classify primitive names. A port can still delegate a case
-to C++, as `list_add` does for a large-array backing
-(`verified/core/src/prims/array.rs`); which cases, per primitive, is
+to C++, as `concat_strings` does for a malformed slice
+(`verified/core/src/prims/blob.rs`); which cases, per primitive, is
 "When the C++ behind a port runs" below. Body proofs also rely on the
 contracts of their callees, including the allocator.
 
@@ -1291,9 +1293,9 @@ put_float_64_little_endian, byte_array_at_put and byte_array_is_raw_bytes
 `prims/put_bytes.render`, `prims/put_float.render`). Memory safety of the
 C++ behind the 106 ports: 62 VeriFast-verified, 44 contract-only
 (`metrics.sh`; 44 and 62 before wave 12, 17 and 89 before wave 10, 8 and
-98 before wave 9), of which 34 are unreachable from untrusted code
-(proved in Verus; below), leaving 10 (28 before wave 12, 55 before wave
-10). Wave 10 added byte_array_new,
+98 before wave 9), of which 37 are unreachable from untrusted code
+(proved in Verus; below), leaving 7 (10 before branch prims/trust-round,
+28 before wave 12, 55 before wave 10). Wave 10 added byte_array_new,
 array_expand, string_at, string_add, concat_strings, string_slice, the
 eleven boxed-double float primitives and ten integer primitives
 (`prims/allocating.render`, `array_expand.render`, `string_at.render`,
@@ -1306,9 +1308,19 @@ json_skip_whitespace (`prims/blob_helpers.render`).
 
 ### The reachable contract-only fallbacks (wave 12)
 
-The 10 primitives behind Rust ports whose C++ an untrusted program can
+The 7 primitives behind Rust ports whose C++ an untrusted program can
 reach and that have no body proof, grouped by what blocks each (the
-fallback conditions are "When the C++ behind a port runs" below):
+fallback conditions are "When the C++ behind a port runs" below). Since
+branch prims/trust-round byte_array_at, byte_array_length and list_add
+are no longer among them: their ports never fall back (the opaque byte
+arrays read through their tag and length words; list_add's large-array
+backing in Rust, with a bound on the nesting that the C++
+`Interpreter::fast_at` lacked: a deep chain of large arrays made by a
+program's own library overflowed the native stack, a VM crash; regression
+test tests/sandbox/cli/large-array-chain-main.toit). The opaque fallback
+of the blob primitives below is now only a byte array a transferring send
+neutered (raw bytes at a null address: an empty blob for the C++); a
+resource proxy fails in the port as in the C++ decoders.
 
 | Blocker | Primitives |
 |---|---|
@@ -1316,8 +1328,6 @@ fallback conditions are "When the C++ behind a port runs" below):
 | `static const` locals (no rendering rule; its loop is over pointers into the blob) | size_of_json_number |
 | intrinsics: blob_index_of's SSE loop (x86-64 hosts) | blob_index_of |
 | reads outside the blob by design: string_rune_count's word-sized aligned loads read the bytes before and after the blob in the same word (they cannot fault, AddressSanitizer builds count byte by byte); the model has no chunk for them | string_rune_count |
-| a branch the model has no bytes for, unreachable for untrusted programs: byte_array_at and byte_array_length read a MappedFileTag byte array in place. Verified again (wave 12): no C++ makes one (src/ only reads the tag: heap_roots.cc, interpreter_core.cc, the two primitives), and the format-2 conversion refuses every external byte array of a program image whose tag is not RawByteTag (verified/vmverify/src/from_vm.rs, BYTE_ARRAY_TAG), as walk_heap does for format 1. Their other branches are byte_array_at_put's (proved, `prims/byte_array_access.render`); a proof of the two would need the MappedFileTag case as a precondition the model cannot discharge, so they stay contract-only | byte_array_at, byte_array_length |
-| `Interpreter::fast_at` on a LargeArray_ backing (the arraylets' classes and sizes) | list_add |
 | VeriFast's floating point (no double-to-integer conversion, uninterpreted comparisons) | number_to_integer |
 | `__builtin_mul_overflow`, and the parity of a product through the modular conversions to a word and to an address | smi_multiply |
 
@@ -1347,12 +1357,11 @@ follows the one failed allocation, so the heap is unchanged):
 
 | Falls back | Primitives | When |
 |---|---|---|
-| never (35) | smi_mod, smi_shift_right, smi_not, count_leading_zeros, popcount, object_class_id, the 5 smi and 5 large-integer comparisons; array_length, array_at, array_at_put, array_replace, rebuild_hash_index; string_hash_code, string_raw_at, string_compare, int_vector_equals; float_sign, float_is_nan, float_is_finite, the 5 float comparisons, compare_to, min_special_compare_to | no path returns NotPorted or NeedsGc (no allocation; results in the smi range) |
+| never (40; 35 before branch prims/trust-round) | smi_mod, smi_shift_right, smi_not, count_leading_zeros, popcount, object_class_id, the 5 smi and 5 large-integer comparisons; array_length, array_at, array_at_put, array_replace, rebuild_hash_index, list_add; string_hash_code, string_raw_at, string_compare, int_vector_equals, byte_array_is_raw_bytes, byte_array_length, byte_array_at, byte_array_at_put; float_sign, float_is_nan, float_is_finite, the 5 float comparisons, compare_to, min_special_compare_to | no path returns NotPorted or NeedsGc (no allocation; results in the smi range; an opaque byte array read through its tag and length words, as the C++ reads it; list_add's large-array backing in Rust with at most 8 nested vectors, else INVALID_ARGUMENT for the Toit code) |
 | only when an allocation does not fit (NeedsGc) | the other integer operations (a result outside the smi range: a large integer), every float operation that returns a double (number_to_float, raw_to_float, raw32_to_float, arithmetic, sqrt, rounding), float_to_raw, number_to_integer (a large result), float_to_raw32 (ILP32 only), array_new, array_expand, string_slice, string_from_rune, string_add, byte_array_new (also every ByteArray above 2^30 - 1 bytes on ILP32, and an external one the process limit or malloc refuses) | the new-space allocation, or the external blob's, fails |
 | copy-on-write or opaque byte arrays (NotPorted) | byte_array_replace, string_write_to_byte_array, put_uint_big_endian, put_uint_little_endian, put_float_32_little_endian, put_float_64_little_endian | a destination that is a CowByteArray_ not yet copied (a byte-array literal, or a slice of one: `LITTLE-ENDIAN.put-uint16 #[0, 0] 0 1`), or opaque (below); the source of byte_array_replace and string_write if opaque |
-| opaque byte arrays (NotPorted) | byte_array_is_raw_bytes, byte_array_length, byte_array_at, byte_array_at_put, blob_hash_code, blob_equals, blob_index_of, string_rune_count, json_skip_whitespace, hash_simple_json_string, size_of_json_number, compare_simple_json_string (its first argument), read_int_big_endian, read_int_little_endian, read_uint_big_endian, read_uint_little_endian (these four also NeedsGc for a large result) | a byte array the model has no bytes for (`view.rs`: external with another tag than RawByteTag, or RawByteTag with a null address): resource proxies, a byte array neutered by a transferring process_send (address null); mapped files only from a program image, which is refused since wave 11 |
-| other | list_add | a list whose backing is not an Array (a LargeArray_: every list of more than 500 elements) |
-| | concat_strings | a malformed StringSlice_ among the parts; a sum above MAX_BLOB_LENGTH (ILP32: 2^30); the result's allocation (NeedsGc) |
+| opaque byte arrays (NotPorted) | blob_hash_code, blob_equals, blob_index_of, string_rune_count, json_skip_whitespace, hash_simple_json_string, size_of_json_number, compare_simple_json_string (its first argument), read_int_big_endian, read_int_little_endian, read_uint_big_endian, read_uint_little_endian (these four also NeedsGc for a large result) | a byte array the model has no bytes for (`view.rs`: external with another tag than RawByteTag, or RawByteTag with a null address); since branch prims/trust-round only the latter, a byte array neutered by a transferring process_send (address null, an empty blob for the C++): the ports fail for another tag (resource proxies; mapped files only from a program image, which is refused since wave 11) as the C++ decoders do |
+| other | concat_strings | a malformed StringSlice_ among the parts; a sum above MAX_BLOB_LENGTH (ILP32: 2^30); the result's allocation (NeedsGc) |
 | | string_at | a byte of 0xf8 or more, or a lead byte whose sequence runs past the end (invalid UTF-8: a concatenation of a StringSlice_ that cuts a character, which a program's own library can make, is such a string; the C++ is proved since wave 10, `prims/string_at.render`) |
 | | string_length, string_rune_count, json_skip_whitespace, size_of_json_number, string_add | a string longer than MAX_SMI (unreachable: the heap model bounds byte arrays, not strings, abs.rs) |
 
@@ -1362,7 +1371,11 @@ input of a malformed program, never for a compiled one. Since wave 11 the
 verifier refuses such a program (`V2Verifier::builtin_classes_error`), so
 these declines are unreachable for untrusted programs too.
 
-What the C++ then does with an opaque byte array: the primitives that
+What the C++ then does with an opaque byte array (the paragraph before
+branch prims/trust-round; since then the ports reject a proxy or a
+mapped file themselves, as below, and the four byte_array_* ports read
+the tag and length words, so the C++ runs only for a neutered array in
+the blob primitives): the primitives that
 decode it as a Blob or MutableBlob (all of the opaque rows but the four
 byte_array_* ones) reject a proxy or a mapped file in the proved decoders
 (`blob/byte_content.render`, `blob/mutable_byte_content.render`: an

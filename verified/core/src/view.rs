@@ -2178,6 +2178,34 @@ impl Heap {
         if tag == RAW_BYTE_TAG && address != 0 { Some((-1 - raw) as usize) } else { None }
     }
 
+    /// The external tag and length of a byte array the model treats as
+    /// opaque (`bytes_len` is None: external, and not raw bytes at a
+    /// non-null address), as the C++ `ByteArray::external_tag()` and
+    /// `ByteArray::Bytes(..).length()` read them. The model has nothing for
+    /// these words: any values.
+    #[inline(always)]
+    pub fn opaque_tag_len(&self, obj: usize, Ghost(id): Ghost<int>) -> (r: (usize, usize))
+        requires
+            0 <= id < self.objs().len(),
+            self.addrs().len() == self.objs().len(),
+            obj == self.addrs()[id],
+            (self.objs()[id].class_id as int) < self.class_bits().len(),
+            (self.class_bits()[self.objs()[id].class_id as int] & 0xf) as usize == BYTE_ARRAY_TAG,
+            !(self.objs()[id].body is Bytes),
+    {
+        proof {
+            use_type_invariant(self);
+            assert(is_ba_class(self.mem@, id));
+            assert(ba_ok(self.mem@, id));
+        }
+        let raw = self.read_bword(obj, BYTE_ARRAY_LENGTH_WORD, Ghost(id)) as isize;
+        // Internal byte arrays are in the model (not reached).
+        if raw >= 0 { return (0, raw as usize); }
+        let tag = self.read_bword(obj, BYTE_ARRAY_EXTERNAL_TAG_WORD, Ghost(id));
+        // External: the length word holds `-1 - length` (`ByteArray::raw_length`).
+        (tag, (-1 - raw) as usize)
+    }
+
     /// The content pointer of the byte array `id` (of the model) and its
     /// length.
     #[inline(always)]

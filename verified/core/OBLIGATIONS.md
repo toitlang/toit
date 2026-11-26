@@ -236,7 +236,10 @@ Still assumed about the collector (GC-class code, trusted), for stage 1+:
 
 ### Ports that never fall back (branch core/ports-never-fall-back)
 
-Proved: for the 35 (index, arity) pairs of `prims::never_falls_back`
+Proved: for the 40 (index, arity) pairs of `prims::never_falls_back` (35
+before branch prims/trust-round added list_add and the four byte-array
+accessors byte_array_is_raw_bytes, byte_array_length, byte_array_at,
+byte_array_at_put)
 (prims/mod.rs, the one list; verified/CONTRACTS.toml `[unreachable]`
 repeats it and contract_check.toit checks the two agree and that each
 arity is `index::TABLE`'s) every port call completes in Rust:

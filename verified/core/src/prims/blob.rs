@@ -74,8 +74,8 @@ pub enum BlobArg {
     /// Not a blob: fail with this root.
     Fail(usize),
     /// A case C++ handles: an immutable copy-on-write receiver of a mutable
-    /// blob, or a byte array the model treats as opaque (a mapped file or a
-    /// resource proxy, TRUSTED.md V5).
+    /// blob, or a byte array the model treats as opaque (TRUSTED.md V5) that
+    /// is raw bytes at a null address (neutered by a transferring send).
     NotPorted,
 }
 
@@ -202,9 +202,17 @@ pub fn blob_arg(h: &Heap, p: &Program, k: &BlobClasses, w: usize, Ghost(v): Ghos
         }
         if tag == BYTE_ARRAY_TAG {
             if mode == STRINGS_ONLY { return BlobArg::Fail(ROOT_WRONG_OBJECT_TYPE); }
-            // Only the model's byte arrays (V5); C++ handles the opaque ones
-            // (mapped files, resource proxies).
-            if h.bytes_len(cur, Ghost(id)).is_none() { return BlobArg::NotPorted; }
+            // Only the model's byte arrays (V5). Of the opaque ones, a byte
+            // array that is not raw bytes (a resource proxy, a mapped file) is
+            // not a blob for the C++ either (`byte_content` and
+            // `mutable_byte_content` refuse an external tag other than
+            // RawByteTag); C++ handles a raw one with a null address (a byte
+            // array a transferring send neutered: an empty blob).
+            if h.bytes_len(cur, Ghost(id)).is_none() {
+                let (etag, _) = h.opaque_tag_len(cur, Ghost(id));
+                if etag != RAW_BYTE_TAG { return BlobArg::Fail(ROOT_WRONG_OBJECT_TYPE); }
+                return BlobArg::NotPorted;
+            }
             let base = h.byte_array_content(cur, Ghost(id), mode == MUTABLE);
             return match apply_ranges(base, &froms, &tos, &has, depth) {
                 Some(b) => BlobArg::Ok(b),
@@ -429,9 +437,10 @@ pub enum ByteArg {
     Bytes(Ghost<int>),
     /// Not a byte array: the primitive fails with WRONG_OBJECT_TYPE.
     Not,
-    /// A byte array the model treats as opaque (TRUSTED.md V5: a mapped file
-    /// or a resource proxy): C++ handles it (`NotPorted`).
-    Opaque,
+    /// A byte array the model treats as opaque (TRUSTED.md V5: a resource
+    /// proxy, a byte array a transferring send neutered, a mapped file): its
+    /// object id (`Heap::opaque_tag_len` reads its tag and length).
+    Opaque(Ghost<int>),
 }
 
 /// A `ByteArray` argument.
@@ -444,6 +453,14 @@ pub fn byte_array_arg(h: &Heap, w: usize, Ghost(v): Ghost<Value>) -> (r: ByteArg
         r is Bytes == (v is Obj && h.objs()[v->Obj_0 as int].body is Bytes),
         r is Bytes ==> r->Bytes_0@ == v->Obj_0 as int && 0 <= r->Bytes_0@ < h.objs().len()
             && w == h.addrs()[r->Bytes_0@] && h.addrs().len() == h.objs().len(),
+        r is Opaque ==> ({
+            let id = r->Opaque_0@;
+            &&& v is Obj && id == v->Obj_0 as int && 0 <= id < h.objs().len()
+            &&& w == h.addrs()[id] && h.addrs().len() == h.objs().len()
+            &&& (h.objs()[id].class_id as int) < h.class_bits().len()
+            &&& (h.class_bits()[h.objs()[id].class_id as int] & 0xf) as usize == BYTE_ARRAY_TAG
+            &&& !(h.objs()[id].body is Bytes)
+        }),
 {
     proof { lemma_word(h, w, v); }
     if w & 1 == 0 { return ByteArg::Not; }
@@ -452,7 +469,7 @@ pub fn byte_array_arg(h: &Heap, w: usize, Ghost(v): Ghost<Value>) -> (r: ByteArg
         assert(obj_model_ok(h.objs()[id], h.class_bits(), h.addrs()));
     }
     if h.class_tag(w, Ghost(id)) != BYTE_ARRAY_TAG { return ByteArg::Not; }
-    if h.bytes_len(w, Ghost(id)).is_none() { return ByteArg::Opaque; }
+    if h.bytes_len(w, Ghost(id)).is_none() { return ByteArg::Opaque(Ghost(id)); }
     ByteArg::Bytes(Ghost(id))
 }
 
@@ -464,16 +481,32 @@ pub fn not_ported() -> (r: (PrimOutcome, Ghost<Value>))
     (PrimOutcome::NotPorted, Ghost(Value::Smi(0)))
 }
 
-/// `byte_array_is_raw_bytes`, `byte_array_length`.
+/// `byte_array_is_raw_bytes`, `byte_array_length`. Never falls back to
+/// C++: an opaque byte array (external, not raw bytes at a non-null
+/// address) is read as the C++ reads it, through its tag and length words.
 pub fn byte_array_info(length: bool, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<Value>))
     requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 1,
     ensures prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+        completes(r.0),
 {
     let w = a.w[0];
     let id = match byte_array_arg(heap, w, Ghost(a.vs@[0])) {
         ByteArg::Bytes(id) => id,
         ByteArg::Not => return fail(c.p, heap, ROOT_WRONG_OBJECT_TYPE),
-        ByteArg::Opaque => return not_ported(),
+        ByteArg::Opaque(oid) => {
+            let (tag, len) = heap.opaque_tag_len(w, oid);
+            // `!has_external_address() || external_tag() == RawByteTag`.
+            if !length { return ok_bool(c.p, heap, tag == RAW_BYTE_TAG); }
+            // The C++ reads the length of a raw (here: neutered by a
+            // transferring send, length 0) or mapped-file byte array; a
+            // resource proxy fails.
+            if tag != RAW_BYTE_TAG && tag != MAPPED_FILE_TAG { return fail(c.p, heap, ROOT_WRONG_OBJECT_TYPE); }
+            // No byte array is longer than MAX_SMI (the C++ makes its length
+            // a smi unchecked).
+            if len > MAX_SMI as usize { return fail(c.p, heap, ROOT_OUT_OF_RANGE); }
+            let (rw, rv) = smi_res(heap, len as i64);
+            return ok(c.p, heap, rw, rv);
+        },
     };
     // A byte array of the model has raw bytes (internal, or external with
     // the raw-bytes tag: V5).
@@ -482,9 +515,36 @@ pub fn byte_array_info(length: bool, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: 
     }
     let ct = heap.byte_array_content(w, id, false);
     let n = ct.len();
-    if n > MAX_SMI as usize { return not_ported(); }
+    // Not reached: the model's byte arrays are shorter than MAX_BLOB_LENGTH
+    // (MAX_SMI + 1).
+    if n > MAX_SMI as usize { return fail(c.p, heap, ROOT_OUT_OF_RANGE); }
     let (rw, rv) = smi_res(heap, n as i64);
     ok(c.p, heap, rw, rv)
+}
+
+/// `byte_array_at` and `byte_array_at_put` of an opaque byte array (`id`)
+/// after the arguments were decoded: no byte to read or write. The C++
+/// takes the bytes of a raw byte array (here: neutered by a transferring
+/// send, length 0: every index is out of bounds) and reads those of a
+/// mapped file; it fails for a resource proxy. Where it would touch bytes
+/// the model does not have (a raw one with a null address and a non-zero
+/// length, which nothing makes; a mapped file, which nothing makes and an
+/// image may not contain: from_vm.rs) the port fails with
+/// WRONG_OBJECT_TYPE.
+fn opaque_at(heap: &Heap, c: &Ctx, w: usize, Ghost(id): Ghost<int>, i: i64, put: bool) -> (r: (PrimOutcome, Ghost<Value>))
+    requires
+        heap_inv(c.p, heap),
+        0 <= id < heap.objs().len(),
+        w == heap.addrs()[id] && heap.addrs().len() == heap.objs().len(),
+        (heap.objs()[id].class_id as int) < heap.class_bits().len(),
+        (heap.class_bits()[heap.objs()[id].class_id as int] & 0xf) as usize == BYTE_ARRAY_TAG,
+        !(heap.objs()[id].body is Bytes),
+    ensures r.0 is Failure, prim_post(c.p, heap, heap, r.0, r.1@),
+{
+    let (tag, len) = heap.opaque_tag_len(w, Ghost(id));
+    if tag != RAW_BYTE_TAG && (put || tag != MAPPED_FILE_TAG) { return fail(c.p, heap, ROOT_WRONG_OBJECT_TYPE); }
+    if i < 0 || i as u64 >= len as u64 { return fail(c.p, heap, ROOT_OUT_OF_BOUNDS); }
+    fail(c.p, heap, ROOT_WRONG_OBJECT_TYPE)
 }
 
 /// `byte_array_at`.
@@ -492,6 +552,7 @@ pub fn byte_array_at(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Gh
     requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 2,
     ensures
         prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+        completes(r.0),
         !(r.0 is NotPorted) ==> toit_spec::v2::prim_core::byte_array_at_contract(c.p.ap@, a.vs@, old(heap).objs(), final(heap).objs(),
             ret_of(c.p, r.0, r.1@)),
 {
@@ -499,7 +560,12 @@ pub fn byte_array_at(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Gh
     let id = match byte_array_arg(heap, w, Ghost(a.vs@[0])) {
         ByteArg::Bytes(id) => id,
         ByteArg::Not => return fail(c.p, heap, ROOT_WRONG_OBJECT_TYPE),
-        ByteArg::Opaque => return not_ported(),
+        ByteArg::Opaque(oid) => {
+            return match int32_arg(heap, a.w[1], Ghost(a.vs@[1])) {
+                Ok(i) => opaque_at(heap, c, w, oid, i, false),
+                Err(k) => fail(c.p, heap, k),
+            };
+        },
     };
     let i = match int32_arg(heap, a.w[1], Ghost(a.vs@[1])) {
         Ok(i) => i,
@@ -517,6 +583,7 @@ pub fn byte_array_at_put(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome
     requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 3,
     ensures
         prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+        completes(r.0),
         !(r.0 is NotPorted) ==> toit_spec::v2::prim_core::byte_array_at_put_contract(c.p.ap@, a.vs@, old(heap).objs(), final(heap).objs(),
             ret_of(c.p, r.0, r.1@)),
 {
@@ -524,7 +591,16 @@ pub fn byte_array_at_put(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome
     let id = match byte_array_arg(heap, w, Ghost(a.vs@[0])) {
         ByteArg::Bytes(id) => id,
         ByteArg::Not => return fail(c.p, heap, ROOT_WRONG_OBJECT_TYPE),
-        ByteArg::Opaque => return not_ported(),
+        ByteArg::Opaque(oid) => {
+            // The arguments in the C++ order, then the program-heap check.
+            let i = match int32_arg(heap, a.w[1], Ghost(a.vs@[1])) {
+                Ok(i) => i,
+                Err(k) => return fail(c.p, heap, k),
+            };
+            if ints::int_arg(heap, a.w[2], Ghost(a.vs@[2])).is_none() { return fail(c.p, heap, ROOT_WRONG_OBJECT_TYPE); }
+            if is_ro(c.p, w) { return fail(c.p, heap, ROOT_PERMISSION_DENIED); }
+            return opaque_at(heap, c, w, oid, i, true);
+        },
     };
     let i = match int32_arg(heap, a.w[1], Ghost(a.vs@[1])) {
         Ok(i) => i,

@@ -36,6 +36,34 @@ docs/sandbox-guarantee.md.
   remains: the wrap check itself (a run stops with FATAL if the program
   heap's range wraps the address space, which the C++ allocation of an
   image never gives). No new trusted item; theorem.rs is an epoch input.
+- Item 6, fallbacks: `prims::never_falls_back` 35 -> 40 ports. list_add
+  handles a large-array backing in Rust (`array::large_slot`: the arraylet
+  of element n through at most 8 nested vectors, as the C++
+  `Interpreter::fast_at` but bounded; else INVALID_ARGUMENT, which the
+  Toit code handles by growing the list). The C++ recursed once per large
+  array of a chain of decreasing sizes: a program's own core library can
+  make a chain of 10^6 (final fields are assignable in bytecode), and
+  list_add on it crashed the VM (native stack overflow; reproduced on the
+  host, segmentation fault; regression test
+  tests/sandbox/cli/large-array-chain-main.toit, compiled against a
+  patched copy of the library by run-patched-lib.cmake). The C++
+  `fast_at` keeps the unbounded recursion for format-1 programs and the
+  C++ interpreter (trusted only). byte_array_is_raw_bytes,
+  byte_array_length, byte_array_at and byte_array_at_put read an opaque
+  byte array through its tag and length words (`Heap::opaque_tag_len`, a
+  verified accessor of view.rs) as the C++ does: a neutered array (raw,
+  null address, length 0) and a resource proxy give the C++ results
+  (tests/sandbox/cli/opaque-byte-array-main.toit, identical output with
+  the binary before); where the C++ would read bytes the model does not
+  have (a mapped file, which nothing makes, or a raw array with a null
+  address and a non-zero length) the port fails with WRONG_OBJECT_TYPE.
+  The blob decoding of the ports (`blob::blob_arg`) fails for an opaque
+  byte array that is not raw bytes, as the C++ decoders do, so the blob
+  primitives fall back for opaque arguments only on a neutered array.
+  contract_check: the C++ behind the 106 ports 62 VeriFast-proved, 37
+  unreachable, 7 contract-only (was 62/34/10). Retry rules unchanged
+  (77 proved, 62 textual, 9 tested, 2 reviewed). Core 1092 -> 1098
+  (64-bit).
 
 ## Memory pressure on the classic ESP32 (branch device/memory-pressure, 2026-11-25)
 
