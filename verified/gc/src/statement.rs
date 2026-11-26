@@ -25,6 +25,7 @@ use crate::space::*;
 use crate::cheney::*;
 use crate::copy::*;
 use crate::collect::*;
+use crate::fin::*;
 
 verus! {
 
@@ -176,18 +177,19 @@ pub open spec fn coff(st: St, j: int) -> int { st.tloc[st.pos[j]].1 }
 ///   and the allocation window's), pairwise disjoint and holding no object
 ///   outside from-space; the last page has `w.top` used words;
 /// - the from-space permissions are handed back (to free the pages).
-pub open spec fn collected(c: Ctx, h: H, st: St, rptr: *mut usize, rv: Seq<AVal>, ttab: *mut usize, tused: *mut usize,
-                           w: Window) -> bool {
-    &&& collected_objs(c, h, st, rptr, rv, w.pages as int)
+pub open spec fn collected(c: Ctx, h: H, st: St, rptr: *mut usize, rv: Seq<AVal>, rvp: Seq<AVal>, ttab: *mut usize,
+                           tused: *mut usize, w: Window) -> bool {
+    &&& collected_objs(c, h, st, rptr, rv, rvp, w.pages as int)
     &&& collected_pages(c, h, st, ttab, tused, w)
 }
 
 /// The objects, the copies and the roots after the collection.
-pub open spec fn collected_objs(c: Ctx, h: H, st: St, rptr: *mut usize, rv: Seq<AVal>, tn: int) -> bool {
+pub open spec fn collected_objs(c: Ctx, h: H, st: St, rptr: *mut usize, rv: Seq<AVal>, rvp: Seq<AVal>, tn: int) -> bool {
     let n = h.objs.len() as int;
     // The objects.
     &&& st.addr2.len() == n
-    &&& forall|j: int| 0 <= j < n ==> (#[trigger] copied(st, j) <==> from(h, j) && reachable(h, rv, j))
+    &&& forall|j: int| 0 <= j < n ==> (from(h, j) && reachable(h, rv, j) ==> #[trigger] copied(st, j))
+            && (copied(st, j) ==> from(h, j) && reachable(h, rvp, j))
     &&& forall|j: int| 0 <= j < n && !from(h, j) ==> #[trigger] st.addr2[j] == h.addr[j]
     &&& forall|j: int| 0 <= j < n && live(h, st, j) ==> #[trigger] st.addr2[j] % 4 == 1
     &&& forall|j1: int, j2: int| 0 <= j1 < n && 0 <= j2 < n && live(h, st, j1) && live(h, st, j2) && j1 != j2
@@ -256,19 +258,20 @@ pub proof fn lemma_copy_addr(c: Ctx, h: H, st: St, t: Tos, k: int)
 }
 
 /// The invariant at the end of the scan gives the statement's objects.
-pub proof fn lemma_objs(c: Ctx, h: H, st: St, t: Tos, rptr: *mut usize, rv: Seq<AVal>)
+pub proof fn lemma_objs(c: Ctx, h: H, st: St, t: Tos, rptr: *mut usize, rv: Seq<AVal>, rvp: Seq<AVal>)
     requires
         ctx_ok(c), fpages_ok(c), heap_ok(c, h),
-        inv(c, h, st, t, st.order.len() as int, 0, rv), roots_ok(c, h, st, rptr, rv, rv.len() as int),
-    ensures collected_objs(c, h, st, rptr, rv, t.tn as int),
+        inv(c, h, st, t, st.order.len() as int, 0, rvp), roots_ok(c, h, st, rptr, rv, rv.len() as int),
+    ensures collected_objs(c, h, st, rptr, rv, rvp, t.tn as int),
 {
     let n = h.objs.len() as int;
     let nc = st.order.len() as int;
-    assert forall|j: int| 0 <= j < n implies (#[trigger] copied(st, j) <==> from(h, j) && reachable(h, rv, j)) by {
+    assert forall|j: int| 0 <= j < n implies (from(h, j) && reachable(h, rv, j) ==> #[trigger] copied(st, j))
+        && (copied(st, j) ==> from(h, j) && reachable(h, rvp, j)) by {
         if copied(st, j) {
             let k = st.pos[j];
             assert(0 <= k < nc && st.order[k] == j);
-            lemma_copy_reach(c, h, st, rv, k);
+            lemma_copy_reach(c, h, st, rvp, k);
         }
         if from(h, j) && reachable(h, rv, j) {
             let p = choose|p: Seq<int>| #[trigger] path(h, rv, p, j);
@@ -373,22 +376,23 @@ pub proof fn lemma_objs(c: Ctx, h: H, st: St, t: Tos, rptr: *mut usize, rv: Seq<
 
 /// The statement's objects survive a change that keeps the bookkeeping, the
 /// roots and the copies' words and pages.
-pub proof fn lemma_objs_frame(c: Ctx, h: H, s0: St, s1: St, rptr: *mut usize, rv: Seq<AVal>, tn0: int, tn1: int)
+pub proof fn lemma_objs_frame(c: Ctx, h: H, s0: St, s1: St, rptr: *mut usize, rv: Seq<AVal>, rvp: Seq<AVal>, tn0: int, tn1: int)
     requires
-        collected_objs(c, h, s0, rptr, rv, tn0), tn0 <= tn1,
+        collected_objs(c, h, s0, rptr, rv, rvp, tn0), tn0 <= tn1,
         s1.addr2 == s0.addr2, s1.pos == s0.pos, s1.tloc == s0.tloc, s1.rp == s0.rp,
         forall|j: int| 0 <= j < h.objs.len() && #[trigger] copied(s0, j) ==>
             s1.tss[cpg(s0, j)] == s0.tss[cpg(s0, j)] && s1.tus[cpg(s0, j)] == s0.tus[cpg(s0, j)],
         forall|j: int, k: int| 0 <= j < h.objs.len() && copied(s0, j) && 0 <= k < size(h, j) ==>
             #[trigger] s1.tp[(cpg(s0, j), coff(s0, j) + k)] == s0.tp[(cpg(s0, j), coff(s0, j) + k)],
-    ensures collected_objs(c, h, s1, rptr, rv, tn1),
+    ensures collected_objs(c, h, s1, rptr, rv, rvp, tn1),
 {
     let n = h.objs.len() as int;
     assert forall|j: int| #[trigger] copied(s1, j) == copied(s0, j) by {}
     assert forall|j: int| #[trigger] live(h, s1, j) == live(h, s0, j) by {}
     assert forall|v: AVal| #[trigger] val_live(h, s1, v) == val_live(h, s0, v) by {}
-    assert forall|j: int| 0 <= j < n implies (#[trigger] copied(s1, j) <==> from(h, j) && reachable(h, rv, j)) by {
-        assert(copied(s0, j) <==> from(h, j) && reachable(h, rv, j));
+    assert forall|j: int| 0 <= j < n implies (from(h, j) && reachable(h, rv, j) ==> #[trigger] copied(s1, j))
+        && (copied(s1, j) ==> from(h, j) && reachable(h, rvp, j)) by {
+        assert(copied(s0, j) == copied(s1, j));
     }
     assert forall|j: int| 0 <= j < n && live(h, s1, j) implies #[trigger] s1.addr2[j] % 4 == 1 by {
         assert(live(h, s0, j));
@@ -445,8 +449,10 @@ pub open spec fn roots_in(c: Ctx, h: H, rp: Map<int, PointsTo<usize>>, rptr: *mu
 /// (`tcap` words each).
 pub fn collect<S: PageSource>(c: &Ctx, src: &mut S, rptr: *mut usize, rlen: usize,
                               ttab: *mut usize, tused: *mut usize, tcap: usize,
-                              Ghost(h): Ghost<H>, Ghost(rv): Ghost<Seq<AVal>>,
-                              Tracked(st): Tracked<&mut St>, Tracked(ro): Tracked<&Ro>) -> (r: Result<Window, GcError>)
+                              nptr: *mut usize, ncb: usize, nn: usize,
+                              Ghost(h): Ghost<H>, Ghost(rv): Ghost<Seq<AVal>>, Ghost(nodes): Ghost<Seq<Node>>,
+                              Tracked(st): Tracked<&mut St>, Tracked(ro): Tracked<&Ro>,
+                              Tracked(nm): Tracked<&mut Map<int, PointsTo<usize>>>) -> (r: Result<Window, GcError>)
     requires
         ctx_ok(*c), ftab_ok(*c, ro.ftp), heap_ok(*c, h), others_ok(h, ro.others), ctab_ok(*c, ro.ctp),
         from_ok(*c, h, old(st).fp),
@@ -454,11 +460,19 @@ pub fn collect<S: PageSource>(c: &Ctx, src: &mut S, rptr: *mut usize, rlen: usiz
         ttab@.addr + tcap * W <= usize::MAX, tused@.addr + tcap * W <= usize::MAX,
         forall|p: int| 0 <= p < tcap ==> #[trigger] wperm_ok(old(st).ttp, p, ttab, p),
         forall|p: int| 0 <= p < tcap ==> #[trigger] wperm_ok(old(st).tup, p, tused, p),
+        ncb <= nn, nodes.len() == nn,
+        forall|m: int| 0 <= m < ncb ==> (#[trigger] nodes[m]).kind <= KIND_WEAK_QUEUED,
+        forall|m: int| ncb <= m < nn ==> (#[trigger] nodes[m]).kind == KIND_VM,
+        forall|m: int| 0 <= m < nn ==> slot_ok(*c, h.objs.len() as int, (#[trigger] nodes[m]).key)
+            && slot_ok(*c, h.objs.len() as int, nodes[m].lam),
+        nodes_mem(*old(nm), nptr, nn as int),
+        forall|m: int| 0 <= m < nn ==> #[trigger] node_in(*old(nm), h, nodes[m], m),
         old(src).pw() == c.pw, old(src).prov() == c.base@.provenance,
     ensures
         match r {
-            Ok(w) => collected(*c, h, *final(st), rptr, rv, ttab, tused, w),
-            Err(_) => *final(st) == *old(st),
+            Ok(w) => exists|hf: H, main: Set<int>| collected(*c, hf, *final(st), rptr, rv, fin_roots(rv, nodes), ttab, tused, w)
+                && #[trigger] fin_done(*c, h, hf, *final(st), rv, nodes, *final(nm), ncb as int, nn as int, main),
+            Err(_) => *final(st) == *old(st) && *final(nm) == *old(nm),
         },
         final(src).pw() == c.pw, final(src).prov() == c.base@.provenance,
 {
@@ -484,6 +498,7 @@ pub fn collect<S: PageSource>(c: &Ctx, src: &mut S, rptr: *mut usize, rlen: usiz
         st.tss = Seq::empty();
         st.tus = Seq::empty();
     }
+    let ghost rvp = fin_roots(rv, nodes);
     let mut t = Tos { ttab, tused, tcap, tn: 0, top: 0, cur: 0 };
     proof {
         let s = *st;
@@ -494,7 +509,7 @@ pub fn collect<S: PageSource>(c: &Ctx, src: &mut S, rptr: *mut usize, rlen: usiz
         assert(to_inv(*c, h, s, 0, 0));
         assert(set_int_range(0, c.nf * c.pw).len() >= 0);
         assert(cap_ok(*c, h, s, t));
-        assert(par_ok(h, s, rv));
+        assert(par_ok(h, s, rvp));
         assert(s.rp == old(st).rp);
         assert forall|i: int| 0 <= i < rv.len() implies (#[trigger] s.rp[i]).is_init()
             && s.rp[i].value() == enc(if i < 0 { s.addr2 } else { h.addr }, rv[i]) by {
@@ -505,14 +520,18 @@ pub fn collect<S: PageSource>(c: &Ctx, src: &mut S, rptr: *mut usize, rlen: usiz
         }
         assert(roots_ok(*c, h, s, rptr, rv, 0));
     }
-    do_roots(c, src, &mut t, rptr, rlen, Ghost(h), Ghost(rv), Ghost(rv), Tracked(st), Tracked(ro));
+    do_roots(c, src, &mut t, rptr, rlen, Ghost(h), Ghost(rv), Ghost(rvp), Tracked(st), Tracked(ro));
     proof { if t.tn >= 1 { assert(scan_pos(h, *st, t, 0, 0, 0)); } }
-    scan(c, src, &mut t, 0, 0, Ghost(0int), Ghost(h), Ghost(rptr), Ghost(rv), Ghost(rv), Tracked(st), Tracked(ro));
+    scan(c, src, &mut t, 0, 0, Ghost(0int), Ghost(h), Ghost(rptr), Ghost(rv), Ghost(rvp), Tracked(st), Tracked(ro));
+    let (hfr, mainr) = fin_phase(c, src, &mut t, nptr, ncb, nn, Ghost(h), Ghost(rv), Ghost(rvp), Ghost(nodes), Ghost(rptr),
+                                 Tracked(st), Tracked(ro), Tracked(nm));
+    let ghost hf = hfr@;
+    let ghost main = mainr@;
     let ghost s0 = *st;
     let ghost t0 = t;
     proof {
-        lemma_objs(*c, h, s0, t0, rptr, rv);
-        lemma_copies_bound(*c, h, s0, t0);
+        lemma_objs(*c, hf, s0, t0, rptr, rv, rvp);
+        lemma_copies_bound(*c, hf, s0, t0);
         lemma_w();
     }
     if t.tn == 0 {
@@ -520,7 +539,7 @@ pub fn collect<S: PageSource>(c: &Ctx, src: &mut S, rptr: *mut usize, rlen: usiz
         let (s, perms) = src.take(Ghost(0int));
         proof {
             let tracked mut np = perms.get();
-            lemma_page_apart_others(&mut np, 0, s as int, &ro.others, h, h.objs.len() as int, c.pw as int, c.base@.provenance);
+            lemma_page_apart_others(&mut np, 0, s as int, &ro.others, hf, hf.objs.len() as int, c.pw as int, c.base@.provenance);
             st.tp.tracked_union_prefer_right(np);
             assert(wperm_ok(st.ttp, 0, t.ttab, 0));
         }
@@ -556,20 +575,20 @@ pub fn collect<S: PageSource>(c: &Ctx, src: &mut S, rptr: *mut usize, rlen: usiz
     proof {
         let s2 = *st;
         let tn = t.tn as int;
-        let n = h.objs.len() as int;
+        let n = hf.objs.len() as int;
         // The objects: the copies' words and pages are untouched.
         assert forall|j: int| 0 <= j < n && #[trigger] copied(s0, j) implies
             s2.tss[cpg(s0, j)] == s0.tss[cpg(s0, j)] && s2.tus[cpg(s0, j)] == s0.tus[cpg(s0, j)] by {
             assert(t0.tn > 0);
         }
-        assert forall|j: int, k: int| 0 <= j < n && copied(s0, j) && 0 <= k < size(h, j) implies
+        assert forall|j: int, k: int| 0 <= j < n && copied(s0, j) && 0 <= k < size(hf, j) implies
             #[trigger] s2.tp[(cpg(s0, j), coff(s0, j) + k)] == s0.tp[(cpg(s0, j), coff(s0, j) + k)] by {
             assert(t0.tn > 0);
-            assert(0 <= cpg(s0, j) < t0.tn && coff(s0, j) + size(h, j) <= s0.tus[cpg(s0, j)]);
+            assert(0 <= cpg(s0, j) < t0.tn && coff(s0, j) + size(hf, j) <= s0.tus[cpg(s0, j)]);
             assert(s0.tus[t0.tn - 1] == t0.top);
             assert((cpg(s0, j), coff(s0, j) + k) != (tn - 1, t.top as int));
         }
-        lemma_objs_frame(*c, h, s0, s2, rptr, rv, t0.tn as int, tn);
+        lemma_objs_frame(*c, hf, s0, s2, rptr, rv, rvp, t0.tn as int, tn);
         // The pages.
         if t0.tn > 0 {
             assert(tn - 1 <= 2 * c.nf) by (nonlinear_arith)
@@ -608,14 +627,157 @@ pub fn collect<S: PageSource>(c: &Ctx, src: &mut S, rptr: *mut usize, rlen: usiz
         assert forall|p: int, q: int| 0 <= p < q < tn implies #[trigger] pages_apart(s2.tss[p] as int, s2.tss[q] as int, c.pw as int) by {
             assert(pages_apart(s0.tss[p] as int, s0.tss[q] as int, c.pw as int));
         }
-        assert forall|p: int, j: int| 0 <= p < tn && 0 <= j < n && !from(h, j) implies
-            #[trigger] outside(s2.tss[p] as int, #[trigger] h.addr[j] as int, c.pw as int) by {
-            if t0.tn > 0 { assert(outside(s0.tss[p] as int, h.addr[j] as int, c.pw as int)); }
+        assert forall|p: int, j: int| 0 <= p < tn && 0 <= j < n && !from(hf, j) implies
+            #[trigger] outside(s2.tss[p] as int, #[trigger] hf.addr[j] as int, c.pw as int) by {
+            if t0.tn > 0 { assert(outside(s0.tss[p] as int, hf.addr[j] as int, c.pw as int)); }
         }
         assert(fshape(*c, s2.fp));
-        assert(collected_pages(*c, h, s2, ttab, tused, w));
+        assert(collected_pages(*c, hf, s2, ttab, tused, w));
+        assert(collected(*c, hf, s2, rptr, rv, rvp, ttab, tused, w));
+        assert forall|m: int| 0 <= m < nn implies #[trigger] node_out(*c, h, hf, s2, main, *nm, nodes[m], m) by {
+            assert(node_out(*c, h, hf, s0, main, *nm, nodes[m], m));
+            lemma_fate_same(*c, h, hf, s0, s2, main, nodes[m], nm[4 * m + 3].value(), nm[4 * m + 1].value(), nm[4 * m + 2].value());
+        }
+        assert(fin_done(*c, h, hf, s2, rv, nodes, *nm, ncb as int, nn as int, main));
     }
     Ok(w)
+}
+
+/// The finalizer phase of a collection (after the first scan): the
+/// registered callback finalizers and the queue (`fin_pass`), a scan, the
+/// VM finalizers (`vm_node`). Returns the heap after it (dead keys killed)
+/// and the objects the first scan had copied.
+pub fn fin_phase<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, nptr: *mut usize, ncb: usize, nn: usize,
+                                Ghost(h): Ghost<H>, Ghost(rv): Ghost<Seq<AVal>>, Ghost(rvp): Ghost<Seq<AVal>>,
+                                Ghost(nodes): Ghost<Seq<Node>>, Ghost(rptr): Ghost<*mut usize>,
+                                Tracked(st): Tracked<&mut St>, Tracked(ro): Tracked<&Ro>,
+                                Tracked(nm): Tracked<&mut Map<int, PointsTo<usize>>>) -> (r: (Ghost<H>, Ghost<Set<int>>))
+    requires
+        ctx_ok(*c), fpages_ok(*c), ftab_ok(*c, ro.ftp), heap_ok(*c, h), others_ok(h, ro.others), ctab_ok(*c, ro.ctp),
+        inv(*c, h, *old(st), *old(t), old(st).order.len() as int, 0, rvp),
+        roots_ok(*c, h, *old(st), rptr, rv, rv.len() as int),
+        src_ok(*c, *old(src), *old(t)),
+        rvp == fin_roots(rv, nodes),
+        ncb <= nn, nodes.len() == nn,
+        forall|m: int| 0 <= m < ncb ==> (#[trigger] nodes[m]).kind <= KIND_WEAK_QUEUED,
+        forall|m: int| ncb <= m < nn ==> (#[trigger] nodes[m]).kind == KIND_VM,
+        forall|m: int| 0 <= m < nn ==> slot_ok(*c, h.objs.len() as int, (#[trigger] nodes[m]).key)
+            && slot_ok(*c, h.objs.len() as int, nodes[m].lam),
+        nodes_mem(*old(nm), nptr, nn as int),
+        forall|m: int| 0 <= m < nn ==> #[trigger] node_in(*old(nm), h, nodes[m], m),
+    ensures ({
+        let hf = r.0@;
+        let main = r.1@;
+        &&& heap_ok(*c, hf) && others_ok(hf, ro.others)
+        &&& inv(*c, hf, *final(st), *final(t), final(st).order.len() as int, 0, rvp)
+        &&& roots_ok(*c, hf, *final(st), rptr, rv, rv.len() as int)
+        &&& src_ok(*c, *final(src), *final(t))
+        &&& fin_done(*c, h, hf, *final(st), rv, nodes, *final(nm), ncb as int, nn as int, main)
+        &&& final(t).ttab == old(t).ttab && final(t).tused == old(t).tused && final(t).tcap == old(t).tcap
+    }),
+{
+    // The finalizers (src/heap_roots.cc, in the order of the C++ prototype):
+    // the registered callback finalizers and the queue, a scan, the VM
+    // finalizers.
+    let ghost sm = *st;
+    let ghost main = sm.pos.dom();
+    let ghost n0 = sm.order.len() as int;
+    let tn0 = t.tn;
+    let top0 = t.top;
+    proof {
+        assert forall|j: int| from(h, j) && !main.contains(j) implies !reachable(h, rv, j) by {
+            if reachable(h, rv, j) {
+                let p = choose|p: Seq<int>| #[trigger] path(h, rv, p, j);
+                lemma_path_live(*c, h, sm, *t, rptr, rv, p, j, p.len() - 1);
+                assert(copied(sm, j));
+            }
+        }
+        assert forall|j: int| #[trigger] main.contains(j) implies copied(sm, j) by {}
+    }
+    let hfr = fin_pass(c, src, t, nptr, ncb, nn, Ghost(h), Ghost(nodes), Ghost(main), Ghost(n0), Ghost(rptr), Ghost(rv),
+                       Ghost(rvp), Tracked(st), Tracked(ro), Tracked(nm));
+    let ghost hf = hfr@;
+    let ghost sf = *st;
+    proof {
+        // The copies of the first scan are unchanged (only dead keys were killed).
+        assert forall|k: int| 0 <= k < n0 implies #[trigger] obj(hf, sm.order[k]) == obj(h, sm.order[k]) by {
+            let x = sm.order[k];
+            assert(copied(sm, x));
+            assert(main.contains(x));
+            assert(from(h, x));
+            lemma_from_obj(*c, h, x);
+            assert(changed_ok(*c, h, hf, nodes, ncb as int, main, x));
+        }
+    }
+    if tn0 >= 1 {
+        proof {
+            assert(n0 >= 1);
+            assert(sf.order[n0 - 1] == sm.order[n0 - 1] && sf.tloc[n0 - 1] == sm.tloc[n0 - 1]);
+            assert(tsz(hf, sf, n0 - 1) == tsz(h, sm, n0 - 1));
+            assert(tpg(sm, n0 - 1) == tn0 - 1 && tend(h, sm, n0 - 1) == top0);
+            if n0 == sf.order.len() {
+                assert(tpg(sf, n0 - 1) == t.tn - 1 && tend(hf, sf, n0 - 1) == t.top);
+            }
+            lemma_scan_resume(*c, hf, sf, *t, n0, tn0 as int, top0 as int);
+        }
+        scan(c, src, t, tn0 - 1, top0, Ghost(n0), Ghost(hf), Ghost(rptr), Ghost(rv), Ghost(rvp), Tracked(st), Tracked(ro));
+    } else {
+        proof {
+            assert(n0 == 0);
+            if t.tn >= 1 { assert(scan_pos(hf, sf, *t, 0, 0, 0)); }
+        }
+        scan(c, src, t, 0, 0, Ghost(0int), Ghost(hf), Ghost(rptr), Ghost(rv), Ghost(rvp), Tracked(st), Tracked(ro));
+    }
+    let ghost ss = *st;
+    proof {
+        assert(bk_ok(hf, sf));
+        assert forall|m: int| 0 <= m < ncb implies #[trigger] node_out(*c, h, hf, ss, main, *nm, nodes[m], m) by {
+            assert(node_out(*c, h, hf, sf, main, *nm, nodes[m], m));
+            assert forall|x: int| 0 <= x < h.objs.len() implies (#[trigger] obj(h, x)).words.len() >= 1 by {
+                assert(obj_ok(obj(h, x)));
+            }
+            lemma_fate_frame(*c, h, hf, sf, hf, ss, main, nodes[m], nm[4 * m + 3].value(), nm[4 * m + 1].value(),
+                             nm[4 * m + 2].value());
+        }
+    }
+    let mut i: usize = ncb;
+    while i < nn
+        invariant
+            ctx_ok(*c), fpages_ok(*c), ftab_ok(*c, ro.ftp), heap_ok(*c, hf),
+            inv(*c, hf, *st, *t, st.order.len() as int, 0, rvp), *st == ss,
+            ncb <= i <= nn, nodes.len() == nn,
+            forall|m: int| ncb <= m < nn ==> (#[trigger] nodes[m]).kind == KIND_VM,
+            forall|m: int| 0 <= m < nn ==> slot_ok(*c, h.objs.len() as int, (#[trigger] nodes[m]).key),
+            hf.objs.len() == h.objs.len(), hf.addr == h.addr,
+            nodes_mem(*nm, nptr, nn as int),
+            forall|m: int| i <= m < nn ==> #[trigger] node_in(*nm, h, nodes[m], m),
+            forall|m: int| 0 <= m < i ==> #[trigger] node_out(*c, h, hf, ss, main, *nm, nodes[m], m),
+        decreases nn - i,
+    {
+        let ghost nm1 = *nm;
+        proof { assert(node_in(*nm, h, nodes[i as int], i as int)); }
+        vm_node(c, nptr, i, nn, Ghost(hf), Ghost(nodes), Ghost(*t), Ghost(st.order.len() as int), Ghost(rvp), Tracked(&*st),
+                Tracked(ro), Tracked(nm));
+        proof {
+            assert forall|m: int| 0 <= m < i + 1 implies #[trigger] node_out(*c, h, hf, ss, main, *nm, nodes[m], m) by {
+                if m < i {
+                    assert(node_out(*c, h, hf, ss, main, nm1, nodes[m], m));
+                    assert(nm[4 * m] == nm1[4 * m] && nm[4 * m + 1] == nm1[4 * m + 1]);
+                    assert(nm[4 * m + 2] == nm1[4 * m + 2] && nm[4 * m + 3] == nm1[4 * m + 3]);
+                }
+            }
+            assert forall|m: int| i + 1 <= m < nn implies #[trigger] node_in(*nm, h, nodes[m], m) by {
+                assert(node_in(nm1, h, nodes[m], m));
+                assert(nm[4 * m] == nm1[4 * m] && nm[4 * m + 1] == nm1[4 * m + 1] && nm[4 * m + 2] == nm1[4 * m + 2]);
+            }
+        }
+        i += 1;
+    }
+    proof {
+        assert forall|x: int| 0 <= x < h.objs.len() implies #[trigger] changed_ok(*c, h, hf, nodes, ncb as int, main, x) by {}
+        assert(fin_done(*c, h, hf, *st, rv, nodes, *nm, ncb as int, nn as int, main));
+    }
+    (Ghost(hf), Ghost(main))
 }
 
 } // verus!

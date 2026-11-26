@@ -115,8 +115,8 @@ pub open spec fn state_live(s: State2, h: H, st: St) -> bool {
 }
 
 /// A root value is live after the collection.
-proof fn lemma_root_live(c: Ctx, h: H, st: St, rptr: *mut usize, rv: Seq<AVal>, tn: int, i: int)
-    requires collected_objs(c, h, st, rptr, rv, tn), 0 <= i < rv.len(),
+proof fn lemma_root_live(c: Ctx, h: H, st: St, rptr: *mut usize, rv: Seq<AVal>, rvp: Seq<AVal>, tn: int, i: int)
+    requires collected_objs(c, h, st, rptr, rv, rvp, tn), 0 <= i < rv.len(),
     ensures val_live(h, st, rv[i]),
 {
     assert(wperm_ok(st.rp, i, rptr, i));
@@ -124,20 +124,20 @@ proof fn lemma_root_live(c: Ctx, h: H, st: St, rptr: *mut usize, rv: Seq<AVal>, 
 
 /// With every value of the state among the roots (`roots_cover`), the
 /// state's values survive.
-pub proof fn lemma_roots_cover_live(c: Ctx, h: H, st: St, rptr: *mut usize, rv: Seq<AVal>, tn: int, s: State2)
-    requires collected_objs(c, h, st, rptr, rv, tn), roots_cover(s, rv),
+pub proof fn lemma_roots_cover_live(c: Ctx, h: H, st: St, rptr: *mut usize, rv: Seq<AVal>, rvp: Seq<AVal>, tn: int, s: State2)
+    requires collected_objs(c, h, st, rptr, rv, rvp, tn), roots_cover(s, rv),
     ensures state_live(s, h, st),
 {
     assert forall|j: int| 0 <= j < s.stack.len() && (#[trigger] s.stack[j]) is Obj implies val_live(h, st, aval(s.stack[j])) by {
         let i = choose|i: int| 0 <= i < rv.len() && #[trigger] rv[i] == AVal::Ref(s.stack[j]->Obj_0 as int);
-        lemma_root_live(c, h, st, rptr, rv, tn, i);
+        lemma_root_live(c, h, st, rptr, rv, rvp, tn, i);
     }
     assert forall|j: int| 0 <= j < s.globals.len() && (#[trigger] s.globals[j]) is Obj implies val_live(h, st, aval(s.globals[j])) by {
         let i = choose|i: int| 0 <= i < rv.len() && #[trigger] rv[i] == AVal::Ref(s.globals[j]->Obj_0 as int);
-        lemma_root_live(c, h, st, rptr, rv, tn, i);
+        lemma_root_live(c, h, st, rptr, rv, rvp, tn, i);
     }
     let i = choose|i: int| 0 <= i < rv.len() && #[trigger] rv[i] == AVal::Ref(s.task as int);
-    lemma_root_live(c, h, st, rptr, rv, tn, i);
+    lemma_root_live(c, h, st, rptr, rv, rvp, tn, i);
 }
 
 // ---------------------------------------------------------------------------
@@ -205,9 +205,9 @@ pub proof fn lemma_saved_model(ap: Program2, s: State2, addr: Seq<usize>, cb: Se
 /// roots; the stack's values are in the reference slots of the running
 /// stack object, which the task's stack field refers to.
 pub proof fn lemma_roots_core_live(ap: Program2, cb: Seq<u16>, s: State2,
-                                   c: Ctx, h: H, st: St, rptr: *mut usize, rv: Seq<AVal>, tn: int)
+                                   c: Ctx, h: H, st: St, rptr: *mut usize, rv: Seq<AVal>, rvp: Seq<AVal>, tn: int)
     requires
-        collected_objs(c, h, st, rptr, rv, tn),
+        collected_objs(c, h, st, rptr, rv, rvp, tn),
         roots_core(s, rv),
         toit_spec::v2::sound::running_ok(ap, s),
         rep(saved(s).heap, h, cb),
@@ -220,10 +220,10 @@ pub proof fn lemma_roots_core_live(ap: Program2, cb: Seq<u16>, s: State2,
     let f = s.heap[t].body->Instance_0;
     assert(toit_spec::v2::sound::stack_ref(s.heap, f[0]));
     assert(sid != t);
-    lemma_root_live(c, h, st, rptr, rv, tn, 0);
+    lemma_root_live(c, h, st, rptr, rv, rvp, tn, 0);
     assert(val_live(h, st, AVal::Ref(t)));
     assert forall|j: int| 0 <= j < s.globals.len() && (#[trigger] s.globals[j]) is Obj implies val_live(h, st, aval(s.globals[j])) by {
-        lemma_root_live(c, h, st, rptr, rv, tn, 1 + j);
+        lemma_root_live(c, h, st, rptr, rv, rvp, tn, 1 + j);
     }
     // The task's stack field: a reference slot of the task holds the stack object.
     assert(sh[t] == s.heap[t]);
@@ -251,10 +251,10 @@ pub proof fn lemma_roots_core_live(ap: Program2, cb: Seq<u16>, s: State2,
 /// copied) and the collector's new address map; and every word the core
 /// models of every copy is the core's word of its object under that map.
 pub proof fn lemma_bridge(ap: Program2, cb: Seq<u16>, s1: State2, n0: int,
-                          c: Ctx, h: H, st: St, rptr: *mut usize, rv: Seq<AVal>, ttab: *mut usize, tused: *mut usize, w: Window)
+                          c: Ctx, h: H, st: St, rptr: *mut usize, rv: Seq<AVal>, rvp: Seq<AVal>, ttab: *mut usize, tused: *mut usize, w: Window)
     requires
         heap_ok(c, h),
-        collected(c, h, st, rptr, rv, ttab, tused, w),
+        collected(c, h, st, rptr, rv, rvp, ttab, tused, w),
         rep(s1.heap, h, cb),
         heap_model_ok(s1.heap, h.addr, cb),
         0 <= n0 <= s1.heap.len(),
@@ -318,7 +318,7 @@ pub proof fn lemma_bridge(ap: Program2, cb: Seq<u16>, s1: State2, n0: int,
         assert(word_val(sh[i], cb, st.addr2, k, wval(h.objs[i], st.addr2, k)));
         assert(obj_ok(obj(h, i)));
         assert(0 <= k < size(h, i));
-        assert(collected_objs(c, h, st, rptr, rv, w.pages as int));
+        assert(collected_objs(c, h, st, rptr, rv, rvp, w.pages as int));
         assert(st.tp[(cpg(st, i), coff(st, i) + k)].value() == wval(obj(h, i), st.addr2, k));
     }
 }
@@ -330,11 +330,11 @@ pub proof fn lemma_bridge(ap: Program2, cb: Seq<u16>, s1: State2, n0: int,
 /// equal to the collector's word of it. (No weak processing before M4, so
 /// the state before weak processing is `s` itself: `zapped(ap, s, s)`.)
 pub proof fn lemma_spec_collection(ap: Program2, cb: Seq<u16>, s: State2, n0: int,
-                                   c: Ctx, h: H, st: St, rptr: *mut usize, rv: Seq<AVal>, ttab: *mut usize, tused: *mut usize,
+                                   c: Ctx, h: H, st: St, rptr: *mut usize, rv: Seq<AVal>, rvp: Seq<AVal>, ttab: *mut usize, tused: *mut usize,
                                    w: Window)
     requires
         heap_ok(c, h),
-        collected(c, h, st, rptr, rv, ttab, tused, w),
+        collected(c, h, st, rptr, rv, rvp, ttab, tused, w),
         rep(s.heap, h, cb),
         heap_model_ok(s.heap, h.addr, cb),
         0 <= n0 <= s.heap.len(),
@@ -355,7 +355,7 @@ pub proof fn lemma_spec_collection(ap: Program2, cb: Seq<u16>, s: State2, n0: in
         &&& enc_seq(a2, s2.globals) == enc_seq(st.addr2, s.globals)
     }),
 {
-    lemma_bridge(ap, cb, s, n0, c, h, st, rptr, rv, ttab, tused, w);
+    lemma_bridge(ap, cb, s, n0, c, h, st, rptr, rv, rvp, ttab, tused, w);
     assert(zapped(ap, s, s)) by {
         assert(s == (State2 { heap: s.heap, ..s }));
         assert forall|i: int| 0 <= i < s.heap.len() implies #[trigger] toit_spec::v2::gc::weak_change(ap, s.heap, i, s.heap[i]) by {}
@@ -374,11 +374,11 @@ pub proof fn lemma_spec_collection(ap: Program2, cb: Seq<u16>, s: State2, n0: in
 /// result renumbered is a collection of the spec from the saved state,
 /// represented by the core's heap model at the collector's addresses.
 pub proof fn lemma_spec_collection_core(ap: Program2, cb: Seq<u16>, s: State2, n0: int,
-                                        c: Ctx, h: H, st: St, rptr: *mut usize, rv: Seq<AVal>, ttab: *mut usize, tused: *mut usize,
+                                        c: Ctx, h: H, st: St, rptr: *mut usize, rv: Seq<AVal>, rvp: Seq<AVal>, ttab: *mut usize, tused: *mut usize,
                                         w: Window)
     requires
         heap_ok(c, h),
-        collected(c, h, st, rptr, rv, ttab, tused, w),
+        collected(c, h, st, rptr, rv, rvp, ttab, tused, w),
         toit_spec::v2::sound::running_ok(ap, s),
         roots_core(s, rv),
         rep(saved(s).heap, h, cb),
@@ -402,7 +402,7 @@ pub proof fn lemma_spec_collection_core(ap: Program2, cb: Seq<u16>, s: State2, n
 {
     let s0 = saved(s);
     lemma_saved_model(ap, s, h.addr, cb);
-    lemma_roots_core_live(ap, cb, s, c, h, st, rptr, rv, w.pages as int);
+    lemma_roots_core_live(ap, cb, s, c, h, st, rptr, rv, rvp, w.pages as int);
     assert(state_live(s0, h, st));
     assert forall|i: int| 0 <= i < s0.heap.len() implies (#[trigger] s0.heap[i].ro <==> i < n0) by {
         assert(s0.heap[i].ro == s.heap[i].ro);
@@ -416,7 +416,7 @@ pub proof fn lemma_spec_collection_core(ap: Program2, cb: Seq<u16>, s: State2, n
         assert(gcbridge::ro_const(s.heap, ap.literals[i]));
         if ap.literals[i] is Obj { assert(s0.heap[ap.literals[i]->Obj_0 as int].ro == s.heap[ap.literals[i]->Obj_0 as int].ro); }
     }
-    lemma_spec_collection(ap, cb, s0, n0, c, h, st, rptr, rv, ttab, tused, w);
+    lemma_spec_collection(ap, cb, s0, n0, c, h, st, rptr, rv, rvp, ttab, tused, w);
 }
 
 // ---------------------------------------------------------------------------

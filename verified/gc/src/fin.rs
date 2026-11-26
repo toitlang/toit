@@ -38,7 +38,7 @@ use crate::space::*;
 use crate::cheney::*;
 use crate::copy::*;
 use crate::collect::*;
-use crate::statement::{val_live, live};
+use crate::statement::{val_live, live, reachable};
 
 verus! {
 
@@ -148,6 +148,8 @@ pub proof fn lemma_modify(c: Ctx, h: H, st: St, st2: St, t: Tos, ks: int, kc: in
     assert forall|x: int| from(h2, x) && #[trigger] copied(st2, x) implies
         st2.fp[fkey(h2, x, 0)].is_init() && st2.fp[fkey(h2, x, 0)].value() == st2.addr2[x] by {
         assert(x != j);
+        assert(copied(st, x));
+        assert(from(h, x));
         assert(st.fp[fkey(h, x, 0)].is_init());
         lemma_extents_apart(c, h, x, j);
         lemma_from_obj(c, h, x);
@@ -831,9 +833,9 @@ pub fn fin_node<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, nptr: *mut usi
 /// How the finalizer pass changed object `x`: not at all, or killed as the
 /// key of a node (a Toit finalizer's: its bit cleared; a weak map's: reset
 /// too).
-pub open spec fn changed_ok(c: Ctx, h0: H, h: H, nodes: Seq<Node>, upto: int, x: int) -> bool {
+pub open spec fn changed_ok(c: Ctx, h0: H, h: H, nodes: Seq<Node>, upto: int, main: Set<int>, x: int) -> bool {
     ||| obj(h, x) == obj(h0, x)
-    ||| exists|m: int| 0 <= m < upto && #[trigger] nodes[m].key == AVal::Ref(x) && nodes[m].kind <= KIND_WEAK_QUEUED
+    ||| from(h0, x) && !main.contains(x) && exists|m: int| 0 <= m < upto && #[trigger] nodes[m].key == AVal::Ref(x) && nodes[m].kind <= KIND_WEAK_QUEUED
             && obj(h, x) == killed(obj(h0, x), c.nullid@, nodes[m].kind != KIND_TOIT)
 }
 
@@ -863,7 +865,7 @@ pub fn fin_pass<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, nptr: *mut usi
         inv(*c, r@, *final(st), *final(t), n0, 0, rvp), roots_ok(*c, r@, *final(st), rptr, rv, rv.len() as int),
         src_ok(*c, *final(src), *final(t)),
         grows(h0, *old(st), *final(st)), final(st).addr2.len() == old(st).addr2.len(),
-        forall|x: int| 0 <= x < h0.objs.len() ==> #[trigger] changed_ok(*c, h0, r@, nodes, ncb as int, x),
+        forall|x: int| 0 <= x < h0.objs.len() ==> #[trigger] changed_ok(*c, h0, r@, nodes, ncb as int, main, x),
         forall|m: int| 0 <= m < ncb ==> #[trigger] node_out(*c, h0, r@, *final(st), main, *final(np), nodes[m], m),
         forall|m: int| ncb <= m < nn ==> #[trigger] node_in(*final(np), h0, nodes[m], m),
         nodes_mem(*final(np), nptr, nn as int),
@@ -875,7 +877,7 @@ pub fn fin_pass<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, nptr: *mut usi
     proof {
         lemma_grows_refl(h0, s0);
         assert forall|x: int| 0 <= x < h0.objs.len() implies #[trigger] obj(hc, x) == obj(h0, x) || !active(obj(hc, x)) by {}
-        assert forall|x: int| 0 <= x < h0.objs.len() implies #[trigger] changed_ok(*c, h0, hc, nodes, 0, x) by {}
+        assert forall|x: int| 0 <= x < h0.objs.len() implies #[trigger] changed_ok(*c, h0, hc, nodes, 0, main, x) by {}
     }
     while i < ncb
         invariant
@@ -893,7 +895,7 @@ pub fn fin_pass<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, nptr: *mut usi
             nodes_mem(*np, nptr, nn as int),
             forall|m: int| i <= m < nn ==> #[trigger] node_in(*np, h0, nodes[m], m),
             forall|m: int| 0 <= m < i ==> #[trigger] node_out(*c, h0, hc, *st, main, *np, nodes[m], m),
-            forall|x: int| 0 <= x < h0.objs.len() ==> #[trigger] changed_ok(*c, h0, hc, nodes, i as int, x),
+            forall|x: int| 0 <= x < h0.objs.len() ==> #[trigger] changed_ok(*c, h0, hc, nodes, i as int, main, x),
             t.ttab == old(t).ttab, t.tused == old(t).tused, t.tcap == old(t).tcap,
         decreases ncb - i,
     {
@@ -930,11 +932,13 @@ pub fn fin_pass<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, nptr: *mut usi
                 assert(node_in(np1, h0, nodes[m], m));
                 assert(np[4 * m] == np1[4 * m] && np[4 * m + 1] == np1[4 * m + 1] && np[4 * m + 2] == np1[4 * m + 2]);
             }
-            assert forall|x: int| 0 <= x < h0.objs.len() implies #[trigger] changed_ok(*c, h0, h2, nodes, i + 1, x) by {
+            assert forall|x: int| 0 <= x < h0.objs.len() implies #[trigger] changed_ok(*c, h0, h2, nodes, i + 1, main, x) by {
                 if obj(h2, x) != obj(h1, x) {
                     assert(nodes[i as int].key == AVal::Ref(x));
+                    assert(!copied(s1, x));
+                    if main.contains(x) { assert(copied(s1, x)); }
                 } else {
-                    assert(changed_ok(*c, h0, h1, nodes, i as int, x));
+                    assert(changed_ok(*c, h0, h1, nodes, i as int, main, x));
                     if obj(h1, x) != obj(h0, x) {
                         let m = choose|m: int| 0 <= m < i && #[trigger] nodes[m].key == AVal::Ref(x) && nodes[m].kind <= KIND_WEAK_QUEUED
                             && obj(h1, x) == killed(obj(h0, x), c.nullid@, nodes[m].kind != KIND_TOIT);
@@ -987,6 +991,32 @@ pub fn vm_node(c: &Ctx, nptr: *mut usize, i: usize, nn: usize, Ghost(h): Ghost<H
     let k2 = if !act || dead { kw } else { cur };
     set_nword(nptr, 4 * i + 1, k2, Ghost(nn as int), Tracked(np));
     set_nword(nptr, 4 * i + 3, verdict, Ghost(nn as int), Tracked(np));
+}
+
+/// After the finalizer pass and the collection (`statement::collect`):
+/// the heap `hf` is `h` with the dead keys killed; `main` is what the first
+/// scan copied, so a key dead then is not reachable from the strong roots;
+/// every node has its fate.
+pub open spec fn fin_done(c: Ctx, h: H, hf: H, st: St, rv: Seq<AVal>, nodes: Seq<Node>, nm: Map<int, PointsTo<usize>>,
+                          ncb: int, nn: int, main: Set<int>) -> bool {
+    &&& hf.loc == h.loc && hf.addr == h.addr && hf.objs.len() == h.objs.len()
+    &&& forall|j: int| from(h, j) && !main.contains(j) ==> !#[trigger] reachable(h, rv, j)
+    &&& forall|m: int| 0 <= m < nn ==> #[trigger] node_out(c, h, hf, st, main, nm, nodes[m], m)
+    &&& forall|x: int| 0 <= x < h.objs.len() ==> #[trigger] changed_ok(c, h, hf, nodes, ncb, main, x)
+}
+
+/// A fate depends on the state only through the copies and the new
+/// addresses.
+pub proof fn lemma_fate_same(c: Ctx, h0: H, h: H, st: St, st2: St, main: Set<int>, nd: Node, d: usize, kw: usize, lw: usize)
+    requires fate(c, h0, h, st, main, nd, d, kw, lw), st2.pos == st.pos, st2.addr2 == st.addr2,
+    ensures fate(c, h0, h, st2, main, nd, d, kw, lw),
+{
+    assert forall|v: AVal| #[trigger] val_live(h, st2, v) == val_live(h, st, v) by {
+        if v is Ref { assert(copied(st2, v->Ref_0) == copied(st, v->Ref_0)); }
+    }
+    assert forall|v: AVal| #[trigger] key_dead(h, st2, v) == key_dead(h, st, v) by {
+        if v is Ref { assert(copied(st2, v->Ref_0) == copied(st, v->Ref_0)); }
+    }
 }
 
 } // verus!

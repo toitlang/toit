@@ -614,10 +614,13 @@ pub fn scan<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, sp0: usize, so0: u
         old(t).tn >= 1 ==> scan_pos(h, *old(st), *old(t), sp0 as int, so0 as int, ks0),
     ensures
         inv(*c, h, *final(st), *final(t), final(st).order.len() as int, 0, rvp),
+        grows(h, *old(st), *final(st)), final(st).addr2.len() == old(st).addr2.len(),
         roots_ok(*c, h, *final(st), rptr, rv, rv.len() as int),
         src_ok(*c, *final(src), *final(t)),
         final(t).ttab == old(t).ttab, final(t).tused == old(t).tused, final(t).tcap == old(t).tcap,
 {
+    let ghost s_in = *st;
+    proof { lemma_grows_refl(h, s_in); assert(bk_ok(h, s_in)); }
     if t.tn == 0 {
         return;
     }
@@ -638,6 +641,7 @@ pub fn scan<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, sp0: usize, so0: u
             t.ttab == old(t).ttab, t.tused == old(t).tused, t.tcap == old(t).tcap,
             t.tn >= 1, 0 <= sp < t.tn, sstart == st.tss[sp as int],
             0 <= ks <= st.order.len(), so <= st.tus[sp as int],
+            grows(h, s_in, *st), st.addr2.len() == s_in.addr2.len(), s_in.addr2.len() == h.objs.len(),
             ks == st.order.len() ==> sp + 1 == t.tn && so == t.top,
             ks < st.order.len() ==> st.tloc[ks] == (sp as int, so as int)
                 || (so == st.tus[sp as int] && sp + 1 < t.tn && st.tloc[ks] == (sp + 1, 0int)),
@@ -685,6 +689,8 @@ pub fn scan<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, sp0: usize, so0: u
                                  Tracked(st), Tracked(ro));
             proof {
                 let s2 = *st;
+                assert(bk_ok(h, s1) && bk_ok(h, s2));
+                lemma_grows_trans(h, s_in, s1, s2);
                 assert(s2.tloc[ks] == s1.tloc[ks] && s2.order[ks] == s1.order[ks]);
                 assert(tsz(h, s2, ks) == sz);
                 assert(0 <= tpg(s2, ks) < t.tn && tend(h, s2, ks) <= s2.tus[tpg(s2, ks)]);
