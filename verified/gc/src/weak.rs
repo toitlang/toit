@@ -944,4 +944,334 @@ pub proof fn lemma_restore(c: Ctx, h: H, st: St, st2: St, t: Tos, ks: int, kc: i
     }
 }
 
+
+/// One hidden weak map's node (`nodes`'s `i`, key `j`, the map before
+/// hiding `oj`): if the map survived, its dead values are nulled
+/// (`zap_backing`), its hidden fields forwarded and written back into its
+/// copy (encoded for the copy's place before or after the main scan's
+/// end); if it died, it is reset (`kill_key`). Marks the node: zapped or 0.
+
+/// Writes a surviving weak map's fields back into its copy (`cur`) and
+/// re-establishes the invariant for the heap with the map's object `o2`.
+pub fn restore_copy(c: &Ctx, t: &Tos, cur: usize, w3: usize, w4: usize, Ghost(h): Ghost<H>, Ghost(j): Ghost<int>,
+                    Ghost(o2): Ghost<AObj>, Ghost(n0): Ghost<int>,
+                    Ghost(rptr): Ghost<*mut usize>, Ghost(rv): Ghost<Seq<AVal>>, Ghost(rvp): Ghost<Seq<AVal>>,
+                    Tracked(st): Tracked<&mut St>)
+    requires
+        ctx_ok(*c), heap_ok(*c, h), inv(*c, h, *old(st), *t, n0, 0, rvp), roots_ok(*c, h, *old(st), rptr, rv, rv.len() as int),
+        0 <= n0 <= old(st).order.len(),
+        from(h, j), copied(*old(st), j), cur == old(st).addr2[j],
+        same_shape(*c, h.objs.len() as int, obj(h, j), o2), o2.words.len() == obj(h, j).words.len(),
+        lay(obj(h, j)).lo <= 3, 5 <= lay(obj(h, j)).hi,
+        obj(h, j).words[3] is Raw, obj(h, j).words[4] is Raw,
+        forall|q: int| 0 <= q < o2.words.len() && q != 3 && q != 4 ==> #[trigger] o2.words[q] == obj(h, j).words[q],
+        w3 == enc(if old(st).pos[j] < n0 { old(st).addr2 } else { h.addr }, o2.words[3]),
+        w4 == enc(if old(st).pos[j] < n0 { old(st).addr2 } else { h.addr }, o2.words[4]),
+        old(st).pos[j] < n0 ==> closed(h, *old(st), o2.words[3]) && closed(h, *old(st), o2.words[4]),
+    ensures
+        heap_ok(*c, with_obj(h, j, o2)),
+        inv(*c, with_obj(h, j, o2), *final(st), *t, n0, 0, rvp),
+        roots_ok(*c, with_obj(h, j, o2), *final(st), rptr, rv, rv.len() as int),
+        *final(st) == (St { tp: final(st).tp, ..*old(st) }),
+{
+    let ghost s3 = *st;
+    let ghost k = s3.pos[j];
+    let ghost pg = tpg(s3, k);
+    let ghost of = toff(s3, k);
+    proof {
+        lemma_w();
+        lemma_from_obj(*c, h, j);
+        assert(0 <= k < s3.order.len() && s3.order[k] == j);
+        assert(0 <= pg < t.tn && 0 <= of && tend(h, s3, k) <= s3.tus[pg]);
+        assert(s3.tus[pg] <= c.pw - 1);
+        assert(s3.tss[pg] + pbytes(*c) < usize::MAX);
+        assert(s3.tss[pg] % W == 0);
+        assert(cur == taddr(s3, k));
+        assert(tsz(h, s3, k) == size(h, j) && size(h, j) >= 5);
+        assert(wperm_ok(s3.tp, (pg, of + 3), tptr(*c, s3, pg), of + 3));
+        assert(wperm_ok(s3.tp, (pg, of + 4), tptr(*c, s3, pg), of + 4));
+        assert(at(ppage(*c, (cur - 1) as int), 3) == at(tptr(*c, s3, pg), of + 3));
+        assert(at(ppage(*c, (cur - 1) as int), 4) == at(tptr(*c, s3, pg), of + 4));
+        assert((cur - 1) as int + 4 * W <= usize::MAX) by (nonlinear_arith)
+            requires (cur - 1) as int == s3.tss[pg] + of * W, of + 4 < c.pw, s3.tss[pg] + c.pw * W < usize::MAX, W >= 1;
+    }
+    let copy = c.base.with_addr(cur - 1);
+    wr(copy, 3, w3, Ghost((pg, of + 3)), Tracked(&mut st.tp));
+    proof { assert(wperm_ok(st.tp, (pg, of + 4), copy, 4)); }
+    wr(copy, 4, w4, Ghost((pg, of + 4)), Tracked(&mut st.tp));
+    proof {
+        let s4 = *st;
+        assert(tkey(s3, k, 3) == (pg, of + 3) && tkey(s3, k, 4) == (pg, of + 4));
+        assert(processed(k, 3, n0, 0) == (k < n0) && processed(k, 4, n0, 0) == (k < n0));
+        assert(amap(h, s3, k, 3, n0, 0) == (if k < n0 { s3.addr2 } else { h.addr }));
+        assert(amap(h, s3, k, 4, n0, 0) == (if k < n0 { s3.addr2 } else { h.addr }));
+        assert forall|q: (int, int)| q != tkey(s3, k, 3) && q != tkey(s3, k, 4) implies #[trigger] s4.tp[q] == s3.tp[q] by {}
+        assert(s4 == (St { tp: s4.tp, ..s3 }));
+        lemma_restore(*c, h, s3, s4, *t, n0, 0, rv, rvp, rptr, rv.len() as int, j, o2);
+    }
+}
+
+
+/// One hidden weak map's node (`nodes`'s `i`, key `j`, the map before
+/// hiding `oj`): if the map survived, its dead values are nulled
+/// (`zap_backing`), its hidden fields forwarded and written back into its
+/// copy (encoded for the copy's place before or after the main scan's
+/// end); if it died, it is reset (`kill_key`). Marks the node: zapped or 0.
+
+/// One hidden weak map's node (`nodes`'s `i`, key `j`, the map before
+/// hiding `oj`): if the map survived, its dead values are nulled
+/// (`zap_backing`), its hidden fields forwarded and written back into its
+/// copy (encoded for the copy's place before or after the main scan's
+
+/// Forwards a hidden index and backing (parents: the node's roots).
+pub fn fwd_two<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, ixw: usize, bkw: usize, Ghost(h): Ghost<H>,
+                              Ghost(ix): Ghost<AVal>, Ghost(bk): Ghost<AVal>, Ghost(ks): Ghost<int>, Ghost(ri2): Ghost<int>,
+                              Ghost(rptr): Ghost<*mut usize>, Ghost(rv): Ghost<Seq<AVal>>, Ghost(rvp): Ghost<Seq<AVal>>,
+                              Tracked(st): Tracked<&mut St>, Tracked(ro): Tracked<&Ro>) -> (r: (usize, usize))
+    requires
+        ctx_ok(*c), fpages_ok(*c), ftab_ok(*c, ro.ftp), heap_ok(*c, h), others_ok(h, ro.others), ctab_ok(*c, ro.ctp),
+        inv(*c, h, *old(st), *old(t), ks, 0, rvp), roots_ok(*c, h, *old(st), rptr, rv, rv.len() as int),
+        src_ok(*c, *old(src), *old(t)), 0 <= ks <= old(st).order.len(),
+        ixw == enc(h.addr, ix), bkw == enc(h.addr, bk),
+        slot_ok(*c, h.objs.len() as int, ix), slot_ok(*c, h.objs.len() as int, bk),
+        0 <= ri2 && ri2 + 1 < rvp.len(), rvp[ri2] == ix, rvp[ri2 + 1] == bk,
+    ensures
+        inv(*c, h, *final(st), *final(t), ks, 0, rvp), roots_ok(*c, h, *final(st), rptr, rv, rv.len() as int),
+        src_ok(*c, *final(src), *final(t)),
+        grows(h, *old(st), *final(st)), final(st).addr2.len() == old(st).addr2.len(),
+        r.0 == enc(final(st).addr2, ix), r.1 == enc(final(st).addr2, bk),
+        closed(h, *final(st), ix), closed(h, *final(st), bk),
+        final(t).ttab == old(t).ttab, final(t).tused == old(t).tused, final(t).tcap == old(t).tcap,
+        final(t).rs == old(t).rs, final(t).mx == old(t).mx, old(t).tn <= final(t).tn,
+{
+    let ghost s1 = *st;
+    let a = forward(c, src, t, ixw, Ghost(h), Ghost(ix), Ghost(ks), Ghost(0int), Ghost((-1 - ri2, 0int)), Ghost(rptr),
+                    Ghost(rv), Ghost(rvp), Ghost(rv.len() as int), Tracked(st), Tracked(ro));
+    let ghost s2 = *st;
+    let b = forward(c, src, t, bkw, Ghost(h), Ghost(bk), Ghost(ks), Ghost(0int), Ghost((-1 - (ri2 + 1), 0int)), Ghost(rptr),
+                    Ghost(rv), Ghost(rvp), Ghost(rv.len() as int), Tracked(st), Tracked(ro));
+    let ghost s3 = *st;
+    proof {
+        assert(bk_ok(h, s1) && bk_ok(h, s2));
+        lemma_grows_trans(h, s1, s2, s3);
+        if ix is Ref {
+            if copied(s2, ix->Ref_0) { assert(copied(s3, ix->Ref_0)); }
+            assert(s3.addr2[ix->Ref_0] == s2.addr2[ix->Ref_0]);
+        }
+    }
+    (a, b)
+}
+
+/// end); if it died, it is reset (`kill_key`). Marks the node: zapped or 0.
+pub fn weak_live<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, nptr: *mut usize, i: usize, nn: usize,
+                               tn0: usize, top0: usize, cur: usize,
+                               Ghost(h): Ghost<H>, Ghost(nd): Ghost<Node>, Ghost(oj): Ghost<AObj>, Ghost(n0): Ghost<int>,
+                               Ghost(rptr): Ghost<*mut usize>, Ghost(rv): Ghost<Seq<AVal>>, Ghost(rvp): Ghost<Seq<AVal>>,
+                               Tracked(st): Tracked<&mut St>, Tracked(ro): Tracked<&Ro>,
+                               Tracked(np): Tracked<&mut Map<int, PointsTo<usize>>>) -> (r: (Ghost<H>, Ghost<bool>))
+    requires
+        ctx_ok(*c), fpages_ok(*c), ftab_ok(*c, ro.ftp), heap_ok(*c, h), others_ok(h, ro.others), ctab_ok(*c, ro.ctp),
+        inv(*c, h, *old(st), *old(t), n0, 0, rvp), roots_ok(*c, h, *old(st), rptr, rv, rv.len() as int),
+        src_ok(*c, *old(src), *old(t)),
+        0 <= n0 <= old(st).order.len(), tn0 <= old(t).tn,
+        n0 == 0 ==> tn0 == 0,
+        n0 >= 1 ==> tn0 >= 1 && tpg(*old(st), n0 - 1) == tn0 - 1 && tend(h, *old(st), n0 - 1) == top0,
+        nd.key is Ref, from(h, nd.key->Ref_0), weak_map(*c, oj), obj(h, nd.key->Ref_0) == hidden(oj),
+        oj.words[3] == nd.ix, oj.words[4] == nd.bk,
+        slot_ok(*c, h.objs.len() as int, nd.key), slot_ok(*c, h.objs.len() as int, nd.ix), slot_ok(*c, h.objs.len() as int, nd.bk),
+        i < nn, nodes_mem(*old(np), nptr, nn as int),
+        old(np)[6 * i + 1].is_init() && old(np)[6 * i + 1].value() == enc(h.addr, nd.key),
+        old(np)[6 * i + 4].is_init() && old(np)[6 * i + 4].value() == enc(h.addr, nd.ix),
+        old(np)[6 * i + 5].is_init() && old(np)[6 * i + 5].value() == enc(h.addr, nd.bk),
+        rvp.len() > rv.len() + 4 * i + 3, rvp[rv.len() + 4 * i + 2] == nd.ix, rvp[rv.len() + 4 * i + 3] == nd.bk,
+        copied(*old(st), nd.key->Ref_0), cur == old(st).addr2[nd.key->Ref_0],
+    ensures ({
+        let h2 = r.0@;
+        let z = r.1@;
+        let j = nd.key->Ref_0;
+        &&& heap_ok(*c, h2) && others_ok(h2, ro.others)
+        &&& inv(*c, h2, *final(st), *final(t), n0, 0, rvp) && roots_ok(*c, h2, *final(st), rptr, rv, rv.len() as int)
+        &&& src_ok(*c, *final(src), *final(t))
+        &&& grows(h, *old(st), *final(st)) && final(st).addr2.len() == old(st).addr2.len()
+        &&& final(t).ttab == old(t).ttab && final(t).tused == old(t).tused && final(t).tcap == old(t).tcap
+            && final(t).rs == old(t).rs && final(t).mx == old(t).mx && old(t).tn <= final(t).tn
+        &&& nodes_mem(*final(np), nptr, nn as int)
+        &&& forall|q: int| q != 6 * i + 3 ==> #[trigger] final(np)[q] == old(np)[q]
+        &&& final(np)[6 * i + 3].is_init() && final(np)[6 * i + 3].value() == (if z { ZAPPED } else { 0 })
+        &&& h2.loc == h.loc && h2.addr == h.addr && h2.objs.len() == h.objs.len()
+        &&& obj(h2, j) == unhide(obj(h, j), nd.ix, nd.bk) || obj(h2, j) == killed(obj(h, j), c.nullid@, true)
+        &&& forall|x: int| 0 <= x < h.objs.len() && x != j ==> #[trigger] obj(h2, x) == obj(h, x)
+                || (from(h, x) && backing(*c, h, nd.bk, x) && zapped_arr(*c, h, obj(h, x), obj(h2, x)))
+    }),
+{
+    let ghost s0 = *st;
+    let ghost j = nd.key->Ref_0;
+    let ghost ki = rv.len() + 4 * i;
+    proof { lemma_from_obj(*c, h, j); }
+    let bkw = nword(nptr, 6 * i + 5, Ghost(nn as int), Tracked(&*np));
+    let ixw = nword(nptr, 6 * i + 4, Ghost(nn as int), Tracked(&*np));
+    let (zapped, hzr) = zap_backing(c, &*t, bkw, Ghost(h), Ghost(nd.bk), Ghost(n0), Ghost(rptr), Ghost(rv), Ghost(rvp),
+                                    Tracked(st), Tracked(ro));
+    let ghost hz = hzr@;
+    let ghost s1 = *st;
+    proof {
+        assert(copied(s0, j));
+        assert(obj(hz, j) == obj(h, j));
+        assert(slot_ok(*c, hz.objs.len() as int, nd.ix) && slot_ok(*c, hz.objs.len() as int, nd.bk));
+        assert(ixw == enc(hz.addr, nd.ix) && bkw == enc(hz.addr, nd.bk));
+        assert(rvp[ki + 2] == nd.ix && rvp[ki + 3] == nd.bk);
+        assert(n0 <= st.order.len());
+    }
+    let (a, b) = fwd_two(c, src, t, ixw, bkw, Ghost(hz), Ghost(nd.ix), Ghost(nd.bk), Ghost(n0), Ghost(ki + 2), Ghost(rptr),
+                         Ghost(rv), Ghost(rvp), Tracked(st), Tracked(ro));
+    let ghost s3 = *st;
+    let ghost k = s0.pos[j];
+    proof {
+        assert(copied(s1, j));
+        assert(copied(s3, j) && s3.pos[j] == k);
+        assert(s3.addr2[j] == s0.addr2[j]);
+        assert(cur == s3.addr2[j]);
+        assert(t.tn == s3.tss.len() && s1.tss.len() <= s3.tss.len());
+        assert(s3.tloc[k] == s0.tloc[k]);
+        // The main scan's end is still where it was.
+        if n0 >= 1 {
+            assert(s3.tloc[n0 - 1] == s0.tloc[n0 - 1] && s3.order[n0 - 1] == s0.order[n0 - 1]);
+            assert(tsz(hz, s3, n0 - 1) == tsz(h, s0, n0 - 1));
+        }
+    }
+    let sc = copy_scanned(c, &*t, cur, tn0, top0, Ghost(hz), Ghost(j), Ghost(n0), Tracked(&*st));
+    let w3 = if sc { a } else { ixw };
+    let w4 = if sc { b } else { bkw };
+    let ghost o2 = unhide(obj(hz, j), nd.ix, nd.bk);
+    proof {
+        let oo = obj(hz, j);
+        lemma_from_obj(*c, hz, j);
+        assert(oo == hidden(oj));
+        assert(oo.words[3] is Raw && oo.words[4] is Raw);
+        assert(o2.words[3] == nd.ix && o2.words[4] == nd.bk);
+        assert(lay(o2) == lay(oo)) by { assert(o2.words[0] == oo.words[0] && o2.words.len() == oo.words.len()); }
+        assert(obj_ok(oo) && cls_ok(*c, oo));
+        assert forall|q: int| 0 <= q < lay(o2).size && !(lay(o2).lo <= q < lay(o2).hi) implies #[trigger] o2.words[q] is Raw by {
+            assert(oo.words[q] is Raw);
+        }
+        assert forall|q: int| lay(o2).lo <= q < lay(o2).hi implies #[trigger] slot_ok(*c, hz.objs.len() as int, o2.words[q]) by {
+            assert(slots_ok(*c, hz, j));
+            if q != 3 && q != 4 { assert(slot_ok(*c, hz.objs.len() as int, oo.words[q])); }
+        }
+        assert(same_shape(*c, hz.objs.len() as int, oo, o2));
+        assert(lay(oo).lo == 1 && lay(oo).hi >= 5) by { assert(lay(oj) == lay(oo)) by { assert(oj.words[0] == oo.words[0] && oj.words.len() == oo.words.len()); } }
+        assert(sc == (k < n0));
+    }
+    restore_copy(c, &*t, cur, w3, w4, Ghost(hz), Ghost(j), Ghost(o2), Ghost(n0), Ghost(rptr), Ghost(rv), Ghost(rvp), Tracked(st));
+    proof {
+        let s4 = *st;
+        let h2 = with_obj(hz, j, o2);
+        assert forall|x: int| 0 <= x < h2.objs.len() && !from(h2, x) implies #[trigger] ro.others.contains_key(x)
+            && ro.others[x].ptr()@.addr == h2.addr[x] - 1 by {
+            assert(!from(hz, x) && 0 <= x < hz.objs.len());
+            assert(ro.others.contains_key(x));
+            assert(ro.others[x].ptr()@.addr == hz.addr[x] - 1);
+        }
+        assert forall|x: int| 0 <= x < h.objs.len() && x != j implies #[trigger] obj(h2, x) == obj(h, x)
+            || (from(h, x) && backing(*c, h, nd.bk, x) && zapped_arr(*c, h, obj(h, x), obj(h2, x))) by {
+            assert(obj(h2, x) == obj(hz, x));
+        }
+        assert(bk_ok(h, s0));
+        lemma_grows_refl(h, s0);
+        lemma_grows_trans(h, s0, s1, s3);
+        assert(grows(h, s0, s4)) by {
+            assert forall|jj: int| 0 <= jj < s0.addr2.len() && (copied(s0, jj) || !from(h, jj)) implies #[trigger] s4.addr2[jj] == s0.addr2[jj] by {
+                assert(s3.addr2[jj] == s0.addr2[jj]);
+            }
+        }
+        assert(obj(h2, j) == unhide(obj(h, j), nd.ix, nd.bk));
+    }
+    set_nword(nptr, 6 * i + 3, if zapped { ZAPPED } else { 0 }, Ghost(nn as int), Tracked(np));
+    (Ghost(with_obj(hz, j, o2)), Ghost(zapped))
+}
+
+/// One hidden weak map's node (`nodes`'s `i`, key `j`, the map before
+/// hiding `oj`): if the map survived, its dead values are nulled
+/// (`zap_backing`), its hidden fields forwarded and written back into its
+/// copy (encoded for the copy's place before or after the main scan's
+/// end); if it died, it is reset (`kill_key`). Marks the node: zapped or 0.
+pub fn weak_one<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, nptr: *mut usize, i: usize, nn: usize,
+                               tn0: usize, top0: usize,
+                               Ghost(h): Ghost<H>, Ghost(nd): Ghost<Node>, Ghost(oj): Ghost<AObj>, Ghost(n0): Ghost<int>,
+                               Ghost(rptr): Ghost<*mut usize>, Ghost(rv): Ghost<Seq<AVal>>, Ghost(rvp): Ghost<Seq<AVal>>,
+                               Tracked(st): Tracked<&mut St>, Tracked(ro): Tracked<&Ro>,
+                               Tracked(np): Tracked<&mut Map<int, PointsTo<usize>>>) -> (r: (Ghost<H>, Ghost<bool>))
+    requires
+        ctx_ok(*c), fpages_ok(*c), ftab_ok(*c, ro.ftp), heap_ok(*c, h), others_ok(h, ro.others), ctab_ok(*c, ro.ctp),
+        inv(*c, h, *old(st), *old(t), n0, 0, rvp), roots_ok(*c, h, *old(st), rptr, rv, rv.len() as int),
+        src_ok(*c, *old(src), *old(t)),
+        0 <= n0 <= old(st).order.len(), tn0 <= old(t).tn,
+        n0 == 0 ==> tn0 == 0,
+        n0 >= 1 ==> tn0 >= 1 && tpg(*old(st), n0 - 1) == tn0 - 1 && tend(h, *old(st), n0 - 1) == top0,
+        nd.key is Ref, from(h, nd.key->Ref_0), weak_map(*c, oj), obj(h, nd.key->Ref_0) == hidden(oj),
+        oj.words[3] == nd.ix, oj.words[4] == nd.bk,
+        slot_ok(*c, h.objs.len() as int, nd.key), slot_ok(*c, h.objs.len() as int, nd.ix), slot_ok(*c, h.objs.len() as int, nd.bk),
+        i < nn, nodes_mem(*old(np), nptr, nn as int),
+        old(np)[6 * i + 1].is_init() && old(np)[6 * i + 1].value() == enc(h.addr, nd.key),
+        old(np)[6 * i + 4].is_init() && old(np)[6 * i + 4].value() == enc(h.addr, nd.ix),
+        old(np)[6 * i + 5].is_init() && old(np)[6 * i + 5].value() == enc(h.addr, nd.bk),
+        rvp.len() > rv.len() + 4 * i + 3, rvp[rv.len() + 4 * i + 2] == nd.ix, rvp[rv.len() + 4 * i + 3] == nd.bk,
+    ensures ({
+        let h2 = r.0@;
+        let z = r.1@;
+        let j = nd.key->Ref_0;
+        &&& heap_ok(*c, h2) && others_ok(h2, ro.others)
+        &&& inv(*c, h2, *final(st), *final(t), n0, 0, rvp) && roots_ok(*c, h2, *final(st), rptr, rv, rv.len() as int)
+        &&& src_ok(*c, *final(src), *final(t))
+        &&& grows(h, *old(st), *final(st)) && final(st).addr2.len() == old(st).addr2.len()
+        &&& final(t).ttab == old(t).ttab && final(t).tused == old(t).tused && final(t).tcap == old(t).tcap
+            && final(t).rs == old(t).rs && final(t).mx == old(t).mx && old(t).tn <= final(t).tn
+        &&& nodes_mem(*final(np), nptr, nn as int)
+        &&& forall|q: int| q != 6 * i + 3 ==> #[trigger] final(np)[q] == old(np)[q]
+        &&& final(np)[6 * i + 3].is_init() && final(np)[6 * i + 3].value() == (if z { ZAPPED } else { 0 })
+        &&& h2.loc == h.loc && h2.addr == h.addr && h2.objs.len() == h.objs.len()
+        &&& obj(h2, j) == unhide(obj(h, j), nd.ix, nd.bk) || obj(h2, j) == killed(obj(h, j), c.nullid@, true)
+        &&& forall|x: int| 0 <= x < h.objs.len() && x != j ==> #[trigger] obj(h2, x) == obj(h, x)
+                || (from(h, x) && backing(*c, h, nd.bk, x) && zapped_arr(*c, h, obj(h, x), obj(h2, x)))
+    }),
+{
+    let ghost s0 = *st;
+    let ghost j = nd.key->Ref_0;
+    let ghost ki = rv.len() + 4 * i;
+    proof {
+        lemma_from_obj(*c, h, j);
+        assert(hdr(obj(h, j)) == hdr(oj));
+        assert(active(obj(h, j)));
+    }
+    let kw = nword(nptr, 6 * i + 1, Ghost(nn as int), Tracked(&*np));
+    let (dead, _act, s, off, cur) = key_status(c, kw, Ghost(h), Ghost(nd.key), Ghost(*t), Ghost(n0), Ghost(0int), Ghost(rvp),
+                                              Tracked(&*st), Tracked(ro));
+    if dead {
+        kill_key(c, s, off, true, Ghost(h), Ghost(j), Ghost(*t), Ghost(n0), Ghost(0int), Ghost(rv), Ghost(rvp), Ghost(rptr),
+                 Ghost(rv.len() as int), Tracked(st), Tracked(ro));
+        let ghost h2 = with_obj(h, j, killed(obj(h, j), c.nullid@, true));
+        proof {
+            lemma_grows_refl(h, s0);
+            assert(bk_ok(h, s0));
+            assert forall|x: int| 0 <= x < h2.objs.len() && !from(h2, x) implies #[trigger] ro.others.contains_key(x)
+                && ro.others[x].ptr()@.addr == h2.addr[x] - 1 by {
+                assert(ro.others.contains_key(x) && ro.others[x].ptr()@.addr == h.addr[x] - 1);
+            }
+            assert(grows(h, s0, *st)) by {
+                assert forall|jj: int| #[trigger] copied(s0, jj) implies copied(*st, jj) && st.pos[jj] == s0.pos[jj] by {}
+            }
+        }
+        set_nword(nptr, 6 * i + 3, 0, Ghost(nn as int), Tracked(np));
+        proof {
+            assert forall|x: int| 0 <= x < h.objs.len() && x != j implies #[trigger] obj(h2, x) == obj(h, x) by {}
+            assert(obj(h2, j) == killed(obj(h, j), c.nullid@, true));
+            assert(h2.loc == h.loc && h2.addr == h.addr && h2.objs.len() == h.objs.len());
+        }
+        return (Ghost(h2), Ghost(false));
+    }
+    proof { assert(copied(*st, j)); }
+    weak_live(c, src, t, nptr, i, nn, tn0, top0, cur, Ghost(h), Ghost(nd), Ghost(oj), Ghost(n0), Ghost(rptr), Ghost(rv), Ghost(rvp),
+              Tracked(st), Tracked(ro), Tracked(np))
+}
+
 } // verus!
