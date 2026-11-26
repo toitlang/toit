@@ -94,7 +94,7 @@ class WifiResourceGroup : public ResourceGroup {
       // Similar to the disconnect and stop, we might get an error from the
       // esp-idf if a previous operation is still in process.
       // We will try to deinit the WiFi a few times before giving up.
-      esp_err_t err = esp_wifi_stop();
+      err = esp_wifi_stop();
       if (err == ESP_OK) break;
       // We couldn't stop. Wait a bit and try again.
       vTaskDelay(DEINIT_DELAY_MS / portTICK_PERIOD_MS);
