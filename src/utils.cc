@@ -400,3 +400,25 @@ void iram_safe_char_memcpy(char* dst, const char* src, size_t bytes) {
 }
 
 }
+
+#if defined(TOIT_FREERTOS) && !defined(__EXCEPTIONS)
+// Device builds have no C++ exceptions (-fno-exceptions). Calling an empty
+// std::function calls std::__throw_bad_function_call, whose libstdc++
+// definition (functional.o) throws std::bad_function_call: it links the
+// exception class, its type info and the exception allocation (about 0.9 KB
+// of flash on the ESP32) only to end in the toolchain's __cxa_throw, which
+// aborts without exceptions. This definition takes its place and fails
+// directly. Hosts keep libstdc++'s (shared) definition. The EC618 slot
+// links against the base's export of the symbol (toolchains/ec618/project/
+// src/plat_keep.c; --just-symbols takes precedence), so this one is dropped
+// there.
+#include <functional>
+
+namespace std {
+
+void __throw_bad_function_call() {
+  FATAL("call of an empty std::function");
+}
+
+}  // namespace std
+#endif
