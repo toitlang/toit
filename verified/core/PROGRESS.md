@@ -38,6 +38,13 @@ frame, 14 words for a short task at its deepest call.
 
 Proofs: spec 1096, core 1093, core-split 1095 (32-bit 1096, 1095, 1097)
 verified, 0 errors; no new trusted item, THEOREMS.txt unchanged.
+C++ matrix: the fast tier passes (after fixing v2_frame_walk, which wrote a
+record at the literal offset `5 * record + 1`, and v2_table_install, which
+stated the verdict rule from before the policy binding of
+wip/collector-proofs); byte-array-initialization/LP64 timed out at 600 s in
+every run on the loaded machine (also before step 2). The slow-tier task
+jobs pass (task-all-fields, task-retry-fields, allocate-task, task-transfer,
+gc-current-task).
 
 ## Format 3, step 1: short branches (branch format3/branches-frames, 2026-11-26)
 
