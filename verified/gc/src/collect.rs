@@ -424,4 +424,203 @@ fn scan_object<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, sstart: usize, 
     sz
 }
 
+/// The copies are at most `nf * pw` (each has a word of from-space).
+pub proof fn lemma_copies_bound(c: Ctx, h: H, st: St, t: Tos)
+    requires cap_ok(c, h, st, t), ctx_ok(c),
+    ensures st.order.len() <= st.words <= c.nf * c.pw,
+{
+    assert(0 <= c.nf * c.pw) by (nonlinear_arith) requires c.nf >= 0, c.pw >= 0;
+    lemma_int_range(0, c.nf * c.pw);
+    lemma_len_subset(st.used, set_int_range(0, c.nf * c.pw));
+}
+
+/// Reads to-space table entry `p`.
+#[inline(always)]
+fn tab_at(tab: *mut usize, p: usize, Ghost(tcap): Ghost<int>, Tracked(perms): Tracked<&Map<int, PointsTo<usize>>>) -> (v: usize)
+    requires
+        0 <= p < tcap, tab@.addr + tcap * W <= usize::MAX,
+        wperm_ok(*perms, p as int, tab, p as int), perms[p as int].is_init(),
+    ensures v == perms[p as int].value(),
+{
+    proof {
+        lemma_w();
+        assert(p * W <= tcap * W) by (nonlinear_arith) requires p <= tcap, W >= 1;
+    }
+    rd(tab, p, Ghost(p as int), Tracked(perms))
+}
+
+/// The root loop (the C++ `iterate_roots` with `do_roots`): forwards every
+/// root word in place.
+fn do_roots<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, rptr: *mut usize, rlen: usize,
+                           Ghost(h): Ghost<H>, Ghost(rv): Ghost<Seq<AVal>>,
+                           Tracked(st): Tracked<&mut St>, Tracked(others): Tracked<&Map<int, PointsTo<usize>>>,
+                           Tracked(ftp): Tracked<&Map<int, PointsTo<usize>>>)
+    requires
+        ctx_ok(*c), fpages_ok(*c), ftab_ok(*c, *ftp), heap_ok(*c, h), others_ok(h, *others),
+        inv(*c, h, *old(st), *old(t), 0, 0, rv), roots_ok(*c, h, *old(st), rptr, rv, 0),
+        src_ok(*c, *old(src), *old(t)), rv.len() == rlen,
+    ensures
+        inv(*c, h, *final(st), *final(t), 0, 0, rv), roots_ok(*c, h, *final(st), rptr, rv, rlen as int),
+        src_ok(*c, *final(src), *final(t)),
+        final(t).ttab == old(t).ttab, final(t).tused == old(t).tused, final(t).tcap == old(t).tcap,
+{
+    let mut i: usize = 0;
+    while i < rlen
+        invariant
+            ctx_ok(*c), fpages_ok(*c), ftab_ok(*c, *ftp), heap_ok(*c, h), others_ok(h, *others),
+            inv(*c, h, *st, *t, 0, 0, rv), roots_ok(*c, h, *st, rptr, rv, i as int),
+            src_ok(*c, *src, *t), rv.len() == rlen, i <= rlen,
+            t.ttab == old(t).ttab, t.tused == old(t).tused, t.tcap == old(t).tcap,
+        decreases rlen - i,
+    {
+        proof {
+            lemma_w();
+            assert(wperm_ok(st.rp, i as int, rptr, i as int));
+            assert(st.rp[i as int].is_init());
+            assert(slot_ok(*c, h.objs.len() as int, rv[i as int]));
+            assert(i * W <= rlen * W) by (nonlinear_arith) requires i <= rlen, W >= 1;
+        }
+        let w = rd(rptr, i, Ghost(i as int), Tracked(&st.rp));
+        let r = forward(c, src, t, w, Ghost(h), Ghost(rv[i as int]), Ghost(0), Ghost(0), Ghost((-1 - i, 0int)),
+                        Ghost(rptr), Ghost(rv), Ghost(i as int), Tracked(st), Tracked(others), Tracked(ftp));
+        let ghost s1 = *st;
+        proof { assert(wperm_ok(s1.rp, i as int, rptr, i as int)); }
+        wr(rptr, i, r, Ghost(i as int), Tracked(&mut st.rp));
+        proof {
+            let s2 = *st;
+            lemma_frame_tp(*c, h, s1, s2, *t, rv);
+            assert(to_inv(*c, h, s2, 0, 0)) by {
+                assert forall|kk: int, i2: int| 0 <= kk < s2.order.len() && 0 <= i2 < tsz(h, s2, kk) implies
+                    (#[trigger] s2.tp[tkey(s2, kk, i2)]).is_init()
+                    && s2.tp[tkey(s2, kk, i2)].value() == wval(obj(h, s2.order[kk]), amap(h, s2, kk, i2, 0, 0), i2) by {
+                    assert(s1.tp[tkey(s1, kk, i2)].is_init());
+                }
+            }
+            assert(tpages_ok(*c, h, s2, *t)) by {
+                assert forall|p: int, k: int| 0 <= p < t.tn && 0 <= k < c.pw implies #[trigger] wperm_ok(s2.tp, (p, k), tptr(*c, s2, p), k) by {
+                    assert(wperm_ok(s1.tp, (p, k), tptr(*c, s1, p), k));
+                }
+            }
+            assert forall|k: int| 0 <= k < rv.len() implies #[trigger] wperm_ok(s2.rp, k, rptr, k) by {
+                assert(wperm_ok(s1.rp, k, rptr, k));
+            }
+            assert forall|k: int| 0 <= k < rv.len() implies (#[trigger] s2.rp[k]).is_init()
+                && s2.rp[k].value() == enc(if k < i + 1 { s2.addr2 } else { h.addr }, rv[k]) by {
+                if k != i { assert(s1.rp[k].is_init()); }
+            }
+            assert forall|k: int| 0 <= k < i + 1 implies closed(h, s2, #[trigger] rv[k]) by {
+                if k != i { assert(closed(h, s1, rv[k])); }
+            }
+        }
+        i += 1;
+    }
+}
+
+/// The scan (the C++ `scan`): walks the copies in to-space page by page,
+/// visiting their reference slots, until it reaches the copy pointer.
+fn scan<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, Ghost(h): Ghost<H>, Ghost(rptr): Ghost<*mut usize>,
+                       Ghost(rv): Ghost<Seq<AVal>>,
+                       Tracked(st): Tracked<&mut St>, Tracked(others): Tracked<&Map<int, PointsTo<usize>>>,
+                       Tracked(ftp): Tracked<&Map<int, PointsTo<usize>>>)
+    requires
+        ctx_ok(*c), fpages_ok(*c), ftab_ok(*c, *ftp), heap_ok(*c, h), others_ok(h, *others),
+        inv(*c, h, *old(st), *old(t), 0, 0, rv), roots_ok(*c, h, *old(st), rptr, rv, rv.len() as int),
+        src_ok(*c, *old(src), *old(t)),
+    ensures
+        inv(*c, h, *final(st), *final(t), final(st).order.len() as int, 0, rv),
+        roots_ok(*c, h, *final(st), rptr, rv, rv.len() as int),
+        src_ok(*c, *final(src), *final(t)),
+        final(t).ttab == old(t).ttab, final(t).tused == old(t).tused, final(t).tcap == old(t).tcap,
+{
+    if t.tn == 0 {
+        return;
+    }
+    let ghost rl = rv.len() as int;
+    proof {
+        assert(wperm_ok(st.ttp, 0, t.ttab, 0));
+        assert(st.ttp[0].is_init());
+    }
+    let mut sstart = tab_at(t.ttab, 0, Ghost(t.tcap as int), Tracked(&st.ttp));
+    let mut sp: usize = 0;
+    let mut so: usize = 0;
+    let ghost mut ks: int = 0;
+    while !(sp + 1 == t.tn && so == t.top)
+        invariant
+            ctx_ok(*c), fpages_ok(*c), ftab_ok(*c, *ftp), heap_ok(*c, h), others_ok(h, *others),
+            inv(*c, h, *st, *t, ks, 0, rv), roots_ok(*c, h, *st, rptr, rv, rl), rl == rv.len(),
+            src_ok(*c, *src, *t),
+            t.ttab == old(t).ttab, t.tused == old(t).tused, t.tcap == old(t).tcap,
+            t.tn >= 1, 0 <= sp < t.tn, sstart == st.tss[sp as int],
+            0 <= ks <= st.order.len(), so <= st.tus[sp as int],
+            ks == st.order.len() ==> sp + 1 == t.tn && so == t.top,
+            ks < st.order.len() ==> st.tloc[ks] == (sp as int, so as int)
+                || (so == st.tus[sp as int] && sp + 1 < t.tn && st.tloc[ks] == (sp + 1, 0int)),
+        decreases c.nf * c.pw - ks, t.tn - sp,
+    {
+        let ghost s1 = *st;
+        proof {
+            lemma_copies_bound(*c, h, s1, *t);
+            if ks == s1.order.len() { assert(false); }
+            assert(s1.tus[t.tn - 1] == t.top);
+        }
+        let lim = if sp + 1 == t.tn {
+            t.top
+        } else {
+            proof {
+                assert(wperm_ok(st.ttp, sp as int, t.ttab, sp as int));
+                assert(wperm_ok(st.tup, sp as int, t.tused, sp as int));
+                assert((sp as int) < (t.tn as int) - 1);
+                assert(tpages_ok(*c, h, s1, *t));
+                assert(s1.tup[sp as int].is_init());
+                assert(s1.tup[sp as int].value() == s1.tus[sp as int]);
+            }
+            tab_at(t.tused, sp, Ghost(t.tcap as int), Tracked(&st.tup))
+        };
+        if so == lim {
+            proof {
+                assert(sp + 1 < t.tn);
+                // Copy ks does not start at the end of page sp.
+                assert(0 <= tpg(s1, ks) < t.tn && tend(h, s1, ks) <= s1.tus[tpg(s1, ks)]);
+                lemma_from_obj(*c, h, s1.order[ks]);
+                assert(s1.tloc[ks] == (sp + 1, 0int));
+                assert(wperm_ok(st.ttp, sp + 1, t.ttab, sp + 1));
+                assert(st.ttp[sp + 1].is_init());
+                assert(st.ttp[sp + 1].value() == st.tss[sp + 1]);
+                assert(0 <= st.tus[sp + 1]);
+            }
+            sp = sp + 1;
+            so = 0;
+            sstart = tab_at(t.ttab, sp, Ghost(t.tcap as int), Tracked(&st.ttp));
+        } else {
+            proof {
+                assert(s1.tloc[ks] == (sp as int, so as int));
+            }
+            let sz = scan_object(c, src, t, sstart, so, Ghost(h), Ghost(ks), Ghost(sp as int), Ghost(rptr), Ghost(rv),
+                                 Tracked(st), Tracked(others), Tracked(ftp));
+            proof {
+                let s2 = *st;
+                assert(s2.tloc[ks] == s1.tloc[ks] && s2.order[ks] == s1.order[ks]);
+                assert(tsz(h, s2, ks) == sz);
+                assert(0 <= tpg(s2, ks) < t.tn && tend(h, s2, ks) <= s2.tus[tpg(s2, ks)]);
+                assert(s2.tus[sp as int] <= c.pw - 1);
+                assert(s2.tss[sp as int] == s1.tss[sp as int]);
+                if ks + 1 < s2.order.len() {
+                    assert(s2.tloc[ks + 1] == succ(h, s2, ks, t.tn as int));
+                }
+            }
+            so = so + sz;
+            proof { ks = ks + 1; }
+        }
+    }
+    proof {
+        let s3 = *st;
+        if ks < s3.order.len() {
+            assert(0 <= tpg(s3, ks) < t.tn && tend(h, s3, ks) <= s3.tus[tpg(s3, ks)]);
+            lemma_from_obj(*c, h, s3.order[ks]);
+            assert(s3.tus[t.tn - 1] == t.top);
+            assert(false);
+        }
+    }
+}
+
 } // verus!

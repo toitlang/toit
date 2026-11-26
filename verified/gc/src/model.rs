@@ -198,6 +198,17 @@ pub open spec fn heap_ok(c: Ctx, h: H) -> bool {
     &&& forall|j: int| 0 <= j < n && !from(h, j) ==> !in_from(c, #[trigger] h.addr[j]) && h.addr[j] % 4 == 1
     &&& forall|j1: int, j2: int| 0 <= j1 < n && 0 <= j2 < n && !from(h, j1) && !from(h, j2) && j1 != j2
             ==> #[trigger] h.addr[j1] != #[trigger] h.addr[j2]
+    &&& forall|j: int, k: int| 0 <= j < n && !from(h, j) && lay(obj(h, j)).lo <= k < lay(obj(h, j)).hi ==>
+            #[trigger] prog_ref_ok(h, obj(h, j).words[k])
+}
+
+/// The program heap (the objects outside from-space, read-only) does not
+/// refer to from-space objects.
+pub open spec fn prog_ref_ok(h: H, v: AVal) -> bool {
+    match v {
+        AVal::Ref(i) => !from(h, i),
+        _ => true,
+    }
 }
 
 /// Word `k` of from-space object `j`'s permission key.
