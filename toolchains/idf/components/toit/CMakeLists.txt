@@ -157,6 +157,12 @@ elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     target_compile_options(toit_vm PRIVATE
         -Wno-extern-c-compat -Wno-error=unused-private-field -Wno-vla-cxx-extension
         -Wno-ignored-attributes)
+    if (CONFIG_IDF_TARGET_ARCH_XTENSA)
+        # No frame pointer (clang keeps one by default on Xtensa): with one,
+        # a call with stack arguments leaves SP not 16-byte aligned in the
+        # callee (espressif/llvm-project#142; see clang-launcher.sh).
+        target_compile_options(toit_vm PRIVATE -fomit-frame-pointer)
+    endif()
 endif()
 
 # Experimental: the VM's own C and C++ (toit_vm) compiled with Espressif's
