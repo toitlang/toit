@@ -46,7 +46,7 @@ pub fn page_bytes(c: &Ctx) -> (r: usize)
 
 /// Reads entry `i` of the from-space table.
 #[inline(always)]
-fn ftab_at(c: &Ctx, i: usize, Tracked(ftp): Tracked<&Map<int, PointsTo<usize>>>) -> (s: usize)
+pub fn ftab_at(c: &Ctx, i: usize, Tracked(ftp): Tracked<&Map<int, PointsTo<usize>>>) -> (s: usize)
     requires ctx_ok(*c), ftab_ok(*c, *ftp), i < c.nf,
     ensures s == fs(*c, i as int),
 {

@@ -274,6 +274,40 @@ pub open spec fn grows(h: H, s0: St, s1: St) -> bool {
     &&& forall|j: int| #[trigger] copied(s0, j) ==> copied(s1, j) && s1.pos[j] == s0.pos[j]
     &&& forall|j: int| 0 <= j < s0.addr2.len() && (copied(s0, j) || !from(h, j)) ==> #[trigger] s1.addr2[j] == s0.addr2[j]
     &&& s1.rp == s0.rp
+    &&& s0.tss.len() <= s1.tss.len()
+    &&& forall|p: int| 0 <= p < s0.tss.len() ==> #[trigger] s1.tss[p] == s0.tss[p]
+}
+
+/// `grows` composes.
+pub proof fn lemma_grows_trans(h: H, s0: St, s1: St, s2: St)
+    requires grows(h, s0, s1), grows(h, s1, s2), s1.addr2.len() == s0.addr2.len(),
+    ensures grows(h, s0, s2),
+{
+    assert forall|j: int| 0 <= j < s0.addr2.len() && (copied(s0, j) || !from(h, j)) implies #[trigger] s2.addr2[j] == s0.addr2[j] by {
+        assert(s1.addr2[j] == s0.addr2[j]);
+        if copied(s0, j) { assert(copied(s1, j)); }
+    }
+    assert forall|k: int| 0 <= k < s0.order.len() implies #[trigger] s2.order[k] == s0.order[k] by {
+        assert(s1.order[k] == s0.order[k]);
+    }
+    assert forall|k: int| 0 <= k < s0.order.len() implies #[trigger] s2.tloc[k] == s0.tloc[k] by {
+        assert(s1.tloc[k] == s0.tloc[k]);
+    }
+    assert forall|k: int| 0 <= k < s0.order.len() implies #[trigger] s2.parent[k] == s0.parent[k] by {
+        assert(s1.parent[k] == s0.parent[k]);
+    }
+    assert forall|j: int| #[trigger] copied(s0, j) implies copied(s2, j) && s2.pos[j] == s0.pos[j] by {
+        assert(copied(s1, j));
+    }
+    assert forall|p: int| 0 <= p < s0.tss.len() implies #[trigger] s2.tss[p] == s0.tss[p] by {
+        assert(s1.tss[p] == s0.tss[p]);
+    }
+}
+
+/// A state grows into itself.
+pub proof fn lemma_grows_refl(h: H, s0: St)
+    ensures grows(h, s0, s0),
+{
 }
 
 // ---------------------------------------------------------------------------

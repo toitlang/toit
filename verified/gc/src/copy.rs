@@ -196,6 +196,9 @@ pub proof fn lemma_copy_bk(c: Ctx, h: H, s0: St, s1: St, t0: Tos, t1: Tos, j: in
         #[trigger] s1.addr2[jj] == s0.addr2[jj] by {
         assert(jj != j);
     }
+    assert forall|p: int| 0 <= p < s0.tss.len() implies #[trigger] s1.tss[p] == s0.tss[p] by {
+        lemma_old_page(s0, s1, t0, t1, p);
+    }
 }
 
 pub proof fn lemma_copy_from(c: Ctx, h: H, s0: St, s1: St, t0: Tos, t1: Tos, j: int, par: (int, int))
