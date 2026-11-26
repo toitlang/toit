@@ -81,6 +81,7 @@ pub proof fn lemma_word_tag(m: &Machine, p: &Program, w: usize, v: Value)
         Value::BlockRef(f, s) => {
             lemma_smi_word((f * 0x1_0000 + s) as i64);
         },
+        Value::Token(_, d, _, _) => { lemma_token_vals(d); },
         _ => {},
     }
 }

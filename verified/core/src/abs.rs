@@ -23,7 +23,8 @@
 //! the matching part of the ghost state `Machine::g` (a `State2`). This
 //! direction is a function, whereas reading an abstract state off the
 //! words is not: a block reference `BlockRef(f, s)` and the smi
-//! `f << 20 | s` are the same word, and an object's address changes with
+//! `f << 16 | s` are the same word (as are the words of an unwinding
+//! token and smis), and an object's address changes with
 //! every GC. The ghost state disambiguates; `abs(m)` of DESIGN.md is
 //! `m.g@`, constrained by `m.refines(p)`.
 //!
@@ -35,7 +36,7 @@ use vstd::prelude::*;
 use crate::layout::*;
 use crate::ffi::V2Method;
 use crate::view::*;
-use toit_spec::types::{Value, Frame, Handler, MethodInfo, HeapObj, Body, Fin, Resume};
+use toit_spec::types::{Value, Frame, Pending, MethodInfo, HeapObj, Body};
 use toit_spec::v2::types::{State2, Program2};
 use toit_spec::v2::verifier::Cert;
 #[cfg(verus_keep_ghost)]
@@ -93,6 +94,8 @@ pub open spec fn enc(addr: Seq<usize>, v: Value) -> usize {
         Value::Smi(i) => smi_word(i),
         Value::Obj(id) => if id < addr.len() { addr[id as int] } else { 0 },
         Value::BlockRef(f, s) => block_word(f, s),
+        Value::Token(false, d, _, _) => token_a(d),
+        Value::Token(true, d, _, _) => token_b(d),
         _ => 0,
     }
 }
@@ -159,6 +162,7 @@ pub open spec fn encodable(addr: Seq<usize>, v: Value) -> bool {
         Value::Smi(i) => smi_range(i as int),
         Value::Obj(id) => id < addr.len(),
         Value::BlockRef(f, s) => f < 0x4000 && s < MAX_STACK_LENGTH,
+        Value::Token(_, d, _, _) => pending_encodable(d),
         _ => false,
     }
 }
@@ -224,15 +228,27 @@ pub proof fn lemma_smi_word_nat(v: i64)
 }
 
 /// Encodings of distinct encodable values differ, except a block
-/// reference and the smi with the same bits.
+/// reference or a token word and the smi with the same bits (a token word
+/// is even: it differs from an object's word).
 pub proof fn lemma_enc_inj(objs: Seq<HeapObj>, addr: Seq<usize>, a: Value, b: Value)
     requires
         addrs_ok(objs, addr),
         encodable(addr, a), encodable(addr, b),
         !(a is BlockRef || b is BlockRef),
+        (a is Token || b is Token) ==> (a is Obj || b is Obj),
     ensures (enc(addr, a) == enc(addr, b)) == (a == b),
 {
     match a {
+        Value::Token(_, d, _, _) => {
+            lemma_token_vals(d);
+            match b {
+                Value::Obj(j) => {
+                    assert(addr[j as int] & 3 == 1);
+                    lemma_heap_tag(addr[j as int]);
+                },
+                _ => {},
+            }
+        },
         Value::Smi(x) => {
             lemma_smi_word(x);
             match b {
@@ -254,6 +270,7 @@ pub proof fn lemma_enc_inj(objs: Seq<HeapObj>, addr: Seq<usize>, a: Value, b: Va
                         assert(addr[i as int] != addr[j as int]);
                     }
                 },
+                Value::Token(_, d, _, _) => { lemma_token_vals(d); },
                 _ => {},
             }
         },
@@ -349,11 +366,10 @@ pub open spec fn prog_rel(p: &crate::exec::Program, objs: Seq<HeapObj>, addr: Se
 // ---------------------------------------------------------------------------
 // Frames.
 
-/// The handler word of a frame record: 0, or the height of the frame's
-/// TRY (heights of handlers are positive): the handler flag. Its bci is the
-/// return bci of the try block's record above (`calls::callees_ok`).
-pub open spec fn handler_word(h: Handler) -> usize {
-    h.height
+/// The handler word of a frame record: 1 for a try block, 0 otherwise
+/// (format note 23).
+pub open spec fn handler_word(f: Frame) -> usize {
+    if f.handler { 1 } else { 0 }
 }
 
 /// Word `k` of frame record `fi`.
@@ -361,23 +377,13 @@ pub open spec fn rec(mem: Seq<usize>, fi: int, k: usize) -> usize {
     mem[FRAME_WORDS * fi + k]
 }
 
-/// The frame records `mem[0..FRAME_WORDS * frames.len()]` hold the frames,
-/// and the handler words the handlers (one per frame at most): the
-/// height of the frame's TRY (0: no handler).
-pub open spec fn frames_rel(mem: Seq<usize>, frames: Seq<Frame>, tries: Seq<Handler>) -> bool {
+/// The frame records `mem[0..FRAME_WORDS * frames.len()]` hold the frames.
+pub open spec fn frames_rel(mem: Seq<usize>, frames: Seq<Frame>) -> bool {
     &&& FRAME_WORDS * frames.len() <= mem.len()
     &&& forall|fi: int| 0 <= fi < frames.len() ==> #[trigger] rec(mem, fi, FRAME_METHOD) == frames[fi].method
     &&& forall|fi: int| 0 <= fi < frames.len() ==> #[trigger] rec(mem, fi, FRAME_RET) == frames[fi].ret
     &&& forall|fi: int| 0 <= fi < frames.len() ==> #[trigger] rec(mem, fi, FRAME_BASE) == frames[fi].base
-    &&& tries.len() <= frames.len()
-    &&& forall|x: int| 0 <= x < tries.len() ==> {
-        &&& (#[trigger] tries[x]).frame < frames.len()
-        &&& 0 < tries[x].height < 0x1_0000_0000
-        &&& tries[x].bci < 0x1_0000_0000
-        &&& rec(mem, tries[x].frame as int, FRAME_HANDLER) == handler_word(tries[x])
-    }
-    &&& forall|fi: int| 0 <= fi < frames.len() && #[trigger] rec(mem, fi, FRAME_HANDLER) != 0
-            ==> exists|x: int| 0 <= x < tries.len() && tries[x].frame == fi
+    &&& forall|fi: int| 0 <= fi < frames.len() ==> #[trigger] rec(mem, fi, FRAME_HANDLER) == handler_word(frames[fi])
 }
 
 /// Record words lie below `FRAME_WORDS * n`.
@@ -390,12 +396,12 @@ pub proof fn lemma_rec_index(n: int, fi: int, k: usize)
 }
 
 /// The frame records depend only on `mem[0..FRAME_WORDS * frames.len()]`.
-pub proof fn lemma_frames_rel_same(mem: Seq<usize>, mem2: Seq<usize>, frames: Seq<Frame>, tries: Seq<Handler>)
+pub proof fn lemma_frames_rel_same(mem: Seq<usize>, mem2: Seq<usize>, frames: Seq<Frame>)
     requires
-        frames_rel(mem, frames, tries),
+        frames_rel(mem, frames),
         FRAME_WORDS * frames.len() <= mem2.len(),
         forall|i: int| 0 <= i < FRAME_WORDS * frames.len() ==> #[trigger] mem2[i] == mem[i],
-    ensures frames_rel(mem2, frames, tries),
+    ensures frames_rel(mem2, frames),
 {
     let n = frames.len() as int;
     assert forall|fi: int| 0 <= fi < n implies #[trigger] rec(mem2, fi, FRAME_METHOD) == frames[fi].method by {
@@ -410,130 +416,87 @@ pub proof fn lemma_frames_rel_same(mem: Seq<usize>, mem2: Seq<usize>, frames: Se
         lemma_rec_index(n, fi, FRAME_BASE);
         assert(rec(mem, fi, FRAME_BASE) == frames[fi].base);
     }
-    assert forall|x: int| 0 <= x < tries.len() implies
-        rec(mem2, (#[trigger] tries[x]).frame as int, FRAME_HANDLER) == handler_word(tries[x]) by {
-        lemma_rec_index(n, tries[x].frame as int, FRAME_HANDLER);
-    }
-    assert forall|fi: int| 0 <= fi < n && #[trigger] rec(mem2, fi, FRAME_HANDLER) != 0
-            implies exists|x: int| 0 <= x < tries.len() && tries[x].frame == fi by {
+    assert forall|fi: int| 0 <= fi < n implies #[trigger] rec(mem2, fi, FRAME_HANDLER) == handler_word(frames[fi]) by {
         lemma_rec_index(n, fi, FRAME_HANDLER);
-        assert(rec(mem2, fi, FRAME_HANDLER) == rec(mem, fi, FRAME_HANDLER));
+        assert(rec(mem, fi, FRAME_HANDLER) == handler_word(frames[fi]));
     }
 }
 
 // ---------------------------------------------------------------------------
-// Finally records (format note 17).
+// Unwinding tokens (format note 23).
 
-/// The resume word of a finally record: `kind + 4 * frame` (kind 0 throw,
-/// 1 return, 2 branch).
-pub open spec fn resume_word(r: Resume) -> usize {
-    match r {
-        Resume::Throw => 0,
-        Resume::Return(f) => (1 + 4 * f) as usize,
-        Resume::Branch(f, _, _) => (2 + 4 * f) as usize,
+/// The kind of a pending unwinding in its token's second word: 0 normal,
+/// 1 exception, 2 non-local return, 3 non-local branch.
+pub open spec fn pending_kind(d: Pending) -> int {
+    match d {
+        Pending::Normal => 0,
+        Pending::Throw => 1,
+        Pending::Return(_) => 2,
+        Pending::Branch(_, _, _) => 3,
     }
 }
 
-/// The target words of a finally record: the bci and the height of a
-/// branch, else 0.
-pub open spec fn target_word(r: Resume) -> usize {
-    match r {
-        Resume::Branch(_, bci, h) => bci,
+/// The smi value of the first word of a token: the target frame and height
+/// of a non-local return (height 0) or branch, as a block reference's value
+/// (`frame << 16 | height`); else 0.
+pub open spec fn token_a_val(d: Pending) -> i64 {
+    match d {
+        Pending::Return(f) => (f * 0x1_0000) as i64,
+        Pending::Branch(f, _, h) => (f * 0x1_0000 + h) as i64,
         _ => 0,
     }
 }
 
-pub open spec fn target_height_word(r: Resume) -> usize {
-    match r {
-        Resume::Branch(_, bci, h) => h,
-        _ => 0,
+/// The smi value of the second word of a token: `bci * 4 + kind`, the bci
+/// of a branch's target (else 0) and the kind.
+pub open spec fn token_b_val(d: Pending) -> i64 {
+    match d {
+        Pending::Branch(_, bci, _) => (bci * 4 + 3) as i64,
+        _ => pending_kind(d) as i64,
     }
 }
 
-/// The parts of a resumed unwinding fit their words.
-pub open spec fn resume_ok(r: Resume) -> bool {
-    match r {
-        Resume::Throw => true,
-        Resume::Return(f) => f < 0x1000_0000,
-        Resume::Branch(f, bci, h) => f < 0x1000_0000,
+/// The first word of a token (a block reference's word for a return or a
+/// branch).
+pub open spec fn token_a(d: Pending) -> usize {
+    smi_word(token_a_val(d))
+}
+
+/// The second word of a token.
+pub open spec fn token_b(d: Pending) -> usize {
+    smi_word(token_b_val(d))
+}
+
+/// The parts of a pending unwinding fit its token's words: frames below
+/// 2^14, heights below the stack length bound, bcis below 2^28.
+pub open spec fn pending_encodable(d: Pending) -> bool {
+    match d {
+        Pending::Return(f) => f < 0x4000,
+        Pending::Branch(f, bci, h) => f < 0x4000 && h < MAX_STACK_LENGTH && bci < 0x1000_0000,
+        _ => true,
     }
 }
 
-/// Word `k` of finally record `x`, the records starting at `ftop`.
-pub open spec fn fin_word(mem: Seq<usize>, ftop: int, x: int, k: usize) -> usize {
-    mem[ftop + FIN_WORDS * x + k]
-}
-
-/// Finally record `x` holds `f`.
-pub open spec fn fin_rel(mem: Seq<usize>, ftop: int, x: int, f: Fin) -> bool {
-    &&& f.frame < 0x1_0000_0000
-    &&& f.height < 0x1_0000_0000
-    &&& resume_ok(f.resume)
-    &&& fin_word(mem, ftop, x, FIN_FRAME) == f.frame
-    &&& fin_word(mem, ftop, x, FIN_HEIGHT) == f.height
-    &&& fin_word(mem, ftop, x, FIN_RESUME) == resume_word(f.resume)
-    &&& fin_word(mem, ftop, x, FIN_TARGET) == target_word(f.resume)
-    &&& fin_word(mem, ftop, x, FIN_TARGET_HEIGHT) == target_height_word(f.resume)
-}
-
-/// The finally records `mem[ftop..ftop + 4 * fins.len()]` hold `fins`.
-pub open spec fn fins_rel(mem: Seq<usize>, ftop: int, fins: Seq<Fin>) -> bool {
-    &&& 0 <= ftop
-    &&& ftop + FIN_WORDS * fins.len() <= mem.len()
-    &&& forall|x: int| 0 <= x < fins.len() ==> #[trigger] fin_rel(mem, ftop, x, fins[x])
-}
-
-/// Record words lie in `[ftop, ftop + 4 * n)`.
-pub proof fn lemma_fin_index(ftop: int, n: int, x: int, k: usize)
-    requires 0 <= x < n, k < FIN_WORDS,
-    ensures ftop <= ftop + FIN_WORDS * x + k < ftop + FIN_WORDS * n,
+/// The token words of an encodable pending unwinding are smi words of
+/// non-negative values below 2^30 (so even, and smis on both widths).
+pub proof fn lemma_token_vals(d: Pending)
+    requires pending_encodable(d),
+    ensures
+        0 <= token_a_val(d) < 0x4000_0000,
+        0 <= token_b_val(d) < 0x4000_0000,
+        smi_range(token_a_val(d) as int),
+        smi_range(token_b_val(d) as int),
+        token_a(d) & 1 == 0,
+        token_b(d) & 1 == 0,
+        token_a(d) == 2 * token_a_val(d),
+        token_b(d) == 2 * token_b_val(d),
 {
-    assert(FIN_WORDS * x + k < FIN_WORDS * n) by (nonlinear_arith)
-        requires 0 <= x < n, k < FIN_WORDS;
-    assert(0 <= FIN_WORDS * x) by (nonlinear_arith) requires 0 <= x;
-}
-
-/// The finally records moved from `ftop` to `ftop2` (or stayed) with the
-/// first `n` of them kept.
-pub proof fn lemma_fins_rel_move(mem: Seq<usize>, mem2: Seq<usize>, ftop: int, ftop2: int, fins: Seq<Fin>, n: int)
-    requires
-        fins_rel(mem, ftop, fins),
-        0 <= n <= fins.len(),
-        0 <= ftop2,
-        ftop2 + FIN_WORDS * n <= mem2.len(),
-        forall|i: int| 0 <= i < FIN_WORDS * n ==> #[trigger] mem2[ftop2 + i] == mem[ftop + i],
-    ensures fins_rel(mem2, ftop2, fins.subrange(0, n)),
-{
-    let f2 = fins.subrange(0, n);
-    assert forall|x: int| 0 <= x < f2.len() implies #[trigger] fin_rel(mem2, ftop2, x, f2[x]) by {
-        assert(f2[x] == fins[x]);
-        assert(fin_rel(mem, ftop, x, fins[x]));
-        lemma_fin_index(0, n, x, FIN_FRAME);
-        lemma_fin_index(0, n, x, FIN_HEIGHT);
-        lemma_fin_index(0, n, x, FIN_RESUME);
-        lemma_fin_index(0, n, x, FIN_TARGET);
-        lemma_fin_index(0, n, x, FIN_TARGET_HEIGHT);
-        assert(mem2[ftop2 + (FIN_WORDS * x + FIN_FRAME)] == mem[ftop + (FIN_WORDS * x + FIN_FRAME)]);
-        assert(mem2[ftop2 + (FIN_WORDS * x + FIN_HEIGHT)] == mem[ftop + (FIN_WORDS * x + FIN_HEIGHT)]);
-        assert(mem2[ftop2 + (FIN_WORDS * x + FIN_RESUME)] == mem[ftop + (FIN_WORDS * x + FIN_RESUME)]);
-        assert(mem2[ftop2 + (FIN_WORDS * x + FIN_TARGET)] == mem[ftop + (FIN_WORDS * x + FIN_TARGET)]);
-        assert(mem2[ftop2 + (FIN_WORDS * x + FIN_TARGET_HEIGHT)] == mem[ftop + (FIN_WORDS * x + FIN_TARGET_HEIGHT)]);
-    }
-}
-
-/// The finally records depend only on their words.
-pub proof fn lemma_fins_rel_same(mem: Seq<usize>, mem2: Seq<usize>, ftop: int, fins: Seq<Fin>)
-    requires
-        fins_rel(mem, ftop, fins),
-        ftop + FIN_WORDS * fins.len() <= mem2.len(),
-        forall|i: int| ftop <= i < ftop + FIN_WORDS * fins.len() ==> #[trigger] mem2[i] == mem[i],
-    ensures fins_rel(mem2, ftop, fins),
-{
-    assert forall|i: int| 0 <= i < FIN_WORDS * fins.len() implies #[trigger] mem2[ftop + i] == mem[ftop + i] by {
-        assert(mem2[ftop + i] == mem[ftop + i]);
-    }
-    lemma_fins_rel_move(mem, mem2, ftop, ftop, fins, fins.len() as int);
-    assert(fins.subrange(0, fins.len() as int) =~= fins);
+    assert(0 <= token_a_val(d) < 0x4000_0000);
+    assert(0 <= token_b_val(d) < 0x4000_0000);
+    lemma_smi_word(token_a_val(d));
+    lemma_smi_word(token_b_val(d));
+    lemma_smi_word_nat(token_a_val(d));
+    lemma_smi_word_nat(token_b_val(d));
 }
 
 } // verus!

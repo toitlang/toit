@@ -206,7 +206,7 @@ pub fn op_load_global_lazy(m: &mut Machine, env: &Env, bci: usize, opcode: u8, g
         }
     }
     proof { assert(sp::step(ap, g) == sp::call(ap, g2, t as int, bci + len)); }
-    let r = m.push_call(env, t, bci + len);
+    let r = m.push_call(env, t, bci + len, 0);
     proof { lemma_matches(p, m0, *m, r); }
     r
 }

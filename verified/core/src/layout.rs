@@ -150,12 +150,10 @@ pub const NEW_SPACE_POINTERS: u8 = 1;
 /// Word offsets of the header fields from the untagged address.
 pub const STACK_LENGTH_WORD: usize = 2;
 pub const STACK_TOP_WORD: usize = 3;
-/// Format 2 (the format-1 try top): the record top (the end of the frame
-/// and finally records) in the low `STACK_FRAME_TOP_SHIFT` bits, the frame
-/// top (the end of the frame records) above them. Both are below
-/// `MAX_STACK_LENGTH`.
-pub const STACK_RECORD_TOP_WORD: usize = 4;
-pub const STACK_FRAME_TOP_SHIFT: usize = 16;
+/// Format 2 (the format-1 try top): the frame top, the end of the frame
+/// records (below `MAX_STACK_LENGTH`). Since format 3 (format note 23) there
+/// are no other records.
+pub const STACK_FRAME_TOP_WORD: usize = 4;
 /// Format 2: the bci the task is suspended at (the format-1 pending
 /// stack-check method).
 pub const STACK_BCI_WORD: usize = 5;
@@ -165,29 +163,17 @@ pub const STACK_BCI_WORD: usize = 5;
 pub const MAX_STACK_LENGTH: usize = 0x1_0000;
 // The word offset of array element 0 depends on the build (the guard zone
 // is larger in debug builds); C++ passes it in the context.
-/// Frame records (format 3, verified/spec/format/22-format3-branches-frames.md):
-/// method index, return bci, base (object-stack position of the first
-/// argument), and the handler word: 0, or the height of the frame's TRY
-/// (the handler flag). The handler's bci is the return bci of the record
-/// above (the try block's frame; `calls::callees_ok`).
+/// Frame records (format 3, verified/spec/format/22-format3-branches-frames.md
+/// and 23-format3-try.md): method index, return bci, base (object-stack
+/// position of the first argument), and the handler word: 1 for a try block
+/// (a frame TRY called; returning from it or unwinding past it enters the
+/// finally code of the frame below at its return bci, the object stack cut
+/// to its base), 0 otherwise.
 pub const FRAME_WORDS: usize = 4;
 pub const FRAME_METHOD: usize = 0;
 pub const FRAME_RET: usize = 1;
 pub const FRAME_BASE: usize = 2;
 pub const FRAME_HANDLER: usize = 3;
-/// Finally records (format note 17) follow the frame records,
-/// `FIN_WORDS` words each (not tied to `FRAME_WORDS`: a call moves them with
-/// one memmove): the frame running the finally
-/// code, the height of its slots, the resumed unwinding (`kind + 4 *
-/// frame`, kind 0 throw, 1 return, 2 branch) and the branch target's bci
-/// and height (else 0 and 0). Only the core reads them; C++ copies them
-/// with the frame records.
-pub const FIN_WORDS: usize = 5;
-pub const FIN_FRAME: usize = 0;
-pub const FIN_HEIGHT: usize = 1;
-pub const FIN_RESUME: usize = 2;
-pub const FIN_TARGET: usize = 3;
-pub const FIN_TARGET_HEIGHT: usize = 4;
 pub const STACK_RESERVE: usize = 8;
 /// Bound on the `needed` of `step::gc_grow_stack` (`toit_v2_grow_stack`,
 /// which rejects more than `Stack::max_length()`): far below 2^31, so

@@ -382,7 +382,7 @@ pub struct StackMem {
 
 /// The header words of the Stack object the core accesses.
 pub open spec fn is_hdr_word(word: usize) -> bool {
-    word == STACK_TOP_WORD || word == STACK_RECORD_TOP_WORD || word == STACK_BCI_WORD
+    word == STACK_TOP_WORD || word == STACK_FRAME_TOP_WORD || word == STACK_BCI_WORD
 }
 
 /// The header permissions of a Stack object at `object`.
@@ -512,29 +512,6 @@ impl StackMem {
         copy_words(self.array, Ghost(self.len as int), Tracked(self.words.borrow_mut()), from, to, n);
     }
 
-    /// `copy_within` for a multiple of `RECORD_CHUNK` words (frame and
-    /// finally records: a call or a return with finally records moves them
-    /// by one frame record): five words per step, read before they are
-    /// written, so no call of the library's `memmove` (which the word loop
-    /// of `copy_words` compiles to; the ROM's on the ESP32-C6 took about 130
-    /// cycles for one record).
-    #[inline(always)]
-    pub fn move_records(&mut self, from: usize, to: usize, n: usize)
-        requires
-            from + n <= old(self)@.len(),
-            to + n <= old(self)@.len(),
-            n % RECORD_CHUNK == 0,
-        ensures
-            final(self)@.len() == old(self)@.len(),
-            forall|i: int| 0 <= i < final(self)@.len() ==> #[trigger] final(self)@[i] ==
-                (if to <= i < to + n { old(self)@[i - to + from] } else { old(self)@[i] }),
-            final(self).sid() == old(self).sid(),
-            forall|w: usize| #[trigger] final(self).hdr(w) == old(self).hdr(w),
-    {
-        proof { use_type_invariant(&*self); }
-        copy_chunks(self.array, Ghost(self.len as int), Tracked(self.words.borrow_mut()), from, to, n);
-    }
-
     /// The header words of the Stack object (outside the array): word
     /// `word` of the object. The core keeps the task's top, frame top and
     /// bci there (`STACK_TOP_WORD`, `STACK_FRAME_TOP_WORD`,
@@ -546,7 +523,7 @@ impl StackMem {
     /// The header fields the core keeps up to date (top, frame top, bci).
     #[inline(always)]
     pub fn header(&self, word: usize) -> (r: usize)
-        requires word == STACK_TOP_WORD || word == STACK_RECORD_TOP_WORD || word == STACK_BCI_WORD,
+        requires word == STACK_TOP_WORD || word == STACK_FRAME_TOP_WORD || word == STACK_BCI_WORD,
         ensures r == self.hdr(word),
     {
         proof {
@@ -560,7 +537,7 @@ impl StackMem {
 
     #[inline(always)]
     pub fn set_header(&mut self, word: usize, v: usize)
-        requires word == STACK_TOP_WORD || word == STACK_RECORD_TOP_WORD || word == STACK_BCI_WORD,
+        requires word == STACK_TOP_WORD || word == STACK_FRAME_TOP_WORD || word == STACK_BCI_WORD,
         ensures
             final(self)@ == old(self)@,
             final(self).sid() == old(self).sid(),
@@ -619,131 +596,6 @@ fn copy_words(array: *mut usize, Ghost(len): Ghost<int>, Tracked(words): Tracked
             }
         }
         done += 1;
-    }
-}
-
-/// The words `StackMem::move_records` moves per step: a frame record and a
-/// finally record (`FRAME_WORDS`, `FIN_WORDS`).
-pub const RECORD_CHUNK: usize = 5;
-
-/// `k` records of `RECORD_CHUNK` words are a multiple of the chunk.
-pub proof fn lemma_records_chunk(k: int)
-    requires k >= 0,
-    ensures (RECORD_CHUNK as int * k) % (RECORD_CHUNK as int) == 0,
-{
-    assert((5 * k) % 5 == 0) by (nonlinear_arith) requires k >= 0;
-}
-
-/// Copies the five words at `src` to `dst`, all read before any is written
-/// (so the ranges may overlap).
-#[inline(always)]
-fn copy5(array: *mut usize, Ghost(len): Ghost<int>, Tracked(words): Tracked<&mut Map<int, PointsTo<usize>>>,
-         src: usize, dst: usize)
-    requires
-        array_ok(*old(words), array, len),
-        len <= usize::MAX,
-        src + RECORD_CHUNK <= len,
-        dst + RECORD_CHUNK <= len,
-    ensures
-        array_ok(*final(words), array, len),
-        forall|i: int| 0 <= i < len ==> #[trigger] final(words)[i].value() ==
-            (if dst <= i < dst + RECORD_CHUNK { old(words)[i - dst + src].value() } else { old(words)[i].value() }),
-    no_unwind
-{
-    proof {
-        assert(elem_ok(*words, array, src as int));
-        assert(elem_ok(*words, array, src + 1));
-        assert(elem_ok(*words, array, src + 2));
-        assert(elem_ok(*words, array, src + 3));
-        assert(elem_ok(*words, array, src + 4));
-    }
-    let v0 = *ptr_ref(array.wrapping_add(src), Tracked(words.tracked_borrow(src as int)));
-    let v1 = *ptr_ref(array.wrapping_add(src + 1), Tracked(words.tracked_borrow(src + 1)));
-    let v2 = *ptr_ref(array.wrapping_add(src + 2), Tracked(words.tracked_borrow(src + 2)));
-    let v3 = *ptr_ref(array.wrapping_add(src + 3), Tracked(words.tracked_borrow(src + 3)));
-    let v4 = *ptr_ref(array.wrapping_add(src + 4), Tracked(words.tracked_borrow(src + 4)));
-    let ghost w0 = values(*words, len);
-    proof {
-        assert(v0 == w0[src as int] && v1 == w0[src + 1] && v2 == w0[src + 2]
-            && v3 == w0[src + 3] && v4 == w0[src + 4]);
-    }
-    write_elem(Tracked(words), Ghost(array), Ghost(len), Ghost(dst as int), array.wrapping_add(dst), v0);
-    write_elem(Tracked(words), Ghost(array), Ghost(len), Ghost(dst + 1), array.wrapping_add(dst + 1), v1);
-    write_elem(Tracked(words), Ghost(array), Ghost(len), Ghost(dst + 2), array.wrapping_add(dst + 2), v2);
-    write_elem(Tracked(words), Ghost(array), Ghost(len), Ghost(dst + 3), array.wrapping_add(dst + 3), v3);
-    write_elem(Tracked(words), Ghost(array), Ghost(len), Ghost(dst + 4), array.wrapping_add(dst + 4), v4);
-    proof {
-        let w1 = w0.update(dst as int, v0).update(dst + 1, v1).update(dst + 2, v2).update(dst + 3, v3).update(dst + 4, v4);
-        assert(values(*words, len) == w1);
-        assert forall|i: int| 0 <= i < len implies #[trigger] words[i].value() ==
-            (if dst <= i < dst + RECORD_CHUNK { old(words)[i - dst + src].value() } else { old(words)[i].value() }) by {
-            assert(values(*words, len)[i] == w1[i]);
-            assert(w0[i] == old(words)[i].value());
-            if dst <= i < dst + RECORD_CHUNK {
-                let j = i - dst + src;
-                assert(0 <= j < len);
-                assert(w0[j] == old(words)[j].value());
-            }
-        }
-    }
-}
-
-/// `copy_words` five words per step (`n` a multiple of five): the step's
-/// words are read before they are written, the steps ordered as the words
-/// of `copy_words`, so overlapping ranges move correctly.
-#[inline(always)]
-fn copy_chunks(array: *mut usize, Ghost(len): Ghost<int>, Tracked(words): Tracked<&mut Map<int, PointsTo<usize>>>,
-               from: usize, to: usize, n: usize)
-    requires
-        array_ok(*old(words), array, len),
-        len <= usize::MAX,
-        from + n <= len,
-        to + n <= len,
-        n % RECORD_CHUNK == 0,
-    ensures
-        array_ok(*final(words), array, len),
-        forall|i: int| 0 <= i < len ==> #[trigger] final(words)[i].value() ==
-            (if to <= i < to + n { old(words)[i - to + from].value() } else { old(words)[i].value() }),
-    no_unwind
-{
-    if from == to { return; }
-    let mut done = 0usize;
-    while done < n
-        invariant
-            done <= n, from + n <= len, to + n <= len, len <= usize::MAX,
-            n % RECORD_CHUNK == 0, done % RECORD_CHUNK == 0, from != to,
-            array_ok(*words, array, len),
-            forall|i: int| 0 <= i < len ==> #[trigger] words[i].value() ==
-                (if (if from < to { to + n - done <= i < to + n } else { to <= i < to + done }) {
-                    old(words)[i - to + from].value()
-                } else { old(words)[i].value() }),
-        decreases n - done,
-    {
-        proof {
-            assert(done + 5 <= n) by (nonlinear_arith)
-                requires done < n, n % 5 == 0, done % 5 == 0;
-        }
-        let offset = if from < to { n - RECORD_CHUNK - done } else { done };
-        let src = from + offset;
-        let dst = to + offset;
-        let ghost previous = *words;
-        copy5(array, Ghost(len), Tracked(words), src, dst);
-        proof {
-            assert forall|i: int| 0 <= i < len implies #[trigger] words[i].value() ==
-                (if (if from < to { to + n - (done + RECORD_CHUNK) <= i < to + n } else { to <= i < to + (done + RECORD_CHUNK) }) {
-                    old(words)[i - to + from].value()
-                } else { old(words)[i].value() }) by {
-                if dst <= i < dst + RECORD_CHUNK {
-                    // The source word was not written yet.
-                    let j = i - dst + src;
-                    assert(words[i].value() == previous[j].value());
-                    assert(previous[j].value() == old(words)[j].value());
-                } else {
-                    assert(words[i].value() == previous[i].value());
-                }
-            }
-        }
-        done += RECORD_CHUNK;
     }
 }
 

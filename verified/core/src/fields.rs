@@ -108,6 +108,7 @@ impl Machine {
                 Value::Smi(i) => { lemma_smi_word(i); },
                 Value::Obj(id) => { lemma_obj_not_smi(self.heap.objs(), self.addr(), id); },
                 Value::BlockRef(fr, sl) => { lemma_smi_word((fr * 0x1_0000 + sl) as i64); },
+                Value::Token(_, d, _, _) => { lemma_token_vals(d); },
                 _ => {},
             }
         }
@@ -234,7 +235,7 @@ impl Machine {
         &&& self.mem@ == other.mem@
         &&& self.len == other.len
         &&& self.ftop == other.ftop
-        &&& self.rtop == other.rtop
+        &&& self.ftop == other.ftop
         &&& self.base == other.base
         &&& self.lim == other.lim
         &&& self.method == other.method

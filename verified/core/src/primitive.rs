@@ -78,8 +78,7 @@ pub open spec fn prim_call_post(p: &Program, m: Machine, g: State2, module: u8, 
     &&& reloaded(m, gx).refines(p)
     &&& w == enc(m.addr(), v)
     &&& encodable(m.addr(), v)
-    &&& st == V2_PRIMITIVE_SUCCESS ==> gx.frames == g.frames && gx.tries == g.tries && gx.stack == g.stack
-            && gx.fins == g.fins && gx.bci == g.bci
+    &&& st == V2_PRIMITIVE_SUCCESS ==> gx.frames == g.frames && gx.stack == g.stack && gx.bci == g.bci
             && completion(ap, g, module, index, prim_success(ap, g, gx.heap, v))
             && gx == with_heap2(g, gx.heap)
     &&& st == V2_PRIMITIVE_FAILURE ==> completion(ap, g, module, index, sp::next(sp::push(gx, v), 4))
@@ -96,9 +95,9 @@ pub open spec fn prim_call_post(p: &Program, m: Machine, g: State2, module: u8, 
 pub open spec fn unmoved(m1: Machine, m0: Machine) -> bool {
     &&& m1.mem == m0.mem
     &&& m1.globals == m0.globals
-    &&& m1.len == m0.len && m1.top == m0.top && m1.ftop == m0.ftop && m1.rtop == m0.rtop
+    &&& m1.len == m0.len && m1.top == m0.top && m1.ftop == m0.ftop && m1.ftop == m0.ftop
     &&& m1.bci == m0.bci && m1.base == m0.base && m1.lim == m0.lim && m1.method == m0.method
-    &&& m1.fw == m0.fw && m1.need == m0.need && m1.bot == m0.bot
+    &&& m1.need == m0.need && m1.bot == m0.bot
 }
 
 /// TRUSTED (TRUSTED.md, "Primitives" and "Epoch"): calls the C++ primitive
@@ -230,11 +229,14 @@ pub fn prim_cxx_complete(m: &mut Machine, env: &Env, st: usize, w: usize, Ghost(
     r
 }
 
-/// A primitive's view of an argument: a block reference is the smi that
-/// encodes it (`abs::block_word`), other values are themselves.
+/// A primitive's view of an argument: a block reference or a token word is
+/// the smi that encodes it (`abs::block_word`, `token_a`, `token_b`), other
+/// values are themselves.
 pub open spec fn norm_val(v: Value) -> Value {
     match v {
         Value::BlockRef(f, s) => Value::Smi((f * 0x1_0000 + s) as i64),
+        Value::Token(false, d, _, _) => Value::Smi(token_a_val(d)),
+        Value::Token(true, d, _, _) => Value::Smi(token_b_val(d)),
         _ => v,
     }
 }
@@ -250,7 +252,7 @@ proof fn lemma_norm_plain(vs: Seq<Value>)
 {
     assert(norm_args(vs) =~= vs) by {
         assert forall|i: int| 0 <= i < vs.len() implies norm_args(vs)[i] == vs[i] by {
-            assert(!(vs[i] is BlockRef));
+            assert(!(vs[i] is BlockRef) && !(vs[i] is Token));
         }
     }
 }
@@ -310,16 +312,14 @@ pub proof fn lemma_rust_args(p: &Program, m: Machine, arity: usize)
     assert(k.len() == arity);
     assert(vs.len() == arity);
     assert forall|j: int| 0 <= j < arity implies
-        #[trigger] vs[j] is BlockRef || good(g.heap, vs[j]) by {
+        #[trigger] vs[j] is BlockRef || vs[j] is Token || good(g.heap, vs[j]) by {
         let n = k.len() - 1 - j;
         toit_spec::v2::sound_instr::lemma_at_conf(ap, c, p.trusted@, g, n);
         assert(vs[j] == g.stack[sp::base(g) + j]);
         assert(sp::at(g, n) == g.stack[g.stack.len() - 1 - n]);
         reveal(toit_spec::v2::sound::conf);
-        if !(vs[j] is BlockRef) {
-            if toit_spec::v2::verifier::top_kind(k, n) is Token && vs[j] == sp::null2(ap) {
-                toit_spec::v2::sound_prim::lemma_consts_good(ap, g.heap, 0);
-            }
+        if !(vs[j] is BlockRef) && !(vs[j] is Token) {
+            assert(!(toit_spec::v2::verifier::top_kind(k, n) is Token));
         }
     }
     let at = args_at(m);
@@ -332,6 +332,9 @@ pub proof fn lemma_rust_args(p: &Program, m: Machine, arity: usize)
         match vs[j] {
             Value::BlockRef(f, s) => {
                 assert(nv[j] == Value::Smi((f * 0x1_0000 + s) as i64));
+            },
+            Value::Token(sec, d, _, _) => {
+                lemma_token_vals(d);
             },
             _ => {},
         }
@@ -346,7 +349,7 @@ pub proof fn lemma_refines_heap(p: &Program, m0: Machine, m1: Machine)
         m0.refines(p),
         prims::heap_post(p, &m0.heap, &m1.heap),
         m1.mem == m0.mem, m1.globals == m0.globals,
-        m1.len == m0.len, m1.top == m0.top, m1.ftop == m0.ftop, m1.rtop == m0.rtop,
+        m1.len == m0.len, m1.top == m0.top, m1.ftop == m0.ftop, m1.ftop == m0.ftop,
         m1.bci == m0.bci, m1.base == m0.base, m1.lim == m0.lim, m1.method == m0.method,
         m1.g@ == with_heap2(m0.g@, m1.heap.objs()),
     ensures m1.refines(p),

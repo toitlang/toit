@@ -149,7 +149,7 @@ impl Machine {
             final(self).g@ == sp::drop(old(self).g@, n as int),
             final(self).top == old(self).top + n,
             final(self).ftop == old(self).ftop,
-            final(self).rtop == old(self).rtop,
+            final(self).ftop == old(self).ftop,
             final(self).mem@ == old(self).mem@,
             final(self).addr() == old(self).addr(),
             final(self).bci == old(self).bci,
@@ -227,7 +227,7 @@ pub fn op_invoke_block(m: &mut Machine, env: &Env, bci: usize, opcode: u8, n: us
         return m.v_raise_code(env, true, arity, n, t);
     }
     m.drop_vals(p, n - arity);
-    let r = m.push_call(env, t, bci + 2);
+    let r = m.push_call(env, t, bci + 2, 0);
     proof { lemma_matches(p, m0, *m, r); }
     r
 }

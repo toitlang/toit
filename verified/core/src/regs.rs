@@ -18,14 +18,14 @@
 //! The run loop keeps the state that changes with nearly every
 //! instruction in locals (`Regs`): cursors (`view::Slot`, pointers into the
 //! stack array) for the object-stack top, the top frame's limit, the frame
-//! top and the record top, and the bci. Inlined handlers take them by
+//! top, and the bci. Inlined handlers take them by
 //! `&mut` (a local whose address never escapes, so LLVM keeps the fields
 //! in registers), out-of-line paths by value. The rest of the machine (the
 //! views, the stack length, the top frame's method, the ghost state) stays
 //! behind the `&mut Machine` pointer.
 //!
-//! While the loop runs, the machine's fields `top`, `lim`, `base`, `ftop`,
-//! `rtop` and `bci` are stale; the machine the registers describe is
+//! While the loop runs, the machine's fields `top`, `lim`, `base`, `ftop`
+//! and `bci` are stale; the machine the registers describe is
 //! `m.with(r)`, and the abstraction of the pair is `m.with(r).refines(p)`:
 //! the refinement relation is the one of `exec.rs`, unchanged. `sync`
 //! writes the registers back (before a path that works on the machine
@@ -47,9 +47,8 @@ verus! {
 
 /// The hot part of the machine: cursors at the object-stack top (`sp`,
 /// index `top`), at the top frame's limit (`fp`, index `lim`: slot `n`
-/// exists iff `top + n < lim`), at the frame-record top (`fr`, `ftop`; the
-/// finally records, rare, follow it: `rtop` is `ftop + m.fw`, see
-/// `gate_ok`) and at the end of the array (`end`, index `len`:
+/// exists iff `top + n < lim`), at the frame-record top (`fr`, `ftop`) and
+/// at the end of the array (`end`, index `len`:
 /// object-stack position `i` is `end - 1 - i`), and the bci.
 #[derive(Clone, Copy)]
 pub struct Regs {
@@ -70,7 +69,6 @@ impl Machine {
             lim: r.fp@ as usize,
             base: (self.len - r.fp@) as usize,
             ftop: r.fr@ as usize,
-            rtop: (r.fr@ + self.fw) as usize,
             bci: r.ip@ as usize,
             method: self.mem@[r.fr@ - FRAME_WORDS + FRAME_METHOD],
             ..*self
@@ -79,8 +77,8 @@ impl Machine {
 
     /// `self` with the gate fields replaced (they are not part of the
     /// abstraction: `refines`, `inv` and the room do not look at them).
-    pub open spec fn gated(&self, fw: usize, need: usize, bot: Slot) -> Machine {
-        Machine { fw: fw, need: need, bot: bot, ..*self }
+    pub open spec fn gated(&self, need: usize, bot: Slot) -> Machine {
+        Machine { need: need, bot: bot, ..*self }
     }
 
     /// The registers are cursors into this machine's stack view, inside
@@ -93,19 +91,18 @@ impl Machine {
         &&& r.end@ == self.len
         &&& 0 <= r.sp@ <= self.len
         &&& 0 <= r.fp@ <= self.len
-        &&& 0 <= r.fr@
-        &&& r.fr@ + self.fw <= self.len
+        &&& 0 <= r.fr@ <= self.len
     }
 
-    /// Enters the register loop: sets the gate (`gate_ok`) from the finally
-    /// records and derives the registers; the machine the registers
-    /// describe is `self` with the gate set.
+    /// Enters the register loop: sets the fast paths' constants (`gate_ok`)
+    /// and derives the registers; the machine the registers describe is
+    /// `self` with the constants set.
     #[inline(always)]
     pub fn enter(&mut self, p: &Program) -> (r: Regs)
         requires old(self).inv(p),
         ensures
             final(self).rok(r), ipok(p, r), gate_ok(p, *final(self)),
-            final(self).with(r) == old(self).gated(final(self).fw, final(self).need, final(self).bot),
+            final(self).with(r) == old(self).gated(final(self).need, final(self).bot),
             final(self).with(r).inv(p),
             room_ok(p, *old(self)) ==> room_ok(p, final(self).with(r)),
             final(self).g == old(self).g,
@@ -115,15 +112,8 @@ impl Machine {
     {
         let ghost m0 = *self;
         proof { lemma_bci(p, *self); lemma_method(p, *self); assert(p.max_height < 0x1_0000); }
-        let fw = self.rtop - self.ftop;
-        self.fw = fw;
-        if fw == 0 {
-            self.need = FRAME_WORDS + p.max_height + STACK_RESERVE + FIN_WORDS;
-            self.bot = self.mem.slot(FRAME_WORDS);
-        } else {
-            self.need = usize::MAX;
-            self.bot = self.mem.slot(self.len);
-        }
+        self.need = FRAME_WORDS + p.max_height + STACK_RESERVE + 1;
+        self.bot = self.mem.slot(FRAME_WORDS);
         let r = Regs {
             sp: self.mem.slot(self.top),
             fp: self.mem.slot(self.lim),
@@ -132,14 +122,13 @@ impl Machine {
             ip: p.code.cursor(self.bci),
         };
         proof {
-            let m1 = m0.gated(self.fw, self.need, self.bot);
+            let m1 = m0.gated(self.need, self.bot);
             assert(self.with(r) =~= m1);
             assert(m1.refines(p));
             if room_ok(p, m0) {
                 assert forall|i: int| 0 <= i < m1.g@.frames.len() implies #[trigger] frame_room(p, m1, i) by {
                     assert(frame_room(p, m0, i));
                 }
-                assert(crate::room::top_room(p, m1));
             }
         }
         r
@@ -158,7 +147,6 @@ impl Machine {
         self.lim = lim;
         self.base = self.len - lim;
         self.ftop = self.mem.index(r.fr);
-        self.rtop = self.ftop + self.fw;
         self.method = self.mem.read(self.ftop - FRAME_WORDS + FRAME_METHOD);
         self.bci = r.ip.diff(p.code.cursor(0));
         proof { assert(*self =~= m0.with(r)); }
@@ -182,10 +170,9 @@ impl Machine {
         proof { lemma_bci(p, m0.with(*r)); }
         let top = self.mem.index(r.sp);
         let ftop = self.mem.index(r.fr);
-        let rtop = ftop + self.fw;
         let bci = r.ip.diff(p.code.cursor(0));
         self.mem.set_header(STACK_TOP_WORD, top);
-        self.mem.set_header(STACK_RECORD_TOP_WORD, rtop | (ftop << STACK_FRAME_TOP_SHIFT));
+        self.mem.set_header(STACK_FRAME_TOP_WORD, ftop);
         self.mem.set_header(STACK_BCI_WORD, bci);
         proof { assert(*self == (Machine { mem: self.mem, ..m0 })); }
     }
@@ -205,27 +192,21 @@ impl Machine {
         self.lim = lim;
         self.base = self.len - lim;
         self.ftop = self.mem.index(r.fr);
-        self.rtop = self.ftop + self.fw;
         self.method = self.mem.read(self.ftop - FRAME_WORDS + FRAME_METHOD);
         self.bci = r.ip.diff(p.code.cursor(0));
         proof { assert(*self =~= m0.with(r)); }
     }
 }
 
-/// The gate of the register loop's fast paths: without finally records a
-/// call's fast path needs room for a frame record, the maximal height and
-/// the reserve, and a return's the caller's frame record (a frame top above
-/// the bottom frame's); with finally records (only during an unwinding's
-/// finally code) both fail, so the calls and returns that move the records
-/// run on the machine (`step::bridge`). Instructions inside the top frame
-/// do not look at the records.
+/// The constants of the register loop's fast paths: a call's fast path needs
+/// room for a frame record, the maximal height, the reserve and one more
+/// word (TRY pushes the block reference before its call), and a
+/// return's the caller's frame record (a frame top above the bottom
+/// frame's).
 pub open spec fn gate_ok(p: &Program, m: Machine) -> bool {
     &&& m.bot.sid() == m.mem.sid()
-    &&& if m.fw == 0 {
-            m.need == FRAME_WORDS + p.max_height + STACK_RESERVE + FIN_WORDS && m.bot@ == FRAME_WORDS
-        } else {
-            m.need == usize::MAX && m.bot@ == m.len
-        }
+    &&& m.need == FRAME_WORDS + p.max_height + STACK_RESERVE + 1
+    &&& m.bot@ == FRAME_WORDS
 }
 
 /// The instruction pointer is a cursor into the program's bytecodes.
@@ -273,7 +254,7 @@ pub fn set_regs(r: &mut Regs, r2: Regs)
 /// handler pushes up to that many words without a check.
 pub open spec fn rpre(p: &Program, m: Machine, r: Regs) -> bool {
     &&& m_ok(p, m, r)
-    &&& r.sp@ >= r.fr@ + m.fw + STACK_RESERVE
+    &&& r.sp@ >= r.fr@ + STACK_RESERVE
 }
 
 /// The registers are cursors of the machine, which refines its ghost state
@@ -285,12 +266,11 @@ pub open spec fn m_ok(p: &Program, m: Machine, r: Regs) -> bool {
     &&& gate_ok(p, m)
 }
 
-/// A step inside the top frame: the stack length, the frames and the
-/// finally records are unchanged (so is the room, `room::lemma_room_same`).
+/// A step inside the top frame: the stack length and the frames are
+/// unchanged (so is the room, `room::lemma_room_same`).
 pub open spec fn rsame(m0: Machine, m1: Machine) -> bool {
     &&& m1.len == m0.len
     &&& m1.g@.frames == m0.g@.frames
-    &&& m1.g@.fins == m0.g@.fins
 }
 
 /// A register handler's result for the instruction: `Next` with the spec's
@@ -321,7 +301,7 @@ pub fn at(m: &Machine, r: &Regs, n: usize) -> (w: usize)
 pub fn push_next(m: &mut Machine, r: &mut Regs, p: &Program, w: usize, len: usize, Ghost(v): Ghost<Value>) -> (c: Ctl)
     requires
         m_ok(p, *old(m), *old(r)),
-        old(r).sp@ > old(r).fr@ + old(m).fw,
+        old(r).sp@ > old(r).fr@,
         w == enc(old(m).addr(), v),
         encodable(old(m).addr(), v),
         old(r).ip@ + len < 0x1000_0000,
@@ -358,11 +338,11 @@ pub proof fn lemma_local(p: &Program, m0: Machine, m1: Machine, g1: State2)
     requires
         m0.refines(p),
         m1.stack_ok(),
-        m1.len == m0.len, m1.ftop == m0.ftop, m1.rtop == m0.rtop,
+        m1.len == m0.len, m1.ftop == m0.ftop,
         m1.base == m0.base, m1.lim == m0.lim, m1.method == m0.method,
         m1.heap == m0.heap,
-        forall|i: int| 0 <= i < m0.rtop ==> #[trigger] m1.mem@[i] == m0.mem@[i],
-        g1.heap == m0.g@.heap, g1.frames == m0.g@.frames, g1.tries == m0.g@.tries, g1.fins == m0.g@.fins,
+        forall|i: int| 0 <= i < m0.ftop ==> #[trigger] m1.mem@[i] == m0.mem@[i],
+        g1.heap == m0.g@.heap, g1.frames == m0.g@.frames,
         m1.words() == enc_seq(m0.addr(), g1.stack),
         forall|i: int| 0 <= i < g1.stack.len() ==> #[trigger] encodable(m0.addr(), g1.stack[i]),
         m1.bci == g1.bci,
@@ -564,8 +544,8 @@ pub fn op_load_smis_0(m: &mut Machine, r: &mut Regs, p: &Program, n: usize) -> (
             m.mem@.len() == m0.mem@.len(),
             m.len == m0.len, m.heap == m0.heap, m.globals == m0.globals, m.g == m0.g, m.method == old(m).method,
             m0.stack_ok(),
-            m0.top >= m0.rtop + n,
-            forall|j: int| 0 <= j < m0.rtop ==> #[trigger] m.mem@[j] == m0.mem@[j],
+            m0.top >= m0.ftop + n,
+            forall|j: int| 0 <= j < m0.ftop ==> #[trigger] m.mem@[j] == m0.mem@[j],
             m.with(*r).words() == m0.words() + Seq::new(i as nat, |j: int| 0usize),
         decreases n - i,
     {

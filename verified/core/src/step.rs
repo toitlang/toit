@@ -297,17 +297,17 @@ pub open spec fn step_post(p: &Program, m0: Machine, m1: Machine, r: Ctl) -> boo
 pub open spec fn grow_post(p: &Program, m: Machine, g: State2, g2: State2, needed: usize, r: usize) -> bool {
     &&& gc_steps(p.ap@, g, g2)
     &&& reloaded(m, g2).refines(p)
-    &&& r == V2_OK ==> reloaded(m, g2).top - reloaded(m, g2).rtop >= needed
+    &&& r == V2_OK ==> reloaded(m, g2).top - reloaded(m, g2).ftop >= needed
 }
 
 /// TRUSTED (TRUSTED.md, "GC and stack growth"): `toit_v2_grow_stack` (may
 /// GC). Before, the views represent `g`; after, `grow_post`: they
 /// represent a state `g2` that collections reach from `g` (the task has a
-/// new Stack with the frame and finally records copied to the bottom and
-/// the object stack to the top, the header updated; the GC renumbers
+/// new Stack with the frame records copied to the bottom and the object
+/// stack to the top, the header updated; the GC renumbers
 /// objects and updates every root), and on success (`V2_OK`) at least
-/// `needed` words are free between the records and the object stack. On
-/// stack overflow or out of memory nothing changed but the collections.
+/// `needed` words are free between the frame records and the object stack.
+/// On stack overflow or out of memory nothing changed but the collections.
 #[verifier::external_body]
 #[inline(always)]
 pub fn gc_grow_stack(m: &mut Machine, env: &Env, needed: usize, Ghost(g): Ghost<State2>) -> (r: usize)
@@ -384,11 +384,10 @@ pub fn grow(m: &mut Machine, env: &Env, needed: usize) -> (r: Ctl)
     r
 }
 
-/// Room for a call: a frame record, the callee's slots and the reserve, plus
-/// one finally record of slack (so that, even at the maximal stack length
-/// after a stack overflow, the frame can enter its finally code with the
-/// room `room::room_ok` asks for). `None`: there is room. `Some(r)`: the instruction did not run (it runs again after the
-/// stack grew), or a stack overflow was thrown.
+/// Room for a call: a frame record, the callee's slots and the reserve (the
+/// finally code's slots of a TRY are among the slots, format note 23).
+/// `None`: there is room. `Some(r)`: the instruction did not run (it runs
+/// again after the stack grew), or a stack overflow was thrown.
 #[inline(always)]
 pub fn ensure_room(m: &mut Machine, env: &Env) -> (r: Option<Ctl>)
     requires
@@ -396,12 +395,12 @@ pub fn ensure_room(m: &mut Machine, env: &Env) -> (r: Option<Ctl>)
         toit_spec::v2::prim::grows_stack(env.p.ap@.bytecodes[old(m).bci as int]),
         old(m).bci < 0x1000_0000,
     ensures
-        r is None ==> *final(m) == *old(m) && final(m).top - final(m).rtop >= FRAME_WORDS + STACK_RESERVE,
+        r is None ==> *final(m) == *old(m) && final(m).top - final(m).ftop >= FRAME_WORDS + STACK_RESERVE,
         r is Some ==> step_post(&env.p, *old(m), *final(m), r->0),
 {
     proof { assert(env.p.max_height < 0x1_0000); }
-    let needed = FRAME_WORDS + env.p.max_height + STACK_RESERVE + FIN_WORDS;
-    if m.top - m.rtop >= needed {
+    let needed = FRAME_WORDS + env.p.max_height + STACK_RESERVE;
+    if m.top - m.ftop >= needed {
         return None;
     }
     Some(grow(m, env, needed))
@@ -839,9 +838,7 @@ pub proof fn lemma_steps_post(p: &Program, m0: Machine, m1: Machine, r: Ctl)
 
 /// Back to the registers after a path that ran on the machine from `w0`
 /// with result `c`: on `Next` the room is re-established (the machine's
-/// handlers do not track it; an unwinding into finally code adds a record)
-/// and the registers derived with the gate for the finally records
-/// (`Machine::enter`).
+/// handlers do not track it) and the registers derived (`Machine::enter`).
 pub fn resume(m: &mut Machine, env: &Env, c: Ctl, Ghost(w0): Ghost<Machine>) -> (res: (Option<Regs>, Ctl))
     requires step_post(&env.p, w0, *old(m), c) || steps_post(&env.p, w0, *old(m), c),
     ensures
@@ -893,7 +890,7 @@ pub fn resume_with(m: &mut Machine, env: &Env, c: Ctl, ok: bool, Ghost(w0): Ghos
 /// After a path on the machine that kept the frames below the top and the
 /// stack length (a call, a return, an unwinding: `room::top_kept`): those
 /// frames have the room they had, so the room holds if the top frame has
-/// it with the finally records (`room::top_room`); `resume_with` then
+/// it (`room::frame_room`); `resume_with` then
 /// skips the rescan of every frame (`ensure_room_all`).
 pub fn top_room_kept(m: &Machine, env: &Env, Ghost(w0): Ghost<Machine>) -> (b: bool)
     requires
@@ -929,7 +926,7 @@ pub fn top_room_kept(m: &Machine, env: &Env, Ghost(w0): Ghost<Machine>) -> (b: b
         assert(p.max_height < 0x1_0000);
     }
     let a = p.method(method).arity as usize;
-    let total = base + a + p.max_height + m.rtop + STACK_RESERVE;
+    let total = base + a + p.max_height + m.ftop + STACK_RESERVE;
     if total > m.len {
         return false;
     }
@@ -941,7 +938,6 @@ pub fn top_room_kept(m: &Machine, env: &Env, Ghost(w0): Ghost<Machine>) -> (b: b
                 assert(frame_room(p, w0, i));
             }
         }
-        assert(top_room(p, *m));
     }
     true
 }
@@ -962,7 +958,7 @@ pub open spec fn rinv(p: &Program, m: Machine, r: Regs) -> bool {
 pub open spec fn rhandler_pre(p: &Program, m: Machine, r: Regs, bci: usize, opcode: u8) -> bool {
     let ap = p.ap@;
     &&& rinv(p, m, r)
-    &&& r.sp@ >= r.fr@ + m.fw + STACK_RESERVE
+    &&& r.sp@ >= r.fr@ + STACK_RESERVE
     &&& step_ok(ap, p.cert@, m.g@)
     &&& bci == r.ip@
     &&& opcode == ap.bytecodes[bci as int]
@@ -1016,35 +1012,10 @@ pub open spec fn slow_pre(p: &Program, m: Machine, r: Regs, k: Slow, w: usize, v
 /// out of its hot part, for every register handler's Ctl::Slow; with the
 /// split loop also `step_cold` for a rare opcode's handler): writes the
 /// registers back, runs the machine's code (the raises, calls, returns,
-/// unwinding and C++ calls, which handle finally records, stack growth and
-/// preemption), and derives the registers again (`resume`). First, calls
-/// and returns while finally records exist, on the registers (rfins.rs):
-/// most slow paths of finally code, kept out of `slow_body`, whose entry
-/// saves many registers.
+/// unwinding and C++ calls, which handle stack growth and preemption), and
+/// derives the registers again (`resume`).
 #[inline(never)]
 pub fn slow(m: &mut Machine, r: Regs, env: &Env, k: Slow, w: usize, Ghost(v): Ghost<Value>) -> (res: (Regs, Ctl))
-    requires slow_pre(&env.p, *old(m), r, k, w, v),
-    ensures rpost(&env.p, *old(m), r, *final(m), res.0, res.1), !(res.1 is Slow),
-{
-    if m.fw != 0 {
-        if let Slow::Call(t, ret) = k {
-            let mut r2 = r;
-            if crate::rfins::call_fins_r(m, &mut r2, env, t, ret) {
-                return (r2, Ctl::Next);
-            }
-        } else if let Slow::Return = k {
-            let mut r2 = r;
-            if crate::rfins::ret_fins_fast(m, &mut r2, env, w, Ghost(v)) {
-                return (r2, Ctl::Next);
-            }
-        }
-    }
-    slow_body(m, r, env, k, w, Ghost(v))
-}
-
-/// The machine part of `slow`.
-#[inline(never)]
-pub fn slow_body(m: &mut Machine, r: Regs, env: &Env, k: Slow, w: usize, Ghost(v): Ghost<Value>) -> (res: (Regs, Ctl))
     requires slow_pre(&env.p, *old(m), r, k, w, v),
     ensures rpost(&env.p, *old(m), r, *final(m), res.0, res.1), !(res.1 is Slow),
 {
@@ -1078,7 +1049,7 @@ pub fn slow_body(m: &mut Machine, r: Regs, env: &Env, k: Slow, w: usize, Ghost(v
                 Some(c) => (c, false),
                 None => {
                     proof { assert(outcome_ok(ap, p.cert@, sp::step(ap, g))); }
-                    let c = m.push_call(env, t, ret);
+                    let c = m.push_call(env, t, ret, 0);
                     proof {
                         lemma_matches(p, w0, *m, c);
                         if c == Ctl::Next {

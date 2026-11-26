@@ -37,7 +37,7 @@ use crate::room::*;
 use crate::step::*;
 use crate::calls::*;
 use crate::ffi::V2Method;
-use toit_spec::types::{Value, Frame, Handler, Fin};
+use toit_spec::types::{Value, Frame};
 use toit_spec::v2::types::{State2, Program2, Outcome2};
 #[cfg(verus_keep_ghost)]
 use toit_spec::v2::spec as sp;
@@ -55,13 +55,12 @@ pub proof fn lemma_or_ge(w: usize, n: usize)
 }
 
 /// The fast path of a call applies: room for a frame record, the maximal
-/// height and the reserve, no finally records, no preemption request (the
-/// gate's `need` is all ones while there are finally records, the
-/// watermark while preemption is requested).
+/// height and the reserve, no preemption request (the watermark while
+/// preemption is requested).
 #[inline(always)]
 pub fn call_fast(m: &Machine, r: &Regs, env: &Env) -> (b: bool)
     requires m_ok(&env.p, *m, *r),
-    ensures b ==> m.fw == 0 && r.sp@ - r.fr@ >= FRAME_WORDS + env.p.max_height + STACK_RESERVE + FIN_WORDS,
+    ensures b ==> r.sp@ - r.fr@ >= FRAME_WORDS + env.p.max_height + STACK_RESERVE + 1,
 {
     let w = env.pre.word();
     let free = r.sp.diff(r.fr);
@@ -69,14 +68,14 @@ pub fn call_fast(m: &Machine, r: &Regs, env: &Env) -> (b: bool)
     free >= (w | m.need)
 }
 
-/// `spec::call` without finally records: a frame for `target` (its entry and
-/// arity), whose arguments are the top `arity` slots,
-/// returning to `ret`. The new frame has room (`frame_room`).
+/// `spec::call` (`handler == 0`) or `spec::try_call` (`handler == 1`): a
+/// frame for `target` (its entry and arity), whose arguments are the top
+/// `arity` slots, returning to `ret`. The new frame has room (`frame_room`).
 #[inline(always)]
-pub fn push_call(m: &mut Machine, r: &mut Regs, p: &Program, target: usize, entry: usize, arity: usize, ret: usize)
+pub fn push_call(m: &mut Machine, r: &mut Regs, p: &Program, target: usize, entry: usize, arity: usize, ret: usize, handler: usize)
     requires
         m_ok(p, *old(m), *old(r)),
-        old(m).fw == 0,
+        handler <= 1,
         old(r).sp@ - old(r).fr@ >= FRAME_WORDS + p.max_height + STACK_RESERVE,
         room_ok(p, old(m).with(*old(r))),
         target < p.methods@.len(),
@@ -84,7 +83,8 @@ pub fn push_call(m: &mut Machine, r: &mut Regs, p: &Program, target: usize, entr
         arity == p.minfo(target as int).arity as usize,
         !(sp::call(p.ap@, old(m).g@, target as int, ret as int) is Stuck),
     ensures
-        rnext(p, *final(m), *final(r), sp::call(p.ap@, old(m).g@, target as int, ret as int)),
+        rnext(p, *final(m), *final(r), if handler == 0 { sp::call(p.ap@, old(m).g@, target as int, ret as int) }
+            else { sp::try_call(p.ap@, old(m).g@, target as int, ret as int) }),
         room_ok(p, final(m).with(*final(r))),
 {
     let ghost m0 = m.with(*r);
@@ -99,12 +99,12 @@ pub fn push_call(m: &mut Machine, r: &mut Regs, p: &Program, target: usize, entr
     f.write(FRAME_METHOD, target, &mut m.mem);
     f.write(FRAME_RET, ret, &mut m.mem);
     f.write(FRAME_BASE, base, &mut m.mem);
-    f.write(FRAME_HANDLER, 0, &mut m.mem);
+    f.write(FRAME_HANDLER, handler, &mut m.mem);
     let nf = f.offset(FRAME_WORDS as isize);
     r.fr = nf;
     r.fp = fp;
     r.ip = p.code.cursor(entry);
-    let ghost fr = Frame { method: target, ret: ret, base: base };
+    let ghost fr = Frame { method: target, ret: ret, base: base, handler: handler == 1 };
     let ghost g1 = State2 { frames: g0.frames.push(fr), bci: entry, ..g0 };
     m.g = Ghost(g1);
     proof {
@@ -112,15 +112,13 @@ pub fn push_call(m: &mut Machine, r: &mut Regs, p: &Program, target: usize, entr
         let n = g0.frames.len() as int;
         let fo = m0.ftop as int;
         assert(fo == FRAME_WORDS * n);
-        assert(g0.fins.len() == 0);
         assert forall|i: int| 0 <= i < m1.mem@.len() && !(fo <= i < fo + FRAME_WORDS)
             implies #[trigger] m1.mem@[i] == m0.mem@[i] by {}
         assert(rec(m1.mem@, n, FRAME_METHOD) == target);
         assert(rec(m1.mem@, n, FRAME_RET) == ret);
         assert(rec(m1.mem@, n, FRAME_BASE) == base);
-        assert(rec(m1.mem@, n, FRAME_HANDLER) == 0);
-        lemma_frames_push(m0.mem@, m1.mem@, g0.frames, g0.tries, fr);
-        assert(fins_rel(m1.mem@, m1.ftop as int, g1.fins));
+        assert(rec(m1.mem@, n, FRAME_HANDLER) == handler_word(fr));
+        lemma_frames_push(m0.mem@, m1.mem@, g0.frames, fr);
         assert(m1.words() =~= m0.words());
         assert(g1.frames.last() == fr);
         assert(m1.refines(p));
@@ -129,6 +127,14 @@ pub fn push_call(m: &mut Machine, r: &mut Regs, p: &Program, target: usize, entr
                 assert(g1.frames[i] == g0.frames[i]);
                 assert(frame_room(p, m0, i));
             }
+        }
+        let c1 = sp::call(p.ap@, g0, target as int, ret as int);
+        assert(c1 == Outcome2::Next(State2 { frames: g0.frames.push(Frame { handler: false, ..fr }), ..g1 }));
+        if handler == 1 {
+            assert(sp::flag_top(c1->Next_0).frames =~= g1.frames);
+            assert(sp::flag_top(c1->Next_0) == g1);
+        } else {
+            assert(fr == Frame { handler: false, ..fr });
         }
     }
 }
@@ -174,7 +180,7 @@ pub fn op_invoke_static(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, op
         proof { assert(sp::step(ap, g) == sp::call(ap, g, t as int, bci + 3)); }
         return slow0(m, r, env, Slow::Call(t, bci + 3));
     }
-    push_call(m, r, p, t, info.entry as usize, arity, bci + 3);
+    push_call(m, r, p, t, info.entry as usize, arity, bci + 3, 0);
     proof { lemma_matches(p, w0, m.with(*r), Ctl::Next); }
     Ctl::Next
 }
@@ -215,7 +221,7 @@ pub fn op_invoke_virtual(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, o
             // The arity is the call's `n` (the spec is stuck otherwise):
             // the frame base is the receiver's slot plus one.
             proof { assert(sp::arity(ap, t as int) == n); }
-            push_call(m, r, p, t, p.entry_of(t), n, bci + len);
+            push_call(m, r, p, t, p.entry_of(t), n, bci + len, 0);
             proof { lemma_matches(p, w0, m.with(*r), Ctl::Next); }
             Ctl::Next
         },
@@ -228,7 +234,7 @@ pub fn op_invoke_virtual(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, o
 pub fn op_return(m: &mut Machine, r: &mut Regs, env: &Env, w: usize, Ghost(v): Ghost<Value>) -> (c: Ctl)
     requires
         rinv(&env.p, *old(m), *old(r)),
-        old(r).sp@ >= old(r).fr@ + old(m).fw + STACK_RESERVE,
+        old(r).sp@ >= old(r).fr@ + STACK_RESERVE,
         step_ok(env.p.ap@, env.p.cert@, old(m).g@),
         sp::step(env.p.ap@, old(m).g@) == sp::return_from(env.p.ap@, old(m).g@, v),
         w == enc(old(m).addr(), v),
@@ -243,10 +249,9 @@ pub fn op_return(m: &mut Machine, r: &mut Regs, env: &Env, w: usize, Ghost(v): G
         assert(outcome_ok(ap, p.cert@, sp::step(ap, g0)));
         lemma_shape(p, g0);
         m0.lemma_frame(p);
-        lemma_no_handler(g0);
     }
     if !m.bot.lt(r.fr, &m.mem) {
-        // The task's bottom frame returns, or there are finally records.
+        // The task's bottom frame returns.
         return slow_r(m, r, env, Slow::Return, w, Ghost(v));
     }
     let ghost n = g0.frames.len() as int;
@@ -258,28 +263,27 @@ pub fn op_return(m: &mut Machine, r: &mut Regs, env: &Env, w: usize, Ghost(v): G
         lemma_rec_index(n, n - 2, FRAME_BASE);
         lemma_rec_index(n, n - 1, FRAME_RET);
     }
-    let crec = r.fr.offset(-((2 * FRAME_WORDS) as isize));
-    let handler = crec.read(FRAME_HANDLER, &m.mem);
+    let rec_ = r.fr.offset(-(FRAME_WORDS as isize));
+    let handler = rec_.read(FRAME_HANDLER, &m.mem);
     if handler != 0 {
-        // The caller is suspended in a TRY: its finally code runs.
-        proof { assert(m.fw == 0); }
+        // A try block returns: the finally code of its caller runs.
+        proof { lemma_rec_index(n, n - 1, FRAME_HANDLER); assert(rec(m0.mem@, n - 1, FRAME_HANDLER) == handler_word(g0.frames[n - 1])); }
         let (r2, c2) = crate::rnonlocal::ret_try_v(m, *r, env, Ghost(v));
         set_regs(r, r2);
         return c2;
     }
-    let rec_ = r.fr.offset(-(FRAME_WORDS as isize));
+    let crec = r.fr.offset(-((2 * FRAME_WORDS) as isize));
     let ret = rec_.read(FRAME_RET, &m.mem);
     let base = crec.read(FRAME_BASE, &m.mem);
     proof {
         assert(rec(m0.mem@, n - 1, FRAME_RET) == g0.frames[n - 1].ret);
         assert(rec(m0.mem@, n - 2, FRAME_METHOD) == g0.frames[n - 2].method);
         assert(rec(m0.mem@, n - 2, FRAME_BASE) == g0.frames[n - 2].base);
-        assert(rec(m0.mem@, n - 2, FRAME_HANDLER) == handler);
+        assert(rec(m0.mem@, n - 1, FRAME_HANDLER) == handler_word(g0.frames[n - 1]));
+        assert(!sp::top(g0).handler);
         assert(toit_spec::v2::sound::base_step(g0, n - 2));
-        lemma_frames_pop(m0.mem@, g0.frames, g0.tries);
-        lemma_handler_word(m0.mem@, g0.frames.drop_last(), g0.tries);
+        lemma_frames_pop(m0.mem@, g0.frames);
         assert(g0.frames.drop_last()[n - 2] == g0.frames[n - 2]);
-        assert(!sp::has_handler(State2 { frames: g0.frames.drop_last(), ..g0 }));
     }
     let s = r.fp.offset(-1);
     s.write(0, w, &mut m.mem);
@@ -290,19 +294,16 @@ pub fn op_return(m: &mut Machine, r: &mut Regs, env: &Env, w: usize, Ghost(v): G
     let ghost g1 = State2 {
         stack: g0.stack.subrange(0, sp::top(g0).base as int).push(v),
         frames: g0.frames.drop_last(),
-        fins: sp::fins_popped(g0),
         bci: sp::top(g0).ret,
         ..g0
     };
     m.g = Ghost(g1);
     proof {
         let m1 = m.with(*r);
-        assert(g0.fins.len() == 0);
-        assert(sp::fins_popped(g0) =~= g0.fins);
         assert(sp::base(g1) == g0.frames[n - 2].base);
-        lemma_frames_pop(m0.mem@, g0.frames, g0.tries);
+        lemma_frames_pop(m0.mem@, g0.frames);
         assert forall|i: int| 0 <= i < FRAME_WORDS * g1.frames.len() implies #[trigger] m1.mem@[i] == m0.mem@[i] by {}
-        lemma_frames_rel_same(m0.mem@, m1.mem@, g1.frames, g1.tries);
+        lemma_frames_rel_same(m0.mem@, m1.mem@, g1.frames);
         let b = sp::top(g0).base as int;
         assert(m1.words() =~= m0.words().subrange(0, b).push(w));
         assert(enc_seq(m0.addr(), g1.stack) =~= enc_seq(m0.addr(), g0.stack).subrange(0, b).push(w));
