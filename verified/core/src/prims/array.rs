@@ -543,9 +543,10 @@ pub fn large_array_arg(h: &Heap, p: &Program, w: usize, Ghost(v): Ghost<Value>) 
 /// The slot of element `n` of the large array `v` (word `w`), as
 /// `Interpreter::fast_at` finds it for `list_add`: the arraylet (an array:
 /// its word and id) and the index in it. `None` where the C++ `fast_at`
-/// fails, and also below `fuel` nested vectors: the C++ follows a chain of
+/// fails, and also below `fuel` nested vectors: the C++ followed a chain of
 /// large arrays of decreasing sizes without a bound, so a program whose
-/// own library makes a deep one overflowed the native stack (a VM crash);
+/// own library made a deep one overflowed the native stack (a VM crash;
+/// the C++ now gives up after 8 nested vectors, one more than this);
 /// real large arrays nest at most four deep. `list_add` then fails with
 /// INVALID_ARGUMENT and its Toit code grows the list.
 pub fn large_slot(h: &Heap, p: &Program, w: usize, Ghost(v): Ghost<Value>, n: usize, fuel: usize)

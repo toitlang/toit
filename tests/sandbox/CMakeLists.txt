@@ -147,7 +147,8 @@ set_tests_properties(tests/sandbox/cli/invalid-strings-snapshot PROPERTIES TIMEO
 # A list backed by a deep chain of large arrays, made by the program's own
 # (patched) core library: list_add used to crash the VM in the C++
 # Interpreter::fast_at (native stack overflow); the Rust port bounds the
-# nesting (verified/core/src/prims/array.rs, large_slot).
+# nesting (verified/core/src/prims/array.rs, large_slot), and so does
+# fast_at now (tests/large-array-depth-test.toit).
 add_test(
   NAME tests/sandbox/cli/large-array-chain-snapshot
   COMMAND ${CMAKE_COMMAND}

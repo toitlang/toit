@@ -669,12 +669,6 @@ the effort. Sizes: small (hours to a day), days, weeks.
   format-1 untrusted path of item 1 is removed), and whether a host build
   that finds no cargo should fail instead of building without the core
   (such a build refuses every untrusted program either way).
-* Whether to fix the unbounded recursion of the C++
-  `Interpreter::fast_at` through chains of large arrays (found on branch
-  prims/trust-round: `list_add` on a list backed by a chain of 10^6 large
-  arrays crashed the VM; untrusted programs no longer reach it, but the
-  C++ interpreter's INVOKE_AT(_PUT) and format-1 trusted programs do; an
-  upstream fix, e.g. a depth bound of 8 as the Rust ports have).
 * Whether to change the bytecode, certificate or message format where
   section 5 says it would remove an item (8, 9, 12).
 * Whether trusted containers running unverified on the same core are
