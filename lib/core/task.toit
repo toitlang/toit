@@ -240,8 +240,10 @@ class Task_ implements Task:
     assert: Task_.current == this
     if not deadline_ or deadline < deadline_:
       old-deadline := deadline_
-      deadline_ = deadline
       try:
+        // Set inside the try, so the finally code always restores it (see
+        // critical-do).
+        deadline_ = deadline
         return block.call old-deadline
       finally:
         deadline_ = old-deadline

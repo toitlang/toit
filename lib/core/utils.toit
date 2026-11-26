@@ -198,16 +198,24 @@ Within $block, the current task won't be interrupted by cancellation exceptions.
 critical-do --respect-deadline/bool=true [block]:
   self ::= Task_.current
   deadline/int? := null
-  self.critical-count_++
-  if not respect-deadline:
-    deadline = self.deadline_
-    self.deadline_ = null
+  counted := false
+  cleared := false
   try:
+    // Changed inside the try, so the finally code restores what was
+    // changed: on the verified core, entering the try can fail (out of
+    // memory or a stack overflow when the stack can't grow for the try's
+    // block) before the finally code is installed, and so can each of the
+    // calls (the accessors, the addition) below.
+    self.critical-count_++
+    counted = true
+    if not respect-deadline:
+      deadline = self.deadline_
+      self.deadline_ = null
+      cleared = true
     block.call
   finally:
-    if not respect-deadline:
-      self.deadline_ = deadline
-    self.critical-count_--
+    if cleared: self.deadline_ = deadline
+    if counted: self.critical-count_--
 
 /**
 Exits the VM with the given $status.

@@ -146,9 +146,15 @@ process-messages_ --out-of-memory-error/bool=true:
   if is-processing-messages_: return
   // Without messages the code below would do nothing (and need no try).
   if not deferred-message_ and not task-has-messages_: return
-  is-processing-messages_ = true
 
   try:
+    // Set inside the try, so the finally code always resets it: on the
+    // verified core, entering the try can fail (out of memory or a stack
+    // overflow when the stack can't grow for the try's block) before the
+    // finally code is installed. Set before, the flag would stay set and
+    // this process would never process a message again: a task waiting
+    // for one would yield forever with the message in the mailbox.
+    is-processing-messages_ = true
     message := deferred-message_
     if message:
       deferred-message_ = null

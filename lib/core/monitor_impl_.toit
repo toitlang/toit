@@ -153,13 +153,19 @@ class __Monitor__:
       finally:
         if timer: self.release-timer_ timer
 
-    owner_ = self  // Take lock.
     // The block's value is the monitor method's result (the compiler turns
     // the method's returns into exits of the block, see monitor.cc): kept
     // in a local so that the try block completes without a non-local
     // return.
     result := null
     try:
+      // The lock is taken inside the try, so the finally code always
+      // releases it: on the verified core, entering the try can fail (out
+      // of memory or a stack overflow when the stack can't grow for the
+      // try's block) before the finally code is installed. Taken before,
+      // the lock would stay taken and the next locked method would wait
+      // for it forever. Nothing between the check above and here yields.
+      owner_ = self  // Take lock.
       result = block.call
     finally:
       owner_ = null
