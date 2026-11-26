@@ -107,7 +107,11 @@ class RpcRequest_:
       reply := is-exception
           ? [ id, true, exception.value.stringify, exception.trace ]
           : [ id, false, result ]
-      process-send_ pid SYSTEM-RPC-REPLY_ reply
+      // An exception from sending the reply (for example a result that
+      // can't be serialized) must not escape: it would kill the process.
+      // The caller gets it instead, or no reply if that fails too.
+      error := catch: process-send_ pid SYSTEM-RPC-REPLY_ reply
+      if error: catch: process-send_ pid SYSTEM-RPC-REPLY_ [ id, true, error.stringify, null ]
       return  // Stops any unwinding.
 
 monitor RpcRequestQueue_:
