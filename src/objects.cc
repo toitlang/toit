@@ -360,9 +360,11 @@ int Stack::v2_frames_skip_ = 2;
 thread_local int Stack::v2_frames_skip_ = 2;
 #endif
 
+#if defined(__clang__) && !defined(TOIT_EC618)
 void Stack::set_v2_frames_skip(int skip) {
   v2_frames_skip_ = skip;
 }
+#endif
 
 // Enumerate the top location, followed by the return locations stored in
 // successive frames. The bottom frame's return is not a call site.
