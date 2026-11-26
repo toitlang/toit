@@ -74,7 +74,7 @@ pub open spec fn hide_ok(c: Ctx, h: H, hs: H, nodes: Seq<Node>, nodes2: Seq<Node
             && nodes[m].key is Ref && from(h, nodes[m].key->Ref_0) && weak_map(c, obj(h, nodes[m].key->Ref_0))
             && nodes2[m].ix == obj(h, nodes[m].key->Ref_0).words[3] && nodes2[m].bk == obj(h, nodes[m].key->Ref_0).words[4]
             && obj(hs, nodes[m].key->Ref_0) == hidden(obj(h, nodes[m].key->Ref_0))
-    &&& forall|x: int| 0 <= x < h.objs.len() ==> #[trigger] obj(hs, x) == obj(h, x)
+    &&& forall|x: int| #![trigger obj(hs, x)] 0 <= x < h.objs.len() ==> obj(hs, x) == obj(h, x)
             || exists|m: int| 0 <= m < ncb && (#[trigger] nodes2[m]).hid && nodes[m].key == AVal::Ref(x)
 }
 
@@ -350,7 +350,7 @@ pub fn hide_maps(c: &Ctx, t: &Tos, nptr: *mut usize, ncb: usize, nn: usize, Ghos
                     }
                 }
             }
-            assert forall|x: int| 0 <= x < h.objs.len() implies #[trigger] obj(h2, x) == obj(h, x)
+            assert forall|x: int| #![trigger obj(h2, x)] 0 <= x < h.objs.len() implies obj(h2, x) == obj(h, x)
                 || exists|m: int| 0 <= m < ncb && (#[trigger] nc2[m]).hid && nodes[m].key == AVal::Ref(x) by {
                 if obj(h2, x) != obj(h, x) {
                     if nd2.hid && nd.key == AVal::Ref(x) {
@@ -434,7 +434,7 @@ pub fn zap_array(c: &Ctx, t: &Tos, s: usize, off: usize, Ghost(h): Ghost<H>, Gho
         &&& inv(*c, h2, *final(st), *t, ks, 0, rvp) && roots_ok(*c, h2, *final(st), rptr, rv, rv.len() as int)
         &&& *final(st) == (St { fp: final(st).fp, ..*old(st) })
         &&& h2.loc == h.loc && h2.addr == h.addr && h2.objs.len() == h.objs.len()
-        &&& forall|x: int| 0 <= x < h.objs.len() && x != a ==> #[trigger] obj(h2, x) == obj(h, x)
+        &&& forall|x: int| #![trigger obj(h2, x)] 0 <= x < h.objs.len() && x != a ==> obj(h2, x) == obj(h, x)
         &&& zapped_arr(*c, h, obj(h, a), obj(h2, a))
     }),
 {
@@ -465,7 +465,7 @@ pub fn zap_array(c: &Ctx, t: &Tos, s: usize, off: usize, Ghost(h): Ghost<H>, Gho
             0 <= ks <= st.order.len(),
             *st == (St { fp: st.fp, ..s0 }),
             hc.loc == h.loc && hc.addr == h.addr && hc.objs.len() == h.objs.len(),
-            forall|x: int| 0 <= x < h.objs.len() && x != a ==> #[trigger] obj(hc, x) == obj(h, x),
+            forall|x: int| #![trigger obj(hc, x)] 0 <= x < h.objs.len() && x != a ==> obj(hc, x) == obj(h, x),
             from(h, a), !copied(*st, a), s == fs(*c, fpg(h, a)), off == foff(h, a), o == obj(h, a),
             pg == fpg(h, a),
             htag(hdr(o)) == ARRAY_TAG, lay(o).size == 2 + len, lay(o).lo == 2, lay(o).hi == 2 + len, len == raw(o.words[1]),
@@ -552,7 +552,7 @@ pub fn zap_array(c: &Ctx, t: &Tos, s: usize, off: usize, Ghost(h): Ghost<H>, Gho
                         if q != k { assert(oc.words[q] == o.words[q] || (2 <= q && (q - 2) % 2 == 1 && oc.words[q] == AVal::Ref(c.nullid@)
                             && o.words[q] is Ref && 0 <= o.words[q]->Ref_0 < h.objs.len() && hcid(hdr(obj(h, o.words[q]->Ref_0))) != c.tomb_cid)); }
                     }
-                    assert forall|x: int| 0 <= x < h.objs.len() && x != a implies #[trigger] obj(h2, x) == obj(h, x) by {
+                    assert forall|x: int| #![trigger obj(h2, x)] 0 <= x < h.objs.len() && x != a implies obj(h2, x) == obj(h, x) by {
                         assert(obj(hc, x) == obj(h, x));
                     }
                     assert forall|q: int| 2 + i + 2 <= q < o.words.len() implies #[trigger] obj(h2, a).words[q] == o.words[q] by {
@@ -586,7 +586,7 @@ pub fn zap_backing(c: &Ctx, t: &Tos, bkw: usize, Ghost(h): Ghost<H>, Ghost(bkv):
         &&& inv(*c, h2, *final(st), *t, ks, 0, rvp) && roots_ok(*c, h2, *final(st), rptr, rv, rv.len() as int)
         &&& *final(st) == (St { fp: final(st).fp, ..*old(st) })
         &&& h2.loc == h.loc && h2.addr == h.addr && h2.objs.len() == h.objs.len()
-        &&& forall|x: int| 0 <= x < h.objs.len() ==> #[trigger] obj(h2, x) == obj(h, x)
+        &&& forall|x: int| #![trigger obj(h2, x)] 0 <= x < h.objs.len() ==> obj(h2, x) == obj(h, x)
                 || (from(h, x) && !copied(*old(st), x) && backing(*c, h, bkv, x) && zapped_arr(*c, h, obj(h, x), obj(h2, x)))
     }),
 {
@@ -1100,7 +1100,7 @@ pub fn weak_live<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, nptr: *mut us
         &&& final(np)[6 * i + 3].is_init() && final(np)[6 * i + 3].value() == (if z { ZAPPED } else { 0 })
         &&& h2.loc == h.loc && h2.addr == h.addr && h2.objs.len() == h.objs.len()
         &&& obj(h2, j) == unhide(obj(h, j), nd.ix, nd.bk) || obj(h2, j) == killed(obj(h, j), c.nullid@, true)
-        &&& forall|x: int| 0 <= x < h.objs.len() && x != j ==> #[trigger] obj(h2, x) == obj(h, x)
+        &&& forall|x: int| #![trigger obj(h2, x)] 0 <= x < h.objs.len() && x != j ==> obj(h2, x) == obj(h, x)
                 || (from(h, x) && backing(*c, h, nd.bk, x) && zapped_arr(*c, h, obj(h, x), obj(h2, x)))
     }),
 {
@@ -1172,7 +1172,7 @@ pub fn weak_live<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, nptr: *mut us
             assert(ro.others.contains_key(x));
             assert(ro.others[x].ptr()@.addr == hz.addr[x] - 1);
         }
-        assert forall|x: int| 0 <= x < h.objs.len() && x != j implies #[trigger] obj(h2, x) == obj(h, x)
+        assert forall|x: int| #![trigger obj(h2, x)] 0 <= x < h.objs.len() && x != j implies obj(h2, x) == obj(h, x)
             || (from(h, x) && backing(*c, h, nd.bk, x) && zapped_arr(*c, h, obj(h, x), obj(h2, x))) by {
             assert(obj(h2, x) == obj(hz, x));
         }
@@ -1231,7 +1231,7 @@ pub fn weak_one<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, nptr: *mut usi
         &&& final(np)[6 * i + 3].is_init() && final(np)[6 * i + 3].value() == (if z { ZAPPED } else { 0 })
         &&& h2.loc == h.loc && h2.addr == h.addr && h2.objs.len() == h.objs.len()
         &&& obj(h2, j) == unhide(obj(h, j), nd.ix, nd.bk) || obj(h2, j) == killed(obj(h, j), c.nullid@, true)
-        &&& forall|x: int| 0 <= x < h.objs.len() && x != j ==> #[trigger] obj(h2, x) == obj(h, x)
+        &&& forall|x: int| #![trigger obj(h2, x)] 0 <= x < h.objs.len() && x != j ==> obj(h2, x) == obj(h, x)
                 || (from(h, x) && backing(*c, h, nd.bk, x) && zapped_arr(*c, h, obj(h, x), obj(h2, x)))
     }),
 {
@@ -1263,7 +1263,7 @@ pub fn weak_one<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, nptr: *mut usi
         }
         set_nword(nptr, 6 * i + 3, 0, Ghost(nn as int), Tracked(np));
         proof {
-            assert forall|x: int| 0 <= x < h.objs.len() && x != j implies #[trigger] obj(h2, x) == obj(h, x) by {}
+            assert forall|x: int| #![trigger obj(h2, x)] 0 <= x < h.objs.len() && x != j implies obj(h2, x) == obj(h, x) by {}
             assert(obj(h2, j) == killed(obj(h, j), c.nullid@, true));
             assert(h2.loc == h.loc && h2.addr == h.addr && h2.objs.len() == h.objs.len());
         }
@@ -1272,6 +1272,416 @@ pub fn weak_one<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, nptr: *mut usi
     proof { assert(copied(*st, j)); }
     weak_live(c, src, t, nptr, i, nn, tn0, top0, cur, Ghost(h), Ghost(nd), Ghost(oj), Ghost(n0), Ghost(rptr), Ghost(rv), Ghost(rvp),
               Tracked(st), Tracked(ro), Tracked(np))
+}
+
+
+/// Word `q` of the node array is a callback node's mark (verdict) word.
+pub open spec fn mark_word(q: int, ncb: int) -> bool { 0 <= q && q % 6 == 3 && q / 6 < ncb }
+
+/// How the weak pass may have changed object `x` (relative to the hidden
+/// heap `hs`): not at all; a hidden map got its fields back or was reset;
+/// an array of a hidden map's backing list had values nulled.
+pub open spec fn wchanged(c: Ctx, hs: H, hw: H, nodes2: Seq<Node>, ncb: int, x: int) -> bool {
+    ||| obj(hw, x) == obj(hs, x)
+    ||| exists|m: int| 0 <= m < ncb && (#[trigger] nodes2[m]).hid && nodes2[m].key == AVal::Ref(x)
+            && (obj(hw, x) == unhide(obj(hs, x), nodes2[m].ix, nodes2[m].bk) || obj(hw, x) == killed(obj(hs, x), c.nullid@, true))
+    ||| from(hs, x) && zapped_arr(c, hs, obj(hs, x), obj(hw, x))
+            && exists|m: int| 0 <= m < ncb && (#[trigger] nodes2[m]).hid && backing(c, hs, nodes2[m].bk, x)
+}
+
+/// The weak pass's result: every hidden map restored or reset, arrays
+/// zapped, the nodes marked.
+pub open spec fn weak_ok(c: Ctx, hs: H, hw: H, nodes2: Seq<Node>, nodesw: Seq<Node>, ncb: int) -> bool {
+    &&& hw.loc == hs.loc && hw.addr == hs.addr && hw.objs.len() == hs.objs.len()
+    &&& nodesw.len() == nodes2.len()
+    &&& forall|m: int| 0 <= m < nodes2.len() ==> #[trigger] nodesw[m] == (Node { zap: nodesw[m].zap, ..nodes2[m] })
+    &&& forall|m: int| 0 <= m < nodes2.len() && (#[trigger] nodesw[m]).zap ==> nodes2[m].hid && m < ncb
+    &&& forall|m: int| 0 <= m < ncb && (#[trigger] nodes2[m]).hid ==>
+            obj(hw, nodes2[m].key->Ref_0) == unhide(obj(hs, nodes2[m].key->Ref_0), nodes2[m].ix, nodes2[m].bk)
+            || obj(hw, nodes2[m].key->Ref_0) == killed(obj(hs, nodes2[m].key->Ref_0), c.nullid@, true)
+    &&& forall|x: int| 0 <= x < hs.objs.len() ==> #[trigger] wchanged(c, hs, hw, nodes2, ncb, x)
+}
+
+/// Zapping twice is zapping (headers unchanged in between).
+pub proof fn lemma_zap_trans(c: Ctx, hs: H, hc: H, os: AObj, oc: AObj, o2: AObj)
+    requires
+        zapped_arr(c, hs, os, oc), zapped_arr(c, hc, oc, o2), hc.objs.len() == hs.objs.len(),
+        forall|y: int| #![trigger obj(hc, y)] 0 <= y < hs.objs.len() ==> hcid(hdr(obj(hc, y))) == hcid(hdr(obj(hs, y))),
+        !(c.nullid@ < hs.objs.len() && 0 <= c.nullid@) || true,
+        hdr(oc) == hdr(os),
+    ensures zapped_arr(c, hs, os, o2),
+{
+    assert forall|k: int| 0 <= k < os.words.len() implies #[trigger] o2.words[k] == os.words[k]
+        || (2 <= k && (k - 2) % 2 == 1 && o2.words[k] == AVal::Ref(c.nullid@) && os.words[k] is Ref
+            && 0 <= os.words[k]->Ref_0 < hs.objs.len() && hcid(hdr(obj(hs, os.words[k]->Ref_0))) != c.tomb_cid) by {
+        assert(oc.words[k] == os.words[k] || (2 <= k && (k - 2) % 2 == 1 && oc.words[k] == AVal::Ref(c.nullid@) && os.words[k] is Ref
+            && 0 <= os.words[k]->Ref_0 < hs.objs.len() && hcid(hdr(obj(hs, os.words[k]->Ref_0))) != c.tomb_cid));
+        assert(o2.words[k] == oc.words[k] || (2 <= k && (k - 2) % 2 == 1 && o2.words[k] == AVal::Ref(c.nullid@) && oc.words[k] is Ref
+            && 0 <= oc.words[k]->Ref_0 < hc.objs.len() && hcid(hdr(obj(hc, oc.words[k]->Ref_0))) != c.tomb_cid));
+        if o2.words[k] != oc.words[k] && oc.words[k] == os.words[k] {
+            let y = os.words[k]->Ref_0;
+            assert(hcid(hdr(obj(hc, y))) == hcid(hdr(obj(hs, y))));
+        }
+    }
+}
+
+/// The weak pass (after the main scan, before the finalizer pass): each
+/// hidden weak map's node in order (`weak_one`).
+pub fn weak_pass<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, nptr: *mut usize, ncb: usize, nn: usize,
+                                tn0: usize, top0: usize,
+                                Ghost(h): Ghost<H>, Ghost(hs): Ghost<H>, Ghost(nodes): Ghost<Seq<Node>>, Ghost(nodes2): Ghost<Seq<Node>>,
+                                Ghost(n0): Ghost<int>,
+                                Ghost(rptr): Ghost<*mut usize>, Ghost(rv): Ghost<Seq<AVal>>, Ghost(rvp): Ghost<Seq<AVal>>,
+                                Tracked(st): Tracked<&mut St>, Tracked(ro): Tracked<&Ro>,
+                                Tracked(np): Tracked<&mut Map<int, PointsTo<usize>>>) -> (r: (Ghost<H>, Ghost<Seq<Node>>))
+    requires
+        ctx_ok(*c), fpages_ok(*c), ftab_ok(*c, ro.ftp), heap_ok(*c, hs), others_ok(hs, ro.others), ctab_ok(*c, ro.ctp),
+        heap_ok(*c, h),
+        inv(*c, hs, *old(st), *old(t), n0, 0, rvp), roots_ok(*c, hs, *old(st), rptr, rv, rv.len() as int),
+        src_ok(*c, *old(src), *old(t)),
+        0 <= n0 <= old(st).order.len(), tn0 <= old(t).tn,
+        n0 == 0 ==> tn0 == 0,
+        n0 >= 1 ==> tn0 >= 1 && tpg(*old(st), n0 - 1) == tn0 - 1 && tend(hs, *old(st), n0 - 1) == top0,
+        c.map_cid != c.list_cid,
+        ncb <= nn, nodes.len() == nn,
+        hide_ok(*c, h, hs, nodes, nodes2, ncb as int),
+        rvp == fin_roots(rv, nodes2),
+        keys_ok(h, nodes, ncb as int),
+        forall|m: int| 0 <= m < nn ==> slot_ok(*c, h.objs.len() as int, (#[trigger] nodes[m]).key),
+        nodes_mem(*old(np), nptr, nn as int),
+        forall|m: int| 0 <= m < ncb ==> (#[trigger] old(np)[6 * m + 1]).is_init() && old(np)[6 * m + 1].value() == enc(h.addr, nodes[m].key),
+        forall|m: int| 0 <= m < ncb ==> (#[trigger] old(np)[6 * m + 3]).is_init()
+            && old(np)[6 * m + 3].value() == (if nodes2[m].hid { HIDDEN } else { 0 }),
+        forall|m: int| 0 <= m < ncb && (#[trigger] nodes2[m]).hid ==>
+            old(np)[6 * m + 4].is_init() && old(np)[6 * m + 4].value() == enc(h.addr, nodes2[m].ix)
+            && old(np)[6 * m + 5].is_init() && old(np)[6 * m + 5].value() == enc(h.addr, nodes2[m].bk),
+    ensures ({
+        let hw = r.0@;
+        let nodesw = r.1@;
+        &&& heap_ok(*c, hw) && others_ok(hw, ro.others)
+        &&& inv(*c, hw, *final(st), *final(t), n0, 0, rvp) && roots_ok(*c, hw, *final(st), rptr, rv, rv.len() as int)
+        &&& src_ok(*c, *final(src), *final(t))
+        &&& grows(hs, *old(st), *final(st)) && final(st).addr2.len() == old(st).addr2.len()
+        &&& final(t).ttab == old(t).ttab && final(t).tused == old(t).tused && final(t).tcap == old(t).tcap
+            && final(t).rs == old(t).rs && final(t).mx == old(t).mx && old(t).tn <= final(t).tn
+        &&& weak_ok(*c, hs, hw, nodes2, nodesw, ncb as int)
+        &&& nodes_mem(*final(np), nptr, nn as int)
+        &&& forall|q: int| !mark_word(q, ncb as int) ==> #[trigger] final(np)[q] == old(np)[q]
+        &&& forall|m: int| 0 <= m < ncb ==> (#[trigger] final(np)[6 * m + 3]).is_init()
+                && (final(np)[6 * m + 3].value() == ZAPPED) == nodesw[m].zap
+    }),
+{
+    let ghost s0 = *st;
+    let ghost t0 = *t;
+    let ghost np0 = *np;
+    let ghost mut hc = hs;
+    let ghost mut nc = nodes2.map_values(|nd: Node| Node { zap: false, ..nd });
+    let mut i: usize = 0;
+    proof {
+        lemma_grows_refl(hs, s0);
+        assert forall|x: int| 0 <= x < hs.objs.len() implies #[trigger] wchanged(*c, hs, hc, nodes2, ncb as int, x) by {}
+    }
+    while i < ncb
+        invariant
+            ctx_ok(*c), fpages_ok(*c), ftab_ok(*c, ro.ftp), heap_ok(*c, hs), ctab_ok(*c, ro.ctp), heap_ok(*c, h),
+            heap_ok(*c, hc), others_ok(hc, ro.others),
+            inv(*c, hc, *st, *t, n0, 0, rvp), roots_ok(*c, hc, *st, rptr, rv, rv.len() as int),
+            src_ok(*c, *src, *t),
+            0 <= n0 <= s0.order.len(), tn0 <= t0.tn, t0.tn <= t.tn,
+            n0 == 0 ==> tn0 == 0,
+            n0 >= 1 ==> tn0 >= 1 && tpg(s0, n0 - 1) == tn0 - 1 && tend(hs, s0, n0 - 1) == top0,
+            grows(hs, s0, *st), st.addr2.len() == s0.addr2.len(), s0.addr2.len() == hs.objs.len(),
+            t.ttab == t0.ttab, t.tused == t0.tused, t.tcap == t0.tcap, t.rs == t0.rs, t.mx == t0.mx,
+            c.map_cid != c.list_cid,
+            i <= ncb, ncb <= nn, nodes.len() == nn, nc.len() == nn,
+            hide_ok(*c, h, hs, nodes, nodes2, ncb as int),
+            rvp == fin_roots(rv, nodes2),
+            keys_ok(h, nodes, ncb as int),
+            forall|y: int| #![trigger size(hc, y)] 0 <= y < hs.objs.len() ==> size(hc, y) == size(hs, y),
+            forall|m: int| 0 <= m < nn ==> slot_ok(*c, h.objs.len() as int, (#[trigger] nodes[m]).key),
+            hc.loc == hs.loc, hc.addr == hs.addr, hc.objs.len() == hs.objs.len(),
+            forall|y: int| #![trigger obj(hc, y)] 0 <= y < hs.objs.len() ==> hcid(hdr(obj(hc, y))) == hcid(hdr(obj(hs, y)))
+                && htag(hdr(obj(hc, y))) == htag(hdr(obj(hs, y))),
+            forall|m: int| 0 <= m < nn ==> #[trigger] nc[m] == (Node { zap: nc[m].zap, ..nodes2[m] }),
+            forall|m: int| 0 <= m < nn && (#[trigger] nc[m]).zap ==> nodes2[m].hid && m < i,
+            forall|m: int| i <= m < ncb && (#[trigger] nodes2[m]).hid ==> obj(hc, nodes2[m].key->Ref_0) == obj(hs, nodes2[m].key->Ref_0),
+            forall|m: int| 0 <= m < i && (#[trigger] nodes2[m]).hid ==>
+                obj(hc, nodes2[m].key->Ref_0) == unhide(obj(hs, nodes2[m].key->Ref_0), nodes2[m].ix, nodes2[m].bk)
+                || obj(hc, nodes2[m].key->Ref_0) == killed(obj(hs, nodes2[m].key->Ref_0), c.nullid@, true),
+            forall|x: int| 0 <= x < hs.objs.len() ==> #[trigger] wchanged(*c, hs, hc, nodes2, ncb as int, x),
+            nodes_mem(*np, nptr, nn as int),
+            forall|q: int| !mark_word(q, ncb as int) ==> #[trigger] np[q] == np0[q],
+            forall|m: int| i <= m < ncb ==> #[trigger] np[6 * m + 3] == np0[6 * m + 3],
+            forall|m: int| 0 <= m < i ==> (#[trigger] np[6 * m + 3]).is_init() && (np[6 * m + 3].value() == ZAPPED) == nc[m].zap,
+            forall|m: int| 0 <= m < ncb ==> (#[trigger] np0[6 * m + 1]).is_init() && np0[6 * m + 1].value() == enc(h.addr, nodes[m].key),
+            forall|m: int| 0 <= m < ncb ==> (#[trigger] np0[6 * m + 3]).is_init()
+                && np0[6 * m + 3].value() == (if nodes2[m].hid { HIDDEN } else { 0 }),
+            forall|m: int| 0 <= m < ncb && (#[trigger] nodes2[m]).hid ==>
+                np0[6 * m + 4].is_init() && np0[6 * m + 4].value() == enc(h.addr, nodes2[m].ix)
+                && np0[6 * m + 5].is_init() && np0[6 * m + 5].value() == enc(h.addr, nodes2[m].bk),
+        decreases ncb - i,
+    {
+        let ghost ii = i as int;
+        proof {
+            assert(np[6 * ii + 3] == np0[6 * ii + 3]);
+            assert(np0[6 * ii + 3].is_init());
+        }
+        let mk = nword(nptr, 6 * i + 3, Ghost(nn as int), Tracked(&*np));
+        if mk == HIDDEN {
+            let ghost nd = nodes2[ii];
+            let ghost j = nd.key->Ref_0;
+            let ghost oj = obj(h, j);
+            let ghost h1 = hc;
+            let ghost s1 = *st;
+            let ghost np1 = *np;
+            proof {
+                assert(nd.hid);
+                assert(nodes2[ii] == (Node { ix: nd.ix, bk: nd.bk, hid: nd.hid, ..nodes[ii] }));
+                assert(obj(hc, j) == obj(hs, j));
+                assert(obj(hs, j) == hidden(oj));
+                lemma_from_obj(*c, h, j);
+                assert(slots_ok(*c, h, j));
+                assert(lay(oj).lo == 1 && lay(oj).hi >= 5);
+                assert(slot_ok(*c, h.objs.len() as int, oj.words[3]) && slot_ok(*c, h.objs.len() as int, oj.words[4]));
+                assert(from(hc, j));
+                assert(!mark_word(6 * ii + 1, ncb as int));
+                assert(np[6 * ii + 1] == np0[6 * ii + 1]);
+                assert(!mark_word(6 * ii + 4, ncb as int));
+                assert(np[6 * ii + 4] == np0[6 * ii + 4]);
+                assert(!mark_word(6 * ii + 5, ncb as int));
+                assert(np[6 * ii + 5] == np0[6 * ii + 5]);
+                assert(nd.key == nodes[ii].key);
+                let ki = rv.len() + 4 * ii;
+                assert(rvp.len() == rv.len() + 4 * nodes2.len());
+                assert(rvp[ki + 2] == nodes2[(4 * ii + 2) / 4].ix);
+                assert((4 * ii + 2) / 4 == ii && (4 * ii + 2) % 4 == 2) by (nonlinear_arith) requires ii >= 0;
+                assert((4 * ii + 3) / 4 == ii && (4 * ii + 3) % 4 == 3) by (nonlinear_arith) requires ii >= 0;
+                assert(rvp[ki + 2] == nd.ix && rvp[ki + 3] == nd.bk);
+                if n0 >= 1 {
+                    assert(s1.tloc[n0 - 1] == s0.tloc[n0 - 1] && s1.order[n0 - 1] == s0.order[n0 - 1]);
+                    assert(size(hc, s0.order[n0 - 1]) == size(hs, s0.order[n0 - 1]));
+                }
+            }
+            let r = weak_one(c, src, t, nptr, i, nn, tn0, top0, Ghost(hc), Ghost(nd), Ghost(oj), Ghost(n0), Ghost(rptr), Ghost(rv), Ghost(rvp),
+                             Tracked(st), Tracked(ro), Tracked(np));
+            proof {
+                let h2 = r.0@;
+                let z = r.1@;
+                let s2 = *st;
+                assert(bk_ok(hc, s1));
+                lemma_grows_trans(hs, s0, s1, s2);
+                let nc2 = nc.update(ii, Node { zap: z, ..nd });
+                lemma_wstep(*c, h, hs, h1, h2, nodes, nodes2, ncb as int, ii, oj);
+                assert forall|m: int| 0 <= m < nn implies #[trigger] nc2[m] == (Node { zap: nc2[m].zap, ..nodes2[m] }) by {
+                    if m != ii { assert(nc[m] == (Node { zap: nc[m].zap, ..nodes2[m] })); }
+                }
+                assert forall|m: int| 0 <= m < nn && (#[trigger] nc2[m]).zap implies nodes2[m].hid && m < i + 1 by {
+                    if m != ii { assert(nc[m].zap); }
+                }
+                assert forall|q: int| !mark_word(q, ncb as int) implies #[trigger] np[q] == np0[q] by {
+                    assert(np1[q] == np0[q]);
+                    assert(q != 6 * ii + 3) by { if q == 6 * ii + 3 { assert(mark_word(q, ncb as int)); } }
+                }
+                assert forall|m: int| i + 1 <= m < ncb implies #[trigger] np[6 * m + 3] == np0[6 * m + 3] by {
+                    assert(np1[6 * m + 3] == np0[6 * m + 3]);
+                }
+                assert forall|m: int| 0 <= m < i + 1 implies (#[trigger] np[6 * m + 3]).is_init() && (np[6 * m + 3].value() == ZAPPED) == nc2[m].zap by {
+                    if m < i { assert(np[6 * m + 3] == np1[6 * m + 3]); }
+                }
+                assert forall|m: int| i + 1 <= m < ncb && (#[trigger] nodes2[m]).hid implies obj(h2, nodes2[m].key->Ref_0) == obj(hs, nodes2[m].key->Ref_0) by {}
+                hc = h2;
+                nc = nc2;
+            }
+        } else {
+            proof {
+                assert(!nodes2[ii].hid);
+                assert(!nc[ii].zap);
+                assert(np[6 * ii + 3].value() == 0);
+            }
+        }
+        i += 1;
+    }
+    proof {
+        assert forall|m: int| 0 <= m < ncb && (#[trigger] nodes2[m]).hid implies
+            obj(hc, nodes2[m].key->Ref_0) == unhide(obj(hs, nodes2[m].key->Ref_0), nodes2[m].ix, nodes2[m].bk)
+            || obj(hc, nodes2[m].key->Ref_0) == killed(obj(hs, nodes2[m].key->Ref_0), c.nullid@, true) by {}
+        assert(weak_ok(*c, hs, hc, nodes2, nc, ncb as int));
+    }
+    (Ghost(hc), Ghost(nc))
+}
+
+
+/// One step of the weak pass on the heap facts (`weak_one`'s result).
+pub proof fn lemma_wstep(c: Ctx, h: H, hs: H, h1: H, h2: H, nodes: Seq<Node>, nodes2: Seq<Node>, ncb: int, i: int, oj: AObj)
+    requires
+        ctx_ok(c), heap_ok(c, h), heap_ok(c, h1), hide_ok(c, h, hs, nodes, nodes2, ncb), keys_ok(h, nodes, ncb), c.map_cid != c.list_cid,
+        0 <= i < ncb, ncb <= nodes.len(), nodes2[i].hid, oj == obj(h, nodes2[i].key->Ref_0), heap_ok(c, hs),
+        h1.loc == hs.loc, h1.addr == hs.addr, h1.objs.len() == hs.objs.len(),
+        forall|y: int| #![trigger size(h1, y)] 0 <= y < hs.objs.len() ==> size(h1, y) == size(hs, y),
+        forall|y: int| #![trigger obj(h1, y)] 0 <= y < hs.objs.len() ==> hcid(hdr(obj(h1, y))) == hcid(hdr(obj(hs, y)))
+            && htag(hdr(obj(h1, y))) == htag(hdr(obj(hs, y))),
+        forall|m: int| i <= m < ncb && (#[trigger] nodes2[m]).hid ==> obj(h1, nodes2[m].key->Ref_0) == obj(hs, nodes2[m].key->Ref_0),
+        forall|m: int| 0 <= m < i && (#[trigger] nodes2[m]).hid ==>
+            obj(h1, nodes2[m].key->Ref_0) == unhide(obj(hs, nodes2[m].key->Ref_0), nodes2[m].ix, nodes2[m].bk)
+            || obj(h1, nodes2[m].key->Ref_0) == killed(obj(hs, nodes2[m].key->Ref_0), c.nullid@, true),
+        forall|x: int| 0 <= x < hs.objs.len() ==> #[trigger] wchanged(c, hs, h1, nodes2, ncb, x),
+        h2.loc == h1.loc && h2.addr == h1.addr && h2.objs.len() == h1.objs.len(),
+        obj(h2, nodes2[i].key->Ref_0) == unhide(obj(h1, nodes2[i].key->Ref_0), nodes2[i].ix, nodes2[i].bk)
+            || obj(h2, nodes2[i].key->Ref_0) == killed(obj(h1, nodes2[i].key->Ref_0), c.nullid@, true),
+        forall|x: int| #![trigger obj(h2, x)] 0 <= x < h1.objs.len() && x != nodes2[i].key->Ref_0 ==> obj(h2, x) == obj(h1, x)
+            || (from(h1, x) && backing(c, h1, nodes2[i].bk, x) && zapped_arr(c, h1, obj(h1, x), obj(h2, x))),
+    ensures
+        forall|y: int| #![trigger size(h2, y)] 0 <= y < hs.objs.len() ==> size(h2, y) == size(hs, y),
+        forall|y: int| #![trigger obj(h2, y)] 0 <= y < hs.objs.len() ==> hcid(hdr(obj(h2, y))) == hcid(hdr(obj(hs, y)))
+            && htag(hdr(obj(h2, y))) == htag(hdr(obj(hs, y))),
+        forall|m: int| i + 1 <= m < ncb && (#[trigger] nodes2[m]).hid ==> obj(h2, nodes2[m].key->Ref_0) == obj(hs, nodes2[m].key->Ref_0),
+        forall|m: int| 0 <= m < i + 1 && (#[trigger] nodes2[m]).hid ==>
+            obj(h2, nodes2[m].key->Ref_0) == unhide(obj(hs, nodes2[m].key->Ref_0), nodes2[m].ix, nodes2[m].bk)
+            || obj(h2, nodes2[m].key->Ref_0) == killed(obj(hs, nodes2[m].key->Ref_0), c.nullid@, true),
+        forall|x: int| 0 <= x < hs.objs.len() ==> #[trigger] wchanged(c, hs, h2, nodes2, ncb, x),
+{
+    let ii = i;
+    let nd = nodes2[i];
+    let j = nd.key->Ref_0;
+    assert(nodes2[ii] == (Node { ix: nd.ix, bk: nd.bk, hid: nd.hid, ..nodes[ii] }));
+    assert(from(h, j) && weak_map(c, oj) && obj(hs, j) == hidden(oj));
+    assert(obj(h1, j) == obj(hs, j));
+    lemma_from_obj(c, h, j);
+        assert forall|y: int| #![trigger size(h2, y)] 0 <= y < hs.objs.len() implies size(h2, y) == size(hs, y) by {
+            assert(size(h1, y) == size(hs, y));
+            if 0 <= y < hs.objs.len() && obj(h2, y) != obj(h1, y) {
+                if y == j {
+                    lemma_from_obj(c, h1, j);
+                    if obj(h2, j) == killed(obj(h1, j), c.nullid@, true) {
+                        assert(obj(h1, j) == hidden(oj) && hdr(obj(h1, j)) == hdr(oj) && active(obj(h1, j)));
+                        assert(from(h1, j));
+                        lemma_killed_shape(c, h1, j, true);
+                        assert(lay(obj(h2, j)) == lay(obj(h1, j)));
+                    } else {
+                        assert(obj(h1, j) == hidden(oj) && htag(hdr(oj)) == INSTANCE_TAG);
+                        assert(obj(h2, j).words[0] == obj(h1, j).words[0] && obj(h2, j).words[1] == obj(h1, j).words[1]);
+                        assert(obj(h2, j).words.len() == obj(h1, j).words.len() && obj(h2, j).cbits == obj(h1, j).cbits);
+                        assert(lay(obj(h2, j)) == lay(obj(h1, j)));
+                    }
+                } else {
+                    assert(zapped_arr(c, h1, obj(h1, y), obj(h2, y)));
+                    assert(obj_ok(obj(h1, y)));
+                    assert(obj(h1, y).words.len() >= 2);
+                    assert(obj(h2, y).words[0] == obj(h1, y).words[0]);
+                    assert(obj(h2, y).words[1] == obj(h1, y).words[1]);
+                    assert(htag(hdr(obj(h1, y))) == ARRAY_TAG);
+                    assert(lay(obj(h2, y)) == lay(obj(h1, y)));
+                }
+            }
+        }
+        // Headers keep their class ids and tags.
+        assert forall|y: int| #![trigger obj(h2, y)] 0 <= y < hs.objs.len() implies hcid(hdr(obj(h2, y))) == hcid(hdr(obj(hs, y)))
+            && htag(hdr(obj(h2, y))) == htag(hdr(obj(hs, y))) by {
+            assert(hcid(hdr(obj(h1, y))) == hcid(hdr(obj(hs, y))) && htag(hdr(obj(h1, y))) == htag(hdr(obj(hs, y))));
+            if y == j {
+                if obj(h2, j) == killed(obj(h1, j), c.nullid@, true) {
+                    lemma_clear_bit(hdr(obj(h1, j)));
+                    assert(hdr(obj(h1, j)) == hdr(oj));
+                    if resettable(obj(h1, j)) { assert(hdr(reset(obj(h1, j), c.nullid@)) == hdr(obj(h1, j))); }
+                } else {
+                    assert(hdr(obj(h2, j)) == hdr(obj(h1, j)));
+                }
+            } else if obj(h2, y) != obj(h1, y) {
+                assert(zapped_arr(c, h1, obj(h1, y), obj(h2, y)));
+                assert(obj_ok(obj(h1, y)));
+                assert(obj(h2, y).words[0] == obj(h1, y).words[0]);
+            }
+        }
+        assert forall|x: int| 0 <= x < hs.objs.len() implies #[trigger] wchanged(c, hs, h2, nodes2, ncb as int, x) by {
+            assert(wchanged(c, hs, h1, nodes2, ncb as int, x));
+            if x == j {
+                assert(obj(h1, j) == obj(hs, j));
+                assert(0 <= ii < ncb && nodes2[ii].hid && nodes2[ii].key == AVal::Ref(x));
+            } else if obj(h2, x) != obj(h1, x) {
+                // A zapped array of this map's backing list.
+                let l = nd.bk->Ref_0;
+                assert(backing(c, h1, nd.bk, x));
+                assert(obj(h1, l) == obj(hs, l)) by {
+                    if obj(h1, l) != obj(hs, l) {
+                        assert(wchanged(c, hs, h1, nodes2, ncb as int, l));
+                        assert(hcid(hdr(obj(h1, l))) == hcid(hdr(obj(hs, l))) && htag(hdr(obj(h1, l))) == htag(hdr(obj(hs, l))));
+                        if exists|m: int| 0 <= m < ncb && (#[trigger] nodes2[m]).hid && nodes2[m].key == AVal::Ref(l) {
+                            let m = choose|m: int| 0 <= m < ncb && (#[trigger] nodes2[m]).hid && nodes2[m].key == AVal::Ref(l);
+                            assert(weak_map(c, obj(h, l)));
+                            assert(obj(hs, l) == hidden(obj(h, l)));
+                            assert(hdr(obj(hs, l)) == hdr(obj(h, l)));
+                            assert(false);
+                        } else {
+                            assert(zapped_arr(c, hs, obj(hs, l), obj(h1, l)));
+                            assert(false);
+                        }
+                    }
+                }
+                assert(backing(c, hs, nd.bk, x));
+                assert(hdr(obj(h1, x)) == hdr(obj(hs, x))) by {
+                    if obj(h1, x) != obj(hs, x) {
+                        assert(zapped_arr(c, h1, obj(h1, x), obj(h2, x)));
+                        assert(htag(hdr(obj(h1, x))) == htag(hdr(obj(hs, x))));
+                        assert(obj_ok(obj(hs, x)) && obj_ok(obj(h1, x)));
+                        if exists|m: int| 0 <= m < ncb && (#[trigger] nodes2[m]).hid && nodes2[m].key == AVal::Ref(x) {
+                            let m = choose|m: int| 0 <= m < ncb && (#[trigger] nodes2[m]).hid && nodes2[m].key == AVal::Ref(x);
+                            assert(htag(hdr(obj(h1, x))) == htag(hdr(obj(hs, x))));
+                            assert(weak_map(c, obj(h, x)) && obj(hs, x) == hidden(obj(h, x)));
+                            assert(zapped_arr(c, h1, obj(h1, x), obj(h2, x)));
+                            assert(false);
+                        } else {
+                            assert(zapped_arr(c, hs, obj(hs, x), obj(h1, x)));
+                        }
+                    }
+                }
+                if obj(h1, x) == obj(hs, x) {
+                    assert(zapped_arr(c, hs, obj(hs, x), obj(h2, x))) by {
+                        assert forall|y: int| #![trigger obj(h1, y)] 0 <= y < hs.objs.len() implies hcid(hdr(obj(h1, y))) == hcid(hdr(obj(hs, y))) by {}
+                        assert forall|k: int| 0 <= k < obj(hs, x).words.len() implies #[trigger] obj(h2, x).words[k] == obj(hs, x).words[k]
+                            || (2 <= k && (k - 2) % 2 == 1 && obj(h2, x).words[k] == AVal::Ref(c.nullid@) && obj(hs, x).words[k] is Ref
+                                && 0 <= obj(hs, x).words[k]->Ref_0 < hs.objs.len()
+                                && hcid(hdr(obj(hs, obj(hs, x).words[k]->Ref_0))) != c.tomb_cid) by {
+                            if obj(h2, x).words[k] != obj(hs, x).words[k] {
+                                let y = obj(hs, x).words[k]->Ref_0;
+                                assert(hcid(hdr(obj(h1, y))) == hcid(hdr(obj(hs, y))));
+                            }
+                        }
+                    }
+                } else {
+                    assert(zapped_arr(c, hs, obj(hs, x), obj(h1, x)));
+                    lemma_zap_trans(c, hs, h1, obj(hs, x), obj(h1, x), obj(h2, x));
+                }
+                assert(0 <= ii < ncb && nodes2[ii].hid);
+            }
+        }
+        assert forall|m: int| i + 1 <= m < ncb && (#[trigger] nodes2[m]).hid implies
+            obj(h2, nodes2[m].key->Ref_0) == obj(hs, nodes2[m].key->Ref_0) by {
+            let jm = nodes2[m].key->Ref_0;
+            assert(nodes2[m].key == nodes[m].key && nodes2[ii].key == nodes[ii].key);
+            assert(nodes[m].key != nodes[ii].key);
+            assert(obj(h1, jm) == obj(hs, jm));
+            if obj(h2, jm) != obj(h1, jm) {
+                assert(zapped_arr(c, h1, obj(h1, jm), obj(h2, jm)));
+                assert(weak_map(c, obj(h, jm)) && obj(hs, jm) == hidden(obj(h, jm)));
+                assert(hdr(obj(hs, jm)) == hdr(obj(h, jm)));
+                assert(false);
+            }
+        }
+        assert forall|m: int| 0 <= m < i + 1 && (#[trigger] nodes2[m]).hid implies
+            obj(h2, nodes2[m].key->Ref_0) == unhide(obj(hs, nodes2[m].key->Ref_0), nodes2[m].ix, nodes2[m].bk)
+            || obj(h2, nodes2[m].key->Ref_0) == killed(obj(hs, nodes2[m].key->Ref_0), c.nullid@, true) by {
+            let jm = nodes2[m].key->Ref_0;
+            if m < i {
+                assert(nodes[m].key != nodes[ii].key);
+                if obj(h2, jm) != obj(h1, jm) {
+                    assert(zapped_arr(c, h1, obj(h1, jm), obj(h2, jm)));
+                    assert(htag(hdr(obj(h1, jm))) == htag(hdr(obj(hs, jm))));
+                    assert(weak_map(c, obj(h, jm)) && obj(hs, jm) == hidden(obj(h, jm)));
+                    assert(hdr(obj(hs, jm)) == hdr(obj(h, jm)));
+                    assert(false);
+                }
+            }
+        }
 }
 
 } // verus!
