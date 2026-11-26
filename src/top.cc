@@ -99,7 +99,7 @@ void* operator new(size_t size) {
 }
 
 // Override new operator (no-expections version) so we can log allocations.
-void* operator new(size_t size, const std::nothrow_t& tag) {
+void* operator new(size_t size, const std::nothrow_t& tag) noexcept {
   return malloc(size);
 }
 
@@ -114,7 +114,7 @@ void* operator new[](size_t size) {
 }
 
 // Override new[] operator (no-exceptions version) so we can log allocations.
-void* operator new[](size_t size, const std::nothrow_t& tag) {
+void* operator new[](size_t size, const std::nothrow_t& tag) noexcept {
   return malloc(size);
 }
 
