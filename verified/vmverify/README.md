@@ -584,7 +584,10 @@ the verifier is the checker, heap check, other spec code and this crate):
 
 (The core's run loop grew by 0.7-1.1 KB: the policy-table lookup and the
 denied-primitive completion; `PrimitivePolicy::core_arities` is gone from
-the C++.) Agreement: before the two-pass checker was removed, both checked
+the C++.) Classic ESP32 f2 firmware (measure-3's configuration): toit.bin
+1,463,792 -> 1,461,632 B, the pinned verifier code (hot flash group B)
+49,013 -> 45,527 B, IRAM +948 B (the run loop), DRAM +992 B (artifacts
+single-pass/logs/firmware-esp32.txt). Agreement: before the two-pass checker was removed, both checked
 60,000 mutants (5,000 certificate and 5,000 method-body mutants of each
 program): every verdict equal (artifacts single-pass/logs/cross-v1-*.txt).
 Not measured here: device time (the lead's run) and the hand-tuned
