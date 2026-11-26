@@ -15,6 +15,7 @@
 
 #include "sandbox_gc.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -476,6 +477,93 @@ void GcStats::record_copying(uword from_pages, uword to_pages, uword copied, uwo
   note_pages(from_pages + to_pages);
 }
 
+// --- Heap dumps for the differential test of the proved collector -----------
+
+#ifndef TOIT_FREERTOS
+// With TOIT_GC_DUMP=DIR, every copying collection writes the heap before it
+// (DIR/gc-PID-N-before.bin) and after it (-after.bin), up to
+// TOIT_GC_DUMP_MAX (default 50) collections per process: the pages, the
+// root values (ObjectHeap::iterate_roots) and what is needed to read the
+// objects (word size, page bytes, the stack array word, the null object's
+// address, the class bits). verified/gc/tests/difftest.rs runs the proved
+// collector on each "before" and compares its result with "after" up to
+// renumbering. Host only, test only.
+
+// Writes each root value as it is visited; the count goes before them.
+class RootRecorder : public RootCallback {
+ public:
+  explicit RootRecorder(FILE* file) : file_(file) {
+    count_position_ = ftell(file_);
+    uint64 zero = 0;
+    fwrite(&zero, sizeof(zero), 1, file_);
+  }
+  void do_roots(Object** roots, word length) override {
+    for (word i = 0; i < length; i++) {
+      uint64 v64 = reinterpret_cast<uword>(roots[i]);
+      fwrite(&v64, sizeof(v64), 1, file_);
+      count_++;
+    }
+  }
+  void write() {
+    long end = ftell(file_);
+    fseek(file_, count_position_, SEEK_SET);
+    fwrite(&count_, sizeof(count_), 1, file_);
+    fseek(file_, end, SEEK_SET);
+  }
+
+ private:
+  FILE* file_;
+  long count_position_ = 0;
+  uint64 count_ = 0;
+};
+
+static void write_u64(FILE* file, uint64 v) {
+  fwrite(&v, sizeof(v), 1, file);
+}
+
+static int gc_dump_max() {
+  const char* max = getenv("TOIT_GC_DUMP_MAX");
+  return max != null ? atoi(max) : 50;
+}
+
+void TwoSpaceHeap::dump_copying_heap(const char* phase) {
+  const char* dir = getenv("TOIT_GC_DUMP");
+  if (dir == null || copying_dump_count_ >= gc_dump_max()) return;
+  Process* owner = process();
+  char path[512];
+  snprintf(path, sizeof(path), "%s/gc-%d-%d-%s.bin", dir, owner != null ? owner->id() : -1,
+           copying_dump_count_, phase);
+  FILE* file = fopen(path, "wb");
+  if (file == null) return;
+  semi_space_.flush();
+  write_u64(file, 0x31444347544f4954ULL);  // "TOITGCD1".
+  write_u64(file, WORD_SIZE);
+  write_u64(file, Stack::v2_array_word());
+  write_u64(file, reinterpret_cast<uword>(program_->null_object()));
+  word classes = program_->class_bits.length();
+  write_u64(file, classes);
+  for (word i = 0; i < classes; i++) write_u64(file, static_cast<uint16>(program_->class_bits[i]));
+  uint64 pages = 0;
+  for (auto chunk : semi_space_.chunk_list_) {
+    USE(chunk);
+    pages++;
+  }
+  write_u64(file, pages);
+  for (auto chunk : semi_space_.chunk_list_) {
+    bool last = chunk == semi_space_.chunk_list_.last();
+    uword used = last ? semi_space_.top_ - chunk->start() : chunk->end() - chunk->start();
+    write_u64(file, chunk->start());
+    write_u64(file, chunk->end() - chunk->start());
+    write_u64(file, used);
+    fwrite(reinterpret_cast<void*>(chunk->start()), 1, chunk->end() - chunk->start(), file);
+  }
+  RootRecorder roots(file);
+  process_heap_->iterate_roots(&roots);
+  roots.write();
+  fclose(file);
+}
+#endif
+
 GcType TwoSpaceHeap::collect(bool try_hard) {
   if (stats_ == null && GcStats::enabled()) stats_ = _new GcStats();
   bool stats = stats_ != null;
@@ -496,8 +584,15 @@ GcType TwoSpaceHeap::collect(bool try_hard) {
   if (copying_) {
     malloc_failed_ = false;
     total_bytes_allocated_.fetch_add(new_space_used(), std::memory_order_relaxed);
+#ifndef TOIT_FREERTOS
+    dump_copying_heap("before");
+#endif
     SandboxCopyingCollector collector(this);
     collector.collect();
+#ifndef TOIT_FREERTOS
+    dump_copying_heap("after");
+    if (getenv("TOIT_GC_DUMP") != null) copying_dump_count_++;
+#endif
     copying_pages_since_gc_ = 0;
     copying_cut_window();
     total_bytes_allocated_.fetch_sub(new_space_used(), std::memory_order_relaxed);

@@ -1,0 +1,340 @@
+// Copyright (C) 2026 Toit contributors.
+//
+// This library is free software; you can redistribute it and/or
+// modify it under the terms of the GNU Lesser General Public
+// License as published by the Free Software Foundation; version
+// 2.1 only.
+//
+// This library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+// Lesser General Public License for more details.
+//
+// The license can be found in the file `LICENSE` in the top level
+// directory of this repository.
+
+//! The differential test: the proved collector against the C++ prototype
+//! (src/sandbox_gc.cc) on heaps of real programs.
+//!
+//! With TOIT_GC_DUMP=DIR the VM writes, around every copying collection of
+//! a sandboxed process, the heap before it and after it (src/sandbox_gc.cc,
+//! `TwoSpaceHeap::dump_copying_heap`): pages, root values, class bits, the
+//! stack array word, the null object's address. With TOIT_GC_DIFF=DIR this
+//! test reads every `*-before.bin` under DIR (dumps of this word size),
+//! copies its pages into an arena (relocating the references of the
+//! objects reachable from the roots), runs the proved collector, and walks
+//! its result and the C++ prototype's (`*-after.bin`) from the roots in
+//! parallel: the graphs must be equal up to renumbering. Two differences of
+//! the C++ prototype are expected and counted: it shrinks stacks (the object
+//! stack moves down; the proved collector does not shrink), and it zaps the
+//! values of weak maps no one else reached (null where the proved
+//! collector, which has no weak processing before M4, keeps the reference).
+//! Without TOIT_GC_DIFF the test does nothing.
+
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use toit_gc::model::Ctx;
+use toit_gc::space::PageSource;
+use toit_gc::statement::collect;
+use vstd::prelude::*;
+
+const W: usize = std::mem::size_of::<usize>();
+const CONTENT: usize = 2 * W;
+const SHIFT: usize = 4 * W;
+const MASK: usize = if W == 8 { 0xffff_ffff } else { 0xffff };
+#[cfg(target_pointer_width = "64")]
+const VALUE_WORDS: usize = 1;
+#[cfg(target_pointer_width = "32")]
+const VALUE_WORDS: usize = 2;
+
+struct Page {
+    start: usize,
+    bytes: usize,
+    words: Vec<usize>,
+}
+
+struct Dump {
+    sw: usize,
+    null: usize,
+    cb: Vec<u16>,
+    pages: Vec<Page>,
+    roots: Vec<usize>,
+}
+
+fn read_dump(path: &Path) -> Option<Dump> {
+    let data = std::fs::read(path).ok()?;
+    let mut pos = 0;
+    let mut u64_at = |pos: &mut usize| -> u64 {
+        let v = u64::from_le_bytes(data[*pos..*pos + 8].try_into().unwrap());
+        *pos += 8;
+        v
+    };
+    if u64_at(&mut pos) != 0x3144_4347_544f_4954 { panic!("{}: not a heap dump", path.display()); }
+    if u64_at(&mut pos) as usize != W { return None; } // Another word size.
+    let sw = u64_at(&mut pos) as usize;
+    let null = u64_at(&mut pos) as usize;
+    let ncls = u64_at(&mut pos) as usize;
+    let cb = (0..ncls).map(|_| u64_at(&mut pos) as u16).collect();
+    let npages = u64_at(&mut pos) as usize;
+    let mut pages = vec![];
+    for _ in 0..npages {
+        let start = u64_at(&mut pos) as usize;
+        let bytes = u64_at(&mut pos) as usize;
+        let _used = u64_at(&mut pos);
+        let words = data[pos..pos + bytes].chunks(W).map(|c| usize::from_le_bytes(c.try_into().unwrap())).collect();
+        pos += bytes;
+        pages.push(Page { start, bytes, words });
+    }
+    let nroots = u64_at(&mut pos) as usize;
+    let roots = (0..nroots).map(|_| u64_at(&mut pos) as usize).collect();
+    Some(Dump { sw, null, cb, pages, roots })
+}
+
+impl Dump {
+    /// The word at `a` if it is in a page.
+    fn word(&self, a: usize) -> Option<usize> {
+        for p in &self.pages {
+            if a >= p.start && a < p.start + p.bytes {
+                return Some(p.words[(a - p.start) / W]);
+            }
+        }
+        None
+    }
+    fn in_pages(&self, w: usize) -> bool {
+        w % 2 == 1 && self.word(w - 1).is_some()
+    }
+}
+
+/// The C++ `HeapObject::size` and the reference slots, of the object at
+/// `a` (untagged) read through `word`: (size, lo, hi).
+fn layout(word: &dyn Fn(usize) -> usize, cb: &[u16], sw: usize, a: usize) -> (usize, usize, usize) {
+    let hd = word(a);
+    assert_eq!(hd % 2, 0, "header expected at {:#x}", a);
+    let v = hd >> 1;
+    let (tag, cid) = (v & 15, v >> 5);
+    let s = |n: usize| (n, n, n);
+    match tag {
+        0 => { let n = 2 + word(a + W); (n, 2, n) }
+        1 => {
+            let l = (word(a + W) >> SHIFT) & MASK;
+            s(if l == 0xffff { 4 } else { (CONTENT + l + 1 + W - 1) / W })
+        }
+        2 | 8 => { let n = ((cb[cid] >> 5) & 0x7ff) as usize; (n, 1, n) }
+        3 => s(((cb[cid] >> 5) & 0x7ff) as usize),
+        4 | 6 => s(1 + VALUE_WORDS),
+        5 => {
+            let r = word(a + W) as isize;
+            s(if r >= 0 { (CONTENT + r as usize + W - 1) / W } else { 4 })
+        }
+        7 => { let len = word(a + 2 * W); let top = word(a + 3 * W); (sw + len, sw + top, sw + len) }
+        _ => panic!("tag {} at {:#x}", tag, a),
+    }
+}
+
+struct Arena {
+    words: Vec<usize>,
+    pw: usize,
+    free: Vec<usize>,
+}
+
+impl Arena {
+    fn base(&mut self) -> *mut usize { self.words.as_mut_ptr() }
+    fn addr(&self, page: usize) -> usize { self.words.as_ptr() as usize + page * self.pw * W }
+    fn read(&self, a: usize) -> usize { self.words[(a - self.words.as_ptr() as usize) / W] }
+    fn write(&mut self, a: usize, v: usize) {
+        let i = (a - self.words.as_ptr() as usize) / W;
+        self.words[i] = v;
+    }
+}
+
+struct Source<'a> {
+    arena: &'a mut Arena,
+    reserved: usize,
+    taken: Vec<usize>,
+}
+
+impl<'a> PageSource for Source<'a> {
+    fn reserve(&mut self, n: usize) -> bool {
+        if self.arena.free.len() < n { return false; }
+        self.reserved = n;
+        true
+    }
+    fn take(&mut self, _key: Ghost<int>) -> (usize, Tracked<Map<(int, int), vstd::raw_ptr::PointsTo<usize>>>) {
+        assert!(self.reserved > 0);
+        self.reserved -= 1;
+        let p = self.arena.free.pop().unwrap();
+        let a = self.arena.addr(p);
+        self.taken.push(a);
+        (a, Tracked::assume_new())
+    }
+    fn release(&mut self) { self.reserved = 0; }
+}
+
+#[derive(Default, Debug)]
+struct Stats {
+    pairs: usize,
+    objects: usize,
+    words: usize,
+    zapped: usize,
+    shrunk: usize,
+}
+
+/// Runs the proved collector on `before` and compares with `after`.
+fn diff(before: &Dump, after: &Dump, stats: &mut Stats) -> Result<(), String> {
+    let nf = before.pages.len();
+    let bytes = before.pages[0].bytes;
+    if before.pages.iter().any(|p| p.bytes != bytes) { return Err("pages of different sizes".into()); }
+    let pw = bytes / W;
+    let mut arena = Arena { words: vec![0x5a5a_5a5b; (3 * nf + 2) * pw], pw, free: vec![] };
+    // From-space: the pages in address order at arena pages 0..nf.
+    let mut order: Vec<usize> = (0..nf).collect();
+    order.sort_by_key(|&i| before.pages[i].start);
+    let mut ftab = vec![];
+    let mut reloc: Vec<(usize, usize)> = vec![]; // (old start, new start)
+    for (k, &i) in order.iter().enumerate() {
+        let a = arena.addr(k);
+        for (j, w) in before.pages[i].words.iter().enumerate() { arena.write(a + j * W, *w); }
+        ftab.push(a);
+        reloc.push((before.pages[i].start, a));
+    }
+    arena.free = (nf..3 * nf + 2).rev().collect();
+    let new_addr = |w: usize| -> usize {
+        for (o, n) in &reloc {
+            if w > *o && w < *o + bytes { return n + (w - o); }
+        }
+        w
+    };
+    // Relocate the references of the objects the roots reach.
+    let bword = |a: usize| before.word(a).unwrap();
+    let mut seen = std::collections::HashSet::new();
+    let mut work: Vec<usize> = before.roots.iter().filter(|r| before.in_pages(**r)).cloned().collect();
+    while let Some(r) = work.pop() {
+        if !seen.insert(r) { continue; }
+        let a = r - 1;
+        let (_, lo, hi) = layout(&bword, &before.cb, before.sw, a);
+        for k in lo..hi {
+            let v = bword(a + k * W);
+            if before.in_pages(v) {
+                work.push(v);
+                arena.write(new_addr(r) - 1 + k * W, new_addr(v));
+            }
+        }
+    }
+    let mut roots: Vec<usize> = before.roots.iter().map(|r| if before.in_pages(*r) { new_addr(*r) } else { *r }).collect();
+    let mut cb = before.cb.clone();
+    let tcap = 2 * nf + 1;
+    let mut ttab = vec![0usize; tcap];
+    let mut tused = vec![0usize; tcap];
+    let c = Ctx { base: arena.base(), ftab: ftab.as_mut_ptr(), nf, pw, ctab: cb.as_mut_ptr(), ncls: cb.len(), sw: before.sw,
+                  fss: Ghost::assume_new(), cbs: Ghost::assume_new() };
+    let mut src = Source { arena: &mut arena, reserved: 0, taken: vec![] };
+    let r = collect(&c, &mut src, roots.as_mut_ptr(), roots.len(), ttab.as_mut_ptr(), tused.as_mut_ptr(), tcap,
+                    Ghost::assume_new(), Ghost::assume_new(), Tracked::assume_new(), Tracked::assume_new());
+    let taken = src.taken.clone();
+    let w = r.map_err(|_| "the collection did not start".to_string())?;
+    if w.pages > tcap { return Err("too many pages".into()); }
+    let in_rust = |v: usize| v % 2 == 1 && taken.iter().any(|p| v > *p && v < *p + bytes);
+    // Walk both results from the roots.
+    if roots.len() != after.roots.len() { return Err(format!("{} roots, C++ {}", roots.len(), after.roots.len())); }
+    let aword = |a: usize| after.word(a).unwrap();
+    let rword = |a: usize| arena.read(a);
+    let mut r2c: HashMap<usize, usize> = HashMap::new();
+    let mut c2r: HashMap<usize, usize> = HashMap::new();
+    let mut work: Vec<(usize, usize)> = vec![];
+    let mut pair = |rv: usize, cv: usize, work: &mut Vec<(usize, usize)>, stats: &mut Stats| -> Result<(), String> {
+        if in_rust(rv) {
+            if cv == after.null && !after.in_pages(cv) {
+                stats.zapped += 1;
+                return Ok(());
+            }
+            if !after.in_pages(cv) { return Err(format!("{:#x} copied, C++ {:#x}", rv, cv)); }
+            match (r2c.get(&rv), c2r.get(&cv)) {
+                (None, None) => { r2c.insert(rv, cv); c2r.insert(cv, rv); work.push((rv, cv)); }
+                (Some(c), Some(r)) if *c == cv && *r == rv => {}
+                _ => return Err(format!("not a renumbering at {:#x} / {:#x}", rv, cv)),
+            }
+            Ok(())
+        } else if rv == cv {
+            Ok(())
+        } else {
+            Err(format!("word {:#x}, C++ {:#x}", rv, cv))
+        }
+    };
+    for (i, (rv, cv)) in roots.iter().zip(after.roots.iter()).enumerate() {
+        pair(*rv, *cv, &mut work, stats).map_err(|e| format!("root {}: {}", i, e))?;
+    }
+    while let Some((rv, cv)) = work.pop() {
+        let (ra, ca) = (rv - 1, cv - 1);
+        stats.objects += 1;
+        let hd = rword(ra);
+        if hd != aword(ca) { return Err(format!("header {:#x}, C++ {:#x}", hd, aword(ca))); }
+        let rtag = (hd >> 1) & 15;
+        if rtag == 0 || rtag == 7 { let l = rword(ra + (if rtag == 0 { 1 } else { 2 }) * W); if l > pw { return Err(format!("tag {} length {:#x} at {:#x} (C++ {:#x})", rtag, l, rv, cv)); } }
+        let (size, lo, hi) = layout(&rword, &cb, before.sw, ra);
+        if size > pw { return Err(format!("size {} of {:#x}", size, rv)); }
+        let (csize, clo, chi) = layout(&aword, &cb, before.sw, ca);
+        stats.words += size;
+        if (hd >> 1) & 15 == 7 {
+            // A stack: the C++ prototype may have moved the object stack down.
+            let d = size - csize;
+            if lo - clo != d || hi - chi != d { return Err("stack shrunk unevenly".into()); }
+            if d > 0 { stats.shrunk += 1; }
+            for k in 0..clo {
+                if k == 2 || k == 3 { continue; } // Length and top.
+                if rword(ra + k * W) != aword(ca + k * W) { return Err(format!("stack word {}", k)); }
+            }
+            for k in 0..(hi - lo) {
+                pair(rword(ra + (lo + k) * W), aword(ca + (clo + k) * W), &mut work, stats)
+                    .map_err(|e| format!("stack slot {}: {}", k, e))?;
+            }
+            continue;
+        }
+        if (size, lo, hi) != (csize, clo, chi) { return Err(format!("layout {:?}, C++ {:?}", (size, lo, hi), (csize, clo, chi))); }
+        for k in 1..size {
+            let (x, y) = (rword(ra + k * W), aword(ca + k * W));
+            if k >= lo && k < hi {
+                pair(x, y, &mut work, stats).map_err(|e| format!("slot {} of {:#x}: {}", k, cv, e))?;
+            } else if x != y {
+                return Err(format!("raw word {} of {:#x}: {:#x}, C++ {:#x}", k, cv, x, y));
+            }
+        }
+    }
+    stats.pairs += 1;
+    Ok(())
+}
+
+fn dumps(dir: &Path, out: &mut Vec<PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for e in entries.flatten() {
+        let p = e.path();
+        if p.is_dir() { dumps(&p, out); }
+        else if p.to_string_lossy().ends_with("-before.bin") { out.push(p); }
+    }
+}
+
+#[test]
+fn differential() {
+    let Ok(dir) = std::env::var("TOIT_GC_DIFF") else {
+        eprintln!("TOIT_GC_DIFF not set: no differential test");
+        return;
+    };
+    let mut files = vec![];
+    dumps(Path::new(&dir), &mut files);
+    files.sort();
+    let mut stats = Stats::default();
+    let mut failures = vec![];
+    let mut other_width = 0;
+    for f in &files {
+        let a = PathBuf::from(f.to_string_lossy().replace("-before.bin", "-after.bin"));
+        let Some(before) = read_dump(f) else { other_width += 1; continue };
+        let Some(after) = read_dump(&a) else { continue };
+        if before.pages.is_empty() { continue; }
+        if let Err(e) = diff(&before, &after, &mut stats) {
+            failures.push(format!("{}: {}", f.display(), e));
+        }
+    }
+    eprintln!("differential: {} collections compared ({} of another word size skipped), {:?}", stats.pairs, other_width, stats);
+    for f in &failures { eprintln!("MISMATCH {}", f); }
+    assert!(failures.is_empty(), "{} mismatches", failures.len());
+    assert!(stats.pairs > 0, "no dumps of this word size under {}", dir);
+}

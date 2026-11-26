@@ -159,6 +159,11 @@ class TwoSpaceHeap {
   uword copying_page_budget_ = 0;
   uword copying_pages_since_gc_ = 0;
   void copying_cut_window();
+#ifndef TOIT_FREERTOS
+  // The heap dumps of the differential test (src/sandbox_gc.cc, TOIT_GC_DUMP).
+  void dump_copying_heap(const char* phase);
+  int copying_dump_count_ = 0;
+#endif
   // Allocated at the first collection when TOIT_GC_STATS is set (hosts only).
   GcStats* stats_ = null;
 
