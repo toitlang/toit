@@ -2162,10 +2162,23 @@ The index grows when occupancy hits about 90%.  See the comment at
 Since we want to be able to iterate the keys and values by simply walking
   the backing array we mark any removals from the hash table there.  We use an
   instance of the Tombstone_ class as a marker on both the key and value of a
-  deleted position.  No change is made in the index.  Deletion is fairly rare
-  and this allows us to ignore it most of the time.  When there are too many
-  deleted positions in the backing we rebuild the hash table from the bottom,
-  squeezing out any deleted positions.
+  deleted position.  No change is made in the index: the slot of a deleted
+  entry stays taken until the index is rebuilt, or until a new key whose
+  search passes it reuses it.  The rebuild rules take these slots into
+  account, so that adding and removing keys (for example in a table of
+  pending requests) does not rebuild the index every few operations:
+* When the index is full and some of its slots belong to deleted entries, it
+  is rebuilt from the backing, at the same size if the remaining entries
+  leave about a third of it free, and at twice the size otherwise.  Without
+  deleted entries it doubles.  This never moves entries in the backing.
+* When a removal leaves more deleted positions than entries (plus a few) in
+  the backing, or when the index is full and at least half of the backing is
+  deleted positions, we squeeze out the deleted positions and rebuild the
+  index.  It shrinks if a third of it stays free, and it only grows if it
+  was full.
+* When a removal leaves the collection empty, the index is dropped.  A small
+  backing is kept and emptied when the next key is added; a larger one is
+  dropped as well.
 
 Certain access patterns, including repeated removal of the first element,
   will result in long runs of deleted positions, which can cause quadratic
@@ -2187,7 +2200,12 @@ abstract class HashedInsertionOrderedCollection_:
     index_ = null
     backing_ = null
 
-  abstract rebuild_ old-size --allow-shrink/bool
+  /**
+  Makes room in the index for a new key, or builds a missing index.
+  Called by $find_ when the index is full or missing, after the new key (if
+    any) has been added to the backing.
+  */
+  abstract rebuild_ old-size
 
   compare_ key key-or-probe:
     return key == key-or-probe
@@ -2272,9 +2290,8 @@ abstract class HashedInsertionOrderedCollection_:
   //   initial slot in the index.  Since sizes are a power of 2 we merely take
   //   the modulus of the size, which can be done by bitwise and-ing with the
   //   size - 1.
-  // Returns the new index size.
-  pick-new-index-size_ old-size --allow-shrink/bool -> int:
-    minimum := allow-shrink ? 2 : index_.size * 2
+  // Returns the new index size, at least $minimum.
+  pick-new-index-size_ old-size --minimum/int -> int:
     enough := 1 + old-size + (old-size >> 3)  // old-size * 1.125.
     new-index-size := max
       minimum
@@ -2284,6 +2301,12 @@ abstract class HashedInsertionOrderedCollection_:
     if index-spaces-left_ <= old-size: index-spaces-left_ = old-size + 1
     // Found large enough index size.
     return new-index-size
+
+  // Returns the smallest index size with room for $entries entries and about
+  //   an eighth more, as $pick-new-index-size_ picks it.
+  static index-size-for_ entries/int -> int:
+    enough := 1 + entries + (entries >> 3)  // entries * 1.125.
+    return 1 << (64 - enough.count-leading-zeros)
 
   /// We store this much of the hash code in each slot.
   static HASH-MASK_ ::= 0xfff
@@ -2312,24 +2335,30 @@ abstract class HashedInsertionOrderedCollection_:
 
     if not index_:
       if size_ == 0:
-        if not backing_: backing_ = List
+        if not backing_:
+          backing_ = List
+        else if backing_.size != 0:
+          // The deleted positions of a collection that became empty.  See
+          // $became-empty_.
+          if backing_ is List_: backing_.truncate_ 0
+          else: backing_ = List
         not-found.call  // May not return.
         return APPEND_
       else if size_ != 1:
         // Map built by deserializer, has no index.
-        rebuild_ size --allow-shrink
+        rebuild_ size
       else:
         k := backing_[0]
         if k is not Tombstone_:
           if compare_ key k:
             return 0
           append-position = not-found.call
-          rebuild_ 1 --allow-shrink
+          rebuild_ 1
         else:
-          rebuild_ 1 --allow-shrink
+          rebuild_ 1
 
     return find-body_ key hash append-position not-found
-      (: rebuild_ it --allow-shrink=false)
+      (: rebuild_ it)
       (: | k1 k2 | compare_ k1 k2)
 
   // To be implemented by an intrinsic byte code.  Makes no calls apart from:
@@ -2421,7 +2450,58 @@ abstract class HashedInsertionOrderedCollection_:
       if backing_ == null: return null
       return reversed ? backing_.size - step : 0
 
-  rebuild_ old-size/int step/int --allow-shrink/bool --rebuild-backing/bool:
+  // Implements $rebuild_ for the given step.
+  grow-index_ old-size/int step/int -> none:
+    if not index_:
+      rebuild_ old-size step --minimum=2 --rebuild-backing=false --from-backing=false
+      return
+    index-size := index_.size
+    if backing_.size == size_ * step:
+      // No deleted entries.
+      rebuild_ old-size step --minimum=(index-size * 2) --rebuild-backing=false --from-backing=false
+      return
+    // Deleted entries take up slots in the index.  Rebuilding it from the
+    // backing frees them.  Keep the size if the remaining entries leave a
+    // third of the index free, so that the next rebuild is far away.
+    if (roomy-index-size_ size_) > index-size: index-size *= 2
+    rebuild_ size_ step --minimum=index-size --rebuild-backing=false --from-backing
+
+  // Returns the size of an index in which $entries entries take up about two
+  //   thirds of the space.
+  static roomy-index-size_ entries/int -> int:
+    return index-size-for_ entries + (entries >> 1)
+
+  // Shrinks the collection after removals that left $deleted deleted
+  //   positions in the backing.
+  shrink-if-needed_ deleted/int step/int -> none:
+    if size_ == 0:
+      became-empty_
+    else if deleted > size_ + 4 or (index-spaces-left_ == 0 and deleted >= size_):
+      // Squeeze out the deleted positions.  We also do this when the index is
+      // full and at least half of the backing is deleted positions, because
+      // then the next new key would have to rebuild the index anyway.
+      // Shrink the index if that leaves a third of it free after the next
+      // addition (so that $grow-index_ won't grow it again soon), but don't
+      // grow it unless it is full.
+      index-size := roomy-index-size_ size_ + 1
+      if index_ and index-spaces-left_ != 0 and index_.size < index-size:
+        index-size = index_.size
+      rebuild_ size_ step --minimum=index-size --rebuild-backing --from-backing
+
+  // Called when a removal leaves the collection empty.  Drops the index, so
+  //   that the backing (which only holds deleted positions now) is no longer
+  //   needed for lookups.  A small backing is emptied when the next key is
+  //   added (see $find_), so that a collection that oscillates between empty
+  //   and a few entries reuses it, and so that an iteration that removed the
+  //   last entry can continue over the deleted positions.  A larger backing is
+  //   released immediately.
+  became-empty_ -> none:
+    index_ = null
+    index-spaces-left_ = 0
+    backing := backing_
+    if not (backing is List_ and backing.array_.size <= 16): backing_ = null
+
+  rebuild_ old-size/int step/int --minimum/int --rebuild-backing/bool --from-backing/bool:
     if rebuild-backing:
       // Squeeze out deleted elements in place.  This doesn't allocate, so the
       // backing is never left partially compacted.  Releasing the spare
@@ -2433,48 +2513,54 @@ abstract class HashedInsertionOrderedCollection_:
       backing_.truncate_ size_ * step
     succeeded := false
     try:
-      rebuild-index_ old-size step --allow-shrink=allow-shrink --rebuild-backing=rebuild-backing
+      rebuild-index_ old-size step --minimum=minimum --from-backing=from-backing
       succeeded = true
     finally:
       // A failed rebuild (for example an allocation failure) can leave the
       // index stale or incomplete.  Without an index the next lookup rebuilds
       // it from the backing.
       if not succeeded: index_ = null
-    if rebuild-backing:
-      // The collection is consistent again, so failing to release the spare
-      // capacity is harmless.
+    if rebuild-backing and backing_.array_.size > LargeArray_.ARRAYLET-SIZE:
+      // Release the spare capacity (the list does that for more than an
+      // arraylet).  The collection is consistent again, so failing to do so
+      // is harmless.
       catch: backing_.resize backing_.size
 
-  rebuild-index_ old-size/int step/int --allow-shrink/bool --rebuild-backing/bool:
-    new-index-size := pick-new-index-size_ old-size --allow-shrink=allow-shrink
+  rebuild-index_ old-size/int step/int --minimum/int --from-backing/bool:
+    new-index-size := pick-new-index-size_ old-size --minimum=minimum
     index-mask := new-index-size - 1
-    if not index_ or index-mask > HASH-MASK_ or rebuild-backing:
-      // Rebuild the index using the backing array.
-      // By using resize-for-list_ we reuse the arraylets when growing large
-      // arrays.  This reduces GC churn and, more importantly, peak memory
-      // usage.
-      if index_:
+    if not index_ or index-mask > HASH-MASK_ or from-backing:
+      // Rebuild the index using the backing array.  This also frees the slots
+      // of deleted entries.
+      if index_ is LargeArray_:
+        // By using resize-for-list_ we reuse the arraylets when growing large
+        // arrays.  This reduces GC churn and, more importantly, peak memory
+        // usage.
         index_ = index_.resize-for-list_ /*copy-size=*/0 new-index-size /*filler=*/0
         index_.fill 0
       else:
         index_ = Array_ new-index-size 0
       assert: index_.size == new-index-size
       // Rebuild the index by iterating over the backing and entering each key
-      // into the index in the conventional way.  During this operation, the
-      // index is big enough and the backing does not change.  The find_ operation
-      // does not compare keys again.  It knows that they were not equal when
-      // they were first added to the collection, and keeps using that fact.
+      // into the index, probing like $find-body_ does.  During this operation,
+      // the index is big enough and the backing does not change.  We don't
+      // compare keys: they were not equal when they were added to the
+      // collection.
+      index := index_
       size := backing_.size
-      throw-block := (: | _ | throw null)  // During rebuild we never rebuild.
-      false-block := (: | _ _ | false)     // During rebuild no objects are equal.
       for i := 0; i < size; i += step:
         key := backing_[i]
         if key is not Tombstone_:
-          action := find-body_ key (hash-code_ key) null
-            (: i)  // not-found block, returns the position of where to add the new entry.
-            throw-block
-            false-block
-          assert: action == APPEND_
+          // There is always room, unless the collection is corrupt.
+          if index-spaces-left_ == 0: throw "COLLECTION_CORRUPT"
+          hash := hash-code_ key
+          slot := hash & index-mask
+          slot-step := 1
+          while index[slot] != 0:
+            slot = (slot + slot-step) & index-mask
+            slot-step++
+          index[slot] = ((i + 1) << HASH-SHIFT_) | (hash & HASH-MASK_)
+          index-spaces-left_--
     else:
       // We can do an simple index rebuild from the old index.  There are
       // enough hash bits in the index slots to tell us where the slot goes in
@@ -2558,7 +2644,7 @@ class Set extends HashedInsertionOrderedCollection_ implements Collection:
           add new-entry
         return new-entry
       // No index, for example after a failed rebuild.
-      rebuild_ size_ --allow-shrink
+      rebuild_ size_
 
     append-position := -1
     find-body_ null hash null
@@ -2573,7 +2659,7 @@ class Set extends HashedInsertionOrderedCollection_ implements Collection:
         append-position  // Return from block.
       )
       // Rebuild.
-      (: rebuild_ it --allow-shrink=false)
+      (: rebuild_ it)
       // Possible match found.
       (: | _ found |
         was-found := compare.call found
@@ -2764,11 +2850,10 @@ class Set extends HashedInsertionOrderedCollection_ implements Collection:
     throw "Not enough elements"
 
   shrink-if-needed_:
-    if backing_ and backing_.size > 4 and backing_.size > size_ + (size_ >> 1):
-      rebuild_ size_ STEP_ --allow-shrink --rebuild-backing
+    if backing_: shrink-if-needed_ (backing_.size - size_) STEP_
 
-  rebuild_ old-size --allow-shrink/bool:
-    rebuild_ old-size STEP_ --allow-shrink=allow-shrink --rebuild-backing=false
+  rebuild_ old-size -> none:
+    grow-index_ old-size STEP_
 
   /**
   Returns a list of the elements of this set.
@@ -2857,11 +2942,10 @@ class Map extends HashedInsertionOrderedCollection_:
     shrink-if-needed_
 
   shrink-if-needed_:
-    if backing_ and backing_.size > 8 and backing_.size > (size_ << 1) + size_:
-      rebuild_ size_ STEP_ --allow-shrink --rebuild-backing
+    if backing_: shrink-if-needed_ ((backing_.size >> 1) - size_) STEP_
 
-  rebuild_ old-size --allow-shrink/bool:
-    rebuild_ old-size STEP_ --allow-shrink=allow-shrink --rebuild-backing=false
+  rebuild_ old-size -> none:
+    grow-index_ old-size STEP_
 
   /**
   Returns the element stored at location $key.

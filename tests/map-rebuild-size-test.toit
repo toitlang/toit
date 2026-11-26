@@ -11,18 +11,18 @@ Records the old size that the hash-find intrinsic passes to the rebuild block
 class RecordingMap extends Map:
   old-sizes := []
 
-  rebuild_ old-size --allow-shrink/bool:
+  rebuild_ old-size:
     // The intrinsic calls the rebuild block after the not-found block added
     //   the new entry, so the old size is one less than the current size.
-    if not allow-shrink: old-sizes.add [old-size, size - 1]
-    super old-size --allow-shrink=allow-shrink
+    if index_: old-sizes.add [old-size, size - 1]
+    super old-size
 
 class RecordingSet extends Set:
   old-sizes := []
 
-  rebuild_ old-size --allow-shrink/bool:
-    if not allow-shrink: old-sizes.add [old-size, size - 1]
-    super old-size --allow-shrink=allow-shrink
+  rebuild_ old-size:
+    if index_: old-sizes.add [old-size, size - 1]
+    super old-size
 
 main:
   map := RecordingMap
