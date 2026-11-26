@@ -328,6 +328,24 @@ flash outside its image, or the hardware.
   core (`TOIT_VERIFIED_CORE` defaults to `n` in
   `toolchains/idf/components/toit/Kconfig`); such firmware refuses
   untrusted installs. The claim is about firmware built with it.
+* Sandboxes are a build option: Kconfig `TOIT_SANDBOX` (needs the core,
+  default `n`), CMake `TOIT_SANDBOX` (default ON for hosts). The claim is
+  about firmware **with** it; that configuration is the one proved, and
+  the option changes none of its code (no theorem, trusted item or
+  contract depends on it; no Rust feature differs). A firmware **without**
+  it claims nothing about untrusted code because it runs none: every
+  untrusted install (`V2Verifier::install_verdict`) and every untrusted
+  launch or start (`PrimitivePolicy::from_description`) is refused with
+  `SANDBOX_NOT_SUPPORTED` before anything is written or allocated, the
+  untrusted policy does not exist, and the verifier is not linked. What
+  is still proved there is what holds for trusted programs on the same
+  core: its theorems are stated for accepted programs, and trusted
+  (first-party) programs, which run on the verified loop without being
+  verified (the trusted token: we trust the compiler for first-party
+  code, verified/core/EXPERIMENT-trusted.md), get exactly what they get
+  in a firmware with sandboxes, no more and no less. `verified/check.sh`
+  section `sandbox-off` builds that configuration on the host and tests
+  the refusals (docs/sandbox-policy.md, "Firmware without sandboxes").
 
 ## 2. What the claim rests on
 
