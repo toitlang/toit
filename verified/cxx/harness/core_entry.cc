@@ -61,7 +61,7 @@ const uint8* PrimitivePolicy::verifier_arities_of(Kind kind) {
 const uint32* PrimitivePolicy::verifier_counts() { return policy_counts; }
 const uint32* PrimitivePolicy::verifier_starts() { return policy_starts; }
 unsigned PrimitivePolicy::verifier_arities_length() { return sizeof(full_arities); }
-static uint8 bytecodes[] = {'T', 'B', 'C', '2', 0};
+static uint8 bytecodes[] = {'T', 'B', 'C', '3', 0};
 static uint32 records[] = {0};
 static Object* globals[2];
 

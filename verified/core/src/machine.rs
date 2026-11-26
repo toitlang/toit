@@ -180,7 +180,6 @@ pub enum Unwinding {
     Branch(usize, usize, usize),
 }
 
-/// The kinds of a finally record's resume word (`abs::resume_word`).
 /// The kinds of a token's second word (`abs::pending_kind`).
 const PENDING_NORMAL: usize = 0;
 const PENDING_THROW: usize = 1;

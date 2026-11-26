@@ -44,7 +44,7 @@ int main() {
   auto* from = static_cast<Stack*>(HeapObject::from_address(reinterpret_cast<uword>(source)));
   source[0] = 2 * STACK_TAG;
   source[Stack::LENGTH_OFFSET / WORD_SIZE] = frame_top + 1;
-  source[Stack::TRY_TOP_OFFSET / WORD_SIZE] = (static_cast<uword>(frame_top) << Stack::V2_FRAME_TOP_SHIFT) | frame_top;
+  source[Stack::TRY_TOP_OFFSET / WORD_SIZE] = static_cast<uword>(frame_top);
   word bci = nondet_uint() >> 1;
   from->v2_set_bci(bci);
   word method = nondet_uint() >> 1;
@@ -59,7 +59,7 @@ int main() {
   word top = nondet_word();
   CXXV_ASSUME(top >= 0 && top <= length);
   to->v2_set_top(top);
-  to->v2_set_records(0, 0, 0);
+  to->v2_set_records(0, 0);
   word witness = nondet_word();
   CXXV_ASSUME(witness >= 0 && witness < length);
   uword original = nondet_ulong();
@@ -75,7 +75,7 @@ int main() {
   CXXV_ASSERT(cards[0] == 0 && cards[2] == 0 && cards[1] == (started ? GcMetadata::NEW_SPACE_POINTERS : 0),
               "dirty only the target card on success");
   CXXV_ASSERT(to->length() == length && to->top() == (started ? length - 3 : top) &&
-              to->v2_frame_top() == (started ? 2 * f : 0) && to->v2_record_top() == to->v2_frame_top() &&
+              to->v2_frame_top() == (started ? 2 * f : 0) && to->v2_frame_top_word() == static_cast<uword>(to->v2_frame_top()) &&
               to->v2_bci() == (started ? bci : 0), "install two frames, three slots and the caller bci only on success");
   uword expected = original;
   if (started) {

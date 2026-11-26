@@ -95,7 +95,7 @@ pub open spec fn prim_call_post(p: &Program, m: Machine, g: State2, module: u8, 
 pub open spec fn unmoved(m1: Machine, m0: Machine) -> bool {
     &&& m1.mem == m0.mem
     &&& m1.globals == m0.globals
-    &&& m1.len == m0.len && m1.top == m0.top && m1.ftop == m0.ftop && m1.ftop == m0.ftop
+    &&& m1.len == m0.len && m1.top == m0.top && m1.ftop == m0.ftop
     &&& m1.bci == m0.bci && m1.base == m0.base && m1.lim == m0.lim && m1.method == m0.method
     &&& m1.need == m0.need && m1.bot == m0.bot
 }
@@ -349,7 +349,7 @@ pub proof fn lemma_refines_heap(p: &Program, m0: Machine, m1: Machine)
         m0.refines(p),
         prims::heap_post(p, &m0.heap, &m1.heap),
         m1.mem == m0.mem, m1.globals == m0.globals,
-        m1.len == m0.len, m1.top == m0.top, m1.ftop == m0.ftop, m1.ftop == m0.ftop,
+        m1.len == m0.len, m1.top == m0.top, m1.ftop == m0.ftop,
         m1.bci == m0.bci, m1.base == m0.base, m1.lim == m0.lim, m1.method == m0.method,
         m1.g@ == with_heap2(m0.g@, m1.heap.objs()),
     ensures m1.refines(p),

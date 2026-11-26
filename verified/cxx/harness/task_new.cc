@@ -57,7 +57,7 @@ void toit::fail(const char*, ...) {
 
 int main() {
   static_assert(WORD_BIT_SIZE == CXXV_WORD_BITS, "target word width");
-  uint8 bytecodes[16] = {'T', 'B', 'C', '2'};
+  uint8 bytecodes[16] = {'T', 'B', 'C', '3'};
   bool format2 = nondet_bool();
   if (!format2) bytecodes[0] = 0;
   image.bytecodes = List<uint8>(bytecodes, sizeof(bytecodes));
@@ -100,7 +100,7 @@ int main() {
   CXXV_ASSERT(caller.object_heap()->v2_epoch_ == epoch + (error < 0 && !format2 ? 2u : 0u), "switch the active task only for legacy preparation");
   if (error < 0 && format2) {
     CXXV_ASSERT(stack->top() == length - 1 && *stack->v2_slot_address(0) == code &&
-                stack->v2_records_word() == 0 && stack->v2_bci() == 0 && card == GcMetadata::NEW_SPACE_POINTERS,
+                stack->v2_frame_top_word() == 0 && stack->v2_bci() == 0 && card == GcMetadata::NEW_SPACE_POINTERS,
                 "return an unstarted format-2 task with the original code and no frames");
   } else {
     CXXV_ASSERT(card == 0, "no format-2 initialization on other paths");

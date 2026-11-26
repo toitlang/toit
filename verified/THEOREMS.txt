@@ -176,7 +176,6 @@ pub proof fn lemma_tail_moved(s: State2, a: int, user: int, cap: Seq<Value>)
 --- lemma_replace_frame_slots  (spec/src/v2/sound_tail.rs)
 pub proof fn lemma_replace_frame_slots(p: Program2, s: State2, t: int, from: int, n: int, cap: Seq<Value>)
     requires
-        !has_handler(s),
         0 <= base(s) <= s.stack.len(), 0 <= from, 0 <= n, from + n <= s.stack.len(),
     ensures ({
         let s2 = tail_state(p, s, t, moved_args(s, from, n, cap));
@@ -304,7 +303,7 @@ pub fn x_frame_height(s: &ExecState) -> (r: i64)
 
 --- x_throw_null  (spec/src/v2/exec.rs)
 pub fn x_throw_null(p: &ExecProgram, s: &mut ExecState, value: Value) -> (r: ExecOutcome2)
-    requires wf_program2(pview2(p)), old(s).fins.len() < 0x1_0000_0000_0000,
+    requires wf_program2(pview2(p)),
     ensures matches2(throw_exception(pview2(p), view2(old(s)), value, null2(pview2(p))), r, view2(final(s))),
 
 --- step_verified  (spec/src/v2/exec.rs)

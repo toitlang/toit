@@ -18,8 +18,8 @@
 //! The run loop's invariant includes `room_ok`: every frame can grow to its
 //! method's arity plus the program's maximal height (the verifier's bound
 //! on every frame's height, `instr_ok`) and still leave `STACK_RESERVE`
-//! words above the frame and finally records, the finally records counted
-//! in full for every frame. A call checks for room once (the callee's frame
+//! words above the frame records (a TRY's finally slots are part of the
+//! frame's height). A call checks for room once (the callee's frame
 //! record, the maximal height and the reserve, as before) and establishes
 //! the new frame's room; returns and pops keep it. With it, the top frame
 //! always has at least `STACK_RESERVE` free words (`lemma_room_top`), so a
@@ -27,8 +27,7 @@
 //!
 //! Things that can break it: a GC that shrinks the stack (the trusted GC
 //! contracts keep the abstract state, not the length), a task switch
-//! (another task's stack), and an unwinding entering finally code (one more
-//! finally record). After those, `ensure_room_all` re-establishes it: a
+//! (another task's stack). After those, `ensure_room_all` re-establishes it: a
 //! scan of the frame records and, if needed, stack growth. After a task
 //! switch, a run that switches often checks it in constant time instead,
 //! from a bound on all methods' arities that it computes once

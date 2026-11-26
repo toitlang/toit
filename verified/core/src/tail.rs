@@ -380,7 +380,7 @@ pub fn op_invoke_lambda_tail(m: &mut Machine, env: &Env, bci: usize, opcode: u8)
     while j < c
         invariant
             m.mem@.len() == m2.mem@.len(),
-            m.len == m2.len, m.top == m2.top, m.ftop == m2.ftop, m.ftop == m2.ftop,
+            m.len == m2.len, m.top == m2.top, m.ftop == m2.ftop,
             m.base == m2.base, m.lim == m2.lim, m.method == m2.method, m.bci == m2.bci,
             m.heap == m2.heap, m.globals == m2.globals, m.g == m2.g,
             m2.heap == m0.heap, m2.g == m0.g,

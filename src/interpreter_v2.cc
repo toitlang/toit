@@ -150,8 +150,8 @@ static bool v2_start_task(Process* process, Stack* from_stack, Stack* to_stack, 
   to_stack->v2_word_at_put(Stack::V2_FRAME_WORDS + Stack::V2_FRAME_RET, e + 1);
   to_stack->v2_word_at_put(Stack::V2_FRAME_WORDS + Stack::V2_FRAME_BASE, 1);
   to_stack->v2_word_at_put(Stack::V2_FRAME_WORDS + Stack::V2_FRAME_HANDLER, 0);
-  // No finally records (the spec's new task has none).
-  to_stack->v2_set_records(2 * Stack::V2_FRAME_WORDS, 0, from_stack->v2_bci());
+  // Neither frame is a try block (the spec's new task has no handlers).
+  to_stack->v2_set_records(2 * Stack::V2_FRAME_WORDS, from_stack->v2_bci());
   GcMetadata::insert_into_remembered_set(to_stack);
   return true;
 }
@@ -443,7 +443,7 @@ uword toit_v2_grow_stack(void* raw_process, uword needed) {
   // Interpreter::store_stack does for format 1.
   GcMetadata::insert_into_remembered_set(stack);
   word length = stack->length();
-  word free = stack->top() - stack->v2_record_top();
+  word free = stack->top() - stack->v2_frame_top();
   word new_length = -1;
   if (length < Stack::max_length()) {
     new_length = Utils::max(length + (length >> 1), (length - free) + static_cast<word>(needed));

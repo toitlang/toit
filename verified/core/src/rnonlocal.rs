@@ -267,7 +267,7 @@ pub fn op_non_local_return(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize,
             }
         }
         let mut r3 = r2;
-        enter_fin_r(m, &mut r3, p, Unw::Return(f, x), Ghost(gu));
+        enter_fin_r(m, &mut r3, p, Some(Unw::Return(f, x)), Ghost(Some(gu)));
         proof { lemma_matches(p, w0, m.with(r3), Ctl::Next); }
         set_regs(r, r3);
         return Ctl::Next;
@@ -348,7 +348,7 @@ pub fn op_non_local_branch(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize,
             assert(target < p.code@.len());
         }
         let mut r3 = r2;
-        enter_fin_r(m, &mut r3, p, Unw::Branch(f, target, h), Ghost(gu));
+        enter_fin_r(m, &mut r3, p, Some(Unw::Branch(f, target, h)), Ghost(Some(gu)));
         proof { lemma_matches(p, w0, m.with(r3), Ctl::Next); }
         set_regs(r, r3);
         return Ctl::Next;
@@ -614,7 +614,7 @@ pub fn unwind_resume_v(m: &mut Machine, r0: Regs, env: &Env, bci: usize, opcode:
         let u = if kind == 2 { Unw::Return(f, x) } else { Unw::Branch(f, tw, th) };
         proof { assert(unw_rel(m.addr(), u, gu)); assert(unw_ok(gu)); }
         let mut r4 = r3;
-        enter_fin_r(m, &mut r4, p, u, Ghost(gu));
+        enter_fin_r(m, &mut r4, p, Some(u), Ghost(Some(gu)));
         proof { lemma_matches(p, w0, m.with(r4), Ctl::Next); }
         return (r4, Ctl::Next);
     }
@@ -759,34 +759,9 @@ pub fn ret_try_r(m: &mut Machine, r: &mut Regs, env: &Env, Ghost(v): Ghost<Value
         assert(sp::return_from(ap, g0, v) == sp::enter_finally(ap, sp::pop_frame(g0), sp::top(g0).base as int,
             sp::top(g0).ret as int, None));
     }
-    enter_fin_r_opt(m, r, p, None, Ghost(None));
+    enter_fin_r(m, r, p, None, Ghost(None));
     proof { lemma_matches(p, m0, m.with(*r), Ctl::Next); }
     Ctl::Next
-}
-
-/// `spec::enter_finally(pop_frame(g), base, ret, Some(u))` on the registers,
-/// for the top frame (a try block) and an unwinding `u`.
-#[inline(always)]
-pub fn enter_fin_r(m: &mut Machine, r: &mut Regs, p: &Program, u: Unw, Ghost(gu): Ghost<Unwind>)
-    requires
-        m_ok(p, *old(m), *old(r)),
-        old(r).sp@ >= old(r).fr@ + STACK_RESERVE,
-        room_ok(p, old(m).with(*old(r))),
-        shape_ok(p, old(m).g@),
-        old(m).g@.frames.len() > 1,
-        sp::top(old(m).g@).handler,
-        unw_rel(old(m).addr(), u, gu),
-        unw_ok(gu),
-        outcome_ok(p.ap@, p.cert@, sp::enter_finally(p.ap@, sp::pop_frame(old(m).g@), sp::top(old(m).g@).base as int,
-            sp::top(old(m).g@).ret as int, Some(gu))),
-        accepts(p.ap@, p.cert@, p.trusted@),
-    ensures
-        final(m).rok(*final(r)), ipok(p, *final(r)), final(m).with(*final(r)).refines(p), gate_ok(p, *final(m)),
-        sp::enter_finally(p.ap@, sp::pop_frame(old(m).g@), sp::top(old(m).g@).base as int,
-            sp::top(old(m).g@).ret as int, Some(gu)) == Outcome2::Next(final(m).g@),
-        room_ok(p, final(m).with(*final(r))),
-{
-    enter_fin_r_opt(m, r, p, Some(u), Ghost(Some(gu)));
 }
 
 /// `spec::enter_finally(pop_frame(g), base, ret, u)` on the registers: pops
@@ -794,8 +769,8 @@ pub fn enter_fin_r(m: &mut Machine, r: &mut Regs, p: &Program, u: Unw, Ghost(gu)
 /// pushes the finally code's four slots (format note 23); the code
 /// continues at the try block's return bci. The slots fit: the popped
 /// frame's record and slots are free.
-#[inline(always)]
-pub fn enter_fin_r_opt(m: &mut Machine, r: &mut Regs, p: &Program, u: Option<Unw>, Ghost(gu): Ghost<Option<Unwind>>)
+#[inline(never)]
+pub fn enter_fin_r(m: &mut Machine, r: &mut Regs, p: &Program, u: Option<Unw>, Ghost(gu): Ghost<Option<Unwind>>)
     requires
         m_ok(p, *old(m), *old(r)),
         old(r).sp@ >= old(r).fr@ + STACK_RESERVE,

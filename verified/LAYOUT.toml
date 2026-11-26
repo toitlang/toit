@@ -416,19 +416,19 @@ verus = "STACK_TOP_WORD"
 
 [[fact]]
 kind = "stack"
-name = "record top word (format 2: the record top, the frame top above STACK_FRAME_TOP_SHIFT)"
+name = "frame top word (format 2: the end of the frame records; since format 3 there are no other records)"
 value64 = 4
 value32 = 4
 cxx = "Stack::TRY_TOP_OFFSET / WORD_SIZE"
-verus = "STACK_RECORD_TOP_WORD"
+verus = "STACK_FRAME_TOP_WORD"
 
 [[fact]]
 kind = "stack"
-name = "frame top shift in the record top word"
+name = "slot bits of a block reference (and of the first token word of a pending unwinding)"
 value64 = 16
 value32 = 16
-cxx = "Stack::V2_FRAME_TOP_SHIFT"
-verus = "STACK_FRAME_TOP_SHIFT"
+cxx = "Stack::V2_BLOCK_SLOT_BITS"
+verus = "BLOCK_SLOT_BITS"
 
 [[fact]]
 kind = "stack"

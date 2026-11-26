@@ -21,11 +21,10 @@
 //! records (they would move), and no preemption request: the room check is
 //! `free < (watermark | needed)`, so a preemption request (all ones) makes
 //! it fail as the C++ interpreter's watermark does. Anything else (stack
-//! growth, preemption, finally records, a receiver outside the target's
+//! growth, preemption, a receiver outside the target's
 //! range, a lookup failure) runs the instruction on the machine's handler
 //! (`step::bridge`), which is unchanged. A return takes the fast path
-//! unless the caller is suspended in a TRY, the task's bottom frame
-//! returns, or there are finally records.
+//! unless the returning frame is a try block or the task's bottom frame.
 
 use vstd::prelude::*;
 use crate::layout::*;

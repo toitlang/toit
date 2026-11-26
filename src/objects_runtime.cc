@@ -160,14 +160,14 @@ void Stack::copy_to(Stack* other) {
 
 void Stack::v2_copy_to(Stack* other) {
   word used = length() - top();
-  // The frame and the finally records.
-  word records = v2_record_top();
+  // The frame records.
+  word records = v2_frame_top();
   ASSERT(other->length() >= used + records);
   word displacement = other->length() - length();
   memcpy(other->_array_address(0), _array_address(0), records * WORD_SIZE);
   memcpy(other->_array_address(top() + displacement), _array_address(top()), used * WORD_SIZE);
   other->_set_top(displacement + top());
-  other->v2_set_records(v2_frame_top(), v2_fin_count(), v2_bci());
+  other->v2_set_records(records, v2_bci());
   // See copy_to.
   GcMetadata::insert_into_remembered_set(other);
 }

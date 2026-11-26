@@ -65,7 +65,7 @@ main args/List:
     return
   bundle := SnapshotBundle.from-file args[0]
   program := bundle.decode
-  print "format=$program.format literals=$program.literals.size roots=$program.roots.size globals=$program.global-variables.size"
+  print "format=$program.format ($program.format-name) literals=$program.literals.size roots=$program.roots.size globals=$program.global-variables.size"
   print-list program "literals" program.literals
   print-list program "globals" program.global-variables
   print-list program "roots" program.roots

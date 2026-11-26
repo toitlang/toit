@@ -3,7 +3,7 @@
 // Red-team round 2 crafting tool.
 //
 // Patches a compiled format-2 snapshot bundle in place: it locates the
-// bytecode blob (the `TBC2` stream that both V2MethodTable::compute and the
+// bytecode blob (the `TBC3` stream that both V2MethodTable::compute and the
 // verified core read) inside the "snapshot" ar member and overwrites bytes
 // at caller-chosen bytecode indices (bci). Because every patch preserves the
 // blob length, the surrounding snapshot serialization and ar headers stay
@@ -24,12 +24,12 @@
 //   craft info  <in>
 //   craft patch <in> <out> [<bci> <hex> ]...
 //     e.g. craft patch a.snap b.snap 226 0e 230 41ff
-//   craft dump-blob <in> <out-bin>        // write just the TBC2 blob
+//   craft dump-blob <in> <out-bin>        // write just the TBC3 blob
 //   craft set-byte  <in> <out> <abs-file-offset> <hex>   // raw file patch
 
 import host.file
 
-TBC2 ::= #[0x54, 0x42, 0x43, 0x32]
+TBC3 ::= #[0x54, 0x42, 0x43, 0x33]  // Format 3 (TBC2 when this round ran).
 
 // --- Minimal ar (Unix archive) support ------------------------------------
 
@@ -77,13 +77,13 @@ ar-write_ members/List -> ByteArray:
   return out
 
 find-blob_ bytes/ByteArray -> int:
-  // Find the single TBC2 occurrence (the bytecode blob start).
+  // Find the single TBC3 occurrence (the bytecode blob start).
   found := -1
   for i := 0; i + 4 <= bytes.size; i++:
     if bytes[i] == 0x54 and bytes[i+1] == 0x42 and bytes[i+2] == 0x43 and bytes[i+3] == 0x32:
-      if found >= 0: throw "multiple TBC2 markers; cannot disambiguate blob"
+      if found >= 0: throw "multiple TBC3 markers; cannot disambiguate blob"
       found = i
-  if found < 0: throw "no TBC2 marker: not a format-2 snapshot?"
+  if found < 0: throw "no TBC3 marker: not a format-2 snapshot?"
   return found
 
 blob-length_ bytes/ByteArray blob-offset/int -> int:
@@ -135,7 +135,7 @@ main args/List:
     print "members: $(members.map: it.name) -> dropped certificate"
     return
   // patch [--keep-cert] <in> <out> [<bci> <hex>]...
-  // Patches the snapshot member's TBC2 blob in place and (by default) drops
+  // Patches the snapshot member's TBC3 blob in place and (by default) drops
   // the now-stale certificate so the verifier infers a fresh one.
   if cmd == "patch":
     keep-cert := false

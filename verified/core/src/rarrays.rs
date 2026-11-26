@@ -84,7 +84,7 @@ verus! {
 pub open spec fn heap_only(m0: Machine, m1: Machine) -> bool {
     &&& m1.mem == m0.mem
     &&& m1.globals == m0.globals
-    &&& m1.len == m0.len && m1.top == m0.top && m1.ftop == m0.ftop && m1.ftop == m0.ftop
+    &&& m1.len == m0.len && m1.top == m0.top && m1.ftop == m0.ftop
     &&& m1.bci == m0.bci && m1.base == m0.base && m1.lim == m0.lim && m1.method == m0.method
     &&& m1.need == m0.need && m1.bot == m0.bot
     &&& m1.heap.addrs() == m0.heap.addrs()
@@ -944,8 +944,8 @@ pub open spec fn prim_returned(p: &Program, m0: Machine, r: Regs, m: Machine, su
 }
 
 /// Completes a PRIMITIVE step whose primitive returned (`prim_returned`):
-/// a success returns the result from the frame on the registers (or, in a
-/// TRY, with finally records, of the bottom frame, on the machine), a
+/// a success returns the result from the frame on the registers (or, from
+/// a try block or the bottom frame, on the machine), a
 /// failure pushes it and continues after the instruction.
 #[inline(always)]
 fn complete_r(m: &mut Machine, r: &mut Regs, env: &Env, success: bool, w: usize, Ghost(v): Ghost<Value>,
@@ -981,8 +981,8 @@ fn complete_r(m: &mut Machine, r: &mut Regs, env: &Env, success: bool, w: usize,
             proof { lemma_outcome_matches(p, w0, m.with(*r), Ctl::Next, o); }
             return Ctl::Next;
         }
-        // A return in a TRY, with finally records, or of the bottom
-        // frame: on the machine.
+        // A return from a try block or of the bottom frame: on the
+        // machine.
         m.sync_b(*r, p);
         proof { assert(m.len == w0.len); }
         let c = m.do_return(env, w, Ghost(v));

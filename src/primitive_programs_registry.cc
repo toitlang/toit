@@ -58,7 +58,20 @@ PRIMITIVE(spawn) {
   // Interpreter::run_v2's FATAL and rebooted the device (found on an
   // ESP32-C6, docs/format2-migration.md "Devices: hardware results"), and a
   // format-1 container on a firmware without the C++ interpreter failed
-  // with a misleading MALLOC_FAILED.
+  // with a misleading MALLOC_FAILED. A verified-core image of another
+  // format version (TBC1, TBC2, ...; Program::has_stale_v2_tag) runs
+  // nowhere: it needs recompiling.
+  if (program->has_stale_v2_tag()) {
+    fprintf(stderr, "bytecode format TBC%c is not supported by this VM; recompile\n",
+            program->stale_v2_tag_digit());
+#ifdef TOIT_VERIFIED_CORE
+    String* error = process->allocate_string("FORMAT_2_REQUIRED");
+#else
+    String* error = process->allocate_string("FORMAT_1_REQUIRED");
+#endif
+    if (error == null) FAIL(ALLOCATION_FAILED);
+    return Error::from(error);
+  }
 #ifndef TOIT_VERIFIED_CORE
   if (program->is_format2()) {
     String* error = process->allocate_string("FORMAT_1_REQUIRED");

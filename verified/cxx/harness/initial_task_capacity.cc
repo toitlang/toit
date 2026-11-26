@@ -34,7 +34,7 @@ int main() {
   if (in_table) classes[index] = bits;
   // Either format; the initial stack length of format 2 depends on the
   // program's maximal height (any value).
-  uint8 tag[4] = {'T', 'B', 'C', '2'};
+  uint8 tag[4] = {'T', 'B', 'C', '3'};
   if (!nondet_bool()) tag[0] = 0;
   image.bytecodes = List<uint8>(tag, sizeof(tag));
   int height = nondet_int();

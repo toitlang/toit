@@ -20,13 +20,13 @@
 //! inside the top frame (`rnext`/`rsame`, as regs.rs): a block reference
 //! names an object-stack position `i` (from the bottom), which is the array
 //! index `end - 1 - i`. INVOKE_BLOCK is a call: the fast path checks as
-//! `rcalls::call_fast` does (room, no finally records, no preemption
+//! `rcalls::call_fast` does (room, no preemption
 //! request), drops the extra arguments and pushes the frame
 //! (`rcalls::push_call`); too few arguments (a raise) go to the bridge.
 //!
 //! INVOKE_STATIC_TAIL and INVOKE_INITIALIZER_TAIL replace the top frame's
-//! method natively under the same check (no finally records, so none is
-//! popped; the call's room check covers the replaced frame's room);
+//! method natively under the same check (the call's room check covers the
+//! replaced frame's room);
 //! everything else (a failing receiver check, a bad initializer, finally
 //! records, preemption) and INVOKE_LAMBDA_TAIL go to the bridge.
 //!
@@ -465,7 +465,7 @@ pub fn op_invoke_static_tail(m: &mut Machine, r: &mut Regs, env: &Env, bci: usiz
 
 /// INVOKE_INITIALIZER_TAIL (`spec::op_invoke_initializer_tail`): the fast
 /// path replaces the top frame's method by the initializer; a bad method
-/// id (INVALID_PROGRAM), finally records and preemption go to the bridge.
+/// id (INVALID_PROGRAM) and preemption go to the bridge.
 #[inline(always)]
 pub fn op_invoke_initializer_tail(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode: u8) -> (c: Ctl)
     requires

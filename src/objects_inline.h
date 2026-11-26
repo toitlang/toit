@@ -48,7 +48,7 @@ inline void Stack::v2_initialize_new_task(Object* code) {
   ASSERT(len >= V2_FRAME_WORDS + 1);
   *reinterpret_cast<Object**>(_array_address(len - 1)) = code;
   _set_top(len - 1);
-  v2_set_records(0, 0, 0);
+  v2_set_records(0, 0);
   GcMetadata::insert_into_remembered_set(this);
 }
 

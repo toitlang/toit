@@ -2310,12 +2310,15 @@ mutant ffi-slot-position ffi/interpreter_v2.render src/objects.h "Cannot prove.*
   "_array_address(length() - 1 - position)" "_array_address(length() - position)"
 mutant ffi-stack-top-offset ffi/interpreter_v2.render src/objects.h "Cannot prove.*result top" "$FFI_OPTS" \
   "word top() const@@return _word_at(TOP_OFFSET);" "return _word_at(LENGTH_OFFSET);"
-mutant ffi-record-low-bit ffi/interpreter_v2.render src/objects.h "Cannot prove.*rtop" "$FFI_OPTS" \
-  "v2_records_word() & (V2_MAX_LENGTH - 1)" "(v2_records_word() & (V2_MAX_LENGTH - 1)) / 2"
-mutant ffi-pack-frame ffi/interpreter_v2.render src/objects.h "Cannot prove.*frame_top.*div" "$FFI_OPTS" \
-  "_set_try_top(record_top | (frame_top << V2_FRAME_TOP_SHIFT));" "_set_try_top(record_top);"
+# The frame top word (format 3: a plain value, no record top packed with
+# it): read from the bci word, stored clamped.
+mutant ffi-frame-top-word ffi/interpreter_v2.render src/objects.h "No matching heap chunks|Cannot prove.*result" "$FFI_OPTS" \
+  "uword v2_frame_top_word() const@@return _word_at(TRY_TOP_OFFSET);" "return _word_at(PENDING_STACK_CHECK_METHOD_OFFSET);"
+mutant ffi-store-frame-top ffi/interpreter_v2.render src/objects.h "Cannot prove.*frame_top.*truncate_signed" "$FFI_OPTS" \
+  "void v2_set_records(word frame_top, word bci)@@_word_at_put(TRY_TOP_OFFSET, frame_top);" \
+  "_word_at_put(TRY_TOP_OFFSET, frame_top < 0 ? static_cast<word>(0) : frame_top);"
 mutant ffi-store-bci ffi/interpreter_v2.render src/objects.h "Cannot prove.*bci.*truncate_signed" "$FFI_OPTS" \
-  "void v2_set_records(word frame_top, word fin_count, word bci)@@_word_at_put(PENDING_STACK_CHECK_METHOD_OFFSET, bci);" \
+  "void v2_set_records(word frame_top, word bci)@@_word_at_put(PENDING_STACK_CHECK_METHOD_OFFSET, bci);" \
   "_word_at_put(PENDING_STACK_CHECK_METHOD_OFFSET, bci < 0 ? static_cast<word>(0) : bci);"
 mutant ffi-epoch-wrap ffi/interpreter_v2.render src/heap.h "Cannot prove.*epoch_word" "$FFI_OPTS" \
   "v2_epoch_ = v2_epoch_ + 1;" "v2_epoch_ = v2_epoch_ == UINTPTR_MAX ? v2_epoch_ : v2_epoch_ + 1;"
@@ -2602,7 +2605,7 @@ mutant spawn-method-search prims/spawn_method.render src/v2_method_table.cc "Can
 mutant spawn-method-missing prims/spawn_method.render src/v2_method_table.cc "Cannot prove" "-prover z3v4.5" \
   "word V2MethodTable::index_of_entry@@  return -1;" "  return 0;"
 mutant spawn-method-tag prims/spawn_method.render src/program.h "Cannot prove" "-prover z3v4.5" \
-  "bytecodes.data()[3] == '2'" "bytecodes.data()[3] == '1'"
+  "bytecodes.data()[3] == '3'" "bytecodes.data()[3] == '2'"
 mutant spawn-method-legacy prims/spawn_method.render src/primitive_core.cc "Cannot prove" "-prover z3v4.5" \
   "PRIMITIVE(spawn_method)@@      : -1;" "      : 0;"
 # The loader's check of the error roots (the `program` predicate's

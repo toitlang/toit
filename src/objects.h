@@ -1016,82 +1016,74 @@ class Stack : public HeapObject {
   static INLINE word initial_length() { return 64; }
   // The length of a new task's stack in [program] (objects_inline.h). In
   // format 2 every call needs the program's maximal height (the verifier's
-  // bound on every frame's height) plus a frame record, the reserve and a
-  // finally record free above the records (verified/core/src/room.rs), and
+  // bound on every frame's height, which counts the four slots of a finally
+  // code) plus a frame record and the reserve free above the records
+  // (verified/core/src/room.rs), and
   // frame records are V2_FRAME_WORDS words, so a new task needs more than
   // format 1's 64 words before it runs its body: the length is the maximal
   // height plus V2_INITIAL_LENGTH_ABOVE_HEIGHT words, at most
-  // V2_MAX_INITIAL_LENGTH. 118 is what the common short task of the
-  // libraries needs at its deepest call, so that it never grows its stack
-  // (measured with 4-word frame records, format 3: an empty task and the
-  // soak worker's short tasks 121 words at a maximal height of 18, a task
-  // that sets a latch 130, the worker's longest 133; with 5-word records
-  // they were 135, 144 and 147, and the constant 132); a task that goes
-  // deeper grows it as before.
+  // V2_MAX_INITIAL_LENGTH. 114 is what the common short task of the
+  // libraries needs at its deepest call plus three words, so that it never
+  // grows its stack (measured with format 3, step 3: an empty task and the
+  // soak worker's short tasks need 116 words at a maximal height of 18, a
+  // task that sets a latch 126, the worker's longest 129; with a finally
+  // record of slack in every call's check they were 121, 130 and 133 and the
+  // constant 118, with 5-word frame records 135, 144, 147 and 132); a task
+  // that goes deeper grows it as before.
   static inline word initial_length(const Program* program);
-  static const word V2_INITIAL_LENGTH_ABOVE_HEIGHT = 118;
+  static const word V2_INITIAL_LENGTH_ABOVE_HEIGHT = 114;
   static const word V2_MAX_INITIAL_LENGTH = 256;
   static INLINE word max_length();
 
   // Format 2 (the verified core, interpreter_v2.cc and verified/core).
   //
-  // The array holds the records at the bottom, in [0, v2_record_top()): the
-  // frame records, V2_FRAME_WORDS words per frame, in [0, v2_frame_top()),
-  // then the finally records (format note 17), V2_FIN_WORDS words each. The
-  // object stack is at the top, in [top(), length()), growing towards the
-  // records. Records hold no object references (frame: method index, return
-  // bci, base, handler; finally: frame, height, resume, target), so the GC,
+  // The array holds the frame records at the bottom, V2_FRAME_WORDS words
+  // per frame, in [0, v2_frame_top()). The object stack is at the top, in
+  // [top(), length()), growing towards the records. Records hold no object
+  // references (method index, return bci, base, handler flag), so the GC,
   // which only visits [top(), length()), never sees them, and copying or
-  // shrinking keeps [0, v2_record_top()) as it is. Object-stack positions
-  // are counted from the bottom (length() - 1 is index 0), so they survive
-  // stack growth and shrinking. Stacks are shorter than V2_MAX_LENGTH
-  // (checked by verified/layout_check.cc), so the try-top field holds the
-  // record top in its low V2_FRAME_TOP_SHIFT bits and the frame top above
-  // them; the pending-stack-check field holds the absolute bci the task is
-  // suspended at. The layout is the same for 32-bit and 64-bit words. See
+  // shrinking keeps [0, v2_frame_top()) as it is. Since format 3 (format
+  // note 23) there are no other records: a pending unwinding is held by the
+  // two token words of the finally code's slots, smis on the object stack
+  // that C++ never reads. Object-stack positions are counted from the
+  // bottom (length() - 1 is index 0), so they survive stack growth and
+  // shrinking. Stacks are shorter than V2_MAX_LENGTH (checked by
+  // verified/layout_check.cc). The try-top field holds the frame top; the
+  // pending-stack-check field holds the absolute bci the task is suspended
+  // at. The layout is the same for 32-bit and 64-bit words. See
   // verified/core/DESIGN.md.
   static const word V2_FRAME_WORDS = 4;
   static const word V2_FRAME_METHOD = 0;
   static const word V2_FRAME_RET = 1;
   static const word V2_FRAME_BASE = 2;
-  // 0 for no handler, otherwise the height of the frame's TRY: the handler
-  // flag. The bci of its finally code is the return bci of the record above
-  // (the try block's; format 3, verified/spec/format/22-format3-branches-frames.md).
+  // 1 for a try block (a frame TRY called: when it returns or is unwound
+  // past, the frame below continues in its finally code at the try block's
+  // return bci with the object stack cut to the try block's base), 0
+  // otherwise (format 3, verified/spec/format/23-format3-try.md).
   static const word V2_FRAME_HANDLER = 3;
-  // A finally record: the frame running the finally code, the height of
-  // its slots, the resumed unwinding (kind + 4 * frame) and the branch
-  // target's bci and height. Only the core reads them.
-  static const word V2_FIN_WORDS = 5;
-  static const word V2_FIN_FRAME = 0;
-  static const word V2_FIN_HEIGHT = 1;
-  static const word V2_FIN_RESUME = 2;
-  static const word V2_FIN_TARGET = 3;
-  static const word V2_FIN_TARGET_HEIGHT = 4;
-  static const int V2_FRAME_TOP_SHIFT = 16;
-  static const word V2_MAX_LENGTH = static_cast<word>(1) << V2_FRAME_TOP_SHIFT;
-  // Words the core keeps free above a method's max height (for the slots of
-  // a finally block entered while unwinding and a primitive's failure value).
+  // A block reference is `frame << V2_BLOCK_SLOT_BITS | slot` (and so is
+  // the first token word of a pending unwinding): object-stack positions
+  // fit V2_BLOCK_SLOT_BITS bits because stacks are shorter than
+  // V2_MAX_LENGTH.
+  static const int V2_BLOCK_SLOT_BITS = 16;
+  static const word V2_MAX_LENGTH = static_cast<word>(1) << V2_BLOCK_SLOT_BITS;
+  // Words the core keeps free above every frame's maximal height
+  // (verified/core/src/room.rs): a push of the top frame needs no check.
   static const word V2_STACK_RESERVE = 8;
   // The word offset of array element 0 from the untagged address.
   static word v2_array_word() { return HEADER_SIZE / WORD_SIZE; }
-  // The record and frame tops, as one word.
-  uword v2_records_word() const { return _word_at(TRY_TOP_OFFSET); }
-  // The end of the frame and finally records.
-  word v2_record_top() const { return v2_records_word() & (V2_MAX_LENGTH - 1); }
-  // The end of the frame records.
-  word v2_frame_top() const { return v2_records_word() >> V2_FRAME_TOP_SHIFT; }
-  word v2_fin_count() const { return (v2_record_top() - v2_frame_top()) / V2_FIN_WORDS; }
+  // The frame top (the end of the frame records), as the raw header word.
+  uword v2_frame_top_word() const { return _word_at(TRY_TOP_OFFSET); }
+  word v2_frame_top() const { return v2_frame_top_word(); }
   // The bci.
   uword v2_bci_word() const { return _word_at(PENDING_STACK_CHECK_METHOD_OFFSET); }
   word v2_bci() const { return v2_bci_word(); }
-  // Sets the frame top, the number of finally records and the bci.
-  void v2_set_records(word frame_top, word fin_count, word bci) {
-    word record_top = frame_top + V2_FIN_WORDS * fin_count;
-    _set_try_top(record_top | (frame_top << V2_FRAME_TOP_SHIFT));
+  // Sets the frame top and the bci.
+  void v2_set_records(word frame_top, word bci) {
+    _word_at_put(TRY_TOP_OFFSET, frame_top);
     _word_at_put(PENDING_STACK_CHECK_METHOD_OFFSET, bci);
   }
-  // For a stack without finally records (a new task's).
-  void v2_set_frame_top(word value) { v2_set_records(value, 0, v2_bci()); }
+  void v2_set_frame_top(word value) { _word_at_put(TRY_TOP_OFFSET, value); }
   void v2_set_bci(word value) { _word_at_put(PENDING_STACK_CHECK_METHOD_OFFSET, value); }
   void v2_set_top(word value) { _set_top(value); }
   uword v2_word_at(word index) { return *_array_address(index); }

@@ -2175,6 +2175,13 @@ bool Verifier::is_enabled() {
 }
 
 static bool verify_and_report(Program* program, bool untrusted) {
+  // A verified-core image of another format version is rejected, never
+  // checked against the format-1 rules (Program::has_stale_v2_tag).
+  if (program->has_stale_v2_tag()) {
+    fprintf(stderr, "verifier: bytecode format TBC%c is not supported by this VM; recompile\n",
+            program->stale_v2_tag_digit());
+    return false;
+  }
   // Format 2: the verified structural verifier (verifier_v2.h).
   if (program->is_format2()) return V2Verifier::verify(program, !untrusted);
   const char* verbose = getenv("TOIT_VERIFY_VERBOSE");
@@ -2213,6 +2220,11 @@ void Verifier::set_bytecodes_for_testing(Program* program, uint8* bytes, int len
 bool Verifier::verify(Program* program, VerifierStats* stats, const VerifierOptions& options) {
   VerifierStats local;
   if (stats == null) stats = &local;
+  if (program->has_stale_v2_tag()) {
+    fprintf(stderr, "verifier: bytecode format TBC%c is not supported by this VM; recompile\n",
+            program->stale_v2_tag_digit());
+    return false;
+  }
   // Format 2: the verified structural verifier (verifier_v2.h).
   if (program->is_format2()) return V2Verifier::verify(program, !options.untrusted);
   AllowThrowingNew allow;

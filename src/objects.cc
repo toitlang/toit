@@ -280,19 +280,19 @@ static void visit_stack_roots(Object** slots, word top, word length, uword bytec
 }
 
 word Stack::shrink_v2_for_gc(word top, int max_height, bool aggressive, RootCallback* cb) {
-  // Format 2: the frame and finally records at the bottom stay where they
-  // are; the object stack moves down. The verified core needs room for a
-  // frame and the reserve above the records (verified/core/src/layout.rs).
+  // Format 2: the frame records at the bottom stay where they are; the
+  // object stack moves down. The verified core needs room for a frame and
+  // the reserve above the records (verified/core/src/layout.rs).
   // A call needs that room above the caller's top, wherever in its frame
   // the caller is: the top frame keeps room to reach its maximal height
   // too. Without it a GC inside a primitive (whose frame holds only its
   // arguments) shrinks the stack so that the caller's next call grows it
   // again, an allocation of a new stack each time (bytes-allocated-test).
   if (max_height < 0) return top;
-  word record_top = v2_record_top();
+  word frame_top = v2_frame_top();
   // Compute the reserve before narrowing to the stack's word-sized indices.
   int64 minimum_space = 2 * static_cast<int64>(max_height) + RESERVED_STACK_FOR_CALLS +
-                        record_top + V2_FRAME_WORDS + V2_STACK_RESERVE;
+                        frame_top + V2_FRAME_WORDS + V2_STACK_RESERVE;
   if (top > minimum_space && (aggressive || (cb->shrink_stacks() && top > length() >> 1))) {
     word reduction = top - static_cast<word>(minimum_space);
     if (aggressive || reduction >= 8) {

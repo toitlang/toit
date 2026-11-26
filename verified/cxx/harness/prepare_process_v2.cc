@@ -60,7 +60,7 @@ int main() {
   auto* stack = static_cast<Stack*>(HeapObject::from_address(reinterpret_cast<uword>(words)));
   words[0] = 2 * STACK_TAG;
   words[Stack::LENGTH_OFFSET / WORD_SIZE] = length;
-  stack->v2_set_records(0, 0, 0);
+  stack->v2_set_records(0, 0);
   stack->v2_set_top(length);
   uword task_words[] = {2 * TASK_TAG, reinterpret_cast<uword>(stack), 0};
   auto* task = static_cast<Task*>(HeapObject::from_address(reinterpret_cast<uword>(task_words)));
@@ -78,8 +78,8 @@ int main() {
   CXXV_ASSERT(task->stack() == stack, "preserve the current task's stack");
   CXXV_ASSERT(stack->length() == length && stack->top() == length - 1, "start with one active object slot");
   CXXV_ASSERT(stack->v2_word_at(length - 1) == reinterpret_cast<uword>(task), "the active slot contains the current task");
-  CXXV_ASSERT(stack->v2_frame_top() == Stack::V2_FRAME_WORDS && stack->v2_record_top() == Stack::V2_FRAME_WORDS &&
-              stack->v2_bci() == bci, "start at the selected entry with one frame and no finally records");
+  CXXV_ASSERT(stack->v2_frame_top() == Stack::V2_FRAME_WORDS && stack->v2_frame_top_word() == Stack::V2_FRAME_WORDS &&
+              stack->v2_bci() == bci, "start at the selected entry with one frame, not a try block");
   uword expected = original;
   if (witness == length - 1) expected = reinterpret_cast<uword>(task);
   if (witness == Stack::V2_FRAME_METHOD) expected = method;

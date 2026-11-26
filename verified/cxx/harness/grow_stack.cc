@@ -19,7 +19,7 @@
 //
 //   requires reloaded(m, g).refines(p)
 //   ensures  reloaded(m', g).refines(p),
-//            r == V2_OK ==> top' - rtop' >= needed
+//            r == V2_OK ==> top' - ftop' >= needed
 //
 // The real interpreter_v2.cc and objects_runtime.cc are compiled
 // unmodified. What is modelled instead of compiled (all of it group (3),
@@ -35,17 +35,16 @@
 //    count the marks;
 //  * TOIT_V2_VALIDATE is unset (getenv returns null).
 //
-// "refines" is reduced to the stack facts the C++ reads: the records occupy
-// [0, record_top), the object stack [top, length), record_top <= top <=
-// length <= Stack::max_length(), frame_top <= record_top with whole
-// finally records between them.
+// "refines" is reduced to the stack facts the C++ reads: the frame records
+// occupy [0, frame_top), the object stack [top, length), frame_top <= top <=
+// length <= Stack::max_length() (format 3: no other records).
 //
 // Properties, for every such stack (any length up to max_length) and every
 // `needed` up to CXXV_NEEDED_MAX:
 //  P1 memory safety and no UB (both memcpy calls of v2_copy_to in bounds);
 //  P2 the result is OK, STACK_OVERFLOW or OUT_OF_MEMORY;
-//  P3 OK ==> the task's new stack has top - record_top >= needed (the
-//     Verus ensures), the same records, frame top, finally count and bci,
+//  P3 OK ==> the task's new stack has top - frame_top >= needed (the
+//     Verus ensures), the same records, frame top and bci,
 //     and the same object-stack slots at the same positions from the end
 //     (the slot positions the core uses), so the abstract state is the
 //     same ("refines" again);
@@ -100,7 +99,7 @@ int main() {
   cxxv::make_world(&world);
   Process* process = world.process;
   *const_cast<Program**>(&process->object_heap_.program_) = world.program;
-  uint8 bytecodes[] = {'T', 'B', 'C', '2'};
+  uint8 bytecodes[] = {'T', 'B', 'C', '3'};
   world.program->bytecodes = List<uint8>(bytecodes, 4);
   world.class_bits[Program::stack_class_id_INDEX] = Program::compute_class_bits(STACK_TAG, 0);
 
@@ -125,13 +124,10 @@ int main() {
   for (word i = 0; i < length; ++i) stack->v2_word_at_put(i, nondet_ulong());
   word top = nondet_word();
   word frame_top = nondet_word();
-  word fin_count = nondet_word();
   word bci = nondet_word();
-  CXXV_ASSUME(0 <= frame_top && frame_top <= length && 0 <= fin_count && fin_count <= length);
-  word record_top = frame_top + Stack::V2_FIN_WORDS * fin_count;
-  CXXV_ASSUME(record_top <= top && top <= length);
+  CXXV_ASSUME(0 <= frame_top && frame_top <= top && top <= length);
   stack->_set_top(top);
-  stack->v2_set_records(frame_top, fin_count, bci);
+  stack->v2_set_records(frame_top, bci);
 
   // The task (TASK_TAG instance with the stack and id fields).
   HeapObject* raw_task = cxxv::raw_object(Instance::HEADER_SIZE + 2 * WORD_SIZE);
@@ -149,7 +145,7 @@ int main() {
   word slot_position = nondet_word();  // Position from the end, as the core.
   uword record_value = 0;
   uword slot_value = 0;
-  bool has_record = 0 <= record_index && record_index < record_top;
+  bool has_record = 0 <= record_index && record_index < frame_top;
   bool has_slot = 0 <= slot_position && slot_position < length - top;
   if (has_record) record_value = stack->v2_word_at(record_index);
   if (has_slot) slot_value = stack->v2_word_at(length - 1 - slot_position);
@@ -159,13 +155,12 @@ int main() {
   CXXV_ASSERT(r == TOIT_V2_OK || r == TOIT_V2_STACK_OVERFLOW || r == TOIT_V2_OUT_OF_MEMORY, "P2");
   Stack* now = process->task()->stack();
   if (r == TOIT_V2_OK) {
-    CXXV_ASSERT(now->top() - now->v2_record_top() >= needed, "P3: needed words free (Verus ensures)");
+    CXXV_ASSERT(now->top() - now->v2_frame_top() >= needed, "P3: needed words free (Verus ensures)");
     CXXV_ASSERT(now->length() - now->top() == length - top, "P3: same object-stack height");
     CXXV_ASSERT(now->v2_frame_top() == frame_top, "P3: same frame top");
-    CXXV_ASSERT(now->v2_fin_count() == fin_count, "P3: same finally records");
     CXXV_ASSERT(now->v2_bci() == bci, "P3: same bci");
     word gap_index = nondet_word();
-    if (now->v2_record_top() <= gap_index && gap_index < now->top()) {
+    if (now->v2_frame_top() <= gap_index && gap_index < now->top()) {
       CXXV_ASSERT(now->v2_word_at(gap_index) == 0, "P3: the unused gap retains the allocator's tagged zero");
     }
     if (has_record) CXXV_ASSERT(now->v2_word_at(record_index) == record_value, "P3: records copied");

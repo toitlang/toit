@@ -582,6 +582,11 @@ const char* V2Verifier::verify_installed(Program* program, word program_size,
     fprintf(stderr, "verifier: untrusted program rejected: malformed program memory: %s\n", layout);
     return "INVALID_SNAPSHOT";
   }
+  if (program->has_stale_v2_tag()) {
+    fprintf(stderr, "verifier: untrusted program rejected: bytecode format TBC%c is not supported by this VM; recompile\n",
+            program->stale_v2_tag_digit());
+    return "FORMAT_2_REQUIRED";
+  }
   if (!program->is_format2()) {
     fprintf(stderr, "untrusted images must be in bytecode format 2\n");
     return "FORMAT_2_REQUIRED";

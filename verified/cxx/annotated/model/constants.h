@@ -86,9 +86,6 @@
 #define Stack_LENGTH_OFFSET ((word)(2 * sizeof(word)))
 #define Stack_PENDING_STACK_CHECK_METHOD_OFFSET ((word)(5 * sizeof(word)))
 #define Stack_TRY_TOP_OFFSET ((word)(4 * sizeof(word)))
-#define Stack_V2_MAX_LENGTH ((word)65536)
-#define Stack_V2_FRAME_TOP_SHIFT 16
-#define Stack_V2_FIN_WORDS ((word)5)
 #define Stack_TOP_OFFSET ((word)(3 * sizeof(word)))
 #define Array_LENGTH_OFFSET ((word)sizeof(word))
 #define Array_HEADER_SIZE ((word)(2 * sizeof(word)))

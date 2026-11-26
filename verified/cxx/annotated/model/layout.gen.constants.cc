@@ -50,8 +50,8 @@ static_assert((String::EXTERNAL_ADDRESS_OFFSET / WORD_SIZE) == (vf_64 ? 3 : 3), 
 static_assert((static_cast<int>(sizeof(int64) / WORD_SIZE)) == (vf_64 ? 1 : 2), "C++ double: payload words, from the value word (little endian: the low half first, view::value_word)");
 static_assert((Stack::LENGTH_OFFSET / WORD_SIZE) == (vf_64 ? 2 : 2), "C++ stack: length word");
 static_assert((Stack::TOP_OFFSET / WORD_SIZE) == (vf_64 ? 3 : 3), "C++ stack: top word");
-static_assert((Stack::TRY_TOP_OFFSET / WORD_SIZE) == (vf_64 ? 4 : 4), "C++ stack: record top word (format 2: the record top, the frame top above STACK_FRAME_TOP_SHIFT)");
-static_assert((Stack::V2_FRAME_TOP_SHIFT) == (vf_64 ? 16 : 16), "C++ stack: frame top shift in the record top word");
+static_assert((Stack::TRY_TOP_OFFSET / WORD_SIZE) == (vf_64 ? 4 : 4), "C++ stack: frame top word (format 2: the end of the frame records; since format 3 there are no other records)");
+static_assert((Stack::V2_BLOCK_SLOT_BITS) == (vf_64 ? 16 : 16), "C++ stack: slot bits of a block reference (and of the first token word of a pending unwinding)");
 static_assert((Stack::PENDING_STACK_CHECK_METHOD_OFFSET / WORD_SIZE) == (vf_64 ? 5 : 5), "C++ stack: bci word (format 2: the bci a suspended task resumes at)");
 }  // namespace toit
 #include "constants.h"

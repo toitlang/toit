@@ -493,8 +493,7 @@ impl StackMem {
     }
 
     /// Copies `n` words from `from..from+n` to `to..to+n` (memmove). Used
-    /// for the frame and finally records (calls and unwinding through
-    /// TRY). `copy_words` gets the array pointer and the permissions
+    /// for the arguments of tail calls and INVOKE_BLOCK. `copy_words` gets the array pointer and the permissions
     /// (erased), not the view, so that the view can stay in registers.
     #[inline(always)]
     pub fn copy_within(&mut self, from: usize, to: usize, n: usize)

@@ -43,8 +43,8 @@ static void check_initial_stack() {
 
   stack->v2_initialize_new_task(code);
   CXXV_ASSERT(stack->length() == length && stack->top() == length - 1 &&
-              stack->v2_frame_top() == 0 && stack->v2_record_top() == 0 && stack->v2_bci() == 0,
-              "new task starts with one active slot, zero frames, zero finally records and bytecode index zero");
+              stack->v2_frame_top() == 0 && stack->v2_frame_top_word() == 0 && stack->v2_bci() == 0,
+              "new task starts with one active slot, zero frames and bytecode index zero");
   CXXV_ASSERT(*stack->v2_slot_address(0) == code && words[Stack::HEADER_SIZE / WORD_SIZE + witness] == original,
               "put the original code in the sole active slot and preserve every other payload word");
   CXXV_ASSERT(cards[0] == 0 && cards[1] == GcMetadata::NEW_SPACE_POINTERS && cards[2] == 0,

@@ -692,8 +692,7 @@ proof fn lemma_hash_find_cond(p: &Program, g: State2)
 /// The opcodes whose handlers (or whose slow paths) run on the machine
 /// (`Slow::Op`): LOAD_GLOBAL_VAR_LAZY(_WIDE) (the initializer call),
 /// INVOKE_STATIC_TAIL, INVOKE_BLOCK, INVOKE_LAMBDA_TAIL and
-/// INVOKE_INITIALIZER_TAIL (raises, finally records, stack growth,
-/// preemption), THROW, NON_LOCAL_RETURN, NON_LOCAL_BRANCH, TRY, UNWIND and
+/// INVOKE_INITIALIZER_TAIL (raises, stack growth, preemption), THROW, NON_LOCAL_RETURN, NON_LOCAL_BRANCH, TRY, UNWIND and
 /// HALT.
 pub open spec fn machine_op(op: u8) -> bool {
     ||| op == 32 || op == 33
@@ -796,7 +795,7 @@ pub fn step_machine(m: &mut Machine, env: &Env) -> (r: Ctl)
 /// What a step on registers guarantees: on `Next` the registers `r1` are
 /// cursors of `m1` and `m1.with(r1)` is the machine of `step_post` (one
 /// step) or of `steps_post` (the machine's handlers ran several steps until
-/// no finally records were left, `settle`); on `Slow` nothing changed and
+/// the machine could continue on registers, `settle`); on `Slow` nothing changed and
 /// the slow path applies (`slow_pre`: the run loop runs it); on any other
 /// result the machine `m1` itself (the registers written back).
 pub open spec fn rpost(p: &Program, m0: Machine, r0: Regs, m1: Machine, r1: Regs, c: Ctl) -> bool {
@@ -943,8 +942,8 @@ pub fn top_room_kept(m: &Machine, env: &Env, Ghost(w0): Ghost<Machine>) -> (b: b
 }
 
 /// The run loop's invariant on registers: the registers are cursors of the
-/// machine, which satisfies `inv` with them and has room; the gate for the
-/// finally records is set.
+/// machine, which satisfies `inv` with them and has room; the fast paths'
+/// constants are set (`gate_ok`).
 pub open spec fn rinv(p: &Program, m: Machine, r: Regs) -> bool {
     &&& m.rok(r)
     &&& ro_ok(p)
@@ -980,10 +979,10 @@ pub enum Slow {
     /// LOOKUP_FAILED for the receiver `w` and the selector.
     Lookup(i64),
     /// The call of method `t` returning to bci `ret`: stack growth,
-    /// preemption at the callee's entry, finally records.
+    /// preemption at the callee's entry.
     Call(usize, usize),
-    /// The return with the result `w`: the task's bottom frame, a caller in
-    /// a TRY (its finally code), finally records.
+    /// The return with the result `w`: the task's bottom frame, a try block
+    /// (its caller's finally code).
     Return,
 }
 
@@ -1878,7 +1877,7 @@ pub fn step_r(m: &mut Machine, r: &mut Regs, env: &Env, ab: &mut crate::room::Ab
             return crate::rarrays::op_primitive(m, r, env, cur_bci(p, r.ip), 89, ab);
         },
         // Non-local control flow (rnonlocal.rs): fast paths without
-        // handlers on the way and without finally records.
+        // try blocks on the way.
         #[cfg(not(feature = "split-loop"))]
         95 => {
             let hd = r.ip.byte(1, &p.code) as usize;
@@ -2160,7 +2159,7 @@ pub fn step_c(m: &mut Machine, r: &mut Regs, env: &Env) -> (c: Ctl)
             return crate::rarrays::op_allocate(m, r, env, cur_bci(p, r.ip), 43, c, 3);
         },
         // Non-local control flow (rnonlocal.rs): fast paths without
-        // handlers on the way and without finally records.
+        // try blocks on the way.
         95 => {
             let hd = r.ip.byte(1, &p.code) as usize;
             let off = ip_u32(p, r.ip, 2);
