@@ -106,16 +106,140 @@ pub proof fn lemma_obj_model_addr(o: HeapObj, cb: Seq<u16>, a1: Seq<usize>, a2: 
     }
 }
 
-/// A live value of the collector is a live value of the core's `collected`.
-proof fn lemma_val_live(h: H, st: St, rv: Seq<AVal>, v: Value)
-    requires
-        v is Obj ==> exists|i: int| 0 <= i < rv.len() && #[trigger] rv[i] == AVal::Ref(v->Obj_0 as int),
-        forall|i: int| 0 <= i < rv.len() ==> #[trigger] val_live(h, st, rv[i]),
-    ensures gcbridge::val_live_in(live_seq(h, st), v),
+/// The values of the state survive the collection: the object stack, the
+/// globals and the running task (what the core's `collected` asks of them).
+pub open spec fn state_live(s: State2, h: H, st: St) -> bool {
+    &&& forall|j: int| 0 <= j < s.stack.len() && (#[trigger] s.stack[j]) is Obj ==> val_live(h, st, aval(s.stack[j]))
+    &&& forall|j: int| 0 <= j < s.globals.len() && (#[trigger] s.globals[j]) is Obj ==> val_live(h, st, aval(s.globals[j]))
+    &&& val_live(h, st, AVal::Ref(s.task as int))
+}
+
+/// A root value is live after the collection.
+proof fn lemma_root_live(c: Ctx, h: H, st: St, rptr: *mut usize, rv: Seq<AVal>, tn: int, i: int)
+    requires collected_objs(c, h, st, rptr, rv, tn), 0 <= i < rv.len(),
+    ensures val_live(h, st, rv[i]),
 {
-    if v is Obj {
-        let i = choose|i: int| 0 <= i < rv.len() && #[trigger] rv[i] == AVal::Ref(v->Obj_0 as int);
-        assert(val_live(h, st, rv[i]));
+    assert(wperm_ok(st.rp, i, rptr, i));
+}
+
+/// With every value of the state among the roots (`roots_cover`), the
+/// state's values survive.
+pub proof fn lemma_roots_cover_live(c: Ctx, h: H, st: St, rptr: *mut usize, rv: Seq<AVal>, tn: int, s: State2)
+    requires collected_objs(c, h, st, rptr, rv, tn), roots_cover(s, rv),
+    ensures state_live(s, h, st),
+{
+    assert forall|j: int| 0 <= j < s.stack.len() && (#[trigger] s.stack[j]) is Obj implies val_live(h, st, aval(s.stack[j])) by {
+        let i = choose|i: int| 0 <= i < rv.len() && #[trigger] rv[i] == AVal::Ref(s.stack[j]->Obj_0 as int);
+        lemma_root_live(c, h, st, rptr, rv, tn, i);
+    }
+    assert forall|j: int| 0 <= j < s.globals.len() && (#[trigger] s.globals[j]) is Obj implies val_live(h, st, aval(s.globals[j])) by {
+        let i = choose|i: int| 0 <= i < rv.len() && #[trigger] rv[i] == AVal::Ref(s.globals[j]->Obj_0 as int);
+        lemma_root_live(c, h, st, rptr, rv, tn, i);
+    }
+    let i = choose|i: int| 0 <= i < rv.len() && #[trigger] rv[i] == AVal::Ref(s.task as int);
+    lemma_root_live(c, h, st, rptr, rv, tn, i);
+}
+
+// ---------------------------------------------------------------------------
+// The roots as the C++ runtime holds them (milestone M3).
+
+/// The running task's stack object (the task's stack field, `v2::sound::
+/// running_ok`).
+pub open spec fn running_stack(s: State2) -> int {
+    s.heap[s.task as int].body->Instance_0[0]->Obj_0 as int
+}
+
+/// The state with the running task's stack written into its stack object,
+/// as `task_transfer_step` saves it: what the process heap holds at a
+/// collection point (the core runs on that object). In `s` itself the
+/// running task's stack object still has the contents of its last
+/// suspension (README, "The spec").
+pub open spec fn saved(s: State2) -> State2 {
+    let sid = running_stack(s);
+    State2 {
+        heap: s.heap.update(sid, HeapObj { body: Body::Stack2(s.stack, s.frames, s.tries, s.fins, s.bci), ..s.heap[sid] }),
+        ..s
+    }
+}
+
+/// The first roots the C++ enumerates (`ObjectHeap::iterate_roots`): the
+/// running task (`task_`), then the globals (`global_variables_`) in
+/// order. The rest of the roots (external roots, object notifiers,
+/// finalizer nodes) follow; the C++ root obligation (TRUSTED.md section 5)
+/// is that they are all the heap references the C++ holds.
+pub open spec fn roots_core(s: State2, rv: Seq<AVal>) -> bool {
+    &&& rv.len() >= 1 + s.globals.len()
+    &&& rv[0] == AVal::Ref(s.task as int)
+    &&& forall|j: int| 0 <= j < s.globals.len() ==> #[trigger] rv[1 + j] == aval(s.globals[j])
+}
+
+/// The saved state's heap model is the state's: only the running stack
+/// object's contents change, and a stack object's contents are not part of
+/// the model.
+pub proof fn lemma_saved_model(ap: Program2, s: State2, addr: Seq<usize>, cb: Seq<u16>)
+    requires toit_spec::v2::sound::running_ok(ap, s), heap_model_ok(s.heap, addr, cb),
+    ensures
+        heap_model_ok(saved(s).heap, addr, cb),
+        saved(s).heap.len() == s.heap.len(),
+        forall|i: int| 0 <= i < s.heap.len() ==> #[trigger] saved(s).heap[i].ro == s.heap[i].ro,
+        forall|i: int| 0 <= i < s.heap.len() && i != running_stack(s) ==> #[trigger] saved(s).heap[i] == s.heap[i],
+        saved(s).stack == s.stack, saved(s).globals == s.globals, saved(s).task == s.task,
+        0 <= running_stack(s) < s.heap.len(), running_stack(s) != s.task as int,
+        s.heap[s.task as int].body is Instance,
+        s.heap[s.task as int].body->Instance_0.len() >= 1,
+        s.heap[s.task as int].body->Instance_0[0] == Value::Obj(running_stack(s) as usize),
+{
+    let sid = running_stack(s);
+    let f = s.heap[s.task as int].body->Instance_0;
+    assert(toit_spec::v2::sound::stack_ref(s.heap, f[0]));
+    assert(s.heap[sid].body is Stack2);
+    let h2 = saved(s).heap;
+    assert forall|i: int| 0 <= i < h2.len() implies #[trigger] obj_model_ok(h2[i], cb, addr) by {
+        assert(obj_model_ok(s.heap[i], cb, addr));
+    }
+}
+
+/// With the C++ roots starting with the running task and the globals, and
+/// the running stack in its stack object (the saved state's heap
+/// represented), the state's values survive: the task and the globals are
+/// roots; the stack's values are in the reference slots of the running
+/// stack object, which the task's stack field refers to.
+pub proof fn lemma_roots_core_live(ap: Program2, cb: Seq<u16>, s: State2,
+                                   c: Ctx, h: H, st: St, rptr: *mut usize, rv: Seq<AVal>, tn: int)
+    requires
+        collected_objs(c, h, st, rptr, rv, tn),
+        roots_core(s, rv),
+        toit_spec::v2::sound::running_ok(ap, s),
+        rep(saved(s).heap, h, cb),
+    ensures state_live(s, h, st),
+{
+    let n = h.objs.len() as int;
+    let sh = saved(s).heap;
+    let t = s.task as int;
+    let sid = running_stack(s);
+    let f = s.heap[t].body->Instance_0;
+    assert(toit_spec::v2::sound::stack_ref(s.heap, f[0]));
+    assert(sid != t);
+    lemma_root_live(c, h, st, rptr, rv, tn, 0);
+    assert(val_live(h, st, AVal::Ref(t)));
+    assert forall|j: int| 0 <= j < s.globals.len() && (#[trigger] s.globals[j]) is Obj implies val_live(h, st, aval(s.globals[j])) by {
+        lemma_root_live(c, h, st, rptr, rv, tn, 1 + j);
+    }
+    // The task's stack field: a reference slot of the task holds the stack object.
+    assert(sh[t] == s.heap[t]);
+    assert(obj_rep(sh[t], h.objs[t], cb, sh.len() as int));
+    assert(obj_vals(sh[t])[0] == Value::Obj(sid as usize));
+    let k0 = choose|k: int| is_ref(h.objs[t], k) && #[trigger] h.objs[t].words[k] == AVal::Ref(obj_vals(sh[t])[0]->Obj_0 as int);
+    assert(live(h, st, t));
+    assert(val_live(h, st, obj(h, t).words[k0]));
+    assert(live(h, st, sid));
+    // The stack's values: reference slots of the stack object.
+    assert(sh[sid].body == Body::Stack2(s.stack, s.frames, s.tries, s.fins, s.bci));
+    assert(obj_rep(sh[sid], h.objs[sid], cb, sh.len() as int));
+    assert forall|j: int| 0 <= j < s.stack.len() && (#[trigger] s.stack[j]) is Obj implies val_live(h, st, aval(s.stack[j])) by {
+        assert(obj_vals(sh[sid])[j] == s.stack[j]);
+        let k = choose|k: int| is_ref(h.objs[sid], k) && #[trigger] h.objs[sid].words[k] == AVal::Ref(obj_vals(sh[sid])[j]->Obj_0 as int);
+        assert(val_live(h, st, obj(h, sid).words[k]));
     }
 }
 
@@ -138,7 +262,7 @@ pub proof fn lemma_bridge(ap: Program2, cb: Seq<u16>, s1: State2, n0: int,
         forall|i: int| 0 <= i < s1.heap.len() ==> (#[trigger] from(h, i) <==> i >= n0),
         forall|i: int| 0 <= i < ap.roots.len() ==> gcbridge::ro_const(s1.heap, #[trigger] ap.roots[i]),
         forall|i: int| 0 <= i < ap.literals.len() ==> gcbridge::ro_const(s1.heap, #[trigger] ap.literals[i]),
-        roots_cover(s1, rv),
+        state_live(s1, h, st),
     ensures
         gcbridge::collected(ap, cb, s1, live_seq(h, st), st.addr2, n0),
         forall|i: int, k: int| 0 <= i < s1.heap.len() && copied(st, i) && #[trigger] is_word(s1.heap[i], k) ==>
@@ -155,12 +279,12 @@ pub proof fn lemma_bridge(ap: Program2, cb: Seq<u16>, s1: State2, n0: int,
         assert(!from(h, i));
     }
     assert forall|j: int| 0 <= j < s1.stack.len() implies gcbridge::val_live_in(lv, #[trigger] s1.stack[j]) by {
-        lemma_val_live(h, st, rv, s1.stack[j]);
+        if s1.stack[j] is Obj { assert(val_live(h, st, aval(s1.stack[j]))); }
     }
     assert forall|j: int| 0 <= j < s1.globals.len() implies gcbridge::val_live_in(lv, #[trigger] s1.globals[j]) by {
-        lemma_val_live(h, st, rv, s1.globals[j]);
+        if s1.globals[j] is Obj { assert(val_live(h, st, aval(s1.globals[j]))); }
     }
-    lemma_val_live(h, st, rv, Value::Obj(s1.task));
+    assert(val_live(h, st, AVal::Ref(s1.task as int)));
     assert forall|i: int, j: int| 0 <= i < n && lv[i] && 0 <= j < obj_vals(sh[i]).len()
         implies gcbridge::val_live_in(lv, #[trigger] obj_vals(sh[i])[j]) by {
         assert(obj_rep(sh[i], h.objs[i], cb, n));
@@ -218,7 +342,7 @@ pub proof fn lemma_spec_collection(ap: Program2, cb: Seq<u16>, s: State2, n0: in
         forall|i: int| 0 <= i < s.heap.len() ==> (#[trigger] from(h, i) <==> i >= n0),
         forall|i: int| 0 <= i < ap.roots.len() ==> gcbridge::ro_const(s.heap, #[trigger] ap.roots[i]),
         forall|i: int| 0 <= i < ap.literals.len() ==> gcbridge::ro_const(s.heap, #[trigger] ap.literals[i]),
-        roots_cover(s, rv),
+        state_live(s, h, st),
     ensures ({
         let lv = live_seq(h, st);
         let ren = gcbridge::ren_of(lv);
@@ -237,6 +361,62 @@ pub proof fn lemma_spec_collection(ap: Program2, cb: Seq<u16>, s: State2, n0: in
         assert forall|i: int| 0 <= i < s.heap.len() implies #[trigger] toit_spec::v2::gc::weak_change(ap, s.heap, i, s.heap[i]) by {}
     }
     gcbridge::lemma_collected(ap, cb, s, s, live_seq(h, st), st.addr2, n0);
+}
+
+// ---------------------------------------------------------------------------
+// The collection from the core's state (milestone M3).
+
+/// THE BRIDGE FROM THE CORE'S STATE. For the state `s` of the core at a
+/// collection point (`running_ok`: the running task's stack field refers
+/// to its stack object), with the C++ roots starting with the running task
+/// and the globals (`roots_core`) and the process heap representing the
+/// saved state (the running stack in its stack object), the collector's
+/// result renumbered is a collection of the spec from the saved state,
+/// represented by the core's heap model at the collector's addresses.
+pub proof fn lemma_spec_collection_core(ap: Program2, cb: Seq<u16>, s: State2, n0: int,
+                                        c: Ctx, h: H, st: St, rptr: *mut usize, rv: Seq<AVal>, ttab: *mut usize, tused: *mut usize,
+                                        w: Window)
+    requires
+        heap_ok(c, h),
+        collected(c, h, st, rptr, rv, ttab, tused, w),
+        toit_spec::v2::sound::running_ok(ap, s),
+        roots_core(s, rv),
+        rep(saved(s).heap, h, cb),
+        heap_model_ok(s.heap, h.addr, cb),
+        0 <= n0 <= s.heap.len(),
+        forall|i: int| 0 <= i < s.heap.len() ==> (#[trigger] s.heap[i].ro <==> i < n0),
+        forall|i: int| 0 <= i < s.heap.len() ==> (#[trigger] from(h, i) <==> i >= n0),
+        forall|i: int| 0 <= i < ap.roots.len() ==> gcbridge::ro_const(s.heap, #[trigger] ap.roots[i]),
+        forall|i: int| 0 <= i < ap.literals.len() ==> gcbridge::ro_const(s.heap, #[trigger] ap.literals[i]),
+    ensures ({
+        let lv = live_seq(h, st);
+        let ren = gcbridge::ren_of(lv);
+        let back = gcbridge::back_of(lv);
+        let s2 = renamed(saved(s), ren, back);
+        let a2 = Seq::new(back.len(), |k: int| st.addr2[back[k]]);
+        &&& collection(ap, saved(s), s2)
+        &&& heap_model_ok(s2.heap, a2, cb)
+        &&& enc_seq(a2, s2.stack) == enc_seq(st.addr2, s.stack)
+        &&& enc_seq(a2, s2.globals) == enc_seq(st.addr2, s.globals)
+    }),
+{
+    let s0 = saved(s);
+    lemma_saved_model(ap, s, h.addr, cb);
+    lemma_roots_core_live(ap, cb, s, c, h, st, rptr, rv, w.pages as int);
+    assert(state_live(s0, h, st));
+    assert forall|i: int| 0 <= i < s0.heap.len() implies (#[trigger] s0.heap[i].ro <==> i < n0) by {
+        assert(s0.heap[i].ro == s.heap[i].ro);
+    }
+    assert forall|i: int| 0 <= i < s0.heap.len() implies (#[trigger] from(h, i) <==> i >= n0) by {}
+    assert forall|i: int| 0 <= i < ap.roots.len() implies gcbridge::ro_const(s0.heap, #[trigger] ap.roots[i]) by {
+        assert(gcbridge::ro_const(s.heap, ap.roots[i]));
+        if ap.roots[i] is Obj { assert(s0.heap[ap.roots[i]->Obj_0 as int].ro == s.heap[ap.roots[i]->Obj_0 as int].ro); }
+    }
+    assert forall|i: int| 0 <= i < ap.literals.len() implies gcbridge::ro_const(s0.heap, #[trigger] ap.literals[i]) by {
+        assert(gcbridge::ro_const(s.heap, ap.literals[i]));
+        if ap.literals[i] is Obj { assert(s0.heap[ap.literals[i]->Obj_0 as int].ro == s.heap[ap.literals[i]->Obj_0 as int].ro); }
+    }
+    lemma_spec_collection(ap, cb, s0, n0, c, h, st, rptr, rv, ttab, tused, w);
 }
 
 // ---------------------------------------------------------------------------
