@@ -208,6 +208,37 @@ interface SandboxHttpService:
   */
   static RESPONSE-INDEX /int ::= 5
 
+// The notifications of a stream. Waiting uses a deadline, not a timeout
+// exception, so a wait never ends by unwinding through the monitor.
+monitor StreamChanges_:
+  count_/int := 0
+
+  notify -> none:
+    count_++
+
+  count -> int:
+    return count_
+
+  wait-change seen/int deadline-us/int -> none:
+    try-await --deadline=deadline-us: count_ != seen
+
+/**
+Opens a session with the provider of the service of $selector, waiting up
+  to $timeout for it; throws $unavailable if there is none.
+
+Right after the provider was restarted, discovery can still return the
+  ended provider (its registration goes when the system process handles its
+  end): the open is tried again until the timeout.
+*/
+open-session selector/ServiceSelector timeout/Duration unavailable/string -> SandboxNetworkClient:
+  deadline := Time.monotonic-us + timeout.in-us
+  while true:
+    remaining := deadline - Time.monotonic-us
+    client := SandboxNetworkClient selector
+    exception := catch --unwind=(: remaining <= 0 or (it != "NO_SUCH_PROCESS" and it != "Cannot disambiguate")):
+      return client.open --timeout=(Duration --us=(max 0 remaining)) --if-absent=: throw unavailable
+    sleep --ms=20
+
 /** A client of one of the sandbox network services. */
 class SandboxNetworkClient extends ServiceClient:
   /**
@@ -271,13 +302,13 @@ Waits for the service's notifications when the stream has nothing to read
 class SandboxStream extends ServiceResourceProxy:
   static POLL-MS ::= 500
   static MAX-RETRIES ::= 20
+  static CALL-TIMEOUT-MS ::= 30_000
   /** The notifications of all streams of this process (for measurements). */
   static notifications/int := 0
   /** The calls tried again after QUOTA_EXCEEDED (for measurements and tests). */
   static retried/int := 0
 
-  changes_/int := 0
-  changed_ ::= monitor.Signal
+  changes_ ::= StreamChanges_
   received_/int := 0
   sent_/int := 0
 
@@ -289,8 +320,7 @@ class SandboxStream extends ServiceResourceProxy:
 
   on-notified_ notification/any -> none:
     notifications++
-    changes_++
-    changed_.raise
+    changes_.notify
 
   /**
   Calls $block until it returns a value other than 0, false or null, waiting for
@@ -300,19 +330,17 @@ class SandboxStream extends ServiceResourceProxy:
     retries := 0
     while true:
       if is-closed: throw "ALREADY_CLOSED"
-      seen := changes_
+      seen := changes_.count
       result := null
       exception := catch --unwind=(: it != "QUOTA_EXCEEDED" or retries >= MAX-RETRIES):
-        result = block.call
+        result = with-timeout --ms=CALL-TIMEOUT-MS block
       if exception:
         retries++
         retried++
       else:
         retries = 0
       if result != 0 and result != false and result != null: return result
-      catch --unwind=(: it != DEADLINE-EXCEEDED-ERROR):
-        with-timeout --ms=POLL-MS:
-          changed_.wait: changes_ != seen
+      changes_.wait-change seen (Time.monotonic-us + POLL-MS * 1000)
 
   /** Waits until the stream is connected; throws its error. */
   wait-connected -> none:

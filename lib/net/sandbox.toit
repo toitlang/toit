@@ -50,9 +50,7 @@ Throws "Sandbox network unavailable" if the container may not use the
   registered again).
 */
 open --timeout/Duration=(Duration --ms=100) -> SandboxNetwork:
-  client := (SandboxNetworkClient SandboxSocketService.SELECTOR).open
-      --timeout=timeout
-      --if-absent=: throw "Sandbox network unavailable"
+  client := open-session SandboxSocketService.SELECTOR timeout "Sandbox network unavailable"
   return SandboxNetwork.internal_ client --tls=false --roots=null
 
 /**

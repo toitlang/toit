@@ -5,8 +5,8 @@
 /**
 The per-container service allow-list: a sandbox discovers and opens only
   the services its launch policy lists (`containers.start --services`),
-  besides discovery and printing.
-
+  besides discovery and printing; "all" lets it use every provider that
+  accepts sandboxed clients.
 Three trusted providers serve sandboxed clients (X, Y and Z). Sandboxes
   with different lists see different providers; a sandbox without a list
   sees none but can still print. A sandbox that sends the open request to
@@ -83,7 +83,7 @@ run-sandbox args/Map -> none:
       exit 3
   exit 0
 
-run-sandbox-container arguments/Map --services/List? -> int:
+run-sandbox-container arguments/Map --services/any -> int:
   container := containers.start containers.current arguments
       --untrusted
       --services=services
@@ -105,6 +105,10 @@ run-driver -> none:
   expect-equals 0
       run-sandbox-container {"role": "both", "may": ["X", "Y"]}
           --services=[PingService.Y.uuid, PingService.X.uuid]
+  // "all": every provider that accepts sandboxed clients.
+  expect-equals 0
+      run-sandbox-container {"role": "every", "may": ["X", "Y"]}
+          --services="all"
   // No list (the default): no service but discovery and printing.
   expect-equals 0
       run-sandbox-container {"role": "none", "may-not": ["X", "Y"]}
@@ -142,6 +146,8 @@ run-driver -> none:
       catch: run-sandbox-container {"role": "never"} --services=[""]
   expect-equals "INVALID_ARGUMENT"
       catch: run-sandbox-container {"role": "never"} --services=["x" * 65]
+  expect-equals "WRONG_OBJECT_TYPE"
+      catch: run-sandbox-container {"role": "never"} --services="some"
 
   x.stop
   y.stop

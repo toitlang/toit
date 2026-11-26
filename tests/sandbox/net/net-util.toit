@@ -22,7 +22,7 @@ import net
 import net.tcp
 import tls
 import system.containers
-import system.api.sandbox-network show SandboxSocketService SandboxHttpService SandboxNetworkClient
+import system.api.sandbox-network show SandboxSocketService SandboxHttpService SandboxNetworkClient open-session
 import ....services.sandbox-network.provider show run-sandbox-network
 
 SOCKET-SERVICE ::= SandboxSocketService.SELECTOR.uuid
@@ -61,9 +61,7 @@ start-provider --heap/int=4_000_000 -> containers.Container:
 
 wait-for-provider -> none:
   [SandboxSocketService.SELECTOR, SandboxHttpService.SELECTOR].do: | selector |
-    client := SandboxNetworkClient selector
-    client.open --timeout=(Duration --s=5)
-    client.close
+    (open-session selector (Duration --s=5) "provider not up").close
 
 /**
 Starts a sandbox from this image with the given $role and $arguments and

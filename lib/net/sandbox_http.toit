@@ -41,9 +41,7 @@ Opens a session with the sandbox HTTP service. Throws "Sandbox HTTP
   doesn't run; waits up to $timeout for it.
 */
 open --timeout/Duration=(Duration --ms=100) -> SandboxHttpClient:
-  client := (SandboxNetworkClient SandboxHttpService.SELECTOR).open
-      --timeout=timeout
-      --if-absent=: throw "Sandbox HTTP unavailable"
+  client := open-session SandboxHttpService.SELECTOR timeout "Sandbox HTTP unavailable"
   return SandboxHttpClient.internal_ client
 
 class SandboxHttpClient:
