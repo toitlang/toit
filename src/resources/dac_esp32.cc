@@ -40,9 +40,9 @@ namespace toit {
 static constexpr int kDacMinFrequency = 130;
 static constexpr int kDacMaxFrequency = 5500;
 
-static constexpr dac_channel_t kInvalidChannel = static_cast<dac_channel_t>(-1);
+static const dac_channel_t kInvalidChannel = static_cast<dac_channel_t>(-1);
 
-static ResourcePool<dac_channel_t, kInvalidChannel> dac_channels_(
+static ResourcePool<dac_channel_t, -1> dac_channels_(
   DAC_CHAN_0,
   DAC_CHAN_1
 );

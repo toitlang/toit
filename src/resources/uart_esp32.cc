@@ -76,7 +76,7 @@ const int kHighSpeedBaudRate = 460800;
 const uint8 kHighSpeedRxFullThreshold = 35;
 const uint8 kLowSpeedRxFullThreshold = 105;
 
-static ResourcePool<uart_port_t, kInvalidUartPort> uart_ports(
+static ResourcePool<uart_port_t, -1> uart_ports(
 #ifndef CONFIG_ESP_CONSOLE_UART
     UART_NUM_0,
     UART_NUM_1
@@ -99,7 +99,7 @@ static ResourcePool<uart_port_t, kInvalidUartPort> uart_ports(
 #ifdef CONFIG_ESP_CONSOLE_UART
 // The console UART is excluded from `uart_ports` above. It can only be
 // opened through the dedicated console primitive.
-static ResourcePool<uart_port_t, kInvalidUartPort> console_uart_port(
+static ResourcePool<uart_port_t, -1> console_uart_port(
     static_cast<uart_port_t>(CONFIG_ESP_CONSOLE_UART_NUM)
 );
 #endif
