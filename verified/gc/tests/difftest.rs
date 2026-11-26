@@ -177,6 +177,16 @@ struct Stats {
     words: usize,
     zapped: usize,
     shrunk: usize,
+    // The reservation question: from-space pages, to-space pages taken,
+    // and the page counts of candidate bounds.
+    from_pages: usize,
+    to_pages: usize,
+    max_to_minus_from: isize,
+    max_to_over_from_permille: usize,
+    over_tail_bound: usize,
+    max_object_words: usize,
+    reserved_2nf: usize,
+    reserved_tail: usize,
 }
 
 /// Runs the proved collector on `before` and compares with `after`.
@@ -299,6 +309,22 @@ fn diff(before: &Dump, after: &Dump, stats: &mut Stats) -> Result<(), String> {
             }
         }
     }
+    // The page counts: what was taken against the from-space pages and
+    // against the bound from the largest live object (a page closes only
+    // when the next object does not fit: every closed page holds more than
+    // `pw - 1 - maxw` words).
+    let mut live_words = 0usize;
+    let mut maxw = 0usize;
+    for (rv, _) in &r2c { let (sz, _, _) = layout(&rword, &cb, before.sw, rv - 1); live_words += sz; if sz > maxw { maxw = sz; } }
+    let tail_bound = if live_words == 0 { 1 } else { live_words / (pw - maxw) + 1 };
+    if w.pages > tail_bound { stats.over_tail_bound += 1; }
+    stats.reserved_2nf += 2 * nf + 1;
+    stats.reserved_tail += (tail_bound + 1).min(2 * nf + 1);
+    stats.from_pages += nf;
+    stats.to_pages += w.pages;
+    stats.max_to_minus_from = stats.max_to_minus_from.max(w.pages as isize - nf as isize);
+    stats.max_to_over_from_permille = stats.max_to_over_from_permille.max(w.pages * 1000 / nf);
+    stats.max_object_words = stats.max_object_words.max(maxw);
     stats.pairs += 1;
     Ok(())
 }

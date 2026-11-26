@@ -157,3 +157,62 @@ compile). How each fact is tied to the VM:
   32-bit with 4 kB pages).
 - The stack array word `sw` is a run-time parameter (`Ctx::sw`), as the
   core's `Runtime::array_word`.
+
+## 5. The C++ root obligation (milestone M3)
+
+What the Rust side proves about roots: the state's values survive
+(`bridge::state_live`) when the root array starts with the running task and
+the globals in order (`bridge::roots_core`) and the process heap holds the
+running stack in the running task's stack object (`rep` of
+`bridge::saved(s)`): the object stack is reached through the task, the
+collector never needs it as roots (`bridge::lemma_roots_core_live`,
+`lemma_spec_collection_core`). The core's state at a collection point has
+nothing else: its registers are saved in the stack object's header and its
+views are re-derived after every call that may collect (verified/core/
+TRUSTED.md section 1).
+
+What remains is one obligation on the C++ runtime, stated here verbatim
+(proposed `[[assumption]]` text for verified/CONTRACTS.toml at M5, when the
+collector is linked):
+
+> **sandbox_gc_roots** (C++ root completeness for the copying collector of
+> sandboxed processes). At every collection of a sandboxed process's heap,
+> the root array given to the collector holds, in this order: (1)
+> `ObjectHeap::task_`, the running task; (2) the
+> `program()->global_variables.length()` slots of
+> `ObjectHeap::global_variables_`; (3) the slot of every `HeapRoot` in
+> `ObjectHeap::external_roots_`; (4) `ObjectNotifier::object_` of every
+> node of `ObjectHeap::object_notifiers_`; and the finalizer nodes are
+> given with their kinds: (5) key and lambda of every node of
+> `registered_callback_finalizers_` (`ToitFinalizerNode`,
+> `WeakMapFinalizerNode`) and of `runnable_finalizers_`, (6) the key of
+> every `VmFinalizerNode` of `registered_vm_finalizers_`. After the
+> collection the C++ writes each root word back into its slot. Apart from
+> these slots and the stack object of the running task (reached from
+> (1)), the C++ runtime holds no reference into the process heap that it
+> reads after the collection: the verified core keeps its state in that
+> stack object; C++ primitives that fail with an allocation error are run
+> again from the start after the collection, reading their arguments from
+> the stack (`v2_primitive_failed`, `v2_allocate`, `toit_v2_grow_stack`
+> re-reads `task()->stack()`); the message encoder and decoder hold heap
+> references only within one encoding or decoding, which never collects
+> (an allocation failure abandons the decoding); messages in transit and
+> kept messages are malloc'ed buffers without heap references; the program
+> heap and the process's `null_`, `true_object_`, `false_object_` are
+> outside the process heap and refer to no process object; no other
+> process, scheduler structure or external message handler holds a
+> reference into the process heap.
+
+Where the enumeration lives today: `ObjectHeap::iterate_roots` (1)-(4),
+`ObjectHeap::iterate_finalization_roots` and the three finalizer lists
+(5)-(6), src/heap.cc and src/heap_roots.cc. External roots are used by one
+place (`toit_v2_allocate_exception`: the trace across the allocation of
+the exception instance).
+
+How it is checked empirically: `TOIT_SANDBOX_GC_VERIFY=1` (hosts only,
+src/sandbox_gc.cc) makes every copying collection check, before from-space
+is freed, that no slot of (1)-(6) and no reference slot of any object of
+the new heap points into from-space, and then overwrites from-space with a
+poison word, so that a reference the enumeration missed reads garbage
+(and, under ASan, use-after-free once the pages are freed). Runs:
+README, section M3.
