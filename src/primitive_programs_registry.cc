@@ -74,6 +74,15 @@ PRIMITIVE(spawn) {
   }
 #endif
 
+  // A sandboxed container starts only if the system heap keeps the sandbox
+  // heap floor free after what the container needs to start, and not while
+  // its program waits for a restart after running out of memory
+  // (Process::sandbox_start_allowed). Checked before anything is allocated:
+  // a refused start takes no memory.
+  if (PrimitivePolicy::describes_untrusted(policy_description) && !Process::sandbox_start_allowed(program->id())) {
+    FAIL(QUOTA_EXCEEDED);
+  }
+
   word message_size = 0;
   { MessageEncoder size_encoder(process, null);
     if (!size_encoder.encode(arguments)) return size_encoder.create_error_object(process);

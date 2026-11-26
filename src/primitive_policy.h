@@ -88,6 +88,10 @@ class PrimitivePolicy {
   // (see [is_owned]) and must hand it to a ProcessGroup.
   static const PrimitivePolicy* from_description(Object* description, Process* process, Object** error);
 
+  // Whether the policy [description] (as for from_description) asks for
+  // the untrusted kind. Allocates nothing.
+  static bool describes_untrusted(Object* description);
+
   // Deletes the policy if it is owned (not one of the standard policies).
   static void release(const PrimitivePolicy* policy);
 

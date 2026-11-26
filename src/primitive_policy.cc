@@ -387,6 +387,15 @@ static bool read_quota(Array* array, int index, word* out, word scale, word max)
   return true;
 }
 
+bool PrimitivePolicy::describes_untrusted(Object* description) {
+  if (is_array(description)) {
+    Array* array = Array::cast(description);
+    if (array->length() < 1) return false;
+    description = array->at(0);
+  }
+  return is_smi(description) && Smi::value(description) == UNTRUSTED;
+}
+
 const PrimitivePolicy* PrimitivePolicy::from_description(Object* description, Process* process, Object** error) {
   Program* program = process->program();
   *error = null;

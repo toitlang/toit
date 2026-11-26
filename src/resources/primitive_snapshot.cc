@@ -57,6 +57,13 @@ PRIMITIVE(launch) {
     has_certificate = true;
   }
 
+  // As for programs_registry.spawn: a sandboxed container starts only with
+  // room above the sandbox heap floor (Process::sandbox_start_allowed).
+  if (PrimitivePolicy::describes_untrusted(policy_description) &&
+      !Process::sandbox_start_allowed(program_id.address())) {
+    FAIL(QUOTA_EXCEEDED);
+  }
+
   Object* policy_error = null;
   const PrimitivePolicy* policy = PrimitivePolicy::from_description(policy_description, process, &policy_error);
   if (policy == null) return policy_error;

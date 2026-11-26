@@ -83,6 +83,7 @@ namespace toit {
   FLAG_BOOL(deploy,  untrusted,             false, "Compile for (and, in toit.run, run as) an untrusted (sandboxed) container: format 2, checked opcodes only") \
   FLAG_INT(deploy,   sandbox_heap_floor,    0,     "Bytes of the system heap that the heap growth of sandboxed processes must leave free (0: none; host: of the simulated system heap -Xsandbox_system_heap)") \
   FLAG_INT(deploy,   sandbox_system_heap,   0,     "Host: the size of the system heap the sandbox heap floor is simulated with (each sandboxed process alone in it)") \
+  FLAG_INT(deploy,   sandbox_start_bytes,   16384, "Bytes above the sandbox heap floor that must be free to start a sandboxed process (with -Xsandbox_heap_floor)") \
   FLAG_BOOL(deploy,  untrusted_format1,     false, "Allow untrusted containers in bytecode format 1 (also TOIT_UNTRUSTED_FORMAT1=1)") \
   FLAG_BOOL(deploy,  require_certificate,   false, "Verify format-2 programs only with a shipped certificate, as devices do (also TOIT_REQUIRE_CERTIFICATE=1)") \
   FLAG_STRING(deploy, inject_system_oom,     null,  "Test: SITE:N, the next N allocation attempts at SITE (spawn, commit, header-page, reserve) fail in the system process (src/out_of_memory.h)") \

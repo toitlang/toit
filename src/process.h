@@ -249,6 +249,26 @@ class Process : public ProcessListFromProcessGroup::Element,
   // (their pages and external allocations) don't grow into it.
   word sandbox_heap_room();
 
+  // The sandbox heap floor in bytes (CONFIG_TOIT_SANDBOX_HEAP_FLOOR_KB, host
+  // -Xsandbox_heap_floor), 0 if there is none.
+  static word sandbox_heap_floor();
+
+  // The free bytes of the system heap (host: of the simulated system heap,
+  // -Xsandbox_system_heap, which holds the heaps of the sandboxed processes).
+  static word system_free_bytes();
+
+  // Whether a sandboxed process of the program [program_id] (its uuid) may
+  // be started now. Without a
+  // floor, always. With one, the system heap must keep the floor free after
+  // what a sandboxed process needs to start (its first heap pages, method
+  // table and bookkeeping: CONFIG_TOIT_SANDBOX_START_KB, host
+  // -Xsandbox_start_bytes), and a program whose sandboxed runs recently
+  // ran out of memory waits for its restart delay (SandboxRestartDamper,
+  // out_of_memory.h). Prints the reason of a refusal. Before, the floor was
+  // checked only when a sandboxed heap grew: every (re)start of a sandbox
+  // took its initial memory even at the floor.
+  static bool sandbox_start_allowed(const uint8* program_id);
+
   // Whether an external allocation of [size] bytes leaves the sandbox heap
   // floor free (see [sandbox_heap_room]).
   bool sandbox_floor_allows(word size) {
@@ -396,6 +416,13 @@ class Process : public ProcessListFromProcessGroup::Element,
   // The part of the mailbox that was sent by messaging-restricted senders.
   word restricted_count_ = 0;
   word restricted_bytes_ = 0;
+
+#ifndef TOIT_FREERTOS
+  // Host: the bytes of this sandboxed process's heap counted in the
+  // simulated system heap (see system_free_bytes), updated by the process
+  // itself when its heap grows (sandbox_heap_room).
+  word simulated_heap_bytes_ = 0;
+#endif
 
   word timer_count_ = 0;
   uint8 kill_exit_value_ = 0;

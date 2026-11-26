@@ -33,6 +33,16 @@
 
 namespace toit {
 
+#ifndef TOIT_FREERTOS
+// Host: the bytes the sandboxed processes hold in the simulated system heap
+// (their heaps, as each last counted itself: Process::simulated_heap_bytes_).
+static std::atomic<word> simulated_sandbox_bytes(0);
+#endif
+
+// The restart delays of sandboxed programs that keep dying of out-of-memory.
+// Guarded by the process mutex (OS::process_mutex).
+static SandboxRestartDamper sandbox_restart_damper;
+
 const char* Process::StateName[] = {
   "IDLE",
   "SCHEDULED",
@@ -115,6 +125,9 @@ Process::Process(ProcessRunner* runner, ProcessGroup* group, SystemMessage* term
 
 Process::~Process() {
   state_ = TERMINATING;
+#ifndef TOIT_FREERTOS
+  simulated_sandbox_bytes -= simulated_heap_bytes_;
+#endif
   MessageDecoder::deallocate(main_arguments_);
   MessageDecoder::deallocate(spawn_arguments_);
   delete termination_message_;
@@ -192,6 +205,14 @@ void Process::set_spawn_arguments(SnapshotBundle system, SnapshotBundle applicat
 #endif
 
 SystemMessage* Process::take_termination_message(uint8 result) {
+  // A sandboxed run that dies after its group ran out of memory delays the
+  // next sandboxed start of its program (called under the scheduler lock,
+  // which guards the group's report limiter).
+  if (result != 0 && program_ != null && policy_->is_untrusted() &&
+      group_->out_of_memory_report_limiter()->has_reported()) {
+    Locker locker(OS::process_mutex());
+    sandbox_restart_damper.note_failed_run(program_->id(), OS::get_monotonic_time());
+  }
   SystemMessage* message = termination_message_;
   termination_message_ = null;
   message->set_pid(id());
@@ -269,27 +290,75 @@ String* Process::allocate_string(const char* content) {
   return allocate_string(content, strlen(content));
 }
 
-word Process::sandbox_heap_room() {
+word Process::sandbox_heap_floor() {
 #if defined(TOIT_ESP32)
-  const word floor = static_cast<word>(CONFIG_TOIT_SANDBOX_HEAP_FLOOR_KB) * KB;
+  return static_cast<word>(CONFIG_TOIT_SANDBOX_HEAP_FLOOR_KB) * KB;
 #elif defined(TOIT_FREERTOS)
-  const word floor = 0;
+  return 0;
 #else
-  const word floor = Flags::sandbox_heap_floor;
+  return Flags::sandbox_heap_floor > 0 ? Flags::sandbox_heap_floor : 0;
 #endif
-  if (floor <= 0 || !policy_->is_untrusted()) return -1;
+}
+
+word Process::system_free_bytes() {
 #if defined(TOIT_ESP32)
   // The memory the system process and the install-time verifier allocate
   // from (heap pages, malloc).
-  word free = static_cast<word>(heap_caps_get_free_size(MALLOC_CAP_8BIT));
+  return static_cast<word>(heap_caps_get_free_size(MALLOC_CAP_8BIT));
+#elif defined(TOIT_FREERTOS)
+  return 0;
 #else
   // Host: a simulated system heap of -Xsandbox_system_heap bytes that holds
-  // only this process's heap (for tests).
-  uword reserved = object_heap_.reserved_heap_bytes();
+  // the heaps of the sandboxed processes (for tests).
   word system = Flags::sandbox_system_heap;
-  word free = reserved >= static_cast<uword>(system) ? 0 : system - static_cast<word>(reserved);
+  word used = simulated_sandbox_bytes.load();
+  return used >= system ? 0 : system - used;
 #endif
+}
+
+word Process::sandbox_heap_room() {
+  const word floor = sandbox_heap_floor();
+  if (floor <= 0 || !policy_->is_untrusted()) return -1;
+#ifndef TOIT_FREERTOS
+  // Count this process's heap as it is now (the others as they last
+  // counted themselves).
+  word reserved = static_cast<word>(Utils::min(object_heap_.reserved_heap_bytes(), static_cast<uword>(INTPTR_MAX / 4)));
+  simulated_sandbox_bytes += reserved - simulated_heap_bytes_;
+  simulated_heap_bytes_ = reserved;
+#endif
+  word free = system_free_bytes();
   return free > floor ? free - floor : 0;
+}
+
+bool Process::sandbox_start_allowed(const uint8* program_id) {
+  const word floor = sandbox_heap_floor();
+  if (floor <= 0) return true;
+#if defined(TOIT_ESP32)
+  const word start = static_cast<word>(CONFIG_TOIT_SANDBOX_START_KB) * KB;
+#elif defined(TOIT_FREERTOS)
+  const word start = 0;
+#else
+  const word start = Flags::sandbox_start_bytes > 0 ? Flags::sandbox_start_bytes : 0;
+#endif
+  word free = system_free_bytes();
+  int64 delay_us;
+  { Locker locker(OS::process_mutex());
+    delay_us = sandbox_restart_damper.delay_us(program_id, OS::get_monotonic_time());
+  }
+  if (free >= floor + start && delay_us == 0) return true;
+#ifdef TOIT_FREERTOS
+  FILE* out = stdout;
+#else
+  FILE* out = stderr;
+#endif
+  if (delay_us > 0) {
+    fprintf(out, "[sandbox start refused: its last run ran out of memory, next start in %d ms]\n",
+            static_cast<int>(delay_us / 1000));
+  } else {
+    fprintf(out, "[sandbox start refused: %d KB free, the floor and a start need %d KB]\n",
+            static_cast<int>(free / KB), static_cast<int>((floor + start) / KB));
+  }
+  return false;
 }
 
 ByteArray* Process::allocate_byte_array(word length, bool force_external) {

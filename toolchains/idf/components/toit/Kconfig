@@ -513,6 +513,18 @@ menu "Toit"
             OUT_OF_MEMORY, as at its heap quota. 0 turns the floor off
             (docs/sandbox-policy.md, "Quotas").
 
+    config TOIT_SANDBOX_START_KB
+        int "Free heap (KB) above the floor that starting a sandboxed container needs"
+        default 16
+        range 0 1024
+        help
+            A sandboxed container is started only if the system heap has
+            at least this much free above TOIT_SANDBOX_HEAP_FLOOR_KB (its
+            first heap pages, method table and bookkeeping); otherwise the
+            start fails with QUOTA_EXCEEDED. A program whose sandboxed
+            runs keep running out of memory is restarted with a growing
+            delay (docs/sandbox-policy.md, "Quotas").
+
     config TOIT_TRACE_INSTALL
         bool "Trace install-time verifications (for measurements)"
         default n
