@@ -71,6 +71,8 @@ pub const ARRAY_ELEMENTS_WORD: usize = 2;
 pub const INSTANCE_FIELDS_WORD: usize = 1;
 pub const STACK_LENGTH_WORD: usize = 2;
 pub const STACK_TOP_WORD: usize = 3;
+/// Format 2: the record top in the low 16 bits (and the frame top above).
+pub const STACK_RECORD_TOP_WORD: usize = 4;
 /// A stack's header words up to its bci word (the array starts at or after
 /// it; C++ passes the array's first word, which depends on the guard zone).
 pub const STACK_MIN_ARRAY_WORD: usize = 6;

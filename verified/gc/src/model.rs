@@ -107,6 +107,10 @@ pub struct Ctx {
     /// use them for the tail bound of the reservation (`tail::tail_ok`).
     pub fused: *mut usize,
     pub tail: bool,
+    /// The room a shrunk stack keeps above its records (`shrink::red`:
+    /// `2 * global_max_stack_height + RESERVED_STACK_FOR_CALLS +
+    /// V2_FRAME_WORDS + V2_STACK_RESERVE`; usize::MAX: no shrinking).
+    pub smin: usize,
     /// The from-space table's contents.
     pub fss: Ghost<Seq<usize>>,
     /// The class table's contents.

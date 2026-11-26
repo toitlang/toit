@@ -54,6 +54,7 @@ pub mod collect;
 pub mod statement;
 pub mod fin;
 pub mod tail;
+pub mod shrink;
 #[cfg(all(verus_keep_ghost, toit_gc_bridge))]
 pub mod bridge;
 

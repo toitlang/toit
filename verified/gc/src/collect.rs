@@ -481,7 +481,7 @@ pub proof fn lemma_copies_bound(c: Ctx, h: H, st: St, t: Tos)
 
 /// Reads to-space table entry `p`.
 #[inline(always)]
-fn tab_at(tab: *mut usize, p: usize, Ghost(tcap): Ghost<int>, Tracked(perms): Tracked<&Map<int, PointsTo<usize>>>) -> (v: usize)
+pub fn tab_at(tab: *mut usize, p: usize, Ghost(tcap): Ghost<int>, Tracked(perms): Tracked<&Map<int, PointsTo<usize>>>) -> (v: usize)
     requires
         0 <= p < tcap, tab@.addr + tcap * W <= usize::MAX,
         wperm_ok(*perms, p as int, tab, p as int), perms[p as int].is_init(),
