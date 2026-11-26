@@ -43,7 +43,11 @@ namespace compiler {
 // length, and the bytecodes start with a 4-byte tag.
 // Format 3, step 1 (verified/spec/format/22-format3-branches-frames.md):
 // the short branches V2_BRANCH_S .. V2_BRANCH_BACK_S (interpreter_v2.h),
-// chosen by Emitter::relax_branches; the tag stays TBC2.
+// chosen by Emitter::relax_branches. Format 3, step 3
+// (verified/spec/format/23-format3-try.md): TRY calls its try block as a try
+// block and the finally code has four slots (V2_FINALLY_SLOTS); the tag
+// becomes TBC3. The selector (-Xbytecode_format=2, TOIT_BYTECODE_FORMAT=2)
+// keeps its number: 2 selects the verified core's format, now version 3.
 int bytecode_format();
 void set_bytecode_format(int format);
 
@@ -101,6 +105,16 @@ static const Opcode V2_LOOP_ARRAY = INTRINSIC_ARRAY_DO;
 static const Opcode V2_HASH_FIND = INTRINSIC_HASH_FIND;
 static const int V2_LOOP_STEP_LENGTH = 4;
 
+// Format 3 (verified/spec/format/23-format3-try.md): TRY calls the try block
+// as a try block; its finally code starts with four slots above the TRY's
+// height: the value (the exception or a non-local return's value, else
+// null), the two words of the unwinding token, and the reason (-2 for an
+// exception, -1 otherwise). UNWIND pops the four. The distances are counted
+// from the height after the four slots, like Interpreter::LINK_*_SLOT.
+static const int V2_FINALLY_SLOTS = 4;
+static const int V2_FINALLY_VALUE_SLOT = 4;
+static const int V2_FINALLY_REASON_SLOT = 1;
+
 // Method header of format 2 (format note 21): it ends at the method's
 // entry, every field at a fixed distance from it (u16 little endian), in
 // address order:
@@ -132,9 +146,11 @@ static const int V2_KIND_LAMBDA = 2;
 static const int V2_KIND_BLOCK = 3;
 static const int V2_NO_VALUE = 0xffff;
 
-// The bytecodes of a format-2 program start with this tag.
+// The bytecodes of a program of the verified core start with this tag: TBC3
+// since format 3 (verified/spec/format/23-format3-try.md). Program::is_format2
+// accepts only it; any other TBC tag is a stale image and is refused.
 static const int V2_TAG_SIZE = 4;
-static const uint8 V2_TAG[V2_TAG_SIZE] = { 'T', 'B', 'C', '2' };
+static const uint8 V2_TAG[V2_TAG_SIZE] = { 'T', 'B', 'C', '3' };
 
 // The strings the format-2 machine uses as the value of the exceptions it
 // raises itself (instead of calling the failure entry points). They are

@@ -438,11 +438,11 @@ void ByteGen::visit_TryFinally(TryFinally* node) {
   visit_for_value(node->body());
 
   if (is_format2()) {
-    // TRY calls the try block with a handler, and continues with the
+    // TRY calls the try block as a try block, and continues with the
     // finally code when the block returns or is unwound. The finally code
-    // finds the exception (or null), a token for the unwinding in
-    // progress, and the reason on the stack, in the same slots as the
-    // result, target and reason of format 1.
+    // finds the exception (or null), the two words of a token for the
+    // unwinding in progress, and the reason on the stack (format 3,
+    // verified/spec/format/23-format3-try.md).
     __ try_finally();
   } else {
     __ link();
@@ -464,8 +464,10 @@ void ByteGen::visit_TryFinally(TryFinally* node) {
   auto handler_parameters = node->handler_parameters();
   if (!handler_parameters.is_empty()) {
     ASSERT(handler_parameters.length() == 2);
-    int exception_height = emitter()->height() - Interpreter::LINK_RESULT_SLOT;
-    int reason_height = emitter()->height() - Interpreter::LINK_REASON_SLOT;
+    int exception_height = emitter()->height() -
+        (is_format2() ? V2_FINALLY_VALUE_SLOT : Interpreter::LINK_RESULT_SLOT);
+    int reason_height = emitter()->height() -
+        (is_format2() ? V2_FINALLY_REASON_SLOT : Interpreter::LINK_REASON_SLOT);
     auto reason = handler_parameters[0];
     auto exception = handler_parameters[1];
     reason->set_index(register_local(reason_height));

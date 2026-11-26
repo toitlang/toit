@@ -111,8 +111,6 @@ pub proof fn lemma_hf_cand(p: Program2, c: Cert, trusted: bool, s: State2, s2: S
         writable(p, cur_m(s), cur_k(p, c, s), cur_k(p, c, s).len() - 3 - n, Kind::Val),
         good(s.heap, a0), good(s.heap, a1), good(s.heap, a2), good(s.heap, k), good(s.heap, v),
         s2.frames == s.frames,
-        s2.tries == s.tries,
-        s2.fins == s.fins,
         s2.task == s.task,
         s2.heap == s.heap,
         s2.globals == s.globals,

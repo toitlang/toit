@@ -43,7 +43,7 @@ use crate::abs::*;
 use crate::exec::*;
 use crate::step::*;
 #[cfg(verus_keep_ghost)]
-use crate::calls::{handler_pre, lemma_tries};
+use crate::calls::{handler_pre, lemma_frames_wf};
 use toit_spec::types::{Value, HeapObj, Body, Unwind};
 use toit_spec::v2::types::{State2, Program2, Outcome2};
 #[cfg(verus_keep_ghost)]
@@ -64,36 +64,16 @@ verus! {
 // ---------------------------------------------------------------------------
 // Reloading the machine from the stack view.
 
-/// The Stack header's record-top word: the record top and, above
-/// `STACK_FRAME_TOP_SHIFT` bits, the frame top (both below
-/// `MAX_STACK_LENGTH`).
-pub open spec fn records_word(rtop: usize, ftop: usize) -> usize {
-    rtop | (ftop << 16usize)
-}
-
-pub proof fn lemma_records_word(rtop: usize, ftop: usize)
-    requires rtop < MAX_STACK_LENGTH, ftop < MAX_STACK_LENGTH,
-    ensures
-        records_word(rtop, ftop) & 0xffff == rtop,
-        records_word(rtop, ftop) >> 16usize == ftop,
-{
-    assert((rtop | (ftop << 16usize)) & 0xffff == rtop && (rtop | (ftop << 16usize)) >> 16usize == ftop)
-        by (bit_vector)
-        requires rtop < 0x1_0000, ftop < 0x1_0000;
-}
-
 /// The machine with its cached fields re-derived from the stack view and
 /// the Stack header (what `reload` computes), and ghost state `g`.
 pub open spec fn reloaded(m: Machine, g: State2) -> Machine {
     let len = m.mem@.len();
-    let word = m.mem.hdr(STACK_RECORD_TOP_WORD);
-    let ftop = word >> 16usize;
+    let ftop = m.mem.hdr(STACK_FRAME_TOP_WORD);
     let r = ftop - FRAME_WORDS;
     let base = m.mem@[r + FRAME_BASE];
     Machine {
         len: len as usize,
         top: m.mem.hdr(STACK_TOP_WORD),
-        rtop: word & 0xffff,
         ftop: ftop,
         bci: m.mem.hdr(STACK_BCI_WORD),
         base: base,
@@ -107,7 +87,7 @@ pub open spec fn reloaded(m: Machine, g: State2) -> Machine {
 /// The task state is saved in the Stack header (`Machine::save`).
 pub open spec fn saved(m: Machine) -> bool {
     &&& m.mem.hdr(STACK_TOP_WORD) == m.top
-    &&& m.mem.hdr(STACK_RECORD_TOP_WORD) == records_word(m.rtop, m.ftop)
+    &&& m.mem.hdr(STACK_FRAME_TOP_WORD) == m.ftop
     &&& m.mem.hdr(STACK_BCI_WORD) == m.bci
 }
 
@@ -118,7 +98,6 @@ pub proof fn lemma_saved(p: &Program, m: Machine)
 {
     let g = m.g@;
     let n = g.frames.len() as int;
-    lemma_records_word(m.rtop, m.ftop);
     assert(rec(m.mem@, n - 1, FRAME_METHOD) == g.frames[n - 1].method);
     assert(rec(m.mem@, n - 1, FRAME_BASE) == g.frames[n - 1].base);
     assert(FRAME_WORDS * (n - 1) == m.ftop - FRAME_WORDS);
@@ -142,14 +121,12 @@ pub fn reload(m: &mut Machine, p: &Program, Ghost(g): Ghost<State2>)
     }
     let len = m.mem.len();
     let top = m.mem.header(STACK_TOP_WORD);
-    let word = m.mem.header(STACK_RECORD_TOP_WORD);
-    let ftop = word >> 16usize;
+    let ftop = m.mem.header(STACK_FRAME_TOP_WORD);
     let r = ftop - FRAME_WORDS;
     let method = m.mem.read(r + FRAME_METHOD);
     let base = m.mem.read(r + FRAME_BASE);
     m.len = len;
     m.top = top;
-    m.rtop = word & 0xffff;
     m.ftop = ftop;
     m.bci = m.mem.header(STACK_BCI_WORD);
     m.method = method;

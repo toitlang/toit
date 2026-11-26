@@ -139,6 +139,7 @@ pub fn op_load_global_lazy(m: &mut Machine, env: &Env, bci: usize, opcode: u8, g
     requires
         handler_pre(&env.p, *old(m), bci, opcode),
         toit_spec::v2::prim::grows_stack(opcode),
+        opcode != 97,
         sp::step(env.p.ap@, old(m).g@) == sp::op_load_global_lazy(env.p.ap@, old(m).g@, gi as int, len as int),
         gi < 0x1_0000,
         bci + len < 0x1000_0000,
@@ -206,7 +207,7 @@ pub fn op_load_global_lazy(m: &mut Machine, env: &Env, bci: usize, opcode: u8, g
         }
     }
     proof { assert(sp::step(ap, g) == sp::call(ap, g2, t as int, bci + len)); }
-    let r = m.push_call(env, t, bci + len);
+    let r = m.push_call(env, t, bci + len, 0);
     proof { lemma_matches(p, m0, *m, r); }
     r
 }

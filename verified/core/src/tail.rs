@@ -16,9 +16,9 @@
 //! Tail calls, verified: INVOKE_STATIC_TAIL, INVOKE_LAMBDA_TAIL and
 //! INVOKE_INITIALIZER_TAIL (`spec::op_invoke_static_tail`,
 //! `op_invoke_lambda_tail`, `op_invoke_initializer_tail`), which replace
-//! the top frame's method (`spec::replace_frame`): the frame's finally
-//! records go (`fins_popped`), the arguments move to the frame's base, the
-//! frame record's method word changes; the return address and base stay.
+//! the top frame's method (`spec::replace_frame`): the arguments move to the
+//! frame's base, the frame record's method word changes; the return address,
+//! the base and the try-block flag stay.
 //!
 //! The lambda's method id and captures and the initializer's method id
 //! come from the heap: they are checked at run time exactly as the spec
@@ -33,7 +33,7 @@ use crate::step::*;
 use crate::calls::*;
 #[cfg(verus_keep_ghost)]
 use crate::arrays::{vals_good, val_ok, lemma_val, lemma_heap_good};
-use toit_spec::types::{Value, Frame, Handler, Fin, HeapObj};
+use toit_spec::types::{Value, Frame, HeapObj};
 use toit_spec::v2::types::{State2, Program2, Outcome2};
 #[cfg(verus_keep_ghost)]
 use toit_spec::v2::spec as sp;
@@ -52,15 +52,15 @@ verus! {
 
 /// Changing the top frame record's method word to `t` replaces the top
 /// frame's method.
-pub proof fn lemma_frames_method(mem: Seq<usize>, mem2: Seq<usize>, frames: Seq<Frame>, tries: Seq<Handler>, t: usize)
+pub proof fn lemma_frames_method(mem: Seq<usize>, mem2: Seq<usize>, frames: Seq<Frame>, t: usize)
     requires
-        frames_rel(mem, frames, tries),
+        frames_rel(mem, frames),
         frames.len() > 0,
         mem2.len() == mem.len(),
         forall|i: int| 0 <= i < FRAME_WORDS * frames.len() && i != FRAME_WORDS * (frames.len() - 1) + FRAME_METHOD
             ==> #[trigger] mem2[i] == mem[i],
         rec(mem2, frames.len() - 1, FRAME_METHOD) == t,
-    ensures frames_rel(mem2, frames.update(frames.len() - 1, Frame { method: t, ..frames.last() }), tries),
+    ensures frames_rel(mem2, frames.update(frames.len() - 1, Frame { method: t, ..frames.last() })),
 {
     let n = frames.len() as int;
     let f2 = frames.update(n - 1, Frame { method: t, ..frames.last() });
@@ -78,20 +78,13 @@ pub proof fn lemma_frames_method(mem: Seq<usize>, mem2: Seq<usize>, frames: Seq<
         lemma_rec_index(n, fi, FRAME_BASE);
         assert(rec(mem2, fi, FRAME_BASE) == rec(mem, fi, FRAME_BASE));
     }
-    assert forall|x: int| 0 <= x < tries.len() implies
-        rec(mem2, (#[trigger] tries[x]).frame as int, FRAME_HANDLER) == handler_word(tries[x]) by {
-        lemma_rec_index(n, tries[x].frame as int, FRAME_HANDLER);
-        assert(rec(mem2, tries[x].frame as int, FRAME_HANDLER) == rec(mem, tries[x].frame as int, FRAME_HANDLER));
-    }
-    assert forall|fi: int| 0 <= fi < n && #[trigger] rec(mem2, fi, FRAME_HANDLER) != 0
-            implies exists|x: int| 0 <= x < tries.len() && tries[x].frame == fi by {
+    assert forall|fi: int| 0 <= fi < n implies #[trigger] rec(mem2, fi, FRAME_HANDLER) == handler_word(f2[fi]) by {
         lemma_rec_index(n, fi, FRAME_HANDLER);
         assert(rec(mem2, fi, FRAME_HANDLER) == rec(mem, fi, FRAME_HANDLER));
     }
 }
 
-/// `m` is `m0` with the top frame's finally records dropped
-/// (`fins_popped`) and the arguments `args` written below the frame's base
+/// `m` is `m0` with the arguments `args` written below the frame's base
 /// (positions `base..`, array indices `lim - 1 - j`), nothing else
 /// changed: ready for `replace_finish`.
 pub open spec fn replace_ready(p: &Program, m0: Machine, m: Machine, new_top: usize, args: Seq<Value>) -> bool {
@@ -99,7 +92,6 @@ pub open spec fn replace_ready(p: &Program, m0: Machine, m: Machine, new_top: us
     let addr = m0.addr();
     &&& m0.refines(p)
     &&& shape_ok(p, g0)
-    &&& !sp::has_handler(g0)
     &&& m.mem@.len() == m0.mem@.len()
     &&& m.len == m0.len
     &&& m.top == m0.top
@@ -111,10 +103,8 @@ pub open spec fn replace_ready(p: &Program, m0: Machine, m: Machine, new_top: us
     &&& m.heap == m0.heap
     &&& m.globals == m0.globals
     &&& m.g == m0.g
-    &&& m.rtop == m.ftop + FIN_WORDS * sp::fins_popped(g0).len()
-    &&& fins_rel(m.mem@, m.ftop as int, sp::fins_popped(g0))
     &&& forall|i: int| 0 <= i < m.ftop ==> #[trigger] m.mem@[i] == m0.mem@[i]
-    &&& m.rtop <= new_top <= m.lim
+    &&& m.ftop <= new_top <= m.lim
     &&& forall|i: int| m.lim <= i < m.len ==> #[trigger] m.mem@[i] == m0.mem@[i]
     &&& args.len() == m.lim - new_top
     &&& forall|j: int| 0 <= j < args.len() ==> #[trigger] m.mem@[m.lim - 1 - j] == enc(addr, args[j])
@@ -122,8 +112,7 @@ pub open spec fn replace_ready(p: &Program, m0: Machine, m: Machine, new_top: us
 }
 
 impl Machine {
-    /// `spec::replace_frame(g0, t, args)` once the records are dropped and
-    /// the arguments written (`replace_ready`): the frame record's method,
+    /// `spec::replace_frame(g0, t, args)` once the arguments are written (`replace_ready`): the frame record's method,
     /// the top, the frame cache and the bci; then the preemption point (as
     /// after a call).
     #[inline(always)]
@@ -151,7 +140,6 @@ impl Machine {
         let ghost g1 = State2 {
             stack: g0.stack.subrange(0, sp::base(g0)) + args,
             frames: g0.frames.update(sp::top_index(g0), Frame { method: t, ..sp::top(g0) }),
-            fins: sp::fins_popped(g0),
             bci: info.entry as usize,
             ..g0
         };
@@ -166,11 +154,7 @@ impl Machine {
                 implies #[trigger] self.mem@[i] == m0.mem@[i] by {
                 assert(self.mem@[i] == m1.mem@[i]);
             }
-            lemma_frames_method(m0.mem@, self.mem@, g0.frames, g0.tries, t);
-            // Finally records.
-            assert forall|i: int| self.ftop <= i < self.ftop + FIN_WORDS * g1.fins.len()
-                implies #[trigger] self.mem@[i] == m1.mem@[i] by {}
-            lemma_fins_rel_same(m1.mem@, self.mem@, self.ftop as int, g1.fins);
+            lemma_frames_method(m0.mem@, self.mem@, g0.frames, t);
             // The object stack.
             let b = sp::base(g0);
             assert(b == m0.base);
@@ -240,18 +224,13 @@ pub fn op_invoke_static_tail(m: &mut Machine, env: &Env, bci: usize, opcode: u8,
     let ghost args = g.stack.subrange(g.stack.len() - arity, g.stack.len() as int);
     proof {
         assert(sp::op_invoke_static_tail(ap, g, d as int) == sp::replace_frame(ap, g, t as int, args));
-        assert(!sp::has_handler(g));
     }
-    let rr = m.ftop - FRAME_WORDS;
-    proof { assert(rr == FRAME_WORDS * (g.frames.len() - 1)); assert(rr / FRAME_WORDS == g.frames.len() - 1); }
-    m.cut_records(rr / FRAME_WORDS, 0, Ghost(g.fins));
     let ghost m1 = *m;
     let top = m.top;
     let new_top = m.lim - arity;
     m.mem.copy_within(top, new_top, arity);
     proof {
         let addr = m0.addr();
-        assert(sp::fins_popped(g) == sp::cut_fins(g.fins, sp::top_index(g), 0));
         assert forall|j: int| 0 <= j < args.len() implies #[trigger] m.mem@[m.lim - 1 - j] == enc(addr, args[j]) by {
             let i = g.stack.len() - arity + j;
             assert(args[j] == g.stack[i]);
@@ -264,7 +243,6 @@ pub fn op_invoke_static_tail(m: &mut Machine, env: &Env, bci: usize, opcode: u8,
         }
         assert forall|i: int| 0 <= i < m.ftop implies #[trigger] m.mem@[i] == m0.mem@[i] by {}
         assert forall|i: int| m.lim <= i < m.len implies #[trigger] m.mem@[i] == m0.mem@[i] by {}
-        lemma_fins_rel_same(m1.mem@, m.mem@, m.ftop as int, sp::fins_popped(g));
     }
     let r = m.replace_finish(env, t, new_top, Ghost(m0), Ghost(args));
     proof { lemma_matches(p, m0, *m, r); }
@@ -379,15 +357,11 @@ pub fn op_invoke_lambda_tail(m: &mut Machine, env: &Env, bci: usize, opcode: u8)
     proof {
         assert(sp::captured(ap, g, av, c as int) == Some(cap));
         assert(sp::op_invoke_lambda_tail(ap, g) == sp::replace_frame(ap, g, t as int, args));
-        assert(!sp::has_handler(g));
         lemma_val(p, m0, aw, av);
     }
-    let rr = m.ftop - FRAME_WORDS;
-    proof { assert(rr == FRAME_WORDS * (g.frames.len() - 1)); assert(rr / FRAME_WORDS == g.frames.len() - 1); }
-    m.cut_records(rr / FRAME_WORDS, 0, Ghost(g.fins));
     let ghost m1 = *m;
     let nargs = user + c;
-    if nargs > m.lim - m.rtop {
+    if nargs > m.lim - m.ftop {
         return Ctl::Stuck(stuck::LIMIT);
     }
     let lim = m.lim;
@@ -406,12 +380,12 @@ pub fn op_invoke_lambda_tail(m: &mut Machine, env: &Env, bci: usize, opcode: u8)
     while j < c
         invariant
             m.mem@.len() == m2.mem@.len(),
-            m.len == m2.len, m.top == m2.top, m.ftop == m2.ftop, m.rtop == m2.rtop,
+            m.len == m2.len, m.top == m2.top, m.ftop == m2.ftop,
             m.base == m2.base, m.lim == m2.lim, m.method == m2.method, m.bci == m2.bci,
             m.heap == m2.heap, m.globals == m2.globals, m.g == m2.g,
             m2.heap == m0.heap, m2.g == m0.g,
             lim == m2.lim, lim == m0.lim, lim <= m2.len, m2.len == m2.mem@.len(),
-            m.rtop <= new_top, new_top == lim - user - c, user < lim,
+            m.ftop <= new_top, new_top == lim - user - c, user < lim,
             j <= c,
             m0.refines(p),
             addr == m0.addr(),
@@ -463,11 +437,6 @@ pub fn op_invoke_lambda_tail(m: &mut Machine, env: &Env, bci: usize, opcode: u8)
         assert forall|i: int| m.lim <= i < m.len implies #[trigger] m.mem@[i] == m0.mem@[i] by {
             assert(m.mem@[i] == m2.mem@[i]);
         }
-        assert forall|i: int| m.ftop <= i < m.ftop + FIN_WORDS * sp::fins_popped(g).len()
-            implies #[trigger] m.mem@[i] == m1.mem@[i] by {
-            assert(m.mem@[i] == m2.mem@[i]);
-        }
-        lemma_fins_rel_same(m1.mem@, m.mem@, m.ftop as int, sp::fins_popped(g));
         assert(args.len() == user + c);
     }
     let r = m.replace_finish(env, t, new_top, Ghost(m0), Ghost(args));
@@ -529,11 +498,7 @@ pub fn op_invoke_initializer_tail(m: &mut Machine, env: &Env, bci: usize, opcode
     }
     proof {
         assert(sp::op_invoke_initializer_tail(ap, g) == sp::replace_frame(ap, g, t as int, Seq::<Value>::empty()));
-        assert(!sp::has_handler(g));
     }
-    let rr = m.ftop - FRAME_WORDS;
-    proof { assert(rr == FRAME_WORDS * (g.frames.len() - 1)); assert(rr / FRAME_WORDS == g.frames.len() - 1); }
-    m.cut_records(rr / FRAME_WORDS, 0, Ghost(g.fins));
     let new_top = m.lim;
     let r = m.replace_finish(env, t, new_top, Ghost(m0), Ghost(Seq::<Value>::empty()));
     proof { lemma_matches(p, m0, *m, r); }

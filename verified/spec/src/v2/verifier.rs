@@ -76,7 +76,8 @@ pub enum Kind {
     /// A block reference received as a block parameter: its frame is below
     /// the current one; it can be invoked or passed on as a block argument.
     Param,
-    /// The unwinding token of a finally code.
+    /// A word of the unwinding token of a finally code (its two token
+    /// slots, format note 23).
     Token,
 }
 
@@ -667,12 +668,14 @@ pub open spec fn post(p: Program2, c: Cert, m: int, off: int, k: Seq<Kind>, trus
     } else if op == TRY {
         if 1 <= h && block_slot(p, c, m, k, h - 1) && arity(p, kind_method(k[h - 1])) == 1
             && ctx_ok_upto(p, c, m, k, h - 1) {
-            Some(k.push(Kind::Val).push(Kind::Token).push(Kind::Val))
+            Some(k.push(Kind::Val).push(Kind::Token).push(Kind::Token).push(Kind::Val))
         } else { None }
     } else if op == UNWIND {
-        // The value slot below the token is the exception or return value
-        // the unwinding resumes with.
-        if 3 <= h && top_kind(k, 1) is Token && is_val(top_kind(k, 2)) { Some(k.subrange(0, h - 3)) } else { None }
+        // The value slot below the token words is the exception or return
+        // value the unwinding resumes with (format note 23).
+        if 4 <= h && top_kind(k, 1) is Token && top_kind(k, 2) is Token && is_val(top_kind(k, 3)) {
+            Some(k.subrange(0, h - 4))
+        } else { None }
     } else if is_loop(op) {
         let (lc, lb, lx, ly) = loop_operands(p, m, off);
         if loop_ok(p, m, k, lc, lb, lx, ly) { Some(k.subrange(0, h - 1)) } else { None }

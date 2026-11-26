@@ -3,3 +3,7 @@ AddressSanitizer:DEADLYSIGNAL
 =================================================================
 ==1093135==ERROR: AddressSanitizer: stack-overflow on address 0x7b3fe3621ff8 (pc 0x7f403256d905 bp 0x7b3fe3622030 sp 0x7b3fe3621fe0 T4)
 AddressSanitizer: CHECK failed: sanitizer_allocator_local_cache.h:176 "((class_id)) < ((kNumClasses))" (0x40, 0x36) (tid=1093142)
+
+Rebuilt 2026-11-26 for format 3 (regenerate.sh): compiled from
+encoder-cyclic-array.toit (untrusted). Expected: verified, and it runs to
+"survived" (also on the ASan build).

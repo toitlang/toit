@@ -23,9 +23,10 @@
 //!   local slots are only accessible inside the top frame;
 //! * block references are `(frame, slot)`; a non-local return or branch
 //!   unwinds to that frame;
-//! * TRY installs a `Handler`; unwinding enters the finally code of the
-//!   innermost handler with an unwinding token (the index of a finally
-//!   record, `Fin`), which UNWIND resumes;
+//! * TRY calls its try block with the handler flag in the new frame;
+//!   returning from a try block, or unwinding past it, enters the finally
+//!   code of the frame below with the pending unwinding in two token slots
+//!   (`Value::Token`, format note 23), which UNWIND resumes;
 //! * failures (lookup, as-check, code invocation, invalid program,
 //!   primitive lookup) raise an exception (`raise`), they do not call Toit
 //!   methods;
@@ -267,7 +268,7 @@ pub open spec fn call(p: Program2, s: State2, target: int, ret: int) -> Outcome2
         stuck(Stuck::StackRange)
     } else {
         Outcome2::Next(State2 {
-            frames: s.frames.push(Frame { method: target as usize, ret: ret as usize, base: (s.stack.len() - arity(p, target)) as usize }),
+            frames: s.frames.push(Frame { method: target as usize, ret: ret as usize, base: (s.stack.len() - arity(p, target)) as usize, handler: false }),
             bci: info(p, target).entry,
             ..s
         })
@@ -306,128 +307,87 @@ pub open spec fn call_static(p: Program2, s: State2, target: int, len: int) -> O
     }
 }
 
-/// The top frame has an active handler (it is suspended in a TRY).
-pub open spec fn has_handler(s: State2) -> bool {
-    s.tries.len() > 0 && s.tries.last().frame as int == top_index(s)
-}
-
-/// Drops the trailing finally records of frames above `g` and those of
-/// frame `g` at height `lim` or above. Records are ordered by frame and
-/// height (`v2::sound::fins_ok`), so `cut_fins(fins, t, 0)` drops exactly
-/// the records of frames `t` and above.
-pub open spec fn cut_fins(fins: Seq<Fin>, g: int, lim: int) -> Seq<Fin>
-    decreases fins.len(),
-{
-    if fins.len() > 0 && (fins.last().frame as int > g || (fins.last().frame as int == g && fins.last().height as int >= lim)) {
-        cut_fins(fins.drop_last(), g, lim)
-    } else {
-        fins
-    }
-}
-
-/// The records after popping the top frame.
-pub open spec fn fins_popped(s: State2) -> Seq<Fin> {
-    cut_fins(s.fins, top_index(s), 0)
-}
-
-/// What the finally code of unwinding `u` resumes.
-pub open spec fn resume_of(u: Unwind) -> Resume {
+/// The pending unwinding of unwinding `u` (`None`: a normal completion):
+/// what the finally code's token holds.
+pub open spec fn pending_of(u: Option<Unwind>) -> Pending {
     match u {
-        Unwind::Throw(_) => Resume::Throw,
-        Unwind::Return(f, _) => Resume::Return(f),
-        Unwind::Branch(f, bci, h) => Resume::Branch(f, bci, h),
+        None => Pending::Normal,
+        Some(Unwind::Throw(_)) => Pending::Throw,
+        Some(Unwind::Return(f, _)) => Pending::Return(f),
+        Some(Unwind::Branch(f, bci, h)) => Pending::Branch(f, bci, h),
     }
 }
 
-/// The first slot of the finally code of unwinding `u`: the exception or
-/// the return value (null for a branch).
-pub open spec fn value_of(p: Program2, u: Unwind) -> Value {
+/// The value slot of the finally code of unwinding `u`: the exception or
+/// the return value (null for a branch and a normal completion).
+pub open spec fn value_of(p: Program2, u: Option<Unwind>) -> Value {
     match u {
-        Unwind::Throw(v) => v,
-        Unwind::Return(_, v) => v,
-        Unwind::Branch(_, _, _) => null2(p),
+        Some(Unwind::Throw(v)) => v,
+        Some(Unwind::Return(_, v)) => v,
+        _ => null2(p),
     }
 }
 
-/// The unwinding UNWIND resumes: the record's, with the value of the
-/// finally code's first slot.
-pub open spec fn unwind_of(r: Resume, v: Value) -> Unwind {
-    match r {
-        Resume::Throw => Unwind::Throw(v),
-        Resume::Return(f) => Unwind::Return(f, v),
-        Resume::Branch(f, bci, h) => Unwind::Branch(f, bci, h),
+/// The reason slot of the finally code of unwinding `u`: -2 for an
+/// exception, -1 otherwise (`is-exception` of the compiled code).
+pub open spec fn reason_of(u: Option<Unwind>) -> int {
+    match u {
+        Some(Unwind::Throw(_)) => -2,
+        _ => -1,
     }
 }
 
-/// Returns `result` from the top frame. If the caller is a TRY whose try
-/// block just returned, its finally code runs.
+/// Returns `result` from the top frame. A try block enters the finally
+/// code of the frame below (its TRY's), normally.
 pub open spec fn return_from(p: Program2, s: State2, result: Value) -> Outcome2 {
     if s.frames.len() == 0 {
-        stuck(Stuck::BadFrame)
-    } else if has_handler(s) {
         stuck(Stuck::BadFrame)
     } else if s.frames.len() == 1 {
         Outcome2::Halt(s, Halt2::TaskReturned)
     } else if top(s).base as int > s.stack.len() {
         stuck(Stuck::StackRange)
+    } else if top(s).handler {
+        enter_finally(p, pop_frame(s), top(s).base as int, top(s).ret as int, None)
     } else {
-        let s1 = State2 {
+        Outcome2::Next(State2 {
             stack: s.stack.subrange(0, top(s).base as int).push(result),
             frames: s.frames.drop_last(),
-            fins: fins_popped(s),
             bci: top(s).ret,
             ..s
-        };
-        if has_handler(s1) {
-            enter_finally(p, s1, s1.tries.last(), None)
-        } else {
-            Outcome2::Next(s1)
-        }
+        })
     }
 }
 
-/// Enters the finally code of handler `h` (the last handler, of the top
-/// frame), normally (`None`) or while unwinding: the object stack is cut
-/// back to the TRY's height, and the value (the exception or return
-/// value, else null), the unwinding token and the reason (-2 for an
-/// exception, -1 otherwise) are pushed. The token is null for a normal
-/// completion; for an unwinding it is the smi index of a new finally
-/// record that takes the handler's place (no allocation).
-pub open spec fn enter_finally(p: Program2, s: State2, h: Handler, u: Option<Unwind>) -> Outcome2 {
-    if !(base(s) <= h.height as int <= s.stack.len()) {
+/// Enters the finally code at `bci` of the top frame (a TRY whose try block
+/// was just popped), normally (`None`) or while unwinding: the object stack
+/// is cut back to the TRY's height `h`, and the value (the exception or
+/// return value, else null), the two words of the token of the unwinding
+/// (`Pending::Normal` for a normal completion) and the reason (-2 for an
+/// exception, -1 otherwise) are pushed (format note 23).
+pub open spec fn enter_finally(p: Program2, s: State2, h: int, bci: int, u: Option<Unwind>) -> Outcome2 {
+    if s.frames.len() == 0 {
+        stuck(Stuck::BadFrame)
+    } else if !(base(s) <= h <= s.stack.len()) {
         stuck(Stuck::StackRange)
     } else {
-        let s1 = State2 {
-            stack: s.stack.subrange(0, h.height as int),
-            tries: s.tries.drop_last(),
-            bci: h.bci,
-            ..s
-        };
-        match u {
-            None => Outcome2::Next(push(push(push(s1, null2(p)), null2(p)), smi(-1))),
-            Some(w) => {
-                let token = smi(s1.fins.len() as int);
-                let s2 = State2 {
-                    fins: s1.fins.push(Fin { frame: h.frame, height: h.height, resume: resume_of(w) }),
-                    ..s1
-                };
-                let reason = match w { Unwind::Throw(_) => -2int, _ => -1int };
-                Outcome2::Next(push(push(push(s2, value_of(p, w)), token), smi(reason)))
-            },
-        }
+        let s1 = State2 { stack: s.stack.subrange(0, h), bci: bci as usize, ..s };
+        let d = pending_of(u);
+        let g = top_index(s) as usize;
+        Outcome2::Next(push(push(push(push(s1, value_of(p, u)),
+            Value::Token(false, d, g, h as usize)), Value::Token(true, d, g, h as usize)), smi(reason_of(u))))
     }
 }
 
-/// Pops the top frame, its object-stack slots and its finally records.
+/// Pops the top frame and its object-stack slots.
 pub open spec fn pop_frame(s: State2) -> State2
     recommends s.frames.len() > 0,
 {
-    State2 { stack: s.stack.subrange(0, top(s).base as int), frames: s.frames.drop_last(), fins: fins_popped(s), ..s }
+    State2 { stack: s.stack.subrange(0, top(s).base as int), frames: s.frames.drop_last(), ..s }
 }
 
-/// Unwinds: the innermost handler of the top frame gets control (with the
-/// unwinding as token); a non-local return or branch that reaches its
-/// frame completes; otherwise the top frame is popped. An exception that
+/// Unwinds: a non-local return or branch whose target is the top frame
+/// completes; otherwise the top frame is popped, and a try block hands the
+/// unwinding to the finally code of the frame below. An exception that
 /// passes the bottom frame ends the task.
 pub open spec fn unwind(p: Program2, s: State2, u: Unwind) -> Outcome2
     decreases s.frames.len(),
@@ -437,29 +397,34 @@ pub open spec fn unwind(p: Program2, s: State2, u: Unwind) -> Outcome2
             Unwind::Throw(v) => Outcome2::Halt(s, Halt2::Uncaught(v)),
             _ => stuck(Stuck::BadFrame),
         }
-    } else if has_handler(s) {
-        enter_finally(p, s, s.tries.last(), Some(u))
     } else if top(s).base as int > s.stack.len() {
         stuck(Stuck::StackRange)
-    } else {
-        let fi = top_index(s);
+    } else if unw_target(u) == top_index(s) {
         match u {
-            Unwind::Return(f, v) => {
-                if f as int == fi { return_from(p, s, v) } else { unwind(p, pop_frame(s), u) }
-            },
-            Unwind::Branch(f, bci, h) => {
-                if f as int == fi {
-                    if !(base(s) <= h as int <= s.stack.len()) {
-                        stuck(Stuck::StackRange)
-                    } else {
-                        Outcome2::Next(State2 { stack: s.stack.subrange(0, h as int), bci: bci, ..s })
-                    }
+            Unwind::Return(_, v) => return_from(p, s, v),
+            Unwind::Branch(_, bci, h) => {
+                if !(base(s) <= h as int <= s.stack.len()) {
+                    stuck(Stuck::StackRange)
                 } else {
-                    unwind(p, pop_frame(s), u)
+                    Outcome2::Next(State2 { stack: s.stack.subrange(0, h as int), bci: bci, ..s })
                 }
             },
-            Unwind::Throw(_) => unwind(p, pop_frame(s), u),
+            Unwind::Throw(_) => stuck(Stuck::BadFrame),
         }
+    } else if top(s).handler {
+        enter_finally(p, pop_frame(s), top(s).base as int, top(s).ret as int, Some(u))
+    } else {
+        unwind(p, pop_frame(s), u)
+    }
+}
+
+/// The frame a non-local return or branch completes in (-1 for an
+/// exception, which never completes).
+pub open spec fn unw_target(u: Unwind) -> int {
+    match u {
+        Unwind::Throw(_) => -1,
+        Unwind::Return(f, _) => f as int,
+        Unwind::Branch(f, _, _) => f as int,
     }
 }
 
@@ -510,19 +475,15 @@ pub open spec fn raise_null(p: Program2, s: State2, k: int) -> Outcome2 {
 }
 
 /// Replaces the top frame's method by `target`, whose arguments are `args`
-/// (tail calls); the return address stays.
+/// (tail calls); the return address stays, and so does the flag of a try
+/// block (its finally code runs when the new method returns).
 pub open spec fn replace_frame(p: Program2, s: State2, target: int, args: Seq<Value>) -> Outcome2 {
-    if has_handler(s) {
-        stuck(Stuck::BadFrame)
-    } else {
-        Outcome2::Next(State2 {
-            stack: s.stack.subrange(0, base(s)) + args,
-            frames: s.frames.update(top_index(s), Frame { method: target as usize, ..top(s) }),
-            fins: fins_popped(s),
-            bci: info(p, target).entry,
-            ..s
-        })
-    }
+    Outcome2::Next(State2 {
+        stack: s.stack.subrange(0, base(s)) + args,
+        frames: s.frames.update(top_index(s), Frame { method: target as usize, ..top(s) }),
+        bci: info(p, target).entry,
+        ..s
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -745,62 +706,71 @@ pub open spec fn op_non_local_branch(p: Program2, s: State2, hd: int, off: int) 
     }
 }
 
-/// TRY: install a handler of the current frame (finally code right after
-/// the TRY), then call the try block, whose method is the top slot, with a
-/// reference to that slot. The frame's trailing finally records whose
-/// token slot is at the TRY's height or above (left by a `break` out of
-/// finally code) are dropped first: no live token names them, and the
-/// frame's records stay below the handler's height.
+/// TRY: call the try block, whose method is the top slot, with a reference
+/// to that slot, as a try block (format note 23): its return, or an
+/// unwinding past it, enters the finally code right after the TRY. A slot
+/// without a block method, or a block of another arity, raises in the
+/// TRY's state (no finally code runs).
 pub open spec fn op_try(p: Program2, s: State2) -> Outcome2 {
     if !has_slot(s, 0) || s.frames.len() == 0 {
         stuck(Stuck::StackRange)
     } else {
-        let h = Handler { frame: top_index(s) as usize, height: s.stack.len() as usize, bci: (s.bci + 1) as usize };
-        let s1 = State2 { tries: s.tries.push(h), fins: cut_fins(s.fins, top_index(s), s.stack.len() - 1), ..s };
         let slot = s.stack.len() - 1;
         match block_target(p, s, slot) {
-            None => raise(p, s1, INVALID_PROGRAM),
+            None => raise(p, s, INVALID_PROGRAM),
             Some(t) => {
                 if arity(p, t) != 1 {
-                    raise(p, s1, CODE_INVOCATION_FAILED)
+                    raise(p, s, CODE_INVOCATION_FAILED)
                 } else {
-                    call(p, push(s1, Value::BlockRef(top_index(s) as usize, slot as usize)), t, s.bci + 1)
+                    try_call(p, push(s, Value::BlockRef(top_index(s) as usize, slot as usize)), t, s.bci + 1)
                 }
             },
         }
     }
 }
 
-/// The token `k` names a finally record of the top frame whose token slot
-/// is the UNWIND's.
-pub open spec fn fin_matches(s: State2, k: int) -> bool {
-    &&& 0 <= k < s.fins.len()
-    &&& s.fins[k].frame as int == top_index(s)
-    &&& s.fins[k].height as int + 1 == s.stack.len() - 2
+/// `call` of a try block: the new frame has the handler flag.
+pub open spec fn try_call(p: Program2, s: State2, target: int, ret: int) -> Outcome2 {
+    match call(p, s, target, ret) {
+        Outcome2::Next(s1) => Outcome2::Next(flag_top(s1)),
+        o => o,
+    }
 }
 
-/// UNWIND: the end of a finally code. Pops reason, token and value; a null
-/// token continues, a token resumes its record's unwinding with the value
-/// (the records from the token's on are dropped).
+/// The top frame of `s` with the handler flag set.
+pub open spec fn flag_top(s: State2) -> State2 {
+    State2 { frames: s.frames.update(top_index(s), Frame { handler: true, ..top(s) }), ..s }
+}
+
+/// The token slots below the reason of an UNWIND hold the two words of one
+/// token of the top frame for the UNWIND's height; its pending unwinding.
+pub open spec fn token_at(s: State2) -> Option<Pending> {
+    match at(s, 2) {
+        Value::Token(false, d, g, h) =>
+            if at(s, 1) == Value::Token(true, d, g, h) && g as int == top_index(s) && h as int + 4 == s.stack.len() {
+                Some(d)
+            } else {
+                None
+            },
+        _ => None,
+    }
+}
+
+/// UNWIND: the end of a finally code. Pops the reason, the token and the
+/// value; a normal token continues, any other resumes its unwinding (with
+/// the value for an exception or a non-local return).
 pub open spec fn op_unwind(p: Program2, s: State2) -> Outcome2 {
-    if !has_slot(s, 2) {
+    if !has_slot(s, 3) {
         stuck(Stuck::StackRange)
     } else {
-        let token = at(s, 1);
-        let s1 = drop(s, 3);
-        if token == null2(p) {
-            next(s1, 1)
-        } else {
-            match token {
-                Value::Smi(k) => {
-                    if fin_matches(s, k as int) {
-                        unwind(p, State2 { fins: s.fins.subrange(0, k as int), ..s1 }, unwind_of(s.fins[k as int].resume, at(s, 2)))
-                    } else {
-                        stuck(Stuck::NotUnwind)
-                    }
-                },
-                _ => stuck(Stuck::NotUnwind),
-            }
+        let s1 = drop(s, 4);
+        let v = at(s, 3);
+        match token_at(s) {
+            None => stuck(Stuck::NotUnwind),
+            Some(Pending::Normal) => next(s1, 1),
+            Some(Pending::Throw) => unwind(p, s1, Unwind::Throw(v)),
+            Some(Pending::Return(f)) => unwind(p, s1, Unwind::Return(f, v)),
+            Some(Pending::Branch(f, bci, h)) => unwind(p, s1, Unwind::Branch(f, bci, h)),
         }
     }
 }

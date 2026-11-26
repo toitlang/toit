@@ -4,8 +4,8 @@
 //
 // Replaces the whole body of a chosen method in a format-2 snapshot with a
 // symbolic instruction sequence (mnemonics from BYTE-CODES-V2, labels for
-// branches). Splices the TBC2 blob, moves the entries of the following
-// methods in the method table literal (format note 21; --stale-table leaves
+// branches). Splices the TBC3 blob (format 3), moves the entries of the
+// following methods in the method table literal (format note 21; --stale-table leaves
 // it inconsistent on purpose, an attack the loader must reject), and
 // fixes the blob length prefix, the segment content-size and the program
 // header's off-heap byte count. Format-2 calls use method *indices*, so no
@@ -17,14 +17,15 @@
 //   asm patch [--stale-table] <snap> <out> <method-name> <asm>
 //     <asm> is ';'-separated: "MNEMONIC op...", labels "name:", branch ops take
 //     a label.  Operands: decimal, 0xHEX, a label (for branch targets), or
-//     @NAME, the dispatch-table index of the static method NAME.
+//     @NAME, the dispatch-table index of the static method NAME, or %NAME,
+//     the method-table index of the block right before NAME (its try block).
 //   Certificate is always dropped so the host re-infers/verifies.
 
 import host.file
 import io show LITTLE-ENDIAN
 import .snapshot
 
-TBC2 ::= #[0x54, 0x42, 0x43, 0x32]
+TBC3 ::= #[0x54, 0x42, 0x43, 0x33]
 
 opcode-of name/string -> int:
   BYTE-CODES-V2.size.repeat: | i | if BYTE-CODES-V2[i].name == name: return i
@@ -168,7 +169,7 @@ resolve-names program/Program asm/string -> string:
   result := ""
   i := 0
   while i < asm.size:
-    if asm[i] != '@':
+    if asm[i] != '@' and asm[i] != '%':
       result += asm[i..i + 1]
       i++
       continue
@@ -177,9 +178,18 @@ resolve-names program/Program asm/string -> string:
     name := asm[i + 1..end]
     m := find-method program name
     index := program.methods.index-of m
-    d := program.dispatch-table.index-of index
-    if d < 0: throw "no dispatch entry for $name"
-    result += "$d"
+    if asm[i] == '%':
+      // "%NAME": the method-table index of the block method right before
+      //   NAME (the compiler emits a method's blocks before it: for a
+      //   method with one try/finally, its try block), the operand of a
+      //   LOAD_METHOD before TRY (format 3, red-team round 5).
+      if index == 0 or program.methods[index - 1].kind != ToitMethod.BLOCK:
+        throw "no block before $name"
+      result += "$(index - 1)"
+    else:
+      d := program.dispatch-table.index-of index
+      if d < 0: throw "no dispatch entry for $name"
+      result += "$d"
     i = end
   return result
 
@@ -244,8 +254,8 @@ main args/List:
     snap/ArMember? := null
     members.do: if it.name == "snapshot": snap = it
     seg := snap.data
-    // locate TBC2 blob and its int32 length prefix.
-    off := find-tbc2 seg
+    // locate TBC3 blob and its int32 length prefix.
+    off := find-tbc3 seg
     old-blob-len := LITTLE-ENDIAN.int32 seg (off - 4)
     // new segment = seg[0..off-4] + int32(new-blob-len) + new-blob + seg[off+old-blob-len..]
     pre := seg[0 .. off - 4]
@@ -313,8 +323,8 @@ ar-write members/List -> ByteArray:
   parts.do: | p | out.replace o p; o += p.size
   return out
 
-find-tbc2 bytes/ByteArray -> int:
-  return find-unique bytes TBC2 "TBC2"
+find-tbc3 bytes/ByteArray -> int:
+  return find-unique bytes TBC3 "TBC3"
 
 find-unique bytes/ByteArray pattern/ByteArray name/string -> int:
   found := -1

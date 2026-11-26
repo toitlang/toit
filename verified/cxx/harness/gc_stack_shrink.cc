@@ -59,13 +59,14 @@ int main() {
   CXXV_ASSUME(old_length > 0 && old_length < Stack::V2_MAX_LENGTH);
   CXXV_ASSUME(old_top >= 0 && old_top <= old_length && probe >= 0 && probe < old_length);
   uword records = nondet_ulong(), bci = nondet_ulong();
-  word record_top = records & 0xffff;
-  CXXV_ASSUME(record_top <= old_top);
+  // Format 3: the frame top is a plain header word (no record top).
+  word frame_top = static_cast<word>(records);
+  CXXV_ASSUME(0 <= frame_top && frame_top <= old_top);
   int height = nondet_int();
   bool aggressive = nondet_bool();
   ShrinkPolicy policy;
   policy.enabled = nondet_bool();
-  int64 reserve = static_cast<int64>(height) * 2 + record_top + RESERVED_STACK_FOR_CALLS +
+  int64 reserve = static_cast<int64>(height) * 2 + frame_top + RESERVED_STACK_FOR_CALLS +
                   Stack::V2_FRAME_WORDS + Stack::V2_STACK_RESERVE;
   int64 excess = old_top - reserve;
   bool shrink = height >= 0 && excess > 0 &&
@@ -101,8 +102,8 @@ int main() {
   CXXV_ASSERT(stack->_stack_limit_addr() == reinterpret_cast<Object**>(slots),
               "scanner receives the base of the slot array");
   CXXV_ASSERT(moved == shrink && filled == shrink, "move and fill precisely when shrinking");
-  CXXV_ASSERT(stack->v2_records_word() == records && stack->v2_bci_word() == bci, "preserve execution metadata");
-  CXXV_ASSERT(record_top <= new_top && slots[probe] == expected,
+  CXXV_ASSERT(stack->v2_frame_top_word() == records && stack->v2_bci_word() == bci, "preserve execution metadata");
+  CXXV_ASSERT(frame_top <= new_top && slots[probe] == expected,
               "preserve records and gap, retain each live value, and fill the entire tail");
   uword following = reinterpret_cast<uword>(slots + old_length);
   uword retained_end = reinterpret_cast<uword>(slots + new_length);

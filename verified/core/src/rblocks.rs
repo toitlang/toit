@@ -20,13 +20,13 @@
 //! inside the top frame (`rnext`/`rsame`, as regs.rs): a block reference
 //! names an object-stack position `i` (from the bottom), which is the array
 //! index `end - 1 - i`. INVOKE_BLOCK is a call: the fast path checks as
-//! `rcalls::call_fast` does (room, no finally records, no preemption
+//! `rcalls::call_fast` does (room, no preemption
 //! request), drops the extra arguments and pushes the frame
 //! (`rcalls::push_call`); too few arguments (a raise) go to the bridge.
 //!
 //! INVOKE_STATIC_TAIL and INVOKE_INITIALIZER_TAIL replace the top frame's
-//! method natively under the same check (no finally records, so none is
-//! popped; the call's room check covers the replaced frame's room);
+//! method natively under the same check (the call's room check covers the
+//! replaced frame's room);
 //! everything else (a failing receiver check, a bad initializer, finally
 //! records, preemption) and INVOKE_LAMBDA_TAIL go to the bridge.
 //!
@@ -50,7 +50,7 @@ use crate::blocks::{lemma_slot, lemma_block_target, lemma_block_decode};
 #[cfg(verus_keep_ghost)]
 use crate::tail::{replace_ready, lemma_frames_method};
 use crate::ffi::V2Method;
-use toit_spec::types::{Value, Frame, Handler, Fin};
+use toit_spec::types::{Value, Frame};
 use toit_spec::v2::types::{State2, Program2, Outcome2};
 #[cfg(verus_keep_ghost)]
 use toit_spec::v2::spec as sp;
@@ -299,7 +299,7 @@ pub fn op_invoke_block(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opc
         lemma_room_same(p, w0, m1);
         assert(sp::step(ap, g) == sp::call(ap, g1, t as int, bci + 2));
     }
-    push_call(m, r, p, t, info.entry as usize, info.arity as usize, bci + 2);
+    push_call(m, r, p, t, info.entry as usize, info.arity as usize, bci + 2, 0);
     proof { lemma_matches(p, w0, m.with(*r), Ctl::Next); }
     Ctl::Next
 }
@@ -309,8 +309,7 @@ pub fn op_invoke_block(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opc
 
 /// `spec::replace_frame(w0.g@, t, args)` on registers, once the `n`
 /// arguments are written below the frame's limit (`tail::replace_ready` of
-/// `w0` and the machine the registers describe) and there are no finally
-/// records: the frame record's method, the top, the method and the bci.
+/// `w0` and the machine the registers describe): the frame record's method, the top, the method and the bci.
 /// The room of the call check (`rcalls::call_fast`) gives the replaced
 /// frame its room.
 #[inline(always)]
@@ -321,12 +320,11 @@ pub fn replace_r(m: &mut Machine, r: &mut Regs, p: &Program, t: usize, info: V2M
         gate_ok(p, *old(m)),
         old(r).fp@ >= n,
         replace_ready(p, w0, old(m).with(*old(r)), (old(r).fp@ - n) as usize, args),
-        w0.g@.fins.len() == 0,
         t < p.methods@.len(),
         info == p.minfo(t as int),
         info.arity as int == n,
         room_ok(p, w0),
-        w0.top >= w0.rtop + FRAME_WORDS + p.max_height + STACK_RESERVE,
+        w0.top >= w0.ftop + FRAME_WORDS + p.max_height + STACK_RESERVE,
         n <= w0.lim - w0.top,
     ensures
         rnext(p, *final(m), *final(r), sp::replace_frame(p.ap@, w0.g@, t as int, args)),
@@ -344,7 +342,6 @@ pub fn replace_r(m: &mut Machine, r: &mut Regs, p: &Program, t: usize, info: V2M
     let ghost g1 = State2 {
         stack: g0.stack.subrange(0, sp::base(g0)) + args,
         frames: g0.frames.update(sp::top_index(g0), Frame { method: t, ..sp::top(g0) }),
-        fins: sp::fins_popped(g0),
         bci: info.entry as usize,
         ..g0
     };
@@ -360,11 +357,7 @@ pub fn replace_r(m: &mut Machine, r: &mut Regs, p: &Program, t: usize, info: V2M
             implies #[trigger] m2.mem@[i] == w0.mem@[i] by {
             assert(m2.mem@[i] == m1.mem@[i]);
         }
-        lemma_frames_method(w0.mem@, m2.mem@, g0.frames, g0.tries, t);
-        // Finally records.
-        assert forall|i: int| m2.ftop <= i < m2.ftop + FIN_WORDS * g1.fins.len()
-            implies #[trigger] m2.mem@[i] == m1.mem@[i] by {}
-        lemma_fins_rel_same(m1.mem@, m2.mem@, m2.ftop as int, g1.fins);
+        lemma_frames_method(w0.mem@, m2.mem@, g0.frames, t);
         // The object stack.
         let b = sp::base(g0);
         assert(b == w0.base);
@@ -401,17 +394,9 @@ pub fn replace_r(m: &mut Machine, r: &mut Regs, p: &Program, t: usize, info: V2M
     }
 }
 
-/// The finally records after popping the top frame, when there are none.
-proof fn lemma_no_fins(g: State2)
-    requires g.fins.len() == 0,
-    ensures sp::fins_popped(g) == g.fins,
-{
-    assert(sp::cut_fins(g.fins, sp::top_index(g), 0) == g.fins);
-}
-
 /// INVOKE_STATIC_TAIL d (`spec::op_invoke_static_tail`): the fast path
-/// replaces the top frame's method; a failing receiver check, finally
-/// records, too little room and preemption go to the bridge.
+/// replaces the top frame's method; a failing receiver check, too little
+/// room and preemption go to the bridge.
 #[inline(always)]
 pub fn op_invoke_static_tail(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode: u8, d: usize) -> (c: Ctl)
     requires
@@ -452,9 +437,6 @@ pub fn op_invoke_static_tail(m: &mut Machine, r: &mut Regs, env: &Env, bci: usiz
     let ghost args = g.stack.subrange(g.stack.len() - arity, g.stack.len() as int);
     proof {
         assert(sp::op_invoke_static_tail(ap, g, d as int) == sp::replace_frame(ap, g, t as int, args));
-        assert(!sp::has_handler(g));
-        assert(g.fins.len() == 0);
-        lemma_no_fins(g);
     }
     let top = m.mem.index(r.sp);
     let new_top = m.mem.index(r.fp) - arity;
@@ -483,7 +465,7 @@ pub fn op_invoke_static_tail(m: &mut Machine, r: &mut Regs, env: &Env, bci: usiz
 
 /// INVOKE_INITIALIZER_TAIL (`spec::op_invoke_initializer_tail`): the fast
 /// path replaces the top frame's method by the initializer; a bad method
-/// id (INVALID_PROGRAM), finally records and preemption go to the bridge.
+/// id (INVALID_PROGRAM) and preemption go to the bridge.
 #[inline(always)]
 pub fn op_invoke_initializer_tail(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode: u8) -> (c: Ctl)
     requires
@@ -525,9 +507,6 @@ pub fn op_invoke_initializer_tail(m: &mut Machine, r: &mut Regs, env: &Env, bci:
     }
     proof {
         assert(sp::op_invoke_initializer_tail(ap, g) == sp::replace_frame(ap, g, t as int, Seq::<Value>::empty()));
-        assert(!sp::has_handler(g));
-        assert(g.fins.len() == 0);
-        lemma_no_fins(g);
         let m1 = m.with(*r);
         assert(m1 == w0);
         assert(replace_ready(p, w0, m1, w0.lim, Seq::<Value>::empty()));

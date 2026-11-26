@@ -702,7 +702,7 @@ file = "src/step.rs"
 item = "gc_grow_stack"
 kind = "external_body"
 count = 1
-justification = "ASSUMED: toit_v2_grow_stack (may GC) leaves the views representing a state that collections reach from the one before (toit_spec::v2::gc::gc_steps; records copied, object stack moved, roots updated by the GC; step::grow_post) and, on V2_OK, at least `needed` free words; TRUSTED.md, GC and stack growth."
+justification = "ASSUMED: toit_v2_grow_stack (may GC) leaves the views representing a state that collections reach from the one before (toit_spec::v2::gc::gc_steps; frame records copied, object stack moved, roots updated by the GC; step::grow_post) and, on V2_OK, at least `needed` free words; TRUSTED.md, GC and stack growth."
 
 [[trusted]]
 crate = "core"
@@ -974,7 +974,7 @@ file = "src/view.rs"
 item = "StackMem::from_stack"
 kind = "assume_new"
 count = 2
-justification = "DERIVATION POINT (at entry and after every GC point, via Runtime::stack): the permissions of the Stack object's array (len words from its length word) and of its top, record-top and bci header words, all in the address space and owned by the core until the next call that may GC (TRUSTED.md section 1, Memory model)."
+justification = "DERIVATION POINT (at entry and after every GC point, via Runtime::stack): the permissions of the Stack object's array (len words from its length word) and of its top, frame-top and bci header words, all in the address space and owned by the core until the next call that may GC (TRUSTED.md section 1, Memory model)."
 
 [[trusted]]
 crate = "core"

@@ -1150,7 +1150,7 @@ v2-table-install-untrusted-verdict-trusted and v2-table-install-any-verdict). Th
 It models the null outcome of nonthrowing scalar allocation explicitly
 and invokes the native destructor before releasing the table storage.
 ESBMC also checks the body of `V2MethodTable::compute` against the
-separately verified helper outcomes. The source image must pass the TBC2
+separately verified helper outcomes. The source image must pass the TBC3
 tag and size checks and be 2-byte aligned before literal selection. The
 reader receives the selected inline or external payload. Installation receives exactly the
 image, record pointer and count passed to successful validation. The
@@ -1719,15 +1719,16 @@ pointers again. The `grow-stack-stale-task` regression retains the task
 pointer across that collection and fails when it tries to use it.
 
 The format-2 boundary owns four concrete header words for each stack.
-VeriFast checks the native reads of length, top, packed record bounds and
-bytecode index, the write of top, and the slot address computed from a
-primitive argument's position. It compares the header offsets and sizes
-against the compiled C++ constants for both host word sizes. Record
-packing on write uses the native `stack-records` check described below.
+VeriFast checks the native reads of length, top, frame top and bytecode
+index, the writes of top, frame top and bytecode index, and the slot
+address computed from a primitive argument's position. It compares the
+header offsets and sizes against the compiled C++ constants for both host
+word sizes. The native `stack-records` check described below covers the
+same round trip.
 
 The stack-growth proof takes a fresh format-2 stack with an allocated
-header and initialized slot storage. The two copies preserve the record
-prefix and live suffix. The unused gap stays initialized, as required by
+header and initialized slot storage. The two copies preserve the frame
+records and live suffix. The unused gap stays initialized, as required by
 Rust's `StackMem` view, when the task publishes the destination.
 The `grow-stack-missing-slots` regression removes the live-slot copy.
 The `fresh-stack` check calls the C++ allocator for every length through
@@ -1736,8 +1737,9 @@ that can fail. It checks the slot range, header, guards and the address of
 each primitive argument counted from the end of the array. It applies
 the VeriFast fill contract at an arbitrary slot. The slot contains tagged
 zero for format 2 and retains its incoming value for format 1. The `stack-records` check
-packs and reads back every frame top, finally count and bytecode index
-that fits such a stack, and checks all unaffected header words.
+writes and reads back every frame top and bytecode index that fits such a
+stack (format 3: the frame top is a plain word, no finally records), and
+checks all unaffected header words.
 
 `initial-task-capacity` compares the process-group admission check with
 the actual initial stack and task reservations for every class descriptor.

@@ -392,6 +392,7 @@ pub fn op_invoke_virtual_get(m: &mut Machine, r: &mut Regs, env: &Env, bci: usiz
         rhandler_pre(&env.p, *old(m), *old(r), bci, opcode),
         u == sp::twin_at(env.p.ap@, old(m).g@), u ==> env.p.ap@.unchecked,
         toit_spec::v2::prim::grows_stack(opcode),
+        opcode != 97,
         sp::step(env.p.ap@, old(m).g@) == sp::op_invoke_virtual_get(env.p.ap@, old(m).g@, sel as int),
         sel < 0x1_0000,
         bci + 3 < 0x1000_0000,
@@ -432,7 +433,7 @@ pub fn op_invoke_virtual_get(m: &mut Machine, r: &mut Regs, env: &Env, bci: usiz
             }
             proof { w0.lemma_frame(p); }
             proof { assert(sp::arity(ap, t as int) == 1); }
-            push_call(m, r, p, t, info.entry as usize, 1, bci + 3);
+            push_call(m, r, p, t, info.entry as usize, 1, bci + 3, 0);
             proof { lemma_matches(p, w0, m.with(*r), Ctl::Next); }
             Ctl::Next
         },
@@ -447,6 +448,7 @@ pub fn op_invoke_virtual_set(m: &mut Machine, r: &mut Regs, env: &Env, bci: usiz
         rhandler_pre(&env.p, *old(m), *old(r), bci, opcode),
         u == sp::twin_at(env.p.ap@, old(m).g@), u ==> env.p.ap@.unchecked,
         toit_spec::v2::prim::grows_stack(opcode),
+        opcode != 97,
         sp::step(env.p.ap@, old(m).g@) == sp::op_invoke_virtual_set(env.p.ap@, old(m).g@, sel as int),
         sel < 0x1_0000,
         bci + 3 < 0x1000_0000,
@@ -507,7 +509,7 @@ pub fn op_invoke_virtual_set(m: &mut Machine, r: &mut Regs, env: &Env, bci: usiz
             }
             proof { w0.lemma_frame(p); }
             proof { assert(sp::arity(ap, t as int) == 2); }
-            push_call(m, r, p, t, info.entry as usize, 2, bci + 3);
+            push_call(m, r, p, t, info.entry as usize, 2, bci + 3, 0);
             proof { lemma_matches(p, w0, m.with(*r), Ctl::Next); }
             Ctl::Next
         },

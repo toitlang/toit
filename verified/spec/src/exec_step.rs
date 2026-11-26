@@ -207,6 +207,19 @@ pub fn x_value_eq(a: Value, b: Value) -> (r: bool)
         (Value::Block(x), Value::Block(y)) => x == y,
         (Value::Link(x), Value::Link(y)) => x == y,
         (Value::BlockRef(x1, x2), Value::BlockRef(y1, y2)) => x1 == y1 && x2 == y2,
+        (Value::Token(x1, x2, x3, x4), Value::Token(y1, y2, y3, y4)) => x1 == y1 && x_pending_eq(x2, y2) && x3 == y3 && x4 == y4,
+        _ => false,
+    }
+}
+
+pub fn x_pending_eq(a: Pending, b: Pending) -> (r: bool)
+    ensures r == (a == b),
+{
+    match (a, b) {
+        (Pending::Normal, Pending::Normal) => true,
+        (Pending::Throw, Pending::Throw) => true,
+        (Pending::Return(x), Pending::Return(y)) => x == y,
+        (Pending::Branch(x1, x2, x3), Pending::Branch(y1, y2, y3)) => x1 == y1 && x2 == y2 && x3 == y3,
         _ => false,
     }
 }

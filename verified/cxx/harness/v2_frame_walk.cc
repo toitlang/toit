@@ -32,9 +32,9 @@ int main() {
   auto* words = static_cast<uword*>(malloc(Stack::HEADER_SIZE + frame_words * sizeof(word)));
   CXXV_ASSUME(words != nullptr);
   Stack* stack = static_cast<Stack*>(HeapObject::from_address(reinterpret_cast<uword>(words)));
-  unsigned record_end = nondet_uint();
-  CXXV_ASSUME(record_end >= static_cast<unsigned>(frame_words) && record_end < Stack::V2_MAX_LENGTH);
-  words[Stack::TRY_TOP_OFFSET / WORD_SIZE] = (static_cast<uword>(frame_words) << 16) | record_end;
+  // The try-top header word holds the frame top alone (format 3, step 3:
+  // no finally records, Stack::v2_frame_top).
+  words[Stack::TRY_TOP_OFFSET / WORD_SIZE] = static_cast<uword>(frame_words);
   int suspended = nondet_int();
   words[Stack::PENDING_STACK_CHECK_METHOD_OFFSET / WORD_SIZE] = static_cast<uword>(suspended);
   int skip = nondet_int();

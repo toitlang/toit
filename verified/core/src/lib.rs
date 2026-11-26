@@ -51,7 +51,6 @@ pub mod rarrays;
 pub mod rloops;
 pub mod rhash;
 pub mod rnonlocal;
-pub mod rfins;
 pub mod machine;
 pub mod step;
 pub mod calls;

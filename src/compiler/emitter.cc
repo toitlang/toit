@@ -718,9 +718,9 @@ void Emitter::try_finally() {
   ASSERT(is_format2());
   ASSERT(stack_.type(0) == ExpressionStack::OBJECT);  // The try block's method.
   emit_opcode(V2_TRY);
-  // The finally code starts with the exception (or null), the unwinding
-  // token and the reason.
-  remember(3);
+  // The finally code starts with the exception (or null), the two words of
+  // the unwinding token and the reason (format 3, note 23).
+  remember(V2_FINALLY_SLOTS);
 }
 
 void Emitter::load_field_this(int n) {
@@ -797,7 +797,7 @@ void Emitter::unlink() {
 
 void Emitter::unwind() {
   emit_opcode(UNWIND);
-  stack_.pop(3);
+  stack_.pop(is_format2() ? V2_FINALLY_SLOTS : 3);
 }
 
 void Emitter::identical() {

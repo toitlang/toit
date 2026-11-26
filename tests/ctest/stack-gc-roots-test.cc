@@ -29,7 +29,7 @@ class StackVisitor : public RootCallback {
 
 static void check(word live, bool shrink) {
   Program image(nullptr, 0);
-  alignas(uword) uint8 bytecodes[] = {'T', 'B', 'C', '2'};
+  alignas(uword) uint8 bytecodes[] = {'T', 'B', 'C', '3'};
   image.bytecodes = List<uint8>(bytecodes, 4);
   image.set_global_max_stack_height(0);
   constexpr word records = Stack::V2_FRAME_WORDS;
@@ -40,7 +40,7 @@ static void check(word live, bool shrink) {
   auto* stack = static_cast<Stack*>(HeapObject::from_address(reinterpret_cast<uword>(raw)));
   stack->_initialize(top + live);
   stack->_set_top(top);
-  stack->v2_set_records(records, 0, 123);
+  stack->v2_set_records(records, 123);
   auto** slots = reinterpret_cast<Object**>(raw + Stack::HEADER_SIZE / WORD_SIZE);
   uword ordinary_word, replacement_word;
   StackVisitor visitor;

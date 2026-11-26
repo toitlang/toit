@@ -244,14 +244,15 @@ satisfies (checked by the verified `x_loaded_ok` on the same dumps).
 * `running_ok`: the running task is a task whose stack field refers to a
   stack object;
 * `globals_ok`, `consts_ok`: globals, roots and literals are values;
-* `wf_task`: frame bases are non-decreasing; every frame is `frame_ok`
-  and every handler `try_ok`.
+* `wf_task`: frame bases are non-decreasing; every frame is `frame_ok`;
+  the bottom frame is not a try block.
 
 `frame_ok(p, c, s, fi)`: the frame's method is valid and checked; its
 bci (the top's `s.bci`, else the return address of the frame above) is a
 mapped offset whose map has one kind per slot (plus the pending result
-`Val` for a suspended caller, or the finally triple `Val, Token, Val` for
-a frame suspended in a TRY); every slot conforms to its kind (`conf`);
+`Val` for a suspended caller, or the finally slots `Val, Token, Token,
+Val` for a frame suspended in a TRY, i.e. whose frame above is a try
+block, format note 23); every slot conforms to its kind (`conf`);
 `this` of a method with a receiver range is in the range; a pinned
 parameter 0 is still there.
 
@@ -261,14 +262,13 @@ smi `t`; `Block(0, i)` — a reference to slot `i` of this frame;
 (following each block frame's own reference in slot 0), which holds a
 block method whose context is that frame (`good_ref`), and for a block
 frame's own reference the slot holds exactly the frame's method; `Param` —
-a reference into a frame below with `good_ref`; `Token` — null or the smi
-index of a finally record (`fin_ok`, format note 17) of this frame whose
-token slot this is and whose unwinding can complete (`pending_ok`:
-non-local returns and branches target frames at or below, branches to a
-mapped offset whose map is a prefix of the target frame's kinds).
-`fins_ok` (part of `wf_task`): the records belong to live frames, are
-ordered by frame and height, and lie below the height of their frame's
-active handler.
+a reference into a frame below with `good_ref`; `Token` — a word of an
+unwinding token (`Value::Token`, format note 23) of this frame made for
+this slot: the first word right above a non-token slot (the value slot),
+with an unwinding that can complete (`pending_ok`: non-local returns and
+branches target frames at or below, branches to a mapped offset whose map
+is a prefix of the target frame's kinds), the second word right above the
+first word of the same token.
 
 ## Proof structure
 
@@ -432,6 +432,10 @@ machine; each change is listed in `format/SPEC-CHANGELOG.md`:
   record); the record stack with the ordering invariant `fins_ok` is
   proven instead. `Body::Pending` is gone, and with it the loader's and
   the primitives' obligations about unwinding tokens.
+* Format 3, step 3 (2026-11-26, format note 23): TRY calls its try block
+  with a handler flag in the frame; the pending unwinding lives in the
+  finally code's two token slots (`Value::Token`); the handler stack, the
+  finally records, `try_ok`, `fins_ok`, `fin_ok` and `cut_fins` are gone.
 
 Before Phase 4 the step function was unchanged by the proof. The verifier (`verifier.rs`, mirrored in `check.rs`; the
 equality proof still holds) was tightened where the proof found
@@ -510,8 +514,8 @@ contract) or on C++ code outside the spec.
 | Other task fields (`name_`, `state_`, ...) | Toit code only | the VM's `Task` has two fields | harmless |
 | Task objects themselves | VM by `TASK_TAG` | only `task_new` creates them: ALLOCATE needs `INSTANCE_TAG`, the task class is the only `TASK_TAG` class (`task_class_ok`), none in the program heap (`loaded_ok`), none from primitives | proven + loader/primitive contract |
 | Stack objects (`Stack2`) | GC, task switch, core (frames, handlers, bci inside) | reachable only through a task's field 0 (unreadable); no opcode writes a non-instance/array body; primitives neither change nor create them | proven + primitive contract (a primitive must not return one) |
-| Frame and handler records | core (inside the stack object) | not addressable: the frame stack is separate, slot access is bounded by the top frame, block references are `(frame, slot)` checked by `ref_ok` | proven (`wf_task`) |
-| Unwinding tokens and finally records | UNWIND, TRY, frame pops | the token is a smi naming a record (format note 17, no heap object); the verifier's `Token` kind cannot be copied, stored, passed or returned; UNWIND checks the record's frame and token slot; truncations never drop a record a live token names | proven (`fin_ok`, `fins_ok`) |
+| Frame records | core (inside the stack object) | not addressable: the frame stack is separate, slot access is bounded by the top frame, block references are `(frame, slot)` checked by `ref_ok` | proven (`wf_task`) |
+| Unwinding tokens | UNWIND, entering finally code | two token slots of the finally code hold the pending unwinding (format note 23, smis in the machine, `Value::Token` with its frame and height in the spec); the verifier's `Token` kind cannot be copied, stored, passed or returned; UNWIND is stuck unless both words belong to one token of its frame made for its height | proven (`conf` of `Kind::Token`) |
 | Block method slots | INVOKE_BLOCK, TRY | referenced slots are not writable (`writable`); the method id is still checked (kind, index) | proven + run time |
 | Lambda fields 0, 1 (method id, captures) | INVOKE_LAMBDA_TAIL | ordinary fields; method index, kind and capture count checked | run time (proven to be the only path) |
 | Lazy initializer field (method id) | LOAD_GLOBAL_VAR_LAZY, `run-global-initializer__`, INVOKE_INITIALIZER_TAIL | class tested; the method id is checked (index, kind, arity 0) | run time |

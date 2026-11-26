@@ -28,7 +28,7 @@ Phase 4 refines. It specifies two bytecode formats:
 | `src/exec_step.rs` | Verus exec + proof | Verified implementation of 47 opcodes, proven equal to `step`. |
 | `src/interp/` | plain Rust | Reference interpreter: loader, unverified mirror of the spec for the remaining opcodes, primitives, emulated system process, scheduler loop. |
 | `src/v2/bytecodes.rs` | Verus | Format 2: opcode numbers and lengths (checked against `tools/snapshot.toit` by `tests/opcode_table.rs`). |
-| `src/v2/types.rs` | Verus | Format 2: `Program2` (method table), `State2` (frame stack, handlers), `Outcome2`; views of the shared exec structs; adapters to the format-1 heap vocabulary. |
+| `src/v2/types.rs` | Verus | Format 2: `Program2` (method table), `State2` (frame stack), `Outcome2`; views of the shared exec structs; adapters to the format-1 heap vocabulary. |
 | `src/v2/spec.rs` | Verus spec | Format 2: `op_*` for all 101 opcodes, calls, returns, unwinding, raised failures, `step`. |
 | `src/v2/prim.rs` | Verus spec | Format 2: primitive completion, task primitives, initial state. |
 | `src/v2/exec.rs` | Verus exec + proof | Format 2: verified implementation of 72 opcodes, proven equal to `v2::spec::step`. |
@@ -423,12 +423,11 @@ objects); 13 -> note 12.
 ## Format 2
 
 `src/v2` specifies the revised format (decisions in `format/`). The state
-adds a frame stack (`Frame { method, ret, base }`) and a handler stack
-(`Handler { frame, height, bci }`) to the object stack, which holds only
-values (`Smi`, `Obj`, `BlockRef(frame, slot)`); a suspended task is a
-`Body::Stack2` (object stack, frames, handlers, finally records, bci); an
-unwinding in progress through a finally code is a finally record
-(`Fin`, format note 17) next to the handlers, named by a smi token.
+adds a frame stack (`Frame { method, ret, base, handler }`, `handler`: a
+try block called by TRY) to the object stack, which holds only values
+(`Smi`, `Obj`, `BlockRef(frame, slot)`, and the two words of an unwinding
+token, `Token`, in a finally code's slots, format note 23); a suspended
+task is a `Body::Stack2` (object stack, frames, bci).
 The program has a method table (`MethodInfo`) decoded by the trusted
 loader from the method headers; every instruction fetch is checked
 against the current frame's method.
@@ -437,7 +436,7 @@ Shared with format 1: values, heap objects and the heap vocabulary
 (typechecks, `compare_numbers`, `fast_at`, `fast_size`, smi arithmetic),
 reached through the adapters `as1`/`p1`; the primitives of the
 interpreter. The interpreter's `Machine` runs either format (`format`);
-`ExecState` and `ExecProgram` carry the format-2 fields (`frames`, `tries`,
+`ExecState` and `ExecProgram` carry the format-2 fields (`frames`,
 `methods`), which the format-1 views ignore.
 
 Proofs: `v2::exec::step_verified` is proven equal to `v2::spec::step` for

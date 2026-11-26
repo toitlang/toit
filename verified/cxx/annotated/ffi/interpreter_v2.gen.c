@@ -59,16 +59,15 @@ struct ObjectHeap {
 #define PRIM_EPOCHS 2
 
 /*@
-// A Stack object: length, top, record top, the header fields the core
-// keeps (frame top, finally count, bci), and the array as bytes.
-predicate stack_hdr(Stack *s; int len, int top, int rtop, int ftop, int fin, int bci) =
+// A Stack object: length, top, the header fields the core keeps (frame
+// top, bci; since format 3 there are no other records), and the array as
+// bytes.
+predicate stack_hdr(Stack *s; int len, int top, int ft, int bci) =
   1 <= (uword)s &*&
   uintptr(raw(s) + 2, ?l) &*& uintptr(raw(s) + 3, ?t) &*&
   len == l &*& top == t &*& 0 <= top &*& top <= len &*& len <= STACK_MAX_BOUND &*&
   (uword)s - 1 + Stack_HEADER_SIZE + len * sizeof(word) <= UINTPTR_MAX &*&
-  uintptr(raw(s) + 4, ?records) &*& 0 <= records &*& records <= UINTPTR_MAX &*&
-  rtop == records % Stack_V2_MAX_LENGTH &*& ftop == records / Stack_V2_MAX_LENGTH &*&
-  fin == (rtop - ftop) / Stack_V2_FIN_WORDS &*&
+  uintptr(raw(s) + 4, ?fbits) &*& ft == truncate_signed(fbits, 8 * sizeof(word) - 1) &*&
   uintptr(raw(s) + 5, ?bits) &*& bci == truncate_signed(bits, 8 * sizeof(word) - 1);
 fixpoint uint8 *stack_array(Stack *s) { return (uint8 *)((uword)s - 1 + Stack_HEADER_SIZE); }
 fixpoint int stack_max_length() { return (TOIT_PAGE_SIZE - 96 - Stack_HEADER_SIZE) / sizeof(word); }
@@ -102,19 +101,18 @@ lemma void signed_word_roundtrip(int x, nat n)
   signed_word_bits(z,n);
   truncate_signed_def(bits,z,n);
 }
-// Stack::V2_FIN_WORDS and the native accessor round trip are checked by stack-records.
-predicate records_of(int ftop, int fin; int rtop) =
-  rtop == ftop + Stack_V2_FIN_WORDS * fin &*& 0 <= ftop &*& 0 <= fin &*& rtop <= stack_max_length();
 // The format-2 allocator initializes every slot before Rust constructs StackMem.
 predicate fresh_stack(Stack *s; int len) =
-  stack_hdr(s, len, _, _, _, _, _) &*& uchars(stack_array(s), len * sizeof(word), _);
-predicate stack(Stack *s; int len, int top, int rtop, int ftop, int fin, int bci, list<uint8> bs) =
-  stack_hdr(s, len, top, rtop, ftop, fin, bci) &*&
-  uchars(stack_array(s), rtop * sizeof(word), ?prefix) &*&
-  uchars(stack_array(s) + rtop * sizeof(word), (top - rtop) * sizeof(word), ?gap) &*&
+  stack_hdr(s, len, _, _, _) &*& uchars(stack_array(s), len * sizeof(word), _);
+// The frame records are in [0, ft) (the native accessor round trip is
+// checked by stack-records).
+predicate stack(Stack *s; int len, int top, int ft, int bci, list<uint8> bs) =
+  stack_hdr(s, len, top, ft, bci) &*&
+  uchars(stack_array(s), ft * sizeof(word), ?prefix) &*&
+  uchars(stack_array(s) + ft * sizeof(word), (top - ft) * sizeof(word), ?gap) &*&
   uchars(stack_array(s) + top * sizeof(word), (len - top) * sizeof(word), ?suffix) &*&
   bs == append(prefix, append(gap, suffix)) &*&
-  [_]records_of(ftop, fin, rtop);
+  0 <= ft &*& ft <= stack_max_length();
 
 // The current task's stack, and the process's task (an Instance).
 // Both addresses can change at a GC point or a task switch.
@@ -125,38 +123,38 @@ predicate current_stack(Process *p; Task *task, Stack *s) =
 
 // The observables of a stack the core relies on: same records, header
 // fields and used slots (by position from the end).
-fixpoint bool same_abstraction(int len, int top, int rtop, list<uint8> bs,
-                               int len2, int top2, int rtop2, list<uint8> bs2) {
-  return rtop2 == rtop && len2 - top2 == len - top &&
-         take(rtop * sizeof(word), bs2) == take(rtop * sizeof(word), bs) &&
+fixpoint bool same_abstraction(int len, int top, int ft, list<uint8> bs,
+                               int len2, int top2, int ft2, list<uint8> bs2) {
+  return ft2 == ft && len2 - top2 == len - top &&
+         take(ft * sizeof(word), bs2) == take(ft * sizeof(word), bs) &&
          drop(top2 * sizeof(word), bs2) == drop(top * sizeof(word), bs);
 }
 
-fixpoint bool stack_ok(int len, int top, int rtop, list<uint8> bs) {
-  return 0 <= rtop && rtop <= top && top <= len && len <= STACK_MAX_BOUND &&
+fixpoint bool stack_ok(int len, int top, int ft, list<uint8> bs) {
+  return 0 <= ft && ft <= top && top <= len && len <= STACK_MAX_BOUND &&
          length(bs) == len * sizeof(word);
 }
 
 // ---------------------------------------------------------------------------
 // The VM state at a GC point: the current stack, its header fields and
 // bytes, the heap.
-inductive vmv = vmv(Stack *s, int len, int top, int rtop, int ft, int fin, int bci, list<uint8> bs,
+inductive vmv = vmv(Stack *s, int len, int top, int ft, int bci, list<uint8> bs,
                     list<void *> objs, fixpoint(void *, oinfo) H);
-fixpoint Stack *v_s(vmv v) { switch (v) { case vmv(s, len, top, rtop, ft, fin, bci, bs, objs, H): return s; } }
-fixpoint int v_len(vmv v) { switch (v) { case vmv(s, len, top, rtop, ft, fin, bci, bs, objs, H): return len; } }
-fixpoint int v_top(vmv v) { switch (v) { case vmv(s, len, top, rtop, ft, fin, bci, bs, objs, H): return top; } }
-fixpoint int v_rtop(vmv v) { switch (v) { case vmv(s, len, top, rtop, ft, fin, bci, bs, objs, H): return rtop; } }
-fixpoint list<void *> v_objs(vmv v) { switch (v) { case vmv(s, len, top, rtop, ft, fin, bci, bs, objs, H): return objs; } }
-fixpoint fixpoint(void *, oinfo) v_H(vmv v) { switch (v) { case vmv(s, len, top, rtop, ft, fin, bci, bs, objs, H): return H; } }
+fixpoint Stack *v_s(vmv v) { switch (v) { case vmv(s, len, top, ft, bci, bs, objs, H): return s; } }
+fixpoint int v_len(vmv v) { switch (v) { case vmv(s, len, top, ft, bci, bs, objs, H): return len; } }
+fixpoint int v_top(vmv v) { switch (v) { case vmv(s, len, top, ft, bci, bs, objs, H): return top; } }
+fixpoint int v_ftop(vmv v) { switch (v) { case vmv(s, len, top, ft, bci, bs, objs, H): return ft; } }
+fixpoint list<void *> v_objs(vmv v) { switch (v) { case vmv(s, len, top, ft, bci, bs, objs, H): return objs; } }
+fixpoint fixpoint(void *, oinfo) v_H(vmv v) { switch (v) { case vmv(s, len, top, ft, bci, bs, objs, H): return H; } }
 fixpoint vmv with_heap(vmv v, list<void *> objs2, fixpoint(void *, oinfo) H2) {
-  switch (v) { case vmv(s, len, top, rtop, ft, fin, bci, bs, objs, H): return vmv(s, len, top, rtop, ft, fin, bci, bs, objs2, H2); }
+  switch (v) { case vmv(s, len, top, ft, bci, bs, objs, H): return vmv(s, len, top, ft, bci, bs, objs2, H2); }
 }
 // The records and header fields the GC keeps, the height of the object
 // stack (by position from the end).
 fixpoint bool same_frames(vmv a, vmv b) {
-  switch (a) { case vmv(s, len, top, rtop, ft, fin, bci, bs, objs, H):
-    return switch (b) { case vmv(s2, len2, top2, rtop2, ft2, fin2, bci2, bs2, objs2, H2):
-      return rtop2 == rtop && ft2 == ft && fin2 == fin && bci2 == bci && len2 - top2 == len - top; }; }
+  switch (a) { case vmv(s, len, top, ft, bci, bs, objs, H):
+    return switch (b) { case vmv(s2, len2, top2, ft2, bci2, bs2, objs2, H2):
+      return ft2 == ft && bci2 == bci && len2 - top2 == len - top; }; }
 }
 // The stack the core keeps across a call that did not change the epoch:
 // the same object, header fields and bytes (the heap may have grown).
@@ -177,13 +175,13 @@ lemma void init_heap_epoch(ObjectHeap *h)
   close heap_epoch(h, 0);
 }
 
-// The loaded program has the TBC2 bytecode header throughout this process.
+// The loaded program has the TBC3 bytecode header throughout this process.
 fixpoint bool format2_heap(ObjectHeap *h);
 predicate vm(Process *p, vmv v, int n) =
   format2_heap(process_heap_address(p)) == true &*&
-  current_stack(p, _, ?s) &*& stack(s, ?len, ?top, ?rtop, ?ft, ?fin, ?bci, ?bs) &*& stack_ok(len, top, rtop, bs) == true &*&
+  current_stack(p, _, ?s) &*& stack(s, ?len, ?top, ?ft, ?bci, ?bs) &*& stack_ok(len, top, ft, bs) == true &*&
   heap(?objs, ?H) &*& epoch(p, n) &*& 0 <= n &*&
-  v == vmv(s, len, top, rtop, ft, fin, bci, bs, objs, H);
+  v == vmv(s, len, top, ft, bci, bs, objs, H);
 
 // Two VM states represent the same state of the spec (the bridges
 // `stack` and `heap` of CONTRACTS.toml): equal, or related by the GC
@@ -272,9 +270,9 @@ lemma void gc_equiv_trans(vmv a, vmv b, vmv c);
 // the same state: the `stack` bridge (the core re-derives everything from
 // these observables; which object holds them is not one).
 lemma void stack_copy_equiv(vmv a, Stack *s2, int len2, int top2, list<uint8> bs2);
-  requires a == vmv(?s, ?len, ?top, ?rtop, ?ft, ?fin, ?bci, ?bs, ?objs, ?H) &*&
-           same_abstraction(len, top, rtop, bs, len2, top2, rtop, bs2) == true;
-  ensures vm_equiv(a, vmv(s2, len2, top2, rtop, ft, fin, bci, bs2, objs, H)) == true;
+  requires a == vmv(?s, ?len, ?top, ?ft, ?bci, ?bs, ?objs, ?H) &*&
+           same_abstraction(len, top, ft, bs, len2, top2, ft, bs2) == true;
+  ensures vm_equiv(a, vmv(s2, len2, top2, ft, bci, bs2, objs, H)) == true;
 
 // The retry protocol of the C++ primitives: a call that failed for want
 // of memory has no effect the spec sees, so the call after the GC
@@ -295,9 +293,9 @@ lemma void same_frames_trans(vmv a, vmv b, vmv c)
   requires same_frames(a, b) == true &*& same_frames(b, c) == true;
   ensures same_frames(a, c) == true;
 {
-  switch (a) { case vmv(s, len, top, rtop, ft, fin, bci, bs, objs, H):
-    switch (b) { case vmv(s2, len2, top2, rtop2, ft2, fin2, bci2, bs2, objs2, H2):
-      switch (c) { case vmv(s3, len3, top3, rtop3, ft3, fin3, bci3, bs3, objs3, H3): } } }
+  switch (a) { case vmv(s, len, top, ft, bci, bs, objs, H):
+    switch (b) { case vmv(s2, len2, top2, ft2, bci2, bs2, objs2, H2):
+      switch (c) { case vmv(s3, len3, top3, ft3, bci3, bs3, objs3, H3): } } }
 }
 @*/
 
@@ -372,7 +370,7 @@ lemma void with_heap_id(vmv v)
   requires true;
   ensures with_heap(v, v_objs(v), v_H(v)) == v;
 {
-  switch (v) { case vmv(s, len, top, rtop, ft, fin, bci, bs, objs, H): }
+  switch (v) { case vmv(s, len, top, ft, bci, bs, objs, H): }
 }
 
 lemma void with_heap_twice(vmv v, list<void *> o1, fixpoint(void *, oinfo) H1, list<void *> o2, fixpoint(void *, oinfo) H2)
@@ -381,32 +379,32 @@ lemma void with_heap_twice(vmv v, list<void *> o1, fixpoint(void *, oinfo) H1, l
           v_objs(with_heap(v, o1, H1)) == o1 &*& v_H(with_heap(v, o1, H1)) == H1 &*&
           same_frames(v, with_heap(v, o1, H1)) == true;
 {
-  switch (v) { case vmv(s, len, top, rtop, ft, fin, bci, bs, objs, H): }
+  switch (v) { case vmv(s, len, top, ft, bci, bs, objs, H): }
 }
 
 lemma void same_stack_trans(vmv a, vmv b, vmv c)
   requires same_stack(a, b) == true &*& same_stack(b, c) == true;
   ensures same_stack(a, c) == true &*& same_frames(a, c) == true;
 {
-  switch (a) { case vmv(s, len, top, rtop, ft, fin, bci, bs, objs, H):
-    switch (b) { case vmv(s2, len2, top2, rtop2, ft2, fin2, bci2, bs2, objs2, H2):
-      switch (c) { case vmv(s3, len3, top3, rtop3, ft3, fin3, bci3, bs3, objs3, H3): } } }
+  switch (a) { case vmv(s, len, top, ft, bci, bs, objs, H):
+    switch (b) { case vmv(s2, len2, top2, ft2, bci2, bs2, objs2, H2):
+      switch (c) { case vmv(s3, len3, top3, ft3, bci3, bs3, objs3, H3): } } }
 }
 
 lemma void same_frames_facts(vmv a, vmv b)
   requires same_frames(a, b) == true;
-  ensures v_len(b) - v_top(b) == v_len(a) - v_top(a) &*& v_rtop(b) == v_rtop(a);
+  ensures v_len(b) - v_top(b) == v_len(a) - v_top(a) &*& v_ftop(b) == v_ftop(a);
 {
-  switch (a) { case vmv(s, len, top, rtop, ft, fin, bci, bs, objs, H):
-    switch (b) { case vmv(s2, len2, top2, rtop2, ft2, fin2, bci2, bs2, objs2, H2): } }
+  switch (a) { case vmv(s, len, top, ft, bci, bs, objs, H):
+    switch (b) { case vmv(s2, len2, top2, ft2, bci2, bs2, objs2, H2): } }
 }
 
 lemma void same_stack_frames(vmv a, vmv b)
   requires same_stack(a, b) == true;
   ensures same_frames(a, b) == true;
 {
-  switch (a) { case vmv(s, len, top, rtop, ft, fin, bci, bs, objs, H):
-    switch (b) { case vmv(s2, len2, top2, rtop2, ft2, fin2, bci2, bs2, objs2, H2): } }
+  switch (a) { case vmv(s, len, top, ft, bci, bs, objs, H):
+    switch (b) { case vmv(s2, len2, top2, ft2, bci2, bs2, objs2, H2): } }
 }
 
 // A new instance of class c (the allocator's contract).
@@ -502,33 +500,23 @@ bool Primitive_is_error(Object *object);
 
 // C++: src/objects.h toit::Stack::length
 word Stack_length(Stack *self);
-//@ requires [?f]stack_hdr(self, ?len, ?top, ?rtop, ?ft, ?fin, ?bci);
-//@ ensures [f]stack_hdr(self, len, top, rtop, ft, fin, bci) &*& result == len;
+//@ requires [?f]stack_hdr(self, ?len, ?top, ?ft, ?bci);
+//@ ensures [f]stack_hdr(self, len, top, ft, bci) &*& result == len;
 
 // C++: src/objects.h toit::Stack::top
 word Stack_top(Stack *self);
-//@ requires [?f]stack_hdr(self, ?len, ?top, ?rtop, ?ft, ?fin, ?bci);
-//@ ensures [f]stack_hdr(self, len, top, rtop, ft, fin, bci) &*& result == top;
+//@ requires [?f]stack_hdr(self, ?len, ?top, ?ft, ?bci);
+//@ ensures [f]stack_hdr(self, len, top, ft, bci) &*& result == top;
 
-// C++: src/objects.h toit::Stack::v2_records_word
-uword Stack_v2_records_word(Stack *self);
-//@ requires 1 <= (uword)self &*& [?f]uintptr(raw(self) + 4, ?records);
-//@ ensures [f]uintptr(raw(self) + 4, records) &*& result == records;
-
-// C++: src/objects.h toit::Stack::v2_record_top
-word Stack_v2_record_top(Stack *self);
-//@ requires [?f]stack_hdr(self, ?len, ?top, ?rtop, ?ft, ?fin, ?bci);
-//@ ensures [f]stack_hdr(self, len, top, rtop, ft, fin, bci) &*& result == rtop;
+// C++: src/objects.h toit::Stack::v2_frame_top_word
+uword Stack_v2_frame_top_word(Stack *self);
+//@ requires 1 <= (uword)self &*& [?f]uintptr(raw(self) + 4, ?fbits);
+//@ ensures [f]uintptr(raw(self) + 4, fbits) &*& result == fbits;
 
 // C++: src/objects.h toit::Stack::v2_frame_top
 word Stack_v2_frame_top(Stack *self);
-//@ requires [?f]stack_hdr(self, ?len, ?top, ?rtop, ?ft, ?fin, ?bci);
-//@ ensures [f]stack_hdr(self, len, top, rtop, ft, fin, bci) &*& result == ft;
-
-// C++: src/objects.h toit::Stack::v2_fin_count
-word Stack_v2_fin_count(Stack *self);
-//@ requires [?f]stack_hdr(self, ?len, ?top, ?rtop, ?ft, ?fin, ?bci);
-//@ ensures [f]stack_hdr(self, len, top, rtop, ft, fin, bci) &*& result == fin;
+//@ requires [?f]stack_hdr(self, ?len, ?top, ?ft, ?bci);
+//@ ensures [f]stack_hdr(self, len, top, ft, bci) &*& result == ft;
 
 // C++: src/objects.h toit::Stack::v2_bci_word
 uword Stack_v2_bci_word(Stack *self);
@@ -537,8 +525,8 @@ uword Stack_v2_bci_word(Stack *self);
 
 // C++: src/objects.h toit::Stack::v2_bci
 word Stack_v2_bci(Stack *self);
-//@ requires [?f]stack_hdr(self, ?len, ?top, ?rtop, ?ft, ?fin, ?bci);
-//@ ensures [f]stack_hdr(self, len, top, rtop, ft, fin, bci) &*& result == bci;
+//@ requires [?f]stack_hdr(self, ?len, ?top, ?ft, ?bci);
+//@ ensures [f]stack_hdr(self, len, top, ft, bci) &*& result == bci;
 
 // C++: src/objects.h toit::HeapObject::_word_at_put
 void HeapObject__word_at_put(HeapObject *self, word offset, uword value);
@@ -547,18 +535,13 @@ void HeapObject__word_at_put(HeapObject *self, word offset, uword value);
 
 // C++: src/objects.h toit::Stack::_set_top
 void Stack__set_top(Stack *self, word value);
-//@ requires stack_hdr(self, ?len, _, ?rtop, ?ft, ?fin, ?bci) &*& 0 <= value &*& value <= len;
-//@ ensures stack_hdr(self, len, value, rtop, ft, fin, bci);
-
-// C++: src/objects.h toit::Stack::_set_try_top
-void Stack__set_try_top(Stack *self, word value);
-//@ requires 1 <= (uword)self &*& 0 <= value &*& uintptr_(raw(self) + 4, _);
-//@ ensures uintptr(raw(self) + 4, value);
+//@ requires stack_hdr(self, ?len, _, ?ft, ?bci) &*& 0 <= value &*& value <= len;
+//@ ensures stack_hdr(self, len, value, ft, bci);
 
 // C++: src/objects.h toit::Stack::v2_set_records
-void Stack_v2_set_records(Stack *self, word frame_top, word fin_count, word bci);
-//@ requires stack_hdr(self, ?len, ?top, _, _, _, _) &*& [_]records_of(frame_top, fin_count, ?rtop);
-//@ ensures stack_hdr(self, len, top, rtop, frame_top, fin_count, bci);
+void Stack_v2_set_records(Stack *self, word frame_top, word bci);
+//@ requires stack_hdr(self, ?len, ?top, _, _);
+//@ ensures stack_hdr(self, len, top, frame_top, bci);
 
 // C++: src/objects.h toit::Stack::_array_offset_from
 word Stack__array_offset_from(word index);
@@ -567,8 +550,8 @@ word Stack__array_offset_from(word index);
 
 // C++: src/objects.h toit::Stack::_array_address
 uword *Stack__array_address(Stack *self, word index);
-//@ requires [?f]stack_hdr(self, ?len, ?top, ?rtop, ?ft, ?fin, ?bci) &*& 0 <= index &*& index <= len;
-//@ ensures [f]stack_hdr(self, len, top, rtop, ft, fin, bci) &*& (void *)result == (index == 0 ? stack_array(self) : stack_array(self) + index * sizeof(word));
+//@ requires [?f]stack_hdr(self, ?len, ?top, ?ft, ?bci) &*& 0 <= index &*& index <= len;
+//@ ensures [f]stack_hdr(self, len, top, ft, bci) &*& (void *)result == (index == 0 ? stack_array(self) : stack_array(self) + index * sizeof(word));
 
 // C++: src/objects.h toit::Stack::v2_slot_address
 Object **Stack_v2_slot_address(Stack *self, word position);
@@ -655,18 +638,18 @@ void v2_gc(Process *process, bool malloc_failed, int attempts, bool force_cross_
 
 // C++: src/objects_runtime.cc toit::Stack::v2_copy_to
 void Stack_v2_copy_to(Stack *self, Stack *other);
-/*@ requires stack(self, ?len, ?top, ?rtop, ?ft, ?fin, ?bci, ?bs) &*& stack_ok(len, top, rtop, bs) == true &*&
+/*@ requires stack(self, ?len, ?top, ?ft, ?bci, ?bs) &*& stack_ok(len, top, ft, bs) == true &*&
              fresh_stack(other, ?olen) &*&
-             olen <= STACK_MAX_BOUND &*& olen >= (len - top) + rtop; @*/
-/*@ ensures stack(self, len, top, rtop, ft, fin, bci, bs) &*&
-            stack(other, olen, ?otop, rtop, ft, fin, bci, ?obs2) &*& stack_ok(olen, otop, rtop, obs2) == true &*&
-            same_abstraction(len, top, rtop, bs, olen, otop, rtop, obs2) == true; @*/
+             olen <= STACK_MAX_BOUND &*& olen >= (len - top) + ft; @*/
+/*@ ensures stack(self, len, top, ft, bci, bs) &*&
+            stack(other, olen, ?otop, ft, bci, ?obs2) &*& stack_ok(olen, otop, ft, obs2) == true &*&
+            same_abstraction(len, top, ft, bs, olen, otop, ft, obs2) == true; @*/
 
 // C++: src/interpreter_v2.cc toit_v2_grow_stack
 uword toit_v2_grow_stack(void *raw_process, uword needed);
 //@ requires vm((Process *)raw_process, ?a, ?n);
 /*@ ensures vm((Process *)raw_process, ?b, ?n2) &*& vm_equiv(a, b) == true &*& n <= n2 &*&
-            (result == TOIT_V2_OK ? v_top(b) - v_rtop(b) >= needed :
+            (result == TOIT_V2_OK ? v_top(b) - v_ftop(b) >= needed :
              result == TOIT_V2_STACK_OVERFLOW || result == TOIT_V2_OUT_OF_MEMORY); @*/
 
 // C++: src/interpreter_v2.cc toit_v2_current_stack
@@ -751,7 +734,7 @@ uword v2_primitive_failed(Process *process, Primitive_Entry *entry, uword module
 /*@ requires [?fp]process(process, ?prog, ?ids) &*& ghost_start(?a, ?n) &*& vm(process, ?b, ?nb) &*& *result_out |-> _ &*&
              module < 256 &*& index < 65536 &*&
              is_Primitive_Entry(entry) == true &*& prim_out(entry, a, b, result) == true &*& is_marked(result) == true &*&
-             first_argument + prim_arity(entry) <= v_len(a) - v_top(a) &*& first_argument < v_len(a) - v_top(a) + v_rtop(a) &*& 0 <= prim_arity(entry) &*&
+             first_argument + prim_arity(entry) <= v_len(a) - v_top(a) &*& first_argument < v_len(a) - v_top(a) + v_ftop(a) &*& 0 <= prim_arity(entry) &*&
              0 <= n &*& n <= nb &*& nb <= n + PRIM_EPOCHS &*& (nb == n || oom_error(prog, result) ? nb == n &*& same_stack(a, b) == true : true); @*/
 /*@ ensures [fp]process(process, prog, ids) &*& vm(process, ?b2, ?n2) &*& *result_out |-> ?w &*&
             prim_done(prog, entry, a, n, b2, n2, result, w, ?raw) &*& result != TOIT_V2_PRIMITIVE_ABSENT; @*/
@@ -759,7 +742,7 @@ uword v2_primitive_failed(Process *process, Primitive_Entry *entry, uword module
 // C++: src/interpreter_v2.cc toit_v2_primitive
 uword toit_v2_primitive(void *raw_process, uword module, uword index, uword arity, uword first_argument, uword *result_out);
 /*@ requires [?fp]process((Process *)raw_process, ?prog, ?ids) &*& vm((Process *)raw_process, ?a, ?n) &*& *result_out |-> _ &*&
-             module < 256 &*& index < 65536 &*& first_argument < v_len(a) - v_top(a) + v_rtop(a) &*& first_argument + arity <= v_len(a) - v_top(a); @*/
+             module < 256 &*& index < 65536 &*& first_argument < v_len(a) - v_top(a) + v_ftop(a) &*& first_argument + arity <= v_len(a) - v_top(a); @*/
 /*@ ensures [fp]process((Process *)raw_process, prog, ids) &*& vm((Process *)raw_process, ?b, ?n2) &*&
             (result == TOIT_V2_PRIMITIVE_ABSENT ?
                *result_out |-> _ &*& b == a &*& n2 == n &*&
@@ -796,64 +779,37 @@ bool Primitive_is_error(Object *object)
 
 // C++: src/objects.h toit::Stack::length
 word Stack_length(Stack *self)
-//@ requires [?f]stack_hdr(self, ?len, ?top, ?rtop, ?ft, ?fin, ?bci);
-//@ ensures [f]stack_hdr(self, len, top, rtop, ft, fin, bci) &*& result == len;
+//@ requires [?f]stack_hdr(self, ?len, ?top, ?ft, ?bci);
+//@ ensures [f]stack_hdr(self, len, top, ft, bci) &*& result == len;
 {
-  //@ open [f]stack_hdr(self, len, top, rtop, ft, fin, bci);
+  //@ open [f]stack_hdr(self, len, top, ft, bci);
   return (word)HeapObject__word_at(self, Stack_LENGTH_OFFSET);
 }
 
 // C++: src/objects.h toit::Stack::top
 word Stack_top(Stack *self)
-//@ requires [?f]stack_hdr(self, ?len, ?top, ?rtop, ?ft, ?fin, ?bci);
-//@ ensures [f]stack_hdr(self, len, top, rtop, ft, fin, bci) &*& result == top;
+//@ requires [?f]stack_hdr(self, ?len, ?top, ?ft, ?bci);
+//@ ensures [f]stack_hdr(self, len, top, ft, bci) &*& result == top;
 {
-  //@ open [f]stack_hdr(self, len, top, rtop, ft, fin, bci);
+  //@ open [f]stack_hdr(self, len, top, ft, bci);
   return (word)HeapObject__word_at(self, Stack_TOP_OFFSET);
 }
 
-// C++: src/objects.h toit::Stack::v2_records_word
-uword Stack_v2_records_word(Stack *self)
-//@ requires 1 <= (uword)self &*& [?f]uintptr(raw(self) + 4, ?records);
-//@ ensures [f]uintptr(raw(self) + 4, records) &*& result == records;
+// C++: src/objects.h toit::Stack::v2_frame_top_word
+uword Stack_v2_frame_top_word(Stack *self)
+//@ requires 1 <= (uword)self &*& [?f]uintptr(raw(self) + 4, ?fbits);
+//@ ensures [f]uintptr(raw(self) + 4, fbits) &*& result == fbits;
 {
   return HeapObject__word_at(self, Stack_TRY_TOP_OFFSET);
 }
 
-// C++: src/objects.h toit::Stack::v2_record_top
-word Stack_v2_record_top(Stack *self)
-//@ requires [?f]stack_hdr(self, ?len, ?top, ?rtop, ?ft, ?fin, ?bci);
-//@ ensures [f]stack_hdr(self, len, top, rtop, ft, fin, bci) &*& result == rtop;
-{
-  //@ open [f]stack_hdr(self, len, top, rtop, ft, fin, bci);
-  //@ assert [f]uintptr(raw(self) + 4, ?records);
-  //@ bitand_pow_nat(records, N16);
-  //@ div_rem_nonneg(records, Stack_V2_MAX_LENGTH);
-  return (word)(Stack_v2_records_word(self) & (uword)(Stack_V2_MAX_LENGTH - 1));
-}
-
 // C++: src/objects.h toit::Stack::v2_frame_top
 word Stack_v2_frame_top(Stack *self)
-//@ requires [?f]stack_hdr(self, ?len, ?top, ?rtop, ?ft, ?fin, ?bci);
-//@ ensures [f]stack_hdr(self, len, top, rtop, ft, fin, bci) &*& result == ft;
+//@ requires [?f]stack_hdr(self, ?len, ?top, ?ft, ?bci);
+//@ ensures [f]stack_hdr(self, len, top, ft, bci) &*& result == ft;
 {
-  //@ open [f]stack_hdr(self, len, top, rtop, ft, fin, bci);
-  //@ assert [f]uintptr(raw(self) + 4, ?records);
-  //@ shiftright_div(records, N16);
-  //@ div_rem_nonneg(records, Stack_V2_MAX_LENGTH);
-  return (word)(Stack_v2_records_word(self) >> Stack_V2_FRAME_TOP_SHIFT);
-}
-
-// C++: src/objects.h toit::Stack::v2_fin_count
-word Stack_v2_fin_count(Stack *self)
-//@ requires [?f]stack_hdr(self, ?len, ?top, ?rtop, ?ft, ?fin, ?bci);
-//@ ensures [f]stack_hdr(self, len, top, rtop, ft, fin, bci) &*& result == fin;
-{
-  //@ open [f]stack_hdr(self, len, top, rtop, ft, fin, bci);
-  //@ assert [f]uintptr(raw(self) + 4, ?records);
-  //@ div_rem_nonneg(records, Stack_V2_MAX_LENGTH);
-  //@ close [f]stack_hdr(self, len, top, rtop, ft, fin, bci);
-  return (Stack_v2_record_top(self) - Stack_v2_frame_top(self)) / Stack_V2_FIN_WORDS;
+  //@ open [f]stack_hdr(self, len, top, ft, bci);
+  return /*@truncating@*/(word)Stack_v2_frame_top_word(self);
 }
 
 // C++: src/objects.h toit::Stack::v2_bci_word
@@ -866,10 +822,10 @@ uword Stack_v2_bci_word(Stack *self)
 
 // C++: src/objects.h toit::Stack::v2_bci
 word Stack_v2_bci(Stack *self)
-//@ requires [?f]stack_hdr(self, ?len, ?top, ?rtop, ?ft, ?fin, ?bci);
-//@ ensures [f]stack_hdr(self, len, top, rtop, ft, fin, bci) &*& result == bci;
+//@ requires [?f]stack_hdr(self, ?len, ?top, ?ft, ?bci);
+//@ ensures [f]stack_hdr(self, len, top, ft, bci) &*& result == bci;
 {
-  //@ open [f]stack_hdr(self, len, top, rtop, ft, fin, bci);
+  //@ open [f]stack_hdr(self, len, top, ft, bci);
   return /*@truncating@*/(word)Stack_v2_bci_word(self);
 }
 
@@ -883,40 +839,25 @@ void HeapObject__word_at_put(HeapObject *self, word offset, uword value)
 
 // C++: src/objects.h toit::Stack::_set_top
 void Stack__set_top(Stack *self, word value)
-//@ requires stack_hdr(self, ?len, _, ?rtop, ?ft, ?fin, ?bci) &*& 0 <= value &*& value <= len;
-//@ ensures stack_hdr(self, len, value, rtop, ft, fin, bci);
+//@ requires stack_hdr(self, ?len, _, ?ft, ?bci) &*& 0 <= value &*& value <= len;
+//@ ensures stack_hdr(self, len, value, ft, bci);
 {
-  //@ open stack_hdr(self, len, _, rtop, ft, fin, bci);
+  //@ open stack_hdr(self, len, _, ft, bci);
   HeapObject__word_at_put(self, Stack_TOP_OFFSET, (uword)value);
-  //@ close stack_hdr(self, len, value, rtop, ft, fin, bci);
-}
-
-// C++: src/objects.h toit::Stack::_set_try_top
-void Stack__set_try_top(Stack *self, word value)
-//@ requires 1 <= (uword)self &*& 0 <= value &*& uintptr_(raw(self) + 4, _);
-//@ ensures uintptr(raw(self) + 4, value);
-{
-  HeapObject__word_at_put(self, Stack_TRY_TOP_OFFSET, (uword)value);
+  //@ close stack_hdr(self, len, value, ft, bci);
 }
 
 // C++: src/objects.h toit::Stack::v2_set_records
-void Stack_v2_set_records(Stack *self, word frame_top, word fin_count, word bci)
-//@ requires stack_hdr(self, ?len, ?top, _, _, _, _) &*& [_]records_of(frame_top, fin_count, ?rtop);
-//@ ensures stack_hdr(self, len, top, rtop, frame_top, fin_count, bci);
+void Stack_v2_set_records(Stack *self, word frame_top, word bci)
+//@ requires stack_hdr(self, ?len, ?top, _, _);
+//@ ensures stack_hdr(self, len, top, frame_top, bci);
 {
-  //@ open stack_hdr(self, len, top, _, _, _, _);
-  //@ open [_]records_of(frame_top, fin_count, rtop);
-  word record_top = frame_top + Stack_V2_FIN_WORDS * fin_count;
-  //@ int packed = frame_top * Stack_V2_MAX_LENGTH + rtop;
-  //@ div_rem_nonneg_unique(packed, Stack_V2_MAX_LENGTH, frame_top, rtop);
-  //@ bitand_pow_nat(packed, N16);
-  //@ bitand_bitnot_eq(packed, Stack_V2_MAX_LENGTH - 1);
-  //@ shiftleft_def(frame_top, N16);
-  Stack__set_try_top(self, record_top | (frame_top << Stack_V2_FRAME_TOP_SHIFT));
+  //@ open stack_hdr(self, len, top, _, _);
+  //@ signed_word_roundtrip(frame_top, sizeof(word) == 8 ? N63 : N31);
+  HeapObject__word_at_put(self, Stack_TRY_TOP_OFFSET, /*@truncating@*/(uword)frame_top);
   //@ signed_word_roundtrip(bci, sizeof(word) == 8 ? N63 : N31);
   HeapObject__word_at_put(self, Stack_PENDING_STACK_CHECK_METHOD_OFFSET, /*@truncating@*/(uword)bci);
-  //@ div_rem_nonneg_unique(rtop - frame_top, Stack_V2_FIN_WORDS, fin_count, 0);
-  //@ close stack_hdr(self, len, top, rtop, frame_top, fin_count, bci);
+  //@ close stack_hdr(self, len, top, frame_top, bci);
 }
 
 // C++: src/objects.h toit::Stack::_array_offset_from
@@ -929,10 +870,10 @@ word Stack__array_offset_from(word index)
 
 // C++: src/objects.h toit::Stack::_array_address
 uword *Stack__array_address(Stack *self, word index)
-//@ requires [?f]stack_hdr(self, ?len, ?top, ?rtop, ?ft, ?fin, ?bci) &*& 0 <= index &*& index <= len;
-//@ ensures [f]stack_hdr(self, len, top, rtop, ft, fin, bci) &*& (void *)result == (index == 0 ? stack_array(self) : stack_array(self) + index * sizeof(word));
+//@ requires [?f]stack_hdr(self, ?len, ?top, ?ft, ?bci) &*& 0 <= index &*& index <= len;
+//@ ensures [f]stack_hdr(self, len, top, ft, bci) &*& (void *)result == (index == 0 ? stack_array(self) : stack_array(self) + index * sizeof(word));
 {
-  //@ open [f]stack_hdr(self, len, top, rtop, ft, fin, bci);
+  //@ open [f]stack_hdr(self, len, top, ft, bci);
   return HeapObject__raw_at__word(self, Stack__array_offset_from(index));
 }
 
@@ -942,10 +883,10 @@ Object **Stack_v2_slot_address(Stack *self, word position)
 //@ ensures [f]vm(p, a, n) &*& (void *)result == stack_array(self) + (v_len(a) - 1 - position) * sizeof(word);
 {
   //@ open [f]vm(p, a, n);
-  //@ assert [f]stack(self, ?len, ?top, ?rtop, ?ft, ?fin, ?bci, ?bs);
-  //@ open [f]stack(self, len, top, rtop, ft, fin, bci, bs);
+  //@ assert [f]stack(self, ?len, ?top, ?ft, ?bci, ?bs);
+  //@ open [f]stack(self, len, top, ft, bci, bs);
   Object **slot = (Object **)Stack__array_address(self, Stack_length(self) - 1 - position);
-  //@ close [f]stack(self, len, top, rtop, ft, fin, bci, bs);
+  //@ close [f]stack(self, len, top, ft, bci, bs);
   //@ close [f]vm(p, a, n);
   return slot;
 }
@@ -1101,7 +1042,7 @@ void v2_gc(Process *process, bool malloc_failed, int attempts, bool force_cross_
 {
   if (attempts == 3) {
     v2_report_allocation_failure(process, reason, parameter1, parameter2);
-    //@ switch (a) { case vmv(st,l,t,rt,ft,fin,bci,bs,os,H): }
+    //@ switch (a) { case vmv(st,l,t,ft,bci,bs,os,H): }
     //@ close gc_action(process, attempts, malloc_failed, force_cross_process, (char *)reason, parameter1, parameter2);
     return;
   }
@@ -1116,17 +1057,17 @@ void v2_gc(Process *process, bool malloc_failed, int attempts, bool force_cross_
 
 // C++: src/objects_runtime.cc toit::Stack::v2_copy_to
 void Stack_v2_copy_to(Stack *self, Stack *other)
-/*@ requires stack(self, ?len, ?top, ?rtop, ?ft, ?fin, ?bci, ?bs) &*& stack_ok(len, top, rtop, bs) == true &*&
+/*@ requires stack(self, ?len, ?top, ?ft, ?bci, ?bs) &*& stack_ok(len, top, ft, bs) == true &*&
              fresh_stack(other, ?olen) &*&
-             olen <= STACK_MAX_BOUND &*& olen >= (len - top) + rtop; @*/
-/*@ ensures stack(self, len, top, rtop, ft, fin, bci, bs) &*&
-            stack(other, olen, ?otop, rtop, ft, fin, bci, ?obs2) &*& stack_ok(olen, otop, rtop, obs2) == true &*&
-            same_abstraction(len, top, rtop, bs, olen, otop, rtop, obs2) == true; @*/
+             olen <= STACK_MAX_BOUND &*& olen >= (len - top) + ft; @*/
+/*@ ensures stack(self, len, top, ft, bci, bs) &*&
+            stack(other, olen, ?otop, ft, bci, ?obs2) &*& stack_ok(olen, otop, ft, obs2) == true &*&
+            same_abstraction(len, top, ft, bs, olen, otop, ft, obs2) == true; @*/
 {
-  //@ open stack(self, len, top, rtop, ft, fin, bci, bs);
+  //@ open stack(self, len, top, ft, bci, bs);
   //@ open fresh_stack(other, olen);
   word used = Stack_length(self) - Stack_top(self);
-  word records = Stack_v2_record_top(self);
+  word records = Stack_v2_frame_top(self);
   // ASSERT(Stack_length(other) >= used + records): release build, not evaluated.
   word displacement = Stack_length(other) - Stack_length(self);
   //@ int W = sizeof(word);
@@ -1141,21 +1082,21 @@ void Stack_v2_copy_to(Stack *self, Stack *other)
   memcpy((void *)Stack__array_address(other, 0), (void *)Stack__array_address(self, 0), (size_t)(records * (word)WORD_SIZE));
   memcpy((void *)Stack__array_address(other, Stack_top(self) + displacement), (void *)Stack__array_address(self, Stack_top(self)), (size_t)(used * (word)WORD_SIZE));
   Stack__set_top(other, displacement + Stack_top(self));
-  Stack_v2_set_records(other, Stack_v2_frame_top(self), Stack_v2_fin_count(self), Stack_v2_bci(self));
+  Stack_v2_set_records(other, records, Stack_v2_bci(self));
   GcMetadata_insert_into_remembered_set__Stackp(other);
   //@ leak remembered_stack(_);
   //@ take_append_bytes(o1, oldgap, o3, records * W);
   //@ drop_append_bytes(o1, oldgap, o3, top * W);
   //@ take_append_bytes(o1, newgap, o3, records * W);
   //@ drop_append_bytes(o1, newgap, o3, (top + displacement) * W);
-  //@ close stack(self, len, top, rtop, ft, fin, bci, bs);
+  //@ close stack(self, len, top, ft, bci, bs);
 }
 
 // C++: src/interpreter_v2.cc toit_v2_grow_stack
 uword toit_v2_grow_stack(void *raw_process, uword needed)
 //@ requires vm((Process *)raw_process, ?a, ?n);
 /*@ ensures vm((Process *)raw_process, ?b, ?n2) &*& vm_equiv(a, b) == true &*& n <= n2 &*&
-            (result == TOIT_V2_OK ? v_top(b) - v_rtop(b) >= needed :
+            (result == TOIT_V2_OK ? v_top(b) - v_ftop(b) >= needed :
              result == TOIT_V2_STACK_OVERFLOW || result == TOIT_V2_OUT_OF_MEMORY); @*/
 {
   Process *process = v2_process(raw_process);
@@ -1163,14 +1104,14 @@ uword toit_v2_grow_stack(void *raw_process, uword needed)
     return TOIT_V2_STACK_OVERFLOW;
   }
   //@ open vm(process, a, n);
-  //@ assert current_stack(process, _, ?s) &*& stack(s, ?len, ?top, ?rtop, ?ft, ?fin, ?bci, ?bs);
+  //@ assert current_stack(process, _, ?s) &*& stack(s, ?len, ?top, ?ft, ?bci, ?bs);
   Stack *stack = Task_stack(Process_task(process));
   GcMetadata_insert_into_remembered_set__Stackp(stack);
   //@ leak remembered_stack(_);
-  //@ open stack(s, len, top, rtop, ft, fin, bci, bs);
+  //@ open stack(s, len, top, ft, bci, bs);
   word length = Stack_length(stack);
-  word free = Stack_top(stack) - Stack_v2_record_top(stack);
-  //@ close stack(s, len, top, rtop, ft, fin, bci, bs);
+  word free = Stack_top(stack) - Stack_v2_frame_top(stack);
+  //@ close stack(s, len, top, ft, bci, bs);
   //@ close vm(process, a, n);
   word new_length = (word)-1;
   if (length < Stack_max_length()) {
@@ -1204,16 +1145,16 @@ uword toit_v2_grow_stack(void *raw_process, uword needed)
   }
   //@ assert vm(process, ?c, ?nc);
   //@ open vm(process, c, nc);
-  //@ assert current_stack(process, _, ?sc) &*& stack(sc, ?lenc, ?topc, rtop, ft, fin, bci, ?bsc) &*& heap(?objsc, ?Hc);
+  //@ assert current_stack(process, _, ?sc) &*& stack(sc, ?lenc, ?topc, ft, bci, ?bsc) &*& heap(?objsc, ?Hc);
   stack = Task_stack(Process_task(process));
   Stack_v2_copy_to(stack, new_stack);
-  //@ assert stack(new_stack, new_length, ?top3, rtop, ft, fin, bci, ?bs3);
+  //@ assert stack(new_stack, new_length, ?top3, ft, bci, ?bs3);
   Task_set_stack(Process_task(process), new_stack);
   //@ leak remembered_instance(_);
-  //@ leak stack(sc, _, _, _, _, _, _, _);
+  //@ leak stack(sc, _, _, _, _, _);
   //@ stack_copy_equiv(c, new_stack, new_length, top3, bs3);
-  //@ vm_equiv_trans(a, c, vmv(new_stack, new_length, top3, rtop, ft, fin, bci, bs3, objsc, Hc));
-  //@ close vm(process, vmv(new_stack, new_length, top3, rtop, ft, fin, bci, bs3, objsc, Hc), nc);
+  //@ vm_equiv_trans(a, c, vmv(new_stack, new_length, top3, ft, bci, bs3, objsc, Hc));
+  //@ close vm(process, vmv(new_stack, new_length, top3, ft, bci, bs3, objsc, Hc), nc);
   return TOIT_V2_OK;
 }
 
@@ -1439,7 +1380,7 @@ uword v2_primitive_failed(Process *process, Primitive_Entry *entry, uword module
 /*@ requires [?fp]process(process, ?prog, ?ids) &*& ghost_start(?a, ?n) &*& vm(process, ?b, ?nb) &*& *result_out |-> _ &*&
              module < 256 &*& index < 65536 &*&
              is_Primitive_Entry(entry) == true &*& prim_out(entry, a, b, result) == true &*& is_marked(result) == true &*&
-             first_argument + prim_arity(entry) <= v_len(a) - v_top(a) &*& first_argument < v_len(a) - v_top(a) + v_rtop(a) &*& 0 <= prim_arity(entry) &*&
+             first_argument + prim_arity(entry) <= v_len(a) - v_top(a) &*& first_argument < v_len(a) - v_top(a) + v_ftop(a) &*& 0 <= prim_arity(entry) &*&
              0 <= n &*& n <= nb &*& nb <= n + PRIM_EPOCHS &*& (nb == n || oom_error(prog, result) ? nb == n &*& same_stack(a, b) == true : true); @*/
 /*@ ensures [fp]process(process, prog, ids) &*& vm(process, ?b2, ?n2) &*& *result_out |-> ?w &*&
             prim_done(prog, entry, a, n, b2, n2, result, w, ?raw) &*& result != TOIT_V2_PRIMITIVE_ABSENT; @*/
@@ -1507,7 +1448,7 @@ uword v2_primitive_failed(Process *process, Primitive_Entry *entry, uword module
 // C++: src/interpreter_v2.cc toit_v2_primitive
 uword toit_v2_primitive(void *raw_process, uword module, uword index, uword arity, uword first_argument, uword *result_out)
 /*@ requires [?fp]process((Process *)raw_process, ?prog, ?ids) &*& vm((Process *)raw_process, ?a, ?n) &*& *result_out |-> _ &*&
-             module < 256 &*& index < 65536 &*& first_argument < v_len(a) - v_top(a) + v_rtop(a) &*& first_argument + arity <= v_len(a) - v_top(a); @*/
+             module < 256 &*& index < 65536 &*& first_argument < v_len(a) - v_top(a) + v_ftop(a) &*& first_argument + arity <= v_len(a) - v_top(a); @*/
 /*@ ensures [fp]process((Process *)raw_process, prog, ids) &*& vm((Process *)raw_process, ?b, ?n2) &*&
             (result == TOIT_V2_PRIMITIVE_ABSENT ?
                *result_out |-> _ &*& b == a &*& n2 == n &*&

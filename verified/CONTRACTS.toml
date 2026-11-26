@@ -41,24 +41,24 @@
 [bridge]
 stack = [
   "REVIEWED ASSUMPTION. For the current task's stack s with the Stack header",
-  "words (length len, top top, record top rtop, frame top ft, finally count",
-  "fin, bci) and the array bytes bs (VeriFast: current_stack(p, task, s) &*&",
-  "stack(s, len, top, rtop, ft, fin, bci, bs) &*& stack_ok(len, top, rtop, bs)):",
+  "words (length len, top top, frame top ft, bci; since format 3 there are no",
+  "other records) and the array bytes bs (VeriFast: current_stack(p, task, s) &*&",
+  "stack(s, len, top, ft, bci, bs) &*& stack_ok(len, top, ft, bs)):",
   "reloaded(m, g) re-derives the machine's cached fields (length, top, frame",
   "top, bci, the top frame's base and method) from exactly these words, so",
   "reloaded(m, g).refines(p) depends on the stack only through (len - top,",
-  "rtop, ft, fin, bci, take(rtop * W, bs), drop(top * W, bs)): the observables",
+  "ft, bci, take(ft * W, bs), drop(top * W, bs)): the observables",
   "same_abstraction keeps. StackMem requires initialized words throughout",
   "the array. current_stack owns the object heap's current-task field and",
   "the native stack-pointer slot in that task. Both addresses may change across",
-  "a collection or task switch. The VM predicate requires a TBC2 program.",
+  "a collection or task switch. The VM predicate requires a TBC3 program.",
   "Format-2 stack allocation fills all slots with tagged zero;",
   "growth copies the live ranges into initialized storage. A VeriFast post-state with",
   "same_abstraction(old, new) refines g whenever the pre-state did. The rest",
   "of the machine state (heap, globals) is not touched by the rendered code;",
   "v2_gc obtains preservation of the abstraction from the Scheduler::gc contract.",
   "Since wave 6 the VeriFast side states this over the whole state at a GC",
-  "point, vm(p, v, n) with v = vmv(stack object, len, top, rtop, ft, fin, bci,",
+  "point, vm(p, v, n) with v = vmv(stack object, len, top, ft, bci,",
   "bytes, heap objects, H): vm_equiv(a, b) (a == b, or gc_equiv(a, b): what",
   "v2_gc guarantees) means that when a refines g, b refines a state g2 that",
   "collections reach from g (toit_spec::v2::gc::gc_steps: garbage gone, the",
@@ -139,8 +139,8 @@ note = "Two collections in a row are collections (the GC's relation composes; on
 [[assumption]]
 name = "stack_copy_equiv"
 rendering = "cxx/annotated/ffi/interpreter_v2.gen.c"
-requires = "a == vmv(?s, ?len, ?top, ?rtop, ?ft, ?fin, ?bci, ?bs, ?objs, ?H) &*& same_abstraction(len, top, rtop, bs, len2, top2, rtop, bs2) == true"
-ensures = "vm_equiv(a, vmv(s2, len2, top2, rtop, ft, fin, bci, bs2, objs, H)) == true"
+requires = "a == vmv(?s, ?len, ?top, ?ft, ?bci, ?bs, ?objs, ?H) &*& same_abstraction(len, top, ft, bs, len2, top2, ft, bs2) == true"
+ensures = "vm_equiv(a, vmv(s2, len2, top2, ft, bci, bs2, objs, H)) == true"
 note = "The `stack` bridge as a lemma: a stack copied with the same observables (records, header fields, used slots by position from the end) represents the same state (no collection: gc_steps is reflexive); which object holds them is not observable (the core re-reads the current stack). Used by stack growth after Stack::v2_copy_to."
 
 [[assumption]]
@@ -179,7 +179,7 @@ side = "ensures"
 name = "collected, room"
 bridge = "stack"
 verus = "exists|g2: State2| #[trigger] grow_post(&env.p, *final(m), g, g2, needed, r)"
-verifast = "vm((Process *)raw_process, ?b, ?n2) &*& vm_equiv(a, b) == true &*& n <= n2 &*& (result == TOIT_V2_OK ? v_top(b) - v_rtop(b) >= needed : result == TOIT_V2_STACK_OVERFLOW || result == TOIT_V2_OUT_OF_MEMORY)"
+verifast = "vm((Process *)raw_process, ?b, ?n2) &*& vm_equiv(a, b) == true &*& n <= n2 &*& (result == TOIT_V2_OK ? v_top(b) - v_ftop(b) >= needed : result == TOIT_V2_STACK_OVERFLOW || result == TOIT_V2_OUT_OF_MEMORY)"
 note = "grow_post: collections from g to g2 (toit_spec::v2::gc::gc_steps), the views represent g2, and on V2_OK the room. Before wave 6 the VeriFast side said the used slots were byte for byte the same after a GC (`same_abstraction`): false for a moving GC, which rewrites every reference slot; the trusted v2_gc contract claimed it. Now the GC's guarantee is gc_equiv (the abstraction is the same), which the core's re-derivation relies on. Since stage 0 of the collector plan (verified/core/OBLIGATIONS.md, The collector) gc_equiv means that b represents a state that collections reach from a's (garbage gone, live objects renumbered, weak maps processed), no longer the same state."
 
 [[contract]]
@@ -351,8 +351,8 @@ side = "requires"
 name = "first"
 bridge = "stack"
 verus = "first == sp::base(g)"
-verifast = "first_argument < v_len(a) - v_top(a) + v_rtop(a)"
-note = "The frame's first parameter is at most the object stack's height, and a running frame has a frame record below the slots (rtop > 0): its address is inside the stack array."
+verifast = "first_argument < v_len(a) - v_top(a) + v_ftop(a)"
+note = "The frame's first parameter is at most the object stack's height, and a running frame has a frame record below the slots (ft > 0): its address is inside the stack array."
 
 [[clause]]
 contract = "gc_call_primitive"

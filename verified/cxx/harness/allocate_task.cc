@@ -82,7 +82,7 @@ int main() {
   const int task_words = Instance::HEADER_SIZE / WORD_SIZE + fields;
   uint16 classes[] = {STACK_TAG, static_cast<uint16>((task_words << HeapObject::CLASS_ID_OFFSET) | TASK_TAG)};
   image.class_bits = List<uint16>(classes, 2);
-  uint8 bytecodes[] = {'T', 'B', 'C', static_cast<uint8>(format2 ? '2' : '1')};
+  uint8 bytecodes[] = {'T', 'B', 'C', static_cast<uint8>(format2 ? '3' : 'x')};
   image.bytecodes = List<uint8>(bytecodes, 4);
   image.set_stack_class_id(Smi::from(0));
   image.set_task_class_id(Smi::from(1));

@@ -22,8 +22,9 @@
 //!
 //! State of the running task (DESIGN.md, "Stack layout"): the object stack
 //! is `mem[top..len]` (spec index `i` is array index `len - 1 - i`), the
-//! frame records are `mem[0..ftop]`, `FRAME_WORDS` each, the finally records
-//! `mem[ftop..rtop]`, `FIN_WORDS` each.
+//! frame records are `mem[0..ftop]`, `FRAME_WORDS` each (format note 23: a
+//! frame record's handler word is 1 for a try block). A finally code's
+//! pending unwinding is in its two token slots (`token_words`).
 
 use crate::layout::*;
 use vstd::prelude::Ghost;
@@ -179,10 +180,11 @@ pub enum Unwinding {
     Branch(usize, usize, usize),
 }
 
-/// The kinds of a finally record's resume word (`abs::resume_word`).
-const UNWIND_THROW: usize = 0;
-const UNWIND_RETURN: usize = 1;
-const UNWIND_BRANCH: usize = 2;
+/// The kinds of a token's second word (`abs::pending_kind`).
+const PENDING_NORMAL: usize = 0;
+const PENDING_THROW: usize = 1;
+const PENDING_RETURN: usize = 2;
+const PENDING_BRANCH: usize = 3;
 
 /// The message of a raised failure (`TOIT_V2_MESSAGE_*`). Its words may be
 /// object references: they are passed to C++ only by value and read there
@@ -278,19 +280,15 @@ impl Machine {
     fn reload_cold(&mut self, p: &Program) -> bool {
         let len = self.mem.len();
         let top = self.mem.header(STACK_TOP_WORD);
-        let word = self.mem.header(STACK_RECORD_TOP_WORD);
-        let rtop = word & (MAX_STACK_LENGTH - 1);
-        let ftop = word >> STACK_FRAME_TOP_SHIFT;
+        let ftop = self.mem.header(STACK_FRAME_TOP_WORD);
         let bci = self.mem.header(STACK_BCI_WORD);
-        // Frame records of FRAME_WORDS words, then finally records of
-        // FIN_WORDS words (the sizes differ since format 3).
-        if top > len || rtop > top || len >= MAX_STACK_LENGTH
-            || ftop > rtop || ftop % FRAME_WORDS != 0 || (rtop - ftop) % FIN_WORDS != 0 {
+        // Frame records of FRAME_WORDS words (no other records since format
+        // 3, note 23).
+        if top > len || ftop > top || len >= MAX_STACK_LENGTH || ftop % FRAME_WORDS != 0 {
             return false;
         }
         self.len = len;
         self.top = top;
-        self.rtop = rtop;
         self.ftop = ftop;
         self.bci = bci;
         self.refresh_frame(p)
@@ -451,7 +449,7 @@ impl Machine {
     #[inline(always)]
     pub fn ensure_room(&mut self, env: &Env) -> Option<Ctl> {
         let needed = FRAME_WORDS + env.p.max_height + STACK_RESERVE;
-        if self.top - self.rtop >= needed { return None; }
+        if self.top - self.ftop >= needed { return None; }
         Some(self.grow(env, needed))
     }
 
@@ -597,86 +595,65 @@ impl Machine {
         self.unwind(env, Unwinding::Throw(exception))
     }
 
-    /// Enters the finally code of the top frame's handler (`enter_finally`).
+    /// The two token words of a pending unwinding (`abs::token_a`,
+    /// `token_b`, format note 23): the first the target frame and height of
+    /// a non-local return or branch, the second the target bci and the kind.
+    #[inline(always)]
+    pub fn token_words(u: Option<Unwinding>) -> (usize, usize) {
+        match u {
+            None => (smi(0), smi(PENDING_NORMAL as i64)),
+            Some(Unwinding::Throw(_)) => (smi(0), smi(PENDING_THROW as i64)),
+            Some(Unwinding::Return(f, _)) => (smi((f << BLOCK_SLOT_BITS) as i64), smi(PENDING_RETURN as i64)),
+            Some(Unwinding::Branch(f, bci, h)) =>
+                (smi(((f << BLOCK_SLOT_BITS) | h) as i64), smi(((bci << 2) | PENDING_BRANCH) as i64)),
+        }
+    }
+
+    /// Enters the finally code at `bci` of the top frame (`enter_finally`),
+    /// whose try block was just popped: the object stack is cut to `h` and
+    /// the value, the two token words and the reason are pushed.
     /// Cold path: runs out of line on a copy of the machine (see `cold!`).
     #[inline(always)]
-    /// The handler's bci `hbci` is the try block's return bci (format 3, note
-    /// 22: the record keeps only the handler's height).
-    pub fn enter_finally(&mut self, env: &Env, handler: usize, hbci: usize, u: Option<Unwinding>) -> Ctl {
-        cold!(self, |m| m.enter_finally_cold(env, handler, hbci, u))
+    pub fn enter_finally(&mut self, env: &Env, h: usize, bci: usize, u: Option<Unwinding>) -> Ctl {
+        cold!(self, |m| m.enter_finally_cold(env, h, bci, u))
     }
 
     #[inline(never)]
-    fn enter_finally_cold(&mut self, env: &Env, handler: usize, hbci: usize, u: Option<Unwinding>) -> Ctl {
+    fn enter_finally_cold(&mut self, env: &Env, h: usize, bci: usize, u: Option<Unwinding>) -> Ctl {
         let p = &env.p;
-        let height = handler;
-        if !(self.base <= height && height <= self.len - self.top) {
+        if self.ftop < FRAME_WORDS { return Ctl::Stuck(stuck::BAD_FRAME); }
+        if !(self.base <= h && h <= self.len - self.top) {
             return Ctl::Stuck(stuck::STACK_RANGE);
         }
-        self.top = self.len - height;
-        let r = self.ftop - FRAME_WORDS;
-        self.mem.write(r + FRAME_HANDLER, 0);
-        self.bci = hbci;
-        let null = p.null;
+        // The token words encode frames below 2^14, heights below 2^16 and
+        // bcis below 2^28.
         match u {
-            None => {
-                if !self.push(null) || !self.push(null) || !self.push(smi(-1)) {
-                    return Ctl::Stuck(stuck::LIMIT);
-                }
-                Ctl::Next
-            }
-            Some(w) => {
-                // A finally record takes the handler's place (format note
-                // 17); the token is its index.
-                let (value, reason, resume, target, target_height) = match w {
-                    Unwinding::Throw(v) => (v, -2, UNWIND_THROW, 0, 0),
-                    Unwinding::Return(f, v) => (v, -1, UNWIND_RETURN + f * 4, 0, 0),
-                    Unwinding::Branch(f, bci, h) => (null, -1, UNWIND_BRANCH + f * 4, bci, h),
-                };
-                if self.top - self.rtop < FIN_WORDS + 3 { return Ctl::Stuck(stuck::LIMIT); }
-                let k = (self.rtop - self.ftop) / FIN_WORDS;
-                let e = self.rtop;
-                self.mem.write(e + FIN_FRAME, r / FRAME_WORDS);
-                self.mem.write(e + FIN_HEIGHT, height);
-                self.mem.write(e + FIN_RESUME, resume);
-                self.mem.write(e + FIN_TARGET, target);
-                self.mem.write(e + FIN_TARGET_HEIGHT, target_height);
-                self.rtop = e + FIN_WORDS;
-                self.push(value);
-                self.push(smi(k as i64));
-                self.push(smi(reason));
-                Ctl::Next
-            }
+            Some(Unwinding::Return(f, _)) => if f >= 0x4000 { return Ctl::Stuck(stuck::LIMIT); },
+            Some(Unwinding::Branch(f, b, th)) =>
+                if f >= 0x4000 || th >= MAX_STACK_LENGTH || b >= 0x1000_0000 { return Ctl::Stuck(stuck::LIMIT); },
+            _ => {},
         }
+        self.top = self.len - h;
+        self.bci = bci;
+        let null = p.null;
+        let (value, reason) = match u {
+            None => (null, -1),
+            Some(Unwinding::Throw(v)) => (v, -2),
+            Some(Unwinding::Return(_, v)) => (v, -1),
+            Some(Unwinding::Branch(_, _, _)) => (null, -1),
+        };
+        let (wa, wb) = Self::token_words(u);
+        if !self.push(value) || !self.push(wa) || !self.push(wb) || !self.push(smi(reason)) {
+            return Ctl::Stuck(stuck::LIMIT);
+        }
+        Ctl::Next
     }
 
-    /// Drops the trailing finally records of frames above `g` and those of
-    /// frame `g` at height `lim` or above (`spec::cut_fins`).
-    #[inline(always)]
-    pub fn cut_fins(&mut self, g: usize, lim: usize) {
-        while self.rtop > self.ftop {
-            let e = self.rtop - FIN_WORDS;
-            let frame = self.mem.read(e + FIN_FRAME);
-            if frame > g || (frame == g && self.mem.read(e + FIN_HEIGHT) >= lim) {
-                self.rtop = e;
-            } else {
-                break;
-            }
-        }
-    }
-
-    /// Pops the top frame's record and its finally records (`fins_popped`);
-    /// the other finally records move down over the frame record.
+    /// Pops the top frame's record (`pop_frame`, with `top` cut to its base
+    /// by the caller).
     #[inline(always)]
     pub fn pop_frame_record(&mut self) {
-        let r = self.ftop - FRAME_WORDS;
-        self.cut_fins(r / FRAME_WORDS, 0);
-        let (f, e) = (self.ftop, self.rtop);
-        if e > f {
-            self.mem.copy_within(f, r, e - f);
-        }
-        self.ftop = r;
-        self.rtop = e - FRAME_WORDS;
+        self.ftop = self.ftop - FRAME_WORDS;
     }
 
     /// `spec::unwind`.
@@ -688,11 +665,6 @@ impl Machine {
 
     #[inline(never)]
     fn unwind_cold(&mut self, env: &Env, u: Unwinding) -> Ctl {
-        // The bci of the top frame's handler: the return bci of the frame
-        // popped last. Before the first pop only TRY itself can have left a
-        // handler on the top frame (raising for a bad block), whose finally
-        // code follows it (TRY is one byte).
-        let mut hbci = self.bci + 1;
         loop {
             if self.ftop < FRAME_WORDS {
                 return match u {
@@ -704,10 +676,6 @@ impl Machine {
                 };
             }
             let r = self.ftop - FRAME_WORDS;
-            let handler = self.mem.read(r + FRAME_HANDLER);
-            if handler != 0 {
-                return self.enter_finally(env, handler, hbci, Some(u));
-            }
             let height = self.len - self.top;
             if self.base > height { return Ctl::Stuck(stuck::STACK_RANGE); }
             let fi = self.ftop / FRAME_WORDS - 1;
@@ -721,11 +689,17 @@ impl Machine {
                 }
                 _ => {}
             }
-            // Pop the frame.
-            hbci = self.mem.read(r + FRAME_RET);
-            self.top = self.len - self.base;
+            // Pop the frame; a try block hands the unwinding to the finally
+            // code of the frame below.
+            let handler = self.mem.read(r + FRAME_HANDLER);
+            let ret = self.mem.read(r + FRAME_RET);
+            let base = self.base;
+            self.top = self.len - base;
             self.pop_frame_record();
             if !self.refresh_frame(&env.p) { return Ctl::Stuck(stuck::FATAL); }
+            if handler != 0 {
+                return self.enter_finally(env, base, ret, Some(u));
+            }
         }
     }
 
@@ -734,7 +708,6 @@ impl Machine {
     pub fn return_from(&mut self, env: &Env, result: usize) -> Ctl {
         if self.ftop < FRAME_WORDS { return Ctl::Stuck(stuck::BAD_FRAME); }
         let r = self.ftop - FRAME_WORDS;
-        if self.mem.read(r + FRAME_HANDLER) != 0 { return Ctl::Stuck(stuck::BAD_FRAME); }
         if self.ftop == FRAME_WORDS {
             env.rt.report(V2_REPORT_TASK_RETURNED, self.bci, 0);
             return Ctl::Exit(RESULT_TERMINATED as u32, 1);
@@ -742,49 +715,60 @@ impl Machine {
         let height = self.len - self.top;
         if self.base > height { return Ctl::Stuck(stuck::STACK_RANGE); }
         let ret = self.mem.read(r + FRAME_RET);
-        self.top = self.len - self.base;
+        let handler = self.mem.read(r + FRAME_HANDLER);
+        let base = self.base;
+        self.top = self.len - base;
         self.pop_frame_record();
         if !self.refresh_frame(&env.p) { return Ctl::Stuck(stuck::FATAL); }
+        if handler != 0 {
+            // A try block returned: the finally code of its caller runs.
+            return self.enter_finally(env, base, ret, None);
+        }
         if !self.push(result) { return Ctl::Stuck(stuck::LIMIT); }
         self.bci = ret;
-        let handler = self.mem.read(self.ftop - FRAME_WORDS + FRAME_HANDLER);
-        if handler != 0 {
-            return self.enter_finally(env, handler, ret, None);
-        }
         Ctl::Next
     }
 
     // -----------------------------------------------------------------------
     // Calls.
 
-    /// `spec::call`: a frame for `target`, whose arguments are the top
-    /// `arity` slots.
+    /// `spec::call` (`handler == 0`) and `spec::try_call` (`handler == 1`):
+    /// a frame for `target`, whose arguments are the top `arity` slots.
     #[inline(always)]
-    pub fn call(&mut self, env: &Env, target: usize, ret: usize) -> Ctl {
-        let p = &env.p;
+    pub fn call_h(&mut self, env: &Env, target: usize, ret: usize, handler: usize) -> Ctl {
+        match self.frame_h(&env.p, target, ret, handler) {
+            Ctl::Next => Self::preempt_point(env),
+            c => c,
+        }
+    }
+
+    /// `call_h` without the preemption point.
+    #[inline(always)]
+    pub fn frame_h(&mut self, p: &Program, target: usize, ret: usize, handler: usize) -> Ctl {
         if target >= p.methods.len() { return Ctl::Stuck(stuck::NOT_METHOD); }
         let info = p.method(target);
         let arity = info.arity as usize;
         if arity > self.lim - self.top { return Ctl::Stuck(stuck::STACK_RANGE); }
-        if self.rtop + FRAME_WORDS > self.top { return Ctl::Stuck(stuck::LIMIT); }
+        if self.ftop + FRAME_WORDS > self.top { return Ctl::Stuck(stuck::LIMIT); }
         let height = self.len - self.top;
         let base = height - arity;
-        let (f, e) = (self.ftop, self.rtop);
-        if e > f {
-            // The finally records move up over the new frame record.
-            self.mem.copy_within(f, f + FRAME_WORDS, e - f);
-        }
-        self.rtop = e + FRAME_WORDS;
+        let f = self.ftop;
         self.mem.write(f + FRAME_METHOD, target);
         self.mem.write(f + FRAME_RET, ret);
         self.mem.write(f + FRAME_BASE, base);
-        self.mem.write(f + FRAME_HANDLER, 0);
+        self.mem.write(f + FRAME_HANDLER, handler);
         self.ftop = f + FRAME_WORDS;
         self.method = target;
         self.base = base;
         self.lim = self.len - base;
         self.bci = info.entry as usize;
-        Self::preempt_point(env)
+        Ctl::Next
+    }
+
+    /// `spec::call`.
+    #[inline(always)]
+    pub fn call(&mut self, env: &Env, target: usize, ret: usize) -> Ctl {
+        self.call_h(env, target, ret, 0)
     }
 
     /// The class id of a value, if it has one (`class_id_ok`).
@@ -830,13 +814,11 @@ impl Machine {
     pub fn replace_frame(&mut self, env: &Env, target: usize, from: usize, n: usize, extra: usize) -> Ctl {
         let p = &env.p;
         let r = self.ftop - FRAME_WORDS;
-        if self.mem.read(r + FRAME_HANDLER) != 0 { return Ctl::Stuck(stuck::BAD_FRAME); }
-        // The frame's finally records go (`fins_popped`).
-        self.cut_fins(r / FRAME_WORDS, 0);
+        // The frame keeps its return bci, base and try-block flag.
         // New object stack: stack[0..base] + args; args end at array index
         // len - base.
         let new_top = self.lim - n - extra;
-        if new_top < self.rtop { return Ctl::Stuck(stuck::LIMIT); }
+        if new_top < self.ftop { return Ctl::Stuck(stuck::LIMIT); }
         self.mem.copy_within(from, new_top + extra, n);
         self.top = new_top;
         let info = p.method(target);
@@ -1396,8 +1378,8 @@ pub fn run(p: Program, rt: Runtime, globals: Globals, heap: Heap, pre: Preemptio
     let bot = mem.slot(0);
     let mut m = Machine {
         mem, globals, heap,
-        len: 0, top: 0, ftop: 0, rtop: 0, bci: 0, base: 0, lim: 0, method: 0,
-        fw: 0, need: usize::MAX, bot, slow_k: crate::step::Slow::Op, slow_w: 0,
+        len: 0, top: 0, ftop: 0, bci: 0, base: 0, lim: 0, method: 0,
+        need: usize::MAX, bot, slow_k: crate::step::Slow::Op, slow_w: 0,
         g: Ghost::assume_new(),
     };
     let env = Env { p, rt, pre };
@@ -1412,7 +1394,7 @@ pub fn run(p: Program, rt: Runtime, globals: Globals, heap: Heap, pre: Preemptio
     // promote them). Promoting everything costs more in register shuffles
     // at the loop head than it saves in loads.
     core::hint::black_box((
-        &mut m.len as *mut usize, &mut m.ftop as *mut usize, &mut m.rtop as *mut usize,
+        &mut m.len as *mut usize, &mut m.ftop as *mut usize,
         &mut m.base as *mut usize,
         &mut m.lim as *mut usize, &mut m.method as *mut usize,
         &mut m.globals as *mut Globals, &mut m.heap as *mut Heap,
@@ -1557,8 +1539,10 @@ impl Machine {
                 self.binary_result(p.boolean(r))
             }
             op::TRY => {
-                if let Some(c) = self.ensure_room(env) { return c; }
-                self.op_try(env)
+                // Without room for the call: `try_grow` (format note 23).
+                let needed = FRAME_WORDS + p.max_height + STACK_RESERVE + 1;
+                if self.top - self.ftop < needed { return self.try_grow(env, needed); }
+                self.op_try(env, true)
             }
             op::LOAD_FIELD_THIS => self.op_load_field_this(p, b1!()),
             op::UNWIND => self.op_unwind(env),
@@ -2042,19 +2026,11 @@ impl Machine {
     }
 
     #[inline(always)]
-    fn op_try(&mut self, env: &Env) -> Ctl {
+    fn op_try(&mut self, env: &Env, preempt: bool) -> Ctl {
         let p = &env.p;
         if !self.has_slot(0) || self.ftop < FRAME_WORDS { return Ctl::Stuck(stuck::STACK_RANGE); }
         let height = self.len - self.top;
-        let r = self.ftop - FRAME_WORDS;
-        if self.mem.read(r + FRAME_HANDLER) != 0 {
-            return Ctl::Stuck(stuck::LIMIT);
-        }
         let fi = self.ftop / FRAME_WORDS - 1;
-        // Stale finally records of the frame (left by a `break` out of
-        // finally code) go first.
-        self.cut_fins(fi, height - 1);
-        self.mem.write(r + FRAME_HANDLER, height);
         let slot = height - 1;
         match self.block_target(p, slot) {
             None => self.raise(env, INVALID_PROGRAM),
@@ -2063,8 +2039,36 @@ impl Machine {
                 if arity != 1 { return self.raise_code(env, true, arity, 1, t); }
                 if !self.push(Self::block_value(fi, slot)) { return Ctl::Stuck(stuck::LIMIT); }
                 let ret = self.bci + 1;
-                self.call(env, t, ret)
+                // The try block (format note 23).
+                if preempt { self.call_h(env, t, ret, 1) } else { self.frame_h(p, t, ret, 1) }
             }
+        }
+    }
+
+    /// TRY without room for its call (`unwind::try_grow` of the verified
+    /// loop): grows the stack (the TRY runs again), or enters the try block
+    /// and raises the error there, so that the TRY's finally code runs
+    /// (`prim::resource_state`). Cold path: runs out of line on a copy of
+    /// the machine (see `cold!`).
+    #[inline(always)]
+    fn try_grow(&mut self, env: &Env, needed: usize) -> Ctl {
+        cold!(self, |m| m.try_grow_cold(env, needed))
+    }
+
+    #[inline(never)]
+    fn try_grow_cold(&mut self, env: &Env, needed: usize) -> Ctl {
+        self.save();
+        let status = env.rt.grow_stack(&mut self.mem, needed);
+        if !self.reload(&env.p) { return Ctl::Stuck(stuck::FATAL); }
+        if status == V2_OK { return Ctl::Next; }
+        match self.op_try(env, false) {
+            Ctl::Next => {},
+            c => return c,
+        }
+        if status == V2_STACK_OVERFLOW {
+            self.raise_value(env, env.p.roots.at(ROOT_STACK_OVERFLOW))
+        } else {
+            self.unwind(env, Unwinding::Throw(env.p.roots.at(ROOT_OUT_OF_MEMORY_ERROR)))
         }
     }
 
@@ -2076,38 +2080,42 @@ impl Machine {
 
     #[inline(never)]
     fn op_unwind_cold(&mut self, env: &Env) -> Ctl {
-        let p = &env.p;
-        if !self.has_slot(2) { return Ctl::Stuck(stuck::STACK_RANGE); }
-        let token = self.at(1);
-        let value = self.at(2);
-        if token == p.null {
-            self.drop(3);
-            self.bci += 1;
-            return Ctl::Next;
-        }
-        // `fin_matches`: record k of the top frame, whose token slot this is.
-        if !is_smi(token) { return Ctl::Stuck(stuck::NOT_UNWIND); }
-        let k = smi_value(token);
-        if k < 0 || k as usize >= (self.rtop - self.ftop) / FIN_WORDS { return Ctl::Stuck(stuck::NOT_UNWIND); }
-        let e = self.ftop + k as usize * FIN_WORDS;
-        let height = self.len - self.top;
-        if self.mem.read(e + FIN_FRAME) != self.ftop / FRAME_WORDS - 1
-            || self.mem.read(e + FIN_HEIGHT) != height - 3 {
-            return Ctl::Stuck(stuck::NOT_UNWIND);
-        }
-        let resume = self.mem.read(e + FIN_RESUME);
-        let target = self.mem.read(e + FIN_TARGET);
-        let target_height = self.mem.read(e + FIN_TARGET_HEIGHT);
-        let f = resume >> 2;
-        let u = match resume & 3 {
-            UNWIND_THROW => Unwinding::Throw(value),
-            UNWIND_RETURN => Unwinding::Return(f, value),
-            UNWIND_BRANCH => Unwinding::Branch(f, target, target_height),
-            _ => return Ctl::Stuck(stuck::FATAL),
+        // `token_at`: the two token words (format note 23), decoded and
+        // checked as words (like block references, the checked loop cannot
+        // tell a token from a smi: the unwinding loop checks what it
+        // resumes).
+        if !self.has_slot(3) { return Ctl::Stuck(stuck::STACK_RANGE); }
+        let wb = self.at(1);
+        let wa = self.at(2);
+        let value = self.at(3);
+        if !is_smi(wa) || !is_smi(wb) { return Ctl::Stuck(stuck::NOT_UNWIND); }
+        let a = smi_value(wa);
+        let b = smi_value(wb);
+        if a < 0 || b < 0 { return Ctl::Stuck(stuck::NOT_UNWIND); }
+        let (a, b) = (a as usize, b as usize);
+        let f = a >> BLOCK_SLOT_BITS;
+        let th = a & ((1 << BLOCK_SLOT_BITS) - 1);
+        let target = b >> 2;
+        let u = match b & 3 {
+            PENDING_NORMAL => {
+                if a != 0 || target != 0 { return Ctl::Stuck(stuck::NOT_UNWIND); }
+                self.drop(4);
+                self.bci += 1;
+                return Ctl::Next;
+            }
+            PENDING_THROW => {
+                if a != 0 || target != 0 { return Ctl::Stuck(stuck::NOT_UNWIND); }
+                Unwinding::Throw(value)
+            }
+            PENDING_RETURN => {
+                if th != 0 || target != 0 { return Ctl::Stuck(stuck::NOT_UNWIND); }
+                Unwinding::Return(f, value)
+            }
+            _ => Unwinding::Branch(f, target, th),
         };
-        self.drop(3);
-        // Records k and above go.
-        self.rtop = e;
+        // The target is a frame below the UNWIND's (or that frame).
+        if f >= self.ftop / FRAME_WORDS { return Ctl::Stuck(stuck::NOT_UNWIND); }
+        self.drop(4);
         self.unwind(env, u)
     }
 
@@ -2515,7 +2523,7 @@ impl Machine {
             }
             op::LOAD_SMIS_0 => {
                 let n = b1!();
-                if self.top - self.rtop < n { return Ctl::Stuck(stuck::LIMIT); }
+                if self.top - self.ftop < n { return Ctl::Stuck(stuck::LIMIT); }
                 let mut i = 0;
                 while i < n {
                     self.push(0);

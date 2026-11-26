@@ -84,9 +84,9 @@ verus! {
 pub open spec fn heap_only(m0: Machine, m1: Machine) -> bool {
     &&& m1.mem == m0.mem
     &&& m1.globals == m0.globals
-    &&& m1.len == m0.len && m1.top == m0.top && m1.ftop == m0.ftop && m1.rtop == m0.rtop
+    &&& m1.len == m0.len && m1.top == m0.top && m1.ftop == m0.ftop
     &&& m1.bci == m0.bci && m1.base == m0.base && m1.lim == m0.lim && m1.method == m0.method
-    &&& m1.fw == m0.fw && m1.need == m0.need && m1.bot == m0.bot
+    &&& m1.need == m0.need && m1.bot == m0.bot
     &&& m1.heap.addrs() == m0.heap.addrs()
     &&& m1.g@ == (State2 { heap: m1.g@.heap, ..m0.g@ })
 }
@@ -721,14 +721,13 @@ fn alloc_oom(m: &mut Machine, r: Regs, env: &Env, Ghost(g): Ghost<State2>, Ghost
 // PRIMITIVE.
 
 /// A return (`spec::return_from`) with the result `w`, on the registers,
-/// when the fast path of `rcalls::op_return` applies: no finally records,
-/// not the task's bottom frame, the caller not suspended in a TRY. `false`
-/// (nothing changed) otherwise.
+/// when the fast path of `rcalls::op_return` applies: not the task's bottom
+/// frame, not a try block. `false` (nothing changed) otherwise.
 #[inline(always)]
 pub fn ret_r(m: &mut Machine, r: &mut Regs, p: &Program, w: usize, Ghost(v): Ghost<Value>) -> (b: bool)
     requires
         m_ok(p, *old(m), *old(r)),
-        old(r).sp@ >= old(r).fr@ + old(m).fw + STACK_RESERVE,
+        old(r).sp@ >= old(r).fr@ + STACK_RESERVE,
         room_ok(p, old(m).with(*old(r))),
         shape_ok(p, old(m).g@),
         w == enc(old(m).addr(), v),
@@ -745,10 +744,9 @@ pub fn ret_r(m: &mut Machine, r: &mut Regs, p: &Program, w: usize, Ghost(v): Gho
     let ghost m0 = m.with(*r);
     proof {
         m0.lemma_frame(p);
-        lemma_no_handler(g0);
     }
     if !m.bot.lt(r.fr, &m.mem) {
-        // The task's bottom frame returns, or there are finally records.
+        // The task's bottom frame returns.
         return false;
     }
     let ghost n = g0.frames.len() as int;
@@ -760,25 +758,26 @@ pub fn ret_r(m: &mut Machine, r: &mut Regs, p: &Program, w: usize, Ghost(v): Gho
         lemma_rec_index(n, n - 2, FRAME_BASE);
         lemma_rec_index(n, n - 1, FRAME_RET);
     }
-    let crec = r.fr.offset(-((2 * FRAME_WORDS) as isize));
-    let handler = crec.read(FRAME_HANDLER, &m.mem);
+    let rec_ = r.fr.offset(-(FRAME_WORDS as isize));
+    let handler = rec_.read(FRAME_HANDLER, &m.mem);
+    proof { lemma_rec_index(n, n - 1, FRAME_HANDLER); }
     if handler != 0 {
-        // The caller is suspended in a TRY: its finally code runs.
+        // A try block: the finally code of its caller runs.
         return false;
     }
-    let rec_ = r.fr.offset(-(FRAME_WORDS as isize));
+    let crec = r.fr.offset(-((2 * FRAME_WORDS) as isize));
     let ret = rec_.read(FRAME_RET, &m.mem);
     let base = crec.read(FRAME_BASE, &m.mem);
     proof {
         assert(rec(m0.mem@, n - 1, FRAME_RET) == g0.frames[n - 1].ret);
         assert(rec(m0.mem@, n - 2, FRAME_METHOD) == g0.frames[n - 2].method);
         assert(rec(m0.mem@, n - 2, FRAME_BASE) == g0.frames[n - 2].base);
-        assert(rec(m0.mem@, n - 2, FRAME_HANDLER) == handler);
+        assert(rec(m0.mem@, n - 1, FRAME_HANDLER) == handler_word(g0.frames[n - 1]));
+        assert(g0.frames[n - 1] == sp::top(g0));
+        assert(!sp::top(g0).handler);
         assert(toit_spec::v2::sound::base_step(g0, n - 2));
-        lemma_frames_pop(m0.mem@, g0.frames, g0.tries);
-        lemma_handler_word(m0.mem@, g0.frames.drop_last(), g0.tries);
+        lemma_frames_pop(m0.mem@, g0.frames);
         assert(g0.frames.drop_last()[n - 2] == g0.frames[n - 2]);
-        assert(!sp::has_handler(State2 { frames: g0.frames.drop_last(), ..g0 }));
     }
     let s = r.fp.offset(-1);
     s.write(0, w, &mut m.mem);
@@ -789,19 +788,16 @@ pub fn ret_r(m: &mut Machine, r: &mut Regs, p: &Program, w: usize, Ghost(v): Gho
     let ghost g1 = State2 {
         stack: g0.stack.subrange(0, sp::top(g0).base as int).push(v),
         frames: g0.frames.drop_last(),
-        fins: sp::fins_popped(g0),
         bci: sp::top(g0).ret,
         ..g0
     };
     m.g = Ghost(g1);
     proof {
         let m1 = m.with(*r);
-        assert(g0.fins.len() == 0);
-        assert(sp::fins_popped(g0) =~= g0.fins);
         assert(sp::base(g1) == g0.frames[n - 2].base);
-        lemma_frames_pop(m0.mem@, g0.frames, g0.tries);
+        lemma_frames_pop(m0.mem@, g0.frames);
         assert forall|i: int| 0 <= i < FRAME_WORDS * g1.frames.len() implies #[trigger] m1.mem@[i] == m0.mem@[i] by {}
-        lemma_frames_rel_same(m0.mem@, m1.mem@, g1.frames, g1.tries);
+        lemma_frames_rel_same(m0.mem@, m1.mem@, g1.frames);
         let b = sp::top(g0).base as int;
         assert(m1.words() =~= m0.words().subrange(0, b).push(w));
         assert(enc_seq(m0.addr(), g1.stack) =~= enc_seq(m0.addr(), g0.stack).subrange(0, b).push(w));
@@ -937,7 +933,6 @@ pub open spec fn prim_returned(p: &Program, m0: Machine, r: Regs, m: Machine, su
     let g = m0.g@;
     let g1 = m.g@;
     &&& m_ok(p, m, r)
-    &&& m.fw == m0.fw
     &&& m.len == m0.len
     &&& room_ok(p, m.with(r))
     &&& shape_ok(p, g1)
@@ -949,15 +944,15 @@ pub open spec fn prim_returned(p: &Program, m0: Machine, r: Regs, m: Machine, su
 }
 
 /// Completes a PRIMITIVE step whose primitive returned (`prim_returned`):
-/// a success returns the result from the frame on the registers (or, in a
-/// TRY, with finally records, of the bottom frame, on the machine), a
+/// a success returns the result from the frame on the registers (or, from
+/// a try block or the bottom frame, on the machine), a
 /// failure pushes it and continues after the instruction.
 #[inline(always)]
 fn complete_r(m: &mut Machine, r: &mut Regs, env: &Env, success: bool, w: usize, Ghost(v): Ghost<Value>,
     Ghost(m0): Ghost<Machine>, Ghost(r0): Ghost<Regs>) -> (c: Ctl)
     requires
         rinv(&env.p, m0, r0),
-        r0.sp@ >= r0.fr@ + m0.fw + STACK_RESERVE,
+        r0.sp@ >= r0.fr@ + STACK_RESERVE,
         cur_op(env.p.ap@, m0.g@) == 89,
         r0.ip@ + 4 < 0x1000_0000,
         same_regs(*old(r), r0),
@@ -986,8 +981,8 @@ fn complete_r(m: &mut Machine, r: &mut Regs, env: &Env, success: bool, w: usize,
             proof { lemma_outcome_matches(p, w0, m.with(*r), Ctl::Next, o); }
             return Ctl::Next;
         }
-        // A return in a TRY, with finally records, or of the bottom
-        // frame: on the machine.
+        // A return from a try block or of the bottom frame: on the
+        // machine.
         m.sync_b(*r, p);
         proof { assert(m.len == w0.len); }
         let c = m.do_return(env, w, Ghost(v));
@@ -1093,8 +1088,7 @@ fn regs_reloaded(m: &Machine, p: &Program, Ghost(r): Ghost<Regs>) -> (r2: Regs)
     }
     let len = m.mem.len();
     let top = m.mem.header(STACK_TOP_WORD);
-    let word = m.mem.header(STACK_RECORD_TOP_WORD);
-    let ftop = word >> 16usize;
+    let ftop = m.mem.header(STACK_FRAME_TOP_WORD);
     let base = m.mem.read(ftop - FRAME_WORDS + FRAME_BASE);
     let bci = m.mem.header(STACK_BCI_WORD);
     Regs {
@@ -1120,7 +1114,7 @@ fn cxx_primitive_rest(m: &mut Machine, Ghost(r): Ghost<Regs>, env: &Env, st: usi
         abound_ok(&env.p, *old(ab)),
         moved || !(st == V2_PRIMITIVE_SUCCESS || st == V2_PRIMITIVE_FAILURE),
         rinv(&env.p, m0, r),
-        r.sp@ >= r.fr@ + m0.fw + STACK_RESERVE,
+        r.sp@ >= r.fr@ + STACK_RESERVE,
         step_ok(env.p.ap@, env.p.cert@, m0.g@),
         sp::step(env.p.ap@, m0.g@) == Outcome2::Primitive(m0.g@, module, index),
         cur_op(env.p.ap@, m0.g@) == 89,
@@ -1208,7 +1202,7 @@ fn rust_primitive_r(m: &mut Machine, r: &Regs, env: &Env, module: u8, index: u16
             && env.p.cert@.prim_arity[module as int][index as int] == e as int,
         e == X_PRIM_DENIED ==> env.p.cert@.prim_arity[module as int][index as int] == -1,
         rinv(&env.p, *old(m), *r),
-        r.sp@ >= r.fr@ + old(m).fw + STACK_RESERVE,
+        r.sp@ >= r.fr@ + STACK_RESERVE,
         step_ok(env.p.ap@, env.p.cert@, old(m).g@),
         cur_op(env.p.ap@, old(m).g@) == 89,
         sp::step(env.p.ap@, old(m).g@) == Outcome2::Primitive(old(m).g@, module, index),

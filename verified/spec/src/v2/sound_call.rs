@@ -31,15 +31,16 @@ use crate::spec_common::{class_id_ok, class_id_of};
 verus! {
 
 pub open spec fn call_state(p: Program2, s1: State2, t: int, ret: int) -> State2 {
+    call_state_h(p, s1, t, ret, false)
+}
+
+/// A call whose new frame is a try block (`is_try`, TRY) or not.
+pub open spec fn call_state_h(p: Program2, s1: State2, t: int, ret: int, is_try: bool) -> State2 {
     State2 {
-        frames: s1.frames.push(Frame { method: t as usize, ret: ret as usize, base: (s1.stack.len() - arity(p, t)) as usize }),
+        frames: s1.frames.push(Frame { method: t as usize, ret: ret as usize, base: (s1.stack.len() - arity(p, t)) as usize, handler: is_try }),
         bci: info(p, t).entry,
         ..s1
     }
-}
-
-pub open spec fn new_handler(s: State2, nb: int, ret: int) -> Handler {
-    Handler { frame: top_i(s) as usize, height: nb as usize, bci: ret as usize }
 }
 
 /// The state before the call (`s1`, derived from the well-formed state
@@ -56,8 +57,6 @@ pub open spec fn call_pre(p: Program2, c: Cert, s: State2, s1: State2, t: int, r
     &&& s1.task == s.task
     &&& s1.stack.len() < 0x8000_0000
     &&& small(s)
-    &&& (if is_try { s1.tries == s.tries.push(new_handler(s, nb, ret)) } else { s1.tries == s.tries })
-    &&& s1.fins == (if is_try { cut_fins(s.fins, t0, nb - 1) } else { s.fins })
     &&& heap_ext(p, s.heap, s1.heap)
     &&& heap_ok(p, c, s1.heap)
     &&& globals_ok(c, s1)
@@ -72,7 +71,7 @@ pub open spec fn call_pre(p: Program2, c: Cert, s: State2, s1: State2, t: int, r
         Some(kr) => {
             &&& kr.subrange(0, keep) == k.subrange(0, keep)
             &&& if is_try {
-                kr.len() == keep + 3 && kr[keep] is Val && kr[keep + 1] is Token && kr[keep + 2] is Val
+                kr.len() == keep + 4 && kr[keep] is Val && kr[keep + 1] is Token && kr[keep + 2] is Token && kr[keep + 3] is Val
             } else {
                 kr.len() == keep + 1 && kr[keep] is Val
             }
@@ -84,71 +83,18 @@ pub open spec fn call_pre(p: Program2, c: Cert, s: State2, s1: State2, t: int, r
 
 /// The arguments conform to the callee's entry kinds and its receiver is
 /// in its range.
-pub open spec fn call_args(p: Program2, c: Cert, s1: State2, t: int, ret: int) -> bool {
-    let s2 = call_state(p, s1, t, ret);
+pub open spec fn call_args(p: Program2, c: Cert, s1: State2, t: int, ret: int, is_try: bool) -> bool {
+    let s2 = call_state_h(p, s1, t, ret, is_try);
     let tn = top_i(s2);
     &&& forall|x: int| 0 <= x < arity(p, t) ==>
             #[trigger] conf(p, c, s2, tn, kinds_of(p, c, s2, tn), x, entry_kinds(p, c, t)[x], s2.stack[fbase(s2, tn) + x])
     &&& receiver_ok(p, s2, tn)
 }
 
-/// The records after a call (a TRY cuts the caller's stale ones first).
-pub proof fn lemma_call_fins(p: Program2, c: Cert, trusted: bool, s: State2, s1: State2, t: int, ret: int, is_try: bool)
-    requires accepts(p, c, trusted), wf(p, c, s), call_pre(p, c, s, s1, t, ret, is_try),
-    ensures ({
-        let s2 = call_state(p, s1, t, ret);
-        let t0 = top_i(s);
-        let nb = s1.stack.len() - arity(p, t);
-        &&& fins_ok(s2)
-        &&& fins_kept(s, s2, t0, nb - 1)
-        &&& fins_kept(s, s2, t0, 0)
-    }),
-{
-    let s2 = call_state(p, s1, t, ret);
-    let t0 = top_i(s);
-    let nb = s1.stack.len() - arity(p, t);
-    lemma_wf_parts(p, c, s);
-    lemma_task_basics(p, c, s);
-    assert(fins_ok(s)) by { reveal(wf_task); }
-    if is_try {
-        let mid = State2 { fins: cut_fins(s.fins, t0, nb - 1), ..s };
-        lemma_cut_ok(s, mid, t0, nb - 1);
-        lemma_cut_kept(s, s2, t0, nb - 1);
-        lemma_fins_kept_mono(s, s2, t0, nb - 1, t0, 0);
-        let h = new_handler(s, nb, ret);
-        assert forall|x: int, k: int| 0 <= x < s2.tries.len() && 0 <= k < s2.fins.len()
-            && (#[trigger] s2.fins[k]).frame == (#[trigger] s2.tries[x]).frame implies
-            s2.fins[k].height < s2.tries[x].height by {
-            if x < s.tries.len() {
-                assert(s2.tries[x] == mid.tries[x]);
-            } else {
-                assert(s2.tries[x] == h);
-            }
-        }
-        assert forall|k: int| 0 <= k < s2.fins.len() implies (#[trigger] s2.fins[k]).frame < s2.frames.len() by {
-            assert(mid.fins[k].frame < mid.frames.len());
-        }
-        assert forall|a: int, b: int| 0 <= a < b < s2.fins.len() implies fin_lt(#[trigger] s2.fins[a], #[trigger] s2.fins[b]) by {
-            assert(fin_lt(mid.fins[a], mid.fins[b]));
-        }
-    } else {
-        lemma_fins_kept_same(s, s2, t0, nb - 1);
-        lemma_fins_kept_same(s, s2, t0, 0);
-        assert forall|k: int| 0 <= k < s2.fins.len() implies (#[trigger] s2.fins[k]).frame < s2.frames.len() by {
-            assert(s.fins[k].frame < s.frames.len());
-        }
-        assert forall|x: int, k: int| 0 <= x < s2.tries.len() && 0 <= k < s2.fins.len()
-            && (#[trigger] s2.fins[k]).frame == (#[trigger] s2.tries[x]).frame implies
-            s2.fins[k].height < s2.tries[x].height by {
-            assert(s2.tries[x] == s.tries[x] && s2.fins[k] == s.fins[k]);
-        }
-    }
-}
-
 pub proof fn lemma_call_shape(p: Program2, c: Cert, trusted: bool, s: State2, s1: State2, t: int, ret: int, is_try: bool)
     requires accepts(p, c, trusted), wf(p, c, s), call_pre(p, c, s, s1, t, ret, is_try),
     ensures ({
-        let s2 = call_state(p, s1, t, ret);
+        let s2 = call_state_h(p, s1, t, ret, is_try);
         let t0 = top_i(s);
         let nb = s1.stack.len() - arity(p, t);
         &&& top_i(s2) == t0 + 1
@@ -163,12 +109,10 @@ pub proof fn lemma_call_shape(p: Program2, c: Cert, trusted: bool, s: State2, s1
         &&& try_frame(s2, t0) == is_try
         &&& forall|g: int| 0 <= g < t0 ==> #[trigger] try_frame(s2, g) == try_frame(s, g)
         &&& (t0 > 0 ==> same_below(s, s2, t0 - 1))
-        &&& fins_ok(s2)
-        &&& fins_kept(s, s2, t0, nb - 1)
+        &&& s2.frames[0] == s.frames[0]
     }),
 {
-    lemma_call_fins(p, c, trusted, s, s1, t, ret, is_try);
-    let s2 = call_state(p, s1, t, ret);
+    let s2 = call_state_h(p, s1, t, ret, is_try);
     let t0 = top_i(s);
     let b = fbase(s, t0);
     let m = fmethod(s, t0);
@@ -180,7 +124,7 @@ pub proof fn lemma_call_shape(p: Program2, c: Cert, trusted: bool, s: State2, s1
     lemma_top_kinds(p, c, s);
     lemma_map_bound(p, c, trusted, m, ret - info(p, m).entry);
     assert(0 <= b <= nb < 0x8000_0000);
-    let nf = Frame { method: t as usize, ret: ret as usize, base: (s1.stack.len() - arity(p, t)) as usize };
+    let nf = Frame { method: t as usize, ret: ret as usize, base: (s1.stack.len() - arity(p, t)) as usize, handler: is_try };
     assert(s2.frames == s.frames.push(nf));
     assert(t0 + 1 == s.frames.len());
     assert(s2.frames[t0 + 1] == nf);
@@ -197,30 +141,9 @@ pub proof fn lemma_call_shape(p: Program2, c: Cert, trusted: bool, s: State2, s1
     let kr = map_at(c, m, ret - info(p, m).entry)->0;
     assert(fmap(p, c, s2, t0) == kr);
     assert(kinds_of(p, c, s2, t0) =~= kr.subrange(0, keep));
-    // Handlers.
+    // Try blocks: the new frame is one if the call is a TRY.
     assert forall|g: int| 0 <= g < t0 implies #[trigger] try_frame(s2, g) == try_frame(s, g) by {
-        if try_frame(s2, g) {
-            let x = choose|x: int| 0 <= x < s2.tries.len() && (#[trigger] s2.tries[x]).frame as int == g;
-            if x < s.tries.len() {
-                assert(s.tries[x] == s2.tries[x]);
-            } else {
-                assert(is_try);
-                assert(s2.tries[x] == new_handler(s, nb, ret));
-                assert(false);
-            }
-        }
-        if try_frame(s, g) {
-            let x = choose|x: int| 0 <= x < s.tries.len() && (#[trigger] s.tries[x]).frame as int == g;
-            assert(s2.tries[x] == s.tries[x]);
-        }
-    }
-    if is_try {
-        assert(s2.tries[s.tries.len() as int].frame as int == t0);
-    } else {
-        if try_frame(s2, t0) {
-            let x = choose|x: int| 0 <= x < s2.tries.len() && (#[trigger] s2.tries[x]).frame as int == t0;
-            assert(try_ok(s, x));
-        }
+        assert(s2.frames[g + 1] == s.frames[g + 1]);
     }
     if t0 > 0 {
         assert(same_below(s, s2, t0 - 1)) by {
@@ -236,7 +159,7 @@ pub proof fn lemma_call_caller_conf(p: Program2, c: Cert, trusted: bool, s: Stat
         accepts(p, c, trusted), wf(p, c, s), call_pre(p, c, s, s1, t, ret, is_try),
         0 <= j < s1.stack.len() - arity(p, t) - fbase(s, top_i(s)),
     ensures ({
-        let s2 = call_state(p, s1, t, ret);
+        let s2 = call_state_h(p, s1, t, ret, is_try);
         let t0 = top_i(s);
         conf(p, c, s2, t0, kinds_of(p, c, s2, t0), j, kinds_of(p, c, s2, t0)[j], s2.stack[fbase(s2, t0) + j])
     }),
@@ -244,7 +167,7 @@ pub proof fn lemma_call_caller_conf(p: Program2, c: Cert, trusted: bool, s: Stat
     reveal(conf);
     reveal(pending_ok);
     reveal(good_ref);
-    let s2 = call_state(p, s1, t, ret);
+    let s2 = call_state_h(p, s1, t, ret, is_try);
     let t0 = top_i(s);
     let b = fbase(s, t0);
     let m = fmethod(s, t0);
@@ -311,10 +234,13 @@ pub proof fn lemma_call_caller_conf(p: Program2, c: Cert, trusted: bool, s: Stat
         },
         Kind::Token => {
             match v {
-                Value::Smi(kk) => if v != null2(p) {
-                    assert(s2.fins[kk as int] == s.fins[kk as int]);
-                    match s.fins[kk as int].resume {
-                        Resume::Branch(f, bci, hb) => {
+                Value::Token(second, d, _, _) => {
+                    assert(kinds_of(p, c, s2, t0)[j - 1] == k[j - 1]);
+                    if second {
+                        assert(s2.stack[b + j - 1] == s.stack[b + j - 1]);
+                    }
+                    match d {
+                        Pending::Branch(f, bci, hb) => if !second {
                             if (f as int) < t0 {
                                 lemma_kinds_below(p, c, s, s2, f as int, t0 - 1);
                             } else {
@@ -324,7 +250,6 @@ pub proof fn lemma_call_caller_conf(p: Program2, c: Cert, trusted: bool, s: Stat
                                 assert(tt == k.subrange(0, tt.len() as int));
                                 assert(kinds_of(p, c, s2, t0).subrange(0, tt.len() as int) =~= k.subrange(0, tt.len() as int));
                             }
-
                         },
                         _ => {},
                     }
@@ -339,10 +264,10 @@ pub proof fn lemma_call(p: Program2, c: Cert, trusted: bool, s: State2, s1: Stat
     requires
         accepts(p, c, trusted), wf(p, c, s),
         call_pre(p, c, s, s1, t, ret, is_try),
-        call_args(p, c, s1, t, ret),
-    ensures wf(p, c, call_state(p, s1, t, ret)),
+        call_args(p, c, s1, t, ret, is_try),
+    ensures wf(p, c, call_state_h(p, s1, t, ret, is_try)),
 {
-    let s2 = call_state(p, s1, t, ret);
+    let s2 = call_state_h(p, s1, t, ret, is_try);
     let t0 = top_i(s);
     let b = fbase(s, t0);
     let m = fmethod(s, t0);
@@ -396,18 +321,6 @@ pub proof fn lemma_call(p: Program2, c: Cert, trusted: bool, s: State2, s1: Stat
             assert forall|j: int| 0 <= j < slots(s2, fi) implies
                 #[trigger] conf(p, c, s2, fi, kinds_of(p, c, s2, fi), j, kinds_of(p, c, s2, fi)[j], s2.stack[fbase(s2, fi) + j]) by {
                 assert(conf(p, c, s2, fi, kinds_of(p, c, s2, fi), j, entry_kinds(p, c, t)[j], s2.stack[fbase(s2, fi) + j]));
-            }
-        }
-    }
-    assert forall|x: int| 0 <= x < s2.tries.len() implies #[trigger] try_ok(s2, x) by {
-        if x < s.tries.len() {
-            assert(try_ok(s, x));
-            assert(s2.tries[x] == s.tries[x]);
-            let g = s.tries[x].frame as int;
-            assert(s2.frames[g + 1] == s.frames[g + 1]);
-        } else {
-            if x > 0 {
-                assert(try_ok(s, x - 1));
             }
         }
     }

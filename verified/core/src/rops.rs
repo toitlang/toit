@@ -118,6 +118,7 @@ pub fn rfallback(m: &mut Machine, r: &mut Regs, env: &Env, bci: usize, opcode: u
         rhandler_pre(&env.p, *old(m), *old(r), bci, opcode),
         62 <= opcode <= 79,
         toit_spec::v2::prim::grows_stack(opcode),
+        opcode != 97,
         sp::step(env.p.ap@, old(m).g@) == sp::operator_fallback(env.p.ap@, old(m).g@, opcode),
         bci + 1 < 0x1000_0000,
     ensures rpost(&env.p, *old(m), *old(r), *final(m), *final(r), c),

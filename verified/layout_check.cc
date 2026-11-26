@@ -212,26 +212,28 @@ int main() {
     put_half(reinterpret_cast<uint8*>(f.words) + string_hash_code_byte, 0xFFFF);
     if (static_cast<String*>(f.object())->hash_code() == ASSIGNED_HASH_MARKER) string_no_hash_code = 0xFFFF;
   }
-  int stack_length_word, stack_top_word, stack_record_top_word, stack_bci_word;
+  int stack_length_word, stack_top_word, stack_frame_top_word, stack_bci_word;
   bool stack_records_ok;
   { Fake f;
     Stack* s = static_cast<Stack*>(f.object());
     stack_length_word = marker_index(s->length());
     stack_top_word = marker_index(s->top());
-    stack_record_top_word = marker_index(s->v2_record_top());
+    stack_frame_top_word = marker_index(s->v2_frame_top_word());
     stack_bci_word = marker_index(s->v2_bci_word());
-    // The core writes `rtop | ftop << STACK_FRAME_TOP_SHIFT` and the bci
-    // (Machine::save); C++ must read them back the same way.
+    // The core writes the frame top as a plain value (format 3, format
+    // note 23: no other records) and the bci (Machine::save); C++ must read
+    // them back the same way.
     uword ftop = 13 * Stack::V2_FRAME_WORDS;
-    uword rtop = ftop + 3 * Stack::V2_FIN_WORDS;
-    f.words[stack_record_top_word] = rtop | (ftop << 16);
+    f.words[stack_frame_top_word] = ftop;
     f.words[stack_bci_word] = 0x7654321;
-    stack_records_ok = s->v2_bci() == 0x7654321 && s->v2_fin_count() == 3 &&
-        s->v2_frame_top() == static_cast<word>(ftop) && s->v2_record_top() == static_cast<word>(rtop);
-    s->v2_set_records(5 * Stack::V2_FRAME_WORDS, 2, 77);
+    stack_records_ok = s->v2_bci() == 0x7654321 && s->v2_frame_top() == static_cast<word>(ftop);
+    s->v2_set_records(5 * Stack::V2_FRAME_WORDS, 77);
     stack_records_ok = stack_records_ok &&
-        f.words[stack_record_top_word] ==
-            ((5 * Stack::V2_FRAME_WORDS + 2 * Stack::V2_FIN_WORDS) | ((5 * Stack::V2_FRAME_WORDS) << 16)) &&
+        f.words[stack_frame_top_word] == static_cast<uword>(5 * Stack::V2_FRAME_WORDS) &&
+        f.words[stack_bci_word] == 77;
+    s->v2_set_frame_top(7 * Stack::V2_FRAME_WORDS);
+    stack_records_ok = stack_records_ok &&
+        f.words[stack_frame_top_word] == static_cast<uword>(7 * Stack::V2_FRAME_WORDS) &&
         f.words[stack_bci_word] == 77;
   }
 
@@ -282,9 +284,8 @@ int main() {
     { "NEW_SPACE_POINTERS", GcMetadata::NEW_SPACE_POINTERS, false },
     { "STACK_LENGTH_WORD", static_cast<uword>(stack_length_word), false },
     { "STACK_TOP_WORD", static_cast<uword>(stack_top_word), false },
-    { "STACK_RECORD_TOP_WORD", static_cast<uword>(stack_record_top_word), false },
+    { "STACK_FRAME_TOP_WORD", static_cast<uword>(stack_frame_top_word), false },
     { "STACK_BCI_WORD", static_cast<uword>(stack_bci_word), false },
-    { "STACK_FRAME_TOP_SHIFT", static_cast<uword>(Stack::V2_FRAME_TOP_SHIFT), false },
     { "MAX_STACK_LENGTH", static_cast<uword>(Stack::V2_MAX_LENGTH), false },
     { "WORD_BITS", static_cast<uword>(WORD_BIT_SIZE), false },
     { "FRAME_WORDS", static_cast<uword>(Stack::V2_FRAME_WORDS), false },
@@ -293,12 +294,6 @@ int main() {
     { "FRAME_BASE", static_cast<uword>(Stack::V2_FRAME_BASE), false },
     { "FRAME_HANDLER", static_cast<uword>(Stack::V2_FRAME_HANDLER), false },
     { "STACK_RESERVE", static_cast<uword>(Stack::V2_STACK_RESERVE), false },
-    { "FIN_WORDS", static_cast<uword>(Stack::V2_FIN_WORDS), false },
-    { "FIN_FRAME", static_cast<uword>(Stack::V2_FIN_FRAME), false },
-    { "FIN_HEIGHT", static_cast<uword>(Stack::V2_FIN_HEIGHT), false },
-    { "FIN_RESUME", static_cast<uword>(Stack::V2_FIN_RESUME), false },
-    { "FIN_TARGET", static_cast<uword>(Stack::V2_FIN_TARGET), false },
-    { "FIN_TARGET_HEIGHT", static_cast<uword>(Stack::V2_FIN_TARGET_HEIGHT), false },
     { "ROOT_NULL", Program::null_object_INDEX, false },
     { "ROOT_TRUE", Program::true_object_INDEX, false },
     { "ROOT_FALSE", Program::false_object_INDEX, false },
@@ -373,7 +368,7 @@ int main() {
     { "KIND_LAMBDA", V2_KIND_LAMBDA, false },
     { "KIND_BLOCK", V2_KIND_BLOCK, false },
     { "NO_VALUE", V2_NO_VALUE, false },
-    { "BLOCK_SLOT_BITS", Stack::V2_FRAME_TOP_SHIFT, false },
+    { "BLOCK_SLOT_BITS", Stack::V2_BLOCK_SLOT_BITS, false },
     { "FAILURE_LITERALS", V2_FAILURE_LITERALS, false },
     { "MAX_INSTRUCTION_LENGTH", max_instruction_length, false },
     { "MAX_TABLE", V2_MAX_TABLE, false },
@@ -437,8 +432,8 @@ int main() {
     printf("FAIL: the core assumes 32-bit or 64-bit words the size of pointers\n");
     failures++;
   }
-  // Block references (slot bits) and the Stack header's packed record and
-  // frame tops need stack positions below 2^16.
+  // Block references (V2_BLOCK_SLOT_BITS slot bits, also the first token word
+  // of a pending unwinding, format note 23) need stack positions below 2^16.
   if (Stack::max_length() >= Stack::V2_MAX_LENGTH) {
     printf("FAIL: Stack::max_length() does not fit 16 bits\n");
     failures++;
@@ -451,7 +446,7 @@ int main() {
     failures++;
   }
   if (!stack_records_ok) {
-    printf("FAIL: Stack record top, finally-record count and bci encoding\n");
+    printf("FAIL: Stack frame top and bci encoding\n");
     failures++;
   }
   if (sizeof(std::atomic<Object**>) != sizeof(uword)) {

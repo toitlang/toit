@@ -1,0 +1,5 @@
+Launch fuzz 2026-11-10 (commit cec3d9e5b, request R5): a mutant overwrote
+field 0 of a task (its Stack, owned by the VM).
+Rebuilt 2026-11-26 for format 3 (regenerate.sh): Task_.initialize-entry-task_
+of tests/task-test.toit replaced by STORE_FIELD_THIS 0. Expected: the
+verifier rejects it (this_store_ok).

@@ -186,6 +186,12 @@ static int verify_snapshot(int argc, char** argv) {
     return 1;
   }
   Program* program = image.program();
+  if (program->has_stale_v2_tag()) {
+    fprintf(stderr, "verifier: bytecode format TBC%c is not supported by this VM; recompile\n",
+            program->stale_v2_tag_digit());
+    printf("REJECTED stale bytecode format\n");
+    return 1;
+  }
   // The image is read-only; give the verifier a private copy of the bytecodes
   // so that corruption experiments can patch them.
   int length = program->bytecodes.length();
@@ -427,6 +433,11 @@ static int certify_snapshot(int argc, char** argv) {
     return 1;
   }
   Program* program = image.program();
+  if (program->has_stale_v2_tag()) {
+    fprintf(stderr, "certify: bytecode format TBC%c is not supported by this VM; recompile %s\n",
+            program->stale_v2_tag_digit(), path);
+    return 1;
+  }
   // Format 1 has no certificate: nothing to do.
   if (!program->is_format2()) return 0;
   V2MethodTable* table = V2MethodTable::compute(program);

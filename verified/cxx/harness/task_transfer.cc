@@ -47,7 +47,7 @@ int main() {
   caller.program_ = &image;
   caller.scheduler_thread_ = &thread;
   bool format2 = nondet_bool();
-  uint8 bytes[] = {'T', 'B', 'C', '2'};
+  uint8 bytes[] = {'T', 'B', 'C', '3'};
   if (!format2) bytes[0] = 0;
   image.bytecodes = List<uint8>(bytes, 4);
   uint32 record = nondet_uint();
@@ -71,10 +71,10 @@ int main() {
   auto* to = static_cast<Stack*>(HeapObject::from_address(reinterpret_cast<uword>(stacks + stride)));
   stacks[0] = stacks[stride] = 2 * STACK_TAG;
   stacks[Stack::LENGTH_OFFSET / WORD_SIZE] = stacks[stride + Stack::LENGTH_OFFSET / WORD_SIZE] = length;
-  from->v2_set_records(Stack::V2_FRAME_WORDS, 0, 4);
+  from->v2_set_records(Stack::V2_FRAME_WORDS, 4);
   from->v2_word_at_put(Stack::V2_FRAME_METHOD, 0);
   bool unstarted = nondet_bool();
-  to->v2_set_records(unstarted ? 0 : Stack::V2_FRAME_WORDS, 0, 7);
+  to->v2_set_records(unstarted ? 0 : Stack::V2_FRAME_WORDS, 7);
   to->v2_set_top(length - 1);
   uint8 cards[2] = {};
   GcMetadata::singleton_.remembered_set_bias_ = reinterpret_cast<uword>(cards) -

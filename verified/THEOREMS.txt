@@ -62,7 +62,7 @@ pub proof fn theorem_process(p: &Program, heap0: Seq<HeapObj>, globals0: Seq<Val
                 (sp::step(p.ap@, ms[i].g@)->Primitive_2) as int, sp::frame_height(ms[i].g@)),
 
 ==============================================================================
-Top-level theorems: crate spec (20)
+Top-level theorems: crate spec (21)
 ==============================================================================
 
 --- lemma_gc_steps_refl  (spec/src/v2/gc.rs)
@@ -164,6 +164,30 @@ pub proof fn lemma_raise_null(p: Program2, c: Cert, s: State2, k: int)
     requires crate::v2::exec::wf_program2(p), heap_ok(p, c, s.heap), consts_ok(p, s.heap), s.heap.len() < 0x4000_0000,
     ensures raised(p, s, failure_value(p, k), raise_null(p, s, k)),
 
+--- lemma_try_resource_finally  (spec/src/v2/sound_resource.rs)
+pub proof fn lemma_try_resource_finally(p: Program2, c: Cert, trusted: bool, s: State2, o: Outcome2)
+    requires
+        accepts(p, c, trusted), wf(p, c, s), small(s), resource_throw(p, s, o),
+        cur_op(p, s) == TRY,
+        s.stack.len() + 1 < 0x4000_0000, s.frames.len() + 1 < 0x4000_0000,
+    ensures ({
+        let s0 = resource_state(p, s);
+        &&& s0.frames.len() == s.frames.len() + 1
+        &&& s0.frames.drop_last() == s.frames
+        &&& top(s0).handler
+        &&& top(s0).ret == s.bci + 1
+        &&& top(s0).base == s.stack.len()
+        &&& s0.stack.drop_last() == s.stack
+        &&& (o == unwind(p, s0, Unwind::Throw(out_of_memory(p)))
+             || o == Outcome2::Raise(s0, p.roots[ROOT_STACK_OVERFLOW]))
+        // The unwinding of an exception from the try block (or from it after
+        // the heap changed: the exception's allocation, a collection) enters
+        // the TRY's finally code.
+        &&& forall|s2: State2, x: Value| s2.frames == s0.frames && s2.stack.len() == s0.stack.len() ==>
+                #[trigger] unwind(p, s2, Unwind::Throw(x))
+                    == enter_finally(p, pop_frame(s2), s.stack.len() as int, s.bci + 1, Some(Unwind::Throw(x)))
+    }),
+
 --- lemma_tail_moved  (spec/src/v2/sound_tail.rs)
 pub proof fn lemma_tail_moved(s: State2, a: int, user: int, cap: Seq<Value>)
     requires 0 <= a <= s.stack.len(), 0 <= base(s), base(s) + 1 + user <= s.stack.len(), 0 <= user,
@@ -176,7 +200,6 @@ pub proof fn lemma_tail_moved(s: State2, a: int, user: int, cap: Seq<Value>)
 --- lemma_replace_frame_slots  (spec/src/v2/sound_tail.rs)
 pub proof fn lemma_replace_frame_slots(p: Program2, s: State2, t: int, from: int, n: int, cap: Seq<Value>)
     requires
-        !has_handler(s),
         0 <= base(s) <= s.stack.len(), 0 <= from, 0 <= n, from + n <= s.stack.len(),
     ensures ({
         let s2 = tail_state(p, s, t, moved_args(s, from, n, cap));
@@ -304,7 +327,7 @@ pub fn x_frame_height(s: &ExecState) -> (r: i64)
 
 --- x_throw_null  (spec/src/v2/exec.rs)
 pub fn x_throw_null(p: &ExecProgram, s: &mut ExecState, value: Value) -> (r: ExecOutcome2)
-    requires wf_program2(pview2(p)), old(s).fins.len() < 0x1_0000_0000_0000,
+    requires wf_program2(pview2(p)),
     ensures matches2(throw_exception(pview2(p), view2(old(s)), value, null2(pview2(p))), r, view2(final(s))),
 
 --- step_verified  (spec/src/v2/exec.rs)

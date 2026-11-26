@@ -107,7 +107,7 @@ pub fn gc_allocate_exception(m: &mut Machine, env: &Env, value: usize, kind: usi
 pub proof fn lemma_shape_stack(p: &Program, g: State2, g2: State2)
     requires
         shape_ok(p, g),
-        g2.frames == g.frames, g2.tries == g.tries, g2.stack.len() >= g.stack.len(),
+        g2.frames == g.frames, g2.stack.len() >= g.stack.len(),
     ensures shape_ok(p, g2),
 {
     assert forall|fi: int| 0 <= fi && fi + 1 < g2.frames.len() implies #[trigger] toit_spec::v2::sound::base_step(g2, fi) by {
@@ -119,7 +119,7 @@ pub proof fn lemma_shape_stack(p: &Program, g: State2, g2: State2)
 pub proof fn lemma_shape_same(p: &Program, g: State2, g2: State2)
     requires
         shape_ok(p, g),
-        g2.stack == g.stack, g2.frames == g.frames, g2.tries == g.tries,
+        g2.stack == g.stack, g2.frames == g.frames,
     ensures shape_ok(p, g2),
 {
     assert forall|fi: int| 0 <= fi && fi + 1 < g2.frames.len() implies #[trigger] toit_spec::v2::sound::base_step(g2, fi) by {

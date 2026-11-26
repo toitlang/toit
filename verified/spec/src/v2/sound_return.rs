@@ -53,11 +53,9 @@ pub open spec fn popped(s: State2, s1: State2) -> bool {
     let t = top_i(s);
     &&& t >= 1
     &&& s1.frames == s.frames.drop_last()
-    &&& s1.tries == s.tries
     &&& s1.heap == s.heap
     &&& s1.globals == s.globals
     &&& s1.task == s.task
-    &&& s1.fins == fins_popped(s)
     &&& fbase(s, t) <= s1.stack.len()
     &&& forall|x: int| 0 <= x < fbase(s, t) ==> #[trigger] s1.stack[x] == s.stack[x]
 }
@@ -74,17 +72,10 @@ pub proof fn lemma_popped_frames(p: Program2, c: Cert, s: State2, s1: State2, kt
         &&& fbase(s1, g) + slots(s, g) == fbase(s, t)
         &&& (g > 0 ==> same_below(s, s1, g - 1))
         &&& forall|fi: int| 0 <= fi < g ==> #[trigger] frame_ok(p, c, s1, fi)
-        &&& fins_ok(s1)
-        &&& fins_kept(s, s1, t, 0)
-        &&& s1.fins.len() <= s.fins.len()
     }),
 {
     let t = top_i(s);
     let g = t - 1;
-    lemma_cut_kept(s, s1, t, 0);
-    lemma_cut_ok(s, s1, t, 0);
-    lemma_fins_kept_mono(s, s1, t, 0, g, fbase(s, g) + slots(s, g) - 1);
-    if g > 0 { lemma_fins_kept_mono(s, s1, t, 0, g, 0); }
     assert(frame_ok(p, c, s, g));
     assert(base_step(s, g));
     lemma_base_le_len(s, t);
@@ -96,9 +87,7 @@ pub proof fn lemma_popped_frames(p: Program2, c: Cert, s: State2, s1: State2, kt
     assert forall|h: int| 0 <= h <= g implies #[trigger] s1.frames[h] == s.frames[h] by {}
     if g > 0 {
         assert(same_below(s, s1, g - 1)) by {
-            assert forall|h: int| 0 <= h <= g - 1 implies #[trigger] try_frame(s1, h) == try_frame(s, h) by {
-                assert(s1.tries == s.tries);
-            }
+            assert forall|h: int| 0 <= h <= g - 1 implies #[trigger] try_frame(s1, h) == try_frame(s, h) by {}
             lemma_limit_below(s, g - 1, g);
             assert(base_step(s, g - 1));
         }
@@ -110,13 +99,12 @@ pub proof fn lemma_popped_frames(p: Program2, c: Cert, s: State2, s1: State2, kt
     }
 }
 
-/// Popping the top frame of an unwinding state without a handler at the
-/// top gives an unwinding state of the frame below, with its kinds.
+/// Popping the top frame of an unwinding state gives an unwinding state of
+/// the frame below, with its kinds.
 pub proof fn lemma_unw_pop(p: Program2, c: Cert, trusted: bool, s: State2, s1: State2, kt: Seq<Kind>)
     requires
         accepts(p, c, trusted),
         unw_ok(p, c, s, kt),
-        !has_handler(s),
         popped(s, s1),
         s1.stack.len() == fbase(s, top_i(s)),
     ensures unw_ok(p, c, s1, kinds_of(p, c, s, top_i(s) - 1)),
@@ -130,17 +118,7 @@ pub proof fn lemma_unw_pop(p: Program2, c: Cert, trusted: bool, s: State2, s1: S
     reveal(frame_ok);
     let n = slots(s, g);
     assert(k1.len() == n);
-    // Handlers.
-    assert forall|x: int| 0 <= x < s1.tries.len() implies #[trigger] handler_ok(s1, x) by {
-        lemma_handlers_lt_top(s, x);
-        assert(handler_ok(s, x));
-        if x > 0 { assert(handler_ok(s, x - 1)); }
-        let hf = s.tries[x].frame as int;
-        if hf < g {
-            assert(try_ok(s, x));
-            assert(s1.frames[hf + 1] == s.frames[hf + 1]);
-        }
-    }
+    assert(s1.frames[0] == s.frames[0]);
     // The top frame's slots.
     lemma_map_instr(p, c, trusted, mg, foff(p, s, g));
     let kr = fmap(p, c, s, g);
@@ -160,22 +138,13 @@ pub proof fn lemma_unw_pop(p: Program2, c: Cert, trusted: bool, s: State2, s1: S
         assert(receiver_ok(p, s, g));
         assert(s1.stack[fbase(s, g)] == s.stack[fbase(s, g)]);
     }
-    if has_handler(s1) {
-        let x = s1.tries.len() - 1;
-        assert(handler_ok(s, x));
-        lemma_handlers_lt_top(s, x);
-        assert(try_ok(s, x));
-        assert(try_frame(s, g));
-        assert(fmap(p, c, s, g) =~= finally_kinds(k1));
-    }
 }
 
-/// `return_from` from an unwinding state without a handler at the top.
+/// `return_from` from an unwinding state.
 pub proof fn lemma_return(p: Program2, c: Cert, trusted: bool, s: State2, kt: Seq<Kind>, v: Value)
     requires
         accepts(p, c, trusted),
         unw_ok(p, c, s, kt),
-        !has_handler(s),
         good(s.heap, v),
         s.stack.len() < 0x7000_0000,
     ensures outcome_ok(p, c, return_from(p, s, v)),
@@ -187,10 +156,19 @@ pub proof fn lemma_return(p: Program2, c: Cert, trusted: bool, s: State2, kt: Se
     let g = t - 1;
     let b = fbase(s, t);
     lemma_base_le_len(s, t);
+    assert(s.frames[t] == top(s));
+    if top(s).handler {
+        // The caller is a TRY: its finally code runs.
+        let s0 = pop_frame(s);
+        assert(popped(s, s0));
+        lemma_unw_pop(p, c, trusted, s, s0, kt);
+        lemma_finally(p, c, trusted, s, kt, s0, kinds_of(p, c, s, g), None);
+        assert(return_from(p, s, v) == enter_finally(p, s0, top(s).base as int, top(s).ret as int, None));
+        return;
+    }
     let s1 = State2 {
         stack: s.stack.subrange(0, b).push(v),
         frames: s.frames.drop_last(),
-        fins: fins_popped(s),
         bci: s.frames[t].ret,
         ..s
     };
@@ -203,73 +181,44 @@ pub proof fn lemma_return(p: Program2, c: Cert, trusted: bool, s: State2, kt: Se
     let n = slots(s, g);
     let kr = fmap(p, c, s, g);
     lemma_map_instr(p, c, trusted, mg, foff(p, s, g));
-    if has_handler(s1) {
-        // The caller is a TRY: its finally code runs.
-        let s0 = State2 { stack: s.stack.subrange(0, b), ..s1 };
-        assert(popped(s, s0));
-        lemma_unw_pop(p, c, trusted, s, s0, kt);
-        assert(unw_ok(p, c, s1, k1)) by {
-            lemma_unw_extra(p, c, s0, s1, k1);
+    // An ordinary return: the caller continues with the result.
+    assert(return_from(p, s, v) == Outcome2::Next(s1));
+    assert(!try_frame(s, g));
+    assert(kr.len() == n + 1);
+    assert(fmap(p, c, s1, g) == kr);
+    assert(kinds_of(p, c, s1, g) =~= kr);
+    assert forall|j: int| 0 <= j < kr.len() implies
+        #[trigger] conf(p, c, s1, g, kinds_of(p, c, s1, g), j, kinds_of(p, c, s1, g)[j], s1.stack[fbase(s1, g) + j]) by {
+        if j < n {
+            assert(conf(p, c, s, g, k1, j, k1[j], s.stack[fbase(s, g) + j]));
+            assert(wf_kind(p, c, mg, kr, j));
+            assert(k1[j] == kr[j]);
+            lemma_conf_upto(p, c, s, s1, g, n, k1, j, k1[j], s.stack[fbase(s, g) + j]);
+            assert(kr.subrange(0, j) =~= k1.subrange(0, j));
+            lemma_conf_kf(p, c, s1, g, k1, kr, j, k1[j], s.stack[fbase(s, g) + j]);
+        } else {
+            reveal(conf);
+            assert(s1.stack[fbase(s1, g) + j] == v);
         }
-        lemma_finally(p, c, trusted, s1, k1, None);
-        assert(return_from(p, s, v) == enter_finally(p, s1, s1.tries.last(), None));
-    } else {
-        // An ordinary return: the caller continues with the result.
-        assert(return_from(p, s, v) == Outcome2::Next(s1));
-        assert(!try_frame(s, g)) by {
-            if try_frame(s, g) {
-                let x = choose|x: int| 0 <= x < s.tries.len() && (#[trigger] s.tries[x]).frame as int == g;
-                assert forall|y: int| 0 <= y < s.tries.len() implies (#[trigger] s.tries[y]).frame as int <= g by {
-                    lemma_handlers_lt_top(s, y);
-                }
-                lemma_last_handler(s, g, x);
-            }
-        }
-        assert(kr.len() == n + 1);
-        assert(fmap(p, c, s1, g) == kr);
-        assert(kinds_of(p, c, s1, g) =~= kr);
-        assert forall|j: int| 0 <= j < kr.len() implies
-            #[trigger] conf(p, c, s1, g, kinds_of(p, c, s1, g), j, kinds_of(p, c, s1, g)[j], s1.stack[fbase(s1, g) + j]) by {
-            if j < n {
-                assert(conf(p, c, s, g, k1, j, k1[j], s.stack[fbase(s, g) + j]));
-                assert(wf_kind(p, c, mg, kr, j));
-                assert(k1[j] == kr[j]);
-                lemma_conf_upto(p, c, s, s1, g, n, k1, j, k1[j], s.stack[fbase(s, g) + j]);
-                assert(kr.subrange(0, j) =~= k1.subrange(0, j));
-                lemma_conf_kf(p, c, s1, g, k1, kr, j, k1[j], s.stack[fbase(s, g) + j]);
-            } else {
-                reveal(conf);
-                assert(s1.stack[fbase(s1, g) + j] == v);
-            }
-        }
-        assert(frame_ok(p, c, s1, g)) by {
-            let i = info(p, mg);
-            if (i.kind == KIND_METHOD || i.kind == KIND_FIELD_ACCESSOR) && has_receiver_range(i) && arity(p, mg) >= 1 {
-                assert(receiver_ok(p, s, g));
-                assert(s1.stack[fbase(s, g)] == s.stack[fbase(s, g)]);
-            }
-        }
-        assert forall|fi: int| 0 <= fi < s1.frames.len() implies #[trigger] frame_ok(p, c, s1, fi) by {}
-        assert forall|x: int| 0 <= x < s1.tries.len() implies #[trigger] try_ok(s1, x) by {
-            lemma_handlers_lt_top(s, x);
-            assert(handler_ok(s, x));
-            let hf = s.tries[x].frame as int;
-            assert(hf < g) by {
-                if hf == g { assert(try_frame(s, g)); }
-            }
-            assert(try_ok(s, x));
-            assert(s1.frames[hf + 1] == s.frames[hf + 1]);
-        }
-        assert(wf(p, c, s1)) by { reveal(wf); reveal(wf_task); }
     }
+    assert(frame_ok(p, c, s1, g)) by {
+        let i = info(p, mg);
+        if (i.kind == KIND_METHOD || i.kind == KIND_FIELD_ACCESSOR) && has_receiver_range(i) && arity(p, mg) >= 1 {
+            assert(receiver_ok(p, s, g));
+            assert(s1.stack[fbase(s, g)] == s.stack[fbase(s, g)]);
+        }
+    }
+    assert forall|fi: int| 0 <= fi < s1.frames.len() implies #[trigger] frame_ok(p, c, s1, fi) by {}
+    assert(s1.frames[0] == s.frames[0]);
+    assert(wf(p, c, s1)) by { reveal(wf); reveal(wf_task); }
 }
 
 /// An unwinding state stays one when slots are added above the known ones.
 pub proof fn lemma_unw_extra(p: Program2, c: Cert, s: State2, s1: State2, kt: Seq<Kind>)
     requires
         unw_ok(p, c, s, kt),
-        s1.frames == s.frames, s1.tries == s.tries, s1.heap == s.heap, s1.globals == s.globals,
-        s1.task == s.task, s1.fins == s.fins,
+        s1.frames == s.frames, s1.heap == s.heap, s1.globals == s.globals,
+        s1.task == s.task,
         s.stack.len() <= s1.stack.len(), s1.stack.len() < 0x8000_0000,
         forall|x: int| 0 <= x < s.stack.len() ==> #[trigger] s1.stack[x] == s.stack[x],
     ensures unw_ok(p, c, s1, kt),
@@ -291,10 +240,6 @@ pub proof fn lemma_unw_extra(p: Program2, c: Cert, s: State2, s1: State2, kt: Se
         assert(frame_ok(p, c, s, fi));
         lemma_same_below_down(s, s1, t - 1, fi);
         lemma_frame_below_unw(p, c, s, s1, fi);
-    }
-    assert forall|x: int| 0 <= x < s1.tries.len() implies #[trigger] handler_ok(s1, x) by {
-        assert(handler_ok(s, x));
-        if (s.tries[x].frame as int) < t { assert(try_ok(s, x)); }
     }
     assert(same_upto(s, s1, t, kt.len() as int)) by {
         lemma_base_le_len(s, t);

@@ -1992,19 +1992,24 @@ pub fn x_post_misc(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>
                 let ghost k0 = kv(*out);
                 try_push(out, XKind::Val)?;
                 try_push(out, XKind::Token)?;
+                try_push(out, XKind::Token)?;
                 try_push(out, XKind::Val)?;
                 proof {
                     assert(k0 =~= kv(*k));
-                    assert(kv(*out) =~= kv(*k).push(Kind::Val).push(Kind::Token).push(Kind::Val));
+                    assert(kv(*out) =~= kv(*k).push(Kind::Val).push(Kind::Token).push(Kind::Token).push(Kind::Val));
                 }
                 Ok(true)
             } else { Ok(false) }
         } else { Ok(false) }
     } else if op == UNWIND {
-        if 3 <= h {
-            proof { assert(kv(*k)[h - 2] == k@[h - 2]@); assert(kv(*k)[h - 3] == k@[h - 3]@); }
-            if x_is_token(vix(k, h - 2)) && x_is_val(vix(k, h - 3)) {
-                { x_prefix_into(k, h - 3, out)?; Ok(true) }
+        if 4 <= h {
+            proof {
+                assert(kv(*k)[h - 2] == k@[h - 2]@);
+                assert(kv(*k)[h - 3] == k@[h - 3]@);
+                assert(kv(*k)[h - 4] == k@[h - 4]@);
+            }
+            if x_is_token(vix(k, h - 2)) && x_is_token(vix(k, h - 3)) && x_is_val(vix(k, h - 4)) {
+                { x_prefix_into(k, h - 4, out)?; Ok(true) }
             } else { Ok(false) }
         } else {
             Ok(false)

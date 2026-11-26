@@ -196,7 +196,7 @@ pub open spec fn ren_obj(ren: Seq<int>, o: HeapObj) -> HeapObj {
             Body::Instance(f) => Body::Instance(ren_vals(ren, f)),
             Body::Array(e) => Body::Array(ren_vals(ren, e)),
             Body::Stack(w, t) => Body::Stack(ren_vals(ren, w), t),
-            Body::Stack2(w, fr, tr, fins, b) => Body::Stack2(ren_vals(ren, w), fr, tr, fins, b),
+            Body::Stack2(w, fr, b) => Body::Stack2(ren_vals(ren, w), fr, b),
             _ => o.body,
         },
         ..o
@@ -209,7 +209,7 @@ pub open spec fn obj_vals(o: HeapObj) -> Seq<Value> {
         Body::Instance(f) => f,
         Body::Array(e) => e,
         Body::Stack(w, _) => w,
-        Body::Stack2(w, _, _, _, _) => w,
+        Body::Stack2(w, _, _) => w,
         _ => Seq::empty(),
     }
 }
@@ -296,8 +296,6 @@ pub open spec fn gc_steps(p: Program2, s: State2, s2: State2) -> bool {
 /// values and the running task's id.
 pub open spec fn gc_shape(s: State2, s2: State2) -> bool {
     &&& s2.frames == s.frames
-    &&& s2.tries == s.tries
-    &&& s2.fins == s.fins
     &&& s2.bci == s.bci
     &&& s2.next_task_id == s.next_task_id
     &&& s2.stack.len() == s.stack.len()
@@ -359,15 +357,13 @@ pub open spec fn heap_ren(ren: Seq<int>, h: Seq<HeapObj>, h2: Seq<HeapObj>) -> b
     &&& forall|i: int| #[trigger] live(ren, i) ==> ren[i] < h2.len() && h2[ren[i]] == ren_obj(ren, h[i])
 }
 
-/// `s2` is `s` renamed: its heap, its object stack; the frames, handlers,
-/// finally records and bci stay.
+/// `s2` is `s` renamed: its heap, its object stack; the frames and the bci
+/// stay.
 pub open spec fn state_ren(ren: Seq<int>, s: State2, s2: State2) -> bool {
     &&& heap_ren(ren, s.heap, s2.heap)
     &&& s2.stack == ren_vals(ren, s.stack)
     &&& forall|j: int| 0 <= j < s.stack.len() ==> val_live(ren, #[trigger] s.stack[j])
     &&& s2.frames == s.frames
-    &&& s2.tries == s.tries
-    &&& s2.fins == s.fins
     &&& s2.bci == s.bci
 }
 
@@ -430,6 +426,7 @@ pub proof fn lemma_ren_conf(p: Program2, c: Cert, ren: Seq<int>, s: State2, s2: 
         state_ren(ren, s, s2),
         val_live(ren, v),
         fixed(ren, null2(p)),
+        fbase(s, fi) + j < s.stack.len(),
     ensures conf(p, c, s2, fi, kf, j, k, ren_val(ren, v)),
 {
     reveal(conf);
@@ -457,24 +454,22 @@ pub proof fn lemma_ren_conf(p: Program2, c: Cert, ren: Seq<int>, s: State2, s2: 
             }
         },
         Kind::Token => {
-            if v == null2(p) {
-                lemma_ren_fixed(ren, null2(p));
-            } else {
-                match v {
-                    Value::Smi(kk) => {
-                        assert(s2.fins[kk as int] == s.fins[kk as int]);
-                        match s.fins[kk as int].resume {
-                            Resume::Branch(f, bci, hb) => {
-                                assert(kinds_of(p, c, s2, f as int) == kinds_of(p, c, s, f as int));
-                                assert(frame_kinds_from(p, c, s2, fi, kf, f as int) == frame_kinds_from(p, c, s, fi, kf, f as int));
-                                assert(fmethod(s2, f as int) == fmethod(s, f as int));
-                                assert(fbase(s2, f as int) == fbase(s, f as int));
-                            },
-                            _ => {},
-                        }
-                    },
-                    _ => {},
-                }
+            match v {
+                Value::Token(second, d, _, _) => {
+                    if second && 0 <= fbase(s, fi) + j - 1 < s.stack.len() {
+                        assert(s2.stack[fbase(s, fi) + j - 1] == ren_val(ren, s.stack[fbase(s, fi) + j - 1]));
+                    }
+                    match d {
+                        Pending::Branch(f, bci, hb) => {
+                            assert(kinds_of(p, c, s2, f as int) == kinds_of(p, c, s, f as int));
+                            assert(frame_kinds_from(p, c, s2, fi, kf, f as int) == frame_kinds_from(p, c, s, fi, kf, f as int));
+                            assert(fmethod(s2, f as int) == fmethod(s, f as int));
+                            assert(fbase(s2, f as int) == fbase(s, f as int));
+                        },
+                        _ => {},
+                    }
+                },
+                _ => {},
             }
         },
         _ => {},
@@ -554,13 +549,9 @@ pub proof fn lemma_ren_wf_task(p: Program2, c: Cert, ren: Seq<int>, s: State2, s
         assert(base_step(s, fi));
     }
     assert(bases_ok(s2));
-    assert(fins_ok(s2));
     assert forall|fi: int| 0 <= fi < s2.frames.len() implies #[trigger] frame_ok(p, c, s2, fi) by {
         assert(frame_ok(p, c, s, fi));
         lemma_ren_frame_ok(p, c, ren, s, s2, fi);
-    }
-    assert forall|x: int| 0 <= x < s2.tries.len() implies #[trigger] try_ok(s2, x) by {
-        assert(try_ok(s, x));
     }
 }
 
@@ -596,7 +587,7 @@ pub proof fn lemma_ren_obj_ok(p: Program2, c: Cert, ren: Seq<int>, h: Seq<HeapOb
                 lemma_ren_val(ren, h, h2, e[i]);
             }
         },
-        Body::Stack2(w, fr, tr, fins, b) => {
+        Body::Stack2(w, fr, b) => {
             let w2 = ren_vals(ren, w);
             if fr.len() == 0 {
                 if w.len() >= 1 {
@@ -604,8 +595,8 @@ pub proof fn lemma_ren_obj_ok(p: Program2, c: Cert, ren: Seq<int>, h: Seq<HeapOb
                     lemma_ren_val(ren, h, h2, w[0]);
                 }
             } else {
-                let ss = susp_state(h, w, fr, tr, fins, b);
-                let ss2 = susp_state(h2, w2, fr, tr, fins, b);
+                let ss = susp_state(h, w, fr, b);
+                let ss2 = susp_state(h2, w2, fr, b);
                 assert forall|j: int| 0 <= j < ss.stack.len() implies val_live(ren, #[trigger] ss.stack[j]) by {
                     assert(val_live(ren, obj_vals(o)[j]));
                 }
@@ -755,11 +746,6 @@ pub proof fn lemma_renamed_unw(p: Program2, c: Cert, s: State2, kt: Seq<Kind>, r
         assert(frame_ok(p, c, s, fi));
         lemma_ren_frame_ok(p, c, ren, s, s2, fi);
     }
-    assert forall|x: int| 0 <= x < s2.tries.len() implies #[trigger] handler_ok(s2, x) by {
-        assert(handler_ok(s, x));
-        if x > 0 { assert(s2.tries[x - 1] == s.tries[x - 1]); }
-        assert(try_ok(s2, x) == try_ok(s, x));
-    }
     assert forall|j: int| 0 <= j < kt.len() implies #[trigger] conf(p, c, s2, t, kt, j, kt[j], s2.stack[b + j]) by {
         assert(conf(p, c, s, t, kt, j, kt[j], s.stack[b + j]));
         assert(val_live(ren, s.stack[b + j]));
@@ -772,7 +758,6 @@ pub proof fn lemma_renamed_unw(p: Program2, c: Cert, s: State2, kt: Seq<Kind>, r
         lemma_ren_receiver(p, ren, s, s2, t);
     }
     assert(top_receiver_ok(p, s2, kt.len() as int));
-    assert(has_handler(s2) == has_handler(s));
 }
 
 // ---------------------------------------------------------------------------

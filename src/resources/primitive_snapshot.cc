@@ -108,7 +108,14 @@ PRIMITIVE(launch) {
   // trusted ones only with -Xverify/TOIT_VERIFY. A rejected program never
   // runs.
   // Untrusted programs run on the verified core: format 2 only, in every
-  // build.
+  // build. A verified-core image of another format version runs nowhere
+  // (Program::has_stale_v2_tag).
+  if (program->has_stale_v2_tag()) {
+    fprintf(stderr, "bytecode format TBC%c is not supported by this VM; recompile\n",
+            program->stale_v2_tag_digit());
+    image.release();
+    return launch_error(process, "FORMAT_2_REQUIRED");
+  }
   if (policy->is_untrusted() && !program->is_format2()) {
     image.release();
     return launch_error(process, "FORMAT_2_REQUIRED");

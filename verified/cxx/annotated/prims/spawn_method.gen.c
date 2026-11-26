@@ -53,7 +53,7 @@ fixpoint uint8 *code_base(Program *prog);
 fixpoint list<unsigned char> code_bytes(Program *prog);
 fixpoint bool format_two(Program *prog) {
   return length(code_bytes(prog)) >= 4 && nth(0, code_bytes(prog)) == 84 && nth(1, code_bytes(prog)) == 66 &&
-         nth(2, code_bytes(prog)) == 67 && nth(3, code_bytes(prog)) == 50;
+         nth(2, code_bytes(prog)) == 67 && nth(3, code_bytes(prog)) == 51;
 }
 predicate image_code(Program *prog;) =
   prog->bytecodes.data_ |-> code_base(prog) &*& prog->bytecodes.length_ |-> length(code_bytes(prog)) &*&
@@ -137,7 +137,7 @@ bool Program_is_format2(Program *self)
 {
   //@ open [f]image_code(self);
   {
-    bool result0 = BytecodeList_length(&self->bytecodes) >= 4 && (int)BytecodeList_data(&self->bytecodes)[0] == (int)'T' && (int)BytecodeList_data(&self->bytecodes)[1] == (int)'B' && (int)BytecodeList_data(&self->bytecodes)[2] == (int)'C' && (int)BytecodeList_data(&self->bytecodes)[3] == (int)'2';
+    bool result0 = BytecodeList_length(&self->bytecodes) >= 4 && (int)BytecodeList_data(&self->bytecodes)[0] == (int)'T' && (int)BytecodeList_data(&self->bytecodes)[1] == (int)'B' && (int)BytecodeList_data(&self->bytecodes)[2] == (int)'C' && (int)BytecodeList_data(&self->bytecodes)[3] == (int)'3';
     //@ close [f]image_code(self);
     return result0;
   }

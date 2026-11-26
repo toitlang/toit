@@ -4,6 +4,51 @@ One entry per change of `src/v2/spec.rs`, `src/v2/prim.rs`, `src/v2/types.rs`
 or the verifier's rules (`src/v2/verifier.rs`) that an implementation of
 the spec (the verified core, the VM's loader) must follow. Newest first.
 
+## 2026-11-26: resource failures at TRY run the finally code (format 3, step 3)
+
+What (note 23, "Resource failures at TRY"): `prim::resource_throw` at a
+TRY starts in `prim::resource_state(p, s)`, the try block's entry (the
+state `op_try` enters), instead of in `s`: the out-of-memory error thrown
+and the stack-overflow error raised when the stack cannot grow for the try
+block unwind into the TRY's own finally code. Every other instruction is
+unchanged. Language level: a resource failure never skips a finally whose
+try was reached (`sound_resource::lemma_try_resource_finally`).
+
+Why: the idiom `acquire; try: ... finally: release` leaked the state when
+the failure landed on the TRY (a monitor lock at the heap quota, artifacts
+quota-livelock); format 1 runs the finally code there.
+
+Implementations: the core's `unwind::op_try`/`try_grow` and the checked
+loop's `try_grow_cold` enter the try block's frame before raising; the
+room check of TRY includes the block reference.
+
+## 2026-11-26: TRY as a flagged block call, tokens in slots (format 3, step 3)
+
+What (note 23): the image tag is `TBC3`. TRY calls its try block with
+the handler flag in the new frame; returning from a try block, or
+unwinding past it, enters the finally code of the frame below at the try
+block's return bci with the object stack cut to its base. The finally
+code has four slots: the value, two token words, the reason.
+
+* `types.rs`: `Frame::handler`; `Value::Token(second, pending, frame,
+  height)`; `Pending` replaces `Resume`; `Handler` and `Fin` are gone;
+  `Body::Stack2(stack, frames, bci)`.
+* `v2/types.rs`: `State2` has no `tries` and no `fins`.
+* `spec.rs`: `op_try` (raises in the TRY's own state, then `try_call`),
+  `return_from`, `unwind` (target first, then a try block's finally
+  code), `enter_finally(s, h, bci, u)`, `pop_frame`, `replace_frame` (keeps
+  the flag), `op_unwind` (`token_at`: both words of one token of the
+  frame made for the UNWIND's height, else `Stuck(NotUnwind)`).
+  `has_handler`, `cut_fins`, `fins_popped`, `fin_matches`, `resume_of`
+  and `unwind_of` are gone.
+* `prim.rs`: task switching saves and restores no handlers or records;
+  `plain_args` excludes tokens like block references.
+* `verifier.rs`: TRY pushes `[Val, Token, Token, Val]`; UNWIND requires
+  `Token` at 1 and 2 and a value at 3 and pops four.
+* An implementation must keep a try block's flag in its frame record and
+  the token words in the finally code's slots (the core does, verified:
+  `abs::token_a`, `token_b`; C++ only copies the frame records).
+
 ## 2026-11-26: short branches (format 3, step 1)
 
 What (note 22): opcodes BRANCH_S (114), BRANCH_IF_TRUE_S (115),

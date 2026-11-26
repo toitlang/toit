@@ -57,7 +57,7 @@ impl Machine {
         heap.push(ExecObj {
             class_id: program.builtin[STACK_CLASS],
             ro: false,
-            body: ExecBody::Stack2(Vec::new(), Vec::new(), Vec::new(), Vec::new(), 0),
+            body: ExecBody::Stack2(Vec::new(), Vec::new(), 0),
         });
         let task_class = program.builtin[TASK_CLASS] as usize;
         let field_count = ((program.class_bits[task_class] >> 5) & 0x7ff) as usize - 1;
@@ -72,7 +72,7 @@ impl Machine {
             p: program,
             s: ExecState {
                 heap, globals, stack: Vec::new(), try_h: 0, bci: 0, task, next_task_id: 1,
-                frames: Vec::new(), tries: Vec::new(), fins: Vec::new(),
+                frames: Vec::new(),
             },
             names,
             world: system::World::new(args),
@@ -87,7 +87,7 @@ impl Machine {
         let entry = m.entry_method2(ENTRY_MAIN).expect("no entry point");
         let info = m.p.methods[entry];
         m.s.stack = vec![Value::Obj(task)];
-        m.s.frames = vec![Frame { method: entry, ret: info.entry, base: 0 }];
+        m.s.frames = vec![Frame { method: entry, ret: info.entry, base: 0, handler: false }];
         m.s.bci = info.entry;
         m
     }
@@ -163,7 +163,7 @@ impl Machine {
         let arity = info.arity as usize;
         if arity > self.frame_height() { return Err(StackRange); }
         let base = self.s.stack.len() - arity;
-        self.s.frames.push(Frame { method: target, ret, base });
+        self.s.frames.push(Frame { method: target, ret, base, handler: false });
         self.s.bci = info.entry;
         Ok(Step::Next)
     }
@@ -192,63 +192,44 @@ impl Machine {
         self.call2(target, ret)
     }
 
-    /// Returns `result` from the top frame.
+    /// Returns `result` from the top frame. A try block enters the finally
+    /// code of the frame below (`v2::spec::return_from`).
     pub fn return2(&mut self, result: Value) -> R {
         let f = self.top_frame()?;
         let fi = self.s.frames.len() - 1;
-        if self.s.tries.last().map(|h| h.frame == fi).unwrap_or(false) { return Err(BadFrame); }
         if fi == 0 { return Ok(Step::Halt(Halt::TaskReturned)); }
         if f.base > self.s.stack.len() { return Err(StackRange); }
-        self.cut_fins(fi, 0);
         self.s.stack.truncate(f.base);
-        self.s.stack.push(result);
         self.s.frames.pop();
-        self.s.bci = f.ret;
-        // The try block returned normally: run the finally code.
-        if let Some(h) = self.s.tries.last().copied() {
-            if h.frame == fi - 1 {
-                return self.enter_finally(h, None);
-            }
+        if f.handler {
+            // The try block returned normally: run the finally code.
+            return self.enter_finally(f.base, f.ret, None);
         }
+        self.s.stack.push(result);
+        self.s.bci = f.ret;
         Ok(Step::Next)
     }
 
-    /// Drops the trailing finally records of frames above `g` and those
-    /// of frame `g` at height `lim` or above (`v2::spec::cut_fins`).
-    fn cut_fins(&mut self, g: usize, lim: usize) {
-        while let Some(f) = self.s.fins.last() {
-            if f.frame > g || (f.frame == g && f.height >= lim) {
-                self.s.fins.pop();
-            } else {
-                break;
-            }
-        }
-    }
-
-    /// Enters the finally code of handler `h` (the last one, of the top
-    /// frame) for a normal completion (`None`) or an unwinding, whose
-    /// record takes the handler's place (`v2::spec::enter_finally`).
-    fn enter_finally(&mut self, h: Handler, u: Option<Unwind>) -> R {
-        if h.height > self.s.stack.len() || h.height < self.base2() { return Err(StackRange); }
-        self.s.tries.pop();
-        self.s.stack.truncate(h.height);
-        let (value, token, reason) = match u {
-            None => (self.null(), self.null(), Value::Smi(-1)),
-            Some(u) => {
-                let token = Value::Smi(self.s.fins.len() as i64);
-                let (value, reason, resume) = match u {
-                    Unwind::Throw(v) => (v, -2, Resume::Throw),
-                    Unwind::Return(f, v) => (v, -1, Resume::Return(f)),
-                    Unwind::Branch(f, bci, hb) => (self.null(), -1, Resume::Branch(f, bci, hb)),
-                };
-                self.s.fins.push(Fin { frame: h.frame, height: h.height, resume });
-                (value, token, Value::Smi(reason))
-            }
+    /// Enters the finally code at `bci` of the top frame (whose try block was
+    /// just popped) with the object stack cut to `h`, for a normal
+    /// completion (`None`) or an unwinding, which the two token slots hold
+    /// (`v2::spec::enter_finally`, format note 23).
+    fn enter_finally(&mut self, h: usize, bci: usize, u: Option<Unwind>) -> R {
+        if self.s.frames.is_empty() { return Err(BadFrame); }
+        if h > self.s.stack.len() || h < self.base2() { return Err(StackRange); }
+        let g = self.s.frames.len() - 1;
+        self.s.stack.truncate(h);
+        let (value, reason, d) = match u {
+            None => (self.null(), -1, Pending::Normal),
+            Some(Unwind::Throw(v)) => (v, -2, Pending::Throw),
+            Some(Unwind::Return(f, v)) => (v, -1, Pending::Return(f)),
+            Some(Unwind::Branch(f, bci, hb)) => (self.null(), -1, Pending::Branch(f, bci, hb)),
         };
         self.s.stack.push(value);
-        self.s.stack.push(token);
-        self.s.stack.push(reason);
-        self.s.bci = h.bci;
+        self.s.stack.push(Value::Token(false, d, g, h));
+        self.s.stack.push(Value::Token(true, d, g, h));
+        self.s.stack.push(Value::Smi(reason));
+        self.s.bci = bci;
         Ok(Step::Next)
     }
 
@@ -262,26 +243,22 @@ impl Machine {
                 };
             }
             let fi = self.s.frames.len() - 1;
-            if let Some(h) = self.s.tries.last().copied() {
-                if h.frame == fi {
-                    return self.enter_finally(h, Some(u));
-                }
-            }
-            if self.s.frames[fi].base > self.s.stack.len() { return Err(StackRange); }
+            let f = self.s.frames[fi];
+            if f.base > self.s.stack.len() { return Err(StackRange); }
             match u {
-                Unwind::Return(f, v) if f == fi => return self.return2(v),
-                Unwind::Branch(f, bci, height) if f == fi => {
-                    let base = self.s.frames[fi].base;
-                    if !(base <= height && height <= self.s.stack.len()) { return Err(StackRange); }
+                Unwind::Return(t, v) if t == fi => return self.return2(v),
+                Unwind::Branch(t, bci, height) if t == fi => {
+                    if !(f.base <= height && height <= self.s.stack.len()) { return Err(StackRange); }
                     self.s.stack.truncate(height);
                     self.s.bci = bci;
                     return Ok(Step::Next);
                 }
                 _ => {
-                    let base = self.s.frames[fi].base;
-                    self.cut_fins(fi, 0);
-                    self.s.stack.truncate(base);
+                    self.s.stack.truncate(f.base);
                     self.s.frames.pop();
+                    if f.handler {
+                        return self.enter_finally(f.base, f.ret, Some(u));
+                    }
                 }
             }
         }
@@ -763,24 +740,23 @@ impl Machine {
                 self.next2(2)
             }
             UNWIND => {
-                let token = self.at2(1)?;
-                let value = self.at2(2)?;
-                self.drop2(3)?;
-                if token == self.null() { return self.next2(1); }
+                // `v2::spec::op_unwind`: the two token words of one unwinding of
+                // this frame, made for this height (format note 23).
+                let wb = self.at2(1)?;
+                let wa = self.at2(2)?;
+                let value = self.at2(3)?;
                 let fi = self.s.frames.len() - 1;
-                let height = self.s.stack.len();
-                match token {
-                    Value::Smi(k) if 0 <= k && (k as usize) < self.s.fins.len()
-                        && self.s.fins[k as usize].frame == fi && self.s.fins[k as usize].height == height => {
-                        let u = match self.s.fins[k as usize].resume {
-                            Resume::Throw => Unwind::Throw(value),
-                            Resume::Return(f) => Unwind::Return(f, value),
-                            Resume::Branch(f, bci, hb) => Unwind::Branch(f, bci, hb),
-                        };
-                        self.s.fins.truncate(k as usize);
-                        self.unwind2(u)
-                    }
-                    _ => Err(NotUnwind),
+                let d = match wa {
+                    Value::Token(false, d, g, h) if wb == Value::Token(true, d, g, h) && g == fi
+                        && h + 4 == self.s.stack.len() => d,
+                    _ => return Err(NotUnwind),
+                };
+                self.drop2(4)?;
+                match d {
+                    Pending::Normal => self.next2(1),
+                    Pending::Throw => self.unwind2(Unwind::Throw(value)),
+                    Pending::Return(f) => self.unwind2(Unwind::Return(f, value)),
+                    Pending::Branch(f, bci, hb) => self.unwind2(Unwind::Branch(f, bci, hb)),
                 }
             }
             HALT => self.op2_halt(b1),
@@ -907,16 +883,15 @@ impl Machine {
     }
 
     /// Replaces the top frame's method by `target`, keeping its return
-    /// address; the top `nargs` slots become the new frame's parameters.
+    /// address and its try-block flag; the top `nargs` slots become the new
+    /// frame's parameters.
     fn replace_frame(&mut self, target: usize, nargs: usize) -> R {
         let fi = self.s.frames.len() - 1;
-        if self.s.tries.last().map(|h| h.frame == fi).unwrap_or(false) { return Err(BadFrame); }
         if nargs > self.frame_height() { return Err(StackRange); }
         let info = self.info(target)?;
         let len = self.s.stack.len();
         let base = self.s.frames[fi].base;
         let args: Vec<Value> = self.s.stack[len - nargs..].to_vec();
-        self.cut_fins(fi, 0);
         self.s.stack.truncate(base);
         self.s.stack.extend(args);
         self.s.frames[fi].method = target;
@@ -1106,15 +1081,16 @@ impl Machine {
         let height = self.s.stack.len();
         let fi = self.s.frames.len() - 1;
         let bci = self.s.bci;
-        self.cut_fins(fi, height - 1);
-        self.s.tries.push(Handler { frame: fi, height, bci: bci + 1 });
         let target = match self.block_target(height - 1) {
             Some(t) => t,
             None => return self.raise(INVALID_PROGRAM),
         };
         if self.p.methods[target].arity != 1 { return self.raise(CODE_INVOCATION_FAILED); }
         self.s.stack.push(Value::BlockRef(fi, height - 1));
-        self.call2(target, bci + 1)
+        let r = self.call2(target, bci + 1)?;
+        // A try block (format note 23).
+        self.s.frames.last_mut().unwrap().handler = true;
+        Ok(r)
     }
 
     fn op2_halt(&mut self, code: usize) -> R {

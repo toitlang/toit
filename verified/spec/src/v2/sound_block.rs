@@ -474,7 +474,7 @@ pub open spec fn upd(s: State2, x: int, w: Value) -> State2 {
 }
 
 pub open spec fn plain_write(s: State2, x: int, w: Value) -> bool {
-    0 <= x < s.stack.len() && !(s.stack[x] is BlockRef) && !(w is BlockRef)
+    0 <= x < s.stack.len() && !(s.stack[x] is BlockRef) && !(s.stack[x] is Token) && !(w is BlockRef)
 }
 
 pub proof fn lemma_context_frame_write(s: State2, x: int, w: Value, fi: int, d: nat)
@@ -539,12 +539,15 @@ pub proof fn lemma_conf_write(p: Program2, c: Cert, s: State2, x: int, w: Value,
         },
         Kind::Token => {
             match v {
-                Value::Smi(kk) => if v != null2(p) {
-                    match s.fins[kk as int].resume {
-                        Resume::Branch(f, bci, hb) => {
+                Value::Token(second, d, _, _) => {
+                    lemma_kinds_write(p, c, s, x, w, g);
+                    if second && 0 <= fbase(s, g) + j - 1 < s.stack.len() {
+                        assert(s2.stack[fbase(s, g) + j - 1] == s.stack[fbase(s, g) + j - 1]);
+                    }
+                    match d {
+                        Pending::Branch(f, bci, hb) => {
                             lemma_kinds_write(p, c, s, x, w, f as int);
                             assert(frame_kinds_from(p, c, s2, g, kf, f as int) == frame_kinds_from(p, c, s, g, kf, f as int));
-
                         },
                         _ => {},
                     }
@@ -643,9 +646,6 @@ pub proof fn lemma_wf_write(p: Program2, c: Cert, s: State2, f: int, i: int, w: 
         assert forall|fi: int| 0 <= fi && fi + 1 < s2.frames.len() implies #[trigger] base_step(s2, fi) by {
             assert(base_step(s, fi));
         }
-    }
-    assert forall|y: int| 0 <= y < s2.tries.len() implies #[trigger] try_ok(s2, y) by {
-        assert(try_ok(s, y));
     }
 }
 

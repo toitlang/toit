@@ -149,7 +149,7 @@ impl Machine {
             final(self).g@ == sp::drop(old(self).g@, n as int),
             final(self).top == old(self).top + n,
             final(self).ftop == old(self).ftop,
-            final(self).rtop == old(self).rtop,
+            final(self).ftop == old(self).ftop,
             final(self).mem@ == old(self).mem@,
             final(self).addr() == old(self).addr(),
             final(self).bci == old(self).bci,
@@ -182,6 +182,7 @@ pub fn op_invoke_block(m: &mut Machine, env: &Env, bci: usize, opcode: u8, n: us
     requires
         handler_pre(&env.p, *old(m), bci, opcode),
         toit_spec::v2::prim::grows_stack(opcode),
+        opcode != 97,
         sp::step(env.p.ap@, old(m).g@) == sp::op_invoke_block(env.p.ap@, old(m).g@, n as int),
         bci + 2 < 0x1000_0000,
     ensures step_post(&env.p, *old(m), *final(m), r),
@@ -227,7 +228,7 @@ pub fn op_invoke_block(m: &mut Machine, env: &Env, bci: usize, opcode: u8, n: us
         return m.v_raise_code(env, true, arity, n, t);
     }
     m.drop_vals(p, n - arity);
-    let r = m.push_call(env, t, bci + 2);
+    let r = m.push_call(env, t, bci + 2, 0);
     proof { lemma_matches(p, m0, *m, r); }
     r
 }

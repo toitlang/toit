@@ -21,11 +21,8 @@ struct vf_probe_2 : Stack { static_assert((LENGTH_OFFSET) == (((word)(2 * sizeof
 struct vf_probe_3 : Stack { static_assert((PENDING_STACK_CHECK_METHOD_OFFSET) == (((word)(5 * sizeof(word)))), "Stack_PENDING_STACK_CHECK_METHOD_OFFSET"); static_assert(vf_same<decltype(PENDING_STACK_CHECK_METHOD_OFFSET), decltype(((word)(5 * sizeof(word))))>::value, "type of Stack_PENDING_STACK_CHECK_METHOD_OFFSET"); };
 struct vf_probe_4 : Stack { static_assert((TOP_OFFSET) == (((word)(3 * sizeof(word)))), "Stack_TOP_OFFSET"); static_assert(vf_same<decltype(TOP_OFFSET), decltype(((word)(3 * sizeof(word))))>::value, "type of Stack_TOP_OFFSET"); };
 struct vf_probe_5 : Stack { static_assert((TRY_TOP_OFFSET) == (((word)(4 * sizeof(word)))), "Stack_TRY_TOP_OFFSET"); static_assert(vf_same<decltype(TRY_TOP_OFFSET), decltype(((word)(4 * sizeof(word))))>::value, "type of Stack_TRY_TOP_OFFSET"); };
-struct vf_probe_6 : Stack { static_assert((V2_FIN_WORDS) == (((word)5)), "Stack_V2_FIN_WORDS"); static_assert(vf_same<decltype(V2_FIN_WORDS), decltype(((word)5))>::value, "type of Stack_V2_FIN_WORDS"); };
-struct vf_probe_7 : Stack { static_assert((V2_FRAME_TOP_SHIFT) == (16), "Stack_V2_FRAME_TOP_SHIFT"); static_assert(vf_same<decltype(V2_FRAME_TOP_SHIFT), decltype(16)>::value, "type of Stack_V2_FRAME_TOP_SHIFT"); };
-struct vf_probe_8 : Stack { static_assert((V2_MAX_LENGTH) == (((word)65536)), "Stack_V2_MAX_LENGTH"); static_assert(vf_same<decltype(V2_MAX_LENGTH), decltype(((word)65536))>::value, "type of Stack_V2_MAX_LENGTH"); };
-struct vf_probe_9 : Stack { static_assert((WORD_SIZE) == (((int)sizeof(word))), "WORD_SIZE"); static_assert(vf_same<decltype(WORD_SIZE), decltype(((int)sizeof(word)))>::value, "type of WORD_SIZE"); };
-struct vf_probe_10 : Task { static_assert((STACK_INDEX) == (((word)0)), "Task_STACK_INDEX"); static_assert(vf_same<decltype(STACK_INDEX), decltype(((word)0))>::value, "type of Task_STACK_INDEX"); };
+struct vf_probe_6 : Stack { static_assert((WORD_SIZE) == (((int)sizeof(word))), "WORD_SIZE"); static_assert(vf_same<decltype(WORD_SIZE), decltype(((int)sizeof(word)))>::value, "type of WORD_SIZE"); };
+struct vf_probe_7 : Task { static_assert((STACK_INDEX) == (((word)0)), "Task_STACK_INDEX"); static_assert(vf_same<decltype(STACK_INDEX), decltype(((word)0))>::value, "type of Task_STACK_INDEX"); };
 static_assert((Array::ARRAYLET_SIZE) == (((word)500)), "Array_ARRAYLET_SIZE");
 static_assert(vf_same<decltype(Array::ARRAYLET_SIZE), decltype(((word)500))>::value, "type of Array_ARRAYLET_SIZE");
 static_assert((Error::ERROR_SHIFT) == (2), "Error_ERROR_SHIFT");

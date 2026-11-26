@@ -36,74 +36,23 @@ use crate::spec_common::{class_id_ok, class_id_of, u16_at, u32_at};
 
 verus! {
 
-/// Truncating the ordered records at `nf`, where record `nf` (if any) is
-/// a record of frame `fi` at height `lim` or above, keeps the records of
-/// frames below `fi` and those of frame `fi` below `lim`.
-pub proof fn lemma_fins_prefix(s: State2, s2: State2, nf: int, fi: int, lim: int)
-    requires
-        fins_ok(s),
-        s.frames.len() == fi + 1,
-        0 <= nf <= s.fins.len(),
-        nf < s.fins.len() ==> s.fins[nf].frame as int == fi && s.fins[nf].height as int >= lim,
-        s2.fins == s.fins.subrange(0, nf),
-    ensures fins_kept(s, s2, fi, lim),
-{
-    assert forall|k: int| #![trigger s.fins[k]] 0 <= k < s.fins.len() && fin_below(s.fins[k], fi, lim)
-        implies k < s2.fins.len() && s2.fins[k] == s.fins[k] by {
-        if k >= nf {
-            if k > nf {
-                assert(fin_lt(s.fins[nf], s.fins[k]));
-            }
-            assert(s.fins[k].frame < s.frames.len());
-        }
-    }
-}
-
-/// A prefix of ordered records is ordered.
-pub proof fn lemma_fins_ok_prefix(s: State2, s2: State2, nf: int)
-    requires
-        fins_ok(s), s2.frames == s.frames, s2.tries == s.tries,
-        0 <= nf <= s.fins.len(), s2.fins == s.fins.subrange(0, nf),
-    ensures fins_ok(s2),
-{
-    assert forall|a: int, b: int| 0 <= a < b < s2.fins.len() implies fin_lt(#[trigger] s2.fins[a], #[trigger] s2.fins[b]) by {
-        assert(s2.fins[a] == s.fins[a] && s2.fins[b] == s.fins[b]);
-    }
-    assert forall|x: int, k: int| 0 <= x < s2.tries.len() && 0 <= k < s2.fins.len()
-        && (#[trigger] s2.fins[k]).frame == (#[trigger] s2.tries[x]).frame implies
-        s2.fins[k].height < s2.tries[x].height by {
-        assert(s2.fins[k] == s.fins[k]);
-    }
-    assert forall|k: int| 0 <= k < s2.fins.len() implies (#[trigger] s2.fins[k]).frame < s2.frames.len() by {
-        assert(s2.fins[k] == s.fins[k]);
-    }
-}
-
-/// Cutting the top frame of an unwinding state (without a handler at the
-/// top) to its first `n` known slots, and its records at `nf` (record
-/// `nf`, if any, is one of the top frame's whose token slot is not among
-/// the `n` slots).
-pub proof fn lemma_unw_cut(p: Program2, c: Cert, trusted: bool, s: State2, kt: Seq<Kind>, n: int, nf: int)
+/// Cutting the top frame of an unwinding state to its first `n` known
+/// slots.
+pub proof fn lemma_unw_cut(p: Program2, c: Cert, trusted: bool, s: State2, kt: Seq<Kind>, n: int)
     requires
         accepts(p, c, trusted),
         unw_ok(p, c, s, kt),
-        !has_handler(s),
         0 <= n <= kt.len(),
         pinned0(p, fmethod(s, top_i(s))) && arity(p, fmethod(s, top_i(s))) >= 1 ==> n >= 1,
-        0 <= nf <= s.fins.len(),
-        nf < s.fins.len() ==> s.fins[nf].frame as int == top_i(s) && s.fins[nf].height as int >= fbase(s, top_i(s)) + n - 1,
     ensures
-        unw_ok(p, c, State2 { stack: s.stack.subrange(0, fbase(s, top_i(s)) + n), fins: s.fins.subrange(0, nf), ..s }, kt.subrange(0, n)),
+        unw_ok(p, c, State2 { stack: s.stack.subrange(0, fbase(s, top_i(s)) + n), ..s }, kt.subrange(0, n)),
 {
     let t = top_i(s);
     let b = fbase(s, t);
     let m = fmethod(s, t);
-    let s1 = State2 { stack: s.stack.subrange(0, b + n), fins: s.fins.subrange(0, nf), ..s };
+    let s1 = State2 { stack: s.stack.subrange(0, b + n), ..s };
     let k1 = kt.subrange(0, n);
     lemma_base_le_len(s, t);
-    lemma_fins_prefix(s, s1, nf, t, b + n - 1);
-    lemma_fins_ok_prefix(s, s1, nf);
-    assert(fins_kept(s, s1, t, 0) && fins_kept(s, s1, t, b + n - 1));
     assert(bases_ok(s1)) by {
         assert forall|fi: int| 0 <= fi && fi + 1 < s1.frames.len() implies #[trigger] base_step(s1, fi) by {
             assert(base_step(s, fi));
@@ -111,19 +60,13 @@ pub proof fn lemma_unw_cut(p: Program2, c: Cert, trusted: bool, s: State2, kt: S
     }
     if t > 0 {
         assert(same_below(s, s1, t - 1)) by {
-            assert forall|g: int| 0 <= g <= t - 1 implies #[trigger] try_frame(s1, g) == try_frame(s, g) by {
-                assert(s1.tries == s.tries);
-            }
+            assert forall|g: int| 0 <= g <= t - 1 implies #[trigger] try_frame(s1, g) == try_frame(s, g) by {}
         }
     }
     assert forall|fi: int| 0 <= fi < t implies #[trigger] frame_ok(p, c, s1, fi) by {
         assert(frame_ok(p, c, s, fi));
         lemma_same_below_down(s, s1, t - 1, fi);
         lemma_frame_below_unw(p, c, s, s1, fi);
-    }
-    assert forall|x: int| 0 <= x < s1.tries.len() implies #[trigger] handler_ok(s1, x) by {
-        assert(handler_ok(s, x));
-        if (s.tries[x].frame as int) < t { assert(try_ok(s, x)); }
     }
     assert(same_upto(s, s1, t, n));
     assert forall|j: int| 0 <= j < n implies #[trigger] conf(p, c, s1, t, k1, j, k1[j], s1.stack[b + j]) by {
@@ -141,7 +84,6 @@ pub proof fn lemma_unw_cut(p: Program2, c: Cert, trusted: bool, s: State2, kt: S
     if n >= 1 {
         assert(s1.stack[b] == s.stack[b]);
     }
-    assert(!has_handler(s1));
 }
 
 /// THROW.
@@ -271,15 +213,47 @@ pub proof fn lemma_step_unwind_op(p: Program2, c: Cert, trusted: bool, s: State2
     let k = cur_k(p, c, s);
     let b = cur_b(s);
     let h = k.len() as int;
-    let k2 = k.subrange(0, h - 3);
-    let s1 = drop(s, 3);
+    let k2 = k.subrange(0, h - 4);
+    let s1 = drop(s, 4);
+    assert(post(p, c, m, off, k, trusted) is Some);
+    assert(top_kind(k, 1) is Token && top_kind(k, 2) is Token && is_val(top_kind(k, 3)));
     assert(map_at(c, m, off + 1) == Some(k2));
     lemma_map_instr(p, c, trusted, m, off + 1);
     lemma_at_conf(p, c, trusted, s, 1);
-    let token = at(s, 1);
+    lemma_at_conf(p, c, trusted, s, 2);
+    lemma_at_conf(p, c, trusted, s, 3);
+    let va = at(s, 2);
+    let vb = at(s, 1);
+    let value = at(s, 3);
     assert(step(p, s) == op_unwind(p, s)) by { reveal(step); }
-    assert(s1.stack =~= s.stack.subrange(0, b + (h - 3)));
-    if token == null2(p) {
+    assert(s1.stack =~= s.stack.subrange(0, b + (h - 4)));
+    // The token: the first word at 2, the second at 1, of one unwinding of
+    // this frame made for this height.
+    reveal(conf);
+    assert(good(s.heap, value) || value is Smi);
+    assert(!(value is Token));
+    assert(va is Token);
+    let d = va->Token_1;
+    let hh = va->Token_3;
+    assert(!va->Token_0) by {
+        if va->Token_0 {
+            assert(s.stack[b + (h - 3) - 1] == at(s, 3));
+        }
+    }
+    assert(hh as int + 4 == s.stack.len());
+    assert(va->Token_2 as int == t);
+    assert(vb is Token);
+    assert(vb->Token_0) by {
+        if !vb->Token_0 {
+            assert(k[h - 3] == top_kind(k, 2));
+        }
+    }
+    assert(s.stack[b + (h - 2) - 1] == va);
+    assert(vb == Value::Token(true, d, va->Token_2, hh));
+    assert(va == Value::Token(false, d, va->Token_2, hh));
+    assert(token_at(s) == Some(d));
+    assert(pending_ok(p, c, s, t, k, h - 3, d));
+    if d == Pending::Normal {
         let s2 = goto(s1, s.bci + 1);
         assert(op_unwind(p, s) == Outcome2::Next(s2));
         assert(local_step(p, c, s, s2, k2)) by {
@@ -293,44 +267,37 @@ pub proof fn lemma_step_unwind_op(p: Program2, c: Cert, trusted: bool, s: State2
         }
         lemma_local_step(p, c, trusted, s, s2, k2);
     } else {
-        reveal(conf);
-        assert(token is Smi);
-        let kk = token->Smi_0 as int;
-        assert(fin_ok(p, c, s, t, k, h - 2, kk));
-        let r = s.fins[kk].resume;
-        let value = at(s, 2);
-        let u = unwind_of(r, value);
-        let s1f = State2 { fins: s.fins.subrange(0, kk), ..s1 };
-        assert(fin_matches(s, kk));
-        assert(op_unwind(p, s) == unwind(p, s1f, u));
+        let u = match d {
+            Pending::Throw => Unwind::Throw(value),
+            Pending::Return(f) => Unwind::Return(f, value),
+            Pending::Branch(f, nb, hb) => Unwind::Branch(f, nb, hb),
+            Pending::Normal => Unwind::Throw(value),
+        };
+        assert(pending_of(Some(u)) == d);
+        assert(op_unwind(p, s) == unwind(p, s1, u));
         lemma_wf_unw(p, c, trusted, s);
-        lemma_unw_cut(p, c, trusted, s, k, h - 3, kk);
-        assert(s1f == State2 { stack: s.stack.subrange(0, b + (h - 3)), fins: s.fins.subrange(0, kk), ..s });
-        // The value slot below the token.
-        assert(post(p, c, m, off, k, trusted) is Some);
-        assert(is_val(top_kind(k, 2)));
-        lemma_at_conf(p, c, trusted, s, 2);
-        assert(good(s.heap, value)) by { reveal(conf); }
-        assert(unw_arg_ok(p, c, s1f, k2, u)) by {
+        lemma_unw_cut(p, c, trusted, s, k, h - 4);
+        assert(s1 == State2 { stack: s.stack.subrange(0, b + (h - 4)), ..s });
+        assert(good(s.heap, value));
+        assert(unw_arg_ok(p, c, s1, k2, u)) by {
             reveal(pending_ok);
-            assert(pending_ok(p, c, s, t, k, h - 2, r));
-            match r {
-                Resume::Branch(f, nb, hb) => {
+            match d {
+                Pending::Branch(f, nb, hb) => {
                     let fi = f as int;
                     let mf = fmethod(s, fi);
                     if fi < t {
-                        assert(s1f.frames == s.frames);
-                        assert(kinds_of(p, c, s1f, fi) == kinds_of(p, c, s, fi));
+                        assert(s1.frames == s.frames);
+                        assert(kinds_of(p, c, s1, fi) == kinds_of(p, c, s, fi));
                     } else {
                         let tt = map_at(c, mf, nb as int - info(p, mf).entry)->0;
-                        assert(tt.len() + 1 <= h - 2);
+                        assert(tt.len() + 1 <= h - 3);
                         assert(k2.subrange(0, tt.len() as int) =~= k.subrange(0, tt.len() as int));
                     }
                 },
                 _ => {},
             }
         }
-        lemma_unwind(p, c, trusted, s1f, k2, u);
+        lemma_unwind(p, c, trusted, s1, k2, u);
     }
 }
 

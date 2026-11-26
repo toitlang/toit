@@ -10,14 +10,18 @@ format 1. Artifacts and scripts:
 ## Format 3 (naming)
 
 Format 3 is the package of format changes the format-3 study recommended
-(verified/spec/format/22-format3-branches-frames.md): short branches (step
-1) and four-word frame records (step 2) so far. Until the package is
-complete the image keeps the tag `TBC2`, the compiler flag stays
-`-Xbytecode_format=2` and the tools report format 2: step 1 only adds
-opcodes (every format-2 program means the same) and step 2 changes no
-bytecode, so a new tag would only reject programs that are still correct.
-The tag becomes `TBC3` with the TRY step, which changes the meaning of
-existing code. Each step changes the verification epoch.
+(verified/spec/format/22-format3-branches-frames.md and
+23-format3-try.md): short branches (step 1), four-word frame records (step
+2) and TRY as a flagged block call with the pending unwinding in the
+finally code's slots (step 3). Steps 1 and 2 kept the tag `TBC2` (step 1
+only adds opcodes, step 2 changes no bytecode); step 3 changes the meaning
+of existing code, and the image tag is `TBC3` since. A program with any
+other `TBC` tag (an image of an earlier version) is refused where programs
+start ("bytecode format TBC2 is not supported by this VM; recompile";
+`FORMAT_2_REQUIRED` for containers) and never runs on the C++ interpreter.
+The compiler flag stays `-Xbytecode_format=2` (the verified core's format,
+now version 3); the tools print "format 3". Each step changes the
+verification epoch.
 
 ## The default and how to switch back
 
@@ -39,7 +43,7 @@ Running the suite "everything in format 1" is a build with
 `-Xbytecode_format=1` or `TOIT_BYTECODE_FORMAT=1`.
 
 The VM runs both formats as before: format 1 on the C++ interpreter,
-format 2 on the core (`Program::is_format2`, the `TBC2` tag), so programs
+format 2 on the core (`Program::is_format2`, the `TBC3` tag), so programs
 of both formats can be compared on one VM.
 
 ## Trusted and untrusted compilation

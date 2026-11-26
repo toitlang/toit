@@ -326,7 +326,9 @@ pub fn load(text: &str, word_bits: u8) -> Result<Loaded, String> {
     Ok(Loaded { format, program, heap, globals, names })
 }
 
-pub const V2_TAG: &[u8; 4] = b"TBC2";
+/// The tag of format-3 bytecodes (format note 23; the format-2 family of the
+/// verified core, version 3).
+pub const V2_TAG: &[u8; 4] = b"TBC3";
 /// The method table literal (format note 21, `V2MethodTable` in
 /// src/interpreter_v2.h): marker, count, bytecodes length, 0, then the
 /// records.
@@ -356,7 +358,7 @@ pub fn table_literal_records(literal: &[u8], bytecodes_length: usize) -> Result<
 pub fn method_table_v2(bytecodes: &[u8], recs: &[u32], global_max_height: u16) -> Result<Vec<MethodInfo>, String> {
     use crate::v2::vprog::*;
     if bytecodes.len() < 4 || &bytecodes[0..4] != V2_TAG {
-        return err("format-2 bytecodes must start with the tag TBC2");
+        return err("format-3 bytecodes must start with the tag TBC3");
     }
     if bytecodes.len() >= 0x100_0000 {
         return err("bytecodes too large");

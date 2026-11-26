@@ -41,8 +41,9 @@ pub proof fn lemma_unwind_not_prim(p: Program2, s: State2, u: Unwind)
     decreases s.frames.len(),
 {
     if s.frames.len() == 0 {
-    } else if has_handler(s) {
     } else if top(s).base as int > s.stack.len() {
+    } else if unw_target(u) == top_index(s) {
+    } else if top(s).handler {
     } else {
         let s1 = pop_frame(s);
         assert(s1.frames.len() < s.frames.len());
@@ -79,7 +80,7 @@ pub proof fn lemma_unw_heap(p: Program2, c: Cert, s: State2, kt: Seq<Kind>, h2: 
     }
     if t > 0 {
         assert(same_below(s, s2, t - 1)) by {
-            assert forall|g: int| 0 <= g <= t - 1 implies #[trigger] try_frame(s2, g) == try_frame(s, g) by { assert(s2.tries == s.tries); }
+            assert forall|g: int| 0 <= g <= t - 1 implies #[trigger] try_frame(s2, g) == try_frame(s, g) by {}
             lemma_base_le_len(s, t);
         }
     }
@@ -87,9 +88,6 @@ pub proof fn lemma_unw_heap(p: Program2, c: Cert, s: State2, kt: Seq<Kind>, h2: 
         assert(frame_ok(p, c, s, fi));
         lemma_same_below_down(s, s2, t - 1, fi);
         lemma_frame_below_unw(p, c, s, s2, fi);
-    }
-    assert forall|x: int| 0 <= x < s2.tries.len() implies #[trigger] handler_ok(s2, x) by {
-        assert(handler_ok(s, x));
     }
     assert forall|j: int| 0 <= j < kt.len() implies #[trigger] conf(p, c, s2, t, kt, j, kt[j], s2.stack[b + j]) by {
         assert(conf(p, c, s, t, kt, j, kt[j], s.stack[b + j]));
@@ -114,7 +112,6 @@ pub proof fn lemma_cut_top(p: Program2, c: Cert, trusted: bool, s: State2, kt: S
     requires
         accepts(p, c, trusted),
         unw_ok(p, c, s, kt),
-        !has_handler(s),
         0 <= bci as int - info(p, fmethod(s, top_i(s))).entry,
         map_at(c, fmethod(s, top_i(s)), bci as int - info(p, fmethod(s, top_i(s))).entry) == Some(tt),
         tt.len() <= kt.len(),
@@ -134,13 +131,10 @@ pub proof fn lemma_cut_top(p: Program2, c: Cert, trusted: bool, s: State2, kt: S
             assert(base_step(s, fi));
         }
     }
-    assert forall|x: int| 0 <= x < s.tries.len() implies (#[trigger] s.tries[x]).frame < t by {
-        lemma_handlers_lt_top(s, x);
-    }
     assert(!try_frame(s, t));
     if t > 0 {
         assert(same_below(s, s2, t - 1)) by {
-            assert forall|g: int| 0 <= g <= t - 1 implies #[trigger] try_frame(s2, g) == try_frame(s, g) by { assert(s2.tries == s.tries); }
+            assert forall|g: int| 0 <= g <= t - 1 implies #[trigger] try_frame(s2, g) == try_frame(s, g) by {}
         }
     }
     assert(same_upto(s, s2, t, n));
@@ -170,13 +164,6 @@ pub proof fn lemma_cut_top(p: Program2, c: Cert, trusted: bool, s: State2, kt: S
             lemma_frame_below_unw(p, c, s, s2, fi);
         }
     }
-    assert forall|x: int| 0 <= x < s2.tries.len() implies #[trigger] try_ok(s2, x) by {
-        assert(handler_ok(s, x));
-        lemma_handlers_lt_top(s, x);
-        let g = s.tries[x].frame as int;
-        assert(try_ok(s, x));
-        assert(s2.frames[g + 1] == s.frames[g + 1]);
-    }
     assert(wf(p, c, s2)) by { reveal(wf); reveal(wf_task); }
 }
 
@@ -195,41 +182,36 @@ pub proof fn lemma_unwind(p: Program2, c: Cert, trusted: bool, s: State2, kt: Se
     lemma_unwind_not_prim(p, s, u);
     let t = top_i(s);
     let b = fbase(s, t);
-    if has_handler(s) {
-        lemma_finally(p, c, trusted, s, kt, Some(u));
-        return;
-    }
     lemma_base_le_len(s, t);
     reveal(pending_ok);
     let s1 = pop_frame(s);
-    match u {
-        Unwind::Return(f, v) => {
-            if f as int == t {
+    if unw_target(u) == t {
+        match u {
+            Unwind::Return(f, v) => {
                 lemma_return(p, c, trusted, s, kt, v);
-                return;
-            }
-        },
-        Unwind::Branch(f, bci, hb) => {
-            if f as int == t {
+            },
+            Unwind::Branch(f, bci, hb) => {
                 let m = fmethod(s, t);
                 let tt = map_at(c, m, bci as int - info(p, m).entry)->0;
                 assert(frame_kinds_from(p, c, s, t, kt, t) == kt);
                 lemma_cut_top(p, c, trusted, s, kt, bci, tt);
                 assert(unwind(p, s, u) == Outcome2::Next(State2 { stack: s.stack.subrange(0, b + tt.len()), bci: bci, ..s }));
-                return;
-            }
-        },
-        Unwind::Throw(v) => {
-            if t == 0 {
-                assert(unwind(p, s, u) == unwind(p, s1, u));
-                assert(s1.frames.len() == 0);
-                return;
-            }
-        },
+            },
+            Unwind::Throw(_) => {},
+        }
+        return;
+    }
+    if t == 0 {
+        // Only an exception passes the bottom frame (a non-local return or
+        // branch targets a frame at or below the top).
+        assert(u is Throw);
+        assert(!top(s).handler) by { assert(s.frames[0] == top(s)); }
+        assert(unwind(p, s, u) == unwind(p, s1, u));
+        assert(s1.frames.len() == 0);
+        return;
     }
     // The top frame is popped.
     assert(t >= 1);
-    assert(unwind(p, s, u) == unwind(p, s1, u));
     assert(popped(s, s1));
     lemma_unw_pop(p, c, trusted, s, s1, kt);
     let g = t - 1;
@@ -257,6 +239,13 @@ pub proof fn lemma_unwind(p: Program2, c: Cert, trusted: bool, s: State2, kt: Se
             _ => {},
         }
     }
+    if top(s).handler {
+        // A try block: the finally code of the frame below starts.
+        lemma_finally(p, c, trusted, s, kt, s1, k1, Some(u));
+        assert(unwind(p, s, u) == enter_finally(p, s1, top(s).base as int, top(s).ret as int, Some(u)));
+        return;
+    }
+    assert(unwind(p, s, u) == unwind(p, s1, u));
     lemma_unwind(p, c, trusted, s1, k1, u);
 }
 

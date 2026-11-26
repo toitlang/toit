@@ -49,8 +49,9 @@ class Program:
   heap64                    / Heap ::= ?
   all-bytecodes             / ByteArray ::= ?
   global-max-stack-height   / int ::= ?
-  // The bytecode format: 1 (the VM's) or 2 (the revised format of
-  //   verified/spec, whose bytecodes start with the tag 'TBC2').
+  // The bytecode format: 1 (the VM's) or 2 (the verified core's format of
+  //   verified/spec, now version 3: its bytecodes start with the tag 'TBC3',
+  //   verified/spec/format/23-format3-try.md). See $format-name.
   format                    / int ::= ?
 
   // Debugging information.
@@ -130,11 +131,22 @@ class Program:
     count := LITTLE-ENDIAN.uint32 table 4
     return List count: LITTLE-ENDIAN.uint32 table (16 + 4 * it)
 
+  /**
+  The format of a program with the given bytecodes: 2 for the verified
+    core's format (tag 'TBC3', format 3), else 1. Throws for a
+    verified-core program of another format version ('TBC1', 'TBC2', ...),
+    which no VM of this SDK runs.
+  */
   static format-of bytecodes/ByteArray -> int:
     if bytecodes.size >= 4 and bytecodes[0] == 'T' and bytecodes[1] == 'B'
-        and bytecodes[2] == 'C' and bytecodes[3] == '2':
-      return 2
+        and bytecodes[2] == 'C' and '0' <= bytecodes[3] <= '9':
+      if bytecodes[3] == '3': return 2
+      throw "bytecode format TBC$(string.from-rune bytecodes[3]) is not supported by this SDK; recompile"
     return 1
+
+  /** A name of the $format of this program: "format 1" or "format 3". */
+  format-name -> string:
+    return format == 2 ? "format 3" : "format 1"
 
   /**
   The id (the header offset, as used by the source map) of the method

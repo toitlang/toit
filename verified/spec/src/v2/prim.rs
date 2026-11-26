@@ -153,6 +153,25 @@ pub open spec fn allocates_double(p: Program2, s: State2, op: u8) -> bool {
     &&& crate::spec_helpers::are_floats(as1(s), at(s, 1), at(s, 0))
 }
 
+/// The state a resource throw starts from: `s`, except at a TRY that calls
+/// its try block (`op_try` is `Next`): there the try block's frame, with
+/// the handler flag, is entered first and the error is raised in it, so
+/// that unwinding runs the TRY's finally code. Language level: a resource
+/// failure never skips a finally whose try was reached (format 1's LINK
+/// installs the handler before the block call, which alone can fail; the
+/// library's `acquire; try: ... finally: release` relies on it). The
+/// size bound keeps the entered state within `small` (the machine's
+/// states always are).
+pub open spec fn resource_state(p: Program2, s: State2) -> State2 {
+    let b = s.bci as int;
+    if 0 <= b < p.bytecodes.len() && base_op(p.bytecodes[b]) == TRY && op_try(p, s) is Next
+        && (op_try(p, s)->Next_0).stack.len() < 0x4000_0000 && (op_try(p, s)->Next_0).frames.len() < 0x4000_0000 {
+        op_try(p, s)->Next_0
+    } else {
+        s
+    }
+}
+
 /// The resource throws in state `s`: what the machine may do instead of
 /// the step when a resource the abstract machine does not bound runs out.
 /// They exist only at these instructions:
@@ -166,15 +185,18 @@ pub open spec fn allocates_double(p: Program2, s: State2, op: u8) -> bool {
 ///
 /// A primitive's own resource failure is a completion of PRIMITIVE
 /// (`PrimRet::OutOfMemory`); a raise's is a completion of the raise
-/// (`raised`). Each alternative starts from `s` itself: the instruction
-/// has not run (stack growth and allocation happen before any change).
+/// (`raised`). Each alternative starts from `resource_state(p, s)`: `s`
+/// itself (the instruction has not run: stack growth and allocation happen
+/// before any change), except at TRY, where it starts in the try block
+/// (format note 23, "Resource failures at TRY").
 pub open spec fn resource_throw(p: Program2, s: State2, o: Outcome2) -> bool {
     let b = s.bci as int;
     let op = base_op(p.bytecodes[b]);
+    let s0 = resource_state(p, s);
     &&& 0 <= b < p.bytecodes.len()
     &&& {
-        ||| (grows_stack(op) || allocates_instance(op)) && o == unwind(p, s, Unwind::Throw(out_of_memory(p)))
-        ||| grows_stack(op) && o == Outcome2::Raise(s, p.roots[ROOT_STACK_OVERFLOW])
+        ||| (grows_stack(op) || allocates_instance(op)) && o == unwind(p, s0, Unwind::Throw(out_of_memory(p)))
+        ||| grows_stack(op) && o == Outcome2::Raise(s0, p.roots[ROOT_STACK_OVERFLOW])
         ||| allocates_double(p, s, op) && o == operator_fallback(p, s, op)
     }
 }
@@ -302,13 +324,14 @@ pub open spec fn prim_refined(p: Program2, module: u8, index: u16, args: Seq<Val
     }
 }
 
-/// The arguments hold no block references. A primitive method may have
-/// block parameters (`int.parse`'s `--if-error`, for which `int_parse`
-/// takes an ignored argument); the primitive sees a block reference as the
-/// word that encodes it, so the precise contracts, which are stated over
-/// values, apply only to arguments without block references.
+/// The arguments hold no block references and no unwinding tokens. A
+/// primitive method may have block parameters (`int.parse`'s `--if-error`,
+/// for which `int_parse` takes an ignored argument); the primitive sees a
+/// block reference (or a token word, format note 23) as the word that
+/// encodes it, so the precise contracts, which are stated over values,
+/// apply only to arguments without them.
 pub open spec fn plain_args(args: Seq<Value>) -> bool {
-    forall|i: int| 0 <= i < args.len() ==> !(#[trigger] args[i] is BlockRef)
+    forall|i: int| 0 <= i < args.len() ==> !(#[trigger] args[i] is BlockRef) && !(args[i] is Token)
 }
 
 /// The set of what primitive `(module, index)` may return for `args` in
@@ -450,8 +473,8 @@ pub open spec fn new_task_obj2(p: Program2, stack_id: int, id: int) -> HeapObj {
 }
 
 /// A suspended task's state.
-pub open spec fn stack_obj2(p: Program2, words: Seq<Value>, frames: Seq<Frame>, tries: Seq<Handler>, fins: Seq<Fin>, bci: int) -> HeapObj {
-    HeapObj { class_id: p.builtin[STACK_CLASS], ro: false, body: Body::Stack2(words, frames, tries, fins, bci as usize) }
+pub open spec fn stack_obj2(p: Program2, words: Seq<Value>, frames: Seq<Frame>, bci: int) -> HeapObj {
+    HeapObj { class_id: p.builtin[STACK_CLASS], ro: false, body: Body::Stack2(words, frames, bci as usize) }
 }
 
 /// `core.task_new(code)`: a task that never ran has no frames and its code
@@ -467,7 +490,7 @@ pub open spec fn task_new_step(p: Program2, s: State2, code: Value) -> Outcome2 
         let stack_id = s.heap.len() as int;
         let task = Value::Obj((stack_id + 1) as usize);
         let heap = s.heap
-            .push(stack_obj2(p, seq![code], Seq::empty(), Seq::empty(), Seq::empty(), 0))
+            .push(stack_obj2(p, seq![code], Seq::empty(), 0))
             .push(new_task_obj2(p, stack_id, s.next_task_id as int));
         prim_success(p, State2 { next_task_id: (s.next_task_id + 1) as i64, ..s }, heap, task)
     }
@@ -493,7 +516,7 @@ pub open spec fn has_stack2(s: State2, task: Value) -> bool {
 /// (`v2::spec::field_writable`).
 pub open spec fn resumable(s: State2, task: Value) -> bool {
     match obj(as1(s), task_stack_ref(s, task)).body {
-        Body::Stack2(words, frames, _, _, _) => frames.len() > 0 || words.len() >= 1,
+        Body::Stack2(words, frames, _) => frames.len() > 0 || words.len() >= 1,
         _ => false,
     }
 }
@@ -502,7 +525,7 @@ pub open spec fn resumable(s: State2, task: Value) -> bool {
 /// continues after its PRIMITIVE; a new task gets the frames of
 /// `__entry__task(code)` having called the transferring method (whose
 /// failure path continues) from its bci 1, like `Interpreter::prepare_task`.
-pub open spec fn resume(p: Program2, s: State2, to: Value, words: Seq<Value>, frames: Seq<Frame>, tries: Seq<Handler>, fins: Seq<Fin>, bci: int) -> Outcome2 {
+pub open spec fn resume(p: Program2, s: State2, to: Value, words: Seq<Value>, frames: Seq<Frame>, bci: int) -> Outcome2 {
     if frames.len() == 0 {
         let e = entry_method(p, ENTRY_TASK);
         if words.len() < 1 || !valid_method(p, e) {
@@ -512,11 +535,9 @@ pub open spec fn resume(p: Program2, s: State2, to: Value, words: Seq<Value>, fr
             Outcome2::Next(State2 {
                 stack: seq![words[0], to, false2(p), to],
                 frames: seq![
-                    Frame { method: e as usize, ret: entry, base: 0 },
-                    Frame { method: top(s).method, ret: (entry + 1) as usize, base: 1 },
+                    Frame { method: e as usize, ret: entry, base: 0, handler: false },
+                    Frame { method: top(s).method, ret: (entry + 1) as usize, base: 1, handler: false },
                 ],
-                tries: Seq::empty(),
-                fins: Seq::empty(),
                 bci: (s.bci + 4) as usize,
                 task: obj_id(to) as usize,
                 ..s
@@ -526,8 +547,6 @@ pub open spec fn resume(p: Program2, s: State2, to: Value, words: Seq<Value>, fr
         Outcome2::Next(State2 {
             stack: words.push(to),
             frames: frames,
-            tries: tries,
-            fins: fins,
             bci: (bci + 4) as usize,
             task: obj_id(to) as usize,
             ..s
@@ -551,11 +570,11 @@ pub open spec fn task_transfer_step(p: Program2, s: State2, to: Value, detach: V
         prim_failure(s, s.heap, p.roots[12])  // ERROR
     } else {
         let from_stack = task_stack_ref(s, from);
-        let saved = HeapObj { body: Body::Stack2(s.stack, s.frames, s.tries, s.fins, s.bci), ..obj(as1(s), from_stack) };
+        let saved = HeapObj { body: Body::Stack2(s.stack, s.frames, s.bci), ..obj(as1(s), from_stack) };
         let s1 = State2 { heap: s.heap.update(obj_id(from_stack), saved), ..s };
         let s2 = if detach == true2(p) { State2 { heap: set_field(as1(s1), from, 0, smi(0)).heap, ..s1 } } else { s1 };
         match obj(as1(s2), task_stack_ref(s2, to)).body {
-            Body::Stack2(words, frames, tries, fins, bci) => resume(p, s2, to, words, frames, tries, fins, bci as int),
+            Body::Stack2(words, frames, bci) => resume(p, s2, to, words, frames, bci as int),
             _ => stuck(Stuck::Fatal),
         }
     }
@@ -568,12 +587,10 @@ pub open spec fn initial_state(p: Program2, heap0: Seq<HeapObj>, globals0: Seq<V
     let task = Value::Obj((stack_id + 1) as usize);
     let e = entry_method(p, ENTRY_MAIN);
     State2 {
-        heap: heap0.push(stack_obj2(p, Seq::empty(), Seq::empty(), Seq::empty(), Seq::empty(), 0)).push(new_task_obj2(p, stack_id, 0)),
+        heap: heap0.push(stack_obj2(p, Seq::empty(), Seq::empty(), 0)).push(new_task_obj2(p, stack_id, 0)),
         globals: globals0,
         stack: seq![task],
-        frames: seq![Frame { method: e as usize, ret: info(p, e).entry, base: 0 }],
-        tries: Seq::empty(),
-        fins: Seq::empty(),
+        frames: seq![Frame { method: e as usize, ret: info(p, e).entry, base: 0, handler: false }],
         bci: info(p, e).entry,
         task: (stack_id + 1) as usize,
         next_task_id: 1,

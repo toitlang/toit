@@ -1,0 +1,84 @@
+Red-team round 5 — ATTEMPTS
+===========================
+Target: the try/finally of format 3, step 3 (verified/spec/format/
+23-format3-try.md). TRY is a flagged block call; a pending unwinding is the
+two token words in the finally code's slots [value, A, B, reason] (A =
+frame << 16 | height, B = bci * 4 + kind; kind 0 normal, 1 exception, 2
+non-local return, 3 non-local branch). No finally records.
+
+Builds: build/host (64-bit release, verified core), build/asan
+(-fsanitize=address,undefined). Each case: --untrusted (install-time
+verifier) on both builds; trusted on the checked loop
+(TOIT_TRUSTED_CHECKED_LOOP=1) on both builds.
+
+One line per attempt: id | idea | expected | observed. Per-case output is
+in repro/T-results.txt (battery-T.sh).
+
+VERDICT: no finding. Every ill-typed case is rejected with a named rule
+(UNWIND without Token kinds, a copy/store of a token, a token consumed as a
+value, incompatible kinds at a merge, TRY on a non-block or a foreign
+block); the well-typed cases print the right output; nothing crashes or
+trips a sanitizer on either loop.
+
+================================================================
+T. Tokens (47 attempts)
+================================================================
+Well-typed (8):
+good-try | the compiler's shape, normal completion | 4 | ran: 4
+good-reason | finally reads reason and value | 4 -1 null | ran
+t-good | try block throws, UNWIND resumes the exception | x (caught by main) | ran
+t-reason | reason of an exception | -2 x | ran
+t-throw-in-finally | finally code throws 9, pending exception dropped | 9 | ran
+store-reason | the reason slot is a plain value: overwritten | 4 | ran
+leave-pop | finally left by popping the four slots (Toit `break`) | 4 1 | ran
+t-leave-pop, t-leave-return | pending exception dropped by pop / return | null | ran
+
+Forged tokens (9): forge-normal, forge-throw, forge-return, forge-branch
+(B = 3: a branch to bci 0, height 0, frame 0), forge-null, forge-method
+(method ids as tokens), forge-b (B replaced by a normal smi), forge-both
+(the four slots popped, four smis pushed), t-forge-normal (pending
+exception turned normal) | reject | rejected: "UNWIND rejected with kinds
+[.., Val, Val, ..]".
+
+Overwritten tokens (3): store-a, store-b, t-store-b | reject | rejected:
+STORE_LOCAL / STORE_LOCAL_POP over a Token slot.
+
+Copies (7): dup-b, dup-a (LOAD_LOCAL_n), dup-pop-load (POP_LOAD_LOCAL),
+dup-wide (LOAD_LOCAL_WIDE), dup-unwind / t-dup-unwind (the four slots copied
+and both copies unwound: resume twice) | reject | rejected at the first copy
+of a Token.
+
+Stale / misplaced (4): unwind-twice (a second UNWIND on the try block's
+method id), unwind-off-top (a value pushed above the reason), mix-two-tries
+(outer tokens resumed under a forged pair after the inner ones),
+unwind-short (two slots only) | reject | rejected.
+
+Tokens as values (6): token-argument (B passed to a call), token-return,
+token-throw, token-identical, token-branch (BRANCH_IF_FALSE on B),
+token-store-global | reject | rejected: the instruction does not take a
+Token.
+
+Into and out of finally code (4): jump-in (a branch from before TRY into the
+finally code with four plain values at the same height), jump-out-merge and
+jump-out-pop (a branch out of the finally code past UNWIND, merging with four
+plain values; then UNWIND, or the slots popped), jump-back (a backward branch
+from the finally code to before TRY) | reject | rejected: incompatible kinds
+at the merge (Token against Val).
+
+TRY's operand (6): try-smi, try-null, try-empty-stack, try-foreign-block
+(with-return's [0].do block, which reads its own outer frame),
+try-other-method (with-throw's try block), nested-reuse (victim's own try
+block at a second, higher slot) | reject | rejected: a try block is a block
+method bound to its method and slot.
+
+Trusted runs (checked loop): every case ends in an exception, a stuck state
+("verified core: stuck state N ... terminating the process") or the run's
+normal output; none crashes or trips ASan/UBSan. The checked loop treats
+token words as smis and checks what it resumes: forge-b and t-forge-normal
+continue as a normal completion, dup-unwind resumes twice (both harmless; the
+spec is stuck there and the verifier rejects them).
+
+Not a case of this battery: the default trusted mode (verified loop, the
+compiler trusted) runs an ill-typed trusted program outside the claim:
+try-null crashed there (SIGSEGV in rnonlocal::op_try reading the method
+record of a non-smi), as any ill-typed trusted program may.

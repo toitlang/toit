@@ -1,5 +1,106 @@
 # Phase 4a progress (verified core, format 2 on x86-64)
 
+## Format 3, step 3: TRY as a flagged block call (branch format3/try, 2026-11-26)
+
+TRY calls the try block with the handler flag in its frame record (the
+fourth word: 1 for a try block, 0 otherwise); a try block's return, and
+an unwinding that pops it, continue in the caller's finally code with
+four slots: the value, two token words, the reason. The tokens hold the
+pending unwinding (normal, throw, return to a frame, branch to a frame,
+bci and height); UNWIND resumes it. No finally records, no record moves,
+no gate for them (verified/spec/format/23-format3-try.md). Image tag
+`TBC3`; images with another `TBC` digit are refused where programs start.
+
+Resource failures at TRY (requirement after the quota livelock): a TRY
+whose try block cannot get its stack room now enters the try block first
+and raises the stack-overflow or out-of-memory error there, so the TRY's
+finally code runs, as in format 1 (spec `prim::resource_state`, lemma
+`sound_resource::lemma_try_resource_finally`; core `unwind::try_grow`,
+checked loop `try_grow_cold`). The machine path's room check of TRY now
+counts the block reference (it did not, so near the stack's limit a TRY
+could enter a try block without its room and the next room scan ended
+the process with `LIMIT`). tests/sandbox/try-finally-resource-test.toit
+runs the naive `flag = true; try: ... finally: flag = false` at every
+depth and word offset around the overflow and with the heap at the
+quota, on host and host32; it fails on the base (the flag leaks) and on
+the first version of this step (`LIMIT`).
+
+Proofs: spec 1081, core 1063, core-split 1065 (32-bit 1081, 1065, 1067)
+verified, 0 errors (base ceadf1bdf: 1096, 1103, 1105; 32-bit 1096, 1105,
+1107). Theorem statements unchanged in text or stronger (THEOREMS.txt:
+`lemma_replace_frame_slots` lost `!has_handler(s)`, `x_throw_null` lost
+the finally-record bound; new: `lemma_try_resource_finally`); the
+theorem's set of resource throws changed at TRY only (they start in the
+try block). Deleted finally-record machinery: rfins.rs
+(367 lines), `fins_rel`, `cut_records`, `pop_records`, the record moves
+in view.rs and calls.rs, the spec's `fin_ok`, `try_ok`, `fins_ok`,
+`cut_fins`, `fins_popped`, `fin_matches`; diff of verified/spec/src
++848 / -1,447 lines, verified/core/src +1,246 / -3,028. No new trusted
+item, no new external_body; trusted texts changed: `StackMem::from_stack`
+(frame-top header word), `Runtime::grow_stack` (frame records copied),
+the checked loop's exception for the provenance of block references and
+tokens (TRUSTED.md section 4).
+
+Against the base (memory and device library: ceadf1bdf, where this branch
+starts; host instructions and firmware: 746bf39b0, wip/collector-proofs
+after the merge into this branch, which measures the same as ceadf1bdf on
+the host; artifacts format3-try):
+
+| | base | step 3 | |
+|---|---:|---:|---:|
+| words needed at the deepest call: short / latch / longest task (H 18) | 121 / 130 / 133 | 116 / 126 / 129 | -4 |
+| `V2_INITIAL_LENGTH_ABOVE_HEIGHT` | 118 | 114 | |
+| bytes allocated: empty / sum / string task | 1,320 / 1,352 / 1,488 | 1,288 / 1,320 / 1,456 | -2.4 % |
+| soak worker: tasks part / whole iteration | 4,496 / 9,951 | 4,400 / 9,698 | -2.1 % / -2.5 % |
+| host Ir per try/finally, normal completion (net of the loop) | 299 | 293 | -2 % |
+| host Ir per `return` through a finally (net) | 412 | 341 | -17 % |
+| host Ir per throw and catch (net) | 15,115 | 13,288 | -12 % |
+| host Ir per two nested try/finally (net) | 573 | 559 | -2 % |
+| host Ir per `break` out of a block through a finally (net) | 626 | 553 | -12 % |
+| host Ir: richards / deltablue / pystone / json | 105.21 M / 7.264 M / 17.30 M / 21.11 M | 106.89 M / 7.422 M / 17.62 M / 21.41 M | +1.6 / +2.2 / +1.8 / +1.4 % |
+| host Ir: calls / tasks / yield / RPC | 64.61 M / 25,980 / 946 / 79,978 | 65.80 M / 26,239 / 965 / 79,322 | +1.9 / +1.0 / +2.0 / -0.8 % |
+| classic ESP32: run loop / `.iram0.text` / IRAM free | 20,211 / 129,351 / 694 | 19,967 / 128,375 / 1,670 | -244 / -976 / +976 B |
+| classic ESP32 toit.bin | 1,423,424 | 1,421,728 | -1,696 B |
+| ESP32-C6: run loop / `.iram0.text` / toit.bin | 19,284 / 173,956 / 1,559,776 | 19,024 / 172,102 / 1,557,680 | -260 / -1,854 / -2,096 B |
+| device library (opt s): riscv32 / thumbv7m | 73,684 / 65,730 | 72,144 / 63,980 | -1,540 / -1,750 B |
+| bytecodes (seven programs) | | | +12 to +14 B each |
+
+Try paths (progs/trybench.toit, 10,000 operations per iteration, minus
+the same loop calling an empty method): the mechanism is cheaper as
+designed where an unwinding runs (non-local return, break, throw: no
+finally record written, checked and moved), about even for a normal
+completion (TRY was a block call before too; the finally code now gets
+four slots instead of three). A first build was slower on every try path
+(normal +39 Ir): `enter_fin_r` had been made out of line for size, which
+made the return into finally code a call with the registers in memory
+(40 Ir instead of 13); inlining it again (as before) gave the numbers
+above and recovered tasks (+2.5 % -> +1.0 %) and RPC.
+
+Programs without try/finally: +1.4 to +2.2 % host instructions, a
+register-allocation effect of LLVM on x86-64, not new work. The LLVM IR
+of the run loop has the same loop-carried values in both (5 pointer phis
+at the dispatch: sp, fp, frame-record top, end, ip), the same frame size
+(0x228, six callee-saved registers) and a near-identical number of blocks
+and calls; the call and return fast paths are the same in the source.
+The difference is which register holds the object-stack top: the base
+keeps it in rbp, step 3 in r8, which the handlers also use for
+temporaries, so INVOKE_STATIC's fast path ends with five register moves
+instead of one and ADD with one more (instruction-level callgrind of
+`calls`: +6 moves, +2 stack accesses, -2 other instructions per
+iteration; the `base` loop of trybench +6 Ir). Remedies tried, none
+recovers the base: the try helpers `#[cold]` (no change), padding the
+`Machine` struct to its old size (no change), the base's read order in
+RETURN (no change), UNWIND out of line (+65 %: the registers go to
+memory), TRY and the return into finally code inlined into the loop
+(+20 %), codegen-units = 1 (+2.7 % on calls). On the devices the run
+loop got smaller on both targets with the same dispatch sequence (Xtensa:
+l32ui, addx4, l32i.n, jx; RISC-V: lbu, slli, add, lw, jr; 171 and 152
+dispatch sites), the same frames (Xtensa `entry a1, 0x170`, RISC-V 336
+bytes) and equal or fewer stack accesses (Xtensa 1,124 / 213 loads /
+stores vs 1,125 / 234; RISC-V 680 / 150 vs 685 / 146); on Xtensa 35 of
+the dispatch sites are preceded by a register move (base 18).
+Instruction counts there need the hardware.
+
 ## Format 3, step 2: four-word frame records (branch format3/branches-frames, 2026-11-26)
 
 Frame records are method, return bci, base and the handler word (0, or

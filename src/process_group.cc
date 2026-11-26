@@ -45,6 +45,15 @@ ProcessGroup::~ProcessGroup() {
 ProcessGroup* ProcessGroup::create(int id, Program* program, AlignedMemoryBase* memory,
                                    const PrimitivePolicy* policy, V2MethodTable* v2_methods) {
   ASSERT(policy != null);
+  // A verified-core image of another format version (Program::has_stale_v2_tag)
+  // never runs: not on the core, and not as format 1 on the C++ interpreter.
+  if (program != null && program->has_stale_v2_tag()) {
+    fprintf(stderr, "bytecode format TBC%c is not supported by this VM; recompile\n",
+            program->stale_v2_tag_digit());
+    delete v2_methods;
+    PrimitivePolicy::release(policy);
+    return null;
+  }
   if (program != null && !InitialMemoryManager::can_allocate_task(program)) {
     delete v2_methods;
     PrimitivePolicy::release(policy);

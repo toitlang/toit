@@ -111,7 +111,6 @@ pub proof fn lemma_task_basics(p: Program2, c: Cert, s: State2)
         s.frames.len() > 0,
         bases_ok(s),
         fbase(s, top_i(s)) <= s.stack.len(),
-        forall|x: int| 0 <= x < s.tries.len() ==> #[trigger] try_ok(s, x),
 {
     reveal(wf_task);
 }
@@ -123,8 +122,6 @@ pub open spec fn local_step(p: Program2, c: Cert, s: State2, s2: State2, k2: Seq
     let m = fmethod(s, t);
     let k = kinds_of(p, c, s, t);
     &&& s2.frames == s.frames
-    &&& s2.tries == s.tries
-    &&& s2.fins == s.fins
     &&& s2.task == s.task
     &&& info(p, m).entry <= s2.bci
     &&& map_at(c, m, s2.bci - info(p, m).entry) == Some(k2)
@@ -134,6 +131,9 @@ pub open spec fn local_step(p: Program2, c: Cert, s: State2, s2: State2, k2: Seq
             #[trigger] unchanged(p, c, s, s2, k2, j) || conf(p, c, s2, t, kinds_of(p, c, s2, t), j, k2[j], s2.stack[b + j])
     &&& forall|j: int| 0 <= j < k2.len() && #[trigger] unchanged(p, c, s, s2, k2, j) && k2[j] is Token ==>
             k2.subrange(0, j) == k.subrange(0, j)
+    // A token slot keeps its token (format note 23): no local step
+    // writes or pushes one.
+    &&& forall|j: int| 0 <= j < k2.len() && (#[trigger] k2[j]) is Token ==> unchanged(p, c, s, s2, k2, j)
     &&& (pinned0(p, m) && arity(p, m) >= 1 ==> k2.len() >= 1 && s2.stack[b] == s.stack[b])
     &&& heap_ext(p, s.heap, s2.heap)
     &&& heap_ok(p, c, s2.heap)
@@ -169,8 +169,6 @@ pub proof fn lemma_local_same_below(p: Program2, c: Cert, s: State2, s2: State2,
     requires
         wf_task(p, c, s), top_i(s) > 0,
         s2.frames == s.frames,
-        s2.tries == s.tries,
-        s2.fins == s.fins,
         s2.stack.len() >= fbase(s, top_i(s)),
         forall|x: int| 0 <= x < fbase(s, top_i(s)) ==> #[trigger] s2.stack[x] == s.stack[x],
         heap_grows(s.heap, s2.heap),
@@ -178,9 +176,7 @@ pub proof fn lemma_local_same_below(p: Program2, c: Cert, s: State2, s2: State2,
 {
     lemma_task_bases(p, c, s);
     let t = top_i(s);
-    assert forall|g: int| 0 <= g <= t - 1 implies #[trigger] try_frame(s2, g) == try_frame(s, g) by {
-        assert(s2.tries == s.tries);
-    }
+    assert forall|g: int| 0 <= g <= t - 1 implies #[trigger] try_frame(s2, g) == try_frame(s, g) by {}
     assert(bases_ok(s2)) by {
         assert forall|fi: int| 0 <= fi && fi + 1 < s2.frames.len() implies #[trigger] base_step(s2, fi) by {
             assert(base_step(s, fi));
@@ -268,13 +264,23 @@ pub proof fn lemma_conf_top_unchanged(p: Program2, c: Cert, trusted: bool, s: St
         },
         Kind::Token => {
             match v {
-                Value::Smi(kk) => if v != null2(p) {
-                    assert(s2.fins[kk as int] == s.fins[kk as int]);
-                    match s.fins[kk as int].resume {
-                        Resume::Branch(f, bci, hb) => {
-                            if (f as int) < t {
-                                lemma_kinds_below(p, c, s, s2, f as int, t - 1);
-                            } else {
+                Value::Token(second, d, g, hh) => {
+                    assert(k2.subrange(0, j) == k.subrange(0, j));
+                    assert(k2[j - 1] == k2.subrange(0, j)[j - 1]);
+                    assert(k[j - 1] == k.subrange(0, j)[j - 1]);
+                    if second {
+                        // The first word below keeps its slot and its token.
+                        let va = s.stack[b + j - 1];
+                        assert(conf(p, c, s, t, k, j - 1, k[j - 1], va));
+                        assert(k[j - 1] is Token);
+                        assert(unchanged(p, c, s, s2, k2, j - 1));
+                        assert(s2.stack[b + j - 1] == va);
+                    } else {
+                        match d {
+                            Pending::Branch(f, bci, hb) => {
+                                if (f as int) < t {
+                                    lemma_kinds_below(p, c, s, s2, f as int, t - 1);
+                                } else {
                                 let tt = map_at(c, m, bci as int - info(p, m).entry)->0;
                                 assert(k2.subrange(0, j) == k.subrange(0, j));
                                 assert(frame_kinds_from(p, c, s, t, k, f as int) == k);
@@ -282,10 +288,10 @@ pub proof fn lemma_conf_top_unchanged(p: Program2, c: Cert, trusted: bool, s: St
                                 assert(tt == k.subrange(0, tt.len() as int));
                                 assert(k2.subrange(0, tt.len() as int) =~= k2.subrange(0, j).subrange(0, tt.len() as int));
                                 assert(k.subrange(0, tt.len() as int) =~= k.subrange(0, j).subrange(0, tt.len() as int));
-                            }
-
-                        },
-                        _ => {},
+                                }
+                            },
+                            _ => {},
+                        }
                     }
                 },
                 _ => {},
@@ -363,10 +369,6 @@ pub proof fn lemma_local_step(p: Program2, c: Cert, trusted: bool, s: State2, s2
         } else {
             lemma_local_top(p, c, trusted, s, s2, k2);
         }
-    }
-    assert forall|x: int| 0 <= x < s2.tries.len() implies #[trigger] try_ok(s2, x) by {
-        reveal(wf_task);
-        assert(try_ok(s, x));
     }
     lemma_running_heap(p, s, s2);
     reveal(wf_task);

@@ -14,7 +14,8 @@
 // directory of this repository.
 
 //! Calls and returns, verified: pushing and popping frame records
-//! (`spec::call`, `spec::return_from`), the receiver check of static calls,
+//! (`spec::call`, `spec::try_call`, `spec::return_from`, entering finally
+//! code), the receiver check of static calls,
 //! virtual dispatch (`spec::find_method`). Failures raise through the
 //! verified raise (raise.rs).
 
@@ -23,14 +24,14 @@ use crate::layout::*;
 use crate::abs::*;
 use crate::exec::*;
 use crate::step::*;
-use toit_spec::types::{Value, Frame, Handler, Fin, HeapObj};
+use toit_spec::types::{Value, Frame, HeapObj, Unwind};
 use toit_spec::v2::types::{State2, Program2, Outcome2, Halt2};
 #[cfg(verus_keep_ghost)]
 use toit_spec::v2::spec as sp;
 #[cfg(verus_keep_ghost)]
 use toit_spec::v2::types::{p1, as1};
 #[cfg(verus_keep_ghost)]
-use toit_spec::v2::sound::{wf, try_ok, bases_ok, step_ok, outcome_ok};
+use toit_spec::v2::sound::{wf, bases_ok, base_step, step_ok, outcome_ok};
 #[cfg(verus_keep_ghost)]
 use toit_spec::v2::verifier::accepts;
 #[cfg(verus_keep_ghost)]
@@ -42,17 +43,17 @@ verus! {
 // Frame records.
 
 /// Writing a new frame record above the existing ones.
-pub proof fn lemma_frames_push(mem: Seq<usize>, mem2: Seq<usize>, frames: Seq<Frame>, tries: Seq<Handler>, fr: Frame)
+pub proof fn lemma_frames_push(mem: Seq<usize>, mem2: Seq<usize>, frames: Seq<Frame>, fr: Frame)
     requires
-        frames_rel(mem, frames, tries),
+        frames_rel(mem, frames),
         mem2.len() == mem.len(),
         FRAME_WORDS * (frames.len() + 1) <= mem.len(),
         forall|i: int| 0 <= i < FRAME_WORDS * frames.len() ==> #[trigger] mem2[i] == mem[i],
         rec(mem2, frames.len() as int, FRAME_METHOD) == fr.method,
         rec(mem2, frames.len() as int, FRAME_RET) == fr.ret,
         rec(mem2, frames.len() as int, FRAME_BASE) == fr.base,
-        rec(mem2, frames.len() as int, FRAME_HANDLER) == 0,
-    ensures frames_rel(mem2, frames.push(fr), tries),
+        rec(mem2, frames.len() as int, FRAME_HANDLER) == handler_word(fr),
+    ensures frames_rel(mem2, frames.push(fr)),
 {
     let n = frames.len() as int;
     let f2 = frames.push(fr);
@@ -73,26 +74,18 @@ pub proof fn lemma_frames_push(mem: Seq<usize>, mem2: Seq<usize>, frames: Seq<Fr
     assert forall|fi: int| 0 <= fi < f2.len() implies #[trigger] rec(mem2, fi, FRAME_BASE) == f2[fi].base by {
         if fi < n { assert(f2[fi] == frames[fi]); assert(rec(mem2, fi, FRAME_METHOD) == rec(mem, fi, FRAME_METHOD)); }
     }
-    assert forall|x: int| 0 <= x < tries.len() implies
-        rec(mem2, (#[trigger] tries[x]).frame as int, FRAME_HANDLER) == handler_word(tries[x]) by {
-        assert(rec(mem2, tries[x].frame as int, FRAME_HANDLER) == rec(mem, tries[x].frame as int, FRAME_HANDLER));
-    }
-    assert forall|fi: int| 0 <= fi < f2.len() && #[trigger] rec(mem2, fi, FRAME_HANDLER) != 0
-            implies exists|x: int| 0 <= x < tries.len() && tries[x].frame == fi by {
-        assert(rec(mem2, fi, FRAME_HANDLER) == rec(mem, fi, FRAME_HANDLER));
+    assert forall|fi: int| 0 <= fi < f2.len() implies #[trigger] rec(mem2, fi, FRAME_HANDLER) == handler_word(f2[fi]) by {
+        if fi < n { assert(f2[fi] == frames[fi]); assert(rec(mem2, fi, FRAME_METHOD) == rec(mem, fi, FRAME_METHOD)); }
     }
 }
 
-/// Removing the top frame record (no handler belongs to it).
-pub proof fn lemma_frames_pop(mem: Seq<usize>, frames: Seq<Frame>, tries: Seq<Handler>)
+/// Removing the top frame record.
+pub proof fn lemma_frames_pop(mem: Seq<usize>, frames: Seq<Frame>)
     requires
-        frames_rel(mem, frames, tries),
+        frames_rel(mem, frames),
         frames.len() > 0,
-        forall|x: int| 0 <= x < tries.len() ==> (#[trigger] tries[x]).frame + 1 < frames.len(),
-        forall|x: int, y: int| 0 <= x < y < tries.len() ==> (#[trigger] tries[x]).frame < (#[trigger] tries[y]).frame,
-    ensures frames_rel(mem, frames.drop_last(), tries),
+    ensures frames_rel(mem, frames.drop_last()),
 {
-    lemma_tries_len(tries, frames.len() - 1);
     let f2 = frames.drop_last();
     let n = f2.len() as int;
     assert forall|fi: int| 0 <= fi < n implies #[trigger] rec(mem, fi, FRAME_METHOD) == f2[fi].method by {
@@ -107,130 +100,21 @@ pub proof fn lemma_frames_pop(mem: Seq<usize>, frames: Seq<Frame>, tries: Seq<Ha
         assert(f2[fi] == frames[fi]);
         assert(rec(mem, fi, FRAME_BASE) == frames[fi].base);
     }
-    assert forall|x: int| 0 <= x < tries.len() implies {
-        &&& (#[trigger] tries[x]).frame < f2.len()
-        &&& 0 < tries[x].height < 0x1_0000_0000
-        &&& tries[x].bci < 0x1_0000_0000
-        &&& rec(mem, tries[x].frame as int, FRAME_HANDLER) == handler_word(tries[x])
-    } by {}
-    assert forall|fi: int| 0 <= fi < n && #[trigger] rec(mem, fi, FRAME_HANDLER) != 0
-            implies exists|x: int| 0 <= x < tries.len() && tries[x].frame == fi by {}
+    assert forall|fi: int| 0 <= fi < n implies #[trigger] rec(mem, fi, FRAME_HANDLER) == handler_word(f2[fi]) by {
+        assert(f2[fi] == frames[fi]);
+        assert(rec(mem, fi, FRAME_HANDLER) == handler_word(frames[fi]));
+    }
     assert(FRAME_WORDS * f2.len() <= mem.len());
 }
 
-/// Cutting finally records never adds any.
-pub proof fn lemma_cut_fins_len(fins: Seq<toit_spec::types::Fin>, g: int, lim: int)
-    ensures sp::cut_fins(fins, g, lim).len() <= fins.len(),
-    decreases fins.len(),
-{
-    if fins.len() > 0 && (fins.last().frame as int > g || (fins.last().frame as int == g && fins.last().height as int >= lim)) {
-        lemma_cut_fins_len(fins.drop_last(), g, lim);
-    }
-}
-
-/// Handlers of distinct frames below `m`: at most `m` of them.
-pub proof fn lemma_tries_len(tries: Seq<Handler>, m: int)
-    requires
-        m >= 0,
-        forall|x: int| 0 <= x < tries.len() ==> (#[trigger] tries[x]).frame < m,
-        forall|x: int, y: int| 0 <= x < y < tries.len() ==> (#[trigger] tries[x]).frame < (#[trigger] tries[y]).frame,
-    ensures tries.len() <= m,
-{
-    if tries.len() > 0 {
-        lemma_tries_frame(tries, tries.len() - 1);
-        assert(tries[tries.len() - 1].frame < m);
-    }
-}
-
-proof fn lemma_tries_frame(tries: Seq<Handler>, x: int)
-    requires
-        0 <= x < tries.len(),
-        forall|x: int, y: int| 0 <= x < y < tries.len() ==> (#[trigger] tries[x]).frame < (#[trigger] tries[y]).frame,
-    ensures tries[x].frame >= x,
-    decreases x,
-{
-    if x > 0 {
-        lemma_tries_frame(tries, x - 1);
-        assert(tries[x - 1].frame < tries[x].frame);
-    }
-}
-
-/// The handlers belong to frames up to the top one, in increasing order.
-pub open spec fn tries_ok(g: State2) -> bool {
-    &&& forall|x: int| 0 <= x < g.tries.len() ==> (#[trigger] g.tries[x]).frame + 1 <= g.frames.len()
-    &&& forall|x: int, y: int| 0 <= x < y < g.tries.len() ==> (#[trigger] g.tries[x]).frame < (#[trigger] g.tries[y]).frame
-}
-
-/// A handler of a frame below the top belongs to a frame suspended in its
-/// TRY: the frame above is the try block, whose return bci and base are the
-/// handler's bci and height (`sound::try_ok`). The frame record keeps only
-/// the handler's height (format 3, note 22); its bci is read from the try
-/// block's record.
-pub open spec fn callees_ok(g: State2) -> bool {
-    forall|x: int| 0 <= x < g.tries.len() && (#[trigger] g.tries[x]).frame + 1 < g.frames.len() ==> {
-        &&& g.frames[g.tries[x].frame + 1].ret == g.tries[x].bci
-        &&& g.frames[g.tries[x].frame + 1].base == g.tries[x].height
-    }
-}
-
-/// The shape of the frames an unwinding keeps while it pops frames: frames
-/// with valid methods and ordered bases, handlers of frames up to the top,
-/// each below the top with its try block above it.
-pub open spec fn shape0(p: &Program, g: State2) -> bool {
+/// The shape of the frames a return and an unwinding rely on (implied by
+/// `wf`): frames with valid methods and ordered bases; the bottom frame is
+/// not a try block.
+pub open spec fn shape_ok(p: &Program, g: State2) -> bool {
     &&& g.frames.len() > 0
     &&& bases_ok(g)
-    &&& tries_ok(g)
-    &&& callees_ok(g)
+    &&& !g.frames[0].handler
     &&& forall|fi: int| 0 <= fi < g.frames.len() ==> sp::valid_method(p.ap@, (#[trigger] g.frames[fi]).method as int)
-}
-
-/// The shape of the frames a return and an unwinding rely on (implied by
-/// `wf`): `shape0`, and the top frame has no handler (it is not suspended
-/// in a TRY), so that the bci of every handler is in the record above it.
-pub open spec fn shape_ok(p: &Program, g: State2) -> bool {
-    &&& shape0(p, g)
-    &&& !sp::has_handler(g)
-}
-
-/// Popping the top frame (without a handler) keeps `callees_ok`; the new top
-/// frame's handler, if any, has the popped frame's return bci and base as
-/// its bci and height.
-pub proof fn lemma_pop_callees(g: State2)
-    requires callees_ok(g), tries_ok(g), g.frames.len() > 1, !sp::has_handler(g),
-    ensures
-        callees_ok(sp::pop_frame(g)),
-        sp::has_handler(sp::pop_frame(g)) ==>
-            g.frames.last().ret == sp::pop_frame(g).tries.last().bci
-            && g.frames.last().base == sp::pop_frame(g).tries.last().height,
-{
-    let g1 = sp::pop_frame(g);
-    assert forall|x: int| 0 <= x < g1.tries.len() && (#[trigger] g1.tries[x]).frame + 1 < g1.frames.len() implies {
-        &&& g1.frames[g1.tries[x].frame + 1].ret == g1.tries[x].bci
-        &&& g1.frames[g1.tries[x].frame + 1].base == g1.tries[x].height
-    } by {
-        assert(g1.tries[x] == g.tries[x]);
-        assert(g1.frames[g1.tries[x].frame + 1] == g.frames[g.tries[x].frame + 1]);
-    }
-    if sp::has_handler(g1) {
-        let x = g1.tries.len() - 1;
-        assert(g1.tries[x] == g1.tries.last());
-        assert(g.tries[x].frame + 1 < g.frames.len());
-        assert(g.frames[g.tries[x].frame + 1] == g.frames.last());
-    }
-}
-
-/// Without a handler of the top frame, the handlers belong to frames below it.
-pub proof fn lemma_no_handler(g: State2)
-    requires tries_ok(g), g.frames.len() > 0, !sp::has_handler(g),
-    ensures forall|x: int| 0 <= x < g.tries.len() ==> (#[trigger] g.tries[x]).frame + 1 < g.frames.len(),
-{
-    assert forall|x: int| 0 <= x < g.tries.len() implies (#[trigger] g.tries[x]).frame + 1 < g.frames.len() by {
-        let l = g.tries.len() - 1;
-        assert(g.tries[l] == g.tries.last());
-        if x < l {
-            assert(g.tries[x].frame < g.tries[l].frame);
-        }
-    }
 }
 
 /// A dispatch-table entry of an accepted program is -1 or a method or an
@@ -257,19 +141,7 @@ pub proof fn lemma_shape(p: &Program, g: State2)
     requires accepts(p.ap@, p.cert@, p.trusted@), wf(p.ap@, p.cert@, g),
     ensures shape_ok(p, g),
 {
-    lemma_tries(p, g);
-    if sp::has_handler(g) {
-        let x = g.tries.len() - 1;
-        assert(g.tries[x] == g.tries.last());
-    }
-    assert forall|x: int| 0 <= x < g.tries.len() && (#[trigger] g.tries[x]).frame + 1 < g.frames.len() implies {
-        &&& g.frames[g.tries[x].frame + 1].ret == g.tries[x].bci
-        &&& g.frames[g.tries[x].frame + 1].base == g.tries[x].height
-    } by {
-        reveal(wf);
-        toit_spec::v2::sound_local::lemma_task_basics(p.ap@, p.cert@, g);
-        assert(try_ok(g, x));
-    }
+    lemma_frames_wf(p, g);
     assert forall|fi: int| 0 <= fi < g.frames.len() implies sp::valid_method(p.ap@, (#[trigger] g.frames[fi]).method as int) by {
         reveal(wf);
         reveal(toit_spec::v2::sound::wf_task);
@@ -278,66 +150,17 @@ pub proof fn lemma_shape(p: &Program, g: State2)
     }
 }
 
-/// In a well-formed state the handlers belong to frames below the top,
-/// in increasing order.
-pub proof fn lemma_tries(p: &Program, g: State2)
+/// In a well-formed state there are frames with ordered bases, and the
+/// bottom frame is not a try block.
+pub proof fn lemma_frames_wf(p: &Program, g: State2)
     requires accepts(p.ap@, p.cert@, p.trusted@), wf(p.ap@, p.cert@, g),
     ensures
         g.frames.len() > 0,
         bases_ok(g),
-        forall|x: int| 0 <= x < g.tries.len() ==> (#[trigger] g.tries[x]).frame + 1 < g.frames.len(),
-        forall|x: int, y: int| 0 <= x < y < g.tries.len() ==> (#[trigger] g.tries[x]).frame < (#[trigger] g.tries[y]).frame,
+        !g.frames[0].handler,
 {
-    let ap = p.ap@;
-    let c = p.cert@;
     reveal(wf);
-    toit_spec::v2::sound_local::lemma_task_basics(ap, c, g);
-    assert forall|x: int| 0 <= x < g.tries.len() implies (#[trigger] g.tries[x]).frame + 1 < g.frames.len() by {
-        assert(try_ok(g, x));
-    }
-    assert forall|x: int, y: int| 0 <= x < y < g.tries.len()
-        implies (#[trigger] g.tries[x]).frame < (#[trigger] g.tries[y]).frame by {
-        lemma_tries_sorted(g, x, y);
-    }
-}
-
-proof fn lemma_tries_sorted(g: State2, x: int, y: int)
-    requires 0 <= x < y < g.tries.len(), forall|z: int| 0 <= z < g.tries.len() ==> #[trigger] try_ok(g, z),
-    ensures g.tries[x].frame < g.tries[y].frame,
-    decreases y - x,
-{
-    assert(try_ok(g, y));
-    if x + 1 < y {
-        lemma_tries_sorted(g, x, y - 1);
-    }
-}
-
-/// The handler word of the top frame of `frames` says whether its handler
-/// is the last one (`spec::has_handler`), when no handler belongs to a
-/// frame above it and the handlers are sorted.
-pub proof fn lemma_handler_word(mem: Seq<usize>, frames: Seq<Frame>, tries: Seq<Handler>)
-    requires
-        frames_rel(mem, frames, tries),
-        frames.len() > 0,
-        forall|x: int| 0 <= x < tries.len() ==> (#[trigger] tries[x]).frame + 1 <= frames.len(),
-        forall|x: int, y: int| 0 <= x < y < tries.len() ==> (#[trigger] tries[x]).frame < (#[trigger] tries[y]).frame,
-    ensures
-        (rec(mem, frames.len() - 1, FRAME_HANDLER) != 0)
-            == (tries.len() > 0 && tries.last().frame == frames.len() - 1),
-        tries.len() > 0 && tries.last().frame == frames.len() - 1 ==>
-            rec(mem, frames.len() - 1, FRAME_HANDLER) == handler_word(tries.last()),
-{
-    let fi = frames.len() - 1;
-    if rec(mem, fi, FRAME_HANDLER) != 0 {
-        let x = choose|x: int| 0 <= x < tries.len() && tries[x].frame == fi;
-        if x < tries.len() - 1 {
-            assert(tries[x].frame < tries[tries.len() - 1].frame);
-        }
-    }
-    if tries.len() > 0 && tries.last().frame == fi {
-        let h = tries.last();
-        assert(tries[tries.len() - 1] == h);
-    }
+    reveal(toit_spec::v2::sound::wf_task);
 }
 
 // ---------------------------------------------------------------------------
@@ -415,24 +238,47 @@ impl Machine {
     // -----------------------------------------------------------------------
     // Frames.
 
-    /// `spec::call`: a frame for `target`, whose arguments are the top
-    /// `arity` slots, returning to `ret`; then the preemption point (as
-    /// format 1, at the callee's entry). The finally records (rare: only
-    /// during an unwinding's finally code) move up to make room for the
-    /// frame record.
+    /// `spec::call` (`handler == 0`) or `spec::try_call` (`handler == 1`, a
+    /// try block): a frame for `target`, whose arguments are the top `arity`
+    /// slots, returning to `ret`; then the preemption point (as format 1,
+    /// at the callee's entry).
     #[inline(never)]
-    pub fn push_call(&mut self, env: &Env, target: usize, ret: usize) -> (r: Ctl)
+    pub fn push_call(&mut self, env: &Env, target: usize, ret: usize, handler: usize) -> (r: Ctl)
         requires
             old(self).refines(&env.p),
             !(sp::call(env.p.ap@, old(self).g@, target as int, ret as int) is Stuck),
-            old(self).top - old(self).rtop >= FRAME_WORDS,
+            old(self).top - old(self).ftop >= FRAME_WORDS,
+            handler <= 1,
         ensures
             r == Ctl::Next || r == Ctl::Exit(RESULT_PREEMPTED as u32, 0),
             final(self).refines(&env.p),
-            sp::call(env.p.ap@, old(self).g@, target as int, ret as int) == Outcome2::Next(final(self).g@),
+            (if handler == 0 { sp::call(env.p.ap@, old(self).g@, target as int, ret as int) }
+             else { sp::try_call(env.p.ap@, old(self).g@, target as int, ret as int) }) == Outcome2::Next(final(self).g@),
             final(self).len == old(self).len,
     {
-        let p = &env.p;
+        self.push_frame(&env.p, target, ret, handler);
+        if env.pre.requested() {
+            env.pre.clear();
+            return Ctl::Exit(RESULT_PREEMPTED as u32, 0);
+        }
+        Ctl::Next
+    }
+
+    /// `push_call` without the preemption point.
+    #[inline(always)]
+    pub fn push_frame(&mut self, p: &Program, target: usize, ret: usize, handler: usize)
+        requires
+            old(self).refines(p),
+            !(sp::call(p.ap@, old(self).g@, target as int, ret as int) is Stuck),
+            old(self).top - old(self).ftop >= FRAME_WORDS,
+            handler <= 1,
+        ensures
+            final(self).refines(p),
+            (if handler == 0 { sp::call(p.ap@, old(self).g@, target as int, ret as int) }
+             else { sp::try_call(p.ap@, old(self).g@, target as int, ret as int) }) == Outcome2::Next(final(self).g@),
+            final(self).len == old(self).len,
+            final(self).addr() == old(self).addr(),
+    {
         let ghost m0 = *self;
         let ghost g0 = self.g@;
         proof { self.lemma_frame(p); }
@@ -441,205 +287,120 @@ impl Machine {
         let height = self.len - self.top;
         let base = height - arity;
         let f = self.ftop;
-        let e = self.rtop;
-        if e > f {
-            proof { crate::view::lemma_records_chunk(g0.fins.len() as int); assert(e - f == crate::view::RECORD_CHUNK * g0.fins.len()); }
-            self.mem.move_records(f, f + FRAME_WORDS, e - f);
-        }
-        let ghost mem1 = self.mem@;
         self.mem.write(f + FRAME_METHOD, target);
         self.mem.write(f + FRAME_RET, ret);
         self.mem.write(f + FRAME_BASE, base);
-        self.mem.write(f + FRAME_HANDLER, 0);
+        self.mem.write(f + FRAME_HANDLER, handler);
         self.ftop = f + FRAME_WORDS;
-        self.rtop = e + FRAME_WORDS;
         self.method = target;
         self.base = base;
         self.lim = self.len - base;
         self.bci = info.entry as usize;
-        let ghost fr = Frame { method: target, ret: ret, base: base };
+        let ghost fr = Frame { method: target, ret: ret, base: base, handler: handler == 1 };
         let ghost g1 = State2 { frames: g0.frames.push(fr), bci: info.entry as usize, ..g0 };
         self.g = Ghost(g1);
         proof {
             assert(p.ap@.methods[target as int] == method_info(p.minfo(target as int), p.max_height));
             let n = g0.frames.len() as int;
             assert(f == FRAME_WORDS * n);
-            // The records moved up by one frame record; the rest is unchanged.
-            assert forall|i: int| 0 <= i < self.mem@.len() && !(f <= i < e + FRAME_WORDS)
-                implies #[trigger] mem1[i] == m0.mem@[i] by {}
-            assert forall|i: int| f + FRAME_WORDS <= i < e + FRAME_WORDS
-                implies #[trigger] mem1[i] == m0.mem@[i - FRAME_WORDS] by {}
-            assert forall|i: int| 0 <= i < FRAME_WORDS * n implies #[trigger] self.mem@[i] == m0.mem@[i] by {
-                assert(mem1[i] == m0.mem@[i]);
-            }
-            assert forall|i: int| 0 <= i < FIN_WORDS * g0.fins.len()
-                implies #[trigger] self.mem@[f + FRAME_WORDS + i] == m0.mem@[f + i] by {
-                assert(mem1[f + FRAME_WORDS + i] == m0.mem@[f + FRAME_WORDS + i - FRAME_WORDS]);
-            }
-            lemma_fins_rel_move(m0.mem@, self.mem@, f as int, (f + FRAME_WORDS) as int, g0.fins, g0.fins.len() as int);
-            assert(g0.fins.subrange(0, g0.fins.len() as int) =~= g0.fins);
-            assert forall|i: int| self.top <= i < self.len implies #[trigger] self.mem@[i] == m0.mem@[i] by {
-                assert(mem1[i] == m0.mem@[i]);
-            }
+            assert forall|i: int| 0 <= i < FRAME_WORDS * n implies #[trigger] self.mem@[i] == m0.mem@[i] by {}
+            assert forall|i: int| self.top <= i < self.len implies #[trigger] self.mem@[i] == m0.mem@[i] by {}
             assert(rec(self.mem@, n, FRAME_METHOD) == target);
             assert(rec(self.mem@, n, FRAME_RET) == ret);
             assert(rec(self.mem@, n, FRAME_BASE) == base);
-            assert(rec(self.mem@, n, FRAME_HANDLER) == 0);
-            lemma_frames_push(m0.mem@, self.mem@, g0.frames, g0.tries, fr);
+            assert(rec(self.mem@, n, FRAME_HANDLER) == handler_word(fr));
+            lemma_frames_push(m0.mem@, self.mem@, g0.frames, fr);
             assert(self.words() =~= m0.words());
             assert(g1.frames.last() == fr);
+            let c1 = sp::call(p.ap@, g0, target as int, ret as int);
+            assert(c1 == Outcome2::Next(State2 { frames: g0.frames.push(Frame { handler: false, ..fr }), ..g1 }));
+            if handler == 1 {
+                assert(sp::flag_top(c1->Next_0).frames =~= g1.frames);
+                assert(sp::flag_top(c1->Next_0) == g1);
+            } else {
+                assert(fr == Frame { handler: false, ..fr });
+            }
         }
-        if env.pre.requested() {
-            env.pre.clear();
-            return Ctl::Exit(RESULT_PREEMPTED as u32, 0);
-        }
-        Ctl::Next
     }
 
-    /// The trailing finally record `k - 1` (records `[ftop, ftop + 4k)`) is
-    /// dropped by `cut_fins(_, g, lim)`.
+    /// Pops the top frame (`spec::pop_frame`): the caller becomes the top
+    /// frame. Returns the popped frame's return bci, base and handler word.
     #[inline(always)]
-    pub fn fin_cut(&self, e: usize, g: usize, lim: usize, Ghost(fins): Ghost<Seq<Fin>>, Ghost(k): Ghost<int>) -> (r: bool)
+    pub fn pop_frame_v(&mut self, p: &Program) -> (r: (usize, usize, usize))
         requires
-            self.stack_ok(),
-            fins_rel(self.mem@, self.ftop as int, fins),
-            0 < k <= fins.len(),
-            e == self.ftop + FIN_WORDS * k,
+            old(self).refines(p),
+            shape_ok(p, old(self).g@),
+            old(self).g@.frames.len() > 1,
         ensures
-            r == (fins[k - 1].frame as int > g as int
-                || (fins[k - 1].frame as int == g as int && fins[k - 1].height as int >= lim as int)),
-    {
-        proof {
-            assert(fin_rel(self.mem@, self.ftop as int, k - 1, fins[k - 1]));
-            lemma_fin_index(self.ftop as int, fins.len() as int, k - 1, FIN_HEIGHT);
-        }
-        let frame = self.mem.read(e - FIN_WORDS + FIN_FRAME);
-        frame > g || (frame == g && self.mem.read(e - FIN_WORDS + FIN_HEIGHT) >= lim)
-    }
-
-    /// `spec::cut_fins(fins, g, lim)`: drops trailing finally records (only
-    /// `rtop` changes).
-    #[inline(always)]
-    pub fn cut_records(&mut self, g: usize, lim: usize, Ghost(fins): Ghost<Seq<Fin>>)
-        requires
-            old(self).stack_ok(),
-            old(self).rtop == old(self).ftop + FIN_WORDS * fins.len(),
-            fins_rel(old(self).mem@, old(self).ftop as int, fins),
-        ensures
-            final(self).rtop == final(self).ftop + FIN_WORDS * sp::cut_fins(fins, g as int, lim as int).len(),
-            final(self).rtop <= old(self).rtop,
-            sp::cut_fins(fins, g as int, lim as int).len() <= fins.len(),
-            fins_rel(final(self).mem@, final(self).ftop as int, sp::cut_fins(fins, g as int, lim as int)),
-            final(self).stack_ok(),
-            final(self).mem@ == old(self).mem@,
-            final(self).ftop == old(self).ftop,
-            final(self).top == old(self).top,
+            final(self).refines(p),
+            final(self).g@ == sp::pop_frame(old(self).g@),
+            shape_ok(p, final(self).g@),
+            final(self).addr() == old(self).addr(),
             final(self).len == old(self).len,
             final(self).bci == old(self).bci,
-            final(self).base == old(self).base,
-            final(self).lim == old(self).lim,
-            final(self).method == old(self).method,
-            final(self).globals == old(self).globals,
-            final(self).heap == old(self).heap,
-            final(self).g == old(self).g,
+            final(self).top >= old(self).top,
+            final(self).ftop + FRAME_WORDS == old(self).ftop,
+            r.0 == sp::top(old(self).g@).ret,
+            r.1 == sp::top(old(self).g@).base,
+            r.2 == handler_word(sp::top(old(self).g@)),
     {
         let ghost m0 = *self;
-        let ftop = self.ftop;
-        let mut e = self.rtop;
-        let ghost mut k: int = fins.len() as int;
-        proof { assert(fins.subrange(0, k) =~= fins); }
-        while e > ftop && self.fin_cut(e, g, lim, Ghost(fins), Ghost(k))
-            invariant
-                *self == m0,
-                ftop == m0.ftop,
-                m0.stack_ok(),
-                fins_rel(m0.mem@, ftop as int, fins),
-                0 <= k <= fins.len(),
-                e == ftop + FIN_WORDS * k,
-                sp::cut_fins(fins, g as int, lim as int) == sp::cut_fins(fins.subrange(0, k), g as int, lim as int),
-            decreases e,
-        {
-            proof {
-                let fs = fins.subrange(0, k);
-                assert(fs.last() == fins[k - 1]);
-                assert(fs.drop_last() =~= fins.subrange(0, k - 1));
-            }
-            e = e - FIN_WORDS;
-            proof { k = k - 1; }
-        }
+        let ghost g0 = self.g@;
+        let ghost n = g0.frames.len() as int;
+        proof { self.lemma_frame(p); }
+        let r = self.ftop - FRAME_WORDS;
+        let c = r - FRAME_WORDS;
+        let ret = self.mem.read(r + FRAME_RET);
+        let handler = self.mem.read(r + FRAME_HANDLER);
+        let fbase = self.base;
+        let method = self.mem.read(c + FRAME_METHOD);
+        let base = self.mem.read(c + FRAME_BASE);
         proof {
-            let fs = fins.subrange(0, k);
-            if k > 0 {
-                assert(fs.last() == fins[k - 1]);
-            }
-            assert(sp::cut_fins(fs, g as int, lim as int) == fs);
-            lemma_fins_rel_move(m0.mem@, m0.mem@, ftop as int, ftop as int, fins, k);
-        }
-        self.rtop = e;
-    }
-
-    /// Pops the top frame's record and its finally records (`fins_popped`,
-    /// the last ones); the remaining finally records move down over the
-    /// frame record.
-    #[inline(always)]
-    pub fn pop_records(&mut self, Ghost(g): Ghost<State2>)
-        requires
-            old(self).stack_ok(),
-            g.frames.len() >= 1,
-            old(self).ftop == FRAME_WORDS * g.frames.len(),
-            old(self).rtop == old(self).ftop + FIN_WORDS * g.fins.len(),
-            fins_rel(old(self).mem@, old(self).ftop as int, g.fins),
-        ensures
-            final(self).ftop == old(self).ftop - FRAME_WORDS,
-            final(self).rtop == final(self).ftop + FIN_WORDS * sp::fins_popped(g).len(),
-            final(self).rtop + FRAME_WORDS <= old(self).rtop,
-            fins_rel(final(self).mem@, final(self).ftop as int, sp::fins_popped(g)),
-            final(self).mem@.len() == old(self).mem@.len(),
-            forall|i: int| 0 <= i < final(self).ftop ==> #[trigger] final(self).mem@[i] == old(self).mem@[i],
-            forall|i: int| old(self).rtop <= i < old(self).mem@.len() ==> #[trigger] final(self).mem@[i] == old(self).mem@[i],
-            final(self).top == old(self).top,
-            final(self).len == old(self).len,
-            final(self).bci == old(self).bci,
-            final(self).base == old(self).base,
-            final(self).lim == old(self).lim,
-            final(self).method == old(self).method,
-            final(self).globals == old(self).globals,
-            final(self).heap == old(self).heap,
-            final(self).g == old(self).g,
-    {
-        let ghost m0 = *self;
-        let ftop = self.ftop;
-        let r = ftop - FRAME_WORDS;
-        proof {
-            assert(r == FRAME_WORDS * (g.frames.len() - 1));
-            assert(r / FRAME_WORDS == g.frames.len() - 1);
-        }
-        self.cut_records(r / FRAME_WORDS, 0, Ghost(g.fins));
-        let e = self.rtop;
-        let ghost k = sp::fins_popped(g).len() as int;
-        let ghost m1 = *self;
-        if e > ftop {
-            proof { crate::view::lemma_records_chunk(k); assert(e - ftop == crate::view::RECORD_CHUNK * k); }
-            self.mem.move_records(ftop, r, e - ftop);
-        }
-        proof {
-            assert forall|i: int| 0 <= i < self.mem@.len() && !(r <= i < e - FRAME_WORDS)
-                implies #[trigger] self.mem@[i] == m0.mem@[i] by {}
-            assert forall|i: int| 0 <= i < FIN_WORDS * k implies #[trigger] self.mem@[r + i] == m1.mem@[ftop + i] by {
-                assert(self.mem@[r + i] == m1.mem@[r + i - r + ftop]);
-            }
-            lemma_fins_rel_move(m1.mem@, self.mem@, ftop as int, r as int, sp::fins_popped(g), k);
-            assert(sp::fins_popped(g).subrange(0, k) =~= sp::fins_popped(g));
+            assert(rec(m0.mem@, n - 1, FRAME_RET) == g0.frames[n - 1].ret);
+            assert(rec(m0.mem@, n - 1, FRAME_HANDLER) == handler_word(g0.frames[n - 1]));
+            assert(rec(m0.mem@, n - 2, FRAME_METHOD) == g0.frames[n - 2].method);
+            assert(rec(m0.mem@, n - 2, FRAME_BASE) == g0.frames[n - 2].base);
+            assert(base_step(g0, n - 2));
         }
         self.ftop = r;
-        self.rtop = e - FRAME_WORDS;
+        self.top = self.len - fbase;
+        self.method = method;
+        self.base = base;
+        self.lim = self.len - base;
+        let ghost g1 = sp::pop_frame(g0);
+        self.g = Ghost(g1);
+        proof {
+            let b = sp::top(g0).base as int;
+            lemma_frames_pop(m0.mem@, g0.frames);
+            lemma_frames_rel_same(m0.mem@, self.mem@, g1.frames);
+            assert forall|i: int| 0 <= i < b implies #[trigger] self.words()[i] == m0.words()[i] by {
+                assert(self.mem@[self.len - 1 - i] == m0.mem@[self.len - 1 - i]);
+            }
+            assert(self.words() =~= m0.words().subrange(0, b));
+            assert(self.words() =~= enc_seq(m0.addr(), g1.stack));
+            assert forall|i: int| 0 <= i < g1.stack.len() implies #[trigger] encodable(m0.addr(), g1.stack[i]) by {
+                assert(g1.stack[i] == g0.stack[i]);
+            }
+            assert(g1.frames.last() == g0.frames[n - 2]);
+            assert(sp::valid_method(p.ap@, g0.frames[n - 2].method as int));
+            assert(self.refines(p));
+            assert forall|fi: int| 0 <= fi && fi + 1 < g1.frames.len() implies #[trigger] base_step(g1, fi) by {
+                assert(base_step(g0, fi));
+            }
+            assert(bases_ok(g1));
+            assert forall|fi: int| 0 <= fi < g1.frames.len() implies
+                sp::valid_method(p.ap@, (#[trigger] g1.frames[fi]).method as int) by {
+                assert(g1.frames[fi] == g0.frames[fi]);
+            }
+            assert(g1.frames[0] == g0.frames[0]);
+            assert(shape_ok(p, g1));
+        }
+        (ret, fbase, handler)
     }
 
     /// `spec::return_from(g, v)` for the result word `w`: pops the top frame
-    /// and its finally records (the last ones), moves the remaining records
-    /// down over the popped frame record and pushes the result; a caller
-    /// suspended in a TRY enters its finally code (`enter_finally` without
-    /// unwinding).
+    /// and pushes the result; a try block enters the finally code of the
+    /// frame below (`enter_finally` without unwinding).
     #[inline(never)]
     pub fn do_return(&mut self, env: &Env, w: usize, Ghost(v): Ghost<Value>) -> (r: Ctl)
         requires
@@ -656,186 +417,99 @@ impl Machine {
         let ghost ap = p.ap@;
         let ghost m0 = *self;
         let ghost g0 = self.g@;
-        proof {
-            self.lemma_frame(p);
-            lemma_no_handler(g0);
-        }
+        proof { self.lemma_frame(p); }
         if self.ftop == FRAME_WORDS {
             env.rt.report(V2_REPORT_TASK_RETURNED, self.bci, 0);
             return Ctl::Exit(RESULT_TERMINATED as u32, 1);
         }
-        let r = self.ftop - FRAME_WORDS;
-        let ret = self.mem.read(r + FRAME_RET);
-        // The caller's frame record.
-        let c = r - FRAME_WORDS;
-        let method = self.mem.read(c + FRAME_METHOD);
-        let base = self.mem.read(c + FRAME_BASE);
-        let handler = self.mem.read(c + FRAME_HANDLER);
-        let ghost n = g0.frames.len() as int;
-        proof {
-            assert(rec(m0.mem@, n - 1, FRAME_RET) == g0.frames[n - 1].ret);
-            assert(rec(m0.mem@, n - 2, FRAME_METHOD) == g0.frames[n - 2].method);
-            assert(rec(m0.mem@, n - 2, FRAME_BASE) == g0.frames[n - 2].base);
-            assert(toit_spec::v2::sound::base_step(g0, n - 2));
+        let (ret, fbase, handler) = self.pop_frame_v(p);
+        if handler != 0 {
+            proof { assert(sp::top(g0).handler); }
+            return self.enter_finally_v(env, fbase, ret, None, Ghost(None));
         }
-        self.pop_records(Ghost(g0));
-        let ghost mem1 = self.mem@;
-        self.top = self.len - self.base;
-        self.method = method;
-        self.base = base;
-        self.lim = self.len - base;
+        let ghost m1 = *self;
+        let ghost g1 = self.g@;
         // Room: the callee's frame record is free now.
         self.top = self.top - 1;
         let t = self.top;
         self.mem.write(t, w);
         self.bci = ret;
-        let ghost g1 = State2 {
+        let ghost g2 = State2 {
             stack: g0.stack.subrange(0, sp::top(g0).base as int).push(v),
             frames: g0.frames.drop_last(),
-            fins: sp::fins_popped(g0),
             bci: sp::top(g0).ret,
             ..g0
         };
-        self.g = Ghost(g1);
+        self.g = Ghost(g2);
         proof {
-            assert(rec(m0.mem@, n - 1, FRAME_RET) == g0.frames[n - 1].ret);
-            assert(rec(m0.mem@, n - 2, FRAME_METHOD) == g0.frames[n - 2].method);
-            assert(rec(m0.mem@, n - 2, FRAME_BASE) == g0.frames[n - 2].base);
-            assert(sp::base(g1) == g0.frames[n - 2].base);
-            assert(toit_spec::v2::sound::base_step(g0, n - 2));
-            lemma_frames_pop(m0.mem@, g0.frames, g0.tries);
-            assert forall|i: int| 0 <= i < FRAME_WORDS * g1.frames.len() implies #[trigger] self.mem@[i] == m0.mem@[i] by {
-                assert(mem1[i] == m0.mem@[i]);
-            }
-            lemma_frames_rel_same(m0.mem@, self.mem@, g1.frames, g1.tries);
-            assert forall|i: int| self.ftop <= i < self.ftop + FIN_WORDS * g1.fins.len()
-                implies #[trigger] self.mem@[i] == mem1[i] by {}
-            lemma_fins_rel_same(mem1, self.mem@, self.ftop as int, g1.fins);
+            assert(!sp::top(g0).handler);
+            assert(self.top >= self.ftop);
+            lemma_frames_rel_same(m1.mem@, self.mem@, g2.frames);
             let b = sp::top(g0).base as int;
-            assert forall|i: int| t < i < self.len implies #[trigger] self.mem@[i] == m0.mem@[i] by {
-                assert(mem1[i] == m0.mem@[i]);
-            }
-            assert(self.words() =~= m0.words().subrange(0, b).push(w));
-            assert(enc_seq(m0.addr(), g1.stack) =~= enc_seq(m0.addr(), g0.stack).subrange(0, b).push(w));
-            assert forall|i: int| 0 <= i < g1.stack.len() implies #[trigger] encodable(m0.addr(), g1.stack[i]) by {
-                if i < b { assert(g1.stack[i] == g0.stack[i]); }
-            }
-            assert(self.method < p.methods@.len()) by {
-                assert(sp::valid_method(ap, g0.frames[n - 2].method as int));
+            assert forall|i: int| t < i < self.len implies #[trigger] self.mem@[i] == m1.mem@[i] by {}
+            assert(self.words() =~= m1.words().push(w));
+            assert(enc_seq(m0.addr(), g2.stack) =~= enc_seq(m0.addr(), g1.stack).push(w));
+            assert forall|i: int| 0 <= i < g2.stack.len() implies #[trigger] encodable(m0.addr(), g2.stack[i]) by {
+                if i < b { assert(g2.stack[i] == g0.stack[i]); }
             }
             assert(self.refines(p));
-        }
-        proof {
-            assert(handler == rec(m0.mem@, n - 2, FRAME_HANDLER));
-            assert(rec(self.mem@, n - 2, FRAME_HANDLER) == handler);
-            lemma_handler_word(self.mem@, g1.frames, g1.tries);
-        }
-        if handler != 0 {
-            proof {
-                // The handler's bci is the try block's return bci (`callees_ok`).
-                let x = g0.tries.len() - 1;
-                assert(g0.tries[x] == g1.tries.last());
-                assert(g0.tries[x].frame + 1 < g0.frames.len());
-                assert(ret == g1.tries.last().bci);
-            }
-            return self.enter_finally_normal(env, handler, ret);
         }
         Ctl::Next
     }
 
-    /// `spec::enter_finally(g, g.tries.last(), None)`: the top frame's handler
-    /// (word `handler`) runs its finally code after a normal completion.
+    /// `spec::enter_finally(g, h, bci, u)`: the top frame (the frame below a
+    /// try block just popped) continues in its finally code at `bci`, the
+    /// object stack cut to `h`, with the value, the two token words of the
+    /// unwinding (`None`: a normal completion) and the reason pushed.
     #[inline(always)]
-    pub fn enter_finally_normal(&mut self, env: &Env, handler: usize, hbci: usize) -> (r: Ctl)
+    pub fn enter_finally_v(&mut self, env: &Env, h: usize, bci: usize, u: Option<crate::unwind::Unw>,
+                         Ghost(gu): Ghost<Option<Unwind>>) -> (r: Ctl)
         requires
             old(self).refines(&env.p),
-            sp::has_handler(old(self).g@),
-            handler == handler_word(old(self).g@.tries.last()),
-            hbci == old(self).g@.tries.last().bci,
-            forall|x: int| 0 <= x < old(self).g@.tries.len() ==>
-                (#[trigger] old(self).g@.tries[x]).frame + 1 <= old(self).g@.frames.len(),
-            forall|x: int, y: int| 0 <= x < y < old(self).g@.tries.len() ==>
-                (#[trigger] old(self).g@.tries[x]).frame < (#[trigger] old(self).g@.tries[y]).frame,
-            !(sp::enter_finally(env.p.ap@, old(self).g@, old(self).g@.tries.last(), None) is Stuck),
+            shape_ok(&env.p, old(self).g@),
+            crate::unwind::unw_opt_rel(old(self).addr(), u, gu),
+            match gu { Some(x) => pending_encodable(sp::pending_of(Some(x))), None => true },
+            !(sp::enter_finally(env.p.ap@, old(self).g@, h as int, bci as int, gu) is Stuck),
         ensures
             r == Ctl::Next || is_limit(r),
             r == Ctl::Next ==> final(self).refines(&env.p)
-                && sp::enter_finally(env.p.ap@, old(self).g@, old(self).g@.tries.last(), None)
-                    == Outcome2::Next(final(self).g@),
+                && sp::enter_finally(env.p.ap@, old(self).g@, h as int, bci as int, gu) == Outcome2::Next(final(self).g@),
             final(self).len == old(self).len,
     {
         let p = &env.p;
         let ghost ap = p.ap@;
         let ghost m0 = *self;
         let ghost g0 = self.g@;
-        let ghost h = g0.tries.last();
+        let ghost addr = self.addr();
+        proof { self.lemma_frame(p); }
+        let ghost d = sp::pending_of(gu);
+        let ghost g = (g0.frames.len() - 1) as usize;
+        let (value, wa, wb, reason) = crate::unwind::token_words(p, u, Ghost(addr), Ghost(gu));
+        self.top = self.len - h;
+        self.bci = bci;
+        let ghost g1 = State2 { stack: g0.stack.subrange(0, h as int), bci: bci, ..g0 };
+        self.g = Ghost(g1);
         proof {
-            self.lemma_frame(p);
-            assert(g0.tries[g0.tries.len() - 1] == h);
-        }
-        let height = handler;
-        let rr = self.ftop - FRAME_WORDS;
-        self.top = self.len - height;
-        self.mem.write(rr + FRAME_HANDLER, 0);
-        self.bci = hbci;
-        let ghost g2 = State2 { stack: g0.stack.subrange(0, height as int), tries: g0.tries.drop_last(), bci: hbci, ..g0 };
-        self.g = Ghost(g2);
-        proof {
-            let n = g0.frames.len() as int;
-            let t2 = g2.tries;
-            let m1 = self.mem@;
-            // The frame records: the top's handler word is cleared with its handler.
-            assert forall|fi: int| 0 <= fi < n implies #[trigger] rec(m1, fi, FRAME_METHOD) == g2.frames[fi].method by {
-                assert(rec(m1, fi, FRAME_METHOD) == rec(m0.mem@, fi, FRAME_METHOD));
-            }
-            assert forall|fi: int| 0 <= fi < n implies #[trigger] rec(m1, fi, FRAME_RET) == g2.frames[fi].ret by {
-                assert(rec(m1, fi, FRAME_RET) == rec(m0.mem@, fi, FRAME_RET));
-            }
-            assert forall|fi: int| 0 <= fi < n implies #[trigger] rec(m1, fi, FRAME_BASE) == g2.frames[fi].base by {
-                assert(rec(m1, fi, FRAME_BASE) == rec(m0.mem@, fi, FRAME_BASE));
-            }
-            assert forall|x: int| 0 <= x < t2.len() implies {
-                &&& (#[trigger] t2[x]).frame < g2.frames.len()
-                &&& 0 < t2[x].height < 0x1_0000_0000
-                &&& t2[x].bci < 0x1_0000_0000
-                &&& rec(m1, t2[x].frame as int, FRAME_HANDLER) == handler_word(t2[x])
-            } by {
-                assert(t2[x] == g0.tries[x]);
-                assert(g0.tries[x].frame < h.frame);
-                assert(rec(m1, t2[x].frame as int, FRAME_HANDLER) == rec(m0.mem@, t2[x].frame as int, FRAME_HANDLER));
-            }
-            assert forall|fi: int| 0 <= fi < n && #[trigger] rec(m1, fi, FRAME_HANDLER) != 0
-                    implies exists|x: int| 0 <= x < t2.len() && t2[x].frame == fi by {
-                assert(fi != n - 1);
-                assert(rec(m1, fi, FRAME_HANDLER) == rec(m0.mem@, fi, FRAME_HANDLER));
-                let x = choose|x: int| 0 <= x < g0.tries.len() && g0.tries[x].frame == fi;
-                assert(x != g0.tries.len() - 1);
-                assert(t2[x] == g0.tries[x]);
-            }
-            assert(frames_rel(m1, g2.frames, g2.tries));
-            assert forall|i: int| self.ftop <= i < self.ftop + FIN_WORDS * g0.fins.len()
-                implies #[trigger] m1[i] == m0.mem@[i] by {}
-            lemma_fins_rel_same(m0.mem@, m1, self.ftop as int, g0.fins);
-            assert(height as int == h.height);
-            assert(h.height <= g0.stack.len());
-            assert forall|i: int| 0 <= i < height implies #[trigger] self.words()[i] == m0.words()[i] by {
+            assert forall|i: int| 0 <= i < h implies #[trigger] self.words()[i] == m0.words()[i] by {
                 assert(self.mem@[self.len - 1 - i] == m0.mem@[self.len - 1 - i]);
             }
-            assert(self.words() =~= m0.words().subrange(0, height as int));
-            assert(self.words() =~= enc_seq(m0.addr(), g2.stack));
-            assert forall|i: int| 0 <= i < g2.stack.len() implies #[trigger] encodable(m0.addr(), g2.stack[i]) by {
-                assert(g2.stack[i] == g0.stack[i]);
+            assert(self.words() =~= m0.words().subrange(0, h as int));
+            assert(self.words() =~= enc_seq(addr, g1.stack));
+            assert forall|i: int| 0 <= i < g1.stack.len() implies #[trigger] encodable(addr, g1.stack[i]) by {
+                assert(g1.stack[i] == g0.stack[i]);
             }
             assert(self.refines(p));
             assert(const_ok(g0.heap, ap.roots[0]));
             lemma_smi_word(-1i64);
+            lemma_smi_word(-2i64);
         }
-        let null = p.null;
-        if !self.push_val(p, null, Ghost(sp::null2(ap))) { return Ctl::Stuck(stuck::LIMIT); }
-        if !self.push_val(p, null, Ghost(sp::null2(ap))) { return Ctl::Stuck(stuck::LIMIT); }
-        let minus1 = smi_of(-1);
-        if !self.push_val(p, minus1, Ghost(Value::Smi(-1i64))) { return Ctl::Stuck(stuck::LIMIT); }
-        proof { assert(toit_spec::spec_common::smi(-1) == Value::Smi(-1i64)); }
+        let ghost va = Value::Token(false, d, g, h);
+        let ghost vb = Value::Token(true, d, g, h);
+        if !self.push_val(p, value, Ghost(sp::value_of(ap, gu))) { return Ctl::Stuck(stuck::LIMIT); }
+        if !self.push_val(p, wa, Ghost(va)) { return Ctl::Stuck(stuck::LIMIT); }
+        if !self.push_val(p, wb, Ghost(vb)) { return Ctl::Stuck(stuck::LIMIT); }
+        if !self.push_val(p, reason, Ghost(toit_spec::spec_common::smi(sp::reason_of(gu)))) { return Ctl::Stuck(stuck::LIMIT); }
+        proof { assert(g == sp::top_index(g0)); }
         Ctl::Next
     }
 }
@@ -865,6 +539,7 @@ pub fn do_invoke_virtual(m: &mut Machine, env: &Env, bci: usize, opcode: u8, sel
     requires
         handler_pre(&env.p, *old(m), bci, opcode),
         toit_spec::v2::prim::grows_stack(opcode),
+        opcode != 97,
         source(env.p.ap@, old(m).g@, sp::invoke_virtual(env.p.ap@, old(m).g@, sel as int, n as int, len as int)),
         -0x8000_0000 <= sel < 0x8000_0000,
         bci + len < 0x1000_0000,
@@ -891,7 +566,7 @@ pub fn do_invoke_virtual(m: &mut Machine, env: &Env, bci: usize, opcode: u8, sel
         },
         VLookup::Found(t) => {
             proof { lemma_source_outcome(p, m0, vo); }
-            let r = m.push_call(env, t, bci + len);
+            let r = m.push_call(env, t, bci + len, 0);
             proof { lemma_outcome_matches(p, m0, *m, r, vo); }
             r
         },
@@ -905,6 +580,7 @@ pub fn fallback_src(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: C
     requires
         handler_pre(&env.p, *old(m), bci, opcode),
         toit_spec::v2::prim::grows_stack(opcode),
+        opcode != 97,
         62 <= opcode <= 79,
         source(env.p.ap@, old(m).g@, sp::operator_fallback(env.p.ap@, old(m).g@, opcode)),
         bci + 1 < 0x1000_0000,

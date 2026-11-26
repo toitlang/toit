@@ -327,14 +327,31 @@ class Program : public FlashAllocation {
   int global_max_stack_height() const { return global_max_stack_height_; }
 
   // The bytecode format of the program: 2 if the bytecodes start with the
-  // format-2 tag "TBC2" (verified/spec/format/README.md), 1 otherwise.
-  // Format-1 programs run on the C++ interpreter (interpreter_run.cc),
-  // format-2 programs on the verified core (interpreter_v2.cc).
+  // verified core's tag "TBC3" (format 3: compiler::V2_TAG in
+  // src/compiler/bytecode_format.h, verified/spec/format/23-format3-try.md),
+  // 1 otherwise. Format-1 programs run on the C++ interpreter
+  // (interpreter_run.cc), format-2 programs on the verified core
+  // (interpreter_v2.cc). "Format 2" names the verified core's format, whose
+  // current version is 3.
   bool is_format2() const {
     return bytecodes.length() >= 4 &&
         bytecodes.data()[0] == 'T' && bytecodes.data()[1] == 'B' &&
-        bytecodes.data()[2] == 'C' && bytecodes.data()[3] == '2';
+        bytecodes.data()[2] == 'C' && bytecodes.data()[3] == '3';
   }
+  // A verified-core image of another format version ("TBC" and a digit
+  // other than 3: TBC1, TBC2, ...). It runs neither on the verified core
+  // nor on the format-1 C++ interpreter: it is refused where programs are
+  // started (ProcessGroup::create, the spawn and launch primitives, the
+  // verifier entry points), with the message of stale_v2_tag_digit's
+  // callers ("bytecode format TBC2 is not supported by this VM; recompile").
+  bool has_stale_v2_tag() const {
+    if (bytecodes.length() < 4) return false;
+    const uint8* tag = bytecodes.data();
+    return tag[0] == 'T' && tag[1] == 'B' && tag[2] == 'C' &&
+        '0' <= tag[3] && tag[3] <= '9' && tag[3] != '3';
+  }
+  // The version digit of a stale tag, for messages ("TBC%c").
+  char stale_v2_tag_digit() const { return static_cast<char>(bytecodes.data()[3]); }
   int bytecode_format() const { return is_format2() ? 2 : 1; }
 
   // Raw views of the program tables, for the verified core (format 2).
