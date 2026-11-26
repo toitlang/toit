@@ -552,6 +552,93 @@ A container explicitly started as untrusted through the container API is
 never critical: its failure doesn't terminate the system, even if its
 image has the run-critical flag.
 
+## Firmware without sandboxes
+
+Sandboxed containers are opt-in, and a firmware that runs only
+first-party code should not pay for them. The build option `TOIT_SANDBOX`
+decides whether a VM has them:
+
+| build | option | default |
+|---|---|---|
+| ESP-IDF firmware | Kconfig `TOIT_SANDBOX` (menu Toit; needs `TOIT_VERIFIED_CORE`) | **off** |
+| hosts (`make sdk`, CMake) | CMake `-DTOIT_SANDBOX=ON\|OFF` | on (the SDK makes the certificates of untrusted programs and runs the sandbox tests) |
+| EC618 | `make ec618 EC618_BYTECODE_FORMAT=2 EC618_SANDBOX=ON` | off |
+
+A firmware that installs or runs untrusted containers needs, besides
+the format-2 lines of docs/format2-migration.md ("Devices"):
+
+    CONFIG_TOIT_SANDBOX=y
+
+Without the option (`TOIT_NO_SANDBOX` in the C++; also every build
+without the verified core):
+- an untrusted start or launch (`containers.start --untrusted`, an image
+  flagged untrusted, `snapshot.launch`, `toit.run --untrusted`) fails
+  with `SANDBOX_NOT_SUPPORTED` (`PrimitivePolicy::from_description`),
+  before the heap-floor check and before anything is allocated;
+- an install of an image flagged untrusted (`ContainerImageWriter.commit
+  --untrusted`, the flash registry's program installs) fails with
+  `SANDBOX_NOT_SUPPORTED` (`V2Verifier::install_verdict`) before the image
+  is verified or its header written: no image is left behind, and the
+  certificate block is not kept (no flash cost);
+- the verifier is not linked, nor the untrusted policy, its primitive
+  tables and its verifier arity table; `PrimitivePolicy::is_untrusted()`
+  (and `restricts_messaging()`, `may_halt_device()`) is a constant false,
+  so the compiler drops the code behind its checks: the messaging
+  restrictions and grants of restricted senders, the heap floor and the
+  restart damping of sandboxed runs, the reply notices to full sandboxes,
+  the field-access checks of the C++ interpreter for sandboxed processes;
+- trusted programs run exactly as with the option, on the same verified
+  core, and quotas for trusted containers (`containers.start --quotas`)
+  still work;
+- certificates: only snapshots compiled with `--untrusted` carry one
+  (`toit compile --untrusted`; trusted and first-party snapshots, Jaguar
+  and the system image have none), and a device never keeps one in flash
+  (the install verifies with it and erases its pages). A trusted-only
+  deployment pays nothing for certificates with or without the option.
+
+What it saves (classic ESP32, format 2, f2 configuration of
+artifacts measure-3; sandbox-optional/README.md has the per-item list):
+
+| | sandbox on (as before) | sandbox off | |
+|---|---:|---:|---:|
+| toit.bin | 1,461,680 | 1,423,424 | -38,256 |
+| Jaguar margin to the OTA partition | +53,840 | +92,096 | +38,256 |
+| static DRAM (free heap at boot) | 57,708 | 54,908 | -2,800 |
+| IRAM used (free) | 130,442 (630) | 130,378 (694) | -64 |
+
+Of the flash, 34.8 KB is the verifier (Rust and its C++ glue, most of
+it pinned flash code on the classic ESP32), 3.5 KB sandbox-only C++. On
+the ESP32-C6 the option saves 31.5 KB of flash and 2.8 KB of static RAM;
+the default format-1 firmware (no core, so no sandboxes either) 4.5 KB
+of flash and 2.8 KB of static RAM. On
+the host the trusted benchmarks run the same number of instructions
+(richards, yield, task ping-pong; RPC within the GC's run-to-run
+variation).
+
+What stays in a firmware without the option, and why:
+- the run loop's policy lookup in the verified core (a compare of the
+  primitive's table entry, which the core loads anyway for the arity,
+  against "denied"): it is proved code shared by both configurations,
+  and the table of the trusted policy denies nothing;
+- the quota code (heap, mailbox, message, timer, process, run-time and
+  CPU quotas): trusted containers can have quotas too;
+- the sandbox code of the system process (`system/`: the policy
+  validation, the sandbox print service, the service limits for
+  sandboxed clients and providers, the eviction of sandboxes when memory
+  is short; about 0.5 KB of bytecode in the sandbox-only methods of the
+  system image, no measurable heap at rest): Toit has no conditional
+  compilation, and leaving it out needs a system source per
+  configuration;
+- the Kconfig options of the heap floor (`TOIT_SANDBOX_HEAP_FLOOR_KB`,
+  `TOIT_SANDBOX_START_KB`): without sandboxes they have no effect.
+
+The proofs are those of the configuration with sandboxes, which the
+option does not change (no Rust feature differs; docs/sandbox-guarantee.md,
+1.5). `verified/check.sh` section `sandbox-off` builds the host VM
+without sandboxes next to the main build, checks that the verifier is
+not linked and runs `tests/sandbox-off` (the refusals, and trusted
+programs and quotas still working).
+
 ## Launching untrusted containers
 
 Host:

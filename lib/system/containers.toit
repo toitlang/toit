@@ -54,7 +54,9 @@ If $untrusted is true, the container runs with the untrusted (sandbox)
   and it is subject to quotas. If $untrusted is false (the default), the
   container runs with the trusted policy, unless the image was installed
   with $ContainerService.FLAG-UNTRUSTED: containers from such images
-  always run with the untrusted policy.
+  always run with the untrusted policy. A firmware built without sandbox
+  support (Kconfig TOIT_SANDBOX, off by default) refuses to start an
+  untrusted container with the error "SANDBOX_NOT_SUPPORTED".
 
 The $quotas map can override the default quotas of the policy. The keys
   are "heap", "mailbox-messages", "mailbox-bytes", "message-bytes",
@@ -234,6 +236,14 @@ class ContainerImageWriter extends ServiceResourceProxy:
   write bytes/ByteArray -> none:
     _client_.image-writer-write handle_ bytes
 
+  /**
+  Commits the written image.
+
+  With $untrusted the image is verified now (with the shipped
+    certificate), and its containers always run sandboxed. A firmware
+    built without sandbox support (Kconfig TOIT_SANDBOX) refuses the
+    image with the error "SANDBOX_NOT_SUPPORTED".
+  */
   commit -> uuid.Uuid
       --data/int=0
       --run-boot/bool=false

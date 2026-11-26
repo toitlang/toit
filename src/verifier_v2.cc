@@ -357,6 +357,12 @@ const char* V2Verifier::install_verdict(const void* memory, word program_size, u
                                         Process* process) {
   metadata[0] &= ~FlashAllocation::Header::FLAGS_PROGRAM_VERIFIED_MASK;
   if ((metadata[0] & FlashAllocation::Header::FLAGS_PROGRAM_UNTRUSTED_MASK) == 0) return null;
+  if (!SANDBOX_SUPPORTED) {
+    // A VM without sandboxes (CMake/Kconfig TOIT_SANDBOX) installs no image
+    // flagged untrusted: it could never start.
+    fprintf(stderr, "untrusted image refused: this firmware has no sandbox support (TOIT_SANDBOX)\n");
+    return SANDBOX_NOT_SUPPORTED_ERROR;
+  }
   FlashRegistry::flush();
   Program* program = reinterpret_cast<Program*>(const_cast<void*>(memory));
   const char* error = verify_installed(program, program_size, certificate, certificate_length, process);
@@ -462,13 +468,15 @@ bool V2Verifier::verify(Program* program, const V2MethodTable* table, bool trust
 static bool v2_verify(Program* program, const V2MethodTable* table, bool trusted, word program_size,
                       const uint8* certificate, word certificate_length, Process* process,
                       bool* out_of_memory) {
-#ifdef TOIT_NO_V2_VERIFIER
-  // Firmware that never installs untrusted containers (Kconfig
-  // TOIT_VERIFIED_CORE_VERIFIER): the verifier is not linked, so every
-  // untrusted program is rejected.
+#ifdef TOIT_NO_SANDBOX
+  // A VM without sandboxes (CMake/Kconfig TOIT_SANDBOX): the verifier is not
+  // linked. Untrusted programs are refused before they get here
+  // (SANDBOX_NOT_SUPPORTED); a trusted program that is to be verified
+  // (-Xverify, hosts) is rejected.
   USE(v2_progress);
   USE(v2_code_name);
-  fprintf(stderr, "verifier: %sprogram rejected: the firmware has no verifier\n", trusted ? "" : "untrusted ");
+  fprintf(stderr, "verifier: %sprogram rejected: this VM has no verifier (no sandbox support)\n",
+          trusted ? "" : "untrusted ");
   return false;
 #else
   // The tables the conversion borrows lie inside the image (checked before
@@ -551,7 +559,7 @@ static bool v2_verify(Program* program, const V2MethodTable* table, bool trusted
     fprintf(stderr, "verifier: the program was compiled for trusted use; compile it with --untrusted\n");
   }
   return false;
-#endif  // TOIT_NO_V2_VERIFIER
+#endif  // TOIT_NO_SANDBOX
 }
 
 // Whether the heap is too fragmented or too full to start an install-time
@@ -660,6 +668,8 @@ void V2Verifier::accept_recorded(const V2MethodTable* table) {
 
 bool V2Verifier::write_canonical(Program* program, const V2MethodTable* table, const char* path,
                                  bool policy_table) {
+  // A VM without sandboxes has no untrusted policy table (and no verifier).
+  if (!SANDBOX_SUPPORTED) return false;
   toit_v2_program tables;
   toit_vmverify_input input;
   v2_input(program, table, false, &tables, &input);
@@ -669,9 +679,9 @@ bool V2Verifier::write_canonical(Program* program, const V2MethodTable* table, c
   return toit_vmverify_canonical(&input, path) == 0;
 }
 
-#ifdef TOIT_VERIFIED_CORE_INFER
+#if defined(TOIT_VERIFIED_CORE_INFER) && !defined(TOIT_NO_SANDBOX)
 // Builds with the inference only (hosts): devices link the verifier without
-// it.
+// it. A VM without sandboxes makes no certificates.
 bool V2Verifier::certify(Program* program, const V2MethodTable* table, bool trusted,
                          uint8** bytes, word* length) {
   toit_v2_program tables;

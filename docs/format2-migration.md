@@ -136,9 +136,10 @@ format 2 on the core**, with three lines in their sdkconfig:
     # CONFIG_TOIT_CXX_INTERPRETER is not set
 
 The system snapshot and the containers bundled in the envelope are then
-trusted format 2 (twins, built-ins; the compiler's default), untrusted
-containers are installed with the shipped certificate, and the C++
-interpreter is not linked. **It is not the default yet**: the Jaguar
+trusted format 2 (twins, built-ins; the compiler's default), and the C++
+interpreter is not linked. Untrusted containers (installed with the
+shipped certificate) need a fourth line, `CONFIG_TOIT_SANDBOX=y`
+(docs/sandbox-policy.md, "Firmware without sandboxes"). **It is not the default yet**: the Jaguar
 firmware (system and Jaguar in the app partition,
 tests/esp32/check-partition-sizes.sh) no longer fits, see "Flash" below.
 Commit 4f488c84 had the switch (sdkconfigs and the CI step that installs
@@ -155,7 +156,8 @@ The switches (toolchains/idf/components/toit/Kconfig):
 
 | Kconfig | Effect |
 |---|---|
-| `TOIT_VERIFIED_CORE` | links the core and the verifier (Rust, `libtoit_rust.a`) |
+| `TOIT_VERIFIED_CORE` | links the core (Rust, `libtoit_rust.a`) |
+| `TOIT_SANDBOX` (needs the core, default n) | sandboxed (untrusted) containers: links the install-time verifier and the untrusted policy; without it untrusted installs and launches are refused (`SANDBOX_NOT_SUPPORTED`); docs/sandbox-policy.md, "Firmware without sandboxes" |
 | `TOIT_BYTECODE_FORMAT_2` (needs the core, default y) | the IDF component compiles the system snapshot and the entry program with `TOIT_BYTECODE_FORMAT=2`; CMake `TOIT_BYTECODE_FORMAT=2`; a device build without the core is a CMake error |
 | `TOIT_CXX_INTERPRETER` (only deselectable with format 2) | CMake option `TOIT_CXX_INTERPRETER=OFF` (hosts keep it on): interpreter_run.cc and method_entries.cc are not compiled, `Interpreter::run` only hands over to the core (interpreter_v2.cc), `ProcessGroup::create` refuses format-1 programs. printing.cc stays: it is compiled only with `TOIT_DEBUG` (empty on devices). The format-1 verifier was already a stub on FreeRTOS. |
 | `TOIT_VERIFIED_CORE_LOOP_IN_IRAM` (default without the C++ interpreter) | the core's loop in IRAM, its jump table in DRAM; the classic ESP32 needs three IRAM-freeing sdkconfig lines ("Devices: hardware results") |
@@ -254,8 +256,9 @@ laid out around the DROM extension instead of padding it to 64 KB, images
 without unused heap blocks and two debugging aids on hosts only bring the
 classic ESP32 with Jaguar to 1,775,744 B (still 71.8 KB over the OTA
 partition) and the C6 to 1,871,152 B (29.4 KB to spare). Kconfig
-`TOIT_VERIFIED_CORE_VERIFIER=n` leaves the verifier out (-29.6 KB) for
-firmware without untrusted installs. The numbers below are from before.
+`TOIT_VERIFIED_CORE_VERIFIER=n` (since replaced by `TOIT_SANDBOX`, default
+n) leaves the verifier out (-29.6 KB) for firmware without untrusted
+installs. The numbers below are from before.
 
 **Flash.** The flashed firmware (toit.bin with the system image in its
 DROM extension; `extract --format binary`) against the OTA partition

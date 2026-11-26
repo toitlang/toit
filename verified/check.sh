@@ -30,7 +30,8 @@
 #      the verification-epoch gate,
 #      layout check, the VeriFast proofs of the residual C++
 #      (verified/cxx/annotated), spec differential tests, the device
-#      library's no-panic check, sandbox ctests, and (optional, when a
+#      library's no-panic check, sandbox ctests, the VM without sandboxes
+#      (built and tested next to the main build), and (optional, when a
 #      second build exists) the red-team batteries. The residual C++ matrix
 #      runs its fast tier.
 #   4. With --slow (implies --tests): also the slow tier of the residual
@@ -80,7 +81,7 @@ done
 # --tests, `cxx-slow` needs --slow.
 BASE_SECTIONS=(verus verus32 audit contracts layout-table no-python epoch)
 TEST_SECTIONS=(ieee audit-test no-python-self-test epoch-self-test layout-check cxx cxx-slow spec-tests vmverify
-               nopanic ec618-nopanic ec618-codegen sandbox-ctests
+               nopanic ec618-nopanic ec618-codegen sandbox-ctests sandbox-off
                redteam3-heap redteam3-asm
                redteam4-A redteam4-A-cert redteam4-B redteam4-C redteam4-D redteam4-E redteam4-F
                redteam5-T)
@@ -590,6 +591,51 @@ sec_sandbox_ctests() {
     fi
   else
     skip "no configured build with an SDK in $BUILD_DIR"
+  fi
+}
+
+# The VM without sandboxes (CMake TOIT_SANDBOX=OFF: the configuration of a
+# firmware without Kconfig TOIT_SANDBOX, docs/sandbox-policy.md, "Firmware
+# without sandboxes"): built next to the main build ($BUILD_DIR-nosandbox,
+# its build type and toolchain), with no verifier linked, and its tests
+# (tests/sandbox-off: untrusted installs and launches are refused, trusted
+# programs run). The proofs are those of the configuration with sandboxes:
+# this one only leaves code out (no Rust feature differs).
+sec_sandbox_off() {
+  section "VM without sandboxes (TOIT_SANDBOX=OFF)"
+  if ! [ -f "$BUILD_DIR/CMakeCache.txt" ] || ! [ -x "$BUILD_DIR/sdk/bin/toit" ]; then
+    skip "no configured build with an SDK in $BUILD_DIR"
+    return
+  fi
+  local dir="$BUILD_DIR-nosandbox"
+  local type toolchain
+  type=$(sed -n 's/^CMAKE_BUILD_TYPE:STRING=//p' "$BUILD_DIR/CMakeCache.txt")
+  toolchain=$(sed -n 's/^CMAKE_TOOLCHAIN_FILE:FILEPATH=//p' "$BUILD_DIR/CMakeCache.txt")
+  mkdir -p "$dir"
+  if ! (cd "$dir" && flock "$dir/.check-build.lock" cmake "$REPO" -G Ninja -DHOST_TOIT="$BUILD_DIR/sdk/bin/toit" \
+          -DCMAKE_BUILD_TYPE="${type:-Release}" ${toolchain:+-DCMAKE_TOOLCHAIN_FILE="$toolchain"} \
+          -DTOIT_SANDBOX=OFF --no-warn-unused-cli) > "$LOGS/sandbox-off-cmake.log" 2>&1; then
+    tail -20 "$LOGS/sandbox-off-cmake.log"
+    fail "sandbox-off: configuring $dir"
+    return
+  fi
+  if ! flock "$dir/.check-build.lock" ninja -C "$dir" sdk/lib/toit/bin/toit.run sdk/lib/toit/bin/toit.compile sdk/bin/toit \
+          > "$LOGS/sandbox-off-build.log" 2>&1; then
+    grep -E 'error|FAILED' "$LOGS/sandbox-off-build.log" | head -20
+    fail "sandbox-off: building $dir"
+    return
+  fi
+  if ! grep -q '^TOIT_VERIFIED_CORE_ENABLED:INTERNAL=ON' "$dir/CMakeCache.txt"; then
+    skip "sandbox-off: $dir has no verified core (cargo missing?)"
+    return
+  fi
+  if nm "$dir/sdk/lib/toit/bin/toit.run" | grep -qE ' T toit_vmverify_(verify|certify)$'; then
+    fail "sandbox-off: the verifier is linked into $dir/sdk/lib/toit/bin/toit.run"
+  else
+    echo "no verifier in toit.run ($(stat -c %s "$dir/sdk/lib/toit/bin/toit.run") bytes)"
+  fi
+  if ! ctest --test-dir "$dir" -R '^tests/sandbox-off/' --output-on-failure; then
+    fail "sandbox-off ctests"
   fi
 }
 

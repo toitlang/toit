@@ -27,6 +27,8 @@
 #     layout-table, audit-test, redteam4-A-cert
 #   audit                                      host-sdk, verus
 #   layout-check, sandbox-ctests               host-tests-build
+#   sandbox-off                                host-sdk (builds its own
+#                                              VM without sandboxes)
 #   redteam3-heap, redteam3-asm,               host-sdk, asan-build
 #     redteam4-{A,B,D,E,F}, redteam5-T
 #   redteam4-C                                 host-sdk, host32-build
@@ -139,6 +141,7 @@ declare -A DEPS=(
   [ec618-nopanic]=""
   [ec618-codegen]=""
   [sandbox-ctests]="host-tests-build"
+  [sandbox-off]="host-sdk"
   [redteam3-heap]="host-sdk asan-build"
   [redteam3-asm]="host-sdk asan-build"
   [redteam4-A]="host-sdk asan-build"

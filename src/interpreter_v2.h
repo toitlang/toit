@@ -232,9 +232,10 @@ class V2MethodTable {
 
   // Whether launches verify trusted format-2 programs although
   // -Xverify/TOIT_VERIFY is off: debug builds do, as a check on the
-  // compiler (a rejected trusted program does not run).
+  // compiler (a rejected trusted program does not run). Not without
+  // sandboxes: such a VM has no verifier.
   static bool verify_trusted_by_default() {
-#ifdef TOIT_DEBUG
+#if defined(TOIT_DEBUG) && !defined(TOIT_NO_SANDBOX)
     return true;
 #else
     return false;
