@@ -52,9 +52,10 @@ impl PageSource for ExternPages {
 /// start) and stores the used words of the last page in `*top`.
 #[no_mangle]
 pub extern "C" fn toit_gc_collect(base: *mut usize, ftab: *mut usize, nf: usize, pw: usize,
+                                  ctab: *mut u16, ncls: usize, sw: usize,
                                   roots: *mut usize, nroots: usize,
                                   ttab: *mut usize, tused: *mut usize, tcap: usize, top: *mut usize) -> usize {
-    let c = Ctx { base, ftab, nf, pw, fss: Ghost::assume_new() };
+    let c = Ctx { base, ftab, nf, pw, ctab, ncls, sw, fss: Ghost::assume_new(), cbs: Ghost::assume_new() };
     let mut src = ExternPages;
     match collect(&c, &mut src, roots, nroots, ttab, tused, tcap,
                   Ghost::assume_new(), Ghost::assume_new(), Tracked::assume_new(), Tracked::assume_new()) {
