@@ -470,7 +470,7 @@ pub fn collect<S: PageSource>(c: &Ctx, src: &mut S, rptr: *mut usize, rlen: usiz
         old(src).pw() == c.pw, old(src).prov() == c.base@.provenance,
     ensures
         match r {
-            Ok(w) => exists|hf: H, main: Set<int>| collected(*c, hf, *final(st), rptr, rv, fin_roots(rv, nodes), ttab, tused, w)
+            Ok(w) => exists|hf: H, main: Set<int>| heap_ok(*c, hf) && collected(*c, hf, *final(st), rptr, rv, fin_roots(rv, nodes), ttab, tused, w)
                 && #[trigger] fin_done(*c, h, hf, *final(st), rv, nodes, *final(nm), ncb as int, nn as int, main),
             Err(_) => *final(st) == *old(st) && *final(nm) == *old(nm),
         },
@@ -634,12 +634,10 @@ pub fn collect<S: PageSource>(c: &Ctx, src: &mut S, rptr: *mut usize, rlen: usiz
         assert(fshape(*c, s2.fp));
         assert(collected_pages(*c, hf, s2, ttab, tused, w));
         assert(collected(*c, hf, s2, rptr, rv, rvp, ttab, tused, w));
-        assert forall|m: int| 0 <= m < nn implies #[trigger] node_out(*c, h, hf, s2, main, *nm, nodes[m], m) by {
-            assert(node_out(*c, h, hf, s0, main, *nm, nodes[m], m));
-            lemma_fate_same(*c, h, hf, s0, s2, main, nodes[m], nm[4 * m + 3].value(), nm[4 * m + 1].value(), nm[4 * m + 2].value());
-        }
-        assert(fin_done(*c, h, hf, s2, rv, nodes, *nm, ncb as int, nn as int, main));
+        assert(s2.pos == s0.pos && s2.addr2 == s0.addr2);
+        lemma_fin_done_same(*c, h, hf, s0, s2, rv, nodes, *nm, ncb as int, nn as int, main);
     }
+    proof { assert(heap_ok(*c, hf)); }
     Ok(w)
 }
 

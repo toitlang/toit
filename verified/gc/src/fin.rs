@@ -836,7 +836,7 @@ pub fn fin_node<S: PageSource>(c: &Ctx, src: &mut S, t: &mut Tos, nptr: *mut usi
 /// too).
 pub open spec fn changed_ok(c: Ctx, h0: H, h: H, nodes: Seq<Node>, upto: int, main: Set<int>, x: int) -> bool {
     ||| obj(h, x) == obj(h0, x)
-    ||| from(h0, x) && !main.contains(x) && exists|m: int| 0 <= m < upto && #[trigger] nodes[m].key == AVal::Ref(x) && nodes[m].kind <= KIND_WEAK_QUEUED
+    ||| from(h0, x) && active(obj(h0, x)) && !main.contains(x) && exists|m: int| 0 <= m < upto && #[trigger] nodes[m].key == AVal::Ref(x) && nodes[m].kind <= KIND_WEAK_QUEUED
             && obj(h, x) == killed(obj(h0, x), c.nullid@, nodes[m].kind != KIND_TOIT)
 }
 
@@ -1017,6 +1017,20 @@ pub proof fn lemma_fate_same(c: Ctx, h0: H, h: H, st: St, st2: St, main: Set<int
     }
     assert forall|v: AVal| #[trigger] key_dead(h, st2, v) == key_dead(h, st, v) by {
         if v is Ref { assert(copied(st2, v->Ref_0) == copied(st, v->Ref_0)); }
+    }
+}
+
+
+/// `fin_done` depends on the state only through the copies and the new
+/// addresses.
+pub proof fn lemma_fin_done_same(c: Ctx, h: H, hf: H, st: St, st2: St, rv: Seq<AVal>, nodes: Seq<Node>,
+                                 nm: Map<int, PointsTo<usize>>, ncb: int, nn: int, main: Set<int>)
+    requires fin_done(c, h, hf, st, rv, nodes, nm, ncb, nn, main), st2.pos == st.pos, st2.addr2 == st.addr2,
+    ensures fin_done(c, h, hf, st2, rv, nodes, nm, ncb, nn, main),
+{
+    assert forall|m: int| 0 <= m < nn implies #[trigger] node_out(c, h, hf, st2, main, nm, nodes[m], m) by {
+        assert(node_out(c, h, hf, st, main, nm, nodes[m], m));
+        lemma_fate_same(c, h, hf, st, st2, main, nodes[m], nm[4 * m + 3].value(), nm[4 * m + 1].value(), nm[4 * m + 2].value());
     }
 }
 
