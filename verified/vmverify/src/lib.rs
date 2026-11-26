@@ -19,7 +19,7 @@
 //! Rust runtime.
 //!
 //! - `from_vm`:   TRUSTED. The abstract program and heap from VM memory.
-//! - `verify`:    TRUSTED. The verdict: heap check + proven `check::verify`.
+//! - `verify`:    TRUSTED. The verdict: heap check + proven `cert::verify_shipped`.
 //! - `ffi`:       TRUSTED. The C ABI (src/verifier_v2.h).
 //! - `counting`:  the counting allocator (memory high-water mark; std).
 //! - `clock`:     phase times (std; zero without).

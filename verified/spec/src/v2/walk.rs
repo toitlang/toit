@@ -325,26 +325,6 @@ pub open spec fn winv(p: Program2, g: GCert, m: int, trusted: bool, size: int, m
     &&& off > 0 ==> holds(mm, 0, entry)
 }
 
-pub proof fn lemma_cov_weaken(mm: Maps, pv: Seq<(int, Seq<Kind>)>, pv2: Seq<(int, Seq<Kind>)>, have: bool, off: int,
-    k: Seq<Kind>, have2: bool, off2: int, k2: Seq<Kind>, o: Option<(int, Seq<Kind>)>)
-    requires
-        cov(mm, pv, have, off, k, o),
-        !have || (have2 && off2 == off && k2 == k),
-        forall|j: int| #![trigger pv[j]] 0 <= j < pv.len() ==> exists|l: int| 0 <= l < pv2.len() && #[trigger] pv2[l] == pv[j],
-    ensures cov(mm, pv2, have2, off2, k2, o),
-{
-    match o {
-        None => {},
-        Some((t, s)) => {
-            if exists|j: int| 0 <= j < pv.len() && #[trigger] pv[j] == (t, s) {
-                let j = choose|j: int| 0 <= j < pv.len() && #[trigger] pv[j] == (t, s);
-                let l = choose|l: int| 0 <= l < pv2.len() && #[trigger] pv2[l] == pv[j];
-                assert(pv2[l] == (t, s));
-            }
-        },
-    }
-}
-
 /// Jumping ahead (no fall-through into the new offset).
 pub proof fn lemma_winv_jump(p: Program2, g: GCert, m: int, trusted: bool, size: int, mm: Maps,
     pv: Seq<(int, Seq<Kind>)>, sv: Seq<(int, Seq<Kind>)>, off: int, k: Seq<Kind>, entry: Seq<Kind>, off2: int)
@@ -1049,13 +1029,15 @@ pub struct Walker {
     pub saved: Vec<Pend>,
     pub arena: Vec<XKind>,
     pub back: Vec<u32>,
+    /// The offset of the last instruction placed (diagnostics).
+    pub off: usize,
 }
 
 impl Walker {
     pub fn new() -> Walker {
         Walker {
             k: Vec::new(), prev: Vec::new(), out: Vec::new(), tmp: Vec::new(), buf: Vec::new(),
-            pend: Vec::new(), pend2: Vec::new(), saved: Vec::new(), arena: Vec::new(), back: Vec::new(),
+            pend: Vec::new(), pend2: Vec::new(), saved: Vec::new(), arena: Vec::new(), back: Vec::new(), off: 0,
         }
     }
 }
@@ -1163,8 +1145,7 @@ pub fn walk_method(w: &mut Walker, p: &VProgram, g: &XGlobal, s: &[u8], pos0: us
 {
     let ghost pvw = vview(p);
     let ghost gv = g@;
-    let empty = XMaps { idx: CVec::new(), nodes: CVec::new() };
-    let c = XCert { g, cur: g.n, maps: &empty };
+    let c = XCert { g };
     assert(c@ == tables_cert(gv));
     let info = x_info(p, m);
     if !(info.entry < info.end && info.end <= p.bytecodes.len()) { return Ok((None, Ghost(Seq::empty()))); }
@@ -1300,9 +1281,14 @@ pub fn walk_method(w: &mut Walker, p: &VProgram, g: &XGlobal, s: &[u8], pos0: us
             &mut arena, &mut pend, &mut pend2, &mut saved, &back, any_back, &mut pmin, at,
             Ghost(mm), Ghost(entry), Ghost(size as int), Ghost(at0 as int))? {
             Some(x) => x,
-            None => return Ok((None, Ghost(mm))),
+            None => { w.off = off; return Ok((None, Ghost(mm))); },
         };
-        proof { mm = mm2; }
+        proof {
+            assert(at <= at2);
+            assert(at2 <= npins(g));
+            if at0 < at2 { assert(pin_m(g, at0 as int) == m); }
+            mm = mm2;
+        }
         at = at2;
         // The successor (if any) becomes the current kinds; the placed
         // kinds are the base of the next shipped map.
@@ -1503,22 +1489,22 @@ impl Progress for NoProgress {
 /// true only if the sorted tables are sorted and `split_ok(vview(p), g@,
 /// ms, trusted)` holds for the ghost maps `ms` it returns; by
 /// `v2::split::lemma_split_sound` the certificate `with_maps(g@, ms)` is
-/// then accepted. Also returns the method it stopped at (diagnostics).
+/// then accepted. Also returns the method and the offset it stopped at
+/// (diagnostics; the method count if the tables or the pins are rejected).
 /// `progress` is told before each method is checked. `Err(Oom)`: an
 /// allocation failed (rejected).
 pub fn walk<P: Progress>(p: &VProgram, g: &XGlobal, s: &[u8], trusted: bool, progress: &mut P)
-    -> (res: Result<(bool, usize, Ghost<Seq<Maps>>), Oom>)
-    ensures res matches Ok((ok, _, ms)) ==> (ok ==> g_ok(g) && split_ok(vview(p), g@, ms@, trusted)),
+    -> (res: Result<(bool, usize, usize, Ghost<Seq<Maps>>), Oom>)
+    ensures res matches Ok((ok, _, _, ms)) ==> (ok ==> g_ok(g) && split_ok(vview(p), g@, ms@, trusted)),
 {
     let ghost pv = vview(p);
     let ghost pad = Seq::new(g.n as nat, |m: int| Seq::<Option<Seq<Kind>>>::empty());
-    if !x_wf_program2(p) { return Ok((false, 0, Ghost(pad))); }
-    if p.unchecked && !trusted { return Ok((false, 0, Ghost(pad))); }
-    if g.n != p.methods.len() { return Ok((false, 0, Ghost(pad))); }
-    if !x_g_ok(g) { return Ok((false, 0, Ghost(pad))); }
-    let empty = XMaps { idx: CVec::new(), nodes: CVec::new() };
-    let tc = XCert { g, cur: g.n, maps: &empty };
-    if !x_tables_ok(p, &tc)? { return Ok((false, 0, Ghost(pad))); }
+    if !x_wf_program2(p) { return Ok((false, p.methods.len(), 0, Ghost(pad))); }
+    if p.unchecked && !trusted { return Ok((false, p.methods.len(), 0, Ghost(pad))); }
+    if g.n != p.methods.len() { return Ok((false, p.methods.len(), 0, Ghost(pad))); }
+    if !x_g_ok(g) { return Ok((false, p.methods.len(), 0, Ghost(pad))); }
+    let tc = XCert { g };
+    if !x_tables_ok(p, &tc)? { return Ok((false, p.methods.len(), 0, Ghost(pad))); }
     let n = p.methods.len();
     let np = g.pins.len() / 12;
     let ghost mut ms: Seq<Maps> = Seq::empty();
@@ -1541,7 +1527,7 @@ pub fn walk<P: Progress>(p: &VProgram, g: &XGlobal, s: &[u8], trusted: bool, pro
         progress.method(m);
         let (r, Ghost(mm)) = walk_method(&mut w, p, g, s, pos, m, at, trusted)?;
         match r {
-            None => { return Ok((false, m, Ghost(ms))); },
+            None => { return Ok((false, m, w.off, Ghost(ms))); },
             Some((pos2, at2)) => {
                 proof {
                     let ms0 = ms;
@@ -1568,7 +1554,7 @@ pub fn walk<P: Progress>(p: &VProgram, g: &XGlobal, s: &[u8], trusted: bool, pro
     }
     if at < np {
         // A pin of a method that does not exist.
-        return Ok((false, n, Ghost(ms)));
+        return Ok((false, n, 0, Ghost(ms)));
     }
     proof {
         let gv = g@;
@@ -1579,7 +1565,7 @@ pub fn walk<P: Progress>(p: &VProgram, g: &XGlobal, s: &[u8], trusted: bool, pro
             assert(pin_agrees(g, i, ms[pin_m(g, i) as int]));
         }
     }
-    Ok((true, n, Ghost(ms)))
+    Ok((true, n, 0, Ghost(ms)))
 }
 
 } // verus!

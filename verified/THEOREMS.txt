@@ -52,7 +52,7 @@ pub proof fn theorem_process(p: &Program, heap0: Seq<HeapObj>, globals0: Seq<Val
         machine_objects_ok(p.ap@, ms[i].g@),
 
 ==============================================================================
-Top-level theorems: crate spec (21)
+Top-level theorems: crate spec (20)
 ==============================================================================
 
 --- lemma_gc_steps_refl  (spec/src/v2/gc.rs)
@@ -208,15 +208,6 @@ pub proof fn theorem_initial(p: Program2, c: Cert, trusted: bool, heap0: Seq<Hea
     ensures reachable(p, heap0, globals0, initial_state(p, heap0, globals0)),
         wf(p, c, initial_state(p, heap0, globals0)),
 
---- lemma_cov_weaken  (spec/src/v2/walk.rs)
-pub proof fn lemma_cov_weaken(mm: Maps, pv: Seq<(int, Seq<Kind>)>, pv2: Seq<(int, Seq<Kind>)>, have: bool, off: int,
-    k: Seq<Kind>, have2: bool, off2: int, k2: Seq<Kind>, o: Option<(int, Seq<Kind>)>)
-    requires
-        cov(mm, pv, have, off, k, o),
-        !have || (have2 && off2 == off && k2 == k),
-        forall|j: int| #![trigger pv[j]] 0 <= j < pv.len() ==> exists|l: int| 0 <= l < pv2.len() && #[trigger] pv2[l] == pv[j],
-    ensures cov(mm, pv2, have2, off2, k2, o),
-
 ==============================================================================
 Top-level theorems: crate vmverify (0)
 ==============================================================================
@@ -254,7 +245,7 @@ fn clone(&self) -> (r: Self)
     ensures r == *self,
 
 ==============================================================================
-Verified exec entry points: crate spec (14)
+Verified exec entry points: crate spec (13)
 ==============================================================================
 
 --- step_verified  (spec/src/exec_step.rs)
@@ -269,21 +260,14 @@ pub fn step_verified(p: &ExecProgram, s: &mut ExecState) -> (r: Option<ExecOutco
 --- verify_shipped_progress  (spec/src/progress.rs)
 pub fn verify_shipped_progress<P: Progress>(p: &VProgram, cert: &[u8], global_count: u64, prim_arity: &[Vec<u8>],
                                             trusted: bool, progress: P)
-    -> (res: Result<(bool, usize), Oom>)
+    -> (res: Result<(bool, usize, usize), Oom>)
     ensures
         res matches Ok(r) ==> (r.0 ==> exists|c: Cert| accepts(vview(p), c, trusted) && #[trigger] c.global_count == global_count as int
             && c.prim_arity == prim_view(prim_arity@)),
 
 --- verify_shipped  (spec/src/v2/cert.rs)
 pub fn verify_shipped(p: &VProgram, cert: &[u8], global_count: u64, prim_arity: &[Vec<u8>], trusted: bool)
-    -> (res: Result<(bool, usize), Oom>)
-    ensures
-        res matches Ok(r) ==> (r.0 ==> exists|c: Cert| accepts(vview(p), c, trusted) && #[trigger] c.global_count == global_count as int
-            && c.prim_arity == prim_view(prim_arity@)),
-
---- verify_shipped_two_pass  (spec/src/v2/cert.rs)
-pub fn verify_shipped_two_pass(p: &VProgram, cert: &[u8], global_count: u64, prim_arity: &[Vec<u8>], trusted: bool)
-    -> (res: Result<(bool, usize), Oom>)
+    -> (res: Result<(bool, usize, usize), Oom>)
     ensures
         res matches Ok(r) ==> (r.0 ==> exists|c: Cert| accepts(vview(p), c, trusted) && #[trigger] c.global_count == global_count as int
             && c.prim_arity == prim_view(prim_arity@)),

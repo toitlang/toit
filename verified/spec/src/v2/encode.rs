@@ -20,9 +20,9 @@
 //!
 //! The global tables are copied, with the kind lists of the contexts and
 //! pins interned in one node table (lists share their common bottoms).
-//! The maps stream keeps, per method, only the maps the decoder cannot
-//! recompute by falling through (`v2::cert::ShippedOracle::decode`); this
-//! encoder walks each method exactly as the decoder does.
+//! The maps stream keeps, per method, only the maps the checker cannot
+//! compute by falling through (`v2::walk`); this encoder walks each method
+//! exactly as the checker does.
 
 use alloc::collections::BTreeMap;
 use alloc::format;
@@ -113,11 +113,8 @@ impl Interner {
     }
 }
 
-fn kinds_at(maps: &XMaps, off: usize) -> Option<Vec<XKind>> {
-    match (off < maps.idx.len()).then(|| maps.idx.at(off)) {
-        Some(top) if top != NO_MAP => Some(infer::ok(x_chain(&maps.nodes, top))),
-        _ => None,
-    }
+fn kinds_at(maps: &infer::Maps, off: usize) -> Option<Vec<XKind>> {
+    maps.kinds(off)
 }
 
 fn is_terminator(op: u8) -> bool {
@@ -127,17 +124,16 @@ fn is_terminator(op: u8) -> bool {
 
 /// The stream entries of method `m` with maps `maps`: (offset, slots
 /// dropped from the previous map, kinds pushed).
-fn method_entries(p: &VProgram, g: &XGlobal, m: usize, maps: &XMaps, trusted: bool, sizes: &mut Sizes)
+fn method_entries(p: &VProgram, g: &XGlobal, m: usize, maps: &infer::Maps, trusted: bool, sizes: &mut Sizes)
         -> Vec<(usize, usize, Vec<XKind>)> {
     let mut out = Vec::new();
     let Some(info) = p.methods.get(m) else { return out };
     let (entry, end) = (info.entry as usize, info.end());
     if !(entry < end && end <= p.bytecodes.len()) { return out; }
     let size = end - entry;
-    let empty = XMaps { idx: CVec::new(), nodes: CVec::new() };
-    let c = XCert { g, cur: m, maps: &empty };
+    let c = XCert { g };
     if info.kind == 3 && x_ctx_of(&c, m).is_none() { return out; }
-    let mut cur: Option<Vec<XKind>> = Some(infer::ok(x_entry_kinds(p, &c, m)));
+    let mut cur: Option<Vec<XKind>> = Some({ let mut e = Vec::new(); infer::ok(crate::v2::walk::x_entry_into(p, &c, m, &mut e)); e });
     let mut prev: Vec<XKind> = Vec::new();
     let mut off = 0;
     while off < size {
@@ -152,7 +148,7 @@ fn method_entries(p: &VProgram, g: &XGlobal, m: usize, maps: &XMaps, trusted: bo
             }
             (None, Some(c)) => c,
             (None, None) => {
-                match (off + 1..size).find(|&o| o < maps.idx.len() && maps.idx.at(o) != NO_MAP) {
+                match (off + 1..size).find(|&o| maps.kinds(o).is_some()) {
                     Some(o) => { off = o; continue; }
                     None => break,
                 }
@@ -206,8 +202,10 @@ pub fn encode(p: &VProgram, global: &Global, trusted: bool) -> Result<(Vec<u8>, 
     let mut oracle = infer::Oracle::new(p, global, trusted);
     let mut stream = Vec::new();
     for m in 0..n {
-        let maps = infer::ok(<infer::Oracle as MapOracle>::method_maps(&mut oracle, p, &view, m));
-        let entries = method_entries(p, &view, m, &maps, trusted, &mut sizes);
+        let entries = match oracle.method_maps(m) {
+            Some(maps) => method_entries(p, &view, m, &maps, trusted, &mut sizes),
+            None => Vec::new(),
+        };
         put_varint(&mut stream, entries.len() as u64);
         let mut last: Option<usize> = None;
         for (off, drop, push) in entries {

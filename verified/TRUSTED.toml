@@ -1078,7 +1078,7 @@ file = "src/bin/toit_spec_verify.rs"
 item = "*"
 kind = "plain_rust_file"
 count = 1
-justification = "Command-line driver around the verified check::verify; TRUSTED: it must pass the loaded program unchanged and report the verdict faithfully."
+justification = "Command-line driver around the verified cert::verify_shipped (the inference's certificate, encoded); TRUSTED: it must pass the loaded program unchanged and report the verdict faithfully."
 
 [[trusted]]
 crate = "spec"
@@ -1294,7 +1294,7 @@ file = "src/v2/infer.rs"
 item = "*"
 kind = "plain_rust_file"
 count = 1
-justification = "Untrusted by design: computes the certificate (global part, then one method's maps at a time); the verified checker check::verify decides acceptance, so a wrong certificate can only cause rejection. Total on any input (R6): bounds-checked, fuzzed with toit_vmverify_fuzz."
+justification = "Untrusted by design: computes the certificate (global part, then one method's maps at a time); the verified checker (cert::verify_shipped, on the encoded certificate) decides acceptance, so a wrong certificate can only cause rejection. Total on any input (R6): bounds-checked, fuzzed with toit_vmverify_fuzz."
 
 [[trusted]]
 crate = "spec"
@@ -1478,7 +1478,7 @@ file = "Cargo.toml"
 item = "metadata.verus.verify"
 kind = "cargo_metadata"
 count = 1
-justification = "Plain Rust crate, not run through Verus: the trusted conversion from VM memory and the glue around the verified check::verify (vmverify/README.md); kept small and covered by verified/tools/vmverify_differential.toit."
+justification = "Plain Rust crate, not run through Verus: the trusted conversion from VM memory and the glue around the verified cert::verify_shipped (vmverify/README.md); kept small and covered by verified/tools/vmverify_differential.toit."
 
 [[trusted]]
 crate = "vmverify"
@@ -1822,4 +1822,4 @@ file = "src/verify.rs"
 item = "*"
 kind = "plain_rust_file"
 count = 1
-justification = "TRUSTED verdict glue: accept iff the proven check::verify (split_ok, hence accepts of the assembled certificate) and heap_check::x_loaded_ok_stream both accept the converted program and the conversion completed, with global_count and prim_arity set from trusted inputs."
+justification = "TRUSTED verdict glue: accept iff the proven cert::verify_shipped (some certificate with the trusted fields is accepted: walk establishes split_ok, hence accepts of the assembled certificate) and heap_check::x_loaded_ok_stream both accept the converted program and the conversion completed, with global_count and prim_arity set from trusted inputs."

@@ -19,8 +19,8 @@
 //! The certificate is computed by `v2::infer` (untrusted, plain Rust,
 //! abstract interpretation): on the host, where the toolchain ships it
 //! with the program (`v2::encode`, `v2::cert`; format/18), or on a host VM
-//! for a program without one. `v2::check::verify` (Verus) is proven to
-//! decide `split_ok`, the per-method form of `accepts(p, c, trusted)`
+//! for a program without one. `v2::walk::walk` (Verus) is proven to
+//! accept only if `split_ok` holds, the per-method form of `accepts(p, c, trusted)`
 //! (`v2::split`); `v2::theorem` proves that an
 //! accepted program never reaches a stuck state. A wrong certificate can
 //! only lead to a rejection, never to an unsound acceptance.

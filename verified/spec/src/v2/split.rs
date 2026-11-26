@@ -27,8 +27,8 @@
 //! pins must agree with the maps of their methods.
 //!
 //! `split_ok(p, g, ms, trusted)` is that predicate, for the maps `ms` of
-//! every method (the streaming checker `check::verify` sees them one at a
-//! time and decides it exactly). The two theorems:
+//! every method (the single-pass checker `v2::walk` builds them as ghost
+//! state while it checks each method in one walk). The two theorems:
 //!
 //! * `lemma_split_sound`: `split_ok(p, g, ms, t)` implies
 //!   `accepts(p, with_maps(g, ms), t)`: the certificate assembled from the

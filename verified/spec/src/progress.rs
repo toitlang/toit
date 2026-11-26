@@ -35,21 +35,21 @@ verus! {
 /// `verify_shipped` (cert.rs) with `progress` told before each method: the
 /// verdict on program `p` with the shipped certificate `cert` is true only
 /// if some certificate with the trusted fields `global_count` and
-/// `prim_arity` is accepted. Also returns the method the checker stopped
-/// at (diagnostics). `Err(Oom)`: an allocation failed (rejected).
+/// `prim_arity` is accepted. Also returns the method and the offset the
+/// checker stopped at (diagnostics). `Err(Oom)`: an allocation failed (rejected).
 pub fn verify_shipped_progress<P: Progress>(p: &VProgram, cert: &[u8], global_count: u64, prim_arity: &[Vec<u8>],
                                             trusted: bool, progress: P)
-    -> (res: Result<(bool, usize), Oom>)
+    -> (res: Result<(bool, usize, usize), Oom>)
     ensures
         res matches Ok(r) ==> (r.0 ==> exists|c: Cert| accepts(vview(p), c, trusted) && #[trigger] c.global_count == global_count as int
             && c.prim_arity == prim_view(prim_arity@)),
 {
     let (g, maps) = match parse_cert(p, cert, global_count, prim_arity) {
         Some(x) => x,
-        None => return Ok((false, 0)),
+        None => return Ok((false, 0, 0)),
     };
     let mut progress = progress;
-    let (ok, at, Ghost(ms)) = crate::v2::walk::walk(p, &g, maps, trusted, &mut progress)?;
+    let (ok, at, off, Ghost(ms)) = crate::v2::walk::walk(p, &g, maps, trusted, &mut progress)?;
     if ok {
         proof {
             lemma_split_sound(vview(p), g@, ms, trusted);
@@ -58,7 +58,7 @@ pub fn verify_shipped_progress<P: Progress>(p: &VProgram, cert: &[u8], global_co
             assert(c.prim_arity == prim_view(prim_arity@));
         }
     }
-    Ok((ok, at))
+    Ok((ok, at, off))
 }
 
 } // verus!

@@ -326,7 +326,7 @@ pub unsafe extern "C" fn toit_vmverify_certify(input: *const VerifyInput, bytes:
     match toit_spec::v2::encode::certify(&p, global_count, prim_arity.clone(), trusted) {
         Err(_) => 2,
         Ok((cert, _)) => {
-            let ok = matches!(toit_spec::v2::cert::verify_shipped(&p, &cert, global_count, &prim_arity, trusted), Ok((true, _)));
+            let ok = matches!(toit_spec::v2::cert::verify_shipped(&p, &cert, global_count, &prim_arity, trusted), Ok((true, _, _)));
             if !ok { return 2; }
             let boxed = cert.into_boxed_slice();
             *length = boxed.len();
