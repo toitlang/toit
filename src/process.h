@@ -275,12 +275,12 @@ class Process : public ProcessListFromProcessGroup::Element,
 
   // The sandbox limits are levels of the free system heap, ordered so that
   // the heap growth of sandboxes can't push the system into the range where
-  // their own messages and new starts are refused (docs/sandbox-policy.md,
-  // "Quotas"), from the top:
+  // their own messages are refused, and a sandbox doesn't start where it
+  // couldn't grow (docs/sandbox-policy.md, "Quotas"), from the top:
+  //   floor + growth headroom + start: a sandboxed container may start, after
+  //       a collection of every process (sandbox_start_check);
   //   floor + growth headroom: sandboxed heaps stop growing (heap pages and
   //       external allocations: sandbox_heap_room);
-  //   floor + start: a sandboxed container may start (sandbox_start_check);
-  //       start <= growth headroom;
   //   floor: messages to and from sandboxes are refused below it
   //       (message_floor_allows_locked); nothing sandboxed takes the floor.
   // Before, the heap growth stopped at the floor itself, so a sandbox that
@@ -292,8 +292,7 @@ class Process : public ProcessListFromProcessGroup::Element,
   // memory free for the system process and the trusted containers (the
   // install-time verifier runs in the system process): sandboxed heaps
   // (their pages and external allocations) don't grow into it, nor into the
-  // headroom above it, which is kept for the messages of sandboxes and for
-  // starting sandboxes.
+  // headroom above it, which is kept for the messages of sandboxes.
   word sandbox_heap_room();
 
   // The sandbox heap floor in bytes (CONFIG_TOIT_SANDBOX_HEAP_FLOOR_KB, host
@@ -302,10 +301,11 @@ class Process : public ProcessListFromProcessGroup::Element,
 
   // The free bytes above the floor that the heap growth of sandboxes leaves
   // (CONFIG_TOIT_SANDBOX_GROWTH_HEADROOM_KB, host
-  // -Xsandbox_growth_headroom), at least what a start needs.
+  // -Xsandbox_growth_headroom).
   static word sandbox_growth_headroom();
 
-  // The free bytes above the floor that starting a sandboxed container needs
+  // The free bytes above the growth mark (the floor and the growth headroom)
+  // that starting a sandboxed container needs
   // (its first heap pages, method table and bookkeeping:
   // CONFIG_TOIT_SANDBOX_START_KB, host -Xsandbox_start_bytes).
   static word sandbox_start_bytes();
@@ -316,7 +316,7 @@ class Process : public ProcessListFromProcessGroup::Element,
 
   enum SandboxStart {
     SANDBOX_START_ALLOWED,
-    // The system heap has less free than the floor plus a start.
+    // The system heap has less free than the growth mark plus a start.
     SANDBOX_START_SHORT_OF_MEMORY,
     // The program waits for its restart delay.
     SANDBOX_START_DELAYED,
@@ -324,7 +324,8 @@ class Process : public ProcessListFromProcessGroup::Element,
 
   // Whether a sandboxed process of the program [program_id] (its uuid) may
   // be started now. Without a floor, always. With one, the system heap must
-  // keep the floor free after what a sandboxed process needs to start
+  // keep the growth mark (floor + growth headroom) free after what a
+  // sandboxed process needs to start
   // (sandbox_start_bytes), and a program whose sandboxed runs recently ran
   // out of memory waits for its restart delay (SandboxRestartDamper,
   // out_of_memory.h). Prints the reason of a refusal (a shortage of memory

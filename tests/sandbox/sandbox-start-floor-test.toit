@@ -8,21 +8,21 @@ Tests the sandbox heap floor at the start of a sandboxed container: the
   growing delay of a sandboxed program that keeps running out of memory.
 
 The levels of the free system heap (docs/sandbox-policy.md, "Quotas"):
-  sandboxed heaps stop growing at the floor plus the growth headroom, a
-  sandboxed start needs the floor plus the start bytes (at most the
-  headroom), and messages of sandboxes stop at the floor. Here (host,
-  simulated system heap of 600 KB, 300 KB floor, -Xsandbox_start_bytes=
-  150000, so a headroom of 150 KB): heaps stop growing at 450 KB free.
+  messages of sandboxes stop at the floor, sandboxed heaps stop growing at
+  the floor plus the growth headroom (the growth mark), and a sandboxed
+  start needs the growth mark plus the start bytes. Here (host, simulated
+  system heap of 600 KB, 200 KB floor, 100 KB headroom, 100 KB start):
+  heaps stop growing at 300 KB free, a start needs 400 KB.
 
-- A sandbox that grows as far as it can (about 150 KB) leaves room for the
-  start of another (and of a trusted container). Before, sandboxed heaps
-  grew down to the floor itself (300 KB here), and the start was refused.
-- Messages queued at the holder (50 KB, from the trusted driver) take the
-  room: a sandboxed start is refused with QUOTA_EXCEEDED; a trusted one
-  still starts. After the holder stopped, the sandbox starts again.
+- A sandbox that grows as far as it can holds less than 300 KB (before,
+  sandboxed heaps grew down to the floor itself). Messages queued at it
+  (50 KB, from the trusted driver) still go below the growth mark, down to
+  the floor. A sandboxed start is refused with QUOTA_EXCEEDED, after a
+  collection that can't free what the holder keeps; a trusted container
+  starts. After the holder stopped, the sandbox starts again.
 - A sandbox that grew and dropped what it held (its heap pages are free,
-  but not given back), plus the same messages: the start collects every
-  process's garbage first and then starts. Before, it was refused.
+  but not given back): the start collects every process's garbage first
+  and then starts. Before, it was refused.
 - A sandboxed run that ran out of memory makes the next sandboxed start of
   its program wait 1 s after the failure, the next one 2 s.
 - Without the floor nothing changes: every start is admitted.
@@ -86,17 +86,16 @@ main args:
 
   print "small: \$(start "small" --untrusted)"
 
-  // A sandbox holds as much as it can: its growth leaves room for a start.
+  // A sandbox holds as much as it can: less than the growth mark leaves.
   holder := start-holder "hold"
   ready := provider.channel.receive
-  print "holder ready: \$(ready[0] > 100 and ready[0] <= 150)"
+  print "holder ready: \$(ready[0] > 150 and ready[0] <= 300)"
+  // A sandboxed start is refused, a trusted one isn't.
   print "small while held: \$(start "small" --untrusted)"
   print "trusted while held: \$(start "small" --untrusted=false)"
-  // Messages queued at the holder take the room (it spins and doesn't take
-  // them): a sandboxed start is refused, a trusted one isn't.
+  // Messages queued at the holder go below the growth mark (it spins and
+  // doesn't take them).
   print "filled: \$(fill ready[1])"
-  print "small while filled: \$(start "small" --untrusted)"
-  print "trusted while filled: \$(start "small" --untrusted=false)"
   provider.channel.receive  // Done spinning.
   stop holder ready[1]
   print "small after: \$(start "small" --untrusted)"
@@ -105,8 +104,7 @@ main args:
   garbage := start-holder "garbage"
   ready = provider.channel.receive
   sleep --ms=200  // It drops what it held.
-  print "garbage ready: \$(ready[0] > 100 and ready[0] <= 150)"
-  print "filled: \$(fill ready[1])"
+  print "garbage ready: \$(ready[0] > 150 and ready[0] <= 300)"
   print "small after collecting: \$(start "small" --untrusted)"
   provider.channel.receive
   stop garbage ready[1]
@@ -156,8 +154,9 @@ fill pid/int -> int:
 
 /**
 Grows the heap in 1 KB byte arrays until it can't, tells the driver how
-  many it kept (it drops 10, so that it can call) and its pid, spins for a
-  while without taking messages or allocating, and tells the driver again.
+  many it kept (it drops 80, so that it can call and take the messages)
+  and its pid, spins for a while without taking messages or allocating, and
+  tells the driver again.
   Keeps the arrays if \$keep, else drops them first.
 */
 hold --keep/bool -> none:
@@ -165,8 +164,8 @@ hold --keep/bool -> none:
   client.open
   list := []
   catch: while true: list.add (ByteArray 1_000)
-  // Room for the call below.
-  10.repeat: if not list.is-empty: list.remove-last
+  // Room for the calls below and for the messages it takes.
+  80.repeat: if not list.is-empty: list.remove-last
   size := list.size
   client.ready size Process.current.id
   // Dropped after the call, so that no collection gives the pages back
@@ -187,7 +186,8 @@ die -> none:
   while true: list.add (ByteArray 1_000)
 """
 
-FLAGS ::= ["-Xsandbox_heap_floor=300000", "-Xsandbox_system_heap=600000", "-Xsandbox_start_bytes=150000"]
+FLAGS ::= ["-Xsandbox_heap_floor=200000", "-Xsandbox_system_heap=600000", "-Xsandbox_growth_headroom=100000",
+         "-Xsandbox_start_bytes=100000"]
 
 main args:
   toit-run := args[0]
@@ -199,14 +199,11 @@ main args:
     expect-equals [
       "small: 0",
       "holder ready: true",
-      "small while held: 0",
+      "small while held: QUOTA_EXCEEDED",
       "trusted while held: 0",
       "filled: 5",
-      "small while filled: QUOTA_EXCEEDED",
-      "trusted while filled: 0",
       "small after: 0",
       "garbage ready: true",
-      "filled: 5",
       "small after collecting: 0",
       "die 1: 1",
       "die 1 again: QUOTA_EXCEEDED",

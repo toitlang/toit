@@ -306,18 +306,13 @@ word Process::sandbox_heap_floor() {
 }
 
 word Process::sandbox_growth_headroom() {
-  const word start = sandbox_start_bytes();
 #if defined(TOIT_ESP32)
-  static_assert(CONFIG_TOIT_SANDBOX_GROWTH_HEADROOM_KB >= CONFIG_TOIT_SANDBOX_START_KB,
-                "the heap growth of sandboxes must leave room for a start");
-  const word headroom = static_cast<word>(CONFIG_TOIT_SANDBOX_GROWTH_HEADROOM_KB) * KB;
+  return static_cast<word>(CONFIG_TOIT_SANDBOX_GROWTH_HEADROOM_KB) * KB;
 #elif defined(TOIT_FREERTOS)
-  const word headroom = 0;
+  return 0;
 #else
-  const word headroom = Flags::sandbox_growth_headroom > 0 ? Flags::sandbox_growth_headroom : 0;
+  return Flags::sandbox_growth_headroom > 0 ? Flags::sandbox_growth_headroom : 0;
 #endif
-  // The order of the levels holds for any configuration.
-  return headroom > start ? headroom : start;
 }
 
 word Process::sandbox_start_bytes() {
@@ -373,6 +368,10 @@ void Process::count_simulated_heap() {
 Process::SandboxStart Process::sandbox_start_check(const uint8* program_id, bool report_short_of_memory) {
   const word floor = sandbox_heap_floor();
   if (floor <= 0) return SANDBOX_START_ALLOWED;
+  // A start leaves the growth mark free (floor + growth headroom): a
+  // sandbox started below it couldn't grow and would begin where its
+  // messages are refused.
+  const word mark = floor + sandbox_growth_headroom();
   const word start = sandbox_start_bytes();
   word free = system_free_bytes();
   int64 delay_us;
@@ -382,7 +381,7 @@ Process::SandboxStart Process::sandbox_start_check(const uint8* program_id, bool
   SandboxStart verdict = SANDBOX_START_ALLOWED;
   if (delay_us > 0) {
     verdict = SANDBOX_START_DELAYED;
-  } else if (free < floor || free - floor < start) {
+  } else if (free < mark || free - mark < start) {
     verdict = SANDBOX_START_SHORT_OF_MEMORY;
   }
   if (verdict == SANDBOX_START_ALLOWED) return verdict;
@@ -396,8 +395,8 @@ Process::SandboxStart Process::sandbox_start_check(const uint8* program_id, bool
     fprintf(out, "[sandbox start refused: its last run ran out of memory, next start in %d ms]\n",
             static_cast<int>(delay_us / 1000));
   } else {
-    fprintf(out, "[sandbox start refused: %d KB free, the floor and a start need %d KB]\n",
-            static_cast<int>(free / KB), static_cast<int>((static_cast<int64>(floor) + start) / KB));
+    fprintf(out, "[sandbox start refused: %d KB free, the floor, the growth headroom and a start need %d KB]\n",
+            static_cast<int>(free / KB), static_cast<int>((static_cast<int64>(mark) + start) / KB));
   }
   return verdict;
 }
