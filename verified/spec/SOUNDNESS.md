@@ -158,6 +158,9 @@ Each hypothesis is an obligation on the implementation.
    only `prim_default`). The same heap contract bounds what a raise
    allocates (`prim::heap_extended`): a primitive may only add objects
    (`h.len() <= h2.len() < 2^30`); it never changes an object's class; it
+   leaves every read-only object (the program heap, `ro`) unchanged and
+   no object changes its `ro` flag (since 2026-11-26, branch
+   prims/trust-round); it
    neither changes nor creates suspended stacks (`Stack2`), and does not
    turn an ordinary object into one; it
    creates no task and keeps fields 0 and 1 (stack, id) of every task; and

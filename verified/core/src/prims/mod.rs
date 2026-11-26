@@ -1011,9 +1011,10 @@ pub proof fn lemma_post_append(p: &Program, h0: &Heap, h1: &Heap, r: usize)
     assert(a1.subrange(0, a0.len() as int) =~= a0);
 }
 
-/// Replacing object `id` by `o2` (same class, read-only flag and kind of
-/// body, same instance length, good contents, task fields kept) keeps the
-/// heap invariant.
+/// Replacing a mutable object `id` by `o2` (same class, read-only flag and
+/// kind of body, same instance length, good contents, task fields kept)
+/// keeps the heap invariant. A read-only object (the program heap) cannot
+/// be replaced: `prim_heap_ok` keeps it unchanged.
 pub proof fn lemma_post_update(p: &Program, h0: &Heap, h1: &Heap, id: int, o2: HeapObj)
     requires
         heap_inv(p, h0),
@@ -1025,6 +1026,7 @@ pub proof fn lemma_post_update(p: &Program, h0: &Heap, h1: &Heap, id: int, o2: H
             let o = h0.objs()[id];
             &&& o2.class_id == o.class_id
             &&& o2.ro == o.ro
+            &&& !o.ro
             &&& (o2.body is Instance) == (o.body is Instance)
             &&& (o2.body is Array) == (o.body is Array)
             &&& !(o.body is Stack2) && !(o2.body is Stack2) && !(o2.body is Stack)
@@ -1092,13 +1094,14 @@ pub proof fn lemma_post_update(p: &Program, h0: &Heap, h1: &Heap, id: int, o2: H
     }
 }
 
-/// A body of bytes: replacing the bytes of a string or byte array keeps
-/// the heap invariant.
+/// A body of bytes: replacing the bytes of a mutable string or byte array
+/// keeps the heap invariant.
 pub proof fn lemma_post_content(p: &Program, h0: &Heap, h1: &Heap, id: int, s: Seq<u8>)
     requires
         heap_inv(p, h0),
         0 <= id < h0.objs().len(),
         is_blob(h0.objs()[id]),
+        !h0.objs()[id].ro,
         h1.objs() == h0.objs().update(id, with_content(h0.objs()[id], s)),
         h0.objs()[id].body is Bytes ==> s.len() == content(h0.objs()[id]).len(),
         h1.addrs() == h0.addrs(),

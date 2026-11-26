@@ -1671,7 +1671,11 @@ What the proofs rest on:
 ### Primitives that stay in C++, and the contract the proof relies on
 
 The theorem needs every allowed primitive to satisfy `prim_default`
-(`prim_heap_ok`: objects are only added, keep their class, machine-owned
+(`prim_heap_ok`: objects are only added, keep their class, read-only
+objects (the program heap) are unchanged and keep their `ro` flag (since
+2026-11-26, branch prims/trust-round: proved for the Rust ports, assumed
+of the C++ ones; the per-primitive evidence is docs/sandbox-guarantee.md
+section 2.4, "Read-only objects"), machine-owned
 objects (suspended stacks, tasks' stack and id fields) are untouched,
 every object stays well formed with good references; results are good
 values; out of memory is a resource error) and the arity of

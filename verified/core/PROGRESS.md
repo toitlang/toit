@@ -1,5 +1,31 @@
 # Phase 4a progress (verified core, format 2 on x86-64)
 
+## Primitive trust round (branch prims/trust-round, 2026-11-26)
+
+Base 25a01a7de (wip/collector-proofs). Roadmap items 4, 5, 6 of
+docs/sandbox-guarantee.md.
+
+- Item 4, read-only objects: `sound::prim_heap_ok` keeps every read-only
+  object (`h[i].ro ==> h2[i] == h[i]`) and every `ro` flag. The 106 Rust
+  ports are proved against it: the heap-update lemmas of `prims`
+  (`lemma_post_update`, `lemma_post_content`, `array::lemma_post_set_*`)
+  require a mutable object, and `view::content_ok` says a writable
+  content view is of a mutable object (every caller already knew it). For
+  the C++ primitives it is part of the assumed contract
+  (`gc_call_primitive`, TRUSTED.toml's justification names it); the
+  evidence per primitive is docs/sandbox-guarantee.md section 2.4. The
+  VeriFast renderings model program-heap membership (`in_program_heap`;
+  the writers' destinations come from the proved `mutable_byte_content`,
+  `byte_array_at_put` asserts it at the write) but abstract byte contents
+  (`uchars(.., _)`) and own program-heap objects like any other, so no C++
+  proof can state the clause as a postcondition without a model change.
+  Hardening tests: tests/sandbox/cli/program-heap-write-main.toit (every
+  writer aimed at program-heap bytes, a copy-on-write wrapper claiming to
+  be mutable over them, string literals: refused, unchanged; the C++
+  copy-on-write path writes a fresh copy). Spec and core counts unchanged
+  (spec 1090, core 1092/1094, core-split 1094/1096 at 64/32 bits);
+  THEOREMS.txt unchanged; new epoch (spec crate and view.rs).
+
 ## Memory pressure on the classic ESP32 (branch device/memory-pressure, 2026-11-25)
 
 Base 67e28c2d (wip/collector-proofs). Artifacts:

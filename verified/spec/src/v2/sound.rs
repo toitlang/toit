@@ -444,14 +444,18 @@ pub open spec fn task_fields_kept(o: HeapObj, o2: HeapObj) -> bool {
 }
 
 /// What a primitive may do to the heap (the oracle assumption): objects
-/// are only added, classes do not change, the machine's own objects
-/// (suspended stacks, tasks) are not created and their machine-owned
-/// parts are not touched, and every object stays well formed.
+/// are only added, classes do not change, the read-only objects (the
+/// program heap) are not changed at all and no object changes whether it
+/// is read-only, the machine's own objects (suspended stacks, tasks) are
+/// not created and their machine-owned parts are not touched, and every
+/// object stays well formed.
 pub open spec fn prim_heap_ok(p: Program2, h: Seq<HeapObj>, h2: Seq<HeapObj>) -> bool {
     &&& h.len() <= h2.len()
     &&& h2.len() < 0x4000_0000
     &&& forall|i: int| 0 <= i < h.len() ==> {
         &&& (#[trigger] h2[i]).class_id == h[i].class_id
+        &&& h2[i].ro == h[i].ro
+        &&& h[i].ro ==> h2[i] == h[i]
         &&& h[i].body is Stack2 ==> h2[i].body == h[i].body
         &&& !(h[i].body is Stack2) ==> !(h2[i].body is Stack2)
         &&& h[i].class_id as int == task_class(p) ==> task_fields_kept(h[i], h2[i])

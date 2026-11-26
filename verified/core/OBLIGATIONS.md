@@ -186,7 +186,9 @@ Still assumed about the collector (GC-class code, trusted), for stage 1+:
 
 ### Obligations from Phase 3 (verified/spec/SOUNDNESS.md)
 
-- S1 primitives: every allowed primitive satisfies `prim_heap_ok` and has
+- S1 primitives: every allowed primitive satisfies `prim_heap_ok` (which
+  since 2026-11-26 also keeps every read-only object and `ro` flag:
+  proved for the Rust ports, assumed of the C++ primitives) and has
   the arity of verified/spec/src/v2/prim_arity.rs. 106 of the 150 allowed
   primitives (141 core, 2 bitmap, 4 timer, 3 events) are ported to Rust, proven against `prim_spec` (`prims::call`,
   TRUSTED.md section 8) and run by the verified PRIMITIVE handler for

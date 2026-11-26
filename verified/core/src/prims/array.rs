@@ -165,10 +165,12 @@ pub proof fn lemma_field_good(p: &Program, h: &Heap, id: int, i: int)
     assert(good(h.objs(), f[i]));
 }
 
-/// Writing a value of the heap into an array keeps the heap invariant.
+/// Writing a value of the heap into a mutable array keeps the heap
+/// invariant.
 pub proof fn lemma_post_set_element(p: &Program, h0: &Heap, h1: &Heap, id: int, i: int, v: Value)
     requires
         heap_inv(p, h0), 0 <= id < h0.objs().len(), h0.objs()[id].body is Array,
+        !h0.objs()[id].ro,
         0 <= i < h0.objs()[id].body->Array_0.len(),
         good(h0.objs(), v), encodable(h0.addrs(), v),
         h1.objs() == h0.objs().update(id, HeapObj {
@@ -187,11 +189,12 @@ pub proof fn lemma_post_set_element(p: &Program, h0: &Heap, h1: &Heap, id: int, 
     lemma_post_update(p, h0, h1, id, o2);
 }
 
-/// Writing a value of the heap into field `i` of an instance of a class
-/// other than the task class keeps the heap invariant.
+/// Writing a value of the heap into field `i` of a mutable instance of a
+/// class other than the task class keeps the heap invariant.
 pub proof fn lemma_post_set_field(p: &Program, h0: &Heap, h1: &Heap, id: int, i: int, v: Value)
     requires
         heap_inv(p, h0), 0 <= id < h0.objs().len(), h0.objs()[id].body is Instance,
+        !h0.objs()[id].ro,
         0 <= i < h0.objs()[id].body->Instance_0.len(),
         h0.objs()[id].class_id as int != task_class(p.ap@),
         good(h0.objs(), v), encodable(h0.addrs(), v),

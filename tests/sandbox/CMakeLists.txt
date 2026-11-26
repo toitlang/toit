@@ -77,6 +77,10 @@ set(UNTRUSTED_RUN_TESTS
   "weak-map|weak-map-main.toit|0|key=null kept=present 7"
   # ByteOrder.put-uint with 9 bytes writes the same bytes in either order,
   # through the Rust port (a fresh byte array) and the C++ (a literal).
+  # The primitives that write into an existing object refuse a program-heap
+  # (read-only) destination and leave it unchanged (hardening tests of the
+  # read-only part of the primitive contract, docs/sandbox-guarantee.md).
+  "program-heap-write|program-heap-write-main.toit|0|byte_array_at_put raw: PERMISSION_DENIED unchanged.*byte_zap raw: PERMISSION_DENIED unchanged.*blit raw: PERMISSION_DENIED unchanged.*put_uint_big_endian copy: null unchanged copied.*add_finalizer raw: WRONG_OBJECT_TYPE unchanged.*string unchanged.*failures: 0|CHANGED|NOT COPIED"
   "byte-order-width|byte-order-width-main.toit|0|big: \\[0, 255, 255, 255, 255, 255, 255, 255, 255\\] \\[0, 255, 255, 255, 255, 255, 255, 255, 255\\].*little: \\[255, 255, 255, 255, 255, 255, 255, 255, 0\\] \\[255, 255, 255, 255, 255, 255, 255, 255, 0\\].*eight: \\[1, 2, 3, 4, 5, 6, 7, 8\\]"
 )
 

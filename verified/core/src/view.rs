@@ -2408,6 +2408,8 @@ pub open spec fn content_ok(h: &Heap, c: &Content) -> bool {
     &&& content(h.objs()[c.id()]).len() == c.slen()
     &&& h.cptrs().len() == h.objs().len()
     &&& h.cptrs()[c.id()] == c.cptr()
+    // A writable view is of a mutable object (not in the program heap).
+    &&& c.writable() ==> !h.objs()[c.id()].ro
 }
 
 /// `new` is `old` with one object appended at the tagged address `r`, which
