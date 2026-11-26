@@ -295,6 +295,9 @@ message_err_t Scheduler::send_system_message(Locker& locker, SystemMessage* mess
   // Default processing of system messages.
   switch (message->type()) {
     case SystemMessage::TERMINATED:
+      // While the boot process is being deleted, its own termination message,
+      // sent after that, decides the exit state (see run_process).
+      if (boot_process_exiting_) break;
       int value;
       if (MessageDecoder::decode_process_message(message->data(), &value)) {
         ExitReason reason = (value == 0) ? EXIT_DONE : EXIT_ERROR;
@@ -715,6 +718,16 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
       bool last_in_group = !group->remove(process);
       ASSERT(group->lookup(id) == null);
       SystemMessage* message = process->take_termination_message(result.value());
+      // Nothing may be sent to the boot process once it is being deleted, so
+      // we clear boot_process_ before we unlock. Until its termination message
+      // has been sent below, the termination messages of other processes (for
+      // example the ones it killed on its way out) must not decide the exit
+      // state.
+      bool is_boot_process = process == boot_process_;
+      if (is_boot_process) {
+        boot_process_ = null;
+        boot_process_exiting_ = true;
+      }
 
       // Deleting processes might need to take the event source lock, so we have
       // to unlock the scheduler to not get into a deadlock with the delivery of
@@ -725,7 +738,7 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
       }
 
       num_processes_--;
-      if (process == boot_process_) boot_process_ = null;
+      if (is_boot_process) boot_process_exiting_ = false;
 
       // Send the termination message after having deleted the process. This ensures
       // that the message for the boot process will not be assumed to be handled by

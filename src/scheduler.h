@@ -256,6 +256,9 @@ class Scheduler {
 
   // Keep track of the boot process if it still alive.
   Process* boot_process_;
+  // Set while the terminated boot process is being deleted, until its
+  // termination message is sent. Its exit value decides the exit state.
+  bool boot_process_exiting_ = false;
 
   // The scheduler keeps track of all live process groups. The linked
   // list is only manipulated while holding the scheduler mutex.
