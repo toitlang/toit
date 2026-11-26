@@ -165,18 +165,19 @@ pub const STACK_BCI_WORD: usize = 5;
 pub const MAX_STACK_LENGTH: usize = 0x1_0000;
 // The word offset of array element 0 depends on the build (the guard zone
 // is larger in debug builds); C++ passes it in the context.
-/// Frame records: method index, return bci, base (object-stack position of
-/// the first argument), and the frame's TRY handler: its height (0 for no
-/// handler) and its bci (two words: a bci and a height do not fit one
-/// 32-bit word).
-pub const FRAME_WORDS: usize = 5;
+/// Frame records (format 3, verified/spec/format/22-format3-branches-frames.md):
+/// method index, return bci, base (object-stack position of the first
+/// argument), and the handler word: 0, or the height of the frame's TRY
+/// (the handler flag). The handler's bci is the return bci of the record
+/// above (the try block's frame; `calls::callees_ok`).
+pub const FRAME_WORDS: usize = 4;
 pub const FRAME_METHOD: usize = 0;
 pub const FRAME_RET: usize = 1;
 pub const FRAME_BASE: usize = 2;
 pub const FRAME_HANDLER: usize = 3;
-pub const FRAME_HANDLER_BCI: usize = 4;
 /// Finally records (format note 17) follow the frame records,
-/// `FIN_WORDS` (= `FRAME_WORDS`) words each: the frame running the finally
+/// `FIN_WORDS` words each (not tied to `FRAME_WORDS`: a call moves them with
+/// one memmove): the frame running the finally
 /// code, the height of its slots, the resumed unwinding (`kind + 4 *
 /// frame`, kind 0 throw, 1 return, 2 branch) and the branch target's bci
 /// and height (else 0 and 0). Only the core reads them; C++ copies them

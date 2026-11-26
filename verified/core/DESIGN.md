@@ -196,14 +196,22 @@ array index:  0 ........... ftop ........ rtop        top ............. len-1
   checked by the layout check, re-checked by `reload`), so stack
   positions, heights and record indices fit 16 bits; bcis need 28 bits and
   get a word of their own.
-- Frame records: `array[0..ftop)`, growing up, `FRAME_WORDS` = 5 words
+- Frame records: `array[0..ftop)`, growing up, `FRAME_WORDS` = 4 words
   each (method index, return bci, base = object-stack position of the
-  first argument, and the frame's TRY handler: its height, 0 for none,
-  and its bci), frame `fi` at `5 * fi` (block references and C++ rely on
-  that). Until Phase 5 the handler was one word `height | bci << 32`
-  (4-word records), which does not fit a 32-bit word; the fifth word
-  costs nothing measurable (a call still writes 4 words, a TRY 2) and
-  lowers the maximum recursion depth of small frames by about 11 percent.
+  first argument, and the frame's handler word: 0 for no TRY handler,
+  else the height of its TRY), frame `fi` at `4 * fi` (block references
+  and C++ rely on that). The handler's bci is not stored (format 3,
+  verified/spec/format/22-format3-branches-frames.md): a frame has a
+  handler only while it is suspended in its TRY, and then the record above
+  it is the try block's, whose return bci is the handler's bci and whose
+  base is the handler's height (`sound::try_ok`; the core's
+  `calls::callees_ok`, part of `shape0`). A return from the try block
+  takes the bci from its own record; the unwinding loops (`do_unwind`,
+  `pop_to`, the checked loop's `unwind_cold`) keep the return bci of the
+  frame they popped last. The height stays in the record so that the
+  state between TRY's handler and its call (spec `op_try`'s `s1`) is
+  representable. Until format 3 the record had a fifth word, the handler's
+  bci; until Phase 5 the handler was one word `height | bci << 32`.
 - Finally records (format note 17, `State2.fins`): `array[ftop..rtop)`,
   right after the frame records, `FIN_WORDS` = 5 words each: the frame
   running the finally code, the height of its three slots, the resumed
@@ -217,9 +225,9 @@ array index:  0 ........... ftop ........ rtop        top ............. len-1
   records: during an unwinding's finally code); a return, an unwinding
   that pops a frame and a tail call drop the popped frame's records (they
   are last, `fins_popped`) and a return or pop moves the rest down by one
-  frame record. Finally records have the size of a frame record, so that
-  a call moves them by one record and the counts stay simple; they are
-  rare.
+  frame record (one memmove of the whole region; the sizes of the two
+  kinds of record are independent: 4 and 5 words since format 3). They
+  are rare.
 - Records hold no object references (the value of a pending exception or
   non-local return is the finally code's first slot), so the GC never
   looks at them. The Stack header's try-top word holds `rtop | ftop << 16`

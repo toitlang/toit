@@ -282,8 +282,10 @@ impl Machine {
         let rtop = word & (MAX_STACK_LENGTH - 1);
         let ftop = word >> STACK_FRAME_TOP_SHIFT;
         let bci = self.mem.header(STACK_BCI_WORD);
-        if top > len || rtop > top || rtop % FRAME_WORDS != 0 || len >= MAX_STACK_LENGTH
-            || ftop > rtop || ftop % FRAME_WORDS != 0 {
+        // Frame records of FRAME_WORDS words, then finally records of
+        // FIN_WORDS words (the sizes differ since format 3).
+        if top > len || rtop > top || len >= MAX_STACK_LENGTH
+            || ftop > rtop || ftop % FRAME_WORDS != 0 || (rtop - ftop) % FIN_WORDS != 0 {
             return false;
         }
         self.len = len;
@@ -598,12 +600,14 @@ impl Machine {
     /// Enters the finally code of the top frame's handler (`enter_finally`).
     /// Cold path: runs out of line on a copy of the machine (see `cold!`).
     #[inline(always)]
-    pub fn enter_finally(&mut self, env: &Env, handler: usize, u: Option<Unwinding>) -> Ctl {
-        cold!(self, |m| m.enter_finally_cold(env, handler, u))
+    /// The handler's bci `hbci` is the try block's return bci (format 3, note
+    /// 22: the record keeps only the handler's height).
+    pub fn enter_finally(&mut self, env: &Env, handler: usize, hbci: usize, u: Option<Unwinding>) -> Ctl {
+        cold!(self, |m| m.enter_finally_cold(env, handler, hbci, u))
     }
 
     #[inline(never)]
-    fn enter_finally_cold(&mut self, env: &Env, handler: usize, u: Option<Unwinding>) -> Ctl {
+    fn enter_finally_cold(&mut self, env: &Env, handler: usize, hbci: usize, u: Option<Unwinding>) -> Ctl {
         let p = &env.p;
         let height = handler;
         if !(self.base <= height && height <= self.len - self.top) {
@@ -611,7 +615,6 @@ impl Machine {
         }
         self.top = self.len - height;
         let r = self.ftop - FRAME_WORDS;
-        let hbci = self.mem.read(r + FRAME_HANDLER_BCI);
         self.mem.write(r + FRAME_HANDLER, 0);
         self.bci = hbci;
         let null = p.null;
@@ -685,6 +688,11 @@ impl Machine {
 
     #[inline(never)]
     fn unwind_cold(&mut self, env: &Env, u: Unwinding) -> Ctl {
+        // The bci of the top frame's handler: the return bci of the frame
+        // popped last. Before the first pop only TRY itself can have left a
+        // handler on the top frame (raising for a bad block), whose finally
+        // code follows it (TRY is one byte).
+        let mut hbci = self.bci + 1;
         loop {
             if self.ftop < FRAME_WORDS {
                 return match u {
@@ -698,7 +706,7 @@ impl Machine {
             let r = self.ftop - FRAME_WORDS;
             let handler = self.mem.read(r + FRAME_HANDLER);
             if handler != 0 {
-                return self.enter_finally(env, handler, Some(u));
+                return self.enter_finally(env, handler, hbci, Some(u));
             }
             let height = self.len - self.top;
             if self.base > height { return Ctl::Stuck(stuck::STACK_RANGE); }
@@ -714,6 +722,7 @@ impl Machine {
                 _ => {}
             }
             // Pop the frame.
+            hbci = self.mem.read(r + FRAME_RET);
             self.top = self.len - self.base;
             self.pop_frame_record();
             if !self.refresh_frame(&env.p) { return Ctl::Stuck(stuck::FATAL); }
@@ -740,7 +749,7 @@ impl Machine {
         self.bci = ret;
         let handler = self.mem.read(self.ftop - FRAME_WORDS + FRAME_HANDLER);
         if handler != 0 {
-            return self.enter_finally(env, handler, None);
+            return self.enter_finally(env, handler, ret, None);
         }
         Ctl::Next
     }
@@ -2043,7 +2052,6 @@ impl Machine {
         // finally code) go first.
         self.cut_fins(fi, height - 1);
         self.mem.write(r + FRAME_HANDLER, height);
-        self.mem.write(r + FRAME_HANDLER_BCI, self.bci + 1);
         let slot = height - 1;
         match self.block_target(p, slot) {
             None => self.raise(env, INVALID_PROGRAM),

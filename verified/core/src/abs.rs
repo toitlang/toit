@@ -350,8 +350,8 @@ pub open spec fn prog_rel(p: &crate::exec::Program, objs: Seq<HeapObj>, addr: Se
 // Frames.
 
 /// The handler word of a frame record: 0, or the height of the frame's
-/// TRY (heights of handlers are positive); its bci is the next word
-/// (`FRAME_HANDLER_BCI`).
+/// TRY (heights of handlers are positive): the handler flag. Its bci is the
+/// return bci of the try block's record above (`calls::callees_ok`).
 pub open spec fn handler_word(h: Handler) -> usize {
     h.height
 }
@@ -363,7 +363,7 @@ pub open spec fn rec(mem: Seq<usize>, fi: int, k: usize) -> usize {
 
 /// The frame records `mem[0..FRAME_WORDS * frames.len()]` hold the frames,
 /// and the handler words the handlers (one per frame at most): the
-/// height of the frame's TRY (0: no handler) and its bci.
+/// height of the frame's TRY (0: no handler).
 pub open spec fn frames_rel(mem: Seq<usize>, frames: Seq<Frame>, tries: Seq<Handler>) -> bool {
     &&& FRAME_WORDS * frames.len() <= mem.len()
     &&& forall|fi: int| 0 <= fi < frames.len() ==> #[trigger] rec(mem, fi, FRAME_METHOD) == frames[fi].method
@@ -375,7 +375,6 @@ pub open spec fn frames_rel(mem: Seq<usize>, frames: Seq<Frame>, tries: Seq<Hand
         &&& 0 < tries[x].height < 0x1_0000_0000
         &&& tries[x].bci < 0x1_0000_0000
         &&& rec(mem, tries[x].frame as int, FRAME_HANDLER) == handler_word(tries[x])
-        &&& rec(mem, tries[x].frame as int, FRAME_HANDLER_BCI) == tries[x].bci
     }
     &&& forall|fi: int| 0 <= fi < frames.len() && #[trigger] rec(mem, fi, FRAME_HANDLER) != 0
             ==> exists|x: int| 0 <= x < tries.len() && tries[x].frame == fi
@@ -412,10 +411,8 @@ pub proof fn lemma_frames_rel_same(mem: Seq<usize>, mem2: Seq<usize>, frames: Se
         assert(rec(mem, fi, FRAME_BASE) == frames[fi].base);
     }
     assert forall|x: int| 0 <= x < tries.len() implies
-        rec(mem2, (#[trigger] tries[x]).frame as int, FRAME_HANDLER) == handler_word(tries[x])
-        && rec(mem2, tries[x].frame as int, FRAME_HANDLER_BCI) == tries[x].bci by {
+        rec(mem2, (#[trigger] tries[x]).frame as int, FRAME_HANDLER) == handler_word(tries[x]) by {
         lemma_rec_index(n, tries[x].frame as int, FRAME_HANDLER);
-        lemma_rec_index(n, tries[x].frame as int, FRAME_HANDLER_BCI);
     }
     assert forall|fi: int| 0 <= fi < n && #[trigger] rec(mem2, fi, FRAME_HANDLER) != 0
             implies exists|x: int| 0 <= x < tries.len() && tries[x].frame == fi by {

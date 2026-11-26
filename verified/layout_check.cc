@@ -292,7 +292,6 @@ int main() {
     { "FRAME_RET", static_cast<uword>(Stack::V2_FRAME_RET), false },
     { "FRAME_BASE", static_cast<uword>(Stack::V2_FRAME_BASE), false },
     { "FRAME_HANDLER", static_cast<uword>(Stack::V2_FRAME_HANDLER), false },
-    { "FRAME_HANDLER_BCI", static_cast<uword>(Stack::V2_FRAME_HANDLER_BCI), false },
     { "STACK_RESERVE", static_cast<uword>(Stack::V2_STACK_RESERVE), false },
     { "FIN_WORDS", static_cast<uword>(Stack::V2_FIN_WORDS), false },
     { "FIN_FRAME", static_cast<uword>(Stack::V2_FIN_FRAME), false },
@@ -442,6 +441,13 @@ int main() {
   // frame tops need stack positions below 2^16.
   if (Stack::max_length() >= Stack::V2_MAX_LENGTH) {
     printf("FAIL: Stack::max_length() does not fit 16 bits\n");
+    failures++;
+  }
+  // Block references `frame << 16 | slot` are smis below 2^30 only for frames
+  // below 2^14: frame records of V2_FRAME_WORDS words in stacks shorter than
+  // V2_MAX_LENGTH (four or more words; format note 22).
+  if (Stack::V2_MAX_LENGTH / Stack::V2_FRAME_WORDS > (static_cast<word>(1) << 14)) {
+    printf("FAIL: frame records too small for the block-reference encoding\n");
     failures++;
   }
   if (!stack_records_ok) {

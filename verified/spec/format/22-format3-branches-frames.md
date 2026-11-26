@@ -194,3 +194,29 @@ try block's record: a return from the try block uses its own return bci,
 the unwinding loop the return bci of the frame it popped last. The room
 terms (`FRAME_WORDS` per frame), the initial task stack and the C++
 constants follow.
+
+**Initial task stacks.** Re-derived with memory-pressure's method (a host
+build with exact stack growth from 24 words, logging every growth;
+format3-impl/logs/stackneed-*.txt): the libraries' short tasks need 121
+(empty, summing, string and the soak worker's short tasks), 130 (a latch)
+and 133 words (the worker's longest) at a maximal height of 18, 14 words
+less than with five-word records (135, 144, 147: 14 frames at the deepest
+call). The same policy (cover every short task measured, with the old
+margin of three words) gives `V2_INITIAL_LENGTH_ABOVE_HEIGHT` = 118
+instead of 132.
+
+**A coupling the proofs did not see.** The trusted reload of the stack
+(`Machine::reload_cold`, plain Rust) checked `rtop % FRAME_WORDS == 0`,
+which held only because finally records had the frame records' size; with
+four-word frames every task resumed with a pending finally record was
+terminated (FATAL). It now checks `ftop % FRAME_WORDS == 0` and `(rtop -
+ftop) % FIN_WORDS == 0`. No other code relates the two sizes (C++ derives
+the finally count from `V2_FIN_WORDS`).
+
+### Cost
+
+See verified/core/PROGRESS.md ("Format 3, step 2"): a word less per frame
+(bytes allocated per task -8 %, per soak-worker iteration -3 %), host
+instructions unchanged (a call already wrote only four words; TRY saves a
+store, the return into finally code a load), run loop -3 bytes and IRAM
++76 bytes free on the classic ESP32.

@@ -1,5 +1,44 @@
 # Phase 4a progress (verified core, format 2 on x86-64)
 
+## Format 3, step 2: four-word frame records (branch format3/branches-frames, 2026-11-26)
+
+Frame records are method, return bci, base and the handler word (0, or
+the TRY's height): the handler's bci, the fifth word, is gone; it is the
+return bci of the try block's record above (`calls::callees_ok`, from
+`sound::try_ok`), which a return from the try block and the unwinding
+loops (the return bci of the frame popped last) supply
+(verified/spec/format/22-format3-branches-frames.md). The spec is
+unchanged. `shape_ok` is now `shape0` (with `callees_ok`) plus "the top
+frame has no handler"; the unwinding loops keep `shape0`. Finally records
+keep five words; the trusted stack reload had assumed the two sizes equal
+(fixed). A task's initial stack is H + 118 words (was H + 132), re-derived
+with memory-pressure's exact-growth measurement: the short tasks need 121,
+130 and 133 words at H 18 (were 135, 144, 147).
+
+Against the merge with wip/collector-proofs (b454ec452; the Xtensa
+toolchain switch and the SDK's yield change came with it, so step 2 is
+compared with that, not with the base of step 1):
+
+| | step 1 (b454ec452) | step 2 | |
+|---|---:|---:|---:|
+| bytes allocated: empty / sum / string / latch task | 1,438 / 1,464 / 1,600 / 1,512 | 1,320 / 1,352 / 1,488 / 1,400 | -8 % |
+| soak worker: tasks part / whole iteration | 4,832 / 10,336 | 4,496 / 10,022 | -7 % / -3.0 % |
+| RPC echo / add part | 2,547 / 360 | 2,418 / 336 | -5 % / -7 % |
+| host Ir: richards / deltablue / pystone / json | 105.13 M / 7.268 M / 17.23 M / 21.13 M | 105.13 M / 7.272 M / 17.24 M / 21.14 M | 0.0 / +0.05 / +0.03 / +0.08 % |
+| host Ir: calls / tasks / yield / RPC | 64.61 M / 25,955 / 945 / 95,281 | 64.61 M / 25,948 / 950 / 95,660 | 0.0 / 0.0 / +0.5 / +0.4 % |
+| classic ESP32: run loop / `.iram0.text` / IRAM free | 20,221 / 129,327 / 718 | 20,218 / 129,251 / 794 | -3 / -76 / +76 B |
+| classic ESP32 toit.bin | 1,461,056 | 1,460,896 | -160 B |
+| device library (opt s): riscv32 / thumbv7m | 73,926 / 64,930 | 73,750 / 64,792 | -176 / -138 B |
+| bytecodes | unchanged | unchanged | |
+
+No run-time gain: a call already wrote four words (the handler bci only by
+TRY), so step 2 saves a store per TRY and a load per return into finally
+code, below the noise of the host counts. The gain is memory: a word per
+frame, 14 words for a short task at its deepest call.
+
+Proofs: spec 1096, core 1093, core-split 1095 (32-bit 1096, 1095, 1097)
+verified, 0 errors; no new trusted item, THEOREMS.txt unchanged.
+
 ## Format 3, step 1: short branches (branch format3/branches-frames, 2026-11-26)
 
 Five two-byte branch opcodes, BRANCH_S .. BRANCH_IF_NOT_NULL_S (114..117)

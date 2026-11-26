@@ -55,6 +55,18 @@ shared machine-form code of the slow paths, `step::slow`):
 | resources | stack growth (`grow`), stack overflow (raise of roots[28]), out of memory in ALLOCATE and double arithmetic: `prim::resource_throw` | step.rs, unwind.rs, ops.rs | the reload checks after growth |
 | primitives | PRIMITIVE: the policy's core arities, the Rust ports (`prims::call`, no GC point, no save/reload) for 106 core primitives, else lookup, arity, C++ call; completion by status (`theorem::completion`) | rarrays.rs, primitive.rs, prims/ | the frame-height check |
 
+### Format 3, steps 1 and 2 (format note 22)
+
+- The short branches (114..118) are proven like the long ones
+  (`step_r` arms with `regs::op_branch`; `lemma_back_branch_s`).
+- Four-word frame records: `frames_rel` relates no word to a handler's
+  bci; `calls::callees_ok` (in `shape0`, from `sound::try_ok`, kept by
+  `lemma_pop_callees`) gives it as the try block's return bci where the
+  core enters finally code (`enter_finally_normal`, `enter_finally_unwind`,
+  `ret_try_r`, `enter_fin_r` take it as a parameter). Trusted and
+  unchanged in text: the checked loop and `Machine::reload_cold` (whose
+  record-size check was corrected for finally records of another size).
+
 ## 2. Open obligations
 
 ### R. Paths still assumed
@@ -223,7 +235,8 @@ Still assumed about the collector (GC-class code, trusted), for stage 1+:
 - Done (Phase 5): the core is 32-bit clean and verified for both widths
   (DESIGN.md section 3a; verified/check.sh runs Verus for the host and for
   `i686-unknown-linux-gnu`). The handler and the finally-record target
-  are two words each (5-word records), the Stack header packs `rtop |
+  are two words each (5-word records; since format 3 the frame record is
+  4 words, the handler's bci being the try block's return bci), the Stack header packs `rtop |
   ftop << 16`, block references are `frame << 16 | slot`.
 - Done (Phase 5): the core is `no_std` + alloc (vstd without std, rlib
   only); the device library (vmverify `device-runtime`) supplies allocator

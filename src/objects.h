@@ -1021,13 +1021,15 @@ class Stack : public HeapObject {
   // frame records are V2_FRAME_WORDS words, so a new task needs more than
   // format 1's 64 words before it runs its body: the length is the maximal
   // height plus V2_INITIAL_LENGTH_ABOVE_HEIGHT words, at most
-  // V2_MAX_INITIAL_LENGTH. 132 is what the common short task of the
-  // libraries needs at its deepest call (measured: an empty task 104
-  // words at a maximal height of 18, a task that sets a latch 144-147,
-  // the soak worker's tasks 121-147), so that it never grows its stack;
-  // a task that goes deeper grows it as before.
+  // V2_MAX_INITIAL_LENGTH. 118 is what the common short task of the
+  // libraries needs at its deepest call, so that it never grows its stack
+  // (measured with 4-word frame records, format 3: an empty task and the
+  // soak worker's short tasks 121 words at a maximal height of 18, a task
+  // that sets a latch 130, the worker's longest 133; with 5-word records
+  // they were 135, 144 and 147, and the constant 132); a task that goes
+  // deeper grows it as before.
   static inline word initial_length(const Program* program);
-  static const word V2_INITIAL_LENGTH_ABOVE_HEIGHT = 132;
+  static const word V2_INITIAL_LENGTH_ABOVE_HEIGHT = 118;
   static const word V2_MAX_INITIAL_LENGTH = 256;
   static INLINE word max_length();
 
@@ -1048,14 +1050,14 @@ class Stack : public HeapObject {
   // them; the pending-stack-check field holds the absolute bci the task is
   // suspended at. The layout is the same for 32-bit and 64-bit words. See
   // verified/core/DESIGN.md.
-  static const word V2_FRAME_WORDS = 5;
+  static const word V2_FRAME_WORDS = 4;
   static const word V2_FRAME_METHOD = 0;
   static const word V2_FRAME_RET = 1;
   static const word V2_FRAME_BASE = 2;
-  // 0 for no handler, otherwise the height of the frame's TRY ...
+  // 0 for no handler, otherwise the height of the frame's TRY: the handler
+  // flag. The bci of its finally code is the return bci of the record above
+  // (the try block's; format 3, verified/spec/format/22-format3-branches-frames.md).
   static const word V2_FRAME_HANDLER = 3;
-  // ... and the bci of its finally code.
-  static const word V2_FRAME_HANDLER_BCI = 4;
   // A finally record: the frame running the finally code, the height of
   // its slots, the resumed unwinding (kind + 4 * frame) and the branch
   // target's bci and height. Only the core reads them.
