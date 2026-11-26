@@ -1,4 +1,4 @@
-# Line-A assembled-method battery Thu Nov 12 02:28:18 CET 2026
+# Line-A assembled-method battery Thu Nov 26 13:27:28 CET 2026
 [good-retnull] x{1/1} ACCEPTED->ran:   
 [good-print] x{0/0} ACCEPTED->ran: 55  
 [twin-104-loadf] x{0/0} untrusted program rejected: method 22 at bci 290 (+1): LOAD_FIELD_U 92: unchecked opcode 104 in a program not in the unchecked mode 
@@ -16,10 +16,19 @@
 [twin-first-insn] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): LOAD_FIELD_U 0: unchecked opcode 104 in a program not in the unchecked mode 
 [twin-as-operand-byte] x{1/1} ACCEPTED->ran:   
 [twin-branch-into-twin] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): BRANCH 4 0: successor outside the method 
-[op-114] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): bad opcode 114: invalid opcode 114 
+[op-119] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): bad opcode 119: invalid opcode 119 
 [op-200] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): bad opcode 200: invalid opcode 200 
 [op-255] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): bad opcode 255: invalid opcode 255 
-[op-114-ctx] x{0/0} untrusted program rejected: method 22 at bci 290 (+1): bad opcode 114: invalid opcode 114 
+[op-119-ctx] x{0/0} untrusted program rejected: method 22 at bci 290 (+1): bad opcode 119: invalid opcode 119 
+[sbr-good] x{0/0} ACCEPTED->ran: 55 56  
+[sbr-zero] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): BRANCH_S 0: rejected by the checker with kinds [] 
+[sbr-cond-zero] x{0/0} untrusted program rejected: method 22 at bci 290 (+1): BRANCH_IF_FALSE_S 0: incompatible kinds at merge: [Val] and [] 
+[sbr-out] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): BRANCH_S 255: successor outside the method 
+[sbr-into-operand] x{0/0} untrusted program rejected: method 22 at bci 292 (+3): INVOKE_BLOCK 92: INVOKE_BLOCK rejected with kinds [] 
+[sbr-past-end] x{1/1} ACCEPTED->ran:   
+[sbr-back-before] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): BRANCH_BACK_S 5: branch before the method 
+[sbr-back-loop] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): LOAD_SMI_0: incompatible kinds at merge: [] and [Val] 
+[sbr-merge-height] x{0/0} untrusted program rejected: method 22 at bci 293 (+4): RETURN_NULL: incompatible kinds at merge: [] and [Val] 
 [halt-deepsleep] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): HALT 2: HALT rejected with kinds [] 
 [halt-reset] x{0/0} untrusted program rejected: method 22 at bci 289 (+0): HALT 3: HALT rejected with kinds [] 
 [halt-0] x{0/0} untrusted program rejected: method 22 at bci 291 (+2): bad opcode 255: invalid opcode 255 
@@ -37,4 +46,4 @@
 [table-stale-longer] x{0/0/0/0} untrusted: format-2 program rejected: bad method kind byte (300); trusted: format-2 program rejected: bad method kind byte (300) 
 [table-stale-by-one] x{0/0/0/0} untrusted: format-2 program rejected: bad method kind byte (300); trusted: format-2 program rejected: bad method kind byte (300) 
 [table-same-size] x{0/0/0/0} untrusted: ACCEPTED->ran: 55 ; trusted: ran: 55  
-# done Thu Nov 12 02:28:48 CET 2026
+# done Thu Nov 26 13:30:51 CET 2026

@@ -64,11 +64,21 @@ run_asm twin-branch-reached   'LOAD_SMI_0; BRANCH_IF_FALSE Lx; RETURN_NULL; Lx:;
 run_asm twin-first-insn       'RAW 6800; RETURN_NULL'
 run_asm twin-as-operand-byte  'RAW 1a68; RETURN_NULL'
 run_asm twin-branch-into-twin 'RAW 510400 1a68 5c'
-# --- out-of-range opcode 114..255 ---
-run_asm op-114                'RAW 72'
+# --- out-of-range opcode 119..255 (114..118: the short branches of format 3) ---
+run_asm op-119                'RAW 77'
 run_asm op-200                'RAW c8'
 run_asm op-255               'RAW ff'
-run_asm op-114-ctx           'LOAD_SMI_0; RAW 72; RETURN'
+run_asm op-119-ctx           'LOAD_SMI_0; RAW 77; RETURN'
+# --- the short branches (format 3, verified/spec/format/22-format3-branches-frames.md) ---
+run_asm sbr-good             'LOAD_SMI_1; BRANCH_IF_FALSE_S Lx; LOAD_SMI_U8 55; INVOKE_STATIC @print; POP_1; Lx:; LOAD_SMI_U8 56; INVOKE_STATIC @print; RETURN_NULL'
+run_asm sbr-zero             'RAW 7200; RETURN_NULL'
+run_asm sbr-cond-zero        'LOAD_SMI_0; RAW 7400; RETURN_NULL'
+run_asm sbr-out              'RAW 72ff; RETURN_NULL'
+run_asm sbr-into-operand     'RAW 7203; LOAD_SMI_U8 55; RETURN_NULL'
+run_asm sbr-past-end         'RETURN_NULL; RAW 72'
+run_asm sbr-back-before      'RAW 7605; RETURN_NULL'
+run_asm sbr-back-loop        'Lt:; LOAD_SMI_0; BRANCH_BACK_S Lt'
+run_asm sbr-merge-height     'LOAD_SMI_0; BRANCH_IF_FALSE_S Le; LOAD_SMI_1; Le:; RETURN_NULL'
 # --- trusted-only HALTs (should be rejected for untrusted) ---
 run_asm halt-deepsleep       'HALT 2'
 run_asm halt-reset           'HALT 3'

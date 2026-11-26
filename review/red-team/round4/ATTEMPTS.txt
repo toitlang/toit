@@ -41,7 +41,8 @@ Assembler battery (34): review/red-team/round4/battery-A.sh -> repro/asmA-result
  - twin-first-insn: twin as first instruction -> REJECTED.
  - twin-as-operand-byte: 0x68 as the operand of LOAD_SMI_U8 (data, not opcode) -> ACCEPTED (pushes smi 104, harmless).
  - twin-branch-into-twin: branch into the middle of a twin -> REJECTED "successor outside the method".
- - op-114/200/255 (+ in-context): out-of-range opcodes -> REJECTED "invalid opcode N".
+ - op-119/200/255 (+ in-context): out-of-range opcodes -> REJECTED "invalid opcode N" (op-114 until format 3, whose short branches are 114..118).
+ - sbr-* (format 3, 2026-11-26): the short branches: a valid one runs; distance 0 forward, a target outside the method, into an operand or before the entry, a loop that grows the stack and a merge of different heights -> REJECTED; one after a terminator is unreachable data -> ACCEPTED (as twin-after-return).
  - halt-deepsleep/reset/0: trusted-only HALTs -> REJECTED "HALT rejected"/"successor outside the method".
  - builtin-101/102/103 + adversarial operands (5): LOOP_REPEAT/LOOP_ARRAY/HASH_FIND -> REJECTED "<op> rejected with kinds [...]" (allowed, but the kind/height lattice rejects the crafted operands).
  - prim-spawn / prim-module-oob: denied/out-of-range PRIMITIVE -> REJECTED "PRIMITIVE rejected".
