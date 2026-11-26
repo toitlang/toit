@@ -1562,9 +1562,10 @@ scheduler_worker_handoff() {
        /^void Interpreter::activate\(/ { active=1; bind++ }
        /^void Interpreter::deactivate\(/ { active=1; unbind++ }
        active { header_read += sub(/interpreter->preemption_method_header_bcp\(\)/, "read_preemption_header(interpreter)");
-                completed += sub(/run_process\(locker, process, scheduler_thread\);/, "run_process(locker, process, scheduler_thread); handoff_finished();"); print }
+                completed += sub(/run_process\(locker, process, scheduler_thread\);/, "run_process(locker, process, scheduler_thread); handoff_finished();");
+                published += sub(/process->publish_heap_stats\(\);/, "publish_heap_stats(process);"); print }
        active && /^}$/ { active=0 }
-       END { if (gc != 1 || select_count != 1 || one != 1 || scan != 1 || drain != 1 || claim != 1 || loop != 1 || dequeue != 1 || header_read != 1 || completed != 1 || run != 1 || barrier != 1 || request != 1 || ack != 1 || bind != 1 || unbind != 1 || active) exit 1 }' \
+       END { if (gc != 1 || select_count != 1 || one != 1 || scan != 1 || drain != 1 || claim != 1 || loop != 1 || dequeue != 1 || header_read != 1 || completed != 1 || published != 1 || run != 1 || barrier != 1 || request != 1 || ack != 1 || bind != 1 || unbind != 1 || active) exit 1 }' \
       "$REPO_ROOT/src/scheduler.cc" "$REPO_ROOT/src/interpreter.cc" > "$inc/scheduler_worker_handoff.inc" || return 1
   cpp_equivalence scheduler-worker-handoff "$abi" "$bits" scheduler_worker_handoff "-I$inc" --unwind 2 \
       --unwindsetname N@toit@S@Scheduler@request_gc_preemption:0:3,N@toit@S@Scheduler@run_process:0:3
