@@ -1,0 +1,10 @@
+--- a/toolchains/idf/components/toit/hot_flash_functions.txt
++++ b/toolchains/idf/components/toit/hot_flash_functions.txt
+@@ -267,6 +267,7 @@
+
+ # Group B, format 2: the install-time verifier, the whole toit_vmverify
+ # and toit_spec crates in their original order.
++f2:0toit_layout_pad
+ f2:toit_vmverify_verify
+ f2:*13toit_vmverify*
+ f2:*9toit_spec*

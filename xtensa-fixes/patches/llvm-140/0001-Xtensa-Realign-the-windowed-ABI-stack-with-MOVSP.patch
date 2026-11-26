@@ -1,0 +1,344 @@
+From 08bec00baac37d981dc4e2c2b4420fa2120ae3b2 Mon Sep 17 00:00:00 2001
+From: Florian Loitsch <florian@loitsch.com>
+Date: Wed, 11 Nov 2026 11:11:02 +0100
+Subject: [PATCH] [Xtensa] Realign the windowed-ABI stack with MOVSP
+
+For a stack object aligned above 32 bytes, emitPrologue realigned SP with
+a plain ADD right after ENTRY. In the windowed ABI the caller's a0-a3 are
+spilled to the 16 bytes below SP; if a window overflow or an interrupt
+(ESP-IDF spills all windows on every interrupt) hits between ENTRY and
+the ADD, they are saved below the old SP and reloaded on RETW from below
+the new one, and the caller resumes with a corrupted return address,
+stack pointer or arguments. The same block had three more faults:
+
+- the misalignment was computed from the frame pointer (a7, still an
+  incoming argument at that point) instead of SP;
+- objects aligned to 32 bytes were not realigned at all, though SP is
+  only 16-byte aligned, so code relying on their alignment (an address
+  computed with `or`) was wrong;
+- incoming stack arguments were addressed from the realigned SP (or from
+  a frame pointer set after the realignment), i.e. at a random offset.
+
+Now:
+- realign when the maximum alignment exceeds 16 bytes; compute
+  (SP + Align - 1) & -Align in a scratch register and set SP with MOVSP;
+- a realigned frame has a frame pointer that holds the incoming SP (set
+  before the realignment): incoming stack arguments (fixed objects) are
+  addressed from it, every other object from the realigned SP; the CFA
+  (FP + frame size) is right again;
+- a realigned frame reserves its call frame, so SP does not move around
+  calls; together with a variable-sized object (which moves SP) it is
+  refused with a fatal error instead of miscompiled.
+
+Fixes espressif/llvm-project#140 (esp-rs/rust#284).
+---
+ .../lib/Target/Xtensa/XtensaFrameLowering.cpp |  84 ++++++++++-----
+ llvm/lib/Target/Xtensa/XtensaFrameLowering.h  |   8 ++
+ llvm/lib/Target/Xtensa/XtensaRegisterInfo.cpp |   7 ++
+ .../Xtensa/stack-realign-windowed-vla.ll      |  17 +++
+ .../CodeGen/Xtensa/stack-realign-windowed.ll  | 101 ++++++++++++++++++
+ 5 files changed, 191 insertions(+), 26 deletions(-)
+ create mode 100644 llvm/test/CodeGen/Xtensa/stack-realign-windowed-vla.ll
+ create mode 100644 llvm/test/CodeGen/Xtensa/stack-realign-windowed.ll
+
+diff --git a/llvm/lib/Target/Xtensa/XtensaFrameLowering.cpp b/llvm/lib/Target/Xtensa/XtensaFrameLowering.cpp
+index 4533be5d3..41aa8a264 100644
+--- a/llvm/lib/Target/Xtensa/XtensaFrameLowering.cpp
++++ b/llvm/lib/Target/Xtensa/XtensaFrameLowering.cpp
+@@ -36,10 +36,28 @@ XtensaFrameLowering::XtensaFrameLowering(const XtensaSubtarget &STI)
+                           Align(4)),
+       STI(STI), TII(*STI.getInstrInfo()), TRI(STI.getRegisterInfo()) {}
+ 
++// The windowed ABI guarantees a 16-byte aligned SP; a stack object with a
++// larger alignment needs the prologue to realign SP.
++bool XtensaFrameLowering::needsWindowedRealign(
++    const MachineFunction &MF) const {
++  return STI.isWindowedABI() && MF.getFrameInfo().getMaxAlign() > Align(16);
++}
++
+ bool XtensaFrameLowering::hasFPImpl(const MachineFunction &MF) const {
+   const MachineFrameInfo &MFI = MF.getFrameInfo();
++  // A realigned frame keeps its incoming SP in the frame pointer: incoming
++  // stack arguments are at fixed offsets from it, not from the realigned SP.
+   return MF.getTarget().Options.DisableFramePointerElim(MF) ||
+-         MFI.hasVarSizedObjects();
++         MFI.hasVarSizedObjects() || needsWindowedRealign(MF);
++}
++
++bool XtensaFrameLowering::hasReservedCallFrame(
++    const MachineFunction &MF) const {
++  // A realigned frame addresses its locals from SP, which must then not
++  // move around calls.
++  if (needsWindowedRealign(MF))
++    return !MF.getFrameInfo().hasVarSizedObjects();
++  return TargetFrameLowering::hasReservedCallFrame(MF);
+ }
+ 
+ void XtensaFrameLowering::emitPrologue(MachineFunction &MF,
+@@ -62,9 +80,17 @@ void XtensaFrameLowering::emitPrologue(MachineFunction &MF,
+ 
+   if (STI.isWindowedABI()) {
+     StackSize += 32;
++    bool Realign = needsWindowedRealign(MF);
+     uint64_t MaxAlignment = MFI.getMaxAlign().value();
+-    if (MaxAlignment > 32)
++    if (Realign) {
++      // Locals are addressed from the realigned SP, which must therefore
++      // stay put: a variable-sized object would move it.
++      if (MFI.hasVarSizedObjects())
++        report_fatal_error("Xtensa: a stack object aligned above 16 bytes in "
++                           "a function with variable-sized objects is not "
++                           "supported");
+       StackSize += MaxAlignment;
++    }
+ 
+     if (StackSize <= 32760) {
+       BuildMI(MBB, MBBI, DL, TII.get(Xtensa::ENTRY))
+@@ -84,28 +110,6 @@ void XtensaFrameLowering::emitPrologue(MachineFunction &MF,
+       BuildMI(MBB, MBBI, DL, TII.get(Xtensa::MOVSP), SP).addReg(TmpReg);
+     }
+ 
+-    // Calculate how much is needed to have the correct alignment.
+-    // Change offset to: alignment + difference.
+-    // For example, in case of alignment of 128:
+-    // diff_to_128_aligned_address = (128 - (SP & 127))
+-    // new_offset = SP + diff_to_128_aligned_address
+-    // This is safe to do because we increased the stack size by MaxAlignment.
+-    MCRegister Reg, RegMisAlign;
+-    if (MaxAlignment > 32) {
+-      TII.loadImmediate(MBB, MBBI, &RegMisAlign, MaxAlignment - 1);
+-      TII.loadImmediate(MBB, MBBI, &Reg, MaxAlignment);
+-      BuildMI(MBB, MBBI, DL, TII.get(Xtensa::AND))
+-          .addReg(RegMisAlign, RegState::Define)
+-          .addReg(FP)
+-          .addReg(RegMisAlign);
+-      BuildMI(MBB, MBBI, DL, TII.get(Xtensa::SUB), RegMisAlign)
+-          .addReg(Reg)
+-          .addReg(RegMisAlign);
+-      BuildMI(MBB, MBBI, DL, TII.get(Xtensa::ADD), SP)
+-          .addReg(SP)
+-          .addReg(RegMisAlign, RegState::Kill);
+-    }
+-
+     // Store FP register in A8, because FP may be used to pass function
+     // arguments
+     if (XtensaFI->isSaveFrameRegister()) {
+@@ -116,7 +120,9 @@ void XtensaFrameLowering::emitPrologue(MachineFunction &MF,
+ 
+     // if framepointer enabled, set it to point to the stack pointer.
+     if (hasFP(MF)) {
+-      // Insert instruction "move $fp, $sp" at this location.
++      // Insert instruction "move $fp, $sp" at this location. In a realigned
++      // frame this is the SP before the realignment: the CFA is FP +
++      // StackSize, and incoming stack arguments are addressed from FP.
+       BuildMI(MBB, MBBI, DL, TII.get(Xtensa::OR), FP)
+           .addReg(SP)
+           .addReg(SP)
+@@ -127,7 +133,33 @@ void XtensaFrameLowering::emitPrologue(MachineFunction &MF,
+       unsigned CFIIndex = MF.addFrameInst(Inst);
+       BuildMI(MBB, MBBI, DL, TII.get(TargetOpcode::CFI_INSTRUCTION))
+           .addCFIIndex(CFIIndex);
+-    } else {
++    }
++
++    // Realign SP upwards to MaxAlignment (the frame has MaxAlignment bytes
++    // to spare): SP' = (SP + MaxAlignment - 1) & -MaxAlignment.
++    // In the windowed ABI SP may only change with MOVSP: the caller's base
++    // save area sits in the 16 bytes below SP, and MOVSP moves it (through
++    // the Alloca exception) if the caller's registers were already spilled
++    // there. A plain write to SP leaves them behind, and the caller resumes
++    // with a corrupted a0-a3 (espressif/llvm-project#140).
++    if (Realign) {
++      MachineRegisterInfo &MRInfo = MF.getRegInfo();
++      MCRegister Offset, Mask;
++      Register Sum = MRInfo.createVirtualRegister(&Xtensa::ARRegClass);
++      Register NewSP = MRInfo.createVirtualRegister(&Xtensa::ARRegClass);
++      TII.loadImmediate(MBB, MBBI, &Offset, MaxAlignment - 1);
++      BuildMI(MBB, MBBI, DL, TII.get(Xtensa::ADD), Sum)
++          .addReg(SP)
++          .addReg(Offset, RegState::Kill);
++      TII.loadImmediate(MBB, MBBI, &Mask, -(int64_t)MaxAlignment);
++      BuildMI(MBB, MBBI, DL, TII.get(Xtensa::AND), NewSP)
++          .addReg(Sum, RegState::Kill)
++          .addReg(Mask, RegState::Kill);
++      BuildMI(MBB, MBBI, DL, TII.get(Xtensa::MOVSP), SP)
++          .addReg(NewSP, RegState::Kill);
++    }
++
++    if (!hasFP(MF)) {
+       // emit ".cfi_def_cfa_offset StackSize"
+       unsigned CFIIndex = MF.addFrameInst(
+           MCCFIInstruction::cfiDefCfaOffset(nullptr, StackSize));
+diff --git a/llvm/lib/Target/Xtensa/XtensaFrameLowering.h b/llvm/lib/Target/Xtensa/XtensaFrameLowering.h
+index f0095b877..c143fb5c5 100644
+--- a/llvm/lib/Target/Xtensa/XtensaFrameLowering.h
++++ b/llvm/lib/Target/Xtensa/XtensaFrameLowering.h
+@@ -50,6 +50,14 @@ public:
+   void processFunctionBeforeFrameFinalized(MachineFunction &MF,
+                                            RegScavenger *RS) const override;
+ 
++  bool hasReservedCallFrame(const MachineFunction &MF) const override;
++
++  /// Whether the windowed-ABI prologue realigns SP for a stack object
++  /// aligned above the 16 bytes the ABI guarantees. Such a function keeps
++  /// its incoming SP in the frame pointer (for incoming stack arguments)
++  /// and addresses its other stack objects from the realigned SP.
++  bool needsWindowedRealign(const MachineFunction &MF) const;
++
+ protected:
+   bool hasFPImpl(const MachineFunction &MF) const override;
+ };
+diff --git a/llvm/lib/Target/Xtensa/XtensaRegisterInfo.cpp b/llvm/lib/Target/Xtensa/XtensaRegisterInfo.cpp
+index 700c6b60f..65f05f360 100644
+--- a/llvm/lib/Target/Xtensa/XtensaRegisterInfo.cpp
++++ b/llvm/lib/Target/Xtensa/XtensaRegisterInfo.cpp
+@@ -97,9 +97,16 @@ bool XtensaRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
+   //  4. Locations for eh data registers.
+   // Everything else is referenced relative to whatever register
+   // getFrameRegister() returns.
++  // A realigned windowed frame (XtensaFrameLowering::needsWindowedRealign)
++  // keeps its incoming SP in the frame register: incoming arguments (fixed
++  // objects) are addressed from it, everything else from the realigned SP.
++  const XtensaFrameLowering *TFI = static_cast<const XtensaFrameLowering *>(
++      MF.getSubtarget().getFrameLowering());
+   MCRegister FrameReg;
+   if ((FrameIndex >= MinCSFI && FrameIndex <= MaxCSFI))
+     FrameReg = Xtensa::SP;
++  else if (TFI->needsWindowedRealign(MF) && !MFI.isFixedObjectIndex(FrameIndex))
++    FrameReg = Xtensa::SP;
+   else
+     FrameReg = getFrameRegister(MF);
+ 
+diff --git a/llvm/test/CodeGen/Xtensa/stack-realign-windowed-vla.ll b/llvm/test/CodeGen/Xtensa/stack-realign-windowed-vla.ll
+new file mode 100644
+index 000000000..ad30a28a8
+--- /dev/null
++++ b/llvm/test/CodeGen/Xtensa/stack-realign-windowed-vla.ll
+@@ -0,0 +1,17 @@
++; RUN: not --crash llc -mtriple=xtensa -mcpu=esp32 -O2 < %s -o /dev/null 2>&1 \
++; RUN:   | FileCheck %s
++
++; A realigned windowed frame addresses its locals from the realigned SP,
++; which a variable-sized object would move: refuse instead of miscompiling.
++
++; CHECK: LLVM ERROR: Xtensa: a stack object aligned above 16 bytes in a function with variable-sized objects is not supported
++
++declare void @use(ptr)
++
++define void @realign_vla(i32 %n) {
++  %buf = alloca [64 x i8], align 64
++  %v = alloca i8, i32 %n
++  call void @use(ptr %buf)
++  call void @use(ptr %v)
++  ret void
++}
+diff --git a/llvm/test/CodeGen/Xtensa/stack-realign-windowed.ll b/llvm/test/CodeGen/Xtensa/stack-realign-windowed.ll
+new file mode 100644
+index 000000000..92efe59cd
+--- /dev/null
++++ b/llvm/test/CodeGen/Xtensa/stack-realign-windowed.ll
+@@ -0,0 +1,101 @@
++; RUN: llc -mtriple=xtensa -mcpu=esp32 -O2 -verify-machineinstrs < %s \
++; RUN:   | FileCheck %s
++
++; Windowed-ABI stack realignment for objects aligned above 16 bytes
++; (espressif/llvm-project#140):
++; - SP changes only with MOVSP (a plain write leaves the caller's spilled
++;   a0-a3 behind in the old base save area);
++; - the realignment is computed from SP, not from a7 (an incoming argument
++;   until it becomes the frame pointer);
++; - align 32 is realigned too (SP is only 16-byte aligned);
++; - the frame pointer keeps the incoming SP, so incoming stack arguments
++;   are found, and locals are addressed from the realigned SP.
++
++declare void @use(ptr)
++declare i32 @take8(i32, i32, i32, i32, i32, i32, i32, i32)
++
++define void @realign64() {
++; CHECK-LABEL: realign64:
++; CHECK:       entry a1, 160
++; CHECK-NEXT:  mov.n a7, a1
++; CHECK:       movi.n [[O:a[0-9]+]], 63
++; CHECK-NEXT:  add.n [[S:a[0-9]+]], a1, [[O]]
++; CHECK-NEXT:  movi [[M:a[0-9]+]], -64
++; CHECK-NEXT:  and [[N:a[0-9]+]], [[S]], [[M]]
++; CHECK-NEXT:  movsp a1, [[N]]
++; CHECK-NOT:   {{add|sub|and|or}}{{(.n)?}} a1,
++; CHECK:       addi a10, a1, 0
++; CHECK:       callx8
++  %buf = alloca [64 x i8], align 64
++  call void @use(ptr %buf)
++  ret void
++}
++
++define void @align32_or() {
++; CHECK-LABEL: align32_or:
++; CHECK:       movi.n [[M:a[0-9]+]], -32
++; CHECK:       movsp a1,
++; CHECK:       addi [[B:a[0-9]+]], a1, 0
++; CHECK:       callx8
++; CHECK:       or a10, [[B]],
++  %buf = alloca [64 x i8], align 32
++  call void @use(ptr %buf)
++  %f = getelementptr inbounds i8, ptr %buf, i32 16
++  call void @use(ptr %f)
++  ret void
++}
++
++define void @align16_no_realign() {
++; CHECK-LABEL: align16_no_realign:
++; CHECK-NOT:   movsp
++; CHECK:       callx8
++  %buf = alloca [64 x i8], align 16
++  call void @use(ptr %buf)
++  ret void
++}
++
++; The incoming a7 (sixth argument word) is saved before a7 becomes the
++; frame pointer, and not clobbered by the realignment.
++define i32 @realign_stack_args(i32 %a, i32 %b, i32 %c, i32 %d, i32 %e, i32 %f, i32 %g, i32 %h) {
++; CHECK-LABEL: realign_stack_args:
++; CHECK:       entry a1, 160
++; CHECK-NEXT:  mov.n a8, a7
++; CHECK-NEXT:  mov.n a7, a1
++; CHECK-NOT:   a8
++; CHECK:       movsp a1,
++; CHECK:       callx8
++; CHECK-DAG:   l32i {{a[0-9]+}}, a7, 160
++; CHECK-DAG:   l32i {{a[0-9]+}}, a7, 164
++  %buf = alloca [64 x i8], align 64
++  call void @use(ptr %buf)
++  %r1 = add i32 %g, %h
++  %r = add i32 %r1, %f
++  ret i32 %r
++}
++
++define void @realign64_fp() "frame-pointer"="all" {
++; CHECK-LABEL: realign64_fp:
++; CHECK:       entry a1, 160
++; CHECK-NEXT:  mov.n a7, a1
++; CHECK-NOT:   and {{a[0-9]+}}, a7,
++; CHECK:       movsp a1,
++  %buf = alloca [64 x i8], align 64
++  call void @use(ptr %buf)
++  ret void
++}
++
++; The call frame is reserved: SP does not move around the call.
++define i32 @realign_outgoing(i32 %x) {
++; CHECK-LABEL: realign_outgoing:
++; CHECK:       movsp a1,
++; CHECK-NOT:   movsp
++; CHECK:       s32i.n {{a[0-9]+}}, a1, 4
++; CHECK:       s32i.n {{a[0-9]+}}, a1, 0
++; CHECK:       callx8
++; CHECK-NOT:   movsp
++; CHECK:       retw
++  %buf = alloca [64 x i8], align 64
++  call void @use(ptr %buf)
++  %r = call i32 @take8(i32 %x, i32 1, i32 2, i32 3, i32 4, i32 5, i32 6, i32 7)
++  ret i32 %r
++}
+-- 
+2.56.0
+

@@ -1,0 +1,10 @@
+# Copyright (C) 2026 Toit contributors.
+# esp32-layout: group B of the hot flash code, the install-time verifier
+# (format 2 only): the whole toit_vmverify and toit_spec crates (31 KB on
+# the classic ESP32), so that the verifier keeps its internal layout and
+# moves as one block, as it did inside the Rust library before (pinning only
+# its loop and the 26 callees with stall samples made the verification time
+# vary more: a-hello 0.70-1.28 s over four pads instead of 0.84-1.05 s).
+toit_vmverify_verify
+*13toit_vmverify*
+*9toit_spec*

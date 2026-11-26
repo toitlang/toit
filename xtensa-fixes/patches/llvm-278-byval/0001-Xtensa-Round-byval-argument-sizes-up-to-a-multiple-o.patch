@@ -1,0 +1,77 @@
+From e6d6d8ef5ea322eb598391c353916549e8d34935 Mon Sep 17 00:00:00 2001
+From: Florian Loitsch <florian@loitsch.com>
+Date: Wed, 11 Nov 2026 11:13:20 +0100
+Subject: [PATCH] [Xtensa] Round byval argument sizes up to a multiple of 4
+
+Every stack argument occupies whole words (Xtensa ISA RM 8.1.4). A byval
+object of 5, 6 or 7 bytes left the next stack argument at an offset that
+is not a multiple of 4 (and the stock compiler fails the machine verifier
+on the resulting call frame). Same change as llvm/llvm-project#228365,
+for the Espressif fork; the LLVM half of esp-rs/rust#278.
+---
+ llvm/lib/Target/Xtensa/XtensaISelLowering.cpp |  9 +++---
+ .../Xtensa/calling-conv-byval-odd-size.ll     | 32 +++++++++++++++++++
+ 2 files changed, 37 insertions(+), 4 deletions(-)
+ create mode 100644 llvm/test/CodeGen/Xtensa/calling-conv-byval-odd-size.ll
+
+diff --git a/llvm/lib/Target/Xtensa/XtensaISelLowering.cpp b/llvm/lib/Target/Xtensa/XtensaISelLowering.cpp
+index 1f136d85e..dd60a5e23 100644
+--- a/llvm/lib/Target/Xtensa/XtensaISelLowering.cpp
++++ b/llvm/lib/Target/Xtensa/XtensaISelLowering.cpp
+@@ -793,10 +793,11 @@ static bool CC_Xtensa_Custom(unsigned ValNo, MVT ValVT, MVT LocVT,
+ 
+   if (ArgFlags.isByVal()) {
+     Align ByValAlign = ArgFlags.getNonZeroByValAlign();
+-    unsigned ByValSize = ArgFlags.getByValSize();
+-    if (ByValSize < 4) {
+-      ByValSize = 4;
+-    }
++    // Every stack argument occupies whole words (Xtensa ISA RM 8.1.4), so a
++    // byval object whose size is not a multiple of 4 must not leave the next
++    // stack argument, the varargs area or the call frame size misaligned
++    // (llvm/llvm-project#228365).
++    unsigned ByValSize = alignTo(ArgFlags.getByValSize(), 4);
+     if (ByValAlign < Align(4)) {
+       ByValAlign = Align(4);
+     }
+diff --git a/llvm/test/CodeGen/Xtensa/calling-conv-byval-odd-size.ll b/llvm/test/CodeGen/Xtensa/calling-conv-byval-odd-size.ll
+new file mode 100644
+index 000000000..4bc108bf2
+--- /dev/null
++++ b/llvm/test/CodeGen/Xtensa/calling-conv-byval-odd-size.ll
+@@ -0,0 +1,32 @@
++; RUN: llc -mtriple=xtensa -mcpu=esp32 -O2 -verify-machineinstrs < %s \
++; RUN:   | FileCheck %s
++
++; A byval argument whose size is not a multiple of 4 still occupies whole
++; words: the next stack argument is at offset 8 after a 5..7-byte object.
++
++declare i32 @take_after6(i32, i32, i32, i32, i32, ptr byval([6 x i8]) align 2, i16 zeroext)
++
++define i32 @callee_after6(i32 %a, i32 %b, i32 %c, i32 %d, i32 %e, ptr byval([6 x i8]) align 2 %s, i16 zeroext %y) {
++; CHECK-LABEL: callee_after6:
++; CHECK:       l32i{{(.n)?}} a2, a1, 40
++  %r = zext i16 %y to i32
++  ret i32 %r
++}
++
++define i32 @callee_after7(i32 %a, i32 %b, i32 %c, i32 %d, i32 %e, ptr byval([7 x i8]) align 1 %s, i8 zeroext %y, i16 signext %z) {
++; CHECK-LABEL: callee_after7:
++; CHECK-DAG:   l32i{{(.n)?}} {{a[0-9]+}}, a1, 40
++; CHECK-DAG:   l32i{{(.n)?}} {{a[0-9]+}}, a1, 44
++  %y32 = zext i8 %y to i32
++  %z32 = sext i16 %z to i32
++  %r = add i32 %y32, %z32
++  ret i32 %r
++}
++
++define i32 @caller_after6(ptr %p, i16 %y) {
++; CHECK-LABEL: caller_after6:
++; CHECK:       s32i{{(.n)?}} {{a[0-9]+}}, a1, 8
++; CHECK:       callx8
++  %r = call i32 @take_after6(i32 0, i32 0, i32 0, i32 0, i32 0, ptr byval([6 x i8]) align 2 %p, i16 zeroext %y)
++  ret i32 %r
++}
+-- 
+2.56.0
+

@@ -1,0 +1,55 @@
+--- a/toolchains/idf/components/toit/hot_flash_functions.txt	2026-11-25 11:24:21.430103277 +0100
++++ b/toolchains/idf/components/toit/hot_flash_functions.txt	2026-11-25 11:24:21.432337541 +0100
+@@ -267,6 +267,52 @@
+ 
+ # Group B, format 2: the install-time verifier, the whole toit_vmverify
+ # and toit_spec crates in their original order.
++f2:0toit_layout_pad
++f2:*9toit_spec2v25check16x_method_body_ok                                 # toit_spec::v2::check::x_method_body_ok
++f2:*9toit_spec4xvec8try_pushNtNtNtB4_2v25check5XKindEB4_                  # toit_spec::xvec::try_push::<toit_spec::v2::check::XKind>
++f2:*9toit_spec9exec_step15x_compare_mixed                                 # toit_spec::exec_step::x_compare_mixed
++f2:*9toit_spec2v25check5x_fld                                             # toit_spec::v2::check::x_fld
++f2:*9toit_spec2v25check9x_kind_eq                                         # toit_spec::v2::check::x_kind_eq
++f2:*9toit_spec2v25check7x_fnode                                           # toit_spec::v2::check::x_fnode
++f2:*9toit_spec2v25check8x_map_is                                          # toit_spec::v2::check::x_map_is
++f2:*9toit_spec2v25vprogNtB5_6MTable2at                                    # <toit_spec::v2::vprog::MTable>::at
++f2:*9toit_spec2v24cert13x_intern_into                                     # toit_spec::v2::cert::x_intern_into
++f2:*9toit_spec2v25check8x_ctx_of                                          # toit_spec::v2::check::x_ctx_of
++f2:*9toit_spec2v25check9x_bp_mask                                         # toit_spec::v2::check::x_bp_mask
++f2:*9toit_spec2v25check9x_sel_rep                                         # toit_spec::v2::check::x_sel_rep
++f2:*9toit_spec2v25check8x_sel_ok                                          # toit_spec::v2::check::x_sel_ok
++f2:*9toit_spec2v29bytecodes19exec_opcode_length2                          # toit_spec::v2::bytecodes::exec_opcode_length2
++f2:*9toit_spec2v25check8x_decode                                          # toit_spec::v2::check::x_decode
++f2:*9toit_spec4xvec8try_pushmEB4_                                         # toit_spec::xvec::try_push::<u32>
++f2:*9toit_spec2v25check9x_args_ok                                         # toit_spec::v2::check::x_args_ok
++f2:*9toit_spec2v25check15x_pop_push_into                                  # toit_spec::v2::check::x_pop_push_into
++f2:*9toit_spec4cvecINtB4_4CVecmE12append_blockB6_                         # <toit_spec::cvec::CVec<u32>>::append_block
++f2:*9toit_spec2v25vprogNtB5_6MTable10recv_start                           # <toit_spec::v2::vprog::MTable>::recv_start
++f2:*9toit_spec2v25check11x_push_into                                      # toit_spec::v2::check::x_push_into
++f2:*9toit_spec2v25check15x_ctx_kinds_rev                                  # toit_spec::v2::check::x_ctx_kinds_rev
++f2:*9toit_spec2v24cert11x_list_push                                       # toit_spec::v2::cert::x_list_push
++f2:*9toit_spec2v25check9x_pinned0                                         # toit_spec::v2::check::x_pinned0
++f2:*9toit_spec2v25check10x_shape_ok                                       # toit_spec::v2::check::x_shape_ok
++f2:*9toit_spec2v24cert12x_entry_list                                      # toit_spec::v2::cert::x_entry_list
++f2:*9toit_spec2v25check15x_terminator_ok                                  # toit_spec::v2::check::x_terminator_ok
++f2:*4core3ptr9drop_glueNtNtNtCsjVgEzpHeP3C_9toit_spec2v24cert5XListEBH_   # core::ptr::drop_glue::<toit_spec::v2::cert::XList>
++f2:*9toit_spec2v25check16x_is_block_param                                 # toit_spec::v2::check::x_is_block_param
++f2:*9toit_spec2v25check15x_is_terminator                                  # toit_spec::v2::check::x_is_terminator
++f2:*9toit_spec2v25check13x_entry_kinds                                    # toit_spec::v2::check::x_entry_kinds
++f2:*9toit_spec4cvecINtB5_6CBuildmE11try_fill_toB7_                        # <toit_spec::cvec::CBuild<u32>>::try_fill_to
++f2:*9toit_spec2v24cert13x_list_prefix                                     # toit_spec::v2::cert::x_list_prefix
++f2:*4core3ptr9drop_glueNtNtNtCsjVgEzpHeP3C_9toit_spec2v25check5XMapsECs4FlGcCHb3n7_13toit_vmverify # core::ptr::drop_glue::<toit_spec::v2::check::XMaps>
++f2:*9toit_spec2v25check16x_block_slot_rev                                 # toit_spec::v2::check::x_block_slot_rev
++f2:*9toit_spec4xvec17try_with_capacityNtNtNtB4_2v25check5XKindEB4_        # toit_spec::xvec::try_with_capacity::<toit_spec::v2::check::XKind>
++f2:*9toit_spec2v25check12x_block_slot                                     # toit_spec::v2::check::x_block_slot
++f2:*9toit_spec2v25check10x_reversed                                       # toit_spec::v2::check::x_reversed
++f2:*9toit_spec2v25check15x_this_field_ok                                  # toit_spec::v2::check::x_this_field_ok
++f2:*9toit_spec2v25check13x_ctx_ok_upto                                    # toit_spec::v2::check::x_ctx_ok_upto
++f2:*9toit_spec2v25check10x_writable                                       # toit_spec::v2::check::x_writable
++f2:*9toit_spec4cvecINtB4_4CVecNtNtNtB6_2v25check5XNodeE12append_blockB6_  # <toit_spec::cvec::CVec<toit_spec::v2::check::XNode>>::append_block
++f2:*9toit_spec2v25check8x_fchain                                          # toit_spec::v2::check::x_fchain
++f2:*9toit_spec4xvec17try_with_capacitymEB4_                               # toit_spec::xvec::try_with_capacity::<u32>
++f2:*9toit_spec2v25check11x_post_into
+ f2:toit_vmverify_verify
+ f2:*13toit_vmverify*
+ f2:*9toit_spec*

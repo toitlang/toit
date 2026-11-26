@@ -1,0 +1,75 @@
+diff --git a/src/heap.cc b/src/heap.cc
+index 10f8b641d..1cfb37df8 100644
+--- a/src/heap.cc
++++ b/src/heap.cc
+@@ -288,6 +288,8 @@ Task* ObjectHeap::allocate_task() {
+   Task* result = unvoid_cast<Task*>(allocate_instance(task_id));
+   if (result == null) return null;  // Allocation failure.
+   Task::cast(result)->_initialize(stack, Smi::from(owner()->next_task_id()));
++  static int stklog = getenv("TOIT_STKLOG") ? 1 : 0;
++  if (stklog) fprintf(stderr, "STKNEW %d %ld %d\n", owner()->id(), (long)Task::cast(result)->id(), program()->global_max_stack_height());
+   return result;
+ }
+ 
+diff --git a/src/interpreter_v2.cc b/src/interpreter_v2.cc
+index 9254202a4..580ff3dc1 100644
+--- a/src/interpreter_v2.cc
++++ b/src/interpreter_v2.cc
+@@ -448,8 +448,16 @@ uword toit_v2_grow_stack(void* raw_process, uword needed) {
+   word length = stack->length();
+   word free = stack->top() - stack->v2_record_top();
+   word new_length = -1;
++  static int stklog = getenv("TOIT_STKLOG") ? 1 : 0;
++  static int stkexact = getenv("TOIT_STKEXACT") ? 1 : 0;
++  if (stklog) {
++    fprintf(stderr, "STKGROW %d %ld %ld %ld %ld %d\n", process->id(), (long)process->task()->id(), (long)length,
++            (long)((length - free) + static_cast<word>(needed)), (long)stack->v2_record_top(),
++            process->program()->global_max_stack_height());
++  }
+   if (length < Stack::max_length()) {
+-    new_length = Utils::max(length + (length >> 1), (length - free) + static_cast<word>(needed));
++    new_length = stkexact ? (length - free) + static_cast<word>(needed)
++                          : Utils::max(length + (length >> 1), (length - free) + static_cast<word>(needed));
+     new_length = Utils::min(Stack::max_length(), new_length);
+     if (free + (new_length - length) < static_cast<word>(needed)) new_length = -1;
+   }
+diff --git a/src/objects.cc b/src/objects.cc
+index 2cb2fe45f..d179ead9d 100644
+--- a/src/objects.cc
++++ b/src/objects.cc
+@@ -269,6 +269,12 @@ word Stack::absolute_bci_at_preemption(Program* program) {
+   return program->absolute_bci_from_bcp(bcp);
+ }
+ 
++static word experiment_initial_length_from_env() {
++  const char* s = getenv("TOIT_STKINIT");
++  return s ? atol(s) : 64;
++}
++word Stack::experiment_initial_length = experiment_initial_length_from_env();
++
+ static void visit_stack_roots(Object** slots, word top, word length, uword bytecodes_from, uword bytecodes_to, RootCallback* cb) {
+   Object** roots = slots + top;
+   word used = length - top;
+@@ -299,6 +305,8 @@ word Stack::shrink_v2_for_gc(word top, int max_height, bool aggressive, RootCall
+       word used = length() - top;
+       memmove(_array_address(top - reduction), _array_address(top), used << WORD_SIZE_LOG_2);
+       word len = length() - reduction;
++      static int stklog = getenv("TOIT_STKLOG") ? 1 : 0;
++      if (stklog) fprintf(stderr, "STKSHRINK %ld %ld %ld\n", (long)length(), (long)len, (long)record_top);
+       top -= reduction;
+       _set_length(len);
+       _set_top(top);
+diff --git a/src/objects.h b/src/objects.h
+index 78ee0fa48..a742d4a01 100644
+--- a/src/objects.h
++++ b/src/objects.h
+@@ -1012,7 +1012,8 @@ class Stack : public HeapObject {
+   // A null callback requests only the count.
+   int frames_do(Program* program, FrameCallback* cb);
+ 
+-  static INLINE word initial_length() { return 64; }
++  static word experiment_initial_length;
++  static INLINE word initial_length() { return experiment_initial_length; }
+   static INLINE word max_length();
+ 
+   // Format 2 (the verified core, interpreter_v2.cc and verified/core).

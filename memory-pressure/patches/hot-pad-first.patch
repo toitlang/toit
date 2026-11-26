@@ -1,0 +1,10 @@
+--- a/toolchains/idf/components/toit/hot_flash_functions.txt	2026-11-25 11:24:21.430103277 +0100
++++ b/toolchains/idf/components/toit/hot_flash_functions.txt	2026-11-25 11:31:57.979519115 +0100
+@@ -34,6 +34,7 @@
+ 
+ # Group A, both formats (first the most fetch misses per byte, then
+ # the largest share of the time per byte).
++0toit_layout_pad
+ _ZN4toit10ObjectHeap23max_external_allocationEv                          #    42 B  toit::ObjectHeap::max_external_allocation()
+ _ZN4toit6Locker5enterEv                                                  #    96 B  toit::Locker::enter()
+ _ZNK4toit5Space4sizeEv                                                   #    28 B  toit::Space::size()_const

@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Copyright (C) 2026 Toit contributors.
+#
+# Flashes an envelope of env/ and captures the serial output.
+# Usage: hwrun.sh BOARD ENV-NAME LOG-NAME TIMEOUT-S [flash options...]
+#   BOARD: c6, b1, b2, s3a, s3b
+#   ENV-NAME: env/<ENV-NAME>.envelope; logs go to logs/<LOG-NAME>.txt.
+set -uo pipefail
+A=/home/flo/work/opentoit-sandbox-artifacts/rpc-task-speed-3
+case $1 in
+  c6) PORT=/dev/serial/by-id/usb-1a86_USB_Single_Serial_5959032636-if00; CHIP=ESP32-C6 ;;
+  b1) PORT=/dev/ttyEsp32Board1; CHIP=ESP32 ;;
+  b2) PORT=/dev/ttyEsp32Board2; CHIP=ESP32 ;;
+  s3a) PORT=/dev/ttyEsp32s3Board1; CHIP=ESP32-S3 ;;
+  s3b) PORT=/dev/ttyEsp32s3Board2; CHIP=ESP32-S3 ;;
+  *) echo "unknown board $1" >&2; exit 2 ;;
+esac
+ENV=$A/env/$2.envelope
+LOG=$A/logs/$3.txt
+T=$4
+shift 4
+STOP=${STOP:-"SUITE done|BENCH done|Guru Meditation|abort\(\)|Potential dead|Backtrace:|Rebooting"}
+if [ "${NOFLASH:-0}" != 1 ]; then
+  if ! bash "$A/scripts/flash.sh" "$PORT" "$CHIP" "$ENV" "$@" > "$LOG.flash" 2>&1; then
+    echo "flash failed"; tail -20 "$LOG.flash"; exit 1
+  fi
+fi
+bash "$A/scripts/mon.sh" "$PORT" "$CHIP" "$LOG" "$T" "$STOP"
+grep -a -E "^(SUITE|TIME|MEM|BENCH|SPIN|WIFI)|Guru|abort|Potential|Backtrace|watchdog|Rebooting|rst:" "$LOG" | head -150

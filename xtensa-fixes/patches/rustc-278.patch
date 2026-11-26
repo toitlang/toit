@@ -1,0 +1,24 @@
+--- a/compiler/rustc_target/src/callconv/xtensa.rs
++++ b/compiler/rustc_target/src/callconv/xtensa.rs
+@@ -80,7 +80,20 @@
+     }
+     *arg_gprs_left -= needed_arg_gprs;
+ 
+-    if must_use_stack {
++    if must_use_stack && !is_xtensa_aggregate(arg) {
++        // A scalar on the stack still occupies a whole word, extended like a
++        // register argument (Xtensa ISA RM 8.1.4: "Integer values smaller
++        // than a word are stored in the least significant portion of the
++        // argument word, with the upper bits set to zero for unsigned values
++        // or sign-extended for signed values"). Passing it `byval` stores
++        // only its own bytes (s8i/s16i) and leaves garbage in the rest of
++        // the word, which a GCC-compiled callee reads with l32i
++        // (esp-rs/rust#278). LLVM places a direct argument that does not fit
++        // in a2-a7 on the stack itself.
++        if size < 32 {
++            arg.extend_integer_width_to(32);
++        }
++    } else if must_use_stack {
+         arg.pass_by_stack_offset(None);
+     } else if is_xtensa_aggregate(arg) {
+         // Aggregates which are <= max_size will be passed in

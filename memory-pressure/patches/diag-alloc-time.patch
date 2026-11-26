@@ -1,0 +1,104 @@
+diff --git a/src/verifier_v2.cc b/src/verifier_v2.cc
+index 73c39db84..a895df2f7 100644
+--- a/src/verifier_v2.cc
++++ b/src/verifier_v2.cc
+@@ -47,6 +47,53 @@ static volatile size_t trace_install_min_free = 0;
+ // of the certificate come before the first.
+ static int64_t trace_install_first_progress = 0;
+ static int64_t trace_install_last_progress = 0;
++#include <esp_cpu.h>
++#include <freertos/FreeRTOS.h>
++#include <freertos/task.h>
++// DIAGNOSTIC (not committed): cycles spent in the verifier's allocator calls,
++// and the gaps between method progress calls.
++static uint32_t diag_n[3];
++static uint64_t diag_cyc[3];
++static uint32_t diag_gap_n;
++static int64_t diag_gap_us;
++static int64_t diag_gap_max;
++static uint32_t diag_core_moves;
++static int diag_core;
++static inline void diag_add(int k, uint32_t start) {
++  if (!trace_install_active) return;
++  diag_n[k]++;
++  diag_cyc[k] += static_cast<uint32_t>(esp_cpu_get_cycle_count() - start);
++}
++extern "C" void* toit_diag_malloc(size_t size) {
++  uint32_t s = esp_cpu_get_cycle_count();
++  void* r = malloc(size);
++  diag_add(0, s);
++  return r;
++}
++extern "C" void toit_diag_free(void* p) {
++  uint32_t s = esp_cpu_get_cycle_count();
++  free(p);
++  diag_add(1, s);
++}
++extern "C" void* toit_diag_realloc(void* p, size_t size) {
++  uint32_t s = esp_cpu_get_cycle_count();
++  void* r = realloc(p, size);
++  diag_add(2, s);
++  return r;
++}
++static void diag_reset() {
++  for (int i = 0; i < 3; i++) { diag_n[i] = 0; diag_cyc[i] = 0; }
++  diag_gap_n = 0; diag_gap_us = 0; diag_gap_max = 0; diag_core_moves = 0;
++  diag_core = xPortGetCoreID();
++}
++static void diag_print() {
++  printf("[install-diag] malloc %u %llu us, free %u %llu us, realloc %u %llu us; gaps>2ms %u %lld us (max %lld); core moves %u\n",
++         static_cast<unsigned>(diag_n[0]), static_cast<unsigned long long>(diag_cyc[0] / 240),
++         static_cast<unsigned>(diag_n[1]), static_cast<unsigned long long>(diag_cyc[1] / 240),
++         static_cast<unsigned>(diag_n[2]), static_cast<unsigned long long>(diag_cyc[2] / 240),
++         static_cast<unsigned>(diag_gap_n), static_cast<long long>(diag_gap_us), static_cast<long long>(diag_gap_max),
++         static_cast<unsigned>(diag_core_moves));
++}
+ 
+ // Without TOIT_TRACE_INSTALL_HEAP (times only) there are no heap hooks: the
+ // hook costs a free-size query per allocation, which inflates the time of
+@@ -384,6 +431,13 @@ static void v2_progress(void* context, uword method) {
+   if (trace_install_active) {
+     int64 now = esp_timer_get_time();
+     if (trace_install_first_progress == 0) trace_install_first_progress = now;
++    else {
++      int64_t gap = now - trace_install_last_progress;
++      if (gap > 2000) { diag_gap_n++; diag_gap_us += gap; }
++      if (gap > diag_gap_max) diag_gap_max = gap;
++    }
++    int core = xPortGetCoreID();
++    if (core != diag_core) { diag_core_moves++; diag_core = core; }
+     trace_install_last_progress = now;
+   }
+ #endif
+@@ -570,6 +624,7 @@ const char* V2Verifier::verify_installed(Program* program, word program_size, bo
+ #ifdef CONFIG_TOIT_TRACE_INSTALL_HEAP
+   trace_install_heap_start();
+ #endif
++  diag_reset();
+   trace_install_active = true;
+   int64 trace_start = esp_timer_get_time();
+   trace_install_first_progress = 0;
+@@ -607,6 +662,7 @@ const char* V2Verifier::verify_installed(Program* program, word program_size, bo
+            static_cast<long long>(trace_install_last_progress - trace_install_first_progress),
+            static_cast<long long>(trace_end - trace_install_last_progress));
+   }
++  diag_print();
+ #ifdef CONFIG_TOIT_TRACE_INSTALL_HEAP
+   trace_install_heap_print();
+ #endif
+diff --git a/verified/vmverify/src/device.rs b/verified/vmverify/src/device.rs
+index fc4b47bf9..83a8522d2 100644
+--- a/verified/vmverify/src/device.rs
++++ b/verified/vmverify/src/device.rs
+@@ -33,8 +33,11 @@ use core::alloc::{GlobalAlloc, Layout};
+ use core::ffi::c_void;
+ 
+ extern "C" {
++    #[link_name = "toit_diag_malloc"]
+     fn malloc(size: usize) -> *mut c_void;
++    #[link_name = "toit_diag_free"]
+     fn free(p: *mut c_void);
++    #[link_name = "toit_diag_realloc"]
+     fn realloc(p: *mut c_void, size: usize) -> *mut c_void;
+     /// The VM's handler of a Rust panic; does not return.
+     fn toit_vmverify_panic(message: *const u8, length: usize) -> !;

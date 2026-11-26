@@ -1,0 +1,33 @@
+# Copyright (C) 2026 Toit contributors.
+#
+# The hot flash code of the classic ESP32 (Kconfig TOIT_PIN_HOT_FLASH_CODE):
+# these functions are placed first in the flash-mapped code, at 0x400d0020,
+# in this order, each with its literals (CMakeLists.txt of this component).
+#
+# Why: the ESP32's flash cache is 32 KB per CPU, two-way set-associative
+# with 32-byte lines, and serves code, rodata and the program images alike
+# (ESP32 TRM 3.3.4). Two addresses compete when they are equal modulo
+# 16 KB. Code that two hot functions keep in both ways of a set thrashes
+# as soon as one more line (code or data) maps there, so single benchmarks
+# moved by 30-100 % when unrelated code changed size. With the hot code
+# contiguous at a fixed address, at most 16 KB long per group, no two hot
+# functions of a group share a set and their sets no longer depend on any
+# other code.
+#
+# One section-name glob per line (the part after ".text."); "f1:"/"f2:"
+# restricts a line to firmware whose programs are format 1 / format 2.
+# Rust functions are matched from the crate name on (the crate hash
+# differs between builds). A name that no longer exists matches nothing.
+# Group A is the flash code the run time executes (scheduler, messaging,
+# allocation and GC, FreeRTOS, the heap, the verified core's flash helpers
+# / the C++ interpreter's helpers, primitives): first the functions with
+# the most flash-cache fetch misses per byte in two unpinned layouts (6 KB;
+# among them the yield pair Locker::enter / xQueueSemaphoreTake), then the
+# ones with the largest share of the time per byte averaged over the device
+# benchmarks, up to 14 KB of code per format (about 16 KB with the
+# literals, one way of the cache); both from TOIT_HW_PERF_STALL_SAMPLES.
+# Functions TOIT_VERIFIED_CORE_IRAM_FUNCTIONS puts in IRAM are left out.
+# Group B is the install-time verifier, whole, in its original order. Code
+# executed but not listed moves against these groups when other code
+# changes; see the esp32-layout measurements referenced in
+# verified/core/PROGRESS.md.

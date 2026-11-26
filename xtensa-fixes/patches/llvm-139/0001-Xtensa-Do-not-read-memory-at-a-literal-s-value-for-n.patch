@@ -1,0 +1,260 @@
+From 178ae369ddeec15cdcfcb029ab056565a6bc0af6 Mon Sep 17 00:00:00 2001
+From: Florian Loitsch <florian@loitsch.com>
+Date: Wed, 11 Nov 2026 11:01:28 +0100
+Subject: [PATCH] [Xtensa] Do not read memory at a literal's value for narrowed
+ literal loads
+
+A literal-pool entry holds a 32-bit value that only L32R can read. Since
+LLVM 21, LowerGlobalAddress (and the block-address, jump-table, callee
+and TLS lowerings) return a generic load of an XtensaISD::PCREL_WRAPPER,
+so the wrapper is the literal's address. DAGCombine narrows that load
+when only part of the value is used (the low byte of a global's address,
+its upper half, a compare of its top byte), which leaves the wrapper as
+the address operand of an L8UI/L16UI/L16SI. The fallback pattern
+`(Xtensa_pcrel_wrapper tconstpool) -> L32R`, added for aggregate
+constants, selected it as the literal's value, so the narrowed load read
+memory at the global instead of computing bits of its address.
+
+- shouldReduceLoadWidth: never narrow a load whose base is a
+  PCREL_WRAPPER (the extension is done on the loaded value).
+- LowerConstantPool: for an aggregate or vector constant (placed in a
+  global), return the load of the literal that holds the global's
+  address, so that ISD::ConstantPool means the data's address, as for
+  every other target.
+- Remove the bare-wrapper fallback pattern and the two
+  `load (add s, wrapper)` patterns, which assumed the opposite meaning.
+  A literal accessed in any other way is now a selection error instead
+  of wrong code.
+
+Fixes espressif/llvm-project#139 (esp-rs/rust#283).
+---
+ llvm/lib/Target/Xtensa/XtensaISelLowering.cpp |  26 +++-
+ llvm/lib/Target/Xtensa/XtensaISelLowering.h   |   4 +
+ llvm/lib/Target/Xtensa/XtensaInstrInfo.td     |  21 +---
+ .../Xtensa/constantpool-narrow-load.ll        | 116 ++++++++++++++++++
+ 4 files changed, 151 insertions(+), 16 deletions(-)
+ create mode 100644 llvm/test/CodeGen/Xtensa/constantpool-narrow-load.ll
+
+diff --git a/llvm/lib/Target/Xtensa/XtensaISelLowering.cpp b/llvm/lib/Target/Xtensa/XtensaISelLowering.cpp
+index 1f136d85e..cab86f030 100644
+--- a/llvm/lib/Target/Xtensa/XtensaISelLowering.cpp
++++ b/llvm/lib/Target/Xtensa/XtensaISelLowering.cpp
+@@ -436,6 +436,23 @@ bool XtensaTargetLowering::isOffsetFoldingLegal(
+   return false;
+ }
+ 
++// A literal-pool entry can only be read whole, with L32R: the only
++// consumers of an XtensaISD::PCREL_WRAPPER are full-width i32 and f32 loads.
++// Narrowing such a load (for example `(load wrapper) & 0xff`, as for the
++// low byte of a global's address) would turn the wrapper into the address
++// operand of an L8UI/L16UI/L16SI, which nothing can select: keep the full
++// load and let the extension be done on the value.
++bool XtensaTargetLowering::shouldReduceLoadWidth(
++    SDNode *Load, ISD::LoadExtType ExtTy, EVT NewVT,
++    std::optional<unsigned> ByteOffset) const {
++  SDValue BasePtr = cast<LoadSDNode>(Load)->getBasePtr();
++  if (BasePtr.getOpcode() == ISD::ADD)
++    BasePtr = BasePtr.getOperand(0);
++  if (BasePtr.getOpcode() == XtensaISD::PCREL_WRAPPER)
++    return false;
++  return TargetLowering::shouldReduceLoadWidth(Load, ExtTy, NewVT, ByteOffset);
++}
++
+ bool XtensaTargetLowering::isFPImmLegal(const APFloat &Imm, EVT VT,
+                                         bool ForCodeSize) const {
+   return false;
+@@ -1625,7 +1642,14 @@ SDValue XtensaTargetLowering::LowerConstantPool(SDValue Op,
+         Twine(DAG.getDataLayout().getPrivateGlobalPrefix()) + "CP" +
+             Twine(DAG.getMachineFunction().getFunctionNumber()) + "_" +
+             Twine(AFI->createCPLabelId()));
+-    Result = DAG.getTargetConstantPool(GV, PtrVT, Align(4));
++    // ISD::ConstantPool stands for the address of the constant's data, and
++    // XtensaISD::PCREL_WRAPPER for the address of a literal: the data's
++    // address is the literal's value, read with L32R like any other
++    // global's address (LowerGlobalAddress).
++    SDValue CPAddr = DAG.getTargetConstantPool(GV, PtrVT, Align(4));
++    return DAG.getLoad(
++        PtrVT, SDLoc(Op), DAG.getEntryNode(), getAddrPCRel(CPAddr, DAG),
++        MachinePointerInfo::getConstantPool(DAG.getMachineFunction()));
+   } else if (!CP->isMachineConstantPoolEntry()) {
+     Result =
+         DAG.getTargetConstantPool(C, PtrVT, CP->getAlign(), CP->getOffset());
+diff --git a/llvm/lib/Target/Xtensa/XtensaISelLowering.h b/llvm/lib/Target/Xtensa/XtensaISelLowering.h
+index 78e7b93e8..a93e60184 100644
+--- a/llvm/lib/Target/Xtensa/XtensaISelLowering.h
++++ b/llvm/lib/Target/Xtensa/XtensaISelLowering.h
+@@ -55,6 +55,10 @@ public:
+ 
+   bool isOffsetFoldingLegal(const GlobalAddressSDNode *GA) const override;
+ 
++  bool shouldReduceLoadWidth(
++      SDNode *Load, ISD::LoadExtType ExtTy, EVT NewVT,
++      std::optional<unsigned> ByteOffset = std::nullopt) const override;
++
+   bool isFPImmLegal(const APFloat &Imm, EVT VT,
+                     bool ForCodeSize) const override;
+ 
+diff --git a/llvm/lib/Target/Xtensa/XtensaInstrInfo.td b/llvm/lib/Target/Xtensa/XtensaInstrInfo.td
+index a2dc7ff79..4f2522e07 100644
+--- a/llvm/lib/Target/Xtensa/XtensaInstrInfo.td
++++ b/llvm/lib/Target/Xtensa/XtensaInstrInfo.td
+@@ -310,16 +310,12 @@ def : Pat<(i32 (extloadi1  addr_ish1:$addr)), (L8UI addr_ish1:$addr)>;
+ def : Pat<(i32 (extloadi8  addr_ish1:$addr)), (L8UI addr_ish1:$addr)>;
+ def : Pat<(i32 (extloadi16 addr_ish2:$addr)), (L16UI addr_ish2:$addr)>;
+ 
+-// Load from aggregate constant placed as Global Variable
+-def : Pat<(i32 (load (add i32:$s, (Xtensa_pcrel_wrapper tconstpool:$in)))),
+-          (L32I (ADD i32:$s, (L32R tconstpool:$in)), 0)>;
+-
+-// In some cases load from aggregate constant pattern maybe not matched.
+-// It is assumed that load 4-byte constant pattern is already
+-// applied, so this is the case of load from the aggregate constant.
+-// We just load an address of aggregate constant.
+-let AddedComplexity = -1 in
+-def : Pat<(Xtensa_pcrel_wrapper tconstpool:$in), (L32R tconstpool:$in)>;
++// An Xtensa_pcrel_wrapper is the address of a literal, which only L32R can
++// read (whole). There is deliberately no pattern for a bare wrapper or for
++// a wrapper plus an offset: selecting the wrapper as the literal's value
++// turns every narrowed or offset load from a literal into a load from
++// the memory the literal points to (espressif/llvm-project#139).
++// LowerConstantPool loads the address of an aggregate constant explicitly.
+ 
+ //===----------------------------------------------------------------------===//
+ // Conditional branch instructions
+@@ -1674,11 +1670,6 @@ let AddedComplexity = 10 in
+ def : Pat<(f32 (load (Xtensa_pcrel_wrapper tconstpool:$in))),
+           (WFR (L32R tconstpool:$in))>;
+ 
+-// Load from aggregate constant placed as Global Variable
+-let AddedComplexity = 10 in
+-def : Pat<(f32 (load (add i32:$s, (Xtensa_pcrel_wrapper tconstpool:$in)))),
+-          (LSI (ADD i32:$s, (L32R tconstpool:$in)), 0)>;
+-
+ //===----------------------------------------------------------------------===//
+ // SelectCC and BranchCC instructions with FP operands
+ //===----------------------------------------------------------------------===//
+diff --git a/llvm/test/CodeGen/Xtensa/constantpool-narrow-load.ll b/llvm/test/CodeGen/Xtensa/constantpool-narrow-load.ll
+new file mode 100644
+index 000000000..05540d35d
+--- /dev/null
++++ b/llvm/test/CodeGen/Xtensa/constantpool-narrow-load.ll
+@@ -0,0 +1,116 @@
++; RUN: llc -mtriple=xtensa -mcpu=esp32 -O2 -verify-machineinstrs < %s \
++; RUN:   | FileCheck %s
++; RUN: llc -mtriple=xtensa -mcpu=esp32s3 -O1 -verify-machineinstrs < %s \
++; RUN:   | FileCheck %s
++
++; Parts of an address that lives in a literal must be computed from the
++; address (L32R, then a shift or mask), not loaded from memory at the
++; address: a narrowed load from a literal used to select as L8UI/L16UI/L16SI
++; based on the literal's value (espressif/llvm-project#139).
++
++@g = external global [8 x i8]
++
++define i32 @low_byte() {
++; CHECK-LABEL: low_byte:
++; CHECK:       l32r [[A:a[0-9]+]], .LCPI0_0
++; CHECK-NOT:   l8ui
++; CHECK:       and a2, [[A]], {{a[0-9]+}}
++  %p = ptrtoint ptr @g to i32
++  %r = and i32 %p, 255
++  ret i32 %r
++}
++
++define i32 @byte1() {
++; CHECK-LABEL: byte1:
++; CHECK:       l32r [[A:a[0-9]+]], .LCPI1_0
++; CHECK-NOT:   l8ui
++; CHECK:       srli {{a[0-9]+}}, [[A]], 8
++  %p = ptrtoint ptr @g to i32
++  %s = lshr i32 %p, 8
++  %r = and i32 %s, 255
++  ret i32 %r
++}
++
++define i32 @hi16() {
++; CHECK-LABEL: hi16:
++; CHECK:       l32r [[A:a[0-9]+]], .LCPI2_0
++; CHECK-NEXT:  extui a2, [[A]], 16, 16
++  %p = ptrtoint ptr @g to i32
++  %r = lshr i32 %p, 16
++  ret i32 %r
++}
++
++define i32 @shi16() {
++; CHECK-LABEL: shi16:
++; CHECK:       l32r [[A:a[0-9]+]], .LCPI3_0
++; CHECK-NEXT:  srai a2, [[A]], 16
++  %p = ptrtoint ptr @g to i32
++  %r = ashr i32 %p, 16
++  ret i32 %r
++}
++
++define void @store_hi16(ptr %d) {
++; CHECK-LABEL: store_hi16:
++; CHECK:       l32r [[A:a[0-9]+]], .LCPI4_0
++; CHECK-NEXT:  extui [[B:a[0-9]+]], [[A]], 16, 16
++; CHECK-NEXT:  s16i [[B]], a2, 0
++  %p = ptrtoint ptr @g to i32
++  %s = lshr i32 %p, 16
++  %t = trunc i32 %s to i16
++  store i16 %t, ptr %d
++  ret void
++}
++
++define i32 @cmp_top() {
++; CHECK-LABEL: cmp_top:
++; CHECK:       l32r [[A:a[0-9]+]], .LCPI5_0
++; CHECK-NEXT:  extui {{a[0-9]+}}, [[A]], 24, 8
++  %p = ptrtoint ptr @g to i32
++  %s = lshr i32 %p, 24
++  %c = icmp eq i32 %s, 63
++  %r = zext i1 %c to i32
++  ret i32 %r
++}
++
++define i32 @fn_low() {
++; CHECK-LABEL: fn_low:
++; CHECK:       l32r [[A:a[0-9]+]], .LCPI6_0
++; CHECK-NOT:   l8ui
++; CHECK:       and a2, [[A]], {{a[0-9]+}}
++  %p = ptrtoint ptr @low_byte to i32
++  %r = and i32 %p, 255
++  ret i32 %r
++}
++
++define i32 @blockaddr_low() {
++; CHECK-LABEL: blockaddr_low:
++; CHECK:       l32r [[A:a[0-9]+]], .LCPI7_0
++; CHECK-NOT:   l8ui
++; CHECK:       and a2, [[A]], {{a[0-9]+}}
++entry:
++  br label %bb
++bb:
++  %p = ptrtoint ptr blockaddress(@blockaddr_low, %bb) to i32
++  %r = and i32 %p, 255
++  ret i32 %r
++}
++
++; A real byte load from the global is still a byte load.
++define i32 @load_byte1() {
++; CHECK-LABEL: load_byte1:
++; CHECK:       l32r [[A:a[0-9]+]], .LCPI8_0
++; CHECK-NEXT:  l8ui a2, [[A]], 1
++  %q = getelementptr inbounds i8, ptr @g, i32 1
++  %v = load i8, ptr %q
++  %r = zext i8 %v to i32
++  ret i32 %r
++}
++
++; The low byte of a 32-bit immediate from the literal pool.
++define i32 @imm_low(i32 %x) {
++; CHECK-LABEL: imm_low:
++; CHECK:       l32r [[A:a[0-9]+]], .LCPI9_0
++; CHECK:       and {{a[0-9]+}}, a2, [[A]]
++  %m = and i32 %x, 305419896
++  ret i32 %m
++}
+-- 
+2.56.0
+

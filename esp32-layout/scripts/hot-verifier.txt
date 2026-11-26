@@ -1,0 +1,30 @@
+# Copyright (C) 2026 Toit contributors.
+# esp32-layout: group B of the hot flash code, the install-time verifier
+# (format 2 only): its loop and the callees with stall samples during the
+# installs (f2timestall, two layouts), most samples first after the loop.
+toit_vmverify_verify
+*9toit_spec2v25check11x_post_into
+*9toit_spec2v29bytecodes19exec_opcode_length2
+*6MTable2at
+*9toit_spec2v25check9x_bp_mask
+*9toit_spec2v25check9x_sel_rep
+*11RawVecInner11finish_grow*
+*9toit_spec2v25check9x_pinned0
+*9toit_spec2v25check8x_sel_ok
+*9toit_spec2v25check8x_ctx_of
+*9toit_spec2v25check10x_shape_ok
+*9toit_spec2v25check15x_pop_push_into
+*drop_glue*5XList*
+*6MTable10recv_start
+*9toit_spec2v25check7x_fnode
+*9toit_spec2v25check9x_args_ok
+*9toit_spec2v25check13x_entry_kinds
+*11RawVecInner11try_reserve*
+*9toit_spec2v25check5x_fld
+*9toit_spec2v25check8x_map_is
+*9toit_spec4xvec8try_push*
+*9toit_spec2v25check8x_decode
+*9toit_spec2v25check15x_this_field_ok
+*9toit_spec2v25check15x_is_terminator
+*9toit_spec2v25check15x_terminator_ok
+*9toit_spec2v25check16x_method_body_ok

@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Copyright (C) 2026 Toit contributors.
+#
+# Refuses to touch any serial device but the ESP32-C6 (rpc-task-speed: the
+# only board allowed for this work), and checks the chip type esptool reports.
+# Usage: guard.sh PORT EXPECTED-CHIP   (EXPECTED-CHIP: ESP32-C6, ESP32, ESP32-S3)
+# Prints the port on success; exits 1 otherwise.
+set -uo pipefail
+PORT=$1
+EXPECT=$2
+declare -A ALLOWED=(
+  [/dev/serial/by-id/usb-1a86_USB_Single_Serial_5959032636-if00]=ESP32-C6
+)
+if [ -z "${ALLOWED[$PORT]+x}" ]; then
+  echo "guard: $PORT is not an allowed device" >&2; exit 1
+fi
+if [ "${ALLOWED[$PORT]}" != "$EXPECT" ]; then
+  echo "guard: $PORT is a ${ALLOWED[$PORT]}, not $EXPECT" >&2; exit 1
+fi
+real=$(readlink -f -- "$PORT")
+# The resolved node must not be the target of a link we were told to avoid:
+# check that no other allowed path resolves to the same node.
+for p in "${!ALLOWED[@]}"; do
+  [ "$p" = "$PORT" ] && continue
+  if [ "$(readlink -f -- "$p")" = "$real" ]; then
+    echo "guard: $PORT and $p resolve to the same node $real" >&2; exit 1
+  fi
+done
+[ -c "$real" ] || { echo "guard: $PORT ($real) missing" >&2; exit 1; }
+if [ "${GUARD_SKIP_CHIP:-0}" != 1 ]; then
+  out=$(env -u PYTHONPATH -u IDF_PYTHON_ENV_PATH esptool --port "$PORT" --after hard-reset chip-id 2>&1)
+  chip=$(printf '%s\n' "$out" | sed -n 's/^Chip type: *\([^ ]*\).*/\1/p; s/^Detecting chip type\.\.\. *\(.*\)$/\1/p' | head -1)
+  case "$chip" in
+    "$EXPECT"|"$EXPECT "*) ;;
+    *) echo "guard: $PORT reports chip '$chip', expected $EXPECT" >&2; printf '%s\n' "$out" >&2; exit 1 ;;
+  esac
+fi
+echo "$PORT"

@@ -1,0 +1,93 @@
+diff --git a/verified/vmverify/src/counting.rs b/verified/vmverify/src/counting.rs
+index 5dc831177..950f35852 100644
+--- a/verified/vmverify/src/counting.rs
++++ b/verified/vmverify/src/counting.rs
+@@ -31,6 +31,7 @@ unsafe impl GlobalAlloc for Counting {
+         if inject_failure() { return std::ptr::null_mut(); }
+         let p = System.alloc(layout);
+         if !p.is_null() { grow(layout.size()); }
++        log_event("A", p, std::ptr::null_mut(), layout.size(), 0);
+         p
+     }
+ 
+@@ -38,12 +39,14 @@ unsafe impl GlobalAlloc for Counting {
+         if inject_failure() { return std::ptr::null_mut(); }
+         let p = System.alloc_zeroed(layout);
+         if !p.is_null() { grow(layout.size()); }
++        log_event("A", p, std::ptr::null_mut(), layout.size(), 0);
+         p
+     }
+ 
+     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+         System.dealloc(ptr, layout);
+         CURRENT.fetch_sub(layout.size(), Ordering::Relaxed);
++        log_event("F", ptr, std::ptr::null_mut(), layout.size(), 0);
+     }
+ 
+     unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
+@@ -53,6 +56,7 @@ unsafe impl GlobalAlloc for Counting {
+             CURRENT.fetch_sub(layout.size(), Ordering::Relaxed);
+             grow(new_size);
+         }
++        log_event("R", p, ptr, new_size, layout.size());
+         p
+     }
+ }
+@@ -117,6 +121,7 @@ pub fn start_peak() -> usize {
+     let now = CURRENT.load(Ordering::Relaxed);
+     PEAK.store(now, Ordering::Relaxed);
+     BASE.store(now, Ordering::Relaxed);
++    LOG_ON.store(std::env::var_os("TOIT_VERIFY_ALLOCLOG").is_some(), Ordering::Relaxed);
+     now
+ }
+ 
+@@ -127,6 +132,7 @@ pub fn current() -> usize {
+ 
+ /// The peak since `start_peak` returned `base`, above `base`.
+ pub fn peak_since(base: usize) -> usize {
++    LOG_ON.store(false, Ordering::Relaxed);
+     PEAK.load(Ordering::Relaxed).saturating_sub(base)
+ }
+ 
+@@ -142,3 +148,41 @@ pub fn trace(phase: &str) {
+                   current().saturating_sub(base), PEAK.load(Ordering::Relaxed).saturating_sub(base));
+     }
+ }
++
++// MEASUREMENT ONLY (memory-pressure, not committed): TOIT_VERIFY_ALLOCLOG=N
++// logs every allocation event of a verification to stderr, with the
++// verifier frames of a backtrace for allocations of N bytes or more.
++thread_local! {
++    static IN_LOG: Cell<bool> = const { Cell::new(false) };
++}
++pub static LOG_ON: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
++static LOG_SEQ: AtomicUsize = AtomicUsize::new(0);
++
++pub fn log_event(kind: &str, ptr: *mut u8, old: *mut u8, size: usize, old_size: usize) {
++    if !LOG_ON.load(Ordering::Relaxed) { return; }
++    IN_LOG.with(|f| {
++        if f.get() { return; }
++        f.set(true);
++        let min: usize = std::env::var("TOIT_VERIFY_ALLOCLOG").ok().and_then(|s| s.parse().ok()).unwrap_or(usize::MAX);
++        let seq = LOG_SEQ.fetch_add(1, Ordering::Relaxed);
++        let mut where_ = String::new();
++        if size >= min && kind != "F" {
++            let bt = std::backtrace::Backtrace::force_capture().to_string();
++            let mut n = 0;
++            for line in bt.lines() {
++                let l = line.trim();
++                if l.starts_with("at ") { continue; }
++                if (l.contains("toit_spec") || l.contains("toit_vmverify")) && !l.contains("counting") {
++                    let name = l.splitn(2, ": ").nth(1).unwrap_or(l);
++                    where_.push_str(" <");
++                    where_.push_str(name);
++                    where_.push('>');
++                    n += 1;
++                    if n == 4 { break; }
++                }
++            }
++        }
++        eprintln!("VALLOC {} {} {:p} {:p} {} {}{}", seq, kind, ptr, old, size, old_size, where_);
++        f.set(false);
++    });
++}

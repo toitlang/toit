@@ -1,0 +1,600 @@
+diff -ruN a/components/esp_common/include/esp_check.h b/components/esp_common/include/esp_check.h
+--- a/components/esp_common/include/esp_check.h
++++ b/components/esp_common/include/esp_check.h
+@@ -148,6 +148,128 @@
+         }                                                                                       \
+     } while (0)
+ 
++#elif (defined(CONFIG_LOG_CHECK_MESSAGES_DICT) || defined(CONFIG_LOG_CHECK_MESSAGES_ADDRESS)) && !defined(NON_OS_BUILD)
++
++/*
++ * The message of a failed check is not formatted on the device:
++ * - CONFIG_LOG_CHECK_MESSAGES_DICT: a dictionary line (esp_log_dict.h) with the
++ *   message id and the raw arguments; format, file and line stay in the ELF file.
++ * - CONFIG_LOG_CHECK_MESSAGES_ADDRESS: "E chk <address> <code>" from one shared
++ *   function; the arguments are not evaluated.
++ *   (code + 0: the code is empty in ESP_RETURN_ON_FALSE(a, , ...) of void functions.)
++ * The ISR variants log as in the text mode, or nothing with
++ * CONFIG_LOG_CHECK_MESSAGES_ISR_SILENT.
++ */
++#if defined(CONFIG_LOG_CHECK_MESSAGES_DICT)
++#define ESP_CHECK_LOG_(code, log_tag, format, ...)                                              \
++        ESP_LOG_DICT_LOCAL(ESP_LOG_ERROR, ESP_LOG_DICT_FLAG_CHECK, log_tag, format, ##__VA_ARGS__)
++#else
++#define ESP_CHECK_LOG_(code, log_tag, format, ...) do {                                         \
++        (void)log_tag;                                                                          \
++        esp_log_check_failed((uint32_t)(code + 0));                                             \
++    } while (0)
++#endif
++#if defined(CONFIG_LOG_CHECK_MESSAGES_ISR_SILENT)
++#define ESP_CHECK_LOG_ISR_(log_tag, format, ...) do { (void)log_tag; } while (0)
++#else
++#define ESP_CHECK_LOG_ISR_(log_tag, format, ...)                                                \
++        ESP_EARLY_LOGE(log_tag, "%s(%d): " format, __FUNCTION__, __LINE__, ##__VA_ARGS__)
++#endif
++
++#define ESP_RETURN_ON_ERROR(x, log_tag, format, ...) do {                                       \
++        esp_err_t err_rc_ = (x);                                                                \
++        if (unlikely(err_rc_ != ESP_OK)) {                                                      \
++            ESP_CHECK_LOG_(err_rc_, log_tag, format, ##__VA_ARGS__);                            \
++            return err_rc_;                                                                     \
++        }                                                                                       \
++    } while(0)
++
++#define ESP_RETURN_ON_ERROR_ISR(x, log_tag, format, ...) do {                                   \
++        esp_err_t err_rc_ = (x);                                                                \
++        if (unlikely(err_rc_ != ESP_OK)) {                                                      \
++            ESP_CHECK_LOG_ISR_(log_tag, format, ##__VA_ARGS__);                                 \
++            return err_rc_;                                                                     \
++        }                                                                                       \
++    } while(0)
++
++#define ESP_RETURN_VOID_ON_ERROR(x, log_tag, format, ...) do {                                  \
++        esp_err_t err_rc_ = (x);                                                                \
++        if (unlikely(err_rc_ != ESP_OK)) {                                                      \
++            ESP_CHECK_LOG_(err_rc_, log_tag, format, ##__VA_ARGS__);                            \
++            return;                                                                             \
++        }                                                                                       \
++    } while(0)
++
++#define ESP_RETURN_VOID_ON_ERROR_ISR(x, log_tag, format, ...) do {                              \
++        esp_err_t err_rc_ = (x);                                                                \
++        if (unlikely(err_rc_ != ESP_OK)) {                                                      \
++            ESP_CHECK_LOG_ISR_(log_tag, format, ##__VA_ARGS__);                                 \
++            return;                                                                             \
++        }                                                                                       \
++    } while(0)
++
++#define ESP_GOTO_ON_ERROR(x, goto_tag, log_tag, format, ...) do {                               \
++        esp_err_t err_rc_ = (x);                                                                \
++        if (unlikely(err_rc_ != ESP_OK)) {                                                      \
++            ESP_CHECK_LOG_(err_rc_, log_tag, format, ##__VA_ARGS__);                            \
++            ret = err_rc_;                                                                      \
++            goto goto_tag;                                                                      \
++        }                                                                                       \
++    } while(0)
++
++#define ESP_GOTO_ON_ERROR_ISR(x, goto_tag, log_tag, format, ...) do {                           \
++        esp_err_t err_rc_ = (x);                                                                \
++        if (unlikely(err_rc_ != ESP_OK)) {                                                      \
++            ESP_CHECK_LOG_ISR_(log_tag, format, ##__VA_ARGS__);                                 \
++            ret = err_rc_;                                                                      \
++            goto goto_tag;                                                                      \
++        }                                                                                       \
++    } while(0)
++
++#define ESP_RETURN_ON_FALSE(a, err_code, log_tag, format, ...) do {                             \
++        if (unlikely(!(a))) {                                                                   \
++            ESP_CHECK_LOG_(err_code, log_tag, format, ##__VA_ARGS__);                           \
++            return err_code;                                                                    \
++        }                                                                                       \
++    } while(0)
++
++#define ESP_RETURN_ON_FALSE_ISR(a, err_code, log_tag, format, ...) do {                         \
++        if (unlikely(!(a))) {                                                                   \
++            ESP_CHECK_LOG_ISR_(log_tag, format, ##__VA_ARGS__);                                 \
++            return err_code;                                                                    \
++        }                                                                                       \
++    } while(0)
++
++#define ESP_RETURN_VOID_ON_FALSE(a, log_tag, format, ...) do {                                  \
++        if (unlikely(!(a))) {                                                                   \
++            ESP_CHECK_LOG_(0, log_tag, format, ##__VA_ARGS__);                                  \
++            return;                                                                             \
++        }                                                                                       \
++    } while(0)
++
++#define ESP_RETURN_VOID_ON_FALSE_ISR(a, log_tag, format, ...) do {                              \
++        if (unlikely(!(a))) {                                                                   \
++            ESP_CHECK_LOG_ISR_(log_tag, format, ##__VA_ARGS__);                                 \
++            return;                                                                             \
++        }                                                                                       \
++    } while(0)
++
++#define ESP_GOTO_ON_FALSE(a, err_code, goto_tag, log_tag, format, ...) do {                     \
++        if (unlikely(!(a))) {                                                                   \
++            ESP_CHECK_LOG_(err_code, log_tag, format, ##__VA_ARGS__);                           \
++            ret = err_code;                                                                     \
++            goto goto_tag;                                                                      \
++        }                                                                                       \
++    } while (0)
++
++#define ESP_GOTO_ON_FALSE_ISR(a, err_code, goto_tag, log_tag, format, ...) do {                 \
++        if (unlikely(!(a))) {                                                                   \
++            ESP_CHECK_LOG_ISR_(log_tag, format, ##__VA_ARGS__);                                 \
++            ret = err_code;                                                                     \
++            goto goto_tag;                                                                      \
++        }                                                                                       \
++    } while (0)
++
+ #else // !CONFIG_COMPILER_OPTIMIZATION_CHECKS_SILENT
+ 
+ /**
+diff -ruN a/components/log/CMakeLists.txt b/components/log/CMakeLists.txt
+--- a/components/log/CMakeLists.txt
++++ b/components/log/CMakeLists.txt
+@@ -19,7 +19,8 @@
+ if(NOT non_os_build)
+     list(APPEND priv_requires soc hal esp_hw_support)
+ 
+-    list(APPEND srcs "src/os/log_write.c")
++    list(APPEND srcs "src/os/log_write.c"
++                     "src/os/log_dict.c")
+ 
+     # Buffer APIs call ESP_LOG_LEVEL -> esp_log_write, which can not used in bootloader.
+     list(APPEND srcs "src/buffer/log_buffers.c"
+diff -ruN a/components/log/include/esp_log_dict.h b/components/log/include/esp_log_dict.h
+--- a/components/log/include/esp_log_dict.h
++++ b/components/log/include/esp_log_dict.h
+@@ -0,0 +1,188 @@
++/*
++ * SPDX-FileCopyrightText: 2026 Toit contributors
++ *
++ * SPDX-License-Identifier: Apache-2.0
++ */
++#pragma once
++
++/*
++ * Dictionary logging: a log call keeps its format string, file and line in
++ * a record of the section .esp_log_dict, which is not allocated (it is in
++ * the ELF file only, like debug information, and never in the image). The
++ * device prints the record's offset in that section and the raw argument
++ * values; a host tool formats the message with an index generated from the
++ * ELF file at build time.
++ *
++ * Line format (after the usual "E (<time>) <tag>: " prefix):
++ *
++ *   {D1 <build> <id> <arg>... <crc>}
++ *
++ *   build  8 hex digits: the start of the ELF file's SHA-256 (the
++ *          esp_app_desc_t field that esptool fills in).
++ *   id     5 hex digits: the record's offset in .esp_log_dict.
++ *   arg    8 hex digits for a 32-bit argument, 16 for a 64-bit one
++ *          (long long, double), "..." for a string (%s argument), printed
++ *          inline: bytes below 0x20, above 0x7e and the characters " and \
++ *          as \xNN; at most CONFIG_LOG_DICT_STRING_MAX bytes, a cut string
++ *          ends in "+; a NULL string is -.  A + token means that the
++ *          remaining arguments did not fit into the line.
++ *   crc    4 hex digits: CRC-16/CCITT-FALSE of the characters from { to
++ *          the end of the last argument.
++ *
++ * Record (4-byte aligned): uint32 magic ESP_LOG_DICT_MAGIC, uint32 info
++ * (level | flags << 8 | argument count << 16), uint32 argument kinds
++ * (2 bits each, first argument lowest), then file, line (decimal) and
++ * format as NUL-terminated strings.
++ */
++
++#include <stdint.h>
++#include "sdkconfig.h"
++
++#define ESP_LOG_DICT_MAGIC 0x474f4c44u /* "DLOG" */
++
++#define ESP_LOG_DICT_W32 1u
++#define ESP_LOG_DICT_W64 2u
++#define ESP_LOG_DICT_STR 3u
++
++/* Record flag: the message of an ESP_RETURN_ON_* / ESP_GOTO_ON_* check. */
++#define ESP_LOG_DICT_FLAG_CHECK 1u
++
++/* Layout of the word passed to esp_log_dict_write. */
++#define ESP_LOG_DICT_ID_BITS 20
++#define ESP_LOG_DICT_LEVEL_SHIFT 20
++#define ESP_LOG_DICT_KINDS_SHIFT 23
++#define ESP_LOG_DICT_KINDS_EXTRA (1u << 31)
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++/* word: record id | level << 20 | kinds of up to four arguments << 23. */
++void esp_log_dict_write(const char *tag, uint32_t word, ...);
++/* For more than four arguments: word has ESP_LOG_DICT_KINDS_EXTRA set. */
++void esp_log_dict_write_kinds(const char *tag, uint32_t word, uint32_t kinds, ...);
++/* Address marker of a failed check (CONFIG_LOG_CHECK_MESSAGES_ADDRESS). */
++void esp_log_check_failed(uint32_t code);
++
++#ifdef __cplusplus
++}
++
++#include <type_traits>
++
++template <typename T> struct esp_log_dict_kind_ {
++    static constexpr uint32_t value =
++        (std::is_floating_point<T>::value || (std::is_integral<T>::value && sizeof(T) > 4))
++        ? ESP_LOG_DICT_W64 : ESP_LOG_DICT_W32;
++};
++template <> struct esp_log_dict_kind_<char *> {
++    static constexpr uint32_t value = ESP_LOG_DICT_STR;
++};
++template <> struct esp_log_dict_kind_<const char *> {
++    static constexpr uint32_t value = ESP_LOG_DICT_STR;
++};
++#define ESP_LOG_DICT_KIND(x) (esp_log_dict_kind_<typename std::decay<decltype(x)>::type>::value)
++
++#else // !__cplusplus
++
++/* The conditional operator decays arrays and drops qualifiers; _Generic
++ * does not evaluate its operand. */
++#define ESP_LOG_DICT_KIND(x) _Generic(1 ? (x) : (x),        \
++        char *: ESP_LOG_DICT_STR,                           \
++        const char *: ESP_LOG_DICT_STR,                     \
++        long long: ESP_LOG_DICT_W64,                        \
++        unsigned long long: ESP_LOG_DICT_W64,               \
++        float: ESP_LOG_DICT_W64,                            \
++        double: ESP_LOG_DICT_W64,                           \
++        long double: ESP_LOG_DICT_W64,                      \
++        default: ESP_LOG_DICT_W32)
++
++#endif // !__cplusplus
++
++#define ESP_LOG_DICT_STR_(x) #x
++#define ESP_LOG_DICT_STRINGIFY(x) ESP_LOG_DICT_STR_(x)
++#define ESP_LOG_DICT_CAT_(a, b) a##b
++#define ESP_LOG_DICT_CAT(a, b) ESP_LOG_DICT_CAT_(a, b)
++
++#define ESP_LOG_DICT_NARGS(...) ESP_LOG_DICT_NARGS_(_, ##__VA_ARGS__, \
++        16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0)
++#define ESP_LOG_DICT_NARGS_(_, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, N, ...) N
++
++#define ESP_LOG_DICT_K0() 0u
++#define ESP_LOG_DICT_K1(a) ESP_LOG_DICT_KIND(a)
++#define ESP_LOG_DICT_K2(a, ...) (ESP_LOG_DICT_KIND(a) | (ESP_LOG_DICT_K1(__VA_ARGS__) << 2))
++#define ESP_LOG_DICT_K3(a, ...) (ESP_LOG_DICT_KIND(a) | (ESP_LOG_DICT_K2(__VA_ARGS__) << 2))
++#define ESP_LOG_DICT_K4(a, ...) (ESP_LOG_DICT_KIND(a) | (ESP_LOG_DICT_K3(__VA_ARGS__) << 2))
++#define ESP_LOG_DICT_K5(a, ...) (ESP_LOG_DICT_KIND(a) | (ESP_LOG_DICT_K4(__VA_ARGS__) << 2))
++#define ESP_LOG_DICT_K6(a, ...) (ESP_LOG_DICT_KIND(a) | (ESP_LOG_DICT_K5(__VA_ARGS__) << 2))
++#define ESP_LOG_DICT_K7(a, ...) (ESP_LOG_DICT_KIND(a) | (ESP_LOG_DICT_K6(__VA_ARGS__) << 2))
++#define ESP_LOG_DICT_K8(a, ...) (ESP_LOG_DICT_KIND(a) | (ESP_LOG_DICT_K7(__VA_ARGS__) << 2))
++#define ESP_LOG_DICT_K9(a, ...) (ESP_LOG_DICT_KIND(a) | (ESP_LOG_DICT_K8(__VA_ARGS__) << 2))
++#define ESP_LOG_DICT_K10(a, ...) (ESP_LOG_DICT_KIND(a) | (ESP_LOG_DICT_K9(__VA_ARGS__) << 2))
++#define ESP_LOG_DICT_K11(a, ...) (ESP_LOG_DICT_KIND(a) | (ESP_LOG_DICT_K10(__VA_ARGS__) << 2))
++#define ESP_LOG_DICT_K12(a, ...) (ESP_LOG_DICT_KIND(a) | (ESP_LOG_DICT_K11(__VA_ARGS__) << 2))
++#define ESP_LOG_DICT_K13(a, ...) (ESP_LOG_DICT_KIND(a) | (ESP_LOG_DICT_K12(__VA_ARGS__) << 2))
++#define ESP_LOG_DICT_K14(a, ...) (ESP_LOG_DICT_KIND(a) | (ESP_LOG_DICT_K13(__VA_ARGS__) << 2))
++#define ESP_LOG_DICT_K15(a, ...) (ESP_LOG_DICT_KIND(a) | (ESP_LOG_DICT_K14(__VA_ARGS__) << 2))
++#define ESP_LOG_DICT_K16(a, ...) (ESP_LOG_DICT_KIND(a) | (ESP_LOG_DICT_K15(__VA_ARGS__) << 2))
++#define ESP_LOG_DICT_KINDS(...) \
++        ((uint32_t)ESP_LOG_DICT_CAT(ESP_LOG_DICT_K, ESP_LOG_DICT_NARGS(__VA_ARGS__))(__VA_ARGS__))
++
++/* The section flags "" make the section non-allocated; the '#' comments
++ * out the flags the compiler appends. The number after it makes the name
++ * unique for the compiler (C++ would otherwise report a section type
++ * conflict between records in inline or cloned functions and others), while
++ * the assembler puts all records into the one section .esp_log_dict. */
++#define ESP_LOG_DICT_SECTION __attribute__((section(".esp_log_dict,\"\",@progbits #" ESP_LOG_DICT_STRINGIFY(__COUNTER__)), aligned(4)))
++
++#define ESP_LOG_DICT_TEXT(format) __FILE__ "\0" ESP_LOG_DICT_STRINGIFY(__LINE__) "\0" format
++
++/* The address of a new record (an address in .esp_log_dict). */
++#define ESP_LOG_DICT_RECORD(level, flags, format, ...) ({                                          \
++        static const struct {                                                                      \
++            uint32_t magic_;                                                                       \
++            uint32_t info_;                                                                        \
++            uint32_t kinds_;                                                                       \
++            char text_[sizeof(ESP_LOG_DICT_TEXT(format))];                                         \
++        } esp_log_dict_record_ ESP_LOG_DICT_SECTION = {                                            \
++            ESP_LOG_DICT_MAGIC,                                                                    \
++            (uint32_t)(level) | ((uint32_t)(flags) << 8)                                           \
++                | ((uint32_t)ESP_LOG_DICT_NARGS(__VA_ARGS__) << 16),                               \
++            ESP_LOG_DICT_KINDS(__VA_ARGS__),                                                       \
++            ESP_LOG_DICT_TEXT(format)                                                              \
++        };                                                                                         \
++        (uint32_t)(uintptr_t)&esp_log_dict_record_; })
++
++#define ESP_LOG_DICT_CALL_SMALL(level, flags, tag, format, ...)                                    \
++        esp_log_dict_write(tag, ESP_LOG_DICT_RECORD(level, flags, format, ##__VA_ARGS__)           \
++                + ((uint32_t)(level) << ESP_LOG_DICT_LEVEL_SHIFT)                                  \
++                + (ESP_LOG_DICT_KINDS(__VA_ARGS__) << ESP_LOG_DICT_KINDS_SHIFT), ##__VA_ARGS__)
++#define ESP_LOG_DICT_CALL_BIG(level, flags, tag, format, ...)                                      \
++        esp_log_dict_write_kinds(tag, ESP_LOG_DICT_RECORD(level, flags, format, ##__VA_ARGS__)     \
++                + ((uint32_t)(level) << ESP_LOG_DICT_LEVEL_SHIFT) + ESP_LOG_DICT_KINDS_EXTRA,      \
++                ESP_LOG_DICT_KINDS(__VA_ARGS__), ##__VA_ARGS__)
++#define ESP_LOG_DICT_CALL_0 ESP_LOG_DICT_CALL_SMALL
++#define ESP_LOG_DICT_CALL_1 ESP_LOG_DICT_CALL_SMALL
++#define ESP_LOG_DICT_CALL_2 ESP_LOG_DICT_CALL_SMALL
++#define ESP_LOG_DICT_CALL_3 ESP_LOG_DICT_CALL_SMALL
++#define ESP_LOG_DICT_CALL_4 ESP_LOG_DICT_CALL_SMALL
++#define ESP_LOG_DICT_CALL_5 ESP_LOG_DICT_CALL_BIG
++#define ESP_LOG_DICT_CALL_6 ESP_LOG_DICT_CALL_BIG
++#define ESP_LOG_DICT_CALL_7 ESP_LOG_DICT_CALL_BIG
++#define ESP_LOG_DICT_CALL_8 ESP_LOG_DICT_CALL_BIG
++#define ESP_LOG_DICT_CALL_9 ESP_LOG_DICT_CALL_BIG
++#define ESP_LOG_DICT_CALL_10 ESP_LOG_DICT_CALL_BIG
++#define ESP_LOG_DICT_CALL_11 ESP_LOG_DICT_CALL_BIG
++#define ESP_LOG_DICT_CALL_12 ESP_LOG_DICT_CALL_BIG
++#define ESP_LOG_DICT_CALL_13 ESP_LOG_DICT_CALL_BIG
++#define ESP_LOG_DICT_CALL_14 ESP_LOG_DICT_CALL_BIG
++#define ESP_LOG_DICT_CALL_15 ESP_LOG_DICT_CALL_BIG
++#define ESP_LOG_DICT_CALL_16 ESP_LOG_DICT_CALL_BIG
++
++/* A dictionary log call at a run-time level; up to 16 arguments. */
++#define ESP_LOG_DICT(level, flags, tag, format, ...)                                               \
++        ESP_LOG_DICT_CAT(ESP_LOG_DICT_CALL_, ESP_LOG_DICT_NARGS(__VA_ARGS__))(level, flags, tag, format, ##__VA_ARGS__)
++
++/* As ESP_LOG_LEVEL_LOCAL: compiled in only up to LOG_LOCAL_LEVEL. */
++#define ESP_LOG_DICT_LOCAL(level, flags, tag, format, ...) do {                                    \
++        if (_ESP_LOG_ENABLED(level)) ESP_LOG_DICT(level, flags, tag, format, ##__VA_ARGS__);       \
++    } while (0)
+diff -ruN a/components/log/include/esp_log.h b/components/log/include/esp_log.h
+--- a/components/log/include/esp_log.h
++++ b/components/log/include/esp_log.h
+@@ -15,6 +15,7 @@
+ #include "esp_log_color.h"
+ #include "esp_log_buffer.h"
+ #include "esp_log_timestamp.h"
++#include "esp_log_dict.h"
+ 
+ #ifdef __cplusplus
+ extern "C" {
+@@ -262,3 +263,11 @@
+ #ifdef __cplusplus
+ }
+ #endif
++
++#if CONFIG_LOG_DICT_ESP_LOG && !defined(NON_OS_BUILD) && !defined(BOOTLOADER_BUILD)
++/* Dictionary logging (esp_log_dict.h): the message text stays in the ELF file. */
++#undef ESP_LOGE
++#undef ESP_LOGW
++#define ESP_LOGE(tag, format, ...) ESP_LOG_DICT_LOCAL(ESP_LOG_ERROR, 0, tag, format, ##__VA_ARGS__)
++#define ESP_LOGW(tag, format, ...) ESP_LOG_DICT_LOCAL(ESP_LOG_WARN, 0, tag, format, ##__VA_ARGS__)
++#endif
+diff -ruN a/components/log/Kconfig b/components/log/Kconfig
+--- a/components/log/Kconfig
++++ b/components/log/Kconfig
+@@ -4,4 +4,6 @@
+ 
+     orsource "./Kconfig.format"
+ 
++    orsource "./Kconfig.dict"
++
+ endmenu
+diff -ruN a/components/log/Kconfig.dict b/components/log/Kconfig.dict
+--- a/components/log/Kconfig.dict
++++ b/components/log/Kconfig.dict
+@@ -0,0 +1,53 @@
++menu "Dictionary logging"
++
++    choice LOG_CHECK_MESSAGES
++        prompt "Messages of failed ESP_RETURN_ON_* / ESP_GOTO_ON_* checks"
++        default LOG_CHECK_MESSAGES_TEXT
++        depends on !COMPILER_OPTIMIZATION_CHECKS_SILENT
++        help
++            What a failed check of esp_check.h prints (the checks themselves
++            and the returned error codes do not change).
++
++        config LOG_CHECK_MESSAGES_TEXT
++            bool "Text"
++            help
++                The message as a log line: "E (time) tag: function(line): message".
++
++        config LOG_CHECK_MESSAGES_ADDRESS
++            bool "Address marker"
++            help
++                "E chk <address> <error code>": the call site's return address
++                and the error code. No strings per check; a host maps the
++                address to file and line with the ELF file's debug information.
++
++        config LOG_CHECK_MESSAGES_DICT
++            bool "Dictionary"
++            help
++                The message's id and raw argument values (esp_log_dict.h).
++                Format string, file and line stay in the non-loaded section
++                .esp_log_dict of the ELF file; a host formats the message.
++    endchoice
++
++    config LOG_CHECK_MESSAGES_ISR_SILENT
++        bool "No messages for the ISR variants of the checks"
++        default n
++        depends on LOG_CHECK_MESSAGES_ADDRESS || LOG_CHECK_MESSAGES_DICT
++        help
++            The *_ISR variants of the checks (usable with the cache disabled)
++            log text with ESP_EARLY_LOGE in the address and dictionary modes,
++            since the shared functions of those modes are in flash. With this
++            option they print nothing, as with COMPILER_OPTIMIZATION_CHECKS_SILENT.
++
++    config LOG_DICT_ESP_LOG
++        bool "ESP_LOGE and ESP_LOGW as dictionary messages"
++        default n
++        help
++            ESP_LOGE and ESP_LOGW print dictionary lines (esp_log_dict.h)
++            instead of formatting their message on the device.
++
++    config LOG_DICT_STRING_MAX
++        int "Maximum length of a string argument in a dictionary line"
++        default 48
++        range 8 120
++
++endmenu
+diff -ruN a/components/log/src/os/log_dict.c b/components/log/src/os/log_dict.c
+--- a/components/log/src/os/log_dict.c
++++ b/components/log/src/os/log_dict.c
+@@ -0,0 +1,169 @@
++/*
++ * SPDX-FileCopyrightText: 2026 Toit contributors
++ *
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++/* The device side of dictionary logging (esp_log_dict.h). */
++
++#include <stdarg.h>
++#include <stddef.h>
++#include <stdint.h>
++#include <inttypes.h>
++#include "esp_log.h"
++#include "esp_log_dict.h"
++#include "sdkconfig.h"
++
++#ifndef CONFIG_LOG_DICT_STRING_MAX
++#define CONFIG_LOG_DICT_STRING_MAX 48
++#endif
++
++#define LINE_SIZE 200
++/* Room after the arguments: " +", " cccc}" and the NUL. */
++#define TAIL_SIZE 9
++
++/* The ELF file's SHA-256 in hex (esp_app_format fills it in at startup).
++ * Weak, so that the log component does not need esp_app_format. */
++extern char app_elf_sha256_str[] __attribute__((weak));
++
++static const char s_hex[] = "0123456789abcdef";
++
++typedef struct {
++    char *p;
++    char *end;
++} out_t;
++
++static void put(out_t *o, char c)
++{
++    if (o->p < o->end) {
++        *o->p++ = c;
++    }
++}
++
++static void put_hex(out_t *o, uint32_t v, int digits)
++{
++    while (digits-- > 0) {
++        put(o, s_hex[(v >> (4 * digits)) & 0xf]);
++    }
++}
++
++static void put_str(out_t *o, const char *s)
++{
++    if (s == NULL) {
++        put(o, '-');
++        return;
++    }
++    put(o, '"');
++    for (int n = 0; s[n] != 0; n++) {
++        if (n == CONFIG_LOG_DICT_STRING_MAX) {
++            put(o, '"');
++            put(o, '+');
++            return;
++        }
++        unsigned char c = (unsigned char)s[n];
++        if (c < 0x20 || c > 0x7e || c == '"' || c == '\\') {
++            put(o, '\\');
++            put(o, 'x');
++            put_hex(o, c, 2);
++        } else {
++            put(o, (char)c);
++        }
++    }
++    put(o, '"');
++}
++
++static uint32_t crc16(const char *p, const char *end)
++{
++    uint32_t crc = 0xffff;
++    while (p < end) {
++        crc ^= (uint32_t)(unsigned char)*p++ << 8;
++        for (int i = 0; i < 8; i++) {
++            crc = (crc & 0x8000) ? (crc << 1) ^ 0x1021 : crc << 1;
++        }
++    }
++    return crc & 0xffff;
++}
++
++static void dict_writev(const char *tag, uint32_t word, uint32_t kinds, va_list ap)
++{
++    esp_log_level_t level = (esp_log_level_t)((word >> ESP_LOG_DICT_LEVEL_SHIFT) & 7);
++    char line[LINE_SIZE];
++    out_t o = { line, line + LINE_SIZE - TAIL_SIZE };
++    put(&o, '{');
++    put(&o, 'D');
++    put(&o, '1');
++    put(&o, ' ');
++    const char *build = app_elf_sha256_str;
++    for (int i = 0; i < 8; i++) {
++        char c = (build != NULL) ? build[i] : 0;
++        if (c == 0) {
++            build = NULL;
++            c = '0';
++        }
++        put(&o, c);
++    }
++    put(&o, ' ');
++    put_hex(&o, word & ((1u << ESP_LOG_DICT_ID_BITS) - 1), 5);
++    for (; kinds != 0; kinds >>= 2) {
++        char *start = o.p;
++        put(&o, ' ');
++        switch (kinds & 3) {
++        case ESP_LOG_DICT_W64: {
++            uint64_t v = va_arg(ap, uint64_t);
++            put_hex(&o, (uint32_t)(v >> 32), 8);
++            put_hex(&o, (uint32_t)v, 8);
++            break;
++        }
++        case ESP_LOG_DICT_STR:
++            put_str(&o, va_arg(ap, const char *));
++            break;
++        default:
++            put_hex(&o, va_arg(ap, uint32_t), 8);
++            break;
++        }
++        if (o.p == o.end) {
++            /* The argument did not fit (or just fit): drop it and the rest. */
++            o.p = start;
++            *o.p++ = ' ';
++            *o.p++ = '+';
++            break;
++        }
++    }
++    uint32_t crc = crc16(line, o.p);
++    o.end = line + LINE_SIZE;
++    put(&o, ' ');
++    put_hex(&o, crc, 4);
++    put(&o, '}');
++    *o.p = 0;
++#if CONFIG_LOG_TIMESTAMP_SOURCE_SYSTEM
++    esp_log_write(level, tag, "%c (%s) %s: %s\n", "NEWIDV"[level], esp_log_system_timestamp(), tag, line);
++#else
++    esp_log_write(level, tag, "%c (%" PRIu32 ") %s: %s\n", "NEWIDV"[level], esp_log_timestamp(), tag, line);
++#endif
++}
++
++void esp_log_dict_write(const char *tag, uint32_t word, ...)
++{
++    va_list ap;
++    va_start(ap, word);
++    dict_writev(tag, word, (word >> ESP_LOG_DICT_KINDS_SHIFT) & 0xff, ap);
++    va_end(ap);
++}
++
++void esp_log_dict_write_kinds(const char *tag, uint32_t word, uint32_t kinds, ...)
++{
++    va_list ap;
++    va_start(ap, kinds);
++    dict_writev(tag, word, kinds, ap);
++    va_end(ap);
++}
++
++void __attribute__((noinline)) esp_log_check_failed(uint32_t code)
++{
++    uint32_t pc = (uint32_t)(uintptr_t)__builtin_return_address(0);
++#if __XTENSA__
++    /* The windowed ABI keeps the window increment in the top bits. */
++    pc = (pc & 0x3fffffff) | 0x40000000;
++#endif
++    esp_log_write(ESP_LOG_ERROR, "chk", "E chk %08" PRIx32 " %" PRIx32 "\n", pc, code);
++}
