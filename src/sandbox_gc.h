@@ -29,6 +29,9 @@
 // TOIT_SANDBOX_GC=copying selects it for untrusted processes;
 // TOIT_SANDBOX_GC=copying-all for every process (a test of the collector,
 // not a configuration). Trusted processes keep the generational collector.
+// TOIT_SANDBOX_GC=inplace (inplace-all) keeps this heap shape but collects
+// without taking pages: mark, compute places, update, slide (a prototype
+// for small devices, hosts only; src/sandbox_gc.cc).
 //
 // Statistics: TOIT_GC_STATS=1 prints one GCSTATS line per process heap when
 // it is destroyed (both collectors).
@@ -72,6 +75,16 @@ struct GcStats {
   uword max_from_pages = 0;       // Copying: largest from-space (pages).
   int max_to_over_from = 0;       // Copying: largest to/from page ratio (per mille).
   uint64 to_space_waste = 0;      // Copying: unused bytes at the end of to-space pages.
+  // In-place collector (TOIT_SANDBOX_GC=inplace, hosts).
+  bool inplace = false;
+  uword inplace_gcs = 0;
+  uint64 live_bytes = 0;          // In place: bytes marked.
+  uword max_live_bytes = 0;
+  uint64 moved_bytes = 0;         // In place: bytes slid.
+  uword mark_rescans = 0;         // In place: heap rescans after a mark-stack overflow.
+  uword max_mark_depth = 0;       // In place: deepest mark stack.
+  uword max_kept_pages = 0;
+  uint64 phase_instructions[4] = {0, 0, 0, 0};  // In place: mark, places, update, slide.
 
   void record_scavenge(uword survivors, uword promoted) {
     scavenges++;
@@ -94,6 +107,7 @@ struct GcStats {
     full_space_bytes += space;
   }
   void record_copying(uword from_pages, uword to_pages, uword copied, uword waste);
+  void record_inplace(uword pages_before, uword pages_after, uword live, uword moved, uword rescans, uword depth);
   void note_pages(uword pages) {
     if (pages > peak_pages) peak_pages = pages;
   }

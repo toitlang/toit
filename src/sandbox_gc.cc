@@ -43,6 +43,8 @@ enum SandboxGcMode {
   SANDBOX_GC_GENERATIONAL,
   SANDBOX_GC_COPYING,      // Untrusted processes.
   SANDBOX_GC_COPYING_ALL,  // Every process (testing the collector).
+  SANDBOX_GC_INPLACE,      // Untrusted processes, the in-place collector (hosts).
+  SANDBOX_GC_INPLACE_ALL,  // Every process, the in-place collector (hosts).
 };
 
 static SandboxGcMode sandbox_gc_mode() {
@@ -56,6 +58,10 @@ static SandboxGcMode sandbox_gc_mode() {
       mode = SANDBOX_GC_COPYING;
     } else if (value != null && strcmp(value, "copying-all") == 0) {
       mode = SANDBOX_GC_COPYING_ALL;
+    } else if (value != null && strcmp(value, "inplace") == 0) {
+      mode = SANDBOX_GC_INPLACE;
+    } else if (value != null && strcmp(value, "inplace-all") == 0) {
+      mode = SANDBOX_GC_INPLACE_ALL;
     } else {
       mode = SANDBOX_GC_GENERATIONAL;
     }
@@ -64,12 +70,19 @@ static SandboxGcMode sandbox_gc_mode() {
 #endif
 }
 
+static bool sandbox_inplace_gc_selected() {
+  SandboxGcMode mode = sandbox_gc_mode();
+  return mode == SANDBOX_GC_INPLACE || mode == SANDBOX_GC_INPLACE_ALL;
+}
+
 bool sandbox_copying_gc_wanted(Process* process) {
   if (process->program() == null) return false;
   switch (sandbox_gc_mode()) {
     case SANDBOX_GC_GENERATIONAL: return false;
     case SANDBOX_GC_COPYING: return process->policy()->is_untrusted();
     case SANDBOX_GC_COPYING_ALL: return true;
+    case SANDBOX_GC_INPLACE: return process->policy()->is_untrusted();
+    case SANDBOX_GC_INPLACE_ALL: return true;
   }
   return false;
 }
@@ -427,12 +440,513 @@ void SandboxCopyingCollector::collect() {
   }
 }
 
+#ifndef TOIT_FREERTOS
+// --- The in-place collector (prototype, hosts only) ----------------------------
+//
+// TOIT_SANDBOX_GC=inplace (untrusted processes) or inplace-all: the heap
+// has the copying mode's shape (one space of pages, bump allocation), but a
+// collection takes no page. It marks, computes new places, updates every
+// reference and slides the live objects down, within the heap's own pages.
+// The side tables are the VM's GC metadata (GcMetadata), which covers every
+// heap page from boot: one mark bit per heap word and one word per line of
+// 32 heap words (the "cumulative mark bits", here the line's base).
+//   1. Mark: a fixed mark stack (TOIT_SANDBOX_GC_MARK_STACK entries, default
+//      64). A push onto a full stack only marks and sets a flag; when the
+//      stack is empty and the flag set, every marked object is scanned again
+//      (a parse of the pages), until a scan ends without overflow. Only the
+//      start word's bit is set. Roots, then the finalizer and weak-map passes
+//      (is_alive, do_roots) as in the copying collector; nothing moves yet.
+//   2. Places: a parse of the pages in list order. A marked object gets all
+//      its words' bits set and the next place in the pages (next fit), with
+//      the objects that start in one line always placed in one page, so that
+//      an object's place is its line's base plus its line's marked words
+//      before it (GcMetadata::get_destination's formula).
+//   3. Update: every root, finalizer slot and reference field of a marked
+//      object that points into the heap gets the referent's place.
+//   4. Slide: the marked objects move to their places, in page order (a place
+//      is never later in the page order than the object); pages after the
+//      last one used are freed.
+static inline uword raw_address(HeapObject* object) {
+  return reinterpret_cast<uword>(object) - Object::HEAP_TAG;
+}
+
+class SandboxInPlaceCollector : public RootCallback, public LivenessOracle {
+ public:
+  static const word MAX_STACK = 4096;
+
+  explicit SandboxInPlaceCollector(TwoSpaceHeap* heap)
+      : program_(heap->program_)
+      , heap_(heap)
+      , space_(heap->new_space()) {
+    const char* capacity = getenv("TOIT_SANDBOX_GC_MARK_STACK");
+    stack_capacity_ = 64;
+    if (capacity != null && atol(capacity) > 0) stack_capacity_ = Utils::min<word>(atol(capacity), MAX_STACK);
+    const char* parse = getenv("TOIT_SANDBOX_GC_PARSE");
+    parse_ = parse != null && parse[0] == '1';
+    const char* compact = getenv("TOIT_SANDBOX_GC_COMPACT");
+    jonkers_ = compact != null && strcmp(compact, "jonkers") == 0;
+  }
+
+  ~SandboxInPlaceCollector() {
+    free(pages_);
+    free(ranges_);
+  }
+
+  void collect();
+
+  uword pages_before() const { return page_count_; }
+  uword pages_after() const { return kept_; }
+  uword live_bytes() const { return live_bytes_; }
+  uword moved_bytes() const { return moved_bytes_; }
+  uword rescans() const { return rescans_; }
+  uword max_depth() const { return max_depth_; }
+
+  // RootCallback: marking.
+  void do_roots(Object** roots, word length) override {
+    for (word i = 0; i < length; i++) mark(roots[i]);
+  }
+  bool shrink_stacks() const override { return true; }
+  bool skip_marking(HeapObject* object) const override {
+    if (!object->has_active_finalizer()) return false;
+    if (!is_instance(object)) return false;
+    return object->class_id() == program_->map_class_id();
+  }
+
+  // LivenessOracle: objects outside the heap are alive; heap objects once
+  // marked.
+  bool is_alive(HeapObject* object) override {
+    if (!in_heap(object)) return true;
+    return is_marked(raw_address(object));
+  }
+  bool has_active_finalizer(HeapObject* object) override {
+    return object->has_active_finalizer();
+  }
+
+  bool in_heap(HeapObject* object) const {
+    uword address = reinterpret_cast<uword>(object);
+    word low = 0;
+    word high = page_count_;
+    while (low < high) {
+      word mid = (low + high) >> 1;
+      if (address < ranges_[2 * mid]) {
+        high = mid;
+      } else if (address >= ranges_[2 * mid + 1]) {
+        low = mid + 1;
+      } else {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  static bool is_marked(uword address) {
+    return (*GcMetadata::mark_bits_for(address) & bit(address)) != 0;
+  }
+
+  // The place of a marked object (after phase 2).
+  static uword place(uword address) {
+    uint32 below = *GcMetadata::mark_bits_for(address) & (bit(address) - 1);
+    return *GcMetadata::cumulative_mark_bits_for(address) + (Utils::popcount(below) << WORD_SHIFT);
+  }
+
+ private:
+  struct Page {
+    Chunk* chunk;
+    uword new_top;
+  };
+  static const uword LINE = 32 * WORD_SIZE;
+
+  Program* program_;
+  TwoSpaceHeap* heap_;
+  SemiSpace* space_;
+  Page* pages_ = null;
+  uword* ranges_ = null;  // Sorted [start, end) of the pages.
+  word page_count_ = 0;
+  word kept_ = 0;
+  HeapObject* stack_[MAX_STACK];
+  word stack_capacity_;
+  word stack_size_ = 0;
+  bool overflowed_ = false;
+  uword live_bytes_ = 0;
+  uword moved_bytes_ = 0;
+  uword rescans_ = 0;
+  uword max_depth_ = 0;
+  bool parse_ = false;
+  bool jonkers_ = false;
+ public:
+  // GcStats::instructions() after marking, places, update, slide.
+  uint64 phase_instructions_[4] = {0, 0, 0, 0};
+ private:
+
+  static uint32 bit(uword address) { return 1u << ((address >> WORD_SHIFT) & 31); }
+
+  void mark(Object* value) {
+    if (!is_heap_object(value)) return;
+    HeapObject* object = HeapObject::cast(value);
+    if (!in_heap(object)) return;
+    uword address = raw_address(object);
+    uint32* bits = GcMetadata::mark_bits_for(address);
+    uint32 mask = bit(address);
+    if ((*bits & mask) != 0) return;
+    *bits |= mask;
+    if (stack_size_ < stack_capacity_) {
+      stack_[stack_size_++] = object;
+      if (static_cast<uword>(stack_size_) > max_depth_) max_depth_ = stack_size_;
+    } else {
+      overflowed_ = true;
+    }
+  }
+
+  void empty_stack() {
+    while (stack_size_ > 0) {
+      HeapObject* object = stack_[--stack_size_];
+      object->roots_do(program_, this);
+    }
+  }
+
+  uword next_marked(uword current, uword end) const;
+  uword threaded_size(uword address) const;
+  void jonkers(bool second);
+  void thread_roots();
+  void drain();
+  void set_up();
+  void compute_places();
+  void update();
+  void slide();
+  void verify_and_poison();
+};
+
+void SandboxInPlaceCollector::set_up() {
+  space_->flush();
+  for (auto chunk : space_->chunk_list_) {
+    USE(chunk);
+    page_count_++;
+  }
+  pages_ = static_cast<Page*>(malloc(page_count_ * sizeof(Page)));
+  ranges_ = static_cast<uword*>(malloc(2 * page_count_ * sizeof(uword)));
+  if (pages_ == null || ranges_ == null) FATAL("sandbox in-place GC: no memory for the page table");
+  word i = 0;
+  for (auto chunk : space_->chunk_list_) {
+    pages_[i].chunk = chunk;
+    pages_[i].new_top = chunk->start();
+    GcMetadata::clear_mark_bits_for_chunk(chunk);
+    word j = i;
+    while (j > 0 && ranges_[2 * (j - 1)] > chunk->start()) {
+      ranges_[2 * j] = ranges_[2 * (j - 1)];
+      ranges_[2 * j + 1] = ranges_[2 * (j - 1) + 1];
+      j--;
+    }
+    ranges_[2 * j] = chunk->start();
+    ranges_[2 * j + 1] = chunk->end();
+    i++;
+  }
+}
+
+// The next marked object at or after `current` in the page that ends at
+// `end`, or 0. With TOIT_SANDBOX_GC_PARSE=1 by stepping over the unmarked
+// objects (their sizes from their headers); by default by searching the
+// mark bits, which only marked objects have (start bits during marking,
+// all their words' bits after phase 2).
+uword SandboxInPlaceCollector::next_marked(uword current, uword end) const {
+  if (parse_) {
+    while (!has_sentinel_at(current)) {
+      if (is_marked(current)) return current;
+      current += HeapObject::from_address(current)->size(program_);
+    }
+    return 0;
+  }
+  while (current < end) {
+    uint32 bits = *GcMetadata::mark_bits_for(current) >> ((current >> WORD_SHIFT) & 31);
+    if (bits != 0) {
+      uword result = current + (static_cast<uword>(Utils::ctz(bits)) << WORD_SHIFT);
+      return result < end ? result : 0;
+    }
+    current = (current & ~(LINE - 1)) + LINE;
+  }
+  return 0;
+}
+
+void SandboxInPlaceCollector::drain() {
+  while (true) {
+    empty_stack();
+    if (!overflowed_) return;
+    overflowed_ = false;
+    rescans_++;
+    for (word i = 0; i < page_count_; i++) {
+      Chunk* chunk = pages_[i].chunk;
+      uword current = chunk->start();
+      while ((current = next_marked(current, chunk->end())) != 0) {
+        HeapObject* object = HeapObject::from_address(current);
+        object->roots_do(program_, this);  // May shrink a stack.
+        empty_stack();
+        current += object->size(program_);
+      }
+    }
+  }
+}
+
+void SandboxInPlaceCollector::compute_places() {
+  word dp = 0;
+  uword cursor = pages_[0].chunk->start();
+  uword limit = pages_[0].chunk->usable_end();
+  for (word p = 0; p < page_count_; p++) {
+    Chunk* chunk = pages_[p].chunk;
+    uword line = 1;          // No line yet (lines are aligned).
+    uword line_place = 0;    // Place of the first marked object of `line`.
+    uword current = chunk->start();
+    while ((current = next_marked(current, chunk->end())) != 0) {
+      HeapObject* object = HeapObject::from_address(current);
+      uword size = object->size(program_);
+      live_bytes_ += size;
+      // All the object's words get their bit (the first already has it).
+      uword rest = current + WORD_SIZE;
+      uword words = (size >> WORD_SHIFT) - 1;
+      if (words > 0) Utils::mark_bits(GcMetadata::mark_bits_for(rest), static_cast<int>((rest >> WORD_SHIFT) & 31), words);
+      uword* base = GcMetadata::cumulative_mark_bits_for(current);
+      uword l = current & ~(LINE - 1);
+      if (l != line) {
+        line = l;
+        line_place = cursor;
+        uint32 below = *GcMetadata::mark_bits_for(current) & (bit(current) - 1);
+        *base = cursor - (Utils::popcount(below) << WORD_SHIFT);
+      }
+      if (cursor + size > limit) {
+        // The objects of this line go to the next page.
+        if (dp >= p) FATAL("sandbox in-place GC: place after the object");
+        pages_[dp].new_top = line_place;
+        dp++;
+        uword start = pages_[dp].chunk->start();
+        cursor = start + (cursor - line_place);
+        *base += start - line_place;
+        line_place = start;
+        limit = pages_[dp].chunk->usable_end();
+      }
+      ASSERT(place(current) == cursor);
+      cursor += size;
+      current += size;
+    }
+  }
+  pages_[dp].new_top = cursor;
+  kept_ = dp + 1;
+}
+
+// Phase 3: references to heap objects get their places.
+class InPlaceUpdater : public RootCallback {
+ public:
+  InPlaceUpdater(SandboxInPlaceCollector* collector, bool check) : collector_(collector), check_(check) {}
+  void do_roots(Object** roots, word length) override {
+    for (word i = 0; i < length; i++) {
+      Object* value = roots[i];
+      if (!is_heap_object(value)) continue;
+      HeapObject* object = HeapObject::cast(value);
+      if (!collector_->in_heap(object)) continue;
+      uword address = raw_address(object);
+      if (check_ && !SandboxInPlaceCollector::is_marked(address)) {
+        FATAL("sandbox in-place GC: slot %p points to an unmarked object %p", roots + i, value);
+      }
+      roots[i] = HeapObject::from_address(SandboxInPlaceCollector::place(address));
+    }
+  }
+
+ private:
+  SandboxInPlaceCollector* collector_;
+  bool check_;
+};
+
+void SandboxInPlaceCollector::update() {
+  InPlaceUpdater updater(this, gc_verify_enabled());
+  ObjectHeap* roots = heap_->process_heap_;
+  roots->iterate_roots(&updater);
+  roots->iterate_finalization_roots(&updater);
+  for (word i = 0; i < page_count_; i++) {
+    Chunk* chunk = pages_[i].chunk;
+    uword current = chunk->start();
+    while ((current = next_marked(current, chunk->end())) != 0) {
+      HeapObject* object = HeapObject::from_address(current);
+      object->roots_do(program_, &updater);
+      current += object->size(program_);
+    }
+  }
+}
+
+void SandboxInPlaceCollector::slide() {
+  for (word i = 0; i < page_count_; i++) {
+    Chunk* chunk = pages_[i].chunk;
+    uword current = chunk->start();
+    while ((current = next_marked(current, chunk->end())) != 0) {
+      uword size = HeapObject::from_address(current)->size(program_);
+      uword destination = place(current);
+      if (destination != current) {
+        memmove(reinterpret_cast<void*>(destination), reinterpret_cast<void*>(current), size);
+        moved_bytes_ += size;
+      }
+      current += size;
+    }
+  }
+}
+
+// --- Jonkers threading (TOIT_SANDBOX_GC_COMPACT=jonkers): the comparison
+// variant. No place table: every reference to a heap object is threaded
+// into a chain through the object's header word (headers are smis, links
+// are slot addresses with the heap tag), unthreaded when the object's place
+// is known. Pass 1 (page order): an object's chain holds the roots and the
+// references from objects before it; they get its place, then its own
+// fields are threaded. Pass 2: the chains hold the references from objects
+// after it (and from itself); they get its place, then it moves.
+class InPlaceThreader : public RootCallback {
+ public:
+  explicit InPlaceThreader(SandboxInPlaceCollector* collector) : collector_(collector) {}
+  void do_roots(Object** roots, word length) override {
+    for (word i = 0; i < length; i++) {
+      Object* value = roots[i];
+      if (!is_heap_object(value)) continue;
+      HeapObject* object = HeapObject::cast(value);
+      if (!collector_->in_heap(object)) continue;
+      uword* header = reinterpret_cast<uword*>(raw_address(object));
+      roots[i] = reinterpret_cast<Object*>(*header);
+      *header = reinterpret_cast<uword>(&roots[i]) | Object::HEAP_TAG;
+    }
+  }
+
+ private:
+  SandboxInPlaceCollector* collector_;
+};
+
+// The size of the object at `address` whose header may be threaded.
+uword SandboxInPlaceCollector::threaded_size(uword address) const {
+  uword* header = reinterpret_cast<uword*>(address);
+  uword head = *header;
+  uword value = head;
+  while ((value & Object::HEAP_TAG) != 0) value = *reinterpret_cast<uword*>(value - Object::HEAP_TAG);
+  *header = value;
+  uword size = HeapObject::from_address(address)->size(program_);
+  *header = head;
+  return size;
+}
+
+// Every slot in the chain of the object at `address` gets `place`; the
+// header gets its original value back.
+static void unthread(uword address, uword place) {
+  uword* header = reinterpret_cast<uword*>(address);
+  uword value = *header;
+  uword target = reinterpret_cast<uword>(HeapObject::from_address(place));
+  while ((value & Object::HEAP_TAG) != 0) {
+    uword* slot = reinterpret_cast<uword*>(value - Object::HEAP_TAG);
+    value = *slot;
+    *slot = target;
+  }
+  *header = value;
+}
+
+void SandboxInPlaceCollector::jonkers(bool second) {
+  InPlaceThreader threader(this);
+  word dp = 0;
+  uword cursor = pages_[0].chunk->start();
+  uword limit = pages_[0].chunk->usable_end();
+  for (word p = 0; p < page_count_; p++) {
+    Chunk* chunk = pages_[p].chunk;
+    uword current = chunk->start();
+    while ((current = next_marked(current, chunk->end())) != 0) {
+      uword size = threaded_size(current);
+      if (cursor + size > limit) {
+        if (dp >= p) FATAL("sandbox in-place GC: place after the object");
+        pages_[dp].new_top = cursor;
+        dp++;
+        cursor = pages_[dp].chunk->start();
+        limit = pages_[dp].chunk->usable_end();
+      }
+      unthread(current, cursor);
+      if (!second) {
+        live_bytes_ += size;
+        HeapObject::from_address(current)->roots_do(program_, &threader);
+      } else if (cursor != current) {
+        memmove(reinterpret_cast<void*>(cursor), reinterpret_cast<void*>(current), size);
+        moved_bytes_ += size;
+      }
+      cursor += size;
+      current += size;
+    }
+  }
+  pages_[dp].new_top = cursor;
+  kept_ = dp + 1;
+}
+
+void SandboxInPlaceCollector::thread_roots() {
+  InPlaceThreader threader(this);
+  ObjectHeap* roots = heap_->process_heap_;
+  roots->iterate_roots(&threader);
+  roots->iterate_finalization_roots(&threader);
+}
+
+void SandboxInPlaceCollector::verify_and_poison() {
+  if (!gc_verify_enabled()) return;
+  // The rest of each kept page and every freed page get the poison word.
+  for (word i = 0; i < page_count_; i++) {
+    Chunk* chunk = pages_[i].chunk;
+    uword from = i < kept_ ? pages_[i].new_top + WORD_SIZE : chunk->start();
+    for (uword p = from; p < chunk->end(); p += WORD_SIZE) {
+      *reinterpret_cast<uword*>(p) = static_cast<uword>(0xb1b1b1b1b1b1b1b1ULL);
+    }
+  }
+}
+
+void SandboxInPlaceCollector::collect() {
+  ObjectHeap* roots = heap_->process_heap_;
+  set_up();
+
+  roots->iterate_roots(this);
+  drain();
+  roots->process_registered_callback_finalizers(this, this);
+  roots->process_finalizer_queue(this, this);
+  drain();
+  roots->process_registered_vm_finalizers(this, this);
+  drain();
+
+  if (GcStats::enabled()) phase_instructions_[0] = GcStats::instructions();
+  if (jonkers_) {
+    thread_roots();
+    jonkers(false);
+  } else {
+    compute_places();
+  }
+  if (GcStats::enabled()) phase_instructions_[1] = GcStats::instructions();
+  if (!jonkers_) update();
+  if (GcStats::enabled()) phase_instructions_[2] = GcStats::instructions();
+  if (jonkers_) {
+    jonkers(true);
+  } else {
+    slide();
+  }
+  if (GcStats::enabled()) phase_instructions_[3] = GcStats::instructions();
+
+  for (word i = 0; i < kept_; i++) write_sentinel_at(pages_[i].new_top);
+  verify_and_poison();
+  uword closed = 0;
+  while (space_->chunk_list_.remove_first() != null) {}
+  for (word i = 0; i < page_count_; i++) {
+    Chunk* chunk = pages_[i].chunk;
+    if (i < kept_) {
+      GcMetadata::clear_mark_bits_for_chunk(chunk);
+      space_->chunk_list_.append(chunk);
+      if (i < kept_ - 1) closed += pages_[i].new_top - chunk->start();
+    } else {
+      ObjectMemory::free_chunk(chunk);
+    }
+  }
+  Chunk* last = pages_[kept_ - 1].chunk;
+  space_->top_ = pages_[kept_ - 1].new_top;
+  space_->limit_ = last->end();
+  heap_->copying_closed_used_ = closed;
+}
+#endif  // TOIT_FREERTOS
+
 // --- TwoSpaceHeap's copying mode ----------------------------------------------
 
 void TwoSpaceHeap::enable_copying_gc() {
   ASSERT(old_space_.is_empty());
   copying_ = true;
 #ifndef TOIT_FREERTOS
+  inplace_ = sandbox_inplace_gc_selected();
   const char* budget = getenv("TOIT_SANDBOX_GC_BUDGET");
   if (budget != null && atol(budget) > 0) copying_page_budget_ = static_cast<uword>(atol(budget));
   const char* stress = getenv("TOIT_SANDBOX_GC_STRESS");
@@ -529,6 +1043,18 @@ uint64 GcStats::instructions() {
 #else
   return 0;
 #endif
+}
+
+void GcStats::record_inplace(uword pages_before, uword pages_after, uword live, uword moved, uword rescans, uword depth) {
+  inplace_gcs++;
+  live_bytes += live;
+  if (live > max_live_bytes) max_live_bytes = live;
+  moved_bytes += moved;
+  mark_rescans += rescans;
+  if (depth > max_mark_depth) max_mark_depth = depth;
+  if (pages_before > max_from_pages) max_from_pages = pages_before;
+  if (pages_after > max_kept_pages) max_kept_pages = pages_after;
+  note_pages(pages_before);
 }
 
 void GcStats::record_copying(uword from_pages, uword to_pages, uword copied, uword waste) {
@@ -681,6 +1207,9 @@ GcType TwoSpaceHeap::collect(bool try_hard) {
       stats_->untrusted = owner->policy()->is_untrusted();
     }
     stats_->copying = copying_;
+#ifndef TOIT_FREERTOS
+    stats_->inplace = inplace_;
+#endif
     stats_->note_pages(size() / TOIT_PAGE_SIZE);
     start_us = OS::get_monotonic_time();
     instructions = GcStats::instructions();
@@ -691,6 +1220,30 @@ GcType TwoSpaceHeap::collect(bool try_hard) {
     total_bytes_allocated_.fetch_add(new_space_used(), std::memory_order_relaxed);
 #ifndef TOIT_FREERTOS
     dump_copying_heap("before");
+    if (inplace_) {
+      SandboxInPlaceCollector collector(this);
+      collector.collect();
+      dump_copying_heap("after");
+      if (getenv("TOIT_GC_DUMP") != null) copying_dump_count_++;
+      copying_pages_since_gc_ = 0;
+      copying_cut_window();
+      total_bytes_allocated_.fetch_sub(new_space_used(), std::memory_order_relaxed);
+      if (stats) {
+        stats_->record_inplace(collector.pages_before(), collector.pages_after(), collector.live_bytes(),
+                               collector.moved_bytes(), collector.rescans(), collector.max_depth());
+        stats_->phase_instructions[0] += collector.phase_instructions_[0] - instructions;
+        for (int i = 1; i < 4; i++) stats_->phase_instructions[i] += collector.phase_instructions_[i] - collector.phase_instructions_[i - 1];
+        if (Flags::tracegc) {
+          printf("[sandbox in-place gc %d: %zu -> %zu pages, live %zu, moved %zu, rescans %zu, depth %zu]\n",
+                 stats_->pid, static_cast<size_t>(collector.pages_before()),
+                 static_cast<size_t>(collector.pages_after()),
+                 static_cast<size_t>(collector.live_bytes()), static_cast<size_t>(collector.moved_bytes()),
+                 static_cast<size_t>(collector.rescans()), static_cast<size_t>(collector.max_depth()));
+        }
+      }
+      type = FULL_GC;
+      goto done;
+    }
 #endif
     SandboxCopyingCollector collector(this);
     collector.collect();
@@ -721,6 +1274,9 @@ GcType TwoSpaceHeap::collect(bool try_hard) {
       stats_->note_pages(size() / TOIT_PAGE_SIZE + 1);
     }
   }
+#ifndef TOIT_FREERTOS
+done:
+#endif
   if (stats) {
     uint64 spent = GcStats::instructions() - instructions;
     uint64 us = OS::get_monotonic_time() - start_us;
@@ -738,8 +1294,9 @@ void GcStats::print(TwoSpaceHeap* heap) {
   printf("GCSTATS pid=%d untrusted=%d mode=%s collections=%zu scavenges=%zu full=%zu compacting=%zu copying=%zu"
          " survivors=%llu max_survivors=%zu promoted=%llu copied=%llu max_copied=%zu"
          " gc_instr=%llu max_gc_instr=%llu gc_us=%llu max_gc_us=%llu peak_pages=%zu"
-         " max_from_pages=%zu max_to_pages=%zu max_to_over_from=%d to_waste=%llu allocated=%llu full_instr=%llu full_live=%llu full_space=%llu\n",
-         pid, untrusted ? 1 : 0, copying ? "copying" : "generational",
+         " max_from_pages=%zu max_to_pages=%zu max_to_over_from=%d to_waste=%llu allocated=%llu full_instr=%llu full_live=%llu full_space=%llu"
+         " inplace=%zu live=%llu max_live=%zu moved=%llu rescans=%zu max_mark_depth=%zu max_kept_pages=%zu phase_instr=%llu,%llu,%llu,%llu\n",
+         pid, untrusted ? 1 : 0, inplace ? "inplace" : copying ? "copying" : "generational",
          static_cast<size_t>(collections), static_cast<size_t>(scavenges),
          static_cast<size_t>(full_gcs), static_cast<size_t>(compacting_gcs),
          static_cast<size_t>(copying_gcs),
@@ -755,7 +1312,13 @@ void GcStats::print(TwoSpaceHeap* heap) {
          static_cast<unsigned long long>(heap->total_bytes_allocated()),
          static_cast<unsigned long long>(full_instructions),
          static_cast<unsigned long long>(full_live_bytes),
-         static_cast<unsigned long long>(full_space_bytes));
+         static_cast<unsigned long long>(full_space_bytes),
+         static_cast<size_t>(inplace_gcs), static_cast<unsigned long long>(live_bytes),
+         static_cast<size_t>(max_live_bytes), static_cast<unsigned long long>(moved_bytes),
+         static_cast<size_t>(mark_rescans), static_cast<size_t>(max_mark_depth),
+         static_cast<size_t>(max_kept_pages),
+         static_cast<unsigned long long>(phase_instructions[0]), static_cast<unsigned long long>(phase_instructions[1]),
+         static_cast<unsigned long long>(phase_instructions[2]), static_cast<unsigned long long>(phase_instructions[3]));
   fflush(stdout);
 }
 

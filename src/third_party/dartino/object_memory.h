@@ -255,6 +255,7 @@ class Space : public LivenessOracle {
   friend class Chunk;
   friend class TwoSpaceHeap;
   friend class SandboxCopyingCollector;
+  friend class SandboxInPlaceCollector;
 
   virtual void append(Chunk* chunk);
 

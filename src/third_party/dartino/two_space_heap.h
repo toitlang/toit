@@ -139,6 +139,7 @@ class TwoSpaceHeap {
  private:
   friend class ScavengeVisitor;
   friend class SandboxCopyingCollector;
+  friend class SandboxInPlaceCollector;
 
   void do_scavenge(ScavengeVisitor* visitor);
   void record_direct_old_allocation(uword address, uword size);
@@ -163,6 +164,9 @@ class TwoSpaceHeap {
   // The heap dumps of the differential test (src/sandbox_gc.cc, TOIT_GC_DUMP).
   void dump_copying_heap(const char* phase);
   int copying_dump_count_ = 0;
+  // TOIT_SANDBOX_GC=inplace: collections of this copying-mode heap use the
+  // in-place collector (src/sandbox_gc.cc), a prototype.
+  bool inplace_ = false;
 #endif
   // Allocated at the first collection when TOIT_GC_STATS is set (hosts only).
   GcStats* stats_ = null;

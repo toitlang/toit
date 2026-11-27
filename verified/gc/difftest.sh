@@ -27,7 +27,8 @@
 #   The dumps go to OUT-DIR (a new directory per run is best: files of
 #   earlier runs are compared too). The word size of the comparison is
 #   the build's (i686 for a 32-bit build).
-# Env: DUMP_MAX (collections dumped per process, default 4), JOBS (6).
+# Env: DUMP_MAX (collections dumped per process, default 4), JOBS (6),
+#   DIFF_GC (the C++ collector that makes the dumps: copying, or inplace).
 
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -37,7 +38,7 @@ mkdir -p "$OUT"; OUT="$(cd "$OUT" && pwd)"
 export TMPDIR="${TMPDIR:-$REPO/build/tmp}"
 JOBS="${JOBS:-6}"
 RUN="$BUILD/sdk/lib/toit/bin/toit.run"
-export TOIT_SANDBOX_GC=copying TOIT_GC_DUMP="$OUT" TOIT_GC_DUMP_MAX="${DUMP_MAX:-4}"
+export TOIT_SANDBOX_GC="${DIFF_GC:-copying}" TOIT_GC_DUMP="$OUT" TOIT_GC_DUMP_MAX="${DUMP_MAX:-4}"
 if [ $# -eq 0 ]; then
   ctest --test-dir "$BUILD" -R '^tests/sandbox/' -j"$JOBS" --timeout 300 > "$OUT/ctest.log" 2>&1 \
     || { tail -20 "$OUT/ctest.log"; echo "sandbox ctests failed"; exit 1; }
