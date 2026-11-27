@@ -498,6 +498,7 @@ class SandboxInPlaceCollector : public RootCallback, public LivenessOracle {
   uword pages_after() const { return kept_; }
   uword live_bytes() const { return live_bytes_; }
   uword moved_bytes() const { return moved_bytes_; }
+  uword line_loss() const { return line_loss_; }
   uword rescans() const { return rescans_; }
   uword max_depth() const { return max_depth_; }
 
@@ -569,6 +570,7 @@ class SandboxInPlaceCollector : public RootCallback, public LivenessOracle {
   bool overflowed_ = false;
   uword live_bytes_ = 0;
   uword moved_bytes_ = 0;
+  uword line_loss_ = 0;
   uword rescans_ = 0;
   uword max_depth_ = 0;
   bool parse_ = false;
@@ -713,6 +715,7 @@ void SandboxInPlaceCollector::compute_places() {
       if (cursor + size > limit) {
         // The objects of this line go to the next page.
         if (dp >= p) FATAL("sandbox in-place GC: place after the object");
+        line_loss_ += cursor - line_place;  // What next fit per object would have kept here.
         pages_[dp].new_top = line_place;
         dp++;
         uword start = pages_[dp].chunk->start();
@@ -930,6 +933,7 @@ void SandboxInPlaceCollector::collect() {
       space_->chunk_list_.append(chunk);
       if (i < kept_ - 1) closed += pages_[i].new_top - chunk->start();
     } else {
+      GcMetadata::clear_mark_bits_for_chunk(chunk);  // The next owner finds them clear.
       ObjectMemory::free_chunk(chunk);
     }
   }
@@ -1232,6 +1236,8 @@ GcType TwoSpaceHeap::collect(bool try_hard) {
         stats_->record_inplace(collector.pages_before(), collector.pages_after(), collector.live_bytes(),
                                collector.moved_bytes(), collector.rescans(), collector.max_depth());
         stats_->phase_instructions[0] += collector.phase_instructions_[0] - instructions;
+        stats_->line_loss_bytes += collector.line_loss();
+        if (collector.line_loss() > stats_->max_line_loss_bytes) stats_->max_line_loss_bytes = collector.line_loss();
         for (int i = 1; i < 4; i++) stats_->phase_instructions[i] += collector.phase_instructions_[i] - collector.phase_instructions_[i - 1];
         if (Flags::tracegc) {
           printf("[sandbox in-place gc %d: %zu -> %zu pages, live %zu, moved %zu, rescans %zu, depth %zu]\n",
@@ -1295,7 +1301,7 @@ void GcStats::print(TwoSpaceHeap* heap) {
          " survivors=%llu max_survivors=%zu promoted=%llu copied=%llu max_copied=%zu"
          " gc_instr=%llu max_gc_instr=%llu gc_us=%llu max_gc_us=%llu peak_pages=%zu"
          " max_from_pages=%zu max_to_pages=%zu max_to_over_from=%d to_waste=%llu allocated=%llu full_instr=%llu full_live=%llu full_space=%llu"
-         " inplace=%zu live=%llu max_live=%zu moved=%llu rescans=%zu max_mark_depth=%zu max_kept_pages=%zu phase_instr=%llu,%llu,%llu,%llu\n",
+         " inplace=%zu live=%llu max_live=%zu moved=%llu rescans=%zu max_mark_depth=%zu max_kept_pages=%zu phase_instr=%llu,%llu,%llu,%llu line_loss=%llu max_line_loss=%zu\n",
          pid, untrusted ? 1 : 0, inplace ? "inplace" : copying ? "copying" : "generational",
          static_cast<size_t>(collections), static_cast<size_t>(scavenges),
          static_cast<size_t>(full_gcs), static_cast<size_t>(compacting_gcs),
@@ -1318,7 +1324,8 @@ void GcStats::print(TwoSpaceHeap* heap) {
          static_cast<size_t>(mark_rescans), static_cast<size_t>(max_mark_depth),
          static_cast<size_t>(max_kept_pages),
          static_cast<unsigned long long>(phase_instructions[0]), static_cast<unsigned long long>(phase_instructions[1]),
-         static_cast<unsigned long long>(phase_instructions[2]), static_cast<unsigned long long>(phase_instructions[3]));
+         static_cast<unsigned long long>(phase_instructions[2]), static_cast<unsigned long long>(phase_instructions[3]),
+         static_cast<unsigned long long>(line_loss_bytes), static_cast<size_t>(max_line_loss_bytes));
   fflush(stdout);
 }
 

@@ -85,6 +85,8 @@ struct GcStats {
   uword max_mark_depth = 0;       // In place: deepest mark stack.
   uword max_kept_pages = 0;
   uint64 phase_instructions[4] = {0, 0, 0, 0};  // In place: mark, places, update, slide.
+  uint64 line_loss_bytes = 0;     // In place: bytes the line rule left unused at page breaks.
+  uword max_line_loss_bytes = 0;
 
   void record_scavenge(uword survivors, uword promoted) {
     scavenges++;
