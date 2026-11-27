@@ -32,6 +32,8 @@ into the VM yet (M5). The C++ prototype it ports is `src/sandbox_gc.cc`.
   trace (`hide_maps`), the weak pass (dead values of a surviving map's
   backing array nulled, fields given back; dead maps reset), `trace`
   (hide, roots, scan, weak pass, scan).
+- `src/mark.rs`: the in-place collector's mark phase: the VM's mark
+  bitmap, a 64-entry mark stack with overflow rescans; `mark_done`.
 - `src/bridge.rs` (Verus only): `collected` implies the core's
   `gcbridge::collected` and a collection of the spec; from the core's state
   with the C++ roots (M3); with the finalizer pass, the reset weak maps
