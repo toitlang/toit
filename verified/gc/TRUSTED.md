@@ -314,3 +314,65 @@ record top, records equal, the object stack equal counted from the end,
 the other header words equal) and relies on it; it discharges nothing new.
 The spec and the bridge are unaffected (the core models no stack word but
 the header).
+
+## 8. The in-place collector's mark phase (`mark.rs`, round 4)
+
+`mark::mark` reads the heap and writes only the mark bitmap; its
+statement (`mark_done`) says the bits are exactly the start words of the
+from-space objects the roots reach. What it takes on trust, beyond the
+copying collector's entry facts it shares (`ctx_ok`, `fpages_ok`,
+`ftab_ok`, `ctab_ok`, `heap_ok`, `from_ok`, `roots_in`):
+
+- **The bitmap description** (`MCtx`, `mctx_ok`, `mtab_ok`, `mperm`): a
+  table of `nf` words, the address of each from-space page's mark bits
+  (the C++ passes `GcMetadata::mark_bits_for(page start)`), `pw / 32`
+  32-bit words per page (`pw % 32 == 0`: 4 kB pages), and the permission
+  of each such word. The permissions being distinct objects says the words
+  are distinct from each other and from every heap, root and table word
+  (one location cannot be handed out twice). Their values are not
+  trusted: `mark` clears them first.
+- **Exclusivity**, the obligation of the caller (the C++ entry, at
+  integration): for the duration of the call no other thread reads or
+  writes the heap's pages, its root slots, its finalizer nodes, or the mark
+  words (and, from stage 1b, the line words) that cover the heap's pages.
+  Today's runtime gives this as follows (checked in the sources; host and
+  ESP32 builds alike):
+  - a collection runs on one thread under the heap's lock
+    (`ObjectHeap::gc`), with the process not running (the calling process
+    itself, or a target the scheduler suspended: `Scheduler::gc`,
+    `claim_gc_target`); other code that reads a heap's pages takes the
+    same lock (`ObjectHeap::iterate_chunks`);
+  - collections are **not** serialized across processes: two scheduler
+    threads (two cores) may collect two heaps at once, each under its own
+    heap lock. The GC metadata is one boot-time allocation
+    (`GcMetadata::initialize`) indexed by address, and every collector
+    writes only the metadata of its own chunks (`clear_mark_bits_for_chunk`,
+    marking, `calculate_object_destinations`, `CompactingVisitor::
+    chunk_start`'s sentinel bit, `mark_stack_overflow`); pages are 4 kB
+    aligned, so a page's mark words (32 heap words each) and line words
+    never share a word with another page's;
+  - one cross-page access exists: the generational collector's
+    `GcMetadata::is_grey` may read the first mark bit of the page after
+    its chunk when the chunk ends with a one-word object (documented in
+    gc_metadata.h as harmless: it ignores the answer for one-word objects).
+    If that page belongs to a sandbox heap being marked on the other core,
+    this is a read racing with a write of the same 32-bit word: a C++ data
+    race on paper, an aligned word load on the device; it changes nothing
+    for either collector. Removing it (stop the look-ahead at the chunk
+    end) is a one-line upstream change, not made;
+  - freed pages: the in-place collector clears a page's mark bits before
+    it frees it (and `ObjectMemory::allocate_chunk` clears them for the
+    next owner anyway).
+- **Device coverage** (why the bitmap costs no reserve): on the ESP32
+  `ObjectMemory::allocate_chunk` takes only pages inside the metadata's
+  range (`GcMetadata::contains_chunk`, up to 50 retries), and the range
+  is the internal heap's (`OS::get_heap_memory_range`) minus a low part
+  used only by malloc (`internal_ram_metadata_prefix`). So every heap
+  page, a sandbox's included, has its mark words and line words from
+  boot: about 8 % of the covered range in all (mark bits 1/32, line words
+  1/32 on 32-bit, remembered set and starts 1/128 each, overflow bits,
+  page types), 12 KiB for 148 KB covered and 16 KiB for 200 KB (the sizes
+  the prefix rule aims at; more if the range is larger), of which the mark
+  bits and line words the in-place collector uses are 6.25 % of the
+  range. Derived from the code; not measured on a classic ESP32 (no such
+  board is on the test rig I may use).
