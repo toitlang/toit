@@ -1172,3 +1172,87 @@ fn random_weak_maps() {
         run(&mut arena, &h, 0, false).ok().unwrap();
     }
 }
+
+// ---------------------------------------------------------------------------
+// The mark phase of the in-place collector (src/mark.rs).
+
+/// Runs the mark phase on `h` and checks: the heap is not written, exactly
+/// the reachable from-space objects have their start bit, no other bit is
+/// set (the bitmap starts out all ones).
+fn run_mark(arena: &mut Arena, h: &Heap) {
+    use toit_gc::mark::{mark, MCtx};
+    let pw = arena.pw;
+    assert!(pw % 32 == 0);
+    let nf = h.fpages.len();
+    let mut cb = class_table();
+    let mut ftab = h.fpages.clone();
+    let mut rootw: Vec<usize> = h.roots.iter().map(|v| enc(h, v)).collect();
+    let mut fused = vec![0usize; nf.max(1)];
+    let mw = pw / 32;
+    let mut bits = vec![0xffff_ffffu32; (nf * mw).max(1)];
+    let base = bits.as_mut_ptr();
+    let mut mtab: Vec<usize> = (0..nf).map(|i| base as usize + i * mw * 4).collect();
+    let before = arena.words.clone();
+    let roots_before = rootw.clone();
+    let c = Ctx { base: arena.base(), ftab: ftab.as_mut_ptr(), nf, pw, ctab: cb.as_mut_ptr(), ncls: cb.len(), sw: h.sw,
+                  null: NULL, nullid: Ghost::assume_new(), fused: fused.as_mut_ptr(), tail: false, smin: usize::MAX,
+                  map_cid: CLS_MAP, list_cid: CLS_LIST, tomb_cid: CLS_TOMB, fss: Ghost::assume_new(), cbs: Ghost::assume_new() };
+    let m = MCtx { mtab: mtab.as_mut_ptr(), mbase: base, mss: Ghost::assume_new() };
+    let _ = mark(&c, &m, rootw.as_mut_ptr(), rootw.len(), Ghost::assume_new(), Ghost::assume_new(), Tracked::assume_new(),
+                 Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new());
+    assert!(arena.words == before, "the mark phase wrote the heap");
+    assert_eq!(rootw, roots_before, "the mark phase wrote the roots");
+    let want = reachable(h);
+    for i in h.nprog..h.objs.len() {
+        let a = h.addr[i] - 1;
+        let p = h.fpages.iter().position(|s| a >= *s && a < *s + pw * W).unwrap();
+        let k = (a - h.fpages[p]) / W;
+        let set = (bits[p * mw + k / 32] >> (k % 32)) & 1 == 1;
+        assert_eq!(set, want.contains(&i), "object {}", i);
+    }
+    let count: u32 = bits[..nf * mw].iter().map(|w| w.count_ones()).sum();
+    assert_eq!(count as usize, want.len(), "stray mark bits");
+}
+
+#[test]
+fn mark_random_graphs() {
+    for seed in 1..600u64 {
+        let mut rng = Rng(seed * 0x9e37_79b9_7f4a_7c15 + 11);
+        let sw = if rng.below(2) == 0 { 10 } else { 14 };
+        let pw = [32, 64, 128][rng.below(3)];
+        let n = 1 + rng.below(150);
+        let nprog = rng.below(n.min(8) + 1);
+        let nroots = rng.below(12);
+        let maxw = 3 + rng.below(pw - 4);
+        let (objs, roots) = random_heap(&mut rng, n, nprog, nroots, maxw, sw);
+        let mut arena = Arena::new(1200, pw);
+        let h = build(&mut arena, objs, nprog, roots, sw, &mut rng, seed % 2 == 0);
+        run_mark(&mut arena, &h);
+    }
+}
+
+/// Wide objects overflow the mark stack (64 entries): the marked objects
+/// are walked again until a walk ends without overflow.
+#[test]
+fn mark_stack_overflow() {
+    for (width, depth) in [(70usize, 1usize), (200, 2), (300, 3), (65, 5)] {
+        let mut objs = vec![oddball()];
+        // A root array of `width` chains of `depth` instances, plus garbage.
+        let first = 2;
+        let mut elems = vec![];
+        for w in 0..width { elems.push(V::Ref(first + w * depth)); }
+        objs.push(arr(elems));
+        for w in 0..width {
+            for d in 0..depth {
+                let i = first + w * depth + d;
+                let next = if d + 1 < depth { V::Ref(i + 1) } else { V::Ref(1) };
+                objs.push(inst(vec![next, V::Smi(2 * i)]));
+            }
+        }
+        objs.push(arr(vec![V::Ref(1), V::Ref(2)]));
+        let mut arena = Arena::new(400, 512);
+        let mut rng = Rng(width as u64);
+        let h = build(&mut arena, objs, 1, vec![V::Ref(1)], SW, &mut rng, true);
+        run_mark(&mut arena, &h);
+    }
+}

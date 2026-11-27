@@ -211,6 +211,19 @@ if want nopanic; then
       text=$("$size" -A "$elf" | awk '$1 == ".text" {print $2}')
       echo "$target: no panic paths; collector .text $((text - stubs)) bytes"
     fi
+    melf="$BUILD/nopanic-mark-$target.elf"
+    # shellcheck disable=SC2086
+    if ! "$gcc" $flags -nostdlib -Os -ffunction-sections -Wl,--gc-sections -Wl,-e,toit_gc_mark -Wl,-u,toit_gc_mark \
+        -o "$melf" "$HERE/nopanic/stubs.c" "$tdir/$target/release/libtoit_gc_nopanic.a" >> "$BUILD/nopanic-$target.log" 2>&1; then
+      tail -20 "$BUILD/nopanic-$target.log"; fail "$target: link (mark)"; continue
+    fi
+    if "$nm" -C "$melf" | grep -E "$FORBIDDEN"; then
+      fail "$target: panic machinery linked (mark)"
+    else
+      stubs=$("$nm" -S --defined-only "$melf" | awk '/ toit_gc_page_| toit_gc_panic/ {s += strtonum("0x" $2)} END {print s + 0}')
+      text=$("$size" -A "$melf" | awk '$1 == ".text" {print $2}')
+      echo "$target: no panic paths; mark phase .text $((text - stubs)) bytes"
+    fi
   done
 fi
 

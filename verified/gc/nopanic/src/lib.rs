@@ -25,6 +25,7 @@
 use toit_gc::model::Ctx;
 use toit_gc::space::PageSource;
 use toit_gc::statement::collect;
+use toit_gc::mark::{mark, MCtx};
 use vstd::prelude::*;
 
 extern "C" {
@@ -68,6 +69,21 @@ pub extern "C" fn toit_gc_collect(base: *mut usize, ftab: *mut usize, nf: usize,
         }
         Err(_) => 0,
     }
+}
+
+/// The mark phase of the in-place collector (src/mark.rs): the mark bits of
+/// the reachable from-space objects. `mtab`: the address of each page's mark
+/// bits; `mbase`: a pointer with the bitmap's provenance.
+#[no_mangle]
+pub extern "C" fn toit_gc_mark(base: *mut usize, ftab: *mut usize, nf: usize, pw: usize,
+                               ctab: *mut u16, ncls: usize, sw: usize, null: usize,
+                               mtab: *mut usize, mbase: *mut u32,
+                               roots: *mut usize, nroots: usize) {
+    let c = Ctx { base, ftab, nf, pw, ctab, ncls, sw, null, nullid: Ghost::assume_new(), fused: core::ptr::null_mut(), tail: false,
+                  smin: usize::MAX, map_cid: 0, list_cid: 0, tomb_cid: 0, fss: Ghost::assume_new(), cbs: Ghost::assume_new() };
+    let m = MCtx { mtab, mbase, mss: Ghost::assume_new() };
+    let _ = mark(&c, &m, roots, nroots, Ghost::assume_new(), Ghost::assume_new(), Tracked::assume_new(), Tracked::assume_new(),
+                 Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new());
 }
 
 #[panic_handler]
