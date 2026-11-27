@@ -17,3 +17,5 @@ include(toit.cmake)
 
 toit_project(lsp "${CMAKE_CURRENT_LIST_DIR}/lsp/server")
 toit_project(tools "${CMAKE_CURRENT_LIST_DIR}")
+
+include(rp2350/host-tools/sdk.cmake)

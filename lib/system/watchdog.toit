@@ -1,6 +1,8 @@
 // Copyright (C) 2026 Toit contributors.
 // Use of this source code is governed by the LGPL-2.1 license in LICENSE.
 
+import system.firmware  // For toitdoc.
+
 /**
 Controls the device's application watchdog.
 
@@ -17,6 +19,11 @@ Supported timeout ranges depend on the platform. ESP32 supports positive
 The platform-specific watchdog APIs operate on this same watchdog. Other
   containers that feed or reconfigure it can interfere with monitoring.
   Host platforms throw `UNIMPLEMENTED`.
+
+On RP2350, timeouts range from 1 through 16 seconds. An OTA image must call
+  $firmware.validate before $start. Starting during the trial period throws
+  `INVALID_STATE`; $feed and $stop leave the ROM's trial watchdog unchanged
+  until the application watchdog is armed.
 */
 
 /** Starts or restarts the watchdog with the given $timeout. */

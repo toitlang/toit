@@ -1,0 +1,26 @@
+// Copyright (C) 2026 Toit contributors.
+// Use of this source code is governed by the LGPL-2.1 license in LICENSE.
+import system
+import system.firmware
+import @TOIT_PLATFORM_IMPORT@ show Platform
+import @TOIT_OTA_IMPORT@ show UpdateConsole boot-partition
+
+main:
+  error := catch --trace: boot_
+  print "RP2350 system startup failed: $error"
+  // Leave an unconfirmed image for the ROM watchdog to roll back.
+  while true: sleep --ms=1000
+
+boot_:
+  platform := Platform
+  console := UpdateConsole
+  // Confirm only after the VM, scheduler, services, USB input, and a garbage
+  // collection are working. Full system boot will supply its startup checks.
+  system.process-stats --gc
+  if @TOIT_AUTO_VALIDATE_VALUE@:
+    firmware.validate
+    print "TOIT-OTA VALIDATED $boot-partition"
+
+  platform.start-containers
+
+  console.run

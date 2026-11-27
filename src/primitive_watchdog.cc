@@ -24,7 +24,7 @@ namespace toit {
 MODULE_IMPLEMENTATION(watchdog, MODULE_WATCHDOG)
 
 PRIMITIVE(start) {
-#if defined(TOIT_ESP32) || defined(TOIT_EC618)
+#if defined(TOIT_ESP32) || defined(TOIT_EC618) || defined(TOIT_RP2350)
   ARGS(int, timeout_ms);
   return platform_watchdog_start(process, timeout_ms);
 #else
@@ -33,7 +33,7 @@ PRIMITIVE(start) {
 }
 
 PRIMITIVE(feed) {
-#if defined(TOIT_ESP32) || defined(TOIT_EC618)
+#if defined(TOIT_ESP32) || defined(TOIT_EC618) || defined(TOIT_RP2350)
   return platform_watchdog_feed(process);
 #else
   FAIL(UNIMPLEMENTED);
@@ -41,7 +41,7 @@ PRIMITIVE(feed) {
 }
 
 PRIMITIVE(stop) {
-#if defined(TOIT_ESP32) || defined(TOIT_EC618)
+#if defined(TOIT_ESP32) || defined(TOIT_EC618) || defined(TOIT_RP2350)
   return platform_watchdog_stop(process);
 #else
   FAIL(UNIMPLEMENTED);

@@ -1,0 +1,8 @@
+// Copyright (C) 2026 Toit contributors.
+// Use of this source code is governed by the LGPL-2.1 license in LICENSE.
+import @TOIT_APPLICATION_IMPORT@ as application
+
+main:
+  // Run in a separate process so a failed assertion cannot stop USB updates.
+  application.main
+  print "RP2350 application completed"

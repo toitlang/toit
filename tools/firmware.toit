@@ -39,17 +39,22 @@ import tar
 
 import ..system.extensions.host.run-image-boot-sh
 import .ec618.slot-reloc show SlotRelocTable
+import .firmware.container show Container
 import .firmware.ec618 as firmware-ec618
 import .firmware.image-details as image-details
+import .firmware.rp2350 as firmware-rp2350
+import .firmware.rp2350-uf2 as firmware-rp2350-uf2
 import .image
 import .snapshot
 import .snapshot-to-image
 
 ENVELOPE-FORMAT-VERSION-ESP32-HOST ::= 8
 ENVELOPE-FORMAT-VERSION-EC618      ::= 1000
+ENVELOPE-FORMAT-VERSION-RP2350     ::= 1001
 
 WORD-SIZE-ESP32 ::= 4
 WORD-SIZE-EC618 ::= firmware-ec618.WORD-SIZE
+WORD-SIZE-RP2350 ::= firmware-rp2350.WORD-SIZE
 
 // Shared AR entries.
 AR-ENTRY-INFO       ::= "\$envelope"
@@ -99,6 +104,10 @@ AR-ENTRY-EC618-RELOC ::= "\$ec618-reloc.bin"
 // must equal the relocation table's data_size. (The AR
 // name must stay <=16 chars, like the other entries.)
 AR-ENTRY-EC618-VM-DATA ::= "\$ec618-data.bin"
+
+// RP2350 AR entries.
+AR-ENTRY-RP2350-FIRMWARE-BIN ::= "\$rp2350-fw.bin"
+AR-ENTRY-RP2350-PARTITION-UF2 ::= "\$rp2350-pt.uf2"
 
 SYSTEM-CONTAINER-NAME ::= "system"
 
@@ -171,6 +180,7 @@ build-command --legacy-create-layout/bool=false -> cli.Command:
     // uses the unambiguous `toit tool firmware create esp32` hierarchy.
     firmware-cmd.add (create-esp32-cmd --name="create")
     firmware-cmd.add (create-ec618-cmd --name="create-ec618")
+    firmware-cmd.add (create-rp2350-cmd --name="create-rp2350")
   else:
     firmware-cmd.add create-cmd
   firmware-cmd.add extract-cmd
@@ -192,6 +202,7 @@ create-cmd -> cli.Command:
         """
   cmd.add (create-esp32-cmd --name="esp32")
   cmd.add create-ec618-cmd
+  cmd.add create-rp2350-cmd
   cmd.add create-host-cmd
   return cmd
 
@@ -315,6 +326,55 @@ create-envelope-ec618 invocation/cli.Invocation -> none:
       --sdk-version=system-snapshot.sdk-version
       --kind=Envelope.KIND-EC618
       --word-size=WORD-SIZE-EC618
+  envelope.store output-path --ui=ui
+
+create-rp2350-cmd --name/string="rp2350" -> cli.Command:
+  return cli.Command name
+      --help="""
+        Create a firmware envelope from an RP2350 native firmware binary.
+
+        The binary must be the SDK-hashed Toit base image produced by the
+        RP2350 build.
+        """
+      --options=[
+        cli.OptionPath "firmware.bin"
+            --help="Set the SDK-hashed RP2350 native firmware binary."
+            --required,
+        cli.OptionPath "partition-table.uf2"
+            --help="Set the picotool-generated RP2350 partition-table UF2."
+            --required,
+        cli.OptionPath "system.snapshot"
+            --required,
+      ]
+      --run=:: create-envelope-rp2350 it
+
+create-envelope-rp2350 invocation/cli.Invocation -> none:
+  output-path := invocation[OPTION-ENVELOPE]
+  ui := invocation.cli.ui
+
+  firmware-bin-data := read-file invocation["firmware.bin"] --ui=ui
+  firmware-rp2350.validate-envelope-base firmware-bin-data
+  partition-table := read-file invocation["partition-table.uf2"] --ui=ui
+  firmware-rp2350-uf2.validate-partition-table partition-table
+
+  system-snapshot-content := read-file invocation["system.snapshot"] --ui=ui
+  system-snapshot := SnapshotBundle system-snapshot-content
+
+  entries := {
+    AR-ENTRY-RP2350-FIRMWARE-BIN: firmware-bin-data,
+    AR-ENTRY-RP2350-PARTITION-UF2: partition-table,
+    SYSTEM-CONTAINER-NAME: system-snapshot-content,
+    AR-ENTRY-PROPERTIES: json.encode {
+      PROPERTY-CONTAINER-FLAGS: {
+        SYSTEM-CONTAINER-NAME: IMAGE-FLAG-RUN-BOOT | IMAGE-FLAG-RUN-CRITICAL,
+      },
+    },
+  }
+
+  envelope := Envelope.create entries
+      --sdk-version=system-snapshot.sdk-version
+      --kind=Envelope.KIND-RP2350
+      --word-size=WORD-SIZE-RP2350
   envelope.store output-path --ui=ui
 
 create-host-cmd -> cli.Command:
@@ -701,6 +761,11 @@ extract-cmd -> cli.Command:
           firmware upgrades.
         - ubjson: a UBJSON encoding suitable for incremental updates.
 
+        RP2350 envelopes support 'binary' OTA payloads, 'ubjson', and a
+        blank-board recovery UF2 with 'image'. The recovery UF2 provisions the
+        envelope's partition table and physical slot A while preserving the
+        registry partition.
+
         The '--partition-table' and '--partition' option can only be used
         for ESP32 envelopes with format 'image'. The '--partition-table'
         replaces the partition table that is in the envelope, and the
@@ -781,6 +846,8 @@ extract invocation/cli.Invocation -> none:
     extract-host invocation envelope --config-encoded=config-encoded
   else if envelope.kind == Envelope.KIND-EC618:
     extract-ec618 invocation envelope --config-encoded=config-encoded
+  else if envelope.kind == Envelope.KIND-RP2350:
+    extract-rp2350 invocation envelope --config-encoded=config-encoded
   else:
     throw "unsupported kind: $(envelope.kind)"
 
@@ -1054,6 +1121,80 @@ extract-binary-ec618 envelope/Envelope --config-encoded/ByteArray --ui/cli.Ui ->
       --reloc-table=reloc-table
       --vm-data=vm-data
 
+extract-rp2350 -> none
+    invocation/cli.Invocation
+    envelope/Envelope
+    --config-encoded/ByteArray:
+  output-path := invocation[OPTION-OUTPUT]
+  ui := invocation.cli.ui
+  format := invocation["format"]
+
+  if format != "binary" and format != "ubjson" and format != "image":
+    ui.abort "Unsupported format for RP2350 envelope: '$format'. Use 'binary' for the OTA payload, 'image' for a recovery UF2, or 'ubjson'."
+
+  firmware-bin := extract-binary-rp2350 envelope --config-encoded=config-encoded
+  if format == "image":
+    partition-table := envelope.entries.get AR-ENTRY-RP2350-PARTITION-UF2
+        --if-absent=: ui.abort "RP2350 envelope is missing its bootstrap partition-table UF2."
+    uf2 := firmware-rp2350-uf2.build-image firmware-bin --partition-table=partition-table
+    write-file output-path --ui=ui: it.write uf2
+    return
+  if format == "binary":
+    write-file output-path --ui=ui: it.write firmware-bin
+    return
+
+  output := {
+    "parts"  : firmware-rp2350.parts firmware-bin,
+    "binary" : firmware-bin,
+  }
+  write-file output-path --ui=ui: it.write (ubjson.encode output)
+
+extract-binary-rp2350 envelope/Envelope --config-encoded/ByteArray -> ByteArray:
+  containers := []
+  entries := envelope.entries
+  properties := entries.get AR-ENTRY-PROPERTIES
+      --if-present=: json.decode it
+      --if-absent=: {:}
+  flags := get-flags envelope
+
+  has-system-image := entries.contains SYSTEM-CONTAINER-NAME
+  if has-system-image: containers.add null
+
+  non-system-images := {:}
+  entries.do: | name/string content/ByteArray |
+    if name == SYSTEM-CONTAINER-NAME or not is-container-name name:
+      continue.do
+    assets-data := entries.get "+$name"
+    entry := extract-container name flags content --assets=assets-data --word-size=envelope.word-size
+    containers.add entry
+    non-system-images[name] = entry.id.to-byte-array
+
+  if has-system-image:
+    system-assets := {:}
+    if not non-system-images.is-empty: system-assets["images"] = tison.encode non-system-images
+    assets-encoded := assets.encode system-assets
+    containers[0] = extract-container
+        SYSTEM-CONTAINER-NAME
+        flags
+        entries[SYSTEM-CONTAINER-NAME]
+        --assets=assets-encoded
+        --word-size=envelope.word-size
+
+  firmware-bin := entries.get AR-ENTRY-RP2350-FIRMWARE-BIN
+  if not firmware-bin:
+    throw "cannot find $AR-ENTRY-RP2350-FIRMWARE-BIN entry in envelope '$envelope.path'"
+
+  system-uuid/Uuid? := null
+  if properties.contains "uuid":
+    system-uuid = Uuid.parse properties["uuid"] --if-error=(: null)
+  system-uuid = system-uuid or sdk-version-uuid --sdk-version=envelope.sdk-version
+
+  return firmware-rp2350.build-image
+      --binary-input=firmware-bin
+      --containers=containers
+      --system-uuid=system-uuid
+      --config-encoded=config-encoded
+
 // The flash sizes (in MiB) that the ESP32 image header can encode. The index of
 // a size is the value stored in the high nibble of the 'spi_size' header byte.
 FLASH-SIZES-MB_ ::= [1, 2, 4, 8, 16, 32, 64, 128]
@@ -1319,12 +1460,45 @@ find-ectool_ -> string:
       return ectool
   throw "cannot find ectool"
 
+find-rp2350-ota-upload_ -> string:
+  return find-rp2350-tool_ "ota-upload" "RP2350_OTA_UPLOAD_PATH"
+
+find-rp2350-tool_ name/string environment-variable/string -> string:
+  bin-extension := platform == system.PLATFORM-WINDOWS ? ".exe" : ""
+  bin-name := system.program-path
+  if platform == system.PLATFORM-WINDOWS:
+    bin-name = bin-name.replace --all "\\" "/"
+
+  if uploader-path := os.env.get environment-variable:
+    return uploader-path
+
+  list := bin-name.split "/"
+  dir := list[..list.size - 1].join "/"
+  if dir != "":
+    // Installed SDK layout.
+    uploader := "$dir/../lib/toit/bin/$name$bin-extension"
+    if file.is-file uploader: return uploader
+    // Standalone/developer layout.
+    uploader = "$dir/$name$bin-extension"
+    if file.is-file uploader: return uploader
+
+  uploader := "$name$bin-extension"
+  if platform != system.PLATFORM-WINDOWS:
+    location := pipe.backticks "/bin/sh" "-c" "command -v $name || true"
+    if location.trim != "": return location.trim
+  else:
+    catch:
+      pipe.backticks uploader "--help"
+      return uploader
+  throw "cannot find $name; set $environment-variable"
+
 tool-cmd -> cli.Command:
   return cli.Command "tool"
       --help="Provides information about used external tools."
       --subcommands=[
         esptool-cmd,
         ectool-cmd,
+        rp2350-ota-upload-cmd,
       ]
 
 esptool-cmd -> cli.Command:
@@ -1367,6 +1541,23 @@ ectool-info invocation/cli.Invocation -> none:
   else:
     ui.emit --result "Command: $ectool"
 
+rp2350-ota-upload-cmd -> cli.Command:
+  return cli.Command "rp2350-ota-upload"
+      --help="Prints the path of the found RP2350 OTA uploader."
+      --examples=[
+        cli.Example "Print the path of the found RP2350 OTA uploader."
+            --arguments="-e ignored-envelope",
+      ]
+      --run=:: rp2350-ota-upload-info it
+
+rp2350-ota-upload-info invocation/cli.Invocation -> none:
+  ui := invocation.cli.ui
+  uploader := find-rp2350-ota-upload_
+  if ui.wants-structured:
+    ui.emit --result {"command": uploader}
+  else:
+    ui.emit --result "Command: $uploader"
+
 flash-cmd -> cli.Command:
   return cli.Command "flash"
       --help="""
@@ -1382,15 +1573,23 @@ flash-cmd -> cli.Command:
           that are specified in the (potentially overridden) partition table.
           Newly added partitions are of type 0x41, subtype 0, and have no flags.
 
-          Uses Espressif's esptool.py to flash the image. Use
-          'ESPTOOL_PATH' to specify the path to the esptool.py script if you don't
-          want to use the bundled version.
+          ESP32 flashing uses Espressif's esptool.py. Use 'ESPTOOL_PATH' to
+          specify its path. RP2350 flashing performs an OTA update over the
+          running firmware's USB serial console. For initial installation or
+          recovery, put the RP2350 in BOOT mode and pass '--bootloader'. This
+          generates a recovery image from the envelope and loads it using the
+          bundled picotool. Use '--serial' to select a particular USB board.
+          Recovery preserves the other firmware slot and persistent registry;
+          it does not guarantee a downgrade from an existing confirmed image.
           """
       --options=[
         cli.OptionPath "config",
         cli.OptionPath "port"
-            --short-name="p"
-            --required,
+            --short-name="p",
+        cli.Flag "bootloader"
+            --help="Install or recover an RP2350 through its USB ROM bootloader.",
+        cli.OptionString "serial"
+            --help="Select an RP2350 board by USB serial number (requires '--bootloader').",
         cli.OptionInt "baud"
             --default=921600,
         cli.OptionEnum "chip" ["esp32", "esp32c3", "esp32c6", "esp32p4", "esp32s2", "esp32s3"]
@@ -1420,12 +1619,21 @@ flash invocation/cli.Invocation -> none:
 
   envelope := Envelope.load input-path --ui=ui
 
+  if envelope.kind != Envelope.KIND-RP2350:
+    if invocation["bootloader"] or invocation["serial"]:
+      ui.abort "The '--bootloader' and '--serial' options require an RP2350 envelope."
+    if not port: ui.abort "Missing required option '--port'."
+
   if envelope.kind == Envelope.KIND-EC618:
     flash-ec618 invocation envelope
     return
 
+  if envelope.kind == Envelope.KIND-RP2350:
+    flash-rp2350 invocation envelope
+    return
+
   if envelope.kind != Envelope.KIND-ESP32:
-    ui.abort "Only ESP32 and EC618 envelopes can be flashed."
+    ui.abort "Only ESP32, EC618, and RP2350 envelopes can be flashed."
 
   if platform != system.PLATFORM-WINDOWS:
     stat := file.stat port
@@ -1530,6 +1738,57 @@ flash-ec618 invocation/cli.Invocation envelope/Envelope -> none:
 
     code := pipe.run-program [ectool, "burn", "--burn_bl", "n", "--burn_cp", burn-cp, "-f", binpkg-path]
     if code != 0: exit 1
+  finally:
+    directory.rmdir --recursive tmp
+
+flash-rp2350 invocation/cli.Invocation envelope/Envelope -> none:
+  ui := invocation.cli.ui
+  port := invocation["port"]
+
+  if invocation["partitions"] or not invocation["partition"].is-empty:
+    ui.abort "The '--partitions' and '--partition' options are only supported for ESP32 envelopes."
+
+  bootloader := invocation["bootloader"]
+  serial := invocation["serial"]
+  if bootloader:
+    if port: ui.abort "BOOT mode uses USB directly. Use '--serial' instead of '--port'."
+  else:
+    if serial: ui.abort "The '--serial' option requires '--bootloader'."
+    if not port: ui.abort "Missing '--port' for an OTA update. Use '--bootloader' for initial installation."
+
+  if not bootloader and platform != system.PLATFORM-WINDOWS:
+    stat := file.stat port
+    if not stat or stat[file.ST-TYPE] != file.CHARACTER-DEVICE:
+      throw "cannot open port '$port'"
+
+  uploader := bootloader
+      ? find-rp2350-tool_ "picotool" "PICOTOOL_PATH"
+      : find-rp2350-ota-upload_
+
+  config-encoded := ByteArray 0
+  if config-path := invocation["config"]:
+    config-encoded = read-file config-path --ui=ui
+    exception := catch: ubjson.decode config-encoded
+    if exception: config-encoded = ubjson.encode (json.decode config-encoded)
+
+  firmware-bin := extract-binary-rp2350 envelope --config-encoded=config-encoded
+  if bootloader:
+    partition-table := envelope.entries.get AR-ENTRY-RP2350-PARTITION-UF2
+        --if-absent=: ui.abort "RP2350 envelope is missing its bootstrap partition-table UF2."
+    firmware-bin = firmware-rp2350-uf2.build-image firmware-bin --partition-table=partition-table
+  tmp := directory.mkdtemp "/tmp/toit-flash-"
+  try:
+    firmware-path := bootloader ? "$tmp/recovery.uf2" : "$tmp/toit-rp2350.bin"
+    write-file firmware-path --ui=ui: it.write firmware-bin
+    if bootloader:
+      selector := serial ? ["--ser", serial] : []
+      code := pipe.run-program ([uploader, "load", "--verify", "--ignore-partitions", firmware-path] + selector)
+      if code != 0: exit 1
+      code = pipe.run-program ([uploader, "reboot"] + selector)
+      if code != 0: exit 1
+    else:
+      code := pipe.run-program [uploader, "--port", port, firmware-path]
+      if code != 0: exit 1
   finally:
     directory.rmdir --recursive tmp
 
@@ -1757,6 +2016,8 @@ show invocation/cli.Invocation -> none:
     kind-string = Envelope.KIND-STRING-ESP32
   else if envelope.kind == Envelope.KIND-EC618:
     kind-string = Envelope.KIND-STRING-EC618
+  else if envelope.kind == Envelope.KIND-RP2350:
+    kind-string = Envelope.KIND-STRING-RP2350
   else if envelope.kind == Envelope.KIND-HOST:
     kind-string = Envelope.KIND-STRING-HOST
   else:
@@ -1848,10 +2109,12 @@ class Envelope:
   static KIND-ESP32 ::= 0
   static KIND-HOST  ::= 1
   static KIND-EC618 ::= 2
+  static KIND-RP2350 ::= 3
 
   static KIND-STRING-ESP32 ::= "esp32"
   static KIND-STRING-HOST  ::= "host"
   static KIND-STRING-EC618 ::= "ec618"
+  static KIND-STRING-RP2350 ::= "rp2350"
 
   static INFO-ENTRY-MARKER-OFFSET   ::= 0
   static INFO-ENTRY-VERSION-OFFSET  ::= 4
@@ -1885,6 +2148,8 @@ class Envelope:
             kind = KIND-HOST
           else if kind-string == KIND-STRING-EC618:
             kind = KIND-EC618
+          else if kind-string == KIND-STRING-RP2350:
+            kind = KIND-RP2350
           else:
             throw "unsupported kind: $kind-string"
           word-size = metadata[META-WORD-SIZE]
@@ -1892,11 +2157,31 @@ class Envelope:
           entries[file.name] = file.content
     if version_ == -1: throw "cannot open envelope - missing info entry"
     if sdk-version == "": throw "cannot open envelope - missing or corrupt metadata entry"
+    expected-version := kind == KIND-EC618
+        ? ENVELOPE-FORMAT-VERSION-EC618
+        : kind == KIND-RP2350
+            ? ENVELOPE-FORMAT-VERSION-RP2350
+            : ENVELOPE-FORMAT-VERSION-ESP32-HOST
+    if version_ != expected-version:
+      throw "cannot open envelope - format version $version_ does not match kind $kind"
+
+    if kind == KIND-RP2350 and word-size != WORD-SIZE-RP2350:
+      throw "cannot open RP2350 envelope with word size $word-size"
+    if kind == KIND-RP2350:
+      firmware-bin := entries.get AR-ENTRY-RP2350-FIRMWARE-BIN
+      if not firmware-bin:
+        throw "cannot open RP2350 envelope - missing $AR-ENTRY-RP2350-FIRMWARE-BIN entry"
+      firmware-rp2350.validate-envelope-base firmware-bin
+      entries.get AR-ENTRY-RP2350-PARTITION-UF2 --if-present=:
+        firmware-rp2350-uf2.validate-partition-table it
 
   constructor.create .entries --.sdk-version --.kind --.word-size:
-    version_ = kind == KIND-EC618
-        ? ENVELOPE-FORMAT-VERSION-EC618
-        : ENVELOPE-FORMAT-VERSION-ESP32-HOST
+    if kind == KIND-EC618:
+      version_ = ENVELOPE-FORMAT-VERSION-EC618
+    else if kind == KIND-RP2350:
+      version_ = ENVELOPE-FORMAT-VERSION-RP2350
+    else:
+      version_ = ENVELOPE-FORMAT-VERSION-ESP32-HOST
 
   store path/string --ui/cli.Ui -> none:
     write-file path --ui=ui: | writer/io.Writer |
@@ -1915,6 +2200,8 @@ class Envelope:
         kind-string = KIND-STRING-HOST
       else if kind == KIND-EC618:
         kind-string = KIND-STRING-EC618
+      else if kind == KIND-RP2350:
+        kind-string = KIND-STRING-RP2350
       else:
         throw "unsupported kind: $(kind)"
 
@@ -1936,8 +2223,10 @@ class Envelope:
     version := LITTLE-ENDIAN.uint32 info 4
     if marker != MARKER:
       throw "cannot open envelope - malformed"
-    if version != ENVELOPE-FORMAT-VERSION-ESP32-HOST and version != ENVELOPE-FORMAT-VERSION-EC618:
-      throw "cannot open envelope - expected version $ENVELOPE-FORMAT-VERSION-ESP32-HOST or $ENVELOPE-FORMAT-VERSION-EC618, was $version"
+    if version != ENVELOPE-FORMAT-VERSION-ESP32-HOST and
+        version != ENVELOPE-FORMAT-VERSION-EC618 and
+        version != ENVELOPE-FORMAT-VERSION-RP2350:
+      throw "cannot open envelope - expected version $ENVELOPE-FORMAT-VERSION-ESP32-HOST, $ENVELOPE-FORMAT-VERSION-EC618, or $ENVELOPE-FORMAT-VERSION-RP2350, was $version"
     return version
 
 class RelocationInformation:
@@ -2005,7 +2294,7 @@ class RelocationInformation:
 ceil_ x/int y/int -> int:
   return (x + y - 1) / y
 
-class ContainerEntry implements firmware-ec618.Container:
+class ContainerEntry implements Container:
   id/Uuid
   name/string
   flags/int

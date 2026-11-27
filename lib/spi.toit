@@ -63,7 +63,7 @@ main:
 */
 
 /**
-An ESP32 SPI target that handles one transaction at a time with a controller.
+An SPI target that handles one transaction at a time with a controller.
 
 The $transfer method arms the peripheral before suspending the calling Toit
   task.
@@ -72,7 +72,7 @@ SPI does not define a standard register protocol. Protocols that interpret the
   first received bytes as commands or addresses should be built on top of this
   transaction API.
 
-The ordinary ESP32 SPI target peripheral does not provide progress watermarks
+The ordinary SPI target API does not provide progress watermarks
   within one transaction. Large continuously clocked streams therefore need a
   separate chunked protocol in which the controller pauses between chunks or
   observes a ready signal.
@@ -102,8 +102,8 @@ class Target:
     used on MISO and MOSI, respectively.
 
   With $dma enabled, transactions use preallocated DMA-capable buffers and can
-    be as large as $max-transfer-size. Without DMA, the ESP32 peripheral limits
-    transactions to $TARGET-NON-DMA-MAX-TRANSFER-SIZE bytes.
+    be as large as $max-transfer-size. Without DMA, target implementations
+    limit transactions to $TARGET-NON-DMA-MAX-TRANSFER-SIZE bytes.
 
   On the classic ESP32, target DMA cannot reliably receive and transmit at the
     same time. DMA reception is also unavailable in modes 1 and 3. Use
@@ -115,6 +115,11 @@ class Target:
     words. If the controller ends a transaction at another byte boundary, the
     trailing one to three bytes are discarded and are not returned by
     $transfer.
+
+  On RP2350, the PL022 target peripheral supports transaction-wide CS only in
+    modes 1 and 3. Modes 0 and 2 are rejected because PL022 requires CS to
+    pulse between individual frames in those modes. The RP2350 returns only
+    complete bytes; trailing clock bits before CS rises are discarded.
   */
   constructor
       --mosi/int?=null
@@ -234,6 +239,7 @@ class Target:
           size = spi-target-transfer-finish_ resource_ receive-buffer false
           finished = true
           transfer-in-flight_ = false
+        if size < 0: throw "HARDWARE_ERROR"
         return receive-buffer.copy 0 size
       finally:
         if not finished:
@@ -278,17 +284,16 @@ class Target:
     close
 
 /**
-An ESP32 SPI target that remains armed using native response and receive buffers.
+An SPI target that remains armed using native response and receive buffers.
 
 Unlike $Target, this class does not wait for a Toit task to prepare each
   transaction. The peripheral is armed before the constructor returns and is
   re-armed from its completion callback. Received buffers are rotated instead
   of copied in that callback, so re-arming does not depend on the transaction
   size or on Toit task scheduling. This is useful for protocols whose
-  controller cannot observe a separate ready signal. As with any ESP32 SPI
-  target, the controller must still leave CS inactive long enough for the
-  completion interrupt to re-arm the peripheral; a zero-width CS-inactive
-  interval is not supported.
+  controller cannot observe a separate ready signal. The controller must still
+  leave CS inactive long enough for the completion interrupt to re-arm the
+  peripheral; a zero-width CS-inactive interval is not supported.
 
 SPI does not define a register-address protocol. The response is therefore a
   plain byte buffer: each controller transaction starts at offset zero. Toit
@@ -313,6 +318,11 @@ On the classic ESP32, SPI target interrupts are not placed in IRAM in the Toit
   operations disable the instruction cache. Controllers that may communicate
   during flash erase or write must use a separate ready signal or a newer ESP32
   variant.
+
+On RP2350, modes 0 and 2 are unavailable for targets, and partial trailing
+  bytes are discarded, as described by $Target. A controller transaction that
+  exceeds the configured buffer is capped safely at the buffer size and is not
+  allowed to consume data from the next transaction.
 */
 class BufferTarget:
   static RECEIVED-STATE_ ::= 1 << 2
@@ -340,8 +350,8 @@ class BufferTarget:
     re-arm the peripheral, but their received data is discarded and counted by
     $dropped-receive-count.
 
-  Pin, mode, bit-order, DMA, and classic ESP32 restrictions are the same as for
-    $Target.
+  Pin, mode, bit-order, DMA, and platform-specific restrictions are the same
+    as for $Target.
   */
   constructor
       transmit/ByteArray=#[ ]
@@ -522,6 +532,9 @@ class Bus:
 
   Passing a $gpio.Pin is deprecated; provide the integer GPIO number instead.
     The $gpio.Pin form will be removed in a future release.
+
+  RP2350 requires integer GP numbers, and EC618 requires integer pad numbers.
+    The deprecated $gpio.Pin form is not available on either platform.
   */
   // __TYPE-MIGRATION__ mosi: gpio.Pin. Deprecated. Provide an integer instead.
   // __TYPE-MIGRATION__ mosi: int?
@@ -580,12 +593,19 @@ class Bus:
   Passing a $gpio.Pin as $cs or $dc is deprecated; provide the integer GPIO
     number instead. The $gpio.Pin form will be removed in a future release.
 
+  RP2350 requires integer GP numbers, and EC618 requires integer pad numbers.
+    The deprecated $gpio.Pin form is not available on either platform.
+
   $cs-setup-cycles requests that CS be active for the given number of SPI clock
     cycles before the first clock edge. ESP-IDF only supports this option for
     half-duplex transactions, except for a limited one-cycle case on the
     classic ESP32. $cs-hold-cycles keeps CS active after the last clock edge.
     Setup must be between 0 and 16. Hold must be between 0 and 16, except on the
     classic ESP32 where the maximum is 15.
+
+  On RP2350, the sum of $command-bits and $address-bits must be byte-aligned.
+    Nonzero $cs-setup-cycles or $cs-hold-cycles are not supported and throw
+    `UNIMPLEMENTED`.
 
   On ESP32, a bus configured with only one of `mosi` and `miso` registers its
     devices as half-duplex. A bus with both data pins remains full-duplex.

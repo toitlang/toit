@@ -97,9 +97,16 @@ class Port extends Object with io.InMixin implements reader.Reader:
   Passing a $gpio.Pin is deprecated; provide the integer GPIO number instead.
     The $gpio.Pin form will be removed in a future release.
 
-  On the EC618, UART pins have fixed controller-specific mappings and not all
-    options are supported. Use the helpers in the `ec618` library; their
-    documentation lists the available mappings and platform restrictions.
+  RP2350 requires integer GP numbers. In $MODE-RS485-HALF-DUPLEX, $rts may be
+    any available GP and is driven high from before the first transmitted byte
+    until the final stop bit has left the UART. RP2350 rejects $MODE-IRDA, 1.5
+    stop bits, and transmitted break signals (a nonzero `break-length`).
+
+  On the EC618, UART pins are integer pad numbers with fixed
+    controller-specific mappings; the deprecated $gpio.Pin form is not
+    available. Not all options are supported. Use the helpers in the `ec618`
+    library; their documentation lists the available mappings and platform
+    restrictions.
   */
   // __TYPE-MIGRATION__ tx: gpio.Pin. Deprecated. Provide an integer instead.
   // __TYPE-MIGRATION__ tx: int?

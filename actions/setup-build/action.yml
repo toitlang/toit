@@ -62,7 +62,7 @@ runs:
       shell: bash
       run: |
         cd ${{inputs.toit-dir}}
-        modules=(third_party/esp-idf)
+        modules=(third_party/esp-idf third_party/pico-sdk third_party/FreeRTOS-Kernel)
         if [[ "${{ inputs.ec618 }}" == 'true' ]]; then
           modules+=(third_party/luatos-soc-ec618)
         fi

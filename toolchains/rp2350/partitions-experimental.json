@@ -1,0 +1,33 @@
+{
+  "version": [1, 0],
+  "unpartitioned": {
+    "families": ["absolute"],
+    "permissions": {"secure": "rw", "nonsecure": "", "bootloader": "rw"}
+  },
+  "partitions": [
+    {
+      "name": "Toit A",
+      "id": 0,
+      "start": "8K",
+      "size": "4096K",
+      "families": ["rp2350-arm-s"],
+      "permissions": {"secure": "rw", "nonsecure": "", "bootloader": "rw"}
+    },
+    {
+      "name": "Toit B",
+      "id": 1,
+      "size": "4096K",
+      "families": ["rp2350-arm-s"],
+      "permissions": {"secure": "rw", "nonsecure": "", "bootloader": "rw"},
+      "link": ["a", 0]
+    },
+    {
+      "name": "Toit registry",
+      "id": 2,
+      "size": "8172K",
+      "families": ["data"],
+      "permissions": {"secure": "rw", "nonsecure": "", "bootloader": "rw"},
+      "no_reboot_on_uf2_download": true
+    }
+  ]
+}
