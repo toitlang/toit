@@ -9,6 +9,46 @@ main:
     call-layout := send first-argument-that-is-moderately-long second-argument-that-is-moderately-long third-argument-that-is-moderately-long
     many-arguments := consume arg01 arg02 arg03 arg04 arg05 arg06 arg07 arg08 arg09 arg10 arg11 arg12 arg13 arg14 arg15
     collection-layout := [aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb, cccccccccccccccccccccccccccccccccccccccc, dddddddddddddddddddddddddddddddddddddddd]
+    block-result := values.map: | value/int | value * 2
+    lambda-result := task:: run-background
+    named-block := parse value --if-error=: throw it
+    multi-block := values.do:
+      print it
+      total += it
+    multi-lambda := task::
+      prepare
+      execute
+    while item/List? := next:
+      print item
+    nested-calls := Schedule
+      parse-field fields[0] 0 59
+      parse-field fields[1] 0 59
+    block-before-last := put-list values.size (: values[it]) converter
+    conditional-argument := consume (byte == 0 ? 0 : 1)
+    named-binary := configure --enabled=(foo or bar)
+    named-not := configure --hidden=(not foo)
+    named-parenthesized-block := parse --if-error=(: null) value
+    lambda-value := ::
+      prepare
+      execute
+    assigned = values.map:
+      prepare
+      execute
+    dispatch value
+      : first
+      : second
+    if (catch: decode value):
+      recover
+    lookup := table.get key
+        --initial=: result
+        --compare=: | found | found == result
+    primitive: | error |
+      retry error: | value |
+        consume value
+    description := """
+        Keep this
+          relative indentation.
+        """
 
 a := 1
 b := 2
