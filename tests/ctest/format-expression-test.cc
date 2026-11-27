@@ -14,6 +14,7 @@
 #include "../../src/compiler/sources.h"
 #include "../../src/compiler/symbol_canonicalizer.h"
 #include "../../src/top.h"
+#include "format-test-support.h"
 
 namespace toit {
 namespace compiler {
@@ -29,7 +30,12 @@ static ParsedExpression parse_expression(SourceManager* sources,
   static int next_source_id = 0;
   ParsedExpression result;
   result.symbols.reset(new SymbolCanonicalizer());
-  std::string program = "sample:\n  return " + text + "\n";
+  std::string indented_text;
+  for (char c : text) {
+    indented_text.push_back(c);
+    if (c == '\n') indented_text += "  ";
+  }
+  std::string program = "sample:\n  return " + indented_text + "\n";
   std::string path = "///<format-expression-" +
       std::to_string(next_source_id++) + ">";
   result.source = sources->load_from_memory(
@@ -40,7 +46,10 @@ static ParsedExpression parse_expression(SourceManager* sources,
   Scanner scanner(result.source, result.symbols.get(), &diagnostics);
   Parser parser(result.source, &scanner, &diagnostics);
   ast::Unit* unit = parser.parse_unit();
-  ASSERT(!diagnostics.encountered_error());
+  if (diagnostics.encountered_error()) {
+    fprintf(stderr, "Failed to parse expression fixture:\n%s", program.c_str());
+    exit(1);
+  }
   ASSERT(unit->declarations().length() == 1);
   ast::Method* method = unit->declarations()[0]->as_Method();
   ASSERT(method != null && method->body() != null);
@@ -69,7 +78,13 @@ static std::string format(SourceManager* sources,
   std::string output = output_lines.render(0);
 
   ParsedExpression reparsed = parse_expression(sources, output);
-  ASSERT(ast_nodes_equivalent(parsed.expression, reparsed.expression));
+  if (!ast_nodes_equivalent(parsed.expression, reparsed.expression)) {
+    fprintf(stderr,
+            "Expression changed AST:\ninput:  %s\noutput: %s\n",
+            input.c_str(),
+            output.c_str());
+    exit(1);
+  }
 
   FormatOutput second_output;
   ASSERT(format_expression(
@@ -111,7 +126,7 @@ static void test_format_expression(SourceManager* sources) {
   ASSERT(format(
       sources,
       "consume arg01 arg02 arg03 arg04 arg05 arg06 arg07 arg08 arg09 arg10",
-      40) ==
+      65) ==
       "consume arg01 arg02 arg03 arg04 arg05 arg06 arg07 arg08 arg09 arg10");
   ASSERT(format(
       sources,
@@ -123,7 +138,7 @@ static void test_format_expression(SourceManager* sources) {
   ASSERT(format(
       sources,
       "send first-moderately-long second-moderately-long third-moderately-long",
-      36) ==
+      43) ==
       "send first-moderately-long \\\n"
       "    second-moderately-long third-moderately-long");
   ASSERT(format(sources, "consume (build x y)") == "consume (build x y)");
@@ -140,7 +155,7 @@ static void test_format_expression(SourceManager* sources) {
   ASSERT(format(
       sources,
       "[aaaaaaaaaa, bbbbbbbbbb, cccccccccc, dddddddddd]",
-      24) ==
+      25) ==
       "[\n"
       "  aaaaaaaaaa, bbbbbbbbbb,\n"
       "  cccccccccc, dddddddddd,\n"

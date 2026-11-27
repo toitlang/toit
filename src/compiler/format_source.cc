@@ -83,6 +83,18 @@ std::string FormatSource::text(int from, int to) const {
       reinterpret_cast<const char*>(source_->text()) + from, to - from);
 }
 
+std::vector<int> FormatSource::comments_in(int from, int to) const {
+  ASSERT(from >= 0 && from <= to && to <= source_->size());
+  std::vector<int> result;
+  for (const auto& comment : comments_) {
+    if (from <= comment.from && comment.to <= to) result.push_back(comment.id);
+  }
+  std::sort(result.begin(), result.end(), [this](int left, int right) {
+    return comments_[left].from < comments_[right].from;
+  });
+  return result;
+}
+
 void FormatSource::build_comments(List<Scanner::Comment> comments) {
   for (auto comment : comments) {
     if (!comment.is_valid()) continue;
@@ -168,6 +180,97 @@ std::string FormatSource::shift_multiline_comment(
     int shifted = std::max(0, indentation + delta);
     result.append(shifted, ' ');
     cursor = indentation_end;
+  }
+  return result;
+}
+
+std::string FormatSource::reindent_region(
+    int first_line, int last_line, int new_first_indentation) const {
+  ASSERT(first_line >= 0 && first_line <= last_line &&
+         last_line < static_cast<int>(lines_.size()));
+  ASSERT(new_first_indentation >= 0);
+  int delta = new_first_indentation - lines_[first_line].indentation;
+  std::string result;
+  for (int line_index = first_line; line_index <= last_line; line_index++) {
+    const FormatLine& line = lines_[line_index];
+    int shifted = std::max(0, line.indentation + delta);
+    result += std::string(shifted, ' ') +
+        text(line.from + line.indentation, line.to);
+  }
+  return result;
+}
+
+FormatCommentState::FormatCommentState(const FormatSource* source)
+    : source_(source)
+    , consumed_(source == null ? 0 : source->comments().size(), false) {
+  ASSERT(source_ != null);
+}
+
+void FormatCommentState::consume(int id) {
+  ASSERT(id >= 0 && id < static_cast<int>(consumed_.size()));
+  ASSERT(!consumed_[id]);
+  consumed_[id] = true;
+}
+
+std::vector<int> FormatCommentState::unconsumed_in(int from, int to) const {
+  std::vector<int> result;
+  for (int id : source_->comments_in(from, to)) {
+    if (!consumed_[id]) result.push_back(id);
+  }
+  return result;
+}
+
+bool FormatCommentState::has_unconsumed_in(int from, int to) const {
+  return !unconsumed_in(from, to).empty();
+}
+
+bool FormatCommentState::all_consumed() const {
+  for (bool value : consumed_) {
+    if (!value) return false;
+  }
+  return true;
+}
+
+bool FormatCommentState::render_own_line(int from,
+                                         int to,
+                                         int indentation_delta,
+                                         std::string* result) {
+  ASSERT(result != null);
+  std::vector<std::string> rendered;
+  for (int id : unconsumed_in(from, to)) {
+    const FormatComment& comment = source_->comments()[id];
+    if (comment.follows_code) return false;
+    int column = std::max(0, comment.start_column + indentation_delta);
+    std::string text = std::string(column, ' ');
+    if (comment.spans_lines) {
+      text += source_->shift_multiline_comment(id, column);
+    } else {
+      text += comment.text;
+    }
+    rendered.push_back(std::move(text));
+    consume(id);
+  }
+  result->clear();
+  for (const auto& text : rendered) {
+    if (!result->empty()) *result += "\n";
+    *result += text;
+  }
+  return true;
+}
+
+std::string FormatCommentState::render_verbatim(
+    int first_line, int last_line, int new_first_indentation) {
+  const auto& lines = source_->lines();
+  ASSERT(first_line >= 0 && first_line <= last_line &&
+         last_line < static_cast<int>(lines.size()));
+  int from = lines[first_line].from;
+  int to = lines[last_line].to;
+  for (int id : unconsumed_in(from, to)) consume(id);
+  std::string result = source_->reindent_region(
+      first_line, last_line, new_first_indentation);
+  while (!result.empty() &&
+         (result.back() == '\n' || result.back() == '\r')) {
+    result.pop_back();
   }
   return result;
 }

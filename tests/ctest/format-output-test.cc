@@ -6,6 +6,7 @@
 
 #include "../../src/compiler/format_output.h"
 #include "../../src/top.h"
+#include "format-test-support.h"
 
 namespace toit {
 namespace compiler {

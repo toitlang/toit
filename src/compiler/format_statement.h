@@ -12,6 +12,7 @@
 #include "ast.h"
 #include "format_expression.h"
 #include "format_output.h"
+#include "format_source.h"
 #include "sources.h"
 
 namespace toit {
@@ -25,7 +26,8 @@ bool format_sequence(ast::Sequence* sequence,
                      std::string* result,
                      const FormatStyle& style = FormatStyle(),
                      const FormatExpressionOptions& expression_options =
-                         FormatExpressionOptions());
+                         FormatExpressionOptions(),
+                     FormatCommentState* comments = null);
 
 } // namespace compiler
 } // namespace toit
