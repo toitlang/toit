@@ -1850,11 +1850,30 @@ Object *MessageDecoder_decode_map(MessageDecoder *self)
   if (array == 0) {
     return MessageDecoder_mark_allocation_failed(self);
   }
+  //@ open dec(self, fb, proc, ids, fmt, b, sz, cap, c1, st1, k);
+  Instance *backing = ObjectHeap_allocate_instance(Process_object_heap(self->process_), Program_list_class_id(self->program_));
+  //@ close dec(self, fb, proc, ids, fmt, b, sz, cap, c1, st1, k);
+  //@ open allocated(objs2a, H2a, proc, backing, ?objs2b, ?H2b);
+  //@ if (backing != 0) { grows_alloc(objs2a, H2a, backing, H2b); grows_keeps(objs2a, H2a, objs2b, H2b, array); grows_keeps(objs2a, H2a, objs2b, H2b, result); grows_trans(objs, H, objs2a, H2a, objs2b, H2b); } else dec_af_plain(self);
+  if (backing == 0) {
+    return MessageDecoder_mark_allocation_failed(self);
+  }
+  //@ int lfields = class_fields(list_cid(ids));
+  Instance_at_put__word_Objectp(backing, Instance_LIST_ARRAY_INDEX, array);
+  //@ assert heap(objs2b, ?H2c);
+  //@ put_step(objs, H, objs2b, H2b, H2c, backing);
+  Instance_at_put__word_Smip(backing, Instance_LIST_SIZE_INDEX, Smi_from(size * 2));
+  //@ assert heap(objs2b, ?H2d);
+  //@ put_step(objs, H, objs2b, H2c, H2d, backing);
+  //@ grows_trans(objs2b, H2b, objs2b, H2c, objs2b, H2d);
+  //@ grows_keeps(objs2b, H2b, objs2b, H2d, array);
+  //@ grows_keeps(objs2b, H2b, objs2b, H2d, result);
   for (word i = 0; i < size * 2; i++)
   /*@ invariant dec(self, fb, proc, ids, fmt, b, sz, cap, ?ci, ?sti, ?ki) &*& ci <= cap + 1 &*& not_failed(fmt, proc, sti) == true &*&
                 [fp]process(proc, prog, ids) &*& self->nesting_ |-> n &*& 0 <= i &*&
                 heap(?objsi, ?Hi) &*& grows(objs, H, objsi, Hi) == true &*&
                 mem(array, objsi) == true &*& has_tag(Hi, array, ARRAY_TAG) == true &*& o_len(Hi(array)) == size * 2 &*&
+                mem(backing, objsi) == true &*& has_tag(Hi, backing, INSTANCE_TAG) == true &*& o_len(Hi(backing)) == lfields &*&
                 mem(result, objsi) == true &*& has_tag(Hi, result, INSTANCE_TAG) == true &*& o_len(Hi(result)) == fields; @*/
   {
     Object *inner = MessageDecoder_decode_any(self);
@@ -1864,10 +1883,12 @@ Object *MessageDecoder_decode_map(MessageDecoder *self)
       return inner;
     }
     //@ grows_keeps(objsi, Hi, objs3, H3, array);
+    //@ grows_keeps(objsi, Hi, objs3, H3, backing);
     //@ grows_keeps(objsi, Hi, objs3, H3, result);
     Array_at_put__word_Objectp(array, i, inner);
     //@ assert heap(objs3, ?H4);
     //@ put_step(objs, H, objs3, H3, H4, array);
+    //@ grows_keeps(objs3, H3, objs3, H4, backing);
     //@ grows_keeps(objs3, H3, objs3, H4, result);
   }
   //@ assert heap(?objs5, ?H5);
@@ -1882,7 +1903,7 @@ Object *MessageDecoder_decode_map(MessageDecoder *self)
   //@ close dec(self, fb, proc, ids, fmt, b, sz, cap, c6, st6, k6);
   //@ assert heap(objs5, ?Hg);
   //@ put_step(objs, H, objs5, Hf, Hg, result);
-  Instance_at_put__word_Objectp(result, Instance_MAP_BACKING_INDEX, array);
+  Instance_at_put__word_Objectp(result, Instance_MAP_BACKING_INDEX, backing);
   //@ assert heap(objs5, ?Hh);
   //@ put_step(objs, H, objs5, Hg, Hh, result);
   return result;

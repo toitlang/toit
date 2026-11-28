@@ -309,10 +309,12 @@ test-map myself/int -> none:
 
   roundtripped["hest"] = "best"  // Can modify the map after going through RPC.
 
-  // Can't add to the map after going through RPC.  We could fix this in the
-  // map class, but it's harder to fix the same issue for growable lists that
-  // turn into ungrowable arrays after RPC.
-  expect.expect-throw "COLLECTION_CANNOT_CHANGE_SIZE": roundtripped["kat"] = "cat"
+  // Can add to the map and remove from it after going through RPC.  (Lists
+  // still turn into arrays, which can't grow.)
+  roundtripped["kat"] = "cat"
+  expect.expect-equals "cat" roundtripped["kat"]
+  roundtripped.remove "hest"
+  expect.expect-equals 2 roundtripped.size
 
   // Empty map in list in list.
   l := [[{:}]]

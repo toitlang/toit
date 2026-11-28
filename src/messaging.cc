@@ -823,6 +823,12 @@ Object* MessageDecoder::decode_map() {
   }
   Array* array = process_->object_heap()->allocate_array(size * 2, Smi::zero());
   if (array == null) return mark_allocation_failed();
+  // The backing is a list, as in maps made by Toit code, so that the map can
+  // grow and compact its backing.
+  Instance* backing = process_->object_heap()->allocate_instance(program_->list_class_id());
+  if (backing == null) return mark_allocation_failed();
+  backing->at_put(Instance::LIST_ARRAY_INDEX, array);
+  backing->at_put(Instance::LIST_SIZE_INDEX, Smi::from(size * 2));
   for (word i = 0; i < size * 2; i++) {
     Object* inner = decode_any();
     if (!success()) return inner;
@@ -831,7 +837,7 @@ Object* MessageDecoder::decode_map() {
   result->at_put(Instance::MAP_SIZE_INDEX, Smi::from(size));
   result->at_put(Instance::MAP_SPACES_LEFT_INDEX, Smi::from(0));
   result->at_put(Instance::MAP_INDEX_INDEX, program_->null_object());
-  result->at_put(Instance::MAP_BACKING_INDEX, array);
+  result->at_put(Instance::MAP_BACKING_INDEX, backing);
   return result;
 }
 
